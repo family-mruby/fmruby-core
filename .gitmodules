@@ -1,0 +1,3 @@
+[submodule "components/components/picoruby"]
+	path = components/components/picoruby
+	url = https://github.com/picoruby/picoruby.git
