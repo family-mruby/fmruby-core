@@ -9,8 +9,8 @@
 #include "lib/fmrb_gfx/fmrb_gfx.h"
 #include "lib/fmrb_audio/fmrb_audio.h"
 
-// TODO: PicoRuby integration
-// #include "picoruby.h"
+// PicoRuby integration
+#include "picoruby-esp32.h"
 
 static const char *TAG = "fmrb";
 

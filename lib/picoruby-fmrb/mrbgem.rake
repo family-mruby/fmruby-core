@@ -1,6 +1,6 @@
 MRuby::Gem::Specification.new('picoruby-fmrb') do |spec|
   spec.license = 'MIT'
-  spec.authors = ['Family mruby Team']
+  spec.authors = ['Katsuhiko Kageyama']
   spec.summary = 'Family mruby Hardware Abstraction Layer for PicoRuby'
 
   spec.add_dependency 'picoruby-gpio'

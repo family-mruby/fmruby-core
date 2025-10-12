@@ -1,5 +1,5 @@
 # Set platform-specific requirements
-if(CONFIG_IDF_TARGET_LINUX)
+if(IDF_TARGET STREQUAL "linux")
     set(PLATFORM_REQUIRES pthread log)
 else()
     set(PLATFORM_REQUIRES esp_timer freertos log spi_flash driver pthread)
@@ -15,3 +15,8 @@ idf_component_register(
     INCLUDE_DIRS "."
     REQUIRES ${PLATFORM_REQUIRES}
 )
+
+# Add Linux-specific compiler definitions
+if(IDF_TARGET STREQUAL "linux")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_PLATFORM_LINUX=1)
+endif()
