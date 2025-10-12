@@ -68,15 +68,27 @@ add_definitions(
 )
 
 set(PICORUBY_DIR ${COMPONENT_DIR}/picoruby)
-set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
+
+# Set platform-specific build configuration
+if(IDF_TARGET STREQUAL "linux")
+    set(MRUBY_CONFIG "default")  # POSIXビルド用
+    set(MRUBY_BUILD_DIR "host")
+    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/host/lib/libmruby.a)
+    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/host/mrbgems)
+else()
+    set(MRUBY_CONFIG "xtensa-esp")  # ESP32ビルド用
+    set(MRUBY_BUILD_DIR "esp32")
+    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
+    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/esp32/mrbgems)
+endif()
 
 # Build PicoRuby
 add_custom_command(
   OUTPUT ${LIBMRUBY_FILE}
-  COMMAND ${CMAKE_COMMAND} -E echo "MRUBY_CONFIG=xtensa-esp rake"
-  COMMAND ${CMAKE_COMMAND} -E env MRUBY_CONFIG=xtensa-esp rake
+  COMMAND ${CMAKE_COMMAND} -E echo "MRUBY_CONFIG=${MRUBY_CONFIG} rake"
+  COMMAND ${CMAKE_COMMAND} -E env MRUBY_CONFIG=${MRUBY_CONFIG} rake
   WORKING_DIRECTORY ${PICORUBY_DIR}
-  COMMENT "PicoRuby build"
+  COMMENT "PicoRuby build (${MRUBY_CONFIG})"
   VERBATIM
 )
 
@@ -90,7 +102,7 @@ target_include_directories(
   PRIVATE
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
-    ${COMPONENT_DIR}/picoruby/build/esp32/mrbgems
+    ${MRBGEMS_DIR}
 )
 
 add_custom_target(
