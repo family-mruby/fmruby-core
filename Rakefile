@@ -46,7 +46,7 @@ namespace :build do
   desc "Linux target build (dev/test)"
   task :linux => :setup do
     sh "#{DOCKER_CMD} idf.py --preview build"
-    puts 'Linux build complete. Run with: ./build/fmruby-graphics-audio.elf'
+    puts 'Linux build complete. Run with: ./build/fmruby-core.elf'
   end
 
   desc "ESP32(S3) build"
@@ -77,5 +77,5 @@ end
 
 desc "Run Linux build (depends on :linux_build)"
 task :run_linux => :linux_build do
-  sh "./build/fmruby-graphics-audio.elf"
+  sh "./build/fmruby-core.elf"
 end
