@@ -20,23 +20,25 @@ ESP32-S3-N16R8 をターゲットとして、以下の２つの機能を提供�
 
 API仕様は検討中。
 
+## ハードウェア構成
+
+### 本番構成
+
+fmruby-coreは、ESP32-S3で実行する
+映像出力(NTSC)と音声出力（APUエミュレータを利用したI2S）は子マイコン（ESP32-WROVER）で実行する
+S3とWROVERの間はSPI通信
+
+### 開発環境構成（Linux）
+
+fmruby-coreは、WSL2で動くDockerコンテナ内で実行する
+映像出力と音声出力は、WSL2側で動く別プロセスにソケット通信で通信して実現する。その別プロセスでは、SDL2を動かす。（将来的にはSDL2対応をベースに、WASMで動かしたりもしてみたい）
+
 ## ビルド方法
 
-### ESP32ターゲット
 ```
-docker run --rm --group-add=dialout --group-add=plugdev --privileged $DEVICE_ARGS --user $(id -u):$(id -g) -v $PWD:/project -v /dev/bus/usb:/dev/bus/usb esp32_build_container:v5.5.1 idf.py build
-```
-
-### Linuxターゲット（開発・テスト用）
-```
-docker run --rm --user $(id -u):$(id -g) -v $PWD:/project esp32_build_container:v5.5.1 idf.py set-target linux
-docker run --rm --user $(id -u):$(id -g) -v $PWD:/project esp32_build_container:v5.5.1 idf.py build
-```
-
-### 簡単実行用スクリプト
-```
-make linux-build  # Linuxターゲットビルド
-make esp32-build  # ESP32ターゲットビルド
+rake build:linux  # Linuxターゲットビルド
+rake build:esp32  # ESP32ターゲットビルド
+rake -T # その他のコマンドの使い方
 ```
 
 ## 設計指針
@@ -64,8 +66,11 @@ make esp32-build  # ESP32ターゲットビルド
 - main/lib
   - fmrb_hal_*          // OS寄りの機能。時刻、スリープ、IPC(送受信/共有メモリ)、SPI/I2C/GPIO、DMA、ロック等
   - fmrb_ipc_*          // S3<->WROVER/ホストのプロトコル定義と再送/水位制御
-  - fmrb_gfx_*          // 上位: コマンドリスト/ウィンドウ描画/テキスト/Present
-  - fmrb_audio_*        // 上位: サンプルキュー/ミキサ/ストリーム制御/BGM/SE
+    LinuxではSocket通信になる
+  - fmrb_gfx_*          // 上位: LovyanGFX＋α（Window描画、ビットマップ転送など）のAPIをラップした形。
+    内部では、IPCで描画コマンドを送る。
+  - fmrb_audio_*        // 上位: APUエミュレータ向け音楽バイナリ転送、再生停止制御。現状はESP32専用。Linux向けはスケルトンのみでOK
+    内部では、IPCを使ってコマンドを実行する
 
 - その他
   - TinyUSB
