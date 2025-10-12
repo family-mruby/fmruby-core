@@ -1,17 +1,5 @@
-#include "fmrb_hal_spi.h"
+#include "../../fmrb_hal_spi.h"
 #include "esp_log.h"
-
-#ifdef FMRB_PLATFORM_LINUX
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-
-typedef struct {
-    fmrb_spi_config_t config;
-    bool initialized;
-} linux_spi_handle_t;
-
-#else
 #include "driver/spi_master.h"
 #include "freertos/FreeRTOS.h"
 
@@ -20,8 +8,6 @@ typedef struct {
     fmrb_spi_config_t config;
 } esp32_spi_handle_t;
 
-#endif
-
 static const char *TAG = "fmrb_hal_spi";
 
 fmrb_err_t fmrb_hal_spi_init(const fmrb_spi_config_t *config, fmrb_spi_handle_t *handle) {
@@ -29,22 +15,6 @@ fmrb_err_t fmrb_hal_spi_init(const fmrb_spi_config_t *config, fmrb_spi_handle_t 
         return FMRB_ERR_INVALID_PARAM;
     }
 
-#ifdef FMRB_PLATFORM_LINUX
-    linux_spi_handle_t *linux_handle = malloc(sizeof(linux_spi_handle_t));
-    if (!linux_handle) {
-        return FMRB_ERR_NO_MEMORY;
-    }
-
-    linux_handle->config = *config;
-    linux_handle->initialized = true;
-
-    ESP_LOGI(TAG, "Linux SPI initialized: MOSI=%d, MISO=%d, SCLK=%d, CS=%d, freq=%d",
-             config->mosi_pin, config->miso_pin, config->sclk_pin,
-             config->cs_pin, config->frequency);
-
-    *handle = linux_handle;
-    return FMRB_OK;
-#else
     esp32_spi_handle_t *esp_handle = malloc(sizeof(esp32_spi_handle_t));
     if (!esp_handle) {
         return FMRB_ERR_NO_MEMORY;
@@ -84,7 +54,6 @@ fmrb_err_t fmrb_hal_spi_init(const fmrb_spi_config_t *config, fmrb_spi_handle_t 
     esp_handle->config = *config;
     *handle = esp_handle;
     return FMRB_OK;
-#endif
 }
 
 fmrb_err_t fmrb_hal_spi_deinit(fmrb_spi_handle_t handle) {
@@ -92,17 +61,10 @@ fmrb_err_t fmrb_hal_spi_deinit(fmrb_spi_handle_t handle) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-#ifdef FMRB_PLATFORM_LINUX
-    linux_spi_handle_t *linux_handle = (linux_spi_handle_t *)handle;
-    linux_handle->initialized = false;
-    free(linux_handle);
-    ESP_LOGI(TAG, "Linux SPI deinitialized");
-#else
     esp32_spi_handle_t *esp_handle = (esp32_spi_handle_t *)handle;
     spi_bus_remove_device(esp_handle->device);
     spi_bus_free(SPI2_HOST);
     free(esp_handle);
-#endif
 
     return FMRB_OK;
 }
@@ -115,17 +77,6 @@ fmrb_err_t fmrb_hal_spi_transmit(fmrb_spi_handle_t handle,
         return FMRB_ERR_INVALID_PARAM;
     }
 
-#ifdef FMRB_PLATFORM_LINUX
-    linux_spi_handle_t *linux_handle = (linux_spi_handle_t *)handle;
-    if (!linux_handle->initialized) {
-        return FMRB_ERR_FAILED;
-    }
-
-    ESP_LOGI(TAG, "Linux SPI transmit %zu bytes", length);
-    // Simulate transmission delay
-    fmrb_hal_time_delay_ms(1);
-    return FMRB_OK;
-#else
     esp32_spi_handle_t *esp_handle = (esp32_spi_handle_t *)handle;
 
     spi_transaction_t trans = {
@@ -135,7 +86,6 @@ fmrb_err_t fmrb_hal_spi_transmit(fmrb_spi_handle_t handle,
 
     esp_err_t ret = spi_device_transmit(esp_handle->device, &trans);
     return (ret == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
-#endif
 }
 
 fmrb_err_t fmrb_hal_spi_receive(fmrb_spi_handle_t handle,
@@ -146,18 +96,6 @@ fmrb_err_t fmrb_hal_spi_receive(fmrb_spi_handle_t handle,
         return FMRB_ERR_INVALID_PARAM;
     }
 
-#ifdef FMRB_PLATFORM_LINUX
-    linux_spi_handle_t *linux_handle = (linux_spi_handle_t *)handle;
-    if (!linux_handle->initialized) {
-        return FMRB_ERR_FAILED;
-    }
-
-    // Simulate received data
-    memset(rx_data, 0xAA, length);
-    ESP_LOGI(TAG, "Linux SPI receive %zu bytes", length);
-    fmrb_hal_time_delay_ms(1);
-    return FMRB_OK;
-#else
     esp32_spi_handle_t *esp_handle = (esp32_spi_handle_t *)handle;
 
     spi_transaction_t trans = {
@@ -167,7 +105,6 @@ fmrb_err_t fmrb_hal_spi_receive(fmrb_spi_handle_t handle,
 
     esp_err_t ret = spi_device_transmit(esp_handle->device, &trans);
     return (ret == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
-#endif
 }
 
 fmrb_err_t fmrb_hal_spi_transfer(fmrb_spi_handle_t handle,
@@ -179,19 +116,6 @@ fmrb_err_t fmrb_hal_spi_transfer(fmrb_spi_handle_t handle,
         return FMRB_ERR_INVALID_PARAM;
     }
 
-#ifdef FMRB_PLATFORM_LINUX
-    linux_spi_handle_t *linux_handle = (linux_spi_handle_t *)handle;
-    if (!linux_handle->initialized) {
-        return FMRB_ERR_FAILED;
-    }
-
-    if (rx_data) {
-        memset(rx_data, 0xBB, length);
-    }
-    ESP_LOGI(TAG, "Linux SPI transfer %zu bytes", length);
-    fmrb_hal_time_delay_ms(1);
-    return FMRB_OK;
-#else
     esp32_spi_handle_t *esp_handle = (esp32_spi_handle_t *)handle;
 
     spi_transaction_t trans = {
@@ -202,5 +126,4 @@ fmrb_err_t fmrb_hal_spi_transfer(fmrb_spi_handle_t handle,
 
     esp_err_t ret = spi_device_transmit(esp_handle->device, &trans);
     return (ret == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
-#endif
 }

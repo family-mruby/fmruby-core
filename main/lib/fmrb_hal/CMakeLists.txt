@@ -1,18 +1,28 @@
-# Set platform-specific requirements
+# Set common sources
+set(COMMON_SRCS
+    "fmrb_hal.c"
+    "fmrb_hal_time.c"
+    "fmrb_hal_gpio.c"
+)
+
+# Set platform-specific sources and requirements
 if(IDF_TARGET STREQUAL "linux")
+    list(APPEND COMMON_SRCS
+        "platform/linux/fmrb_hal_spi_linux.c"
+        "platform/linux/fmrb_hal_ipc_linux.c"
+    )
     set(PLATFORM_REQUIRES pthread log)
 else()
+    list(APPEND COMMON_SRCS
+        "platform/esp32/fmrb_hal_spi_esp32.c"
+        "platform/esp32/fmrb_hal_ipc_esp32.c"
+    )
     set(PLATFORM_REQUIRES esp_timer freertos log spi_flash driver pthread)
 endif()
 
 idf_component_register(
-    SRCS
-        "fmrb_hal.c"
-        "fmrb_hal_time.c"
-        "fmrb_hal_gpio.c"
-        "fmrb_hal_spi.c"
-        "fmrb_hal_ipc.c"
-    INCLUDE_DIRS "."
+    SRCS ${COMMON_SRCS}
+    INCLUDE_DIRS "." "platform"
     REQUIRES ${PLATFORM_REQUIRES}
 )
 
