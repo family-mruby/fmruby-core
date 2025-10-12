@@ -42,11 +42,13 @@ make esp32-build  # ESP32ターゲットビルド
 
 ### プログラムコンポーネント
 
+以下のコンポーネントは勝手に削除したり、ビルド対象から外してはいけない
+
 - components
-  - PicoRuby
-    https://github.com/picoruby/picoruby
+  - picoruby-esp32
+    https://github.com/picoruby/picoruby-esp32.git
     これはsubmoduleである。勝手に編集してはいけない。
-    これをビルドするための設定は「https://github.com/picoruby/picoruby-esp32」に存在している。
+    これをビルドするための設定は「https://github.com/picoruby/R2P2-esp32」に存在している。
 - lib/
   - picoruby-fmrb
     - PicoRuby向けのmrbgem
