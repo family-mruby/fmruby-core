@@ -67,7 +67,8 @@ end
 
 desc "Full clean build artifacts"
 task :clean do
-  sh "#{DOCKER_CMD} idf.py fullclean"
+  #sh "#{DOCKER_CMD} idf.py fullclean"
+  sh "rm -rf build"
 end
 
 desc "Serial monitor"

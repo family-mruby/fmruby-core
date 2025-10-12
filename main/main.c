@@ -16,7 +16,6 @@ static const char *TAG = "fmrb";
 
 // Global contexts
 static fmrb_gfx_context_t g_gfx_context = NULL;
-static fmrb_audio_context_t g_audio_context = NULL;
 
 // Family mruby OS initialization
 static void fmrb_os_init(void)
@@ -51,20 +50,12 @@ static void fmrb_os_init(void)
         fmrb_gfx_present(g_gfx_context);
     }
 
-    // Initialize Audio subsystem
-    fmrb_audio_config_t audio_config = {
-        .sample_rate = 44100,
-        .channels = 2,
-        .format = FMRB_AUDIO_FORMAT_S16_LE,
-        .buffer_size = 1024,
-        .num_buffers = 4
-    };
-
-    fmrb_audio_err_t audio_ret = fmrb_audio_init(&audio_config, &g_audio_context);
+    // Initialize Audio subsystem (APU emulator)
+    fmrb_audio_err_t audio_ret = fmrb_audio_init();
     if (audio_ret != FMRB_AUDIO_OK) {
         ESP_LOGE(TAG, "Failed to initialize Audio: %d", audio_ret);
     } else {
-        ESP_LOGI(TAG, "Audio initialized: %d Hz, %d ch", audio_config.sample_rate, audio_config.channels);
+        ESP_LOGI(TAG, "Audio subsystem (APU emulator) initialized");
     }
 
     // TODO: Initialize PicoRuby
@@ -162,11 +153,8 @@ static void fmrb_os_deinit(void)
     */
 
     // Cleanup Audio
-    if (g_audio_context) {
-        fmrb_audio_deinit(g_audio_context);
-        g_audio_context = NULL;
-        ESP_LOGI(TAG, "Audio deinitialized");
-    }
+    fmrb_audio_deinit();
+    ESP_LOGI(TAG, "Audio deinitialized");
 
     // Cleanup Graphics
     if (g_gfx_context) {
