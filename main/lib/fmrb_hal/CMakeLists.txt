@@ -1,3 +1,10 @@
+# Set platform-specific requirements
+if(CONFIG_IDF_TARGET_LINUX)
+    set(PLATFORM_REQUIRES pthread log)
+else()
+    set(PLATFORM_REQUIRES esp_timer freertos log spi_flash driver pthread)
+endif()
+
 idf_component_register(
     SRCS
         "fmrb_hal.c"
@@ -6,5 +13,5 @@ idf_component_register(
         "fmrb_hal_spi.c"
         "fmrb_hal_ipc.c"
     INCLUDE_DIRS "."
-    REQUIRES esp_timer freertos log spi_flash driver pthread
+    REQUIRES ${PLATFORM_REQUIRES}
 )

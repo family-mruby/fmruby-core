@@ -25,14 +25,14 @@ typedef enum {
 typedef struct {
     fmrb_audio_config_t config;
     fmrb_ipc_transport_handle_t transport;
-    fmrb_audio_mixer_t* mixer;
+    fmrb_audio_mixer_t mixer;
     bool initialized;
 } fmrb_audio_context_impl_t;
 
 typedef struct {
     fmrb_audio_context_impl_t* context;
     fmrb_audio_stream_config_t config;
-    fmrb_audio_queue_t* queue;
+    fmrb_audio_queue_t queue;
     fmrb_audio_stream_state_t state;
     float volume;
     uint32_t stream_id;
