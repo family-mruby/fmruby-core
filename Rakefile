@@ -45,12 +45,18 @@ end
 namespace :build do
   desc "Linux target build (dev/test)"
   task :linux => :setup do
+    unless Dir.exist?('build')
+      Rake::Task['set_target:linux'].invoke    
+    end
     sh "#{DOCKER_CMD} idf.py --preview build"
     puts 'Linux build complete. Run with: ./build/fmruby-core.elf'
   end
 
   desc "ESP32(S3) build"
   task :esp32 => :setup do
+    unless Dir.exist?('build')
+      Rake::Task['set_target:esp32'].invoke    
+    end
     sh "#{DOCKER_CMD} idf.py build"
   end
 end
@@ -69,6 +75,7 @@ desc "Full clean build artifacts"
 task :clean do
   #sh "#{DOCKER_CMD} idf.py fullclean"
   sh "rm -rf build"
+  sh "rm -rf components/picoruby-esp32/picoruby/build"
 end
 
 desc "Serial monitor"
