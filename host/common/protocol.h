@@ -11,15 +11,27 @@ extern "C" {
 // Protocol version
 #define FMRB_HOST_PROTOCOL_VERSION 1
 
+// Magic number for message validation
+#define FMRB_MAGIC 0x464D5242  // "FMRB"
+
 // Message types
 typedef enum {
+    FMRB_MSG_GRAPHICS = 1,
+    FMRB_MSG_AUDIO = 2,
     FMRB_HOST_MSG_GRAPHICS = 0x10,
     FMRB_HOST_MSG_AUDIO = 0x20,
     FMRB_HOST_MSG_INPUT = 0x30,
     FMRB_HOST_MSG_CONTROL = 0x40
 } fmrb_host_msg_type_t;
 
-// Message header
+// Message header (compatible with main/common/protocol.h)
+typedef struct {
+    uint32_t magic;      // FMRB_MAGIC (0x464D5242)
+    uint32_t type;       // Message type
+    uint32_t size;       // Message total size
+} __attribute__((packed)) fmrb_message_header_t;
+
+// Host-specific message header
 typedef struct {
     uint8_t version;        // Protocol version
     uint8_t msg_type;       // Message type

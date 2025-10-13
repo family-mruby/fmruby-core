@@ -71,11 +71,12 @@ task :menuconfig do
   sh "#{DOCKER_CMD} idf.py menuconfig"
 end
 
-desc "Full clean build artifacts"
+desc "Full clean build artifacts (including host)"
 task :clean do
   #sh "#{DOCKER_CMD} idf.py fullclean"
   sh "rm -rf build"
   sh "rm -rf components/picoruby-esp32/picoruby/build"
+  sh "rm -rf host/sdl2/build"
 end
 
 desc "Serial monitor"
@@ -83,7 +84,47 @@ task :monitor do
   sh "#{DOCKER_CMD_PRIVILEGED} idf.py monitor"
 end
 
-desc "Run Linux build (depends on :linux_build)"
-task :run_linux => :linux_build do
+namespace :host do
+  desc "Build SDL2 host process"
+  task :build do
+    sh "cd host/sdl2 && mkdir -p build && cd build && cmake .. && make"
+  end
+
+  desc "Run SDL2 host process in background"
+  task :run => :build do
+    puts "Starting SDL2 host process..."
+    sh "cd host/sdl2/build && ./fmrb_host_sdl2 &"
+    sleep 1
+    puts "SDL2 host running on /tmp/fmrb_socket"
+  end
+
+  desc "Clean SDL2 host build"
+  task :clean do
+    sh "rm -rf host/sdl2/build"
+  end
+end
+
+namespace :test do
+  desc "Integration test: Run both core and host processes"
+  task :integration => ['build:linux', 'host:build'] do
+    puts "Starting integration test..."
+
+    # SDL2ホストをバックグラウンドで起動
+    host_pid = Process.spawn("cd host/sdl2/build && ./fmrb_host_sdl2")
+    sleep 2  # 起動待ち
+
+    begin
+      puts "Starting FMRuby Core..."
+      sh "./build/fmruby-core.elf"
+    ensure
+      # 終了処理
+      Process.kill("TERM", host_pid) rescue nil
+      puts "Integration test completed"
+    end
+  end
+end
+
+desc "Run Linux build (depends on build:linux)"
+task :run_linux => 'build:linux' do
   sh "./build/fmruby-core.elf"
 end
