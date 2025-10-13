@@ -34,6 +34,8 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
+    ${COMPONENT_DIR}/picoruby/build/host/include
   PRIV_REQUIRES
 )
 
@@ -70,13 +72,13 @@ add_definitions(
 set(PICORUBY_DIR ${COMPONENT_DIR}/picoruby)
 
 # Set platform-specific build configuration
-if(IDF_TARGET STREQUAL "family_mruby_linux.rb")
-    set(MRUBY_CONFIG "default")  # POSIXビルド用
+if(IDF_TARGET STREQUAL "linux")
+    set(MRUBY_CONFIG "family_mruby_linux")  # POSIXビルド用
     set(MRUBY_BUILD_DIR "host")
     set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/host/lib/libmruby.a)
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/host/mrbgems)
 else()
-    set(MRUBY_CONFIG "family_mruby_esp32.rb")  # ESP32ビルド用
+    set(MRUBY_CONFIG "family_mruby_esp32")  # ESP32ビルド用
     set(MRUBY_BUILD_DIR "esp32")
     set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/esp32/mrbgems)

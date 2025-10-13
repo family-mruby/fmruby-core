@@ -1,24 +1,25 @@
 #include <inttypes.h>
 
 #include "picoruby.h"
-
-#include <mrubyc.h>
 #include "mrb/main_task.c"
 
 #ifndef HEAP_SIZE
 #define HEAP_SIZE (1024 * 128)
 #endif
 
-static uint8_t heap_pool[HEAP_SIZE];
+static uint8_t vm_heap[HEAP_SIZE];
+picorb_state *vm;
 
-void picoruby_esp32(void)
+int picoruby_esp32(void)
 {
-  mrbc_init(heap_pool, HEAP_SIZE);
+  char *argv[] = {"picoruby"};
 
-  mrbc_tcb *main_tcb = mrbc_create_task(main_task, 0);
-  mrbc_set_task_name(main_tcb, "main_task");
-  mrbc_vm *vm = &main_tcb->vm;
+  picorb_vm_init();
 
-  picoruby_init_require(vm);
-  mrbc_run();
+  mrb_irep *irep = mrb_read_irep(vm, main_task);
+  if (irep) {
+    mrb_context_run(vm, mrb_proc_new(vm, irep), mrb_top_self(vm), 0);
+  }
+
+  return 0;
 }

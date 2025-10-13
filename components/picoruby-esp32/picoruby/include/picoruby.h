@@ -80,10 +80,10 @@ bool picoruby_load_model_by_name(const char *gem);
 #elif defined(PICORB_VM_MRUBY)
 
 #if !defined(MRB_USE_TASK_SCHEDULER)
-#define MRB_USE_TASK_SCHEDULER 1
+#define MRB_USE_TASK_SCHEDULER 0
 #endif
 #if !defined(MRB_USE_VM_SWITCH_DISPATCH)
-#define MRB_USE_VM_SWITCH_DISPATCH 1
+#define MRB_USE_VM_SWITCH_DISPATCH 0
 #endif
 
 #define picorb_state mrb_state

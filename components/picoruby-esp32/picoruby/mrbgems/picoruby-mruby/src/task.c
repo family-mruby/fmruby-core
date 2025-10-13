@@ -18,6 +18,8 @@
 #include "task.h"
 
 #include <mruby/gc.h>
+
+#if MRB_USE_TASK_SCHEDULER
 #ifndef MAX_GC_STEPS_PER_TICK
   #define MAX_GC_STEPS_PER_TICK 5
 #endif
@@ -951,3 +953,17 @@ void
 mrb_picoruby_mruby_gem_final(mrb_state* mrb)
 {
 }
+
+#else
+// Task scheduler is disabled
+void
+mrb_picoruby_mruby_gem_init(mrb_state* mrb)
+{
+}
+
+void
+mrb_picoruby_mruby_gem_final(mrb_state* mrb)
+{
+}
+
+#endif
