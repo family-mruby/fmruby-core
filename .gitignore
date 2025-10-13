@@ -4,6 +4,4 @@ sdkconfig.old
 sdkconfig.1
 dependencies.lock
 .env
-storage/home/*
-!storage/home/.keep
 .vscode/*

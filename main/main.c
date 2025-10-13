@@ -32,9 +32,9 @@ static void fmrb_os_init(void)
 
     // Initialize Graphics subsystem
     fmrb_gfx_config_t gfx_config = {
-        .screen_width = 320,
-        .screen_height = 240,
-        .bits_per_pixel = 16,
+        .screen_width = 480,
+        .screen_height = 320,
+        .bits_per_pixel = 8,
         .double_buffered = true
     };
 
