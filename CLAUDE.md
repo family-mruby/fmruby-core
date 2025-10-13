@@ -53,11 +53,14 @@ rake -T # その他のコマンドの使い方
     https://github.com/picoruby/picoruby-esp32.git
     これはsubmoduleである。勝手に編集してはいけない。
     これをビルドするための設定は「https://github.com/picoruby/R2P2-esp32」に存在している。
+  - 
 - lib/
   - picoruby-fmrb
-    - PicoRuby向けのmrbgem
-      PicoRubyをForkすることを避けるためにパッチの形で管理
-      ヒルド時にpicoruby-esp32以下にコピーする
+    PicoRuby向けのmrbgem
+    PicoRubyをForkすることを避けるためにパッチの形で管理
+    ヒルド時にpicoruby-esp32以下にコピーする
+  - msgpack-esp32
+    主にIPCで利用することを想定している
 - main
   - Family mruby OS
     PicoRubyで動くWindow3.1ライクなGUIシステム。マルチタスク機能も提供する
@@ -65,13 +68,20 @@ rake -T # その他のコマンドの使い方
     サブコア(ESP32-wROVER)にSPIで通信する機能、ESP32のSDK、FreeRTOS関連にアクセスするための抽象化層。
     Linuxターゲットビルド時はソケットで、SDL2を実行しているプロセスに通信する。将来的にはWASMなどでも動かせるような抽象化を提供したい。
 - main/lib
-  - fmrb_hal_*          // OS寄りの機能。時刻、スリープ、IPC(送受信/共有メモリ)、SPI/I2C/GPIO、DMA、ロック等
-  - fmrb_ipc_*          // S3<->WROVER/ホストのプロトコル定義と再送/水位制御
-    LinuxではSocket通信になる
-  - fmrb_gfx_*          // 上位: LovyanGFX＋α（Window描画、ビットマップ転送など）のAPIをラップした形。
+  - fmrb_hal          // OS寄りの機能。時刻、スリープ、IPC(送受信/共有メモリ)、SPI/I2C/GPIO、DMA、ロック等
+  - fmrb_ipc          // S3<->WROVER/ホストのプロトコル定義と再送/水位制御
+    LinuxではSocket通信になる。メッセージはmsgpackを利用する。
+    メッセージ単位で、CRCのチェックを行い、エラーが起きた場合は必要がある場合は再送する。
+  - fmrb_gfx          // 上位: LovyanGFX＋α（Window描画、ビットマップ転送など）のAPIをラップした形。
     内部では、IPCで描画コマンドを送る。
-  - fmrb_audio_*        // 上位: APUエミュレータ向け音楽バイナリ転送、再生停止制御。現状はESP32専用。Linux向けはスケルトンのみでOK
+  - fmrb_audio        // 上位: APUエミュレータ向け音楽バイナリ転送、再生停止制御。現状はESP32専用。Linux向けはスケルトンのみでOK
     内部では、IPCを使ってコマンドを実行する
+  - fmrb_input
+    キー入力のための抽象化
+    Linuxではhost/sdl2プロセスと通信。SDL2で受信した結果を渡す
+    ESP32では、USB HostのHIDでつながったKeyboardとMouse操作に対応
+- host/
+  PC環境で動かすためのソース。独立したプロセスで、fmrb-coreと通信する。
 
 - その他
   - TinyUSB
