@@ -1,6 +1,3 @@
-[submodule "components/picoruby-esp32"]
-	path = components/picoruby-esp32
-	url = https://github.com/picoruby/picoruby-esp32.git
 [submodule "components/msgpack-esp32/msgpack-c"]
 	path = components/msgpack-esp32/msgpack-c
 	url = https://github.com/msgpack/msgpack-c.git
