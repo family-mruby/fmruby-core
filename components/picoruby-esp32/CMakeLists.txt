@@ -70,13 +70,13 @@ add_definitions(
 set(PICORUBY_DIR ${COMPONENT_DIR}/picoruby)
 
 # Set platform-specific build configuration
-if(IDF_TARGET STREQUAL "linux")
+if(IDF_TARGET STREQUAL "family_mruby_linux.rb")
     set(MRUBY_CONFIG "default")  # POSIXビルド用
     set(MRUBY_BUILD_DIR "host")
     set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/host/lib/libmruby.a)
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/host/mrbgems)
 else()
-    set(MRUBY_CONFIG "xtensa-esp")  # ESP32ビルド用
+    set(MRUBY_CONFIG "family_mruby_esp32.rb")  # ESP32ビルド用
     set(MRUBY_BUILD_DIR "esp32")
     set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/esp32/mrbgems)
