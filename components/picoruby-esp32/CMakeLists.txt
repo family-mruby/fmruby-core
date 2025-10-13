@@ -63,7 +63,8 @@ add_definitions(
   -DNDEBUG
 
   # for picoruby.h
-  -DPICORB_VM_MRUBYC
+  #-DPICORB_VM_MRUBYC
+  -DPICORB_VM_MRUBY
 )
 
 set(PICORUBY_DIR ${COMPONENT_DIR}/picoruby)
