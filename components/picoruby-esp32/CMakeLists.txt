@@ -1,32 +1,46 @@
+# Set platform-specific source files
+if(IDF_TARGET STREQUAL "linux")
+    set(PICORUBY_SRCS
+        ${COMPONENT_DIR}/picoruby-esp32.c
+    )
+else()
+    set(PICORUBY_SRCS
+        ${COMPONENT_DIR}/picoruby-esp32.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/flash_disk.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-env/ports/esp32/env.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-gpio/ports/esp32/gpio.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-adc/ports/esp32/adc.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-spi/ports/esp32/spi.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/esp32/rng.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-pwm/ports/esp32/pwm.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rmt/ports/esp32/rmt.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-watchdog/ports/esp32/watchdog.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/esp32/timing_alt.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/cipher.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-i2c/ports/esp32/i2c.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-uart/ports/esp32/uart.c
+    )
+endif()
+
 idf_component_register(
-  SRCS
-    ${COMPONENT_DIR}/picoruby-esp32.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/flash_disk.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-env/ports/esp32/env.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-gpio/ports/esp32/gpio.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-adc/ports/esp32/adc.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-spi/ports/esp32/spi.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/esp32/rng.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-pwm/ports/esp32/pwm.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rmt/ports/esp32/rmt.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-watchdog/ports/esp32/watchdog.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/esp32/timing_alt.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/cipher.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-i2c/ports/esp32/i2c.c
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-uart/ports/esp32/uart.c
+  SRCS ${PICORUBY_SRCS}
   INCLUDE_DIRS
     ${COMPONENT_DIR}
     ${COMPONENT_DIR}/picoruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mrubyc/lib/mrubyc/src
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/include
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/lib/mbedtls/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
   PRIV_REQUIRES
+)
+
+# Add ESP32-specific dependencies only for ESP32 targets
+if(NOT IDF_TARGET STREQUAL "linux")
+  target_link_libraries(${COMPONENT_LIB} PRIVATE
     esp_driver_gpio
     esp_driver_uart
     esp_driver_spi
@@ -37,7 +51,8 @@ idf_component_register(
     esp_timer
     esp_hw_support
     spi_flash
-)
+  )
+endif()
 
 add_definitions(
   -DMRBC_TICK_UNIT=10
@@ -53,15 +68,27 @@ add_definitions(
 )
 
 set(PICORUBY_DIR ${COMPONENT_DIR}/picoruby)
-set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
+
+# Set platform-specific build configuration
+if(IDF_TARGET STREQUAL "linux")
+    set(MRUBY_CONFIG "default")  # POSIXビルド用
+    set(MRUBY_BUILD_DIR "host")
+    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/host/lib/libmruby.a)
+    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/host/mrbgems)
+else()
+    set(MRUBY_CONFIG "xtensa-esp")  # ESP32ビルド用
+    set(MRUBY_BUILD_DIR "esp32")
+    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
+    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/esp32/mrbgems)
+endif()
 
 # Build PicoRuby
 add_custom_command(
   OUTPUT ${LIBMRUBY_FILE}
-  COMMAND ${CMAKE_COMMAND} -E echo "MRUBY_CONFIG=${IDF_TARGET_ARCH}-esp rake"
-  COMMAND ${CMAKE_COMMAND} -E env MRUBY_CONFIG=${IDF_TARGET_ARCH}-esp rake
+  COMMAND ${CMAKE_COMMAND} -E echo "MRUBY_CONFIG=${MRUBY_CONFIG} rake"
+  COMMAND ${CMAKE_COMMAND} -E env MRUBY_CONFIG=${MRUBY_CONFIG} rake
   WORKING_DIRECTORY ${PICORUBY_DIR}
-  COMMENT "PicoRuby build"
+  COMMENT "PicoRuby build (${MRUBY_CONFIG})"
   VERBATIM
 )
 
@@ -75,7 +102,7 @@ target_include_directories(
   PRIVATE
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
-    ${COMPONENT_DIR}/picoruby/build/esp32/mrbgems
+    ${MRBGEMS_DIR}
 )
 
 add_custom_target(

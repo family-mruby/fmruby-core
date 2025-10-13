@@ -27,8 +27,7 @@ DOCKER_CMD_PRIVILEGED = [
 
 desc "Build Setup (Patch files)"
 task :setup do
-  sh "cp -f lib/patch/CMakeLists.txt components/picoruby-esp32/CMakeLists.txt"
-  sh "cp -rf lib/picoruby-fmrb components/picoruby-esp32/picoruby/mrbgems/picoruby-fmrb"
+  # do nothing
 end
 
 namespace :set_target do

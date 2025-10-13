@@ -51,16 +51,11 @@ rake -T # その他のコマンドの使い方
 - components
   - picoruby-esp32
     https://github.com/picoruby/picoruby-esp32.git
-    これはsubmoduleである。勝手に編集してはいけない。
-    これをビルドするための設定は「https://github.com/picoruby/R2P2-esp32」に存在している。
-  - 
-- lib/
-  - picoruby-fmrb
-    PicoRuby向けのmrbgem
-    PicoRubyをForkすることを避けるためにパッチの形で管理
-    ヒルド時にpicoruby-esp32以下にコピーする
+    これはForkしたものであり編集可能であるが、なるべきFork元からの変更の範囲が限定されるよう注意する。
   - msgpack-esp32
     主にIPCで利用することを想定している
+- lib/
+  - submoduleを編集必要なときに差分を置く
 - main
   - Family mruby OS
     PicoRubyで動くWindow3.1ライクなGUIシステム。マルチタスク機能も提供する
