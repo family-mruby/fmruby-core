@@ -2,7 +2,7 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.toolchain("gcc")
 
   conf.cc.command = "xtensa-esp32-elf-gcc"
-  conf.linker.command = "xtensa-esp32-elf-ld"
+  conf.linker.command = "xtensa-esp32-elf-gcc"
   conf.archiver.command = "xtensa-esp32-elf-ar"
 
   conf.cc.host_command = "gcc"
@@ -20,16 +20,16 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.cc.defines << "NDEBUG"
 
   # Common
-  conf.gem core: 'mruby-bin-mrbc2'
   conf.gem core: 'mruby-compiler2'
   conf.gem core: 'picoruby-mruby'
   conf.gem core: 'picoruby-machine'
-  conf.gem core: 'picoruby-bin-microruby'
+#  conf.gem core: 'picoruby-bin-microruby'
   conf.gem core: 'picoruby-require'
 
   conf.gem core: 'picoruby-sandbox'
   conf.gem core: 'picoruby-env'
   conf.gem core: 'picoruby-crc'
+  conf.gem core: 'picoruby-io-console'
 
   # Optional
   conf.gem core: "picoruby-eval"
@@ -43,22 +43,28 @@ MRuby::CrossBuild.new("esp32") do |conf|
 #   conf.gem core: 'picoruby-uart'
 #   conf.gem core: 'picoruby-pwm'
 
-  conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-kernel-ext"
-  conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-string-ext"
-  conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-array-ext"
-  conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-time"
-  conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-objectspace"
-  conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-metaprog"
-  conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-error"
-  conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-sprintf"
-  conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-math"
+  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-kernel-ext"
+  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-string-ext"
+  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-array-ext"
+  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-time"
+  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-objectspace"
+  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-metaprog"
+  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-error"
+  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-sprintf"
+  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-math"
 
   # POSIX
   #conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-dir"
   #conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-io"
   #conf.gem core: 'mruby-dir'
   # ESP32
-  conf.gem core:'picoruby-dir'
+  #conf.gem core:'picoruby-dir'
 
-conf.microruby
+  # Manual microruby configuration without task scheduler
+  conf.cc.include_paths << "#{conf.gems['mruby-compiler2'].dir}/include"
+  conf.cc.include_paths << "#{conf.gems['mruby-compiler2'].dir}/lib/prism/include"
+  conf.cc.include_paths << "#{conf.gems['picoruby-mruby'].dir}/lib/mruby/include"
+  conf.cc.include_paths << "#{conf.gems['picoruby-machine'].dir}/include"
+  conf.cc.include_paths << "#{conf.gems['picoruby-io-console'].dir}/include"
+  conf.cc.defines << "PICORB_VM_MRUBY"
 end

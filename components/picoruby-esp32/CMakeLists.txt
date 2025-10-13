@@ -1,3 +1,20 @@
+set(PICORUBY_DIR ${COMPONENT_DIR}/picoruby)
+
+# Set platform-specific build configuration
+if(IDF_TARGET STREQUAL "linux")
+    set(MRUBY_CONFIG "family_mruby_linux")  # POSIXビルド用
+    set(MRUBY_BUILD_DIR "host")
+    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/host/lib/libmruby.a)
+    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/host/mrbgems)
+    set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/host/include)
+else()
+    set(MRUBY_CONFIG "family_mruby_esp32")  # ESP32ビルド用
+    set(MRUBY_BUILD_DIR "esp32")
+    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
+    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/esp32/mrbgems)
+    set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/esp32/include)
+endif()
+
 # Set platform-specific source files
 if(IDF_TARGET STREQUAL "linux")
     set(PICORUBY_SRCS
@@ -30,18 +47,13 @@ idf_component_register(
     ${COMPONENT_DIR}
     ${COMPONENT_DIR}/picoruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
-    ${COMPONENT_DIR}/picoruby/build/host/include
   PRIV_REQUIRES
-)
-
-# Add ESP32-specific dependencies only for ESP32 targets
-if(NOT IDF_TARGET STREQUAL "linux")
-  target_link_libraries(${COMPONENT_LIB} PRIVATE
     esp_driver_gpio
     esp_driver_uart
     esp_driver_spi
@@ -52,8 +64,11 @@ if(NOT IDF_TARGET STREQUAL "linux")
     esp_timer
     esp_hw_support
     spi_flash
-  )
-endif()
+    mbedtls
+)
+
+# Add ESP32-specific dependencies only for ESP32 targets
+# (Dependencies are already specified in PRIV_REQUIRES)
 
 add_definitions(
   -DMRBC_TICK_UNIT=10
@@ -68,21 +83,6 @@ add_definitions(
   #-DPICORB_VM_MRUBYC
   -DPICORB_VM_MRUBY
 )
-
-set(PICORUBY_DIR ${COMPONENT_DIR}/picoruby)
-
-# Set platform-specific build configuration
-if(IDF_TARGET STREQUAL "linux")
-    set(MRUBY_CONFIG "family_mruby_linux")  # POSIXビルド用
-    set(MRUBY_BUILD_DIR "host")
-    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/host/lib/libmruby.a)
-    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/host/mrbgems)
-else()
-    set(MRUBY_CONFIG "family_mruby_esp32")  # ESP32ビルド用
-    set(MRUBY_BUILD_DIR "esp32")
-    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
-    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/esp32/mrbgems)
-endif()
 
 # Build PicoRuby
 add_custom_command(
@@ -104,6 +104,7 @@ target_include_directories(
   PRIVATE
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
+    ${PICORUBY_BUILD_INCLUDE}
     ${MRBGEMS_DIR}
 )
 
