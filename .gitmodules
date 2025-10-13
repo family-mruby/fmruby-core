@@ -1,3 +1,15 @@
 [submodule "components/msgpack-esp32/msgpack-c"]
 	path = components/msgpack-esp32/msgpack-c
 	url = https://github.com/msgpack/msgpack-c.git
+[submodule "components/picoruby-esp32/picoruby/mrbgems/mruby-bin-mrbc2"]
+	path = components/picoruby-esp32/picoruby/mrbgems/mruby-bin-mrbc2
+	url = https://github.com/picoruby/mruby-bin-mrbc2.git
+[submodule "components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2"]
+	path = components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2
+	url = https://github.com/picoruby/mruby-compiler2.git
+[submodule "components/picoruby-esp32/picoruby/mrbgems/picoruby-mruby/lib/estalloc"]
+	path = components/picoruby-esp32/picoruby/mrbgems/picoruby-mruby/lib/estalloc
+	url = https://github.com/picoruby/estalloc.git
+[submodule "components/picoruby-esp32/picoruby/mrbgems/picoruby-mruby/lib/mruby"]
+	path = components/picoruby-esp32/picoruby/mrbgems/picoruby-mruby/lib/mruby
+	url = https://github.com/hasumikin/mruby.git

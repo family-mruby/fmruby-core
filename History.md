@@ -1,5 +1,9 @@
 
 Fork Snapshot 2025/10/13
+picoruby-esp32
+ed0f7ace049bd4bfd5f7bd65ae72d54c8704d814
+
+
 └─ picoruby  @ 5c75fc9
    ├─ mrbgems/mruby-bin-mrbc2           @ f3d6dcc   # mrbc2バイナリ（コンパイラ前段）
    ├─ mrbgems/mruby-compiler2           @ 4f6a7c7   # 新コンパイラ
