@@ -90,23 +90,53 @@ static void fmrb_os_main_loop(void)
         // Update graphics
         if (g_gfx_context) {
             // Simple animated display for demo
-            fmrb_gfx_clear(g_gfx_context, FMRB_COLOR_BLACK);
+            fmrb_gfx_fill_screen(g_gfx_context, FMRB_COLOR_RED);
 
-            // Draw title
-            fmrb_gfx_draw_text(g_gfx_context, 10, 10, "Family mruby OS", FMRB_COLOR_WHITE, FMRB_FONT_SIZE_LARGE);
-
-            // Draw frame counter
-            char frame_text[64];
-            snprintf(frame_text, sizeof(frame_text), "Frame: %d", frame_count);
-            fmrb_gfx_draw_text(g_gfx_context, 10, 40, frame_text, FMRB_COLOR_YELLOW, FMRB_FONT_SIZE_MEDIUM);
-
-            // Draw animated rectangle
-            int rect_x = 50 + (frame_count % 200);
-            fmrb_rect_t rect = { rect_x, 80, 20, 20 };
-            fmrb_gfx_fill_rect(g_gfx_context, &rect, FMRB_COLOR_RED);
-
-            // Present the frame
             fmrb_gfx_present(g_gfx_context);
+            break;
+
+            // // Draw title using LovyanGFX compatible API
+            // fmrb_gfx_draw_string(g_gfx_context, "LovyanGFX Compatible API Test", 10, 10, FMRB_COLOR_WHITE);
+
+            // // Draw frame counter
+            // char frame_text[64];
+            // snprintf(frame_text, sizeof(frame_text), "Frame: %d", frame_count);
+            // fmrb_gfx_draw_string(g_gfx_context, frame_text, 10, 40, FMRB_COLOR_YELLOW);
+
+            // // Test various drawing primitives
+            // int anim = frame_count % 100;
+
+            // // Draw pixel
+            // fmrb_gfx_draw_pixel(g_gfx_context, 50 + anim, 80, FMRB_COLOR_RED);
+
+            // // Draw lines
+            // fmrb_gfx_draw_fast_hline(g_gfx_context, 50, 100, 100, FMRB_COLOR_GREEN);
+            // fmrb_gfx_draw_fast_vline(g_gfx_context, 50 + anim, 100, 50, FMRB_COLOR_BLUE);
+
+            // // Draw rectangles (using old API with fmrb_rect_t)
+            // fmrb_rect_t rect_outline = { 200, 80, 80, 60 };
+            // fmrb_gfx_draw_rect(g_gfx_context, &rect_outline, FMRB_COLOR_CYAN);
+            // fmrb_rect_t rect_filled = { 210 + anim/2, 90, 20, 20 };
+            // fmrb_gfx_fill_rect(g_gfx_context, &rect_filled, FMRB_COLOR_RED);
+
+            // // Draw rounded rectangles
+            // fmrb_gfx_draw_round_rect(g_gfx_context, 50, 170, 80, 50, 10, FMRB_COLOR_MAGENTA);
+            // fmrb_gfx_fill_round_rect(g_gfx_context, 60 + anim/3, 180, 30, 30, 5, FMRB_COLOR_YELLOW);
+
+            // // Draw circles
+            // fmrb_gfx_draw_circle(g_gfx_context, 200, 200, 30, FMRB_COLOR_GREEN);
+            // fmrb_gfx_fill_circle(g_gfx_context, 200 + anim/2, 200, 10, FMRB_COLOR_BLUE);
+
+            // // Draw triangles
+            // fmrb_gfx_draw_triangle(g_gfx_context, 300, 80, 280, 120, 320, 120, FMRB_COLOR_WHITE);
+            // fmrb_gfx_fill_triangle(g_gfx_context, 310 + anim/4, 100, 300 + anim/4, 130, 320 + anim/4, 130, FMRB_COLOR_RED);
+
+            // // Draw ellipse
+            // fmrb_gfx_draw_ellipse(g_gfx_context, 350, 200, 40, 25, FMRB_COLOR_CYAN);
+            // fmrb_gfx_fill_ellipse(g_gfx_context, 350, 200, 10 + anim/10, 8 + anim/12, FMRB_COLOR_YELLOW);
+
+            // // Present the frame
+            // fmrb_gfx_present(g_gfx_context);
         }
 
         // TODO: Process mruby scripts

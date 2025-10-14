@@ -31,6 +31,7 @@ add_executable(fmrb_host_sdl2 ${SOURCES})
 target_link_libraries(fmrb_host_sdl2
     ${SDL2_LIBRARIES}
     pthread
+    m
 )
 
 # Compiler flags

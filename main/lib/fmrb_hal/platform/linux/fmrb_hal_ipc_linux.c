@@ -1,4 +1,5 @@
 #include "../../fmrb_hal_ipc.h"
+#include "../../../fmrb_ipc/fmrb_ipc_cobs.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -8,8 +9,9 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <errno.h>
+#include <fcntl.h>
 
-#define SOCKET_PATH_PREFIX "/tmp/fmrb_ipc_"
+#define SOCKET_PATH "/tmp/fmrb_socket"
 
 typedef struct {
     int socket_fd;
@@ -21,6 +23,8 @@ typedef struct {
 
 static linux_ipc_channel_t channels[FMRB_IPC_MAX_CHANNELS];
 static bool ipc_initialized = false;
+static int global_socket_fd = -1;
+static pthread_mutex_t socket_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static const char *TAG = "fmrb_hal_ipc";
 
@@ -48,6 +52,47 @@ static void* linux_ipc_thread(void *arg) {
     return NULL;
 }
 
+static fmrb_err_t connect_to_socket(void) {
+    if (global_socket_fd >= 0) {
+        return FMRB_OK; // Already connected
+    }
+
+    global_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (global_socket_fd == -1) {
+        ESP_LOGE(TAG, "Failed to create socket: %s", strerror(errno));
+        return FMRB_ERR_FAILED;
+    }
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, SOCKET_PATH, sizeof(addr.sun_path) - 1);
+
+    // Try to connect with retry
+    int retry_count = 0;
+    while (retry_count < 10) {
+        if (connect(global_socket_fd, (struct sockaddr*)&addr, sizeof(addr)) == 0) {
+            ESP_LOGI(TAG, "Connected to %s", SOCKET_PATH);
+            return FMRB_OK;
+        }
+
+        if (errno != ENOENT && errno != ECONNREFUSED) {
+            ESP_LOGE(TAG, "Failed to connect: %s", strerror(errno));
+            close(global_socket_fd);
+            global_socket_fd = -1;
+            return FMRB_ERR_FAILED;
+        }
+
+        usleep(100000); // Wait 100ms
+        retry_count++;
+    }
+
+    ESP_LOGE(TAG, "Failed to connect after retries");
+    close(global_socket_fd);
+    global_socket_fd = -1;
+    return FMRB_ERR_FAILED;
+}
+
 fmrb_err_t fmrb_hal_ipc_init(void) {
     if (ipc_initialized) {
         return FMRB_OK;
@@ -58,6 +103,13 @@ fmrb_err_t fmrb_hal_ipc_init(void) {
         channels[i].callback = NULL;
         channels[i].user_data = NULL;
         channels[i].running = false;
+    }
+
+    // Connect to socket server
+    fmrb_err_t err = connect_to_socket();
+    if (err != FMRB_OK) {
+        ESP_LOGE(TAG, "Failed to connect to socket server");
+        return err;
     }
 
     ESP_LOGI(TAG, "Linux IPC initialized");
@@ -82,6 +134,11 @@ void fmrb_hal_ipc_deinit(void) {
         }
     }
 
+    if (global_socket_fd >= 0) {
+        close(global_socket_fd);
+        global_socket_fd = -1;
+    }
+
     ESP_LOGI(TAG, "Linux IPC deinitialized");
     ipc_initialized = false;
 }
@@ -93,9 +150,54 @@ fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    ESP_LOGI(TAG, "Linux IPC send %zu bytes to channel %d", msg->size, channel);
-    // Simulate sending - would actually send via socket
-    fmrb_hal_time_delay_ms(1);
+    if (global_socket_fd < 0) {
+        ESP_LOGE(TAG, "Socket not connected");
+        return FMRB_ERR_FAILED;
+    }
+
+    pthread_mutex_lock(&socket_mutex);
+
+    // The message already contains [frame_hdr | payload]
+    // We need to add CRC32 and COBS encode
+
+    // Prepare buffer: [data | CRC32]
+    size_t total_size = msg->size + sizeof(uint32_t);
+    uint8_t *buffer = (uint8_t*)malloc(total_size);
+    if (!buffer) {
+        pthread_mutex_unlock(&socket_mutex);
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    memcpy(buffer, msg->data, msg->size);
+    uint32_t crc = fmrb_ipc_crc32_update(0, msg->data, msg->size);
+    memcpy(buffer + msg->size, &crc, sizeof(uint32_t));
+
+    // COBS encode
+    size_t max_encoded_size = COBS_ENC_MAX(total_size);
+    uint8_t *encoded = (uint8_t*)malloc(max_encoded_size);
+    if (!encoded) {
+        free(buffer);
+        pthread_mutex_unlock(&socket_mutex);
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    size_t encoded_len = fmrb_ipc_cobs_encode(buffer, total_size, encoded);
+    free(buffer);
+
+    // Send encoded data
+    ssize_t sent = send(global_socket_fd, encoded, encoded_len, 0);
+
+    ESP_LOGI(TAG, "Sent %zu bytes (payload+crc: %zu, encoded: %zu) to channel %d", msg->size, total_size, encoded_len, channel);
+
+    free(encoded);
+
+    pthread_mutex_unlock(&socket_mutex);
+
+    if (sent != (ssize_t)encoded_len) {
+        ESP_LOGE(TAG, "Failed to send data: %s", strerror(errno));
+        return FMRB_ERR_FAILED;
+    }
+
     return FMRB_OK;
 }
 

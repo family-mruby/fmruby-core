@@ -105,6 +105,16 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     fmrb_ipc_frame_hdr_t hdr;
     memcpy(&hdr, decoded_buffer, sizeof(fmrb_ipc_frame_hdr_t));
 
+    // Debug: dump received frame
+    printf("RX: type=%d seq=%d len=%d, decoded_len=%zd\n", hdr.type, hdr.seq, hdr.len, decoded_len);
+    printf("RX bytes: ");
+    for (size_t i = 0; i < (size_t)decoded_len && i < 32; i++) {
+        printf("%02X ", decoded_buffer[i]);
+        if ((i + 1) % 16 == 0) printf("\n");
+    }
+    printf("\n");
+    fflush(stdout);
+
     // Verify size
     size_t expected_size = sizeof(fmrb_ipc_frame_hdr_t) + hdr.len + sizeof(uint32_t);
     if ((size_t)decoded_len != expected_size) {

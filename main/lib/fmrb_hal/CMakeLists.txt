@@ -11,13 +11,13 @@ if(IDF_TARGET STREQUAL "linux")
         "platform/linux/fmrb_hal_spi_linux.c"
         "platform/linux/fmrb_hal_ipc_linux.c"
     )
-    set(PLATFORM_REQUIRES pthread log)
+    set(PLATFORM_REQUIRES pthread log fmrb_ipc)
 else()
     list(APPEND COMMON_SRCS
         "platform/esp32/fmrb_hal_spi_esp32.c"
         "platform/esp32/fmrb_hal_ipc_esp32.c"
     )
-    set(PLATFORM_REQUIRES esp_timer freertos log spi_flash driver pthread)
+    set(PLATFORM_REQUIRES esp_timer freertos log spi_flash driver pthread fmrb_ipc)
 endif()
 
 idf_component_register(

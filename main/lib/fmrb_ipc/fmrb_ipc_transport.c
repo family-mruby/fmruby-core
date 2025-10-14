@@ -1,7 +1,9 @@
 #include "fmrb_ipc_transport.h"
+#include "fmrb_ipc_protocol.h"
 #include "fmrb_hal.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 #define MAX_CALLBACKS 16
 #define MAX_PENDING_MESSAGES 8
@@ -76,20 +78,46 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_deinit(fmrb_ipc_transport_handle_t h
 }
 
 static fmrb_ipc_transport_err_t send_raw_message(const fmrb_ipc_header_t *header, const uint8_t *payload) {
-    // Construct complete message
-    size_t total_size = sizeof(fmrb_ipc_header_t) + header->payload_len;
+    // Use new frame format: [frame_hdr | sub_cmd | payload]
+    // frame_hdr.type = FMRB_IPC_TYPE_GRAPHICS (2)
+    // sub_cmd = graphics command (header->msg_type contains the graphics sub-command)
+    // The HAL layer will add CRC32 and COBS encode
+
+    fmrb_ipc_frame_hdr_t frame_hdr;
+    frame_hdr.type = FMRB_IPC_TYPE_GRAPHICS;  // Always use GRAPHICS type
+    frame_hdr.seq = (uint8_t)(header->sequence & 0xFF);
+    frame_hdr.len = (uint16_t)(1 + header->payload_len);  // +1 for sub-command byte
+
+    // Construct complete message: [frame_hdr | sub_cmd | payload]
+    size_t total_size = sizeof(fmrb_ipc_frame_hdr_t) + 1 + header->payload_len;
     uint8_t *message = malloc(total_size);
     if (!message) {
         return FMRB_IPC_TRANSPORT_ERR_NO_MEMORY;
     }
 
-    // Copy header and payload
-    memcpy(message, header, sizeof(fmrb_ipc_header_t));
+    // Copy frame header
+    memcpy(message, &frame_hdr, sizeof(fmrb_ipc_frame_hdr_t));
+
+    // Copy sub-command (the graphics command type)
+    message[sizeof(fmrb_ipc_frame_hdr_t)] = header->msg_type;
+
+    // Copy payload
     if (payload && header->payload_len > 0) {
-        memcpy(message + sizeof(fmrb_ipc_header_t), payload, header->payload_len);
+        memcpy(message + sizeof(fmrb_ipc_frame_hdr_t) + 1, payload, header->payload_len);
     }
 
-    // Send via HAL
+    // Debug: dump message bytes
+    printf("TX: type=%d seq=%d len=%d sub_cmd=0x%02x payload_len=%d\n",
+           frame_hdr.type, frame_hdr.seq, frame_hdr.len, header->msg_type, header->payload_len);
+    printf("TX bytes (%zu): ", total_size);
+    for (size_t i = 0; i < total_size && i < 32; i++) {
+        printf("%02X ", message[i]);
+        if ((i + 1) % 16 == 0) printf("\n");
+    }
+    printf("\n");
+    fflush(stdout);
+
+    // Send via HAL (HAL will add CRC32 and COBS encode)
     fmrb_ipc_message_t hal_msg = {
         .data = message,
         .size = total_size

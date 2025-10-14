@@ -1,6 +1,7 @@
 #include "fmrb_audio.h"
 #include "fmrb_hal.h"
 #include "fmrb_ipc_protocol.h"
+#include "fmrb_ipc_transport.h"
 #include "esp_log.h"
 #include <stdlib.h>
 #include <string.h>

@@ -112,15 +112,10 @@ fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_color_t color) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    fmrb_ipc_graphics_clear_t clear_cmd = {
-        .x = 0,
-        .y = 0,
-        .width = ctx->config.screen_width,
-        .height = ctx->config.screen_height,
-        .color = color
-    };
-
-    return send_graphics_command(ctx, FMRB_IPC_MSG_GRAPHICS_CLEAR, &clear_cmd, sizeof(clear_cmd));
+    // Send only color for fill_screen/clear command
+    // Payload: just the color value (RGB565)
+    fmrb_color_t color_val = color;
+    return send_graphics_command(ctx, FMRB_IPC_GFX_FILL_SCREEN, &color_val, sizeof(color_val));
 }
 
 fmrb_gfx_err_t fmrb_gfx_clear_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect, fmrb_color_t color) {
@@ -141,7 +136,7 @@ fmrb_gfx_err_t fmrb_gfx_clear_rect(fmrb_gfx_context_t context, const fmrb_rect_t
         .color = color
     };
 
-    return send_graphics_command(ctx, FMRB_IPC_MSG_GRAPHICS_CLEAR, &clear_cmd, sizeof(clear_cmd));
+    return send_graphics_command(ctx, FMRB_IPC_GFX_FILL_SCREEN, &clear_cmd, sizeof(clear_cmd));
 }
 
 fmrb_gfx_err_t fmrb_gfx_set_pixel(fmrb_gfx_context_t context, int16_t x, int16_t y, fmrb_color_t color) {
@@ -164,7 +159,7 @@ fmrb_gfx_err_t fmrb_gfx_set_pixel(fmrb_gfx_context_t context, int16_t x, int16_t
         .color = color
     };
 
-    return send_graphics_command(ctx, FMRB_IPC_MSG_GRAPHICS_SET_PIXEL, &pixel_cmd, sizeof(pixel_cmd));
+    return send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_PIXEL, &pixel_cmd, sizeof(pixel_cmd));
 }
 
 fmrb_gfx_err_t fmrb_gfx_get_pixel(fmrb_gfx_context_t context, int16_t x, int16_t y, fmrb_color_t *color) {
@@ -195,7 +190,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_line(fmrb_gfx_context_t context, int16_t x1, int16_
         .color = color
     };
 
-    return send_graphics_command(ctx, FMRB_IPC_MSG_GRAPHICS_DRAW_LINE, &line_cmd, sizeof(line_cmd));
+    return send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_LINE, &line_cmd, sizeof(line_cmd));
 }
 
 fmrb_gfx_err_t fmrb_gfx_draw_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect, fmrb_color_t color) {
@@ -217,7 +212,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_rect(fmrb_gfx_context_t context, const fmrb_rect_t 
         .filled = false
     };
 
-    return send_graphics_command(ctx, FMRB_IPC_MSG_GRAPHICS_DRAW_RECT, &rect_cmd, sizeof(rect_cmd));
+    return send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_RECT, &rect_cmd, sizeof(rect_cmd));
 }
 
 fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect, fmrb_color_t color) {
@@ -239,7 +234,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, const fmrb_rect_t 
         .filled = true
     };
 
-    return send_graphics_command(ctx, FMRB_IPC_MSG_GRAPHICS_DRAW_RECT, &rect_cmd, sizeof(rect_cmd));
+    return send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_RECT, &rect_cmd, sizeof(rect_cmd));
 }
 
 fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_font_size_t font_size) {
@@ -274,7 +269,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, int16_t x, int16_t
     // Copy text data
     memcpy(cmd_buffer + sizeof(fmrb_ipc_graphics_text_t), text, text_len);
 
-    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_IPC_MSG_GRAPHICS_DRAW_TEXT, cmd_buffer, total_size);
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_STRING, cmd_buffer, total_size);
     free(cmd_buffer);
 
     return ret;
@@ -322,7 +317,8 @@ fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    return send_graphics_command(ctx, FMRB_IPC_MSG_GRAPHICS_PRESENT, NULL, 0);
+    // Use legacy present command (0x08) since it's simple and works
+    return send_graphics_command(ctx, 0x08, NULL, 0);
 }
 
 fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect) {
