@@ -1,4 +1,6 @@
 #include "fmrb_hal_time.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 #ifdef FMRB_PLATFORM_LINUX
 #include <sys/time.h>
@@ -6,8 +8,6 @@
 #include <time.h>
 #else
 #include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #endif
 
 #ifdef FMRB_PLATFORM_LINUX
@@ -53,11 +53,9 @@ void fmrb_hal_time_delay_us(uint32_t us) {
 }
 
 void fmrb_hal_time_delay_ms(uint32_t ms) {
-#ifdef FMRB_PLATFORM_LINUX
-    usleep(ms * 1000);
-#else
+    // Use vTaskDelay for both Linux and ESP32 targets
+    // This ensures proper delay in ESP-IDF linux simulation
     vTaskDelay(pdMS_TO_TICKS(ms));
-#endif
 }
 
 bool fmrb_hal_time_is_timeout(fmrb_time_t start_time, uint32_t timeout_us) {

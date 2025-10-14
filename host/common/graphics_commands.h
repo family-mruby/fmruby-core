@@ -153,9 +153,8 @@ typedef struct {
 
 typedef struct {
     uint8_t cmd_type;
-    uint16_t x, y;
+    int32_t x, y;
     uint32_t color;
-    uint8_t font_size;
     uint16_t text_len;
     // text data follows
 } __attribute__((packed)) fmrb_gfx_string_cmd_t;

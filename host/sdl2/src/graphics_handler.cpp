@@ -47,7 +47,6 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
                 const fmrb_gfx_clear_cmd_t *cmd = (const fmrb_gfx_clear_cmd_t*)data;
                 printf("FILL_SCREEN: color=0x%08x\n", cmd->color);
                 g_lgfx->fillScreen(cmd->color);
-                g_lgfx->display();
                 return 0;
             }
             break;
@@ -71,8 +70,31 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
         case FMRB_GFX_CMD_DRAW_RECT:
             if (size >= sizeof(fmrb_gfx_rect_cmd_t)) {
                 const fmrb_gfx_rect_cmd_t *cmd = (const fmrb_gfx_rect_cmd_t*)data;
-                // For now, always use filled rect
+                g_lgfx->drawRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
+                return 0;
+            }
+            break;
+
+        case FMRB_GFX_CMD_FILL_RECT:
+            if (size >= sizeof(fmrb_gfx_rect_cmd_t)) {
+                const fmrb_gfx_rect_cmd_t *cmd = (const fmrb_gfx_rect_cmd_t*)data;
                 g_lgfx->fillRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
+                return 0;
+            }
+            break;
+
+        case FMRB_GFX_CMD_DRAW_ROUND_RECT:
+            if (size >= sizeof(fmrb_gfx_round_rect_cmd_t)) {
+                const fmrb_gfx_round_rect_cmd_t *cmd = (const fmrb_gfx_round_rect_cmd_t*)data;
+                g_lgfx->drawRoundRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->radius, cmd->color);
+                return 0;
+            }
+            break;
+
+        case FMRB_GFX_CMD_FILL_ROUND_RECT:
+            if (size >= sizeof(fmrb_gfx_round_rect_cmd_t)) {
+                const fmrb_gfx_round_rect_cmd_t *cmd = (const fmrb_gfx_round_rect_cmd_t*)data;
+                g_lgfx->fillRoundRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->radius, cmd->color);
                 return 0;
             }
             break;
@@ -80,7 +102,14 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
         case FMRB_GFX_CMD_DRAW_CIRCLE:
             if (size >= sizeof(fmrb_gfx_circle_cmd_t)) {
                 const fmrb_gfx_circle_cmd_t *cmd = (const fmrb_gfx_circle_cmd_t*)data;
-                // For now, always use filled circle
+                g_lgfx->drawCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
+                return 0;
+            }
+            break;
+
+        case FMRB_GFX_CMD_FILL_CIRCLE:
+            if (size >= sizeof(fmrb_gfx_circle_cmd_t)) {
+                const fmrb_gfx_circle_cmd_t *cmd = (const fmrb_gfx_circle_cmd_t*)data;
                 g_lgfx->fillCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
                 return 0;
             }
@@ -89,13 +118,28 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
         case FMRB_GFX_CMD_DRAW_ELLIPSE:
             if (size >= sizeof(fmrb_gfx_ellipse_cmd_t)) {
                 const fmrb_gfx_ellipse_cmd_t *cmd = (const fmrb_gfx_ellipse_cmd_t*)data;
-                // For now, always use filled ellipse
+                g_lgfx->drawEllipse(cmd->x, cmd->y, cmd->rx, cmd->ry, cmd->color);
+                return 0;
+            }
+            break;
+
+        case FMRB_GFX_CMD_FILL_ELLIPSE:
+            if (size >= sizeof(fmrb_gfx_ellipse_cmd_t)) {
+                const fmrb_gfx_ellipse_cmd_t *cmd = (const fmrb_gfx_ellipse_cmd_t*)data;
                 g_lgfx->fillEllipse(cmd->x, cmd->y, cmd->rx, cmd->ry, cmd->color);
                 return 0;
             }
             break;
 
         case FMRB_GFX_CMD_DRAW_TRIANGLE:
+            if (size >= sizeof(fmrb_gfx_triangle_cmd_t)) {
+                const fmrb_gfx_triangle_cmd_t *cmd = (const fmrb_gfx_triangle_cmd_t*)data;
+                g_lgfx->drawTriangle(cmd->x0, cmd->y0, cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
+                return 0;
+            }
+            break;
+
+        case FMRB_GFX_CMD_FILL_TRIANGLE:
             if (size >= sizeof(fmrb_gfx_triangle_cmd_t)) {
                 const fmrb_gfx_triangle_cmd_t *cmd = (const fmrb_gfx_triangle_cmd_t*)data;
                 g_lgfx->fillTriangle(cmd->x0, cmd->y0, cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
@@ -112,14 +156,12 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
                     size_t len = cmd->text_len < 255 ? cmd->text_len : 255;
                     memcpy(text_buf, text_data, len);
                     text_buf[len] = '\0';
-                    printf("Drawing string at (%d,%d) color=0x%08x size=%d: %s\n",
-                           cmd->x, cmd->y, cmd->color, cmd->font_size, text_buf);
+                    printf("Drawing string at (%d,%d) color=0x%08x: %s\n",
+                           cmd->x, cmd->y, cmd->color, text_buf);
 
                     g_lgfx->setTextColor(cmd->color);
-                    g_lgfx->setTextSize(cmd->font_size / 8.0f); // Approximate scaling
                     g_lgfx->setCursor(cmd->x, cmd->y);
                     g_lgfx->print(text_buf);
-                    g_lgfx->display();
                     return 0;
                 }
             }

@@ -2,6 +2,7 @@
 #include <LovyanGFX.hpp>
 #include <LGFX_AUTODETECT.hpp>
 #include <lgfx/v1/platforms/sdl/Panel_sdl.hpp>
+#include <SDL2/SDL.h>
 
 #include <cstdio>
 #include <cstdlib>
@@ -21,6 +22,11 @@ LGFX* g_lgfx = nullptr; // Global LGFX instance (not static, shared with graphic
 extern "C" void signal_handler(int sig) {
     printf("Received signal %d, shutting down...\n", sig);
     running = 0;
+
+    // Post SDL_QUIT event to stop LovyanGFX event loop
+    SDL_Event quit_event;
+    quit_event.type = SDL_QUIT;
+    SDL_PushEvent(&quit_event);
 }
 
 // User function that runs in a separate thread
