@@ -1,18 +1,31 @@
 set(PICORUBY_DIR ${COMPONENT_DIR}/picoruby)
 
-# Set platform-specific build configuration
+# Set platform-specific build configuration and dependencies
 if(IDF_TARGET STREQUAL "linux")
     set(MRUBY_CONFIG "family_mruby_linux")  # POSIXビルド用
     set(MRUBY_BUILD_DIR "host")
     set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/host/lib/libmruby.a)
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/host/mrbgems)
     set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/host/include)
+    set(PLATFORM_PRIV_REQUIRES)
 else()
     set(MRUBY_CONFIG "family_mruby_esp32")  # ESP32ビルド用
     set(MRUBY_BUILD_DIR "esp32")
     set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/esp32/mrbgems)
     set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/esp32/include)
+    set(PLATFORM_PRIV_REQUIRES
+        spi_flash
+        esp_timer
+        esp_driver_gpio
+        esp_adc
+        esp_driver_spi
+        esp_driver_uart
+        esp_driver_ledc
+        esp_driver_rmt
+        esp_driver_i2c
+        esp_hw_support
+    )
 endif()
 
 # Set platform-specific source files
@@ -54,20 +67,16 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
   PRIV_REQUIRES
-    spi_flash
-    esp_timer
-    esp_driver_gpio
-    esp_adc
-    esp_driver_spi
-    esp_driver_uart
-    esp_driver_ledc
-    esp_driver_rmt
-    esp_driver_i2c
-    esp_hw_support
+    ${PLATFORM_PRIV_REQUIRES}
     mbedtls
 )
 
-# Dependencies are managed through PRIV_REQUIRES
+# Add platform-specific dependencies for Linux
+if(IDF_TARGET STREQUAL "linux")
+  target_link_libraries(${COMPONENT_LIB} PRIVATE mbedtls)
+endif()
+
+# Add platform-specific compile definitions
 if(IDF_TARGET STREQUAL "linux")
   add_compile_definitions(PICORB_VM_MRUBY=1)
   add_compile_definitions(MRB_INT64=1)
