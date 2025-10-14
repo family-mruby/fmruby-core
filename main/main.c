@@ -183,8 +183,8 @@ static void fmrb_os_deinit(void)
     */
 
     // Cleanup Audio
-    fmrb_audio_deinit();
-    ESP_LOGI(TAG, "Audio deinitialized");
+    // fmrb_audio_deinit();
+    // ESP_LOGI(TAG, "Audio deinitialized");
 
     // Cleanup Graphics
     if (g_gfx_context) {

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <msgpack.h>
 
 #define MAX_CALLBACKS 16
 #define MAX_PENDING_MESSAGES 8
@@ -78,40 +79,37 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_deinit(fmrb_ipc_transport_handle_t h
 }
 
 static fmrb_ipc_transport_err_t send_raw_message(const fmrb_ipc_header_t *header, const uint8_t *payload) {
-    // Use new frame format: [frame_hdr | sub_cmd | payload]
-    // frame_hdr.type = FMRB_IPC_TYPE_GRAPHICS (2)
-    // sub_cmd = graphics command (header->msg_type contains the graphics sub-command)
-    // The HAL layer will add CRC32 and COBS encode
+    // Serialize with msgpack as per IPC_spec.md:
+    // 1. Pack frame_hdr + sub_cmd + payload with msgpack
+    // 2. HAL layer will add CRC32 and COBS encode
 
-    fmrb_ipc_frame_hdr_t frame_hdr;
-    frame_hdr.type = FMRB_IPC_TYPE_GRAPHICS;  // Always use GRAPHICS type
-    frame_hdr.seq = (uint8_t)(header->sequence & 0xFF);
-    frame_hdr.len = (uint16_t)(1 + header->payload_len);  // +1 for sub-command byte
+    // Create msgpack buffer
+    msgpack_sbuffer sbuf;
+    msgpack_sbuffer_init(&sbuf);
+    msgpack_packer pk;
+    msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
 
-    // Construct complete message: [frame_hdr | sub_cmd | payload]
-    size_t total_size = sizeof(fmrb_ipc_frame_hdr_t) + 1 + header->payload_len;
-    uint8_t *message = malloc(total_size);
-    if (!message) {
-        return FMRB_IPC_TRANSPORT_ERR_NO_MEMORY;
-    }
+    // Pack as array: [type, seq, sub_cmd, payload]
+    msgpack_pack_array(&pk, 4);
+    msgpack_pack_uint8(&pk, FMRB_IPC_TYPE_GRAPHICS);  // type
+    msgpack_pack_uint8(&pk, (uint8_t)(header->sequence & 0xFF));  // seq
+    msgpack_pack_uint8(&pk, header->msg_type);  // sub_cmd (graphics command)
 
-    // Copy frame header
-    memcpy(message, &frame_hdr, sizeof(fmrb_ipc_frame_hdr_t));
-
-    // Copy sub-command (the graphics command type)
-    message[sizeof(fmrb_ipc_frame_hdr_t)] = header->msg_type;
-
-    // Copy payload
+    // Pack payload as binary
     if (payload && header->payload_len > 0) {
-        memcpy(message + sizeof(fmrb_ipc_frame_hdr_t) + 1, payload, header->payload_len);
+        msgpack_pack_bin(&pk, header->payload_len);
+        msgpack_pack_bin_body(&pk, payload, header->payload_len);
+    } else {
+        msgpack_pack_nil(&pk);
     }
 
-    // Debug: dump message bytes
-    printf("TX: type=%d seq=%d len=%d sub_cmd=0x%02x payload_len=%d\n",
-           frame_hdr.type, frame_hdr.seq, frame_hdr.len, header->msg_type, header->payload_len);
-    printf("TX bytes (%zu): ", total_size);
-    for (size_t i = 0; i < total_size && i < 32; i++) {
-        printf("%02X ", message[i]);
+    // Debug: dump msgpack bytes
+    printf("TX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%d msgpack_size=%zu\n",
+           FMRB_IPC_TYPE_GRAPHICS, (uint8_t)(header->sequence & 0xFF),
+           header->msg_type, header->payload_len, sbuf.size);
+    printf("TX msgpack bytes (%zu): ", sbuf.size);
+    for (size_t i = 0; i < sbuf.size && i < 64; i++) {
+        printf("%02X ", (uint8_t)sbuf.data[i]);
         if ((i + 1) % 16 == 0) printf("\n");
     }
     printf("\n");
@@ -119,12 +117,13 @@ static fmrb_ipc_transport_err_t send_raw_message(const fmrb_ipc_header_t *header
 
     // Send via HAL (HAL will add CRC32 and COBS encode)
     fmrb_ipc_message_t hal_msg = {
-        .data = message,
-        .size = total_size
+        .data = (uint8_t*)sbuf.data,
+        .size = sbuf.size
     };
 
     fmrb_err_t ret = fmrb_hal_ipc_send(FMRB_IPC_GRAPHICS, &hal_msg, 1000);
-    free(message);
+
+    msgpack_sbuffer_destroy(&sbuf);
 
     return (ret == FMRB_OK) ? FMRB_IPC_TRANSPORT_OK : FMRB_IPC_TRANSPORT_ERR_FAILED;
 }

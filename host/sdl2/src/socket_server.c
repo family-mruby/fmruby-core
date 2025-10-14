@@ -11,6 +11,7 @@
 #include <sys/un.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <msgpack.h>
 
 // Frame header (IPC_spec.md compliant)
 typedef struct __attribute__((packed)) {
@@ -86,7 +87,7 @@ static int accept_connection(void) {
 }
 
 static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
-    // Allocate buffer for decoded data
+    // Allocate buffer for decoded data (COBS + CRC32)
     uint8_t *decoded_buffer = (uint8_t*)malloc(encoded_len);
     if (!decoded_buffer) {
         fprintf(stderr, "Failed to allocate decode buffer\n");
@@ -95,65 +96,103 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
 
     // COBS decode
     ssize_t decoded_len = fmrb_ipc_cobs_decode(encoded_data, encoded_len, decoded_buffer);
-    if (decoded_len < (ssize_t)(sizeof(fmrb_ipc_frame_hdr_t) + sizeof(uint32_t))) {
+    if (decoded_len < (ssize_t)sizeof(uint32_t)) {
         fprintf(stderr, "COBS decode failed or frame too small\n");
         free(decoded_buffer);
         return -1;
     }
 
-    // Extract header
-    fmrb_ipc_frame_hdr_t hdr;
-    memcpy(&hdr, decoded_buffer, sizeof(fmrb_ipc_frame_hdr_t));
-
-    // Debug: dump received frame
-    printf("RX: type=%d seq=%d len=%d, decoded_len=%zd\n", hdr.type, hdr.seq, hdr.len, decoded_len);
-    printf("RX bytes: ");
-    for (size_t i = 0; i < (size_t)decoded_len && i < 32; i++) {
-        printf("%02X ", decoded_buffer[i]);
-        if ((i + 1) % 16 == 0) printf("\n");
-    }
-    printf("\n");
-    fflush(stdout);
-
-    // Verify size
-    size_t expected_size = sizeof(fmrb_ipc_frame_hdr_t) + hdr.len + sizeof(uint32_t);
-    if ((size_t)decoded_len != expected_size) {
-        fprintf(stderr, "Frame size mismatch: expected=%zu, actual=%zd\n", expected_size, decoded_len);
-        free(decoded_buffer);
-        return -1;
-    }
-
-    // Extract and verify CRC32
+    // Separate msgpack data and CRC32
+    size_t msgpack_len = decoded_len - sizeof(uint32_t);
+    uint8_t *msgpack_data = decoded_buffer;
     uint32_t received_crc;
-    memcpy(&received_crc, decoded_buffer + sizeof(fmrb_ipc_frame_hdr_t) + hdr.len, sizeof(uint32_t));
+    memcpy(&received_crc, decoded_buffer + msgpack_len, sizeof(uint32_t));
 
-    uint32_t calculated_crc = fmrb_ipc_crc32_update(0, decoded_buffer, sizeof(fmrb_ipc_frame_hdr_t) + hdr.len);
+    // Verify CRC32
+    uint32_t calculated_crc = fmrb_ipc_crc32_update(0, msgpack_data, msgpack_len);
     if (received_crc != calculated_crc) {
         fprintf(stderr, "CRC32 mismatch: expected=0x%08x, actual=0x%08x\n", calculated_crc, received_crc);
         free(decoded_buffer);
         return -1;
     }
 
-    // Extract payload
-    const uint8_t *payload = decoded_buffer + sizeof(fmrb_ipc_frame_hdr_t);
+    // Unpack msgpack array: [type, seq, sub_cmd, payload]
+    msgpack_unpacked msg;
+    msgpack_unpacked_init(&msg);
+    msgpack_unpack_return ret = msgpack_unpack_next(&msg, (const char*)msgpack_data, msgpack_len, NULL);
+
+    if (ret != MSGPACK_UNPACK_SUCCESS) {
+        fprintf(stderr, "msgpack unpack failed\n");
+        msgpack_unpacked_destroy(&msg);
+        free(decoded_buffer);
+        return -1;
+    }
+
+    msgpack_object root = msg.data;
+    if (root.type != MSGPACK_OBJECT_ARRAY || root.via.array.size != 4) {
+        fprintf(stderr, "Invalid msgpack format: not array or size != 4\n");
+        msgpack_unpacked_destroy(&msg);
+        free(decoded_buffer);
+        return -1;
+    }
+
+    // Extract fields
+    uint8_t type = root.via.array.ptr[0].via.u64;
+    uint8_t seq = root.via.array.ptr[1].via.u64;
+    uint8_t sub_cmd = root.via.array.ptr[2].via.u64;
+
+    const uint8_t *payload = NULL;
+    size_t payload_len = 0;
+
+    if (root.via.array.ptr[3].type == MSGPACK_OBJECT_BIN) {
+        payload = (const uint8_t*)root.via.array.ptr[3].via.bin.ptr;
+        payload_len = root.via.array.ptr[3].via.bin.size;
+    }
+
+    // Debug log
+    printf("RX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%zu msgpack_len=%zu\n",
+           type, seq, sub_cmd, payload_len, msgpack_len);
+    printf("RX msgpack bytes (%zu): ", msgpack_len);
+    for (size_t i = 0; i < msgpack_len && i < 64; i++) {
+        printf("%02X ", msgpack_data[i]);
+        if ((i + 1) % 16 == 0) printf("\n");
+    }
+    printf("\n");
+    fflush(stdout);
+
+    // Create command buffer: [sub_cmd | payload]
+    size_t cmd_len = 1 + payload_len;
+    uint8_t *cmd_buffer = (uint8_t*)malloc(cmd_len);
+    if (!cmd_buffer) {
+        msgpack_unpacked_destroy(&msg);
+        free(decoded_buffer);
+        return -1;
+    }
+
+    cmd_buffer[0] = sub_cmd;
+    if (payload && payload_len > 0) {
+        memcpy(cmd_buffer + 1, payload, payload_len);
+    }
 
     // Process based on type
     int result = 0;
-    switch (hdr.type & 0x7F) { // Mask out flags
+    switch (type & 0x7F) {
         case 2: // FMRB_IPC_TYPE_GRAPHICS
-            result = graphics_handler_process_command(payload, hdr.len);
+            result = graphics_handler_process_command(cmd_buffer, cmd_len);
             break;
 
         case 4: // FMRB_IPC_TYPE_AUDIO
-            result = audio_handler_process_command(payload, hdr.len);
+            result = audio_handler_process_command(cmd_buffer, cmd_len);
             break;
 
         default:
-            fprintf(stderr, "Unknown frame type: %u\n", hdr.type);
+            fprintf(stderr, "Unknown frame type: %u\n", type);
             result = -1;
             break;
     }
 
+    free(cmd_buffer);
+    msgpack_unpacked_destroy(&msg);
     free(decoded_buffer);
     return result;
 }

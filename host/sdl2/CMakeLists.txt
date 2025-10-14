@@ -4,15 +4,17 @@ project(fmrb_host_sdl2)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Find SDL2
+# Find SDL2 and msgpack
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SDL2 REQUIRED sdl2)
+pkg_check_modules(MSGPACK REQUIRED msgpack)
 
 # Include directories
 include_directories(
     include
     ../common
     ${SDL2_INCLUDE_DIRS}
+    ${MSGPACK_INCLUDE_DIRS}
 )
 
 # Source files
@@ -30,6 +32,7 @@ add_executable(fmrb_host_sdl2 ${SOURCES})
 # Link libraries
 target_link_libraries(fmrb_host_sdl2
     ${SDL2_LIBRARIES}
+    ${MSGPACK_LIBRARIES}
     pthread
     m
 )
