@@ -61,7 +61,7 @@ namespace lgfx
 
   static std::vector<Panel_sdl::KeyCodeMapping_t> _key_code_map;
 
-  void Panel_sdl::addKeyCodeMapping(SDL_KeyCode keyCode, uint8_t gpio)
+  void Panel_sdl::addKeyCodeMapping(SDL_Keycode keyCode, uint8_t gpio)
   {
     if (gpio > EMULATED_GPIO_MAX)
       return;
@@ -71,7 +71,7 @@ namespace lgfx
     _key_code_map.push_back(map);
   }
 
-  int Panel_sdl::getKeyCodeMapping(SDL_KeyCode keyCode)
+  int Panel_sdl::getKeyCodeMapping(SDL_Keycode keyCode)
   {
     for (const auto& i : _key_code_map)
     {
@@ -92,7 +92,7 @@ namespace lgfx
         int gpio = -1;
 
         /// Check key mapping
-        gpio = getKeyCodeMapping((SDL_KeyCode)event.key.keysym.sym);
+        gpio = getKeyCodeMapping((SDL_Keycode)event.key.keysym.sym);
         if (gpio < 0)
         {
           switch (event.key.keysym.sym)
@@ -588,10 +588,11 @@ namespace lgfx
       SDL_RendererInfo info;
       if (0 == SDL_GetRendererInfo(monitor.renderer, &info)) {
         // ステップ実行中はVSYNCを待機しない
-        if (((bool)(info.flags & SDL_RENDERER_PRESENTVSYNC)) == step_exec)
-        {
-          SDL_RenderSetVSync(monitor.renderer, !step_exec);
-        }
+        // SDL_RenderSetVSync is only available in SDL 2.0.18+
+        // if (((bool)(info.flags & SDL_RENDERER_PRESENTVSYNC)) == step_exec)
+        // {
+        //   SDL_RenderSetVSync(monitor.renderer, !step_exec);
+        // }
       }
       {
         int red   = 0;

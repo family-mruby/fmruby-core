@@ -25,6 +25,14 @@ void audio_callback(void *userdata, Uint8 *stream, int len) {
 int audio_handler_init(void) {
     SDL_AudioSpec want, have;
 
+    // Initialize SDL audio subsystem if not already initialized
+    if (!SDL_WasInit(SDL_INIT_AUDIO)) {
+        if (SDL_InitSubSystem(SDL_INIT_AUDIO) < 0) {
+            fprintf(stderr, "Failed to initialize SDL audio subsystem: %s\n", SDL_GetError());
+            return -1;
+        }
+    }
+
     // Clear music tracks
     memset(music_tracks, 0, sizeof(music_tracks));
     track_count = 0;

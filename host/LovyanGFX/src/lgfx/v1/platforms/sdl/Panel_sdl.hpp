@@ -105,11 +105,11 @@ namespace lgfx
 
     struct KeyCodeMapping_t
     {
-      SDL_KeyCode keycode = SDLK_UNKNOWN;
+      SDL_Keycode keycode = SDLK_UNKNOWN;
       uint8_t gpio = 0;
     };
-    static void addKeyCodeMapping(SDL_KeyCode keyCode, uint8_t gpio);
-    static int getKeyCodeMapping(SDL_KeyCode keyCode);
+    static void addKeyCodeMapping(SDL_Keycode keyCode, uint8_t gpio);
+    static int getKeyCodeMapping(SDL_Keycode keyCode);
 
   protected:
     const char* _window_title = "LGFX Simulator";
