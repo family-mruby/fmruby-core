@@ -15,11 +15,12 @@ MRuby::Build.new do |conf|
 
   conf.cc.defines << "PICORB_PLATFORM_POSIX"
 
+  
+
   # Common
   conf.gem core: 'mruby-compiler2'
   conf.gem core: 'picoruby-mruby'
   conf.gem core: 'picoruby-machine'
-  conf.gem core: 'picoruby-bin-microruby'
   conf.gem core: 'picoruby-require'
 
   conf.gem core: 'picoruby-sandbox'

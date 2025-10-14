@@ -23,7 +23,6 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.gem core: 'mruby-compiler2'
   conf.gem core: 'picoruby-mruby'
   conf.gem core: 'picoruby-machine'
-#  conf.gem core: 'picoruby-bin-microruby'
   conf.gem core: 'picoruby-require'
 
   conf.gem core: 'picoruby-sandbox'
