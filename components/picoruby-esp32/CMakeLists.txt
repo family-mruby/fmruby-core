@@ -54,42 +54,38 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
   PRIV_REQUIRES
-)
-
-# Add platform-specific dependencies
-if(IDF_TARGET STREQUAL "linux")
-  target_link_libraries(${COMPONENT_LIB} PRIVATE
-    mbedtls
-  )
-else()
-  target_link_libraries(${COMPONENT_LIB} PRIVATE
+    spi_flash
+    esp_timer
     esp_driver_gpio
-    esp_driver_uart
+    esp_adc
     esp_driver_spi
+    esp_driver_uart
     esp_driver_ledc
     esp_driver_rmt
     esp_driver_i2c
-    esp_adc
-    esp_timer
     esp_hw_support
-    spi_flash
     mbedtls
+)
+
+# Dependencies are managed through PRIV_REQUIRES
+if(IDF_TARGET STREQUAL "linux")
+  add_compile_definitions(PICORB_VM_MRUBY=1)
+  add_compile_definitions(MRB_INT64=1)
+else()
+  add_compile_definitions(PICORB_VM_MRUBY=1)
+  add_compile_definitions(MRB_INT64=1)
+  add_compile_definitions(NDEBUG)
+  add_compile_definitions(USE_FAT_FLASH_DISK)
+  #MRBC definitions is used by machine.
+  add_definitions(
+    -DMRBC_TICK_UNIT=10
+    -DMRBC_TIMESLICE_TICK_COUNT=1
+    -DMRBC_USE_FLOAT=2
+    -DMRC_CUSTOM_ALLOC
+    -DMRBC_CONVERT_CRLF=1
   )
 endif()
 
-add_definitions(
-  -DMRBC_TICK_UNIT=10
-  -DMRBC_TIMESLICE_TICK_COUNT=1
-  -DMRBC_USE_FLOAT=2
-  -DMRC_CUSTOM_ALLOC
-  -DMRBC_CONVERT_CRLF=1
-  -DUSE_FAT_FLASH_DISK
-  -DNDEBUG
-
-  # for picoruby.h
-  #-DPICORB_VM_MRUBYC
-  -DPICORB_VM_MRUBY
-)
 
 # Build PicoRuby
 add_custom_command(
