@@ -45,7 +45,9 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
         case FMRB_GFX_CMD_FILL_SCREEN:
             if (size >= sizeof(fmrb_gfx_clear_cmd_t)) {
                 const fmrb_gfx_clear_cmd_t *cmd = (const fmrb_gfx_clear_cmd_t*)data;
+#ifdef FMRB_IPC_DEBUG
                 printf("FILL_SCREEN: color=0x%08x\n", cmd->color);
+#endif
                 g_lgfx->fillScreen(cmd->color);
                 return 0;
             }
@@ -148,24 +150,44 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
             break;
 
         case FMRB_GFX_CMD_DRAW_STRING:
-            if (size >= sizeof(fmrb_gfx_string_cmd_t)) {
-                const fmrb_gfx_string_cmd_t *cmd = (const fmrb_gfx_string_cmd_t*)data;
-                const uint8_t *text_data = data + sizeof(fmrb_gfx_string_cmd_t);
-                if (size >= sizeof(fmrb_gfx_string_cmd_t) + cmd->text_len) {
-                    char text_buf[256];
-                    size_t len = cmd->text_len < 255 ? cmd->text_len : 255;
-                    memcpy(text_buf, text_data, len);
-                    text_buf[len] = '\0';
-                    printf("Drawing string at (%d,%d) color=0x%08x: %s\n",
-                           cmd->x, cmd->y, cmd->color, text_buf);
-
-                    g_lgfx->setTextColor(cmd->color);
-                    g_lgfx->setCursor(cmd->x, cmd->y);
-                    g_lgfx->print(text_buf);
-                    return 0;
-                }
+            // cmd_type is already extracted in data[0]
+            // Payload format: int32_t x, int32_t y, uint32_t color, uint16_t text_len, char[text_len] text
+            if (size < 1 + 4 + 4 + 4 + 2) { // cmd_type + x + y + color + text_len
+                break;
             }
-            break;
+            {
+                const uint8_t *payload = data + 1;  // Skip cmd_type
+                int32_t x, y;
+                uint32_t color;
+                uint16_t text_len;
+
+                memcpy(&x, payload, sizeof(int32_t)); payload += sizeof(int32_t);
+                memcpy(&y, payload, sizeof(int32_t)); payload += sizeof(int32_t);
+                memcpy(&color, payload, sizeof(uint32_t)); payload += sizeof(uint32_t);
+                memcpy(&text_len, payload, sizeof(uint16_t)); payload += sizeof(uint16_t);
+
+                size_t expected_size = 1 + 4 + 4 + 4 + 2 + text_len;
+                if (size < expected_size) {
+                    fprintf(stderr, "String command size mismatch: expected=%zu, actual=%zu, text_len=%u\n",
+                            expected_size, size, text_len);
+                    break;
+                }
+
+                const char *text_data = (const char*)payload;
+                char text_buf[256];
+                size_t len = text_len < 255 ? text_len : 255;
+                memcpy(text_buf, text_data, len);
+                text_buf[len] = '\0';
+#ifdef FMRB_IPC_DEBUG
+                printf("Drawing string at (%d,%d) color=0x%08x: %s\n",
+                       x, y, color, text_buf);
+#endif
+
+                g_lgfx->setTextColor(color);
+                g_lgfx->setCursor(x, y);
+                g_lgfx->print(text_buf);
+                return 0;
+            }
 
         case FMRB_GFX_CMD_PRESENT:
             g_lgfx->display();

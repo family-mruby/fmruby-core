@@ -6,7 +6,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Build option for IPC debug logging
+option(FMRB_IPC_DEBUG "Enable IPC message dump logging" OFF)
+
 add_definitions(-DLGFX_SDL)
+
+# Add IPC debug definition if enabled
+if(FMRB_IPC_DEBUG)
+    add_definitions(-DFMRB_IPC_DEBUG)
+    message(STATUS "IPC debug logging enabled")
+endif()
 
 # Find SDL2 and msgpack
 find_package(PkgConfig REQUIRED)

@@ -46,7 +46,7 @@ static void fmrb_os_init(void)
 
         // Test graphics with a simple clear
         fmrb_gfx_clear(g_gfx_context, FMRB_COLOR_BLUE);
-        fmrb_gfx_draw_text(g_gfx_context, 10, 10, "Family mruby OS", FMRB_COLOR_WHITE, FMRB_FONT_SIZE_LARGE);
+        fmrb_gfx_draw_string(g_gfx_context, "Family mruby OS", 10, 10, FMRB_COLOR_WHITE);
         fmrb_gfx_present(g_gfx_context);
     }
 

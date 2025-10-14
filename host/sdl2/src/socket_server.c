@@ -150,6 +150,7 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     }
 
     // Debug log
+#ifdef FMRB_IPC_DEBUG
     printf("RX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%zu msgpack_len=%zu\n",
            type, seq, sub_cmd, payload_len, msgpack_len);
     printf("RX msgpack bytes (%zu): ", msgpack_len);
@@ -159,6 +160,7 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     }
     printf("\n");
     fflush(stdout);
+#endif
 
     // Create command buffer: [sub_cmd | payload]
     size_t cmd_len = 1 + payload_len;
