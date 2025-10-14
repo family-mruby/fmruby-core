@@ -46,9 +46,9 @@ namespace :build do
   desc "Linux target build (dev/test)"
   task :linux => :setup do
     unless Dir.exist?('build')
-      Rake::Task['set_target:linux'].invoke    
+      Rake::Task['set_target:linux'].invoke
     end
-    sh "#{DOCKER_CMD} idf.py --preview build"
+    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview build'"
     puts 'Linux build complete. Run with: ./build/fmruby-core.elf'
   end
 

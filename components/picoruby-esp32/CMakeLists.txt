@@ -54,6 +54,15 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
   PRIV_REQUIRES
+)
+
+# Add platform-specific dependencies
+if(IDF_TARGET STREQUAL "linux")
+  target_link_libraries(${COMPONENT_LIB} PRIVATE
+    mbedtls
+  )
+else()
+  target_link_libraries(${COMPONENT_LIB} PRIVATE
     esp_driver_gpio
     esp_driver_uart
     esp_driver_spi
@@ -65,10 +74,8 @@ idf_component_register(
     esp_hw_support
     spi_flash
     mbedtls
-)
-
-# Add ESP32-specific dependencies only for ESP32 targets
-# (Dependencies are already specified in PRIV_REQUIRES)
+  )
+endif()
 
 add_definitions(
   -DMRBC_TICK_UNIT=10
