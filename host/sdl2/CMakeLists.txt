@@ -21,6 +21,7 @@ set(SOURCES
     src/graphics_handler.c
     src/audio_handler.c
     src/socket_server.c
+    ../common/fmrb_ipc_cobs.c
 )
 
 # Create executable
