@@ -344,3 +344,398 @@ fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, const fmrb_rec
 
     return FMRB_GFX_OK;
 }
+
+// LovyanGFX compatible API implementations
+
+fmrb_gfx_err_t fmrb_gfx_draw_pixel(fmrb_gfx_context_t context, int32_t x, int32_t y, fmrb_color_t color) {
+    return fmrb_gfx_set_pixel(context, (int16_t)x, (int16_t)y, color);
+}
+
+fmrb_gfx_err_t fmrb_gfx_draw_fast_vline(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t h, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    // Draw vertical line as a thin rectangle
+    fmrb_ipc_graphics_rect_t rect_cmd = {
+        .x = (uint16_t)x,
+        .y = (uint16_t)y,
+        .width = 1,
+        .height = (uint16_t)h,
+        .color = color,
+        .filled = true
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_FILL_RECT, &rect_cmd, sizeof(rect_cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_draw_fast_hline(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    // Draw horizontal line as a thin rectangle
+    fmrb_ipc_graphics_rect_t rect_cmd = {
+        .x = (uint16_t)x,
+        .y = (uint16_t)y,
+        .width = (uint16_t)w,
+        .height = 1,
+        .color = color,
+        .filled = true
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_FILL_RECT, &rect_cmd, sizeof(rect_cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    // Payload: x, y, w, h, r, color, filled
+    typedef struct __attribute__((packed)) {
+        int32_t x, y, w, h, r;
+        uint32_t color;
+        uint8_t filled;
+    } round_rect_cmd_t;
+
+    round_rect_cmd_t cmd = {
+        .x = x, .y = y, .w = w, .h = h, .r = r,
+        .color = color,
+        .filled = 0
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_ROUND_RECT, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_fill_round_rect(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        int32_t x, y, w, h, r;
+        uint32_t color;
+        uint8_t filled;
+    } round_rect_cmd_t;
+
+    round_rect_cmd_t cmd = {
+        .x = x, .y = y, .w = w, .h = h, .r = r,
+        .color = color,
+        .filled = 1
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_FILL_ROUND_RECT, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        int32_t x, y, r;
+        uint32_t color;
+        uint8_t filled;
+    } circle_cmd_t;
+
+    circle_cmd_t cmd = {
+        .x = x, .y = y, .r = r,
+        .color = color,
+        .filled = 0
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_CIRCLE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        int32_t x, y, r;
+        uint32_t color;
+        uint8_t filled;
+    } circle_cmd_t;
+
+    circle_cmd_t cmd = {
+        .x = x, .y = y, .r = r,
+        .color = color,
+        .filled = 1
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_FILL_CIRCLE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        int32_t x, y, rx, ry;
+        uint32_t color;
+        uint8_t filled;
+    } ellipse_cmd_t;
+
+    ellipse_cmd_t cmd = {
+        .x = x, .y = y, .rx = rx, .ry = ry,
+        .color = color,
+        .filled = 0
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_ELLIPSE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        int32_t x, y, rx, ry;
+        uint32_t color;
+        uint8_t filled;
+    } ellipse_cmd_t;
+
+    ellipse_cmd_t cmd = {
+        .x = x, .y = y, .rx = rx, .ry = ry,
+        .color = color,
+        .filled = 1
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_FILL_ELLIPSE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        int32_t x0, y0, x1, y1, x2, y2;
+        uint32_t color;
+        uint8_t filled;
+    } triangle_cmd_t;
+
+    triangle_cmd_t cmd = {
+        .x0 = x0, .y0 = y0,
+        .x1 = x1, .y1 = y1,
+        .x2 = x2, .y2 = y2,
+        .color = color,
+        .filled = 0
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_TRIANGLE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        int32_t x0, y0, x1, y1, x2, y2;
+        uint32_t color;
+        uint8_t filled;
+    } triangle_cmd_t;
+
+    triangle_cmd_t cmd = {
+        .x0 = x0, .y0 = y0,
+        .x1 = x1, .y1 = y1,
+        .x2 = x2, .y2 = y2,
+        .color = color,
+        .filled = 1
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_FILL_TRIANGLE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_draw_arc(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        int32_t x, y, r0, r1;
+        float angle0, angle1;
+        uint32_t color;
+        uint8_t filled;
+    } arc_cmd_t;
+
+    arc_cmd_t cmd = {
+        .x = x, .y = y, .r0 = r0, .r1 = r1,
+        .angle0 = angle0, .angle1 = angle1,
+        .color = color,
+        .filled = 0
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_ARC, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_fill_arc(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        int32_t x, y, r0, r1;
+        float angle0, angle1;
+        uint32_t color;
+        uint8_t filled;
+    } arc_cmd_t;
+
+    arc_cmd_t cmd = {
+        .x = x, .y = y, .r0 = r0, .r1 = r1,
+        .angle0 = angle0, .angle1 = angle1,
+        .color = color,
+        .filled = 1
+    };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_FILL_ARC, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, const char *str, int32_t x, int32_t y, fmrb_color_t color) {
+    if (!context || !str) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    size_t str_len = strlen(str);
+    if (str_len > 255) {
+        str_len = 255;
+    }
+
+    // Allocate buffer for command + string
+    size_t total_size = sizeof(int32_t) * 2 + sizeof(uint32_t) + sizeof(uint16_t) + str_len;
+    uint8_t *cmd_buffer = malloc(total_size);
+    if (!cmd_buffer) {
+        return FMRB_GFX_ERR_NO_MEMORY;
+    }
+
+    size_t offset = 0;
+    memcpy(cmd_buffer + offset, &x, sizeof(int32_t)); offset += sizeof(int32_t);
+    memcpy(cmd_buffer + offset, &y, sizeof(int32_t)); offset += sizeof(int32_t);
+    memcpy(cmd_buffer + offset, &color, sizeof(uint32_t)); offset += sizeof(uint32_t);
+    uint16_t len16 = (uint16_t)str_len;
+    memcpy(cmd_buffer + offset, &len16, sizeof(uint16_t)); offset += sizeof(uint16_t);
+    memcpy(cmd_buffer + offset, str, str_len);
+
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_STRING, cmd_buffer, total_size);
+    free(cmd_buffer);
+
+    return ret;
+}
+
+fmrb_gfx_err_t fmrb_gfx_draw_char(fmrb_gfx_context_t context, char c, int32_t x, int32_t y, fmrb_color_t color) {
+    char str[2] = {c, '\0'};
+    return fmrb_gfx_draw_string(context, str, x, y, color);
+}
+
+fmrb_gfx_err_t fmrb_gfx_set_text_size(fmrb_gfx_context_t context, float size) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        float size;
+    } text_size_cmd_t;
+
+    text_size_cmd_t cmd = { .size = size };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_SET_TEXT_SIZE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_color_t fg, fmrb_color_t bg) {
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    typedef struct __attribute__((packed)) {
+        uint32_t fg;
+        uint32_t bg;
+    } text_color_cmd_t;
+
+    text_color_cmd_t cmd = { .fg = fg, .bg = bg };
+
+    return send_graphics_command(ctx, FMRB_IPC_GFX_SET_TEXT_COLOR, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_color_t color) {
+    return fmrb_gfx_clear(context, color);
+}

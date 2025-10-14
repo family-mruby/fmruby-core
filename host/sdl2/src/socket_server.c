@@ -2,6 +2,7 @@
 #include "graphics_handler.h"
 #include "audio_handler.h"
 #include "../common/protocol.h"
+#include "../common/fmrb_ipc_cobs.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,6 +11,13 @@
 #include <sys/un.h>
 #include <errno.h>
 #include <fcntl.h>
+
+// Frame header (IPC_spec.md compliant)
+typedef struct __attribute__((packed)) {
+    uint8_t type;    // Message type
+    uint8_t seq;     // Sequence number
+    uint16_t len;    // Payload bytes
+} fmrb_ipc_frame_hdr_t;
 
 static int server_fd = -1;
 static int client_fd = -1;
@@ -77,6 +85,69 @@ static int accept_connection(void) {
     return 0;
 }
 
+static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
+    // Allocate buffer for decoded data
+    uint8_t *decoded_buffer = (uint8_t*)malloc(encoded_len);
+    if (!decoded_buffer) {
+        fprintf(stderr, "Failed to allocate decode buffer\n");
+        return -1;
+    }
+
+    // COBS decode
+    ssize_t decoded_len = fmrb_ipc_cobs_decode(encoded_data, encoded_len, decoded_buffer);
+    if (decoded_len < (ssize_t)(sizeof(fmrb_ipc_frame_hdr_t) + sizeof(uint32_t))) {
+        fprintf(stderr, "COBS decode failed or frame too small\n");
+        free(decoded_buffer);
+        return -1;
+    }
+
+    // Extract header
+    fmrb_ipc_frame_hdr_t hdr;
+    memcpy(&hdr, decoded_buffer, sizeof(fmrb_ipc_frame_hdr_t));
+
+    // Verify size
+    size_t expected_size = sizeof(fmrb_ipc_frame_hdr_t) + hdr.len + sizeof(uint32_t);
+    if ((size_t)decoded_len != expected_size) {
+        fprintf(stderr, "Frame size mismatch: expected=%zu, actual=%zd\n", expected_size, decoded_len);
+        free(decoded_buffer);
+        return -1;
+    }
+
+    // Extract and verify CRC32
+    uint32_t received_crc;
+    memcpy(&received_crc, decoded_buffer + sizeof(fmrb_ipc_frame_hdr_t) + hdr.len, sizeof(uint32_t));
+
+    uint32_t calculated_crc = fmrb_ipc_crc32_update(0, decoded_buffer, sizeof(fmrb_ipc_frame_hdr_t) + hdr.len);
+    if (received_crc != calculated_crc) {
+        fprintf(stderr, "CRC32 mismatch: expected=0x%08x, actual=0x%08x\n", calculated_crc, received_crc);
+        free(decoded_buffer);
+        return -1;
+    }
+
+    // Extract payload
+    const uint8_t *payload = decoded_buffer + sizeof(fmrb_ipc_frame_hdr_t);
+
+    // Process based on type
+    int result = 0;
+    switch (hdr.type & 0x7F) { // Mask out flags
+        case 2: // FMRB_IPC_TYPE_GRAPHICS
+            result = graphics_handler_process_command(payload, hdr.len);
+            break;
+
+        case 4: // FMRB_IPC_TYPE_AUDIO
+            result = audio_handler_process_command(payload, hdr.len);
+            break;
+
+        default:
+            fprintf(stderr, "Unknown frame type: %u\n", hdr.type);
+            result = -1;
+            break;
+    }
+
+    free(decoded_buffer);
+    return result;
+}
+
 static int process_message(const uint8_t *data, size_t size) {
     if (size < sizeof(fmrb_message_header_t)) {
         fprintf(stderr, "Message too small\n");
@@ -132,39 +203,49 @@ static int read_message(void) {
 
     buffer_pos += bytes_read;
 
-    // Process complete messages
+    // Process complete COBS frames (terminated by 0x00)
     int messages_processed = 0;
-    while (buffer_pos >= sizeof(fmrb_message_header_t)) {
-        const fmrb_message_header_t *header = (const fmrb_message_header_t*)buffer;
+    size_t scan_pos = 0;
 
-        if (header->magic != FMRB_MAGIC) {
-            fprintf(stderr, "Invalid magic, resetting buffer\n");
-            buffer_pos = 0;
+    while (scan_pos < buffer_pos) {
+        // Look for frame terminator (0x00)
+        size_t frame_end = scan_pos;
+        while (frame_end < buffer_pos && buffer[frame_end] != 0x00) {
+            frame_end++;
+        }
+
+        if (frame_end >= buffer_pos) {
+            // No complete frame yet
             break;
         }
 
-        if (header->size > BUFFER_SIZE) {
-            fprintf(stderr, "Message too large: %u\n", header->size);
-            buffer_pos = 0;
-            break;
+        // Found a complete frame: [scan_pos .. frame_end-1] + 0x00 at frame_end
+        size_t frame_len = frame_end - scan_pos;
+
+        if (frame_len > 0) {
+            // Process COBS frame (without the 0x00 terminator)
+            if (process_cobs_frame(buffer + scan_pos, frame_len) == 0) {
+                messages_processed++;
+            }
         }
 
-        if (buffer_pos < header->size) {
-            // Need more data
-            break;
-        }
+        // Move to next frame (skip the 0x00 terminator)
+        scan_pos = frame_end + 1;
+    }
 
-        // Process complete message
-        if (process_message(buffer, header->size) == 0) {
-            messages_processed++;
-        }
-
-        // Remove processed message from buffer
-        size_t remaining = buffer_pos - header->size;
+    // Remove processed data from buffer
+    if (scan_pos > 0) {
+        size_t remaining = buffer_pos - scan_pos;
         if (remaining > 0) {
-            memmove(buffer, buffer + header->size, remaining);
+            memmove(buffer, buffer + scan_pos, remaining);
         }
         buffer_pos = remaining;
+    }
+
+    // Check for buffer overflow
+    if (buffer_pos >= BUFFER_SIZE - 1) {
+        fprintf(stderr, "Buffer overflow, resetting\n");
+        buffer_pos = 0;
     }
 
     return messages_processed;

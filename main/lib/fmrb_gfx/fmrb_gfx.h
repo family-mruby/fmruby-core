@@ -189,6 +189,215 @@ fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context);
  */
 fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect);
 
+// LovyanGFX compatible API (snake_case)
+
+/**
+ * @brief Draw a pixel (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x X coordinate
+ * @param y Y coordinate
+ * @param color Pixel color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_draw_pixel(fmrb_gfx_context_t context, int32_t x, int32_t y, fmrb_color_t color);
+
+/**
+ * @brief Draw fast vertical line (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x X coordinate
+ * @param y Y coordinate
+ * @param h Height
+ * @param color Line color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_draw_fast_vline(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t h, fmrb_color_t color);
+
+/**
+ * @brief Draw fast horizontal line (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x X coordinate
+ * @param y Y coordinate
+ * @param w Width
+ * @param color Line color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_draw_fast_hline(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, fmrb_color_t color);
+
+/**
+ * @brief Draw rounded rectangle outline (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x X coordinate
+ * @param y Y coordinate
+ * @param w Width
+ * @param h Height
+ * @param r Corner radius
+ * @param color Rectangle color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color);
+
+/**
+ * @brief Draw filled rounded rectangle (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x X coordinate
+ * @param y Y coordinate
+ * @param w Width
+ * @param h Height
+ * @param r Corner radius
+ * @param color Fill color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_fill_round_rect(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color);
+
+/**
+ * @brief Draw circle outline (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x Center X coordinate
+ * @param y Center Y coordinate
+ * @param r Radius
+ * @param color Circle color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r, fmrb_color_t color);
+
+/**
+ * @brief Draw filled circle (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x Center X coordinate
+ * @param y Center Y coordinate
+ * @param r Radius
+ * @param color Fill color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r, fmrb_color_t color);
+
+/**
+ * @brief Draw ellipse outline (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x Center X coordinate
+ * @param y Center Y coordinate
+ * @param rx Radius X
+ * @param ry Radius Y
+ * @param color Ellipse color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color);
+
+/**
+ * @brief Draw filled ellipse (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x Center X coordinate
+ * @param y Center Y coordinate
+ * @param rx Radius X
+ * @param ry Radius Y
+ * @param color Fill color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color);
+
+/**
+ * @brief Draw triangle outline (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x0 First vertex X
+ * @param y0 First vertex Y
+ * @param x1 Second vertex X
+ * @param y1 Second vertex Y
+ * @param x2 Third vertex X
+ * @param y2 Third vertex Y
+ * @param color Triangle color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color);
+
+/**
+ * @brief Draw filled triangle (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x0 First vertex X
+ * @param y0 First vertex Y
+ * @param x1 Second vertex X
+ * @param y1 Second vertex Y
+ * @param x2 Third vertex X
+ * @param y2 Third vertex Y
+ * @param color Fill color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color);
+
+/**
+ * @brief Draw arc (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x Center X coordinate
+ * @param y Center Y coordinate
+ * @param r0 Inner radius
+ * @param r1 Outer radius
+ * @param angle0 Start angle (degrees)
+ * @param angle1 End angle (degrees)
+ * @param color Arc color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_draw_arc(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color);
+
+/**
+ * @brief Draw filled arc (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param x Center X coordinate
+ * @param y Center Y coordinate
+ * @param r0 Inner radius
+ * @param r1 Outer radius
+ * @param angle0 Start angle (degrees)
+ * @param angle1 End angle (degrees)
+ * @param color Fill color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_fill_arc(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color);
+
+/**
+ * @brief Draw string (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param str String to draw
+ * @param x X coordinate
+ * @param y Y coordinate
+ * @param color Text color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, const char *str, int32_t x, int32_t y, fmrb_color_t color);
+
+/**
+ * @brief Draw character (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param c Character to draw
+ * @param x X coordinate
+ * @param y Y coordinate
+ * @param color Text color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_draw_char(fmrb_gfx_context_t context, char c, int32_t x, int32_t y, fmrb_color_t color);
+
+/**
+ * @brief Set text size (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param size Text size multiplier
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_set_text_size(fmrb_gfx_context_t context, float size);
+
+/**
+ * @brief Set text color (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param fg Foreground color
+ * @param bg Background color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_color_t fg, fmrb_color_t bg);
+
+/**
+ * @brief Fill screen with color (LovyanGFX compatible)
+ * @param context Graphics context
+ * @param color Fill color
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_color_t color);
+
 #ifdef __cplusplus
 }
 #endif

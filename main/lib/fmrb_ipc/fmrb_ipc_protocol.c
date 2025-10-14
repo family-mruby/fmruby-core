@@ -1,4 +1,7 @@
 #include "fmrb_ipc_protocol.h"
+#include "fmrb_ipc_cobs.h"
+#include <string.h>
+#include <stdlib.h>
 
 // Simple CRC32 implementation for checksum
 static const uint32_t crc32_table[256] = {
@@ -91,4 +94,103 @@ void fmrb_ipc_init_header(fmrb_ipc_header_t *header, uint8_t msg_type, uint16_t 
     header->sequence = sequence;
     header->payload_len = payload_len;
     header->checksum = 0; // To be calculated when payload is available
+}
+
+// Frame encode/decode (IPC_spec.md compliant)
+ssize_t fmrb_ipc_frame_encode(uint8_t type, uint8_t seq, const uint8_t *payload, uint16_t payload_len,
+                               uint8_t *output, size_t output_len) {
+    if (!output || output_len == 0) {
+        return -1;
+    }
+
+    // Calculate required size: header + payload + CRC32
+    size_t frame_size = sizeof(fmrb_ipc_frame_hdr_t) + payload_len + sizeof(uint32_t);
+    size_t max_encoded_size = COBS_ENC_MAX(frame_size);
+
+    if (output_len < max_encoded_size) {
+        return -1; // Output buffer too small
+    }
+
+    // Build frame: [header | payload | CRC32]
+    uint8_t *temp_buffer = (uint8_t*)malloc(frame_size);
+    if (!temp_buffer) {
+        return -1;
+    }
+
+    // Fill header
+    fmrb_ipc_frame_hdr_t *hdr = (fmrb_ipc_frame_hdr_t*)temp_buffer;
+    hdr->type = type;
+    hdr->seq = seq;
+    hdr->len = payload_len;
+
+    // Copy payload
+    if (payload && payload_len > 0) {
+        memcpy(temp_buffer + sizeof(fmrb_ipc_frame_hdr_t), payload, payload_len);
+    }
+
+    // Calculate CRC32 of header + payload
+    uint32_t crc = fmrb_ipc_crc32_update(0, temp_buffer, sizeof(fmrb_ipc_frame_hdr_t) + payload_len);
+    memcpy(temp_buffer + sizeof(fmrb_ipc_frame_hdr_t) + payload_len, &crc, sizeof(uint32_t));
+
+    // COBS encode
+    size_t encoded_len = fmrb_ipc_cobs_encode(temp_buffer, frame_size, output);
+
+    free(temp_buffer);
+    return (ssize_t)encoded_len;
+}
+
+int fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
+                           fmrb_ipc_frame_hdr_t *hdr, uint8_t *payload,
+                           size_t payload_max_len, uint16_t *payload_len) {
+    if (!input || !hdr || !payload || !payload_len) {
+        return -1;
+    }
+
+    // Allocate temporary buffer for decoded data
+    uint8_t *temp_buffer = (uint8_t*)malloc(input_len);
+    if (!temp_buffer) {
+        return -1;
+    }
+
+    // COBS decode
+    ssize_t decoded_len = fmrb_ipc_cobs_decode(input, input_len, temp_buffer);
+    if (decoded_len < (ssize_t)(sizeof(fmrb_ipc_frame_hdr_t) + sizeof(uint32_t))) {
+        free(temp_buffer);
+        return -1; // Too small
+    }
+
+    // Extract header
+    memcpy(hdr, temp_buffer, sizeof(fmrb_ipc_frame_hdr_t));
+
+    // Verify payload length
+    if (hdr->len > payload_max_len) {
+        free(temp_buffer);
+        return -1; // Payload buffer too small
+    }
+
+    // Extract CRC32
+    size_t expected_size = sizeof(fmrb_ipc_frame_hdr_t) + hdr->len + sizeof(uint32_t);
+    if ((size_t)decoded_len != expected_size) {
+        free(temp_buffer);
+        return -1; // Size mismatch
+    }
+
+    uint32_t received_crc;
+    memcpy(&received_crc, temp_buffer + sizeof(fmrb_ipc_frame_hdr_t) + hdr->len, sizeof(uint32_t));
+
+    // Verify CRC32
+    uint32_t calculated_crc = fmrb_ipc_crc32_update(0, temp_buffer, sizeof(fmrb_ipc_frame_hdr_t) + hdr->len);
+    if (received_crc != calculated_crc) {
+        free(temp_buffer);
+        return -1; // CRC mismatch
+    }
+
+    // Copy payload
+    if (hdr->len > 0) {
+        memcpy(payload, temp_buffer + sizeof(fmrb_ipc_frame_hdr_t), hdr->len);
+    }
+    *payload_len = hdr->len;
+
+    free(temp_buffer);
+    return 0;
 }
