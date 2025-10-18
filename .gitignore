@@ -5,3 +5,5 @@ sdkconfig.1
 dependencies.lock
 .env
 .vscode/*
+main/kernel/mrb/*
+main/app/system_app/mrb/*

@@ -56,6 +56,9 @@ MRuby::Build.new do |conf|
   # ESP32
   #conf.gem core:'picoruby-dir'
 
+  # Family mruby specific
+  conf.gem core: "picoruby-fmrb-app"
+
   # Manual microruby configuration without task scheduler
   conf.cc.include_paths << "#{conf.gems['mruby-compiler2'].dir}/include"
   conf.cc.include_paths << "#{conf.gems['mruby-compiler2'].dir}/lib/prism/include"

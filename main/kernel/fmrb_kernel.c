@@ -2,6 +2,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+#include <mruby.h>
+#include <mruby/irep.h>
 #include "picoruby-esp32.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
