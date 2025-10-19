@@ -27,7 +27,10 @@ DOCKER_CMD_PRIVILEGED = [
 
 desc "Build Setup (Patch files)"
 task :setup do
-  # do nothing
+  sh "cp -f lib/patch/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
+  sh "cp -f lib/patch/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
+  sh "cp -rf lib/patch/picoruby-fmrb-app components/picoruby-esp32/picoruby/mrbgems/"
+  sh "cp -f lib/patch/picoruby-machine/mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/"
 end
 
 namespace :set_target do

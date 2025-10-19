@@ -15,6 +15,7 @@ else()
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/esp32/mrbgems)
     set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/esp32/include)
     set(PLATFORM_PRIV_REQUIRES
+        freertos
         spi_flash
         esp_timer
         esp_driver_gpio

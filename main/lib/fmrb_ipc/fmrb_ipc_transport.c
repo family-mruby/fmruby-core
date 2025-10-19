@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <inttypes.h>
 #include <msgpack.h>
 
 #define MAX_CALLBACKS 16
@@ -104,7 +105,7 @@ static fmrb_ipc_transport_err_t send_raw_message(const fmrb_ipc_header_t *header
     }
 
     // Debug: dump msgpack bytes
-    printf("TX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%d msgpack_size=%zu\n",
+    printf("TX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%" PRIu32 " msgpack_size=%zu\n",
            FMRB_IPC_TYPE_GRAPHICS, (uint8_t)(header->sequence & 0xFF),
            header->msg_type, header->payload_len, sbuf.size);
     printf("TX msgpack bytes (%zu): ", sbuf.size);

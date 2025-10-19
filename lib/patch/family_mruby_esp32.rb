@@ -18,6 +18,8 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.cc.defines << "MRBC_CONVERT_CRLF=1"
   conf.cc.defines << "USE_FAT_FLASH_DISK"
   conf.cc.defines << "NDEBUG"
+  conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
+  conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
 
   # Common
   conf.gem core: 'mruby-compiler2'
