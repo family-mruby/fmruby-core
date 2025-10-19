@@ -5,23 +5,19 @@
 #include <mruby.h>
 #include <mruby/irep.h>
 #include "picoruby-esp32.h"
+#include "task_config.h"
+#include "host/host_task.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
 extern const uint8_t kernel_irep[];
 
-static const char *TAG = "fmrb_kernel";
+static const char *TAG = "kernel";
 
 // Global mruby state for the kernel
 static mrb_state *g_kernel_mrb = NULL;
 
 // FreeRTOS task handle
 static TaskHandle_t g_kernel_task_handle = NULL;
-
-// Kernel task stack size (16KB)
-#define KERNEL_TASK_STACK_SIZE (16 * 1024)
-
-// Kernel task priority
-#define KERNEL_TASK_PRIORITY (5)
 
 // Forward declarations
 extern void mrb_picoruby_fmrb_init(mrb_state *mrb);
@@ -32,7 +28,6 @@ extern void mrb_picoruby_fmrb_init(mrb_state *mrb);
 static int fmrb_kernel_init_vm(void)
 {
     ESP_LOGI(TAG, "Initializing kernel VM...");
-
     // Create mruby state
     g_kernel_mrb = mrb_open();
     if (!g_kernel_mrb) {
@@ -128,14 +123,20 @@ static void fmrb_kernel_task(void *pvParameters)
 int fmrb_kernel_start(void)
 {
     ESP_LOGI(TAG, "Starting Family mruby OS Kernel...");
+    // Create host task
+    int result_i = fmrb_host_task_init();
+    if (result < 0) {
+        ESP_LOGE(TAG, "Failed to start host task");
+        return -1;
+    }
 
     // Create kernel task
     BaseType_t result = xTaskCreate(
         fmrb_kernel_task,
         "fmrb_kernel",
-        KERNEL_TASK_STACK_SIZE,
+        FMRB_KERNEL_TASK_STACK_SIZE,
         NULL,
-        KERNEL_TASK_PRIORITY,
+        FMRB_KERNEL_TASK_PRIORITY,
         &g_kernel_task_handle
     );
 

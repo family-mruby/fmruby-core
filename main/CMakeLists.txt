@@ -1,5 +1,6 @@
 set(COMPONENT_SRCS
     "main.c"
+    "boot.c"
     "kernel/fmrb_kernel.c"
     "kernel/system/system_task.c"
 )

@@ -1,7 +1,5 @@
 #pragma once
 
-#include "picoruby.h"
-
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -17,11 +15,6 @@ int fmrb_kernel_start(void);
  */
 void fmrb_kernel_stop(void);
 
-/**
- * Get the kernel mruby state
- * @return mrb_state pointer, or NULL if not initialized
- */
-mrb_state* fmrb_kernel_get_mrb(void);
 
 #ifdef __cplusplus
 }
