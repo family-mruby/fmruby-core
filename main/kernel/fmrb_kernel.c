@@ -2,9 +2,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_log.h"
+
 #include <mruby.h>
 #include <mruby/irep.h>
-#include "picoruby-esp32.h"
 #include "task_config.h"
 #include "host/host_task.h"
 
@@ -22,6 +22,8 @@ static TaskHandle_t g_kernel_task_handle = NULL;
 // Forward declarations
 extern void mrb_picoruby_fmrb_init(mrb_state *mrb);
 
+mrb_state *global_mrb = NULL;  // Kernel VM only
+
 /**
  * Initialize the kernel mruby VM
  */
@@ -34,6 +36,8 @@ static int fmrb_kernel_init_vm(void)
         ESP_LOGE(TAG, "Failed to create mruby state");
         return -1;
     }
+    // TODO: to check best way to handle prism
+    global_mrb = g_kernel_mrb;
 
     // Initialize FMRB bindings
     mrb_picoruby_fmrb_init(g_kernel_mrb);

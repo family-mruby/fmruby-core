@@ -54,6 +54,12 @@ else()
     )
 endif()
 
+# Add a dummy source file for Linux build to avoid INTERFACE library
+if(IDF_TARGET STREQUAL "linux")
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/dummy.c "// Dummy file for Linux build\n")
+  list(APPEND PICORUBY_SRCS ${CMAKE_CURRENT_BINARY_DIR}/dummy.c)
+endif()
+
 idf_component_register(
   SRCS ${PICORUBY_SRCS}
   INCLUDE_DIRS

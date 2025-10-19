@@ -54,11 +54,11 @@ static TaskHandle_t g_host_task_handle = NULL;
 static fmrb_gfx_context_t g_gfx_context = NULL;
 
 // Forward declarations (implemented in picoruby-fmrb-app)
-extern int fmrb_app_dispatch_update(uint32_t delta_time_ms);
-extern int fmrb_app_dispatch_key_down(int key_code);
-extern int fmrb_app_dispatch_key_up(int key_code);
-extern int fmrb_app_dispatch_mouse_move(int x, int y);
-extern int fmrb_app_dispatch_mouse_click(int x, int y, int button);
+// extern int fmrb_app_dispatch_update(uint32_t delta_time_ms);
+// extern int fmrb_app_dispatch_key_down(int key_code);
+// extern int fmrb_app_dispatch_key_up(int key_code);
+// extern int fmrb_app_dispatch_mouse_move(int x, int y);
+// extern int fmrb_app_dispatch_mouse_click(int x, int y, int button);
 
 /**
  * Initialize HAL layer and subsystems
@@ -113,17 +113,17 @@ static void host_task_process_message(const host_message_t *msg)
     switch (msg->type) {
         case HOST_MSG_HID_KEY_DOWN:
             ESP_LOGD(TAG, "Key down: %d", msg->data.key.key_code);
-            fmrb_app_dispatch_key_down(msg->data.key.key_code);
+            //fmrb_app_dispatch_key_down(msg->data.key.key_code);
             break;
 
         case HOST_MSG_HID_KEY_UP:
             ESP_LOGD(TAG, "Key up: %d", msg->data.key.key_code);
-            fmrb_app_dispatch_key_up(msg->data.key.key_code);
+            //fmrb_app_dispatch_key_up(msg->data.key.key_code);
             break;
 
         case HOST_MSG_HID_MOUSE_MOVE:
             ESP_LOGD(TAG, "Mouse move: (%d, %d)", msg->data.mouse_move.x, msg->data.mouse_move.y);
-            fmrb_app_dispatch_mouse_move(msg->data.mouse_move.x, msg->data.mouse_move.y);
+            //fmrb_app_dispatch_mouse_move(msg->data.mouse_move.x, msg->data.mouse_move.y);
             break;
 
         case HOST_MSG_HID_MOUSE_CLICK:
@@ -131,9 +131,9 @@ static void host_task_process_message(const host_message_t *msg)
                      msg->data.mouse_click.x,
                      msg->data.mouse_click.y,
                      msg->data.mouse_click.button);
-            fmrb_app_dispatch_mouse_click(msg->data.mouse_click.x,
-                                          msg->data.mouse_click.y,
-                                          msg->data.mouse_click.button);
+            //fmrb_app_dispatch_mouse_click(msg->data.mouse_click.x,
+                                        //   msg->data.mouse_click.y,
+                                        //   msg->data.mouse_click.button);
             break;
 
         case HOST_MSG_DRAW_COMMAND:
@@ -182,7 +182,7 @@ static void fmrb_host_task(void *pvParameters)
             uint32_t delta_ms = pdTICKS_TO_MS(now - xLastUpdate);
 
             // Dispatch update to application
-            fmrb_app_dispatch_update(delta_ms);
+            //fmrb_app_dispatch_update(delta_ms);
 
             xLastUpdate = now;
         }
