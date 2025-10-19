@@ -1,5 +1,4 @@
-#ifndef FMRB_IPC_PROTOCOL_H
-#define FMRB_IPC_PROTOCOL_H
+#pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -240,5 +239,3 @@ int fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_IPC_PROTOCOL_H

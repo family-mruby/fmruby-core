@@ -1,5 +1,4 @@
-#ifndef FMRB_HAL_H
-#define FMRB_HAL_H
+#pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -82,5 +81,3 @@ void fmrb_hal_deinit(void);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_HAL_H

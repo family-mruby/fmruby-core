@@ -1,5 +1,4 @@
-#ifndef FMRB_KERNEL_H
-#define FMRB_KERNEL_H
+#pragma once
 
 #include "picoruby.h"
 
@@ -27,5 +26,3 @@ mrb_state* fmrb_kernel_get_mrb(void);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_KERNEL_H

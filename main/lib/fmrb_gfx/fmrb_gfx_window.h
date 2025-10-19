@@ -1,5 +1,4 @@
-#ifndef FMRB_GFX_WINDOW_H
-#define FMRB_GFX_WINDOW_H
+#pragma once
 
 #include "fmrb_gfx.h"
 
@@ -171,5 +170,3 @@ fmrb_gfx_err_t fmrb_gfx_window_draw_all(void);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_GFX_WINDOW_H

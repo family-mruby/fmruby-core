@@ -1,5 +1,4 @@
-#ifndef FMRB_GFX_COMMANDS_H
-#define FMRB_GFX_COMMANDS_H
+#pragma once
 
 #include "fmrb_gfx.h"
 
@@ -100,5 +99,3 @@ size_t fmrb_gfx_command_buffer_count(const fmrb_gfx_command_buffer_t* buffer);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_GFX_COMMANDS_H

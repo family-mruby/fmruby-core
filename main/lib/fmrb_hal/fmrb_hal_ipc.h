@@ -1,5 +1,4 @@
-#ifndef FMRB_HAL_IPC_H
-#define FMRB_HAL_IPC_H
+#pragma once
 
 #include "fmrb_hal.h"
 
@@ -74,5 +73,3 @@ void fmrb_hal_ipc_release_shared_memory(void *ptr);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_HAL_IPC_H

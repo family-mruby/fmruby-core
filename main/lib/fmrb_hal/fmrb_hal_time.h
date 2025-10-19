@@ -1,5 +1,4 @@
-#ifndef FMRB_HAL_TIME_H
-#define FMRB_HAL_TIME_H
+#pragma once
 
 #include "fmrb_hal.h"
 
@@ -42,5 +41,3 @@ bool fmrb_hal_time_is_timeout(fmrb_time_t start_time, uint32_t timeout_us);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_HAL_TIME_H

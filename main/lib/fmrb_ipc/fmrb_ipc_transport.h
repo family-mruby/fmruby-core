@@ -1,5 +1,4 @@
-#ifndef FMRB_IPC_TRANSPORT_H
-#define FMRB_IPC_TRANSPORT_H
+#pragma once
 
 #include "fmrb_ipc_protocol.h"
 
@@ -112,5 +111,3 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_process(fmrb_ipc_transport_handle_t 
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_IPC_TRANSPORT_H

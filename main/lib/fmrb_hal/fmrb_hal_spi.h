@@ -1,5 +1,4 @@
-#ifndef FMRB_HAL_SPI_H
-#define FMRB_HAL_SPI_H
+#pragma once
 
 #include "fmrb_hal.h"
 
@@ -66,5 +65,3 @@ fmrb_err_t fmrb_hal_spi_transfer(fmrb_spi_handle_t handle,
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_HAL_SPI_H

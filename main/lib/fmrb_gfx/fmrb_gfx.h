@@ -1,5 +1,4 @@
-#ifndef FMRB_GFX_H
-#define FMRB_GFX_H
+#pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -401,5 +400,3 @@ fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_color_t col
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_GFX_H

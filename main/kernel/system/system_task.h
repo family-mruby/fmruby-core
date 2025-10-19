@@ -1,5 +1,4 @@
-#ifndef FMRB_SYSTEM_TASK_H
-#define FMRB_SYSTEM_TASK_H
+#pragma once
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,5 +49,3 @@ int fmrb_system_send_mouse_click(int x, int y, int button);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_SYSTEM_TASK_H

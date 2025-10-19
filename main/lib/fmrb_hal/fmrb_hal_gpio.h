@@ -1,5 +1,4 @@
-#ifndef FMRB_HAL_GPIO_H
-#define FMRB_HAL_GPIO_H
+#pragma once
 
 #include "fmrb_hal.h"
 
@@ -43,5 +42,3 @@ fmrb_err_t fmrb_hal_gpio_toggle(fmrb_gpio_num_t gpio_num);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_HAL_GPIO_H

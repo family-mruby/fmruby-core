@@ -1,5 +1,4 @@
-#ifndef FMRB_AUDIO_H
-#define FMRB_AUDIO_H
+#pragma once
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -106,5 +105,3 @@ fmrb_audio_err_t fmrb_audio_get_status(fmrb_apu_status_t* status);
 #ifdef __cplusplus
 }
 #endif
-
-#endif // FMRB_AUDIO_H
