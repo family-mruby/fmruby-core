@@ -11,7 +11,7 @@
 
 #include "boot.h"
 #include "kernel/fmrb_kernel.h"
-#include "kernel/system_task.h"
+#include "kernel/host/host_task.h"
 
 static const char *TAG = "boot";
 

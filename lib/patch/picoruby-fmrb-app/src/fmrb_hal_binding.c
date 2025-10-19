@@ -1,5 +1,5 @@
 #include "picoruby.h"
-#include "../../main/lib/fmrb_hal/fmrb_hal.h"
+#include "fmrb_hal.h"
 
 static mrb_value
 fmrb_hal_init_wrapper(mrb_state *mrb, mrb_value self)

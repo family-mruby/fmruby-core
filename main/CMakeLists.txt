@@ -2,7 +2,7 @@ set(COMPONENT_SRCS
     "main.c"
     "boot.c"
     "kernel/fmrb_kernel.c"
-    "kernel/system/system_task.c"
+    "kernel/host/host_task.c"
 )
 
 # Collect all Ruby files to compile to bytecode
@@ -33,7 +33,7 @@ endforeach()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "." "kernel" "kernel/system"
+    INCLUDE_DIRS "." "kernel" "kernel/host" "include"
     REQUIRES fmrb_hal fmrb_ipc fmrb_gfx fmrb_audio picoruby-esp32 log
 )
 

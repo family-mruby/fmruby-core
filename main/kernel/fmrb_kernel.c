@@ -124,14 +124,14 @@ int fmrb_kernel_start(void)
 {
     ESP_LOGI(TAG, "Starting Family mruby OS Kernel...");
     // Create host task
-    int result_i = fmrb_host_task_init();
+    int result = fmrb_host_task_init();
     if (result < 0) {
         ESP_LOGE(TAG, "Failed to start host task");
         return -1;
     }
 
     // Create kernel task
-    BaseType_t result = xTaskCreate(
+    BaseType_t xResult = xTaskCreate(
         fmrb_kernel_task,
         "fmrb_kernel",
         FMRB_KERNEL_TASK_STACK_SIZE,
@@ -140,7 +140,7 @@ int fmrb_kernel_start(void)
         &g_kernel_task_handle
     );
 
-    if (result != pdPASS) {
+    if (xResult != pdPASS) {
         ESP_LOGE(TAG, "Failed to create kernel task");
         return -1;
     }

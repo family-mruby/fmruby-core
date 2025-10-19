@@ -1,5 +1,5 @@
 #include "picoruby.h"
-#include "../../main/lib/fmrb_gfx/fmrb_gfx.h"
+#include "fmrb_gfx.h"
 
 // Forward declaration
 extern fmrb_gfx_context_t g_gfx_context;

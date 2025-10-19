@@ -1,5 +1,5 @@
 #include "picoruby.h"
-#include "../../main/lib/fmrb_audio/fmrb_audio.h"
+#include "fmrb_audio.h"
 
 static mrb_value
 fmrb_audio_init_wrapper(mrb_state *mrb, mrb_value self)

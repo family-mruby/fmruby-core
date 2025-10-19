@@ -6,6 +6,7 @@
 - 勝手にgit操作しない
 - ASCII以外の絵文字等は使用しない。✓など使用しない。
 - .gitsubmoduleに含まれるディレクトリは編集禁止
+- 問題を解決する際に、ソースコードをビルド対象から外すことは本質的ではないので、禁止
 
 ## 目的
 
@@ -59,6 +60,7 @@ rake -T # その他のコマンドの使い方
     主にIPCで利用することを想定している
 - lib/
   - submoduleを編集必要なときに差分を置く
+    差分ファイルは、lib/patch に配置して、rake setup でsubmodule配下にコピーする。
 - main
   - Family mruby OS
     PicoRubyで動くWindow3.1ライクなGUIシステム。マルチタスク機能も提供する
