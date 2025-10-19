@@ -4,14 +4,28 @@ set(COMPONENT_SRCS
     "kernel/system/system_task.c"
 )
 
-# Ruby files to compile to bytecode
-set(RUBY_FILES kernel)
+# Collect all Ruby files to compile to bytecode
 set(PICORBC ${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/picoruby/bin/picorbc)
 set(GENERATED_C_FILES "")
 
-# Prepare list of generated C files
-foreach(rb ${RUBY_FILES})
-  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/kernel/mrb/${rb}.c)
+# Find all Ruby files in kernel/mrblib/
+file(GLOB KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/kernel/mrblib/*.rb)
+
+# Find all Ruby files in app/system_app/mrblib/
+file(GLOB SYSTEM_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/app/system_app/mrblib/*.rb)
+
+# Process kernel Ruby files
+foreach(RB_FILE ${KERNEL_RUBY_FILES})
+  get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
+  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/kernel/mrb/${RB_NAME}.c)
+  list(APPEND GENERATED_C_FILES ${C_FILE})
+  list(APPEND COMPONENT_SRCS ${C_FILE})
+endforeach()
+
+# Process system_app Ruby files
+foreach(RB_FILE ${SYSTEM_APP_RUBY_FILES})
+  get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
+  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/app/system_app/mrb/${RB_NAME}.c)
   list(APPEND GENERATED_C_FILES ${C_FILE})
   list(APPEND COMPONENT_SRCS ${C_FILE})
 endforeach()
@@ -22,15 +36,30 @@ idf_component_register(
     REQUIRES fmrb_hal fmrb_ipc fmrb_gfx fmrb_audio picoruby-esp32 log
 )
 
-# Generate C files from Ruby files (must be after idf_component_register)
-foreach(rb ${RUBY_FILES})
-  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/kernel/mrb/${rb}.c)
-  set(RB_FILE ${CMAKE_CURRENT_LIST_DIR}/kernel/mrblib/${rb}.rb)
+# Generate C files from kernel Ruby files (must be after idf_component_register)
+foreach(RB_FILE ${KERNEL_RUBY_FILES})
+  get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
+  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/kernel/mrb/${RB_NAME}.c)
   add_custom_command(
     OUTPUT ${C_FILE}
     COMMAND ${CMAKE_COMMAND} -E echo "Compiling ${RB_FILE}..."
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_LIST_DIR}/kernel/mrb
-    COMMAND ${PICORBC} -B ${rb}_irep -o ${C_FILE} ${RB_FILE}
+    COMMAND ${PICORBC} -B${RB_NAME}_irep -o${C_FILE} ${RB_FILE}
+    DEPENDS ${RB_FILE}
+    COMMENT "Compiling ${RB_FILE} to bytecode"
+    VERBATIM
+  )
+endforeach()
+
+# Generate C files from system_app Ruby files
+foreach(RB_FILE ${SYSTEM_APP_RUBY_FILES})
+  get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
+  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/app/system_app/mrb/${RB_NAME}.c)
+  add_custom_command(
+    OUTPUT ${C_FILE}
+    COMMAND ${CMAKE_COMMAND} -E echo "Compiling ${RB_FILE}..."
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_LIST_DIR}/app/system_app/mrb
+    COMMAND ${PICORBC} -B${RB_NAME}_irep -o${C_FILE} ${RB_FILE}
     DEPENDS ${RB_FILE}
     COMMENT "Compiling ${RB_FILE} to bytecode"
     VERBATIM
