@@ -31,6 +31,9 @@ task :setup do
   sh "cp -f lib/patch/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
   sh "cp -rf lib/patch/picoruby-fmrb-app components/picoruby-esp32/picoruby/mrbgems/"
   sh "cp -f lib/patch/picoruby-machine/mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/"
+  sh "cp -f lib/patch/prism_xallocator.h components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/include/"
+  sh "cp -f lib/patch/prism_alloc.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/include/"
+  sh "cp -f lib/patch/mruby-compiler2-mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/mrbgem.rake"
 end
 
 namespace :set_target do
@@ -71,7 +74,15 @@ end
 
 desc "Open menuconfig"
 task :menuconfig do
-  sh "#{DOCKER_CMD} idf.py menuconfig"
+  term = ENV['TERM'] || 'xterm-256color'
+  docker_cmd_interactive = [
+    "docker run --rm -it",
+    "--user #{UID}:#{GID}",
+    "-e TERM=#{term}",
+    "-v #{PWD_}:/project",
+    IMAGE
+  ].join(" ")
+  sh "#{docker_cmd_interactive} idf.py menuconfig"
 end
 
 desc "Full clean build artifacts (including host)"

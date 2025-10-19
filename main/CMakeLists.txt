@@ -3,6 +3,7 @@ set(COMPONENT_SRCS
     "boot.c"
     "kernel/fmrb_kernel.c"
     "kernel/host/host_task.c"
+    "lib/fmrb_mem/prism_alloc.c"
 )
 
 # Collect all Ruby files to compile to bytecode
@@ -33,8 +34,8 @@ endforeach()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "." "kernel" "kernel/host" "include"
-    REQUIRES fmrb_hal fmrb_ipc fmrb_gfx fmrb_audio picoruby-esp32 log
+    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "lib/fmrb_mem"
+    REQUIRES fmrb_hal fmrb_ipc fmrb_gfx fmrb_audio picoruby-esp32 mem_allocator log
 )
 
 # Generate C files from kernel Ruby files (must be after idf_component_register)

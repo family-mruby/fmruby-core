@@ -62,3 +62,13 @@
 #define FMRB_USER_APP_TASK_STACK_SIZE (16 * 1024)
 #define FMRB_USER_APP_PRIORITY (5)
 
+
+
+typedef struct {
+    int id;
+    char name[16];
+    int type; //0: kernel, 1: system app, 2: user app
+    void* mrb;
+} mrb_task_ctx_t;
+
+mrb_task_ctx_t* get_mrb_context(void);
