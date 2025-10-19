@@ -80,12 +80,12 @@ bool picoruby_load_model_by_name(const char *gem);
 #elif defined(PICORB_VM_MRUBY)
 
 // Disable unstable new functions
-// #if !defined(MRB_USE_TASK_SCHEDULER)
-// #define MRB_USE_TASK_SCHEDULER 1
-// #endif
-// #if !defined(MRB_USE_VM_SWITCH_DISPATCH)
-// #define MRB_USE_VM_SWITCH_DISPATCH 1
-// #endif
+#if !defined(MRB_USE_TASK_SCHEDULER)
+#define MRB_USE_TASK_SCHEDULER 1
+#endif
+#if !defined(MRB_USE_VM_SWITCH_DISPATCH)
+#define MRB_USE_VM_SWITCH_DISPATCH 1
+#endif
 
 #define picorb_state mrb_state
 #define picorb_value mrb_value
