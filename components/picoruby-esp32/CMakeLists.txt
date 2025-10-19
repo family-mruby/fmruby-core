@@ -32,11 +32,10 @@ endif()
 # Set platform-specific source files
 if(IDF_TARGET STREQUAL "linux")
     set(PICORUBY_SRCS
-        ${COMPONENT_DIR}/picoruby-esp32.c
+        # No platform-specific sources for Linux build
     )
 else()
     set(PICORUBY_SRCS
-        ${COMPONENT_DIR}/picoruby-esp32.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/flash_disk.c
@@ -127,24 +126,4 @@ add_custom_target(
 )
 add_dependencies(${COMPONENT_LIB} picoruby)
 
-# Compile Ruby files
-set(RUBY_FILES main_task)
-set(PICORBC ${COMPONENT_DIR}/picoruby/bin/picorbc)
-set(GENERATED_C_FILES "")
-
-foreach(rb ${RUBY_FILES})
-  set(C_FILE ${COMPONENT_DIR}/mrb/${rb}.c)
-  set(RB_FILE ${COMPONENT_DIR}/mrblib/${rb}.rb)
-  add_custom_command(
-    OUTPUT ${C_FILE}
-    COMMAND ${CMAKE_COMMAND} -E echo "Compiling ${RB_FILE}..."
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${COMPONENT_DIR}/mrb
-    COMMAND ${PICORBC} -B${rb} -o${C_FILE} ${RB_FILE}
-    DEPENDS picoruby ${RB_FILE}
-    COMMENT "Compiling ${RB_FILE}"
-    VERBATIM
-  )
-  list(APPEND GENERATED_C_FILES ${C_FILE})
-endforeach(rb)
-
-target_sources(${COMPONENT_LIB} PRIVATE ${GENERATED_C_FILES})
+# No Ruby files to compile - main application is handled by picoruby-fmrb-app mrbgem
