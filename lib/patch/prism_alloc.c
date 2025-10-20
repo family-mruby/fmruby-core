@@ -48,17 +48,16 @@ static prism_pool_t prism_pool = NULL;
   #endif
 #endif
 
-// ESP32 environment: use SPIRAM for memory pool to avoid DRAM overflow
-#if !defined(PICORB_PLATFORM_POSIX) && !defined(PRISM_BUILD_HOST)
-  #include "esp_attr.h"
+// Memory pool: actual storage depends on build target
+// - ESP32: defined in main/lib/fmrb_mem/fmrb_mempool.c with SPIRAM attribute
+// - Host/Linux: defined locally below
+#ifdef PRISM_BUILD_HOST
+// Host build (picorbc): allocate locally since main/ components not linked
+static unsigned char g_prism_memory_pool[PRISM_POOL_SIZE] __attribute__((aligned(8)));
 #else
-  #define EXT_RAM_BSS_ATTR
+// Target build: use memory pool from fmrb_mempool.c
+extern unsigned char g_prism_memory_pool[];
 #endif
-
-// Use static to ensure it's in data segment, not stack
-// ESP32: placed in SPIRAM via EXT_RAM_BSS_ATTR
-// Linux/Host: regular memory
-static EXT_RAM_BSS_ATTR unsigned char prism_memory_pool[PRISM_POOL_SIZE] __attribute__((aligned(8)));
 
 static size_t total_allocated = 0;
 static size_t peak_allocated = 0;
@@ -82,7 +81,7 @@ int prism_malloc_init(void)
     fprintf(stderr, "[PRISM] TLSF block size max: %zu bytes\n", tlsf_block_size_max());
 
     // Create TLSF instance with the memory pool
-    prism_tlsf = tlsf_create_with_pool(prism_memory_pool, PRISM_POOL_SIZE);
+    prism_tlsf = tlsf_create_with_pool(g_prism_memory_pool, PRISM_POOL_SIZE);
 
     if (prism_tlsf == NULL) {
         fprintf(stderr, "[PRISM] TLSF Init Failed!\n");
