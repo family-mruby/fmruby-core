@@ -22,26 +22,25 @@ static TaskHandle_t g_kernel_task_handle = NULL;
 // Forward declarations
 extern void mrb_picoruby_fmrb_init(mrb_state *mrb);
 
-mrb_state *global_mrb = NULL;  // Kernel VM only
-
 /**
  * Initialize the kernel mruby VM
  */
 static int fmrb_kernel_init_vm(void)
 {
     ESP_LOGI(TAG, "Initializing kernel VM...");
+    // Initialize picoruby-fmrb-kernel
+    // set thread local pointer
+    mrb_picoruby_fmrb_init(g_kernel_mrb);
+    ESP_LOGI(TAG, "FMRB bindings initialized");
+
+
     // Create mruby state
+    // TODO use thread local
     g_kernel_mrb = mrb_open();
     if (!g_kernel_mrb) {
         ESP_LOGE(TAG, "Failed to create mruby state");
         return -1;
     }
-    // TODO: to check best way to handle prism
-    global_mrb = g_kernel_mrb;
-
-    // Initialize FMRB bindings
-    mrb_picoruby_fmrb_init(g_kernel_mrb);
-    ESP_LOGI(TAG, "FMRB bindings initialized");
 
     ESP_LOGI(TAG, "Kernel VM initialized successfully");
     return 0;
