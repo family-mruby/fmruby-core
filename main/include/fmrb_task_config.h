@@ -56,6 +56,10 @@
 #define FMRB_HOST_TASK_PRIORITY (10)
 
 // -- Base App task
+// System App task
+#define FMRB_SYSTEM_APP_TASK_STACK_SIZE (60 * 1024)
+#define FMRB_SYSTEM_APP_TASK_PRIORITY (8)
+
 // Shell
 #define FMRB_SHELL_APP_TASK_STACK_SIZE (60 * 1024)
 #define FMRB_SHELL_APP_PRIORITY (5)

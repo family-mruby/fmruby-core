@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -12,8 +13,37 @@
 #include "boot.h"
 #include "kernel/fmrb_kernel.h"
 #include "kernel/host/host_task.h"
+#include "fmrb_app.h"
+#include "fmrb_task_config.h"
 
 static const char *TAG = "boot";
+
+// Generated from system_gui.app.rb (will be compiled by picorbc)
+extern const uint8_t system_gui_irep[];
+
+static void create_system_app(void)
+{
+    ESP_LOGI(TAG, "Creating system GUI app...");
+
+    fmrb_spawn_attr_t attr = {
+        .app_id = PROC_ID_SYSTEM_APP,
+        .type = APP_TYPE_SYSTEM_APP,
+        .name = "system_gui",
+        .irep = system_gui_irep,
+        .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
+        .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
+        .core_affinity = -1,  // No core affinity
+        .event_queue_len = 10 // Event queue for GUI events
+    };
+
+    int32_t app_id;
+    if (!fmrb_app_spawn(&attr, &app_id)) {
+        ESP_LOGE(TAG, "Failed to spawn system GUI app");
+        return;
+    }
+
+    ESP_LOGI(TAG, "System GUI app spawned successfully (id=%ld)", app_id);
+}
 
 // Family mruby OS initialization
 void fmrb_os_init(void)
@@ -32,8 +62,11 @@ void fmrb_os_init(void)
         ESP_LOGE(TAG, "Failed to kernel");
         return;
     }
+    //TODO wait for kernel startup
 
     // Create system apps
+    create_system_app();
+
     ESP_LOGI(TAG, "Family mruby OS initialization complete");
 }
 

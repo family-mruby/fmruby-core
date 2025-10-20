@@ -15,8 +15,8 @@ set(GENERATED_C_FILES "")
 # Find all Ruby files in kernel/mrblib/
 file(GLOB KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/kernel/mrblib/*.rb)
 
-# Find all Ruby files in app/system_app/mrblib/
-file(GLOB SYSTEM_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/app/system_app/mrblib/*.rb)
+# Find all Ruby files in app/default_app/mrblib/
+file(GLOB SYSTEM_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/app/default_app/mrblib/*.rb)
 
 # Process kernel Ruby files
 foreach(RB_FILE ${KERNEL_RUBY_FILES})
@@ -26,10 +26,10 @@ foreach(RB_FILE ${KERNEL_RUBY_FILES})
   list(APPEND COMPONENT_SRCS ${C_FILE})
 endforeach()
 
-# Process system_app Ruby files
-foreach(RB_FILE ${SYSTEM_APP_RUBY_FILES})
+# Process default_app Ruby files
+foreach(RB_FILE ${DEFAULT_APP_RUBY_FILES})
   get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
-  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/app/system_app/mrb/${RB_NAME}.c)
+  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/app/default_app/mrb/${RB_NAME}.c)
   list(APPEND GENERATED_C_FILES ${C_FILE})
   list(APPEND COMPONENT_SRCS ${C_FILE})
 endforeach()
@@ -55,14 +55,14 @@ foreach(RB_FILE ${KERNEL_RUBY_FILES})
   )
 endforeach()
 
-# Generate C files from system_app Ruby files
-foreach(RB_FILE ${SYSTEM_APP_RUBY_FILES})
+# Generate C files from default_app Ruby files
+foreach(RB_FILE ${DEFAULT_APP_RUBY_FILES})
   get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
-  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/app/system_app/mrb/${RB_NAME}.c)
+  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/app/default_app/mrb/${RB_NAME}.c)
   add_custom_command(
     OUTPUT ${C_FILE}
     COMMAND ${CMAKE_COMMAND} -E echo "Compiling ${RB_FILE}..."
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_LIST_DIR}/app/system_app/mrb
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_LIST_DIR}/app/default_app/mrb
     COMMAND ${PICORBC} -B${RB_NAME}_irep -o${C_FILE} ${RB_FILE}
     DEPENDS ${RB_FILE}
     COMMENT "Compiling ${RB_FILE} to bytecode"
