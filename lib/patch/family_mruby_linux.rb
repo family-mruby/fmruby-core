@@ -58,7 +58,8 @@ MRuby::Build.new do |conf|
 
   # Family mruby specific
   conf.gem core: "picoruby-fmrb-app"
-  
+  conf.gem core: "picoruby-fmrb-kernel"
+
   # settings for microruby
   conf.microruby
 

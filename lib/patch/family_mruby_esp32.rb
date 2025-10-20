@@ -63,6 +63,7 @@ MRuby::CrossBuild.new("esp32") do |conf|
 
   # Family mruby specific
   conf.gem core: "picoruby-fmrb-app"
+  conf.gem core: "picoruby-fmrb-kernel"
 
   # Manual microruby configuration without task scheduler
   # conf.cc.include_paths << "#{conf.gems['mruby-compiler2'].dir}/include"

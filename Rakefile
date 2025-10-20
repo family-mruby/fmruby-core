@@ -27,9 +27,13 @@ DOCKER_CMD_PRIVILEGED = [
 
 desc "Build Setup (Patch files)"
 task :setup do
+  # Copy fmrb mrbgem
+  sh "cp -rf lib/mrbgem/picoruby-fmrb-app components/picoruby-esp32/picoruby/mrbgems/"
+  sh "cp -rf lib/mrbgem/picoruby-fmrb-kernel components/picoruby-esp32/picoruby/mrbgems/"
+
+  # Copy files
   sh "cp -f lib/patch/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
   sh "cp -f lib/patch/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
-  sh "cp -rf lib/mrbgem/picoruby-fmrb-app components/picoruby-esp32/picoruby/mrbgems/"
   sh "cp -f lib/patch/picoruby-machine/mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/"
 
   # Copy TLSF-based prism allocator files
