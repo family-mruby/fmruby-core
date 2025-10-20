@@ -32,8 +32,6 @@ task :setup do
   sh "cp -rf lib/patch/picoruby-fmrb-app components/picoruby-esp32/picoruby/mrbgems/"
   sh "cp -f lib/patch/picoruby-machine/mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/"
   sh "cp -f lib/patch/prism_xallocator.h components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/include/"
-  sh "cp -f lib/patch/prism_alloc.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/include/"
-  sh "cp -f lib/patch/mruby-compiler2-mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/mrbgem.rake"
 end
 
 namespace :set_target do

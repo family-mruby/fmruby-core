@@ -3,22 +3,14 @@
 
 #include <stddef.h>
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-// Prism allocator functions (implemented in prism_alloc.c)
-int prism_malloc_init(void);
-void* prism_malloc(size_t size);
-void* prism_calloc(size_t nmemb, size_t size);
-void* prism_realloc(void* ptr, size_t size);
-void prism_free(void* ptr);
-
-#ifdef __cplusplus
-}
-#endif
-
 #if defined(MRC_TARGET_MRUBY)
+  // Prism allocator functions (implemented in prism_alloc.c)
+  extern int prism_malloc_init(void);
+  extern void* prism_malloc(size_t size);
+  extern void* prism_calloc(size_t nmemb, size_t size);
+  extern void* prism_realloc(void* ptr, size_t size);
+  extern void prism_free(void* ptr);
+
   #include "mruby.h"
 
   #define xmalloc(size)             prism_malloc(size)
