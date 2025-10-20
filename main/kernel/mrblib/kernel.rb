@@ -11,7 +11,6 @@ class FmrbKernel
   end
 
   def start
-    puts "Family mruby OS Kernel starting..."
     @running = true
     # @last_frame_time = FmrbHAL.time_ms
 
