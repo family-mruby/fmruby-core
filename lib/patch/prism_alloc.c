@@ -22,8 +22,14 @@ static pool_t prism_pool = NULL;
   #endif
 #endif
 
+#if !defined(PICORB_PLATFORM_POSIX) && !defined(PRISM_BUILD_HOST)
+  #include "esp_attr.h"
+#else
+  #define EXT_RAM_BSS_ATTR
+#endif
+
 // Use static to ensure it's in data segment, not stack
-static unsigned char prism_memory_pool[PRISM_POOL_SIZE] __attribute__((aligned(8)));
+EXT_RAM_BSS_ATTR static unsigned char prism_memory_pool[PRISM_POOL_SIZE] __attribute__((aligned(8)));
 
 static size_t total_allocated = 0;
 static size_t peak_allocated = 0;

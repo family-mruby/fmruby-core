@@ -10,6 +10,7 @@
     #define PRISM_COMPILE_LOCK()   pthread_mutex_lock(&prism_compile_mutex)
     #define PRISM_COMPILE_UNLOCK() pthread_mutex_unlock(&prism_compile_mutex)
   #else
+    #if 0
     // ESP32: use FreeRTOS semaphore
     #include "freertos/FreeRTOS.h"
     #include "freertos/semphr.h"
@@ -28,6 +29,11 @@
     } while(0)
 
     #define PRISM_COMPILE_UNLOCK() xSemaphoreGive(prism_compile_mutex)
+    #else
+    #define PRISM_COMPILE_LOCK()
+    #define PRISM_COMPILE_UNLOCK()
+
+    #endif
   #endif
 
 #else

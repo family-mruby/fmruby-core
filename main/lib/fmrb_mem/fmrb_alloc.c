@@ -1,5 +1,6 @@
 #include <stddef.h>
 #include <string.h>
+#include "esp_attr.h"
 #include "tlsf.h"
 #include "fmrb_mem.h"
 
@@ -8,7 +9,7 @@ static pool_t fmrb_pool = NULL;
 
 #define FMRB_POOL_SIZE (256 * 1024)  // 256KB default
 
-static unsigned char fmrb_memory_pool[FMRB_POOL_SIZE];
+EXT_RAM_BSS_ATTR static unsigned char fmrb_memory_pool[FMRB_POOL_SIZE];
 
 int fmrb_malloc_init(void)
 {
