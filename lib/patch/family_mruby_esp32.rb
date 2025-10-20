@@ -65,14 +65,6 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.gem core: "picoruby-fmrb-app"
   conf.gem core: "picoruby-fmrb-kernel"
 
-  # Manual microruby configuration without task scheduler
-  # conf.cc.include_paths << "#{conf.gems['mruby-compiler2'].dir}/include"
-  # conf.cc.include_paths << "#{conf.gems['mruby-compiler2'].dir}/lib/prism/include"
-  # conf.cc.include_paths << "#{conf.gems['picoruby-mruby'].dir}/lib/mruby/include"
-  # conf.cc.include_paths << "#{conf.gems['picoruby-machine'].dir}/include"
-  # conf.cc.include_paths << "#{conf.gems['picoruby-io-console'].dir}/include"
-  # conf.cc.defines << "PICORB_VM_MRUBY"
-
   # settings for microruby
   conf.microruby
 

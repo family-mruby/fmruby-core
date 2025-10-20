@@ -100,14 +100,3 @@ fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 bool fmrb_post_event(int32_t id, const void* event, size_t size, TickType_t timeout);
 bool fmrb_broadcast(const void* event, size_t size, TickType_t timeout);
 
-// Legacy compatibility
-int32_t fmrb_app_create_task(
-    enum FMRB_PROC_ID app_id,
-    const char* app_name,
-    enum FMRB_APP_TYPE type,
-    unsigned char* irep,
-    int32_t stack_size,
-    int32_t priority
-);
-int32_t create_app_task_from_file(char* path);
-int32_t create_app_task_from_mem(char* app_name, unsigned char* app_irep);

@@ -36,22 +36,25 @@ int32_t fmrb_kernel_start(void)
         return -1;
     }
 
-    // Create kernel task using unified API
-    result = fmrb_app_create_task(
-        PROC_ID_KERNEL,
-        "fmrb_kernel",
-        APP_TYPE_KERNEL,
-        (uint8_t*)kernel_irep,
-        FMRB_KERNEL_TASK_STACK_SIZE,
-        FMRB_KERNEL_TASK_PRIORITY
-    );
+    // Create kernel task using spawn API
+    fmrb_spawn_attr_t attr = {
+        .app_id = PROC_ID_KERNEL,
+        .type = APP_TYPE_KERNEL,
+        .name = "fmrb_kernel",
+        .irep = kernel_irep,
+        .stack_words = FMRB_KERNEL_TASK_STACK_SIZE,
+        .priority = FMRB_KERNEL_TASK_PRIORITY,
+        .core_affinity = -1,  // No core affinity
+        .event_queue_len = 0  // No event queue for kernel
+    };
 
-    if (result != 0) {
-        ESP_LOGE(TAG, "Failed to create kernel task");
+    int32_t kernel_id;
+    if (!fmrb_app_spawn(&attr, &kernel_id)) {
+        ESP_LOGE(TAG, "Failed to spawn kernel task");
         return -1;
     }
 
-    ESP_LOGI(TAG, "Kernel task created successfully");
+    ESP_LOGI(TAG, "Kernel task spawned successfully (id=%ld)", kernel_id);
     return 0;
 }
 
