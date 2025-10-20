@@ -105,16 +105,16 @@ static fmrb_ipc_transport_err_t send_raw_message(const fmrb_ipc_header_t *header
     }
 
     // Debug: dump msgpack bytes
-    //printf("TX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%" PRIu32 " msgpack_size=%zu\n",
-           FMRB_IPC_TYPE_GRAPHICS, (uint8_t)(header->sequence & 0xFF),
-           header->msg_type, header->payload_len, sbuf.size);
-    //printf("TX msgpack bytes (%zu): ", sbuf.size);
-    for (size_t i = 0; i < sbuf.size && i < 64; i++) {
-        printf("%02X ", (uint8_t)sbuf.data[i]);
-        if ((i + 1) % 16 == 0) printf("\n");
-    }
-    printf("\n");
-    fflush(stdout);
+    // printf("TX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%" PRIu32 " msgpack_size=%zu\n",
+    //        FMRB_IPC_TYPE_GRAPHICS, (uint8_t)(header->sequence & 0xFF),
+    //        header->msg_type, header->payload_len, sbuf.size);
+    // printf("TX msgpack bytes (%zu): ", sbuf.size);
+    // for (size_t i = 0; i < sbuf.size && i < 64; i++) {
+    //     printf("%02X ", (uint8_t)sbuf.data[i]);
+    //     if ((i + 1) % 16 == 0) printf("\n");
+    // }
+    // printf("\n");
+    // fflush(stdout);
 
     // Send via HAL (HAL will add CRC32 and COBS encode)
     fmrb_ipc_message_t hal_msg = {
