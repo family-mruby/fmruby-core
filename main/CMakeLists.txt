@@ -3,7 +3,7 @@ set(COMPONENT_SRCS
     "boot.c"
     "kernel/fmrb_kernel.c"
     "kernel/host/host_task.c"
-    "lib/fmrb_mem/prism_alloc.c"
+    "lib/fmrb_mem/fmrb_alloc.c"
 )
 
 # Collect all Ruby files to compile to bytecode
