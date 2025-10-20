@@ -12,6 +12,12 @@ MRuby::Gem::Specification.new('mruby-compiler2') do |spec|
   cc.defines.flatten!
 
   cc.defines << "PRISM_XALLOCATOR"
+
+  # Distinguish host build (picorbc) from target build (ESP32/Linux runtime)
+  if spec.build.name == 'host'
+    cc.defines << "PRISM_BUILD_HOST"
+  end
+
   if cc.defines.include?("PICORB_VM_MRUBY")
     cc.defines << "MRC_TARGET_MRUBY"
   elsif cc.defines.include?("PICORB_VM_MRUBYC")
