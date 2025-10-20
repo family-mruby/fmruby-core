@@ -7,6 +7,7 @@
 - ASCII以外の絵文字等は使用しない。✓など使用しない。
 - .gitsubmoduleに含まれるディレクトリは編集禁止
 - 問題を解決する際に、ソースコードをビルド対象から外すことは本質的ではないので、禁止
+- コミットログの作成を依頼された場合は、数行程度で完結にまとめた英文を提供する
 
 ## 目的
 
@@ -69,6 +70,7 @@ rake -T # その他のコマンドの使い方
   - lib/patch/prism_xallocator.h - Prismパーサー用カスタムアロケータヘッダ (xmalloc等をTLSFにマッピング)
   - lib/patch/prism_alloc.c - TLSF実装 (ホスト/ターゲット両対応、PRISM_BUILD_HOSTで切り替え)
   - lib/patch/mruby-compiler2-mrbgem.rake - mruby-compiler2ビルド設定 (TLSF組み込み、PRISM_BUILD_HOST定義)
+  - lib/patch/mruby-compiler2-compile.c - スレッドセーフなcompile.c (マルチタスク環境でMutex保護、eval/Sandboxコンパイル時の競合防止)
 - main
   - Family mruby OS
     PicoRubyで動くWindow3.1ライクなGUIシステム。マルチタスク機能も提供する
