@@ -29,13 +29,13 @@ desc "Build Setup (Patch files)"
 task :setup do
   sh "cp -f lib/patch/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
   sh "cp -f lib/patch/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
-  sh "cp -rf lib/patch/picoruby-fmrb-app components/picoruby-esp32/picoruby/mrbgems/"
+  sh "cp -rf lib/mrbgem/picoruby-fmrb-app components/picoruby-esp32/picoruby/mrbgems/"
   sh "cp -f lib/patch/picoruby-machine/mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/"
 
   # Copy TLSF-based prism allocator files
-  sh "cp -f lib/patch/prism_xallocator.h components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/include/"
-  sh "cp -f lib/patch/prism_alloc.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/"
-  sh "cp -f lib/patch/mruby-compiler2-mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/mrbgem.rake"
+  sh "cp -f lib/patch/compiler/prism_xallocator.h components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/include/"
+  sh "cp -f lib/patch/compiler/prism_alloc.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/"
+  sh "cp -f lib/patch/compiler/mruby-compiler2-mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/mrbgem.rake"
 
   # Copy TLSF library files
   sh "mkdir -p components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/tlsf"
@@ -43,10 +43,10 @@ task :setup do
   sh "cp -f components/mem_allocator/tlsf/tlsf.h components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/tlsf/"
 
   # Copy TLSF wrapper with renamed symbols to avoid ESP-IDF heap conflicts
-  sh "cp -f lib/patch/prism_tlsf_wrapper.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/"
+  sh "cp -f lib/patch/compiler/prism_tlsf_wrapper.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/"
 
   # Copy thread-safe compile.c with mutex protection for multi-task environment
-  sh "cp -f lib/patch/mruby-compiler2-compile.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/src/compile.c"
+  sh "cp -f lib/patch/compiler/mruby-compiler2-compile.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/src/compile.c"
 end
 
 namespace :set_target do
