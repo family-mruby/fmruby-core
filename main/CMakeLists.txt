@@ -4,6 +4,7 @@ set(COMPONENT_SRCS
     "kernel/fmrb_kernel.c"
     "kernel/host/host_task.c"
     "lib/fmrb_mem/fmrb_alloc.c"
+    "lib/fmrb_mem/fmrb_mempool.c"
 )
 
 # Collect all Ruby files to compile to bytecode

@@ -72,6 +72,8 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/include
+    ${PICORUBY_BUILD_INCLUDE}
   PRIV_REQUIRES
     ${PLATFORM_PRIV_REQUIRES}
     mbedtls
@@ -119,7 +121,7 @@ add_prebuilt_library(
 target_link_libraries(${COMPONENT_LIB} PRIVATE libmruby)
 target_include_directories(
   ${COMPONENT_LIB}
-  PRIVATE
+  PUBLIC
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
     ${PICORUBY_BUILD_INCLUDE}
