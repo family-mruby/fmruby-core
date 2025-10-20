@@ -73,7 +73,6 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/include
-    ${PICORUBY_BUILD_INCLUDE}
   PRIV_REQUIRES
     ${PLATFORM_PRIV_REQUIRES}
     mbedtls
@@ -103,6 +102,12 @@ else()
   )
 endif()
 
+
+# Create build directories to avoid CMake validation errors
+execute_process(
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${PICORUBY_BUILD_INCLUDE}
+  COMMAND ${CMAKE_COMMAND} -E make_directory ${MRBGEMS_DIR}
+)
 
 # Build PicoRuby
 add_custom_command(
