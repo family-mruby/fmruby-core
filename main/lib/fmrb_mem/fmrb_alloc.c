@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 #include "esp_attr.h"
 #include "tlsf.h"
@@ -11,7 +12,7 @@ static pool_t fmrb_pool = NULL;
 
 EXT_RAM_BSS_ATTR static unsigned char fmrb_memory_pool[FMRB_POOL_SIZE];
 
-int fmrb_malloc_init(void)
+int32_t fmrb_malloc_init(void)
 {
     if (fmrb_tlsf != NULL) {
         return 0;  // Already initialized
@@ -74,7 +75,7 @@ void fmrb_free(void* ptr)
 }
 
 // Optional: Get memory usage statistics
-int fmrb_malloc_check(void)
+int32_t fmrb_malloc_check(void)
 {
     if (fmrb_tlsf == NULL) {
         return -1;  // Not initialized
@@ -87,11 +88,11 @@ typedef struct {
     size_t total_size;
     size_t used_size;
     size_t free_size;
-    int used_blocks;
-    int free_blocks;
+    int32_t used_blocks;
+    int32_t free_blocks;
 } fmrb_pool_stats_t;
 
-static void fmrb_count_blocks(void* ptr, size_t size, int used, void* user)
+static void fmrb_count_blocks(void* ptr, size_t size, int32_t used, void* user)
 {
     fmrb_pool_stats_t* stats = (fmrb_pool_stats_t*)user;
     if (used) {

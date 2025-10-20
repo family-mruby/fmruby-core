@@ -1,4 +1,5 @@
 #include <stddef.h>
+#include <stdint.h>
 #include "esp_attr.h"
 #include "fmrb_mem.h"
 
@@ -18,7 +19,7 @@ static unsigned char* g_mempool_list[POOL_ID_MAX] = {
     [POOL_ID_USER_APP2]  = g_mempool_user_app2,
 };
 
-void* fmrb_get_mempool_ptr(int id){
+void* fmrb_get_mempool_ptr(int32_t id){
     if(id < 0 || id >= POOL_ID_MAX)
     {
         return NULL;
@@ -26,7 +27,7 @@ void* fmrb_get_mempool_ptr(int id){
     return g_mempool_list[id];
 }
 
-void* fmrb_get_mempool_app_ptr(int no){
+void* fmrb_get_mempool_app_ptr(int32_t no){
     if(no < 0 || no >= FMRB_USER_APP_COUNT)
     {
         return NULL;
@@ -34,7 +35,7 @@ void* fmrb_get_mempool_app_ptr(int no){
     return g_mempool_list[no + POOL_ID_USER_APP0];
 }
 
-size_t fmrb_get_mempool_size(int id){
+size_t fmrb_get_mempool_size(int32_t id){
     switch(id){
         case POOL_ID_KERNEL:
             return FMRB_MEM_POOL_SIZE_KERNEL;

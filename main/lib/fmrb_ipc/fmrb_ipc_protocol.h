@@ -232,9 +232,9 @@ ssize_t fmrb_ipc_frame_encode(uint8_t type, uint8_t seq, const uint8_t *payload,
  * @param payload_len Output actual payload length
  * @return 0 on success, -1 on error
  */
-int fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
-                           fmrb_ipc_frame_hdr_t *hdr, uint8_t *payload,
-                           size_t payload_max_len, uint16_t *payload_len);
+int32_t fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
+                               fmrb_ipc_frame_hdr_t *hdr, uint8_t *payload,
+                               size_t payload_max_len, uint16_t *payload_len);
 
 #ifdef __cplusplus
 }

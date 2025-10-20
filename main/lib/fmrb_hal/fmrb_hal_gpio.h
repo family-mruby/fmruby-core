@@ -30,7 +30,7 @@ fmrb_err_t fmrb_hal_gpio_set_level(fmrb_gpio_num_t gpio_num, uint32_t level);
  * @param gpio_num GPIO pin number
  * @return Pin level (0 or 1), or -1 on error
  */
-int fmrb_hal_gpio_get_level(fmrb_gpio_num_t gpio_num);
+int32_t fmrb_hal_gpio_get_level(fmrb_gpio_num_t gpio_num);
 
 /**
  * @brief Toggle GPIO pin level

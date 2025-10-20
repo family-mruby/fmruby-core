@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 enum FMRB_MEM_POOL_ID{
     POOL_ID_KERNEL = 0,
     POOL_ID_SYSTEM_APP,
@@ -25,6 +27,6 @@ enum FMRB_MEM_POOL_ID{
 
 #define FMRB_USER_APP_COUNT 3
 
-void* fmrb_get_mempool_ptr(int id);
-size_t fmrb_get_mempool_size(int id);
-void* fmrb_get_mempool_app_ptr(int no);
+void* fmrb_get_mempool_ptr(int32_t id);
+size_t fmrb_get_mempool_size(int32_t id);
+void* fmrb_get_mempool_app_ptr(int32_t no);

@@ -1,5 +1,6 @@
 #include "fmrb_hal_gpio.h"
 #include "esp_log.h"
+#include <stdint.h>
 
 #ifdef FMRB_PLATFORM_LINUX
 #include <stdio.h>
@@ -94,7 +95,7 @@ fmrb_err_t fmrb_hal_gpio_set_level(fmrb_gpio_num_t gpio_num, uint32_t level) {
 #endif
 }
 
-int fmrb_hal_gpio_get_level(fmrb_gpio_num_t gpio_num) {
+int32_t fmrb_hal_gpio_get_level(fmrb_gpio_num_t gpio_num) {
 #ifdef FMRB_PLATFORM_LINUX
     if (gpio_num < 0 || gpio_num >= 64 || !gpio_configured[gpio_num]) {
         return -1;
@@ -111,7 +112,7 @@ int fmrb_hal_gpio_get_level(fmrb_gpio_num_t gpio_num) {
 }
 
 fmrb_err_t fmrb_hal_gpio_toggle(fmrb_gpio_num_t gpio_num) {
-    int current_level = fmrb_hal_gpio_get_level(gpio_num);
+    int32_t current_level = fmrb_hal_gpio_get_level(gpio_num);
     if (current_level < 0) {
         return FMRB_ERR_INVALID_PARAM;
     }

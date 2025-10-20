@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -17,7 +18,7 @@ static const char *TAG = "kernel";
 /**
  * Start the kernel task
  */
-int fmrb_kernel_start(void)
+int32_t fmrb_kernel_start(void)
 {
     ESP_LOGI(TAG, "Starting Family mruby OS Kernel...");
 
@@ -29,7 +30,7 @@ int fmrb_kernel_start(void)
     }
 
     // Create host task
-    int result = fmrb_host_task_init();
+    int32_t result = fmrb_host_task_init();
     if (result < 0) {
         ESP_LOGE(TAG, "Failed to start host task");
         return -1;
@@ -40,7 +41,7 @@ int fmrb_kernel_start(void)
         PROC_ID_KERNEL,
         "fmrb_kernel",
         APP_TYPE_KERNEL,
-        (unsigned char*)kernel_irep,
+        (uint8_t*)kernel_irep,
         FMRB_KERNEL_TASK_STACK_SIZE,
         FMRB_KERNEL_TASK_PRIORITY
     );

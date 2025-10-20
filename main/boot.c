@@ -27,7 +27,7 @@ void fmrb_os_init(void)
     // 1M per 1App
 
     // Start Frmb Kernel
-    int result = fmrb_kernel_start();
+    int32_t result = fmrb_kernel_start();
     if(result < 0){
         ESP_LOGE(TAG, "Failed to kernel");
         return;

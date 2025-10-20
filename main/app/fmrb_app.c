@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -84,7 +85,7 @@ static bool transition_state(fmrb_app_task_context_t* ctx, enum FMRB_PROC_STATE 
 /**
  * TLS destructor - called automatically when task is deleted
  */
-static void tls_destructor(int idx, void* pv) {
+static void tls_destructor(int32_t idx, void* pv) {
     fmrb_app_task_context_t* ctx = (fmrb_app_task_context_t*)pv;
     if (!ctx) return;
 
@@ -130,7 +131,7 @@ static void tls_destructor(int idx, void* pv) {
 /**
  * Allocate context slot (must hold g_ctx_lock)
  */
-static int alloc_ctx_index(enum FMRB_PROC_ID requested_id) {
+static int32_t alloc_ctx_index(enum FMRB_PROC_ID requested_id) {
     // For fixed IDs, use that slot directly
     if (requested_id >= 0 && requested_id < FMRB_MAX_APPS) {
         if (g_ctx_pool[requested_id].state == PROC_STATE_FREE) {
@@ -143,7 +144,7 @@ static int alloc_ctx_index(enum FMRB_PROC_ID requested_id) {
     }
 
     // Find first free slot
-    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
         if (g_ctx_pool[i].state == PROC_STATE_FREE) {
             g_ctx_pool[i].gen++;
             return i;
@@ -157,7 +158,7 @@ static int alloc_ctx_index(enum FMRB_PROC_ID requested_id) {
 /**
  * Free context slot (must hold g_ctx_lock)
  */
-static void free_ctx_index(int idx) {
+static void free_ctx_index(int32_t idx) {
     if (idx < 0 || idx >= FMRB_MAX_APPS) return;
 
     fmrb_app_task_context_t* ctx = &g_ctx_pool[idx];
@@ -254,7 +255,7 @@ void fmrb_app_init(void) {
     }
 
     // Initialize context pool
-    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
         memset(&g_ctx_pool[i], 0, sizeof(fmrb_app_task_context_t));
         g_ctx_pool[i].app_id = i;
         g_ctx_pool[i].state = PROC_STATE_FREE;
@@ -267,13 +268,13 @@ void fmrb_app_init(void) {
 /**
  * Spawn new app task
  */
-bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int* out_id) {
+bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     if (!attr || !attr->name || !attr->irep) {
         ESP_LOGE(TAG, "Invalid spawn attributes");
         return false;
     }
 
-    int idx = -1;
+    int32_t idx = -1;
     fmrb_app_task_context_t* ctx = NULL;
 
     // Allocate context slot
@@ -379,7 +380,7 @@ unwind:
 /**
  * Kill app (forceful termination)
  */
-bool fmrb_app_kill(int id) {
+bool fmrb_app_kill(int32_t id) {
     if (id < 0 || id >= FMRB_MAX_APPS) return false;
 
     xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
@@ -408,7 +409,7 @@ bool fmrb_app_kill(int id) {
 /**
  * Stop app (graceful shutdown)
  */
-bool fmrb_app_stop(int id) {
+bool fmrb_app_stop(int32_t id) {
     // For now, same as kill (TODO: implement graceful shutdown signal)
     return fmrb_app_kill(id);
 }
@@ -416,7 +417,7 @@ bool fmrb_app_stop(int id) {
 /**
  * Suspend app
  */
-bool fmrb_app_suspend(int id) {
+bool fmrb_app_suspend(int32_t id) {
     if (id < 0 || id >= FMRB_MAX_APPS) return false;
 
     xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
@@ -443,7 +444,7 @@ bool fmrb_app_suspend(int id) {
 /**
  * Resume app
  */
-bool fmrb_app_resume(int id) {
+bool fmrb_app_resume(int32_t id) {
     if (id < 0 || id >= FMRB_MAX_APPS) return false;
 
     xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
@@ -470,13 +471,13 @@ bool fmrb_app_resume(int id) {
 /**
  * Get app list (ps-style)
  */
-int fmrb_app_ps(fmrb_app_info_t* list, int max_count) {
+int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {
     if (!list || max_count <= 0) return 0;
 
-    int count = 0;
+    int32_t count = 0;
     xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
 
-    for (int i = 0; i < FMRB_MAX_APPS && count < max_count; i++) {
+    for (int32_t i = 0; i < FMRB_MAX_APPS && count < max_count; i++) {
         fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
         if (ctx->state == PROC_STATE_FREE) continue;
 
@@ -497,7 +498,7 @@ int fmrb_app_ps(fmrb_app_info_t* list, int max_count) {
 /**
  * Get context by ID
  */
-fmrb_app_task_context_t* fmrb_app_get_context_by_id(int id) {
+fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id) {
     if (id < 0 || id >= FMRB_MAX_APPS) return NULL;
 
     xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
@@ -511,7 +512,7 @@ fmrb_app_task_context_t* fmrb_app_get_context_by_id(int id) {
 /**
  * Post event to specific app
  */
-bool fmrb_post_event(int id, const void* event, size_t size, TickType_t timeout) {
+bool fmrb_post_event(int32_t id, const void* event, size_t size, TickType_t timeout) {
     fmrb_app_task_context_t* ctx = fmrb_app_get_context_by_id(id);
     if (!ctx || !ctx->event_queue) return false;
 
@@ -525,7 +526,7 @@ bool fmrb_broadcast(const void* event, size_t size, TickType_t timeout) {
     bool any_sent = false;
 
     xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
-    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
         fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
         if (ctx->state != PROC_STATE_FREE && ctx->event_queue) {
             if (xQueueSend(ctx->event_queue, event, timeout) == pdTRUE) {
@@ -545,13 +546,13 @@ bool fmrb_broadcast(const void* event, size_t size, TickType_t timeout) {
 /**
  * Legacy: create task (wrapper around spawn)
  */
-int fmrb_app_create_task(
+int32_t fmrb_app_create_task(
     enum FMRB_PROC_ID app_id,
     const char* app_name,
     enum FMRB_APP_TYPE type,
     unsigned char* irep,
-    int stack_size,
-    int priority
+    int32_t stack_size,
+    int32_t priority
 ) {
     fmrb_spawn_attr_t attr = {
         .app_id = app_id,
@@ -564,16 +565,16 @@ int fmrb_app_create_task(
         .event_queue_len = 0  // No queue
     };
 
-    int id;
+    int32_t id;
     return fmrb_app_spawn(&attr, &id) ? 0 : -1;
 }
 
-int create_app_task_from_file(char* path) {
+int32_t create_app_task_from_file(char* path) {
     ESP_LOGW(TAG, "create_app_task_from_file not implemented");
     return -1;
 }
 
-int create_app_task_from_mem(char* app_name, unsigned char* app_irep) {
+int32_t create_app_task_from_mem(char* app_name, unsigned char* app_irep) {
     return fmrb_app_create_task(
         PROC_ID_SYSTEM_APP,
         app_name,

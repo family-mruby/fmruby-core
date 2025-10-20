@@ -82,32 +82,32 @@ typedef struct {
 
 // Core APIs
 void fmrb_app_init(void);
-bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int* out_id);
-bool fmrb_app_kill(int id);
-bool fmrb_app_stop(int id);
-bool fmrb_app_suspend(int id);
-bool fmrb_app_resume(int id);
-int  fmrb_app_ps(fmrb_app_info_t* list, int max_count);
+bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id);
+bool fmrb_app_kill(int32_t id);
+bool fmrb_app_stop(int32_t id);
+bool fmrb_app_suspend(int32_t id);
+bool fmrb_app_resume(int32_t id);
+int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count);
 
 // Context access (fast)
 static inline fmrb_app_task_context_t* fmrb_current(void) {
     return (fmrb_app_task_context_t*)pvTaskGetThreadLocalStoragePointer(NULL, FMRB_APP_TLS_INDEX);
 }
 
-fmrb_app_task_context_t* fmrb_app_get_context_by_id(int id);
+fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
 // Event posting
-bool fmrb_post_event(int id, const void* event, size_t size, TickType_t timeout);
+bool fmrb_post_event(int32_t id, const void* event, size_t size, TickType_t timeout);
 bool fmrb_broadcast(const void* event, size_t size, TickType_t timeout);
 
 // Legacy compatibility
-int fmrb_app_create_task(
+int32_t fmrb_app_create_task(
     enum FMRB_PROC_ID app_id,
     const char* app_name,
     enum FMRB_APP_TYPE type,
     unsigned char* irep,
-    int stack_size,
-    int priority
+    int32_t stack_size,
+    int32_t priority
 );
-int create_app_task_from_file(char* path);
-int create_app_task_from_mem(char* app_name, unsigned char* app_irep);
+int32_t create_app_task_from_file(char* path);
+int32_t create_app_task_from_mem(char* app_name, unsigned char* app_irep);

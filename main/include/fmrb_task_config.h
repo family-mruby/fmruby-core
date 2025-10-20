@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 /*
  * FreeRTOS Task Priority Guidelines for ESP32
  *
@@ -65,9 +67,9 @@
 
 
 typedef struct {
-    int id;
+    int32_t id;
     char name[16];
-    int type; //0: kernel, 1: system app, 2: user app
+    int32_t type; //0: kernel, 1: system app, 2: user app
     void* mrb;
 } mrb_task_ctx_t;
 
