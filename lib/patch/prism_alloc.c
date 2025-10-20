@@ -1,6 +1,32 @@
 #include <stddef.h>
 #include <string.h>
 #include <stdio.h>
+
+// TLSF symbol renaming to avoid conflicts with ESP-IDF heap allocator
+#define tlsf_create prism_tlsf_create
+#define tlsf_destroy prism_tlsf_destroy
+#define tlsf_pool_t prism_tlsf_pool_t
+#define tlsf_t prism_tlsf_t
+#define tlsf_add_pool prism_tlsf_add_pool
+#define tlsf_remove_pool prism_tlsf_remove_pool
+#define tlsf_malloc prism_tlsf_malloc
+#define tlsf_memalign prism_tlsf_memalign
+#define tlsf_realloc prism_tlsf_realloc
+#define tlsf_free prism_tlsf_free
+#define tlsf_check prism_tlsf_check
+#define tlsf_walk_pool prism_tlsf_walk_pool
+#define tlsf_block_size prism_tlsf_block_size
+#define tlsf_check_pool prism_tlsf_check_pool
+#define tlsf_size prism_tlsf_size
+#define tlsf_align_size prism_tlsf_align_size
+#define tlsf_block_size_min prism_tlsf_block_size_min
+#define tlsf_block_size_max prism_tlsf_block_size_max
+#define tlsf_pool_overhead prism_tlsf_pool_overhead
+#define tlsf_alloc_overhead prism_tlsf_alloc_overhead
+#define tlsf_create_with_pool prism_tlsf_create_with_pool
+#define tlsf_get_pool prism_tlsf_get_pool
+#define pool_t prism_pool_t
+
 #include "tlsf.h"
 
 // TLSF-based prism allocator for mruby-compiler2
@@ -9,8 +35,8 @@
 //   - Host build (picorbc): PRISM_BUILD_HOST defined, 288KB pool
 //   - Target build (ESP32/Linux eval): 64KB pool
 
-static tlsf_t prism_tlsf = NULL;
-static pool_t prism_pool = NULL;
+static prism_tlsf_t prism_tlsf = NULL;
+static prism_pool_t prism_pool = NULL;
 
 #ifndef PRISM_POOL_SIZE
   #ifdef PRISM_BUILD_HOST
@@ -22,6 +48,7 @@ static pool_t prism_pool = NULL;
   #endif
 #endif
 
+// ESP32 environment: use SPIRAM for memory pool to avoid DRAM overflow
 #if !defined(PICORB_PLATFORM_POSIX) && !defined(PRISM_BUILD_HOST)
   #include "esp_attr.h"
 #else
@@ -29,7 +56,9 @@ static pool_t prism_pool = NULL;
 #endif
 
 // Use static to ensure it's in data segment, not stack
-EXT_RAM_BSS_ATTR static unsigned char prism_memory_pool[PRISM_POOL_SIZE] __attribute__((aligned(8)));
+// ESP32: placed in SPIRAM via EXT_RAM_BSS_ATTR
+// Linux/Host: regular memory
+static EXT_RAM_BSS_ATTR unsigned char prism_memory_pool[PRISM_POOL_SIZE] __attribute__((aligned(8)));
 
 static size_t total_allocated = 0;
 static size_t peak_allocated = 0;

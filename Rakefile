@@ -42,6 +42,9 @@ task :setup do
   sh "cp -f components/mem_allocator/tlsf/tlsf.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/tlsf/"
   sh "cp -f components/mem_allocator/tlsf/tlsf.h components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/tlsf/"
 
+  # Copy TLSF wrapper with renamed symbols to avoid ESP-IDF heap conflicts
+  sh "cp -f lib/patch/prism_tlsf_wrapper.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/"
+
   # Copy thread-safe compile.c with mutex protection for multi-task environment
   sh "cp -f lib/patch/mruby-compiler2-compile.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/src/compile.c"
 end

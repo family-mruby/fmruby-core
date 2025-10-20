@@ -72,12 +72,13 @@ MRuby::Gem::Specification.new('mruby-compiler2') do |spec|
     end
   end
 
-  # Compile TLSF allocator (tlsf.c)
-  tlsf_src = "#{tlsf_dir}/tlsf.c"
-  if File.exist?(tlsf_src)
-    obj = objfile("#{build_dir}/lib/tlsf")
+  # Compile TLSF wrapper with renamed symbols to avoid ESP-IDF heap conflicts
+  # Use prism_tlsf_wrapper.c instead of tlsf.c directly
+  tlsf_wrapper_src = "#{lib_dir}/prism_tlsf_wrapper.c"
+  if File.exist?(tlsf_wrapper_src)
+    obj = objfile("#{build_dir}/lib/prism_tlsf_wrapper")
     objs << obj
-    file obj => [tlsf_src] do |f|
+    file obj => [tlsf_wrapper_src] do |f|
       cc.run f.name, f.prerequisites.first
     end
   end
