@@ -1,6 +1,7 @@
 set(COMPONENT_SRCS
     "main.c"
     "boot.c"
+    "app/fmrb_app.c"
     "kernel/fmrb_kernel.c"
     "kernel/host/host_task.c"
     "lib/fmrb_mem/fmrb_alloc.c"

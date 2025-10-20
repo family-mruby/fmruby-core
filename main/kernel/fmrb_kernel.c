@@ -6,6 +6,7 @@
 #include <picoruby.h>
 #include "fmrb_mem.h"
 #include "fmrb_task_config.h"
+#include "fmrb_app.h"
 #include "host/host_task.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
@@ -13,46 +14,20 @@ extern const uint8_t kernel_irep[];
 
 static const char *TAG = "kernel";
 
-// FreeRTOS task handle
-static TaskHandle_t g_kernel_task_handle = NULL;
-
-/**
- * Kernel FreeRTOS task
- */
-static void fmrb_kernel_task(void *pvParameters)
-{
-    ESP_LOGI(TAG, "Kernel task started");
-
-    mrb_state *mrb = mrb_open_with_custom_alloc(
-        fmrb_get_mempool_ptr(POOL_ID_KERNEL),
-        fmrb_get_mempool_size(POOL_ID_KERNEL));
-
-    mrc_irep *irep = mrb_read_irep(mrb, kernel_irep);
-    mrc_ccontext *cc = mrc_ccontext_new(mrb);
-    mrb_value name = mrb_str_new_lit(mrb, "kernel");
-    mrb_value task = mrc_create_task(cc, irep, name, mrb_nil_value(), mrb_obj_value(mrb->top_self));
-    if (mrb_nil_p(task)) {
-        ESP_LOGE(TAG, "mrbc_create_task failed");
-    }
-    else {
-        mrb_tasks_run(mrb);
-    }
-    if (mrb->exc) {
-        mrb_print_error(mrb);
-    }
-    mrb_close(mrb);
-    mrc_ccontext_free(cc);
-
-    ESP_LOGI(TAG, "Kernel task ended");
-    vTaskDelete(NULL);
-}
-
 /**
  * Start the kernel task
  */
 int fmrb_kernel_start(void)
 {
     ESP_LOGI(TAG, "Starting Family mruby OS Kernel...");
+
+    // Initialize app context management (first time only)
+    static bool context_initialized = false;
+    if (!context_initialized) {
+        fmrb_app_init();
+        context_initialized = true;
+    }
+
     // Create host task
     int result = fmrb_host_task_init();
     if (result < 0) {
@@ -60,17 +35,17 @@ int fmrb_kernel_start(void)
         return -1;
     }
 
-    // Create kernel task
-    BaseType_t xResult = xTaskCreate(
-        fmrb_kernel_task,
+    // Create kernel task using unified API
+    result = fmrb_app_create_task(
+        PROC_ID_KERNEL,
         "fmrb_kernel",
+        APP_TYPE_KERNEL,
+        (unsigned char*)kernel_irep,
         FMRB_KERNEL_TASK_STACK_SIZE,
-        NULL,
-        FMRB_KERNEL_TASK_PRIORITY,
-        &g_kernel_task_handle
+        FMRB_KERNEL_TASK_PRIORITY
     );
 
-    if (xResult != pdPASS) {
+    if (result != 0) {
         ESP_LOGE(TAG, "Failed to create kernel task");
         return -1;
     }
@@ -86,10 +61,8 @@ void fmrb_kernel_stop(void)
 {
     ESP_LOGI(TAG, "Stopping kernel task...");
 
-    if (g_kernel_task_handle) {
-        vTaskDelete(g_kernel_task_handle);
-        g_kernel_task_handle = NULL;
-    }
+    // Use new kill API
+    fmrb_app_kill(PROC_ID_KERNEL);
 
     ESP_LOGI(TAG, "Kernel task stopped");
 }
