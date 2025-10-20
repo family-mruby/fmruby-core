@@ -179,7 +179,7 @@ static void fmrb_host_task(void *pvParameters)
         // Periodic update processing
         TickType_t now = xTaskGetTickCount();
         if ((now - xLastUpdate) >= xUpdatePeriod) {
-            uint32_t delta_ms = pdTICKS_TO_MS(now - xLastUpdate);
+            //uint32_t delta_ms = pdTICKS_TO_MS(now - xLastUpdate);
 
             // Dispatch update to application
             //fmrb_app_dispatch_update(delta_ms);

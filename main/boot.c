@@ -15,9 +15,6 @@
 
 static const char *TAG = "boot";
 
-// Global contexts
-static fmrb_gfx_context_t g_gfx_context = NULL;
-
 // Family mruby OS initialization
 void fmrb_os_init(void)
 {
