@@ -4,7 +4,7 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 
-#include "task_config.h"
+#include "fmrb_task_config.h"
 #include "host/host_task.h"
 #include "fmrb_hal.h"
 #include "fmrb_gfx.h"

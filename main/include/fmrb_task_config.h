@@ -46,20 +46,20 @@
  */
 
 // Kernel task
-#define FMRB_KERNEL_TASK_STACK_SIZE (16 * 1024)
+#define FMRB_KERNEL_TASK_STACK_SIZE (60 * 1024)
 #define FMRB_KERNEL_TASK_PRIORITY (9)
 
 // Host task for Kernel
-#define FMRB_HOST_TASK_STACK_SIZE (16 * 1024)
+#define FMRB_HOST_TASK_STACK_SIZE (32 * 1024)
 #define FMRB_HOST_TASK_PRIORITY (10)
 
 // -- Base App task
 // Shell
-#define FMRB_SHELL_APP_TASK_STACK_SIZE (16 * 1024)
+#define FMRB_SHELL_APP_TASK_STACK_SIZE (60 * 1024)
 #define FMRB_SHELL_APP_PRIORITY (5)
 
 // User App task
-#define FMRB_USER_APP_TASK_STACK_SIZE (16 * 1024)
+#define FMRB_USER_APP_TASK_STACK_SIZE (60 * 1024)
 #define FMRB_USER_APP_PRIORITY (5)
 
 

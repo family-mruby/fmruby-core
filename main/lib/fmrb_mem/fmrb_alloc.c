@@ -1,6 +1,7 @@
 #include <stddef.h>
 #include <string.h>
 #include "tlsf.h"
+#include "fmrb_mem.h"
 
 static tlsf_t fmrb_tlsf = NULL;
 static pool_t fmrb_pool = NULL;

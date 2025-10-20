@@ -3,9 +3,9 @@
 #include "freertos/task.h"
 #include "esp_log.h"
 
-#include <mruby.h>
-#include <mruby/irep.h>
-#include "task_config.h"
+#include <picoruby.h>
+#include "fmrb_mem.h"
+#include "fmrb_task_config.h"
 #include "host/host_task.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
@@ -13,80 +13,8 @@ extern const uint8_t kernel_irep[];
 
 static const char *TAG = "kernel";
 
-// Global mruby state for the kernel
-static mrb_state *g_kernel_mrb = NULL;
-
 // FreeRTOS task handle
 static TaskHandle_t g_kernel_task_handle = NULL;
-
-// Forward declarations
-extern void mrb_picoruby_fmrb_init(mrb_state *mrb);
-
-/**
- * Initialize the kernel mruby VM
- */
-static int fmrb_kernel_init_vm(void)
-{
-    ESP_LOGI(TAG, "Initializing kernel VM...");
-    // Initialize picoruby-fmrb-kernel
-    // set thread local pointer
-    mrb_picoruby_fmrb_init(g_kernel_mrb);
-    ESP_LOGI(TAG, "FMRB bindings initialized");
-
-
-    // Create mruby state
-    // TODO use thread local
-    g_kernel_mrb = mrb_open();
-    if (!g_kernel_mrb) {
-        ESP_LOGE(TAG, "Failed to create mruby state");
-        return -1;
-    }
-
-    ESP_LOGI(TAG, "Kernel VM initialized successfully");
-    return 0;
-}
-
-/**
- * Load and execute kernel.rb bytecode
- */
-static int fmrb_kernel_load_bytecode(void)
-{
-    ESP_LOGI(TAG, "Loading kernel bytecode...");
-
-    if (!g_kernel_mrb) {
-        ESP_LOGE(TAG, "mruby state not initialized");
-        return -1;
-    }
-
-    // Load kernel bytecode
-    mrb_load_irep(g_kernel_mrb, kernel_irep);
-
-    // Check for exceptions
-    if (g_kernel_mrb->exc) {
-        ESP_LOGE(TAG, "Exception during kernel load:");
-        mrb_print_error(g_kernel_mrb);
-        g_kernel_mrb->exc = NULL;
-        return -1;
-    }
-
-    ESP_LOGI(TAG, "Kernel bytecode loaded successfully");
-    return 0;
-}
-
-/**
- * Cleanup kernel VM
- */
-static void fmrb_kernel_deinit_vm(void)
-{
-    ESP_LOGI(TAG, "Shutting down kernel VM...");
-
-    if (g_kernel_mrb) {
-        mrb_close(g_kernel_mrb);
-        g_kernel_mrb = NULL;
-    }
-
-    ESP_LOGI(TAG, "Kernel VM shutdown complete");
-}
 
 /**
  * Kernel FreeRTOS task
@@ -95,26 +23,25 @@ static void fmrb_kernel_task(void *pvParameters)
 {
     ESP_LOGI(TAG, "Kernel task started");
 
-    // Initialize VM
-    if (fmrb_kernel_init_vm() != 0) {
-        ESP_LOGE(TAG, "Failed to initialize kernel VM");
-        vTaskDelete(NULL);
-        return;
-    }
+    mrb_state *mrb = mrb_open_with_custom_alloc(
+        fmrb_get_mempool_ptr(POOL_ID_KERNEL),
+        fmrb_get_mempool_size(POOL_ID_KERNEL));
 
-    // Load and execute kernel bytecode
-    // Note: kernel.rb contains an infinite loop, so this will not return
-    // until the kernel is stopped
-    if (fmrb_kernel_load_bytecode() != 0) {
-        ESP_LOGE(TAG, "Failed to load kernel bytecode");
-        fmrb_kernel_deinit_vm();
-        vTaskDelete(NULL);
-        return;
+    mrc_irep *irep = mrb_read_irep(mrb, kernel_irep);
+    mrc_ccontext *cc = mrc_ccontext_new(mrb);
+    mrb_value name = mrb_str_new_lit(mrb, "kernel");
+    mrb_value task = mrc_create_task(cc, irep, name, mrb_nil_value(), mrb_obj_value(mrb->top_self));
+    if (mrb_nil_p(task)) {
+        ESP_LOGE(TAG, "mrbc_create_task failed");
     }
-
-    // Cleanup (only reached if kernel.rb exits)
-    ESP_LOGI(TAG, "Kernel main loop exited");
-    fmrb_kernel_deinit_vm();
+    else {
+        mrb_tasks_run(mrb);
+    }
+    if (mrb->exc) {
+        mrb_print_error(mrb);
+    }
+    mrb_close(mrb);
+    mrc_ccontext_free(cc);
 
     ESP_LOGI(TAG, "Kernel task ended");
     vTaskDelete(NULL);
@@ -165,12 +92,4 @@ void fmrb_kernel_stop(void)
     }
 
     ESP_LOGI(TAG, "Kernel task stopped");
-}
-
-/**
- * Get the kernel mruby state
- */
-mrb_state* fmrb_kernel_get_mrb(void)
-{
-    return g_kernel_mrb;
 }
