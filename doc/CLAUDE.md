@@ -58,9 +58,16 @@ rake -T # その他のコマンドの使い方
     これはForkしたものであり編集可能であるが、なるべきFork元からの変更の範囲が限定されるよう注意する。
   - msgpack-esp32
     主にIPCで利用することを想定している
+  - mem_allocator
+    https://github.com/mattconte/tlsf.git
+    TLSF (Two Level Segregated Fit) メモリアロケータ。
+    Prismパーサーのメモリ割り当てに使用。O(1)の割り当て/解放性能を持つ。
 - lib/
   - submoduleを編集必要なときに差分を置く
     差分ファイルは、lib/patch に配置して、rake setup でsubmodule配下にコピーする。
+  - lib/patch/prism_xallocator.h - Prismパーサー用カスタムアロケータヘッダ (xmalloc等をTLSFにマッピング)
+  - lib/patch/prism_alloc.c - picorbc (ホストビルド) 用TLSF実装
+  - lib/patch/mruby-compiler2-mrbgem.rake - mruby-compiler2ビルド設定 (TLSF組み込み)
 - main
   - Family mruby OS
     PicoRubyで動くWindow3.1ライクなGUIシステム。マルチタスク機能も提供する
@@ -68,6 +75,7 @@ rake -T # その他のコマンドの使い方
     サブコア(ESP32-wROVER)にSPIで通信する機能、ESP32のSDK、FreeRTOS関連にアクセスするための抽象化層。
     Linuxターゲットビルド時はソケットで、SDL2を実行しているプロセスに通信する。将来的にはWASMなどでも動かせるような抽象化を提供したい。
 - main/lib
+  - fmrb_mem          // メモリアロケータ (TLSF)。Prismパーサー用の実装を含む。
   - fmrb_hal          // OS寄りの機能。時刻、スリープ、IPC(送受信/共有メモリ)、SPI/I2C/GPIO、DMA、ロック等
   - fmrb_ipc          // S3<->WROVER/ホストのプロトコル定義と再送/水位制御
     LinuxではSocket通信になる。メッセージはmsgpackを利用する。
