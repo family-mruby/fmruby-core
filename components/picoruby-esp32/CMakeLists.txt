@@ -32,7 +32,8 @@ endif()
 # Set platform-specific source files
 if(IDF_TARGET STREQUAL "linux")
     set(PICORUBY_SRCS
-        # No platform-specific sources for Linux build
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/hal.c
     )
 else()
     set(PICORUBY_SRCS
@@ -87,6 +88,9 @@ endif()
 if(IDF_TARGET STREQUAL "linux")
   add_compile_definitions(PICORB_VM_MRUBY=1)
   add_compile_definitions(MRB_INT64=1)
+  add_compile_definitions(PICORB_PLATFORM_POSIX)
+  add_compile_definitions(MRB_TICK_UNIT=1)
+  add_compile_definitions(MRB_TIMESLICE_TICK_COUNT=10)
 else()
   add_compile_definitions(PICORB_VM_MRUBY=1)
   add_compile_definitions(MRB_INT64=1)
