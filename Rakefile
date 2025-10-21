@@ -34,8 +34,11 @@ task :setup do
   # Copy files
   sh "cp -f lib/patch/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
   sh "cp -f lib/patch/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
+
+  # Machine
   sh "cp -f lib/patch/picoruby-machine/mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/"
   sh "cp -f lib/patch/picoruby-machine/ports/posix/hal.c components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/ports/posix/"
+  sh "cp -f lib/patch/picoruby-machine/ports/posix/machine.c components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/ports/posix/"
   sh "cp -f lib/patch/picoruby-machine/ports/esp32/machine.c components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/ports/esp32/"
   sh "cp -f lib/patch/picoruby-mruby/include/hal.h components/picoruby-esp32/picoruby/mrbgems/picoruby-mruby/include/"
   sh "cp -f lib/patch/picoruby-mruby/include/hal.h components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/include/"

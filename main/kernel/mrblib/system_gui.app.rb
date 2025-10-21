@@ -43,5 +43,5 @@
 puts "[SystemGUI] hello"
 while true
     puts "gui app loop running"
-    sleep(5)
+    Machine.delay_ms(3000)
 end

@@ -39,7 +39,8 @@ class FmrbKernel
 
     while @running
       puts "main loop running"
-      sleep(5)
+      #sleep(1)
+      Machine.delay_ms(3000)
     end
 
     puts "Main loop ended"

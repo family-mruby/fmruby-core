@@ -1,3 +1,4 @@
+set(COMPONENTS main)
 set(COMPONENT_SRCS
     "main.c"
     "boot.c"

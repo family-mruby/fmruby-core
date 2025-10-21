@@ -215,7 +215,16 @@ static void app_task_main(void* arg) {
             ESP_LOGE(TAG, "[%s] mrc_create_task failed", ctx->app_name);
         } else {
             // Main event loop: run mruby tasks
+            #if 0
             mrb_tasks_run(ctx->mrb);
+            #else
+            ESP_LOGI(TAG, "[%s] Skip mruby VM run sleep", ctx->app_name);
+            while(1){
+                ESP_LOGI(TAG, "[%s] app thread running", ctx->app_name);
+                vTaskDelay(pdMS_TO_TICKS(1000));
+            }
+            ESP_LOGI(TAG, "[%s] Skip mruby VM run sleep done", ctx->app_name);
+            #endif
         }
 
         if (ctx->mrb->exc) {
@@ -234,6 +243,17 @@ static void app_task_main(void* arg) {
 
     // TLS destructor will handle cleanup
     vTaskDelete(NULL);
+}
+
+static void app_task_test(void* arg) {
+    ESP_LOGI(TAG, "[app_task_test] start task");
+    while(1){
+        ESP_LOGI(TAG, "[app_task_test] app thread running");
+        ESP_LOGI(TAG, "tick=%u", (unsigned)xTaskGetTickCount());
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        ESP_LOGI(TAG, "tick=%u", (unsigned)xTaskGetTickCount());
+    }
+    ESP_LOGI(TAG, "[app_task_test] end task");
 }
 
 // ============================================================================
@@ -336,11 +356,11 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     BaseType_t result;
     if (attr->core_affinity >= 0) {
         result = xTaskCreatePinnedToCore(
-            app_task_main, ctx->app_name, attr->stack_words,
+            app_task_test, ctx->app_name, attr->stack_words,
             ctx, attr->priority, &ctx->task, attr->core_affinity);
     } else {
         result = xTaskCreate(
-            app_task_main, ctx->app_name, attr->stack_words,
+            app_task_test, ctx->app_name, attr->stack_words,
             ctx, attr->priority, &ctx->task);
     }
 
@@ -349,10 +369,11 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         goto unwind;
     }
 
-    // Success
+    // Success - Note: Spawned task may have already started running
+    // if its priority is higher than the current task
     if (out_id) *out_id = idx;
-    ESP_LOGI(TAG, "[%s gen=%u] Spawned successfully (id=%d, stack=%u words, prio=%u, core=%d)",
-             ctx->app_name, ctx->gen, idx, attr->stack_words, attr->priority, attr->core_affinity);
+    ESP_LOGI(TAG, "[%s gen=%u] Task spawned (id=%d, prio=%u)",
+             ctx->app_name, ctx->gen, idx, attr->priority);
     return true;
 
 unwind:

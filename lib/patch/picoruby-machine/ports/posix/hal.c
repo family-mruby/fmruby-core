@@ -17,6 +17,12 @@
 #include <sys/time.h>
 #include <unistd.h>
 
+// ESP-IDF環境（ターゲットビルド）でのみFreeRTOSをインクルード
+#ifdef ESP_PLATFORM
+#include <freertos/FreeRTOS.h>
+#include "esp_sleep.h"
+#include "esp_log.h"
+#endif
 
 /***** Local headers ********************************************************/
 #include "hal.h"
@@ -117,5 +123,12 @@ void
 hal_idle_cpu(mrb_state *mrb)
 {
   (void)mrb;
-  usleep(1000);
+
+  // ホストビルド: POSIX APIを使用
+  //static cnt = 0;
+  usleep(5000);
+  // if(cnt % 100 == 0){
+  //   printf("host hal_idle_cpu\n");
+  // }
+  // cnt++;
 }
