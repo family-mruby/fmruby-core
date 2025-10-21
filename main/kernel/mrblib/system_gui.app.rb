@@ -41,3 +41,7 @@
 
 
 puts "[SystemGUI] hello"
+while true
+    puts "gui app loop running"
+    sleep(5)
+end

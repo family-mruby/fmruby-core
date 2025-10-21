@@ -18,7 +18,7 @@ class FmrbKernel
     # init_system
 
     # Main loop
-    #main_loop
+    main_loop
   end
 
   def stop
@@ -35,9 +35,11 @@ class FmrbKernel
   end
 
   def main_loop
-    puts "Starting main loop (#{TARGET_FPS} FPS)..."
+    puts "Starting main loop..."
 
     while @running
+      puts "main loop running"
+      sleep(5)
     end
 
     puts "Main loop ended"

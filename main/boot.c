@@ -62,6 +62,7 @@ void fmrb_os_init(void)
         ESP_LOGE(TAG, "Failed to kernel");
         return;
     }
+    ESP_LOGI(TAG, "fmrb_kernel_start done");
     //TODO wait for kernel startup
 
     // Create system apps

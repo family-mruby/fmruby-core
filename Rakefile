@@ -106,8 +106,7 @@ desc "Full clean build artifacts (including host)"
 task :clean do
   #sh "#{DOCKER_CMD} idf.py fullclean"
   sh "rm -rf build"
-  sh "rm -rf components/picoruby-esp32/picoruby/build"
-  sh "rm -rf host/sdl2/build"
+  sh "rm -rf components/picoruby-esp32/picoruby/build/*"
 end
 
 desc "Serial monitor"
@@ -131,7 +130,7 @@ namespace :host do
 
   desc "Clean SDL2 host build"
   task :clean do
-    sh "rm -rf host/sdl2/build"
+    sh "rm -rf host/sdl2/build/*"
   end
 end
 
