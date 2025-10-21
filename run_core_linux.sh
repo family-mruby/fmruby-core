@@ -51,8 +51,16 @@ trap cleanup EXIT INT TERM
 
 # Run FMRuby Core in Docker
 echo "Starting FMRuby Core..."
-docker run --rm --user $(id -u):$(id -g) \
-    -v $PWD:/project \
-    -v /tmp:/tmp \
-    esp32_build_container:v5.5.1 \
-    /project/build/fmruby-core.elf
+if [ "$1" = "gdb" ]; then
+    docker run -it --rm --user $(id -u):$(id -g) \
+        -v $PWD:/project \
+        -v /tmp:/tmp \
+        esp32_build_container:v5.5.1 \
+        bash
+else
+    docker run --rm --user $(id -u):$(id -g) \
+        -v $PWD:/project \
+        -v /tmp:/tmp \
+        esp32_build_container:v5.5.1 \
+        /project/build/fmruby-core.elf
+fi

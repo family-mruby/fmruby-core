@@ -8,6 +8,13 @@ if(IDF_TARGET STREQUAL "linux")
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/host/mrbgems)
     set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/host/include)
     set(PLATFORM_PRIV_REQUIRES)
+
+    if(ENABLE_ASAN)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -g -fno-omit-frame-pointer")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address -g -fno-omit-frame-pointer")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=address")
+    endif()
+
 else()
     set(MRUBY_CONFIG "family_mruby_esp32")  # ESP32ビルド用
     set(MRUBY_BUILD_DIR "esp32")
