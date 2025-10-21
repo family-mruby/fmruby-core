@@ -7,4 +7,4 @@ docker build \
   --build-arg USER_ID=$(id -u) \
   --build-arg GROUP_ID=$(id -g) \
   -t esp32_build_container:$IDF_VER \
-  -f dockerfile .
+  .

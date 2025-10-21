@@ -1,10 +1,15 @@
 # fmruby-core
 
+## ビルドに必要なもの
 
-## ホスト側に必要なパッケージ
+- Docker
+- Ruby
 
-sdl2, msgpack, ruby(rake)
+## ホスト側開発用ビルドに必要なパッケージ
 
+- libsdl2-dev
+- libmsgpack-dev
+- pkg-config
 
 ## kill
 
