@@ -37,7 +37,8 @@ static void create_system_app(void)
     };
 
     int32_t app_id;
-    if (!fmrb_app_spawn(&attr, &app_id)) {
+    //if (!fmrb_app_spawn(&attr, &app_id)) {
+    if (!fmrb_app_spawn_simple(&attr, &app_id)) {
         ESP_LOGE(TAG, "Failed to spawn system GUI app");
         return;
     }
@@ -57,16 +58,16 @@ void fmrb_os_init(void)
     // 1M per 1App
 
     // Start Frmb Kernel
-    int32_t result = fmrb_kernel_start();
-    if(result < 0){
-        ESP_LOGE(TAG, "Failed to kernel");
-        return;
-    }
-    ESP_LOGI(TAG, "fmrb_kernel_start done");
+    // int32_t result = fmrb_kernel_start();
+    // if(result < 0){
+    //     ESP_LOGE(TAG, "Failed to kernel");
+    //     return;
+    // }
+    // ESP_LOGI(TAG, "fmrb_kernel_start done");
 
     //TODO wait for kernel startup
 
-    // Create system apps
+    //debug
     create_system_app();
 
     ESP_LOGI(TAG, "Family mruby OS initialization complete");

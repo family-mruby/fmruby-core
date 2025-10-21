@@ -83,6 +83,7 @@ typedef struct {
 // Core APIs
 void fmrb_app_init(void);
 bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id);
+bool fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id);
 bool fmrb_app_kill(int32_t id);
 bool fmrb_app_stop(int32_t id);
 bool fmrb_app_suspend(int32_t id);

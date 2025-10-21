@@ -245,16 +245,34 @@ static void app_task_main(void* arg) {
     vTaskDelete(NULL);
 }
 
+extern volatile unsigned long g_sigalrm_cnt;
+extern void dump_signal_mask(const char*);
+extern void log_itimer_real(const char*);
+extern void log_sigalrm_counter(const char*);
+
 static void app_task_test(void* arg) {
-    ESP_LOGI(TAG, "[app_task_test] start task");
-    while(1){
-        ESP_LOGI(TAG, "[app_task_test] app thread running");
-        ESP_LOGI(TAG, "tick=%u", (unsigned)xTaskGetTickCount());
+    // ESP_LOGI(TAG, "[app_task_test] start task");
+    // while(1){
+    //     ESP_LOGI(TAG, "[app_task_test] app thread running");
+    //     ESP_LOGI(TAG, "tick=%u", (unsigned)xTaskGetTickCount());
+    //     vTaskDelay(pdMS_TO_TICKS(1000));
+    //     ESP_LOGI(TAG, "tick=%u", (unsigned)xTaskGetTickCount());
+    // }
+    // ESP_LOGI(TAG, "[app_task_test] end task");
+
+    ESP_LOGI("SIG", "[app_task_test] enter");
+    dump_signal_mask("app_task_test");
+    log_itimer_real("app_task_test");
+    log_sigalrm_counter("app_task_test(start)");
+
+    while (1) {
+        ESP_LOGI("SIG", "testapp  tick=%u sigalrm=%lu",
+                 (unsigned)xTaskGetTickCount(), g_sigalrm_cnt);
         vTaskDelay(pdMS_TO_TICKS(1000));
-        ESP_LOGI(TAG, "tick=%u", (unsigned)xTaskGetTickCount());
     }
-    ESP_LOGI(TAG, "[app_task_test] end task");
 }
+
+
 
 // ============================================================================
 // Public APIs
@@ -285,6 +303,31 @@ void fmrb_app_init(void) {
     }
 
     ESP_LOGI(TAG, "App context management initialized (max_apps=%d)", FMRB_MAX_APPS);
+}
+
+/**
+ * Spawn simple debug task (no context management, no mruby VM)
+ */
+static TaskHandle_t g_task_debug = NULL;
+bool fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
+    if (!attr || !attr->name) {
+        ESP_LOGE(TAG, "Invalid spawn attributes");
+        return false;
+    }
+
+    BaseType_t result = xTaskCreate(
+        app_task_test, attr->name, attr->stack_words,
+        NULL, attr->priority, &g_task_debug);
+
+
+    if (result == pdPASS) {
+        if (out_id) *out_id = -1;  // No context ID for simple spawn
+        ESP_LOGI(TAG, "[%s] Debug task spawned (prio=%u)", attr->name, attr->priority);
+        return true;
+    } else {
+        ESP_LOGE(TAG, "[%s] Failed to create debug task", attr->name);
+        return false;
+    }
 }
 
 /**
