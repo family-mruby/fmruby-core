@@ -92,10 +92,11 @@ typedef struct {
     int32_t free_blocks;
 } fmrb_pool_stats_t;
 
-static void fmrb_count_blocks(void* ptr, size_t size, int32_t used, void* user)
+static void fmrb_count_blocks(void* ptr, size_t size, int used, void* user)
 {
     fmrb_pool_stats_t* stats = (fmrb_pool_stats_t*)user;
-    if (used) {
+    int32_t used_i32 = (int32_t)used;  // Convert tlsf int to stdint
+    if (used_i32) {
         stats->used_size += size;
         stats->used_blocks++;
     } else {

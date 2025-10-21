@@ -85,7 +85,9 @@ static bool transition_state(fmrb_app_task_context_t* ctx, enum FMRB_PROC_STATE 
 /**
  * TLS destructor - called automatically when task is deleted
  */
-static void tls_destructor(int32_t idx, void* pv) {
+static void tls_destructor(int idx, void* pv) {
+    int32_t idx_i32 = (int32_t)idx;  // Convert FreeRTOS int to stdint
+    (void)idx_i32;  // Currently unused
     fmrb_app_task_context_t* ctx = (fmrb_app_task_context_t*)pv;
     if (!ctx) return;
 
