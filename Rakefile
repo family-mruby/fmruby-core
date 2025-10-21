@@ -40,6 +40,9 @@ task :setup do
   sh "cp -f lib/patch/picoruby-mruby/include/hal.h components/picoruby-esp32/picoruby/mrbgems/picoruby-mruby/include/"
   sh "cp -f lib/patch/picoruby-mruby/include/hal.h components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/include/"
 
+  # Copy picoruby-env patch (thread-safe ENV for multi-VM environment)
+  sh "cp -f lib/patch/picoruby-env/ports/posix/env.c components/picoruby-esp32/picoruby/mrbgems/picoruby-env/ports/posix/"
+
   # Copy TLSF-based prism allocator files
   sh "cp -f lib/patch/compiler/prism_xallocator.h components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/include/"
   sh "cp -f lib/patch/compiler/prism_alloc.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/"
@@ -75,7 +78,7 @@ namespace :build do
     unless Dir.exist?('build')
       Rake::Task['set_target:linux'].invoke
     end
-    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview build'"
+    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview -DCMAKE_BUILD_TYPE=Debug build'"
     puts 'Linux build complete. Run with: ./build/fmruby-core.elf'
   end
 
