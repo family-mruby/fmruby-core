@@ -100,13 +100,13 @@ void fmrb_os_init(void)
     // Reserve Heap Mem for Apps
     // 1M per 1App
 
-    // Start Frmb Kernel
-    // int32_t result = fmrb_kernel_start();
-    // if(result < 0){
-    //     ESP_LOGE(TAG, "Failed to kernel");
-    //     return;
-    // }
-    // ESP_LOGI(TAG, "fmrb_kernel_start done");
+    //Start Frmb Kernel
+    int32_t result = fmrb_kernel_start();
+    if(result < 0){
+        ESP_LOGE(TAG, "Failed to kernel");
+        return;
+    }
+    ESP_LOGI(TAG, "fmrb_kernel_start done");
 
     //TODO wait for kernel startup
 
