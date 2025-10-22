@@ -111,14 +111,19 @@ hal_init(mrb_state *mrb)
 // #if defined(PICORB_VM_MRUBY)
 //   mrb_ = mrb;
 // #endif
+
+  // Debug: Show compilation mode
 #ifdef PICORUBY_HOST_BUILD
-  printf("-----------------hal_init:PICORUBY_HOST_BUILD defined-----------\n");
+  printf("=== hal_init: PICORUBY_HOST_BUILD DEFINED (mrbc compiler mode) ===\n");
+  printf("    This build should NOT use FreeRTOS\n");
 #else
-  printf("-----------------hal_init:PICORUBY_HOST_BUILD not defined-----------\n");
+  printf("=== hal_init: PICORUBY_HOST_BUILD NOT DEFINED (target mode) ===\n");
+  printf("    This build SHOULD use FreeRTOS\n");
 #endif
+
   // FreeRTOS environment: Multitask-based tick management
 #ifndef PICORUBY_HOST_BUILD
-  ESP_LOGI("hal", "hal_init called.");
+  ESP_LOGI("hal", "hal_init called (FreeRTOS mode)");
 
   // First call only: Create mutex and tick task
   if (!g_tick_manager.task_created) {
