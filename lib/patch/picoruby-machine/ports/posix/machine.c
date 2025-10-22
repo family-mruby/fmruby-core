@@ -4,6 +4,13 @@
 #include <signal.h>
 #include <unistd.h>
 
+// FreeRTOS (ESP-IDF環境のみ)
+#ifndef PICORUBY_HOST_BUILD
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+#include "../../include/hal.h"
+#endif
+
 #include "../../include/machine.h"
 
 
@@ -21,7 +28,11 @@ Machine_tud_mounted_q(void)
 void
 Machine_delay_ms(uint32_t ms)
 {
-    usleep(ms *1000);
+#ifndef PICORUBY_HOST_BUILD
+    vTaskDelay(pdMS_TO_TICKS(ms));
+#else
+    usleep(ms * 1000);
+#endif
 }
 
 void
@@ -32,7 +43,11 @@ Machine_busy_wait_ms(uint32_t ms)
 void
 Machine_sleep(uint32_t seconds)
 {
+#ifndef PICORUBY_HOST_BUILD
+    vTaskDelay(pdMS_TO_TICKS(seconds * 1000));
+#else
     usleep(seconds*1000*1000);
+#endif
 }
 
 bool
@@ -75,12 +90,14 @@ Machine_exit(int status)
 
 int Machine_get_config_int(int type)
 {
+#ifndef PICORUBY_HOST_BUILD
   switch(type)
   {
     case 0:
-    return MRB_TICK_UNIT;
+      return MRB_TICK_UNIT;
     case 1:
-    return MRB_TIMESLICE_TICK_COUNT;
+      return MRB_TIMESLICE_TICK_COUNT;
   }
+#endif
   return 0;
 }

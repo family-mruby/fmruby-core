@@ -222,6 +222,9 @@ static void app_task_main(void* arg) {
             while(1){
                 ESP_LOGI(TAG, "[%s] app thread running", ctx->app_name);
                 vTaskDelay(pdMS_TO_TICKS(1000));
+#ifndef ESP_PLATFORM
+                taskYIELD();
+#endif
             }
             ESP_LOGI(TAG, "[%s] Skip mruby VM run sleep done", ctx->app_name);
             #endif
@@ -245,29 +248,21 @@ static void app_task_main(void* arg) {
     vTaskDelete(NULL);
 }
 
-extern volatile unsigned long g_sigalrm_cnt;
+#ifdef CONFIG_IDF_TARGET_LINUX
 extern void dump_signal_mask(const char*);
 extern void log_itimer_real(const char*);
 extern void log_sigalrm_counter(const char*);
+#endif
 
 static void app_task_test(void* arg) {
-    // ESP_LOGI(TAG, "[app_task_test] start task");
-    // while(1){
-    //     ESP_LOGI(TAG, "[app_task_test] app thread running");
-    //     ESP_LOGI(TAG, "tick=%u", (unsigned)xTaskGetTickCount());
-    //     vTaskDelay(pdMS_TO_TICKS(1000));
-    //     ESP_LOGI(TAG, "tick=%u", (unsigned)xTaskGetTickCount());
-    // }
-    // ESP_LOGI(TAG, "[app_task_test] end task");
-
     ESP_LOGI("SIG", "[app_task_test] enter");
+#ifdef CONFIG_IDF_TARGET_LINUX
     dump_signal_mask("app_task_test");
     log_itimer_real("app_task_test");
     log_sigalrm_counter("app_task_test(start)");
-
+#endif
     while (1) {
-        ESP_LOGI("SIG", "testapp  tick=%u sigalrm=%lu",
-                 (unsigned)xTaskGetTickCount(), g_sigalrm_cnt);
+        ESP_LOGI("SIG", "testapp  tick=%u", (unsigned)xTaskGetTickCount());
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

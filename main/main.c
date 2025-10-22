@@ -131,7 +131,9 @@ void show_config(void)
     ESP_LOGI(TAG, "configTICK_RATE_HZ           = %d", configTICK_RATE_HZ);
     ESP_LOGI(TAG, "configMAX_PRIORITIES         = %d", configMAX_PRIORITIES);
     ESP_LOGI(TAG, "configMINIMAL_STACK_SIZE     = %d", configMINIMAL_STACK_SIZE);
+    #ifdef CONFIG_IDF_TARGET_LINUX
     ESP_LOGI(TAG, "configTOTAL_HEAP_SIZE        = %d", configTOTAL_HEAP_SIZE);
+    #endif
     ESP_LOGI(TAG, "configUSE_PREEMPTION         = %d", configUSE_PREEMPTION);
     ESP_LOGI(TAG, "configUSE_TIME_SLICING       = %d", configUSE_TIME_SLICING);
     ESP_LOGI(TAG, "configUSE_MUTEXES            = %d", configUSE_MUTEXES);
@@ -180,8 +182,7 @@ void app_main(void)
     // for linux target
     while (1) {
         ESP_LOGI(TAG, "app_main keep wakeup");
-        ESP_LOGI("SIG", "app_main tick=%u sigalrm=%lu",
-                 (unsigned)xTaskGetTickCount(), g_sigalrm_cnt);
+        ESP_LOGI("SIG", "app_main tick=%u", (unsigned)xTaskGetTickCount());
         vTaskDelay(pdMS_TO_TICKS(10000));
     }
     ESP_LOGI(TAG, "app_main exited");

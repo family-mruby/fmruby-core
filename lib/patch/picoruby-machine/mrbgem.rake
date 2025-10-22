@@ -14,6 +14,12 @@ MRuby::Gem::Specification.new('picoruby-machine') do |spec|
   if build.posix?
     cc.defines << "PICORB_PLATFORM_POSIX"
   end
+
+  # ホストビルド(mrbcコンパイラ)の判定
+  if spec.build.name == 'host'
+    cc.defines << "PICORUBY_HOST_BUILD"
+  end
+
   # Note: ESP32用のmachine.cはCMakeLists.txtのPICORUBY_SRCSでコンパイルされる
   # mrbgemビルドでは追加しない(FreeRTOSヘッダーが必要なため)
 

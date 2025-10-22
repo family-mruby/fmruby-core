@@ -17,9 +17,10 @@
 #include <sys/time.h>
 #include <unistd.h>
 
-// ESP-IDF環境（ターゲットビルド）でのみFreeRTOSをインクルード
-#ifdef ESP_PLATFORM
+// FreeRTOS/ESP-IDF環境でのみインクルード（mrbcビルドを除外）
+#ifndef PICORUBY_HOST_BUILD
 #include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 #include "esp_sleep.h"
 #include "esp_log.h"
 #endif
@@ -128,11 +129,11 @@ hal_idle_cpu(mrb_state *mrb)
 {
   (void)mrb;
 
-  // ホストビルド: POSIX APIを使用
-  //static cnt = 0;
+#ifndef PICORUBY_HOST_BUILD
+  // FreeRTOS環境: タスクスイッチ
+  taskYIELD();
+#else
+  // mrbcビルド: POSIXスリープ
   usleep(5000);
-  // if(cnt % 100 == 0){
-  //   printf("host hal_idle_cpu\n");
-  // }
-  // cnt++;
+#endif
 }
