@@ -37,8 +37,17 @@ static void create_system_app(void)
     };
 
     int32_t app_id;
-    //if (!fmrb_app_spawn(&attr, &app_id)) {
-    if (!fmrb_app_spawn_simple(&attr, &app_id)) {
+    bool result = false;
+    #if 1
+    ESP_LOGI(TAG, "normal spawn");
+    fmrb_app_init();
+    result = fmrb_app_spawn(&attr, &app_id);
+    #else
+    ESP_LOGI(TAG, "simple spawn");
+    result = fmrb_app_spawn_simple(&attr, &app_id);
+    #endif
+
+    if (!result) {
         ESP_LOGE(TAG, "Failed to spawn system GUI app");
         return;
     }

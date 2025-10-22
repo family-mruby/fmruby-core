@@ -363,6 +363,7 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     ctx->user_data = (void*)attr->irep;  // Store irep for task_main
 
     // Create mruby VM
+    // mrbgem initialization is executed here.
     ctx->mrb = mrb_open_with_custom_alloc(
         fmrb_get_mempool_ptr(ctx->mempool_id),
         fmrb_get_mempool_size(ctx->mempool_id));
@@ -398,10 +399,12 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     // Create FreeRTOS task
     BaseType_t result;
     if (attr->core_affinity >= 0) {
+        ESP_LOGI(TAG, "xTaskCreatePinnedToCore");
         result = xTaskCreatePinnedToCore(
             app_task_test, ctx->app_name, attr->stack_words,
             ctx, attr->priority, &ctx->task, attr->core_affinity);
     } else {
+        ESP_LOGI(TAG, "xTaskCreate");
         result = xTaskCreate(
             app_task_test, ctx->app_name, attr->stack_words,
             ctx, attr->priority, &ctx->task);

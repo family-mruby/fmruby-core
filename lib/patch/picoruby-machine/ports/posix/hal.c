@@ -70,9 +70,12 @@ sig_alarm(int dummy)
 void
 hal_init(mrb_state *mrb)
 {
+  printf("--------------hal_init!!!!------------------------\n");
 #if defined(PICORB_VM_MRUBY)
   mrb_ = mrb;
 #endif
+
+#if 0
   sigemptyset(&sigset_);
   sigaddset(&sigset_, SIGALRM);
 
@@ -92,6 +95,7 @@ hal_init(mrb_state *mrb)
   tval.it_value.tv_sec     = sec;
   tval.it_value.tv_usec    = usec;
   setitimer(ITIMER_REAL, &tval, 0);
+#endif
 }
 
 
@@ -103,7 +107,7 @@ hal_init(mrb_state *mrb)
 void
 mrb_task_enable_irq(void)
 {
-  sigprocmask(SIG_SETMASK, &sigset2_, 0);
+  //sigprocmask(SIG_SETMASK, &sigset2_, 0);
 }
 
 
@@ -115,7 +119,7 @@ mrb_task_enable_irq(void)
 void
 mrb_task_disable_irq(void)
 {
-  sigprocmask(SIG_BLOCK, &sigset_, &sigset2_);
+  //sigprocmask(SIG_BLOCK, &sigset_, &sigset2_);
 }
 
 
