@@ -123,21 +123,25 @@ void log_itimer_real(const char* where) {
 
 #endif //CONFIG_IDF_TARGET_LINUX
 
+extern int Machine_get_config_int(int type);
+
 void show_config(void)
 {
     ESP_LOGI(TAG, "------------------------------------------------");
-    ESP_LOGI("CONFIG", "configTICK_RATE_HZ           = %d", configTICK_RATE_HZ);
-    ESP_LOGI("CONFIG", "configMAX_PRIORITIES         = %d", configMAX_PRIORITIES);
-    ESP_LOGI("CONFIG", "configMINIMAL_STACK_SIZE     = %d", configMINIMAL_STACK_SIZE);
-    ESP_LOGI("CONFIG", "configTOTAL_HEAP_SIZE        = %d", configTOTAL_HEAP_SIZE);
-    ESP_LOGI("CONFIG", "configUSE_PREEMPTION         = %d", configUSE_PREEMPTION);
-    ESP_LOGI("CONFIG", "configUSE_TIME_SLICING       = %d", configUSE_TIME_SLICING);
-    ESP_LOGI("CONFIG", "configUSE_MUTEXES            = %d", configUSE_MUTEXES);
-    ESP_LOGI("CONFIG", "configNUM_THREAD_LOCAL_STORAGE_POINTERS = %d", configNUM_THREAD_LOCAL_STORAGE_POINTERS);
-    ESP_LOGI("CONFIG", "configCHECK_FOR_STACK_OVERFLOW = %d", configCHECK_FOR_STACK_OVERFLOW);
-    ESP_LOGI("CONFIG", "configUSE_TRACE_FACILITY     = %d", configUSE_TRACE_FACILITY);
-    ESP_LOGI(TAG, "------------------------------------------------");
+    ESP_LOGI(TAG, "configTICK_RATE_HZ           = %d", configTICK_RATE_HZ);
+    ESP_LOGI(TAG, "configMAX_PRIORITIES         = %d", configMAX_PRIORITIES);
+    ESP_LOGI(TAG, "configMINIMAL_STACK_SIZE     = %d", configMINIMAL_STACK_SIZE);
+    ESP_LOGI(TAG, "configTOTAL_HEAP_SIZE        = %d", configTOTAL_HEAP_SIZE);
+    ESP_LOGI(TAG, "configUSE_PREEMPTION         = %d", configUSE_PREEMPTION);
+    ESP_LOGI(TAG, "configUSE_TIME_SLICING       = %d", configUSE_TIME_SLICING);
+    ESP_LOGI(TAG, "configUSE_MUTEXES            = %d", configUSE_MUTEXES);
+    ESP_LOGI(TAG, "configNUM_THREAD_LOCAL_STORAGE_POINTERS = %d", configNUM_THREAD_LOCAL_STORAGE_POINTERS);
+    ESP_LOGI(TAG, "configCHECK_FOR_STACK_OVERFLOW = %d", configCHECK_FOR_STACK_OVERFLOW);
+    ESP_LOGI(TAG, "configUSE_TRACE_FACILITY     = %d", configUSE_TRACE_FACILITY);
     ESP_LOGI(TAG, "tick=%u", (unsigned)xTaskGetTickCount());
+    ESP_LOGI(TAG, "MRB_TICK_UNIT                = %d", Machine_get_config_int(0));
+    ESP_LOGI(TAG, "MRB_TIMESLICE_TICK_COUNT     = %d", Machine_get_config_int(1));
+    ESP_LOGI(TAG, "------------------------------------------------");
 }
 
 void app_main(void)

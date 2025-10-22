@@ -71,3 +71,16 @@ Machine_exit(int status)
   exit_status = status;
   raise(SIGINT);
 }
+
+
+int Machine_get_config_int(int type)
+{
+  switch(type)
+  {
+    case 0:
+    return MRB_TICK_UNIT;
+    case 1:
+    return MRB_TIMESLICE_TICK_COUNT;
+  }
+  return 0;
+}

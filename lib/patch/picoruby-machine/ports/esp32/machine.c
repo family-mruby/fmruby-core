@@ -221,3 +221,16 @@ Machine_exit(int status)
 {
   (void)status; // no-op
 }
+
+
+int Machine_get_config_int(int type)
+{
+  switch(type)
+  {
+    case 0:
+    return MRB_TICK_UNIT;
+    case 1:
+    return MRB_TIMESLICE_TICK_COUNT;
+  }
+  return 0;
+}

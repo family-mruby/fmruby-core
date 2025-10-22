@@ -93,14 +93,16 @@ endif()
 
 # Add platform-specific compile definitions
 if(IDF_TARGET STREQUAL "linux")
+  add_compile_definitions(PICORB_PLATFORM_POSIX)
   add_compile_definitions(PICORB_VM_MRUBY=1)
   add_compile_definitions(MRB_INT64=1)
-  add_compile_definitions(PICORB_PLATFORM_POSIX)
-  add_compile_definitions(MRB_TICK_UNIT=1)
+  add_compile_definitions(MRB_TICK_UNIT=5)
   add_compile_definitions(MRB_TIMESLICE_TICK_COUNT=10)
 else()
   add_compile_definitions(PICORB_VM_MRUBY=1)
   add_compile_definitions(MRB_INT64=1)
+  add_compile_definitions(MRB_TICK_UNIT=5)
+  add_compile_definitions(MRB_TIMESLICE_TICK_COUNT=10)
   add_compile_definitions(NDEBUG)
   add_compile_definitions(USE_FAT_FLASH_DISK)
   #MRBC definitions is used by machine.
