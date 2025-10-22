@@ -21,36 +21,6 @@ static const char *TAG = "boot";
 // Generated from system_gui.app.rb (will be compiled by picorbc)
 extern const uint8_t system_gui_irep[];
 
-#ifdef CONFIG_IDF_TARGET_LINUX
-// static void mrb_tick_task(void *arg) {
-// {
-//     mrb_state *mrb = (mrb_state *)arg;
-//     while (1) {
-//         mrb_tick(mrb);
-//         vTaskDelay(pdMS_TO_TICKS(MRB_TICK_UNIT));  // 例: MRB_TICK_UNIT = 1ms
-//     }
-// }
-// }
-
-// static bool create_mrb_tick_task(void)
-// {
-//     BaseType_t result = xTaskCreate(
-//     app_task_test, attr->name, attr->stack_words,
-//     NULL, attr->priority, &g_task_debug);
-
-
-//     if (result == pdPASS) {
-//         if (out_id) *out_id = -1;  // No context ID for simple spawn
-//         ESP_LOGI(TAG, "[%s] Debug task spawned (prio=%u)", attr->name, attr->priority);
-//         return true;
-//     } else {
-//         ESP_LOGE(TAG, "[%s] Failed to create debug task", attr->name);
-//         return false;
-//     }
-// }
-
-#endif
-
 static void create_system_app(void)
 {
     ESP_LOGI(TAG, "Creating system GUI app...");
@@ -89,10 +59,6 @@ static void create_system_app(void)
 void fmrb_os_init(void)
 {
     ESP_LOGI(TAG, "Initializing Family mruby OS...");
-
-    #ifdef CONFIG_IDF_TARGET_LINUX
-    //create_mrb_tick_task();
-    #endif
 
     // Read setting file
     // /etc/system_config.yaml

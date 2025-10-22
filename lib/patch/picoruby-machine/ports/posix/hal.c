@@ -117,8 +117,8 @@ hal_init(mrb_state *mrb)
   printf("=== hal_init: PICORUBY_HOST_BUILD DEFINED (mrbc compiler mode) ===\n");
   printf("    This build should NOT use FreeRTOS\n");
 #else
-  printf("=== hal_init: PICORUBY_HOST_BUILD NOT DEFINED (target mode) ===\n");
-  printf("    This build SHOULD use FreeRTOS\n");
+  // printf("=== hal_init: PICORUBY_HOST_BUILD NOT DEFINED (target mode) ===\n");
+  // printf("    This build SHOULD use FreeRTOS\n");
 #endif
 
   // FreeRTOS environment: Multitask-based tick management

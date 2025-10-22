@@ -251,7 +251,6 @@ static void app_task_main(void* arg) {
 #ifdef CONFIG_IDF_TARGET_LINUX
 extern void dump_signal_mask(const char*);
 extern void log_itimer_real(const char*);
-extern void log_sigalrm_counter(const char*);
 #endif
 
 static void app_task_test(void* arg) {
@@ -259,7 +258,6 @@ static void app_task_test(void* arg) {
 #ifdef CONFIG_IDF_TARGET_LINUX
     dump_signal_mask("app_task_test");
     log_itimer_real("app_task_test");
-    log_sigalrm_counter("app_task_test(start)");
 #endif
     while (1) {
         ESP_LOGI("SIG", "testapp  tick=%u", (unsigned)xTaskGetTickCount());

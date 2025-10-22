@@ -115,7 +115,7 @@ end
 desc "Full clean build artifacts (including host)"
 task :clean do
   #sh "#{DOCKER_CMD} idf.py fullclean"
-  sh "rm sdkconfig"
+  sh "rm -f sdkconfig"
   sh "rm -rf build"
   sh "rm -rf components/picoruby-esp32/picoruby/build/*"
 end
