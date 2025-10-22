@@ -16,7 +16,9 @@ MRuby::Gem::Specification.new('picoruby-machine') do |spec|
   end
 
   # ホストビルド(mrbcコンパイラ)の判定
-  if spec.build.name == 'host'
+  # mruby-bin-mrbc2が含まれている場合のみコンパイラビルドと判定
+  # (Linuxターゲットビルドもbuild.name=='host'だが、mruby-bin-mrbc2を含まない)
+  if build.gems.map(&:name).include?('mruby-bin-mrbc2')
     cc.defines << "PICORUBY_HOST_BUILD"
   end
 
