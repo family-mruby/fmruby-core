@@ -10,7 +10,8 @@ require 'readline'
 # ===== COBS (Consistent Overhead Byte Stuffing) =====
 module COBS
   def self.encode(data)
-    out = +""
+    data = data.force_encoding("ASCII-8BIT")
+    out = String.new(encoding: "ASCII-8BIT")
     code_index = 0
     out << "\x00" # placeholder
     code = 1
@@ -21,7 +22,7 @@ module COBS
         out << "\x00"
         code = 1
       else
-        out << b
+        out << [b].pack("C")
         code += 1
         if code == 0xFF
           out.setbyte(code_index, code)
@@ -36,7 +37,8 @@ module COBS
   end
 
   def self.decode(data)
-    out = +""
+    data = data.force_encoding("ASCII-8BIT")
+    out = String.new(encoding: "ASCII-8BIT")
     i = 0
     while i < data.bytesize
       code = data.getbyte(i) or raise "COBS decode error"
@@ -44,7 +46,7 @@ module COBS
       i += 1
       (code - 1).times do
         raise "COBS overrun" if i >= data.bytesize
-        out << data.getbyte(i)
+        out << [data.getbyte(i)].pack("C")
         i += 1
       end
       out << "\x00" if code < 0xFF && i < data.bytesize
@@ -60,10 +62,33 @@ class SerialClient
   DELIM = "\x00"
 
   def initialize(port:, baud:115200, rtscts:true, timeout_s:5.0)
-    @sp = SerialPort.new(port, baud, 8, 1, SerialPort::NONE)
-    @sp.flow_control = SerialPort::HARDWARE if rtscts
-    @sp.read_timeout = (timeout_s * 1000).to_i
-    @rx = +""
+    # Resolve symlink if needed
+    real_port = File.symlink?(port) ? File.readlink(port) : port
+
+    # For PTY devices, use File.open instead of SerialPort
+    if real_port.include?("pts") || real_port.include?("tty")
+      @sp = File.open(real_port, "r+b")
+      @sp.sync = true
+      @is_pty = true
+      @timeout_ms = (timeout_s * 1000).to_i
+    else
+      @sp = SerialPort.new(real_port, baud, 8, 1, SerialPort::NONE)
+      @sp.binmode if @sp.respond_to?(:binmode)
+
+      # Set flow control if supported and requested
+      if rtscts && @sp.respond_to?(:flow_control=)
+        begin
+          @sp.flow_control = SerialPort::HARDWARE
+        rescue NameError
+          @sp.flow_control = (defined?(SerialPort::HARD) ? SerialPort::HARD : 1)
+        end
+      end
+      @sp.read_timeout = (timeout_s * 1000).to_i if @sp.respond_to?(:read_timeout=)
+      @is_pty = false
+      @timeout_ms = (timeout_s * 1000).to_i
+    end
+
+    @rx = String.new(encoding: "ASCII-8BIT")
   end
 
   def close; @sp.close rescue nil; end
@@ -139,17 +164,34 @@ class SerialClient
 
   def build_packet(code, json, bin)
     body = [code].pack("C")
-    payload = json.b
+    payload = json.force_encoding("ASCII-8BIT")
+    payload = +payload # make mutable
     payload << bin if bin
     body << [payload.bytesize].pack("n") << payload
     crc = [Zlib.crc32(body)].pack("N")
-    COBS.encode(body + crc)
+    raw = body + crc
+    COBS.encode(raw)
   end
 
   def read_response
+    timeout_time = Time.now + (@timeout_ms / 1000.0)
     loop do
-      chunk = @sp.read(2048)
-      raise "Timeout waiting frame" if chunk.nil?
+      ready = IO.select([@sp], nil, nil, 1.0)
+
+      if ready.nil?
+        raise "Timeout waiting frame" if Time.now > timeout_time
+        next
+      end
+
+      begin
+        chunk = @sp.read_nonblock(2048)
+      rescue IO::WaitReadable
+        next
+      rescue EOFError
+        raise "Connection closed"
+      end
+
+      chunk = chunk.force_encoding("ASCII-8BIT")
       @rx << chunk
       if (i = @rx.index(DELIM))
         frame = @rx.slice!(0, i)
@@ -163,7 +205,7 @@ class SerialClient
         len  = body.byteslice(1,2).unpack1("n")
         pay  = body.byteslice(3, len)
         # Response format: JSON at the beginning, followed by binary data if needed (after JSON.to_json.bytesize)
-        meta = JSON.parse(pay, symbolize_names: false, create_additions: false) rescue nil
+        meta = JSON.parse(pay.force_encoding("UTF-8"), symbolize_names: false, create_additions: false) rescue nil
         data = nil
         if meta && meta["bin"].is_a?(Integer)
           json_len = meta.to_json.bytesize

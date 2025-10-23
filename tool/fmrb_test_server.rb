@@ -10,7 +10,8 @@ require 'fileutils'
 # ===== COBS (Consistent Overhead Byte Stuffing) =====
 module COBS
   def self.encode(data)
-    out = +""
+    data = data.force_encoding("ASCII-8BIT")
+    out = String.new(encoding: "ASCII-8BIT")
     code_index = 0
     out << "\x00" # placeholder
     code = 1
@@ -21,7 +22,7 @@ module COBS
         out << "\x00"
         code = 1
       else
-        out << b
+        out << [b].pack("C")
         code += 1
         if code == 0xFF
           out.setbyte(code_index, code)
@@ -36,7 +37,8 @@ module COBS
   end
 
   def self.decode(data)
-    out = +""
+    data = data.force_encoding("ASCII-8BIT")
+    out = String.new(encoding: "ASCII-8BIT")
     i = 0
     while i < data.bytesize
       code = data.getbyte(i) or raise "COBS decode error"
@@ -44,7 +46,7 @@ module COBS
       i += 1
       (code - 1).times do
         raise "COBS overrun" if i >= data.bytesize
-        out << data.getbyte(i)
+        out << [data.getbyte(i)].pack("C")
         i += 1
       end
       out << "\x00" if code < 0xFF && i < data.bytesize
@@ -58,9 +60,20 @@ class TestServer
   DELIM = "\x00"
 
   def initialize(port:, root_dir: "/tmp/fmrb_test")
-    @sp = SerialPort.new(port, 115200, 8, 1, SerialPort::NONE)
-    @sp.read_timeout = 5000
-    @rx = +""
+    # Resolve symlink if needed
+    real_port = File.symlink?(port) ? File.readlink(port) : port
+
+    # For PTY devices, use File.open instead of SerialPort
+    if real_port.include?("pts") || real_port.include?("tty")
+      @sp = File.open(real_port, "r+b")
+      @sp.sync = true
+    else
+      @sp = SerialPort.new(real_port, 115200, 8, 1, SerialPort::NONE)
+      @sp.binmode if @sp.respond_to?(:binmode)
+      @sp.read_timeout = 5000
+    end
+
+    @rx = String.new(encoding: "ASCII-8BIT")
     @root_dir = File.expand_path(root_dir)
     @current_dir = "/"
 
@@ -68,6 +81,7 @@ class TestServer
     FileUtils.mkdir_p(@root_dir)
     puts "Test server started"
     puts "Root directory: #{@root_dir}"
+    puts "Listening on port: #{real_port}"
     puts "Waiting for commands..."
   end
 
@@ -89,9 +103,19 @@ class TestServer
 
   def read_frame
     loop do
-      chunk = @sp.read(2048)
-      return nil if chunk.nil?
+      # Use IO.select for PTY devices
+      ready = IO.select([@sp], nil, nil, 1.0)
+      next if ready.nil?
 
+      begin
+        chunk = @sp.read_nonblock(2048)
+      rescue IO::WaitReadable
+        next
+      rescue EOFError
+        return nil
+      end
+
+      chunk = chunk.force_encoding("ASCII-8BIT")
       @rx << chunk
       if (i = @rx.index(DELIM))
         frame = @rx.slice!(0, i)
@@ -171,7 +195,6 @@ class TestServer
       }
     end
 
-    puts "  -> LS returned #{entries.size} entries"
     {ok: true, entries: entries}
   end
 
@@ -258,7 +281,8 @@ class TestServer
 
     # Build JSON response
     json = response.to_json
-    payload = json.b
+    payload = json.force_encoding("ASCII-8BIT")
+    payload = +payload # make mutable
     payload << binary if binary
 
     # Build packet
@@ -266,7 +290,10 @@ class TestServer
     body << [payload.bytesize].pack("n") << payload
     crc = [Zlib.crc32(body)].pack("N")
 
-    packet = COBS.encode(body + crc) + DELIM
+    raw = body + crc
+    encoded = COBS.encode(raw)
+    packet = encoded + DELIM
+
     @sp.write(packet)
   end
 end
