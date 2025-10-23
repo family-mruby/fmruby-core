@@ -7,3 +7,9 @@
 [submodule "components/mem_allocator/tlsf"]
 	path = components/mem_allocator/tlsf
 	url = https://github.com/mattconte/tlsf.git
+[submodule "components/toml_parser/tomlc99"]
+	path = components/toml_parser/tomlc99
+	url = https://github.com/cktan/tomlc99.git
+[submodule "components/tar_lib/microtar"]
+	path = components/tar_lib/microtar
+	url = https://github.com/rxi/microtar.git
