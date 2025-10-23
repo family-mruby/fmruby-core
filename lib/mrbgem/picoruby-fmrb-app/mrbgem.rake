@@ -3,7 +3,6 @@ MRuby::Gem::Specification.new('picoruby-fmrb-app') do |spec|
   spec.authors = ['Katsuhiko Kageyama']
   spec.summary = 'Family mruby OS API for PicoRuby'
 
-  spec.add_dependency 'picoruby-gpio'
   spec.add_dependency 'picoruby-machine'
 
   # C extension files

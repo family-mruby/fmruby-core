@@ -25,14 +25,13 @@ class FmrbApp
 
   # Lifecycle methods (override in subclass)
 
-  def on_create
-    # Called once when app starts
+  def on_create(name, canvas)
+    # Called once when app starts,
     # Initialize your app state here
   end
 
-  def on_update(delta_time_ms)
+  def on_update()
     # Called every frame (60Hz)
-    # delta_time_ms: time since last update in milliseconds
     # Update your app logic here
   end
 
@@ -75,6 +74,17 @@ class FmrbApp
   end
 
   # Internal methods (called by C layer)
+
+  # イベント待機
+  def spin(timeout)
+    _spin(timeout) #C拡張
+  end
+
+  # 指定したキー操作をイベントとして受信する
+  # Shellのようなアプリでは、getchでSTOUTで管理
+  def register_keyevent(key_list)
+    _register_keyevent(key_list) #C拡張
+  end
 
   def start
     @running = true
