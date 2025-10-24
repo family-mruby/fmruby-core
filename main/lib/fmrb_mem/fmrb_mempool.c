@@ -17,6 +17,7 @@ static unsigned char* g_mempool_list[POOL_ID_MAX] = {
     [POOL_ID_USER_APP0]  = g_mempool_user_app0,
     [POOL_ID_USER_APP1]  = g_mempool_user_app1,
     [POOL_ID_USER_APP2]  = g_mempool_user_app2,
+    [POOL_ID_HAL_FILE]  = g_mempool_hal_file,
 };
 
 void* fmrb_get_mempool_ptr(int32_t id){

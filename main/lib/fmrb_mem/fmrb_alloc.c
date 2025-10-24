@@ -8,25 +8,21 @@
 static tlsf_t fmrb_tlsf = NULL;
 static pool_t fmrb_pool = NULL;
 
-#define FMRB_POOL_SIZE (256 * 1024)  // 256KB default
-
-EXT_RAM_BSS_ATTR static unsigned char fmrb_memory_pool[FMRB_POOL_SIZE];
-
-int32_t fmrb_malloc_init(void)
+uint8_t fmrb_malloc_init(void* pool, size_t size)
 {
     if (fmrb_tlsf != NULL) {
         return 0;  // Already initialized
     }
 
     // Create TLSF instance with the memory pool
-    fmrb_tlsf = tlsf_create_with_pool(fmrb_memory_pool, FMRB_POOL_SIZE);
+    fmrb_tlsf = tlsf_create_with_pool(pool, size);
 
     if (fmrb_tlsf == NULL) {
         return -1;  // Initialization failed
     }
 
     fmrb_pool = tlsf_get_pool(fmrb_tlsf);
-    return 0;
+    return *fmrb_tlsf;
 }
 
 void* fmrb_malloc(size_t size)

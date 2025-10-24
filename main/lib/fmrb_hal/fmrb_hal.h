@@ -77,6 +77,7 @@ void fmrb_hal_deinit(void);
 #include "fmrb_hal_gpio.h"
 #include "fmrb_hal_spi.h"
 #include "fmrb_hal_ipc.h"
+#include "fmrb_hal_file.h"
 
 #ifdef __cplusplus
 }

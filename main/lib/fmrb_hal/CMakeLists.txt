@@ -10,14 +10,16 @@ if(IDF_TARGET STREQUAL "linux")
     list(APPEND COMMON_SRCS
         "platform/linux/fmrb_hal_spi_linux.c"
         "platform/linux/fmrb_hal_ipc_linux.c"
+        "platform/linux/fmrb_hal_file_linux.c"
     )
     set(PLATFORM_REQUIRES pthread log fmrb_ipc)
 else()
     list(APPEND COMMON_SRCS
         "platform/esp32/fmrb_hal_spi_esp32.c"
         "platform/esp32/fmrb_hal_ipc_esp32.c"
+        "platform/esp32/fmrb_hal_file_esp32.c"
     )
-    set(PLATFORM_REQUIRES esp_timer freertos log spi_flash driver pthread fmrb_ipc)
+    set(PLATFORM_REQUIRES esp_timer freertos log spi_flash driver pthread fmrb_ipc esp_littlefs)
 endif()
 
 idf_component_register(

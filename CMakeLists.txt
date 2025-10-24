@@ -6,9 +6,10 @@ set(EXTRA_COMPONENT_DIRS "main/lib" "components")
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(fmruby-core)
 
-# Generate SPIFFS image from spiffs_data directory
-#spiffs_create_partition_image(audio spiffs_data FLASH_IN_PROJECT)
-#fatfs_create_rawflash_image(storage fatfs FLASH_IN_PROJECT PRESERVE_TIME)
+# Generate storage image data directory (ESP32 only)
+if(NOT IDF_TARGET STREQUAL "linux")
+    littlefs_create_partition_image(storage data FLASH_IN_PROJECT)
+endif()
 
 # TODO: Add PicoRuby component when integrated
 # list(APPEND EXTRA_COMPONENT_DIRS "lib/picoruby-fmrb")
