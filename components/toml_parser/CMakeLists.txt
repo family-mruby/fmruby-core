@@ -13,4 +13,5 @@ idf_component_register(
 # tomlc99 may have unused static functions
 target_compile_options(${COMPONENT_LIB} PRIVATE
     -Wno-unused-function
+    -Wno-char-subscripts
 )

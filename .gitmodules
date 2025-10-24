@@ -13,3 +13,6 @@
 [submodule "components/tar_lib/microtar"]
 	path = components/tar_lib/microtar
 	url = https://github.com/rxi/microtar.git
+[submodule "components/esp_littlefs"]
+	path = components/esp_littlefs
+	url = https://github.com/joltwallet/esp_littlefs.git
