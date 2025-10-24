@@ -2,96 +2,255 @@
 #include <stdint.h>
 #include <string.h>
 #include "esp_attr.h"
+#include "esp_log.h"
 #include "tlsf.h"
 #include "fmrb_mem.h"
 
-static tlsf_t fmrb_tlsf = NULL;
-static pool_t fmrb_pool = NULL;
+#ifdef CONFIG_IDF_TARGET_LINUX
+#include <pthread.h>
+#define MUTEX_TYPE pthread_mutex_t
+#define MUTEX_INIT(m) pthread_mutex_init(&(m), NULL)
+#define MUTEX_LOCK(m) pthread_mutex_lock(&(m))
+#define MUTEX_UNLOCK(m) pthread_mutex_unlock(&(m))
+#define MUTEX_DESTROY(m) pthread_mutex_destroy(&(m))
+#else
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
+#define MUTEX_TYPE SemaphoreHandle_t
+#define MUTEX_INIT(m) ((m) = xSemaphoreCreateMutex())
+#define MUTEX_LOCK(m) xSemaphoreTake((m), portMAX_DELAY)
+#define MUTEX_UNLOCK(m) xSemaphoreGive((m))
+#define MUTEX_DESTROY(m) vSemaphoreDelete((m))
+#endif
 
-uint8_t fmrb_malloc_init(void* pool, size_t size)
-{
-    if (fmrb_tlsf != NULL) {
-        return 0;  // Already initialized
+static const char *TAG = "fmrb_alloc";
+
+// Pool management structure
+typedef struct fmrb_pool_node {
+    fmrb_mem_handle_t handle;
+    tlsf_t tlsf;
+    pool_t pool;
+    MUTEX_TYPE mutex;
+    struct fmrb_pool_node *next;
+} fmrb_pool_node_t;
+
+// Global pool list
+static fmrb_pool_node_t *s_pool_list = NULL;
+static MUTEX_TYPE s_list_mutex;
+static bool s_list_mutex_initialized = false;
+static fmrb_mem_handle_t s_next_handle = 0;
+
+// Initialize global mutex
+static void init_list_mutex(void) {
+    if (!s_list_mutex_initialized) {
+        MUTEX_INIT(s_list_mutex);
+        s_list_mutex_initialized = true;
     }
+}
+
+// Find pool node by handle
+static fmrb_pool_node_t* find_pool_node(fmrb_mem_handle_t handle) {
+    fmrb_pool_node_t *node = s_pool_list;
+    while (node != NULL) {
+        if (node->handle == handle) {
+            return node;
+        }
+        node = node->next;
+    }
+    return NULL;
+}
+
+// Create a new memory pool and return its handle
+fmrb_mem_handle_t fmrb_malloc_create_handle(void* pool, size_t size) {
+    if (pool == NULL || size == 0) {
+        ESP_LOGE(TAG, "Invalid parameters");
+        return -1;
+    }
+
+    init_list_mutex();
+
+    // Allocate pool node from the provided pool memory
+    // Reserve space at the beginning of the pool for the node structure
+    if (size < sizeof(fmrb_pool_node_t) + 1024) {
+        ESP_LOGE(TAG, "Pool too small");
+        return -1;
+    }
+
+    fmrb_pool_node_t *node = (fmrb_pool_node_t*)pool;
+    void *tlsf_pool_start = (void*)((char*)pool + sizeof(fmrb_pool_node_t));
+    size_t tlsf_pool_size = size - sizeof(fmrb_pool_node_t);
 
     // Create TLSF instance with the memory pool
-    fmrb_tlsf = tlsf_create_with_pool(pool, size);
-
-    if (fmrb_tlsf == NULL) {
-        return -1;  // Initialization failed
+    node->tlsf = tlsf_create_with_pool(tlsf_pool_start, tlsf_pool_size);
+    if (node->tlsf == NULL) {
+        ESP_LOGE(TAG, "tlsf_create_with_pool failed");
+        return -1;
     }
 
-    fmrb_pool = tlsf_get_pool(fmrb_tlsf);
-    return *fmrb_tlsf;
+    node->pool = tlsf_get_pool(node->tlsf);
+
+    // Initialize mutex for this pool
+    MUTEX_INIT(node->mutex);
+
+    // Assign handle and add to list
+    MUTEX_LOCK(s_list_mutex);
+    node->handle = s_next_handle++;
+    node->next = s_pool_list;
+    s_pool_list = node;
+    MUTEX_UNLOCK(s_list_mutex);
+
+    ESP_LOGI(TAG, "Created pool handle=%d, size=%zu", node->handle, tlsf_pool_size);
+    return node->handle;
 }
 
-void* fmrb_malloc(size_t size)
-{
-    if (fmrb_tlsf == NULL) {
-        fmrb_malloc_init();
+// Destroy a memory pool
+int fmrb_malloc_destroy_handle(fmrb_mem_handle_t handle) {
+    init_list_mutex();
+
+    MUTEX_LOCK(s_list_mutex);
+
+    fmrb_pool_node_t *prev = NULL;
+    fmrb_pool_node_t *node = s_pool_list;
+
+    while (node != NULL) {
+        if (node->handle == handle) {
+            // Remove from list
+            if (prev == NULL) {
+                s_pool_list = node->next;
+            } else {
+                prev->next = node->next;
+            }
+
+            MUTEX_UNLOCK(s_list_mutex);
+
+            // Destroy TLSF and mutex
+            tlsf_destroy(node->tlsf);
+            MUTEX_DESTROY(node->mutex);
+
+            // Note: We don't free the node itself as it's part of the original pool memory
+            ESP_LOGI(TAG, "Destroyed pool handle=%d", handle);
+            return 0;
+        }
+        prev = node;
+        node = node->next;
     }
-    return tlsf_malloc(fmrb_tlsf, size);
+
+    MUTEX_UNLOCK(s_list_mutex);
+    ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+    return -1;
 }
 
-void* fmrb_calloc(size_t nmemb, size_t size)
-{
-    if (fmrb_tlsf == NULL) {
-        fmrb_malloc_init();
+// Allocate memory from a pool
+void* fmrb_malloc(fmrb_mem_handle_t handle, size_t size) {
+    init_list_mutex();
+
+    MUTEX_LOCK(s_list_mutex);
+    fmrb_pool_node_t *node = find_pool_node(handle);
+    MUTEX_UNLOCK(s_list_mutex);
+
+    if (node == NULL) {
+        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        return NULL;
     }
 
-    size_t total_size = nmemb * size;
-    void* ptr = tlsf_malloc(fmrb_tlsf, total_size);
-
-    if (ptr != NULL) {
-        memset(ptr, 0, total_size);
-    }
+    MUTEX_LOCK(node->mutex);
+    void *ptr = tlsf_malloc(node->tlsf, size);
+    MUTEX_UNLOCK(node->mutex);
 
     return ptr;
 }
 
-void* fmrb_realloc(void* ptr, size_t size)
-{
-    if (fmrb_tlsf == NULL) {
-        fmrb_malloc_init();
+// Calloc from a pool
+void* fmrb_calloc(fmrb_mem_handle_t handle, size_t nmemb, size_t size) {
+    init_list_mutex();
+
+    MUTEX_LOCK(s_list_mutex);
+    fmrb_pool_node_t *node = find_pool_node(handle);
+    MUTEX_UNLOCK(s_list_mutex);
+
+    if (node == NULL) {
+        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        return NULL;
     }
-    return tlsf_realloc(fmrb_tlsf, ptr, size);
+
+    size_t total_size = nmemb * size;
+
+    MUTEX_LOCK(node->mutex);
+    void* ptr = tlsf_malloc(node->tlsf, total_size);
+    if (ptr != NULL) {
+        memset(ptr, 0, total_size);
+    }
+    MUTEX_UNLOCK(node->mutex);
+
+    return ptr;
 }
 
-void fmrb_free(void* ptr)
-{
+// Realloc from a pool
+void* fmrb_realloc(fmrb_mem_handle_t handle, void* ptr, size_t size) {
+    init_list_mutex();
+
+    MUTEX_LOCK(s_list_mutex);
+    fmrb_pool_node_t *node = find_pool_node(handle);
+    MUTEX_UNLOCK(s_list_mutex);
+
+    if (node == NULL) {
+        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        return NULL;
+    }
+
+    MUTEX_LOCK(node->mutex);
+    void *new_ptr = tlsf_realloc(node->tlsf, ptr, size);
+    MUTEX_UNLOCK(node->mutex);
+
+    return new_ptr;
+}
+
+// Free memory from a pool
+void fmrb_free(fmrb_mem_handle_t handle, void* ptr) {
     if (ptr == NULL) {
-        return;  // C99: free(NULL) is allowed
+        return;
     }
 
-    if (fmrb_tlsf == NULL) {
-        return;  // Not initialized, nothing to free
+    init_list_mutex();
+
+    MUTEX_LOCK(s_list_mutex);
+    fmrb_pool_node_t *node = find_pool_node(handle);
+    MUTEX_UNLOCK(s_list_mutex);
+
+    if (node == NULL) {
+        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        return;
     }
 
-    tlsf_free(fmrb_tlsf, ptr);
+    MUTEX_LOCK(node->mutex);
+    tlsf_free(node->tlsf, ptr);
+    MUTEX_UNLOCK(node->mutex);
 }
 
-// Optional: Get memory usage statistics
-int32_t fmrb_malloc_check(void)
-{
-    if (fmrb_tlsf == NULL) {
-        return -1;  // Not initialized
+// Check integrity of a pool
+int32_t fmrb_malloc_check(fmrb_mem_handle_t handle) {
+    init_list_mutex();
+
+    MUTEX_LOCK(s_list_mutex);
+    fmrb_pool_node_t *node = find_pool_node(handle);
+    MUTEX_UNLOCK(s_list_mutex);
+
+    if (node == NULL) {
+        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        return -1;
     }
-    return tlsf_check(fmrb_tlsf);
+
+    MUTEX_LOCK(node->mutex);
+    int32_t result = tlsf_check(node->tlsf);
+    MUTEX_UNLOCK(node->mutex);
+
+    return result;
 }
 
-// Optional: Get pool statistics
-typedef struct {
-    size_t total_size;
-    size_t used_size;
-    size_t free_size;
-    int32_t used_blocks;
-    int32_t free_blocks;
-} fmrb_pool_stats_t;
-
-static void fmrb_count_blocks(void* ptr, size_t size, int used, void* user)
-{
+// Block counting callback
+static void fmrb_count_blocks(void* ptr, size_t size, int used, void* user) {
     fmrb_pool_stats_t* stats = (fmrb_pool_stats_t*)user;
-    int32_t used_i32 = (int32_t)used;  // Convert tlsf int to stdint
+    int32_t used_i32 = (int32_t)used;
     if (used_i32) {
         stats->used_size += size;
         stats->used_blocks++;
@@ -102,12 +261,27 @@ static void fmrb_count_blocks(void* ptr, size_t size, int used, void* user)
     stats->total_size += size;
 }
 
-void fmrb_get_stats(fmrb_pool_stats_t* stats)
-{
-    if (stats == NULL || fmrb_pool == NULL) {
-        return;
+// Get statistics for a pool
+int fmrb_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats) {
+    if (stats == NULL) {
+        return -1;
     }
 
+    init_list_mutex();
+
+    MUTEX_LOCK(s_list_mutex);
+    fmrb_pool_node_t *node = find_pool_node(handle);
+    MUTEX_UNLOCK(s_list_mutex);
+
+    if (node == NULL || node->pool == NULL) {
+        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        return -1;
+    }
+
+    MUTEX_LOCK(node->mutex);
     memset(stats, 0, sizeof(fmrb_pool_stats_t));
-    tlsf_walk_pool(fmrb_pool, fmrb_count_blocks, stats);
+    tlsf_walk_pool(node->pool, fmrb_count_blocks, stats);
+    MUTEX_UNLOCK(node->mutex);
+
+    return 0;
 }
