@@ -34,7 +34,8 @@ task :setup do
   # Copy files
   sh "cp -f lib/patch/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
   sh "cp -f lib/patch/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
-
+  sh "cp -f lib/patch/esp_littlefs/CMakeLists.txt components/esp_littlefs/"
+  
   # Machine
   sh "cp -f lib/patch/picoruby-machine/mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/"
   sh "cp -f lib/patch/picoruby-machine/ports/posix/hal.c components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/ports/posix/"

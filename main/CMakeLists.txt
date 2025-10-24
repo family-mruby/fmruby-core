@@ -35,10 +35,18 @@ foreach(RB_FILE ${DEFAULT_APP_RUBY_FILES})
   list(APPEND COMPONENT_SRCS ${C_FILE})
 endforeach()
 
+# Set up component dependencies based on target
+set(COMPONENT_REQUIRES fmrb_hal fmrb_ipc fmrb_gfx fmrb_audio picoruby-esp32 mem_allocator log tar_lib toml_parser)
+
+# Add ESP32-specific components
+if(NOT IDF_TARGET STREQUAL "linux")
+    list(APPEND COMPONENT_REQUIRES esp_littlefs)
+endif()
+
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
     INCLUDE_DIRS "." "kernel" "kernel/host" "include" "lib/fmrb_mem"
-    REQUIRES fmrb_hal fmrb_ipc fmrb_gfx fmrb_audio picoruby-esp32 mem_allocator log esp_littlefs tar_lib toml_parser
+    REQUIRES ${COMPONENT_REQUIRES}
 )
 
 # Generate C files from kernel Ruby files (must be after idf_component_register)
