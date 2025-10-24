@@ -29,6 +29,11 @@ typedef int8_t fmrb_mem_handle_t;
   #endif
 #endif
 
+//SRAM
+#define FMRB_MEM_POOL_SIZE_HAL_FILE (1*1024)
+
+
+//PSRAM
 #define FMRB_MEM_POOL_SIZE_KERNEL (500*1024)
 #define FMRB_MEM_POOL_SIZE_SYSTEM_APP (500*1024)
 #define FMRB_MEM_POOL_SIZE_USER_APP (500*1024)
