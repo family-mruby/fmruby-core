@@ -19,7 +19,7 @@ else()
         "platform/esp32/fmrb_hal_ipc_esp32.c"
         "platform/esp32/fmrb_hal_file_esp32.c"
     )
-    set(PLATFORM_REQUIRES esp_timer freertos log spi_flash driver pthread fmrb_ipc esp_littlefs)
+    set(PLATFORM_REQUIRES esp_timer freertos log spi_flash driver pthread fmrb_ipc esp_littlefs fatfs sdmmc)
 endif()
 
 idf_component_register(

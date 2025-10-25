@@ -6,9 +6,9 @@
 #include "esp_log.h"
 
 // Family mruby modules
-#include "lib/fmrb_hal/fmrb_hal.h"
-#include "lib/fmrb_gfx/fmrb_gfx.h"
-#include "lib/fmrb_audio/fmrb_audio.h"
+#include "fmrb_hal.h"
+#include "fmrb_gfx.h"
+#include "fmrb_audio.h"
 
 #include "boot.h"
 #include "kernel/fmrb_kernel.h"
@@ -55,16 +55,26 @@ static void create_system_app(void)
     ESP_LOGI(TAG, "System GUI app spawned successfully (id=%ld)", app_id);
 }
 
+static void init_hardware(void)
+{
+    // Filesystem
+    fmrb_err_t ret = fmrb_hal_file_init();
+    if (ret != FMRB_OK) {
+        ESP_LOGE(TAG, "Failed to init filesystem");
+        return;
+    }
+    // ESP32 IPC
+    // USB HOST
+}
+
 // Family mruby OS initialization
 void fmrb_os_init(void)
 {
     ESP_LOGI(TAG, "Initializing Family mruby OS...");
+    // Init memory
 
-    // Read setting file
-    // /etc/system_config.yaml
-
-    // Reserve Heap Mem for Apps
-    // 1M per 1App
+    // Init HW
+    init_hardware();
 
     //Start Frmb Kernel
     int32_t result = fmrb_kernel_start();
@@ -82,3 +92,7 @@ void fmrb_os_init(void)
     ESP_LOGI(TAG, "Family mruby OS initialization complete");
 }
 
+void fmrb_os_close(void)
+{
+    fmrb_hal_file_deinit();
+}

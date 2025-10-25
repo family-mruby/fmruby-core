@@ -5,12 +5,22 @@
 #include <dirent.h>
 #include <unistd.h>
 #include "esp_littlefs.h"
+#include "esp_vfs_fat.h"
+#include "sdmmc_cmd.h"
+#include "driver/sdspi_host.h"
+#include "driver/spi_common.h"
+#include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "esp_log.h"
+
+#define TAG "fmrb_hal_file"
 
 // Maximum number of open files/directories
 #define MAX_OPEN_FILES 10
 #define MAX_OPEN_DIRS 10
+
+#define MAX_PATH_LEN 128
 
 // Internal file handle structure
 typedef struct {
@@ -25,23 +35,45 @@ typedef struct {
 } fmrb_dir_slot_t;
 
 // Static file and directory handle pools
-static fmrb_file_slot_t s_file_slots[MAX_OPEN_FILES];
-static fmrb_dir_slot_t s_dir_slots[MAX_OPEN_DIRS];
+EXT_RAM_BSS_ATTR static fmrb_file_slot_t s_file_slots[MAX_OPEN_FILES];
+EXT_RAM_BSS_ATTR static fmrb_dir_slot_t s_dir_slots[MAX_OPEN_DIRS];
 
 // Global mutex for thread safety
 static SemaphoreHandle_t s_file_mutex = NULL;
 #define LOCK() xSemaphoreTake(s_file_mutex, portMAX_DELAY)
 #define UNLOCK() xSemaphoreGive(s_file_mutex)
 
-// Base path for file operations
-#define BASE_PATH "/littlefs"
+// Mount points
+#define LITTLEFS_PATH "/flash"
+#define SDCARD_PATH "/sd"
+
+// SD card SPI configuration
+#define SD_SPI_HOST    SPI3_HOST
+#define SD_CS_GPIO     GPIO_NUM_15
+#define SD_MOSI_GPIO   GPIO_NUM_16
+#define SD_SCLK_GPIO   GPIO_NUM_17
+#define SD_MISO_GPIO   GPIO_NUM_18
+#define SD_DETECT_GPIO GPIO_NUM_38
+
+// SD card state
+static sdmmc_card_t *s_sd_card = NULL;
+static bool s_sd_mounted = false;
+static bool s_spi_initialized = false;
 
 // Helper function to build full path
+// Accepts paths with /flash or /sd prefix, or bare paths (defaults to /flash)
 static void build_path(const char *path, char *full_path, size_t max_len) {
-    if (path[0] == '/') {
-        snprintf(full_path, max_len, "%s%s", BASE_PATH, path);
+    // Check if path already has /flash or /sd prefix
+    if (strncmp(path, "/flash/", 7) == 0 || strcmp(path, "/flash") == 0) {
+        snprintf(full_path, max_len, "%s", path);
+    } else if (strncmp(path, "/sd/", 4) == 0 || strcmp(path, "/sd") == 0) {
+        snprintf(full_path, max_len, "%s", path);
+    } else if (path[0] == '/') {
+        // Absolute path without prefix - default to flash
+        snprintf(full_path, max_len, "%s%s", LITTLEFS_PATH, path);
     } else {
-        snprintf(full_path, max_len, "%s/%s", BASE_PATH, path);
+        // Relative path - default to flash
+        snprintf(full_path, max_len, "%s/%s", LITTLEFS_PATH, path);
     }
 }
 
@@ -119,6 +151,88 @@ static bool is_valid_dir_handle(fmrb_dir_t handle) {
     return slot->in_use;
 }
 
+// Check if SD card is present
+static bool is_sd_card_present(void) {
+    return (gpio_get_level(SD_DETECT_GPIO) == 0);  // Active low
+}
+
+// Mount SD card
+static esp_err_t mount_sd_card(void) {
+    if (s_sd_mounted) {
+        return ESP_OK;  // Already mounted
+    }
+
+    if (!is_sd_card_present()) {
+        ESP_LOGW(TAG, "SD card not detected");
+        return ESP_ERR_NOT_FOUND;
+    }
+
+    esp_err_t ret;
+
+    // Initialize SPI bus if not already done
+    if (!s_spi_initialized) {
+        spi_bus_config_t bus_cfg = {
+            .mosi_io_num = SD_MOSI_GPIO,
+            .miso_io_num = SD_MISO_GPIO,
+            .sclk_io_num = SD_SCLK_GPIO,
+            .quadwp_io_num = -1,
+            .quadhd_io_num = -1,
+            .max_transfer_sz = 4000,
+        };
+
+        ret = spi_bus_initialize(SD_SPI_HOST, &bus_cfg, SDSPI_DEFAULT_DMA);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to initialize SPI bus: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        s_spi_initialized = true;
+        ESP_LOGI(TAG, "SPI bus initialized for SD card");
+    }
+
+    // Configure SDSPI device
+    sdspi_device_config_t slot_config = SDSPI_DEVICE_CONFIG_DEFAULT();
+    slot_config.gpio_cs = SD_CS_GPIO;
+    slot_config.host_id = SD_SPI_HOST;
+
+    // Mount configuration
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024
+    };
+
+    // Use SDSPI host
+    sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+
+    ret = esp_vfs_fat_sdspi_mount(SDCARD_PATH, &host, &slot_config, &mount_config, &s_sd_card);
+
+    if (ret == ESP_OK) {
+        s_sd_mounted = true;
+        ESP_LOGI(TAG, "SD card mounted at %s", SDCARD_PATH);
+        sdmmc_card_print_info(stdout, s_sd_card);
+    } else {
+        ESP_LOGE(TAG, "Failed to mount SD card: %s", esp_err_to_name(ret));
+    }
+
+    return ret;
+}
+
+// Unmount SD card
+static void unmount_sd_card(void) {
+    if (s_sd_mounted) {
+        esp_vfs_fat_sdcard_unmount(SDCARD_PATH, s_sd_card);
+        s_sd_card = NULL;
+        s_sd_mounted = false;
+        ESP_LOGI(TAG, "SD card unmounted");
+    }
+
+    if (s_spi_initialized) {
+        spi_bus_free(SD_SPI_HOST);
+        s_spi_initialized = false;
+        ESP_LOGI(TAG, "SPI bus freed");
+    }
+}
+
 // Initialize file system
 fmrb_err_t fmrb_hal_file_init(void) {
     // Initialize file slots
@@ -131,20 +245,35 @@ fmrb_err_t fmrb_hal_file_init(void) {
         return FMRB_ERR_NO_MEMORY;
     }
 
+    // Configure SD card detect GPIO
+    gpio_config_t io_conf = {
+        .pin_bit_mask = (1ULL << SD_DETECT_GPIO),
+        .mode = GPIO_MODE_INPUT,
+        .pull_up_en = GPIO_PULLUP_ENABLE,
+        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+        .intr_type = GPIO_INTR_DISABLE,
+    };
+    gpio_config(&io_conf);
+
     // Mount LittleFS
-    esp_vfs_littlefs_conf_t conf = {
-        .base_path = BASE_PATH,
+    esp_vfs_littlefs_conf_t lfs_conf = {
+        .base_path = LITTLEFS_PATH,
         .partition_label = "storage",
         .format_if_mount_failed = true,
         .dont_mount = false,
     };
 
-    esp_err_t ret = esp_vfs_littlefs_register(&conf);
+    esp_err_t ret = esp_vfs_littlefs_register(&lfs_conf);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to mount LittleFS: %s", esp_err_to_name(ret));
         vSemaphoreDelete(s_file_mutex);
         s_file_mutex = NULL;
         return FMRB_ERR_FAILED;
     }
+    ESP_LOGI(TAG, "LittleFS mounted at %s", LITTLEFS_PATH);
+
+    // Try to mount SD card (non-fatal if it fails)
+    mount_sd_card();
 
     return FMRB_OK;
 }
@@ -174,7 +303,12 @@ void fmrb_hal_file_deinit(void) {
 
         UNLOCK();
 
+        // Unmount SD card
+        unmount_sd_card();
+
+        // Unmount LittleFS
         esp_vfs_littlefs_unregister("storage");
+
         vSemaphoreDelete(s_file_mutex);
         s_file_mutex = NULL;
     }
@@ -194,7 +328,7 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
         return FMRB_ERR_BUSY;  // All slots are in use
     }
 
-    char full_path[512];
+    char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
     char mode[8];
@@ -340,7 +474,7 @@ fmrb_err_t fmrb_hal_file_remove(const char *path) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    char full_path[512];
+    char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
     LOCK();
@@ -356,8 +490,8 @@ fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    char old_full_path[512];
-    char new_full_path[512];
+    char old_full_path[MAX_PATH_LEN];
+    char new_full_path[MAX_PATH_LEN];
     build_path(old_path, old_full_path, sizeof(old_full_path));
     build_path(new_path, new_full_path, sizeof(new_full_path));
 
@@ -374,7 +508,7 @@ fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    char full_path[512];
+    char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
     LOCK();
@@ -410,7 +544,7 @@ fmrb_err_t fmrb_hal_file_mkdir(const char *path) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    char full_path[512];
+    char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
     LOCK();
@@ -426,7 +560,7 @@ fmrb_err_t fmrb_hal_file_rmdir(const char *path) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    char full_path[512];
+    char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
     LOCK();
@@ -442,7 +576,7 @@ fmrb_err_t fmrb_hal_file_opendir(const char *path, fmrb_dir_t *out_handle) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    char full_path[512];
+    char full_path[MAX_PATH_LEN];
     build_path(path, full_path, sizeof(full_path));
 
     LOCK();

@@ -96,6 +96,8 @@ void app_main(void)
         ESP_LOGI("SIG", "app_main tick=%u", (unsigned)xTaskGetTickCount());
         vTaskDelay(pdMS_TO_TICKS(10000));
     }
+
+    fmrb_os_close();
     ESP_LOGI(TAG, "app_main exited");
     vTaskDelete(NULL);
 }
