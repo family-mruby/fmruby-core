@@ -1,4 +1,5 @@
 #include "fmrb_hal_file.h"
+#include "fmrb_pin_assign.h"
 #include <string.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -49,11 +50,11 @@ static SemaphoreHandle_t s_file_mutex = NULL;
 
 // SD card SPI configuration
 #define SD_SPI_HOST    SPI3_HOST
-#define SD_CS_GPIO     GPIO_NUM_15
-#define SD_MOSI_GPIO   GPIO_NUM_16
-#define SD_SCLK_GPIO   GPIO_NUM_17
-#define SD_MISO_GPIO   GPIO_NUM_18
-#define SD_DETECT_GPIO GPIO_NUM_38
+#define SD_CS_GPIO     FMRB_PIN_SD_CS
+#define SD_MOSI_GPIO   FMRB_PIN_SD_MOSI
+#define SD_SCLK_GPIO   FMRB_PIN_SD_SCLK
+#define SD_MISO_GPIO   FMRB_PIN_SD_MISO
+#define SD_DETECT_GPIO FMRB_PIN_SD_DETECT
 
 // SD card state
 static sdmmc_card_t *s_sd_card = NULL;
