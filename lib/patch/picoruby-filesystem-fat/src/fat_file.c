@@ -3,9 +3,6 @@
 
 #include "../include/fat.h"
 
-#include "../lib/ff14b/source/ff.h"
-
-
 #if defined(PICORB_VM_MRUBY)
 
 #include "mruby/fat_file.c"

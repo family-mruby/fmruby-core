@@ -6,6 +6,8 @@
 #include "mruby/presym.h"
 #include "mruby/variable.h"
 
+#ifndef FMRB_TARGET_ESP32
+
 typedef struct {
   FATFS fs;
   char *prefix;
@@ -303,64 +305,6 @@ mrb__contiguous_p(mrb_state *mrb, mrb_value self)
   return mrb_true_value();
 }
 
-
-
-#ifdef USE_FAT_SD_DISK
-void
-mrb_FAT_init_spi(mrb_state *mrb, mrb_value self)
-{
-  const char *unit_name;
-  mrb_int sck, cipo, copi, cs;
-  mrb_get_args(mrb, "ziiii", &unit_name, &sck, &cipo, &copi, &cs);
-  if (FAT_set_spi_unit(unit_name, sck, cipo, copi, cs) < 0) {
-    mrb_raise(mrb, E_RUNTIME_ERROR, "Invalid SPI unit.");
-    return;
-  }
-  return mrb_fixnum_value(0);
-}
-#endif
-
-
-void
-mrb_picoruby_filesystem_fat_gem_init(mrb_state* mrb)
-{
-  struct RClass *class_FAT = mrb_define_class_id(mrb, MRB_SYM(FAT), mrb->object_class);
-
-  MRB_SET_INSTANCE_TT(class_FAT, MRB_TT_CDATA);
-
-  mrb_define_class_method_id(mrb, class_FAT, MRB_SYM_E(unixtime_offset), mrb_unixtime_offset_e, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_erase), mrb__erase, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_mkfs), mrb__mkfs, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(getfree), mrb_getfree, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_mount), mrb__mount, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_unmount), mrb__unmount, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_chdir), mrb__chdir, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_utime), mrb__utime, MRB_ARGS_REQ(2));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_mkdir), mrb__mkdir, MRB_ARGS_ARG(1, 1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_unlink), mrb__unlink, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_rename), mrb__rename, MRB_ARGS_REQ(2));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_chmod), mrb__chmod, MRB_ARGS_REQ(2));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM_Q(_exist), mrb__exist_p, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM_Q(_directory), mrb__directory_p, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_setlabel), mrb__setlabel, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_getlabel), mrb__getlabel, MRB_ARGS_REQ(1));
-  mrb_define_method_id(mrb, class_FAT, MRB_SYM_Q(_contiguous), mrb__contiguous_p, MRB_ARGS_REQ(1));
-  mrb_init_class_FAT_Dir(mrb, class_FAT);
-  mrb_init_class_FAT_File(mrb, class_FAT);
-
-  struct RClass *class_FAT_Stat = mrb_define_class_under_id(mrb, class_FAT, MRB_SYM(Stat), mrb->object_class);
-  mrb_define_method_id(mrb, class_FAT_Stat, MRB_SYM(_stat), mrb__stat, MRB_ARGS_REQ(1));
-
-#ifdef USE_FAT_SD_DISK
-  mrb_define_method(mrb, class_FAT, MRB_SYM(init_spi), mrb_FAT_init_spi, MRB_ARGS_REQ(5));
-#endif
-}
-
-void
-mrb_picoruby_filesystem_fat_gem_final(mrb_state* mrb)
-{
-}
-
 mrb_value
 mrb__exist_p(mrb_state *mrb, mrb_value self)
 {
@@ -393,4 +337,67 @@ mrb__rename(mrb_state *mrb, mrb_value self)
   FRESULT res = f_rename((TCHAR *)from, (TCHAR *)to);
   mrb_raise_iff_f_error(mrb, res, "f_rename");
   return mrb_fixnum_value(0);
+}
+
+#endif // FMRB_TARGET_ESP32
+
+#ifdef USE_FAT_SD_DISK
+void
+mrb_FAT_init_spi(mrb_state *mrb, mrb_value self)
+{
+  const char *unit_name;
+  mrb_int sck, cipo, copi, cs;
+  mrb_get_args(mrb, "ziiii", &unit_name, &sck, &cipo, &copi, &cs);
+  if (FAT_set_spi_unit(unit_name, sck, cipo, copi, cs) < 0) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "Invalid SPI unit.");
+    return;
+  }
+  return mrb_fixnum_value(0);
+}
+#endif
+
+
+void
+mrb_picoruby_filesystem_fat_gem_init(mrb_state* mrb)
+{
+  struct RClass *class_FAT = mrb_define_class_id(mrb, MRB_SYM(FAT), mrb->object_class);
+
+  MRB_SET_INSTANCE_TT(class_FAT, MRB_TT_CDATA);
+
+#ifndef FMRB_TARGET_ESP32
+  mrb_define_class_method_id(mrb, class_FAT, MRB_SYM_E(unixtime_offset), mrb_unixtime_offset_e, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_erase), mrb__erase, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_mkfs), mrb__mkfs, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(getfree), mrb_getfree, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_mount), mrb__mount, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_unmount), mrb__unmount, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_chdir), mrb__chdir, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_utime), mrb__utime, MRB_ARGS_REQ(2));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_mkdir), mrb__mkdir, MRB_ARGS_ARG(1, 1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_unlink), mrb__unlink, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_rename), mrb__rename, MRB_ARGS_REQ(2));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_chmod), mrb__chmod, MRB_ARGS_REQ(2));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM_Q(_exist), mrb__exist_p, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM_Q(_directory), mrb__directory_p, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_setlabel), mrb__setlabel, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM(_getlabel), mrb__getlabel, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, class_FAT, MRB_SYM_Q(_contiguous), mrb__contiguous_p, MRB_ARGS_REQ(1));
+#endif
+
+  mrb_init_class_FAT_Dir(mrb, class_FAT);
+  mrb_init_class_FAT_File(mrb, class_FAT);
+
+  struct RClass *class_FAT_Stat = mrb_define_class_under_id(mrb, class_FAT, MRB_SYM(Stat), mrb->object_class);
+#ifndef FMRB_TARGET_ESP32
+  mrb_define_method_id(mrb, class_FAT_Stat, MRB_SYM(_stat), mrb__stat, MRB_ARGS_REQ(1));
+#endif
+
+#ifdef USE_FAT_SD_DISK
+  mrb_define_method(mrb, class_FAT, MRB_SYM(init_spi), mrb_FAT_init_spi, MRB_ARGS_REQ(5));
+#endif
+}
+
+void
+mrb_picoruby_filesystem_fat_gem_final(mrb_state* mrb)
+{
 }

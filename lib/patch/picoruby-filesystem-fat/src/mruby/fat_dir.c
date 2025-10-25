@@ -3,6 +3,8 @@
 #include <mruby/class.h>
 #include <mruby/data.h>
 
+#ifndef FMRB_TARGET_ESP32
+
 static void
 mrb_fat_dir_free(mrb_state *mrb, void *ptr) {
   f_closedir((DIR *)ptr);
@@ -97,6 +99,8 @@ mrb_rewind(mrb_state *mrb, mrb_value self)
   return self;
 }
 
+#endif // FMRB_TARGET_ESP32
+
 void
 mrb_init_class_FAT_Dir(mrb_state *mrb, struct RClass *class_FAT)
 {
@@ -104,10 +108,12 @@ mrb_init_class_FAT_Dir(mrb_state *mrb, struct RClass *class_FAT)
 
   MRB_SET_INSTANCE_TT(class_FAT_Dir, MRB_TT_CDATA);
 
+#ifndef FMRB_TARGET_ESP32
   mrb_define_method_id(mrb, class_FAT_Dir, MRB_SYM(initialize), mrb_s_initialize, MRB_ARGS_REQ(1));
   mrb_define_method_id(mrb, class_FAT_Dir, MRB_SYM(close), mrb_Dir_close, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, class_FAT_Dir, MRB_SYM_E(pat), mrb_pat_e, MRB_ARGS_REQ(1));
   mrb_define_method_id(mrb, class_FAT_Dir, MRB_SYM(findnext), mrb_findnext, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, class_FAT_Dir, MRB_SYM(read), mrb_read, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, class_FAT_Dir, MRB_SYM(rewind), mrb_rewind, MRB_ARGS_NONE());
+#endif
 }

@@ -4,6 +4,8 @@
 #include "mruby/class.h"
 #include "mruby/data.h"
 
+#ifndef FMRB_TARGET_ESP32
+
 static void
 mrb_fat_file_free(mrb_state *mrb, void *ptr) {
   f_close((FIL *)ptr);
@@ -247,6 +249,8 @@ mrb_s_vfs_methods(mrb_state *mrb, mrb_value klass)
   return methods;
 }
 
+#endif // FMRB_TARGET_ESP32
+
 void
 mrb_init_class_FAT_File(mrb_state *mrb ,struct RClass *class_FAT)
 {
@@ -257,6 +261,7 @@ mrb_init_class_FAT_File(mrb_state *mrb ,struct RClass *class_FAT)
   struct RClass *class_FAT_VFSMethods = mrb_define_class_under_id(mrb, class_FAT, MRB_SYM(VFSMethods), mrb->object_class);
   MRB_SET_INSTANCE_TT(class_FAT_VFSMethods, MRB_TT_CDATA);
 
+#ifndef FMRB_TARGET_ESP32
   mrb_define_class_method_id(mrb, class_FAT_File, MRB_SYM(new), mrb_s_new, MRB_ARGS_REQ(2));
   mrb_define_class_method_id(mrb, class_FAT_File, MRB_SYM(open), mrb_s_new, MRB_ARGS_REQ(2));
   mrb_define_method_id(mrb, class_FAT_File, MRB_SYM(tell), mrb_tell, MRB_ARGS_NONE());
@@ -274,4 +279,5 @@ mrb_init_class_FAT_File(mrb_state *mrb ,struct RClass *class_FAT)
   mrb_define_method_id(mrb, class_FAT_File, MRB_SYM(sector_size), mrb_sector_size, MRB_ARGS_NONE());
 
   mrb_define_class_method_id(mrb, class_FAT, MRB_SYM(vfs_methods), mrb_s_vfs_methods, MRB_ARGS_NONE());
+#endif
 }
