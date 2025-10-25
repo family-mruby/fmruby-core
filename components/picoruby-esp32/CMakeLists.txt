@@ -33,6 +33,7 @@ else()
         esp_driver_rmt
         esp_driver_i2c
         esp_hw_support
+        fmrb_hal
     )
 endif()
 
@@ -41,12 +42,19 @@ if(IDF_TARGET STREQUAL "linux")
     set(PICORUBY_SRCS
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/hal.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/hal.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/gfx.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/audio.c
+
     )
 else()
-    set(PICORUBY_SRCS
+  set(PICORUBY_SRCS
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/hal.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/gfx.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/audio.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/flash_disk.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/flash_disk.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-env/ports/esp32/env.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-gpio/ports/esp32/gpio.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-adc/ports/esp32/adc.c

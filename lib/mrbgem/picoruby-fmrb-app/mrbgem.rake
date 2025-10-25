@@ -21,6 +21,7 @@ MRuby::Gem::Specification.new('picoruby-fmrb-app') do |spec|
   spec.cc.include_paths << "#{dir}/../../../../../main/lib/fmrb_ipc"
   spec.cc.include_paths << "#{dir}/../../../../../main/lib/fmrb_gfx"
   spec.cc.include_paths << "#{dir}/../../../../../main/lib/fmrb_audio"
+  spec.cc.include_paths << "#{dir}/ports"
 
   # Compiler flags
   spec.cc.flags << '-DFMRB_PICORUBY_BINDING'

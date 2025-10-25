@@ -28,8 +28,13 @@ DOCKER_CMD_PRIVILEGED = [
 desc "Build Setup (Patch files)"
 task :setup do
   # Copy fmrb mrbgem
+  sh "rm -rf components/picoruby-esp32/picoruby/mrbgems/picoruby-fmrb-app"
+  sh "rm -rf components/picoruby-esp32/picoruby/mrbgems/picoruby-fmrb-kernel"
+  sh "rm -rf components/picoruby-esp32/picoruby/mrbgems/picoruby-filesystem-fat"
+
   sh "cp -rf lib/mrbgem/picoruby-fmrb-app components/picoruby-esp32/picoruby/mrbgems/"
   sh "cp -rf lib/mrbgem/picoruby-fmrb-kernel components/picoruby-esp32/picoruby/mrbgems/"
+  sh "cp -rf lib/patch/picoruby-filesystem-fat components/picoruby-esp32/picoruby/mrbgems/"
 
   # Copy files
   sh "cp -f lib/patch/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"

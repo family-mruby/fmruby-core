@@ -16,6 +16,7 @@ extern "C" {
 #define FMRB_PLATFORM_ESP32 1
 #endif
 
+// Include platform-specific headers only when building with ESP-IDF
 #include "fmrb_hal_esp.h"
 #include "fmrb_hal_freertos.h"
 

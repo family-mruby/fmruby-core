@@ -1,9 +1,12 @@
 #include "picoruby.h"
+#include "fmrb_app_hal.h"
+#include "fmrb_app_gfx.h"
+#include "fmrb_app_audio.h"
 
 void
 mrb_picoruby_fmrb_init(mrb_state *mrb)
 {
-
+  hal_func();
 }
 
 // C API functions for event dispatch
