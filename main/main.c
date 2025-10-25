@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
+#include "fmrb.h"
 #include "fmrb_hal.h"
 
 #include "boot.h"
@@ -68,6 +69,7 @@ void show_config(void)
 
 void app_main(void)
 {
+    FMRB_LOGI(TAG, "Family mruby OS version %s",FMRB_OS_VERSION);
     FMRB_LOGI(TAG, "Family mruby Core Firmware Starting...");
 #ifdef CONFIG_IDF_TARGET_LINUX
     FMRB_LOGI(TAG, "Running on Linux target - Development mode");

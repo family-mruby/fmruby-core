@@ -68,7 +68,7 @@ static bool is_valid_transition(enum FMRB_PROC_STATE from, enum FMRB_PROC_STATE 
  */
 static bool transition_state(fmrb_app_task_context_t* ctx, enum FMRB_PROC_STATE new_state) {
     if (!is_valid_transition(ctx->state, new_state)) {
-        ESP_LOGW(TAG, "[%s gen=%u] Invalid transition %s -> %s",
+        FMRB_LOGW(TAG, "[%s gen=%u] Invalid transition %s -> %s",
                  ctx->app_name, ctx->gen, state_str(ctx->state), state_str(new_state));
         return false;
     }
@@ -137,7 +137,7 @@ static int32_t alloc_ctx_index(enum FMRB_PROC_ID requested_id) {
             g_ctx_pool[requested_id].gen++;  // Increment generation
             return requested_id;
         }
-        ESP_LOGW(TAG, "Requested slot %d already in use (state=%s)",
+        FMRB_LOGW(TAG, "Requested slot %d already in use (state=%s)",
                  requested_id, state_str(g_ctx_pool[requested_id].state));
         return -1;
     }
@@ -218,9 +218,6 @@ static void app_task_main(void* arg) {
             while(1){
                 FMRB_LOGI(TAG, "[%s] app thread running", ctx->app_name);
                 fmrb_task_delay(FMRB_MS_TO_TICKS(1000));
-#ifndef ESP_PLATFORM
-                taskYIELD();
-#endif
             }
             FMRB_LOGI(TAG, "[%s] Skip mruby VM run sleep done", ctx->app_name);
             #endif
@@ -272,7 +269,7 @@ static void app_task_test(void* arg) {
  */
 void fmrb_app_init(void) {
     if (g_ctx_lock != NULL) {
-        ESP_LOGW(TAG, "App context already initialized");
+        FMRB_LOGW(TAG, "App context already initialized");
         return;
     }
 
@@ -372,7 +369,7 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     if (attr->event_queue_len > 0) {
         ctx->event_queue = fmrb_queue_create(attr->event_queue_len, sizeof(void*));
         if (!ctx->event_queue) {
-            ESP_LOGW(TAG, "[%s] Failed to create event queue", ctx->app_name);
+            FMRB_LOGW(TAG, "[%s] Failed to create event queue", ctx->app_name);
             // Non-fatal, continue
         }
     }
@@ -413,7 +410,7 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
 unwind:
     // Cleanup on failure
-    ESP_LOGW(TAG, "[%s gen=%u] Spawn failed, unwinding", ctx->app_name, ctx->gen);
+    FMRB_LOGW(TAG, "[%s gen=%u] Spawn failed, unwinding", ctx->app_name, ctx->gen);
 
     if (ctx->event_queue) {
         fmrb_queue_delete(ctx->event_queue);
@@ -445,7 +442,7 @@ bool fmrb_app_kill(int32_t id) {
     fmrb_app_task_context_t* ctx = &g_ctx_pool[id];
 
     if (ctx->state != PROC_STATE_RUNNING && ctx->state != PROC_STATE_SUSPENDED) {
-        ESP_LOGW(TAG, "[%s] Cannot kill app in state %s", ctx->app_name, state_str(ctx->state));
+        FMRB_LOGW(TAG, "[%s] Cannot kill app in state %s", ctx->app_name, state_str(ctx->state));
         fmrb_semaphore_give(g_ctx_lock);
         return false;
     }

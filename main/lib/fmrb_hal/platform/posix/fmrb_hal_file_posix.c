@@ -25,7 +25,7 @@ static pthread_mutex_t s_file_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define UNLOCK() pthread_mutex_unlock(&s_file_mutex)
 
 // Base path for file operations - mount data/ directory
-#define BASE_PATH "data"
+#define BASE_PATH "flash"
 
 // Helper function to build full path
 static void build_path(const char *path, char *full_path, size_t max_len) {
@@ -59,7 +59,7 @@ static void flags_to_mode(uint32_t flags, char *mode) {
     } else {
         strcpy(mode, "r");
     }
-
+s
     // Add binary mode
     strcat(mode, "b");
 }

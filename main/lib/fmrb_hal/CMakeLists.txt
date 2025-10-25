@@ -8,9 +8,9 @@ set(COMMON_SRCS
 # Set platform-specific sources and requirements
 if(IDF_TARGET STREQUAL "linux")
     list(APPEND COMMON_SRCS
-        "platform/linux/fmrb_hal_spi_linux.c"
-        "platform/linux/fmrb_hal_ipc_linux.c"
-        "platform/linux/fmrb_hal_file_linux.c"
+        "platform/posix/fmrb_hal_spi_posix.c"
+        "platform/posix/fmrb_hal_ipc_posix.c"
+        "platform/posix/fmrb_hal_file_posix.c"
     )
     set(PLATFORM_REQUIRES pthread log fmrb_ipc)
 else()
