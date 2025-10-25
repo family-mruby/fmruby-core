@@ -20,6 +20,7 @@
 - main/以下のコードの関数の戻り値定義は `fmrb_err.h` を標準とする
 - GPIOのPinアサインは、 `fmrb_pin_assign.h` を参照する
 - 素のmallocは使わず、fmrb_mem を利用するか、ファイルスコープのstatic配列変数を利用する
+- シンボリックリンクの仕様は原則禁止
 
 ## 目的
 

@@ -13,9 +13,10 @@ MRuby::Gem::Specification.new('picoruby-fmrb-app') do |spec|
   # Include directories for C extensions
   spec.cc.include_paths << "#{dir}/src"
 
-  # Add project paths for fmrb_hal, fmrb_gfx, fmrb_audio headers
+  # Add project paths for fmrb headers
   # dir is components/picoruby-esp32/picoruby/mrbgems/picoruby-fmrb-app
   # We need to go back to project root
+  spec.cc.include_paths << "#{dir}/../../../../../main/include"
   spec.cc.include_paths << "#{dir}/../../../../../main/lib/fmrb_hal"
   spec.cc.include_paths << "#{dir}/../../../../../main/lib/fmrb_ipc"
   spec.cc.include_paths << "#{dir}/../../../../../main/lib/fmrb_gfx"
