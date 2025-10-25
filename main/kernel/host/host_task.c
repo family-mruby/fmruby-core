@@ -1,12 +1,8 @@
 #include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/queue.h"
-#include "esp_log.h"
 
+#include "fmrb_hal.h"
 #include "fmrb_task_config.h"
 #include "host/host_task.h"
-#include "fmrb_hal.h"
 #include "fmrb_gfx.h"
 #include "fmrb_audio.h"
 
@@ -68,10 +64,10 @@ static int init_hal(void)
     // Initialize HAL layer
     fmrb_err_t hal_ret = fmrb_hal_init();
     if (hal_ret != FMRB_OK) {
-        ESP_LOGE(TAG, "Failed to initialize HAL: %d", hal_ret);
+        FMRB_LOGE(TAG, "Failed to initialize HAL: %d", hal_ret);
         return -1;
     }
-    ESP_LOGI(TAG, "HAL initialized successfully");
+    FMRB_LOGI(TAG, "HAL initialized successfully");
 
     // Initialize Graphics subsystem
     fmrb_gfx_config_t gfx_config = {
@@ -83,10 +79,10 @@ static int init_hal(void)
 
     fmrb_gfx_err_t gfx_ret = fmrb_gfx_init(&gfx_config, &g_gfx_context);
     if (gfx_ret != FMRB_GFX_OK) {
-        ESP_LOGE(TAG, "Failed to initialize Graphics: %d", gfx_ret);
+        FMRB_LOGE(TAG, "Failed to initialize Graphics: %d", gfx_ret);
         return -1;
     } else {
-        ESP_LOGI(TAG, "Graphics initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
+        FMRB_LOGI(TAG, "Graphics initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
 
         // Test graphics with a simple clear
         fmrb_gfx_clear(g_gfx_context, FMRB_COLOR_BLUE);
@@ -97,10 +93,10 @@ static int init_hal(void)
     // Initialize Audio subsystem (APU emulator)
     fmrb_audio_err_t audio_ret = fmrb_audio_init();
     if (audio_ret != FMRB_AUDIO_OK) {
-        ESP_LOGE(TAG, "Failed to initialize Audio: %d", audio_ret);
+        FMRB_LOGE(TAG, "Failed to initialize Audio: %d", audio_ret);
         return -1;
     } else {
-        ESP_LOGI(TAG, "Audio subsystem (APU emulator) initialized");
+        FMRB_LOGI(TAG, "Audio subsystem (APU emulator) initialized");
     }
     return 0;
 }
@@ -112,22 +108,22 @@ static void host_task_process_message(const host_message_t *msg)
 {
     switch (msg->type) {
         case HOST_MSG_HID_KEY_DOWN:
-            ESP_LOGD(TAG, "Key down: %d", msg->data.key.key_code);
+            FMRB_LOGD(TAG, "Key down: %d", msg->data.key.key_code);
             //fmrb_app_dispatch_key_down(msg->data.key.key_code);
             break;
 
         case HOST_MSG_HID_KEY_UP:
-            ESP_LOGD(TAG, "Key up: %d", msg->data.key.key_code);
+            FMRB_LOGD(TAG, "Key up: %d", msg->data.key.key_code);
             //fmrb_app_dispatch_key_up(msg->data.key.key_code);
             break;
 
         case HOST_MSG_HID_MOUSE_MOVE:
-            ESP_LOGD(TAG, "Mouse move: (%d, %d)", msg->data.mouse_move.x, msg->data.mouse_move.y);
+            FMRB_LOGD(TAG, "Mouse move: (%d, %d)", msg->data.mouse_move.x, msg->data.mouse_move.y);
             //fmrb_app_dispatch_mouse_move(msg->data.mouse_move.x, msg->data.mouse_move.y);
             break;
 
         case HOST_MSG_HID_MOUSE_CLICK:
-            ESP_LOGD(TAG, "Mouse click: (%d, %d) button: %d",
+            FMRB_LOGD(TAG, "Mouse click: (%d, %d) button: %d",
                      msg->data.mouse_click.x,
                      msg->data.mouse_click.y,
                      msg->data.mouse_click.button);
@@ -137,17 +133,17 @@ static void host_task_process_message(const host_message_t *msg)
             break;
 
         case HOST_MSG_DRAW_COMMAND:
-            ESP_LOGD(TAG, "Draw command (not yet implemented)");
+            FMRB_LOGD(TAG, "Draw command (not yet implemented)");
             // TODO: Implement draw command processing
             break;
 
         case HOST_MSG_AUDIO_COMMAND:
-            ESP_LOGD(TAG, "Audio command (not yet implemented)");
+            FMRB_LOGD(TAG, "Audio command (not yet implemented)");
             // TODO: Implement audio command processing
             break;
 
         default:
-            ESP_LOGW(TAG, "Unknown message type: %d", msg->type);
+            FMRB_LOGW(TAG, "Unknown message type: %d", msg->type);
             break;
     }
 }
@@ -157,12 +153,12 @@ static void host_task_process_message(const host_message_t *msg)
  */
 static void fmrb_host_task(void *pvParameters)
 {
-    ESP_LOGI(TAG, "Host task started");
+    FMRB_LOGI(TAG, "Host task started");
 
     // Initialize HAL and subsystems
     int result = init_hal();
     if (result < 0) {
-        ESP_LOGE(TAG, "Host task initialization failed, terminating");
+        FMRB_LOGE(TAG, "Host task initialization failed, terminating");
         return;
     }
 
@@ -188,7 +184,7 @@ static void fmrb_host_task(void *pvParameters)
         }
     }
 
-    ESP_LOGI(TAG, "Host task terminated");
+    FMRB_LOGI(TAG, "Host task terminated");
 }
 
 /**
@@ -199,7 +195,7 @@ int fmrb_host_task_init(void)
     // Create message queue
     g_host_queue = xQueueCreate(HOST_QUEUE_SIZE, sizeof(host_message_t));
     if (!g_host_queue) {
-        ESP_LOGE(TAG, "Failed to create host message queue");
+        FMRB_LOGE(TAG, "Failed to create host message queue");
         return -1;
     }
 
@@ -214,11 +210,11 @@ int fmrb_host_task_init(void)
     );
 
     if (result != pdPASS) {
-        ESP_LOGE(TAG, "Failed to create host task");
+        FMRB_LOGE(TAG, "Failed to create host task");
         return -1;
     }
 
-    ESP_LOGI(TAG, "Host task initialized");
+    FMRB_LOGI(TAG, "Host task initialized");
     return 0;
 }
 
@@ -227,7 +223,7 @@ int fmrb_host_task_init(void)
  */
 void fmrb_host_task_deinit(void)
 {
-    ESP_LOGI(TAG, "Deinitializing host task...");
+    FMRB_LOGI(TAG, "Deinitializing host task...");
 
     if (g_host_task_handle) {
         vTaskDelete(g_host_task_handle);
@@ -239,7 +235,7 @@ void fmrb_host_task_deinit(void)
         g_host_queue = NULL;
     }
 
-    ESP_LOGI(TAG, "Host task deinitialized");
+    FMRB_LOGI(TAG, "Host task deinitialized");
 }
 
 /**
@@ -248,12 +244,12 @@ void fmrb_host_task_deinit(void)
 static int fmrb_host_send_message(const host_message_t *msg)
 {
     if (!g_host_queue) {
-        ESP_LOGW(TAG, "Host queue not initialized");
+        FMRB_LOGW(TAG, "Host queue not initialized");
         return -1;
     }
 
     if (xQueueSend(g_host_queue, msg, pdMS_TO_TICKS(10)) != pdTRUE) {
-        ESP_LOGW(TAG, "Failed to send host message (queue full?)");
+        FMRB_LOGW(TAG, "Failed to send host message (queue full?)");
         return -1;
     }
 

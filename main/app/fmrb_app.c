@@ -1,12 +1,9 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
-#include "esp_log.h"
 
 #include <picoruby.h>
+#include "fmrb_hal.h"
 #include "fmrb_app.h"
 #include "fmrb_mem.h"
 #include "fmrb_task_config.h"
@@ -76,7 +73,7 @@ static bool transition_state(fmrb_app_task_context_t* ctx, enum FMRB_PROC_STATE 
         return false;
     }
 
-    ESP_LOGI(TAG, "[%s gen=%u] State: %s -> %s",
+    FMRB_LOGI(TAG, "[%s gen=%u] State: %s -> %s",
              ctx->app_name, ctx->gen, state_str(ctx->state), state_str(new_state));
     ctx->state = new_state;
     return true;
@@ -91,17 +88,17 @@ static void tls_destructor(int idx, void* pv) {
     fmrb_app_task_context_t* ctx = (fmrb_app_task_context_t*)pv;
     if (!ctx) return;
 
-    ESP_LOGI(TAG, "[%s gen=%u] TLS destructor called", ctx->app_name, ctx->gen);
+    FMRB_LOGI(TAG, "[%s gen=%u] TLS destructor called", ctx->app_name, ctx->gen);
 
     // Lock for state transition
     if (xSemaphoreTake(g_ctx_lock, pdMS_TO_TICKS(1000)) != pdTRUE) {
-        ESP_LOGE(TAG, "[%s] Failed to acquire lock in destructor", ctx->app_name);
+        FMRB_LOGE(TAG, "[%s] Failed to acquire lock in destructor", ctx->app_name);
         return;
     }
 
     // Close mruby VM if still open
     if (ctx->mrb) {
-        ESP_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
+        FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
         mrb_close(ctx->mrb);
         ctx->mrb = NULL;
     }
@@ -127,7 +124,7 @@ static void tls_destructor(int idx, void* pv) {
 
     xSemaphoreGive(g_ctx_lock);
 
-    ESP_LOGI(TAG, "[%s gen=%u] Resources cleaned up", ctx->app_name, ctx->gen);
+    FMRB_LOGI(TAG, "[%s gen=%u] Resources cleaned up", ctx->app_name, ctx->gen);
 }
 
 /**
@@ -153,7 +150,7 @@ static int32_t alloc_ctx_index(enum FMRB_PROC_ID requested_id) {
         }
     }
 
-    ESP_LOGE(TAG, "No free context slots available");
+    FMRB_LOGE(TAG, "No free context slots available");
     return -1;
 }
 
@@ -188,14 +185,14 @@ static void app_task_main(void* arg) {
     vTaskSetThreadLocalStoragePointerAndDelCallback(
         NULL, FMRB_APP_TLS_INDEX, ctx, tls_destructor);
 
-    ESP_LOGI(TAG, "[%s gen=%u] Task started (core=%d, prio=%u)",
+    FMRB_LOGI(TAG, "[%s gen=%u] Task started (core=%d, prio=%u)",
              ctx->app_name, ctx->gen, xPortGetCoreID(), uxTaskPriorityGet(NULL));
 
     // Transition to RUNNING
     xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
     if (!transition_state(ctx, PROC_STATE_RUNNING)) {
         xSemaphoreGive(g_ctx_lock);
-        ESP_LOGE(TAG, "[%s] Failed to transition to RUNNING", ctx->app_name);
+        FMRB_LOGE(TAG, "[%s] Failed to transition to RUNNING", ctx->app_name);
         vTaskDelete(NULL);
         return;
     }
@@ -204,7 +201,7 @@ static void app_task_main(void* arg) {
     // Load and execute bytecode
     mrc_irep *irep_obj = mrb_read_irep(ctx->mrb, irep);
     if (irep_obj == NULL) {
-        ESP_LOGE(TAG, "[%s] Failed to read irep", ctx->app_name);
+        FMRB_LOGE(TAG, "[%s] Failed to read irep", ctx->app_name);
     } else {
         mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
         mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
@@ -212,21 +209,21 @@ static void app_task_main(void* arg) {
                                          mrb_obj_value(ctx->mrb->top_self));
 
         if (mrb_nil_p(task)) {
-            ESP_LOGE(TAG, "[%s] mrc_create_task failed", ctx->app_name);
+            FMRB_LOGE(TAG, "[%s] mrc_create_task failed", ctx->app_name);
         } else {
             // Main event loop: run mruby tasks
             #if 0
             mrb_tasks_run(ctx->mrb);
             #else
-            ESP_LOGI(TAG, "[%s] Skip mruby VM run sleep", ctx->app_name);
+            FMRB_LOGI(TAG, "[%s] Skip mruby VM run sleep", ctx->app_name);
             while(1){
-                ESP_LOGI(TAG, "[%s] app thread running", ctx->app_name);
+                FMRB_LOGI(TAG, "[%s] app thread running", ctx->app_name);
                 vTaskDelay(pdMS_TO_TICKS(1000));
 #ifndef ESP_PLATFORM
                 taskYIELD();
 #endif
             }
-            ESP_LOGI(TAG, "[%s] Skip mruby VM run sleep done", ctx->app_name);
+            FMRB_LOGI(TAG, "[%s] Skip mruby VM run sleep done", ctx->app_name);
             #endif
         }
 
@@ -237,7 +234,7 @@ static void app_task_main(void* arg) {
         mrc_ccontext_free(cc);
     }
 
-    ESP_LOGI(TAG, "[%s gen=%u] Task exiting normally", ctx->app_name, ctx->gen);
+    FMRB_LOGI(TAG, "[%s gen=%u] Task exiting normally", ctx->app_name, ctx->gen);
 
     // Transition to STOPPING
     xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
@@ -254,13 +251,13 @@ extern void log_itimer_real(const char*);
 #endif
 
 static void app_task_test(void* arg) {
-    ESP_LOGI("SIG", "[app_task_test] enter");
+    FMRB_LOGI("SIG", "[app_task_test] enter");
 #ifdef CONFIG_IDF_TARGET_LINUX
     dump_signal_mask("app_task_test");
     log_itimer_real("app_task_test");
 #endif
     while (1) {
-        ESP_LOGI("SIG", "testapp  tick=%u", (unsigned)xTaskGetTickCount());
+        FMRB_LOGI("SIG", "testapp  tick=%u", (unsigned)xTaskGetTickCount());
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
@@ -283,7 +280,7 @@ void fmrb_app_init(void) {
     // Create mutex
     g_ctx_lock = xSemaphoreCreateMutex();
     if (!g_ctx_lock) {
-        ESP_LOGE(TAG, "Failed to create mutex");
+        FMRB_LOGE(TAG, "Failed to create mutex");
         return;
     }
 
@@ -295,7 +292,7 @@ void fmrb_app_init(void) {
         g_ctx_pool[i].gen = 0;
     }
 
-    ESP_LOGI(TAG, "App context management initialized (max_apps=%d)", FMRB_MAX_APPS);
+    FMRB_LOGI(TAG, "App context management initialized (max_apps=%d)", FMRB_MAX_APPS);
 }
 
 /**
@@ -304,7 +301,7 @@ void fmrb_app_init(void) {
 static TaskHandle_t g_task_debug = NULL;
 bool fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     if (!attr || !attr->name) {
-        ESP_LOGE(TAG, "Invalid spawn attributes");
+        FMRB_LOGE(TAG, "Invalid spawn attributes");
         return false;
     }
 
@@ -315,10 +312,10 @@ bool fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
     if (result == pdPASS) {
         if (out_id) *out_id = -1;  // No context ID for simple spawn
-        ESP_LOGI(TAG, "[%s] Debug task spawned (prio=%u)", attr->name, attr->priority);
+        FMRB_LOGI(TAG, "[%s] Debug task spawned (prio=%u)", attr->name, attr->priority);
         return true;
     } else {
-        ESP_LOGE(TAG, "[%s] Failed to create debug task", attr->name);
+        FMRB_LOGE(TAG, "[%s] Failed to create debug task", attr->name);
         return false;
     }
 }
@@ -328,7 +325,7 @@ bool fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
  */
 bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     if (!attr || !attr->name || !attr->irep) {
-        ESP_LOGE(TAG, "Invalid spawn attributes");
+        FMRB_LOGE(TAG, "Invalid spawn attributes");
         return false;
     }
 
@@ -361,14 +358,14 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         fmrb_get_mempool_ptr(ctx->mempool_id),
         fmrb_get_mempool_size(ctx->mempool_id));
     if (!ctx->mrb) {
-        ESP_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
+        FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
         goto unwind;
     }
 
     // Create semaphore
     ctx->semaphore = xSemaphoreCreateBinary();
     if (!ctx->semaphore) {
-        ESP_LOGE(TAG, "[%s] Failed to create semaphore", ctx->app_name);
+        FMRB_LOGE(TAG, "[%s] Failed to create semaphore", ctx->app_name);
         goto unwind;
     }
 
@@ -392,26 +389,26 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     // Create FreeRTOS task
     BaseType_t result;
     if (attr->core_affinity >= 0) {
-        ESP_LOGI(TAG, "xTaskCreatePinnedToCore [%s]",ctx->app_name);
+        FMRB_LOGI(TAG, "xTaskCreatePinnedToCore [%s]",ctx->app_name);
         result = xTaskCreatePinnedToCore(
             app_task_main, ctx->app_name, attr->stack_words,
             ctx, attr->priority, &ctx->task, attr->core_affinity);
     } else {
-        ESP_LOGI(TAG, "xTaskCreate [%s]",ctx->app_name);
+        FMRB_LOGI(TAG, "xTaskCreate [%s]",ctx->app_name);
         result = xTaskCreate(
             app_task_main, ctx->app_name, attr->stack_words,
             ctx, attr->priority, &ctx->task);
     }
 
     if (result != pdPASS) {
-        ESP_LOGE(TAG, "[%s] Failed to create task", ctx->app_name);
+        FMRB_LOGE(TAG, "[%s] Failed to create task", ctx->app_name);
         goto unwind;
     }
 
     // Success - Note: Spawned task may have already started running
     // if its priority is higher than the current task
     if (out_id) *out_id = idx;
-    ESP_LOGI(TAG, "[%s gen=%u] Task spawned (id=%d, prio=%u)",
+    FMRB_LOGI(TAG, "[%s gen=%u] Task spawned (id=%d, prio=%u)",
              ctx->app_name, ctx->gen, idx, attr->priority);
     return true;
 
@@ -464,7 +461,7 @@ bool fmrb_app_kill(int32_t id) {
         vTaskDelete(task);      // Force delete
     }
 
-    ESP_LOGI(TAG, "[%s gen=%u] Killed", ctx->app_name, ctx->gen);
+    FMRB_LOGI(TAG, "[%s gen=%u] Killed", ctx->app_name, ctx->gen);
     return true;
 }
 
@@ -496,7 +493,7 @@ bool fmrb_app_suspend(int32_t id) {
 
     if (task) {
         vTaskSuspend(task);
-        ESP_LOGI(TAG, "[%s gen=%u] Suspended", ctx->app_name, ctx->gen);
+        FMRB_LOGI(TAG, "[%s gen=%u] Suspended", ctx->app_name, ctx->gen);
         return true;
     }
 
@@ -523,7 +520,7 @@ bool fmrb_app_resume(int32_t id) {
 
     if (task) {
         vTaskResume(task);
-        ESP_LOGI(TAG, "[%s gen=%u] Resumed", ctx->app_name, ctx->gen);
+        FMRB_LOGI(TAG, "[%s gen=%u] Resumed", ctx->app_name, ctx->gen);
         return true;
     }
 

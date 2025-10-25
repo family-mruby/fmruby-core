@@ -1,9 +1,5 @@
 #include <stdint.h>
 #include <stdio.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_system.h"
-#include "esp_log.h"
 
 // Family mruby modules
 #include "fmrb_hal.h"
@@ -23,7 +19,7 @@ extern const uint8_t system_gui_irep[];
 
 static void create_system_app(void)
 {
-    ESP_LOGI(TAG, "Creating system GUI app...");
+    FMRB_LOGI(TAG, "Creating system GUI app...");
 
     fmrb_spawn_attr_t attr = {
         .app_id = PROC_ID_SYSTEM_APP,
@@ -39,20 +35,20 @@ static void create_system_app(void)
     int32_t app_id;
     bool result = false;
     #if 1
-    ESP_LOGI(TAG, "normal spawn");
+    FMRB_LOGI(TAG, "normal spawn");
     fmrb_app_init();
     result = fmrb_app_spawn(&attr, &app_id);
     #else
-    ESP_LOGI(TAG, "simple spawn");
+    FMRB_LOGI(TAG, "simple spawn");
     result = fmrb_app_spawn_simple(&attr, &app_id);
     #endif
 
     if (!result) {
-        ESP_LOGE(TAG, "Failed to spawn system GUI app");
+        FMRB_LOGE(TAG, "Failed to spawn system GUI app");
         return;
     }
 
-    ESP_LOGI(TAG, "System GUI app spawned successfully (id=%ld)", app_id);
+    FMRB_LOGI(TAG, "System GUI app spawned successfully (id=%ld)", app_id);
 }
 
 static void init_hardware(void)
@@ -60,7 +56,7 @@ static void init_hardware(void)
     // Filesystem
     fmrb_err_t ret = fmrb_hal_file_init();
     if (ret != FMRB_OK) {
-        ESP_LOGE(TAG, "Failed to init filesystem");
+        FMRB_LOGE(TAG, "Failed to init filesystem");
         return;
     }
     // ESP32 IPC
@@ -70,7 +66,7 @@ static void init_hardware(void)
 // Family mruby OS initialization
 void fmrb_os_init(void)
 {
-    ESP_LOGI(TAG, "Initializing Family mruby OS...");
+    FMRB_LOGI(TAG, "Initializing Family mruby OS...");
     // Init memory
 
     // Init HW
@@ -79,17 +75,17 @@ void fmrb_os_init(void)
     //Start Frmb Kernel
     fmrb_err_t result = fmrb_kernel_start();
     if(result != FMRB_OK){
-        ESP_LOGE(TAG, "Failed to start kernel");
+        FMRB_LOGE(TAG, "Failed to start kernel");
         return;
     }
-    ESP_LOGI(TAG, "fmrb_kernel_start done");
+    FMRB_LOGI(TAG, "fmrb_kernel_start done");
 
     //TODO wait for kernel startup
 
     //debug
     create_system_app();
 
-    ESP_LOGI(TAG, "Family mruby OS initialization complete");
+    FMRB_LOGI(TAG, "Family mruby OS initialization complete");
 }
 
 void fmrb_os_close(void)

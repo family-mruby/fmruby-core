@@ -1,9 +1,6 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "esp_log.h"
 
 #include <picoruby.h>
 #include "fmrb_hal.h"
@@ -25,18 +22,18 @@ static void read_system_config(void)
     char *buffer = NULL;
     size_t file_size = 0;
 
-    ESP_LOGI(TAG, "Loading system configuration from %s", config_path);
+    FMRB_LOGI(TAG, "Loading system configuration from %s", config_path);
 
     // Get file info first to determine size
     fmrb_file_info_t info;
     fmrb_err_t ret = fmrb_hal_file_stat(config_path, &info);
     if (ret != FMRB_OK) {
-        ESP_LOGW(TAG, "Config file not found, using defaults");
+        FMRB_LOGW(TAG, "Config file not found, using defaults");
         return;
     }
 
     if (info.size == 0) {
-        ESP_LOGW(TAG, "Config file is empty");
+        FMRB_LOGW(TAG, "Config file is empty");
         return;
     }
     file_size = info.size;
@@ -44,14 +41,14 @@ static void read_system_config(void)
     // Open config file
     ret = fmrb_hal_file_open(config_path, FMRB_O_RDONLY, &file);
     if (ret != FMRB_OK) {
-        ESP_LOGE(TAG, "Failed to open config file");
+        FMRB_LOGE(TAG, "Failed to open config file");
         return;
     }
 
     // Allocate buffer for file content
     buffer = (char *)malloc(file_size + 1);
     if (!buffer) {
-        ESP_LOGE(TAG, "Failed to allocate buffer for config (%zu bytes)", file_size);
+        FMRB_LOGE(TAG, "Failed to allocate buffer for config (%zu bytes)", file_size);
         fmrb_hal_file_close(file);
         return;
     }
@@ -62,7 +59,7 @@ static void read_system_config(void)
     fmrb_hal_file_close(file);
 
     if (ret != FMRB_OK || bytes_read != file_size) {
-        ESP_LOGE(TAG, "Failed to read config file (read %zu of %zu bytes)", bytes_read, file_size);
+        FMRB_LOGE(TAG, "Failed to read config file (read %zu of %zu bytes)", bytes_read, file_size);
         free(buffer);
         return;
     }
@@ -74,7 +71,7 @@ static void read_system_config(void)
     free(buffer);
 
     if (!conf) {
-        ESP_LOGE(TAG, "TOML parse error: %s", errbuf);
+        FMRB_LOGE(TAG, "TOML parse error: %s", errbuf);
         return;
     }
 
@@ -82,27 +79,27 @@ static void read_system_config(void)
     // Get system name
     toml_datum_t system_name = toml_string_in(conf, "system_name");
     if (system_name.ok) {
-        ESP_LOGI(TAG, "System name: %s", system_name.u.s);
+        FMRB_LOGI(TAG, "System name: %s", system_name.u.s);
         free(system_name.u.s);
     }
 
     // Get debug mode flag
     toml_datum_t debug_mode = toml_bool_in(conf, "debug_mode");
     if (debug_mode.ok) {
-        ESP_LOGI(TAG, "Debug mode: %s", debug_mode.u.b ? "enabled" : "disabled");
+        FMRB_LOGI(TAG, "Debug mode: %s", debug_mode.u.b ? "enabled" : "disabled");
     }
 
     // Get memory pool size (example)
     toml_datum_t memory_pool = toml_int_in(conf, "memory_pool_size");
     if (memory_pool.ok) {
-        ESP_LOGI(TAG, "Memory pool size: %lld bytes", memory_pool.u.i);
+        FMRB_LOGI(TAG, "Memory pool size: %lld bytes", memory_pool.u.i);
     }
 
     // TODO: Store parsed configuration in global structure or apply settings
 
     // Clean up
     toml_free(conf);
-    ESP_LOGI(TAG, "System configuration loaded successfully");
+    FMRB_LOGI(TAG, "System configuration loaded successfully");
 }
 
 /**
@@ -110,7 +107,7 @@ static void read_system_config(void)
  */
 fmrb_err_t fmrb_kernel_start(void)
 {
-    ESP_LOGI(TAG, "Starting Family mruby OS Kernel...");
+    FMRB_LOGI(TAG, "Starting Family mruby OS Kernel...");
 
     // Initialize app context management (first time only)
     static bool context_initialized = false;
@@ -123,7 +120,7 @@ fmrb_err_t fmrb_kernel_start(void)
     // Create host task
     int32_t result = fmrb_host_task_init();
     if (result < 0) {
-        ESP_LOGE(TAG, "Failed to start host task");
+        FMRB_LOGE(TAG, "Failed to start host task");
         return FMRB_ERR_FAILED;
     }
 
@@ -141,11 +138,11 @@ fmrb_err_t fmrb_kernel_start(void)
 
     int32_t kernel_id;
     if (!fmrb_app_spawn(&attr, &kernel_id)) {
-        ESP_LOGE(TAG, "Failed to spawn kernel task");
+        FMRB_LOGE(TAG, "Failed to spawn kernel task");
         return FMRB_ERR_FAILED;
     }
 
-    ESP_LOGI(TAG, "Kernel task spawned successfully (id=%ld)", kernel_id);
+    FMRB_LOGI(TAG, "Kernel task spawned successfully (id=%ld)", kernel_id);
     return FMRB_OK;
 }
 
@@ -154,10 +151,10 @@ fmrb_err_t fmrb_kernel_start(void)
  */
 void fmrb_kernel_stop(void)
 {
-    ESP_LOGI(TAG, "Stopping kernel task...");
+    FMRB_LOGI(TAG, "Stopping kernel task...");
 
     // Use new kill API
     fmrb_app_kill(PROC_ID_KERNEL);
 
-    ESP_LOGI(TAG, "Kernel task stopped");
+    FMRB_LOGI(TAG, "Kernel task stopped");
 }
