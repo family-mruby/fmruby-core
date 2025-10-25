@@ -16,6 +16,9 @@ extern "C" {
 #define FMRB_PLATFORM_ESP32 1
 #endif
 
+#include "fmrb_hal_esp.h"
+#include "fmrb_hal_freertos.h"
+
 // Time types
 typedef uint64_t fmrb_time_t;  // microseconds since boot
 
