@@ -38,10 +38,10 @@ typedef struct {
 } host_message_t;
 
 // Host message queue
-static QueueHandle_t g_host_queue = NULL;
+static fmrb_queue_t g_host_queue = NULL;
 
 // Host task handle
-static TaskHandle_t g_host_task_handle = NULL;
+static fmrb_task_handle_t g_host_task_handle = NULL;
 
 // Task configuration
 #define HOST_QUEUE_SIZE (32)
@@ -163,17 +163,17 @@ static void fmrb_host_task(void *pvParameters)
     }
 
     host_message_t msg;
-    TickType_t xLastUpdate = xTaskGetTickCount();
-    const TickType_t xUpdatePeriod = pdMS_TO_TICKS(10);  // 10ms周期で定期更新
+    fmrb_tick_t xLastUpdate = fmrb_task_get_tick_count();
+    const fmrb_tick_t xUpdatePeriod = FMRB_MS_TO_TICKS(10);  // 10ms周期で定期更新
 
     while (1) {
         // Wait for messages with timeout
-        if (xQueueReceive(g_host_queue, &msg, pdMS_TO_TICKS(10)) == pdTRUE) {
+        if (fmrb_queue_receive(g_host_queue, &msg, FMRB_MS_TO_TICKS(10)) == FMRB_TRUE) {
             host_task_process_message(&msg);
         }
 
         // Periodic update processing
-        TickType_t now = xTaskGetTickCount();
+        fmrb_tick_t now = fmrb_task_get_tick_count();
         if ((now - xLastUpdate) >= xUpdatePeriod) {
             //uint32_t delta_ms = pdTICKS_TO_MS(now - xLastUpdate);
 
@@ -193,14 +193,14 @@ static void fmrb_host_task(void *pvParameters)
 int fmrb_host_task_init(void)
 {
     // Create message queue
-    g_host_queue = xQueueCreate(HOST_QUEUE_SIZE, sizeof(host_message_t));
+    g_host_queue = fmrb_queue_create(HOST_QUEUE_SIZE, sizeof(host_message_t));
     if (!g_host_queue) {
         FMRB_LOGE(TAG, "Failed to create host message queue");
         return -1;
     }
 
     // Create host task
-    BaseType_t result = xTaskCreate(
+    fmrb_base_type_t result = fmrb_task_create(
         fmrb_host_task,
         "fmrb_host",
         FMRB_HOST_TASK_STACK_SIZE,
@@ -209,7 +209,7 @@ int fmrb_host_task_init(void)
         &g_host_task_handle
     );
 
-    if (result != pdPASS) {
+    if (result != FMRB_PASS) {
         FMRB_LOGE(TAG, "Failed to create host task");
         return -1;
     }
@@ -226,12 +226,12 @@ void fmrb_host_task_deinit(void)
     FMRB_LOGI(TAG, "Deinitializing host task...");
 
     if (g_host_task_handle) {
-        vTaskDelete(g_host_task_handle);
+        fmrb_task_delete(g_host_task_handle);
         g_host_task_handle = NULL;
     }
 
     if (g_host_queue) {
-        vQueueDelete(g_host_queue);
+        fmrb_queue_delete(g_host_queue);
         g_host_queue = NULL;
     }
 
@@ -248,7 +248,7 @@ static int fmrb_host_send_message(const host_message_t *msg)
         return -1;
     }
 
-    if (xQueueSend(g_host_queue, msg, pdMS_TO_TICKS(10)) != pdTRUE) {
+    if (fmrb_queue_send(g_host_queue, msg, FMRB_MS_TO_TICKS(10)) != FMRB_TRUE) {
         FMRB_LOGW(TAG, "Failed to send host message (queue full?)");
         return -1;
     }

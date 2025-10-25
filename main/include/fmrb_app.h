@@ -1,10 +1,7 @@
 #pragma once
 
 #include "fmrb_mem.h"
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
-#include "freertos/queue.h"
+#include "fmrb_hal.h"
 #include <picoruby.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -50,10 +47,10 @@ typedef struct {
     char                  app_name[32];      // UTF-8, null-terminated
     mrb_state*            mrb;               // Type-safe mruby VM pointer
     enum FMRB_MEM_POOL_ID mempool_id;
-    SemaphoreHandle_t     semaphore;         // Type-safe semaphore
-    TaskHandle_t          task;              // FreeRTOS task handle
+    fmrb_semaphore_t      semaphore;         // Type-safe semaphore
+    fmrb_task_handle_t    task;              // FreeRTOS task handle
     uint32_t              gen;               // Generation counter for reuse detection
-    QueueHandle_t         event_queue;       // Event queue for inter-task communication
+    fmrb_queue_t          event_queue;       // Event queue for inter-task communication
     void*                 user_data;         // Application-specific data
 } fmrb_app_task_context_t;
 
@@ -64,8 +61,8 @@ typedef struct {
     const char*           name;
     const unsigned char*  irep;             // Bytecode
     uint32_t              stack_words;      // Stack size in words (not bytes)
-    UBaseType_t           priority;
-    BaseType_t            core_affinity;    // -1 = no affinity, 0/1 = specific core
+    fmrb_task_priority_t  priority;
+    fmrb_base_type_t      core_affinity;    // -1 = no affinity, 0/1 = specific core
     size_t                event_queue_len;  // 0 = no queue
 } fmrb_spawn_attr_t;
 
@@ -76,8 +73,8 @@ typedef struct {
     enum FMRB_APP_TYPE    type;
     char                  app_name[32];
     uint32_t              gen;
-    TaskHandle_t          task;
-    UBaseType_t           stack_high_water; // Remaining stack (words)
+    fmrb_task_handle_t    task;
+    fmrb_task_priority_t  stack_high_water; // Remaining stack (words)
 } fmrb_app_info_t;
 
 // Core APIs
@@ -92,12 +89,12 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count);
 
 // Context access (fast)
 static inline fmrb_app_task_context_t* fmrb_current(void) {
-    return (fmrb_app_task_context_t*)pvTaskGetThreadLocalStoragePointer(NULL, FMRB_APP_TLS_INDEX);
+    return (fmrb_app_task_context_t*)fmrb_task_get_tls(NULL, FMRB_APP_TLS_INDEX);
 }
 
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
 // Event posting
-bool fmrb_post_event(int32_t id, const void* event, size_t size, TickType_t timeout);
-bool fmrb_broadcast(const void* event, size_t size, TickType_t timeout);
+bool fmrb_post_event(int32_t id, const void* event, size_t size, fmrb_tick_t timeout);
+bool fmrb_broadcast(const void* event, size_t size, fmrb_tick_t timeout);
 

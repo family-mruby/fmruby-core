@@ -62,7 +62,7 @@ void show_config(void)
     FMRB_LOGI(TAG, "configUSE_TRACE_FACILITY     = %d", configUSE_TRACE_FACILITY);
     FMRB_LOGI(TAG, "MRB_TICK_UNIT                = %d", Machine_get_config_int(0));
     FMRB_LOGI(TAG, "MRB_TIMESLICE_TICK_COUNT     = %d", Machine_get_config_int(1));
-    FMRB_LOGI(TAG, "current tick=%u", (unsigned)xTaskGetTickCount());
+    FMRB_LOGI(TAG, "current tick=%u", (unsigned)fmrb_task_get_tick_count());
     FMRB_LOGI(TAG, "------------------------------------------------");
 }
 

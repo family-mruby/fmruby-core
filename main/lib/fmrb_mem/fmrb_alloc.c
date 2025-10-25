@@ -5,23 +5,14 @@
 #include "esp_log.h"
 #include "tlsf.h"
 #include "fmrb_mem.h"
+#include "fmrb_hal.h"
 
-#ifdef CONFIG_IDF_TARGET_LINUX
-#include <pthread.h>
-#define MUTEX_TYPE pthread_mutex_t
-#define MUTEX_INIT(m) pthread_mutex_init(&(m), NULL)
-#define MUTEX_LOCK(m) pthread_mutex_lock(&(m))
-#define MUTEX_UNLOCK(m) pthread_mutex_unlock(&(m))
-#define MUTEX_DESTROY(m) pthread_mutex_destroy(&(m))
-#else
-#include "freertos/FreeRTOS.h"
-#include "freertos/semphr.h"
-#define MUTEX_TYPE SemaphoreHandle_t
-#define MUTEX_INIT(m) ((m) = xSemaphoreCreateMutex())
-#define MUTEX_LOCK(m) xSemaphoreTake((m), portMAX_DELAY)
-#define MUTEX_UNLOCK(m) xSemaphoreGive((m))
-#define MUTEX_DESTROY(m) vSemaphoreDelete((m))
-#endif
+// Use fmrb_hal abstraction for mutex
+#define MUTEX_TYPE fmrb_semaphore_t
+#define MUTEX_INIT(m) ((m) = fmrb_semaphore_create_mutex())
+#define MUTEX_LOCK(m) fmrb_semaphore_take((m), FMRB_TICK_MAX)
+#define MUTEX_UNLOCK(m) fmrb_semaphore_give((m))
+#define MUTEX_DESTROY(m) fmrb_semaphore_delete((m))
 
 static const char *TAG = "fmrb_alloc";
 

@@ -18,7 +18,7 @@ static const char *TAG = "fmrb_app";
 static fmrb_app_task_context_t g_ctx_pool[FMRB_MAX_APPS];
 
 // Mutex for protecting context pool access
-static SemaphoreHandle_t g_ctx_lock = NULL;
+static fmrb_semaphore_t g_ctx_lock = NULL;
 
 // State transition strings for debugging
 static const char* state_names[] = {
@@ -91,7 +91,7 @@ static void tls_destructor(int idx, void* pv) {
     FMRB_LOGI(TAG, "[%s gen=%u] TLS destructor called", ctx->app_name, ctx->gen);
 
     // Lock for state transition
-    if (xSemaphoreTake(g_ctx_lock, pdMS_TO_TICKS(1000)) != pdTRUE) {
+    if (fmrb_semaphore_take(g_ctx_lock, FMRB_MS_TO_TICKS(1000)) != FMRB_TRUE) {
         FMRB_LOGE(TAG, "[%s] Failed to acquire lock in destructor", ctx->app_name);
         return;
     }
@@ -105,13 +105,13 @@ static void tls_destructor(int idx, void* pv) {
 
     // Delete event queue
     if (ctx->event_queue) {
-        vQueueDelete(ctx->event_queue);
+        fmrb_queue_delete(ctx->event_queue);
         ctx->event_queue = NULL;
     }
 
     // Delete semaphore
     if (ctx->semaphore) {
-        vSemaphoreDelete(ctx->semaphore);
+        fmrb_semaphore_delete(ctx->semaphore);
         ctx->semaphore = NULL;
     }
 
@@ -122,7 +122,7 @@ static void tls_destructor(int idx, void* pv) {
     // Clear task handle
     ctx->task = NULL;
 
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_semaphore_give(g_ctx_lock);
 
     FMRB_LOGI(TAG, "[%s gen=%u] Resources cleaned up", ctx->app_name, ctx->gen);
 }
@@ -182,21 +182,20 @@ static void app_task_main(void* arg) {
     const unsigned char* irep = (const unsigned char*)ctx->user_data;
 
     // Register in TLS with destructor
-    vTaskSetThreadLocalStoragePointerAndDelCallback(
-        NULL, FMRB_APP_TLS_INDEX, ctx, tls_destructor);
+    fmrb_task_set_tls_with_del(NULL, FMRB_APP_TLS_INDEX, ctx, tls_destructor);
 
     FMRB_LOGI(TAG, "[%s gen=%u] Task started (core=%d, prio=%u)",
-             ctx->app_name, ctx->gen, xPortGetCoreID(), uxTaskPriorityGet(NULL));
+             ctx->app_name, ctx->gen, fmrb_get_core_id(), fmrb_task_get_priority(NULL));
 
     // Transition to RUNNING
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     if (!transition_state(ctx, PROC_STATE_RUNNING)) {
-        xSemaphoreGive(g_ctx_lock);
+        fmrb_semaphore_give(g_ctx_lock);
         FMRB_LOGE(TAG, "[%s] Failed to transition to RUNNING", ctx->app_name);
-        vTaskDelete(NULL);
+        fmrb_task_delete(NULL);
         return;
     }
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_semaphore_give(g_ctx_lock);
 
     // Load and execute bytecode
     mrc_irep *irep_obj = mrb_read_irep(ctx->mrb, irep);
@@ -218,7 +217,7 @@ static void app_task_main(void* arg) {
             FMRB_LOGI(TAG, "[%s] Skip mruby VM run sleep", ctx->app_name);
             while(1){
                 FMRB_LOGI(TAG, "[%s] app thread running", ctx->app_name);
-                vTaskDelay(pdMS_TO_TICKS(1000));
+                fmrb_task_delay(FMRB_MS_TO_TICKS(1000));
 #ifndef ESP_PLATFORM
                 taskYIELD();
 #endif
@@ -237,12 +236,12 @@ static void app_task_main(void* arg) {
     FMRB_LOGI(TAG, "[%s gen=%u] Task exiting normally", ctx->app_name, ctx->gen);
 
     // Transition to STOPPING
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     transition_state(ctx, PROC_STATE_STOPPING);
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_semaphore_give(g_ctx_lock);
 
     // TLS destructor will handle cleanup
-    vTaskDelete(NULL);
+    fmrb_task_delete(NULL);
 }
 
 #ifdef CONFIG_IDF_TARGET_LINUX
@@ -257,8 +256,8 @@ static void app_task_test(void* arg) {
     log_itimer_real("app_task_test");
 #endif
     while (1) {
-        FMRB_LOGI("SIG", "testapp  tick=%u", (unsigned)xTaskGetTickCount());
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        FMRB_LOGI("SIG", "testapp  tick=%u", (unsigned)fmrb_task_get_tick_count());
+        fmrb_task_delay(FMRB_MS_TO_TICKS(1000));
     }
 }
 
@@ -278,7 +277,7 @@ void fmrb_app_init(void) {
     }
 
     // Create mutex
-    g_ctx_lock = xSemaphoreCreateMutex();
+    g_ctx_lock = fmrb_semaphore_create_mutex();
     if (!g_ctx_lock) {
         FMRB_LOGE(TAG, "Failed to create mutex");
         return;
@@ -298,19 +297,19 @@ void fmrb_app_init(void) {
 /**
  * Spawn simple debug task (no context management, no mruby VM)
  */
-static TaskHandle_t g_task_debug = NULL;
+static fmrb_task_handle_t g_task_debug = NULL;
 bool fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     if (!attr || !attr->name) {
         FMRB_LOGE(TAG, "Invalid spawn attributes");
         return false;
     }
 
-    BaseType_t result = xTaskCreate(
+    fmrb_base_type_t result = fmrb_task_create(
         app_task_test, attr->name, attr->stack_words,
         NULL, attr->priority, &g_task_debug);
 
 
-    if (result == pdPASS) {
+    if (result == FMRB_PASS) {
         if (out_id) *out_id = -1;  // No context ID for simple spawn
         FMRB_LOGI(TAG, "[%s] Debug task spawned (prio=%u)", attr->name, attr->priority);
         return true;
@@ -333,16 +332,16 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     fmrb_app_task_context_t* ctx = NULL;
 
     // Allocate context slot
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     idx = alloc_ctx_index(attr->app_id);
     if (idx < 0) {
-        xSemaphoreGive(g_ctx_lock);
+        fmrb_semaphore_give(g_ctx_lock);
         return false;
     }
 
     ctx = &g_ctx_pool[idx];
     transition_state(ctx, PROC_STATE_ALLOCATED);
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_semaphore_give(g_ctx_lock);
 
     // Initialize context fields
     ctx->app_id = idx;
@@ -363,7 +362,7 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     }
 
     // Create semaphore
-    ctx->semaphore = xSemaphoreCreateBinary();
+    ctx->semaphore = fmrb_semaphore_create_binary();
     if (!ctx->semaphore) {
         FMRB_LOGE(TAG, "[%s] Failed to create semaphore", ctx->app_name);
         goto unwind;
@@ -371,7 +370,7 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
     // Create event queue if requested
     if (attr->event_queue_len > 0) {
-        ctx->event_queue = xQueueCreate(attr->event_queue_len, sizeof(void*));
+        ctx->event_queue = fmrb_queue_create(attr->event_queue_len, sizeof(void*));
         if (!ctx->event_queue) {
             ESP_LOGW(TAG, "[%s] Failed to create event queue", ctx->app_name);
             // Non-fatal, continue
@@ -379,28 +378,28 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     }
 
     // Transition to INIT
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     if (!transition_state(ctx, PROC_STATE_INIT)) {
-        xSemaphoreGive(g_ctx_lock);
+        fmrb_semaphore_give(g_ctx_lock);
         goto unwind;
     }
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_semaphore_give(g_ctx_lock);
 
     // Create FreeRTOS task
-    BaseType_t result;
+    fmrb_base_type_t result;
     if (attr->core_affinity >= 0) {
         FMRB_LOGI(TAG, "xTaskCreatePinnedToCore [%s]",ctx->app_name);
-        result = xTaskCreatePinnedToCore(
+        result = fmrb_task_create_pinned(
             app_task_main, ctx->app_name, attr->stack_words,
             ctx, attr->priority, &ctx->task, attr->core_affinity);
     } else {
         FMRB_LOGI(TAG, "xTaskCreate [%s]",ctx->app_name);
-        result = xTaskCreate(
+        result = fmrb_task_create(
             app_task_main, ctx->app_name, attr->stack_words,
             ctx, attr->priority, &ctx->task);
     }
 
-    if (result != pdPASS) {
+    if (result != FMRB_PASS) {
         FMRB_LOGE(TAG, "[%s] Failed to create task", ctx->app_name);
         goto unwind;
     }
@@ -417,11 +416,11 @@ unwind:
     ESP_LOGW(TAG, "[%s gen=%u] Spawn failed, unwinding", ctx->app_name, ctx->gen);
 
     if (ctx->event_queue) {
-        vQueueDelete(ctx->event_queue);
+        fmrb_queue_delete(ctx->event_queue);
         ctx->event_queue = NULL;
     }
     if (ctx->semaphore) {
-        vSemaphoreDelete(ctx->semaphore);
+        fmrb_semaphore_delete(ctx->semaphore);
         ctx->semaphore = NULL;
     }
     if (ctx->mrb) {
@@ -429,9 +428,9 @@ unwind:
         ctx->mrb = NULL;
     }
 
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     free_ctx_index(idx);
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_semaphore_give(g_ctx_lock);
 
     return false;
 }
@@ -442,23 +441,23 @@ unwind:
 bool fmrb_app_kill(int32_t id) {
     if (id < 0 || id >= FMRB_MAX_APPS) return false;
 
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     fmrb_app_task_context_t* ctx = &g_ctx_pool[id];
 
     if (ctx->state != PROC_STATE_RUNNING && ctx->state != PROC_STATE_SUSPENDED) {
         ESP_LOGW(TAG, "[%s] Cannot kill app in state %s", ctx->app_name, state_str(ctx->state));
-        xSemaphoreGive(g_ctx_lock);
+        fmrb_semaphore_give(g_ctx_lock);
         return false;
     }
 
     transition_state(ctx, PROC_STATE_STOPPING);
-    TaskHandle_t task = ctx->task;
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_task_handle_t task = ctx->task;
+    fmrb_semaphore_give(g_ctx_lock);
 
     // Notify task to terminate
     if (task) {
-        xTaskNotifyGive(task);  // Wake up task if waiting
-        vTaskDelete(task);      // Force delete
+        fmrb_task_notify_give(task);  // Wake up task if waiting
+        fmrb_task_delete(task);       // Force delete
     }
 
     FMRB_LOGI(TAG, "[%s gen=%u] Killed", ctx->app_name, ctx->gen);
@@ -479,20 +478,20 @@ bool fmrb_app_stop(int32_t id) {
 bool fmrb_app_suspend(int32_t id) {
     if (id < 0 || id >= FMRB_MAX_APPS) return false;
 
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     fmrb_app_task_context_t* ctx = &g_ctx_pool[id];
 
     if (ctx->state != PROC_STATE_RUNNING) {
-        xSemaphoreGive(g_ctx_lock);
+        fmrb_semaphore_give(g_ctx_lock);
         return false;
     }
 
     transition_state(ctx, PROC_STATE_SUSPENDED);
-    TaskHandle_t task = ctx->task;
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_task_handle_t task = ctx->task;
+    fmrb_semaphore_give(g_ctx_lock);
 
     if (task) {
-        vTaskSuspend(task);
+        fmrb_task_suspend(task);
         FMRB_LOGI(TAG, "[%s gen=%u] Suspended", ctx->app_name, ctx->gen);
         return true;
     }
@@ -506,20 +505,20 @@ bool fmrb_app_suspend(int32_t id) {
 bool fmrb_app_resume(int32_t id) {
     if (id < 0 || id >= FMRB_MAX_APPS) return false;
 
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     fmrb_app_task_context_t* ctx = &g_ctx_pool[id];
 
     if (ctx->state != PROC_STATE_SUSPENDED) {
-        xSemaphoreGive(g_ctx_lock);
+        fmrb_semaphore_give(g_ctx_lock);
         return false;
     }
 
     transition_state(ctx, PROC_STATE_RUNNING);
-    TaskHandle_t task = ctx->task;
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_task_handle_t task = ctx->task;
+    fmrb_semaphore_give(g_ctx_lock);
 
     if (task) {
-        vTaskResume(task);
+        fmrb_task_resume(task);
         FMRB_LOGI(TAG, "[%s gen=%u] Resumed", ctx->app_name, ctx->gen);
         return true;
     }
@@ -534,7 +533,7 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {
     if (!list || max_count <= 0) return 0;
 
     int32_t count = 0;
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
 
     for (int32_t i = 0; i < FMRB_MAX_APPS && count < max_count; i++) {
         fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
@@ -546,11 +545,11 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {
         strncpy(list[count].app_name, ctx->app_name, sizeof(list[count].app_name) - 1);
         list[count].gen = ctx->gen;
         list[count].task = ctx->task;
-        list[count].stack_high_water = ctx->task ? uxTaskGetStackHighWaterMark(ctx->task) : 0;
+        list[count].stack_high_water = ctx->task ? fmrb_task_get_stack_high_water_mark(ctx->task) : 0;
         count++;
     }
 
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_semaphore_give(g_ctx_lock);
     return count;
 }
 
@@ -560,10 +559,10 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id) {
     if (id < 0 || id >= FMRB_MAX_APPS) return NULL;
 
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     fmrb_app_task_context_t* ctx = &g_ctx_pool[id];
     if (ctx->state == PROC_STATE_FREE) ctx = NULL;
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_semaphore_give(g_ctx_lock);
 
     return ctx;
 }
@@ -571,29 +570,29 @@ fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id) {
 /**
  * Post event to specific app
  */
-bool fmrb_post_event(int32_t id, const void* event, size_t size, TickType_t timeout) {
+bool fmrb_post_event(int32_t id, const void* event, size_t size, fmrb_tick_t timeout) {
     fmrb_app_task_context_t* ctx = fmrb_app_get_context_by_id(id);
     if (!ctx || !ctx->event_queue) return false;
 
-    return (xQueueSend(ctx->event_queue, event, timeout) == pdTRUE);
+    return (fmrb_queue_send(ctx->event_queue, event, timeout) == FMRB_TRUE);
 }
 
 /**
  * Broadcast event to all apps
  */
-bool fmrb_broadcast(const void* event, size_t size, TickType_t timeout) {
+bool fmrb_broadcast(const void* event, size_t size, fmrb_tick_t timeout) {
     bool any_sent = false;
 
-    xSemaphoreTake(g_ctx_lock, portMAX_DELAY);
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
         fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
         if (ctx->state != PROC_STATE_FREE && ctx->event_queue) {
-            if (xQueueSend(ctx->event_queue, event, timeout) == pdTRUE) {
+            if (fmrb_queue_send(ctx->event_queue, event, timeout) == FMRB_TRUE) {
                 any_sent = true;
             }
         }
     }
-    xSemaphoreGive(g_ctx_lock);
+    fmrb_semaphore_give(g_ctx_lock);
 
     return any_sent;
 }
