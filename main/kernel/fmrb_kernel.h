@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "fmrb_hal.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -8,9 +9,9 @@ extern "C" {
 
 /**
  * Start the Family mruby OS kernel task
- * @return 0 on success, -1 on failure
+ * @return FMRB_OK on success, FMRB_ERR_* on failure
  */
-int32_t fmrb_kernel_start(void);
+fmrb_err_t fmrb_kernel_start(void);
 
 /**
  * Stop the kernel task

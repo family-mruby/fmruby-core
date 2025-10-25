@@ -24,7 +24,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMMON_SRCS}
-    INCLUDE_DIRS "." "platform"
+    INCLUDE_DIRS "." "platform" "../../include"
     REQUIRES ${PLATFORM_REQUIRES}
 )
 

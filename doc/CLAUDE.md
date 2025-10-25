@@ -7,16 +7,19 @@
   - ただし指示は英語の場合もある。私の指示が英語の場合も返答は日本語にしてください。
 - 勝手にgit操作しない
 - ASCII以外の絵文字等は使用しない。✓など使用しない。
-- .gitsubmoduleに含まれるディレクトリは編集禁止
 - 問題を解決する際に、ソースコードをビルド対象から外すことは本質的ではないので、禁止
 - コミットログの作成を依頼された場合は、数行程度で完結にまとめた英文を提供する
 - ソースコード上に記載するコメントは英語で記述する
-- sdkconfigおよびsdkconfig.defaults は編集禁止
-  - sdkconfig に関する変更が必要なときは、編集せずに、提案すること
 
 ### 開発時の注意
 
+- .gitsubmoduleに含まれるディレクトリは編集禁止
+- sdkconfigおよびsdkconfig.defaults は編集禁止
+  - sdkconfig に関する変更が必要なときは、編集せずに、提案すること
 - mrbgem で ESP32やFreeRTOSのヘッダを利用するものは、`components/picoruby-esp32/CMakeLists.txt` の `set(PICORUBY_SRCS` でビルド管理する。
+- main/以下のコードの関数の戻り値定義は `fmrb_err.h` を標準とする
+- GPIOのPinアサインは、 `fmrb_pin_assign.h` を参照する
+- 素のmallocは使わず、fmrb_mem を利用するか、ファイルスコープのstatic配列変数を利用する
 
 ## 目的
 

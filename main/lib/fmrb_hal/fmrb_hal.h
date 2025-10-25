@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "fmrb_err.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -14,17 +15,6 @@ extern "C" {
 #else
 #define FMRB_PLATFORM_ESP32 1
 #endif
-
-// Common return codes
-typedef enum {
-    FMRB_OK = 0,
-    FMRB_ERR_INVALID_PARAM = -1,
-    FMRB_ERR_NO_MEMORY = -2,
-    FMRB_ERR_TIMEOUT = -3,
-    FMRB_ERR_NOT_SUPPORTED = -4,
-    FMRB_ERR_BUSY = -5,
-    FMRB_ERR_FAILED = -6
-} fmrb_err_t;
 
 // Time types
 typedef uint64_t fmrb_time_t;  // microseconds since boot

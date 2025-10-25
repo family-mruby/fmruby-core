@@ -77,9 +77,9 @@ void fmrb_os_init(void)
     init_hardware();
 
     //Start Frmb Kernel
-    int32_t result = fmrb_kernel_start();
-    if(result < 0){
-        ESP_LOGE(TAG, "Failed to kernel");
+    fmrb_err_t result = fmrb_kernel_start();
+    if(result != FMRB_OK){
+        ESP_LOGE(TAG, "Failed to start kernel");
         return;
     }
     ESP_LOGI(TAG, "fmrb_kernel_start done");

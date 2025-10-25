@@ -108,7 +108,7 @@ static void read_system_config(void)
 /**
  * Start the kernel task
  */
-int32_t fmrb_kernel_start(void)
+fmrb_err_t fmrb_kernel_start(void)
 {
     ESP_LOGI(TAG, "Starting Family mruby OS Kernel...");
 
@@ -124,7 +124,7 @@ int32_t fmrb_kernel_start(void)
     int32_t result = fmrb_host_task_init();
     if (result < 0) {
         ESP_LOGE(TAG, "Failed to start host task");
-        return -1;
+        return FMRB_ERR_FAILED;
     }
 
     // Create kernel task using spawn API
@@ -142,11 +142,11 @@ int32_t fmrb_kernel_start(void)
     int32_t kernel_id;
     if (!fmrb_app_spawn(&attr, &kernel_id)) {
         ESP_LOGE(TAG, "Failed to spawn kernel task");
-        return -1;
+        return FMRB_ERR_FAILED;
     }
 
     ESP_LOGI(TAG, "Kernel task spawned successfully (id=%ld)", kernel_id);
-    return 0;
+    return FMRB_OK;
 }
 
 /**

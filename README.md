@@ -10,6 +10,9 @@
 - libsdl2-dev
 - libmsgpack-dev
 - pkg-config
+- clang-format
+- clang-tidy
+- llvm
 
 ## gem
 
