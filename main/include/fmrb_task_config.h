@@ -47,6 +47,11 @@
  * - Balance responsiveness vs. CPU fairness when choosing priorities
  */
 
+ // Kernel task
+#define FMRB_FSPROXY_TASK_STACK_SIZE (40 * 1024)
+#define FMRB_FSPROXY_TASK_PRIORITY (3)
+
+
 // Kernel task
 #define FMRB_KERNEL_TASK_STACK_SIZE (60 * 1024)
 #define FMRB_KERNEL_TASK_PRIORITY (9)
@@ -68,6 +73,9 @@
 #define FMRB_USER_APP_TASK_STACK_SIZE (60 * 1024)
 #define FMRB_USER_APP_PRIORITY (5)
 
+// FS Proxy task (file system proxy server)
+#define FMRB_FS_PROXY_TASK_STACK_SIZE (4 * 1024)
+#define FMRB_TASK_PRIORITY_FS_PROXY (3)
 
 
 typedef struct {

@@ -5,6 +5,7 @@ set(COMPONENT_SRCS
     "app/fmrb_app.c"
     "kernel/fmrb_kernel.c"
     "kernel/host/host_task.c"
+    "drivers/fs_proxy/fs_proxy_task.c"
     "lib/fmrb_mem/fmrb_alloc.c"
     "lib/fmrb_mem/fmrb_mempool.c"
     "lib/fmrb_toml/toml.c"
@@ -46,7 +47,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "lib/fmrb_mem" "lib/fmrb_toml"
+    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "drivers/fs_proxy" "lib/fmrb_mem" "lib/fmrb_toml"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 

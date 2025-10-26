@@ -10,6 +10,7 @@
 #include "kernel/host/host_task.h"
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
+#include "fs_proxy_task.h"
 
 #include "boot.h"
 
@@ -36,7 +37,6 @@ static void create_system_app(void)
     int32_t app_id;
     bool result = false;
     #if 1
-    FMRB_LOGI(TAG, "normal spawn");
     fmrb_app_init();
     result = fmrb_app_spawn(&attr, &app_id);
     #else
@@ -61,7 +61,11 @@ static void init_hardware(void)
         return;
     }
     // ESP32 IPC
+    
     // USB HOST
+
+    // Serial FS proxy
+    fs_proxy_create_task();
 }
 
 static void init_mem(void)
