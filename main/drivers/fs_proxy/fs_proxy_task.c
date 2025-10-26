@@ -598,7 +598,7 @@ fmrb_err_t fs_proxy_create_task(void)
     memset(&ctx, 0, sizeof(ctx));
 
     // Open UART device
-#ifdef FMRB_PLATFORM_LINUX
+#ifdef CONFIG_IDF_TARGET_LINUX
     // Device path from environment variable or default
     const char *uart_device = getenv("FMRB_FS_PROXY_UART");
     if (!uart_device) {
@@ -619,11 +619,21 @@ fmrb_err_t fs_proxy_create_task(void)
 
     fmrb_err_t err = fmrb_hal_uart_open(&uart_config, &ctx.uart);
     if (err != FMRB_OK) {
+#ifdef CONFIG_IDF_TARGET_LINUX
         FMRB_LOGE(TAG, "Failed to open UART device %s", uart_device);
+#else
+        FMRB_LOGE(TAG, "Failed to open UART%d (TX:GPIO%d, RX:GPIO%d)",
+                  uart_config.uart_num, uart_config.tx_pin, uart_config.rx_pin);
+#endif
         return err;
     }
 
+#ifdef CONFIG_IDF_TARGET_LINUX
     FMRB_LOGI(TAG, "Opened UART device %s", uart_device);
+#else
+    FMRB_LOGI(TAG, "Opened UART%d (TX:GPIO%d, RX:GPIO%d, baud:%d)",
+              uart_config.uart_num, uart_config.tx_pin, uart_config.rx_pin, uart_config.baud_rate);
+#endif
 
     // Create mutex for thread safety
     ctx.mutex = fmrb_semaphore_create_mutex();
