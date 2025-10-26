@@ -110,6 +110,31 @@ rake -T # その他のコマンドの使い方
 - その他
   - TinyUSB
 
+## コンパイル定義
+
+### CMakeList.txtで参照
+
+#### IDF_TARGET=linux
+
+IDFでlinuxターゲット指定してる場合に有効
+
+### コード上で参照
+
+####  CONFIG_IDF_TARGET_LINUX
+
+IDFでlinuxターゲット指定してる場合に有効？
+
+#### FMRB_PLATFORM_LINUX
+
+halのCMakeListsで定義。
+fmrb_hal.hでもCONFIG_IDF_TARGET_LINUXに連動して定義している。
+
+#### FMRB_PLATFORM_ESP32
+
+halのCMakeListsで定義。
+fmrb_hal.hでもCONFIG_IDF_TARGET_LINUXに連動して定義している。
+
+
 
 ## 参考情報
 

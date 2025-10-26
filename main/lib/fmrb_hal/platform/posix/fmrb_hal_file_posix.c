@@ -19,6 +19,7 @@ typedef struct {
 // Internal directory handle structure
 typedef struct {
     DIR *dir;
+    char dir_path[512];  // Store directory path for stat() calls in readdir
 } fmrb_dir_handle_t;
 
 // Global mutex for thread safety
@@ -360,6 +361,10 @@ fmrb_err_t fmrb_hal_file_opendir(const char *path, fmrb_dir_t *out_handle) {
         return FMRB_ERR_FAILED;
     }
 
+    // Store directory path for use in readdir
+    strncpy(handle->dir_path, full_path, sizeof(handle->dir_path) - 1);
+    handle->dir_path[sizeof(handle->dir_path) - 1] = '\0';
+
     *out_handle = handle;
     UNLOCK();
     return FMRB_OK;
@@ -397,8 +402,20 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info) {
     memset(info, 0, sizeof(fmrb_file_info_t));
     snprintf(info->name, sizeof(info->name), "%s", entry->d_name);
     info->is_dir = (entry->d_type == DT_DIR);
-    info->size = 0;
-    info->mtime = 0;
+
+    // Get file size and mtime using stat()
+    char entry_path[1024];
+    snprintf(entry_path, sizeof(entry_path), "%s/%s", dh->dir_path, entry->d_name);
+
+    struct stat st;
+    if (stat(entry_path, &st) == 0) {
+        // For directories, show size as 0 (directory metadata size is not meaningful for users)
+        info->size = S_ISDIR(st.st_mode) ? 0 : st.st_size;
+        info->mtime = st.st_mtime;
+    } else {
+        info->size = 0;
+        info->mtime = 0;
+    }
 
     return FMRB_OK;
 }

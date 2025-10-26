@@ -164,10 +164,10 @@ class SerialClient
 
   def build_packet(code, json, bin)
     body = [code].pack("C")
-    payload = json.force_encoding("ASCII-8BIT")
-    payload = +payload # make mutable
-    payload << bin if bin
-    body << [payload.bytesize].pack("n") << payload
+    json_data = json.force_encoding("ASCII-8BIT")
+    # len field contains only JSON length, binary data follows separately
+    body << [json_data.bytesize].pack("n") << json_data
+    body << bin if bin  # Append binary data after JSON
     crc = [Zlib.crc32(body)].pack("N")
     raw = body + crc
     COBS.encode(raw)
@@ -204,12 +204,12 @@ class SerialClient
         code = body.getbyte(0)
         len  = body.byteslice(1,2).unpack1("n")
         pay  = body.byteslice(3, len)
-        # Response format: JSON at the beginning, followed by binary data if needed (after JSON.to_json.bytesize)
+        # Response format: len field contains JSON length only, binary data follows after JSON in body
         meta = JSON.parse(pay.force_encoding("UTF-8"), symbolize_names: false, create_additions: false) rescue nil
         data = nil
         if meta && meta["bin"].is_a?(Integer)
-          json_len = meta.to_json.bytesize
-          data = pay.byteslice(json_len, meta["bin"])
+          # Extract binary data from body (not pay), starting after JSON
+          data = body.byteslice(3 + len, meta["bin"])
         end
         return [meta || {"ok"=>false,"err"=>"bad_json"}, data]
       end

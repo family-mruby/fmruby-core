@@ -10,6 +10,8 @@
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
 
+static const char *TAG = "fs_proxy";
+
 // Protocol definitions
 #define FS_PROXY_DELIM 0x00
 #define FS_PROXY_MAX_FRAME_SIZE 8192
@@ -343,6 +345,9 @@ static void cmd_get(fs_proxy_context_t *ctx, const char *json_params,
     bool eof = (bytes_read == 0 || bytes_read < binary_max);
     snprintf(response, response_size, "{\"ok\":true,\"eof\":%s,\"bin\":%zu}",
              eof ? "true" : "false", bytes_read);
+
+    FMRB_LOGD(TAG, "GET - path=%s, offset=%d, bytes_read=%zu, eof=%s",
+              path, offset, bytes_read, eof ? "true" : "false");
 }
 
 // Command handler: PUT (write file contents)
@@ -410,9 +415,10 @@ static void send_response(fmrb_uart_handle_t uart, const char *json_response, co
     size_t json_len = strlen(json_response);
 
     // Build packet: [cmd][len_hi][len_lo][json][binary][crc32]
+    // NOTE: len field contains only JSON length, binary data follows separately
     size_t pos = 0;
     packet[pos++] = RESP_CODE;
-    packet[pos++] = (json_len >> 8) & 0xFF;
+    packet[pos++] = (json_len >> 8) & 0xFF;  // Send JSON length only
     packet[pos++] = json_len & 0xFF;
 
     memcpy(packet + pos, json_response, json_len);
@@ -422,6 +428,10 @@ static void send_response(fmrb_uart_handle_t uart, const char *json_response, co
         memcpy(packet + pos, binary_data, binary_size);
         pos += binary_size;
     }
+
+    // Debug: print response details
+    FMRB_LOGD(TAG, "Sending response - JSON: %s, JSON len: %zu, Binary size: %zu",
+              json_response, json_len, binary_size);
 
     // Append CRC32 (big-endian)
     uint32_t crc = crc32_calc(packet, pos);
@@ -486,6 +496,10 @@ static void process_frame(fs_proxy_context_t *ctx, const uint8_t *frame, size_t 
     const uint8_t *binary_data = decoded + 3 + json_len;
     size_t binary_size = decoded_len - 4 - 3 - json_len;
 
+    FMRB_LOGD(TAG, "CMD=0x%02x, JSON len=%u, Binary size=%zu, decoded_len=%zu",
+              cmd, json_len, binary_size, decoded_len);
+    FMRB_LOGD(TAG, "JSON params: %s", json_params);
+
     // Take mutex for command execution
     fmrb_semaphore_take(ctx->mutex, FMRB_TICK_MAX);
 
@@ -533,45 +547,32 @@ static void process_frame(fs_proxy_context_t *ctx, const uint8_t *frame, size_t 
 static void fs_proxy_task(void *arg)
 {
     fs_proxy_context_t *ctx = (fs_proxy_context_t *)arg;
-    static uint32_t loop_count = 0;
-    static uint32_t byte_count = 0;
 
     // Initialize current directory
     strncpy(ctx->current_dir, "/", sizeof(ctx->current_dir));
 
-    printf("FS Proxy Task started\n");
-    printf("FS Proxy: Entering main loop (priority=%d)\n", FMRB_FSPROXY_TASK_PRIORITY);
+    FMRB_LOGI(TAG, "Entering main loop (priority=%d)", FMRB_FSPROXY_TASK_PRIORITY);
 
     // Main loop: read from UART and process frames
     while (1) {
         uint8_t byte;
         fmrb_err_t err = fmrb_hal_uart_read_byte(ctx->uart, &byte);
 
-        loop_count++;
-        if (loop_count % 10000 == 0) {
-            printf("FS Proxy: Loop running (count=%u, bytes_received=%u)\n", loop_count, byte_count);
-        }
-
         if (err == FMRB_ERR_TIMEOUT) {
             // No data available, yield
-            fmrb_task_delay(FMRB_MS_TO_TICKS(1));
+            fmrb_task_delay(FMRB_MS_TO_TICKS(100));
             continue;
         } else if (err != FMRB_OK) {
             // Error reading, delay and retry
-            printf("FS Proxy: UART read error %d\n", err);
-            fmrb_task_delay(FMRB_MS_TO_TICKS(10));
+            FMRB_LOGW(TAG, "UART read error %d", err);
+            fmrb_task_delay(FMRB_MS_TO_TICKS(100));
             continue;
-        }
-
-        byte_count++;
-        if (byte_count == 1) {
-            printf("FS Proxy: First byte received: 0x%02x\n", byte);
         }
 
         if (byte == FS_PROXY_DELIM) {
             // Frame complete
             if (ctx->rx_len > 0) {
-                printf("FS Proxy: Frame received (%zu bytes)\n", ctx->rx_len);
+                FMRB_LOGD(TAG, "Frame received (%zu bytes)", ctx->rx_len);
                 process_frame(ctx, ctx->rx_buffer, ctx->rx_len);
                 ctx->rx_len = 0;
             }
@@ -581,7 +582,7 @@ static void fs_proxy_task(void *arg)
                 ctx->rx_buffer[ctx->rx_len++] = byte;
             } else {
                 // Buffer overflow, reset
-                printf("FS Proxy: Buffer overflow, resetting\n");
+                FMRB_LOGW(TAG, "Buffer overflow, resetting");
                 ctx->rx_len = 0;
             }
         }
@@ -614,11 +615,11 @@ fmrb_err_t fs_proxy_create_task(void)
 
     fmrb_err_t err = fmrb_hal_uart_open(&uart_config, &ctx.uart);
     if (err != FMRB_OK) {
-        printf("FS Proxy: Failed to open UART device %s\n", uart_device);
+        FMRB_LOGE(TAG, "Failed to open UART device %s", uart_device);
         return err;
     }
 
-    printf("FS Proxy: Opened UART device %s\n", uart_device);
+    FMRB_LOGI(TAG, "Opened UART device %s", uart_device);
 
     // Create mutex for thread safety
     ctx.mutex = fmrb_semaphore_create_mutex();
