@@ -5,6 +5,7 @@
 
 EXT_RAM_BSS_ATTR unsigned char __attribute__((aligned(8))) g_prism_memory_pool[FMRB_MEM_PRISM_POOL_SIZE];
 
+EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system[FMRB_MEM_POOL_SIZE_SYSTEM];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_kernel[FMRB_MEM_POOL_SIZE_KERNEL];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system_app[FMRB_MEM_POOL_SIZE_SYSTEM_APP];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app0[FMRB_MEM_POOL_SIZE_USER_APP];
@@ -12,6 +13,7 @@ EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app2[FMRB_MEM_POOL_SIZE_USER_APP];
 
 static unsigned char* g_mempool_list[POOL_ID_MAX] = {
+    [POOL_ID_SYSTEM]     = g_mempool_system,
     [POOL_ID_KERNEL]     = g_mempool_kernel,
     [POOL_ID_SYSTEM_APP] = g_mempool_system_app,
     [POOL_ID_USER_APP0]  = g_mempool_user_app0,
@@ -37,6 +39,8 @@ void* fmrb_get_mempool_app_ptr(int32_t no){
 
 size_t fmrb_get_mempool_size(int32_t id){
     switch(id){
+        case POOL_ID_SYSTEM:
+            return FMRB_MEM_POOL_SIZE_SYSTEM;
         case POOL_ID_KERNEL:
             return FMRB_MEM_POOL_SIZE_KERNEL;
         case POOL_ID_SYSTEM_APP:

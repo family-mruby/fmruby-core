@@ -10,15 +10,21 @@
 
 const static char* TAG = "toml";
 
-
-void fmrb_toml_init(fmrb_mem_handle_t handle)
-{
-    //toml_set_memutil(fmrb_malloc, fmrb_free);
-}
-
 // ============================================================================
 // Helper functions for easier TOML file loading and access
 // ============================================================================
+
+void fmrb_toml_init(void) {
+    static bool initialized = false;
+    if(initialized == true)
+    {
+        return;
+    }
+    initialized = true;
+
+    toml_set_memutil(fmrb_sys_malloc, fmrb_sys_free);
+    FMRB_LOGI(TAG, "fmrb_toml_init done");
+}
 
 /**
  * Load TOML from file
@@ -235,7 +241,7 @@ void dump_toml_table(toml_table_t *tab, int indent) {
                 toml_datum_t elem = toml_string_at(arr, k);
                 if (elem.ok) {
                     FMRB_LOGI(TAG, "%s  [%d] \"%s\"", indent_str, k, elem.u.s);
-                    free(elem.u.s);
+                    fmrb_sys_free(elem.u.s);
                 } else {
                     toml_datum_t num = toml_int_at(arr, k);
                     if (num.ok) {
@@ -250,7 +256,7 @@ void dump_toml_table(toml_table_t *tab, int indent) {
         v = toml_string_in(tab, key);
         if (v.ok) {
             FMRB_LOGI(TAG, "%s%s = \"%s\"", indent_str, key, v.u.s);
-            free(v.u.s);
+            fmrb_sys_free(v.u.s);
             continue;
         }
 

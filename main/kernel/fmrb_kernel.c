@@ -33,7 +33,8 @@ static void read_system_config(void)
     }
 
     // Use helper functions to get values with defaults
-    const char* system_name = fmrb_toml_get_string(conf, "system_name", "undefined");
+    const char* default_val = "undefined";
+    const char* system_name = fmrb_toml_get_string(conf, "system_name", default_val);
     bool debug_mode = fmrb_toml_get_bool(conf, "debug_mode", false);
     int64_t log_level = fmrb_toml_get_int(conf, "log_level", 3);
 
@@ -42,15 +43,13 @@ static void read_system_config(void)
     FMRB_LOGI(TAG, "Log Level: %" PRId64, log_level);
 
     // Free system_name if it's not the default value
-    if (system_name != NULL && strcmp(system_name, "Family mruby OS") != 0) {
-        free((void*)system_name);
+    if (system_name != default_val) {
+        fmrb_sys_free((void*)system_name);
     }
 
     // Dump full configuration for debugging
     FMRB_LOGI(TAG, "Full configuration:");
     dump_toml_table(conf, 0);
-
-    // TODO: Store parsed configuration in global structure or apply settings
 
     // Clean up
     toml_free(conf);

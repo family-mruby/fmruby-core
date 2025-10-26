@@ -16,6 +16,8 @@
 
 static const char *TAG = "fmrb_alloc";
 
+static fmrb_mem_handle_t system_handle = -1;
+
 // Pool management structure
 typedef struct fmrb_pool_node {
     fmrb_mem_handle_t handle;
@@ -275,4 +277,28 @@ int fmrb_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats) {
     MUTEX_UNLOCK(node->mutex);
 
     return 0;
+}
+
+void fmrb_init_system_mem(void){
+    static bool initialized = false;
+    if(initialized == true)
+    {
+        return;
+    }
+    initialized = true;
+
+    system_handle = fmrb_malloc_create_handle(
+    fmrb_get_mempool_ptr(POOL_ID_SYSTEM),
+    FMRB_MEM_POOL_SIZE_SYSTEM);
+    ESP_LOGI(TAG, "System mem allocator initialized. Handle = %d", system_handle);
+}
+
+void* fmrb_sys_malloc(size_t size)
+{
+    return fmrb_malloc(system_handle, size);
+}
+
+void fmrb_sys_free(void* ptr)
+{
+    fmrb_free(system_handle, ptr);
 }

@@ -5,12 +5,13 @@
 #include "fmrb_hal.h"
 #include "fmrb_gfx.h"
 #include "fmrb_audio.h"
-
-#include "boot.h"
+#include "fmrb_toml.h"
 #include "kernel/fmrb_kernel.h"
 #include "kernel/host/host_task.h"
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
+
+#include "boot.h"
 
 static const char *TAG = "boot";
 
@@ -63,11 +64,18 @@ static void init_hardware(void)
     // USB HOST
 }
 
+static void init_mem(void)
+{
+    fmrb_init_system_mem();
+    fmrb_toml_init();
+}
+
 // Family mruby OS initialization
 void fmrb_os_init(void)
 {
     FMRB_LOGI(TAG, "Initializing Family mruby OS...");
     // Init memory
+    init_mem();
 
     // Init HW
     init_hardware();
@@ -82,7 +90,7 @@ void fmrb_os_init(void)
 
     //TODO wait for kernel startup
 
-    //debug
+    //start GUI
     create_system_app();
 
     FMRB_LOGI(TAG, "Family mruby OS initialization complete");

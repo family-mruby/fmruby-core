@@ -9,7 +9,8 @@ extern "C" {
 #endif
 
 enum FMRB_MEM_POOL_ID{
-    POOL_ID_KERNEL = 0,
+    POOL_ID_SYSTEM = 0,
+    POOL_ID_KERNEL,
     POOL_ID_SYSTEM_APP,
     POOL_ID_USER_APP0,
     POOL_ID_USER_APP1,
@@ -68,6 +69,11 @@ void fmrb_free(fmrb_mem_handle_t handle, void* ptr);
 // Pool operations
 int32_t fmrb_malloc_check(fmrb_mem_handle_t handle);
 int fmrb_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats);
+
+// malloc for system functions
+void fmrb_init_system_mem(void);
+void* fmrb_sys_malloc(size_t size);
+void fmrb_sys_free(void* ptr);
 
 #ifdef __cplusplus
 }

@@ -16,7 +16,7 @@ extern "C" {
 /**
  * Initialize TOML Lib with custom mem allcator
  */
-void fmrb_toml_init(fmrb_mem_handle_t handle);
+void fmrb_toml_init(void);
 
 // ============================================================================
 // File loading and parsing
