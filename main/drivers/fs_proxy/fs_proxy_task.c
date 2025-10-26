@@ -608,7 +608,10 @@ fmrb_err_t fs_proxy_create_task(void)
     }
 
     fmrb_uart_config_t uart_config = {
-        .device_path = uart_device,
+        .device_path = uart_device,  // POSIX only
+        .uart_num = 1,                // ESP32: UART1
+        .tx_pin = 17,                 // ESP32: GPIO17 for TX
+        .rx_pin = 16,                 // ESP32: GPIO16 for RX
         .baud_rate = 115200,
         .timeout_ms = 100
     };

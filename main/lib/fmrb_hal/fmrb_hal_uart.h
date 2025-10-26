@@ -13,9 +13,12 @@ typedef void* fmrb_uart_handle_t;
 
 // UART configuration
 typedef struct {
-    const char *device_path;  // e.g., "/dev/pts/3" for POSIX, "UART0" for ESP32
-    uint32_t baud_rate;       // e.g., 115200
-    uint32_t timeout_ms;      // Read timeout in milliseconds
+    const char *device_path;  // POSIX: device path (e.g., "/dev/pts/3"), ESP32: ignored
+    int uart_num;             // ESP32: UART port number (0, 1, 2), POSIX: ignored
+    int tx_pin;               // ESP32: TX pin number, POSIX: ignored
+    int rx_pin;               // ESP32: RX pin number, POSIX: ignored
+    uint32_t baud_rate;       // Both: baud rate (e.g., 115200)
+    uint32_t timeout_ms;      // Both: read timeout in milliseconds
 } fmrb_uart_config_t;
 
 /**

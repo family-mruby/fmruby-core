@@ -96,7 +96,7 @@ echo "========================================="
 echo "FS Proxy UART:"
 echo "  Core device: ${UART_CORE}"
 echo "  Host device: ${UART_HOST} (or /tmp/fmrb_uart_host)"
-echo "  Use: tool/fmrb_transfer.rb --port /tmp/fmrb_uart_host shell"
+echo "  Use: ruby tool/fmrb_transfer.rb --port /tmp/fmrb_uart_host shell"
 echo "========================================="
 echo ""
 
