@@ -16,6 +16,7 @@ extern "C" {
 #define FMRB_LOGI(tag, format, ...) ESP_LOGI(tag, format, ##__VA_ARGS__)
 #define FMRB_LOGD(tag, format, ...) ESP_LOGD(tag, format, ##__VA_ARGS__)
 #define FMRB_LOGV(tag, format, ...) ESP_LOGV(tag, format, ##__VA_ARGS__)
+#define fmrb_disable_log()   esp_log_level_set("*", ESP_LOG_NONE)
 
 #ifdef FMRB_PLATFORM_LINUX
 // Linux simulation - memory attributes not needed

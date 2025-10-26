@@ -1,5 +1,6 @@
 #include "fmrb_hal_uart.h"
 #include "fmrb_err.h"
+#include "fmrb_mem.h"
 #include "driver/uart.h"
 #include "driver/gpio.h"
 #include <string.h>
@@ -25,7 +26,7 @@ fmrb_err_t fmrb_hal_uart_open(const fmrb_uart_config_t *config, fmrb_uart_handle
     }
 
     // Allocate context
-    fmrb_uart_ctx_t *ctx = (fmrb_uart_ctx_t *)malloc(sizeof(fmrb_uart_ctx_t));
+    fmrb_uart_ctx_t *ctx = (fmrb_uart_ctx_t *)fmrb_sys_malloc(sizeof(fmrb_uart_ctx_t));
     if (!ctx) {
         return FMRB_ERR_NO_MEMORY;
     }
@@ -45,7 +46,7 @@ fmrb_err_t fmrb_hal_uart_open(const fmrb_uart_config_t *config, fmrb_uart_handle
 
     esp_err_t err = uart_param_config(ctx->uart_num, &uart_config);
     if (err != ESP_OK) {
-        free(ctx);
+        fmrb_sys_free(ctx);
         return FMRB_ERR_FAILED;
     }
 
@@ -53,14 +54,14 @@ fmrb_err_t fmrb_hal_uart_open(const fmrb_uart_config_t *config, fmrb_uart_handle
     err = uart_set_pin(ctx->uart_num, config->tx_pin, config->rx_pin,
                       UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
     if (err != ESP_OK) {
-        free(ctx);
+        fmrb_sys_free(ctx);
         return FMRB_ERR_FAILED;
     }
 
     // Install UART driver
     err = uart_driver_install(ctx->uart_num, UART_BUF_SIZE, UART_BUF_SIZE, 0, NULL, 0);
     if (err != ESP_OK) {
-        free(ctx);
+        fmrb_sys_free(ctx);
         return FMRB_ERR_FAILED;
     }
 
@@ -77,7 +78,7 @@ fmrb_err_t fmrb_hal_uart_close(fmrb_uart_handle_t handle)
     fmrb_uart_ctx_t *ctx = (fmrb_uart_ctx_t *)handle;
 
     uart_driver_delete(ctx->uart_num);
-    free(ctx);
+    fmrb_sys_free(ctx);
 
     return FMRB_OK;
 }

@@ -7,6 +7,7 @@
 // Family mruby modules
 #include "fmrb_hal.h"
 #include "fmrb_toml.h"
+#include "fmrb_pin_assign.h"
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
 
@@ -597,21 +598,21 @@ fmrb_err_t fs_proxy_create_task(void)
     memset(&ctx, 0, sizeof(ctx));
 
     // Open UART device
+#ifdef FMRB_PLATFORM_LINUX
     // Device path from environment variable or default
     const char *uart_device = getenv("FMRB_FS_PROXY_UART");
     if (!uart_device) {
-#ifdef FMRB_PLATFORM_LINUX
-        uart_device = "/dev/pts/3";  // Default for Linux/PTY
-#else
-        uart_device = "UART0";  // Default for ESP32
-#endif
+        uart_device = "/dev/pts/3";
     }
+#else
+    const char *uart_device = NULL;
+#endif
 
     fmrb_uart_config_t uart_config = {
-        .device_path = uart_device,  // POSIX only
-        .uart_num = 1,                // ESP32: UART1
-        .tx_pin = 17,                 // ESP32: GPIO17 for TX
-        .rx_pin = 16,                 // ESP32: GPIO16 for RX
+        .device_path = uart_device,   // POSIX only
+        .uart_num = 0,                // ESP32: UART0
+        .tx_pin = FMRB_PIN_FSPROXY_TX,  // ESP32: UART TX
+        .rx_pin = FMRB_PIN_FSPROXY_RX,  // ESP32: UART RX
         .baud_rate = 115200,
         .timeout_ms = 100
     };
