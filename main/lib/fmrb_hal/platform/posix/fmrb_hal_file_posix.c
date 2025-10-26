@@ -9,6 +9,8 @@
 #include <time.h>
 #include <errno.h>
 
+const char* TAG = "file_posix";
+
 // Internal file handle structure
 typedef struct {
     FILE *fp;
@@ -59,7 +61,7 @@ static void flags_to_mode(uint32_t flags, char *mode) {
     } else {
         strcpy(mode, "r");
     }
-s
+
     // Add binary mode
     strcat(mode, "b");
 }
@@ -276,6 +278,7 @@ fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
 
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));
+    FMRB_LOGI(TAG, "path:%s full_path:%s",path,full_path);
 
     LOCK();
     struct stat st;

@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -8,7 +9,7 @@
 #include "fmrb_task_config.h"
 #include "fmrb_app.h"
 #include "host/host_task.h"
-#include "toml.h"
+#include "fmrb_toml.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
 extern const uint8_t kernel_irep[];
@@ -17,83 +18,37 @@ static const char *TAG = "kernel";
 
 static void read_system_config(void)
 {
-    const char *config_path = "/flash/etc/system_conf.toml";
-    fmrb_file_t file;
-    char *buffer = NULL;
-    size_t file_size = 0;
+    const char *config_path = "/etc/system_conf.toml";
 
     FMRB_LOGI(TAG, "Loading system configuration from %s", config_path);
 
-    // Get file info first to determine size
-    fmrb_file_info_t info;
-    fmrb_err_t ret = fmrb_hal_file_stat(config_path, &info);
-    if (ret != FMRB_OK) {
-        FMRB_LOGW(TAG, "Config file not found, using defaults");
-        return;
-    }
-
-    if (info.size == 0) {
-        FMRB_LOGW(TAG, "Config file is empty");
-        return;
-    }
-    file_size = info.size;
-
-    // Open config file
-    ret = fmrb_hal_file_open(config_path, FMRB_O_RDONLY, &file);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to open config file");
-        return;
-    }
-
-    // Allocate buffer for file content
-    buffer = (char *)malloc(file_size + 1);
-    if (!buffer) {
-        FMRB_LOGE(TAG, "Failed to allocate buffer for config (%zu bytes)", file_size);
-        fmrb_hal_file_close(file);
-        return;
-    }
-
-    // Read file content
-    size_t bytes_read;
-    ret = fmrb_hal_file_read(file, buffer, file_size, &bytes_read);
-    fmrb_hal_file_close(file);
-
-    if (ret != FMRB_OK || bytes_read != file_size) {
-        FMRB_LOGE(TAG, "Failed to read config file (read %zu of %zu bytes)", bytes_read, file_size);
-        free(buffer);
-        return;
-    }
-    buffer[bytes_read] = '\0';
-
-    // Parse TOML
+    // Load TOML file using helper function
     char errbuf[200];
-    toml_table_t *conf = toml_parse(buffer, errbuf, sizeof(errbuf));
-    free(buffer);
+    toml_table_t *conf = fmrb_toml_load_file(config_path, errbuf, sizeof(errbuf));
 
     if (!conf) {
-        FMRB_LOGE(TAG, "TOML parse error: %s", errbuf);
+        FMRB_LOGW(TAG, "Config load failed: %s", errbuf);
+        FMRB_LOGI(TAG, "Using default configuration");
         return;
     }
 
-    // Example: Parse configuration values
-    // Get system name
-    toml_datum_t system_name = toml_string_in(conf, "system_name");
-    if (system_name.ok) {
-        FMRB_LOGI(TAG, "System name: %s", system_name.u.s);
-        free(system_name.u.s);
+    // Use helper functions to get values with defaults
+    const char* system_name = fmrb_toml_get_string(conf, "system_name", "undefined");
+    bool debug_mode = fmrb_toml_get_bool(conf, "debug_mode", false);
+    int64_t log_level = fmrb_toml_get_int(conf, "log_level", 3);
+
+    FMRB_LOGI(TAG, "System Name: %s", system_name);
+    FMRB_LOGI(TAG, "Debug Mode: %s", debug_mode ? "enabled" : "disabled");
+    FMRB_LOGI(TAG, "Log Level: %" PRId64, log_level);
+
+    // Free system_name if it's not the default value
+    if (system_name != NULL && strcmp(system_name, "Family mruby OS") != 0) {
+        free((void*)system_name);
     }
 
-    // Get debug mode flag
-    toml_datum_t debug_mode = toml_bool_in(conf, "debug_mode");
-    if (debug_mode.ok) {
-        FMRB_LOGI(TAG, "Debug mode: %s", debug_mode.u.b ? "enabled" : "disabled");
-    }
-
-    // Get memory pool size (example)
-    toml_datum_t memory_pool = toml_int_in(conf, "memory_pool_size");
-    if (memory_pool.ok) {
-        FMRB_LOGI(TAG, "Memory pool size: %lld bytes", memory_pool.u.i);
-    }
+    // Dump full configuration for debugging
+    FMRB_LOGI(TAG, "Full configuration:");
+    dump_toml_table(conf, 0);
 
     // TODO: Store parsed configuration in global structure or apply settings
 

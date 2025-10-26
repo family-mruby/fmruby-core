@@ -34,6 +34,7 @@ typedef int8_t fmrb_mem_handle_t;
 
 
 //PSRAM
+#define FMRB_MEM_POOL_SIZE_SYSTEM (500*1024) //for system functions
 #define FMRB_MEM_POOL_SIZE_KERNEL (500*1024)
 #define FMRB_MEM_POOL_SIZE_SYSTEM_APP (500*1024)
 #define FMRB_MEM_POOL_SIZE_USER_APP (500*1024)

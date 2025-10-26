@@ -7,6 +7,7 @@ set(COMPONENT_SRCS
     "kernel/host/host_task.c"
     "lib/fmrb_mem/fmrb_alloc.c"
     "lib/fmrb_mem/fmrb_mempool.c"
+    "lib/fmrb_toml/toml.c"
 )
 
 # Collect all Ruby files to compile to bytecode
@@ -45,7 +46,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "lib/fmrb_mem"
+    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "lib/fmrb_mem" "lib/fmrb_toml"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 
