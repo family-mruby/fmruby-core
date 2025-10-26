@@ -92,7 +92,7 @@ void app_main(void)
     while (1) {
         FMRB_LOGI(TAG, "app_main keep wakeup");
         FMRB_LOGI("SIG", "app_main tick=%u", (unsigned)fmrb_task_get_tick_count());
-        fmrb_task_delay(FMRB_MS_TO_TICKS(10000));
+        fmrb_task_delay(FMRB_MS_TO_TICKS(100000));
     }
 
     fmrb_os_close();

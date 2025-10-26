@@ -211,7 +211,7 @@ static void app_task_main(void* arg) {
             FMRB_LOGE(TAG, "[%s] mrc_create_task failed", ctx->app_name);
         } else {
             // Main event loop: run mruby tasks
-            #if 0
+            #if 1
             mrb_tasks_run(ctx->mrb);
             #else
             FMRB_LOGI(TAG, "[%s] Skip mruby VM run sleep", ctx->app_name);

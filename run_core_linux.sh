@@ -94,6 +94,8 @@ echo "========================================="
 echo "FMRuby Core Linux - Ready"
 echo "========================================="
 echo "FS Proxy UART:"
+echo "  Core device: ${UART_CORE}"
+echo "  Host device: ${UART_HOST} (or /tmp/fmrb_uart_host)"
 echo "  Use: tool/fmrb_transfer.rb --port /tmp/fmrb_uart_host shell"
 echo "========================================="
 echo ""
@@ -104,14 +106,16 @@ if [ "$1" = "gdb" ]; then
     docker run -it --rm --user $(id -u):$(id -g) \
         -v $PWD:/project \
         -v /tmp:/tmp \
-        -e FMRB_FS_PROXY_UART=/tmp/fmrb_uart_core \
+        -v /dev:/dev \
+        -e FMRB_FS_PROXY_UART=${UART_CORE} \
         esp32_build_container:v5.5.1 \
         bash
 else
     docker run --rm --user $(id -u):$(id -g) \
         -v $PWD:/project \
         -v /tmp:/tmp \
-        -e FMRB_FS_PROXY_UART=/tmp/fmrb_uart_core \
+        -v /dev:/dev \
+        -e FMRB_FS_PROXY_UART=${UART_CORE} \
         esp32_build_container:v5.5.1 \
         /project/build/fmruby-core.elf
 fi

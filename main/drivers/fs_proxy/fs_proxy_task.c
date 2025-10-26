@@ -533,16 +533,24 @@ static void process_frame(fs_proxy_context_t *ctx, const uint8_t *frame, size_t 
 static void fs_proxy_task(void *arg)
 {
     fs_proxy_context_t *ctx = (fs_proxy_context_t *)arg;
+    static uint32_t loop_count = 0;
+    static uint32_t byte_count = 0;
 
     // Initialize current directory
     strncpy(ctx->current_dir, "/", sizeof(ctx->current_dir));
 
     printf("FS Proxy Task started\n");
+    printf("FS Proxy: Entering main loop (priority=%d)\n", FMRB_FSPROXY_TASK_PRIORITY);
 
     // Main loop: read from UART and process frames
     while (1) {
         uint8_t byte;
         fmrb_err_t err = fmrb_hal_uart_read_byte(ctx->uart, &byte);
+
+        loop_count++;
+        if (loop_count % 10000 == 0) {
+            printf("FS Proxy: Loop running (count=%u, bytes_received=%u)\n", loop_count, byte_count);
+        }
 
         if (err == FMRB_ERR_TIMEOUT) {
             // No data available, yield
@@ -550,13 +558,20 @@ static void fs_proxy_task(void *arg)
             continue;
         } else if (err != FMRB_OK) {
             // Error reading, delay and retry
+            printf("FS Proxy: UART read error %d\n", err);
             fmrb_task_delay(FMRB_MS_TO_TICKS(10));
             continue;
+        }
+
+        byte_count++;
+        if (byte_count == 1) {
+            printf("FS Proxy: First byte received: 0x%02x\n", byte);
         }
 
         if (byte == FS_PROXY_DELIM) {
             // Frame complete
             if (ctx->rx_len > 0) {
+                printf("FS Proxy: Frame received (%zu bytes)\n", ctx->rx_len);
                 process_frame(ctx, ctx->rx_buffer, ctx->rx_len);
                 ctx->rx_len = 0;
             }
@@ -566,6 +581,7 @@ static void fs_proxy_task(void *arg)
                 ctx->rx_buffer[ctx->rx_len++] = byte;
             } else {
                 // Buffer overflow, reset
+                printf("FS Proxy: Buffer overflow, resetting\n");
                 ctx->rx_len = 0;
             }
         }
@@ -615,9 +631,9 @@ fmrb_err_t fs_proxy_create_task(void)
     fmrb_base_type_t result = fmrb_task_create(
         fs_proxy_task,
         "fs_proxy",
-        FMRB_FS_PROXY_TASK_STACK_SIZE,
+        FMRB_FSPROXY_TASK_STACK_SIZE,
         &ctx,
-        FMRB_TASK_PRIORITY_FS_PROXY,
+        FMRB_FSPROXY_TASK_PRIORITY,
         &task_handle
     );
 
