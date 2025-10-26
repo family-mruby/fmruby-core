@@ -85,6 +85,7 @@ static int init_hal(void)
         FMRB_LOGI(TAG, "Graphics initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
 
         // Test graphics with a simple clear
+        FMRB_LOGI(TAG, "============================== gfx demo ==========================");
         fmrb_gfx_clear(g_gfx_context, FMRB_COLOR_BLUE);
         fmrb_gfx_draw_string(g_gfx_context, "Family mruby OS", 10, 10, FMRB_COLOR_WHITE);
         fmrb_gfx_present(g_gfx_context);

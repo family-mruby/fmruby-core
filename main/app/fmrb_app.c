@@ -385,12 +385,12 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     // Create FreeRTOS task
     fmrb_base_type_t result;
     if (attr->core_affinity >= 0) {
-        FMRB_LOGI(TAG, "xTaskCreatePinnedToCore [%s]",ctx->app_name);
+        FMRB_LOGI(TAG, "fmrb_task_create_pinned [%s]",ctx->app_name);
         result = fmrb_task_create_pinned(
             app_task_main, ctx->app_name, attr->stack_words,
             ctx, attr->priority, &ctx->task, attr->core_affinity);
     } else {
-        FMRB_LOGI(TAG, "xTaskCreate [%s]",ctx->app_name);
+        FMRB_LOGI(TAG, "fmrb_task_create [%s]",ctx->app_name);
         result = fmrb_task_create(
             app_task_main, ctx->app_name, attr->stack_words,
             ctx, attr->priority, &ctx->task);

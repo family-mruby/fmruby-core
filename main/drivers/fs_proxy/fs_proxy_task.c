@@ -68,6 +68,7 @@ typedef struct {
     size_t rx_len;
     char current_dir[FS_PROXY_MAX_PATH_LEN];
     fmrb_semaphore_t mutex;
+    fmrb_uart_handle_t uart;
 } fs_proxy_context_t;
 
 // Calculate CRC32 checksum
@@ -400,8 +401,8 @@ static void cmd_put(fs_proxy_context_t *ctx, const char *json_params,
     snprintf(response, response_size, "{\"ok\":true}");
 }
 
-// Send response frame (encode and send via stdout)
-static void send_response(const char *json_response, const uint8_t *binary_data, size_t binary_size)
+// Send response frame (encode and send via UART)
+static void send_response(fmrb_uart_handle_t uart, const char *json_response, const uint8_t *binary_data, size_t binary_size)
 {
     uint8_t packet[FS_PROXY_MAX_FRAME_SIZE];
     uint8_t encoded[FS_PROXY_MAX_FRAME_SIZE];
@@ -436,9 +437,9 @@ static void send_response(const char *json_response, const uint8_t *binary_data,
     }
 
     // Send frame with delimiter
-    fwrite(encoded, 1, encoded_len, stdout);
-    fputc(FS_PROXY_DELIM, stdout);
-    fflush(stdout);
+    fmrb_hal_uart_write(uart, encoded, encoded_len, NULL);
+    uint8_t delim = FS_PROXY_DELIM;
+    fmrb_hal_uart_write(uart, &delim, 1, NULL);
 }
 
 // Process received frame
@@ -451,7 +452,7 @@ static void process_frame(fs_proxy_context_t *ctx, const uint8_t *frame, size_t 
     // COBS decode
     size_t decoded_len = cobs_decode(frame, frame_len, decoded, sizeof(decoded));
     if (decoded_len < 7) { // Minimum: cmd(1) + len(2) + crc32(4)
-        send_response("{\"error\":\"Frame too short\"}", NULL, 0);
+        send_response(ctx->uart, "{\"ok\":false,\"err\":\"Frame too short\"}", NULL, 0);
         return;
     }
 
@@ -463,7 +464,7 @@ static void process_frame(fs_proxy_context_t *ctx, const uint8_t *frame, size_t 
 
     uint32_t calculated_crc = crc32_calc(decoded, decoded_len - 4);
     if (received_crc != calculated_crc) {
-        send_response("{\"error\":\"CRC mismatch\"}", NULL, 0);
+        send_response(ctx->uart, "{\"ok\":false,\"err\":\"CRC mismatch\"}", NULL, 0);
         return;
     }
 
@@ -472,7 +473,7 @@ static void process_frame(fs_proxy_context_t *ctx, const uint8_t *frame, size_t 
     uint16_t json_len = ((uint16_t)decoded[1] << 8) | decoded[2];
 
     if (3 + json_len + 4 > decoded_len) {
-        send_response("{\"error\":\"Invalid length\"}", NULL, 0);
+        send_response(ctx->uart, "{\"ok\":false,\"err\":\"Invalid length\"}", NULL, 0);
         return;
     }
 
@@ -494,34 +495,34 @@ static void process_frame(fs_proxy_context_t *ctx, const uint8_t *frame, size_t 
     switch (cmd) {
         case CMD_CD:
             cmd_cd(ctx, json_params, json_response, sizeof(json_response));
-            send_response(json_response, NULL, 0);
+            send_response(ctx->uart, json_response, NULL, 0);
             break;
 
         case CMD_LS:
             cmd_ls(ctx, json_params, json_response, sizeof(json_response));
-            send_response(json_response, NULL, 0);
+            send_response(ctx->uart, json_response, NULL, 0);
             break;
 
         case CMD_RM:
             cmd_rm(ctx, json_params, json_response, sizeof(json_response));
-            send_response(json_response, NULL, 0);
+            send_response(ctx->uart, json_response, NULL, 0);
             break;
 
         case CMD_GET:
             cmd_get(ctx, json_params, json_response, sizeof(json_response),
                    binary_buffer, &response_binary_size, sizeof(binary_buffer));
-            send_response(json_response, binary_buffer, response_binary_size);
+            send_response(ctx->uart, json_response, binary_buffer, response_binary_size);
             break;
 
         case CMD_PUT:
             cmd_put(ctx, json_params, binary_data, binary_size,
                    json_response, sizeof(json_response));
-            send_response(json_response, NULL, 0);
+            send_response(ctx->uart, json_response, NULL, 0);
             break;
 
         default:
             snprintf(json_response, sizeof(json_response), "{\"error\":\"Unknown command\"}");
-            send_response(json_response, NULL, 0);
+            send_response(ctx->uart, json_response, NULL, 0);
             break;
     }
 
@@ -538,15 +539,22 @@ static void fs_proxy_task(void *arg)
 
     printf("FS Proxy Task started\n");
 
-    // Main loop: read from stdin and process frames
+    // Main loop: read from UART and process frames
     while (1) {
-        int ch = fgetc(stdin);
-        if (ch == EOF) {
+        uint8_t byte;
+        fmrb_err_t err = fmrb_hal_uart_read_byte(ctx->uart, &byte);
+
+        if (err == FMRB_ERR_TIMEOUT) {
+            // No data available, yield
+            fmrb_task_delay(FMRB_MS_TO_TICKS(1));
+            continue;
+        } else if (err != FMRB_OK) {
+            // Error reading, delay and retry
             fmrb_task_delay(FMRB_MS_TO_TICKS(10));
             continue;
         }
 
-        if (ch == FS_PROXY_DELIM) {
+        if (byte == FS_PROXY_DELIM) {
             // Frame complete
             if (ctx->rx_len > 0) {
                 process_frame(ctx, ctx->rx_buffer, ctx->rx_len);
@@ -555,7 +563,7 @@ static void fs_proxy_task(void *arg)
         } else {
             // Accumulate frame data
             if (ctx->rx_len < sizeof(ctx->rx_buffer)) {
-                ctx->rx_buffer[ctx->rx_len++] = (uint8_t)ch;
+                ctx->rx_buffer[ctx->rx_len++] = byte;
             } else {
                 // Buffer overflow, reset
                 ctx->rx_len = 0;
@@ -571,25 +579,52 @@ fmrb_err_t fs_proxy_create_task(void)
 
     memset(&ctx, 0, sizeof(ctx));
 
+    // Open UART device
+    // Device path from environment variable or default
+    const char *uart_device = getenv("FMRB_FS_PROXY_UART");
+    if (!uart_device) {
+#ifdef FMRB_PLATFORM_LINUX
+        uart_device = "/dev/pts/3";  // Default for Linux/PTY
+#else
+        uart_device = "UART0";  // Default for ESP32
+#endif
+    }
+
+    fmrb_uart_config_t uart_config = {
+        .device_path = uart_device,
+        .baud_rate = 115200,
+        .timeout_ms = 100
+    };
+
+    fmrb_err_t err = fmrb_hal_uart_open(&uart_config, &ctx.uart);
+    if (err != FMRB_OK) {
+        printf("FS Proxy: Failed to open UART device %s\n", uart_device);
+        return err;
+    }
+
+    printf("FS Proxy: Opened UART device %s\n", uart_device);
+
     // Create mutex for thread safety
     ctx.mutex = fmrb_semaphore_create_mutex();
     if (ctx.mutex == NULL) {
-        return false;
+        fmrb_hal_uart_close(ctx.uart);
+        return FMRB_ERR_NO_MEMORY;
     }
 
     // Create task
     fmrb_base_type_t result = fmrb_task_create(
         fs_proxy_task,
         "fs_proxy",
-        FMRB_FSPROXY_TASK_STACK_SIZE,
+        FMRB_FS_PROXY_TASK_STACK_SIZE,
         &ctx,
-        FMRB_FSPROXY_TASK_PRIORITY,
+        FMRB_TASK_PRIORITY_FS_PROXY,
         &task_handle
     );
 
-    if(result == FMRB_PASS)
-    {
+    if (result == FMRB_PASS) {
         return FMRB_OK;
     }
+
+    fmrb_hal_uart_close(ctx.uart);
     return FMRB_ERR_FAILED;
 }

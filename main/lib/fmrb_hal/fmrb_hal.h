@@ -72,6 +72,7 @@ void fmrb_hal_deinit(void);
 #include "fmrb_hal_spi.h"
 #include "fmrb_hal_ipc.h"
 #include "fmrb_hal_file.h"
+#include "fmrb_hal_uart.h"
 
 #ifdef __cplusplus
 }
