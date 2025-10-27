@@ -1,4 +1,5 @@
 #include "fmrb_gfx_commands.h"
+#include "fmrb_mem.h"
 #include "esp_log.h"
 #include <stdlib.h>
 #include <string.h>
@@ -66,14 +67,14 @@ fmrb_gfx_command_buffer_t* fmrb_gfx_command_buffer_create(size_t max_commands) {
         return NULL;
     }
 
-    fmrb_gfx_command_buffer_t *buffer = malloc(sizeof(fmrb_gfx_command_buffer_t));
+    fmrb_gfx_command_buffer_t *buffer = fmrb_sys_malloc(sizeof(fmrb_gfx_command_buffer_t));
     if (!buffer) {
         return NULL;
     }
 
-    buffer->commands = malloc(sizeof(fmrb_gfx_command_t) * max_commands);
+    buffer->commands = fmrb_sys_malloc(sizeof(fmrb_gfx_command_t) * max_commands);
     if (!buffer->commands) {
-        free(buffer);
+        fmrb_sys_free(buffer);
         return NULL;
     }
 
@@ -90,10 +91,10 @@ void fmrb_gfx_command_buffer_destroy(fmrb_gfx_command_buffer_t* buffer) {
     }
 
     if (buffer->commands) {
-        free(buffer->commands);
+        fmrb_sys_free(buffer->commands);
     }
 
-    free(buffer);
+    fmrb_sys_free(buffer);
     ESP_LOGI(TAG, "Command buffer destroyed");
 }
 

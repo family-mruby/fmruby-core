@@ -57,7 +57,7 @@ toml_table_t* fmrb_toml_load_file(const char* path, char* errbuf, int errbufsz) 
     }
 
     // Allocate buffer
-    buffer = (char *)malloc(file_size + 1);
+    buffer = (char *)fmrb_sys_malloc(file_size + 1);
     if (!buffer) {
         snprintf(errbuf, errbufsz, "Memory allocation failed (%zu bytes)", file_size);
         fmrb_hal_file_close(file);
@@ -71,14 +71,14 @@ toml_table_t* fmrb_toml_load_file(const char* path, char* errbuf, int errbufsz) 
 
     if (ret != FMRB_OK || bytes_read != file_size) {
         snprintf(errbuf, errbufsz, "Read error: got %zu of %zu bytes", bytes_read, file_size);
-        free(buffer);
+        fmrb_sys_free(buffer);
         return NULL;
     }
     buffer[bytes_read] = '\0';
 
     // Parse TOML
     conf = toml_parse(buffer, errbuf, errbufsz);
-    free(buffer);
+    fmrb_sys_free(buffer);
 
     return conf;
 }

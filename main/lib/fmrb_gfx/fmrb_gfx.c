@@ -2,6 +2,7 @@
 #include "fmrb_hal.h"
 #include "fmrb_ipc_protocol.h"
 #include "fmrb_ipc_transport.h"
+#include "fmrb_mem.h"
 #include "esp_log.h"
 #include <stdlib.h>
 #include <string.h>
@@ -53,7 +54,7 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config, fmrb_gfx_context_t
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = malloc(sizeof(fmrb_gfx_context_impl_t));
+    fmrb_gfx_context_impl_t *ctx = fmrb_sys_malloc(sizeof(fmrb_gfx_context_impl_t));
     if (!ctx) {
         return FMRB_GFX_ERR_NO_MEMORY;
     }
@@ -71,7 +72,7 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config, fmrb_gfx_context_t
 
     fmrb_ipc_transport_err_t ret = fmrb_ipc_transport_init(&transport_config, &ctx->transport);
     if (ret != FMRB_IPC_TRANSPORT_OK) {
-        free(ctx);
+        fmrb_sys_free(ctx);
         return FMRB_GFX_ERR_FAILED;
     }
 
@@ -96,7 +97,7 @@ fmrb_gfx_err_t fmrb_gfx_deinit(fmrb_gfx_context_t context) {
     }
 
     ctx->initialized = false;
-    free(ctx);
+    fmrb_sys_free(ctx);
 
     ESP_LOGI(TAG, "Graphics deinitialized");
     return FMRB_GFX_OK;
@@ -254,7 +255,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, int16_t x, int16_t
 
     // Allocate buffer for command + text
     size_t total_size = sizeof(fmrb_ipc_graphics_text_t) + text_len;
-    uint8_t *cmd_buffer = malloc(total_size);
+    uint8_t *cmd_buffer = fmrb_sys_malloc(total_size);
     if (!cmd_buffer) {
         return FMRB_GFX_ERR_NO_MEMORY;
     }
@@ -270,7 +271,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, int16_t x, int16_t
     memcpy(cmd_buffer + sizeof(fmrb_ipc_graphics_text_t), text, text_len);
 
     fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_STRING, cmd_buffer, total_size);
-    free(cmd_buffer);
+    fmrb_sys_free(cmd_buffer);
 
     return ret;
 }
@@ -669,7 +670,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, const char *str,
 
     // Allocate buffer for command + string
     size_t total_size = sizeof(int32_t) * 2 + sizeof(uint32_t) + sizeof(uint16_t) + str_len;
-    uint8_t *cmd_buffer = malloc(total_size);
+    uint8_t *cmd_buffer = fmrb_sys_malloc(total_size);
     if (!cmd_buffer) {
         return FMRB_GFX_ERR_NO_MEMORY;
     }
@@ -683,7 +684,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, const char *str,
     memcpy(cmd_buffer + offset, str, str_len);
 
     fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_IPC_GFX_DRAW_STRING, cmd_buffer, total_size);
-    free(cmd_buffer);
+    fmrb_sys_free(cmd_buffer);
 
     return ret;
 }
