@@ -67,49 +67,91 @@ rake -T # その他のコマンドの使い方
 
 以下のコンポーネントは勝手に削除したり、ビルド対象から外してはいけない
 
-- components
-  - picoruby-esp32
-    https://github.com/picoruby/picoruby-esp32.git
-    これはForkしたものであり編集可能であるが、なるべきFork元からの変更の範囲が限定されるよう注意する。
-  - msgpack-esp32
-    主にIPCで利用することを想定している
-  - mem_allocator
-    https://github.com/mattconte/tlsf.git
-    TLSF (Two Level Segregated Fit) メモリアロケータ。
-    Prismパーサーのメモリ割り当てに使用。O(1)の割り当て/解放性能を持つ。
-    ホストビルド (picorbc) では288KB、ターゲット実行時 (eval等) では64KBのプールを使用。
-- lib/
-  - submoduleを編集必要なときに差分を置く
-    差分ファイルは、lib/patch に配置して、rake setup でsubmodule配下にコピーする。
-  - lib/patch/prism_xallocator.h - Prismパーサー用カスタムアロケータヘッダ (xmalloc等をTLSFにマッピング)
-  - lib/patch/prism_alloc.c - TLSF実装 (ホスト/ターゲット両対応、PRISM_BUILD_HOSTで切り替え)
-  - lib/patch/mruby-compiler2-mrbgem.rake - mruby-compiler2ビルド設定 (TLSF組み込み、PRISM_BUILD_HOST定義)
-  - lib/patch/mruby-compiler2-compile.c - スレッドセーフなcompile.c (マルチタスク環境でMutex保護、eval/Sandboxコンパイル時の競合防止)
-- main
-  - Family mruby OS
-    PicoRubyで動くWindow3.1ライクなGUIシステム。マルチタスク機能も提供する
-  - Family mruby Hardware Abstraction Layer(fmrb)
-    サブコア(ESP32-wROVER)にSPIで通信する機能、ESP32のSDK、FreeRTOS関連にアクセスするための抽象化層。
-    Linuxターゲットビルド時はソケットで、SDL2を実行しているプロセスに通信する。将来的にはWASMなどでも動かせるような抽象化を提供したい。
-- main/lib
-  - fmrb_mem          // メモリアロケータ。現在はfmrb_alloc.c (汎用アロケータ) のみ。
-  - fmrb_hal          // OS寄りの機能。時刻、スリープ、IPC(送受信/共有メモリ)、SPI/I2C/GPIO、DMA、ロック等
-  - fmrb_ipc          // S3<->WROVER/ホストのプロトコル定義と再送/水位制御
-    LinuxではSocket通信になる。メッセージはmsgpackを利用する。
-    メッセージ単位で、CRCのチェックを行い、エラーが起きた場合は必要がある場合は再送する。
-  - fmrb_gfx          // 上位: LovyanGFX＋α（Window描画、ビットマップ転送など）のAPIをラップした形。
-    内部では、IPCで描画コマンドを送る。
-  - fmrb_audio        // 上位: APUエミュレータ向け音楽バイナリ転送、再生停止制御。現状はESP32専用。Linux向けはスケルトンのみでOK
-    内部では、IPCを使ってコマンドを実行する
-  - fmrb_input
-    キー入力のための抽象化
-    Linuxではhost/sdl2プロセスと通信。SDL2で受信した結果を渡す
-    ESP32では、USB HostのHIDでつながったKeyboardとMouse操作に対応
-- host/
-  PC環境で動かすためのソース。独立したプロセスで、fmrb-coreと通信する。
+- **components/** - ESP-IDFコンポーネント (submodule含む)
+  - **picoruby-esp32/** (submodule)
+    - https://github.com/picoruby/picoruby-esp32.git
+    - Forkしたものであり編集可能だが、Fork元からの変更範囲を最小限に
+    - **picoruby/** (submodule)
+      - 編集禁止。編集したいときは、lib/patch にコードを置いてRakefile でコピーする
+  - **msgpack-esp32/** (submodule)
+    - 主にIPCで利用。MessagePack C実装
+  - **mem_allocator/** (submodule)
+    - https://github.com/mattconte/tlsf.git
+    - TLSF (Two Level Segregated Fit) メモリアロケータ
+    - main以下のメモリ割り当てに使用。O(1)の割り当て/解放性能
+  - **esp_littlefs/** (submodule)
+    - LittleFS ファイルシステム実装
+  - **tar_lib/** (submodule)
+    - microtar - TARアーカイブ処理
+  - **toml_parser/** (submodule)
+    - tomlc99 - TOML設定ファイルパーサー
 
-- その他
-  - TinyUSB
+- **lib/** - submodule編集用差分とfmruby独自mrbgem
+  - **lib/mrbgem/** - fmruby独自のmrbgem実装
+    - **picoruby-fmrb-app/** - Family mruby アプリケーションAPI
+    - **picoruby-fmrb-kernel/** - Family mruby カーネルAPI
+  - **lib/patch/** - submodule用パッチファイル
+    - submoduleを編集する際は、差分ファイルをここに配置
+    - `rake setup`でsubmodule配下にコピーされる
+    - **compiler/** - mruby-compiler2関連パッチ
+      - `prism_xallocator.h` - Prismパーサー用カスタムアロケータヘッダ
+      - `prism_alloc.c` - TLSF実装 (ホスト/ターゲット両対応)
+      - `mruby-compiler2-mrbgem.rake` - ビルド設定 (TLSF組み込み)
+      - `mruby-compiler2-compile.c` - スレッドセーフなcompile.c (Mutex保護)
+    - **esp_littlefs/** - esp_littlefs CMakeLists.txt パッチ
+    - **picoruby-env/** - picoruby-env パッチ
+    - **picoruby-filesystem-fat/** - picoruby-filesystem-fat パッチ
+    - **picoruby-machine/** - picoruby-machine パッチ
+    - **picoruby-mruby/** - picoruby-mruby パッチ
+    - `family_mruby_linux.rb` - Linux向けビルド設定
+    - `family_mruby_esp32.rb` - ESP32向けビルド設定
+
+- **main/** - Family mruby OS本体
+  - **app/** - アプリケーション層
+  - **kernel/** - カーネル層
+    - PicoRubyで動くWindow3.1ライクなGUIシステム
+    - マルチタスク機能を提供
+  - **drivers/** - デバイスドライバ
+    - TinyUSBによるUSB HOST
+    - UART0 によるPC-ESP32間ファイルR/W
+  - **include/** - 共通ヘッダファイル
+  - **lib/** - Hardware Abstraction Layer (HAL)
+    - サブコア(ESP32-WROVER)とSPI通信、ESP32 SDK/FreeRTOS抽象化
+    - Linuxターゲット時はソケット経由でSDL2プロセスと通信
+    - **fmrb_mem/** - メモリアロケータ (fmrb_alloc.c等)
+    - **fmrb_hal/** - OS基盤機能
+      - 時刻、スリープ、IPC、SPI/I2C/GPIO、DMA、ロック等
+      - `platform/esp32/` - ESP32実装
+      - `platform/posix/` - POSIX/Linux実装
+    - **fmrb_ipc/** - S3⇔WROVER/ホスト間プロトコル
+      - メッセージはmsgpack形式、CRCチェック、再送機能
+      - Linuxではソケット通信
+    - **fmrb_gfx/** - グラフィックAPI
+      - LovyanGFX+α (Window描画、ビットマップ転送等)
+      - 内部ではIPCで描画コマンド送信
+    - **fmrb_audio/** - オーディオAPI
+      - APUエミュレータ向け音楽バイナリ転送、再生停止制御
+      - 内部ではIPCでコマンド実行
+    - **fmrb_toml/** - TOML設定ファイル処理
+
+- **host/** - PC環境用プロセス
+  - fmrb-coreと通信する独立プロセス
+  - **sdl2/** - SDL2ベース実装
+  - **LovyanGFX/** - グラフィックライブラリ
+  - **common/** - 共通コード
+
+- **docker/** - ビルド環境
+  - ESP-IDF用Dockerコンテナ定義
+
+- **flash/** - フラッシュファイルシステム内容
+  - **app/** - アプリケーションファイル
+  - **etc/** - 設定ファイル
+  - **home/** - ユーザーファイル
+
+- **tool/** - 開発ツール類
+
+- **doc/** - ドキュメント
+  - 設計資料、仕様書等
 
 ## コンパイル定義
 
