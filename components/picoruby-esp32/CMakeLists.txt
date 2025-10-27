@@ -7,7 +7,9 @@ if(IDF_TARGET STREQUAL "linux")
     set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/host/lib/libmruby.a)
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/host/mrbgems)
     set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/host/include)
-    set(PLATFORM_PRIV_REQUIRES)
+    set(PLATFORM_PRIV_REQUIRES
+        fmrb_hal
+    )
 
     if(ENABLE_ASAN)
         set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=address -g -fno-omit-frame-pointer")

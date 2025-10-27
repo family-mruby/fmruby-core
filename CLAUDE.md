@@ -155,17 +155,24 @@ rake -T # その他のコマンドの使い方
 
 ## コンパイル定義
 
-### CMakeList.txtで参照
+TODO: 同じ意味のものが乱立してそうなので、統合する
+
+### picoruby-esp32/CMakeList.txtで参照
 
 #### IDF_TARGET=linux
 
 IDFでlinuxターゲット指定してる場合に有効
 
-### コード上で参照
+### コード上で参照可能なdefine
 
 ####  CONFIG_IDF_TARGET_LINUX
 
 IDFでlinuxターゲット指定してる場合に有効？
+
+#### PICORB_PLATFORM_POSIX
+
+`picoruby-esp32/picoruby/build_config/family_mruby_linux.rb` で定義。
+IDFでlinuxターゲット指定してる場合に有効
 
 #### FMRB_PLATFORM_LINUX
 
@@ -176,7 +183,6 @@ fmrb_hal.hでもCONFIG_IDF_TARGET_LINUXに連動して定義している。
 
 halのCMakeListsで定義。
 fmrb_hal.hでもCONFIG_IDF_TARGET_LINUXに連動して定義している。
-
 
 
 ## 参考情報

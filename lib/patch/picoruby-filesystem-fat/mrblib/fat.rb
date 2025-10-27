@@ -57,9 +57,22 @@ class FAT
   end
 
   class Dir
+    # Dummy method to register Dir instance method symbols in presym
+    def self._dummy_for_presym
+      dir = FAT::Dir.new("/")
+      dir.findnext
+      dir.pat = ""
+      dir.rewind
+    end
   end
 
   class File
+    # Dummy method to register File instance method symbols in presym
+    def self._dummy_for_presym
+      file = FAT::File.new("/", "r")
+      file.expand(0)
+      file.fsync
+    end
   end
 
   # device can be "0".."9", :ram, :flash, etc
@@ -169,5 +182,43 @@ class FAT
 
   def contiguous?(path)
     _contiguous?("#{@prefix}#{path}")
+  end
+
+  # Dummy method to register symbols in presym
+  # These method names are used in C code (fat.c, fat_file.c, fat_dir.c) but not in Ruby code,
+  # so we need to reference them here to ensure presym generates the symbol IDs.
+  def self._dummy_for_presym
+    # Class name
+    FAT
+
+    # Hash keys used in mrb__stat (fat.c:274)
+    { unixtime: 0 }
+
+    # Method symbols from fat_file.c
+    vfs_methods
+
+    # Method symbols from fat.c
+    self.unixtime_offset = 0
+    _mkdir("", 0)
+    _unlink("")
+    _rename("", "")
+    _exist?("")
+    _directory?("")
+    _erase("")
+    _mkfs("")
+    getfree("")
+    _mount("")
+    _unmount("")
+    _utime(0, "")
+    _chmod(0, "")
+    _setlabel("")
+    _getlabel("")
+    _contiguous?("")
+    _stat("")
+
+    # Method symbols from fat_dir.c and fat_file.c
+    # Note: These are registered in the respective class _dummy_for_presym methods
+    FAT::Dir._dummy_for_presym
+    FAT::File._dummy_for_presym
   end
 end

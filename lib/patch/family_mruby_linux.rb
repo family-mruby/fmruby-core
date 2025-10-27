@@ -59,6 +59,7 @@ MRuby::Build.new do |conf|
   # Family mruby specific
   conf.gem core: "picoruby-fmrb-app"
   conf.gem core: "picoruby-fmrb-kernel"
+  conf.gem core: "picoruby-filesystem-fat"  # C code compiled by ESP-IDF CMake
 
   # settings for microruby
   conf.microruby
