@@ -1,10 +1,13 @@
 #include <string.h>
+#include <mruby.h>
 #include "mruby/presym.h"
 #include "mruby/string.h"
 #include "mruby/class.h"
 #include "mruby/data.h"
 #include "fmrb_hal_file.h"
 #include "fmrb_err.h"
+
+#include "fat_local.h"
 
 static void
 mrb_fat_file_free(mrb_state *mrb, void *ptr) {

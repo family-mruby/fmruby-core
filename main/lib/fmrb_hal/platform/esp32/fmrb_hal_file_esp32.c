@@ -785,16 +785,19 @@ fmrb_err_t fmrb_hal_file_statfs(const char *path, uint64_t *total_bytes, uint64_
     build_path(path, full_path, sizeof(full_path));
 
     // Use ESP-IDF VFS API
-    size_t total = 0, used = 0;
+    uint64_t total = 0, used = 0;
     esp_err_t ret = ESP_OK;
 
     // Determine which filesystem to query
     if (strncmp(full_path, SDCARD_PATH, strlen(SDCARD_PATH)) == 0) {
-        // SD card (FAT)
+        // SD card (FAT) - esp_vfs_fat_info uses uint64_t*
         ret = esp_vfs_fat_info(SDCARD_PATH, &total, &used);
     } else {
-        // LittleFS
-        ret = esp_littlefs_info("storage", &total, &used);
+        // LittleFS - esp_littlefs_info uses size_t*
+        size_t total_lfs = 0, used_lfs = 0;
+        ret = esp_littlefs_info("storage", &total_lfs, &used_lfs);
+        total = total_lfs;
+        used = used_lfs;
     }
 
     if (ret != ESP_OK) {

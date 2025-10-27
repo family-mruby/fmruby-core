@@ -45,6 +45,9 @@ if(IDF_TARGET STREQUAL "linux")
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/gfx.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/audio.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_file.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_dir.c
 
     )
 else()
@@ -52,7 +55,9 @@ else()
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/gfx.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/audio.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fmrb_filesystem.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_file.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_dir.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-env/ports/esp32/env.c

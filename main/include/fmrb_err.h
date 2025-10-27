@@ -12,7 +12,8 @@ typedef enum {
     FMRB_ERR_TIMEOUT = -3,
     FMRB_ERR_NOT_SUPPORTED = -4,
     FMRB_ERR_BUSY = -5,
-    FMRB_ERR_FAILED = -6
+    FMRB_ERR_FAILED = -6,
+    FMRB_ERR_NOT_FOUND = -7
 } fmrb_err_t;
 
 #ifdef __cplusplus

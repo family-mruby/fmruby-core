@@ -1,4 +1,6 @@
 #include <string.h>
+#include <mruby.h>
+
 #include "mruby/data.h"
 #include "mruby/class.h"
 #include "mruby/hash.h"
@@ -7,6 +9,8 @@
 #include "mruby/variable.h"
 #include "fmrb_hal_file.h"
 #include "fmrb_err.h"
+
+#include "fat_local.h"
 
 // Global unixtime offset for time conversion (used by FAT implementations)
 static time_t unixtime_offset = 0;
@@ -321,7 +325,7 @@ mrb_FAT_init_spi(mrb_state *mrb, mrb_value self)
 
 
 void
-mrb_picoruby_filesystem_fat_gem_init(mrb_state* mrb)
+mrb_picoruby_filesystem_fat_gem_init_impl(mrb_state* mrb)
 {
   struct RClass *class_FAT = mrb_define_class_id(mrb, MRB_SYM(FAT), mrb->object_class);
 
@@ -357,9 +361,4 @@ mrb_picoruby_filesystem_fat_gem_init(mrb_state* mrb)
 #ifdef USE_FAT_SD_DISK
   mrb_define_method(mrb, class_FAT, MRB_SYM(init_spi), mrb_FAT_init_spi, MRB_ARGS_REQ(5));
 #endif
-}
-
-void
-mrb_picoruby_filesystem_fat_gem_final(mrb_state* mrb)
-{
 }
