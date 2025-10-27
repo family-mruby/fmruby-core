@@ -5,8 +5,10 @@
 #include <sys/stat.h>
 #include <dirent.h>
 #include <unistd.h>
+#include <utime.h>
 #include "esp_littlefs.h"
 #include "esp_vfs_fat.h"
+#include "esp_partition.h"
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
 #include "driver/spi_common.h"
@@ -672,4 +674,251 @@ fmrb_err_t fmrb_hal_file_sync(fmrb_file_t handle) {
 
     UNLOCK();
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Get file size
+fmrb_err_t fmrb_hal_file_size(fmrb_file_t handle, uint32_t *size) {
+    if (handle == NULL || size == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    LOCK();
+
+    if (!is_valid_file_handle(handle)) {
+        UNLOCK();
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    fmrb_file_slot_t *slot = (fmrb_file_slot_t *)handle;
+    long current = ftell(slot->fp);
+    if (current < 0) {
+        UNLOCK();
+        return FMRB_ERR_FAILED;
+    }
+
+    if (fseek(slot->fp, 0, SEEK_END) != 0) {
+        UNLOCK();
+        return FMRB_ERR_FAILED;
+    }
+
+    long file_size = ftell(slot->fp);
+    fseek(slot->fp, current, SEEK_SET);  // Restore position
+    UNLOCK();
+
+    if (file_size < 0) {
+        return FMRB_ERR_FAILED;
+    }
+
+    *size = (uint32_t)file_size;
+    return FMRB_OK;
+}
+
+// Change current working directory
+fmrb_err_t fmrb_hal_file_chdir(const char *path) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    char full_path[MAX_PATH_LEN];
+    build_path(path, full_path, sizeof(full_path));
+
+    LOCK();
+    int ret = chdir(full_path);
+    UNLOCK();
+    return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Get current working directory
+fmrb_err_t fmrb_hal_file_getcwd(char *buffer, size_t size) {
+    if (buffer == NULL || size == 0) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    LOCK();
+    char *ret = getcwd(buffer, size);
+    UNLOCK();
+    return (ret != NULL) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Change file modification time
+fmrb_err_t fmrb_hal_file_utime(const char *path, uint32_t mtime) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    char full_path[MAX_PATH_LEN];
+    build_path(path, full_path, sizeof(full_path));
+
+    struct utimbuf times;
+    times.actime = mtime;
+    times.modtime = mtime;
+
+    LOCK();
+    int ret = utime(full_path, &times);
+    UNLOCK();
+    return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Change file attributes/permissions
+fmrb_err_t fmrb_hal_file_chmod(const char *path, uint32_t attr) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    char full_path[MAX_PATH_LEN];
+    build_path(path, full_path, sizeof(full_path));
+
+    // On ESP32 VFS, chmod is supported
+    LOCK();
+    int ret = chmod(full_path, (mode_t)attr);
+    UNLOCK();
+    return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Get filesystem statistics
+fmrb_err_t fmrb_hal_file_statfs(const char *path, uint64_t *total_bytes, uint64_t *free_bytes) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    char full_path[MAX_PATH_LEN];
+    build_path(path, full_path, sizeof(full_path));
+
+    // Use ESP-IDF VFS API
+    size_t total = 0, used = 0;
+    esp_err_t ret = ESP_OK;
+
+    // Determine which filesystem to query
+    if (strncmp(full_path, SDCARD_PATH, strlen(SDCARD_PATH)) == 0) {
+        // SD card (FAT)
+        ret = esp_vfs_fat_info(SDCARD_PATH, &total, &used);
+    } else {
+        // LittleFS
+        ret = esp_littlefs_info("storage", &total, &used);
+    }
+
+    if (ret != ESP_OK) {
+        return FMRB_ERR_FAILED;
+    }
+
+    if (total_bytes != NULL) {
+        *total_bytes = total;
+    }
+    if (free_bytes != NULL) {
+        *free_bytes = total - used;
+    }
+
+    return FMRB_OK;
+}
+
+// Format filesystem
+fmrb_err_t fmrb_hal_file_mkfs(const char *path) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // For ESP32, we can format LittleFS by re-registering with format flag
+    if (strncmp(path, LITTLEFS_PATH, strlen(LITTLEFS_PATH)) == 0 ||
+        strncmp(path, "/flash", 6) == 0) {
+        esp_err_t ret = esp_littlefs_format("storage");
+        return (ret == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
+    }
+
+    // SD card formatting not supported via this API
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Get volume label - not fully supported on ESP32
+fmrb_err_t fmrb_hal_file_getlabel(const char *path, char *label) {
+    (void)path;
+    (void)label;
+    // ESP-IDF VFS doesn't provide volume label API
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Set volume label - not fully supported on ESP32
+fmrb_err_t fmrb_hal_file_setlabel(const char *path, const char *label) {
+    (void)path;
+    (void)label;
+    // ESP-IDF VFS doesn't provide volume label API
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Get sector size
+uint32_t fmrb_hal_file_sector_size(void) {
+    // LittleFS block size is typically 4096
+    // SD card sector size is typically 512
+    // Return a common default
+    return 4096;
+}
+
+// Get physical address - not supported on ESP32 VFS
+fmrb_err_t fmrb_hal_file_physical_address(fmrb_file_t handle, uintptr_t *addr) {
+    (void)handle;
+    (void)addr;
+    // VFS abstraction doesn't expose physical addresses
+    // For XIP, use esp_partition_mmap instead
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Erase storage volume
+fmrb_err_t fmrb_hal_file_erase(const char *volume) {
+    if (volume == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Erase LittleFS partition
+    if (strcmp(volume, "0:") == 0 || strcmp(volume, "storage") == 0) {
+        const esp_partition_t *partition = esp_partition_find_first(
+            ESP_PARTITION_TYPE_DATA, ESP_PARTITION_SUBTYPE_ANY, "storage");
+        if (partition == NULL) {
+            return FMRB_ERR_FAILED;
+        }
+        esp_err_t ret = esp_partition_erase_range(partition, 0, partition->size);
+        return (ret == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
+    }
+
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Check if file is stored contiguously - not supported
+fmrb_err_t fmrb_hal_file_is_contiguous(const char *path, bool *is_contiguous) {
+    (void)path;
+    (void)is_contiguous;
+    // VFS abstraction doesn't expose this level of detail
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Mount filesystem
+fmrb_err_t fmrb_hal_file_mount(const char *path) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Check if this is SD card mount request
+    if (strncmp(path, SDCARD_PATH, strlen(SDCARD_PATH)) == 0 ||
+        strncmp(path, "/sd", 3) == 0) {
+        esp_err_t ret = mount_sd_card();
+        return (ret == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
+    }
+
+    // LittleFS is auto-mounted in init
+    return FMRB_ERR_NOT_SUPPORTED;  // Already mounted
+}
+
+// Unmount filesystem
+fmrb_err_t fmrb_hal_file_unmount(const char *path) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Check if this is SD card unmount request
+    if (strncmp(path, SDCARD_PATH, strlen(SDCARD_PATH)) == 0 ||
+        strncmp(path, "/sd", 3) == 0) {
+        unmount_sd_card();
+        return FMRB_OK;
+    }
+
+    // LittleFS unmounting handled in deinit
+    return FMRB_ERR_NOT_SUPPORTED;
 }

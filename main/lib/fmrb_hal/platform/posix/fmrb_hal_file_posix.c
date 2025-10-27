@@ -4,10 +4,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <sys/statvfs.h>
 #include <dirent.h>
 #include <unistd.h>
 #include <pthread.h>
 #include <time.h>
+#include <utime.h>
 #include <errno.h>
 
 const char* TAG = "file_posix";
@@ -432,4 +434,182 @@ fmrb_err_t fmrb_hal_file_sync(fmrb_file_t handle) {
     int ret = fflush(fh->fp);
     UNLOCK();
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Get file size
+fmrb_err_t fmrb_hal_file_size(fmrb_file_t handle, uint32_t *size) {
+    if (handle == NULL || size == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    LOCK();
+    fmrb_file_handle_t *fh = (fmrb_file_handle_t *)handle;
+    long current = ftell(fh->fp);
+    if (current < 0) {
+        UNLOCK();
+        return FMRB_ERR_FAILED;
+    }
+
+    if (fseek(fh->fp, 0, SEEK_END) != 0) {
+        UNLOCK();
+        return FMRB_ERR_FAILED;
+    }
+
+    long file_size = ftell(fh->fp);
+    fseek(fh->fp, current, SEEK_SET);  // Restore position
+    UNLOCK();
+
+    if (file_size < 0) {
+        return FMRB_ERR_FAILED;
+    }
+
+    *size = (uint32_t)file_size;
+    return FMRB_OK;
+}
+
+// Change current working directory
+fmrb_err_t fmrb_hal_file_chdir(const char *path) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    char full_path[512];
+    build_path(path, full_path, sizeof(full_path));
+
+    LOCK();
+    int ret = chdir(full_path);
+    UNLOCK();
+    return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Get current working directory
+fmrb_err_t fmrb_hal_file_getcwd(char *buffer, size_t size) {
+    if (buffer == NULL || size == 0) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    LOCK();
+    char *ret = getcwd(buffer, size);
+    UNLOCK();
+    return (ret != NULL) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Change file modification time
+fmrb_err_t fmrb_hal_file_utime(const char *path, uint32_t mtime) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    char full_path[512];
+    build_path(path, full_path, sizeof(full_path));
+
+    struct utimbuf times;
+    times.actime = mtime;
+    times.modtime = mtime;
+
+    LOCK();
+    int ret = utime(full_path, &times);
+    UNLOCK();
+    return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Change file attributes/permissions
+fmrb_err_t fmrb_hal_file_chmod(const char *path, uint32_t attr) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    char full_path[512];
+    build_path(path, full_path, sizeof(full_path));
+
+    // On POSIX, attr is mode_t
+    LOCK();
+    int ret = chmod(full_path, (mode_t)attr);
+    UNLOCK();
+    return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Get filesystem statistics
+fmrb_err_t fmrb_hal_file_statfs(const char *path, uint64_t *total_bytes, uint64_t *free_bytes) {
+    if (path == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    char full_path[512];
+    build_path(path, full_path, sizeof(full_path));
+
+    struct statvfs stat;
+    LOCK();
+    int ret = statvfs(full_path, &stat);
+    UNLOCK();
+
+    if (ret != 0) {
+        return FMRB_ERR_FAILED;
+    }
+
+    if (total_bytes != NULL) {
+        *total_bytes = (uint64_t)stat.f_blocks * stat.f_frsize;
+    }
+    if (free_bytes != NULL) {
+        *free_bytes = (uint64_t)stat.f_bavail * stat.f_frsize;
+    }
+
+    return FMRB_OK;
+}
+
+// Format filesystem - not supported on POSIX
+fmrb_err_t fmrb_hal_file_mkfs(const char *path) {
+    (void)path;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Get volume label - not supported on POSIX
+fmrb_err_t fmrb_hal_file_getlabel(const char *path, char *label) {
+    (void)path;
+    (void)label;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Set volume label - not supported on POSIX
+fmrb_err_t fmrb_hal_file_setlabel(const char *path, const char *label) {
+    (void)path;
+    (void)label;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Get sector size - return 512 as default
+uint32_t fmrb_hal_file_sector_size(void) {
+    return 512;  // Standard sector size
+}
+
+// Get physical address - not supported on POSIX
+fmrb_err_t fmrb_hal_file_physical_address(fmrb_file_t handle, uintptr_t *addr) {
+    (void)handle;
+    (void)addr;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Erase storage volume - not supported on POSIX
+fmrb_err_t fmrb_hal_file_erase(const char *volume) {
+    (void)volume;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Check if file is stored contiguously - not supported on POSIX
+fmrb_err_t fmrb_hal_file_is_contiguous(const char *path, bool *is_contiguous) {
+    (void)path;
+    (void)is_contiguous;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+
+// Mount filesystem - not needed on POSIX
+fmrb_err_t fmrb_hal_file_mount(const char *path) {
+    (void)path;
+    return FMRB_ERR_NOT_SUPPORTED;  // Auto-mounted
+}
+
+// Unmount filesystem - not needed on POSIX
+fmrb_err_t fmrb_hal_file_unmount(const char *path) {
+    (void)path;
+    return FMRB_ERR_NOT_SUPPORTED;  // Auto-mounted
 }

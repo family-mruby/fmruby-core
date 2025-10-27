@@ -3,13 +3,14 @@
 #include "mruby/string.h"
 #include "mruby/class.h"
 #include "mruby/data.h"
-
-#ifndef FMRB_TARGET_ESP32
+#include "fmrb_hal_file.h"
+#include "fmrb_err.h"
 
 static void
 mrb_fat_file_free(mrb_state *mrb, void *ptr) {
-  f_close((FIL *)ptr);
-  mrb_free(mrb, ptr);
+  if (ptr) {
+    fmrb_hal_file_close((fmrb_file_t)ptr);
+  }
 }
 
 struct mrb_data_type mrb_fat_file_type = {
@@ -17,141 +18,172 @@ struct mrb_data_type mrb_fat_file_type = {
 };
 
 
-static mrb_value
-mrb_s_new(mrb_state *mrb, mrb_value klass)
-{
-  FRESULT res;
-  const char *path;
-  const char *mode_str;
-  mrb_get_args(mrb, "zz", &path, &mode_str);
-  FIL *fp = (FIL *)mrb_malloc(mrb, sizeof(FIL));
-  mrb_value file = mrb_obj_value(Data_Wrap_Struct(mrb, mrb_class_ptr(klass), &mrb_fat_file_type, fp));
-  BYTE mode = 0;
+// Convert mode string to fmrb_open_flags_t
+static uint32_t parse_mode(const char *mode_str) {
   if (strcmp(mode_str, "r") == 0) {
-    mode = FA_READ;
+    return FMRB_O_RDONLY;
   } else if (strcmp(mode_str, "r+") == 0) {
-    mode = FA_READ | FA_WRITE;
+    return FMRB_O_RDWR;
   } else if (strcmp(mode_str, "w") == 0) {
-    mode = FA_CREATE_ALWAYS | FA_WRITE;
+    return FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC;
   } else if (strcmp(mode_str, "w+") == 0) {
-    mode = FA_CREATE_ALWAYS | FA_WRITE | FA_READ;
+    return FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_TRUNC;
   } else if (strcmp(mode_str, "a") == 0) {
-    mode = FA_OPEN_APPEND | FA_WRITE;
+    return FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_APPEND;
   } else if (strcmp(mode_str, "a+") == 0) {
-    mode = FA_OPEN_APPEND | FA_WRITE | FA_READ;
+    return FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_APPEND;
   } else if (strcmp(mode_str, "wx") == 0) {
-    mode = FA_CREATE_NEW | FA_WRITE;
+    return FMRB_O_WRONLY | FMRB_O_CREAT;  // Create new (fail if exists)
   } else if (strcmp(mode_str, "w+x") == 0) {
-    mode = FA_CREATE_NEW | FA_WRITE | FA_READ;
-  } else {
-    mrb_raise(mrb, E_ARGUMENT_ERROR, "Unknown file open mode");
+    return FMRB_O_RDWR | FMRB_O_CREAT;  // Create new (fail if exists)
   }
-  res = f_open(fp, (const TCHAR *)path, mode);
-  mrb_raise_iff_f_error(mrb, res, path);
-  return file;
+  return 0;  // Invalid mode
 }
 
 static mrb_value
+mrb_s_new(mrb_state *mrb, mrb_value klass)
+{
+  const char *path;
+  const char *mode_str;
+  mrb_get_args(mrb, "zz", &path, &mode_str);
+
+  uint32_t flags = parse_mode(mode_str);
+  if (flags == 0) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "Unknown file open mode");
+  }
+
+  fmrb_file_t handle = NULL;
+  fmrb_err_t err = fmrb_hal_file_open(path, flags, &handle);
+  if (err != FMRB_OK || handle == NULL) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to open file: %s (error %d)", path, err);
+  }
+
+  mrb_value file = mrb_obj_value(Data_Wrap_Struct(mrb, mrb_class_ptr(klass), &mrb_fat_file_type, handle));
+  return file;
+}
+
+// Platform-specific methods
+static mrb_value
 mrb_sector_size(mrb_state *mrb, mrb_value self)
 {
-  return mrb_fixnum_value(FILE_sector_size());
+  (void)self;
+  uint32_t size = fmrb_hal_file_sector_size();
+  return mrb_fixnum_value(size);
 }
 
 static mrb_value
 mrb_physical_address(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
-  uint8_t *addr;
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
+  uintptr_t addr = 0;
 
-  /* Check if file object is valid */
-  if (!fp) {
-    mrb_raise(mrb, E_RUNTIME_ERROR, "Invalid argument");
+  fmrb_err_t err = fmrb_hal_file_physical_address(handle, &addr);
+  if (err == FMRB_ERR_NOT_SUPPORTED) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "Physical address not supported on this platform");
+  } else if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to get physical address: %d", err);
   }
-  if (!fp->obj.fs) {
-    mrb_raise(mrb, E_RUNTIME_ERROR, "Invalid file object");
-  }
 
-  FILE_physical_address(fp, &addr);
-
-  /* Return physical address */
   return mrb_fixnum_value((intptr_t)addr);
 }
 
 static mrb_value
 mrb_tell(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
-  FSIZE_t pos = f_tell(fp);
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
+  uint32_t pos = 0;
+  fmrb_err_t err = fmrb_hal_file_tell(handle, &pos);
+  if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "tell failed: %d", err);
+  }
   return mrb_fixnum_value(pos);
 }
 
 static mrb_value
 mrb_seek(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
   mrb_int ofs;
   mrb_int whence;
   mrb_get_args(mrb, "ii", &ofs, &whence);
-  FSIZE_t size = f_size(fp);
-  FSIZE_t new_pos;
 
+  fmrb_seek_mode_t seek_mode;
   if (whence == SEEK_SET) {
-    new_pos = ofs;
+    seek_mode = FMRB_SEEK_SET;
   } else if (whence == SEEK_CUR) {
-    new_pos = f_tell(fp) + ofs;
+    seek_mode = FMRB_SEEK_CUR;
   } else if (whence == SEEK_END) {
-    new_pos = size + ofs;
+    seek_mode = FMRB_SEEK_END;
   } else {
     mrb_raise(mrb, E_ARGUMENT_ERROR, "Unknown whence");
   }
 
-  if (new_pos < 0) {
-    mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid offset");
-  } else if (size < new_pos) {
-    FRESULT res;
-    res = f_expand(fp, new_pos, 1);
-    if (res == FR_OK) res = f_sync(fp);
-    mrb_raise_iff_f_error(mrb, res, "f_lseek|f_expand|f_sync");
+  fmrb_err_t err = fmrb_hal_file_seek(handle, (int32_t)ofs, seek_mode);
+  if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "seek failed: %d", err);
   }
-  FRESULT res;
-  res = f_lseek(fp, new_pos);
-  mrb_raise_iff_f_error(mrb, res, "f_lseek");
   return mrb_fixnum_value(0);
 }
 
 static mrb_value
 mrb_size(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
-  return mrb_fixnum_value(f_size(fp));
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
+
+  uint32_t size = 0;
+  fmrb_err_t err = fmrb_hal_file_size(handle, &size);
+  if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "size failed: %d", err);
+  }
+
+  return mrb_fixnum_value(size);
 }
 
 
 static mrb_value
 mrb_eof_p(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
-  if (f_eof(fp) == 0) {
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
+
+  // Get current position
+  uint32_t current_pos = 0;
+  fmrb_err_t err = fmrb_hal_file_tell(handle, &current_pos);
+  if (err != FMRB_OK) {
     return mrb_false_value();
-  } else {
-    return mrb_true_value();
   }
+
+  // Get file size
+  uint32_t size = 0;
+  err = fmrb_hal_file_size(handle, &size);
+  if (err != FMRB_OK) {
+    return mrb_false_value();
+  }
+
+  return (current_pos >= size) ? mrb_true_value() : mrb_false_value();
 }
 
 static mrb_value
 mrb_read(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
   mrb_int btr;
   mrb_get_args(mrb, "i", &btr);
-  char buff[btr];
-  UINT br;
-  FRESULT res = f_read(fp, buff, (UINT)btr, &br);
-  mrb_raise_iff_f_error(mrb, res, "f_read");
-  if (0 < br) {
-    mrb_value value = mrb_str_new(mrb, (const void *)buff, br);
+
+  char *buff = (char *)mrb_malloc(mrb, btr);
+  size_t bytes_read = 0;
+  fmrb_err_t err = fmrb_hal_file_read(handle, buff, (size_t)btr, &bytes_read);
+
+  if (err != FMRB_OK) {
+    mrb_free(mrb, buff);
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "read failed: %d", err);
+  }
+
+  if (bytes_read > 0) {
+    mrb_value value = mrb_str_new(mrb, (const void *)buff, bytes_read);
+    mrb_free(mrb, buff);
     return value;
   } else {
+    mrb_free(mrb, buff);
     return mrb_nil_value();
   }
 }
@@ -159,12 +191,16 @@ mrb_read(mrb_state *mrb, mrb_value self)
 static mrb_value
 mrb_getbyte(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
   char buff[1];
-  UINT br;
-  FRESULT res = f_read(fp, buff, 1, &br);
-  mrb_raise_iff_f_error(mrb, res, "f_read");
-  if (br == 1) {
+  size_t bytes_read = 0;
+  fmrb_err_t err = fmrb_hal_file_read(handle, buff, 1, &bytes_read);
+
+  if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "getbyte failed: %d", err);
+  }
+
+  if (bytes_read == 1) {
     return mrb_fixnum_value((unsigned char)buff[0]);
   } else {
     return mrb_nil_value();
@@ -174,53 +210,80 @@ mrb_getbyte(mrb_state *mrb, mrb_value self)
 static mrb_value
 mrb_write(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
   mrb_value str;
   mrb_get_args(mrb, "S", &str);
-  UINT bw;
-  FRESULT res;
-  res = f_write(fp, RSTRING_PTR(str), RSTRING_LEN(str), &bw);
-  if (res == FR_OK) res = f_sync(fp);
-  mrb_raise_iff_f_error(mrb, res, "f_write|f_sync");
-  return mrb_fixnum_value(bw);
+
+  size_t bytes_written = 0;
+  fmrb_err_t err = fmrb_hal_file_write(handle, RSTRING_PTR(str), RSTRING_LEN(str), &bytes_written);
+
+  if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "write failed: %d", err);
+  }
+
+  // Sync after write (like original implementation)
+  fmrb_hal_file_sync(handle);
+
+  return mrb_fixnum_value(bytes_written);
 }
 
 static mrb_value
 mrb_File_close(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
-  FRESULT res;
-  res = f_close(fp);
-  mrb_raise_iff_f_error(mrb, res, "f_close");
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
+  fmrb_err_t err = fmrb_hal_file_close(handle);
+
+  if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "close failed: %d", err);
+  }
+
+  // Clear the pointer to prevent double-close
+  DATA_PTR(self) = NULL;
+
   return mrb_nil_value();
 }
 
 static mrb_value
 mrb_expand(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
-  FRESULT res;
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
   mrb_int size;
   mrb_get_args(mrb, "i", &size);
-  res = f_expand(fp, (FSIZE_t)size, 1);
-  if (res == FR_OK) res = f_sync(fp);
-  mrb_raise_iff_f_error(mrb, res, "f_expand|f_sync");
+
+  // HAL doesn't have direct expand API, use seek to expand
+  fmrb_err_t err = fmrb_hal_file_seek(handle, (int32_t)size, FMRB_SEEK_SET);
+  if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "expand failed: %d", err);
+  }
+
+  err = fmrb_hal_file_sync(handle);
+  if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "sync failed: %d", err);
+  }
+
   return mrb_fixnum_value(size);
 }
 
 static mrb_value
 mrb_fsync(mrb_state *mrb, mrb_value self)
 {
-  FIL *fp = (FIL *)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
-  FRESULT res;
-  res = f_sync(fp);
-  mrb_raise_iff_f_error(mrb, res, "f_sync");
+  fmrb_file_t handle = (fmrb_file_t)mrb_data_get_ptr(mrb, self, &mrb_fat_file_type);
+  fmrb_err_t err = fmrb_hal_file_sync(handle);
+
+  if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "fsync failed: %d", err);
+  }
+
   return mrb_fixnum_value(0);
 }
 
 
+// VFSMethods support (may not be available on all platforms)
 static void
 mrb_vfs_methods_free(mrb_state *mrb, void *ptr) {
+  if (ptr) {
+    mrb_free(mrb, ptr);
+  }
 }
 
 struct mrb_data_type mrb_vfs_methods_type = {
@@ -249,8 +312,6 @@ mrb_s_vfs_methods(mrb_state *mrb, mrb_value klass)
   return methods;
 }
 
-#endif // FMRB_TARGET_ESP32
-
 void
 mrb_init_class_FAT_File(mrb_state *mrb ,struct RClass *class_FAT)
 {
@@ -261,7 +322,7 @@ mrb_init_class_FAT_File(mrb_state *mrb ,struct RClass *class_FAT)
   struct RClass *class_FAT_VFSMethods = mrb_define_class_under_id(mrb, class_FAT, MRB_SYM(VFSMethods), mrb->object_class);
   MRB_SET_INSTANCE_TT(class_FAT_VFSMethods, MRB_TT_CDATA);
 
-#ifndef FMRB_TARGET_ESP32
+  // Common methods available on all platforms using fmrb_hal_file
   mrb_define_class_method_id(mrb, class_FAT_File, MRB_SYM(new), mrb_s_new, MRB_ARGS_REQ(2));
   mrb_define_class_method_id(mrb, class_FAT_File, MRB_SYM(open), mrb_s_new, MRB_ARGS_REQ(2));
   mrb_define_method_id(mrb, class_FAT_File, MRB_SYM(tell), mrb_tell, MRB_ARGS_NONE());
@@ -275,9 +336,10 @@ mrb_init_class_FAT_File(mrb_state *mrb ,struct RClass *class_FAT)
   mrb_define_method_id(mrb, class_FAT_File, MRB_SYM(expand), mrb_expand, MRB_ARGS_REQ(1));
   mrb_define_method_id(mrb, class_FAT_File, MRB_SYM(fsync), mrb_fsync, MRB_ARGS_NONE());
 
+  // Platform-specific methods (may raise NOT_SUPPORTED error on some platforms)
   mrb_define_method_id(mrb, class_FAT_File, MRB_SYM(physical_address), mrb_physical_address, MRB_ARGS_NONE());
   mrb_define_method_id(mrb, class_FAT_File, MRB_SYM(sector_size), mrb_sector_size, MRB_ARGS_NONE());
 
+  // VFS methods (available on all platforms)
   mrb_define_class_method_id(mrb, class_FAT, MRB_SYM(vfs_methods), mrb_s_vfs_methods, MRB_ARGS_NONE());
-#endif
 }

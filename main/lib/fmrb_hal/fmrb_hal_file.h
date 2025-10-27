@@ -168,6 +168,120 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info);
  */
 fmrb_err_t fmrb_hal_file_sync(fmrb_file_t handle);
 
+/**
+ * @brief Get file size
+ * @param handle File handle
+ * @param size Output file size in bytes
+ * @return FMRB_OK on success, error code otherwise
+ */
+fmrb_err_t fmrb_hal_file_size(fmrb_file_t handle, uint32_t *size);
+
+/**
+ * @brief Change current working directory
+ * @param path Directory path
+ * @return FMRB_OK on success, error code otherwise
+ */
+fmrb_err_t fmrb_hal_file_chdir(const char *path);
+
+/**
+ * @brief Get current working directory
+ * @param buffer Buffer to store path
+ * @param size Buffer size
+ * @return FMRB_OK on success, error code otherwise
+ */
+fmrb_err_t fmrb_hal_file_getcwd(char *buffer, size_t size);
+
+/**
+ * @brief Change file modification time
+ * @param path File path
+ * @param mtime Modification time (Unix timestamp)
+ * @return FMRB_OK on success, error code otherwise
+ */
+fmrb_err_t fmrb_hal_file_utime(const char *path, uint32_t mtime);
+
+/**
+ * @brief Change file attributes/permissions
+ * @param path File path
+ * @param attr Attributes (platform-specific)
+ * @return FMRB_OK on success, FMRB_ERR_NOT_SUPPORTED if not available
+ */
+fmrb_err_t fmrb_hal_file_chmod(const char *path, uint32_t attr);
+
+/**
+ * @brief Get filesystem statistics
+ * @param path Path to mounted filesystem
+ * @param total_bytes Total bytes on filesystem (can be NULL)
+ * @param free_bytes Free bytes on filesystem (can be NULL)
+ * @return FMRB_OK on success, error code otherwise
+ */
+fmrb_err_t fmrb_hal_file_statfs(const char *path, uint64_t *total_bytes, uint64_t *free_bytes);
+
+/**
+ * @brief Format filesystem
+ * @param path Path to device/partition
+ * @return FMRB_OK on success, FMRB_ERR_NOT_SUPPORTED if not available
+ */
+fmrb_err_t fmrb_hal_file_mkfs(const char *path);
+
+/**
+ * @brief Get volume label
+ * @param path Path to filesystem
+ * @param label Buffer to store label (must be at least 12 bytes)
+ * @return FMRB_OK on success, FMRB_ERR_NOT_SUPPORTED if not available
+ */
+fmrb_err_t fmrb_hal_file_getlabel(const char *path, char *label);
+
+/**
+ * @brief Set volume label
+ * @param path Path to filesystem
+ * @param label New label (max 11 chars)
+ * @return FMRB_OK on success, FMRB_ERR_NOT_SUPPORTED if not available
+ */
+fmrb_err_t fmrb_hal_file_setlabel(const char *path, const char *label);
+
+/**
+ * @brief Get sector size
+ * @return Sector size in bytes, or 0 if not supported
+ */
+uint32_t fmrb_hal_file_sector_size(void);
+
+/**
+ * @brief Get physical address of file data (for XIP)
+ * @param handle File handle
+ * @param addr Output physical address
+ * @return FMRB_OK on success, FMRB_ERR_NOT_SUPPORTED if not available
+ */
+fmrb_err_t fmrb_hal_file_physical_address(fmrb_file_t handle, uintptr_t *addr);
+
+/**
+ * @brief Erase storage volume
+ * @param volume Volume name (e.g., "0:")
+ * @return FMRB_OK on success, FMRB_ERR_NOT_SUPPORTED if not available
+ */
+fmrb_err_t fmrb_hal_file_erase(const char *volume);
+
+/**
+ * @brief Check if file is stored contiguously
+ * @param path File path
+ * @param is_contiguous Output: true if contiguous
+ * @return FMRB_OK on success, FMRB_ERR_NOT_SUPPORTED if not available
+ */
+fmrb_err_t fmrb_hal_file_is_contiguous(const char *path, bool *is_contiguous);
+
+/**
+ * @brief Mount filesystem (if manual mount is required)
+ * @param path Mount point path
+ * @return FMRB_OK on success, FMRB_ERR_NOT_SUPPORTED if auto-mounted
+ */
+fmrb_err_t fmrb_hal_file_mount(const char *path);
+
+/**
+ * @brief Unmount filesystem (if manual unmount is required)
+ * @param path Mount point path
+ * @return FMRB_OK on success, FMRB_ERR_NOT_SUPPORTED if auto-mounted
+ */
+fmrb_err_t fmrb_hal_file_unmount(const char *path);
+
 #ifdef __cplusplus
 }
 #endif
