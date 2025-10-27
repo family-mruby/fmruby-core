@@ -44,9 +44,8 @@ if(IDF_TARGET STREQUAL "linux")
     set(PICORUBY_SRCS
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/hal.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/hal.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/gfx.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/audio.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/fmrb_app.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/fmrb_gfx.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_file.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_dir.c
@@ -54,9 +53,8 @@ if(IDF_TARGET STREQUAL "linux")
     )
 else()
   set(PICORUBY_SRCS
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/hal.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/gfx.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/audio.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/fmrb_app.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/fmrb_gfx.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_file.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_dir.c
@@ -91,6 +89,8 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include

@@ -1,0 +1,15 @@
+# App Handle
+# must be unique. kernel, systemgui are reserved.
+# script name must be "app_handle_name.app.rb"
+# "app/app_handle_name" is your app's IPC handle.
+app_handle_name = "sample_app"
+app_screen_name = "Sample Application"
+default_window_mode = "fullscreen" # or "fullwindow" or "window" or "background"
+
+# if fullscreen/fullwindow, they will be ignored
+default_window_width = 0
+default_window_height = 0
+# if fullscreen/fullwindow, they will be ignored
+# they can be overwrite by caller
+default_window_pos_x = 0 
+default_window_pos_y = 0

@@ -119,10 +119,14 @@ task :menuconfig do
 end
 
 desc "Full clean build artifacts (including host)"
-task :clean do
-  #sh "#{DOCKER_CMD} idf.py fullclean"
+task :clean_all do
   sh "rm -f sdkconfig"
   sh "rm -rf build"
+  sh "rm -rf components/picoruby-esp32/picoruby/build/*"
+end
+
+desc "Full clean build artifacts (including host)"
+task :clean do
   sh "rm -rf components/picoruby-esp32/picoruby/build/*"
 end
 

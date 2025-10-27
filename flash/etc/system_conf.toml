@@ -1,2 +1,5 @@
 system_name = "Family mruby OS"
+display_with = 480
+display_height = 320
+display_mode = "ntsc_ipc" # spi_XXXX, etc...
 debug_mode = true
