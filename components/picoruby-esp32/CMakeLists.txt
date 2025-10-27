@@ -9,6 +9,7 @@ if(IDF_TARGET STREQUAL "linux")
     set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/host/include)
     set(PLATFORM_PRIV_REQUIRES
         fmrb_hal
+        fmrb_gfx
     )
 
     if(ENABLE_ASAN)
@@ -36,6 +37,7 @@ else()
         esp_driver_i2c
         esp_hw_support
         fmrb_hal
+        fmrb_gfx
     )
 endif()
 
