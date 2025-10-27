@@ -1,4 +1,5 @@
 #include "../../fmrb_hal_spi.h"
+#include "fmrb_mem.h"
 #include "esp_log.h"
 #include "driver/spi_master.h"
 #include "freertos/FreeRTOS.h"
@@ -15,7 +16,7 @@ fmrb_err_t fmrb_hal_spi_init(const fmrb_spi_config_t *config, fmrb_spi_handle_t 
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    esp32_spi_handle_t *esp_handle = malloc(sizeof(esp32_spi_handle_t));
+    esp32_spi_handle_t *esp_handle = fmrb_sys_malloc(sizeof(esp32_spi_handle_t));
     if (!esp_handle) {
         return FMRB_ERR_NO_MEMORY;
     }
@@ -32,7 +33,7 @@ fmrb_err_t fmrb_hal_spi_init(const fmrb_spi_config_t *config, fmrb_spi_handle_t 
 
     esp_err_t ret = spi_bus_initialize(SPI2_HOST, &bus_config, SPI_DMA_CH_AUTO);
     if (ret != ESP_OK && ret != ESP_ERR_INVALID_STATE) {
-        free(esp_handle);
+        fmrb_sys_free(esp_handle);
         return FMRB_ERR_FAILED;
     }
 
@@ -47,7 +48,7 @@ fmrb_err_t fmrb_hal_spi_init(const fmrb_spi_config_t *config, fmrb_spi_handle_t 
     ret = spi_bus_add_device(SPI2_HOST, &dev_config, &esp_handle->device);
     if (ret != ESP_OK) {
         spi_bus_free(SPI2_HOST);
-        free(esp_handle);
+        fmrb_sys_free(esp_handle);
         return FMRB_ERR_FAILED;
     }
 
@@ -64,7 +65,7 @@ fmrb_err_t fmrb_hal_spi_deinit(fmrb_spi_handle_t handle) {
     esp32_spi_handle_t *esp_handle = (esp32_spi_handle_t *)handle;
     spi_bus_remove_device(esp_handle->device);
     spi_bus_free(SPI2_HOST);
-    free(esp_handle);
+    fmrb_sys_free(esp_handle);
 
     return FMRB_OK;
 }

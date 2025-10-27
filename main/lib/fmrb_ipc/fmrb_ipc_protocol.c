@@ -1,5 +1,6 @@
 #include "fmrb_ipc_protocol.h"
 #include "fmrb_ipc_cobs.h"
+#include "fmrb_mem.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -112,7 +113,7 @@ ssize_t fmrb_ipc_frame_encode(uint8_t type, uint8_t seq, const uint8_t *payload,
     }
 
     // Build frame: [header | payload | CRC32]
-    uint8_t *temp_buffer = (uint8_t*)malloc(frame_size);
+    uint8_t *temp_buffer = (uint8_t*)fmrb_sys_malloc(frame_size);
     if (!temp_buffer) {
         return -1;
     }
@@ -135,7 +136,7 @@ ssize_t fmrb_ipc_frame_encode(uint8_t type, uint8_t seq, const uint8_t *payload,
     // COBS encode
     size_t encoded_len = fmrb_ipc_cobs_encode(temp_buffer, frame_size, output);
 
-    free(temp_buffer);
+    fmrb_sys_free(temp_buffer);
     return (ssize_t)encoded_len;
 }
 
@@ -147,7 +148,7 @@ int32_t fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
     }
 
     // Allocate temporary buffer for decoded data
-    uint8_t *temp_buffer = (uint8_t*)malloc(input_len);
+    uint8_t *temp_buffer = (uint8_t*)fmrb_sys_malloc(input_len);
     if (!temp_buffer) {
         return -1;
     }
@@ -155,7 +156,7 @@ int32_t fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
     // COBS decode
     ssize_t decoded_len = fmrb_ipc_cobs_decode(input, input_len, temp_buffer);
     if (decoded_len < (ssize_t)(sizeof(fmrb_ipc_frame_hdr_t) + sizeof(uint32_t))) {
-        free(temp_buffer);
+        fmrb_sys_free(temp_buffer);
         return -1; // Too small
     }
 
@@ -164,14 +165,14 @@ int32_t fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
 
     // Verify payload length
     if (hdr->len > payload_max_len) {
-        free(temp_buffer);
+        fmrb_sys_free(temp_buffer);
         return -1; // Payload buffer too small
     }
 
     // Extract CRC32
     size_t expected_size = sizeof(fmrb_ipc_frame_hdr_t) + hdr->len + sizeof(uint32_t);
     if ((size_t)decoded_len != expected_size) {
-        free(temp_buffer);
+        fmrb_sys_free(temp_buffer);
         return -1; // Size mismatch
     }
 
@@ -181,7 +182,7 @@ int32_t fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
     // Verify CRC32
     uint32_t calculated_crc = fmrb_ipc_crc32_update(0, temp_buffer, sizeof(fmrb_ipc_frame_hdr_t) + hdr->len);
     if (received_crc != calculated_crc) {
-        free(temp_buffer);
+        fmrb_sys_free(temp_buffer);
         return -1; // CRC mismatch
     }
 
@@ -191,6 +192,6 @@ int32_t fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
     }
     *payload_len = hdr->len;
 
-    free(temp_buffer);
+    fmrb_sys_free(temp_buffer);
     return 0;
 }

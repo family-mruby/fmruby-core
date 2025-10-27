@@ -2,6 +2,7 @@
 #include "fmrb_hal.h"
 #include "fmrb_ipc_protocol.h"
 #include "fmrb_ipc_transport.h"
+#include "fmrb_mem.h"
 #include "esp_log.h"
 #include <stdlib.h>
 #include <string.h>
@@ -24,7 +25,7 @@ static fmrb_audio_ctx_t audio_ctx = {
 static fmrb_audio_err_t send_apu_command(fmrb_apu_cmd_t cmd, const void* data, size_t data_size) {
     // Create IPC command packet
     size_t packet_size = sizeof(fmrb_apu_cmd_t) + data_size;
-    uint8_t* packet = malloc(packet_size);
+    uint8_t* packet = fmrb_sys_malloc(packet_size);
     if (!packet) {
         return FMRB_AUDIO_ERR_NO_MEMORY;
     }
@@ -42,7 +43,7 @@ static fmrb_audio_err_t send_apu_command(fmrb_apu_cmd_t cmd, const void* data, s
     };
 
     fmrb_err_t ret = fmrb_hal_ipc_send(FMRB_IPC_AUDIO, &msg, 1000);
-    free(packet);
+    fmrb_sys_free(packet);
 
     if (ret == FMRB_OK) {
         ESP_LOGI(TAG, "APU command 0x%02x sent", cmd);

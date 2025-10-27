@@ -1,4 +1,5 @@
 #include "../../fmrb_hal_spi.h"
+#include "fmrb_mem.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,7 +17,7 @@ fmrb_err_t fmrb_hal_spi_init(const fmrb_spi_config_t *config, fmrb_spi_handle_t 
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    linux_spi_handle_t *linux_handle = malloc(sizeof(linux_spi_handle_t));
+    linux_spi_handle_t *linux_handle = fmrb_sys_malloc(sizeof(linux_spi_handle_t));
     if (!linux_handle) {
         return FMRB_ERR_NO_MEMORY;
     }
@@ -39,7 +40,7 @@ fmrb_err_t fmrb_hal_spi_deinit(fmrb_spi_handle_t handle) {
 
     linux_spi_handle_t *linux_handle = (linux_spi_handle_t *)handle;
     linux_handle->initialized = false;
-    free(linux_handle);
+    fmrb_sys_free(linux_handle);
     ESP_LOGI(TAG, "Linux SPI deinitialized");
 
     return FMRB_OK;

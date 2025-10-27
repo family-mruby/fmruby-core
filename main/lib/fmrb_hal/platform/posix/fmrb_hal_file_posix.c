@@ -1,4 +1,5 @@
 #include "fmrb_hal_file.h"
+#include "fmrb_mem.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -118,7 +119,7 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
 
     LOCK();
 
-    fmrb_file_handle_t *handle = malloc(sizeof(fmrb_file_handle_t));
+    fmrb_file_handle_t *handle = fmrb_sys_malloc(sizeof(fmrb_file_handle_t));
     if (handle == NULL) {
         UNLOCK();
         return FMRB_ERR_NO_MEMORY;
@@ -143,7 +144,7 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
 
     handle->fp = fopen(full_path, mode);
     if (handle->fp == NULL) {
-        free(handle);
+        fmrb_sys_free(handle);
         UNLOCK();
         return FMRB_ERR_FAILED;
     }
@@ -162,7 +163,7 @@ fmrb_err_t fmrb_hal_file_close(fmrb_file_t handle) {
     LOCK();
     fmrb_file_handle_t *fh = (fmrb_file_handle_t *)handle;
     fclose(fh->fp);
-    free(fh);
+    fmrb_sys_free(fh);
     UNLOCK();
     return FMRB_OK;
 }
@@ -348,7 +349,7 @@ fmrb_err_t fmrb_hal_file_opendir(const char *path, fmrb_dir_t *out_handle) {
     build_path(path, full_path, sizeof(full_path));
 
     LOCK();
-    fmrb_dir_handle_t *handle = malloc(sizeof(fmrb_dir_handle_t));
+    fmrb_dir_handle_t *handle = fmrb_sys_malloc(sizeof(fmrb_dir_handle_t));
     if (handle == NULL) {
         UNLOCK();
         return FMRB_ERR_NO_MEMORY;
@@ -356,7 +357,7 @@ fmrb_err_t fmrb_hal_file_opendir(const char *path, fmrb_dir_t *out_handle) {
 
     handle->dir = opendir(full_path);
     if (handle->dir == NULL) {
-        free(handle);
+        fmrb_sys_free(handle);
         UNLOCK();
         return FMRB_ERR_FAILED;
     }
@@ -379,7 +380,7 @@ fmrb_err_t fmrb_hal_file_closedir(fmrb_dir_t handle) {
     LOCK();
     fmrb_dir_handle_t *dh = (fmrb_dir_handle_t *)handle;
     closedir(dh->dir);
-    free(dh);
+    fmrb_sys_free(dh);
     UNLOCK();
     return FMRB_OK;
 }

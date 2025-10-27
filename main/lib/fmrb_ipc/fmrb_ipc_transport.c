@@ -1,6 +1,7 @@
 #include "fmrb_ipc_transport.h"
 #include "fmrb_ipc_protocol.h"
 #include "fmrb_hal.h"
+#include "fmrb_mem.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -46,7 +47,7 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_init(const fmrb_ipc_transport_config
         return FMRB_IPC_TRANSPORT_ERR_INVALID_PARAM;
     }
 
-    transport_context_t *ctx = malloc(sizeof(transport_context_t));
+    transport_context_t *ctx = fmrb_sys_malloc(sizeof(transport_context_t));
     if (!ctx) {
         return FMRB_IPC_TRANSPORT_ERR_NO_MEMORY;
     }
@@ -70,12 +71,12 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_deinit(fmrb_ipc_transport_handle_t h
     // Free pending messages
     for (int i = 0; i < ctx->pending_count; i++) {
         if (ctx->pending_messages[i].payload) {
-            free(ctx->pending_messages[i].payload);
+            fmrb_sys_free(ctx->pending_messages[i].payload);
         }
     }
 
     ctx->initialized = false;
-    free(ctx);
+    fmrb_sys_free(ctx);
     return FMRB_IPC_TRANSPORT_OK;
 }
 
@@ -143,7 +144,7 @@ static fmrb_ipc_transport_err_t add_pending_message(transport_context_t *ctx, ui
     pending->retry_count = 0;
 
     if (payload_len > 0 && payload) {
-        pending->payload = malloc(payload_len);
+        pending->payload = fmrb_sys_malloc(payload_len);
         if (!pending->payload) {
             return FMRB_IPC_TRANSPORT_ERR_NO_MEMORY;
         }
@@ -260,7 +261,7 @@ static void handle_received_message(transport_context_t *ctx, const fmrb_ipc_hea
         for (int i = 0; i < ctx->pending_count; i++) {
             if (ctx->pending_messages[i].sequence == header->sequence) {
                 if (ctx->pending_messages[i].payload) {
-                    free(ctx->pending_messages[i].payload);
+                    fmrb_sys_free(ctx->pending_messages[i].payload);
                 }
 
                 // Shift remaining messages
@@ -351,7 +352,7 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_process(fmrb_ipc_transport_handle_t 
                 } else {
                     // Max retries reached, remove from pending
                     if (pending->payload) {
-                        free(pending->payload);
+                        fmrb_sys_free(pending->payload);
                     }
 
                     for (int j = i; j < ctx->pending_count - 1; j++) {

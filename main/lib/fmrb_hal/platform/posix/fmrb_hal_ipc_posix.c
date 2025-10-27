@@ -1,5 +1,6 @@
 #include "../../fmrb_hal_ipc.h"
 #include "../../../fmrb_ipc/fmrb_ipc_cobs.h"
+#include "fmrb_mem.h"
 #include "esp_log.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -162,7 +163,7 @@ fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
 
     // Prepare buffer: [data | CRC32]
     size_t total_size = msg->size + sizeof(uint32_t);
-    uint8_t *buffer = (uint8_t*)malloc(total_size);
+    uint8_t *buffer = (uint8_t*)fmrb_sys_malloc(total_size);
     if (!buffer) {
         pthread_mutex_unlock(&socket_mutex);
         return FMRB_ERR_NO_MEMORY;
@@ -174,22 +175,22 @@ fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
 
     // COBS encode
     size_t max_encoded_size = COBS_ENC_MAX(total_size);
-    uint8_t *encoded = (uint8_t*)malloc(max_encoded_size);
+    uint8_t *encoded = (uint8_t*)fmrb_sys_malloc(max_encoded_size);
     if (!encoded) {
-        free(buffer);
+        fmrb_sys_free(buffer);
         pthread_mutex_unlock(&socket_mutex);
         return FMRB_ERR_NO_MEMORY;
     }
 
     size_t encoded_len = fmrb_ipc_cobs_encode(buffer, total_size, encoded);
-    free(buffer);
+    fmrb_sys_free(buffer);
 
     // Send encoded data
     ssize_t sent = send(global_socket_fd, encoded, encoded_len, 0);
 
     ESP_LOGI(TAG, "Sent %zu bytes (payload+crc: %zu, encoded: %zu) to channel %d", msg->size, total_size, encoded_len, channel);
 
-    free(encoded);
+    fmrb_sys_free(encoded);
 
     pthread_mutex_unlock(&socket_mutex);
 
@@ -258,7 +259,7 @@ void* fmrb_hal_ipc_get_shared_memory(size_t size) {
         return NULL;
     }
 
-    void *ptr = malloc(size);
+    void *ptr = fmrb_sys_malloc(size);
     ESP_LOGI(TAG, "Allocated shared memory: %p, size: %zu", ptr, size);
     return ptr;
 }
@@ -266,6 +267,6 @@ void* fmrb_hal_ipc_get_shared_memory(size_t size) {
 void fmrb_hal_ipc_release_shared_memory(void *ptr) {
     if (ptr) {
         ESP_LOGI(TAG, "Released shared memory: %p", ptr);
-        free(ptr);
+        fmrb_sys_free(ptr);
     }
 }

@@ -1,5 +1,6 @@
 #include "fmrb_hal_uart.h"
 #include "fmrb_err.h"
+#include "fmrb_mem.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -21,7 +22,7 @@ fmrb_err_t fmrb_hal_uart_open(const fmrb_uart_config_t *config, fmrb_uart_handle
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    fmrb_uart_ctx_t *ctx = (fmrb_uart_ctx_t *)malloc(sizeof(fmrb_uart_ctx_t));
+    fmrb_uart_ctx_t *ctx = (fmrb_uart_ctx_t *)fmrb_sys_malloc(sizeof(fmrb_uart_ctx_t));
     if (!ctx) {
         return FMRB_ERR_NO_MEMORY;
     }
@@ -29,7 +30,7 @@ fmrb_err_t fmrb_hal_uart_open(const fmrb_uart_config_t *config, fmrb_uart_handle
     // Open device
     ctx->fd = open(config->device_path, O_RDWR | O_NOCTTY | O_NONBLOCK);
     if (ctx->fd < 0) {
-        free(ctx);
+        fmrb_sys_free(ctx);
         return FMRB_ERR_FAILED;
     }
 
@@ -39,7 +40,7 @@ fmrb_err_t fmrb_hal_uart_open(const fmrb_uart_config_t *config, fmrb_uart_handle
     struct termios tty;
     if (tcgetattr(ctx->fd, &tty) != 0) {
         close(ctx->fd);
-        free(ctx);
+        fmrb_sys_free(ctx);
         return FMRB_ERR_FAILED;
     }
 
@@ -76,7 +77,7 @@ fmrb_err_t fmrb_hal_uart_open(const fmrb_uart_config_t *config, fmrb_uart_handle
 
     if (tcsetattr(ctx->fd, TCSANOW, &tty) != 0) {
         close(ctx->fd);
-        free(ctx);
+        fmrb_sys_free(ctx);
         return FMRB_ERR_FAILED;
     }
 
@@ -92,7 +93,7 @@ fmrb_err_t fmrb_hal_uart_close(fmrb_uart_handle_t handle)
 
     fmrb_uart_ctx_t *ctx = (fmrb_uart_ctx_t *)handle;
     close(ctx->fd);
-    free(ctx);
+    fmrb_sys_free(ctx);
     return FMRB_OK;
 }
 

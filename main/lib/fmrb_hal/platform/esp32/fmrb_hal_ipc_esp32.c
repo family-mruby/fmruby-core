@@ -1,4 +1,5 @@
 #include "../../fmrb_hal_ipc.h"
+#include "fmrb_mem.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
@@ -31,7 +32,7 @@ static void esp32_ipc_task(void *arg) {
 
             // Free the message data
             if (msg.data) {
-                free(msg.data);
+                fmrb_sys_free(msg.data);
             }
         }
     }
@@ -94,7 +95,7 @@ fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
     // Create a copy of the message
     fmrb_ipc_message_t msg_copy;
     msg_copy.size = msg->size;
-    msg_copy.data = malloc(msg->size);
+    msg_copy.data = fmrb_sys_malloc(msg->size);
     if (!msg_copy.data) {
         return FMRB_ERR_NO_MEMORY;
     }
@@ -102,7 +103,7 @@ fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
 
     TickType_t ticks = (timeout_ms == 0) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
     if (xQueueSend(ch->queue, &msg_copy, ticks) != pdTRUE) {
-        free(msg_copy.data);
+        fmrb_sys_free(msg_copy.data);
         return FMRB_ERR_TIMEOUT;
     }
 
@@ -171,7 +172,7 @@ void* fmrb_hal_ipc_get_shared_memory(size_t size) {
         return NULL;
     }
 
-    void *ptr = malloc(size);
+    void *ptr = fmrb_sys_malloc(size);
     ESP_LOGI(TAG, "Allocated shared memory: %p, size: %zu", ptr, size);
     return ptr;
 }
@@ -179,6 +180,6 @@ void* fmrb_hal_ipc_get_shared_memory(size_t size) {
 void fmrb_hal_ipc_release_shared_memory(void *ptr) {
     if (ptr) {
         ESP_LOGI(TAG, "Released shared memory: %p", ptr);
-        free(ptr);
+        fmrb_sys_free(ptr);
     }
 }
