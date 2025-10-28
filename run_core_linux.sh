@@ -73,6 +73,11 @@ fi
 cleanup() {
     echo ""
     echo "Cleaning up..."
+    if [ ! -z "$DOCKER_CONTAINER_NAME" ]; then
+        echo "Stopping Docker container..."
+        docker stop $DOCKER_CONTAINER_NAME 2>/dev/null
+        docker rm $DOCKER_CONTAINER_NAME 2>/dev/null
+    fi
     if [ ! -z "$HOST_PID" ]; then
         echo "Stopping host process..."
         kill $HOST_PID 2>/dev/null
@@ -102,20 +107,28 @@ echo ""
 
 # Run FMRuby Core in Docker
 echo "Starting FMRuby Core..."
+
+# Generate unique container name
+DOCKER_CONTAINER_NAME="fmrb_core_$$"
+
 if [ "$1" = "gdb" ]; then
-    docker run -it --rm --user $(id -u):$(id -g) \
+    docker run -it --rm --name $DOCKER_CONTAINER_NAME --user $(id -u):$(id -g) \
         -v $PWD:/project \
         -v /tmp:/tmp \
         -v /dev:/dev \
         -e FMRB_FS_PROXY_UART=${UART_CORE} \
         esp32_build_container:v5.5.1 \
         bash
+    DOCKER_CONTAINER_NAME=""
 else
-    docker run --rm --user $(id -u):$(id -g) \
+    docker run --rm --name $DOCKER_CONTAINER_NAME --user $(id -u):$(id -g) \
         -v $PWD:/project \
         -v /tmp:/tmp \
         -v /dev:/dev \
         -e FMRB_FS_PROXY_UART=${UART_CORE} \
         esp32_build_container:v5.5.1 \
         /project/build/fmruby-core.elf
+    DOCKER_CONTAINER_NAME=""
 fi
+
+echo "FMRuby Core stopped."
