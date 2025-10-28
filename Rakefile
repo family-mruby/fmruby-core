@@ -27,6 +27,7 @@ DOCKER_CMD_PRIVILEGED = [
 
 desc "Build Setup (Patch files)"
 task :setup do
+  mrbgem_path = "components/picoruby-esp32/picoruby/mrbgems"
   # Add
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-app"
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-kernel"
