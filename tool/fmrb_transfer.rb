@@ -1,5 +1,5 @@
 #!/usr/bin/env ruby
-# sercli.rb - Simple CLI for ESP32 (custom UART protocol)
+# fmrb_transfer.rb - Simple CLI for ESP32 (custom UART protocol)
 # Dependencies: gem install serialport
 require 'json'
 require 'optparse'
@@ -411,21 +411,21 @@ def usage!
   puts <<~USAGE
     Usage:
       # Interactive shell mode
-      sercli.rb --port COM3 [--baud 115200] shell
+      fmrb_transfer.rb --port COM3 [--baud 115200] shell
 
       # One-shot commands
       # Remote (ESP32)
-      sercli.rb --port COM3 remote cd <path>
-      sercli.rb --port COM3 remote ls [path]
-      sercli.rb --port COM3 remote rm <path>
+      fmrb_transfer.rb --port COM3 remote cd <path>
+      fmrb_transfer.rb --port COM3 remote ls [path]
+      fmrb_transfer.rb --port COM3 remote rm <path>
 
       # Host (PC)
-      sercli.rb host cd <path>
-      sercli.rb host ls [path]
+      fmrb_transfer.rb host cd <path>
+      fmrb_transfer.rb host ls [path]
 
       # Transfer
-      sercli.rb --port COM3 transfer up   <local>  <remote>
-      sercli.rb --port COM3 transfer down <remote> <local>
+      fmrb_transfer.rb --port COM3 transfer up   <local>  <remote>
+      fmrb_transfer.rb --port COM3 transfer down <remote> <local>
 
     Options:
       --rtscts[=true|false]   default: true

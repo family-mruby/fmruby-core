@@ -25,6 +25,16 @@ DOCKER_CMD_PRIVILEGED = [
   IMAGE
 ].join(" ")
 
+DOCKER_CMD_INTERACTIVE = [
+  "docker run --rm -it",
+  "--group-add=dialout --group-add=plugdev --privileged",
+  DEVICE_ARGS,
+  "--user #{UID}:#{GID}",
+  "-v #{PWD_}:/project",
+  "-v /dev/bus/usb:/dev/bus/usb",
+  IMAGE
+].join(" ")
+
 desc "Build Setup (Patch files)"
 task :setup do
   mrbgem_path = "components/picoruby-esp32/picoruby/mrbgems"
@@ -136,7 +146,7 @@ end
 
 desc "Serial monitor"
 task :monitor do
-  sh "#{DOCKER_CMD_PRIVILEGED} idf.py monitor"
+  sh "#{DOCKER_CMD_INTERACTIVE} idf.py monitor"
 end
 
 namespace :host do
