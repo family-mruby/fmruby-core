@@ -3,6 +3,7 @@ set(COMMON_SRCS
     "fmrb_hal.c"
     "fmrb_hal_time.c"
     "fmrb_hal_gpio.c"
+    "fmrb_hal_msg.c"
 )
 
 # Set platform-specific sources and requirements

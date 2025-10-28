@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "fmrb_hal.h"
 #include "fmrb_task_config.h"
@@ -18,7 +19,7 @@ typedef enum {
     HOST_MSG_AUDIO_COMMAND = 6,
 } host_msg_type_t;
 
-// Host message structure
+// Host message structure (now uses HAL message format)
 typedef struct {
     host_msg_type_t type;
     union {
@@ -37,9 +38,6 @@ typedef struct {
     } data;
 } host_message_t;
 
-// Host message queue
-static fmrb_queue_t g_host_queue = NULL;
-
 // Host task handle
 static fmrb_task_handle_t g_host_task_handle = NULL;
 
@@ -56,6 +54,9 @@ static fmrb_gfx_context_t g_gfx_context = NULL;
 // extern int fmrb_app_dispatch_mouse_move(int x, int y);
 // extern int fmrb_app_dispatch_mouse_click(int x, int y, int button);
 
+// Internal forward declarations
+static void host_task_process_host_message(const host_message_t *msg);
+
 /**
  * Initialize HAL layer and subsystems
  */
@@ -68,6 +69,14 @@ static int init_hal(void)
         return -1;
     }
     FMRB_LOGI(TAG, "HAL initialized successfully");
+
+    // Initialize HAL message queue registry
+    hal_ret = fmrb_hal_msg_init();
+    if (hal_ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to initialize HAL message queue: %d", hal_ret);
+        return -1;
+    }
+    FMRB_LOGI(TAG, "HAL message queue initialized");
 
     // Initialize Graphics subsystem
     fmrb_gfx_config_t gfx_config = {
@@ -105,7 +114,17 @@ static int init_hal(void)
 /**
  * Process a host message
  */
-static void host_task_process_message(const host_message_t *msg)
+static void host_task_process_message(const fmrb_msg_t *hal_msg)
+{
+    // Extract host message from HAL message
+    host_message_t *msg = (host_message_t *)hal_msg->data;
+    host_task_process_host_message(msg);
+}
+
+/**
+ * Process a host-specific message
+ */
+static void host_task_process_host_message(const host_message_t *msg)
 {
     switch (msg->type) {
         case HOST_MSG_HID_KEY_DOWN:
@@ -163,13 +182,13 @@ static void fmrb_host_task(void *pvParameters)
         return;
     }
 
-    host_message_t msg;
+    fmrb_msg_t msg;
     fmrb_tick_t xLastUpdate = fmrb_task_get_tick_count();
     const fmrb_tick_t xUpdatePeriod = FMRB_MS_TO_TICKS(10);  // 10ms周期で定期更新
 
     while (1) {
-        // Wait for messages with timeout
-        if (fmrb_queue_receive(g_host_queue, &msg, FMRB_MS_TO_TICKS(10)) == FMRB_TRUE) {
+        // Wait for messages with timeout using HAL message queue
+        if (fmrb_hal_msg_receive(FMRB_MSG_TASK_HOST, &msg, 10) == FMRB_OK) {
             host_task_process_message(&msg);
         }
 
@@ -193,10 +212,15 @@ static void fmrb_host_task(void *pvParameters)
  */
 int fmrb_host_task_init(void)
 {
-    // Create message queue
-    g_host_queue = fmrb_queue_create(HOST_QUEUE_SIZE, sizeof(host_message_t));
-    if (!g_host_queue) {
-        FMRB_LOGE(TAG, "Failed to create host message queue");
+    // Register host task's message queue with HAL
+    fmrb_msg_queue_config_t queue_config = {
+        .queue_length = HOST_QUEUE_SIZE,
+        .message_size = sizeof(fmrb_msg_t)
+    };
+
+    fmrb_err_t hal_ret = fmrb_hal_msg_create_queue(FMRB_MSG_TASK_HOST, &queue_config);
+    if (hal_ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to create host message queue in HAL: %d", hal_ret);
         return -1;
     }
 
@@ -212,6 +236,7 @@ int fmrb_host_task_init(void)
 
     if (result != FMRB_PASS) {
         FMRB_LOGE(TAG, "Failed to create host task");
+        fmrb_hal_msg_delete_queue(FMRB_MSG_TASK_HOST);
         return -1;
     }
 
@@ -231,26 +256,27 @@ void fmrb_host_task_deinit(void)
         g_host_task_handle = NULL;
     }
 
-    if (g_host_queue) {
-        fmrb_queue_delete(g_host_queue);
-        g_host_queue = NULL;
-    }
+    // Delete host task's message queue from HAL
+    fmrb_hal_msg_delete_queue(FMRB_MSG_TASK_HOST);
 
     FMRB_LOGI(TAG, "Host task deinitialized");
 }
 
 /**
- * Send a host message
+ * Send a host message using HAL message queue
  */
 static int fmrb_host_send_message(const host_message_t *msg)
 {
-    if (!g_host_queue) {
-        FMRB_LOGW(TAG, "Host queue not initialized");
-        return -1;
-    }
+    // Wrap host message in HAL message format
+    fmrb_msg_t hal_msg = {
+        .type = msg->type,
+        .size = sizeof(host_message_t)
+    };
+    memcpy(hal_msg.data, msg, sizeof(host_message_t));
 
-    if (fmrb_queue_send(g_host_queue, msg, FMRB_MS_TO_TICKS(10)) != FMRB_TRUE) {
-        FMRB_LOGW(TAG, "Failed to send host message (queue full?)");
+    fmrb_err_t result = fmrb_hal_msg_send(FMRB_MSG_TASK_HOST, &hal_msg, 10);
+    if (result != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send host message: %d", result);
         return -1;
     }
 
