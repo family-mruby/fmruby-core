@@ -58,26 +58,10 @@ static fmrb_gfx_context_t g_gfx_context = NULL;
 static void host_task_process_host_message(const host_message_t *msg);
 
 /**
- * Initialize HAL layer and subsystems
+ * Initialize Graphics Audio layer and subsystems
  */
-static int init_hal(void)
+static int init_gfx_audio(void)
 {
-    // Initialize HAL layer
-    fmrb_err_t hal_ret = fmrb_hal_init();
-    if (hal_ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to initialize HAL: %d", hal_ret);
-        return -1;
-    }
-    FMRB_LOGI(TAG, "HAL initialized successfully");
-
-    // Initialize HAL message queue registry
-    hal_ret = fmrb_hal_msg_init();
-    if (hal_ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to initialize HAL message queue: %d", hal_ret);
-        return -1;
-    }
-    FMRB_LOGI(TAG, "HAL message queue initialized");
-
     // Initialize Graphics subsystem
     fmrb_gfx_config_t gfx_config = {
         .screen_width = 480,
@@ -175,8 +159,8 @@ static void fmrb_host_task(void *pvParameters)
 {
     FMRB_LOGI(TAG, "Host task started");
 
-    // Initialize HAL and subsystems
-    int result = init_hal();
+    // Initialize Gfx Audio subsystems
+    int result = init_gfx_audio();
     if (result < 0) {
         FMRB_LOGE(TAG, "Host task initialization failed, terminating");
         return;

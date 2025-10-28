@@ -56,6 +56,23 @@ static void read_system_config(void)
     FMRB_LOGI(TAG, "System configuration loaded successfully");
 }
 
+
+/**
+ * Initialize HAL layer and subsystems
+ */
+static int init_hal(void)
+{
+    // Initialize HAL layer
+    fmrb_err_t hal_ret = fmrb_hal_init();
+    if (hal_ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to initialize HAL: %d", hal_ret);
+        return -1;
+    }
+    FMRB_LOGI(TAG, "HAL initialized successfully");
+
+    return 0;
+}
+
 /**
  * Start the kernel task
  */
@@ -67,6 +84,7 @@ fmrb_err_t fmrb_kernel_start(void)
     static bool context_initialized = false;
     if (!context_initialized) {
         read_system_config();
+        init_hal();
         fmrb_app_init();
         context_initialized = true;
     }
