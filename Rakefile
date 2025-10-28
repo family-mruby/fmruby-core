@@ -27,46 +27,49 @@ DOCKER_CMD_PRIVILEGED = [
 
 desc "Build Setup (Patch files)"
 task :setup do
-  # Copy fmrb mrbgem
-  sh "rm -rf components/picoruby-esp32/picoruby/mrbgems/picoruby-fmrb-app"
-  sh "rm -rf components/picoruby-esp32/picoruby/mrbgems/picoruby-fmrb-kernel"
-  sh "rm -rf components/picoruby-esp32/picoruby/mrbgems/picoruby-filesystem-fat"
+  # Add
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-app"
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-kernel"
+  sh "cp -rf lib/add/picoruby-fmrb-app #{mrbgem_path}/"
+  sh "cp -rf lib/add/picoruby-fmrb-kernel #{mrbgem_path}/"
 
-  sh "cp -rf lib/mrbgem/picoruby-fmrb-app components/picoruby-esp32/picoruby/mrbgems/"
-  sh "cp -rf lib/mrbgem/picoruby-fmrb-kernel components/picoruby-esp32/picoruby/mrbgems/"
-  sh "cp -rf lib/patch/picoruby-filesystem-fat components/picoruby-esp32/picoruby/mrbgems/"
+  sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
+  sh "cp -f lib/add/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
 
-  # Copy files
-  sh "cp -f lib/patch/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
-  sh "cp -f lib/patch/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
-  sh "cp -f lib/patch/esp_littlefs/CMakeLists.txt components/esp_littlefs/"
-  
+  # Replace
+  sh "rm -rf #{mrbgem_path}/picoruby-filesystem-fat"
+  sh "cp -rf lib/replace/picoruby-filesystem-fat #{mrbgem_path}/"
+
+  # Patch
   # Machine
-  sh "cp -f lib/patch/picoruby-machine/mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/"
-  sh "cp -f lib/patch/picoruby-machine/ports/posix/hal.c components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/ports/posix/"
-  sh "cp -f lib/patch/picoruby-machine/ports/posix/machine.c components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/ports/posix/"
-  sh "cp -f lib/patch/picoruby-machine/ports/esp32/machine.c components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/ports/esp32/"
-  sh "cp -f lib/patch/picoruby-mruby/include/hal.h components/picoruby-esp32/picoruby/mrbgems/picoruby-mruby/include/"
-  sh "cp -f lib/patch/picoruby-mruby/include/hal.h components/picoruby-esp32/picoruby/mrbgems/picoruby-machine/include/"
+  sh "cp -f lib/patch/picoruby-machine/mrbgem.rake #{mrbgem_path}/picoruby-machine/"
+  sh "cp -f lib/patch/picoruby-machine/ports/posix/hal.c #{mrbgem_path}/picoruby-machine/ports/posix/"
+  sh "cp -f lib/patch/picoruby-machine/ports/posix/machine.c #{mrbgem_path}/picoruby-machine/ports/posix/"
+  sh "cp -f lib/patch/picoruby-machine/ports/esp32/machine.c #{mrbgem_path}/picoruby-machine/ports/esp32/"
+  sh "cp -f lib/patch/picoruby-mruby/include/hal.h #{mrbgem_path}/picoruby-mruby/include/"
+  sh "cp -f lib/patch/picoruby-mruby/include/hal.h #{mrbgem_path}/picoruby-machine/include/"
+
+  # littleFS
+  sh "cp -f lib/patch/esp_littlefs/CMakeLists.txt components/esp_littlefs/"
 
   # Copy picoruby-env patch (thread-safe ENV for multi-VM environment)
-  sh "cp -f lib/patch/picoruby-env/ports/posix/env.c components/picoruby-esp32/picoruby/mrbgems/picoruby-env/ports/posix/"
+  sh "cp -f lib/patch/picoruby-env/ports/posix/env.c #{mrbgem_path}/picoruby-env/ports/posix/"
 
   # Copy TLSF-based prism allocator files
-  sh "cp -f lib/patch/compiler/prism_xallocator.h components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/include/"
-  sh "cp -f lib/patch/compiler/prism_alloc.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/"
-  sh "cp -f lib/patch/compiler/mruby-compiler2-mrbgem.rake components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/mrbgem.rake"
+  sh "cp -f lib/patch/compiler/prism_xallocator.h #{mrbgem_path}/mruby-compiler2/include/"
+  sh "cp -f lib/patch/compiler/prism_alloc.c #{mrbgem_path}/mruby-compiler2/lib/"
+  sh "cp -f lib/patch/compiler/mruby-compiler2-mrbgem.rake #{mrbgem_path}/mruby-compiler2/mrbgem.rake"
 
   # Copy TLSF library files
-  sh "mkdir -p components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/tlsf"
-  sh "cp -f components/mem_allocator/tlsf/tlsf.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/tlsf/"
-  sh "cp -f components/mem_allocator/tlsf/tlsf.h components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/tlsf/"
+  sh "mkdir -p #{mrbgem_path}/mruby-compiler2/lib/tlsf"
+  sh "cp -f components/mem_allocator/tlsf/tlsf.c #{mrbgem_path}/mruby-compiler2/lib/tlsf/"
+  sh "cp -f components/mem_allocator/tlsf/tlsf.h #{mrbgem_path}/mruby-compiler2/lib/tlsf/"
 
   # Copy TLSF wrapper with renamed symbols to avoid ESP-IDF heap conflicts
-  sh "cp -f lib/patch/compiler/prism_tlsf_wrapper.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/lib/"
+  sh "cp -f lib/patch/compiler/prism_tlsf_wrapper.c #{mrbgem_path}/mruby-compiler2/lib/"
 
   # Copy thread-safe compile.c with mutex protection for multi-task environment
-  sh "cp -f lib/patch/compiler/mruby-compiler2-compile.c components/picoruby-esp32/picoruby/mrbgems/mruby-compiler2/src/compile.c"
+  sh "cp -f lib/patch/compiler/mruby-compiler2-compile.c #{mrbgem_path}/mruby-compiler2/src/compile.c"
 end
 
 namespace :set_target do
