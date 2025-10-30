@@ -47,20 +47,20 @@ typedef struct {
     int frequency;
 } fmrb_spi_config_t;
 
-// IPC types
+// Link layer communication types
 typedef enum {
-    FMRB_IPC_GRAPHICS = 0,
-    FMRB_IPC_AUDIO = 1,
-    FMRB_IPC_MAX_CHANNELS
-} fmrb_ipc_channel_t;
+    FMRB_LINK_GRAPHICS = 0,
+    FMRB_LINK_AUDIO = 1,
+    FMRB_LINK_MAX_CHANNELS
+} fmrb_link_channel_t;
 
 typedef struct {
     uint8_t *data;
     size_t size;
-} fmrb_ipc_message_t;
+} fmrb_link_message_t;
 
 // Function pointer types
-typedef void (*fmrb_ipc_callback_t)(fmrb_ipc_channel_t channel, const fmrb_ipc_message_t *msg, void *user_data);
+typedef void (*fmrb_link_callback_t)(fmrb_link_channel_t channel, const fmrb_link_message_t *msg, void *user_data);
 
 // HAL initialization
 fmrb_err_t fmrb_hal_init(void);
@@ -70,7 +70,7 @@ void fmrb_hal_deinit(void);
 #include "fmrb_hal_time.h"
 #include "fmrb_hal_gpio.h"
 #include "fmrb_hal_spi.h"
-#include "fmrb_hal_ipc.h"
+#include "fmrb_hal_link.h"
 #include "fmrb_hal_file.h"
 #include "fmrb_hal_uart.h"
 #include "fmrb_hal_msg.h"

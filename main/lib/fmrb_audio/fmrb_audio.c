@@ -1,7 +1,7 @@
 #include "fmrb_audio.h"
 #include "fmrb_hal.h"
-#include "fmrb_ipc_protocol.h"
-#include "fmrb_ipc_transport.h"
+#include "fmrb_link_protocol.h"
+#include "fmrb_link_transport.h"
 #include "fmrb_mem.h"
 #include "esp_log.h"
 #include <stdlib.h>
@@ -23,7 +23,7 @@ static fmrb_audio_ctx_t audio_ctx = {
 };
 
 static fmrb_audio_err_t send_apu_command(fmrb_apu_cmd_t cmd, const void* data, size_t data_size) {
-    // Create IPC command packet
+    // Create command packet
     size_t packet_size = sizeof(fmrb_apu_cmd_t) + data_size;
     uint8_t* packet = fmrb_sys_malloc(packet_size);
     if (!packet) {
@@ -36,13 +36,13 @@ static fmrb_audio_err_t send_apu_command(fmrb_apu_cmd_t cmd, const void* data, s
         memcpy(packet + sizeof(fmrb_apu_cmd_t), data, data_size);
     }
 
-    // Send via IPC
-    fmrb_ipc_message_t msg = {
+    // Send via link communication
+    fmrb_link_message_t msg = {
         .data = packet,
         .size = packet_size
     };
 
-    fmrb_err_t ret = fmrb_hal_ipc_send(FMRB_IPC_AUDIO, &msg, 1000);
+    fmrb_err_t ret = fmrb_hal_link_send(FMRB_LINK_AUDIO, &msg, 1000);
     fmrb_sys_free(packet);
 
     if (ret == FMRB_OK) {
@@ -59,10 +59,10 @@ fmrb_audio_err_t fmrb_audio_init(void) {
         return FMRB_AUDIO_OK;
     }
 
-    // Initialize IPC if needed
-    fmrb_err_t ret = fmrb_hal_ipc_init();
+    // Initialize link communication if needed
+    fmrb_err_t ret = fmrb_hal_link_init();
     if (ret != FMRB_OK) {
-        ESP_LOGE(TAG, "Failed to initialize IPC");
+        ESP_LOGE(TAG, "Failed to initialize link communication");
         return FMRB_AUDIO_ERR_FAILED;
     }
 
@@ -194,7 +194,7 @@ fmrb_audio_err_t fmrb_audio_get_status(fmrb_apu_status_t* status) {
     }
 
     // For now, return cached status
-    // In production, this might query the APU via IPC
+    // In production, this might query the APU via link communication
     *status = audio_ctx.current_status;
 
     return FMRB_AUDIO_OK;

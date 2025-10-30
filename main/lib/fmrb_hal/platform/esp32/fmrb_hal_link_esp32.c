@@ -1,4 +1,4 @@
-#include "../../fmrb_hal_ipc.h"
+#include "../../fmrb_hal_link.h"
 #include "fmrb_mem.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -10,20 +10,20 @@
 typedef struct {
     QueueHandle_t queue;
     TaskHandle_t task;
-    fmrb_ipc_callback_t callback;
+    fmrb_link_callback_t callback;
     void *user_data;
-} esp32_ipc_channel_t;
+} esp32_link_channel_t;
 
-static esp32_ipc_channel_t channels[FMRB_IPC_MAX_CHANNELS];
-static bool ipc_initialized = false;
+static esp32_link_channel_t channels[FMRB_LINK_MAX_CHANNELS];
+static bool link_initialized = false;
 
-static const char *TAG = "fmrb_hal_ipc";
+static const char *TAG = "fmrb_hal_link";
 
-static void esp32_ipc_task(void *arg) {
-    fmrb_ipc_channel_t channel = (fmrb_ipc_channel_t)(uintptr_t)arg;
-    esp32_ipc_channel_t *ch = &channels[channel];
+static void esp32_link_task(void *arg) {
+    fmrb_link_channel_t channel = (fmrb_link_channel_t)(uintptr_t)arg;
+    esp32_link_channel_t *ch = &channels[channel];
 
-    fmrb_ipc_message_t msg;
+    fmrb_link_message_t msg;
     while (1) {
         if (xQueueReceive(ch->queue, &msg, portMAX_DELAY) == pdTRUE) {
             if (ch->callback) {
@@ -38,13 +38,13 @@ static void esp32_ipc_task(void *arg) {
     }
 }
 
-fmrb_err_t fmrb_hal_ipc_init(void) {
-    if (ipc_initialized) {
+fmrb_err_t fmrb_hal_link_init(void) {
+    if (link_initialized) {
         return FMRB_OK;
     }
 
-    for (int i = 0; i < FMRB_IPC_MAX_CHANNELS; i++) {
-        channels[i].queue = xQueueCreate(IPC_QUEUE_SIZE, sizeof(fmrb_ipc_message_t));
+    for (int i = 0; i < FMRB_LINK_MAX_CHANNELS; i++) {
+        channels[i].queue = xQueueCreate(IPC_QUEUE_SIZE, sizeof(fmrb_link_message_t));
         if (!channels[i].queue) {
             return FMRB_ERR_NO_MEMORY;
         }
@@ -54,17 +54,17 @@ fmrb_err_t fmrb_hal_ipc_init(void) {
         channels[i].task = NULL;
     }
 
-    ESP_LOGI(TAG, "ESP32 IPC initialized");
-    ipc_initialized = true;
+    ESP_LOGI(TAG, "ESP32 link communication initialized");
+    link_initialized = true;
     return FMRB_OK;
 }
 
-void fmrb_hal_ipc_deinit(void) {
-    if (!ipc_initialized) {
+void fmrb_hal_link_deinit(void) {
+    if (!link_initialized) {
         return;
     }
 
-    for (int i = 0; i < FMRB_IPC_MAX_CHANNELS; i++) {
+    for (int i = 0; i < FMRB_LINK_MAX_CHANNELS; i++) {
         if (channels[i].task) {
             vTaskDelete(channels[i].task);
             channels[i].task = NULL;
@@ -76,24 +76,24 @@ void fmrb_hal_ipc_deinit(void) {
         }
     }
 
-    ESP_LOGI(TAG, "ESP32 IPC deinitialized");
-    ipc_initialized = false;
+    ESP_LOGI(TAG, "ESP32 link communication deinitialized");
+    link_initialized = false;
 }
 
-fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
-                              const fmrb_ipc_message_t *msg,
+fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
+                              const fmrb_link_message_t *msg,
                               uint32_t timeout_ms) {
-    if (!ipc_initialized || channel >= FMRB_IPC_MAX_CHANNELS || !msg) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msg) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    esp32_ipc_channel_t *ch = &channels[channel];
+    esp32_link_channel_t *ch = &channels[channel];
     if (!ch->queue) {
         return FMRB_ERR_FAILED;
     }
 
     // Create a copy of the message
-    fmrb_ipc_message_t msg_copy;
+    fmrb_link_message_t msg_copy;
     msg_copy.size = msg->size;
     msg_copy.data = fmrb_sys_malloc(msg->size);
     if (!msg_copy.data) {
@@ -110,14 +110,14 @@ fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_hal_ipc_receive(fmrb_ipc_channel_t channel,
-                                 fmrb_ipc_message_t *msg,
+fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
+                                 fmrb_link_message_t *msg,
                                  uint32_t timeout_ms) {
-    if (!ipc_initialized || channel >= FMRB_IPC_MAX_CHANNELS || !msg) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msg) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    esp32_ipc_channel_t *ch = &channels[channel];
+    esp32_link_channel_t *ch = &channels[channel];
     if (!ch->queue) {
         return FMRB_ERR_FAILED;
     }
@@ -130,33 +130,33 @@ fmrb_err_t fmrb_hal_ipc_receive(fmrb_ipc_channel_t channel,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_hal_ipc_register_callback(fmrb_ipc_channel_t channel,
-                                           fmrb_ipc_callback_t callback,
+fmrb_err_t fmrb_hal_link_register_callback(fmrb_link_channel_t channel,
+                                           fmrb_link_callback_t callback,
                                            void *user_data) {
-    if (!ipc_initialized || channel >= FMRB_IPC_MAX_CHANNELS || !callback) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !callback) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    esp32_ipc_channel_t *ch = &channels[channel];
+    esp32_link_channel_t *ch = &channels[channel];
     ch->callback = callback;
     ch->user_data = user_data;
 
-    BaseType_t result = xTaskCreate(esp32_ipc_task, "ipc_task", 2048,
+    BaseType_t result = xTaskCreate(esp32_link_task, "ipc_task", 2048,
                                    (void*)(uintptr_t)channel, 5, &ch->task);
     if (result != pdPASS) {
         return FMRB_ERR_FAILED;
     }
 
-    ESP_LOGI(TAG, "ESP32 IPC callback registered for channel %d", channel);
+    ESP_LOGI(TAG, "ESP32 link communication callback registered for channel %d", channel);
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_hal_ipc_unregister_callback(fmrb_ipc_channel_t channel) {
-    if (!ipc_initialized || channel >= FMRB_IPC_MAX_CHANNELS) {
+fmrb_err_t fmrb_hal_link_unregister_callback(fmrb_link_channel_t channel) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    esp32_ipc_channel_t *ch = &channels[channel];
+    esp32_link_channel_t *ch = &channels[channel];
     if (ch->task) {
         vTaskDelete(ch->task);
         ch->task = NULL;
@@ -167,8 +167,8 @@ fmrb_err_t fmrb_hal_ipc_unregister_callback(fmrb_ipc_channel_t channel) {
     return FMRB_OK;
 }
 
-void* fmrb_hal_ipc_get_shared_memory(size_t size) {
-    if (!ipc_initialized || size == 0) {
+void* fmrb_hal_link_get_shared_memory(size_t size) {
+    if (!link_initialized || size == 0) {
         return NULL;
     }
 
@@ -177,7 +177,7 @@ void* fmrb_hal_ipc_get_shared_memory(size_t size) {
     return ptr;
 }
 
-void fmrb_hal_ipc_release_shared_memory(void *ptr) {
+void fmrb_hal_link_release_shared_memory(void *ptr) {
     if (ptr) {
         ESP_LOGI(TAG, "Released shared memory: %p", ptr);
         fmrb_sys_free(ptr);

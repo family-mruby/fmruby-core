@@ -38,7 +38,7 @@ foreach(RB_FILE ${DEFAULT_APP_RUBY_FILES})
 endforeach()
 
 # Set up component dependencies based on target
-set(COMPONENT_REQUIRES fmrb_hal fmrb_ipc fmrb_gfx fmrb_audio picoruby-esp32 mem_allocator log tar_lib toml_parser)
+set(COMPONENT_REQUIRES fmrb_hal fmrb_link fmrb_gfx fmrb_audio picoruby-esp32 mem_allocator log tar_lib toml_parser)
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")

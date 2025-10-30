@@ -10,19 +10,19 @@ set(COMMON_SRCS
 if(IDF_TARGET STREQUAL "linux")
     list(APPEND COMMON_SRCS
         "platform/posix/fmrb_hal_spi_posix.c"
-        "platform/posix/fmrb_hal_ipc_posix.c"
+        "platform/posix/fmrb_hal_link_posix.c"
         "platform/posix/fmrb_hal_file_posix.c"
         "platform/posix/fmrb_hal_uart_posix.c"
     )
-    set(PLATFORM_REQUIRES pthread log fmrb_ipc)
+    set(PLATFORM_REQUIRES pthread log fmrb_link)
 else()
     list(APPEND COMMON_SRCS
         "platform/esp32/fmrb_hal_spi_esp32.c"
-        "platform/esp32/fmrb_hal_ipc_esp32.c"
+        "platform/esp32/fmrb_hal_link_esp32.c"
         "platform/esp32/fmrb_hal_file_esp32.c"
         "platform/esp32/fmrb_hal_uart_esp32.c"
     )
-    set(PLATFORM_REQUIRES esp_system esp_timer freertos log spi_flash driver fmrb_ipc esp_littlefs fatfs sdmmc)
+    set(PLATFORM_REQUIRES esp_system esp_timer freertos log spi_flash driver fmrb_link esp_littlefs fatfs sdmmc)
 endif()
 
 idf_component_register(

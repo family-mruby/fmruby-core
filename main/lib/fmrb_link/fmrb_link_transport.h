@@ -1,6 +1,6 @@
 #pragma once
 
-#include "fmrb_ipc_protocol.h"
+#include "fmrb_link_protocol.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -8,17 +8,17 @@ extern "C" {
 
 // Transport error codes
 typedef enum {
-    FMRB_IPC_TRANSPORT_OK = 0,
-    FMRB_IPC_TRANSPORT_ERR_INVALID_PARAM = -1,
-    FMRB_IPC_TRANSPORT_ERR_NO_MEMORY = -2,
-    FMRB_IPC_TRANSPORT_ERR_TIMEOUT = -3,
-    FMRB_IPC_TRANSPORT_ERR_FAILED = -4,
-    FMRB_IPC_TRANSPORT_ERR_CHECKSUM = -5,
-    FMRB_IPC_TRANSPORT_ERR_SEQUENCE = -6
-} fmrb_ipc_transport_err_t;
+    FMRB_LINK_TRANSPORT_OK = 0,
+    FMRB_LINK_TRANSPORT_ERR_INVALID_PARAM = -1,
+    FMRB_LINK_TRANSPORT_ERR_NO_MEMORY = -2,
+    FMRB_LINK_TRANSPORT_ERR_TIMEOUT = -3,
+    FMRB_LINK_TRANSPORT_ERR_FAILED = -4,
+    FMRB_LINK_TRANSPORT_ERR_CHECKSUM = -5,
+    FMRB_LINK_TRANSPORT_ERR_SEQUENCE = -6
+} fmrb_link_transport_err_t;
 
 // Transport handle
-typedef void* fmrb_ipc_transport_handle_t;
+typedef void* fmrb_link_transport_handle_t;
 
 // Transport configuration
 typedef struct {
@@ -26,10 +26,10 @@ typedef struct {
     bool enable_retransmit;
     uint8_t max_retries;
     uint16_t window_size;
-} fmrb_ipc_transport_config_t;
+} fmrb_link_transport_config_t;
 
 // Message callback
-typedef void (*fmrb_ipc_transport_callback_t)(const fmrb_ipc_header_t *header, const uint8_t *payload, void *user_data);
+typedef void (*fmrb_link_transport_callback_t)(const fmrb_link_header_t *header, const uint8_t *payload, void *user_data);
 
 /**
  * @brief Initialize IPC transport
@@ -37,15 +37,15 @@ typedef void (*fmrb_ipc_transport_callback_t)(const fmrb_ipc_header_t *header, c
  * @param handle Pointer to store transport handle
  * @return Transport error code
  */
-fmrb_ipc_transport_err_t fmrb_ipc_transport_init(const fmrb_ipc_transport_config_t *config,
-                                                  fmrb_ipc_transport_handle_t *handle);
+fmrb_link_transport_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config,
+                                                  fmrb_link_transport_handle_t *handle);
 
 /**
  * @brief Deinitialize IPC transport
  * @param handle Transport handle
  * @return Transport error code
  */
-fmrb_ipc_transport_err_t fmrb_ipc_transport_deinit(fmrb_ipc_transport_handle_t handle);
+fmrb_link_transport_err_t fmrb_link_transport_deinit(fmrb_link_transport_handle_t handle);
 
 /**
  * @brief Send message with automatic sequence numbering and retransmission
@@ -55,7 +55,7 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_deinit(fmrb_ipc_transport_handle_t h
  * @param payload_len Payload length
  * @return Transport error code
  */
-fmrb_ipc_transport_err_t fmrb_ipc_transport_send(fmrb_ipc_transport_handle_t handle,
+fmrb_link_transport_err_t fmrb_link_transport_send(fmrb_link_transport_handle_t handle,
                                                   uint8_t msg_type,
                                                   const uint8_t *payload,
                                                   uint32_t payload_len);
@@ -71,7 +71,7 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_send(fmrb_ipc_transport_handle_t han
  * @param timeout_ms Timeout in milliseconds
  * @return Transport error code
  */
-fmrb_ipc_transport_err_t fmrb_ipc_transport_send_sync(fmrb_ipc_transport_handle_t handle,
+fmrb_link_transport_err_t fmrb_link_transport_send_sync(fmrb_link_transport_handle_t handle,
                                                        uint8_t msg_type,
                                                        const uint8_t *payload,
                                                        uint32_t payload_len,
@@ -87,9 +87,9 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_send_sync(fmrb_ipc_transport_handle_
  * @param user_data User data passed to callback
  * @return Transport error code
  */
-fmrb_ipc_transport_err_t fmrb_ipc_transport_register_callback(fmrb_ipc_transport_handle_t handle,
+fmrb_link_transport_err_t fmrb_link_transport_register_callback(fmrb_link_transport_handle_t handle,
                                                                uint8_t msg_type,
-                                                               fmrb_ipc_transport_callback_t callback,
+                                                               fmrb_link_transport_callback_t callback,
                                                                void *user_data);
 
 /**
@@ -98,7 +98,7 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_register_callback(fmrb_ipc_transport
  * @param msg_type Message type
  * @return Transport error code
  */
-fmrb_ipc_transport_err_t fmrb_ipc_transport_unregister_callback(fmrb_ipc_transport_handle_t handle,
+fmrb_link_transport_err_t fmrb_link_transport_unregister_callback(fmrb_link_transport_handle_t handle,
                                                                  uint8_t msg_type);
 
 /**
@@ -106,7 +106,7 @@ fmrb_ipc_transport_err_t fmrb_ipc_transport_unregister_callback(fmrb_ipc_transpo
  * @param handle Transport handle
  * @return Transport error code
  */
-fmrb_ipc_transport_err_t fmrb_ipc_transport_process(fmrb_ipc_transport_handle_t handle);
+fmrb_link_transport_err_t fmrb_link_transport_process(fmrb_link_transport_handle_t handle);
 
 #ifdef __cplusplus
 }

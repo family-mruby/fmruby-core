@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FMRB_LINK_COBS_H
+#define FMRB_LINK_COBS_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -29,7 +30,7 @@ extern "C" {
  * @param output Output buffer (must be at least COBS_ENC_MAX(input_len) bytes)
  * @return Encoded data length (including 0x00 terminator)
  */
-size_t fmrb_ipc_cobs_encode(const uint8_t *input, size_t input_len, uint8_t *output);
+size_t fmrb_link_cobs_encode(const uint8_t *input, size_t input_len, uint8_t *output);
 
 /**
  * @brief Decode COBS encoded data
@@ -38,7 +39,7 @@ size_t fmrb_ipc_cobs_encode(const uint8_t *input, size_t input_len, uint8_t *out
  * @param output Output buffer (must be at least input_len bytes)
  * @return Decoded data length, or -1 on error
  */
-ssize_t fmrb_ipc_cobs_decode(const uint8_t *input, size_t input_len, uint8_t *output);
+ssize_t fmrb_link_cobs_decode(const uint8_t *input, size_t input_len, uint8_t *output);
 
 /**
  * @brief Calculate CRC32 checksum
@@ -47,8 +48,10 @@ ssize_t fmrb_ipc_cobs_decode(const uint8_t *input, size_t input_len, uint8_t *ou
  * @param len Data length
  * @return CRC32 checksum
  */
-uint32_t fmrb_ipc_crc32_update(uint32_t crc, const uint8_t *data, size_t len);
+uint32_t fmrb_link_crc32_update(uint32_t crc, const uint8_t *data, size_t len);
 
 #ifdef __cplusplus
 }
 #endif
+
+#endif // FMRB_LINK_COBS_H

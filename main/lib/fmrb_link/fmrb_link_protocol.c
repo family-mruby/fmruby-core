@@ -1,5 +1,5 @@
-#include "fmrb_ipc_protocol.h"
-#include "fmrb_ipc_cobs.h"
+#include "fmrb_link_protocol.h"
+#include "fmrb_link_cobs.h"
 #include "fmrb_mem.h"
 #include <string.h>
 #include <stdlib.h>
@@ -51,7 +51,7 @@ static const uint32_t crc32_table[256] = {
     0xB40BBE37, 0xC30C8EA1, 0x5A05DF1B, 0x2D02EF8D
 };
 
-uint32_t fmrb_ipc_calculate_checksum(const uint8_t *data, size_t len) {
+uint32_t fmrb_link_calculate_checksum(const uint8_t *data, size_t len) {
     uint32_t crc = 0xFFFFFFFF;
 
     for (size_t i = 0; i < len; i++) {
@@ -61,36 +61,36 @@ uint32_t fmrb_ipc_calculate_checksum(const uint8_t *data, size_t len) {
     return crc ^ 0xFFFFFFFF;
 }
 
-bool fmrb_ipc_verify_header(const fmrb_ipc_header_t *header) {
+bool fmrb_link_verify_header(const fmrb_link_header_t *header) {
     if (!header) {
         return false;
     }
 
     // Check magic number
-    if (header->magic != FMRB_IPC_MAGIC) {
+    if (header->magic != FMRB_LINK_MAGIC) {
         return false;
     }
 
     // Check version
-    if (header->version != FMRB_IPC_PROTOCOL_VERSION) {
+    if (header->version != FMRB_LINK_PROTOCOL_VERSION) {
         return false;
     }
 
     // Check payload length
-    if (header->payload_len > FMRB_IPC_MAX_PAYLOAD_SIZE) {
+    if (header->payload_len > FMRB_LINK_MAX_PAYLOAD_SIZE) {
         return false;
     }
 
     return true;
 }
 
-void fmrb_ipc_init_header(fmrb_ipc_header_t *header, uint8_t msg_type, uint16_t sequence, uint32_t payload_len) {
+void fmrb_link_init_header(fmrb_link_header_t *header, uint8_t msg_type, uint16_t sequence, uint32_t payload_len) {
     if (!header) {
         return;
     }
 
-    header->magic = FMRB_IPC_MAGIC;
-    header->version = FMRB_IPC_PROTOCOL_VERSION;
+    header->magic = FMRB_LINK_MAGIC;
+    header->version = FMRB_LINK_PROTOCOL_VERSION;
     header->msg_type = msg_type;
     header->sequence = sequence;
     header->payload_len = payload_len;
@@ -98,14 +98,14 @@ void fmrb_ipc_init_header(fmrb_ipc_header_t *header, uint8_t msg_type, uint16_t 
 }
 
 // Frame encode/decode (IPC_spec.md compliant)
-ssize_t fmrb_ipc_frame_encode(uint8_t type, uint8_t seq, const uint8_t *payload, uint16_t payload_len,
+ssize_t fmrb_link_frame_encode(uint8_t type, uint8_t seq, const uint8_t *payload, uint16_t payload_len,
                                uint8_t *output, size_t output_len) {
     if (!output || output_len == 0) {
         return -1;
     }
 
     // Calculate required size: header + payload + CRC32
-    size_t frame_size = sizeof(fmrb_ipc_frame_hdr_t) + payload_len + sizeof(uint32_t);
+    size_t frame_size = sizeof(fmrb_link_frame_hdr_t) + payload_len + sizeof(uint32_t);
     size_t max_encoded_size = COBS_ENC_MAX(frame_size);
 
     if (output_len < max_encoded_size) {
@@ -119,29 +119,29 @@ ssize_t fmrb_ipc_frame_encode(uint8_t type, uint8_t seq, const uint8_t *payload,
     }
 
     // Fill header
-    fmrb_ipc_frame_hdr_t *hdr = (fmrb_ipc_frame_hdr_t*)temp_buffer;
+    fmrb_link_frame_hdr_t *hdr = (fmrb_link_frame_hdr_t*)temp_buffer;
     hdr->type = type;
     hdr->seq = seq;
     hdr->len = payload_len;
 
     // Copy payload
     if (payload && payload_len > 0) {
-        memcpy(temp_buffer + sizeof(fmrb_ipc_frame_hdr_t), payload, payload_len);
+        memcpy(temp_buffer + sizeof(fmrb_link_frame_hdr_t), payload, payload_len);
     }
 
     // Calculate CRC32 of header + payload
-    uint32_t crc = fmrb_ipc_crc32_update(0, temp_buffer, sizeof(fmrb_ipc_frame_hdr_t) + payload_len);
-    memcpy(temp_buffer + sizeof(fmrb_ipc_frame_hdr_t) + payload_len, &crc, sizeof(uint32_t));
+    uint32_t crc = fmrb_link_crc32_update(0, temp_buffer, sizeof(fmrb_link_frame_hdr_t) + payload_len);
+    memcpy(temp_buffer + sizeof(fmrb_link_frame_hdr_t) + payload_len, &crc, sizeof(uint32_t));
 
     // COBS encode
-    size_t encoded_len = fmrb_ipc_cobs_encode(temp_buffer, frame_size, output);
+    size_t encoded_len = fmrb_link_cobs_encode(temp_buffer, frame_size, output);
 
     fmrb_sys_free(temp_buffer);
     return (ssize_t)encoded_len;
 }
 
-int32_t fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
-                               fmrb_ipc_frame_hdr_t *hdr, uint8_t *payload,
+int32_t fmrb_link_frame_decode(const uint8_t *input, size_t input_len,
+                               fmrb_link_frame_hdr_t *hdr, uint8_t *payload,
                                size_t payload_max_len, uint16_t *payload_len) {
     if (!input || !hdr || !payload || !payload_len) {
         return -1;
@@ -154,14 +154,14 @@ int32_t fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
     }
 
     // COBS decode
-    ssize_t decoded_len = fmrb_ipc_cobs_decode(input, input_len, temp_buffer);
-    if (decoded_len < (ssize_t)(sizeof(fmrb_ipc_frame_hdr_t) + sizeof(uint32_t))) {
+    ssize_t decoded_len = fmrb_link_cobs_decode(input, input_len, temp_buffer);
+    if (decoded_len < (ssize_t)(sizeof(fmrb_link_frame_hdr_t) + sizeof(uint32_t))) {
         fmrb_sys_free(temp_buffer);
         return -1; // Too small
     }
 
     // Extract header
-    memcpy(hdr, temp_buffer, sizeof(fmrb_ipc_frame_hdr_t));
+    memcpy(hdr, temp_buffer, sizeof(fmrb_link_frame_hdr_t));
 
     // Verify payload length
     if (hdr->len > payload_max_len) {
@@ -170,17 +170,17 @@ int32_t fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
     }
 
     // Extract CRC32
-    size_t expected_size = sizeof(fmrb_ipc_frame_hdr_t) + hdr->len + sizeof(uint32_t);
+    size_t expected_size = sizeof(fmrb_link_frame_hdr_t) + hdr->len + sizeof(uint32_t);
     if ((size_t)decoded_len != expected_size) {
         fmrb_sys_free(temp_buffer);
         return -1; // Size mismatch
     }
 
     uint32_t received_crc;
-    memcpy(&received_crc, temp_buffer + sizeof(fmrb_ipc_frame_hdr_t) + hdr->len, sizeof(uint32_t));
+    memcpy(&received_crc, temp_buffer + sizeof(fmrb_link_frame_hdr_t) + hdr->len, sizeof(uint32_t));
 
     // Verify CRC32
-    uint32_t calculated_crc = fmrb_ipc_crc32_update(0, temp_buffer, sizeof(fmrb_ipc_frame_hdr_t) + hdr->len);
+    uint32_t calculated_crc = fmrb_link_crc32_update(0, temp_buffer, sizeof(fmrb_link_frame_hdr_t) + hdr->len);
     if (received_crc != calculated_crc) {
         fmrb_sys_free(temp_buffer);
         return -1; // CRC mismatch
@@ -188,7 +188,7 @@ int32_t fmrb_ipc_frame_decode(const uint8_t *input, size_t input_len,
 
     // Copy payload
     if (hdr->len > 0) {
-        memcpy(payload, temp_buffer + sizeof(fmrb_ipc_frame_hdr_t), hdr->len);
+        memcpy(payload, temp_buffer + sizeof(fmrb_link_frame_hdr_t), hdr->len);
     }
     *payload_len = hdr->len;
 

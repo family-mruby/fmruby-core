@@ -1,5 +1,5 @@
-#include "../../fmrb_hal_ipc.h"
-#include "../../../fmrb_ipc/fmrb_ipc_cobs.h"
+#include "../../fmrb_hal_link.h"
+#include "../../../fmrb_link/fmrb_link_cobs.h"
 #include "fmrb_mem.h"
 #include "esp_log.h"
 #include <stdio.h>
@@ -17,28 +17,28 @@
 typedef struct {
     int socket_fd;
     pthread_t thread;
-    fmrb_ipc_callback_t callback;
+    fmrb_link_callback_t callback;
     void *user_data;
     bool running;
-} linux_ipc_channel_t;
+} linux_link_channel_t;
 
-static linux_ipc_channel_t channels[FMRB_IPC_MAX_CHANNELS];
-static bool ipc_initialized = false;
+static linux_link_channel_t channels[FMRB_LINK_MAX_CHANNELS];
+static bool link_initialized = false;
 static int global_socket_fd = -1;
 static pthread_mutex_t socket_mutex = PTHREAD_MUTEX_INITIALIZER;
 
-static const char *TAG = "fmrb_hal_ipc";
+static const char *TAG = "fmrb_hal_link";
 
-static void* linux_ipc_thread(void *arg) {
-    fmrb_ipc_channel_t channel = (fmrb_ipc_channel_t)(uintptr_t)arg;
-    linux_ipc_channel_t *ch = &channels[channel];
+static void* linux_link_thread(void *arg) {
+    fmrb_link_channel_t channel = (fmrb_link_channel_t)(uintptr_t)arg;
+    linux_link_channel_t *ch = &channels[channel];
 
     while (ch->running) {
         uint8_t buffer[1024];
         ssize_t received = recv(ch->socket_fd, buffer, sizeof(buffer), 0);
 
         if (received > 0 && ch->callback) {
-            fmrb_ipc_message_t msg = {
+            fmrb_link_message_t msg = {
                 .data = buffer,
                 .size = received
             };
@@ -94,12 +94,12 @@ static fmrb_err_t connect_to_socket(void) {
     return FMRB_ERR_FAILED;
 }
 
-fmrb_err_t fmrb_hal_ipc_init(void) {
-    if (ipc_initialized) {
+fmrb_err_t fmrb_hal_link_init(void) {
+    if (link_initialized) {
         return FMRB_OK;
     }
 
-    for (int i = 0; i < FMRB_IPC_MAX_CHANNELS; i++) {
+    for (int i = 0; i < FMRB_LINK_MAX_CHANNELS; i++) {
         channels[i].socket_fd = -1;
         channels[i].callback = NULL;
         channels[i].user_data = NULL;
@@ -114,16 +114,16 @@ fmrb_err_t fmrb_hal_ipc_init(void) {
     }
 
     ESP_LOGI(TAG, "Linux IPC initialized");
-    ipc_initialized = true;
+    link_initialized = true;
     return FMRB_OK;
 }
 
-void fmrb_hal_ipc_deinit(void) {
-    if (!ipc_initialized) {
+void fmrb_hal_link_deinit(void) {
+    if (!link_initialized) {
         return;
     }
 
-    for (int i = 0; i < FMRB_IPC_MAX_CHANNELS; i++) {
+    for (int i = 0; i < FMRB_LINK_MAX_CHANNELS; i++) {
         if (channels[i].running) {
             channels[i].running = false;
             pthread_join(channels[i].thread, NULL);
@@ -141,13 +141,13 @@ void fmrb_hal_ipc_deinit(void) {
     }
 
     ESP_LOGI(TAG, "Linux IPC deinitialized");
-    ipc_initialized = false;
+    link_initialized = false;
 }
 
-fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
-                              const fmrb_ipc_message_t *msg,
+fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
+                              const fmrb_link_message_t *msg,
                               uint32_t timeout_ms) {
-    if (!ipc_initialized || channel >= FMRB_IPC_MAX_CHANNELS || !msg) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msg) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
@@ -170,7 +170,7 @@ fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
     }
 
     memcpy(buffer, msg->data, msg->size);
-    uint32_t crc = fmrb_ipc_crc32_update(0, msg->data, msg->size);
+    uint32_t crc = fmrb_link_crc32_update(0, msg->data, msg->size);
     memcpy(buffer + msg->size, &crc, sizeof(uint32_t));
 
     // COBS encode
@@ -182,7 +182,7 @@ fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
         return FMRB_ERR_NO_MEMORY;
     }
 
-    size_t encoded_len = fmrb_ipc_cobs_encode(buffer, total_size, encoded);
+    size_t encoded_len = fmrb_link_cobs_encode(buffer, total_size, encoded);
     fmrb_sys_free(buffer);
 
     // Send encoded data
@@ -202,10 +202,10 @@ fmrb_err_t fmrb_hal_ipc_send(fmrb_ipc_channel_t channel,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_hal_ipc_receive(fmrb_ipc_channel_t channel,
-                                 fmrb_ipc_message_t *msg,
+fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
+                                 fmrb_link_message_t *msg,
                                  uint32_t timeout_ms) {
-    if (!ipc_initialized || channel >= FMRB_IPC_MAX_CHANNELS || !msg) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msg) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
@@ -218,19 +218,19 @@ fmrb_err_t fmrb_hal_ipc_receive(fmrb_ipc_channel_t channel,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_hal_ipc_register_callback(fmrb_ipc_channel_t channel,
-                                           fmrb_ipc_callback_t callback,
+fmrb_err_t fmrb_hal_link_register_callback(fmrb_link_channel_t channel,
+                                           fmrb_link_callback_t callback,
                                            void *user_data) {
-    if (!ipc_initialized || channel >= FMRB_IPC_MAX_CHANNELS || !callback) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !callback) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    linux_ipc_channel_t *ch = &channels[channel];
+    linux_link_channel_t *ch = &channels[channel];
     ch->callback = callback;
     ch->user_data = user_data;
     ch->running = true;
 
-    if (pthread_create(&ch->thread, NULL, linux_ipc_thread, (void*)(uintptr_t)channel) != 0) {
+    if (pthread_create(&ch->thread, NULL, linux_link_thread, (void*)(uintptr_t)channel) != 0) {
         return FMRB_ERR_FAILED;
     }
 
@@ -238,12 +238,12 @@ fmrb_err_t fmrb_hal_ipc_register_callback(fmrb_ipc_channel_t channel,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_hal_ipc_unregister_callback(fmrb_ipc_channel_t channel) {
-    if (!ipc_initialized || channel >= FMRB_IPC_MAX_CHANNELS) {
+fmrb_err_t fmrb_hal_link_unregister_callback(fmrb_link_channel_t channel) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    linux_ipc_channel_t *ch = &channels[channel];
+    linux_link_channel_t *ch = &channels[channel];
     if (ch->running) {
         ch->running = false;
         pthread_join(ch->thread, NULL);
@@ -254,8 +254,8 @@ fmrb_err_t fmrb_hal_ipc_unregister_callback(fmrb_ipc_channel_t channel) {
     return FMRB_OK;
 }
 
-void* fmrb_hal_ipc_get_shared_memory(size_t size) {
-    if (!ipc_initialized || size == 0) {
+void* fmrb_hal_link_get_shared_memory(size_t size) {
+    if (!link_initialized || size == 0) {
         return NULL;
     }
 
@@ -264,7 +264,7 @@ void* fmrb_hal_ipc_get_shared_memory(size_t size) {
     return ptr;
 }
 
-void fmrb_hal_ipc_release_shared_memory(void *ptr) {
+void fmrb_hal_link_release_shared_memory(void *ptr) {
     if (ptr) {
         ESP_LOGI(TAG, "Released shared memory: %p", ptr);
         fmrb_sys_free(ptr);

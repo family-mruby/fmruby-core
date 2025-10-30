@@ -2,7 +2,7 @@
 #include "graphics_handler.h"
 #include "audio_handler.h"
 #include "../common/protocol.h"
-#include "../common/fmrb_ipc_cobs.h"
+#include "../common/fmrb_link_cobs.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -18,7 +18,7 @@ typedef struct __attribute__((packed)) {
     uint8_t type;    // Message type
     uint8_t seq;     // Sequence number
     uint16_t len;    // Payload bytes
-} fmrb_ipc_frame_hdr_t;
+} fmrb_link_frame_hdr_t;
 
 static int server_fd = -1;
 static int client_fd = -1;
@@ -95,7 +95,7 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     }
 
     // COBS decode
-    ssize_t decoded_len = fmrb_ipc_cobs_decode(encoded_data, encoded_len, decoded_buffer);
+    ssize_t decoded_len = fmrb_link_cobs_decode(encoded_data, encoded_len, decoded_buffer);
     if (decoded_len < (ssize_t)sizeof(uint32_t)) {
         fprintf(stderr, "COBS decode failed or frame too small\n");
         free(decoded_buffer);
@@ -109,7 +109,7 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     memcpy(&received_crc, decoded_buffer + msgpack_len, sizeof(uint32_t));
 
     // Verify CRC32
-    uint32_t calculated_crc = fmrb_ipc_crc32_update(0, msgpack_data, msgpack_len);
+    uint32_t calculated_crc = fmrb_link_crc32_update(0, msgpack_data, msgpack_len);
     if (received_crc != calculated_crc) {
         fprintf(stderr, "CRC32 mismatch: expected=0x%08x, actual=0x%08x\n", calculated_crc, received_crc);
         free(decoded_buffer);

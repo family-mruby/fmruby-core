@@ -18,13 +18,13 @@ fmrb_err_t fmrb_hal_init(void) {
     ESP_LOGI(TAG, "Platform: ESP32");
 #endif
 
-    // Initialize IPC subsystem
-    fmrb_err_t ret = fmrb_hal_ipc_init();
+    // Initialize link communication subsystem
+    fmrb_err_t ret = fmrb_hal_link_init();
     if (ret != FMRB_OK) {
-        ESP_LOGE(TAG, "Failed to initialize IPC: %d", ret);
+        ESP_LOGE(TAG, "Failed to initialize link communication: %d", ret);
         return ret;
     }
-    FMRB_LOGI(TAG, "HAL message IPC initialized");
+    FMRB_LOGI(TAG, "HAL link communication initialized");
 
     // Initialize HAL message queue registry
     ret = fmrb_hal_msg_init();
@@ -46,8 +46,8 @@ void fmrb_hal_deinit(void) {
 
     ESP_LOGI(TAG, "Deinitializing Family mruby HAL");
 
-    // Deinitialize IPC subsystem
-    fmrb_hal_ipc_deinit();
+    // Deinitialize link communication subsystem
+    fmrb_hal_link_deinit();
 
     hal_initialized = false;
     ESP_LOGI(TAG, "HAL deinitialization complete");

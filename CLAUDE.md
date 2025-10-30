@@ -156,15 +156,16 @@ rake -T # その他のコマンドの使い方
       - 時刻、スリープ、IPC、SPI/I2C/GPIO、DMA、ロック等
       - `platform/esp32/` - ESP32実装
       - `platform/posix/` - POSIX/Linux実装
-    - **fmrb_ipc/** - S3⇔WROVER/ホスト間プロトコル
+    - **fmrb_link/** - S3⇔WROVER/ホスト間データリンク層プロトコル
       - メッセージはmsgpack形式、CRCチェック、再送機能
       - Linuxではソケット通信
+      - COBS/CRC/フレーム処理/チャンク転送などを提供
     - **fmrb_gfx/** - グラフィックAPI
       - LovyanGFX+α (Window描画、ビットマップ転送等)
-      - 内部ではIPCで描画コマンド送信
+      - 内部ではfmrb_linkで描画コマンド送信
     - **fmrb_audio/** - オーディオAPI
       - APUエミュレータ向け音楽バイナリ転送、再生停止制御
-      - 内部ではIPCでコマンド実行
+      - 内部ではfmrb_linkでコマンド実行
     - **fmrb_toml/** - TOML設定ファイル処理
 
 - **host/** - PC環境用プロセス
