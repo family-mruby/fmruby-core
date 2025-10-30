@@ -18,7 +18,7 @@ extern "C" {
 
 // Include platform-specific headers only when building with ESP-IDF
 #include "fmrb_hal_esp.h"
-#include "fmrb_hal_freertos.h"
+#include "fmrb_hal_rtos.h"
 
 // Time types
 typedef uint64_t fmrb_time_t;  // microseconds since boot

@@ -1,5 +1,5 @@
 #include "fmrb_hal_msg.h"
-#include "fmrb_hal_freertos.h"
+#include "fmrb_hal_rtos.h"
 #include <string.h>
 
 // Registry entry for each task's message queue
