@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fmrb_hal.h"
+#include "fmrb_link_types.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <sys/types.h>
+#include "fmrb_link_types.h"
 
 #ifdef __cplusplus
 extern "C" {
