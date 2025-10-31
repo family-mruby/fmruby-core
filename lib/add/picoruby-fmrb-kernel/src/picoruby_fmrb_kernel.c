@@ -19,11 +19,11 @@ typedef struct {
     uint8_t data[64];
 } fmrb_msg_t;
 
-// Forward declarations of HAL functions
-extern fmrb_err_t fmrb_hal_msg_send(fmrb_msg_task_id_t dest_task_id, const fmrb_msg_t *msg, uint32_t timeout_ms);
-extern fmrb_err_t fmrb_hal_msg_receive(fmrb_msg_task_id_t task_id, fmrb_msg_t *msg, uint32_t timeout_ms);
-extern int fmrb_hal_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms);
-extern bool fmrb_hal_msg_queue_exists(fmrb_msg_task_id_t task_id);
+// Forward declarations of message functions
+extern fmrb_err_t fmrb_msg_send(fmrb_msg_task_id_t dest_task_id, const fmrb_msg_t *msg, uint32_t timeout_ms);
+extern fmrb_err_t fmrb_msg_receive(fmrb_msg_task_id_t task_id, fmrb_msg_t *msg, uint32_t timeout_ms);
+extern int fmrb_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms);
+extern bool fmrb_msg_queue_exists(fmrb_msg_task_id_t task_id);
 
 /**
  * Send a message to a task's queue
@@ -63,8 +63,8 @@ mrb_kernel_send_message(mrb_state *mrb, mrb_value self)
   };
   memcpy(msg.data, data, data_len);
 
-  // Send message via HAL
-  fmrb_err_t result = fmrb_hal_msg_send((fmrb_msg_task_id_t)task_id, &msg, (uint32_t)timeout_ms);
+  // Send message
+  fmrb_err_t result = fmrb_msg_send((fmrb_msg_task_id_t)task_id, &msg, (uint32_t)timeout_ms);
 
   return mrb_bool_value(result == FMRB_OK);
 }
@@ -95,9 +95,9 @@ mrb_kernel_receive_message(mrb_state *mrb, mrb_value self)
     mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid task ID (must be 0-15)");
   }
 
-  // Receive message via HAL
+  // Receive message
   fmrb_msg_t msg;
-  fmrb_err_t result = fmrb_hal_msg_receive((fmrb_msg_task_id_t)task_id, &msg, (uint32_t)timeout_ms);
+  fmrb_err_t result = fmrb_msg_receive((fmrb_msg_task_id_t)task_id, &msg, (uint32_t)timeout_ms);
 
   if (result == FMRB_ERR_TIMEOUT) {
     return mrb_nil_value();
@@ -146,8 +146,8 @@ mrb_kernel_broadcast_message(mrb_state *mrb, mrb_value self)
   };
   memcpy(msg.data, data, data_len);
 
-  // Broadcast via HAL
-  int count = fmrb_hal_msg_broadcast(&msg, (uint32_t)timeout_ms);
+  // Broadcast message
+  int count = fmrb_msg_broadcast(&msg, (uint32_t)timeout_ms);
 
   return mrb_fixnum_value(count);
 }
@@ -174,7 +174,7 @@ mrb_kernel_message_queue_exists(mrb_state *mrb, mrb_value self)
     mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid task ID (must be 0-15)");
   }
 
-  bool exists = fmrb_hal_msg_queue_exists((fmrb_msg_task_id_t)task_id);
+  bool exists = fmrb_msg_queue_exists((fmrb_msg_task_id_t)task_id);
 
   return mrb_bool_value(exists);
 }

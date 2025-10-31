@@ -1,22 +1,25 @@
 #pragma once
 
-#include "fmrb_hal.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include "fmrb_err.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief HAL Message Queue Registry
+ * @brief Inter-Task Message Queue Registry
  *
  * This module provides a centralized message queue registry for inter-task
  * communication. Both host tasks and mrbgem tasks register their queues
- * with the HAL and communicate using task IDs.
+ * and communicate using task IDs.
  *
  * Design principles:
  * - All tasks are equal (host and mrbgem use same API)
  * - ID-based addressing (task ID 0-15)
- * - Registry managed by HAL
+ * - Centralized registry management
  * - Thread-safe queue operations
  */
 
@@ -56,12 +59,12 @@ typedef struct {
  * @brief Initialize the message queue registry
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_hal_msg_init(void);
+fmrb_err_t fmrb_msg_init(void);
 
 /**
  * @brief Deinitialize the message queue registry
  */
-void fmrb_hal_msg_deinit(void);
+void fmrb_msg_deinit(void);
 
 /**
  * @brief Create and register a message queue for a task
@@ -71,7 +74,7 @@ void fmrb_hal_msg_deinit(void);
  *
  * If a queue is already registered for this task_id, returns FMRB_ERR_INVALID_STATE
  */
-fmrb_err_t fmrb_hal_msg_create_queue(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_create_queue(fmrb_msg_task_id_t task_id,
                                       const fmrb_msg_queue_config_t *config);
 
 /**
@@ -79,7 +82,7 @@ fmrb_err_t fmrb_hal_msg_create_queue(fmrb_msg_task_id_t task_id,
  * @param task_id Task ID
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_hal_msg_delete_queue(fmrb_msg_task_id_t task_id);
+fmrb_err_t fmrb_msg_delete_queue(fmrb_msg_task_id_t task_id);
 
 /**
  * @brief Send a message to a task's queue
@@ -90,7 +93,7 @@ fmrb_err_t fmrb_hal_msg_delete_queue(fmrb_msg_task_id_t task_id);
  *
  * Returns FMRB_ERR_NOT_FOUND if destination task has no registered queue
  */
-fmrb_err_t fmrb_hal_msg_send(fmrb_msg_task_id_t dest_task_id,
+fmrb_err_t fmrb_msg_send(fmrb_msg_task_id_t dest_task_id,
                               const fmrb_msg_t *msg,
                               uint32_t timeout_ms);
 
@@ -103,7 +106,7 @@ fmrb_err_t fmrb_hal_msg_send(fmrb_msg_task_id_t dest_task_id,
  *
  * Returns FMRB_ERR_NOT_FOUND if task has no registered queue
  */
-fmrb_err_t fmrb_hal_msg_receive(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_receive(fmrb_msg_task_id_t task_id,
                                  fmrb_msg_t *msg,
                                  uint32_t timeout_ms);
 
@@ -116,14 +119,14 @@ fmrb_err_t fmrb_hal_msg_receive(fmrb_msg_task_id_t task_id,
  * Sends to all registered queues. If a send fails (timeout/full queue),
  * continues to other queues and returns count of successful sends.
  */
-int fmrb_hal_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms);
+int fmrb_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms);
 
 /**
  * @brief Check if a task has a registered queue
  * @param task_id Task ID to check
  * @return true if queue exists, false otherwise
  */
-bool fmrb_hal_msg_queue_exists(fmrb_msg_task_id_t task_id);
+bool fmrb_msg_queue_exists(fmrb_msg_task_id_t task_id);
 
 /**
  * @brief Get queue statistics for a task
@@ -131,7 +134,7 @@ bool fmrb_hal_msg_queue_exists(fmrb_msg_task_id_t task_id);
  * @param stats Output statistics structure
  * @return FMRB_OK on success, FMRB_ERR_NOT_FOUND if queue doesn't exist
  */
-fmrb_err_t fmrb_hal_msg_get_stats(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_get_stats(fmrb_msg_task_id_t task_id,
                                    fmrb_msg_queue_stats_t *stats);
 
 #ifdef __cplusplus

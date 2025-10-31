@@ -171,8 +171,8 @@ static void fmrb_host_task(void *pvParameters)
     const fmrb_tick_t xUpdatePeriod = FMRB_MS_TO_TICKS(10);  // 10ms周期で定期更新
 
     while (1) {
-        // Wait for messages with timeout using HAL message queue
-        if (fmrb_hal_msg_receive(FMRB_MSG_TASK_HOST, &msg, 10) == FMRB_OK) {
+        // Wait for messages with timeout
+        if (fmrb_msg_receive(FMRB_MSG_TASK_HOST, &msg, 10) == FMRB_OK) {
             host_task_process_message(&msg);
         }
 
@@ -196,15 +196,15 @@ static void fmrb_host_task(void *pvParameters)
  */
 int fmrb_host_task_init(void)
 {
-    // Register host task's message queue with HAL
+    // Register host task's message queue
     fmrb_msg_queue_config_t queue_config = {
         .queue_length = HOST_QUEUE_SIZE,
         .message_size = sizeof(fmrb_msg_t)
     };
 
-    fmrb_err_t hal_ret = fmrb_hal_msg_create_queue(FMRB_MSG_TASK_HOST, &queue_config);
+    fmrb_err_t hal_ret = fmrb_msg_create_queue(FMRB_MSG_TASK_HOST, &queue_config);
     if (hal_ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to create host message queue in HAL: %d", hal_ret);
+        FMRB_LOGE(TAG, "Failed to create host message queue: %d", hal_ret);
         return -1;
     }
 
@@ -220,7 +220,7 @@ int fmrb_host_task_init(void)
 
     if (result != FMRB_PASS) {
         FMRB_LOGE(TAG, "Failed to create host task");
-        fmrb_hal_msg_delete_queue(FMRB_MSG_TASK_HOST);
+        fmrb_msg_delete_queue(FMRB_MSG_TASK_HOST);
         return -1;
     }
 
@@ -240,25 +240,25 @@ void fmrb_host_task_deinit(void)
         g_host_task_handle = NULL;
     }
 
-    // Delete host task's message queue from HAL
-    fmrb_hal_msg_delete_queue(FMRB_MSG_TASK_HOST);
+    // Delete host task's message queue
+    fmrb_msg_delete_queue(FMRB_MSG_TASK_HOST);
 
     FMRB_LOGI(TAG, "Host task deinitialized");
 }
 
 /**
- * Send a host message using HAL message queue
+ * Send a host message
  */
 static int fmrb_host_send_message(const host_message_t *msg)
 {
-    // Wrap host message in HAL message format
+    // Wrap host message in message format
     fmrb_msg_t hal_msg = {
         .type = msg->type,
         .size = sizeof(host_message_t)
     };
     memcpy(hal_msg.data, msg, sizeof(host_message_t));
 
-    fmrb_err_t result = fmrb_hal_msg_send(FMRB_MSG_TASK_HOST, &hal_msg, 10);
+    fmrb_err_t result = fmrb_msg_send(FMRB_MSG_TASK_HOST, &hal_msg, 10);
     if (result != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to send host message: %d", result);
         return -1;

@@ -1,4 +1,4 @@
-#include "fmrb_hal_msg.h"
+#include "fmrb_msg.h"
 #include "fmrb_hal_rtos.h"
 #include <string.h>
 
@@ -24,7 +24,7 @@ static const fmrb_msg_queue_config_t DEFAULT_CONFIG = {
 /**
  * @brief Initialize the message queue registry
  */
-fmrb_err_t fmrb_hal_msg_init(void)
+fmrb_err_t fmrb_msg_init(void)
 {
     if (g_initialized) {
         return FMRB_ERR_INVALID_STATE;
@@ -50,7 +50,7 @@ fmrb_err_t fmrb_hal_msg_init(void)
 /**
  * @brief Deinitialize the message queue registry
  */
-void fmrb_hal_msg_deinit(void)
+void fmrb_msg_deinit(void)
 {
     if (!g_initialized) {
         return;
@@ -77,7 +77,7 @@ void fmrb_hal_msg_deinit(void)
 /**
  * @brief Create and register a message queue for a task
  */
-fmrb_err_t fmrb_hal_msg_create_queue(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_create_queue(fmrb_msg_task_id_t task_id,
                                       const fmrb_msg_queue_config_t *config)
 {
     if (!g_initialized) {
@@ -132,7 +132,7 @@ cleanup:
 /**
  * @brief Delete a task's message queue
  */
-fmrb_err_t fmrb_hal_msg_delete_queue(fmrb_msg_task_id_t task_id)
+fmrb_err_t fmrb_msg_delete_queue(fmrb_msg_task_id_t task_id)
 {
     if (!g_initialized) {
         return FMRB_ERR_INVALID_STATE;
@@ -170,7 +170,7 @@ cleanup:
 /**
  * @brief Send a message to a task's queue
  */
-fmrb_err_t fmrb_hal_msg_send(fmrb_msg_task_id_t dest_task_id,
+fmrb_err_t fmrb_msg_send(fmrb_msg_task_id_t dest_task_id,
                               const fmrb_msg_t *msg,
                               uint32_t timeout_ms)
 {
@@ -216,7 +216,7 @@ fmrb_err_t fmrb_hal_msg_send(fmrb_msg_task_id_t dest_task_id,
 /**
  * @brief Receive a message from a task's queue
  */
-fmrb_err_t fmrb_hal_msg_receive(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_receive(fmrb_msg_task_id_t task_id,
                                  fmrb_msg_t *msg,
                                  uint32_t timeout_ms)
 {
@@ -260,7 +260,7 @@ fmrb_err_t fmrb_hal_msg_receive(fmrb_msg_task_id_t task_id,
 /**
  * @brief Broadcast a message to all registered task queues
  */
-int fmrb_hal_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms)
+int fmrb_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms)
 {
     if (!g_initialized || msg == NULL) {
         return 0;
@@ -304,7 +304,7 @@ int fmrb_hal_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms)
 /**
  * @brief Check if a task has a registered queue
  */
-bool fmrb_hal_msg_queue_exists(fmrb_msg_task_id_t task_id)
+bool fmrb_msg_queue_exists(fmrb_msg_task_id_t task_id)
 {
     if (!g_initialized || task_id < 0 || task_id >= FMRB_MSG_MAX_TASKS) {
         return false;
@@ -323,7 +323,7 @@ bool fmrb_hal_msg_queue_exists(fmrb_msg_task_id_t task_id)
 /**
  * @brief Get queue statistics for a task
  */
-fmrb_err_t fmrb_hal_msg_get_stats(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_get_stats(fmrb_msg_task_id_t task_id,
                                    fmrb_msg_queue_stats_t *stats)
 {
     if (!g_initialized) {

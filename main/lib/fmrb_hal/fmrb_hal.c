@@ -26,13 +26,13 @@ fmrb_err_t fmrb_hal_init(void) {
     }
     FMRB_LOGI(TAG, "HAL link communication initialized");
 
-    // Initialize HAL message queue registry
-    ret = fmrb_hal_msg_init();
+    // Initialize message queue registry
+    ret = fmrb_msg_init();
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to initialize message queue: %d", ret);
         return -1;
     }
-    FMRB_LOGI(TAG, "HAL message queue initialized");
+    FMRB_LOGI(TAG, "Message queue initialized");
 
     hal_initialized = true;
     ESP_LOGI(TAG, "HAL initialization complete");
