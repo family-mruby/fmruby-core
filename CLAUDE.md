@@ -148,25 +148,42 @@ rake -T # その他のコマンドの使い方
     - TinyUSBによるUSB HOST
     - UART0 によるPC-ESP32間ファイルR/W
   - **include/** - 共通ヘッダファイル
-  - **lib/** - Hardware Abstraction Layer (HAL)
-    - サブコア(ESP32-WROVER)とSPI通信、ESP32 SDK/FreeRTOS抽象化
-    - Linuxターゲット時はソケット経由でSDL2プロセスと通信
-    - **fmrb_mem/** - メモリアロケータ (fmrb_alloc.c等)
-    - **fmrb_hal/** - OS基盤機能
-      - 時刻、スリープ、IPC、SPI/I2C/GPIO、DMA、ロック等
-      - `platform/esp32/` - ESP32実装
-      - `platform/posix/` - POSIX/Linux実装
-    - **fmrb_link/** - S3⇔WROVER/ホスト間データリンク層プロトコル
-      - メッセージはmsgpack形式、CRCチェック、再送機能
-      - Linuxではソケット通信
-      - COBS/CRC/フレーム処理/チャンク転送などを提供
+  - **lib/** - プラットフォームサービス層（Platform Services）
+    - OS基盤機能、ハードウェア抽象化、通信プロトコル、機能APIを提供
+    - ESP32とLinuxの両プラットフォームをサポート
+
+    - **fmrb_hal/** - ハードウェア抽象化層（HAL）
+      - GPIO、SPI、UART、File I/O、Time、RTOSの抽象化
+      - `platform/esp32/` - ESP32固有実装（ESP-IDF SDK利用）
+      - `platform/posix/` - POSIX/Linux実装（シミュレーション含む）
+
+    - **fmrb_mem/** - メモリ管理サービス
+      - TLSFアロケータ（O(1)割り当て/解放）
+      - メモリプール管理（System, Kernel, App用）
+      - `fmrb_malloc()` - mruby用、`fmrb_sys_malloc()` - OS用
+
+    - **fmrb_msg/** - タスク間通信（IPC）
+      - メッセージキューレジストリ
+      - タスクID（0-15）ベースのメッセージング
+      - ブロードキャスト、統計情報取得機能
+
+    - **fmrb_link/** - データリンク層プロトコル
+      - S3⇔WROVER間（ESP32: SPI、Linux: Socket）の通信
+      - COBS符号化、CRC32チェックサム、フレーム処理
+      - チャンク転送、再送機能、ACK/NACK処理
+
     - **fmrb_gfx/** - グラフィックAPI
-      - LovyanGFX+α (Window描画、ビットマップ転送等)
-      - 内部ではfmrb_linkで描画コマンド送信
+      - LovyanGFX互換API（描画、テキスト、ビットマップ）
+      - ウィンドウ管理、クリッピング機能
+      - 内部的にfmrb_linkでWROVER/SDL2に描画コマンド送信
+
     - **fmrb_audio/** - オーディオAPI
-      - APUエミュレータ向け音楽バイナリ転送、再生停止制御
-      - 内部ではfmrb_linkでコマンド実行
-    - **fmrb_toml/** - TOML設定ファイル処理
+      - APUエミュレータ制御（再生、停止、音量設定）
+      - 音楽バイナリデータ転送
+      - 内部的にfmrb_linkでWROVER/SDL2にコマンド送信
+
+    - **fmrb_toml/** - 設定ファイル処理
+      - TOML形式の設定ファイルパーサー
 
 - **host/** - PC環境用プロセス
   - fmrb-coreと通信する独立プロセス
