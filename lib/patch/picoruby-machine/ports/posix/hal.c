@@ -34,7 +34,6 @@
 /***** Typedefs *************************************************************/
 /***** Function prototypes **************************************************/
 /***** Local variables ******************************************************/
-static sigset_t sigset_, sigset2_;
 
 #ifndef PICORUBY_HOST_BUILD
 // mrb VM management list for FreeRTOS environment
@@ -61,7 +60,7 @@ static struct {
 #endif
 
 #if defined(PICORB_VM_MRUBY)
-static mrb_state *mrb_;
+//static mrb_state *mrb_;
 #elif defined(PICORB_VM_MRUBYC)
 typedef void mrb_state;
 #define mrb_tick(mrb) mrbc_tick()

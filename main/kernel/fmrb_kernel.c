@@ -4,8 +4,10 @@
 #include <stdlib.h>
 
 #include <picoruby.h>
+#include "fmrb_log.h"
 #include "fmrb_hal.h"
 #include "fmrb_mem.h"
+#include "fmrb_msg.h"
 #include "fmrb_task_config.h"
 #include "fmrb_app.h"
 #include "host/host_task.h"
@@ -63,12 +65,20 @@ static void read_system_config(void)
 static int init_hal(void)
 {
     // Initialize HAL layer
-    fmrb_err_t hal_ret = fmrb_hal_init();
-    if (hal_ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to initialize HAL: %d", hal_ret);
+    fmrb_err_t ret = fmrb_hal_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to initialize HAL: %d", ret);
         return -1;
     }
     FMRB_LOGI(TAG, "HAL initialized successfully");
+
+    // Initialize message queue registry
+    ret = fmrb_msg_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to initialize message queue: %d", ret);
+        return -1;
+    }
+    FMRB_LOGI(TAG, "Message queue initialized");
 
     return 0;
 }

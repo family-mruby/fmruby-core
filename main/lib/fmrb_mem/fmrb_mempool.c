@@ -1,6 +1,6 @@
 #include <stddef.h>
 #include <stdint.h>
-#include "esp_attr.h"
+#include "fmrb_hal.h"
 #include "fmrb_mem.h"
 
 EXT_RAM_BSS_ATTR unsigned char __attribute__((aligned(8))) g_prism_memory_pool[FMRB_MEM_PRISM_POOL_SIZE];

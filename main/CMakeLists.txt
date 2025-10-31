@@ -6,9 +6,6 @@ set(COMPONENT_SRCS
     "kernel/fmrb_kernel.c"
     "kernel/host/host_task.c"
     "drivers/fs_proxy/fs_proxy_task.c"
-    "lib/fmrb_mem/fmrb_alloc.c"
-    "lib/fmrb_mem/fmrb_mempool.c"
-    "lib/fmrb_toml/toml.c"
 )
 
 # Collect all Ruby files to compile to bytecode
@@ -38,7 +35,9 @@ foreach(RB_FILE ${DEFAULT_APP_RUBY_FILES})
 endforeach()
 
 # Set up component dependencies based on target
-set(COMPONENT_REQUIRES fmrb_hal fmrb_msg fmrb_link fmrb_gfx fmrb_audio picoruby-esp32 mem_allocator log tar_lib toml_parser)
+set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_link fmrb_toml fmrb_mem
+    fmrb_gfx fmrb_audio 
+    picoruby-esp32 mem_allocator log tar_lib)
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")

@@ -6,6 +6,10 @@
 extern "C" {
 #endif
 
+// Time types
+typedef uint64_t fmrb_time_t;  // microseconds since boot
+
+
 /**
  * @brief Get current time in microseconds since boot
  * @return Current time in microseconds

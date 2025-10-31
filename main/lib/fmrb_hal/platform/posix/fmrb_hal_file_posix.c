@@ -1,5 +1,6 @@
 #include "fmrb_hal_file.h"
 #include "fmrb_mem.h"
+#include "fmrb_log.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>

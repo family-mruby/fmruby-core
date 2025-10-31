@@ -4,6 +4,7 @@
 
 #include <picoruby.h>
 #include "fmrb_hal.h"
+#include "fmrb_log.h"
 #include "fmrb_app.h"
 #include "fmrb_mem.h"
 #include "fmrb_task_config.h"

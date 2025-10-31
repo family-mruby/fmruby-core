@@ -6,6 +6,21 @@
 extern "C" {
 #endif
 
+// GPIO types
+typedef int fmrb_gpio_num_t;
+typedef enum {
+    FMRB_GPIO_MODE_INPUT,
+    FMRB_GPIO_MODE_OUTPUT,
+    FMRB_GPIO_MODE_OUTPUT_OD  // Open drain
+} fmrb_gpio_mode_t;
+
+typedef enum {
+    FMRB_GPIO_PULL_NONE,
+    FMRB_GPIO_PULL_UP,
+    FMRB_GPIO_PULL_DOWN
+} fmrb_gpio_pull_mode_t;
+
+
 /**
  * @brief Configure GPIO pin
  * @param gpio_num GPIO pin number

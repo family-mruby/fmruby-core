@@ -6,6 +6,17 @@
 extern "C" {
 #endif
 
+// SPI types
+typedef void* fmrb_spi_handle_t;
+typedef struct {
+    int mosi_pin;
+    int miso_pin;
+    int sclk_pin;
+    int cs_pin;
+    int frequency;
+} fmrb_spi_config_t;
+
+
 /**
  * @brief Initialize SPI interface
  * @param config SPI configuration

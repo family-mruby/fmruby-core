@@ -5,6 +5,7 @@
 #include <string.h>
 #include "toml.h"
 #include "fmrb_hal.h"
+#include "fmrb_log.h"
 #include "fmrb_mem.h"
 #include "fmrb_toml.h"
 

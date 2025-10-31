@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "fmrb_hal.h"
 #include "fmrb_task_config.h"
-#include "host/host_task.h"
+#include "fmrb_hal.h"
+#include "fmrb_log.h"
+#include "fmrb_msg.h"
+#include "host_task.h"
 #include "fmrb_gfx.h"
 #include "fmrb_audio.h"
 

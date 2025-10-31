@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "fmrb_hal.h"
+#include "fmrb_log.h"
 #include "boot.h"
 
 static const char *TAG = "app_main";
