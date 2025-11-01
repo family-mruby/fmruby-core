@@ -3,6 +3,6 @@ idf_component_register(
         "fmrb_link_protocol.c"
         "fmrb_link_transport.c"
         "fmrb_link_cobs.c"
-    INCLUDE_DIRS "." "../../include"
+    INCLUDE_DIRS "."
     REQUIRES fmrb_hal msgpack-esp32
 )

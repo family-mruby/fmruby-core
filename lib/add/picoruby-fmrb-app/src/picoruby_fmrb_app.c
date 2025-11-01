@@ -1,5 +1,5 @@
 #include "picoruby.h"
-#include "../include/fmrb_app.h"
+#include "../include/picoruby_fmrb_app.h"
 
 // Gem initialization functions required by mrbgem system
 void

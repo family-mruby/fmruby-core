@@ -43,20 +43,25 @@ endif()
 
 # Set platform-specific source files
 if(IDF_TARGET STREQUAL "linux")
+    file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")
+    file(GLOB FMRB_KERNEL_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-kernel/ports/esp32/*.c")
     set(PICORUBY_SRCS
+        ${FMRB_APP_PORTS_SRCS}
+        ${FMRB_KERNEL_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/hal.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/fmrb_app.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/fmrb_gfx.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_file.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_dir.c
 
     )
 else()
-  set(PICORUBY_SRCS
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/fmrb_app.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/fmrb_gfx.c
+    file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")
+    file(GLOB FMRB_KERNEL_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-kernel/ports/esp32/*.c")
+    
+    set(PICORUBY_SRCS
+        ${FMRB_APP_PORTS_SRCS}
+        ${FMRB_KERNEL_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_file.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_dir.c

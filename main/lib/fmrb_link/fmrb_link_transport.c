@@ -2,6 +2,7 @@
 #include "fmrb_link_protocol.h"
 #include "fmrb_hal.h"
 #include "fmrb_mem.h"
+#include "fmrb_log.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -58,6 +59,7 @@ fmrb_link_transport_err_t fmrb_link_transport_init(const fmrb_link_transport_con
     ctx->initialized = true;
 
     *handle = ctx;
+    FMRB_LOGI(TAG,"initialized");
     return FMRB_LINK_TRANSPORT_OK;
 }
 

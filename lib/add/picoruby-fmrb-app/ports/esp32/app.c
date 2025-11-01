@@ -5,15 +5,18 @@
 #include <mruby/variable.h>
 
 #include "fmrb_app.h"
-#include "fmrb_app_local.h"
 #include "fmrb_hal.h"
 #include "fmrb_err.h"
+#include "../../include/picoruby_fmrb_app.h"
+#include "app_local.h"
 
 // FmrbApp._init() - Initialize application
 static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
 {
     // Application initialization logic
     // This can be extended based on requirements
+    fmrb_app_task_context_t* ctx = fmrb_current();
+
     return self;
 }
 

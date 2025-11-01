@@ -6,10 +6,11 @@
 #include <mruby/variable.h>
 
 #include "fmrb_app.h"
-#include "fmrb_app_local.h"
 #include "fmrb_hal.h"
 #include "fmrb_gfx.h"
 #include "fmrb_err.h"
+#include "../../include/picoruby_fmrb_app.h"
+#include "app_local.h"
 
 // Graphics context wrapper for mruby
 typedef struct {
