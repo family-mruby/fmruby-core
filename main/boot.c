@@ -90,13 +90,12 @@ static void create_system_app(void)
 
     fmrb_spawn_attr_t attr = {
         .app_id = PROC_ID_HOST_APP,
-        .type = APP_TYPE_SYSTEM_APP,
+        .type = APP_TYPE_HOST_APP,
         .name = "system_gui",
         .irep = system_gui_irep,
         .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
         .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
-        .core_affinity = -1,  // No core affinity
-        .event_queue_len = 10 // Event queue for GUI events
+        .core_affinity = -1  // No core affinity
     };
 
     int32_t app_id;

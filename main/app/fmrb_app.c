@@ -33,7 +33,7 @@ static const char* state_names[] = {
 /**
  * Get human-readable state name
  */
-static inline const char* state_str(enum FMRB_PROC_STATE state) {
+static inline const char* state_str(fmrb_proc_state_t state) {
     return (state >= 0 && state < sizeof(state_names)/sizeof(state_names[0]))
            ? state_names[state] : "UNKNOWN";
 }
@@ -41,7 +41,7 @@ static inline const char* state_str(enum FMRB_PROC_STATE state) {
 /**
  * Validate state transition
  */
-static bool is_valid_transition(enum FMRB_PROC_STATE from, enum FMRB_PROC_STATE to) {
+static bool is_valid_transition(fmrb_proc_state_t from, fmrb_proc_state_t to) {
     // State machine: FREE -> ALLOCATED -> INIT -> RUNNING <-> SUSPENDED
     //                                              RUNNING -> STOPPING -> ZOMBIE -> FREE
     switch (from) {
@@ -67,7 +67,7 @@ static bool is_valid_transition(enum FMRB_PROC_STATE from, enum FMRB_PROC_STATE 
 /**
  * Atomic state transition (must hold g_ctx_lock)
  */
-static bool transition_state(fmrb_app_task_context_t* ctx, enum FMRB_PROC_STATE new_state) {
+static bool transition_state(fmrb_app_task_context_t* ctx, fmrb_proc_state_t new_state) {
     if (!is_valid_transition(ctx->state, new_state)) {
         FMRB_LOGW(TAG, "[%s gen=%u] Invalid transition %s -> %s",
                  ctx->app_name, ctx->gen, state_str(ctx->state), state_str(new_state));
@@ -104,12 +104,6 @@ static void tls_destructor(int idx, void* pv) {
         ctx->mrb = NULL;
     }
 
-    // Delete event queue
-    if (ctx->event_queue) {
-        fmrb_queue_delete(ctx->event_queue);
-        ctx->event_queue = NULL;
-    }
-
     // Delete semaphore
     if (ctx->semaphore) {
         fmrb_semaphore_delete(ctx->semaphore);
@@ -131,7 +125,7 @@ static void tls_destructor(int idx, void* pv) {
 /**
  * Allocate context slot (must hold g_ctx_lock)
  */
-static int32_t alloc_ctx_index(enum FMRB_PROC_ID requested_id) {
+static int32_t alloc_ctx_index(fmrb_proc_id_t requested_id) {
     // For fixed IDs, use that slot directly
     if (requested_id >= 0 && requested_id < FMRB_MAX_APPS) {
         if (g_ctx_pool[requested_id].state == PROC_STATE_FREE) {
@@ -366,15 +360,6 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         goto unwind;
     }
 
-    // Create event queue if requested
-    if (attr->event_queue_len > 0) {
-        ctx->event_queue = fmrb_queue_create(attr->event_queue_len, sizeof(void*));
-        if (!ctx->event_queue) {
-            FMRB_LOGW(TAG, "[%s] Failed to create event queue", ctx->app_name);
-            // Non-fatal, continue
-        }
-    }
-
     // Transition to INIT
     fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     if (!transition_state(ctx, PROC_STATE_INIT)) {
@@ -413,10 +398,6 @@ unwind:
     // Cleanup on failure
     FMRB_LOGW(TAG, "[%s gen=%u] Spawn failed, unwinding", ctx->app_name, ctx->gen);
 
-    if (ctx->event_queue) {
-        fmrb_queue_delete(ctx->event_queue);
-        ctx->event_queue = NULL;
-    }
     if (ctx->semaphore) {
         fmrb_semaphore_delete(ctx->semaphore);
         ctx->semaphore = NULL;
@@ -563,35 +544,5 @@ fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id) {
     fmrb_semaphore_give(g_ctx_lock);
 
     return ctx;
-}
-
-/**
- * Post event to specific app
- */
-bool fmrb_post_event(int32_t id, const void* event, size_t size, fmrb_tick_t timeout) {
-    fmrb_app_task_context_t* ctx = fmrb_app_get_context_by_id(id);
-    if (!ctx || !ctx->event_queue) return false;
-
-    return (fmrb_queue_send(ctx->event_queue, event, timeout) == FMRB_TRUE);
-}
-
-/**
- * Broadcast event to all apps
- */
-bool fmrb_broadcast(const void* event, size_t size, fmrb_tick_t timeout) {
-    bool any_sent = false;
-
-    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
-    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
-        fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
-        if (ctx->state != PROC_STATE_FREE && ctx->event_queue) {
-            if (fmrb_queue_send(ctx->event_queue, event, timeout) == FMRB_TRUE) {
-                any_sent = true;
-            }
-        }
-    }
-    fmrb_semaphore_give(g_ctx_lock);
-
-    return any_sent;
 }
 

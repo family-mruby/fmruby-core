@@ -114,8 +114,7 @@ fmrb_err_t fmrb_kernel_start(void)
         .irep = kernel_irep,
         .stack_words = FMRB_KERNEL_TASK_STACK_SIZE,
         .priority = FMRB_KERNEL_TASK_PRIORITY,
-        .core_affinity = -1,  // No core affinity
-        .event_queue_len = 0  // No event queue for kernel
+        .core_affinity = -1  // No core affinity
     };
 
     int32_t kernel_id;

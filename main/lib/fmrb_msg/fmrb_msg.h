@@ -58,7 +58,7 @@ void fmrb_msg_deinit(void);
 
 /**
  * @brief Create and register a message queue for a task
- * @param task_id Task ID (0-15)
+ * @param task_id Task ID
  * @param config Queue configuration (NULL for default: 10 messages)
  * @return FMRB_OK on success, error code otherwise
  *

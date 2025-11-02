@@ -8,7 +8,7 @@
 #include <stdint.h>
 
 // State machine for app lifecycle (strict transitions enforced)
-enum FMRB_PROC_STATE{
+typedef enum {
     PROC_STATE_FREE = 0,        // Slot available
     PROC_STATE_ALLOCATED,       // Context allocated, initializing
     PROC_STATE_INIT,            // Initialization complete, ready to start
@@ -16,11 +16,11 @@ enum FMRB_PROC_STATE{
     PROC_STATE_SUSPENDED,       // Temporarily suspended
     PROC_STATE_STOPPING,        // Shutdown requested
     PROC_STATE_ZOMBIE,          // Terminated, awaiting cleanup
-};
+} fmrb_proc_state_t;
 
 enum FMRB_APP_TYPE{
     APP_TYPE_KERNEL = 0,
-    APP_TYPE_SYSTEM_APP,
+    APP_TYPE_HOST_APP,
     APP_TYPE_USER_APP,
     APP_TYPE_MAX
 };
@@ -31,7 +31,7 @@ enum FMRB_APP_TYPE{
 // Type-safe app task context
 typedef struct {
     fmrb_proc_id_t        app_id;
-    enum FMRB_PROC_STATE  state;
+    fmrb_proc_state_t     state;
     enum FMRB_APP_TYPE    type;
     char                  app_name[32];      // UTF-8, null-terminated
     mrb_state*            mrb;               // Type-safe mruby VM pointer
@@ -39,7 +39,6 @@ typedef struct {
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
     fmrb_task_handle_t    task;              // FreeRTOS task handle
     uint32_t              gen;               // Generation counter for reuse detection
-    fmrb_queue_t          event_queue;       // Event queue for inter-task communication
     void*                 user_data;         // Application-specific data
 } fmrb_app_task_context_t;
 
@@ -52,13 +51,12 @@ typedef struct {
     uint32_t              stack_words;      // Stack size in words (not bytes)
     fmrb_task_priority_t  priority;
     fmrb_base_type_t      core_affinity;    // -1 = no affinity, 0/1 = specific core
-    size_t                event_queue_len;  // 0 = no queue
 } fmrb_spawn_attr_t;
 
 // App info for ps-style listing
 typedef struct {
     fmrb_proc_id_t        app_id;
-    enum FMRB_PROC_STATE  state;
+    fmrb_proc_state_t     state;
     enum FMRB_APP_TYPE    type;
     char                  app_name[32];
     uint32_t              gen;
@@ -82,8 +80,4 @@ static inline fmrb_app_task_context_t* fmrb_current(void) {
 }
 
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
-
-// Event posting
-bool fmrb_post_event(int32_t id, const void* event, size_t size, fmrb_tick_t timeout);
-bool fmrb_broadcast(const void* event, size_t size, fmrb_tick_t timeout);
 
