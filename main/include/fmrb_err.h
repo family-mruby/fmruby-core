@@ -15,9 +15,6 @@ typedef enum {
     FMRB_ERR_FAILED = -6,
     FMRB_ERR_NOT_FOUND = -7,
     FMRB_ERR_INVALID_STATE = -8,  // Operation not valid in current state
-    // Aliases for compatibility
-    FMRB_ERR_INVALID_ARG = FMRB_ERR_INVALID_PARAM,
-    FMRB_ERR_NO_MEM = FMRB_ERR_NO_MEMORY
 } fmrb_err_t;
 
 #ifdef __cplusplus

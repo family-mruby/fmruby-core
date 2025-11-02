@@ -33,7 +33,7 @@ fmrb_err_t fmrb_msg_init(void)
     // Create registry lock
     g_registry_lock = fmrb_semaphore_create_mutex();
     if (g_registry_lock == NULL) {
-        return FMRB_ERR_NO_MEM;
+        return FMRB_ERR_NO_MEMORY;
     }
 
     // Initialize all entries
@@ -85,7 +85,7 @@ fmrb_err_t fmrb_msg_create_queue(fmrb_proc_id_t task_id,
     }
 
     if (task_id < 0 || task_id >= FMRB_MAX_APPS) {
-        return FMRB_ERR_INVALID_ARG;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     // Use default config if not provided
@@ -95,7 +95,7 @@ fmrb_err_t fmrb_msg_create_queue(fmrb_proc_id_t task_id,
 
     // Validate config
     if (config->queue_length == 0 || config->message_size == 0) {
-        return FMRB_ERR_INVALID_ARG;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     // Lock registry
@@ -114,7 +114,7 @@ fmrb_err_t fmrb_msg_create_queue(fmrb_proc_id_t task_id,
     // Create queue
     fmrb_queue_t queue = fmrb_queue_create(config->queue_length, config->message_size);
     if (queue == NULL) {
-        result = FMRB_ERR_NO_MEM;
+        result = FMRB_ERR_NO_MEMORY;
         goto cleanup;
     }
 
@@ -139,7 +139,7 @@ fmrb_err_t fmrb_msg_delete_queue(fmrb_proc_id_t task_id)
     }
 
     if (task_id < 0 || task_id >= FMRB_MAX_APPS) {
-        return FMRB_ERR_INVALID_ARG;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     // Lock registry
@@ -179,7 +179,7 @@ fmrb_err_t fmrb_msg_send(fmrb_proc_id_t dest_task_id,
     }
 
     if (dest_task_id < 0 || dest_task_id >= FMRB_MAX_APPS || msg == NULL) {
-        return FMRB_ERR_INVALID_ARG;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     // Lock registry for read
@@ -225,7 +225,7 @@ fmrb_err_t fmrb_msg_receive(fmrb_proc_id_t task_id,
     }
 
     if (task_id < 0 || task_id >= FMRB_MAX_APPS || msg == NULL) {
-        return FMRB_ERR_INVALID_ARG;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     // Lock registry for read
@@ -331,7 +331,7 @@ fmrb_err_t fmrb_msg_get_stats(fmrb_proc_id_t task_id,
     }
 
     if (task_id < 0 || task_id >= FMRB_MAX_APPS || stats == NULL) {
-        return FMRB_ERR_INVALID_ARG;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     if (fmrb_semaphore_take(g_registry_lock, FMRB_TICK_MAX) != FMRB_TRUE) {
