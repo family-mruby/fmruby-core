@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include "fmrb_err.h"
+#include "fmrb_task_config.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,17 +23,6 @@ extern "C" {
  * - Centralized registry management
  * - Thread-safe queue operations
  */
-
-// Task ID type
-typedef int32_t fmrb_msg_task_id_t;
-
-// Reserved task IDs
-#define FMRB_MSG_TASK_HOST    0   // Host task (HID, graphics, audio)
-#define FMRB_MSG_TASK_SYSTEM  1   // System/Kernel task
-// User application task IDs: 2-15
-
-// Maximum number of tasks that can register queues
-#define FMRB_MSG_MAX_TASKS    16
 
 // Message structure
 typedef struct {
@@ -74,7 +64,7 @@ void fmrb_msg_deinit(void);
  *
  * If a queue is already registered for this task_id, returns FMRB_ERR_INVALID_STATE
  */
-fmrb_err_t fmrb_msg_create_queue(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_create_queue(fmrb_proc_id_t task_id,
                                       const fmrb_msg_queue_config_t *config);
 
 /**
@@ -82,7 +72,7 @@ fmrb_err_t fmrb_msg_create_queue(fmrb_msg_task_id_t task_id,
  * @param task_id Task ID
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_msg_delete_queue(fmrb_msg_task_id_t task_id);
+fmrb_err_t fmrb_msg_delete_queue(fmrb_proc_id_t task_id);
 
 /**
  * @brief Send a message to a task's queue
@@ -93,7 +83,7 @@ fmrb_err_t fmrb_msg_delete_queue(fmrb_msg_task_id_t task_id);
  *
  * Returns FMRB_ERR_NOT_FOUND if destination task has no registered queue
  */
-fmrb_err_t fmrb_msg_send(fmrb_msg_task_id_t dest_task_id,
+fmrb_err_t fmrb_msg_send(fmrb_proc_id_t dest_task_id,
                               const fmrb_msg_t *msg,
                               uint32_t timeout_ms);
 
@@ -106,7 +96,7 @@ fmrb_err_t fmrb_msg_send(fmrb_msg_task_id_t dest_task_id,
  *
  * Returns FMRB_ERR_NOT_FOUND if task has no registered queue
  */
-fmrb_err_t fmrb_msg_receive(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_receive(fmrb_proc_id_t task_id,
                                  fmrb_msg_t *msg,
                                  uint32_t timeout_ms);
 
@@ -126,7 +116,7 @@ int fmrb_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms);
  * @param task_id Task ID to check
  * @return true if queue exists, false otherwise
  */
-bool fmrb_msg_queue_exists(fmrb_msg_task_id_t task_id);
+bool fmrb_msg_queue_exists(fmrb_proc_id_t task_id);
 
 /**
  * @brief Get queue statistics for a task
@@ -134,7 +124,7 @@ bool fmrb_msg_queue_exists(fmrb_msg_task_id_t task_id);
  * @param stats Output statistics structure
  * @return FMRB_OK on success, FMRB_ERR_NOT_FOUND if queue doesn't exist
  */
-fmrb_err_t fmrb_msg_get_stats(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_get_stats(fmrb_proc_id_t task_id,
                                    fmrb_msg_queue_stats_t *stats);
 
 #ifdef __cplusplus

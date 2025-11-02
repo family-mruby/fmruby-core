@@ -78,6 +78,9 @@ void show_config(void)
     FMRB_LOGI(TAG, "MRB_TICK_UNIT                = %d", Machine_get_config_int(0));
     FMRB_LOGI(TAG, "MRB_TIMESLICE_TICK_COUNT     = %d", Machine_get_config_int(1));
     FMRB_LOGI(TAG, "current tick=%u", (unsigned)fmrb_task_get_tick_count());
+    FMRB_LOGI(TAG, "FMRB_MAX_APPS                = %d", FMRB_MAX_APPS);
+    FMRB_LOGI(TAG, "FMRB_MAX_USER_APPS           = %d", FMRB_MAX_USER_APPS);
+    
     FMRB_LOGI(TAG, "------------------------------------------------");
 }
 
@@ -86,7 +89,7 @@ static void create_system_app(void)
     FMRB_LOGI(TAG, "Creating system GUI app...");
 
     fmrb_spawn_attr_t attr = {
-        .app_id = PROC_ID_SYSTEM_APP,
+        .app_id = PROC_ID_HOST_APP,
         .type = APP_TYPE_SYSTEM_APP,
         .name = "system_gui",
         .irep = system_gui_irep,

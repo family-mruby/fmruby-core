@@ -1,4 +1,4 @@
-# Family murby Graphics-Audio firmware
+# Family murby Core firmware
 
 ## 基本的な注意事項
 

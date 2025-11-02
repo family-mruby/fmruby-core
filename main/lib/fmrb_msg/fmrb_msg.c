@@ -11,7 +11,7 @@ typedef struct {
 } msg_queue_entry_t;
 
 // Global registry
-static msg_queue_entry_t g_msg_queues[FMRB_MSG_MAX_TASKS];
+static msg_queue_entry_t g_msg_queues[FMRB_MAX_APPS];
 static fmrb_semaphore_t g_registry_lock = NULL;
 static bool g_initialized = false;
 
@@ -38,7 +38,7 @@ fmrb_err_t fmrb_msg_init(void)
 
     // Initialize all entries
     memset(g_msg_queues, 0, sizeof(g_msg_queues));
-    for (int i = 0; i < FMRB_MSG_MAX_TASKS; i++) {
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
         g_msg_queues[i].registered = false;
         g_msg_queues[i].queue = NULL;
     }
@@ -57,7 +57,7 @@ void fmrb_msg_deinit(void)
     }
 
     // Delete all queues
-    for (int i = 0; i < FMRB_MSG_MAX_TASKS; i++) {
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
         if (g_msg_queues[i].registered && g_msg_queues[i].queue != NULL) {
             fmrb_queue_delete(g_msg_queues[i].queue);
             g_msg_queues[i].queue = NULL;
@@ -77,14 +77,14 @@ void fmrb_msg_deinit(void)
 /**
  * @brief Create and register a message queue for a task
  */
-fmrb_err_t fmrb_msg_create_queue(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_create_queue(fmrb_proc_id_t task_id,
                                       const fmrb_msg_queue_config_t *config)
 {
     if (!g_initialized) {
         return FMRB_ERR_INVALID_STATE;
     }
 
-    if (task_id < 0 || task_id >= FMRB_MSG_MAX_TASKS) {
+    if (task_id < 0 || task_id >= FMRB_MAX_APPS) {
         return FMRB_ERR_INVALID_ARG;
     }
 
@@ -132,13 +132,13 @@ cleanup:
 /**
  * @brief Delete a task's message queue
  */
-fmrb_err_t fmrb_msg_delete_queue(fmrb_msg_task_id_t task_id)
+fmrb_err_t fmrb_msg_delete_queue(fmrb_proc_id_t task_id)
 {
     if (!g_initialized) {
         return FMRB_ERR_INVALID_STATE;
     }
 
-    if (task_id < 0 || task_id >= FMRB_MSG_MAX_TASKS) {
+    if (task_id < 0 || task_id >= FMRB_MAX_APPS) {
         return FMRB_ERR_INVALID_ARG;
     }
 
@@ -170,7 +170,7 @@ cleanup:
 /**
  * @brief Send a message to a task's queue
  */
-fmrb_err_t fmrb_msg_send(fmrb_msg_task_id_t dest_task_id,
+fmrb_err_t fmrb_msg_send(fmrb_proc_id_t dest_task_id,
                               const fmrb_msg_t *msg,
                               uint32_t timeout_ms)
 {
@@ -178,7 +178,7 @@ fmrb_err_t fmrb_msg_send(fmrb_msg_task_id_t dest_task_id,
         return FMRB_ERR_INVALID_STATE;
     }
 
-    if (dest_task_id < 0 || dest_task_id >= FMRB_MSG_MAX_TASKS || msg == NULL) {
+    if (dest_task_id < 0 || dest_task_id >= FMRB_MAX_APPS || msg == NULL) {
         return FMRB_ERR_INVALID_ARG;
     }
 
@@ -216,7 +216,7 @@ fmrb_err_t fmrb_msg_send(fmrb_msg_task_id_t dest_task_id,
 /**
  * @brief Receive a message from a task's queue
  */
-fmrb_err_t fmrb_msg_receive(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_receive(fmrb_proc_id_t task_id,
                                  fmrb_msg_t *msg,
                                  uint32_t timeout_ms)
 {
@@ -224,7 +224,7 @@ fmrb_err_t fmrb_msg_receive(fmrb_msg_task_id_t task_id,
         return FMRB_ERR_INVALID_STATE;
     }
 
-    if (task_id < 0 || task_id >= FMRB_MSG_MAX_TASKS || msg == NULL) {
+    if (task_id < 0 || task_id >= FMRB_MAX_APPS || msg == NULL) {
         return FMRB_ERR_INVALID_ARG;
     }
 
@@ -275,7 +275,7 @@ int fmrb_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms)
     }
 
     // Send to all registered queues
-    for (int i = 0; i < FMRB_MSG_MAX_TASKS; i++) {
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
         if (g_msg_queues[i].registered && g_msg_queues[i].queue != NULL) {
             fmrb_queue_t queue = g_msg_queues[i].queue;
 
@@ -304,9 +304,9 @@ int fmrb_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms)
 /**
  * @brief Check if a task has a registered queue
  */
-bool fmrb_msg_queue_exists(fmrb_msg_task_id_t task_id)
+bool fmrb_msg_queue_exists(fmrb_proc_id_t task_id)
 {
-    if (!g_initialized || task_id < 0 || task_id >= FMRB_MSG_MAX_TASKS) {
+    if (!g_initialized || task_id < 0 || task_id >= FMRB_MAX_APPS) {
         return false;
     }
 
@@ -323,14 +323,14 @@ bool fmrb_msg_queue_exists(fmrb_msg_task_id_t task_id)
 /**
  * @brief Get queue statistics for a task
  */
-fmrb_err_t fmrb_msg_get_stats(fmrb_msg_task_id_t task_id,
+fmrb_err_t fmrb_msg_get_stats(fmrb_proc_id_t task_id,
                                    fmrb_msg_queue_stats_t *stats)
 {
     if (!g_initialized) {
         return FMRB_ERR_INVALID_STATE;
     }
 
-    if (task_id < 0 || task_id >= FMRB_MSG_MAX_TASKS || stats == NULL) {
+    if (task_id < 0 || task_id >= FMRB_MAX_APPS || stats == NULL) {
         return FMRB_ERR_INVALID_ARG;
     }
 

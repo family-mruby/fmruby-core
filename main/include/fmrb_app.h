@@ -2,24 +2,10 @@
 
 #include "fmrb_mem.h"
 #include "fmrb_hal.h"
+#include "fmrb_task_config.h"
 #include <picoruby.h>
 #include <stdbool.h>
 #include <stdint.h>
-
-// FreeRTOS TLS slot index for app context
-#define FMRB_APP_TLS_INDEX 0
-
-// Maximum number of concurrent apps
-#define FMRB_MAX_APPS PROC_ID_MAX
-
-enum FMRB_PROC_ID{
-    PROC_ID_KERNEL = 0,
-    PROC_ID_SYSTEM_APP,
-    PROC_ID_USER_APP0,
-    PROC_ID_USER_APP1,
-    PROC_ID_USER_APP2,
-    PROC_ID_MAX
-};
 
 // State machine for app lifecycle (strict transitions enforced)
 enum FMRB_PROC_STATE{
@@ -39,10 +25,13 @@ enum FMRB_APP_TYPE{
     APP_TYPE_MAX
 };
 
+// FreeRTOS TLS slot index for app context
+#define FMRB_APP_TLS_INDEX 1
+
 // Type-safe app task context
 typedef struct {
+    fmrb_proc_id_t        app_id;
     enum FMRB_PROC_STATE  state;
-    enum FMRB_PROC_ID     app_id;
     enum FMRB_APP_TYPE    type;
     char                  app_name[32];      // UTF-8, null-terminated
     mrb_state*            mrb;               // Type-safe mruby VM pointer
@@ -56,7 +45,7 @@ typedef struct {
 
 // Spawn attributes for creating new app task
 typedef struct {
-    enum FMRB_PROC_ID     app_id;           // Fixed slot ID
+    fmrb_proc_id_t        app_id;           // Fixed slot ID
     enum FMRB_APP_TYPE    type;
     const char*           name;
     const unsigned char*  irep;             // Bytecode
@@ -68,7 +57,7 @@ typedef struct {
 
 // App info for ps-style listing
 typedef struct {
-    enum FMRB_PROC_ID     app_id;
+    fmrb_proc_id_t        app_id;
     enum FMRB_PROC_STATE  state;
     enum FMRB_APP_TYPE    type;
     char                  app_name[32];

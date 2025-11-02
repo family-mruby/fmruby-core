@@ -174,7 +174,7 @@ static void fmrb_host_task(void *pvParameters)
 
     while (1) {
         // Wait for messages with timeout
-        if (fmrb_msg_receive(FMRB_MSG_TASK_HOST, &msg, 10) == FMRB_OK) {
+        if (fmrb_msg_receive(PROC_ID_HOST_APP, &msg, 10) == FMRB_OK) {
             host_task_process_message(&msg);
         }
 
@@ -204,7 +204,7 @@ int fmrb_host_task_init(void)
         .message_size = sizeof(fmrb_msg_t)
     };
 
-    fmrb_err_t hal_ret = fmrb_msg_create_queue(FMRB_MSG_TASK_HOST, &queue_config);
+    fmrb_err_t hal_ret = fmrb_msg_create_queue(PROC_ID_HOST_APP, &queue_config);
     if (hal_ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to create host message queue: %d", hal_ret);
         return -1;
@@ -222,7 +222,7 @@ int fmrb_host_task_init(void)
 
     if (result != FMRB_PASS) {
         FMRB_LOGE(TAG, "Failed to create host task");
-        fmrb_msg_delete_queue(FMRB_MSG_TASK_HOST);
+        fmrb_msg_delete_queue(PROC_ID_HOST_APP);
         return -1;
     }
 
@@ -243,7 +243,7 @@ void fmrb_host_task_deinit(void)
     }
 
     // Delete host task's message queue
-    fmrb_msg_delete_queue(FMRB_MSG_TASK_HOST);
+    fmrb_msg_delete_queue(PROC_ID_HOST_APP);
 
     FMRB_LOGI(TAG, "Host task deinitialized");
 }
@@ -260,7 +260,7 @@ static int fmrb_host_send_message(const host_message_t *msg)
     };
     memcpy(hal_msg.data, msg, sizeof(host_message_t));
 
-    fmrb_err_t result = fmrb_msg_send(FMRB_MSG_TASK_HOST, &hal_msg, 10);
+    fmrb_err_t result = fmrb_msg_send(PROC_ID_HOST_APP, &hal_msg, 10);
     if (result != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to send host message: %d", result);
         return -1;

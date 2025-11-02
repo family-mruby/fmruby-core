@@ -73,3 +73,15 @@
 #define FMRB_USER_APP_TASK_STACK_SIZE (60 * 1024)
 #define FMRB_USER_APP_PRIORITY (5)
 
+// Maximum number of concurrent apps
+#define FMRB_MAX_APPS (PROC_ID_MAX)
+#define FMRB_MAX_USER_APPS (PROC_ID_MAX - PROC_ID_USER_APP0)
+
+typedef enum FMRB_PROC_ID{
+    PROC_ID_KERNEL = 0,
+    PROC_ID_HOST_APP,
+    PROC_ID_USER_APP0,
+    PROC_ID_USER_APP1,
+    PROC_ID_USER_APP2,
+    PROC_ID_MAX
+} fmrb_proc_id_t;
