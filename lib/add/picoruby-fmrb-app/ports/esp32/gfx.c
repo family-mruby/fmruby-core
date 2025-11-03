@@ -78,10 +78,8 @@ static mrb_value mrb_gfx_clear(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Set drawing target to this instance's canvas
-    fmrb_gfx_set_target(data->ctx, data->canvas_id);
-
-    fmrb_gfx_err_t ret = fmrb_gfx_clear(data->ctx, (fmrb_color_t)color);
+    // Pass canvas_id directly (thread-safe)
+    fmrb_gfx_err_t ret = fmrb_gfx_clear(data->ctx, data->canvas_id, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
         FMRB_LOGE(TAG, "fmrb_gfx_clear failed: %d", ret);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Graphics clear failed: %d", ret);
@@ -102,9 +100,8 @@ static mrb_value mrb_gfx_set_pixel(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    fmrb_gfx_set_target(data->ctx, data->canvas_id);
-
-    fmrb_gfx_err_t ret = fmrb_gfx_set_pixel(data->ctx, (int16_t)x, (int16_t)y, (fmrb_color_t)color);
+    // Pass canvas_id directly (thread-safe)
+    fmrb_gfx_err_t ret = fmrb_gfx_set_pixel(data->ctx, data->canvas_id, (int16_t)x, (int16_t)y, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Set pixel failed: %d", ret);
     }
@@ -123,9 +120,8 @@ static mrb_value mrb_gfx_draw_line(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    fmrb_gfx_set_target(data->ctx, data->canvas_id);
-
-    fmrb_gfx_err_t ret = fmrb_gfx_draw_line(data->ctx, (int16_t)x1, (int16_t)y1,
+    // Pass canvas_id directly (thread-safe)
+    fmrb_gfx_err_t ret = fmrb_gfx_draw_line(data->ctx, data->canvas_id, (int16_t)x1, (int16_t)y1,
                                              (int16_t)x2, (int16_t)y2, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw line failed: %d", ret);
@@ -145,10 +141,9 @@ static mrb_value mrb_gfx_draw_rect(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    fmrb_gfx_set_target(data->ctx, data->canvas_id);
-
+    // Pass canvas_id directly (thread-safe)
     fmrb_rect_t rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h};
-    fmrb_gfx_err_t ret = fmrb_gfx_draw_rect(data->ctx, &rect, (fmrb_color_t)color);
+    fmrb_gfx_err_t ret = fmrb_gfx_draw_rect(data->ctx, data->canvas_id, &rect, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw rect failed: %d", ret);
     }
@@ -167,10 +162,9 @@ static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    fmrb_gfx_set_target(data->ctx, data->canvas_id);
-
+    // Pass canvas_id directly (thread-safe)
     fmrb_rect_t rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h};
-    fmrb_gfx_err_t ret = fmrb_gfx_fill_rect(data->ctx, &rect, (fmrb_color_t)color);
+    fmrb_gfx_err_t ret = fmrb_gfx_fill_rect(data->ctx, data->canvas_id, &rect, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill rect failed: %d", ret);
     }
@@ -189,9 +183,8 @@ static mrb_value mrb_gfx_draw_circle(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    fmrb_gfx_set_target(data->ctx, data->canvas_id);
-
-    fmrb_gfx_err_t ret = fmrb_gfx_draw_circle(data->ctx, (int32_t)x, (int32_t)y,
+    // Pass canvas_id directly (thread-safe)
+    fmrb_gfx_err_t ret = fmrb_gfx_draw_circle(data->ctx, data->canvas_id, (int32_t)x, (int32_t)y,
                                                (int32_t)r, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw circle failed: %d", ret);
@@ -211,9 +204,8 @@ static mrb_value mrb_gfx_fill_circle(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    fmrb_gfx_set_target(data->ctx, data->canvas_id);
-
-    fmrb_gfx_err_t ret = fmrb_gfx_fill_circle(data->ctx, (int32_t)x, (int32_t)y,
+    // Pass canvas_id directly (thread-safe)
+    fmrb_gfx_err_t ret = fmrb_gfx_fill_circle(data->ctx, data->canvas_id, (int32_t)x, (int32_t)y,
                                                (int32_t)r, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill circle failed: %d", ret);
@@ -234,9 +226,8 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    fmrb_gfx_set_target(data->ctx, data->canvas_id);
-
-    fmrb_gfx_err_t ret = fmrb_gfx_draw_text(data->ctx, (int16_t)x, (int16_t)y,
+    // Pass canvas_id directly (thread-safe)
+    fmrb_gfx_err_t ret = fmrb_gfx_draw_text(data->ctx, data->canvas_id, (int16_t)x, (int16_t)y,
                                              text, (fmrb_color_t)color, FMRB_FONT_SIZE_MEDIUM);
     if (ret != FMRB_GFX_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw text failed: %d", ret);
@@ -256,9 +247,8 @@ static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    fmrb_gfx_set_target(data->ctx, data->canvas_id);
-
-    fmrb_gfx_err_t ret = fmrb_gfx_present(data->ctx);
+    // Pass canvas_id directly (thread-safe)
+    fmrb_gfx_err_t ret = fmrb_gfx_present(data->ctx, data->canvas_id);
     if (ret != FMRB_GFX_OK) {
         FMRB_LOGE(TAG, "fmrb_gfx_present failed: %d", ret);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Present failed: %d", ret);

@@ -191,28 +191,28 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
 
         switch (cmd->type) {
             case FMRB_GFX_CMD_CLEAR:
-                ret = fmrb_gfx_clear(context, cmd->data.clear.color);
+                ret = fmrb_gfx_clear(context, FMRB_CANVAS_SCREEN, cmd->data.clear.color);
                 break;
 
             case FMRB_GFX_CMD_PIXEL:
-                ret = fmrb_gfx_set_pixel(context, cmd->data.pixel.x, cmd->data.pixel.y, cmd->data.pixel.color);
+                ret = fmrb_gfx_set_pixel(context, FMRB_CANVAS_SCREEN, cmd->data.pixel.x, cmd->data.pixel.y, cmd->data.pixel.color);
                 break;
 
             case FMRB_GFX_CMD_LINE:
-                ret = fmrb_gfx_draw_line(context, cmd->data.line.x1, cmd->data.line.y1,
+                ret = fmrb_gfx_draw_line(context, FMRB_CANVAS_SCREEN, cmd->data.line.x1, cmd->data.line.y1,
                                        cmd->data.line.x2, cmd->data.line.y2, cmd->data.line.color);
                 break;
 
             case FMRB_GFX_CMD_RECT:
                 if (cmd->data.rect.filled) {
-                    ret = fmrb_gfx_fill_rect(context, &cmd->data.rect.rect, cmd->data.rect.color);
+                    ret = fmrb_gfx_fill_rect(context, FMRB_CANVAS_SCREEN, &cmd->data.rect.rect, cmd->data.rect.color);
                 } else {
-                    ret = fmrb_gfx_draw_rect(context, &cmd->data.rect.rect, cmd->data.rect.color);
+                    ret = fmrb_gfx_draw_rect(context, FMRB_CANVAS_SCREEN, &cmd->data.rect.rect, cmd->data.rect.color);
                 }
                 break;
 
             case FMRB_GFX_CMD_TEXT:
-                ret = fmrb_gfx_draw_text(context, cmd->data.text.x, cmd->data.text.y,
+                ret = fmrb_gfx_draw_text(context, FMRB_CANVAS_SCREEN, cmd->data.text.x, cmd->data.text.y,
                                        cmd->data.text.text, cmd->data.text.color, cmd->data.text.font_size);
                 break;
 

@@ -106,43 +106,48 @@ fmrb_gfx_context_t fmrb_gfx_get_global_context(void);
 /**
  * @brief Clear screen with specified color
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param color Clear color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, fmrb_color_t color);
 
 /**
  * @brief Clear specified region with color
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param rect Region to clear
  * @param color Clear color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_clear_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_clear_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t *rect, fmrb_color_t color);
 
 /**
  * @brief Set pixel at specified coordinates
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x X coordinate
  * @param y Y coordinate
  * @param color Pixel color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_set_pixel(fmrb_gfx_context_t context, int16_t x, int16_t y, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_set_pixel(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, fmrb_color_t color);
 
 /**
  * @brief Get pixel color at specified coordinates
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x X coordinate
  * @param y Y coordinate
  * @param color Pointer to store pixel color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_get_pixel(fmrb_gfx_context_t context, int16_t x, int16_t y, fmrb_color_t *color);
+fmrb_gfx_err_t fmrb_gfx_get_pixel(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, fmrb_color_t *color);
 
 /**
  * @brief Draw line between two points
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x1 Start X coordinate
  * @param y1 Start Y coordinate
  * @param x2 End X coordinate
@@ -150,29 +155,32 @@ fmrb_gfx_err_t fmrb_gfx_get_pixel(fmrb_gfx_context_t context, int16_t x, int16_t
  * @param color Line color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_line(fmrb_gfx_context_t context, int16_t x1, int16_t y1, int16_t x2, int16_t y2, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_line(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x1, int16_t y1, int16_t x2, int16_t y2, fmrb_color_t color);
 
 /**
  * @brief Draw rectangle outline
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param rect Rectangle to draw
  * @param color Rectangle color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t *rect, fmrb_color_t color);
 
 /**
  * @brief Draw filled rectangle
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param rect Rectangle to fill
  * @param color Fill color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t *rect, fmrb_color_t color);
 
 /**
  * @brief Draw text at specified position
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x X coordinate
  * @param y Y coordinate
  * @param text Text string (null-terminated)
@@ -180,7 +188,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, const fmrb_rect_t 
  * @param font_size Font size
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_font_size_t font_size);
+fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_font_size_t font_size);
 
 /**
  * @brief Get text dimensions
@@ -195,55 +203,61 @@ fmrb_gfx_err_t fmrb_gfx_get_text_size(const char *text, fmrb_font_size_t font_si
 /**
  * @brief Present/swap buffers (for double buffering)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context);
+fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id);
 
 /**
  * @brief Set clipping region
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param rect Clipping rectangle (NULL to disable clipping)
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect);
+fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t *rect);
 
 // LovyanGFX compatible API (snake_case)
 
 /**
  * @brief Draw a pixel (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x X coordinate
  * @param y Y coordinate
  * @param color Pixel color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_pixel(fmrb_gfx_context_t context, int32_t x, int32_t y, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_pixel(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, fmrb_color_t color);
 
 /**
  * @brief Draw fast vertical line (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x X coordinate
  * @param y Y coordinate
  * @param h Height
  * @param color Line color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_fast_vline(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t h, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_fast_vline(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t h, fmrb_color_t color);
 
 /**
  * @brief Draw fast horizontal line (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x X coordinate
  * @param y Y coordinate
  * @param w Width
  * @param color Line color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_fast_hline(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_fast_hline(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t w, fmrb_color_t color);
 
 /**
  * @brief Draw rounded rectangle outline (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x X coordinate
  * @param y Y coordinate
  * @param w Width
@@ -252,11 +266,12 @@ fmrb_gfx_err_t fmrb_gfx_draw_fast_hline(fmrb_gfx_context_t context, int32_t x, i
  * @param color Rectangle color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color);
 
 /**
  * @brief Draw filled rounded rectangle (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x X coordinate
  * @param y Y coordinate
  * @param w Width
@@ -265,33 +280,36 @@ fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, int32_t x, i
  * @param color Fill color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_fill_round_rect(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_fill_round_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color);
 
 /**
  * @brief Draw circle outline (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x Center X coordinate
  * @param y Center Y coordinate
  * @param r Radius
  * @param color Circle color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t r, fmrb_color_t color);
 
 /**
  * @brief Draw filled circle (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x Center X coordinate
  * @param y Center Y coordinate
  * @param r Radius
  * @param color Fill color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t r, fmrb_color_t color);
 
 /**
  * @brief Draw ellipse outline (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x Center X coordinate
  * @param y Center Y coordinate
  * @param rx Radius X
@@ -299,11 +317,12 @@ fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, int32_t x, int32
  * @param color Ellipse color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color);
 
 /**
  * @brief Draw filled ellipse (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x Center X coordinate
  * @param y Center Y coordinate
  * @param rx Radius X
@@ -311,11 +330,12 @@ fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, int32_t x, int3
  * @param color Fill color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color);
 
 /**
  * @brief Draw triangle outline (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x0 First vertex X
  * @param y0 First vertex Y
  * @param x1 Second vertex X
@@ -325,11 +345,12 @@ fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, int32_t x, int3
  * @param color Triangle color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color);
 
 /**
  * @brief Draw filled triangle (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x0 First vertex X
  * @param y0 First vertex Y
  * @param x1 Second vertex X
@@ -339,11 +360,12 @@ fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, int32_t x0, in
  * @param color Fill color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color);
 
 /**
  * @brief Draw arc (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x Center X coordinate
  * @param y Center Y coordinate
  * @param r0 Inner radius
@@ -353,11 +375,12 @@ fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, int32_t x0, in
  * @param color Arc color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_arc(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_arc(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color);
 
 /**
  * @brief Draw filled arc (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param x Center X coordinate
  * @param y Center Y coordinate
  * @param r0 Inner radius
@@ -367,54 +390,59 @@ fmrb_gfx_err_t fmrb_gfx_draw_arc(fmrb_gfx_context_t context, int32_t x, int32_t 
  * @param color Fill color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_fill_arc(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_fill_arc(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color);
 
 /**
  * @brief Draw string (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param str String to draw
  * @param x X coordinate
  * @param y Y coordinate
  * @param color Text color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, const char *str, int32_t x, int32_t y, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const char *str, int32_t x, int32_t y, fmrb_color_t color);
 
 /**
  * @brief Draw character (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param c Character to draw
  * @param x X coordinate
  * @param y Y coordinate
  * @param color Text color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_char(fmrb_gfx_context_t context, char c, int32_t x, int32_t y, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_draw_char(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, char c, int32_t x, int32_t y, fmrb_color_t color);
 
 /**
  * @brief Set text size (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param size Text size multiplier
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_set_text_size(fmrb_gfx_context_t context, float size);
+fmrb_gfx_err_t fmrb_gfx_set_text_size(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, float size);
 
 /**
  * @brief Set text color (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param fg Foreground color
  * @param bg Background color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_color_t fg, fmrb_color_t bg);
+fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, fmrb_color_t fg, fmrb_color_t bg);
 
 /**
  * @brief Fill screen with color (LovyanGFX compatible)
  * @param context Graphics context
+ * @param canvas_id Target canvas ID
  * @param color Fill color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, fmrb_color_t color);
 
 // Canvas management API (for Window drawing buffers)
 

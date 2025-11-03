@@ -74,26 +74,30 @@ typedef uint16_t fmrb_canvas_handle_t;
 #define FMRB_COLOR_CYAN    0x1F  // R=0, G=7, B=3
 #define FMRB_COLOR_MAGENTA 0xE3  // R=7, G=0, B=3
 
-// Graphics command structures
+// Graphics command structures (thread-safe: include canvas_id in each command)
 typedef struct {
     uint8_t cmd_type;
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_clear_cmd_t;
 
 typedef struct {
     uint8_t cmd_type;
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
     int16_t x, y;
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_pixel_cmd_t;
 
 typedef struct {
     uint8_t cmd_type;
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
     int16_t x1, y1, x2, y2;
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_line_cmd_t;
 
 typedef struct {
     uint8_t cmd_type;
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
     int16_t x, y, width, height;
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_rect_cmd_t;

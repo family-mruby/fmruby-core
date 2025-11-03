@@ -133,26 +133,32 @@ fmrb_gfx_context_t fmrb_gfx_get_global_context(void) {
     return g_gfx_context;
 }
 
-fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, fmrb_color_t color) {
     if (!context) {
         ESP_LOGE(TAG, "clear: context is NULL");
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
     fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
-    ESP_LOGD(TAG, "clear: ctx=%p, initialized=%d, transport=%p", ctx, ctx->initialized, ctx->transport);
+    ESP_LOGD(TAG, "clear: ctx=%p, canvas_id=%d, initialized=%d, transport=%p", ctx, canvas_id, ctx->initialized, ctx->transport);
     if (!ctx->initialized) {
         ESP_LOGE(TAG, "clear: context not initialized (ctx=%p, initialized=%d)", ctx, ctx->initialized);
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    // Send only color for fill_screen/clear command
-    // Payload: just the color value (RGB565)
-    fmrb_color_t color_val = color;
-    return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_SCREEN, &color_val, sizeof(color_val));
+    // Send canvas_id + color for fill_screen/clear command
+    struct __attribute__((packed)) {
+        uint16_t canvas_id;
+        uint8_t color;
+    } clear_cmd = {
+        .canvas_id = canvas_id,
+        .color = color
+    };
+
+    return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_SCREEN, &clear_cmd, sizeof(clear_cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_clear_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_clear_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t *rect, fmrb_color_t color) {
     if (!context || !rect) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -163,6 +169,7 @@ fmrb_gfx_err_t fmrb_gfx_clear_rect(fmrb_gfx_context_t context, const fmrb_rect_t
     }
 
     fmrb_link_graphics_clear_t clear_cmd = {
+        .canvas_id = canvas_id,
         .x = rect->x,
         .y = rect->y,
         .width = rect->width,
@@ -173,7 +180,7 @@ fmrb_gfx_err_t fmrb_gfx_clear_rect(fmrb_gfx_context_t context, const fmrb_rect_t
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_SCREEN, &clear_cmd, sizeof(clear_cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_set_pixel(fmrb_gfx_context_t context, int16_t x, int16_t y, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_set_pixel(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -188,6 +195,7 @@ fmrb_gfx_err_t fmrb_gfx_set_pixel(fmrb_gfx_context_t context, int16_t x, int16_t
     }
 
     fmrb_link_graphics_pixel_t pixel_cmd = {
+        .canvas_id = canvas_id,
         .x = x,
         .y = y,
         .color = color
@@ -196,7 +204,7 @@ fmrb_gfx_err_t fmrb_gfx_set_pixel(fmrb_gfx_context_t context, int16_t x, int16_t
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_PIXEL, &pixel_cmd, sizeof(pixel_cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_get_pixel(fmrb_gfx_context_t context, int16_t x, int16_t y, fmrb_color_t *color) {
+fmrb_gfx_err_t fmrb_gfx_get_pixel(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, fmrb_color_t *color) {
     // For now, return black color (read operation would require synchronous IPC)
     if (!context || !color) {
         return FMRB_GFX_ERR_INVALID_PARAM;
@@ -206,7 +214,7 @@ fmrb_gfx_err_t fmrb_gfx_get_pixel(fmrb_gfx_context_t context, int16_t x, int16_t
     return FMRB_GFX_OK;
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_line(fmrb_gfx_context_t context, int16_t x1, int16_t y1, int16_t x2, int16_t y2, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_line(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x1, int16_t y1, int16_t x2, int16_t y2, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -217,6 +225,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_line(fmrb_gfx_context_t context, int16_t x1, int16_
     }
 
     fmrb_link_graphics_line_t line_cmd = {
+        .canvas_id = canvas_id,
         .x1 = x1,
         .y1 = y1,
         .x2 = x2,
@@ -227,7 +236,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_line(fmrb_gfx_context_t context, int16_t x1, int16_
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_LINE, &line_cmd, sizeof(line_cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t *rect, fmrb_color_t color) {
     if (!context || !rect) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -238,6 +247,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_rect(fmrb_gfx_context_t context, const fmrb_rect_t 
     }
 
     fmrb_link_graphics_rect_t rect_cmd = {
+        .canvas_id = canvas_id,
         .x = rect->x,
         .y = rect->y,
         .width = rect->width,
@@ -249,7 +259,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_rect(fmrb_gfx_context_t context, const fmrb_rect_t 
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_RECT, &rect_cmd, sizeof(rect_cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t *rect, fmrb_color_t color) {
     if (!context || !rect) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -260,6 +270,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, const fmrb_rect_t 
     }
 
     fmrb_link_graphics_rect_t rect_cmd = {
+        .canvas_id = canvas_id,
         .x = rect->x,
         .y = rect->y,
         .width = rect->width,
@@ -271,7 +282,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, const fmrb_rect_t 
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_RECT, &rect_cmd, sizeof(rect_cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_font_size_t font_size) {
+fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_font_size_t font_size) {
     if (!context || !text) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -341,7 +352,7 @@ fmrb_gfx_err_t fmrb_gfx_get_text_size(const char *text, fmrb_font_size_t font_si
     return FMRB_GFX_OK;
 }
 
-fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context) {
+fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -355,7 +366,7 @@ fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context) {
     return send_graphics_command(ctx, 0x08, NULL, 0);
 }
 
-fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, const fmrb_rect_t *rect) {
+fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t *rect) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -377,11 +388,11 @@ fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, const fmrb_rec
 
 // LovyanGFX compatible API implementations
 
-fmrb_gfx_err_t fmrb_gfx_draw_pixel(fmrb_gfx_context_t context, int32_t x, int32_t y, fmrb_color_t color) {
-    return fmrb_gfx_set_pixel(context, (int16_t)x, (int16_t)y, color);
+fmrb_gfx_err_t fmrb_gfx_draw_pixel(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, fmrb_color_t color) {
+    return fmrb_gfx_set_pixel(context, canvas_id, (int16_t)x, (int16_t)y, color);
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_fast_vline(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t h, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_fast_vline(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t h, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -393,6 +404,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_fast_vline(fmrb_gfx_context_t context, int32_t x, i
 
     // Draw vertical line as a thin rectangle
     fmrb_link_graphics_rect_t rect_cmd = {
+        .canvas_id = canvas_id,
         .x = (uint16_t)x,
         .y = (uint16_t)y,
         .width = 1,
@@ -404,7 +416,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_fast_vline(fmrb_gfx_context_t context, int32_t x, i
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_RECT, &rect_cmd, sizeof(rect_cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_fast_hline(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_fast_hline(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t w, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -416,6 +428,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_fast_hline(fmrb_gfx_context_t context, int32_t x, i
 
     // Draw horizontal line as a thin rectangle
     fmrb_link_graphics_rect_t rect_cmd = {
+        .canvas_id = canvas_id,
         .x = (uint16_t)x,
         .y = (uint16_t)y,
         .width = (uint16_t)w,
@@ -427,7 +440,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_fast_hline(fmrb_gfx_context_t context, int32_t x, i
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_RECT, &rect_cmd, sizeof(rect_cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -453,7 +466,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, int32_t x, i
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_ROUND_RECT, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_fill_round_rect(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_fill_round_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t w, int32_t h, int32_t r, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -478,7 +491,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_round_rect(fmrb_gfx_context_t context, int32_t x, i
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_ROUND_RECT, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t r, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -503,7 +516,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, int32_t x, int32
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_CIRCLE, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t r, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -528,7 +541,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, int32_t x, int32
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_CIRCLE, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -553,7 +566,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, int32_t x, int3
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_ELLIPSE, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -578,7 +591,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, int32_t x, int3
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_ELLIPSE, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -605,7 +618,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, int32_t x0, in
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_TRIANGLE, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t x2, int32_t y2, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -632,7 +645,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, int32_t x0, in
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_TRIANGLE, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_arc(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_arc(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -659,7 +672,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_arc(fmrb_gfx_context_t context, int32_t x, int32_t 
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_ARC, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_fill_arc(fmrb_gfx_context_t context, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_fill_arc(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t r0, int32_t r1, float angle0, float angle1, fmrb_color_t color) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -686,7 +699,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_arc(fmrb_gfx_context_t context, int32_t x, int32_t 
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_ARC, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, const char *str, int32_t x, int32_t y, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const char *str, int32_t x, int32_t y, fmrb_color_t color) {
     if (!context || !str) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -722,12 +735,12 @@ fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, const char *str,
     return ret;
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_char(fmrb_gfx_context_t context, char c, int32_t x, int32_t y, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_draw_char(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, char c, int32_t x, int32_t y, fmrb_color_t color) {
     char str[2] = {c, '\0'};
-    return fmrb_gfx_draw_string(context, str, x, y, color);
+    return fmrb_gfx_draw_string(context, canvas_id, str, x, y, color);
 }
 
-fmrb_gfx_err_t fmrb_gfx_set_text_size(fmrb_gfx_context_t context, float size) {
+fmrb_gfx_err_t fmrb_gfx_set_text_size(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, float size) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -746,7 +759,7 @@ fmrb_gfx_err_t fmrb_gfx_set_text_size(fmrb_gfx_context_t context, float size) {
     return send_graphics_command(ctx, FMRB_LINK_GFX_SET_TEXT_SIZE, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_color_t fg, fmrb_color_t bg) {
+fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, fmrb_color_t fg, fmrb_color_t bg) {
     if (!context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -766,8 +779,8 @@ fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_color_t 
     return send_graphics_command(ctx, FMRB_LINK_GFX_SET_TEXT_COLOR, &cmd, sizeof(cmd));
 }
 
-fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_color_t color) {
-    return fmrb_gfx_clear(context, color);
+fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, fmrb_color_t color) {
+    return fmrb_gfx_clear(context, canvas_id, color);
 }
 
 // Canvas management API implementations

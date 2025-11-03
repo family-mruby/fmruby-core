@@ -71,9 +71,21 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
             if (size >= sizeof(fmrb_gfx_clear_cmd_t)) {
                 const fmrb_gfx_clear_cmd_t *cmd = (const fmrb_gfx_clear_cmd_t*)data;
 #ifdef FMRB_IPC_DEBUG
-                printf("FILL_SCREEN: color=0x%08x\n", cmd->color);
+                printf("FILL_SCREEN: canvas_id=%u, color=0x%02x\n", cmd->canvas_id, cmd->color);
 #endif
-                get_current_target()->fillScreen(cmd->color);
+                // Get target from command (thread-safe)
+                LovyanGFX* target;
+                if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
+                    target = g_lgfx;
+                } else {
+                    auto it = g_canvases.find(cmd->canvas_id);
+                    if (it == g_canvases.end()) {
+                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        return -1;
+                    }
+                    target = it->second;
+                }
+                target->fillScreen(cmd->color);
                 return 0;
             }
             break;
@@ -81,7 +93,19 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
         case FMRB_GFX_CMD_DRAW_PIXEL:
             if (size >= sizeof(fmrb_gfx_pixel_cmd_t)) {
                 const fmrb_gfx_pixel_cmd_t *cmd = (const fmrb_gfx_pixel_cmd_t*)data;
-                get_current_target()->drawPixel(cmd->x, cmd->y, cmd->color);
+                // Get target from command (thread-safe)
+                LovyanGFX* target;
+                if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
+                    target = g_lgfx;
+                } else {
+                    auto it = g_canvases.find(cmd->canvas_id);
+                    if (it == g_canvases.end()) {
+                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        return -1;
+                    }
+                    target = it->second;
+                }
+                target->drawPixel(cmd->x, cmd->y, cmd->color);
                 return 0;
             }
             break;
@@ -89,7 +113,19 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
         case FMRB_GFX_CMD_DRAW_LINE:
             if (size >= sizeof(fmrb_gfx_line_cmd_t)) {
                 const fmrb_gfx_line_cmd_t *cmd = (const fmrb_gfx_line_cmd_t*)data;
-                get_current_target()->drawLine(cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
+                // Get target from command (thread-safe)
+                LovyanGFX* target;
+                if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
+                    target = g_lgfx;
+                } else {
+                    auto it = g_canvases.find(cmd->canvas_id);
+                    if (it == g_canvases.end()) {
+                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        return -1;
+                    }
+                    target = it->second;
+                }
+                target->drawLine(cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
                 return 0;
             }
             break;
@@ -97,7 +133,19 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
         case FMRB_GFX_CMD_DRAW_RECT:
             if (size >= sizeof(fmrb_gfx_rect_cmd_t)) {
                 const fmrb_gfx_rect_cmd_t *cmd = (const fmrb_gfx_rect_cmd_t*)data;
-                get_current_target()->drawRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
+                // Get target from command (thread-safe)
+                LovyanGFX* target;
+                if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
+                    target = g_lgfx;
+                } else {
+                    auto it = g_canvases.find(cmd->canvas_id);
+                    if (it == g_canvases.end()) {
+                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        return -1;
+                    }
+                    target = it->second;
+                }
+                target->drawRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
                 return 0;
             }
             break;
@@ -105,7 +153,19 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
         case FMRB_GFX_CMD_FILL_RECT:
             if (size >= sizeof(fmrb_gfx_rect_cmd_t)) {
                 const fmrb_gfx_rect_cmd_t *cmd = (const fmrb_gfx_rect_cmd_t*)data;
-                get_current_target()->fillRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
+                // Get target from command (thread-safe)
+                LovyanGFX* target;
+                if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
+                    target = g_lgfx;
+                } else {
+                    auto it = g_canvases.find(cmd->canvas_id);
+                    if (it == g_canvases.end()) {
+                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        return -1;
+                    }
+                    target = it->second;
+                }
+                target->fillRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
                 return 0;
             }
             break;

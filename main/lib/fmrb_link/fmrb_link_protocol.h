@@ -154,23 +154,27 @@ typedef struct __attribute__((packed)) {
 
 // Graphics message structures (RGB332 color format)
 typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
     uint16_t x, y;
     uint16_t width, height;
     uint8_t color;  // RGB332 format
 } fmrb_link_graphics_clear_t;
 
 typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
     uint16_t x, y;
     uint8_t color;  // RGB332 format
 } fmrb_link_graphics_pixel_t;
 
 typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
     uint16_t x1, y1;
     uint16_t x2, y2;
     uint8_t color;  // RGB332 format
 } fmrb_link_graphics_line_t;
 
 typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
     uint16_t x, y;
     uint16_t width, height;
     uint8_t color;  // RGB332 format
