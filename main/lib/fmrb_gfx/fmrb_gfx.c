@@ -19,6 +19,9 @@ typedef struct {
     uint16_t next_canvas_id;              // Canvas ID generator
 } fmrb_gfx_context_impl_t;
 
+// Global graphics context (shared across all FmrbGfx instances)
+static fmrb_gfx_context_impl_t *g_gfx_context = NULL;
+
 // Helper function to check if point is within clip rectangle
 static bool is_clipped(fmrb_gfx_context_impl_t *ctx, int16_t x, int16_t y) {
     if (!ctx->clip_enabled) {
@@ -56,6 +59,13 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config, fmrb_gfx_context_t
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
+    // If global context already exists, return it (prevent double initialization)
+    if (g_gfx_context != NULL) {
+        ESP_LOGW(TAG, "Graphics context already initialized, reusing existing context");
+        *context = g_gfx_context;
+        return FMRB_GFX_OK;
+    }
+
     fmrb_gfx_context_impl_t *ctx = fmrb_sys_malloc(sizeof(fmrb_gfx_context_impl_t));
     if (!ctx) {
         return FMRB_GFX_ERR_NO_MEMORY;
@@ -81,6 +91,9 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config, fmrb_gfx_context_t
     ctx->initialized = true;
     ctx->current_target = FMRB_CANVAS_SCREEN;  // Default to main screen
     ctx->next_canvas_id = 1;  // Start canvas IDs from 1
+
+    // Store as global context
+    g_gfx_context = ctx;
     *context = ctx;
 
     ESP_LOGI(TAG, "Graphics initialized: %dx%d, %d bpp",
@@ -96,15 +109,26 @@ fmrb_gfx_err_t fmrb_gfx_deinit(fmrb_gfx_context_t context) {
 
     fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
 
-    if (ctx->transport) {
-        fmrb_link_transport_deinit(ctx->transport);
+    // Only deinitialize if this is the global context
+    if (ctx == g_gfx_context) {
+        if (ctx->transport) {
+            fmrb_link_transport_deinit(ctx->transport);
+        }
+
+        ctx->initialized = false;
+        fmrb_sys_free(ctx);
+        g_gfx_context = NULL;
+
+        ESP_LOGI(TAG, "Graphics deinitialized");
+    } else {
+        ESP_LOGW(TAG, "Attempted to deinit non-global context, ignoring");
     }
 
-    ctx->initialized = false;
-    fmrb_sys_free(ctx);
-
-    ESP_LOGI(TAG, "Graphics deinitialized");
     return FMRB_GFX_OK;
+}
+
+fmrb_gfx_context_t fmrb_gfx_get_global_context(void) {
+    return g_gfx_context;
 }
 
 fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_color_t color) {

@@ -72,25 +72,27 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
     }
 
+    // Spin Loop
     // Try to receive message with timeout
-    fmrb_msg_t msg;
-    fmrb_err_t ret = fmrb_msg_receive(ctx->app_id, &msg,
-                                      FMRB_MS_TO_TICKS(timeout_ms));
+    while(true){
+        fmrb_msg_t msg;
+        fmrb_err_t ret = fmrb_msg_receive(ctx->app_id, &msg, FMRB_MS_TO_TICKS(timeout_ms));
 
-    if (ret == FMRB_OK) {
-        // Message received
-        FMRB_LOGI(TAG, "App %s received message: type=%d",
-                 ctx->app_name, msg.type);
+        if (ret == FMRB_OK) {
+            // Message received
+            FMRB_LOGI(TAG, "App %s received message: type=%d", ctx->app_name, msg.type);
 
-        // TODO: Convert message to Ruby event and call on_event()
-        // For now, just log it
-    } else if (ret == FMRB_ERR_TIMEOUT) {
-        // Timeout - normal case when no messages
-        // Just proceed to next frame
-    } else {
-        // Other error
-        FMRB_LOGW(TAG, "App %s message receive error: %d",
-                 ctx->app_name, ret);
+            // TODO: Convert message to Ruby event and call on_event()
+            // For now, just log it
+            // Update timeout_ms
+        } else if (ret == FMRB_ERR_TIMEOUT) {
+            // Timeout - normal case when no messages
+            // Just proceed to next frame
+            break;
+        } else {
+            FMRB_LOGW(TAG, "App %s message receive error: %d", ctx->app_name, ret);
+            break;
+        }
     }
 
     return mrb_nil_value();

@@ -95,6 +95,15 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config, fmrb_gfx_context_t
 fmrb_gfx_err_t fmrb_gfx_deinit(fmrb_gfx_context_t context);
 
 /**
+ * @brief Get global graphics context
+ * @return Global graphics context (NULL if not initialized)
+ *
+ * Returns the shared global graphics context that is used by all FmrbGfx instances.
+ * This context is created by the first call to fmrb_gfx_init() and reused thereafter.
+ */
+fmrb_gfx_context_t fmrb_gfx_get_global_context(void);
+
+/**
  * @brief Clear screen with specified color
  * @param context Graphics context
  * @param color Clear color

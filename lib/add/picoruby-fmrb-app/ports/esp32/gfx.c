@@ -18,15 +18,15 @@ static const char* TAG = "gfx";
 // Graphics context wrapper for mruby
 typedef struct {
     fmrb_gfx_context_t ctx;
+    fmrb_canvas_handle_t canvas_id;  // Canvas ID for this instance
 } mrb_gfx_data;
 
 static void mrb_gfx_data_free(mrb_state *mrb, void *ptr)
 {
     if (ptr) {
         mrb_gfx_data *data = (mrb_gfx_data *)ptr;
-        if (data->ctx) {
-            fmrb_gfx_deinit(data->ctx);
-        }
+        // Don't deinitialize global context, just free the wrapper
+        // The global context is managed by fmrb_gfx layer
         mrb_free(mrb, ptr);
     }
 }
@@ -35,35 +35,30 @@ static const struct mrb_data_type mrb_gfx_data_type = {
     "Graphics", mrb_gfx_data_free,
 };
 
-// Graphics.new(width, height)
+// Graphics.new(canvas_id)
 static mrb_value mrb_gfx_initialize(mrb_state *mrb, mrb_value self)
 {
-    mrb_int width, height;
-    mrb_get_args(mrb, "ii", &width, &height);
+    mrb_int canvas_id;
+    mrb_get_args(mrb, "i", &canvas_id);
 
-    FMRB_LOGI(TAG, "FmrbGfx.new called: width=%d, height=%d", (int)width, (int)height);
+    FMRB_LOGI(TAG, "FmrbGfx.new called: canvas_id=%d", (int)canvas_id);
 
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_malloc(mrb, sizeof(mrb_gfx_data));
     memset(data, 0, sizeof(mrb_gfx_data));
 
-    fmrb_gfx_config_t config = {
-        .screen_width = (uint16_t)width,
-        .screen_height = (uint16_t)height,
-        .bits_per_pixel = 16,
-        .double_buffered = true
-    };
-
-    FMRB_LOGI(TAG, "Calling fmrb_gfx_init with config: %dx%d, bpp=%d",
-              config.screen_width, config.screen_height, config.bits_per_pixel);
-
-    fmrb_gfx_err_t ret = fmrb_gfx_init(&config, &data->ctx);
-    if (ret != FMRB_GFX_OK) {
-        FMRB_LOGE(TAG, "fmrb_gfx_init failed with error: %d", ret);
+    // Get global graphics context (already initialized by kernel/host)
+    data->ctx = fmrb_gfx_get_global_context();
+    if (!data->ctx) {
+        FMRB_LOGE(TAG, "Global graphics context not initialized");
         mrb_free(mrb, data);
-        mrb_raisef(mrb, E_RUNTIME_ERROR, "Graphics initialization failed: %d", ret);
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics context not initialized");
     }
 
-    FMRB_LOGI(TAG, "FmrbGfx initialized successfully, ctx=%p", data->ctx);
+    // Store canvas_id for this instance
+    data->canvas_id = (fmrb_canvas_handle_t)canvas_id;
+
+    FMRB_LOGI(TAG, "FmrbGfx initialized: canvas_id=%d, ctx=%p",
+              (int)data->canvas_id, data->ctx);
 
     mrb_data_init(self, data, &mrb_gfx_data_type);
     return self;
@@ -82,6 +77,9 @@ static mrb_value mrb_gfx_clear(mrb_state *mrb, mrb_value self)
         FMRB_LOGE(TAG, "clear() failed: Graphics not initialized");
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
+
+    // Set drawing target to this instance's canvas
+    fmrb_gfx_set_target(data->ctx, data->canvas_id);
 
     fmrb_gfx_err_t ret = fmrb_gfx_clear(data->ctx, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
@@ -104,6 +102,8 @@ static mrb_value mrb_gfx_set_pixel(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
+    fmrb_gfx_set_target(data->ctx, data->canvas_id);
+
     fmrb_gfx_err_t ret = fmrb_gfx_set_pixel(data->ctx, (int16_t)x, (int16_t)y, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Set pixel failed: %d", ret);
@@ -122,6 +122,8 @@ static mrb_value mrb_gfx_draw_line(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
+
+    fmrb_gfx_set_target(data->ctx, data->canvas_id);
 
     fmrb_gfx_err_t ret = fmrb_gfx_draw_line(data->ctx, (int16_t)x1, (int16_t)y1,
                                              (int16_t)x2, (int16_t)y2, (fmrb_color_t)color);
@@ -143,6 +145,8 @@ static mrb_value mrb_gfx_draw_rect(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
+    fmrb_gfx_set_target(data->ctx, data->canvas_id);
+
     fmrb_rect_t rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h};
     fmrb_gfx_err_t ret = fmrb_gfx_draw_rect(data->ctx, &rect, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
@@ -162,6 +166,8 @@ static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
+
+    fmrb_gfx_set_target(data->ctx, data->canvas_id);
 
     fmrb_rect_t rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h};
     fmrb_gfx_err_t ret = fmrb_gfx_fill_rect(data->ctx, &rect, (fmrb_color_t)color);
@@ -183,6 +189,8 @@ static mrb_value mrb_gfx_draw_circle(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
+    fmrb_gfx_set_target(data->ctx, data->canvas_id);
+
     fmrb_gfx_err_t ret = fmrb_gfx_draw_circle(data->ctx, (int32_t)x, (int32_t)y,
                                                (int32_t)r, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
@@ -202,6 +210,8 @@ static mrb_value mrb_gfx_fill_circle(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
+
+    fmrb_gfx_set_target(data->ctx, data->canvas_id);
 
     fmrb_gfx_err_t ret = fmrb_gfx_fill_circle(data->ctx, (int32_t)x, (int32_t)y,
                                                (int32_t)r, (fmrb_color_t)color);
@@ -224,6 +234,8 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
+    fmrb_gfx_set_target(data->ctx, data->canvas_id);
+
     fmrb_gfx_err_t ret = fmrb_gfx_draw_text(data->ctx, (int16_t)x, (int16_t)y,
                                              text, (fmrb_color_t)color, FMRB_FONT_SIZE_MEDIUM);
     if (ret != FMRB_GFX_OK) {
@@ -243,6 +255,8 @@ static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
         FMRB_LOGE(TAG, "present() failed: Graphics not initialized");
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
+
+    fmrb_gfx_set_target(data->ctx, data->canvas_id);
 
     fmrb_gfx_err_t ret = fmrb_gfx_present(data->ctx);
     if (ret != FMRB_GFX_OK) {
@@ -270,7 +284,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     struct RClass *gfx_class = mrb_define_class(mrb, "FmrbGfx", mrb->object_class);
     MRB_SET_INSTANCE_TT(gfx_class, MRB_TT_DATA);
 
-    mrb_define_method(mrb, gfx_class, "_init", mrb_gfx_initialize, MRB_ARGS_REQ(2));
+    mrb_define_method(mrb, gfx_class, "_init", mrb_gfx_initialize, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "clear", mrb_gfx_clear, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "set_pixel", mrb_gfx_set_pixel, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, gfx_class, "draw_line", mrb_gfx_draw_line, MRB_ARGS_REQ(5));

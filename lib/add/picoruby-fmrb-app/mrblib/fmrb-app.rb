@@ -17,9 +17,9 @@ class FmrbApp
     @running = false
     puts "[DEBUG] Before _init()"
     _init() # C function, variables are defined here
-    puts "[DEBUG] After _init(), @window_width=#{@window_width}, @window_height=#{@window_height}"
-    # @gfx = FmrbGfx.new(@window_width, @window_height)  # Phase2: Canvas + messaging
-    puts "[DEBUG] FmrbGfx initialization skipped (Canvas feature not implemented yet)"
+    puts "[DEBUG] After _init(), @canvas=#{@canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}"
+    @gfx = FmrbGfx.new(@canvas)  # Pass canvas_id to FmrbGfx
+    puts "[DEBUG] FmrbGfx initialized: canvas_id=#{@canvas}"
     puts "[FmrbApp]name=#{@name}"
   end
 
@@ -61,7 +61,7 @@ class FmrbApp
 
   def destroy
     puts "[DEBUG] destroy() called"
-    # @gfx.destroy  # Phase2: Canvas + messaging
+    @gfx.destroy if @gfx  # Cleanup graphics resources
     on_destroy
   end
 

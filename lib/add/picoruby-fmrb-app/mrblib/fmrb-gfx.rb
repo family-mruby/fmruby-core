@@ -15,9 +15,8 @@ class FmrbGfx
   COLOR_GRAY    = 0x8410
 
   # Initialize graphics context
-  # @param width [Integer] Screen width
-  # @param height [Integer] Screen height
-  def initialize(width, height)
-    _init(width, height)
+  # @param canvas_id [Integer] Canvas ID for this graphics instance
+  def initialize(canvas_id)
+    _init(canvas_id)
   end
 end
