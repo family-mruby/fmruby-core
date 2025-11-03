@@ -407,7 +407,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, int32_t x, i
     // Payload: x, y, w, h, r, color, filled
     typedef struct __attribute__((packed)) {
         int32_t x, y, w, h, r;
-        uint32_t color;
+        uint8_t color;
         uint8_t filled;
     } round_rect_cmd_t;
 
@@ -432,7 +432,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_round_rect(fmrb_gfx_context_t context, int32_t x, i
 
     typedef struct __attribute__((packed)) {
         int32_t x, y, w, h, r;
-        uint32_t color;
+        uint8_t color;
         uint8_t filled;
     } round_rect_cmd_t;
 
@@ -457,7 +457,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, int32_t x, int32
 
     typedef struct __attribute__((packed)) {
         int32_t x, y, r;
-        uint32_t color;
+        uint8_t color;
         uint8_t filled;
     } circle_cmd_t;
 
@@ -482,7 +482,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, int32_t x, int32
 
     typedef struct __attribute__((packed)) {
         int32_t x, y, r;
-        uint32_t color;
+        uint8_t color;
         uint8_t filled;
     } circle_cmd_t;
 
@@ -507,7 +507,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, int32_t x, int3
 
     typedef struct __attribute__((packed)) {
         int32_t x, y, rx, ry;
-        uint32_t color;
+        uint8_t color;
         uint8_t filled;
     } ellipse_cmd_t;
 
@@ -532,7 +532,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, int32_t x, int3
 
     typedef struct __attribute__((packed)) {
         int32_t x, y, rx, ry;
-        uint32_t color;
+        uint8_t color;
         uint8_t filled;
     } ellipse_cmd_t;
 
@@ -557,7 +557,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, int32_t x0, in
 
     typedef struct __attribute__((packed)) {
         int32_t x0, y0, x1, y1, x2, y2;
-        uint32_t color;
+        uint8_t color;
         uint8_t filled;
     } triangle_cmd_t;
 
@@ -584,7 +584,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, int32_t x0, in
 
     typedef struct __attribute__((packed)) {
         int32_t x0, y0, x1, y1, x2, y2;
-        uint32_t color;
+        uint8_t color;
         uint8_t filled;
     } triangle_cmd_t;
 
@@ -612,7 +612,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_arc(fmrb_gfx_context_t context, int32_t x, int32_t 
     typedef struct __attribute__((packed)) {
         int32_t x, y, r0, r1;
         float angle0, angle1;
-        uint32_t color;
+        uint8_t color;
         uint8_t filled;
     } arc_cmd_t;
 
@@ -639,7 +639,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_arc(fmrb_gfx_context_t context, int32_t x, int32_t 
     typedef struct __attribute__((packed)) {
         int32_t x, y, r0, r1;
         float angle0, angle1;
-        uint32_t color;
+        uint8_t color;
         uint8_t filled;
     } arc_cmd_t;
 
@@ -669,7 +669,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, const char *str,
     }
 
     // Allocate buffer for command + string
-    size_t total_size = sizeof(int32_t) * 2 + sizeof(uint32_t) + sizeof(uint16_t) + str_len;
+    size_t total_size = sizeof(int32_t) * 2 + sizeof(uint8_t) + sizeof(uint16_t) + str_len;
     uint8_t *cmd_buffer = fmrb_sys_malloc(total_size);
     if (!cmd_buffer) {
         return FMRB_GFX_ERR_NO_MEMORY;
@@ -678,7 +678,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, const char *str,
     size_t offset = 0;
     memcpy(cmd_buffer + offset, &x, sizeof(int32_t)); offset += sizeof(int32_t);
     memcpy(cmd_buffer + offset, &y, sizeof(int32_t)); offset += sizeof(int32_t);
-    memcpy(cmd_buffer + offset, &color, sizeof(uint32_t)); offset += sizeof(uint32_t);
+    memcpy(cmd_buffer + offset, &color, sizeof(uint8_t)); offset += sizeof(uint8_t);
     uint16_t len16 = (uint16_t)str_len;
     memcpy(cmd_buffer + offset, &len16, sizeof(uint16_t)); offset += sizeof(uint16_t);
     memcpy(cmd_buffer + offset, str, str_len);
@@ -724,8 +724,8 @@ fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_color_t 
     }
 
     typedef struct __attribute__((packed)) {
-        uint32_t fg;
-        uint32_t bg;
+        uint8_t fg;
+        uint8_t bg;
     } text_color_cmd_t;
 
     text_color_cmd_t cmd = { .fg = fg, .bg = bg };

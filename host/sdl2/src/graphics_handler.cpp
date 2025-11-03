@@ -151,22 +151,22 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
 
         case FMRB_GFX_CMD_DRAW_STRING:
             // cmd_type is already extracted in data[0]
-            // Payload format: int32_t x, int32_t y, uint32_t color, uint16_t text_len, char[text_len] text
-            if (size < 1 + 4 + 4 + 4 + 2) { // cmd_type + x + y + color + text_len
+            // Payload format: int32_t x, int32_t y, uint8_t color, uint16_t text_len, char[text_len] text
+            if (size < 1 + 4 + 4 + 1 + 2) { // cmd_type + x + y + color + text_len
                 break;
             }
             {
                 const uint8_t *payload = data + 1;  // Skip cmd_type
                 int32_t x, y;
-                uint32_t color;
+                uint8_t color;
                 uint16_t text_len;
 
                 memcpy(&x, payload, sizeof(int32_t)); payload += sizeof(int32_t);
                 memcpy(&y, payload, sizeof(int32_t)); payload += sizeof(int32_t);
-                memcpy(&color, payload, sizeof(uint32_t)); payload += sizeof(uint32_t);
+                memcpy(&color, payload, sizeof(uint8_t)); payload += sizeof(uint8_t);
                 memcpy(&text_len, payload, sizeof(uint16_t)); payload += sizeof(uint16_t);
 
-                size_t expected_size = 1 + 4 + 4 + 4 + 2 + text_len;
+                size_t expected_size = 1 + 4 + 4 + 1 + 2 + text_len;
                 if (size < expected_size) {
                     fprintf(stderr, "String command size mismatch: expected=%zu, actual=%zu, text_len=%u\n",
                             expected_size, size, text_len);

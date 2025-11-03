@@ -146,34 +146,34 @@ typedef struct __attribute__((packed)) {
     uint32_t checksum;   // CRC32 checksum of payload
 } fmrb_link_header_t;
 
-// Graphics message structures
+// Graphics message structures (RGB332 color format)
 typedef struct __attribute__((packed)) {
     uint16_t x, y;
     uint16_t width, height;
-    uint32_t color;
+    uint8_t color;  // RGB332 format
 } fmrb_link_graphics_clear_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t x, y;
-    uint32_t color;
+    uint8_t color;  // RGB332 format
 } fmrb_link_graphics_pixel_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t x1, y1;
     uint16_t x2, y2;
-    uint32_t color;
+    uint8_t color;  // RGB332 format
 } fmrb_link_graphics_line_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t x, y;
     uint16_t width, height;
-    uint32_t color;
+    uint8_t color;  // RGB332 format
     bool filled;
 } fmrb_link_graphics_rect_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t x, y;
-    uint32_t color;
+    uint8_t color;  // RGB332 format
     uint8_t font_size;
     uint16_t text_len;
     // Followed by text data

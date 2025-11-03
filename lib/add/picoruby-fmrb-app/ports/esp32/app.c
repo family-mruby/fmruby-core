@@ -6,10 +6,13 @@
 
 #include "fmrb_app.h"
 #include "fmrb_hal.h"
+#include "fmrb_log.h"
 #include "fmrb_err.h"
 #include "fmrb_msg.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
+
+static const char* TAG = "app";
 
 // FmrbApp._init() - Initialize application
 static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
@@ -18,6 +21,9 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     // This can be extended based on requirements
     fmrb_app_task_context_t* ctx = fmrb_current();
 
+    FMRB_LOGI(TAG,"mrb_fmrb_app_init");
+    FMRB_LOGI(TAG,"app_id=%d",ctx->app_id);
+    FMRB_LOGI(TAG,"app_name=%s",ctx->app_name);
     // Create message queue for this app
     fmrb_msg_queue_config_t queue_config = {
         .queue_length = FMRB_USER_APP_MSG_QUEUE_LEN,

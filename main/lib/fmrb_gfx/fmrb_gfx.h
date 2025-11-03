@@ -8,8 +8,8 @@
 extern "C" {
 #endif
 
-// Color type (RGBA8888)
-typedef uint32_t fmrb_color_t;
+// Color type (RGB332: 8-bit color, 3-bit R, 3-bit G, 2-bit B)
+typedef uint8_t fmrb_color_t;
 
 // Point structure
 typedef struct {
@@ -50,24 +50,29 @@ typedef struct {
     bool double_buffered;
 } fmrb_gfx_config_t;
 
-// Color constants
-#define FMRB_COLOR_BLACK    0xFF000000
-#define FMRB_COLOR_WHITE    0xFFFFFFFF
-#define FMRB_COLOR_RED      0xFFFF0000
-#define FMRB_COLOR_GREEN    0xFF00FF00
-#define FMRB_COLOR_BLUE     0xFF0000FF
-#define FMRB_COLOR_YELLOW   0xFFFFFF00
-#define FMRB_COLOR_CYAN     0xFF00FFFF
-#define FMRB_COLOR_MAGENTA  0xFFFF00FF
-#define FMRB_COLOR_GRAY     0xFF808080
+// Color constants (RGB332 format)
+#define FMRB_COLOR_BLACK    0x00  // R=0, G=0, B=0
+#define FMRB_COLOR_WHITE    0xFF  // R=7, G=7, B=3
+#define FMRB_COLOR_RED      0xE0  // R=7, G=0, B=0
+#define FMRB_COLOR_GREEN    0x1C  // R=0, G=7, B=0
+#define FMRB_COLOR_BLUE     0x03  // R=0, G=0, B=3
+#define FMRB_COLOR_YELLOW   0xFC  // R=7, G=7, B=0
+#define FMRB_COLOR_CYAN     0x1F  // R=0, G=7, B=3
+#define FMRB_COLOR_MAGENTA  0xE3  // R=7, G=0, B=3
+#define FMRB_COLOR_GRAY     0x6D  // R=3, G=3, B=1
 
-// Utility macros for color manipulation
-#define FMRB_COLOR_RGBA(r, g, b, a) (((uint32_t)(a) << 24) | ((uint32_t)(r) << 16) | ((uint32_t)(g) << 8) | (uint32_t)(b))
-#define FMRB_COLOR_RGB(r, g, b) FMRB_COLOR_RGBA(r, g, b, 255)
-#define FMRB_COLOR_GET_A(c) (((c) >> 24) & 0xFF)
-#define FMRB_COLOR_GET_R(c) (((c) >> 16) & 0xFF)
-#define FMRB_COLOR_GET_G(c) (((c) >> 8) & 0xFF)
-#define FMRB_COLOR_GET_B(c) ((c) & 0xFF)
+// Utility macros for RGB332 color manipulation
+// Convert RGB (0-255 each) to RGB332 (8-bit)
+#define FMRB_COLOR_RGB332(r, g, b) \
+    ((uint8_t)((((r) >> 5) << 5) | (((g) >> 5) << 2) | ((b) >> 6)))
+
+// Convert RGB332 back to RGB (0-255 each, approximate)
+#define FMRB_COLOR_GET_R(c) ((((c) >> 5) & 0x07) * 36)  // 0-252
+#define FMRB_COLOR_GET_G(c) ((((c) >> 2) & 0x07) * 36)  // 0-252
+#define FMRB_COLOR_GET_B(c) (((c) & 0x03) * 85)         // 0-255
+
+// Legacy compatibility (RGB to RGB332)
+#define FMRB_COLOR_RGB(r, g, b) FMRB_COLOR_RGB332(r, g, b)
 
 /**
  * @brief Initialize graphics subsystem

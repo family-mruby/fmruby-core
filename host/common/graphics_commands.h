@@ -50,18 +50,18 @@ typedef enum {
     FMRB_GFX_CMD_PRESENT = 0x08
 } fmrb_gfx_cmd_type_t;
 
-// Color format (RGB565)
-typedef uint32_t fmrb_color_t;
+// Color format (RGB332: 8-bit color)
+typedef uint8_t fmrb_color_t;
 
-// Color constants
-#define FMRB_COLOR_BLACK   0x0000
-#define FMRB_COLOR_WHITE   0xFFFF
-#define FMRB_COLOR_RED     0xF800
-#define FMRB_COLOR_GREEN   0x07E0
-#define FMRB_COLOR_BLUE    0x001F
-#define FMRB_COLOR_YELLOW  0xFFE0
-#define FMRB_COLOR_CYAN    0x07FF
-#define FMRB_COLOR_MAGENTA 0xF81F
+// Color constants (RGB332 format)
+#define FMRB_COLOR_BLACK   0x00  // R=0, G=0, B=0
+#define FMRB_COLOR_WHITE   0xFF  // R=7, G=7, B=3
+#define FMRB_COLOR_RED     0xE0  // R=7, G=0, B=0
+#define FMRB_COLOR_GREEN   0x1C  // R=0, G=7, B=0
+#define FMRB_COLOR_BLUE    0x03  // R=0, G=0, B=3
+#define FMRB_COLOR_YELLOW  0xFC  // R=7, G=7, B=0
+#define FMRB_COLOR_CYAN    0x1F  // R=0, G=7, B=3
+#define FMRB_COLOR_MAGENTA 0xE3  // R=7, G=0, B=3
 
 // Graphics command structures
 typedef struct {

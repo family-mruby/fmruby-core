@@ -14,6 +14,7 @@ extern "C" {
 #include "graphics_handler.h"
 #include "audio_handler.h"
 #include "../../common/protocol.h"
+#include "../../common/graphics_commands.h"
 }
 
 static volatile int running = 1;
@@ -45,8 +46,9 @@ int user_func(bool* thread_running) {
     }
 
     g_lgfx->init();
-    g_lgfx->fillScreen(0x000000);
-    printf("Graphics handler initialized with LovyanGFX (480x320)\n");
+    g_lgfx->setColorDepth(8);  // Set RGB332 (8-bit) color mode
+    g_lgfx->fillScreen(FMRB_COLOR_BLACK);
+    printf("Graphics handler initialized with LovyanGFX (480x320, RGB332)\n");
 
     // Initialize graphics handler
     if (graphics_handler_init(nullptr) < 0) {

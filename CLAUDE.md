@@ -122,7 +122,9 @@ rake -T # その他のコマンドの使い方
 - **lib/** - submodule編集用差分とfmruby独自mrbgem
   - **lib/mrbgem/** - fmruby独自のmrbgem実装
     - **picoruby-fmrb-app/** - Family mruby アプリケーションAPI
+      - タスク管理、GFX、Audioの機能
     - **picoruby-fmrb-kernel/** - Family mruby カーネルAPI
+      - タスク全体の管理、Windowの管理、リソースの管理
   - **lib/patch/** - submodule用パッチファイル
     - submoduleを編集する際は、差分ファイルをここに配置
     - `rake setup`でsubmodule配下にコピーされる
