@@ -12,7 +12,7 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_create()
-    # @gfx.clear(FmrbGfx::BLACK)  # Phase2: Canvas + messaging
+    @gfx.clear(FmrbGfx::BLACK)  # Phase2: Canvas + messaging
     puts "[SystemGUI] on_create called (graphics disabled temporarily)"
   end
 
@@ -21,12 +21,12 @@ class SystemGuiApp < FmrbApp
       puts "[SystemGUI] Running... (#{@counter / 33}s)"
     end
     # Graphics commands disabled temporarily (Phase2: Canvas + messaging)
-    # @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLACK)
-    # @player_x += 1
-    # @player_y += 1
-    # @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
-    # @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
-    # @gfx.present
+    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLACK)
+    @player_x += 1
+    @player_y += 1
+    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
+    @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
+    @gfx.present
 
     @counter += 1
     33

@@ -193,6 +193,8 @@ void fmrb_os_init(void)
     FMRB_LOGI(TAG, "fmrb_kernel_start done");
 
     //TODO wait for kernel startup
+    //check kernel task initialization done
+    //check host task initialization done
 
     //start GUI
     create_system_app();

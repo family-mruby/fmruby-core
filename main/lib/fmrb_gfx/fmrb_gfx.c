@@ -128,16 +128,21 @@ fmrb_gfx_err_t fmrb_gfx_deinit(fmrb_gfx_context_t context) {
 }
 
 fmrb_gfx_context_t fmrb_gfx_get_global_context(void) {
+    ESP_LOGD(TAG, "get_global_context: returning %p (initialized=%d)",
+             g_gfx_context, g_gfx_context ? g_gfx_context->initialized : -1);
     return g_gfx_context;
 }
 
 fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_color_t color) {
     if (!context) {
+        ESP_LOGE(TAG, "clear: context is NULL");
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
     fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    ESP_LOGD(TAG, "clear: ctx=%p, initialized=%d, transport=%p", ctx, ctx->initialized, ctx->transport);
     if (!ctx->initialized) {
+        ESP_LOGE(TAG, "clear: context not initialized (ctx=%p, initialized=%d)", ctx, ctx->initialized);
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
@@ -840,11 +845,14 @@ fmrb_gfx_err_t fmrb_gfx_set_target(
     fmrb_canvas_handle_t target)
 {
     if (!context || target == FMRB_CANVAS_INVALID) {
+        ESP_LOGE(TAG, "set_target: invalid params (context=%p, target=%u)", context, target);
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
     fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    ESP_LOGD(TAG, "set_target: ctx=%p, initialized=%d, target=%u", ctx, ctx->initialized, target);
     if (!ctx->initialized) {
+        ESP_LOGE(TAG, "set_target: context not initialized (ctx=%p, initialized=%d)", ctx, ctx->initialized);
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
