@@ -15,9 +15,12 @@ class FmrbApp
   def initialize()
     puts "[FmrbApp]initialize"
     @running = false
+    puts "[DEBUG] Before _init()"
     _init() # C function, variables are defined here
-    @gfx = FmrbGfx.new(@window_width,@window_height)
-    puts "[FmrbApp]name=#{name}"
+    puts "[DEBUG] After _init(), @window_width=#{@window_width}, @window_height=#{@window_height}"
+    # @gfx = FmrbGfx.new(@window_width, @window_height)  # Phase2: Canvas + messaging
+    puts "[DEBUG] FmrbGfx initialization skipped (Canvas feature not implemented yet)"
+    puts "[FmrbApp]name=#{@name}"
   end
 
   # Lifecycle methods (override in subclass)
@@ -48,6 +51,7 @@ class FmrbApp
 
   # Internal methods
   def main_loop
+    puts "[DEBUG] main_loop started"
     loop do
       return if !@running
       timeout_ms = on_update
@@ -56,14 +60,19 @@ class FmrbApp
   end
 
   def destroy
-    @gfx.destroy
+    puts "[DEBUG] destroy() called"
+    # @gfx.destroy  # Phase2: Canvas + messaging
     on_destroy
   end
 
   def start
+    puts "[DEBUG] start() called, @running=#{@running}"
     @running = true
+    puts "[DEBUG] Before on_create"
     on_create
+    puts "[DEBUG] After on_create, entering main_loop"
     main_loop
+    puts "[DEBUG] After main_loop, calling destroy"
     destroy
   end
 

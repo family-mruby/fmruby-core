@@ -12,19 +12,21 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_create()
-    @gfx.clear(FmrbGfx::BLACK)
+    # @gfx.clear(FmrbGfx::BLACK)  # Phase2: Canvas + messaging
+    puts "[SystemGUI] on_create called (graphics disabled temporarily)"
   end
 
   def on_update()
     if @counter % 33 == 0  # Every 1 second at 60Hz
       puts "[SystemGUI] Running... (#{@counter / 33}s)"
     end
-    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLACK)
-    @player_x += 1
-    @player_y += 1
-    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
-    @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
-    @gfx.present
+    # Graphics commands disabled temporarily (Phase2: Canvas + messaging)
+    # @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLACK)
+    # @player_x += 1
+    # @player_y += 1
+    # @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
+    # @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
+    # @gfx.present
 
     @counter += 1
     33
@@ -38,5 +40,14 @@ end
 
 # Create and start the system GUI app instance
 puts "[SystemGUI] SystemGuiApp.new"
-app = SystemGuiApp.new
-app.start
+begin
+  app = SystemGuiApp.new
+  puts "[SystemGUI] SystemGuiApp created successfully"
+  app.start
+rescue => e
+  puts "[ERROR] Exception caught: #{e.class}"
+  puts "[ERROR] Message: #{e.message}"
+  puts "[ERROR] Backtrace:"
+  puts e.backtrace.join("\n") if e.backtrace
+end
+puts "[SystemGUI] Script ended"

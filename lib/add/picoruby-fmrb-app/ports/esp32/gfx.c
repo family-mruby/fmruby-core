@@ -9,8 +9,11 @@
 #include "fmrb_hal.h"
 #include "fmrb_gfx.h"
 #include "fmrb_err.h"
+#include "fmrb_log.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
+
+static const char* TAG = "gfx";
 
 // Graphics context wrapper for mruby
 typedef struct {
@@ -38,6 +41,8 @@ static mrb_value mrb_gfx_initialize(mrb_state *mrb, mrb_value self)
     mrb_int width, height;
     mrb_get_args(mrb, "ii", &width, &height);
 
+    FMRB_LOGI(TAG, "FmrbGfx.new called: width=%d, height=%d", (int)width, (int)height);
+
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_malloc(mrb, sizeof(mrb_gfx_data));
     memset(data, 0, sizeof(mrb_gfx_data));
 
@@ -48,11 +53,17 @@ static mrb_value mrb_gfx_initialize(mrb_state *mrb, mrb_value self)
         .double_buffered = true
     };
 
+    FMRB_LOGI(TAG, "Calling fmrb_gfx_init with config: %dx%d, bpp=%d",
+              config.screen_width, config.screen_height, config.bits_per_pixel);
+
     fmrb_gfx_err_t ret = fmrb_gfx_init(&config, &data->ctx);
     if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE(TAG, "fmrb_gfx_init failed with error: %d", ret);
         mrb_free(mrb, data);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Graphics initialization failed: %d", ret);
     }
+
+    FMRB_LOGI(TAG, "FmrbGfx initialized successfully, ctx=%p", data->ctx);
 
     mrb_data_init(self, data, &mrb_gfx_data_type);
     return self;
@@ -64,16 +75,21 @@ static mrb_value mrb_gfx_clear(mrb_state *mrb, mrb_value self)
     mrb_int color;
     mrb_get_args(mrb, "i", &color);
 
+    FMRB_LOGI(TAG, "clear() called with color=0x%08x", (unsigned int)color);
+
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
+        FMRB_LOGE(TAG, "clear() failed: Graphics not initialized");
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
     fmrb_gfx_err_t ret = fmrb_gfx_clear(data->ctx, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE(TAG, "fmrb_gfx_clear failed: %d", ret);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Graphics clear failed: %d", ret);
     }
 
+    FMRB_LOGI(TAG, "clear() succeeded");
     return self;
 }
 
@@ -220,16 +236,21 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
 // Graphics#present
 static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
 {
+    FMRB_LOGI(TAG, "present() called");
+
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
+        FMRB_LOGE(TAG, "present() failed: Graphics not initialized");
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
     fmrb_gfx_err_t ret = fmrb_gfx_present(data->ctx);
     if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE(TAG, "fmrb_gfx_present failed: %d", ret);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Present failed: %d", ret);
     }
 
+    FMRB_LOGI(TAG, "present() succeeded");
     return self;
 }
 
@@ -249,7 +270,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     struct RClass *gfx_class = mrb_define_class(mrb, "FmrbGfx", mrb->object_class);
     MRB_SET_INSTANCE_TT(gfx_class, MRB_TT_DATA);
 
-    mrb_define_method(mrb, gfx_class, "initialize", mrb_gfx_initialize, MRB_ARGS_REQ(2));
+    mrb_define_method(mrb, gfx_class, "_init", mrb_gfx_initialize, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, gfx_class, "clear", mrb_gfx_clear, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "set_pixel", mrb_gfx_set_pixel, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, gfx_class, "draw_line", mrb_gfx_draw_line, MRB_ARGS_REQ(5));
