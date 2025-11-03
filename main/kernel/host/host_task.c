@@ -97,6 +97,7 @@ static int init_gfx_audio(void)
     } else {
         FMRB_LOGI(TAG, "Audio subsystem (APU emulator) initialized");
     }
+
     return 0;
 }
 
@@ -170,6 +171,9 @@ static void fmrb_host_task(void *pvParameters)
         FMRB_LOGE(TAG, "Host task initialization failed, terminating");
         return;
     }
+    // Signal that host task initialization is complete
+    FMRB_LOGI(TAG, "Host task initialized");
+    fmrb_host_set_ready();
 
     fmrb_msg_t msg;
     fmrb_tick_t xLastUpdate = fmrb_task_get_tick_count();
@@ -229,7 +233,6 @@ int fmrb_host_task_init(void)
         return -1;
     }
 
-    FMRB_LOGI(TAG, "Host task initialized");
     return 0;
 }
 

@@ -18,6 +18,30 @@
 
 static const char *TAG = "boot";
 
+// Startup synchronization flags
+static volatile bool kernel_ready = false;
+static volatile bool host_ready = false;
+
+// Getter functions
+bool fmrb_kernel_is_ready(void) {
+    return kernel_ready;
+}
+
+bool fmrb_host_is_ready(void) {
+    return host_ready;
+}
+
+// Setter functions (called by kernel/host tasks)
+void fmrb_kernel_set_ready(void) {
+    kernel_ready = true;
+    FMRB_LOGI(TAG, "Kernel task ready");
+}
+
+void fmrb_host_set_ready(void) {
+    host_ready = true;
+    FMRB_LOGI(TAG, "Host task ready");
+}
+
 // Generated from system_gui.app.rb (will be compiled by picorbc)
 extern const uint8_t system_gui_irep[];
 
@@ -192,11 +216,27 @@ void fmrb_os_init(void)
     }
     FMRB_LOGI(TAG, "fmrb_kernel_start done");
 
-    //TODO wait for kernel startup
-    //check kernel task initialization done
-    //check host task initialization done
+    // Wait for kernel and host initialization
+    FMRB_LOGI(TAG, "Waiting for kernel and host tasks to be ready...");
+    int timeout_ms = 5000;  // 5 second timeout
+    int elapsed_ms = 0;
+    while ((!fmrb_kernel_is_ready() || !fmrb_host_is_ready()) && elapsed_ms < timeout_ms) {
+        fmrb_task_delay(FMRB_MS_TO_TICKS(100));
+        elapsed_ms += 100;
+    }
 
-    //start GUI
+    if (!fmrb_kernel_is_ready()) {
+        FMRB_LOGE(TAG, "Kernel task initialization timeout");
+        return;
+    }
+    if (!fmrb_host_is_ready()) {
+        FMRB_LOGE(TAG, "Host task initialization timeout");
+        return;
+    }
+
+    FMRB_LOGI(TAG, "Kernel and host tasks are ready");
+
+    // Start GUI
     create_system_app();
 
     FMRB_LOGI(TAG, "Family mruby OS initialization complete");

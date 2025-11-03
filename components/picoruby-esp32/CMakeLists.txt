@@ -106,6 +106,7 @@ idf_component_register(
   PRIV_REQUIRES
     ${PLATFORM_PRIV_REQUIRES}
     mbedtls
+    main
 )
 
 # Add platform-specific dependencies for Linux

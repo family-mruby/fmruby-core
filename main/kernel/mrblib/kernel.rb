@@ -8,6 +8,7 @@ class FmrbKernel
     @frame_count = 0
     @last_frame_time = 0
     puts "Family mruby OS Kernel initialized"
+    _set_ready()  # Signal that kernel initialization is complete
   end
 
   def start
