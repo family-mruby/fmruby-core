@@ -39,9 +39,6 @@ typedef enum {
     FMRB_GFX_ERR_FAILED = -4
 } fmrb_gfx_err_t;
 
-// Graphics context handle
-typedef void* fmrb_gfx_context_t;
-
 // Canvas handle type (0 = main screen, 1-65534 = canvas ID)
 typedef uint16_t fmrb_canvas_handle_t;
 #define FMRB_CANVAS_SCREEN 0      // Main screen
@@ -54,6 +51,27 @@ typedef struct {
     uint8_t bits_per_pixel;
     bool double_buffered;
 } fmrb_gfx_config_t;
+
+// Forward declaration for transport handle
+// (fully defined in fmrb_link_transport.h, included by implementation files)
+#ifndef FMRB_LINK_TRANSPORT_HANDLE_DEFINED
+#define FMRB_LINK_TRANSPORT_HANDLE_DEFINED
+typedef void* fmrb_link_transport_handle_t;
+#endif
+
+// Graphics context implementation structure
+typedef struct {
+    fmrb_gfx_config_t config;
+    fmrb_link_transport_handle_t transport;
+    fmrb_rect_t clip_rect;
+    bool clip_enabled;
+    bool initialized;
+    fmrb_canvas_handle_t current_target;  // 0=screen, other=canvas
+    uint16_t next_canvas_id;              // Canvas ID generator
+} fmrb_gfx_context_impl_t;
+
+// Graphics context handle
+typedef fmrb_gfx_context_impl_t* fmrb_gfx_context_t;
 
 // Color constants (RGB332 format)
 #define FMRB_COLOR_BLACK    0x00  // R=0, G=0, B=0

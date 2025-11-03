@@ -18,7 +18,10 @@ typedef enum {
 } fmrb_link_transport_err_t;
 
 // Transport handle
+#ifndef FMRB_LINK_TRANSPORT_HANDLE_DEFINED
+#define FMRB_LINK_TRANSPORT_HANDLE_DEFINED
 typedef void* fmrb_link_transport_handle_t;
+#endif
 
 // Transport configuration
 typedef struct {

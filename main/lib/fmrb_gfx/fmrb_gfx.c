@@ -9,16 +9,6 @@
 
 static const char *TAG = "fmrb_gfx";
 
-typedef struct {
-    fmrb_gfx_config_t config;
-    fmrb_link_transport_handle_t transport;
-    fmrb_rect_t clip_rect;
-    bool clip_enabled;
-    bool initialized;
-    fmrb_canvas_handle_t current_target;  // 0=screen, other=canvas
-    uint16_t next_canvas_id;              // Canvas ID generator
-} fmrb_gfx_context_impl_t;
-
 // Global graphics context (shared across all FmrbGfx instances)
 static fmrb_gfx_context_impl_t *g_gfx_context = NULL;
 
@@ -107,7 +97,7 @@ fmrb_gfx_err_t fmrb_gfx_deinit(fmrb_gfx_context_t context) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
 
     // Only deinitialize if this is the global context
     if (ctx == g_gfx_context) {
@@ -139,7 +129,7 @@ fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_canvas_handle_t c
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     ESP_LOGD(TAG, "clear: ctx=%p, canvas_id=%d, initialized=%d, transport=%p", ctx, canvas_id, ctx->initialized, ctx->transport);
     if (!ctx->initialized) {
         ESP_LOGE(TAG, "clear: context not initialized (ctx=%p, initialized=%d)", ctx, ctx->initialized);
@@ -163,7 +153,7 @@ fmrb_gfx_err_t fmrb_gfx_clear_rect(fmrb_gfx_context_t context, fmrb_canvas_handl
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -185,7 +175,7 @@ fmrb_gfx_err_t fmrb_gfx_set_pixel(fmrb_gfx_context_t context, fmrb_canvas_handle
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -219,7 +209,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_line(fmrb_gfx_context_t context, fmrb_canvas_handle
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -241,7 +231,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_rect(fmrb_gfx_context_t context, fmrb_canvas_handle
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -264,7 +254,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -287,7 +277,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -357,7 +347,7 @@ fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -371,7 +361,7 @@ fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, fmrb_canvas_ha
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -397,7 +387,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_fast_vline(fmrb_gfx_context_t context, fmrb_canvas_
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -421,7 +411,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_fast_hline(fmrb_gfx_context_t context, fmrb_canvas_
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -445,7 +435,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, fmrb_canvas_
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -471,7 +461,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_round_rect(fmrb_gfx_context_t context, fmrb_canvas_
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -496,7 +486,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -521,7 +511,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -546,7 +536,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, fmrb_canvas_han
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -571,7 +561,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, fmrb_canvas_han
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -596,7 +586,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, fmrb_canvas_ha
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -623,7 +613,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, fmrb_canvas_ha
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -650,7 +640,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_arc(fmrb_gfx_context_t context, fmrb_canvas_handle_
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -677,7 +667,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_arc(fmrb_gfx_context_t context, fmrb_canvas_handle_
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -704,7 +694,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -745,7 +735,7 @@ fmrb_gfx_err_t fmrb_gfx_set_text_size(fmrb_gfx_context_t context, fmrb_canvas_ha
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -764,7 +754,7 @@ fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_canvas_h
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -794,7 +784,7 @@ fmrb_gfx_err_t fmrb_gfx_create_canvas(
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -830,7 +820,7 @@ fmrb_gfx_err_t fmrb_gfx_delete_canvas(
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
@@ -862,7 +852,7 @@ fmrb_gfx_err_t fmrb_gfx_set_target(
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     ESP_LOGD(TAG, "set_target: ctx=%p, initialized=%d, target=%u", ctx, ctx->initialized, target);
     if (!ctx->initialized) {
         ESP_LOGE(TAG, "set_target: context not initialized (ctx=%p, initialized=%d)", ctx, ctx->initialized);
@@ -901,7 +891,7 @@ fmrb_gfx_err_t fmrb_gfx_push_canvas(
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
