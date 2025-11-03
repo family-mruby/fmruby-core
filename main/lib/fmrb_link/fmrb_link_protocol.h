@@ -73,7 +73,13 @@ typedef enum {
 
     // Image/bitmap drawing
     FMRB_LINK_GFX_DRAW_IMAGE = 0x40,
-    FMRB_LINK_GFX_DRAW_BITMAP = 0x41
+    FMRB_LINK_GFX_DRAW_BITMAP = 0x41,
+
+    // Canvas management (LovyanGFX sprite-based)
+    FMRB_LINK_GFX_CREATE_CANVAS = 0x50,
+    FMRB_LINK_GFX_DELETE_CANVAS = 0x51,
+    FMRB_LINK_GFX_SET_TARGET = 0x52,
+    FMRB_LINK_GFX_PUSH_CANVAS = 0x53
 } fmrb_link_graphics_cmd_t;
 
 // Audio sub-commands
@@ -178,6 +184,28 @@ typedef struct __attribute__((packed)) {
     uint16_t text_len;
     // Followed by text data
 } fmrb_link_graphics_text_t;
+
+// Canvas management structures
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    int32_t width, height;
+} fmrb_link_graphics_create_canvas_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+} fmrb_link_graphics_delete_canvas_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t target_id;  // 0=screen, other=canvas ID
+} fmrb_link_graphics_set_target_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint16_t dest_canvas_id;  // 0=screen, other=canvas ID
+    int32_t x, y;
+    uint8_t transparent_color;
+    uint8_t use_transparency;  // 0=no, 1=yes
+} fmrb_link_graphics_push_canvas_t;
 
 // Audio message structures
 typedef struct __attribute__((packed)) {

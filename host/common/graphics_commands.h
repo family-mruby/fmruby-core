@@ -45,6 +45,12 @@ typedef enum {
     FMRB_GFX_CMD_DRAW_IMAGE = 0x40,
     FMRB_GFX_CMD_DRAW_BITMAP = 0x41,
 
+    // Canvas management (LovyanGFX sprite-based)
+    FMRB_GFX_CMD_CREATE_CANVAS = 0x50,
+    FMRB_GFX_CMD_DELETE_CANVAS = 0x51,
+    FMRB_GFX_CMD_SET_TARGET = 0x52,
+    FMRB_GFX_CMD_PUSH_CANVAS = 0x53,
+
     // Legacy
     FMRB_GFX_CMD_DRAW_TEXT = 0x06,
     FMRB_GFX_CMD_PRESENT = 0x08
@@ -52,6 +58,11 @@ typedef enum {
 
 // Color format (RGB332: 8-bit color)
 typedef uint8_t fmrb_color_t;
+
+// Canvas handle type (0 = main screen, 1-65534 = canvas ID)
+typedef uint16_t fmrb_canvas_handle_t;
+#define FMRB_CANVAS_SCREEN 0
+#define FMRB_CANVAS_INVALID 0xFFFF
 
 // Color constants (RGB332 format)
 #define FMRB_COLOR_BLACK   0x00  // R=0, G=0, B=0
@@ -158,6 +169,32 @@ typedef struct {
     uint16_t text_len;
     // text data follows
 } __attribute__((packed)) fmrb_gfx_string_cmd_t;
+
+// Canvas management command structures
+typedef struct {
+    uint8_t cmd_type;
+    uint16_t canvas_id;
+    int32_t width, height;
+} __attribute__((packed)) fmrb_gfx_create_canvas_cmd_t;
+
+typedef struct {
+    uint8_t cmd_type;
+    uint16_t canvas_id;
+} __attribute__((packed)) fmrb_gfx_delete_canvas_cmd_t;
+
+typedef struct {
+    uint8_t cmd_type;
+    uint16_t target_id;  // 0=screen, other=canvas ID
+} __attribute__((packed)) fmrb_gfx_set_target_cmd_t;
+
+typedef struct {
+    uint8_t cmd_type;
+    uint16_t canvas_id;
+    uint16_t dest_canvas_id;  // 0=screen, other=canvas ID
+    int32_t x, y;
+    uint8_t transparent_color;
+    uint8_t use_transparency;  // 0=no, 1=yes
+} __attribute__((packed)) fmrb_gfx_push_canvas_cmd_t;
 
 // Screen configuration
 #define FMRB_SCREEN_WIDTH  640

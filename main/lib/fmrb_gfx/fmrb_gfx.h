@@ -42,6 +42,11 @@ typedef enum {
 // Graphics context handle
 typedef void* fmrb_gfx_context_t;
 
+// Canvas handle type (0 = main screen, 1-65534 = canvas ID)
+typedef uint16_t fmrb_canvas_handle_t;
+#define FMRB_CANVAS_SCREEN 0      // Main screen
+#define FMRB_CANVAS_INVALID 0xFFFF
+
 // Graphics configuration
 typedef struct {
     uint16_t screen_width;
@@ -401,6 +406,65 @@ fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_color_t 
  * @return Graphics error code
  */
 fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_color_t color);
+
+// Canvas management API (for Window drawing buffers)
+
+/**
+ * @brief Create canvas (offscreen drawing buffer)
+ * @param context Graphics context
+ * @param width Canvas width
+ * @param height Canvas height
+ * @param canvas_handle Pointer to store canvas handle
+ * @return Graphics error code
+ *
+ * Use case: Create drawing buffer for application window
+ */
+fmrb_gfx_err_t fmrb_gfx_create_canvas(
+    fmrb_gfx_context_t context,
+    int32_t width, int32_t height,
+    fmrb_canvas_handle_t *canvas_handle);
+
+/**
+ * @brief Delete canvas
+ * @param context Graphics context
+ * @param canvas_handle Canvas handle to delete
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_delete_canvas(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_handle);
+
+/**
+ * @brief Set drawing target (screen or canvas)
+ * @param context Graphics context
+ * @param target Target handle (FMRB_CANVAS_SCREEN for main screen, or canvas handle)
+ * @return Graphics error code
+ *
+ * All subsequent drawing operations will target this canvas/screen
+ */
+fmrb_gfx_err_t fmrb_gfx_set_target(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t target);
+
+/**
+ * @brief Push canvas to screen or another canvas
+ * @param context Graphics context
+ * @param canvas_handle Canvas to push (source)
+ * @param dest_canvas Destination canvas (FMRB_CANVAS_SCREEN for main screen, or canvas handle)
+ * @param x Destination X coordinate
+ * @param y Destination Y coordinate
+ * @param transparent_color Color to treat as transparent (0xFF = no transparency)
+ * @return Graphics error code
+ *
+ * Use case: Render window buffer to screen at (x, y) or to another canvas for hierarchical sprites
+ * Set transparent_color to enable color-key transparency
+ */
+fmrb_gfx_err_t fmrb_gfx_push_canvas(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_handle,
+    fmrb_canvas_handle_t dest_canvas,
+    int32_t x, int32_t y,
+    fmrb_color_t transparent_color);
 
 #ifdef __cplusplus
 }

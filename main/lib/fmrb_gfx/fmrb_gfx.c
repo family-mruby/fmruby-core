@@ -15,6 +15,8 @@ typedef struct {
     fmrb_rect_t clip_rect;
     bool clip_enabled;
     bool initialized;
+    fmrb_canvas_handle_t current_target;  // 0=screen, other=canvas
+    uint16_t next_canvas_id;              // Canvas ID generator
 } fmrb_gfx_context_impl_t;
 
 // Helper function to check if point is within clip rectangle
@@ -77,6 +79,8 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config, fmrb_gfx_context_t
     }
 
     ctx->initialized = true;
+    ctx->current_target = FMRB_CANVAS_SCREEN;  // Default to main screen
+    ctx->next_canvas_id = 1;  // Start canvas IDs from 1
     *context = ctx;
 
     ESP_LOGI(TAG, "Graphics initialized: %dx%d, %d bpp",
@@ -735,4 +739,138 @@ fmrb_gfx_err_t fmrb_gfx_set_text_color(fmrb_gfx_context_t context, fmrb_color_t 
 
 fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_color_t color) {
     return fmrb_gfx_clear(context, color);
+}
+
+// Canvas management API implementations
+
+fmrb_gfx_err_t fmrb_gfx_create_canvas(
+    fmrb_gfx_context_t context,
+    int32_t width, int32_t height,
+    fmrb_canvas_handle_t *canvas_handle)
+{
+    if (!context || !canvas_handle || width <= 0 || height <= 0) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    // Assign new canvas ID
+    uint16_t canvas_id = ctx->next_canvas_id++;
+    if (canvas_id == FMRB_CANVAS_INVALID) {
+        // Wrapped around, skip invalid value
+        canvas_id = ctx->next_canvas_id++;
+    }
+
+    // Send create canvas command to host
+    fmrb_link_graphics_create_canvas_t cmd = {
+        .canvas_id = canvas_id,
+        .width = width,
+        .height = height
+    };
+
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_CREATE_CANVAS, &cmd, sizeof(cmd));
+    if (ret == FMRB_GFX_OK) {
+        *canvas_handle = canvas_id;
+        ESP_LOGI(TAG, "Canvas created: ID=%u, %dx%d", canvas_id, width, height);
+    }
+
+    return ret;
+}
+
+fmrb_gfx_err_t fmrb_gfx_delete_canvas(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_handle)
+{
+    if (!context || canvas_handle == FMRB_CANVAS_SCREEN || canvas_handle == FMRB_CANVAS_INVALID) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    // If deleting current target, switch back to screen
+    if (ctx->current_target == canvas_handle) {
+        ctx->current_target = FMRB_CANVAS_SCREEN;
+    }
+
+    // Send delete canvas command to host
+    fmrb_link_graphics_delete_canvas_t cmd = {
+        .canvas_id = canvas_handle
+    };
+
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_DELETE_CANVAS, &cmd, sizeof(cmd));
+    if (ret == FMRB_GFX_OK) {
+        ESP_LOGI(TAG, "Canvas deleted: ID=%u", canvas_handle);
+    }
+
+    return ret;
+}
+
+fmrb_gfx_err_t fmrb_gfx_set_target(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t target)
+{
+    if (!context || target == FMRB_CANVAS_INVALID) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    // Update local state
+    ctx->current_target = target;
+
+    // Send set target command to host
+    fmrb_link_graphics_set_target_t cmd = {
+        .target_id = target
+    };
+
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_SET_TARGET, &cmd, sizeof(cmd));
+    if (ret == FMRB_GFX_OK) {
+        ESP_LOGD(TAG, "Drawing target set: ID=%u %s", target,
+                 target == FMRB_CANVAS_SCREEN ? "(screen)" : "(canvas)");
+    }
+
+    return ret;
+}
+
+fmrb_gfx_err_t fmrb_gfx_push_canvas(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_handle,
+    fmrb_canvas_handle_t dest_canvas,
+    int32_t x, int32_t y,
+    fmrb_color_t transparent_color)
+{
+    if (!context || canvas_handle == FMRB_CANVAS_SCREEN || canvas_handle == FMRB_CANVAS_INVALID) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    if (dest_canvas == FMRB_CANVAS_INVALID) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    // Send push canvas command to host
+    // Use 0xFF to indicate no transparency
+    fmrb_link_graphics_push_canvas_t cmd = {
+        .canvas_id = canvas_handle,
+        .dest_canvas_id = dest_canvas,
+        .x = x,
+        .y = y,
+        .transparent_color = transparent_color,
+        .use_transparency = (transparent_color == 0xFF) ? 0 : 1
+    };
+
+    return send_graphics_command(ctx, FMRB_LINK_GFX_PUSH_CANVAS, &cmd, sizeof(cmd));
 }
