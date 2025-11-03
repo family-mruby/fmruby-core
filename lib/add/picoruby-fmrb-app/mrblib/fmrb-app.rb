@@ -3,130 +3,72 @@
 #
 # Lifecycle flow:
 #   1. on_create()  - Called once when app is created
-#   2. on_update()  - Called every frame (60Hz)
-#   3. on_pause()   - Called when app goes to background
-#   4. on_resume()  - Called when app comes to foreground
-#   5. on_destroy() - Called once when app is destroyed
+#   2. on_update()  - Called every frame (return wait time)
+#   3. on_destroy() - Called once when app is destroyed
 #
 # Event handlers:
-#   - on_key_down(key_code)
-#   - on_key_up(key_code)
-#   - on_mouse_move(x, y)
-#   - on_mouse_click(x, y, button)
+#   TBD
 
 class FmrbApp
   attr_reader :name, :running
 
-  def initialize(name = "FmrbApp")
-    @name = name
+  def initialize()
+    puts "[FmrbApp]initialize"
     @running = false
-    @paused = false
+    _init() # C function, variables are defined here
+    @gfx = FmrbGfx.new(@window_width,@window_height)
+    puts "[FmrbApp]name=#{name}"
   end
 
   # Lifecycle methods (override in subclass)
 
-  def on_create(name, canvas)
-    # Called once when app starts,
+  def on_create
+    # Called once when app is created
     # Initialize your app state here
+    # Access @name and @gfx instance variables
+    puts "[FmrbApp]on_create"
   end
 
-  def on_update()
-    # Called every frame (60Hz)
+  def on_update
+    # Called by user defined cycle
     # Update your app logic here
-  end
-
-  def on_pause
-    # Called when app goes to background
-    # Save state or pause animations here
-  end
-
-  def on_resume
-    # Called when app comes back to foreground
-    # Resume animations or reload state here
+    # Return: sleep cycle(msec)
+    33 
   end
 
   def on_destroy
     # Called once when app is destroyed
     # Cleanup resources here
+    puts "[FmrbApp]on_destroy"
   end
 
-  # Input event handlers (override in subclass)
-
-  def on_key_down(key_code)
-    # Called when a key is pressed
-    # key_code: integer representing the key
+  def on_event(ev)
+    # Called from C
   end
 
-  def on_key_up(key_code)
-    # Called when a key is released
-    # key_code: integer representing the key
+  # Internal methods
+  def main_loop
+    loop do
+      return if !@running
+      timeout_ms = on_update
+      _spin(timeout_ms)
+    end
   end
 
-  def on_mouse_move(x, y)
-    # Called when mouse moves
-    # x, y: mouse coordinates
-  end
-
-  def on_mouse_click(x, y, button)
-    # Called when mouse button is clicked
-    # x, y: click coordinates
-    # button: 0=left, 1=right, 2=middle
-  end
-
-  # Internal methods (called by C layer)
-
-  # イベント待機
-  def spin(timeout)
-    _spin(timeout) #C拡張
-  end
-
-  # 指定したキー操作をイベントとして受信する
-  # Shellのようなアプリでは、getchでSTOUTで管理
-  def register_keyevent(key_list)
-    _register_keyevent(key_list) #C拡張
+  def destroy
+    @gfx.destroy
+    on_destroy
   end
 
   def start
     @running = true
-    @paused = false
     on_create
+    main_loop
+    destroy
   end
 
   def stop
     @running = false
-    on_destroy
   end
 
-  def pause
-    @paused = true
-    on_pause
-  end
-
-  def resume
-    @paused = false
-    on_resume
-  end
-
-  def update(delta_time_ms)
-    return if @paused || !@running
-    on_update(delta_time_ms)
-  end
-
-  # Input dispatch (called by C layer)
-
-  def dispatch_key_down(key_code)
-    on_key_down(key_code) if @running
-  end
-
-  def dispatch_key_up(key_code)
-    on_key_up(key_code) if @running
-  end
-
-  def dispatch_mouse_move(x, y)
-    on_mouse_move(x, y) if @running
-  end
-
-  def dispatch_mouse_click(x, y, button)
-    on_mouse_click(x, y, button) if @running
-  end
 end

@@ -1,47 +1,42 @@
 # System GUI Application
 # This is the default system GUI that provides basic UI elements
 
-# class SystemGuiApp < FmrbApp
-#   def initialize
-#     super("SystemGUI")
-#     @counter = 0
-#   end
+class SystemGuiApp < FmrbApp
+  def initialize
+    super()
+    @counter = 0
 
-#   def on_create
-#     puts "[SystemGUI] App created"
-#   end
+    @score = 0
+    @player_x = 100
+    @player_y = 100
+  end
 
-#   def on_update(delta_time_ms)
-#     @counter += 1
-#     if @counter % 60 == 0  # Every 1 second at 60Hz
-#       puts "[SystemGUI] Running... (#{@counter / 60}s)"
-#     end
-#   end
+  def on_create()
+    @gfx.clear(FmrbGfx::BLACK)
+  end
 
-#   def on_pause
-#     puts "[SystemGUI] Paused"
-#   end
+  def on_update()
+    if @counter % 33 == 0  # Every 1 second at 60Hz
+      puts "[SystemGUI] Running... (#{@counter / 33}s)"
+    end
+    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLACK)
+    @player_x += 1
+    @player_y += 1
+    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
+    @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
+    @gfx.present
 
-#   def on_resume
-#     puts "[SystemGUI] Resumed"
-#   end
+    @counter += 1
+    33
+  end
 
-#   def on_destroy
-#     puts "[SystemGUI] Destroyed"
-#   end
+  def on_destroy
+    puts "[SystemGUI] Destroyed"
+  end
 
-#   def on_key_down(key_code)
-#     puts "[SystemGUI] Key down: #{key_code}"
-#   end
-# end
-
-# # Create and start the system GUI app instance
-# app = SystemGuiApp.new
-# app.start
-
-
-puts "[SystemGUI] hello"
-while true
-    puts "gui app loop running"
-    Machine.delay_ms(30000)
 end
+
+# Create and start the system GUI app instance
+puts "[SystemGUI] SystemGuiApp.new"
+app = SystemGuiApp.new
+app.start

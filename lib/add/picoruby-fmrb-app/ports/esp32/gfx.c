@@ -233,9 +233,20 @@ static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// Graphics#destroy - Explicitly release graphics resources
+static mrb_value mrb_gfx_destroy(mrb_state *mrb, mrb_value self)
+{
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (data && data->ctx) {
+        fmrb_gfx_deinit(data->ctx);
+        data->ctx = NULL;
+    }
+    return mrb_nil_value();
+}
+
 void mrb_fmrb_gfx_init(mrb_state *mrb)
 {
-    struct RClass *gfx_class = mrb_define_class(mrb, "Graphics", mrb->object_class);
+    struct RClass *gfx_class = mrb_define_class(mrb, "FmrbGfx", mrb->object_class);
     MRB_SET_INSTANCE_TT(gfx_class, MRB_TT_DATA);
 
     mrb_define_method(mrb, gfx_class, "initialize", mrb_gfx_initialize, MRB_ARGS_REQ(2));
@@ -248,6 +259,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "fill_circle", mrb_gfx_fill_circle, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "draw_text", mrb_gfx_draw_text, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_NONE());
+    mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());
 
     // Color constants
     mrb_define_const(mrb, gfx_class, "BLACK", mrb_fixnum_value(FMRB_COLOR_BLACK));

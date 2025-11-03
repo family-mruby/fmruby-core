@@ -89,8 +89,8 @@ static void create_system_app(void)
     FMRB_LOGI(TAG, "Creating system GUI app...");
 
     fmrb_spawn_attr_t attr = {
-        .app_id = PROC_ID_HOST_APP,
-        .type = APP_TYPE_HOST_APP,
+        .app_id = PROC_ID_SYSTEM_APP,
+        .type = APP_TYPE_SYSTEM_APP,
         .name = "system_gui",
         .irep = system_gui_irep,
         .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,

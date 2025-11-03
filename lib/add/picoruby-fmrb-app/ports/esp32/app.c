@@ -14,16 +14,37 @@
 
 static const char* TAG = "app";
 
-// FmrbApp._init() - Initialize application
+// FmrbApp#_init() - Initialize app instance from C context
+// Sets @name and @canvas instance variables, creates message queue
 static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
 {
-    // Application initialization logic
-    // This can be extended based on requirements
     fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
+    }
 
-    FMRB_LOGI(TAG,"mrb_fmrb_app_init");
-    FMRB_LOGI(TAG,"app_id=%d",ctx->app_id);
-    FMRB_LOGI(TAG,"app_name=%s",ctx->app_name);
+    FMRB_LOGI(TAG, "_init: app_id=%d, name=%s", ctx->app_id, ctx->app_name);
+
+    // Set @name instance variable
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@name"),
+               mrb_str_new_cstr(mrb, ctx->app_name));
+
+    // Set @canvas instance variable
+    // Canvas ID = app_id + 1 (0 is reserved for screen)
+    // TODO: Canvas allocation should be done by Kernel
+    mrb_int canvas_id = ctx->app_id + 1;
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@canvas"),
+               mrb_fixnum_value(canvas_id));
+
+    // Set @window_width and @window_height instance variables
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@window_width"),
+               mrb_fixnum_value(ctx->window_width));
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@window_height"),
+               mrb_fixnum_value(ctx->window_height));
+
+    FMRB_LOGI(TAG, "Assigned canvas_id=%d, window=%dx%d to app %s",
+             (int)canvas_id, ctx->window_width, ctx->window_height, ctx->app_name);
+
     // Create message queue for this app
     fmrb_msg_queue_config_t queue_config = {
         .queue_length = FMRB_USER_APP_MSG_QUEUE_LEN,
@@ -32,27 +53,47 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
 
     fmrb_err_t ret = fmrb_msg_create_queue(ctx->app_id, &queue_config);
     if (ret != FMRB_OK) {
-        // Error handling - raise mruby exception
-        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to create message queue: %d", ret);
+        mrb_raisef(mrb, E_RUNTIME_ERROR,
+                   "Failed to create message queue: %d", ret);
     }
 
     return self;
 }
 
-// FmrbApp.create_ipc_handle() - Create IPC handle
-static mrb_value mrb_fmrb_app_create_ipc_handle(mrb_state *mrb, mrb_value self)
+// FmrbApp#_spin(timeout_ms) - Process messages and wait
+// Receives messages from queue with timeout, called from Ruby main_loop()
+static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 {
-    // IPC handle creation logic
-    // Returns an integer handle ID
-    // TODO: Implement actual IPC handle creation via fmrb_hal
-    return mrb_fixnum_value(0);
-}
+    mrb_int timeout_ms;
+    mrb_get_args(mrb, "i", &timeout_ms);
 
-// FmrbApp.app_name() - Get application name
-static mrb_value mrb_fmrb_app_app_name(mrb_state *mrb, mrb_value self)
-{
-    // Returns the application name
-    return mrb_str_new_cstr(mrb, "FamilyMruby");
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
+    }
+
+    // Try to receive message with timeout
+    fmrb_msg_t msg;
+    fmrb_err_t ret = fmrb_msg_receive(ctx->app_id, &msg,
+                                      FMRB_MS_TO_TICKS(timeout_ms));
+
+    if (ret == FMRB_OK) {
+        // Message received
+        FMRB_LOGI(TAG, "App %s received message: type=%d",
+                 ctx->app_name, msg.type);
+
+        // TODO: Convert message to Ruby event and call on_event()
+        // For now, just log it
+    } else if (ret == FMRB_ERR_TIMEOUT) {
+        // Timeout - normal case when no messages
+        // Just proceed to next frame
+    } else {
+        // Other error
+        FMRB_LOGW(TAG, "App %s message receive error: %d",
+                 ctx->app_name, ret);
+    }
+
+    return mrb_nil_value();
 }
 
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
@@ -60,9 +101,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     // Define FmrbApp class
     struct RClass *app_class = mrb_define_class(mrb, "FmrbApp", mrb->object_class);
 
-    mrb_define_class_method(mrb, app_class, "_init", mrb_fmrb_app_init, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "create_ipc_handle", mrb_fmrb_app_create_ipc_handle, MRB_ARGS_NONE());
-    mrb_define_class_method(mrb, app_class, "app_name", mrb_fmrb_app_app_name, MRB_ARGS_NONE());
+    // Instance methods (called from Ruby instances)
+    mrb_define_method(mrb, app_class, "_init", mrb_fmrb_app_init, MRB_ARGS_NONE());
+    mrb_define_method(mrb, app_class, "_spin", mrb_fmrb_app_spin, MRB_ARGS_REQ(1));
 
     // Initialize graphics subsystem
     mrb_fmrb_gfx_init(mrb);

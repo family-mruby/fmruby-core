@@ -2,6 +2,7 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <picoruby.h>
 #include "fmrb_log.h"
@@ -10,6 +11,7 @@
 #include "fmrb_msg.h"
 #include "fmrb_task_config.h"
 #include "fmrb_app.h"
+#include "fmrb_kernel.h"
 #include "host/host_task.h"
 #include "fmrb_toml.h"
 
@@ -17,6 +19,30 @@
 extern const uint8_t kernel_irep[];
 
 static const char *TAG = "kernel";
+
+// System configuration (global, initialized once)
+static fmrb_system_config_t g_system_config = {
+    .system_name = "Family mruby OS",
+    .display_width = 480,
+    .display_height = 320,
+    .default_user_app_width = 320,
+    .default_user_app_height = 240,
+    .display_mode = FMRB_DISPLAY_MODE_NTSC_IPC,
+    .debug_mode = true
+};
+
+// Parse display_mode string to enum
+static fmrb_display_mode_t parse_display_mode(const char* mode_str)
+{
+    if (strcmp(mode_str, "ntsc_ipc") == 0) {
+        return FMRB_DISPLAY_MODE_NTSC_IPC;
+    } else if (strcmp(mode_str, "spi_direct") == 0) {
+        return FMRB_DISPLAY_MODE_SPI_DIRECT;
+    } else if (strcmp(mode_str, "headless") == 0) {
+        return FMRB_DISPLAY_MODE_HEADLESS;
+    }
+    return FMRB_DISPLAY_MODE_NTSC_IPC;  // Default
+}
 
 static void read_system_config(void)
 {
@@ -34,20 +60,43 @@ static void read_system_config(void)
         return;
     }
 
-    // Use helper functions to get values with defaults
-    const char* default_val = "undefined";
-    const char* system_name = fmrb_toml_get_string(conf, "system_name", default_val);
-    bool debug_mode = fmrb_toml_get_bool(conf, "debug_mode", false);
-    int64_t log_level = fmrb_toml_get_int(conf, "log_level", 3);
-
-    FMRB_LOGI(TAG, "System Name: %s", system_name);
-    FMRB_LOGI(TAG, "Debug Mode: %s", debug_mode ? "enabled" : "disabled");
-    FMRB_LOGI(TAG, "Log Level: %" PRId64, log_level);
-
-    // Free system_name if it's not the default value
-    if (system_name != default_val) {
+    // Read system_name
+    const char* system_name = fmrb_toml_get_string(conf, "system_name", g_system_config.system_name);
+    if (system_name != g_system_config.system_name) {
+        strncpy(g_system_config.system_name, system_name, sizeof(g_system_config.system_name) - 1);
+        g_system_config.system_name[sizeof(g_system_config.system_name) - 1] = '\0';
         fmrb_sys_free((void*)system_name);
     }
+
+    // Read display dimensions
+    g_system_config.display_width = (uint16_t)fmrb_toml_get_int(conf, "display_width",
+                                                                 g_system_config.display_width);
+    g_system_config.display_height = (uint16_t)fmrb_toml_get_int(conf, "display_height",
+                                                                  g_system_config.display_height);
+
+    // Read default user app window size
+    g_system_config.default_user_app_width = (uint16_t)fmrb_toml_get_int(conf, "default_user_app_width",
+                                                                          g_system_config.default_user_app_width);
+    g_system_config.default_user_app_height = (uint16_t)fmrb_toml_get_int(conf, "default_user_app_height",
+                                                                           g_system_config.default_user_app_height);
+
+    // Read display mode
+    const char* display_mode_str = fmrb_toml_get_string(conf, "display_mode", "ntsc_ipc");
+    g_system_config.display_mode = parse_display_mode(display_mode_str);
+    if (display_mode_str != NULL && strcmp(display_mode_str, "ntsc_ipc") != 0) {
+        fmrb_sys_free((void*)display_mode_str);
+    }
+
+    // Read debug mode
+    g_system_config.debug_mode = fmrb_toml_get_bool(conf, "debug_mode", g_system_config.debug_mode);
+
+    // Log loaded configuration
+    FMRB_LOGI(TAG, "System Name: %s", g_system_config.system_name);
+    FMRB_LOGI(TAG, "Display: %dx%d", g_system_config.display_width, g_system_config.display_height);
+    FMRB_LOGI(TAG, "Default User App Window: %dx%d",
+              g_system_config.default_user_app_width, g_system_config.default_user_app_height);
+    FMRB_LOGI(TAG, "Display Mode: %d", g_system_config.display_mode);
+    FMRB_LOGI(TAG, "Debug Mode: %s", g_system_config.debug_mode ? "enabled" : "disabled");
 
     // Dump full configuration for debugging
     FMRB_LOGI(TAG, "Full configuration:");
@@ -138,4 +187,9 @@ void fmrb_kernel_stop(void)
     fmrb_app_kill(PROC_ID_KERNEL);
 
     FMRB_LOGI(TAG, "Kernel task stopped");
+}
+
+const fmrb_system_config_t* fmrb_kernel_get_config(void)
+{
+    return &g_system_config;
 }

@@ -8,6 +8,7 @@
 #include "host_task.h"
 #include "fmrb_gfx.h"
 #include "fmrb_audio.h"
+#include "../fmrb_kernel.h"
 
 static const char *TAG = "host";
 
@@ -64,12 +65,14 @@ static void host_task_process_host_message(const host_message_t *msg);
  */
 static int init_gfx_audio(void)
 {
+    fmrb_system_config_t* conf = fmrb_kernel_get_config();
+
     // Initialize Graphics subsystem
     fmrb_gfx_config_t gfx_config = {
-        .screen_width = 480,
-        .screen_height = 320,
+        .screen_width = conf->display_width,
+        .screen_height = conf->display_height,
         .bits_per_pixel = 8,
-        .double_buffered = true
+        .double_buffered = false
     };
 
     fmrb_gfx_err_t gfx_ret = fmrb_gfx_init(&gfx_config, &g_gfx_context);
@@ -174,7 +177,7 @@ static void fmrb_host_task(void *pvParameters)
 
     while (1) {
         // Wait for messages with timeout
-        if (fmrb_msg_receive(PROC_ID_HOST_APP, &msg, 10) == FMRB_OK) {
+        if (fmrb_msg_receive(PROC_ID_HOST, &msg, 10) == FMRB_OK) {
             host_task_process_message(&msg);
         }
 
@@ -204,7 +207,7 @@ int fmrb_host_task_init(void)
         .message_size = sizeof(fmrb_msg_t)
     };
 
-    fmrb_err_t hal_ret = fmrb_msg_create_queue(PROC_ID_HOST_APP, &queue_config);
+    fmrb_err_t hal_ret = fmrb_msg_create_queue(PROC_ID_HOST, &queue_config);
     if (hal_ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to create host message queue: %d", hal_ret);
         return -1;
@@ -222,7 +225,7 @@ int fmrb_host_task_init(void)
 
     if (result != FMRB_PASS) {
         FMRB_LOGE(TAG, "Failed to create host task");
-        fmrb_msg_delete_queue(PROC_ID_HOST_APP);
+        fmrb_msg_delete_queue(PROC_ID_HOST);
         return -1;
     }
 
@@ -243,7 +246,7 @@ void fmrb_host_task_deinit(void)
     }
 
     // Delete host task's message queue
-    fmrb_msg_delete_queue(PROC_ID_HOST_APP);
+    fmrb_msg_delete_queue(PROC_ID_HOST);
 
     FMRB_LOGI(TAG, "Host task deinitialized");
 }
@@ -260,7 +263,7 @@ static int fmrb_host_send_message(const host_message_t *msg)
     };
     memcpy(hal_msg.data, msg, sizeof(host_message_t));
 
-    fmrb_err_t result = fmrb_msg_send(PROC_ID_HOST_APP, &hal_msg, 10);
+    fmrb_err_t result = fmrb_msg_send(PROC_ID_HOST, &hal_msg, 10);
     if (result != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to send host message: %d", result);
         return -1;

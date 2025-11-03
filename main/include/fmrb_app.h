@@ -20,7 +20,7 @@ typedef enum {
 
 enum FMRB_APP_TYPE{
     APP_TYPE_KERNEL = 0,
-    APP_TYPE_HOST_APP,
+    APP_TYPE_SYSTEM_APP,
     APP_TYPE_USER_APP,
     APP_TYPE_MAX
 };
@@ -39,6 +39,8 @@ typedef struct {
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
     fmrb_task_handle_t    task;              // FreeRTOS task handle
     uint32_t              gen;               // Generation counter for reuse detection
+    uint16_t              window_width;      // Window Width(if headless, =0)
+    uint16_t              window_height;     // Window Height(if headless, =0)
     void*                 user_data;         // Application-specific data
 } fmrb_app_task_context_t;
 
