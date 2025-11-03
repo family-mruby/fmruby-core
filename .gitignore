@@ -7,3 +7,8 @@ dependencies.lock
 .vscode/*
 main/kernel/mrb/*
 main/app/system_app/mrb/*
+
+# Generated documentation
+doc/api/
+doc/ruby_api/
+.yardoc/

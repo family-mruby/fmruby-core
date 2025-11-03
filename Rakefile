@@ -193,3 +193,37 @@ desc "Run Linux build (depends on build:linux)"
 task :run_linux => 'build:linux' do
   sh "./build/fmruby-core.elf"
 end
+
+namespace :doc do
+  desc "Generate C/C++ API documentation with Doxygen"
+  task :c do
+    unless system("which doxygen > /dev/null 2>&1")
+      puts "ERROR: Doxygen is not installed."
+      puts "Install with: sudo apt-get install doxygen  # or  brew install doxygen"
+      exit 1
+    end
+    sh "doxygen Doxyfile"
+    puts "C/C++ API documentation generated at: doc/api/html/index.html"
+  end
+
+  desc "Generate Ruby API documentation with YARD"
+  task :ruby do
+    unless system("which yard > /dev/null 2>&1")
+      puts "ERROR: YARD is not installed."
+      puts "Install with: gem install yard"
+      exit 1
+    end
+    mrbgem_path = "components/picoruby-esp32/picoruby/mrbgems"
+    sh "yard doc #{mrbgem_path}/picoruby-fmrb-app/mrblib/*.rb #{mrbgem_path}/picoruby-fmrb-kernel/mrblib/*.rb -o doc/ruby_api"
+    puts "Ruby API documentation generated at: doc/ruby_api/index.html"
+  end
+
+  desc "Generate all API documentation (C/C++ and Ruby)"
+  task :all => [:c, :ruby]
+
+  desc "Clean generated documentation"
+  task :clean do
+    sh "rm -rf doc/api doc/ruby_api"
+    puts "Documentation cleaned"
+  end
+end
