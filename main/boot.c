@@ -217,10 +217,10 @@ void fmrb_os_init(void)
     FMRB_LOGI(TAG, "fmrb_kernel_start done");
 
     // Wait for kernel and host initialization
-    FMRB_LOGI(TAG, "Waiting for kernel and host tasks to be ready...");
     int timeout_ms = 5000;  // 5 second timeout
     int elapsed_ms = 0;
     while ((!fmrb_kernel_is_ready() || !fmrb_host_is_ready()) && elapsed_ms < timeout_ms) {
+        FMRB_LOGI(TAG, "Waiting for kernel and host tasks to be ready...");
         fmrb_task_delay(FMRB_MS_TO_TICKS(100));
         elapsed_ms += 100;
     }

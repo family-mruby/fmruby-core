@@ -179,6 +179,9 @@ mrb_kernel_message_queue_exists(mrb_state *mrb, mrb_value self)
   return mrb_bool_value(exists);
 }
 
+// Forward declaration for FmrbKernel class initialization (defined in ports/esp32/kernel.c)
+extern void mrb_fmrb_kernel_init(mrb_state *mrb);
+
 void
 mrb_picoruby_fmrb_kernel_init(mrb_state *mrb)
 {
@@ -200,6 +203,7 @@ void
 mrb_picoruby_fmrb_kernel_gem_init(mrb_state *mrb)
 {
   mrb_picoruby_fmrb_kernel_init(mrb);
+  mrb_fmrb_kernel_init(mrb);  // Initialize FmrbKernel class
 }
 
 void
