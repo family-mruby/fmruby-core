@@ -72,11 +72,24 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
     }
 
-    // Spin Loop
-    // Try to receive message with timeout
+    // Record start time to ensure we wait for the full timeout period
+    TickType_t start_tick = fmrb_task_get_tick_count();
+    TickType_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
+
+    // Spin Loop - process messages until timeout expires
     while(true){
+        // Calculate remaining time
+        TickType_t current_tick = fmrb_task_get_tick_count();
+        if (current_tick >= target_tick) {
+            // Timeout expired, exit spin loop
+            break;
+        }
+
+        TickType_t remaining_ticks = target_tick - current_tick;
+
+        // Try to receive message with remaining timeout
         fmrb_msg_t msg;
-        fmrb_err_t ret = fmrb_msg_receive(ctx->app_id, &msg, FMRB_MS_TO_TICKS(timeout_ms));
+        fmrb_err_t ret = fmrb_msg_receive(ctx->app_id, &msg, remaining_ticks);
 
         if (ret == FMRB_OK) {
             // Message received
@@ -84,10 +97,10 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 
             // TODO: Convert message to Ruby event and call on_event()
             // For now, just log it
-            // Update timeout_ms
+            // Continue loop to process more messages or wait for remaining time
         } else if (ret == FMRB_ERR_TIMEOUT) {
             // Timeout - normal case when no messages
-            // Just proceed to next frame
+            // Exit spin loop (full timeout period has elapsed)
             break;
         } else {
             FMRB_LOGW(TAG, "App %s message receive error: %d", ctx->app_name, ret);
