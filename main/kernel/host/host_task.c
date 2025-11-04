@@ -98,7 +98,7 @@ static int init_gfx_audio(void)
             FMRB_LOGE(TAG, "Failed to create graphics command buffer");
             return -1;
         }
-        FMRB_LOGI(TAG, "Graphics command buffer created: %d slots", GFX_CMD_BUFFER_SIZE);
+        FMRB_LOGI(TAG, "Graphics command buffer created (max=%d)", GFX_CMD_BUFFER_SIZE);
 
         // Test graphics with a simple clear
         // FMRB_LOGI(TAG, "============================== gfx demo ==========================");
@@ -126,9 +126,6 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
 {
     gfx_cmd_t *gfx_cmd = (gfx_cmd_t *)msg->data;
 
-    FMRB_LOGD(TAG, "GFX command from src_pid=%d: cmd_type=%d, canvas_id=%d",
-             msg->src_pid, gfx_cmd->cmd_type, gfx_cmd->canvas_id);
-
     if (!g_gfx_cmd_buffer) {
         FMRB_LOGE(TAG, "Command buffer not initialized");
         return;
@@ -143,8 +140,7 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
     // Handle PRESENT command: execute buffered commands
     if (gfx_cmd->cmd_type == GFX_CMD_PRESENT) {
         size_t cmd_count = fmrb_gfx_command_buffer_count(g_gfx_cmd_buffer);
-        FMRB_LOGI(TAG, "PRESENT: Executing %zu buffered commands for canvas %d",
-                 cmd_count, gfx_cmd->canvas_id);
+        FMRB_LOGD(TAG, "Executing %zu buffered commands", cmd_count);
 
         // Execute all buffered commands
         fmrb_gfx_err_t ret = fmrb_gfx_command_buffer_execute(g_gfx_cmd_buffer, ctx);
@@ -160,11 +156,11 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
 
         // Clear buffer for next frame
         fmrb_gfx_command_buffer_clear(g_gfx_cmd_buffer);
-        FMRB_LOGD(TAG, "Command buffer cleared");
         return;
     }
 
     // Add drawing command to buffer
+
     fmrb_gfx_err_t ret = FMRB_GFX_OK;
     switch (gfx_cmd->cmd_type) {
         case GFX_CMD_CLEAR:
@@ -210,10 +206,7 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
     }
 
     if (ret != FMRB_GFX_OK) {
-        FMRB_LOGE(TAG, "Failed to add command to buffer: %d", ret);
-    } else {
-        FMRB_LOGD(TAG, "Command buffered (total: %zu)",
-                 fmrb_gfx_command_buffer_count(g_gfx_cmd_buffer));
+        FMRB_LOGE(TAG, "Failed to add graphics command: %d", ret);
     }
 }
 

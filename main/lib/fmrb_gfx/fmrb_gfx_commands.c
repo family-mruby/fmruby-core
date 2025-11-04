@@ -81,7 +81,6 @@ fmrb_gfx_command_buffer_t* fmrb_gfx_command_buffer_create(size_t max_commands) {
     buffer->max_commands = max_commands;
     buffer->count = 0;
 
-    ESP_LOGI(TAG, "Command buffer created with %zu slots", max_commands);
     return buffer;
 }
 

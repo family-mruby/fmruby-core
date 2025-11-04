@@ -13,4 +13,5 @@ idf_component_register(
     SRCS ${COMMON_SRCS}
     INCLUDE_DIRS "." "../../include" "../fmrb_hal"
     REQUIRES ${PLATFORM_REQUIRES}
+    PRIV_REQUIRES fmrb_log
 )

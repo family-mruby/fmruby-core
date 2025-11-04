@@ -35,7 +35,7 @@ static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
 
     fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 100);
     if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to send GFX message: %d", ret);
+        FMRB_LOGE(TAG, "Failed to send graphics command: %d", ret);
     }
     return ret;
 }

@@ -339,7 +339,29 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     // Initialize context fields
     ctx->app_id = idx;
     ctx->type = attr->type;
-    ctx->mempool_id = idx;  // Map PROC_ID to POOL_ID
+
+    // Assign memory pool based on task type to avoid conflicts
+    switch (attr->type) {
+        case APP_TYPE_KERNEL:
+            ctx->mempool_id = POOL_ID_KERNEL;
+            break;
+        case APP_TYPE_SYSTEM_APP:
+            ctx->mempool_id = POOL_ID_SYSTEM_APP;
+            break;
+        case APP_TYPE_USER_APP:
+            // User apps: map PROC_ID_USER_APP0..2 to POOL_ID_USER_APP0..2
+            if (idx >= PROC_ID_USER_APP0 && idx < PROC_ID_MAX) {
+                ctx->mempool_id = POOL_ID_USER_APP0 + (idx - PROC_ID_USER_APP0);
+            } else {
+                FMRB_LOGE(TAG, "Invalid USER_APP proc_id: %d", idx);
+                goto unwind;
+            }
+            break;
+        default:
+            FMRB_LOGE(TAG, "Unknown app type: %d", attr->type);
+            goto unwind;
+    }
+
     strncpy(ctx->app_name, attr->name, sizeof(ctx->app_name) - 1);
     ctx->app_name[sizeof(ctx->app_name) - 1] = '\0';
     ctx->user_data = (void*)attr->irep;  // Store irep for task_main
