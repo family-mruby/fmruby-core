@@ -21,12 +21,11 @@ class SystemGuiApp < FmrbApp
       puts "[SystemGUI] Running... (#{@counter / 30}s)"
     end
     # Graphics commands disabled temporarily (Phase2: Canvas + messaging)
-    @gfx.clear(FmrbGfx::BLUE) 
-    #@gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
+    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
     @player_x += 1
     @player_y += 1
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
-    #@gfx.fill_rect(10, 10, 10+100, 10+30, FmrbGfx::BLACK)
+    @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
     @gfx.present
 

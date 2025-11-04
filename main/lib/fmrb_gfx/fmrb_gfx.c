@@ -269,7 +269,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle
     }
 
     fmrb_link_graphics_rect_t rect_cmd = {
-        .cmd_type = FMRB_LINK_GFX_DRAW_RECT,
+        .cmd_type = FMRB_LINK_GFX_FILL_RECT,
         .canvas_id = canvas_id,
         .x = rect->x,
         .y = rect->y,
@@ -279,7 +279,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle
         .filled = true
     };
 
-    return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_RECT, &rect_cmd, sizeof(rect_cmd));
+    return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_RECT, &rect_cmd, sizeof(rect_cmd));
 }
 
 fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_font_size_t font_size) {
