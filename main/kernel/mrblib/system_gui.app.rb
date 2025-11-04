@@ -12,25 +12,27 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_create()
-    @gfx.clear(FmrbGfx::BLACK)  # Phase2: Canvas + messaging
+    @gfx.clear(FmrbGfx::BLUE)  # Phase2: Canvas + messaging
     puts "[SystemGUI] on_create called (graphics disabled temporarily)"
   end
 
   def on_update()
-    if @counter % 33 == 0  # Every 1 second at 60Hz
-      puts "[SystemGUI] Running... (#{@counter / 33}s)"
+    if @counter % 30 == 0  
+      puts "[SystemGUI] Running... (#{@counter / 30}s)"
     end
     # Graphics commands disabled temporarily (Phase2: Canvas + messaging)
-    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
+    @gfx.clear(FmrbGfx::BLUE) 
+    #@gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
     @player_x += 1
     @player_y += 1
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
+    #@gfx.fill_rect(10, 10, 10+100, 10+30, FmrbGfx::BLACK)
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
     @gfx.present
 
     @score += 1
     @counter += 1
-    330
+    33
   end
 
   def on_destroy

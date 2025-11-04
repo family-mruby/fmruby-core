@@ -205,7 +205,7 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     // Send encoded data
     ssize_t sent = send(global_socket_fd, encoded, encoded_len, 0);
 
-    ESP_LOGI(TAG, "Sent %zu bytes (payload+crc: %zu, encoded: %zu) to channel %d", msg->size, total_size, encoded_len, channel);
+    ESP_LOGD(TAG, "Sent %zu bytes (payload+crc: %zu, encoded: %zu) to channel %d", msg->size, total_size, encoded_len, channel);
 
     fmrb_sys_free(encoded);
 

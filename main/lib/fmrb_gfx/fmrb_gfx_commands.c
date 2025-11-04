@@ -182,7 +182,7 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    ESP_LOGI(TAG, "Executing %zu commands", buffer->count);
+    ESP_LOGD(TAG, "Executing %zu commands", buffer->count);
 
     for (size_t i = 0; i < buffer->count; i++) {
         fmrb_gfx_command_t *cmd = &buffer->commands[i];

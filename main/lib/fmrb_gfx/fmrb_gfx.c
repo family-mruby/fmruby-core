@@ -118,18 +118,11 @@ fmrb_gfx_err_t fmrb_gfx_deinit(void) {
 }
 
 fmrb_gfx_context_t fmrb_gfx_get_global_context(void) {
-    ESP_LOGI(TAG, "get_global_context: g_gfx_context=%p, initialized=%d",
-             g_gfx_context, g_gfx_context ? g_gfx_context->initialized : -1);
-    if (g_gfx_context) {
-        ESP_LOGI(TAG, "get_global_context: returning ctx=%p with fields: config.screen_width=%d, transport=%p",
-                 g_gfx_context, g_gfx_context->config.screen_width, g_gfx_context->transport);
-    }
     return g_gfx_context;
 }
 
 fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, fmrb_color_t color) {
-    ESP_LOGI(TAG, "clear: called with context=%p, canvas_id=%d, color=0x%02x", context, canvas_id, color);
-    ESP_LOGI(TAG, "clear: g_gfx_context=%p (for reference)", g_gfx_context);
+    ESP_LOGD(TAG, "clear: called with context=%p, canvas_id=%d, color=0x%02x", context, canvas_id, color);
 
     if (!context) {
         ESP_LOGE(TAG, "clear: context is NULL");
@@ -137,7 +130,7 @@ fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_canvas_handle_t c
     }
 
     fmrb_gfx_context_impl_t *ctx = context;
-    ESP_LOGI(TAG, "clear: ctx=%p, canvas_id=%d, initialized=%d, transport=%p, screen_width=%d",
+    ESP_LOGD(TAG, "clear: ctx=%p, canvas_id=%d, initialized=%d, transport=%p, screen_width=%d",
              ctx, canvas_id, ctx->initialized, ctx->transport, ctx->config.screen_width);
 
     if (!ctx->initialized) {
@@ -515,18 +508,20 @@ fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
+    // Match structure with host/common/graphics_commands.h fmrb_gfx_circle_cmd_t
     typedef struct __attribute__((packed)) {
         uint8_t cmd_type;
-        int32_t x, y, r;
-        uint8_t color;
-        uint8_t filled;
+        int16_t x, y;
+        int16_t radius;
+        fmrb_color_t color;
     } circle_cmd_t;
 
     circle_cmd_t cmd = {
         .cmd_type = FMRB_LINK_GFX_DRAW_CIRCLE,
-        .x = x, .y = y, .r = r,
-        .color = color,
-        .filled = 0
+        .x = (int16_t)x,
+        .y = (int16_t)y,
+        .radius = (int16_t)r,
+        .color = color
     };
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_CIRCLE, &cmd, sizeof(cmd));
@@ -542,18 +537,20 @@ fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
+    // Match structure with host/common/graphics_commands.h fmrb_gfx_circle_cmd_t
     typedef struct __attribute__((packed)) {
         uint8_t cmd_type;
-        int32_t x, y, r;
-        uint8_t color;
-        uint8_t filled;
+        int16_t x, y;
+        int16_t radius;
+        fmrb_color_t color;
     } circle_cmd_t;
 
     circle_cmd_t cmd = {
         .cmd_type = FMRB_LINK_GFX_FILL_CIRCLE,
-        .x = x, .y = y, .r = r,
-        .color = color,
-        .filled = 1
+        .x = (int16_t)x,
+        .y = (int16_t)y,
+        .radius = (int16_t)r,
+        .color = color
     };
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_CIRCLE, &cmd, sizeof(cmd));
