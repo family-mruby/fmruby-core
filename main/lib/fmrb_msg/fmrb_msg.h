@@ -24,11 +24,21 @@ extern "C" {
  * - Thread-safe queue operations
  */
 
+ #define FMRB_MAX_MSG_PAYLOAD_SIZE (64)
+
+typedef enum{
+    FMRB_MSG_TYPE_APP_CONTROL=0,
+    FMRB_MSG_TYPE_APP_GFX,
+    FMRB_MSG_TYPE_APP_AUDIO,
+    FMRB_MSG_TYPE_MAX,
+} fmrb_msg_type_t;
+
 // Message structure
 typedef struct {
-    uint32_t type;        // Message type (application-defined)
-    uint32_t size;        // Actual data size in bytes
-    uint8_t data[64];     // Message payload
+    fmrb_msg_type_t type;   // Message type (application-defined)
+    fmrb_proc_id_t src_pid; // Source Proc ID
+    uint32_t size;          // Actual data size in bytes
+    uint8_t data[FMRB_MAX_MSG_PAYLOAD_SIZE];       // Message payload
 } fmrb_msg_t;
 
 // Queue configuration

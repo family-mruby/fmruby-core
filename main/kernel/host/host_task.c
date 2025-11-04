@@ -22,6 +22,52 @@ typedef enum {
     HOST_MSG_AUDIO_COMMAND = 6,
 } host_msg_type_t;
 
+// Graphics command types
+typedef enum {
+    GFX_CMD_CLEAR = 0,
+    GFX_CMD_PIXEL,
+    GFX_CMD_LINE,
+    GFX_CMD_RECT,
+    GFX_CMD_TEXT,
+    GFX_CMD_PRESENT
+} gfx_cmd_type_t;
+
+// Graphics command structure
+typedef struct {
+    gfx_cmd_type_t cmd_type;
+    fmrb_canvas_handle_t canvas_id;
+    union {
+        struct {
+            fmrb_color_t color;
+        } clear;
+        struct {
+            int16_t x;
+            int16_t y;
+            fmrb_color_t color;
+        } pixel;
+        struct {
+            int16_t x1;
+            int16_t y1;
+            int16_t x2;
+            int16_t y2;
+            fmrb_color_t color;
+        } line;
+        struct {
+            fmrb_rect_t rect;
+            fmrb_color_t color;
+            bool filled;
+        } rect;
+        struct {
+            int16_t x;
+            int16_t y;
+            char text[32];
+            fmrb_color_t color;
+            fmrb_font_size_t font_size;
+        } text;
+        // present command has no additional params (uses canvas_id only)
+    } params;
+} gfx_cmd_t;
+
 // Host message structure (now uses HAL message format)
 typedef struct {
     host_msg_type_t type;
@@ -38,6 +84,7 @@ typedef struct {
             int y;
             int button;
         } mouse_click;
+        gfx_cmd_t gfx;
     } data;
 } host_message_t;
 
@@ -147,8 +194,9 @@ static void host_task_process_host_message(const host_message_t *msg)
             break;
 
         case HOST_MSG_DRAW_COMMAND:
-            FMRB_LOGD(TAG, "Draw command (not yet implemented)");
-            // TODO: Implement draw command processing
+            FMRB_LOGD(TAG, "Draw command: cmd_type=%d, canvas_id=%d",
+                     msg->data.gfx.cmd_type, msg->data.gfx.canvas_id);
+            // TODO: Implement command buffering and execution
             break;
 
         case HOST_MSG_AUDIO_COMMAND:
