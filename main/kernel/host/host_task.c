@@ -7,6 +7,7 @@
 #include "fmrb_msg.h"
 #include "host_task.h"
 #include "fmrb_gfx.h"
+#include "fmrb_gfx_commands.h"
 #include "fmrb_audio.h"
 #include "../fmrb_kernel.h"
 
@@ -94,6 +95,10 @@ static fmrb_task_handle_t g_host_task_handle = NULL;
 // Task configuration
 #define HOST_QUEUE_SIZE (32)
 
+// Graphics command buffer
+static fmrb_gfx_command_buffer_t* g_gfx_cmd_buffer = NULL;
+#define GFX_CMD_BUFFER_SIZE (128)
+
 // Forward declarations (implemented in picoruby-fmrb-app)
 // extern int fmrb_app_dispatch_update(uint32_t delta_time_ms);
 // extern int fmrb_app_dispatch_key_down(int key_code);
@@ -133,6 +138,14 @@ static int init_gfx_audio(void)
             return -1;
         }
 
+        // Create command buffer for batching draw commands
+        g_gfx_cmd_buffer = fmrb_gfx_command_buffer_create(GFX_CMD_BUFFER_SIZE);
+        if (!g_gfx_cmd_buffer) {
+            FMRB_LOGE(TAG, "Failed to create graphics command buffer");
+            return -1;
+        }
+        FMRB_LOGI(TAG, "Graphics command buffer created: %d slots", GFX_CMD_BUFFER_SIZE);
+
         // Test graphics with a simple clear
         FMRB_LOGI(TAG, "============================== gfx demo ==========================");
         fmrb_gfx_clear(ctx, FMRB_CANVAS_SCREEN, FMRB_COLOR_BLUE);
@@ -153,11 +166,115 @@ static int init_gfx_audio(void)
 }
 
 /**
+ * Process GFX command message
+ */
+static void host_task_process_gfx_command(const fmrb_msg_t *msg)
+{
+    gfx_cmd_t *gfx_cmd = (gfx_cmd_t *)msg->data;
+
+    FMRB_LOGD(TAG, "GFX command from src_pid=%d: cmd_type=%d, canvas_id=%d",
+             msg->src_pid, gfx_cmd->cmd_type, gfx_cmd->canvas_id);
+
+    if (!g_gfx_cmd_buffer) {
+        FMRB_LOGE(TAG, "Command buffer not initialized");
+        return;
+    }
+
+    fmrb_gfx_context_t ctx = fmrb_gfx_get_global_context();
+    if (!ctx) {
+        FMRB_LOGE(TAG, "Graphics context not available");
+        return;
+    }
+
+    // Handle PRESENT command: execute buffered commands
+    if (gfx_cmd->cmd_type == GFX_CMD_PRESENT) {
+        size_t cmd_count = fmrb_gfx_command_buffer_count(g_gfx_cmd_buffer);
+        FMRB_LOGI(TAG, "PRESENT: Executing %zu buffered commands for canvas %d",
+                 cmd_count, gfx_cmd->canvas_id);
+
+        // Execute all buffered commands
+        fmrb_gfx_err_t ret = fmrb_gfx_command_buffer_execute(g_gfx_cmd_buffer, ctx);
+        if (ret != FMRB_GFX_OK) {
+            FMRB_LOGE(TAG, "Failed to execute command buffer: %d", ret);
+        }
+
+        // Present the canvas
+        ret = fmrb_gfx_present(ctx, gfx_cmd->canvas_id);
+        if (ret != FMRB_GFX_OK) {
+            FMRB_LOGE(TAG, "Failed to present canvas: %d", ret);
+        }
+
+        // Clear buffer for next frame
+        fmrb_gfx_command_buffer_clear(g_gfx_cmd_buffer);
+        FMRB_LOGD(TAG, "Command buffer cleared");
+        return;
+    }
+
+    // Add drawing command to buffer
+    fmrb_gfx_err_t ret = FMRB_GFX_OK;
+    switch (gfx_cmd->cmd_type) {
+        case GFX_CMD_CLEAR:
+            ret = fmrb_gfx_command_buffer_add_clear(g_gfx_cmd_buffer,
+                                                    gfx_cmd->params.clear.color);
+            break;
+
+        case GFX_CMD_PIXEL:
+            ret = fmrb_gfx_command_buffer_add_pixel(g_gfx_cmd_buffer,
+                                                    gfx_cmd->params.pixel.x,
+                                                    gfx_cmd->params.pixel.y,
+                                                    gfx_cmd->params.pixel.color);
+            break;
+
+        case GFX_CMD_LINE:
+            ret = fmrb_gfx_command_buffer_add_line(g_gfx_cmd_buffer,
+                                                   gfx_cmd->params.line.x1,
+                                                   gfx_cmd->params.line.y1,
+                                                   gfx_cmd->params.line.x2,
+                                                   gfx_cmd->params.line.y2,
+                                                   gfx_cmd->params.line.color);
+            break;
+
+        case GFX_CMD_RECT:
+            ret = fmrb_gfx_command_buffer_add_rect(g_gfx_cmd_buffer,
+                                                   &gfx_cmd->params.rect.rect,
+                                                   gfx_cmd->params.rect.color,
+                                                   gfx_cmd->params.rect.filled);
+            break;
+
+        case GFX_CMD_TEXT:
+            ret = fmrb_gfx_command_buffer_add_text(g_gfx_cmd_buffer,
+                                                   gfx_cmd->params.text.x,
+                                                   gfx_cmd->params.text.y,
+                                                   gfx_cmd->params.text.text,
+                                                   gfx_cmd->params.text.color,
+                                                   gfx_cmd->params.text.font_size);
+            break;
+
+        default:
+            FMRB_LOGW(TAG, "Unknown graphics command type: %d", gfx_cmd->cmd_type);
+            return;
+    }
+
+    if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE(TAG, "Failed to add command to buffer: %d", ret);
+    } else {
+        FMRB_LOGD(TAG, "Command buffered (total: %zu)",
+                 fmrb_gfx_command_buffer_count(g_gfx_cmd_buffer));
+    }
+}
+
+/**
  * Process a host message
  */
 static void host_task_process_message(const fmrb_msg_t *hal_msg)
 {
-    // Extract host message from HAL message
+    // Check if it's a GFX message first
+    if (hal_msg->type == FMRB_MSG_TYPE_APP_GFX) {
+        host_task_process_gfx_command(hal_msg);
+        return;
+    }
+
+    // Otherwise, extract host_message_t (for HID messages)
     host_message_t *msg = (host_message_t *)hal_msg->data;
     host_task_process_host_message(msg);
 }
@@ -229,7 +346,7 @@ static void fmrb_host_task(void *pvParameters)
 
     fmrb_msg_t msg;
     fmrb_tick_t xLastUpdate = fmrb_task_get_tick_count();
-    const fmrb_tick_t xUpdatePeriod = FMRB_MS_TO_TICKS(10);  // 10ms周期で定期更新
+    const fmrb_tick_t xUpdatePeriod = FMRB_MS_TO_TICKS(16);  // 16ms周期で定期更新
 
     while (1) {
         // Wait for messages with timeout
@@ -298,6 +415,12 @@ void fmrb_host_task_deinit(void)
     if (g_host_task_handle) {
         fmrb_task_delete(g_host_task_handle);
         g_host_task_handle = NULL;
+    }
+
+    // Destroy graphics command buffer
+    if (g_gfx_cmd_buffer) {
+        fmrb_gfx_command_buffer_destroy(g_gfx_cmd_buffer);
+        g_gfx_cmd_buffer = NULL;
     }
 
     // Delete host task's message queue
