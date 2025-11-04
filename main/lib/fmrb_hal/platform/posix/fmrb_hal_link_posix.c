@@ -1,3 +1,4 @@
+#include "../../fmrb_hal.h"
 #include "../../fmrb_hal_link.h"
 #include "../../../fmrb_link/fmrb_link_cobs.h"
 #include "fmrb_mem.h"
@@ -8,7 +9,6 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <errno.h>
 #include <fcntl.h>
 
@@ -16,7 +16,7 @@
 
 typedef struct {
     int socket_fd;
-    pthread_t thread;
+    fmrb_task_handle_t thread;
     fmrb_link_callback_t callback;
     void *user_data;
     bool running;
@@ -25,7 +25,7 @@ typedef struct {
 static linux_link_channel_t channels[FMRB_LINK_MAX_CHANNELS];
 static bool link_initialized = false;
 static int global_socket_fd = -1;
-static pthread_mutex_t socket_mutex = PTHREAD_MUTEX_INITIALIZER;
+static fmrb_semaphore_t socket_mutex = NULL;
 
 static const char *TAG = "fmrb_hal_link";
 
@@ -99,6 +99,13 @@ fmrb_err_t fmrb_hal_link_init(void) {
         return FMRB_OK;
     }
 
+    // Create mutex for socket access
+    socket_mutex = fmrb_semaphore_create_mutex();
+    if (socket_mutex == NULL) {
+        ESP_LOGE(TAG, "Failed to create socket mutex");
+        return FMRB_ERR_NO_MEMORY;
+    }
+
     for (int i = 0; i < FMRB_LINK_MAX_CHANNELS; i++) {
         channels[i].socket_fd = -1;
         channels[i].callback = NULL;
@@ -110,6 +117,8 @@ fmrb_err_t fmrb_hal_link_init(void) {
     fmrb_err_t err = connect_to_socket();
     if (err != FMRB_OK) {
         ESP_LOGE(TAG, "Failed to connect to socket server");
+        fmrb_semaphore_delete(socket_mutex);
+        socket_mutex = NULL;
         return err;
     }
 
@@ -126,7 +135,10 @@ void fmrb_hal_link_deinit(void) {
     for (int i = 0; i < FMRB_LINK_MAX_CHANNELS; i++) {
         if (channels[i].running) {
             channels[i].running = false;
-            pthread_join(channels[i].thread, NULL);
+            // Wait for task to finish
+            while (eTaskGetState(channels[i].thread) != eDeleted) {
+                fmrb_task_delay(FMRB_MS_TO_TICKS(10));
+            }
         }
 
         if (channels[i].socket_fd >= 0) {
@@ -138,6 +150,11 @@ void fmrb_hal_link_deinit(void) {
     if (global_socket_fd >= 0) {
         close(global_socket_fd);
         global_socket_fd = -1;
+    }
+
+    if (socket_mutex != NULL) {
+        fmrb_semaphore_delete(socket_mutex);
+        socket_mutex = NULL;
     }
 
     ESP_LOGI(TAG, "Linux IPC deinitialized");
@@ -156,7 +173,7 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
         return FMRB_ERR_FAILED;
     }
 
-    pthread_mutex_lock(&socket_mutex);
+    fmrb_semaphore_take(socket_mutex, FMRB_TICK_MAX);
 
     // The message already contains [frame_hdr | payload]
     // We need to add CRC32 and COBS encode
@@ -165,7 +182,7 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     size_t total_size = msg->size + sizeof(uint32_t);
     uint8_t *buffer = (uint8_t*)fmrb_sys_malloc(total_size);
     if (!buffer) {
-        pthread_mutex_unlock(&socket_mutex);
+        fmrb_semaphore_give(socket_mutex);
         return FMRB_ERR_NO_MEMORY;
     }
 
@@ -178,7 +195,7 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     uint8_t *encoded = (uint8_t*)fmrb_sys_malloc(max_encoded_size);
     if (!encoded) {
         fmrb_sys_free(buffer);
-        pthread_mutex_unlock(&socket_mutex);
+        fmrb_semaphore_give(socket_mutex);
         return FMRB_ERR_NO_MEMORY;
     }
 
@@ -192,7 +209,7 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
 
     fmrb_sys_free(encoded);
 
-    pthread_mutex_unlock(&socket_mutex);
+    fmrb_semaphore_give(socket_mutex);
 
     if (sent != (ssize_t)encoded_len) {
         ESP_LOGE(TAG, "Failed to send data: %s", strerror(errno));
@@ -230,7 +247,21 @@ fmrb_err_t fmrb_hal_link_register_callback(fmrb_link_channel_t channel,
     ch->user_data = user_data;
     ch->running = true;
 
-    if (pthread_create(&ch->thread, NULL, linux_link_thread, (void*)(uintptr_t)channel) != 0) {
+    // Create FreeRTOS task
+    char task_name[16];
+    snprintf(task_name, sizeof(task_name), "link_rx_%d", channel);
+
+    fmrb_base_type_t ret = fmrb_task_create(
+        linux_link_thread,
+        task_name,
+        4096,  // stack size
+        (void*)(uintptr_t)channel,
+        5,     // priority
+        &ch->thread
+    );
+
+    if (ret != FMRB_PASS) {
+        ch->running = false;
         return FMRB_ERR_FAILED;
     }
 
@@ -246,7 +277,10 @@ fmrb_err_t fmrb_hal_link_unregister_callback(fmrb_link_channel_t channel) {
     linux_link_channel_t *ch = &channels[channel];
     if (ch->running) {
         ch->running = false;
-        pthread_join(ch->thread, NULL);
+        // Wait for task to finish
+        while (eTaskGetState(ch->thread) != eDeleted) {
+            fmrb_task_delay(FMRB_MS_TO_TICKS(10));
+        }
     }
     ch->callback = NULL;
     ch->user_data = NULL;

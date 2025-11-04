@@ -1,3 +1,4 @@
+#include "../../fmrb_hal.h"
 #include "fmrb_hal_file.h"
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
@@ -8,7 +9,6 @@
 #include <sys/statvfs.h>
 #include <dirent.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <time.h>
 #include <utime.h>
 #include <errno.h>
@@ -27,9 +27,9 @@ typedef struct {
 } fmrb_dir_handle_t;
 
 // Global mutex for thread safety
-static pthread_mutex_t s_file_mutex = PTHREAD_MUTEX_INITIALIZER;
-#define LOCK() pthread_mutex_lock(&s_file_mutex)
-#define UNLOCK() pthread_mutex_unlock(&s_file_mutex)
+static fmrb_semaphore_t s_file_mutex = NULL;
+#define LOCK() fmrb_semaphore_take(s_file_mutex, FMRB_TICK_MAX)
+#define UNLOCK() fmrb_semaphore_give(s_file_mutex)
 
 // Base path for file operations - mount data/ directory
 #define BASE_PATH "flash"
@@ -102,8 +102,16 @@ static int mkdir_recursive(const char *path) {
 
 // Initialize file system
 fmrb_err_t fmrb_hal_file_init(void) {
+    // Create mutex for file operations
+    s_file_mutex = fmrb_semaphore_create_mutex();
+    if (s_file_mutex == NULL) {
+        return FMRB_ERR_NO_MEMORY;
+    }
+
     // Create base directory if it doesn't exist
     if (mkdir_recursive(BASE_PATH) != 0 && errno != EEXIST) {
+        fmrb_semaphore_delete(s_file_mutex);
+        s_file_mutex = NULL;
         return FMRB_ERR_FAILED;
     }
     return FMRB_OK;
@@ -111,7 +119,10 @@ fmrb_err_t fmrb_hal_file_init(void) {
 
 // Deinitialize file system
 void fmrb_hal_file_deinit(void) {
-    // Nothing to do for Linux
+    if (s_file_mutex != NULL) {
+        fmrb_semaphore_delete(s_file_mutex);
+        s_file_mutex = NULL;
+    }
 }
 
 // Open a file
