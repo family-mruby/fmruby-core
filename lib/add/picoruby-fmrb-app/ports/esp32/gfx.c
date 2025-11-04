@@ -10,10 +10,35 @@
 #include "fmrb_gfx.h"
 #include "fmrb_err.h"
 #include "fmrb_log.h"
+#include "fmrb_msg.h"
+#include "fmrb_gfx_msg.h"
+#include "fmrb_task_config.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
 
 static const char* TAG = "gfx";
+
+// Helper function to send GFX command message to Host Task
+static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) {
+        FMRB_LOGE(TAG, "Failed to get current task context");
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_GFX,
+        .src_pid = ctx->app_id,
+        .size = sizeof(gfx_cmd_t)
+    };
+    memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 100);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to send GFX message: %d", ret);
+    }
+    return ret;
+}
 
 // Graphics context wrapper for mruby
 typedef struct {
@@ -69,7 +94,7 @@ static mrb_value mrb_gfx_clear(mrb_state *mrb, mrb_value self)
     mrb_int color;
     mrb_get_args(mrb, "i", &color);
 
-    FMRB_LOGI(TAG, "clear() called with color=0x%08x", (unsigned int)color);
+    FMRB_LOGD(TAG, "clear() called with color=0x%08x", (unsigned int)color);
 
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
@@ -77,14 +102,20 @@ static mrb_value mrb_gfx_clear(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Pass canvas_id directly (thread-safe)
-    fmrb_gfx_err_t ret = fmrb_gfx_clear(data->ctx, data->canvas_id, (fmrb_color_t)color);
-    if (ret != FMRB_GFX_OK) {
-        FMRB_LOGE(TAG, "fmrb_gfx_clear failed: %d", ret);
+    // Send GFX command to Host Task
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_CLEAR,
+        .canvas_id = data->canvas_id,
+        .params.clear.color = (fmrb_color_t)color
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "clear() failed: %d", ret);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Graphics clear failed: %d", ret);
     }
 
-    FMRB_LOGI(TAG, "clear() succeeded");
+    FMRB_LOGD(TAG, "clear() succeeded");
     return self;
 }
 
@@ -99,9 +130,15 @@ static mrb_value mrb_gfx_set_pixel(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Pass canvas_id directly (thread-safe)
-    fmrb_gfx_err_t ret = fmrb_gfx_set_pixel(data->ctx, data->canvas_id, (int16_t)x, (int16_t)y, (fmrb_color_t)color);
-    if (ret != FMRB_GFX_OK) {
+    // Send GFX command to Host Task
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_PIXEL,
+        .canvas_id = data->canvas_id,
+        .params.pixel = {.x = (int16_t)x, .y = (int16_t)y, .color = (fmrb_color_t)color}
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Set pixel failed: %d", ret);
     }
 
@@ -119,10 +156,19 @@ static mrb_value mrb_gfx_draw_line(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Pass canvas_id directly (thread-safe)
-    fmrb_gfx_err_t ret = fmrb_gfx_draw_line(data->ctx, data->canvas_id, (int16_t)x1, (int16_t)y1,
-                                             (int16_t)x2, (int16_t)y2, (fmrb_color_t)color);
-    if (ret != FMRB_GFX_OK) {
+    // Send GFX command to Host Task
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_LINE,
+        .canvas_id = data->canvas_id,
+        .params.line = {
+            .x1 = (int16_t)x1, .y1 = (int16_t)y1,
+            .x2 = (int16_t)x2, .y2 = (int16_t)y2,
+            .color = (fmrb_color_t)color
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw line failed: %d", ret);
     }
 
@@ -140,10 +186,19 @@ static mrb_value mrb_gfx_draw_rect(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Pass canvas_id directly (thread-safe)
-    fmrb_rect_t rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h};
-    fmrb_gfx_err_t ret = fmrb_gfx_draw_rect(data->ctx, data->canvas_id, &rect, (fmrb_color_t)color);
-    if (ret != FMRB_GFX_OK) {
+    // Send GFX command to Host Task
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_RECT,
+        .canvas_id = data->canvas_id,
+        .params.rect = {
+            .rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h},
+            .color = (fmrb_color_t)color,
+            .filled = false
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw rect failed: %d", ret);
     }
 
@@ -161,10 +216,19 @@ static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Pass canvas_id directly (thread-safe)
-    fmrb_rect_t rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h};
-    fmrb_gfx_err_t ret = fmrb_gfx_fill_rect(data->ctx, data->canvas_id, &rect, (fmrb_color_t)color);
-    if (ret != FMRB_GFX_OK) {
+    // Send GFX command to Host Task
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_RECT,
+        .canvas_id = data->canvas_id,
+        .params.rect = {
+            .rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h},
+            .color = (fmrb_color_t)color,
+            .filled = true
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill rect failed: %d", ret);
     }
 
@@ -225,10 +289,22 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Pass canvas_id directly (thread-safe)
-    fmrb_gfx_err_t ret = fmrb_gfx_draw_text(data->ctx, data->canvas_id, (int16_t)x, (int16_t)y,
-                                             text, (fmrb_color_t)color, FMRB_FONT_SIZE_MEDIUM);
-    if (ret != FMRB_GFX_OK) {
+    // Send GFX command to Host Task
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_TEXT,
+        .canvas_id = data->canvas_id,
+        .params.text = {
+            .x = (int16_t)x,
+            .y = (int16_t)y,
+            .color = (fmrb_color_t)color,
+            .font_size = FMRB_FONT_SIZE_MEDIUM
+        }
+    };
+    strncpy(cmd.params.text.text, text, sizeof(cmd.params.text.text) - 1);
+    cmd.params.text.text[sizeof(cmd.params.text.text) - 1] = '\0';
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw text failed: %d", ret);
     }
 
@@ -238,7 +314,7 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
 // Graphics#present
 static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
 {
-    FMRB_LOGI(TAG, "present() called");
+    FMRB_LOGD(TAG, "present() called");
 
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
@@ -246,14 +322,19 @@ static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Pass canvas_id directly (thread-safe)
-    fmrb_gfx_err_t ret = fmrb_gfx_present(data->ctx, data->canvas_id);
-    if (ret != FMRB_GFX_OK) {
-        FMRB_LOGE(TAG, "fmrb_gfx_present failed: %d", ret);
+    // Send PRESENT command to Host Task
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_PRESENT,
+        .canvas_id = data->canvas_id
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "present() failed: %d", ret);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Present failed: %d", ret);
     }
 
-    FMRB_LOGI(TAG, "present() succeeded");
+    FMRB_LOGD(TAG, "present() succeeded");
     return self;
 }
 

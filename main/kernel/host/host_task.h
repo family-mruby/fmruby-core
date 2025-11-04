@@ -1,5 +1,7 @@
 #pragma once
 
+#include "fmrb_gfx_msg.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif

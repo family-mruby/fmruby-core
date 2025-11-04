@@ -23,52 +23,6 @@ typedef enum {
     HOST_MSG_AUDIO_COMMAND = 6,
 } host_msg_type_t;
 
-// Graphics command types
-typedef enum {
-    GFX_CMD_CLEAR = 0,
-    GFX_CMD_PIXEL,
-    GFX_CMD_LINE,
-    GFX_CMD_RECT,
-    GFX_CMD_TEXT,
-    GFX_CMD_PRESENT
-} gfx_cmd_type_t;
-
-// Graphics command structure
-typedef struct {
-    gfx_cmd_type_t cmd_type;
-    fmrb_canvas_handle_t canvas_id;
-    union {
-        struct {
-            fmrb_color_t color;
-        } clear;
-        struct {
-            int16_t x;
-            int16_t y;
-            fmrb_color_t color;
-        } pixel;
-        struct {
-            int16_t x1;
-            int16_t y1;
-            int16_t x2;
-            int16_t y2;
-            fmrb_color_t color;
-        } line;
-        struct {
-            fmrb_rect_t rect;
-            fmrb_color_t color;
-            bool filled;
-        } rect;
-        struct {
-            int16_t x;
-            int16_t y;
-            char text[32];
-            fmrb_color_t color;
-            fmrb_font_size_t font_size;
-        } text;
-        // present command has no additional params (uses canvas_id only)
-    } params;
-} gfx_cmd_t;
-
 // Host message structure (now uses HAL message format)
 typedef struct {
     host_msg_type_t type;
@@ -147,10 +101,10 @@ static int init_gfx_audio(void)
         FMRB_LOGI(TAG, "Graphics command buffer created: %d slots", GFX_CMD_BUFFER_SIZE);
 
         // Test graphics with a simple clear
-        FMRB_LOGI(TAG, "============================== gfx demo ==========================");
-        fmrb_gfx_clear(ctx, FMRB_CANVAS_SCREEN, FMRB_COLOR_BLUE);
-        fmrb_gfx_draw_string(ctx, FMRB_CANVAS_SCREEN, "Family mruby OS", 10, 10, FMRB_COLOR_WHITE);
-        fmrb_gfx_present(ctx, FMRB_CANVAS_SCREEN);
+        // FMRB_LOGI(TAG, "============================== gfx demo ==========================");
+        // fmrb_gfx_clear(ctx, FMRB_CANVAS_SCREEN, FMRB_COLOR_BLUE);
+        // fmrb_gfx_draw_string(ctx, FMRB_CANVAS_SCREEN, "Family mruby OS", 10, 10, FMRB_COLOR_WHITE);
+        // fmrb_gfx_present(ctx, FMRB_CANVAS_SCREEN);
     }
 
     // Initialize Audio subsystem (APU emulator)
