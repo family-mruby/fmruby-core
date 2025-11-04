@@ -21,15 +21,16 @@ class SystemGuiApp < FmrbApp
       puts "[SystemGUI] Running... (#{@counter / 33}s)"
     end
     # Graphics commands disabled temporarily (Phase2: Canvas + messaging)
-    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLACK)
+    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
     @player_x += 1
     @player_y += 1
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
     @gfx.present
 
+    @score += 1
     @counter += 1
-    33
+    330
   end
 
   def on_destroy

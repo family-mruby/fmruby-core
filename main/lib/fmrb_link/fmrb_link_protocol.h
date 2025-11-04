@@ -188,9 +188,8 @@ typedef struct __attribute__((packed)) {
 
 typedef struct __attribute__((packed)) {
     uint8_t cmd_type;    // Command type (for host validation)
-    uint16_t x, y;
+    int32_t x, y;
     uint8_t color;  // RGB332 format
-    uint8_t font_size;
     uint16_t text_len;
     // Followed by text data
 } fmrb_link_graphics_text_t;

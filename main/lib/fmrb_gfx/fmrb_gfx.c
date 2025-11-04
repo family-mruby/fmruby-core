@@ -316,8 +316,8 @@ fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle
     text_cmd->x = x;
     text_cmd->y = y;
     text_cmd->color = color;
-    text_cmd->font_size = font_size;
     text_cmd->text_len = text_len;
+    // Note: font_size is currently ignored by SDL2 host, may be added in the future
 
     // Copy text data
     memcpy(cmd_buffer + sizeof(fmrb_link_graphics_text_t), text, text_len);
