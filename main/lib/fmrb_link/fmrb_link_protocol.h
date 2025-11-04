@@ -153,7 +153,9 @@ typedef struct __attribute__((packed)) {
 } fmrb_link_header_t;
 
 // Graphics message structures (RGB332 color format)
+// Note: cmd_type is included at the beginning of each structure to match host expectations
 typedef struct __attribute__((packed)) {
+    uint8_t cmd_type;    // Command type (for host validation)
     uint16_t canvas_id;  // Target canvas ID (0=screen)
     uint16_t x, y;
     uint16_t width, height;
@@ -161,12 +163,14 @@ typedef struct __attribute__((packed)) {
 } fmrb_link_graphics_clear_t;
 
 typedef struct __attribute__((packed)) {
+    uint8_t cmd_type;    // Command type (for host validation)
     uint16_t canvas_id;  // Target canvas ID (0=screen)
     uint16_t x, y;
     uint8_t color;  // RGB332 format
 } fmrb_link_graphics_pixel_t;
 
 typedef struct __attribute__((packed)) {
+    uint8_t cmd_type;    // Command type (for host validation)
     uint16_t canvas_id;  // Target canvas ID (0=screen)
     uint16_t x1, y1;
     uint16_t x2, y2;
@@ -174,6 +178,7 @@ typedef struct __attribute__((packed)) {
 } fmrb_link_graphics_line_t;
 
 typedef struct __attribute__((packed)) {
+    uint8_t cmd_type;    // Command type (for host validation)
     uint16_t canvas_id;  // Target canvas ID (0=screen)
     uint16_t x, y;
     uint16_t width, height;
@@ -182,6 +187,7 @@ typedef struct __attribute__((packed)) {
 } fmrb_link_graphics_rect_t;
 
 typedef struct __attribute__((packed)) {
+    uint8_t cmd_type;    // Command type (for host validation)
     uint16_t x, y;
     uint8_t color;  // RGB332 format
     uint8_t font_size;
@@ -191,19 +197,23 @@ typedef struct __attribute__((packed)) {
 
 // Canvas management structures
 typedef struct __attribute__((packed)) {
+    uint8_t cmd_type;    // Command type (for host validation)
     uint16_t canvas_id;
     int32_t width, height;
 } fmrb_link_graphics_create_canvas_t;
 
 typedef struct __attribute__((packed)) {
+    uint8_t cmd_type;    // Command type (for host validation)
     uint16_t canvas_id;
 } fmrb_link_graphics_delete_canvas_t;
 
 typedef struct __attribute__((packed)) {
+    uint8_t cmd_type;    // Command type (for host validation)
     uint16_t target_id;  // 0=screen, other=canvas ID
 } fmrb_link_graphics_set_target_t;
 
 typedef struct __attribute__((packed)) {
+    uint8_t cmd_type;    // Command type (for host validation)
     uint16_t canvas_id;
     uint16_t dest_canvas_id;  // 0=screen, other=canvas ID
     int32_t x, y;

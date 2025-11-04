@@ -162,18 +162,15 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     fflush(stdout);
 #endif
 
-    // Create command buffer: [sub_cmd | payload]
-    size_t cmd_len = 1 + payload_len;
-    uint8_t *cmd_buffer = (uint8_t*)malloc(cmd_len);
-    if (!cmd_buffer) {
-        msgpack_unpacked_destroy(&msg);
-        free(decoded_buffer);
-        return -1;
-    }
+    // Payload already contains cmd_type at the beginning, use it directly
+    // No need to prepend sub_cmd since payload[0] == cmd_type == sub_cmd
+    const uint8_t *cmd_buffer = payload;
+    size_t cmd_len = payload_len;
 
-    cmd_buffer[0] = sub_cmd;
-    if (payload && payload_len > 0) {
-        memcpy(cmd_buffer + 1, payload, payload_len);
+    // Verify that payload's cmd_type matches sub_cmd
+    if (payload && payload_len > 0 && payload[0] != sub_cmd) {
+        fprintf(stderr, "Warning: payload cmd_type (0x%02x) != sub_cmd (0x%02x)\n",
+                payload[0], sub_cmd);
     }
 
     // Process based on type
@@ -193,7 +190,7 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
             break;
     }
 
-    free(cmd_buffer);
+    // cmd_buffer now points to payload inside decoded_buffer, don't free separately
     msgpack_unpacked_destroy(&msg);
     free(decoded_buffer);
     return result;
