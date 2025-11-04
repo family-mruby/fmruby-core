@@ -47,9 +47,6 @@ static fmrb_task_handle_t g_host_task_handle = NULL;
 // Task configuration
 #define HOST_QUEUE_SIZE (32)
 
-// Graphics context (global)
-static fmrb_gfx_context_t g_gfx_context = NULL;
-
 // Forward declarations (implemented in picoruby-fmrb-app)
 // extern int fmrb_app_dispatch_update(uint32_t delta_time_ms);
 // extern int fmrb_app_dispatch_key_down(int key_code);
@@ -75,18 +72,25 @@ static int init_gfx_audio(void)
         .double_buffered = false
     };
 
-    fmrb_gfx_err_t gfx_ret = fmrb_gfx_init(&gfx_config, &g_gfx_context);
+    fmrb_gfx_err_t gfx_ret = fmrb_gfx_init(&gfx_config);
     if (gfx_ret != FMRB_GFX_OK) {
         FMRB_LOGE(TAG, "Failed to initialize Graphics: %d", gfx_ret);
         return -1;
     } else {
         FMRB_LOGI(TAG, "Graphics initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
 
+        // Get the global context for testing
+        fmrb_gfx_context_t ctx = fmrb_gfx_get_global_context();
+        if (!ctx) {
+            FMRB_LOGE(TAG, "Failed to get global graphics context");
+            return -1;
+        }
+
         // Test graphics with a simple clear
         FMRB_LOGI(TAG, "============================== gfx demo ==========================");
-        fmrb_gfx_clear(g_gfx_context, FMRB_CANVAS_SCREEN, FMRB_COLOR_BLUE);
-        fmrb_gfx_draw_string(g_gfx_context, FMRB_CANVAS_SCREEN, "Family mruby OS", 10, 10, FMRB_COLOR_WHITE);
-        fmrb_gfx_present(g_gfx_context, FMRB_CANVAS_SCREEN);
+        fmrb_gfx_clear(ctx, FMRB_CANVAS_SCREEN, FMRB_COLOR_BLUE);
+        fmrb_gfx_draw_string(ctx, FMRB_CANVAS_SCREEN, "Family mruby OS", 10, 10, FMRB_COLOR_WHITE);
+        fmrb_gfx_present(ctx, FMRB_CANVAS_SCREEN);
     }
 
     // Initialize Audio subsystem (APU emulator)

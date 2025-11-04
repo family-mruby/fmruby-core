@@ -99,18 +99,21 @@ typedef fmrb_gfx_context_impl_t* fmrb_gfx_context_t;
 
 /**
  * @brief Initialize graphics subsystem
+ *
+ * Creates the global graphics context. This should be called once at startup.
+ * Subsequent calls will return success without reinitializing.
+ * Use fmrb_gfx_get_global_context() to obtain the initialized context.
+ *
  * @param config Graphics configuration
- * @param context Pointer to store graphics context
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config, fmrb_gfx_context_t *context);
+fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config);
 
 /**
  * @brief Deinitialize graphics subsystem
- * @param context Graphics context
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_deinit(fmrb_gfx_context_t context);
+fmrb_gfx_err_t fmrb_gfx_deinit(void);
 
 /**
  * @brief Get global graphics context

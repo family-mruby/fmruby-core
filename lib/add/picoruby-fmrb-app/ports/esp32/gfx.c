@@ -24,7 +24,6 @@ typedef struct {
 static void mrb_gfx_data_free(mrb_state *mrb, void *ptr)
 {
     if (ptr) {
-        mrb_gfx_data *data = (mrb_gfx_data *)ptr;
         // Don't deinitialize global context, just free the wrapper
         // The global context is managed by fmrb_gfx layer
         mrb_free(mrb, ptr);
@@ -263,7 +262,6 @@ static mrb_value mrb_gfx_destroy(mrb_state *mrb, mrb_value self)
 {
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (data && data->ctx) {
-        fmrb_gfx_deinit(data->ctx);
         data->ctx = NULL;
     }
     return mrb_nil_value();

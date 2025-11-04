@@ -11,6 +11,7 @@ static const char *TAG = "fmrb_gfx";
 
 // Global graphics context (shared across all FmrbGfx instances)
 static fmrb_gfx_context_impl_t *g_gfx_context = NULL;
+static fmrb_gfx_context_impl_t g_gfx_context_body;
 
 // Helper function to check if point is within clip rectangle
 static bool is_clipped(fmrb_gfx_context_impl_t *ctx, int16_t x, int16_t y) {
@@ -44,22 +45,22 @@ static fmrb_gfx_err_t send_graphics_command(fmrb_gfx_context_impl_t *ctx, uint8_
     }
 }
 
-fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config, fmrb_gfx_context_t *context) {
-    if (!config || !context) {
+fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config) {
+    if (!config) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    // If global context already exists, return it (prevent double initialization)
+    // If global context already exists, prevent double initialization
     if (g_gfx_context != NULL) {
         ESP_LOGW(TAG, "Graphics context already initialized, reusing existing context");
-        *context = g_gfx_context;
         return FMRB_GFX_OK;
     }
 
-    fmrb_gfx_context_impl_t *ctx = fmrb_sys_malloc(sizeof(fmrb_gfx_context_impl_t));
-    if (!ctx) {
-        return FMRB_GFX_ERR_NO_MEMORY;
-    }
+    //fmrb_gfx_context_impl_t *ctx = fmrb_sys_malloc(sizeof(fmrb_gfx_context_impl_t));
+    fmrb_gfx_context_impl_t *ctx = &g_gfx_context_body;
+    // if (!ctx) {
+    //     return FMRB_GFX_ERR_NO_MEMORY;
+    // }
 
     memset(ctx, 0, sizeof(fmrb_gfx_context_impl_t));
     ctx->config = *config;
@@ -74,7 +75,7 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config, fmrb_gfx_context_t
 
     fmrb_link_transport_err_t ret = fmrb_link_transport_init(&transport_config, &ctx->transport);
     if (ret != FMRB_LINK_TRANSPORT_OK) {
-        fmrb_sys_free(ctx);
+        //fmrb_sys_free(ctx);
         return FMRB_GFX_ERR_FAILED;
     }
 
@@ -84,55 +85,64 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config, fmrb_gfx_context_t
 
     // Store as global context
     g_gfx_context = ctx;
-    *context = ctx;
 
-    ESP_LOGI(TAG, "Graphics initialized: %dx%d, %d bpp",
-             config->screen_width, config->screen_height, config->bits_per_pixel);
+    ESP_LOGI(TAG, "Graphics initialized: %dx%d, %d bpp", config->screen_width, config->screen_height, config->bits_per_pixel);
+    ESP_LOGI(TAG, "init: g_gfx_context=%p, initialized=%d", g_gfx_context, ctx->initialized);
 
     return FMRB_GFX_OK;
 }
 
-fmrb_gfx_err_t fmrb_gfx_deinit(fmrb_gfx_context_t context) {
-    if (!context) {
-        return FMRB_GFX_ERR_INVALID_PARAM;
-    }
+fmrb_gfx_err_t fmrb_gfx_deinit(void) {
+    // if (!context) {
+    //     return FMRB_GFX_ERR_INVALID_PARAM;
+    // }
 
-    fmrb_gfx_context_impl_t *ctx = context;
+    // fmrb_gfx_context_impl_t *ctx = context;
 
     // Only deinitialize if this is the global context
-    if (ctx == g_gfx_context) {
-        if (ctx->transport) {
-            fmrb_link_transport_deinit(ctx->transport);
+    if (g_gfx_context != NULL) {
+        if (g_gfx_context->transport) {
+            fmrb_link_transport_deinit(g_gfx_context->transport);
         }
 
-        ctx->initialized = false;
-        fmrb_sys_free(ctx);
+        g_gfx_context->initialized = false;
+        // fmrb_sys_free(ctx);
         g_gfx_context = NULL;
 
         ESP_LOGI(TAG, "Graphics deinitialized");
     } else {
-        ESP_LOGW(TAG, "Attempted to deinit non-global context, ignoring");
+        ESP_LOGW(TAG, "Attempted to deinit NULL global context, ignoring");
     }
 
     return FMRB_GFX_OK;
 }
 
 fmrb_gfx_context_t fmrb_gfx_get_global_context(void) {
-    ESP_LOGD(TAG, "get_global_context: returning %p (initialized=%d)",
+    ESP_LOGI(TAG, "get_global_context: g_gfx_context=%p, initialized=%d",
              g_gfx_context, g_gfx_context ? g_gfx_context->initialized : -1);
+    if (g_gfx_context) {
+        ESP_LOGI(TAG, "get_global_context: returning ctx=%p with fields: config.screen_width=%d, transport=%p",
+                 g_gfx_context, g_gfx_context->config.screen_width, g_gfx_context->transport);
+    }
     return g_gfx_context;
 }
 
 fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, fmrb_color_t color) {
+    ESP_LOGI(TAG, "clear: called with context=%p, canvas_id=%d, color=0x%02x", context, canvas_id, color);
+    ESP_LOGI(TAG, "clear: g_gfx_context=%p (for reference)", g_gfx_context);
+
     if (!context) {
         ESP_LOGE(TAG, "clear: context is NULL");
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
     fmrb_gfx_context_impl_t *ctx = context;
-    ESP_LOGD(TAG, "clear: ctx=%p, canvas_id=%d, initialized=%d, transport=%p", ctx, canvas_id, ctx->initialized, ctx->transport);
+    ESP_LOGI(TAG, "clear: ctx=%p, canvas_id=%d, initialized=%d, transport=%p, screen_width=%d",
+             ctx, canvas_id, ctx->initialized, ctx->transport, ctx->config.screen_width);
+
     if (!ctx->initialized) {
         ESP_LOGE(TAG, "clear: context not initialized (ctx=%p, initialized=%d)", ctx, ctx->initialized);
+        ESP_LOGE(TAG, "clear: context == g_gfx_context? %s", (context == g_gfx_context) ? "YES" : "NO");
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
