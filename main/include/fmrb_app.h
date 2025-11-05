@@ -39,6 +39,7 @@ typedef struct {
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
     fmrb_task_handle_t    task;              // FreeRTOS task handle
     uint32_t              gen;               // Generation counter for reuse detection
+    bool                  headless;          // Headless app flag (no graphics, no canvas)
     uint16_t              window_width;      // Window Width(if headless, =0)
     uint16_t              window_height;     // Window Height(if headless, =0)
     void*                 user_data;         // Application-specific data
@@ -53,6 +54,7 @@ typedef struct {
     uint32_t              stack_words;      // Stack size in words (not bytes)
     fmrb_task_priority_t  priority;
     fmrb_base_type_t      core_affinity;    // -1 = no affinity, 0/1 = specific core
+    bool                  headless;          // Headless app flag (no graphics, no canvas)
 } fmrb_spawn_attr_t;
 
 // App info for ps-style listing

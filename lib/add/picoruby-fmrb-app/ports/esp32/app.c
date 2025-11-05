@@ -9,6 +9,7 @@
 #include "fmrb_log.h"
 #include "fmrb_err.h"
 #include "fmrb_msg.h"
+#include "fmrb_gfx.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
 
@@ -29,21 +30,45 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@name"),
                mrb_str_new_cstr(mrb, ctx->app_name));
 
-    // Set @canvas instance variable
-    // TODO: Canvas allocation should be done by Kernel
-    // For now, all apps use canvas_id=0 (screen) until multi-canvas support is implemented
-    mrb_int canvas_id = 0;  // FMRB_CANVAS_SCREEN
-    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@canvas"),
-               mrb_fixnum_value(canvas_id));
-
     // Set @window_width and @window_height instance variables
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@window_width"),
                mrb_fixnum_value(ctx->window_width));
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@window_height"),
                mrb_fixnum_value(ctx->window_height));
 
-    FMRB_LOGI(TAG, "Assigned canvas_id=%d, window=%dx%d to app %s",
-             (int)canvas_id, ctx->window_width, ctx->window_height, ctx->app_name);
+    // Allocate Canvas for non-headless apps
+    if (!ctx->headless) {
+        fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
+
+        // Get global graphics context
+        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+        if (!gfx_ctx) {
+            mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics context not initialized");
+        }
+
+        // Create canvas for app window
+        fmrb_gfx_err_t ret = fmrb_gfx_create_canvas(
+            gfx_ctx,
+            ctx->window_width,
+            ctx->window_height,
+            &canvas_id
+        );
+
+        if (ret != FMRB_GFX_OK) {
+            mrb_raisef(mrb, E_RUNTIME_ERROR,
+                       "Failed to create canvas: %d", ret);
+        }
+
+        // Set @canvas instance variable
+        mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@canvas"),
+                   mrb_fixnum_value(canvas_id));
+
+        FMRB_LOGI(TAG, "Created canvas %u (%dx%d) for app %s",
+                 canvas_id, ctx->window_width, ctx->window_height, ctx->app_name);
+    } else {
+        // Headless app: no canvas, @canvas remains unset (nil)
+        FMRB_LOGI(TAG, "Headless app %s: no canvas allocated", ctx->app_name);
+    }
 
     // Create message queue for this app
     fmrb_msg_queue_config_t queue_config = {
@@ -111,6 +136,50 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// FmrbApp#_cleanup() - Cleanup app resources (canvas, message queue)
+// Called from Ruby destroy() method when app terminates
+static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
+{
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        return mrb_nil_value();
+    }
+
+    FMRB_LOGI(TAG, "_cleanup: app_id=%d, name=%s", ctx->app_id, ctx->app_name);
+
+    // Get @canvas instance variable
+    mrb_value canvas_val = mrb_iv_get(mrb, self, mrb_intern_cstr(mrb, "@canvas"));
+
+    // Delete canvas if allocated (not screen)
+    if (mrb_fixnum_p(canvas_val)) {
+        fmrb_canvas_handle_t canvas_id = (fmrb_canvas_handle_t)mrb_fixnum(canvas_val);
+
+        // Only delete user-allocated canvases (not screen)
+        if (canvas_id != FMRB_CANVAS_SCREEN) {
+            fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+            if (gfx_ctx) {
+                fmrb_gfx_err_t ret = fmrb_gfx_delete_canvas(gfx_ctx, canvas_id);
+                if (ret == FMRB_GFX_OK) {
+                    FMRB_LOGI(TAG, "Deleted canvas %u for app %s",
+                             canvas_id, ctx->app_name);
+                } else {
+                    FMRB_LOGW(TAG, "Failed to delete canvas %u: %d",
+                             canvas_id, ret);
+                }
+            }
+        }
+    }
+
+    // Delete message queue
+    fmrb_err_t ret = fmrb_msg_delete_queue(ctx->app_id);
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to delete message queue for app %s: %d",
+                 ctx->app_name, ret);
+    }
+
+    return mrb_nil_value();
+}
+
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 {
     // Define FmrbApp class
@@ -119,6 +188,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     // Instance methods (called from Ruby instances)
     mrb_define_method(mrb, app_class, "_init", mrb_fmrb_app_init, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_spin", mrb_fmrb_app_spin, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, app_class, "_cleanup", mrb_fmrb_app_cleanup, MRB_ARGS_NONE());
 
     // Initialize graphics subsystem
     mrb_fmrb_gfx_init(mrb);

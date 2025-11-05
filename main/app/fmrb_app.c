@@ -365,10 +365,11 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     strncpy(ctx->app_name, attr->name, sizeof(ctx->app_name) - 1);
     ctx->app_name[sizeof(ctx->app_name) - 1] = '\0';
     ctx->user_data = (void*)attr->irep;  // Store irep for task_main
+    ctx->headless = attr->headless;
 
     // Initialize window size based on app type
     const fmrb_system_config_t* sys_config = fmrb_kernel_get_config();
-    if (attr->type == APP_TYPE_USER_APP) {
+    if (attr->type == APP_TYPE_USER_APP && !ctx->headless) {
         ctx->window_width = sys_config->default_user_app_width;
         ctx->window_height = sys_config->default_user_app_height;
     } else if (attr->type == APP_TYPE_SYSTEM_APP) {

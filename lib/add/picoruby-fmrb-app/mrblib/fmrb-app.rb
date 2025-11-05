@@ -18,8 +18,16 @@ class FmrbApp
     puts "[DEBUG] Before _init()"
     _init() # C function, variables are defined here
     puts "[DEBUG] After _init(), @canvas=#{@canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}"
-    @gfx = FmrbGfx.new(@canvas)  # Pass canvas_id to FmrbGfx
-    puts "[DEBUG] FmrbGfx initialized: canvas_id=#{@canvas}"
+
+    # Initialize graphics only for non-headless apps (@canvas is set)
+    if @canvas
+      @gfx = FmrbGfx.new(@canvas)  # Pass canvas_id to FmrbGfx
+      puts "[DEBUG] FmrbGfx initialized: canvas_id=#{@canvas}"
+    else
+      @gfx = nil
+      puts "[DEBUG] Headless app: no graphics initialized"
+    end
+
     puts "[FmrbApp]name=#{@name}"
   end
 
@@ -63,6 +71,7 @@ class FmrbApp
     puts "[DEBUG] destroy() called"
     @gfx.destroy if @gfx  # Cleanup graphics resources
     on_destroy
+    _cleanup()  # C function: cleanup canvas and message queue
   end
 
   def start

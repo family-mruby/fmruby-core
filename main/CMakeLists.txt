@@ -16,7 +16,7 @@ set(GENERATED_C_FILES "")
 file(GLOB KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/kernel/mrblib/*.rb)
 
 # Find all Ruby files in app/default_app/mrblib/
-file(GLOB SYSTEM_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/app/default_app/mrblib/*.rb)
+file(GLOB DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/app/default_app/mrblib/*.rb)
 
 # Process kernel Ruby files
 foreach(RB_FILE ${KERNEL_RUBY_FILES})

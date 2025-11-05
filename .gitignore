@@ -6,7 +6,7 @@ dependencies.lock
 .env
 .vscode/*
 main/kernel/mrb/*
-main/app/system_app/mrb/*
+main/app/default_app/mrb/*
 
 # Generated documentation
 doc/api/
