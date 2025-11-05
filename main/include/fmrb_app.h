@@ -85,3 +85,4 @@ static inline fmrb_app_task_context_t* fmrb_current(void) {
 
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
+bool fmrb_app_spawn_default_app(const char* app_name);

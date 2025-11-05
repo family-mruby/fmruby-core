@@ -13,8 +13,16 @@ class SystemGuiApp < FmrbApp
 
   def on_create()
     @gfx.clear(FmrbGfx::BLUE)  # Phase2: Canvas + messaging
-    @gfx.present  # Show initial screen
+    draw_current
     puts "[SystemGUI] on_create called (graphics disabled temporarily)"
+    puts "[SystemGUI] spawn default shell app"
+  end
+
+  def draw_current()
+    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
+    @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
+    @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
+    @gfx.present
   end
 
   def on_update()
