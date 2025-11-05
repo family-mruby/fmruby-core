@@ -314,8 +314,6 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
 // Graphics#present
 static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
 {
-    FMRB_LOGD(TAG, "present() called");
-
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
         FMRB_LOGE(TAG, "present() failed: Graphics not initialized");
@@ -334,7 +332,6 @@ static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Present failed: %d", ret);
     }
 
-    FMRB_LOGD(TAG, "present() succeeded");
     return self;
 }
 

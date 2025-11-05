@@ -13,6 +13,7 @@ class SystemGuiApp < FmrbApp
 
   def on_create()
     @gfx.clear(FmrbGfx::BLUE)  # Phase2: Canvas + messaging
+    @gfx.present  # Show initial screen
     puts "[SystemGUI] on_create called (graphics disabled temporarily)"
   end
 

@@ -13,21 +13,25 @@ extern "C" {
 // External reference to LGFX instance created in main.cpp
 extern LGFX* g_lgfx;
 
+// Back buffer for double buffering
+static LGFX_Sprite* g_back_buffer = nullptr;
+
 // Canvas management (LovyanGFX sprites)
 static std::map<uint16_t, LGFX_Sprite*> g_canvases;
 static uint16_t g_current_target = FMRB_CANVAS_SCREEN;  // 0=screen, other=canvas
 
-// Get current drawing target (screen or canvas)
+// Get current drawing target (back buffer or canvas)
 static LovyanGFX* get_current_target() {
     if (g_current_target == FMRB_CANVAS_SCREEN) {
-        return g_lgfx;  // Main screen
+        // Draw to back buffer for double buffering
+        return g_back_buffer ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
     }
     auto it = g_canvases.find(g_current_target);
     if (it != g_canvases.end()) {
         return it->second;  // Canvas sprite
     }
-    fprintf(stderr, "Warning: Canvas %u not found, using screen\n", g_current_target);
-    return g_lgfx;  // Fallback to screen
+    fprintf(stderr, "Warning: Canvas %u not found, using back buffer\n", g_current_target);
+    return g_back_buffer ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;  // Fallback to back buffer
 }
 
 extern "C" int graphics_handler_init(SDL_Renderer *renderer) {
@@ -38,11 +42,34 @@ extern "C" int graphics_handler_init(SDL_Renderer *renderer) {
         return -1;
     }
 
-    printf("Graphics handler initialized (using external LGFX instance)\n");
+    // Create back buffer sprite for double buffering
+    g_back_buffer = new LGFX_Sprite(g_lgfx);
+    if (!g_back_buffer) {
+        fprintf(stderr, "Failed to allocate back buffer sprite\n");
+        return -1;
+    }
+
+    g_back_buffer->setColorDepth(8);  // RGB332 to match main screen
+    if (!g_back_buffer->createSprite(480, 320)) {
+        fprintf(stderr, "Failed to create back buffer sprite (480x320)\n");
+        delete g_back_buffer;
+        g_back_buffer = nullptr;
+        return -1;
+    }
+
+    g_back_buffer->fillScreen(FMRB_COLOR_BLACK);  // Initialize to black
+    printf("Graphics handler initialized (using external LGFX instance with back buffer)\n");
+    printf("Back buffer created: %p, size: 480x320, color depth: 8\n", (void*)g_back_buffer);
     return 0;
 }
 
 extern "C" void graphics_handler_cleanup(void) {
+    // Delete back buffer
+    if (g_back_buffer) {
+        delete g_back_buffer;
+        g_back_buffer = nullptr;
+    }
+
     // Delete all canvases
     for (auto& pair : g_canvases) {
         delete pair.second;
@@ -70,13 +97,13 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
         case FMRB_GFX_CMD_FILL_SCREEN:
             if (size >= sizeof(fmrb_gfx_clear_cmd_t)) {
                 const fmrb_gfx_clear_cmd_t *cmd = (const fmrb_gfx_clear_cmd_t*)data;
-#ifdef FMRB_IPC_DEBUG
                 printf("FILL_SCREEN: canvas_id=%u, color=0x%02x\n", cmd->canvas_id, cmd->color);
-#endif
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
-                    target = g_lgfx;
+                    // Draw to back buffer for double buffering
+                    target = g_back_buffer ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
+                    printf("FILL_SCREEN: Drawing to back buffer %p\n", (void*)target);
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
@@ -96,7 +123,8 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
-                    target = g_lgfx;
+                    // Draw to back buffer for double buffering
+                    target = g_back_buffer ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
@@ -116,7 +144,7 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
-                    target = g_lgfx;
+                    target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
@@ -136,7 +164,7 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
-                    target = g_lgfx;
+                    target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
@@ -156,7 +184,7 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
-                    target = g_lgfx;
+                    target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
@@ -276,6 +304,10 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
             }
 
         case FMRB_GFX_CMD_PRESENT:
+            // Swap buffers: copy back buffer to front buffer
+            if (g_back_buffer) {
+                g_back_buffer->pushSprite(g_lgfx, 0, 0);
+            }
             g_lgfx->display();
             return 0;
 

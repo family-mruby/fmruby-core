@@ -30,9 +30,9 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
                mrb_str_new_cstr(mrb, ctx->app_name));
 
     // Set @canvas instance variable
-    // Canvas ID = app_id + 1 (0 is reserved for screen)
     // TODO: Canvas allocation should be done by Kernel
-    mrb_int canvas_id = ctx->app_id + 1;
+    // For now, all apps use canvas_id=0 (screen) until multi-canvas support is implemented
+    mrb_int canvas_id = 0;  // FMRB_CANVAS_SCREEN
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@canvas"),
                mrb_fixnum_value(canvas_id));
 

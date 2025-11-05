@@ -139,9 +139,6 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
 
     // Handle PRESENT command: execute buffered commands
     if (gfx_cmd->cmd_type == GFX_CMD_PRESENT) {
-        size_t cmd_count = fmrb_gfx_command_buffer_count(g_gfx_cmd_buffer);
-        FMRB_LOGD(TAG, "Executing %zu buffered commands", cmd_count);
-
         // Execute all buffered commands
         fmrb_gfx_err_t ret = fmrb_gfx_command_buffer_execute(g_gfx_cmd_buffer, ctx);
         if (ret != FMRB_GFX_OK) {

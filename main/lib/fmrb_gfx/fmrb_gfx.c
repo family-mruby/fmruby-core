@@ -3,7 +3,7 @@
 #include "fmrb_link_protocol.h"
 #include "fmrb_link_transport.h"
 #include "fmrb_mem.h"
-#include "esp_log.h"
+#include "fmrb_log.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -355,16 +355,25 @@ fmrb_gfx_err_t fmrb_gfx_get_text_size(const char *text, fmrb_font_size_t font_si
 
 fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id) {
     if (!context) {
+        FMRB_LOGE(TAG, "fmrb_gfx_present: context is NULL");
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
     fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) {
+        FMRB_LOGE(TAG, "fmrb_gfx_present: context not initialized");
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    // Use legacy present command (0x08) since it's simple and works
-    return send_graphics_command(ctx, 0x08, NULL, 0);
+    // Send 1-byte PRESENT command as defined in fmrb_gfx_present_cmd_t
+    uint8_t present_cmd = 0x08;  // FMRB_GFX_CMD_PRESENT
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, 0x08, &present_cmd, sizeof(present_cmd));
+
+    if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE(TAG, "fmrb_gfx_present: Failed to send PRESENT command: %d", ret);
+    }
+
+    return ret;
 }
 
 fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t *rect) {
