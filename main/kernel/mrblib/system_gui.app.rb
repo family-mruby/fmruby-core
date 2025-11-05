@@ -7,8 +7,8 @@ class SystemGuiApp < FmrbApp
     @counter = 0
 
     @score = 0
-    @player_x = 100
-    @player_y = 100
+    @player_x = 200
+    @player_y = 160
   end
 
   def on_create()
@@ -22,8 +22,8 @@ class SystemGuiApp < FmrbApp
     end
     # Graphics commands disabled temporarily (Phase2: Canvas + messaging)
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
-    @player_x += 1
-    @player_y += 1
+    @player_x += (RNG.random_int % 7) - 3  # -3 to +3 random movement
+    @player_y += (RNG.random_int % 7) - 3  # -3 to +3 random movement
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
     @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)

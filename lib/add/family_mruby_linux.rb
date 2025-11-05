@@ -7,58 +7,23 @@ MRuby::Build.new do |conf|
 
   conf.cc.defines << "MRB_INT64"
   conf.cc.defines << "MRB_32BIT"
-  conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
-  conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
 
   #conf.cc.defines << "MRB_USE_CUSTOM_RO_DATA_P"
   #conf.cc.defines << "MRB_LINK_TIME_RO_DATA_P"
 
   conf.cc.defines << "PICORB_PLATFORM_POSIX"
+  conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
+  conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
 
-  
-
-  # Common
-  conf.gem core: 'mruby-compiler2'
-  conf.gem core: 'picoruby-mruby'
-  conf.gem core: 'picoruby-machine'
-  conf.gem core: 'picoruby-require'
-
-  conf.gem core: 'picoruby-sandbox'
-  conf.gem core: 'picoruby-env'
-  conf.gem core: 'picoruby-crc'
-  conf.gem core: 'picoruby-io-console'
-
-  # Optional
-  conf.gem core: "picoruby-eval"
-  conf.gem core: "picoruby-yaml"
-
-  # peripherals
-  #conf.gem core: 'picoruby-gpio'
-  #conf.gem core: 'picoruby-i2c'
-  #conf.gem core: 'picoruby-spi'
-  #conf.gem core: 'picoruby-adc'
-  #conf.gem core: 'picoruby-uart'
-  #conf.gem core: 'picoruby-pwm'
-
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-kernel-ext"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-string-ext"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-array-ext"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-time"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-objectspace"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-metaprog"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-error"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-sprintf"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-math"
+  # Common gems
+  conf.gembox "family_mruby"
 
   # POSIX
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-dir"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-io"
-  # ESP32
-  #conf.gem core:'picoruby-dir'
+  dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
+  conf.gem gemdir: "#{dir}/mruby-dir"
+  conf.gem gemdir: "#{dir}/mruby-io"
 
-  # Family mruby specific
-  conf.gem core: "picoruby-fmrb-app"
-  conf.gem core: "picoruby-fmrb-kernel"
+  # Linux specific
   conf.gem core: "picoruby-filesystem-fat"  # C code compiled by ESP-IDF CMake
 
   # settings for microruby

@@ -53,6 +53,7 @@ if(IDF_TARGET STREQUAL "linux")
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_file.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_dir.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/posix/rng.c
 
     )
 else()

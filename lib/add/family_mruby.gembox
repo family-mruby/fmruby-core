@@ -1,0 +1,34 @@
+MRuby::GemBox.new do |conf|
+  # Common core gems
+  conf.gem core: 'mruby-compiler2'
+  conf.gem core: 'picoruby-mruby'
+  conf.gem core: 'picoruby-machine'
+  conf.gem core: 'picoruby-require'
+
+  conf.gem core: 'picoruby-sandbox'
+  conf.gem core: 'picoruby-env'
+  conf.gem core: 'picoruby-crc'
+  conf.gem core: 'picoruby-io-console'
+  conf.gem core: 'picoruby-rng'
+
+  # Optional
+  conf.gem core: "picoruby-eval"
+  conf.gem core: "picoruby-yaml"
+
+  # Common mruby extension gems
+  dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
+  conf.gem gemdir: "#{dir}/mruby-kernel-ext"
+  conf.gem gemdir: "#{dir}/mruby-string-ext"
+  conf.gem gemdir: "#{dir}/mruby-array-ext"
+  conf.gem gemdir: "#{dir}/mruby-time"
+  conf.gem gemdir: "#{dir}/mruby-objectspace"
+  conf.gem gemdir: "#{dir}/mruby-metaprog"
+  conf.gem gemdir: "#{dir}/mruby-error"
+  conf.gem gemdir: "#{dir}/mruby-sprintf"
+  conf.gem gemdir: "#{dir}/mruby-math"
+
+  # Family mruby specific
+  conf.gem core: "picoruby-fmrb-app"
+  conf.gem core: "picoruby-fmrb-kernel"
+end
+

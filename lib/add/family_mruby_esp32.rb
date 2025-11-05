@@ -21,20 +21,8 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
   conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
 
-  # Common
-  conf.gem core: 'mruby-compiler2'
-  conf.gem core: 'picoruby-mruby'
-  conf.gem core: 'picoruby-machine'
-  conf.gem core: 'picoruby-require'
-
-  conf.gem core: 'picoruby-sandbox'
-  conf.gem core: 'picoruby-env'
-  conf.gem core: 'picoruby-crc'
-  conf.gem core: 'picoruby-io-console'
-
-  # Optional
-  conf.gem core: "picoruby-eval"
-  conf.gem core: "picoruby-yaml"
+  # Common gems
+  conf.gembox "family_mruby"
 
   # peripherals
 #   conf.gem core: 'picoruby-gpio'
@@ -44,26 +32,8 @@ MRuby::CrossBuild.new("esp32") do |conf|
 #   conf.gem core: 'picoruby-uart'
 #   conf.gem core: 'picoruby-pwm'
 
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-kernel-ext"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-string-ext"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-array-ext"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-time"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-objectspace"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-metaprog"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-error"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-sprintf"
-  conf.gem gemdir: "mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-math"
-
-  # POSIX
-  #conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-dir"
-  #conf.gem gemdir: "picoruby-mruby/lib/mruby/mrbgems/mruby-io"
-  #conf.gem core: 'mruby-dir'
   # ESP32
   #conf.gem core:'picoruby-dir'
-
-  # Family mruby specific
-  conf.gem core: "picoruby-fmrb-app"
-  conf.gem core: "picoruby-fmrb-kernel"
 
   # settings for microruby
   conf.microruby
