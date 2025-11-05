@@ -12,6 +12,9 @@
 #define MAX_CALLBACKS 16
 #define MAX_PENDING_MESSAGES 8
 
+// Control command definitions (should match host/common/protocol.h)
+#define FMRB_CONTROL_CMD_INIT_DISPLAY 0x01
+
 typedef struct {
     uint8_t msg_type;
     fmrb_link_transport_callback_t callback;
@@ -82,7 +85,7 @@ fmrb_link_transport_err_t fmrb_link_transport_deinit(fmrb_link_transport_handle_
     return FMRB_LINK_TRANSPORT_OK;
 }
 
-static fmrb_link_transport_err_t send_raw_message(const fmrb_link_header_t *header, const uint8_t *payload) {
+static fmrb_link_transport_err_t send_raw_message(uint8_t link_type, const fmrb_link_header_t *header, const uint8_t *payload) {
     // Serialize with msgpack as per IPC_spec.md:
     // 1. Pack frame_hdr + sub_cmd + payload with msgpack
     // 2. HAL layer will add CRC32 and COBS encode
@@ -95,9 +98,9 @@ static fmrb_link_transport_err_t send_raw_message(const fmrb_link_header_t *head
 
     // Pack as array: [type, seq, sub_cmd, payload]
     msgpack_pack_array(&pk, 4);
-    msgpack_pack_uint8(&pk, FMRB_LINK_TYPE_GRAPHICS);  // type
+    msgpack_pack_uint8(&pk, link_type);  // type (CONTROL=1, GRAPHICS=2, AUDIO=4)
     msgpack_pack_uint8(&pk, (uint8_t)(header->sequence & 0xFF));  // seq
-    msgpack_pack_uint8(&pk, header->msg_type);  // sub_cmd (graphics command)
+    msgpack_pack_uint8(&pk, header->msg_type);  // sub_cmd (command within type)
 
     // Pack payload as binary
     if (payload && header->payload_len > 0) {
@@ -125,7 +128,9 @@ static fmrb_link_transport_err_t send_raw_message(const fmrb_link_header_t *head
         .size = sbuf.size
     };
 
-    fmrb_err_t ret = fmrb_hal_link_send(FMRB_LINK_GRAPHICS, &hal_msg, 1000);
+    // Map link_type to HAL channel (CONTROL and GRAPHICS both use the same channel for now)
+    fmrb_link_channel_t hal_channel = (link_type == FMRB_LINK_TYPE_CONTROL) ? FMRB_LINK_GRAPHICS : FMRB_LINK_GRAPHICS;
+    fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1000);
 
     msgpack_sbuffer_destroy(&sbuf);
 
@@ -182,8 +187,21 @@ fmrb_link_transport_err_t fmrb_link_transport_send(fmrb_link_transport_handle_t 
         header.checksum = fmrb_link_calculate_checksum(payload, payload_len);
     }
 
+    // Determine link_type from msg_type
+    // Control commands: only FMRB_CONTROL_CMD_INIT_DISPLAY (0x01)
+    // Graphics commands: everything else (Graphics and Audio ranges overlap, Audio not currently used via transport)
+    uint8_t link_type;
+    if (msg_type == FMRB_CONTROL_CMD_INIT_DISPLAY) {
+        link_type = FMRB_LINK_TYPE_CONTROL;
+    } else {
+        // All other commands are graphics
+        // Note: Audio commands (0x20-0x25) overlap with Graphics text commands
+        // Audio subsystem uses a different communication mechanism, not this transport
+        link_type = FMRB_LINK_TYPE_GRAPHICS;
+    }
+
     // Send message
-    fmrb_link_transport_err_t ret = send_raw_message(&header, payload);
+    fmrb_link_transport_err_t ret = send_raw_message(link_type, &header, payload);
     if (ret != FMRB_LINK_TRANSPORT_OK) {
         return ret;
     }
@@ -295,7 +313,7 @@ static void handle_received_message(transport_context_t *ctx, const fmrb_link_he
     fmrb_link_init_header(&ack_header, FMRB_LINK_MSG_ACK, ctx->next_sequence++, sizeof(ack));
     ack_header.checksum = fmrb_link_calculate_checksum((uint8_t*)&ack, sizeof(ack));
 
-    send_raw_message(&ack_header, (uint8_t*)&ack);
+    send_raw_message(FMRB_LINK_TYPE_CONTROL, &ack_header, (uint8_t*)&ack);
 }
 
 fmrb_link_transport_err_t fmrb_link_transport_process(fmrb_link_transport_handle_t handle) {
@@ -348,7 +366,15 @@ fmrb_link_transport_err_t fmrb_link_transport_process(fmrb_link_transport_handle
                         header.checksum = fmrb_link_calculate_checksum(pending->payload, pending->payload_len);
                     }
 
-                    send_raw_message(&header, pending->payload);
+                    // Determine link_type from msg_type (same logic as in send())
+                    uint8_t link_type;
+                    if (pending->msg_type == FMRB_CONTROL_CMD_INIT_DISPLAY) {
+                        link_type = FMRB_LINK_TYPE_CONTROL;
+                    } else {
+                        link_type = FMRB_LINK_TYPE_GRAPHICS;
+                    }
+
+                    send_raw_message(link_type, &header, pending->payload);
                     pending->sent_time = current_time;
                     pending->retry_count++;
                 } else {

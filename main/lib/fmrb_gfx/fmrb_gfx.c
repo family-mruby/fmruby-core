@@ -970,3 +970,11 @@ fmrb_gfx_err_t fmrb_gfx_push_canvas(
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_PUSH_CANVAS, &cmd, sizeof(cmd));
 }
+
+fmrb_link_transport_handle_t fmrb_gfx_get_transport(fmrb_gfx_context_t context) {
+    if (!context) {
+        return NULL;
+    }
+    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
+    return ctx->transport;
+}

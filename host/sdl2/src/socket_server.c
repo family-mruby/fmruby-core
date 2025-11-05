@@ -13,6 +13,9 @@
 #include <fcntl.h>
 #include <msgpack.h>
 
+// Forward declaration - implemented in main.cpp
+extern int init_display_callback(uint16_t width, uint16_t height, uint8_t color_depth);
+
 // Frame header (IPC_spec.md compliant)
 typedef struct __attribute__((packed)) {
     uint8_t type;    // Message type
@@ -176,6 +179,25 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     // Process based on type
     int result = 0;
     switch (type & 0x7F) {
+        case 1: // FMRB_IPC_TYPE_CONTROL
+            // Process control commands
+            if (cmd_len >= 1) {
+                uint8_t control_cmd = cmd_buffer[0];
+                if (control_cmd == FMRB_CONTROL_CMD_INIT_DISPLAY && cmd_len >= sizeof(fmrb_control_init_display_t)) {
+                    const fmrb_control_init_display_t *init_cmd = (const fmrb_control_init_display_t*)cmd_buffer;
+                    printf("Received INIT_DISPLAY: %dx%d, %d-bit\n",
+                           init_cmd->width, init_cmd->height, init_cmd->color_depth);
+                    result = init_display_callback(init_cmd->width, init_cmd->height, init_cmd->color_depth);
+                } else {
+                    fprintf(stderr, "Unknown control command: 0x%02x\n", control_cmd);
+                    result = -1;
+                }
+            } else {
+                fprintf(stderr, "Control command too short: %zu bytes\n", cmd_len);
+                result = -1;
+            }
+            break;
+
         case 2: // FMRB_IPC_TYPE_GRAPHICS
             result = graphics_handler_process_command(cmd_buffer, cmd_len);
             break;

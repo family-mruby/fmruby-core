@@ -10,6 +10,9 @@
 #include "fmrb_gfx_commands.h"
 #include "fmrb_audio.h"
 #include "../fmrb_kernel.h"
+#include "fmrb_link_transport.h"
+#include "fmrb_link_protocol.h"
+#include "../../../host/common/protocol.h"
 
 static const char *TAG = "host";
 
@@ -68,9 +71,9 @@ static void host_task_process_host_message(const host_message_t *msg);
  */
 static int init_gfx_audio(void)
 {
-    fmrb_system_config_t* conf = fmrb_kernel_get_config();
+    const fmrb_system_config_t* conf = fmrb_kernel_get_config();
 
-    // Initialize Graphics subsystem
+    // Initialize Graphics subsystem (this initializes the transport layer)
     fmrb_gfx_config_t gfx_config = {
         .screen_width = conf->display_width,
         .screen_height = conf->display_height,
@@ -83,14 +86,53 @@ static int init_gfx_audio(void)
         FMRB_LOGE(TAG, "Failed to initialize Graphics: %d", gfx_ret);
         return -1;
     } else {
-        FMRB_LOGI(TAG, "Graphics initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
+        FMRB_LOGI(TAG, "Graphics transport initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
 
-        // Get the global context for testing
+        // Get the graphics context which contains the transport handle
         fmrb_gfx_context_t ctx = fmrb_gfx_get_global_context();
         if (!ctx) {
             FMRB_LOGE(TAG, "Failed to get global graphics context");
             return -1;
         }
+
+        // Send display initialization command to host
+        // This tells the host to create the SDL2 window with the specified resolution
+        fmrb_control_init_display_t init_cmd = {
+            .cmd_type = FMRB_CONTROL_CMD_INIT_DISPLAY,
+            .width = conf->display_width,
+            .height = conf->display_height,
+            .color_depth = 8  // RGB332
+        };
+
+        FMRB_LOGI(TAG, "Sending display initialization to host: %dx%d, %d-bit",
+                  init_cmd.width, init_cmd.height, init_cmd.color_depth);
+
+        // Access the transport handle from the context
+        extern fmrb_link_transport_handle_t fmrb_gfx_get_transport(fmrb_gfx_context_t context);
+        fmrb_link_transport_handle_t transport = fmrb_gfx_get_transport(ctx);
+
+        if (transport) {
+            fmrb_link_transport_err_t ret = fmrb_link_transport_send(
+                transport,
+                FMRB_CONTROL_CMD_INIT_DISPLAY,  // msg_type (0x01) will be detected as CONTROL
+                (const uint8_t*)&init_cmd,
+                sizeof(init_cmd)
+            );
+
+            if (ret != FMRB_LINK_TRANSPORT_OK) {
+                FMRB_LOGE(TAG, "Failed to send display init command: %d", ret);
+                return -1;
+            }
+
+            FMRB_LOGI(TAG, "Display initialization command sent successfully");
+
+            // Give host time to initialize the display (200ms)
+            fmrb_task_delay(200 / portTICK_PERIOD_MS);
+        } else {
+            FMRB_LOGW(TAG, "Transport not available, skipping display init command");
+        }
+
+        FMRB_LOGI(TAG, "Graphics fully initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
 
         // Create command buffer for batching draw commands
         g_gfx_cmd_buffer = fmrb_gfx_command_buffer_create(GFX_CMD_BUFFER_SIZE);

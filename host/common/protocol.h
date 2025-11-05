@@ -39,6 +39,17 @@ typedef struct {
     uint32_t sequence;      // Sequence number
 } __attribute__((packed)) fmrb_host_msg_header_t;
 
+// Control command subtypes
+#define FMRB_CONTROL_CMD_INIT_DISPLAY 0x01
+
+// Display initialization command
+typedef struct {
+    uint8_t cmd_type;        // FMRB_CONTROL_CMD_INIT_DISPLAY
+    uint16_t width;
+    uint16_t height;
+    uint8_t color_depth;     // 8 for RGB332
+} __attribute__((packed)) fmrb_control_init_display_t;
+
 // Socket configuration
 #define FMRB_HOST_SOCKET_PATH "/tmp/fmrb_host.sock"
 #define FMRB_HOST_MAX_CLIENTS 4
