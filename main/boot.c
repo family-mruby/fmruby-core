@@ -42,9 +42,6 @@ void fmrb_host_set_ready(void) {
     FMRB_LOGI(TAG, "Host task ready");
 }
 
-// Generated from system_gui.app.rb (will be compiled by picorbc)
-extern const uint8_t system_gui_irep[];
-
 extern int Machine_get_config_int(int type);
 
 #ifdef CONFIG_IDF_TARGET_LINUX
@@ -106,38 +103,6 @@ void show_config(void)
     FMRB_LOGI(TAG, "FMRB_MAX_USER_APPS           = %d", FMRB_MAX_USER_APPS);
     
     FMRB_LOGI(TAG, "------------------------------------------------");
-}
-
-static void create_system_app(void)
-{
-    FMRB_LOGI(TAG, "Creating system GUI app...");
-
-    fmrb_spawn_attr_t attr = {
-        .app_id = PROC_ID_SYSTEM_APP,
-        .type = APP_TYPE_SYSTEM_APP,
-        .name = "system_gui",
-        .irep = system_gui_irep,
-        .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
-        .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
-        .core_affinity = -1  // No core affinity
-    };
-
-    int32_t app_id;
-    bool result = false;
-    #if 1
-    fmrb_app_init();
-    result = fmrb_app_spawn(&attr, &app_id);
-    #else
-    FMRB_LOGI(TAG, "simple spawn");
-    result = fmrb_app_spawn_simple(&attr, &app_id);
-    #endif
-
-    if (!result) {
-        FMRB_LOGE(TAG, "Failed to spawn system GUI app");
-        return;
-    }
-
-    FMRB_LOGI(TAG, "System GUI app spawned successfully (id=%ld)", app_id);
 }
 
 static void init_hardware(void)
@@ -235,10 +200,6 @@ void fmrb_os_init(void)
     }
 
     FMRB_LOGI(TAG, "Kernel and host tasks are ready");
-
-    // Start GUI
-    create_system_app();
-
     FMRB_LOGI(TAG, "Family mruby OS initialization complete");
 }
 

@@ -78,7 +78,9 @@ class KernelHandler
   end
 
   def initial_sequence
-
+    #TODO: Wait for host task init
+    Machine.Machine_delay_ms(1000)
+    _spawn_app_req("system/gui_app")
   end
 
   def start
