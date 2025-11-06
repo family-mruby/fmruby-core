@@ -12,7 +12,7 @@ class AppData
   end
 end
 
-class KernelHandler
+class FmrbKernel
   def initialize()
     puts "[KERNEL] initialize"
     @app_list = []

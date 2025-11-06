@@ -5,7 +5,7 @@
 puts "Family mruby OS Kernel starting..."
 
 begin
-  kernel = Kernel.new
+  kernel = FmrbKernel.new
   puts "[Kernel] Kernel created successfully"
   kernel.start
 rescue => e

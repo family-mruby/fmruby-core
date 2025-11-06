@@ -124,8 +124,8 @@ static mrb_value mrb_kernel_set_ready(mrb_state *mrb, mrb_value self)
 
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
-    // Define Kernel class
-    struct RClass *handler_class = mrb_define_class(mrb, "Kernel", mrb->object_class);
+    // Define FmrbKernel class
+    struct RClass *handler_class = mrb_define_class(mrb, "FmrbKernel", mrb->object_class);
     mrb_define_method(mrb, handler_class, "_set_ready", mrb_kernel_set_ready, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_init", mrb_kernel_handler_init, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_spin", mrb_kernel_handler_spin, MRB_ARGS_REQ(1));
