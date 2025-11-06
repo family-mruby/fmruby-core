@@ -15,17 +15,18 @@ class SystemGuiApp < FmrbApp
     @gfx.clear(FmrbGfx::BLUE)  # Phase2: Canvas + messaging
     draw_current
     puts "[SystemGUI] on_create called"
-    puts "[SystemGUI] spawn default shell app"
+    #puts "[SystemGUI] spawn default shell app"
 
     # Spawn shell application via Kernel
-    spawn_app("shell")
+    #spawn_app("shell")
   end
 
   def spawn_app(app_name)
     puts "[SystemGUI] Requesting spawn: #{app_name}"
 
     # Build message payload: subtype(1) + app_name(32)
-    data = [1].pack("C")  # subtype = FMRB_APP_CTRL_SPAWN (1)
+    # Use direct byte value instead of pack() (not available in mruby)
+    data = "\x01"  # subtype = FMRB_APP_CTRL_SPAWN (1)
     data += app_name.ljust(32, "\x00")  # app_name padded to 32 bytes
 
     # Send to Kernel (PROC_ID_KERNEL=0, FMRB_MSG_TYPE_APP_CONTROL=0)

@@ -15,20 +15,19 @@ class FmrbApp
   def initialize()
     puts "[FmrbApp]initialize"
     @running = false
-    puts "[FmrbApp] Before _init()"
     _init() # C function, variables are defined here
-    puts "[FmrbApp] After _init(), @canvas=#{@canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}"
+    puts "[FmrbApp][#{@name}] name=#{@name}"
+    puts "[FmrbApp][#{@name}] After _init(), @canvas=#{@canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}"
 
     # Initialize graphics only for non-headless apps (@canvas is set)
     if @canvas
       @gfx = FmrbGfx.new(@canvas)  # Pass canvas_id to FmrbGfx
-      puts "[FmrbApp] FmrbGfx initialized: canvas_id=#{@canvas}"
+      puts "[FmrbApp][#{@name}] FmrbGfx initialized: canvas_id=#{@canvas}"
     else
       @gfx = nil
-      puts "[FmrbApp] Headless app: no graphics initialized"
+      puts "[FmrbApp][#{@name}] Headless app: no graphics initialized"
     end
 
-    puts "[FmrbApp]name=#{@name}"
   end
 
   # Lifecycle methods (override in subclass)
@@ -37,7 +36,7 @@ class FmrbApp
     # Called once when app is created
     # Initialize your app state here
     # Access @name and @gfx instance variables
-    puts "[FmrbApp]on_create"
+    puts "[FmrbApp][#{@name}]on_create"
   end
 
   def on_update
@@ -50,7 +49,7 @@ class FmrbApp
   def on_destroy
     # Called once when app is destroyed
     # Cleanup resources here
-    puts "[FmrbApp]on_destroy"
+    puts "[FmrbApp][#{@name}]on_destroy"
   end
 
   def on_event(ev)
@@ -59,7 +58,7 @@ class FmrbApp
 
   # Internal methods
   def main_loop
-    puts "[FmrbApp] main_loop started"
+    puts "[FmrbApp][#{@name}] main_loop started"
     loop do
       return if !@running
       timeout_ms = on_update
@@ -85,20 +84,20 @@ class FmrbApp
   end
 
   def destroy
-    puts "[FmrbApp] destroy() called"
+    puts "[FmrbApp][#{@name}] destroy() called"
     @gfx.destroy if @gfx  # Cleanup graphics resources
     on_destroy
     _cleanup()  # C function: cleanup canvas and message queue
   end
 
   def start
-    puts "[FmrbApp] start() called, @running=#{@running}"
+    puts "[FmrbApp][#{@name}] start() called, @running=#{@running}"
     @running = true
-    puts "[FmrbApp] Before on_create"
+    puts "[FmrbApp][#{@name}] Before on_create"
     on_create
-    puts "[FmrbApp] After on_create, entering main_loop"
+    puts "[FmrbApp][#{@name}] After on_create, entering main_loop"
     main_loop
-    puts "[FmrbApp] After main_loop, calling destroy"
+    puts "[FmrbApp][#{@name}] After main_loop, calling destroy"
     destroy
   end
 
