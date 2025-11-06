@@ -67,6 +67,19 @@ class FmrbApp
     end
   end
 
+  def set_timer(interval, &blk)
+    return timer_id
+  end
+
+  def clear_time(timer_id)
+  end
+
+  def subscribe(from,type,name, &blk)
+  end
+
+  def publish()
+  end
+
   def destroy
     puts "[DEBUG] destroy() called"
     @gfx.destroy if @gfx  # Cleanup graphics resources
