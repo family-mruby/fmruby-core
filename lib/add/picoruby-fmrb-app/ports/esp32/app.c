@@ -9,6 +9,8 @@
 #include "fmrb_log.h"
 #include "fmrb_err.h"
 #include "fmrb_msg.h"
+#include "fmrb_msg_payload.h"
+#include "fmrb_task_config.h"
 #include "fmrb_gfx.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
@@ -234,6 +236,25 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_spin", mrb_fmrb_app_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, app_class, "_cleanup", mrb_fmrb_app_cleanup, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
+
+    // Process ID constants
+    mrb_define_const(mrb, app_class, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
+    mrb_define_const(mrb, app_class, "PROC_ID_HOST", mrb_fixnum_value(PROC_ID_HOST));
+    mrb_define_const(mrb, app_class, "PROC_ID_SYSTEM_APP", mrb_fixnum_value(PROC_ID_SYSTEM_APP));
+    mrb_define_const(mrb, app_class, "PROC_ID_USER_APP0", mrb_fixnum_value(PROC_ID_USER_APP0));
+    mrb_define_const(mrb, app_class, "PROC_ID_USER_APP1", mrb_fixnum_value(PROC_ID_USER_APP1));
+    mrb_define_const(mrb, app_class, "PROC_ID_USER_APP2", mrb_fixnum_value(PROC_ID_USER_APP2));
+
+    // Message type constants
+    mrb_define_const(mrb, app_class, "MSG_TYPE_APP_CONTROL", mrb_fixnum_value(FMRB_MSG_TYPE_APP_CONTROL));
+    mrb_define_const(mrb, app_class, "MSG_TYPE_APP_GFX", mrb_fixnum_value(FMRB_MSG_TYPE_APP_GFX));
+    mrb_define_const(mrb, app_class, "MSG_TYPE_APP_AUDIO", mrb_fixnum_value(FMRB_MSG_TYPE_APP_AUDIO));
+
+    // App control message subtypes
+    mrb_define_const(mrb, app_class, "APP_CTRL_SPAWN", mrb_fixnum_value(FMRB_APP_CTRL_SPAWN));
+    mrb_define_const(mrb, app_class, "APP_CTRL_KILL", mrb_fixnum_value(FMRB_APP_CTRL_KILL));
+    mrb_define_const(mrb, app_class, "APP_CTRL_SUSPEND", mrb_fixnum_value(FMRB_APP_CTRL_SUSPEND));
+    mrb_define_const(mrb, app_class, "APP_CTRL_RESUME", mrb_fixnum_value(FMRB_APP_CTRL_RESUME));
 
     // Initialize graphics subsystem
     mrb_fmrb_gfx_init(mrb);

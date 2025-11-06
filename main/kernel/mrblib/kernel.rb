@@ -5,9 +5,9 @@
 puts "Family mruby OS Kernel starting..."
 
 begin
-  kernel_handler = KernelHandler.new
-  puts "[Kernel] KernelHandler created successfully"
-  kernel_handler.start
+  kernel = Kernel.new
+  puts "[Kernel] Kernel created successfully"
+  kernel.start
 rescue => e
   puts "[ERROR] Exception caught: #{e.class}"
   puts "[ERROR] Message: #{e.message}"

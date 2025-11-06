@@ -7,12 +7,13 @@
 #include "fmrb_kernel.h"
 #include "fmrb_app.h"
 #include "fmrb_msg.h"
+#include "fmrb_msg_payload.h"
 #include "fmrb_task_config.h"
 #include "fmrb_log.h"
 
 static const char* TAG = "kernel";
 
-// KernelHandler#_init() - Initialize kernel handler
+// Kernel#_init() - Initialize kernel handler
 // Sets @tick, @max_app_num instance variables and creates message queue
 static mrb_value mrb_kernel_handler_init(mrb_state *mrb, mrb_value self)
 {
@@ -42,7 +43,7 @@ static mrb_value mrb_kernel_handler_init(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
-// KernelHandler#_spin(timeout_ms) - Process messages
+// Kernel#_spin(timeout_ms) - Process messages
 // Receives messages and calls Ruby msg_handler(msg) for each message
 // Continues to receive messages until timeout expires
 static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
@@ -95,7 +96,7 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
-// KernelHandler#_spawn_app_req(app_name) -> bool
+// Kernel#_spawn_app_req(app_name) -> bool
 // Spawn application by name
 static mrb_value mrb_kernel_handler_spawn_app_req(mrb_state *mrb, mrb_value self)
 {
@@ -123,12 +124,31 @@ static mrb_value mrb_kernel_set_ready(mrb_state *mrb, mrb_value self)
 
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
-    // Define KernelHandler class
-    struct RClass *handler_class = mrb_define_class(mrb, "KernelHandler", mrb->object_class);
+    // Define Kernel class
+    struct RClass *handler_class = mrb_define_class(mrb, "Kernel", mrb->object_class);
     mrb_define_method(mrb, handler_class, "_set_ready", mrb_kernel_set_ready, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_init", mrb_kernel_handler_init, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_spin", mrb_kernel_handler_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_spawn_app_req", mrb_kernel_handler_spawn_app_req, MRB_ARGS_REQ(1));
+
+    // Process ID constants
+    mrb_define_const(mrb, handler_class, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
+    mrb_define_const(mrb, handler_class, "PROC_ID_HOST", mrb_fixnum_value(PROC_ID_HOST));
+    mrb_define_const(mrb, handler_class, "PROC_ID_SYSTEM_APP", mrb_fixnum_value(PROC_ID_SYSTEM_APP));
+    mrb_define_const(mrb, handler_class, "PROC_ID_USER_APP0", mrb_fixnum_value(PROC_ID_USER_APP0));
+    mrb_define_const(mrb, handler_class, "PROC_ID_USER_APP1", mrb_fixnum_value(PROC_ID_USER_APP1));
+    mrb_define_const(mrb, handler_class, "PROC_ID_USER_APP2", mrb_fixnum_value(PROC_ID_USER_APP2));
+
+    // Message type constants
+    mrb_define_const(mrb, handler_class, "MSG_TYPE_APP_CONTROL", mrb_fixnum_value(FMRB_MSG_TYPE_APP_CONTROL));
+    mrb_define_const(mrb, handler_class, "MSG_TYPE_APP_GFX", mrb_fixnum_value(FMRB_MSG_TYPE_APP_GFX));
+    mrb_define_const(mrb, handler_class, "MSG_TYPE_APP_AUDIO", mrb_fixnum_value(FMRB_MSG_TYPE_APP_AUDIO));
+
+    // App control message subtypes
+    mrb_define_const(mrb, handler_class, "APP_CTRL_SPAWN", mrb_fixnum_value(FMRB_APP_CTRL_SPAWN));
+    mrb_define_const(mrb, handler_class, "APP_CTRL_KILL", mrb_fixnum_value(FMRB_APP_CTRL_KILL));
+    mrb_define_const(mrb, handler_class, "APP_CTRL_SUSPEND", mrb_fixnum_value(FMRB_APP_CTRL_SUSPEND));
+    mrb_define_const(mrb, handler_class, "APP_CTRL_RESUME", mrb_fixnum_value(FMRB_APP_CTRL_RESUME));
 }
 
 void mrb_fmrb_kernel_final(mrb_state *mrb)

@@ -24,13 +24,13 @@ class SystemGuiApp < FmrbApp
   def spawn_app(app_name)
     puts "[SystemGUI] Requesting spawn: #{app_name}"
 
-    # Build message payload: subtype(1) + app_name(32)
-    # Use direct byte value instead of pack() (not available in mruby)
-    data = "\x01"  # subtype = FMRB_APP_CTRL_SPAWN (1)
+    # Build message payload: subtype + app_name(32)
+    # Convert APP_CTRL_SPAWN constant to byte string (chr is available in mruby)
+    data = FmrbApp::APP_CTRL_SPAWN.chr
     data += app_name.ljust(32, "\x00")  # app_name padded to 32 bytes
 
-    # Send to Kernel (PROC_ID_KERNEL=0, FMRB_MSG_TYPE_APP_CONTROL=0)
-    success = send_message(0, 0, data)
+    # Send to Kernel using constants
+    success = send_message(FmrbApp::PROC_ID_KERNEL, FmrbApp::MSG_TYPE_APP_CONTROL, data)
 
     if success
       puts "[SystemGUI] Spawn request sent successfully"
