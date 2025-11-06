@@ -180,6 +180,50 @@ static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// FmrbApp#_send_message(dest_pid, msg_type, data) -> bool
+// Send a message to another task
+static mrb_value mrb_fmrb_app_send_message(mrb_state *mrb, mrb_value self)
+{
+    mrb_int dest_pid, msg_type;
+    mrb_value data_val;
+    mrb_get_args(mrb, "iiS", &dest_pid, &msg_type, &data_val);
+
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
+    }
+
+    // Build message
+    fmrb_msg_t msg = {
+        .type = (fmrb_msg_type_t)msg_type,
+        .src_pid = ctx->app_id,
+        .size = RSTRING_LEN(data_val),
+    };
+
+    // Check payload size
+    if (msg.size > FMRB_MAX_MSG_PAYLOAD_SIZE) {
+        mrb_raisef(mrb, E_ARGUMENT_ERROR,
+                   "Message payload too large: %d > %d",
+                   (int)msg.size, FMRB_MAX_MSG_PAYLOAD_SIZE);
+    }
+
+    // Copy payload
+    memcpy(msg.data, RSTRING_PTR(data_val), msg.size);
+
+    // Send message with 1 second timeout
+    fmrb_err_t ret = fmrb_msg_send((fmrb_proc_id_t)dest_pid, &msg, 1000);
+
+    if (ret == FMRB_OK) {
+        FMRB_LOGI(TAG, "App %s sent message to pid=%d, type=%d, size=%d",
+                 ctx->app_name, (int)dest_pid, msg_type, (int)msg.size);
+        return mrb_true_value();
+    } else {
+        FMRB_LOGW(TAG, "App %s failed to send message to pid=%d: %d",
+                 ctx->app_name, (int)dest_pid, ret);
+        return mrb_false_value();
+    }
+}
+
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 {
     // Define FmrbApp class
@@ -189,6 +233,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_init", mrb_fmrb_app_init, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_spin", mrb_fmrb_app_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, app_class, "_cleanup", mrb_fmrb_app_cleanup, MRB_ARGS_NONE());
+    mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
 
     // Initialize graphics subsystem
     mrb_fmrb_gfx_init(mrb);

@@ -1,60 +1,18 @@
 # Family mruby OS - Kernel Main Loop
 # This is the core of the Family mruby OS, running at 60Hz
 
-class FmrbKernel
-  def initialize
-    @running = false
-    @current_app = nil
-    @frame_count = 0
-    @last_frame_time = 0
-    puts "Family mruby OS Kernel initialized"
-    _set_ready()  # Signal that kernel initialization is complete
-  end
-
-  def start
-    @running = true
-    # @last_frame_time = FmrbHAL.time_ms
-
-    # # Initialize the system
-    # init_system
-
-    # Main loop
-    main_loop
-  end
-
-  def stop
-    puts "Family mruby OS Kernel stopping..."
-  end
-
-  def load_app(app_instance)
-  end
-
-  def init_system
-  end
-
-  def deinit_system
-  end
-
-  def main_loop
-    puts "Starting main loop..."
-
-    while @running
-      puts "main loop running"
-      #sleep(1)
-      Machine.delay_ms(30000)
-    end
-
-    puts "Main loop ended"
-  end
-
-  def process_system_events
-  end
-end
-
 # Kernel entry point
 puts "Family mruby OS Kernel starting..."
 
-kernel = FmrbKernel.new
-kernel.start
+begin
+  kernel_handler = KernelHandler.new
+  puts "[Kernel] KernelHandler created successfully"
+  kernel_handler.start
+rescue => e
+  puts "[ERROR] Exception caught: #{e.class}"
+  puts "[ERROR] Message: #{e.message}"
+  puts "[ERROR] Backtrace:"
+  puts e.backtrace.join("\n") if e.backtrace
+end
 
 puts "Family mruby OS Kernel exit"
