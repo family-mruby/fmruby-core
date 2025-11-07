@@ -145,11 +145,7 @@ static bool init_hal(void)
         return false;
     }
 
-    ret = fmrb_link_transport_check_version(10*1000);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Invalid protocol version!");
-        return false;
-    }
+    // Note: Version check moved to host_task_init() after host_task starts
 
     return true;
 }

@@ -149,6 +149,7 @@ static int init_gfx_audio(void)
         FMRB_LOGI(TAG, "Audio subsystem (APU emulator) initialized");
     }
 
+    FMRB_LOGI(TAG, "Host task initialized");
     return 0;
 }
 
@@ -329,6 +330,7 @@ static void fmrb_host_task(void *pvParameters)
     fmrb_msg_t msg;
     fmrb_tick_t xLastUpdate = fmrb_task_get_tick_count();
     const fmrb_tick_t xUpdatePeriod = FMRB_MS_TO_TICKS(16);  // 16ms周期で定期更新
+    bool version_checked = false;
 
     while (1) {
         // Wait for messages with timeout
@@ -338,6 +340,16 @@ static void fmrb_host_task(void *pvParameters)
 
         // Process incoming IPC messages (ACK/NACK responses)
         fmrb_link_transport_process();
+
+        // Check protocol version on first iteration
+        if (!version_checked) {
+            fmrb_err_t version_ret = fmrb_link_transport_check_version(5000);
+            if (version_ret != FMRB_OK) {
+                FMRB_LOGE(TAG, "Protocol version check failed");
+                return;
+            }
+            version_checked = true;
+        }
 
         // Periodic update processing
         fmrb_tick_t now = fmrb_task_get_tick_count();

@@ -281,68 +281,19 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t link_type,
         return ret;
     }
 
-    // Wait for response with polling
-    fmrb_time_t start_time = fmrb_hal_time_get_us();
-    uint32_t timeout_us = (timeout_ms == UINT32_MAX) ? UINT32_MAX : (timeout_ms * 1000);
-
-    while (1) {
-        // Process incoming messages
-        fmrb_link_message_t hal_msg;
-        if (fmrb_hal_link_receive(FMRB_LINK_GRAPHICS, &hal_msg, 0) == FMRB_OK) {
-            // Decode msgpack message: [type, seq, sub_cmd, payload]
-            msgpack_unpacked msg;
-            msgpack_unpacked_init(&msg);
-            msgpack_unpack_return unpack_ret = msgpack_unpack_next(&msg, (const char*)hal_msg.data, hal_msg.size, NULL);
-
-            if (unpack_ret == MSGPACK_UNPACK_SUCCESS && msg.data.type == MSGPACK_OBJECT_ARRAY && msg.data.via.array.size == 4) {
-                uint8_t rx_type = 0, rx_seq = 0, rx_sub_cmd = 0;
-                const uint8_t *rx_payload = NULL;
-                uint32_t rx_payload_len = 0;
-
-                // Extract fields
-                if (msg.data.via.array.ptr[0].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
-                    rx_type = (uint8_t)msg.data.via.array.ptr[0].via.u64;
-                }
-                if (msg.data.via.array.ptr[1].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
-                    rx_seq = (uint8_t)msg.data.via.array.ptr[1].via.u64;
-                }
-                if (msg.data.via.array.ptr[2].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
-                    rx_sub_cmd = (uint8_t)msg.data.via.array.ptr[2].via.u64;
-                }
-                if (msg.data.via.array.ptr[3].type == MSGPACK_OBJECT_BIN) {
-                    rx_payload = (const uint8_t*)msg.data.via.array.ptr[3].via.bin.ptr;
-                    rx_payload_len = msg.data.via.array.ptr[3].via.bin.size;
-                }
-
-                handle_received_message(ctx, rx_type, rx_seq, rx_sub_cmd, rx_payload, rx_payload_len);
-            }
-
-            msgpack_unpacked_destroy(&msg);
-        }
-
-        // Check if response received
-        fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
-        bool received = req->response_received;
-        fmrb_semaphore_give(ctx->sync_mutex);
-
-        if (received) {
-            break;
-        }
-
-        // Check timeout
-        if (timeout_us != UINT32_MAX && fmrb_hal_time_is_timeout(start_time, timeout_us)) {
-            fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
-            req->active = false;
-            fmrb_semaphore_give(ctx->sync_mutex);
-            FMRB_LOGW(TAG, "Sync send timeout for seq=%u", sequence);
-            return FMRB_ERR_TIMEOUT;
-        }
-
-        // Small delay to avoid busy-waiting
-        fmrb_hal_time_delay_ms(1);
-    }
+    // Wait for response
+    fmrb_tick_t ticks = (timeout_ms == UINT32_MAX) ? FMRB_TICK_MAX : FMRB_MS_TO_TICKS(timeout_ms);
+    fmrb_base_type_t wait_result = fmrb_semaphore_take(req->wait_sem, ticks);
 
     fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
+
+    if (wait_result != FMRB_TRUE || !req->response_received) {
+        // Timeout
+        req->active = false;
+        fmrb_semaphore_give(ctx->sync_mutex);
+        FMRB_LOGW(TAG, "Sync send timeout for seq=%u", sequence);
+        return FMRB_ERR_TIMEOUT;
+    }
 
     // Response received
     uint8_t status = req->response_status;
@@ -591,6 +542,7 @@ fmrb_err_t fmrb_link_transport_check_version(uint32_t timeout_ms) {
     FMRB_LOGI(TAG, "Checking protocol version (local=%d)", FMRB_LINK_PROTOCOL_VERSION);
 
     // Send version request synchronously
+    // This works because host_task is running and calling fmrb_link_transport_process()
     fmrb_err_t ret = fmrb_link_transport_send_sync(
         FMRB_LINK_TYPE_CONTROL,
         FMRB_LINK_CONTROL_VERSION,
