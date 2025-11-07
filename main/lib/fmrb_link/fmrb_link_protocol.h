@@ -268,10 +268,7 @@ typedef struct __attribute__((packed)) {
 // Max payload size
 #define FMRB_LINK_MAX_PAYLOAD_SIZE 4096
 
-// Utility functions (legacy)
-uint32_t fmrb_link_calculate_checksum(const uint8_t *data, size_t len);
-bool fmrb_link_verify_header(const fmrb_link_header_t *header);
-void fmrb_link_init_header(fmrb_link_header_t *header, uint8_t msg_type, uint16_t sequence, uint32_t payload_len);
+// Legacy utility functions removed - fmrb_link_header_t is no longer used
 
 // Frame utility functions (IPC_spec.md compliant)
 /**

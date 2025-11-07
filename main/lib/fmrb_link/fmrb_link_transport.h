@@ -22,7 +22,9 @@ typedef struct {
 } fmrb_link_transport_config_t;
 
 // Message callback
-typedef void (*fmrb_link_transport_callback_t)(const fmrb_link_header_t *header, const uint8_t *payload, void *user_data);
+typedef void (*fmrb_link_transport_callback_t)(uint8_t type, uint8_t seq, uint8_t sub_cmd,
+                                               const uint8_t *payload, uint32_t payload_len,
+                                               void *user_data);
 
 /**
  * @brief Initialize IPC transport

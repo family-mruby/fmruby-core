@@ -336,42 +336,24 @@ int socket_server_send_ack(uint8_t type, uint8_t seq, const uint8_t *response_da
         msgpack_pack_nil(&pk);
     }
 
-    // Build fmrb_link_header_t
-    typedef struct __attribute__((packed)) {
-        uint32_t magic;       // 0x464D5242 "FMRB"
-        uint8_t version;      // Protocol version
-        uint8_t msg_type;     // Message type
-        uint16_t sequence;    // Sequence number
-        uint32_t payload_len; // Payload length
-        uint32_t checksum;    // CRC32 checksum of payload
-    } fmrb_link_header_t;
-
-    fmrb_link_header_t header;
-    header.magic = 0x464D5242;  // FMRB_LINK_MAGIC
-    header.version = 1;
-    header.msg_type = 0xF0;  // FMRB_LINK_MSG_ACK
-    header.sequence = seq;
-    header.payload_len = sbuf.size;
-    header.checksum = fmrb_link_crc32_update(0, (const uint8_t*)sbuf.data, sbuf.size);
-
-    // Prepare complete message: header + msgpack payload
-    size_t total_msg_len = sizeof(header) + sbuf.size;
-    uint8_t *complete_msg = (uint8_t*)malloc(total_msg_len);
-    if (!complete_msg) {
-        fprintf(stderr, "Failed to allocate buffer for ACK message\n");
+    // Add CRC32 to msgpack message
+    uint32_t crc = fmrb_link_crc32_update(0, (const uint8_t*)sbuf.data, sbuf.size);
+    size_t msg_with_crc_len = sbuf.size + sizeof(uint32_t);
+    uint8_t *msg_with_crc = (uint8_t*)malloc(msg_with_crc_len);
+    if (!msg_with_crc) {
         msgpack_sbuffer_destroy(&sbuf);
+        fprintf(stderr, "Failed to allocate buffer for CRC\n");
         return -1;
     }
 
-    memcpy(complete_msg, &header, sizeof(header));
-    memcpy(complete_msg + sizeof(header), sbuf.data, sbuf.size);
+    memcpy(msg_with_crc, sbuf.data, sbuf.size);
+    memcpy(msg_with_crc + sbuf.size, &crc, sizeof(uint32_t));
     msgpack_sbuffer_destroy(&sbuf);
 
-    // COBS encode the complete message
+    // COBS encode the msgpack + CRC32
     uint8_t encoded_buffer[BUFFER_SIZE];
-    size_t encoded_len = fmrb_link_cobs_encode(complete_msg, total_msg_len, encoded_buffer);
-
-    free(complete_msg);
+    size_t encoded_len = fmrb_link_cobs_encode(msg_with_crc, msg_with_crc_len, encoded_buffer);
+    free(msg_with_crc);
 
     if (encoded_len == 0) {
         fprintf(stderr, "COBS encode failed for ACK\n");

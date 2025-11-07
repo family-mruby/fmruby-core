@@ -130,7 +130,8 @@ fmrb_err_t fmrb_link_transport_deinit(void) {
     return FMRB_OK;
 }
 
-static fmrb_err_t send_raw_message(uint8_t link_type, const fmrb_link_header_t *header, const uint8_t *payload) {
+static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_cmd,
+                                   const uint8_t *payload, uint32_t payload_len) {
     // Serialize with msgpack as per IPC_spec.md:
     // 1. Pack frame_hdr + sub_cmd + payload with msgpack
     // 2. HAL layer will add CRC32 and COBS encode
@@ -144,28 +145,16 @@ static fmrb_err_t send_raw_message(uint8_t link_type, const fmrb_link_header_t *
     // Pack as array: [type, seq, sub_cmd, payload]
     msgpack_pack_array(&pk, 4);
     msgpack_pack_uint8(&pk, link_type);  // type (CONTROL=1, GRAPHICS=2, AUDIO=4)
-    msgpack_pack_uint8(&pk, (uint8_t)(header->sequence & 0xFF));  // seq
-    msgpack_pack_uint8(&pk, header->msg_type);  // sub_cmd (command within type)
+    msgpack_pack_uint8(&pk, seq);        // seq
+    msgpack_pack_uint8(&pk, sub_cmd);    // sub_cmd (command within type)
 
     // Pack payload as binary
-    if (payload && header->payload_len > 0) {
-        msgpack_pack_bin(&pk, header->payload_len);
-        msgpack_pack_bin_body(&pk, payload, header->payload_len);
+    if (payload && payload_len > 0) {
+        msgpack_pack_bin(&pk, payload_len);
+        msgpack_pack_bin_body(&pk, payload, payload_len);
     } else {
         msgpack_pack_nil(&pk);
     }
-
-    // Debug: dump msgpack bytes
-    // printf("TX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%" PRIu32 " msgpack_size=%zu\n",
-    //        FMRB_LINK_TYPE_GRAPHICS, (uint8_t)(header->sequence & 0xFF),
-    //        header->msg_type, header->payload_len, sbuf.size);
-    // printf("TX msgpack bytes (%zu): ", sbuf.size);
-    // for (size_t i = 0; i < sbuf.size && i < 64; i++) {
-    //     printf("%02X ", (uint8_t)sbuf.data[i]);
-    //     if ((i + 1) % 16 == 0) printf("\n");
-    // }
-    // printf("\n");
-    // fflush(stdout);
 
     // Send via HAL (HAL will add CRC32 and COBS encode)
     fmrb_link_message_t hal_msg = {
@@ -217,15 +206,8 @@ fmrb_err_t fmrb_link_transport_send(uint8_t msg_type,
         return FMRB_ERR_INVALID_STATE;
     }
 
-    // Create header
-    fmrb_link_header_t header;
     uint16_t sequence = ctx->next_sequence++;
-    fmrb_link_init_header(&header, msg_type, sequence, payload_len);
-
-    // Calculate checksum if payload exists
-    if (payload && payload_len > 0) {
-        header.checksum = fmrb_link_calculate_checksum(payload, payload_len);
-    }
+    uint8_t seq = (uint8_t)(sequence & 0xFF);
 
     // Determine link_type from msg_type
     // Control commands: only FMRB_CONTROL_CMD_INIT_DISPLAY (0x01)
@@ -241,7 +223,7 @@ fmrb_err_t fmrb_link_transport_send(uint8_t msg_type,
     }
 
     // Send message
-    fmrb_err_t ret = send_raw_message(link_type, &header, payload);
+    fmrb_err_t ret = send_raw_message(link_type, seq, msg_type, payload, payload_len);
     if (ret != FMRB_OK) {
         return ret;
     }
@@ -282,14 +264,8 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t msg_type,
         return FMRB_ERR_BUSY;
     }
 
-    // Create header with ACK_REQUIRED flag
-    fmrb_link_header_t header;
     uint16_t sequence = ctx->next_sequence++;
-    fmrb_link_init_header(&header, msg_type, sequence, payload_len);
-
-    if (payload && payload_len > 0) {
-        header.checksum = fmrb_link_calculate_checksum(payload, payload_len);
-    }
+    uint8_t seq = (uint8_t)(sequence & 0xFF);
 
     // Setup sync request
     sync_request_t *req = &ctx->sync_requests[slot];
@@ -311,7 +287,7 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t msg_type,
     }
 
     // Send message
-    fmrb_err_t ret = send_raw_message(link_type, &header, payload);
+    fmrb_err_t ret = send_raw_message(link_type, seq, msg_type, payload, payload_len);
     if (ret != FMRB_OK) {
         // Mark slot as inactive on send failure
         fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
@@ -397,34 +373,14 @@ fmrb_err_t fmrb_link_transport_unregister_callback(uint8_t msg_type) {
     return FMRB_ERR_NOT_FOUND;
 }
 
-static void handle_received_message(transport_context_t *ctx, const fmrb_link_header_t *header, const uint8_t *payload) {
-    // Handle ACK/NACK messages (msgpack format from host)
-    if (header->msg_type == FMRB_LINK_MSG_ACK || header->msg_type == FMRB_LINK_MSG_NACK) {
-        uint8_t response_status = (header->msg_type == FMRB_LINK_MSG_ACK) ? 0 : 1;
-        uint16_t original_sequence = header->sequence;
-        const uint8_t *response_data = NULL;
-        uint32_t response_data_len = 0;
-
-        // Try to parse msgpack payload: [type, seq, 0xF0, response_data]
-        if (payload && header->payload_len > 0) {
-            msgpack_unpacked msg;
-            msgpack_unpacked_init(&msg);
-            msgpack_unpack_return ret = msgpack_unpack_next(&msg, (const char*)payload, header->payload_len, NULL);
-
-            if (ret == MSGPACK_UNPACK_SUCCESS && msg.data.type == MSGPACK_OBJECT_ARRAY && msg.data.via.array.size == 4) {
-                // Extract sequence from msgpack array
-                if (msg.data.via.array.ptr[1].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
-                    original_sequence = (uint16_t)msg.data.via.array.ptr[1].via.u64;
-                }
-
-                // Extract response data (4th element)
-                if (msg.data.via.array.ptr[3].type == MSGPACK_OBJECT_BIN) {
-                    response_data = (const uint8_t*)msg.data.via.array.ptr[3].via.bin.ptr;
-                    response_data_len = msg.data.via.array.ptr[3].via.bin.size;
-                }
-            }
-            msgpack_unpacked_destroy(&msg);
-        }
+static void handle_received_message(transport_context_t *ctx, uint8_t type, uint8_t seq,
+                                    uint8_t sub_cmd, const uint8_t *payload, uint32_t payload_len) {
+    // Handle ACK/NACK messages
+    if (sub_cmd == FMRB_LINK_MSG_ACK || sub_cmd == FMRB_LINK_MSG_NACK) {
+        uint8_t response_status = (sub_cmd == FMRB_LINK_MSG_ACK) ? 0 : 1;
+        uint16_t original_sequence = seq;
+        const uint8_t *response_data = payload;
+        uint32_t response_data_len = payload_len;
 
         // Check if this is a response to a sync request
         fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
@@ -483,23 +439,21 @@ static void handle_received_message(transport_context_t *ctx, const fmrb_link_he
 
     // Find callback for message type
     for (int i = 0; i < ctx->callback_count; i++) {
-        if (ctx->callbacks[i].msg_type == header->msg_type) {
-            ctx->callbacks[i].callback(header, payload, ctx->callbacks[i].user_data);
+        if (ctx->callbacks[i].msg_type == sub_cmd) {
+            ctx->callbacks[i].callback(type, seq, sub_cmd, payload, payload_len, ctx->callbacks[i].user_data);
             break;
         }
     }
 
     // Send ACK
     fmrb_link_ack_t ack = {
-        .original_sequence = header->sequence,
+        .original_sequence = seq,
         .status = 0
     };
 
-    fmrb_link_header_t ack_header;
-    fmrb_link_init_header(&ack_header, FMRB_LINK_MSG_ACK, ctx->next_sequence++, sizeof(ack));
-    ack_header.checksum = fmrb_link_calculate_checksum((uint8_t*)&ack, sizeof(ack));
-
-    send_raw_message(FMRB_LINK_TYPE_CONTROL, &ack_header, (uint8_t*)&ack);
+    uint16_t ack_sequence = ctx->next_sequence++;
+    uint8_t ack_seq = (uint8_t)(ack_sequence & 0xFF);
+    send_raw_message(FMRB_LINK_TYPE_CONTROL, ack_seq, FMRB_LINK_MSG_ACK, (uint8_t*)&ack, sizeof(ack));
 }
 
 fmrb_err_t fmrb_link_transport_process(void) {
@@ -511,24 +465,41 @@ fmrb_err_t fmrb_link_transport_process(void) {
     // Check for incoming messages
     fmrb_link_message_t hal_msg;
     if (fmrb_hal_link_receive(FMRB_LINK_GRAPHICS, &hal_msg, 0) == FMRB_OK) {
-        if (hal_msg.size >= sizeof(fmrb_link_header_t)) {
-            fmrb_link_header_t *header = (fmrb_link_header_t *)hal_msg.data;
+        // Decode msgpack message: [type, seq, sub_cmd, payload]
+        msgpack_unpacked msg;
+        msgpack_unpacked_init(&msg);
+        msgpack_unpack_return ret = msgpack_unpack_next(&msg, (const char*)hal_msg.data, hal_msg.size, NULL);
 
-            if (fmrb_link_verify_header(header)) {
-                uint8_t *payload = (hal_msg.size > sizeof(fmrb_link_header_t)) ?
-                                   hal_msg.data + sizeof(fmrb_link_header_t) : NULL;
+        if (ret == MSGPACK_UNPACK_SUCCESS && msg.data.type == MSGPACK_OBJECT_ARRAY && msg.data.via.array.size == 4) {
+            uint8_t type = 0, seq = 0, sub_cmd = 0;
+            const uint8_t *payload = NULL;
+            uint32_t payload_len = 0;
 
-                // Verify checksum if payload exists
-                if (payload && header->payload_len > 0) {
-                    uint32_t calc_checksum = fmrb_link_calculate_checksum(payload, header->payload_len);
-                    if (calc_checksum != header->checksum) {
-                        return FMRB_ERR_FAILED;
-                    }
-                }
-
-                handle_received_message(ctx, header, payload);
+            // Extract type
+            if (msg.data.via.array.ptr[0].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
+                type = (uint8_t)msg.data.via.array.ptr[0].via.u64;
             }
+
+            // Extract seq
+            if (msg.data.via.array.ptr[1].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
+                seq = (uint8_t)msg.data.via.array.ptr[1].via.u64;
+            }
+
+            // Extract sub_cmd
+            if (msg.data.via.array.ptr[2].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
+                sub_cmd = (uint8_t)msg.data.via.array.ptr[2].via.u64;
+            }
+
+            // Extract payload
+            if (msg.data.via.array.ptr[3].type == MSGPACK_OBJECT_BIN) {
+                payload = (const uint8_t*)msg.data.via.array.ptr[3].via.bin.ptr;
+                payload_len = msg.data.via.array.ptr[3].via.bin.size;
+            }
+
+            handle_received_message(ctx, type, seq, sub_cmd, payload, payload_len);
         }
+
+        msgpack_unpacked_destroy(&msg);
     }
 
     // Handle retransmissions
@@ -541,12 +512,7 @@ fmrb_err_t fmrb_link_transport_process(void) {
             if (fmrb_hal_time_is_timeout(pending->sent_time, ctx->config.timeout_ms * 1000)) {
                 if (pending->retry_count < ctx->config.max_retries) {
                     // Retransmit
-                    fmrb_link_header_t header;
-                    fmrb_link_init_header(&header, pending->msg_type, pending->sequence, pending->payload_len);
-
-                    if (pending->payload && pending->payload_len > 0) {
-                        header.checksum = fmrb_link_calculate_checksum(pending->payload, pending->payload_len);
-                    }
+                    uint8_t seq = (uint8_t)(pending->sequence & 0xFF);
 
                     // Determine link_type from msg_type (same logic as in send())
                     uint8_t link_type;
@@ -556,7 +522,7 @@ fmrb_err_t fmrb_link_transport_process(void) {
                         link_type = FMRB_LINK_TYPE_GRAPHICS;
                     }
 
-                    send_raw_message(link_type, &header, pending->payload);
+                    send_raw_message(link_type, seq, pending->msg_type, pending->payload, pending->payload_len);
                     pending->sent_time = current_time;
                     pending->retry_count++;
                 } else {
