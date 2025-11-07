@@ -1,7 +1,6 @@
 #include "socket_server.h"
 #include "graphics_handler.h"
 #include "audio_handler.h"
-#include "../common/protocol.h"
 #include "../common/fmrb_link_cobs.h"
 #include "fmrb_link_protocol.h"
 #include <stdio.h>
