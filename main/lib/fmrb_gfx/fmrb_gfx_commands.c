@@ -17,26 +17,31 @@ typedef enum {
 
 // Command structures
 typedef struct {
+    fmrb_canvas_handle_t canvas_id;
     fmrb_color_t color;
 } clear_command_t;
 
 typedef struct {
+    fmrb_canvas_handle_t canvas_id;
     int16_t x, y;
     fmrb_color_t color;
 } pixel_command_t;
 
 typedef struct {
+    fmrb_canvas_handle_t canvas_id;
     int16_t x1, y1, x2, y2;
     fmrb_color_t color;
 } line_command_t;
 
 typedef struct {
+    fmrb_canvas_handle_t canvas_id;
     fmrb_rect_t rect;
     fmrb_color_t color;
     bool filled;
 } rect_command_t;
 
 typedef struct {
+    fmrb_canvas_handle_t canvas_id;
     int16_t x, y;
     fmrb_color_t color;
     fmrb_font_size_t font_size;
@@ -120,54 +125,54 @@ static fmrb_gfx_err_t add_command(fmrb_gfx_command_buffer_t* buffer, const fmrb_
     return FMRB_GFX_OK;
 }
 
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_clear(fmrb_gfx_command_buffer_t* buffer, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_clear(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, fmrb_color_t color) {
     fmrb_gfx_command_t cmd = {
         .type = FMRB_GFX_CMD_CLEAR,
-        .data.clear = { .color = color }
+        .data.clear = { .canvas_id = canvas_id, .color = color }
     };
 
     return add_command(buffer, &cmd);
 }
 
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_pixel(fmrb_gfx_command_buffer_t* buffer, int16_t x, int16_t y, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_pixel(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, fmrb_color_t color) {
     fmrb_gfx_command_t cmd = {
         .type = FMRB_GFX_CMD_PIXEL,
-        .data.pixel = { .x = x, .y = y, .color = color }
+        .data.pixel = { .canvas_id = canvas_id, .x = x, .y = y, .color = color }
     };
 
     return add_command(buffer, &cmd);
 }
 
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_line(fmrb_gfx_command_buffer_t* buffer, int16_t x1, int16_t y1, int16_t x2, int16_t y2, fmrb_color_t color) {
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_line(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x1, int16_t y1, int16_t x2, int16_t y2, fmrb_color_t color) {
     fmrb_gfx_command_t cmd = {
         .type = FMRB_GFX_CMD_LINE,
-        .data.line = { .x1 = x1, .y1 = y1, .x2 = x2, .y2 = y2, .color = color }
+        .data.line = { .canvas_id = canvas_id, .x1 = x1, .y1 = y1, .x2 = x2, .y2 = y2, .color = color }
     };
 
     return add_command(buffer, &cmd);
 }
 
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_rect(fmrb_gfx_command_buffer_t* buffer, const fmrb_rect_t* rect, fmrb_color_t color, bool filled) {
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_rect(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t* rect, fmrb_color_t color, bool filled) {
     if (!rect) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
     fmrb_gfx_command_t cmd = {
         .type = FMRB_GFX_CMD_RECT,
-        .data.rect = { .rect = *rect, .color = color, .filled = filled }
+        .data.rect = { .canvas_id = canvas_id, .rect = *rect, .color = color, .filled = filled }
     };
 
     return add_command(buffer, &cmd);
 }
 
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_text(fmrb_gfx_command_buffer_t* buffer, int16_t x, int16_t y, const char* text, fmrb_color_t color, fmrb_font_size_t font_size) {
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_text(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char* text, fmrb_color_t color, fmrb_font_size_t font_size) {
     if (!text) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
     fmrb_gfx_command_t cmd = {
         .type = FMRB_GFX_CMD_TEXT,
-        .data.text = { .x = x, .y = y, .color = color, .font_size = font_size }
+        .data.text = { .canvas_id = canvas_id, .x = x, .y = y, .color = color, .font_size = font_size }
     };
 
     // Copy text with length limit
@@ -190,28 +195,28 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
 
         switch (cmd->type) {
             case FMRB_GFX_CMD_CLEAR:
-                ret = fmrb_gfx_clear(context, FMRB_CANVAS_SCREEN, cmd->data.clear.color);
+                ret = fmrb_gfx_clear(context, cmd->data.clear.canvas_id, cmd->data.clear.color);
                 break;
 
             case FMRB_GFX_CMD_PIXEL:
-                ret = fmrb_gfx_set_pixel(context, FMRB_CANVAS_SCREEN, cmd->data.pixel.x, cmd->data.pixel.y, cmd->data.pixel.color);
+                ret = fmrb_gfx_set_pixel(context, cmd->data.pixel.canvas_id, cmd->data.pixel.x, cmd->data.pixel.y, cmd->data.pixel.color);
                 break;
 
             case FMRB_GFX_CMD_LINE:
-                ret = fmrb_gfx_draw_line(context, FMRB_CANVAS_SCREEN, cmd->data.line.x1, cmd->data.line.y1,
+                ret = fmrb_gfx_draw_line(context, cmd->data.line.canvas_id, cmd->data.line.x1, cmd->data.line.y1,
                                        cmd->data.line.x2, cmd->data.line.y2, cmd->data.line.color);
                 break;
 
             case FMRB_GFX_CMD_RECT:
                 if (cmd->data.rect.filled) {
-                    ret = fmrb_gfx_fill_rect(context, FMRB_CANVAS_SCREEN, &cmd->data.rect.rect, cmd->data.rect.color);
+                    ret = fmrb_gfx_fill_rect(context, cmd->data.rect.canvas_id, &cmd->data.rect.rect, cmd->data.rect.color);
                 } else {
-                    ret = fmrb_gfx_draw_rect(context, FMRB_CANVAS_SCREEN, &cmd->data.rect.rect, cmd->data.rect.color);
+                    ret = fmrb_gfx_draw_rect(context, cmd->data.rect.canvas_id, &cmd->data.rect.rect, cmd->data.rect.color);
                 }
                 break;
 
             case FMRB_GFX_CMD_TEXT:
-                ret = fmrb_gfx_draw_text(context, FMRB_CANVAS_SCREEN, cmd->data.text.x, cmd->data.text.y,
+                ret = fmrb_gfx_draw_text(context, cmd->data.text.canvas_id, cmd->data.text.x, cmd->data.text.y,
                                        cmd->data.text.text, cmd->data.text.color, cmd->data.text.font_size);
                 break;
 

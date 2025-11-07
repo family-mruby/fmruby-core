@@ -1,13 +1,5 @@
 # Family mruby OS - Ruby App Framework
 # User app should inherit this class and override lifecycle methods.
-#
-# Lifecycle flow:
-#   1. on_create()  - Called once when app is created
-#   2. on_update()  - Called every frame (return wait time)
-#   3. on_destroy() - Called once when app is destroyed
-#
-# Event handlers:
-#   TBD
 
 class FmrbApp
   attr_reader :name, :running

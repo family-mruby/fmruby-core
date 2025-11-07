@@ -75,91 +75,80 @@ typedef uint16_t fmrb_canvas_handle_t;
 #define FMRB_COLOR_MAGENTA 0xE3  // R=7, G=0, B=3
 
 // Graphics command structures (thread-safe: include canvas_id in each command)
+// Note: cmd_type is sent separately and not included in structures
 typedef struct {
-    uint8_t cmd_type;
     uint16_t canvas_id;  // Target canvas ID (0=screen)
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_clear_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     uint16_t canvas_id;  // Target canvas ID (0=screen)
     int16_t x, y;
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_pixel_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     uint16_t canvas_id;  // Target canvas ID (0=screen)
     int16_t x1, y1, x2, y2;
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_line_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     uint16_t canvas_id;  // Target canvas ID (0=screen)
     int16_t x, y, width, height;
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_rect_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
-    int16_t x, y;
+    int32_t x, y;
     fmrb_color_t color;
-    uint8_t font_size;
     uint16_t text_len;
     // text data follows
 } __attribute__((packed)) fmrb_gfx_text_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     int16_t x, y, width, height;
     uint16_t bitmap_size;
     // bitmap data follows
 } __attribute__((packed)) fmrb_gfx_bitmap_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
+    // No fields needed for present command
+    uint8_t dummy;  // Empty struct not allowed in C, use dummy field
 } __attribute__((packed)) fmrb_gfx_present_cmd_t;
 
 // Additional command structures for LovyanGFX API
 typedef struct {
-    uint8_t cmd_type;
     int16_t x, y;
     int16_t h;  // height
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_vline_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     int16_t x, y;
     int16_t w;  // width
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_hline_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     int16_t x, y, width, height;
     int16_t radius;
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_round_rect_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     int16_t x, y;
     int16_t radius;
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_circle_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     int16_t x, y;
     int16_t rx, ry;  // radius x, y
     fmrb_color_t color;
 } __attribute__((packed)) fmrb_gfx_ellipse_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     int16_t x0, y0;
     int16_t x1, y1;
     int16_t x2, y2;
@@ -167,7 +156,6 @@ typedef struct {
 } __attribute__((packed)) fmrb_gfx_triangle_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     int32_t x, y;
     uint32_t color;
     uint16_t text_len;
@@ -176,23 +164,19 @@ typedef struct {
 
 // Canvas management command structures
 typedef struct {
-    uint8_t cmd_type;
     uint16_t canvas_id;
     int32_t width, height;
 } __attribute__((packed)) fmrb_gfx_create_canvas_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     uint16_t canvas_id;
 } __attribute__((packed)) fmrb_gfx_delete_canvas_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     uint16_t target_id;  // 0=screen, other=canvas ID
 } __attribute__((packed)) fmrb_gfx_set_target_cmd_t;
 
 typedef struct {
-    uint8_t cmd_type;
     uint16_t canvas_id;
     uint16_t dest_canvas_id;  // 0=screen, other=canvas ID
     int32_t x, y;

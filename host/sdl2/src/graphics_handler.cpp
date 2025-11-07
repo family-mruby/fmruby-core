@@ -91,34 +91,25 @@ extern "C" int socket_server_send_ack(uint8_t type, uint8_t seq, const uint8_t *
 // Next canvas ID to allocate
 static uint16_t g_next_canvas_id = 1;
 
-extern "C" int graphics_handler_process_command(uint8_t type, uint8_t seq, const uint8_t *data, size_t size) {
-    if (!data || size < 1 || !g_lgfx) {
+extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, const uint8_t *data, size_t size) {
+    if (!g_lgfx) {
         return -1;
     }
 
-    uint8_t cmd_type = data[0];
+    // msg_type: message type (for ACK response)
+    // cmd_type: graphics command type (from msgpack sub_cmd field)
+    // data: structure data only (no cmd_type prefix)
 
     switch (cmd_type) {
         case FMRB_GFX_CMD_CLEAR:
         case FMRB_GFX_CMD_FILL_SCREEN:
             if (size >= sizeof(fmrb_gfx_clear_cmd_t)) {
                 const fmrb_gfx_clear_cmd_t *cmd = (const fmrb_gfx_clear_cmd_t*)data;
+#ifdef FMRB_IPC_DEBUG
                 printf("FILL_SCREEN: canvas_id=%u, color=0x%02x\n", cmd->canvas_id, cmd->color);
-                // Get target from command (thread-safe)
-                LovyanGFX* target;
-                if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
-                    // Draw to back buffer for double buffering
-                    target = g_back_buffer ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
-                    printf("FILL_SCREEN: Drawing to back buffer %p\n", (void*)target);
-                } else {
-                    auto it = g_canvases.find(cmd->canvas_id);
-                    if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
-                        return -1;
-                    }
-                    target = it->second;
-                }
-                target->fillScreen(cmd->color);
+#endif
+                // Use current target (same as other drawing commands)
+                get_current_target()->fillScreen(cmd->color);
                 return 0;
             }
             break;
@@ -269,42 +260,35 @@ extern "C" int graphics_handler_process_command(uint8_t type, uint8_t seq, const
             break;
 
         case FMRB_GFX_CMD_DRAW_STRING:
-            // cmd_type is already extracted in data[0]
-            // Payload format: int32_t x, int32_t y, uint8_t color, uint16_t text_len, char[text_len] text
-            if (size < 1 + 4 + 4 + 1 + 2) { // cmd_type + x + y + color + text_len
+            // Use structure from graphics_commands.h (no cmd_type in data)
+            if (size < sizeof(fmrb_gfx_text_cmd_t)) {
+                fprintf(stderr, "String command too small: size=%zu, expected>=%zu\n", size, sizeof(fmrb_gfx_text_cmd_t));
                 break;
             }
             {
-                const uint8_t *payload = data + 1;  // Skip cmd_type
-                int32_t x, y;
-                uint8_t color;
-                uint16_t text_len;
+                const fmrb_gfx_text_cmd_t *text_cmd = (const fmrb_gfx_text_cmd_t*)data;
 
-                memcpy(&x, payload, sizeof(int32_t)); payload += sizeof(int32_t);
-                memcpy(&y, payload, sizeof(int32_t)); payload += sizeof(int32_t);
-                memcpy(&color, payload, sizeof(uint8_t)); payload += sizeof(uint8_t);
-                memcpy(&text_len, payload, sizeof(uint16_t)); payload += sizeof(uint16_t);
-
-                size_t expected_size = 1 + 4 + 4 + 1 + 2 + text_len;
+                size_t expected_size = sizeof(fmrb_gfx_text_cmd_t) + text_cmd->text_len;
                 if (size < expected_size) {
                     fprintf(stderr, "String command size mismatch: expected=%zu, actual=%zu, text_len=%u\n",
-                            expected_size, size, text_len);
+                            expected_size, size, text_cmd->text_len);
                     break;
                 }
 
-                const char *text_data = (const char*)payload;
+                // Text data follows the structure
+                const char *text_data = (const char*)(data + sizeof(fmrb_gfx_text_cmd_t));
                 char text_buf[256];
-                size_t len = text_len < 255 ? text_len : 255;
+                size_t len = text_cmd->text_len < 255 ? text_cmd->text_len : 255;
                 memcpy(text_buf, text_data, len);
                 text_buf[len] = '\0';
 #ifdef FMRB_IPC_DEBUG
-                printf("Drawing string at (%d,%d) color=0x%08x: %s\n",
-                       x, y, color, text_buf);
+                printf("Drawing string at (%d,%d) color=0x%02x: %s\n",
+                       text_cmd->x, text_cmd->y, text_cmd->color, text_buf);
 #endif
 
                 LovyanGFX* target = get_current_target();
-                target->setTextColor(color);
-                target->setCursor(x, y);
+                target->setTextColor(text_cmd->color);
+                target->setCursor(text_cmd->x, text_cmd->y);
                 target->print(text_buf);
                 return 0;
             }
@@ -342,7 +326,7 @@ extern "C" int graphics_handler_process_command(uint8_t type, uint8_t seq, const
                 printf("Canvas created: ID=%u, %dx%d\n", canvas_id, cmd->width, cmd->height);
 
                 // Send ACK with canvas_id
-                socket_server_send_ack(type, seq, (const uint8_t*)&canvas_id, sizeof(canvas_id));
+                socket_server_send_ack(msg_type, seq, (const uint8_t*)&canvas_id, sizeof(canvas_id));
                 return 0;
             }
             break;

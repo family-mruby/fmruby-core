@@ -77,9 +77,9 @@ begin
   puts "[SystemGUI] SystemGuiApp created successfully"
   app.start
 rescue => e
-  puts "[ERROR] Exception caught: #{e.class}"
-  puts "[ERROR] Message: #{e.message}"
-  puts "[ERROR] Backtrace:"
+  puts "[SystemGUI] Exception caught: #{e.class}"
+  puts "[SystemGUI] Message: #{e.message}"
+  puts "[SystemGUI] Backtrace:"
   puts e.backtrace.join("\n") if e.backtrace
 end
 puts "[SystemGUI] Script ended"

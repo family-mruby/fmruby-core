@@ -9,9 +9,9 @@ begin
   puts "[Kernel] Kernel created successfully"
   kernel.start
 rescue => e
-  puts "[ERROR] Exception caught: #{e.class}"
-  puts "[ERROR] Message: #{e.message}"
-  puts "[ERROR] Backtrace:"
+  puts "[Kernel] Exception caught: #{e.class}"
+  puts "[Kernel] Message: #{e.message}"
+  puts "[Kernel] Backtrace:"
   puts e.backtrace.join("\n") if e.backtrace
 end
 

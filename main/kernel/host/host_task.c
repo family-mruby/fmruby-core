@@ -196,11 +196,13 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
     switch (gfx_cmd->cmd_type) {
         case GFX_CMD_CLEAR:
             ret = fmrb_gfx_command_buffer_add_clear(g_gfx_cmd_buffer,
+                                                    gfx_cmd->canvas_id,
                                                     gfx_cmd->params.clear.color);
             break;
 
         case GFX_CMD_PIXEL:
             ret = fmrb_gfx_command_buffer_add_pixel(g_gfx_cmd_buffer,
+                                                    gfx_cmd->canvas_id,
                                                     gfx_cmd->params.pixel.x,
                                                     gfx_cmd->params.pixel.y,
                                                     gfx_cmd->params.pixel.color);
@@ -208,6 +210,7 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
 
         case GFX_CMD_LINE:
             ret = fmrb_gfx_command_buffer_add_line(g_gfx_cmd_buffer,
+                                                   gfx_cmd->canvas_id,
                                                    gfx_cmd->params.line.x1,
                                                    gfx_cmd->params.line.y1,
                                                    gfx_cmd->params.line.x2,
@@ -217,6 +220,7 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
 
         case GFX_CMD_RECT:
             ret = fmrb_gfx_command_buffer_add_rect(g_gfx_cmd_buffer,
+                                                   gfx_cmd->canvas_id,
                                                    &gfx_cmd->params.rect.rect,
                                                    gfx_cmd->params.rect.color,
                                                    gfx_cmd->params.rect.filled);
@@ -224,6 +228,7 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
 
         case GFX_CMD_TEXT:
             ret = fmrb_gfx_command_buffer_add_text(g_gfx_cmd_buffer,
+                                                   gfx_cmd->canvas_id,
                                                    gfx_cmd->params.text.x,
                                                    gfx_cmd->params.text.y,
                                                    gfx_cmd->params.text.text,

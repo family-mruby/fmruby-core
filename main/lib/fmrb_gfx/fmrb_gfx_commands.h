@@ -32,24 +32,27 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_clear(fmrb_gfx_command_buffer_t* buffer);
 /**
  * @brief Add clear command to buffer
  * @param buffer Command buffer handle
+ * @param canvas_id Target canvas ID
  * @param color Clear color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_clear(fmrb_gfx_command_buffer_t* buffer, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_clear(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, fmrb_color_t color);
 
 /**
  * @brief Add pixel command to buffer
  * @param buffer Command buffer handle
+ * @param canvas_id Target canvas ID
  * @param x X coordinate
  * @param y Y coordinate
  * @param color Pixel color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_pixel(fmrb_gfx_command_buffer_t* buffer, int16_t x, int16_t y, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_pixel(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, fmrb_color_t color);
 
 /**
  * @brief Add line command to buffer
  * @param buffer Command buffer handle
+ * @param canvas_id Target canvas ID
  * @param x1 Start X coordinate
  * @param y1 Start Y coordinate
  * @param x2 End X coordinate
@@ -57,21 +60,23 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_add_pixel(fmrb_gfx_command_buffer_t* buff
  * @param color Line color
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_line(fmrb_gfx_command_buffer_t* buffer, int16_t x1, int16_t y1, int16_t x2, int16_t y2, fmrb_color_t color);
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_line(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x1, int16_t y1, int16_t x2, int16_t y2, fmrb_color_t color);
 
 /**
  * @brief Add rectangle command to buffer
  * @param buffer Command buffer handle
+ * @param canvas_id Target canvas ID
  * @param rect Rectangle
  * @param color Rectangle color
  * @param filled Whether to fill the rectangle
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_rect(fmrb_gfx_command_buffer_t* buffer, const fmrb_rect_t* rect, fmrb_color_t color, bool filled);
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_rect(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t* rect, fmrb_color_t color, bool filled);
 
 /**
  * @brief Add text command to buffer
  * @param buffer Command buffer handle
+ * @param canvas_id Target canvas ID
  * @param x X coordinate
  * @param y Y coordinate
  * @param text Text string
@@ -79,7 +84,7 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_add_rect(fmrb_gfx_command_buffer_t* buffe
  * @param font_size Font size
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_text(fmrb_gfx_command_buffer_t* buffer, int16_t x, int16_t y, const char* text, fmrb_color_t color, fmrb_font_size_t font_size);
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_text(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char* text, fmrb_color_t color, fmrb_font_size_t font_size);
 
 /**
  * @brief Execute all commands in buffer

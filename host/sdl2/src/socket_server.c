@@ -165,41 +165,30 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     fflush(stdout);
 #endif
 
-    // Payload already contains cmd_type at the beginning, use it directly
-    // No need to prepend sub_cmd since payload[0] == cmd_type == sub_cmd
+    // sub_cmd contains the command type, payload contains only structure data
+    // Pass sub_cmd as cmd_type to handlers
     const uint8_t *cmd_buffer = payload;
     size_t cmd_len = payload_len;
-
-    // Verify that payload's cmd_type matches sub_cmd
-    if (payload && payload_len > 0 && payload[0] != sub_cmd) {
-        fprintf(stderr, "Warning: payload cmd_type (0x%02x) != sub_cmd (0x%02x)\n",
-                payload[0], sub_cmd);
-    }
 
     // Process based on type
     int result = 0;
     switch (type & 0x7F) {
         case 1: // FMRB_IPC_TYPE_CONTROL
-            // Process control commands
-            if (cmd_len >= 1) {
-                uint8_t control_cmd = cmd_buffer[0];
-                if (control_cmd == FMRB_CONTROL_CMD_INIT_DISPLAY && cmd_len >= sizeof(fmrb_control_init_display_t)) {
-                    const fmrb_control_init_display_t *init_cmd = (const fmrb_control_init_display_t*)cmd_buffer;
-                    printf("Received INIT_DISPLAY: %dx%d, %d-bit\n",
-                           init_cmd->width, init_cmd->height, init_cmd->color_depth);
-                    result = init_display_callback(init_cmd->width, init_cmd->height, init_cmd->color_depth);
-                } else {
-                    fprintf(stderr, "Unknown control command: 0x%02x\n", control_cmd);
-                    result = -1;
-                }
+            // For control commands, sub_cmd is the command type
+            if (sub_cmd == FMRB_CONTROL_CMD_INIT_DISPLAY && cmd_len >= sizeof(fmrb_control_init_display_t)) {
+                const fmrb_control_init_display_t *init_cmd = (const fmrb_control_init_display_t*)cmd_buffer;
+                printf("Received INIT_DISPLAY: %dx%d, %d-bit\n",
+                       init_cmd->width, init_cmd->height, init_cmd->color_depth);
+                result = init_display_callback(init_cmd->width, init_cmd->height, init_cmd->color_depth);
             } else {
-                fprintf(stderr, "Control command too short: %zu bytes\n", cmd_len);
+                fprintf(stderr, "Unknown control command: 0x%02x\n", sub_cmd);
                 result = -1;
             }
             break;
 
         case 2: // FMRB_IPC_TYPE_GRAPHICS
-            result = graphics_handler_process_command(type, seq, cmd_buffer, cmd_len);
+            // Pass msg_type and sub_cmd as graphics cmd_type
+            result = graphics_handler_process_command(type, sub_cmd, seq, cmd_buffer, cmd_len);
             break;
 
         case 4: // FMRB_IPC_TYPE_AUDIO
@@ -241,7 +230,12 @@ static int process_message(const uint8_t *data, size_t size) {
 
     switch (header->type) {
         case FMRB_MSG_GRAPHICS:
-            return graphics_handler_process_command(2, 0, payload, payload_size);  // type=2 (GRAPHICS), seq=0 (legacy)
+            // Legacy: payload[0] is cmd_type, rest is data
+            if (payload_size < 1) {
+                fprintf(stderr, "Graphics payload too small\n");
+                return -1;
+            }
+            return graphics_handler_process_command(2, payload[0], 0, payload + 1, payload_size - 1);  // type=2 (GRAPHICS), seq=0 (legacy)
 
         case FMRB_MSG_AUDIO:
             return audio_handler_process_command(payload, payload_size);
