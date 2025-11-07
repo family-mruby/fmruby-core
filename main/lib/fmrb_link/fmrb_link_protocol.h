@@ -31,6 +31,13 @@ typedef enum {
 #define FMRB_LINK_CONTROL_VERSION      0x01
 #define FMRB_LINK_CONTROL_INIT_DISPLAY 0x02
 
+// Control command structures
+typedef struct __attribute__((packed)) {
+    uint16_t width;
+    uint16_t height;
+    uint8_t color_depth;     // 8 for RGB332
+} fmrb_control_init_display_t;
+
 // Protocol response codes
 #define FMRB_LINK_RESPONSE_MSG_ACK     0xF0
 #define FMRB_LINK_RESPONSE_MSG_NACK    0xF1

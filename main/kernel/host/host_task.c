@@ -98,7 +98,6 @@ static int init_gfx_audio(void)
         // Send display initialization command to host
         // This tells the host to create the SDL2 window with the specified resolution
         fmrb_control_init_display_t init_cmd = {
-            .cmd_type = FMRB_LINK_CONTROL_INIT_DISPLAY,
             .width = conf->display_width,
             .height = conf->display_height,
             .color_depth = 8  // RGB332

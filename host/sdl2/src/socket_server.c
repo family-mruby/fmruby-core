@@ -201,44 +201,7 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     return result;
 }
 
-static int process_message(const uint8_t *data, size_t size) {
-    if (size < sizeof(fmrb_message_header_t)) {
-        fprintf(stderr, "Message too small\n");
-        return -1;
-    }
-
-    const fmrb_message_header_t *header = (const fmrb_message_header_t*)data;
-
-    if (header->magic != FMRB_MAGIC) {
-        fprintf(stderr, "Invalid magic number: 0x%08x\n", header->magic);
-        return -1;
-    }
-
-    if (header->size != size) {
-        fprintf(stderr, "Size mismatch: header=%u, actual=%zu\n", header->size, size);
-        return -1;
-    }
-
-    const uint8_t *payload = data + sizeof(fmrb_message_header_t);
-    size_t payload_size = size - sizeof(fmrb_message_header_t);
-
-    switch (header->type) {
-        case FMRB_MSG_GRAPHICS:
-            // Legacy: payload[0] is cmd_type, rest is data
-            if (payload_size < 1) {
-                fprintf(stderr, "Graphics payload too small\n");
-                return -1;
-            }
-            return graphics_handler_process_command(2, payload[0], 0, payload + 1, payload_size - 1);  // type=2 (GRAPHICS), seq=0 (legacy)
-
-        case FMRB_MSG_AUDIO:
-            return audio_handler_process_command(payload, payload_size);
-
-        default:
-            fprintf(stderr, "Unknown message type: %u\n", header->type);
-            return -1;
-    }
-}
+// Legacy process_message() removed - now using msgpack + COBS protocol via process_cobs_frame()
 
 static int read_message(void) {
     static uint8_t buffer[BUFFER_SIZE];
