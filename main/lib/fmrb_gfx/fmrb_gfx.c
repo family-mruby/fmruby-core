@@ -161,12 +161,13 @@ fmrb_gfx_err_t fmrb_gfx_clear(fmrb_gfx_context_t context, fmrb_canvas_handle_t c
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    // Send canvas_id + color for fill_screen/clear command (cmd_type is sent separately)
-    struct __attribute__((packed)) {
-        uint16_t canvas_id;
-        uint8_t color;
-    } clear_cmd = {
+    // Use structure from fmrb_link_protocol.h for clear/fill_screen command
+    fmrb_link_graphics_clear_t clear_cmd = {
         .canvas_id = canvas_id,
+        .x = 0,
+        .y = 0,
+        .width = ctx->config.screen_width,
+        .height = ctx->config.screen_height,
         .color = color
     };
 
@@ -379,9 +380,8 @@ fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    // Send 1-byte PRESENT command as defined in fmrb_gfx_present_cmd_t
-    uint8_t present_cmd = 0x08;  // FMRB_GFX_CMD_PRESENT
-    fmrb_gfx_err_t ret = send_graphics_command(ctx, 0x08, &present_cmd, sizeof(present_cmd));
+    // Send PRESENT command (no payload required)
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_PRESENT, NULL, 0);
 
     if (ret != FMRB_GFX_OK) {
         FMRB_LOGE(TAG, "fmrb_gfx_present: Failed to send PRESENT command: %d", ret);
@@ -474,18 +474,15 @@ fmrb_gfx_err_t fmrb_gfx_draw_round_rect(fmrb_gfx_context_t context, fmrb_canvas_
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    // Payload: cmd_type, x, y, w, h, r, color, filled
-    typedef struct __attribute__((packed)) {
-        uint8_t cmd_type;
-        int32_t x, y, w, h, r;
-        uint8_t color;
-        uint8_t filled;
-    } round_rect_cmd_t;
-
-    round_rect_cmd_t cmd = {
-        .x = x, .y = y, .w = w, .h = h, .r = r,
-        .color = color,
-        .filled = 0
+    // Use structure from fmrb_link_protocol.h
+    fmrb_link_graphics_round_rect_t cmd = {
+        .canvas_id = canvas_id,
+        .x = (int16_t)x,
+        .y = (int16_t)y,
+        .width = (int16_t)w,
+        .height = (int16_t)h,
+        .radius = (int16_t)r,
+        .color = color
     };
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_ROUND_RECT, &cmd, sizeof(cmd));
@@ -501,17 +498,15 @@ fmrb_gfx_err_t fmrb_gfx_fill_round_rect(fmrb_gfx_context_t context, fmrb_canvas_
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    typedef struct __attribute__((packed)) {
-        uint8_t cmd_type;
-        int32_t x, y, w, h, r;
-        uint8_t color;
-        uint8_t filled;
-    } round_rect_cmd_t;
-
-    round_rect_cmd_t cmd = {
-        .x = x, .y = y, .w = w, .h = h, .r = r,
-        .color = color,
-        .filled = 1
+    // Use structure from fmrb_link_protocol.h
+    fmrb_link_graphics_round_rect_t cmd = {
+        .canvas_id = canvas_id,
+        .x = (int16_t)x,
+        .y = (int16_t)y,
+        .width = (int16_t)w,
+        .height = (int16_t)h,
+        .radius = (int16_t)r,
+        .color = color
     };
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_ROUND_RECT, &cmd, sizeof(cmd));
@@ -527,14 +522,9 @@ fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    // cmd_type is sent separately via send_graphics_command()
-    typedef struct __attribute__((packed)) {
-        int16_t x, y;
-        int16_t radius;
-        fmrb_color_t color;
-    } circle_cmd_t;
-
-    circle_cmd_t cmd = {
+    // Use structure from fmrb_link_protocol.h
+    fmrb_link_graphics_circle_t cmd = {
+        .canvas_id = canvas_id,
         .x = (int16_t)x,
         .y = (int16_t)y,
         .radius = (int16_t)r,
@@ -554,14 +544,9 @@ fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    // cmd_type is sent separately via send_graphics_command()
-    typedef struct __attribute__((packed)) {
-        int16_t x, y;
-        int16_t radius;
-        fmrb_color_t color;
-    } circle_cmd_t;
-
-    circle_cmd_t cmd = {
+    // Use structure from fmrb_link_protocol.h
+    fmrb_link_graphics_circle_t cmd = {
+        .canvas_id = canvas_id,
         .x = (int16_t)x,
         .y = (int16_t)y,
         .radius = (int16_t)r,
@@ -581,17 +566,14 @@ fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, fmrb_canvas_han
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    typedef struct __attribute__((packed)) {
-        uint8_t cmd_type;
-        int32_t x, y, rx, ry;
-        uint8_t color;
-        uint8_t filled;
-    } ellipse_cmd_t;
-
-    ellipse_cmd_t cmd = {
-        .x = x, .y = y, .rx = rx, .ry = ry,
-        .color = color,
-        .filled = 0
+    // Use structure from fmrb_link_protocol.h
+    fmrb_link_graphics_ellipse_t cmd = {
+        .canvas_id = canvas_id,
+        .x = (int16_t)x,
+        .y = (int16_t)y,
+        .rx = (int16_t)rx,
+        .ry = (int16_t)ry,
+        .color = color
     };
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_ELLIPSE, &cmd, sizeof(cmd));
@@ -607,17 +589,14 @@ fmrb_gfx_err_t fmrb_gfx_fill_ellipse(fmrb_gfx_context_t context, fmrb_canvas_han
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    typedef struct __attribute__((packed)) {
-        uint8_t cmd_type;
-        int32_t x, y, rx, ry;
-        uint8_t color;
-        uint8_t filled;
-    } ellipse_cmd_t;
-
-    ellipse_cmd_t cmd = {
-        .x = x, .y = y, .rx = rx, .ry = ry,
-        .color = color,
-        .filled = 1
+    // Use structure from fmrb_link_protocol.h
+    fmrb_link_graphics_ellipse_t cmd = {
+        .canvas_id = canvas_id,
+        .x = (int16_t)x,
+        .y = (int16_t)y,
+        .rx = (int16_t)rx,
+        .ry = (int16_t)ry,
+        .color = color
     };
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_ELLIPSE, &cmd, sizeof(cmd));
@@ -633,19 +612,16 @@ fmrb_gfx_err_t fmrb_gfx_draw_triangle(fmrb_gfx_context_t context, fmrb_canvas_ha
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    typedef struct __attribute__((packed)) {
-        uint8_t cmd_type;
-        int32_t x0, y0, x1, y1, x2, y2;
-        uint8_t color;
-        uint8_t filled;
-    } triangle_cmd_t;
-
-    triangle_cmd_t cmd = {
-        .x0 = x0, .y0 = y0,
-        .x1 = x1, .y1 = y1,
-        .x2 = x2, .y2 = y2,
-        .color = color,
-        .filled = 0
+    // Use structure from fmrb_link_protocol.h
+    fmrb_link_graphics_triangle_t cmd = {
+        .canvas_id = canvas_id,
+        .x0 = (int16_t)x0,
+        .y0 = (int16_t)y0,
+        .x1 = (int16_t)x1,
+        .y1 = (int16_t)y1,
+        .x2 = (int16_t)x2,
+        .y2 = (int16_t)y2,
+        .color = color
     };
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_TRIANGLE, &cmd, sizeof(cmd));
@@ -661,19 +637,16 @@ fmrb_gfx_err_t fmrb_gfx_fill_triangle(fmrb_gfx_context_t context, fmrb_canvas_ha
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    typedef struct __attribute__((packed)) {
-        uint8_t cmd_type;
-        int32_t x0, y0, x1, y1, x2, y2;
-        uint8_t color;
-        uint8_t filled;
-    } triangle_cmd_t;
-
-    triangle_cmd_t cmd = {
-        .x0 = x0, .y0 = y0,
-        .x1 = x1, .y1 = y1,
-        .x2 = x2, .y2 = y2,
-        .color = color,
-        .filled = 1
+    // Use structure from fmrb_link_protocol.h
+    fmrb_link_graphics_triangle_t cmd = {
+        .canvas_id = canvas_id,
+        .x0 = (int16_t)x0,
+        .y0 = (int16_t)y0,
+        .x1 = (int16_t)x1,
+        .y1 = (int16_t)y1,
+        .x2 = (int16_t)x2,
+        .y2 = (int16_t)y2,
+        .color = color
     };
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_TRIANGLE, &cmd, sizeof(cmd));

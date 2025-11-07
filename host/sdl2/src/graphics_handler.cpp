@@ -1,13 +1,14 @@
 #define LGFX_USE_V1
 #include <LovyanGFX.hpp>
 #include <LGFX_AUTODETECT.hpp>
-#include "../common/graphics_commands.h"
 #include <cstdio>
 #include <cstring>
 #include <map>
 
 extern "C" {
 #include "graphics_handler.h"
+#include "fmrb_link_protocol.h"
+#include "fmrb_gfx.h"
 }
 
 // External reference to LGFX instance created in main.cpp
@@ -101,10 +102,10 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
     // data: structure data only (no cmd_type prefix)
 
     switch (cmd_type) {
-        case FMRB_GFX_CMD_CLEAR:
-        case FMRB_GFX_CMD_FILL_SCREEN:
-            if (size >= sizeof(fmrb_gfx_clear_cmd_t)) {
-                const fmrb_gfx_clear_cmd_t *cmd = (const fmrb_gfx_clear_cmd_t*)data;
+        case FMRB_LINK_GFX_CLEAR:
+        case FMRB_LINK_GFX_FILL_SCREEN:
+            if (size >= sizeof(fmrb_link_graphics_clear_t)) {
+                const fmrb_link_graphics_clear_t *cmd = (const fmrb_link_graphics_clear_t*)data;
 #ifdef FMRB_IPC_DEBUG
                 printf("FILL_SCREEN: canvas_id=%u, color=0x%02x\n", cmd->canvas_id, cmd->color);
 #endif
@@ -114,9 +115,9 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
             }
             break;
 
-        case FMRB_GFX_CMD_DRAW_PIXEL:
-            if (size >= sizeof(fmrb_gfx_pixel_cmd_t)) {
-                const fmrb_gfx_pixel_cmd_t *cmd = (const fmrb_gfx_pixel_cmd_t*)data;
+        case FMRB_LINK_GFX_DRAW_PIXEL:
+            if (size >= sizeof(fmrb_link_graphics_pixel_t)) {
+                const fmrb_link_graphics_pixel_t *cmd = (const fmrb_link_graphics_pixel_t*)data;
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
@@ -135,9 +136,9 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
             }
             break;
 
-        case FMRB_GFX_CMD_DRAW_LINE:
-            if (size >= sizeof(fmrb_gfx_line_cmd_t)) {
-                const fmrb_gfx_line_cmd_t *cmd = (const fmrb_gfx_line_cmd_t*)data;
+        case FMRB_LINK_GFX_DRAW_LINE:
+            if (size >= sizeof(fmrb_link_graphics_line_t)) {
+                const fmrb_link_graphics_line_t *cmd = (const fmrb_link_graphics_line_t*)data;
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
@@ -155,9 +156,9 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
             }
             break;
 
-        case FMRB_GFX_CMD_DRAW_RECT:
-            if (size >= sizeof(fmrb_gfx_rect_cmd_t)) {
-                const fmrb_gfx_rect_cmd_t *cmd = (const fmrb_gfx_rect_cmd_t*)data;
+        case FMRB_LINK_GFX_DRAW_RECT:
+            if (size >= sizeof(fmrb_link_graphics_rect_t)) {
+                const fmrb_link_graphics_rect_t *cmd = (const fmrb_link_graphics_rect_t*)data;
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
@@ -175,9 +176,9 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
             }
             break;
 
-        case FMRB_GFX_CMD_FILL_RECT:
-            if (size >= sizeof(fmrb_gfx_rect_cmd_t)) {
-                const fmrb_gfx_rect_cmd_t *cmd = (const fmrb_gfx_rect_cmd_t*)data;
+        case FMRB_LINK_GFX_FILL_RECT:
+            if (size >= sizeof(fmrb_link_graphics_rect_t)) {
+                const fmrb_link_graphics_rect_t *cmd = (const fmrb_link_graphics_rect_t*)data;
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
@@ -195,80 +196,80 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
             }
             break;
 
-        case FMRB_GFX_CMD_DRAW_ROUND_RECT:
-            if (size >= sizeof(fmrb_gfx_round_rect_cmd_t)) {
-                const fmrb_gfx_round_rect_cmd_t *cmd = (const fmrb_gfx_round_rect_cmd_t*)data;
+        case FMRB_LINK_GFX_DRAW_ROUND_RECT:
+            if (size >= sizeof(fmrb_link_graphics_round_rect_t)) {
+                const fmrb_link_graphics_round_rect_t *cmd = (const fmrb_link_graphics_round_rect_t*)data;
                 get_current_target()->drawRoundRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->radius, cmd->color);
                 return 0;
             }
             break;
 
-        case FMRB_GFX_CMD_FILL_ROUND_RECT:
-            if (size >= sizeof(fmrb_gfx_round_rect_cmd_t)) {
-                const fmrb_gfx_round_rect_cmd_t *cmd = (const fmrb_gfx_round_rect_cmd_t*)data;
+        case FMRB_LINK_GFX_FILL_ROUND_RECT:
+            if (size >= sizeof(fmrb_link_graphics_round_rect_t)) {
+                const fmrb_link_graphics_round_rect_t *cmd = (const fmrb_link_graphics_round_rect_t*)data;
                 get_current_target()->fillRoundRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->radius, cmd->color);
                 return 0;
             }
             break;
 
-        case FMRB_GFX_CMD_DRAW_CIRCLE:
-            if (size >= sizeof(fmrb_gfx_circle_cmd_t)) {
-                const fmrb_gfx_circle_cmd_t *cmd = (const fmrb_gfx_circle_cmd_t*)data;
+        case FMRB_LINK_GFX_DRAW_CIRCLE:
+            if (size >= sizeof(fmrb_link_graphics_circle_t)) {
+                const fmrb_link_graphics_circle_t *cmd = (const fmrb_link_graphics_circle_t*)data;
                 get_current_target()->drawCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
                 return 0;
             }
             break;
 
-        case FMRB_GFX_CMD_FILL_CIRCLE:
-            if (size >= sizeof(fmrb_gfx_circle_cmd_t)) {
-                const fmrb_gfx_circle_cmd_t *cmd = (const fmrb_gfx_circle_cmd_t*)data;
+        case FMRB_LINK_GFX_FILL_CIRCLE:
+            if (size >= sizeof(fmrb_link_graphics_circle_t)) {
+                const fmrb_link_graphics_circle_t *cmd = (const fmrb_link_graphics_circle_t*)data;
                 get_current_target()->fillCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
                 return 0;
             }
             break;
 
-        case FMRB_GFX_CMD_DRAW_ELLIPSE:
-            if (size >= sizeof(fmrb_gfx_ellipse_cmd_t)) {
-                const fmrb_gfx_ellipse_cmd_t *cmd = (const fmrb_gfx_ellipse_cmd_t*)data;
+        case FMRB_LINK_GFX_DRAW_ELLIPSE:
+            if (size >= sizeof(fmrb_link_graphics_ellipse_t)) {
+                const fmrb_link_graphics_ellipse_t *cmd = (const fmrb_link_graphics_ellipse_t*)data;
                 get_current_target()->drawEllipse(cmd->x, cmd->y, cmd->rx, cmd->ry, cmd->color);
                 return 0;
             }
             break;
 
-        case FMRB_GFX_CMD_FILL_ELLIPSE:
-            if (size >= sizeof(fmrb_gfx_ellipse_cmd_t)) {
-                const fmrb_gfx_ellipse_cmd_t *cmd = (const fmrb_gfx_ellipse_cmd_t*)data;
+        case FMRB_LINK_GFX_FILL_ELLIPSE:
+            if (size >= sizeof(fmrb_link_graphics_ellipse_t)) {
+                const fmrb_link_graphics_ellipse_t *cmd = (const fmrb_link_graphics_ellipse_t*)data;
                 get_current_target()->fillEllipse(cmd->x, cmd->y, cmd->rx, cmd->ry, cmd->color);
                 return 0;
             }
             break;
 
-        case FMRB_GFX_CMD_DRAW_TRIANGLE:
-            if (size >= sizeof(fmrb_gfx_triangle_cmd_t)) {
-                const fmrb_gfx_triangle_cmd_t *cmd = (const fmrb_gfx_triangle_cmd_t*)data;
+        case FMRB_LINK_GFX_DRAW_TRIANGLE:
+            if (size >= sizeof(fmrb_link_graphics_triangle_t)) {
+                const fmrb_link_graphics_triangle_t *cmd = (const fmrb_link_graphics_triangle_t*)data;
                 get_current_target()->drawTriangle(cmd->x0, cmd->y0, cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
                 return 0;
             }
             break;
 
-        case FMRB_GFX_CMD_FILL_TRIANGLE:
-            if (size >= sizeof(fmrb_gfx_triangle_cmd_t)) {
-                const fmrb_gfx_triangle_cmd_t *cmd = (const fmrb_gfx_triangle_cmd_t*)data;
+        case FMRB_LINK_GFX_FILL_TRIANGLE:
+            if (size >= sizeof(fmrb_link_graphics_triangle_t)) {
+                const fmrb_link_graphics_triangle_t *cmd = (const fmrb_link_graphics_triangle_t*)data;
                 get_current_target()->fillTriangle(cmd->x0, cmd->y0, cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
                 return 0;
             }
             break;
 
-        case FMRB_GFX_CMD_DRAW_STRING:
-            // Use structure from graphics_commands.h (no cmd_type in data)
-            if (size < sizeof(fmrb_gfx_text_cmd_t)) {
-                fprintf(stderr, "String command too small: size=%zu, expected>=%zu\n", size, sizeof(fmrb_gfx_text_cmd_t));
+        case FMRB_LINK_GFX_DRAW_STRING:
+            // Use structure from fmrb_link_protocol.h (no cmd_type in data)
+            if (size < sizeof(fmrb_link_graphics_text_t)) {
+                fprintf(stderr, "String command too small: size=%zu, expected>=%zu\n", size, sizeof(fmrb_link_graphics_text_t));
                 break;
             }
             {
-                const fmrb_gfx_text_cmd_t *text_cmd = (const fmrb_gfx_text_cmd_t*)data;
+                const fmrb_link_graphics_text_t *text_cmd = (const fmrb_link_graphics_text_t*)data;
 
-                size_t expected_size = sizeof(fmrb_gfx_text_cmd_t) + text_cmd->text_len;
+                size_t expected_size = sizeof(fmrb_link_graphics_text_t) + text_cmd->text_len;
                 if (size < expected_size) {
                     fprintf(stderr, "String command size mismatch: expected=%zu, actual=%zu, text_len=%u\n",
                             expected_size, size, text_cmd->text_len);
@@ -276,7 +277,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 }
 
                 // Text data follows the structure
-                const char *text_data = (const char*)(data + sizeof(fmrb_gfx_text_cmd_t));
+                const char *text_data = (const char*)(data + sizeof(fmrb_link_graphics_text_t));
                 char text_buf[256];
                 size_t len = text_cmd->text_len < 255 ? text_cmd->text_len : 255;
                 memcpy(text_buf, text_data, len);
@@ -293,7 +294,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 return 0;
             }
 
-        case FMRB_GFX_CMD_PRESENT:
+        case FMRB_LINK_GFX_PRESENT:
             // Swap buffers: copy back buffer to front buffer
             if (g_back_buffer) {
                 g_back_buffer->pushSprite(g_lgfx, 0, 0);
@@ -302,9 +303,9 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
             return 0;
 
         // Canvas management commands
-        case FMRB_GFX_CMD_CREATE_CANVAS:
-            if (size >= sizeof(fmrb_gfx_create_canvas_cmd_t)) {
-                const fmrb_gfx_create_canvas_cmd_t *cmd = (const fmrb_gfx_create_canvas_cmd_t*)data;
+        case FMRB_LINK_GFX_CREATE_CANVAS:
+            if (size >= sizeof(fmrb_link_graphics_create_canvas_t)) {
+                const fmrb_link_graphics_create_canvas_t *cmd = (const fmrb_link_graphics_create_canvas_t*)data;
 
                 // Allocate new canvas ID (ignore cmd->canvas_id from client)
                 uint16_t canvas_id = g_next_canvas_id++;
@@ -331,9 +332,9 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
             }
             break;
 
-        case FMRB_GFX_CMD_DELETE_CANVAS:
-            if (size >= sizeof(fmrb_gfx_delete_canvas_cmd_t)) {
-                const fmrb_gfx_delete_canvas_cmd_t *cmd = (const fmrb_gfx_delete_canvas_cmd_t*)data;
+        case FMRB_LINK_GFX_DELETE_CANVAS:
+            if (size >= sizeof(fmrb_link_graphics_delete_canvas_t)) {
+                const fmrb_link_graphics_delete_canvas_t *cmd = (const fmrb_link_graphics_delete_canvas_t*)data;
 
                 auto it = g_canvases.find(cmd->canvas_id);
                 if (it == g_canvases.end()) {
@@ -353,9 +354,9 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
             }
             break;
 
-        case FMRB_GFX_CMD_SET_TARGET:
-            if (size >= sizeof(fmrb_gfx_set_target_cmd_t)) {
-                const fmrb_gfx_set_target_cmd_t *cmd = (const fmrb_gfx_set_target_cmd_t*)data;
+        case FMRB_LINK_GFX_SET_TARGET:
+            if (size >= sizeof(fmrb_link_graphics_set_target_t)) {
+                const fmrb_link_graphics_set_target_t *cmd = (const fmrb_link_graphics_set_target_t*)data;
 
                 // Validate target
                 if (cmd->target_id != FMRB_CANVAS_SCREEN) {
@@ -372,9 +373,9 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
             }
             break;
 
-        case FMRB_GFX_CMD_PUSH_CANVAS:
-            if (size >= sizeof(fmrb_gfx_push_canvas_cmd_t)) {
-                const fmrb_gfx_push_canvas_cmd_t *cmd = (const fmrb_gfx_push_canvas_cmd_t*)data;
+        case FMRB_LINK_GFX_PUSH_CANVAS:
+            if (size >= sizeof(fmrb_link_graphics_push_canvas_t)) {
+                const fmrb_link_graphics_push_canvas_t *cmd = (const fmrb_link_graphics_push_canvas_t*)data;
 
                 // Find source canvas
                 auto it = g_canvases.find(cmd->canvas_id);

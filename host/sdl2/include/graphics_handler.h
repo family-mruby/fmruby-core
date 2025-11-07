@@ -2,7 +2,7 @@
 #define GRAPHICS_HANDLER_H
 
 #include <SDL2/SDL.h>
-#include "../../common/graphics_commands.h"
+#include "fmrb_link_protocol.h"
 
 #ifdef __cplusplus
 extern "C" {

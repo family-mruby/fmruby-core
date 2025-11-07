@@ -3,6 +3,7 @@
 #include "audio_handler.h"
 #include "../common/protocol.h"
 #include "../common/fmrb_link_cobs.h"
+#include "fmrb_link_protocol.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,13 +16,6 @@
 
 // Forward declaration - implemented in main.cpp
 extern int init_display_callback(uint16_t width, uint16_t height, uint8_t color_depth);
-
-// Frame header (IPC_spec.md compliant)
-typedef struct __attribute__((packed)) {
-    uint8_t type;    // Message type
-    uint8_t seq;     // Sequence number
-    uint16_t len;    // Payload bytes
-} fmrb_link_frame_hdr_t;
 
 static int server_fd = -1;
 static int client_fd = -1;

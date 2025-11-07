@@ -70,6 +70,7 @@ typedef enum {
     // Clear and fill
     FMRB_LINK_GFX_CLEAR = 0x30,
     FMRB_LINK_GFX_FILL_SCREEN = 0x31,
+    FMRB_LINK_GFX_PRESENT = 0x32,
 
     // Image/bitmap drawing
     FMRB_LINK_GFX_DRAW_IMAGE = 0x40,
@@ -188,6 +189,37 @@ typedef struct __attribute__((packed)) {
     uint16_t text_len;
     // Followed by text data
 } fmrb_link_graphics_text_t;
+
+// Additional shape structures (LovyanGFX compatible)
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
+    int16_t x, y;
+    int16_t width, height;
+    int16_t radius;
+    uint8_t color;  // RGB332 format
+} fmrb_link_graphics_round_rect_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
+    int16_t x, y;
+    int16_t radius;
+    uint8_t color;  // RGB332 format
+} fmrb_link_graphics_circle_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
+    int16_t x, y;
+    int16_t rx, ry;  // radius x, y
+    uint8_t color;  // RGB332 format
+} fmrb_link_graphics_ellipse_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
+    int16_t x0, y0;
+    int16_t x1, y1;
+    int16_t x2, y2;
+    uint8_t color;  // RGB332 format
+} fmrb_link_graphics_triangle_t;
 
 // Canvas management structures
 typedef struct __attribute__((packed)) {

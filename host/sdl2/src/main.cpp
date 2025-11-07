@@ -14,7 +14,8 @@ extern "C" {
 #include "graphics_handler.h"
 #include "audio_handler.h"
 #include "../../common/protocol.h"
-#include "../../common/graphics_commands.h"
+#include "fmrb_link_protocol.h"
+#include "fmrb_gfx.h"
 }
 
 static volatile int running = 1;
