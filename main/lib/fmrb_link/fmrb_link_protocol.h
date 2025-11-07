@@ -28,7 +28,8 @@ typedef enum {
 //---------------------------
 // Sub Command
 //---------------------------
-#define FMRB_LINK_CONTROL_INIT_DISPLAY 0x01
+#define FMRB_LINK_CONTROL_VERSION      0x01
+#define FMRB_LINK_CONTROL_INIT_DISPLAY 0x02
 
 // Protocol response codes
 #define FMRB_LINK_RESPONSE_MSG_ACK     0xF0
@@ -252,34 +253,6 @@ typedef struct __attribute__((packed)) {
 
 // Max payload size
 #define FMRB_LINK_MAX_PAYLOAD_SIZE 4096
-
-// Frame utility functions (IPC_spec.md compliant)
-/**
- * @brief Build a frame with header + payload + CRC32, then COBS encode
- * @param type Frame type
- * @param seq Sequence number
- * @param payload Payload data
- * @param payload_len Payload length
- * @param output Output buffer (must be large enough)
- * @param output_len Output buffer size
- * @return Encoded frame length (including 0x00 terminator), or -1 on error
- */
-ssize_t fmrb_link_frame_encode(uint8_t type, uint8_t seq, const uint8_t *payload, uint16_t payload_len,
-                               uint8_t *output, size_t output_len);
-
-/**
- * @brief Decode a COBS frame and verify CRC32
- * @param input Encoded frame (without 0x00 terminator)
- * @param input_len Encoded frame length
- * @param hdr Output frame header
- * @param payload Output payload buffer
- * @param payload_max_len Maximum payload buffer size
- * @param payload_len Output actual payload length
- * @return 0 on success, -1 on error
- */
-int32_t fmrb_link_frame_decode(const uint8_t *input, size_t input_len,
-                               fmrb_link_frame_hdr_t *hdr, uint8_t *payload,
-                               size_t payload_max_len, uint16_t *payload_len);
 
 #ifdef __cplusplus
 }
