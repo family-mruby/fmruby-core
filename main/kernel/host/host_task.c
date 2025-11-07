@@ -112,14 +112,14 @@ static int init_gfx_audio(void)
         fmrb_link_transport_handle_t transport = fmrb_gfx_get_transport(ctx);
 
         if (transport) {
-            fmrb_link_transport_err_t ret = fmrb_link_transport_send(
+            fmrb_err_t ret = fmrb_link_transport_send(
                 transport,
                 FMRB_CONTROL_CMD_INIT_DISPLAY,  // msg_type (0x01) will be detected as CONTROL
                 (const uint8_t*)&init_cmd,
                 sizeof(init_cmd)
             );
 
-            if (ret != FMRB_LINK_TRANSPORT_OK) {
+            if (ret != FMRB_OK) {
                 FMRB_LOGE(TAG, "Failed to send display init command: %d", ret);
                 return -1;
             }

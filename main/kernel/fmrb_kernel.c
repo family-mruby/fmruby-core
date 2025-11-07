@@ -12,6 +12,7 @@
 #include "fmrb_task_config.h"
 #include "fmrb_app.h"
 #include "fmrb_kernel.h"
+#include "fmrb_link_transport.h"
 #include "host/host_task.h"
 #include "fmrb_toml.h"
 
@@ -128,6 +129,21 @@ static int init_hal(void)
         return -1;
     }
     FMRB_LOGI(TAG, "Message queue initialized");
+
+    // Initialize transport
+    fmrb_link_transport_config_t transport_config = {
+        .timeout_ms = 1000,
+        .enable_retransmit = true,
+        .max_retries = 3,
+        .window_size = 8
+    };
+
+    fmrb_link_transport_handle_t transport_handle;
+    ret = fmrb_link_transport_init(&transport_config, &transport_handle);
+    if (ret != FMRB_OK) {
+        return false;
+    }
+
 
     return 0;
 }

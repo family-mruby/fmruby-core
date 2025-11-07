@@ -105,18 +105,18 @@ void show_config(void)
     FMRB_LOGI(TAG, "------------------------------------------------");
 }
 
-static void init_hardware(void)
+static bool init_hardware(void)
 {
     // Filesystem
     fmrb_err_t ret = fmrb_hal_file_init();
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to init filesystem");
-        return;
+        return false;
     }
     // ESP32 IPC
-    
-    // USB HOST
 
+    // USB HOST
+    return true;
 }
 
 static void init_mem(void)

@@ -31,15 +31,17 @@ static fmrb_gfx_err_t send_graphics_command(fmrb_gfx_context_impl_t *ctx, uint8_
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    fmrb_link_transport_err_t ret = fmrb_link_transport_send(ctx->transport, cmd_type, (const uint8_t*)cmd_data, cmd_size);
+    fmrb_err_t ret = fmrb_link_transport_send(ctx->transport, cmd_type, (const uint8_t*)cmd_data, cmd_size);
 
     switch (ret) {
-        case FMRB_LINK_TRANSPORT_OK:
+        case FMRB_OK:
             return FMRB_GFX_OK;
-        case FMRB_LINK_TRANSPORT_ERR_INVALID_PARAM:
+        case FMRB_ERR_INVALID_PARAM:
             return FMRB_GFX_ERR_INVALID_PARAM;
-        case FMRB_LINK_TRANSPORT_ERR_NO_MEMORY:
+        case FMRB_ERR_NO_MEMORY:
             return FMRB_GFX_ERR_NO_MEMORY;
+        case FMRB_ERR_TIMEOUT:
+            return FMRB_GFX_ERR_FAILED;  // Map timeout to generic failure
         default:
             return FMRB_GFX_ERR_FAILED;
     }
@@ -73,8 +75,8 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config) {
         .window_size = 8
     };
 
-    fmrb_link_transport_err_t ret = fmrb_link_transport_init(&transport_config, &ctx->transport);
-    if (ret != FMRB_LINK_TRANSPORT_OK) {
+    fmrb_err_t ret = fmrb_link_transport_init(&transport_config, &ctx->transport);
+    if (ret != FMRB_OK) {
         //fmrb_sys_free(ctx);
         return FMRB_GFX_ERR_FAILED;
     }

@@ -11,6 +11,7 @@
 
 #define MAX_CALLBACKS 16
 #define MAX_PENDING_MESSAGES 8
+#define MAX_SYNC_REQUESTS 4
 
 // Control command definitions (should match host/common/protocol.h)
 #define FMRB_CONTROL_CMD_INIT_DISPLAY 0x01
@@ -30,6 +31,18 @@ typedef struct {
     uint8_t retry_count;
 } pending_message_t;
 
+// Synchronous request tracking
+typedef struct {
+    uint16_t sequence;           // Sequence number of the request
+    bool active;                 // Whether this slot is in use
+    bool response_received;      // Whether response has been received
+    uint8_t response_status;     // Response status (0=OK, others=error)
+    uint8_t *response_payload;   // Response payload buffer
+    uint32_t response_len;       // Actual response length
+    uint32_t response_max_len;   // Maximum response buffer size
+    fmrb_semaphore_t wait_sem;   // Semaphore for waiting
+} sync_request_t;
+
 typedef struct {
     fmrb_link_transport_config_t config;
     uint16_t next_sequence;
@@ -40,35 +53,63 @@ typedef struct {
     pending_message_t pending_messages[MAX_PENDING_MESSAGES];
     int pending_count;
 
+    sync_request_t sync_requests[MAX_SYNC_REQUESTS];
+    fmrb_semaphore_t sync_mutex;  // Mutex (semaphore) for protecting sync_requests array
+
     bool initialized;
 } transport_context_t;
 
+static transport_context_t g_tranport_context;
+
 static const char *TAG = "fmrb_link_transport";
 
-fmrb_link_transport_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config,
-                                                  fmrb_link_transport_handle_t *handle) {
+fmrb_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config,
+                                    fmrb_link_transport_handle_t *handle) {
     if (!config || !handle) {
-        return FMRB_LINK_TRANSPORT_ERR_INVALID_PARAM;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
-    transport_context_t *ctx = fmrb_sys_malloc(sizeof(transport_context_t));
-    if (!ctx) {
-        return FMRB_LINK_TRANSPORT_ERR_NO_MEMORY;
+    transport_context_t *ctx = &g_tranport_context;
+
+    if(ctx->initialized)
+    {
+        FMRB_LOGI(TAG,"already initialized");
+        return FMRB_ERR_INVALID_STATE;
     }
 
     memset(ctx, 0, sizeof(transport_context_t));
     ctx->config = *config;
     ctx->next_sequence = 1;
+
+    // Initialize sync request tracking
+    ctx->sync_mutex = fmrb_semaphore_create_mutex();
+    if (!ctx->sync_mutex) {
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    for (int i = 0; i < MAX_SYNC_REQUESTS; i++) {
+        ctx->sync_requests[i].active = false;
+        ctx->sync_requests[i].wait_sem = fmrb_semaphore_create_binary();
+        if (!ctx->sync_requests[i].wait_sem) {
+            // Cleanup already created semaphores
+            for (int j = 0; j < i; j++) {
+                fmrb_semaphore_delete(ctx->sync_requests[j].wait_sem);
+            }
+            fmrb_semaphore_delete(ctx->sync_mutex);
+            return FMRB_ERR_NO_MEMORY;
+        }
+    }
+
     ctx->initialized = true;
 
     *handle = ctx;
     FMRB_LOGI(TAG,"initialized");
-    return FMRB_LINK_TRANSPORT_OK;
+    return FMRB_OK;
 }
 
-fmrb_link_transport_err_t fmrb_link_transport_deinit(fmrb_link_transport_handle_t handle) {
+fmrb_err_t fmrb_link_transport_deinit(fmrb_link_transport_handle_t handle) {
     if (!handle) {
-        return FMRB_LINK_TRANSPORT_ERR_INVALID_PARAM;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     transport_context_t *ctx = (transport_context_t *)handle;
@@ -80,12 +121,22 @@ fmrb_link_transport_err_t fmrb_link_transport_deinit(fmrb_link_transport_handle_
         }
     }
 
+    // Cleanup sync requests
+    for (int i = 0; i < MAX_SYNC_REQUESTS; i++) {
+        if (ctx->sync_requests[i].wait_sem) {
+            fmrb_semaphore_delete(ctx->sync_requests[i].wait_sem);
+        }
+    }
+
+    if (ctx->sync_mutex) {
+        fmrb_semaphore_delete(ctx->sync_mutex);
+    }
+
     ctx->initialized = false;
-    fmrb_sys_free(ctx);
-    return FMRB_LINK_TRANSPORT_OK;
+    return FMRB_OK;
 }
 
-static fmrb_link_transport_err_t send_raw_message(uint8_t link_type, const fmrb_link_header_t *header, const uint8_t *payload) {
+static fmrb_err_t send_raw_message(uint8_t link_type, const fmrb_link_header_t *header, const uint8_t *payload) {
     // Serialize with msgpack as per IPC_spec.md:
     // 1. Pack frame_hdr + sub_cmd + payload with msgpack
     // 2. HAL layer will add CRC32 and COBS encode
@@ -134,13 +185,13 @@ static fmrb_link_transport_err_t send_raw_message(uint8_t link_type, const fmrb_
 
     msgpack_sbuffer_destroy(&sbuf);
 
-    return (ret == FMRB_OK) ? FMRB_LINK_TRANSPORT_OK : FMRB_LINK_TRANSPORT_ERR_FAILED;
+    return ret;
 }
 
-static fmrb_link_transport_err_t add_pending_message(transport_context_t *ctx, uint16_t sequence,
-                                                    uint8_t msg_type, const uint8_t *payload, uint32_t payload_len) {
+static fmrb_err_t add_pending_message(transport_context_t *ctx, uint16_t sequence,
+                                      uint8_t msg_type, const uint8_t *payload, uint32_t payload_len) {
     if (ctx->pending_count >= MAX_PENDING_MESSAGES) {
-        return FMRB_LINK_TRANSPORT_ERR_FAILED;
+        return FMRB_ERR_FAILED;
     }
 
     pending_message_t *pending = &ctx->pending_messages[ctx->pending_count];
@@ -153,7 +204,7 @@ static fmrb_link_transport_err_t add_pending_message(transport_context_t *ctx, u
     if (payload_len > 0 && payload) {
         pending->payload = fmrb_sys_malloc(payload_len);
         if (!pending->payload) {
-            return FMRB_LINK_TRANSPORT_ERR_NO_MEMORY;
+            return FMRB_ERR_NO_MEMORY;
         }
         memcpy(pending->payload, payload, payload_len);
     } else {
@@ -161,20 +212,20 @@ static fmrb_link_transport_err_t add_pending_message(transport_context_t *ctx, u
     }
 
     ctx->pending_count++;
-    return FMRB_LINK_TRANSPORT_OK;
+    return FMRB_OK;
 }
 
-fmrb_link_transport_err_t fmrb_link_transport_send(fmrb_link_transport_handle_t handle,
-                                                  uint8_t msg_type,
-                                                  const uint8_t *payload,
-                                                  uint32_t payload_len) {
+fmrb_err_t fmrb_link_transport_send(fmrb_link_transport_handle_t handle,
+                                    uint8_t msg_type,
+                                    const uint8_t *payload,
+                                    uint32_t payload_len) {
     if (!handle) {
-        return FMRB_LINK_TRANSPORT_ERR_INVALID_PARAM;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     transport_context_t *ctx = (transport_context_t *)handle;
     if (!ctx->initialized) {
-        return FMRB_LINK_TRANSPORT_ERR_FAILED;
+        return FMRB_ERR_INVALID_STATE;
     }
 
     // Create header
@@ -201,8 +252,8 @@ fmrb_link_transport_err_t fmrb_link_transport_send(fmrb_link_transport_handle_t 
     }
 
     // Send message
-    fmrb_link_transport_err_t ret = send_raw_message(link_type, &header, payload);
-    if (ret != FMRB_LINK_TRANSPORT_OK) {
+    fmrb_err_t ret = send_raw_message(link_type, &header, payload);
+    if (ret != FMRB_OK) {
         return ret;
     }
 
@@ -211,32 +262,126 @@ fmrb_link_transport_err_t fmrb_link_transport_send(fmrb_link_transport_handle_t 
         add_pending_message(ctx, sequence, msg_type, payload, payload_len);
     }
 
-    return FMRB_LINK_TRANSPORT_OK;
+    return FMRB_OK;
 }
 
-fmrb_link_transport_err_t fmrb_link_transport_send_sync(fmrb_link_transport_handle_t handle,
-                                                       uint8_t msg_type,
-                                                       const uint8_t *payload,
-                                                       uint32_t payload_len,
-                                                       uint8_t *response_payload,
-                                                       uint32_t *response_len,
-                                                       uint32_t timeout_ms) {
-    // For now, just send asynchronously
-    // TODO: Implement synchronous sending with response waiting
-    return fmrb_link_transport_send(handle, msg_type, payload, payload_len);
-}
-
-fmrb_link_transport_err_t fmrb_link_transport_register_callback(fmrb_link_transport_handle_t handle,
-                                                               uint8_t msg_type,
-                                                               fmrb_link_transport_callback_t callback,
-                                                               void *user_data) {
-    if (!handle || !callback) {
-        return FMRB_LINK_TRANSPORT_ERR_INVALID_PARAM;
+fmrb_err_t fmrb_link_transport_send_sync(fmrb_link_transport_handle_t handle,
+                                         uint8_t msg_type,
+                                         const uint8_t *payload,
+                                         uint32_t payload_len,
+                                         uint8_t *response_payload,
+                                         uint32_t *response_len,
+                                         uint32_t timeout_ms) {
+    if (!handle) {
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     transport_context_t *ctx = (transport_context_t *)handle;
-    if (!ctx->initialized || ctx->callback_count >= MAX_CALLBACKS) {
-        return FMRB_LINK_TRANSPORT_ERR_FAILED;
+    if (!ctx->initialized) {
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    // Find available sync request slot
+    fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
+
+    int slot = -1;
+    for (int i = 0; i < MAX_SYNC_REQUESTS; i++) {
+        if (!ctx->sync_requests[i].active) {
+            slot = i;
+            break;
+        }
+    }
+
+    if (slot == -1) {
+        fmrb_semaphore_give(ctx->sync_mutex);
+        FMRB_LOGE(TAG, "No available sync request slots");
+        return FMRB_ERR_BUSY;
+    }
+
+    // Create header with ACK_REQUIRED flag
+    fmrb_link_header_t header;
+    uint16_t sequence = ctx->next_sequence++;
+    fmrb_link_init_header(&header, msg_type, sequence, payload_len);
+
+    if (payload && payload_len > 0) {
+        header.checksum = fmrb_link_calculate_checksum(payload, payload_len);
+    }
+
+    // Setup sync request
+    sync_request_t *req = &ctx->sync_requests[slot];
+    req->sequence = sequence;
+    req->active = true;
+    req->response_received = false;
+    req->response_payload = response_payload;
+    req->response_max_len = response_payload ? (response_len ? *response_len : 0) : 0;
+    req->response_len = 0;
+
+    fmrb_semaphore_give(ctx->sync_mutex);
+
+    // Determine link_type from msg_type (same logic as async send)
+    uint8_t link_type;
+    if (msg_type == FMRB_CONTROL_CMD_INIT_DISPLAY) {
+        link_type = FMRB_LINK_TYPE_CONTROL;
+    } else {
+        link_type = FMRB_LINK_TYPE_GRAPHICS;
+    }
+
+    // Send message
+    fmrb_err_t ret = send_raw_message(link_type, &header, payload);
+    if (ret != FMRB_OK) {
+        // Mark slot as inactive on send failure
+        fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
+        req->active = false;
+        fmrb_semaphore_give(ctx->sync_mutex);
+        return ret;
+    }
+
+    // Wait for response
+    fmrb_tick_t ticks = (timeout_ms == UINT32_MAX) ? FMRB_TICK_MAX : FMRB_MS_TO_TICKS(timeout_ms);
+    fmrb_base_type_t wait_result = fmrb_semaphore_take(req->wait_sem, ticks);
+
+    fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
+
+    if (wait_result != FMRB_TRUE || !req->response_received) {
+        // Timeout
+        req->active = false;
+        fmrb_semaphore_give(ctx->sync_mutex);
+        FMRB_LOGW(TAG, "Sync send timeout for seq=%u", sequence);
+        return FMRB_ERR_TIMEOUT;
+    }
+
+    // Response received
+    uint8_t status = req->response_status;
+    if (response_len) {
+        *response_len = req->response_len;
+    }
+    req->active = false;
+
+    fmrb_semaphore_give(ctx->sync_mutex);
+
+    if (status != 0) {
+        FMRB_LOGW(TAG, "Sync send received error response: status=%u", status);
+        return FMRB_ERR_FAILED;
+    }
+
+    return FMRB_OK;
+}
+
+fmrb_err_t fmrb_link_transport_register_callback(fmrb_link_transport_handle_t handle,
+                                                 uint8_t msg_type,
+                                                 fmrb_link_transport_callback_t callback,
+                                                 void *user_data) {
+    if (!handle || !callback) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    transport_context_t *ctx = (transport_context_t *)handle;
+    if (!ctx->initialized) {
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    if (ctx->callback_count >= MAX_CALLBACKS) {
+        return FMRB_ERR_BUSY;
     }
 
     callback_entry_t *entry = &ctx->callbacks[ctx->callback_count];
@@ -245,18 +390,18 @@ fmrb_link_transport_err_t fmrb_link_transport_register_callback(fmrb_link_transp
     entry->user_data = user_data;
 
     ctx->callback_count++;
-    return FMRB_LINK_TRANSPORT_OK;
+    return FMRB_OK;
 }
 
-fmrb_link_transport_err_t fmrb_link_transport_unregister_callback(fmrb_link_transport_handle_t handle,
-                                                                 uint8_t msg_type) {
+fmrb_err_t fmrb_link_transport_unregister_callback(fmrb_link_transport_handle_t handle,
+                                                   uint8_t msg_type) {
     if (!handle) {
-        return FMRB_LINK_TRANSPORT_ERR_INVALID_PARAM;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     transport_context_t *ctx = (transport_context_t *)handle;
     if (!ctx->initialized) {
-        return FMRB_LINK_TRANSPORT_ERR_FAILED;
+        return FMRB_ERR_INVALID_STATE;
     }
 
     // Find and remove callback
@@ -267,19 +412,71 @@ fmrb_link_transport_err_t fmrb_link_transport_unregister_callback(fmrb_link_tran
                 ctx->callbacks[j] = ctx->callbacks[j + 1];
             }
             ctx->callback_count--;
-            return FMRB_LINK_TRANSPORT_OK;
+            return FMRB_OK;
         }
     }
 
-    return FMRB_LINK_TRANSPORT_ERR_FAILED;
+    return FMRB_ERR_NOT_FOUND;
 }
 
 static void handle_received_message(transport_context_t *ctx, const fmrb_link_header_t *header, const uint8_t *payload) {
     // Handle ACK/NACK messages
     if (header->msg_type == FMRB_LINK_MSG_ACK || header->msg_type == FMRB_LINK_MSG_NACK) {
-        // Remove from pending list
+        // Extract ACK data
+        uint8_t response_status = (header->msg_type == FMRB_LINK_MSG_ACK) ? 0 : 1;
+        uint16_t original_sequence = header->sequence;
+
+        // If payload contains fmrb_link_ack_t, extract original_sequence and status
+        if (payload && header->payload_len >= sizeof(fmrb_link_ack_t)) {
+            fmrb_link_ack_t *ack = (fmrb_link_ack_t *)payload;
+            original_sequence = ack->original_sequence;
+            response_status = ack->status;
+        }
+
+        // Check if this is a response to a sync request
+        fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
+        for (int i = 0; i < MAX_SYNC_REQUESTS; i++) {
+            if (ctx->sync_requests[i].active && ctx->sync_requests[i].sequence == original_sequence) {
+                sync_request_t *req = &ctx->sync_requests[i];
+                req->response_received = true;
+                req->response_status = response_status;
+
+                // Copy response payload if provided
+                if (payload && header->payload_len > sizeof(fmrb_link_ack_t) && req->response_payload) {
+                    // Payload after fmrb_link_ack_t is the actual response data
+                    uint32_t data_offset = sizeof(fmrb_link_ack_t);
+                    uint32_t data_len = header->payload_len - data_offset;
+                    uint32_t copy_len = (data_len < req->response_max_len) ? data_len : req->response_max_len;
+
+                    memcpy(req->response_payload, payload + data_offset, copy_len);
+                    req->response_len = copy_len;
+                }
+
+                // Signal waiting thread
+                fmrb_semaphore_give(req->wait_sem);
+                fmrb_semaphore_give(ctx->sync_mutex);
+
+                // Also remove from pending list for retransmit tracking
+                for (int j = 0; j < ctx->pending_count; j++) {
+                    if (ctx->pending_messages[j].sequence == original_sequence) {
+                        if (ctx->pending_messages[j].payload) {
+                            fmrb_sys_free(ctx->pending_messages[j].payload);
+                        }
+                        for (int k = j; k < ctx->pending_count - 1; k++) {
+                            ctx->pending_messages[k] = ctx->pending_messages[k + 1];
+                        }
+                        ctx->pending_count--;
+                        break;
+                    }
+                }
+                return;
+            }
+        }
+        fmrb_semaphore_give(ctx->sync_mutex);
+
+        // Not a sync request, just remove from pending list
         for (int i = 0; i < ctx->pending_count; i++) {
-            if (ctx->pending_messages[i].sequence == header->sequence) {
+            if (ctx->pending_messages[i].sequence == original_sequence) {
                 if (ctx->pending_messages[i].payload) {
                     fmrb_sys_free(ctx->pending_messages[i].payload);
                 }
@@ -316,14 +513,14 @@ static void handle_received_message(transport_context_t *ctx, const fmrb_link_he
     send_raw_message(FMRB_LINK_TYPE_CONTROL, &ack_header, (uint8_t*)&ack);
 }
 
-fmrb_link_transport_err_t fmrb_link_transport_process(fmrb_link_transport_handle_t handle) {
+fmrb_err_t fmrb_link_transport_process(fmrb_link_transport_handle_t handle) {
     if (!handle) {
-        return FMRB_LINK_TRANSPORT_ERR_INVALID_PARAM;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     transport_context_t *ctx = (transport_context_t *)handle;
     if (!ctx->initialized) {
-        return FMRB_LINK_TRANSPORT_ERR_FAILED;
+        return FMRB_ERR_INVALID_STATE;
     }
 
     // Check for incoming messages
@@ -340,7 +537,7 @@ fmrb_link_transport_err_t fmrb_link_transport_process(fmrb_link_transport_handle
                 if (payload && header->payload_len > 0) {
                     uint32_t calc_checksum = fmrb_link_calculate_checksum(payload, header->payload_len);
                     if (calc_checksum != header->checksum) {
-                        return FMRB_LINK_TRANSPORT_ERR_CHECKSUM;
+                        return FMRB_ERR_FAILED;
                     }
                 }
 
@@ -393,5 +590,5 @@ fmrb_link_transport_err_t fmrb_link_transport_process(fmrb_link_transport_handle
         }
     }
 
-    return FMRB_LINK_TRANSPORT_OK;
+    return FMRB_OK;
 }
