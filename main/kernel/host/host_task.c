@@ -12,7 +12,6 @@
 #include "../fmrb_kernel.h"
 #include "fmrb_link_transport.h"
 #include "fmrb_link_protocol.h"
-#include "../../../host/common/protocol.h"
 
 static const char *TAG = "host";
 
@@ -108,7 +107,8 @@ static int init_gfx_audio(void)
 
         // Use singleton transport API (no handle needed)
         fmrb_err_t ret = fmrb_link_transport_send(
-            FMRB_LINK_CONTROL_INIT_DISPLAY,  // msg_type (0x01) will be detected as CONTROL
+            FMRB_LINK_TYPE_CONTROL,
+            FMRB_LINK_CONTROL_INIT_DISPLAY,
             (const uint8_t*)&init_cmd,
             sizeof(init_cmd)
         );

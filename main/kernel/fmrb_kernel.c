@@ -45,7 +45,7 @@ static fmrb_display_mode_t parse_display_mode(const char* mode_str)
     return FMRB_DISPLAY_MODE_NTSC_IPC;  // Default
 }
 
-static void read_system_config(void)
+static bool read_system_config(void)
 {
     const char *config_path = "/etc/system_conf.toml";
 
@@ -58,7 +58,7 @@ static void read_system_config(void)
     if (!conf) {
         FMRB_LOGW(TAG, "Config load failed: %s", errbuf);
         FMRB_LOGI(TAG, "Using default configuration");
-        return;
+        return false;
     }
 
     // Read system_name
@@ -106,19 +106,20 @@ static void read_system_config(void)
     // Clean up
     toml_free(conf);
     FMRB_LOGI(TAG, "System configuration loaded successfully");
+    return true;
 }
 
 
 /**
  * Initialize HAL layer and subsystems
  */
-static int init_hal(void)
+static bool init_hal(void)
 {
     // Initialize HAL layer
     fmrb_err_t ret = fmrb_hal_init();
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to initialize HAL: %d", ret);
-        return -1;
+        return false;
     }
     FMRB_LOGI(TAG, "HAL initialized successfully");
 
@@ -126,7 +127,7 @@ static int init_hal(void)
     ret = fmrb_msg_init();
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to initialize message queue: %d", ret);
-        return -1;
+        return false;
     }
     FMRB_LOGI(TAG, "Message queue initialized");
 
@@ -140,11 +141,17 @@ static int init_hal(void)
 
     ret = fmrb_link_transport_init(&transport_config);
     if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to initialize Transport");
         return false;
     }
 
+    ret = fmrb_link_transport_check_version(10*1000);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Invalid protocol version!");
+        return false;
+    }
 
-    return 0;
+    return true;
 }
 
 /**
@@ -156,11 +163,18 @@ fmrb_err_t fmrb_kernel_start(void)
 
     // Initialize app context management (first time only)
     static bool context_initialized = false;
-    if (!context_initialized) {
-        read_system_config();
-        init_hal();
-        fmrb_app_init();
-        context_initialized = true;
+    if (context_initialized) {
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    if(!read_system_config()){
+        return FMRB_ERR_FAILED;
+    }        
+    if(!init_hal()){
+        return FMRB_ERR_FAILED;
+    }
+    if(!fmrb_app_init()){
+        return FMRB_ERR_FAILED;
     }
 
     // Create host task
@@ -187,8 +201,9 @@ fmrb_err_t fmrb_kernel_start(void)
         FMRB_LOGE(TAG, "Failed to spawn kernel task");
         return FMRB_ERR_FAILED;
     }
-
     FMRB_LOGI(TAG, "Kernel task spawned successfully (id=%ld)", kernel_id);
+
+    context_initialized = true;
     return FMRB_OK;
 }
 

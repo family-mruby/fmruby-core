@@ -263,17 +263,17 @@ static void app_task_test(void* arg) {
 /**
  * Initialize app context management (call once at boot)
  */
-void fmrb_app_init(void) {
+bool fmrb_app_init(void) {
     if (g_ctx_lock != NULL) {
         FMRB_LOGW(TAG, "App context already initialized");
-        return;
+        return false;
     }
 
     // Create mutex
     g_ctx_lock = fmrb_semaphore_create_mutex();
     if (!g_ctx_lock) {
         FMRB_LOGE(TAG, "Failed to create mutex");
-        return;
+        return false;
     }
 
     // Initialize context pool
@@ -285,7 +285,9 @@ void fmrb_app_init(void) {
     }
 
     FMRB_LOGI(TAG, "App context management initialized (max_apps=%d)", FMRB_MAX_APPS);
+    return true;
 }
+
 
 /**
  * Spawn simple debug task (no context management, no mruby VM)

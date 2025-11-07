@@ -31,7 +31,7 @@ static fmrb_gfx_err_t send_graphics_command(fmrb_gfx_context_impl_t *ctx, uint8_
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    fmrb_err_t ret = fmrb_link_transport_send(cmd_type, (const uint8_t*)cmd_data, cmd_size);
+    fmrb_err_t ret = fmrb_link_transport_send(FMRB_LINK_TYPE_GRAPHICS, cmd_type, (const uint8_t*)cmd_data, cmd_size);
 
     switch (ret) {
         case FMRB_OK:
@@ -62,6 +62,7 @@ static fmrb_gfx_err_t send_graphics_command_sync(
     }
 
     fmrb_err_t ret = fmrb_link_transport_send_sync(
+        FMRB_LINK_TYPE_GRAPHICS,
         cmd_type,
         (const uint8_t*)cmd_data,
         cmd_size,

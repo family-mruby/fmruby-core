@@ -27,11 +27,11 @@ class FmrbKernel
     puts "[KERNEL] Received message: type=#{msg[:type]}, src_pid=#{msg[:src_pid]}, data_size=#{msg[:data].length}"
 
     case msg[:type]
-    when 0  # FMRB_MSG_TYPE_APP_CONTROL
+    when FmrbKernel::MSG_TYPE_APP_CONTROL
       handle_app_control(msg)
-    when 1  # FMRB_MSG_TYPE_APP_GFX
+    when FmrbKernel::MSG_TYPE_APP_GFX
       puts "[KERNEL] Graphics message (not implemented)"
-    when 2  # FMRB_MSG_TYPE_APP_AUDIO
+    when FmrbKernel::MSG_TYPE_APP_AUDIO
       puts "[KERNEL] Audio message (not implemented)"
     else
       puts "[KERNEL] Unknown message type: #{msg[:type]}"

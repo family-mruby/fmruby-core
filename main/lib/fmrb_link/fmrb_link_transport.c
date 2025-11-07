@@ -21,7 +21,8 @@ typedef struct {
 
 typedef struct {
     uint16_t sequence;
-    uint8_t msg_type;
+    uint8_t link_type;
+    uint8_t sub_cmd;
     uint8_t *payload;
     uint32_t payload_len;
     fmrb_time_t sent_time;
@@ -59,6 +60,10 @@ typedef struct {
 static transport_context_t g_tranport_context;
 
 static const char *TAG = "fmrb_link_transport";
+
+// Forward declarations
+static void handle_received_message(transport_context_t *ctx, uint8_t type, uint8_t seq,
+                                    uint8_t sub_cmd, const uint8_t *payload, uint32_t payload_len);
 
 fmrb_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config) {
     if (!config) {
@@ -169,14 +174,16 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
 }
 
 static fmrb_err_t add_pending_message(transport_context_t *ctx, uint16_t sequence,
-                                      uint8_t msg_type, const uint8_t *payload, uint32_t payload_len) {
+                                      uint8_t link_type, uint8_t sub_cmd,
+                                      const uint8_t *payload, uint32_t payload_len) {
     if (ctx->pending_count >= MAX_PENDING_MESSAGES) {
         return FMRB_ERR_FAILED;
     }
 
     pending_message_t *pending = &ctx->pending_messages[ctx->pending_count];
     pending->sequence = sequence;
-    pending->msg_type = msg_type;
+    pending->link_type = link_type;
+    pending->sub_cmd = sub_cmd;
     pending->payload_len = payload_len;
     pending->sent_time = fmrb_hal_time_get_us();
     pending->retry_count = 0;
@@ -195,7 +202,8 @@ static fmrb_err_t add_pending_message(transport_context_t *ctx, uint16_t sequenc
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_send(uint8_t msg_type,
+fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
+                                    uint8_t sub_cmd,
                                     const uint8_t *payload,
                                     uint32_t payload_len) {
     transport_context_t *ctx = &g_tranport_context;
@@ -206,34 +214,22 @@ fmrb_err_t fmrb_link_transport_send(uint8_t msg_type,
     uint16_t sequence = ctx->next_sequence++;
     uint8_t seq = (uint8_t)(sequence & 0xFF);
 
-    // Determine link_type from msg_type
-    // Control commands: only FMRB_LINK_CONTROL_INIT_DISPLAY (0x01)
-    // Graphics commands: everything else (Graphics and Audio ranges overlap, Audio not currently used via transport)
-    uint8_t link_type;
-    if (msg_type == FMRB_LINK_CONTROL_INIT_DISPLAY) {
-        link_type = FMRB_LINK_TYPE_CONTROL;
-    } else {
-        // All other commands are graphics
-        // Note: Audio commands (0x20-0x25) overlap with Graphics text commands
-        // Audio subsystem uses a different communication mechanism, not this transport
-        link_type = FMRB_LINK_TYPE_GRAPHICS;
-    }
-
     // Send message
-    fmrb_err_t ret = send_raw_message(link_type, seq, msg_type, payload, payload_len);
+    fmrb_err_t ret = send_raw_message(link_type, seq, sub_cmd, payload, payload_len);
     if (ret != FMRB_OK) {
         return ret;
     }
 
     // Add to pending list if retransmit is enabled
     if (ctx->config.enable_retransmit) {
-        add_pending_message(ctx, sequence, msg_type, payload, payload_len);
+        add_pending_message(ctx, sequence, link_type, sub_cmd, payload, payload_len);
     }
 
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_send_sync(uint8_t msg_type,
+fmrb_err_t fmrb_link_transport_send_sync(uint8_t link_type,
+                                         uint8_t sub_cmd,
                                          const uint8_t *payload,
                                          uint32_t payload_len,
                                          uint8_t *response_payload,
@@ -275,16 +271,8 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t msg_type,
 
     fmrb_semaphore_give(ctx->sync_mutex);
 
-    // Determine link_type from msg_type (same logic as async send)
-    uint8_t link_type;
-    if (msg_type == FMRB_LINK_CONTROL_INIT_DISPLAY) {
-        link_type = FMRB_LINK_TYPE_CONTROL;
-    } else {
-        link_type = FMRB_LINK_TYPE_GRAPHICS;
-    }
-
     // Send message
-    fmrb_err_t ret = send_raw_message(link_type, seq, msg_type, payload, payload_len);
+    fmrb_err_t ret = send_raw_message(link_type, seq, sub_cmd, payload, payload_len);
     if (ret != FMRB_OK) {
         // Mark slot as inactive on send failure
         fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
@@ -293,19 +281,68 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t msg_type,
         return ret;
     }
 
-    // Wait for response
-    fmrb_tick_t ticks = (timeout_ms == UINT32_MAX) ? FMRB_TICK_MAX : FMRB_MS_TO_TICKS(timeout_ms);
-    fmrb_base_type_t wait_result = fmrb_semaphore_take(req->wait_sem, ticks);
+    // Wait for response with polling
+    fmrb_time_t start_time = fmrb_hal_time_get_us();
+    uint32_t timeout_us = (timeout_ms == UINT32_MAX) ? UINT32_MAX : (timeout_ms * 1000);
+
+    while (1) {
+        // Process incoming messages
+        fmrb_link_message_t hal_msg;
+        if (fmrb_hal_link_receive(FMRB_LINK_GRAPHICS, &hal_msg, 0) == FMRB_OK) {
+            // Decode msgpack message: [type, seq, sub_cmd, payload]
+            msgpack_unpacked msg;
+            msgpack_unpacked_init(&msg);
+            msgpack_unpack_return unpack_ret = msgpack_unpack_next(&msg, (const char*)hal_msg.data, hal_msg.size, NULL);
+
+            if (unpack_ret == MSGPACK_UNPACK_SUCCESS && msg.data.type == MSGPACK_OBJECT_ARRAY && msg.data.via.array.size == 4) {
+                uint8_t rx_type = 0, rx_seq = 0, rx_sub_cmd = 0;
+                const uint8_t *rx_payload = NULL;
+                uint32_t rx_payload_len = 0;
+
+                // Extract fields
+                if (msg.data.via.array.ptr[0].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
+                    rx_type = (uint8_t)msg.data.via.array.ptr[0].via.u64;
+                }
+                if (msg.data.via.array.ptr[1].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
+                    rx_seq = (uint8_t)msg.data.via.array.ptr[1].via.u64;
+                }
+                if (msg.data.via.array.ptr[2].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
+                    rx_sub_cmd = (uint8_t)msg.data.via.array.ptr[2].via.u64;
+                }
+                if (msg.data.via.array.ptr[3].type == MSGPACK_OBJECT_BIN) {
+                    rx_payload = (const uint8_t*)msg.data.via.array.ptr[3].via.bin.ptr;
+                    rx_payload_len = msg.data.via.array.ptr[3].via.bin.size;
+                }
+
+                handle_received_message(ctx, rx_type, rx_seq, rx_sub_cmd, rx_payload, rx_payload_len);
+            }
+
+            msgpack_unpacked_destroy(&msg);
+        }
+
+        // Check if response received
+        fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
+        bool received = req->response_received;
+        fmrb_semaphore_give(ctx->sync_mutex);
+
+        if (received) {
+            break;
+        }
+
+        // Check timeout
+        if (timeout_us != UINT32_MAX && fmrb_hal_time_is_timeout(start_time, timeout_us)) {
+            fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
+            req->active = false;
+            fmrb_semaphore_give(ctx->sync_mutex);
+            FMRB_LOGW(TAG, "Sync send timeout for seq=%u", sequence);
+            return FMRB_ERR_TIMEOUT;
+        }
+
+        // Small delay to avoid busy-waiting
+        fmrb_hal_time_delay_ms(1);
+    }
 
     fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
-
-    if (wait_result != FMRB_TRUE || !req->response_received) {
-        // Timeout
-        req->active = false;
-        fmrb_semaphore_give(ctx->sync_mutex);
-        FMRB_LOGW(TAG, "Sync send timeout for seq=%u", sequence);
-        return FMRB_ERR_TIMEOUT;
-    }
 
     // Response received
     uint8_t status = req->response_status;
@@ -510,16 +547,7 @@ fmrb_err_t fmrb_link_transport_process(void) {
                 if (pending->retry_count < ctx->config.max_retries) {
                     // Retransmit
                     uint8_t seq = (uint8_t)(pending->sequence & 0xFF);
-
-                    // Determine link_type from msg_type (same logic as in send())
-                    uint8_t link_type;
-                    if (pending->msg_type == FMRB_LINK_CONTROL_INIT_DISPLAY) {
-                        link_type = FMRB_LINK_TYPE_CONTROL;
-                    } else {
-                        link_type = FMRB_LINK_TYPE_GRAPHICS;
-                    }
-
-                    send_raw_message(link_type, seq, pending->msg_type, pending->payload, pending->payload_len);
+                    send_raw_message(pending->link_type, seq, pending->sub_cmd, pending->payload, pending->payload_len);
                     pending->sent_time = current_time;
                     pending->retry_count++;
                 } else {
@@ -543,4 +571,53 @@ fmrb_err_t fmrb_link_transport_process(void) {
 
 fmrb_link_transport_handle_t fmrb_link_transport_get_handle(void) {
     return g_tranport_context.initialized ? &g_tranport_context : NULL;
+}
+
+fmrb_err_t fmrb_link_transport_check_version(uint32_t timeout_ms) {
+    transport_context_t *ctx = &g_tranport_context;
+    if (!ctx->initialized) {
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    // Prepare version request
+    fmrb_control_version_req_t req = {
+        .version = FMRB_LINK_PROTOCOL_VERSION
+    };
+
+    // Buffer for response
+    fmrb_control_version_resp_t resp;
+    uint32_t resp_len = sizeof(resp);
+
+    FMRB_LOGI(TAG, "Checking protocol version (local=%d)", FMRB_LINK_PROTOCOL_VERSION);
+
+    // Send version request synchronously
+    fmrb_err_t ret = fmrb_link_transport_send_sync(
+        FMRB_LINK_TYPE_CONTROL,
+        FMRB_LINK_CONTROL_VERSION,
+        (const uint8_t*)&req,
+        sizeof(req),
+        (uint8_t*)&resp,
+        &resp_len,
+        timeout_ms
+    );
+
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Version check failed: no response (err=%d)", ret);
+        return ret;
+    }
+
+    if (resp_len != sizeof(resp)) {
+        FMRB_LOGE(TAG, "Version check failed: invalid response length (%u)", resp_len);
+        return FMRB_ERR_FAILED;
+    }
+
+    // Check version match
+    if (resp.version != FMRB_LINK_PROTOCOL_VERSION) {
+        FMRB_LOGE(TAG, "Version mismatch: local=%d, remote=%d",
+                  FMRB_LINK_PROTOCOL_VERSION, resp.version);
+        return FMRB_ERR_FAILED;
+    }
+
+    FMRB_LOGI(TAG, "Protocol version matched (version=%d)", resp.version);
+    return FMRB_OK;
 }

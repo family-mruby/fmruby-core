@@ -33,6 +33,14 @@ typedef enum {
 
 // Control command structures
 typedef struct __attribute__((packed)) {
+    uint8_t version;  // Protocol version number
+} fmrb_control_version_req_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t version;  // Protocol version number
+} fmrb_control_version_resp_t;
+
+typedef struct __attribute__((packed)) {
     uint16_t width;
     uint16_t height;
     uint8_t color_depth;     // 8 for RGB332

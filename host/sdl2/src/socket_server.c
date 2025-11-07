@@ -166,9 +166,23 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     // Process based on type
     int result = 0;
     switch (type & 0x7F) {
-        case 1: // FMRB_IPC_TYPE_CONTROL
+        case FMRB_LINK_TYPE_CONTROL:
             // For control commands, sub_cmd is the command type
-            if (sub_cmd == FMRB_LINK_CONTROL_INIT_DISPLAY && cmd_len >= sizeof(fmrb_control_init_display_t)) {
+            if (sub_cmd == FMRB_LINK_CONTROL_VERSION && cmd_len >= 1) {
+                // Version check request
+                uint8_t remote_version = cmd_buffer[0];
+                uint8_t local_version = FMRB_LINK_PROTOCOL_VERSION;
+
+                printf("Received VERSION check: remote=%d, local=%d\n", remote_version, local_version);
+
+                // Send version response via ACK with version in payload
+                result = socket_server_send_ack(type, seq, &local_version, sizeof(local_version));
+
+                if (remote_version != local_version) {
+                    fprintf(stderr, "WARNING: Protocol version mismatch! remote=%d, local=%d\n",
+                            remote_version, local_version);
+                }
+            } else if (sub_cmd == FMRB_LINK_CONTROL_INIT_DISPLAY && cmd_len >= sizeof(fmrb_control_init_display_t)) {
                 const fmrb_control_init_display_t *init_cmd = (const fmrb_control_init_display_t*)cmd_buffer;
                 printf("Received INIT_DISPLAY: %dx%d, %d-bit\n",
                        init_cmd->width, init_cmd->height, init_cmd->color_depth);
@@ -179,12 +193,12 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
             }
             break;
 
-        case 2: // FMRB_IPC_TYPE_GRAPHICS
+        case FMRB_LINK_TYPE_GRAPHICS:
             // Pass msg_type and sub_cmd as graphics cmd_type
             result = graphics_handler_process_command(type, sub_cmd, seq, cmd_buffer, cmd_len);
             break;
 
-        case 4: // FMRB_IPC_TYPE_AUDIO
+        case FMRB_LINK_TYPE_AUDIO:
             result = audio_handler_process_command(cmd_buffer, cmd_len);
             break;
 
