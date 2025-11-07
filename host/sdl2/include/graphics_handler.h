@@ -22,11 +22,13 @@ void graphics_handler_cleanup(void);
 
 /**
  * @brief Process graphics command
+ * @param type Message type
+ * @param seq Sequence number
  * @param data Command data
  * @param size Data size
  * @return 0 on success, -1 on error
  */
-int graphics_handler_process_command(const uint8_t *data, size_t size);
+int graphics_handler_process_command(uint8_t type, uint8_t seq, const uint8_t *data, size_t size);
 
 /**
  * @brief Get SDL renderer reference

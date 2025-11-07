@@ -31,6 +31,16 @@ int socket_server_process(void);
  */
 int socket_server_is_running(void);
 
+/**
+ * @brief Send ACK response with optional payload
+ * @param type Message type
+ * @param seq Sequence number
+ * @param response_data Response payload data (can be NULL)
+ * @param response_len Response payload length
+ * @return 0 on success, -1 on error
+ */
+int socket_server_send_ack(uint8_t type, uint8_t seq, const uint8_t *response_data, uint16_t response_len);
+
 #ifdef __cplusplus
 }
 #endif

@@ -199,7 +199,7 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
             break;
 
         case 2: // FMRB_IPC_TYPE_GRAPHICS
-            result = graphics_handler_process_command(cmd_buffer, cmd_len);
+            result = graphics_handler_process_command(type, seq, cmd_buffer, cmd_len);
             break;
 
         case 4: // FMRB_IPC_TYPE_AUDIO
@@ -241,7 +241,7 @@ static int process_message(const uint8_t *data, size_t size) {
 
     switch (header->type) {
         case FMRB_MSG_GRAPHICS:
-            return graphics_handler_process_command(payload, payload_size);
+            return graphics_handler_process_command(2, 0, payload, payload_size);  // type=2 (GRAPHICS), seq=0 (legacy)
 
         case FMRB_MSG_AUDIO:
             return audio_handler_process_command(payload, payload_size);
@@ -319,6 +319,90 @@ static int read_message(void) {
     }
 
     return messages_processed;
+}
+
+// Send ACK response with optional payload
+int socket_server_send_ack(uint8_t type, uint8_t seq, const uint8_t *response_data, uint16_t response_len) {
+    if (client_fd == -1) {
+        fprintf(stderr, "Cannot send ACK: no client connected\n");
+        return -1;
+    }
+
+    // Build msgpack response: [type, seq, sub_cmd=0xF0 (ACK), payload]
+    msgpack_sbuffer sbuf;
+    msgpack_sbuffer_init(&sbuf);
+    msgpack_packer pk;
+    msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
+
+    // Pack as array: [type, seq, 0xF0 (ACK), response_data]
+    msgpack_pack_array(&pk, 4);
+    msgpack_pack_uint8(&pk, type);
+    msgpack_pack_uint8(&pk, seq);
+    msgpack_pack_uint8(&pk, 0xF0);  // ACK sub-command
+
+    // Pack response data as binary
+    if (response_data && response_len > 0) {
+        msgpack_pack_bin(&pk, response_len);
+        msgpack_pack_bin_body(&pk, response_data, response_len);
+    } else {
+        msgpack_pack_nil(&pk);
+    }
+
+    // Build fmrb_link_header_t
+    typedef struct __attribute__((packed)) {
+        uint32_t magic;       // 0x464D5242 "FMRB"
+        uint8_t version;      // Protocol version
+        uint8_t msg_type;     // Message type
+        uint16_t sequence;    // Sequence number
+        uint32_t payload_len; // Payload length
+        uint32_t checksum;    // CRC32 checksum of payload
+    } fmrb_link_header_t;
+
+    fmrb_link_header_t header;
+    header.magic = 0x464D5242;  // FMRB_LINK_MAGIC
+    header.version = 1;
+    header.msg_type = 0xF0;  // FMRB_LINK_MSG_ACK
+    header.sequence = seq;
+    header.payload_len = sbuf.size;
+    header.checksum = fmrb_link_crc32_update(0, (const uint8_t*)sbuf.data, sbuf.size);
+
+    // Prepare complete message: header + msgpack payload
+    size_t total_msg_len = sizeof(header) + sbuf.size;
+    uint8_t *complete_msg = (uint8_t*)malloc(total_msg_len);
+    if (!complete_msg) {
+        fprintf(stderr, "Failed to allocate buffer for ACK message\n");
+        msgpack_sbuffer_destroy(&sbuf);
+        return -1;
+    }
+
+    memcpy(complete_msg, &header, sizeof(header));
+    memcpy(complete_msg + sizeof(header), sbuf.data, sbuf.size);
+    msgpack_sbuffer_destroy(&sbuf);
+
+    // COBS encode the complete message
+    uint8_t encoded_buffer[BUFFER_SIZE];
+    size_t encoded_len = fmrb_link_cobs_encode(complete_msg, total_msg_len, encoded_buffer);
+
+    free(complete_msg);
+
+    if (encoded_len == 0) {
+        fprintf(stderr, "COBS encode failed for ACK\n");
+        return -1;
+    }
+
+    // Add 0x00 terminator
+    encoded_buffer[encoded_len] = 0x00;
+    encoded_len++;
+
+    // Send to client
+    ssize_t written = write(client_fd, encoded_buffer, encoded_len);
+    if (written != (ssize_t)encoded_len) {
+        fprintf(stderr, "Failed to write ACK response: %zd/%zu\n", written, encoded_len);
+        return -1;
+    }
+
+    printf("ACK sent: type=%u seq=%u response_len=%u\n", type, seq, response_len);
+    return 0;
 }
 
 int socket_server_start(void) {

@@ -226,12 +226,83 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    ESP_LOGI(TAG, "Linux IPC receive from channel %d", channel);
-    // Simulate receive - would actually receive via socket
-    static uint8_t dummy_data[] = {0x01, 0x02, 0x03, 0x04};
-    msg->data = dummy_data;
-    msg->size = sizeof(dummy_data);
-    fmrb_hal_time_delay_ms(1);
+    if (global_socket_fd < 0) {
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    // Set socket timeout
+    struct timeval tv;
+    tv.tv_sec = timeout_ms / 1000;
+    tv.tv_usec = (timeout_ms % 1000) * 1000;
+    setsockopt(global_socket_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+
+    // Static receive buffer for COBS frames
+    static uint8_t recv_buffer[4096];
+    static size_t recv_pos = 0;
+
+    // Try to receive data
+    ssize_t received = recv(global_socket_fd, recv_buffer + recv_pos, sizeof(recv_buffer) - recv_pos, 0);
+    if (received <= 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return FMRB_ERR_TIMEOUT;
+        }
+        return FMRB_ERR_FAILED;
+    }
+
+    ESP_LOGI(TAG, "Received %zd bytes from socket", received);
+    recv_pos += received;
+
+    // Look for COBS frame terminator (0x00)
+    size_t frame_end = 0;
+    while (frame_end < recv_pos && recv_buffer[frame_end] != 0x00) {
+        frame_end++;
+    }
+
+    if (frame_end >= recv_pos) {
+        // No complete frame yet
+        return FMRB_ERR_NOT_FOUND;
+    }
+
+    // Decode COBS frame
+    static uint8_t decoded_buffer[4096];
+    ssize_t decoded_len = fmrb_link_cobs_decode(recv_buffer, frame_end, decoded_buffer);
+    if (decoded_len <= 0) {
+        ESP_LOGE(TAG, "COBS decode failed");
+        // Remove invalid frame
+        size_t remaining = recv_pos - (frame_end + 1);
+        if (remaining > 0) {
+            memmove(recv_buffer, recv_buffer + frame_end + 1, remaining);
+        }
+        recv_pos = remaining;
+        return FMRB_ERR_FAILED;
+    }
+
+    ESP_LOGI(TAG, "COBS decoded %zd bytes", decoded_len);
+
+    // Debug: print header info
+    if (decoded_len >= 14) {  // Minimum header size
+        uint32_t magic = *(uint32_t*)decoded_buffer;
+        uint8_t version = decoded_buffer[4];
+        uint8_t msg_type = decoded_buffer[5];
+        uint16_t sequence = *(uint16_t*)(decoded_buffer + 6);
+        uint32_t payload_len = *(uint32_t*)(decoded_buffer + 8);
+        uint32_t checksum = *(uint32_t*)(decoded_buffer + 12);
+        ESP_LOGI(TAG, "Header: magic=0x%08x ver=%u type=0x%02x seq=%u plen=%u csum=0x%08x",
+                 magic, version, msg_type, sequence, payload_len, checksum);
+    }
+
+    // Remove processed frame from buffer
+    size_t remaining = recv_pos - (frame_end + 1);
+    if (remaining > 0) {
+        memmove(recv_buffer, recv_buffer + frame_end + 1, remaining);
+    }
+    recv_pos = remaining;
+
+    // Return decoded data
+    msg->data = decoded_buffer;
+    msg->size = decoded_len;
+
+    ESP_LOGD(TAG, "Received %zd bytes from channel %d", decoded_len, channel);
     return FMRB_OK;
 }
 

@@ -85,7 +85,13 @@ extern "C" SDL_Renderer* graphics_handler_get_renderer(void) {
     return nullptr; // Not used with LovyanGFX
 }
 
-extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size) {
+// Forward declaration - implemented in socket_server.c
+extern "C" int socket_server_send_ack(uint8_t type, uint8_t seq, const uint8_t *response_data, uint16_t response_len);
+
+// Next canvas ID to allocate
+static uint16_t g_next_canvas_id = 1;
+
+extern "C" int graphics_handler_process_command(uint8_t type, uint8_t seq, const uint8_t *data, size_t size) {
     if (!data || size < 1 || !g_lgfx) {
         return -1;
     }
@@ -316,10 +322,10 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
             if (size >= sizeof(fmrb_gfx_create_canvas_cmd_t)) {
                 const fmrb_gfx_create_canvas_cmd_t *cmd = (const fmrb_gfx_create_canvas_cmd_t*)data;
 
-                // Check if canvas already exists
-                if (g_canvases.find(cmd->canvas_id) != g_canvases.end()) {
-                    fprintf(stderr, "Canvas %u already exists\n", cmd->canvas_id);
-                    return -1;
+                // Allocate new canvas ID (ignore cmd->canvas_id from client)
+                uint16_t canvas_id = g_next_canvas_id++;
+                if (canvas_id == 0xFFFF) {  // FMRB_CANVAS_INVALID
+                    canvas_id = g_next_canvas_id++;  // Skip invalid value
                 }
 
                 // Create new sprite
@@ -327,13 +333,16 @@ extern "C" int graphics_handler_process_command(const uint8_t *data, size_t size
                 sprite->setColorDepth(8);  // RGB332
                 if (!sprite->createSprite(cmd->width, cmd->height)) {
                     fprintf(stderr, "Failed to create sprite %u (%dx%d)\n",
-                            cmd->canvas_id, cmd->width, cmd->height);
+                            canvas_id, cmd->width, cmd->height);
                     delete sprite;
                     return -1;
                 }
 
-                g_canvases[cmd->canvas_id] = sprite;
-                printf("Canvas created: ID=%u, %dx%d\n", cmd->canvas_id, cmd->width, cmd->height);
+                g_canvases[canvas_id] = sprite;
+                printf("Canvas created: ID=%u, %dx%d\n", canvas_id, cmd->width, cmd->height);
+
+                // Send ACK with canvas_id
+                socket_server_send_ack(type, seq, (const uint8_t*)&canvas_id, sizeof(canvas_id));
                 return 0;
             }
             break;

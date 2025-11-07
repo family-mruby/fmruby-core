@@ -332,6 +332,9 @@ static void fmrb_host_task(void *pvParameters)
             host_task_process_message(&msg);
         }
 
+        // Process incoming IPC messages (ACK/NACK responses)
+        fmrb_link_transport_process();
+
         // Periodic update processing
         fmrb_tick_t now = fmrb_task_get_tick_count();
         if ((now - xLastUpdate) >= xUpdatePeriod) {

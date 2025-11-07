@@ -398,17 +398,32 @@ fmrb_err_t fmrb_link_transport_unregister_callback(uint8_t msg_type) {
 }
 
 static void handle_received_message(transport_context_t *ctx, const fmrb_link_header_t *header, const uint8_t *payload) {
-    // Handle ACK/NACK messages
+    // Handle ACK/NACK messages (msgpack format from host)
     if (header->msg_type == FMRB_LINK_MSG_ACK || header->msg_type == FMRB_LINK_MSG_NACK) {
-        // Extract ACK data
         uint8_t response_status = (header->msg_type == FMRB_LINK_MSG_ACK) ? 0 : 1;
         uint16_t original_sequence = header->sequence;
+        const uint8_t *response_data = NULL;
+        uint32_t response_data_len = 0;
 
-        // If payload contains fmrb_link_ack_t, extract original_sequence and status
-        if (payload && header->payload_len >= sizeof(fmrb_link_ack_t)) {
-            fmrb_link_ack_t *ack = (fmrb_link_ack_t *)payload;
-            original_sequence = ack->original_sequence;
-            response_status = ack->status;
+        // Try to parse msgpack payload: [type, seq, 0xF0, response_data]
+        if (payload && header->payload_len > 0) {
+            msgpack_unpacked msg;
+            msgpack_unpacked_init(&msg);
+            msgpack_unpack_return ret = msgpack_unpack_next(&msg, (const char*)payload, header->payload_len, NULL);
+
+            if (ret == MSGPACK_UNPACK_SUCCESS && msg.data.type == MSGPACK_OBJECT_ARRAY && msg.data.via.array.size == 4) {
+                // Extract sequence from msgpack array
+                if (msg.data.via.array.ptr[1].type == MSGPACK_OBJECT_POSITIVE_INTEGER) {
+                    original_sequence = (uint16_t)msg.data.via.array.ptr[1].via.u64;
+                }
+
+                // Extract response data (4th element)
+                if (msg.data.via.array.ptr[3].type == MSGPACK_OBJECT_BIN) {
+                    response_data = (const uint8_t*)msg.data.via.array.ptr[3].via.bin.ptr;
+                    response_data_len = msg.data.via.array.ptr[3].via.bin.size;
+                }
+            }
+            msgpack_unpacked_destroy(&msg);
         }
 
         // Check if this is a response to a sync request
@@ -419,14 +434,10 @@ static void handle_received_message(transport_context_t *ctx, const fmrb_link_he
                 req->response_received = true;
                 req->response_status = response_status;
 
-                // Copy response payload if provided
-                if (payload && header->payload_len > sizeof(fmrb_link_ack_t) && req->response_payload) {
-                    // Payload after fmrb_link_ack_t is the actual response data
-                    uint32_t data_offset = sizeof(fmrb_link_ack_t);
-                    uint32_t data_len = header->payload_len - data_offset;
-                    uint32_t copy_len = (data_len < req->response_max_len) ? data_len : req->response_max_len;
-
-                    memcpy(req->response_payload, payload + data_offset, copy_len);
+                // Copy response data if provided
+                if (response_data && response_data_len > 0 && req->response_payload) {
+                    uint32_t copy_len = (response_data_len < req->response_max_len) ? response_data_len : req->response_max_len;
+                    memcpy(req->response_payload, response_data, copy_len);
                     req->response_len = copy_len;
                 }
 

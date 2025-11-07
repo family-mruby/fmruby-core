@@ -25,7 +25,7 @@ static bool is_clipped(fmrb_gfx_context_impl_t *ctx, int16_t x, int16_t y) {
             y >= ctx->clip_rect.y + ctx->clip_rect.height);
 }
 
-// Helper function to send graphics command
+// Helper function to send graphics command (asynchronous)
 static fmrb_gfx_err_t send_graphics_command(fmrb_gfx_context_impl_t *ctx, uint8_t cmd_type, const void *cmd_data, size_t cmd_size) {
     if (!ctx) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
@@ -42,6 +42,45 @@ static fmrb_gfx_err_t send_graphics_command(fmrb_gfx_context_impl_t *ctx, uint8_
             return FMRB_GFX_ERR_NO_MEMORY;
         case FMRB_ERR_TIMEOUT:
             return FMRB_GFX_ERR_FAILED;  // Map timeout to generic failure
+        default:
+            return FMRB_GFX_ERR_FAILED;
+    }
+}
+
+// Helper function to send graphics command synchronously and wait for response
+static fmrb_gfx_err_t send_graphics_command_sync(
+    fmrb_gfx_context_impl_t *ctx,
+    uint8_t cmd_type,
+    const void *cmd_data,
+    size_t cmd_size,
+    uint8_t *response_data,
+    uint32_t *response_len,
+    uint32_t timeout_ms)
+{
+    if (!ctx) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    fmrb_err_t ret = fmrb_link_transport_send_sync(
+        cmd_type,
+        (const uint8_t*)cmd_data,
+        cmd_size,
+        response_data,
+        response_len,
+        timeout_ms
+    );
+
+    switch (ret) {
+        case FMRB_OK:
+            return FMRB_GFX_OK;
+        case FMRB_ERR_INVALID_PARAM:
+            return FMRB_GFX_ERR_INVALID_PARAM;
+        case FMRB_ERR_NO_MEMORY:
+            return FMRB_GFX_ERR_NO_MEMORY;
+        case FMRB_ERR_TIMEOUT:
+            return FMRB_GFX_ERR_FAILED;  // Map timeout to generic failure
+        case FMRB_ERR_BUSY:
+            return FMRB_GFX_ERR_FAILED;  // No available sync slots
         default:
             return FMRB_GFX_ERR_FAILED;
     }
@@ -829,25 +868,42 @@ fmrb_gfx_err_t fmrb_gfx_create_canvas(
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    // Assign new canvas ID
-    uint16_t canvas_id = ctx->next_canvas_id++;
-    if (canvas_id == FMRB_CANVAS_INVALID) {
-        // Wrapped around, skip invalid value
-        canvas_id = ctx->next_canvas_id++;
-    }
-
-    // Send create canvas command to host
+    // Send create canvas command to host (without canvas_id, host will assign it)
+    // Note: cmd structure still has canvas_id field for compatibility, set to 0
     fmrb_link_graphics_create_canvas_t cmd = {
         .cmd_type = FMRB_LINK_GFX_CREATE_CANVAS,
-        .canvas_id = canvas_id,
+        .canvas_id = 0,  // Host will assign the actual ID
         .width = width,
         .height = height
     };
 
-    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_CREATE_CANVAS, &cmd, sizeof(cmd));
+    // Use synchronous send to wait for response with canvas_id
+    uint8_t response_data[sizeof(uint16_t)];  // Expect canvas_id as uint16_t
+    uint32_t response_len = sizeof(response_data);
+
+    fmrb_gfx_err_t ret = send_graphics_command_sync(
+        ctx,
+        FMRB_LINK_GFX_CREATE_CANVAS,
+        &cmd,
+        sizeof(cmd),
+        response_data,
+        &response_len,
+        1000  // 1 second timeout
+    );
+
     if (ret == FMRB_GFX_OK) {
-        *canvas_handle = canvas_id;
-        ESP_LOGI(TAG, "Canvas created: ID=%u, %dx%d", canvas_id, width, height);
+        // Extract canvas_id from response
+        if (response_len >= sizeof(uint16_t)) {
+            uint16_t canvas_id;
+            memcpy(&canvas_id, response_data, sizeof(uint16_t));
+            *canvas_handle = canvas_id;
+            ESP_LOGI(TAG, "Canvas created: ID=%u, %dx%d", canvas_id, width, height);
+        } else {
+            ESP_LOGE(TAG, "Canvas creation response too short: %u bytes", response_len);
+            return FMRB_GFX_ERR_FAILED;
+        }
+    } else {
+        ESP_LOGE(TAG, "Failed to create canvas: %dx%d, error=%d", width, height, ret);
     }
 
     return ret;
