@@ -4,9 +4,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-// Legacy CRC32 table and functions removed - fmrb_link_header_t is no longer used
-// Use fmrb_link_frame_encode/decode for IPC_spec.md compliant framing with built-in CRC32
-
 // Frame encode/decode (IPC_spec.md compliant)
 ssize_t fmrb_link_frame_encode(uint8_t type, uint8_t seq, const uint8_t *payload, uint16_t payload_len,
                                uint8_t *output, size_t output_len) {

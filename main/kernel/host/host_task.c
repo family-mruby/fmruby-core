@@ -98,7 +98,7 @@ static int init_gfx_audio(void)
         // Send display initialization command to host
         // This tells the host to create the SDL2 window with the specified resolution
         fmrb_control_init_display_t init_cmd = {
-            .cmd_type = FMRB_CONTROL_CMD_INIT_DISPLAY,
+            .cmd_type = FMRB_LINK_CONTROL_INIT_DISPLAY,
             .width = conf->display_width,
             .height = conf->display_height,
             .color_depth = 8  // RGB332
@@ -109,7 +109,7 @@ static int init_gfx_audio(void)
 
         // Use singleton transport API (no handle needed)
         fmrb_err_t ret = fmrb_link_transport_send(
-            FMRB_CONTROL_CMD_INIT_DISPLAY,  // msg_type (0x01) will be detected as CONTROL
+            FMRB_LINK_CONTROL_INIT_DISPLAY,  // msg_type (0x01) will be detected as CONTROL
             (const uint8_t*)&init_cmd,
             sizeof(init_cmd)
         );

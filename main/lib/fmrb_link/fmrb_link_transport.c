@@ -13,9 +13,6 @@
 #define MAX_PENDING_MESSAGES 8
 #define MAX_SYNC_REQUESTS 4
 
-// Control command definitions (should match host/common/protocol.h)
-#define FMRB_CONTROL_CMD_INIT_DISPLAY 0x01
-
 typedef struct {
     uint8_t msg_type;
     fmrb_link_transport_callback_t callback;
@@ -210,10 +207,10 @@ fmrb_err_t fmrb_link_transport_send(uint8_t msg_type,
     uint8_t seq = (uint8_t)(sequence & 0xFF);
 
     // Determine link_type from msg_type
-    // Control commands: only FMRB_CONTROL_CMD_INIT_DISPLAY (0x01)
+    // Control commands: only FMRB_LINK_CONTROL_INIT_DISPLAY (0x01)
     // Graphics commands: everything else (Graphics and Audio ranges overlap, Audio not currently used via transport)
     uint8_t link_type;
-    if (msg_type == FMRB_CONTROL_CMD_INIT_DISPLAY) {
+    if (msg_type == FMRB_LINK_CONTROL_INIT_DISPLAY) {
         link_type = FMRB_LINK_TYPE_CONTROL;
     } else {
         // All other commands are graphics
@@ -280,7 +277,7 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t msg_type,
 
     // Determine link_type from msg_type (same logic as async send)
     uint8_t link_type;
-    if (msg_type == FMRB_CONTROL_CMD_INIT_DISPLAY) {
+    if (msg_type == FMRB_LINK_CONTROL_INIT_DISPLAY) {
         link_type = FMRB_LINK_TYPE_CONTROL;
     } else {
         link_type = FMRB_LINK_TYPE_GRAPHICS;
@@ -376,8 +373,8 @@ fmrb_err_t fmrb_link_transport_unregister_callback(uint8_t msg_type) {
 static void handle_received_message(transport_context_t *ctx, uint8_t type, uint8_t seq,
                                     uint8_t sub_cmd, const uint8_t *payload, uint32_t payload_len) {
     // Handle ACK/NACK messages
-    if (sub_cmd == FMRB_LINK_MSG_ACK || sub_cmd == FMRB_LINK_MSG_NACK) {
-        uint8_t response_status = (sub_cmd == FMRB_LINK_MSG_ACK) ? 0 : 1;
+    if (sub_cmd == FMRB_LINK_RESPONSE_MSG_ACK || sub_cmd == FMRB_LINK_RESPONSE_MSG_NACK) {
+        uint8_t response_status = (sub_cmd == FMRB_LINK_RESPONSE_MSG_ACK) ? 0 : 1;
         uint16_t original_sequence = seq;
         const uint8_t *response_data = payload;
         uint32_t response_data_len = payload_len;
@@ -453,7 +450,7 @@ static void handle_received_message(transport_context_t *ctx, uint8_t type, uint
 
     uint16_t ack_sequence = ctx->next_sequence++;
     uint8_t ack_seq = (uint8_t)(ack_sequence & 0xFF);
-    send_raw_message(FMRB_LINK_TYPE_CONTROL, ack_seq, FMRB_LINK_MSG_ACK, (uint8_t*)&ack, sizeof(ack));
+    send_raw_message(FMRB_LINK_TYPE_CONTROL, ack_seq, FMRB_LINK_RESPONSE_MSG_ACK, (uint8_t*)&ack, sizeof(ack));
 }
 
 fmrb_err_t fmrb_link_transport_process(void) {
@@ -516,7 +513,7 @@ fmrb_err_t fmrb_link_transport_process(void) {
 
                     // Determine link_type from msg_type (same logic as in send())
                     uint8_t link_type;
-                    if (pending->msg_type == FMRB_CONTROL_CMD_INIT_DISPLAY) {
+                    if (pending->msg_type == FMRB_LINK_CONTROL_INIT_DISPLAY) {
                         link_type = FMRB_LINK_TYPE_CONTROL;
                     } else {
                         link_type = FMRB_LINK_TYPE_GRAPHICS;

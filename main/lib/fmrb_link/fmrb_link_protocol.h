@@ -25,6 +25,15 @@ typedef enum {
     FMRB_LINK_FLAG_CHUNKED = 64
 } fmrb_link_type_t;
 
+//---------------------------
+// Sub Command
+//---------------------------
+#define FMRB_LINK_CONTROL_INIT_DISPLAY 0x01
+
+// Protocol response codes
+#define FMRB_LINK_RESPONSE_MSG_ACK     0xF0
+#define FMRB_LINK_RESPONSE_MSG_NACK    0xF1
+
 // Graphics sub-commands (LovyanGFX API in snake_case)
 typedef enum {
     // Window management
@@ -93,18 +102,6 @@ typedef enum {
     FMRB_LINK_MSG_AUDIO_QUEUE_SAMPLES = 0x25
 } fmrb_link_audio_cmd_t;
 
-// Legacy message types (for backward compatibility)
-#define FMRB_LINK_MSG_GRAPHICS_CLEAR      0x11
-#define FMRB_LINK_MSG_GRAPHICS_PRESENT    0x12
-#define FMRB_LINK_MSG_GRAPHICS_SET_PIXEL  0x13
-#define FMRB_LINK_MSG_GRAPHICS_DRAW_LINE  0x14
-#define FMRB_LINK_MSG_GRAPHICS_DRAW_RECT  0x15
-#define FMRB_LINK_MSG_GRAPHICS_DRAW_TEXT  0x16
-#define FMRB_LINK_MSG_ACK                 0xF0
-#define FMRB_LINK_MSG_NACK                0xF1
-#define FMRB_LINK_MSG_PING                0xF2
-#define FMRB_LINK_MSG_PONG                0xF3
-
 // Frame header (based on IPC_spec.md)
 typedef struct __attribute__((packed)) {
     uint8_t type;    // Message type
@@ -143,15 +140,6 @@ typedef struct __attribute__((packed)) {
     uint32_t next_offset; // Next offset to send
 } fmrb_link_frame_chunk_ack_t;
 
-// Legacy message header (kept for compatibility)
-typedef struct __attribute__((packed)) {
-    uint32_t magic;      // 0xFMRB (0x464D5242)
-    uint8_t version;     // Protocol version
-    uint8_t msg_type;    // Message type
-    uint16_t sequence;   // Sequence number
-    uint32_t payload_len; // Payload length
-    uint32_t checksum;   // CRC32 checksum of payload
-} fmrb_link_header_t;
 
 // Graphics message structures (RGB332 color format)
 // Note: cmd_type is sent separately via send_graphics_command()
@@ -262,13 +250,8 @@ typedef struct __attribute__((packed)) {
     uint8_t status; // 0 = success, others = error codes
 } fmrb_link_ack_t;
 
-// Magic number
-#define FMRB_LINK_MAGIC 0x464D5242 // "FMRB"
-
 // Max payload size
 #define FMRB_LINK_MAX_PAYLOAD_SIZE 4096
-
-// Legacy utility functions removed - fmrb_link_header_t is no longer used
 
 // Frame utility functions (IPC_spec.md compliant)
 /**

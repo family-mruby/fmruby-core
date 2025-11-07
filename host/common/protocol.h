@@ -39,12 +39,9 @@ typedef struct {
     uint32_t sequence;      // Sequence number
 } __attribute__((packed)) fmrb_host_msg_header_t;
 
-// Control command subtypes
-#define FMRB_CONTROL_CMD_INIT_DISPLAY 0x01
-
 // Display initialization command
 typedef struct {
-    uint8_t cmd_type;        // FMRB_CONTROL_CMD_INIT_DISPLAY
+    uint8_t cmd_type;        // FMRB_LINK_CONTROL_INIT_DISPLAY
     uint16_t width;
     uint16_t height;
     uint8_t color_depth;     // 8 for RGB332

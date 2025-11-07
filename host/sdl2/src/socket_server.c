@@ -169,7 +169,7 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
     switch (type & 0x7F) {
         case 1: // FMRB_IPC_TYPE_CONTROL
             // For control commands, sub_cmd is the command type
-            if (sub_cmd == FMRB_CONTROL_CMD_INIT_DISPLAY && cmd_len >= sizeof(fmrb_control_init_display_t)) {
+            if (sub_cmd == FMRB_LINK_CONTROL_INIT_DISPLAY && cmd_len >= sizeof(fmrb_control_init_display_t)) {
                 const fmrb_control_init_display_t *init_cmd = (const fmrb_control_init_display_t*)cmd_buffer;
                 printf("Received INIT_DISPLAY: %dx%d, %d-bit\n",
                        init_cmd->width, init_cmd->height, init_cmd->color_depth);
