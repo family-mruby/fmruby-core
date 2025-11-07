@@ -107,30 +107,22 @@ static int init_gfx_audio(void)
         FMRB_LOGI(TAG, "Sending display initialization to host: %dx%d, %d-bit",
                   init_cmd.width, init_cmd.height, init_cmd.color_depth);
 
-        // Access the transport handle from the context
-        extern fmrb_link_transport_handle_t fmrb_gfx_get_transport(fmrb_gfx_context_t context);
-        fmrb_link_transport_handle_t transport = fmrb_gfx_get_transport(ctx);
+        // Use singleton transport API (no handle needed)
+        fmrb_err_t ret = fmrb_link_transport_send(
+            FMRB_CONTROL_CMD_INIT_DISPLAY,  // msg_type (0x01) will be detected as CONTROL
+            (const uint8_t*)&init_cmd,
+            sizeof(init_cmd)
+        );
 
-        if (transport) {
-            fmrb_err_t ret = fmrb_link_transport_send(
-                transport,
-                FMRB_CONTROL_CMD_INIT_DISPLAY,  // msg_type (0x01) will be detected as CONTROL
-                (const uint8_t*)&init_cmd,
-                sizeof(init_cmd)
-            );
-
-            if (ret != FMRB_OK) {
-                FMRB_LOGE(TAG, "Failed to send display init command: %d", ret);
-                return -1;
-            }
-
-            FMRB_LOGI(TAG, "Display initialization command sent successfully");
-
-            // Give host time to initialize the display (200ms)
-            fmrb_task_delay(200 / portTICK_PERIOD_MS);
-        } else {
-            FMRB_LOGW(TAG, "Transport not available, skipping display init command");
+        if (ret != FMRB_OK) {
+            FMRB_LOGE(TAG, "Failed to send display init command: %d", ret);
+            return -1;
         }
+
+        FMRB_LOGI(TAG, "Display initialization command sent successfully");
+
+        // Give host time to initialize the display (200ms)
+        fmrb_task_delay(200 / portTICK_PERIOD_MS);
 
         FMRB_LOGI(TAG, "Graphics fully initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
 

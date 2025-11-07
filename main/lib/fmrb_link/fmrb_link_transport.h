@@ -27,35 +27,29 @@ typedef void (*fmrb_link_transport_callback_t)(const fmrb_link_header_t *header,
 /**
  * @brief Initialize IPC transport
  * @param config Transport configuration
- * @param handle Pointer to store transport handle
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config,
-                                    fmrb_link_transport_handle_t *handle);
+fmrb_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config);
 
 /**
  * @brief Deinitialize IPC transport
- * @param handle Transport handle
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_link_transport_deinit(fmrb_link_transport_handle_t handle);
+fmrb_err_t fmrb_link_transport_deinit(void);
 
 /**
  * @brief Send message with automatic sequence numbering and retransmission
- * @param handle Transport handle
  * @param msg_type Message type
  * @param payload Payload data
  * @param payload_len Payload length
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_link_transport_send(fmrb_link_transport_handle_t handle,
-                                    uint8_t msg_type,
+fmrb_err_t fmrb_link_transport_send(uint8_t msg_type,
                                     const uint8_t *payload,
                                     uint32_t payload_len);
 
 /**
  * @brief Send message synchronously and wait for ACK
- * @param handle Transport handle
  * @param msg_type Message type
  * @param payload Payload data
  * @param payload_len Payload length
@@ -64,8 +58,7 @@ fmrb_err_t fmrb_link_transport_send(fmrb_link_transport_handle_t handle,
  * @param timeout_ms Timeout in milliseconds
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_link_transport_send_sync(fmrb_link_transport_handle_t handle,
-                                         uint8_t msg_type,
+fmrb_err_t fmrb_link_transport_send_sync(uint8_t msg_type,
                                          const uint8_t *payload,
                                          uint32_t payload_len,
                                          uint8_t *response_payload,
@@ -74,32 +67,33 @@ fmrb_err_t fmrb_link_transport_send_sync(fmrb_link_transport_handle_t handle,
 
 /**
  * @brief Register callback for specific message type
- * @param handle Transport handle
  * @param msg_type Message type to listen for
  * @param callback Callback function
  * @param user_data User data passed to callback
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_link_transport_register_callback(fmrb_link_transport_handle_t handle,
-                                                 uint8_t msg_type,
+fmrb_err_t fmrb_link_transport_register_callback(uint8_t msg_type,
                                                  fmrb_link_transport_callback_t callback,
                                                  void *user_data);
 
 /**
  * @brief Unregister callback for message type
- * @param handle Transport handle
  * @param msg_type Message type
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_link_transport_unregister_callback(fmrb_link_transport_handle_t handle,
-                                                   uint8_t msg_type);
+fmrb_err_t fmrb_link_transport_unregister_callback(uint8_t msg_type);
 
 /**
  * @brief Process incoming messages (should be called regularly)
- * @param handle Transport handle
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_link_transport_process(fmrb_link_transport_handle_t handle);
+fmrb_err_t fmrb_link_transport_process(void);
+
+/**
+ * @brief Get transport handle (for backward compatibility)
+ * @return Transport handle or NULL if not initialized
+ */
+fmrb_link_transport_handle_t fmrb_link_transport_get_handle(void);
 
 #ifdef __cplusplus
 }

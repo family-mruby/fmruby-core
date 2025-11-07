@@ -130,7 +130,7 @@ static int init_hal(void)
     }
     FMRB_LOGI(TAG, "Message queue initialized");
 
-    // Initialize transport
+    // Initialize transport (singleton)
     fmrb_link_transport_config_t transport_config = {
         .timeout_ms = 1000,
         .enable_retransmit = true,
@@ -138,8 +138,7 @@ static int init_hal(void)
         .window_size = 8
     };
 
-    fmrb_link_transport_handle_t transport_handle;
-    ret = fmrb_link_transport_init(&transport_config, &transport_handle);
+    ret = fmrb_link_transport_init(&transport_config);
     if (ret != FMRB_OK) {
         return false;
     }

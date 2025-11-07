@@ -125,16 +125,6 @@ fmrb_gfx_err_t fmrb_gfx_deinit(void);
 fmrb_gfx_context_t fmrb_gfx_get_global_context(void);
 
 /**
- * @brief Get transport handle from graphics context
- * @param context Graphics context
- * @return Transport handle (NULL if context is invalid)
- *
- * This function provides access to the underlying transport layer handle.
- * Used by system components to send control messages to the host.
- */
-fmrb_link_transport_handle_t fmrb_gfx_get_transport(fmrb_gfx_context_t context);
-
-/**
  * @brief Clear screen with specified color
  * @param context Graphics context
  * @param canvas_id Target canvas ID

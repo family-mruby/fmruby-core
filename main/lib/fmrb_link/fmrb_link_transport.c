@@ -63,9 +63,8 @@ static transport_context_t g_tranport_context;
 
 static const char *TAG = "fmrb_link_transport";
 
-fmrb_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config,
-                                    fmrb_link_transport_handle_t *handle) {
-    if (!config || !handle) {
+fmrb_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config) {
+    if (!config) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
@@ -102,17 +101,12 @@ fmrb_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config,
 
     ctx->initialized = true;
 
-    *handle = ctx;
     FMRB_LOGI(TAG,"initialized");
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_deinit(fmrb_link_transport_handle_t handle) {
-    if (!handle) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-
-    transport_context_t *ctx = (transport_context_t *)handle;
+fmrb_err_t fmrb_link_transport_deinit(void) {
+    transport_context_t *ctx = &g_tranport_context;
 
     // Free pending messages
     for (int i = 0; i < ctx->pending_count; i++) {
@@ -215,15 +209,10 @@ static fmrb_err_t add_pending_message(transport_context_t *ctx, uint16_t sequenc
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_send(fmrb_link_transport_handle_t handle,
-                                    uint8_t msg_type,
+fmrb_err_t fmrb_link_transport_send(uint8_t msg_type,
                                     const uint8_t *payload,
                                     uint32_t payload_len) {
-    if (!handle) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-
-    transport_context_t *ctx = (transport_context_t *)handle;
+    transport_context_t *ctx = &g_tranport_context;
     if (!ctx->initialized) {
         return FMRB_ERR_INVALID_STATE;
     }
@@ -265,18 +254,13 @@ fmrb_err_t fmrb_link_transport_send(fmrb_link_transport_handle_t handle,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_send_sync(fmrb_link_transport_handle_t handle,
-                                         uint8_t msg_type,
+fmrb_err_t fmrb_link_transport_send_sync(uint8_t msg_type,
                                          const uint8_t *payload,
                                          uint32_t payload_len,
                                          uint8_t *response_payload,
                                          uint32_t *response_len,
                                          uint32_t timeout_ms) {
-    if (!handle) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-
-    transport_context_t *ctx = (transport_context_t *)handle;
+    transport_context_t *ctx = &g_tranport_context;
     if (!ctx->initialized) {
         return FMRB_ERR_INVALID_STATE;
     }
@@ -367,15 +351,14 @@ fmrb_err_t fmrb_link_transport_send_sync(fmrb_link_transport_handle_t handle,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_register_callback(fmrb_link_transport_handle_t handle,
-                                                 uint8_t msg_type,
+fmrb_err_t fmrb_link_transport_register_callback(uint8_t msg_type,
                                                  fmrb_link_transport_callback_t callback,
                                                  void *user_data) {
-    if (!handle || !callback) {
+    if (!callback) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    transport_context_t *ctx = (transport_context_t *)handle;
+    transport_context_t *ctx = &g_tranport_context;
     if (!ctx->initialized) {
         return FMRB_ERR_INVALID_STATE;
     }
@@ -393,13 +376,8 @@ fmrb_err_t fmrb_link_transport_register_callback(fmrb_link_transport_handle_t ha
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_unregister_callback(fmrb_link_transport_handle_t handle,
-                                                   uint8_t msg_type) {
-    if (!handle) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-
-    transport_context_t *ctx = (transport_context_t *)handle;
+fmrb_err_t fmrb_link_transport_unregister_callback(uint8_t msg_type) {
+    transport_context_t *ctx = &g_tranport_context;
     if (!ctx->initialized) {
         return FMRB_ERR_INVALID_STATE;
     }
@@ -513,12 +491,8 @@ static void handle_received_message(transport_context_t *ctx, const fmrb_link_he
     send_raw_message(FMRB_LINK_TYPE_CONTROL, &ack_header, (uint8_t*)&ack);
 }
 
-fmrb_err_t fmrb_link_transport_process(fmrb_link_transport_handle_t handle) {
-    if (!handle) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-
-    transport_context_t *ctx = (transport_context_t *)handle;
+fmrb_err_t fmrb_link_transport_process(void) {
+    transport_context_t *ctx = &g_tranport_context;
     if (!ctx->initialized) {
         return FMRB_ERR_INVALID_STATE;
     }
@@ -591,4 +565,8 @@ fmrb_err_t fmrb_link_transport_process(fmrb_link_transport_handle_t handle) {
     }
 
     return FMRB_OK;
+}
+
+fmrb_link_transport_handle_t fmrb_link_transport_get_handle(void) {
+    return g_tranport_context.initialized ? &g_tranport_context : NULL;
 }

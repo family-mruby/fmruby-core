@@ -27,11 +27,11 @@ static bool is_clipped(fmrb_gfx_context_impl_t *ctx, int16_t x, int16_t y) {
 
 // Helper function to send graphics command
 static fmrb_gfx_err_t send_graphics_command(fmrb_gfx_context_impl_t *ctx, uint8_t cmd_type, const void *cmd_data, size_t cmd_size) {
-    if (!ctx || !ctx->transport) {
+    if (!ctx) {
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    fmrb_err_t ret = fmrb_link_transport_send(ctx->transport, cmd_type, (const uint8_t*)cmd_data, cmd_size);
+    fmrb_err_t ret = fmrb_link_transport_send(cmd_type, (const uint8_t*)cmd_data, cmd_size);
 
     switch (ret) {
         case FMRB_OK:
@@ -58,28 +58,17 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config) {
         return FMRB_GFX_OK;
     }
 
-    //fmrb_gfx_context_impl_t *ctx = fmrb_sys_malloc(sizeof(fmrb_gfx_context_impl_t));
     fmrb_gfx_context_impl_t *ctx = &g_gfx_context_body;
-    // if (!ctx) {
-    //     return FMRB_GFX_ERR_NO_MEMORY;
-    // }
-
     memset(ctx, 0, sizeof(fmrb_gfx_context_impl_t));
     ctx->config = *config;
 
-    // Initialize IPC transport for graphics
+    // Initialize IPC transport for graphics (singleton, no handle needed)
     fmrb_link_transport_config_t transport_config = {
         .timeout_ms = 1000,
         .enable_retransmit = true,
         .max_retries = 3,
         .window_size = 8
     };
-
-    fmrb_err_t ret = fmrb_link_transport_init(&transport_config, &ctx->transport);
-    if (ret != FMRB_OK) {
-        //fmrb_sys_free(ctx);
-        return FMRB_GFX_ERR_FAILED;
-    }
 
     ctx->initialized = true;
     ctx->current_target = FMRB_CANVAS_SCREEN;  // Default to main screen
@@ -95,20 +84,12 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config) {
 }
 
 fmrb_gfx_err_t fmrb_gfx_deinit(void) {
-    // if (!context) {
-    //     return FMRB_GFX_ERR_INVALID_PARAM;
-    // }
-
-    // fmrb_gfx_context_impl_t *ctx = context;
-
     // Only deinitialize if this is the global context
     if (g_gfx_context != NULL) {
-        if (g_gfx_context->transport) {
-            fmrb_link_transport_deinit(g_gfx_context->transport);
-        }
+        // Deinitialize singleton transport
+        fmrb_link_transport_deinit();
 
         g_gfx_context->initialized = false;
-        // fmrb_sys_free(ctx);
         g_gfx_context = NULL;
 
         ESP_LOGI(TAG, "Graphics deinitialized");
@@ -971,12 +952,4 @@ fmrb_gfx_err_t fmrb_gfx_push_canvas(
     };
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_PUSH_CANVAS, &cmd, sizeof(cmd));
-}
-
-fmrb_link_transport_handle_t fmrb_gfx_get_transport(fmrb_gfx_context_t context) {
-    if (!context) {
-        return NULL;
-    }
-    fmrb_gfx_context_impl_t *ctx = (fmrb_gfx_context_impl_t*)context;
-    return ctx->transport;
 }
