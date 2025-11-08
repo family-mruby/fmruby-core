@@ -25,6 +25,12 @@ enum FMRB_APP_TYPE{
     APP_TYPE_MAX
 };
 
+// App load mode
+typedef enum {
+    FMRB_LOAD_MODE_IREP = 0,     // Load from irep bytecode
+    FMRB_LOAD_MODE_FILE,          // Load from text file
+} fmrb_load_mode_t;
+
 // FreeRTOS TLS slot index for app context
 #define FMRB_APP_TLS_INDEX 1
 
@@ -50,7 +56,11 @@ typedef struct {
     fmrb_proc_id_t        app_id;           // Fixed slot ID
     enum FMRB_APP_TYPE    type;
     const char*           name;
-    const unsigned char*  irep;             // Bytecode
+    fmrb_load_mode_t      load_mode;        // Load mode (irep or file)
+    union {
+        const unsigned char*  irep;         // Bytecode (when load_mode == FMRB_LOAD_MODE_IREP)
+        const char*           filepath;     // File path (when load_mode == FMRB_LOAD_MODE_FILE)
+    };
     uint32_t              stack_words;      // Stack size in words (not bytes)
     fmrb_task_priority_t  priority;
     fmrb_base_type_t      core_affinity;    // -1 = no affinity, 0/1 = specific core
@@ -70,8 +80,8 @@ typedef struct {
 
 // Core APIs
 bool fmrb_app_init(void);
-bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id);
-bool fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id);
+fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id);
+fmrb_err_t fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id);
 bool fmrb_app_kill(int32_t id);
 bool fmrb_app_stop(int32_t id);
 bool fmrb_app_suspend(int32_t id);
@@ -85,4 +95,4 @@ static inline fmrb_app_task_context_t* fmrb_current(void) {
 
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
-bool fmrb_app_spawn_default_app(const char* app_name);
+fmrb_err_t fmrb_app_spawn_default_app(const char* app_name);

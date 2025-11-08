@@ -4,6 +4,7 @@
 
 #include <picoruby.h>
 #include "fmrb_hal.h"
+#include "fmrb_err.h"
 #include "fmrb_log.h"
 #include "fmrb_app.h"
 #include "fmrb_mem.h"
@@ -19,13 +20,14 @@ extern const uint8_t editor_irep[];
 extern const uint8_t config_irep[];
 
 
-static bool spawn_system_gui_app(void)
+static fmrb_err_t spawn_system_gui_app(void)
 {
     FMRB_LOGI(TAG, "Creating system GUI app...");
     fmrb_spawn_attr_t attr = {
         .app_id = PROC_ID_SYSTEM_APP,
         .type = APP_TYPE_SYSTEM_APP,
         .name = "system_gui",
+        .load_mode = FMRB_LOAD_MODE_IREP,
         .irep = system_gui_irep,
         .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
         .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
@@ -33,25 +35,24 @@ static bool spawn_system_gui_app(void)
     };
 
     int32_t app_id;
-    bool result = false;
+    fmrb_err_t result;
     fmrb_app_init();
     result = fmrb_app_spawn(&attr, &app_id);
-
-    if (!result) {
-        FMRB_LOGE(TAG, "Failed to spawn system GUI app");
-        return false;
+    if (result == FMRB_OK) {
+        FMRB_LOGI(TAG, "system GUI app spawned: id=%d", app_id);
+    } else {
+        FMRB_LOGE(TAG, "Failed to spawn system GUI app: %d", result);
     }
-
-    FMRB_LOGI(TAG, "System GUI app spawned successfully (id=%ld)", app_id);
-    return true;
+   return FMRB_OK;
 }
 
-static bool spawn_shell_app(void)
+static fmrb_err_t spawn_shell_app(void)
 {
     fmrb_spawn_attr_t attr = {
         .app_id = PROC_ID_USER_APP0,              // User App slot 0
         .type = APP_TYPE_USER_APP,                 // User App type
         .name = "shell",
+        .load_mode = FMRB_LOAD_MODE_IREP,
         .irep = shell_irep,                        // shell.c irep array
         .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,  // 60KB
         .priority = FMRB_SHELL_APP_PRIORITY,            // Priority 5
@@ -60,28 +61,49 @@ static bool spawn_shell_app(void)
     };
 
     int32_t shell_id;
-    bool success = fmrb_app_spawn(&attr, &shell_id);
-    if (success) {
+    fmrb_err_t result = fmrb_app_spawn(&attr, &shell_id);
+    if (result == FMRB_OK) {
         FMRB_LOGI(TAG, "Shell app spawned: id=%d", shell_id);
     } else {
-        FMRB_LOGE(TAG, "Failed to spawn shell app");
+        FMRB_LOGE(TAG, "Failed to spawn shell app: %d", result);
     }
-    return success;
+    return result;
 }
 
-/**
- * @brief Spawn default application by name
- * @param app_name Application name ("shell", "editor", "config")
- * @return true on success, false on failure
- */
-bool fmrb_app_spawn_default_app(const char* app_name)
+static fmrb_err_t spawn_user_app(const char* app_name)
+{
+    // FMRB_LOGI(TAG, "Creating system GUI app...");
+    // fmrb_spawn_attr_t attr = {
+    //     .app_id = PROC_ID_SYSTEM_APP,
+    //     .type = APP_TYPE_SYSTEM_APP,
+    //     .name = "system_gui",
+    //     .irep = system_gui_irep,
+    //     .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
+    //     .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
+    //     .core_affinity = -1  // No core affinity
+    // };
+
+    // int32_t app_id;
+    // fmrb_err_t result;
+    // fmrb_app_init();
+    // result = fmrb_app_spawn(&attr, &app_id);
+    // if (result == FMRB_OK) {
+    //     FMRB_LOGI(TAG, "system GUI app spawned: id=%d", app_id);
+    // } else {
+    //     FMRB_LOGE(TAG, "Failed to spawn system GUI app: %d", result);
+    // }
+   return FMRB_OK;
+}
+
+fmrb_err_t fmrb_app_spawn_default_app(const char* app_name)
 {
     if (app_name == NULL) {
         FMRB_LOGE(TAG, "app_name is NULL");
-        return false;
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     // Match app_name to spawn function
+    // PreBuild Apps
     if (strcmp(app_name, "system/gui_app") == 0) {
         return spawn_system_gui_app();
     } else if (strcmp(app_name, "default/shell") == 0) {
@@ -89,14 +111,25 @@ bool fmrb_app_spawn_default_app(const char* app_name)
     } else if (strcmp(app_name, "default/editor") == 0) {
         // Future implementation
         FMRB_LOGW(TAG, "Editor app not yet implemented");
-        return false;
+        return FMRB_ERR_NOT_SUPPORTED;
     } else if (strcmp(app_name, "default/config") == 0) {
         // Future implementation
         FMRB_LOGW(TAG, "Config app not yet implemented");
-        return false;
-    } else {
-        // TODO: check prefix "system/" "default/"
-        FMRB_LOGE(TAG, "Unknown app name: %s", app_name);
-        return false;
+        return FMRB_ERR_NOT_SUPPORTED;
+    } 
+
+    // Validate app_name prefix (only allow "system/" or "default/")
+    if (strncmp(app_name, "system/", 7) != 0 && strncmp(app_name, "default/", 8) != 0) {
+        FMRB_LOGE(TAG, "Invalid app name prefix: %s (must start with 'system/' or 'default/')", app_name);
+        return FMRB_ERR_FAILED;
     }
+
+    // User App
+    // check if it exists
+    {
+        FMRB_LOGE(TAG, "Unknown app name: %s", app_name);
+        return FMRB_ERR_NOT_FOUND;
+    }
+    // TODO: Load xxx.app.rb from filesystem
+    return spawn_user_app(app_name);
 }

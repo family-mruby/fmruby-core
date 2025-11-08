@@ -12,6 +12,9 @@
 
 static const char *TAG = "fmrb_app";
 
+// Max script file size (configurable)
+#define MAX_SCRIPT_FILE_SIZE (64 * 1024)  // 64KB
+
 // ============================================================================
 // Global state (zero-initialized at boot)
 // ============================================================================
@@ -171,11 +174,78 @@ static void free_ctx_index(int32_t idx) {
 // ============================================================================
 
 /**
+ * Load Ruby script from file
+ * Returns: allocated buffer containing script text (must be freed by caller)
+ *          NULL on error
+ */
+static char* load_script_file(const char* filepath, size_t* out_size) {
+    fmrb_file_t file = NULL;
+    char* buffer = NULL;
+    uint32_t file_size = 0;
+    size_t bytes_read = 0;
+    fmrb_err_t ret;
+
+    // Open file
+    ret = fmrb_hal_file_open(filepath, FMRB_O_RDONLY, &file);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to open script file: %s", filepath);
+        return NULL;
+    }
+
+    // Get file size
+    ret = fmrb_hal_file_size(file, &file_size);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to get file size: %s", filepath);
+        fmrb_hal_file_close(file);
+        return NULL;
+    }
+
+    // Check size limit
+    if (file_size > MAX_SCRIPT_FILE_SIZE) {
+        FMRB_LOGE(TAG, "Script file too large: %u bytes (max: %d)",
+                 file_size, MAX_SCRIPT_FILE_SIZE);
+        fmrb_hal_file_close(file);
+        return NULL;
+    }
+
+    // Allocate buffer (+1 for null terminator)
+    buffer = (char*)fmrb_sys_malloc(file_size + 1);
+    if (!buffer) {
+        FMRB_LOGE(TAG, "Failed to allocate buffer for script file");
+        fmrb_hal_file_close(file);
+        return NULL;
+    }
+
+    // Read file
+    ret = fmrb_hal_file_read(file, buffer, file_size, &bytes_read);
+    if (ret != FMRB_OK || bytes_read != file_size) {
+        FMRB_LOGE(TAG, "Failed to read script file (expected %u, got %zu)",
+                 file_size, bytes_read);
+        fmrb_sys_free(buffer);
+        fmrb_hal_file_close(file);
+        return NULL;
+    }
+
+    // Null terminate
+    buffer[file_size] = '\0';
+
+    fmrb_hal_file_close(file);
+
+    if (out_size) {
+        *out_size = file_size;
+    }
+
+    return buffer;
+}
+
+/**
  * Application task entry point
  */
 static void app_task_main(void* arg) {
     fmrb_app_task_context_t* ctx = (fmrb_app_task_context_t*)arg;
-    const unsigned char* irep = (const unsigned char*)ctx->user_data;
+    const unsigned char* irep_ptr = NULL;
+    char* script_buffer = NULL;
+    bool need_free_script = false;
 
     // Register in TLS with destructor
     fmrb_task_set_tls_with_del(NULL, FMRB_APP_TLS_INDEX, ctx, tls_destructor);
@@ -193,11 +263,61 @@ static void app_task_main(void* arg) {
     }
     fmrb_semaphore_give(g_ctx_lock);
 
-    // Load and execute bytecode
-    mrc_irep *irep_obj = mrb_read_irep(ctx->mrb, irep);
-    if (irep_obj == NULL) {
-        FMRB_LOGE(TAG, "[%s] Failed to read irep", ctx->app_name);
+    // Determine load mode from user_data
+    fmrb_load_mode_t load_mode = (fmrb_load_mode_t)((uintptr_t)ctx->user_data & 0xFF);
+    void* load_data = (void*)((uintptr_t)ctx->user_data >> 8);
+
+    mrc_irep *irep_obj = NULL;
+
+    if (load_mode == FMRB_LOAD_MODE_IREP) {
+        // Load from irep bytecode (existing behavior)
+        irep_ptr = (const unsigned char*)load_data;
+        irep_obj = mrb_read_irep(ctx->mrb, irep_ptr);
+        if (irep_obj == NULL) {
+            FMRB_LOGE(TAG, "[%s] Failed to read irep", ctx->app_name);
+        }
+    } else if (load_mode == FMRB_LOAD_MODE_FILE) {
+        // Load from text file (new behavior)
+        const char* filepath = (const char*)load_data;
+        size_t script_size = 0;
+
+        FMRB_LOGI(TAG, "[%s] Loading script from file: %s", ctx->app_name, filepath);
+
+        script_buffer = load_script_file(filepath, &script_size);
+        if (!script_buffer) {
+            FMRB_LOGE(TAG, "[%s] Failed to load script file: %s", ctx->app_name, filepath);
+            goto cleanup;
+        }
+        need_free_script = true;
+
+        // Compile script to irep
+        mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
+        if (!cc) {
+            FMRB_LOGE(TAG, "[%s] Failed to create compile context", ctx->app_name);
+            goto cleanup;
+        }
+
+        const uint8_t *script_ptr = (const uint8_t *)script_buffer;
+        irep_obj = mrc_load_string_cxt(cc, &script_ptr, script_size);
+
+        if (!irep_obj) {
+            FMRB_LOGE(TAG, "[%s] Failed to compile script", ctx->app_name);
+            if (ctx->mrb->exc) {
+                mrb_print_error(ctx->mrb);
+            }
+            mrc_ccontext_free(cc);
+            goto cleanup;
+        }
+
+        mrc_ccontext_free(cc);
+        FMRB_LOGI(TAG, "[%s] Script compiled successfully", ctx->app_name);
     } else {
+        FMRB_LOGE(TAG, "[%s] Invalid load mode: %d", ctx->app_name, load_mode);
+        goto cleanup;
+    }
+
+    // Execute irep (common path for both modes)
+    if (irep_obj) {
         mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
         mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
         mrb_value task = mrc_create_task(cc, irep_obj, name, mrb_nil_value(),
@@ -207,16 +327,7 @@ static void app_task_main(void* arg) {
             FMRB_LOGE(TAG, "[%s] mrc_create_task failed", ctx->app_name);
         } else {
             // Main event loop: run mruby tasks
-            #if 1
             mrb_tasks_run(ctx->mrb);
-            #else
-            FMRB_LOGI(TAG, "[%s] Skip mruby VM run sleep", ctx->app_name);
-            while(1){
-                FMRB_LOGI(TAG, "[%s] app thread running", ctx->app_name);
-                fmrb_task_delay(FMRB_MS_TO_TICKS(1000));
-            }
-            FMRB_LOGI(TAG, "[%s] Skip mruby VM run sleep done", ctx->app_name);
-            #endif
         }
 
         if (ctx->mrb->exc) {
@@ -224,6 +335,12 @@ static void app_task_main(void* arg) {
         }
 
         mrc_ccontext_free(cc);
+    }
+
+cleanup:
+    // Free script buffer if allocated
+    if (need_free_script && script_buffer) {
+        fmrb_sys_free(script_buffer);
     }
 
     FMRB_LOGI(TAG, "[%s gen=%u] Task exiting normally", ctx->app_name, ctx->gen);
@@ -293,10 +410,15 @@ bool fmrb_app_init(void) {
  * Spawn simple debug task (no context management, no mruby VM)
  */
 static fmrb_task_handle_t g_task_debug = NULL;
-bool fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
+fmrb_err_t fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     if (!attr || !attr->name) {
         FMRB_LOGE(TAG, "Invalid spawn attributes");
-        return false;
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (!out_id) {
+        FMRB_LOGE(TAG, "out_id is NULL");
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     fmrb_base_type_t result = fmrb_task_create(
@@ -305,22 +427,43 @@ bool fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
 
     if (result == FMRB_PASS) {
-        if (out_id) *out_id = -1;  // No context ID for simple spawn
+        *out_id = -1;  // No context ID for simple spawn
         FMRB_LOGI(TAG, "[%s] Debug task spawned (prio=%u)", attr->name, attr->priority);
-        return true;
+        return FMRB_OK;
     } else {
         FMRB_LOGE(TAG, "[%s] Failed to create debug task", attr->name);
-        return false;
+        return FMRB_ERR_FAILED;
     }
 }
 
 /**
  * Spawn new app task
  */
-bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
-    if (!attr || !attr->name || !attr->irep) {
+fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
+    if (!attr || !attr->name) {
         FMRB_LOGE(TAG, "Invalid spawn attributes");
-        return false;
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Validate load mode and source
+    if (attr->load_mode == FMRB_LOAD_MODE_IREP) {
+        if (!attr->irep) {
+            FMRB_LOGE(TAG, "irep is NULL for IREP mode");
+            return FMRB_ERR_INVALID_PARAM;
+        }
+    } else if (attr->load_mode == FMRB_LOAD_MODE_FILE) {
+        if (!attr->filepath) {
+            FMRB_LOGE(TAG, "filepath is NULL for FILE mode");
+            return FMRB_ERR_INVALID_PARAM;
+        }
+    } else {
+        FMRB_LOGE(TAG, "Invalid load_mode: %d", attr->load_mode);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (!out_id) {
+        FMRB_LOGE(TAG, "out_id is NULL");
+        return FMRB_ERR_INVALID_PARAM;
     }
 
     int32_t idx = -1;
@@ -331,7 +474,7 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     idx = alloc_ctx_index(attr->app_id);
     if (idx < 0) {
         fmrb_semaphore_give(g_ctx_lock);
-        return false;
+        return FMRB_ERR_NO_RESOURCE;
     }
 
     ctx = &g_ctx_pool[idx];
@@ -366,7 +509,16 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
     strncpy(ctx->app_name, attr->name, sizeof(ctx->app_name) - 1);
     ctx->app_name[sizeof(ctx->app_name) - 1] = '\0';
-    ctx->user_data = (void*)attr->irep;  // Store irep for task_main
+
+    // Encode load mode and data pointer in user_data
+    // Lower 8 bits: load_mode, upper bits: data pointer
+    uintptr_t encoded_data;
+    if (attr->load_mode == FMRB_LOAD_MODE_IREP) {
+        encoded_data = ((uintptr_t)attr->irep << 8) | FMRB_LOAD_MODE_IREP;
+    } else {
+        encoded_data = ((uintptr_t)attr->filepath << 8) | FMRB_LOAD_MODE_FILE;
+    }
+    ctx->user_data = (void*)encoded_data;
     ctx->headless = attr->headless;
 
     // Initialize window size based on app type
@@ -428,10 +580,10 @@ bool fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
     // Success - Note: Spawned task may have already started running
     // if its priority is higher than the current task
-    if (out_id) *out_id = idx;
+    *out_id = idx;
     FMRB_LOGI(TAG, "[%s gen=%u] Task spawned (id=%d, prio=%u)",
              ctx->app_name, ctx->gen, idx, attr->priority);
-    return true;
+    return FMRB_OK;
 
 unwind:
     // Cleanup on failure
@@ -450,7 +602,7 @@ unwind:
     free_ctx_index(idx);
     fmrb_semaphore_give(g_ctx_lock);
 
-    return false;
+    return FMRB_ERR_FAILED;
 }
 
 /**
