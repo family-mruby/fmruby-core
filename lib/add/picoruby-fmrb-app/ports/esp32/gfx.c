@@ -216,6 +216,9 @@ static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
+    FMRB_LOGI("gfx", "fill_rect called: x=%d, y=%d, w=%d, h=%d, color=0x%02X, canvas_id=%d",
+              (int)x, (int)y, (int)w, (int)h, (int)color, data->canvas_id);
+
     // Send GFX command to Host Task
     gfx_cmd_t cmd = {
         .cmd_type = GFX_CMD_RECT,
@@ -229,9 +232,11 @@ static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
 
     fmrb_err_t ret = send_gfx_command(&cmd);
     if (ret != FMRB_OK) {
+        FMRB_LOGE("gfx", "fill_rect send_gfx_command failed: %d", ret);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill rect failed: %d", ret);
     }
 
+    FMRB_LOGI("gfx", "fill_rect command sent successfully");
     return self;
 }
 
@@ -267,10 +272,14 @@ static mrb_value mrb_gfx_fill_circle(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
+    FMRB_LOGI("gfx", "fill_circle called: x=%d, y=%d, r=%d, color=0x%02X, canvas_id=%d",
+              (int)x, (int)y, (int)r, (int)color, data->canvas_id);
+
     // Pass canvas_id directly (thread-safe)
     fmrb_gfx_err_t ret = fmrb_gfx_fill_circle(data->ctx, data->canvas_id, (int32_t)x, (int32_t)y,
                                                (int32_t)r, (fmrb_color_t)color);
     if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE("gfx", "fill_circle failed: %d", ret);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill circle failed: %d", ret);
     }
 
@@ -289,6 +298,9 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
+    FMRB_LOGI("gfx", "draw_text called: x=%d, y=%d, text='%s', color=0x%02X, canvas_id=%d",
+              (int)x, (int)y, text, (int)color, data->canvas_id);
+
     // Send GFX command to Host Task
     gfx_cmd_t cmd = {
         .cmd_type = GFX_CMD_TEXT,
@@ -305,6 +317,7 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
 
     fmrb_err_t ret = send_gfx_command(&cmd);
     if (ret != FMRB_OK) {
+        FMRB_LOGE("gfx", "draw_text send_gfx_command failed: %d", ret);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw text failed: %d", ret);
     }
 

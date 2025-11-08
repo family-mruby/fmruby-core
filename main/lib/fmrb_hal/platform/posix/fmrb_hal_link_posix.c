@@ -240,17 +240,22 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
     static uint8_t recv_buffer[4096];
     static size_t recv_pos = 0;
 
-    // Try to receive data
-    ssize_t received = recv(global_socket_fd, recv_buffer + recv_pos, sizeof(recv_buffer) - recv_pos, 0);
-    if (received <= 0) {
-        if (errno == EAGAIN || errno == EWOULDBLOCK) {
-            return FMRB_ERR_TIMEOUT;
+    // Only call recv() if buffer is empty or doesn't contain complete frame
+    if (recv_pos == 0) {
+        // Try to receive data
+        ssize_t received = recv(global_socket_fd, recv_buffer + recv_pos, sizeof(recv_buffer) - recv_pos, 0);
+        if (received <= 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                return FMRB_ERR_TIMEOUT;
+            }
+            return FMRB_ERR_FAILED;
         }
-        return FMRB_ERR_FAILED;
-    }
 
-    ESP_LOGI(TAG, "Received %zd bytes from socket", received);
-    recv_pos += received;
+        ESP_LOGI(TAG, "Received %zd bytes from socket", received);
+        recv_pos += received;
+    } else {
+        ESP_LOGI(TAG, "Processing buffered data (recv_pos=%zu)", recv_pos);
+    }
 
     // Skip leading null bytes (leftover frame terminators)
     while (recv_pos > 0 && recv_buffer[0] == 0x00) {

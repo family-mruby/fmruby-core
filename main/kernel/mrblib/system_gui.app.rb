@@ -40,22 +40,32 @@ class SystemGuiApp < FmrbApp
   end
 
   def draw_current()
+    puts "[SystemGUI] draw_current() start"
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
+    puts "[SystemGUI] Before fill_rect"
     @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
+    puts "[SystemGUI] After fill_rect"
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
     @gfx.present
+    puts "[SystemGUI] draw_current() end"
   end
 
   def on_update()
-    if @counter % 30 == 0  
-      puts "[SystemGUI] Running... (#{@counter / 30}s)"
+    if @counter % 30 == 0
+      puts "[SystemGUI] on_update() tick #{@counter / 30}s"
     end
     # Graphics commands disabled temporarily (Phase2: Canvas + messaging)
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
     @player_x += (RNG.random_int % 7) - 3  # -3 to +3 random movement
     @player_y += (RNG.random_int % 7) - 3  # -3 to +3 random movement
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
+    if @counter % 30 == 0
+      puts "[SystemGUI] Before fill_rect in on_update"
+    end
     @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
+    if @counter % 30 == 0
+      puts "[SystemGUI] After fill_rect in on_update"
+    end
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
     @gfx.present
 

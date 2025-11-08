@@ -447,9 +447,16 @@ fmrb_err_t fmrb_link_transport_process(void) {
         return FMRB_ERR_INVALID_STATE;
     }
 
-    // Check for incoming messages
+    // Check for incoming messages (loop to process all buffered frames)
     fmrb_link_message_t hal_msg;
-    if (fmrb_hal_link_receive(FMRB_LINK_GRAPHICS, &hal_msg, 0) == FMRB_OK) {
+    int processed_count = 0;
+    const int max_process_per_call = 10;  // Prevent infinite loop
+
+    while (processed_count < max_process_per_call &&
+           fmrb_hal_link_receive(FMRB_LINK_GRAPHICS, &hal_msg, 0) == FMRB_OK) {
+        processed_count++;
+        FMRB_LOGI(TAG, "Processing frame %d (size=%u)", processed_count, hal_msg.size);
+
         // Decode msgpack message: [type, seq, sub_cmd, payload]
         msgpack_unpacked msg;
         msgpack_unpacked_init(&msg);
@@ -481,10 +488,18 @@ fmrb_err_t fmrb_link_transport_process(void) {
                 payload_len = msg.data.via.array.ptr[3].via.bin.size;
             }
 
+            FMRB_LOGI(TAG, "Frame %d: type=%u, seq=%u, sub_cmd=%u, payload_len=%u",
+                     processed_count, type, seq, sub_cmd, payload_len);
             handle_received_message(ctx, type, seq, sub_cmd, payload, payload_len);
+        } else {
+            FMRB_LOGE(TAG, "Frame %d: msgpack unpack failed (ret=%d)", processed_count, ret);
         }
 
         msgpack_unpacked_destroy(&msg);
+    }
+
+    if (processed_count > 0) {
+        FMRB_LOGI(TAG, "Processed %d frames in this call", processed_count);
     }
 
     // Handle retransmissions

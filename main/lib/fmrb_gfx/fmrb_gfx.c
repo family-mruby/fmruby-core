@@ -286,6 +286,9 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
+    FMRB_LOGI("fmrb_gfx", "fmrb_gfx_fill_rect: canvas_id=%d, x=%d, y=%d, w=%d, h=%d, color=0x%02X",
+              canvas_id, rect->x, rect->y, rect->width, rect->height, color);
+
     fmrb_link_graphics_rect_t rect_cmd = {
         .canvas_id = canvas_id,
         .x = rect->x,
@@ -296,7 +299,13 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle
         .filled = true
     };
 
-    return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_RECT, &rect_cmd, sizeof(rect_cmd));
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_FILL_RECT, &rect_cmd, sizeof(rect_cmd));
+    if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE("fmrb_gfx", "fmrb_gfx_fill_rect send_graphics_command failed: %d", ret);
+    } else {
+        FMRB_LOGI("fmrb_gfx", "fmrb_gfx_fill_rect command sent successfully");
+    }
+    return ret;
 }
 
 fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_font_size_t font_size) {
