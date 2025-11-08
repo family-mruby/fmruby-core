@@ -19,6 +19,42 @@ extern const uint8_t shell_irep[];
 extern const uint8_t editor_irep[];
 extern const uint8_t config_irep[];
 
+/**
+ * Extract display name from file path
+ * @param filepath  Input file path (e.g., "/flash/app/myapp.rb")
+ * @param name_buf  Output buffer for extracted name
+ * @param buf_size  Size of name_buf
+ * @return Pointer to name_buf
+ */
+static const char* extract_app_name(const char* filepath, char* name_buf, size_t buf_size) {
+    if (!filepath || !name_buf || buf_size == 0) {
+        if (name_buf && buf_size > 0) {
+            name_buf[0] = '\0';
+        }
+        return name_buf;
+    }
+
+    // Find last '/' to get basename
+    const char* basename = strrchr(filepath, '/');
+    if (basename) {
+        basename++;  // Skip '/'
+    } else {
+        basename = filepath;
+    }
+
+    // Copy to buffer
+    strncpy(name_buf, basename, buf_size - 1);
+    name_buf[buf_size - 1] = '\0';
+
+    // Remove .rb extension if present
+    char* ext = strrchr(name_buf, '.');
+    if (ext && strcmp(ext, ".rb") == 0) {
+        *ext = '\0';
+    }
+
+    return name_buf;
+}
+
 
 static fmrb_err_t spawn_system_gui_app(void)
 {
@@ -70,29 +106,57 @@ static fmrb_err_t spawn_shell_app(void)
     return result;
 }
 
+/**
+ * Spawn user app from filesystem
+ * @param app_name  File path to Ruby script (e.g., "/flash/app/myapp.rb")
+ * @return FMRB_OK on success, error code otherwise
+ */
 static fmrb_err_t spawn_user_app(const char* app_name)
 {
-    // FMRB_LOGI(TAG, "Creating system GUI app...");
-    // fmrb_spawn_attr_t attr = {
-    //     .app_id = PROC_ID_SYSTEM_APP,
-    //     .type = APP_TYPE_SYSTEM_APP,
-    //     .name = "system_gui",
-    //     .irep = system_gui_irep,
-    //     .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
-    //     .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
-    //     .core_affinity = -1  // No core affinity
-    // };
+    if (!app_name) {
+        FMRB_LOGE(TAG, "app_name is NULL");
+        return FMRB_ERR_INVALID_PARAM;
+    }
 
-    // int32_t app_id;
-    // fmrb_err_t result;
-    // fmrb_app_init();
-    // result = fmrb_app_spawn(&attr, &app_id);
-    // if (result == FMRB_OK) {
-    //     FMRB_LOGI(TAG, "system GUI app spawned: id=%d", app_id);
-    // } else {
-    //     FMRB_LOGE(TAG, "Failed to spawn system GUI app: %d", result);
-    // }
-   return FMRB_OK;
+    // Extract display name from file path
+    char display_name[32];
+    extract_app_name(app_name, display_name, sizeof(display_name));
+
+    FMRB_LOGI(TAG, "Creating user app from file: %s (name: %s)", app_name, display_name);
+
+    // Validate file exists before spawning
+    fmrb_file_t file = NULL;
+    fmrb_err_t ret = fmrb_hal_file_open(app_name, FMRB_O_RDONLY, &file);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "File not found or cannot open: %s", app_name);
+        return FMRB_ERR_NOT_FOUND;
+    }
+    fmrb_hal_file_close(file);
+
+    // Set spawn attributes
+    fmrb_spawn_attr_t attr = {
+        .app_id = -1,                                  // Auto-allocate slot
+        .type = APP_TYPE_USER_APP,                     // User App type
+        .name = display_name,                          // Extracted name
+        .load_mode = FMRB_LOAD_MODE_FILE,              // Load from file
+        .filepath = app_name,                          // File path
+        .stack_words = FMRB_USER_APP_TASK_STACK_SIZE,  // 60KB
+        .priority = FMRB_USER_APP_PRIORITY,            // Priority 5
+        .core_affinity = -1,                           // No core affinity
+        .headless = false                              // Graphics enabled
+    };
+
+    // Spawn the app
+    int32_t app_id;
+    fmrb_err_t result = fmrb_app_spawn(&attr, &app_id);
+    if (result == FMRB_OK) {
+        FMRB_LOGI(TAG, "User app spawned: id=%d, name=%s, file=%s",
+                  app_id, display_name, app_name);
+    } else {
+        FMRB_LOGE(TAG, "Failed to spawn user app: %s (error=%d)", app_name, result);
+    }
+
+    return result;
 }
 
 fmrb_err_t fmrb_app_spawn_default_app(const char* app_name)
@@ -116,20 +180,15 @@ fmrb_err_t fmrb_app_spawn_default_app(const char* app_name)
         // Future implementation
         FMRB_LOGW(TAG, "Config app not yet implemented");
         return FMRB_ERR_NOT_SUPPORTED;
-    } 
-
-    // Validate app_name prefix (only allow "system/" or "default/")
-    if (strncmp(app_name, "system/", 7) != 0 && strncmp(app_name, "default/", 8) != 0) {
-        FMRB_LOGE(TAG, "Invalid app name prefix: %s (must start with 'system/' or 'default/')", app_name);
-        return FMRB_ERR_FAILED;
     }
 
-    // User App
-    // check if it exists
-    {
-        FMRB_LOGE(TAG, "Unknown app name: %s", app_name);
+    // For paths starting with system/ or default/, reject as unknown built-in app
+    if (strncmp(app_name, "system/", 7) == 0 || strncmp(app_name, "default/", 8) == 0) {
+        FMRB_LOGE(TAG, "Unknown built-in app name: %s", app_name);
         return FMRB_ERR_NOT_FOUND;
     }
-    // TODO: Load xxx.app.rb from filesystem
+
+    // User App from filesystem
+    // Assume any other path is a filesystem path (e.g., "/flash/app/myapp.rb")
     return spawn_user_app(app_name);
 }

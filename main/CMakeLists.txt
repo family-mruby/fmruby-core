@@ -3,7 +3,7 @@ set(COMPONENT_SRCS
     "main.c"
     "boot.c"
     "app/fmrb_app.c"
-    "app/fmrb_default_apps.c"
+    "app/fmrb_app_spawner.c"
     "kernel/fmrb_kernel.c"
     "kernel/host/host_task.c"
     "drivers/fs_proxy/fs_proxy_task.c"
