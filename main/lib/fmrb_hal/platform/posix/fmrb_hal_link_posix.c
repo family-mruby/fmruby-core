@@ -252,6 +252,16 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
     ESP_LOGI(TAG, "Received %zd bytes from socket", received);
     recv_pos += received;
 
+    // Skip leading null bytes (leftover frame terminators)
+    while (recv_pos > 0 && recv_buffer[0] == 0x00) {
+        memmove(recv_buffer, recv_buffer + 1, recv_pos - 1);
+        recv_pos--;
+    }
+
+    if (recv_pos == 0) {
+        return FMRB_ERR_NOT_FOUND;
+    }
+
     // Look for COBS frame terminator (0x00)
     size_t frame_end = 0;
     while (frame_end < recv_pos && recv_buffer[frame_end] != 0x00) {
@@ -260,14 +270,17 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
 
     if (frame_end >= recv_pos) {
         // No complete frame yet
+        ESP_LOGD(TAG, "No complete frame yet (recv_pos=%zu)", recv_pos);
         return FMRB_ERR_NOT_FOUND;
     }
+
+    ESP_LOGI(TAG, "Found COBS frame: frame_end=%zu, recv_pos=%zu", frame_end, recv_pos);
 
     // Decode COBS frame
     static uint8_t decoded_buffer[4096];
     ssize_t decoded_len = fmrb_link_cobs_decode(recv_buffer, frame_end, decoded_buffer);
     if (decoded_len <= 0) {
-        ESP_LOGE(TAG, "COBS decode failed");
+        ESP_LOGE(TAG, "COBS decode failed: frame_len=%zu, decoded_len=%zd", frame_end, decoded_len);
         // Remove invalid frame
         size_t remaining = recv_pos - (frame_end + 1);
         if (remaining > 0) {

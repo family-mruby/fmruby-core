@@ -187,6 +187,11 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
                 printf("Received INIT_DISPLAY: %dx%d, %d-bit\n",
                        init_cmd->width, init_cmd->height, init_cmd->color_depth);
                 result = init_display_callback(init_cmd->width, init_cmd->height, init_cmd->color_depth);
+
+                // Send ACK to prevent retransmission
+                if (result == 0) {
+                    socket_server_send_ack(type, seq, NULL, 0);
+                }
             } else {
                 fprintf(stderr, "Unknown control command: 0x%02x\n", sub_cmd);
                 result = -1;
