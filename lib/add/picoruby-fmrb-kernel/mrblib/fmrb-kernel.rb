@@ -78,8 +78,15 @@ class FmrbKernel
   end
 
   def initial_sequence
-    #TODO: Wait for host task init
-    Machine.delay_ms(1000)
+    # Check protocol version with host
+    puts "[KERNEL] Checking protocol version..."
+    unless check_protocol_version(5000)
+      puts "[KERNEL] ERROR: Protocol version check failed"
+      raise "Protocol version mismatch with host"
+    end
+    puts "[KERNEL] Protocol version check passed"
+
+    # Spawn system GUI app
     _spawn_app_req("system/gui_app")
   end
 

@@ -10,6 +10,8 @@
 #include "fmrb_msg_payload.h"
 #include "fmrb_task_config.h"
 #include "fmrb_log.h"
+#include "fmrb_link_transport.h"
+#include "../../../../../../main/boot.h"
 
 static const char* TAG = "kernel";
 
@@ -122,6 +124,26 @@ static mrb_value mrb_kernel_set_ready(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// Kernel#check_protocol_version(timeout_ms = 5000) -> bool
+// Check protocol version with host
+static mrb_value mrb_kernel_check_protocol_version(mrb_state *mrb, mrb_value self)
+{
+    mrb_int timeout_ms = 5000;  // Default 5 seconds
+    mrb_get_args(mrb, "|i", &timeout_ms);
+
+    FMRB_LOGI(TAG, "Checking protocol version (timeout=%d ms)...", (int)timeout_ms);
+
+    fmrb_err_t ret = fmrb_link_transport_check_version((uint32_t)timeout_ms);
+
+    if (ret == FMRB_OK) {
+        FMRB_LOGI(TAG, "Protocol version check succeeded");
+        return mrb_true_value();
+    } else {
+        FMRB_LOGE(TAG, "Protocol version check failed: %d", ret);
+        return mrb_false_value();
+    }
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -130,6 +152,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_init", mrb_kernel_handler_init, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_spin", mrb_kernel_handler_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_spawn_app_req", mrb_kernel_handler_spawn_app_req, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "check_protocol_version", mrb_kernel_check_protocol_version, MRB_ARGS_OPT(1));
 
     // Process ID constants
     mrb_define_const(mrb, handler_class, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));

@@ -20,6 +20,7 @@ static LGFX_Sprite* g_back_buffer = nullptr;
 // Canvas management (LovyanGFX sprites)
 static std::map<uint16_t, LGFX_Sprite*> g_canvases;
 static uint16_t g_current_target = FMRB_CANVAS_SCREEN;  // 0=screen, other=canvas
+static bool g_graphics_initialized = false;  // Flag to prevent multiple initializations
 
 // Get current drawing target (back buffer or canvas)
 static LovyanGFX* get_current_target() {
@@ -37,6 +38,12 @@ static LovyanGFX* get_current_target() {
 
 extern "C" int graphics_handler_init(SDL_Renderer *renderer) {
     (void)renderer; // SDL_Renderer is not used with LovyanGFX
+
+    // Prevent multiple initializations
+    if (g_graphics_initialized) {
+        fprintf(stderr, "Graphics handler already initialized, ignoring request\n");
+        return 0;  // Return success to avoid breaking caller
+    }
 
     if (!g_lgfx) {
         fprintf(stderr, "LGFX instance not created\n");
@@ -59,6 +66,7 @@ extern "C" int graphics_handler_init(SDL_Renderer *renderer) {
     }
 
     g_back_buffer->fillScreen(FMRB_COLOR_BLACK);  // Initialize to black
+    g_graphics_initialized = true;  // Mark as initialized
     printf("Graphics handler initialized (using external LGFX instance with back buffer)\n");
     printf("Back buffer created: %p, size: 480x320, color depth: 8\n", (void*)g_back_buffer);
     return 0;
@@ -77,6 +85,7 @@ extern "C" void graphics_handler_cleanup(void) {
     }
     g_canvases.clear();
     g_current_target = FMRB_CANVAS_SCREEN;
+    g_graphics_initialized = false;  // Reset initialization flag
 
     // Note: g_lgfx is managed by main.cpp, don't delete here
     printf("Graphics handler cleaned up\n");

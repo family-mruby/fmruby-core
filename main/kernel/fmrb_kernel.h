@@ -45,15 +45,6 @@ void fmrb_kernel_stop(void);
 
 const fmrb_system_config_t* fmrb_kernel_get_config(void);
 
-/**
- * Startup synchronization functions
- * Used to coordinate initialization between kernel, host, and app tasks
- */
-bool fmrb_kernel_is_ready(void);
-bool fmrb_host_is_ready(void);
-void fmrb_kernel_set_ready(void);
-void fmrb_host_set_ready(void);
-
 #ifdef __cplusplus
 }
 #endif

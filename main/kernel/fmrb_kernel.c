@@ -12,6 +12,7 @@
 #include "fmrb_task_config.h"
 #include "fmrb_app.h"
 #include "fmrb_kernel.h"
+#include "../boot.h"
 #include "fmrb_link_transport.h"
 #include "host/host_task.h"
 #include "fmrb_toml.h"
@@ -178,6 +179,18 @@ fmrb_err_t fmrb_kernel_start(void)
     if (result < 0) {
         FMRB_LOGE(TAG, "Failed to start host task");
         return FMRB_ERR_FAILED;
+    }
+
+    int cnt = 0;
+    while(!fmrb_host_is_ready())
+    {
+        FMRB_LOGI(TAG, "Waiting for host to be ready...");
+        fmrb_task_delay_ms(100);
+        if(cnt >= 30){
+            FMRB_LOGE(TAG, "waiting host timeout!");
+            return FMRB_ERR_FAILED;        
+        }
+        cnt++;
     }
 
     // Create kernel task using spawn API

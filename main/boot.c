@@ -184,9 +184,9 @@ void fmrb_os_init(void)
     // Wait for kernel and host initialization
     int timeout_ms = 5000;  // 5 second timeout
     int elapsed_ms = 0;
-    while ((!fmrb_kernel_is_ready() || !fmrb_host_is_ready()) && elapsed_ms < timeout_ms) {
-        FMRB_LOGI(TAG, "Waiting for kernel and host tasks to be ready...");
-        fmrb_task_delay(FMRB_MS_TO_TICKS(100));
+    while ((!fmrb_kernel_is_ready()) && elapsed_ms < timeout_ms) {
+        FMRB_LOGI(TAG, "Waiting for kernel to be ready...");
+        fmrb_task_delay_ms(100);
         elapsed_ms += 100;
     }
 
@@ -194,12 +194,6 @@ void fmrb_os_init(void)
         FMRB_LOGE(TAG, "Kernel task initialization timeout");
         return;
     }
-    if (!fmrb_host_is_ready()) {
-        FMRB_LOGE(TAG, "Host task initialization timeout");
-        return;
-    }
-
-    FMRB_LOGI(TAG, "Kernel and host tasks are ready");
     FMRB_LOGI(TAG, "Family mruby OS initialization complete");
 }
 

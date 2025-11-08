@@ -48,6 +48,7 @@ typedef TickType_t fmrb_tick_t;
     xTaskCreatePinnedToCore(fn, name, stack, param, prio, handle, core)
 #define fmrb_task_delete(handle) vTaskDelete(handle)
 #define fmrb_task_delay(ticks) vTaskDelay(ticks)
+#define fmrb_task_delay_ms(ms) vTaskDelay(FMRB_MS_TO_TICKS(ms))
 #define fmrb_task_get_current() xTaskGetCurrentTaskHandle()
 #define fmrb_task_get_tick_count() xTaskGetTickCount()
 #define fmrb_task_get_tls(handle, idx) pvTaskGetThreadLocalStoragePointer(handle, idx)
