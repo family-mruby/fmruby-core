@@ -201,6 +201,10 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
         case FMRB_LINK_TYPE_GRAPHICS:
             // Pass msg_type and sub_cmd as graphics cmd_type
             result = graphics_handler_process_command(type, sub_cmd, seq, cmd_buffer, cmd_len);
+            // Send ACK to prevent retransmission
+            if (result == 0) {
+                socket_server_send_ack(type, seq, NULL, 0);
+            }
             break;
 
         case FMRB_LINK_TYPE_AUDIO:
