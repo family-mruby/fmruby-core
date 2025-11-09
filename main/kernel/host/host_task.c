@@ -238,6 +238,16 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
             }
             break;
 
+        case GFX_CMD_CIRCLE:
+            ret = fmrb_gfx_command_buffer_add_circle(g_gfx_cmd_buffer,
+                                                     gfx_cmd->canvas_id,
+                                                     gfx_cmd->params.circle.x,
+                                                     gfx_cmd->params.circle.y,
+                                                     gfx_cmd->params.circle.radius,
+                                                     gfx_cmd->params.circle.color,
+                                                     gfx_cmd->params.circle.filled);
+            break;
+
         case GFX_CMD_TEXT:
             ret = fmrb_gfx_command_buffer_add_text(g_gfx_cmd_buffer,
                                                    gfx_cmd->canvas_id,

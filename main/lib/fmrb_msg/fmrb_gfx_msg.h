@@ -22,6 +22,7 @@ typedef enum {
     GFX_CMD_PIXEL,
     GFX_CMD_LINE,
     GFX_CMD_RECT,
+    GFX_CMD_CIRCLE,
     GFX_CMD_TEXT,
     GFX_CMD_PRESENT
 } gfx_cmd_type_t;
@@ -51,6 +52,13 @@ typedef struct {
             fmrb_color_t color;
             bool filled;
         } rect;
+        struct {
+            int16_t x;
+            int16_t y;
+            int16_t radius;
+            fmrb_color_t color;
+            bool filled;
+        } circle;
         struct {
             int16_t x;
             int16_t y;

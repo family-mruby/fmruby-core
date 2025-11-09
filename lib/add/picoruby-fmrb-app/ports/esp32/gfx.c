@@ -251,10 +251,21 @@ static mrb_value mrb_gfx_draw_circle(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Pass canvas_id directly (thread-safe)
-    fmrb_gfx_err_t ret = fmrb_gfx_draw_circle(data->ctx, data->canvas_id, (int32_t)x, (int32_t)y,
-                                               (int32_t)r, (fmrb_color_t)color);
-    if (ret != FMRB_GFX_OK) {
+    // Send GFX command to Host Task
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_CIRCLE,
+        .canvas_id = data->canvas_id,
+        .params.circle = {
+            .x = (int16_t)x,
+            .y = (int16_t)y,
+            .radius = (int16_t)r,
+            .color = (fmrb_color_t)color,
+            .filled = false
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw circle failed: %d", ret);
     }
 
@@ -275,11 +286,22 @@ static mrb_value mrb_gfx_fill_circle(mrb_state *mrb, mrb_value self)
     FMRB_LOGI("gfx", "fill_circle called: x=%d, y=%d, r=%d, color=0x%02X, canvas_id=%d",
               (int)x, (int)y, (int)r, (int)color, data->canvas_id);
 
-    // Pass canvas_id directly (thread-safe)
-    fmrb_gfx_err_t ret = fmrb_gfx_fill_circle(data->ctx, data->canvas_id, (int32_t)x, (int32_t)y,
-                                               (int32_t)r, (fmrb_color_t)color);
-    if (ret != FMRB_GFX_OK) {
-        FMRB_LOGE("gfx", "fill_circle failed: %d", ret);
+    // Send GFX command to Host Task
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_CIRCLE,
+        .canvas_id = data->canvas_id,
+        .params.circle = {
+            .x = (int16_t)x,
+            .y = (int16_t)y,
+            .radius = (int16_t)r,
+            .color = (fmrb_color_t)color,
+            .filled = true
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE("gfx", "fill_circle send_gfx_command failed: %d", ret);
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill circle failed: %d", ret);
     }
 

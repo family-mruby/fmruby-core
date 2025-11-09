@@ -74,6 +74,19 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_add_line(fmrb_gfx_command_buffer_t* buffe
 fmrb_gfx_err_t fmrb_gfx_command_buffer_add_rect(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t* rect, fmrb_color_t color, bool filled);
 
 /**
+ * @brief Add circle command to buffer
+ * @param buffer Command buffer handle
+ * @param canvas_id Target canvas ID
+ * @param x Center X coordinate
+ * @param y Center Y coordinate
+ * @param radius Circle radius
+ * @param color Circle color
+ * @param filled Whether to fill the circle
+ * @return Graphics error code
+ */
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_circle(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, int16_t radius, fmrb_color_t color, bool filled);
+
+/**
  * @brief Add text command to buffer
  * @param buffer Command buffer handle
  * @param canvas_id Target canvas ID

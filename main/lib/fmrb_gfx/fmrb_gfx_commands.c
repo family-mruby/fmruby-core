@@ -12,6 +12,7 @@ typedef enum {
     FMRB_GFX_CMD_PIXEL,
     FMRB_GFX_CMD_LINE,
     FMRB_GFX_CMD_RECT,
+    FMRB_GFX_CMD_CIRCLE,
     FMRB_GFX_CMD_TEXT
 } fmrb_gfx_command_type_t;
 
@@ -43,6 +44,14 @@ typedef struct {
 typedef struct {
     fmrb_canvas_handle_t canvas_id;
     int16_t x, y;
+    int16_t radius;
+    fmrb_color_t color;
+    bool filled;
+} circle_command_t;
+
+typedef struct {
+    fmrb_canvas_handle_t canvas_id;
+    int16_t x, y;
     fmrb_color_t color;
     fmrb_font_size_t font_size;
     char text[256]; // Maximum text length
@@ -56,6 +65,7 @@ typedef struct {
         pixel_command_t pixel;
         line_command_t line;
         rect_command_t rect;
+        circle_command_t circle;
         text_command_t text;
     } data;
 } fmrb_gfx_command_t;
@@ -165,6 +175,15 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_add_rect(fmrb_gfx_command_buffer_t* buffe
     return add_command(buffer, &cmd);
 }
 
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_circle(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, int16_t radius, fmrb_color_t color, bool filled) {
+    fmrb_gfx_command_t cmd = {
+        .type = FMRB_GFX_CMD_CIRCLE,
+        .data.circle = { .canvas_id = canvas_id, .x = x, .y = y, .radius = radius, .color = color, .filled = filled }
+    };
+
+    return add_command(buffer, &cmd);
+}
+
 fmrb_gfx_err_t fmrb_gfx_command_buffer_add_text(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char* text, fmrb_color_t color, fmrb_font_size_t font_size) {
     if (!text) {
         return FMRB_GFX_ERR_INVALID_PARAM;
@@ -212,6 +231,16 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
                     ret = fmrb_gfx_fill_rect(context, cmd->data.rect.canvas_id, &cmd->data.rect.rect, cmd->data.rect.color);
                 } else {
                     ret = fmrb_gfx_draw_rect(context, cmd->data.rect.canvas_id, &cmd->data.rect.rect, cmd->data.rect.color);
+                }
+                break;
+
+            case FMRB_GFX_CMD_CIRCLE:
+                if (cmd->data.circle.filled) {
+                    ret = fmrb_gfx_fill_circle(context, cmd->data.circle.canvas_id, cmd->data.circle.x, cmd->data.circle.y,
+                                             cmd->data.circle.radius, cmd->data.circle.color);
+                } else {
+                    ret = fmrb_gfx_draw_circle(context, cmd->data.circle.canvas_id, cmd->data.circle.x, cmd->data.circle.y,
+                                             cmd->data.circle.radius, cmd->data.circle.color);
                 }
                 break;
 
