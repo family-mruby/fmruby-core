@@ -12,7 +12,9 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_create()
+    puts "[SystemGUI] on_create: Before clear"
     @gfx.clear(FmrbGfx::BLUE)  # Phase2: Canvas + messaging
+    puts "[SystemGUI] on_create: After clear"
     draw_current
     puts "[SystemGUI] on_create called"
     #puts "[SystemGUI] spawn default shell app"

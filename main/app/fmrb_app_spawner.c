@@ -19,13 +19,6 @@ extern const uint8_t shell_irep[];
 extern const uint8_t editor_irep[];
 extern const uint8_t config_irep[];
 
-/**
- * Extract display name from file path
- * @param filepath  Input file path (e.g., "/flash/app/myapp.rb")
- * @param name_buf  Output buffer for extracted name
- * @param buf_size  Size of name_buf
- * @return Pointer to name_buf
- */
 static const char* extract_app_name(const char* filepath, char* name_buf, size_t buf_size) {
     if (!filepath || !name_buf || buf_size == 0) {
         if (name_buf && buf_size > 0) {
@@ -106,11 +99,6 @@ static fmrb_err_t spawn_shell_app(void)
     return result;
 }
 
-/**
- * Spawn user app from filesystem
- * @param app_name  File path to Ruby script (e.g., "/flash/app/myapp.rb")
- * @return FMRB_OK on success, error code otherwise
- */
 static fmrb_err_t spawn_user_app(const char* app_name)
 {
     if (!app_name) {

@@ -188,6 +188,7 @@ typedef struct __attribute__((packed)) {
 } fmrb_link_graphics_rect_t;
 
 typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
     int32_t x, y;
     uint8_t color;  // RGB332 format
     uint16_t text_len;
@@ -246,6 +247,11 @@ typedef struct __attribute__((packed)) {
     uint8_t transparent_color;
     uint8_t use_transparency;  // 0=no, 1=yes
 } fmrb_link_graphics_push_canvas_t;
+
+// Present command structure
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Canvas to present (0=screen/back_buffer, other=canvas ID)
+} fmrb_link_graphics_present_t;
 
 // Audio message structures
 typedef struct __attribute__((packed)) {

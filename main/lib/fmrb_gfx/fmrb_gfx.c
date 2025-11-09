@@ -331,6 +331,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle
     }
 
     fmrb_link_graphics_text_t *text_cmd = (fmrb_link_graphics_text_t*)cmd_buffer;
+    text_cmd->canvas_id = canvas_id;
     text_cmd->x = x;
     text_cmd->y = y;
     text_cmd->color = color;
@@ -390,8 +391,14 @@ fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    // Send PRESENT command (no payload required)
-    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_PRESENT, NULL, 0);
+    FMRB_LOGI(TAG, "fmrb_gfx_present: canvas_id=%d", canvas_id);
+
+    // Send PRESENT command with canvas_id
+    fmrb_link_graphics_present_t present_cmd = {
+        .canvas_id = canvas_id
+    };
+
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_PRESENT, &present_cmd, sizeof(present_cmd));
 
     if (ret != FMRB_GFX_OK) {
         FMRB_LOGE(TAG, "fmrb_gfx_present: Failed to send PRESENT command: %d", ret);
@@ -741,6 +748,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, fmrb_canvas_hand
     }
 
     fmrb_link_graphics_text_t *text_cmd = (fmrb_link_graphics_text_t*)cmd_buffer;
+    text_cmd->canvas_id = canvas_id;
     text_cmd->x = x;
     text_cmd->y = y;
     text_cmd->color = color;

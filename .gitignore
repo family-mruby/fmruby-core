@@ -12,3 +12,10 @@ main/app/default_app/mrb/*
 doc/api/
 doc/ruby_api/
 .yardoc/
+
+# SDL2 host build artifacts
+host/sdl2/CMakeCache.txt
+host/sdl2/CMakeFiles/
+host/sdl2/Makefile
+host/sdl2/cmake_install.cmake
+host/sdl2/fmrb_host_sdl2
