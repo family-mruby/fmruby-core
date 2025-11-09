@@ -86,7 +86,9 @@ static fmrb_err_t spawn_shell_app(void)
         .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,  
         .priority = FMRB_SHELL_APP_PRIORITY,        
         .core_affinity = -1,                  
-        .headless = false                   
+        .headless = false,
+        .window_pos_x = 10,
+        .window_pos_y = 30           
     };
 
     int32_t shell_id;

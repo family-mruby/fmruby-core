@@ -66,7 +66,11 @@ typedef struct {
             fmrb_color_t color;
             fmrb_font_size_t font_size;
         } text;
-        // present command has no additional params (uses canvas_id only)
+        struct {
+            int16_t x;  // Screen X position
+            int16_t y;  // Screen Y position
+            fmrb_color_t transparent_color;  // Transparent color (0xFF = no transparency)
+        } present;
     } params;
 } gfx_cmd_t;
 

@@ -58,6 +58,7 @@ fmruby-coreは、WSL2で動くプロセスで実行する（Dockerコンテナ�
 ```
 rake build:linux  # Linuxターゲットビルド
 rake build:esp32  # ESP32ターゲットビルド
+rake host:build  # Hostビルド
 rake -T # その他のコマンドの使い方
 ```
 

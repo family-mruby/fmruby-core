@@ -461,19 +461,11 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 const fmrb_link_graphics_present_t *cmd = (const fmrb_link_graphics_present_t*)data;
                 GFX_LOG_D("PRESENT: canvas_id=%u", cmd->canvas_id);
 
-                // If canvas_id is not FMRB_CANVAS_SCREEN (0), push canvas to back buffer first
+                // PRESENT is always called with canvas_id=0 (back buffer)
+                // because Core side uses PUSH_CANVAS to composite app canvas to back buffer first
                 if (cmd->canvas_id != FMRB_CANVAS_SCREEN) {
-                    auto it = g_canvases.find(cmd->canvas_id);
-                    if (it == g_canvases.end()) {
-                        GFX_LOG_E("Canvas %u not found for present", cmd->canvas_id);
-                        return -1;
-                    }
-
-                    // Push canvas to back buffer (or screen if no back buffer)
-                    LovyanGFX* target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
-                    it->second->pushSprite(target, 0, 0);
-                    GFX_LOG_D("PRESENT: Pushed canvas %u to %s", cmd->canvas_id,
-                           g_back_buffer ? "back buffer" : "screen");
+                    GFX_LOG_E("PRESENT should be called with canvas_id=0, got %u", cmd->canvas_id);
+                    // Don't return error - just warn and proceed with screen buffer
                 }
 
                 // Swap buffers: copy back buffer to front buffer

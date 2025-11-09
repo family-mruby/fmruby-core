@@ -166,10 +166,15 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
         return;
     }
 
-    // Handle PRESENT command: execute buffered commands
+    // Handle PRESENT command: execute buffered commands and push to screen
     if (gfx_cmd->cmd_type == GFX_CMD_PRESENT) {
-        FMRB_LOGD(TAG, "GFX_CMD_PRESENT received, executing buffer");
-        // Execute all buffered commands
+        FMRB_LOGD(TAG, "GFX_CMD_PRESENT received: app_canvas_id=%d, pos=(%d,%d), transparent=0x%02X",
+                 gfx_cmd->canvas_id,
+                 gfx_cmd->params.present.x,
+                 gfx_cmd->params.present.y,
+                 gfx_cmd->params.present.transparent_color);
+
+        // Execute all buffered commands on app canvas
         fmrb_gfx_err_t ret = fmrb_gfx_command_buffer_execute(g_gfx_cmd_buffer, ctx);
         if (ret != FMRB_GFX_OK) {
             FMRB_LOGE(TAG, "Failed to execute command buffer: %d", ret);
@@ -177,10 +182,27 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
             FMRB_LOGD(TAG, "Command buffer executed successfully");
         }
 
-        // Present the canvas
-        ret = fmrb_gfx_present(ctx, gfx_cmd->canvas_id);
+        // Clear screen buffer before compositing (black background)
+        ret = fmrb_gfx_clear(ctx, FMRB_CANVAS_SCREEN, FMRB_COLOR_BLACK);
         if (ret != FMRB_GFX_OK) {
-            FMRB_LOGE(TAG, "Failed to present canvas: %d", ret);
+            FMRB_LOGE(TAG, "Failed to clear screen buffer: %d", ret);
+        }
+
+        // Push app canvas to screen buffer at specified position
+        ret = fmrb_gfx_push_canvas(ctx,
+                                    gfx_cmd->canvas_id,       // Source: app canvas (e.g., Canvas 1)
+                                    FMRB_CANVAS_SCREEN,       // Dest: screen buffer (Canvas 0)
+                                    gfx_cmd->params.present.x,
+                                    gfx_cmd->params.present.y,
+                                    gfx_cmd->params.present.transparent_color);
+        if (ret != FMRB_GFX_OK) {
+            FMRB_LOGE(TAG, "Failed to push canvas %d to screen buffer: %d", gfx_cmd->canvas_id, ret);
+        }
+
+        // Present the screen buffer (Canvas 0) to actual screen
+        ret = fmrb_gfx_present(ctx, FMRB_CANVAS_SCREEN);
+        if (ret != FMRB_GFX_OK) {
+            FMRB_LOGE(TAG, "Failed to present screen buffer: %d", ret);
         }
 
         // Clear buffer for next frame

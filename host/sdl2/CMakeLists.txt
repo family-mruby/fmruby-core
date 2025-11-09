@@ -7,7 +7,7 @@ set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Build option for IPC debug logging
-option(FMRB_IPC_DEBUG "Enable IPC message dump logging" OFF)
+option(FMRB_IPC_DEBUG "Enable IPC message dump logging" ON)
 
 add_definitions(-DLGFX_SDL)
 

@@ -355,10 +355,22 @@ static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Send PRESENT command to Host Task
+    // Get window position from app context
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) {
+        FMRB_LOGE(TAG, "present() failed: No app context");
+        mrb_raise(mrb, E_RUNTIME_ERROR, "No app context");
+    }
+
+    // Send PRESENT command to Host Task with window position
     gfx_cmd_t cmd = {
         .cmd_type = GFX_CMD_PRESENT,
-        .canvas_id = data->canvas_id
+        .canvas_id = data->canvas_id,
+        .params.present = {
+            .x = (int16_t)ctx->window_pos_x,
+            .y = (int16_t)ctx->window_pos_y,
+            .transparent_color = 0xFF  // No transparency by default
+        }
     };
 
     fmrb_err_t ret = send_gfx_command(&cmd);

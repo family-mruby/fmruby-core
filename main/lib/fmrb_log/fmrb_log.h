@@ -10,4 +10,7 @@
 #define FMRB_LOGD(tag, format, ...) ESP_LOGD(tag, format, ##__VA_ARGS__)
 #define FMRB_LOGV(tag, format, ...) ESP_LOGV(tag, format, ##__VA_ARGS__)
 #define fmrb_disable_log()   esp_log_level_set("*", ESP_LOG_NONE)
+#define fmrb_set_log_level_info()   esp_log_level_set("*", ESP_LOG_INFO)
+#define fmrb_set_log_level_debug()   esp_log_level_set("*", ESP_LOG_DEBUG)
+
 

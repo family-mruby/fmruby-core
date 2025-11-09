@@ -520,8 +520,10 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     }
     ctx->user_data = (void*)encoded_data;
     ctx->headless = attr->headless;
+    ctx->window_pos_x = attr->window_pos_x;
+    ctx->window_pos_y = attr->window_pos_y;
 
-    // Initialize window size based on app type
+    // Initialize window size based on app ztype
     const fmrb_system_config_t* sys_config = fmrb_kernel_get_config();
     if (attr->type == APP_TYPE_USER_APP && !ctx->headless) {
         ctx->window_width = sys_config->default_user_app_width;

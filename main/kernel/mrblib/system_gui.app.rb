@@ -19,8 +19,6 @@ class SystemGuiApp < FmrbApp
     puts "[SystemGUI] on_create called"
     #puts "[SystemGUI] spawn default shell app"
 
-    # Spawn shell application via Kernel
-    #spawn_app("default/shell")
   end
 
   def spawn_app(app_name)
@@ -49,6 +47,12 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_update()
+    # Temporarily disable shell spawning for canvas position testing
+    #if @counter == 0
+    #  # Spawn shell application via Kernel
+    #  spawn_app("default/shell")
+    #end
+
     if @counter % 30 == 0
       puts "[SystemGUI] on_update() tick #{@counter / 30}s"
     end
@@ -66,6 +70,8 @@ class SystemGuiApp < FmrbApp
 
     @score += 1
     @counter += 1
+    @player_y += 20 if @counter % 5 == 0
+
     #33
     1000
   end
