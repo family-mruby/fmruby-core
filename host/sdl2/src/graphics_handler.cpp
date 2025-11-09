@@ -11,6 +11,30 @@ extern "C" {
 #include "fmrb_gfx.h"
 }
 
+// Graphics handler log levels
+typedef enum {
+    GFX_LOG_NONE = 0,     // No logging
+    GFX_LOG_ERROR = 1,    // Error messages only
+    GFX_LOG_INFO = 2,     // Info + Error
+    GFX_LOG_DEBUG = 3,    // Debug + Info + Error (verbose)
+} gfx_log_level_t;
+
+// Current log level (can be controlled via environment variable or compile-time)
+static gfx_log_level_t g_gfx_log_level = GFX_LOG_ERROR;  // Default: errors only
+
+// Log macros
+#define GFX_LOG_E(fmt, ...) do { if (g_gfx_log_level >= GFX_LOG_ERROR) { fprintf(stderr, "[GFX_ERR] " fmt "\n", ##__VA_ARGS__); } } while(0)
+#define GFX_LOG_I(fmt, ...) do { if (g_gfx_log_level >= GFX_LOG_INFO) { printf("[GFX_INFO] " fmt "\n", ##__VA_ARGS__); } } while(0)
+#define GFX_LOG_D(fmt, ...) do { if (g_gfx_log_level >= GFX_LOG_DEBUG) { printf("[GFX_DBG] " fmt "\n", ##__VA_ARGS__); } } while(0)
+
+// Function to set log level at runtime
+extern "C" void graphics_handler_set_log_level(int level) {
+    if (level >= GFX_LOG_NONE && level <= GFX_LOG_DEBUG) {
+        g_gfx_log_level = (gfx_log_level_t)level;
+        printf("[GFX] Log level set to %d\n", level);
+    }
+}
+
 // External reference to LGFX instance created in main.cpp
 extern LGFX* g_lgfx;
 
@@ -32,7 +56,7 @@ static LovyanGFX* get_current_target() {
     if (it != g_canvases.end()) {
         return it->second;  // Canvas sprite
     }
-    fprintf(stderr, "Warning: Canvas %u not found, using back buffer\n", g_current_target);
+    GFX_LOG_E("Canvas %u not found, using back buffer", g_current_target);
     return g_back_buffer ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;  // Fallback to back buffer
 }
 
@@ -41,25 +65,25 @@ extern "C" int graphics_handler_init(SDL_Renderer *renderer) {
 
     // Prevent multiple initializations
     if (g_graphics_initialized) {
-        fprintf(stderr, "Graphics handler already initialized, ignoring request\n");
+        GFX_LOG_E("Graphics handler already initialized, ignoring request");
         return 0;  // Return success to avoid breaking caller
     }
 
     if (!g_lgfx) {
-        fprintf(stderr, "LGFX instance not created\n");
+        GFX_LOG_E("LGFX instance not created");
         return -1;
     }
 
     // Create back buffer sprite for double buffering
     g_back_buffer = new LGFX_Sprite(g_lgfx);
     if (!g_back_buffer) {
-        fprintf(stderr, "Failed to allocate back buffer sprite\n");
+        GFX_LOG_E("Failed to allocate back buffer sprite");
         return -1;
     }
 
     g_back_buffer->setColorDepth(8);  // RGB332 to match main screen
     if (!g_back_buffer->createSprite(480, 320)) {
-        fprintf(stderr, "Failed to create back buffer sprite (480x320)\n");
+        GFX_LOG_E("Failed to create back buffer sprite (480x320)");
         delete g_back_buffer;
         g_back_buffer = nullptr;
         return -1;
@@ -67,8 +91,8 @@ extern "C" int graphics_handler_init(SDL_Renderer *renderer) {
 
     g_back_buffer->fillScreen(FMRB_COLOR_BLACK);  // Initialize to black
     g_graphics_initialized = true;  // Mark as initialized
-    printf("Graphics handler initialized (using external LGFX instance with back buffer)\n");
-    printf("Back buffer created: %p, size: 480x320, color depth: 8\n", (void*)g_back_buffer);
+    GFX_LOG_I("Graphics handler initialized (using external LGFX instance with back buffer)");
+    GFX_LOG_I("Back buffer created: %p, size: 480x320, color depth: 8", (void*)g_back_buffer);
     return 0;
 }
 
@@ -88,7 +112,7 @@ extern "C" void graphics_handler_cleanup(void) {
     g_graphics_initialized = false;  // Reset initialization flag
 
     // Note: g_lgfx is managed by main.cpp, don't delete here
-    printf("Graphics handler cleaned up\n");
+    GFX_LOG_I("Graphics handler cleaned up");
 }
 
 extern "C" SDL_Renderer* graphics_handler_get_renderer(void) {
@@ -110,31 +134,29 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
     // cmd_type: graphics command type (from msgpack sub_cmd field)
     // data: structure data only (no cmd_type prefix)
 
-    printf("handle_graphics_command: cmd_type=0x%02x, size=%zu\n", cmd_type, size);
-
     switch (cmd_type) {
         case FMRB_LINK_GFX_CLEAR:
         case FMRB_LINK_GFX_FILL_SCREEN:
             if (size >= sizeof(fmrb_link_graphics_clear_t)) {
                 const fmrb_link_graphics_clear_t *cmd = (const fmrb_link_graphics_clear_t*)data;
-                printf("CLEAR/FILL_SCREEN: canvas_id=%u, color=0x%02x\n", cmd->canvas_id, cmd->color);
+                GFX_LOG_D("CLEAR/FILL_SCREEN: canvas_id=%u, color=0x%02x", cmd->canvas_id, cmd->color);
 
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
                     target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
-                    printf("CLEAR: Using back buffer\n");
+                    GFX_LOG_D("CLEAR: Using back buffer");
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
-                    printf("CLEAR: Using canvas %u\n", cmd->canvas_id);
+                    GFX_LOG_D("CLEAR: Using canvas %u", cmd->canvas_id);
                 }
                 target->fillScreen(cmd->color);
-                printf("CLEAR: fillScreen executed\n");
+                GFX_LOG_D("CLEAR: fillScreen executed");
                 return 0;
             }
             break;
@@ -150,7 +172,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
@@ -170,7 +192,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
@@ -190,7 +212,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
@@ -203,24 +225,24 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
         case FMRB_LINK_GFX_FILL_RECT:
             if (size >= sizeof(fmrb_link_graphics_rect_t)) {
                 const fmrb_link_graphics_rect_t *cmd = (const fmrb_link_graphics_rect_t*)data;
-                printf("FILL_RECT: canvas_id=%u, x=%d, y=%d, w=%d, h=%d, color=0x%02x\n",
+                GFX_LOG_D("FILL_RECT: canvas_id=%u, x=%d, y=%d, w=%d, h=%d, color=0x%02x",
                        cmd->canvas_id, cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
                 // Get target from command (thread-safe)
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
                     target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
-                    printf("FILL_RECT: Using back buffer\n");
+                    GFX_LOG_D("FILL_RECT: Using back buffer");
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
-                    printf("FILL_RECT: Using canvas %u\n", cmd->canvas_id);
+                    GFX_LOG_D("FILL_RECT: Using canvas %u", cmd->canvas_id);
                 }
                 target->fillRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
-                printf("FILL_RECT: fillRect executed\n");
+                GFX_LOG_D("FILL_RECT: fillRect executed");
                 return 0;
             }
             break;
@@ -234,7 +256,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
@@ -253,7 +275,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
@@ -266,23 +288,23 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
         case FMRB_LINK_GFX_DRAW_CIRCLE:
             if (size >= sizeof(fmrb_link_graphics_circle_t)) {
                 const fmrb_link_graphics_circle_t *cmd = (const fmrb_link_graphics_circle_t*)data;
-                printf("DRAW_CIRCLE: canvas_id=%u, x=%d, y=%d, r=%d, color=0x%02x\n",
+                GFX_LOG_D("DRAW_CIRCLE: canvas_id=%u, x=%d, y=%d, r=%d, color=0x%02x",
                        cmd->canvas_id, cmd->x, cmd->y, cmd->radius, cmd->color);
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
                     target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
-                    printf("DRAW_CIRCLE: Using back buffer\n");
+                    GFX_LOG_D("DRAW_CIRCLE: Using back buffer");
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
-                    printf("DRAW_CIRCLE: Using canvas %u\n", cmd->canvas_id);
+                    GFX_LOG_D("DRAW_CIRCLE: Using canvas %u", cmd->canvas_id);
                 }
                 target->drawCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
-                printf("DRAW_CIRCLE: drawCircle executed\n");
+                GFX_LOG_D("DRAW_CIRCLE: drawCircle executed");
                 return 0;
             }
             break;
@@ -290,23 +312,23 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
         case FMRB_LINK_GFX_FILL_CIRCLE:
             if (size >= sizeof(fmrb_link_graphics_circle_t)) {
                 const fmrb_link_graphics_circle_t *cmd = (const fmrb_link_graphics_circle_t*)data;
-                printf("FILL_CIRCLE: canvas_id=%u, x=%d, y=%d, r=%d, color=0x%02x\n",
+                GFX_LOG_D("FILL_CIRCLE: canvas_id=%u, x=%d, y=%d, r=%d, color=0x%02x",
                        cmd->canvas_id, cmd->x, cmd->y, cmd->radius, cmd->color);
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
                     target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
-                    printf("FILL_CIRCLE: Using back buffer\n");
+                    GFX_LOG_D("FILL_CIRCLE: Using back buffer");
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
-                    printf("FILL_CIRCLE: Using canvas %u\n", cmd->canvas_id);
+                    GFX_LOG_D("FILL_CIRCLE: Using canvas %u", cmd->canvas_id);
                 }
                 target->fillCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
-                printf("FILL_CIRCLE: fillCircle executed\n");
+                GFX_LOG_D("FILL_CIRCLE: fillCircle executed");
                 return 0;
             }
             break;
@@ -320,7 +342,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
@@ -339,7 +361,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
@@ -358,7 +380,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
@@ -377,7 +399,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
@@ -390,7 +412,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
         case FMRB_LINK_GFX_DRAW_STRING:
             // Use structure from fmrb_link_protocol.h (no cmd_type in data)
             if (size < sizeof(fmrb_link_graphics_text_t)) {
-                fprintf(stderr, "String command too small: size=%zu, expected>=%zu\n", size, sizeof(fmrb_link_graphics_text_t));
+                GFX_LOG_E("String command too small: size=%zu, expected>=%zu", size, sizeof(fmrb_link_graphics_text_t));
                 break;
             }
             {
@@ -398,7 +420,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
 
                 size_t expected_size = sizeof(fmrb_link_graphics_text_t) + text_cmd->text_len;
                 if (size < expected_size) {
-                    fprintf(stderr, "String command size mismatch: expected=%zu, actual=%zu, text_len=%u\n",
+                    GFX_LOG_E("String command size mismatch: expected=%zu, actual=%zu, text_len=%u",
                             expected_size, size, text_cmd->text_len);
                     break;
                 }
@@ -410,57 +432,57 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 memcpy(text_buf, text_data, len);
                 text_buf[len] = '\0';
 
-                printf("DRAW_STRING: canvas_id=%u, x=%d, y=%d, color=0x%02x, text='%s'\n",
+                GFX_LOG_D("DRAW_STRING: canvas_id=%u, x=%d, y=%d, color=0x%02x, text='%s'",
                        text_cmd->canvas_id, text_cmd->x, text_cmd->y, text_cmd->color, text_buf);
 
                 // Get target from command
                 LovyanGFX* target;
                 if (text_cmd->canvas_id == FMRB_CANVAS_SCREEN) {
                     target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
-                    printf("DRAW_STRING: Using back buffer\n");
+                    GFX_LOG_D("DRAW_STRING: Using back buffer");
                 } else {
                     auto it = g_canvases.find(text_cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found\n", text_cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found", text_cmd->canvas_id);
                         return -1;
                     }
                     target = it->second;
-                    printf("DRAW_STRING: Using canvas %u\n", text_cmd->canvas_id);
+                    GFX_LOG_D("DRAW_STRING: Using canvas %u", text_cmd->canvas_id);
                 }
                 target->setTextColor(text_cmd->color);
                 target->setCursor(text_cmd->x, text_cmd->y);
                 target->print(text_buf);
-                printf("DRAW_STRING: Text drawn\n");
+                GFX_LOG_D("DRAW_STRING: Text drawn");
                 return 0;
             }
 
         case FMRB_LINK_GFX_PRESENT:
             if (size >= sizeof(fmrb_link_graphics_present_t)) {
                 const fmrb_link_graphics_present_t *cmd = (const fmrb_link_graphics_present_t*)data;
-                printf("PRESENT: canvas_id=%u\n", cmd->canvas_id);
+                GFX_LOG_D("PRESENT: canvas_id=%u", cmd->canvas_id);
 
                 // If canvas_id is not FMRB_CANVAS_SCREEN (0), push canvas to back buffer first
                 if (cmd->canvas_id != FMRB_CANVAS_SCREEN) {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found for present\n", cmd->canvas_id);
+                        GFX_LOG_E("Canvas %u not found for present", cmd->canvas_id);
                         return -1;
                     }
 
                     // Push canvas to back buffer (or screen if no back buffer)
                     LovyanGFX* target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
                     it->second->pushSprite(target, 0, 0);
-                    printf("PRESENT: Pushed canvas %u to %s\n", cmd->canvas_id,
+                    GFX_LOG_D("PRESENT: Pushed canvas %u to %s", cmd->canvas_id,
                            g_back_buffer ? "back buffer" : "screen");
                 }
 
                 // Swap buffers: copy back buffer to front buffer
                 if (g_back_buffer) {
                     g_back_buffer->pushSprite(g_lgfx, 0, 0);
-                    printf("PRESENT: Pushed back buffer to screen\n");
+                    GFX_LOG_D("PRESENT: Pushed back buffer to screen");
                 }
                 g_lgfx->display();
-                printf("PRESENT: display() called\n");
+                GFX_LOG_D("PRESENT: display() called");
                 return 0;
             }
             break;
@@ -480,14 +502,14 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 LGFX_Sprite* sprite = new LGFX_Sprite(g_lgfx);
                 sprite->setColorDepth(8);  // RGB332
                 if (!sprite->createSprite(cmd->width, cmd->height)) {
-                    fprintf(stderr, "Failed to create sprite %u (%dx%d)\n",
+                    GFX_LOG_E("Failed to create sprite %u (%dx%d)",
                             canvas_id, cmd->width, cmd->height);
                     delete sprite;
                     return -1;
                 }
 
                 g_canvases[canvas_id] = sprite;
-                printf("Canvas created: ID=%u, %dx%d\n", canvas_id, cmd->width, cmd->height);
+                GFX_LOG_I("Canvas created: ID=%u, %dx%d", canvas_id, cmd->width, cmd->height);
 
                 // Send ACK with canvas_id
                 socket_server_send_ack(msg_type, seq, (const uint8_t*)&canvas_id, sizeof(canvas_id));
@@ -501,7 +523,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
 
                 auto it = g_canvases.find(cmd->canvas_id);
                 if (it == g_canvases.end()) {
-                    fprintf(stderr, "Canvas %u not found\n", cmd->canvas_id);
+                    GFX_LOG_E("Canvas %u not found", cmd->canvas_id);
                     return -1;
                 }
 
@@ -512,7 +534,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
 
                 delete it->second;
                 g_canvases.erase(it);
-                printf("Canvas deleted: ID=%u\n", cmd->canvas_id);
+                GFX_LOG_I("Canvas deleted: ID=%u", cmd->canvas_id);
                 return 0;
             }
             break;
@@ -524,13 +546,13 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 // Validate target
                 if (cmd->target_id != FMRB_CANVAS_SCREEN) {
                     if (g_canvases.find(cmd->target_id) == g_canvases.end()) {
-                        fprintf(stderr, "Canvas %u not found for set_target\n", cmd->target_id);
+                        GFX_LOG_E("Canvas %u not found for set_target", cmd->target_id);
                         return -1;
                     }
                 }
 
                 g_current_target = cmd->target_id;
-                printf("Drawing target set: ID=%u %s\n", cmd->target_id,
+                GFX_LOG_D("Drawing target set: ID=%u %s", cmd->target_id,
                        cmd->target_id == FMRB_CANVAS_SCREEN ? "(screen)" : "(canvas)");
                 return 0;
             }
@@ -543,7 +565,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 // Find source canvas
                 auto it = g_canvases.find(cmd->canvas_id);
                 if (it == g_canvases.end()) {
-                    fprintf(stderr, "Canvas %u not found for push\n", cmd->canvas_id);
+                    GFX_LOG_E("Canvas %u not found for push", cmd->canvas_id);
                     return -1;
                 }
 
@@ -556,7 +578,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 } else {
                     auto dst_it = g_canvases.find(cmd->dest_canvas_id);
                     if (dst_it == g_canvases.end()) {
-                        fprintf(stderr, "Destination canvas %u not found for push\n", cmd->dest_canvas_id);
+                        GFX_LOG_E("Destination canvas %u not found for push", cmd->dest_canvas_id);
                         return -1;
                     }
                     dst = dst_it->second;
@@ -567,11 +589,11 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 LGFX_Sprite* src_sprite = it->second;
                 if (cmd->use_transparency) {
                     src_sprite->pushSprite(dst, cmd->x, cmd->y, cmd->transparent_color);
-                    printf("Canvas pushed with transparency: ID=%u to %s %u at (%d,%d), transp=0x%02x\n",
+                    GFX_LOG_D("Canvas pushed with transparency: ID=%u to %s %u at (%d,%d), transp=0x%02x",
                            cmd->canvas_id, dst_name, cmd->dest_canvas_id, cmd->x, cmd->y, cmd->transparent_color);
                 } else {
                     src_sprite->pushSprite(dst, cmd->x, cmd->y);
-                    printf("Canvas pushed: ID=%u to %s %u at (%d,%d)\n",
+                    GFX_LOG_D("Canvas pushed: ID=%u to %s %u at (%d,%d)",
                            cmd->canvas_id, dst_name, cmd->dest_canvas_id, cmd->x, cmd->y);
                 }
                 return 0;
@@ -579,10 +601,10 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
             break;
 
         default:
-            fprintf(stderr, "Unknown graphics command: 0x%02x\n", cmd_type);
+            GFX_LOG_E("Unknown graphics command: 0x%02x", cmd_type);
             return -1;
     }
 
-    fprintf(stderr, "Invalid command size for type 0x%02x (size=%zu)\n", cmd_type, size);
+    GFX_LOG_E("Invalid command size for type 0x%02x (size=%zu)", cmd_type, size);
     return -1;
 }

@@ -13,6 +13,22 @@
 #include <fcntl.h>
 #include <msgpack.h>
 
+// Socket server log levels
+typedef enum {
+    SOCK_LOG_NONE = 0,     // No logging
+    SOCK_LOG_ERROR = 1,    // Error messages only
+    SOCK_LOG_INFO = 2,     // Info + Error
+    SOCK_LOG_DEBUG = 3,    // Debug + Info + Error (verbose)
+} sock_log_level_t;
+
+// Current log level (default: errors only)
+static sock_log_level_t g_sock_log_level = SOCK_LOG_ERROR;
+
+// Log macros
+#define SOCK_LOG_E(fmt, ...) do { if (g_sock_log_level >= SOCK_LOG_ERROR) { fprintf(stderr, "[SOCK_ERR] " fmt "\n", ##__VA_ARGS__); } } while(0)
+#define SOCK_LOG_I(fmt, ...) do { if (g_sock_log_level >= SOCK_LOG_INFO) { printf("[SOCK_INFO] " fmt "\n", ##__VA_ARGS__); } } while(0)
+#define SOCK_LOG_D(fmt, ...) do { if (g_sock_log_level >= SOCK_LOG_DEBUG) { printf("[SOCK_DBG] " fmt "\n", ##__VA_ARGS__); } } while(0)
+
 // Forward declaration - implemented in main.cpp
 extern int init_display_callback(uint16_t width, uint16_t height, uint8_t color_depth);
 
@@ -145,17 +161,19 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
         payload_len = root.via.array.ptr[3].via.bin.size;
     }
 
-    // Debug log (always enabled for GRAPHICS commands)
+    // Debug log for GRAPHICS commands (controlled by log level)
     if (type == FMRB_LINK_TYPE_GRAPHICS) {
-        printf("RX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%zu msgpack_len=%zu\n",
+        SOCK_LOG_D("RX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%zu msgpack_len=%zu",
                type, seq, sub_cmd, payload_len, msgpack_len);
-        printf("RX msgpack bytes (%zu): ", msgpack_len);
-        for (size_t i = 0; i < msgpack_len && i < 64; i++) {
-            printf("%02X ", msgpack_data[i]);
-            if ((i + 1) % 16 == 0) printf("\n");
+        if (g_sock_log_level >= SOCK_LOG_DEBUG) {
+            printf("RX msgpack bytes (%zu): ", msgpack_len);
+            for (size_t i = 0; i < msgpack_len && i < 64; i++) {
+                printf("%02X ", msgpack_data[i]);
+                if ((i + 1) % 16 == 0) printf("\n");
+            }
+            if (msgpack_len > 0) printf("\n");
+            fflush(stdout);
         }
-        if (msgpack_len > 0) printf("\n");
-        fflush(stdout);
     }
 
     // sub_cmd contains the command type, payload contains only structure data
@@ -356,7 +374,7 @@ int socket_server_send_ack(uint8_t type, uint8_t seq, const uint8_t *response_da
         return -1;
     }
 
-    printf("ACK sent: type=%u seq=%u response_len=%u\n", type, seq, response_len);
+    SOCK_LOG_D("ACK sent: type=%u seq=%u response_len=%u", type, seq, response_len);
     return 0;
 }
 

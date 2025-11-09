@@ -37,6 +37,12 @@ int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_type, uint8_t
  */
 SDL_Renderer* graphics_handler_get_renderer(void);
 
+/**
+ * @brief Set graphics handler log level
+ * @param level Log level (0=NONE, 1=ERROR, 2=INFO, 3=DEBUG)
+ */
+void graphics_handler_set_log_level(int level);
+
 #ifdef __cplusplus
 }
 #endif

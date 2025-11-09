@@ -62,7 +62,14 @@ rake -T # その他のコマンドの使い方
 ```
 
 注意
-ターゲットをlinux - ESP32で切り替えてビルドするときは、ビルド前に `rake clean` を実行すること 
+ターゲットをlinux - ESP32で切り替えてビルドするときは、ビルド前に `rake clean` を実行すること
+
+## デバッグログの制御
+
+描画関連のログはデフォルトでERRORレベルのみ表示される。詳細ログを有効にする方法：
+
+- **ESP32/Linux (Core側)**: ESP-IDFのログレベルを変更（`idf.py menuconfig` > Component config > Log output）またはコード内で`esp_log_level_set("タグ名", ESP_LOG_DEBUG)`を使用
+- **Host側 (SDL2)**: `graphics_handler_set_log_level(3)` でDEBUGレベルを有効化（0=NONE, 1=ERROR, 2=INFO, 3=DEBUG）
 
 ## 設計指針
 

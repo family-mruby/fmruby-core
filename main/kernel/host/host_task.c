@@ -168,13 +168,13 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
 
     // Handle PRESENT command: execute buffered commands
     if (gfx_cmd->cmd_type == GFX_CMD_PRESENT) {
-        FMRB_LOGI(TAG, "GFX_CMD_PRESENT received, executing buffer");
+        FMRB_LOGD(TAG, "GFX_CMD_PRESENT received, executing buffer");
         // Execute all buffered commands
         fmrb_gfx_err_t ret = fmrb_gfx_command_buffer_execute(g_gfx_cmd_buffer, ctx);
         if (ret != FMRB_GFX_OK) {
             FMRB_LOGE(TAG, "Failed to execute command buffer: %d", ret);
         } else {
-            FMRB_LOGI(TAG, "Command buffer executed successfully");
+            FMRB_LOGD(TAG, "Command buffer executed successfully");
         }
 
         // Present the canvas
@@ -217,7 +217,7 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
             break;
 
         case GFX_CMD_RECT:
-            FMRB_LOGI(TAG, "GFX_CMD_RECT received: canvas_id=%d, x=%d, y=%d, w=%d, h=%d, color=0x%02X, filled=%d",
+            FMRB_LOGD(TAG, "GFX_CMD_RECT received: canvas_id=%d, x=%d, y=%d, w=%d, h=%d, color=0x%02X, filled=%d",
                      gfx_cmd->canvas_id,
                      gfx_cmd->params.rect.rect.x, gfx_cmd->params.rect.rect.y,
                      gfx_cmd->params.rect.rect.width, gfx_cmd->params.rect.rect.height,
@@ -228,12 +228,12 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
                                                    gfx_cmd->params.rect.color,
                                                    gfx_cmd->params.rect.filled);
             if (ret == FMRB_GFX_OK) {
-                FMRB_LOGI(TAG, "GFX_CMD_RECT buffered successfully");
+                FMRB_LOGD(TAG, "GFX_CMD_RECT buffered successfully");
             }
             break;
 
         case GFX_CMD_CIRCLE:
-            FMRB_LOGI(TAG, "GFX_CMD_CIRCLE received: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X, filled=%d",
+            FMRB_LOGD(TAG, "GFX_CMD_CIRCLE received: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X, filled=%d",
                      gfx_cmd->canvas_id,
                      gfx_cmd->params.circle.x, gfx_cmd->params.circle.y,
                      gfx_cmd->params.circle.radius,
@@ -246,7 +246,7 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
                                                      gfx_cmd->params.circle.color,
                                                      gfx_cmd->params.circle.filled);
             if (ret == FMRB_GFX_OK) {
-                FMRB_LOGI(TAG, "GFX_CMD_CIRCLE buffered successfully");
+                FMRB_LOGD(TAG, "GFX_CMD_CIRCLE buffered successfully");
             }
             break;
 

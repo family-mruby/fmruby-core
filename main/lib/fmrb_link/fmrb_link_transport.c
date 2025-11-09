@@ -158,14 +158,9 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
         msgpack_pack_nil(&pk);
     }
 
-    // Debug: dump msgpack bytes for GRAPHICS commands
+    // Debug: log msgpack size for GRAPHICS commands (only at DEBUG level)
     if (link_type == FMRB_LINK_TYPE_GRAPHICS) {
-        FMRB_LOGI(TAG, "msgpack data (size=%zu):", sbuf.size);
-        for (size_t i = 0; i < sbuf.size && i < 64; i++) {
-            printf("%02X ", (uint8_t)sbuf.data[i]);
-            if ((i + 1) % 16 == 0) printf("\n");
-        }
-        if (sbuf.size > 0) printf("\n");
+        FMRB_LOGD(TAG, "msgpack data (size=%zu)", sbuf.size);
     }
 
     // Send via HAL (HAL will add CRC32 and COBS encode)
@@ -230,7 +225,7 @@ fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
 
     // Log graphics commands
     if (link_type == FMRB_LINK_TYPE_GRAPHICS) {
-        FMRB_LOGI(TAG, "Sending GRAPHICS command: sub_cmd=0x%02X, payload_len=%u, seq=%u",
+        FMRB_LOGD(TAG, "Sending GRAPHICS command: sub_cmd=0x%02X, payload_len=%u, seq=%u",
                   sub_cmd, payload_len, seq);
     }
 
@@ -475,7 +470,7 @@ fmrb_err_t fmrb_link_transport_process(void) {
     while (processed_count < max_process_per_call &&
            fmrb_hal_link_receive(FMRB_LINK_GRAPHICS, &hal_msg, 0) == FMRB_OK) {
         processed_count++;
-        FMRB_LOGI(TAG, "Processing frame %d (size=%u)", processed_count, hal_msg.size);
+        FMRB_LOGD(TAG, "Processing frame %d (size=%u)", processed_count, hal_msg.size);
 
         // Decode msgpack message: [type, seq, sub_cmd, payload]
         msgpack_unpacked msg;
@@ -508,7 +503,7 @@ fmrb_err_t fmrb_link_transport_process(void) {
                 payload_len = msg.data.via.array.ptr[3].via.bin.size;
             }
 
-            FMRB_LOGI(TAG, "Frame %d: type=%u, seq=%u, sub_cmd=%u, payload_len=%u",
+            FMRB_LOGD(TAG, "Frame %d: type=%u, seq=%u, sub_cmd=%u, payload_len=%u",
                      processed_count, type, seq, sub_cmd, payload_len);
             handle_received_message(ctx, type, seq, sub_cmd, payload, payload_len);
         } else {
@@ -519,7 +514,7 @@ fmrb_err_t fmrb_link_transport_process(void) {
     }
 
     if (processed_count > 0) {
-        FMRB_LOGI(TAG, "Processed %d frames in this call", processed_count);
+        FMRB_LOGD(TAG, "Processed %d frames in this call", processed_count);
     }
 
     // Handle retransmissions

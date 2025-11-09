@@ -48,6 +48,8 @@ typedef struct {
     bool                  headless;          // Headless app flag (no graphics, no canvas)
     uint16_t              window_width;      // Window Width(if headless, =0)
     uint16_t              window_height;     // Window Height(if headless, =0)
+    uint16_t              window_pos_x;
+    uint16_t              window_pos_y;
     void*                 user_data;         // Application-specific data
 } fmrb_app_task_context_t;
 
@@ -64,7 +66,9 @@ typedef struct {
     uint32_t              stack_words;      // Stack size in words (not bytes)
     fmrb_task_priority_t  priority;
     fmrb_base_type_t      core_affinity;    // -1 = no affinity, 0/1 = specific core
-    bool                  headless;          // Headless app flag (no graphics, no canvas)
+    bool                  headless;         // Headless app flag (no graphics, no canvas)
+    uint16_t              window_pos_x;
+    uint16_t              window_pos_y;    
 } fmrb_spawn_attr_t;
 
 // App info for ps-style listing

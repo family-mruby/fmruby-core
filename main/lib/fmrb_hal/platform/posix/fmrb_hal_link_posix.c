@@ -251,10 +251,10 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
             return FMRB_ERR_FAILED;
         }
 
-        ESP_LOGI(TAG, "Received %zd bytes from socket", received);
+        ESP_LOGD(TAG, "Received %zd bytes from socket", received);
         recv_pos += received;
     } else {
-        ESP_LOGI(TAG, "Processing buffered data (recv_pos=%zu)", recv_pos);
+        ESP_LOGD(TAG, "Processing buffered data (recv_pos=%zu)", recv_pos);
     }
 
     // Skip leading null bytes (leftover frame terminators)
@@ -279,7 +279,7 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
         return FMRB_ERR_NOT_FOUND;
     }
 
-    ESP_LOGI(TAG, "Found COBS frame: frame_end=%zu, recv_pos=%zu", frame_end, recv_pos);
+    ESP_LOGD(TAG, "Found COBS frame: frame_end=%zu, recv_pos=%zu", frame_end, recv_pos);
 
     // Decode COBS frame
     static uint8_t decoded_buffer[4096];
@@ -295,7 +295,7 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
         return FMRB_ERR_FAILED;
     }
 
-    ESP_LOGI(TAG, "COBS decoded %zd bytes", decoded_len);
+    ESP_LOGD(TAG, "COBS decoded %zd bytes", decoded_len);
 
     // Debug: print header info
     if (decoded_len >= 14) {  // Minimum header size
@@ -305,7 +305,7 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
         uint16_t sequence = *(uint16_t*)(decoded_buffer + 6);
         uint32_t payload_len = *(uint32_t*)(decoded_buffer + 8);
         uint32_t checksum = *(uint32_t*)(decoded_buffer + 12);
-        ESP_LOGI(TAG, "Header: magic=0x%08x ver=%u type=0x%02x seq=%u plen=%u csum=0x%08x",
+        ESP_LOGD(TAG, "Header: magic=0x%08x ver=%u type=0x%02x seq=%u plen=%u csum=0x%08x",
                  magic, version, msg_type, sequence, payload_len, checksum);
     }
 

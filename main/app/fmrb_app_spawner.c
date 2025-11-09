@@ -78,15 +78,15 @@ static fmrb_err_t spawn_system_gui_app(void)
 static fmrb_err_t spawn_shell_app(void)
 {
     fmrb_spawn_attr_t attr = {
-        .app_id = PROC_ID_USER_APP0,              // User App slot 0
-        .type = APP_TYPE_USER_APP,                 // User App type
+        .app_id = PROC_ID_USER_APP0,              
+        .type = APP_TYPE_USER_APP,            
         .name = "shell",
         .load_mode = FMRB_LOAD_MODE_IREP,
-        .irep = shell_irep,                        // shell.c irep array
-        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,  // 60KB
-        .priority = FMRB_SHELL_APP_PRIORITY,            // Priority 5
-        .core_affinity = -1,                       // No core affinity
-        .headless = false                          // Graphics enabled
+        .irep = shell_irep,             
+        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,  
+        .priority = FMRB_SHELL_APP_PRIORITY,        
+        .core_affinity = -1,                  
+        .headless = false                   
     };
 
     int32_t shell_id;

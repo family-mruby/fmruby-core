@@ -20,7 +20,7 @@ class SystemGuiApp < FmrbApp
     #puts "[SystemGUI] spawn default shell app"
 
     # Spawn shell application via Kernel
-    #spawn_app("shell")
+    #spawn_app("default/shell")
   end
 
   def spawn_app(app_name)
@@ -42,14 +42,10 @@ class SystemGuiApp < FmrbApp
   end
 
   def draw_current()
-    puts "[SystemGUI] draw_current() start"
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
-    puts "[SystemGUI] Before fill_rect"
     @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
-    puts "[SystemGUI] After fill_rect"
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
     @gfx.present
-    puts "[SystemGUI] draw_current() end"
   end
 
   def on_update()

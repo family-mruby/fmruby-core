@@ -216,7 +216,7 @@ static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    FMRB_LOGI("gfx", "fill_rect called: x=%d, y=%d, w=%d, h=%d, color=0x%02X, canvas_id=%d",
+    FMRB_LOGD("gfx", "fill_rect called: x=%d, y=%d, w=%d, h=%d, color=0x%02X, canvas_id=%d",
               (int)x, (int)y, (int)w, (int)h, (int)color, data->canvas_id);
 
     // Send GFX command to Host Task
@@ -236,7 +236,7 @@ static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill rect failed: %d", ret);
     }
 
-    FMRB_LOGI("gfx", "fill_rect command sent successfully");
+    FMRB_LOGD("gfx", "fill_rect command sent successfully");
     return self;
 }
 
@@ -283,7 +283,7 @@ static mrb_value mrb_gfx_fill_circle(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    FMRB_LOGI("gfx", "fill_circle called: x=%d, y=%d, r=%d, color=0x%02X, canvas_id=%d",
+    FMRB_LOGD("gfx", "fill_circle called: x=%d, y=%d, r=%d, color=0x%02X, canvas_id=%d",
               (int)x, (int)y, (int)r, (int)color, data->canvas_id);
 
     // Send GFX command to Host Task
@@ -320,7 +320,7 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    FMRB_LOGI("gfx", "draw_text called: x=%d, y=%d, text='%s', color=0x%02X, canvas_id=%d",
+    FMRB_LOGD("gfx", "draw_text called: x=%d, y=%d, text='%s', color=0x%02X, canvas_id=%d",
               (int)x, (int)y, text, (int)color, data->canvas_id);
 
     // Send GFX command to Host Task

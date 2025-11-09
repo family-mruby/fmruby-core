@@ -286,7 +286,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    FMRB_LOGI("fmrb_gfx", "fmrb_gfx_fill_rect: canvas_id=%d, x=%d, y=%d, w=%d, h=%d, color=0x%02X",
+    FMRB_LOGD("fmrb_gfx", "fmrb_gfx_fill_rect: canvas_id=%d, x=%d, y=%d, w=%d, h=%d, color=0x%02X",
               canvas_id, rect->x, rect->y, rect->width, rect->height, color);
 
     fmrb_link_graphics_rect_t rect_cmd = {
@@ -303,7 +303,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle
     if (ret != FMRB_GFX_OK) {
         FMRB_LOGE("fmrb_gfx", "fmrb_gfx_fill_rect send_graphics_command failed: %d", ret);
     } else {
-        FMRB_LOGI("fmrb_gfx", "fmrb_gfx_fill_rect command sent successfully");
+        FMRB_LOGD("fmrb_gfx", "fmrb_gfx_fill_rect command sent successfully");
     }
     return ret;
 }
@@ -391,7 +391,7 @@ fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    FMRB_LOGI(TAG, "fmrb_gfx_present: canvas_id=%d", canvas_id);
+    FMRB_LOGD(TAG, "fmrb_gfx_present: canvas_id=%d", canvas_id);
 
     // Send PRESENT command with canvas_id
     fmrb_link_graphics_present_t present_cmd = {
@@ -539,7 +539,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    FMRB_LOGI("fmrb_gfx", "fmrb_gfx_draw_circle: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X",
+    FMRB_LOGD("fmrb_gfx", "fmrb_gfx_draw_circle: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X",
               canvas_id, (int)x, (int)y, (int)r, color);
 
     // Use structure from fmrb_link_protocol.h
@@ -555,7 +555,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
     if (ret != FMRB_GFX_OK) {
         FMRB_LOGE("fmrb_gfx", "fmrb_gfx_draw_circle send_graphics_command failed: %d", ret);
     } else {
-        FMRB_LOGI("fmrb_gfx", "fmrb_gfx_draw_circle command sent successfully");
+        FMRB_LOGD("fmrb_gfx", "fmrb_gfx_draw_circle command sent successfully");
     }
     return ret;
 }
@@ -570,7 +570,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    FMRB_LOGI("fmrb_gfx", "fmrb_gfx_fill_circle: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X",
+    FMRB_LOGD("fmrb_gfx", "fmrb_gfx_fill_circle: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X",
               canvas_id, (int)x, (int)y, (int)r, color);
 
     // Use structure from fmrb_link_protocol.h
@@ -586,7 +586,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
     if (ret != FMRB_GFX_OK) {
         FMRB_LOGE("fmrb_gfx", "fmrb_gfx_fill_circle send_graphics_command failed: %d", ret);
     } else {
-        FMRB_LOGI("fmrb_gfx", "fmrb_gfx_fill_circle command sent successfully");
+        FMRB_LOGD("fmrb_gfx", "fmrb_gfx_fill_circle command sent successfully");
     }
     return ret;
 }

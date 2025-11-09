@@ -206,7 +206,7 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
-    ESP_LOGI(TAG, "Executing %zu commands", buffer->count);
+    ESP_LOGD(TAG, "Executing %zu commands", buffer->count);
 
     for (size_t i = 0; i < buffer->count; i++) {
         fmrb_gfx_command_t *cmd = &buffer->commands[i];
@@ -214,19 +214,19 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
 
         switch (cmd->type) {
             case FMRB_GFX_CMD_CLEAR:
-                ESP_LOGI(TAG, "Executing CLEAR command [%zu]: canvas_id=%d, color=0x%02X",
+                ESP_LOGD(TAG, "Executing CLEAR command [%zu]: canvas_id=%d, color=0x%02X",
                          i, cmd->data.clear.canvas_id, cmd->data.clear.color);
                 ret = fmrb_gfx_clear(context, cmd->data.clear.canvas_id, cmd->data.clear.color);
                 break;
 
             case FMRB_GFX_CMD_PIXEL:
-                ESP_LOGI(TAG, "Executing PIXEL command [%zu]: canvas_id=%d, x=%d, y=%d, color=0x%02X",
+                ESP_LOGD(TAG, "Executing PIXEL command [%zu]: canvas_id=%d, x=%d, y=%d, color=0x%02X",
                          i, cmd->data.pixel.canvas_id, cmd->data.pixel.x, cmd->data.pixel.y, cmd->data.pixel.color);
                 ret = fmrb_gfx_set_pixel(context, cmd->data.pixel.canvas_id, cmd->data.pixel.x, cmd->data.pixel.y, cmd->data.pixel.color);
                 break;
 
             case FMRB_GFX_CMD_LINE:
-                ESP_LOGI(TAG, "Executing LINE command [%zu]: canvas_id=%d, x1=%d, y1=%d, x2=%d, y2=%d, color=0x%02X",
+                ESP_LOGD(TAG, "Executing LINE command [%zu]: canvas_id=%d, x1=%d, y1=%d, x2=%d, y2=%d, color=0x%02X",
                          i, cmd->data.line.canvas_id, cmd->data.line.x1, cmd->data.line.y1,
                          cmd->data.line.x2, cmd->data.line.y2, cmd->data.line.color);
                 ret = fmrb_gfx_draw_line(context, cmd->data.line.canvas_id, cmd->data.line.x1, cmd->data.line.y1,
@@ -234,7 +234,7 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
                 break;
 
             case FMRB_GFX_CMD_RECT:
-                ESP_LOGI(TAG, "Executing RECT command [%zu]: canvas_id=%d, x=%d, y=%d, w=%d, h=%d, color=0x%02X, filled=%d",
+                ESP_LOGD(TAG, "Executing RECT command [%zu]: canvas_id=%d, x=%d, y=%d, w=%d, h=%d, color=0x%02X, filled=%d",
                          i, cmd->data.rect.canvas_id, cmd->data.rect.rect.x, cmd->data.rect.rect.y,
                          cmd->data.rect.rect.width, cmd->data.rect.rect.height, cmd->data.rect.color, cmd->data.rect.filled);
                 if (cmd->data.rect.filled) {
@@ -245,7 +245,7 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
                 break;
 
             case FMRB_GFX_CMD_CIRCLE:
-                ESP_LOGI(TAG, "Executing CIRCLE command [%zu]: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X, filled=%d",
+                ESP_LOGD(TAG, "Executing CIRCLE command [%zu]: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X, filled=%d",
                          i, cmd->data.circle.canvas_id, cmd->data.circle.x, cmd->data.circle.y,
                          cmd->data.circle.radius, cmd->data.circle.color, cmd->data.circle.filled);
                 if (cmd->data.circle.filled) {
@@ -258,7 +258,7 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
                 break;
 
             case FMRB_GFX_CMD_TEXT:
-                ESP_LOGI(TAG, "Executing TEXT command [%zu]: canvas_id=%d, x=%d, y=%d, text='%s', color=0x%02X",
+                ESP_LOGD(TAG, "Executing TEXT command [%zu]: canvas_id=%d, x=%d, y=%d, text='%s', color=0x%02X",
                          i, cmd->data.text.canvas_id, cmd->data.text.x, cmd->data.text.y,
                          cmd->data.text.text, cmd->data.text.color);
                 ret = fmrb_gfx_draw_text(context, cmd->data.text.canvas_id, cmd->data.text.x, cmd->data.text.y,
@@ -275,7 +275,7 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
             ESP_LOGE(TAG, "Command %zu execution failed: %d", i, ret);
             return ret;
         } else {
-            ESP_LOGI(TAG, "Command %zu executed successfully", i);
+            ESP_LOGD(TAG, "Command %zu executed successfully", i);
         }
     }
 
