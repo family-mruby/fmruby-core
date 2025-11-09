@@ -470,8 +470,12 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
 
                 // Swap buffers: copy back buffer to front buffer
                 if (g_back_buffer) {
+                    GFX_LOG_D("PRESENT: back_buffer=%p, size=%dx%d, depth=%d",
+                           g_back_buffer, g_back_buffer->width(), g_back_buffer->height(), g_back_buffer->getColorDepth());
                     g_back_buffer->pushSprite(g_lgfx, 0, 0);
                     GFX_LOG_D("PRESENT: Pushed back buffer to screen");
+                } else {
+                    GFX_LOG_E("PRESENT: g_back_buffer is NULL!");
                 }
                 g_lgfx->display();
                 GFX_LOG_D("PRESENT: display() called");
@@ -565,8 +569,8 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 LovyanGFX* dst;
                 const char* dst_name;
                 if (cmd->dest_canvas_id == FMRB_CANVAS_SCREEN) {
-                    dst = g_lgfx;
-                    dst_name = "screen";
+                    dst = g_back_buffer;
+                    dst_name = "back_buffer";
                 } else {
                     auto dst_it = g_canvases.find(cmd->dest_canvas_id);
                     if (dst_it == g_canvases.end()) {
@@ -579,6 +583,9 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
 
                 // Push sprite to destination
                 LGFX_Sprite* src_sprite = it->second;
+                GFX_LOG_D("PUSH_CANVAS: src=%p (%dx%d), dst=%p (%s), pos=(%d,%d)",
+                       src_sprite, src_sprite->width(), src_sprite->height(),
+                       dst, dst_name, cmd->x, cmd->y);
                 if (cmd->use_transparency) {
                     src_sprite->pushSprite(dst, cmd->x, cmd->y, cmd->transparent_color);
                     GFX_LOG_D("Canvas pushed with transparency: ID=%u to %s %u at (%d,%d), transp=0x%02x",

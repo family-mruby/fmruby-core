@@ -206,8 +206,9 @@ fmrb_err_t fmrb_kernel_start(void)
     };
 
     int32_t kernel_id;
-    if (!fmrb_app_spawn(&attr, &kernel_id)) {
-        FMRB_LOGE(TAG, "Failed to spawn kernel task");
+    fmrb_err_t ret = fmrb_app_spawn(&attr, &kernel_id);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to spawn kernel task: %d", ret);
         return FMRB_ERR_FAILED;
     }
     FMRB_LOGI(TAG, "Kernel task spawned successfully (id=%ld)", kernel_id);
