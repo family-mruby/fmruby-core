@@ -133,12 +133,6 @@ static int init_gfx_audio(void)
             return -1;
         }
         FMRB_LOGI(TAG, "Graphics command buffer created (max=%d)", GFX_CMD_BUFFER_SIZE);
-
-        // Test graphics with a simple clear
-        // FMRB_LOGI(TAG, "============================== gfx demo ==========================");
-        // fmrb_gfx_clear(ctx, FMRB_CANVAS_SCREEN, FMRB_COLOR_BLUE);
-        // fmrb_gfx_draw_string(ctx, FMRB_CANVAS_SCREEN, "Family mruby OS", 10, 10, FMRB_COLOR_WHITE);
-        // fmrb_gfx_present(ctx, FMRB_CANVAS_SCREEN);
     }
 
     // Initialize Audio subsystem (APU emulator)
@@ -239,6 +233,11 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
             break;
 
         case GFX_CMD_CIRCLE:
+            FMRB_LOGI(TAG, "GFX_CMD_CIRCLE received: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X, filled=%d",
+                     gfx_cmd->canvas_id,
+                     gfx_cmd->params.circle.x, gfx_cmd->params.circle.y,
+                     gfx_cmd->params.circle.radius,
+                     gfx_cmd->params.circle.color, gfx_cmd->params.circle.filled);
             ret = fmrb_gfx_command_buffer_add_circle(g_gfx_cmd_buffer,
                                                      gfx_cmd->canvas_id,
                                                      gfx_cmd->params.circle.x,
@@ -246,6 +245,9 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
                                                      gfx_cmd->params.circle.radius,
                                                      gfx_cmd->params.circle.color,
                                                      gfx_cmd->params.circle.filled);
+            if (ret == FMRB_GFX_OK) {
+                FMRB_LOGI(TAG, "GFX_CMD_CIRCLE buffered successfully");
+            }
             break;
 
         case GFX_CMD_TEXT:

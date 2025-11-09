@@ -58,22 +58,20 @@ class SystemGuiApp < FmrbApp
     end
     # Graphics commands disabled temporarily (Phase2: Canvas + messaging)
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
-    @player_x += (RNG.random_int % 7) - 3  # -3 to +3 random movement
-    @player_y += (RNG.random_int % 7) - 3  # -3 to +3 random movement
+    #@player_x += (RNG.random_int % 7) - 3  # -3 to +3 random movement
+    #@player_y += (RNG.random_int % 7) - 3  # -3 to +3 random movement
+
+    @player_x += 12
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
-    if @counter % 30 == 0
-      puts "[SystemGUI] Before fill_rect in on_update"
-    end
+
     @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
-    if @counter % 30 == 0
-      puts "[SystemGUI] After fill_rect in on_update"
-    end
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
     @gfx.present
 
     @score += 1
     @counter += 1
-    33
+    #33
+    1000
   end
 
   def on_destroy

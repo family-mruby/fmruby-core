@@ -110,6 +110,8 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
     // cmd_type: graphics command type (from msgpack sub_cmd field)
     // data: structure data only (no cmd_type prefix)
 
+    printf("handle_graphics_command: cmd_type=0x%02x, size=%zu\n", cmd_type, size);
+
     switch (cmd_type) {
         case FMRB_LINK_GFX_CLEAR:
         case FMRB_LINK_GFX_FILL_SCREEN:
@@ -264,9 +266,12 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
         case FMRB_LINK_GFX_DRAW_CIRCLE:
             if (size >= sizeof(fmrb_link_graphics_circle_t)) {
                 const fmrb_link_graphics_circle_t *cmd = (const fmrb_link_graphics_circle_t*)data;
+                printf("DRAW_CIRCLE: canvas_id=%u, x=%d, y=%d, r=%d, color=0x%02x\n",
+                       cmd->canvas_id, cmd->x, cmd->y, cmd->radius, cmd->color);
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
                     target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
+                    printf("DRAW_CIRCLE: Using back buffer\n");
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
@@ -274,8 +279,10 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                         return -1;
                     }
                     target = it->second;
+                    printf("DRAW_CIRCLE: Using canvas %u\n", cmd->canvas_id);
                 }
                 target->drawCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
+                printf("DRAW_CIRCLE: drawCircle executed\n");
                 return 0;
             }
             break;
@@ -283,9 +290,12 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
         case FMRB_LINK_GFX_FILL_CIRCLE:
             if (size >= sizeof(fmrb_link_graphics_circle_t)) {
                 const fmrb_link_graphics_circle_t *cmd = (const fmrb_link_graphics_circle_t*)data;
+                printf("FILL_CIRCLE: canvas_id=%u, x=%d, y=%d, r=%d, color=0x%02x\n",
+                       cmd->canvas_id, cmd->x, cmd->y, cmd->radius, cmd->color);
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
                     target = (g_back_buffer) ? static_cast<LovyanGFX*>(g_back_buffer) : g_lgfx;
+                    printf("FILL_CIRCLE: Using back buffer\n");
                 } else {
                     auto it = g_canvases.find(cmd->canvas_id);
                     if (it == g_canvases.end()) {
@@ -293,8 +303,10 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                         return -1;
                     }
                     target = it->second;
+                    printf("FILL_CIRCLE: Using canvas %u\n", cmd->canvas_id);
                 }
                 target->fillCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
+                printf("FILL_CIRCLE: fillCircle executed\n");
                 return 0;
             }
             break;

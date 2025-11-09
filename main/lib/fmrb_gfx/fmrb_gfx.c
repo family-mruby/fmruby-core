@@ -539,6 +539,9 @@ fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
+    FMRB_LOGI("fmrb_gfx", "fmrb_gfx_draw_circle: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X",
+              canvas_id, (int)x, (int)y, (int)r, color);
+
     // Use structure from fmrb_link_protocol.h
     fmrb_link_graphics_circle_t cmd = {
         .canvas_id = canvas_id,
@@ -548,7 +551,13 @@ fmrb_gfx_err_t fmrb_gfx_draw_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         .color = color
     };
 
-    return send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_CIRCLE, &cmd, sizeof(cmd));
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_CIRCLE, &cmd, sizeof(cmd));
+    if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE("fmrb_gfx", "fmrb_gfx_draw_circle send_graphics_command failed: %d", ret);
+    } else {
+        FMRB_LOGI("fmrb_gfx", "fmrb_gfx_draw_circle command sent successfully");
+    }
+    return ret;
 }
 
 fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t r, fmrb_color_t color) {
@@ -561,6 +570,9 @@ fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
+    FMRB_LOGI("fmrb_gfx", "fmrb_gfx_fill_circle: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X",
+              canvas_id, (int)x, (int)y, (int)r, color);
+
     // Use structure from fmrb_link_protocol.h
     fmrb_link_graphics_circle_t cmd = {
         .canvas_id = canvas_id,
@@ -570,7 +582,13 @@ fmrb_gfx_err_t fmrb_gfx_fill_circle(fmrb_gfx_context_t context, fmrb_canvas_hand
         .color = color
     };
 
-    return send_graphics_command(ctx, FMRB_LINK_GFX_FILL_CIRCLE, &cmd, sizeof(cmd));
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_FILL_CIRCLE, &cmd, sizeof(cmd));
+    if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE("fmrb_gfx", "fmrb_gfx_fill_circle send_graphics_command failed: %d", ret);
+    } else {
+        FMRB_LOGI("fmrb_gfx", "fmrb_gfx_fill_circle command sent successfully");
+    }
+    return ret;
 }
 
 fmrb_gfx_err_t fmrb_gfx_draw_ellipse(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int32_t x, int32_t y, int32_t rx, int32_t ry, fmrb_color_t color) {

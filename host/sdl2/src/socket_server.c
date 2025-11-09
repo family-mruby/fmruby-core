@@ -145,18 +145,18 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
         payload_len = root.via.array.ptr[3].via.bin.size;
     }
 
-    // Debug log
-#ifdef FMRB_IPC_DEBUG
-    printf("RX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%zu msgpack_len=%zu\n",
-           type, seq, sub_cmd, payload_len, msgpack_len);
-    printf("RX msgpack bytes (%zu): ", msgpack_len);
-    for (size_t i = 0; i < msgpack_len && i < 64; i++) {
-        printf("%02X ", msgpack_data[i]);
-        if ((i + 1) % 16 == 0) printf("\n");
+    // Debug log (always enabled for GRAPHICS commands)
+    if (type == FMRB_LINK_TYPE_GRAPHICS) {
+        printf("RX msgpack: type=%d seq=%d sub_cmd=0x%02x payload_len=%zu msgpack_len=%zu\n",
+               type, seq, sub_cmd, payload_len, msgpack_len);
+        printf("RX msgpack bytes (%zu): ", msgpack_len);
+        for (size_t i = 0; i < msgpack_len && i < 64; i++) {
+            printf("%02X ", msgpack_data[i]);
+            if ((i + 1) % 16 == 0) printf("\n");
+        }
+        if (msgpack_len > 0) printf("\n");
+        fflush(stdout);
     }
-    printf("\n");
-    fflush(stdout);
-#endif
 
     // sub_cmd contains the command type, payload contains only structure data
     // Pass sub_cmd as cmd_type to handlers

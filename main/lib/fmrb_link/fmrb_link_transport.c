@@ -158,6 +158,16 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
         msgpack_pack_nil(&pk);
     }
 
+    // Debug: dump msgpack bytes for GRAPHICS commands
+    if (link_type == FMRB_LINK_TYPE_GRAPHICS) {
+        FMRB_LOGI(TAG, "msgpack data (size=%zu):", sbuf.size);
+        for (size_t i = 0; i < sbuf.size && i < 64; i++) {
+            printf("%02X ", (uint8_t)sbuf.data[i]);
+            if ((i + 1) % 16 == 0) printf("\n");
+        }
+        if (sbuf.size > 0) printf("\n");
+    }
+
     // Send via HAL (HAL will add CRC32 and COBS encode)
     fmrb_link_message_t hal_msg = {
         .data = (uint8_t*)sbuf.data,
@@ -167,6 +177,10 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
     // Map link_type to HAL channel (CONTROL and GRAPHICS both use the same channel for now)
     fmrb_link_channel_t hal_channel = (link_type == FMRB_LINK_TYPE_CONTROL) ? FMRB_LINK_GRAPHICS : FMRB_LINK_GRAPHICS;
     fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1000);
+
+    if (ret != FMRB_OK && link_type == FMRB_LINK_TYPE_GRAPHICS) {
+        FMRB_LOGE(TAG, "HAL send failed: ret=%d, type=%d, sub_cmd=0x%02X", ret, link_type, sub_cmd);
+    }
 
     msgpack_sbuffer_destroy(&sbuf);
 
@@ -213,6 +227,12 @@ fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
 
     uint16_t sequence = ctx->next_sequence++;
     uint8_t seq = (uint8_t)(sequence & 0xFF);
+
+    // Log graphics commands
+    if (link_type == FMRB_LINK_TYPE_GRAPHICS) {
+        FMRB_LOGI(TAG, "Sending GRAPHICS command: sub_cmd=0x%02X, payload_len=%u, seq=%u",
+                  sub_cmd, payload_len, seq);
+    }
 
     // Send message
     fmrb_err_t ret = send_raw_message(link_type, seq, sub_cmd, payload, payload_len);
