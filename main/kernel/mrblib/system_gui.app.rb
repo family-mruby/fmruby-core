@@ -56,7 +56,13 @@ class SystemGuiApp < FmrbApp
     if @counter % 30 == 0
       puts "[SystemGUI] on_update() tick #{@counter / 30}s"
     end
-    # Graphics commands disabled temporarily (Phase2: Canvas + messaging)
+
+    if @counter % 5 == 0
+      @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
+      @player_x = 200
+      @player_y += 20
+    end 
+
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
     #@player_x += (RNG.random_int % 7) - 3  # -3 to +3 random movement
     #@player_y += (RNG.random_int % 7) - 3  # -3 to +3 random movement
@@ -64,13 +70,13 @@ class SystemGuiApp < FmrbApp
     @player_x += 12
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
 
+
     @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
     @gfx.present
 
     @score += 1
     @counter += 1
-    @player_y += 20 if @counter % 5 == 0
 
     #33
     1000

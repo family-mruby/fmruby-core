@@ -151,8 +151,8 @@ void fmrb_os_init(void)
     }
 
     //set log level
-    //fmrb_set_log_level_info();
-    fmrb_set_log_level_debug();
+    fmrb_set_log_level_info();
+    //fmrb_set_log_level_debug();
 
     FMRB_LOGI(TAG, "Family mruby OS version %s",FMRB_OS_VERSION);
     FMRB_LOGI(TAG, "Family mruby Core Firmware Starting...");

@@ -182,24 +182,18 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
             FMRB_LOGD(TAG, "Command buffer executed successfully");
         }
 
-        // Clear screen buffer before compositing (black background)
-        ret = fmrb_gfx_clear(ctx, FMRB_CANVAS_SCREEN, FMRB_COLOR_BLACK);
-        if (ret != FMRB_GFX_OK) {
-            FMRB_LOGE(TAG, "Failed to clear screen buffer: %d", ret);
-        }
-
-        // Push app canvas to screen buffer at specified position
+        // Push app canvas to screen at specified position
         ret = fmrb_gfx_push_canvas(ctx,
                                     gfx_cmd->canvas_id,       // Source: app canvas (e.g., Canvas 1)
-                                    FMRB_CANVAS_SCREEN,       // Dest: screen buffer (Canvas 0)
+                                    FMRB_CANVAS_SCREEN,       // Dest: screen (direct rendering)
                                     gfx_cmd->params.present.x,
                                     gfx_cmd->params.present.y,
                                     gfx_cmd->params.present.transparent_color);
         if (ret != FMRB_GFX_OK) {
-            FMRB_LOGE(TAG, "Failed to push canvas %d to screen buffer: %d", gfx_cmd->canvas_id, ret);
+            FMRB_LOGE(TAG, "Failed to push canvas %d to screen: %d", gfx_cmd->canvas_id, ret);
         }
 
-        // Present the screen buffer (Canvas 0) to actual screen
+        // Present to actual screen (calls display())
         ret = fmrb_gfx_present(ctx, FMRB_CANVAS_SCREEN);
         if (ret != FMRB_GFX_OK) {
             FMRB_LOGE(TAG, "Failed to present screen buffer: %d", ret);
