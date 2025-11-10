@@ -5,8 +5,8 @@ MRuby::Build.new do |conf|
   conf.cc.defines << "MRB_TICK_UNIT=1"
   conf.cc.defines << "MRB_TIMESLICE_TICK_COUNT=10"
 
+  conf.cc.defines << "MRB_64BIT"
   conf.cc.defines << "MRB_INT64"
-  conf.cc.defines << "MRB_32BIT"
 
   #conf.cc.defines << "MRB_USE_CUSTOM_RO_DATA_P"
   #conf.cc.defines << "MRB_LINK_TIME_RO_DATA_P"

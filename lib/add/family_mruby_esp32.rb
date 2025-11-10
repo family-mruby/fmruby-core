@@ -12,6 +12,7 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.cc.flags << "-Wno-maybe-uninitialized"
   conf.cc.flags << "-mlongcalls"
 
+  conf.cc.defines << "MRB_32BIT"
   conf.cc.defines << "MRBC_TICK_UNIT=10"
   conf.cc.defines << "MRBC_TIMESLICE_TICK_COUNT=1"
   conf.cc.defines << "MRBC_USE_FLOAT=2"
