@@ -98,10 +98,10 @@ int user_func(bool* thread_running) {
     int timeout_count = 0;
     while (!display_initialized && running && *thread_running) {
         socket_server_process();
-        lgfx::delay(10);  // 10ms delay
+        lgfx::delay(100);
 
         timeout_count++;
-        if (timeout_count > 60*100) {  // 6 second timeout
+        if (timeout_count > 120*10) {  // 6 second timeout
             fprintf(stderr, "Timeout waiting for display initialization\n");
             socket_server_stop();
             return 1;
