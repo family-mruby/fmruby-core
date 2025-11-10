@@ -77,40 +77,16 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
                      msg.type, msg.src_pid, (int)msg.size);
 
             // Build Ruby hash: {type: int, src_pid: int, data: string}
-            FMRB_LOGI(TAG, "Kernel building Ruby hash (mrb=%p)...", mrb);
-
-            FMRB_LOGI(TAG, "Kernel calling mrb_hash_new...");
             mrb_value hash = mrb_hash_new(mrb);
-            FMRB_LOGI(TAG, "Kernel mrb_hash_new done");
-
-            FMRB_LOGI(TAG, "Kernel setting hash[type]=%d...", msg.type);
-            FMRB_LOGI(TAG, "Before mrb_intern_cstr(type)");
-            mrb_sym type_sym = mrb_intern_cstr(mrb, "type");
-            FMRB_LOGI(TAG, "After mrb_intern_cstr(type), sym=%d", type_sym);
-            FMRB_LOGI(TAG, "Before mrb_symbol_value");
-            mrb_value type_key = mrb_symbol_value(type_sym);
-            FMRB_LOGI(TAG, "After mrb_symbol_value");
-            FMRB_LOGI(TAG, "Before mrb_fixnum_value");
-            mrb_value type_val = mrb_fixnum_value(msg.type);
-            FMRB_LOGI(TAG, "After mrb_fixnum_value");
-            FMRB_LOGI(TAG, "Before mrb_hash_set");
-            mrb_hash_set(mrb, hash, type_key, type_val);
-            FMRB_LOGI(TAG, "Kernel hash[type] set");
-
-            FMRB_LOGI(TAG, "Kernel setting hash[src_pid]=%d...", msg.src_pid);
+            mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
+                         mrb_fixnum_value(msg.type));
             mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "src_pid")),
                          mrb_fixnum_value(msg.src_pid));
-            FMRB_LOGI(TAG, "Kernel hash[src_pid] set");
-
-            FMRB_LOGI(TAG, "Kernel creating data string (size=%d)...", (int)msg.size);
             mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "data")),
                          mrb_str_new(mrb, (const char*)msg.data, msg.size));
-            FMRB_LOGI(TAG, "Kernel hash[data] set");
 
-            FMRB_LOGI(TAG, "Kernel calling msg_handler...");
             // Call Ruby method: self.msg_handler(msg)
             mrb_funcall(mrb, self, "msg_handler", 1, hash);
-            FMRB_LOGI(TAG, "Kernel msg_handler returned");
 
             // Continue loop to process more messages or wait for remaining time
         } else if (ret == FMRB_ERR_TIMEOUT) {
@@ -130,19 +106,22 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
 static mrb_value mrb_kernel_handler_spawn_app_req(mrb_state *mrb, mrb_value self)
 {
     const char *app_name;
+    bool mrb_result = false;
     mrb_get_args(mrb, "z", &app_name);
 
     FMRB_LOGI(TAG, "Spawning app: %s", app_name);
 
-    bool result = fmrb_app_spawn_default_app(app_name);
+    fmrb_err_t result = fmrb_app_spawn_default_app(app_name);
 
-    if (result) {
+    if (result == FMRB_OK) {
         FMRB_LOGI(TAG, "App %s spawned successfully", app_name);
+        mrb_result = true;
     } else {
         FMRB_LOGE(TAG, "Failed to spawn app: %s", app_name);
+        mrb_result = false;
     }
 
-    return mrb_bool_value(result);
+    return mrb_bool_value(mrb_result);
 }
 
 static mrb_value mrb_kernel_set_ready(mrb_state *mrb, mrb_value self)

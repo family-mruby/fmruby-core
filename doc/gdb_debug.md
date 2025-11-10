@@ -94,3 +94,12 @@ New value = 0
 
 (gdb) info locals
 (gdb) info args
+
+
+
+
+disassemble mrb_hash_set
+を実行して、どの命令でクラッシュしているか確認してください。 また、以下も実行してください：
+info registers
+x/10i $pc-20
+

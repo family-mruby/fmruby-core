@@ -744,9 +744,8 @@ fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id) {
 //called from mruby alloc.c
 void* fmrb_get_current_est(void)
 {
-    ESP_LOGI(TAG, "fmrb_get_current_est called");
     fmrb_app_task_context_t *ctx = fmrb_current();
-    ESP_LOGI(TAG, "get  estalloc: app = %s est = %p", ctx->app_name ,ctx->est);
+    //ESP_LOGI(TAG, "get  estalloc: app = %s est = %p", ctx->app_name ,ctx->est);
     return ctx->est;
 }
 
@@ -754,6 +753,6 @@ void* fmrb_get_current_est(void)
 void fmrb_set_current_est(void* est)
 {
     fmrb_app_task_context_t *ctx = fmrb_current();
-    ESP_LOGI(TAG, "init estalloc: app = %s est = %p", ctx->app_name ,est);
+    //ESP_LOGI(TAG, "init estalloc: app = %s est = %p", ctx->app_name ,est);
     ctx->est = est;
 }
