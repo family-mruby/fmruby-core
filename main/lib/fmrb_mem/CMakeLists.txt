@@ -3,5 +3,5 @@ idf_component_register(
         "fmrb_alloc.c"
         "fmrb_mempool.c"
     INCLUDE_DIRS "."
-    REQUIRES fmrb_hal mem_allocator
+    REQUIRES fmrb_hal mem_allocator 
 )

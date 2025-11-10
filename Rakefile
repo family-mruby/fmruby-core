@@ -51,7 +51,6 @@ task :setup do
   # Replace
   sh "rm -rf #{mrbgem_path}/picoruby-filesystem-fat"
   sh "cp -rf lib/replace/picoruby-filesystem-fat #{mrbgem_path}/"
-  sh "cp -rf lib/replace/picoruby-mruby #{mrbgem_path}/"
 
   # Patch
   # Machine
@@ -61,6 +60,7 @@ task :setup do
   sh "cp -f lib/patch/picoruby-machine/ports/esp32/machine.c #{mrbgem_path}/picoruby-machine/ports/esp32/"
   sh "cp -f lib/patch/picoruby-mruby/include/hal.h #{mrbgem_path}/picoruby-mruby/include/"
   sh "cp -f lib/patch/picoruby-mruby/include/hal.h #{mrbgem_path}/picoruby-machine/include/"
+  sh "cp -rf lib/patch/picoruby-mruby #{mrbgem_path}/"
 
   # littleFS
   sh "cp -f lib/patch/esp_littlefs/CMakeLists.txt components/esp_littlefs/"

@@ -247,6 +247,12 @@ static void app_task_main(void* arg) {
     char* script_buffer = NULL;
     bool need_free_script = false;
 
+    // Register in TLS with destructor
+    fmrb_task_set_tls_with_del(NULL, FMRB_APP_TLS_INDEX, ctx, tls_destructor);
+
+    FMRB_LOGI(TAG, "[%s gen=%u] Task started (core=%d, prio=%u)",
+             ctx->app_name, ctx->gen, fmrb_get_core_id(), fmrb_task_get_priority(NULL));
+
     // Create mruby VM
     // mrbgem initialization is executed here.
     ctx->mrb = mrb_open_with_custom_alloc(
@@ -256,12 +262,6 @@ static void app_task_main(void* arg) {
         FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
         goto cleanup;
     }
-
-    // Register in TLS with destructor
-    fmrb_task_set_tls_with_del(NULL, FMRB_APP_TLS_INDEX, ctx, tls_destructor);
-
-    FMRB_LOGI(TAG, "[%s gen=%u] Task started (core=%d, prio=%u)",
-             ctx->app_name, ctx->gen, fmrb_get_core_id(), fmrb_task_get_priority(NULL));
 
     // Transition to RUNNING
     fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
@@ -741,3 +741,19 @@ fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id) {
     return ctx;
 }
 
+//called from mruby alloc.c
+void* fmrb_get_current_est(void)
+{
+    ESP_LOGI(TAG, "fmrb_get_current_est called");
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    ESP_LOGI(TAG, "get  estalloc: app = %s est = %p", ctx->app_name ,ctx->est);
+    return ctx->est;
+}
+
+//called from mruby alloc.c
+void fmrb_set_current_est(void* est)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    ESP_LOGI(TAG, "init estalloc: app = %s est = %p", ctx->app_name ,est);
+    ctx->est = est;
+}

@@ -41,6 +41,7 @@ typedef struct {
     enum FMRB_APP_TYPE    type;
     char                  app_name[32];      // UTF-8, null-terminated
     mrb_state*            mrb;               // Type-safe mruby VM pointer
+    void*                 est;               // Estalloc Pointer
     enum FMRB_MEM_POOL_ID mempool_id;
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
     fmrb_task_handle_t    task;              // FreeRTOS task handle
@@ -100,3 +101,6 @@ static inline fmrb_app_task_context_t* fmrb_current(void) {
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
 fmrb_err_t fmrb_app_spawn_default_app(const char* app_name);
+
+void* fmrb_app_get_current_est(void);
+void fmrb_app_set_current_est(void* est);

@@ -84,8 +84,17 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
             FMRB_LOGI(TAG, "Kernel mrb_hash_new done");
 
             FMRB_LOGI(TAG, "Kernel setting hash[type]=%d...", msg.type);
-            mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
-                         mrb_fixnum_value(msg.type));
+            FMRB_LOGI(TAG, "Before mrb_intern_cstr(type)");
+            mrb_sym type_sym = mrb_intern_cstr(mrb, "type");
+            FMRB_LOGI(TAG, "After mrb_intern_cstr(type), sym=%d", type_sym);
+            FMRB_LOGI(TAG, "Before mrb_symbol_value");
+            mrb_value type_key = mrb_symbol_value(type_sym);
+            FMRB_LOGI(TAG, "After mrb_symbol_value");
+            FMRB_LOGI(TAG, "Before mrb_fixnum_value");
+            mrb_value type_val = mrb_fixnum_value(msg.type);
+            FMRB_LOGI(TAG, "After mrb_fixnum_value");
+            FMRB_LOGI(TAG, "Before mrb_hash_set");
+            mrb_hash_set(mrb, hash, type_key, type_val);
             FMRB_LOGI(TAG, "Kernel hash[type] set");
 
             FMRB_LOGI(TAG, "Kernel setting hash[src_pid]=%d...", msg.src_pid);
