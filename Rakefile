@@ -51,6 +51,7 @@ task :setup do
   # Replace
   sh "rm -rf #{mrbgem_path}/picoruby-filesystem-fat"
   sh "cp -rf lib/replace/picoruby-filesystem-fat #{mrbgem_path}/"
+  sh "cp -rf lib/replace/picoruby-mruby #{mrbgem_path}/"
 
   # Patch
   # Machine
