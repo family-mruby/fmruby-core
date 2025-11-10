@@ -77,6 +77,7 @@ static fmrb_err_t spawn_system_gui_app(void)
 
 static fmrb_err_t spawn_shell_app(void)
 {
+    FMRB_LOGI(TAG, "spawn_shell_app: Starting");
     fmrb_spawn_attr_t attr = {
         .app_id = PROC_ID_USER_APP0,              
         .type = APP_TYPE_USER_APP,            

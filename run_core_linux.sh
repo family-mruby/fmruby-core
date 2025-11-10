@@ -118,8 +118,7 @@ if [ "$1" = "gdb" ]; then
         -v /dev:/dev \
         -e FMRB_FS_PROXY_UART=${UART_CORE} \
         esp32_build_container:v5.5.1 \
-        bash &
-    DOCKER_PID=$!
+        bash
 else
     docker run --rm --name $DOCKER_CONTAINER_NAME --user $(id -u):$(id -g) \
         -v $PWD:/project \
@@ -127,10 +126,10 @@ else
         -v /dev:/dev \
         -e FMRB_FS_PROXY_UART=${UART_CORE} \
         esp32_build_container:v5.5.1 \
-        /project/build/fmruby-core.elf &
+        /project/build/fmruby-core.elf
     DOCKER_PID=$!
+    wait $DOCKER_PID
 fi
 
 # Wait for Docker to finish
-wait $DOCKER_PID
 echo "FMRuby Core stopped."

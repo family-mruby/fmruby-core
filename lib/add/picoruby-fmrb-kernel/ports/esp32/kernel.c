@@ -73,17 +73,35 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
         fmrb_err_t ret = fmrb_msg_receive(PROC_ID_KERNEL, &msg, remaining_ticks);
 
         if (ret == FMRB_OK) {
+            FMRB_LOGI(TAG, "Kernel received message: type=%d, src_pid=%d, size=%d",
+                     msg.type, msg.src_pid, (int)msg.size);
+
             // Build Ruby hash: {type: int, src_pid: int, data: string}
+            FMRB_LOGI(TAG, "Kernel building Ruby hash (mrb=%p)...", mrb);
+
+            FMRB_LOGI(TAG, "Kernel calling mrb_hash_new...");
             mrb_value hash = mrb_hash_new(mrb);
+            FMRB_LOGI(TAG, "Kernel mrb_hash_new done");
+
+            FMRB_LOGI(TAG, "Kernel setting hash[type]=%d...", msg.type);
             mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
                          mrb_fixnum_value(msg.type));
+            FMRB_LOGI(TAG, "Kernel hash[type] set");
+
+            FMRB_LOGI(TAG, "Kernel setting hash[src_pid]=%d...", msg.src_pid);
             mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "src_pid")),
                          mrb_fixnum_value(msg.src_pid));
+            FMRB_LOGI(TAG, "Kernel hash[src_pid] set");
+
+            FMRB_LOGI(TAG, "Kernel creating data string (size=%d)...", (int)msg.size);
             mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "data")),
                          mrb_str_new(mrb, (const char*)msg.data, msg.size));
+            FMRB_LOGI(TAG, "Kernel hash[data] set");
 
+            FMRB_LOGI(TAG, "Kernel calling msg_handler...");
             // Call Ruby method: self.msg_handler(msg)
             mrb_funcall(mrb, self, "msg_handler", 1, hash);
+            FMRB_LOGI(TAG, "Kernel msg_handler returned");
 
             // Continue loop to process more messages or wait for remaining time
         } else if (ret == FMRB_ERR_TIMEOUT) {

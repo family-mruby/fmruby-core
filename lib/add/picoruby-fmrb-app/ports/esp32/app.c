@@ -186,14 +186,22 @@ static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
 // Send a message to another task
 static mrb_value mrb_fmrb_app_send_message(mrb_state *mrb, mrb_value self)
 {
+    FMRB_LOGI(TAG, "send_message: Called");
+
     mrb_int dest_pid, msg_type;
     mrb_value data_val;
     mrb_get_args(mrb, "iiS", &dest_pid, &msg_type, &data_val);
 
+    FMRB_LOGI(TAG, "send_message: dest_pid=%d, msg_type=%d, data_len=%d",
+              (int)dest_pid, (int)msg_type, RSTRING_LEN(data_val));
+
     fmrb_app_task_context_t* ctx = fmrb_current();
     if (!ctx) {
+        FMRB_LOGE(TAG, "send_message: No app context available");
         mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
     }
+
+    FMRB_LOGI(TAG, "send_message: ctx->app_id=%d, ctx->app_name=%s", ctx->app_id, ctx->app_name);
 
     // Build message
     fmrb_msg_t msg = {
@@ -202,18 +210,25 @@ static mrb_value mrb_fmrb_app_send_message(mrb_state *mrb, mrb_value self)
         .size = RSTRING_LEN(data_val),
     };
 
+    FMRB_LOGI(TAG, "send_message: Message built, size=%d", (int)msg.size);
+
     // Check payload size
     if (msg.size > FMRB_MAX_MSG_PAYLOAD_SIZE) {
+        FMRB_LOGE(TAG, "send_message: Payload too large: %d > %d",
+                 (int)msg.size, FMRB_MAX_MSG_PAYLOAD_SIZE);
         mrb_raisef(mrb, E_ARGUMENT_ERROR,
                    "Message payload too large: %d > %d",
                    (int)msg.size, FMRB_MAX_MSG_PAYLOAD_SIZE);
     }
 
     // Copy payload
+    FMRB_LOGI(TAG, "send_message: Copying payload...");
     memcpy(msg.data, RSTRING_PTR(data_val), msg.size);
+    FMRB_LOGI(TAG, "send_message: Payload copied, calling fmrb_msg_send...");
 
     // Send message with 1 second timeout
     fmrb_err_t ret = fmrb_msg_send((fmrb_proc_id_t)dest_pid, &msg, 1000);
+    FMRB_LOGI(TAG, "send_message: fmrb_msg_send returned %d", ret);
 
     if (ret == FMRB_OK) {
         FMRB_LOGI(TAG, "App %s sent message to pid=%d, type=%d, size=%d",

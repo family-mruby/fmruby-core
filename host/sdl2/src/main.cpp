@@ -24,6 +24,8 @@ static uint16_t display_height = 320;
 LGFX* g_lgfx = nullptr; // Global LGFX instance (not static, shared with graphics_handler.cpp)
 
 extern "C" void signal_handler(int sig) {
+    printf("\n\n\n+++++++++++++++++++++++++++++++++++++++");
+    printf("\n+++++++++++++++++++++++++++++++++++++++\n");
     printf("Received signal %d, shutting down...\n", sig);
     running = 0;
 
@@ -99,7 +101,7 @@ int user_func(bool* thread_running) {
         lgfx::delay(10);  // 10ms delay
 
         timeout_count++;
-        if (timeout_count > 500) {  // 5 second timeout
+        if (timeout_count > 60*100) {  // 6 second timeout
             fprintf(stderr, "Timeout waiting for display initialization\n");
             socket_server_stop();
             return 1;

@@ -445,6 +445,8 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
+    FMRB_LOGI(TAG, "fmrb_app_spawn: name=%s, mode=%d, type=%d", attr->name, attr->load_mode, attr->type);
+
     // Validate load mode and source
     if (attr->load_mode == FMRB_LOAD_MODE_IREP) {
         if (!attr->irep) {
