@@ -247,6 +247,16 @@ static void app_task_main(void* arg) {
     char* script_buffer = NULL;
     bool need_free_script = false;
 
+    // Create mruby VM
+    // mrbgem initialization is executed here.
+    ctx->mrb = mrb_open_with_custom_alloc(
+        fmrb_get_mempool_ptr(ctx->mempool_id),
+        fmrb_get_mempool_size(ctx->mempool_id));
+    if (!ctx->mrb) {
+        FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
+        goto cleanup;
+    }
+
     // Register in TLS with destructor
     fmrb_task_set_tls_with_del(NULL, FMRB_APP_TLS_INDEX, ctx, tls_destructor);
 
@@ -536,16 +546,6 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     } else {
         ctx->window_width = 0;   // Headless
         ctx->window_height = 0;
-    }
-
-    // Create mruby VM
-    // mrbgem initialization is executed here.
-    ctx->mrb = mrb_open_with_custom_alloc(
-        fmrb_get_mempool_ptr(ctx->mempool_id),
-        fmrb_get_mempool_size(ctx->mempool_id));
-    if (!ctx->mrb) {
-        FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
-        goto unwind;
     }
 
     // Create semaphore
