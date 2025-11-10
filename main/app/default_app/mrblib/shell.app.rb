@@ -1,7 +1,9 @@
 class ShellApp < FmrbApp
   def initialize
     super()
-  @count = 0
+    @count = 0
+    @player_x = 100
+    @player_y = 100
   end
 
   def on_create()
@@ -12,9 +14,15 @@ class ShellApp < FmrbApp
   def on_update()
     @gfx.fill_rect( 0,  0, @window_width, 10+10, FmrbGfx::BLACK)
     @gfx.draw_text(10, 10, "Update: #{@count}", FmrbGfx::WHITE)
+
+    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::GREEN)
+    @player_x += (RNG.random_int % 7) - 3
+    @player_y += (RNG.random_int % 7) - 3
+    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
+
     @gfx.present
     @count += 1
-    1000
+    100
   end
 
   def on_destroy

@@ -753,6 +753,6 @@ void* fmrb_get_current_est(void)
 void fmrb_set_current_est(void* est)
 {
     fmrb_app_task_context_t *ctx = fmrb_current();
-    //ESP_LOGI(TAG, "init estalloc: app = %s est = %p", ctx->app_name ,est);
+    ESP_LOGI(TAG, "init estalloc: app = %s est = %p", ctx->app_name ,est);
     ctx->est = est;
 }
