@@ -121,6 +121,12 @@ int user_func(bool* thread_running) {
         // Process socket messages
         socket_server_process();
 
+        // Render all canvases to screen in Z-order
+        graphics_handler_render_frame();
+
+        // Update display
+        g_lgfx->display();
+
         // Small delay to prevent busy waiting
         lgfx::delay(16); // ~60 FPS
     }

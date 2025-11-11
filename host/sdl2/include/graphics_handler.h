@@ -43,6 +43,13 @@ SDL_Renderer* graphics_handler_get_renderer(void);
  */
 void graphics_handler_set_log_level(int level);
 
+/**
+ * @brief Render all canvases to screen in Z-order
+ * This function composites all visible canvases to the screen based on their Z-order.
+ * Should be called periodically (e.g., every frame in main loop).
+ */
+void graphics_handler_render_frame(void);
+
 #ifdef __cplusplus
 }
 #endif
