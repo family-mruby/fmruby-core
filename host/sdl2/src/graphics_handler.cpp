@@ -75,7 +75,7 @@ static canvas_state_t* canvas_state_alloc(uint16_t canvas_id, uint16_t width, ui
     canvas->push_x = 0;
     canvas->push_y = 0;
     canvas->is_visible = true;
-    canvas->dirty = true;
+    canvas->dirty = false;
 
     // Create draw buffer (front buffer for drawing)
     canvas->draw_buffer = new LGFX_Sprite(g_lgfx);
@@ -152,9 +152,12 @@ static void graphics_handler_render_frame_internal() {
     for (size_t i = 0; i < g_canvas_count; i++) {
         canvas_state_t* canvas = &g_canvases[i];
         if (canvas->is_visible && canvas->render_buffer) {
-            GFX_LOG_D("Push canvas ID=%u at (%d,%d), z_order=%d",
+            if(canvas->dirty){
+                GFX_LOG_D("Push canvas ID=%u at (%d,%d), z_order=%d",
                       canvas->canvas_id, canvas->push_x, canvas->push_y, canvas->z_order);
-            canvas->render_buffer->pushSprite(g_lgfx, canvas->push_x, canvas->push_y);
+                canvas->dirty = false;
+                canvas->render_buffer->pushSprite(g_lgfx, canvas->push_x, canvas->push_y);
+            }
         }
     }
 }
@@ -186,6 +189,8 @@ extern "C" int graphics_handler_init(SDL_Renderer *renderer) {
         GFX_LOG_E("LGFX instance not created");
         return -1;
     }
+
+    g_lgfx->setAutoDisplay(false);
 
     g_graphics_initialized = true;  // Mark as initialized
     GFX_LOG_I("Graphics handler initialized (using external LGFX instance, direct rendering)");
@@ -565,33 +570,33 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 return 0;
             }
 
-        case FMRB_LINK_GFX_PRESENT:
-            if (size >= sizeof(fmrb_link_graphics_present_t)) {
-                const fmrb_link_graphics_present_t *cmd = (const fmrb_link_graphics_present_t*)data;
-                GFX_LOG_D("PRESENT: canvas_id=%u", cmd->canvas_id);
+        // case FMRB_LINK_GFX_PRESENT:
+        //     if (size >= sizeof(fmrb_link_graphics_present_t)) {
+        //         const fmrb_link_graphics_present_t *cmd = (const fmrb_link_graphics_present_t*)data;
+        //         GFX_LOG_D("PRESENT: canvas_id=%u", cmd->canvas_id);
 
-                if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
-                    // Direct screen update - nothing to do, main loop handles rendering
-                    GFX_LOG_D("PRESENT: Screen - will be rendered in main loop");
-                } else {
-                    // Push draw_buffer to render_buffer for the specified canvas
-                    canvas_state_t* canvas = canvas_state_find(cmd->canvas_id);
-                    if (!canvas) {
-                        GFX_LOG_E("Canvas %u not found for present", cmd->canvas_id);
-                        return -1;
-                    }
+        //         if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {
+        //             // Direct screen update - nothing to do, main loop handles rendering
+        //             GFX_LOG_D("PRESENT: Screen - will be rendered in main loop");
+        //         } else {
+        //             // Push draw_buffer to render_buffer for the specified canvas
+        //             canvas_state_t* canvas = canvas_state_find(cmd->canvas_id);
+        //             if (!canvas) {
+        //                 GFX_LOG_E("Canvas %u not found for present", cmd->canvas_id);
+        //                 return -1;
+        //             }
 
-                    // Copy draw_buffer to render_buffer (double buffering)
-                    GFX_LOG_D("PRESENT: Copying draw_buffer to render_buffer for canvas %u", cmd->canvas_id);
-                    canvas->draw_buffer->pushSprite(canvas->render_buffer, 0, 0);
-                    canvas->dirty = true;
-                }
+        //             // Copy draw_buffer to render_buffer (double buffering)
+        //             GFX_LOG_D("PRESENT: Copying draw_buffer to render_buffer for canvas %u", cmd->canvas_id);
+        //             canvas->draw_buffer->pushSprite(canvas->render_buffer, 0, 0);
+        //             canvas->dirty = true;
+        //         }
 
-                // Note: Rendering and display() are handled by main loop at ~60fps
-                GFX_LOG_D("PRESENT: Canvas updated, will be rendered in main loop");
-                return 0;
-            }
-            break;
+        //         // Note: Rendering and display() are handled by main loop at ~60fps
+        //         GFX_LOG_D("PRESENT: Canvas updated, will be rendered in main loop");
+        //         return 0;
+        //     }
+        //     break;
 
         // Canvas management commands
         case FMRB_LINK_GFX_CREATE_CANVAS:

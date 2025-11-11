@@ -228,7 +228,7 @@ fmrb_gfx_err_t fmrb_gfx_get_text_size(const char *text, fmrb_font_size_t font_si
  * @param canvas_id Target canvas ID
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id);
+//fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id);
 
 /**
  * @brief Set clipping region

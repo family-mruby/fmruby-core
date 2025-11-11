@@ -379,33 +379,33 @@ fmrb_gfx_err_t fmrb_gfx_get_text_size(const char *text, fmrb_font_size_t font_si
     return FMRB_GFX_OK;
 }
 
-fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id) {
-    if (!context) {
-        FMRB_LOGE(TAG, "fmrb_gfx_present: context is NULL");
-        return FMRB_GFX_ERR_INVALID_PARAM;
-    }
+// fmrb_gfx_err_t fmrb_gfx_present(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id) {
+//     if (!context) {
+//         FMRB_LOGE(TAG, "fmrb_gfx_present: context is NULL");
+//         return FMRB_GFX_ERR_INVALID_PARAM;
+//     }
 
-    fmrb_gfx_context_impl_t *ctx = context;
-    if (!ctx->initialized) {
-        FMRB_LOGE(TAG, "fmrb_gfx_present: context not initialized");
-        return FMRB_GFX_ERR_NOT_INITIALIZED;
-    }
+//     fmrb_gfx_context_impl_t *ctx = context;
+//     if (!ctx->initialized) {
+//         FMRB_LOGE(TAG, "fmrb_gfx_present: context not initialized");
+//         return FMRB_GFX_ERR_NOT_INITIALIZED;
+//     }
 
-    FMRB_LOGD(TAG, "fmrb_gfx_present: canvas_id=%d", canvas_id);
+//     FMRB_LOGD(TAG, "fmrb_gfx_present: canvas_id=%d", canvas_id);
 
-    // Send PRESENT command with canvas_id
-    fmrb_link_graphics_present_t present_cmd = {
-        .canvas_id = canvas_id
-    };
+//     // Send PRESENT command with canvas_id
+//     fmrb_link_graphics_present_t present_cmd = {
+//         .canvas_id = canvas_id
+//     };
 
-    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_PRESENT, &present_cmd, sizeof(present_cmd));
+//     fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_PRESENT, &present_cmd, sizeof(present_cmd));
 
-    if (ret != FMRB_GFX_OK) {
-        FMRB_LOGE(TAG, "fmrb_gfx_present: Failed to send PRESENT command: %d", ret);
-    }
+//     if (ret != FMRB_GFX_OK) {
+//         FMRB_LOGE(TAG, "fmrb_gfx_present: Failed to send PRESENT command: %d", ret);
+//     }
 
-    return ret;
-}
+//     return ret;
+// }
 
 fmrb_gfx_err_t fmrb_gfx_set_clip_rect(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, const fmrb_rect_t *rect) {
     if (!context) {
