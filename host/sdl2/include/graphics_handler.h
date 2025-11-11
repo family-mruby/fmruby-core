@@ -8,6 +8,14 @@
 extern "C" {
 #endif
 
+// Graphics handler log levels
+typedef enum {
+    GFX_LOG_NONE = 0,     // No logging
+    GFX_LOG_ERROR = 1,    // Error messages only
+    GFX_LOG_INFO = 2,     // Info + Error
+    GFX_LOG_DEBUG = 3,    // Debug + Info + Error (verbose)
+} gfx_log_level_t;
+
 /**
  * @brief Initialize graphics handler
  * @param renderer SDL renderer

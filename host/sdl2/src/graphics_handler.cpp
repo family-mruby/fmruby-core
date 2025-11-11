@@ -11,16 +11,8 @@ extern "C" {
 #include "fmrb_gfx.h"
 }
 
-// Graphics handler log levels
-typedef enum {
-    GFX_LOG_NONE = 0,     // No logging
-    GFX_LOG_ERROR = 1,    // Error messages only
-    GFX_LOG_INFO = 2,     // Info + Error
-    GFX_LOG_DEBUG = 3,    // Debug + Info + Error (verbose)
-} gfx_log_level_t;
-
 // Current log level (can be controlled via environment variable or compile-time)
-static gfx_log_level_t g_gfx_log_level = GFX_LOG_DEBUG;
+static gfx_log_level_t g_gfx_log_level = GFX_LOG_ERROR;  // Default: errors only
 
 // Log macros
 #define GFX_LOG_E(fmt, ...) do { if (g_gfx_log_level >= GFX_LOG_ERROR) { fprintf(stderr, "[GFX_ERR] " fmt "\n", ##__VA_ARGS__); } } while(0)

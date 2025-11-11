@@ -146,6 +146,6 @@ int user_func(bool* thread_running) {
 
 int main(int argc, char *argv[]) {
     // Run the user function with LovyanGFX event loop
-    //graphics_handler_set_log_level(3);
+    graphics_handler_set_log_level(GFX_LOG_DEBUG);
     return lgfx::Panel_sdl::main(user_func);
 }
