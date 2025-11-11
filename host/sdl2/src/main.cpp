@@ -118,7 +118,7 @@ int user_func(bool* thread_running) {
 
     // Main loop
     while (running && *thread_running) {
-        //printf("--main loop------------------------------------.\n");
+        printf("--main loop------------------------------------.\n");
 
         // Process socket messages
         socket_server_process();

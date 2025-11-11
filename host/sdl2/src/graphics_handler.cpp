@@ -454,7 +454,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
         case FMRB_LINK_GFX_FILL_CIRCLE:
             if (size >= sizeof(fmrb_link_graphics_circle_t)) {
                 const fmrb_link_graphics_circle_t *cmd = (const fmrb_link_graphics_circle_t*)data;
-                GFX_LOG_D("FILL_CIRCLE: canvas_id=%u, x=%d, y=%d, r=%d, color=0x%02x",
+                GFX_LOG_I("FILL_CIRCLE: canvas_id=%u, x=%d, y=%d, r=%d, color=0x%02x",
                        cmd->canvas_id, cmd->x, cmd->y, cmd->radius, cmd->color);
                 LovyanGFX* target;
                 if (cmd->canvas_id == FMRB_CANVAS_SCREEN) {

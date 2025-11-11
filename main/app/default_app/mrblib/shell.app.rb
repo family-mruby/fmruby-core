@@ -16,13 +16,14 @@ class ShellApp < FmrbApp
     @gfx.draw_text(10, 10, "Update: #{@count}", FmrbGfx::WHITE)
 
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::GREEN)
-    @player_x += (RNG.random_int % 7) - 3
-    @player_y += (RNG.random_int % 7) - 3
+    #@player_x += (RNG.random_int % 7) - 3
+    #@player_y += (RNG.random_int % 7) - 3
+    @player_x += 3
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
 
     @gfx.present
     @count += 1
-    100
+    1000
   end
 
   def on_destroy
