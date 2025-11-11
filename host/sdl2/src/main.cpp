@@ -118,7 +118,7 @@ int user_func(bool* thread_running) {
 
     // Main loop
     while (running && *thread_running) {
-        printf("--main loop------------------------------------.\n");
+        //printf("--main loop------------------------------------.\n");
 
         // Process socket messages
         socket_server_process();
@@ -128,8 +128,6 @@ int user_func(bool* thread_running) {
 
         // Update display
         g_lgfx->display();
-        // g_lgfx->waitDisplay();
-        // g_lgfx->endWrite();
 
         // Small delay to prevent busy waiting
         lgfx::delay(16); // ~60 FPS
@@ -150,6 +148,6 @@ int user_func(bool* thread_running) {
 
 int main(int argc, char *argv[]) {
     // Run the user function with LovyanGFX event loop
-    graphics_handler_set_log_level(GFX_LOG_DEBUG);
+    graphics_handler_set_log_level(GFX_LOG_INFO);
     return lgfx::Panel_sdl::main(user_func);
 }

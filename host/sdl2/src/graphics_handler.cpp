@@ -48,6 +48,9 @@ typedef struct {
 // Canvas management
 static canvas_state_t g_canvases[MAX_CANVAS_COUNT];
 static size_t g_canvas_count = 0;
+
+// Screen double buffer for compositing all canvases
+static LGFX_Sprite* g_screen_buffer = nullptr;
 static uint16_t g_current_target = FMRB_CANVAS_SCREEN;  // 0=screen, other=canvas
 static bool g_graphics_initialized = false;  // Flag to prevent multiple initializations
 
@@ -71,7 +74,7 @@ static canvas_state_t* canvas_state_alloc(uint16_t canvas_id, uint16_t width, ui
     canvas->canvas_id = canvas_id;
     canvas->width = width;
     canvas->height = height;
-    canvas->z_order = 0;
+    canvas->z_order = canvas_id; // TODO: implement z_oder logic
     canvas->push_x = 0;
     canvas->push_y = 0;
     canvas->is_visible = true;
@@ -145,21 +148,33 @@ static void graphics_handler_render_frame_internal() {
         return;  // No canvases to render
     }
 
+    if (!g_screen_buffer) {
+        GFX_LOG_E("Screen buffer not initialized");
+        return;
+    }
+
+    // Clear screen buffer
+    g_screen_buffer->clear();
+
     // Sort canvases by Z-order (low to high)
     canvas_sort_by_zorder();
 
-    // Composite all visible canvases to screen in Z-order
+    // Composite all visible canvases to screen buffer (NOT to g_lgfx directly)
     for (size_t i = 0; i < g_canvas_count; i++) {
         canvas_state_t* canvas = &g_canvases[i];
-        if (canvas->is_visible && canvas->render_buffer) {
-            if(canvas->dirty){
-                GFX_LOG_D("Push canvas ID=%u at (%d,%d), z_order=%d",
-                      canvas->canvas_id, canvas->push_x, canvas->push_y, canvas->z_order);
-                canvas->dirty = false;
-                canvas->render_buffer->pushSprite(g_lgfx, canvas->push_x, canvas->push_y);
-            }
+        if (canvas->is_visible && canvas->render_buffer) {            
+            // TODO: imple ment dirty composition logic
+            GFX_LOG_D("Composite canvas ID=%u to screen buffer at (%d,%d), z_order=%d",
+                    canvas->canvas_id, canvas->push_x, canvas->push_y, canvas->z_order);
+            canvas->dirty = false;
+            // Push to screen buffer instead of g_lgfx
+            canvas->render_buffer->pushSprite(g_screen_buffer, canvas->push_x, canvas->push_y);
         }
     }
+
+    // Finally, push the complete screen buffer to g_lgfx (only once per frame)
+    g_screen_buffer->pushSprite(g_lgfx, 0, 0);
+    GFX_LOG_D("Screen buffer pushed to display");
 }
 
 // Get current drawing target (screen or canvas)
@@ -192,8 +207,19 @@ extern "C" int graphics_handler_init(SDL_Renderer *renderer) {
 
     g_lgfx->setAutoDisplay(false);
 
+    // Create screen double buffer for compositing canvases
+    g_screen_buffer = new LGFX_Sprite(g_lgfx);
+    g_screen_buffer->setColorDepth(16);  // RGB565
+    if (!g_screen_buffer->createSprite(g_lgfx->width(), g_lgfx->height())) {
+        GFX_LOG_E("Failed to create screen buffer");
+        delete g_screen_buffer;
+        g_screen_buffer = nullptr;
+        return -1;
+    }
+
     g_graphics_initialized = true;  // Mark as initialized
-    GFX_LOG_I("Graphics handler initialized (using external LGFX instance, direct rendering)");
+    GFX_LOG_I("Graphics handler initialized with screen buffer (%dx%d)",
+              g_lgfx->width(), g_lgfx->height());
     return 0;
 }
 
@@ -202,6 +228,14 @@ extern "C" void graphics_handler_cleanup(void) {
     while (g_canvas_count > 0) {
         canvas_state_free(&g_canvases[0]);
     }
+
+    // Clean up screen buffer
+    if (g_screen_buffer) {
+        g_screen_buffer->deleteSprite();
+        delete g_screen_buffer;
+        g_screen_buffer = nullptr;
+    }
+
     g_current_target = FMRB_CANVAS_SCREEN;
     g_graphics_initialized = false;  // Reset initialization flag
 
