@@ -118,6 +118,8 @@ int user_func(bool* thread_running) {
 
     // Main loop
     while (running && *thread_running) {
+        printf("--main loop------------------------------------.\n");
+
         // Process socket messages
         socket_server_process();
 
@@ -126,6 +128,8 @@ int user_func(bool* thread_running) {
 
         // Update display
         g_lgfx->display();
+        // g_lgfx->waitDisplay();
+        // g_lgfx->endWrite();
 
         // Small delay to prevent busy waiting
         lgfx::delay(16); // ~60 FPS

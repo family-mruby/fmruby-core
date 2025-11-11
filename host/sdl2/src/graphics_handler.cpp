@@ -152,7 +152,7 @@ static void graphics_handler_render_frame_internal() {
     for (size_t i = 0; i < g_canvas_count; i++) {
         canvas_state_t* canvas = &g_canvases[i];
         if (canvas->is_visible && canvas->render_buffer) {
-            GFX_LOG_D("Rendering canvas ID=%u at (%d,%d), z_order=%d",
+            GFX_LOG_D("Push canvas ID=%u at (%d,%d), z_order=%d",
                       canvas->canvas_id, canvas->push_x, canvas->push_y, canvas->z_order);
             canvas->render_buffer->pushSprite(g_lgfx, canvas->push_x, canvas->push_y);
         }
@@ -677,29 +677,31 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 if (cmd->dest_canvas_id == FMRB_CANVAS_RENDER) {
                     dst = src_canvas->render_buffer;
                     dst_name = "render_canvas";
+                    src_canvas->push_x = cmd->x;
+                    src_canvas->push_y = cmd->y;
                 } else if(cmd->dest_canvas_id == 0) {
                     dst = g_lgfx;
                     dst_name = "screen";
                 } else {
                     GFX_LOG_E("Destination canvas %u is not supported yet...", cmd->dest_canvas_id);
+                    // Store push position in canvas state (for render_frame)
+                    // TODO: how to handle chird canvas??
+                    // src_canvas->push_x = cmd->x;
+                    // src_canvas->push_y = cmd->y;
                     return -1;
                 }
 
-                // Store push position in canvas state (for render_frame)
-                src_canvas->push_x = cmd->x;
-                src_canvas->push_y = cmd->y;
 
                 // Push render_buffer to destination
                 LGFX_Sprite* src_sprite = src_canvas->draw_buffer;
                 GFX_LOG_D("PUSH_CANVAS: src=%p (%dx%d), dst=%p (%s), pos=(%d,%d)",
-                       src_sprite, src_sprite->width(), src_sprite->height(),
-                       dst, dst_name, cmd->x, cmd->y);
+                       src_sprite, src_sprite->width(), src_sprite->height(), dst, dst_name, cmd->x, cmd->y);
                 if (cmd->use_transparency) {
-                    src_sprite->pushSprite(dst, cmd->x, cmd->y, cmd->transparent_color);
+                    src_sprite->pushSprite(dst, 0, 0, cmd->transparent_color);
                     GFX_LOG_D("Canvas pushed with transparency: ID=%u to %s %u at (%d,%d), transp=0x%02x",
                            cmd->canvas_id, dst_name, cmd->dest_canvas_id, cmd->x, cmd->y, cmd->transparent_color);
                 } else {
-                    src_sprite->pushSprite(dst, cmd->x, cmd->y);
+                    src_sprite->pushSprite(dst, 0, 0);
                     GFX_LOG_D("Canvas pushed: ID=%u to %s %u at (%d,%d)",
                            cmd->canvas_id, dst_name, cmd->dest_canvas_id, cmd->x, cmd->y);
                 }
