@@ -42,6 +42,7 @@ typedef enum {
 // Canvas handle type (0 = main screen, 1-65534 = canvas ID)
 typedef uint16_t fmrb_canvas_handle_t;
 #define FMRB_CANVAS_SCREEN 0      // Main screen
+#define FMRB_CANVAS_RENDER 0xFFF0 
 #define FMRB_CANVAS_INVALID 0xFFFF
 
 // Graphics configuration

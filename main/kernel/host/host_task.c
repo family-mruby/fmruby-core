@@ -185,7 +185,7 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
         // Push app canvas to screen at specified position
         ret = fmrb_gfx_push_canvas(ctx,
                                     gfx_cmd->canvas_id,       // Source: app canvas (e.g., Canvas 1)
-                                    FMRB_CANVAS_SCREEN,       // Dest: screen (direct rendering)
+                                    FMRB_CANVAS_RENDER,       // draw to render
                                     gfx_cmd->params.present.x,
                                     gfx_cmd->params.present.y,
                                     gfx_cmd->params.present.transparent_color);
@@ -194,10 +194,10 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
         }
 
         // Present to actual screen (calls display())
-        ret = fmrb_gfx_present(ctx, FMRB_CANVAS_SCREEN);
-        if (ret != FMRB_GFX_OK) {
-            FMRB_LOGE(TAG, "Failed to present screen buffer: %d", ret);
-        }
+        // ret = fmrb_gfx_present(ctx, FMRB_CANVAS_SCREEN);
+        // if (ret != FMRB_GFX_OK) {
+        //     FMRB_LOGE(TAG, "Failed to present screen buffer: %d", ret);
+        // }
 
         // Clear buffer for next frame
         fmrb_gfx_command_buffer_clear(g_gfx_cmd_buffer);

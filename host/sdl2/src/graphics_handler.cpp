@@ -584,7 +584,7 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                     // Copy draw_buffer to render_buffer (double buffering)
                     GFX_LOG_D("PRESENT: Copying draw_buffer to render_buffer for canvas %u", cmd->canvas_id);
                     canvas->draw_buffer->pushSprite(canvas->render_buffer, 0, 0);
-                    canvas->dirty = false;
+                    canvas->dirty = true;
                 }
 
                 // Note: Rendering and display() are handled by main loop at ~60fps
@@ -671,28 +671,26 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                     return -1;
                 }
 
+                // Determine destination (screen or canvas)
+                LovyanGFX* dst;
+                const char* dst_name;
+                if (cmd->dest_canvas_id == FMRB_CANVAS_RENDER) {
+                    dst = src_canvas->render_buffer;
+                    dst_name = "render_canvas";
+                } else if(cmd->dest_canvas_id == 0) {
+                    dst = g_lgfx;
+                    dst_name = "screen";
+                } else {
+                    GFX_LOG_E("Destination canvas %u is not supported yet...", cmd->dest_canvas_id);
+                    return -1;
+                }
+
                 // Store push position in canvas state (for render_frame)
                 src_canvas->push_x = cmd->x;
                 src_canvas->push_y = cmd->y;
 
-                // Determine destination (screen or canvas)
-                LovyanGFX* dst;
-                const char* dst_name;
-                if (cmd->dest_canvas_id == FMRB_CANVAS_SCREEN) {
-                    dst = g_lgfx;
-                    dst_name = "screen";
-                } else {
-                    canvas_state_t* dst_canvas = canvas_state_find(cmd->dest_canvas_id);
-                    if (!dst_canvas) {
-                        GFX_LOG_E("Destination canvas %u not found for push", cmd->dest_canvas_id);
-                        return -1;
-                    }
-                    dst = dst_canvas->draw_buffer;
-                    dst_name = "canvas";
-                }
-
                 // Push render_buffer to destination
-                LGFX_Sprite* src_sprite = src_canvas->render_buffer;
+                LGFX_Sprite* src_sprite = src_canvas->draw_buffer;
                 GFX_LOG_D("PUSH_CANVAS: src=%p (%dx%d), dst=%p (%s), pos=(%d,%d)",
                        src_sprite, src_sprite->width(), src_sprite->height(),
                        dst, dst_name, cmd->x, cmd->y);
