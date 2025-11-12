@@ -378,14 +378,16 @@ static void handle_received_message(transport_context_t *ctx, uint8_t type, uint
     // Handle ACK/NACK messages
     if (sub_cmd == FMRB_LINK_RESPONSE_MSG_ACK || sub_cmd == FMRB_LINK_RESPONSE_MSG_NACK) {
         uint8_t response_status = (sub_cmd == FMRB_LINK_RESPONSE_MSG_ACK) ? 0 : 1;
-        uint16_t original_sequence = seq;
+        // Note: seq is 8-bit from wire protocol, but internal sequence is 16-bit
+        // We need to match against pending_messages[].sequence (uint16_t) using only lower 8 bits
+        uint8_t seq_8bit = seq;
         const uint8_t *response_data = payload;
         uint32_t response_data_len = payload_len;
 
         // Check if this is a response to a sync request
         fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
         for (int i = 0; i < MAX_SYNC_REQUESTS; i++) {
-            if (ctx->sync_requests[i].active && ctx->sync_requests[i].sequence == original_sequence) {
+            if (ctx->sync_requests[i].active && (ctx->sync_requests[i].sequence & 0xFF) == seq_8bit) {
                 sync_request_t *req = &ctx->sync_requests[i];
                 req->response_received = true;
                 req->response_status = response_status;
@@ -403,7 +405,7 @@ static void handle_received_message(transport_context_t *ctx, uint8_t type, uint
 
                 // Also remove from pending list for retransmit tracking
                 for (int j = 0; j < ctx->pending_count; j++) {
-                    if (ctx->pending_messages[j].sequence == original_sequence) {
+                    if ((ctx->pending_messages[j].sequence & 0xFF) == seq_8bit) {
                         if (ctx->pending_messages[j].payload) {
                             fmrb_sys_free(ctx->pending_messages[j].payload);
                         }
@@ -421,7 +423,7 @@ static void handle_received_message(transport_context_t *ctx, uint8_t type, uint
 
         // Not a sync request, just remove from pending list
         for (int i = 0; i < ctx->pending_count; i++) {
-            if (ctx->pending_messages[i].sequence == original_sequence) {
+            if ((ctx->pending_messages[i].sequence & 0xFF) == seq_8bit) {
                 if (ctx->pending_messages[i].payload) {
                     fmrb_sys_free(ctx->pending_messages[i].payload);
                 }

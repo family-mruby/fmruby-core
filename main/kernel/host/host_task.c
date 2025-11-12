@@ -178,6 +178,11 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
         fmrb_gfx_err_t ret = fmrb_gfx_command_buffer_execute(g_gfx_cmd_buffer, ctx);
         if (ret != FMRB_GFX_OK) {
             FMRB_LOGE(TAG, "Failed to execute command buffer: %d", ret);
+            if(FMRB_GFX_ERR_FAILED == ret)
+            {
+                FMRB_LOGE(TAG, "exit core");
+                exit(1);
+            }
         } else {
             FMRB_LOGD(TAG, "Command buffer executed successfully");
         }
