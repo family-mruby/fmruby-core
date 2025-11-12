@@ -20,6 +20,8 @@ void input_handler_set_log_level(int level) {
 }
 
 static bool g_initialized = false;
+static int g_last_mouse_x = 0;
+static int g_last_mouse_y = 0;
 
 // Event watch callback - called before SDL_PollEvent consumes events
 static int event_watch_callback(void* userdata, SDL_Event* event) {
@@ -55,9 +57,18 @@ static int event_watch_callback(void* userdata, SDL_Event* event) {
             break;
 
         case SDL_MOUSEMOTION:
-            // Too frequent to log by default
-            // INPUT_LOG_D("Mouse moved to (%d, %d)", event->motion.x, event->motion.y);
-            // TODO: Send to Core via socket if needed
+            // Update current mouse position
+            g_last_mouse_x = event->motion.x;
+            g_last_mouse_y = event->motion.y;
+
+            // Mouse motion events are very frequent (100+ events/sec when moving)
+            // Only log occasionally for debugging
+            static int motion_count = 0;
+            if (++motion_count % 60 == 0) {  // Log every 60th event
+                INPUT_LOG_D("Mouse moved to (%d, %d)", event->motion.x, event->motion.y);
+            }
+            // TODO: Send to Core via socket with throttling
+            // Consider sending only every Nth event or on significant movement
             break;
 
         case SDL_QUIT:
@@ -111,4 +122,20 @@ void input_handler_cleanup(void) {
 
     INPUT_LOG_I("Input handler cleaned up");
     g_initialized = false;
+}
+
+int input_handler_get_mouse_position(int* x, int* y) {
+    if (!g_initialized) {
+        INPUT_LOG_E("Input handler not initialized");
+        return -1;
+    }
+
+    if (x == NULL || y == NULL) {
+        INPUT_LOG_E("NULL pointer passed to input_handler_get_mouse_position");
+        return -1;
+    }
+
+    *x = g_last_mouse_x;
+    *y = g_last_mouse_y;
+    return 0;
 }

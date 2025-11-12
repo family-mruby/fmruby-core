@@ -32,6 +32,14 @@ int input_handler_process_events(void);
  */
 void input_handler_cleanup(void);
 
+/**
+ * @brief Get current mouse position
+ * @param x Pointer to store X coordinate
+ * @param y Pointer to store Y coordinate
+ * @return 0 on success, -1 on failure
+ */
+int input_handler_get_mouse_position(int* x, int* y);
+
 #ifdef __cplusplus
 }
 #endif
