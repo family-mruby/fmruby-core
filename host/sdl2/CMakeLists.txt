@@ -55,6 +55,7 @@ set(SOURCES
     src/graphics_handler.cpp
     src/audio_handler.c
     src/socket_server.c
+    src/input_handler.c
     ../common/fmrb_link_cobs.c
     ${LOVYANGFX_SOURCES}
 )

@@ -13,6 +13,7 @@ extern "C" {
 #include "socket_server.h"
 #include "graphics_handler.h"
 #include "audio_handler.h"
+#include "input_handler.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_gfx.h"
 }
@@ -71,6 +72,16 @@ extern "C" int init_display_callback(uint16_t width, uint16_t height, uint8_t co
         return -1;
     }
 
+    // Initialize input handler
+    if (input_handler_init() < 0) {
+        fprintf(stderr, "Input handler initialization failed\n");
+        audio_handler_cleanup();
+        graphics_handler_cleanup();
+        delete g_lgfx;
+        g_lgfx = nullptr;
+        return -1;
+    }
+
     display_initialized = 1;
     printf("Display initialization complete\n");
     return 0;
@@ -120,6 +131,14 @@ int user_func(bool* thread_running) {
     while (running && *thread_running) {
         //printf("--main loop------------------------------------.\n");
 
+        // Process input events (keyboard, mouse)
+        int input_result = input_handler_process_events();
+        if (input_result == 1) {
+            // Quit requested
+            running = 0;
+            break;
+        }
+
         // Process socket messages
         socket_server_process();
 
@@ -136,6 +155,7 @@ int user_func(bool* thread_running) {
     printf("Shutting down...\n");
 
     // Cleanup
+    input_handler_cleanup();
     socket_server_stop();
     audio_handler_cleanup();
     graphics_handler_cleanup();
@@ -148,6 +168,7 @@ int user_func(bool* thread_running) {
 
 int main(int argc, char *argv[]) {
     // Run the user function with LovyanGFX event loop
+    input_handler_set_log_level(INPUT_LOG_DEBUG);
     graphics_handler_set_log_level(GFX_LOG_INFO);
     return lgfx::Panel_sdl::main(user_func);
 }
