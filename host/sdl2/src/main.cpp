@@ -14,6 +14,7 @@ extern "C" {
 #include "graphics_handler.h"
 #include "audio_handler.h"
 #include "input_handler.h"
+#include "input_socket.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_gfx.h"
 }
@@ -102,6 +103,13 @@ int user_func(bool* thread_running) {
         return 1;
     }
 
+    // Start input socket server (separate from GFX socket)
+    if (input_socket_start() < 0) {
+        fprintf(stderr, "Input socket server start failed\n");
+        socket_server_stop();
+        return 1;
+    }
+
     printf("Socket server started. Waiting for display initialization command...\n");
 
     // Wait for display initialization message from main
@@ -156,6 +164,7 @@ int user_func(bool* thread_running) {
 
     // Cleanup
     input_handler_cleanup();
+    input_socket_stop();
     socket_server_stop();
     audio_handler_cleanup();
     graphics_handler_cleanup();

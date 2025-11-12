@@ -13,6 +13,7 @@
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
 #include "fs_proxy_task.h"
+#include "drivers/usb/usb_task.h"
 
 #include "boot.h"
 
@@ -116,6 +117,12 @@ static bool init_hardware(void)
     // ESP32 IPC
 
     // USB HOST
+    ret = usb_task_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to init usb_task");
+        return false;
+    }
+
     return true;
 }
 

@@ -8,6 +8,12 @@ set(COMPONENT_SRCS
     "kernel/host/host_task.c"
     "drivers/fs_proxy/fs_proxy_task.c"
 )
+set(COMPONENT_LINUX_SRCS
+    "drivers/usb/usb_task_linux.c"
+)
+set(COMPONENT_ESP32_SRCS
+    "drivers/usb/usb_task.c"
+)
 
 # Collect all Ruby files to compile to bytecode
 set(PICORBC ${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/picoruby/bin/picorbc)
@@ -43,11 +49,14 @@ set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_link fmrb_toml fmrb_mem
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
     list(APPEND COMPONENT_REQUIRES esp_littlefs)
+    list(APPEND COMPONENT_SRCS ${COMPONENT_ESP32_SRCS})
+else()
+    list(APPEND COMPONENT_SRCS ${COMPONENT_LINUX_SRCS})
 endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "drivers/fs_proxy" "lib/fmrb_mem" "lib/fmrb_toml"
+    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "drivers/fs_proxy" "drivers/usb" "lib/fmrb_mem" "lib/fmrb_toml"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 

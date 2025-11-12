@@ -1,7 +1,12 @@
 #include "input_handler.h"
+#include "input_socket.h"
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <string.h>
+
+// Include HID event definitions (path relative to build)
+#include "../../main/include/fmrb_hid_event.h"
 
 
 // Current log level (default: info)
@@ -33,7 +38,13 @@ static int event_watch_callback(void* userdata, SDL_Event* event) {
                        event->key.keysym.scancode,
                        SDL_GetScancodeName(event->key.keysym.scancode),
                        event->key.keysym.sym);
-            // TODO: Send to Core via socket
+            {
+                hid_keyboard_event_t kbd_event;
+                kbd_event.scancode = (uint8_t)event->key.keysym.scancode;
+                kbd_event.keycode = (uint8_t)(event->key.keysym.sym & 0xFF);
+                kbd_event.modifier = (uint8_t)(event->key.keysym.mod & 0xFF);
+                input_socket_send_event(HID_EVENT_KEY_DOWN, &kbd_event, sizeof(kbd_event));
+            }
             break;
 
         case SDL_KEYUP:
@@ -41,19 +52,39 @@ static int event_watch_callback(void* userdata, SDL_Event* event) {
                        event->key.keysym.scancode,
                        SDL_GetScancodeName(event->key.keysym.scancode),
                        event->key.keysym.sym);
-            // TODO: Send to Core via socket
+            {
+                hid_keyboard_event_t kbd_event;
+                kbd_event.scancode = (uint8_t)event->key.keysym.scancode;
+                kbd_event.keycode = (uint8_t)(event->key.keysym.sym & 0xFF);
+                kbd_event.modifier = (uint8_t)(event->key.keysym.mod & 0xFF);
+                input_socket_send_event(HID_EVENT_KEY_UP, &kbd_event, sizeof(kbd_event));
+            }
             break;
 
         case SDL_MOUSEBUTTONDOWN:
             INPUT_LOG_D("Mouse button %d pressed at (%d, %d)",
                        event->button.button, event->button.x, event->button.y);
-            // TODO: Send to Core via socket
+            {
+                hid_mouse_button_event_t mouse_event;
+                mouse_event.button = event->button.button;
+                mouse_event.state = 1;  // pressed
+                mouse_event.x = (uint16_t)event->button.x;
+                mouse_event.y = (uint16_t)event->button.y;
+                input_socket_send_event(HID_EVENT_MOUSE_BUTTON, &mouse_event, sizeof(mouse_event));
+            }
             break;
 
         case SDL_MOUSEBUTTONUP:
             INPUT_LOG_D("Mouse button %d released at (%d, %d)",
                        event->button.button, event->button.x, event->button.y);
-            // TODO: Send to Core via socket
+            {
+                hid_mouse_button_event_t mouse_event;
+                mouse_event.button = event->button.button;
+                mouse_event.state = 0;  // released
+                mouse_event.x = (uint16_t)event->button.x;
+                mouse_event.y = (uint16_t)event->button.y;
+                input_socket_send_event(HID_EVENT_MOUSE_BUTTON, &mouse_event, sizeof(mouse_event));
+            }
             break;
 
         case SDL_MOUSEMOTION:
@@ -67,8 +98,13 @@ static int event_watch_callback(void* userdata, SDL_Event* event) {
             if (++motion_count % 60 == 0) {  // Log every 60th event
                 INPUT_LOG_D("Mouse moved to (%d, %d)", event->motion.x, event->motion.y);
             }
-            // TODO: Send to Core via socket with throttling
-            // Consider sending only every Nth event or on significant movement
+            // Send to Core with throttling (every 10th event to reduce bandwidth)
+            if (motion_count % 10 == 0) {
+                hid_mouse_motion_event_t motion_event;
+                motion_event.x = (uint16_t)event->motion.x;
+                motion_event.y = (uint16_t)event->motion.y;
+                input_socket_send_event(HID_EVENT_MOUSE_MOTION, &motion_event, sizeof(motion_event));
+            }
             break;
 
         case SDL_QUIT:
