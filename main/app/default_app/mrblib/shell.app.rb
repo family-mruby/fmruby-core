@@ -19,11 +19,13 @@ class ShellApp < FmrbApp
     #@player_x += (RNG.random_int % 7) - 3
     #@player_y += (RNG.random_int % 7) - 3
     @player_x += 3
+    @player_x = 100 if @player_x > 200
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
 
     @gfx.present
     @count += 1
-    1000
+    #1000
+    33
   end
 
   def on_destroy

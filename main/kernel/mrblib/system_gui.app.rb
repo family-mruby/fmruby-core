@@ -7,14 +7,16 @@ class SystemGuiApp < FmrbApp
     @counter = 0
 
     @score = 0
-    @player_x = 200
-    @player_y = 160
+    @player_x_init = 300
+    @player_y_init = 60
+    @player_x = @player_x_init
+    @player_y = @player_y_init
   end
 
   def on_create()
     puts "[SystemGUI] on_create called"
-    @gfx.clear(FmrbGfx::BLUE)  # Phase2: Canvas + messaging
     draw_current
+    #Machine.delay_ms(100)
     puts "[SystemGUI] spawn default shell app"
     spawn_app("default/shell")
   end
@@ -38,6 +40,7 @@ class SystemGuiApp < FmrbApp
   end
 
   def draw_current()
+    @gfx.clear(FmrbGfx::BLUE)
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
     @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
@@ -51,8 +54,9 @@ class SystemGuiApp < FmrbApp
 
     if @counter % 5 == 0
       @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
-      @player_x = 200
+      @player_x = @player_x_init
       @player_y += 20
+      @player_y = @player_y_init if @player_y > 320
     end 
 
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
@@ -70,8 +74,8 @@ class SystemGuiApp < FmrbApp
     @score += 1
     @counter += 1
 
-    #33
-    1000
+    33
+    #1000
   end
 
   def on_destroy
