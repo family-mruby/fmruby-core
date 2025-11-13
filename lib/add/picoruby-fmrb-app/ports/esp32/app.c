@@ -3,6 +3,7 @@
 #include <mruby/class.h>
 #include <mruby/string.h>
 #include <mruby/variable.h>
+#include <mruby/hash.h>
 
 #include "fmrb_app.h"
 #include "fmrb_hal.h"
@@ -10,6 +11,7 @@
 #include "fmrb_err.h"
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
+#include "fmrb_hid_msg.h"
 #include "fmrb_task_config.h"
 #include "fmrb_gfx.h"
 #include "../../include/picoruby_fmrb_app.h"
@@ -89,6 +91,119 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
 
 // FmrbApp#_spin(timeout_ms) - Process messages and wait
 // Receives messages from queue with timeout, called from Ruby main_loop()
+// Dispatch HID event to Ruby on_event() method
+static void dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t *msg)
+{
+    // Validate minimum size
+    if (msg->size < 1) {
+        FMRB_LOGW(TAG, "HID event message too small: size=%d", msg->size);
+        return;
+    }
+
+    // Read subtype from first byte
+    uint8_t subtype = msg->data[0];
+
+    // Save GC arena before creating objects
+    int ai = mrb_gc_arena_save(mrb);
+
+    // Create event hash
+    mrb_value event_hash = mrb_hash_new(mrb);
+
+    switch (subtype) {
+        case HID_MSG_KEY_DOWN:
+        case HID_MSG_KEY_UP: {
+            // Validate size before casting
+            if (msg->size < sizeof(fmrb_hid_key_event_t)) {
+                FMRB_LOGW(TAG, "Key event message too small: expected=%d, actual=%d",
+                         sizeof(fmrb_hid_key_event_t), msg->size);
+                goto cleanup;
+            }
+
+            // Cast to struct and access fields from the struct
+            const fmrb_hid_key_event_t *key_event = (const fmrb_hid_key_event_t*)msg->data;
+
+            mrb_value type_sym = (key_event->subtype == HID_MSG_KEY_DOWN)
+                ? mrb_symbol_value(mrb_intern_cstr(mrb, "key_down"))
+                : mrb_symbol_value(mrb_intern_cstr(mrb, "key_up"));
+
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")), type_sym);
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "keycode")),
+                        mrb_fixnum_value(key_event->keycode));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "scancode")),
+                        mrb_fixnum_value(key_event->scancode));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "modifier")),
+                        mrb_fixnum_value(key_event->modifier));
+            break;
+        }
+
+        case HID_MSG_MOUSE_BUTTON_DOWN:
+        case HID_MSG_MOUSE_BUTTON_UP: {
+            // Validate size before casting
+            if (msg->size < sizeof(fmrb_hid_mouse_button_event_t)) {
+                FMRB_LOGW(TAG, "Mouse button event message too small: expected=%d, actual=%d",
+                         sizeof(fmrb_hid_mouse_button_event_t), msg->size);
+                goto cleanup;
+            }
+
+            // Cast to struct and access fields from the struct
+            const fmrb_hid_mouse_button_event_t *mouse_event =
+                (const fmrb_hid_mouse_button_event_t*)msg->data;
+
+            mrb_value type_sym = (mouse_event->subtype == HID_MSG_MOUSE_BUTTON_DOWN)
+                ? mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_down"))
+                : mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_up"));
+
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")), type_sym);
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "button")),
+                        mrb_fixnum_value(mouse_event->button));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "x")),
+                        mrb_fixnum_value(mouse_event->x));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "y")),
+                        mrb_fixnum_value(mouse_event->y));
+            break;
+        }
+
+        case HID_MSG_MOUSE_MOVE: {
+            // Validate size before casting
+            if (msg->size < sizeof(fmrb_hid_mouse_motion_event_t)) {
+                FMRB_LOGW(TAG, "Mouse motion event message too small: expected=%d, actual=%d",
+                         sizeof(fmrb_hid_mouse_motion_event_t), msg->size);
+                goto cleanup;
+            }
+
+            // Cast to struct and access fields from the struct
+            const fmrb_hid_mouse_motion_event_t *motion_event =
+                (const fmrb_hid_mouse_motion_event_t*)msg->data;
+
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
+                        mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_move")));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "x")),
+                        mrb_fixnum_value(motion_event->x));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "y")),
+                        mrb_fixnum_value(motion_event->y));
+            break;
+        }
+
+        default:
+            FMRB_LOGW(TAG, "Unknown HID event subtype: %d", subtype);
+            goto cleanup;
+    }
+
+    // Call Ruby on_event(event_hash) - picoruby standard pattern
+    mrb_funcall(mrb, self, "on_event", 1, event_hash);
+
+    // Check for exception - picoruby standard pattern
+    if (mrb->exc) {
+        FMRB_LOGE(TAG, "Exception in on_event()");
+        mrb_print_error(mrb);
+        mrb->exc = NULL;
+    }
+
+cleanup:
+    // Restore GC arena
+    mrb_gc_arena_restore(mrb, ai);
+}
+
 static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 {
     mrb_int timeout_ms;
@@ -122,8 +237,10 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
             // Message received
             FMRB_LOGI(TAG, "App %s received message: type=%d", ctx->app_name, msg.type);
 
-            // TODO: Convert message to Ruby event and call on_event()
-            // For now, just log it
+            // Dispatch message based on type
+            if (msg.type == FMRB_MSG_TYPE_HID_EVENT) {
+                dispatch_hid_event_to_ruby(mrb, self, &msg);
+            }
             // Continue loop to process more messages or wait for remaining time
         } else if (ret == FMRB_ERR_TIMEOUT) {
             // Timeout - normal case when no messages

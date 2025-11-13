@@ -45,17 +45,26 @@ class FmrbKernel
     case subtype
     when 1  # FMRB_APP_CTRL_SPAWN
       app_name = data[1, 32].delete("\x00")
-      puts "[KERNEL] Spawn request from pid=#{msg[:src_pid]}: #{app_name}"
+      pid = msg[:src_pid]
+      puts "[KERNEL] Spawn request from pid=#{pid}: #{app_name}"
 
       result = _spawn_app_req(app_name)
       if result
         puts "[KERNEL] App #{app_name} spawned successfully"
-        # TODO: Add to @app_list
+
+        # Set HID target to the newly spawned app
+        Kernel.set_hid_target(pid)
+        puts "[KERNEL] HID target set to app pid=#{pid}"
+
+        # TODO: Add to @app_list with window info
       else
         puts "[KERNEL] Failed to spawn app: #{app_name}"
       end
     when 2  # FMRB_APP_CTRL_KILL
-      puts "[KERNEL] Kill request (not implemented)"
+      pid = msg[:src_pid]
+      puts "[KERNEL] Kill request from pid=#{pid} (not implemented)"
+      # TODO: Reset HID target if this was the target app
+      # Kernel.set_hid_target(0xFF)
     when 3  # FMRB_APP_CTRL_SUSPEND
       puts "[KERNEL] Suspend request (not implemented)"
     when 4  # FMRB_APP_CTRL_RESUME

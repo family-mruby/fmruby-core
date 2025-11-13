@@ -22,6 +22,9 @@ extern const uint8_t kernel_irep[];
 
 static const char *TAG = "kernel";
 
+// Forward declarations
+static bool init_hid_routing(void);
+
 // System configuration (global, initialized once)
 static fmrb_system_config_t g_system_config = {
     .system_name = "Family mruby OS",
@@ -166,8 +169,11 @@ fmrb_err_t fmrb_kernel_start(void)
 
     if(!read_system_config()){
         return FMRB_ERR_FAILED;
-    }        
+    }
     if(!init_hal()){
+        return FMRB_ERR_FAILED;
+    }
+    if(!init_hid_routing()){
         return FMRB_ERR_FAILED;
     }
     if(!fmrb_app_init()){
@@ -233,4 +239,72 @@ void fmrb_kernel_stop(void)
 const fmrb_system_config_t* fmrb_kernel_get_config(void)
 {
     return &g_system_config;
+}
+
+// HID routing table (protected by mutex)
+static fmrb_hid_routing_t g_hid_routing = {
+    .target_pid = 0xFF,        // No target initially
+    .focused_window = 0xFF,
+    .routing_enabled = true
+};
+
+static fmrb_semaphore_t g_hid_routing_mutex = NULL;
+
+// Initialize HID routing table
+static bool init_hid_routing(void)
+{
+    g_hid_routing_mutex = fmrb_semaphore_create_mutex();
+    if (!g_hid_routing_mutex) {
+        FMRB_LOGE(TAG, "Failed to create HID routing mutex");
+        return false;
+    }
+    FMRB_LOGI(TAG, "HID routing initialized");
+    return true;
+}
+
+// Get HID routing table (for Host Task)
+fmrb_err_t fmrb_kernel_get_hid_routing(fmrb_hid_routing_t *routing)
+{
+    if (!routing) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    fmrb_semaphore_take(g_hid_routing_mutex, portMAX_DELAY);
+    *routing = g_hid_routing;
+    fmrb_semaphore_give(g_hid_routing_mutex);
+
+    return FMRB_OK;
+}
+
+// Set HID target PID (for Kernel Ruby)
+fmrb_err_t fmrb_kernel_set_hid_target(uint8_t target_pid)
+{
+    fmrb_semaphore_take(g_hid_routing_mutex, portMAX_DELAY);
+    g_hid_routing.target_pid = target_pid;
+    fmrb_semaphore_give(g_hid_routing_mutex);
+
+    FMRB_LOGI(TAG, "HID target set to PID=%d", target_pid);
+    return FMRB_OK;
+}
+
+// Set focused window ID (for future use)
+fmrb_err_t fmrb_kernel_set_focused_window(uint8_t window_id)
+{
+    fmrb_semaphore_take(g_hid_routing_mutex, portMAX_DELAY);
+    g_hid_routing.focused_window = window_id;
+    fmrb_semaphore_give(g_hid_routing_mutex);
+
+    FMRB_LOGI(TAG, "Focused window set to ID=%d", window_id);
+    return FMRB_OK;
+}
+
+// Enable/disable HID routing
+fmrb_err_t fmrb_kernel_enable_hid_routing(bool enable)
+{
+    fmrb_semaphore_take(g_hid_routing_mutex, portMAX_DELAY);
+    g_hid_routing.routing_enabled = enable;
+    fmrb_semaphore_give(g_hid_routing_mutex);
+
+    FMRB_LOGI(TAG, "HID routing %s", enable ? "enabled" : "disabled");
+    return FMRB_OK;
 }

@@ -150,6 +150,42 @@ static mrb_value mrb_kernel_check_protocol_version(mrb_state *mrb, mrb_value sel
     }
 }
 
+// Kernel.set_hid_target(pid) - Set HID event target app
+static mrb_value mrb_kernel_set_hid_target(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid;
+    mrb_get_args(mrb, "i", &pid);
+
+    if (pid < 0 || pid > 255) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid PID");
+    }
+
+    fmrb_err_t ret = fmrb_kernel_set_hid_target((uint8_t)pid);
+    if (ret != FMRB_OK) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to set HID target");
+    }
+
+    return mrb_nil_value();
+}
+
+// Kernel.set_focused_window(window_id) - Set focused window ID
+static mrb_value mrb_kernel_set_focused_window(mrb_state *mrb, mrb_value self)
+{
+    mrb_int window_id;
+    mrb_get_args(mrb, "i", &window_id);
+
+    if (window_id < 0 || window_id > 255) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid window ID");
+    }
+
+    fmrb_err_t ret = fmrb_kernel_set_focused_window((uint8_t)window_id);
+    if (ret != FMRB_OK) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to set focused window");
+    }
+
+    return mrb_nil_value();
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -159,6 +195,11 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_spin", mrb_kernel_handler_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_spawn_app_req", mrb_kernel_handler_spawn_app_req, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "check_protocol_version", mrb_kernel_check_protocol_version, MRB_ARGS_OPT(1));
+
+    // Define Kernel module for HID routing functions
+    struct RClass *kernel_mod = mrb_define_module(mrb, "Kernel");
+    mrb_define_module_function(mrb, kernel_mod, "set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
+    mrb_define_module_function(mrb, kernel_mod, "set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
 
     // Process ID constants
     mrb_define_const(mrb, handler_class, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
@@ -172,6 +213,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_const(mrb, handler_class, "MSG_TYPE_APP_CONTROL", mrb_fixnum_value(FMRB_MSG_TYPE_APP_CONTROL));
     mrb_define_const(mrb, handler_class, "MSG_TYPE_APP_GFX", mrb_fixnum_value(FMRB_MSG_TYPE_APP_GFX));
     mrb_define_const(mrb, handler_class, "MSG_TYPE_APP_AUDIO", mrb_fixnum_value(FMRB_MSG_TYPE_APP_AUDIO));
+    mrb_define_const(mrb, handler_class, "MSG_TYPE_HID_EVENT", mrb_fixnum_value(FMRB_MSG_TYPE_HID_EVENT));
 
     // App control message subtypes
     mrb_define_const(mrb, handler_class, "APP_CTRL_SPAWN", mrb_fixnum_value(FMRB_APP_CTRL_SPAWN));

@@ -30,6 +30,7 @@ typedef enum{
     FMRB_MSG_TYPE_APP_CONTROL=0,
     FMRB_MSG_TYPE_APP_GFX,
     FMRB_MSG_TYPE_APP_AUDIO,
+    FMRB_MSG_TYPE_HID_EVENT,
     FMRB_MSG_TYPE_MAX,
 } fmrb_msg_type_t;
 
