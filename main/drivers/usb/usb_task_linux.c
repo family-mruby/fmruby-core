@@ -26,74 +26,6 @@ static int g_socket_fd = -1;
 static bool g_running = false;
 static fmrb_task_handle_t g_task_handle = NULL;
 
-// Event queue for HID events (simple ring buffer)
-#define HID_EVENT_QUEUE_SIZE 32
-
-typedef struct {
-    uint8_t type;
-    uint8_t data[32];  // Max event data size
-    uint16_t data_len;
-} hid_event_queue_entry_t;
-
-static hid_event_queue_entry_t g_event_queue[HID_EVENT_QUEUE_SIZE];
-static int g_queue_head = 0;
-static int g_queue_tail = 0;
-static fmrb_semaphore_t g_queue_mutex = NULL;
-
-/**
- * @brief Add event to queue
- */
-static bool queue_add_event(uint8_t type, const uint8_t *data, uint16_t len) {
-    if (!g_queue_mutex) return false;
-
-    fmrb_semaphore_take(g_queue_mutex, FMRB_TICK_MAX);
-
-    int next_head = (g_queue_head + 1) % HID_EVENT_QUEUE_SIZE;
-    if (next_head == g_queue_tail) {
-        // Queue full
-        fmrb_semaphore_give(g_queue_mutex);
-        FMRB_LOGW(TAG, "HID event queue full, dropping event");
-        return false;
-    }
-
-    g_event_queue[g_queue_head].type = type;
-    g_event_queue[g_queue_head].data_len = (len > sizeof(g_event_queue[0].data)) ? sizeof(g_event_queue[0].data) : len;
-    if (data && g_event_queue[g_queue_head].data_len > 0) {
-        memcpy(g_event_queue[g_queue_head].data, data, g_event_queue[g_queue_head].data_len);
-    }
-
-    g_queue_head = next_head;
-
-    fmrb_semaphore_give(g_queue_mutex);
-    return true;
-}
-
-/**
- * @brief Get event from queue
- */
-static bool queue_get_event(uint8_t *type, uint8_t *data, uint16_t *len) {
-    if (!g_queue_mutex) return false;
-
-    fmrb_semaphore_take(g_queue_mutex, FMRB_TICK_MAX);
-
-    if (g_queue_tail == g_queue_head) {
-        // Queue empty
-        fmrb_semaphore_give(g_queue_mutex);
-        return false;
-    }
-
-    *type = g_event_queue[g_queue_tail].type;
-    *len = g_event_queue[g_queue_tail].data_len;
-    if (data && *len > 0) {
-        memcpy(data, g_event_queue[g_queue_tail].data, *len);
-    }
-
-    g_queue_tail = (g_queue_tail + 1) % HID_EVENT_QUEUE_SIZE;
-
-    fmrb_semaphore_give(g_queue_mutex);
-    return true;
-}
-
 /**
  * @brief Process received HID event
  */
@@ -205,13 +137,6 @@ static void usb_task_thread(void *arg) {
 fmrb_err_t usb_task_init(void)
 {
     FMRB_LOGI(TAG, "USB task init (Linux - connecting to input socket)");
-
-    // Create queue mutex
-    g_queue_mutex = fmrb_semaphore_create_mutex();
-    if (!g_queue_mutex) {
-        FMRB_LOGE(TAG, "Failed to create queue mutex");
-        return FMRB_ERR_FAILED;
-    }
 
     // Create socket
     g_socket_fd = socket(AF_UNIX, SOCK_STREAM, 0);
