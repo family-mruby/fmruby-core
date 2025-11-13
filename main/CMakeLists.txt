@@ -60,6 +60,12 @@ idf_component_register(
     REQUIRES ${COMPONENT_REQUIRES}
 )
 
+# Disable optimization for app.c to enable proper debugging
+# Todo: disable it on official release
+target_compile_options(${COMPONENT_LIB} PRIVATE
+    $<$<COMPILE_LANGUAGE:C>:-O0 -g3>
+)
+
 # Generate C files from kernel Ruby files (must be after idf_component_register)
 foreach(RB_FILE ${KERNEL_RUBY_FILES})
   get_filename_component(RB_NAME ${RB_FILE} NAME_WE)

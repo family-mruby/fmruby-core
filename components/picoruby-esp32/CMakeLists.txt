@@ -113,6 +113,9 @@ idf_component_register(
 # Add platform-specific dependencies for Linux
 if(IDF_TARGET STREQUAL "linux")
   target_link_libraries(${COMPONENT_LIB} PRIVATE mbedtls)
+  # Disable optimization for debugging
+  # Todo: disable it on official release
+  target_compile_options(${COMPONENT_LIB} PRIVATE -O0 -g3)
 endif()
 
 # Add platform-specific compile definitions

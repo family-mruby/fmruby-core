@@ -46,6 +46,7 @@ class FmrbApp
 
   def on_event(ev)
     # Called from C
+    puts "[FmrbApp][#{@name}] on_event called"
   end
 
   # Internal methods

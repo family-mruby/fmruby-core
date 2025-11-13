@@ -94,6 +94,8 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
 // Dispatch HID event to Ruby on_event() method
 static void dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t *msg)
 {
+    FMRB_LOGI(TAG, "=== dispatch_hid_event_to_ruby START ===");
+
     // Validate minimum size
     if (msg->size < 1) {
         FMRB_LOGW(TAG, "HID event message too small: size=%d", msg->size);
@@ -102,95 +104,99 @@ static void dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmr
 
     // Read subtype from first byte
     uint8_t subtype = msg->data[0];
+    FMRB_LOGI(TAG, "HID event subtype=%d", subtype);
 
     // Save GC arena before creating objects
-    int ai = mrb_gc_arena_save(mrb);
+    //int ai = mrb_gc_arena_save(mrb);
 
-    // Create event hash
-    mrb_value event_hash = mrb_hash_new(mrb);
+    // // Create event hash
+    //mrb_value event_hash = mrb_hash_new(mrb);
 
-    switch (subtype) {
-        case HID_MSG_KEY_DOWN:
-        case HID_MSG_KEY_UP: {
-            // Validate size before casting
-            if (msg->size < sizeof(fmrb_hid_key_event_t)) {
-                FMRB_LOGW(TAG, "Key event message too small: expected=%d, actual=%d",
-                         sizeof(fmrb_hid_key_event_t), msg->size);
-                goto cleanup;
-            }
+    // switch (subtype) {
+    //     case HID_MSG_KEY_DOWN:
+    //     case HID_MSG_KEY_UP: {
+    //         // Validate size before casting
+    //         if (msg->size < sizeof(fmrb_hid_key_event_t)) {
+    //             FMRB_LOGW(TAG, "Key event message too small: expected=%d, actual=%d",
+    //                      sizeof(fmrb_hid_key_event_t), msg->size);
+    //             goto cleanup;
+    //         }
 
-            // Cast to struct and access fields from the struct
-            const fmrb_hid_key_event_t *key_event = (const fmrb_hid_key_event_t*)msg->data;
+    //         // Cast to struct and access fields from the struct
+    //         const fmrb_hid_key_event_t *key_event = (const fmrb_hid_key_event_t*)msg->data;
 
-            mrb_value type_sym = (key_event->subtype == HID_MSG_KEY_DOWN)
-                ? mrb_symbol_value(mrb_intern_cstr(mrb, "key_down"))
-                : mrb_symbol_value(mrb_intern_cstr(mrb, "key_up"));
+    //         mrb_value type_sym = (key_event->subtype == HID_MSG_KEY_DOWN)
+    //             ? mrb_symbol_value(mrb_intern_cstr(mrb, "key_down"))
+    //             : mrb_symbol_value(mrb_intern_cstr(mrb, "key_up"));
 
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")), type_sym);
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "keycode")),
-                        mrb_fixnum_value(key_event->keycode));
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "scancode")),
-                        mrb_fixnum_value(key_event->scancode));
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "modifier")),
-                        mrb_fixnum_value(key_event->modifier));
-            break;
-        }
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")), type_sym);
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "keycode")),
+    //                     mrb_fixnum_value(key_event->keycode));
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "scancode")),
+    //                     mrb_fixnum_value(key_event->scancode));
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "modifier")),
+    //                     mrb_fixnum_value(key_event->modifier));
+    //         break;
+    //     }
 
-        case HID_MSG_MOUSE_BUTTON_DOWN:
-        case HID_MSG_MOUSE_BUTTON_UP: {
-            // Validate size before casting
-            if (msg->size < sizeof(fmrb_hid_mouse_button_event_t)) {
-                FMRB_LOGW(TAG, "Mouse button event message too small: expected=%d, actual=%d",
-                         sizeof(fmrb_hid_mouse_button_event_t), msg->size);
-                goto cleanup;
-            }
+    //     case HID_MSG_MOUSE_BUTTON_DOWN:
+    //     case HID_MSG_MOUSE_BUTTON_UP: {
+    //         // Validate size before casting
+    //         if (msg->size < sizeof(fmrb_hid_mouse_button_event_t)) {
+    //             FMRB_LOGW(TAG, "Mouse button event message too small: expected=%d, actual=%d",
+    //                      sizeof(fmrb_hid_mouse_button_event_t), msg->size);
+    //             goto cleanup;
+    //         }
 
-            // Cast to struct and access fields from the struct
-            const fmrb_hid_mouse_button_event_t *mouse_event =
-                (const fmrb_hid_mouse_button_event_t*)msg->data;
+    //         // Cast to struct and access fields from the struct
+    //         const fmrb_hid_mouse_button_event_t *mouse_event =
+    //             (const fmrb_hid_mouse_button_event_t*)msg->data;
 
-            mrb_value type_sym = (mouse_event->subtype == HID_MSG_MOUSE_BUTTON_DOWN)
-                ? mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_down"))
-                : mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_up"));
+    //         mrb_value type_sym = (mouse_event->subtype == HID_MSG_MOUSE_BUTTON_DOWN)
+    //             ? mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_down"))
+    //             : mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_up"));
 
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")), type_sym);
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "button")),
-                        mrb_fixnum_value(mouse_event->button));
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "x")),
-                        mrb_fixnum_value(mouse_event->x));
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "y")),
-                        mrb_fixnum_value(mouse_event->y));
-            break;
-        }
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")), type_sym);
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "button")),
+    //                     mrb_fixnum_value(mouse_event->button));
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "x")),
+    //                     mrb_fixnum_value(mouse_event->x));
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "y")),
+    //                     mrb_fixnum_value(mouse_event->y));
+    //         break;
+    //     }
 
-        case HID_MSG_MOUSE_MOVE: {
-            // Validate size before casting
-            if (msg->size < sizeof(fmrb_hid_mouse_motion_event_t)) {
-                FMRB_LOGW(TAG, "Mouse motion event message too small: expected=%d, actual=%d",
-                         sizeof(fmrb_hid_mouse_motion_event_t), msg->size);
-                goto cleanup;
-            }
+    //     case HID_MSG_MOUSE_MOVE: {
+    //         // Validate size before casting
+    //         if (msg->size < sizeof(fmrb_hid_mouse_motion_event_t)) {
+    //             FMRB_LOGW(TAG, "Mouse motion event message too small: expected=%d, actual=%d",
+    //                      sizeof(fmrb_hid_mouse_motion_event_t), msg->size);
+    //             goto cleanup;
+    //         }
 
-            // Cast to struct and access fields from the struct
-            const fmrb_hid_mouse_motion_event_t *motion_event =
-                (const fmrb_hid_mouse_motion_event_t*)msg->data;
+    //         // Cast to struct and access fields from the struct
+    //         const fmrb_hid_mouse_motion_event_t *motion_event =
+    //             (const fmrb_hid_mouse_motion_event_t*)msg->data;
 
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
-                        mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_move")));
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "x")),
-                        mrb_fixnum_value(motion_event->x));
-            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "y")),
-                        mrb_fixnum_value(motion_event->y));
-            break;
-        }
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
+    //                     mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_move")));
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "x")),
+    //                     mrb_fixnum_value(motion_event->x));
+    //         mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "y")),
+    //                     mrb_fixnum_value(motion_event->y));
+    //         break;
+    //     }
 
-        default:
-            FMRB_LOGW(TAG, "Unknown HID event subtype: %d", subtype);
-            goto cleanup;
-    }
+    //     default:
+    //         FMRB_LOGW(TAG, "Unknown HID event subtype: %d", subtype);
+    //         goto cleanup;
+    // }
 
     // Call Ruby on_event(event_hash) - picoruby standard pattern
-    mrb_funcall(mrb, self, "on_event", 1, event_hash);
+    FMRB_LOGI(TAG, "Calling mrb_funcall(on_event)...");
+    //mrb_funcall(mrb, self, "on_event", 1, event_hash);
+    //mrb_funcall(mrb, self, "on_event", 1, mrb_nil_value());
+    FMRB_LOGI(TAG, "mrb_funcall returned");
 
     // Check for exception - picoruby standard pattern
     if (mrb->exc) {
@@ -199,9 +205,11 @@ static void dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmr
         mrb->exc = NULL;
     }
 
-cleanup:
+//cleanup:
     // Restore GC arena
-    mrb_gc_arena_restore(mrb, ai);
+    //FMRB_LOGI(TAG, "Restoring GC arena (ai=%d)", ai);
+    //mrb_gc_arena_restore(mrb, ai);
+    FMRB_LOGI(TAG, "=== dispatch_hid_event_to_ruby END ===");
 }
 
 static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
@@ -217,6 +225,9 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     // Record start time to ensure we wait for the full timeout period
     TickType_t start_tick = fmrb_task_get_tick_count();
     TickType_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
+
+    // Save GC arena before loop - standard pattern for repeated mrb_funcall
+    //int ai = mrb_gc_arena_save(mrb);
 
     // Spin Loop - process messages until timeout expires
     while(true){
@@ -251,6 +262,9 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
             break;
         }
     }
+
+    // Restore GC arena after loop
+    //mrb_gc_arena_restore(mrb, ai);
 
     return mrb_nil_value();
 }
