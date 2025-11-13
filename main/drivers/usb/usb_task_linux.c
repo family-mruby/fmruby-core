@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include "usb_task.h"
+#include "kernel/host/host_task.h"
 
 #define INPUT_SOCKET_PATH "/tmp/fmrb_input_socket"
 #define MAX_PACKET_SIZE 512
@@ -99,13 +100,20 @@ static bool queue_get_event(uint8_t *type, uint8_t *data, uint16_t *len) {
 static void process_hid_event(uint8_t type, const uint8_t *data, uint16_t len) {
     switch (type) {
         case HID_EVENT_KEY_DOWN:
+            if (len >= sizeof(hid_keyboard_event_t)) {
+                const hid_keyboard_event_t *kbd = (const hid_keyboard_event_t*)data;
+                FMRB_LOGI(TAG, "Keyboard DOWN: scancode=%u keycode=%u modifier=0x%02x",
+                         kbd->scancode, kbd->keycode, kbd->modifier);
+                fmrb_host_send_key_down(kbd->keycode);
+            }
+            break;
+
         case HID_EVENT_KEY_UP:
             if (len >= sizeof(hid_keyboard_event_t)) {
                 const hid_keyboard_event_t *kbd = (const hid_keyboard_event_t*)data;
-                FMRB_LOGI(TAG, "Keyboard %s: scancode=%u keycode=%u modifier=0x%02x",
-                         (type == HID_EVENT_KEY_DOWN) ? "DOWN" : "UP",
+                FMRB_LOGI(TAG, "Keyboard UP: scancode=%u keycode=%u modifier=0x%02x",
                          kbd->scancode, kbd->keycode, kbd->modifier);
-                // TODO: Dispatch to mruby application
+                fmrb_host_send_key_up(kbd->keycode);
             }
             break;
 
@@ -116,7 +124,7 @@ static void process_hid_event(uint8_t type, const uint8_t *data, uint16_t len) {
                          mouse->button,
                          (mouse->state) ? "pressed" : "released",
                          mouse->x, mouse->y);
-                // TODO: Dispatch to mruby application
+                fmrb_host_send_mouse_click(mouse->x, mouse->y, mouse->button);
             }
             break;
 
@@ -124,7 +132,7 @@ static void process_hid_event(uint8_t type, const uint8_t *data, uint16_t len) {
             if (len >= sizeof(hid_mouse_motion_event_t)) {
                 const hid_mouse_motion_event_t *motion = (const hid_mouse_motion_event_t*)data;
                 FMRB_LOGD(TAG, "Mouse motion to (%u, %u)", motion->x, motion->y);
-                // TODO: Dispatch to mruby application
+                fmrb_host_send_mouse_move(motion->x, motion->y);
             }
             break;
 

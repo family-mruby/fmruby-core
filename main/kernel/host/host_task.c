@@ -314,22 +314,22 @@ static void host_task_process_host_message(const host_message_t *msg)
 {
     switch (msg->type) {
         case HOST_MSG_HID_KEY_DOWN:
-            FMRB_LOGD(TAG, "Key down: %d", msg->data.key.key_code);
+            FMRB_LOGI(TAG, "Key down: %d", msg->data.key.key_code);
             //fmrb_app_dispatch_key_down(msg->data.key.key_code);
             break;
 
         case HOST_MSG_HID_KEY_UP:
-            FMRB_LOGD(TAG, "Key up: %d", msg->data.key.key_code);
+            FMRB_LOGI(TAG, "Key up: %d", msg->data.key.key_code);
             //fmrb_app_dispatch_key_up(msg->data.key.key_code);
             break;
 
         case HOST_MSG_HID_MOUSE_MOVE:
-            FMRB_LOGD(TAG, "Mouse move: (%d, %d)", msg->data.mouse_move.x, msg->data.mouse_move.y);
+            FMRB_LOGI(TAG, "Mouse move: (%d, %d)", msg->data.mouse_move.x, msg->data.mouse_move.y);
             //fmrb_app_dispatch_mouse_move(msg->data.mouse_move.x, msg->data.mouse_move.y);
             break;
 
         case HOST_MSG_HID_MOUSE_CLICK:
-            FMRB_LOGD(TAG, "Mouse click: (%d, %d) button: %d",
+            FMRB_LOGI(TAG, "Mouse click: (%d, %d) button: %d",
                      msg->data.mouse_click.x,
                      msg->data.mouse_click.y,
                      msg->data.mouse_click.button);
