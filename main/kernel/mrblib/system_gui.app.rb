@@ -18,7 +18,7 @@ class SystemGuiApp < FmrbApp
     draw_current
     #Machine.delay_ms(100)
     puts "[SystemGUI] spawn default shell app"
-    spawn_app("default/shell")
+    #spawn_app("default/shell")
   end
 
   def spawn_app(app_name)

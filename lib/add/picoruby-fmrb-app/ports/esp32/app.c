@@ -8,6 +8,7 @@
 #include "fmrb_app.h"
 #include "fmrb_hal.h"
 #include "fmrb_log.h"
+#include "fmrb_mem.h"
 #include "fmrb_err.h"
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
@@ -16,6 +17,8 @@
 #include "fmrb_gfx.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
+
+#include "freertos/task.h"
 
 static const char* TAG = "app";
 
@@ -92,14 +95,14 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
 // FmrbApp#_spin(timeout_ms) - Process messages and wait
 // Receives messages from queue with timeout, called from Ruby main_loop()
 // Dispatch HID event to Ruby on_event() method
-static void dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t *msg)
+bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t *msg)
 {
     FMRB_LOGI(TAG, "=== dispatch_hid_event_to_ruby START ===");
 
     // Validate minimum size
     if (msg->size < 1) {
         FMRB_LOGW(TAG, "HID event message too small: size=%d", msg->size);
-        return;
+        return false;
     }
 
     // Read subtype from first byte
@@ -193,16 +196,30 @@ static void dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmr
     // }
 
     // Call Ruby on_event(event_hash) - picoruby standard pattern
-    FMRB_LOGI(TAG, "Calling mrb_funcall(on_event)...");
+    FMRB_LOGI(TAG, "Calling mrb_funcall(on_event)... ci=%p",mrb->c->ci);
+    fmrb_mempool_check_pointer(mrb->c->ci);
+
+    //UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
+    // FMRB_LOGI(TAG, "before funcall: stack HW = %u words (~%u bytes)",
+    //           (unsigned)hw, (unsigned)(hw * sizeof(StackType_t)));
+
+    int ai = mrb_gc_arena_save(mrb);
     //mrb_funcall(mrb, self, "on_event", 1, event_hash);
-    //mrb_funcall(mrb, self, "on_event", 1, mrb_nil_value());
-    FMRB_LOGI(TAG, "mrb_funcall returned");
+    mrb_funcall(mrb, self, "on_event", 1, mrb_nil_value());
+    mrb_gc_arena_restore(mrb, ai);
+
+    //hw = uxTaskGetStackHighWaterMark(NULL);
+    // FMRB_LOGI(TAG, "after  funcall: stack HW = %u words (~%u bytes)",
+    //           (unsigned)hw, (unsigned)(hw * sizeof(StackType_t)));
+
+    FMRB_LOGI(TAG, "mrb_funcall returned ci=%p",mrb->c->ci);
 
     // Check for exception - picoruby standard pattern
     if (mrb->exc) {
         FMRB_LOGE(TAG, "Exception in on_event()");
         mrb_print_error(mrb);
         mrb->exc = NULL;
+        return false;
     }
 
 //cleanup:
@@ -210,10 +227,15 @@ static void dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmr
     //FMRB_LOGI(TAG, "Restoring GC arena (ai=%d)", ai);
     //mrb_gc_arena_restore(mrb, ai);
     FMRB_LOGI(TAG, "=== dispatch_hid_event_to_ruby END ===");
+    return true;
 }
 
 static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 {
+    // UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
+    // FMRB_LOGI(TAG, "FmrbApp stack high water mark = %u words (~%u bytes)",
+    //           (unsigned)hw, (unsigned)(hw * sizeof(StackType_t)));
+
     mrb_int timeout_ms;
     mrb_get_args(mrb, "i", &timeout_ms);
 
@@ -229,6 +251,7 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     // Save GC arena before loop - standard pattern for repeated mrb_funcall
     //int ai = mrb_gc_arena_save(mrb);
 
+    FMRB_LOGI(TAG, ">>>>>>>>> _spin(%s) >>>>>>>>>>>>>",ctx->app_name);
     // Spin Loop - process messages until timeout expires
     while(true){
         // Calculate remaining time
@@ -250,7 +273,10 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 
             // Dispatch message based on type
             if (msg.type == FMRB_MSG_TYPE_HID_EVENT) {
-                dispatch_hid_event_to_ruby(mrb, self, &msg);
+                bool bret = dispatch_hid_event_to_ruby(mrb, self, &msg);
+                if(bret == false){
+                    return mrb_nil_value();
+                }
             }
             // Continue loop to process more messages or wait for remaining time
         } else if (ret == FMRB_ERR_TIMEOUT) {

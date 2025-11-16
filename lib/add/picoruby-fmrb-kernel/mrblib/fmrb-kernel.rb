@@ -97,6 +97,7 @@ class FmrbKernel
 
     # Spawn system GUI app
     _spawn_app_req("system/gui_app")
+    Kernel.set_hid_target(2)
   end
 
   def start

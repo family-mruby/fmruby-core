@@ -129,6 +129,7 @@ static bool init_hardware(void)
 static void init_mem(void)
 {
     fmrb_init_system_mem();
+    fmrb_mempool_print_ranges();
     fmrb_toml_init();
 }
 

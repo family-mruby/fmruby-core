@@ -2,6 +2,9 @@
 #include <stdint.h>
 #include "fmrb_hal.h"
 #include "fmrb_mem.h"
+#include "fmrb_log.h"
+
+#define TAG "MEMPOOL"
 
 EXT_RAM_BSS_ATTR unsigned char __attribute__((aligned(8))) g_prism_memory_pool[FMRB_MEM_PRISM_POOL_SIZE];
 
@@ -52,4 +55,67 @@ size_t fmrb_get_mempool_size(int32_t id){
         default:
             return 0;
     }
+}
+
+static const char* fmrb_get_mempool_name(int32_t id){
+    switch(id){
+        case POOL_ID_SYSTEM:     return "SYSTEM";
+        case POOL_ID_KERNEL:     return "KERNEL";
+        case POOL_ID_SYSTEM_APP: return "SYSTEM_APP";
+        case POOL_ID_USER_APP0:  return "USER_APP0";
+        case POOL_ID_USER_APP1:  return "USER_APP1";
+        case POOL_ID_USER_APP2:  return "USER_APP2";
+        default:                 return "UNKNOWN";
+    }
+}
+
+void fmrb_mempool_print_ranges(void){
+    FMRB_LOGI(TAG, "Memory Pool Address Ranges:");
+    FMRB_LOGI(TAG, "  PRISM:       %p - %p (%zu bytes)",
+                  g_prism_memory_pool,
+                  g_prism_memory_pool + FMRB_MEM_PRISM_POOL_SIZE,
+                  FMRB_MEM_PRISM_POOL_SIZE);
+
+    for(int32_t id = 0; id < POOL_ID_MAX; id++){
+        void* pool = g_mempool_list[id];
+        size_t size = fmrb_get_mempool_size(id);
+        FMRB_LOGI(TAG, "  %-12s %p - %p (%zu bytes)",
+                      fmrb_get_mempool_name(id),
+                      pool,
+                      (unsigned char*)pool + size,
+                      size);
+    }
+}
+
+void fmrb_mempool_check_pointer(const void* ptr){
+    if(ptr == NULL){
+        FMRB_LOGI(TAG, "Pointer check: NULL");
+        return;
+    }
+
+    // Check PRISM pool
+    if(ptr >= (void*)g_prism_memory_pool &&
+       ptr < (void*)(g_prism_memory_pool + FMRB_MEM_PRISM_POOL_SIZE)){
+        FMRB_LOGI(TAG, "Pointer %p is in PRISM pool [%p - %p]",
+                      ptr,
+                      g_prism_memory_pool,
+                      g_prism_memory_pool + FMRB_MEM_PRISM_POOL_SIZE);
+        return;
+    }
+
+    // Check memory pools
+    for(int32_t id = 0; id < POOL_ID_MAX; id++){
+        void* pool = g_mempool_list[id];
+        size_t size = fmrb_get_mempool_size(id);
+        if(ptr >= pool && ptr < (void*)((unsigned char*)pool + size)){
+            FMRB_LOGI(TAG, "Pointer %p is in %s pool [%p - %p]",
+                          ptr,
+                          fmrb_get_mempool_name(id),
+                          pool,
+                          (unsigned char*)pool + size);
+            return;
+        }
+    }
+
+    FMRB_LOGI(TAG, "Pointer %p is NOT in any memory pool (external memory or invalid)", ptr);
 }

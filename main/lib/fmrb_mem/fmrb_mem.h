@@ -56,6 +56,10 @@ void* fmrb_get_mempool_ptr(int32_t id);
 size_t fmrb_get_mempool_size(int32_t id);
 void* fmrb_get_mempool_app_ptr(int32_t no);
 
+// Memory pool debugging functions
+void fmrb_mempool_print_ranges(void);
+void fmrb_mempool_check_pointer(const void* ptr);
+
 // Pool management (thread-safe)
 fmrb_mem_handle_t fmrb_malloc_create_handle(void* pool, size_t size);
 int fmrb_malloc_destroy_handle(fmrb_mem_handle_t handle);
