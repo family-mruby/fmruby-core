@@ -36,12 +36,24 @@ static bool check_mrb_ci_valid(mrb_state *mrb, const char* location){
     struct mrb_context *c = mrb->c;
     bool valid = true;
 
+    // Get task information
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    TickType_t tick = fmrb_task_get_tick_count();
+    int app_id = ctx ? ctx->app_id : -1;
+    const char* app_name = ctx ? ctx->app_name : "N/A";
+
     // Calculate mrb_callinfo size and stack capacity
     size_t ci_size = sizeof(mrb_callinfo);
     size_t range_bytes = (char*)c->ciend - (char*)c->cibase;
     size_t capacity = range_bytes / ci_size;
     size_t current = ((char*)c->ci - (char*)c->cibase) / ci_size;
     int usage_pct = capacity > 0 ? (current * 100 / capacity) : 0;
+
+    // Log task and timing information
+    FMRB_LOGI(TAG, "[%s] ===== VM STATE CHECK =====", location ? location : "?");
+    FMRB_LOGI(TAG, "[%s] Tick=%u App[%d]=%s Status=%d",
+              location ? location : "?",
+              (unsigned)tick, app_id, app_name, c->status);
 
     // Check ci pointer range
     if(c->ci < c->cibase || c->ci >= c->ciend){
@@ -85,6 +97,8 @@ static bool check_mrb_ci_valid(mrb_state *mrb, const char* location){
     if(c->ci != c->cibase){
         fmrb_mempool_check_pointer(c->ci);
     }
+
+    FMRB_LOGI(TAG, "[%s] ===== END VM STATE =====", location ? location : "?");
 
     // Update previous values for next comparison
     prev_cibase = c->cibase;
@@ -319,7 +333,8 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     // Save GC arena before loop - standard pattern for repeated mrb_funcall
     //int ai = mrb_gc_arena_save(mrb);
 
-    FMRB_LOGI(TAG, ">>>>>>>>> _spin(%s) >>>>>>>>>>>>>",ctx->app_name);
+    FMRB_LOGI(TAG, ">>>>>>>>> _spin(%s) START >>>>>>>>>>>>>",ctx->app_name);
+
     // Spin Loop - process messages until timeout expires
     while(true){
         // Calculate remaining time
@@ -346,6 +361,7 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                     return mrb_nil_value();
                 }
             }
+
             // Continue loop to process more messages or wait for remaining time
         } else if (ret == FMRB_ERR_TIMEOUT) {
             // Timeout - normal case when no messages
@@ -359,6 +375,8 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 
     // Restore GC arena after loop
     //mrb_gc_arena_restore(mrb, ai);
+
+    FMRB_LOGI(TAG, "<<<<<<<<< _spin(%s) END <<<<<<<<<<<<<",ctx->app_name);
 
     return mrb_nil_value();
 }
