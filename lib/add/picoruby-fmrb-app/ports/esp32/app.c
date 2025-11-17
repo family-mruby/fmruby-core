@@ -22,6 +22,77 @@
 
 static const char* TAG = "app";
 
+// Helper function: Check mruby ci pointer validity
+// Static variables to track cibase/ciend changes across calls
+static mrb_callinfo *prev_cibase = NULL;
+static mrb_callinfo *prev_ciend = NULL;
+
+static bool check_mrb_ci_valid(mrb_state *mrb, const char* location){
+    if(!mrb || !mrb->c){
+        FMRB_LOGE(TAG, "[%s] ERROR: mrb or mrb->c is NULL", location ? location : "?");
+        return false;
+    }
+
+    struct mrb_context *c = mrb->c;
+    bool valid = true;
+
+    // Calculate mrb_callinfo size and stack capacity
+    size_t ci_size = sizeof(mrb_callinfo);
+    size_t range_bytes = (char*)c->ciend - (char*)c->cibase;
+    size_t capacity = range_bytes / ci_size;
+    size_t current = ((char*)c->ci - (char*)c->cibase) / ci_size;
+    int usage_pct = capacity > 0 ? (current * 100 / capacity) : 0;
+
+    // Check ci pointer range
+    if(c->ci < c->cibase || c->ci >= c->ciend){
+        FMRB_LOGE(TAG, "[%s] ERROR: ci out of range! ci=%p not in [%p, %p)",
+                  location ? location : "?", c->ci, c->cibase, c->ciend);
+        valid = false;
+    }
+
+    // Detect cibase/ciend changes (realloc)
+    bool cibase_changed = (prev_cibase != NULL && prev_cibase != c->cibase);
+    bool ciend_changed = (prev_ciend != NULL && prev_ciend != c->ciend);
+
+    if(cibase_changed || ciend_changed){
+        FMRB_LOGW(TAG, "[%s] *** REALLOC DETECTED ***", location ? location : "?");
+        FMRB_LOGW(TAG, "[%s]   cibase: %p -> %p (moved=%s, delta=%td bytes)",
+                  location ? location : "?",
+                  prev_cibase, c->cibase,
+                  cibase_changed ? "YES" : "NO",
+                  (char*)c->cibase - (char*)prev_cibase);
+        FMRB_LOGW(TAG, "[%s]   ciend:  %p -> %p (moved=%s, delta=%td bytes)",
+                  location ? location : "?",
+                  prev_ciend, c->ciend,
+                  ciend_changed ? "YES" : "NO",
+                  (char*)c->ciend - (char*)prev_ciend);
+    }
+
+    // Log ci information with detailed stats
+    FMRB_LOGI(TAG, "[%s] sizeof(mrb_callinfo)=%zu bytes", location ? location : "?", ci_size);
+    FMRB_LOGI(TAG, "[%s] cibase=%p ciend=%p (capacity=%zu frames, range=%zu bytes)",
+              location ? location : "?",
+              c->cibase, c->ciend, capacity, range_bytes);
+    FMRB_LOGI(TAG, "[%s] ci=%p (using %zu/%zu frames, %d%%, offset=%td bytes)",
+              location ? location : "?",
+              c->ci, current, capacity, usage_pct,
+              (ptrdiff_t)((char*)c->ci - (char*)c->cibase));
+
+    // Check which memory pool cibase belongs to
+    fmrb_mempool_check_pointer(c->cibase);
+
+    // If ci is different from cibase, check ci as well
+    if(c->ci != c->cibase){
+        fmrb_mempool_check_pointer(c->ci);
+    }
+
+    // Update previous values for next comparison
+    prev_cibase = c->cibase;
+    prev_ciend = c->ciend;
+
+    return valid;
+}
+
 // FmrbApp#_init() - Initialize app instance from C context
 // Sets @name and @canvas instance variables, creates message queue
 static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
@@ -196,23 +267,20 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     // }
 
     // Call Ruby on_event(event_hash) - picoruby standard pattern
-    FMRB_LOGI(TAG, "Calling mrb_funcall(on_event)... ci=%p",mrb->c->ci);
-    fmrb_mempool_check_pointer(mrb->c->ci);
-
-    //UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
-    // FMRB_LOGI(TAG, "before funcall: stack HW = %u words (~%u bytes)",
-    //           (unsigned)hw, (unsigned)(hw * sizeof(StackType_t)));
+    FMRB_LOGI(TAG, "=== BEFORE mrb_funcall ===");
+    check_mrb_ci_valid(mrb, "before_funcall");
 
     int ai = mrb_gc_arena_save(mrb);
+    FMRB_LOGI(TAG, "GC arena saved: ai=%d", ai);
+
     //mrb_funcall(mrb, self, "on_event", 1, event_hash);
     mrb_funcall(mrb, self, "on_event", 1, mrb_nil_value());
+
+    FMRB_LOGI(TAG, "=== AFTER mrb_funcall ===");
+    check_mrb_ci_valid(mrb, "after_funcall");
+
     mrb_gc_arena_restore(mrb, ai);
-
-    //hw = uxTaskGetStackHighWaterMark(NULL);
-    // FMRB_LOGI(TAG, "after  funcall: stack HW = %u words (~%u bytes)",
-    //           (unsigned)hw, (unsigned)(hw * sizeof(StackType_t)));
-
-    FMRB_LOGI(TAG, "mrb_funcall returned ci=%p",mrb->c->ci);
+    FMRB_LOGI(TAG, "GC arena restored to: ai=%d", ai);
 
     // Check for exception - picoruby standard pattern
     if (mrb->exc) {

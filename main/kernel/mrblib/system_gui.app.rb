@@ -78,6 +78,10 @@ class SystemGuiApp < FmrbApp
     #1000
   end
 
+  def on_event(ev)
+    puts "on_event: gui app"
+  end
+
   def on_destroy
     puts "[SystemGUI] Destroyed"
   end
