@@ -58,9 +58,10 @@ task :setup do
   sh "cp -f lib/patch/picoruby-machine/ports/posix/hal.c #{mrbgem_path}/picoruby-machine/ports/posix/"
   sh "cp -f lib/patch/picoruby-machine/ports/posix/machine.c #{mrbgem_path}/picoruby-machine/ports/posix/"
   sh "cp -f lib/patch/picoruby-machine/ports/esp32/machine.c #{mrbgem_path}/picoruby-machine/ports/esp32/"
-  sh "cp -f lib/patch/picoruby-mruby/include/hal.h #{mrbgem_path}/picoruby-mruby/include/"
-  sh "cp -f lib/patch/picoruby-mruby/include/hal.h #{mrbgem_path}/picoruby-machine/include/"
   sh "cp -rf lib/patch/picoruby-mruby #{mrbgem_path}/"
+  sh "cp -f lib/patch/picoruby-machine/include/hal.h #{mrbgem_path}/picoruby-machine/include/"
+  # is this needed?
+  sh "cp -f lib/patch/picoruby-machine/include/hal.h #{mrbgem_path}/picoruby-mruby/include/" 
 
   # littleFS
   sh "cp -f lib/patch/esp_littlefs/CMakeLists.txt components/esp_littlefs/"
