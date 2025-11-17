@@ -9,41 +9,28 @@
 */
 
 
-/***** Feature test switches ************************************************/
-/***** System headers *******************************************************/
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <sys/time.h>
 #include <unistd.h>
 
+#include "hal.h"
+
 // FreeRTOS/ESP-IDF環境でのみインクルード（mrbcビルドを除外）
 #ifndef PICORUBY_HOST_BUILD
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <freertos/semphr.h>
 #include "esp_sleep.h"
 #include "esp_log.h"
-#endif
-
-/***** Local headers ********************************************************/
-#include "hal.h"
-
-
-/***** Constat values *******************************************************/
-/***** Macros ***************************************************************/
-/***** Typedefs *************************************************************/
-/***** Function prototypes **************************************************/
-/***** Local variables ******************************************************/
-
-#ifndef PICORUBY_HOST_BUILD
-// mrb VM management list for FreeRTOS environment
-#include <freertos/semphr.h>
 
 #define MAX_MRB_VMS 16  // Maximum number of VMs
 
 typedef struct {
     mrb_state *mrb;
     int active;  // 1=in use, 0=unused
+    int in_c_funcall;  // 1=executing C->Ruby funcall, 0=normal (skip mrb_tick when 1)
 } mrb_vm_entry_t;
 
 static struct {
@@ -57,18 +44,7 @@ static struct {
     .tick_task_handle = NULL,
     .task_created = 0
 };
-#endif
 
-#if defined(PICORB_VM_MRUBY)
-//static mrb_state *mrb_;
-#elif defined(PICORB_VM_MRUBYC)
-typedef void mrb_state;
-#define mrb_tick(mrb) mrbc_tick()
-#define hal_init(mrb) hal_init()
-#define MRB_TICK_UNIT MRBC_TICK_UNIT
-#endif
-
-#ifndef PICORUBY_HOST_BUILD
 //================================================================
 /*!@brief
   mruby tick task (FreeRTOS)
@@ -88,7 +64,12 @@ static void mruby_tick_task(void* arg) {
         if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
             for (int i = 0; i < MAX_MRB_VMS; i++) {
                 if (g_tick_manager.vms[i].active && g_tick_manager.vms[i].mrb) {
-                    //mrb_tick(g_tick_manager.vms[i].mrb);
+                    // Skip tick if VM is executing C->Ruby funcall
+                    if (!g_tick_manager.vms[i].in_c_funcall) {
+                        mrb_tick(g_tick_manager.vms[i].mrb);
+                    }else{
+                        printf("skip tick\n");
+                    }
                 }
             }
             xSemaphoreGive(g_tick_manager.mutex);
@@ -230,6 +211,86 @@ hal_deinit(mrb_state *mrb)
 
     xSemaphoreGive(g_tick_manager.mutex);
   }
+}
+
+//================================================================
+/*!@brief
+  Set in_c_funcall flag for mrb VM
+
+  @param mrb    mruby state
+  @param flag   1=in C->Ruby funcall (skip tick), 0=normal
+*/
+void
+mrb_set_in_c_funcall(mrb_state *mrb, int flag)
+{
+  if (g_tick_manager.mutex == NULL) return;
+
+  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+    for (int i = 0; i < MAX_MRB_VMS; i++) {
+      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
+        g_tick_manager.vms[i].in_c_funcall = flag;
+        ESP_LOGI("hal", "mrb VM slot %d: in_c_funcall=%d", i, flag);
+        break;
+      }
+    }
+    xSemaphoreGive(g_tick_manager.mutex);
+  }
+}
+
+//================================================================
+/*!@brief
+  Get in_c_funcall flag for mrb VM
+
+  @param mrb    mruby state
+  @return       1=in C->Ruby funcall, 0=normal
+*/
+int
+mrb_get_in_c_funcall(mrb_state *mrb)
+{
+  int result = 0;
+
+  if (g_tick_manager.mutex == NULL) return 0;
+
+  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+    for (int i = 0; i < MAX_MRB_VMS; i++) {
+      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
+        result = g_tick_manager.vms[i].in_c_funcall;
+        break;
+      }
+    }
+    xSemaphoreGive(g_tick_manager.mutex);
+  }
+
+  return result;
+}
+#else
+//================================================================
+/*!@brief
+  Set in_c_funcall flag (stub for POSIX/Linux build)
+
+  @param mrb    mruby state
+  @param flag   1=in C->Ruby funcall (skip tick), 0=normal
+*/
+void
+mrb_set_in_c_funcall(mrb_state *mrb, int flag)
+{
+  (void)mrb;
+  (void)flag;
+  // No-op for POSIX build (no tick task in Linux environment)
+}
+
+//================================================================
+/*!@brief
+  Get in_c_funcall flag (stub for POSIX/Linux build)
+
+  @param mrb    mruby state
+  @return       Always 0 for POSIX build
+*/
+int
+mrb_get_in_c_funcall(mrb_state *mrb)
+{
+  (void)mrb;
+  return 0;
 }
 #endif
 

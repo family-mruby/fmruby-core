@@ -23,6 +23,10 @@
 
 static const char* TAG = "app";
 
+// extern declaration to access hal.c functions without header dependency
+extern void mrb_set_in_c_funcall(mrb_state *mrb, int flag);
+extern int mrb_get_in_c_funcall(mrb_state *mrb);
+
 // Helper function: Check mruby ci pointer validity
 // Static variables to track cibase/ciend changes across calls
 static mrb_callinfo *prev_cibase = NULL;
@@ -304,10 +308,12 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     check_mrb_ci_valid(mrb, "before_funcall");
 
     int ai = mrb_gc_arena_save(mrb);
-    FMRB_LOGI(TAG, "GC arena saved: ai=%d", ai);
+    //FMRB_LOGI(TAG, "GC arena saved: ai=%d", ai);
+
 
     //mrb_funcall(mrb, self, "on_event", 1, event_hash);
     mrb_funcall(mrb, self, "on_event", 1, mrb_nil_value());
+
 
     FMRB_LOGI(TAG, "=== AFTER mrb_funcall ===");
 
@@ -334,7 +340,7 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     check_mrb_ci_valid(mrb, "after_funcall");
 
     mrb_gc_arena_restore(mrb, ai);
-    FMRB_LOGI(TAG, "GC arena restored to: ai=%d", ai);
+    //FMRB_LOGI(TAG, "GC arena restored to: ai=%d", ai);
 
     // Check for exception - picoruby standard pattern
     if (mrb->exc) {
@@ -348,6 +354,7 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     // Restore GC arena
     //FMRB_LOGI(TAG, "Restoring GC arena (ai=%d)", ai);
     //mrb_gc_arena_restore(mrb, ai);
+
     FMRB_LOGI(TAG, "=== dispatch_hid_event_to_ruby END ===");
     return true;
 }
@@ -357,14 +364,18 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     // UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
     // FMRB_LOGI(TAG, "FmrbApp stack high water mark = %u words (~%u bytes)",
     //           (unsigned)hw, (unsigned)(hw * sizeof(StackType_t)));
-
-    mrb_int timeout_ms;
-    mrb_get_args(mrb, "i", &timeout_ms);
+    
+    // Set in_c_funcall flag to prevent mrb_tick() interference
 
     fmrb_app_task_context_t* ctx = fmrb_current();
     if (!ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
     }
+    FMRB_LOGI(TAG, ">>>>>>>>> _spin(%s) START >>>>>>>>>>>>>",ctx->app_name);
+    mrb_set_in_c_funcall(mrb, 1);
+
+    mrb_int timeout_ms;
+    mrb_get_args(mrb, "i", &timeout_ms);
 
     // Record start time to ensure we wait for the full timeout period
     TickType_t start_tick = fmrb_task_get_tick_count();
@@ -373,7 +384,6 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     // Save GC arena before loop - standard pattern for repeated mrb_funcall
     //int ai = mrb_gc_arena_save(mrb);
 
-    FMRB_LOGI(TAG, ">>>>>>>>> _spin(%s) START >>>>>>>>>>>>>",ctx->app_name);
 
     // Spin Loop - process messages until timeout expires
     while(true){
@@ -416,8 +426,11 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     // Restore GC arena after loop
     //mrb_gc_arena_restore(mrb, ai);
 
-    FMRB_LOGI(TAG, "<<<<<<<<< _spin(%s) END <<<<<<<<<<<<<",ctx->app_name);
 
+    // Clear in_c_funcall flag
+    mrb_set_in_c_funcall(mrb, 0);
+
+    FMRB_LOGI(TAG, "<<<<<<<<< _spin(%s) END <<<<<<<<<<<<<",ctx->app_name);
     return mrb_nil_value();
 }
 
