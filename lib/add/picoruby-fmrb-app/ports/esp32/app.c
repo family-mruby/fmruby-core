@@ -17,6 +17,7 @@
 #include "fmrb_gfx.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
+#include "app_debug.h"
 
 #include "freertos/task.h"
 
@@ -282,6 +283,24 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
 
     // Call Ruby on_event(event_hash) - picoruby standard pattern
     FMRB_LOGI(TAG, "=== BEFORE mrb_funcall ===");
+    if (mrb->c && mrb->c->ci) {
+        // Dump previous frame (ci-1) if exists
+        size_t ci_offset = (char*)mrb->c->ci - (char*)mrb->c->cibase;
+        if (ci_offset >= 48) {
+            mrb_callinfo *prev_ci = (mrb_callinfo*)((char*)mrb->c->ci - 48);
+            FMRB_LOGI(TAG, "Previous frame (ci-1):");
+            app_debug_log_proc_details(mrb, prev_ci->proc, TAG);
+        }
+
+        // Dump current frame (ci)
+        FMRB_LOGI(TAG, "Current frame (ci):");
+        app_debug_log_proc_details(mrb, mrb->c->ci->proc, TAG);
+
+        // Dump call stack
+        app_debug_dump_callstack(mrb, TAG);
+    } else {
+        FMRB_LOGE(TAG, "mrb->c or mrb->c->ci is NULL");
+    }
     check_mrb_ci_valid(mrb, "before_funcall");
 
     int ai = mrb_gc_arena_save(mrb);
@@ -291,6 +310,27 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     mrb_funcall(mrb, self, "on_event", 1, mrb_nil_value());
 
     FMRB_LOGI(TAG, "=== AFTER mrb_funcall ===");
+
+    // Log ci->proc detailed information using debug helper
+    if (mrb->c && mrb->c->ci) {
+        // Dump previous frame (ci-1) if exists
+        size_t ci_offset = (char*)mrb->c->ci - (char*)mrb->c->cibase;
+        if (ci_offset >= 48) {
+            mrb_callinfo *prev_ci = (mrb_callinfo*)((char*)mrb->c->ci - 48);
+            FMRB_LOGI(TAG, "Previous frame (ci-1):");
+            app_debug_log_proc_details(mrb, prev_ci->proc, TAG);
+        }
+
+        // Dump current frame (ci)
+        FMRB_LOGI(TAG, "Current frame (ci):");
+        app_debug_log_proc_details(mrb, mrb->c->ci->proc, TAG);
+
+        // Dump call stack
+        app_debug_dump_callstack(mrb, TAG);
+    } else {
+        FMRB_LOGE(TAG, "mrb->c or mrb->c->ci is NULL");
+    }
+
     check_mrb_ci_valid(mrb, "after_funcall");
 
     mrb_gc_arena_restore(mrb, ai);

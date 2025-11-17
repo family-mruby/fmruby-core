@@ -88,7 +88,7 @@ static void mruby_tick_task(void* arg) {
         if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
             for (int i = 0; i < MAX_MRB_VMS; i++) {
                 if (g_tick_manager.vms[i].active && g_tick_manager.vms[i].mrb) {
-                    mrb_tick(g_tick_manager.vms[i].mrb);
+                    //mrb_tick(g_tick_manager.vms[i].mrb);
                 }
             }
             xSemaphoreGive(g_tick_manager.mutex);
