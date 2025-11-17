@@ -68,7 +68,7 @@ static void mruby_tick_task(void* arg) {
                     if (!g_tick_manager.vms[i].in_c_funcall) {
                         mrb_tick(g_tick_manager.vms[i].mrb);
                     }else{
-                        printf("skip tick\n");
+                        //printf("skip tick\n");
                     }
                 }
             }
@@ -229,7 +229,7 @@ mrb_set_in_c_funcall(mrb_state *mrb, int flag)
     for (int i = 0; i < MAX_MRB_VMS; i++) {
       if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
         g_tick_manager.vms[i].in_c_funcall = flag;
-        ESP_LOGI("hal", "mrb VM slot %d: in_c_funcall=%d", i, flag);
+        //ESP_LOGI("hal", "mrb VM slot %d: in_c_funcall=%d", i, flag);
         break;
       }
     }

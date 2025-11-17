@@ -187,7 +187,7 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
 // Dispatch HID event to Ruby on_event() method
 bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t *msg)
 {
-    FMRB_LOGI(TAG, "=== dispatch_hid_event_to_ruby START ===");
+    //FMRB_LOGI(TAG, "=== dispatch_hid_event_to_ruby START ===");
 
     // Validate minimum size
     if (msg->size < 1) {
@@ -197,7 +197,7 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
 
     // Read subtype from first byte
     uint8_t subtype = msg->data[0];
-    FMRB_LOGI(TAG, "HID event subtype=%d", subtype);
+    //FMRB_LOGI(TAG, "HID event subtype=%d", subtype);
 
     // Save GC arena before creating objects
     //int ai = mrb_gc_arena_save(mrb);
@@ -285,6 +285,7 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     //         goto cleanup;
     // }
 
+    #if 0
     // Call Ruby on_event(event_hash) - picoruby standard pattern
     FMRB_LOGI(TAG, "=== BEFORE mrb_funcall ===");
     if (mrb->c && mrb->c->ci) {
@@ -306,15 +307,14 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
         FMRB_LOGE(TAG, "mrb->c or mrb->c->ci is NULL");
     }
     check_mrb_ci_valid(mrb, "before_funcall");
+    #endif 
 
     int ai = mrb_gc_arena_save(mrb);
-    //FMRB_LOGI(TAG, "GC arena saved: ai=%d", ai);
-
 
     //mrb_funcall(mrb, self, "on_event", 1, event_hash);
     mrb_funcall(mrb, self, "on_event", 1, mrb_nil_value());
 
-
+    #if 0
     FMRB_LOGI(TAG, "=== AFTER mrb_funcall ===");
 
     // Log ci->proc detailed information using debug helper
@@ -338,9 +338,9 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     }
 
     check_mrb_ci_valid(mrb, "after_funcall");
+    #endif
 
     mrb_gc_arena_restore(mrb, ai);
-    //FMRB_LOGI(TAG, "GC arena restored to: ai=%d", ai);
 
     // Check for exception - picoruby standard pattern
     if (mrb->exc) {
@@ -355,23 +355,18 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     //FMRB_LOGI(TAG, "Restoring GC arena (ai=%d)", ai);
     //mrb_gc_arena_restore(mrb, ai);
 
-    FMRB_LOGI(TAG, "=== dispatch_hid_event_to_ruby END ===");
+    //FMRB_LOGI(TAG, "=== dispatch_hid_event_to_ruby END ===");
     return true;
 }
 
 static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 {
-    // UBaseType_t hw = uxTaskGetStackHighWaterMark(NULL);
-    // FMRB_LOGI(TAG, "FmrbApp stack high water mark = %u words (~%u bytes)",
-    //           (unsigned)hw, (unsigned)(hw * sizeof(StackType_t)));
-    
-    // Set in_c_funcall flag to prevent mrb_tick() interference
 
     fmrb_app_task_context_t* ctx = fmrb_current();
     if (!ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
     }
-    FMRB_LOGI(TAG, ">>>>>>>>> _spin(%s) START >>>>>>>>>>>>>",ctx->app_name);
+    FMRB_LOGD(TAG, ">>>>>>>>> _spin(%s) START >>>>>>>>>>>>>",ctx->app_name);
     mrb_set_in_c_funcall(mrb, 1);
 
     mrb_int timeout_ms;
@@ -380,10 +375,6 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     // Record start time to ensure we wait for the full timeout period
     TickType_t start_tick = fmrb_task_get_tick_count();
     TickType_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
-
-    // Save GC arena before loop - standard pattern for repeated mrb_funcall
-    //int ai = mrb_gc_arena_save(mrb);
-
 
     // Spin Loop - process messages until timeout expires
     while(true){
@@ -423,14 +414,10 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
         }
     }
 
-    // Restore GC arena after loop
-    //mrb_gc_arena_restore(mrb, ai);
-
-
     // Clear in_c_funcall flag
     mrb_set_in_c_funcall(mrb, 0);
 
-    FMRB_LOGI(TAG, "<<<<<<<<< _spin(%s) END <<<<<<<<<<<<<",ctx->app_name);
+    FMRB_LOGD(TAG, "<<<<<<<<< _spin(%s) END <<<<<<<<<<<<<",ctx->app_name);
     return mrb_nil_value();
 }
 
