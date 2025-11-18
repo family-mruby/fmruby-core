@@ -67,8 +67,10 @@ void hal_abort(const char *s);
 #define MRB_C_FUNCALL_ENTER 1
 #define MRB_C_FUNCALL_EXIT  0
 
+#define MRB_DISABLE_IRQ 1
+#define MRB_ENABLE_IRQ  0
+
 void mrb_set_in_c_funcall(mrb_state *mrb, int flag);
-int mrb_get_in_c_funcall(mrb_state *mrb);
 
 MRB_END_DECL
 

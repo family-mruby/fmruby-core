@@ -25,12 +25,15 @@
 #include "esp_sleep.h"
 #include "esp_log.h"
 
+#include "fmrb_app.h"
+
 #define MAX_MRB_VMS 16  // Maximum number of VMs
 
 typedef struct {
     mrb_state *mrb;
     int active;  // 1=in use, 0=unused
-    int in_c_funcall;  // 1=executing C->Ruby funcall, 0=normal (skip mrb_tick when 1)
+    int in_c_funcall;  // 0=MRB_C_FUNCALL_EXIT  1=MRB_C_FUNCALL_ENTER
+    int irq; // 0=MRB_ENABLE_IRQ  1=MRB_DISABLE_IRQ
 } mrb_vm_entry_t;
 
 static struct {
@@ -65,7 +68,7 @@ static void mruby_tick_task(void* arg) {
             for (int i = 0; i < MAX_MRB_VMS; i++) {
                 if (g_tick_manager.vms[i].active && g_tick_manager.vms[i].mrb) {
                     // Skip tick if VM is executing C->Ruby funcall
-                    if (!g_tick_manager.vms[i].in_c_funcall) {
+                    if (MRB_C_FUNCALL_EXIT == g_tick_manager.vms[i].in_c_funcall && MRB_ENABLE_IRQ == g_tick_manager.vms[i].irq) {
                         mrb_tick(g_tick_manager.vms[i].mrb);
                     }else{
                         //printf("skip tick\n");
@@ -88,19 +91,6 @@ static void mruby_tick_task(void* arg) {
 void
 hal_init(mrb_state *mrb)
 {
-// #if defined(PICORB_VM_MRUBY)
-//   mrb_ = mrb;
-// #endif
-
-  // Debug: Show compilation mode
-#ifdef PICORUBY_HOST_BUILD
-  printf("=== hal_init: PICORUBY_HOST_BUILD DEFINED (mrbc compiler mode) ===\n");
-  printf("    This build should NOT use FreeRTOS\n");
-#else
-  // printf("=== hal_init: PICORUBY_HOST_BUILD NOT DEFINED (target mode) ===\n");
-  // printf("    This build SHOULD use FreeRTOS\n");
-#endif
-
   // FreeRTOS environment: Multitask-based tick management
 #ifndef PICORUBY_HOST_BUILD
   ESP_LOGI("hal", "hal_init called (FreeRTOS mode)");
@@ -170,7 +160,21 @@ hal_init(mrb_state *mrb)
 void
 mrb_task_enable_irq(void)
 {
-  //sigprocmask(SIG_SETMASK, &sigset2_, 0);
+#ifndef PICORUBY_HOST_BUILD
+  if (g_tick_manager.mutex == NULL) return;
+  fmrb_app_task_context_t* ctx = fmrb_current();
+  mrb_state* mrb = ctx->mrb;
+
+  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+    for (int i = 0; i < MAX_MRB_VMS; i++) {
+      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
+        g_tick_manager.vms[i].irq = MRB_ENABLE_IRQ;
+        break;
+      }
+    }
+    xSemaphoreGive(g_tick_manager.mutex);
+  }
+#endif
 }
 
 
@@ -182,7 +186,21 @@ mrb_task_enable_irq(void)
 void
 mrb_task_disable_irq(void)
 {
-  //sigprocmask(SIG_BLOCK, &sigset_, &sigset2_);
+#ifndef PICORUBY_HOST_BUILD
+  if (g_tick_manager.mutex == NULL) return;
+  fmrb_app_task_context_t* ctx = fmrb_current();
+  mrb_state* mrb = ctx->mrb;
+
+  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+    for (int i = 0; i < MAX_MRB_VMS; i++) {
+      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
+        g_tick_manager.vms[i].irq = MRB_DISABLE_IRQ;
+        break;
+      }
+    }
+    xSemaphoreGive(g_tick_manager.mutex);
+  }
+#endif
 }
 
 
@@ -237,32 +255,6 @@ mrb_set_in_c_funcall(mrb_state *mrb, int flag)
   }
 }
 
-//================================================================
-/*!@brief
-  Get in_c_funcall flag for mrb VM
-
-  @param mrb    mruby state
-  @return       1=in C->Ruby funcall, 0=normal
-*/
-int
-mrb_get_in_c_funcall(mrb_state *mrb)
-{
-  int result = 0;
-
-  if (g_tick_manager.mutex == NULL) return 0;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        result = g_tick_manager.vms[i].in_c_funcall;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
-
-  return result;
-}
 #else
 //================================================================
 /*!@brief
@@ -279,19 +271,6 @@ mrb_set_in_c_funcall(mrb_state *mrb, int flag)
   // No-op for POSIX build (no tick task in Linux environment)
 }
 
-//================================================================
-/*!@brief
-  Get in_c_funcall flag (stub for POSIX/Linux build)
-
-  @param mrb    mruby state
-  @return       Always 0 for POSIX build
-*/
-int
-mrb_get_in_c_funcall(mrb_state *mrb)
-{
-  (void)mrb;
-  return 0;
-}
 #endif
 
 
