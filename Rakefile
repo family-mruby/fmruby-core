@@ -38,30 +38,30 @@ DOCKER_CMD_INTERACTIVE = [
 desc "Build Setup (Patch files)"
 task :setup do
   mrbgem_path = "components/picoruby-esp32/picoruby/mrbgems"
-  # Add
-  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-app"
+  # ---------- Add ---------- 
+  # kernel
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-kernel"
-  sh "cp -rf lib/add/picoruby-fmrb-app #{mrbgem_path}/"
   sh "cp -rf lib/add/picoruby-fmrb-kernel #{mrbgem_path}/"
-
+  # app
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-app"
+  sh "cp -rf lib/add/picoruby-fmrb-app #{mrbgem_path}/"
+  # conf
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
   sh "cp -f lib/add/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
 
-  # Replace
+  # ---------- Replace ---------- 
+  # fat
   sh "rm -rf #{mrbgem_path}/picoruby-filesystem-fat"
   sh "cp -rf lib/replace/picoruby-filesystem-fat #{mrbgem_path}/"
-
-  # Patch
   # Machine
-  sh "cp -f lib/patch/picoruby-machine/mrbgem.rake #{mrbgem_path}/picoruby-machine/"
-  sh "cp -f lib/patch/picoruby-machine/ports/posix/hal.c #{mrbgem_path}/picoruby-machine/ports/posix/"
-  sh "cp -f lib/patch/picoruby-machine/ports/posix/machine.c #{mrbgem_path}/picoruby-machine/ports/posix/"
-  sh "cp -f lib/patch/picoruby-machine/ports/esp32/machine.c #{mrbgem_path}/picoruby-machine/ports/esp32/"
+  sh "rm -rf #{mrbgem_path}/picoruby-machine"
+  sh "cp -rf lib/replace/picoruby-machine #{mrbgem_path}/"
+
+  # ---------- Patch ---------- 
   sh "cp -rf lib/patch/picoruby-mruby #{mrbgem_path}/"
-  sh "cp -f lib/patch/picoruby-machine/include/hal.h #{mrbgem_path}/picoruby-machine/include/"
   # is this needed?
-  sh "cp -f lib/patch/picoruby-machine/include/hal.h #{mrbgem_path}/picoruby-mruby/include/" 
+  sh "cp -f lib/replace/picoruby-machine/include/hal.h #{mrbgem_path}/picoruby-mruby/include/" 
 
   # littleFS
   sh "cp -f lib/patch/esp_littlefs/CMakeLists.txt components/esp_littlefs/"
