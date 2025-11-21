@@ -340,49 +340,250 @@ end
 
 ## 3. fmrb-shell 移植ガイド
 
-### 3.1 移植の段階的アプローチ
+### 3.1 fmrb固有の設計と実装戦略
+
+fmrb-shellは、picoruby-shellとは異なる以下の設計方針を持ちます。
+
+#### 3.1.1 VM分離アーキテクチャ
+
+**シェルの実行環境:**
+- シェル自体は **USER_APP** として動作（POOL_ID_USER_APP0-2のいずれか）
+- 独立したmruby VMインスタンスを持つ
+- メモリプール: 500KB（FMRB_MEM_POOL_SIZE_USER_APP）
+
+**アプリケーション起動:**
+```ruby
+# picoruby-shell: 同一VM内でSandbox実行
+sandbox = Sandbox.new
+sandbox.evaluate { load("app.rb") }
+
+# fmrb-shell: 別VMタスクとして起動
+FmrbKernel.launch_app("/flash/app/game.rb",
+                      pool_id: POOL_ID_USER_APP1,
+                      blocking: true)
+```
+
+**違い:**
+- picoruby-shell: Sandboxで隔離するが同一VM内
+- fmrb-shell: 完全に別VMタスク（別メモリプール、別タスク優先度）
+
+#### 3.1.2 ブロッキング/ノンブロッキング実行
+
+**ブロッキング実行（デフォルト）:**
+```ruby
+# コマンド例: run /flash/app/game.rb
+FmrbKernel.launch_app(path, blocking: true)
+# アプリ終了までシェルは待機
+```
+
+**ノンブロッキング実行（&記法）:**
+```ruby
+# コマンド例: run /flash/app/music_player.rb &
+FmrbKernel.launch_app(path, blocking: false)
+# シェルにすぐ戻る、アプリはバックグラウンド実行
+```
+
+**実装例:**
+```ruby
+def execute(line)
+  # &記法チェック
+  background = line.end_with?(' &')
+  line = line.chomp(' &').strip if background
+
+  tokens = line.split(/\s+/)
+  cmd = tokens[0]
+  args = tokens[1..-1]
+
+  case cmd
+  when "run"
+    FmrbKernel.launch_app(args[0], blocking: !background)
+  end
+end
+```
+
+#### 3.1.3 標準出力とVM間通信
+
+**標準出力の設定:**
+```ruby
+# アプリ起動時に標準出力先を指定
+FmrbKernel.launch_app(path,
+                      blocking: true,
+                      stdout: :shell)  # シェルに出力を送信
+```
+
+**fmrb_msg経由の出力転送:**
+```ruby
+# アプリ側（USER_APP1）
+puts "Hello from app"  # 内部でfmrb_msgにメッセージ送信
+
+# シェル側（USER_APP0）でメッセージ受信
+msg = FmrbMsg.receive(from: TASK_ID_USER_APP1)
+if msg[:type] == :stdout
+  print msg[:data]  # シェルのコンソールに出力
+end
+```
+
+**メッセージ構造例:**
+```ruby
+{
+  type: :stdout,
+  task_id: 5,  # USER_APP1のタスクID
+  data: "Hello from app\n"
+}
+```
+
+#### 3.1.4 Pipeline（将来実装）
+
+**VM間パイプライン:**
+```
+fmrb> list_files.rb | filter.rb | counter.rb
+```
+
+**実装方針:**
+1. 各アプリを別VMタスクとして起動
+2. 標準出力をfmrb_msg経由で次のアプリの標準入力に転送
+3. 最終出力をシェルに表示
+
+**疑似コード:**
+```ruby
+def execute_pipeline(commands)
+  vms = []
+
+  # 各コマンドをVMとして起動
+  commands.each_with_index do |cmd, i|
+    vm_id = FmrbKernel.launch_app(cmd[:path],
+                                   blocking: false,
+                                   pool_id: POOL_ID_USER_APP0 + i)
+    vms << vm_id
+  end
+
+  # VM間でfmrb_msg転送
+  vms.each_cons(2) do |src_vm, dst_vm|
+    loop do
+      msg = FmrbMsg.receive(from: src_vm, type: :stdout)
+      break if msg.nil?
+      FmrbMsg.send(to: dst_vm, type: :stdin, data: msg[:data])
+    end
+  end
+
+  # 最終出力をシェルに表示
+  final_output = FmrbMsg.receive(from: vms.last, type: :stdout)
+  puts final_output[:data]
+end
+```
+
+**課題:**
+- VM数の制限（USER_APP0-2で最大3個）
+- バッファリング戦略
+- エラー処理（途中のVMが失敗した場合）
+
+#### 3.1.5 Sandbox互換層
+
+picoruby-shellとの互換性のため、Sandboxインタフェースを維持しつつ、内部でFmrbKernelを呼び出す。
+
+**互換層実装例:**
+```ruby
+class Sandbox
+  def initialize
+    @vm_id = nil
+  end
+
+  def evaluate(&block)
+    # ブロック内のコードを一時ファイルに保存
+    tmp_file = "/flash/tmp/sandbox_#{Time.now.to_i}.rb"
+    File.write(tmp_file, block.source)
+
+    # 別VMで実行
+    result = FmrbKernel.launch_app(tmp_file,
+                                    blocking: true,
+                                    stdout: :return)
+
+    # 一時ファイル削除
+    File.delete(tmp_file)
+
+    result
+  end
+end
+```
+
+**利点:**
+- picoruby-shellのコードをそのまま移植可能
+- 段階的な移行が可能
+- テストコードの互換性
+
+**制約:**
+- ブロック内のコードをファイル化する必要がある
+- クロージャの変数キャプチャは不可
+- パフォーマンスオーバーヘッド（ファイルI/O）
+
+#### 3.1.6 実装の優先順位
+
+**Phase 1（最小構成）:**
+- ✓ 基本REPL（cat, write, run）
+- ✓ &記法によるバックグラウンド実行
+- ✗ Pipeline（後回し）
+- ✗ Sandbox互換層（後回し）
+- ✗ fmrb_msg統合（後回し、初期はFmrbKernelのみ）
+
+**Phase 2（VM間通信）:**
+- ✓ fmrb_msg経由の標準出力受信
+- ✓ アプリ出力をシェルに表示
+- ✓ ps/kill コマンド（実行中アプリ管理）
+
+**Phase 3（高度な機能）:**
+- ✓ VM間Pipeline
+- ✓ Sandbox互換層
+- ✓ リダイレクト（ファイル ⇔ VM）
+
+### 3.2 移植の段階的アプローチ（従来のpicoruby-shell参考）
+
+picoruby-shellの段階的実装アプローチ（参考）。fmrb-shellでは3.1の設計方針を優先。
 
 **Phase 1: 最小限REPL（必須機能のみ）**
 - Editor の基本機能（行編集、Backspace、Enter）
 - 単一コマンド実行（パイプ/リダイレクトなし）
-- 2-3個の基本コマンド（ls, cat, pwd）
+- 基本コマンド（cat, write, run）
+- **fmrb追加**: &記法によるバックグラウンド実行
 
 **Phase 2: 機能拡張**
 - 履歴機能（Up/Down矢印キー）
 - カーソル移動（Left/Right矢印キー、Ctrl-A/E）
 - Ctrl-C による中断
+- **fmrb追加**: fmrb_msg経由の標準出力受信
+- **fmrb追加**: ps/kill コマンド
 
 **Phase 3: 高度な機能**
 - Parser によるパイプライン解析
-- リダイレクト（>, <）
+- **fmrb変更**: VM間パイプライン（fmrb_msg経由）
+- リダイレクト（ファイル ⇔ VM）
 - 組み込みコマンド拡充
 
 **Phase 4: 最適化と統合**
-- Sandbox 実装（mruby VM task）
+- **fmrb変更**: Sandbox互換層実装（FmrbKernel経由）
 - エラーハンドリング強化
 - fmrbカーネルとの統合
 
-### 3.2 依存関係の対応
+### 3.3 依存関係の対応
 
 | picoruby-shell 依存 | fmrb-shell 対応方針 |
 |---------------------|---------------------|
 | picoruby-editor | **移植必須** - Editor, Buffer, Line クラス |
-| picoruby-sandbox | **簡易版実装** - Phase 4で対応、初期は直接eval |
+| picoruby-sandbox | **互換層実装** - Phase 4で対応、内部でFmrbKernel使用（3.1.5参照） |
 | picoruby-io-console | **FMRB実装** - STDIN.read_nonblock をfmrb_hal経由で実装 |
 | picoruby-filesystem-fat | **既存mrbgem** - Dir, File クラスは利用可能 |
 | picoruby-require | **オプション** - 動的ロード不要なら省略可 |
 
-### 3.3 FMRB固有の考慮事項
+### 3.4 FMRB固有の考慮事項
 
 **メモリ管理:**
 - Editor::Buffer のサイズ制限（ESP32メモリ制約）
 - 履歴エントリ数の調整（picoruby: 10 → fmrb: 5?）
-- Sandbox のメモリプール設定
+- シェル用メモリプール: USER_APP（500KB）
 
 **タスク統合:**
-- シェルをどのmrubyタスクで実行するか（kernel? system_app?）
+- シェルはUSER_APPとして実行（3.1.1参照）
 - USB-UART 入力との統合
-- 他のタスクとの排他制御
+- 他のタスクとの排他制御（fmrb_msg使用）
 
 **VT100対応:**
 - fmrb_hal でのシリアル出力対応（ESP32: UART, Linux: stdout）
@@ -392,7 +593,11 @@ end
 - LittleFS との統合（`/flash/` 配下）
 - SD カードマウント対応（将来）
 
-### 3.4 簡易版Editorの実装例
+**VM間通信:**
+- fmrb_msg経由の標準出力転送（3.1.3参照）
+- パイプライン実装時のバッファリング戦略
+
+### 3.5 簡易版Editorの実装例
 
 **Phase 1向けの最小限Editor:**
 
@@ -439,9 +644,42 @@ class FmrbEditor
 end
 ```
 
-### 3.5 簡易版Parserの実装例
+### 3.6 簡易版Parserの実装例
 
-**Phase 2向けの基本Parser:**
+**Phase 1向け: Parser不要（推奨）**
+
+```ruby
+class FmrbShell
+  def execute(line)
+    return if line.strip.empty?
+
+    # &記法チェック
+    background = line.end_with?(' &')
+    line = line.chomp(' &').strip if background
+
+    # 単純なsplitで十分
+    tokens = line.split(/\s+/)
+    cmd = tokens[0]
+    args = tokens[1..-1] || []
+
+    # コマンド実行
+    case cmd
+    when "cat"
+      puts File.read(args[0])
+    when "write"
+      File.write(args[0], args[1..-1].join(' '))
+    when "run"
+      FmrbKernel.launch_app(args[0], blocking: !background)
+    else
+      puts "#{cmd}: command not found"
+    end
+  rescue => e
+    puts "Error: #{e.message}"
+  end
+end
+```
+
+**Phase 2向け: Parserクラス化（必要に応じて）**
 
 ```ruby
 class FmrbParser
@@ -452,96 +690,150 @@ class FmrbParser
   def parse
     return nil if @input.strip.empty?
 
-    tokens = @input.split(/\s+/)
+    # &記法チェック
+    background = @input.end_with?(' &')
+    input = background ? @input.chomp(' &').strip : @input
+
+    tokens = input.split(/\s+/)
     {
       command: tokens[0],
-      args: tokens[1..-1] || []
+      args: tokens[1..-1] || [],
+      background: background
     }
   end
 end
 ```
 
-**Phase 3向けのパイプライン対応Parser:**
+**Phase 3向け: パイプライン対応**
+
+VM間パイプライン前提（3.1.4参照）
 
 ```ruby
 class FmrbParser
   def parse
-    commands = @input.split('|').map(&:strip)
+    return nil if @input.strip.empty?
 
-    commands.map.with_index do |cmd_str, i|
+    # &記法チェック
+    background = @input.end_with?(' &')
+    input = background ? @input.chomp(' &').strip : @input
+
+    # パイプラインで分割
+    commands = input.split('|').map(&:strip)
+
+    # 各コマンドをパース
+    result = commands.map.with_index do |cmd_str, i|
       tokens = cmd_str.split(/\s+/)
       {
         command: tokens[0],
         args: tokens[1..-1] || [],
         input: (i > 0 ? :pipe : nil),
-        output: nil  # リダイレクトは後で実装
+        output: (i < commands.length - 1 ? :pipe : nil),
+        pool_id: POOL_ID_USER_APP0 + i  # VM分離
       }
     end
+
+    { commands: result, background: background }
   end
 end
 ```
 
-## 4. 実装ロードマップ
+**設計のポイント:**
+- **Phase 1**: Parser不要、直接split → case文（メモリ節約）
+- **Phase 2**: &記法対応、Hashで返却（拡張性）
+- **Phase 3**: パイプライン対応、VM割り当て管理
 
-### 4.1 Phase 1: 最小限REPL（目標: 1週間）
+## 4. 実装ロードマップ（fmrb-shell版）
+
+### 4.1 Phase 1: 最小限REPL（目標: 2-3日）
 
 **タスク:**
 - [ ] FmrbEditor クラス実装（基本入力、Backspace、Enter）
-- [ ] FmrbParser クラス実装（単一コマンド解析のみ）
+- [ ] Parser不要 - execute()で直接split（3.6参照）
 - [ ] FmrbShell クラス実装（REPLループ）
-- [ ] 組み込みコマンド実装（ls, pwd, cat）
+- [ ] 組み込みコマンド実装（cat, write, run）
+- [ ] &記法対応（バックグラウンド実行）
 - [ ] STDIN.read_nonblock のfmrb_hal実装
 - [ ] 動作確認（Linux環境）
 
 **成果物:**
 ```
-fmrb> ls
-app  etc  home
-fmrb> pwd
-/flash
 fmrb> cat /flash/etc/config.toml
 [system]
 version = "0.1.0"
+
+fmrb> write /flash/home/test.txt Hello World
+
+fmrb> run /flash/app/game.rb
+(ゲーム実行、終了まで待機)
+
+fmrb> run /flash/app/music.rb &
+(バックグラウンド実行、シェルにすぐ戻る)
 ```
 
-### 4.2 Phase 2: 機能拡張（目標: 1-2週間）
+**メモリ使用量:** 約400 bytes（Phase 1のみ）
+
+### 4.2 Phase 2: VM間通信と機能拡張（目標: 1-2週間）
 
 **タスク:**
+- [ ] fmrb_msg統合（アプリ標準出力受信）
+- [ ] アプリ出力をシェルに表示
+- [ ] ps コマンド（実行中アプリ一覧）
+- [ ] kill コマンド（アプリ終了）
 - [ ] 履歴機能（Up/Down矢印キー）
 - [ ] カーソル移動（Left/Right矢印キー、Ctrl-A/E）
 - [ ] VT100エスケープシーケンス完全対応
 - [ ] Ctrl-C による中断処理
-- [ ] エラーハンドリング強化
-- [ ] 追加コマンド（cd, mkdir, rm）
 
 **成果物:**
-- 矢印キーで履歴呼び出し
-- Ctrl-C で実行中コマンド中断
-- Ctrl-A/E でカーソル移動
+```
+fmrb> run app.rb &
+App started (VM ID: 1)
 
-### 4.3 Phase 3: 高度な機能（目標: 2-3週間）
+fmrb> ps
+VM ID  Status   Command
+1      Running  /flash/app/app.rb
+
+fmrb> kill 1
+App terminated
+```
+
+**fmrb_msg統合:**
+- アプリの `puts` 出力をシェルで表示
+- 矢印キーで履歴呼び出し
+- Ctrl-C で中断
+
+### 4.3 Phase 3: VM間パイプライン（目標: 2-3週間）
 
 **タスク:**
-- [ ] Parser パイプライン解析実装
-- [ ] Pipeline クラス実装
-- [ ] Job クラス実装（Sandboxなし版）
-- [ ] リダイレクト対応（>, <）
-- [ ] 追加コマンド（cp, mv, grep, irb）
+- [ ] FmrbParser パイプライン解析実装（3.6参照）
+- [ ] VM間Pipeline実装（3.1.4参照）
+- [ ] fmrb_msg経由のstdin転送
+- [ ] リダイレクト対応（ファイル ⇔ VM）
+- [ ] 追加コマンド（grep相当のRubyスクリプト）
 - [ ] ESP32環境での動作確認
 
 **成果物:**
 ```
-fmrb> ls | grep .rb
-app.rb
-main.rb
-fmrb> ls > list.txt
-fmrb> cat < input.txt
+fmrb> list_files.rb | filter.rb | count.rb
+(各スクリプトが別VMで実行、出力が次のVMに転送される)
+Result: 42 files
+
+fmrb> generate_data.rb > data.txt
+(VM出力をファイルにリダイレクト)
+
+fmrb> process.rb < input.txt
+(ファイルをVMの標準入力に)
 ```
 
-### 4.4 Phase 4: 最適化と統合（目標: 1-2週間）
+**課題対応:**
+- VM数制限（最大3個）の管理
+- バッファリング戦略
+- エラーハンドリング（途中のVM失敗時）
+
+### 4.4 Phase 4: Sandbox互換層と統合（目標: 1-2週間）
 
 **タスク:**
-- [ ] Sandbox 実装（mruby VM task）
+- [ ] Sandbox互換層実装（3.1.5参照）
 - [ ] メモリプール最適化
 - [ ] fmrbカーネルとの統合（Window, Task管理）
 - [ ] USB-UART 統合
@@ -549,7 +841,19 @@ fmrb> cat < input.txt
 - [ ] ドキュメント整備
 
 **成果物:**
-- 隔離実行による安定性向上
+```ruby
+# picoruby-shellのコードがそのまま動作
+sandbox = Sandbox.new
+result = sandbox.evaluate { 1 + 1 }
+puts result  # => 2
+```
+
+**Sandbox互換層:**
+- 内部でFmrbKernel経由で別VM実行
+- 一時ファイル経由でコード転送
+- 戻り値の取得
+
+**統合完了:**
 - カーネルからのシェル起動
 - 製品レベルの品質
 
@@ -745,27 +1049,54 @@ assert_includes output, "etc"
 3. **Sandbox隔離** - コマンド実行エラーからのシェル保護
 4. **拡張性** - 組み込みコマンドの追加が容易
 
-### 8.2 fmrb-shell への移植ポイント
+### 8.2 fmrb-shell への移植ポイント（主要な違い）
 
-1. **段階的実装** - Phase 1から順に機能追加
-2. **依存関係の最小化** - picoruby-editor の必要部分のみ移植
-3. **FMRB統合** - fmrb_hal, fmrb_mem との連携
-4. **メモリ最適化** - ESP32制約に合わせたバッファサイズ調整
+1. **VM分離アーキテクチャ（3.1参照）**
+   - シェル: USER_APPとして動作
+   - アプリ: 別VMタスクとして起動（FmrbKernel経由）
+   - picoruby-shellとの最大の違い
+
+2. **段階的実装の最適化**
+   - Phase 1: Parser不要（直接split）→ 実装期間2-3日
+   - Phase 2: fmrb_msg統合（VM間通信）
+   - Phase 3: VM間パイプライン（将来機能）
+
+3. **依存関係の最小化**
+   - picoruby-editor の必要部分のみ移植
+   - Sandbox互換層（Phase 4、オプション）
+
+4. **FMRB統合**
+   - fmrb_hal, fmrb_mem, fmrb_msg との連携
+   - FmrbKernel API使用（launch_app, start_app）
+
+5. **メモリ最適化**
+   - Phase 1: 約400 bytes（Parser不要）
+   - ESP32制約に合わせたバッファサイズ調整
 
 ### 8.3 推奨される開発順序
 
 ```
-Phase 1 (Linux環境) → Phase 2 (Linux環境) → Phase 3 (Linux環境)
-                                                  ↓
-                                          ESP32移植・最適化
-                                                  ↓
-                                          Phase 4 (ESP32統合)
+Phase 1 (Linux環境, 2-3日)
+  ↓
+Phase 2 (Linux環境, 1-2週間) - fmrb_msg統合
+  ↓
+ESP32移植・動作確認
+  ↓
+Phase 3 (ESP32/Linux, 2-3週間) - VM間パイプライン
+  ↓
+Phase 4 (オプション, 1-2週間) - Sandbox互換層
 ```
 
 **理由:**
 - Linux環境での開発が高速（ビルド時間短縮）
 - デバッグツールが豊富
-- Phase 3完了時点でESP32移植すれば、大幅な手戻りを回避
+- Phase 2完了時点でESP32移植すれば、早期に動作確認可能
+- Phase 3以降はLinux/ESP32並行開発
+
+**重要な設計判断:**
+- Pipelineは将来実装（VM間fmrb_msg前提）
+- Sandboxは互換層として実装（既存コード移植のため）
+- 最小構成（Phase 1）で素早く動作させる
 
 ## 9. 参考リンク
 
@@ -778,3 +1109,11 @@ Phase 1 (Linux環境) → Phase 2 (Linux環境) → Phase 3 (Linux環境)
 ## 10. 更新履歴
 
 - 2025-01-XX: 初版作成（picoruby-shell v0.x.x 調査）
+- 2025-01-XX: fmrb固有設計を追加（3.1節）
+  - VM分離アーキテクチャ
+  - &記法によるブロッキング/ノンブロッキング実行
+  - fmrb_msg経由のVM間通信
+  - VM間パイプライン設計
+  - Sandbox互換層
+  - Parser簡略化（Phase 1ではsplitのみ）
+  - ロードマップ再編（2-3日で動作可能なPhase 1）
