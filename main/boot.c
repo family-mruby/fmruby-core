@@ -4,6 +4,7 @@
 // Family mruby modules
 #include "fmrb.h"
 #include "fmrb_hal.h"
+#include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_gfx.h"
 #include "fmrb_audio.h"
@@ -85,18 +86,19 @@ void log_itimer_real(const char* where) {
 void show_config(void)
 {
     FMRB_LOGI(TAG, "------------------------------------------------");
+    #ifndef CONFIG_IDF_TARGET_LINUX
     FMRB_LOGI(TAG, "configTICK_RATE_HZ           = %d", configTICK_RATE_HZ);
     FMRB_LOGI(TAG, "configMAX_PRIORITIES         = %d", configMAX_PRIORITIES);
     FMRB_LOGI(TAG, "configMINIMAL_STACK_SIZE     = %d", configMINIMAL_STACK_SIZE);
-    #ifdef CONFIG_IDF_TARGET_LINUX
-    FMRB_LOGI(TAG, "configTOTAL_HEAP_SIZE        = %d", configTOTAL_HEAP_SIZE);
     #endif
+    #ifndef CONFIG_IDF_TARGET_LINUX
     FMRB_LOGI(TAG, "configUSE_PREEMPTION         = %d", configUSE_PREEMPTION);
     FMRB_LOGI(TAG, "configUSE_TIME_SLICING       = %d", configUSE_TIME_SLICING);
     FMRB_LOGI(TAG, "configUSE_MUTEXES            = %d", configUSE_MUTEXES);
     FMRB_LOGI(TAG, "configNUM_THREAD_LOCAL_STORAGE_POINTERS = %d", configNUM_THREAD_LOCAL_STORAGE_POINTERS);
     FMRB_LOGI(TAG, "configCHECK_FOR_STACK_OVERFLOW = %d", configCHECK_FOR_STACK_OVERFLOW);
     FMRB_LOGI(TAG, "configUSE_TRACE_FACILITY     = %d", configUSE_TRACE_FACILITY);
+    #endif
     FMRB_LOGI(TAG, "MRB_TICK_UNIT                = %d", Machine_get_config_int(0));
     FMRB_LOGI(TAG, "MRB_TIMESLICE_TICK_COUNT     = %d", Machine_get_config_int(1));
     FMRB_LOGI(TAG, "current tick=%u", (unsigned)fmrb_task_get_tick_count());

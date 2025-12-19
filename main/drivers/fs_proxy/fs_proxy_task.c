@@ -6,6 +6,7 @@
 
 // Family mruby modules
 #include "fmrb_hal.h"
+#include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_toml.h"
 #include "fmrb_pin_assign.h"

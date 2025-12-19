@@ -4,6 +4,7 @@
  */
 
 #include "fmrb_hal.h"
+#include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_hid_event.h"
 #include <stdio.h>
@@ -24,7 +25,7 @@ static const char *TAG = "usb_task";
 
 static int g_socket_fd = -1;
 static bool g_running = false;
-static fmrb_task_handle_t g_task_handle = NULL;
+static fmrb_task_handle_t g_task_handle = 0;
 
 /**
  * @brief Process received HID event
@@ -128,7 +129,7 @@ static void usb_task_thread(void *arg) {
     }
 
     FMRB_LOGI(TAG, "USB task thread exiting");
-    fmrb_task_delete(NULL);
+    fmrb_task_delete(0);
 }
 
 /**

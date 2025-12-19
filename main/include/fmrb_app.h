@@ -2,6 +2,7 @@
 
 #include "fmrb_mem.h"
 #include "fmrb_hal.h"
+#include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
 #include <picoruby.h>
 #include <stdbool.h>
@@ -95,7 +96,7 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count);
 
 // Context access (fast)
 static inline fmrb_app_task_context_t* fmrb_current(void) {
-    return (fmrb_app_task_context_t*)fmrb_task_get_tls(NULL, FMRB_APP_TLS_INDEX);
+    return (fmrb_app_task_context_t*)fmrb_task_get_tls(fmrb_task_get_current(), FMRB_APP_TLS_INDEX);
 }
 
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);

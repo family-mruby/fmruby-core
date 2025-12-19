@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 
 # Set component directories for Family mruby modules
-set(EXTRA_COMPONENT_DIRS "main/lib" "components")
+set(EXTRA_COMPONENT_DIRS "components")
 
 include($ENV{IDF_PATH}/tools/cmake/project.cmake)
 project(fmruby-core)

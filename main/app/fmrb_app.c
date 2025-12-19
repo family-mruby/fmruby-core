@@ -4,6 +4,7 @@
 
 #include <picoruby.h>
 #include "fmrb_hal.h"
+#include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_app.h"
 #include "fmrb_mem.h"
@@ -119,7 +120,7 @@ static void tls_destructor(int idx, void* pv) {
     transition_state(ctx, PROC_STATE_FREE);
 
     // Clear task handle
-    ctx->task = NULL;
+    ctx->task = 0;
 
     fmrb_semaphore_give(g_ctx_lock);
 
@@ -248,10 +249,10 @@ static void app_task_main(void* arg) {
     bool need_free_script = false;
 
     // Register in TLS with destructor
-    fmrb_task_set_tls_with_del(NULL, FMRB_APP_TLS_INDEX, ctx, tls_destructor);
+    fmrb_task_set_tls_with_del(0, FMRB_APP_TLS_INDEX, ctx, tls_destructor);
 
     FMRB_LOGI(TAG, "[%s gen=%u] Task started (core=%d, prio=%u)",
-             ctx->app_name, ctx->gen, fmrb_get_core_id(), fmrb_task_get_priority(NULL));
+             ctx->app_name, ctx->gen, fmrb_get_core_id(), fmrb_task_get_priority(0));
 
     // Create mruby VM
     // mrbgem initialization is executed here.
@@ -268,7 +269,7 @@ static void app_task_main(void* arg) {
     if (!transition_state(ctx, PROC_STATE_RUNNING)) {
         fmrb_semaphore_give(g_ctx_lock);
         FMRB_LOGE(TAG, "[%s] Failed to transition to RUNNING", ctx->app_name);
-        fmrb_task_delete(NULL);
+        fmrb_task_delete(0);
         return;
     }
     fmrb_semaphore_give(g_ctx_lock);
@@ -361,7 +362,7 @@ cleanup:
     fmrb_semaphore_give(g_ctx_lock);
 
     // TLS destructor will handle cleanup
-    fmrb_task_delete(NULL);
+    fmrb_task_delete(0);
 }
 
 #ifdef CONFIG_IDF_TARGET_LINUX
@@ -419,7 +420,7 @@ bool fmrb_app_init(void) {
 /**
  * Spawn simple debug task (no context management, no mruby VM)
  */
-static fmrb_task_handle_t g_task_debug = NULL;
+static fmrb_task_handle_t g_task_debug = 0;
 fmrb_err_t fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     if (!attr || !attr->name) {
         FMRB_LOGE(TAG, "Invalid spawn attributes");

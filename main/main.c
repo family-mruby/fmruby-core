@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "fmrb_hal.h"
+#include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "boot.h"
 
@@ -20,5 +21,5 @@ void app_main(void)
 
     fmrb_os_close();
     FMRB_LOGI(TAG, "app_main exited");
-    fmrb_task_delete(NULL);
+    fmrb_task_delete(0);
 }

@@ -191,10 +191,17 @@ static int process_cobs_frame(const uint8_t *encoded_data, size_t encoded_len) {
                 uint8_t remote_version = cmd_buffer[0];
                 uint8_t local_version = FMRB_LINK_PROTOCOL_VERSION;
 
-                printf("Received VERSION check: remote=%d, local=%d\n", remote_version, local_version);
+                printf("Received VERSION check: remote=%d, local=%d, seq=%u, client_fd=%d\n",
+                       remote_version, local_version, seq, client_fd);
 
                 // Send version response via ACK with version in payload
                 result = socket_server_send_ack(type, seq, &local_version, sizeof(local_version));
+
+                if (result == 0) {
+                    printf("VERSION ACK sent successfully\n");
+                } else {
+                    fprintf(stderr, "VERSION ACK send failed: result=%d\n", result);
+                }
 
                 if (remote_version != local_version) {
                     fprintf(stderr, "WARNING: Protocol version mismatch! remote=%d, local=%d\n",
@@ -370,7 +377,8 @@ int socket_server_send_ack(uint8_t type, uint8_t seq, const uint8_t *response_da
     // Send to client
     ssize_t written = write(client_fd, encoded_buffer, encoded_len);
     if (written != (ssize_t)encoded_len) {
-        fprintf(stderr, "Failed to write ACK response: %zd/%zu\n", written, encoded_len);
+        fprintf(stderr, "Failed to write ACK response: %zd/%zu (client_fd=%d, errno=%d: %s)\n",
+                written, encoded_len, client_fd, errno, strerror(errno));
         return -1;
     }
 

@@ -3,6 +3,7 @@
 
 #include "fmrb_task_config.h"
 #include "fmrb_hal.h"
+#include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_msg.h"
 #include "fmrb_hid_msg.h"
@@ -48,7 +49,7 @@ typedef struct {
 } host_message_t;
 
 // Host task handle
-static fmrb_task_handle_t g_host_task_handle = NULL;
+static fmrb_task_handle_t g_host_task_handle = 0;
 
 // Task configuration
 #define HOST_QUEUE_SIZE (32)
@@ -123,7 +124,7 @@ static int init_gfx_audio(void)
         FMRB_LOGI(TAG, "Display initialization command sent successfully");
 
         // Give host time to initialize the display (200ms)
-        fmrb_task_delay(200 / portTICK_PERIOD_MS);
+        fmrb_task_delay(FMRB_MS_TO_TICKS(200));
 
         FMRB_LOGI(TAG, "Graphics fully initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
 
@@ -520,7 +521,7 @@ void fmrb_host_task_deinit(void)
 
     if (g_host_task_handle) {
         fmrb_task_delete(g_host_task_handle);
-        g_host_task_handle = NULL;
+        g_host_task_handle = 0;
     }
 
     // Destroy graphics command buffer

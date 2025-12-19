@@ -9,6 +9,7 @@ if(IDF_TARGET STREQUAL "linux")
     set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/host/include)
     set(PLATFORM_PRIV_REQUIRES
         fmrb_hal
+        fmrb_rtos
         fmrb_gfx
     )
 
@@ -37,6 +38,7 @@ else()
         esp_driver_i2c
         esp_hw_support
         fmrb_hal
+        fmrb_rtos
         fmrb_gfx
     )
 endif()
@@ -67,6 +69,7 @@ else()
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_file.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_dir.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-env/ports/esp32/env.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-gpio/ports/esp32/gpio.c

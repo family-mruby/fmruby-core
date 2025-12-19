@@ -6,6 +6,7 @@
 #include <mruby/hash.h>
 #include "fmrb_kernel.h"
 #include "fmrb_app.h"
+#include "fmrb_rtos.h"
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
 #include "fmrb_task_config.h"
@@ -55,21 +56,21 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "i", &timeout_ms);
 
     // Record start time
-    TickType_t start_tick = fmrb_task_get_tick_count();
-    TickType_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
+    fmrb_tick_t start_tick = fmrb_task_get_tick_count();
+    fmrb_tick_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
 
     mrb_set_in_c_funcall(mrb, MRB_C_FUNCALL_ENTER);
 
     // Receive messages until timeout expires
     while (true) {
         // Calculate remaining time
-        TickType_t current_tick = fmrb_task_get_tick_count();
+        fmrb_tick_t current_tick = fmrb_task_get_tick_count();
         if (current_tick >= target_tick) {
             // Timeout expired
             break;
         }
 
-        TickType_t remaining_ticks = target_tick - current_tick;
+        fmrb_tick_t remaining_ticks = target_tick - current_tick;
 
         // Try to receive message with remaining timeout
         fmrb_msg_t msg;

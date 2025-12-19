@@ -7,6 +7,7 @@
 
 #include "fmrb_app.h"
 #include "fmrb_hal.h"
+#include "fmrb_rtos.h"
 #include "fmrb_gfx.h"
 #include "fmrb_err.h"
 #include "fmrb_log.h"

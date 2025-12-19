@@ -5,10 +5,12 @@ sdkconfig.1
 dependencies.lock
 .env
 .vscode/*
+.claude/*
 main/kernel/mrb/*
 main/app/default_app/mrb/*
 log
 log*
+.rake_tasks~
 
 # Generated documentation
 doc/api/

@@ -7,6 +7,7 @@
 #include <picoruby.h>
 #include "fmrb_log.h"
 #include "fmrb_hal.h"
+#include "fmrb_rtos.h"
 #include "fmrb_mem.h"
 #include "fmrb_msg.h"
 #include "fmrb_task_config.h"
@@ -269,7 +270,7 @@ fmrb_err_t fmrb_kernel_get_hid_routing(fmrb_hid_routing_t *routing)
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    fmrb_semaphore_take(g_hid_routing_mutex, portMAX_DELAY);
+    fmrb_semaphore_take(g_hid_routing_mutex, FMRB_TICK_MAX);
     *routing = g_hid_routing;
     fmrb_semaphore_give(g_hid_routing_mutex);
 
@@ -279,7 +280,7 @@ fmrb_err_t fmrb_kernel_get_hid_routing(fmrb_hid_routing_t *routing)
 // Set HID target PID (for Kernel Ruby)
 fmrb_err_t fmrb_kernel_set_hid_target(uint8_t target_pid)
 {
-    fmrb_semaphore_take(g_hid_routing_mutex, portMAX_DELAY);
+    fmrb_semaphore_take(g_hid_routing_mutex, FMRB_TICK_MAX);
     g_hid_routing.target_pid = target_pid;
     fmrb_semaphore_give(g_hid_routing_mutex);
 
@@ -290,7 +291,7 @@ fmrb_err_t fmrb_kernel_set_hid_target(uint8_t target_pid)
 // Set focused window ID (for future use)
 fmrb_err_t fmrb_kernel_set_focused_window(uint8_t window_id)
 {
-    fmrb_semaphore_take(g_hid_routing_mutex, portMAX_DELAY);
+    fmrb_semaphore_take(g_hid_routing_mutex, FMRB_TICK_MAX);
     g_hid_routing.focused_window = window_id;
     fmrb_semaphore_give(g_hid_routing_mutex);
 
@@ -301,7 +302,7 @@ fmrb_err_t fmrb_kernel_set_focused_window(uint8_t window_id)
 // Enable/disable HID routing
 fmrb_err_t fmrb_kernel_enable_hid_routing(bool enable)
 {
-    fmrb_semaphore_take(g_hid_routing_mutex, portMAX_DELAY);
+    fmrb_semaphore_take(g_hid_routing_mutex, FMRB_TICK_MAX);
     g_hid_routing.routing_enabled = enable;
     fmrb_semaphore_give(g_hid_routing_mutex);
 

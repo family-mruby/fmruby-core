@@ -7,6 +7,7 @@
 
 #include "fmrb_app.h"
 #include "fmrb_hal.h"
+#include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
 #include "fmrb_err.h"
@@ -20,8 +21,6 @@
 #include "app_debug.h"
 
 #include "hal.h"
-
-#include "freertos/task.h"
 
 static const char* TAG = "app";
 
@@ -41,7 +40,7 @@ static bool check_mrb_ci_valid(mrb_state *mrb, const char* location){
 
     // Get task information
     fmrb_app_task_context_t* ctx = fmrb_current();
-    TickType_t tick = fmrb_task_get_tick_count();
+    fmrb_tick_t tick = fmrb_task_get_tick_count();
     int app_id = ctx ? ctx->app_id : -1;
     const char* app_name = ctx ? ctx->app_name : "N/A";
 
@@ -358,19 +357,19 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "i", &timeout_ms);
 
     // Record start time to ensure we wait for the full timeout period
-    TickType_t start_tick = fmrb_task_get_tick_count();
-    TickType_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
+    fmrb_tick_t start_tick = fmrb_task_get_tick_count();
+    fmrb_tick_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
 
     // Spin Loop - process messages until timeout expires
     while(true){
         // Calculate remaining time
-        TickType_t current_tick = fmrb_task_get_tick_count();
+        fmrb_tick_t current_tick = fmrb_task_get_tick_count();
         if (current_tick >= target_tick) {
             // Timeout expired, exit spin loop
             break;
         }
 
-        TickType_t remaining_ticks = target_tick - current_tick;
+        fmrb_tick_t remaining_ticks = target_tick - current_tick;
 
         // Try to receive message with remaining timeout
         fmrb_msg_t msg;

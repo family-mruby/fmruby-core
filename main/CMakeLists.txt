@@ -42,8 +42,8 @@ foreach(RB_FILE ${DEFAULT_APP_RUBY_FILES})
 endforeach()
 
 # Set up component dependencies based on target
-set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_link fmrb_toml fmrb_mem
-    fmrb_gfx fmrb_audio 
+set(COMPONENT_REQUIRES fmrb_hal fmrb_rtos fmrb_log fmrb_msg fmrb_link fmrb_toml fmrb_mem
+    fmrb_gfx fmrb_audio
     picoruby-esp32 mem_allocator log tar_lib)
 
 # Add ESP32-specific components
@@ -56,7 +56,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "drivers/fs_proxy" "drivers/usb" "lib/fmrb_mem" "lib/fmrb_toml"
+    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "drivers/fs_proxy" "drivers/usb"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 
