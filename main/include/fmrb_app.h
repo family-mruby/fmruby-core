@@ -4,6 +4,7 @@
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
+#include "fmrb_lua.h"
 #include <picoruby.h>
 #include <stdbool.h>
 #include <stdint.h>

@@ -43,7 +43,7 @@ endforeach()
 
 # Set up component dependencies based on target
 set(COMPONENT_REQUIRES fmrb_hal fmrb_rtos fmrb_log fmrb_msg fmrb_link fmrb_toml fmrb_mem
-    fmrb_gfx fmrb_audio
+    fmrb_gfx fmrb_audio lua
     picoruby-esp32 mem_allocator log tar_lib)
 
 # Add ESP32-specific components
