@@ -102,11 +102,28 @@ static void tls_destructor(int idx, void* pv) {
         return;
     }
 
-    // Close mruby VM if still open
-    if (ctx->mrb) {
-        FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
-        mrb_close(ctx->mrb);
-        ctx->mrb = NULL;
+    // Close VM based on type
+    switch (ctx->vm_type) {
+        case FMRB_VM_TYPE_MRUBY:
+            if (ctx->mrb) {
+                FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
+                mrb_close(ctx->mrb);
+                ctx->mrb = NULL;
+            }
+            break;
+        case FMRB_VM_TYPE_LUA:
+            if (ctx->lua) {
+                FMRB_LOGI(TAG, "[%s] Closing Lua VM", ctx->app_name);
+                fmrb_lua_close(ctx->lua);
+                ctx->lua = NULL;
+            }
+            break;
+        case FMRB_VM_TYPE_NATIVE:
+            // No VM to close for native functions
+            break;
+        default:
+            FMRB_LOGW(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
+            break;
     }
 
     // Delete semaphore
@@ -254,14 +271,35 @@ static void app_task_main(void* arg) {
     FMRB_LOGI(TAG, "[%s gen=%u] Task started (core=%d, prio=%u)",
              ctx->app_name, ctx->gen, fmrb_get_core_id(), fmrb_task_get_priority(0));
 
-    // Create mruby VM
-    // mrbgem initialization is executed here.
-    ctx->mrb = mrb_open_with_custom_alloc(
-        fmrb_get_mempool_ptr(ctx->mempool_id),
-        fmrb_get_mempool_size(ctx->mempool_id));
-    if (!ctx->mrb) {
-        FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
-        goto cleanup;
+    // Create VM based on vm_type
+    switch (ctx->vm_type) {
+        case FMRB_VM_TYPE_MRUBY:
+            // Create mruby VM (mrbgem initialization is executed here)
+            ctx->mrb = mrb_open_with_custom_alloc(
+                fmrb_get_mempool_ptr(ctx->mempool_id),
+                fmrb_get_mempool_size(ctx->mempool_id));
+            if (!ctx->mrb) {
+                FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
+                goto cleanup;
+            }
+            break;
+        case FMRB_VM_TYPE_LUA:
+            // Create Lua VM (stub implementation)
+            ctx->lua = fmrb_lua_newstate();
+            if (!ctx->lua) {
+                FMRB_LOGE(TAG, "[%s] Failed to open Lua VM", ctx->app_name);
+                goto cleanup;
+            }
+            fmrb_lua_openlibs(ctx->lua);
+            FMRB_LOGI(TAG, "[%s] Lua VM created (stub)", ctx->app_name);
+            break;
+        case FMRB_VM_TYPE_NATIVE:
+            // No VM needed for native functions
+            FMRB_LOGI(TAG, "[%s] Native function mode", ctx->app_name);
+            break;
+        default:
+            FMRB_LOGE(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
+            goto cleanup;
     }
 
     // Transition to RUNNING
@@ -278,74 +316,111 @@ static void app_task_main(void* arg) {
     fmrb_load_mode_t load_mode = (fmrb_load_mode_t)((uintptr_t)ctx->user_data & 0xFF);
     void* load_data = (void*)((uintptr_t)ctx->user_data >> 8);
 
-    mrc_irep *irep_obj = NULL;
+    // Execute based on VM type
+    switch (ctx->vm_type) {
+        case FMRB_VM_TYPE_MRUBY: {
+            mrc_irep *irep_obj = NULL;
 
-    if (load_mode == FMRB_LOAD_MODE_IREP) {
-        // Load from irep bytecode (existing behavior)
-        irep_ptr = (const unsigned char*)load_data;
-        irep_obj = mrb_read_irep(ctx->mrb, irep_ptr);
-        if (irep_obj == NULL) {
-            FMRB_LOGE(TAG, "[%s] Failed to read irep", ctx->app_name);
-        }
-    } else if (load_mode == FMRB_LOAD_MODE_FILE) {
-        // Load from text file (new behavior)
-        const char* filepath = (const char*)load_data;
-        size_t script_size = 0;
+            if (load_mode == FMRB_LOAD_MODE_BYTECODE) {
+                // Load from bytecode (IREP)
+                irep_ptr = (const unsigned char*)load_data;
+                irep_obj = mrb_read_irep(ctx->mrb, irep_ptr);
+                if (irep_obj == NULL) {
+                    FMRB_LOGE(TAG, "[%s] Failed to read IREP bytecode", ctx->app_name);
+                }
+            } else if (load_mode == FMRB_LOAD_MODE_FILE) {
+                // Load from Ruby source file
+                const char* filepath = (const char*)load_data;
+                size_t script_size = 0;
 
-        FMRB_LOGI(TAG, "[%s] Loading script from file: %s", ctx->app_name, filepath);
+                FMRB_LOGI(TAG, "[%s] Loading Ruby script from file: %s", ctx->app_name, filepath);
 
-        script_buffer = load_script_file(filepath, &script_size);
-        if (!script_buffer) {
-            FMRB_LOGE(TAG, "[%s] Failed to load script file: %s", ctx->app_name, filepath);
-            goto cleanup;
-        }
-        need_free_script = true;
+                script_buffer = load_script_file(filepath, &script_size);
+                if (!script_buffer) {
+                    FMRB_LOGE(TAG, "[%s] Failed to load script file: %s", ctx->app_name, filepath);
+                    goto cleanup;
+                }
+                need_free_script = true;
 
-        // Compile script to irep
-        mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
-        if (!cc) {
-            FMRB_LOGE(TAG, "[%s] Failed to create compile context", ctx->app_name);
-            goto cleanup;
-        }
+                // Compile script to irep
+                mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
+                if (!cc) {
+                    FMRB_LOGE(TAG, "[%s] Failed to create compile context", ctx->app_name);
+                    goto cleanup;
+                }
 
-        const uint8_t *script_ptr = (const uint8_t *)script_buffer;
-        irep_obj = mrc_load_string_cxt(cc, &script_ptr, script_size);
+                const uint8_t *script_ptr = (const uint8_t *)script_buffer;
+                irep_obj = mrc_load_string_cxt(cc, &script_ptr, script_size);
 
-        if (!irep_obj) {
-            FMRB_LOGE(TAG, "[%s] Failed to compile script", ctx->app_name);
-            if (ctx->mrb->exc) {
-                mrb_print_error(ctx->mrb);
+                if (!irep_obj) {
+                    FMRB_LOGE(TAG, "[%s] Failed to compile Ruby script", ctx->app_name);
+                    if (ctx->mrb->exc) {
+                        mrb_print_error(ctx->mrb);
+                    }
+                    mrc_ccontext_free(cc);
+                    goto cleanup;
+                }
+
+                mrc_ccontext_free(cc);
+                FMRB_LOGI(TAG, "[%s] Ruby script compiled successfully", ctx->app_name);
+            } else {
+                FMRB_LOGE(TAG, "[%s] Invalid load mode: %d", ctx->app_name, load_mode);
+                goto cleanup;
             }
-            mrc_ccontext_free(cc);
-            goto cleanup;
+
+            // Execute irep
+            if (irep_obj) {
+                mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
+                mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
+                mrb_value task = mrc_create_task(cc, irep_obj, name, mrb_nil_value(),
+                                                 mrb_obj_value(ctx->mrb->top_self));
+
+                if (mrb_nil_p(task)) {
+                    FMRB_LOGE(TAG, "[%s] mrc_create_task failed", ctx->app_name);
+                } else {
+                    // Main event loop: run mruby tasks
+                    mrb_tasks_run(ctx->mrb);
+                }
+
+                if (ctx->mrb->exc) {
+                    mrb_print_error(ctx->mrb);
+                }
+
+                mrc_ccontext_free(cc);
+            }
+            break;
         }
 
-        mrc_ccontext_free(cc);
-        FMRB_LOGI(TAG, "[%s] Script compiled successfully", ctx->app_name);
-    } else {
-        FMRB_LOGE(TAG, "[%s] Invalid load mode: %d", ctx->app_name, load_mode);
-        goto cleanup;
-    }
-
-    // Execute irep (common path for both modes)
-    if (irep_obj) {
-        mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
-        mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
-        mrb_value task = mrc_create_task(cc, irep_obj, name, mrb_nil_value(),
-                                         mrb_obj_value(ctx->mrb->top_self));
-
-        if (mrb_nil_p(task)) {
-            FMRB_LOGE(TAG, "[%s] mrc_create_task failed", ctx->app_name);
-        } else {
-            // Main event loop: run mruby tasks
-            mrb_tasks_run(ctx->mrb);
+        case FMRB_VM_TYPE_LUA: {
+            // Lua execution (stub implementation)
+            if (load_mode == FMRB_LOAD_MODE_BYTECODE) {
+                // Load from Lua bytecode chunk
+                FMRB_LOGW(TAG, "[%s] Lua bytecode loading not yet implemented", ctx->app_name);
+            } else if (load_mode == FMRB_LOAD_MODE_FILE) {
+                // Load from Lua source file
+                const char* filepath = (const char*)load_data;
+                FMRB_LOGI(TAG, "[%s] Lua script file: %s (not yet implemented)", ctx->app_name, filepath);
+            }
+            // TODO: Implement Lua script loading and execution
+            FMRB_LOGW(TAG, "[%s] Lua VM execution stub - exiting", ctx->app_name);
+            break;
         }
 
-        if (ctx->mrb->exc) {
-            mrb_print_error(ctx->mrb);
+        case FMRB_VM_TYPE_NATIVE: {
+            // Native C function execution
+            void (*native_func)(void*) = (void (*)(void*))load_data;
+            if (native_func) {
+                FMRB_LOGI(TAG, "[%s] Executing native function", ctx->app_name);
+                native_func(ctx);
+            } else {
+                FMRB_LOGE(TAG, "[%s] Native function pointer is NULL", ctx->app_name);
+            }
+            break;
         }
 
-        mrc_ccontext_free(cc);
+        default:
+            FMRB_LOGE(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
+            break;
     }
 
 cleanup:
@@ -456,22 +531,31 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    FMRB_LOGI(TAG, "fmrb_app_spawn: name=%s, mode=%d, type=%d", attr->name, attr->load_mode, attr->type);
+    FMRB_LOGI(TAG, "fmrb_app_spawn: name=%s, vm_type=%d, mode=%d, type=%d",
+              attr->name, attr->vm_type, attr->load_mode, attr->type);
 
-    // Validate load mode and source
-    if (attr->load_mode == FMRB_LOAD_MODE_IREP) {
-        if (!attr->irep) {
-            FMRB_LOGE(TAG, "irep is NULL for IREP mode");
-            return FMRB_ERR_INVALID_PARAM;
-        }
-    } else if (attr->load_mode == FMRB_LOAD_MODE_FILE) {
-        if (!attr->filepath) {
-            FMRB_LOGE(TAG, "filepath is NULL for FILE mode");
+    // Validate load mode and source based on VM type
+    if (attr->vm_type == FMRB_VM_TYPE_NATIVE) {
+        if (!attr->native_func) {
+            FMRB_LOGE(TAG, "native_func is NULL for NATIVE mode");
             return FMRB_ERR_INVALID_PARAM;
         }
     } else {
-        FMRB_LOGE(TAG, "Invalid load_mode: %d", attr->load_mode);
-        return FMRB_ERR_INVALID_PARAM;
+        // mruby or Lua - validate bytecode/file
+        if (attr->load_mode == FMRB_LOAD_MODE_BYTECODE) {
+            if (!attr->bytecode) {
+                FMRB_LOGE(TAG, "bytecode is NULL for BYTECODE mode");
+                return FMRB_ERR_INVALID_PARAM;
+            }
+        } else if (attr->load_mode == FMRB_LOAD_MODE_FILE) {
+            if (!attr->filepath) {
+                FMRB_LOGE(TAG, "filepath is NULL for FILE mode");
+                return FMRB_ERR_INVALID_PARAM;
+            }
+        } else {
+            FMRB_LOGE(TAG, "Invalid load_mode: %d", attr->load_mode);
+            return FMRB_ERR_INVALID_PARAM;
+        }
     }
 
     if (!out_id) {
@@ -497,6 +581,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     // Initialize context fields
     ctx->app_id = idx;
     ctx->type = attr->type;
+    ctx->vm_type = attr->vm_type;
 
     // Assign memory pool based on task type to avoid conflicts
     switch (attr->type) {
@@ -526,8 +611,11 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     // Encode load mode and data pointer in user_data
     // Lower 8 bits: load_mode, upper bits: data pointer
     uintptr_t encoded_data;
-    if (attr->load_mode == FMRB_LOAD_MODE_IREP) {
-        encoded_data = ((uintptr_t)attr->irep << 8) | FMRB_LOAD_MODE_IREP;
+    if (attr->vm_type == FMRB_VM_TYPE_NATIVE) {
+        // For native functions, store function pointer
+        encoded_data = ((uintptr_t)attr->native_func << 8) | FMRB_LOAD_MODE_BYTECODE;
+    } else if (attr->load_mode == FMRB_LOAD_MODE_BYTECODE) {
+        encoded_data = ((uintptr_t)attr->bytecode << 8) | FMRB_LOAD_MODE_BYTECODE;
     } else {
         encoded_data = ((uintptr_t)attr->filepath << 8) | FMRB_LOAD_MODE_FILE;
     }
@@ -598,9 +686,27 @@ unwind:
         fmrb_semaphore_delete(ctx->semaphore);
         ctx->semaphore = NULL;
     }
-    if (ctx->mrb) {
-        mrb_close(ctx->mrb);
-        ctx->mrb = NULL;
+
+    // Close VM based on type
+    switch (ctx->vm_type) {
+        case FMRB_VM_TYPE_MRUBY:
+            if (ctx->mrb) {
+                mrb_close(ctx->mrb);
+                ctx->mrb = NULL;
+            }
+            break;
+        case FMRB_VM_TYPE_LUA:
+            if (ctx->lua) {
+                fmrb_lua_close(ctx->lua);
+                ctx->lua = NULL;
+            }
+            break;
+        case FMRB_VM_TYPE_NATIVE:
+            // No VM to close
+            break;
+        case FMRB_VM_TYPE_MAX:
+            // Not a valid VM type
+            break;
     }
 
     fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);

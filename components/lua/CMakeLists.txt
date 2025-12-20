@@ -36,7 +36,7 @@ set(LUA_CORE_SRCS
 
 # FMRuby Lua wrapper implementation
 set(FMRB_LUA_SRCS
-    # Add wrapper sources here when implemented
+    "fmrb_lua.c"
 )
 
 # Extension sources

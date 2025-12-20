@@ -56,8 +56,9 @@ static fmrb_err_t spawn_system_gui_app(void)
         .app_id = PROC_ID_SYSTEM_APP,
         .type = APP_TYPE_SYSTEM_APP,
         .name = "system_gui",
-        .load_mode = FMRB_LOAD_MODE_IREP,
-        .irep = system_gui_irep,
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = system_gui_irep,
         .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
         .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
         .core_affinity = -1  // No core affinity
@@ -79,17 +80,18 @@ static fmrb_err_t spawn_shell_app(void)
 {
     FMRB_LOGI(TAG, "spawn_shell_app: Starting");
     fmrb_spawn_attr_t attr = {
-        .app_id = PROC_ID_USER_APP0,              
-        .type = APP_TYPE_USER_APP,            
+        .app_id = PROC_ID_USER_APP0,
+        .type = APP_TYPE_USER_APP,
         .name = "shell",
-        .load_mode = FMRB_LOAD_MODE_IREP,
-        .irep = shell_irep,             
-        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,  
-        .priority = FMRB_SHELL_APP_PRIORITY,        
-        .core_affinity = -1,                  
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = shell_irep,
+        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
+        .priority = FMRB_SHELL_APP_PRIORITY,
+        .core_affinity = -1,
         .headless = false,
         .window_pos_x = 10,
-        .window_pos_y = 30           
+        .window_pos_y = 30
     };
 
     int32_t shell_id;
@@ -129,6 +131,7 @@ static fmrb_err_t spawn_user_app(const char* app_name)
         .app_id = -1,                                  // Auto-allocate slot
         .type = APP_TYPE_USER_APP,                     // User App type
         .name = display_name,                          // Extracted name
+        .vm_type = FMRB_VM_TYPE_MRUBY,                 // mruby VM
         .load_mode = FMRB_LOAD_MODE_FILE,              // Load from file
         .filepath = app_name,                          // File path
         .stack_words = FMRB_USER_APP_TASK_STACK_SIZE,  // 60KB

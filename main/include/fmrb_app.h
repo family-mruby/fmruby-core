@@ -27,10 +27,19 @@ enum FMRB_APP_TYPE{
     APP_TYPE_MAX
 };
 
+// VM Type for multi-VM support
+typedef enum {
+    FMRB_VM_TYPE_MRUBY = 0,      // PicoRuby/mruby
+    FMRB_VM_TYPE_LUA,            // Lua
+    FMRB_VM_TYPE_NATIVE,         // Native C function
+    FMRB_VM_TYPE_MAX
+} fmrb_vm_type_t;
+
 // App load mode
 typedef enum {
-    FMRB_LOAD_MODE_IREP = 0,     // Load from irep bytecode
-    FMRB_LOAD_MODE_FILE,          // Load from text file
+    FMRB_LOAD_MODE_BYTECODE = 0, // Load from bytecode (mruby irep, Lua chunk, etc.)
+    FMRB_LOAD_MODE_IREP = 0,     // DEPRECATED: Alias for BYTECODE (backward compat)
+    FMRB_LOAD_MODE_FILE,         // Load from script file
 } fmrb_load_mode_t;
 
 // FreeRTOS TLS slot index for app context
@@ -42,7 +51,15 @@ typedef struct {
     fmrb_proc_state_t     state;
     enum FMRB_APP_TYPE    type;
     char                  app_name[32];      // UTF-8, null-terminated
-    mrb_state*            mrb;               // Type-safe mruby VM pointer
+
+    // Multi-VM support
+    fmrb_vm_type_t        vm_type;           // VM type (mruby, lua, native)
+    union {
+        mrb_state*        mrb;               // mruby VM pointer
+        lua_State*        lua;               // Lua VM pointer
+        void*             vm_generic;        // Generic VM pointer
+    };
+
     void*                 est;               // Estalloc Pointer
     enum FMRB_MEM_POOL_ID mempool_id;
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
@@ -61,17 +78,22 @@ typedef struct {
     fmrb_proc_id_t        app_id;           // Fixed slot ID
     enum FMRB_APP_TYPE    type;
     const char*           name;
-    fmrb_load_mode_t      load_mode;        // Load mode (irep or file)
+
+    // Multi-VM support
+    fmrb_vm_type_t        vm_type;          // VM type (mruby, lua, native)
+    fmrb_load_mode_t      load_mode;        // Load mode (bytecode, file)
     union {
-        const unsigned char*  irep;         // Bytecode (when load_mode == FMRB_LOAD_MODE_IREP)
-        const char*           filepath;     // File path (when load_mode == FMRB_LOAD_MODE_FILE)
+        const unsigned char*  bytecode;     // Bytecode (mruby irep, Lua chunk, etc.)
+        const char*           filepath;     // Script file path
+        void (*native_func)(void*);         // Native C function pointer
     };
+
     uint32_t              stack_words;      // Stack size in words (not bytes)
     fmrb_task_priority_t  priority;
     fmrb_base_type_t      core_affinity;    // -1 = no affinity, 0/1 = specific core
     bool                  headless;         // Headless app flag (no graphics, no canvas)
     uint16_t              window_pos_x;
-    uint16_t              window_pos_y;    
+    uint16_t              window_pos_y;
 } fmrb_spawn_attr_t;
 
 // App info for ps-style listing

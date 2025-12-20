@@ -205,7 +205,9 @@ fmrb_err_t fmrb_kernel_start(void)
         .app_id = PROC_ID_KERNEL,
         .type = APP_TYPE_KERNEL,
         .name = "fmrb_kernel",
-        .irep = kernel_irep,
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = kernel_irep,
         .stack_words = FMRB_KERNEL_TASK_STACK_SIZE,
         .priority = FMRB_KERNEL_TASK_PRIORITY,
         .core_affinity = -1,  // No core affinity
