@@ -318,9 +318,9 @@ static void app_task_main(void* arg) {
     }
     fmrb_semaphore_give(g_ctx_lock);
 
-    // Determine load mode from user_data
-    fmrb_load_mode_t load_mode = (fmrb_load_mode_t)((uintptr_t)ctx->user_data & 0xFF);
-    void* load_data = (void*)((uintptr_t)ctx->user_data >> 8);
+    // Get load mode and data from context
+    fmrb_load_mode_t load_mode = ctx->load_mode;
+    void* load_data = ctx->load_data;
 
     // Execute based on VM type
     switch (ctx->vm_type) {
@@ -653,28 +653,24 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
             goto unwind;
     }
 
-    // Create TLSF memory allocator handle for this app's memory pool if not already created
-    // Check if handle already exists by trying to get pool stats
-    fmrb_pool_stats_t test_stats;
-    if (fmrb_mem_get_stats(ctx->mempool_id, &test_stats) != 0) {
-        // Handle doesn't exist, create it
+    if (fmrb_mem_handle_exist(ctx->mempool_id) != 0) {
         void* pool_ptr = fmrb_get_mempool_ptr(ctx->mempool_id);
         size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
         if (pool_ptr && pool_size > 0) {
-            fmrb_mem_handle_t handle = fmrb_mem_create_handle(pool_ptr, pool_size);
-            if (handle != ctx->mempool_id) {
-                FMRB_LOGE(TAG, "[%s] Memory pool handle mismatch: expected=%d, got=%d",
-                          attr->name, ctx->mempool_id, handle);
+            fmrb_mem_handle_t handle = fmrb_mem_create_handle(pool_ptr, pool_size, ctx->mempool_id);
+            ctx->mem_handle = handle;
+            if (ctx->mem_handle < 0) {
+                FMRB_LOGE(TAG, "[%s] Failed to create memory pool handle for pool_id=%d",
+                          attr->name, ctx->mempool_id);
                 goto unwind;
             }
-            FMRB_LOGI(TAG, "[%s] Memory pool handle created: id=%d, size=%zu",
-                      attr->name, handle, pool_size);
+            FMRB_LOGI(TAG, "[%s] Memory pool handle created: handle=%d, pool_id=%d, size=%zu",
+                      attr->name, handle, ctx->mempool_id, pool_size);
         } else {
             FMRB_LOGE(TAG, "[%s] Invalid memory pool: id=%d", attr->name, ctx->mempool_id);
             goto unwind;
         }
     } else {
-        // Handle already exists
         FMRB_LOGI(TAG, "[%s] Memory pool handle already exists: id=%d",
                   attr->name, ctx->mempool_id);
     }
@@ -690,19 +686,19 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         ctx->filepath[0] = '\0';
     }
 
-    // Encode load mode and data pointer in user_data
-    // Lower 8 bits: load_mode, upper bits: data pointer
-    uintptr_t encoded_data;
+    // Set load mode and data pointer directly (no pointer tagging)
     if (attr->vm_type == FMRB_VM_TYPE_NATIVE) {
         // For native functions, store function pointer
-        encoded_data = ((uintptr_t)attr->native_func << 8) | FMRB_LOAD_MODE_BYTECODE;
+        ctx->load_mode = FMRB_LOAD_MODE_BYTECODE;
+        ctx->load_data = (void*)attr->native_func;
     } else if (attr->load_mode == FMRB_LOAD_MODE_BYTECODE) {
-        encoded_data = ((uintptr_t)attr->bytecode << 8) | FMRB_LOAD_MODE_BYTECODE;
+        ctx->load_mode = FMRB_LOAD_MODE_BYTECODE;
+        ctx->load_data = (void*)attr->bytecode;
     } else {
         // For FILE mode, use ctx->filepath (copied above)
-        encoded_data = ((uintptr_t)ctx->filepath << 8) | FMRB_LOAD_MODE_FILE;
+        ctx->load_mode = FMRB_LOAD_MODE_FILE;
+        ctx->load_data = (void*)ctx->filepath;
     }
-    ctx->user_data = (void*)encoded_data;
     ctx->headless = attr->headless;
     ctx->window_pos_x = attr->window_pos_x;
     ctx->window_pos_y = attr->window_pos_y;

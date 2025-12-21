@@ -20,36 +20,6 @@ extern const uint8_t shell_irep[];
 extern const uint8_t editor_irep[];
 extern const uint8_t config_irep[];
 
-static const char* extract_app_name(const char* filepath, char* name_buf, size_t buf_size) {
-    if (!filepath || !name_buf || buf_size == 0) {
-        if (name_buf && buf_size > 0) {
-            name_buf[0] = '\0';
-        }
-        return name_buf;
-    }
-
-    // Find last '/' to get basename
-    const char* basename = strrchr(filepath, '/');
-    if (basename) {
-        basename++;  // Skip '/'
-    } else {
-        basename = filepath;
-    }
-
-    // Copy to buffer
-    strncpy(name_buf, basename, buf_size - 1);
-    name_buf[buf_size - 1] = '\0';
-
-    // Remove .rb extension if present
-    char* ext = strrchr(name_buf, '.');
-    if (ext && strcmp(ext, ".rb") == 0) {
-        *ext = '\0';
-    }
-
-    return name_buf;
-}
-
-
 static fmrb_err_t spawn_system_gui_app(void)
 {
     FMRB_LOGI(TAG, "Creating system GUI app...");
@@ -72,7 +42,6 @@ static fmrb_err_t spawn_system_gui_app(void)
 
     int32_t app_id;
     fmrb_err_t result;
-    fmrb_app_init();
     result = fmrb_app_spawn(&attr, &app_id);
     if (result == FMRB_OK) {
         FMRB_LOGI(TAG, "system GUI app spawned: id=%d", app_id);
@@ -119,11 +88,7 @@ static fmrb_err_t spawn_user_app(const char* app_name)
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    // Extract display name from file path
-    char display_name[32];
-    extract_app_name(app_name, display_name, sizeof(display_name));
-
-    FMRB_LOGI(TAG, "Creating user app from file: %s (name: %s)", app_name, display_name);
+    FMRB_LOGI(TAG, "Creating user app from file: %s", app_name);
 
     // Validate file exists before spawning
     fmrb_file_t file = NULL;
@@ -168,7 +133,7 @@ static fmrb_err_t spawn_user_app(const char* app_name)
     }
 
     // Default values for spawn attributes
-    const char* app_screen_name = display_name;
+    const char* app_screen_name = NULL;
     const char* toml_screen_name = NULL;
     const char* toml_window_mode = NULL;
     bool headless = false;
@@ -219,8 +184,8 @@ static fmrb_err_t spawn_user_app(const char* app_name)
         .vm_type = vm_type,                            // Auto-detected VM type
         .load_mode = FMRB_LOAD_MODE_FILE,              // Load from file
         .filepath = app_name,                          // File path
-        .stack_words = FMRB_USER_APP_TASK_STACK_SIZE,  // 60KB
-        .priority = FMRB_USER_APP_PRIORITY,            // Priority 5
+        .stack_words = FMRB_USER_APP_TASK_STACK_SIZE,  // Stack Size
+        .priority = FMRB_USER_APP_PRIORITY,            // 
         .core_affinity = -1,                           // No core affinity
         .headless = headless,                          // From TOML
         .window_width = window_width,                  // From TOML
@@ -253,7 +218,7 @@ static fmrb_err_t spawn_user_app(const char* app_name)
     return result;
 }
 
-fmrb_err_t fmrb_app_spawn_default_app(const char* app_name)
+fmrb_err_t fmrb_app_spawn_app(const char* app_name)
 {
     if (app_name == NULL) {
         FMRB_LOGE(TAG, "app_name is NULL");

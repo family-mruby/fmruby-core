@@ -130,7 +130,7 @@ static bool init_hardware(void)
 
 static void init_mem(void)
 {
-    fmrb_init_system_mem();
+    fmrb_mem_init();
     fmrb_mempool_print_ranges();
     fmrb_toml_init();
 }
@@ -143,7 +143,7 @@ static bool boot_mode_check(void){
         // disable all log
         fmrb_disable_log();
         // minimum init for FS proxy
-        fmrb_init_system_mem();
+        fmrb_mem_init();
         fmrb_hal_file_init();
         // Serial FS proxy
         fs_proxy_create_task();

@@ -14,6 +14,12 @@ typedef struct mrb_state mrb_state;
 #define FMRB_MAX_APP_NAME (32)
 #define FMRB_MAX_PATH_LEN (256)
 
+// Load mode for script loading
+typedef enum {
+    FMRB_LOAD_MODE_BYTECODE = 0,  // Load from precompiled bytecode
+    FMRB_LOAD_MODE_FILE = 1,       // Load from source file
+} fmrb_load_mode_t;
+
 // State machine for app lifecycle (strict transitions enforced)
 typedef enum {
     PROC_STATE_FREE = 0,        // Slot available
@@ -40,13 +46,6 @@ typedef enum {
     FMRB_VM_TYPE_MAX
 } fmrb_vm_type_t;
 
-// App load mode
-typedef enum {
-    FMRB_LOAD_MODE_BYTECODE = 0, // Load from bytecode (mruby irep, Lua chunk, etc.)
-    FMRB_LOAD_MODE_IREP = 0,     // DEPRECATED: Alias for BYTECODE (backward compat)
-    FMRB_LOAD_MODE_FILE,         // Load from script file
-} fmrb_load_mode_t;
-
 // FreeRTOS TLS slot index for app context
 #define FMRB_APP_TLS_INDEX 1
 
@@ -67,7 +66,8 @@ typedef struct fmrb_app_task_context_s {
     };
 
     void*                 est;               // Estalloc Pointer
-    enum FMRB_MEM_POOL_ID mempool_id;
+    enum FMRB_MEM_POOL_ID mempool_id;        // Memory Pool ID
+    fmrb_mem_handle_t     mem_handle;        // Memory alloc handle
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
     fmrb_task_handle_t    task;              // FreeRTOS task handle
     uint32_t              gen;               // Generation counter for reuse detection
@@ -76,7 +76,10 @@ typedef struct fmrb_app_task_context_s {
     uint16_t              window_height;     // Window Height(if headless, =0)
     uint16_t              window_pos_x;
     uint16_t              window_pos_y;
-    void*                 user_data;         // Application-specific data
+
+    // Load mode and data (replaces encoded user_data pointer tagging)
+    fmrb_load_mode_t      load_mode;         // How to load the script
+    void*                 load_data;         // Bytecode ptr or filepath ptr
 } fmrb_app_task_context_t;
 
 // Spawn attributes for creating new app task
@@ -132,7 +135,7 @@ static inline fmrb_app_task_context_t* fmrb_current(void) {
 
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
-fmrb_err_t fmrb_app_spawn_default_app(const char* app_name);
+fmrb_err_t fmrb_app_spawn_app(const char* app_name);
 
 void* fmrb_app_get_current_est(void);
 void fmrb_app_set_current_est(void* est);

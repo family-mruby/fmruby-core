@@ -121,7 +121,7 @@ static mrb_value mrb_kernel_handler_spawn_app_req(mrb_state *mrb, mrb_value self
 
     FMRB_LOGI(TAG, "Spawning app: %s", app_name);
 
-    fmrb_err_t result = fmrb_app_spawn_default_app(app_name);
+    fmrb_err_t result = fmrb_app_spawn_app(app_name);
 
     if (result == FMRB_OK) {
         FMRB_LOGI(TAG, "App %s spawned successfully", app_name);
