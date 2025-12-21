@@ -22,14 +22,14 @@ static void* lua_fmrb_alloc(void* ud, void* ptr, size_t osize, size_t nsize) {
     if (nsize == 0) {
         // Free memory
         if (ptr) {
-            fmrb_free(ctx->mempool_id, ptr);
+            fmrb_free(ctx->mem_handle, ptr);
         }
         return NULL;
     }
 
     if (ptr) {
         // Realloc: allocate new, copy, free old
-        void* new_ptr = fmrb_malloc(ctx->mempool_id, nsize);
+        void* new_ptr = fmrb_malloc(ctx->mem_handle, nsize);
         if (!new_ptr) {
             return NULL;
         }
@@ -40,12 +40,12 @@ static void* lua_fmrb_alloc(void* ud, void* ptr, size_t osize, size_t nsize) {
             memcpy(new_ptr, ptr, copy_size);
         }
 
-        fmrb_free(ctx->mempool_id, ptr);
+        fmrb_free(ctx->mem_handle, ptr);
         return new_ptr;
     }
 
     // New allocation
-    return fmrb_malloc(ctx->mempool_id, nsize);
+    return fmrb_malloc(ctx->mem_handle, nsize);
 }
 
 /**

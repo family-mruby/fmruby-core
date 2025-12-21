@@ -474,6 +474,9 @@ cleanup:
     if (need_free_script && script_buffer) {
         fmrb_sys_free(script_buffer);
     }
+    if (ctx->mem_handle >=0 ) {
+        fmrb_mem_destroy_handle(ctx->mem_handle);
+    }
 
     FMRB_LOGI(TAG, "[%s gen=%u] Task exiting normally", ctx->app_name, ctx->gen);
 
@@ -630,17 +633,15 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     ctx->vm_type = attr->vm_type;
 
     // Assign memory pool based on task type to avoid conflicts
+    ctx->mem_handle = -1; //invalid
     switch (attr->type) {
         case APP_TYPE_KERNEL:
             ctx->mempool_id = POOL_ID_KERNEL;
-            ctx->mem_handle = -1;
             break;
         case APP_TYPE_SYSTEM_APP:
             ctx->mempool_id = POOL_ID_SYSTEM_APP;
-            ctx->mem_handle = -1;
             break;
         case APP_TYPE_USER_APP:
-            ctx->mem_handle = -1;
             if (idx >= PROC_ID_USER_APP0 && idx < PROC_ID_MAX) {
                 ctx->mempool_id = POOL_ID_USER_APP0 + (idx - PROC_ID_USER_APP0);
                 FMRB_LOGI(TAG, "USER_APP mempool_id: idx=%d, PROC_ID_USER_APP0=%d, POOL_ID_USER_APP0=%d, calculated mempool_id=%d",
@@ -657,19 +658,16 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
                         fmrb_mem_handle_t handle = fmrb_mem_create_handle(pool_ptr, pool_size, ctx->mempool_id);
                         ctx->mem_handle = handle;
                         if (ctx->mem_handle < 0) {
-                            FMRB_LOGE(TAG, "[%s] Failed to create memory pool handle for pool_id=%d",
-                                    attr->name, ctx->mempool_id);
+                            FMRB_LOGE(TAG, "[%s] Failed to create memory pool handle for pool_id=%d", attr->name, ctx->mempool_id);
                             goto unwind;
                         }
-                        FMRB_LOGI(TAG, "[%s] Memory pool handle created: handle=%d, pool_id=%d, size=%zu",
-                                attr->name, handle, ctx->mempool_id, pool_size);
+                        FMRB_LOGI(TAG, "[%s] Memory pool handle created: handle=%d, pool_id=%d, size=%zu", attr->name, handle, ctx->mempool_id, pool_size);
                     } else {
                         FMRB_LOGE(TAG, "[%s] Invalid memory pool: id=%d", attr->name, ctx->mempool_id);
                         goto unwind;
                     }
                 } else {
-                    FMRB_LOGI(TAG, "[%s] Memory pool handle already exists: id=%d",
-                            attr->name, ctx->mempool_id);
+                    FMRB_LOGI(TAG, "[%s] Memory pool handle already exists: id=%d", attr->name, ctx->mempool_id);
                 }
             }
             break;
