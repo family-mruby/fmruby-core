@@ -7,6 +7,6 @@ else()
 endif()
 
 idf_component_register(
-    INCLUDE_DIRS "."
+    INCLUDE_DIRS "include"
     REQUIRES picoruby-esp32 ${PLATFORM_REQUIRES}
 )

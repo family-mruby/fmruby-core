@@ -2,12 +2,7 @@ set(COMMON_SRCS
     "fmrb_log.c"
 )
 
-# Platform-specific requirements
-if(IDF_TARGET STREQUAL "linux")
-    set(PLATFORM_REQUIRES log)
-else()
-    set(PLATFORM_REQUIRES log)
-endif()
+set(PLATFORM_REQUIRES log)
 
 idf_component_register(
     SRCS ${COMMON_SRCS}
