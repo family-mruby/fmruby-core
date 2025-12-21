@@ -633,12 +633,14 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     switch (attr->type) {
         case APP_TYPE_KERNEL:
             ctx->mempool_id = POOL_ID_KERNEL;
+            ctx->mem_handle = -1;
             break;
         case APP_TYPE_SYSTEM_APP:
             ctx->mempool_id = POOL_ID_SYSTEM_APP;
+            ctx->mem_handle = -1;
             break;
         case APP_TYPE_USER_APP:
-            // User apps: map PROC_ID_USER_APP0..2 to POOL_ID_USER_APP0..2
+            ctx->mem_handle = -1;
             if (idx >= PROC_ID_USER_APP0 && idx < PROC_ID_MAX) {
                 ctx->mempool_id = POOL_ID_USER_APP0 + (idx - PROC_ID_USER_APP0);
                 FMRB_LOGI(TAG, "USER_APP mempool_id: idx=%d, PROC_ID_USER_APP0=%d, POOL_ID_USER_APP0=%d, calculated mempool_id=%d",
@@ -647,32 +649,33 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
                 FMRB_LOGE(TAG, "Invalid USER_APP proc_id: %d", idx);
                 goto unwind;
             }
+            if(ctx->vm_type == FMRB_VM_TYPE_LUA){
+                if (fmrb_mem_handle_exist(ctx->mempool_id) == 0) {
+                    void* pool_ptr = fmrb_get_mempool_ptr(ctx->mempool_id);
+                    size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
+                    if (pool_ptr && pool_size > 0) {
+                        fmrb_mem_handle_t handle = fmrb_mem_create_handle(pool_ptr, pool_size, ctx->mempool_id);
+                        ctx->mem_handle = handle;
+                        if (ctx->mem_handle < 0) {
+                            FMRB_LOGE(TAG, "[%s] Failed to create memory pool handle for pool_id=%d",
+                                    attr->name, ctx->mempool_id);
+                            goto unwind;
+                        }
+                        FMRB_LOGI(TAG, "[%s] Memory pool handle created: handle=%d, pool_id=%d, size=%zu",
+                                attr->name, handle, ctx->mempool_id, pool_size);
+                    } else {
+                        FMRB_LOGE(TAG, "[%s] Invalid memory pool: id=%d", attr->name, ctx->mempool_id);
+                        goto unwind;
+                    }
+                } else {
+                    FMRB_LOGI(TAG, "[%s] Memory pool handle already exists: id=%d",
+                            attr->name, ctx->mempool_id);
+                }
+            }
             break;
         default:
             FMRB_LOGE(TAG, "Unknown app type: %d", attr->type);
             goto unwind;
-    }
-
-    if (fmrb_mem_handle_exist(ctx->mempool_id) != 0) {
-        void* pool_ptr = fmrb_get_mempool_ptr(ctx->mempool_id);
-        size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
-        if (pool_ptr && pool_size > 0) {
-            fmrb_mem_handle_t handle = fmrb_mem_create_handle(pool_ptr, pool_size, ctx->mempool_id);
-            ctx->mem_handle = handle;
-            if (ctx->mem_handle < 0) {
-                FMRB_LOGE(TAG, "[%s] Failed to create memory pool handle for pool_id=%d",
-                          attr->name, ctx->mempool_id);
-                goto unwind;
-            }
-            FMRB_LOGI(TAG, "[%s] Memory pool handle created: handle=%d, pool_id=%d, size=%zu",
-                      attr->name, handle, ctx->mempool_id, pool_size);
-        } else {
-            FMRB_LOGE(TAG, "[%s] Invalid memory pool: id=%d", attr->name, ctx->mempool_id);
-            goto unwind;
-        }
-    } else {
-        FMRB_LOGI(TAG, "[%s] Memory pool handle already exists: id=%d",
-                  attr->name, ctx->mempool_id);
     }
 
     strncpy(ctx->app_name, attr->name, sizeof(ctx->app_name) - 1);
