@@ -1,13 +1,18 @@
 #pragma once
 
-#include "fmrb_mem.h"
-#include "fmrb_hal.h"
-#include "fmrb_rtos.h"
-#include "fmrb_task_config.h"
-#include "fmrb_lua.h"
-#include <picoruby.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include "fmrb_err.h"
+#include "fmrb_mem_config.h"
+#include "fmrb_task_config.h"
+#include "fmrb_rtos.h"
+
+// Forward declarations to avoid circular dependencies with other components
+typedef struct lua_State lua_State;
+typedef struct mrb_state mrb_state;
+
+#define FMRB_MAX_APP_NAME (32)
+#define FMRB_MAX_PATH_LEN (256)
 
 // State machine for app lifecycle (strict transitions enforced)
 typedef enum {
@@ -50,7 +55,8 @@ typedef struct fmrb_app_task_context_s {
     fmrb_proc_id_t        app_id;
     fmrb_proc_state_t     state;
     enum FMRB_APP_TYPE    type;
-    char                  app_name[32];      // UTF-8, null-terminated
+    char                  app_name[FMRB_MAX_APP_NAME];      // UTF-8, null-terminated
+    char                  filepath[FMRB_MAX_PATH_LEN];      // Script file path (for FILE load mode)
 
     // Multi-VM support
     fmrb_vm_type_t        vm_type;           // VM type (mruby, lua, native)
@@ -92,6 +98,8 @@ typedef struct {
     fmrb_task_priority_t  priority;
     fmrb_base_type_t      core_affinity;    // -1 = no affinity, 0/1 = specific core
     bool                  headless;         // Headless app flag (no graphics, no canvas)
+    uint16_t              window_width;     // Window Width (if headless, =0)
+    uint16_t              window_height;    // Window Height (if headless, =0)
     uint16_t              window_pos_x;
     uint16_t              window_pos_y;
 } fmrb_spawn_attr_t;
@@ -101,7 +109,7 @@ typedef struct {
     fmrb_proc_id_t        app_id;
     fmrb_proc_state_t     state;
     enum FMRB_APP_TYPE    type;
-    char                  app_name[32];
+    char                  app_name[FMRB_MAX_APP_NAME];
     uint32_t              gen;
     fmrb_task_handle_t    task;
     fmrb_task_priority_t  stack_high_water; // Remaining stack (words)
@@ -117,7 +125,7 @@ bool fmrb_app_suspend(int32_t id);
 bool fmrb_app_resume(int32_t id);
 int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count);
 
-// Context access (fast)
+// Context access
 static inline fmrb_app_task_context_t* fmrb_current(void) {
     return (fmrb_app_task_context_t*)fmrb_task_get_tls(fmrb_task_get_current(), FMRB_APP_TLS_INDEX);
 }

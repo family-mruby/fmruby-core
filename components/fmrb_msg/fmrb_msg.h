@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include "fmrb_err.h"
 #include "fmrb_task_config.h"
+#include "fmrb_app.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,7 +25,7 @@ extern "C" {
  * - Thread-safe queue operations
  */
 
- #define FMRB_MAX_MSG_PAYLOAD_SIZE (64)
+ #define FMRB_MAX_MSG_PAYLOAD_SIZE (FMRB_MAX_PATH_LEN + 8)  // Path + subtype + reserved
 
 typedef enum{
     FMRB_MSG_TYPE_APP_CONTROL=0,

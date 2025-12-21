@@ -19,15 +19,18 @@ class SystemGuiApp < FmrbApp
     #Machine.delay_ms(100)
     puts "[SystemGUI] spawn default shell app"
     spawn_app("default/shell")
+
+    puts "[SystemGUI] spawn sample Lua app"
+    spawn_app("/app/sample_app/sample_lua_app.app.lua")
   end
 
   def spawn_app(app_name)
     puts "[SystemGUI] Requesting spawn: #{app_name}"
 
-    # Build message payload: subtype + app_name(32)
+    # Build message payload: subtype + app_name(FMRB_MAX_PATH_LEN)
     # Convert APP_CTRL_SPAWN constant to byte string (chr is available in mruby)
     data = FmrbApp::APP_CTRL_SPAWN.chr
-    data += app_name.ljust(32, "\x00")  # app_name padded to 32 bytes
+    data += app_name.ljust(FmrbApp::MAX_PATH_LEN, "\x00")
 
     # Send to Kernel using constants
     success = send_message(FmrbApp::PROC_ID_KERNEL, FmrbApp::MSG_TYPE_APP_CONTROL, data)

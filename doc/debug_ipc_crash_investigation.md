@@ -97,7 +97,7 @@ The most likely cause is **memory pool structure corruption** due to:
 - Issue: Core never receives ACK (RX thread problem suspected)
 
 ### 3. Memory Allocator Investigation
-- Confirmed `fmrb_malloc_create_handle()` succeeds
+- Confirmed `fmrb_mem_create_handle()` succeeds
 - Traced mutex initialization in `MUTEX_INIT()`
 - Discovered mutex corruption after thread creation
 

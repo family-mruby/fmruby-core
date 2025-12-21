@@ -5,6 +5,7 @@
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
+#include "fmrb_err.h"
 #include "tlsf.h"
 
 // Use fmrb_rtos abstraction for mutex
@@ -54,7 +55,7 @@ static fmrb_pool_node_t* find_pool_node(fmrb_mem_handle_t handle) {
 }
 
 // Create a new memory pool and return its handle
-fmrb_mem_handle_t fmrb_malloc_create_handle(void* pool, size_t size) {
+fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size) {
     if (pool == NULL || size == 0) {
         ESP_LOGE(TAG, "Invalid parameters");
         return -1;
@@ -97,7 +98,7 @@ fmrb_mem_handle_t fmrb_malloc_create_handle(void* pool, size_t size) {
 }
 
 // Destroy a memory pool
-int fmrb_malloc_destroy_handle(fmrb_mem_handle_t handle) {
+int fmrb_mem_destroy_handle(fmrb_mem_handle_t handle) {
     init_list_mutex();
 
     MUTEX_LOCK(s_list_mutex);
@@ -221,7 +222,7 @@ void fmrb_free(fmrb_mem_handle_t handle, void* ptr) {
 }
 
 // Check integrity of a pool
-int32_t fmrb_malloc_check(fmrb_mem_handle_t handle) {
+int32_t fmrb_mem_check(fmrb_mem_handle_t handle) {
     init_list_mutex();
 
     MUTEX_LOCK(s_list_mutex);
@@ -254,8 +255,20 @@ static void fmrb_count_blocks(void* ptr, size_t size, int used, void* user) {
     stats->total_size += size;
 }
 
+int fmrb_mem_handle_exist(fmrb_mem_handle_t handle){
+    MUTEX_LOCK(s_list_mutex);
+    fmrb_pool_node_t *node = find_pool_node(handle);
+    MUTEX_UNLOCK(s_list_mutex);
+
+    if (node == NULL || node->pool == NULL) {
+        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        return -1;
+    }
+    return 0;
+}
+
 // Get statistics for a pool
-int fmrb_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats) {
+int fmrb_mem_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats) {
     if (stats == NULL) {
         return -1;
     }
@@ -287,7 +300,7 @@ void fmrb_init_system_mem(void){
     }
     initialized = true;
 
-    system_handle = fmrb_malloc_create_handle(
+    system_handle = fmrb_mem_create_handle(
     fmrb_get_mempool_ptr(POOL_ID_SYSTEM),
     FMRB_MEM_POOL_SIZE_SYSTEM);
     ESP_LOGI(TAG, "System mem allocator initialized. Handle = %d", system_handle);

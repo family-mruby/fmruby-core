@@ -3,20 +3,11 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include "fmrb_mem_config.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-enum FMRB_MEM_POOL_ID{
-    POOL_ID_SYSTEM = 0,
-    POOL_ID_KERNEL,
-    POOL_ID_SYSTEM_APP,
-    POOL_ID_USER_APP0,
-    POOL_ID_USER_APP1,
-    POOL_ID_USER_APP2,
-    POOL_ID_MAX
-};
 
 typedef int8_t fmrb_mem_handle_t;
 
@@ -61,8 +52,8 @@ void fmrb_mempool_print_ranges(void);
 void fmrb_mempool_check_pointer(const void* ptr);
 
 // Pool management (thread-safe)
-fmrb_mem_handle_t fmrb_malloc_create_handle(void* pool, size_t size);
-int fmrb_malloc_destroy_handle(fmrb_mem_handle_t handle);
+fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size);
+int fmrb_mem_destroy_handle(fmrb_mem_handle_t handle);
 
 // Memory allocation functions
 void* fmrb_malloc(fmrb_mem_handle_t handle, size_t size);
@@ -71,8 +62,9 @@ void* fmrb_realloc(fmrb_mem_handle_t handle, void* ptr, size_t size);
 void fmrb_free(fmrb_mem_handle_t handle, void* ptr);
 
 // Pool operations
-int32_t fmrb_malloc_check(fmrb_mem_handle_t handle);
-int fmrb_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats);
+int fmrb_mem_handle_exist(fmrb_mem_handle_t handle);
+int32_t fmrb_mem_check(fmrb_mem_handle_t handle);
+int fmrb_mem_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats);
 
 // malloc for system functions
 void fmrb_init_system_mem(void);

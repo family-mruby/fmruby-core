@@ -531,6 +531,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, app_class, "APP_CTRL_SUSPEND", mrb_fixnum_value(FMRB_APP_CTRL_SUSPEND));
     mrb_define_const(mrb, app_class, "APP_CTRL_RESUME", mrb_fixnum_value(FMRB_APP_CTRL_RESUME));
 
+    // Path length constant
+    mrb_define_const(mrb, app_class, "MAX_PATH_LEN", mrb_fixnum_value(FMRB_MAX_PATH_LEN));
+
     // Initialize graphics subsystem
     mrb_fmrb_gfx_init(mrb);
 

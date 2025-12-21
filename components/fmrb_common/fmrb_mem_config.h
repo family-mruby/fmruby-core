@@ -1,0 +1,11 @@
+#pragma once
+    
+enum FMRB_MEM_POOL_ID{
+    POOL_ID_SYSTEM = 0,
+    POOL_ID_KERNEL,
+    POOL_ID_SYSTEM_APP,
+    POOL_ID_USER_APP0,
+    POOL_ID_USER_APP1,
+    POOL_ID_USER_APP2,
+    POOL_ID_MAX
+};

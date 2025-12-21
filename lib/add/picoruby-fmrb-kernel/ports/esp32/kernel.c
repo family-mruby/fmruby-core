@@ -29,6 +29,10 @@ static mrb_value mrb_kernel_handler_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@max_app_num"),
                mrb_fixnum_value(FMRB_MAX_APPS));
 
+    // Set @max_path_len instance variable
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@max_path_len"),
+               mrb_fixnum_value(FMRB_MAX_PATH_LEN));
+
     // Create message queue for kernel
     fmrb_msg_queue_config_t queue_config = {
         .queue_length = 10,

@@ -7,6 +7,7 @@
 #include "fmrb_hal.h"
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
+#include "fmrb_app.h"
 #include "fmrb_toml.h"
 
 const static char* TAG = "toml";
@@ -135,7 +136,7 @@ toml_datum_t fmrb_toml_get_by_path(const toml_table_t* root, const char* path) {
     toml_datum_t result = {0};
     if (!root || !path) return result;
 
-    char path_copy[256];
+    char path_copy[FMRB_MAX_PATH_LEN];
     strncpy(path_copy, path, sizeof(path_copy) - 1);
     path_copy[sizeof(path_copy) - 1] = '\0';
 

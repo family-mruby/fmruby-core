@@ -10,6 +10,7 @@
 #include "fmrb_mem.h"
 #include "fmrb_task_config.h"
 #include "fmrb_kernel.h"
+#include "fmrb_lua.h"
 
 static const char *TAG = "fmrb_app";
 
@@ -147,7 +148,7 @@ static void tls_destructor(int idx, void* pv) {
 /**
  * Allocate context slot (must hold g_ctx_lock)
  */
-static int32_t alloc_ctx_index(fmrb_proc_id_t requested_id) {
+static int32_t alloc_ctx_index(fmrb_proc_id_t requested_id, enum FMRB_APP_TYPE app_type) {
     // For fixed IDs, use that slot directly
     if (requested_id >= 0 && requested_id < FMRB_MAX_APPS) {
         if (g_ctx_pool[requested_id].state == PROC_STATE_FREE) {
@@ -159,15 +160,24 @@ static int32_t alloc_ctx_index(fmrb_proc_id_t requested_id) {
         return -1;
     }
 
-    // Find first free slot
-    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+    // For USER_APP, search only in USER_APP slot range
+    int32_t start_idx = 0;
+    int32_t end_idx = FMRB_MAX_APPS;
+
+    if (app_type == APP_TYPE_USER_APP) {
+        start_idx = PROC_ID_USER_APP0;
+        end_idx = PROC_ID_MAX;
+    }
+
+    // Find first free slot in the appropriate range
+    for (int32_t i = start_idx; i < end_idx; i++) {
         if (g_ctx_pool[i].state == PROC_STATE_FREE) {
             g_ctx_pool[i].gen++;
             return i;
         }
     }
 
-    FMRB_LOGE(TAG, "No free context slots available");
+    FMRB_LOGE(TAG, "No free context slots available for app_type=%d", app_type);
     return -1;
 }
 
@@ -191,11 +201,6 @@ static void free_ctx_index(int32_t idx) {
 // App task main loop
 // ============================================================================
 
-/**
- * Load Ruby script from file
- * Returns: allocated buffer containing script text (must be freed by caller)
- *          NULL on error
- */
 static char* load_script_file(const char* filepath, size_t* out_size) {
     fmrb_file_t file = NULL;
     char* buffer = NULL;
@@ -364,6 +369,11 @@ static void app_task_main(void* arg) {
 
                 mrc_ccontext_free(cc);
                 FMRB_LOGI(TAG, "[%s] Ruby script compiled successfully", ctx->app_name);
+
+                // Free script buffer immediately after compilation (no longer needed)
+                fmrb_sys_free(script_buffer);
+                script_buffer = NULL;
+                need_free_script = false;
             } else {
                 FMRB_LOGE(TAG, "[%s] Invalid load mode: %d", ctx->app_name, load_mode);
                 goto cleanup;
@@ -393,17 +403,52 @@ static void app_task_main(void* arg) {
         }
 
         case FMRB_VM_TYPE_LUA: {
-            // Lua execution (stub implementation)
+            // Lua execution
             if (load_mode == FMRB_LOAD_MODE_BYTECODE) {
                 // Load from Lua bytecode chunk
                 FMRB_LOGW(TAG, "[%s] Lua bytecode loading not yet implemented", ctx->app_name);
             } else if (load_mode == FMRB_LOAD_MODE_FILE) {
                 // Load from Lua source file
                 const char* filepath = (const char*)load_data;
-                FMRB_LOGI(TAG, "[%s] Lua script file: %s (not yet implemented)", ctx->app_name, filepath);
+                size_t script_size = 0;
+
+                FMRB_LOGI(TAG, "[%s] Loading Lua script from file: %s", ctx->app_name, filepath);
+
+                script_buffer = load_script_file(filepath, &script_size);
+                if (!script_buffer) {
+                    FMRB_LOGE(TAG, "[%s] Failed to load script file: %s", ctx->app_name, filepath);
+                    goto cleanup;
+                }
+                need_free_script = true;
+
+                // Load and compile Lua script
+                int load_result = luaL_loadbuffer(ctx->lua, script_buffer, script_size, filepath);
+                if (load_result != LUA_OK) {
+                    const char* err_msg = lua_tostring(ctx->lua, -1);
+                    FMRB_LOGE(TAG, "[%s] Failed to compile Lua script: %s",
+                              ctx->app_name, err_msg ? err_msg : "unknown error");
+                    lua_pop(ctx->lua, 1);  // Pop error message
+                    goto cleanup;
+                }
+
+                FMRB_LOGI(TAG, "[%s] Lua script compiled successfully", ctx->app_name);
+
+                // Free script buffer immediately after compilation (no longer needed)
+                fmrb_sys_free(script_buffer);
+                script_buffer = NULL;
+                need_free_script = false;
+
+                // Execute Lua script
+                int exec_result = lua_pcall(ctx->lua, 0, LUA_MULTRET, 0);
+                if (exec_result != LUA_OK) {
+                    const char* err_msg = lua_tostring(ctx->lua, -1);
+                    FMRB_LOGE(TAG, "[%s] Lua execution error: %s",
+                              ctx->app_name, err_msg ? err_msg : "unknown error");
+                    lua_pop(ctx->lua, 1);  // Pop error message
+                } else {
+                    FMRB_LOGI(TAG, "[%s] Lua script executed successfully", ctx->app_name);
+                }
             }
-            // TODO: Implement Lua script loading and execution
-            FMRB_LOGW(TAG, "[%s] Lua VM execution stub - exiting", ctx->app_name);
             break;
         }
 
@@ -569,7 +614,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
     // Allocate context slot
     fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
-    idx = alloc_ctx_index(attr->app_id);
+    idx = alloc_ctx_index(attr->app_id, attr->type);
     if (idx < 0) {
         fmrb_semaphore_give(g_ctx_lock);
         return FMRB_ERR_NO_RESOURCE;
@@ -596,6 +641,8 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
             // User apps: map PROC_ID_USER_APP0..2 to POOL_ID_USER_APP0..2
             if (idx >= PROC_ID_USER_APP0 && idx < PROC_ID_MAX) {
                 ctx->mempool_id = POOL_ID_USER_APP0 + (idx - PROC_ID_USER_APP0);
+                FMRB_LOGI(TAG, "USER_APP mempool_id: idx=%d, PROC_ID_USER_APP0=%d, POOL_ID_USER_APP0=%d, calculated mempool_id=%d",
+                          idx, PROC_ID_USER_APP0, POOL_ID_USER_APP0, ctx->mempool_id);
             } else {
                 FMRB_LOGE(TAG, "Invalid USER_APP proc_id: %d", idx);
                 goto unwind;
@@ -606,8 +653,42 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
             goto unwind;
     }
 
+    // Create TLSF memory allocator handle for this app's memory pool if not already created
+    // Check if handle already exists by trying to get pool stats
+    fmrb_pool_stats_t test_stats;
+    if (fmrb_mem_get_stats(ctx->mempool_id, &test_stats) != 0) {
+        // Handle doesn't exist, create it
+        void* pool_ptr = fmrb_get_mempool_ptr(ctx->mempool_id);
+        size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
+        if (pool_ptr && pool_size > 0) {
+            fmrb_mem_handle_t handle = fmrb_mem_create_handle(pool_ptr, pool_size);
+            if (handle != ctx->mempool_id) {
+                FMRB_LOGE(TAG, "[%s] Memory pool handle mismatch: expected=%d, got=%d",
+                          attr->name, ctx->mempool_id, handle);
+                goto unwind;
+            }
+            FMRB_LOGI(TAG, "[%s] Memory pool handle created: id=%d, size=%zu",
+                      attr->name, handle, pool_size);
+        } else {
+            FMRB_LOGE(TAG, "[%s] Invalid memory pool: id=%d", attr->name, ctx->mempool_id);
+            goto unwind;
+        }
+    } else {
+        // Handle already exists
+        FMRB_LOGI(TAG, "[%s] Memory pool handle already exists: id=%d",
+                  attr->name, ctx->mempool_id);
+    }
+
     strncpy(ctx->app_name, attr->name, sizeof(ctx->app_name) - 1);
     ctx->app_name[sizeof(ctx->app_name) - 1] = '\0';
+
+    // Copy filepath if provided (for FILE load mode)
+    if (attr->load_mode == FMRB_LOAD_MODE_FILE && attr->filepath) {
+        strncpy(ctx->filepath, attr->filepath, sizeof(ctx->filepath) - 1);
+        ctx->filepath[sizeof(ctx->filepath) - 1] = '\0';
+    } else {
+        ctx->filepath[0] = '\0';
+    }
 
     // Encode load mode and data pointer in user_data
     // Lower 8 bits: load_mode, upper bits: data pointer
@@ -618,18 +699,20 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     } else if (attr->load_mode == FMRB_LOAD_MODE_BYTECODE) {
         encoded_data = ((uintptr_t)attr->bytecode << 8) | FMRB_LOAD_MODE_BYTECODE;
     } else {
-        encoded_data = ((uintptr_t)attr->filepath << 8) | FMRB_LOAD_MODE_FILE;
+        // For FILE mode, use ctx->filepath (copied above)
+        encoded_data = ((uintptr_t)ctx->filepath << 8) | FMRB_LOAD_MODE_FILE;
     }
     ctx->user_data = (void*)encoded_data;
     ctx->headless = attr->headless;
     ctx->window_pos_x = attr->window_pos_x;
     ctx->window_pos_y = attr->window_pos_y;
 
-    // Initialize window size based on app ztype
+    // Initialize window size based on app type
     const fmrb_system_config_t* sys_config = fmrb_kernel_get_config();
     if (attr->type == APP_TYPE_USER_APP && !ctx->headless) {
-        ctx->window_width = sys_config->default_user_app_width;
-        ctx->window_height = sys_config->default_user_app_height;
+        // Use attr values if specified, otherwise use system defaults
+        ctx->window_width = (attr->window_width > 0) ? attr->window_width : sys_config->default_user_app_width;
+        ctx->window_height = (attr->window_height > 0) ? attr->window_height : sys_config->default_user_app_height;
     } else if (attr->type == APP_TYPE_SYSTEM_APP) {
         ctx->window_width = sys_config->display_width;
         ctx->window_height = sys_config->display_height;

@@ -44,7 +44,7 @@ class FmrbKernel
 
     case subtype
     when 1  # FMRB_APP_CTRL_SPAWN
-      app_name = data[1, 32].delete("\x00")
+      app_name = data[1, @max_path_len].delete("\x00")
       pid = msg[:src_pid]
       puts "[KERNEL] Spawn request from pid=#{pid}: #{app_name}"
 
