@@ -13,6 +13,9 @@
 #include "lualib.h"
 #include "fmrb_err.h"
 
+// Forward declaration to avoid circular dependency
+typedef struct fmrb_app_task_context_s fmrb_app_task_context_t;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -30,12 +33,13 @@ fmrb_err_t fmrb_lua_init(void);
 /**
  * @brief Create new Lua state with FMRuby memory allocator
  *
- * Creates a new Lua VM state using fmrb_malloc for memory allocation.
- * This ensures Lua memory usage is tracked by FMRuby's memory subsystem.
+ * Creates a new Lua VM state using the memory pool from the given context.
+ * This ensures Lua memory usage is tracked per-task.
  *
+ * @param ctx Application task context (contains mempool_id)
  * @return Pointer to new Lua state, NULL on error
  */
-lua_State* fmrb_lua_newstate(void);
+lua_State* fmrb_lua_newstate(fmrb_app_task_context_t* ctx);
 
 /**
  * @brief Close Lua state and free resources

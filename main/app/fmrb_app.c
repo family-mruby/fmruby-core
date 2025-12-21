@@ -284,14 +284,15 @@ static void app_task_main(void* arg) {
             }
             break;
         case FMRB_VM_TYPE_LUA:
-            // Create Lua VM (stub implementation)
-            ctx->lua = fmrb_lua_newstate();
+            // Create Lua VM with task-specific memory pool
+            ctx->lua = fmrb_lua_newstate(ctx);
             if (!ctx->lua) {
                 FMRB_LOGE(TAG, "[%s] Failed to open Lua VM", ctx->app_name);
                 goto cleanup;
             }
             fmrb_lua_openlibs(ctx->lua);
-            FMRB_LOGI(TAG, "[%s] Lua VM created (stub)", ctx->app_name);
+            FMRB_LOGI(TAG, "[%s] Lua VM created with mempool=%d",
+                      ctx->app_name, ctx->mempool_id);
             break;
         case FMRB_VM_TYPE_NATIVE:
             // No VM needed for native functions

@@ -46,7 +46,7 @@ typedef enum {
 #define FMRB_APP_TLS_INDEX 1
 
 // Type-safe app task context
-typedef struct {
+typedef struct fmrb_app_task_context_s {
     fmrb_proc_id_t        app_id;
     fmrb_proc_state_t     state;
     enum FMRB_APP_TYPE    type;
