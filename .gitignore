@@ -13,6 +13,7 @@ log*
 .rake_tasks~
 
 # Generated documentation
+doc/local/
 doc/api/
 doc/ruby_api/
 .yardoc/
