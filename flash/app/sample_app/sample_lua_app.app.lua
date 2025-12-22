@@ -19,7 +19,8 @@ print("Graphics initialized")
 gfx:clear(FmrbGfx.COLOR_BLACK)
 
 -- Draw some rectangles
-gfx:fillRect(10, 10, 100, 50, FmrbGfx.COLOR_RED)
+-- gfx:fillRect(10, 10, 100, 50, FmrbGfx.COLOR_RED)
+gfx:fillRect(200, 100, 300, 150, FmrbGfx.COLOR_RED)
 gfx:fillRect(10, 70, 100, 50, FmrbGfx.COLOR_GREEN)
 gfx:fillRect(10, 130, 100, 50, FmrbGfx.COLOR_BLUE)
 
@@ -37,4 +38,28 @@ gfx:drawString(text, 120, 110, FmrbGfx.COLOR_MAGENTA)
 gfx:present(0, 0)
 
 print("Graphics rendering completed")
+
+-- Main loop to keep app running
+print("Entering main loop...")
+local running = true
+local frame_count = 0
+
+while running do
+    -- Simple animation: update frame counter
+    frame_count = frame_count + 1
+
+    -- Update display every 60 frames (about 1 second at 60fps)
+    if frame_count % 60 == 0 then
+        local seconds = math.floor(frame_count / 60)
+        -- Clear the counter area and redraw
+        gfx:fillRect(10, 190, 200, 30, FmrbGfx.COLOR_BLACK)
+        gfx:drawString("Running: " .. tostring(seconds) .. "s", 10, 200, FmrbGfx.COLOR_WHITE)
+        gfx:present(0, 0)
+        print("Running: " .. tostring(seconds) .. "s")
+    end
+
+    -- Sleep for 16ms to maintain approximately 60fps
+    FmrbApp.sleep(16)
+end
+
 print("Lua app execution completed")

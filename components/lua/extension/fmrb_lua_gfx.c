@@ -5,6 +5,7 @@
 #include "fmrb_gfx_msg.h"
 #include "fmrb_msg.h"
 #include "fmrb_log.h"
+#include "fmrb_rtos.h"
 #include <string.h>
 
 static const char *TAG = "lua_gfx";
@@ -200,6 +201,20 @@ static const luaL_Reg gfx_methods[] = {
     {NULL, NULL}
 };
 
+// FmrbApp.sleep(ms) - Sleep for specified milliseconds
+static int lua_app_sleep(lua_State* L) {
+    int ms = luaL_checkinteger(L, 1);
+
+    if (ms < 0) {
+        return luaL_error(L, "Sleep time must be non-negative");
+    }
+
+    // Convert milliseconds to ticks (assuming 1ms per tick for FreeRTOS)
+    fmrb_task_delay_ms(ms);
+
+    return 0;
+}
+
 // FmrbApp.createCanvas(width, height) - Create canvas and return canvas_id
 static int lua_app_create_canvas(lua_State* L) {
     int width = luaL_checkinteger(L, 1);
@@ -250,6 +265,7 @@ static const luaL_Reg gfx_functions[] = {
 // FmrbApp table with helper functions
 static const luaL_Reg app_functions[] = {
     {"createCanvas", lua_app_create_canvas},
+    {"sleep", lua_app_sleep},
     {NULL, NULL}
 };
 
