@@ -296,6 +296,7 @@ static void app_task_main(void* arg) {
                 goto cleanup;
             }
             fmrb_lua_openlibs(ctx->lua);
+
             FMRB_LOGI(TAG, "[%s] Lua VM created with mempool=%d",
                       ctx->app_name, ctx->mempool_id);
             break;

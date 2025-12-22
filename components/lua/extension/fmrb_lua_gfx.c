@@ -200,9 +200,56 @@ static const luaL_Reg gfx_methods[] = {
     {NULL, NULL}
 };
 
+// FmrbApp.createCanvas(width, height) - Create canvas and return canvas_id
+static int lua_app_create_canvas(lua_State* L) {
+    int width = luaL_checkinteger(L, 1);
+    int height = luaL_checkinteger(L, 2);
+
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        return luaL_error(L, "No app context available");
+    }
+
+    if (ctx->headless) {
+        return luaL_error(L, "Cannot create canvas for headless app");
+    }
+
+    fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
+
+    // Get global graphics context
+    fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+    if (!gfx_ctx) {
+        return luaL_error(L, "Graphics context not initialized");
+    }
+
+    // Create canvas for app window
+    fmrb_gfx_err_t ret = fmrb_gfx_create_canvas(
+        gfx_ctx,
+        (uint16_t)width,
+        (uint16_t)height,
+        &canvas_id
+    );
+
+    if (ret != FMRB_GFX_OK) {
+        return luaL_error(L, "Failed to create canvas: %d", ret);
+    }
+
+    FMRB_LOGI(TAG, "Created canvas %u (%dx%d) for app %s",
+             canvas_id, width, height, ctx->app_name);
+
+    lua_pushinteger(L, canvas_id);
+    return 1;
+}
+
 // FmrbGfx table with constructor
 static const luaL_Reg gfx_functions[] = {
     {"new", lua_gfx_new},
+    {NULL, NULL}
+};
+
+// FmrbApp table with helper functions
+static const luaL_Reg app_functions[] = {
+    {"createCanvas", lua_app_create_canvas},
     {NULL, NULL}
 };
 
@@ -241,5 +288,22 @@ void fmrb_lua_register_gfx(lua_State* L) {
 
     lua_setglobal(L, "FmrbGfx");
 
-    FMRB_LOGI(TAG, "FmrbGfx module registered to Lua");
+    // Create FmrbApp global table
+    lua_newtable(L);
+    luaL_setfuncs(L, app_functions, 0);
+
+    // Add window size global variables (will be set by C code)
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (ctx) {
+        lua_pushinteger(L, ctx->window_width);
+        lua_setfield(L, -2, "WINDOW_WIDTH");
+        lua_pushinteger(L, ctx->window_height);
+        lua_setfield(L, -2, "WINDOW_HEIGHT");
+        lua_pushboolean(L, ctx->headless);
+        lua_setfield(L, -2, "HEADLESS");
+    }
+
+    lua_setglobal(L, "FmrbApp");
+
+    FMRB_LOGI(TAG, "FmrbGfx and FmrbApp modules registered to Lua");
 }
