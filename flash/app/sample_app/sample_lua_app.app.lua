@@ -20,23 +20,22 @@ gfx:clear(FmrbGfx.COLOR_BLACK)
 
 -- Draw some rectangles
 -- gfx:fillRect(10, 10, 100, 50, FmrbGfx.COLOR_RED)
-gfx:fillRect(200, 100, 300, 150, FmrbGfx.COLOR_RED)
-gfx:fillRect(10, 70, 100, 50, FmrbGfx.COLOR_GREEN)
-gfx:fillRect(10, 130, 100, 50, FmrbGfx.COLOR_BLUE)
+gfx:fillRect(0, 0, 100, 100, FmrbGfx.COLOR_RED)
+gfx:present()
+FmrbApp.sleep(500)
+gfx:fillRect(0, 0, 100, 100, FmrbGfx.COLOR_BLUE)
+gfx:present()
+FmrbApp.sleep(500)
+gfx:fillRect(0, 0, 100, 100, FmrbGfx.COLOR_BLACK)
+FmrbApp.sleep(30)
 
 -- Draw text
-gfx:drawString("Hello from Lua!", 120, 20, FmrbGfx.COLOR_WHITE)
-gfx:drawString("FMRuby Graphics", 120, 50, FmrbGfx.COLOR_YELLOW)
-gfx:drawString("Lua " .. _VERSION, 120, 80, FmrbGfx.COLOR_CYAN)
+gfx:drawString("Hello from Lua!", 0, 0, FmrbGfx.COLOR_WHITE)
+gfx:drawString("FMRuby Graphics", 0, 10, FmrbGfx.COLOR_YELLOW)
+gfx:drawString("Lua " .. _VERSION, 0, 20, FmrbGfx.COLOR_CYAN)
 
--- Simple calculation test
-local result = 10 + 20
-local text = "10 + 20 = " .. tostring(result)
-gfx:drawString(text, 120, 110, FmrbGfx.COLOR_MAGENTA)
-
--- Update screen
-gfx:present(0, 0)
-
+gfx:present()
+FmrbApp.sleep(1000)
 print("Graphics rendering completed")
 
 -- Main loop to keep app running
@@ -52,9 +51,11 @@ while running do
     if frame_count % 60 == 0 then
         local seconds = math.floor(frame_count / 60)
         -- Clear the counter area and redraw
-        gfx:fillRect(10, 190, 200, 30, FmrbGfx.COLOR_BLACK)
-        gfx:drawString("Running: " .. tostring(seconds) .. "s", 10, 200, FmrbGfx.COLOR_WHITE)
-        gfx:present(0, 0)
+        gfx:fillRect(0, 0, 100, 100, FmrbGfx.COLOR_BLUE)
+        gfx:fillRect(0, 0, 100, 10, FmrbGfx.COLOR_BLACK)
+        gfx:drawString("Lua App", 3, 3, FmrbGfx.COLOR_WHITE)
+        gfx:drawString("Running: " .. tostring(seconds) .. "s", 10, 20, FmrbGfx.COLOR_WHITE)
+        gfx:present()
         print("Running: " .. tostring(seconds) .. "s")
     end
 

@@ -4,6 +4,9 @@ class ShellApp < FmrbApp
     @count = 0
     @player_x = 100
     @player_y = 100
+    @velocity_x = 3
+    @velocity_y = 2
+    @ball_radius = 10
   end
 
   def on_create()
@@ -15,12 +18,26 @@ class ShellApp < FmrbApp
     @gfx.fill_rect( 0,  0, @window_width, 10+10, FmrbGfx::BLACK)
     @gfx.draw_text(10, 10, "Update: #{@count}", FmrbGfx::WHITE)
 
-    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::GREEN)
-    #@player_x += (RNG.random_int % 7) - 3
-    #@player_y += (RNG.random_int % 7) - 3
-    @player_x += 3
-    @player_x = 100 if @player_x > 200
-    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
+    # Erase old position
+    @gfx.fill_circle(@player_x, @player_y, @ball_radius, FmrbGfx::GREEN)
+
+    # Update position
+    @player_x += @velocity_x
+    @player_y += @velocity_y
+
+    # Check collision with window boundaries and reflect
+    if @player_x - @ball_radius <= 0 || @player_x + @ball_radius >= @window_width
+      @velocity_x = -@velocity_x
+      @player_x += @velocity_x  # Move away from boundary
+    end
+
+    if @player_y - @ball_radius <= 0 || @player_y + @ball_radius >= @window_height
+      @velocity_y = -@velocity_y
+      @player_y += @velocity_y  # Move away from boundary
+    end
+
+    # Draw new position
+    @gfx.fill_circle(@player_x, @player_y, @ball_radius, FmrbGfx::RED)
 
     @gfx.present
     @count += 1

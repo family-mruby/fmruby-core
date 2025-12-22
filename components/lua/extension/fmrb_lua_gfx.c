@@ -137,23 +137,27 @@ static int lua_gfx_draw_string(lua_State* L) {
     return 1;
 }
 
-// gfx:present(x, y)
+// gfx:present()
 static int lua_gfx_present(lua_State* L) {
     lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
-    int x = luaL_optinteger(L, 2, 0);
-    int y = luaL_optinteger(L, 3, 0);
 
     if (!data || !data->ctx) {
         return luaL_error(L, "Graphics not initialized");
     }
 
-    // Send GFX command to Host Task
+    // Get current app context for window position
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) {
+        return luaL_error(L, "No app context available");
+    }
+
+    // Send PRESENT command to Host Task with window position from TOML config
     gfx_cmd_t cmd = {
         .cmd_type = GFX_CMD_PRESENT,
         .canvas_id = data->canvas_id,
         .params.present = {
-            .x = (int16_t)x,
-            .y = (int16_t)y,
+            .x = (int16_t)ctx->window_pos_x,
+            .y = (int16_t)ctx->window_pos_y,
             .transparent_color = 0xFF  // No transparency
         }
     };

@@ -29,8 +29,9 @@ set(LOVYANGFX_PATH ../LovyanGFX)
 include_directories(
     include
     ../common
-    ../../main/lib/fmrb_link
-    ../../main/lib/fmrb_gfx
+    ../../components/fmrb_link
+    ../../components/fmrb_common/include
+    ../../components/fmrb_gfx
     ../../main/include
     ${SDL2_INCLUDE_DIRS}
     ${MSGPACK_INCLUDE_DIRS}

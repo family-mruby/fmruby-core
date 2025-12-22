@@ -7,10 +7,12 @@ class SystemGuiApp < FmrbApp
     @counter = 0
 
     @score = 0
-    @player_x_init = 300
-    @player_y_init = 60
-    @player_x = @player_x_init
-    @player_y = @player_y_init
+    @player_x = 300
+    @player_y = 60
+    @velocity_x = 5
+    @velocity_y = 3
+    @ball_radius = 10
+    @bg_col = 0xF6
   end
 
   def on_create()
@@ -43,7 +45,7 @@ class SystemGuiApp < FmrbApp
   end
 
   def draw_current()
-    @gfx.clear(FmrbGfx::BLUE)
+    @gfx.clear(@bg_col)
     @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
     @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
@@ -55,21 +57,28 @@ class SystemGuiApp < FmrbApp
       puts "[SystemGUI] on_update() tick #{@counter / 30}s"
     end
 
-    if @counter % 5 == 0
-      @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
-      @player_x = @player_x_init
-      @player_y += 20
-      @player_y = @player_y_init if @player_y > 320
-    end 
+    # Erase old position
+    @gfx.fill_circle(@player_x, @player_y, @ball_radius, @bg_col)
 
-    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::BLUE)
-    #@player_x += (RNG.random_int % 7) - 3  # -3 to +3 random movement
-    #@player_y += (RNG.random_int % 7) - 3  # -3 to +3 random movement
+    # Update position
+    @player_x += @velocity_x
+    @player_y += @velocity_y
 
-    @player_x += 12
-    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
+    # Check collision with window boundaries and reflect
+    if @player_x - @ball_radius <= 0 || @player_x + @ball_radius >= @window_width
+      @velocity_x = -@velocity_x
+      @player_x += @velocity_x  # Move away from boundary
+    end
 
+    if @player_y - @ball_radius <= 0 || @player_y + @ball_radius >= @window_height
+      @velocity_y = -@velocity_y
+      @player_y += @velocity_y  # Move away from boundary
+    end
 
+    # Draw new position
+    @gfx.fill_circle(@player_x, @player_y, @ball_radius, FmrbGfx::RED)
+
+    # Draw score bar
     @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
     @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
     @gfx.present
