@@ -41,13 +41,13 @@ set(FMRB_LUA_SRCS
 
 # Extension sources
 set(EXTENSION_SRCS
-    # Add extension sources here
+    "extension/fmrb_lua_gfx.c"
 )
 
 idf_component_register(
     SRCS ${LUA_CORE_SRCS} ${FMRB_LUA_SRCS} ${EXTENSION_SRCS}
-    INCLUDE_DIRS "include" "lua"
-    REQUIRES fmrb_mem fmrb_common log
+    INCLUDE_DIRS "include" "lua" "extension"
+    REQUIRES fmrb_mem fmrb_common fmrb_msg fmrb_gfx log
 )
 
 # Lua-specific compiler definitions

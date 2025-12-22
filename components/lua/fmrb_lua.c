@@ -2,6 +2,7 @@
 #include "fmrb_app.h"
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
+#include "fmrb_lua_gfx.h"
 #include <string.h>
 
 static const char *TAG = "fmrb_lua";
@@ -87,11 +88,14 @@ void fmrb_lua_close(lua_State* L) {
 }
 
 /**
- * Open standard Lua libraries
+ * Open standard Lua libraries and FMRuby extensions
  */
 void fmrb_lua_openlibs(lua_State* L) {
     if (L) {
         luaL_openlibs(L);
         FMRB_LOGI(TAG, "Lua standard libraries opened");
+
+        // Register FMRuby extensions
+        fmrb_lua_register_gfx(L);
     }
 }
