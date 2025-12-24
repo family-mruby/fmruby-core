@@ -43,6 +43,7 @@ typedef struct {
             int x;
             int y;
             int button;
+            int state;  // 1=pressed, 0=released
         } mouse_click;
         gfx_cmd_t gfx;
     } data;
@@ -348,11 +349,25 @@ static void host_task_process_host_message(const host_message_t *msg)
             key_event->modifier = 0;
 
             // Send directly to target app
-            fmrb_msg_send(routing.target_pid, &hid_msg, 10);
+            //fmrb_msg_send(routing.target_pid, &hid_msg, 10);
+            // for testing
+            fmrb_msg_send(PROC_ID_USER_APP0, &hid_msg, 10);
             break;
         }
 
         case HOST_MSG_HID_MOUSE_MOVE: {
+            // Update cursor position via GFX API
+            int x = msg->data.mouse_move.x;
+            int y = msg->data.mouse_move.y;
+
+            fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+            if (gfx_ctx) {
+                fmrb_gfx_err_t gfx_ret = fmrb_gfx_set_cursor_position(gfx_ctx, x, y);
+                if (gfx_ret != FMRB_GFX_OK) {
+                    FMRB_LOGW(TAG, "Failed to set cursor position: %d", gfx_ret);
+                }
+            }
+
             // Get routing table
             fmrb_hid_routing_t routing;
             if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) {
@@ -363,8 +378,7 @@ static void host_task_process_host_message(const host_message_t *msg)
                 break;
             }
 
-            FMRB_LOGD(TAG, "Mouse move: (%d, %d) -> PID %d",
-                     msg->data.mouse_move.x, msg->data.mouse_move.y, routing.target_pid);
+            FMRB_LOGD(TAG, "Mouse move: (%d, %d) -> PID %d", x, y, routing.target_pid);
 
             // Create HID message
             fmrb_msg_t hid_msg = {
@@ -374,8 +388,8 @@ static void host_task_process_host_message(const host_message_t *msg)
             };
             fmrb_hid_mouse_motion_event_t *motion = (fmrb_hid_mouse_motion_event_t*)hid_msg.data;
             motion->subtype = HID_MSG_MOUSE_MOVE;
-            motion->x = msg->data.mouse_move.x;
-            motion->y = msg->data.mouse_move.y;
+            motion->x = x;
+            motion->y = y;
 
             fmrb_msg_send(routing.target_pid, &hid_msg, 10);
             break;
@@ -392,19 +406,20 @@ static void host_task_process_host_message(const host_message_t *msg)
                 break;
             }
 
-            FMRB_LOGI(TAG, "Mouse click: button=%d, pos=(%d,%d) -> PID %d",
+            FMRB_LOGI(TAG, "Mouse click: button=%d, pos=(%d,%d), state=%s -> PID %d",
                      msg->data.mouse_click.button,
                      msg->data.mouse_click.x, msg->data.mouse_click.y,
+                     msg->data.mouse_click.state ? "pressed" : "released",
                      routing.target_pid);
 
-            // Create HID message (treat as button down)
+            // Create HID message with correct subtype based on state
             fmrb_msg_t hid_msg = {
                 .type = FMRB_MSG_TYPE_HID_EVENT,
                 .src_pid = PROC_ID_HOST,
                 .size = sizeof(fmrb_hid_mouse_button_event_t)
             };
             fmrb_hid_mouse_button_event_t *mouse_btn = (fmrb_hid_mouse_button_event_t*)hid_msg.data;
-            mouse_btn->subtype = HID_MSG_MOUSE_BUTTON_DOWN;
+            mouse_btn->subtype = msg->data.mouse_click.state ? HID_MSG_MOUSE_BUTTON_DOWN : HID_MSG_MOUSE_BUTTON_UP;
             mouse_btn->button = msg->data.mouse_click.button;
             mouse_btn->x = msg->data.mouse_click.x;
             mouse_btn->y = msg->data.mouse_click.y;
@@ -592,13 +607,14 @@ int fmrb_host_send_mouse_move(int x, int y)
     return fmrb_host_send_message(&msg);
 }
 
-int fmrb_host_send_mouse_click(int x, int y, int button)
+int fmrb_host_send_mouse_click(int x, int y, int button, int state)
 {
     host_message_t msg = {
         .type = HOST_MSG_HID_MOUSE_CLICK,
         .data.mouse_click.x = x,
         .data.mouse_click.y = y,
-        .data.mouse_click.button = button
+        .data.mouse_click.button = button,
+        .data.mouse_click.state = state
     };
     return fmrb_host_send_message(&msg);
 }

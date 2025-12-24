@@ -54,6 +54,13 @@ extern "C" int init_display_callback(uint16_t width, uint16_t height, uint8_t co
     g_lgfx->init();
     g_lgfx->setColorDepth(color_depth);
     g_lgfx->fillScreen(FMRB_COLOR_BLACK);
+
+    // Disable L/R key rotation shortcut by requiring Ctrl modifier
+    auto panel = (lgfx::Panel_sdl*)g_lgfx->getPanel();
+    if (panel) {
+        panel->setShortcutKeymod(static_cast<SDL_Keymod>(KMOD_CTRL));  // Require Ctrl key for L/R rotation
+    }
+
     printf("Graphics initialized with LovyanGFX (%dx%d, %d-bit RGB)\n", width, height, color_depth);
 
     // Initialize graphics handler (creates back buffer)
@@ -91,6 +98,9 @@ extern "C" int init_display_callback(uint16_t width, uint16_t height, uint8_t co
 // User function that runs in a separate thread
 int user_func(bool* thread_running) {
     printf("Family mruby Host (SDL2 + LovyanGFX) starting...\n");
+
+    // Disable SDL2 hardware cursor (we'll draw our own)
+    SDL_ShowCursor(SDL_DISABLE);
 
     // Setup signal handlers
     signal(SIGINT, signal_handler);

@@ -49,6 +49,25 @@ typedef struct {
 static canvas_state_t g_canvases[MAX_CANVAS_COUNT];
 static size_t g_canvas_count = 0;
 
+// Cursor management
+static LGFX_Sprite* g_cursor_sprite = nullptr;
+static bool g_cursor_visible = true;
+static int g_cursor_x = 240;  // Default: screen center
+static int g_cursor_y = 135;
+static const uint32_t CURSOR_TRANSPARENT_COLOR = 0xFF00FF;  // Magenta
+
+// 8x8 arrow cursor pattern (0=transparent, 1=white outline, 2=black body)
+static const uint8_t cursor_pattern[8][8] = {
+    {1, 0, 0, 0, 0, 0, 0, 0},
+    {1, 1, 0, 0, 0, 0, 0, 0},
+    {1, 2, 1, 0, 0, 0, 0, 0},
+    {1, 2, 2, 1, 0, 0, 0, 0},
+    {1, 2, 2, 2, 1, 0, 0, 0},
+    {1, 2, 2, 1, 1, 1, 0, 0},
+    {1, 2, 1, 0, 1, 2, 1, 0},
+    {1, 1, 0, 0, 0, 1, 1, 0},
+};
+
 // Screen double buffer for compositing all canvases
 static uint16_t g_current_target = FMRB_CANVAS_SCREEN;  // 0=screen, other=canvas
 static bool g_graphics_initialized = false;  // Flag to prevent multiple initializations
@@ -169,6 +188,12 @@ static void graphics_handler_render_frame_internal() {
     // Finally, push the complete screen buffer to g_lgfx (only once per frame)
     screen_buffer->pushSprite(g_lgfx, 0, 0);
     GFX_LOG_D("Screen buffer pushed to display");
+
+    // Draw cursor on top of everything (if visible)
+    if (g_cursor_visible && g_cursor_sprite) {
+        g_cursor_sprite->pushSprite(g_lgfx, g_cursor_x, g_cursor_y, CURSOR_TRANSPARENT_COLOR);
+        GFX_LOG_D("Cursor drawn at (%d, %d)", g_cursor_x, g_cursor_y);
+    }
 }
 
 // Get current drawing target (screen or canvas)
@@ -201,9 +226,29 @@ extern "C" int graphics_handler_init(SDL_Renderer *renderer) {
 
     g_lgfx->setAutoDisplay(false);
 
+    // Initialize cursor sprite (8x8 arrow)
+    g_cursor_sprite = new LGFX_Sprite(g_lgfx);
+    g_cursor_sprite->setColorDepth(8);  // 8-bit color
+    g_cursor_sprite->createSprite(8, 8);
+    g_cursor_sprite->clear(CURSOR_TRANSPARENT_COLOR);
+
+    // Draw cursor pattern
+    for (int y = 0; y < 8; y++) {
+        for (int x = 0; x < 8; x++) {
+            uint32_t color;
+            switch (cursor_pattern[y][x]) {
+                case 1: color = 0xFFFFFF; break;  // White outline
+                case 2: color = 0x000000; break;  // Black body
+                default: color = CURSOR_TRANSPARENT_COLOR; break;  // Transparent
+            }
+            g_cursor_sprite->drawPixel(x, y, color);
+        }
+    }
+
     g_graphics_initialized = true;  // Mark as initialized
     GFX_LOG_I("Graphics handler initialized with screen buffer (%dx%d)",
               g_lgfx->width(), g_lgfx->height());
+    GFX_LOG_I("Cursor sprite initialized (8x8) at position (%d, %d)", g_cursor_x, g_cursor_y);
     return 0;
 }
 
@@ -211,6 +256,13 @@ extern "C" void graphics_handler_cleanup(void) {
     // Delete all canvases
     while (g_canvas_count > 0) {
         canvas_state_free(&g_canvases[0]);
+    }
+
+    // Delete cursor sprite
+    if (g_cursor_sprite) {
+        delete g_cursor_sprite;
+        g_cursor_sprite = nullptr;
+        GFX_LOG_I("Cursor sprite deleted");
     }
 
     g_current_target = FMRB_CANVAS_SCREEN;
@@ -721,6 +773,25 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                     GFX_LOG_D("Canvas pushed: ID=%u to %s %u at (%d,%d)",
                            cmd->canvas_id, dst_name, cmd->dest_canvas_id, cmd->x, cmd->y);
                 }
+                return 0;
+            }
+            break;
+
+        case FMRB_LINK_GFX_CURSOR_SET_POSITION:
+            if (size >= sizeof(fmrb_link_graphics_cursor_position_t)) {
+                const fmrb_link_graphics_cursor_position_t *cmd = (const fmrb_link_graphics_cursor_position_t*)data;
+                g_cursor_x = cmd->x;
+                g_cursor_y = cmd->y;
+                GFX_LOG_D("Cursor position updated: (%d, %d)", g_cursor_x, g_cursor_y);
+                return 0;
+            }
+            break;
+
+        case FMRB_LINK_GFX_CURSOR_SET_VISIBLE:
+            if (size >= sizeof(fmrb_link_graphics_cursor_visible_t)) {
+                const fmrb_link_graphics_cursor_visible_t *cmd = (const fmrb_link_graphics_cursor_visible_t*)data;
+                g_cursor_visible = cmd->visible;
+                GFX_LOG_D("Cursor visibility updated: %s", g_cursor_visible ? "visible" : "hidden");
                 return 0;
             }
             break;

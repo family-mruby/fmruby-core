@@ -57,7 +57,7 @@ static void process_hid_event(uint8_t type, const uint8_t *data, uint16_t len) {
                          mouse->button,
                          (mouse->state) ? "pressed" : "released",
                          mouse->x, mouse->y);
-                fmrb_host_send_mouse_click(mouse->x, mouse->y, mouse->button);
+                fmrb_host_send_mouse_click(mouse->x, mouse->y, mouse->button, mouse->state);
             }
             break;
 

@@ -105,7 +105,11 @@ typedef enum {
     FMRB_LINK_GFX_CREATE_CANVAS = 0x50,
     FMRB_LINK_GFX_DELETE_CANVAS = 0x51,
     FMRB_LINK_GFX_SET_TARGET = 0x52,
-    FMRB_LINK_GFX_PUSH_CANVAS = 0x53
+    FMRB_LINK_GFX_PUSH_CANVAS = 0x53,
+
+    // Cursor control (global resource, no canvas_id)
+    FMRB_LINK_GFX_CURSOR_SET_POSITION = 0x60,
+    FMRB_LINK_GFX_CURSOR_SET_VISIBLE = 0x61
 } fmrb_link_graphics_cmd_t;
 
 // Audio sub-commands
@@ -247,6 +251,15 @@ typedef struct __attribute__((packed)) {
     uint8_t transparent_color;
     uint8_t use_transparency;  // 0=no, 1=yes
 } fmrb_link_graphics_push_canvas_t;
+
+// Cursor control structures (no canvas_id - cursor is global)
+typedef struct __attribute__((packed)) {
+    int32_t x, y;
+} fmrb_link_graphics_cursor_position_t;
+
+typedef struct __attribute__((packed)) {
+    bool visible;
+} fmrb_link_graphics_cursor_visible_t;
 
 // Present command structure
 typedef struct __attribute__((packed)) {

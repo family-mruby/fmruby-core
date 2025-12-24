@@ -2,7 +2,7 @@
 # User app should inherit this class and override lifecycle methods.
 
 class FmrbApp
-  attr_reader :name, :running
+  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y
 
   def initialize()
     puts "[FmrbApp]initialize"
@@ -15,11 +15,28 @@ class FmrbApp
     if @canvas
       @gfx = FmrbGfx.new(@canvas)  # Pass canvas_id to FmrbGfx
       puts "[FmrbApp][#{@name}] FmrbGfx initialized: canvas_id=#{@canvas}"
+      @user_area_x0 = 1
+      @user_area_y0 = 10
+      @user_area_x1 = @window_width - 1
+      @user_area_y1 = @window_height  - 1
+      @user_area_width = @window_width - 2
+      @user_area_height = @window_height - 12
+      
+      draw_window_frame
     else
       @gfx = nil
       puts "[FmrbApp][#{@name}] Headless app: no graphics initialized"
     end
 
+  end
+
+  def draw_window_frame    
+    # Draw title bar
+    @gfx.fill_rect(0, 0, @window_width, 11, 0xC5)
+    @gfx.fill_rect(2, 2, 8, 8, 0x60) # menu button
+    @gfx.draw_text(12, 2, @name, FmrbGfx::WHITE)
+    # Draw window border
+    @gfx.draw_rect(0, 0, @window_width, @window_height, 0x60)
   end
 
   # Lifecycle methods (override in subclass)
@@ -74,6 +91,13 @@ class FmrbApp
 
   def send_message(dest_pid, msg_type, data)
     _send_message(dest_pid, msg_type, data)
+  end
+
+  def set_window_position(x, y)
+    _set_window_param(:pos_x, x)
+    _set_window_param(:pos_y, y)
+    @gfx.present if @gfx  # Immediately reflect position change
+    self
   end
 
   def destroy

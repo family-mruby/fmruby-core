@@ -100,6 +100,39 @@ static int lua_gfx_fill_rect(lua_State* L) {
     return 1;
 }
 
+// gfx:drawRect(x, y, w, h, color)
+static int lua_gfx_draw_rect(lua_State* L) {
+    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
+    int x = luaL_checkinteger(L, 2);
+    int y = luaL_checkinteger(L, 3);
+    int w = luaL_checkinteger(L, 4);
+    int h = luaL_checkinteger(L, 5);
+    int color = luaL_checkinteger(L, 6);
+
+    if (!data || !data->ctx) {
+        return luaL_error(L, "Graphics not initialized");
+    }
+
+    // Send GFX command to Host Task (outline only)
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_RECT,
+        .canvas_id = data->canvas_id,
+        .params.rect = {
+            .rect = {.x = (int16_t)x, .y = (int16_t)y, .width = (uint16_t)w, .height = (uint16_t)h},
+            .color = (fmrb_color_t)color,
+            .filled = false
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        return luaL_error(L, "drawRect failed: %d", ret);
+    }
+
+    lua_pushvalue(L, 1);  // Return self
+    return 1;
+}
+
 // gfx:drawString(text, x, y, color)
 static int lua_gfx_draw_string(lua_State* L) {
     lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
@@ -198,8 +231,9 @@ static int lua_gfx_clear(lua_State* L) {
 
 // Method table
 static const luaL_Reg gfx_methods[] = {
-    {"fillRect", lua_gfx_fill_rect},
-    {"drawString", lua_gfx_draw_string},
+    {"fill_rect", lua_gfx_fill_rect},
+    {"draw_rect", lua_gfx_draw_rect},
+    {"draw_text", lua_gfx_draw_string},
     {"present", lua_gfx_present},
     {"clear", lua_gfx_clear},
     {NULL, NULL}
@@ -268,7 +302,7 @@ static const luaL_Reg gfx_functions[] = {
 
 // FmrbApp table with helper functions
 static const luaL_Reg app_functions[] = {
-    {"createCanvas", lua_app_create_canvas},
+    {"create_canvas", lua_app_create_canvas},
     {"sleep", lua_app_sleep},
     {NULL, NULL}
 };
@@ -288,23 +322,23 @@ void fmrb_lua_register_gfx(lua_State* L) {
     lua_newtable(L);
     luaL_setfuncs(L, gfx_functions, 0);
 
-    // Add color constants
+    // Add color constants (matching mruby API)
     lua_pushinteger(L, 0x00);  // Black
-    lua_setfield(L, -2, "COLOR_BLACK");
+    lua_setfield(L, -2, "BLACK");
     lua_pushinteger(L, 0xFF);  // White
-    lua_setfield(L, -2, "COLOR_WHITE");
+    lua_setfield(L, -2, "WHITE");
     lua_pushinteger(L, 0xE0);  // Red
-    lua_setfield(L, -2, "COLOR_RED");
+    lua_setfield(L, -2, "RED");
     lua_pushinteger(L, 0x1C);  // Green
-    lua_setfield(L, -2, "COLOR_GREEN");
+    lua_setfield(L, -2, "GREEN");
     lua_pushinteger(L, 0x03);  // Blue
-    lua_setfield(L, -2, "COLOR_BLUE");
+    lua_setfield(L, -2, "BLUE");
     lua_pushinteger(L, 0xFC);  // Yellow
-    lua_setfield(L, -2, "COLOR_YELLOW");
+    lua_setfield(L, -2, "YELLOW");
     lua_pushinteger(L, 0xE3);  // Magenta
-    lua_setfield(L, -2, "COLOR_MAGENTA");
+    lua_setfield(L, -2, "MAGENTA");
     lua_pushinteger(L, 0x1F);  // Cyan
-    lua_setfield(L, -2, "COLOR_CYAN");
+    lua_setfield(L, -2, "CYAN");
 
     lua_setglobal(L, "FmrbGfx");
 

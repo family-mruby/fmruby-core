@@ -13,17 +13,13 @@ class SystemGuiApp < FmrbApp
     @velocity_y = 3
     @ball_radius = 10
     @bg_col = 0xF6
+
+    @st = 0
   end
 
   def on_create()
     puts "[SystemGUI] on_create called"
     draw_current
-    #Machine.delay_ms(100)
-    puts "[SystemGUI] spawn default shell app"
-    spawn_app("default/shell")
-
-    puts "[SystemGUI] spawn sample Lua app"
-    spawn_app("/app/sample_app/sample_lua_app.app.lua")
   end
 
   def spawn_app(app_name)
@@ -46,10 +42,14 @@ class SystemGuiApp < FmrbApp
 
   def draw_current()
     @gfx.clear(@bg_col)
-    @gfx.fill_circle(@player_x, @player_y, 10, FmrbGfx::RED)
-    @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
-    @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
+    draw_system_frame
     @gfx.present
+  end
+
+  def draw_system_frame()
+    @gfx.fill_rect( 0,  0, @window_width, 10, 0xC5)
+    @gfx.draw_text( 2,  1, "Family mruby", FmrbGfx::WHITE)
+    @gfx.draw_text(@window_width - 80,  1, "Count: #{@score}", FmrbGfx::WHITE)
   end
 
   def on_update()
@@ -65,12 +65,12 @@ class SystemGuiApp < FmrbApp
     @player_y += @velocity_y
 
     # Check collision with window boundaries and reflect
-    if @player_x - @ball_radius <= 0 || @player_x + @ball_radius >= @window_width
+    if @player_x - @ball_radius <= 12 || @player_x + @ball_radius >= @window_width
       @velocity_x = -@velocity_x
       @player_x += @velocity_x  # Move away from boundary
     end
 
-    if @player_y - @ball_radius <= 0 || @player_y + @ball_radius >= @window_height
+    if @player_y - @ball_radius <= 12 || @player_y + @ball_radius >= @window_height
       @velocity_y = -@velocity_y
       @player_y += @velocity_y  # Move away from boundary
     end
@@ -78,21 +78,36 @@ class SystemGuiApp < FmrbApp
     # Draw new position
     @gfx.fill_circle(@player_x, @player_y, @ball_radius, FmrbGfx::RED)
 
-    # Draw score bar
-    @gfx.fill_rect( 0,  0, 480, 10+10, FmrbGfx::BLACK)
-    @gfx.draw_text(10, 10, "Score: #{@score}", FmrbGfx::WHITE)
-    @gfx.present
 
     @score += 1
     @counter += 1
 
+    draw_system_frame
+    @gfx.present
+
     33
-    #1000
   end
 
   def on_event(ev)
     puts "on_event: gui app"
     p ev
+
+    # Handle mouse up event
+    if ev[:type] == :mouse_up
+      puts "[SystemGUI] Mouse button #{ev[:button]} released at (#{ev[:x]}, #{ev[:y]})"
+      # Add your mouse up handling logic here
+      if @st == 0
+        puts "[SystemGUI] spawn default shell app"
+        spawn_app("default/shell")
+      end
+
+      if @st == 1
+        puts "[SystemGUI] spawn sample Lua app"
+        spawn_app("/app/sample_app/sample_lua_app.app.lua")
+      end
+
+      @st += 1
+    end
   end
 
   def on_destroy

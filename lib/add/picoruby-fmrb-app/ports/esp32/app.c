@@ -130,6 +130,12 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@window_height"),
                mrb_fixnum_value(ctx->window_height));
 
+    // Set @pos_x and @pos_y instance variables
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@pos_x"),
+               mrb_fixnum_value(ctx->window_pos_x));
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@pos_y"),
+               mrb_fixnum_value(ctx->window_pos_y));
+
     // Allocate Canvas for non-headless apps
     if (!ctx->headless) {
         fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
@@ -451,6 +457,37 @@ static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// FmrbApp#_set_window_param(param_sym, value) -> self
+// Set window parameter (pos_x, pos_y)
+static mrb_value mrb_fmrb_app_set_window_param(mrb_state *mrb, mrb_value self)
+{
+    mrb_sym param_sym;
+    mrb_int value;
+    mrb_get_args(mrb, "ni", &param_sym, &value);
+
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
+    }
+
+    const char* param_name = mrb_sym2name(mrb, param_sym);
+
+    // Update context and instance variable
+    if (strcmp(param_name, "pos_x") == 0) {
+        ctx->window_pos_x = (uint16_t)value;
+        mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@pos_x"), mrb_fixnum_value(value));
+        FMRB_LOGI(TAG, "Set window pos_x=%d for app %s", (int)value, ctx->app_name);
+    } else if (strcmp(param_name, "pos_y") == 0) {
+        ctx->window_pos_y = (uint16_t)value;
+        mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@pos_y"), mrb_fixnum_value(value));
+        FMRB_LOGI(TAG, "Set window pos_y=%d for app %s", (int)value, ctx->app_name);
+    } else {
+        mrb_raisef(mrb, E_ARGUMENT_ERROR, "Unknown window parameter: %s", param_name);
+    }
+
+    return self;
+}
+
 // FmrbApp#_send_message(dest_pid, msg_type, data) -> bool
 // Send a message to another task
 static mrb_value mrb_fmrb_app_send_message(mrb_state *mrb, mrb_value self)
@@ -511,6 +548,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_spin", mrb_fmrb_app_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, app_class, "_cleanup", mrb_fmrb_app_cleanup, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, app_class, "_set_window_param", mrb_fmrb_app_set_window_param, MRB_ARGS_REQ(2));
 
     // Process ID constants
     mrb_define_const(mrb, app_class, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));

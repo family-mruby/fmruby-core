@@ -44,9 +44,10 @@ int fmrb_host_send_mouse_move(int x, int y);
  * @param x X coordinate
  * @param y Y coordinate
  * @param button Mouse button number
+ * @param state Button state (1=pressed, 0=released)
  * @return 0 on success, -1 on failure
  */
-int fmrb_host_send_mouse_click(int x, int y, int button);
+int fmrb_host_send_mouse_click(int x, int y, int button, int state);
 
 #ifdef __cplusplus
 }

@@ -989,3 +989,58 @@ fmrb_gfx_err_t fmrb_gfx_push_canvas(
 
     return send_graphics_command(ctx, FMRB_LINK_GFX_PUSH_CANVAS, &cmd, sizeof(cmd));
 }
+
+// Cursor control API
+
+fmrb_gfx_err_t fmrb_gfx_set_cursor_position(
+    fmrb_gfx_context_t context,
+    int32_t x, int32_t y)
+{
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    // Send cursor position command to host
+    fmrb_link_graphics_cursor_position_t cmd = {
+        .x = x,
+        .y = y
+    };
+
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_CURSOR_SET_POSITION, &cmd, sizeof(cmd));
+    if (ret == FMRB_GFX_OK) {
+        ESP_LOGD(TAG, "Cursor position set: (%d, %d)", x, y);
+    }
+
+    return ret;
+}
+
+fmrb_gfx_err_t fmrb_gfx_set_cursor_visible(
+    fmrb_gfx_context_t context,
+    bool visible)
+{
+    if (!context) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) {
+        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    }
+
+    // Send cursor visibility command to host
+    fmrb_link_graphics_cursor_visible_t cmd = {
+        .visible = visible
+    };
+
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_CURSOR_SET_VISIBLE, &cmd, sizeof(cmd));
+    if (ret == FMRB_GFX_OK) {
+        ESP_LOGD(TAG, "Cursor visibility set: %s", visible ? "visible" : "hidden");
+    }
+
+    return ret;
+}
