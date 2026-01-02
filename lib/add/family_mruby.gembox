@@ -28,6 +28,7 @@ MRuby::GemBox.new do |conf|
   conf.gem gemdir: "#{dir}/mruby-math"
 
   # Family mruby specific
+  conf.gem core: "picoruby-fmrb-const"
   conf.gem core: "picoruby-fmrb-app"
   conf.gem core: "picoruby-fmrb-kernel"
 end

@@ -28,11 +28,11 @@ class SystemGuiApp < FmrbApp
 
     # Build message payload: subtype + app_name(FMRB_MAX_PATH_LEN)
     # Convert APP_CTRL_SPAWN constant to byte string (chr is available in mruby)
-    data = FmrbApp::APP_CTRL_SPAWN.chr
-    data += app_name.ljust(FmrbApp::MAX_PATH_LEN, "\x00")
+    data = FmrbConst::APP_CTRL_SPAWN.chr
+    data += app_name.ljust(FmrbConst::MAX_PATH_LEN, "\x00")
 
     # Send to Kernel using constants
-    success = send_message(FmrbApp::PROC_ID_KERNEL, FmrbApp::MSG_TYPE_APP_CONTROL, data)
+    success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
 
     if success
       puts "[SystemGUI] Spawn request sent successfully"
@@ -91,8 +91,8 @@ class SystemGuiApp < FmrbApp
 
         # Filter running/suspended processes
         active_procs = processes.select { |p|
-          p[:state] == FmrbApp::PROC_STATE_RUNNING ||
-          p[:state] == FmrbApp::PROC_STATE_SUSPENDED
+          p[:state] == FmrbConst::PROC_STATE_RUNNING ||
+          p[:state] == FmrbConst::PROC_STATE_SUSPENDED
         }
 
         active_procs.each do |proc|

@@ -211,25 +211,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_module_function(mrb, kernel_mod, "set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, kernel_mod, "set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
 
-    // Process ID constants
-    mrb_define_const(mrb, handler_class, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
-    mrb_define_const(mrb, handler_class, "PROC_ID_HOST", mrb_fixnum_value(PROC_ID_HOST));
-    mrb_define_const(mrb, handler_class, "PROC_ID_SYSTEM_APP", mrb_fixnum_value(PROC_ID_SYSTEM_APP));
-    mrb_define_const(mrb, handler_class, "PROC_ID_USER_APP0", mrb_fixnum_value(PROC_ID_USER_APP0));
-    mrb_define_const(mrb, handler_class, "PROC_ID_USER_APP1", mrb_fixnum_value(PROC_ID_USER_APP1));
-    mrb_define_const(mrb, handler_class, "PROC_ID_USER_APP2", mrb_fixnum_value(PROC_ID_USER_APP2));
-
-    // Message type constants
-    mrb_define_const(mrb, handler_class, "MSG_TYPE_APP_CONTROL", mrb_fixnum_value(FMRB_MSG_TYPE_APP_CONTROL));
-    mrb_define_const(mrb, handler_class, "MSG_TYPE_APP_GFX", mrb_fixnum_value(FMRB_MSG_TYPE_APP_GFX));
-    mrb_define_const(mrb, handler_class, "MSG_TYPE_APP_AUDIO", mrb_fixnum_value(FMRB_MSG_TYPE_APP_AUDIO));
-    mrb_define_const(mrb, handler_class, "MSG_TYPE_HID_EVENT", mrb_fixnum_value(FMRB_MSG_TYPE_HID_EVENT));
-
-    // App control message subtypes
-    mrb_define_const(mrb, handler_class, "APP_CTRL_SPAWN", mrb_fixnum_value(FMRB_APP_CTRL_SPAWN));
-    mrb_define_const(mrb, handler_class, "APP_CTRL_KILL", mrb_fixnum_value(FMRB_APP_CTRL_KILL));
-    mrb_define_const(mrb, handler_class, "APP_CTRL_SUSPEND", mrb_fixnum_value(FMRB_APP_CTRL_SUSPEND));
-    mrb_define_const(mrb, handler_class, "APP_CTRL_RESUME", mrb_fixnum_value(FMRB_APP_CTRL_RESUME));
+    // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }
 
 void mrb_fmrb_kernel_final(mrb_state *mrb)

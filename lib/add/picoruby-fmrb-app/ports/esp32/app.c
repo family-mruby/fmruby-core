@@ -691,36 +691,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "heap_info", mrb_fmrb_app_s_heap_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "sys_pool_info", mrb_fmrb_app_s_sys_pool_info, MRB_ARGS_NONE());
 
-    // Process ID constants
-    mrb_define_const(mrb, app_class, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
-    mrb_define_const(mrb, app_class, "PROC_ID_HOST", mrb_fixnum_value(PROC_ID_HOST));
-    mrb_define_const(mrb, app_class, "PROC_ID_SYSTEM_APP", mrb_fixnum_value(PROC_ID_SYSTEM_APP));
-    mrb_define_const(mrb, app_class, "PROC_ID_USER_APP0", mrb_fixnum_value(PROC_ID_USER_APP0));
-    mrb_define_const(mrb, app_class, "PROC_ID_USER_APP1", mrb_fixnum_value(PROC_ID_USER_APP1));
-    mrb_define_const(mrb, app_class, "PROC_ID_USER_APP2", mrb_fixnum_value(PROC_ID_USER_APP2));
-
-    // Message type constants
-    mrb_define_const(mrb, app_class, "MSG_TYPE_APP_CONTROL", mrb_fixnum_value(FMRB_MSG_TYPE_APP_CONTROL));
-    mrb_define_const(mrb, app_class, "MSG_TYPE_APP_GFX", mrb_fixnum_value(FMRB_MSG_TYPE_APP_GFX));
-    mrb_define_const(mrb, app_class, "MSG_TYPE_APP_AUDIO", mrb_fixnum_value(FMRB_MSG_TYPE_APP_AUDIO));
-
-    // App control message subtypes
-    mrb_define_const(mrb, app_class, "APP_CTRL_SPAWN", mrb_fixnum_value(FMRB_APP_CTRL_SPAWN));
-    mrb_define_const(mrb, app_class, "APP_CTRL_KILL", mrb_fixnum_value(FMRB_APP_CTRL_KILL));
-    mrb_define_const(mrb, app_class, "APP_CTRL_SUSPEND", mrb_fixnum_value(FMRB_APP_CTRL_SUSPEND));
-    mrb_define_const(mrb, app_class, "APP_CTRL_RESUME", mrb_fixnum_value(FMRB_APP_CTRL_RESUME));
-
-    // Path length constant
-    mrb_define_const(mrb, app_class, "MAX_PATH_LEN", mrb_fixnum_value(FMRB_MAX_PATH_LEN));
-
-    // Process state constants
-    mrb_define_const(mrb, app_class, "PROC_STATE_FREE", mrb_fixnum_value(PROC_STATE_FREE));
-    mrb_define_const(mrb, app_class, "PROC_STATE_ALLOCATED", mrb_fixnum_value(PROC_STATE_ALLOCATED));
-    mrb_define_const(mrb, app_class, "PROC_STATE_INIT", mrb_fixnum_value(PROC_STATE_INIT));
-    mrb_define_const(mrb, app_class, "PROC_STATE_RUNNING", mrb_fixnum_value(PROC_STATE_RUNNING));
-    mrb_define_const(mrb, app_class, "PROC_STATE_SUSPENDED", mrb_fixnum_value(PROC_STATE_SUSPENDED));
-    mrb_define_const(mrb, app_class, "PROC_STATE_STOPPING", mrb_fixnum_value(PROC_STATE_STOPPING));
-    mrb_define_const(mrb, app_class, "PROC_STATE_ZOMBIE", mrb_fixnum_value(PROC_STATE_ZOMBIE));
+    // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 
     // Initialize graphics subsystem
     mrb_fmrb_gfx_init(mrb);
