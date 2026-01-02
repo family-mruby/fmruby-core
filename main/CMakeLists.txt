@@ -7,6 +7,7 @@ set(COMPONENT_SRCS
     "kernel/fmrb_kernel.c"
     "kernel/host/host_task.c"
     "drivers/fs_proxy/fs_proxy_task.c"
+    "lib/fmrb_hal/fmrb_keymap.c"
 )
 set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
@@ -56,7 +57,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "drivers/fs_proxy" "drivers/usb"
+    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "drivers/fs_proxy" "drivers/usb" "lib/fmrb_hal"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 

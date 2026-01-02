@@ -25,6 +25,7 @@ typedef struct {
     uint8_t keycode;       // SDL keycode
     uint8_t scancode;      // SDL scancode
     uint8_t modifier;      // Modifier keys
+    char character;        // Converted character (0 if not convertible)
 } __attribute__((packed)) fmrb_hid_key_event_t;
 
 // Mouse button event payload

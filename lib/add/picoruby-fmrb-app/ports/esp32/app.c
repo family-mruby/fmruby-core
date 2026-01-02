@@ -232,6 +232,8 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
                         mrb_fixnum_value(key_event->scancode));
             mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "modifier")),
                         mrb_fixnum_value(key_event->modifier));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "character")),
+                        mrb_fixnum_value((uint8_t)key_event->character));
             break;
         }
 

@@ -15,6 +15,7 @@
 #include "../../boot.h"
 #include "fmrb_link_transport.h"
 #include "fmrb_link_protocol.h"
+#include "fmrb_keymap.h"
 
 static const char *TAG = "host";
 
@@ -349,6 +350,13 @@ static void host_task_process_host_message(const host_message_t *msg)
             key_event->keycode = (uint8_t)(msg->data.key.key_code & 0xFF);
             key_event->scancode = (uint8_t)(msg->data.key.scancode & 0xFF);
             key_event->modifier = (uint8_t)(msg->data.key.modifier & 0xFF);
+
+            // Convert scancode to character
+            key_event->character = fmrb_keymap_scancode_to_char(
+                key_event->scancode,
+                key_event->modifier,
+                fmrb_keymap_get_layout()
+            );
 
             // Send directly to target app
             //fmrb_msg_send(routing.target_pid, &hid_msg, 10);

@@ -9,6 +9,7 @@ class ShellApp < FmrbApp
     @char_height = 8
     @prompt = "> "
     @need_redraw = false
+    @max_line_length = 100  # Maximum input line length
   end
 
   def on_create()
@@ -17,6 +18,11 @@ class ShellApp < FmrbApp
     draw_prompt
     @gfx.present
     puts "[ShellApp] on_create called"
+    puts "[ShellApp] user_area: x0=#{@user_area_x0}, y0=#{@user_area_y0}, width=#{@user_area_width}, height=#{@user_area_height}"
+    puts "[ShellApp] window: width=#{@window_width}, height=#{@window_height}"
+    puts "[ShellApp] char: width=#{@char_width}, height=#{@char_height}"
+    max_chars = (@user_area_width - 4) / @char_width  # -4 for left margin
+    puts "[ShellApp] max displayable chars: ~#{max_chars} (including prompt)"
   end
 
   def spawn_app(app_name)
@@ -69,6 +75,7 @@ class ShellApp < FmrbApp
 
   def on_update()
     if @need_redraw
+      puts "[Shell] on_update: need_redraw=true, calling redraw_screen"
       redraw_screen
       @need_redraw = false
     end
@@ -86,10 +93,13 @@ class ShellApp < FmrbApp
     # Draw current input line
     x = @user_area_x0 + 2
     y = @user_area_y0 + 2 + (@history.length * @char_height)
-    @gfx.draw_text(x, y, @prompt + @current_line, FmrbGfx::BLACK)
+    full_line = @prompt + @current_line
+    puts "[Shell] draw_prompt: drawing '#{full_line}' (length=#{full_line.length}) at (#{x}, #{y})"
+    @gfx.draw_text(x, y, full_line, FmrbGfx::BLACK)
   end
 
   def redraw_screen
+    puts "[Shell] redraw_screen called"
     # Clear user area
     @gfx.fill_rect(@user_area_x0, @user_area_y0,
                     @user_area_width, @user_area_height, FmrbGfx::WHITE)
@@ -133,77 +143,50 @@ class ShellApp < FmrbApp
 
   def handle_key_input(ev)
     keycode = ev[:keycode]
-    modifier = ev[:modifier] || 0
-    shift_pressed = (modifier & 0x03) != 0  # 0x01 = Left Shift, 0x02 = Right Shift
-    puts "[Shell] keycode=#{keycode}, modifier=#{modifier}, shift=#{shift_pressed}"
+    character = ev[:character] || 0
+    puts "[Shell] keycode=#{keycode}, character=#{character} (#{character.chr if character != 0})"
 
-    # Enter key (keycode 13 = CR)
-    if keycode == 13
+    # Enter key
+    if character == 10 || character == 13  # LF or CR
       handle_enter
       return
     end
 
-    # Backspace key (keycode 8 = BS)
-    if keycode == 8
+    # Backspace key
+    if character == 8  # BS
       handle_backspace
       return
     end
 
-    # Ignore arrow keys (79-82)
+    # Tab key
+    if character == 9  # TAB
+      # TODO: tab completion
+      return
+    end
+
+    # Ignore arrow keys and other control keys (keycode-based check)
     if keycode >= 79 && keycode <= 82
       return
     end
 
-    # Ignore standalone Shift keys (225, 229)
-    if keycode == 225 || keycode == 229
+    # Ignore standalone modifier keys (keycode 225-229)
+    if keycode >= 225 && keycode <= 229
       return
     end
 
-    # Convert keycode to character (ASCII printable range)
-    if keycode >= 32 && keycode <= 126
-      char = keycode_to_char(keycode, shift_pressed)
-      if char
-        @current_line += char
+    # If we have a printable character, add it (with length limit)
+    if character >= 32 && character <= 126
+      if @current_line.length < @max_line_length
+        char_str = character.chr
+        puts "[Shell] Adding character: '#{char_str}' (ASCII #{character}), line was: '#{@current_line}'"
+        @current_line += char_str
+        puts "[Shell] Line is now: '#{@current_line}' (length=#{@current_line.length})"
         @need_redraw = true
-      end
-    end
-  end
-
-  def keycode_to_char(keycode, shift)
-    # Shift key mapping for special characters (US keyboard layout compatible)
-    if shift
-      case keycode
-      when 45 then return "_"  # - -> _
-      when 61 then return "+"  # = -> +
-      when 91 then return "{"  # [ -> {
-      when 93 then return "}"  # ] -> }
-      when 92 then return "_"  # \ -> _ (for Japanese keyboard Shift+\)
-      when 59 then return ":"  # ; -> :
-      when 39 then return "\""  # ' -> "
-      when 44 then return "<"  # , -> <
-      when 46 then return ">"  # . -> >
-      when 47 then return "?"  # / -> ?
-      when 96 then return "~"  # ` -> ~
-      when 49 then return "!"  # 1 -> !
-      when 50 then return "@"  # 2 -> @
-      when 51 then return "#"  # 3 -> #
-      when 52 then return "$"  # 4 -> $
-      when 53 then return "%"  # 5 -> %
-      when 54 then return "^"  # 6 -> ^
-      when 55 then return "&"  # 7 -> &
-      when 56 then return "*"  # 8 -> *
-      when 57 then return "("  # 9 -> (
-      when 48 then return ")"  # 0 -> )
       else
-        # For letters (a-z -> A-Z)
-        if keycode >= 97 && keycode <= 122
-          return (keycode - 32).chr
-        else
-          return keycode.chr
-        end
+        puts "[Shell] Warning: max line length (#{@max_line_length}) reached"
       end
     else
-      return keycode.chr
+      puts "[Shell] Character #{character} not in printable range (32-126)"
     end
   end
 

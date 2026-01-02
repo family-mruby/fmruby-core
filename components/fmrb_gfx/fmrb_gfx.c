@@ -319,7 +319,9 @@ fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle
     }
 
     size_t text_len = strlen(text);
+    ESP_LOGD(TAG, "draw_text: received text length=%zu, text='%s'", text_len, text);
     if (text_len > 255) {
+        ESP_LOGW(TAG, "draw_text: text too long (%zu), truncating to 255", text_len);
         text_len = 255; // Limit text length
     }
 
@@ -340,6 +342,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle
 
     // Copy text data
     memcpy(cmd_buffer + sizeof(fmrb_link_graphics_text_t), text, text_len);
+    ESP_LOGD(TAG, "draw_text: sending command - total_size=%zu, text_len=%u", total_size, text_cmd->text_len);
 
     fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_DRAW_STRING, cmd_buffer, total_size);
     fmrb_sys_free(cmd_buffer);
