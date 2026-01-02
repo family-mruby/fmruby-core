@@ -283,12 +283,20 @@ static void app_task_main(void* arg) {
     switch (ctx->vm_type) {
         case FMRB_VM_TYPE_MRUBY:
             // Create mruby VM (mrbgem initialization is executed here)
-            ctx->mrb = mrb_open_with_custom_alloc(
-                fmrb_get_mempool_ptr(ctx->mempool_id),
-                fmrb_get_mempool_size(ctx->mempool_id));
-            if (!ctx->mrb) {
-                FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
-                goto cleanup;
+            {
+                void* pool_ptr = fmrb_get_mempool_ptr(ctx->mempool_id);
+                size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
+                FMRB_LOGI(TAG, "[%s] mempool_id=%d, ptr=%p, size=%zu",
+                          ctx->app_name, ctx->mempool_id, pool_ptr, pool_size);
+                fmrb_mempool_check_pointer(pool_ptr);
+
+                ctx->mrb = mrb_open_with_custom_alloc(pool_ptr, pool_size);
+                FMRB_LOGI(TAG, "[%s] mrb_open_with_custom_alloc returned: %p", ctx->app_name, ctx->mrb);
+
+                if (!ctx->mrb) {
+                    FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
+                    goto cleanup;
+                }
             }
             break;
         case FMRB_VM_TYPE_LUA:
@@ -360,7 +368,13 @@ static void app_task_main(void* arg) {
                 }
 
                 const uint8_t *script_ptr = (const uint8_t *)script_buffer;
+                FMRB_LOGI(TAG, "[%s] Before mrc_load_string_cxt, ctx->mrb=%p", ctx->app_name, ctx->mrb);
+                FMRB_LOGI(TAG, "[%s] Script size: %zu bytes", ctx->app_name, script_size);
+
                 irep_obj = mrc_load_string_cxt(cc, &script_ptr, script_size);
+
+                FMRB_LOGI(TAG, "[%s] After mrc_load_string_cxt, irep_obj=%p, mrb->exc=%p",
+                          ctx->app_name, irep_obj, ctx->mrb->exc);
 
                 if (!irep_obj) {
                     FMRB_LOGE(TAG, "[%s] Failed to compile Ruby script", ctx->app_name);
@@ -387,14 +401,18 @@ static void app_task_main(void* arg) {
             if (irep_obj) {
                 mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
                 mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
+                FMRB_LOGI(TAG, "[%s] Before mrc_create_task", ctx->app_name);
                 mrb_value task = mrc_create_task(cc, irep_obj, name, mrb_nil_value(),
                                                  mrb_obj_value(ctx->mrb->top_self));
+                FMRB_LOGI(TAG, "[%s] After mrc_create_task, task is_nil=%d", ctx->app_name, mrb_nil_p(task));
 
                 if (mrb_nil_p(task)) {
-                    FMRB_LOGE(TAG, "[%s] mrc_create_task failed", ctx->app_name);
+                    FMRB_LOGE(TAG, "[%s] mrc_create_task failed, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
                 } else {
                     // Main event loop: run mruby tasks
+                    FMRB_LOGI(TAG, "[%s] Before mrb_tasks_run", ctx->app_name);
                     mrb_tasks_run(ctx->mrb);
+                    FMRB_LOGI(TAG, "[%s] After mrb_tasks_run, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
                 }
 
                 if (ctx->mrb->exc) {
@@ -911,7 +929,9 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {
         strncpy(list[count].app_name, ctx->app_name, sizeof(list[count].app_name) - 1);
         list[count].gen = ctx->gen;
         list[count].task = ctx->task;
-        list[count].stack_high_water = ctx->task ? fmrb_task_get_stack_high_water_mark(ctx->task) : 0;
+        list[count].stack_high_water = (ctx->task && ctx->state != PROC_STATE_STOPPING)
+                                        ? fmrb_task_get_stack_high_water_mark(ctx->task)
+                                        : 0;
 
         // Get memory statistics based on VM type
         list[count].vm_type = ctx->vm_type;
