@@ -52,8 +52,8 @@ class SystemGuiApp < FmrbApp
     @gfx.draw_text( 2,  1, "Family mruby", FmrbGfx::WHITE)
     @gfx.draw_text(@window_width - 80,  1, "Count: #{@score}", FmrbGfx::WHITE)
 
-    # Shell button in center of top bar
-    button_x = @window_width / 2 - 25
+    # Shell button on left side of top bar
+    button_x = 100
     button_y = 0
     button_width = 50
     button_height = 10
@@ -171,7 +171,7 @@ class SystemGuiApp < FmrbApp
       puts "[SystemGUI] Mouse button #{ev[:button]} released at (#{ev[:x]}, #{ev[:y]})"
 
       # Shell button hit test
-      button_x = @window_width / 2 - 25
+      button_x = 100
       button_y = 0
       button_width = 50
       button_height = 10
