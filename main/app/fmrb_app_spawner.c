@@ -113,24 +113,25 @@ static fmrb_err_t spawn_user_app(const char* app_name)
     }
 
     // Try to load TOML configuration file
-    // For "xxx.app.lua" or "xxx.app.rb", replace with "xxx.toml"
+    // For "xxx.app.lua" or "xxx.app.rb", replace with "xxx.app.toml"
     char toml_path[FMRB_MAX_PATH_LEN];
     snprintf(toml_path, sizeof(toml_path), "%s", app_name);
 
-    // Find ".app.lua" or ".app.rb" and replace with ".toml"
-    char* app_ext = strstr(toml_path, ".app.");
-    if (app_ext) {
-        // Found ".app.lua" or ".app.rb", replace from ".app" onwards
-        strcpy(app_ext, ".toml");
-    } else {
-        // No ".app." found, replace last extension
-        char* last_dot = strrchr(toml_path, '.');
-        if (last_dot) {
-            strcpy(last_dot, ".toml");
-        } else {
-            strcat(toml_path, ".toml");
-        }
+    // Replace last extension (.lua or .rb) with .toml
+    char* last_dot = strrchr(toml_path, '.');
+    if (!last_dot) {
+        FMRB_LOGE(TAG, "Invalid app name (no extension): %s", app_name);
+        return FMRB_ERR_INVALID_PARAM;
     }
+
+    // Check if ".toml" fits in buffer
+    size_t base_len = last_dot - toml_path;  // Length up to the dot
+    if (base_len + 5 >= FMRB_MAX_PATH_LEN) {  // +5 for ".toml"
+        FMRB_LOGE(TAG, "TOML path would exceed buffer size: %s", app_name);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    strcpy(last_dot, ".toml");
 
     // Default values for spawn attributes
     const char* app_screen_name = NULL;
