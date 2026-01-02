@@ -90,7 +90,10 @@ class SystemGuiApp < FmrbApp
         end
 
         # Filter running/suspended processes
-        active_procs = processes.select { |p| p[:state] == 3 || p[:state] == 4 }  # RUNNING=3, SUSPENDED=4
+        active_procs = processes.select { |p|
+          p[:state] == FmrbApp::PROC_STATE_RUNNING ||
+          p[:state] == FmrbApp::PROC_STATE_SUSPENDED
+        }
 
         active_procs.each do |proc|
           name = proc[:name]

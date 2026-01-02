@@ -713,6 +713,15 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     // Path length constant
     mrb_define_const(mrb, app_class, "MAX_PATH_LEN", mrb_fixnum_value(FMRB_MAX_PATH_LEN));
 
+    // Process state constants
+    mrb_define_const(mrb, app_class, "PROC_STATE_FREE", mrb_fixnum_value(PROC_STATE_FREE));
+    mrb_define_const(mrb, app_class, "PROC_STATE_ALLOCATED", mrb_fixnum_value(PROC_STATE_ALLOCATED));
+    mrb_define_const(mrb, app_class, "PROC_STATE_INIT", mrb_fixnum_value(PROC_STATE_INIT));
+    mrb_define_const(mrb, app_class, "PROC_STATE_RUNNING", mrb_fixnum_value(PROC_STATE_RUNNING));
+    mrb_define_const(mrb, app_class, "PROC_STATE_SUSPENDED", mrb_fixnum_value(PROC_STATE_SUSPENDED));
+    mrb_define_const(mrb, app_class, "PROC_STATE_STOPPING", mrb_fixnum_value(PROC_STATE_STOPPING));
+    mrb_define_const(mrb, app_class, "PROC_STATE_ZOMBIE", mrb_fixnum_value(PROC_STATE_ZOMBIE));
+
     // Initialize graphics subsystem
     mrb_fmrb_gfx_init(mrb);
 
