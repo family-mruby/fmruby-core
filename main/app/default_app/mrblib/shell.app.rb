@@ -19,6 +19,54 @@ class ShellApp < FmrbApp
     puts "[ShellApp] on_create called"
   end
 
+  def spawn_app(app_name)
+    puts "[ShellApp] Requesting spawn: #{app_name}"
+
+    # Build message payload: subtype + app_name(FMRB_MAX_PATH_LEN)
+    data = FmrbConst::APP_CTRL_SPAWN.chr
+    data += app_name.ljust(FmrbConst::MAX_PATH_LEN, "\x00")
+
+    # Send to Kernel
+    success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+
+    if success
+      @history << "Spawned: #{app_name}"
+      puts "[ShellApp] Spawn request sent successfully"
+    else
+      @history << "Error: Failed to spawn #{app_name}"
+      puts "[ShellApp] Failed to send spawn request"
+    end
+  end
+
+  def parse_command(line)
+    # Strip whitespace and split by space
+    parts = line.strip.split(' ')
+    return nil, [] if parts.empty?
+
+    cmd = parts[0]
+    args = parts[1..-1] || []
+    return cmd, args
+  end
+
+  def execute_command(cmd, args)
+    case cmd
+    when "run"
+      if args.empty?
+        @history << "Error: run requires an app path"
+        return
+      end
+      app_path = args.join(' ')
+      spawn_app(app_path)
+    when "help"
+      @history << "Available commands:"
+      @history << "  run <app_path> - Launch an application"
+      @history << "  help - Show this help message"
+    else
+      @history << "Unknown command: #{cmd}"
+      @history << "Type 'help' for available commands"
+    end
+  end
+
   def on_update()
     if @need_redraw
       redraw_screen
@@ -85,7 +133,9 @@ class ShellApp < FmrbApp
 
   def handle_key_input(ev)
     keycode = ev[:keycode]
-    puts "[Shell] keycode=#{keycode}"
+    modifier = ev[:modifier] || 0
+    shift_pressed = (modifier & 0x03) != 0  # 0x01 = Left Shift, 0x02 = Right Shift
+    puts "[Shell] keycode=#{keycode}, modifier=#{modifier}, shift=#{shift_pressed}"
 
     # Enter key (keycode 13 = CR)
     if keycode == 13
@@ -104,11 +154,56 @@ class ShellApp < FmrbApp
       return
     end
 
+    # Ignore standalone Shift keys (225, 229)
+    if keycode == 225 || keycode == 229
+      return
+    end
+
     # Convert keycode to character (ASCII printable range)
     if keycode >= 32 && keycode <= 126
-      char = keycode.chr
-      @current_line += char
-      @need_redraw = true
+      char = keycode_to_char(keycode, shift_pressed)
+      if char
+        @current_line += char
+        @need_redraw = true
+      end
+    end
+  end
+
+  def keycode_to_char(keycode, shift)
+    # Shift key mapping for special characters (US keyboard layout compatible)
+    if shift
+      case keycode
+      when 45 then return "_"  # - -> _
+      when 61 then return "+"  # = -> +
+      when 91 then return "{"  # [ -> {
+      when 93 then return "}"  # ] -> }
+      when 92 then return "_"  # \ -> _ (for Japanese keyboard Shift+\)
+      when 59 then return ":"  # ; -> :
+      when 39 then return "\""  # ' -> "
+      when 44 then return "<"  # , -> <
+      when 46 then return ">"  # . -> >
+      when 47 then return "?"  # / -> ?
+      when 96 then return "~"  # ` -> ~
+      when 49 then return "!"  # 1 -> !
+      when 50 then return "@"  # 2 -> @
+      when 51 then return "#"  # 3 -> #
+      when 52 then return "$"  # 4 -> $
+      when 53 then return "%"  # 5 -> %
+      when 54 then return "^"  # 6 -> ^
+      when 55 then return "&"  # 7 -> &
+      when 56 then return "*"  # 8 -> *
+      when 57 then return "("  # 9 -> (
+      when 48 then return ")"  # 0 -> )
+      else
+        # For letters (a-z -> A-Z)
+        if keycode >= 97 && keycode <= 122
+          return (keycode - 32).chr
+        else
+          return keycode.chr
+        end
+      end
+    else
+      return keycode.chr
     end
   end
 
@@ -118,14 +213,18 @@ class ShellApp < FmrbApp
     # Add current line to history
     @history << (@prompt + @current_line)
 
-    # TODO: Execute command here and add output to history
+    # Execute command
+    cmd, args = parse_command(@current_line)
+    if cmd
+      execute_command(cmd, args)
+    end
 
     # Clear current line
     @current_line = ""
 
     # Check if we need to scroll
     max_lines = @user_area_height / @char_height
-    if @history.length >= max_lines - 1
+    while @history.length >= max_lines - 1
       # Remove oldest line to make room
       @history.shift
     end

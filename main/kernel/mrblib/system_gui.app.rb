@@ -51,6 +51,19 @@ class SystemGuiApp < FmrbApp
     @gfx.fill_rect( 0,  0, @window_width, 10, 0xC5)
     @gfx.draw_text( 2,  1, "Family mruby", FmrbGfx::WHITE)
     @gfx.draw_text(@window_width - 80,  1, "Count: #{@score}", FmrbGfx::WHITE)
+
+    # Shell button in center of top bar
+    button_x = @window_width / 2 - 25
+    button_y = 0
+    button_width = 50
+    button_height = 10
+
+    # Button background
+    @gfx.fill_rect(button_x, button_y, button_width, button_height, 0x80)
+    # Button border
+    @gfx.draw_rect(button_x, button_y, button_width, button_height, FmrbGfx::WHITE)
+    # Button text
+    @gfx.draw_text(button_x + 10, button_y + 1, "Shell", FmrbGfx::WHITE)
   end
 
   def draw_memory_stats()
@@ -156,18 +169,19 @@ class SystemGuiApp < FmrbApp
     # Handle mouse up event
     if ev[:type] == :mouse_up
       puts "[SystemGUI] Mouse button #{ev[:button]} released at (#{ev[:x]}, #{ev[:y]})"
-      # Add your mouse up handling logic here
-      if @st == 0
-        puts "[SystemGUI] spawn default shell app"
+
+      # Shell button hit test
+      button_x = @window_width / 2 - 25
+      button_y = 0
+      button_width = 50
+      button_height = 10
+
+      if ev[:x] >= button_x && ev[:x] < button_x + button_width &&
+         ev[:y] >= button_y && ev[:y] < button_y + button_height
+        puts "[SystemGUI] Shell button clicked"
         spawn_app("default/shell")
+        return
       end
-
-      if @st == 1
-        puts "[SystemGUI] spawn sample Lua app"
-        spawn_app("/app/sample_app/sample_lua_app.app.lua")
-      end
-
-      @st += 1
     end
   end
 
