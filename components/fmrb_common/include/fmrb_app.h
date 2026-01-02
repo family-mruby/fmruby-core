@@ -116,6 +116,13 @@ typedef struct {
     uint32_t              gen;
     fmrb_task_handle_t    task;
     fmrb_task_priority_t  stack_high_water; // Remaining stack (words)
+
+    // Memory statistics
+    fmrb_vm_type_t        vm_type;          // VM type (mruby, lua, native)
+    size_t                mem_total;        // Total memory pool size
+    size_t                mem_used;         // Used memory
+    size_t                mem_free;         // Free memory
+    int32_t               mem_frag;         // Fragmentation count or block count
 } fmrb_app_info_t;
 
 // Core APIs

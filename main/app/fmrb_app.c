@@ -12,6 +12,9 @@
 #include "fmrb_kernel.h"
 #include "fmrb_lua.h"
 
+// Forward declaration for estalloc helper function
+extern int mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free, int32_t* frag);
+
 static const char *TAG = "fmrb_app";
 
 // Max script file size (configurable)
@@ -909,6 +912,66 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {
         list[count].gen = ctx->gen;
         list[count].task = ctx->task;
         list[count].stack_high_water = ctx->task ? fmrb_task_get_stack_high_water_mark(ctx->task) : 0;
+
+        // Get memory statistics based on VM type
+        list[count].vm_type = ctx->vm_type;
+
+        switch (ctx->vm_type) {
+            case FMRB_VM_TYPE_MRUBY: {
+                if (ctx->est) {
+                    size_t total, used, free;
+                    int32_t frag;
+                    if (mrb_get_estalloc_stats(ctx->est, &total, &used, &free, &frag) == 0) {
+                        list[count].mem_total = total;
+                        list[count].mem_used = used;
+                        list[count].mem_free = free;
+                        list[count].mem_frag = frag;
+                    } else {
+                        list[count].mem_total = 0;
+                        list[count].mem_used = 0;
+                        list[count].mem_free = 0;
+                        list[count].mem_frag = 0;
+                    }
+                } else {
+                    list[count].mem_total = 0;
+                    list[count].mem_used = 0;
+                    list[count].mem_free = 0;
+                    list[count].mem_frag = 0;
+                }
+                break;
+            }
+            case FMRB_VM_TYPE_LUA: {
+                if (ctx->mem_handle >= 0) {
+                    fmrb_pool_stats_t stats;
+                    if (fmrb_mem_get_stats(ctx->mem_handle, &stats) == 0) {
+                        list[count].mem_total = stats.total_size;
+                        list[count].mem_used = stats.used_size;
+                        list[count].mem_free = stats.free_size;
+                        list[count].mem_frag = stats.used_blocks + stats.free_blocks;
+                    } else {
+                        list[count].mem_total = 0;
+                        list[count].mem_used = 0;
+                        list[count].mem_free = 0;
+                        list[count].mem_frag = 0;
+                    }
+                } else {
+                    list[count].mem_total = 0;
+                    list[count].mem_used = 0;
+                    list[count].mem_free = 0;
+                    list[count].mem_frag = 0;
+                }
+                break;
+            }
+            case FMRB_VM_TYPE_NATIVE:
+            default:
+                // Native or unknown - no memory stats available
+                list[count].mem_total = 0;
+                list[count].mem_used = 0;
+                list[count].mem_free = 0;
+                list[count].mem_frag = 0;
+                break;
+        }
+
         count++;
     }
 

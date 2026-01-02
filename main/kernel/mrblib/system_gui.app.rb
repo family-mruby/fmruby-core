@@ -15,6 +15,7 @@ class SystemGuiApp < FmrbApp
     @bg_col = 0xF6
 
     @st = 0
+    @mem_update_interval = 30  # Update memory stats every 30 frames
   end
 
   def on_create()
@@ -52,6 +53,36 @@ class SystemGuiApp < FmrbApp
     @gfx.draw_text(@window_width - 80,  1, "Count: #{@score}", FmrbGfx::WHITE)
   end
 
+  def draw_memory_stats()
+    # Update memory stats every N frames
+    if @counter % @mem_update_interval == 0
+      begin
+        processes = FmrbApp.ps
+        return if processes.nil?
+
+        y_offset = @window_height - 10
+        line_height = 8
+
+        # Filter running/suspended processes
+        active_procs = processes.select { |p| p[:state] == 3 || p[:state] == 4 }  # RUNNING=3, SUSPENDED=4
+
+        active_procs.each do |proc|
+          name = proc[:name]
+          mem_used_kb = proc[:mem_used] / 1024
+          mem_total_kb = proc[:mem_total] / 1024
+
+          # Draw memory info: "name: XXXkB/YYYkB"
+          text = "#{name}: #{mem_used_kb}KB/#{mem_total_kb}KB"
+          @gfx.draw_text(@window_width - 120, y_offset, text, FmrbGfx::WHITE)
+
+          y_offset -= line_height
+        end
+      rescue => e
+        puts "[SystemGUI] Error getting memory stats: #{e.message}"
+      end
+    end
+  end
+
   def on_update()
     if @counter % 30 == 0
       puts "[SystemGUI] on_update() tick #{@counter / 30}s"
@@ -83,6 +114,7 @@ class SystemGuiApp < FmrbApp
     @counter += 1
 
     draw_system_frame
+    draw_memory_stats
     @gfx.present
 
     33

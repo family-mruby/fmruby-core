@@ -51,5 +51,27 @@ mrb_open_with_custom_alloc(void* mem, size_t bytes)
   return mrb_open();
 }
 
+// Helper function to get estalloc statistics from est pointer
+// Returns: 0 on success, -1 on error
+// Parameters: est - estalloc pointer, total, used, free, frag - output pointers
+int
+mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free, int32_t* frag)
+{
+  if (!est_ptr || !total || !used || !free || !frag) {
+    return -1;
+  }
+
+  ESTALLOC *est = (ESTALLOC*)est_ptr;
+  est_take_statistics(est);
+  ESTALLOC_STAT *stat = &est->stat;
+
+  *total = stat->total;
+  *used = stat->used;
+  *free = stat->free;
+  *frag = stat->frag;
+
+  return 0;
+}
+
 // PICORB_ALLOC_ESTALLOC
 //#endif

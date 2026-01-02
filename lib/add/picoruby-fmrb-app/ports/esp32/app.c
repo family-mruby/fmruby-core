@@ -538,6 +538,49 @@ static mrb_value mrb_fmrb_app_send_message(mrb_state *mrb, mrb_value self)
     }
 }
 
+// FmrbApp.ps() -> Array[Hash]
+// Get process list with memory statistics
+static mrb_value mrb_fmrb_app_s_ps(mrb_state *mrb, mrb_value self)
+{
+    fmrb_app_info_t list[FMRB_MAX_APPS];
+    int32_t count = fmrb_app_ps(list, FMRB_MAX_APPS);
+
+    mrb_value result = mrb_ary_new_capa(mrb, count);
+
+    for (int32_t i = 0; i < count; i++) {
+        mrb_value hash = mrb_hash_new_capa(mrb, 12);
+
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "id")),
+                     mrb_fixnum_value(list[i].app_id));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "name")),
+                     mrb_str_new_cstr(mrb, list[i].app_name));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "state")),
+                     mrb_fixnum_value(list[i].state));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
+                     mrb_fixnum_value(list[i].type));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "vm_type")),
+                     mrb_fixnum_value(list[i].vm_type));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "gen")),
+                     mrb_fixnum_value(list[i].gen));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "stack_water")),
+                     mrb_fixnum_value(list[i].stack_high_water));
+
+        // Memory statistics
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "mem_total")),
+                     mrb_fixnum_value(list[i].mem_total));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "mem_used")),
+                     mrb_fixnum_value(list[i].mem_used));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "mem_free")),
+                     mrb_fixnum_value(list[i].mem_free));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "mem_frag")),
+                     mrb_fixnum_value(list[i].mem_frag));
+
+        mrb_ary_push(mrb, result, hash);
+    }
+
+    return result;
+}
+
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 {
     // Define FmrbApp class
@@ -549,6 +592,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_cleanup", mrb_fmrb_app_cleanup, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, app_class, "_set_window_param", mrb_fmrb_app_set_window_param, MRB_ARGS_REQ(2));
+
+    // Class methods
+    mrb_define_class_method(mrb, app_class, "ps", mrb_fmrb_app_s_ps, MRB_ARGS_NONE());
 
     // Process ID constants
     mrb_define_const(mrb, app_class, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
