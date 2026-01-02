@@ -37,7 +37,7 @@ static void process_hid_event(uint8_t type, const uint8_t *data, uint16_t len) {
                 const hid_keyboard_event_t *kbd = (const hid_keyboard_event_t*)data;
                 FMRB_LOGI(TAG, "Keyboard DOWN: scancode=%u keycode=%u modifier=0x%02x",
                          kbd->scancode, kbd->keycode, kbd->modifier);
-                fmrb_host_send_key_down(kbd->keycode);
+                fmrb_host_send_key_down(kbd->keycode, kbd->scancode, kbd->modifier);
             }
             break;
 
@@ -46,7 +46,7 @@ static void process_hid_event(uint8_t type, const uint8_t *data, uint16_t len) {
                 const hid_keyboard_event_t *kbd = (const hid_keyboard_event_t*)data;
                 FMRB_LOGI(TAG, "Keyboard UP: scancode=%u keycode=%u modifier=0x%02x",
                          kbd->scancode, kbd->keycode, kbd->modifier);
-                fmrb_host_send_key_up(kbd->keycode);
+                fmrb_host_send_key_up(kbd->keycode, kbd->scancode, kbd->modifier);
             }
             break;
 

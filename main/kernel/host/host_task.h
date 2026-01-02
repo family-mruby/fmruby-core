@@ -20,16 +20,20 @@ void fmrb_host_task_deinit(void);
 /**
  * @brief Send key down event
  * @param key_code The key code
+ * @param scancode The scancode
+ * @param modifier The modifier keys state
  * @return 0 on success, -1 on failure
  */
-int fmrb_host_send_key_down(int key_code);
+int fmrb_host_send_key_down(int key_code, int scancode, int modifier);
 
 /**
  * @brief Send key up event
  * @param key_code The key code
+ * @param scancode The scancode
+ * @param modifier The modifier keys state
  * @return 0 on success, -1 on failure
  */
-int fmrb_host_send_key_up(int key_code);
+int fmrb_host_send_key_up(int key_code, int scancode, int modifier);
 
 /**
  * @brief Send mouse move event

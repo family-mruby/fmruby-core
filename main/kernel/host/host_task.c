@@ -34,6 +34,8 @@ typedef struct {
     union {
         struct {
             int key_code;
+            int scancode;
+            int modifier;
         } key;
         struct {
             int x;
@@ -345,8 +347,8 @@ static void host_task_process_host_message(const host_message_t *msg)
             key_event->subtype = (msg->type == HOST_MSG_HID_KEY_DOWN)
                 ? HID_MSG_KEY_DOWN : HID_MSG_KEY_UP;
             key_event->keycode = (uint8_t)(msg->data.key.key_code & 0xFF);
-            key_event->scancode = 0;
-            key_event->modifier = 0;
+            key_event->scancode = (uint8_t)(msg->data.key.scancode & 0xFF);
+            key_event->modifier = (uint8_t)(msg->data.key.modifier & 0xFF);
 
             // Send directly to target app
             //fmrb_msg_send(routing.target_pid, &hid_msg, 10);
@@ -579,20 +581,24 @@ static int fmrb_host_send_message(const host_message_t *msg)
  * Convenience functions for sending specific message types
  */
 
-int fmrb_host_send_key_down(int key_code)
+int fmrb_host_send_key_down(int key_code, int scancode, int modifier)
 {
     host_message_t msg = {
         .type = HOST_MSG_HID_KEY_DOWN,
-        .data.key.key_code = key_code
+        .data.key.key_code = key_code,
+        .data.key.scancode = scancode,
+        .data.key.modifier = modifier
     };
     return fmrb_host_send_message(&msg);
 }
 
-int fmrb_host_send_key_up(int key_code)
+int fmrb_host_send_key_up(int key_code, int scancode, int modifier)
 {
     host_message_t msg = {
         .type = HOST_MSG_HID_KEY_UP,
-        .data.key.key_code = key_code
+        .data.key.key_code = key_code,
+        .data.key.scancode = scancode,
+        .data.key.modifier = modifier
     };
     return fmrb_host_send_message(&msg);
 }
