@@ -306,3 +306,13 @@ void fmrb_mem_init(void){
     init_list_mutex();
     fmrb_sys_mem_init();
 }
+
+// Get statistics for system pool
+int fmrb_sys_mem_get_stats(fmrb_pool_stats_t* stats)
+{
+    if (system_handle < 0) {
+        ESP_LOGE(TAG, "System pool not initialized");
+        return -1;
+    }
+    return fmrb_mem_get_stats(system_handle, stats);
+}

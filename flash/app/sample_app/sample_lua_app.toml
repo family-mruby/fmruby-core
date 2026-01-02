@@ -1,6 +1,6 @@
 # script name must be "app_handle_name.app.rb"
 app_handle_name = "sample_lua_app"
-app_screen_name = "Sample LUA Application"
+app_screen_name = "lua app"
 #default_window_mode = "background" # or "fullwindow" or "window" or "background"
 default_window_mode = "window" # or "fullwindow" or "window" or "background"
 
@@ -9,5 +9,5 @@ default_window_width = 100
 default_window_height = 100
 
 # if fullscreen/fullwindow, they will be ignored
-default_window_pos_x = 260
-default_window_pos_y = 200
+default_window_pos_x = 300
+default_window_pos_y = 100

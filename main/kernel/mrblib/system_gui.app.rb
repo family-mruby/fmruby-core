@@ -58,10 +58,36 @@ class SystemGuiApp < FmrbApp
     if @counter % @mem_update_interval == 0
       begin
         processes = FmrbApp.ps
+        heap_info = FmrbApp.heap_info
+        sys_pool_info = FmrbApp.sys_pool_info
         return if processes.nil?
+
+        # Clear memory stats area at bottom-left (overwrite with background color)
+        stats_area_width = 150
+        stats_area_height = 65
+        @gfx.fill_rect(2, @window_height - stats_area_height - 2, stats_area_width, stats_area_height, @bg_col)
 
         y_offset = @window_height - 10
         line_height = 8
+        x_offset = 2
+
+        # Draw ESP32 heap info first
+        if heap_info && heap_info[:total] > 0
+          heap_free_kb = heap_info[:free] / 1024
+          heap_total_kb = heap_info[:total] / 1024
+          text = "Heap: #{heap_free_kb}KB/#{heap_total_kb}KB"
+          @gfx.draw_text(x_offset, y_offset, text, FmrbGfx::WHITE)
+          y_offset -= line_height
+        end
+
+        # Draw system pool info
+        if sys_pool_info && sys_pool_info[:total] > 0
+          sys_used_kb = sys_pool_info[:used] / 1024
+          sys_total_kb = sys_pool_info[:total] / 1024
+          text = "SysPool: #{sys_used_kb}KB/#{sys_total_kb}KB"
+          @gfx.draw_text(x_offset, y_offset, text, FmrbGfx::WHITE)
+          y_offset -= line_height
+        end
 
         # Filter running/suspended processes
         active_procs = processes.select { |p| p[:state] == 3 || p[:state] == 4 }  # RUNNING=3, SUSPENDED=4
@@ -73,7 +99,7 @@ class SystemGuiApp < FmrbApp
 
           # Draw memory info: "name: XXXkB/YYYkB"
           text = "#{name}: #{mem_used_kb}KB/#{mem_total_kb}KB"
-          @gfx.draw_text(@window_width - 120, y_offset, text, FmrbGfx::WHITE)
+          @gfx.draw_text(x_offset, y_offset, text, FmrbGfx::WHITE)
 
           y_offset -= line_height
         end

@@ -22,6 +22,12 @@
 
 #include "hal.h"
 
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "esp_heap_caps.h"
+#else
+#include <sys/sysinfo.h>
+#endif
+
 static const char* TAG = "app";
 
 // Helper function: Check mruby ci pointer validity
@@ -581,6 +587,93 @@ static mrb_value mrb_fmrb_app_s_ps(mrb_state *mrb, mrb_value self)
     return result;
 }
 
+// FmrbApp.sys_pool_info() -> Hash
+// Get system pool (fmrb_sys_malloc) information (TLSF allocator)
+static mrb_value mrb_fmrb_app_s_sys_pool_info(mrb_state *mrb, mrb_value self)
+{
+    fmrb_pool_stats_t stats;
+    mrb_value hash = mrb_hash_new_capa(mrb, 5);
+
+    if (fmrb_sys_mem_get_stats(&stats) == 0) {
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "total")),
+                     mrb_fixnum_value(stats.total_size));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "used")),
+                     mrb_fixnum_value(stats.used_size));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free")),
+                     mrb_fixnum_value(stats.free_size));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "used_blocks")),
+                     mrb_fixnum_value(stats.used_blocks));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free_blocks")),
+                     mrb_fixnum_value(stats.free_blocks));
+    } else {
+        // Return zeros on error
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "total")),
+                     mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "used")),
+                     mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free")),
+                     mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "used_blocks")),
+                     mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free_blocks")),
+                     mrb_fixnum_value(0));
+    }
+
+    return hash;
+}
+
+// FmrbApp.heap_info() -> Hash
+// Get system heap information (ESP32 heap)
+static mrb_value mrb_fmrb_app_s_heap_info(mrb_state *mrb, mrb_value self)
+{
+    mrb_value hash = mrb_hash_new_capa(mrb, 4);
+
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // ESP32: Use ESP-IDF heap API
+    size_t free_heap = heap_caps_get_free_size(MALLOC_CAP_DEFAULT);
+    size_t total_heap = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
+    size_t min_free_heap = heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
+    size_t largest_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free")),
+                 mrb_fixnum_value(free_heap));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "total")),
+                 mrb_fixnum_value(total_heap));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "min_free")),
+                 mrb_fixnum_value(min_free_heap));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "largest_block")),
+                 mrb_fixnum_value(largest_free_block));
+#else
+    // Linux: Use sysinfo to get system memory information
+    struct sysinfo si;
+    if (sysinfo(&si) == 0) {
+        size_t total_ram = si.totalram * si.mem_unit;
+        size_t free_ram = si.freeram * si.mem_unit;
+
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free")),
+                     mrb_fixnum_value(free_ram));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "total")),
+                     mrb_fixnum_value(total_ram));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "min_free")),
+                     mrb_fixnum_value(free_ram));  // Linux has no equivalent, use current free
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "largest_block")),
+                     mrb_fixnum_value(free_ram));  // Linux has no equivalent, use current free
+    } else {
+        // If sysinfo fails, return zeros
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free")),
+                     mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "total")),
+                     mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "min_free")),
+                     mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "largest_block")),
+                     mrb_fixnum_value(0));
+    }
+#endif
+
+    return hash;
+}
+
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 {
     // Define FmrbApp class
@@ -595,6 +688,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 
     // Class methods
     mrb_define_class_method(mrb, app_class, "ps", mrb_fmrb_app_s_ps, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "heap_info", mrb_fmrb_app_s_heap_info, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "sys_pool_info", mrb_fmrb_app_s_sys_pool_info, MRB_ARGS_NONE());
 
     // Process ID constants
     mrb_define_const(mrb, app_class, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));

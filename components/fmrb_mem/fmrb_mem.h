@@ -46,6 +46,7 @@ int fmrb_mem_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats);
 // malloc for system functions
 void* fmrb_sys_malloc(size_t size);
 void fmrb_sys_free(void* ptr);
+int fmrb_sys_mem_get_stats(fmrb_pool_stats_t* stats);
 
 #ifdef __cplusplus
 }
