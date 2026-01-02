@@ -4,10 +4,6 @@ class AppData
   def initialize()
     @name
     @path
-    @pos_x = 0
-    @pos_y = 0
-    @window_width = 0
-    @window_height = 0
     @visible = true
   end
 end
@@ -43,7 +39,7 @@ class FmrbKernel
     subtype = data.bytes[0]
 
     case subtype
-    when 1  # FMRB_APP_CTRL_SPAWN
+    when FmrbConst::APP_CTRL_SPAWN
       app_name = data[1, @max_path_len].delete("\x00")
       pid = msg[:src_pid]
       puts "[KERNEL] Spawn request from pid=#{pid}: #{app_name}"
@@ -60,14 +56,14 @@ class FmrbKernel
       else
         puts "[KERNEL] Failed to spawn app: #{app_name}"
       end
-    when 2  # FMRB_APP_CTRL_KILL
+    when FmrbConst::APP_CTRL_KILL
       pid = msg[:src_pid]
       puts "[KERNEL] Kill request from pid=#{pid} (not implemented)"
       # TODO: Reset HID target if this was the target app
       # Kernel.set_hid_target(0xFF)
-    when 3  # FMRB_APP_CTRL_SUSPEND
+    when FmrbConst::APP_CTRL_SUSPEND
       puts "[KERNEL] Suspend request (not implemented)"
-    when 4  # FMRB_APP_CTRL_RESUME
+    when FmrbConst::APP_CTRL_RESUME
       puts "[KERNEL] Resume request (not implemented)"
     else
       puts "[KERNEL] Unknown app control subtype: #{subtype}"

@@ -1,10 +1,10 @@
-# FMRuby Core
+# Family mruby Core
 
 Family mruby OS core firmware - A lightweight embedded OS with multi-VM support (mruby/Lua) running on ESP32-S3.
 
 ## About
 
-FMRuby Core is an embedded operating system designed for ESP32-S3-N16R8, providing:
+Family mruby Core is an embedded operating system designed for ESP32-S3-N16R8, providing:
 
 - **Multi-VM Runtime**: Support for mruby, Lua, and native C applications
 - **Graphics System**: Hardware-accelerated graphics with LovyanGFX-compatible API
