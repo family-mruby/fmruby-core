@@ -334,7 +334,7 @@ static void host_task_process_host_message(const host_message_t *msg)
                 break;
             }
 
-            FMRB_LOGI(TAG, "Key %s: %d -> PID %d",
+            FMRB_LOGD(TAG, "Key %s: %d -> PID %d",
                      msg->type == HOST_MSG_HID_KEY_DOWN ? "down" : "up",
                      msg->data.key.key_code, routing.target_pid);
 

@@ -34,10 +34,10 @@ static int event_watch_callback(void* userdata, SDL_Event* event) {
 
     switch (event->type) {
         case SDL_KEYDOWN:
-            INPUT_LOG_D("Key pressed: scancode=%d (%s), keycode=%d",
-                       event->key.keysym.scancode,
-                       SDL_GetScancodeName(event->key.keysym.scancode),
-                       event->key.keysym.sym);
+            // INPUT_LOG_D("Key pressed: scancode=%d (%s), keycode=%d",
+            //            event->key.keysym.scancode,
+            //            SDL_GetScancodeName(event->key.keysym.scancode),
+            //            event->key.keysym.sym);
             {
                 hid_keyboard_event_t kbd_event;
                 kbd_event.scancode = (uint8_t)event->key.keysym.scancode;
@@ -48,10 +48,10 @@ static int event_watch_callback(void* userdata, SDL_Event* event) {
             break;
 
         case SDL_KEYUP:
-            INPUT_LOG_D("Key released: scancode=%d (%s), keycode=%d",
-                       event->key.keysym.scancode,
-                       SDL_GetScancodeName(event->key.keysym.scancode),
-                       event->key.keysym.sym);
+            // INPUT_LOG_D("Key released: scancode=%d (%s), keycode=%d",
+            //            event->key.keysym.scancode,
+            //            SDL_GetScancodeName(event->key.keysym.scancode),
+            //            event->key.keysym.sym);
             {
                 hid_keyboard_event_t kbd_event;
                 kbd_event.scancode = (uint8_t)event->key.keysym.scancode;
@@ -62,8 +62,8 @@ static int event_watch_callback(void* userdata, SDL_Event* event) {
             break;
 
         case SDL_MOUSEBUTTONDOWN:
-            INPUT_LOG_D("Mouse button %d pressed at (%d, %d)",
-                       event->button.button, event->button.x, event->button.y);
+            // INPUT_LOG_D("Mouse button %d pressed at (%d, %d)",
+            //            event->button.button, event->button.x, event->button.y);
             {
                 hid_mouse_button_event_t mouse_event;
                 mouse_event.button = event->button.button;
@@ -75,8 +75,8 @@ static int event_watch_callback(void* userdata, SDL_Event* event) {
             break;
 
         case SDL_MOUSEBUTTONUP:
-            INPUT_LOG_D("Mouse button %d released at (%d, %d)",
-                       event->button.button, event->button.x, event->button.y);
+            // INPUT_LOG_D("Mouse button %d released at (%d, %d)",
+            //            event->button.button, event->button.x, event->button.y);
             {
                 hid_mouse_button_event_t mouse_event;
                 mouse_event.button = event->button.button;
@@ -96,7 +96,7 @@ static int event_watch_callback(void* userdata, SDL_Event* event) {
             // Only log occasionally for debugging
             static int motion_count = 0;
             if (++motion_count % 60 == 0) {  // Log every 60th event
-                INPUT_LOG_D("Mouse moved to (%d, %d)", event->motion.x, event->motion.y);
+                // INPUT_LOG_D("Mouse moved to (%d, %d)", event->motion.x, event->motion.y);
             }
             // Send to Core with throttling (every 10th event to reduce bandwidth)
             if (motion_count % 10 == 0) {

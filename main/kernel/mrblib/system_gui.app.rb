@@ -163,8 +163,8 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_event(ev)
-    puts "on_event: gui app"
-    p ev
+    #puts "on_event: gui app"
+    #p ev
 
     # Handle mouse up event
     if ev[:type] == :mouse_up

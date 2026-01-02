@@ -75,7 +75,7 @@ class ShellApp < FmrbApp
 
   def on_update()
     if @need_redraw
-      puts "[Shell] on_update: need_redraw=true, calling redraw_screen"
+      #puts "[Shell] on_update: need_redraw=true, calling redraw_screen"
       redraw_screen
       @need_redraw = false
     end
@@ -99,7 +99,6 @@ class ShellApp < FmrbApp
   end
 
   def redraw_screen
-    puts "[Shell] redraw_screen called"
     # Clear user area
     @gfx.fill_rect(@user_area_x0, @user_area_y0,
                     @user_area_width, @user_area_height, FmrbGfx::WHITE)
@@ -109,8 +108,8 @@ class ShellApp < FmrbApp
   end
 
   def on_event(ev)
-    puts "on_event: shell app"
-    p ev
+    #puts "on_event: shell app"
+    #p ev
 
     if ev[:type] == :key_down
       handle_key_input(ev)
@@ -144,7 +143,7 @@ class ShellApp < FmrbApp
   def handle_key_input(ev)
     keycode = ev[:keycode]
     character = ev[:character] || 0
-    puts "[Shell] keycode=#{keycode}, character=#{character} (#{character.chr if character != 0})"
+    #puts "[Shell] keycode=#{keycode}, character=#{character} (#{character.chr if character != 0})"
 
     # Enter key
     if character == 10 || character == 13  # LF or CR
@@ -178,9 +177,9 @@ class ShellApp < FmrbApp
     if character >= 32 && character <= 126
       if @current_line.length < @max_line_length
         char_str = character.chr
-        puts "[Shell] Adding character: '#{char_str}' (ASCII #{character}), line was: '#{@current_line}'"
+        #puts "[Shell] Adding character: '#{char_str}' (ASCII #{character}), line was: '#{@current_line}'"
         @current_line += char_str
-        puts "[Shell] Line is now: '#{@current_line}' (length=#{@current_line.length})"
+        #puts "[Shell] Line is now: '#{@current_line}' (length=#{@current_line.length})"
         @need_redraw = true
       else
         puts "[Shell] Warning: max line length (#{@max_line_length}) reached"

@@ -391,7 +391,7 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 
         if (ret == FMRB_OK) {
             // Message received
-            FMRB_LOGI(TAG, "App %s received message: type=%d", ctx->app_name, msg.type);
+            FMRB_LOGD(TAG, "App %s received message: type=%d", ctx->app_name, msg.type);
 
             // Dispatch message based on type
             if (msg.type == FMRB_MSG_TYPE_HID_EVENT) {
