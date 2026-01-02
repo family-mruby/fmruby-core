@@ -345,6 +345,7 @@ static void app_task_main(void* arg) {
                 irep_obj = mrb_read_irep(ctx->mrb, irep_ptr);
                 if (irep_obj == NULL) {
                     FMRB_LOGE(TAG, "[%s] Failed to read IREP bytecode", ctx->app_name);
+                    goto cleanup;
                 }
             } else if (load_mode == FMRB_LOAD_MODE_FILE) {
                 // Load from Ruby source file
@@ -398,10 +399,10 @@ static void app_task_main(void* arg) {
             }
 
             // Execute irep
+            FMRB_LOGI(TAG, "[%s] Execute irep", ctx->app_name);
             if (irep_obj) {
                 mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
                 mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
-                FMRB_LOGI(TAG, "[%s] Before mrc_create_task", ctx->app_name);
                 mrb_value task = mrc_create_task(cc, irep_obj, name, mrb_nil_value(),
                                                  mrb_obj_value(ctx->mrb->top_self));
                 FMRB_LOGI(TAG, "[%s] After mrc_create_task, task is_nil=%d", ctx->app_name, mrb_nil_p(task));
