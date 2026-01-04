@@ -90,6 +90,76 @@ static bool transition_state(fmrb_app_task_context_t* ctx, fmrb_proc_state_t new
 }
 
 /**
+ * @brief Inspect mrc_irep structure for debugging
+ */
+static void inspect_irep(mrb_state *mrb, const char* app_name, const mrc_irep *irep,
+                         const void* script_buf_start, const void* script_buf_end)
+{
+    if (!irep) {
+        FMRB_LOGE(TAG, "[%s] IREP is NULL!", app_name);
+        return;
+    }
+
+    FMRB_LOGI(TAG, "[%s] === IREP Inspection ===", app_name);
+    FMRB_LOGI(TAG, "[%s] irep=%p", app_name, irep);
+    FMRB_LOGI(TAG, "[%s] nlocals=%u, nregs=%u, clen=%u, flags=0x%02x",
+              app_name, irep->nlocals, irep->nregs,
+              irep->clen, irep->flags);
+    FMRB_LOGI(TAG, "[%s] iseq=%p", app_name, irep->iseq);
+    FMRB_LOGI(TAG, "[%s] pool=%p (plen=%u)", app_name, irep->pool, irep->plen);
+    FMRB_LOGI(TAG, "[%s] syms=%p (slen=%u)", app_name, irep->syms, irep->slen);
+    FMRB_LOGI(TAG, "[%s] reps=%p (rlen=%u)", app_name, irep->reps, irep->rlen);
+
+    // Check symbol table validity - show first 5 symbols
+    if (irep->syms && irep->slen > 0) {
+        FMRB_LOGI(TAG, "[%s] Symbol table (slen=%u, first 5):", app_name, irep->slen);
+        for (int i = 0; i < 5 && i < irep->slen; i++) {
+            mrb_sym sym = irep->syms[i];
+            const char* name = mrb_sym_name(mrb, sym);
+            FMRB_LOGI(TAG, "[%s]   syms[%d] = %u ('%s')",
+                      app_name, i, sym, name ? name : "NULL");
+        }
+    } else {
+        FMRB_LOGW(TAG, "[%s] Symbol table is NULL or empty (slen=%u)", app_name, irep->slen);
+    }
+
+    // Check pool content
+    if (irep->pool && irep->plen > 0) {
+        FMRB_LOGI(TAG, "[%s] Pool (plen=%u, first 3):", app_name, irep->plen);
+        for (int i = 0; i < 3 && i < irep->plen; i++) {
+            const mrc_pool_value *pv = &irep->pool[i];
+            uint32_t tt = pv->tt;
+            uint32_t type = tt & 0x7;  // Lower 3 bits = type
+            FMRB_LOGI(TAG, "[%s]   pool[%d] type=%u (tt=0x%08x)", app_name, i, type, tt);
+            if (type == 0 || type == 2) {  // IREP_TT_STR or IREP_TT_SSTR
+                const char* str = pv->u.str;
+                bool in_script_buf = false;
+                if (script_buf_start && script_buf_end && str) {
+                    in_script_buf = (str >= (const char*)script_buf_start &&
+                                    str < (const char*)script_buf_end);
+                }
+                FMRB_LOGI(TAG, "[%s]     -> string_ptr=%p, in_script_buf=%s, content=\"%s\"",
+                          app_name, (void*)str, in_script_buf ? "YES" : "NO", str ? str : "NULL");
+            }
+        }
+    } else {
+        FMRB_LOGI(TAG, "[%s] Pool is NULL or empty (plen=%u)", app_name, irep->plen);
+    }
+
+    // Show first 10 instruction bytes
+    if (irep->iseq) {
+        FMRB_LOGI(TAG, "[%s] First 10 iseq bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+                  app_name,
+                  irep->iseq[0], irep->iseq[1], irep->iseq[2], irep->iseq[3], irep->iseq[4],
+                  irep->iseq[5], irep->iseq[6], irep->iseq[7], irep->iseq[8], irep->iseq[9]);
+    } else {
+        FMRB_LOGW(TAG, "[%s] iseq is NULL", app_name);
+    }
+
+    FMRB_LOGI(TAG, "[%s] === End IREP Inspection ===", app_name);
+}
+
+/**
  * TLS destructor - called automatically when task is deleted
  */
 static void tls_destructor(int idx, void* pv) {
@@ -338,6 +408,11 @@ static void app_task_main(void* arg) {
     switch (ctx->vm_type) {
         case FMRB_VM_TYPE_MRUBY: {
             mrc_irep *irep_obj = NULL;
+            mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
+            if (!cc) {
+                FMRB_LOGE(TAG, "[%s] Failed to create compile context", ctx->app_name);
+                goto cleanup;
+            }
 
             if (load_mode == FMRB_LOAD_MODE_BYTECODE) {
                 // Load from bytecode (IREP)
@@ -347,6 +422,9 @@ static void app_task_main(void* arg) {
                     FMRB_LOGE(TAG, "[%s] Failed to read IREP bytecode", ctx->app_name);
                     goto cleanup;
                 }
+
+                // Inspect IREP structure (no script buffer for bytecode)
+                inspect_irep(ctx->mrb, ctx->app_name, irep_obj, NULL, NULL);
             } else if (load_mode == FMRB_LOAD_MODE_FILE) {
                 // Load from Ruby source file
                 const char* filepath = (const char*)load_data;
@@ -361,16 +439,10 @@ static void app_task_main(void* arg) {
                 }
                 need_free_script = true;
 
-                // Compile script to irep
-                mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
-                if (!cc) {
-                    FMRB_LOGE(TAG, "[%s] Failed to create compile context", ctx->app_name);
-                    goto cleanup;
-                }
-
                 const uint8_t *script_ptr = (const uint8_t *)script_buffer;
-                FMRB_LOGI(TAG, "[%s] Before mrc_load_string_cxt, ctx->mrb=%p", ctx->app_name, ctx->mrb);
                 FMRB_LOGI(TAG, "[%s] Script size: %zu bytes", ctx->app_name, script_size);
+                FMRB_LOGI(TAG, "[%s] script_buffer range: %p - %p",
+                          ctx->app_name, (void*)script_buffer, (void*)((uint8_t*)script_buffer + script_size));
 
                 irep_obj = mrc_load_string_cxt(cc, &script_ptr, script_size);
 
@@ -386,13 +458,15 @@ static void app_task_main(void* arg) {
                     goto cleanup;
                 }
 
-                mrc_ccontext_free(cc);
                 FMRB_LOGI(TAG, "[%s] Ruby script compiled successfully", ctx->app_name);
 
-                // Free script buffer immediately after compilation (no longer needed)
-                fmrb_sys_free(script_buffer);
-                script_buffer = NULL;
-                need_free_script = false;
+                // Inspect IREP structure (with script buffer range for analysis)
+                inspect_irep(ctx->mrb, ctx->app_name, irep_obj,
+                            script_buffer, (uint8_t*)script_buffer + script_size);
+
+                // fmrb_sys_free(script_buffer);
+                // script_buffer = NULL;
+                // need_free_script = false;
             } else {
                 FMRB_LOGE(TAG, "[%s] Invalid load mode: %d", ctx->app_name, load_mode);
                 goto cleanup;
@@ -400,28 +474,31 @@ static void app_task_main(void* arg) {
 
             // Execute irep
             FMRB_LOGI(TAG, "[%s] Execute irep", ctx->app_name);
-            if (irep_obj) {
-                mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
-                mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
-                mrb_value task = mrc_create_task(cc, irep_obj, name, mrb_nil_value(),
-                                                 mrb_obj_value(ctx->mrb->top_self));
-                FMRB_LOGI(TAG, "[%s] After mrc_create_task, task is_nil=%d", ctx->app_name, mrb_nil_p(task));
 
-                if (mrb_nil_p(task)) {
-                    FMRB_LOGE(TAG, "[%s] mrc_create_task failed, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
-                } else {
-                    // Main event loop: run mruby tasks
-                    FMRB_LOGI(TAG, "[%s] Before mrb_tasks_run", ctx->app_name);
-                    mrb_tasks_run(ctx->mrb);
-                    FMRB_LOGI(TAG, "[%s] After mrb_tasks_run, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
-                }
-
-                if (ctx->mrb->exc) {
-                    mrb_print_error(ctx->mrb);
-                }
-
-                mrc_ccontext_free(cc);
+            mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
+            mrb_value task = mrc_create_task(cc, irep_obj, name, mrb_nil_value(), mrb_obj_value(ctx->mrb->top_self));
+            if (mrb_nil_p(task)) {
+                FMRB_LOGE(TAG, "[%s] mrc_create_task failed, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
+                goto cleanup;
             }
+
+            FMRB_LOGI(TAG, "[%s] mrb_tasks_run", ctx->app_name);
+            mrb_value v = mrb_tasks_run(ctx->mrb);
+            FMRB_LOGI(TAG, "[%s] After mrb_tasks_run, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
+
+            //TODO: check proper free process
+            if (ctx->mrb->exc) {
+                mrb_print_error(ctx->mrb);
+            }
+
+            mrb_vm_ci_env_clear(ctx->mrb, ctx->mrb->c->cibase);
+            // if (ctx->mrb->exc) {
+            //     MRB_EXC_CHECK_EXIT(ctx->mrb, ctx->mrb->exc);
+            //     mrb_undef_p(v);
+            // }
+            mrc_irep_free(cc, irep_obj);
+            mrc_ccontext_free(cc);
+
             break;
         }
 
