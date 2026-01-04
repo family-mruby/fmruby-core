@@ -10,4 +10,4 @@ default_window_height = 100
 
 # if fullscreen/fullwindow, they will be ignored
 default_window_pos_x = 300
-default_window_pos_y = 100
+default_window_pos_y = 115

@@ -464,9 +464,8 @@ static void app_task_main(void* arg) {
                 inspect_irep(ctx->mrb, ctx->app_name, irep_obj,
                             script_buffer, (uint8_t*)script_buffer + script_size);
 
-                // fmrb_sys_free(script_buffer);
-                // script_buffer = NULL;
-                // need_free_script = false;
+                // script_buffer cannot be free here.
+                // TODO: investigate how the buffer is used.
             } else {
                 FMRB_LOGE(TAG, "[%s] Invalid load mode: %d", ctx->app_name, load_mode);
                 goto cleanup;
@@ -498,6 +497,10 @@ static void app_task_main(void* arg) {
             // }
             mrc_irep_free(cc, irep_obj);
             mrc_ccontext_free(cc);
+
+            fmrb_sys_free(script_buffer);
+            script_buffer = NULL;
+            need_free_script = false;
 
             break;
         }

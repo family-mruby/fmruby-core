@@ -5,13 +5,6 @@ class SystemGuiApp < FmrbApp
   def initialize
     super()
     @counter = 0
-
-    @score = 0
-    @player_x = 300
-    @player_y = 60
-    @velocity_x = 5
-    @velocity_y = 3
-    @ball_radius = 10
     @bg_col = 0xF6
 
     @st = 0
@@ -50,7 +43,6 @@ class SystemGuiApp < FmrbApp
   def draw_system_frame()
     @gfx.fill_rect( 0,  0, @window_width, 10, 0xC5)
     @gfx.draw_text( 2,  1, "Family mruby", FmrbGfx::WHITE)
-    @gfx.draw_text(@window_width - 80,  1, "Count: #{@score}", FmrbGfx::WHITE)
 
     # Shell button on left side of top bar
     button_x = 100
@@ -89,7 +81,7 @@ class SystemGuiApp < FmrbApp
           heap_free_kb = heap_info[:free] / 1024
           heap_total_kb = heap_info[:total] / 1024
           text = "Heap: #{heap_free_kb}KB/#{heap_total_kb}KB"
-          @gfx.draw_text(x_offset, y_offset, text, FmrbGfx::WHITE)
+          @gfx.draw_text(x_offset, y_offset, text, FmrbGfx::BLUE)
           y_offset -= line_height
         end
 
@@ -98,7 +90,7 @@ class SystemGuiApp < FmrbApp
           sys_used_kb = sys_pool_info[:used] / 1024
           sys_total_kb = sys_pool_info[:total] / 1024
           text = "SysPool: #{sys_used_kb}KB/#{sys_total_kb}KB"
-          @gfx.draw_text(x_offset, y_offset, text, FmrbGfx::WHITE)
+          @gfx.draw_text(x_offset, y_offset, text, FmrbGfx::BLUE)
           y_offset -= line_height
         end
 
@@ -115,7 +107,7 @@ class SystemGuiApp < FmrbApp
 
           # Draw memory info: "name: XXXkB/YYYkB"
           text = "#{name}: #{mem_used_kb}KB/#{mem_total_kb}KB"
-          @gfx.draw_text(x_offset, y_offset, text, FmrbGfx::WHITE)
+          @gfx.draw_text(x_offset, y_offset, text, FmrbGfx::BLUE)
 
           y_offset -= line_height
         end
@@ -130,29 +122,6 @@ class SystemGuiApp < FmrbApp
       puts "[SystemGUI] on_update() tick #{@counter / 30}s"
     end
 
-    # Erase old position
-    @gfx.fill_circle(@player_x, @player_y, @ball_radius, @bg_col)
-
-    # Update position
-    @player_x += @velocity_x
-    @player_y += @velocity_y
-
-    # Check collision with window boundaries and reflect
-    if @player_x - @ball_radius <= 12 || @player_x + @ball_radius >= @window_width
-      @velocity_x = -@velocity_x
-      @player_x += @velocity_x  # Move away from boundary
-    end
-
-    if @player_y - @ball_radius <= 12 || @player_y + @ball_radius >= @window_height
-      @velocity_y = -@velocity_y
-      @player_y += @velocity_y  # Move away from boundary
-    end
-
-    # Draw new position
-    @gfx.fill_circle(@player_x, @player_y, @ball_radius, FmrbGfx::RED)
-
-
-    @score += 1
     @counter += 1
 
     draw_system_frame
