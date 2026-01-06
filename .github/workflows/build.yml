@@ -16,6 +16,9 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Fix file permissions
+        run: sudo chown -R $(id -u):$(id -g) .
+
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
@@ -44,9 +47,6 @@ jobs:
 
       - name: Tag image for Rakefile
         run: docker tag ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:${{ steps.version.outputs.ESP_IDF_VERSION }} esp32_build_container:${{ steps.version.outputs.ESP_IDF_VERSION }}
-
-      - name: Fix permissions for Docker
-        run: sudo chown -R 1000:1000 .
 
       - name: Build ESP32
         run: rake build:esp32
@@ -71,6 +71,9 @@ jobs:
           submodules: recursive
           fetch-depth: 0
 
+      - name: Fix file permissions
+        run: sudo chown -R $(id -u):$(id -g) .
+
       - name: Setup Ruby
         uses: ruby/setup-ruby@v1
         with:
@@ -99,9 +102,6 @@ jobs:
 
       - name: Tag image for Rakefile
         run: docker tag ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:${{ steps.version.outputs.ESP_IDF_VERSION }} esp32_build_container:${{ steps.version.outputs.ESP_IDF_VERSION }}
-
-      - name: Fix permissions for Docker
-        run: sudo chown -R 1000:1000 .
 
       - name: Build Linux target
         run: rake build:linux
