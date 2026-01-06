@@ -1,4 +1,4 @@
-ARG IDF_VER=release-v5.4
+ARG IDF_VER
 FROM espressif/idf:$IDF_VER
 ENV DEBIAN_FRONTEND=noninteractive
 
