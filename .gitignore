@@ -3,7 +3,6 @@ sdkconfig
 sdkconfig.old
 sdkconfig.1
 dependencies.lock
-.env
 .vscode/*
 .claude/*
 main/kernel/mrb/*

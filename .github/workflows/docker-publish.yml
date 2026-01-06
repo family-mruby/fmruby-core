@@ -29,6 +29,10 @@ jobs:
         id: repo_owner
         run: echo "owner=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
 
+      - name: Load version from .env
+        id: version
+        run: echo "ESP_IDF_VERSION=$(grep ESP_IDF_VERSION .env | cut -d '=' -f2)" >> $GITHUB_OUTPUT
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
@@ -36,7 +40,7 @@ jobs:
           file: ./docker/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:v5.5.1
+            ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:${{ steps.version.outputs.ESP_IDF_VERSION }}
             ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:latest
           build-args: |
-            IDF_VER=v5.5.1
+            IDF_VER=${{ steps.version.outputs.ESP_IDF_VERSION }}

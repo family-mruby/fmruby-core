@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Load environment variables from .env file
+if [ -f .env ]; then
+    source .env
+fi
+
+ESP_IDF_VERSION=${ESP_IDF_VERSION:-v5.5.1}
+DOCKER_IMAGE="esp32_build_container:${ESP_IDF_VERSION}"
+
 # Start socat for FS proxy UART
 echo "Starting socat for FS proxy UART..."
 socat -d -d pty,raw,echo=0,link=/tmp/fmrb_uart_core pty,raw,echo=0,link=/tmp/fmrb_uart_host 2>&1 | tee /tmp/socat.log &
@@ -117,7 +125,7 @@ if [ "$1" = "gdb" ]; then
         -v /tmp:/tmp \
         -v /dev:/dev \
         -e FMRB_FS_PROXY_UART=${UART_CORE} \
-        esp32_build_container:v5.5.1 \
+        $DOCKER_IMAGE \
         bash
 else
     docker run --rm --name $DOCKER_CONTAINER_NAME --user $(id -u):$(id -g) \
@@ -125,7 +133,7 @@ else
         -v /tmp:/tmp \
         -v /dev:/dev \
         -e FMRB_FS_PROXY_UART=${UART_CORE} \
-        esp32_build_container:v5.5.1 \
+        $DOCKER_IMAGE \
         /project/build/fmruby-core.elf
     DOCKER_PID=$!
     wait $DOCKER_PID

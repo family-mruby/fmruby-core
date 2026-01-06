@@ -1,12 +1,23 @@
 # Rakefile — Family mruby ESP-IDF build wrapper (Docker)
 require "rake"
 
+# Load environment variables from .env file
+if File.exist?(".env")
+  File.readlines(".env").each do |line|
+    line.strip!
+    next if line.empty? || line.start_with?("#")
+    key, value = line.split("=", 2)
+    ENV[key] = value if key && value
+  end
+end
+
 UID  = `id -u`.strip
 GID  = `id -g`.strip
 PWD_ = Dir.pwd
 
-IMAGE       = "esp32_build_container:v5.5.1"
-DEVICE_ARGS = ENV["DEVICE_ARGS"].to_s
+ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.1")
+IMAGE           = "esp32_build_container:#{ESP_IDF_VERSION}"
+DEVICE_ARGS     = ENV["DEVICE_ARGS"].to_s
 
 # In GitHub Actions, use container's default user (espidf) to avoid permission issues
 USER_OPT = ENV["GITHUB_ACTIONS"] ? "" : "--user #{UID}:#{GID}"
