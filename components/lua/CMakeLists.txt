@@ -50,8 +50,3 @@ idf_component_register(
     REQUIRES fmrb_mem fmrb_common fmrb_msg fmrb_gfx log
 )
 
-# Lua-specific compiler definitions
-target_compile_definitions(${COMPONENT_LIB} PRIVATE
-    LUA_USE_POSIX
-    LUA_USE_DLOPEN
-)
