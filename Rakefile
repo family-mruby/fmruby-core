@@ -5,12 +5,15 @@ UID  = `id -u`.strip
 GID  = `id -g`.strip
 PWD_ = Dir.pwd
 
-IMAGE       = ENV.fetch("ESP_IDF_IMAGE", "esp32_build_container:v5.5.1")
+IMAGE       = "esp32_build_container:v5.5.1"
 DEVICE_ARGS = ENV["DEVICE_ARGS"].to_s
+
+# In GitHub Actions, use container's default user (espidf) to avoid permission issues
+USER_OPT = ENV["GITHUB_ACTIONS"] ? "" : "--user #{UID}:#{GID}"
 
 DOCKER_CMD = [
   "docker run --rm",
-  "--user #{UID}:#{GID}",
+  USER_OPT,
   "-v #{PWD_}:/project",
   IMAGE
 ].join(" ")
@@ -19,7 +22,7 @@ DOCKER_CMD_PRIVILEGED = [
   "docker run --rm",
   "--group-add=dialout --group-add=plugdev --privileged",
   DEVICE_ARGS,
-  "--user #{UID}:#{GID}",
+  USER_OPT,
   "-v #{PWD_}:/project",
   "-v /dev/bus/usb:/dev/bus/usb",
   IMAGE
@@ -29,7 +32,7 @@ DOCKER_CMD_INTERACTIVE = [
   "docker run --rm -it",
   "--group-add=dialout --group-add=plugdev --privileged",
   DEVICE_ARGS,
-  "--user #{UID}:#{GID}",
+  USER_OPT,
   "-v #{PWD_}:/project",
   "-v /dev/bus/usb:/dev/bus/usb",
   IMAGE
@@ -130,7 +133,7 @@ task :menuconfig do
   term = ENV['TERM'] || 'xterm-256color'
   docker_cmd_interactive = [
     "docker run --rm -it",
-    "--user #{UID}:#{GID}",
+    USER_OPT,
     "-e TERM=#{term}",
     "-v #{PWD_}:/project",
     IMAGE
