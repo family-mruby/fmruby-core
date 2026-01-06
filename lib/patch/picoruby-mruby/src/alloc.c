@@ -32,7 +32,9 @@ mrb_value
 mrb_alloc_statistics(mrb_state *mrb)
 {
   ESTALLOC *est = (ESTALLOC*)fmrb_get_current_est();
+#if defined(ESTALLOC_DEBUG)
   est_take_statistics(est);
+#endif
   ESTALLOC_STAT *stat = &est->stat;
   mrb_value hash = mrb_hash_new_capa(mrb, 5);
   mrb_hash_set(mrb, hash, mrb_symbol_value(MRB_SYM(allocator)), mrb_symbol_value(MRB_SYM(ESTALLOC)));
@@ -62,7 +64,9 @@ mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free,
   }
 
   ESTALLOC *est = (ESTALLOC*)est_ptr;
+#if defined(ESTALLOC_DEBUG)
   est_take_statistics(est);
+#endif
   ESTALLOC_STAT *stat = &est->stat;
 
   *total = stat->total;
