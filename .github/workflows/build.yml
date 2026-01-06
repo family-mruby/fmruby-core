@@ -1,0 +1,124 @@
+name: Build Check
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-esp32:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+
+      - name: Install Ruby dependencies
+        run: gem install serialport
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract repository owner (lowercase)
+        id: repo_owner
+        run: echo "owner=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Pull Docker image from GHCR
+        run: docker pull ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:v5.5.1
+
+      - name: Tag image for Rakefile
+        run: docker tag ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:v5.5.1 esp32_build_container:v5.5.1
+
+      - name: Build ESP32
+        run: rake build:esp32
+
+      # - name: Upload ESP32 artifacts
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: fmruby-core-esp32
+      #     path: |
+      #       build/fmruby-core.elf
+      #       build/fmruby-core.bin
+      #       build/bootloader/bootloader.bin
+      #       build/partition_table/partition-table.bin
+      #     retention-days: 7
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+
+      - name: Install Ruby dependencies
+        run: gem install serialport
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract repository owner (lowercase)
+        id: repo_owner
+        run: echo "owner=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Pull Docker image from GHCR
+        run: docker pull ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:v5.5.1
+
+      - name: Tag image for Rakefile
+        run: docker tag ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:v5.5.1 esp32_build_container:v5.5.1
+
+      - name: Build Linux target
+        run: rake build:linux
+
+      # - name: Upload Linux artifacts
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: fmruby-core-linux
+      #     path: build/fmruby-core.elf
+      #     retention-days: 7
+
+  build-host:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsdl2-dev libmsgpack-dev cmake
+
+      - name: Build SDL2 host
+        run: rake host:build
+
+      # - name: Upload host artifacts
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: fmrb-host-sdl2
+      #     path: host/sdl2/build/fmrb_host_sdl2
+      #     retention-days: 7
