@@ -19,12 +19,13 @@ ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.1")
 IMAGE           = "esp32_build_container:#{ESP_IDF_VERSION}"
 DEVICE_ARGS     = ENV["DEVICE_ARGS"].to_s
 
-# In GitHub Actions, use container's default user (espidf) to avoid permission issues
-USER_OPT = ENV["GITHUB_ACTIONS"] ? "" : "--user #{UID}:#{GID}"
+# Always use current user's UID:GID to avoid permission issues
+USER_OPT = "--user #{UID}:#{GID}"
 
 DOCKER_CMD = [
   "docker run --rm",
   USER_OPT,
+  "-e HOME=/tmp",
   "-v #{PWD_}:/project",
   IMAGE
 ].join(" ")
@@ -34,6 +35,7 @@ DOCKER_CMD_PRIVILEGED = [
   "--group-add=dialout --group-add=plugdev --privileged",
   DEVICE_ARGS,
   USER_OPT,
+  "-e HOME=/tmp",
   "-v #{PWD_}:/project",
   "-v /dev/bus/usb:/dev/bus/usb",
   IMAGE
@@ -44,6 +46,7 @@ DOCKER_CMD_INTERACTIVE = [
   "--group-add=dialout --group-add=plugdev --privileged",
   DEVICE_ARGS,
   USER_OPT,
+  "-e HOME=/tmp",
   "-v #{PWD_}:/project",
   "-v /dev/bus/usb:/dev/bus/usb",
   IMAGE
@@ -145,6 +148,7 @@ task :menuconfig do
   docker_cmd_interactive = [
     "docker run --rm -it",
     USER_OPT,
+    "-e HOME=/tmp",
     "-e TERM=#{term}",
     "-v #{PWD_}:/project",
     IMAGE
