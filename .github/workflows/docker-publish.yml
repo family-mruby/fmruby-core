@@ -39,4 +39,4 @@ jobs:
             ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:v5.5.1
             ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:latest
           build-args: |
-            IDF_VER=release-v5.5.1
+            IDF_VER=v5.5.1
