@@ -1,6 +1,4 @@
 MRuby::GemBox.new do |conf|
-  conf.cc.defines << "ESTALLOC_DEBUG=1"
-
   # Common core gems
   conf.gem core: 'mruby-compiler2'
   conf.gem core: 'picoruby-mruby'

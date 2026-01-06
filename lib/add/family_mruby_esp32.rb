@@ -26,6 +26,8 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.cc.defines << "MRBC_USE_FLOAT=2"
   conf.cc.defines << "MRBC_CONVERT_CRLF=1"
 
+  conf.cc.defines << "ESTALLOC_DEBUG=1"
+
   # Common gems
   conf.gembox "family_mruby"
 

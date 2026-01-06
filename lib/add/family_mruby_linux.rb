@@ -14,6 +14,8 @@ MRuby::Build.new do |conf|
   conf.cc.defines << "PICORB_PLATFORM_POSIX"
   conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
   conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
+  
+  conf.cc.defines << "ESTALLOC_DEBUG=1"
 
   # Common gems
   conf.gembox "family_mruby"
