@@ -122,6 +122,14 @@ class SystemGuiApp < FmrbApp
       puts "[SystemGUI] on_update() tick #{@counter / 30}s"
     end
 
+    #debug
+    if @counter == 60
+      app_name = "/app/sample/mruby.app.rb"
+      data = FmrbConst::APP_CTRL_SPAWN.chr
+      data += app_name.ljust(FmrbConst::MAX_PATH_LEN, "\x00")
+      success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+    end
+
     @counter += 1
 
     draw_system_frame

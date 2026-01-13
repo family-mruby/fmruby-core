@@ -29,6 +29,12 @@ class BouncingBallApp < FmrbApp
     @ball_y = @user_area_y0 + @user_area_height / 2
 
     draw_full_screen
+
+    puts "load my_lib"
+    require "/lib/my_lib"
+    puts "load my_lib done"
+    inspect_env
+
   end
 
   def draw_full_screen()
