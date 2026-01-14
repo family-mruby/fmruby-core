@@ -65,15 +65,15 @@ task :setup do
   # app
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-app"
   sh "cp -rf lib/add/picoruby-fmrb-app #{mrbgem_path}/"
+  # filesystem
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-filesystem"
+  sh "cp -rf lib/add/picoruby-fmrb-filesystem #{mrbgem_path}/"
   # conf
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
   sh "cp -f lib/add/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
 
-  # ---------- Replace ---------- 
-  # fat
-  sh "rm -rf #{mrbgem_path}/picoruby-filesystem-fat"
-  sh "cp -rf lib/replace/picoruby-filesystem-fat #{mrbgem_path}/"
+  # ---------- Replace ----------
   # Machine
   sh "rm -rf #{mrbgem_path}/picoruby-machine"
   sh "cp -rf lib/replace/picoruby-machine #{mrbgem_path}/"

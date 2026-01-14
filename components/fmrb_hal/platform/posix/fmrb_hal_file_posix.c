@@ -295,7 +295,6 @@ fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
 
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));
-    FMRB_LOGI(TAG, "path:%s full_path:%s",path,full_path);
 
     LOCK();
     struct stat st;
@@ -317,8 +316,10 @@ fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
     }
     snprintf(info->name, sizeof(info->name), "%s", basename);
 
+    // Copy POSIX st_mode directly (FMRB_S_* macros are POSIX-compatible)
+    info->mode = st.st_mode;
     info->size = st.st_size;
-    info->is_dir = S_ISDIR(st.st_mode);
+    info->is_dir = S_ISDIR(st.st_mode);  // Keep for backward compatibility
     info->mtime = st.st_mtime;
 
     return FMRB_OK;
@@ -419,16 +420,18 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info) {
     snprintf(info->name, sizeof(info->name), "%s", entry->d_name);
     info->is_dir = (entry->d_type == DT_DIR);
 
-    // Get file size and mtime using stat()
+    // Get file size, mtime, and mode using stat()
     char entry_path[1024];
     snprintf(entry_path, sizeof(entry_path), "%s/%s", dh->dir_path, entry->d_name);
 
     struct stat st;
     if (stat(entry_path, &st) == 0) {
+        info->mode = st.st_mode;
         // For directories, show size as 0 (directory metadata size is not meaningful for users)
         info->size = S_ISDIR(st.st_mode) ? 0 : st.st_size;
         info->mtime = st.st_mtime;
     } else {
+        info->mode = 0;
         info->size = 0;
         info->mtime = 0;
     }

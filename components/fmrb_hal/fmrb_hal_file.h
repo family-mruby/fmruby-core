@@ -1,6 +1,9 @@
 #pragma once
 
-#include "fmrb_hal.h"
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include "fmrb_err.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -29,11 +32,29 @@ typedef enum {
     FMRB_O_APPEND = 0x0020   // Append mode
 } fmrb_open_flags_t;
 
+// File mode bits (POSIX-compatible)
+#define FMRB_S_IFMT   0170000  // File type mask
+#define FMRB_S_IFREG  0100000  // Regular file
+#define FMRB_S_IFDIR  0040000  // Directory
+#define FMRB_S_IFLNK  0120000  // Symbolic link
+
+// File type checking macros
+#define FMRB_S_ISREG(m)  (((m) & FMRB_S_IFMT) == FMRB_S_IFREG)
+#define FMRB_S_ISDIR(m)  (((m) & FMRB_S_IFMT) == FMRB_S_IFDIR)
+#define FMRB_S_ISLNK(m)  (((m) & FMRB_S_IFMT) == FMRB_S_IFLNK)
+
+// Permission bits (for future use)
+#define FMRB_S_IRWXU  0000700  // Owner: RWX
+#define FMRB_S_IRUSR  0000400  // Owner: read
+#define FMRB_S_IWUSR  0000200  // Owner: write
+#define FMRB_S_IXUSR  0000100  // Owner: execute
+
 // File info structure
 typedef struct {
     char name[256];      // File/directory name
-    uint32_t size;       // File size in bytes
-    bool is_dir;         // True if directory
+    uint32_t mode;       // File mode (POSIX-compatible: type + permissions)
+    uint64_t size;       // File size in bytes
+    bool is_dir;         // True if directory (deprecated, use FMRB_S_ISDIR(mode))
     uint32_t mtime;      // Modification time (Unix timestamp)
 } fmrb_file_info_t;
 

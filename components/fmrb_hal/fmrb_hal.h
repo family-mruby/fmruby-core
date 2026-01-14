@@ -17,7 +17,9 @@ extern "C" {
 #endif
 
 // Include platform-specific headers only when building with ESP-IDF
+#ifndef CONFIG_IDF_TARGET_LINUX
 #include "fmrb_hal_esp.h"
+#endif
 
 // HAL initialization
 fmrb_err_t fmrb_hal_init(void);

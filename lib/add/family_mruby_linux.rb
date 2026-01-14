@@ -25,8 +25,8 @@ MRuby::Build.new do |conf|
   conf.gem gemdir: "#{dir}/mruby-dir"
   conf.gem gemdir: "#{dir}/mruby-io"
 
-  # Linux specific
-  conf.gem core: "picoruby-filesystem-fat"  # C code compiled by ESP-IDF CMake
+  # Linux specific - Filesystem
+  conf.gem core: "picoruby-fmrb-filesystem"  # HAL-based filesystem
 
   # settings for microruby
   conf.microruby
