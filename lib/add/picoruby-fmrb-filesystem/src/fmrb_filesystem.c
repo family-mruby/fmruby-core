@@ -134,6 +134,13 @@ mrb_picoruby_fmrb_filesystem_gem_init(mrb_state *mrb)
   mrb_define_const(mrb, constants_module, "PATH_SEPARATOR", mrb_str_new_cstr(mrb, ":"));
   mrb_define_const(mrb, constants_module, "ALT_SEPARATOR", mrb_nil_value());
   mrb_define_const(mrb, constants_module, "NULL", mrb_str_new_cstr(mrb, "\0"));
+
+  // Filename matching constants (FNM_*)
+  mrb_define_const(mrb, constants_module, "FNM_SYSCASE",  mrb_int_value(mrb, 0));
+  mrb_define_const(mrb, constants_module, "FNM_NOESCAPE", mrb_int_value(mrb, 1));
+  mrb_define_const(mrb, constants_module, "FNM_PATHNAME", mrb_int_value(mrb, 2));
+  mrb_define_const(mrb, constants_module, "FNM_DOTMATCH", mrb_int_value(mrb, 4));
+  mrb_define_const(mrb, constants_module, "FNM_CASEFOLD", mrb_int_value(mrb, 8));
 }
 
 void

@@ -7,20 +7,8 @@ class File
   SEPARATOR = "/"
   ALT_SEPARATOR = nil  # Not Windows
 
-  # File::Constants module for file operation flags
-  # Most constants are defined in C (src/fmrb_filesystem.c)
-  # FNM_* constants for filename matching are defined here
-  module Constants
-    # Filename matching constants
-    FNM_SYSCASE  = 0
-    FNM_NOESCAPE = 1
-    FNM_PATHNAME = 2
-    FNM_DOTMATCH = 4
-    FNM_CASEFOLD = 8
-  end
-
-  # Include Constants into File class for backward compatibility
-  include Constants
+  # File::Constants module is defined in C (src/fmrb_filesystem.c)
+  # and includes both FNM_* and file open mode constants
 
   # Join path components
   def self.join(*names)
