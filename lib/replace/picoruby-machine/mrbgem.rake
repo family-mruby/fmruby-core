@@ -3,7 +3,7 @@ MRuby::Gem::Specification.new('picoruby-machine') do |spec|
   spec.author  = 'HASUMI Hitoshi'
   spec.summary = 'Machine class'
 
-  spec.add_dependency 'picoruby-io-console'
+  # spec.add_dependency 'picoruby-io-console'  # Removed: requires mruby-io
 
   # Add include directory for hal.h
   spec.cc.include_paths << "#{dir}/include"
@@ -34,10 +34,9 @@ MRuby::Gem::Specification.new('picoruby-machine') do |spec|
 
   if build.gems.map(&:name).include?('picoruby-mruby')
     # Workaround:
-    #   Locate mruby-io at the top of gem_init.c
+    #   Locate IO implementation at the top of gem_init.c
     #   to define IO.open earlier than this gems
-    if build.posix?
-      spec.add_dependency 'mruby-io'
-    end
+    # Note: picoruby-fmrb-io is now in family_mruby.gembox (loaded before picoruby-machine)
+    # so no explicit dependency needed here
   end
 end

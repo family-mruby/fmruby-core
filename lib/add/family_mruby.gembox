@@ -8,7 +8,7 @@ MRuby::GemBox.new do |conf|
   conf.gem core: 'picoruby-sandbox'
   conf.gem core: 'picoruby-env'
   conf.gem core: 'picoruby-crc'
-  conf.gem core: 'picoruby-io-console'
+  # conf.gem core: 'picoruby-io-console'  # Requires mruby-io (POSIX dependency)
   conf.gem core: 'picoruby-rng'
 
   # Optional
@@ -29,6 +29,7 @@ MRuby::GemBox.new do |conf|
 
   # Family mruby specific
   conf.gem core: "picoruby-fmrb-const"
+  conf.gem core: "picoruby-fmrb-io"         # Standard IO (must be before filesystem)
   conf.gem core: "picoruby-fmrb-app"
   conf.gem core: "picoruby-fmrb-kernel"
 end

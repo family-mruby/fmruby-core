@@ -68,6 +68,9 @@ task :setup do
   # filesystem
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-filesystem"
   sh "cp -rf lib/add/picoruby-fmrb-filesystem #{mrbgem_path}/"
+  # io
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-io"
+  sh "cp -rf lib/add/picoruby-fmrb-io #{mrbgem_path}/"
   # conf
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
@@ -78,10 +81,13 @@ task :setup do
   sh "rm -rf #{mrbgem_path}/picoruby-machine"
   sh "cp -rf lib/replace/picoruby-machine #{mrbgem_path}/"
 
-  # ---------- Patch ---------- 
+  # ---------- Patch ----------
   sh "cp -rf lib/patch/picoruby-mruby #{mrbgem_path}/"
   # is this needed?
-  sh "cp -f lib/replace/picoruby-machine/include/hal.h #{mrbgem_path}/picoruby-mruby/include/" 
+  sh "cp -f lib/replace/picoruby-machine/include/hal.h #{mrbgem_path}/picoruby-mruby/include/"
+
+  # Copy mruby-io file_constants.rb patch (avoid conflicts with C extension)
+  sh "cp -f lib/patch/picoruby-mruby/mrbgems/mruby-io/mrblib/file_constants.rb #{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-io/mrblib/" 
 
   # littleFS
   sh "cp -f lib/patch/esp_littlefs/CMakeLists.txt components/esp_littlefs/"
@@ -96,6 +102,9 @@ task :setup do
 
   # Copy picoruby-require patch (use picoruby-fmrb-filesystem instead of posix-io/vfs)
   sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
+
+  # Copy picoruby-yaml patch (use picoruby-fmrb-io instead of mruby-io)
+  sh "cp -f lib/patch/picoruby-yaml/mrbgem.rake #{mrbgem_path}/picoruby-yaml/"
 
   # Copy TLSF library files
   sh "mkdir -p #{mrbgem_path}/mruby-compiler2/lib/tlsf"
