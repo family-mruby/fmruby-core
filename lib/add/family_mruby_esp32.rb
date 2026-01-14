@@ -31,6 +31,9 @@ MRuby::CrossBuild.new("esp32") do |conf|
   # Common gems
   conf.gembox "family_mruby"
 
+  # ESP32 specific - Filesystem
+  conf.gem core: "picoruby-fmrb-filesystem"  # HAL-based filesystem
+
   # peripherals
 #   conf.gem core: 'picoruby-gpio'
 #   conf.gem core: 'picoruby-i2c'

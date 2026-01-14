@@ -94,6 +94,9 @@ task :setup do
   sh "cp -f lib/patch/compiler/prism_alloc.c #{mrbgem_path}/mruby-compiler2/lib/"
   sh "cp -f lib/patch/compiler/mruby-compiler2-mrbgem.rake #{mrbgem_path}/mruby-compiler2/mrbgem.rake"
 
+  # Copy picoruby-require patch (use picoruby-fmrb-filesystem instead of posix-io/vfs)
+  sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
+
   # Copy TLSF library files
   sh "mkdir -p #{mrbgem_path}/mruby-compiler2/lib/tlsf"
   sh "cp -f components/mem_allocator/tlsf/tlsf.c #{mrbgem_path}/mruby-compiler2/lib/tlsf/"

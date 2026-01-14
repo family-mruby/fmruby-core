@@ -99,6 +99,41 @@ mrb_picoruby_fmrb_filesystem_gem_init(mrb_state *mrb)
   mrb_define_class_method(mrb, file_class, "exists?", mrb_file_s_exist_p, MRB_ARGS_REQ(1));  // Alias
   mrb_define_class_method(mrb, file_class, "directory?", mrb_file_s_directory_p, MRB_ARGS_REQ(1));
   mrb_define_class_method(mrb, file_class, "size", mrb_file_s_size, MRB_ARGS_REQ(1));
+
+  // Define File::Constants module
+  struct RClass *constants_module = mrb_define_module_under(mrb, file_class, "Constants");
+
+  // File open mode flags (POSIX-compatible values)
+  mrb_define_const(mrb, constants_module, "RDONLY",    mrb_int_value(mrb, 0x0000));
+  mrb_define_const(mrb, constants_module, "WRONLY",    mrb_int_value(mrb, 0x0001));
+  mrb_define_const(mrb, constants_module, "RDWR",      mrb_int_value(mrb, 0x0002));
+  mrb_define_const(mrb, constants_module, "APPEND",    mrb_int_value(mrb, 0x0008));
+  mrb_define_const(mrb, constants_module, "CREAT",     mrb_int_value(mrb, 0x0040));
+  mrb_define_const(mrb, constants_module, "EXCL",      mrb_int_value(mrb, 0x0100));
+  mrb_define_const(mrb, constants_module, "TRUNC",     mrb_int_value(mrb, 0x0080));
+  mrb_define_const(mrb, constants_module, "NONBLOCK",  mrb_int_value(mrb, 0x0004));
+  mrb_define_const(mrb, constants_module, "NOCTTY",    mrb_int_value(mrb, 0x0200));
+  mrb_define_const(mrb, constants_module, "BINARY",    mrb_int_value(mrb, 0x0800));
+  mrb_define_const(mrb, constants_module, "SHARE_DELETE", mrb_int_value(mrb, 0x1000));
+  mrb_define_const(mrb, constants_module, "SYNC",      mrb_int_value(mrb, 0x0010));
+  mrb_define_const(mrb, constants_module, "DSYNC",     mrb_int_value(mrb, 0x00008000));
+  mrb_define_const(mrb, constants_module, "RSYNC",     mrb_int_value(mrb, 0x00010000));
+  mrb_define_const(mrb, constants_module, "NOFOLLOW",  mrb_int_value(mrb, 0x0020));
+  mrb_define_const(mrb, constants_module, "NOATIME",   mrb_int_value(mrb, 0x4000));
+  mrb_define_const(mrb, constants_module, "DIRECT",    mrb_int_value(mrb, 0x0400));
+  mrb_define_const(mrb, constants_module, "TMPFILE",   mrb_int_value(mrb, 0x2000));
+
+  // File lock flags
+  mrb_define_const(mrb, constants_module, "LOCK_SH",   mrb_int_value(mrb, 1));
+  mrb_define_const(mrb, constants_module, "LOCK_EX",   mrb_int_value(mrb, 2));
+  mrb_define_const(mrb, constants_module, "LOCK_UN",   mrb_int_value(mrb, 8));
+  mrb_define_const(mrb, constants_module, "LOCK_NB",   mrb_int_value(mrb, 4));
+
+  // Path separator constants
+  mrb_define_const(mrb, constants_module, "SEPARATOR", mrb_str_new_cstr(mrb, "/"));
+  mrb_define_const(mrb, constants_module, "PATH_SEPARATOR", mrb_str_new_cstr(mrb, ":"));
+  mrb_define_const(mrb, constants_module, "ALT_SEPARATOR", mrb_nil_value());
+  mrb_define_const(mrb, constants_module, "NULL", mrb_str_new_cstr(mrb, "\0"));
 }
 
 void
