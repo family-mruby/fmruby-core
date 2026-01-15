@@ -5,6 +5,7 @@
  */
 
 #include <mruby.h>
+#include <mruby/presym.h>
 #include <mruby/class.h>
 #include <mruby/string.h>
 #include "fmrb_hal_file.h"

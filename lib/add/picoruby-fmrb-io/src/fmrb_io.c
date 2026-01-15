@@ -36,7 +36,7 @@ static mrb_value
 mrb_io_initialize(mrb_state *mrb, mrb_value self)
 {
   mrb_int fd;
-  char *mode = "r";
+  const char *mode = "r";
   mrb_io_t *io;
 
   mrb_get_args(mrb, "i|z", &fd, &mode);
