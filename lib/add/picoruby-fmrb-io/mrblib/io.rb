@@ -27,12 +27,25 @@ class IO
   end
 end
 
-# Define standard IO streams
-STDIN  = IO.open(0, "r")
-STDOUT = IO.open(1, "w")
-STDERR = IO.open(2, "w")
+# Standard IO streams are defined after IO class is initialized
+# Note: These constants are intentionally NOT created at load time
+# to avoid initialization order issues. They should be created
+# by C code in mrb_picoruby_fmrb_io_gem_init after defining IO class
 
-# Set global variables for compatibility
-$stdin  = STDIN
-$stdout = STDOUT
-$stderr = STDERR
+# Define Kernel#puts and Kernel#print to delegate to $stdout
+# This allows code to use puts/print at the top level without explicitly
+# referencing IO class
+module Kernel
+  def puts(*args)
+    $stdout.puts(*args)
+  end
+
+  def print(*args)
+    $stdout.print(*args)
+  end
+
+  def p(*args)
+    args.each { |arg| $stdout.puts(arg.inspect) }
+    args.length <= 1 ? args.first : args
+  end
+end

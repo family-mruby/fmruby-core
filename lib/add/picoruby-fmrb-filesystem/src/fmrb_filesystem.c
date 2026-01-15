@@ -93,17 +93,16 @@ mrb_file_s_size(mrb_state *mrb, mrb_value self)
 void
 mrb_picoruby_fmrb_filesystem_gem_init(mrb_state *mrb)
 {
-  // Try to get existing File class first (may be defined by picoruby-fmrb-io or mruby-io)
-  struct RClass *file_class = mrb_class_get_id(mrb, MRB_SYM(File));
-  if (!file_class) {
-    // File class doesn't exist, create it
-    // Try to inherit from IO if it exists, otherwise inherit from Object
-    struct RClass *io_class = mrb_class_get_id(mrb, MRB_SYM(IO));
-    if (io_class) {
-      file_class = mrb_define_class_id(mrb, MRB_SYM(File), io_class);
-    } else {
-      file_class = mrb_define_class(mrb, "File", mrb->object_class);
-    }
+  struct RClass *file_class = NULL;
+
+  // File class should be defined by mrblib/file.rb before this C code runs
+  // Just get the existing class and add methods to it
+  if (mrb_class_defined_id(mrb, MRB_SYM(File))) {
+    file_class = mrb_class_get_id(mrb, MRB_SYM(File));
+  } else {
+    // File class doesn't exist (this should not happen with mrblib/file.rb)
+    // Create it as a failsafe, inheriting from Object
+    file_class = mrb_define_class(mrb, "File", mrb->object_class);
   }
 
   mrb_define_class_method(mrb, file_class, "file?", mrb_file_s_file_p, MRB_ARGS_REQ(1));

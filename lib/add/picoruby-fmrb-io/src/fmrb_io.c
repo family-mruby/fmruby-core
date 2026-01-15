@@ -157,6 +157,7 @@ void
 mrb_picoruby_fmrb_io_gem_init(mrb_state *mrb)
 {
   struct RClass *io_class;
+  mrb_value stdin_obj, stdout_obj, stderr_obj;
 
   // Define IO class
   io_class = mrb_define_class(mrb, "IO", mrb->object_class);
@@ -170,6 +171,38 @@ mrb_picoruby_fmrb_io_gem_init(mrb_state *mrb)
   mrb_define_method(mrb, io_class, "write", mrb_io_write, MRB_ARGS_REQ(1));
   mrb_define_method(mrb, io_class, "close", mrb_io_close, MRB_ARGS_NONE());
   mrb_define_method(mrb, io_class, "closed?", mrb_io_closed_p, MRB_ARGS_NONE());
+
+  // Create standard IO stream objects
+  stdin_obj = mrb_obj_new(mrb, io_class, 0, NULL);
+  mrb_io_t *stdin_io = (mrb_io_t *)mrb_malloc(mrb, sizeof(mrb_io_t));
+  stdin_io->fd = 0;
+  stdin_io->flags = 2; // readable
+  stdin_io->closed = 0;
+  mrb_data_init(stdin_obj, stdin_io, &mrb_io_type);
+
+  stdout_obj = mrb_obj_new(mrb, io_class, 0, NULL);
+  mrb_io_t *stdout_io = (mrb_io_t *)mrb_malloc(mrb, sizeof(mrb_io_t));
+  stdout_io->fd = 1;
+  stdout_io->flags = 1; // writable
+  stdout_io->closed = 0;
+  mrb_data_init(stdout_obj, stdout_io, &mrb_io_type);
+
+  stderr_obj = mrb_obj_new(mrb, io_class, 0, NULL);
+  mrb_io_t *stderr_io = (mrb_io_t *)mrb_malloc(mrb, sizeof(mrb_io_t));
+  stderr_io->fd = 2;
+  stderr_io->flags = 1; // writable
+  stderr_io->closed = 0;
+  mrb_data_init(stderr_obj, stderr_io, &mrb_io_type);
+
+  // Define global constants
+  mrb_define_global_const(mrb, "STDIN", stdin_obj);
+  mrb_define_global_const(mrb, "STDOUT", stdout_obj);
+  mrb_define_global_const(mrb, "STDERR", stderr_obj);
+
+  // Set global variables for compatibility
+  mrb_gv_set(mrb, mrb_intern_lit(mrb, "$stdin"), stdin_obj);
+  mrb_gv_set(mrb, mrb_intern_lit(mrb, "$stdout"), stdout_obj);
+  mrb_gv_set(mrb, mrb_intern_lit(mrb, "$stderr"), stderr_obj);
 }
 
 void
