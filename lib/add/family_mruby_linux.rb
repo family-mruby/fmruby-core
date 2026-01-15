@@ -24,9 +24,6 @@ MRuby::Build.new do |conf|
   dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
   conf.gem gemdir: "#{dir}/mruby-dir"
 
-  # Linux specific - Filesystem
-  conf.gem core: "picoruby-fmrb-filesystem"  # HAL-based filesystem
-
   # settings for microruby
   conf.microruby
 

@@ -55,7 +55,7 @@ static fmrb_err_t spawn_shell_app(void)
 {
     FMRB_LOGI(TAG, "spawn_shell_app: Starting");
     fmrb_spawn_attr_t attr = {
-        .app_id = PROC_ID_USER_APP0,
+        .app_id = -1,  // Auto-assign available slot
         .type = APP_TYPE_USER_APP,
         .name = "shell",
         .vm_type = FMRB_VM_TYPE_MRUBY,

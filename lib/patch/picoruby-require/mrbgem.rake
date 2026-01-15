@@ -5,12 +5,8 @@ MRuby::Gem::Specification.new('picoruby-require') do |spec|
   spec.author  = 'HASUMI Hitoshi'
   spec.summary = 'PicoRuby require gem'
 
+  spec.add_dependency 'picoruby-fmrb-filesystem'
   spec.add_dependency 'picoruby-sandbox'
-
-  # Use picoruby-fmrb-filesystem for all platforms (HAL-based filesystem)
-  if build.vm_mrubyc?
-    spec.add_dependency 'picoruby-fmrb-filesystem'
-  end
 
   mrbgems_dir = File.expand_path "..", build_dir
 

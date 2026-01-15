@@ -367,6 +367,8 @@ static void app_task_main(void* arg) {
                     FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
                     goto cleanup;
                 }
+
+                FMRB_LOGI(TAG, "[%s] mruby VM created successfully, checking $stdout", ctx->app_name);
             }
             break;
         case FMRB_VM_TYPE_LUA:
@@ -481,13 +483,17 @@ static void app_task_main(void* arg) {
                 goto cleanup;
             }
 
-            FMRB_LOGI(TAG, "[%s] mrb_tasks_run", ctx->app_name);
+            FMRB_LOGI(TAG, "[%s] mrb_tasks_run - BEFORE execution", ctx->app_name);
             mrb_value v = mrb_tasks_run(ctx->mrb);
-            FMRB_LOGI(TAG, "[%s] After mrb_tasks_run, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
+            FMRB_LOGI(TAG, "[%s] mrb_tasks_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
 
             //TODO: check proper free process
             if (ctx->mrb->exc) {
+                FMRB_LOGI(TAG, "[%s] Exception detected, calling mrb_print_error", ctx->app_name);
                 mrb_print_error(ctx->mrb);
+                FMRB_LOGI(TAG, "[%s] mrb_print_error completed", ctx->app_name);
+            } else {
+                FMRB_LOGI(TAG, "[%s] No exception detected", ctx->app_name);
             }
 
             mrb_vm_ci_env_clear(ctx->mrb, ctx->mrb->c->cibase);

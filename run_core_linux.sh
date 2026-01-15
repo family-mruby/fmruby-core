@@ -126,7 +126,7 @@ if [ "$1" = "gdb" ]; then
         -v /dev:/dev \
         -e FMRB_FS_PROXY_UART=${UART_CORE} \
         $DOCKER_IMAGE \
-        bash
+        bash -c "cd /project && gdb -ex run build/fmruby-core.elf"
 else
     docker run --rm --name $DOCKER_CONTAINER_NAME --user $(id -u):$(id -g) \
         -v $PWD:/project \

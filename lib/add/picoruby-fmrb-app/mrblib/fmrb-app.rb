@@ -72,6 +72,7 @@ class FmrbApp
     loop do
       return if !@running
       timeout_ms = on_update
+      Task.pass  # Yield control to other tasks
       _spin(timeout_ms)
     end
   end

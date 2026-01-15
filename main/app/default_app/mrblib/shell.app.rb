@@ -23,6 +23,15 @@ class ShellApp < FmrbApp
     puts "[ShellApp] char: width=#{@char_width}, height=#{@char_height}"
     max_chars = (@user_area_width - 4) / @char_width  # -4 for left margin
     puts "[ShellApp] max displayable chars: ~#{max_chars} (including prompt)"
+
+    log_puts "[ShellApp] create task"
+    @background_task = Task.new(name: "bg", priority: 100) do
+      loop do
+        log_puts "[ShellApp] [Task] loop"
+        sleep 1
+      end
+    end
+    log_puts "[ShellApp] create task done"
   end
 
   def spawn_app(app_name)

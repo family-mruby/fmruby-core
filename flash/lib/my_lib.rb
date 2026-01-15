@@ -18,25 +18,37 @@ module Kernel
         end
         }.sort.each { |m| puts "  #{m}" }
 
-        puts "\n=== Global Variables ==="
-        global_variables.sort.each do |var|
-        begin
-            value = eval(var.to_s)
-            puts "  #{var} = #{value.inspect}"
-        rescue => e
-            puts "  #{var} = (error: #{e.message})"
-        end
-        end
+        # puts "\n=== Global Variables ==="
+        # global_variables.sort.each do |var|
+        #     begin
+        #         value = eval(var.to_s)
+        #         puts "  #{var} = #{value.inspect}"
+        #     rescue => e
+        #         puts "  #{var} = (error: #{e.message})"
+        #     end
+        # end
 
         puts "\n=== Special Constants ==="
         puts "  RUBY_VERSION = #{RUBY_VERSION}"
         puts "  RUBY_ENGINE = #{RUBY_ENGINE}"
-        puts "  MRUBY_VERSION = #{MRUBY_VERSION}" if defined?(MRUBY_VERSION)
+        begin
+            puts "  MRUBY_VERSION = #{MRUBY_VERSION}"
+        rescue NameError
+            # MRUBY_VERSION not defined
+        end
 
         puts "\n=== Load Path ==="
-        $LOAD_PATH.each { |path| puts "  #{path}" } if defined?($LOAD_PATH)
+        begin
+            $LOAD_PATH.each { |path| puts "  #{path}" }
+        rescue NameError
+            # $LOAD_PATH not defined
+        end
 
         puts "\n=== Loaded Features ==="
-        $LOADED_FEATURES.each { |feature| puts "  #{feature}" } if defined?($LOADED_FEATURES)
+        begin
+            $LOADED_FEATURES.each { |feature| puts "  #{feature}" }
+        rescue NameError
+            # $LOADED_FEATURES not defined
+        end
     end
 end

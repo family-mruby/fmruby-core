@@ -1,4 +1,12 @@
 class IO
+  def initialize(fd, mode = "r")
+    _new(fd, mode)
+  end
+  # Class method: open an IO object
+  def self.open(fd, mode = "r")
+    new(fd, mode)
+  end
+
   # Print arguments to IO with newlines
   def puts(*args)
     if args.empty?
@@ -27,25 +35,5 @@ class IO
   end
 end
 
-# Standard IO streams are defined after IO class is initialized
-# Note: These constants are intentionally NOT created at load time
-# to avoid initialization order issues. They should be created
-# by C code in mrb_picoruby_fmrb_io_gem_init after defining IO class
-
-# Define Kernel#puts and Kernel#print to delegate to $stdout
-# This allows code to use puts/print at the top level without explicitly
-# referencing IO class
-module Kernel
-  def puts(*args)
-    $stdout.puts(*args)
-  end
-
-  def print(*args)
-    $stdout.print(*args)
-  end
-
-  def p(*args)
-    args.each { |arg| $stdout.puts(arg.inspect) }
-    args.length <= 1 ? args.first : args
-  end
-end
+# Note: Kernel#puts, Kernel#print, and Kernel#p are defined in picoruby-machine/mrblib/kernel.rb
+# We don't redefine them here to avoid conflicts and ensure proper initialization order

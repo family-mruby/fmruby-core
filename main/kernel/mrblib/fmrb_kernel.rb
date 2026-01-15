@@ -1,7 +1,7 @@
 # Family mruby OS - Kernel Main Loop
 # This is the core of the Family mruby OS, running at 60Hz
 
-# Kernel entry point
+
 puts "Family mruby OS Kernel starting..."
 
 begin

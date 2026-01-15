@@ -12,6 +12,12 @@ extern "C" {
 // File handle type (opaque)
 typedef void* fmrb_file_t;
 
+// Standard stream handles (special values for stdin/stdout/stderr)
+// These are cast from small integers to avoid conflicts with real file handles
+#define FMRB_STDIN_HANDLE  ((fmrb_file_t)(uintptr_t)0x10000001)
+#define FMRB_STDOUT_HANDLE ((fmrb_file_t)(uintptr_t)0x10000002)
+#define FMRB_STDERR_HANDLE ((fmrb_file_t)(uintptr_t)0x10000003)
+
 // Directory handle type (opaque)
 typedef void* fmrb_dir_t;
 

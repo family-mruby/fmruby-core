@@ -128,10 +128,29 @@ static fmrb_dir_slot_t* find_free_dir_slot(void) {
     return NULL;
 }
 
+// Check if handle is a standard stream
+static bool is_std_stream(fmrb_file_t handle) {
+    return (handle == FMRB_STDIN_HANDLE ||
+            handle == FMRB_STDOUT_HANDLE ||
+            handle == FMRB_STDERR_HANDLE);
+}
+
+// Get FILE* for standard stream
+static FILE* get_std_stream_fp(fmrb_file_t handle) {
+    if (handle == FMRB_STDIN_HANDLE) return stdin;
+    if (handle == FMRB_STDOUT_HANDLE) return stdout;
+    if (handle == FMRB_STDERR_HANDLE) return stderr;
+    return NULL;
+}
+
 // Validate file handle
 static bool is_valid_file_handle(fmrb_file_t handle) {
     if (handle == NULL) {
         return false;
+    }
+    // Standard streams are always valid
+    if (is_std_stream(handle)) {
+        return true;
     }
     fmrb_file_slot_t *slot = (fmrb_file_slot_t *)handle;
     // Check if pointer is within our static array
@@ -355,6 +374,11 @@ fmrb_err_t fmrb_hal_file_close(fmrb_file_t handle) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
+    // Standard streams cannot be closed
+    if (is_std_stream(handle)) {
+        return FMRB_OK;
+    }
+
     LOCK();
 
     if (!is_valid_file_handle(handle)) {
@@ -375,6 +399,19 @@ fmrb_err_t fmrb_hal_file_close(fmrb_file_t handle) {
 fmrb_err_t fmrb_hal_file_read(fmrb_file_t handle, void *buffer, size_t size, size_t *bytes_read) {
     if (handle == NULL || buffer == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Handle standard streams directly
+    if (is_std_stream(handle)) {
+        FILE *fp = get_std_stream_fp(handle);
+        if (fp == NULL) {
+            return FMRB_ERR_INVALID_PARAM;
+        }
+        size_t n = fread(buffer, 1, size, fp);
+        if (bytes_read != NULL) {
+            *bytes_read = n;
+        }
+        return FMRB_OK;
     }
 
     LOCK();
@@ -398,6 +435,20 @@ fmrb_err_t fmrb_hal_file_read(fmrb_file_t handle, void *buffer, size_t size, siz
 fmrb_err_t fmrb_hal_file_write(fmrb_file_t handle, const void *buffer, size_t size, size_t *bytes_written) {
     if (handle == NULL || buffer == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Handle standard streams directly
+    if (is_std_stream(handle)) {
+        FILE *fp = get_std_stream_fp(handle);
+        if (fp == NULL) {
+            return FMRB_ERR_INVALID_PARAM;
+        }
+        size_t n = fwrite(buffer, 1, size, fp);
+        fflush(fp);  // Flush immediately for standard streams
+        if (bytes_written != NULL) {
+            *bytes_written = n;
+        }
+        return (n == size) ? FMRB_OK : FMRB_ERR_FAILED;
     }
 
     LOCK();

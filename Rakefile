@@ -106,6 +106,9 @@ task :setup do
   # Copy picoruby-yaml patch (use picoruby-fmrb-io instead of mruby-io)
   sh "cp -f lib/patch/picoruby-yaml/mrbgem.rake #{mrbgem_path}/picoruby-yaml/"
 
+  # Copy picoruby-sandbox patch (remove picoruby-io-console dependency)
+  sh "cp -f lib/patch/picoruby-sandbox/mrbgem.rake #{mrbgem_path}/picoruby-sandbox/"
+
   # Copy TLSF library files
   sh "mkdir -p #{mrbgem_path}/mruby-compiler2/lib/tlsf"
   sh "cp -f components/mem_allocator/tlsf/tlsf.c #{mrbgem_path}/mruby-compiler2/lib/tlsf/"

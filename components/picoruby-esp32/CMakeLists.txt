@@ -46,10 +46,14 @@ if(IDF_TARGET STREQUAL "linux")
     file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")
     file(GLOB FMRB_KERNEL_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-kernel/ports/esp32/*.c")
     file(GLOB FMRB_CONST_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-const/ports/esp32/*.c")
+    file(GLOB FMRB_IO_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-io/ports/esp32/*.c")
+    file(GLOB FMRB_FILESYSTEM_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-filesystem/ports/esp32/*.c")
     set(PICORUBY_SRCS
         ${FMRB_APP_PORTS_SRCS}
         ${FMRB_KERNEL_PORTS_SRCS}
         ${FMRB_CONST_PORTS_SRCS}
+        ${FMRB_IO_PORTS_SRCS}
+        ${FMRB_FILESYSTEM_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/posix/rng.c
@@ -59,11 +63,15 @@ else()
     file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")
     file(GLOB FMRB_KERNEL_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-kernel/ports/esp32/*.c")
     file(GLOB FMRB_CONST_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-const/ports/esp32/*.c")
-    
+    file(GLOB FMRB_IO_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-io/ports/esp32/*.c")
+    file(GLOB FMRB_FILESYSTEM_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-filesystem/ports/esp32/*.c")
+
     set(PICORUBY_SRCS
         ${FMRB_APP_PORTS_SRCS}
         ${FMRB_KERNEL_PORTS_SRCS}
         ${FMRB_CONST_PORTS_SRCS}
+        ${FMRB_IO_PORTS_SRCS}
+        ${FMRB_FILESYSTEM_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_file.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_dir.c

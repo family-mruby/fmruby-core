@@ -1,14 +1,33 @@
 # File class for FMRuby
 # Path manipulation methods ported from picoruby-posix-io
-# File test methods implemented in C (src/fmrb_filesystem.c)
+# File I/O and test methods implemented in C (src/fmrb_filesystem.c)
 
-class File
+class File < IO
   # File separator constant
   SEPARATOR = "/"
   ALT_SEPARATOR = nil  # Not Windows
 
   # File::Constants module is defined in C (src/fmrb_filesystem.c)
   # and includes both FNM_* and file open mode constants
+
+  # Initialize File object
+  def initialize(path, mode = "r")
+    _open(path, mode)
+  end
+
+  # Open a file
+  def self.open(path, mode = "r", &block)
+    file = new(path, mode)
+    if block
+      begin
+        block.call(file)
+      ensure
+        file.close unless file.closed?
+      end
+    else
+      file
+    end
+  end
 
   # Join path components
   def self.join(*names)

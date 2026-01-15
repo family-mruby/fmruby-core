@@ -19,7 +19,7 @@
 #include "fmrb_toml.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
-extern const uint8_t kernel_irep[];
+extern const uint8_t fmrb_kernel_irep[];
 
 static const char *TAG = "kernel";
 
@@ -207,7 +207,7 @@ fmrb_err_t fmrb_kernel_start(void)
         .name = "fmrb_kernel",
         .vm_type = FMRB_VM_TYPE_MRUBY,
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
-        .bytecode = kernel_irep,
+        .bytecode = fmrb_kernel_irep,
         .stack_words = FMRB_KERNEL_TASK_STACK_SIZE,
         .priority = FMRB_KERNEL_TASK_PRIORITY,
         .core_affinity = -1,  // No core affinity

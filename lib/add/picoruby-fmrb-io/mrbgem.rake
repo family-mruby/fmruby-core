@@ -1,6 +1,6 @@
 MRuby::Gem::Specification.new('picoruby-fmrb-io') do |spec|
   spec.license = 'MIT'
-  spec.author  = 'FMRuby Project'
+  spec.author  = 'Katsuhiko Kageyama'
   spec.summary = 'Standard IO for FMRuby (platform independent)'
 
   # Conflicts with POSIX-based IO implementations
