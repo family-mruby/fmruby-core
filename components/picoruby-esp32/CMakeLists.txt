@@ -72,9 +72,6 @@ else()
         ${FMRB_CONST_PORTS_SRCS}
         ${FMRB_IO_PORTS_SRCS}
         ${FMRB_FILESYSTEM_PORTS_SRCS}
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_file.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32/fat_dir.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
@@ -110,7 +107,6 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-const/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports
-    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-filesystem-fat/ports/esp32
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
@@ -141,7 +137,6 @@ else()
   add_compile_definitions(MRB_TICK_UNIT=5)
   add_compile_definitions(MRB_TIMESLICE_TICK_COUNT=10)
   add_compile_definitions(NDEBUG)
-  add_compile_definitions(USE_FAT_FLASH_DISK)
   #MRBC definitions is used by machine.
   add_definitions(
     -DMRBC_TICK_UNIT=10

@@ -16,7 +16,6 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.cc.defines << "MRB_TIMESLICE_TICK_COUNT=10"
   conf.cc.defines << "MRB_32BIT"
   conf.cc.defines << "NDEBUG"
-  conf.cc.defines << "USE_FAT_FLASH_DISK"
 
   conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
   conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
