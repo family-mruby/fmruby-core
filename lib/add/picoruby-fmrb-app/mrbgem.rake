@@ -4,4 +4,5 @@ MRuby::Gem::Specification.new('picoruby-fmrb-app') do |spec|
   spec.summary = 'Family mruby OS API for PicoRuby'
 
   spec.add_dependency 'picoruby-machine'
+  spec.add_dependency 'picoruby-fmrb-msgpack'
 end

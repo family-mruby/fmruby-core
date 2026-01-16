@@ -19,12 +19,14 @@ class SystemGuiApp < FmrbApp
   def spawn_app(app_name)
     puts "[SystemGUI] Requesting spawn: #{app_name}"
 
-    # Build message payload: subtype + app_name(FMRB_MAX_PATH_LEN)
-    # Convert APP_CTRL_SPAWN constant to byte string (chr is available in mruby)
-    data = FmrbConst::APP_CTRL_SPAWN.chr
-    data += app_name.ljust(FmrbConst::MAX_PATH_LEN, "\x00")
+    # Build message payload using msgpack
+    # Use string keys (not symbols) for VM-to-VM communication
+    data = {
+      "cmd" => "spawn",
+      "app_name" => app_name
+    }
 
-    # Send to Kernel using constants
+    # Send to Kernel using constants (send_message auto-serializes to msgpack)
     success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
 
     if success
@@ -125,10 +127,6 @@ class SystemGuiApp < FmrbApp
     #debug
     if @counter == 60
       spawn_app("default/shell")
-      # app_name = "/app/sample/mruby.app.rb"
-      # data = FmrbConst::APP_CTRL_SPAWN.chr
-      # data += app_name.ljust(FmrbConst::MAX_PATH_LEN, "\x00")
-      # success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
     end
 
     @counter += 1

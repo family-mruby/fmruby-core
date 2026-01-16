@@ -48,12 +48,14 @@ if(IDF_TARGET STREQUAL "linux")
     file(GLOB FMRB_CONST_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-const/ports/esp32/*.c")
     file(GLOB FMRB_IO_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-io/ports/esp32/*.c")
     file(GLOB FMRB_FILESYSTEM_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-filesystem/ports/esp32/*.c")
+    file(GLOB FMRB_MSGPACK_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/ports/esp32/*.c")
     set(PICORUBY_SRCS
         ${FMRB_APP_PORTS_SRCS}
         ${FMRB_KERNEL_PORTS_SRCS}
         ${FMRB_CONST_PORTS_SRCS}
         ${FMRB_IO_PORTS_SRCS}
         ${FMRB_FILESYSTEM_PORTS_SRCS}
+        ${FMRB_MSGPACK_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/posix/rng.c
@@ -65,6 +67,7 @@ else()
     file(GLOB FMRB_CONST_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-const/ports/esp32/*.c")
     file(GLOB FMRB_IO_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-io/ports/esp32/*.c")
     file(GLOB FMRB_FILESYSTEM_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-filesystem/ports/esp32/*.c")
+    file(GLOB FMRB_MSGPACK_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/ports/esp32/*.c")
 
     set(PICORUBY_SRCS
         ${FMRB_APP_PORTS_SRCS}
@@ -72,6 +75,7 @@ else()
         ${FMRB_CONST_PORTS_SRCS}
         ${FMRB_IO_PORTS_SRCS}
         ${FMRB_FILESYSTEM_PORTS_SRCS}
+        ${FMRB_MSGPACK_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
@@ -107,6 +111,7 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-const/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
@@ -114,6 +119,7 @@ idf_component_register(
   PRIV_REQUIRES
     ${PLATFORM_PRIV_REQUIRES}
     mbedtls
+    msgpack-esp32
     main
 )
 

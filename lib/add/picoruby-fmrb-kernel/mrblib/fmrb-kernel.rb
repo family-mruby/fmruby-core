@@ -35,13 +35,29 @@ class FmrbKernel
   end
 
   def handle_app_control(msg)
-    data = msg[:data]
-    subtype = data.bytes[0]
+    data_binary = msg[:data]
+    pid = msg[:src_pid]
 
-    case subtype
-    when FmrbConst::APP_CTRL_SPAWN
-      app_name = data[1, @max_path_len].delete("\x00")
-      pid = msg[:src_pid]
+    # Deserialize msgpack data
+    begin
+      data = MessagePack.unpack(data_binary)
+    rescue => e
+      puts "[KERNEL] Failed to unpack msgpack data: #{e}"
+      return
+    end
+
+    # Data should be a Hash with "cmd" key (use strings, not symbols for VM-to-VM communication)
+    unless data.is_a?(Hash) && data.key?("cmd")
+      puts "[KERNEL] Invalid app control message format (expected Hash with 'cmd')"
+      puts "[KERNEL] Received: #{data.inspect}"
+      return
+    end
+
+    cmd = data["cmd"]
+
+    case cmd
+    when "spawn"
+      app_name = data["app_name"] || data["app"] || ""
       puts "[KERNEL] Spawn request from pid=#{pid}: #{app_name}"
 
       result = _spawn_app_req(app_name)
@@ -56,17 +72,16 @@ class FmrbKernel
       else
         puts "[KERNEL] Failed to spawn app: #{app_name}"
       end
-    when FmrbConst::APP_CTRL_KILL
-      pid = msg[:src_pid]
+    when "kill"
       puts "[KERNEL] Kill request from pid=#{pid} (not implemented)"
       # TODO: Reset HID target if this was the target app
       # Kernel.set_hid_target(0xFF)
-    when FmrbConst::APP_CTRL_SUSPEND
+    when "suspend"
       puts "[KERNEL] Suspend request (not implemented)"
-    when FmrbConst::APP_CTRL_RESUME
+    when "resume"
       puts "[KERNEL] Resume request (not implemented)"
     else
-      puts "[KERNEL] Unknown app control subtype: #{subtype}"
+      puts "[KERNEL] Unknown app control command: #{cmd}"
     end
   end
 

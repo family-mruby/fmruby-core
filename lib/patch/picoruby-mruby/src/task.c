@@ -692,8 +692,8 @@ mrb_task_s_pass(mrb_state *mrb, mrb_value klass)
 {
   mrb_tcb *tcb = MRB2TCB(mrb);
   tcb->timeslice = 0;
-  tcb->priority_preemption = tcb->priority;  // Reset to base priority instead of 1
-  switching_ = TRUE;  // Trigger immediate task switch
+  //tcb->priority_preemption = tcb->priority;  // Reset to base priority instead of 1
+  tcb->priority_preemption = 255;
   return mrb_nil_value();
 }
 

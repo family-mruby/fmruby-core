@@ -1,3 +1,33 @@
+# Simple output capturer for IRB
+class OutputCapturer
+  def initialize
+    @output = []
+  end
+
+  def write(str)
+    @output << str
+  end
+
+  def puts(str = "")
+    @output << str.to_s
+    @output << "\n" unless str.to_s.end_with?("\n")
+  end
+
+  def print(str)
+    @output << str.to_s
+  end
+
+  def flush
+    # No-op
+  end
+
+  def get_output
+    result = @output.join
+    @output.clear
+    result
+  end
+end
+
 class ShellApp < FmrbApp
   def initialize
     super()
@@ -7,14 +37,20 @@ class ShellApp < FmrbApp
     @cursor_y = 0
     @char_width = 6
     @char_height = 8
+    @current_dir = "/"  # Current working directory
     @prompt = "> "
     @need_redraw = false
     @max_line_length = 100  # Maximum input line length
+    @input_buffer = []  # Character buffer for getch
+    @frame_ms = 33
+    @irb_mode = false  # IRB mode flag
+    @irb_sandbox = nil  # Sandbox for IRB
   end
 
   def on_create()
     @gfx.clear(FmrbGfx::WHITE)
     draw_window_frame
+    show_logo
     draw_prompt
     @gfx.present
     puts "[ShellApp] on_create called"
@@ -25,13 +61,76 @@ class ShellApp < FmrbApp
     puts "[ShellApp] max displayable chars: ~#{max_chars} (including prompt)"
 
     log_puts "[ShellApp] create task"
-    @background_task = Task.new(name: "bg", priority: 100) do
-      loop do
-        log_puts "[ShellApp] [Task] loop"
-        sleep 1
-      end
+
+    # Capture self to maintain instance context in the task block
+    app_self = self
+    @shell_task = Task.new(name: "shell_task", priority: 100) do
+      log_puts "[ShellApp] [Task] loop start"
+      app_self.shell_task
     end
     log_puts "[ShellApp] create task done"
+  end
+
+  def shell_task
+    loop do
+      ch = getch
+
+      # Handle special keys
+      case ch
+      when 10, 13  # Enter (LF or CR)
+        handle_enter
+      when 8  # Backspace
+        handle_backspace
+      when 9  # Tab
+        # TODO: tab completion
+      when 32..126  # Printable characters
+        if @current_line.length < @max_line_length
+          @current_line += ch.chr
+          @need_redraw = true
+        end
+      end
+    end
+  end
+
+  # Show MicroRuby logo as ASCII art in history
+  def show_logo
+    # MicroRuby logo bitmap from picoruby-shell (RUBY_ENGINE == "mruby")
+    logo_bitmap = [
+      "01110000111001100011111100111111000011111100011111100011000011001111110011000011",
+      "01111001111001100110000000110001100110000110011000110011000011001100011001100110",
+      "01101111011001100110000000111111000110000110011111100011000011001111110000111100",
+      "01100110011001100110000000110001100110000110011000110011000011001100011000011000",
+      "01100000011001100011111100110001100011111100011000110001111110001111110000011000"
+    ]
+
+    # Convert to ASCII art and add to history
+    logo_bitmap.each do |line|
+      ascii_line = line.gsub("0", " ").gsub("1", "*")
+      @history << ascii_line
+    end
+
+    @history << ""
+    @history << "Family mruby OS Shell"
+    @history << "Type 'help' for available commands"
+    @history << ""
+  end
+
+  # Read a single character from input buffer (blocking)
+  # Returns ASCII code of the character
+  # Yields CPU while waiting for input
+  def getch
+    while @input_buffer.empty?
+      sleep_ms @frame_ms
+    end
+    char = @input_buffer.shift
+    #log_puts "[ShellApp] [getch] Returning character: #{char} (#{char.chr})"
+    char
+  end
+
+  # Check if there is any character available in the buffer
+  # Returns true if buffer has data, false otherwise
+  def kbhit?
+    !@input_buffer.empty?
   end
 
   def spawn_app(app_name)
@@ -65,6 +164,16 @@ class ShellApp < FmrbApp
 
   def execute_command(cmd, args)
     case cmd
+    when "cd"
+      cmd_cd(args)
+    when "pwd"
+      cmd_pwd
+    when "ls"
+      cmd_ls(args)
+    when "cat"
+      cmd_cat(args)
+    when "irb"
+      cmd_irb
     when "run"
       if args.empty?
         @history << "Error: run requires an app path"
@@ -74,6 +183,11 @@ class ShellApp < FmrbApp
       spawn_app(app_path)
     when "help"
       @history << "Available commands:"
+      @history << "  cd [path] - Change directory"
+      @history << "  pwd - Print working directory"
+      @history << "  ls [path] - List directory contents"
+      @history << "  cat <file> - Display file contents"
+      @history << "  irb - Interactive Ruby"
       @history << "  run <app_path> - Launch an application"
       @history << "  help - Show this help message"
     else
@@ -82,13 +196,215 @@ class ShellApp < FmrbApp
     end
   end
 
+  def cmd_cd(args)
+    puts "[ShellApp] cmd_cd called with args: #{args.inspect}"
+    target_dir = if args.empty?
+                   "/"  # cd without args goes to root
+                 else
+                   args[0]
+                 end
+    puts "[ShellApp] target_dir: #{target_dir}"
+
+    # Resolve relative path
+    new_dir = if target_dir.start_with?("/")
+                target_dir  # Absolute path
+              else
+                # Relative path - append to current directory
+                if @current_dir == "/"
+                  "/" + target_dir
+                else
+                  @current_dir + "/" + target_dir
+                end
+              end
+    puts "[ShellApp] new_dir (before normalize): #{new_dir}"
+
+    # Normalize path (remove duplicate slashes)
+    while new_dir.include?("//")
+      new_dir = new_dir.gsub("//", "/")
+    end
+    # Remove trailing slash except for root
+    new_dir = new_dir[0...-1] if new_dir.length > 1 && new_dir.end_with?("/")
+    puts "[ShellApp] new_dir (after normalize): #{new_dir}"
+
+    # Check if directory exists
+    begin
+      # Try to open directory to verify it exists
+      puts "[ShellApp] Trying to open directory: #{new_dir}"
+      dir = Dir.open(new_dir)
+      dir.close
+      @current_dir = new_dir
+      puts "[ShellApp] Changed to directory: #{@current_dir}"
+    rescue => e
+      puts "[ShellApp] Error: #{e.message}"
+      @history << "cd: #{target_dir}: #{e.message}"
+    end
+  end
+
+  def cmd_pwd
+    @history << @current_dir
+  end
+
+  def cmd_ls(args)
+    path = if args.empty?
+             @current_dir  # Use current directory
+           elsif args[0].start_with?("/")
+             args[0]  # Absolute path
+           else
+             # Relative path
+             if @current_dir == "/"
+               "/" + args[0]
+             else
+               @current_dir + "/" + args[0]
+             end
+           end
+
+    begin
+      dir = Dir.open(path)
+      entries = []
+      while (entry = dir.read)
+        entries << entry
+      end
+      dir.close
+
+      if entries.empty?
+        @history << "(empty directory)"
+      else
+        entries.each do |entry|
+          @history << "  #{entry}"
+        end
+      end
+    rescue => e
+      @history << "Error: #{e.message}"
+    end
+  end
+
+  def cmd_cat(args)
+    if args.empty?
+      @history << "Error: cat requires a file path"
+      return
+    end
+
+    path = args.join(' ')
+
+    # Resolve relative path
+    path = if path.start_with?("/")
+             path  # Absolute path
+           else
+             # Relative path
+             if @current_dir == "/"
+               "/" + path
+             else
+               @current_dir + "/" + path
+             end
+           end
+
+    begin
+      file = File.open(path, "r")
+      content = file.read
+      file.close
+
+      # Split content by newlines and add to history
+      lines = content.split("\n")
+      if lines.empty?
+        @history << "(empty file)"
+      else
+        lines.each do |line|
+          # Truncate long lines to avoid display issues
+          max_display_width = (@user_area_width - 4) / @char_width
+          if line.length > max_display_width
+            @history << line[0...max_display_width] + "..."
+          else
+            @history << line
+          end
+        end
+      end
+    rescue => e
+      @history << "Error: #{e.message}"
+    end
+  end
+
+  def cmd_irb
+    @history << "IRB mode - Type 'exit' or 'quit' to return"
+    @need_redraw = true
+    @irb_mode = true
+    @prompt = "irb> "  # Change prompt for IRB mode
+    @irb_sandbox = Sandbox.new
+  end
+
+  def irb_eval(script)
+    # Skip empty input
+    if script.empty?
+      @need_redraw = true
+      return
+    end
+
+    if script == "exit" || script == "quit"
+      @irb_mode = false
+      @irb_sandbox.terminate if @irb_sandbox
+      @irb_sandbox = nil
+      @history << "Exited IRB mode"
+      @prompt = "> "
+      @need_redraw = true
+      return
+    end
+
+    # Capture stdout
+    old_stdout = $stdout
+    capturer = OutputCapturer.new
+    $stdout = capturer
+
+    begin
+      # Try to compile and execute the script
+      puts "[ShellApp] [IRB] Compiling: #{script}"
+      if @irb_sandbox.compile("begin; _ = (#{script}); rescue => _; end; _")
+        # Execute and get result
+        puts "[ShellApp] [IRB] Executing..."
+        executed = @irb_sandbox.execute
+        puts "[ShellApp] [IRB] Executed: #{executed}"
+        if executed
+          puts "[ShellApp] [IRB] Waiting..."
+          @irb_sandbox.wait(timeout: 5000)
+          puts "[ShellApp] [IRB] Suspending..."
+          @irb_sandbox.suspend
+          puts "[ShellApp] [IRB] Getting result..."
+          result = @irb_sandbox.result
+          puts "[ShellApp] [IRB] Result: #{result.inspect}"
+
+          # Get captured output
+          output = capturer.get_output
+
+          # Display captured output (without debug logs)
+          output.each_line do |line|
+            next if line.start_with?("[ShellApp] [IRB]")
+            @history << line.chomp
+          end
+
+          # Display result if not nil
+          @history << "=> #{result.inspect}" unless result.nil?
+        else
+          @history << "Error: Execution failed"
+        end
+      else
+        @history << "Error: Compilation failed"
+      end
+    rescue => e
+      puts "[ShellApp] [IRB] Exception: #{e.message}"
+      @history << "Error: #{e.message}"
+    ensure
+      # Restore stdout
+      $stdout = old_stdout
+    end
+
+    @need_redraw = true
+  end
+
   def on_update()
     if @need_redraw
       #puts "[Shell] on_update: need_redraw=true, calling redraw_screen"
       redraw_screen
       @need_redraw = false
     end
-    33 # msec
+    @frame_ms # msec
   end
 
   def draw_prompt
@@ -103,7 +419,7 @@ class ShellApp < FmrbApp
     x = @user_area_x0 + 2
     y = @user_area_y0 + 2 + (@history.length * @char_height)
     full_line = @prompt + @current_line
-    puts "[Shell] draw_prompt: drawing '#{full_line}' (length=#{full_line.length}) at (#{x}, #{y})"
+    #puts "[Shell] draw_prompt: drawing '#{full_line}' (length=#{full_line.length}) at (#{x}, #{y})"
     @gfx.draw_text(x, y, full_line, FmrbGfx::BLACK)
   end
 
@@ -121,7 +437,13 @@ class ShellApp < FmrbApp
     #p ev
 
     if ev[:type] == :key_down
-      handle_key_input(ev)
+      # Add character to input buffer for getch
+      character = ev[:character] || 0
+      if character > 0
+        @input_buffer << character
+      end
+
+      # Don't call handle_key_input - let shell_task handle it via getch
     elsif ev[:type] == :key_up
       handle_key_up(ev)
     end
@@ -204,10 +526,14 @@ class ShellApp < FmrbApp
     # Add current line to history
     @history << (@prompt + @current_line)
 
-    # Execute command
-    cmd, args = parse_command(@current_line)
-    if cmd
-      execute_command(cmd, args)
+    # Execute command or IRB eval
+    if @irb_mode
+      irb_eval(@current_line)
+    else
+      cmd, args = parse_command(@current_line)
+      if cmd
+        execute_command(cmd, args)
+      end
     end
 
     # Clear current line

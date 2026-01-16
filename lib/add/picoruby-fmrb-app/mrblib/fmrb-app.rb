@@ -91,7 +91,9 @@ class FmrbApp
   end
 
   def send_message(dest_pid, msg_type, data)
-    _send_message(dest_pid, msg_type, data)
+    # Auto-serialize all data to msgpack binary
+    binary_data = MessagePack.pack(data)
+    _send_message(dest_pid, msg_type, binary_data)
   end
 
   def set_window_position(x, y)

@@ -33,6 +33,7 @@ MRuby::GemBox.new do |conf|
 
   # Family mruby specific
   conf.gem core: "picoruby-fmrb-const"
+  conf.gem core: "picoruby-fmrb-msgpack"
   conf.gem core: "picoruby-fmrb-kernel"
   conf.gem core: "picoruby-fmrb-app"
 
