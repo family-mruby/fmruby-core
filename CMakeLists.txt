@@ -10,6 +10,3 @@ project(fmruby-core)
 if(NOT IDF_TARGET STREQUAL "linux")
     littlefs_create_partition_image(storage flash FLASH_IN_PROJECT)
 endif()
-
-# TODO: Add PicoRuby component when integrated
-# list(APPEND EXTRA_COMPONENT_DIRS "lib/picoruby-fmrb")
