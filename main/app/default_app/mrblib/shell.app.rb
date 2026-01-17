@@ -512,6 +512,11 @@ class ShellApp < FmrbApp
     full_line = @prompt + @current_line
     #puts "[Shell] draw_prompt: drawing '#{full_line}' (length=#{full_line.length}) at (#{x}, #{y})"
     @gfx.draw_text(x, y, full_line, FmrbGfx::BLACK)
+
+    # Draw cursor (underline at end of input)
+    cursor_x = x + (full_line.length * @char_width)
+    cursor_y = y + @char_height - 1
+    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, FmrbGfx::BLACK)
   end
 
   def redraw_screen
@@ -534,6 +539,12 @@ class ShellApp < FmrbApp
     # Draw prompt and current input
     full_line = @prompt + @current_line
     @gfx.draw_text(x, y, full_line, FmrbGfx::BLACK)
+
+    # Draw cursor (underline at end of input)
+    cursor_x = x + (full_line.length * @char_width)
+    cursor_y = y + @char_height - 1
+    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, FmrbGfx::GRAY)
+
     @gfx.present
   end
 
