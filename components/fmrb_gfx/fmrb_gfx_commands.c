@@ -53,6 +53,8 @@ typedef struct {
     fmrb_canvas_handle_t canvas_id;
     int16_t x, y;
     fmrb_color_t color;
+    fmrb_color_t bg_color;
+    bool bg_transparent;
     fmrb_font_size_t font_size;
     char text[256]; // Maximum text length
 } text_command_t;
@@ -184,14 +186,22 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_add_circle(fmrb_gfx_command_buffer_t* buf
     return add_command(buffer, &cmd);
 }
 
-fmrb_gfx_err_t fmrb_gfx_command_buffer_add_text(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char* text, fmrb_color_t color, fmrb_font_size_t font_size) {
+fmrb_gfx_err_t fmrb_gfx_command_buffer_add_text(fmrb_gfx_command_buffer_t* buffer, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char* text, fmrb_color_t color, fmrb_color_t bg_color, bool bg_transparent, fmrb_font_size_t font_size) {
     if (!text) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
 
     fmrb_gfx_command_t cmd = {
         .type = FMRB_GFX_CMD_TEXT,
-        .data.text = { .canvas_id = canvas_id, .x = x, .y = y, .color = color, .font_size = font_size }
+        .data.text = {
+            .canvas_id = canvas_id,
+            .x = x,
+            .y = y,
+            .color = color,
+            .bg_color = bg_color,
+            .bg_transparent = bg_transparent,
+            .font_size = font_size
+        }
     };
 
     // Copy text with length limit
@@ -258,11 +268,12 @@ fmrb_gfx_err_t fmrb_gfx_command_buffer_execute(fmrb_gfx_command_buffer_t* buffer
                 break;
 
             case FMRB_GFX_CMD_TEXT:
-                ESP_LOGD(TAG, "Executing TEXT command [%zu]: canvas_id=%d, x=%d, y=%d, text='%s', color=0x%02X",
+                ESP_LOGD(TAG, "Executing TEXT command [%zu]: canvas_id=%d, x=%d, y=%d, text='%s', color=0x%02X, bg_color=0x%02X, bg_transparent=%d",
                          i, cmd->data.text.canvas_id, cmd->data.text.x, cmd->data.text.y,
-                         cmd->data.text.text, cmd->data.text.color);
+                         cmd->data.text.text, cmd->data.text.color, cmd->data.text.bg_color, cmd->data.text.bg_transparent);
                 ret = fmrb_gfx_draw_text(context, cmd->data.text.canvas_id, cmd->data.text.x, cmd->data.text.y,
-                                       cmd->data.text.text, cmd->data.text.color, cmd->data.text.font_size);
+                                       cmd->data.text.text, cmd->data.text.color, cmd->data.text.bg_color,
+                                       cmd->data.text.bg_transparent, cmd->data.text.font_size);
                 break;
 
             default:

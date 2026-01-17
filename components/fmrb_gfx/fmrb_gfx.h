@@ -209,11 +209,13 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle
  * @param x X coordinate
  * @param y Y coordinate
  * @param text Text string (null-terminated)
- * @param color Text color
+ * @param color Text foreground color
+ * @param bg_color Text background color
+ * @param bg_transparent If true, background is transparent (bg_color is ignored)
  * @param font_size Font size
  * @return Graphics error code
  */
-fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_font_size_t font_size);
+fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_color_t bg_color, bool bg_transparent, fmrb_font_size_t font_size);
 
 /**
  * @brief Get text dimensions

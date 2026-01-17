@@ -125,7 +125,7 @@ class SystemGuiApp < FmrbApp
 
     #debug
     if @counter == 20
-      spawn_app("default/shell")
+      #spawn_app("default/shell")
     end
 
     @counter += 1

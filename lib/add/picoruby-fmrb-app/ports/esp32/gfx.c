@@ -309,20 +309,29 @@ static mrb_value mrb_gfx_fill_circle(mrb_state *mrb, mrb_value self)
     return self;
 }
 
-// Graphics#draw_text(x, y, text, color)
+// Graphics#draw_text(x, y, text, color [, bg_color])
 static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
 {
     mrb_int x, y, color;
+    mrb_int bg_color = 0;
+    mrb_bool bg_given = FALSE;
     char *text;
-    mrb_get_args(mrb, "iizi", &x, &y, &text, &color);
+
+    mrb_int argc = mrb_get_argc(mrb);
+    if (argc == 5) {
+        mrb_get_args(mrb, "iizii", &x, &y, &text, &color, &bg_color);
+        bg_given = TRUE;
+    } else {
+        mrb_get_args(mrb, "iizi", &x, &y, &text, &color);
+    }
 
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    FMRB_LOGD("gfx", "draw_text called: x=%d, y=%d, text='%s', color=0x%02X, canvas_id=%d",
-              (int)x, (int)y, text, (int)color, data->canvas_id);
+    FMRB_LOGD("gfx", "draw_text called: x=%d, y=%d, text='%s', color=0x%02X, bg_color=0x%02X, bg_transparent=%d, canvas_id=%d",
+              (int)x, (int)y, text, (int)color, (int)bg_color, !bg_given, data->canvas_id);
 
     // Send GFX command to Host Task
     gfx_cmd_t cmd = {
@@ -332,6 +341,8 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
             .x = (int16_t)x,
             .y = (int16_t)y,
             .color = (fmrb_color_t)color,
+            .bg_color = (fmrb_color_t)bg_color,
+            .bg_transparent = !bg_given,
             .font_size = FMRB_FONT_SIZE_MEDIUM
         }
     };
@@ -406,7 +417,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "fill_rect", mrb_gfx_fill_rect, MRB_ARGS_REQ(5));
     mrb_define_method(mrb, gfx_class, "draw_circle", mrb_gfx_draw_circle, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "fill_circle", mrb_gfx_fill_circle, MRB_ARGS_REQ(4));
-    mrb_define_method(mrb, gfx_class, "draw_text", mrb_gfx_draw_text, MRB_ARGS_REQ(4));
+    mrb_define_method(mrb, gfx_class, "draw_text", mrb_gfx_draw_text, MRB_ARGS_ARG(4, 1));
     mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_NONE());
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());
 

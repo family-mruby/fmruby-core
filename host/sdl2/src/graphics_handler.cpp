@@ -608,8 +608,9 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 memcpy(text_buf, text_data, len);
                 text_buf[len] = '\0';
 
-                GFX_LOG_D("DRAW_STRING: canvas_id=%u, x=%d, y=%d, color=0x%02x, text='%s'",
-                       text_cmd->canvas_id, text_cmd->x, text_cmd->y, text_cmd->color, text_buf);
+                GFX_LOG_D("DRAW_STRING: canvas_id=%u, x=%d, y=%d, color=0x%02x, bg_color=0x%02x, bg_transparent=%d, text='%s'",
+                       text_cmd->canvas_id, text_cmd->x, text_cmd->y, text_cmd->color,
+                       text_cmd->bg_color, text_cmd->bg_transparent, text_buf);
 
                 // Get target from command
                 LovyanGFX* target;
@@ -626,7 +627,16 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                     canvas->dirty = true;
                     GFX_LOG_D("DRAW_STRING: Using canvas %u", text_cmd->canvas_id);
                 }
-                target->setTextColor(text_cmd->color);
+
+                // Set text color with optional background
+                if (text_cmd->bg_transparent) {
+                    // Foreground only (transparent background)
+                    target->setTextColor(text_cmd->color);
+                } else {
+                    // Foreground and background color
+                    target->setTextColor(text_cmd->color, text_cmd->bg_color);
+                }
+
                 target->setCursor(text_cmd->x, text_cmd->y);
                 target->print(text_buf);
                 GFX_LOG_D("DRAW_STRING: Text drawn");

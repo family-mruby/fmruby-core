@@ -194,7 +194,9 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;  // Target canvas ID (0=screen)
     int32_t x, y;
-    uint8_t color;  // RGB332 format
+    uint8_t color;  // RGB332 format (foreground)
+    uint8_t bg_color;  // RGB332 format (background)
+    uint8_t bg_transparent;  // 1 = transparent (no background), 0 = use bg_color
     uint16_t text_len;
     // Followed by text data
 } fmrb_link_graphics_text_t;

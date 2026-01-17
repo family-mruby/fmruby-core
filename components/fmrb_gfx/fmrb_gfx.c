@@ -308,7 +308,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_rect(fmrb_gfx_context_t context, fmrb_canvas_handle
     return ret;
 }
 
-fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_font_size_t font_size) {
+fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle_t canvas_id, int16_t x, int16_t y, const char *text, fmrb_color_t color, fmrb_color_t bg_color, bool bg_transparent, fmrb_font_size_t font_size) {
     if (!context || !text) {
         return FMRB_GFX_ERR_INVALID_PARAM;
     }
@@ -319,7 +319,7 @@ fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle
     }
 
     size_t text_len = strlen(text);
-    ESP_LOGD(TAG, "draw_text: received text length=%zu, text='%s'", text_len, text);
+    ESP_LOGD(TAG, "draw_text: received text length=%zu, text='%s', bg_transparent=%d", text_len, text, bg_transparent);
     if (text_len > 255) {
         ESP_LOGW(TAG, "draw_text: text too long (%zu), truncating to 255", text_len);
         text_len = 255; // Limit text length
@@ -337,6 +337,8 @@ fmrb_gfx_err_t fmrb_gfx_draw_text(fmrb_gfx_context_t context, fmrb_canvas_handle
     text_cmd->x = x;
     text_cmd->y = y;
     text_cmd->color = color;
+    text_cmd->bg_color = bg_color;
+    text_cmd->bg_transparent = bg_transparent ? 1 : 0;
     text_cmd->text_len = text_len;
     // Note: font_size is currently ignored by SDL2 host, may be added in the future
 
@@ -773,6 +775,8 @@ fmrb_gfx_err_t fmrb_gfx_draw_string(fmrb_gfx_context_t context, fmrb_canvas_hand
     text_cmd->x = x;
     text_cmd->y = y;
     text_cmd->color = color;
+    text_cmd->bg_color = 0;
+    text_cmd->bg_transparent = 1;  // Default: transparent background
     text_cmd->text_len = (uint16_t)str_len;
 
     // Copy text data after structure

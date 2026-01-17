@@ -284,6 +284,8 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
                                                    gfx_cmd->params.text.y,
                                                    gfx_cmd->params.text.text,
                                                    gfx_cmd->params.text.color,
+                                                   gfx_cmd->params.text.bg_color,
+                                                   gfx_cmd->params.text.bg_transparent,
                                                    gfx_cmd->params.text.font_size);
             break;
 

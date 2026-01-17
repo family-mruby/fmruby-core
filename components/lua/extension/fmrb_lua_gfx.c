@@ -133,13 +133,21 @@ static int lua_gfx_draw_rect(lua_State* L) {
     return 1;
 }
 
-// gfx:drawString(text, x, y, color)
+// gfx:drawString(text, x, y, color [, bg_color])
 static int lua_gfx_draw_string(lua_State* L) {
     lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
     const char *text = luaL_checkstring(L, 2);
     int x = luaL_checkinteger(L, 3);
     int y = luaL_checkinteger(L, 4);
     int color = luaL_checkinteger(L, 5);
+
+    // Optional background color (6th argument)
+    int bg_color = 0;
+    bool bg_transparent = true;
+    if (lua_gettop(L) >= 6) {
+        bg_color = luaL_checkinteger(L, 6);
+        bg_transparent = false;
+    }
 
     if (!data || !data->ctx) {
         return luaL_error(L, "Graphics not initialized");
@@ -153,6 +161,8 @@ static int lua_gfx_draw_string(lua_State* L) {
             .x = (int16_t)x,
             .y = (int16_t)y,
             .color = (fmrb_color_t)color,
+            .bg_color = (fmrb_color_t)bg_color,
+            .bg_transparent = bg_transparent,
             .font_size = FMRB_FONT_SIZE_MEDIUM
         }
     };

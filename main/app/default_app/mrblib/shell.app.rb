@@ -131,35 +131,17 @@ class ShellApp < FmrbApp
       end
     end
 
-    # Convert to ASCII art and add to history
+    # Store logo lines as Hash entries for colored rendering
     y = 0
     while y < logo.size
       line = logo[y]
-      ascii_line = ""
-      ascii_line += margin if margin
-
-      x = 0
-      while x < line.length
-        c = line[x]
-        if c == '0'
-          if y == logo.size - 1
-            ascii_line += (x < author_line.length ? author_line[x] : " ")
-          else
-            ascii_line += " "
-          end
-        elsif c == '1'
-          ascii_line += "#"
-        elsif c == '2'
-          if y == logo.size - 1
-            a = (x < author_line.length ? author_line[x] : " ")
-            ascii_line += (a != " " ? a : ".")
-          else
-            ascii_line += "."
-          end
-        end
-        x += 1
-      end
-      @history << ascii_line
+      @history << {
+        :type => :logo_line,
+        :data => line,
+        :author_line => author_line,
+        :margin => margin || "",
+        :is_last_line => (y == logo.size - 1)
+      }
       y += 1
     end
 
@@ -456,12 +438,50 @@ class ShellApp < FmrbApp
     @frame_ms # msec
   end
 
+  # Draw a single logo line with background colors
+  def draw_logo_line(x, y, logo_entry)
+    data = logo_entry[:data]
+    author_line = logo_entry[:author_line]
+    margin = logo_entry[:margin] || ""
+    is_last_line = logo_entry[:is_last_line]
+
+    # Apply margin offset
+    char_x = x + (margin.length * @char_width)
+
+    data.length.times do |i|
+      c = data[i]
+
+      # On the last line, author text takes priority over shadow
+      if is_last_line && i < author_line.length && author_line[i] != ' '
+        # Author text character (black on transparent)
+        @gfx.draw_text(char_x, y, author_line[i], FmrbGfx::BLACK)
+      else
+        case c
+        when '1'
+          # Logo body: space with red background
+          @gfx.draw_text(char_x, y, " ", FmrbGfx::WHITE, FmrbGfx::RED)
+        when '2'
+          # Shadow: space with gray background (0x92 = mid gray in RGB332)
+          @gfx.draw_text(char_x, y, " ", FmrbGfx::WHITE, 0x92)
+        # when '0' - skip (transparent background)
+        end
+      end
+      char_x += @char_width
+    end
+  end
+
   def draw_prompt
     # Draw all history lines
-    @history.each_with_index do |line, i|
+    @history.each_with_index do |entry, i|
       x = @user_area_x0 + 2
       y = @user_area_y0 + 2 + (i * @char_height)
-      @gfx.draw_text(x, y, line, FmrbGfx::BLACK)
+
+      if entry.is_a?(Hash) && entry[:type] == :logo_line
+        draw_logo_line(x, y, entry)
+      else
+        # Normal text line
+        @gfx.draw_text(x, y, entry.to_s, FmrbGfx::BLACK)
+      end
     end
 
     # Draw current input line
