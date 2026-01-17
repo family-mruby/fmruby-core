@@ -19,14 +19,11 @@ class SystemGuiApp < FmrbApp
   def spawn_app(app_name)
     puts "[SystemGUI] Requesting spawn: #{app_name}"
 
-    # Build message payload using msgpack
-    # Use string keys (not symbols) for VM-to-VM communication
     data = {
       "cmd" => "spawn",
       "app_name" => app_name
     }
 
-    # Send to Kernel using constants (send_message auto-serializes to msgpack)
     success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
 
     if success
@@ -43,12 +40,12 @@ class SystemGuiApp < FmrbApp
   end
 
   def draw_system_frame()
-    @gfx.fill_rect( 0,  0, @window_width, 10, 0xC5)
-    @gfx.draw_text( 2,  1, "Family mruby", FmrbGfx::WHITE)
+    @gfx.fill_rect( 0,  0, @window_width, 13, 0xC5)
+    @gfx.draw_text( 2,  2, "Family mruby", FmrbGfx::WHITE)
 
     # Shell button on left side of top bar
     button_x = 100
-    button_y = 0
+    button_y = 1
     button_width = 50
     button_height = 10
 
@@ -58,6 +55,8 @@ class SystemGuiApp < FmrbApp
     @gfx.draw_rect(button_x, button_y, button_width, button_height, FmrbGfx::WHITE)
     # Button text
     @gfx.draw_text(button_x + 10, button_y + 1, "Shell", FmrbGfx::WHITE)
+
+    @gfx.draw_line(0,13,@window_width,13,0x60)
   end
 
   def draw_memory_stats()
@@ -125,7 +124,7 @@ class SystemGuiApp < FmrbApp
     end
 
     #debug
-    if @counter == 60
+    if @counter == 20
       spawn_app("default/shell")
     end
 

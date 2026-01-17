@@ -5,8 +5,8 @@ app_screen_name = "ruby app"
 default_window_mode = "window" # or "fullwindow" or "window" or "background"
 
 # if fullscreen/fullwindow, they will be ignored
-default_window_width = 100
-default_window_height = 100
+default_window_width = 150
+default_window_height = 150
 
 # if fullscreen/fullwindow, they will be ignored
 default_window_pos_x = 310

@@ -65,8 +65,8 @@ static fmrb_err_t spawn_shell_app(void)
         .priority = FMRB_SHELL_APP_PRIORITY,
         .core_affinity = -1,
         .headless = false,
-        .window_width = 0,    // Use system default
-        .window_height = 0,   // Use system default
+        .window_width = 350,
+        .window_height = 200,
         .window_pos_x = 10,
         .window_pos_y = 20
     };

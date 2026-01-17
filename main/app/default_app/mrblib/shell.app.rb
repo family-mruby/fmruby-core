@@ -95,18 +95,72 @@ class ShellApp < FmrbApp
   # Show MicroRuby logo as ASCII art in history
   def show_logo
     # MicroRuby logo bitmap from picoruby-shell (RUBY_ENGINE == "mruby")
-    logo_bitmap = [
-      "01110000111001100011111100111111000011111100011111100011000011001111110011000011",
-      "01111001111001100110000000110001100110000110011000110011000011001100011001100110",
-      "01101111011001100110000000111111000110000110011111100011000011001111110000111100",
-      "01100110011001100110000000110001100110000110011000110011000011001100011000011000",
-      "01100000011001100011111100110001100011111100011000110001111110001111110000011000"
+    # logo = [
+    #   "01110000111001100011111100111111000011111100011111100011000011001111110011000011",
+    #   "01111001111001100110000000110001100110000110011000110011000011001100011001100110",
+    #   "01101111011001100110000000111111000110000110011111100011000011001111110000111100",
+    #   "01100110011001100110000000110001100110000110011000110011000011001100011000011000",
+    #   "01100000011001100011111100110001100011111100011000110001111110001111110000011000",
+    #   "00000000000000000000000000000000000000000000000000000000000000000000000000000000"
+    # ]
+    logo = [
+      "01000101001101110001100111001001011100100010",
+      "01101101010001001010010100101001010010100010",
+      "01010101010001110010010111001001011100011100",
+      "01000101010001001010010100101001010010001000",
+      "01000101001101001001100100100110011100001000",
+      "00000000000000000000000000000000000000000000"
     ]
 
+    logo_width = logo[0].length
+    author = "@hasumikin"
+    space = " " * ((logo_width - author.length) / 2)
+    author_line = space + author + space
+
+    # Calculate margin for center alignment
+    max_line_width = (@user_area_width - 4) / @char_width
+    margin = " " * ((max_line_width - logo_width) / 2) if max_line_width > logo_width
+
+    # Add shadow effect
+    logo.size.times do |y|
+      break if logo[y+1].nil?
+      logo[y].length.times do |x|
+        if logo[y][x] == '1' && x > 0 && logo[y+1][x-1] == '0'
+          logo[y+1][x-1] = '2'
+        end
+      end
+    end
+
     # Convert to ASCII art and add to history
-    logo_bitmap.each do |line|
-      ascii_line = line.gsub("0", " ").gsub("1", "*")
+    y = 0
+    while y < logo.size
+      line = logo[y]
+      ascii_line = ""
+      ascii_line += margin if margin
+
+      x = 0
+      while x < line.length
+        c = line[x]
+        if c == '0'
+          if y == logo.size - 1
+            ascii_line += (x < author_line.length ? author_line[x] : " ")
+          else
+            ascii_line += " "
+          end
+        elsif c == '1'
+          ascii_line += "#"
+        elsif c == '2'
+          if y == logo.size - 1
+            a = (x < author_line.length ? author_line[x] : " ")
+            ascii_line += (a != " " ? a : ".")
+          else
+            ascii_line += "."
+          end
+        end
+        x += 1
+      end
       @history << ascii_line
+      y += 1
     end
 
     @history << ""
@@ -115,9 +169,6 @@ class ShellApp < FmrbApp
     @history << ""
   end
 
-  # Read a single character from input buffer (blocking)
-  # Returns ASCII code of the character
-  # Yields CPU while waiting for input
   def getch
     while @input_buffer.empty?
       sleep_ms @frame_ms
@@ -127,22 +178,20 @@ class ShellApp < FmrbApp
     char
   end
 
-  # Check if there is any character available in the buffer
-  # Returns true if buffer has data, false otherwise
   def kbhit?
     !@input_buffer.empty?
   end
 
   def spawn_app(app_name)
+    app_name = "/app/sample/mruby.app.rb" if app_name == "mruby.app"
+    app_name = "/app/sample/lua.app.lua" if app_name == "lua.app"
     puts "[ShellApp] Requesting spawn: #{app_name}"
 
-    # Build message payload: subtype + app_name(FMRB_MAX_PATH_LEN)
-    data = FmrbConst::APP_CTRL_SPAWN.chr
-    data += app_name.ljust(FmrbConst::MAX_PATH_LEN, "\x00")
-
-    # Send to Kernel
+    data = {
+      "cmd" => "spawn",
+      "app_name" => app_name
+    }
     success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
-
     if success
       @history << "Spawned: #{app_name}"
       puts "[ShellApp] Spawn request sent successfully"
