@@ -29,6 +29,13 @@ class OutputCapturer
 end
 
 class ShellApp < FmrbApp
+  # Gradient colors for logo (red -> magenta in RGB332)
+  LOGO_GRAD_COLORS = [0xE0, 0xE1, 0xE2, 0xE3, 0xE3]
+  # Shadow colors (light gray, close to white: 0xDB = R6 G6 B3)
+  LOGO_SHADOW_COLORS = [0xDB, 0xDB, 0xDB, 0xDB, 0xDB]
+  # Author text color (dark red: 0x60 = R3 G0 B0)
+  LOGO_AUTHOR_COLOR = 0x60
+
   def initialize
     super()
     @current_line = ""
@@ -39,7 +46,8 @@ class ShellApp < FmrbApp
     @char_height = 8
     @current_dir = "/"  # Current working directory
     @prompt = "> "
-    @need_redraw = false
+    @need_full_redraw = false   # Full screen redraw (includes logo)
+    @need_line_redraw = false   # Only current input line redraw
     @max_line_length = 100  # Maximum input line length
     @input_buffer = []  # Character buffer for getch
     @frame_ms = 33
@@ -86,7 +94,7 @@ class ShellApp < FmrbApp
       when 32..126  # Printable characters
         if @current_line.length < @max_line_length
           @current_line += ch.chr
-          @need_redraw = true
+          @need_line_redraw = true
         end
       end
     end
@@ -104,18 +112,21 @@ class ShellApp < FmrbApp
     #   "00000000000000000000000000000000000000000000000000000000000000000000000000000000"
     # ]
     logo = [
-      "01000101001101110001100111001001011100100010",
-      "01101101010001001010010100101001010010100010",
-      "01010101010001110010010111001001011100011100",
-      "01000101010001001010010100101001010010001000",
-      "01000101001101001001100100100110011100001000",
-      "00000000000000000000000000000000000000000000"
+      "010001010011011100011001110010010111001010",
+      "011011010100010010100101001010010100101010",
+      "010101010100011100100101110010010111001010",
+      "010001010100010010100101001010010100100100",
+      "010001010011010010011001001001100111000100",
+      "000000000000000000000000000000000000000000"
     ]
 
     logo_width = logo[0].length
     author = "@hasumikin"
     space = " " * ((logo_width - author.length) / 2)
     author_line = space + author + space
+
+    # Gradient settings (5 slices)
+    grad_slice_width = logo_width / LOGO_GRAD_COLORS.length
 
     # Calculate margin for center alignment
     max_line_width = (@user_area_width - 4) / @char_width
@@ -140,13 +151,14 @@ class ShellApp < FmrbApp
         :data => line,
         :author_line => author_line,
         :margin => margin || "",
-        :is_last_line => (y == logo.size - 1)
+        :is_last_line => (y == logo.size - 1),
+        :grad_slice_width => grad_slice_width
       }
       y += 1
     end
 
     @history << ""
-    @history << "Family mruby OS Shell"
+    @history << "Family mruby Shell"
     @history << "Type 'help' for available commands"
     @history << ""
   end
@@ -356,7 +368,7 @@ class ShellApp < FmrbApp
 
   def cmd_irb
     @history << "IRB mode - Type 'exit' or 'quit' to return"
-    @need_redraw = true
+    @need_full_redraw = true
     @irb_mode = true
     @prompt = "irb> "  # Change prompt for IRB mode
     @irb_sandbox = Sandbox.new
@@ -365,7 +377,7 @@ class ShellApp < FmrbApp
   def irb_eval(script)
     # Skip empty input
     if script.empty?
-      @need_redraw = true
+      @need_full_redraw = true
       return
     end
 
@@ -375,7 +387,7 @@ class ShellApp < FmrbApp
       @irb_sandbox = nil
       @history << "Exited IRB mode"
       @prompt = "> "
-      @need_redraw = true
+      @need_full_redraw = true
       return
     end
 
@@ -426,24 +438,30 @@ class ShellApp < FmrbApp
       $stdout = old_stdout
     end
 
-    @need_redraw = true
+    @need_full_redraw = true
   end
 
   def on_update()
-    if @need_redraw
-      #puts "[Shell] on_update: need_redraw=true, calling redraw_screen"
+    if @need_full_redraw
+      # Full redraw: everything including logo (for scroll, etc.)
       redraw_screen
-      @need_redraw = false
+      @need_full_redraw = false
+      @need_line_redraw = false
+    elsif @need_line_redraw
+      # Partial redraw: only current input line (for typing)
+      redraw_input_line
+      @need_line_redraw = false
     end
     @frame_ms # msec
   end
 
-  # Draw a single logo line with background colors
+  # Draw a single logo line with gradient background colors
   def draw_logo_line(x, y, logo_entry)
     data = logo_entry[:data]
     author_line = logo_entry[:author_line]
     margin = logo_entry[:margin] || ""
     is_last_line = logo_entry[:is_last_line]
+    grad_slice_width = logo_entry[:grad_slice_width] || (data.length / LOGO_GRAD_COLORS.length)
 
     # Apply margin offset
     char_x = x + (margin.length * @char_width)
@@ -451,19 +469,23 @@ class ShellApp < FmrbApp
     data.length.times do |i|
       c = data[i]
 
+      # Calculate gradient index (0 to LOGO_GRAD_COLORS.length - 1)
+      grad_index = i / grad_slice_width
+      grad_index = LOGO_GRAD_COLORS.length - 1 if grad_index >= LOGO_GRAD_COLORS.length
+
       # On the last line, author text takes priority over shadow
       if is_last_line && i < author_line.length && author_line[i] != ' '
-        # Author text character (black on transparent)
-        @gfx.draw_text(char_x, y, author_line[i], FmrbGfx::BLACK)
+        # Author text character (dark red on white background)
+        @gfx.draw_text(char_x, y, author_line[i], LOGO_AUTHOR_COLOR, FmrbGfx::WHITE)
       else
         case c
         when '1'
-          # Logo body: space with red background
-          @gfx.draw_text(char_x, y, " ", FmrbGfx::WHITE, FmrbGfx::RED)
+          # Logo body: space with gradient color background
+          @gfx.draw_text(char_x, y, " ", FmrbGfx::WHITE, LOGO_GRAD_COLORS[grad_index])
         when '2'
-          # Shadow: space with gray background (0x92 = mid gray in RGB332)
-          @gfx.draw_text(char_x, y, " ", FmrbGfx::WHITE, 0x92)
-        # when '0' - skip (transparent background)
+          # Shadow: space with darker gradient color background
+          @gfx.draw_text(char_x, y, " ", FmrbGfx::WHITE, LOGO_SHADOW_COLORS[grad_index])
+        # when '0' - skip (use existing background)
         end
       end
       char_x += @char_width
@@ -493,11 +515,25 @@ class ShellApp < FmrbApp
   end
 
   def redraw_screen
-    # Clear user area
+    # Full redraw: Clear user area and redraw everything including logo
     @gfx.fill_rect(@user_area_x0, @user_area_y0,
                     @user_area_width, @user_area_height, FmrbGfx::WHITE)
     draw_window_frame
     draw_prompt
+    @gfx.present
+  end
+
+  def redraw_input_line
+    # Partial redraw: Only redraw the current input line
+    x = @user_area_x0 + 2
+    y = @user_area_y0 + 2 + (@history.length * @char_height)
+
+    # Clear only the input line area
+    @gfx.fill_rect(x, y, @user_area_width - 4, @char_height, FmrbGfx::WHITE)
+
+    # Draw prompt and current input
+    full_line = @prompt + @current_line
+    @gfx.draw_text(x, y, full_line, FmrbGfx::BLACK)
     @gfx.present
   end
 
@@ -580,7 +616,7 @@ class ShellApp < FmrbApp
         #puts "[Shell] Adding character: '#{char_str}' (ASCII #{character}), line was: '#{@current_line}'"
         @current_line += char_str
         #puts "[Shell] Line is now: '#{@current_line}' (length=#{@current_line.length})"
-        @need_redraw = true
+        @need_line_redraw = true
       else
         puts "[Shell] Warning: max line length (#{@max_line_length}) reached"
       end
@@ -615,13 +651,13 @@ class ShellApp < FmrbApp
       @history.shift
     end
 
-    @need_redraw = true
+    @need_full_redraw = true
   end
 
   def handle_backspace
     if @current_line.length > 0
       @current_line = @current_line[0...-1]
-      @need_redraw = true
+      @need_line_redraw = true
     end
   end
 
