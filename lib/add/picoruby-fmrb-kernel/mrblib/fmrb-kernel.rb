@@ -9,6 +9,10 @@ class AppData
 end
 
 class FmrbKernel
+  # Constants
+  MIN_WINDOW_WIDTH = 50
+  MIN_WINDOW_HEIGHT = 50
+
   def initialize()
     puts "[KERNEL] initialize"
     @app_list = []
@@ -18,19 +22,18 @@ class FmrbKernel
     # HID (input) target tracking
     @hid_target_pid = nil  # Current HID target (focused window)
 
-    # Mouse capture state (for drag and resize)
-    @capture_pid = nil
-    @capture_mode = nil  # :drag, :resize, or nil
+    # Mouse button state (for click event routing)
+    @mouse_down_pid = nil  # Window where mouse_down occurred
 
-    # Drag and drop state
-    @dragging = false
-    @drag_target_pid = nil
+    # Mouse capture state (for drag and resize only)
+    @capture_pid = nil     # Window that captured mouse
+    @capture_mode = nil    # :drag, :resize, or nil
+
+    # Drag state (only valid when @capture_mode == :drag)
     @drag_offset_x = 0
     @drag_offset_y = 0
 
-    # Resize state
-    @resizing = false
-    @resize_target_pid = nil
+    # Resize state (only valid when @capture_mode == :resize)
     @resize_start_width = 0
     @resize_start_height = 0
     @resize_start_x = 0
@@ -162,17 +165,16 @@ class FmrbKernel
 
         puts "[KERNEL] Relative pos in window: (#{relative_x},#{relative_y}), size=#{win_width}x#{win_height}"
 
-        # Set mouse capture to this window
-        @capture_pid = target_pid
+        # Record mouse_down window for button_up event routing
+        @mouse_down_pid = target_pid
 
         # Check for resize handle (bottom-right 10x10 area) first
         # Resize handle only for non-system_gui windows
         if target_name != "system_gui" &&
            relative_x >= win_width - 10 && relative_y >= win_height - 10
-          # Start resize
+          # Start resize and capture mouse
           @capture_mode = :resize
-          @resizing = true
-          @resize_target_pid = target_pid
+          @capture_pid = target_pid
           @resize_start_width = win_width
           @resize_start_height = win_height
           @resize_start_x = x
@@ -180,44 +182,50 @@ class FmrbKernel
           puts "[KERNEL] Start resize: PID #{target_pid}, size=(#{win_width}x#{win_height})"
         # Check if click is in menu bar region (not resizing)
         elsif target_name != "system_gui" && relative_y < 11
-          # Start drag
+          # Start drag and capture mouse
           @capture_mode = :drag
-          @dragging = true
-          @drag_target_pid = target_pid
+          @capture_pid = target_pid
           @drag_offset_x = x - win_x
           @drag_offset_y = y - win_y
           puts "[KERNEL] Start drag: PID #{target_pid}, offset=(#{@drag_offset_x},#{@drag_offset_y})"
         end
 
-        # Forward event to captured window (always to the clicked window)
-        _send_raw_message(@capture_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+        # Forward event to the clicked window
+        _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
 
       when 3  # Mouse move
-        # Handle drag/resize operations
-        if @resizing && @resize_target_pid
-          # Calculate new window size
+        # Handle drag/resize operations based on @capture_mode
+        if @capture_mode == :resize && @capture_pid
+          # Calculate new window size with constraints
           new_width = @resize_start_width + (x - @resize_start_x)
           new_height = @resize_start_height + (y - @resize_start_y)
 
+          # Apply minimum size constraints
+          new_width = MIN_WINDOW_WIDTH if new_width < MIN_WINDOW_WIDTH
+          new_height = MIN_WINDOW_HEIGHT if new_height < MIN_WINDOW_HEIGHT
+
           # Update window size
-          if _update_window_size(@resize_target_pid, new_width, new_height)
+          if _update_window_size(@capture_pid, new_width, new_height)
             mark_window_list_dirty  # Size changed
           else
             puts "[KERNEL] Failed to update window size"
-            @resizing = false
+            # Release capture on error
+            @capture_pid = nil
             @capture_mode = nil
           end
-        elsif @dragging && @drag_target_pid
+
+        elsif @capture_mode == :drag && @capture_pid
           # Calculate new window position
           new_x = x - @drag_offset_x
           new_y = y - @drag_offset_y
 
           # Update window position
-          if _update_window_position(@drag_target_pid, new_x, new_y)
+          if _update_window_position(@capture_pid, new_x, new_y)
             mark_window_list_dirty  # Position changed
           else
             puts "[KERNEL] Failed to update window position"
-            @dragging = false
+            # Release capture on error
+            @capture_pid = nil
             @capture_mode = nil
           end
         end
@@ -231,30 +239,29 @@ class FmrbKernel
         end
 
       when 5  # Mouse button up
-        # Forward to captured window first (before releasing capture)
-        if @capture_pid
-          _send_raw_message(@capture_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+        # Forward to captured window or mouse_down window
+        target_pid = @capture_pid || @mouse_down_pid
+        if target_pid
+          _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
         end
 
-        # Release capture and reset drag/resize state
-        if @resizing
-          puts "[KERNEL] End resize: PID #{@resize_target_pid}"
-          @resizing = false
-          @resize_target_pid = nil
+        # Release capture and reset state based on @capture_mode
+        if @capture_mode == :resize
+          puts "[KERNEL] End resize: PID #{@capture_pid}"
           @resize_start_width = 0
           @resize_start_height = 0
           @resize_start_x = 0
           @resize_start_y = 0
-        elsif @dragging
-          puts "[KERNEL] End drag: PID #{@drag_target_pid}"
-          @dragging = false
-          @drag_target_pid = nil
+        elsif @capture_mode == :drag
+          puts "[KERNEL] End drag: PID #{@capture_pid}"
           @drag_offset_x = 0
           @drag_offset_y = 0
         end
 
+        # Clear all mouse button state
         @capture_pid = nil
         @capture_mode = nil
+        @mouse_down_pid = nil
       end
 
     rescue => e
