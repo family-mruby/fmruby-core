@@ -125,6 +125,16 @@ typedef struct {
     int32_t               mem_frag;         // Fragmentation count or block count
 } fmrb_app_info_t;
 
+// Window info for hit testing
+typedef struct {
+    uint8_t               pid;              // Process ID
+    uint16_t              x;                // Window X position
+    uint16_t              y;                // Window Y position
+    uint16_t              width;            // Window width
+    uint16_t              height;           // Window height
+    uint8_t               z_order;          // Z-order (0=back, higher=front)
+} fmrb_window_info_t;
+
 // Core APIs
 bool fmrb_app_init(void);
 fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id);
@@ -146,3 +156,5 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name);
 
 void* fmrb_app_get_current_est(void);
 void fmrb_app_set_current_est(void* est);
+
+int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count);

@@ -12,7 +12,7 @@
 #include "fmrb_task_config.h"
 #include "fmrb_log.h"
 #include "fmrb_link_transport.h"
-#include "../../../../../../main/boot.h"
+#include "boot.h"
 #include "hal.h"
 
 static const char* TAG = "kernel";
@@ -196,6 +196,38 @@ static mrb_value mrb_kernel_set_focused_window(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// Kernel.get_window_list() -> Array of hashes
+// Returns list of active windows with position and size info
+static mrb_value mrb_kernel_get_window_list(mrb_state *mrb, mrb_value self)
+{
+    fmrb_window_info_t windows[FMRB_MAX_APPS];
+    int32_t count = fmrb_app_get_window_list(windows, FMRB_MAX_APPS);
+
+    // Create Ruby array
+    mrb_value array = mrb_ary_new_capa(mrb, count);
+
+    for (int32_t i = 0; i < count; i++) {
+        // Create hash for each window: {pid:, x:, y:, width:, height:, z_order:}
+        mrb_value hash = mrb_hash_new(mrb);
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "pid")),
+                     mrb_fixnum_value(windows[i].pid));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "x")),
+                     mrb_fixnum_value(windows[i].x));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "y")),
+                     mrb_fixnum_value(windows[i].y));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "width")),
+                     mrb_fixnum_value(windows[i].width));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "height")),
+                     mrb_fixnum_value(windows[i].height));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "z_order")),
+                     mrb_fixnum_value(windows[i].z_order));
+
+        mrb_ary_push(mrb, array, hash);
+    }
+
+    return array;
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -205,11 +237,9 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_spin", mrb_kernel_handler_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_spawn_app_req", mrb_kernel_handler_spawn_app_req, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "check_protocol_version", mrb_kernel_check_protocol_version, MRB_ARGS_OPT(1));
-
-    // Define Kernel module for HID routing functions
-    struct RClass *kernel_mod = mrb_define_module(mrb, "Kernel");
-    mrb_define_module_function(mrb, kernel_mod, "set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
-    mrb_define_module_function(mrb, kernel_mod, "set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_get_window_list", mrb_kernel_get_window_list, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }

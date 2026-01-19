@@ -13,7 +13,7 @@
 #include "fmrb_task_config.h"
 #include "fmrb_app.h"
 #include "fmrb_kernel.h"
-#include "../boot.h"
+#include "boot.h"
 #include "fmrb_link_transport.h"
 #include "host/host_task.h"
 #include "fmrb_toml.h"

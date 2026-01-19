@@ -1115,3 +1115,35 @@ void fmrb_set_current_est(void* est)
     ESP_LOGI(TAG, "init estalloc: app = %s est = %p", ctx->app_name ,est);
     ctx->est = est;
 }
+
+/**
+ * Get window information list for all active apps
+ * Returns array of window info (pid, x, y, width, height) for RUNNING/SUSPENDED apps
+ */
+int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
+    if (!list || max_count <= 0) return 0;
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+
+    int32_t count = 0;
+    for (int32_t i = 0; i < FMRB_MAX_APPS && count < max_count; i++) {
+        fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
+
+        // Only include RUNNING or SUSPENDED apps with visible windows
+        if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
+            !ctx->headless && ctx->window_width > 0 && ctx->window_height > 0) {
+
+            list[count].pid = (uint8_t)ctx->app_id;
+            list[count].x = ctx->window_pos_x;
+            list[count].y = ctx->window_pos_y;
+            list[count].width = ctx->window_width;
+            list[count].height = ctx->window_height;
+            list[count].z_order = count;  // TODO: Implement proper Z-order management
+
+            count++;
+        }
+    }
+
+    fmrb_semaphore_give(g_ctx_lock);
+    return count;
+}
