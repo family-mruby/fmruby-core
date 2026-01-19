@@ -360,10 +360,8 @@ static void host_task_process_host_message(const host_message_t *msg)
                 fmrb_keymap_get_layout()
             );
 
-            // Send directly to target app
-            //fmrb_msg_send(routing.target_pid, &hid_msg, 10);
-            // for testing
-            fmrb_msg_send(PROC_ID_USER_APP0, &hid_msg, 10);
+            // Send directly to focused window (current HID target)
+            fmrb_msg_send(routing.target_pid, &hid_msg, 10);
             break;
         }
 
