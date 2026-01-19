@@ -93,6 +93,26 @@ class BouncingBallApp < FmrbApp
   def on_event(ev)
   end
 
+  def on_resize(new_width, new_height)
+    # Called when window is resized
+    # @window_width, @window_height, @user_area_* are already updated by C code
+    log_puts "[BallApp] Resize event: #{new_width}x#{new_height}"
+
+    # Keep ball within new boundaries
+    left_boundary = @user_area_x0 + @ball_radius
+    right_boundary = @user_area_x0 + @user_area_width - @ball_radius
+    top_boundary = @user_area_y0 + @ball_radius
+    bottom_boundary = @user_area_y0 + @user_area_height - @ball_radius
+
+    @ball_x = left_boundary if @ball_x < left_boundary
+    @ball_x = right_boundary if @ball_x > right_boundary
+    @ball_y = top_boundary if @ball_y < top_boundary
+    @ball_y = bottom_boundary if @ball_y > bottom_boundary
+
+    # Trigger full redraw
+    draw_full_screen
+  end
+
   def on_destroy
     Log.info("Destroyed")
   end

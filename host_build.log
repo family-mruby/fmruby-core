@@ -1,0 +1,9 @@
+cd host/sdl2 && mkdir -p build && cd build && cmake .. && make
+-- IPC debug logging enabled
+-- Building fmrb_host_sdl2 with SDL2 and LovyanGFX
+-- SDL2 libraries: SDL2
+-- SDL2 include dirs: /usr/include/SDL2
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/k-ubuntu/kishima/fmrb/fmruby-core/host/sdl2/build
+[100%] Built target fmrb_host_sdl2

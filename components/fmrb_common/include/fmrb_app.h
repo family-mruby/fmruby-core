@@ -76,6 +76,8 @@ typedef struct fmrb_app_task_context_s {
     uint16_t              window_height;     // Window Height(if headless, =0)
     uint16_t              window_pos_x;
     uint16_t              window_pos_y;
+    uint8_t               z_order;           // Z-order (0=back, higher=front)
+    uint16_t              canvas_id;         // Canvas ID (0 for headless apps)
 
     // Load mode and data (replaces encoded user_data pointer tagging)
     fmrb_load_mode_t      load_mode;         // How to load the script
@@ -125,6 +127,17 @@ typedef struct {
     int32_t               mem_frag;         // Fragmentation count or block count
 } fmrb_app_info_t;
 
+// Window info for hit testing
+typedef struct {
+    uint8_t               pid;              // Process ID
+    char                  app_name[FMRB_MAX_APP_NAME];  // Application name
+    uint16_t              x;                // Window X position
+    uint16_t              y;                // Window Y position
+    uint16_t              width;            // Window width
+    uint16_t              height;           // Window height
+    uint8_t               z_order;          // Z-order (0=back, higher=front)
+} fmrb_window_info_t;
+
 // Core APIs
 bool fmrb_app_init(void);
 fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id);
@@ -142,7 +155,12 @@ static inline fmrb_app_task_context_t* fmrb_current(void) {
 
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
-fmrb_err_t fmrb_app_spawn_app(const char* app_name);
+fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid);
 
 void* fmrb_app_get_current_est(void);
 void fmrb_app_set_current_est(void* est);
+
+int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count);
+fmrb_err_t fmrb_app_bring_to_front(uint8_t pid);
+fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y);
+fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t height);

@@ -11,6 +11,10 @@
 #include "fmrb_task_config.h"
 #include "fmrb_kernel.h"
 #include "fmrb_lua.h"
+#include "fmrb_link_transport.h"
+#include "fmrb_link_protocol.h"
+#include "fmrb_gfx_msg.h"
+#include "fmrb_msg.h"
 
 // Forward declaration for estalloc helper function
 extern int mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free, int32_t* frag);
@@ -827,6 +831,22 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         ctx->window_height = 0;
     }
 
+    // Initialize Z-order: system_gui is always at back (0), others on top
+    if (strcmp(ctx->app_name, "system_gui") == 0) {
+        ctx->z_order = 0;  // system_gui always at bottom
+    } else {
+        // Find max z_order and assign next value
+        uint8_t max_z = 0;
+        for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+            if (g_ctx_pool[i].state != PROC_STATE_FREE &&
+                !g_ctx_pool[i].headless &&
+                g_ctx_pool[i].z_order > max_z) {
+                max_z = g_ctx_pool[i].z_order;
+            }
+        }
+        ctx->z_order = max_z + 1;
+    }
+
     // Create semaphore
     ctx->semaphore = fmrb_semaphore_create_binary();
     if (!ctx->semaphore) {
@@ -1115,3 +1135,385 @@ void fmrb_set_current_est(void* est)
     ESP_LOGI(TAG, "init estalloc: app = %s est = %p", ctx->app_name ,est);
     ctx->est = est;
 }
+
+/**
+ * Get window information list for all active apps
+ * Returns array of window info (pid, x, y, width, height) for RUNNING/SUSPENDED apps
+ */
+int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
+    if (!list || max_count <= 0) return 0;
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+
+    int32_t count = 0;
+    for (int32_t i = 0; i < FMRB_MAX_APPS && count < max_count; i++) {
+        fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
+
+        // Only include RUNNING or SUSPENDED apps with visible windows
+        if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
+            !ctx->headless && ctx->window_width > 0 && ctx->window_height > 0) {
+
+            list[count].pid = (uint8_t)ctx->app_id;
+            strncpy(list[count].app_name, ctx->app_name, FMRB_MAX_APP_NAME - 1);
+            list[count].app_name[FMRB_MAX_APP_NAME - 1] = '\0';
+            list[count].x = ctx->window_pos_x;
+            list[count].y = ctx->window_pos_y;
+            list[count].width = ctx->window_width;
+            list[count].height = ctx->window_height;
+            list[count].z_order = ctx->z_order;
+
+            count++;
+        }
+    }
+
+    fmrb_semaphore_give(g_ctx_lock);
+    return count;
+}
+// Z-order threshold for reordering (leave some headroom before uint8_t max)
+#define FMRB_Z_ORDER_REORDER_THRESHOLD 20
+
+/**
+ * Reorder all z_order values to compact them
+ * system_gui stays at Z=0, others are reassigned sequentially
+ */
+static void reorder_z_orders(void) {
+    // Collect all windows (excluding system_gui and headless)
+    fmrb_app_task_context_t* windows[FMRB_MAX_APPS];
+    int32_t count = 0;
+
+    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+        fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
+        if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
+            !ctx->headless &&
+            strcmp(ctx->app_name, "system_gui") != 0) {
+            windows[count++] = ctx;
+        }
+    }
+
+    // Sort by current z_order (bubble sort - simple for small arrays)
+    for (int32_t i = 0; i < count - 1; i++) {
+        for (int32_t j = 0; j < count - i - 1; j++) {
+            if (windows[j]->z_order > windows[j + 1]->z_order) {
+                fmrb_app_task_context_t* temp = windows[j];
+                windows[j] = windows[j + 1];
+                windows[j + 1] = temp;
+            }
+        }
+    }
+
+    // Reassign z_order sequentially starting from 1
+    // (system_gui stays at 0)
+    for (int32_t i = 0; i < count; i++) {
+        uint8_t old_z = windows[i]->z_order;
+        windows[i]->z_order = i + 1;
+
+        if (old_z != windows[i]->z_order) {
+            FMRB_LOGI(TAG, "Reordered '%s' (PID %d): Z %d -> %d",
+                      windows[i]->app_name, windows[i]->app_id, old_z, windows[i]->z_order);
+
+            // Send updated z_order to Host
+            fmrb_link_graphics_set_window_order_t cmd = {
+                .canvas_id = windows[i]->canvas_id,
+                .z_order = (int16_t)windows[i]->z_order
+            };
+
+            fmrb_link_transport_send(
+                FMRB_LINK_TYPE_GRAPHICS,
+                FMRB_LINK_GFX_SET_WINDOW_ORDER,
+                (const uint8_t*)&cmd,
+                sizeof(cmd)
+            );
+        }
+    }
+
+    FMRB_LOGI(TAG, "Z-order reordering complete (%d windows)", count);
+}
+
+/**
+ * Bring window to front by updating z_order
+ * System/gui_app (z=0) cannot be brought to front
+ * Automatically reorders when z_order exceeds threshold
+ */
+fmrb_err_t fmrb_app_bring_to_front(uint8_t pid) {
+    if (pid >= FMRB_MAX_APPS) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+
+    fmrb_app_task_context_t* target_ctx = &g_ctx_pool[pid];
+
+    // Check if target app exists and has a window
+    if (target_ctx->state != PROC_STATE_RUNNING && target_ctx->state != PROC_STATE_SUSPENDED) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    if (target_ctx->headless) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // system_gui (z=0) stays at bottom
+    if (strcmp(target_ctx->app_name, "system_gui") == 0) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_OK;  // No error, just do nothing
+    }
+
+    // Find current max z_order (excluding system_gui)
+    uint8_t max_z = 0;
+    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+        fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
+        if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
+            !ctx->headless &&
+            strcmp(ctx->app_name, "system_gui") != 0 &&
+            ctx->z_order > max_z) {
+            max_z = ctx->z_order;
+        }
+    }
+
+    // If already at front, do nothing
+    if (target_ctx->z_order == max_z) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_OK;
+    }
+
+    // Check if we need to reorder due to threshold
+    if (max_z >= FMRB_Z_ORDER_REORDER_THRESHOLD) {
+        FMRB_LOGI(TAG, "Z-order reached threshold (%d >= %d), reordering...",
+                  max_z, FMRB_Z_ORDER_REORDER_THRESHOLD);
+        reorder_z_orders();
+
+        // After reordering, find new max_z
+        max_z = 0;
+        for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+            fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
+            if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
+                !ctx->headless &&
+                strcmp(ctx->app_name, "system_gui") != 0 &&
+                ctx->z_order > max_z) {
+                max_z = ctx->z_order;
+            }
+        }
+    }
+
+    // Set target to front
+    uint8_t old_z = target_ctx->z_order;
+    target_ctx->z_order = max_z + 1;
+
+    FMRB_LOGI(TAG, "Brought '%s' (PID %d) to front: Z %d -> %d",
+              target_ctx->app_name, pid, old_z, target_ctx->z_order);
+
+    // Send SET_WINDOW_ORDER command to Host
+    fmrb_link_graphics_set_window_order_t cmd = {
+        .canvas_id = target_ctx->canvas_id,
+        .z_order = (int16_t)target_ctx->z_order
+    };
+
+    fmrb_err_t ret = fmrb_link_transport_send(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_SET_WINDOW_ORDER,
+        (const uint8_t*)&cmd,
+        sizeof(cmd)
+    );
+
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send SET_WINDOW_ORDER to Host: %d", ret);
+    }
+
+    fmrb_semaphore_give(g_ctx_lock);
+    return FMRB_OK;
+}
+
+/**
+ * Update window position for drag and drop
+ * System/gui_app cannot be moved
+ */
+fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y) {
+    if (pid >= FMRB_MAX_APPS) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+
+    fmrb_app_task_context_t* ctx = &g_ctx_pool[pid];
+
+    // Check if target app exists and has a window
+    if (ctx->state != PROC_STATE_RUNNING && ctx->state != PROC_STATE_SUSPENDED) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    if (ctx->headless) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // system_gui cannot be moved
+    if (strcmp(ctx->app_name, "system_gui") == 0) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Update position
+    ctx->window_pos_x = x;
+    ctx->window_pos_y = y;
+
+    FMRB_LOGI(TAG, "Window '%s' (PID %d) moved to (%d, %d)",
+              ctx->app_name, pid, x, y);
+
+    // Send PRESENT command to Host to reflect new position immediately
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_PRESENT,
+        .canvas_id = ctx->canvas_id,
+        .params.present = {
+            .x = (int16_t)x,
+            .y = (int16_t)y,
+            .transparent_color = 0xFF  // No transparency
+        }
+    };
+
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_GFX,
+        .src_pid = PROC_ID_KERNEL,
+        .size = sizeof(gfx_cmd_t)
+    };
+    memcpy(msg.data, &cmd, sizeof(gfx_cmd_t));
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 100);
+
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send PRESENT command to Host: %d", ret);
+    }
+
+    fmrb_semaphore_give(g_ctx_lock);
+    return FMRB_OK;
+}
+
+/**
+ * Update window size for resize operation
+ * System/gui_app cannot be resized
+ * Minimum size constraints: 64x64 pixels
+ */
+fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t height) {
+    // Minimum window size constraints
+    const uint16_t MIN_WINDOW_WIDTH = 64;
+    const uint16_t MIN_WINDOW_HEIGHT = 64;
+
+    if (pid >= FMRB_MAX_APPS) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Apply minimum size constraints
+    if (width < MIN_WINDOW_WIDTH) {
+        width = MIN_WINDOW_WIDTH;
+    }
+    if (height < MIN_WINDOW_HEIGHT) {
+        height = MIN_WINDOW_HEIGHT;
+    }
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+
+    fmrb_app_task_context_t* ctx = &g_ctx_pool[pid];
+
+    // Check if target app exists and has a window
+    if (ctx->state != PROC_STATE_RUNNING && ctx->state != PROC_STATE_SUSPENDED) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    if (ctx->headless) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // system_gui cannot be resized
+    if (strcmp(ctx->app_name, "system_gui") == 0) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Update size
+    ctx->window_width = width;
+    ctx->window_height = height;
+
+    FMRB_LOGI(TAG, "Window '%s' (PID %d) resized to %dx%d",
+              ctx->app_name, pid, width, height);
+
+    // Send UPDATE_WINDOW command to Host to update canvas active size
+    fmrb_link_graphics_update_window_t update_cmd = {
+        .canvas_id = ctx->canvas_id,
+        .x = (int32_t)ctx->window_pos_x,
+        .y = (int32_t)ctx->window_pos_y,
+        .width = (int32_t)width,
+        .height = (int32_t)height
+    };
+
+    fmrb_err_t ret = fmrb_link_transport_send(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_UPDATE_WINDOW,
+        (const uint8_t*)&update_cmd,
+        sizeof(update_cmd)
+    );
+
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send UPDATE_WINDOW command to Host: %d", ret);
+    }
+
+    // Send resize event message to app (APP_CONTROL message)
+    // Format: msgpack {"cmd": "resize", "width": xxx, "height": yyy}
+    fmrb_msg_t resize_msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = PROC_ID_KERNEL,
+        .size = 0
+    };
+
+    // Create msgpack data manually
+    uint8_t* data = resize_msg.data;
+    size_t pos = 0;
+
+    // Map with 3 elements (fixmap | 3 = 0x83)
+    data[pos++] = 0x83;
+
+    // Key: "cmd" (fixstr | 3 = 0xA3)
+    data[pos++] = 0xA3;
+    data[pos++] = 'c'; data[pos++] = 'm'; data[pos++] = 'd';
+
+    // Value: "resize" (fixstr | 6 = 0xA6)
+    data[pos++] = 0xA6;
+    data[pos++] = 'r'; data[pos++] = 'e'; data[pos++] = 's';
+    data[pos++] = 'i'; data[pos++] = 'z'; data[pos++] = 'e';
+
+    // Key: "width" (fixstr | 5 = 0xA5)
+    data[pos++] = 0xA5;
+    data[pos++] = 'w'; data[pos++] = 'i'; data[pos++] = 'd';
+    data[pos++] = 't'; data[pos++] = 'h';
+
+    // Value: width (uint16)
+    data[pos++] = 0xCD;  // uint16
+    data[pos++] = (width >> 8) & 0xFF;
+    data[pos++] = width & 0xFF;
+
+    // Key: "height" (fixstr | 6 = 0xA6)
+    data[pos++] = 0xA6;
+    data[pos++] = 'h'; data[pos++] = 'e'; data[pos++] = 'i';
+    data[pos++] = 'g'; data[pos++] = 'h'; data[pos++] = 't';
+
+    // Value: height (uint16)
+    data[pos++] = 0xCD;  // uint16
+    data[pos++] = (height >> 8) & 0xFF;
+    data[pos++] = height & 0xFF;
+
+    resize_msg.size = pos;
+
+    ret = fmrb_msg_send(pid, &resize_msg, 100);
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send resize event to app PID %d: %d", pid, ret);
+    } else {
+        FMRB_LOGI(TAG, "Resize event sent to app PID %d", pid);
+    }
+
+    fmrb_semaphore_give(g_ctx_lock);
+    return FMRB_OK;
+}
+

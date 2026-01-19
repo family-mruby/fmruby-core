@@ -35,15 +35,22 @@ typedef struct {
     uint16_t canvas_id;
     LGFX_Sprite* draw_buffer;      // Drawing buffer (front buffer for user drawing)
     LGFX_Sprite* render_buffer;    // Rendering buffer (back buffer for composition)
+    void* draw_buffer_mem;         // External memory for draw_buffer
+    void* render_buffer_mem;       // External memory for render_buffer
     int16_t z_order;               // Z-order (0=bottom, higher=front, SystemApp=0 fixed)
     int16_t push_x, push_y;        // Position to push to screen
     bool is_visible;               // Visibility flag
-    uint16_t width, height;        // Canvas dimensions
+    uint16_t width, height;        // Canvas allocated dimensions (always max screen size)
+    uint16_t active_width, active_height;  // Active drawing area (can be resized)
     bool dirty;                    // Redraw flag
 } canvas_state_t;
 
 // Maximum number of canvases
 #define MAX_CANVAS_COUNT 16
+
+// Screen dimensions for canvas allocation
+#define MAX_SCREEN_WIDTH 480
+#define MAX_SCREEN_HEIGHT 320
 
 // Canvas management
 static canvas_state_t g_canvases[MAX_CANVAS_COUNT];
@@ -82,7 +89,7 @@ static canvas_state_t* canvas_state_find(uint16_t canvas_id) {
     return nullptr;
 }
 
-static canvas_state_t* canvas_state_alloc(uint16_t canvas_id, uint16_t width, uint16_t height) {
+static canvas_state_t* canvas_state_alloc(uint16_t canvas_id, uint16_t req_width, uint16_t req_height) {
     if (g_canvas_count >= MAX_CANVAS_COUNT) {
         GFX_LOG_E("Maximum canvas count reached (%d)", MAX_CANVAS_COUNT);
         return nullptr;
@@ -91,37 +98,54 @@ static canvas_state_t* canvas_state_alloc(uint16_t canvas_id, uint16_t width, ui
     canvas_state_t* canvas = &g_canvases[g_canvas_count];
     g_canvas_count++;
     canvas->canvas_id = canvas_id;
-    canvas->width = width;
-    canvas->height = height;
+
+    // Always allocate at max screen size to avoid reallocation on resize
+    canvas->width = MAX_SCREEN_WIDTH;
+    canvas->height = MAX_SCREEN_HEIGHT;
+
+    // Set initial active size to requested size
+    canvas->active_width = req_width;
+    canvas->active_height = req_height;
+
     canvas->z_order = canvas_id; // TODO: implement z_oder logic
     canvas->push_x = 0;
     canvas->push_y = 0;
     canvas->is_visible = true;
     canvas->dirty = false;
 
-    // Create draw buffer (front buffer for drawing)
+    // Calculate buffer size for max screen size (RGB332 = 8bit = 1 byte per pixel)
+    size_t buffer_size = MAX_SCREEN_WIDTH * MAX_SCREEN_HEIGHT * 1;  // 1 byte per pixel for RGB332
+
+    // Allocate external memory for draw buffer
+    canvas->draw_buffer_mem = malloc(buffer_size);
+    if (!canvas->draw_buffer_mem) {
+        GFX_LOG_E("Failed to allocate draw buffer memory for canvas %u", canvas_id);
+        g_canvas_count--;
+        return nullptr;
+    }
+
+    // Allocate external memory for render buffer
+    canvas->render_buffer_mem = malloc(buffer_size);
+    if (!canvas->render_buffer_mem) {
+        GFX_LOG_E("Failed to allocate render buffer memory for canvas %u", canvas_id);
+        free(canvas->draw_buffer_mem);
+        g_canvas_count--;
+        return nullptr;
+    }
+
+    // Create draw buffer sprite and set external buffer
     canvas->draw_buffer = new LGFX_Sprite(g_lgfx);
     canvas->draw_buffer->setColorDepth(8);  // RGB332
-    if (!canvas->draw_buffer->createSprite(width, height)) {
-        GFX_LOG_E("Failed to create draw buffer for canvas %u", canvas_id);
-        delete canvas->draw_buffer;
-        g_canvas_count--;
-        return nullptr;
-    }
+    canvas->draw_buffer->setBuffer(canvas->draw_buffer_mem, req_width, req_height, 8);
 
-    // Create render buffer (back buffer for composition)
+    // Create render buffer sprite and set external buffer
     canvas->render_buffer = new LGFX_Sprite(g_lgfx);
     canvas->render_buffer->setColorDepth(8);  // RGB332
-    if (!canvas->render_buffer->createSprite(width, height)) {
-        GFX_LOG_E("Failed to create render buffer for canvas %u", canvas_id);
-        delete canvas->draw_buffer;
-        delete canvas->render_buffer;
-        g_canvas_count--;
-        return nullptr;
-    }
+    canvas->render_buffer->setBuffer(canvas->render_buffer_mem, req_width, req_height, 8);
 
-    GFX_LOG_I("Canvas allocated: ID=%u, size=%dx%d, z_order=%d",
-              canvas_id, width, height, canvas->z_order);
+    GFX_LOG_I("Canvas allocated: ID=%u, allocated_size=%dx%d, active_size=%dx%d, z_order=%d",
+              canvas_id, canvas->width, canvas->height,
+              canvas->active_width, canvas->active_height, canvas->z_order);
     return canvas;
 }
 
@@ -137,6 +161,16 @@ static void canvas_state_free(canvas_state_t* canvas) {
     if (canvas->render_buffer) {
         delete canvas->render_buffer;
         canvas->render_buffer = nullptr;
+    }
+
+    // Free external memory buffers
+    if (canvas->draw_buffer_mem) {
+        free(canvas->draw_buffer_mem);
+        canvas->draw_buffer_mem = nullptr;
+    }
+    if (canvas->render_buffer_mem) {
+        free(canvas->render_buffer_mem);
+        canvas->render_buffer_mem = nullptr;
     }
 
     // Remove from array by shifting remaining elements
@@ -175,12 +209,14 @@ static void graphics_handler_render_frame_internal() {
     // Composite all visible canvases to screen buffer (NOT to g_lgfx directly)
     for (size_t i = 1; i < g_canvas_count; i++) {
         canvas_state_t* canvas = &g_canvases[i];
-        if (canvas->is_visible && canvas->render_buffer) {            
-            // TODO: imple ment dirty composition logic
-            GFX_LOG_D("Composite canvas ID=%u to screen buffer at (%d,%d), z_order=%d",
-                    canvas->canvas_id, canvas->push_x, canvas->push_y, canvas->z_order);
+        if (canvas->is_visible && canvas->render_buffer) {
+            GFX_LOG_D("Composite canvas ID=%u to screen buffer at (%d,%d), active_size=%dx%d, z_order=%d",
+                    canvas->canvas_id, canvas->push_x, canvas->push_y,
+                    canvas->active_width, canvas->active_height, canvas->z_order);
             canvas->dirty = false;
-            // Push to screen buffer instead of g_lgfx
+
+            // Push render_buffer to screen buffer
+            // Since setBuffer configures sprite to active size, pushSprite will only transfer active region
             canvas->render_buffer->pushSprite(screen_buffer, canvas->push_x, canvas->push_y);
         }
     }
@@ -690,7 +726,10 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                     return -1;
                 }
 
-                GFX_LOG_I("Canvas created: ID=%u, %dx%d", canvas_id, cmd->width, cmd->height);
+                // Override z_order with value from Core
+                canvas->z_order = cmd->z_order;
+
+                GFX_LOG_I("Canvas created: ID=%u, %dx%d, z_order=%d", canvas_id, cmd->width, cmd->height, cmd->z_order);
 
                 // Send ACK with canvas_id
                 socket_server_send_ack(msg_type, seq, (const uint8_t*)&canvas_id, sizeof(canvas_id));
@@ -715,6 +754,60 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
 
                 canvas_state_free(canvas);
                 GFX_LOG_I("Canvas deleted: ID=%u", cmd->canvas_id);
+                return 0;
+            }
+            break;
+
+        case FMRB_LINK_GFX_SET_WINDOW_ORDER:
+            if (size >= sizeof(fmrb_link_graphics_set_window_order_t)) {
+                const fmrb_link_graphics_set_window_order_t *cmd = (const fmrb_link_graphics_set_window_order_t*)data;
+
+                canvas_state_t* canvas = canvas_state_find(cmd->canvas_id);
+                if (!canvas) {
+                    GFX_LOG_E("Canvas %u not found for SET_WINDOW_ORDER", cmd->canvas_id);
+                    return -1;
+                }
+
+                // Update z_order
+                canvas->z_order = cmd->z_order;
+                GFX_LOG_I("Canvas %u z_order updated to %d", cmd->canvas_id, cmd->z_order);
+                return 0;
+            }
+            break;
+
+        case FMRB_LINK_GFX_UPDATE_WINDOW:
+            if (size >= sizeof(fmrb_link_graphics_update_window_t)) {
+                const fmrb_link_graphics_update_window_t *cmd = (const fmrb_link_graphics_update_window_t*)data;
+
+                canvas_state_t* canvas = canvas_state_find(cmd->canvas_id);
+                if (!canvas) {
+                    GFX_LOG_E("Canvas %u not found for UPDATE_WINDOW", cmd->canvas_id);
+                    return -1;
+                }
+
+                GFX_LOG_I("UPDATE_WINDOW: canvas_id=%u, pos=(%d,%d), active_size=%dx%d",
+                          cmd->canvas_id, cmd->x, cmd->y, cmd->width, cmd->height);
+
+                // Update position
+                canvas->push_x = cmd->x;
+                canvas->push_y = cmd->y;
+
+                // Update active size by calling setBuffer with new dimensions
+                // This reuses the same external memory buffer with new width/height
+                canvas->active_width = (uint16_t)cmd->width;
+                canvas->active_height = (uint16_t)cmd->height;
+
+                // Reconfigure sprites with new dimensions (reusing same memory buffers)
+                canvas->draw_buffer->setBuffer(canvas->draw_buffer_mem,
+                                              canvas->active_width, canvas->active_height, 8);
+                canvas->render_buffer->setBuffer(canvas->render_buffer_mem,
+                                                canvas->active_width, canvas->active_height, 8);
+
+                GFX_LOG_I("Canvas %u resized to %dx%d using setBuffer (allocated: %dx%d)",
+                          cmd->canvas_id, canvas->active_width, canvas->active_height,
+                          canvas->width, canvas->height);
+
+                canvas->dirty = true;
                 return 0;
             }
             break;
@@ -770,19 +863,21 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 }
 
 
-                // Push render_buffer to destination
+                // Push draw_buffer to render_buffer
                 LGFX_Sprite* src_sprite = src_canvas->draw_buffer;
-                GFX_LOG_D("PUSH_CANVAS: src=%p (%dx%d), dst=%p (%s), pos=(%d,%d)",
-                       src_sprite, src_sprite->width(), src_sprite->height(), dst, dst_name, cmd->x, cmd->y);
+                GFX_LOG_D("PUSH_CANVAS: src=%p (active=%dx%d), dst=%p (%s), pos=(%d,%d)",
+                       src_sprite, src_canvas->active_width, src_canvas->active_height, dst, dst_name, cmd->x, cmd->y);
+
+                // Since setBuffer configures sprite to active size, pushSprite transfers only active region
                 if (cmd->use_transparency) {
                     src_sprite->pushSprite(dst, 0, 0, cmd->transparent_color);
-                    GFX_LOG_D("Canvas pushed with transparency: ID=%u to %s %u at (%d,%d), transp=0x%02x",
-                           cmd->canvas_id, dst_name, cmd->dest_canvas_id, cmd->x, cmd->y, cmd->transparent_color);
+                    GFX_LOG_D("Canvas pushed with transparency: ID=%u to render_buffer, transp=0x%02x",
+                           cmd->canvas_id, cmd->transparent_color);
                 } else {
                     src_sprite->pushSprite(dst, 0, 0);
-                    GFX_LOG_D("Canvas pushed: ID=%u to %s %u at (%d,%d)",
-                           cmd->canvas_id, dst_name, cmd->dest_canvas_id, cmd->x, cmd->y);
+                    GFX_LOG_D("Canvas pushed: ID=%u to render_buffer", cmd->canvas_id);
                 }
+
                 return 0;
             }
             break;

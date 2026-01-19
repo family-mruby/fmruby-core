@@ -360,10 +360,8 @@ static void host_task_process_host_message(const host_message_t *msg)
                 fmrb_keymap_get_layout()
             );
 
-            // Send directly to target app
-            //fmrb_msg_send(routing.target_pid, &hid_msg, 10);
-            // for testing
-            fmrb_msg_send(PROC_ID_USER_APP0, &hid_msg, 10);
+            // Send directly to focused window (current HID target)
+            fmrb_msg_send(routing.target_pid, &hid_msg, 10);
             break;
         }
 
@@ -380,63 +378,49 @@ static void host_task_process_host_message(const host_message_t *msg)
                 }
             }
 
-            // Get routing table
-            fmrb_hid_routing_t routing;
-            if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) {
-                break;
-            }
+            FMRB_LOGD(TAG, "Mouse move: (%d, %d) - forwarding to Kernel", x, y);
 
-            if (!routing.routing_enabled || routing.target_pid == 0xFF) {
-                break;
-            }
-
-            FMRB_LOGD(TAG, "Mouse move: (%d, %d) -> PID %d", x, y, routing.target_pid);
-
-            // Create HID message
+            // Forward mouse move to Kernel for drag and drop handling
+            // Kernel will forward to target app if not dragging
             fmrb_msg_t hid_msg = {
                 .type = FMRB_MSG_TYPE_HID_EVENT,
                 .src_pid = PROC_ID_HOST,
-                .size = sizeof(fmrb_hid_mouse_motion_event_t)
+                .size = 6  // subtype(1) + button(1) + x(2) + y(2)
             };
-            fmrb_hid_mouse_motion_event_t *motion = (fmrb_hid_mouse_motion_event_t*)hid_msg.data;
-            motion->subtype = HID_MSG_MOUSE_MOVE;
-            motion->x = x;
-            motion->y = y;
+            hid_msg.data[0] = HID_MSG_MOUSE_MOVE;  // subtype
+            hid_msg.data[1] = 0;  // button (not used for move)
+            hid_msg.data[2] = (uint8_t)(x & 0xFF);
+            hid_msg.data[3] = (uint8_t)((x >> 8) & 0xFF);
+            hid_msg.data[4] = (uint8_t)(y & 0xFF);
+            hid_msg.data[5] = (uint8_t)((y >> 8) & 0xFF);
 
-            fmrb_msg_send(routing.target_pid, &hid_msg, 10);
+            fmrb_msg_send(PROC_ID_KERNEL, &hid_msg, 10);
             break;
         }
 
         case HOST_MSG_HID_MOUSE_CLICK: {
-            // Get routing table
-            fmrb_hid_routing_t routing;
-            if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) {
-                break;
-            }
+            int x = msg->data.mouse_click.x;
+            int y = msg->data.mouse_click.y;
+            int button = msg->data.mouse_click.button;
+            int state = msg->data.mouse_click.state;
 
-            if (!routing.routing_enabled || routing.target_pid == 0xFF) {
-                break;
-            }
+            FMRB_LOGI(TAG, "Mouse click: button=%d, pos=(%d,%d), state=%s - forwarding to Kernel for hit test",
+                     button, x, y, state ? "pressed" : "released");
 
-            FMRB_LOGI(TAG, "Mouse click: button=%d, pos=(%d,%d), state=%s -> PID %d",
-                     msg->data.mouse_click.button,
-                     msg->data.mouse_click.x, msg->data.mouse_click.y,
-                     msg->data.mouse_click.state ? "pressed" : "released",
-                     routing.target_pid);
-
-            // Create HID message with correct subtype based on state
-            fmrb_msg_t hid_msg = {
+            // Forward mouse click to Kernel for window hit testing
+            fmrb_msg_t kernel_msg = {
                 .type = FMRB_MSG_TYPE_HID_EVENT,
                 .src_pid = PROC_ID_HOST,
                 .size = sizeof(fmrb_hid_mouse_button_event_t)
             };
-            fmrb_hid_mouse_button_event_t *mouse_btn = (fmrb_hid_mouse_button_event_t*)hid_msg.data;
-            mouse_btn->subtype = msg->data.mouse_click.state ? HID_MSG_MOUSE_BUTTON_DOWN : HID_MSG_MOUSE_BUTTON_UP;
-            mouse_btn->button = msg->data.mouse_click.button;
-            mouse_btn->x = msg->data.mouse_click.x;
-            mouse_btn->y = msg->data.mouse_click.y;
+            fmrb_hid_mouse_button_event_t *mouse_btn = (fmrb_hid_mouse_button_event_t*)kernel_msg.data;
+            mouse_btn->subtype = state ? HID_MSG_MOUSE_BUTTON_DOWN : HID_MSG_MOUSE_BUTTON_UP;
+            mouse_btn->button = button;
+            mouse_btn->x = x;
+            mouse_btn->y = y;
 
-            fmrb_msg_send(routing.target_pid, &hid_msg, 10);
+            // Send to Kernel for hit testing and routing
+            fmrb_msg_send(PROC_ID_KERNEL, &kernel_msg, 10);
             break;
         }
 

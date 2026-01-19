@@ -4,6 +4,7 @@
 #include <mruby/variable.h>
 #include <mruby/string.h>
 #include <mruby/hash.h>
+#include <string.h>
 #include "fmrb_kernel.h"
 #include "fmrb_app.h"
 #include "fmrb_rtos.h"
@@ -12,7 +13,7 @@
 #include "fmrb_task_config.h"
 #include "fmrb_log.h"
 #include "fmrb_link_transport.h"
-#include "../../../../../../main/boot.h"
+#include "boot.h"
 #include "hal.h"
 
 static const char* TAG = "kernel";
@@ -81,9 +82,6 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
         fmrb_err_t ret = fmrb_msg_receive(PROC_ID_KERNEL, &msg, remaining_ticks);
 
         if (ret == FMRB_OK) {
-            FMRB_LOGI(TAG, "Kernel received message: type=%d, src_pid=%d, size=%d",
-                     msg.type, msg.src_pid, (int)msg.size);
-
             // Build Ruby hash: {type: int, src_pid: int, data: string}
             mrb_value hash = mrb_hash_new(mrb);
             mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
@@ -111,27 +109,25 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
-// Kernel#_spawn_app_req(app_name) -> bool
-// Spawn application by name
+// Kernel#_spawn_app_req(app_name) -> Integer (PID) or nil
+// Spawn application by name, returns PID on success or nil on failure
 static mrb_value mrb_kernel_handler_spawn_app_req(mrb_state *mrb, mrb_value self)
 {
     const char *app_name;
-    bool mrb_result = false;
     mrb_get_args(mrb, "z", &app_name);
 
     FMRB_LOGI(TAG, "Spawning app: %s", app_name);
 
-    fmrb_err_t result = fmrb_app_spawn_app(app_name);
+    int32_t new_pid = -1;
+    fmrb_err_t result = fmrb_app_spawn_app(app_name, &new_pid);
 
     if (result == FMRB_OK) {
-        FMRB_LOGI(TAG, "App %s spawned successfully", app_name);
-        mrb_result = true;
+        FMRB_LOGI(TAG, "App %s spawned successfully with PID %d", app_name, new_pid);
+        return mrb_fixnum_value(new_pid);
     } else {
-        FMRB_LOGE(TAG, "Failed to spawn app: %s", app_name);
-        mrb_result = false;
+        FMRB_LOGE(TAG, "Failed to spawn app: %s (error=%d)", app_name, result);
+        return mrb_nil_value();
     }
-
-    return mrb_bool_value(mrb_result);
 }
 
 static mrb_value mrb_kernel_set_ready(mrb_state *mrb, mrb_value self)
@@ -160,7 +156,7 @@ static mrb_value mrb_kernel_check_protocol_version(mrb_state *mrb, mrb_value sel
     }
 }
 
-// Kernel.set_hid_target(pid) - Set HID event target app
+// FmrbKernel#_set_hid_target(pid) - Set HID event target app
 static mrb_value mrb_kernel_set_hid_target(mrb_state *mrb, mrb_value self)
 {
     mrb_int pid;
@@ -178,7 +174,7 @@ static mrb_value mrb_kernel_set_hid_target(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
-// Kernel.set_focused_window(window_id) - Set focused window ID
+// FmrbKernel#_set_focused_window(window_id) - Set focused window ID
 static mrb_value mrb_kernel_set_focused_window(mrb_state *mrb, mrb_value self)
 {
     mrb_int window_id;
@@ -196,6 +192,124 @@ static mrb_value mrb_kernel_set_focused_window(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// FmrbKernel#_get_window_list() -> Array of hashes
+// Returns list of active windows with position and size info
+static mrb_value mrb_kernel_get_window_list(mrb_state *mrb, mrb_value self)
+{
+    fmrb_window_info_t windows[FMRB_MAX_APPS];
+    int32_t count = fmrb_app_get_window_list(windows, FMRB_MAX_APPS);
+
+    // Create Ruby array
+    mrb_value array = mrb_ary_new_capa(mrb, count);
+
+    for (int32_t i = 0; i < count; i++) {
+        // Create hash for each window: {pid:, app_name:, x:, y:, width:, height:, z_order:}
+        mrb_value hash = mrb_hash_new(mrb);
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "pid")),
+                     mrb_fixnum_value(windows[i].pid));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "app_name")),
+                     mrb_str_new_cstr(mrb, windows[i].app_name));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "x")),
+                     mrb_fixnum_value(windows[i].x));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "y")),
+                     mrb_fixnum_value(windows[i].y));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "width")),
+                     mrb_fixnum_value(windows[i].width));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "height")),
+                     mrb_fixnum_value(windows[i].height));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "z_order")),
+                     mrb_fixnum_value(windows[i].z_order));
+
+        mrb_ary_push(mrb, array, hash);
+    }
+
+    return array;
+}
+
+// FmrbKernel#_send_raw_message(dest_pid, msg_type, data) -> bool
+// Send raw binary message to another process
+static mrb_value mrb_kernel_send_raw_message(mrb_state *mrb, mrb_value self)
+{
+    mrb_int dest_pid, msg_type;
+    mrb_value data_val;
+    mrb_get_args(mrb, "iiS", &dest_pid, &msg_type, &data_val);
+
+    // Get binary data
+    const char* data_ptr = RSTRING_PTR(data_val);
+    mrb_int data_len = RSTRING_LEN(data_val);
+
+    if (data_len > FMRB_MAX_MSG_PAYLOAD_SIZE) {
+        mrb_raisef(mrb, E_ARGUMENT_ERROR, "Message data too large: %d bytes (max %d)",
+                   data_len, FMRB_MAX_MSG_PAYLOAD_SIZE);
+    }
+
+    // Create message
+    fmrb_msg_t msg = {
+        .type = (uint8_t)msg_type,
+        .src_pid = PROC_ID_KERNEL,
+        .size = (uint16_t)data_len
+    };
+    memcpy(msg.data, data_ptr, data_len);
+
+    // Send message
+    fmrb_err_t ret = fmrb_msg_send((uint8_t)dest_pid, &msg, 100);
+
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
+// FmrbKernel#_bring_to_front(pid) -> bool
+// Bring window to front
+static mrb_value mrb_kernel_bring_to_front(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid;
+    mrb_get_args(mrb, "i", &pid);
+
+    if (pid < 0 || pid > 255) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid PID");
+    }
+
+    fmrb_err_t ret = fmrb_app_bring_to_front((uint8_t)pid);
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
+// FmrbKernel#_update_window_position(pid, x, y) -> bool
+// Update window position for drag and drop
+static mrb_value mrb_kernel_update_window_position(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid, x, y;
+    mrb_get_args(mrb, "iii", &pid, &x, &y);
+
+    if (pid < 0 || pid > 255) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid PID");
+    }
+
+    if (x < 0 || x > 65535 || y < 0 || y > 65535) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid position");
+    }
+
+    fmrb_err_t ret = fmrb_app_update_window_position((uint8_t)pid, (uint16_t)x, (uint16_t)y);
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
+// FmrbKernel#_update_window_size(pid, width, height) -> bool
+// Update window size for resize operation
+static mrb_value mrb_kernel_update_window_size(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid, width, height;
+    mrb_get_args(mrb, "iii", &pid, &width, &height);
+
+    if (pid < 0 || pid > 255) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid PID");
+    }
+
+    if (width < 0 || width > 65535 || height < 0 || height > 65535) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid size");
+    }
+
+    fmrb_err_t ret = fmrb_app_update_window_size((uint8_t)pid, (uint16_t)width, (uint16_t)height);
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -205,11 +319,13 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_spin", mrb_kernel_handler_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_spawn_app_req", mrb_kernel_handler_spawn_app_req, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "check_protocol_version", mrb_kernel_check_protocol_version, MRB_ARGS_OPT(1));
-
-    // Define Kernel module for HID routing functions
-    struct RClass *kernel_mod = mrb_define_module(mrb, "Kernel");
-    mrb_define_module_function(mrb, kernel_mod, "set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
-    mrb_define_module_function(mrb, kernel_mod, "set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_get_window_list", mrb_kernel_get_window_list, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_send_raw_message", mrb_kernel_send_raw_message, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, handler_class, "_bring_to_front", mrb_kernel_bring_to_front, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_update_window_position", mrb_kernel_update_window_position, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, handler_class, "_update_window_size", mrb_kernel_update_window_size, MRB_ARGS_REQ(3));
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }
