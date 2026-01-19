@@ -15,6 +15,9 @@ class FmrbKernel
     @window_order = []
     @window_list = []
 
+    # HID (input) target tracking
+    @hid_target_pid = nil  # Current HID target (focused window)
+
     # Mouse capture state (for drag and resize)
     @capture_pid = nil
     @capture_mode = nil  # :drag, :resize, or nil
@@ -92,6 +95,7 @@ class FmrbKernel
 
         # Set HID target to the newly spawned app
         _set_hid_target(new_pid)
+        @hid_target_pid = new_pid  # Track HID target
         puts "[KERNEL] HID target set to new app pid=#{new_pid}"
       else
         puts "[KERNEL] Failed to spawn app: #{app_name}"
@@ -149,6 +153,7 @@ class FmrbKernel
         # Bring clicked window to front
         _bring_to_front(target_pid)
         _set_hid_target(target_pid)
+        @hid_target_pid = target_pid  # Track HID target
         mark_window_list_dirty  # Z-order changed
 
         # Calculate relative position within window
@@ -188,6 +193,7 @@ class FmrbKernel
         _send_raw_message(@capture_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
 
       when 3  # Mouse move
+        # Handle drag/resize operations
         if @resizing && @resize_target_pid
           # Calculate new window size
           new_width = @resize_start_width + (x - @resize_start_x)
@@ -216,9 +222,12 @@ class FmrbKernel
           end
         end
 
-        # Always forward mouse_move to captured window if capture is active
-        if @capture_pid
-          _send_raw_message(@capture_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+        # Forward mouse_move event:
+        # - If capture is active (drag/resize): send to @capture_pid
+        # - Otherwise: send to @hid_target_pid (focused window)
+        target_pid = @capture_pid || @hid_target_pid
+        if target_pid
+          _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
         end
 
       when 5  # Mouse button up
@@ -317,6 +326,7 @@ class FmrbKernel
     gui_pid = _spawn_app_req("system/gui_app")
     if gui_pid
       _set_hid_target(gui_pid)
+      @hid_target_pid = gui_pid  # Track HID target
     else
       puts "[KERNEL] ERROR: Failed to spawn system GUI app"
     end
