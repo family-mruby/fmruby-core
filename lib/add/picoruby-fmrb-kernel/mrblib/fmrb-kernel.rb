@@ -14,6 +14,13 @@ class FmrbKernel
     @app_list = []
     @window_order = []
     @window_list = []
+
+    # Drag and drop state
+    @dragging = false
+    @drag_target_pid = nil
+    @drag_offset_x = 0
+    @drag_offset_y = 0
+
     _init
     puts "[KERNEL] Tick = #{@tick}"
     puts "[KERNEL] Max App Number = #{@max_app_num}"
@@ -103,10 +110,10 @@ class FmrbKernel
     x = data_binary.getbyte(2) | (data_binary.getbyte(3) << 8)
     y = data_binary.getbyte(4) | (data_binary.getbyte(5) << 8)
 
-    # Only handle mouse button events (subtype 4=down, 5=up)
-    if subtype == 4 || subtype == 5
-      begin
-        update_window_list
+    begin
+      case subtype
+      when 4  # Mouse button down
+        update_window_list(true)  # Show log on click
         target_window = find_window_at(x, y)
 
         if target_window.nil?
@@ -117,24 +124,82 @@ class FmrbKernel
         target_pid = target_window[:pid]
         target_name = target_window[:app_name]
         target_z = target_window[:z_order]
+        win_x = target_window[:x]
+        win_y = target_window[:y]
+
         puts "[KERNEL] Click at (#{x},#{y}) -> '#{target_name}' (PID #{target_pid}, Z=#{target_z})"
 
         # Bring clicked window to front
         _bring_to_front(target_pid)
-
         _set_hid_target(target_pid)
+
+        # Check if click is in menu bar region and not system_gui
+        relative_y = y - win_y
+        if target_name != "system_gui" && relative_y < 11
+          # Start drag
+          @dragging = true
+          @drag_target_pid = target_pid
+          @drag_offset_x = x - win_x
+          @drag_offset_y = y - win_y
+          puts "[KERNEL] Start drag: PID #{target_pid}, offset=(#{@drag_offset_x},#{@drag_offset_y})"
+        end
+
+        # Forward event to target app
         _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
-      rescue => e
-        puts "[KERNEL] Error in handle_hid_event: #{e.class}: #{e.message}"
+
+      when 3  # Mouse move
+        if @dragging && @drag_target_pid
+          # Calculate new window position
+          new_x = x - @drag_offset_x
+          new_y = y - @drag_offset_y
+
+          # Update window position
+          if _update_window_position(@drag_target_pid, new_x, new_y)
+            # Position updated successfully
+          else
+            puts "[KERNEL] Failed to update window position"
+            @dragging = false
+          end
+        else
+          # Not dragging - forward to current HID target app if exists
+          update_window_list
+          target_window = find_window_at(x, y)
+          if target_window
+            target_pid = target_window[:pid]
+            _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+          end
+        end
+
+      when 5  # Mouse button up
+        if @dragging
+          puts "[KERNEL] End drag: PID #{@drag_target_pid}"
+          @dragging = false
+          @drag_target_pid = nil
+          @drag_offset_x = 0
+          @drag_offset_y = 0
+        end
+
+        # Forward event to target app if HID target is set
+        update_window_list
+        target_window = find_window_at(x, y)
+        if target_window
+          target_pid = target_window[:pid]
+          _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+        end
       end
+
+    rescue => e
+      puts "[KERNEL] Error in handle_hid_event: #{e.class}: #{e.message}"
     end
   end
 
-  def update_window_list
+  def update_window_list(show_log = false)
     @window_list = _get_window_list
-    puts "[KERNEL] Window list (#{@window_list.size}):"
-    @window_list.each do |w|
-      puts "[KERNEL]   PID #{w[:pid]} '#{w[:app_name]}' Z=#{w[:z_order]}"
+    if show_log
+      puts "[KERNEL] Window list (#{@window_list.size}):"
+      @window_list.each do |w|
+        puts "[KERNEL]   PID #{w[:pid]} '#{w[:app_name]}' Z=#{w[:z_order]}"
+      end
     end
   end
 

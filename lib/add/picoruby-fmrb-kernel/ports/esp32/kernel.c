@@ -274,6 +274,25 @@ static mrb_value mrb_kernel_bring_to_front(mrb_state *mrb, mrb_value self)
     return mrb_bool_value(ret == FMRB_OK);
 }
 
+// FmrbKernel#_update_window_position(pid, x, y) -> bool
+// Update window position for drag and drop
+static mrb_value mrb_kernel_update_window_position(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid, x, y;
+    mrb_get_args(mrb, "iii", &pid, &x, &y);
+
+    if (pid < 0 || pid > 255) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid PID");
+    }
+
+    if (x < 0 || x > 65535 || y < 0 || y > 65535) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid position");
+    }
+
+    fmrb_err_t ret = fmrb_app_update_window_position((uint8_t)pid, (uint16_t)x, (uint16_t)y);
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -288,6 +307,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_send_raw_message", mrb_kernel_send_raw_message, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_bring_to_front", mrb_kernel_bring_to_front, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_update_window_position", mrb_kernel_update_window_position, MRB_ARGS_REQ(3));
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }

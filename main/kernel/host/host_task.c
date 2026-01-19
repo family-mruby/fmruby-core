@@ -380,30 +380,23 @@ static void host_task_process_host_message(const host_message_t *msg)
                 }
             }
 
-            // Get routing table
-            fmrb_hid_routing_t routing;
-            if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) {
-                break;
-            }
+            FMRB_LOGD(TAG, "Mouse move: (%d, %d) - forwarding to Kernel", x, y);
 
-            if (!routing.routing_enabled || routing.target_pid == 0xFF) {
-                break;
-            }
-
-            FMRB_LOGD(TAG, "Mouse move: (%d, %d) -> PID %d", x, y, routing.target_pid);
-
-            // Create HID message
+            // Forward mouse move to Kernel for drag and drop handling
+            // Kernel will forward to target app if not dragging
             fmrb_msg_t hid_msg = {
                 .type = FMRB_MSG_TYPE_HID_EVENT,
                 .src_pid = PROC_ID_HOST,
-                .size = sizeof(fmrb_hid_mouse_motion_event_t)
+                .size = 6  // subtype(1) + button(1) + x(2) + y(2)
             };
-            fmrb_hid_mouse_motion_event_t *motion = (fmrb_hid_mouse_motion_event_t*)hid_msg.data;
-            motion->subtype = HID_MSG_MOUSE_MOVE;
-            motion->x = x;
-            motion->y = y;
+            hid_msg.data[0] = HID_MSG_MOUSE_MOVE;  // subtype
+            hid_msg.data[1] = 0;  // button (not used for move)
+            hid_msg.data[2] = (uint8_t)(x & 0xFF);
+            hid_msg.data[3] = (uint8_t)((x >> 8) & 0xFF);
+            hid_msg.data[4] = (uint8_t)(y & 0xFF);
+            hid_msg.data[5] = (uint8_t)((y >> 8) & 0xFF);
 
-            fmrb_msg_send(routing.target_pid, &hid_msg, 10);
+            fmrb_msg_send(PROC_ID_KERNEL, &hid_msg, 10);
             break;
         }
 

@@ -162,3 +162,4 @@ void fmrb_app_set_current_est(void* est);
 
 int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count);
 fmrb_err_t fmrb_app_bring_to_front(uint8_t pid);
+fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y);
