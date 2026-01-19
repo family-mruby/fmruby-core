@@ -1,6 +1,8 @@
 # System GUI Application
 # This is the default system GUI that provides basic UI elements
 
+TAG = "SystemGUI"
+
 class SystemGuiApp < FmrbApp
   def initialize
     super()
@@ -12,12 +14,12 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_create()
-    puts "[SystemGUI] on_create called"
+    Log.i(TAG, "on_create called")
     draw_current
   end
 
   def spawn_app(app_name)
-    puts "[SystemGUI] Requesting spawn: #{app_name}"
+    Log.i(TAG, "Requesting spawn: #{app_name}")
 
     data = {
       "cmd" => "spawn",
@@ -27,9 +29,9 @@ class SystemGuiApp < FmrbApp
     success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
 
     if success
-      puts "[SystemGUI] Spawn request sent successfully"
+      Log.i(TAG, "Spawn request sent successfully")
     else
-      puts "[SystemGUI] Failed to send spawn request"
+      Log.e(TAG, "Failed to send spawn request")
     end
   end
 
@@ -113,14 +115,14 @@ class SystemGuiApp < FmrbApp
           y_offset -= line_height
         end
       rescue => e
-        puts "[SystemGUI] Error getting memory stats: #{e.message}"
+        Log.e(TAG, "Error getting memory stats: #{e.message}")
       end
     end
   end
 
   def on_update()
     if @counter % 30 == 0
-      #puts "[SystemGUI] on_update() tick #{@counter / 30}s"
+      #Log.d(TAG, "on_update() tick #{@counter / 30}s")
     end
 
     #debug
@@ -138,12 +140,12 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_event(ev)
-    #puts "on_event: gui app"
+    #Log.d(TAG, "on_event: gui app")
     #p ev
 
     # Handle mouse up event
     if ev[:type] == :mouse_up
-      puts "[SystemGUI] Mouse button #{ev[:button]} released at (#{ev[:x]}, #{ev[:y]})"
+      Log.d(TAG, "Mouse button #{ev[:button]} released at (#{ev[:x]}, #{ev[:y]})")
 
       # Shell button hit test
       button_x = 100
@@ -153,7 +155,7 @@ class SystemGuiApp < FmrbApp
 
       if ev[:x] >= button_x && ev[:x] < button_x + button_width &&
          ev[:y] >= button_y && ev[:y] < button_y + button_height
-        puts "[SystemGUI] Shell button clicked"
+        Log.i(TAG, "Shell button clicked")
         spawn_app("default/shell")
         return
       end
@@ -161,21 +163,21 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_destroy
-    puts "[SystemGUI] Destroyed"
+    Log.i(TAG, "Destroyed")
   end
 
 end
 
 # Create and start the system GUI app instance
-puts "[SystemGUI] SystemGuiApp.new"
+Log.i(TAG, "SystemGuiApp.new")
 begin
   app = SystemGuiApp.new
-  puts "[SystemGUI] SystemGuiApp created successfully"
+  Log.i(TAG, "SystemGuiApp created successfully")
   app.start
 rescue => e
-  puts "[SystemGUI] Exception caught: #{e.class}"
-  puts "[SystemGUI] Message: #{e.message}"
-  puts "[SystemGUI] Backtrace:"
-  puts e.backtrace.join("\n") if e.backtrace
+  Log.e(TAG, "Exception caught: #{e.class}")
+  Log.e(TAG, "Message: #{e.message}")
+  Log.e(TAG, "Backtrace:")
+  Log.e(TAG, e.backtrace.join("\n")) if e.backtrace
 end
-puts "[SystemGUI] Script ended"
+Log.i(TAG, "Script ended")

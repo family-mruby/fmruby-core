@@ -44,7 +44,7 @@ gem install serialport
 
 ## Quick Start
 
-### Prepare docker image
+### Preparing docker image
 
 ```bash
 cd docker

@@ -46,6 +46,7 @@ if(IDF_TARGET STREQUAL "linux")
     file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")
     file(GLOB FMRB_KERNEL_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-kernel/ports/esp32/*.c")
     file(GLOB FMRB_CONST_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-const/ports/esp32/*.c")
+    file(GLOB FMRB_LOG_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-log/ports/esp32/*.c")
     file(GLOB FMRB_IO_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-io/ports/esp32/*.c")
     file(GLOB FMRB_FILESYSTEM_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-filesystem/ports/esp32/*.c")
     file(GLOB FMRB_MSGPACK_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/ports/esp32/*.c")
@@ -53,6 +54,7 @@ if(IDF_TARGET STREQUAL "linux")
         ${FMRB_APP_PORTS_SRCS}
         ${FMRB_KERNEL_PORTS_SRCS}
         ${FMRB_CONST_PORTS_SRCS}
+        ${FMRB_LOG_PORTS_SRCS}
         ${FMRB_IO_PORTS_SRCS}
         ${FMRB_FILESYSTEM_PORTS_SRCS}
         ${FMRB_MSGPACK_PORTS_SRCS}
@@ -65,6 +67,7 @@ else()
     file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")
     file(GLOB FMRB_KERNEL_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-kernel/ports/esp32/*.c")
     file(GLOB FMRB_CONST_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-const/ports/esp32/*.c")
+    file(GLOB FMRB_LOG_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-log/ports/esp32/*.c")
     file(GLOB FMRB_IO_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-io/ports/esp32/*.c")
     file(GLOB FMRB_FILESYSTEM_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-filesystem/ports/esp32/*.c")
     file(GLOB FMRB_MSGPACK_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/ports/esp32/*.c")
@@ -73,6 +76,7 @@ else()
         ${FMRB_APP_PORTS_SRCS}
         ${FMRB_KERNEL_PORTS_SRCS}
         ${FMRB_CONST_PORTS_SRCS}
+        ${FMRB_LOG_PORTS_SRCS}
         ${FMRB_IO_PORTS_SRCS}
         ${FMRB_FILESYSTEM_PORTS_SRCS}
         ${FMRB_MSGPACK_PORTS_SRCS}

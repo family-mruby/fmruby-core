@@ -59,6 +59,9 @@ task :setup do
   # const (must be copied first, as it's used by kernel and app)
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-const"
   sh "cp -rf lib/add/picoruby-fmrb-const #{mrbgem_path}/"
+  # log
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-log"
+  sh "cp -rf lib/add/picoruby-fmrb-log #{mrbgem_path}/"
   # msgpack (must be copied before app, as app depends on it)
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-msgpack"
   sh "cp -rf lib/add/picoruby-fmrb-msgpack #{mrbgem_path}/"
