@@ -109,27 +109,25 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
-// Kernel#_spawn_app_req(app_name) -> bool
-// Spawn application by name
+// Kernel#_spawn_app_req(app_name) -> Integer (PID) or nil
+// Spawn application by name, returns PID on success or nil on failure
 static mrb_value mrb_kernel_handler_spawn_app_req(mrb_state *mrb, mrb_value self)
 {
     const char *app_name;
-    bool mrb_result = false;
     mrb_get_args(mrb, "z", &app_name);
 
     FMRB_LOGI(TAG, "Spawning app: %s", app_name);
 
-    fmrb_err_t result = fmrb_app_spawn_app(app_name);
+    int32_t new_pid = -1;
+    fmrb_err_t result = fmrb_app_spawn_app(app_name, &new_pid);
 
     if (result == FMRB_OK) {
-        FMRB_LOGI(TAG, "App %s spawned successfully", app_name);
-        mrb_result = true;
+        FMRB_LOGI(TAG, "App %s spawned successfully with PID %d", app_name, new_pid);
+        return mrb_fixnum_value(new_pid);
     } else {
-        FMRB_LOGE(TAG, "Failed to spawn app: %s", app_name);
-        mrb_result = false;
+        FMRB_LOGE(TAG, "Failed to spawn app: %s (error=%d)", app_name, result);
+        return mrb_nil_value();
     }
-
-    return mrb_bool_value(mrb_result);
 }
 
 static mrb_value mrb_kernel_set_ready(mrb_state *mrb, mrb_value self)

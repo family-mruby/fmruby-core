@@ -20,7 +20,7 @@ extern const uint8_t shell_irep[];
 extern const uint8_t editor_irep[];
 extern const uint8_t config_irep[];
 
-static fmrb_err_t spawn_system_gui_app(void)
+static fmrb_err_t spawn_system_gui_app(int32_t* out_pid)
 {
     FMRB_LOGI(TAG, "Creating system GUI app...");
     fmrb_spawn_attr_t attr = {
@@ -45,13 +45,16 @@ static fmrb_err_t spawn_system_gui_app(void)
     result = fmrb_app_spawn(&attr, &app_id);
     if (result == FMRB_OK) {
         FMRB_LOGI(TAG, "system GUI app spawned: id=%d", app_id);
+        if (out_pid) {
+            *out_pid = app_id;
+        }
     } else {
         FMRB_LOGE(TAG, "Failed to spawn system GUI app: %d", result);
     }
-   return FMRB_OK;
+    return result;
 }
 
-static fmrb_err_t spawn_shell_app(void)
+static fmrb_err_t spawn_shell_app(int32_t* out_pid)
 {
     FMRB_LOGI(TAG, "spawn_shell_app: Starting");
     fmrb_spawn_attr_t attr = {
@@ -75,13 +78,16 @@ static fmrb_err_t spawn_shell_app(void)
     fmrb_err_t result = fmrb_app_spawn(&attr, &shell_id);
     if (result == FMRB_OK) {
         FMRB_LOGI(TAG, "Shell app spawned: id=%d", shell_id);
+        if (out_pid) {
+            *out_pid = shell_id;
+        }
     } else {
         FMRB_LOGE(TAG, "Failed to spawn shell app: %d", result);
     }
     return result;
 }
 
-static fmrb_err_t spawn_user_app(const char* app_name)
+static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
 {
     if (!app_name) {
         FMRB_LOGE(TAG, "app_name is NULL");
@@ -201,6 +207,9 @@ static fmrb_err_t spawn_user_app(const char* app_name)
     if (result == FMRB_OK) {
         FMRB_LOGI(TAG, "User app spawned: id=%d, name=%s, file=%s",
                   app_id, app_screen_name, app_name);
+        if (out_pid) {
+            *out_pid = app_id;
+        }
     } else {
         FMRB_LOGE(TAG, "Failed to spawn user app: %s (error=%d)", app_name, result);
     }
@@ -219,7 +228,7 @@ static fmrb_err_t spawn_user_app(const char* app_name)
     return result;
 }
 
-fmrb_err_t fmrb_app_spawn_app(const char* app_name)
+fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid)
 {
     if (app_name == NULL) {
         FMRB_LOGE(TAG, "app_name is NULL");
@@ -229,9 +238,9 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name)
     // Match app_name to spawn function
     // PreBuild Apps
     if (strcmp(app_name, "system/gui_app") == 0) {
-        return spawn_system_gui_app();
+        return spawn_system_gui_app(out_pid);
     } else if (strcmp(app_name, "default/shell") == 0) {
-        return spawn_shell_app();
+        return spawn_shell_app(out_pid);
     } else if (strcmp(app_name, "default/editor") == 0) {
         // Future implementation
         FMRB_LOGW(TAG, "Editor app not yet implemented");
@@ -250,5 +259,5 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name)
 
     // User App from filesystem
     // Assume any other path is a filesystem path (e.g., "/flash/app/myapp.rb")
-    return spawn_user_app(app_name);
+    return spawn_user_app(app_name, out_pid);
 }

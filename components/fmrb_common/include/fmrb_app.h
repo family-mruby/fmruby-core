@@ -155,7 +155,7 @@ static inline fmrb_app_task_context_t* fmrb_current(void) {
 
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
-fmrb_err_t fmrb_app_spawn_app(const char* app_name);
+fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid);
 
 void* fmrb_app_get_current_est(void);
 void fmrb_app_set_current_est(void* est);

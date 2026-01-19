@@ -15,6 +15,10 @@ class FmrbKernel
     @window_order = []
     @window_list = []
 
+    # Mouse capture state (for drag and resize)
+    @capture_pid = nil
+    @capture_mode = nil  # :drag, :resize, or nil
+
     # Drag and drop state
     @dragging = false
     @drag_target_pid = nil
@@ -28,6 +32,9 @@ class FmrbKernel
     @resize_start_height = 0
     @resize_start_x = 0
     @resize_start_y = 0
+
+    # Window list optimization
+    @window_list_dirty = true
 
     _init
     puts "[KERNEL] Tick = #{@tick}"
@@ -76,16 +83,16 @@ class FmrbKernel
       app_name = data["app_name"] || data["app"] || ""
       puts "[KERNEL] Spawn request from pid=#{pid}: #{app_name}"
 
-      result = _spawn_app_req(app_name)
-      if result
-        puts "[KERNEL] App #{app_name} spawned successfully"
+      new_pid = _spawn_app_req(app_name)
+      if new_pid
+        puts "[KERNEL] App #{app_name} spawned successfully with PID #{new_pid}"
+
+        # Mark window list as dirty (new window created)
+        mark_window_list_dirty
 
         # Set HID target to the newly spawned app
-        _set_hid_target(pid)
-        puts "[KERNEL] HID target set to app pid=#{pid}"
-
-        # Update window list
-        update_window_list
+        _set_hid_target(new_pid)
+        puts "[KERNEL] HID target set to new app pid=#{new_pid}"
       else
         puts "[KERNEL] Failed to spawn app: #{app_name}"
       end
@@ -142,6 +149,7 @@ class FmrbKernel
         # Bring clicked window to front
         _bring_to_front(target_pid)
         _set_hid_target(target_pid)
+        mark_window_list_dirty  # Z-order changed
 
         # Calculate relative position within window
         relative_x = x - win_x
@@ -149,11 +157,15 @@ class FmrbKernel
 
         puts "[KERNEL] Relative pos in window: (#{relative_x},#{relative_y}), size=#{win_width}x#{win_height}"
 
+        # Set mouse capture to this window
+        @capture_pid = target_pid
+
         # Check for resize handle (bottom-right 10x10 area) first
         # Resize handle only for non-system_gui windows
         if target_name != "system_gui" &&
            relative_x >= win_width - 10 && relative_y >= win_height - 10
           # Start resize
+          @capture_mode = :resize
           @resizing = true
           @resize_target_pid = target_pid
           @resize_start_width = win_width
@@ -164,6 +176,7 @@ class FmrbKernel
         # Check if click is in menu bar region (not resizing)
         elsif target_name != "system_gui" && relative_y < 11
           # Start drag
+          @capture_mode = :drag
           @dragging = true
           @drag_target_pid = target_pid
           @drag_offset_x = x - win_x
@@ -171,8 +184,8 @@ class FmrbKernel
           puts "[KERNEL] Start drag: PID #{target_pid}, offset=(#{@drag_offset_x},#{@drag_offset_y})"
         end
 
-        # Forward event to target app
-        _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+        # Forward event to captured window (always to the clicked window)
+        _send_raw_message(@capture_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
 
       when 3  # Mouse move
         if @resizing && @resize_target_pid
@@ -182,10 +195,11 @@ class FmrbKernel
 
           # Update window size
           if _update_window_size(@resize_target_pid, new_width, new_height)
-            # Size updated successfully
+            mark_window_list_dirty  # Size changed
           else
             puts "[KERNEL] Failed to update window size"
             @resizing = false
+            @capture_mode = nil
           end
         elsif @dragging && @drag_target_pid
           # Calculate new window position
@@ -194,22 +208,26 @@ class FmrbKernel
 
           # Update window position
           if _update_window_position(@drag_target_pid, new_x, new_y)
-            # Position updated successfully
+            mark_window_list_dirty  # Position changed
           else
             puts "[KERNEL] Failed to update window position"
             @dragging = false
-          end
-        else
-          # Not dragging or resizing - forward to current HID target app if exists
-          update_window_list
-          target_window = find_window_at(x, y)
-          if target_window
-            target_pid = target_window[:pid]
-            _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+            @capture_mode = nil
           end
         end
 
+        # Always forward mouse_move to captured window if capture is active
+        if @capture_pid
+          _send_raw_message(@capture_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+        end
+
       when 5  # Mouse button up
+        # Forward to captured window first (before releasing capture)
+        if @capture_pid
+          _send_raw_message(@capture_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+        end
+
+        # Release capture and reset drag/resize state
         if @resizing
           puts "[KERNEL] End resize: PID #{@resize_target_pid}"
           @resizing = false
@@ -226,13 +244,8 @@ class FmrbKernel
           @drag_offset_y = 0
         end
 
-        # Forward event to target app if HID target is set
-        update_window_list
-        target_window = find_window_at(x, y)
-        if target_window
-          target_pid = target_window[:pid]
-          _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
-        end
+        @capture_pid = nil
+        @capture_mode = nil
       end
 
     rescue => e
@@ -241,13 +254,22 @@ class FmrbKernel
   end
 
   def update_window_list(show_log = false)
-    @window_list = _get_window_list
+    # Only update if dirty flag is set
+    if @window_list_dirty
+      @window_list = _get_window_list
+      @window_list_dirty = false
+    end
+
     if show_log
       puts "[KERNEL] Window list (#{@window_list.size}):"
       @window_list.each do |w|
         puts "[KERNEL]   PID #{w[:pid]} '#{w[:app_name]}' pos=(#{w[:x]},#{w[:y]}) size=#{w[:width]}x#{w[:height]} Z=#{w[:z_order]}"
       end
     end
+  end
+
+  def mark_window_list_dirty
+    @window_list_dirty = true
   end
 
   def find_window_at(x, y)
@@ -292,8 +314,12 @@ class FmrbKernel
     puts "[KERNEL] Protocol version check passed"
 
     # Spawn system GUI app
-    _spawn_app_req("system/gui_app")
-    _set_hid_target(2)
+    gui_pid = _spawn_app_req("system/gui_app")
+    if gui_pid
+      _set_hid_target(gui_pid)
+    else
+      puts "[KERNEL] ERROR: Failed to spawn system GUI app"
+    end
   end
 
   def start
