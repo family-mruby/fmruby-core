@@ -293,6 +293,25 @@ static mrb_value mrb_kernel_update_window_position(mrb_state *mrb, mrb_value sel
     return mrb_bool_value(ret == FMRB_OK);
 }
 
+// FmrbKernel#_update_window_size(pid, width, height) -> bool
+// Update window size for resize operation
+static mrb_value mrb_kernel_update_window_size(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid, width, height;
+    mrb_get_args(mrb, "iii", &pid, &width, &height);
+
+    if (pid < 0 || pid > 255) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid PID");
+    }
+
+    if (width < 0 || width > 65535 || height < 0 || height > 65535) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid size");
+    }
+
+    fmrb_err_t ret = fmrb_app_update_window_size((uint8_t)pid, (uint16_t)width, (uint16_t)height);
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -308,6 +327,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_send_raw_message", mrb_kernel_send_raw_message, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_bring_to_front", mrb_kernel_bring_to_front, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_update_window_position", mrb_kernel_update_window_position, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, handler_class, "_update_window_size", mrb_kernel_update_window_size, MRB_ARGS_REQ(3));
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }

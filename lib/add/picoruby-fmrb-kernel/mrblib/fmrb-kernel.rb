@@ -21,6 +21,14 @@ class FmrbKernel
     @drag_offset_x = 0
     @drag_offset_y = 0
 
+    # Resize state
+    @resizing = false
+    @resize_target_pid = nil
+    @resize_start_width = 0
+    @resize_start_height = 0
+    @resize_start_x = 0
+    @resize_start_y = 0
+
     _init
     puts "[KERNEL] Tick = #{@tick}"
     puts "[KERNEL] Max App Number = #{@max_app_num}"
@@ -126,6 +134,8 @@ class FmrbKernel
         target_z = target_window[:z_order]
         win_x = target_window[:x]
         win_y = target_window[:y]
+        win_width = target_window[:width]
+        win_height = target_window[:height]
 
         puts "[KERNEL] Click at (#{x},#{y}) -> '#{target_name}' (PID #{target_pid}, Z=#{target_z})"
 
@@ -133,9 +143,26 @@ class FmrbKernel
         _bring_to_front(target_pid)
         _set_hid_target(target_pid)
 
-        # Check if click is in menu bar region and not system_gui
+        # Calculate relative position within window
+        relative_x = x - win_x
         relative_y = y - win_y
-        if target_name != "system_gui" && relative_y < 11
+
+        puts "[KERNEL] Relative pos in window: (#{relative_x},#{relative_y}), size=#{win_width}x#{win_height}"
+
+        # Check for resize handle (bottom-right 10x10 area) first
+        # Resize handle only for non-system_gui windows
+        if target_name != "system_gui" &&
+           relative_x >= win_width - 10 && relative_y >= win_height - 10
+          # Start resize
+          @resizing = true
+          @resize_target_pid = target_pid
+          @resize_start_width = win_width
+          @resize_start_height = win_height
+          @resize_start_x = x
+          @resize_start_y = y
+          puts "[KERNEL] Start resize: PID #{target_pid}, size=(#{win_width}x#{win_height})"
+        # Check if click is in menu bar region (not resizing)
+        elsif target_name != "system_gui" && relative_y < 11
           # Start drag
           @dragging = true
           @drag_target_pid = target_pid
@@ -148,7 +175,19 @@ class FmrbKernel
         _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
 
       when 3  # Mouse move
-        if @dragging && @drag_target_pid
+        if @resizing && @resize_target_pid
+          # Calculate new window size
+          new_width = @resize_start_width + (x - @resize_start_x)
+          new_height = @resize_start_height + (y - @resize_start_y)
+
+          # Update window size
+          if _update_window_size(@resize_target_pid, new_width, new_height)
+            # Size updated successfully
+          else
+            puts "[KERNEL] Failed to update window size"
+            @resizing = false
+          end
+        elsif @dragging && @drag_target_pid
           # Calculate new window position
           new_x = x - @drag_offset_x
           new_y = y - @drag_offset_y
@@ -161,7 +200,7 @@ class FmrbKernel
             @dragging = false
           end
         else
-          # Not dragging - forward to current HID target app if exists
+          # Not dragging or resizing - forward to current HID target app if exists
           update_window_list
           target_window = find_window_at(x, y)
           if target_window
@@ -171,7 +210,15 @@ class FmrbKernel
         end
 
       when 5  # Mouse button up
-        if @dragging
+        if @resizing
+          puts "[KERNEL] End resize: PID #{@resize_target_pid}"
+          @resizing = false
+          @resize_target_pid = nil
+          @resize_start_width = 0
+          @resize_start_height = 0
+          @resize_start_x = 0
+          @resize_start_y = 0
+        elsif @dragging
           puts "[KERNEL] End drag: PID #{@drag_target_pid}"
           @dragging = false
           @drag_target_pid = nil
@@ -198,7 +245,7 @@ class FmrbKernel
     if show_log
       puts "[KERNEL] Window list (#{@window_list.size}):"
       @window_list.each do |w|
-        puts "[KERNEL]   PID #{w[:pid]} '#{w[:app_name]}' Z=#{w[:z_order]}"
+        puts "[KERNEL]   PID #{w[:pid]} '#{w[:app_name]}' pos=(#{w[:x]},#{w[:y]}) size=#{w[:width]}x#{w[:height]} Z=#{w[:z_order]}"
       end
     end
   end
@@ -210,8 +257,9 @@ class FmrbKernel
     max_z_order = -1
 
     @window_list.each do |win|
-      if x >= win[:x] && x < win[:x] + win[:width] &&
-         y >= win[:y] && y < win[:y] + win[:height]
+      # Use <= for right and bottom edges to include boundary pixels
+      if x >= win[:x] && x <= win[:x] + win[:width] - 1 &&
+         y >= win[:y] && y <= win[:y] + win[:height] - 1
         if win[:z_order] > max_z_order
           max_z_order = win[:z_order]
           target_window = win

@@ -249,6 +249,12 @@ typedef struct __attribute__((packed)) {
 } fmrb_link_graphics_set_window_order_t;
 
 typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    int32_t x, y;         // Position
+    int32_t width, height; // Size
+} fmrb_link_graphics_update_window_t;
+
+typedef struct __attribute__((packed)) {
     uint16_t target_id;  // 0=screen, other=canvas ID
 } fmrb_link_graphics_set_target_t;
 

@@ -1390,3 +1390,130 @@ fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y) 
     return FMRB_OK;
 }
 
+/**
+ * Update window size for resize operation
+ * System/gui_app cannot be resized
+ * Minimum size constraints: 64x64 pixels
+ */
+fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t height) {
+    // Minimum window size constraints
+    const uint16_t MIN_WINDOW_WIDTH = 64;
+    const uint16_t MIN_WINDOW_HEIGHT = 64;
+
+    if (pid >= FMRB_MAX_APPS) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Apply minimum size constraints
+    if (width < MIN_WINDOW_WIDTH) {
+        width = MIN_WINDOW_WIDTH;
+    }
+    if (height < MIN_WINDOW_HEIGHT) {
+        height = MIN_WINDOW_HEIGHT;
+    }
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+
+    fmrb_app_task_context_t* ctx = &g_ctx_pool[pid];
+
+    // Check if target app exists and has a window
+    if (ctx->state != PROC_STATE_RUNNING && ctx->state != PROC_STATE_SUSPENDED) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    if (ctx->headless) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // system_gui cannot be resized
+    if (strcmp(ctx->app_name, "system_gui") == 0) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Update size
+    ctx->window_width = width;
+    ctx->window_height = height;
+
+    FMRB_LOGI(TAG, "Window '%s' (PID %d) resized to %dx%d",
+              ctx->app_name, pid, width, height);
+
+    // Send UPDATE_WINDOW command to Host to update canvas active size
+    fmrb_link_graphics_update_window_t update_cmd = {
+        .canvas_id = ctx->canvas_id,
+        .x = (int32_t)ctx->window_pos_x,
+        .y = (int32_t)ctx->window_pos_y,
+        .width = (int32_t)width,
+        .height = (int32_t)height
+    };
+
+    fmrb_err_t ret = fmrb_link_transport_send(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_UPDATE_WINDOW,
+        (const uint8_t*)&update_cmd,
+        sizeof(update_cmd)
+    );
+
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send UPDATE_WINDOW command to Host: %d", ret);
+    }
+
+    // Send resize event message to app (APP_CONTROL message)
+    // Format: msgpack {"cmd": "resize", "width": xxx, "height": yyy}
+    fmrb_msg_t resize_msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = PROC_ID_KERNEL,
+        .size = 0
+    };
+
+    // Create msgpack data manually
+    uint8_t* data = resize_msg.data;
+    size_t pos = 0;
+
+    // Map with 3 elements (fixmap | 3 = 0x83)
+    data[pos++] = 0x83;
+
+    // Key: "cmd" (fixstr | 3 = 0xA3)
+    data[pos++] = 0xA3;
+    data[pos++] = 'c'; data[pos++] = 'm'; data[pos++] = 'd';
+
+    // Value: "resize" (fixstr | 6 = 0xA6)
+    data[pos++] = 0xA6;
+    data[pos++] = 'r'; data[pos++] = 'e'; data[pos++] = 's';
+    data[pos++] = 'i'; data[pos++] = 'z'; data[pos++] = 'e';
+
+    // Key: "width" (fixstr | 5 = 0xA5)
+    data[pos++] = 0xA5;
+    data[pos++] = 'w'; data[pos++] = 'i'; data[pos++] = 'd';
+    data[pos++] = 't'; data[pos++] = 'h';
+
+    // Value: width (uint16)
+    data[pos++] = 0xCD;  // uint16
+    data[pos++] = (width >> 8) & 0xFF;
+    data[pos++] = width & 0xFF;
+
+    // Key: "height" (fixstr | 6 = 0xA6)
+    data[pos++] = 0xA6;
+    data[pos++] = 'h'; data[pos++] = 'e'; data[pos++] = 'i';
+    data[pos++] = 'g'; data[pos++] = 'h'; data[pos++] = 't';
+
+    // Value: height (uint16)
+    data[pos++] = 0xCD;  // uint16
+    data[pos++] = (height >> 8) & 0xFF;
+    data[pos++] = height & 0xFF;
+
+    resize_msg.size = pos;
+
+    ret = fmrb_msg_send(pid, &resize_msg, 100);
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send resize event to app PID %d: %d", pid, ret);
+    } else {
+        FMRB_LOGI(TAG, "Resize event sent to app PID %d", pid);
+    }
+
+    fmrb_semaphore_give(g_ctx_lock);
+    return FMRB_OK;
+}
+

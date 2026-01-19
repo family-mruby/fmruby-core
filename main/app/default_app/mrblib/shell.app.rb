@@ -565,6 +565,15 @@ class ShellApp < FmrbApp
     end
   end
 
+  def on_resize(new_width, new_height)
+    # Called when window is resized
+    # @window_width, @window_height, @user_area_* are already updated by C code
+    puts "[ShellApp] Resize event: #{new_width}x#{new_height}"
+
+    # Trigger full redraw
+    @need_full_redraw = true
+  end
+
   def handle_key_up(ev)
     keycode = ev[:keycode]
 

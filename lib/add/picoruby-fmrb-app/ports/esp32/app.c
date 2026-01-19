@@ -405,6 +405,61 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                 if(bret == false){
                     return mrb_nil_value();
                 }
+            } else if (msg.type == FMRB_MSG_TYPE_APP_CONTROL) {
+                // Handle APP_CONTROL messages (like resize events)
+                // Unpack msgpack data
+                mrb_value data_str = mrb_str_new(mrb, (const char*)msg.data, msg.size);
+
+                // Get MessagePack module and call unpack as module function
+                struct RClass *msgpack_mod = mrb_module_get(mrb, "MessagePack");
+                mrb_value data_hash = mrb_funcall(mrb, mrb_obj_value(msgpack_mod),
+                                                  "unpack", 1, data_str);
+
+                if (mrb_hash_p(data_hash)) {
+                    // Check command type
+                    mrb_value cmd_val = mrb_hash_get(mrb, data_hash, mrb_str_new_cstr(mrb, "cmd"));
+                    if (mrb_string_p(cmd_val)) {
+                        const char* cmd = mrb_str_to_cstr(mrb, cmd_val);
+
+                        if (strcmp(cmd, "resize") == 0) {
+                            // Handle resize: update instance variables first, then call callback
+                            mrb_value width_val = mrb_hash_get(mrb, data_hash, mrb_str_new_cstr(mrb, "width"));
+                            mrb_value height_val = mrb_hash_get(mrb, data_hash, mrb_str_new_cstr(mrb, "height"));
+
+                            if (mrb_fixnum_p(width_val) && mrb_fixnum_p(height_val)) {
+                                mrb_int new_width = mrb_fixnum(width_val);
+                                mrb_int new_height = mrb_fixnum(height_val);
+
+                                // Update Ruby instance variables
+                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_width"), mrb_fixnum_value(new_width));
+                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_height"), mrb_fixnum_value(new_height));
+
+                                // Update user area dimensions
+                                mrb_int user_area_width = new_width - 2;
+                                mrb_int user_area_height = new_height - 12;
+                                mrb_int user_area_x1 = new_width - 1;
+                                mrb_int user_area_y1 = new_height - 1;
+
+                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_width"), mrb_fixnum_value(user_area_width));
+                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_height"), mrb_fixnum_value(user_area_height));
+                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_x1"), mrb_fixnum_value(user_area_x1));
+                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_y1"), mrb_fixnum_value(user_area_y1));
+
+                                // Call on_resize callback if it exists
+                                mrb_sym on_resize_sym = mrb_intern_lit(mrb, "on_resize");
+                                if (mrb_respond_to(mrb, self, on_resize_sym)) {
+                                    mrb_funcall(mrb, self, "on_resize", 2, width_val, height_val);
+                                }
+                            }
+                        } else {
+                            // Other control commands: call on_control if exists
+                            mrb_sym on_control_sym = mrb_intern_lit(mrb, "on_control");
+                            if (mrb_respond_to(mrb, self, on_control_sym)) {
+                                mrb_funcall(mrb, self, "on_control", 1, data_hash);
+                            }
+                        }
+                    }
+                }
             } else {
                 FMRB_LOGI(TAG, "App %s message type %d not handled", ctx->app_name, msg.type);
             }
