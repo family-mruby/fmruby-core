@@ -128,6 +128,7 @@ typedef struct {
 // Window info for hit testing
 typedef struct {
     uint8_t               pid;              // Process ID
+    char                  app_name[FMRB_MAX_APP_NAME];  // Application name
     uint16_t              x;                // Window X position
     uint16_t              y;                // Window Y position
     uint16_t              width;            // Window width

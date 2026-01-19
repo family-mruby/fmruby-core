@@ -21,18 +21,11 @@ class FmrbKernel
   end
 
   def msg_handler(msg) # called from _spin
-    puts "[KERNEL] msg_handler START"
-    puts "[KERNEL] Received message: type=#{msg[:type]}, src_pid=#{msg[:src_pid]}, data_size=#{msg[:data].length}"
-    puts "[KERNEL] MSG_TYPE_HID_EVENT=#{FmrbConst::MSG_TYPE_HID_EVENT}"
-
     case msg[:type]
     when FmrbConst::MSG_TYPE_APP_CONTROL
-      puts "[KERNEL] Calling handle_app_control..."
       handle_app_control(msg)
     when FmrbConst::MSG_TYPE_HID_EVENT
-      puts "[KERNEL] Calling handle_hid_event..."
       handle_hid_event(msg)
-      puts "[KERNEL] handle_hid_event returned"
     when FmrbConst::MSG_TYPE_APP_GFX
       puts "[KERNEL] Graphics message (not implemented)"
     when FmrbConst::MSG_TYPE_APP_AUDIO
@@ -40,7 +33,6 @@ class FmrbKernel
     else
       puts "[KERNEL] Unknown message type: #{msg[:type]}"
     end
-    puts "[KERNEL] msg_handler END"
   end
 
   def handle_app_control(msg)
@@ -98,70 +90,39 @@ class FmrbKernel
   end
 
   def handle_hid_event(msg)
-    puts "[KERNEL] handle_hid_event START"
     data_binary = msg[:data]
     src_pid = msg[:src_pid]
-    puts "[KERNEL] data_binary.size=#{data_binary.size}"
 
     # Parse HID event data (binary format)
     # Format: subtype(1 byte) + button(1 byte) + x(2 bytes) + y(2 bytes)
-    if data_binary.size < 6
-      puts "[KERNEL] Data too small, returning"
-      return
-    end
+    return if data_binary.size < 6
 
     subtype = data_binary.getbyte(0)
-    puts "[KERNEL] subtype=#{subtype}"
     button = data_binary.getbyte(1)
-    puts "[KERNEL] button=#{button}"
     # Little endian: low byte first, high byte second
     x = data_binary.getbyte(2) | (data_binary.getbyte(3) << 8)
-    puts "[KERNEL] x=#{x}"
     y = data_binary.getbyte(4) | (data_binary.getbyte(5) << 8)
-    puts "[KERNEL] y=#{y}"
-
-    puts "[KERNEL] HID event from #{src_pid}: subtype=#{subtype}, button=#{button}, pos=(#{x},#{y})"
 
     # Only handle mouse button events (subtype 4=down, 5=up)
-    puts "[KERNEL] Checking subtype condition: subtype==4 is #{subtype == 4}, subtype==5 is #{subtype == 5}"
     if subtype == 4 || subtype == 5
       begin
-        puts "[KERNEL] Processing mouse button event..."
-
-        # Update window list to get current state
-        puts "[KERNEL] Calling update_window_list..."
         update_window_list
-        puts "[KERNEL] update_window_list done"
+        target_window = find_window_at(x, y)
 
-        # Find window at click position
-        puts "[KERNEL] Calling find_window_at(#{x}, #{y})..."
-        target_pid = find_window_at(x, y)
-        puts "[KERNEL] find_window_at returned: #{target_pid.inspect}"
-
-        if target_pid.nil?
+        if target_window.nil?
           puts "[KERNEL] No window at (#{x},#{y})"
           return
         end
 
-        puts "[KERNEL] Window hit test: (#{x},#{y}) -> PID #{target_pid}"
-
-        # Update HID routing to target window
-        puts "[KERNEL] Calling _set_hid_target(#{target_pid})..."
+        target_pid = target_window[:pid]
+        target_name = target_window[:app_name]
+        puts "[KERNEL] Click at (#{x},#{y}) -> '#{target_name}' (PID #{target_pid})"
         _set_hid_target(target_pid)
-        puts "[KERNEL] _set_hid_target done"
-
-        # Forward HID event to target app (keep binary format)
-        puts "[KERNEL] Calling _send_raw_message(#{target_pid}, #{FmrbConst::MSG_TYPE_HID_EVENT}, data)..."
-        result = _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
-        puts "[KERNEL] _send_raw_message returned: #{result.inspect}"
-        puts "[KERNEL] Message send result: #{result ? "success" : "failed"}"
+        _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
       rescue => e
         puts "[KERNEL] Error in handle_hid_event: #{e.class}: #{e.message}"
       end
-    else
-      puts "[KERNEL] Subtype #{subtype} not handled (only 4 or 5)"
     end
-    puts "[KERNEL] handle_hid_event END"
   end
 
   def update_window_list
@@ -172,7 +133,7 @@ class FmrbKernel
   def find_window_at(x, y)
     # Search from front to back (highest z_order first)
     # Find window with highest z_order that contains the point
-    target_pid = nil
+    target_window = nil
     max_z_order = -1
 
     @window_list.each do |win|
@@ -180,12 +141,12 @@ class FmrbKernel
          y >= win[:y] && y < win[:y] + win[:height]
         if win[:z_order] > max_z_order
           max_z_order = win[:z_order]
-          target_pid = win[:pid]
+          target_window = win
         end
       end
     end
 
-    target_pid
+    target_window
   end
 
   def tick_process

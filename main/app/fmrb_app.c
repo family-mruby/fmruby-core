@@ -1134,6 +1134,8 @@ int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
             !ctx->headless && ctx->window_width > 0 && ctx->window_height > 0) {
 
             list[count].pid = (uint8_t)ctx->app_id;
+            strncpy(list[count].app_name, ctx->app_name, FMRB_MAX_APP_NAME - 1);
+            list[count].app_name[FMRB_MAX_APP_NAME - 1] = '\0';
             list[count].x = ctx->window_pos_x;
             list[count].y = ctx->window_pos_y;
             list[count].width = ctx->window_width;
