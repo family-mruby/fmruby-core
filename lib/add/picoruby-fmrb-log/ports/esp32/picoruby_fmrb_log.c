@@ -1,7 +1,9 @@
 #include <stdarg.h>
 #include <stdio.h>
-#include "picoruby.h"
+#include <mruby.h>
+#include <mruby/string.h>
 #include "esp_log.h"
+#include "fmrb_app.h"
 
 // Log levels matching ESP-IDF
 typedef enum {
@@ -78,102 +80,176 @@ mrb_log_set_level_for_tag(mrb_state *mrb, mrb_value self)
 }
 
 /**
+ * Get current app name from TLS for use as log tag
+ */
+static const char* get_current_tag(void)
+{
+  fmrb_app_task_context_t* ctx = fmrb_current();
+  if (ctx && ctx->app_name[0] != '\0') {
+    return ctx->app_name;
+  }
+  return "APP";  // Default tag if no context
+}
+
+/**
  * Log error message
- * @param tag [String] Tag name
+ * @param message [String] Log message (auto-tag from TLS)
+ * @param tag [String] Tag name (optional)
  * @param message [String] Log message
  *
  * Example:
- *   Log.e("KERNEL", "Failed to initialize")
+ *   Log.e("Failed to initialize")  # Uses app name from TLS
+ *   Log.e("KERNEL", "Failed to initialize")  # Explicit tag
  */
 static mrb_value
 mrb_log_e(mrb_state *mrb, mrb_value self)
 {
-  char *tag, *msg;
-  
-  mrb_get_args(mrb, "zz", &tag, &msg);
-  
+  mrb_value arg1, arg2;
+  int argc = mrb_get_args(mrb, "o|o", &arg1, &arg2);
+
+  const char *tag;
+  const char *msg;
+
+  if (argc == 1) {
+    // Single argument: auto-tag from TLS
+    tag = get_current_tag();
+    msg = (const char *)RSTRING_PTR(arg1);
+  } else {
+    // Two arguments: explicit tag
+    tag = (const char *)RSTRING_PTR(arg1);
+    msg = (const char *)RSTRING_PTR(arg2);
+  }
+
   ESP_LOGE(tag, "%s", msg);
-  
+
   return mrb_nil_value();
 }
 
 /**
  * Log warning message
- * @param tag [String] Tag name
+ * @param message [String] Log message (auto-tag from TLS)
+ * @param tag [String] Tag name (optional)
  * @param message [String] Log message
  *
  * Example:
- *   Log.w("KERNEL", "Low memory warning")
+ *   Log.w("Low memory warning")  # Uses app name from TLS
+ *   Log.w("KERNEL", "Low memory warning")  # Explicit tag
  */
 static mrb_value
 mrb_log_w(mrb_state *mrb, mrb_value self)
 {
-  char *tag, *msg;
-  
-  mrb_get_args(mrb, "zz", &tag, &msg);
-  
+  mrb_value arg1, arg2;
+  int argc = mrb_get_args(mrb, "o|o", &arg1, &arg2);
+
+  const char *tag;
+  const char *msg;
+
+  if (argc == 1) {
+    tag = get_current_tag();
+    msg = (const char *)RSTRING_PTR(arg1);
+  } else {
+    tag = (const char *)RSTRING_PTR(arg1);
+    msg = (const char *)RSTRING_PTR(arg2);
+  }
+
   ESP_LOGW(tag, "%s", msg);
-  
+
   return mrb_nil_value();
 }
 
 /**
  * Log info message
- * @param tag [String] Tag name
+ * @param message [String] Log message (auto-tag from TLS)
+ * @param tag [String] Tag name (optional)
  * @param message [String] Log message
  *
  * Example:
- *   Log.i("KERNEL", "System initialized")
+ *   Log.i("System initialized")  # Uses app name from TLS
+ *   Log.i("KERNEL", "System initialized")  # Explicit tag
  */
 static mrb_value
 mrb_log_i(mrb_state *mrb, mrb_value self)
 {
-  char *tag, *msg;
-  
-  mrb_get_args(mrb, "zz", &tag, &msg);
-  
+  mrb_value arg1, arg2;
+  int argc = mrb_get_args(mrb, "o|o", &arg1, &arg2);
+
+  const char *tag;
+  const char *msg;
+
+  if (argc == 1) {
+    tag = get_current_tag();
+    msg = (const char *)RSTRING_PTR(arg1);
+  } else {
+    tag = (const char *)RSTRING_PTR(arg1);
+    msg = (const char *)RSTRING_PTR(arg2);
+  }
+
   ESP_LOGI(tag, "%s", msg);
-  
+
   return mrb_nil_value();
 }
 
 /**
  * Log debug message
- * @param tag [String] Tag name
+ * @param message [String] Log message (auto-tag from TLS)
+ * @param tag [String] Tag name (optional)
  * @param message [String] Log message
  *
  * Example:
- *   Log.d("KERNEL", "Debug info")
+ *   Log.d("Debug info")  # Uses app name from TLS
+ *   Log.d("KERNEL", "Debug info")  # Explicit tag
  */
 static mrb_value
 mrb_log_d(mrb_state *mrb, mrb_value self)
 {
-  char *tag, *msg;
-  
-  mrb_get_args(mrb, "zz", &tag, &msg);
-  
+  mrb_value arg1, arg2;
+  int argc = mrb_get_args(mrb, "o|o", &arg1, &arg2);
+
+  const char *tag;
+  const char *msg;
+
+  if (argc == 1) {
+    tag = get_current_tag();
+    msg = (const char *)RSTRING_PTR(arg1);
+  } else {
+    tag = (const char *)RSTRING_PTR(arg1);
+    msg = (const char *)RSTRING_PTR(arg2);
+  }
+
   ESP_LOGD(tag, "%s", msg);
-  
+
   return mrb_nil_value();
 }
 
 /**
  * Log verbose message
- * @param tag [String] Tag name
+ * @param message [String] Log message (auto-tag from TLS)
+ * @param tag [String] Tag name (optional)
  * @param message [String] Log message
  *
  * Example:
- *   Log.v("KERNEL", "Verbose debug info")
+ *   Log.v("Verbose debug info")  # Uses app name from TLS
+ *   Log.v("KERNEL", "Verbose debug info")  # Explicit tag
  */
 static mrb_value
 mrb_log_v(mrb_state *mrb, mrb_value self)
 {
-  char *tag, *msg;
-  
-  mrb_get_args(mrb, "zz", &tag, &msg);
-  
+  mrb_value arg1, arg2;
+  int argc = mrb_get_args(mrb, "o|o", &arg1, &arg2);
+
+  const char *tag;
+  const char *msg;
+
+  if (argc == 1) {
+    tag = get_current_tag();
+    msg = (const char *)RSTRING_PTR(arg1);
+  } else {
+    tag = (const char *)RSTRING_PTR(arg1);
+    msg = (const char *)RSTRING_PTR(arg2);
+  }
+
   ESP_LOGV(tag, "%s", msg);
-  
+
   return mrb_nil_value();
 }
 
@@ -194,12 +270,12 @@ mrb_fmrb_log_init(mrb_state *mrb)
   mrb_define_module_function(mrb, log_module, "set_level", mrb_log_set_level, MRB_ARGS_REQ(1));
   mrb_define_module_function(mrb, log_module, "set_level_for_tag", mrb_log_set_level_for_tag, MRB_ARGS_REQ(2));
   
-  // Logging methods
-  mrb_define_module_function(mrb, log_module, "e", mrb_log_e, MRB_ARGS_REQ(2));
-  mrb_define_module_function(mrb, log_module, "w", mrb_log_w, MRB_ARGS_REQ(2));
-  mrb_define_module_function(mrb, log_module, "i", mrb_log_i, MRB_ARGS_REQ(2));
-  mrb_define_module_function(mrb, log_module, "d", mrb_log_d, MRB_ARGS_REQ(2));
-  mrb_define_module_function(mrb, log_module, "v", mrb_log_v, MRB_ARGS_REQ(2));
+  // Logging methods (support both 1-arg auto-tag and 2-arg explicit tag)
+  mrb_define_module_function(mrb, log_module, "e", mrb_log_e, MRB_ARGS_ARG(1, 1));
+  mrb_define_module_function(mrb, log_module, "w", mrb_log_w, MRB_ARGS_ARG(1, 1));
+  mrb_define_module_function(mrb, log_module, "i", mrb_log_i, MRB_ARGS_ARG(1, 1));
+  mrb_define_module_function(mrb, log_module, "d", mrb_log_d, MRB_ARGS_ARG(1, 1));
+  mrb_define_module_function(mrb, log_module, "v", mrb_log_v, MRB_ARGS_ARG(1, 1));
 }
 
 void
