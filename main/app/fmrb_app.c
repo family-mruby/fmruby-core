@@ -1167,9 +1167,70 @@ int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
     fmrb_semaphore_give(g_ctx_lock);
     return count;
 }
+// Z-order threshold for reordering (leave some headroom before uint8_t max)
+#define FMRB_Z_ORDER_REORDER_THRESHOLD 20
+
+/**
+ * Reorder all z_order values to compact them
+ * system/gui_app stays at Z=0, others are reassigned sequentially
+ */
+static void reorder_z_orders(void) {
+    // Collect all windows (excluding system/gui_app and headless)
+    fmrb_app_task_context_t* windows[FMRB_MAX_APPS];
+    int32_t count = 0;
+
+    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+        fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
+        if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
+            !ctx->headless &&
+            strcmp(ctx->app_name, "system/gui_app") != 0) {
+            windows[count++] = ctx;
+        }
+    }
+
+    // Sort by current z_order (bubble sort - simple for small arrays)
+    for (int32_t i = 0; i < count - 1; i++) {
+        for (int32_t j = 0; j < count - i - 1; j++) {
+            if (windows[j]->z_order > windows[j + 1]->z_order) {
+                fmrb_app_task_context_t* temp = windows[j];
+                windows[j] = windows[j + 1];
+                windows[j + 1] = temp;
+            }
+        }
+    }
+
+    // Reassign z_order sequentially starting from 1
+    // (system/gui_app stays at 0)
+    for (int32_t i = 0; i < count; i++) {
+        uint8_t old_z = windows[i]->z_order;
+        windows[i]->z_order = i + 1;
+
+        if (old_z != windows[i]->z_order) {
+            FMRB_LOGI(TAG, "Reordered '%s' (PID %d): Z %d -> %d",
+                      windows[i]->app_name, windows[i]->app_id, old_z, windows[i]->z_order);
+
+            // Send updated z_order to Host
+            fmrb_link_graphics_set_window_order_t cmd = {
+                .canvas_id = windows[i]->canvas_id,
+                .z_order = (int16_t)windows[i]->z_order
+            };
+
+            fmrb_link_transport_send(
+                FMRB_LINK_TYPE_GRAPHICS,
+                FMRB_LINK_GFX_SET_WINDOW_ORDER,
+                (const uint8_t*)&cmd,
+                sizeof(cmd)
+            );
+        }
+    }
+
+    FMRB_LOGI(TAG, "Z-order reordering complete (%d windows)", count);
+}
+
 /**
  * Bring window to front by updating z_order
  * System/gui_app (z=0) cannot be brought to front
+ * Automatically reorders when z_order exceeds threshold
  */
 fmrb_err_t fmrb_app_bring_to_front(uint8_t pid) {
     if (pid >= FMRB_MAX_APPS) {
@@ -1213,6 +1274,25 @@ fmrb_err_t fmrb_app_bring_to_front(uint8_t pid) {
     if (target_ctx->z_order == max_z) {
         fmrb_semaphore_give(g_ctx_lock);
         return FMRB_OK;
+    }
+
+    // Check if we need to reorder due to threshold
+    if (max_z >= FMRB_Z_ORDER_REORDER_THRESHOLD) {
+        FMRB_LOGI(TAG, "Z-order reached threshold (%d >= %d), reordering...",
+                  max_z, FMRB_Z_ORDER_REORDER_THRESHOLD);
+        reorder_z_orders();
+
+        // After reordering, find new max_z
+        max_z = 0;
+        for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+            fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
+            if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
+                !ctx->headless &&
+                strcmp(ctx->app_name, "system/gui_app") != 0 &&
+                ctx->z_order > max_z) {
+                max_z = ctx->z_order;
+            }
+        }
     }
 
     // Set target to front
