@@ -486,6 +486,7 @@ fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_canvas_hand
 fmrb_gfx_err_t fmrb_gfx_create_canvas(
     fmrb_gfx_context_t context,
     int32_t width, int32_t height,
+    int16_t z_order,
     fmrb_canvas_handle_t *canvas_handle);
 
 /**

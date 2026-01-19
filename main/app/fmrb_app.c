@@ -11,6 +11,8 @@
 #include "fmrb_task_config.h"
 #include "fmrb_kernel.h"
 #include "fmrb_lua.h"
+#include "fmrb_link_transport.h"
+#include "fmrb_link_protocol.h"
 
 // Forward declaration for estalloc helper function
 extern int mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free, int32_t* frag);
@@ -827,6 +829,22 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         ctx->window_height = 0;
     }
 
+    // Initialize Z-order: system/gui_app is always at back (0), others on top
+    if (strcmp(ctx->app_name, "system/gui_app") == 0) {
+        ctx->z_order = 0;  // system/gui_app always at bottom
+    } else {
+        // Find max z_order and assign next value
+        uint8_t max_z = 0;
+        for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+            if (g_ctx_pool[i].state != PROC_STATE_FREE &&
+                !g_ctx_pool[i].headless &&
+                g_ctx_pool[i].z_order > max_z) {
+                max_z = g_ctx_pool[i].z_order;
+            }
+        }
+        ctx->z_order = max_z + 1;
+    }
+
     // Create semaphore
     ctx->semaphore = fmrb_semaphore_create_binary();
     if (!ctx->semaphore) {
@@ -1140,7 +1158,7 @@ int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
             list[count].y = ctx->window_pos_y;
             list[count].width = ctx->window_width;
             list[count].height = ctx->window_height;
-            list[count].z_order = count;  // TODO: Implement proper Z-order management
+            list[count].z_order = ctx->z_order;
 
             count++;
         }
@@ -1149,3 +1167,79 @@ int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
     fmrb_semaphore_give(g_ctx_lock);
     return count;
 }
+/**
+ * Bring window to front by updating z_order
+ * System/gui_app (z=0) cannot be brought to front
+ */
+fmrb_err_t fmrb_app_bring_to_front(uint8_t pid) {
+    if (pid >= FMRB_MAX_APPS) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+
+    fmrb_app_task_context_t* target_ctx = &g_ctx_pool[pid];
+
+    // Check if target app exists and has a window
+    if (target_ctx->state != PROC_STATE_RUNNING && target_ctx->state != PROC_STATE_SUSPENDED) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    if (target_ctx->headless) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // system/gui_app (z=0) stays at bottom
+    if (strcmp(target_ctx->app_name, "system/gui_app") == 0) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_OK;  // No error, just do nothing
+    }
+
+    // Find current max z_order (excluding system/gui_app)
+    uint8_t max_z = 0;
+    for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
+        fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
+        if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
+            !ctx->headless &&
+            strcmp(ctx->app_name, "system/gui_app") != 0 &&
+            ctx->z_order > max_z) {
+            max_z = ctx->z_order;
+        }
+    }
+
+    // If already at front, do nothing
+    if (target_ctx->z_order == max_z) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_OK;
+    }
+
+    // Set target to front
+    uint8_t old_z = target_ctx->z_order;
+    target_ctx->z_order = max_z + 1;
+
+    FMRB_LOGI(TAG, "Brought '%s' (PID %d) to front: Z %d -> %d",
+              target_ctx->app_name, pid, old_z, target_ctx->z_order);
+
+    // Send SET_WINDOW_ORDER command to Host
+    fmrb_link_graphics_set_window_order_t cmd = {
+        .canvas_id = target_ctx->canvas_id,
+        .z_order = (int16_t)target_ctx->z_order
+    };
+
+    fmrb_err_t ret = fmrb_link_transport_send(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_SET_WINDOW_ORDER,
+        (const uint8_t*)&cmd,
+        sizeof(cmd)
+    );
+
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send SET_WINDOW_ORDER to Host: %d", ret);
+    }
+
+    fmrb_semaphore_give(g_ctx_lock);
+    return FMRB_OK;
+}
+

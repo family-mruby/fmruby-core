@@ -116,7 +116,12 @@ class FmrbKernel
 
         target_pid = target_window[:pid]
         target_name = target_window[:app_name]
-        puts "[KERNEL] Click at (#{x},#{y}) -> '#{target_name}' (PID #{target_pid})"
+        target_z = target_window[:z_order]
+        puts "[KERNEL] Click at (#{x},#{y}) -> '#{target_name}' (PID #{target_pid}, Z=#{target_z})"
+
+        # Bring clicked window to front
+        _bring_to_front(target_pid)
+
         _set_hid_target(target_pid)
         _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
       rescue => e
@@ -127,7 +132,10 @@ class FmrbKernel
 
   def update_window_list
     @window_list = _get_window_list
-    puts "[KERNEL] Window list updated: #{@window_list.size} windows"
+    puts "[KERNEL] Window list (#{@window_list.size}):"
+    @window_list.each do |w|
+      puts "[KERNEL]   PID #{w[:pid]} '#{w[:app_name]}' Z=#{w[:z_order]}"
+    end
   end
 
   def find_window_at(x, y)

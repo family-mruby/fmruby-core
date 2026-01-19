@@ -158,6 +158,7 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
             gfx_ctx,
             ctx->window_width,
             ctx->window_height,
+            ctx->z_order,
             &canvas_id
         );
 
@@ -169,6 +170,9 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
         // Set @canvas instance variable
         mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@canvas"),
                    mrb_fixnum_value(canvas_id));
+
+        // Store canvas_id in app context for Z-order updates
+        ctx->canvas_id = canvas_id;
 
         FMRB_LOGI(TAG, "Created canvas %u (%dx%d) for app %s",
                  canvas_id, ctx->window_width, ctx->window_height, ctx->app_name);

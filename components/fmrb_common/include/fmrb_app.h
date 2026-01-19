@@ -76,6 +76,8 @@ typedef struct fmrb_app_task_context_s {
     uint16_t              window_height;     // Window Height(if headless, =0)
     uint16_t              window_pos_x;
     uint16_t              window_pos_y;
+    uint8_t               z_order;           // Z-order (0=back, higher=front)
+    uint16_t              canvas_id;         // Canvas ID (0 for headless apps)
 
     // Load mode and data (replaces encoded user_data pointer tagging)
     fmrb_load_mode_t      load_mode;         // How to load the script
@@ -159,3 +161,4 @@ void* fmrb_app_get_current_est(void);
 void fmrb_app_set_current_est(void* est);
 
 int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count);
+fmrb_err_t fmrb_app_bring_to_front(uint8_t pid);

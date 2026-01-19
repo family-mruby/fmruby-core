@@ -290,12 +290,16 @@ static int lua_app_create_canvas(lua_State* L) {
         gfx_ctx,
         (uint16_t)width,
         (uint16_t)height,
+        ctx->z_order,
         &canvas_id
     );
 
     if (ret != FMRB_GFX_OK) {
         return luaL_error(L, "Failed to create canvas: %d", ret);
     }
+
+    // Store canvas_id in app context for Z-order updates
+    ctx->canvas_id = canvas_id;
 
     FMRB_LOGI(TAG, "Created canvas %u (%dx%d) for app %s",
              canvas_id, width, height, ctx->app_name);

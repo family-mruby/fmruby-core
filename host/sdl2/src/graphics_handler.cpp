@@ -690,7 +690,10 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                     return -1;
                 }
 
-                GFX_LOG_I("Canvas created: ID=%u, %dx%d", canvas_id, cmd->width, cmd->height);
+                // Override z_order with value from Core
+                canvas->z_order = cmd->z_order;
+
+                GFX_LOG_I("Canvas created: ID=%u, %dx%d, z_order=%d", canvas_id, cmd->width, cmd->height, cmd->z_order);
 
                 // Send ACK with canvas_id
                 socket_server_send_ack(msg_type, seq, (const uint8_t*)&canvas_id, sizeof(canvas_id));
@@ -715,6 +718,23 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
 
                 canvas_state_free(canvas);
                 GFX_LOG_I("Canvas deleted: ID=%u", cmd->canvas_id);
+                return 0;
+            }
+            break;
+
+        case FMRB_LINK_GFX_SET_WINDOW_ORDER:
+            if (size >= sizeof(fmrb_link_graphics_set_window_order_t)) {
+                const fmrb_link_graphics_set_window_order_t *cmd = (const fmrb_link_graphics_set_window_order_t*)data;
+
+                canvas_state_t* canvas = canvas_state_find(cmd->canvas_id);
+                if (!canvas) {
+                    GFX_LOG_E("Canvas %u not found for SET_WINDOW_ORDER", cmd->canvas_id);
+                    return -1;
+                }
+
+                // Update z_order
+                canvas->z_order = cmd->z_order;
+                GFX_LOG_I("Canvas %u z_order updated to %d", cmd->canvas_id, cmd->z_order);
                 return 0;
             }
             break;

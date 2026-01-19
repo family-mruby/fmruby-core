@@ -259,6 +259,21 @@ static mrb_value mrb_kernel_send_raw_message(mrb_state *mrb, mrb_value self)
     return mrb_bool_value(ret == FMRB_OK);
 }
 
+// FmrbKernel#_bring_to_front(pid) -> bool
+// Bring window to front
+static mrb_value mrb_kernel_bring_to_front(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid;
+    mrb_get_args(mrb, "i", &pid);
+
+    if (pid < 0 || pid > 255) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid PID");
+    }
+
+    fmrb_err_t ret = fmrb_app_bring_to_front((uint8_t)pid);
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -272,6 +287,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_send_raw_message", mrb_kernel_send_raw_message, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, handler_class, "_bring_to_front", mrb_kernel_bring_to_front, MRB_ARGS_REQ(1));
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }

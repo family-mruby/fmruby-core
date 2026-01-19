@@ -236,11 +236,17 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;
     int32_t width, height;
+    int16_t z_order;
 } fmrb_link_graphics_create_canvas_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;
 } fmrb_link_graphics_delete_canvas_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    int16_t z_order;
+} fmrb_link_graphics_set_window_order_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t target_id;  // 0=screen, other=canvas ID
