@@ -240,6 +240,7 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
 
         case HID_MSG_MOUSE_BUTTON_DOWN:
         case HID_MSG_MOUSE_BUTTON_UP: {
+            FMRB_LOGI(TAG, "Processing MOUSE_BUTTON event");
             // Validate size before casting
             if (msg->size < sizeof(fmrb_hid_mouse_button_event_t)) {
                 FMRB_LOGW(TAG, "Mouse button event message too small: expected=%d, actual=%d",
@@ -255,6 +256,9 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
                 ? mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_down"))
                 : mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_up"));
 
+            FMRB_LOGI(TAG, "Mouse event: subtype=%d, button=%d, pos=(%d,%d)",
+                     mouse_event->subtype, mouse_event->button, mouse_event->x, mouse_event->y);
+
             mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")), type_sym);
             mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "button")),
                         mrb_fixnum_value(mouse_event->button));
@@ -262,6 +266,7 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
                         mrb_fixnum_value(mouse_event->x));
             mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "y")),
                         mrb_fixnum_value(mouse_event->y));
+            FMRB_LOGI(TAG, "Mouse event hash created");
             break;
         }
 
@@ -313,9 +318,11 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
         FMRB_LOGE(TAG, "mrb->c or mrb->c->ci is NULL");
     }
     check_mrb_ci_valid(mrb, "before_funcall");
-    #endif 
+    #endif
 
+    FMRB_LOGI(TAG, "Calling mrb_funcall(on_event)...");
     mrb_funcall(mrb, self, "on_event", 1, event_hash);
+    FMRB_LOGI(TAG, "mrb_funcall(on_event) returned");
     //mrb_funcall(mrb, self, "on_event", 1, mrb_nil_value());
 
     #if 0
@@ -392,16 +399,20 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 
         if (ret == FMRB_OK) {
             // Message received
-            FMRB_LOGD(TAG, "App %s received message: type=%d", ctx->app_name, msg.type);
+            FMRB_LOGI(TAG, "App %s received message: type=%d, size=%d", ctx->app_name, msg.type, msg.size);
 
             // Dispatch message based on type
             if (msg.type == FMRB_MSG_TYPE_HID_EVENT) {
+                FMRB_LOGI(TAG, "App %s dispatching HID event to Ruby...", ctx->app_name);
                 //mrb_set_in_c_funcall(mrb, MRB_C_FUNCALL_ENTER);
                 bool bret = dispatch_hid_event_to_ruby(mrb, self, &msg);
                 //mrb_set_in_c_funcall(mrb, MRB_C_FUNCALL_EXIT);
+                FMRB_LOGI(TAG, "App %s dispatch_hid_event_to_ruby returned: %d", ctx->app_name, bret);
                 if(bret == false){
                     return mrb_nil_value();
                 }
+            } else {
+                FMRB_LOGI(TAG, "App %s message type %d not handled", ctx->app_name, msg.type);
             }
 
             // Continue loop to process more messages or wait for remaining time

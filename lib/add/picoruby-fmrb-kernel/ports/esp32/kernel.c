@@ -4,6 +4,7 @@
 #include <mruby/variable.h>
 #include <mruby/string.h>
 #include <mruby/hash.h>
+#include <string.h>
 #include "fmrb_kernel.h"
 #include "fmrb_app.h"
 #include "fmrb_rtos.h"
@@ -85,6 +86,7 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
                      msg.type, msg.src_pid, (int)msg.size);
 
             // Build Ruby hash: {type: int, src_pid: int, data: string}
+            FMRB_LOGI(TAG, "Building Ruby hash...");
             mrb_value hash = mrb_hash_new(mrb);
             mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
                          mrb_fixnum_value(msg.type));
@@ -92,9 +94,11 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
                          mrb_fixnum_value(msg.src_pid));
             mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "data")),
                          mrb_str_new(mrb, (const char*)msg.data, msg.size));
+            FMRB_LOGI(TAG, "Hash built, calling msg_handler...");
 
             // Call Ruby method: self.msg_handler(msg)
             mrb_funcall(mrb, self, "msg_handler", 1, hash);
+            FMRB_LOGI(TAG, "msg_handler returned");
 
             // Continue loop to process more messages or wait for remaining time
         } else if (ret == FMRB_ERR_TIMEOUT) {
@@ -160,7 +164,7 @@ static mrb_value mrb_kernel_check_protocol_version(mrb_state *mrb, mrb_value sel
     }
 }
 
-// Kernel.set_hid_target(pid) - Set HID event target app
+// FmrbKernel#_set_hid_target(pid) - Set HID event target app
 static mrb_value mrb_kernel_set_hid_target(mrb_state *mrb, mrb_value self)
 {
     mrb_int pid;
@@ -178,7 +182,7 @@ static mrb_value mrb_kernel_set_hid_target(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
-// Kernel.set_focused_window(window_id) - Set focused window ID
+// FmrbKernel#_set_focused_window(window_id) - Set focused window ID
 static mrb_value mrb_kernel_set_focused_window(mrb_state *mrb, mrb_value self)
 {
     mrb_int window_id;
@@ -196,7 +200,7 @@ static mrb_value mrb_kernel_set_focused_window(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
-// Kernel.get_window_list() -> Array of hashes
+// FmrbKernel#_get_window_list() -> Array of hashes
 // Returns list of active windows with position and size info
 static mrb_value mrb_kernel_get_window_list(mrb_state *mrb, mrb_value self)
 {
@@ -228,6 +232,37 @@ static mrb_value mrb_kernel_get_window_list(mrb_state *mrb, mrb_value self)
     return array;
 }
 
+// FmrbKernel#_send_raw_message(dest_pid, msg_type, data) -> bool
+// Send raw binary message to another process
+static mrb_value mrb_kernel_send_raw_message(mrb_state *mrb, mrb_value self)
+{
+    mrb_int dest_pid, msg_type;
+    mrb_value data_val;
+    mrb_get_args(mrb, "iiS", &dest_pid, &msg_type, &data_val);
+
+    // Get binary data
+    const char* data_ptr = RSTRING_PTR(data_val);
+    mrb_int data_len = RSTRING_LEN(data_val);
+
+    if (data_len > FMRB_MAX_MSG_PAYLOAD_SIZE) {
+        mrb_raisef(mrb, E_ARGUMENT_ERROR, "Message data too large: %d bytes (max %d)",
+                   data_len, FMRB_MAX_MSG_PAYLOAD_SIZE);
+    }
+
+    // Create message
+    fmrb_msg_t msg = {
+        .type = (uint8_t)msg_type,
+        .src_pid = PROC_ID_KERNEL,
+        .size = (uint16_t)data_len
+    };
+    memcpy(msg.data, data_ptr, data_len);
+
+    // Send message
+    fmrb_err_t ret = fmrb_msg_send((uint8_t)dest_pid, &msg, 100);
+
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -240,6 +275,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_get_window_list", mrb_kernel_get_window_list, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_send_raw_message", mrb_kernel_send_raw_message, MRB_ARGS_REQ(3));
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }

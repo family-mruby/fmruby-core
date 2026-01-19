@@ -138,8 +138,7 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_event(ev)
-    #Log.d("on_event: gui app")
-    #p ev
+    Log.d("on_event called with: #{ev.inspect}")
 
     # Handle mouse up event
     if ev[:type] == :mouse_up
