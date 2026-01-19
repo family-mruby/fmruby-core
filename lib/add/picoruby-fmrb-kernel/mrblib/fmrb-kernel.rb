@@ -10,27 +10,27 @@ end
 
 class FmrbKernel
   def initialize()
-    puts "[KERNEL] initialize"
+    Log.info("initialize")
     @app_list = []
     @window_order = []
     _init
-    puts "[KERNEL] Tick = #{@tick}"
-    puts "[KERNEL] Max App Number = #{@max_app_num}"
+    Log.info("Tick = #{@tick}")
+    Log.info("Max App Number = #{@max_app_num}")
     _set_ready
   end
 
   def msg_handler(msg) # called from _spin
-    puts "[KERNEL] Received message: type=#{msg[:type]}, src_pid=#{msg[:src_pid]}, data_size=#{msg[:data].length}"
+    Log.debug("Received message: type=#{msg[:type]}, src_pid=#{msg[:src_pid]}, data_size=#{msg[:data].length}")
 
     case msg[:type]
     when FmrbConst::MSG_TYPE_APP_CONTROL
       handle_app_control(msg)
     when FmrbConst::MSG_TYPE_APP_GFX
-      puts "[KERNEL] Graphics message (not implemented)"
+      Log.debug("Graphics message (not implemented)")
     when FmrbConst::MSG_TYPE_APP_AUDIO
-      puts "[KERNEL] Audio message (not implemented)"
+      Log.debug("Audio message (not implemented)")
     else
-      puts "[KERNEL] Unknown message type: #{msg[:type]}"
+      Log.warn("Unknown message type: #{msg[:type]}")
     end
   end
 
@@ -42,14 +42,14 @@ class FmrbKernel
     begin
       data = MessagePack.unpack(data_binary)
     rescue => e
-      puts "[KERNEL] Failed to unpack msgpack data: #{e}"
+      Log.error("Failed to unpack msgpack data: #{e}")
       return
     end
 
     # Data should be a Hash with "cmd" key (use strings, not symbols for VM-to-VM communication)
     unless data.is_a?(Hash) && data.key?("cmd")
-      puts "[KERNEL] Invalid app control message format (expected Hash with 'cmd')"
-      puts "[KERNEL] Received: #{data.inspect}"
+      Log.error("Invalid app control message format (expected Hash with 'cmd')")
+      Log.error("Received: #{data.inspect}")
       return
     end
 
@@ -58,30 +58,30 @@ class FmrbKernel
     case cmd
     when "spawn"
       app_name = data["app_name"] || data["app"] || ""
-      puts "[KERNEL] Spawn request from pid=#{pid}: #{app_name}"
+      Log.info("Spawn request from pid=#{pid}: #{app_name}")
 
       result = _spawn_app_req(app_name)
       if result
-        puts "[KERNEL] App #{app_name} spawned successfully"
+        Log.info("App #{app_name} spawned successfully")
 
         # Set HID target to the newly spawned app
         Kernel.set_hid_target(pid)
-        puts "[KERNEL] HID target set to app pid=#{pid}"
+        Log.info("HID target set to app pid=#{pid}")
 
         # TODO: Add to @app_list with window info
       else
-        puts "[KERNEL] Failed to spawn app: #{app_name}"
+        Log.error("Failed to spawn app: #{app_name}")
       end
     when "kill"
-      puts "[KERNEL] Kill request from pid=#{pid} (not implemented)"
+      Log.info("Kill request from pid=#{pid} (not implemented)")
       # TODO: Reset HID target if this was the target app
       # Kernel.set_hid_target(0xFF)
     when "suspend"
-      puts "[KERNEL] Suspend request (not implemented)"
+      Log.info("Suspend request (not implemented)")
     when "resume"
-      puts "[KERNEL] Resume request (not implemented)"
+      Log.info("Resume request (not implemented)")
     else
-      puts "[KERNEL] Unknown app control command: #{cmd}"
+      Log.warn("Unknown app control command: #{cmd}")
     end
   end
 
@@ -90,7 +90,7 @@ class FmrbKernel
   end
 
   def main_loop
-    puts "[KERNEL] main_loop started"
+    Log.info("main_loop started")
     loop do
       tick_process
       _spin(@tick)
@@ -99,12 +99,12 @@ class FmrbKernel
 
   def initial_sequence
     # Check protocol version with host
-    puts "[KERNEL] Checking protocol version..."
+    Log.info("Checking protocol version...")
     unless check_protocol_version(5000)
-      puts "[KERNEL] ERROR: Protocol version check failed"
+      Log.error("ERROR: Protocol version check failed")
       raise "Protocol version mismatch with host"
     end
-    puts "[KERNEL] Protocol version check passed"
+    Log.info("Protocol version check passed")
 
     # Spawn system GUI app
     _spawn_app_req("system/gui_app")

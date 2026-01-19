@@ -221,38 +221,6 @@ mrb_log_d(mrb_state *mrb, mrb_value self)
   return mrb_nil_value();
 }
 
-/**
- * Log verbose message
- * @param message [String] Log message (auto-tag from TLS)
- * @param tag [String] Tag name (optional)
- * @param message [String] Log message
- *
- * Example:
- *   Log.v("Verbose debug info")  # Uses app name from TLS
- *   Log.v("KERNEL", "Verbose debug info")  # Explicit tag
- */
-static mrb_value
-mrb_log_v(mrb_state *mrb, mrb_value self)
-{
-  mrb_value arg1, arg2;
-  int argc = mrb_get_args(mrb, "o|o", &arg1, &arg2);
-
-  const char *tag;
-  const char *msg;
-
-  if (argc == 1) {
-    tag = get_current_tag();
-    msg = (const char *)RSTRING_PTR(arg1);
-  } else {
-    tag = (const char *)RSTRING_PTR(arg1);
-    msg = (const char *)RSTRING_PTR(arg2);
-  }
-
-  ESP_LOGV(tag, "%s", msg);
-
-  return mrb_nil_value();
-}
-
 void
 mrb_fmrb_log_init(mrb_state *mrb)
 {
@@ -271,11 +239,16 @@ mrb_fmrb_log_init(mrb_state *mrb)
   mrb_define_module_function(mrb, log_module, "set_level_for_tag", mrb_log_set_level_for_tag, MRB_ARGS_REQ(2));
   
   // Logging methods (support both 1-arg auto-tag and 2-arg explicit tag)
+  mrb_define_module_function(mrb, log_module, "error", mrb_log_e, MRB_ARGS_ARG(1, 1));
+  mrb_define_module_function(mrb, log_module, "warn", mrb_log_w, MRB_ARGS_ARG(1, 1));
+  mrb_define_module_function(mrb, log_module, "info", mrb_log_i, MRB_ARGS_ARG(1, 1));
+  mrb_define_module_function(mrb, log_module, "debug", mrb_log_d, MRB_ARGS_ARG(1, 1));
+
+  // Short aliases
   mrb_define_module_function(mrb, log_module, "e", mrb_log_e, MRB_ARGS_ARG(1, 1));
   mrb_define_module_function(mrb, log_module, "w", mrb_log_w, MRB_ARGS_ARG(1, 1));
   mrb_define_module_function(mrb, log_module, "i", mrb_log_i, MRB_ARGS_ARG(1, 1));
   mrb_define_module_function(mrb, log_module, "d", mrb_log_d, MRB_ARGS_ARG(1, 1));
-  mrb_define_module_function(mrb, log_module, "v", mrb_log_v, MRB_ARGS_ARG(1, 1));
 }
 
 void

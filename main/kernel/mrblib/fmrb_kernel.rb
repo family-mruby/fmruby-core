@@ -2,17 +2,17 @@
 # This is the core of the Family mruby OS, running at 60Hz
 
 
-puts "Family mruby OS Kernel starting..."
+Log.info "Family mruby OS Kernel starting..."
 
 begin
   kernel = FmrbKernel.new
-  puts "[Kernel] Kernel created successfully"
+  Log.info "Kernel created successfully"
   kernel.start
 rescue => e
-  puts "[Kernel] Exception caught: #{e.class}"
-  puts "[Kernel] Message: #{e.message}"
-  puts "[Kernel] Backtrace:"
-  puts e.backtrace.join("\n") if e.backtrace
+  Log.error "Exception caught: #{e.class}"
+  Log.error "Message: #{e.message}"
+  Log.error "Backtrace:"
+  Log.error e.backtrace.join("\n") if e.backtrace
 end
 
-puts "Family mruby OS Kernel exit"
+Log.info "Family mruby OS Kernel exit"

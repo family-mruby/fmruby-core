@@ -61,22 +61,22 @@ class ShellApp < FmrbApp
     show_logo
     draw_prompt
     @gfx.present
-    puts "[ShellApp] on_create called"
-    puts "[ShellApp] user_area: x0=#{@user_area_x0}, y0=#{@user_area_y0}, width=#{@user_area_width}, height=#{@user_area_height}"
-    puts "[ShellApp] window: width=#{@window_width}, height=#{@window_height}"
-    puts "[ShellApp] char: width=#{@char_width}, height=#{@char_height}"
+    Log.info("on_create called")
+    Log.info("user_area: x0=#{@user_area_x0}, y0=#{@user_area_y0}, width=#{@user_area_width}, height=#{@user_area_height}")
+    Log.info("window: width=#{@window_width}, height=#{@window_height}")
+    Log.info("char: width=#{@char_width}, height=#{@char_height}")
     max_chars = (@user_area_width - 4) / @char_width  # -4 for left margin
-    puts "[ShellApp] max displayable chars: ~#{max_chars} (including prompt)"
+    Log.info("max displayable chars: ~#{max_chars} (including prompt)")
 
-    log_puts "[ShellApp] create task"
+    Log.info("create task")
 
     # Capture self to maintain instance context in the task block
     app_self = self
     @shell_task = Task.new(name: "shell_task", priority: 100) do
-      log_puts "[ShellApp] [Task] loop start"
+      Log.info("[Task] loop start")
       app_self.shell_task
     end
-    log_puts "[ShellApp] create task done"
+    Log.info("create task done")
   end
 
   def shell_task
@@ -168,7 +168,7 @@ class ShellApp < FmrbApp
       sleep_ms @frame_ms
     end
     char = @input_buffer.shift
-    #log_puts "[ShellApp] [getch] Returning character: #{char} (#{char.chr})"
+    #Log.debug("[getch] Returning character: #{char} (#{char.chr})")
     char
   end
 
@@ -179,7 +179,7 @@ class ShellApp < FmrbApp
   def spawn_app(app_name)
     app_name = "/app/sample/mruby.app.rb" if app_name == "mruby.app"
     app_name = "/app/sample/lua.app.lua" if app_name == "lua.app"
-    puts "[ShellApp] Requesting spawn: #{app_name}"
+    Log.info("Requesting spawn: #{app_name}")
 
     data = {
       "cmd" => "spawn",
@@ -188,10 +188,10 @@ class ShellApp < FmrbApp
     success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
     if success
       @history << "Spawned: #{app_name}"
-      puts "[ShellApp] Spawn request sent successfully"
+      Log.info("Spawn request sent successfully")
     else
       @history << "Error: Failed to spawn #{app_name}"
-      puts "[ShellApp] Failed to send spawn request"
+      Log.error("Failed to send spawn request")
     end
   end
 
@@ -240,13 +240,13 @@ class ShellApp < FmrbApp
   end
 
   def cmd_cd(args)
-    puts "[ShellApp] cmd_cd called with args: #{args.inspect}"
+    Log.debug("cmd_cd called with args: #{args.inspect}")
     target_dir = if args.empty?
                    "/"  # cd without args goes to root
                  else
                    args[0]
                  end
-    puts "[ShellApp] target_dir: #{target_dir}"
+    Log.debug("target_dir: #{target_dir}")
 
     # Resolve relative path
     new_dir = if target_dir.start_with?("/")
@@ -259,7 +259,7 @@ class ShellApp < FmrbApp
                   @current_dir + "/" + target_dir
                 end
               end
-    puts "[ShellApp] new_dir (before normalize): #{new_dir}"
+    Log.debug("new_dir (before normalize): #{new_dir}")
 
     # Normalize path (remove duplicate slashes)
     while new_dir.include?("//")
@@ -267,18 +267,18 @@ class ShellApp < FmrbApp
     end
     # Remove trailing slash except for root
     new_dir = new_dir[0...-1] if new_dir.length > 1 && new_dir.end_with?("/")
-    puts "[ShellApp] new_dir (after normalize): #{new_dir}"
+    Log.debug("new_dir (after normalize): #{new_dir}")
 
     # Check if directory exists
     begin
       # Try to open directory to verify it exists
-      puts "[ShellApp] Trying to open directory: #{new_dir}"
+      Log.debug("Trying to open directory: #{new_dir}")
       dir = Dir.open(new_dir)
       dir.close
       @current_dir = new_dir
-      puts "[ShellApp] Changed to directory: #{@current_dir}"
+      Log.info("Changed to directory: #{@current_dir}")
     rescue => e
-      puts "[ShellApp] Error: #{e.message}"
+      Log.error("Error: #{e.message}")
       @history << "cd: #{target_dir}: #{e.message}"
     end
   end
@@ -398,27 +398,27 @@ class ShellApp < FmrbApp
 
     begin
       # Try to compile and execute the script
-      puts "[ShellApp] [IRB] Compiling: #{script}"
+      Log.debug("[IRB] Compiling: #{script}")
       if @irb_sandbox.compile("begin; _ = (#{script}); rescue => _; end; _")
         # Execute and get result
-        puts "[ShellApp] [IRB] Executing..."
+        Log.debug("[IRB] Executing...")
         executed = @irb_sandbox.execute
-        puts "[ShellApp] [IRB] Executed: #{executed}"
+        Log.debug("[IRB] Executed: #{executed}")
         if executed
-          puts "[ShellApp] [IRB] Waiting..."
+          Log.debug("[IRB] Waiting...")
           @irb_sandbox.wait(timeout: 5000)
-          puts "[ShellApp] [IRB] Suspending..."
+          Log.debug("[IRB] Suspending...")
           @irb_sandbox.suspend
-          puts "[ShellApp] [IRB] Getting result..."
+          Log.debug("[IRB] Getting result...")
           result = @irb_sandbox.result
-          puts "[ShellApp] [IRB] Result: #{result.inspect}"
+          Log.debug("[IRB] Result: #{result.inspect}")
 
           # Get captured output
           output = capturer.get_output
 
           # Display captured output (without debug logs)
           output.each_line do |line|
-            next if line.start_with?("[ShellApp] [IRB]")
+            next if line.start_with?("[IRB]")
             @history << line.chomp
           end
 
@@ -431,7 +431,7 @@ class ShellApp < FmrbApp
         @history << "Error: Compilation failed"
       end
     rescue => e
-      puts "[ShellApp] [IRB] Exception: #{e.message}"
+      Log.error("[IRB] Exception: #{e.message}")
       @history << "Error: #{e.message}"
     ensure
       # Restore stdout
@@ -510,7 +510,7 @@ class ShellApp < FmrbApp
     x = @user_area_x0 + 2
     y = @user_area_y0 + 2 + (@history.length * @char_height)
     full_line = @prompt + @current_line
-    #puts "[Shell] draw_prompt: drawing '#{full_line}' (length=#{full_line.length}) at (#{x}, #{y})"
+    #Log.debug("draw_prompt: drawing '#{full_line}' (length=#{full_line.length}) at (#{x}, #{y})")
     @gfx.draw_text(x, y, full_line, FmrbGfx::BLACK)
 
     # Draw cursor (underline at end of input)
@@ -549,7 +549,7 @@ class ShellApp < FmrbApp
   end
 
   def on_event(ev)
-    #puts "on_event: shell app"
+    #Log.debug("on_event: shell app")
     #p ev
 
     if ev[:type] == :key_down
@@ -590,7 +590,7 @@ class ShellApp < FmrbApp
   def handle_key_input(ev)
     keycode = ev[:keycode]
     character = ev[:character] || 0
-    #puts "[Shell] keycode=#{keycode}, character=#{character} (#{character.chr if character != 0})"
+    #Log.debug("keycode=#{keycode}, character=#{character} (#{character.chr if character != 0})")
 
     # Enter key
     if character == 10 || character == 13  # LF or CR
@@ -624,20 +624,20 @@ class ShellApp < FmrbApp
     if character >= 32 && character <= 126
       if @current_line.length < @max_line_length
         char_str = character.chr
-        #puts "[Shell] Adding character: '#{char_str}' (ASCII #{character}), line was: '#{@current_line}'"
+        #Log.debug("Adding character: '#{char_str}' (ASCII #{character}), line was: '#{@current_line}'")
         @current_line += char_str
-        #puts "[Shell] Line is now: '#{@current_line}' (length=#{@current_line.length})"
+        #Log.debug("Line is now: '#{@current_line}' (length=#{@current_line.length})")
         @need_line_redraw = true
       else
-        puts "[Shell] Warning: max line length (#{@max_line_length}) reached"
+        Log.warn("Warning: max line length (#{@max_line_length}) reached")
       end
     else
-      puts "[Shell] Character #{character} not in printable range (32-126)"
+      Log.debug("Character #{character} not in printable range (32-126)")
     end
   end
 
   def handle_enter
-    puts "[Shell] Command: #{@current_line}"
+    Log.info("Command: #{@current_line}")
 
     # Add current line to history
     @history << (@prompt + @current_line)
@@ -673,21 +673,21 @@ class ShellApp < FmrbApp
   end
 
   def on_destroy
-    puts "[ShellApp] Destroyed"
+    Log.info("Destroyed")
   end
 
 end
 
 # Create and start the system GUI app instance
-puts "[ShellApp] ShellApp.new"
+Log.info("ShellApp.new")
 begin
   app = ShellApp.new
-  puts "[ShellApp] ShellApp created successfully"
+  Log.info("ShellApp created successfully")
   app.start
 rescue => e
-  puts "[ShellApp] Exception caught: #{e.class}"
-  puts "[ShellApp] Message: #{e.message}"
-  puts "[ShellApp] Backtrace:"
-  puts e.backtrace.join("\n") if e.backtrace
+  Log.error("Exception caught: #{e.class}")
+  Log.error("Message: #{e.message}")
+  Log.error("Backtrace:")
+  Log.error(e.backtrace.join("\n")) if e.backtrace
 end
-puts "[ShellApp] Script ended"
+Log.info("Script ended")

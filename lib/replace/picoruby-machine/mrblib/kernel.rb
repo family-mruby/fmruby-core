@@ -6,7 +6,6 @@ STDERR = IO.open(2, "w")
 $stdin = STDIN
 $stdout = STDOUT
 $stderr = STDERR
-$log = STDOUT
 
 # Now define Kernel methods that use $stdout/$stdin
 module Kernel
@@ -17,16 +16,8 @@ module Kernel
     $stdout.print(*args)
   end
 
-  def log_print(*args)
-    $log.print(*args)
-  end
-
   def puts(*args)
     $stdout.puts(*args)
-  end
-
-  def log_puts(*args)
-    $log.puts(*args)
   end
 
   def getc

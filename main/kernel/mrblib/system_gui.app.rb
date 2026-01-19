@@ -12,12 +12,12 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_create()
-    Log.i("on_create called")
+    Log.info("on_create called")
     draw_current
   end
 
   def spawn_app(app_name)
-    Log.i("Requesting spawn: #{app_name}")
+    Log.info("Requesting spawn: #{app_name}")
 
     data = {
       "cmd" => "spawn",
@@ -27,9 +27,9 @@ class SystemGuiApp < FmrbApp
     success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
 
     if success
-      Log.i("Spawn request sent successfully")
+      Log.info("Spawn request sent successfully")
     else
-      Log.e("Failed to send spawn request")
+      Log.error("Failed to send spawn request")
     end
   end
 
@@ -113,14 +113,14 @@ class SystemGuiApp < FmrbApp
           y_offset -= line_height
         end
       rescue => e
-        Log.e("Error getting memory stats: #{e.message}")
+        Log.error("Error getting memory stats: #{e.message}")
       end
     end
   end
 
   def on_update()
     if @counter % 30 == 0
-      #Log.d("on_update() tick #{@counter / 30}s")
+      #Log.debug("on_update() tick #{@counter / 30}s")
     end
 
     #debug
@@ -138,12 +138,12 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_event(ev)
-    #Log.d("on_event: gui app")
+    #Log.debug("on_event: gui app")
     #p ev
 
     # Handle mouse up event
     if ev[:type] == :mouse_up
-      Log.d("Mouse button #{ev[:button]} released at (#{ev[:x]}, #{ev[:y]})")
+      Log.debug("Mouse button #{ev[:button]} released at (#{ev[:x]}, #{ev[:y]})")
 
       # Shell button hit test
       button_x = 100
@@ -153,7 +153,7 @@ class SystemGuiApp < FmrbApp
 
       if ev[:x] >= button_x && ev[:x] < button_x + button_width &&
          ev[:y] >= button_y && ev[:y] < button_y + button_height
-        Log.i("Shell button clicked")
+        Log.info("Shell button clicked")
         spawn_app("default/shell")
         return
       end
@@ -161,21 +161,21 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_destroy
-    Log.i("Destroyed")
+    Log.info("Destroyed")
   end
 
 end
 
 # Create and start the system GUI app instance
-Log.i("SystemGuiApp.new")
+Log.info("SystemGuiApp.new")
 begin
   app = SystemGuiApp.new
-  Log.i("SystemGuiApp created successfully")
+  Log.info("SystemGuiApp created successfully")
   app.start
 rescue => e
-  Log.e("Exception caught: #{e.class}")
-  Log.e("Message: #{e.message}")
-  Log.e("Backtrace:")
-  Log.e(e.backtrace.join("\n")) if e.backtrace
+  Log.error("Exception caught: #{e.class}")
+  Log.error("Message: #{e.message}")
+  Log.error("Backtrace:")
+  Log.error(e.backtrace.join("\n")) if e.backtrace
 end
-Log.i("Script ended")
+Log.info("Script ended")

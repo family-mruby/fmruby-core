@@ -20,9 +20,9 @@ class BouncingBallApp < FmrbApp
   end
 
   def on_create()
-    log_puts "[BallApp] on_create called"
-    log_puts "[BallApp] user_area: x0=#{@user_area_x0}, y0=#{@user_area_y0}, width=#{@user_area_width}, height=#{@user_area_height}"
-    log_puts "[BallApp] window: width=#{@window_width}, height=#{@window_height}"
+    Log.info("on_create called")
+    Log.info("user_area: x0=#{@user_area_x0}, y0=#{@user_area_y0}, width=#{@user_area_width}, height=#{@user_area_height}")
+    Log.info("window: width=#{@window_width}, height=#{@window_height}")
 
     # Initialize ball position within user area
     @ball_x = @user_area_x0 + @user_area_width / 2
@@ -30,9 +30,9 @@ class BouncingBallApp < FmrbApp
 
     draw_full_screen
 
-    log_puts "load my_lib"
+    Log.info("load my_lib")
     require "/lib/my_lib"
-    log_puts "load my_lib done"
+    Log.info("load my_lib done")
     inspect_env
 
   end
@@ -94,18 +94,18 @@ class BouncingBallApp < FmrbApp
   end
 
   def on_destroy
-    log_puts "[BallApp] Destroyed"
+    Log.info("Destroyed")
   end
 end
 
 # Create and start the app
-log_puts "[BallApp] Creating BouncingBallApp"
+Log.info("Creating BouncingBallApp")
 begin
   app = BouncingBallApp.new
-  log_puts "[BallApp] App created successfully"
+  Log.info("App created successfully")
   app.start
 rescue => e
-  log_puts "[BallApp] Exception: #{e.class}"
-  log_puts "[BallApp] Message: #{e.message}"
+  Log.error("Exception: #{e.class}")
+  Log.error("Message: #{e.message}")
 end
-log_puts "[BallApp] Script ended"
+Log.info("Script ended")

@@ -5,27 +5,27 @@ class FmrbApp
   attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y
 
   def initialize()
-    puts "[FmrbApp]initialize"
+    Log.debug("initialize")
     @running = false
     _init() # C function, variables are defined here
-    puts "[FmrbApp][#{@name}] name=#{@name}"
-    puts "[FmrbApp][#{@name}] After _init(), @canvas=#{@canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}"
+    Log.debug("name=#{@name}")
+    Log.debug("After _init(), @canvas=#{@canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}")
 
     # Initialize graphics only for non-headless apps (@canvas is set)
     if @canvas
       @gfx = FmrbGfx.new(@canvas)  # Pass canvas_id to FmrbGfx
-      puts "[FmrbApp][#{@name}] FmrbGfx initialized: canvas_id=#{@canvas}"
+      Log.debug("FmrbGfx initialized: canvas_id=#{@canvas}")
       @user_area_x0 = 1
       @user_area_y0 = 10
       @user_area_x1 = @window_width - 1
       @user_area_y1 = @window_height  - 1
       @user_area_width = @window_width - 2
       @user_area_height = @window_height - 12
-      
+
       draw_window_frame
     else
       @gfx = nil
-      puts "[FmrbApp][#{@name}] Headless app: no graphics initialized"
+      Log.debug("Headless app: no graphics initialized")
     end
 
   end
@@ -45,7 +45,7 @@ class FmrbApp
     # Called once when app is created
     # Initialize your app state here
     # Access @name and @gfx instance variables
-    puts "[FmrbApp][#{@name}]on_create"
+    Log.debug("on_create")
   end
 
   def on_update
@@ -58,17 +58,17 @@ class FmrbApp
   def on_destroy
     # Called once when app is destroyed
     # Cleanup resources here
-    puts "[FmrbApp][#{@name}]on_destroy"
+    Log.debug("on_destroy")
   end
 
   def on_event(ev)
     # Called from C
-    #puts "[FmrbApp][#{@name}] on_event called"
+    #Log.debug("on_event called")
   end
 
   # Internal methods
   def main_loop
-    puts "[FmrbApp][#{@name}] main_loop started"
+    Log.debug("main_loop started")
     loop do
       return if !@running
       timeout_ms = on_update
@@ -104,20 +104,20 @@ class FmrbApp
   end
 
   def destroy
-    puts "[FmrbApp][#{@name}] destroy() called"
+    Log.debug("destroy() called")
     @gfx.destroy if @gfx  # Cleanup graphics resources
     on_destroy
     _cleanup()  # C function: cleanup canvas and message queue
   end
 
   def start
-    puts "[FmrbApp][#{@name}] start() called, @running=#{@running}"
+    Log.debug("start() called, @running=#{@running}")
     @running = true
-    puts "[FmrbApp][#{@name}] Before on_create"
+    Log.debug("Before on_create")
     on_create
-    puts "[FmrbApp][#{@name}] After on_create, entering main_loop"
+    Log.debug("After on_create, entering main_loop")
     main_loop
-    puts "[FmrbApp][#{@name}] After main_loop, calling destroy"
+    Log.debug("After main_loop, calling destroy")
     destroy
   end
 
