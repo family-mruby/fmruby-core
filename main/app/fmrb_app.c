@@ -488,7 +488,8 @@ static void app_task_main(void* arg) {
             }
 
             FMRB_LOGI(TAG, "[%s] mrb_tasks_run - BEFORE execution", ctx->app_name);
-            mrb_value v = mrb_tasks_run(ctx->mrb);
+            //mrb_value v = 
+            mrb_tasks_run(ctx->mrb);
             FMRB_LOGI(TAG, "[%s] mrb_tasks_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
 
             //TODO: check proper free process

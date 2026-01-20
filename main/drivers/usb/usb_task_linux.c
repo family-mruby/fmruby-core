@@ -16,7 +16,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include "usb_task.h"
-#include "kernel/host/host_task.h"
+#include "host_task.h"
 
 #define INPUT_SOCKET_PATH "/tmp/fmrb_input_socket"
 #define MAX_PACKET_SIZE 512

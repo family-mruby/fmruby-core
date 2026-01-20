@@ -560,8 +560,6 @@ class ShellApp < FmrbApp
       end
 
       # Don't call handle_key_input - let shell_task handle it via getch
-    elsif ev[:type] == :key_up
-      handle_key_up(ev)
     end
   end
 
@@ -572,28 +570,6 @@ class ShellApp < FmrbApp
 
     # Trigger full redraw
     @need_full_redraw = true
-  end
-
-  def handle_key_up(ev)
-    keycode = ev[:keycode]
-
-    # Window position control with arrow keys
-    x = 0
-    y = 0
-    case keycode
-    when 82  # up
-      y = -10
-    when 81  # down
-      y = 10
-    when 80  # left
-      x = -10
-    when 79  # right
-      x = 10
-    end
-
-    if x != 0 || y != 0
-      set_window_position(@pos_x + x, @pos_y + y)
-    end
   end
 
   def handle_key_input(ev)

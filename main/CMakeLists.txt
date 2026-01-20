@@ -1,7 +1,7 @@
 set(COMPONENTS main)
 set(COMPONENT_SRCS
     "main.c"
-    "boot.c"
+    "boot/boot.c"
     "app/fmrb_app.c"
     "app/fmrb_app_spawner.c"
     "kernel/fmrb_kernel.c"
@@ -16,31 +16,18 @@ set(COMPONENT_ESP32_SRCS
     "drivers/usb/usb_task.c"
 )
 
-# Collect all Ruby files to compile to bytecode
-set(PICORBC ${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/picoruby/bin/picorbc)
-set(GENERATED_C_FILES "")
+# Include Ruby to bytecode compilation script
+include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_bytecode.cmake)
 
-# Find all Ruby files in kernel/mrblib/
-file(GLOB KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/kernel/mrblib/*.rb)
+# Find all Ruby files in prebuild_scripts/kernel/
+file(GLOB KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/*.rb)
 
-# Find all Ruby files in app/default_app/mrblib/
-file(GLOB DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/app/default_app/mrblib/*.rb)
+# Find all Ruby files in prebuild_scripts/default_app/
+file(GLOB DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/*.rb)
 
-# Process kernel Ruby files
-foreach(RB_FILE ${KERNEL_RUBY_FILES})
-  get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
-  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/kernel/mrb/${RB_NAME}.c)
-  list(APPEND GENERATED_C_FILES ${C_FILE})
-  list(APPEND COMPONENT_SRCS ${C_FILE})
-endforeach()
-
-# Process default_app Ruby files
-foreach(RB_FILE ${DEFAULT_APP_RUBY_FILES})
-  get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
-  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/app/default_app/mrb/${RB_NAME}.c)
-  list(APPEND GENERATED_C_FILES ${C_FILE})
-  list(APPEND COMPONENT_SRCS ${C_FILE})
-endforeach()
+# Step 1: Prepare Ruby bytecode sources (add C files to COMPONENT_SRCS)
+prepare_ruby_bytecode_sources(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/mrb COMPONENT_SRCS)
+prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/mrb COMPONENT_SRCS)
 
 # Set up component dependencies based on target
 set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_link fmrb_toml fmrb_mem
@@ -57,7 +44,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "." "kernel" "kernel/host" "include" "drivers/fs_proxy" "drivers/usb"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/fs_proxy" "drivers/usb"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 
@@ -67,32 +54,6 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-O0 -g3>
 )
 
-# Generate C files from kernel Ruby files (must be after idf_component_register)
-foreach(RB_FILE ${KERNEL_RUBY_FILES})
-  get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
-  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/kernel/mrb/${RB_NAME}.c)
-  add_custom_command(
-    OUTPUT ${C_FILE}
-    COMMAND ${CMAKE_COMMAND} -E echo "Compiling ${RB_FILE}..."
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_LIST_DIR}/kernel/mrb
-    COMMAND ${PICORBC} -B${RB_NAME}_irep -o${C_FILE} ${RB_FILE}
-    DEPENDS ${RB_FILE}
-    COMMENT "Compiling ${RB_FILE} to bytecode"
-    VERBATIM
-  )
-endforeach()
-
-# Generate C files from default_app Ruby files
-foreach(RB_FILE ${DEFAULT_APP_RUBY_FILES})
-  get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
-  set(C_FILE ${CMAKE_CURRENT_LIST_DIR}/app/default_app/mrb/${RB_NAME}.c)
-  add_custom_command(
-    OUTPUT ${C_FILE}
-    COMMAND ${CMAKE_COMMAND} -E echo "Compiling ${RB_FILE}..."
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_LIST_DIR}/app/default_app/mrb
-    COMMAND ${PICORBC} -B${RB_NAME}_irep -o${C_FILE} ${RB_FILE}
-    DEPENDS ${RB_FILE}
-    COMMENT "Compiling ${RB_FILE} to bytecode"
-    VERBATIM
-  )
-endforeach()
+# Step 2: Generate Ruby bytecode compilation commands (must be after idf_component_register)
+generate_ruby_bytecode_commands(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/mrb)
+generate_ruby_bytecode_commands(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/mrb)

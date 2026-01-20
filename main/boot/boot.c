@@ -9,12 +9,12 @@
 #include "fmrb_gfx.h"
 #include "fmrb_audio.h"
 #include "fmrb_toml.h"
-#include "kernel/fmrb_kernel.h"
-#include "kernel/host/host_task.h"
+#include "fmrb_kernel.h"
+#include "host/host_task.h"
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
 #include "fs_proxy_task.h"
-#include "drivers/usb/usb_task.h"
+#include "usb_task.h"
 
 #include "boot.h"
 

@@ -6,8 +6,8 @@ sdkconfig.1
 dependencies.lock
 .vscode/*
 .claude/*
-main/kernel/mrb/*
-main/app/default_app/mrb/*
+main/prebuild_scripts/kernel/mrb/*
+main/prebuild_scripts/default_app/mrb/*
 log
 log*
 .rake_tasks~

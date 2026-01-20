@@ -1,22 +1,24 @@
-# Bouncing Ball Application
-# A simple bouncing ball demo app
+# Bouncing Balls Application
+# Multiple bouncing balls demo app
 
 class BouncingBallApp < FmrbApp
+  BALL_COUNT = 8  # Number of balls to display
+
   def initialize
     super()
     @counter = 0
     @bounce_count = 0
+    @balls = []
 
-    # Ball properties
-    @ball_x = @window_width / 2
-    @ball_y = @window_height / 2
-    @velocity_x = 3
-    @velocity_y = 2
-    @ball_radius = 8
-
-    # Colors
-    @bg_col = FmrbGfx::BLACK
-    @ball_col = FmrbGfx::RED
+    # Available colors for balls
+    @colors = [
+      FmrbGfx::RED,
+      FmrbGfx::GREEN,
+      FmrbGfx::BLUE,
+      FmrbGfx::YELLOW,
+      FmrbGfx::CYAN,
+      FmrbGfx::MAGENTA
+    ]
   end
 
   def on_create()
@@ -24,64 +26,103 @@ class BouncingBallApp < FmrbApp
     Log.info("user_area: x0=#{@user_area_x0}, y0=#{@user_area_y0}, width=#{@user_area_width}, height=#{@user_area_height}")
     Log.info("window: width=#{@window_width}, height=#{@window_height}")
 
-    # Initialize ball position within user area
-    @ball_x = @user_area_x0 + @user_area_width / 2
-    @ball_y = @user_area_y0 + @user_area_height / 2
+    # Initialize balls with random positions and velocities
+    initialize_balls
 
     draw_full_screen
 
-    Log.info("load my_lib")
-    require "/lib/my_lib"
-    Log.info("load my_lib done")
-    inspect_env
+    # Log.info("load my_lib")
+    # require "/lib/my_lib"
+    # Log.info("load my_lib done")
+    # inspect_env
 
+  end
+
+  def initialize_balls()
+    @balls = []
+
+    BALL_COUNT.times do |i|
+      # Random position within user area
+      radius = 6 + (i % 3) * 2  # Radius: 6, 8, or 10
+
+      # Use RNG.random_int for random position
+      x = @user_area_x0 + radius + (RNG.random_int % (@user_area_width - radius * 2))
+      y = @user_area_y0 + radius + (RNG.random_int % (@user_area_height - radius * 2))
+
+      # Random velocity (avoid zero velocity)
+      vx = (RNG.random_int % 7) - 3  # -3 to 3
+      vx = 2 if vx == 0
+      vy = (RNG.random_int % 7) - 3  # -3 to 3
+      vy = 2 if vy == 0
+
+      # Random color
+      color = @colors[RNG.random_int % @colors.length]
+
+      @balls << {
+        x: x,
+        y: y,
+        vx: vx,
+        vy: vy,
+        radius: radius,
+        color: color
+      }
+    end
+
+    Log.info("Initialized #{@balls.length} balls")
   end
 
   def draw_full_screen()
     @gfx.clear(FmrbGfx::WHITE)
     draw_window_frame
-    draw_ball
+    draw_balls
     @gfx.present
   end
 
-  def draw_ball()
-    @gfx.fill_circle(@ball_x, @ball_y, @ball_radius, @ball_col)
+  def draw_balls()
+    @balls.each do |ball|
+      @gfx.fill_circle(ball[:x], ball[:y], ball[:radius], ball[:color])
+    end
   end
 
-  def erase_ball()
-    @gfx.fill_circle(@ball_x, @ball_y, @ball_radius, FmrbGfx::WHITE)
+  def erase_balls()
+    @balls.each do |ball|
+      @gfx.fill_circle(ball[:x], ball[:y], ball[:radius], FmrbGfx::WHITE)
+    end
   end
 
   def on_update()
-    # Erase old ball position
-    erase_ball
+    # Erase old ball positions
+    erase_balls
 
-    # Update ball position
-    @ball_x += @velocity_x
-    @ball_y += @velocity_y
+    # Update each ball
+    @balls.each do |ball|
+      # Update position
+      ball[:x] += ball[:vx]
+      ball[:y] += ball[:vy]
 
-    # Calculate user area boundaries
-    left_boundary = @user_area_x0 + @ball_radius
-    right_boundary = @user_area_x0 + @user_area_width - @ball_radius
-    top_boundary = @user_area_y0 + @ball_radius
-    bottom_boundary = @user_area_y0 + @user_area_height - @ball_radius
+      # Calculate boundaries for this ball
+      left_boundary = @user_area_x0 + ball[:radius]
+      right_boundary = @user_area_x0 + @user_area_width - ball[:radius]
+      top_boundary = @user_area_y0 + ball[:radius]
+      bottom_boundary = @user_area_y0 + @user_area_height - ball[:radius]
 
-    # Check collision with left/right walls
-    if @ball_x <= left_boundary || @ball_x >= right_boundary
-      @velocity_x = -@velocity_x
-      @ball_x += @velocity_x  # Move away from boundary
-      @bounce_count += 1
+      # Check collision with left/right walls
+      if ball[:x] <= left_boundary || ball[:x] >= right_boundary
+        ball[:vx] = -ball[:vx]
+        ball[:x] += ball[:vx]  # Move away from boundary
+        @bounce_count += 1
+      end
+
+      # Check collision with top/bottom walls
+      if ball[:y] <= top_boundary || ball[:y] >= bottom_boundary
+        ball[:vy] = -ball[:vy]
+        ball[:y] += ball[:vy]  # Move away from boundary
+        @bounce_count += 1
+      end
     end
 
-    # Check collision with top/bottom walls
-    if @ball_y <= top_boundary || @ball_y >= bottom_boundary
-      @velocity_y = -@velocity_y
-      @ball_y += @velocity_y  # Move away from boundary
-      @bounce_count += 1
-    end
-
-    # Draw new ball position
-    draw_ball
+    # Draw new ball positions
+    draw_balls
 
     @gfx.present
     @counter += 1
@@ -98,16 +139,18 @@ class BouncingBallApp < FmrbApp
     # @window_width, @window_height, @user_area_* are already updated by C code
     Log.info("Resize event: #{new_width}x#{new_height}")
 
-    # Keep ball within new boundaries
-    left_boundary = @user_area_x0 + @ball_radius
-    right_boundary = @user_area_x0 + @user_area_width - @ball_radius
-    top_boundary = @user_area_y0 + @ball_radius
-    bottom_boundary = @user_area_y0 + @user_area_height - @ball_radius
+    # Keep all balls within new boundaries
+    @balls.each do |ball|
+      left_boundary = @user_area_x0 + ball[:radius]
+      right_boundary = @user_area_x0 + @user_area_width - ball[:radius]
+      top_boundary = @user_area_y0 + ball[:radius]
+      bottom_boundary = @user_area_y0 + @user_area_height - ball[:radius]
 
-    @ball_x = left_boundary if @ball_x < left_boundary
-    @ball_x = right_boundary if @ball_x > right_boundary
-    @ball_y = top_boundary if @ball_y < top_boundary
-    @ball_y = bottom_boundary if @ball_y > bottom_boundary
+      ball[:x] = left_boundary if ball[:x] < left_boundary
+      ball[:x] = right_boundary if ball[:x] > right_boundary
+      ball[:y] = top_boundary if ball[:y] < top_boundary
+      ball[:y] = bottom_boundary if ball[:y] > bottom_boundary
+    end
 
     # Trigger full redraw
     draw_full_screen
