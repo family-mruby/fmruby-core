@@ -123,7 +123,20 @@ class FmrbApp
 
   def destroy
     Log.debug("destroy() called")
-    @gfx.destroy if @gfx  # Cleanup graphics resources
+
+    # Send exit notification to kernel BEFORE cleanup
+    begin
+      exit_data = MessagePack.pack({"cmd" => "exit"})
+      _send_message(0, FmrbConst::MSG_TYPE_APP_CONTROL, exit_data)
+      Log.debug("Exit notification sent to kernel")
+    rescue => e
+      Log.error("Failed to send exit notification: #{e}")
+    end
+
+    if @gfx
+      @gfx.destroy  # Cleanup graphics resources
+      @gfx = nil    # Prevent finalizer from running during mrb_close
+    end
     on_destroy
     _cleanup()  # C function: cleanup canvas and message queue
   end

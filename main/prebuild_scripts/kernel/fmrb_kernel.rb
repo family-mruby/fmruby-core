@@ -36,6 +36,11 @@ class FmrbKernelImpl < FmrbKernel
     # Window list optimization
     @window_list_dirty = true
 
+    # Periodic cleanup tracking
+    @tick_count = 0
+    @last_cleanup_tick = 0
+    @cleanup_interval = 10  # Check every 10 ticks (about 167ms at 60Hz)
+
     _init
     Log.info("Tick = #{@tick}")
     Log.info("Max App Number = #{@max_app_num}")
@@ -99,12 +104,12 @@ class FmrbKernelImpl < FmrbKernel
       else
         Log.error("Failed to spawn app: #{app_name}")
       end
+    when "exit"
+      Log.info("App exit notification from pid=#{pid}")
+      cleanup_terminated_app(pid)
     when "kill"
       Log.info("Kill request from pid=#{pid} (not implemented)")
-      # TODO: Reset HID target if this was the target app
-      # _set_hid_target(0xFF)
-      # Update window list after kill
-      # update_window_list
+      # TODO: Implement kill command to forcefully terminate app
     when "suspend"
       Log.info("Suspend request (not implemented)")
     when "resume"
@@ -354,8 +359,76 @@ class FmrbKernelImpl < FmrbKernel
     target_window
   end
 
+  def cleanup_terminated_app(pid)
+    Log.info("Cleaning up terminated app: pid=#{pid}")
+
+    # Reset HID target if this was the target app
+    if @hid_target_pid == pid
+      _set_hid_target(0xFF)
+      @hid_target_pid = nil
+      Log.info("Cleared HID target (app #{pid} terminated)")
+    end
+
+    # Release mouse capture if this app had it
+    if @capture_pid == pid
+      @capture_pid = nil
+      @capture_mode = nil
+      Log.info("Released mouse capture (app #{pid} terminated)")
+    end
+
+    # Clear mouse_down state if needed
+    if @mouse_down_pid == pid
+      @mouse_down_pid = nil
+    end
+
+    # Force immediate check (app may still be transitioning to STOPPING state)
+    # This will be rechecked periodically until the app fully terminates
+    mark_window_list_dirty
+    check_terminated_apps
+  end
+
+  def check_terminated_apps
+    # Get current window list and check for changes
+    old_count = @window_list.size
+    update_window_list
+    new_count = @window_list.size
+
+    if old_count != new_count
+      Log.debug("Periodic cleanup: window list changed (#{old_count} -> #{new_count})")
+
+      # Check if any tracked PIDs are no longer in the window list
+      window_pids = @window_list.map { |w| w[:pid] }
+
+      # Clean up HID target if it's gone
+      if @hid_target_pid && !window_pids.include?(@hid_target_pid)
+        Log.info("HID target app #{@hid_target_pid} no longer exists")
+        @hid_target_pid = nil
+        _set_hid_target(0xFF)
+      end
+
+      # Clean up capture if it's gone
+      if @capture_pid && !window_pids.include?(@capture_pid)
+        Log.info("Captured app #{@capture_pid} no longer exists")
+        @capture_pid = nil
+        @capture_mode = nil
+      end
+
+      # Clean up mouse_down if it's gone
+      if @mouse_down_pid && !window_pids.include?(@mouse_down_pid)
+        @mouse_down_pid = nil
+      end
+    end
+  end
+
   def tick_process
     # Periodic kernel tasks
+    @tick_count += 1
+
+    # Periodic cleanup check for terminated apps
+    if @tick_count - @last_cleanup_tick >= @cleanup_interval
+      check_terminated_apps
+      @last_cleanup_tick = @tick_count
+    end
   end
 
   def main_loop

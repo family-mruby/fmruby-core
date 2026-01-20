@@ -21,12 +21,10 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
 
     // Process state constants
     mrb_define_const(mrb, const_module, "PROC_STATE_FREE", mrb_fixnum_value(PROC_STATE_FREE));
-    mrb_define_const(mrb, const_module, "PROC_STATE_ALLOCATED", mrb_fixnum_value(PROC_STATE_ALLOCATED));
     mrb_define_const(mrb, const_module, "PROC_STATE_INIT", mrb_fixnum_value(PROC_STATE_INIT));
     mrb_define_const(mrb, const_module, "PROC_STATE_RUNNING", mrb_fixnum_value(PROC_STATE_RUNNING));
     mrb_define_const(mrb, const_module, "PROC_STATE_SUSPENDED", mrb_fixnum_value(PROC_STATE_SUSPENDED));
     mrb_define_const(mrb, const_module, "PROC_STATE_STOPPING", mrb_fixnum_value(PROC_STATE_STOPPING));
-    mrb_define_const(mrb, const_module, "PROC_STATE_ZOMBIE", mrb_fixnum_value(PROC_STATE_ZOMBIE));
 
     // Message type constants
     mrb_define_const(mrb, const_module, "MSG_TYPE_APP_CONTROL", mrb_fixnum_value(FMRB_MSG_TYPE_APP_CONTROL));

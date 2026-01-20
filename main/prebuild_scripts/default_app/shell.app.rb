@@ -81,7 +81,11 @@ class ShellApp < FmrbApp
 
   def shell_task
     loop do
+      # Check if app is still running
+      break if !@running
+
       ch = getch
+      break if ch.nil?  # getch returns nil when app is terminating
 
       # Handle special keys
       case ch
@@ -164,9 +168,10 @@ class ShellApp < FmrbApp
   end
 
   def getch
-    while @input_buffer.empty?
+    while @input_buffer.empty? && @running
       sleep_ms @frame_ms
     end
+    return nil if !@running  # App is terminating
     char = @input_buffer.shift
     #Log.debug("[getch] Returning character: #{char} (#{char.chr})")
     char

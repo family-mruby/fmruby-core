@@ -23,12 +23,10 @@ typedef enum {
 // State machine for app lifecycle (strict transitions enforced)
 typedef enum {
     PROC_STATE_FREE = 0,        // Slot available
-    PROC_STATE_ALLOCATED,       // Context allocated, initializing
-    PROC_STATE_INIT,            // Initialization complete, ready to start
+    PROC_STATE_INIT,            // Context allocated, VM initialized, ready to start
     PROC_STATE_RUNNING,         // VM running
     PROC_STATE_SUSPENDED,       // Temporarily suspended
     PROC_STATE_STOPPING,        // Shutdown requested
-    PROC_STATE_ZOMBIE,          // Terminated, awaiting cleanup
 } fmrb_proc_state_t;
 
 enum FMRB_APP_TYPE{

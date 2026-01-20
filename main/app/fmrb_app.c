@@ -36,7 +36,7 @@ static fmrb_semaphore_t g_ctx_lock = NULL;
 
 // State transition strings for debugging
 static const char* state_names[] = {
-    "FREE", "ALLOCATED", "INIT", "RUNNING", "SUSPENDED", "STOPPING", "ZOMBIE"
+    "FREE", "INIT", "RUNNING", "SUSPENDED", "STOPPING"
 };
 
 // ============================================================================
@@ -55,22 +55,18 @@ static inline const char* state_str(fmrb_proc_state_t state) {
  * Validate state transition
  */
 static bool is_valid_transition(fmrb_proc_state_t from, fmrb_proc_state_t to) {
-    // State machine: FREE -> ALLOCATED -> INIT -> RUNNING <-> SUSPENDED
-    //                                              RUNNING -> STOPPING -> ZOMBIE -> FREE
+    // State machine: FREE -> INIT -> RUNNING <-> SUSPENDED
+    //                                RUNNING -> STOPPING -> FREE
     switch (from) {
         case PROC_STATE_FREE:
-            return (to == PROC_STATE_ALLOCATED);
-        case PROC_STATE_ALLOCATED:
-            return (to == PROC_STATE_INIT || to == PROC_STATE_FREE);  // Allow rollback
+            return (to == PROC_STATE_INIT);
         case PROC_STATE_INIT:
-            return (to == PROC_STATE_RUNNING || to == PROC_STATE_FREE);
+            return (to == PROC_STATE_RUNNING || to == PROC_STATE_FREE);  // Allow rollback
         case PROC_STATE_RUNNING:
             return (to == PROC_STATE_SUSPENDED || to == PROC_STATE_STOPPING);
         case PROC_STATE_SUSPENDED:
             return (to == PROC_STATE_RUNNING || to == PROC_STATE_STOPPING);
         case PROC_STATE_STOPPING:
-            return (to == PROC_STATE_ZOMBIE);
-        case PROC_STATE_ZOMBIE:
             return (to == PROC_STATE_FREE);
         default:
             return false;
@@ -165,6 +161,7 @@ static void inspect_irep(mrb_state *mrb, const char* app_name, const mrc_irep *i
 
 /**
  * TLS destructor - called automatically when task is deleted
+ * Note: Resources are already cleaned up in app_task_entry() before fmrb_task_delete()
  */
 static void tls_destructor(int idx, void* pv) {
     int32_t idx_i32 = (int32_t)idx;  // Convert FreeRTOS int to stdint
@@ -172,54 +169,10 @@ static void tls_destructor(int idx, void* pv) {
     fmrb_app_task_context_t* ctx = (fmrb_app_task_context_t*)pv;
     if (!ctx) return;
 
-    FMRB_LOGI(TAG, "[%s gen=%u] TLS destructor called", ctx->app_name, ctx->gen);
+    FMRB_LOGI(TAG, "[%s gen=%u] TLS destructor called (cleanup already done)", ctx->app_name, ctx->gen);
 
-    // Lock for state transition
-    if (fmrb_semaphore_take(g_ctx_lock, FMRB_MS_TO_TICKS(1000)) != FMRB_TRUE) {
-        FMRB_LOGE(TAG, "[%s] Failed to acquire lock in destructor", ctx->app_name);
-        return;
-    }
-
-    // Close VM based on type
-    switch (ctx->vm_type) {
-        case FMRB_VM_TYPE_MRUBY:
-            if (ctx->mrb) {
-                FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
-                mrb_close(ctx->mrb);
-                ctx->mrb = NULL;
-            }
-            break;
-        case FMRB_VM_TYPE_LUA:
-            if (ctx->lua) {
-                FMRB_LOGI(TAG, "[%s] Closing Lua VM", ctx->app_name);
-                fmrb_lua_close(ctx->lua);
-                ctx->lua = NULL;
-            }
-            break;
-        case FMRB_VM_TYPE_NATIVE:
-            // No VM to close for native functions
-            break;
-        default:
-            FMRB_LOGW(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
-            break;
-    }
-
-    // Delete semaphore
-    if (ctx->semaphore) {
-        fmrb_semaphore_delete(ctx->semaphore);
-        ctx->semaphore = NULL;
-    }
-
-    // Transition to ZOMBIE then FREE
-    transition_state(ctx, PROC_STATE_ZOMBIE);
-    transition_state(ctx, PROC_STATE_FREE);
-
-    // Clear task handle
-    ctx->task = 0;
-
-    fmrb_semaphore_give(g_ctx_lock);
-
-    FMRB_LOGI(TAG, "[%s gen=%u] Resources cleaned up", ctx->app_name, ctx->gen);
+    // All cleanup was already performed in app_task_entry() before fmrb_task_delete()
+    // Nothing to do here
 }
 
 /**
@@ -584,22 +537,66 @@ static void app_task_main(void* arg) {
     }
 
 cleanup:
-    // Free script buffer if allocated
+    FMRB_LOGI(TAG, "[%s gen=%u] Task exiting normally", ctx->app_name, ctx->gen);
+
+    // Perform cleanup immediately before task deletion
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+
+    // Transition to STOPPING
+    transition_state(ctx, PROC_STATE_STOPPING);
+
+    // Close VM based on type (BEFORE destroying memory handle!)
+    switch (ctx->vm_type) {
+        case FMRB_VM_TYPE_MRUBY:
+            if (ctx->mrb) {
+                FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
+                mrb_close(ctx->mrb);
+                ctx->mrb = NULL;
+            }
+            break;
+        case FMRB_VM_TYPE_LUA:
+            if (ctx->lua) {
+                FMRB_LOGI(TAG, "[%s] Closing Lua VM", ctx->app_name);
+                fmrb_lua_close(ctx->lua);
+                ctx->lua = NULL;
+            }
+            break;
+        case FMRB_VM_TYPE_NATIVE:
+            // No VM to close for native functions
+            break;
+        default:
+            FMRB_LOGW(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
+            break;
+    }
+
+    // Free script buffer AFTER VM is closed (IRep may reference this buffer)
     if (need_free_script && script_buffer) {
         fmrb_sys_free(script_buffer);
     }
-    if (ctx->mem_handle >=0 ) {
+
+    // Destroy memory handle AFTER VM is closed
+    if (ctx->mem_handle >= 0) {
         fmrb_mem_destroy_handle(ctx->mem_handle);
+        ctx->mem_handle = -1;
     }
 
-    FMRB_LOGI(TAG, "[%s gen=%u] Task exiting normally", ctx->app_name, ctx->gen);
+    // Delete semaphore
+    if (ctx->semaphore) {
+        fmrb_semaphore_delete(ctx->semaphore);
+        ctx->semaphore = NULL;
+    }
 
-    // Transition to STOPPING
-    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
-    transition_state(ctx, PROC_STATE_STOPPING);
+    // Transition to FREE
+    transition_state(ctx, PROC_STATE_FREE);
+
+    // Clear task handle
+    ctx->task = 0;
+
     fmrb_semaphore_give(g_ctx_lock);
 
-    // TLS destructor will handle cleanup
+    FMRB_LOGI(TAG, "[%s gen=%u] Resources cleaned up", ctx->app_name, ctx->gen);
+
+    // Delete task (TLS destructor will be called but resources are already freed)
     fmrb_task_delete(0);
 }
 
@@ -738,7 +735,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     }
 
     ctx = &g_ctx_pool[idx];
-    transition_state(ctx, PROC_STATE_ALLOCATED);
+    transition_state(ctx, PROC_STATE_INIT);
     fmrb_semaphore_give(g_ctx_lock);
 
     // Initialize context fields
@@ -855,13 +852,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         goto unwind;
     }
 
-    // Transition to INIT
-    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
-    if (!transition_state(ctx, PROC_STATE_INIT)) {
-        fmrb_semaphore_give(g_ctx_lock);
-        goto unwind;
-    }
-    fmrb_semaphore_give(g_ctx_lock);
+    // Already in INIT state (set at line 735)
 
     // Create FreeRTOS task
     fmrb_base_type_t result;
