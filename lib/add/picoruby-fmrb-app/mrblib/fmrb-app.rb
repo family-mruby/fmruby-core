@@ -30,11 +30,20 @@ class FmrbApp
 
   end
 
-  def draw_window_frame    
+  def draw_window_frame
     # Draw title bar
     @gfx.fill_rect(0, 0, @window_width, 11, 0xC5)
     @gfx.fill_rect(2, 2, 8, 8, 0x60) # menu button
     @gfx.draw_text(12, 2, @name, FmrbGfx::WHITE)
+
+    # Draw close button (X) on the right side of title bar
+    close_btn_x = @window_width - 10
+    close_btn_y = 2
+    @gfx.fill_rect(close_btn_x, close_btn_y, 8, 8, 0xE0) # red background
+    # Draw X mark (two diagonal lines)
+    @gfx.draw_line(close_btn_x + 2, close_btn_y + 2, close_btn_x + 5, close_btn_y + 5, FmrbGfx::WHITE)
+    @gfx.draw_line(close_btn_x + 5, close_btn_y + 2, close_btn_x + 2, close_btn_y + 5, FmrbGfx::WHITE)
+
     # Draw window border
     @gfx.draw_rect(0, 0, @window_width, @window_height, 0x60)
   end
@@ -63,7 +72,20 @@ class FmrbApp
 
   def on_event(ev)
     # Called from C
-    #Log.debug("on_event called")
+    Log.info("FmrbApp on_event called: type=#{ev[:type]}, button=#{ev[:button]}, x=#{ev[:x]}, y=#{ev[:y]}")
+
+    # Handle close button click
+    if ev[:type] == :mouse_up && ev[:button] == 1
+      close_btn_x = @window_width - 10
+      close_btn_y = 2
+      Log.info("Checking close button: close_btn_x=#{close_btn_x}, close_btn_y=#{close_btn_y}, ev[:x]=#{ev[:x]}, ev[:y]=#{ev[:y]}")
+      # Check if click is within close button area
+      if ev[:x] >= close_btn_x && ev[:x] < close_btn_x + 8 &&
+         ev[:y] >= close_btn_y && ev[:y] < close_btn_y + 8
+        Log.info("Close button clicked, stopping app")
+        stop
+      end
+    end
   end
 
   # Internal methods

@@ -176,9 +176,9 @@ class FmrbKernelImpl < FmrbKernel
           @resize_start_x = x
           @resize_start_y = y
           Log.info("Start resize: PID #{target_pid}, size=(#{win_width}x#{win_height})")
-        # Check if click is in menu bar region (not resizing)
-        elsif target_name != "system_gui" && relative_y < 11
-          # Start drag and capture mouse
+        # Check if click is in menu bar region (not resizing and not close button)
+        elsif target_name != "system_gui" && relative_y < 11 && relative_x < win_width - 10
+          # Start drag and capture mouse (excluding close button area on the right)
           @capture_mode = :drag
           @capture_pid = target_pid
           @drag_offset_x = x - win_x
@@ -186,8 +186,18 @@ class FmrbKernelImpl < FmrbKernel
           Log.info("Start drag: PID #{target_pid}, offset=(#{@drag_offset_x},#{@drag_offset_y})")
         end
 
-        # Forward event to the clicked window
-        _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+        # Create new binary message with relative coordinates
+        # Format: subtype(1 byte) + button(1 byte) + x(2 bytes) + y(2 bytes)
+        relative_data = "\x00\x00\x00\x00\x00\x00"
+        relative_data.setbyte(0, subtype)
+        relative_data.setbyte(1, button)
+        relative_data.setbyte(2, relative_x & 0xFF)        # x low byte
+        relative_data.setbyte(3, (relative_x >> 8) & 0xFF) # x high byte
+        relative_data.setbyte(4, relative_y & 0xFF)        # y low byte
+        relative_data.setbyte(5, (relative_y >> 8) & 0xFF) # y high byte
+
+        # Forward event with relative coordinates to the clicked window
+        _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
 
       when 3  # Mouse move
         # Handle drag/resize operations based on @capture_mode
@@ -231,14 +241,46 @@ class FmrbKernelImpl < FmrbKernel
         # - Otherwise: send to @hid_target_pid (focused window)
         target_pid = @capture_pid || @hid_target_pid
         if target_pid
-          _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+          # Convert to window-relative coordinates
+          target_window = find_window_by_pid(target_pid)
+          if target_window
+            relative_x = x - target_window[:x]
+            relative_y = y - target_window[:y]
+
+            # Create new binary message with relative coordinates
+            relative_data = "\x00\x00\x00\x00\x00\x00"
+            relative_data.setbyte(0, subtype)
+            relative_data.setbyte(1, button)
+            relative_data.setbyte(2, relative_x & 0xFF)        # x low byte
+            relative_data.setbyte(3, (relative_x >> 8) & 0xFF) # x high byte
+            relative_data.setbyte(4, relative_y & 0xFF)        # y low byte
+            relative_data.setbyte(5, (relative_y >> 8) & 0xFF) # y high byte
+
+            _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
+          end
         end
 
       when 5  # Mouse button up
         # Forward to captured window or mouse_down window
         target_pid = @capture_pid || @mouse_down_pid
         if target_pid
-          _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+          # Convert to window-relative coordinates
+          target_window = find_window_by_pid(target_pid)
+          if target_window
+            relative_x = x - target_window[:x]
+            relative_y = y - target_window[:y]
+
+            # Create new binary message with relative coordinates
+            relative_data = "\x00\x00\x00\x00\x00\x00"
+            relative_data.setbyte(0, subtype)
+            relative_data.setbyte(1, button)
+            relative_data.setbyte(2, relative_x & 0xFF)        # x low byte
+            relative_data.setbyte(3, (relative_x >> 8) & 0xFF) # x high byte
+            relative_data.setbyte(4, relative_y & 0xFF)        # y low byte
+            relative_data.setbyte(5, (relative_y >> 8) & 0xFF) # y high byte
+
+            _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
+          end
         end
 
         # Release capture and reset state based on @capture_mode
@@ -282,6 +324,14 @@ class FmrbKernelImpl < FmrbKernel
 
   def mark_window_list_dirty
     @window_list_dirty = true
+  end
+
+  def find_window_by_pid(pid)
+    # Find window by PID
+    @window_list.each do |win|
+      return win if win[:pid] == pid
+    end
+    nil
   end
 
   def find_window_at(x, y)

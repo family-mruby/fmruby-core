@@ -25,6 +25,20 @@
 - 編集をした場合、Legacyコードは残さず消す
 - Doxygenコメントは、基本的に他のモジュールから参照されるヘッダのみに記載。Cソースには不要。（メンテナンスしきれないため）
 
+## ビルド方法
+
+```
+rake build:linux  # Linuxターゲットビルド
+rake build:esp32  # ESP32ターゲットビルド
+rake host:build  # Hostビルド
+rake -T # その他のコマンドの使い方
+```
+
+### 注意
+
+- lib/ 以下のファイルを編集した場合は、ビルド前に `rake clean` を実行すること
+- ターゲットをlinux - ESP32で切り替えてビルドするときは、ビルド前に `rake clean_all` を実行すること
+- プログラムの実行にはGUIが必要なため、CLAUDE Code では実行できない。ユーザがテストを行う。
 
 ## 目的
 
@@ -53,17 +67,6 @@ S3とWROVERの間はSPI通信
 fmruby-coreは、WSL2で動くプロセスで実行する（Dockerコンテナになるかもしれない）
 映像出力と音声出力は、WSL2側で動く別プロセスにソケット通信で通信して実現する。その別プロセスでは、SDL2を動かす。（将来的にはSDL2対応をベースに、WASMで動かしたりもしてみたい）
 
-## ビルド方法
-
-```
-rake build:linux  # Linuxターゲットビルド
-rake build:esp32  # ESP32ターゲットビルド
-rake host:build  # Hostビルド
-rake -T # その他のコマンドの使い方
-```
-
-注意
-ターゲットをlinux - ESP32で切り替えてビルドするときは、ビルド前に `rake clean` を実行すること
 
 ## デバッグログの制御
 

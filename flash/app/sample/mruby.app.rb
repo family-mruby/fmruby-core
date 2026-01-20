@@ -131,8 +131,10 @@ class BouncingBallApp < FmrbApp
     33
   end
 
-  def on_event(ev)
-  end
+  # def on_event(ev)
+  #   # Call parent class handler (for close button, etc.)
+  #   super(ev)
+  # end
 
   def on_resize(new_width, new_height)
     # Called when window is resized

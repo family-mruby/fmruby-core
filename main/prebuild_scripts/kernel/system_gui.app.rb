@@ -141,6 +141,9 @@ class SystemGuiApp < FmrbApp
     #Log.debug("on_event: gui app")
     #p ev
 
+    # Call parent class handler first (for close button, etc.)
+    super(ev)
+
     # Handle mouse up event
     if ev[:type] == :mouse_up
       Log.debug("Mouse button #{ev[:button]} released at (#{ev[:x]}, #{ev[:y]})")

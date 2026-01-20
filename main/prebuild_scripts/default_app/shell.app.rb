@@ -549,8 +549,13 @@ class ShellApp < FmrbApp
   end
 
   def on_event(ev)
-    #Log.debug("on_event: shell app")
-    #p ev
+    Log.info("ShellApp on_event: BEFORE super")
+    p ev
+
+    # Call parent class handler first (for close button, etc.)
+    super(ev)
+
+    Log.info("ShellApp on_event: AFTER super")
 
     if ev[:type] == :key_down
       # Add character to input buffer for getch
