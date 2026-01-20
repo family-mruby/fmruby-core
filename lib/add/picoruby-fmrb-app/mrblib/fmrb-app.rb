@@ -72,17 +72,13 @@ class FmrbApp
 
   def on_event(ev)
     # Called from C
-    Log.info("FmrbApp on_event called: type=#{ev[:type]}, button=#{ev[:button]}, x=#{ev[:x]}, y=#{ev[:y]}")
-
     # Handle close button click
     if ev[:type] == :mouse_up && ev[:button] == 1
       close_btn_x = @window_width - 10
       close_btn_y = 2
-      Log.info("Checking close button: close_btn_x=#{close_btn_x}, close_btn_y=#{close_btn_y}, ev[:x]=#{ev[:x]}, ev[:y]=#{ev[:y]}")
       # Check if click is within close button area
       if ev[:x] >= close_btn_x && ev[:x] < close_btn_x + 8 &&
          ev[:y] >= close_btn_y && ev[:y] < close_btn_y + 8
-        Log.info("Close button clicked, stopping app")
         stop
       end
     end
