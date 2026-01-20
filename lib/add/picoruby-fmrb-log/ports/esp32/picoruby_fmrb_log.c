@@ -2,10 +2,10 @@
 #include <stdio.h>
 #include <mruby.h>
 #include <mruby/string.h>
-#include "esp_log.h"
+#include "fmrb_log.h"
 #include "fmrb_app.h"
 
-// Log levels matching ESP-IDF
+// Log levels
 typedef enum {
     LOG_LEVEL_NONE = 0,
     LOG_LEVEL_ERROR,
@@ -28,20 +28,20 @@ mrb_log_set_level(mrb_state *mrb, mrb_value self)
   mrb_int level;
   
   mrb_get_args(mrb, "i", &level);
-  
-  esp_log_level_t esp_level;
+
+  int fmrb_level;
   switch (level) {
-    case LOG_LEVEL_NONE:    esp_level = ESP_LOG_NONE; break;
-    case LOG_LEVEL_ERROR:   esp_level = ESP_LOG_ERROR; break;
-    case LOG_LEVEL_WARN:    esp_level = ESP_LOG_WARN; break;
-    case LOG_LEVEL_INFO:    esp_level = ESP_LOG_INFO; break;
-    case LOG_LEVEL_DEBUG:   esp_level = ESP_LOG_DEBUG; break;
-    case LOG_LEVEL_VERBOSE: esp_level = ESP_LOG_VERBOSE; break;
+    case LOG_LEVEL_NONE:    fmrb_level = FMRB_LOG_NONE; break;
+    case LOG_LEVEL_ERROR:   fmrb_level = FMRB_LOG_ERROR; break;
+    case LOG_LEVEL_WARN:    fmrb_level = FMRB_LOG_WARN; break;
+    case LOG_LEVEL_INFO:    fmrb_level = FMRB_LOG_INFO; break;
+    case LOG_LEVEL_DEBUG:   fmrb_level = FMRB_LOG_DEBUG; break;
+    case LOG_LEVEL_VERBOSE: fmrb_level = FMRB_LOG_VERBOSE; break;
     default:
       mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid log level");
   }
-  
-  esp_log_level_set("*", esp_level);
+
+  fmrb_log_level_set("*", fmrb_level);
   
   return mrb_nil_value();
 }
@@ -59,23 +59,23 @@ mrb_log_set_level_for_tag(mrb_state *mrb, mrb_value self)
 {
   char *tag;
   mrb_int level;
-  
+
   mrb_get_args(mrb, "zi", &tag, &level);
-  
-  esp_log_level_t esp_level;
+
+  int fmrb_level;
   switch (level) {
-    case LOG_LEVEL_NONE:    esp_level = ESP_LOG_NONE; break;
-    case LOG_LEVEL_ERROR:   esp_level = ESP_LOG_ERROR; break;
-    case LOG_LEVEL_WARN:    esp_level = ESP_LOG_WARN; break;
-    case LOG_LEVEL_INFO:    esp_level = ESP_LOG_INFO; break;
-    case LOG_LEVEL_DEBUG:   esp_level = ESP_LOG_DEBUG; break;
-    case LOG_LEVEL_VERBOSE: esp_level = ESP_LOG_VERBOSE; break;
+    case LOG_LEVEL_NONE:    fmrb_level = FMRB_LOG_NONE; break;
+    case LOG_LEVEL_ERROR:   fmrb_level = FMRB_LOG_ERROR; break;
+    case LOG_LEVEL_WARN:    fmrb_level = FMRB_LOG_WARN; break;
+    case LOG_LEVEL_INFO:    fmrb_level = FMRB_LOG_INFO; break;
+    case LOG_LEVEL_DEBUG:   fmrb_level = FMRB_LOG_DEBUG; break;
+    case LOG_LEVEL_VERBOSE: fmrb_level = FMRB_LOG_VERBOSE; break;
     default:
       mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid log level");
   }
-  
-  esp_log_level_set(tag, esp_level);
-  
+
+  fmrb_log_level_set(tag, fmrb_level);
+
   return mrb_nil_value();
 }
 
@@ -120,7 +120,7 @@ mrb_log_e(mrb_state *mrb, mrb_value self)
     msg = (const char *)RSTRING_PTR(arg2);
   }
 
-  ESP_LOGE(tag, "%s", msg);
+  FMRB_LOGE(tag, "%s", msg);
 
   return mrb_nil_value();
 }
@@ -152,7 +152,7 @@ mrb_log_w(mrb_state *mrb, mrb_value self)
     msg = (const char *)RSTRING_PTR(arg2);
   }
 
-  ESP_LOGW(tag, "%s", msg);
+  FMRB_LOGW(tag, "%s", msg);
 
   return mrb_nil_value();
 }
@@ -184,7 +184,7 @@ mrb_log_i(mrb_state *mrb, mrb_value self)
     msg = (const char *)RSTRING_PTR(arg2);
   }
 
-  ESP_LOGI(tag, "%s", msg);
+  FMRB_LOGI(tag, "%s", msg);
 
   return mrb_nil_value();
 }
@@ -216,7 +216,7 @@ mrb_log_d(mrb_state *mrb, mrb_value self)
     msg = (const char *)RSTRING_PTR(arg2);
   }
 
-  ESP_LOGD(tag, "%s", msg);
+  FMRB_LOGD(tag, "%s", msg);
 
   return mrb_nil_value();
 }

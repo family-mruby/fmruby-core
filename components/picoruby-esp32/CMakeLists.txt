@@ -10,6 +10,7 @@ if(IDF_TARGET STREQUAL "linux")
     set(PLATFORM_PRIV_REQUIRES
         fmrb_hal
         fmrb_gfx
+        fmrb_log
     )
 
     if(ENABLE_ASAN)
@@ -38,6 +39,7 @@ else()
         esp_hw_support
         fmrb_hal
         fmrb_gfx
+        fmrb_log
     )
 endif()
 
