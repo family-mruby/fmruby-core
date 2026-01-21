@@ -1,6 +1,8 @@
 # Rakefile — Family mruby ESP-IDF build wrapper (Docker)
 require "rake"
 
+USB_SERIAL_PORT="/dev/ttyUSB0"
+
 # Load environment variables from .env file
 if File.exist?(".env")
   File.readlines(".env").each do |line|
@@ -160,7 +162,12 @@ end
 
 desc "Flash to ESP32"
 task :flash do
-  sh "#{DOCKER_CMD_PRIVILEGED} idf.py flash"
+  sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{USB_SERIAL_PORT} flash"
+end
+
+desc "Check ESP32 HW"
+task :check do
+  sh "#{DOCKER_CMD_PRIVILEGED} esptool.py -p #{USB_SERIAL_PORT} flash_id"
 end
 
 desc "Open menuconfig"
@@ -191,7 +198,7 @@ end
 
 desc "Serial monitor"
 task :monitor do
-  sh "#{DOCKER_CMD_INTERACTIVE} idf.py monitor"
+  sh "#{DOCKER_CMD_INTERACTIVE} idf.py -p #{USB_SERIAL_PORT} monitor"
 end
 
 namespace :host do
@@ -224,7 +231,7 @@ namespace :test do
     sleep 2  # 起動待ち
 
     begin
-      puts "Starting FMRuby Core..."
+      puts "Starting Family mruby Core..."
       sh "./build/fmruby-core.elf"
     ensure
       # 終了処理
