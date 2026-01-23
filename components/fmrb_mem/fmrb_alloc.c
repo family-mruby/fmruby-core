@@ -62,14 +62,14 @@ static fmrb_pool_node_t* find_pool_node(fmrb_mem_handle_t handle) {
 // Create a new memory pool and return its handle
 fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size, enum FMRB_MEM_POOL_ID mem_pool_id) {
     if (pool == NULL || size == 0) {
-        ESP_LOGE(TAG, "Invalid parameters");
+        FMRB_LOGE(TAG, "Invalid parameters");
         return -1;
     }
 
     // Allocate pool node from the provided pool memory
     // Reserve space at the beginning of the pool for the node structure
     if (size < sizeof(fmrb_pool_node_t) + 1024) {
-        ESP_LOGE(TAG, "Pool too small");
+        FMRB_LOGE(TAG, "Pool too small");
         return -1;
     }
 
@@ -81,7 +81,7 @@ fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size, enum FMRB_MEM_
     // Create TLSF instance with the memory pool
     node->tlsf = tlsf_create_with_pool(tlsf_pool_start, tlsf_pool_size);
     if (node->tlsf == NULL) {
-        ESP_LOGE(TAG, "tlsf_create_with_pool failed");
+        FMRB_LOGE(TAG, "tlsf_create_with_pool failed");
         return -1;
     }
 
@@ -98,7 +98,7 @@ fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size, enum FMRB_MEM_
     g_pool_list = node;
     MUTEX_UNLOCK(g_list_mutex);
 
-    ESP_LOGI(TAG, "Created pool handle=%d, size=%zu", node->handle, tlsf_pool_size);
+    FMRB_LOGI(TAG, "Created pool handle=%d, size=%zu", node->handle, tlsf_pool_size);
     return node->handle;
 }
 
@@ -125,7 +125,7 @@ int fmrb_mem_destroy_handle(fmrb_mem_handle_t handle) {
             MUTEX_DESTROY(node->mutex);
 
             // Note: We don't free the node itself as it's part of the original pool memory
-            ESP_LOGI(TAG, "Destroyed pool handle=%d", handle);
+            FMRB_LOGI(TAG, "Destroyed pool handle=%d", handle);
             return 0;
         }
         prev = node;
@@ -133,7 +133,7 @@ int fmrb_mem_destroy_handle(fmrb_mem_handle_t handle) {
     }
 
     MUTEX_UNLOCK(g_list_mutex);
-    ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+    FMRB_LOGE(TAG, "Pool handle not found: %d", handle);
     return -1;
 }
 
@@ -144,7 +144,7 @@ void* fmrb_malloc(fmrb_mem_handle_t handle, size_t size) {
     MUTEX_UNLOCK(g_list_mutex);
 
     if (node == NULL) {
-        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        FMRB_LOGE(TAG, "Pool handle not found: %d", handle);
         return NULL;
     }
 
@@ -162,7 +162,7 @@ void* fmrb_calloc(fmrb_mem_handle_t handle, size_t nmemb, size_t size) {
     MUTEX_UNLOCK(g_list_mutex);
 
     if (node == NULL) {
-        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        FMRB_LOGE(TAG, "Pool handle not found: %d", handle);
         return NULL;
     }
 
@@ -185,7 +185,7 @@ void* fmrb_realloc(fmrb_mem_handle_t handle, void* ptr, size_t size) {
     MUTEX_UNLOCK(g_list_mutex);
 
     if (node == NULL) {
-        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        FMRB_LOGE(TAG, "Pool handle not found: %d", handle);
         return NULL;
     }
 
@@ -207,7 +207,7 @@ void fmrb_free(fmrb_mem_handle_t handle, void* ptr) {
     MUTEX_UNLOCK(g_list_mutex);
 
     if (node == NULL) {
-        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        FMRB_LOGE(TAG, "Pool handle not found: %d", handle);
         return;
     }
 
@@ -223,7 +223,7 @@ int32_t fmrb_mem_check(fmrb_mem_handle_t handle) {
     MUTEX_UNLOCK(g_list_mutex);
 
     if (node == NULL) {
-        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        FMRB_LOGE(TAG, "Pool handle not found: %d", handle);
         return -1;
     }
 
@@ -272,7 +272,7 @@ int fmrb_mem_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats) {
     MUTEX_UNLOCK(g_list_mutex);
 
     if (node == NULL || node->pool == NULL) {
-        ESP_LOGE(TAG, "Pool handle not found: %d", handle);
+        FMRB_LOGE(TAG, "Pool handle not found: %d", handle);
         return -1;
     }
 
@@ -286,7 +286,7 @@ int fmrb_mem_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats) {
 
 static void fmrb_sys_mem_init(void){
     system_handle = fmrb_mem_create_handle(fmrb_get_mempool_ptr(POOL_ID_SYSTEM), FMRB_MEM_POOL_SIZE_SYSTEM, POOL_ID_SYSTEM);
-    ESP_LOGI(TAG, "System mem allocator initialized. Handle = %d", system_handle);
+    FMRB_LOGI(TAG, "System mem allocator initialized. Handle = %d", system_handle);
 }
 
 void* fmrb_sys_malloc(size_t size)
@@ -315,7 +315,7 @@ void fmrb_mem_init(void){
 int fmrb_sys_mem_get_stats(fmrb_pool_stats_t* stats)
 {
     if (system_handle < 0) {
-        ESP_LOGE(TAG, "System pool not initialized");
+        FMRB_LOGE(TAG, "System pool not initialized");
         return -1;
     }
     return fmrb_mem_get_stats(system_handle, stats);
@@ -330,15 +330,15 @@ void fmrb_mem_print_psram_info(void)
 
     if (total_psram > 0) {
         size_t used_psram = total_psram - free_psram;
-        ESP_LOGI(TAG, "PSRAM Total: %zu KB", total_psram / 1024);
-        ESP_LOGI(TAG, "PSRAM Used:  %zu KB (%zu%%)",
-                 used_psram / 1024,
-                 (used_psram * 100) / total_psram);
-        ESP_LOGI(TAG, "PSRAM Free:  %zu KB (%zu%%)",
-                 free_psram / 1024,
-                 (free_psram * 100) / total_psram);
+        FMRB_LOGI(TAG, "PSRAM Total: %zu KB", total_psram / 1024);
+        FMRB_LOGI(TAG, "PSRAM Used:  %zu KB (%zu%%)",
+                  used_psram / 1024,
+                  (used_psram * 100) / total_psram);
+        FMRB_LOGI(TAG, "PSRAM Free:  %zu KB (%zu%%)",
+                  free_psram / 1024,
+                  (free_psram * 100) / total_psram);
     } else {
-        ESP_LOGI(TAG, "PSRAM: Not available");
+        FMRB_LOGI(TAG, "PSRAM: Not available");
     }
 #endif
 }
