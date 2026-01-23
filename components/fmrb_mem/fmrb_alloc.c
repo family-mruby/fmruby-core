@@ -8,6 +8,10 @@
 #include "fmrb_err.h"
 #include "tlsf.h"
 
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "esp_heap_caps.h"
+#endif
+
 // Use fmrb_rtos abstraction for mutex
 #define MUTEX_TYPE fmrb_semaphore_t
 #define MUTEX_INIT(m) ((m) = fmrb_semaphore_create_mutex())
@@ -315,4 +319,26 @@ int fmrb_sys_mem_get_stats(fmrb_pool_stats_t* stats)
         return -1;
     }
     return fmrb_mem_get_stats(system_handle, stats);
+}
+
+// Print PSRAM information (ESP32 only)
+void fmrb_mem_print_psram_info(void)
+{
+#ifndef CONFIG_IDF_TARGET_LINUX
+    size_t free_psram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+    size_t total_psram = heap_caps_get_total_size(MALLOC_CAP_SPIRAM);
+
+    if (total_psram > 0) {
+        size_t used_psram = total_psram - free_psram;
+        ESP_LOGI(TAG, "PSRAM Total: %zu KB", total_psram / 1024);
+        ESP_LOGI(TAG, "PSRAM Used:  %zu KB (%zu%%)",
+                 used_psram / 1024,
+                 (used_psram * 100) / total_psram);
+        ESP_LOGI(TAG, "PSRAM Free:  %zu KB (%zu%%)",
+                 free_psram / 1024,
+                 (free_psram * 100) / total_psram);
+    } else {
+        ESP_LOGI(TAG, "PSRAM: Not available");
+    }
+#endif
 }

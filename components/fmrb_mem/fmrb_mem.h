@@ -48,6 +48,9 @@ void* fmrb_sys_malloc(size_t size);
 void fmrb_sys_free(void* ptr);
 int fmrb_sys_mem_get_stats(fmrb_pool_stats_t* stats);
 
+// Platform PSRAM information (ESP32 only)
+void fmrb_mem_print_psram_info(void);
+
 #ifdef __cplusplus
 }
 #endif

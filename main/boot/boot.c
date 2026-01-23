@@ -6,6 +6,7 @@
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
+#include "fmrb_mem.h"
 #include "fmrb_gfx.h"
 #include "fmrb_audio.h"
 #include "fmrb_toml.h"
@@ -104,8 +105,11 @@ void show_config(void)
     FMRB_LOGI(TAG, "current tick=%u", (unsigned)fmrb_task_get_tick_count());
     FMRB_LOGI(TAG, "FMRB_MAX_APPS                = %d", FMRB_MAX_APPS);
     FMRB_LOGI(TAG, "FMRB_MAX_USER_APPS           = %d", FMRB_MAX_USER_APPS);
-    
+
     FMRB_LOGI(TAG, "------------------------------------------------");
+
+    // Display PSRAM information (ESP32 only)
+    fmrb_mem_print_psram_info();
 }
 
 static bool init_hardware(void)
