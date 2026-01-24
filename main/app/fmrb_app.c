@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 #include <picoruby.h>
-#include "picoruby_fmrb_app.h"  // For fmrb_app_vm_cleanup()
+#include "picoruby_fmrb_app.h"
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
@@ -292,6 +292,284 @@ static char* load_script_file(const char* filepath, size_t* out_size) {
     return buffer;
 }
 
+// ============================================================================
+// VM lifecycle helper functions
+// ============================================================================
+
+/**
+ * Create mruby VM instance
+ * @return 0 on success, -1 on error
+ */
+static int create_vm_mruby(fmrb_app_task_context_t* ctx) {
+    void* pool_ptr = fmrb_get_mempool_ptr(ctx->mempool_id);
+    size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
+    FMRB_LOGI(TAG, "[%s] mempool_id=%d, ptr=%p, size=%zu",
+              ctx->app_name, ctx->mempool_id, pool_ptr, pool_size);
+    fmrb_mempool_check_pointer(pool_ptr);
+
+    ctx->mrb = mrb_open_with_custom_alloc(pool_ptr, pool_size);
+    FMRB_LOGI(TAG, "[%s] mrb_open_with_custom_alloc returned: %p", ctx->app_name, ctx->mrb);
+
+    if (!ctx->mrb) {
+        FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
+        return -1;
+    }
+
+    FMRB_LOGI(TAG, "[%s] mruby VM created successfully", ctx->app_name);
+    return 0;
+}
+
+/**
+ * Create Lua VM instance
+ * @return 0 on success, -1 on error
+ */
+static int create_vm_lua(fmrb_app_task_context_t* ctx) {
+    ctx->lua = fmrb_lua_newstate(ctx);
+    if (!ctx->lua) {
+        FMRB_LOGE(TAG, "[%s] Failed to open Lua VM", ctx->app_name);
+        return -1;
+    }
+    fmrb_lua_openlibs(ctx->lua);
+
+    FMRB_LOGI(TAG, "[%s] Lua VM created with mempool=%d",
+              ctx->app_name, ctx->mempool_id);
+    return 0;
+}
+
+/**
+ * Execute mruby script
+ * @param ctx Task context
+ * @param load_mode Load mode (bytecode or file)
+ * @param load_data Pointer to bytecode or filepath string
+ * @param[out] script_buffer_out Allocated script buffer (caller must free)
+ * @param[out] need_free_out Flag indicating if buffer needs freeing
+ * @return 0 on success, -1 on error
+ */
+static int execute_mruby_script(fmrb_app_task_context_t* ctx,
+                                fmrb_load_mode_t load_mode,
+                                void* load_data,
+                                char** script_buffer_out,
+                                bool* need_free_out) {
+    mrc_irep *irep_obj = NULL;
+    const unsigned char* irep_ptr = NULL;
+    char* script_buffer = NULL;
+    bool need_free_script = false;
+
+    mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
+    if (!cc) {
+        FMRB_LOGE(TAG, "[%s] Failed to create compile context", ctx->app_name);
+        return -1;
+    }
+
+    if (load_mode == FMRB_LOAD_MODE_BYTECODE) {
+        // Load from bytecode (IREP)
+        irep_ptr = (const unsigned char*)load_data;
+        irep_obj = mrb_read_irep(ctx->mrb, irep_ptr);
+        if (irep_obj == NULL) {
+            FMRB_LOGE(TAG, "[%s] Failed to read IREP bytecode", ctx->app_name);
+            mrc_ccontext_free(cc);
+            return -1;
+        }
+
+        // Inspect IREP structure (no script buffer for bytecode)
+        inspect_irep(ctx->mrb, ctx->app_name, irep_obj, NULL, NULL);
+    } else if (load_mode == FMRB_LOAD_MODE_FILE) {
+        // Load from Ruby source file
+        const char* filepath = (const char*)load_data;
+        size_t script_size = 0;
+
+        FMRB_LOGI(TAG, "[%s] Loading Ruby script from file: %s", ctx->app_name, filepath);
+
+        script_buffer = load_script_file(filepath, &script_size);
+        if (!script_buffer) {
+            FMRB_LOGE(TAG, "[%s] Failed to load script file: %s", ctx->app_name, filepath);
+            mrc_ccontext_free(cc);
+            return -1;
+        }
+        need_free_script = true;
+
+        const uint8_t *script_ptr = (const uint8_t *)script_buffer;
+        FMRB_LOGI(TAG, "[%s] Script size: %zu bytes", ctx->app_name, script_size);
+        FMRB_LOGI(TAG, "[%s] script_buffer range: %p - %p",
+                  ctx->app_name, (void*)script_buffer, (void*)((uint8_t*)script_buffer + script_size));
+
+        irep_obj = mrc_load_string_cxt(cc, &script_ptr, script_size);
+
+        FMRB_LOGI(TAG, "[%s] After mrc_load_string_cxt, irep_obj=%p, mrb->exc=%p",
+                  ctx->app_name, irep_obj, ctx->mrb->exc);
+
+        if (!irep_obj) {
+            FMRB_LOGE(TAG, "[%s] Failed to compile Ruby script", ctx->app_name);
+            if (ctx->mrb->exc) {
+                mrb_print_error(ctx->mrb);
+            }
+            mrc_ccontext_free(cc);
+            fmrb_sys_free(script_buffer);
+            return -1;
+        }
+
+        FMRB_LOGI(TAG, "[%s] Ruby script compiled successfully", ctx->app_name);
+
+        // Inspect IREP structure (with script buffer range for analysis)
+        inspect_irep(ctx->mrb, ctx->app_name, irep_obj,
+                    script_buffer, (uint8_t*)script_buffer + script_size);
+
+        // script_buffer cannot be freed here.
+        // TODO: investigate how the buffer is used.
+    } else {
+        FMRB_LOGE(TAG, "[%s] Invalid load mode: %d", ctx->app_name, load_mode);
+        mrc_ccontext_free(cc);
+        return -1;
+    }
+
+    // Execute irep
+    FMRB_LOGI(TAG, "[%s] Execute irep", ctx->app_name);
+
+    mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
+    mrb_value task = mrc_create_task(cc, irep_obj, name, mrb_nil_value(), mrb_obj_value(ctx->mrb->top_self));
+    if (mrb_nil_p(task)) {
+        FMRB_LOGE(TAG, "[%s] mrc_create_task failed, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
+        mrc_ccontext_free(cc);
+        if (need_free_script) {
+            fmrb_sys_free(script_buffer);
+        }
+        return -1;
+    }
+
+    FMRB_LOGI(TAG, "[%s] mrb_tasks_run - BEFORE execution", ctx->app_name);
+    mrb_tasks_run(ctx->mrb);
+    FMRB_LOGI(TAG, "[%s] mrb_tasks_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
+
+    //TODO: check proper free process
+    if (ctx->mrb->exc) {
+        FMRB_LOGI(TAG, "[%s] Exception detected, calling mrb_print_error", ctx->app_name);
+        mrb_print_error(ctx->mrb);
+        FMRB_LOGI(TAG, "[%s] mrb_print_error completed", ctx->app_name);
+    } else {
+        FMRB_LOGI(TAG, "[%s] No exception detected", ctx->app_name);
+    }
+
+    mrb_vm_ci_env_clear(ctx->mrb, ctx->mrb->c->cibase);
+    mrc_irep_free(cc, irep_obj);
+    mrc_ccontext_free(cc);
+
+    // Return script buffer to caller for later cleanup
+    *script_buffer_out = script_buffer;
+    *need_free_out = need_free_script;
+
+    return 0;
+}
+
+/**
+ * Execute Lua script
+ * @return 0 on success, -1 on error
+ */
+static int execute_lua_script(fmrb_app_task_context_t* ctx,
+                              fmrb_load_mode_t load_mode,
+                              void* load_data) {
+    char* script_buffer = NULL;
+
+    if (load_mode == FMRB_LOAD_MODE_BYTECODE) {
+        // Load from Lua bytecode chunk
+        FMRB_LOGW(TAG, "[%s] Lua bytecode loading not yet implemented", ctx->app_name);
+        return -1;
+    } else if (load_mode == FMRB_LOAD_MODE_FILE) {
+        // Load from Lua source file
+        const char* filepath = (const char*)load_data;
+        size_t script_size = 0;
+
+        FMRB_LOGI(TAG, "[%s] Loading Lua script from file: %s", ctx->app_name, filepath);
+
+        script_buffer = load_script_file(filepath, &script_size);
+        if (!script_buffer) {
+            FMRB_LOGE(TAG, "[%s] Failed to load script file: %s", ctx->app_name, filepath);
+            return -1;
+        }
+
+        // Load and compile Lua script
+        int load_result = luaL_loadbuffer(ctx->lua, script_buffer, script_size, filepath);
+        if (load_result != LUA_OK) {
+            const char* err_msg = lua_tostring(ctx->lua, -1);
+            FMRB_LOGE(TAG, "[%s] Failed to compile Lua script: %s",
+                      ctx->app_name, err_msg ? err_msg : "unknown error");
+            lua_pop(ctx->lua, 1);  // Pop error message
+            fmrb_sys_free(script_buffer);
+            return -1;
+        }
+
+        FMRB_LOGI(TAG, "[%s] Lua script compiled successfully", ctx->app_name);
+
+        // Free script buffer immediately after compilation (no longer needed)
+        fmrb_sys_free(script_buffer);
+        script_buffer = NULL;
+
+        // Execute Lua script
+        int exec_result = lua_pcall(ctx->lua, 0, LUA_MULTRET, 0);
+        if (exec_result != LUA_OK) {
+            const char* err_msg = lua_tostring(ctx->lua, -1);
+            FMRB_LOGE(TAG, "[%s] Lua execution error: %s",
+                      ctx->app_name, err_msg ? err_msg : "unknown error");
+            lua_pop(ctx->lua, 1);  // Pop error message
+            return -1;
+        } else {
+            FMRB_LOGI(TAG, "[%s] Lua script executed successfully", ctx->app_name);
+        }
+    }
+
+    return 0;
+}
+
+/**
+ * Execute native C function
+ * @return 0 on success, -1 on error
+ */
+static int execute_native_function(fmrb_app_task_context_t* ctx, void* load_data) {
+    void (*native_func)(void*) = (void (*)(void*))load_data;
+    if (native_func) {
+        FMRB_LOGI(TAG, "[%s] Executing native function", ctx->app_name);
+        native_func(ctx);
+        return 0;
+    } else {
+        FMRB_LOGE(TAG, "[%s] Native function pointer is NULL", ctx->app_name);
+        return -1;
+    }
+}
+
+/**
+ * Destroy VM and cleanup resources
+ */
+static void destroy_vm(fmrb_app_task_context_t* ctx) {
+    switch (ctx->vm_type) {
+        case FMRB_VM_TYPE_MRUBY:
+            if (ctx->mrb) {
+                FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
+                // Cleanup VM resources (unregister from HAL tick manager)
+                fmrb_app_vm_cleanup(ctx->mrb);
+                // NOTE: mrb_close() causes segfault when called after mrc_irep_free()
+                // This is a known issue in PicoRuby (see picoruby-bin-microruby/tools/microruby/microruby.c:335)
+                // We call mrc_irep_free() + mrc_ccontext_free() in execution path,
+                // so we skip mrb_close() here to avoid double-free.
+                // Memory will be cleaned up when mem_handle is destroyed.
+                // mrb_close(ctx->mrb);
+                ctx->mrb = NULL;
+            }
+            break;
+        case FMRB_VM_TYPE_LUA:
+            if (ctx->lua) {
+                FMRB_LOGI(TAG, "[%s] Closing Lua VM", ctx->app_name);
+                fmrb_lua_close(ctx->lua);
+                ctx->lua = NULL;
+            }
+            break;
+        case FMRB_VM_TYPE_NATIVE:
+            // No VM to close for native functions
+            break;
+        default:
+            FMRB_LOGW(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
+            break;
+    }
+}
+
 /**
  * Application task entry point
  */
@@ -310,39 +588,16 @@ static void app_task_main(void* arg) {
     // Create VM based on vm_type
     switch (ctx->vm_type) {
         case FMRB_VM_TYPE_MRUBY:
-            // Create mruby VM (mrbgem initialization is executed here)
-            {
-                void* pool_ptr = fmrb_get_mempool_ptr(ctx->mempool_id);
-                size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
-                FMRB_LOGI(TAG, "[%s] mempool_id=%d, ptr=%p, size=%zu",
-                          ctx->app_name, ctx->mempool_id, pool_ptr, pool_size);
-                fmrb_mempool_check_pointer(pool_ptr);
-
-                ctx->mrb = mrb_open_with_custom_alloc(pool_ptr, pool_size);
-                FMRB_LOGI(TAG, "[%s] mrb_open_with_custom_alloc returned: %p", ctx->app_name, ctx->mrb);
-
-                if (!ctx->mrb) {
-                    FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
-                    goto cleanup;
-                }
-
-                FMRB_LOGI(TAG, "[%s] mruby VM created successfully, checking $stdout", ctx->app_name);
+            if (create_vm_mruby(ctx) != 0) {
+                goto cleanup;
             }
             break;
         case FMRB_VM_TYPE_LUA:
-            // Create Lua VM with task-specific memory pool
-            ctx->lua = fmrb_lua_newstate(ctx);
-            if (!ctx->lua) {
-                FMRB_LOGE(TAG, "[%s] Failed to open Lua VM", ctx->app_name);
+            if (create_vm_lua(ctx) != 0) {
                 goto cleanup;
             }
-            fmrb_lua_openlibs(ctx->lua);
-
-            FMRB_LOGI(TAG, "[%s] Lua VM created with mempool=%d",
-                      ctx->app_name, ctx->mempool_id);
             break;
         case FMRB_VM_TYPE_NATIVE:
-            // No VM needed for native functions
             FMRB_LOGI(TAG, "[%s] Native function mode", ctx->app_name);
             break;
         default:
@@ -366,171 +621,23 @@ static void app_task_main(void* arg) {
 
     // Execute based on VM type
     switch (ctx->vm_type) {
-        case FMRB_VM_TYPE_MRUBY: {
-            mrc_irep *irep_obj = NULL;
-            mrc_ccontext *cc = mrc_ccontext_new(ctx->mrb);
-            if (!cc) {
-                FMRB_LOGE(TAG, "[%s] Failed to create compile context", ctx->app_name);
-                goto cleanup;
-            }
-
-            if (load_mode == FMRB_LOAD_MODE_BYTECODE) {
-                // Load from bytecode (IREP)
-                irep_ptr = (const unsigned char*)load_data;
-                irep_obj = mrb_read_irep(ctx->mrb, irep_ptr);
-                if (irep_obj == NULL) {
-                    FMRB_LOGE(TAG, "[%s] Failed to read IREP bytecode", ctx->app_name);
-                    goto cleanup;
-                }
-
-                // Inspect IREP structure (no script buffer for bytecode)
-                inspect_irep(ctx->mrb, ctx->app_name, irep_obj, NULL, NULL);
-            } else if (load_mode == FMRB_LOAD_MODE_FILE) {
-                // Load from Ruby source file
-                const char* filepath = (const char*)load_data;
-                size_t script_size = 0;
-
-                FMRB_LOGI(TAG, "[%s] Loading Ruby script from file: %s", ctx->app_name, filepath);
-
-                script_buffer = load_script_file(filepath, &script_size);
-                if (!script_buffer) {
-                    FMRB_LOGE(TAG, "[%s] Failed to load script file: %s", ctx->app_name, filepath);
-                    goto cleanup;
-                }
-                need_free_script = true;
-
-                const uint8_t *script_ptr = (const uint8_t *)script_buffer;
-                FMRB_LOGI(TAG, "[%s] Script size: %zu bytes", ctx->app_name, script_size);
-                FMRB_LOGI(TAG, "[%s] script_buffer range: %p - %p",
-                          ctx->app_name, (void*)script_buffer, (void*)((uint8_t*)script_buffer + script_size));
-
-                irep_obj = mrc_load_string_cxt(cc, &script_ptr, script_size);
-
-                FMRB_LOGI(TAG, "[%s] After mrc_load_string_cxt, irep_obj=%p, mrb->exc=%p",
-                          ctx->app_name, irep_obj, ctx->mrb->exc);
-
-                if (!irep_obj) {
-                    FMRB_LOGE(TAG, "[%s] Failed to compile Ruby script", ctx->app_name);
-                    if (ctx->mrb->exc) {
-                        mrb_print_error(ctx->mrb);
-                    }
-                    mrc_ccontext_free(cc);
-                    goto cleanup;
-                }
-
-                FMRB_LOGI(TAG, "[%s] Ruby script compiled successfully", ctx->app_name);
-
-                // Inspect IREP structure (with script buffer range for analysis)
-                inspect_irep(ctx->mrb, ctx->app_name, irep_obj,
-                            script_buffer, (uint8_t*)script_buffer + script_size);
-
-                // script_buffer cannot be free here.
-                // TODO: investigate how the buffer is used.
-            } else {
-                FMRB_LOGE(TAG, "[%s] Invalid load mode: %d", ctx->app_name, load_mode);
-                goto cleanup;
-            }
-
-            // Execute irep
-            FMRB_LOGI(TAG, "[%s] Execute irep", ctx->app_name);
-
-            mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
-            mrb_value task = mrc_create_task(cc, irep_obj, name, mrb_nil_value(), mrb_obj_value(ctx->mrb->top_self));
-            if (mrb_nil_p(task)) {
-                FMRB_LOGE(TAG, "[%s] mrc_create_task failed, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
-                goto cleanup;
-            }
-
-            FMRB_LOGI(TAG, "[%s] mrb_tasks_run - BEFORE execution", ctx->app_name);
-            //mrb_value v = 
-            mrb_tasks_run(ctx->mrb);
-            FMRB_LOGI(TAG, "[%s] mrb_tasks_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
-
-            //TODO: check proper free process
-            if (ctx->mrb->exc) {
-                FMRB_LOGI(TAG, "[%s] Exception detected, calling mrb_print_error", ctx->app_name);
-                mrb_print_error(ctx->mrb);
-                FMRB_LOGI(TAG, "[%s] mrb_print_error completed", ctx->app_name);
-            } else {
-                FMRB_LOGI(TAG, "[%s] No exception detected", ctx->app_name);
-            }
-
-            mrb_vm_ci_env_clear(ctx->mrb, ctx->mrb->c->cibase);
-            // if (ctx->mrb->exc) {
-            //     MRB_EXC_CHECK_EXIT(ctx->mrb, ctx->mrb->exc);
-            //     mrb_undef_p(v);
-            // }
-            mrc_irep_free(cc, irep_obj);
-            mrc_ccontext_free(cc);
-
-            fmrb_sys_free(script_buffer);
-            script_buffer = NULL;
-            need_free_script = false;
-
-            break;
-        }
-
-        case FMRB_VM_TYPE_LUA: {
-            // Lua execution
-            if (load_mode == FMRB_LOAD_MODE_BYTECODE) {
-                // Load from Lua bytecode chunk
-                FMRB_LOGW(TAG, "[%s] Lua bytecode loading not yet implemented", ctx->app_name);
-            } else if (load_mode == FMRB_LOAD_MODE_FILE) {
-                // Load from Lua source file
-                const char* filepath = (const char*)load_data;
-                size_t script_size = 0;
-
-                FMRB_LOGI(TAG, "[%s] Loading Lua script from file: %s", ctx->app_name, filepath);
-
-                script_buffer = load_script_file(filepath, &script_size);
-                if (!script_buffer) {
-                    FMRB_LOGE(TAG, "[%s] Failed to load script file: %s", ctx->app_name, filepath);
-                    goto cleanup;
-                }
-                need_free_script = true;
-
-                // Load and compile Lua script
-                int load_result = luaL_loadbuffer(ctx->lua, script_buffer, script_size, filepath);
-                if (load_result != LUA_OK) {
-                    const char* err_msg = lua_tostring(ctx->lua, -1);
-                    FMRB_LOGE(TAG, "[%s] Failed to compile Lua script: %s",
-                              ctx->app_name, err_msg ? err_msg : "unknown error");
-                    lua_pop(ctx->lua, 1);  // Pop error message
-                    goto cleanup;
-                }
-
-                FMRB_LOGI(TAG, "[%s] Lua script compiled successfully", ctx->app_name);
-
-                // Free script buffer immediately after compilation (no longer needed)
-                fmrb_sys_free(script_buffer);
-                script_buffer = NULL;
-                need_free_script = false;
-
-                // Execute Lua script
-                int exec_result = lua_pcall(ctx->lua, 0, LUA_MULTRET, 0);
-                if (exec_result != LUA_OK) {
-                    const char* err_msg = lua_tostring(ctx->lua, -1);
-                    FMRB_LOGE(TAG, "[%s] Lua execution error: %s",
-                              ctx->app_name, err_msg ? err_msg : "unknown error");
-                    lua_pop(ctx->lua, 1);  // Pop error message
-                } else {
-                    FMRB_LOGI(TAG, "[%s] Lua script executed successfully", ctx->app_name);
-                }
+        case FMRB_VM_TYPE_MRUBY:
+            if (execute_mruby_script(ctx, load_mode, load_data, &script_buffer, &need_free_script) != 0) {
+                // Error already logged in execute_mruby_script
             }
             break;
-        }
 
-        case FMRB_VM_TYPE_NATIVE: {
-            // Native C function execution
-            void (*native_func)(void*) = (void (*)(void*))load_data;
-            if (native_func) {
-                FMRB_LOGI(TAG, "[%s] Executing native function", ctx->app_name);
-                native_func(ctx);
-            } else {
-                FMRB_LOGE(TAG, "[%s] Native function pointer is NULL", ctx->app_name);
+        case FMRB_VM_TYPE_LUA:
+            if (execute_lua_script(ctx, load_mode, load_data) != 0) {
+                // Error already logged in execute_lua_script
             }
             break;
-        }
+
+        case FMRB_VM_TYPE_NATIVE:
+            if (execute_native_function(ctx, load_data) != 0) {
+                // Error already logged in execute_native_function
+            }
+            break;
 
         default:
             FMRB_LOGE(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
@@ -547,35 +654,7 @@ cleanup:
     transition_state(ctx, PROC_STATE_STOPPING);
 
     // Close VM based on type (BEFORE destroying memory handle!)
-    switch (ctx->vm_type) {
-        case FMRB_VM_TYPE_MRUBY:
-            if (ctx->mrb) {
-                FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
-                // Cleanup VM resources (unregister from HAL tick manager)
-                fmrb_app_vm_cleanup(ctx->mrb);
-                // NOTE: mrb_close() causes segfault when called after mrc_irep_free()
-                // This is a known issue in PicoRuby (see picoruby-bin-microruby/tools/microruby/microruby.c:335)
-                // We call mrc_irep_free() + mrc_ccontext_free() in execution path (line 462-463),
-                // so we skip mrb_close() here to avoid double-free.
-                // Memory will be cleaned up when mem_handle is destroyed.
-                // mrb_close(ctx->mrb);
-                ctx->mrb = NULL;
-            }
-            break;
-        case FMRB_VM_TYPE_LUA:
-            if (ctx->lua) {
-                FMRB_LOGI(TAG, "[%s] Closing Lua VM", ctx->app_name);
-                fmrb_lua_close(ctx->lua);
-                ctx->lua = NULL;
-            }
-            break;
-        case FMRB_VM_TYPE_NATIVE:
-            // No VM to close for native functions
-            break;
-        default:
-            FMRB_LOGW(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
-            break;
-    }
+    destroy_vm(ctx);
 
     // Free script buffer AFTER VM is closed (IRep may reference this buffer)
     if (need_free_script && script_buffer) {
