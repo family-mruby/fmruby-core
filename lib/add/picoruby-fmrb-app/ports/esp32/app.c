@@ -543,6 +543,20 @@ static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// C API: Cleanup VM resources (called from fmrb_app.c after VM execution finishes)
+// This should be called AFTER the Ruby script has finished executing
+void fmrb_app_vm_cleanup(mrb_state *mrb)
+{
+    if (!mrb) {
+        return;
+    }
+
+    // Unregister VM from HAL tick manager
+    // This stops the tick task from calling mrb_tick() on this VM
+    hal_deinit(mrb);
+    FMRB_LOGI(TAG, "VM unregistered from HAL tick manager");
+}
+
 // FmrbApp#_set_window_param(param_sym, value) -> self
 // Set window parameter (pos_x, pos_y)
 static mrb_value mrb_fmrb_app_set_window_param(mrb_state *mrb, mrb_value self)

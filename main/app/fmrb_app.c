@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include <picoruby.h>
+#include "picoruby_fmrb_app.h"  // For fmrb_app_vm_cleanup()
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
@@ -550,7 +551,14 @@ cleanup:
         case FMRB_VM_TYPE_MRUBY:
             if (ctx->mrb) {
                 FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
-                mrb_close(ctx->mrb);
+                // Cleanup VM resources (unregister from HAL tick manager)
+                fmrb_app_vm_cleanup(ctx->mrb);
+                // NOTE: mrb_close() causes segfault when called after mrc_irep_free()
+                // This is a known issue in PicoRuby (see picoruby-bin-microruby/tools/microruby/microruby.c:335)
+                // We call mrc_irep_free() + mrc_ccontext_free() in execution path (line 462-463),
+                // so we skip mrb_close() here to avoid double-free.
+                // Memory will be cleaned up when mem_handle is destroyed.
+                // mrb_close(ctx->mrb);
                 ctx->mrb = NULL;
             }
             break;
@@ -893,7 +901,10 @@ unwind:
     switch (ctx->vm_type) {
         case FMRB_VM_TYPE_MRUBY:
             if (ctx->mrb) {
-                mrb_close(ctx->mrb);
+                // Cleanup VM resources (unregister from HAL tick manager)
+                fmrb_app_vm_cleanup(ctx->mrb);
+                // NOTE: Same as cleanup path - skip mrb_close() to avoid segfault
+                // mrb_close(ctx->mrb);
                 ctx->mrb = NULL;
             }
             break;
