@@ -110,7 +110,7 @@ static canvas_state_t* canvas_state_alloc(uint16_t canvas_id, uint16_t req_width
     canvas->z_order = canvas_id; // TODO: implement z_oder logic
     canvas->push_x = 0;
     canvas->push_y = 0;
-    canvas->is_visible = true;
+    canvas->is_visible = false;  // Initially invisible until first present()
     canvas->dirty = false;
 
     // Calculate buffer size for max screen size (RGB332 = 8bit = 1 byte per pixel)
@@ -845,37 +845,47 @@ extern "C" int graphics_handler_process_command(uint8_t msg_type, uint8_t cmd_ty
                 // Determine destination (screen or canvas)
                 LovyanGFX* dst;
                 const char* dst_name;
+                int push_x, push_y;
+
                 if (cmd->dest_canvas_id == FMRB_CANVAS_RENDER) {
+                    // Push to own render_buffer at (0,0), save position for later screen rendering
                     dst = src_canvas->render_buffer;
                     dst_name = "render_canvas";
                     src_canvas->push_x = cmd->x;
                     src_canvas->push_y = cmd->y;
+                    src_canvas->is_visible = true;  // Make visible on first present()
+                    push_x = 0;
+                    push_y = 0;
                 } else if(cmd->dest_canvas_id == 0) {
+                    // Push directly to screen at specified position
                     dst = g_lgfx;
                     dst_name = "screen";
+                    push_x = cmd->x;
+                    push_y = cmd->y;
                 } else {
                     GFX_LOG_E("Destination canvas %u is not supported yet...", cmd->dest_canvas_id);
                     // Store push position in canvas state (for render_frame)
-                    // TODO: how to handle chird canvas??
+                    // TODO: how to handle child canvas??
                     // src_canvas->push_x = cmd->x;
                     // src_canvas->push_y = cmd->y;
                     return -1;
                 }
 
 
-                // Push draw_buffer to render_buffer
+                // Push draw_buffer to destination
                 LGFX_Sprite* src_sprite = src_canvas->draw_buffer;
-                GFX_LOG_D("PUSH_CANVAS: src=%p (active=%dx%d), dst=%p (%s), pos=(%d,%d)",
-                       src_sprite, src_canvas->active_width, src_canvas->active_height, dst, dst_name, cmd->x, cmd->y);
+                GFX_LOG_D("PUSH_CANVAS: src=%p (active=%dx%d), dst=%p (%s), push_at=(%d,%d), save_pos=(%d,%d)",
+                       src_sprite, src_canvas->active_width, src_canvas->active_height, dst, dst_name,
+                       push_x, push_y, cmd->x, cmd->y);
 
                 // Since setBuffer configures sprite to active size, pushSprite transfers only active region
                 if (cmd->use_transparency) {
-                    src_sprite->pushSprite(dst, 0, 0, cmd->transparent_color);
-                    GFX_LOG_D("Canvas pushed with transparency: ID=%u to render_buffer, transp=0x%02x",
-                           cmd->canvas_id, cmd->transparent_color);
+                    src_sprite->pushSprite(dst, push_x, push_y, cmd->transparent_color);
+                    GFX_LOG_D("Canvas pushed with transparency: ID=%u to %s at (%d,%d), transp=0x%02x",
+                           cmd->canvas_id, dst_name, push_x, push_y, cmd->transparent_color);
                 } else {
-                    src_sprite->pushSprite(dst, 0, 0);
-                    GFX_LOG_D("Canvas pushed: ID=%u to render_buffer", cmd->canvas_id);
+                    src_sprite->pushSprite(dst, push_x, push_y);
+                    GFX_LOG_D("Canvas pushed: ID=%u to %s at (%d,%d)", cmd->canvas_id, dst_name, push_x, push_y);
                 }
 
                 return 0;
