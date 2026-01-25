@@ -89,7 +89,7 @@ static void mruby_tick_task(void* arg) {
 
 */
 void
-hal_init(mrb_state *mrb)
+picoruby_hal_init(mrb_state *mrb)
 {
   // FreeRTOS environment: Multitask-based tick management
 #ifndef PICORUBY_HOST_BUILD

@@ -914,7 +914,7 @@ mrb_task_s_stat(mrb_state *mrb, mrb_value klass)
 void
 mrb_picoruby_mruby_gem_init(mrb_state* mrb)
 {
-  hal_init(mrb);
+  picoruby_hal_init(mrb);
 
   // initialize task queue.
   for (int i = 0; i < MRB_NUM_TASK_QUEUE; i++) {

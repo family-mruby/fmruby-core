@@ -48,7 +48,7 @@ MRB_BEGIN_DECL
 /***** Global variables *****************************************************/
 /***** Function prototypes **************************************************/
 
-void hal_init(mrb_state *mrb);
+void picoruby_hal_init(mrb_state *mrb);
 void mrb_task_enable_irq(void);
 void mrb_task_disable_irq(void);
 
