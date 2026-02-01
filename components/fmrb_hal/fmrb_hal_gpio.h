@@ -54,6 +54,14 @@ int32_t fmrb_hal_gpio_get_level(fmrb_gpio_num_t gpio_num);
  */
 fmrb_err_t fmrb_hal_gpio_toggle(fmrb_gpio_num_t gpio_num);
 
+/**
+ * @brief Set GPIO pull mode only (without changing pin direction)
+ * @param gpio_num GPIO pin number
+ * @param pull Pull mode (none/up/down)
+ * @return FMRB_OK on success, error code otherwise
+ */
+fmrb_err_t fmrb_hal_gpio_set_pull_mode(fmrb_gpio_num_t gpio_num, fmrb_gpio_pull_mode_t pull);
+
 #ifdef __cplusplus
 }
 #endif

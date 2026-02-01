@@ -119,3 +119,32 @@ fmrb_err_t fmrb_hal_gpio_toggle(fmrb_gpio_num_t gpio_num) {
 
     return fmrb_hal_gpio_set_level(gpio_num, current_level ? 0 : 1);
 }
+
+fmrb_err_t fmrb_hal_gpio_set_pull_mode(fmrb_gpio_num_t gpio_num, fmrb_gpio_pull_mode_t pull) {
+#ifdef FMRB_PLATFORM_LINUX
+    ESP_LOGI(TAG, "Linux GPIO %d pull mode set to %d", gpio_num, pull);
+    return FMRB_OK;
+#else
+    if (gpio_num < 0 || !GPIO_IS_VALID_GPIO(gpio_num)) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    gpio_pull_mode_t esp_pull_mode;
+    switch (pull) {
+        case FMRB_GPIO_PULL_NONE:
+            esp_pull_mode = GPIO_FLOATING;
+            break;
+        case FMRB_GPIO_PULL_UP:
+            esp_pull_mode = GPIO_PULLUP_ONLY;
+            break;
+        case FMRB_GPIO_PULL_DOWN:
+            esp_pull_mode = GPIO_PULLDOWN_ONLY;
+            break;
+        default:
+            return FMRB_ERR_INVALID_PARAM;
+    }
+
+    esp_err_t ret = gpio_set_pull_mode(gpio_num, esp_pull_mode);
+    return (ret == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
+#endif
+}

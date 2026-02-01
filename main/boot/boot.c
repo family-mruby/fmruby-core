@@ -18,6 +18,8 @@
 #include "usb_task.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "spi_conn_check.h"
+#include "fmrb_pin_assign.h"
+#include "fmrb_hal_gpio.h"
 #endif
 
 #include "boot.h"
@@ -115,8 +117,33 @@ void show_config(void)
     fmrb_mem_print_psram_info();
 }
 
+#ifndef CONFIG_IDF_TARGET_LINUX
+// Initialize GPIO pins before peripheral initialization
+static void init_gpio(void)
+{
+    // IO1: Set HIGH at boot (e.g., for external device enable)
+    fmrb_hal_gpio_config(1, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);
+    fmrb_hal_gpio_set_level(1, 1);
+    FMRB_LOGI(TAG, "GPIO1 set to HIGH");
+
+    // Set SPI pins for Graphics-Audio board to floating (no internal pull-up/down)
+    // At 10MHz, internal pull-ups can cause signal degradation
+    fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_SPI_MOSI, FMRB_GPIO_PULL_NONE);
+    fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_SPI_MISO, FMRB_GPIO_PULL_NONE);
+    fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_SPI_SCLK, FMRB_GPIO_PULL_NONE);
+    fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_SPI_CS, FMRB_GPIO_PULL_NONE);  // Master drives CS
+
+    FMRB_LOGI(TAG, "GPIO initialized: SPI pins set to floating");
+}
+#endif
+
 static bool init_hardware(void)
 {
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // Initialize GPIO before any peripheral init
+    init_gpio();
+#endif
+
     // Filesystem
     fmrb_err_t ret = fmrb_hal_file_init();
     if (ret != FMRB_OK) {
