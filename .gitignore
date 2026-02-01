@@ -11,6 +11,7 @@ main/prebuild_scripts/default_app/mrb/*
 log
 log*
 .rake_tasks~
+managed_components/
 
 # Generated documentation
 doc/local/

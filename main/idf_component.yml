@@ -1,0 +1,6 @@
+dependencies:
+  espressif/usb_host_hid:
+    version: "^1.0.0"
+    rules:
+      - if: "idf_version >= 5.0"
+      - if: "target != linux"

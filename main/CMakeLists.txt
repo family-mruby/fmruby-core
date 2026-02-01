@@ -15,6 +15,7 @@ set(COMPONENT_LINUX_SRCS
 set(COMPONENT_ESP32_SRCS
     "drivers/usb/usb_task.c"
     "conn_check/spi_conn_check.c"
+    "conn_check/usb_hid_conn_check.c"
 )
 
 # Include Ruby to bytecode compilation script
@@ -37,7 +38,7 @@ set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_link fmrb_toml fmrb_mem
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
-    list(APPEND COMPONENT_REQUIRES esp_littlefs)
+    list(APPEND COMPONENT_REQUIRES esp_littlefs usb_host_hid)
     list(APPEND COMPONENT_SRCS ${COMPONENT_ESP32_SRCS})
 else()
     list(APPEND COMPONENT_SRCS ${COMPONENT_LINUX_SRCS})

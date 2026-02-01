@@ -20,6 +20,10 @@
 #define FMRB_PIN_FSPROXY_TX    GPIO_NUM_42
 #define FMRB_PIN_FSPROXY_RX    GPIO_NUM_41
 
+#define FMRB_PIN_USB_POWER  1
+
+#define FMRB_PIN_STATUS_LED  4
+
 #else
 
 // SD Card SPI Interface (SPI3)
