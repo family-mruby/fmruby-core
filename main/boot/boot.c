@@ -137,6 +137,10 @@ static bool init_hardware(void)
     if (spi_conn_check_init() == 0) {
         spi_conn_check_start();
         FMRB_LOGI(TAG, "SPI connection check task started");
+        while(1){
+            FMRB_LOGI(TAG, "SPI connection check task running");
+            fmrb_task_delay_ms(5000);
+        }
     } else {
         FMRB_LOGW(TAG, "SPI connection check init failed, continuing without it");
     }
