@@ -10,9 +10,15 @@
 #define FMRB_PIN_SD_MISO   GPIO_NUM_18
 #define FMRB_PIN_SD_DETECT GPIO_NUM_38
 
-// UART for Filesyatem Proxy
-#define FMRB_PIN_FSPROXY_TX  GPIO_NUM_43  //UART0 TX
-#define FMRB_PIN_FSPROXY_RX  GPIO_NUM_44  //UART0 RX
+// SPI for Graphics-Audio board communication (SPI2 - Master)
+#define FMRB_PIN_GFX_SPI_MOSI  GPIO_NUM_16
+#define FMRB_PIN_GFX_SPI_MISO  GPIO_NUM_18
+#define FMRB_PIN_GFX_SPI_SCLK  GPIO_NUM_17
+#define FMRB_PIN_GFX_SPI_CS    GPIO_NUM_15
+
+// FS Proxy UART (UART0 - ESP32-S3 default console pins)
+#define FMRB_PIN_FSPROXY_TX    GPIO_NUM_43
+#define FMRB_PIN_FSPROXY_RX    GPIO_NUM_44
 
 #else
 
@@ -23,8 +29,6 @@
 #define FMRB_PIN_SD_MISO   0
 #define FMRB_PIN_SD_DETECT 0
 
-// UART for Filesyatem Proxy
-#define FMRB_PIN_FSPROXY_TX  0  //UART0 TX
-#define FMRB_PIN_FSPROXY_RX  0  //UART0 RX
-
+#define FMRB_PIN_FSPROXY_TX    0
+#define FMRB_PIN_FSPROXY_RX    0
 #endif

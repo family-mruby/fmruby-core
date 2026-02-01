@@ -14,6 +14,7 @@ set(COMPONENT_LINUX_SRCS
 )
 set(COMPONENT_ESP32_SRCS
     "drivers/usb/usb_task.c"
+    "conn_check/spi_conn_check.c"
 )
 
 # Include Ruby to bytecode compilation script
@@ -44,7 +45,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/fs_proxy" "drivers/usb"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/fs_proxy" "drivers/usb" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 

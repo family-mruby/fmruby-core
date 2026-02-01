@@ -16,6 +16,9 @@
 #include "fmrb_task_config.h"
 #include "fs_proxy_task.h"
 #include "usb_task.h"
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "spi_conn_check.h"
+#endif
 
 #include "boot.h"
 
@@ -128,6 +131,16 @@ static bool init_hardware(void)
         FMRB_LOGE(TAG, "Failed to init usb_task");
         return false;
     }
+
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // SPI connection check (for communication with graphics-audio board)
+    if (spi_conn_check_init() == 0) {
+        spi_conn_check_start();
+        FMRB_LOGI(TAG, "SPI connection check task started");
+    } else {
+        FMRB_LOGW(TAG, "SPI connection check init failed, continuing without it");
+    }
+#endif
 
     return true;
 }

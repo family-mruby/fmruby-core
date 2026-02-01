@@ -18,7 +18,7 @@ GID  = `id -g`.strip
 PWD_ = Dir.pwd
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.1")
-IMAGE           = "esp32_build_container:#{ESP_IDF_VERSION}"
+IMAGE           = ENV.fetch("DOCKER_IMAGE", "ghcr.io/family-mruby/fmruby-esp32-build:latest")
 DEVICE_ARGS     = ENV["DEVICE_ARGS"].to_s
 
 # Always use current user's UID:GID to avoid permission issues
