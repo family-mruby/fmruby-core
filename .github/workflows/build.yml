@@ -113,26 +113,3 @@ jobs:
       #     path: build/fmruby-core.elf
       #     retention-days: 7
 
-  build-host:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
-
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libsdl2-dev libmsgpack-dev cmake
-
-      - name: Build SDL2 host
-        run: rake host:build
-
-      # - name: Upload host artifacts
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: fmrb-host-sdl2
-      #     path: host/sdl2/build/fmrb_host_sdl2
-      #     retention-days: 7
