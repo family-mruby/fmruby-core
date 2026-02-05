@@ -50,6 +50,20 @@ idf_component_register(
     REQUIRES ${COMPONENT_REQUIRES}
 )
 
+# Test mode flags
+option(ENABLE_SPI_TEST "Enable SPI connection test" OFF)
+option(ENABLE_USB_HID_TEST "Enable USB HID connection test" OFF)
+
+if(ENABLE_SPI_TEST)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE ENABLE_SPI_TEST)
+    message(STATUS "SPI connection test enabled")
+endif()
+
+if(ENABLE_USB_HID_TEST)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE ENABLE_USB_HID_TEST)
+    message(STATUS "USB HID connection test enabled")
+endif()
+
 # Disable optimization for app.c to enable proper debugging
 # Todo: disable it on official release
 target_compile_options(${COMPONENT_LIB} PRIVATE

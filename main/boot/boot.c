@@ -166,16 +166,19 @@ static bool init_hardware(void)
 
 #ifndef CONFIG_IDF_TARGET_LINUX
     // USB HID Host (for keyboard/mouse detection)
+#ifdef ENABLE_USB_HID_TEST
     if (usb_hid_conn_check_init() == 0) {
         usb_hid_conn_check_start();
         FMRB_LOGI(TAG, "USB HID connection check started");
     } else {
         FMRB_LOGW(TAG, "USB HID init failed, continuing without it");
     }
+#endif
 
     // SPI connection check (for communication with graphics-audio board)
+#ifdef ENABLE_SPI_TEST
     if (spi_conn_check_init() == 0) {
-        spi_conn_check_start();
+        spi_conn_check_star();
         FMRB_LOGI(TAG, "SPI connection check task started");
         while(1){
             FMRB_LOGI(TAG, "SPI connection check task running");
@@ -184,6 +187,7 @@ static bool init_hardware(void)
     } else {
         FMRB_LOGW(TAG, "SPI connection check init failed, continuing without it");
     }
+#endif
 #endif
 
     return true;
