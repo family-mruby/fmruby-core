@@ -178,7 +178,7 @@ static bool init_hardware(void)
     // SPI connection check (for communication with graphics-audio board)
 #ifdef ENABLE_SPI_TEST
     if (spi_conn_check_init() == 0) {
-        spi_conn_check_star();
+        spi_conn_check_start();
         FMRB_LOGI(TAG, "SPI connection check task started");
         while(1){
             FMRB_LOGI(TAG, "SPI connection check task running");
