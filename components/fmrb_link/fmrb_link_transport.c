@@ -1,5 +1,6 @@
 #include "fmrb_link_transport.h"
 #include "fmrb_link_protocol.h"
+#include "fmrb_link_fragment.h"
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
 #include "fmrb_mem.h"
@@ -55,6 +56,8 @@ typedef struct {
     sync_request_t sync_requests[MAX_SYNC_REQUESTS];
     fmrb_semaphore_t sync_mutex;  // Mutex (semaphore) for protecting sync_requests array
 
+    fmrb_fragment_manager_t fragment_manager;  // Fragment manager for chunking
+
     bool initialized;
 } transport_context_t;
 
@@ -102,6 +105,9 @@ fmrb_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config) 
         }
     }
 
+    // Initialize fragment manager
+    fmrb_fragment_manager_init(&ctx->fragment_manager);
+
     ctx->initialized = true;
 
     FMRB_LOGI(TAG,"initialized");
@@ -129,12 +135,17 @@ fmrb_err_t fmrb_link_transport_deinit(void) {
         fmrb_semaphore_delete(ctx->sync_mutex);
     }
 
+    // Cleanup fragment manager
+    fmrb_fragment_manager_cleanup(&ctx->fragment_manager);
+
     ctx->initialized = false;
     return FMRB_OK;
 }
 
 static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_cmd,
                                    const uint8_t *payload, uint32_t payload_len) {
+    transport_context_t *ctx = &g_tranport_context;
+
     // Serialize with msgpack as per IPC_spec.md:
     // 1. Pack frame_hdr + sub_cmd + payload with msgpack
     // 2. HAL layer will add CRC32 and COBS encode
@@ -145,42 +156,122 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
     msgpack_packer pk;
     msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
 
-    // Pack as array: [type, seq, sub_cmd, payload]
-    msgpack_pack_array(&pk, 4);
-    msgpack_pack_uint8(&pk, link_type);  // type (CONTROL=1, GRAPHICS=2, AUDIO=4)
-    msgpack_pack_uint8(&pk, seq);        // seq
-    msgpack_pack_uint8(&pk, sub_cmd);    // sub_cmd (command within type)
+    // Check if fragmentation is needed
+    bool needs_chunking = fmrb_fragment_needs_chunking(payload_len);
 
-    // Pack payload as binary
-    if (payload && payload_len > 0) {
-        msgpack_pack_bin(&pk, payload_len);
-        msgpack_pack_bin_body(&pk, payload, payload_len);
+    if (!needs_chunking) {
+        // Normal path: send as single message
+        // Pack as array: [type, seq, sub_cmd, payload]
+        msgpack_pack_array(&pk, 4);
+        msgpack_pack_uint8(&pk, link_type);  // type (CONTROL=1, GRAPHICS=2, AUDIO=4)
+        msgpack_pack_uint8(&pk, seq);        // seq
+        msgpack_pack_uint8(&pk, sub_cmd);    // sub_cmd (command within type)
+
+        // Pack payload as binary
+        if (payload && payload_len > 0) {
+            msgpack_pack_bin(&pk, payload_len);
+            msgpack_pack_bin_body(&pk, payload, payload_len);
+        } else {
+            msgpack_pack_nil(&pk);
+        }
+
+        // Debug: log msgpack size for GRAPHICS commands (only at DEBUG level)
+        if (link_type == FMRB_LINK_TYPE_GRAPHICS) {
+            FMRB_LOGD(TAG, "msgpack data (size=%zu)", sbuf.size);
+        }
+
+        // Send via HAL (HAL will add CRC32 and COBS encode)
+        fmrb_link_message_t hal_msg = {
+            .data = (uint8_t*)sbuf.data,
+            .size = sbuf.size
+        };
+
+        fmrb_link_channel_t hal_channel = (link_type == FMRB_LINK_TYPE_CONTROL) ? FMRB_LINK_GRAPHICS : FMRB_LINK_GRAPHICS;
+        fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1000);
+
+        if (ret != FMRB_OK && link_type == FMRB_LINK_TYPE_GRAPHICS) {
+            FMRB_LOGE(TAG, "HAL send failed: ret=%d, type=%d, sub_cmd=0x%02X", ret, link_type, sub_cmd);
+        }
+
+        msgpack_sbuffer_destroy(&sbuf);
+        return ret;
     } else {
-        msgpack_pack_nil(&pk);
+        // Fragmentation path: split into multiple chunks
+        FMRB_LOGI(TAG, "Large message (%u bytes), using fragmentation", payload_len);
+
+        // Allocate chunk ID
+        uint8_t chunk_id = fmrb_fragment_alloc_chunk_id(&ctx->fragment_manager);
+
+        // Initialize send context
+        fmrb_fragment_send_ctx_t send_ctx;
+        fmrb_fragment_init_send_ctx(&send_ctx, payload, payload_len,
+                                     link_type | FMRB_LINK_FLAG_CHUNKED, seq, chunk_id);
+
+        fmrb_err_t ret = FMRB_OK;
+        fmrb_link_channel_t hal_channel = (link_type == FMRB_LINK_TYPE_CONTROL) ? FMRB_LINK_GRAPHICS : FMRB_LINK_GRAPHICS;
+
+        // Send all chunks
+        while (true) {
+            fmrb_link_chunk_info_t chunk_info;
+            const uint8_t *chunk_data;
+            uint32_t chunk_len;
+
+            ret = fmrb_fragment_get_next_chunk(&send_ctx, &chunk_info, &chunk_data, &chunk_len);
+            if (ret == FMRB_ERR_END) {
+                // All chunks sent successfully
+                ret = FMRB_OK;
+                break;
+            } else if (ret != FMRB_OK) {
+                FMRB_LOGE(TAG, "Failed to get next chunk: %d", ret);
+                break;
+            }
+
+            // Pack chunk message: [type|CHUNKED, seq, sub_cmd, chunk_info, chunk_data]
+            msgpack_sbuffer chunk_sbuf;
+            msgpack_sbuffer_init(&chunk_sbuf);
+            msgpack_packer chunk_pk;
+            msgpack_packer_init(&chunk_pk, &chunk_sbuf, msgpack_sbuffer_write);
+
+            msgpack_pack_array(&chunk_pk, 5);
+            msgpack_pack_uint8(&chunk_pk, link_type | FMRB_LINK_FLAG_CHUNKED);
+            msgpack_pack_uint8(&chunk_pk, seq);
+            msgpack_pack_uint8(&chunk_pk, sub_cmd);
+
+            // Pack chunk_info struct as binary
+            msgpack_pack_bin(&chunk_pk, sizeof(fmrb_link_chunk_info_t));
+            msgpack_pack_bin_body(&chunk_pk, &chunk_info, sizeof(fmrb_link_chunk_info_t));
+
+            // Pack chunk payload
+            msgpack_pack_bin(&chunk_pk, chunk_len);
+            msgpack_pack_bin_body(&chunk_pk, chunk_data, chunk_len);
+
+            // Send chunk
+            fmrb_link_message_t hal_msg = {
+                .data = (uint8_t*)chunk_sbuf.data,
+                .size = chunk_sbuf.size
+            };
+
+            ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1000);
+
+            msgpack_sbuffer_destroy(&chunk_sbuf);
+
+            if (ret != FMRB_OK) {
+                FMRB_LOGE(TAG, "Failed to send chunk %u/%u: %d",
+                          chunk_info.offset / FMRB_LINK_FRAG_MAX_CHUNK_PAYLOAD,
+                          fmrb_fragment_calculate_num_chunks(payload_len), ret);
+                break;
+            }
+
+            FMRB_LOGD(TAG, "Sent chunk: offset=%u, len=%u, flags=0x%02X",
+                      chunk_info.offset, chunk_len, chunk_info.flags);
+
+            // TODO: Implement sliding window flow control and ACK handling here
+            // For now, send all chunks without waiting for ACKs
+        }
+
+        msgpack_sbuffer_destroy(&sbuf);
+        return ret;
     }
-
-    // Debug: log msgpack size for GRAPHICS commands (only at DEBUG level)
-    if (link_type == FMRB_LINK_TYPE_GRAPHICS) {
-        FMRB_LOGD(TAG, "msgpack data (size=%zu)", sbuf.size);
-    }
-
-    // Send via HAL (HAL will add CRC32 and COBS encode)
-    fmrb_link_message_t hal_msg = {
-        .data = (uint8_t*)sbuf.data,
-        .size = sbuf.size
-    };
-
-    // Map link_type to HAL channel (CONTROL and GRAPHICS both use the same channel for now)
-    fmrb_link_channel_t hal_channel = (link_type == FMRB_LINK_TYPE_CONTROL) ? FMRB_LINK_GRAPHICS : FMRB_LINK_GRAPHICS;
-    fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1000);
-
-    if (ret != FMRB_OK && link_type == FMRB_LINK_TYPE_GRAPHICS) {
-        FMRB_LOGE(TAG, "HAL send failed: ret=%d, type=%d, sub_cmd=0x%02X", ret, link_type, sub_cmd);
-    }
-
-    msgpack_sbuffer_destroy(&sbuf);
-
-    return ret;
 }
 
 static fmrb_err_t add_pending_message(transport_context_t *ctx, uint16_t sequence,

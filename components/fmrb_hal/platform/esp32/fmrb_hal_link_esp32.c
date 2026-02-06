@@ -8,7 +8,7 @@
 #include "freertos/semphr.h"
 #include <string.h>
 
-#define SPI_FRAME_SIZE 64  // Fixed frame size matching slave
+#define SPI_FRAME_SIZE 256  // Fixed frame size matching slave (increased for better throughput)
 #define SPI_FREQUENCY (10 * 1000 * 1000)  // 10MHz
 
 typedef struct {
