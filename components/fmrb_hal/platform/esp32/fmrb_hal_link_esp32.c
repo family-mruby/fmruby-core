@@ -14,6 +14,8 @@
 typedef struct {
     fmrb_link_callback_t callback;
     void *user_data;
+    volatile bool ack_received;  // ACK reception flag for synchronous send
+    uint8_t expected_seq;         // Expected sequence number for ACK
 } esp32_link_channel_t;
 
 static esp32_link_channel_t channels[FMRB_LINK_MAX_CHANNELS];
@@ -22,6 +24,10 @@ static fmrb_spi_handle_t spi_handle = NULL;
 static SemaphoreHandle_t spi_mutex = NULL;
 
 static const char *TAG = "fmrb_hal_link";
+
+// Forward declarations
+static void process_received_ack(fmrb_link_channel_t channel, const uint8_t *rx_frame, size_t frame_size);
+static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms);
 
 fmrb_err_t fmrb_hal_link_init(void) {
     if (link_initialized) {
@@ -32,6 +38,8 @@ fmrb_err_t fmrb_hal_link_init(void) {
     for (int i = 0; i < FMRB_LINK_MAX_CHANNELS; i++) {
         channels[i].callback = NULL;
         channels[i].user_data = NULL;
+        channels[i].ack_received = false;
+        channels[i].expected_seq = 0;
     }
 
     // Create SPI mutex
@@ -147,20 +155,59 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
 
     fmrb_sys_free(encoded);
 
-    // Send via SPI
-    fmrb_err_t ret = fmrb_hal_spi_transmit(spi_handle, tx_frame, SPI_FRAME_SIZE, timeout_ms);
+    // Prepare RX buffer for full-duplex transfer (to receive ACK simultaneously)
+    uint8_t rx_frame[SPI_FRAME_SIZE];
+    memset(rx_frame, 0, SPI_FRAME_SIZE);
+
+    // Send via SPI with full-duplex transfer (TX and RX simultaneously)
+    fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, tx_frame, rx_frame, SPI_FRAME_SIZE, timeout_ms);
 
     xSemaphoreGive(spi_mutex);
 
     if (ret != FMRB_OK) {
-        ESP_LOGE(TAG, "SPI transmit failed: %d", ret);
+        ESP_LOGE(TAG, "SPI transfer failed: %d", ret);
         return FMRB_ERR_FAILED;
     }
 
     ESP_LOGD(TAG, "Sent %zu bytes (payload+crc: %zu, encoded: %zu, frame: %d) to channel %d",
              msg->size, total_size, encoded_len, SPI_FRAME_SIZE, channel);
 
-    return FMRB_OK;
+    // Reset ACK received flag before processing
+    esp32_link_channel_t *ch = &channels[channel];
+    ch->ack_received = false;
+
+    // Process received ACK from slave (if any)
+    process_received_ack(channel, rx_frame, SPI_FRAME_SIZE);
+
+    // If ACK not received immediately, poll with timeout
+    if (!ch->ack_received && timeout_ms > 0) {
+        fmrb_time_t start_time = fmrb_hal_time_get_us();
+        const uint32_t poll_interval_ms = 5;  // Poll every 5ms
+
+        while (!ch->ack_received) {
+            // Check timeout
+            if (fmrb_hal_time_is_timeout(start_time, timeout_ms * 1000)) {
+                ESP_LOGW(TAG, "ACK timeout after %u ms", timeout_ms);
+                return FMRB_ERR_TIMEOUT;
+            }
+
+            // Poll for ACK
+            fmrb_err_t poll_ret = poll_for_ack(channel, poll_interval_ms);
+            if (poll_ret != FMRB_OK && poll_ret != FMRB_ERR_TIMEOUT) {
+                ESP_LOGE(TAG, "ACK polling failed: %d", poll_ret);
+                return poll_ret;
+            }
+
+            // Small delay before next poll
+            if (!ch->ack_received) {
+                fmrb_hal_time_delay_ms(poll_interval_ms);
+            }
+        }
+
+        ESP_LOGI(TAG, "ACK received after polling (channel=%d)", channel);
+    }
+
+    return ch->ack_received ? FMRB_OK : FMRB_ERR_TIMEOUT;
 }
 
 fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
@@ -316,4 +363,125 @@ void fmrb_hal_link_release_shared_memory(void *ptr) {
         ESP_LOGI(TAG, "Released shared memory: %p", ptr);
         fmrb_sys_free(ptr);
     }
+}
+
+/**
+ * @brief Process received ACK data from RX frame
+ * @param channel Channel number
+ * @param rx_frame RX frame buffer
+ * @param frame_size Frame size
+ */
+static void process_received_ack(fmrb_link_channel_t channel, const uint8_t *rx_frame, size_t frame_size) {
+    // Skip leading null bytes
+    size_t rx_start = 0;
+    while (rx_start < frame_size && rx_frame[rx_start] == 0x00) {
+        rx_start++;
+    }
+
+    if (rx_start >= frame_size) {
+        ESP_LOGD(TAG, "No ACK data received in this transaction (normal, will retry later)");
+        return;
+    }
+
+    // Find COBS frame terminator
+    size_t frame_end = rx_start;
+    bool found_terminator = false;
+    for (size_t i = rx_start; i < frame_size; i++) {
+        if (rx_frame[i] == 0x00) {
+            frame_end = i;
+            found_terminator = true;
+            break;
+        }
+    }
+
+    if (!found_terminator || frame_end == rx_start) {
+        ESP_LOGD(TAG, "No complete ACK frame in this transaction (normal, will retry later)");
+        return;
+    }
+
+    // COBS decode received ACK
+    uint8_t decoded[1024];
+    size_t encoded_len_rx = frame_end - rx_start;
+    ssize_t decoded_len = fmrb_link_cobs_decode(rx_frame + rx_start, encoded_len_rx, decoded);
+
+    if (decoded_len <= (ssize_t)sizeof(uint32_t)) {
+        ESP_LOGW(TAG, "Decoded ACK too small: %d bytes", (int)decoded_len);
+        return;
+    }
+
+    // Verify CRC32
+    size_t payload_len_rx = decoded_len - sizeof(uint32_t);
+    uint32_t received_crc;
+    memcpy(&received_crc, decoded + payload_len_rx, sizeof(uint32_t));
+    uint32_t calculated_crc = fmrb_link_crc32_update(0, decoded, payload_len_rx);
+
+    if (received_crc != calculated_crc) {
+        ESP_LOGW(TAG, "ACK CRC mismatch: received=0x%08lx, calculated=0x%08lx (decoded_len=%d)",
+                 received_crc, calculated_crc, (int)decoded_len);
+        ESP_LOG_BUFFER_HEXDUMP(TAG, rx_frame + rx_start, encoded_len_rx, ESP_LOG_WARN);
+        return;
+    }
+
+    // Valid ACK received
+    esp32_link_channel_t *ch = &channels[channel];
+
+    // Set ACK received flag for synchronous send
+    ch->ack_received = true;
+
+    // Also notify via callback if registered
+    if (ch->callback) {
+        // Allocate heap memory for ACK data (callback must free it)
+        uint8_t *decoded_copy = (uint8_t*)fmrb_sys_malloc(payload_len_rx);
+        if (decoded_copy) {
+            memcpy(decoded_copy, decoded, payload_len_rx);
+            fmrb_link_message_t ack_msg = {
+                .data = decoded_copy,
+                .size = payload_len_rx
+            };
+            ch->callback(channel, &ack_msg, ch->user_data);
+            ESP_LOGI(TAG, "ACK received: %zu bytes", payload_len_rx);
+        } else {
+            ESP_LOGE(TAG, "Failed to allocate memory for ACK data");
+        }
+    }
+}
+
+/**
+ * @brief Poll for ACK by sending empty frame
+ * @param channel Channel number
+ * @param timeout_ms Timeout in milliseconds
+ * @return FMRB_OK on success, error code otherwise
+ */
+static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms) {
+    if (!link_initialized || !spi_handle) {
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    // Take SPI mutex
+    if (xSemaphoreTake(spi_mutex, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
+        return FMRB_ERR_TIMEOUT;
+    }
+
+    // Prepare empty TX frame (all zeros)
+    uint8_t tx_frame[SPI_FRAME_SIZE];
+    memset(tx_frame, 0, SPI_FRAME_SIZE);
+
+    // Prepare RX buffer
+    uint8_t rx_frame[SPI_FRAME_SIZE];
+    memset(rx_frame, 0, SPI_FRAME_SIZE);
+
+    // Send empty frame to poll for ACK
+    fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, tx_frame, rx_frame, SPI_FRAME_SIZE, timeout_ms);
+
+    xSemaphoreGive(spi_mutex);
+
+    if (ret != FMRB_OK) {
+        ESP_LOGD(TAG, "ACK poll transfer failed: %d", ret);
+        return ret;
+    }
+
+    // Process any received ACK
+    process_received_ack(channel, rx_frame, SPI_FRAME_SIZE);
+
+    return FMRB_OK;
 }

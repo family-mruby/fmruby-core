@@ -162,6 +162,10 @@ void fmrb_hal_link_deinit(void) {
 fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
                               const fmrb_link_message_t *msg,
                               uint32_t timeout_ms) {
+    // NOTE: Linux/Socket version does NOT wait for ACK in this function
+    // ACKs are received separately via fmrb_hal_link_receive()
+    // This differs from ESP32/SPI which uses full-duplex and can receive ACK immediately
+
     if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msg) {
         return FMRB_ERR_INVALID_PARAM;
     }
