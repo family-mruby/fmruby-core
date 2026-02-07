@@ -182,7 +182,8 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     // If ACK not received immediately, poll with timeout
     if (!ch->ack_received && timeout_ms > 0) {
         fmrb_time_t start_time = fmrb_hal_time_get_us();
-        const uint32_t poll_interval_ms = 5;  // Poll every 5ms
+        uint32_t poll_interval_ms = 1;  // Start with 1ms
+        const uint32_t max_poll_interval_ms = 8;  // Max 8ms
 
         while (!ch->ack_received) {
             // Check timeout
@@ -198,9 +199,14 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
                 return poll_ret;
             }
 
-            // Small delay before next poll
+            // If ACK not received, wait and apply exponential backoff
             if (!ch->ack_received) {
                 fmrb_hal_time_delay_ms(poll_interval_ms);
+
+                // Exponential backoff: double interval up to max (1ms → 2ms → 4ms → 8ms)
+                if (poll_interval_ms < max_poll_interval_ms) {
+                    poll_interval_ms *= 2;
+                }
             }
         }
 
