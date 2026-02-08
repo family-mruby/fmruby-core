@@ -19,6 +19,8 @@
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "spi_conn_check.h"
 #include "usb_hid_conn_check.h"
+#include "i2c_conn_check.h"
+#include "sd_conn_check.h"
 #include "fmrb_pin_assign.h"
 #include "fmrb_hal_gpio.h"
 #endif
@@ -146,41 +148,17 @@ static void init_gpio(void)
 }
 #endif
 
-static bool init_hardware(void)
+static void hw_check(void)
 {
-#ifndef CONFIG_IDF_TARGET_LINUX
-    // Initialize GPIO before any peripheral init
-    init_gpio();
-#endif
-
-    // Filesystem
-    fmrb_err_t ret = fmrb_hal_file_init();
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to init filesystem");
-        return false;
-    }
-    // ESP32 IPC
-
-    // USB HOST
-    ret = usb_task_init();
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to init usb_task");
-        return false;
-    }
-
-#ifndef CONFIG_IDF_TARGET_LINUX
     // USB HID Host (for keyboard/mouse detection)
-#ifdef ENABLE_USB_HID_TEST
     if (usb_hid_conn_check_init() == 0) {
         usb_hid_conn_check_start();
         FMRB_LOGI(TAG, "USB HID connection check started");
     } else {
         FMRB_LOGW(TAG, "USB HID init failed, continuing without it");
     }
-#endif
 
     // SPI connection check (for communication with graphics-audio board)
-#ifdef ENABLE_SPI_TEST
     if (spi_conn_check_init() == 0) {
         spi_conn_check_start();
         FMRB_LOGI(TAG, "SPI connection check task started");
@@ -191,13 +169,62 @@ static bool init_hardware(void)
     } else {
         FMRB_LOGW(TAG, "SPI connection check init failed, continuing without it");
     }
+
+    // SD connection check
+    if (sd_conn_check_init() == 0) {
+        sd_conn_check_test();
+        sd_conn_check_deinit();
+        FMRB_LOGI(TAG, "SD card connection check completed");
+    } else {
+        FMRB_LOGW(TAG, "SD card connection check init failed");
+    }
+
+    // I2C connection check
+    if (i2c_conn_check_init() == 0) {
+        i2c_conn_check_scan(1);  // Scan I2C1 bus
+        i2c_conn_check_scan(2);  // Scan I2C2 bus
+        i2c_conn_check_deinit();
+        FMRB_LOGI(TAG, "I2C connection check completed");
+    } else {
+        FMRB_LOGW(TAG, "I2C connection check init failed");
+    }
+
+}
+
+static bool init_hardware(void)
+{
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // Initialize GPIO before any peripheral init
+    init_gpio();
+    fmrb_task_delay_ms(100);
+
+    //Board wiring check
+#ifdef ENABLE_HW_WIRING_TEST
+    hw_check();
 #endif
 
+#endif
 
-    //I2C test
+    // Filesystem
+    fmrb_err_t ret = fmrb_hal_file_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to init filesystem");
+        return false;
+    }
 
-    
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // ESP32 IPC
+    // fmrb_hal_xxx_init();
+#endif
 
+    // USB HOST
+    ret = usb_task_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to init usb_task");
+        return false;
+    }
+
+#ifndef CONFIG_IDF_TARGET_LINUX
     // Reset WROVER
     FMRB_LOGI(TAG, "Reseting ESP32-WROVER...");
     fmrb_hal_gpio_set_level(FMRB_PIN_WROVER_RESET, 0);

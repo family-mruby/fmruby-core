@@ -16,6 +16,8 @@ set(COMPONENT_ESP32_SRCS
     "drivers/usb/usb_task.c"
     "conn_check/spi_conn_check.c"
     "conn_check/usb_hid_conn_check.c"
+    "conn_check/i2c_conn_check.c"
+    "conn_check/sd_conn_check.c"
 )
 
 # Include Ruby to bytecode compilation script
@@ -53,6 +55,8 @@ idf_component_register(
 # Test mode flags
 option(ENABLE_SPI_TEST "Enable SPI connection test" OFF)
 option(ENABLE_USB_HID_TEST "Enable USB HID connection test" OFF)
+option(ENABLE_I2C_TEST "Enable I2C connection test" OFF)
+option(ENABLE_SD_TEST "Enable SD card connection test" OFF)
 
 if(ENABLE_SPI_TEST)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE ENABLE_SPI_TEST)
@@ -62,6 +66,16 @@ endif()
 if(ENABLE_USB_HID_TEST)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE ENABLE_USB_HID_TEST)
     message(STATUS "USB HID connection test enabled")
+endif()
+
+if(ENABLE_I2C_TEST)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE ENABLE_I2C_TEST)
+    message(STATUS "I2C connection test enabled")
+endif()
+
+if(ENABLE_SD_TEST)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE ENABLE_SD_TEST)
+    message(STATUS "SD card connection test enabled")
 endif()
 
 # Disable optimization for app.c to enable proper debugging
