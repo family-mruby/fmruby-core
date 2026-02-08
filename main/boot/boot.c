@@ -138,6 +138,10 @@ static void init_gpio(void)
     // Status LED
     fmrb_hal_gpio_config(FMRB_PIN_STATUS_LED, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);
     fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
+
+    // WOVER-RESET
+    fmrb_hal_gpio_config(FMRB_PIN_WROVER_RESET, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);
+    fmrb_hal_gpio_set_level(FMRB_PIN_WROVER_RESET, 1);
     
 }
 #endif
@@ -188,6 +192,21 @@ static bool init_hardware(void)
         FMRB_LOGW(TAG, "SPI connection check init failed, continuing without it");
     }
 #endif
+
+
+    //I2C test
+
+    
+
+    // Reset WROVER
+    FMRB_LOGI(TAG, "Reseting ESP32-WROVER...");
+    fmrb_hal_gpio_set_level(FMRB_PIN_WROVER_RESET, 0);
+    fmrb_task_delay_ms(50);
+    fmrb_hal_gpio_set_level(FMRB_PIN_WROVER_RESET, 1);
+    FMRB_LOGI(TAG, "Waiting for ESP32-WROVER boot...");
+    fmrb_task_delay_ms(2000);
+    FMRB_LOGI(TAG, "Waiting for ESP32-WROVER boot done");
+
 #endif
 
     return true;
