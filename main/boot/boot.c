@@ -23,6 +23,7 @@
 #include "sd_conn_check.h"
 #include "fmrb_pin_assign.h"
 #include "fmrb_hal_gpio.h"
+#include "status_led.h"
 #endif
 
 #include "boot.h"
@@ -137,7 +138,7 @@ static void init_gpio(void)
     fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_SPI_CS, FMRB_GPIO_PULL_NONE);  // Master drives CS
     FMRB_LOGI(TAG, "SPI pins set to floating");
 
-    // Status LED
+    // Status LED (GPIO configured, task started later)
     fmrb_hal_gpio_config(FMRB_PIN_STATUS_LED, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);
     fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
 
@@ -212,6 +213,7 @@ static bool init_hardware(void)
 #ifndef CONFIG_IDF_TARGET_LINUX
     // Initialize GPIO before any peripheral init
     init_gpio();
+    status_led_start();
     fmrb_task_delay_ms(100);
 
     //Board wiring check

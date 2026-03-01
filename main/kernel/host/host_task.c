@@ -16,6 +16,7 @@
 #include "fmrb_link_transport.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_keymap.h"
+#include "status_led.h"
 
 static const char *TAG = "host";
 
@@ -186,8 +187,9 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
             FMRB_LOGE(TAG, "Failed to execute command buffer: %d", ret);
             if(FMRB_GFX_ERR_FAILED == ret)
             {
-                FMRB_LOGE(TAG, "exit core");
-                exit(1);
+                FMRB_LOGE(TAG, "FMRB_GFX_ERR_FAILED");
+                status_led_set_error(1);
+                return;
             }
         } else {
             FMRB_LOGD(TAG, "Command buffer executed successfully");

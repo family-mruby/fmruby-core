@@ -8,6 +8,7 @@ set(COMPONENT_SRCS
     "kernel/host/host_task.c"
     "drivers/fs_proxy/fs_proxy_task.c"
     "drivers/usb/fmrb_keymap.c"
+    "drivers/led_status/status_led.c"
 )
 set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
@@ -48,7 +49,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/fs_proxy" "drivers/usb" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/fs_proxy" "drivers/usb" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 
