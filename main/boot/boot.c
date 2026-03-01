@@ -141,10 +141,8 @@ static void init_gpio(void)
     fmrb_hal_gpio_config(FMRB_PIN_STATUS_LED, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);
     fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
 
-    // WOVER-RESET
-    fmrb_hal_gpio_config(FMRB_PIN_WROVER_RESET, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);
-    fmrb_hal_gpio_set_level(FMRB_PIN_WROVER_RESET, 1);
-    
+    // WROVER-RESET: high-impedance by default (external pull-up keeps WROVER running)
+    fmrb_hal_gpio_config(FMRB_PIN_WROVER_RESET, FMRB_GPIO_MODE_INPUT, FMRB_GPIO_PULL_NONE);
 }
 #endif
 
@@ -191,6 +189,24 @@ static void hw_check(void)
 
 }
 
+/**
+ * Reset ESP32-WROVER via GPIO
+ * GPIO is high-impedance (input) by default; driven LOW only during reset.
+ */
+static void reset_wrover(void)
+{
+    FMRB_LOGI(TAG, "Resetting ESP32-WROVER...");
+    // Drive LOW to assert reset
+    fmrb_hal_gpio_config(FMRB_PIN_WROVER_RESET, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);
+    fmrb_hal_gpio_set_level(FMRB_PIN_WROVER_RESET, 0);
+    fmrb_task_delay_ms(100);
+    // Release: return to high-impedance (external pull-up brings reset HIGH)
+    fmrb_hal_gpio_config(FMRB_PIN_WROVER_RESET, FMRB_GPIO_MODE_INPUT, FMRB_GPIO_PULL_NONE);
+    FMRB_LOGI(TAG, "Waiting for ESP32-WROVER boot...");
+    fmrb_task_delay_ms(3000);
+    FMRB_LOGI(TAG, "ESP32-WROVER boot wait done");
+}
+
 static bool init_hardware(void)
 {
 #ifndef CONFIG_IDF_TARGET_LINUX
@@ -225,15 +241,7 @@ static bool init_hardware(void)
     }
 
 #ifndef CONFIG_IDF_TARGET_LINUX
-    // Reset WROVER
-    FMRB_LOGI(TAG, "Reseting ESP32-WROVER...");
-    fmrb_hal_gpio_set_level(FMRB_PIN_WROVER_RESET, 0);
-    fmrb_task_delay_ms(50);
-    fmrb_hal_gpio_set_level(FMRB_PIN_WROVER_RESET, 1);
-    FMRB_LOGI(TAG, "Waiting for ESP32-WROVER boot...");
-    fmrb_task_delay_ms(2000);
-    FMRB_LOGI(TAG, "Waiting for ESP32-WROVER boot done");
-
+    reset_wrover();
 #endif
 
     return true;
