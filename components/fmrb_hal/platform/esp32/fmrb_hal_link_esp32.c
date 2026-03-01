@@ -12,7 +12,7 @@
 
 #define SPI_FRAME_SIZE 256  // Fixed frame size matching slave (increased for better throughput)
 #define SPI_FREQUENCY (10 * 1000 * 1000)  // 10MHz
-#define ACK_RECV_QUEUE_SIZE 8
+#define ACK_RECV_QUEUE_SIZE 32
 
 typedef struct {
     fmrb_link_callback_t callback;
@@ -273,118 +273,13 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
         }
     }
 
-    // If handshake GPIO is LOW, slave has ACK data pending.
-    // Skip SPI transfer to avoid consuming ACK meant for poll_for_ack().
-    int32_t hs_level = fmrb_hal_gpio_get_level(FMRB_PIN_GFX_SPI_INTR);
-    if (hs_level == 0) {
-        return FMRB_ERR_TIMEOUT;
-    }
-
-    // Take SPI mutex
-    if (xSemaphoreTake(spi_mutex, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
-        return FMRB_ERR_TIMEOUT;
-    }
-
-    // Static receive buffer for COBS frames
-    static uint8_t recv_buffer[SPI_FRAME_SIZE * 4];  // Buffer multiple frames
-    static size_t recv_pos = 0;
-
-    // Receive SPI frame
-    uint8_t rx_frame[SPI_FRAME_SIZE];
-    memset(rx_frame, 0, SPI_FRAME_SIZE);
-
-    fmrb_err_t ret = fmrb_hal_spi_receive(spi_handle, rx_frame, SPI_FRAME_SIZE, timeout_ms);
-
-    xSemaphoreGive(spi_mutex);
-
-    if (ret != FMRB_OK) {
-        if (ret == FMRB_ERR_TIMEOUT) {
-            return FMRB_ERR_TIMEOUT;
-        }
-        ESP_LOGE(TAG, "SPI receive failed: %d", ret);
-        return FMRB_ERR_FAILED;
-    }
-
-    // Append received data to buffer
-    if (recv_pos + SPI_FRAME_SIZE > sizeof(recv_buffer)) {
-        ESP_LOGW(TAG, "Receive buffer overflow, resetting");
-        recv_pos = 0;
-    }
-    memcpy(recv_buffer + recv_pos, rx_frame, SPI_FRAME_SIZE);
-    recv_pos += SPI_FRAME_SIZE;
-
-    ESP_LOGD(TAG, "Received SPI frame, buffer pos=%zu", recv_pos);
-
-    // Skip leading null bytes
-    while (recv_pos > 0 && recv_buffer[0] == 0x00) {
-        memmove(recv_buffer, recv_buffer + 1, recv_pos - 1);
-        recv_pos--;
-    }
-
-    // Find frame terminator (0x00)
-    size_t frame_end = 0;
-    bool found_terminator = false;
-    for (size_t i = 0; i < recv_pos; i++) {
-        if (recv_buffer[i] == 0x00) {
-            frame_end = i;
-            found_terminator = true;
-            break;
-        }
-    }
-
-    if (!found_terminator) {
-        // Incomplete frame, need more data
-        return FMRB_ERR_TIMEOUT;
-    }
-
-    if (frame_end == 0) {
-        // Empty frame
-        memmove(recv_buffer, recv_buffer + 1, recv_pos - 1);
-        recv_pos--;
-        return FMRB_ERR_TIMEOUT;
-    }
-
-    // COBS decode
-    uint8_t decoded[1024];
-    ssize_t decoded_len = fmrb_link_cobs_decode(recv_buffer, frame_end, decoded);
-
-    // Remove processed frame from buffer
-    memmove(recv_buffer, recv_buffer + frame_end + 1, recv_pos - frame_end - 1);
-    recv_pos -= (frame_end + 1);
-
-    if (decoded_len <= 0) {
-        ESP_LOGW(TAG, "COBS decode failed: frame_len=%zu, decoded_len=%zd", frame_end, decoded_len);
-        return FMRB_ERR_FAILED;
-    }
-
-    if ((size_t)decoded_len < sizeof(uint32_t)) {
-        ESP_LOGW(TAG, "Decoded frame too small: %zd bytes", decoded_len);
-        return FMRB_ERR_FAILED;
-    }
-
-    // Verify CRC32
-    size_t payload_len = decoded_len - sizeof(uint32_t);
-    uint32_t received_crc;
-    memcpy(&received_crc, decoded + payload_len, sizeof(uint32_t));
-    uint32_t calculated_crc = fmrb_link_crc32_update(0, decoded, payload_len);
-
-    if (received_crc != calculated_crc) {
-        ESP_LOGE(TAG, "CRC mismatch: received=0x%08lx, calculated=0x%08lx",
-                 received_crc, calculated_crc);
-        return FMRB_ERR_FAILED;
-    }
-
-    // Allocate and copy payload
-    msg->data = fmrb_sys_malloc(payload_len);
-    if (!msg->data) {
-        return FMRB_ERR_NO_MEMORY;
-    }
-    memcpy(msg->data, decoded, payload_len);
-    msg->size = payload_len;
-
-    ESP_LOGD(TAG, "Received %zu bytes from channel %d", payload_len, channel);
-
-    return FMRB_OK;
+    // In this protocol, the slave only sends ACKs in response to master commands.
+    // ACKs are collected by poll_for_ack() during fmrb_hal_link_send() and queued
+    // to ack_recv_queue (checked above). There is no unsolicited data from slave.
+    // Performing SPI reads here would generate unnecessary transactions that
+    // overwhelm the slave's SPI transaction queue, causing data corruption
+    // and ACK delivery failures.
+    return FMRB_ERR_TIMEOUT;
 }
 
 fmrb_err_t fmrb_hal_link_register_callback(fmrb_link_channel_t channel,

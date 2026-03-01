@@ -314,6 +314,10 @@ fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
         return FMRB_ERR_INVALID_STATE;
     }
 
+    // Drain pending ACKs before sending to prevent ack_recv_queue overflow
+    // during rapid consecutive sends (e.g., command_buffer_execute)
+    fmrb_link_transport_process();
+
     uint16_t sequence = ctx->next_sequence++;
     uint8_t seq = (uint8_t)(sequence & 0xFF);
 

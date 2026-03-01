@@ -57,7 +57,7 @@ typedef struct {
 static fmrb_task_handle_t g_host_task_handle = 0;
 
 // Task configuration
-#define HOST_QUEUE_SIZE (32)
+#define HOST_QUEUE_SIZE (64)
 
 // Graphics command buffer
 static fmrb_gfx_command_buffer_t* g_gfx_cmd_buffer = NULL;
