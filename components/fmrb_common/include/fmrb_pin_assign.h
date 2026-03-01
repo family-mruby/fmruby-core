@@ -48,6 +48,9 @@
 #define FMRB_PIN_SD_MISO   0
 #define FMRB_PIN_SD_DETECT 0
 
+#define FMRB_PIN_WROVER_RESET  0
+#define FMRB_PIN_STATUS_LED    0 
+
 #define FMRB_PIN_FSPROXY_TX    0
 #define FMRB_PIN_FSPROXY_RX    0
 #endif

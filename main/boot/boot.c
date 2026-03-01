@@ -147,6 +147,7 @@ static void init_gpio(void)
 }
 #endif
 
+#ifndef CONFIG_IDF_TARGET_LINUX
 static void hw_check(void)
 {
     // USB HID Host (for keyboard/mouse detection)
@@ -189,11 +190,13 @@ static void hw_check(void)
     }
 
 }
+#endif
 
 /**
  * Reset ESP32-WROVER via GPIO
  * GPIO is high-impedance (input) by default; driven LOW only during reset.
  */
+#ifndef CONFIG_IDF_TARGET_LINUX
 static void reset_wrover(void)
 {
     FMRB_LOGI(TAG, "Resetting ESP32-WROVER...");
@@ -207,6 +210,7 @@ static void reset_wrover(void)
     fmrb_task_delay_ms(3000);
     FMRB_LOGI(TAG, "ESP32-WROVER boot wait done");
 }
+#endif
 
 static bool init_hardware(void)
 {
