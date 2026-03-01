@@ -14,17 +14,18 @@ MRuby::CrossBuild.new("esp32") do |conf|
 
   conf.cc.defines << "MRB_TICK_UNIT=5"
   conf.cc.defines << "MRB_TIMESLICE_TICK_COUNT=10"
+
+  conf.cc.defines << "MRB_INT32"
   conf.cc.defines << "MRB_32BIT"
   conf.cc.defines << "NDEBUG"
-
-  conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
-  conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
 
   conf.cc.defines << "MRBC_TICK_UNIT=10"
   conf.cc.defines << "MRBC_TIMESLICE_TICK_COUNT=1"
   conf.cc.defines << "MRBC_USE_FLOAT=2"
   conf.cc.defines << "MRBC_CONVERT_CRLF=1"
 
+  conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
+  conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
   conf.cc.defines << "ESTALLOC_DEBUG=1"
 
   # Common gems
