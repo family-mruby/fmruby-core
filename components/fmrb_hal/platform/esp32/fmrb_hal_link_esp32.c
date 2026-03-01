@@ -293,14 +293,19 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
 
     // COBS decode
     uint8_t decoded[1024];
-    size_t decoded_len = fmrb_link_cobs_decode(recv_buffer, frame_end, decoded);
+    ssize_t decoded_len = fmrb_link_cobs_decode(recv_buffer, frame_end, decoded);
 
     // Remove processed frame from buffer
     memmove(recv_buffer, recv_buffer + frame_end + 1, recv_pos - frame_end - 1);
     recv_pos -= (frame_end + 1);
 
-    if (decoded_len < sizeof(uint32_t)) {
-        ESP_LOGW(TAG, "Decoded frame too small: %zu bytes", decoded_len);
+    if (decoded_len <= 0) {
+        ESP_LOGW(TAG, "COBS decode failed: frame_len=%zu, decoded_len=%zd", frame_end, decoded_len);
+        return FMRB_ERR_FAILED;
+    }
+
+    if ((size_t)decoded_len < sizeof(uint32_t)) {
+        ESP_LOGW(TAG, "Decoded frame too small: %zd bytes", decoded_len);
         return FMRB_ERR_FAILED;
     }
 
