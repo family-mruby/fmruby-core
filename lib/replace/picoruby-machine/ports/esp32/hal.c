@@ -83,6 +83,7 @@ static void mruby_tick_task(void* arg) {
 void
 picoruby_hal_init(mrb_state *mrb)
 {
+  (void)mrb;  // VM registration is deferred to hal_register_vm()
   ESP_LOGI("hal", "hal_init called");
 
   // First call only: Create mutex and tick task
@@ -112,8 +113,20 @@ picoruby_hal_init(mrb_state *mrb)
       return;
     }
   }
+}
 
-  // Add mrb to list
+
+//================================================================
+/*!@brief
+  register VM
+
+  Register mrb VM to tick manager. Must be called after mrb_open() succeeds.
+*/
+void
+hal_register_vm(mrb_state *mrb)
+{
+  if (g_tick_manager.mutex == NULL) return;
+
   if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
     int added = 0;
     for (int i = 0; i < MAX_MRB_VMS; i++) {
@@ -155,6 +168,37 @@ hal_deinit(mrb_state *mrb)
         g_tick_manager.vms[i].mrb = NULL;
         ESP_LOGI("hal", "mrb VM unregistered from slot %d", i);
         break;
+      }
+    }
+    xSemaphoreGive(g_tick_manager.mutex);
+  }
+}
+
+
+//================================================================
+/*!@brief
+  deinitialize by pool
+
+  Remove any VM whose mrb pointer falls within the given memory pool range.
+  Used when mrb_open() fails after picoruby_hal_init() already registered the VM.
+*/
+void
+hal_deinit_by_pool(void* pool_ptr, size_t pool_size)
+{
+  if (g_tick_manager.mutex == NULL) return;
+
+  uint8_t *start = (uint8_t *)pool_ptr;
+  uint8_t *end = start + pool_size;
+
+  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+    for (int i = 0; i < MAX_MRB_VMS; i++) {
+      if (g_tick_manager.vms[i].active) {
+        uint8_t *p = (uint8_t *)g_tick_manager.vms[i].mrb;
+        if (p >= start && p < end) {
+          g_tick_manager.vms[i].active = 0;
+          g_tick_manager.vms[i].mrb = NULL;
+          ESP_LOGI("hal", "mrb VM unregistered from slot %d (pool cleanup)", i);
+        }
       }
     }
     xSemaphoreGive(g_tick_manager.mutex);

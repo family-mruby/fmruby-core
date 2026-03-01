@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include <picoruby.h>
+#include "hal.h"
 #include "picoruby_fmrb_app.h"
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
@@ -165,15 +166,13 @@ static void inspect_irep(mrb_state *mrb, const char* app_name, const mrc_irep *i
  * Note: Resources are already cleaned up in app_task_entry() before fmrb_task_delete()
  */
 static void tls_destructor(int idx, void* pv) {
-    int32_t idx_i32 = (int32_t)idx;  // Convert FreeRTOS int to stdint
-    (void)idx_i32;  // Currently unused
-    fmrb_app_task_context_t* ctx = (fmrb_app_task_context_t*)pv;
-    if (!ctx) return;
-
-    FMRB_LOGI(TAG, "[%s gen=%u] TLS destructor called (cleanup already done)", ctx->app_name, ctx->gen);
-
-    // All cleanup was already performed in app_task_entry() before fmrb_task_delete()
-    // Nothing to do here
+    (void)idx;
+    (void)pv;
+    // IMPORTANT: Do not call ESP_LOGI or any FreeRTOS API here.
+    // ESP-IDF doc: "Deletion Callbacks should never attempt to block"
+    // On SMP, calling FreeRTOS primitives from TLS destructor can corrupt
+    // scheduler state and crash in prvSelectHighestPriorityTaskSMP.
+    // All resource cleanup is performed in app_task_main() before fmrb_task_delete().
 }
 
 /**
@@ -314,6 +313,9 @@ static int create_vm_mruby(fmrb_app_task_context_t* ctx) {
         FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
         return -1;
     }
+
+    // Register VM to tick manager after successful creation
+    hal_register_vm(ctx->mrb);
 
     FMRB_LOGI(TAG, "[%s] mruby VM created successfully", ctx->app_name);
     return 0;
@@ -610,8 +612,7 @@ static void app_task_main(void* arg) {
     if (!transition_state(ctx, PROC_STATE_RUNNING)) {
         fmrb_semaphore_give(g_ctx_lock);
         FMRB_LOGE(TAG, "[%s] Failed to transition to RUNNING", ctx->app_name);
-        fmrb_task_delete(0);
-        return;
+        goto cleanup;
     }
     fmrb_semaphore_give(g_ctx_lock);
 
@@ -650,8 +651,10 @@ cleanup:
     // Perform cleanup immediately before task deletion
     fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
 
-    // Transition to STOPPING
-    transition_state(ctx, PROC_STATE_STOPPING);
+    // Transition toward FREE: RUNNING/SUSPENDED → STOPPING first, INIT → FREE directly
+    if (ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) {
+        transition_state(ctx, PROC_STATE_STOPPING);
+    }
 
     // Close VM based on type (BEFORE destroying memory handle!)
     destroy_vm(ctx);

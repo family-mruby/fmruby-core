@@ -91,6 +91,7 @@ static void mruby_tick_task(void* arg) {
 void
 picoruby_hal_init(mrb_state *mrb)
 {
+  (void)mrb;  // VM registration is deferred to hal_register_vm()
   // FreeRTOS environment: Multitask-based tick management
 #ifndef PICORUBY_HOST_BUILD
   ESP_LOGI("hal", "hal_init called (FreeRTOS mode)");
@@ -125,13 +126,33 @@ picoruby_hal_init(mrb_state *mrb)
     }
   }
 
-  // Add mrb to list
+#else
+  // mrbc build: POSIX sleep only (existing implementation)
+  // No tick management needed
+#endif
+}
+
+
+#ifndef PICORUBY_HOST_BUILD
+//================================================================
+/*!@brief
+  register VM
+
+  Register mrb VM to tick manager. Must be called after mrb_open() succeeds.
+*/
+void
+hal_register_vm(mrb_state *mrb)
+{
+  if (g_tick_manager.mutex == NULL) return;
+
   if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
     int added = 0;
     for (int i = 0; i < MAX_MRB_VMS; i++) {
       if (!g_tick_manager.vms[i].active) {
         g_tick_manager.vms[i].mrb = mrb;
         g_tick_manager.vms[i].active = 1;
+        g_tick_manager.vms[i].in_c_funcall = MRB_C_FUNCALL_EXIT;
+        g_tick_manager.vms[i].irq = MRB_ENABLE_IRQ;
         ESP_LOGI("hal", "mrb VM registered at slot %d (mrb=%p)", i, mrb);
         added = 1;
         break;
@@ -144,12 +165,8 @@ picoruby_hal_init(mrb_state *mrb)
 
     xSemaphoreGive(g_tick_manager.mutex);
   }
-
-#else
-  // mrbc build: POSIX sleep only (existing implementation)
-  // No tick management needed
-#endif
 }
+#endif
 
 
 //================================================================
@@ -227,6 +244,36 @@ hal_deinit(mrb_state *mrb)
       }
     }
 
+    xSemaphoreGive(g_tick_manager.mutex);
+  }
+}
+
+//================================================================
+/*!@brief
+  deinitialize by pool (FreeRTOS environment only)
+
+  Remove any VM whose mrb pointer falls within the given memory pool range.
+  Used when mrb_open() fails after picoruby_hal_init() already registered the VM.
+*/
+void
+hal_deinit_by_pool(void* pool_ptr, size_t pool_size)
+{
+  if (g_tick_manager.mutex == NULL) return;
+
+  uint8_t *start = (uint8_t *)pool_ptr;
+  uint8_t *end = start + pool_size;
+
+  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+    for (int i = 0; i < MAX_MRB_VMS; i++) {
+      if (g_tick_manager.vms[i].active) {
+        uint8_t *p = (uint8_t *)g_tick_manager.vms[i].mrb;
+        if (p >= start && p < end) {
+          g_tick_manager.vms[i].active = 0;
+          g_tick_manager.vms[i].mrb = NULL;
+          ESP_LOGI("hal", "mrb VM unregistered from slot %d (pool cleanup)", i);
+        }
+      }
+    }
     xSemaphoreGive(g_tick_manager.mutex);
   }
 }

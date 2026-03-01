@@ -49,7 +49,9 @@ MRB_BEGIN_DECL
 /***** Function prototypes **************************************************/
 
 void picoruby_hal_init(mrb_state *mrb);
+void hal_register_vm(mrb_state *mrb);
 void hal_deinit(mrb_state *mrb);
+void hal_deinit_by_pool(void* pool_ptr, size_t pool_size);
 void mrb_task_enable_irq(void);
 void mrb_task_disable_irq(void);
 
