@@ -472,6 +472,9 @@ static void handle_received_message(transport_context_t *ctx, uint8_t type, uint
     // Handle ACK/NACK messages
     if (sub_cmd == FMRB_LINK_RESPONSE_MSG_ACK || sub_cmd == FMRB_LINK_RESPONSE_MSG_NACK) {
         uint8_t response_status = (sub_cmd == FMRB_LINK_RESPONSE_MSG_ACK) ? 0 : 1;
+        FMRB_LOGI(TAG, "Received %s: type=%u seq=%u payload_len=%u",
+                  (sub_cmd == FMRB_LINK_RESPONSE_MSG_ACK) ? "ACK" : "NACK",
+                  type, seq, payload_len);
         // Note: seq is 8-bit from wire protocol, but internal sequence is 16-bit
         // We need to match against pending_messages[].sequence (uint16_t) using only lower 8 bits
         uint8_t seq_8bit = seq;
@@ -494,6 +497,8 @@ static void handle_received_message(transport_context_t *ctx, uint8_t type, uint
                 }
 
                 // Signal waiting thread
+                FMRB_LOGI(TAG, "ACK matched sync_request: seq=%u, resp_len=%u",
+                          seq_8bit, req->response_len);
                 fmrb_semaphore_give(req->wait_sem);
                 fmrb_semaphore_give(ctx->sync_mutex);
 
@@ -515,9 +520,11 @@ static void handle_received_message(transport_context_t *ctx, uint8_t type, uint
         }
         fmrb_semaphore_give(ctx->sync_mutex);
 
-        // Not a sync request, just remove from pending list
+        // Not a sync request, remove from pending list (async send ACK)
         for (int i = 0; i < ctx->pending_count; i++) {
             if ((ctx->pending_messages[i].sequence & 0xFF) == seq_8bit) {
+                FMRB_LOGI(TAG, "ACK cleared pending message: seq=%u (retries=%u)",
+                          seq_8bit, ctx->pending_messages[i].retry_count);
                 if (ctx->pending_messages[i].payload) {
                     fmrb_sys_free(ctx->pending_messages[i].payload);
                 }

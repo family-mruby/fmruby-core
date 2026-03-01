@@ -1,15 +1,18 @@
 #include "fmrb_hal_link.h"
 #include "fmrb_hal_spi.h"
+#include "fmrb_hal_gpio.h"
 #include "fmrb_link_cobs.h"
 #include "fmrb_mem.h"
 #include "fmrb_pin_assign.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/queue.h"
 #include <string.h>
 
 #define SPI_FRAME_SIZE 256  // Fixed frame size matching slave (increased for better throughput)
 #define SPI_FREQUENCY (10 * 1000 * 1000)  // 10MHz
+#define ACK_RECV_QUEUE_SIZE 8
 
 typedef struct {
     fmrb_link_callback_t callback;
@@ -18,10 +21,17 @@ typedef struct {
     uint8_t expected_seq;         // Expected sequence number for ACK
 } esp32_link_channel_t;
 
+// ACK receive queue entry: bridges HAL-level ACK reception to transport layer
+typedef struct {
+    uint8_t *data;
+    size_t size;
+} ack_queue_entry_t;
+
 static esp32_link_channel_t channels[FMRB_LINK_MAX_CHANNELS];
 static bool link_initialized = false;
 static fmrb_spi_handle_t spi_handle = NULL;
 static SemaphoreHandle_t spi_mutex = NULL;
+static QueueHandle_t ack_recv_queue = NULL;
 
 static const char *TAG = "fmrb_hal_link";
 
@@ -66,9 +76,23 @@ fmrb_err_t fmrb_hal_link_init(void) {
         return ret;
     }
 
-    ESP_LOGI(TAG, "ESP32 SPI link communication initialized (MOSI=%d, MISO=%d, SCLK=%d, CS=%d, %dMHz)",
+    // Create ACK receive queue (bridges HAL ACK polling to transport layer)
+    ack_recv_queue = xQueueCreate(ACK_RECV_QUEUE_SIZE, sizeof(ack_queue_entry_t));
+    if (!ack_recv_queue) {
+        ESP_LOGE(TAG, "Failed to create ACK receive queue");
+        fmrb_hal_spi_deinit(spi_handle);
+        spi_handle = NULL;
+        vSemaphoreDelete(spi_mutex);
+        spi_mutex = NULL;
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    // Initialize handshake GPIO as input (externally pulled up, active LOW)
+    fmrb_hal_gpio_config(FMRB_PIN_GFX_SPI_INTR, FMRB_GPIO_MODE_INPUT, FMRB_GPIO_PULL_NONE);
+
+    ESP_LOGI(TAG, "ESP32 SPI link communication initialized (MOSI=%d, MISO=%d, SCLK=%d, CS=%d, INTR=%d, %dMHz)",
              spi_config.mosi_pin, spi_config.miso_pin, spi_config.sclk_pin,
-             spi_config.cs_pin, spi_config.frequency / 1000000);
+             spi_config.cs_pin, FMRB_PIN_GFX_SPI_INTR, spi_config.frequency / 1000000);
 
     link_initialized = true;
     return FMRB_OK;
@@ -87,6 +111,16 @@ void fmrb_hal_link_deinit(void) {
     if (spi_mutex) {
         vSemaphoreDelete(spi_mutex);
         spi_mutex = NULL;
+    }
+
+    // Flush and delete ACK receive queue
+    if (ack_recv_queue) {
+        ack_queue_entry_t entry;
+        while (xQueueReceive(ack_recv_queue, &entry, 0) == pdTRUE) {
+            if (entry.data) fmrb_sys_free(entry.data);
+        }
+        vQueueDelete(ack_recv_queue);
+        ack_recv_queue = NULL;
     }
 
     for (int i = 0; i < FMRB_LINK_MAX_CHANNELS; i++) {
@@ -225,6 +259,25 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
 
     if (!spi_handle) {
         return FMRB_ERR_INVALID_STATE;
+    }
+
+    // Check ACK queue first: ACK data consumed by fmrb_hal_link_send() polling
+    // is queued here for the transport layer to process
+    if (ack_recv_queue) {
+        ack_queue_entry_t entry;
+        if (xQueueReceive(ack_recv_queue, &entry, 0) == pdTRUE) {
+            msg->data = entry.data;  // Transfer ownership (caller must free)
+            msg->size = entry.size;
+            ESP_LOGI(TAG, "Dequeued ACK for transport: %zu bytes", entry.size);
+            return FMRB_OK;
+        }
+    }
+
+    // If handshake GPIO is LOW, slave has ACK data pending.
+    // Skip SPI transfer to avoid consuming ACK meant for poll_for_ack().
+    int32_t hs_level = fmrb_hal_gpio_get_level(FMRB_PIN_GFX_SPI_INTR);
+    if (hs_level == 0) {
+        return FMRB_ERR_TIMEOUT;
     }
 
     // Take SPI mutex
@@ -433,10 +486,22 @@ static void process_received_ack(fmrb_link_channel_t channel, const uint8_t *rx_
         return;
     }
 
-    // Valid ACK received
+    // Valid ACK received - queue for transport layer
+    if (ack_recv_queue) {
+        uint8_t *queued_data = (uint8_t*)fmrb_sys_malloc(payload_len_rx);
+        if (queued_data) {
+            memcpy(queued_data, decoded, payload_len_rx);
+            ack_queue_entry_t entry = { .data = queued_data, .size = payload_len_rx };
+            if (xQueueSend(ack_recv_queue, &entry, 0) != pdTRUE) {
+                ESP_LOGW(TAG, "ACK queue full, dropping data");
+                fmrb_sys_free(queued_data);
+            }
+        }
+    }
+
     esp32_link_channel_t *ch = &channels[channel];
 
-    // Set ACK received flag for synchronous send
+    // Set ACK received flag for HAL-level polling loop
     ch->ack_received = true;
 
     // Also notify via callback if registered
@@ -468,6 +533,13 @@ static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms)
         return FMRB_ERR_INVALID_STATE;
     }
 
+    // Check handshake GPIO: active LOW means slave has ACK ready
+    int32_t hs_level = fmrb_hal_gpio_get_level(FMRB_PIN_GFX_SPI_INTR);
+    if (hs_level != 0) {
+        // Slave not ready yet, skip SPI transaction
+        return FMRB_ERR_TIMEOUT;
+    }
+
     // Take SPI mutex
     if (xSemaphoreTake(spi_mutex, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
         return FMRB_ERR_TIMEOUT;
@@ -481,7 +553,7 @@ static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms)
     uint8_t rx_frame[SPI_FRAME_SIZE];
     memset(rx_frame, 0, SPI_FRAME_SIZE);
 
-    // Send empty frame to poll for ACK
+    // Send empty frame to poll for ACK (slave signaled ready via handshake)
     fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, tx_frame, rx_frame, SPI_FRAME_SIZE, timeout_ms);
 
     xSemaphoreGive(spi_mutex);
