@@ -4,6 +4,8 @@
 extern "C" {
 #endif
 
+#define FMRB_LED_STATUS_FATAL 0
+
 /**
  * Start the status LED task.
  * Normal: LED solid ON.

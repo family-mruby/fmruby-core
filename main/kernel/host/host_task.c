@@ -28,6 +28,8 @@ typedef enum {
     HOST_MSG_HID_MOUSE_CLICK = 4,
     HOST_MSG_DRAW_COMMAND = 5,
     HOST_MSG_AUDIO_COMMAND = 6,
+    HOST_MSG_HID_GAMEPAD_BUTTON = 7,
+    HOST_MSG_HID_GAMEPAD_AXIS = 8,
 } host_msg_type_t;
 
 // Host message structure (now uses HAL message format)
@@ -49,6 +51,16 @@ typedef struct {
             int button;
             int state;  // 1=pressed, 0=released
         } mouse_click;
+        struct {
+            int gamepad_id;  // 0-1
+            int button_num;  // 0-15
+            int state;       // 1=pressed, 0=released
+        } gamepad_button;
+        struct {
+            int gamepad_id;  // 0-1
+            int axis_num;    // 0-5
+            int value;       // -128 to 127 (sticks) or 0 to 255 (triggers)
+        } gamepad_axis;
         gfx_cmd_t gfx;
     } data;
 } host_message_t;
@@ -437,6 +449,22 @@ static void host_task_process_host_message(const host_message_t *msg)
             // TODO: Implement audio command processing
             break;
 
+        case HOST_MSG_HID_GAMEPAD_BUTTON:
+            FMRB_LOGD(TAG, "Gamepad button: id=%d, button=%d, state=%s",
+                     msg->data.gamepad_button.gamepad_id,
+                     msg->data.gamepad_button.button_num,
+                     msg->data.gamepad_button.state ? "pressed" : "released");
+            // TODO: Implement gamepad button event routing
+            break;
+
+        case HOST_MSG_HID_GAMEPAD_AXIS:
+            FMRB_LOGD(TAG, "Gamepad axis: id=%d, axis=%d, value=%d",
+                     msg->data.gamepad_axis.gamepad_id,
+                     msg->data.gamepad_axis.axis_num,
+                     msg->data.gamepad_axis.value);
+            // TODO: Implement gamepad axis event routing
+            break;
+
         default:
             FMRB_LOGW(TAG, "Unknown message type: %d", msg->type);
             break;
@@ -617,6 +645,28 @@ int fmrb_host_send_mouse_click(int x, int y, int button, int state)
         .data.mouse_click.y = y,
         .data.mouse_click.button = button,
         .data.mouse_click.state = state
+    };
+    return fmrb_host_send_message(&msg);
+}
+
+int fmrb_host_send_gamepad_button(int gamepad_id, int button_num, int state)
+{
+    host_message_t msg = {
+        .type = HOST_MSG_HID_GAMEPAD_BUTTON,
+        .data.gamepad_button.gamepad_id = gamepad_id,
+        .data.gamepad_button.button_num = button_num,
+        .data.gamepad_button.state = state
+    };
+    return fmrb_host_send_message(&msg);
+}
+
+int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value)
+{
+    host_message_t msg = {
+        .type = HOST_MSG_HID_GAMEPAD_AXIS,
+        .data.gamepad_axis.gamepad_id = gamepad_id,
+        .data.gamepad_axis.axis_num = axis_num,
+        .data.gamepad_axis.value = value
     };
     return fmrb_host_send_message(&msg);
 }

@@ -19,15 +19,19 @@ static void status_led_task(void *pvParameters)
 
     while (1) {
         if (s_error_flag) {
+            // Error mode: blink at BLINK_INTERVAL_MS interval
             led_state = !led_state;
             fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, led_state);
             fmrb_task_delay_ms(BLINK_INTERVAL_MS);
         } else {
-            if (!led_state) {
-                led_state = 1;
-                fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
+            fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
+            for (int i = 0; i < 19 && !s_error_flag; i++) {
+                fmrb_task_delay_ms(100);
             }
-            fmrb_task_delay_ms(500);
+            if (!s_error_flag) {
+                fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 0);
+                fmrb_task_delay_ms(100);
+            }
         }
     }
 }
@@ -42,11 +46,12 @@ void status_led_start(void)
 
 void status_led_set_error(int level)
 {
-    FMRB_LOGE(TAG, "Set Error");
+    FMRB_LOGE(TAG, "Set Error flag");
     s_error_flag = 1;
 }
 
 void status_led_clear_error(void)
 {
+    FMRB_LOGI(TAG, "Clear Error flag");
     s_error_flag = 0;
 }

@@ -8,9 +8,8 @@
 #include "host_task.h"
 #include "boot.h"
 #include "fmrb_kernel.h"
+#include "status_led.h"
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "usb/usb_host.h"
 #include "usb/hid_host.h"
 #include "usb/hid_usage_keyboard.h"
@@ -19,11 +18,48 @@
 static const char *TAG = "usb_task";
 
 #define MAX_HID_DEVICES 4
+#define MAX_GAMEPAD_DEVICES 2
+#define MAX_GAMEPAD_BUTTONS 16
+#define MAX_GAMEPAD_AXES 6
+#define HID_CALLBACK_MUTEX_TIMEOUT_MS 10  // Timeout for mutex in callbacks (10ms)
+
+// Custom protocol ID for gamepad (not in standard HID protocol enum)
+#define HID_PROTOCOL_GAMEPAD 0xFF
+
+// Vendor/Product IDs for supported gamepads
+#define VID_SONY 0x054C
+#define PID_PS5_DUALSENSE 0x0CE6
+#define VID_LOGITECH 0x046D
+
+// Gamepad axis indices
+#define GAMEPAD_AXIS_LEFT_X 0
+#define GAMEPAD_AXIS_LEFT_Y 1
+#define GAMEPAD_AXIS_RIGHT_X 2
+#define GAMEPAD_AXIS_RIGHT_Y 3
+#define GAMEPAD_AXIS_L2 4
+#define GAMEPAD_AXIS_R2 5
 
 typedef struct {
     hid_host_device_handle_t handle;
     uint8_t proto;
     bool connected;
+    uint16_t vid;  // Vendor ID
+    uint16_t pid;  // Product ID
+    uint8_t report_copy_len;  // Bytes to copy from report (device-type specific)
+    uint32_t generation;  // Generation counter (incremented on connect/disconnect)
+    // Per-device state
+    hid_keyboard_input_report_boot_t prev_kbd_report;
+    struct {
+        int cursor_x;
+        int cursor_y;
+        uint8_t prev_buttons;
+        bool initialized;  // True after first screen size is known
+    } mouse_state;
+    struct {
+        int gamepad_id;  // 0 or 1
+        uint16_t prev_buttons;  // Button state bitmask (16 bits)
+        int16_t prev_axes[MAX_GAMEPAD_AXES];  // Previous axis values
+    } gamepad_state;
 } hid_device_info_t;
 
 // Task handles and state
@@ -35,14 +71,40 @@ static volatile int g_hid_task_exited = 0;
 
 // Device tracking
 static hid_device_info_t g_hid_devices[MAX_HID_DEVICES];
+static fmrb_semaphore_t g_hid_devices_mutex = NULL;
 
-// Keyboard state
-static hid_keyboard_input_report_boot_t g_prev_kbd_report;
+// Input report structure for queueing raw reports from callback
+typedef struct {
+    int8_t slot_index;  // Device slot index (0-3), -1 if invalid
+    uint32_t generation;  // Generation counter (to detect stale reports)
+    uint8_t report_data[64];  // Reduced from 128 (max is PS5=64B)
+    uint8_t report_len;  // Actual length copied
+} hid_input_report_t;
 
-// Mouse state
-static int g_cursor_x = 0;
-static int g_cursor_y = 0;
-static uint8_t g_prev_mouse_buttons = 0;
+// Input report ring buffer (for deferred processing from callbacks)
+#define INPUT_REPORT_QUEUE_SIZE 16  // Large enough to avoid overflow under normal load
+static hid_input_report_t g_input_reports[INPUT_REPORT_QUEUE_SIZE];
+static volatile int g_input_report_head = 0;  // Write index
+static volatile int g_input_report_tail = 0;  // Read index
+static volatile bool g_input_report_overflow = false;  // Ring overflow flag
+static fmrb_spinlock_t g_input_report_spinlock = FMRB_SPINLOCK_INITIALIZER;
+
+// Pending disconnect item with generation (to prevent slot reuse issues)
+typedef struct {
+    int8_t slot_index;   // Device slot index (0-3), -1 if invalid
+    uint32_t generation; // Generation counter (must match to process)
+} pending_disconnect_item_t;
+
+// Pending disconnect ring buffer (for deferred cleanup from callbacks)
+#define PENDING_DISCONNECT_QUEUE_SIZE 8  // Larger than MAX_HID_DEVICES to avoid overflow
+static pending_disconnect_item_t g_pending_disconnects[PENDING_DISCONNECT_QUEUE_SIZE];
+static volatile int g_pending_disconnect_head = 0;  // Write index
+static volatile int g_pending_disconnect_tail = 0;  // Read index
+static volatile bool g_pending_disconnect_overflow = false;  // Ring overflow flag
+static volatile bool g_pending_disconnect_cleanup_needed = false;  // Full scan needed (mutex fail)
+static fmrb_spinlock_t g_pending_disconnect_spinlock = FMRB_SPINLOCK_INITIALIZER;
+
+// Screen dimensions (shared for all mice)
 static int g_screen_width = 0;
 static int g_screen_height = 0;
 
@@ -59,19 +121,151 @@ static void init_device_slots(void)
         g_hid_devices[i].handle = NULL;
         g_hid_devices[i].proto = 0;
         g_hid_devices[i].connected = false;
+        g_hid_devices[i].vid = 0;
+        g_hid_devices[i].pid = 0;
+        g_hid_devices[i].report_copy_len = 0;
+        g_hid_devices[i].generation = 0;
+        memset(&g_hid_devices[i].prev_kbd_report, 0, sizeof(hid_keyboard_input_report_boot_t));
+        g_hid_devices[i].mouse_state.cursor_x = 0;
+        g_hid_devices[i].mouse_state.cursor_y = 0;
+        g_hid_devices[i].mouse_state.prev_buttons = 0;
+        g_hid_devices[i].mouse_state.initialized = false;
+        g_hid_devices[i].gamepad_state.gamepad_id = -1;
+        g_hid_devices[i].gamepad_state.prev_buttons = 0;
+        memset(g_hid_devices[i].gamepad_state.prev_axes, 0, sizeof(g_hid_devices[i].gamepad_state.prev_axes));
     }
 }
 
-static hid_device_info_t* find_device_slot(hid_host_device_handle_t handle)
+// Push input report to ring buffer (called from callback - must be fast)
+// IMPORTANT: No logging in this function (avoid callback bloat)
+static void input_report_push(int8_t slot_index, uint32_t generation, const uint8_t *data, uint8_t len)
 {
-    for (int i = 0; i < MAX_HID_DEVICES; i++) {
-        if (g_hid_devices[i].connected && g_hid_devices[i].handle == handle) {
-            return &g_hid_devices[i];
+    // Critical section: update ring buffer atomically
+    fmrb_enter_critical(&g_input_report_spinlock);
+
+    int next_head = (g_input_report_head + 1) % INPUT_REPORT_QUEUE_SIZE;
+    if (next_head == g_input_report_tail) {
+        // Ring overflow - set flag (no logging here!)
+        g_input_report_overflow = true;
+    } else {
+        // Copy report data to ring buffer
+        g_input_reports[g_input_report_head].slot_index = slot_index;
+        g_input_reports[g_input_report_head].generation = generation;
+        g_input_reports[g_input_report_head].report_len = len;
+        if (len > 0 && len <= sizeof(g_input_reports[g_input_report_head].report_data)) {
+            memcpy(g_input_reports[g_input_report_head].report_data, data, len);
         }
+        g_input_report_head = next_head;
     }
-    return NULL;
+
+    fmrb_exit_critical(&g_input_report_spinlock);
 }
 
+// Pop input report from ring buffer (called from task context)
+// Returns true if report was popped, false if ring is empty
+static bool input_report_pop(hid_input_report_t *out_report)
+{
+    bool has_report = false;
+
+    fmrb_enter_critical(&g_input_report_spinlock);
+
+    if (g_input_report_tail != g_input_report_head) {
+        // Copy report data from ring buffer
+        memcpy(out_report, &g_input_reports[g_input_report_tail], sizeof(hid_input_report_t));
+        g_input_report_tail = (g_input_report_tail + 1) % INPUT_REPORT_QUEUE_SIZE;
+        has_report = true;
+    }
+
+    fmrb_exit_critical(&g_input_report_spinlock);
+
+    return has_report;
+}
+
+// Check and clear input report overflow flag (called from task context)
+static bool input_report_check_overflow(void)
+{
+    bool overflow = false;
+
+    fmrb_enter_critical(&g_input_report_spinlock);
+    overflow = g_input_report_overflow;
+    g_input_report_overflow = false;
+    fmrb_exit_critical(&g_input_report_spinlock);
+
+    return overflow;
+}
+
+// Push slot_index+generation to pending disconnect ring (called from callback - must be fast)
+// IMPORTANT: No logging in this function (avoid callback bloat)
+static void pending_disconnect_push(int8_t slot_index, uint32_t generation)
+{
+    // Critical section: update ring buffer atomically
+    fmrb_enter_critical(&g_pending_disconnect_spinlock);
+
+    int next_head = (g_pending_disconnect_head + 1) % PENDING_DISCONNECT_QUEUE_SIZE;
+    if (next_head == g_pending_disconnect_tail) {
+        // Ring overflow - set flag to trigger full scan (no logging here!)
+        g_pending_disconnect_overflow = true;
+    } else {
+        g_pending_disconnects[g_pending_disconnect_head].slot_index = slot_index;
+        g_pending_disconnects[g_pending_disconnect_head].generation = generation;
+        g_pending_disconnect_head = next_head;
+    }
+
+    fmrb_exit_critical(&g_pending_disconnect_spinlock);
+}
+
+// Pop disconnect item from pending disconnect ring (called from task context)
+// Returns true if item was popped, false if ring is empty
+static bool pending_disconnect_pop(pending_disconnect_item_t *out_item)
+{
+    bool has_item = false;
+
+    fmrb_enter_critical(&g_pending_disconnect_spinlock);
+
+    if (g_pending_disconnect_tail != g_pending_disconnect_head) {
+        *out_item = g_pending_disconnects[g_pending_disconnect_tail];
+        g_pending_disconnect_tail = (g_pending_disconnect_tail + 1) % PENDING_DISCONNECT_QUEUE_SIZE;
+        has_item = true;
+    }
+
+    fmrb_exit_critical(&g_pending_disconnect_spinlock);
+
+    return has_item;
+}
+
+// Check and clear overflow flag (called from task context)
+static bool pending_disconnect_check_overflow(void)
+{
+    bool overflow = false;
+
+    fmrb_enter_critical(&g_pending_disconnect_spinlock);
+    overflow = g_pending_disconnect_overflow;
+    g_pending_disconnect_overflow = false;
+    fmrb_exit_critical(&g_pending_disconnect_spinlock);
+
+    return overflow;
+}
+
+// Check and clear cleanup needed flag (called from task context)
+static bool pending_disconnect_check_cleanup_needed(void)
+{
+    bool cleanup = false;
+
+    fmrb_enter_critical(&g_pending_disconnect_spinlock);
+    cleanup = g_pending_disconnect_cleanup_needed;
+    g_pending_disconnect_cleanup_needed = false;
+    fmrb_exit_critical(&g_pending_disconnect_spinlock);
+
+    return cleanup;
+}
+
+// Request full cleanup scan (called from callback - must be fast)
+static void pending_disconnect_request_cleanup(void)
+{
+    fmrb_enter_critical(&g_pending_disconnect_spinlock);
+    g_pending_disconnect_cleanup_needed = true;
+    fmrb_exit_critical(&g_pending_disconnect_spinlock);
+}
 static hid_device_info_t* find_empty_slot(void)
 {
     for (int i = 0; i < MAX_HID_DEVICES; i++) {
@@ -82,14 +276,41 @@ static hid_device_info_t* find_empty_slot(void)
     return NULL;
 }
 
-static void remove_device(hid_host_device_handle_t handle)
+// Clear a device slot (slot direct access version)
+static void clear_slot(hid_device_info_t* device)
 {
-    hid_device_info_t* device = find_device_slot(handle);
-    if (device != NULL) {
-        device->handle = NULL;
-        device->proto = 0;
-        device->connected = false;
+    device->generation++;  // Increment generation on disconnect (invalidates queued reports)
+    device->handle = NULL;
+    device->proto = 0;
+    device->connected = false;
+    device->vid = 0;
+    device->pid = 0;
+    device->report_copy_len = 0;
+    memset(&device->prev_kbd_report, 0, sizeof(hid_keyboard_input_report_boot_t));
+    device->mouse_state.cursor_x = 0;
+    device->mouse_state.cursor_y = 0;
+    device->mouse_state.prev_buttons = 0;
+    device->mouse_state.initialized = false;
+    device->gamepad_state.gamepad_id = -1;
+    device->gamepad_state.prev_buttons = 0;
+    memset(device->gamepad_state.prev_axes, 0, sizeof(device->gamepad_state.prev_axes));
+}
+
+static bool is_gamepad_device(uint16_t vid, uint16_t pid)
+{
+    // Check for PS5 DualSense
+    if (vid == VID_SONY && pid == PID_PS5_DUALSENSE) {
+        return true;
     }
+
+    // Check for Logitech gamepads (F310, F710, etc.)
+    if (vid == VID_LOGITECH) {
+        // Most Logitech gamepads share the same VID
+        // We could check specific PIDs here if needed
+        return true;
+    }
+
+    return false;
 }
 
 static bool key_in_report(uint8_t key, const hid_keyboard_input_report_boot_t *report)
@@ -102,7 +323,7 @@ static bool key_in_report(uint8_t key, const hid_keyboard_input_report_boot_t *r
     return false;
 }
 
-static void process_keyboard_report(const uint8_t *data, size_t len)
+static void process_keyboard_report(hid_device_info_t *device, const uint8_t *data, size_t len)
 {
     if (len < sizeof(hid_keyboard_input_report_boot_t)) {
         return;
@@ -112,7 +333,7 @@ static void process_keyboard_report(const uint8_t *data, size_t len)
     uint8_t modifier = report->modifier.val;
 
     // Detect modifier changes and generate events for individual modifier bits
-    uint8_t mod_changed = modifier ^ g_prev_kbd_report.modifier.val;
+    uint8_t mod_changed = modifier ^ device->prev_kbd_report.modifier.val;
     if (mod_changed) {
         static const uint8_t mod_scancodes[] = {
             HID_KEY_LEFT_CONTROL, HID_KEY_LEFT_SHIFT, HID_KEY_LEFT_ALT, HID_KEY_LEFT_GUI,
@@ -131,7 +352,7 @@ static void process_keyboard_report(const uint8_t *data, size_t len)
 
     // Detect key releases (was in prev report, not in current)
     for (int i = 0; i < HID_KEYBOARD_KEY_MAX; i++) {
-        uint8_t prev_key = g_prev_kbd_report.key[i];
+        uint8_t prev_key = device->prev_kbd_report.key[i];
         if (prev_key != HID_KEY_NO_PRESS && !key_in_report(prev_key, report)) {
             FMRB_LOGD(TAG, "Key UP: scancode=0x%02X modifier=0x%02X", prev_key, modifier);
             fmrb_host_send_key_up(prev_key, prev_key, modifier);
@@ -141,13 +362,13 @@ static void process_keyboard_report(const uint8_t *data, size_t len)
     // Detect key presses (in current report, not in prev)
     for (int i = 0; i < HID_KEYBOARD_KEY_MAX; i++) {
         uint8_t cur_key = report->key[i];
-        if (cur_key != HID_KEY_NO_PRESS && !key_in_report(cur_key, &g_prev_kbd_report)) {
+        if (cur_key != HID_KEY_NO_PRESS && !key_in_report(cur_key, &device->prev_kbd_report)) {
             FMRB_LOGD(TAG, "Key DOWN: scancode=0x%02X modifier=0x%02X", cur_key, modifier);
             fmrb_host_send_key_down(cur_key, cur_key, modifier);
         }
     }
 
-    memcpy(&g_prev_kbd_report, report, sizeof(hid_keyboard_input_report_boot_t));
+    memcpy(&device->prev_kbd_report, report, sizeof(hid_keyboard_input_report_boot_t));
 }
 
 static bool ensure_screen_size(void)
@@ -168,7 +389,7 @@ static bool ensure_screen_size(void)
     return false;
 }
 
-static void process_mouse_report(const uint8_t *data, size_t len)
+static void process_mouse_report(hid_device_info_t *device, const uint8_t *data, size_t len)
 {
     if (len < sizeof(hid_mouse_input_report_boot_t)) {
         return;
@@ -180,26 +401,35 @@ static void process_mouse_report(const uint8_t *data, size_t len)
 
     const hid_mouse_input_report_boot_t *report = (const hid_mouse_input_report_boot_t *)data;
 
+    // Initialize cursor to center on first movement when screen size is known
+    if (!device->mouse_state.initialized && g_screen_width > 0 && g_screen_height > 0) {
+        device->mouse_state.cursor_x = g_screen_width / 2;
+        device->mouse_state.cursor_y = g_screen_height / 2;
+        device->mouse_state.initialized = true;
+        FMRB_LOGD(TAG, "Mouse initialized at center (%d, %d)",
+                 device->mouse_state.cursor_x, device->mouse_state.cursor_y);
+    }
+
     // Update absolute cursor position from relative displacement
     int dx = report->x_displacement;
     int dy = report->y_displacement;
 
     if (dx != 0 || dy != 0) {
-        g_cursor_x += dx;
-        g_cursor_y += dy;
+        device->mouse_state.cursor_x += dx;
+        device->mouse_state.cursor_y += dy;
 
         // Clamp to screen bounds
-        if (g_cursor_x < 0) g_cursor_x = 0;
-        if (g_cursor_y < 0) g_cursor_y = 0;
-        if (g_cursor_x >= g_screen_width) g_cursor_x = g_screen_width - 1;
-        if (g_cursor_y >= g_screen_height) g_cursor_y = g_screen_height - 1;
+        if (device->mouse_state.cursor_x < 0) device->mouse_state.cursor_x = 0;
+        if (device->mouse_state.cursor_y < 0) device->mouse_state.cursor_y = 0;
+        if (device->mouse_state.cursor_x >= g_screen_width) device->mouse_state.cursor_x = g_screen_width - 1;
+        if (device->mouse_state.cursor_y >= g_screen_height) device->mouse_state.cursor_y = g_screen_height - 1;
 
-        fmrb_host_send_mouse_move(g_cursor_x, g_cursor_y);
+        fmrb_host_send_mouse_move(device->mouse_state.cursor_x, device->mouse_state.cursor_y);
     }
 
     // Check button changes
     uint8_t buttons = report->buttons.val;
-    uint8_t changed = buttons ^ g_prev_mouse_buttons;
+    uint8_t changed = buttons ^ device->mouse_state.prev_buttons;
 
     if (changed) {
         for (int btn = 0; btn < 3; btn++) {
@@ -207,11 +437,98 @@ static void process_mouse_report(const uint8_t *data, size_t len)
                 int state = (buttons & (1 << btn)) ? 1 : 0;
                 FMRB_LOGD(TAG, "Mouse button %d %s at (%d,%d)",
                          btn + 1, state ? "pressed" : "released",
-                         g_cursor_x, g_cursor_y);
-                fmrb_host_send_mouse_click(g_cursor_x, g_cursor_y, btn + 1, state);
+                         device->mouse_state.cursor_x, device->mouse_state.cursor_y);
+                fmrb_host_send_mouse_click(device->mouse_state.cursor_x, device->mouse_state.cursor_y, btn + 1, state);
             }
         }
-        g_prev_mouse_buttons = buttons;
+        device->mouse_state.prev_buttons = buttons;
+    }
+}
+
+static void process_gamepad_report(hid_device_info_t *device, const uint8_t *data, size_t len)
+{
+    if (len < 8) {
+        return;  // Too short for any gamepad report
+    }
+
+    int gamepad_id = device->gamepad_state.gamepad_id;
+    if (gamepad_id < 0 || gamepad_id >= MAX_GAMEPAD_DEVICES) {
+        return;
+    }
+
+    // Parse report based on VID/PID
+    uint16_t buttons = 0;
+    int16_t axes[MAX_GAMEPAD_AXES] = {0};
+
+    if (device->vid == VID_SONY && device->pid == PID_PS5_DUALSENSE) {
+        // PS5 DualSense report format (64 bytes, USB mode)
+        // Byte 0: Report ID (0x01)
+        // Byte 1: Left stick X (0=left, 128=center, 255=right)
+        // Byte 2: Left stick Y (0=up, 128=center, 255=down)
+        // Byte 3: Right stick X
+        // Byte 4: Right stick Y
+        // Byte 5: L2 trigger (0-255)
+        // Byte 6: R2 trigger (0-255)
+        // Byte 7: Button bitfield byte 1
+        // Byte 8: Button bitfield byte 2
+
+        if (len >= 10) {
+            // Convert analog sticks from 0-255 to -128..127
+            axes[GAMEPAD_AXIS_LEFT_X] = (int16_t)((int)data[1] - 128);
+            axes[GAMEPAD_AXIS_LEFT_Y] = (int16_t)((int)data[2] - 128);
+            axes[GAMEPAD_AXIS_RIGHT_X] = (int16_t)((int)data[3] - 128);
+            axes[GAMEPAD_AXIS_RIGHT_Y] = (int16_t)((int)data[4] - 128);
+            axes[GAMEPAD_AXIS_L2] = data[5];
+            axes[GAMEPAD_AXIS_R2] = data[6];
+
+            // Parse buttons (simplified - actual PS5 has complex button mapping)
+            buttons = ((uint16_t)data[8]) | (((uint16_t)data[9]) << 8);
+        }
+    } else if (device->vid == VID_LOGITECH) {
+        // Logitech gamepad report format (standard HID, 8 bytes)
+        // Byte 0: Left stick X (signed)
+        // Byte 1: Left stick Y (signed)
+        // Byte 2: Right stick X (signed)
+        // Byte 3: Right stick Y (signed)
+        // Byte 4: Button bits (lower 8 bits)
+        // Byte 5: Button bits (upper 8 bits)
+        if (len >= 6) {
+            axes[GAMEPAD_AXIS_LEFT_X] = (int8_t)data[0];
+            axes[GAMEPAD_AXIS_LEFT_Y] = (int8_t)data[1];
+            axes[GAMEPAD_AXIS_RIGHT_X] = (int8_t)data[2];
+            axes[GAMEPAD_AXIS_RIGHT_Y] = (int8_t)data[3];
+            buttons = ((uint16_t)data[4]) | (((uint16_t)data[5]) << 8);
+
+            // Triggers (if available)
+            if (len >= 8) {
+                axes[GAMEPAD_AXIS_L2] = data[6];
+                axes[GAMEPAD_AXIS_R2] = data[7];
+            }
+        }
+    }
+
+    // Detect button changes
+    uint16_t changed_buttons = buttons ^ device->gamepad_state.prev_buttons;
+    if (changed_buttons) {
+        for (int btn = 0; btn < MAX_GAMEPAD_BUTTONS; btn++) {
+            if (changed_buttons & (1 << btn)) {
+                int state = (buttons & (1 << btn)) ? 1 : 0;
+                FMRB_LOGD(TAG, "Gamepad %d button %d %s", gamepad_id, btn, state ? "pressed" : "released");
+                fmrb_host_send_gamepad_button(gamepad_id, btn, state);
+            }
+        }
+        device->gamepad_state.prev_buttons = buttons;
+    }
+    // Detect axis changes (with deadzone of 5)
+    const int deadzone = 5;
+    for (int axis = 0; axis < MAX_GAMEPAD_AXES; axis++) {
+        int16_t delta = axes[axis] - device->gamepad_state.prev_axes[axis];
+        if (delta < 0) delta = -delta;
+        if (delta > deadzone) {
+            FMRB_LOGD(TAG, "Gamepad %d axis %d: %d", gamepad_id, axis, axes[axis]);
+            fmrb_host_send_gamepad_axis(gamepad_id, axis, axes[axis]);
+            device->gamepad_state.prev_axes[axis] = axes[axis];
+        }
     }
 }
 
@@ -219,46 +536,89 @@ static void hid_host_interface_callback(hid_host_device_handle_t hid_device_hand
                                          const hid_host_interface_event_t event,
                                          void *arg)
 {
+    // Guard against late callbacks after stop/uninstall (race condition safety)
+    if (!g_usb_running || g_hid_devices_mutex == NULL) {
+        return;  // USB stack is stopping or already stopped - ignore callback
+    }
+
     switch (event) {
         case HID_HOST_INTERFACE_EVENT_INPUT_REPORT: {
+            // IMPORTANT: No logging, short mutex only in this high-frequency callback
+            // Strategy: Take mutex briefly to get slot_index/copy_len/generation, then release before USB call
+
+            int8_t slot_idx = -1;
+            uint8_t copy_len = 0;
+            uint32_t generation = 0;
+
+            // Short mutex acquisition to find slot index (timeout=1ms, fail fast)
+            if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MS_TO_TICKS(1)) == FMRB_TRUE) {
+                // Linear search for device with matching handle
+                for (int i = 0; i < MAX_HID_DEVICES; i++) {
+                    if (g_hid_devices[i].handle == hid_device_handle && g_hid_devices[i].connected) {
+                        slot_idx = (int8_t)i;
+                        copy_len = g_hid_devices[i].report_copy_len;
+                        generation = g_hid_devices[i].generation;
+                        break;
+                    }
+                }
+                fmrb_semaphore_give(g_hid_devices_mutex);
+            }
+
+            // If mutex failed or device not found, drop this report (no logging)
+            if (slot_idx < 0 || copy_len == 0) {
+                break;
+            }
+
+            // Now get report data outside mutex (USB call can be slow)
             uint8_t report_data[64];
             size_t report_len = 0;
             esp_err_t ret = hid_host_device_get_raw_input_report_data(
                 hid_device_handle, report_data, sizeof(report_data), &report_len);
-            if (ret != ESP_OK) {
-                FMRB_LOGW(TAG, "Failed to get input report: %d", ret);
-                break;
-            }
 
-            hid_device_info_t* device = find_device_slot(hid_device_handle);
-            if (device == NULL) {
-                break;
-            }
-
-            if (device->proto == HID_PROTOCOL_KEYBOARD) {
-                process_keyboard_report(report_data, report_len);
-            } else if (device->proto == HID_PROTOCOL_MOUSE) {
-                process_mouse_report(report_data, report_len);
+            if (ret == ESP_OK && report_len > 0) {
+                // Push only the minimum needed (copy_len or actual len, whichever is smaller)
+                uint8_t actual_copy = (report_len < copy_len) ? report_len : copy_len;
+                input_report_push(slot_idx, generation, report_data, actual_copy);
             }
             break;
         }
 
         case HID_HOST_INTERFACE_EVENT_TRANSFER_ERROR:
-            FMRB_LOGW(TAG, "HID transfer error");
+            // Don't log in callback - too frequent during errors
             break;
 
         case HID_HOST_INTERFACE_EVENT_DISCONNECTED: {
-            hid_device_info_t* device = find_device_slot(hid_device_handle);
-            if (device != NULL) {
-                FMRB_LOGI(TAG, "HID Device Disconnected (proto=%d)", device->proto);
-                hid_host_device_close(hid_device_handle);
-                remove_device(hid_device_handle);
+            // DISCONNECTED cleanup - always defer to task context for proper stop/close
+            // IMPORTANT: No logging in callback (avoid heavy operations)
+            // This ensures hid_host_device_stop/close are called consistently
+
+            // Find slot_index+generation with short mutex (1ms timeout)
+            int8_t slot_idx = -1;
+            uint32_t generation = 0;
+            if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MS_TO_TICKS(1)) == FMRB_TRUE) {
+                for (int i = 0; i < MAX_HID_DEVICES; i++) {
+                    if (g_hid_devices[i].handle == hid_device_handle &&
+                        g_hid_devices[i].connected) {
+                        slot_idx = (int8_t)i;
+                        generation = g_hid_devices[i].generation;
+                        break;
+                    }
+                }
+                fmrb_semaphore_give(g_hid_devices_mutex);
+            }
+
+            // Push slot_index+generation to deferred queue if found, otherwise request full scan
+            if (slot_idx >= 0) {
+                pending_disconnect_push(slot_idx, generation);
+            } else {
+                // Mutex timeout or device not found - request full cleanup scan as safety net
+                pending_disconnect_request_cleanup();
             }
             break;
         }
 
         default:
-            FMRB_LOGW(TAG, "Unknown HID interface event: %d", event);
+            // Don't log unknown events in callback
             break;
     }
 }
@@ -269,45 +629,165 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
 {
     switch (event) {
         case HID_HOST_DRIVER_EVENT_CONNECTED: {
-            hid_device_info_t* slot = find_empty_slot();
-            if (slot == NULL) {
-                FMRB_LOGW(TAG, "No empty slot for HID device");
-                return;
-            }
-
             hid_host_dev_info_t dev_info;
+            uint16_t vid = 0, pid = 0;
             if (hid_host_get_device_info(hid_device_handle, &dev_info) == ESP_OK) {
-                FMRB_LOGI(TAG, "HID Device Connected - VID: 0x%04X, PID: 0x%04X",
-                          dev_info.VID, dev_info.PID);
+                vid = dev_info.VID;
+                pid = dev_info.PID;
+                FMRB_LOGI(TAG, "HID Device Connected - VID: 0x%04X, PID: 0x%04X", vid, pid);
             }
 
             hid_host_dev_params_t dev_params;
             uint8_t proto = 0;
+            bool is_boot_device = false;
+            bool is_gamepad = is_gamepad_device(vid, pid);
+
             if (hid_host_device_get_params(hid_device_handle, &dev_params) == ESP_OK) {
                 proto = dev_params.proto;
                 const char* proto_name = "Unknown";
                 if (dev_params.sub_class == HID_SUBCLASS_BOOT_INTERFACE) {
+                    is_boot_device = true;
                     if (proto == HID_PROTOCOL_KEYBOARD) {
                         proto_name = "Keyboard";
                     } else if (proto == HID_PROTOCOL_MOUSE) {
                         proto_name = "Mouse";
                     }
+                } else if (is_gamepad) {
+                    proto_name = "Gamepad";
+                    proto = HID_PROTOCOL_GAMEPAD;
                 } else {
                     proto_name = "Non-Boot";
                 }
                 FMRB_LOGI(TAG, "  Protocol: %s (sub_class=%d, proto=%d)", proto_name, dev_params.sub_class, proto);
             }
 
+            // Handle Boot devices (keyboard/mouse) or gamepad devices
+            if (!is_boot_device && !is_gamepad) {
+                FMRB_LOGI(TAG, "Ignoring non-Boot HID device (not a supported gamepad)");
+                return;
+            }
+
+            // Protect device array access with mutex
+            if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) != FMRB_TRUE) {
+                FMRB_LOGE(TAG, "Failed to acquire mutex for device connection");
+                return;
+            }
+
+            hid_device_info_t* slot = find_empty_slot();
+            if (slot == NULL) {
+                FMRB_LOGW(TAG, "No empty slot for HID device");
+                fmrb_semaphore_give(g_hid_devices_mutex);
+                return;
+            }
+
             slot->handle = hid_device_handle;
             slot->proto = proto;
             slot->connected = true;
+            slot->vid = vid;
+            slot->pid = pid;
+            slot->generation++;  // Increment generation on connect
 
+            // Set report copy length based on device type
+            if (proto == HID_PROTOCOL_KEYBOARD) {
+                slot->report_copy_len = 8;  // Boot keyboard: 8 bytes
+            } else if (proto == HID_PROTOCOL_MOUSE) {
+                slot->report_copy_len = 4;  // Boot mouse: 3-4 bytes
+            } else if (proto == HID_PROTOCOL_GAMEPAD) {
+                if (vid == VID_SONY && pid == PID_PS5_DUALSENSE) {
+                    slot->report_copy_len = 64;  // PS5 DualSense: 64 bytes
+                } else if (vid == VID_LOGITECH) {
+                    slot->report_copy_len = 8;  // Logitech: 8 bytes
+                } else {
+                    slot->report_copy_len = 64;  // Fallback for unknown gamepads
+                }
+            } else {
+                slot->report_copy_len = 0;  // Unknown device
+            }
+
+            memset(&slot->prev_kbd_report, 0, sizeof(hid_keyboard_input_report_boot_t));
+            slot->mouse_state.cursor_x = 0;
+            slot->mouse_state.cursor_y = 0;
+            slot->mouse_state.prev_buttons = 0;
+            slot->mouse_state.initialized = false;  // Will be set on first move
+
+            // Initialize gamepad state if it's a gamepad
+            if (is_gamepad) {
+                // Find free gamepad ID (0 or 1)
+                int free_id = -1;
+                bool id_used[MAX_GAMEPAD_DEVICES] = {false, false};
+                for (int i = 0; i < MAX_HID_DEVICES; i++) {
+                    if (g_hid_devices[i].connected && i != (slot - g_hid_devices) &&
+                        g_hid_devices[i].proto == HID_PROTOCOL_GAMEPAD) {
+                        int gid = g_hid_devices[i].gamepad_state.gamepad_id;
+                        if (gid >= 0 && gid < MAX_GAMEPAD_DEVICES) {
+                            id_used[gid] = true;
+                        }
+                    }
+                }
+                for (int i = 0; i < MAX_GAMEPAD_DEVICES; i++) {
+                    if (!id_used[i]) {
+                        free_id = i;
+                        break;
+                    }
+                }
+
+                if (free_id >= 0) {
+                    slot->gamepad_state.gamepad_id = free_id;
+                    slot->gamepad_state.prev_buttons = 0;
+                    memset(slot->gamepad_state.prev_axes, 0, sizeof(slot->gamepad_state.prev_axes));
+                    FMRB_LOGI(TAG, "Gamepad assigned ID: %d", free_id);
+                } else {
+                    FMRB_LOGW(TAG, "No free gamepad ID available (max %d)", MAX_GAMEPAD_DEVICES);
+                    // Clean up the slot completely
+                    memset(slot, 0, sizeof(*slot));
+                    slot->gamepad_state.gamepad_id = -1;
+                    fmrb_semaphore_give(g_hid_devices_mutex);
+                    return;
+                }
+            }
+
+            // Keep slot_index for later cleanup on failure
+            int slot_index = (int)(slot - g_hid_devices);
+            uint32_t slot_generation = slot->generation;
+
+            fmrb_semaphore_give(g_hid_devices_mutex);
+
+            // Open and start device (outside mutex)
             const hid_host_device_config_t dev_config = {
                 .callback = hid_host_interface_callback,
                 .callback_arg = NULL
             };
-            ESP_ERROR_CHECK(hid_host_device_open(hid_device_handle, &dev_config));
-            ESP_ERROR_CHECK(hid_host_device_start(hid_device_handle));
+
+            esp_err_t ret = hid_host_device_open(hid_device_handle, &dev_config);
+            if (ret != ESP_OK) {
+                FMRB_LOGE(TAG, "hid_host_device_open failed: 0x%x", ret);
+                // Clean up the slot on failure
+                if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                    if (g_hid_devices[slot_index].generation == slot_generation &&
+                        g_hid_devices[slot_index].handle == hid_device_handle) {
+                        clear_slot(&g_hid_devices[slot_index]);
+                    }
+                    fmrb_semaphore_give(g_hid_devices_mutex);
+                }
+                break;
+            }
+
+            ret = hid_host_device_start(hid_device_handle);
+            if (ret != ESP_OK) {
+                FMRB_LOGE(TAG, "hid_host_device_start failed: 0x%x", ret);
+                // Clean up the slot and close device on failure
+                hid_host_device_close(hid_device_handle);
+                if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                    if (g_hid_devices[slot_index].generation == slot_generation &&
+                        g_hid_devices[slot_index].handle == hid_device_handle) {
+                        clear_slot(&g_hid_devices[slot_index]);
+                    }
+                    fmrb_semaphore_give(g_hid_devices_mutex);
+                }
+                break;
+            }
+
+            FMRB_LOGI(TAG, "HID Device Connected (proto=%d, VID=0x%04X, PID=0x%04X)", proto, vid, pid);
             break;
         }
 
@@ -323,7 +803,7 @@ static void usb_host_lib_task(void *arg)
 
     while (g_usb_running) {
         uint32_t event_flags;
-        esp_err_t ret = usb_host_lib_handle_events(pdMS_TO_TICKS(100), &event_flags);
+        esp_err_t ret = usb_host_lib_handle_events(FMRB_MS_TO_TICKS(100), &event_flags);
         if (ret == ESP_OK) {
             if (event_flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) {
                 FMRB_LOGI(TAG, "No more clients");
@@ -344,7 +824,250 @@ static void hid_host_task(void *arg)
     FMRB_LOGI(TAG, "HID Host task started");
 
     while (g_usb_running) {
-        hid_host_handle_events(pdMS_TO_TICKS(100));
+        esp_err_t ret = hid_host_handle_events(FMRB_MS_TO_TICKS(100));
+        if (ret != ESP_OK && ret != ESP_ERR_TIMEOUT) {
+            FMRB_LOGW(TAG, "HID host handle events error: %d", ret);
+        }
+
+        // Process input reports (deferred from callback)
+        // This runs in task context, so we can use portMAX_DELAY and call process_* safely
+        // Limit to 8 reports per loop to prevent starvation of other tasks
+        const int max_reports_per_loop = 8;
+        int reports_processed = 0;
+        hid_input_report_t report;
+
+        while (reports_processed < max_reports_per_loop && input_report_pop(&report)) {
+            reports_processed++;
+
+            // Validate slot_index range
+            if (report.slot_index < 0 || report.slot_index >= MAX_HID_DEVICES) {
+                continue;  // Invalid slot, skip
+            }
+
+            // Take mutex with FMRB_MAX_DELAY (safe in task context)
+            if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                hid_device_info_t* device = &g_hid_devices[report.slot_index];
+
+                // Validate generation to detect stale reports (from disconnected devices)
+                // This prevents race condition where disconnect happens after callback queued report
+                if (device->connected && device->generation == report.generation) {
+                    // Call process_* functions (which call fmrb_host_send_*) in task context
+                    if (device->proto == HID_PROTOCOL_KEYBOARD) {
+                        process_keyboard_report(device, report.report_data, report.report_len);
+                    } else if (device->proto == HID_PROTOCOL_MOUSE) {
+                        process_mouse_report(device, report.report_data, report.report_len);
+                    } else if (device->proto == HID_PROTOCOL_GAMEPAD) {
+                        process_gamepad_report(device, report.report_data, report.report_len);
+                    }
+                }
+                // If generation mismatch or device disconnected, silently drop the report
+
+                fmrb_semaphore_give(g_hid_devices_mutex);
+            }
+        }
+
+        // Check for input report overflow and perform recovery
+        if (input_report_check_overflow()) {
+            FMRB_LOGW(TAG, "Input report queue overflow - performing device state reset");
+
+            // Send "all release" events to prevent stuck keys/buttons
+            if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                for (int i = 0; i < MAX_HID_DEVICES; i++) {
+                    if (!g_hid_devices[i].connected) {
+                        continue;
+                    }
+
+                    if (g_hid_devices[i].proto == HID_PROTOCOL_KEYBOARD) {
+                        // Send key-up for all previously pressed keys
+                        for (int j = 0; j < HID_KEYBOARD_KEY_MAX; j++) {
+                            uint8_t key = g_hid_devices[i].prev_kbd_report.key[j];
+                            if (key != HID_KEY_NO_PRESS) {
+                                fmrb_host_send_key_up(key, key, 0);
+                            }
+                        }
+                        // Send modifier release
+                        uint8_t mod = g_hid_devices[i].prev_kbd_report.modifier.val;
+                        if (mod != 0) {
+                            static const uint8_t mod_scancodes[] = {
+                                HID_KEY_LEFT_CONTROL, HID_KEY_LEFT_SHIFT, HID_KEY_LEFT_ALT, HID_KEY_LEFT_GUI,
+                                HID_KEY_RIGHT_CONTROL, HID_KEY_RIGHT_SHIFT, HID_KEY_RIGHT_ALT, HID_KEY_RIGHT_GUI,
+                            };
+                            for (int j = 0; j < 8; j++) {
+                                if (mod & (1 << j)) {
+                                    fmrb_host_send_key_up(mod_scancodes[j], mod_scancodes[j], 0);
+                                }
+                            }
+                        }
+                        memset(&g_hid_devices[i].prev_kbd_report, 0, sizeof(hid_keyboard_input_report_boot_t));
+
+                    } else if (g_hid_devices[i].proto == HID_PROTOCOL_MOUSE) {
+                        // Send mouse button release for all pressed buttons
+                        uint8_t buttons = g_hid_devices[i].mouse_state.prev_buttons;
+                        for (int btn = 0; btn < 3; btn++) {
+                            if (buttons & (1 << btn)) {
+                                fmrb_host_send_mouse_click(
+                                    g_hid_devices[i].mouse_state.cursor_x,
+                                    g_hid_devices[i].mouse_state.cursor_y,
+                                    btn + 1, 0);  // 0 = released
+                            }
+                        }
+                        g_hid_devices[i].mouse_state.prev_buttons = 0;
+
+                    } else if (g_hid_devices[i].proto == HID_PROTOCOL_GAMEPAD) {
+                        // Send gamepad button release for all pressed buttons
+                        int gamepad_id = g_hid_devices[i].gamepad_state.gamepad_id;
+                        if (gamepad_id >= 0) {
+                            uint16_t buttons = g_hid_devices[i].gamepad_state.prev_buttons;
+                            for (int btn = 0; btn < MAX_GAMEPAD_BUTTONS; btn++) {
+                                if (buttons & (1 << btn)) {
+                                    fmrb_host_send_gamepad_button(gamepad_id, btn, 0);  // 0 = released
+                                }
+                            }
+                            g_hid_devices[i].gamepad_state.prev_buttons = 0;
+
+                            // Reset axes to center (0)
+                            for (int axis = 0; axis < MAX_GAMEPAD_AXES; axis++) {
+                                if (g_hid_devices[i].gamepad_state.prev_axes[axis] != 0) {
+                                    fmrb_host_send_gamepad_axis(gamepad_id, axis, 0);
+                                    g_hid_devices[i].gamepad_state.prev_axes[axis] = 0;
+                                }
+                            }
+                        }
+                    }
+                }
+                fmrb_semaphore_give(g_hid_devices_mutex);
+            }
+        }
+
+        // Process pending disconnects (deferred from callback)
+        // This runs in task context, so we can use portMAX_DELAY and call stop/close safely
+        // Skip if USB is stopping (usb_task_stop will handle cleanup)
+        pending_disconnect_item_t item;
+        while (g_usb_running && pending_disconnect_pop(&item)) {
+            // Validate slot_index
+            if (item.slot_index < 0 || item.slot_index >= MAX_HID_DEVICES) {
+                continue;  // Invalid slot, skip
+            }
+
+            // Get handle from slot with mutex, validate generation to prevent slot reuse issues
+            hid_host_device_handle_t handle = NULL;
+            if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                hid_device_info_t* device = &g_hid_devices[item.slot_index];
+                // Only process if generation matches (prevents processing wrong device after slot reuse)
+                if (device->connected && device->generation == item.generation && device->handle != NULL) {
+                    handle = device->handle;
+                }
+                fmrb_semaphore_give(g_hid_devices_mutex);
+            }
+
+            // If we got a valid handle, stop and close outside mutex (can be slow)
+            if (handle != NULL) {
+                FMRB_LOGI(TAG, "Processing deferred disconnect for slot %d gen %u", item.slot_index, item.generation);
+
+                // Stop device with error checking
+                esp_err_t ret = hid_host_device_stop(handle);
+                if (ret != ESP_OK && ret != ESP_ERR_NOT_FOUND && ret != ESP_ERR_INVALID_STATE) {
+                    FMRB_LOGW(TAG, "hid_host_device_stop failed: 0x%x", ret);
+                }
+
+                // Close device with error checking
+                ret = hid_host_device_close(handle);
+                if (ret != ESP_OK && ret != ESP_ERR_NOT_FOUND && ret != ESP_ERR_INVALID_STATE) {
+                    FMRB_LOGW(TAG, "hid_host_device_close failed: 0x%x", ret);
+                }
+
+                // Then, clean up the device slot (inside mutex)
+                if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                    hid_device_info_t* device = &g_hid_devices[item.slot_index];
+                    // Triple-check: generation + handle match (prevent slot reuse issues)
+                    if (device->connected && device->generation == item.generation && device->handle == handle) {
+                        FMRB_LOGI(TAG, "HID Device Disconnected (deferred, proto=%d)", device->proto);
+                        clear_slot(device);  // This increments generation, invalidating queued reports
+                    }
+                    fmrb_semaphore_give(g_hid_devices_mutex);
+                }
+            }
+        }
+
+        // Check for cleanup needed flag (set when DISCONNECTED callback fails to get mutex)
+        if (pending_disconnect_check_cleanup_needed()) {
+            FMRB_LOGW(TAG, "Full cleanup scan requested (callback mutex timeout)");
+
+            // 2-stage scan to avoid calling stop() inside mutex (prevents deadlock)
+            // Stage 1: Collect candidates with mutex
+            typedef struct {
+                hid_host_device_handle_t handle;
+                int8_t slot_idx;
+                uint32_t generation;
+            } cleanup_candidate_t;
+            cleanup_candidate_t candidates[MAX_HID_DEVICES];
+            int candidate_count = 0;
+
+            if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                for (int i = 0; i < MAX_HID_DEVICES; i++) {
+                    if (g_hid_devices[i].connected && g_hid_devices[i].handle != NULL) {
+                        candidates[candidate_count].handle = g_hid_devices[i].handle;
+                        candidates[candidate_count].slot_idx = (int8_t)i;
+                        candidates[candidate_count].generation = g_hid_devices[i].generation;
+                        candidate_count++;
+                    }
+                }
+                fmrb_semaphore_give(g_hid_devices_mutex);
+            }
+
+            // Stage 2: Call stop() and close() outside mutex (may block or trigger callbacks)
+            // Stage 3: Verify generation match and clear slot inside mutex
+            for (int i = 0; i < candidate_count; i++) {
+                esp_err_t ret_stop = hid_host_device_stop(candidates[i].handle);
+                esp_err_t ret_close = hid_host_device_close(candidates[i].handle);
+
+                // If both stop and close indicate device is gone (NOT_FOUND or INVALID_STATE),
+                // it's an orphaned device - clean up the slot
+                bool is_orphan = (ret_stop == ESP_ERR_NOT_FOUND || ret_stop == ESP_ERR_INVALID_STATE) &&
+                                 (ret_close == ESP_ERR_NOT_FOUND || ret_close == ESP_ERR_INVALID_STATE);
+
+                if (is_orphan) {
+                    // Device already gone - verify and clean up the slot
+                    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                        hid_device_info_t* device = &g_hid_devices[candidates[i].slot_idx];
+                        // Verify generation + handle match (prevent slot reuse issues)
+                        if (device->connected &&
+                            device->generation == candidates[i].generation &&
+                            device->handle == candidates[i].handle) {
+                            FMRB_LOGI(TAG, "Cleanup scan: slot %d orphaned, clearing", candidates[i].slot_idx);
+                            clear_slot(device);
+                        }
+                        fmrb_semaphore_give(g_hid_devices_mutex);
+                    }
+                }
+            }
+        }
+
+        // Check for ring overflow and do cleanup if needed
+        if (pending_disconnect_check_overflow()) {
+            FMRB_LOGW(TAG, "Pending disconnect overflow - clearing gamepad devices");
+
+            // Clear the pending ring (we're doing cleanup, so discard all queued items)
+            fmrb_enter_critical(&g_pending_disconnect_spinlock);
+            g_pending_disconnect_head = 0;
+            g_pending_disconnect_tail = 0;
+            fmrb_exit_critical(&g_pending_disconnect_spinlock);
+
+            // Clear only gamepad slots (less disruptive than clearing all devices)
+            // Keyboards and mice are more critical, so leave them alone
+            if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                int cleared_count = 0;
+                for (int i = 0; i < MAX_HID_DEVICES; i++) {
+                    if (g_hid_devices[i].connected &&
+                        g_hid_devices[i].proto == HID_PROTOCOL_GAMEPAD) {
+                        clear_slot(&g_hid_devices[i]);
+                        cleared_count++;
+                    }
+                }
+                fmrb_semaphore_give(g_hid_devices_mutex);
+                FMRB_LOGI(TAG, "Overflow cleanup: cleared %d gamepad slots", cleared_count);
+            }
+        }
     }
 
     FMRB_LOGI(TAG, "HID Host task exiting");
@@ -359,13 +1082,27 @@ fmrb_err_t usb_task_init(void)
         return FMRB_OK;
     }
 
+    // Create mutex for device array protection
+    g_hid_devices_mutex = fmrb_semaphore_create_mutex();
+    if (g_hid_devices_mutex == NULL) {
+        FMRB_LOGE(TAG, "Failed to create mutex");
+        return FMRB_ERR_FAILED;
+    }
+
     init_device_slots();
-    memset(&g_prev_kbd_report, 0, sizeof(g_prev_kbd_report));
-    g_cursor_x = 0;
-    g_cursor_y = 0;
-    g_prev_mouse_buttons = 0;
     g_screen_width = 0;
     g_screen_height = 0;
+
+    // Initialize input report ring buffer
+    g_input_report_head = 0;
+    g_input_report_tail = 0;
+    g_input_report_overflow = false;
+
+    // Initialize pending disconnect ring buffer
+    g_pending_disconnect_head = 0;
+    g_pending_disconnect_tail = 0;
+    g_pending_disconnect_overflow = false;
+    g_pending_disconnect_cleanup_needed = false;
 
     FMRB_LOGI(TAG, "Initializing USB Host...");
 
@@ -376,6 +1113,8 @@ fmrb_err_t usb_task_init(void)
     esp_err_t ret = usb_host_install(&host_config);
     if (ret != ESP_OK) {
         FMRB_LOGE(TAG, "USB Host install failed: %d", ret);
+        fmrb_semaphore_delete(g_hid_devices_mutex);
+        g_hid_devices_mutex = NULL;
         return FMRB_ERR_FAILED;
     }
     FMRB_LOGI(TAG, "USB Host Library installed");
@@ -392,6 +1131,8 @@ fmrb_err_t usb_task_init(void)
     if (ret != ESP_OK) {
         FMRB_LOGE(TAG, "HID Host install failed: %d", ret);
         usb_host_uninstall();
+        fmrb_semaphore_delete(g_hid_devices_mutex);
+        g_hid_devices_mutex = NULL;
         return FMRB_ERR_FAILED;
     }
     FMRB_LOGI(TAG, "HID Host driver installed");
@@ -423,6 +1164,7 @@ void usb_task_start(void)
     if (ret != FMRB_PASS) {
         FMRB_LOGE(TAG, "Failed to create USB host lib task");
         g_usb_running = 0;
+        // No cleanup needed - USB stack not affected yet
         return;
     }
 
@@ -438,6 +1180,26 @@ void usb_task_start(void)
     if (ret != FMRB_PASS) {
         FMRB_LOGE(TAG, "Failed to create HID host task");
         g_usb_running = 0;
+
+        // Clean up: usb_host_lib_task is already running, need to stop it
+        // Wait for usb_host_lib_task to exit (it checks g_usb_running)
+        int timeout_count = 0;
+        const int max_timeout = 30;
+        while (!g_usb_lib_task_exited && timeout_count < max_timeout) {
+            fmrb_task_delay_ms(100);
+            timeout_count++;
+        }
+
+        if (timeout_count >= max_timeout) {
+            FMRB_LOGE(TAG, "Timeout waiting for USB lib task to exit during cleanup");
+        }
+
+        // Now safe to uninstall USB stack
+        hid_host_uninstall();
+        usb_host_uninstall();
+
+        g_usb_lib_task_handle = NULL;
+        g_hid_task_handle = NULL;
         return;
     }
 
@@ -461,21 +1223,67 @@ void usb_task_stop(void)
     }
 
     if (timeout_count >= max_timeout) {
-        FMRB_LOGW(TAG, "Timeout waiting for tasks to exit (hid:%d, usb:%d)",
+        FMRB_LOGE(TAG, "FATAL: Timeout waiting for tasks to exit (hid:%d, usb:%d)",
                   g_hid_task_exited, g_usb_lib_task_exited);
+        FMRB_LOGE(TAG, "Cannot safely uninstall USB stack - tasks still running");
+        FMRB_LOGE(TAG, "System is in inconsistent state - manual reset recommended");
+
+        // Set LED to FATAL error state (blinking) to indicate critical failure
+        status_led_set_error(FMRB_LED_STATUS_FATAL);
+
+        // Do NOT proceed with uninstall if tasks are still running (Use-After-Free risk)
+        // Do NOT delete mutex either - tasks are still using it (would cause NULL deref crash)
+        // Just set FATAL LED and return - system will need manual reset
+        return;
     }
 
-    for (int i = 0; i < MAX_HID_DEVICES; i++) {
-        if (g_hid_devices[i].connected && g_hid_devices[i].handle != NULL) {
-            hid_host_device_stop(g_hid_devices[i].handle);
-            hid_host_device_close(g_hid_devices[i].handle);
-            g_hid_devices[i].handle = NULL;
-            g_hid_devices[i].connected = false;
+    // Tasks have exited - safe to cleanup and uninstall
+    // 2-stage cleanup to avoid calling stop/close inside mutex (prevents deadlock)
+    // Stage 1: Collect devices to close with mutex
+    typedef struct {
+        hid_host_device_handle_t handle;
+        int slot_idx;
+    } cleanup_item_t;
+    cleanup_item_t cleanup_items[MAX_HID_DEVICES];
+    int cleanup_count = 0;
+
+    if (g_hid_devices_mutex != NULL && fmrb_semaphore_take(g_hid_devices_mutex, portMAX_DELAY) == pdTRUE) {
+        for (int i = 0; i < MAX_HID_DEVICES; i++) {
+            if (g_hid_devices[i].connected && g_hid_devices[i].handle != NULL) {
+                cleanup_items[cleanup_count].handle = g_hid_devices[i].handle;
+                cleanup_items[cleanup_count].slot_idx = i;
+                cleanup_count++;
+            }
         }
+        fmrb_semaphore_give(g_hid_devices_mutex);
+    }
+
+    // Stage 2: Call stop/close outside mutex (may trigger callbacks)
+    for (int i = 0; i < cleanup_count; i++) {
+        hid_host_device_stop(cleanup_items[i].handle);
+        hid_host_device_close(cleanup_items[i].handle);
+    }
+
+    // Stage 3: Clear slots with mutex
+    if (g_hid_devices_mutex != NULL && fmrb_semaphore_take(g_hid_devices_mutex, portMAX_DELAY) == pdTRUE) {
+        for (int i = 0; i < cleanup_count; i++) {
+            int idx = cleanup_items[i].slot_idx;
+            if (g_hid_devices[idx].handle == cleanup_items[i].handle) {
+                g_hid_devices[idx].handle = NULL;
+                g_hid_devices[idx].connected = false;
+            }
+        }
+        fmrb_semaphore_give(g_hid_devices_mutex);
     }
 
     hid_host_uninstall();
     usb_host_uninstall();
+
+    // Clean up mutex
+    if (g_hid_devices_mutex != NULL) {
+        fmrb_semaphore_delete(g_hid_devices_mutex);
+        g_hid_devices_mutex = NULL;
+    }
 
     g_usb_lib_task_handle = NULL;
     g_hid_task_handle = NULL;

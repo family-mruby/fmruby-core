@@ -34,12 +34,19 @@ typedef TickType_t fmrb_tick_t;
 // Re-export FreeRTOS constants
 #define FMRB_TASK_PRIO_MAX configMAX_PRIORITIES
 #define FMRB_TICK_MAX portMAX_DELAY
+#define FMRB_MAX_DELAY portMAX_DELAY
 #define FMRB_TRUE pdTRUE
 #define FMRB_FALSE pdFALSE
 #define FMRB_PASS pdPASS
 #define FMRB_FAIL pdFAIL
 
 #define FMRB_MS_TO_TICKS pdMS_TO_TICKS
+
+// Critical section types and macros
+typedef portMUX_TYPE fmrb_spinlock_t;
+#define FMRB_SPINLOCK_INITIALIZER portMUX_INITIALIZER_UNLOCKED
+#define fmrb_enter_critical(spinlock) taskENTER_CRITICAL(spinlock)
+#define fmrb_exit_critical(spinlock) taskEXIT_CRITICAL(spinlock)
 
 // Task management
 #define fmrb_task_create(fn, name, stack, param, prio, handle) \

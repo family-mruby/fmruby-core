@@ -53,6 +53,24 @@ int fmrb_host_send_mouse_move(int x, int y);
  */
 int fmrb_host_send_mouse_click(int x, int y, int button, int state);
 
+/**
+ * @brief Send gamepad button event
+ * @param gamepad_id Gamepad ID (0-1)
+ * @param button_num Button number (0-15)
+ * @param state Button state (1=pressed, 0=released)
+ * @return 0 on success, -1 on failure
+ */
+int fmrb_host_send_gamepad_button(int gamepad_id, int button_num, int state);
+
+/**
+ * @brief Send gamepad axis event
+ * @param gamepad_id Gamepad ID (0-1)
+ * @param axis_num Axis number (0=LeftX, 1=LeftY, 2=RightX, 3=RightY, 4=L2, 5=R2)
+ * @param value Axis value (-128 to 127 for sticks, 0 to 255 for triggers)
+ * @return 0 on success, -1 on failure
+ */
+int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value);
+
 #ifdef __cplusplus
 }
 #endif
