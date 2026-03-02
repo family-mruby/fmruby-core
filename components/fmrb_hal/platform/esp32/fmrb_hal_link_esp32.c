@@ -244,7 +244,7 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
             }
         }
 
-        ESP_LOGI(TAG, "ACK received after polling (channel=%d)", channel);
+        ESP_LOGD(TAG, "ACK received after polling (channel=%d)", channel);
     }
 
     return ch->ack_received ? FMRB_OK : FMRB_ERR_TIMEOUT;
@@ -268,7 +268,7 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
         if (xQueueReceive(ack_recv_queue, &entry, 0) == pdTRUE) {
             msg->data = entry.data;  // Transfer ownership (caller must free)
             msg->size = entry.size;
-            ESP_LOGI(TAG, "Dequeued ACK for transport: %zu bytes", entry.size);
+            ESP_LOGD(TAG, "Dequeued ACK for transport: %zu bytes", entry.size);
             return FMRB_OK;
         }
     }
@@ -410,7 +410,7 @@ static void process_received_ack(fmrb_link_channel_t channel, const uint8_t *rx_
                 .size = payload_len_rx
             };
             ch->callback(channel, &ack_msg, ch->user_data);
-            ESP_LOGI(TAG, "ACK received: %zu bytes", payload_len_rx);
+            ESP_LOGD(TAG, "ACK received: %zu bytes", payload_len_rx);
         } else {
             ESP_LOGE(TAG, "Failed to allocate memory for ACK data");
         }
