@@ -8,8 +8,6 @@ extern "C" {
 
 /**
  * Start the status LED task.
- * Normal: LED solid ON.
- * Error:  LED blinks at ~2Hz.
  */
 void status_led_start(void);
 
@@ -19,7 +17,7 @@ void status_led_start(void);
 void status_led_set_error(int level);
 
 /**
- * Clear error flag — LED returns to solid ON.
+ * Clear error flag.
  */
 void status_led_clear_error(void);
 
