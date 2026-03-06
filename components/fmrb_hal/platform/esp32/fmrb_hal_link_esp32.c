@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/queue.h"
+#include "driver/gpio.h"
 #include <string.h>
 
 #define SPI_FRAME_SIZE 256  // Fixed frame size matching slave (increased for better throughput)
@@ -32,12 +33,22 @@ static bool link_initialized = false;
 static fmrb_spi_handle_t spi_handle = NULL;
 static SemaphoreHandle_t spi_mutex = NULL;
 static QueueHandle_t ack_recv_queue = NULL;
+static SemaphoreHandle_t ack_notify_sem = NULL;  // ACK ready notification from GPIO ISR
 
 static const char *TAG = "fmrb_hal_link";
 
 // Forward declarations
 static void process_received_ack(fmrb_link_channel_t channel, const uint8_t *rx_frame, size_t frame_size);
 static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms);
+
+// GPIO ISR: called on falling edge of handshake pin (slave signals ACK ready)
+static void IRAM_ATTR ack_gpio_isr_handler(void *arg) {
+    BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+    xSemaphoreGiveFromISR(ack_notify_sem, &xHigherPriorityTaskWoken);
+    if (xHigherPriorityTaskWoken) {
+        portYIELD_FROM_ISR();
+    }
+}
 
 fmrb_err_t fmrb_hal_link_init(void) {
     if (link_initialized) {
@@ -90,6 +101,23 @@ fmrb_err_t fmrb_hal_link_init(void) {
     // Initialize handshake GPIO as input (externally pulled up, active LOW)
     fmrb_hal_gpio_config(FMRB_PIN_GFX_SPI_INTR, FMRB_GPIO_MODE_INPUT, FMRB_GPIO_PULL_NONE);
 
+    // Create ACK notification semaphore
+    ack_notify_sem = xSemaphoreCreateBinary();
+    if (!ack_notify_sem) {
+        ESP_LOGE(TAG, "Failed to create ACK notify semaphore");
+    } else {
+        // Install GPIO ISR service (ignore if already installed)
+        esp_err_t isr_ret = gpio_install_isr_service(0);
+        if (isr_ret != ESP_OK && isr_ret != ESP_ERR_INVALID_STATE) {
+            ESP_LOGE(TAG, "Failed to install GPIO ISR service: %d", isr_ret);
+        }
+
+        // Configure falling-edge interrupt on handshake pin
+        gpio_set_intr_type(FMRB_PIN_GFX_SPI_INTR, GPIO_INTR_NEGEDGE);
+        gpio_isr_handler_add(FMRB_PIN_GFX_SPI_INTR, ack_gpio_isr_handler, NULL);
+        ESP_LOGI(TAG, "ACK GPIO ISR registered on pin %d (falling edge)", FMRB_PIN_GFX_SPI_INTR);
+    }
+
     ESP_LOGI(TAG, "ESP32 SPI link communication initialized (MOSI=%d, MISO=%d, SCLK=%d, CS=%d, INTR=%d, %dMHz)",
              spi_config.mosi_pin, spi_config.miso_pin, spi_config.sclk_pin,
              spi_config.cs_pin, FMRB_PIN_GFX_SPI_INTR, spi_config.frequency / 1000000);
@@ -111,6 +139,13 @@ void fmrb_hal_link_deinit(void) {
     if (spi_mutex) {
         vSemaphoreDelete(spi_mutex);
         spi_mutex = NULL;
+    }
+
+    // Remove GPIO ISR and delete ACK notify semaphore
+    if (ack_notify_sem) {
+        gpio_isr_handler_remove(FMRB_PIN_GFX_SPI_INTR);
+        vSemaphoreDelete(ack_notify_sem);
+        ack_notify_sem = NULL;
     }
 
     // Flush and delete ACK receive queue
@@ -193,6 +228,11 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     uint8_t rx_frame[SPI_FRAME_SIZE];
     memset(rx_frame, 0, SPI_FRAME_SIZE);
 
+    // Clear stale ACK notification before sending
+    if (ack_notify_sem) {
+        xSemaphoreTake(ack_notify_sem, 0);
+    }
+
     // Send via SPI with full-duplex transfer (TX and RX simultaneously)
     fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, tx_frame, rx_frame, SPI_FRAME_SIZE, timeout_ms);
 
@@ -213,11 +253,9 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     // Process received ACK from slave (if any)
     process_received_ack(channel, rx_frame, SPI_FRAME_SIZE);
 
-    // If ACK not received immediately, poll with timeout
+    // If ACK not received immediately, wait using GPIO interrupt + fallback polling
     if (!ch->ack_received && timeout_ms > 0) {
         fmrb_time_t start_time = fmrb_hal_time_get_us();
-        uint32_t poll_interval_ms = 1;  // Start with 1ms
-        const uint32_t max_poll_interval_ms = 8;  // Max 8ms
 
         while (!ch->ack_received) {
             // Check timeout
@@ -226,25 +264,28 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
                 return FMRB_ERR_TIMEOUT;
             }
 
-            // Poll for ACK
-            fmrb_err_t poll_ret = poll_for_ack(channel, poll_interval_ms);
-            if (poll_ret != FMRB_OK && poll_ret != FMRB_ERR_TIMEOUT) {
-                ESP_LOGE(TAG, "ACK polling failed: %d", poll_ret);
-                return poll_ret;
+            // If GPIO is already LOW, slave has ACK ready
+            if (fmrb_hal_gpio_get_level(FMRB_PIN_GFX_SPI_INTR) == 0) {
+                poll_for_ack(channel, 10);
+                if (ch->ack_received) break;
+                // Corrupt read — slave may have pulled GPIO HIGH already.
+                // Fall through to semaphore wait with short timeout as fallback.
             }
 
-            // If ACK not received, wait and apply exponential backoff
-            if (!ch->ack_received) {
-                fmrb_hal_time_delay_ms(poll_interval_ms);
-
-                // Exponential backoff: double interval up to max (1ms → 2ms → 4ms → 8ms)
-                if (poll_interval_ms < max_poll_interval_ms) {
-                    poll_interval_ms *= 2;
-                }
+            // Wait for falling-edge interrupt via semaphore.
+            // Use short timeout (1ms) as fallback in case we missed
+            // the edge (e.g., corrupt ACK consumed the GPIO LOW pulse).
+            if (ack_notify_sem) {
+                xSemaphoreTake(ack_notify_sem, pdMS_TO_TICKS(1));
+            } else {
+                fmrb_hal_time_delay_ms(1);
             }
+
+            // Poll for ACK (handles both ISR wakeup and fallback timeout)
+            poll_for_ack(channel, 10);
         }
 
-        ESP_LOGD(TAG, "ACK received after polling (channel=%d)", channel);
+        ESP_LOGD(TAG, "ACK received after waiting (channel=%d)", channel);
     }
 
     return ch->ack_received ? FMRB_OK : FMRB_ERR_TIMEOUT;

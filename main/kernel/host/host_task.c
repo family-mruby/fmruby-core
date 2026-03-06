@@ -75,6 +75,14 @@ static fmrb_task_handle_t g_host_task_handle = 0;
 static fmrb_gfx_command_buffer_t* g_gfx_cmd_buffer = NULL;
 #define GFX_CMD_BUFFER_SIZE (128)
 
+// Timing statistics for GFX pipeline
+static uint32_t g_gfx_total_cmds = 0;       // Total commands since last stats log
+static uint32_t g_gfx_present_count = 0;     // Number of PRESENT calls since last stats log
+static uint64_t g_gfx_execute_us_total = 0;  // Total execute time (us) since last stats log
+static uint64_t g_gfx_push_us_total = 0;     // Total push_canvas time (us) since last stats log
+static uint64_t g_gfx_stats_last_us = 0;     // Last stats log time
+#define GFX_STATS_INTERVAL_US (5000000ULL)    // Log stats every 5 seconds
+
 // Forward declarations (implemented in picoruby-fmrb-app)
 // extern int fmrb_app_dispatch_update(uint32_t delta_time_ms);
 // extern int fmrb_app_dispatch_key_down(int key_code);
@@ -193,6 +201,10 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
                  gfx_cmd->params.present.y,
                  gfx_cmd->params.present.transparent_color);
 
+        // Timing: measure command buffer execute
+        size_t cmd_count = fmrb_gfx_command_buffer_count(g_gfx_cmd_buffer);
+        fmrb_time_t t_exec_start = fmrb_hal_time_get_us();
+
         // Execute all buffered commands on app canvas
         fmrb_gfx_err_t ret = fmrb_gfx_command_buffer_execute(g_gfx_cmd_buffer, ctx);
         if (ret != FMRB_GFX_OK) {
@@ -207,6 +219,8 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
             FMRB_LOGD(TAG, "Command buffer executed successfully");
         }
 
+        fmrb_time_t t_exec_end = fmrb_hal_time_get_us();
+
         // Push app canvas to screen at specified position
         ret = fmrb_gfx_push_canvas(ctx,
                                     gfx_cmd->canvas_id,       // Source: app canvas (e.g., Canvas 1)
@@ -218,11 +232,35 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
             FMRB_LOGE(TAG, "Failed to push canvas %d to screen: %d", gfx_cmd->canvas_id, ret);
         }
 
-        // Present to actual screen (calls display())
-        // ret = fmrb_gfx_present(ctx, FMRB_CANVAS_SCREEN);
-        // if (ret != FMRB_GFX_OK) {
-        //     FMRB_LOGE(TAG, "Failed to present screen buffer: %d", ret);
-        // }
+        fmrb_time_t t_push_end = fmrb_hal_time_get_us();
+
+        // Accumulate stats
+        g_gfx_total_cmds += cmd_count;
+        g_gfx_present_count++;
+        g_gfx_execute_us_total += (t_exec_end - t_exec_start);
+        g_gfx_push_us_total += (t_push_end - t_exec_end);
+
+        // Log stats periodically
+        if (g_gfx_stats_last_us == 0) {
+            g_gfx_stats_last_us = t_push_end;
+        } else if ((t_push_end - g_gfx_stats_last_us) >= GFX_STATS_INTERVAL_US) {
+            uint64_t elapsed_us = t_push_end - g_gfx_stats_last_us;
+            float elapsed_s = (float)elapsed_us / 1000000.0f;
+            float cmds_per_sec = (float)g_gfx_total_cmds / elapsed_s;
+            float presents_per_sec = (float)g_gfx_present_count / elapsed_s;
+            uint32_t avg_exec_ms = g_gfx_present_count ? (uint32_t)(g_gfx_execute_us_total / g_gfx_present_count / 1000) : 0;
+            uint32_t avg_push_ms = g_gfx_present_count ? (uint32_t)(g_gfx_push_us_total / g_gfx_present_count / 1000) : 0;
+            uint32_t avg_cmds = g_gfx_present_count ? (uint32_t)(g_gfx_total_cmds / g_gfx_present_count) : 0;
+
+            FMRB_LOGI(TAG, "GFX STATS: %.1f cmds/s, %.1f presents/s, avg %u cmds/present, exec %ums, push %ums",
+                     cmds_per_sec, presents_per_sec, avg_cmds, avg_exec_ms, avg_push_ms);
+
+            g_gfx_total_cmds = 0;
+            g_gfx_present_count = 0;
+            g_gfx_execute_us_total = 0;
+            g_gfx_push_us_total = 0;
+            g_gfx_stats_last_us = t_push_end;
+        }
 
         // Clear buffer for next frame
         fmrb_gfx_command_buffer_clear(g_gfx_cmd_buffer);
