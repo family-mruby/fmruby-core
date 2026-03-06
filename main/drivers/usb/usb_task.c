@@ -54,6 +54,8 @@ typedef struct {
         int cursor_y;
         uint8_t prev_buttons;
         bool initialized;  // True after first screen size is known
+        bool move_pending;  // True if cursor position changed but not yet sent
+        fmrb_tick_t last_send_tick;  // Last time mouse move was sent to host queue
     } mouse_state;
     struct {
         int gamepad_id;  // 0 or 1
@@ -424,7 +426,15 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         if (device->mouse_state.cursor_x >= g_screen_width) device->mouse_state.cursor_x = g_screen_width - 1;
         if (device->mouse_state.cursor_y >= g_screen_height) device->mouse_state.cursor_y = g_screen_height - 1;
 
-        fmrb_host_send_mouse_move(device->mouse_state.cursor_x, device->mouse_state.cursor_y);
+        // Rate limit: send at most every 16ms (~60fps)
+        fmrb_tick_t now = fmrb_task_get_tick_count();
+        if ((now - device->mouse_state.last_send_tick) >= FMRB_MS_TO_TICKS(16)) {
+            fmrb_host_send_mouse_move(device->mouse_state.cursor_x, device->mouse_state.cursor_y);
+            device->mouse_state.last_send_tick = now;
+            device->mouse_state.move_pending = false;
+        } else {
+            device->mouse_state.move_pending = true;
+        }
     }
 
     // Check button changes
@@ -864,6 +874,24 @@ static void hid_host_task(void *arg)
 
                 fmrb_semaphore_give(g_hid_devices_mutex);
             }
+        }
+
+        // Flush pending mouse moves that were rate-limited
+        if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MS_TO_TICKS(1)) == FMRB_TRUE) {
+            fmrb_tick_t now = fmrb_task_get_tick_count();
+            for (int i = 0; i < MAX_HID_DEVICES; i++) {
+                if (g_hid_devices[i].connected &&
+                    g_hid_devices[i].proto == HID_PROTOCOL_MOUSE &&
+                    g_hid_devices[i].mouse_state.move_pending &&
+                    (now - g_hid_devices[i].mouse_state.last_send_tick) >= FMRB_MS_TO_TICKS(16)) {
+                    fmrb_host_send_mouse_move(
+                        g_hid_devices[i].mouse_state.cursor_x,
+                        g_hid_devices[i].mouse_state.cursor_y);
+                    g_hid_devices[i].mouse_state.last_send_tick = now;
+                    g_hid_devices[i].mouse_state.move_pending = false;
+                }
+            }
+            fmrb_semaphore_give(g_hid_devices_mutex);
         }
 
         // Check for input report overflow and perform recovery

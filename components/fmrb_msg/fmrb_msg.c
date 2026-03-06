@@ -3,6 +3,8 @@
 #include "fmrb_log.h"
 #include <string.h>
 
+static const char *TAG = "fmrb_msg";
+
 // Registry entry for each task's message queue
 typedef struct {
     fmrb_queue_t queue;               // FreeRTOS queue handle
@@ -207,6 +209,9 @@ fmrb_err_t fmrb_msg_send(fmrb_proc_id_t dest_task_id,
             g_msg_queues[dest_task_id].stats.messages_sent++;
         } else {
             g_msg_queues[dest_task_id].stats.send_failures++;
+            FMRB_LOGW(TAG, "msg_send TIMEOUT: dest=%d, type=%d, src=%d, waiting=%u",
+                     dest_task_id, msg->type, msg->src_pid,
+                     (unsigned)uxQueueMessagesWaiting(queue));
         }
         fmrb_semaphore_give(g_registry_lock);
     }

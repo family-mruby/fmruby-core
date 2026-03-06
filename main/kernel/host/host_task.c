@@ -493,9 +493,11 @@ static void fmrb_host_task(void *pvParameters)
     const fmrb_tick_t xUpdatePeriod = FMRB_MS_TO_TICKS(16);  // 16ms周期で定期更新
 
     while (1) {
-        // Wait for messages with timeout
-        if (fmrb_msg_receive(PROC_ID_HOST, &msg, 10) == FMRB_OK) {
+        // Drain message queue (first wait up to 10ms, then non-blocking)
+        bool first = true;
+        while (fmrb_msg_receive(PROC_ID_HOST, &msg, first ? 10 : 0) == FMRB_OK) {
             host_task_process_message(&msg);
+            first = false;
         }
 
         // Process incoming IPC messages (ACK/NACK responses)
