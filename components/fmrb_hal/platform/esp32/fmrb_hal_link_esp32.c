@@ -253,7 +253,10 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     // Process received ACK from slave (if any)
     process_received_ack(channel, rx_frame, SPI_FRAME_SIZE);
 
-    // If ACK not received immediately, wait using GPIO interrupt + fallback polling
+    // If ACK not received immediately, wait for GPIO interrupt then poll.
+    // GPIO LOW (falling edge) = slave has staged ACK. Due to SPI double-buffering,
+    // master needs 2 polls after ISR: first triggers slave to copy ACK to TX buffer,
+    // second reads the actual ACK data. GPIO goes HIGH when ACK is transmitted.
     if (!ch->ack_received && timeout_ms > 0) {
         fmrb_time_t start_time = fmrb_hal_time_get_us();
 
@@ -264,25 +267,27 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
                 return FMRB_ERR_TIMEOUT;
             }
 
-            // If GPIO is already LOW, slave has ACK ready
-            if (fmrb_hal_gpio_get_level(FMRB_PIN_GFX_SPI_INTR) == 0) {
-                poll_for_ack(channel, 10);
-                if (ch->ack_received) break;
-                // Corrupt read — slave may have pulled GPIO HIGH already.
-                // Fall through to semaphore wait with short timeout as fallback.
-            }
-
-            // Wait for falling-edge interrupt via semaphore.
-            // Use short timeout (1ms) as fallback in case we missed
-            // the edge (e.g., corrupt ACK consumed the GPIO LOW pulse).
+            // Primary: wait for falling-edge ISR (slave staged ACK)
+            // Failsafe: timeout triggers poll to keep SPI alive
+            uint64_t elapsed_us = fmrb_hal_time_get_us() - start_time;
+            uint32_t remaining_ms = (elapsed_us / 1000 < timeout_ms) ?
+                                    (timeout_ms - (uint32_t)(elapsed_us / 1000)) : 1;
             if (ack_notify_sem) {
-                xSemaphoreTake(ack_notify_sem, pdMS_TO_TICKS(1));
+                xSemaphoreTake(ack_notify_sem, pdMS_TO_TICKS(remaining_ms));
             } else {
-                fmrb_hal_time_delay_ms(1);
+                fmrb_hal_time_delay_ms(remaining_ms < 5 ? remaining_ms : 5);
             }
 
-            // Poll for ACK (handles both ISR wakeup and fallback timeout)
-            poll_for_ack(channel, 10);
+            // After ISR wakeup: poll while GPIO is LOW (ACK pending)
+            // Poll 1: triggers slave to copy ACK to TX buffer
+            // Poll 2: reads actual ACK data (slave sets GPIO HIGH)
+            while (fmrb_hal_gpio_get_level(FMRB_PIN_GFX_SPI_INTR) == 0
+                   && !ch->ack_received) {
+                poll_for_ack(channel, 10);
+                if (!ch->ack_received) {
+                    fmrb_hal_time_delay_us(500);
+                }
+            }
         }
 
         ESP_LOGD(TAG, "ACK received after waiting (channel=%d)", channel);
@@ -405,7 +410,9 @@ static void process_received_ack(fmrb_link_channel_t channel, const uint8_t *rx_
     ssize_t decoded_len = fmrb_link_cobs_decode(rx_frame + rx_start, encoded_len_rx, decoded);
 
     if (decoded_len <= (ssize_t)sizeof(uint32_t)) {
-        ESP_LOGW(TAG, "Decoded ACK too small: %d bytes", (int)decoded_len);
+        ESP_LOGW(TAG, "Decoded ACK too small: %d bytes (encoded_len=%zu, rx_start=%zu, frame_end=%zu)",
+                 (int)decoded_len, encoded_len_rx, rx_start, frame_end);
+        ESP_LOG_BUFFER_HEXDUMP(TAG, rx_frame + rx_start, encoded_len_rx < 32 ? encoded_len_rx : 32, ESP_LOG_WARN);
         return;
     }
 

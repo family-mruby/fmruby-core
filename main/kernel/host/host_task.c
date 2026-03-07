@@ -519,7 +519,8 @@ static void fmrb_host_task(void *pvParameters)
     // Initialize Gfx Audio subsystems
     int result = init_gfx_audio();
     if (result < 0) {
-        FMRB_LOGE(TAG, "Host task initialization failed, terminating");
+        FMRB_LOGE(TAG, "Host task initialization failed, suspending task");
+        vTaskSuspend(NULL);
         return;
     }
     // Signal that host task initialization is complete

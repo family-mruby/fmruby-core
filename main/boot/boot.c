@@ -317,6 +317,7 @@ void fmrb_os_init(void)
     fmrb_err_t result = fmrb_kernel_start();
     if(result != FMRB_OK){
         FMRB_LOGE(TAG, "Failed to start kernel");
+        status_led_set_error(1);
         return;
     }
     FMRB_LOGI(TAG, "fmrb_kernel_start done");
