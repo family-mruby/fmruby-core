@@ -37,6 +37,10 @@ static SemaphoreHandle_t ack_notify_sem = NULL;  // ACK ready notification from 
 
 static const char *TAG = "fmrb_hal_link";
 
+// Cached EMPTY frame for poll TX (encoded once at init)
+static uint8_t s_empty_frame[SPI_FRAME_SIZE];
+static size_t s_empty_frame_len = 0;
+
 // Forward declarations
 static void process_received_ack(fmrb_link_channel_t channel, const uint8_t *rx_frame, size_t frame_size);
 static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms);
@@ -116,6 +120,20 @@ fmrb_err_t fmrb_hal_link_init(void) {
         gpio_set_intr_type(FMRB_PIN_GFX_SPI_INTR, GPIO_INTR_NEGEDGE);
         gpio_isr_handler_add(FMRB_PIN_GFX_SPI_INTR, ack_gpio_isr_handler, NULL);
         ESP_LOGI(TAG, "ACK GPIO ISR registered on pin %d (falling edge)", FMRB_PIN_GFX_SPI_INTR);
+    }
+
+    // Encode EMPTY frame for poll TX: msgpack [EMPTY(0), seq(0), ACK(0xF0), nil]
+    {
+        const uint8_t msgpack_empty[] = {0x94, 0x00, 0x00, 0xCC, 0xF0, 0xC0};
+        uint32_t crc = fmrb_link_crc32_update(0, msgpack_empty, sizeof(msgpack_empty));
+        uint8_t msg_with_crc[sizeof(msgpack_empty) + sizeof(uint32_t)];
+        memcpy(msg_with_crc, msgpack_empty, sizeof(msgpack_empty));
+        memcpy(msg_with_crc + sizeof(msgpack_empty), &crc, sizeof(uint32_t));
+
+        memset(s_empty_frame, 0, SPI_FRAME_SIZE);
+        size_t cobs_len = fmrb_link_cobs_encode(msg_with_crc, sizeof(msg_with_crc), s_empty_frame);
+        s_empty_frame[cobs_len] = 0x00;
+        s_empty_frame_len = cobs_len + 1;
     }
 
     ESP_LOGI(TAG, "ESP32 SPI link communication initialized (MOSI=%d, MISO=%d, SCLK=%d, CS=%d, INTR=%d, %dMHz)",
@@ -377,90 +395,87 @@ void fmrb_hal_link_release_shared_memory(void *ptr) {
  * @param frame_size Frame size
  */
 static void process_received_ack(fmrb_link_channel_t channel, const uint8_t *rx_frame, size_t frame_size) {
-    // Skip leading null bytes
-    size_t rx_start = 0;
-    while (rx_start < frame_size && rx_frame[rx_start] == 0x00) {
-        rx_start++;
-    }
+    esp32_link_channel_t *ch = &channels[channel];
+    size_t pos = 0;
 
-    if (rx_start >= frame_size) {
-        ESP_LOGD(TAG, "No ACK data received in this transaction (normal, will retry later)");
-        return;
-    }
-
-    // Find COBS frame terminator
-    size_t frame_end = rx_start;
-    bool found_terminator = false;
-    for (size_t i = rx_start; i < frame_size; i++) {
-        if (rx_frame[i] == 0x00) {
-            frame_end = i;
-            found_terminator = true;
+    while (pos < frame_size) {
+        // Skip null bytes (inter-frame padding)
+        while (pos < frame_size && rx_frame[pos] == 0x00) {
+            pos++;
+        }
+        if (pos >= frame_size) {
             break;
         }
-    }
 
-    if (!found_terminator || frame_end == rx_start) {
-        ESP_LOGD(TAG, "No complete ACK frame in this transaction (normal, will retry later)");
-        return;
-    }
+        // Find COBS frame terminator
+        size_t frame_start = pos;
+        while (pos < frame_size && rx_frame[pos] != 0x00) {
+            pos++;
+        }
+        if (pos >= frame_size) {
+            break;  // No terminator - incomplete frame
+        }
 
-    // COBS decode received ACK
-    uint8_t decoded[1024];
-    size_t encoded_len_rx = frame_end - rx_start;
-    ssize_t decoded_len = fmrb_link_cobs_decode(rx_frame + rx_start, encoded_len_rx, decoded);
+        size_t encoded_len_rx = pos - frame_start;
+        pos++;  // Skip 0x00 terminator
 
-    if (decoded_len <= (ssize_t)sizeof(uint32_t)) {
-        ESP_LOGW(TAG, "Decoded ACK too small: %d bytes (encoded_len=%zu, rx_start=%zu, frame_end=%zu)",
-                 (int)decoded_len, encoded_len_rx, rx_start, frame_end);
-        ESP_LOG_BUFFER_HEXDUMP(TAG, rx_frame + rx_start, encoded_len_rx < 32 ? encoded_len_rx : 32, ESP_LOG_WARN);
-        return;
-    }
+        // COBS decode
+        uint8_t decoded[1024];
+        ssize_t decoded_len = fmrb_link_cobs_decode(rx_frame + frame_start, encoded_len_rx, decoded);
 
-    // Verify CRC32
-    size_t payload_len_rx = decoded_len - sizeof(uint32_t);
-    uint32_t received_crc;
-    memcpy(&received_crc, decoded + payload_len_rx, sizeof(uint32_t));
-    uint32_t calculated_crc = fmrb_link_crc32_update(0, decoded, payload_len_rx);
+        if (decoded_len <= (ssize_t)sizeof(uint32_t)) {
+            ESP_LOGW(TAG, "Decoded ACK too small: %d bytes (encoded_len=%zu)",
+                     (int)decoded_len, encoded_len_rx);
+            continue;
+        }
 
-    if (received_crc != calculated_crc) {
-        ESP_LOGW(TAG, "ACK CRC mismatch: received=0x%08lx, calculated=0x%08lx (decoded_len=%d)",
-                 received_crc, calculated_crc, (int)decoded_len);
-        ESP_LOG_BUFFER_HEXDUMP(TAG, rx_frame + rx_start, encoded_len_rx, ESP_LOG_WARN);
-        return;
-    }
+        // Verify CRC32
+        size_t payload_len_rx = decoded_len - sizeof(uint32_t);
+        uint32_t received_crc;
+        memcpy(&received_crc, decoded + payload_len_rx, sizeof(uint32_t));
+        uint32_t calculated_crc = fmrb_link_crc32_update(0, decoded, payload_len_rx);
 
-    // Valid ACK received - queue for transport layer
-    if (ack_recv_queue) {
-        uint8_t *queued_data = (uint8_t*)fmrb_sys_malloc(payload_len_rx);
-        if (queued_data) {
-            memcpy(queued_data, decoded, payload_len_rx);
-            ack_queue_entry_t entry = { .data = queued_data, .size = payload_len_rx };
-            if (xQueueSend(ack_recv_queue, &entry, 0) != pdTRUE) {
-                ESP_LOGW(TAG, "ACK queue full, dropping data");
-                fmrb_sys_free(queued_data);
+        if (received_crc != calculated_crc) {
+            ESP_LOGW(TAG, "ACK CRC mismatch: received=0x%08lx, calculated=0x%08lx",
+                     received_crc, calculated_crc);
+            continue;
+        }
+
+        // Check for EMPTY frame (type == FMRB_LINK_TYPE_EMPTY == 0)
+        // msgpack fixarray(4) = 0x94, followed by type byte
+        if (payload_len_rx >= 2 && decoded[0] == 0x94 && decoded[1] == 0x00) {
+            ESP_LOGD(TAG, "EMPTY frame received, skipping");
+            continue;
+        }
+
+        // Valid ACK received - queue for transport layer
+        if (ack_recv_queue) {
+            uint8_t *queued_data = (uint8_t*)fmrb_sys_malloc(payload_len_rx);
+            if (queued_data) {
+                memcpy(queued_data, decoded, payload_len_rx);
+                ack_queue_entry_t entry = { .data = queued_data, .size = payload_len_rx };
+                if (xQueueSend(ack_recv_queue, &entry, 0) != pdTRUE) {
+                    ESP_LOGW(TAG, "ACK queue full, dropping data");
+                    fmrb_sys_free(queued_data);
+                }
             }
         }
-    }
 
-    esp32_link_channel_t *ch = &channels[channel];
+        // Set ACK received flag for HAL-level polling loop
+        ch->ack_received = true;
 
-    // Set ACK received flag for HAL-level polling loop
-    ch->ack_received = true;
-
-    // Also notify via callback if registered
-    if (ch->callback) {
-        // Allocate heap memory for ACK data (callback must free it)
-        uint8_t *decoded_copy = (uint8_t*)fmrb_sys_malloc(payload_len_rx);
-        if (decoded_copy) {
-            memcpy(decoded_copy, decoded, payload_len_rx);
-            fmrb_link_message_t ack_msg = {
-                .data = decoded_copy,
-                .size = payload_len_rx
-            };
-            ch->callback(channel, &ack_msg, ch->user_data);
-            ESP_LOGD(TAG, "ACK received: %zu bytes", payload_len_rx);
-        } else {
-            ESP_LOGE(TAG, "Failed to allocate memory for ACK data");
+        // Notify via callback if registered
+        if (ch->callback) {
+            uint8_t *decoded_copy = (uint8_t*)fmrb_sys_malloc(payload_len_rx);
+            if (decoded_copy) {
+                memcpy(decoded_copy, decoded, payload_len_rx);
+                fmrb_link_message_t ack_msg = {
+                    .data = decoded_copy,
+                    .size = payload_len_rx
+                };
+                ch->callback(channel, &ack_msg, ch->user_data);
+                ESP_LOGD(TAG, "ACK received: %zu bytes", payload_len_rx);
+            }
         }
     }
 }
@@ -488,9 +503,10 @@ static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms)
         return FMRB_ERR_TIMEOUT;
     }
 
-    // Prepare empty TX frame (all zeros)
+    // Prepare TX frame with EMPTY message
     uint8_t tx_frame[SPI_FRAME_SIZE];
     memset(tx_frame, 0, SPI_FRAME_SIZE);
+    memcpy(tx_frame, s_empty_frame, s_empty_frame_len);
 
     // Prepare RX buffer
     uint8_t rx_frame[SPI_FRAME_SIZE];

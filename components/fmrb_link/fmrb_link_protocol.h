@@ -15,6 +15,7 @@ extern "C" {
 
 // Message types (based on IPC_spec.md)
 typedef enum {
+    FMRB_LINK_TYPE_EMPTY = 0,
     FMRB_LINK_TYPE_CONTROL = 1,
     FMRB_LINK_TYPE_GRAPHICS = 2,
     FMRB_LINK_TYPE_AUDIO = 4,
