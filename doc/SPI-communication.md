@@ -30,8 +30,7 @@ ESP-IDF の slave API は、キューしたトランザクションのバッフ�
 ```c
 typedef enum {
     STS_BOOT    = 0x00,  // 初期状態（起動直後）
-    STS_RX_OK   = 0x10,  // 受信完了
-    STS_BUSY    = 0x11,  // アプリ処理中
+    STS_RX_OK   = 0x10,  // 受信完了（アプリ未処理）
     STS_APP_OK  = 0x12,  // アプリ処理成功
     STS_APP_ERR = 0x13,  // アプリ処理失敗
     STS_CRC_ERR = 0xE1,  // フレーム CRC 異常
@@ -104,10 +103,10 @@ SPI 転送 (256 bytes, full-duplex)
 
 - READY GPIO を出力
 - `spi_slave_queue_trans()` を常時 2 本以上維持
-- `post_setup_cb` (ISR): READY=LOW（転送開始時に即座にゲート）
-- `post_trans_cb` (ISR): 完了通知キューへ送信のみ
+- `post_setup_cb` (ISR): 何もしない
+- `post_trans_cb` (ISR): pending--, pending==0 なら READY=LOW, セマフォ通知
 - 本処理はタスク側で行い、結果を **次回返送用 TX バッファ** に書く
-- 処理完了 → re-queue → READY=HIGH
+- re-queue 成功 → pending++, pending>0 なら READY=HIGH
 
 ### 注意点
 
@@ -143,7 +142,6 @@ SPI 転送 (256 bytes, full-duplex)
 typedef enum {
     STS_BOOT    = 0x00,
     STS_RX_OK   = 0x10,
-    STS_BUSY    = 0x11,
     STS_APP_OK  = 0x12,
     STS_APP_ERR = 0x13,
     STS_CRC_ERR = 0xE1,
@@ -252,17 +250,18 @@ static inline void IRAM_ATTR set_ready_low(void) {
     gpio_set_level(FMRB_PIN_SPI_HANDSHAKE, 0);
 }
 
-// ISR: 転送開始 → READY=LOW（マスターに「送るな」を通知）
+// ISR: 転送開始（何もしない。READY は pending カウンタで管理）
 static void IRAM_ATTR spi_post_setup_cb(spi_slave_transaction_t *trans)
 {
-    set_ready_low();
+    (void)trans;
 }
 
-// ISR: 転送完了 → セマフォ通知 + キュー枯渇検出
+// ISR: 転送完了 → pending 更新 + READY 制御 + セマフォ通知
 static void IRAM_ATTR spi_post_trans_cb(spi_slave_transaction_t *trans)
 {
     s_pending_trans--;
     if (s_pending_trans <= 0) {
+        set_ready_low();  // キュー枯渇 → Master に送信禁止
         s_queue_empty_count++;
     }
     BaseType_t hp = pdFALSE;
@@ -314,17 +313,30 @@ static int process_single_transaction(spi_slave_transaction_t *completed_trans)
         s_last_status = STS_RX_OK;
         s_resp_data_len = 0;
 
-        // COBS ペイロードを fmrb_link_decode_frame() でデコード → MessageBuffer へ
-        message_data_t msg;
-        size_t payload_len;
-        int result = fmrb_link_decode_frame(f->data, f->data_len,
-                                            &msg.type, &msg.seq, &msg.sub_cmd,
-                                            msg.payload, sizeof(msg.payload),
-                                            &payload_len);
-        if (result == 0 && msg.type != FMRB_LINK_TYPE_EMPTY) {
-            msg.payload_len = (uint16_t)payload_len;
-            size_t send_size = offsetof(message_data_t, payload) + payload_len;
-            xMessageBufferSend(s_msg_buffer, &msg, send_size, pdMS_TO_TICKS(100));
+        // data[] 内の複数 COBS メッセージを順次デコード → MessageBuffer へ
+        size_t pos = 0;
+        while (pos < f->data_len) {
+            // 先頭の 0x00 をスキップ
+            while (pos < f->data_len && f->data[pos] == 0x00) pos++;
+            if (pos >= f->data_len) break;
+
+            // COBS フレーム終端（0x00）を探す
+            size_t frame_start = pos;
+            while (pos < f->data_len && f->data[pos] != 0x00) pos++;
+            size_t frame_len = pos - frame_start;
+
+            // デコード
+            message_data_t msg;
+            size_t payload_len;
+            int result = fmrb_link_decode_frame(
+                f->data + frame_start, frame_len,
+                &msg.type, &msg.seq, &msg.sub_cmd,
+                msg.payload, sizeof(msg.payload), &payload_len);
+            if (result == 0 && msg.type != FMRB_LINK_TYPE_EMPTY) {
+                msg.payload_len = (uint16_t)payload_len;
+                size_t send_size = offsetof(message_data_t, payload) + payload_len;
+                xMessageBufferSend(s_msg_buffer, &msg, send_size, pdMS_TO_TICKS(100));
+            }
         }
     } else if (f->magic == SPI_FRAME_MAGIC && !spi_frame_validate(f)) {
         // CRC エラー
@@ -345,11 +357,13 @@ static int process_single_transaction(spi_slave_transaction_t *completed_trans)
         }
     }
 
-    // TX バッファに応答を書き込み → 再キュー → READY=HIGH
+    // TX バッファに応答を書き込み → 再キュー → pending>0 なら READY=HIGH
     current_buf = buf_idx;
     fill_response(tx_buffers[buf_idx]);
     queue_next_transaction();
-    set_ready_high();
+    if (s_pending_trans > 0) {
+        set_ready_high();
+    }
 
     return 0;
 }
@@ -589,6 +603,36 @@ static void build_command_frame(spi_frame_t *f, uint8_t seq,
     spi_frame_finalize(f);
 }
 
+// 応答フレームの data[] 内の複数 COBS メッセージを順次デコード
+// callback に各デコード済みペイロードを渡す
+typedef void (*rx_data_callback_t)(const uint8_t *decoded, size_t decoded_len, void *ctx);
+
+static void process_rx_cobs_data(const spi_frame_t *f,
+                                  rx_data_callback_t callback, void *ctx)
+{
+    if (f->data_len == 0) return;
+
+    size_t pos = 0;
+    while (pos < f->data_len) {
+        // 先頭の 0x00 をスキップ
+        while (pos < f->data_len && f->data[pos] == 0x00) pos++;
+        if (pos >= f->data_len) break;
+
+        // COBS フレーム終端（0x00）を探す
+        size_t frame_start = pos;
+        while (pos < f->data_len && f->data[pos] != 0x00) pos++;
+        size_t frame_len = pos - frame_start;
+
+        // COBS デコード
+        uint8_t decoded[SPI_MAX_DATA];
+        ssize_t decoded_len = fmrb_link_cobs_decode(
+            f->data + frame_start, frame_len, decoded);
+        if (decoded_len > 0 && callback) {
+            callback(decoded, (size_t)decoded_len, ctx);
+        }
+    }
+}
+
 // 同期コマンド送信: COBS ペイロードを送り、STS_APP_OK/ERR まで待つ
 static esp_err_t send_command_sync(uint8_t seq,
                                    const uint8_t *cobs_data, uint8_t cobs_len,
@@ -626,7 +670,7 @@ static esp_err_t send_command_sync(uint8_t seq,
         if (!spi_frame_validate(&rx) || rx.ack_seq != seq) {
             continue;
         }
-        if (rx.status == STS_BUSY || rx.status == STS_RX_OK) {
+        if (rx.status == STS_RX_OK) {
             vTaskDelay(pdMS_TO_TICKS(2));
             continue;
         }
@@ -701,13 +745,12 @@ GPIO 1本は次に固定する。
 
 ### 2. ACK が遅い場合
 
-アプリ処理が重いなら、状態は 2 段階以上に分ける。
+アプリ処理が重い場合、Master は状態の 2 段階で判断する。
 
-- `STS_RX_OK` = 受信だけ完了
-- `STS_BUSY` = アプリ処理中
+- `STS_RX_OK` = 受信完了（アプリ未処理）
 - `STS_APP_OK` / `STS_APP_ERR` = 最終結果
 
-これで Master は「受信済み」と「処理完了」を分けて扱える。
+Master は `STS_RX_OK` を見て「受信済みだが処理中」と判断し、ポーリングを続ける。
 
 ### 3. 割り込みの使いどころ
 
