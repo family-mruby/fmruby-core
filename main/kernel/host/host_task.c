@@ -69,7 +69,7 @@ typedef struct {
 static fmrb_task_handle_t g_host_task_handle = 0;
 
 // Task configuration
-#define HOST_QUEUE_SIZE (64)
+#define HOST_QUEUE_SIZE (128)
 
 // Graphics command buffer
 static fmrb_gfx_command_buffer_t* g_gfx_cmd_buffer = NULL;
@@ -637,7 +637,11 @@ static int fmrb_host_send_message(const host_message_t *msg)
 
     fmrb_err_t result = fmrb_msg_send(PROC_ID_HOST, &hal_msg, 10);
     if (result != FMRB_OK) {
-        FMRB_LOGW(TAG, "Failed to send host message: %d", result);
+        // Silently drop mouse move events on queue full
+        if (msg->type == HOST_MSG_HID_MOUSE_MOVE) {
+            return -1;
+        }
+        FMRB_LOGW(TAG, "Failed to send host message: type=%d, err=%d", msg->type, result);
         return -1;
     }
 
@@ -650,6 +654,7 @@ static int fmrb_host_send_message(const host_message_t *msg)
 
 int fmrb_host_send_key_down(int key_code, int scancode, int modifier)
 {
+    FMRB_LOGI(TAG, "KEY_DOWN: code=%d scan=%d mod=0x%x", key_code, scancode, modifier);
     host_message_t msg = {
         .type = HOST_MSG_HID_KEY_DOWN,
         .data.key.key_code = key_code,
@@ -661,6 +666,7 @@ int fmrb_host_send_key_down(int key_code, int scancode, int modifier)
 
 int fmrb_host_send_key_up(int key_code, int scancode, int modifier)
 {
+    FMRB_LOGI(TAG, "KEY_UP: code=%d scan=%d mod=0x%x", key_code, scancode, modifier);
     host_message_t msg = {
         .type = HOST_MSG_HID_KEY_UP,
         .data.key.key_code = key_code,
@@ -672,6 +678,15 @@ int fmrb_host_send_key_up(int key_code, int scancode, int modifier)
 
 int fmrb_host_send_mouse_move(int x, int y)
 {
+    // Rate limit mouse move events (~15fps, 66ms interval)
+    static uint32_t last_send_ms = 0;
+    uint32_t now_ms = (uint32_t)fmrb_hal_time_get_ms();
+    if (now_ms - last_send_ms < 66) {
+        return 0;  // Silently skip
+    }
+    last_send_ms = now_ms;
+
+    FMRB_LOGI(TAG, "MOUSE_MOVE: x=%d y=%d", x, y);
     host_message_t msg = {
         .type = HOST_MSG_HID_MOUSE_MOVE,
         .data.mouse_move.x = x,
@@ -682,6 +697,7 @@ int fmrb_host_send_mouse_move(int x, int y)
 
 int fmrb_host_send_mouse_click(int x, int y, int button, int state)
 {
+    FMRB_LOGI(TAG, "MOUSE_CLICK: x=%d y=%d btn=%d state=%d", x, y, button, state);
     host_message_t msg = {
         .type = HOST_MSG_HID_MOUSE_CLICK,
         .data.mouse_click.x = x,

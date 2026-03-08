@@ -313,11 +313,11 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     // SPI transfer
     fmrb_err_t ret = spi_transfer_frame(&tx, &rx);
 
-    if (ret == FMRB_OK) {
-        ESP_LOGI(TAG, "SEND TX: seq=%u ack=%u st=0x%02x dlen=%u | RX: seq=%u ack=%u st=0x%02x dlen=%u",
-                 tx.seq, tx.ack_seq, tx.status, tx.data_len,
-                 rx.seq, rx.ack_seq, rx.status, rx.data_len);
-    }
+    // if (ret == FMRB_OK) {
+    //     ESP_LOGD(TAG, "SEND TX: seq=%u ack=%u st=0x%02x dlen=%u | RX: seq=%u ack=%u st=0x%02x dlen=%u",
+    //              tx.seq, tx.ack_seq, tx.status, tx.data_len,
+    //              rx.seq, rx.ack_seq, rx.status, rx.data_len);
+    // }
 
     // Reset ACK received flag
     esp32_link_channel_t *ch = &channels[channel];

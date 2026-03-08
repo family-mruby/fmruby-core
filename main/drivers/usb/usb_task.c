@@ -401,7 +401,26 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         return;
     }
 
-    const hid_mouse_input_report_boot_t *report = (const hid_mouse_input_report_boot_t *)data;
+    // Parse mouse report
+    // Extended report format (e.g. Logitech Unifying):
+    //   [ReportID, Buttons, ??, X, Y, ??, WheelV, WheelH] (8 bytes)
+    // Boot protocol format:
+    //   [Buttons, X, Y] (3 bytes)
+    uint8_t buttons;
+    int dx, dy;
+
+    if (len >= 8 && data[0] != 0x00) {
+        // Extended report with Report ID prefix
+        buttons = data[1];
+        dx = (int8_t)data[3];
+        dy = (int8_t)data[4];
+    } else {
+        // Standard boot protocol (3 bytes)
+        const hid_mouse_input_report_boot_t *report = (const hid_mouse_input_report_boot_t *)data;
+        buttons = report->buttons.val;
+        dx = report->x_displacement;
+        dy = report->y_displacement;
+    }
 
     // Initialize cursor to center on first movement when screen size is known
     if (!device->mouse_state.initialized && g_screen_width > 0 && g_screen_height > 0) {
@@ -413,9 +432,6 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
     }
 
     // Update absolute cursor position from relative displacement
-    int dx = report->x_displacement;
-    int dy = report->y_displacement;
-
     if (dx != 0 || dy != 0) {
         device->mouse_state.cursor_x += dx;
         device->mouse_state.cursor_y += dy;
@@ -426,19 +442,11 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         if (device->mouse_state.cursor_x >= g_screen_width) device->mouse_state.cursor_x = g_screen_width - 1;
         if (device->mouse_state.cursor_y >= g_screen_height) device->mouse_state.cursor_y = g_screen_height - 1;
 
-        // Rate limit: send at most every 16ms (~60fps)
-        fmrb_tick_t now = fmrb_task_get_tick_count();
-        if ((now - device->mouse_state.last_send_tick) >= FMRB_MS_TO_TICKS(16)) {
-            fmrb_host_send_mouse_move(device->mouse_state.cursor_x, device->mouse_state.cursor_y);
-            device->mouse_state.last_send_tick = now;
-            device->mouse_state.move_pending = false;
-        } else {
-            device->mouse_state.move_pending = true;
-        }
+        // Send mouse move (rate limiting is done in host_task)
+        fmrb_host_send_mouse_move(device->mouse_state.cursor_x, device->mouse_state.cursor_y);
     }
 
     // Check button changes
-    uint8_t buttons = report->buttons.val;
     uint8_t changed = buttons ^ device->mouse_state.prev_buttons;
 
     if (changed) {
@@ -701,7 +709,7 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
             if (proto == HID_PROTOCOL_KEYBOARD) {
                 slot->report_copy_len = 8;  // Boot keyboard: 8 bytes
             } else if (proto == HID_PROTOCOL_MOUSE) {
-                slot->report_copy_len = 4;  // Boot mouse: 3-4 bytes
+                slot->report_copy_len = 16;  // Mouse: up to 16 bytes (some devices send extended reports)
             } else if (proto == HID_PROTOCOL_GAMEPAD) {
                 if (vid == VID_SONY && pid == PID_PS5_DUALSENSE) {
                     slot->report_copy_len = 64;  // PS5 DualSense: 64 bytes
@@ -877,23 +885,6 @@ static void hid_host_task(void *arg)
         }
 
         // Flush pending mouse moves that were rate-limited
-        if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MS_TO_TICKS(1)) == FMRB_TRUE) {
-            fmrb_tick_t now = fmrb_task_get_tick_count();
-            for (int i = 0; i < MAX_HID_DEVICES; i++) {
-                if (g_hid_devices[i].connected &&
-                    g_hid_devices[i].proto == HID_PROTOCOL_MOUSE &&
-                    g_hid_devices[i].mouse_state.move_pending &&
-                    (now - g_hid_devices[i].mouse_state.last_send_tick) >= FMRB_MS_TO_TICKS(16)) {
-                    fmrb_host_send_mouse_move(
-                        g_hid_devices[i].mouse_state.cursor_x,
-                        g_hid_devices[i].mouse_state.cursor_y);
-                    g_hid_devices[i].mouse_state.last_send_tick = now;
-                    g_hid_devices[i].mouse_state.move_pending = false;
-                }
-            }
-            fmrb_semaphore_give(g_hid_devices_mutex);
-        }
-
         // Check for input report overflow and perform recovery
         if (input_report_check_overflow()) {
             FMRB_LOGW(TAG, "Input report queue overflow - performing device state reset");
