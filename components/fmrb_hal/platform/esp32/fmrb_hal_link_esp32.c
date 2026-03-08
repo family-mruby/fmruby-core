@@ -556,7 +556,7 @@ static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms)
     fmrb_err_t ret = spi_transfer_frame(&tx, &rx);
 
     if (ret == FMRB_OK) {
-        ESP_LOGI(TAG, "POLL TX: seq=%u ack=%u st=0x%02x dlen=%u | RX: seq=%u ack=%u st=0x%02x dlen=%u",
+        ESP_LOGD(TAG, "POLL TX: seq=%u ack=%u st=0x%02x dlen=%u | RX: seq=%u ack=%u st=0x%02x dlen=%u",
                  tx.seq, tx.ack_seq, tx.status, tx.data_len,
                  rx.seq, rx.ack_seq, rx.status, rx.data_len);
         process_received_frame(channel, &rx);

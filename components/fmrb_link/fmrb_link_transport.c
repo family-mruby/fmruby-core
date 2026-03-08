@@ -339,16 +339,14 @@ fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
                   sub_cmd, payload_len, seq);
     }
 
-    // Send message
+    // Send message (HAL send is synchronous - blocks until ACK received)
     fmrb_err_t ret = send_raw_message(link_type, seq, sub_cmd, payload, payload_len, effective_timeout);
     if (ret != FMRB_OK) {
         return ret;
     }
 
-    // Add to pending list if retransmit is enabled
-    if (ctx->config.enable_retransmit) {
-        add_pending_message(ctx, sequence, link_type, sub_cmd, payload, payload_len);
-    }
+    // Note: No pending list tracking needed because fmrb_hal_link_send() is synchronous.
+    // Success means ACK was already received at the HAL level.
 
     return FMRB_OK;
 }
