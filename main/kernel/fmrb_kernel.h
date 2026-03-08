@@ -28,6 +28,8 @@ typedef struct {
     uint16_t default_user_app_height;       // Default user app window height
     fmrb_display_mode_t display_mode;       // Display output mode
     bool debug_mode;                        // Debug mode enabled/disabled
+    double mouse_scale_x;                   // Mouse X sensitivity multiplier
+    double mouse_scale_y;                   // Mouse Y sensitivity multiplier
 } fmrb_system_config_t;
 
 

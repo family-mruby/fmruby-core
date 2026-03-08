@@ -134,7 +134,7 @@ class SystemGuiApp < FmrbApp
     draw_memory_stats
     @gfx.present
 
-    33
+    330
   end
 
   def on_event(ev)

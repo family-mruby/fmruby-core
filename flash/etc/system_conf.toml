@@ -5,3 +5,5 @@ default_user_app_width = 320
 default_user_app_height = 240
 display_mode = "ntsc_ipc" # spi_XXXX, etc...
 debug_mode = true
+mouse_scale_x = 0.5
+mouse_scale_y = 0.2

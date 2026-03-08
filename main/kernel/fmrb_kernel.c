@@ -34,7 +34,9 @@ static fmrb_system_config_t g_system_config = {
     .default_user_app_width = 320,
     .default_user_app_height = 240,
     .display_mode = FMRB_DISPLAY_MODE_NTSC_IPC,
-    .debug_mode = true
+    .debug_mode = true,
+    .mouse_scale_x = 1.0,
+    .mouse_scale_y = 1.0
 };
 
 // Parse display_mode string to enum
@@ -96,6 +98,10 @@ static bool read_system_config(void)
     // Read debug mode
     g_system_config.debug_mode = fmrb_toml_get_bool(conf, "debug_mode", g_system_config.debug_mode);
 
+    // Read mouse sensitivity
+    g_system_config.mouse_scale_x = fmrb_toml_get_double(conf, "mouse_scale_x", g_system_config.mouse_scale_x);
+    g_system_config.mouse_scale_y = fmrb_toml_get_double(conf, "mouse_scale_y", g_system_config.mouse_scale_y);
+
     // Log loaded configuration
     FMRB_LOGI(TAG, "System Name: %s", g_system_config.system_name);
     FMRB_LOGI(TAG, "Display: %dx%d", g_system_config.display_width, g_system_config.display_height);
@@ -103,6 +109,7 @@ static bool read_system_config(void)
               g_system_config.default_user_app_width, g_system_config.default_user_app_height);
     FMRB_LOGI(TAG, "Display Mode: %d", g_system_config.display_mode);
     FMRB_LOGI(TAG, "Debug Mode: %s", g_system_config.debug_mode ? "enabled" : "disabled");
+    FMRB_LOGI(TAG, "Mouse Scale: x=%.2f, y=%.2f", g_system_config.mouse_scale_x, g_system_config.mouse_scale_y);
 
     // Dump full configuration for debugging
     FMRB_LOGI(TAG, "Full configuration:");

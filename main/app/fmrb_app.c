@@ -12,6 +12,9 @@
 #include "fmrb_mem.h"
 #include "fmrb_task_config.h"
 #include "fmrb_kernel.h"
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "esp_heap_caps.h"
+#endif
 #include "fmrb_lua.h"
 #include "fmrb_link_transport.h"
 #include "fmrb_link_protocol.h"
@@ -944,22 +947,22 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
     // Already in INIT state (set at line 735)
 
-    // Create FreeRTOS task
+    // Create FreeRTOS task (use PSRAM for stack to avoid internal SRAM fragmentation)
     fmrb_base_type_t result;
-    if (attr->core_affinity >= 0) {
-        FMRB_LOGI(TAG, "fmrb_task_create_pinned [%s]",ctx->app_name);
-        result = fmrb_task_create_pinned(
-            app_task_main, ctx->app_name, attr->stack_words,
-            ctx, attr->priority, &ctx->task, attr->core_affinity);
-    } else {
-        FMRB_LOGI(TAG, "fmrb_task_create [%s]",ctx->app_name);
-        result = fmrb_task_create(
-            app_task_main, ctx->app_name, attr->stack_words,
-            ctx, attr->priority, &ctx->task);
-    }
+    FMRB_LOGI(TAG, "fmrb_task_create_psram [%s]", ctx->app_name);
+    result = fmrb_task_create_psram(
+        app_task_main, ctx->app_name, attr->stack_words,
+        ctx, attr->priority, &ctx->task);
 
     if (result != FMRB_PASS) {
-        FMRB_LOGE(TAG, "[%s] Failed to create task", ctx->app_name);
+#ifndef CONFIG_IDF_TARGET_LINUX
+        FMRB_LOGE(TAG, "[%s] Failed to create task (stack=%u, free_internal=%u, free_psram=%u)",
+                 ctx->app_name, (unsigned)attr->stack_words,
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                 (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+#else
+        FMRB_LOGE(TAG, "[%s] Failed to create task (stack=%u)", ctx->app_name, (unsigned)attr->stack_words);
+#endif
         goto unwind;
     }
 

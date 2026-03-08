@@ -53,6 +53,13 @@ typedef portMUX_TYPE fmrb_spinlock_t;
     xTaskCreate(fn, name, stack, param, prio, handle)
 #define fmrb_task_create_pinned(fn, name, stack, param, prio, handle, core) \
     xTaskCreatePinnedToCore(fn, name, stack, param, prio, handle, core)
+#ifndef CONFIG_IDF_TARGET_LINUX
+#define fmrb_task_create_psram(fn, name, stack, param, prio, handle) \
+    xTaskCreateWithCaps(fn, name, stack, param, prio, handle, MALLOC_CAP_SPIRAM)
+#else
+#define fmrb_task_create_psram(fn, name, stack, param, prio, handle) \
+    xTaskCreate(fn, name, stack, param, prio, handle)
+#endif
 #define fmrb_task_delete(handle) vTaskDelete(handle)
 #define fmrb_task_delay(ticks) vTaskDelay(ticks)
 #define fmrb_task_delay_ms(ms) vTaskDelay(FMRB_MS_TO_TICKS(ms))

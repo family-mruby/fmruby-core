@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
@@ -52,10 +53,10 @@ typedef struct {
     struct {
         int cursor_x;
         int cursor_y;
+        double accum_x;  // Fractional accumulator for scaled X
+        double accum_y;  // Fractional accumulator for scaled Y
         uint8_t prev_buttons;
         bool initialized;  // True after first screen size is known
-        bool move_pending;  // True if cursor position changed but not yet sent
-        fmrb_tick_t last_send_tick;  // Last time mouse move was sent to host queue
     } mouse_state;
     struct {
         int gamepad_id;  // 0 or 1
@@ -109,6 +110,8 @@ static fmrb_spinlock_t g_pending_disconnect_spinlock = FMRB_SPINLOCK_INITIALIZER
 // Screen dimensions (shared for all mice)
 static int g_screen_width = 0;
 static int g_screen_height = 0;
+static double g_mouse_scale_x = 1.0;
+static double g_mouse_scale_y = 1.0;
 
 // Forward declarations
 static void usb_host_lib_task(void *arg);
@@ -375,17 +378,21 @@ static void process_keyboard_report(hid_device_info_t *device, const uint8_t *da
 
 static bool ensure_screen_size(void)
 {
-    if (g_screen_width > 0 && g_screen_height > 0) {
-        return true;
-    }
     if (!fmrb_kernel_is_ready()) {
         return false;
+    }
+
+    if (g_screen_width > 0 && g_screen_height > 0) {
+        return true;
     }
     const fmrb_system_config_t* conf = fmrb_kernel_get_config();
     if (conf && conf->display_width > 0 && conf->display_height > 0) {
         g_screen_width = conf->display_width;
         g_screen_height = conf->display_height;
-        FMRB_LOGI(TAG, "Screen size acquired: %dx%d", g_screen_width, g_screen_height);
+        g_mouse_scale_x = conf->mouse_scale_x;
+        g_mouse_scale_y = conf->mouse_scale_y;
+        FMRB_LOGI(TAG, "Screen size acquired: %dx%d, mouse scale: %.2f/%.2f",
+                  g_screen_width, g_screen_height, g_mouse_scale_x, g_mouse_scale_y);
         return true;
     }
     return false;
@@ -427,9 +434,20 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         device->mouse_state.cursor_x = g_screen_width / 2;
         device->mouse_state.cursor_y = g_screen_height / 2;
         device->mouse_state.initialized = true;
-        FMRB_LOGD(TAG, "Mouse initialized at center (%d, %d)",
+        FMRB_LOGI(TAG, "Mouse initialized at center (%d, %d)",
                  device->mouse_state.cursor_x, device->mouse_state.cursor_y);
     }
+
+    // Apply mouse sensitivity with fractional accumulation
+    device->mouse_state.accum_x += dx * g_mouse_scale_x;
+    device->mouse_state.accum_y += dy * g_mouse_scale_y;
+
+    // Split into integer (pixel movement) and fractional (remainder) parts
+    double ix, iy;
+    device->mouse_state.accum_x = modf(device->mouse_state.accum_x, &ix);
+    device->mouse_state.accum_y = modf(device->mouse_state.accum_y, &iy);
+    dx = (int)ix;
+    dy = (int)iy;
 
     // Update absolute cursor position from relative displacement
     if (dx != 0 || dy != 0) {
@@ -1111,6 +1129,8 @@ fmrb_err_t usb_task_init(void)
     init_device_slots();
     g_screen_width = 0;
     g_screen_height = 0;
+    g_mouse_scale_x = 1.0;
+    g_mouse_scale_y = 1.0;
 
     // Initialize input report ring buffer
     g_input_report_head = 0;
