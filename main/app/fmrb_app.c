@@ -1306,7 +1306,8 @@ static void reorder_z_orders(void) {
                 FMRB_LINK_TYPE_GRAPHICS,
                 FMRB_LINK_GFX_SET_WINDOW_ORDER,
                 (const uint8_t*)&cmd,
-                sizeof(cmd)
+                sizeof(cmd),
+                FMRB_LINK_TIMEOUT_DEFAULT
             );
         }
     }
@@ -1399,7 +1400,8 @@ fmrb_err_t fmrb_app_bring_to_front(uint8_t pid) {
         FMRB_LINK_TYPE_GRAPHICS,
         FMRB_LINK_GFX_SET_WINDOW_ORDER,
         (const uint8_t*)&cmd,
-        sizeof(cmd)
+        sizeof(cmd),
+        FMRB_LINK_TIMEOUT_DEFAULT
     );
 
     if (ret != FMRB_OK) {
@@ -1538,7 +1540,8 @@ fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t hei
         FMRB_LINK_TYPE_GRAPHICS,
         FMRB_LINK_GFX_UPDATE_WINDOW,
         (const uint8_t*)&update_cmd,
-        sizeof(update_cmd)
+        sizeof(update_cmd),
+        FMRB_LINK_TIMEOUT_DEFAULT
     );
 
     if (ret != FMRB_OK) {

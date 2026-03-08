@@ -138,7 +138,7 @@ static bool init_hal(void)
 
     // Initialize transport (singleton)
     fmrb_link_transport_config_t transport_config = {
-        .timeout_ms = 1000,
+        .timeout_ms = 1000, //default timeout for sync messages (can be overridden per message)
         .enable_retransmit = true,
         .max_retries = 3,
         .window_size = 8

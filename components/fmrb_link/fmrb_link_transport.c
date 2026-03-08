@@ -143,7 +143,8 @@ fmrb_err_t fmrb_link_transport_deinit(void) {
 }
 
 static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_cmd,
-                                   const uint8_t *payload, uint32_t payload_len) {
+                                   const uint8_t *payload, uint32_t payload_len,
+                                   uint32_t timeout_ms) {
     transport_context_t *ctx = &g_tranport_context;
 
     // Serialize with msgpack as per IPC_spec.md:
@@ -187,7 +188,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
         };
 
         fmrb_link_channel_t hal_channel = (link_type == FMRB_LINK_TYPE_CONTROL) ? FMRB_LINK_GRAPHICS : FMRB_LINK_GRAPHICS;
-        fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1000);
+        fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, timeout_ms);
 
         if (ret != FMRB_OK && link_type == FMRB_LINK_TYPE_GRAPHICS) {
             FMRB_LOGE(TAG, "HAL send failed: ret=%d, type=%d, sub_cmd=0x%02X", ret, link_type, sub_cmd);
@@ -247,7 +248,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
                 .size = chunk_sbuf.size
             };
 
-            ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1000);
+            ret = fmrb_hal_link_send(hal_channel, &hal_msg, timeout_ms);
 
             msgpack_sbuffer_destroy(&chunk_sbuf);
 
@@ -308,10 +309,21 @@ static fmrb_err_t add_pending_message(transport_context_t *ctx, uint16_t sequenc
 fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
                                     uint8_t sub_cmd,
                                     const uint8_t *payload,
-                                    uint32_t payload_len) {
+                                    uint32_t payload_len,
+                                    int32_t timeout_ms) {
     transport_context_t *ctx = &g_tranport_context;
     if (!ctx->initialized) {
         return FMRB_ERR_INVALID_STATE;
+    }
+
+    // Resolve timeout: <0 = default, 0 = no timeout, >0 = specified value
+    uint32_t effective_timeout;
+    if (timeout_ms < 0) {
+        effective_timeout = ctx->config.timeout_ms;
+    } else if (timeout_ms == 0) {
+        effective_timeout = UINT32_MAX;
+    } else {
+        effective_timeout = (uint32_t)timeout_ms;
     }
 
     // Drain pending ACKs before sending to prevent ack_recv_queue overflow
@@ -328,7 +340,7 @@ fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
     }
 
     // Send message
-    fmrb_err_t ret = send_raw_message(link_type, seq, sub_cmd, payload, payload_len);
+    fmrb_err_t ret = send_raw_message(link_type, seq, sub_cmd, payload, payload_len, effective_timeout);
     if (ret != FMRB_OK) {
         return ret;
     }
@@ -385,7 +397,7 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t link_type,
     fmrb_semaphore_give(ctx->sync_mutex);
 
     // Send message
-    fmrb_err_t ret = send_raw_message(link_type, seq, sub_cmd, payload, payload_len);
+    fmrb_err_t ret = send_raw_message(link_type, seq, sub_cmd, payload, payload_len, timeout_ms);
     if (ret != FMRB_OK) {
         // Mark slot as inactive on send failure
         fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
@@ -560,7 +572,7 @@ static void handle_received_message(transport_context_t *ctx, uint8_t type, uint
 
     uint16_t ack_sequence = ctx->next_sequence++;
     uint8_t ack_seq = (uint8_t)(ack_sequence & 0xFF);
-    send_raw_message(FMRB_LINK_TYPE_CONTROL, ack_seq, FMRB_LINK_RESPONSE_MSG_ACK, (uint8_t*)&ack, sizeof(ack));
+    send_raw_message(FMRB_LINK_TYPE_CONTROL, ack_seq, FMRB_LINK_RESPONSE_MSG_ACK, (uint8_t*)&ack, sizeof(ack), ctx->config.timeout_ms);
 }
 
 fmrb_err_t fmrb_link_transport_process(void) {
@@ -635,7 +647,7 @@ fmrb_err_t fmrb_link_transport_process(void) {
                 if (pending->retry_count < ctx->config.max_retries) {
                     // Retransmit
                     uint8_t seq = (uint8_t)(pending->sequence & 0xFF);
-                    send_raw_message(pending->link_type, seq, pending->sub_cmd, pending->payload, pending->payload_len);
+                    send_raw_message(pending->link_type, seq, pending->sub_cmd, pending->payload, pending->payload_len, ctx->config.timeout_ms);
                     pending->sent_time = current_time;
                     pending->retry_count++;
                 } else {

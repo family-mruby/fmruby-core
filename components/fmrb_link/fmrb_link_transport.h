@@ -7,6 +7,10 @@
 extern "C" {
 #endif
 
+// Timeout constants for fmrb_link_transport_send()
+#define FMRB_LINK_TIMEOUT_DEFAULT  (-1)  // Use config default (ctx->config.timeout_ms)
+#define FMRB_LINK_TIMEOUT_FOREVER  (0)   // Wait forever (no timeout)
+
 // Transport handle
 #ifndef FMRB_LINK_TRANSPORT_HANDLE_DEFINED
 #define FMRB_LINK_TRANSPORT_HANDLE_DEFINED
@@ -45,12 +49,14 @@ fmrb_err_t fmrb_link_transport_deinit(void);
  * @param sub_cmd Sub-command within the link type
  * @param payload Payload data
  * @param payload_len Payload length
+ * @param timeout_ms ACK timeout in milliseconds (>0: specified value, 0: no timeout, <0: use default)
  * @return FMRB_OK on success, error code otherwise
  */
 fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
                                     uint8_t sub_cmd,
                                     const uint8_t *payload,
-                                    uint32_t payload_len);
+                                    uint32_t payload_len,
+                                    int32_t timeout_ms);
 
 /**
  * @brief Send message synchronously and wait for ACK

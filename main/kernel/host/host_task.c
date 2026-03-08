@@ -134,11 +134,13 @@ static int init_gfx_audio(void)
                   init_cmd.width, init_cmd.height, init_cmd.color_depth);
 
         // Use singleton transport API (no handle needed)
+        // Display initialization on slave takes ~2100ms (CVBS + PSRAM 2.3MB alloc)
         fmrb_err_t ret = fmrb_link_transport_send(
             FMRB_LINK_TYPE_CONTROL,
             FMRB_LINK_CONTROL_INIT_DISPLAY,
             (const uint8_t*)&init_cmd,
-            sizeof(init_cmd)
+            sizeof(init_cmd),
+            5000
         );
 
         if (ret != FMRB_OK) {
