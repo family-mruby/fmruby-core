@@ -10,6 +10,11 @@
 #include "freertos/queue.h"
 #include "driver/gpio.h"
 #include <string.h>
+#include "esp_heap_caps.h"
+
+// DMA-capable SPI buffers (shared, protected by spi_mutex)
+static uint8_t *s_tx_dma_buf = NULL;
+static uint8_t *s_rx_dma_buf = NULL;
 
 #define SPI_FRAME_SIZE 256  // Fixed frame size matching slave (increased for better throughput)
 #define SPI_FREQUENCY (10 * 1000 * 1000)  // 10MHz
@@ -36,6 +41,9 @@ static QueueHandle_t ack_recv_queue = NULL;
 static SemaphoreHandle_t ack_notify_sem = NULL;  // ACK ready notification from GPIO ISR
 
 static const char *TAG = "fmrb_hal_link";
+
+// Debug: set to true to enable RX/TX frame hex dumps
+static bool s_debug_dump = false;
 
 // Cached EMPTY frame for poll TX (encoded once at init)
 static uint8_t s_empty_frame[SPI_FRAME_SIZE];
@@ -122,6 +130,22 @@ fmrb_err_t fmrb_hal_link_init(void) {
         ESP_LOGI(TAG, "ACK GPIO ISR registered on pin %d (falling edge)", FMRB_PIN_GFX_SPI_INTR);
     }
 
+    // Allocate DMA-capable SPI buffers (stack buffers are not guaranteed DMA-aligned)
+    s_tx_dma_buf = (uint8_t *)heap_caps_malloc(SPI_FRAME_SIZE, MALLOC_CAP_DMA);
+    s_rx_dma_buf = (uint8_t *)heap_caps_malloc(SPI_FRAME_SIZE, MALLOC_CAP_DMA);
+    if (!s_tx_dma_buf || !s_rx_dma_buf) {
+        ESP_LOGE(TAG, "Failed to allocate DMA buffers");
+        heap_caps_free(s_tx_dma_buf);
+        heap_caps_free(s_rx_dma_buf);
+        s_tx_dma_buf = NULL;
+        s_rx_dma_buf = NULL;
+        fmrb_hal_spi_deinit(spi_handle);
+        spi_handle = NULL;
+        vSemaphoreDelete(spi_mutex);
+        spi_mutex = NULL;
+        return FMRB_ERR_NO_MEMORY;
+    }
+
     // Encode EMPTY frame for poll TX: msgpack [EMPTY(0), seq(0), ACK(0xF0), nil]
     {
         const uint8_t msgpack_empty[] = {0x94, 0x00, 0x00, 0xCC, 0xF0, 0xC0};
@@ -157,6 +181,16 @@ void fmrb_hal_link_deinit(void) {
     if (spi_mutex) {
         vSemaphoreDelete(spi_mutex);
         spi_mutex = NULL;
+    }
+
+    // Free DMA buffers
+    if (s_tx_dma_buf) {
+        heap_caps_free(s_tx_dma_buf);
+        s_tx_dma_buf = NULL;
+    }
+    if (s_rx_dma_buf) {
+        heap_caps_free(s_rx_dma_buf);
+        s_rx_dma_buf = NULL;
     }
 
     // Remove GPIO ISR and delete ACK notify semaphore
@@ -234,17 +268,15 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    // Prepare SPI frame: [COBS encoded data | 0x00 | padding]
-    uint8_t tx_frame[SPI_FRAME_SIZE];
-    memset(tx_frame, 0, SPI_FRAME_SIZE);
-    memcpy(tx_frame, encoded, encoded_len);
-    tx_frame[encoded_len] = 0x00;  // COBS frame terminator
+    // Prepare SPI frame: [COBS encoded data | 0x00 | padding] using DMA buffer
+    memset(s_tx_dma_buf, 0, SPI_FRAME_SIZE);
+    memcpy(s_tx_dma_buf, encoded, encoded_len);
+    s_tx_dma_buf[encoded_len] = 0x00;  // COBS frame terminator
 
     fmrb_sys_free(encoded);
 
-    // Prepare RX buffer for full-duplex transfer (to receive ACK simultaneously)
-    uint8_t rx_frame[SPI_FRAME_SIZE];
-    memset(rx_frame, 0, SPI_FRAME_SIZE);
+    // Prepare RX DMA buffer for full-duplex transfer (to receive ACK simultaneously)
+    memset(s_rx_dma_buf, 0, SPI_FRAME_SIZE);
 
     // Clear stale ACK notification before sending
     if (ack_notify_sem) {
@@ -252,7 +284,17 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     }
 
     // Send via SPI with full-duplex transfer (TX and RX simultaneously)
-    fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, tx_frame, rx_frame, SPI_FRAME_SIZE, timeout_ms);
+    fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, s_tx_dma_buf, s_rx_dma_buf, SPI_FRAME_SIZE, timeout_ms);
+
+    // Reset ACK received flag before processing
+    esp32_link_channel_t *ch = &channels[channel];
+    ch->ack_received = false;
+
+    // Process RX while still holding mutex (protects shared s_rx_dma_buf,
+    // and processing time provides natural inter-transfer gap for slave)
+    if (ret == FMRB_OK) {
+        process_received_ack(channel, s_rx_dma_buf, SPI_FRAME_SIZE);
+    }
 
     xSemaphoreGive(spi_mutex);
 
@@ -263,13 +305,6 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
 
     ESP_LOGD(TAG, "Sent %zu bytes (payload+crc: %zu, encoded: %zu, frame: %d) to channel %d",
              msg->size, total_size, encoded_len, SPI_FRAME_SIZE, channel);
-
-    // Reset ACK received flag before processing
-    esp32_link_channel_t *ch = &channels[channel];
-    ch->ack_received = false;
-
-    // Process received ACK from slave (if any)
-    process_received_ack(channel, rx_frame, SPI_FRAME_SIZE);
 
     // If ACK not received immediately, wait for GPIO interrupt then poll.
     // GPIO LOW (falling edge) = slave has staged ACK. Due to SPI double-buffering,
@@ -398,6 +433,22 @@ static void process_received_ack(fmrb_link_channel_t channel, const uint8_t *rx_
     esp32_link_channel_t *ch = &channels[channel];
     size_t pos = 0;
 
+    if (s_debug_dump) {
+        ESP_LOGI(TAG, "RX frame[0..31]: "
+                 "%02x %02x %02x %02x %02x %02x %02x %02x "
+                 "%02x %02x %02x %02x %02x %02x %02x %02x "
+                 "%02x %02x %02x %02x %02x %02x %02x %02x "
+                 "%02x %02x %02x %02x %02x %02x %02x %02x",
+                 rx_frame[0],  rx_frame[1],  rx_frame[2],  rx_frame[3],
+                 rx_frame[4],  rx_frame[5],  rx_frame[6],  rx_frame[7],
+                 rx_frame[8],  rx_frame[9],  rx_frame[10], rx_frame[11],
+                 rx_frame[12], rx_frame[13], rx_frame[14], rx_frame[15],
+                 rx_frame[16], rx_frame[17], rx_frame[18], rx_frame[19],
+                 rx_frame[20], rx_frame[21], rx_frame[22], rx_frame[23],
+                 rx_frame[24], rx_frame[25], rx_frame[26], rx_frame[27],
+                 rx_frame[28], rx_frame[29], rx_frame[30], rx_frame[31]);
+    }
+
     while (pos < frame_size) {
         // Skip null bytes (inter-frame padding)
         while (pos < frame_size && rx_frame[pos] == 0x00) {
@@ -503,27 +554,23 @@ static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms)
         return FMRB_ERR_TIMEOUT;
     }
 
-    // Prepare TX frame with EMPTY message
-    uint8_t tx_frame[SPI_FRAME_SIZE];
-    memset(tx_frame, 0, SPI_FRAME_SIZE);
-    memcpy(tx_frame, s_empty_frame, s_empty_frame_len);
+    // Prepare TX DMA buffer with EMPTY message
+    memset(s_tx_dma_buf, 0, SPI_FRAME_SIZE);
+    memcpy(s_tx_dma_buf, s_empty_frame, s_empty_frame_len);
 
-    // Prepare RX buffer
-    uint8_t rx_frame[SPI_FRAME_SIZE];
-    memset(rx_frame, 0, SPI_FRAME_SIZE);
+    // Prepare RX DMA buffer
+    memset(s_rx_dma_buf, 0, SPI_FRAME_SIZE);
 
     // Send empty frame to poll for ACK (slave signaled ready via handshake)
-    fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, tx_frame, rx_frame, SPI_FRAME_SIZE, timeout_ms);
+    fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, s_tx_dma_buf, s_rx_dma_buf, SPI_FRAME_SIZE, timeout_ms);
 
-    xSemaphoreGive(spi_mutex);
-
-    if (ret != FMRB_OK) {
-        ESP_LOGD(TAG, "ACK poll transfer failed: %d", ret);
-        return ret;
+    // Process RX while still holding mutex (protects shared s_rx_dma_buf,
+    // and processing time provides natural inter-transfer gap for slave)
+    if (ret == FMRB_OK) {
+        process_received_ack(channel, s_rx_dma_buf, SPI_FRAME_SIZE);
     }
 
-    // Process any received ACK
-    process_received_ack(channel, rx_frame, SPI_FRAME_SIZE);
+    xSemaphoreGive(spi_mutex);
 
     return FMRB_OK;
 }
