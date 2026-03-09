@@ -333,8 +333,16 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     }
     extern mrb_bool mrb_task_is_switching(mrb_state *mrb);
     if (mrb_task_is_switching(mrb)) {
-        FMRB_LOGW(TAG, "Task switching pending, skip on_event");
-        goto cleanup;
+        if (subtype == HID_MSG_MOUSE_MOVE) {
+            // Mouse move events can be safely dropped
+            FMRB_LOGD(TAG, "Task switching pending, drop mouse move");
+            goto cleanup;
+        }
+        // For other events (key, click), wait until switching completes
+        FMRB_LOGW(TAG, "Task switching pending, waiting for subtype=%d", subtype);
+        while (mrb_task_is_switching(mrb)) {
+            fmrb_task_delay_ms(1);
+        }
     }
 
     mrb_funcall(mrb, self, "on_event", 1, event_hash);
