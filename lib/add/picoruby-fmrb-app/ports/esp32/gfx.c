@@ -34,9 +34,18 @@ static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
     };
     memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
 
-    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 500);
+    // Retry up to 3 times with longer timeout for graphics commands
+    fmrb_err_t ret = FMRB_ERR_TIMEOUT;
+    for (int retry = 0; retry < 3; retry++) {
+        ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+        if (ret == FMRB_OK) {
+            break;
+        }
+        FMRB_LOGW(TAG, "Failed to send graphics command, retry %d/3", retry + 1);
+        fmrb_task_delay(FMRB_MS_TO_TICKS(100));  // Wait 100ms before retry
+    }
     if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to send graphics command: %d", ret);
+        FMRB_LOGE(TAG, "Graphics command dropped after 3 retries");
     }
     return ret;
 }

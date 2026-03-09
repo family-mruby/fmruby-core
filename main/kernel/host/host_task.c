@@ -414,9 +414,18 @@ static void host_task_process_host_message(const host_message_t *msg)
             );
 
             // Send directly to focused window (current HID target)
-            fmrb_err_t ret = fmrb_msg_send(routing.target_pid, &hid_msg, 500);
+            // Retry up to 3 times with longer timeout to handle busy Ruby execution
+            fmrb_err_t ret = FMRB_ERR_TIMEOUT;
+            for (int retry = 0; retry < 3; retry++) {
+                ret = fmrb_msg_send(routing.target_pid, &hid_msg, 5000);
+                if (ret == FMRB_OK) {
+                    break;
+                }
+                FMRB_LOGW(TAG, "Failed to send keyboard event to PID %d, retry %d/3", routing.target_pid, retry + 1);
+                fmrb_task_delay(FMRB_MS_TO_TICKS(100));  // Wait 100ms before retry
+            }
             if (ret != FMRB_OK) {
-                FMRB_LOGW(TAG, "Failed to send keyboard event to PID %d: timeout (queue full)", routing.target_pid);
+                FMRB_LOGE(TAG, "Keyboard event dropped after 3 retries to PID %d", routing.target_pid);
             }
             break;
         }
@@ -450,9 +459,12 @@ static void host_task_process_host_message(const host_message_t *msg)
             hid_msg.data[4] = (uint8_t)(y & 0xFF);
             hid_msg.data[5] = (uint8_t)((y >> 8) & 0xFF);
 
-            fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &hid_msg, 500);
+            // Mouse move events can be dropped if queue is full (already rate-limited to 66ms)
+            // Use single 5000ms timeout without retry to avoid blocking HOST task
+            fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &hid_msg, 5000);
             if (ret != FMRB_OK) {
-                FMRB_LOGW(TAG, "Failed to send mouse move to Kernel: timeout (queue full)");
+                // Silently drop - mouse moves are high-frequency and already rate-limited
+                FMRB_LOGD(TAG, "Mouse move dropped (Kernel queue full)");
             }
             break;
         }
@@ -479,9 +491,18 @@ static void host_task_process_host_message(const host_message_t *msg)
             mouse_btn->y = y;
 
             // Send to Kernel for hit testing and routing
-            fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &kernel_msg, 500);
+            // Retry up to 3 times - mouse clicks are important user actions
+            fmrb_err_t ret = FMRB_ERR_TIMEOUT;
+            for (int retry = 0; retry < 3; retry++) {
+                ret = fmrb_msg_send(PROC_ID_KERNEL, &kernel_msg, 5000);
+                if (ret == FMRB_OK) {
+                    break;
+                }
+                FMRB_LOGW(TAG, "Failed to send mouse click to Kernel, retry %d/3", retry + 1);
+                fmrb_task_delay(FMRB_MS_TO_TICKS(100));  // Wait 100ms before retry
+            }
             if (ret != FMRB_OK) {
-                FMRB_LOGW(TAG, "Failed to send mouse click to Kernel: timeout (queue full)");
+                FMRB_LOGE(TAG, "Mouse click dropped after 3 retries");
             }
             break;
         }
