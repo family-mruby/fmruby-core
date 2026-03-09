@@ -323,8 +323,21 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     check_mrb_ci_valid(mrb, "before_funcall");
     #endif
 
+    // Guard: skip mrb_funcall if VM context is invalid or task switching is pending.
+    // If switching is TRUE, mrb_vm_exec (called internally by mrb_funcall) returns
+    // immediately without popping the ci frame pushed by cipush, causing ci stack leak.
+    // Repeated leaks lead to ci stack overflow and heap corruption (mrb->c becomes NULL).
+    if (!mrb->c || !mrb->c->ci) {
+        FMRB_LOGE(TAG, "mrb->c or mrb->c->ci is NULL, skip on_event");
+        goto cleanup;
+    }
+    extern mrb_bool mrb_task_is_switching(mrb_state *mrb);
+    if (mrb_task_is_switching(mrb)) {
+        FMRB_LOGW(TAG, "Task switching pending, skip on_event");
+        goto cleanup;
+    }
+
     mrb_funcall(mrb, self, "on_event", 1, event_hash);
-    //mrb_funcall(mrb, self, "on_event", 1, mrb_nil_value());
 
     #if 0
     FMRB_LOGI(TAG, "=== AFTER mrb_funcall ===");

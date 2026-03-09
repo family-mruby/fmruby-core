@@ -959,3 +959,9 @@ void
 mrb_picoruby_mruby_gem_final(mrb_state* mrb)
 {
 }
+
+mrb_bool
+mrb_task_is_switching(mrb_state *mrb)
+{
+  return switching_;
+}
