@@ -36,7 +36,7 @@ static mrb_value mrb_kernel_handler_init(mrb_state *mrb, mrb_value self)
 
     // Create message queue for kernel
     fmrb_msg_queue_config_t queue_config = {
-        .queue_length = 10,
+        .queue_length = FMRB_KERNEL_MSG_QUEUE_LEN,
         .message_size = sizeof(fmrb_msg_t)
     };
 

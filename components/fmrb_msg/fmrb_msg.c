@@ -20,7 +20,7 @@ static bool g_initialized = false;
 
 // Default queue configuration
 static const fmrb_msg_queue_config_t DEFAULT_CONFIG = {
-    .queue_length = 10,
+    .queue_length = FMRB_DEFAULT_MSG_QUEUE_LEN,
     .message_size = sizeof(fmrb_msg_t)
 };
 

@@ -68,8 +68,7 @@ typedef struct {
 // Host task handle
 static fmrb_task_handle_t g_host_task_handle = 0;
 
-// Task configuration
-#define HOST_QUEUE_SIZE (128)
+// Task configuration (queue size defined in fmrb_task_config.h)
 
 // Graphics command buffer
 static fmrb_gfx_command_buffer_t* g_gfx_cmd_buffer = NULL;
@@ -415,7 +414,10 @@ static void host_task_process_host_message(const host_message_t *msg)
             );
 
             // Send directly to focused window (current HID target)
-            fmrb_msg_send(routing.target_pid, &hid_msg, 10);
+            fmrb_err_t ret = fmrb_msg_send(routing.target_pid, &hid_msg, 500);
+            if (ret != FMRB_OK) {
+                FMRB_LOGW(TAG, "Failed to send keyboard event to PID %d: timeout (queue full)", routing.target_pid);
+            }
             break;
         }
 
@@ -448,7 +450,10 @@ static void host_task_process_host_message(const host_message_t *msg)
             hid_msg.data[4] = (uint8_t)(y & 0xFF);
             hid_msg.data[5] = (uint8_t)((y >> 8) & 0xFF);
 
-            fmrb_msg_send(PROC_ID_KERNEL, &hid_msg, 10);
+            fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &hid_msg, 500);
+            if (ret != FMRB_OK) {
+                FMRB_LOGW(TAG, "Failed to send mouse move to Kernel: timeout (queue full)");
+            }
             break;
         }
 
@@ -474,7 +479,10 @@ static void host_task_process_host_message(const host_message_t *msg)
             mouse_btn->y = y;
 
             // Send to Kernel for hit testing and routing
-            fmrb_msg_send(PROC_ID_KERNEL, &kernel_msg, 10);
+            fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &kernel_msg, 500);
+            if (ret != FMRB_OK) {
+                FMRB_LOGW(TAG, "Failed to send mouse click to Kernel: timeout (queue full)");
+            }
             break;
         }
 
@@ -567,7 +575,7 @@ int fmrb_host_task_init(void)
 {
     // Register host task's message queue
     fmrb_msg_queue_config_t queue_config = {
-        .queue_length = HOST_QUEUE_SIZE,
+        .queue_length = FMRB_HOST_MSG_QUEUE_LEN,
         .message_size = sizeof(fmrb_msg_t)
     };
 

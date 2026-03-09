@@ -2,51 +2,6 @@
 
 #include <stdint.h>
 
-/*
- * FreeRTOS Task Priority Guidelines for ESP32
- *
- * Priority Range: 0-24 (configMAX_PRIORITIES = 25)
- * Higher number = Higher priority
- *
- * ┌─────────────────────────────────────────────────────────────────────┐
- * │ Priority │ Usage                        │ Examples                  │
- * ├──────────┼──────────────────────────────┼───────────────────────────┤
- * │ 20-24    │ Critical System Tasks        │ WiFi, Bluetooth drivers   │
- * │          │ (ESP-IDF internal, avoid)    │ Hardware interrupt tasks  │
- * ├──────────┼──────────────────────────────┼───────────────────────────┤
- * │ 15-19    │ Hard Real-time Tasks         │ I2S DMA, PWM control      │
- * │          │ (<1ms latency required)      │ Protocol stacks           │
- * ├──────────┼──────────────────────────────┼───────────────────────────┤
- * │ 10-14    │ High Priority Tasks          │ Audio decode, Network     │
- * │          │ (10-100ms latency OK)        │ HTTP server, MQTT client  │
- * ├──────────┼──────────────────────────────┼───────────────────────────┤
- * │  5-9     │ Application Tasks            │ UI processing, Main logic │
- * │          │ (100-500ms latency OK)       │ Sensor reading, Ruby VM   │
- * │          │ ** Most user tasks here **   │                           │
- * ├──────────┼──────────────────────────────┼───────────────────────────┤
- * │  3-4     │ Background Tasks             │ Logging, Statistics       │
- * │          │ (>1s latency OK)             │ Non-critical services     │
- * ├──────────┼──────────────────────────────┼───────────────────────────┤
- * │  1-2     │ Low Priority Tasks           │ Debug output, Power mgmt  │
- * ├──────────┼──────────────────────────────┼───────────────────────────┤
- * │  0       │ Idle Task (FreeRTOS only)    │ CPU idle, GC, Power save  │
- * └─────────────────────────────────────────────────────────────────────┘
- *
- * ESP-IDF Internal Task Priorities (Reference):
- * - ESP_TASK_WIFI_PRIO         = 23 (WiFi driver)
- * - ESP_TASK_BT_CONTROLLER_PRIO = 23 (Bluetooth controller)
- * - ESP_TASK_TIMER_PRIO        = 22 (Software timers)
- * - ESP_TASK_EVENT_PRIO        = 20 (Event loop)
- * - ESP_TASK_TCPIP_PRIO        = 18 (TCP/IP stack)
- * - ESP_TASK_MAIN_PRIO         = 1  (main() task)
- *
- * Design Considerations:
- * - Same priority tasks share CPU time (round-robin scheduling)
- * - Higher priority tasks preempt lower priority tasks immediately
- * - Blocked tasks (waiting for events/queues) don't consume CPU time
- * - Balance responsiveness vs. CPU fairness when choosing priorities
- */
-
  // Filesystem proxy task
 #define FMRB_FSPROXY_TASK_STACK_SIZE (60 * 1024)
 #define FMRB_FSPROXY_TASK_PRIORITY (4)
@@ -77,7 +32,27 @@
 #define FMRB_MAX_APPS (PROC_ID_MAX)
 #define FMRB_MAX_USER_APPS (PROC_ID_MAX - PROC_ID_USER_APP0)
 
-#define FMRB_USER_APP_MSG_QUEUE_LEN (10)
+// Message Queue Lengths
+// ----------------------
+// Queue sizes are designed to handle burst traffic and prevent message loss
+// during heavy usage (e.g., rapid mouse movements, fast typing, many graphics commands)
+
+// HOST task: High-frequency graphics commands, HID events from USB
+// Large queue needed as this is the main communication hub
+#define FMRB_HOST_MSG_QUEUE_LEN (128)
+
+// KERNEL task: HID events (mouse/keyboard), window management, app lifecycle
+// Medium queue for handling mouse/keyboard event bursts
+#define FMRB_KERNEL_MSG_QUEUE_LEN (32)
+
+// SYSTEM_APP task: System-level application messages
+#define FMRB_SYSTEM_APP_MSG_QUEUE_LEN (32)
+
+// USER_APP tasks: User application messages (keyboard input, custom messages)
+#define FMRB_USER_APP_MSG_QUEUE_LEN (32)
+
+// Default queue length for unconfigured tasks
+#define FMRB_DEFAULT_MSG_QUEUE_LEN (10)
 
 typedef enum FMRB_PROC_ID{
     PROC_ID_KERNEL = 0,
