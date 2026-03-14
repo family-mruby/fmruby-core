@@ -274,23 +274,25 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
         }
 
         case HID_MSG_MOUSE_MOVE: {
-            // Validate size before casting
-            if (msg->size < sizeof(fmrb_hid_mouse_motion_event_t)) {
-                FMRB_LOGW(TAG, "Mouse motion event message too small: expected=%d, actual=%d",
-                         sizeof(fmrb_hid_mouse_motion_event_t), msg->size);
+            // Validate minimum size: subtype(1) + button(1) + x(2) + y(2) = 6
+            // Note: Kernel sends 6-byte format [subtype, button, x_lo, x_hi, y_lo, y_hi]
+            // which does NOT match fmrb_hid_mouse_motion_event_t (5-byte packed struct).
+            // Parse manually to match the actual wire format.
+            if (msg->size < 6) {
+                FMRB_LOGW(TAG, "Mouse motion event message too small: expected=6, actual=%d",
+                         msg->size);
                 goto cleanup;
             }
 
-            // Cast to struct and access fields from the struct
-            const fmrb_hid_mouse_motion_event_t *motion_event =
-                (const fmrb_hid_mouse_motion_event_t*)msg->data;
+            uint16_t x = msg->data[2] | ((uint16_t)msg->data[3] << 8);
+            uint16_t y = msg->data[4] | ((uint16_t)msg->data[5] << 8);
 
             mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
                         mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_move")));
             mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "x")),
-                        mrb_fixnum_value(motion_event->x));
+                        mrb_fixnum_value(x));
             mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "y")),
-                        mrb_fixnum_value(motion_event->y));
+                        mrb_fixnum_value(y));
             break;
         }
 
@@ -343,9 +345,23 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
         while (mrb_task_is_switching(mrb)) {
             fmrb_task_delay_ms(1);
         }
+        FMRB_LOGI(TAG, "Task switching pending, waiting for subtype=%d done", subtype);
     }
 
+    // Save CI pointer before funcall to detect CI stack leak
+    mrb_callinfo *ci_before = mrb->c->ci;
+
     mrb_funcall(mrb, self, "on_event", 1, event_hash);
+
+    // Detect CI stack leak: if ci moved forward, mrb_vm_exec returned
+    // without popping the frame pushed by cipush (task switching race).
+    // Restore ci to prevent accumulation that leads to NULL proc crash.
+    if (mrb->c && mrb->c->ci > ci_before) {
+        FMRB_LOGW(TAG, "CI stack leak detected after on_event: ci=%p, expected=%p (delta=%td)",
+                  mrb->c->ci, ci_before,
+                  (ptrdiff_t)((char*)mrb->c->ci - (char*)ci_before));
+        mrb->c->ci = ci_before;
+    }
 
     #if 0
     FMRB_LOGI(TAG, "=== AFTER mrb_funcall ===");

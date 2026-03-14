@@ -10,6 +10,7 @@
 #include "fmrb_rtos.h"
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
+#include "fmrb_hid_msg.h"
 #include "fmrb_task_config.h"
 #include "fmrb_log.h"
 #include "fmrb_link_transport.h"
@@ -82,6 +83,9 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
         fmrb_err_t ret = fmrb_msg_receive(PROC_ID_KERNEL, &msg, remaining_ticks);
 
         if (ret == FMRB_OK) {
+            // Save GC arena before creating Ruby objects
+            int ai = mrb_gc_arena_save(mrb);
+
             // Build Ruby hash: {type: int, src_pid: int, data: string}
             mrb_value hash = mrb_hash_new(mrb);
             mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
@@ -91,8 +95,54 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
             mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "data")),
                          mrb_str_new(mrb, (const char*)msg.data, msg.size));
 
+            // Guard: skip mrb_funcall if VM context is invalid or task switching.
+            // If switching is TRUE, mrb_vm_exec returns immediately without
+            // popping the ci frame pushed by cipush, causing ci stack leak.
+            extern mrb_bool mrb_task_is_switching(mrb_state *mrb);
+            if (!mrb->c || !mrb->c->ci) {
+                FMRB_LOGE(TAG, "mrb->c or ci is NULL, skip msg_handler");
+                mrb_gc_arena_restore(mrb, ai);
+                break;
+            }
+            if (mrb_task_is_switching(mrb)) {
+                // HID mouse move can be safely dropped (high frequency, lossy)
+                bool is_mouse_move = (msg.type == FMRB_MSG_TYPE_HID_EVENT &&
+                                      msg.size >= 1 &&
+                                      msg.data[0] == HID_MSG_MOUSE_MOVE);
+                if (is_mouse_move) {
+                    FMRB_LOGD(TAG, "Task switching pending, drop mouse move");
+                    mrb_gc_arena_restore(mrb, ai);
+                    continue;
+                }
+                // For other messages, wait until switching completes
+                FMRB_LOGW(TAG, "Task switching pending, waiting for msg type=%d", msg.type);
+                while (mrb_task_is_switching(mrb)) {
+                    fmrb_task_delay_ms(1);
+                }
+                FMRB_LOGI(TAG, "Task switching done, processing msg type=%d", msg.type);
+            }
+
+            // Save CI pointer to detect leak
+            mrb_callinfo *ci_before = mrb->c->ci;
+
             // Call Ruby method: self.msg_handler(msg)
             mrb_funcall(mrb, self, "msg_handler", 1, hash);
+
+            // Detect and recover CI stack leak
+            if (mrb->c && mrb->c->ci > ci_before) {
+                FMRB_LOGW(TAG, "CI stack leak in msg_handler: ci=%p, expected=%p",
+                          mrb->c->ci, ci_before);
+                mrb->c->ci = ci_before;
+            }
+
+            // Check for exception
+            if (mrb->exc) {
+                FMRB_LOGE(TAG, "Exception in msg_handler()");
+                mrb_print_error(mrb);
+                mrb->exc = NULL;
+            }
+
+            mrb_gc_arena_restore(mrb, ai);
 
             // Continue loop to process more messages or wait for remaining time
         } else if (ret == FMRB_ERR_TIMEOUT) {

@@ -1,7 +1,7 @@
 # Rakefile — Family mruby ESP-IDF build wrapper (Docker)
 require "rake"
 
-USB_SERIAL_PORT="/dev/ttyUSB0"
+USB_SERIAL_PORT="/dev/ttyUSB1"
 
 # Load environment variables from .env file
 if File.exist?(".env")
