@@ -51,6 +51,10 @@
 // USER_APP tasks: User application messages (keyboard input, custom messages)
 #define FMRB_USER_APP_MSG_QUEUE_LEN (32)
 
+// BLE task
+#define FMRB_BLE_TASK_STACK_SIZE (4096)
+#define FMRB_BLE_TASK_PRIORITY (4)
+
 // Default queue length for unconfigured tasks
 #define FMRB_DEFAULT_MSG_QUEUE_LEN (10)
 
