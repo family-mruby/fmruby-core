@@ -11,14 +11,32 @@
 #include "host/ble_hs.h"
 #include "host/ble_store.h"
 #include "host/util/util.h"
+#include "store/config/ble_store_config.h"
 #include "services/gap/ble_svc_gap.h"
 #include "services/gatt/ble_svc_gatt.h"
+
+// ESP-IDF's NimBLE store config exports the function but does not declare it
+// in a public header in this environment.
+void ble_store_config_init(void);
 
 static const char *TAG = "ble_task";
 
 static bool g_ble_initialized = false;
+static bool g_ble_advertising = false;
 static uint8_t g_own_addr_type;
 static uint16_t g_conn_handle;
+
+static void ble_advertise(void);
+
+static void ble_advertise_if_needed(void)
+{
+    if (g_ble_advertising) {
+        FMRB_LOGI(TAG, "BLE advertising already active");
+        return;
+    }
+
+    ble_advertise();
+}
 
 // Custom 128-bit UUID for Family mruby File Service
 static const ble_uuid128_t gatt_svr_svc_fmrb_uuid =
@@ -98,6 +116,7 @@ static void ble_advertise(void)
         return;
     }
 
+    g_ble_advertising = true;
     FMRB_LOGI(TAG, "BLE advertising started");
 }
 
@@ -108,6 +127,7 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
         if (event->connect.status == 0) {
             FMRB_LOGI(TAG, "BLE connection established (handle=%d)",
                        event->connect.conn_handle);
+            g_ble_advertising = false;
             g_conn_handle = event->connect.conn_handle;
             // Initiate security (pairing) from peripheral side
             int sec_rc = ble_gap_security_initiate(event->connect.conn_handle);
@@ -117,20 +137,23 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
         } else {
             FMRB_LOGE(TAG, "BLE connection failed (status=%d, handle=%d)",
                        event->connect.status, event->connect.conn_handle);
+            g_ble_advertising = false;
             g_conn_handle = 0;
-            ble_advertise();
+            ble_advertise_if_needed();
         }
         break;
 
     case BLE_GAP_EVENT_DISCONNECT:
         FMRB_LOGI(TAG, "BLE disconnected (reason=%d)",
                    event->disconnect.reason);
+        g_ble_advertising = false;
         g_conn_handle = 0;
-        ble_advertise();
+        ble_advertise_if_needed();
         break;
 
     case BLE_GAP_EVENT_ADV_COMPLETE:
         FMRB_LOGI(TAG, "BLE advertising complete");
+        g_ble_advertising = false;
         ble_advertise();
         break;
 
@@ -248,6 +271,8 @@ fmrb_err_t ble_task_init(void)
     ble_hs_cfg.sm_mitm = 0;
     ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+
+    ble_store_config_init();
 
     ble_svc_gap_init();
     ble_svc_gatt_init();
