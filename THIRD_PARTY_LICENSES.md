@@ -16,6 +16,7 @@ Family mruby Core includes code from several open source projects. The following
 6. [tomlc99](#tomlc99)
 7. [Lua](#lua)
 8. [LovyanGFX](#lovyangfx)
+9. [RX8900RTC](#rx8900rtc)
 
 ---
 
@@ -346,6 +347,38 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 The views and conclusions contained in the software and documentation are those
 of the authors and should not be interpreted as representing official policies,
 either expressed or implied, of the FreeBSD Project.
+
+================================================================================
+
+
+================================================================================
+## RX8900RTC
+Repository: https://github.com/citriena/RX8900RTC
+License: MIT License
+
+Note: The RX8900 RTC driver (main/drivers/rtc/rx8900.c) is ported from this
+Arduino library to ESP-IDF C code.
+--------------------------------------------------------------------------------
+
+Copyright (c) 2021 citriena
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ================================================================================
 
