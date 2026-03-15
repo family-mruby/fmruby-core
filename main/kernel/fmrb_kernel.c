@@ -63,8 +63,7 @@ static bool read_system_config(void)
     toml_table_t *conf = fmrb_toml_load_file(config_path, errbuf, sizeof(errbuf));
 
     if (!conf) {
-        FMRB_LOGW(TAG, "Config load failed: %s", errbuf);
-        FMRB_LOGI(TAG, "Using default configuration");
+        FMRB_LOGE(TAG, "Config load failed: %s", errbuf);
         return false;
     }
 

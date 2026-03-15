@@ -277,34 +277,35 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
     }
 }
 
-static fmrb_err_t add_pending_message(transport_context_t *ctx, uint16_t sequence,
-                                      uint8_t link_type, uint8_t sub_cmd,
-                                      const uint8_t *payload, uint32_t payload_len) {
-    if (ctx->pending_count >= MAX_PENDING_MESSAGES) {
-        return FMRB_ERR_FAILED;
-    }
-
-    pending_message_t *pending = &ctx->pending_messages[ctx->pending_count];
-    pending->sequence = sequence;
-    pending->link_type = link_type;
-    pending->sub_cmd = sub_cmd;
-    pending->payload_len = payload_len;
-    pending->sent_time = fmrb_hal_time_get_us();
-    pending->retry_count = 0;
-
-    if (payload_len > 0 && payload) {
-        pending->payload = fmrb_sys_malloc(payload_len);
-        if (!pending->payload) {
-            return FMRB_ERR_NO_MEMORY;
-        }
-        memcpy(pending->payload, payload, payload_len);
-    } else {
-        pending->payload = NULL;
-    }
-
-    ctx->pending_count++;
-    return FMRB_OK;
-}
+// TODO: Used for sliding window flow control (not yet implemented)
+// static fmrb_err_t add_pending_message(transport_context_t *ctx, uint16_t sequence,
+//                                       uint8_t link_type, uint8_t sub_cmd,
+//                                       const uint8_t *payload, uint32_t payload_len) {
+//     if (ctx->pending_count >= MAX_PENDING_MESSAGES) {
+//         return FMRB_ERR_FAILED;
+//     }
+//
+//     pending_message_t *pending = &ctx->pending_messages[ctx->pending_count];
+//     pending->sequence = sequence;
+//     pending->link_type = link_type;
+//     pending->sub_cmd = sub_cmd;
+//     pending->payload_len = payload_len;
+//     pending->sent_time = fmrb_hal_time_get_us();
+//     pending->retry_count = 0;
+//
+//     if (payload_len > 0 && payload) {
+//         pending->payload = fmrb_sys_malloc(payload_len);
+//         if (!pending->payload) {
+//             return FMRB_ERR_NO_MEMORY;
+//         }
+//         memcpy(pending->payload, payload, payload_len);
+//     } else {
+//         pending->payload = NULL;
+//     }
+//
+//     ctx->pending_count++;
+//     return FMRB_OK;
+// }
 
 fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
                                     uint8_t sub_cmd,

@@ -102,13 +102,13 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config) {
     memset(ctx, 0, sizeof(fmrb_gfx_context_impl_t));
     ctx->config = *config;
 
-    // Initialize IPC transport for graphics (singleton, no handle needed)
-    fmrb_link_transport_config_t transport_config = {
-        .timeout_ms = 1000,
-        .enable_retransmit = true,
-        .max_retries = 3,
-        .window_size = 8
-    };
+    // TODO: Initialize IPC transport for graphics (singleton, no handle needed)
+    // fmrb_link_transport_config_t transport_config = {
+    //     .timeout_ms = 1000,
+    //     .enable_retransmit = true,
+    //     .max_retries = 3,
+    //     .window_size = 8
+    // };
 
     ctx->initialized = true;
     ctx->current_target = FMRB_CANVAS_SCREEN;  // Default to main screen
