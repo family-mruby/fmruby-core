@@ -580,7 +580,6 @@ static void destroy_vm(fmrb_app_task_context_t* ctx) {
  */
 static void app_task_main(void* arg) {
     fmrb_app_task_context_t* ctx = (fmrb_app_task_context_t*)arg;
-    const unsigned char* irep_ptr = NULL;
     char* script_buffer = NULL;
     bool need_free_script = false;
 

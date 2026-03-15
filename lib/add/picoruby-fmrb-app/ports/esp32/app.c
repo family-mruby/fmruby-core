@@ -33,6 +33,7 @@ static const char* TAG = "app";
 
 // Helper function: Check mruby ci pointer validity
 // Static variables to track cibase/ciend changes across calls
+#if 0
 static mrb_callinfo *prev_cibase = NULL;
 static mrb_callinfo *prev_ciend = NULL;
 
@@ -115,6 +116,7 @@ static bool check_mrb_ci_valid(mrb_state *mrb, const char* location){
 
     return valid;
 }
+#endif
 
 // FmrbApp#_init() - Initialize app instance from C context
 // Sets @name and @canvas instance variables, creates message queue

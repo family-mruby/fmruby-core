@@ -150,7 +150,7 @@ static void init_gpio(void)
 }
 #endif
 
-#ifndef CONFIG_IDF_TARGET_LINUX
+#if !defined(CONFIG_IDF_TARGET_LINUX) && defined(ENABLE_HW_WIRING_TEST)
 static void hw_check(void)
 {
     // // USB HID Host (for keyboard/mouse detection)
