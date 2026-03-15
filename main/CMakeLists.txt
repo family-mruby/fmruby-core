@@ -15,10 +15,13 @@ set(COMPONENT_LINUX_SRCS
 )
 set(COMPONENT_ESP32_SRCS
     "drivers/usb/usb_task.c"
+    "drivers/ble/ble_task.c"
     "conn_check/spi_conn_check.c"
     "conn_check/usb_hid_conn_check.c"
     "conn_check/i2c_conn_check.c"
     "conn_check/sd_conn_check.c"
+    "drivers/rtc/rx8900.c"
+    "drivers/rtc/rtc_task.c"
 )
 
 # Include Ruby to bytecode compilation script
@@ -41,7 +44,7 @@ set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_link fmrb_toml fmrb_mem
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
-    list(APPEND COMPONENT_REQUIRES esp_littlefs usb_host_hid)
+    list(APPEND COMPONENT_REQUIRES esp_littlefs usb_host_hid bt)
     list(APPEND COMPONENT_SRCS ${COMPONENT_ESP32_SRCS})
 else()
     list(APPEND COMPONENT_SRCS ${COMPONENT_LINUX_SRCS})
@@ -49,7 +52,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/fs_proxy" "drivers/usb" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/fs_proxy" "drivers/usb" "drivers/ble" "drivers/rtc" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 

@@ -24,6 +24,8 @@
 #include "fmrb_pin_assign.h"
 #include "fmrb_hal_gpio.h"
 #include "status_led.h"
+#include "ble_task.h"
+#include "rtc_task.h"
 #endif
 
 #include "boot.h"
@@ -151,25 +153,25 @@ static void init_gpio(void)
 #ifndef CONFIG_IDF_TARGET_LINUX
 static void hw_check(void)
 {
-    // USB HID Host (for keyboard/mouse detection)
-    if (usb_hid_conn_check_init() == 0) {
-        usb_hid_conn_check_start();
-        FMRB_LOGI(TAG, "USB HID connection check started");
-    } else {
-        FMRB_LOGW(TAG, "USB HID init failed, continuing without it");
-    }
+    // // USB HID Host (for keyboard/mouse detection)
+    // if (usb_hid_conn_check_init() == 0) {
+    //     usb_hid_conn_check_start();
+    //     FMRB_LOGI(TAG, "USB HID connection check started");
+    // } else {
+    //     FMRB_LOGW(TAG, "USB HID init failed, continuing without it");
+    // }
 
-    // SPI connection check (for communication with graphics-audio board)
-    if (spi_conn_check_init() == 0) {
-        spi_conn_check_start();
-        FMRB_LOGI(TAG, "SPI connection check task started");
-        while(1){
-            FMRB_LOGI(TAG, "SPI connection check task running");
-            fmrb_task_delay_ms(5000);
-        }
-    } else {
-        FMRB_LOGW(TAG, "SPI connection check init failed, continuing without it");
-    }
+    // // SPI connection check (for communication with graphics-audio board)
+    // if (spi_conn_check_init() == 0) {
+    //     spi_conn_check_start();
+    //     FMRB_LOGI(TAG, "SPI connection check task started");
+    //     while(1){
+    //         FMRB_LOGI(TAG, "SPI connection check task running");
+    //         fmrb_task_delay_ms(5000);
+    //     }
+    // } else {
+    //     FMRB_LOGW(TAG, "SPI connection check init failed, continuing without it");
+    // }
 
     // SD connection check
     if (sd_conn_check_init() == 0) {
@@ -222,6 +224,7 @@ static bool init_hardware(void)
     status_led_start();
     fmrb_task_delay_ms(100);
 
+//#define ENABLE_HW_WIRING_TEST 1
     //Board wiring check
 #ifdef ENABLE_HW_WIRING_TEST
     hw_check();
@@ -249,7 +252,16 @@ static bool init_hardware(void)
     }
 
 #ifndef CONFIG_IDF_TARGET_LINUX
+    // BLE Peripheral
+    ret = ble_task_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init BLE, continuing without it");
+    }
+
     reset_wrover();
+
+    // RTC (RX8900) - start after I2C conn check released the bus
+    rtc_task_start();
 #endif
 
     return true;
