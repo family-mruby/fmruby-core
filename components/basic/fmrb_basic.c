@@ -174,8 +174,10 @@ fmrb_err_t fmrb_basic_load(basic_state_t* state, const char* program) {
 
         // Store line
         state->lines[line_idx].line_num = line_num;
-        strncpy(state->lines[line_idx].text, rest, BASIC_MAX_LINE_LENGTH - 1);
-        state->lines[line_idx].text[BASIC_MAX_LINE_LENGTH - 1] = '\0';
+        size_t len = strlen(rest);
+        if (len >= BASIC_MAX_LINE_LENGTH) len = BASIC_MAX_LINE_LENGTH - 1;
+        memcpy(state->lines[line_idx].text, rest, len);
+        state->lines[line_idx].text[len] = '\0';
         state->lines[line_idx].used = true;
 
         if (line_idx >= state->line_count) {

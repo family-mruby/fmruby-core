@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fmrb_gfx_msg.h"
+#include "fmrb_rtos.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,6 +71,19 @@ int fmrb_host_send_gamepad_button(int gamepad_id, int button_num, int state);
  * @return 0 on success, -1 on failure
  */
 int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value);
+
+/**
+ * @brief Get HOST task GFX queue semaphore for flow control
+ * @return Semaphore handle, or NULL if not initialized
+ *
+ * This semaphore is used to prevent graphics commands from overflowing
+ * the HOST message queue. App tasks should acquire this semaphore before
+ * sending GFX messages to HOST task, and HOST task releases it after
+ * processing each GFX command.
+ *
+ * HID events do NOT use this semaphore - they always have reserved space.
+ */
+fmrb_semaphore_t fmrb_host_get_gfx_queue_semaphore(void);
 
 #ifdef __cplusplus
 }

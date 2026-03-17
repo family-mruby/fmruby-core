@@ -74,7 +74,12 @@ static fmrb_err_t exec_print(basic_state_t* state) {
             snprintf(num_str, sizeof(num_str), "%" PRId32, val.num);
             strcat(output, num_str);
         } else if (val.type == VAL_STRING) {
-            strncat(output, val.str, sizeof(output) - strlen(output) - 1);
+            size_t output_len = strlen(output);
+            size_t available = sizeof(output) - output_len - 1;
+            size_t to_copy = strlen(val.str);
+            if (to_copy > available) to_copy = available;
+            memcpy(output + output_len, val.str, to_copy);
+            output[output_len + to_copy] = '\0';
         }
 
         tok = lexer_peek_token();
@@ -309,8 +314,10 @@ static fmrb_err_t exec_for(basic_state_t* state) {
 
     // Push FOR context
     for_context_t* ctx = &state->for_stack[state->for_stack_ptr];
-    strncpy(ctx->var_name, var_name, sizeof(ctx->var_name) - 1);
-    ctx->var_name[sizeof(ctx->var_name) - 1] = '\0';
+    size_t len = strlen(var_name);
+    if (len >= sizeof(ctx->var_name)) len = sizeof(ctx->var_name) - 1;
+    memcpy(ctx->var_name, var_name, len);
+    ctx->var_name[len] = '\0';
     ctx->target = end_val.num;
     ctx->step = step;
     ctx->line_idx = state->current_line_idx;

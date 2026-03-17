@@ -81,6 +81,7 @@ typedef portMUX_TYPE fmrb_spinlock_t;
 // Semaphore management
 #define fmrb_semaphore_create_mutex() xSemaphoreCreateMutex()
 #define fmrb_semaphore_create_binary() xSemaphoreCreateBinary()
+#define fmrb_semaphore_create_counting(max, initial) xSemaphoreCreateCounting(max, initial)
 #define fmrb_semaphore_take(sem, ticks) xSemaphoreTake(sem, ticks)
 #define fmrb_semaphore_give(sem) xSemaphoreGive(sem)
 #define fmrb_semaphore_delete(sem) vSemaphoreDelete(sem)

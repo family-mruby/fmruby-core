@@ -102,7 +102,10 @@ static value_t eval_primary(basic_state_t* state) {
 
     if (tok.type == TOK_STRING) {
         val.type = VAL_STRING;
-        strncpy(val.str, tok.str_val, sizeof(val.str) - 1);
+        size_t len = strlen(tok.str_val);
+        if (len >= sizeof(val.str)) len = sizeof(val.str) - 1;
+        memcpy(val.str, tok.str_val, len);
+        val.str[len] = '\0';
         return val;
     }
 

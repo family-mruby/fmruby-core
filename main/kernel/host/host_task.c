@@ -9,7 +9,6 @@
 #include "fmrb_hid_msg.h"
 #include "host_task.h"
 #include "fmrb_gfx.h"
-#include "fmrb_gfx_commands.h"
 #include "fmrb_audio.h"
 #include "fmrb_kernel.h"
 #include "boot.h"
@@ -68,17 +67,15 @@ typedef struct {
 // Host task handle
 static fmrb_task_handle_t g_host_task_handle = 0;
 
-// Task configuration (queue size defined in fmrb_task_config.h)
+// HOST message queue flow control semaphore
+// Limits GFX commands to prevent queue overflow and reserve space for HID events
+static fmrb_semaphore_t g_host_gfx_queue_semaphore = NULL;
 
-// Graphics command buffer
-static fmrb_gfx_command_buffer_t* g_gfx_cmd_buffer = NULL;
-#define GFX_CMD_BUFFER_SIZE (128)
+// Task configuration (queue size defined in fmrb_task_config.h)
 
 // Timing statistics for GFX pipeline
 static uint32_t g_gfx_total_cmds = 0;       // Total commands since last stats log
 static uint32_t g_gfx_present_count = 0;     // Number of PRESENT calls since last stats log
-static uint64_t g_gfx_execute_us_total = 0;  // Total execute time (us) since last stats log
-static uint64_t g_gfx_push_us_total = 0;     // Total push_canvas time (us) since last stats log
 static uint64_t g_gfx_stats_last_us = 0;     // Last stats log time
 #define GFX_STATS_INTERVAL_US (5000000ULL)    // Log stats every 5 seconds
 
@@ -153,14 +150,6 @@ static int init_gfx_audio(void)
         fmrb_task_delay(FMRB_MS_TO_TICKS(200));
 
         FMRB_LOGI(TAG, "Graphics fully initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
-
-        // Create command buffer for batching draw commands
-        g_gfx_cmd_buffer = fmrb_gfx_command_buffer_create(GFX_CMD_BUFFER_SIZE);
-        if (!g_gfx_cmd_buffer) {
-            FMRB_LOGE(TAG, "Failed to create graphics command buffer");
-            return -1;
-        }
-        FMRB_LOGI(TAG, "Graphics command buffer created (max=%d)", GFX_CMD_BUFFER_SIZE);
     }
 
     // Initialize Audio subsystem (APU emulator)
@@ -177,16 +166,15 @@ static int init_gfx_audio(void)
 }
 
 /**
- * Process GFX command message
+ * Process GFX command message - Passthrough to Graphics-Audio board
+ *
+ * HOST task simply forwards all graphics commands to Graphics-Audio board.
+ * No local buffering or processing - Graphics-Audio handles all command buffering
+ * and present() operations.
  */
 static void host_task_process_gfx_command(const fmrb_msg_t *msg)
 {
     gfx_cmd_t *gfx_cmd = (gfx_cmd_t *)msg->data;
-
-    if (!g_gfx_cmd_buffer) {
-        FMRB_LOGE(TAG, "Command buffer not initialized");
-        return;
-    }
 
     fmrb_gfx_context_t ctx = fmrb_gfx_get_global_context();
     if (!ctx) {
@@ -194,152 +182,122 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
         return;
     }
 
-    // Handle PRESENT command: execute buffered commands and push to screen
-    if (gfx_cmd->cmd_type == GFX_CMD_PRESENT) {
-        FMRB_LOGD(TAG, "GFX_CMD_PRESENT received: app_canvas_id=%d, pos=(%d,%d), transparent=0x%02X",
-                 gfx_cmd->canvas_id,
-                 gfx_cmd->params.present.x,
-                 gfx_cmd->params.present.y,
-                 gfx_cmd->params.present.transparent_color);
-
-        // Timing: measure command buffer execute
-        size_t cmd_count = fmrb_gfx_command_buffer_count(g_gfx_cmd_buffer);
-        fmrb_time_t t_exec_start = fmrb_hal_time_get_us();
-
-        // Execute all buffered commands on app canvas
-        fmrb_gfx_err_t ret = fmrb_gfx_command_buffer_execute(g_gfx_cmd_buffer, ctx);
-        if (ret != FMRB_GFX_OK) {
-            FMRB_LOGE(TAG, "Failed to execute command buffer: %d", ret);
-            if(FMRB_GFX_ERR_FAILED == ret)
-            {
-                FMRB_LOGE(TAG, "FMRB_GFX_ERR_FAILED");
-                status_led_set_error(1);
-                return;
-            }
-        } else {
-            FMRB_LOGD(TAG, "Command buffer executed successfully");
-        }
-
-        fmrb_time_t t_exec_end = fmrb_hal_time_get_us();
-
-        // Push app canvas to screen at specified position
-        ret = fmrb_gfx_push_canvas(ctx,
-                                    gfx_cmd->canvas_id,       // Source: app canvas (e.g., Canvas 1)
-                                    FMRB_CANVAS_RENDER,       // draw to render
-                                    gfx_cmd->params.present.x,
-                                    gfx_cmd->params.present.y,
-                                    gfx_cmd->params.present.transparent_color);
-        if (ret != FMRB_GFX_OK) {
-            FMRB_LOGE(TAG, "Failed to push canvas %d to screen: %d", gfx_cmd->canvas_id, ret);
-        }
-
-        fmrb_time_t t_push_end = fmrb_hal_time_get_us();
-
-        // Accumulate stats
-        g_gfx_total_cmds += cmd_count;
-        g_gfx_present_count++;
-        g_gfx_execute_us_total += (t_exec_end - t_exec_start);
-        g_gfx_push_us_total += (t_push_end - t_exec_end);
-
-        // Log stats periodically
-        if (g_gfx_stats_last_us == 0) {
-            g_gfx_stats_last_us = t_push_end;
-        } else if ((t_push_end - g_gfx_stats_last_us) >= GFX_STATS_INTERVAL_US) {
-            uint64_t elapsed_us = t_push_end - g_gfx_stats_last_us;
-            float elapsed_s = (float)elapsed_us / 1000000.0f;
-            float cmds_per_sec = (float)g_gfx_total_cmds / elapsed_s;
-            float presents_per_sec = (float)g_gfx_present_count / elapsed_s;
-            uint32_t avg_exec_ms = g_gfx_present_count ? (uint32_t)(g_gfx_execute_us_total / g_gfx_present_count / 1000) : 0;
-            uint32_t avg_push_ms = g_gfx_present_count ? (uint32_t)(g_gfx_push_us_total / g_gfx_present_count / 1000) : 0;
-            uint32_t avg_cmds = g_gfx_present_count ? (uint32_t)(g_gfx_total_cmds / g_gfx_present_count) : 0;
-
-            FMRB_LOGI(TAG, "GFX STATS: %.1f cmds/s, %.1f presents/s, avg %u cmds/present, exec %ums, push %ums",
-                     cmds_per_sec, presents_per_sec, avg_cmds, avg_exec_ms, avg_push_ms);
-
-            g_gfx_total_cmds = 0;
-            g_gfx_present_count = 0;
-            g_gfx_execute_us_total = 0;
-            g_gfx_push_us_total = 0;
-            g_gfx_stats_last_us = t_push_end;
-        }
-
-        // Clear buffer for next frame
-        fmrb_gfx_command_buffer_clear(g_gfx_cmd_buffer);
-        return;
-    }
-
-    // Add drawing command to buffer
-
     fmrb_gfx_err_t ret = FMRB_GFX_OK;
+
+    // Forward command directly to Graphics-Audio board
     switch (gfx_cmd->cmd_type) {
         case GFX_CMD_CLEAR:
-            ret = fmrb_gfx_command_buffer_add_clear(g_gfx_cmd_buffer,
-                                                    gfx_cmd->canvas_id,
-                                                    gfx_cmd->params.clear.color);
+            FMRB_LOGD(TAG, "Forwarding CLEAR: canvas=%d, color=0x%02X",
+                     gfx_cmd->canvas_id, gfx_cmd->params.clear.color);
+            ret = fmrb_gfx_clear(ctx, gfx_cmd->canvas_id, gfx_cmd->params.clear.color);
             break;
 
         case GFX_CMD_PIXEL:
-            ret = fmrb_gfx_command_buffer_add_pixel(g_gfx_cmd_buffer,
-                                                    gfx_cmd->canvas_id,
-                                                    gfx_cmd->params.pixel.x,
-                                                    gfx_cmd->params.pixel.y,
-                                                    gfx_cmd->params.pixel.color);
+            FMRB_LOGD(TAG, "Forwarding PIXEL: canvas=%d, pos=(%d,%d), color=0x%02X",
+                     gfx_cmd->canvas_id, gfx_cmd->params.pixel.x, gfx_cmd->params.pixel.y,
+                     gfx_cmd->params.pixel.color);
+            ret = fmrb_gfx_set_pixel(ctx, gfx_cmd->canvas_id,
+                                    gfx_cmd->params.pixel.x, gfx_cmd->params.pixel.y,
+                                    gfx_cmd->params.pixel.color);
             break;
 
         case GFX_CMD_LINE:
-            ret = fmrb_gfx_command_buffer_add_line(g_gfx_cmd_buffer,
-                                                   gfx_cmd->canvas_id,
-                                                   gfx_cmd->params.line.x1,
-                                                   gfx_cmd->params.line.y1,
-                                                   gfx_cmd->params.line.x2,
-                                                   gfx_cmd->params.line.y2,
-                                                   gfx_cmd->params.line.color);
+            FMRB_LOGD(TAG, "Forwarding LINE: canvas=%d, from=(%d,%d) to=(%d,%d), color=0x%02X",
+                     gfx_cmd->canvas_id,
+                     gfx_cmd->params.line.x1, gfx_cmd->params.line.y1,
+                     gfx_cmd->params.line.x2, gfx_cmd->params.line.y2,
+                     gfx_cmd->params.line.color);
+            ret = fmrb_gfx_draw_line(ctx, gfx_cmd->canvas_id,
+                                    gfx_cmd->params.line.x1, gfx_cmd->params.line.y1,
+                                    gfx_cmd->params.line.x2, gfx_cmd->params.line.y2,
+                                    gfx_cmd->params.line.color);
             break;
 
         case GFX_CMD_RECT:
-            FMRB_LOGD(TAG, "GFX_CMD_RECT received: canvas_id=%d, x=%d, y=%d, w=%d, h=%d, color=0x%02X, filled=%d",
+            FMRB_LOGD(TAG, "Forwarding RECT: canvas=%d, rect=(%d,%d,%d,%d), color=0x%02X, filled=%d",
                      gfx_cmd->canvas_id,
                      gfx_cmd->params.rect.rect.x, gfx_cmd->params.rect.rect.y,
                      gfx_cmd->params.rect.rect.width, gfx_cmd->params.rect.rect.height,
                      gfx_cmd->params.rect.color, gfx_cmd->params.rect.filled);
-            ret = fmrb_gfx_command_buffer_add_rect(g_gfx_cmd_buffer,
-                                                   gfx_cmd->canvas_id,
-                                                   &gfx_cmd->params.rect.rect,
-                                                   gfx_cmd->params.rect.color,
-                                                   gfx_cmd->params.rect.filled);
-            if (ret == FMRB_GFX_OK) {
-                FMRB_LOGD(TAG, "GFX_CMD_RECT buffered successfully");
+            if (gfx_cmd->params.rect.filled) {
+                ret = fmrb_gfx_fill_rect(ctx, gfx_cmd->canvas_id,
+                                        &gfx_cmd->params.rect.rect,
+                                        gfx_cmd->params.rect.color);
+            } else {
+                ret = fmrb_gfx_draw_rect(ctx, gfx_cmd->canvas_id,
+                                        &gfx_cmd->params.rect.rect,
+                                        gfx_cmd->params.rect.color);
             }
             break;
 
         case GFX_CMD_CIRCLE:
-            FMRB_LOGD(TAG, "GFX_CMD_CIRCLE received: canvas_id=%d, x=%d, y=%d, r=%d, color=0x%02X, filled=%d",
+            FMRB_LOGD(TAG, "Forwarding CIRCLE: canvas=%d, center=(%d,%d), r=%d, color=0x%02X, filled=%d",
                      gfx_cmd->canvas_id,
                      gfx_cmd->params.circle.x, gfx_cmd->params.circle.y,
                      gfx_cmd->params.circle.radius,
                      gfx_cmd->params.circle.color, gfx_cmd->params.circle.filled);
-            ret = fmrb_gfx_command_buffer_add_circle(g_gfx_cmd_buffer,
-                                                     gfx_cmd->canvas_id,
-                                                     gfx_cmd->params.circle.x,
-                                                     gfx_cmd->params.circle.y,
-                                                     gfx_cmd->params.circle.radius,
-                                                     gfx_cmd->params.circle.color,
-                                                     gfx_cmd->params.circle.filled);
-            if (ret == FMRB_GFX_OK) {
-                FMRB_LOGD(TAG, "GFX_CMD_CIRCLE buffered successfully");
+            if (gfx_cmd->params.circle.filled) {
+                ret = fmrb_gfx_fill_circle(ctx, gfx_cmd->canvas_id,
+                                          gfx_cmd->params.circle.x, gfx_cmd->params.circle.y,
+                                          gfx_cmd->params.circle.radius,
+                                          gfx_cmd->params.circle.color);
+            } else {
+                ret = fmrb_gfx_draw_circle(ctx, gfx_cmd->canvas_id,
+                                          gfx_cmd->params.circle.x, gfx_cmd->params.circle.y,
+                                          gfx_cmd->params.circle.radius,
+                                          gfx_cmd->params.circle.color);
             }
             break;
 
         case GFX_CMD_TEXT:
-            ret = fmrb_gfx_command_buffer_add_text(g_gfx_cmd_buffer,
-                                                   gfx_cmd->canvas_id,
-                                                   gfx_cmd->params.text.x,
-                                                   gfx_cmd->params.text.y,
-                                                   gfx_cmd->params.text.text,
-                                                   gfx_cmd->params.text.color,
-                                                   gfx_cmd->params.text.bg_color,
-                                                   gfx_cmd->params.text.bg_transparent,
-                                                   gfx_cmd->params.text.font_size);
+            FMRB_LOGD(TAG, "Forwarding TEXT: canvas=%d, pos=(%d,%d), text='%s', color=0x%02X",
+                     gfx_cmd->canvas_id,
+                     gfx_cmd->params.text.x, gfx_cmd->params.text.y,
+                     gfx_cmd->params.text.text, gfx_cmd->params.text.color);
+            ret = fmrb_gfx_draw_text(ctx, gfx_cmd->canvas_id,
+                                    gfx_cmd->params.text.x, gfx_cmd->params.text.y,
+                                    gfx_cmd->params.text.text,
+                                    gfx_cmd->params.text.color,
+                                    gfx_cmd->params.text.bg_color,
+                                    gfx_cmd->params.text.bg_transparent,
+                                    gfx_cmd->params.text.font_size);
+            break;
+
+        case GFX_CMD_PRESENT:
+            FMRB_LOGD(TAG, "Forwarding PRESENT: canvas=%d, pos=(%d,%d), transparent=0x%02X",
+                     gfx_cmd->canvas_id,
+                     gfx_cmd->params.present.x, gfx_cmd->params.present.y,
+                     gfx_cmd->params.present.transparent_color);
+
+            // Push canvas to render buffer
+            ret = fmrb_gfx_push_canvas(ctx,
+                                       gfx_cmd->canvas_id,
+                                       FMRB_CANVAS_RENDER,
+                                       gfx_cmd->params.present.x,
+                                       gfx_cmd->params.present.y,
+                                       gfx_cmd->params.present.transparent_color);
+
+            // Update statistics
+            g_gfx_present_count++;
+            g_gfx_total_cmds++;
+
+            // Log stats periodically
+            fmrb_time_t now_us = fmrb_hal_time_get_us();
+            if (g_gfx_stats_last_us == 0) {
+                g_gfx_stats_last_us = now_us;
+            } else if ((now_us - g_gfx_stats_last_us) >= GFX_STATS_INTERVAL_US) {
+                uint64_t elapsed_us = now_us - g_gfx_stats_last_us;
+                float elapsed_s = (float)elapsed_us / 1000000.0f;
+                float cmds_per_sec = (float)g_gfx_total_cmds / elapsed_s;
+                float presents_per_sec = (float)g_gfx_present_count / elapsed_s;
+
+                FMRB_LOGI(TAG, "GFX STATS: %.1f cmds/s, %.1f presents/s",
+                         cmds_per_sec, presents_per_sec);
+
+                g_gfx_total_cmds = 0;
+                g_gfx_present_count = 0;
+                g_gfx_stats_last_us = now_us;
+            }
             break;
 
         default:
@@ -348,7 +306,18 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
     }
 
     if (ret != FMRB_GFX_OK) {
-        FMRB_LOGE(TAG, "Failed to add graphics command: %d", ret);
+        FMRB_LOGE(TAG, "Failed to forward graphics command type=%d: %d", gfx_cmd->cmd_type, ret);
+    } else {
+        // Count non-present commands
+        if (gfx_cmd->cmd_type != GFX_CMD_PRESENT) {
+            g_gfx_total_cmds++;
+        }
+    }
+
+    // Release semaphore slot now that command has been processed
+    // This allows the sending app task to proceed with the next command
+    if (g_host_gfx_queue_semaphore) {
+        fmrb_semaphore_give(g_host_gfx_queue_semaphore);
     }
 }
 
@@ -594,6 +563,20 @@ static void fmrb_host_task(void *pvParameters)
  */
 int fmrb_host_task_init(void)
 {
+    // Create GFX queue flow control semaphore
+    // Initial count: FMRB_HOST_GFX_AVAILABLE_SLOTS (96)
+    // This reserves FMRB_HOST_HID_RESERVED_SLOTS (32) for HID events
+    g_host_gfx_queue_semaphore = fmrb_semaphore_create_counting(
+        FMRB_HOST_GFX_AVAILABLE_SLOTS,  // Max count
+        FMRB_HOST_GFX_AVAILABLE_SLOTS   // Initial count
+    );
+    if (!g_host_gfx_queue_semaphore) {
+        FMRB_LOGE(TAG, "Failed to create GFX queue semaphore");
+        return -1;
+    }
+    FMRB_LOGI(TAG, "Created GFX queue semaphore: %d available slots (reserving %d for HID)",
+              FMRB_HOST_GFX_AVAILABLE_SLOTS, FMRB_HOST_HID_RESERVED_SLOTS);
+
     // Register host task's message queue
     fmrb_msg_queue_config_t queue_config = {
         .queue_length = FMRB_HOST_MSG_QUEUE_LEN,
@@ -603,6 +586,8 @@ int fmrb_host_task_init(void)
     fmrb_err_t hal_ret = fmrb_msg_create_queue(PROC_ID_HOST, &queue_config);
     if (hal_ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to create host message queue: %d", hal_ret);
+        fmrb_semaphore_delete(g_host_gfx_queue_semaphore);
+        g_host_gfx_queue_semaphore = NULL;
         return -1;
     }
 
@@ -619,6 +604,8 @@ int fmrb_host_task_init(void)
     if (result != FMRB_PASS) {
         FMRB_LOGE(TAG, "Failed to create host task");
         fmrb_msg_delete_queue(PROC_ID_HOST);
+        fmrb_semaphore_delete(g_host_gfx_queue_semaphore);
+        g_host_gfx_queue_semaphore = NULL;
         return -1;
     }
 
@@ -637,14 +624,14 @@ void fmrb_host_task_deinit(void)
         g_host_task_handle = 0;
     }
 
-    // Destroy graphics command buffer
-    if (g_gfx_cmd_buffer) {
-        fmrb_gfx_command_buffer_destroy(g_gfx_cmd_buffer);
-        g_gfx_cmd_buffer = NULL;
-    }
-
     // Delete host task's message queue
     fmrb_msg_delete_queue(PROC_ID_HOST);
+
+    // Delete GFX queue semaphore
+    if (g_host_gfx_queue_semaphore) {
+        fmrb_semaphore_delete(g_host_gfx_queue_semaphore);
+        g_host_gfx_queue_semaphore = NULL;
+    }
 
     FMRB_LOGI(TAG, "Host task deinitialized");
 }
@@ -757,4 +744,9 @@ int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value)
         .data.gamepad_axis.value = value
     };
     return fmrb_host_send_message(&msg);
+}
+
+fmrb_semaphore_t fmrb_host_get_gfx_queue_semaphore(void)
+{
+    return g_host_gfx_queue_semaphore;
 }

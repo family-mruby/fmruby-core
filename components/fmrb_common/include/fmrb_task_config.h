@@ -41,6 +41,11 @@
 // Large queue needed as this is the main communication hub
 #define FMRB_HOST_MSG_QUEUE_LEN (128)
 
+// HOST task message queue management
+// Reserve slots for HID events to prevent starvation
+#define FMRB_HOST_HID_RESERVED_SLOTS (32)  // Reserved for HID events
+#define FMRB_HOST_GFX_AVAILABLE_SLOTS (FMRB_HOST_MSG_QUEUE_LEN - FMRB_HOST_HID_RESERVED_SLOTS)  // Available for GFX commands
+
 // KERNEL task: HID events (mouse/keyboard), window management, app lifecycle
 // Medium queue for handling mouse/keyboard event bursts
 #define FMRB_KERNEL_MSG_QUEUE_LEN (32)

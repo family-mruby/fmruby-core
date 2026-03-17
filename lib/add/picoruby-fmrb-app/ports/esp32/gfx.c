@@ -16,6 +16,7 @@
 #include "fmrb_task_config.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
+#include "host_task.h"
 
 static const char* TAG = "gfx";
 
@@ -27,6 +28,20 @@ static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
         return FMRB_ERR_INVALID_STATE;
     }
 
+    // Acquire semaphore to ensure HOST queue has available space
+    // This reserves FMRB_HOST_HID_RESERVED_SLOTS (32) for HID events
+    // and limits GFX commands to FMRB_HOST_GFX_AVAILABLE_SLOTS (96)
+    fmrb_semaphore_t sem = fmrb_host_get_gfx_queue_semaphore();
+    if (sem) {
+        // Block until semaphore is available (HOST queue has space)
+        // Use infinite timeout - app will naturally wait for queue space
+        fmrb_base_type_t sem_ret = fmrb_semaphore_take(sem, UINT32_MAX);
+        if (sem_ret != FMRB_PASS) {
+            FMRB_LOGE(TAG, "Failed to acquire GFX queue semaphore: %d", sem_ret);
+            return FMRB_ERR_TIMEOUT;
+        }
+    }
+
     fmrb_msg_t msg = {
         .type = FMRB_MSG_TYPE_APP_GFX,
         .src_pid = ctx->app_id,
@@ -34,19 +49,16 @@ static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
     };
     memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
 
-    // Retry up to 3 times with longer timeout for graphics commands
-    fmrb_err_t ret = FMRB_ERR_TIMEOUT;
-    for (int retry = 0; retry < 3; retry++) {
-        ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
-        if (ret == FMRB_OK) {
-            break;
-        }
-        FMRB_LOGW(TAG, "Failed to send graphics command, retry %d/3", retry + 1);
-        fmrb_task_delay(FMRB_MS_TO_TICKS(100));  // Wait 100ms before retry
-    }
+    // Send to HOST task (passthrough to Graphics-Audio board)
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
     if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Graphics command dropped after 3 retries");
+        FMRB_LOGE(TAG, "Failed to send graphics command: %d", ret);
+        // Release semaphore on failure so we don't leak the slot
+        if (sem) {
+            fmrb_semaphore_give(sem);
+        }
     }
+    // On success, HOST task will release the semaphore after processing
     return ret;
 }
 
