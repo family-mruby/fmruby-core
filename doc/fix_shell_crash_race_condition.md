@@ -302,3 +302,371 @@ kernel.c にも同じパターンの mrb_funcall 呼び出しがあるか確認�
 - mrubyコアへの影響が最小限
 - 実装がシンプルで理解しやすい
 - パフォーマンスへの影響が最小
+
+---
+
+## 補足: レースコンディションの詳細分析
+
+### タスクの種類と階層構造
+
+このシステムには**2種類のタスク**が存在し、混同しやすいため整理します。
+
+#### 1. FreeRTOSタスク（OSレベル）
+
+各mrubyアプリケーションは独立したFreeRTOSタスクとして動作:
+
+- `system_gui` FreeRTOSタスク (優先度8)
+- `shell` FreeRTOSタスク (優先度5)
+- `mruby_tick_task` FreeRTOSタスク (優先度5)
+
+#### 2. mrubyタスク（VM内の協調マルチタスク）
+
+**各mruby VM内部で**複数のRubyタスクが協調動作:
+
+- `mrb_tcb` (Task Control Block) で管理
+- キュー: `q_ready_`, `q_waiting_`, `q_suspended_`, `q_dormant_`
+- `switching_` フラグでタスク切り替えを制御
+
+### 階層構造の図解
+
+```
+┌──────────────────────────────────────────────────────┐
+│ FreeRTOS Task: system_gui (優先度8)                  │
+│  ┌─────────────────────────────────────────────┐    │
+│  │ mruby VM (独立インスタンス)                  │    │
+│  │  ┌──────────────────────────────────────┐   │    │
+│  │  │ mruby task 1 (main)                  │   │    │
+│  │  │ mruby task 2 (event handler)         │   │    │
+│  │  │ mruby task 3 (timer)                 │   │    │
+│  │  └──────────────────────────────────────┘   │    │
+│  │                                              │    │
+│  │  mrb->task.switching = TRUE/FALSE           │    │
+│  │  mrb->task.tick = グローバルtickカウンタ    │    │
+│  │  q_ready_ = [task1(RUNNING), task2, ...]   │    │
+│  └─────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────┐
+│ FreeRTOS Task: shell (優先度5)                       │
+│  ┌─────────────────────────────────────────────┐    │
+│  │ mruby VM (別の独立インスタンス)              │    │
+│  │  ┌──────────────────────────────────────┐   │    │
+│  │  │ mruby task 1 (shell main)            │   │    │
+│  │  │ mruby task 2 (input handler)         │   │    │
+│  │  └──────────────────────────────────────┘   │    │
+│  │                                              │    │
+│  │  mrb->task.switching = TRUE/FALSE (独立)    │    │
+│  │  mrb->task.tick = グローバルtickカウンタ    │    │
+│  └─────────────────────────────────────────────┘    │
+└──────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────┐
+│ FreeRTOS Task: mruby_tick_task (優先度5)             │
+│  - 全VMの mrb_tick() を定期的に呼び出す              │
+│  - 各VMのmrubyタスクスケジューリングに影響          │
+│  ★問題: 外部から他のVMの内部状態を変更★           │
+└──────────────────────────────────────────────────────┘
+```
+
+### mruby_tick_task による tick 処理の流れ
+
+#### hal.c の tick タスク
+
+```c
+// lib/replace/picoruby-machine/ports/esp32/hal.c:53-75
+static void mruby_tick_task(void* arg) {
+    const TickType_t tick_interval = pdMS_TO_TICKS(MRB_TICK_UNIT);
+
+    while (1) {
+        vTaskDelay(tick_interval);  // MRB_TICK_UNIT (例: 10ms) 待機
+
+        // ★全登録VMに対してtickを送信★
+        if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+            for (int i = 0; i < MAX_MRB_VMS; i++) {
+                if (g_tick_manager.vms[i].active && g_tick_manager.vms[i].mrb) {
+                    // C->Ruby関数呼び出し中、またはIRQ無効時はスキップ
+                    if (MRB_C_FUNCALL_EXIT == g_tick_manager.vms[i].in_c_funcall &&
+                        MRB_ENABLE_IRQ == g_tick_manager.vms[i].irq) {
+                        mrb_tick(g_tick_manager.vms[i].mrb);  // ★他VMの内部状態を変更★
+                    }
+                }
+            }
+            xSemaphoreGive(g_tick_manager.mutex);
+        }
+    }
+}
+```
+
+#### task.c の mrb_tick() 関数
+
+```c
+// components/picoruby-esp32/picoruby/mrbgems/picoruby-mruby/src/task.c:143-182
+void mrb_tick(mrb_state *mrb)
+{
+  tick_++;  // グローバルtickカウンタをインクリメント
+
+  // ① タイムスライス満了チェック
+  mrb_tcb *tcb = q_ready_;
+  if (tcb && 0 < tcb->timeslice) {
+    tcb->timeslice--;
+    if (tcb->timeslice == 0) {
+      switching_ = TRUE;  // ★タスクスイッチフラグON★
+    }
+  }
+
+  // ② スリープ中タスクの起床チェック
+  if ((int32_t)(wakeup_tick_ - tick_) < 0) {
+    int task_switch = 0;
+    wakeup_tick_ = tick_ + (1 << 16);
+
+    // WAITINGキュー内のスリープタスクをチェック
+    tcb = q_waiting_;
+    while (tcb != NULL) {
+      mrb_tcb *t = tcb;
+      tcb = tcb->next;
+      if (t->reason != TASKREASON_SLEEP) continue;
+
+      // 起床時刻に到達したタスクをREADYに移動
+      if ((int32_t)(t->wakeup_tick - tick_) < 0) {
+          q_delete_task(mrb, t);           // WAITINGから削除
+          t->status  = TASKSTATUS_READY;
+          t->reason = TASKREASON_NONE;
+          q_insert_task(mrb, t);           // READYキューに挿入（優先度順）
+          task_switch = 1;
+      } else if ((int32_t)(t->wakeup_tick - wakeup_tick_) < 0) {
+        wakeup_tick_ = t->wakeup_tick;
+      }
+    }
+
+    // タスクが起床した場合、プリエンプション判定
+    if (task_switch) preempt_running_task(mrb);
+  }
+}
+```
+
+#### preempt_running_task() の動作
+
+```c
+// task.c:130-136
+inline static void
+preempt_running_task(mrb_state *mrb)
+{
+  // READYキュー内にRUNNINGタスクがある = より高優先度のタスクが起床した
+  for (mrb_tcb *t = q_ready_; t != NULL; t = t->next) {
+    if (t->status == TASKSTATUS_RUNNING) {
+      switching_ = TRUE;  // ★プリエンプション発生★
+    }
+  }
+}
+```
+
+### 具体的なレースシーケンス
+
+```
+時刻 | system_gui (FreeRTOS Task 優先度8)    | mruby_tick_task (FreeRTOS Task 優先度5)
+-----|----------------------------------------|------------------------------------------
+     | [system_gui VM内の状態]                |
+     | - mruby task "main" が RUNNING        |
+     | - timeslice = 1                        |
+     | - switching_ = FALSE                   |
+-----|----------------------------------------|------------------------------------------
+T0   | dispatch_hid_event_to_ruby() 開始     |
+T1   | if (switching_) チェック → FALSE, 通過|
+T2   | mrb_callinfo *ci_before = mrb->c->ci   |
+     |                                        |
+T3   |                                        | vTaskDelay() 終了
+     |                                        | (優先度5 < 8 なので実行はまだ)
+     |                                        |
+T4   | fmrb_task_delay_ms(1) などで待機      | ← system_guiが待機に入った隙に実行開始
+     |                                        |
+T5   |                                        | mrb_tick(system_gui->mrb) 実行
+T6   |                                        |   tick_++ (system_gui VMのtick)
+T7   |                                        |   timeslice-- → 0
+T8   |                                        |   switching_ = TRUE ★設定★
+T9   |                                        |   (system_gui VM内部の状態を外部から変更)
+T10  |                                        | vTaskDelay() に戻る
+     |                                        |
+T11  | 待機終了、実行再開                     |
+T12  | mrb_funcall(mrb, self, "on_event", 1, event_hash)
+T13  |   -> mrb_vm_exec() 開始                |
+T14  |   各VM命令実行前に switching_ チェック|
+T15  |   switching_ == TRUE ★検出！★         |
+T16  |   goto L_RETURN (早期リターン)         |
+T17  |   ← cipush でpushしたフレームがpopされず|
+T18  | CI stack leak! (delta=48 bytes)        |
+```
+
+### 根本的な問題点
+
+1. **スレッド境界の違反**
+   - mruby VMは本来、所有するFreeRTOSタスク内でのみ操作されるべき
+   - しかし`mruby_tick_task`が他のVMの内部状態(`switching_`)を変更している
+
+2. **TOCTOU (Time-of-Check to Time-of-Use) 脆弱性**
+   - `if (switching_)` でチェック後、`mrb_funcall()` 実行前に状態が変わる
+   - チェックと使用の間にアトミック性がない
+
+3. **優先度逆転の可能性**
+   - `mruby_tick_task` (優先度5) が `system_gui` (優先度8) の状態を変更
+   - 通常は優先度8が先に実行されるが、待機中の隙に割り込まれる
+
+### tick処理でタスクスイッチが起きる2つのパターン
+
+#### パターン1: タイムスライス満了
+
+```c
+[tick 0]  system_gui VM内 mruby task "main" 実行開始、timeslice=10
+[tick 1]  timeslice=9
+[tick 2]  timeslice=8
+...
+[tick 9]  timeslice=1
+[tick 10] timeslice=0 → switching_ = TRUE ★スイッチ発生★
+```
+
+#### パターン2: スリープ中タスクの起床
+
+```
+[tick 100] system_gui VM内 mruby task "timer" が sleep(5) 実行
+          → status = WAITING, reason = SLEEP, wakeup_tick = 105
+          → WAITINGキューに移動
+
+[tick 101-104] system_gui VM内 mruby task "main" 実行中...
+
+[tick 105] mrb_tick(system_gui->mrb) 実行
+          ① wakeup_tick(105) <= tick(105) → チェック開始
+          ② "timer" タスク発見: wakeup_tick(105) <= tick(105)
+          ③ "timer" を WAITING → READY に移動
+          ④ q_insert_task() で優先度順に挿入
+             - 仮に "timer" の優先度が高い場合、q_ready_ の先頭に挿入
+          ⑤ preempt_running_task() 実行
+          ⑥ q_ready_ に RUNNING タスク("main")があるため
+             switching_ = TRUE ★スイッチフラグON★
+```
+
+### READYキューの状態遷移例
+
+起床前:
+```
+q_ready_:  [main(RUNNING, pri=10)] → [event_handler(READY, pri=5)] → NULL
+q_waiting_: [timer(SLEEP, pri=8, wakeup=105)] → NULL
+```
+
+起床後（timerの優先度8が、mainの優先度10より低い場合）:
+```
+q_ready_:  [main(RUNNING, pri=10)] → [timer(READY, pri=8)] → [event_handler(READY, pri=5)] → NULL
+                                      ↑新たに挿入
+→ preempt_running_task() が main(RUNNING) を検出
+→ switching_ = TRUE (優先度順でmainが先頭だが、次回のスケジューリングでtimerが実行される可能性)
+```
+
+起床後（timerの優先度12が、mainの優先度10より高い場合）:
+```
+q_ready_:  [timer(READY, pri=12)] → [main(RUNNING, pri=10)] → [event_handler(READY, pri=5)] → NULL
+            ↑先頭に挿入              ↑RUNNINGタスクが存在
+
+→ preempt_running_task() が main(RUNNING) を検出
+→ switching_ = TRUE (次回スケジューリングでtimerに切り替え)
+```
+
+### オプション1（本案）がこの問題を解決する理由
+
+1. **クリティカルセクションの保護**
+   - `dispatching_event_` フラグで `mrb_funcall()` 実行中であることを明示
+   - この間は `switching_` を直接設定せず、`switching_pending_` に遅延
+
+2. **外部からの状態変更を許容**
+   - `mruby_tick_task` からの `mrb_tick()` 呼び出しは継続
+   - ただし、クリティカルセクション中は影響を遅延
+
+3. **アトミック性の確保**
+   - チェック(`if (switching_)`) から使用(`mrb_funcall()`) まで状態が変わらない
+   - `mrb_task_end_critical()` で遅延された切り替えを適用
+
+### より根本的な設計改善案（将来の検討事項）
+
+現在の修正案（オプション1）は**最小限の変更で問題を解決**しますが、より根本的には以下の改善が考えられます:
+
+#### 案A: Tick通知をメッセージで送る
+
+各VMが自分でtickを処理:
+
+```c
+// mruby_tick_task
+static void mruby_tick_task(void* arg) {
+    while (1) {
+        vTaskDelay(tick_interval);
+
+        // 全VMにTICKメッセージを送信（外部からVMを触らない）
+        fmrb_msg_t tick_msg = {
+            .type = FMRB_MSG_TYPE_TICK,
+            .src_pid = PROC_ID_KERNEL
+        };
+        fmrb_msg_broadcast(&tick_msg, 0);  // non-blocking
+    }
+}
+
+// 各app_task_main
+void app_task_main(void* arg) {
+    while (1) {
+        fmrb_msg_receive(ctx->app_id, &msg, TIMEOUT);
+
+        switch (msg.type) {
+            case FMRB_MSG_TYPE_TICK:
+                mrb_tick(mrb);  // 自分のコンテキストで実行
+                break;
+            // ...
+        }
+    }
+}
+```
+
+**利点**:
+- 外部からVMの内部状態を触らない（スレッドセーフ）
+- レースコンディション完全解消
+- tick精度が保たれる
+
+**欠点**:
+- メッセージオーバーヘッド
+- 実装の変更範囲が大きい
+
+#### 案B: 各VMスレッド内でtickカウント
+
+```c
+void app_task_main(void* arg) {
+    uint32_t last_tick = fmrb_task_get_tick_count();
+
+    while (1) {
+        fmrb_msg_receive(ctx->app_id, &msg, 10);  // 10ms timeout
+
+        // Tick更新（自分で）
+        uint32_t now = fmrb_task_get_tick_count();
+        uint32_t elapsed = now - last_tick;
+        for (uint32_t i = 0; i < elapsed; i++) {
+            mrb_tick(mrb);  // 自分のVMのみ更新
+        }
+        last_tick = now;
+
+        // 処理...
+    }
+}
+```
+
+**利点**:
+- 完全に独立、スレッドセーフ
+- `mruby_tick_task` 不要
+
+**欠点**:
+- メッセージ待ちの間tickが進まない
+- タイムアウト精度低下の可能性
+
+### 結論（更新）
+
+**短期対応**: オプション1（本ドキュメントの修正案）を実装
+- レースコンディションを確実に解消
+- 最小限の変更
+- 既存の設計を維持
+
+**長期検討**: 案A（Tick通知メッセージ）への移行を検討
+- より根本的な解決
+- スレッド境界の明確化
+- 将来的なマルチコア対応も視野
