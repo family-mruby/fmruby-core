@@ -184,6 +184,7 @@ class ShellApp < FmrbApp
   def spawn_app(app_name)
     app_name = "/app/sample/mruby.app.rb" if app_name == "mruby.app"
     app_name = "/app/sample/lua.app.lua" if app_name == "lua.app"
+    app_name = "/app/sample/basic.app.bas" if app_name == "basic.app"
     Log.info("Requesting spawn: #{app_name}")
 
     data = {

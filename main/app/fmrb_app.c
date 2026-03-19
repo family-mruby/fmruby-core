@@ -16,6 +16,7 @@
 #include "esp_heap_caps.h"
 #endif
 #include "fmrb_lua.h"
+#include "fmrb_basic.h"
 #include "fmrb_link_transport.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_gfx_msg.h"
@@ -525,6 +526,59 @@ static int execute_lua_script(fmrb_app_task_context_t* ctx,
 }
 
 /**
+ * Execute BASIC script
+ * @return 0 on success, -1 on error
+ */
+static int execute_basic_script(fmrb_app_task_context_t* ctx,
+                                fmrb_load_mode_t load_mode,
+                                void* load_data) {
+    char* script_buffer = NULL;
+
+    if (load_mode == FMRB_LOAD_MODE_BYTECODE) {
+        // BASIC doesn't support bytecode yet
+        FMRB_LOGW(TAG, "[%s] BASIC bytecode loading not supported", ctx->app_name);
+        return -1;
+    } else if (load_mode == FMRB_LOAD_MODE_FILE) {
+        // Load from BASIC source file
+        const char* filepath = (const char*)load_data;
+        size_t script_size = 0;
+
+        FMRB_LOGI(TAG, "[%s] Loading BASIC script from file: %s", ctx->app_name, filepath);
+
+        script_buffer = load_script_file(filepath, &script_size);
+        if (!script_buffer) {
+            FMRB_LOGE(TAG, "[%s] Failed to load script file: %s", ctx->app_name, filepath);
+            return -1;
+        }
+
+        // Load BASIC program
+        fmrb_err_t load_result = fmrb_basic_load(ctx->basic, script_buffer);
+        if (load_result != FMRB_OK) {
+            FMRB_LOGE(TAG, "[%s] Failed to load BASIC program", ctx->app_name);
+            fmrb_sys_free(script_buffer);
+            return -1;
+        }
+
+        FMRB_LOGI(TAG, "[%s] BASIC program loaded successfully", ctx->app_name);
+
+        // Free script buffer immediately after loading (no longer needed)
+        fmrb_sys_free(script_buffer);
+        script_buffer = NULL;
+
+        // Execute BASIC program
+        fmrb_err_t exec_result = fmrb_basic_run(ctx->basic);
+        if (exec_result != FMRB_OK) {
+            FMRB_LOGE(TAG, "[%s] BASIC execution error", ctx->app_name);
+            return -1;
+        } else {
+            FMRB_LOGI(TAG, "[%s] BASIC program executed successfully", ctx->app_name);
+        }
+    }
+
+    return 0;
+}
+
+/**
  * Execute native C function
  * @return 0 on success, -1 on error
  */
@@ -566,6 +620,13 @@ static void destroy_vm(fmrb_app_task_context_t* ctx) {
                 ctx->lua = NULL;
             }
             break;
+        case FMRB_VM_TYPE_BASIC:
+            if (ctx->basic) {
+                FMRB_LOGI(TAG, "[%s] Closing BASIC VM", ctx->app_name);
+                fmrb_basic_close(ctx->basic);
+                ctx->basic = NULL;
+            }
+            break;
         case FMRB_VM_TYPE_NATIVE:
             // No VM to close for native functions
             break;
@@ -601,6 +662,14 @@ static void app_task_main(void* arg) {
                 goto cleanup;
             }
             break;
+        case FMRB_VM_TYPE_BASIC:
+            FMRB_LOGI(TAG, "[%s] Creating BASIC VM", ctx->app_name);
+            ctx->basic = fmrb_basic_newstate(ctx);
+            if (!ctx->basic) {
+                FMRB_LOGE(TAG, "[%s] Failed to create BASIC state", ctx->app_name);
+                goto cleanup;
+            }
+            break;
         case FMRB_VM_TYPE_NATIVE:
             FMRB_LOGI(TAG, "[%s] Native function mode", ctx->app_name);
             break;
@@ -633,6 +702,12 @@ static void app_task_main(void* arg) {
         case FMRB_VM_TYPE_LUA:
             if (execute_lua_script(ctx, load_mode, load_data) != 0) {
                 // Error already logged in execute_lua_script
+            }
+            break;
+
+        case FMRB_VM_TYPE_BASIC:
+            if (execute_basic_script(ctx, load_mode, load_data) != 0) {
+                // Error already logged in execute_basic_script
             }
             break;
 
@@ -998,6 +1073,12 @@ unwind:
                 ctx->lua = NULL;
             }
             break;
+        case FMRB_VM_TYPE_BASIC:
+            if (ctx->basic) {
+                fmrb_basic_close(ctx->basic);
+                ctx->basic = NULL;
+            }
+            break;
         case FMRB_VM_TYPE_NATIVE:
             // No VM to close
             break;
@@ -1155,6 +1236,28 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {
                 break;
             }
             case FMRB_VM_TYPE_LUA: {
+                if (ctx->mem_handle >= 0) {
+                    fmrb_pool_stats_t stats;
+                    if (fmrb_mem_get_stats(ctx->mem_handle, &stats) == 0) {
+                        list[count].mem_total = stats.total_size;
+                        list[count].mem_used = stats.used_size;
+                        list[count].mem_free = stats.free_size;
+                        list[count].mem_frag = stats.used_blocks + stats.free_blocks;
+                    } else {
+                        list[count].mem_total = 0;
+                        list[count].mem_used = 0;
+                        list[count].mem_free = 0;
+                        list[count].mem_frag = 0;
+                    }
+                } else {
+                    list[count].mem_total = 0;
+                    list[count].mem_used = 0;
+                    list[count].mem_free = 0;
+                    list[count].mem_frag = 0;
+                }
+                break;
+            }
+            case FMRB_VM_TYPE_BASIC: {
                 if (ctx->mem_handle >= 0) {
                     fmrb_pool_stats_t stats;
                     if (fmrb_mem_get_stats(ctx->mem_handle, &stats) == 0) {

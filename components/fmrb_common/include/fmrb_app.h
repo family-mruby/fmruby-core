@@ -10,6 +10,7 @@
 // Forward declarations to avoid circular dependencies with other components
 typedef struct lua_State lua_State;
 typedef struct mrb_state mrb_state;
+typedef struct basic_state basic_state_t;
 
 #define FMRB_MAX_APP_NAME (32)
 #define FMRB_MAX_PATH_LEN (256)
@@ -40,6 +41,7 @@ enum FMRB_APP_TYPE{
 typedef enum {
     FMRB_VM_TYPE_MRUBY = 0,      // PicoRuby/mruby
     FMRB_VM_TYPE_LUA,            // Lua
+    FMRB_VM_TYPE_BASIC,          // BASIC
     FMRB_VM_TYPE_NATIVE,         // Native C function
     FMRB_VM_TYPE_MAX
 } fmrb_vm_type_t;
@@ -56,10 +58,11 @@ typedef struct fmrb_app_task_context_s {
     char                  filepath[FMRB_MAX_PATH_LEN];      // Script file path (for FILE load mode)
 
     // Multi-VM support
-    fmrb_vm_type_t        vm_type;           // VM type (mruby, lua, native)
+    fmrb_vm_type_t        vm_type;           // VM type (mruby, lua, basic, native)
     union {
         mrb_state*        mrb;               // mruby VM pointer
         lua_State*        lua;               // Lua VM pointer
+        basic_state_t*    basic;             // BASIC VM pointer
         void*             vm_generic;        // Generic VM pointer
     };
 
