@@ -928,7 +928,8 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
                 FMRB_LOGE(TAG, "Invalid USER_APP proc_id: %d", idx);
                 goto unwind;
             }
-            if(ctx->vm_type == FMRB_VM_TYPE_LUA || ctx->vm_type == FMRB_VM_TYPE_BASIC || ctx->vm_type == FMRB_VM_TYPE_MRUBY){
+            // Note: MRUBY uses estalloc which manages pool memory directly, so no TLSF handle needed
+            if(ctx->vm_type == FMRB_VM_TYPE_LUA || ctx->vm_type == FMRB_VM_TYPE_BASIC){
                 if (fmrb_mem_handle_exist(ctx->mempool_id) == 0) {
                     void* pool_ptr = fmrb_get_mempool_ptr(ctx->mempool_id);
                     size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
