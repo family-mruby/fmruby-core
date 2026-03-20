@@ -410,14 +410,26 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
     }
 
     // Parse mouse report
-    // Extended report format (e.g. Logitech Unifying):
-    //   [ReportID, Buttons, ??, X, Y, ??, WheelV, WheelH] (8 bytes)
-    // Boot protocol format:
-    //   [Buttons, X, Y] (3 bytes)
+    // Supported formats:
+    //   1. Absolute coordinate with Report ID (e.g. nanoKVM-USB):
+    //      [ReportID(1), Buttons(1), X_lo(1), X_hi(1), Y_lo(1), Y_hi(1), Wheel(1)] (7 bytes)
+    //   2. Extended relative with Report ID (e.g. Logitech Unifying):
+    //      [ReportID, Buttons, ??, X, Y, ??, WheelV, WheelH] (8 bytes)
+    //   3. Boot protocol relative (standard mouse):
+    //      [Buttons, X, Y] (3 bytes)
     uint8_t buttons;
-    int dx, dy;
+    bool is_absolute = false;
+    int abs_x = 0, abs_y = 0;
+    int dx = 0, dy = 0;
 
-    if (len >= 8 && data[0] != 0x00) {
+    if (len >= 7 && data[0] != 0x00 && len < 8) {
+        // Absolute coordinate report with Report ID prefix (7 bytes)
+        // Format: [ReportID] [Buttons] [X_lo X_hi] [Y_lo Y_hi] [Wheel]
+        is_absolute = true;
+        buttons = data[1];
+        abs_x = (int)(data[2] | (data[3] << 8));
+        abs_y = (int)(data[4] | (data[5] << 8));
+    } else if (len >= 8 && data[0] != 0x00) {
         // Extended report with Report ID prefix
         buttons = data[1];
         dx = (int8_t)data[3];
@@ -430,39 +442,60 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         dy = report->y_displacement;
     }
 
-    // Initialize cursor to center on first movement when screen size is known
-    if (!device->mouse_state.initialized && g_screen_width > 0 && g_screen_height > 0) {
-        device->mouse_state.cursor_x = g_screen_width / 2;
-        device->mouse_state.cursor_y = g_screen_height / 2;
-        device->mouse_state.initialized = true;
-        FMRB_LOGI(TAG, "Mouse initialized at center (%d, %d)",
-                 device->mouse_state.cursor_x, device->mouse_state.cursor_y);
-    }
-
-    // Apply mouse sensitivity with fractional accumulation
-    device->mouse_state.accum_x += dx * g_mouse_scale_x;
-    device->mouse_state.accum_y += dy * g_mouse_scale_y;
-
-    // Split into integer (pixel movement) and fractional (remainder) parts
-    double ix, iy;
-    device->mouse_state.accum_x = modf(device->mouse_state.accum_x, &ix);
-    device->mouse_state.accum_y = modf(device->mouse_state.accum_y, &iy);
-    dx = (int)ix;
-    dy = (int)iy;
-
-    // Update absolute cursor position from relative displacement
-    if (dx != 0 || dy != 0) {
-        device->mouse_state.cursor_x += dx;
-        device->mouse_state.cursor_y += dy;
+    if (is_absolute) {
+        // Absolute coordinate device: scale from device range to screen
+        // nanoKVM-USB uses 0-4095 (12-bit) range
+        int new_x = (int)((int64_t)abs_x * g_screen_width / 4096);
+        int new_y = (int)((int64_t)abs_y * g_screen_height / 4096);
 
         // Clamp to screen bounds
-        if (device->mouse_state.cursor_x < 0) device->mouse_state.cursor_x = 0;
-        if (device->mouse_state.cursor_y < 0) device->mouse_state.cursor_y = 0;
-        if (device->mouse_state.cursor_x >= g_screen_width) device->mouse_state.cursor_x = g_screen_width - 1;
-        if (device->mouse_state.cursor_y >= g_screen_height) device->mouse_state.cursor_y = g_screen_height - 1;
+        if (new_x < 0) new_x = 0;
+        if (new_y < 0) new_y = 0;
+        if (new_x >= g_screen_width) new_x = g_screen_width - 1;
+        if (new_y >= g_screen_height) new_y = g_screen_height - 1;
 
-        // Send mouse move (rate limiting is done in host_task)
-        fmrb_host_send_mouse_move(device->mouse_state.cursor_x, device->mouse_state.cursor_y);
+        if (new_x != device->mouse_state.cursor_x || new_y != device->mouse_state.cursor_y) {
+            device->mouse_state.cursor_x = new_x;
+            device->mouse_state.cursor_y = new_y;
+            fmrb_host_send_mouse_move(new_x, new_y);
+        }
+        device->mouse_state.initialized = true;
+    } else {
+        // Relative coordinate device
+        // Initialize cursor to center on first movement when screen size is known
+        if (!device->mouse_state.initialized && g_screen_width > 0 && g_screen_height > 0) {
+            device->mouse_state.cursor_x = g_screen_width / 2;
+            device->mouse_state.cursor_y = g_screen_height / 2;
+            device->mouse_state.initialized = true;
+            FMRB_LOGI(TAG, "Mouse initialized at center (%d, %d)",
+                     device->mouse_state.cursor_x, device->mouse_state.cursor_y);
+        }
+
+        // Apply mouse sensitivity with fractional accumulation
+        device->mouse_state.accum_x += dx * g_mouse_scale_x;
+        device->mouse_state.accum_y += dy * g_mouse_scale_y;
+
+        // Split into integer (pixel movement) and fractional (remainder) parts
+        double ix, iy;
+        device->mouse_state.accum_x = modf(device->mouse_state.accum_x, &ix);
+        device->mouse_state.accum_y = modf(device->mouse_state.accum_y, &iy);
+        dx = (int)ix;
+        dy = (int)iy;
+
+        // Update absolute cursor position from relative displacement
+        if (dx != 0 || dy != 0) {
+            device->mouse_state.cursor_x += dx;
+            device->mouse_state.cursor_y += dy;
+
+            // Clamp to screen bounds
+            if (device->mouse_state.cursor_x < 0) device->mouse_state.cursor_x = 0;
+            if (device->mouse_state.cursor_y < 0) device->mouse_state.cursor_y = 0;
+            if (device->mouse_state.cursor_x >= g_screen_width) device->mouse_state.cursor_x = g_screen_width - 1;
+            if (device->mouse_state.cursor_y >= g_screen_height) device->mouse_state.cursor_y = g_screen_height - 1;
+
+            // Send mouse move (rate limiting is done in host_task)
+            fmrb_host_send_mouse_move(device->mouse_state.cursor_x, device->mouse_state.cursor_y);
+        }
     }
 
     // Check button changes
