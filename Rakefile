@@ -1,7 +1,21 @@
 # Rakefile — Family mruby ESP-IDF build wrapper (Docker)
 require "rake"
 
-USB_SERIAL_PORT="/dev/ttyUSB0"
+EXPECTED_CHIP = "ESP32-S3"
+PORT_CACHE_FILE = ".serial_port"
+PROBE_PORTS = ["/dev/ttyUSB0", "/dev/ttyUSB1"]
+
+def get_serial_port
+  if File.exist?(PORT_CACHE_FILE)
+    cached = File.read(PORT_CACHE_FILE).strip
+    if File.exist?(cached)
+      return cached
+    else
+      abort "Cached port #{cached} no longer exists. Run 'rake check-port'"
+    end
+  end
+  abort "Serial port not configured. Run 'rake check-port' first."
+end
 
 # Load environment variables from .env file
 if File.exist?(".env")
@@ -160,14 +174,53 @@ namespace :build do
   end
 end
 
+desc "Detect and cache the correct serial port for #{EXPECTED_CHIP}"
+task :"check-port" do
+  ports = PROBE_PORTS.select { |p| File.exist?(p) }
+  abort "No serial devices found in #{PROBE_PORTS}" if ports.empty?
+
+  puts "Scanning ports for #{EXPECTED_CHIP}..."
+  detected = nil
+
+  ports.each do |port|
+    print "  Probing #{port}... "
+    docker_cmd = [
+      "docker run --rm --privileged",
+      "--device=#{port}",
+      "-v /dev/bus/usb:/dev/bus/usb",
+      IMAGE
+    ].join(" ")
+
+    output = `#{docker_cmd} esptool.py --port #{port} chip_id 2>&1`
+    chip_match = output.match(/Detecting chip type\.\.\.\s*(\S+)/)
+    if chip_match
+      chip = chip_match[1]
+      puts chip
+      if chip == EXPECTED_CHIP
+        detected = port
+        break
+      end
+    else
+      puts "no response"
+    end
+  end
+
+  if detected
+    File.write(PORT_CACHE_FILE, detected)
+    puts "#{EXPECTED_CHIP} found on #{detected} (cached to #{PORT_CACHE_FILE})"
+  else
+    abort "ERROR: #{EXPECTED_CHIP} not found on any port"
+  end
+end
+
 desc "Flash to ESP32"
 task :flash do
-  sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{USB_SERIAL_PORT} flash"
+  sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{get_serial_port} flash"
 end
 
 desc "Check ESP32 HW"
 task :check do
-  sh "#{DOCKER_CMD_PRIVILEGED} esptool.py -p #{USB_SERIAL_PORT} flash_id"
+  sh "#{DOCKER_CMD_PRIVILEGED} esptool.py -p #{get_serial_port} flash_id"
 end
 
 desc "Open menuconfig"
@@ -198,7 +251,7 @@ end
 
 desc "Serial monitor"
 task :monitor do
-  sh "#{DOCKER_CMD_INTERACTIVE} idf.py -p #{USB_SERIAL_PORT} monitor"
+  sh "#{DOCKER_CMD_INTERACTIVE} idf.py -p #{get_serial_port} monitor"
 end
 
 namespace :host do
