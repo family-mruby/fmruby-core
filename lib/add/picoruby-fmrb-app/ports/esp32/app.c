@@ -727,7 +727,14 @@ static mrb_value mrb_fmrb_app_s_sys_pool_info(mrb_state *mrb, mrb_value self)
     fmrb_pool_stats_t stats;
     mrb_value hash = mrb_hash_new_capa(mrb, 5);
 
-    if (fmrb_sys_mem_get_stats(&stats) == 0) {
+    int ret = fmrb_sys_mem_get_stats(&stats);
+    static int log_count = 0;
+    if (log_count < 3) {
+        FMRB_LOGI(TAG, "sys_pool_info: ret=%d, total=%zu, used=%zu, free=%zu",
+                  ret, stats.total_size, stats.used_size, stats.free_size);
+        log_count++;
+    }
+    if (ret == 0) {
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "total")),
                      mrb_fixnum_value(stats.total_size));
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "used")),

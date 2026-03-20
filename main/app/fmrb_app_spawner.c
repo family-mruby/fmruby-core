@@ -94,14 +94,29 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    FMRB_LOGI(TAG, "Creating user app from file: %s", app_name);
+    FMRB_LOGI(TAG, "Creating user app from file: %s (stack free: %u bytes)",
+              app_name, (unsigned)(fmrb_task_get_stack_high_water_mark(0) * sizeof(StackType_t)));
+
+    // Allocate work buffers on heap to avoid stack overflow
+    // (this function is called from deep in the kernel mruby call stack)
+    char* toml_path = (char*)fmrb_sys_malloc(FMRB_MAX_PATH_LEN);
+    char* errbuf = (char*)fmrb_sys_malloc(256);
+    if (!toml_path || !errbuf) {
+        FMRB_LOGE(TAG, "Failed to allocate work buffers");
+        if (toml_path) fmrb_sys_free(toml_path);
+        if (errbuf) fmrb_sys_free(errbuf);
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    fmrb_err_t result = FMRB_ERR_FAILED;
 
     // Validate file exists before spawning
     fmrb_file_t file = NULL;
     fmrb_err_t ret = fmrb_hal_file_open(app_name, FMRB_O_RDONLY, &file);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "File not found or cannot open: %s", app_name);
-        return FMRB_ERR_NOT_FOUND;
+        result = FMRB_ERR_NOT_FOUND;
+        goto cleanup_buffers;
     }
     fmrb_hal_file_close(file);
 
@@ -121,23 +136,23 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         }
     }
 
-    // Try to load TOML configuration file
-    // For "xxx.app.lua" or "xxx.app.rb", replace with "xxx.app.toml"
-    char toml_path[FMRB_MAX_PATH_LEN];
-    snprintf(toml_path, sizeof(toml_path), "%s", app_name);
+    // Build TOML configuration file path
+    snprintf(toml_path, FMRB_MAX_PATH_LEN, "%s", app_name);
 
-    // Replace last extension (.lua or .rb) with .toml
+    // Replace last extension with .toml
     char* last_dot = strrchr(toml_path, '.');
     if (!last_dot) {
         FMRB_LOGE(TAG, "Invalid app name (no extension): %s", app_name);
-        return FMRB_ERR_INVALID_PARAM;
+        result = FMRB_ERR_INVALID_PARAM;
+        goto cleanup_buffers;
     }
 
     // Check if ".toml" fits in buffer
-    size_t base_len = last_dot - toml_path;  // Length up to the dot
-    if (base_len + 5 >= FMRB_MAX_PATH_LEN) {  // +5 for ".toml"
+    size_t base_len = last_dot - toml_path;
+    if (base_len + 5 >= FMRB_MAX_PATH_LEN) {
         FMRB_LOGE(TAG, "TOML path would exceed buffer size: %s", app_name);
-        return FMRB_ERR_INVALID_PARAM;
+        result = FMRB_ERR_INVALID_PARAM;
+        goto cleanup_buffers;
     }
 
     strcpy(last_dot, ".toml");
@@ -153,8 +168,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     int window_pos_y = 50;
 
     // Try loading TOML configuration
-    char errbuf[256];
-    toml_table_t* config = fmrb_toml_load_file(toml_path, errbuf, sizeof(errbuf));
+    toml_table_t* config = fmrb_toml_load_file(toml_path, errbuf, 256);
     if (config) {
         FMRB_LOGI(TAG, "Loaded TOML config: %s", toml_path);
 
@@ -179,34 +193,31 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         window_height = (int)fmrb_toml_get_int(config, "default_window_height", 100);
         window_pos_x = (int)fmrb_toml_get_int(config, "default_window_pos_x", 50);
         window_pos_y = (int)fmrb_toml_get_int(config, "default_window_pos_y", 50);
-
-        // Note: window_mode parsing could be extended to handle fullscreen/fullwindow
-        // but currently we only use it to determine headless mode
     } else {
         FMRB_LOGW(TAG, "No TOML config found or parse error: %s (%s)", toml_path, errbuf);
     }
 
     // Set spawn attributes
     fmrb_spawn_attr_t attr = {
-        .app_id = -1,                                  // Auto-allocate slot
-        .type = APP_TYPE_USER_APP,                     // User App type
-        .name = app_screen_name,                       // From TOML or extracted name
-        .vm_type = vm_type,                            // Auto-detected VM type
-        .load_mode = FMRB_LOAD_MODE_FILE,              // Load from file
-        .filepath = app_name,                          // File path
-        .stack_words = FMRB_USER_APP_TASK_STACK_SIZE,  // Stack Size
-        .priority = FMRB_USER_APP_PRIORITY,            // 
-        .core_affinity = -1,                           // No core affinity
-        .headless = headless,                          // From TOML
-        .window_width = window_width,                  // From TOML
-        .window_height = window_height,                // From TOML
-        .window_pos_x = window_pos_x,                  // From TOML
-        .window_pos_y = window_pos_y                   // From TOML
+        .app_id = -1,
+        .type = APP_TYPE_USER_APP,
+        .name = app_screen_name,
+        .vm_type = vm_type,
+        .load_mode = FMRB_LOAD_MODE_FILE,
+        .filepath = app_name,
+        .stack_words = FMRB_USER_APP_TASK_STACK_SIZE,
+        .priority = FMRB_USER_APP_PRIORITY,
+        .core_affinity = -1,
+        .headless = headless,
+        .window_width = window_width,
+        .window_height = window_height,
+        .window_pos_x = window_pos_x,
+        .window_pos_y = window_pos_y
     };
 
     // Spawn the app
     int32_t app_id;
-    fmrb_err_t result = fmrb_app_spawn(&attr, &app_id);
+    result = fmrb_app_spawn(&attr, &app_id);
     if (result == FMRB_OK) {
         FMRB_LOGI(TAG, "User app spawned: id=%d, name=%s, file=%s",
                   app_id, app_screen_name, app_name);
@@ -228,6 +239,9 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         toml_free(config);
     }
 
+cleanup_buffers:
+    fmrb_sys_free(toml_path);
+    fmrb_sys_free(errbuf);
     return result;
 }
 

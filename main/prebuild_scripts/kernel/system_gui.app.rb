@@ -71,17 +71,17 @@ class SystemGuiApp < FmrbApp
         # Clear memory stats area at bottom-left (overwrite with background color)
         stats_area_width = 150
         stats_area_height = 65
-        @gfx.fill_rect(2, @window_height - stats_area_height - 2, stats_area_width, stats_area_height, @bg_col)
-
-        y_offset = @window_height - 10
-        line_height = 8
+        y_offset = @window_height - 50
         x_offset = 2
+        line_height = 8
+
+        @gfx.fill_rect(x_offset, @window_height/2, x_offset + stats_area_width, y_offset + line_height, @bg_col)
 
         # Draw ESP32 heap info first
         if heap_info && heap_info[:total] > 0
-          heap_free_kb = heap_info[:free] / 1024
+          heap_used_kb = (heap_info[:total] - heap_info[:free]) / 1024
           heap_total_kb = heap_info[:total] / 1024
-          text = "Heap: #{heap_free_kb}KB/#{heap_total_kb}KB"
+          text = "Heap: #{heap_used_kb}KB/#{heap_total_kb}KB"
           @gfx.draw_text(x_offset, y_offset, text, FmrbGfx::BLUE)
           y_offset -= line_height
         end
