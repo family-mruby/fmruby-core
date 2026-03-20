@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 #include <math.h>
 
 #include "fmrb_hal.h"
@@ -663,6 +664,7 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
                                       const hid_host_driver_event_t event,
                                       void *arg)
 {
+    FMRB_LOGI(TAG, "hid_host_device_callback called, event=%d", event);
     switch (event) {
         case HID_HOST_DRIVER_EVENT_CONNECTED: {
             hid_host_dev_info_t dev_info;
@@ -838,9 +840,10 @@ static void usb_host_lib_task(void *arg)
     FMRB_LOGI(TAG, "USB Host Library task started");
 
     while (g_usb_running) {
-        uint32_t event_flags;
+        uint32_t event_flags = 0;
         esp_err_t ret = usb_host_lib_handle_events(FMRB_MS_TO_TICKS(100), &event_flags);
-        if (ret == ESP_OK) {
+        if (ret == ESP_OK && event_flags != 0) {
+            FMRB_LOGI(TAG, "USB Host lib event: flags=0x%"PRIx32, event_flags);
             if (event_flags & USB_HOST_LIB_EVENT_FLAGS_NO_CLIENTS) {
                 FMRB_LOGI(TAG, "No more clients");
             }
