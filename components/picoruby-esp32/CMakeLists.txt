@@ -2,11 +2,11 @@ set(PICORUBY_DIR ${COMPONENT_DIR}/picoruby)
 
 # Set platform-specific build configuration and dependencies
 if(IDF_TARGET STREQUAL "linux")
-    set(MRUBY_CONFIG "family_mruby_linux")  # POSIXビルド用
-    set(MRUBY_BUILD_DIR "host")
-    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/host/lib/libmruby.a)
-    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/host/mrbgems)
-    set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/host/include)
+    set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/add/family_mruby_linux.rb")
+    set(MRUBY_BUILD_DIR "family-mruby-linux")
+    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/family-mruby-linux/lib/libmruby.a)
+    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/family-mruby-linux/mrbgems)
+    set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/family-mruby-linux/include)
     set(PLATFORM_PRIV_REQUIRES
         fmrb_hal
         fmrb_gfx
@@ -20,7 +20,7 @@ if(IDF_TARGET STREQUAL "linux")
     endif()
 
 else()
-    set(MRUBY_CONFIG "family_mruby_esp32")  # ESP32ビルド用
+    set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/add/family_mruby_esp32.rb")  # ESP32ビルド用
     set(MRUBY_BUILD_DIR "esp32")
     set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
     set(MRBGEMS_DIR ${PICORUBY_DIR}/build/esp32/mrbgems)
@@ -62,8 +62,9 @@ if(IDF_TARGET STREQUAL "linux")
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/hal.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/src/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/posix/rng.c
-
     )
 else()
     file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")
@@ -83,7 +84,8 @@ else()
         ${FMRB_FILESYSTEM_PORTS_SRCS}
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/hal.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/src/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-env/ports/esp32/env.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-gpio/ports/esp32/gpio.c
@@ -122,6 +124,7 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include
   PRIV_REQUIRES
     ${PLATFORM_PRIV_REQUIRES}
     mbedtls

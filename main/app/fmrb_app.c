@@ -442,9 +442,9 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
         return -1;
     }
 
-    FMRB_LOGI(TAG, "[%s] mrb_tasks_run - BEFORE execution", ctx->app_name);
-    mrb_tasks_run(ctx->mrb);
-    FMRB_LOGI(TAG, "[%s] mrb_tasks_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
+    FMRB_LOGI(TAG, "[%s] mrb_task_run - BEFORE execution", ctx->app_name);
+    mrb_task_run(ctx->mrb);
+    FMRB_LOGI(TAG, "[%s] mrb_task_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
 
     //TODO: check proper free process
     if (ctx->mrb->exc) {

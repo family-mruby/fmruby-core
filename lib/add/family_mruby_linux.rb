@@ -1,24 +1,30 @@
-MRuby::Build.new do |conf|
+MRuby::CrossBuild.new('family-mruby-linux') do |conf|
+  conf.toolchain('gcc')
 
-  conf.toolchain("gcc")
+  conf.cc.command = 'gcc'
+  conf.linker.command = 'gcc'
+  conf.archiver.command = 'ar'
 
-  conf.cc.defines << "MRB_TICK_UNIT=5"
-  conf.cc.defines << "MRB_TIMESLICE_TICK_COUNT=10"
+  conf.cc.host_command = 'gcc'
 
-  conf.cc.defines << "MRB_64BIT"
-  conf.cc.defines << "MRB_INT64"
+  conf.cc.defines << 'MRB_TICK_UNIT=5'
+  conf.cc.defines << 'MRB_TIMESLICE_TICK_COUNT=10'
+  conf.cc.defines << 'MRB_INT64'
+  conf.cc.defines << 'PICORB_PLATFORM_POSIX'
+  conf.cc.defines << 'PICORB_ALLOC_ESTALLOC'
+  conf.cc.defines << 'PICORB_ALLOC_ALIGN=8'
 
-  #conf.cc.defines << "MRB_USE_CUSTOM_RO_DATA_P"
-  #conf.cc.defines << "MRB_LINK_TIME_RO_DATA_P"
+  if ENV['PICORB_DEBUG']
+    conf.cc.defines << 'ESTALLOC_DEBUG'
+    conf.enable_debug
+  else
+    conf.cc.defines << 'ESTALLOC_DEBUG=1'
+  end
 
-  conf.cc.defines << "PICORB_PLATFORM_POSIX"
-  conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
-  conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
-  
-  conf.cc.defines << "ESTALLOC_DEBUG=1"
+  conf.microruby
 
   # Common gems
-  conf.gembox "family_mruby"
+  conf.gembox 'family_mruby'
 
   # POSIX HAL gems and their dependents
   # NOTE: hal-posix-io is NOT loaded (it depends on mruby-io which conflicts with fmrb-io)
@@ -27,8 +33,14 @@ MRuby::Build.new do |conf|
   conf.gem gemdir: "#{dir}/hal-posix-dir"
   conf.gem gemdir: "#{dir}/mruby-dir"
 
-  # settings for microruby
-  conf.microruby
-
+  # mruby extension gems
+  conf.gem gemdir: "#{dir}/mruby-kernel-ext"
+  conf.gem gemdir: "#{dir}/mruby-string-ext"
+  conf.gem gemdir: "#{dir}/mruby-array-ext"
+  conf.gem gemdir: "#{dir}/mruby-time"
+  conf.gem gemdir: "#{dir}/mruby-objectspace"
+  conf.gem gemdir: "#{dir}/mruby-metaprog"
+  conf.gem gemdir: "#{dir}/mruby-error"
+  conf.gem gemdir: "#{dir}/mruby-sprintf"
+  conf.gem gemdir: "#{dir}/mruby-math"
 end
-

@@ -14,38 +14,34 @@ MRuby::CrossBuild.new("esp32") do |conf|
 
   conf.cc.defines << "MRB_TICK_UNIT=5"
   conf.cc.defines << "MRB_TIMESLICE_TICK_COUNT=10"
-
-  conf.cc.defines << "MRB_INT32"
-  conf.cc.defines << "MRB_32BIT"
-  conf.cc.defines << "NDEBUG"
-
-  conf.cc.defines << "MRBC_TICK_UNIT=10"
-  conf.cc.defines << "MRBC_TIMESLICE_TICK_COUNT=1"
-  conf.cc.defines << "MRBC_USE_FLOAT=2"
   conf.cc.defines << "MRBC_CONVERT_CRLF=1"
-
+  conf.cc.defines << "MRB_INT64"
+  conf.cc.defines << "MRB_32BIT"
   conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
   conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
-  conf.cc.defines << "ESTALLOC_DEBUG=1"
+  conf.cc.defines << "USE_FAT_FLASH_DISK"
+  conf.cc.defines << "NDEBUG"
+  conf.cc.defines << "ESP32_PLATFORM"
+
+  if ENV['PICORB_DEBUG']
+    conf.cc.defines << "ESTALLOC_DEBUG"
+    conf.enable_debug
+  end
+
+  conf.microruby
 
   # Common gems
   conf.gembox "family_mruby"
 
-  # ESP32 specific - Filesystem
-  conf.gem core: "picoruby-fmrb-filesystem"  # HAL-based filesystem
-
-  # peripherals
-#   conf.gem core: 'picoruby-gpio'
-#   conf.gem core: 'picoruby-i2c'
-#   conf.gem core: 'picoruby-spi'
-#   conf.gem core: 'picoruby-adc'
-#   conf.gem core: 'picoruby-uart'
-#   conf.gem core: 'picoruby-pwm'
-
-  # ESP32
-  #conf.gem core:'picoruby-dir'
-
-  # settings for microruby
-  conf.microruby
-
+  # mruby extension gems
+  dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
+  conf.gem gemdir: "#{dir}/mruby-kernel-ext"
+  conf.gem gemdir: "#{dir}/mruby-string-ext"
+  conf.gem gemdir: "#{dir}/mruby-array-ext"
+  conf.gem gemdir: "#{dir}/mruby-time"
+  conf.gem gemdir: "#{dir}/mruby-objectspace"
+  conf.gem gemdir: "#{dir}/mruby-metaprog"
+  conf.gem gemdir: "#{dir}/mruby-error"
+  conf.gem gemdir: "#{dir}/mruby-sprintf"
+  conf.gem gemdir: "#{dir}/mruby-math"
 end

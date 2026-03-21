@@ -4,6 +4,7 @@
 #include <mruby/string.h>
 #include <mruby/variable.h>
 #include <mruby/hash.h>
+#include <mruby/array.h>
 
 #include "fmrb_app.h"
 #include "fmrb_hal.h"

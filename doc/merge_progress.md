@@ -86,12 +86,84 @@ GEN   mrblib/*.rb -> build/host/mrblib/mrblib.c
    - 新: mrb_malloc経由 (global_mrb使用) またはlibc malloc
    - ホストビルド (picorbc) でのメモリ管理が変わった影響の可能性
 
-3. **本流mrblib/*.rbの構文変更**
-   - サブモジュール更新で mrblib/ 内のRubyファイルが変更された可能性
-   - compar.rbの `<=>` 演算子やraise文が新コンパイラで未サポートか
+3. **`[]=` (IndexAndWriteNode) がpicorbcで未実装** - 原因特定済み
+   - `a[0] = 1` 形式のインデックス代入がコンパイルエラー
+   - **原因**: family-mrubyの `family_mruby_linux.rb` が `MRuby::Build.new` + `conf.microruby` を使用
+   - `conf.microruby` が `PICORB_VM_MRUBY` を定義 -> picorbcも **mrubyターゲットモード** でビルドされる
+   - R2P2-ESP32ではpicorbcは `picorbc.rb` で独立ビルドされ、`PICORB_VM_MRUBY` なし (スタンドアロンモード)
+   - R2P2-ESP32ではESP32ターゲットに `MRuby::CrossBuild.new` を使用 -> picorbcとターゲットが分離
+   - **対応策**: family-mrubyのビルド設定をCrossBuild方式に変更するか、picorbcが正しくスタンドアロンでビルドされるよう設定を見直す
+
+### Linux ビルド - リンクフェーズ到達 (コンパイルは通過)
+
+CrossBuild方式への移行で picorbc `[]=` 問題は解消。Cソースのコンパイルも全て通過。
+リンクフェーズで以下のエラー:
+
+#### 1. 多重定義
+- `mrb_task_enable_irq` / `mrb_task_disable_irq` が `task_hal.o` と `hal.o` の両方に定義
+- 原因: hal-posix-task (task_hal.c) と picoruby-machine (ports/posix/hal.c) の両方で実装
+- 対策: picoruby-machine/ports/posix/hal.c から irq関数を削除 (hal-posix-taskに委譲)
+
+#### 2. undefined reference (family-mruby独自)
+- `hal_register_vm` - POSIX用のhal.cに実装がない (ESP32用のみ)
+- `Machine_get_config_int` - 未実装関数
+- 対策: POSIX用のスタブ実装が必要
+
+#### 3. undefined reference (本流API)
+- `mrc_ccontext_new`, `mrc_ccontext_free`, `mrc_load_string_cxt`, `mrc_irep_free`
+  - mruby-compiler2のAPI。libmruby.aにリンクされていない可能性
+- `pm_constant_pool_id_to_constant`, `pm_options_free`
+  - prismライブラリのAPI。リンク順序またはライブラリ不足
+- `io_raw_bang`, `io_cooked_bang`
+  - picoruby-io-consoleのAPI。fmrb-ioでは提供されていない
+
+#### 4. io_raw_bang / io_cooked_bang 問題
+- 本流のsrc/mruby/machine.cが `io_raw_bang` / `io_cooked_bang` を呼ぶ
+- これらは `picoruby-io-console` が提供する関数
+- family-mrubyでは `picoruby-io-console` を使わない (fmrb-io使用)
+- 対策: src/mruby/machine.cにスタブを追加するか、条件分岐でガード
 
 ### ESP32 ビルド (`rake build:esp32`)
 未実施 (Linuxビルドが先に通る必要がある)
+
+## 追加発見: ビルド設定の追従不足
+
+### 本流のビルド設定構成変更
+
+本流では gembox とビルド設定が大幅にリファクタリングされている:
+
+#### gembox構成 (本流)
+- `minimum.gembox` - compiler2, mruby/mrubyc VM選択
+- `core.gembox` - require, machine, picorubyvm, time + POSIX/組込み分岐
+- `mruby-posix.gembox` - POSIX HAL群 (hal-posix-task, hal-posix-dir, hal-posix-io, mruby-io等)
+- `stdlib.gembox`, `shell.gembox`, `networking.gembox` 等
+
+#### マクロリネーム
+- `MRB_INT64` -> `PICORB_INT64` (ただしmruby内部は `MRB_INT64` のまま)
+- `MRB_64BIT` は本流設定に存在しない
+- `PICORUBY_*` -> `PICORB_*` 全般
+
+#### conf.microruby
+本流では `conf.microruby` メソッドが使用されており、内部で `PICORB_VM_MRUBY` 等の定義を設定する。
+family_mruby_linux.rb でも使用済みだが、定義の整合性確認が必要。
+
+### family_mruby_linux.rb で必要な変更
+
+現在の定義:
+```ruby
+conf.cc.defines << "MRB_64BIT"       # 本流にない
+conf.cc.defines << "MRB_INT64"       # 本流では不要? (mrbgem.rakeで設定)
+```
+
+本流の microruby.rb との差分:
+- `MRB_UTF8_STRING` が不足
+- `PICORB_INT64` の使用を検討
+
+### family_mruby.gembox で必要な変更
+
+- `picoruby-io-console` のコメントアウトは正しい (fmrb-io使用)
+- `picoruby-picorubyvm` が本流core.gemboxにあるが未追加 (存在するか要確認)
+- `picoruby-time` が本流core.gemboxにあるが未追加 (既存gemか要確認)
 
 ## 相談事項
 

@@ -49,8 +49,8 @@ int hal_write(int fd, const void *buf, int nbytes);
   #define hal_disable_irq() mrb_task_disable_irq()
 #endif
 
-/* family-mruby: multi-VM management (ESP32) */
-#if defined(PICORB_VM_MRUBY) && defined(ESP32_PLATFORM)
+/* family-mruby: multi-VM management */
+#if defined(PICORB_VM_MRUBY)
 void hal_register_vm(mrb_state *mrb);
 void hal_deinit(mrb_state *mrb);
 void hal_deinit_by_pool(void *pool_ptr, size_t pool_size);
@@ -60,6 +60,14 @@ void hal_deinit_by_pool(void *pool_ptr, size_t pool_size);
 #define MRB_DISABLE_IRQ 1
 #define MRB_ENABLE_IRQ  0
 void mrb_set_in_c_funcall(mrb_state *mrb, int flag);
+#endif
+
+/* Task HAL functions (implemented in hal-posix-task or platform-specific code) */
+#if defined(PICORB_VM_MRUBY)
+void mrb_hal_task_init(mrb_state *mrb);
+void mrb_hal_task_final(mrb_state *mrb);
+void mrb_hal_task_idle_cpu(mrb_state *mrb);
+void mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec);
 #endif
 
 void hal_abort(const char *s);
