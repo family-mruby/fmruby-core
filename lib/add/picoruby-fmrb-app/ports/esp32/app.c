@@ -328,42 +328,20 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     check_mrb_ci_valid(mrb, "before_funcall");
     #endif
 
-    // Guard: skip mrb_funcall if VM context is invalid or task switching is pending.
-    // If switching is TRUE, mrb_vm_exec (called internally by mrb_funcall) returns
-    // immediately without popping the ci frame pushed by cipush, causing ci stack leak.
-    // Repeated leaks lead to ci stack overflow and heap corruption (mrb->c becomes NULL).
+    // Guard: skip if VM context is invalid
     if (!mrb->c || !mrb->c->ci) {
         FMRB_LOGE(TAG, "mrb->c or mrb->c->ci is NULL, skip on_event");
         goto cleanup;
     }
-    extern mrb_bool mrb_task_is_switching(mrb_state *mrb);
-    if (mrb_task_is_switching(mrb)) {
-        if (subtype == HID_MSG_MOUSE_MOVE) {
-            // Mouse move events can be safely dropped
-            FMRB_LOGD(TAG, "Task switching pending, drop mouse move");
-            goto cleanup;
-        }
-        // For other events (key, click), wait until switching completes
-        FMRB_LOGW(TAG, "Task switching pending, waiting for subtype=%d", subtype);
-        while (mrb_task_is_switching(mrb)) {
-            fmrb_task_delay_ms(1);
-        }
-        FMRB_LOGI(TAG, "Task switching pending, waiting for subtype=%d done", subtype);
-    }
 
-    // Save CI pointer before funcall to detect CI stack leak
-    mrb_callinfo *ci_before = mrb->c->ci;
-
-    mrb_funcall(mrb, self, "on_event", 1, event_hash);
-
-    // Detect CI stack leak: if ci moved forward, mrb_vm_exec returned
-    // without popping the frame pushed by cipush (task switching race).
-    // Restore ci to prevent accumulation that leads to NULL proc crash.
-    if (mrb->c && mrb->c->ci > ci_before) {
-        FMRB_LOGW(TAG, "CI stack leak detected after on_event: ci=%p, expected=%p (delta=%td)",
-                  mrb->c->ci, ci_before,
-                  (ptrdiff_t)((char*)mrb->c->ci - (char*)ci_before));
-        mrb->c->ci = ci_before;
+    // Execute on_event synchronously with scheduler_lock.
+    // This prevents task switching during event dispatch, avoiding CI stack leaks.
+    {
+        mrb_value on_event_method = mrb_funcall(mrb, self, "method", 1,
+                                                 mrb_symbol_value(mrb_intern_cstr(mrb, "on_event")));
+        mrb_value on_event_proc = mrb_funcall(mrb, on_event_method, "to_proc", 0);
+        mrb_value argv[1] = { event_hash };
+        mrb_execute_proc_synchronously(mrb, on_event_proc, 1, argv);
     }
 
     #if 0

@@ -4,7 +4,9 @@
 #include "mruby/array.h"
 #include "../../include/machine.h"
 #include "../../include/hal.h"
+#ifndef FMRB_NO_IO_CONSOLE
 #include "../../../picoruby-io-console/include/io-console.h"
+#endif
 
 static inline void
 io_wait_for_input(mrb_state *mrb)
@@ -199,9 +201,13 @@ raise_sigtstp(mrb_state *mrb)
 static mrb_value
 mrb_machine_check_signal(mrb_state *mrb, mrb_value self)
 {
+#ifndef FMRB_NO_IO_CONSOLE
   io_raw_bang(true);
+#endif
   Machine_tud_task();
+#ifndef FMRB_NO_IO_CONSOLE
   io_cooked_bang();
+#endif
   if (sigint_status == MACHINE_SIGINT_RECEIVED) {
     sigint_status = MACHINE_SIG_NONE;
     raise_interrupt(mrb);

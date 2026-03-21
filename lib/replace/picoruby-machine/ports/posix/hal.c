@@ -125,33 +125,7 @@ hal_write(int fd, const void *buf, int nbytes)
 }
 
 
-//================================================================
-/*!@brief
-  enable interrupt
-
-*/
-void
-mrb_task_enable_irq(void)
-{
-#ifndef __EMSCRIPTEN__
-  sigprocmask(SIG_SETMASK, &sigset2_, 0);
-#endif
-}
-
-
-//================================================================
-/*!@brief
-  disable interrupt
-
-*/
-void
-mrb_task_disable_irq(void)
-{
-#ifndef __EMSCRIPTEN__
-  sigprocmask(SIG_BLOCK, &sigset_, &sigset2_);
-#endif
-}
-
+/* mrb_task_enable_irq / mrb_task_disable_irq are provided by hal-posix-task */
 
 //================================================================
 /*!@brief
@@ -166,4 +140,16 @@ hal_abort(const char *s)
   }
   exit(1);
 }
+
+/*
+ * family-mruby: multi-VM management stubs for POSIX
+ * On POSIX (single-process simulation), these are no-ops.
+ * The real implementations are in ports/esp32/machine.c for ESP32.
+ */
+#if defined(PICORB_VM_MRUBY)
+void hal_register_vm(mrb_state *mrb) { (void)mrb; }
+void hal_deinit(mrb_state *mrb) { (void)mrb; }
+void hal_deinit_by_pool(void *pool_ptr, size_t pool_size) { (void)pool_ptr; (void)pool_size; }
+void mrb_set_in_c_funcall(mrb_state *mrb, int flag) { (void)mrb; (void)flag; }
+#endif
 

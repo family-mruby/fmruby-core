@@ -62,5 +62,17 @@ MRuby::Gem::Specification.new('mruby-compiler2') do |spec|
     end
   end
 
+  # family-mruby: prism dedicated estalloc allocator (target builds only)
+  if cc.defines.include?("PICORB_VM_MRUBY") || cc.defines.include?("PICORB_VM_MRUBYC")
+    prism_alloc_src = "#{lib_dir}/prism_alloc.c"
+    if File.exist?(prism_alloc_src)
+      obj = objfile("#{build_dir}/lib/prism_alloc")
+      objs << obj
+      file obj => [prism_alloc_src] do |f|
+        cc.run f.name, f.prerequisites.first
+      end
+    end
+  end
+
 end
 

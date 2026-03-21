@@ -94,7 +94,41 @@ GEN   mrblib/*.rb -> build/host/mrblib/mrblib.c
    - R2P2-ESP32ではESP32ターゲットに `MRuby::CrossBuild.new` を使用 -> picorbcとターゲットが分離
    - **対応策**: family-mrubyのビルド設定をCrossBuild方式に変更するか、picorbcが正しくスタンドアロンでビルドされるよう設定を見直す
 
-### Linux ビルド - リンクフェーズ到達 (コンパイルは通過)
+### Linux ビルド - リンクエラー残り3件 (大部分解消)
+
+#### 解消済みの問題
+- picorbcの `[]=` コンパイルエラー -> CrossBuild方式に移行で解消
+- 多重定義 (`mrb_task_enable/disable_irq`) -> ports/posix/hal.cから削除
+- `Machine_get_config_int` -> posix/machine.c, esp32/machine.cにスタブ追加
+- `mrc_*` / `pm_*` 未定義 -> gemboxに mruby-compiler2 追加で解消
+- `global_mrb` / prism allocator問題 -> prism専用estallocプール方式に変更
+- `io_raw_bang` / `io_cooked_bang` -> `FMRB_NO_IO_CONSOLE` ガードで解消
+- `hal_register_vm` 等 -> POSIX用スタブ追加
+
+#### 残りのリンクエラー (3件)
+
+##### 1. `mrb_io_fileno` (file_ext.c)
+- picoruby-mruby/src/file_ext.c が `mrb_io_fileno()` を呼ぶ
+- これは mruby-io gem が提供する関数
+- family-mrubyでは mruby-io を使わない (fmrb-io使用)
+- 対策案: file_ext.c をパッチするか、fmrb-io側にスタブを追加
+
+##### 2. `mrb_task_is_switching` (app.c, kernel.c)
+- 旧task.cにあったAPI。本流task.cでは削除されている
+- family-mruby独自コードの app.c (L340,348) と kernel.c (L108,120) で使用
+- 用途: HIDイベントディスパッチ前にタスク切り替え中かチェックする
+  - `switching_` フラグが立っている間はmrb_funcallを避ける (CI stackリーク防止)
+- **本流の scheduler_lock で代替可能** だが、呼び出し方が異なる
+- 対策案:
+  - A) 本流task.cに `mrb_task_is_switching()` 互換関数を追加 (パッチ)
+  - B) app.c/kernel.c を `mrb_execute_proc_synchronously()` 方式に書き換え
+  - C) 当面スタブ (常にfalse返却) で通し、後で本対応
+
+##### 3. `mrb_io_fileno` の補足
+- file_ext.c は picoruby-mruby gem の一部 (submodule内)
+- 直接編集不可。パッチで対応する必要がある
+
+### Linux ビルド - 旧リンクフェーズ到達記録
 
 CrossBuild方式への移行で picorbc `[]=` 問題は解消。Cソースのコンパイルも全て通過。
 リンクフェーズで以下のエラー:

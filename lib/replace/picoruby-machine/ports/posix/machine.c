@@ -134,3 +134,17 @@ Machine_uptime_us(void)
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (uint64_t)ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000;
 }
+
+/* family-mruby: config query for boot diagnostics */
+int
+Machine_get_config_int(int type)
+{
+  switch(type)
+  {
+    case 0:
+      return MRB_TICK_UNIT;
+    case 1:
+      return MRB_TIMESLICE_TICK_COUNT;
+  }
+  return 0;
+}

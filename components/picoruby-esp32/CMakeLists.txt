@@ -63,7 +63,6 @@ if(IDF_TARGET STREQUAL "linux")
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/src/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/posix/rng.c
     )
 else()
@@ -99,6 +98,7 @@ else()
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/cipher.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-i2c/ports/esp32/i2c.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-uart/ports/esp32/uart.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-require/ports/esp32/platform.c
     )
 endif()
 

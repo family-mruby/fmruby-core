@@ -13,6 +13,7 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   conf.cc.defines << 'PICORB_PLATFORM_POSIX'
   conf.cc.defines << 'PICORB_ALLOC_ESTALLOC'
   conf.cc.defines << 'PICORB_ALLOC_ALIGN=8'
+  conf.cc.defines << 'FMRB_NO_IO_CONSOLE'
 
   if ENV['PICORB_DEBUG']
     conf.cc.defines << 'ESTALLOC_DEBUG'

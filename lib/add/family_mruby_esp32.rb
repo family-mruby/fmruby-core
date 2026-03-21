@@ -22,6 +22,7 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.cc.defines << "USE_FAT_FLASH_DISK"
   conf.cc.defines << "NDEBUG"
   conf.cc.defines << "ESP32_PLATFORM"
+  conf.cc.defines << "FMRB_NO_IO_CONSOLE"
 
   if ENV['PICORB_DEBUG']
     conf.cc.defines << "ESTALLOC_DEBUG"

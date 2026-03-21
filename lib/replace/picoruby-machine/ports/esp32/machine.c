@@ -264,6 +264,41 @@ hal_idle_cpu(mrb_state *mrb)
   vTaskDelay(1);
 }
 
+/*
+ * Task HAL interface (required by mruby-task gem)
+ * On ESP32, tick delivery is handled by mruby_tick_task above.
+ */
+void
+mrb_hal_task_init(mrb_state *mrb)
+{
+  /* VM registration and tick task creation are handled by
+   * machine_hal_init() and hal_register_vm() */
+  (void)mrb;
+}
+
+void
+mrb_hal_task_final(mrb_state *mrb)
+{
+  hal_deinit(mrb);
+}
+
+void
+mrb_hal_task_idle_cpu(mrb_state *mrb)
+{
+  (void)mrb;
+  vTaskDelay(1);
+}
+
+void
+mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec)
+{
+  (void)mrb;
+  if (usec <= 0) return;
+  TickType_t ticks = pdMS_TO_TICKS(usec / 1000);
+  if (ticks < 1) ticks = 1;
+  vTaskDelay(ticks);
+}
+
 #endif /* PICORB_VM_MRUBY */
 
 int
@@ -408,4 +443,18 @@ uint64_t
 Machine_uptime_us(void)
 {
   return (uint64_t)esp_timer_get_time();
+}
+
+/* family-mruby: config query for boot diagnostics */
+int
+Machine_get_config_int(int type)
+{
+  switch(type)
+  {
+    case 0:
+      return MRB_TICK_UNIT;
+    case 1:
+      return MRB_TIMESLICE_TICK_COUNT;
+  }
+  return 0;
 }
