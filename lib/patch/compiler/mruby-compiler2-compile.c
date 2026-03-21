@@ -1,48 +1,3 @@
-// Thread-safe mutex protection for Prism compilation in multi-task environment
-#ifndef PRISM_BUILD_HOST
-  // Target build (ESP32/Linux runtime): Add mutex for thread safety
-
-  #if defined(PICORB_PLATFORM_POSIX)
-    // Linux: use pthread mutex
-    #include <pthread.h>
-    static pthread_mutex_t prism_compile_mutex = PTHREAD_MUTEX_INITIALIZER;
-
-    #define PRISM_COMPILE_LOCK()   pthread_mutex_lock(&prism_compile_mutex)
-    #define PRISM_COMPILE_UNLOCK() pthread_mutex_unlock(&prism_compile_mutex)
-  #else
-    //TODO: to implement semaphore...
-    #if 0
-    // ESP32: use FreeRTOS semaphore
-    #include "freertos/FreeRTOS.h"
-    #include "freertos/semphr.h"
-
-    static SemaphoreHandle_t prism_compile_mutex = NULL;
-
-    static void prism_compile_mutex_init(void) {
-      if (prism_compile_mutex == NULL) {
-        prism_compile_mutex = xSemaphoreCreateMutex();
-      }
-    }
-
-    #define PRISM_COMPILE_LOCK()   do { \
-      if (prism_compile_mutex == NULL) prism_compile_mutex_init(); \
-      xSemaphoreTake(prism_compile_mutex, portMAX_DELAY); \
-    } while(0)
-
-    #define PRISM_COMPILE_UNLOCK() xSemaphoreGive(prism_compile_mutex)
-    #else
-    #define PRISM_COMPILE_LOCK()
-    #define PRISM_COMPILE_UNLOCK()
-
-    #endif
-  #endif
-
-#else
-  // Host build (picorbc): No mutex needed (single-threaded)
-  #define PRISM_COMPILE_LOCK()   do {} while(0)
-  #define PRISM_COMPILE_UNLOCK() do {} while(0)
-#endif
-
 #include "../include/mrc_parser_util.h"
 #include "../include/mrc_irep.h"
 #include "../include/mrc_ccontext.h"
@@ -368,15 +323,8 @@ mrc_parse_string_cxt(mrc_ccontext *c, const uint8_t **source, size_t length)
 MRC_API mrc_irep *
 mrc_load_string_cxt(mrc_ccontext *c, const uint8_t **source, size_t length)
 {
-  // Protect entire compilation process with mutex for thread safety
-  PRISM_COMPILE_LOCK();
-
   mrc_node *root = mrc_parse_string_cxt(c, source, length);
   mrc_irep *irep = mrc_load_exec(c, root);
-  pm_node_destroy(c->p, root);
-
-  PRISM_COMPILE_UNLOCK();
-
   return irep;
 }
 

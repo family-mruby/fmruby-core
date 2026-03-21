@@ -5,8 +5,18 @@ MRuby::Gem::Specification.new('picoruby-require') do |spec|
   spec.author  = 'HASUMI Hitoshi'
   spec.summary = 'PicoRuby require gem'
 
-  spec.add_dependency 'picoruby-fmrb-filesystem'
   spec.add_dependency 'picoruby-sandbox'
+  spec.add_dependency 'picoruby-fmrb-filesystem'
+
+  if build.vm_mrubyc?
+    if build.posix?
+      # TODO: in Wasm, you may need to implement File class with File System Access API
+      spec.add_dependency 'picoruby-posix-io'
+    else
+      spec.add_dependency 'picoruby-vfs'
+      spec.add_dependency 'picoruby-filesystem-fat'
+    end
+  end
 
   mrbgems_dir = File.expand_path "..", build_dir
 
@@ -33,7 +43,7 @@ MRuby::Gem::Specification.new('picoruby-require') do |spec|
           next if t.prerequisites.empty?
           mkdir_p File.dirname(t.name)
           File.open(t.name, 'w') do |f|
-            name = File.basename(t.name, ".c").gsub('-','_')
+            name = "picogem_#{File.basename(t.name, ".c").gsub('-','_')}"
             mrbc.run(f, t.prerequisites, name, cdump: false)
             if initializer != "NULL"
               f.puts
@@ -62,5 +72,5 @@ MRuby::Gem::Specification.new('picoruby-require') do |spec|
     template = ERB.new(File.read(template_path), trim_mode: "%-")
     File.write(t.name, template.result(binding))
   end
-
 end
+

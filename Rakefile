@@ -104,43 +104,27 @@ task :setup do
   sh "cp -rf lib/replace/picoruby-machine #{mrbgem_path}/"
 
   # ---------- Patch ----------
+  # picoruby-mruby: alloc.c (estalloc multi-VM), hal.h, mrbgem.rake
   sh "cp -rf lib/patch/picoruby-mruby #{mrbgem_path}/"
-  # is this needed?
-  sh "cp -f lib/replace/picoruby-machine/include/hal.h #{mrbgem_path}/picoruby-mruby/include/"
 
-  # Copy mruby-io file_constants.rb patch (avoid conflicts with C extension)
-  sh "cp -f lib/patch/picoruby-mruby/mrbgems/mruby-io/mrblib/file_constants.rb #{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-io/mrblib/" 
+  # mruby-io file_constants.rb
+  sh "cp -f lib/patch/picoruby-mruby/mrbgems/mruby-io/mrblib/file_constants.rb #{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-io/mrblib/"
 
   # littleFS
   sh "cp -f lib/patch/esp_littlefs/CMakeLists.txt components/esp_littlefs/"
 
-  # Copy picoruby-env patch (thread-safe ENV for multi-VM environment)
+  # picoruby-env
   sh "cp -f lib/patch/picoruby-env/ports/posix/env.c #{mrbgem_path}/picoruby-env/ports/posix/"
 
-  # Copy TLSF-based prism allocator files
+  # mruby-compiler2
   sh "cp -f lib/patch/compiler/prism_xallocator.h #{mrbgem_path}/mruby-compiler2/include/"
-  sh "cp -f lib/patch/compiler/prism_alloc.c #{mrbgem_path}/mruby-compiler2/lib/"
   sh "cp -f lib/patch/compiler/mruby-compiler2-mrbgem.rake #{mrbgem_path}/mruby-compiler2/mrbgem.rake"
-
-  # Copy picoruby-require patch (use picoruby-fmrb-filesystem instead of posix-io/vfs)
-  sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
-
-  # Copy picoruby-yaml patch (use picoruby-fmrb-io instead of mruby-io)
-  sh "cp -f lib/patch/picoruby-yaml/mrbgem.rake #{mrbgem_path}/picoruby-yaml/"
-
-  # Copy picoruby-sandbox patch (remove picoruby-io-console dependency)
-  sh "cp -f lib/patch/picoruby-sandbox/mrbgem.rake #{mrbgem_path}/picoruby-sandbox/"
-
-  # Copy TLSF library files
-  sh "mkdir -p #{mrbgem_path}/mruby-compiler2/lib/tlsf"
-  sh "cp -f components/mem_allocator/tlsf/tlsf.c #{mrbgem_path}/mruby-compiler2/lib/tlsf/"
-  sh "cp -f components/mem_allocator/tlsf/tlsf.h #{mrbgem_path}/mruby-compiler2/lib/tlsf/"
-
-  # Copy TLSF wrapper with renamed symbols to avoid ESP-IDF heap conflicts
-  sh "cp -f lib/patch/compiler/prism_tlsf_wrapper.c #{mrbgem_path}/mruby-compiler2/lib/"
-
-  # Copy thread-safe compile.c with mutex protection for multi-task environment
   sh "cp -f lib/patch/compiler/mruby-compiler2-compile.c #{mrbgem_path}/mruby-compiler2/src/compile.c"
+
+  # mrbgem.rake patches
+  sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
+  sh "cp -f lib/patch/picoruby-yaml/mrbgem.rake #{mrbgem_path}/picoruby-yaml/"
+  sh "cp -f lib/patch/picoruby-sandbox/mrbgem.rake #{mrbgem_path}/picoruby-sandbox/"
 end
 
 namespace :set_target do

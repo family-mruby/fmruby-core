@@ -20,8 +20,11 @@ MRuby::Build.new do |conf|
   # Common gems
   conf.gembox "family_mruby"
 
-  # POSIX
+  # POSIX HAL gems and their dependents
+  # NOTE: hal-posix-io is NOT loaded (it depends on mruby-io which conflicts with fmrb-io)
   dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
+  conf.gem gemdir: "#{dir}/hal-posix-task"
+  conf.gem gemdir: "#{dir}/hal-posix-dir"
   conf.gem gemdir: "#{dir}/mruby-dir"
 
   # settings for microruby

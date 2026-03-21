@@ -12,12 +12,6 @@ MRuby::Gem::Specification.new('mruby-compiler2') do |spec|
   cc.defines.flatten!
 
   cc.defines << "PRISM_XALLOCATOR"
-
-  # Distinguish host build (picorbc) from target build (ESP32/Linux runtime)
-  if spec.build.name == 'host'
-    cc.defines << "PRISM_BUILD_HOST"
-  end
-
   if cc.defines.include?("PICORB_VM_MRUBY")
     cc.defines << "MRC_TARGET_MRUBY"
   elsif cc.defines.include?("PICORB_VM_MRUBYC")
@@ -36,10 +30,6 @@ MRuby::Gem::Specification.new('mruby-compiler2') do |spec|
 
   prism_templates_dir = "#{lib_dir}/prism/templates"
   cc.include_paths << "#{prism_dir}/include"
-
-  # Add TLSF include path for prism allocator
-  tlsf_dir = "#{lib_dir}/tlsf"
-  cc.include_paths << tlsf_dir
 
   next if %w(clean deep_clean).include?(Rake.application.top_level_tasks.first)
 
@@ -72,25 +62,5 @@ MRuby::Gem::Specification.new('mruby-compiler2') do |spec|
     end
   end
 
-  # Compile TLSF wrapper with renamed symbols to avoid ESP-IDF heap conflicts
-  # Use prism_tlsf_wrapper.c instead of tlsf.c directly
-  tlsf_wrapper_src = "#{lib_dir}/prism_tlsf_wrapper.c"
-  if File.exist?(tlsf_wrapper_src)
-    obj = objfile("#{build_dir}/lib/prism_tlsf_wrapper")
-    objs << obj
-    file obj => [tlsf_wrapper_src] do |f|
-      cc.run f.name, f.prerequisites.first
-    end
-  end
-
-  # Compile prism custom allocator (prism_alloc.c)
-  prism_alloc_src = "#{lib_dir}/prism_alloc.c"
-  if File.exist?(prism_alloc_src)
-    obj = objfile("#{build_dir}/lib/prism_alloc")
-    objs << obj
-    file obj => [prism_alloc_src] do |f|
-      cc.run f.name, f.prerequisites.first
-    end
-  end
-
 end
+

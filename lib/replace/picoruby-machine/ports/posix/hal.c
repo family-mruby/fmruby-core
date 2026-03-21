@@ -9,78 +9,47 @@
 */
 
 
+/***** Feature test switches ************************************************/
+/***** System headers *******************************************************/
 #include <stdlib.h>
 #include <string.h>
 #include <signal.h>
 #include <sys/time.h>
 #include <unistd.h>
 
+
+/***** Local headers ********************************************************/
 #include "hal.h"
 
-// FreeRTOS/ESP-IDF環境でのみインクルード（mrbcビルドを除外）
-#ifndef PICORUBY_HOST_BUILD
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-#include <freertos/semphr.h>
-#include "esp_sleep.h"
-#include "esp_log.h"
 
-#include "fmrb_app.h"
-
-#define MAX_MRB_VMS 16  // Maximum number of VMs
-
-typedef struct {
-    mrb_state *mrb;
-    int active;  // 1=in use, 0=unused
-    int in_c_funcall;  // 0=MRB_C_FUNCALL_EXIT  1=MRB_C_FUNCALL_ENTER
-    int irq; // 0=MRB_ENABLE_IRQ  1=MRB_DISABLE_IRQ
-} mrb_vm_entry_t;
-
-static struct {
-    mrb_vm_entry_t vms[MAX_MRB_VMS];
-    SemaphoreHandle_t mutex;
-    TaskHandle_t tick_task_handle;
-    int task_created;
-} g_tick_manager = {
-    .vms = {{NULL, 0}},
-    .mutex = NULL,
-    .tick_task_handle = NULL,
-    .task_created = 0
-};
-
-//================================================================
-/*!@brief
-  mruby tick task (FreeRTOS)
-
-  Executes mrb_tick() for all registered mrb VMs at MRB_TICK_UNIT interval
-*/
-static void mruby_tick_task(void* arg) {
-    (void)arg;
-    const TickType_t tick_interval = pdMS_TO_TICKS(MRB_TICK_UNIT);
-
-    ESP_LOGI("hal", "mruby_tick_task started (interval=%dms)", MRB_TICK_UNIT);
-
-    while (1) {
-        vTaskDelay(tick_interval);
-
-        // Send tick to all active VMs
-        if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-            for (int i = 0; i < MAX_MRB_VMS; i++) {
-                if (g_tick_manager.vms[i].active && g_tick_manager.vms[i].mrb) {
-                    // Skip tick if VM is executing C->Ruby funcall
-                    if (MRB_C_FUNCALL_EXIT == g_tick_manager.vms[i].in_c_funcall && MRB_ENABLE_IRQ == g_tick_manager.vms[i].irq) {
-                        mrb_tick(g_tick_manager.vms[i].mrb);
-                    }else{
-                        //printf("skip tick\n");
-                    }
-                }
-            }
-            xSemaphoreGive(g_tick_manager.mutex);
-        }
-    }
-}
+/***** Constat values *******************************************************/
+/***** Macros ***************************************************************/
+/***** Typedefs *************************************************************/
+/***** Function prototypes **************************************************/
+/***** Local variables ******************************************************/
+#ifndef __EMSCRIPTEN__
+static sigset_t sigset_, sigset2_;
 #endif
 
+#if defined(PICORB_VM_MRUBY)
+static mrb_state *mrb_;
+#elif defined(PICORB_VM_MRUBYC)
+typedef void mrb_state;
+#define mrb_tick(mrb) mrbc_tick()
+#define hal_init(mrb) hal_init()
+#define MRB_TICK_UNIT MRBC_TICK_UNIT
+#endif
+
+/***** Global variables *****************************************************/
+/***** Signal catching functions ********************************************/
+//================================================================
+/*!@brief
+  alarm signal handler
+
+*/
+
+
+/***** Local functions ******************************************************/
 /***** Global functions *****************************************************/
 
 //================================================================
@@ -88,85 +57,72 @@ static void mruby_tick_task(void* arg) {
   initialize
 
 */
-void
-picoruby_hal_init(mrb_state *mrb)
+#ifndef __EMSCRIPTEN__
+static void
+sig_alarm(int dummy)
 {
-  (void)mrb;  // VM registration is deferred to hal_register_vm()
-  // FreeRTOS environment: Multitask-based tick management
-#ifndef PICORUBY_HOST_BUILD
-  ESP_LOGI("hal", "hal_init called (FreeRTOS mode)");
+  (void)dummy;
+  mrb_tick(mrb_);
+}
+#endif
 
-  // First call only: Create mutex and tick task
-  if (!g_tick_manager.task_created) {
-    // Create mutex
-    g_tick_manager.mutex = xSemaphoreCreateMutex();
-    if (g_tick_manager.mutex == NULL) {
-      ESP_LOGE("hal", "Failed to create mutex");
-      return;
-    }
-
-    // Create tick task
-    BaseType_t ret = xTaskCreate(
-        mruby_tick_task,                      // Task function
-        "mruby_tick",                         // Task name
-        2048,                                 // Stack size
-        NULL,                                 // Parameter
-        5,                                    // Priority (medium)
-        &g_tick_manager.tick_task_handle      // Task handle
-    );
-
-    if (ret == pdPASS) {
-      g_tick_manager.task_created = 1;
-      ESP_LOGI("hal", "mruby_tick_task created");
-    } else {
-      ESP_LOGE("hal", "Failed to create mruby_tick_task");
-      vSemaphoreDelete(g_tick_manager.mutex);
-      g_tick_manager.mutex = NULL;
-      return;
-    }
-  }
-
+#if defined(PICORB_VM_MRUBY)
+void
+hal_init(mrb_state *mrb)
+{
+  mrb_ = mrb;
 #else
-  // mrbc build: POSIX sleep only (existing implementation)
-  // No tick management needed
-#endif
-}
-
-
-#ifndef PICORUBY_HOST_BUILD
-//================================================================
-/*!@brief
-  register VM
-
-  Register mrb VM to tick manager. Must be called after mrb_open() succeeds.
-*/
 void
-hal_register_vm(mrb_state *mrb)
+hal_init(void)
 {
-  if (g_tick_manager.mutex == NULL) return;
+#endif
+#ifndef __EMSCRIPTEN__
+  sigemptyset(&sigset_);
+  sigaddset(&sigset_, SIGALRM);
 
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    int added = 0;
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
-      if (!g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].mrb = mrb;
-        g_tick_manager.vms[i].active = 1;
-        g_tick_manager.vms[i].in_c_funcall = MRB_C_FUNCALL_EXIT;
-        g_tick_manager.vms[i].irq = MRB_ENABLE_IRQ;
-        ESP_LOGI("hal", "mrb VM registered at slot %d (mrb=%p)", i, mrb);
-        added = 1;
-        break;
-      }
-    }
+  struct sigaction sa;
+  sa.sa_handler = sig_alarm;
+  sa.sa_flags   = SA_RESTART;
+  sa.sa_mask    = sigset_;
+  sigaction(SIGALRM, &sa, 0);
 
-    if (!added) {
-      ESP_LOGE("hal", "Failed to register mrb VM: list full");
-    }
+  struct itimerval tval;
+  int sec  = 0;
+  int usec = MRB_TICK_UNIT * 1000;
+  tval.it_interval.tv_sec  = sec;
+  tval.it_interval.tv_usec = usec;
+  tval.it_value.tv_sec     = sec;
+  tval.it_value.tv_usec    = usec;
+  setitimer(ITIMER_REAL, &tval, 0);
+#endif
+}
 
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
+#if defined(PICORB_VM_MRUBYC)
+void hal_enable_irq(void)
+{
+#ifndef __EMSCRIPTEN__
+  sigprocmask(SIG_SETMASK, &sigset2_, 0);
+#endif
+}
+
+void hal_disable_irq(void)
+{
+#ifndef __EMSCRIPTEN__
+  sigprocmask(SIG_BLOCK, &sigset_, &sigset2_);
+#endif
+}
+
+void
+hal_idle_cpu(void){
+  sleep(1);
 }
 #endif
+
+int
+hal_write(int fd, const void *buf, int nbytes)
+{
+  return (int)write(1, buf, nbytes);
+}
 
 
 //================================================================
@@ -177,20 +133,8 @@ hal_register_vm(mrb_state *mrb)
 void
 mrb_task_enable_irq(void)
 {
-#ifndef PICORUBY_HOST_BUILD
-  if (g_tick_manager.mutex == NULL) return;
-  fmrb_app_task_context_t* ctx = fmrb_current();
-  mrb_state* mrb = ctx->mrb;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].irq = MRB_ENABLE_IRQ;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
+#ifndef __EMSCRIPTEN__
+  sigprocmask(SIG_SETMASK, &sigset2_, 0);
 #endif
 }
 
@@ -203,134 +147,23 @@ mrb_task_enable_irq(void)
 void
 mrb_task_disable_irq(void)
 {
-#ifndef PICORUBY_HOST_BUILD
-  if (g_tick_manager.mutex == NULL) return;
-  fmrb_app_task_context_t* ctx = fmrb_current();
-  mrb_state* mrb = ctx->mrb;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].irq = MRB_DISABLE_IRQ;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
+#ifndef __EMSCRIPTEN__
+  sigprocmask(SIG_BLOCK, &sigset_, &sigset2_);
 #endif
 }
 
 
-#ifndef PICORUBY_HOST_BUILD
 //================================================================
 /*!@brief
-  deinitialize (FreeRTOS environment only)
+  abort program
 
-  Remove mrb from VM list
 */
 void
-hal_deinit(mrb_state *mrb)
+hal_abort(const char *s)
 {
-  if (g_tick_manager.mutex == NULL) return;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    // Remove mrb from list
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb) {
-        g_tick_manager.vms[i].active = 0;
-        g_tick_manager.vms[i].mrb = NULL;
-        ESP_LOGI("hal", "mrb VM unregistered from slot %d", i);
-        break;
-      }
-    }
-
-    xSemaphoreGive(g_tick_manager.mutex);
+  if (s) {
+    hal_write(1, s, strlen(s));
   }
+  exit(1);
 }
 
-//================================================================
-/*!@brief
-  deinitialize by pool (FreeRTOS environment only)
-
-  Remove any VM whose mrb pointer falls within the given memory pool range.
-  Used when mrb_open() fails after picoruby_hal_init() already registered the VM.
-*/
-void
-hal_deinit_by_pool(void* pool_ptr, size_t pool_size)
-{
-  if (g_tick_manager.mutex == NULL) return;
-
-  uint8_t *start = (uint8_t *)pool_ptr;
-  uint8_t *end = start + pool_size;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
-      if (g_tick_manager.vms[i].active) {
-        uint8_t *p = (uint8_t *)g_tick_manager.vms[i].mrb;
-        if (p >= start && p < end) {
-          g_tick_manager.vms[i].active = 0;
-          g_tick_manager.vms[i].mrb = NULL;
-          ESP_LOGI("hal", "mrb VM unregistered from slot %d (pool cleanup)", i);
-        }
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
-}
-
-//================================================================
-/*!@brief
-  Set in_c_funcall flag for mrb VM
-
-  @param mrb    mruby state
-  @param flag   1=in C->Ruby funcall (skip tick), 0=normal
-*/
-void
-mrb_set_in_c_funcall(mrb_state *mrb, int flag)
-{
-  if (g_tick_manager.mutex == NULL) return;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].in_c_funcall = flag;
-        //ESP_LOGI("hal", "mrb VM slot %d: in_c_funcall=%d", i, flag);
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
-}
-
-#else
-//================================================================
-/*!@brief
-  Set in_c_funcall flag (stub for POSIX/Linux build)
-
-  @param mrb    mruby state
-  @param flag   1=in C->Ruby funcall (skip tick), 0=normal
-*/
-void
-mrb_set_in_c_funcall(mrb_state *mrb, int flag)
-{
-  (void)mrb;
-  (void)flag;
-  // No-op for POSIX build (no tick task in Linux environment)
-}
-
-#endif
-
-
-void
-hal_idle_cpu(mrb_state *mrb)
-{
-  (void)mrb;
-
-#ifndef PICORUBY_HOST_BUILD
-  // FreeRTOS environment: Task switch
-  taskYIELD();
-#else
-  // mrbc build: POSIX sleep
-  usleep(5000);
-#endif
-}

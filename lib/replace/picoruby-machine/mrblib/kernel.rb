@@ -1,4 +1,5 @@
-# Initialize IO streams first, before defining Kernel methods that use them
+# family-mruby: Initialize IO streams before defining Kernel methods that use them.
+# Upstream has 'require io/console' here, but family-mruby uses fmrb-io instead.
 STDIN  = IO.open(0, "r")
 STDOUT = IO.open(1, "w")
 STDERR = IO.open(2, "w")
@@ -7,7 +8,6 @@ $stdin = STDIN
 $stdout = STDOUT
 $stderr = STDERR
 
-# Now define Kernel methods that use $stdout/$stdin
 module Kernel
 
   private
@@ -37,5 +37,9 @@ module Kernel
     return nil if len == 0
     return args[0] if len == 1
     args
+  end
+
+  def exit(status = 0)
+    Machine.exit(status)
   end
 end

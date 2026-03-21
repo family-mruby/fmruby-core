@@ -48,20 +48,33 @@ MRB_BEGIN_DECL
 /***** Global variables *****************************************************/
 /***** Function prototypes **************************************************/
 
-void picoruby_hal_init(mrb_state *mrb);
+void hal_init(mrb_state *mrb);
+/* Avoid conflict with hal_init() from libpp used in ESP-IDF. */
+#ifdef ESP32_PLATFORM
+void machine_hal_init(mrb_state *mrb);
+#define hal_init(mrb) machine_hal_init(mrb)
+#endif
+
 void mrb_task_enable_irq(void);
 void mrb_task_disable_irq(void);
 
 #define hal_enable_irq() mrb_task_enable_irq()
 #define hal_disable_irq() mrb_task_disable_irq()
 
+#if defined(PICORB_PLATFORM_POSIX)
+#define hal_idle_cpu(mrb)    sleep(1) // maybe interrupt by SIGINT
+#else
 void hal_idle_cpu(mrb_state *mrb);
+#endif
 
-int hal_write(int fd, const void *buf, int nbytes);
-int hal_flush(int fd);
-int hal_read_available(void);
-int hal_getchar(void);
-void hal_abort(const char *s);
+/*
+ * HAL functions for mruby-task gem
+ * These are implemented in src/task_hal.c
+ */
+void mrb_hal_task_init(mrb_state *mrb);
+void mrb_hal_task_final(mrb_state *mrb);
+void mrb_hal_task_idle_cpu(mrb_state *mrb);
+void mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec);
 
 
 MRB_END_DECL

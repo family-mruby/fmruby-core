@@ -15,29 +15,39 @@ MRuby::Gem::Specification.new('picoruby-mruby') do |spec|
 
   spec.add_conflict 'picoruby-mrubyc'
 
-  build.cc.include_paths << "#{dir}/include"
-  spec.cc.include_paths << "#{build.gems['mruby-compiler2'].dir}/include"
-  spec.cc.include_paths << "#{build.gems['mruby-compiler2'].dir}/lib/prism/include"
-
-  # Propagate integer size define from build config to gem-level defines.
-  # build_config defines don't automatically propagate to spec.cc.defines,
-  # so we must explicitly copy the MRB_INT setting here.
-  if build.cc.defines.any? { |d| d.start_with?("MRB_INT32") }
-    spec.cc.defines << "MRB_INT32"
+  # Use mruby-task gem instead of src/task.c
+  # NOTE: src/task.c has been moved to deprecated/task.c.bak
+  # Load HAL gem first so mruby-task can find it
+  if build.posix?
+    spec.add_dependency 'hal-posix-task', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/hal-posix-task"
+    # family-mruby: mruby-io is NOT loaded here; picoruby-fmrb-io is used instead
+    # (mruby-io conflicts with picoruby-fmrb-io)
   else
-    spec.cc.defines << "MRB_INT64"
+    spec.add_dependency 'hal-picoruby-task', gemdir: "#{MRUBY_ROOT}/mrbgems/hal-picoruby-task"
   end
+  spec.add_dependency 'mruby-task', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task"
+
+  # I don't know why but removing this causes a problem
+  # even if build_config has the same define
+  spec.cc.defines << "MRB_INT64"
 
   align = build.cc.defines.find{_1.start_with?("PICORB_ALLOC_ALIGN=")}.then do |define|
     define&.split("=")&.last || 4
   end
 
-  if spec.cc.defines.include?("PICORB_ALLOC_O1HEAP")
-    heap_page_size = o1heap_page_size(13)
+  # MRB_BASELINE_PROFILE and MRB_CONSTRAINED_BASELINE_PROFILE define MRB_NO_METHOD_CACHE
+  # and it varies sizeof(mrb_state), so they should be build-wide define.
+  if spec.build.wasm? || spec.build.posix?
+    spec.build.defines << "MRB_BASELINE_PROFILE=1"
   else
-    heap_page_size = 128
+    if spec.cc.defines.include?("PICORB_ALLOC_O1HEAP")
+      heap_page_size = o1heap_page_size(13)
+    else
+      heap_page_size = 128
+    end
+    spec.cc.defines << "MRB_HEAP_PAGE_SIZE=#{heap_page_size}"
+    spec.build.defines << "MRB_CONSTRAINED_BASELINE_PROFILE=1"
   end
-  spec.cc.defines << "MRB_HEAP_PAGE_SIZE=#{heap_page_size}"
 
   if spec.cc.defines.include?("PICORB_ALLOC_TINYALLOC")
     alloc_dir = "#{dir}/lib/tinyalloc"
@@ -56,12 +66,12 @@ MRuby::Gem::Specification.new('picoruby-mruby') do |spec|
         sh "git clone https://github.com/mattconte/tlsf"
       end
     end
-    if spec.cc.defines.any?{ _1.start_with?("PICORUBY_DEBUG") }
+    if spec.cc.defines.any?{ _1.start_with?("PICORB_DEBUG") }
       spec.cc.defines << "_DEBUG"
     end
   elsif spec.cc.defines.include?("PICORB_ALLOC_ESTALLOC")
     spec.cc.defines << "ESTALLOC_ALIGNMENT=#{align}"
-    if spec.cc.defines.any?{ _1.start_with?("PICORUBY_DEBUG") }
+    if spec.cc.defines.any?{ _1.start_with?("PICORB_DEBUG") }
       spec.cc.defines << "ESTALLOC_DEBUG=1"
     end
     alloc_dir = "#{dir}/lib/estalloc"
@@ -83,9 +93,5 @@ MRuby::Gem::Specification.new('picoruby-mruby') do |spec|
     file obj => [file] do |t|
       cc.run t.name, t.prerequisites.first
     end
-  end
-
-  if build.posix?
-    cc.defines << "PICORB_PLATFORM_POSIX"
   end
 end

@@ -1,0 +1,461 @@
+#include "mruby.h"
+#include "mruby/string.h"
+#include "mruby/presym.h"
+#include "mruby/array.h"
+#include "../../include/machine.h"
+#include "../../include/hal.h"
+#include "../../../picoruby-io-console/include/io-console.h"
+
+static inline void
+io_wait_for_input(mrb_state *mrb)
+{
+  Machine_tud_task();
+  mrb_hal_task_idle_cpu(mrb);
+}
+
+static mrb_value
+mrb_s_tud_task(mrb_state *mrb, mrb_value klass)
+{
+  Machine_tud_task();
+  return mrb_nil_value();
+}
+
+static mrb_value
+mrb_s_tud_mounted_p(mrb_state *mrb, mrb_value klass)
+{
+  if (Machine_tud_mounted_q()) {
+    return mrb_true_value();
+  } else {
+    return mrb_false_value();
+  }
+}
+
+static mrb_value
+mrb_s_delay_ms(mrb_state *mrb, mrb_value klass)
+{
+  mrb_int ms;
+  mrb_get_args(mrb, "i", &ms);
+  if (ms < 0) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "delay time must be positive");
+  }
+  Machine_delay_ms((uint32_t)ms);
+  return mrb_fixnum_value(ms);
+}
+
+static mrb_value
+mrb_s_busy_wait_ms(mrb_state *mrb, mrb_value klass)
+{
+  mrb_int ms;
+  mrb_get_args(mrb, "i", &ms);
+  if (ms < 0) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "delay time must be positive");
+  }
+  Machine_busy_wait_ms(ms);
+  return mrb_fixnum_value(ms);
+}
+
+static mrb_value
+mrb_s_sleep(mrb_state *mrb, mrb_value klass)
+{
+  mrb_int sec;
+  mrb_get_args(mrb, "i", &sec);
+  if (sec < 0) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "delay time must be positive");
+  }
+  if (24 * 60 * 60 <= sec) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "sleep length must be less than 24 hours (86400 sec)");
+  } else if (sec < 2) {
+    // Hangs if you attempt to sleep for 1 second.
+    mrb_warn(mrb, "Cannot sleep less than 2 sec\n");
+  } else {
+    mrb_warn(mrb, "Going to sleep %d sec\n", sec);
+    Machine_sleep(sec);
+  }
+  return mrb_fixnum_value(sec);
+}
+
+static mrb_value
+mrb_s_deep_sleep(mrb_state *mrb, mrb_value klass)
+{
+  mrb_notimplement(mrb);
+  // TODO: Implement
+  mrb_int sec;
+  mrb_get_args(mrb, "i", &sec);
+  mrb_warn(mrb, "Going to deep sleep\n");
+  //Machine_deep_sleep(GET_INT_ARG(1), v[2].tt == mrb_TT_TRUE, v[3].tt == mrb_TT_TRUE);
+  return mrb_fixnum_value(0);
+}
+
+static mrb_value
+mrb_s_unique_id(mrb_state *mrb, mrb_value klass)
+{
+  char id[33] = {0};
+  if (Machine_get_unique_id(id)) {
+    mrb_value ret = mrb_str_new_cstr(mrb, (const char *)id);
+    return ret;
+  } else {
+    return mrb_nil_value();
+  }
+}
+
+static mrb_value
+mrb_s_read_memory(mrb_state *mrb, mrb_value klass)
+{
+  mrb_int addr, size;
+  mrb_get_args(mrb, "ii", &addr, &size);
+  return mrb_str_new(mrb, (const char *)(uintptr_t)addr, size);
+}
+
+static mrb_value
+mrb_s_stack_usage(mrb_state *mrb, mrb_value klass)
+{
+  mrb_int usage = Machine_stack_usage();
+  if (0 < usage) {
+    return mrb_fixnum_value(usage);
+  } else {
+    return mrb_nil_value();
+  }
+}
+
+#if !defined(PICORB_PLATFORM_POSIX)
+#include <time.h>
+#endif
+
+static mrb_value
+mrb_s_set_hwclock(mrb_state *mrb, mrb_value self)
+{
+#if defined(PICORB_PLATFORM_POSIX)
+  mrb_notimplement(mrb);
+  return mrb_nil_value();
+#else
+  mrb_int tv_sec;
+  mrb_get_args(mrb, "i", &tv_sec);
+  const struct timespec ts = {
+    .tv_sec = (time_t)tv_sec,
+    .tv_nsec = 0
+  };
+  if (Machine_set_hwclock(&ts)) {
+    return mrb_true_value();
+  } else {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to set hwclock");
+  }
+#endif
+}
+
+static mrb_value
+mrb_s_get_hwclock(mrb_state *mrb, mrb_value self)
+{
+#if defined(PICORB_PLATFORM_POSIX)
+  mrb_notimplement(mrb);
+  return mrb_nil_value();
+#else
+  struct timespec ts = {0};
+  if (Machine_get_hwclock(&ts)) {
+    mrb_value ary = mrb_ary_new_capa(mrb, 2);
+    mrb_ary_set(mrb, ary, 0, mrb_int_value(mrb, (mrb_int)ts.tv_sec));
+    mrb_ary_set(mrb, ary, 1, mrb_int_value(mrb, (mrb_int)ts.tv_nsec));
+    return ary;
+  } else {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to get hwclock");
+  }
+#endif
+}
+
+static mrb_value
+mrb_s_uptime_us(mrb_state *mrb, mrb_value self)
+{
+  return mrb_int_value(mrb, (mrb_int)Machine_uptime_us());
+}
+
+static mrb_value
+mrb_s_board_millis(mrb_state *mrb, mrb_value self)
+{
+  return mrb_int_value(mrb, (mrb_int)(Machine_uptime_us() / 1000));
+}
+
+static mrb_value
+mrb_s_uptime_formatted(mrb_state *mrb, mrb_value self)
+{
+  char buf[20] = {0};
+  Machine_uptime_formatted(buf, sizeof(buf));
+  return mrb_str_new_cstr(mrb, buf);
+}
+
+
+static mrb_noreturn void
+raise_interrupt(mrb_state *mrb)
+{
+  struct RClass *classInterrupt = mrb_class_get_id(mrb, MRB_SYM(Interrupt));
+  mrb_raise(mrb, classInterrupt, "SIGINT");
+}
+
+static mrb_noreturn void
+raise_sigtstp(mrb_state *mrb)
+{
+  struct RClass *class_SignalException = mrb_class_get_id(mrb, MRB_SYM(SignalException));
+  mrb_raise(mrb, class_SignalException, "SIGTSTP");
+}
+
+static mrb_value
+mrb_machine_check_signal(mrb_state *mrb, mrb_value self)
+{
+  io_raw_bang(true);
+  Machine_tud_task();
+  io_cooked_bang();
+  if (sigint_status == MACHINE_SIGINT_RECEIVED) {
+    sigint_status = MACHINE_SIG_NONE;
+    raise_interrupt(mrb);
+  }
+  if (sigint_status == MACHINE_SIGTSTP_RECEIVED) {
+    sigint_status = MACHINE_SIG_NONE;
+    raise_sigtstp(mrb);
+  }
+  return mrb_nil_value();
+}
+
+#if !defined(PICORB_PLATFORM_POSIX)
+static size_t
+print_sub(mrb_state *mrb, mrb_value obj)
+{
+  mrb_value str = mrb_funcall(mrb, obj, "to_s", 0);
+  const char *cstr = RSTRING_PTR(str);
+  size_t len = RSTRING_LEN(str);
+  hal_write(1, cstr, len);
+  return len;
+}
+
+static size_t
+debug_print_sub(mrb_state *mrb, mrb_value obj)
+{
+  mrb_value str = mrb_funcall(mrb, obj, "to_s", 0);
+  const char *cstr = RSTRING_PTR(str);
+  size_t len = RSTRING_LEN(str);
+  hal_write(2, cstr, len);
+  return len;
+}
+
+static mrb_value
+mrb_io_puts(mrb_state *mrb, mrb_value self)
+{
+  mrb_value *argv;
+  mrb_int argc;
+  mrb_get_args(mrb, "*", &argv, &argc);
+  if (argc == 0) {
+    hal_write(1, "\n", 1);
+  } else {
+    int ai = mrb_gc_arena_save(mrb);
+    for (mrb_int i = 0; i < argc; i++) {
+      print_sub(mrb, argv[i]);
+      hal_write(1, "\n", 1);
+    }
+    mrb_gc_arena_restore(mrb, ai);
+  }
+  return mrb_nil_value();
+}
+
+static mrb_value
+mrb_io_print(mrb_state *mrb, mrb_value self)
+{
+  mrb_value *argv;
+  mrb_int argc;
+  int ai = mrb_gc_arena_save(mrb);
+  mrb_get_args(mrb, "*", &argv, &argc);
+  for (mrb_int i = 0; i < argc; i++) {
+    print_sub(mrb, argv[i]);
+  }
+  mrb_gc_arena_restore(mrb, ai);
+  return mrb_nil_value();
+}
+
+static mrb_value
+mrb_io_write(mrb_state *mrb, mrb_value self)
+{
+  mrb_value *argv;
+  mrb_int argc;
+  mrb_get_args(mrb, "*", &argv, &argc);
+  size_t total = 0;
+  for (mrb_int i = 0; i < argc; i++) {
+    total += print_sub(mrb, argv[i]);
+  }
+  return mrb_fixnum_value(total);
+}
+
+static mrb_value
+mrb_io_gets(mrb_state *mrb, mrb_value self)
+{
+  mrb_value str = mrb_str_new(mrb, "", 0);
+  char buf[1];
+  while (true) {
+    int c = hal_getchar();
+    if (c == 3) {
+      raise_interrupt(mrb);
+    } else if (c == 26) {
+      raise_sigtstp(mrb);
+    } else if (c == HAL_GETCHAR_EOF) {
+      if (RSTRING_LEN(str) == 0) {
+        return mrb_nil_value();
+      }
+      break;
+    } else if (0 <= c) {
+      buf[0] = (char)c;
+      mrb_str_cat(mrb, str, buf, 1);
+      if (c == '\n' || c == '\r') {
+        break;
+      }
+    } else {
+      io_wait_for_input(mrb);
+    }
+  }
+  return str;
+}
+
+static mrb_value
+mrb_io_getc(mrb_state *mrb, mrb_value self)
+{
+  mrb_value str = mrb_io_gets(mrb, self);
+  if (1 < RSTRING_LEN(str)) {
+    mrb_str_resize(mrb, str, 1);
+  }
+  return str;
+}
+
+static mrb_value
+mrb_io_read(mrb_state *mrb, mrb_value self)
+{
+  mrb_int len = -1;
+  mrb_get_args(mrb, "|i", &len);
+  if (len == 0) {
+    return mrb_str_new(mrb, "", 0);
+  }
+  if (0 < len) {
+    /* Read exactly len bytes (or until EOF) */
+    mrb_value str = mrb_str_new(mrb, NULL, len);
+    char *buf = RSTRING_PTR(str);
+    mrb_int i;
+    for (i = 0; i < len; ) {
+      int c = hal_getchar();
+      if (c == 3) {
+        raise_interrupt(mrb);
+      } else if (c == 26) {
+        raise_sigtstp(mrb);
+      } else if (c == HAL_GETCHAR_EOF) {
+        break;
+      } else if (0 <= c) {
+        buf[i++] = (char)c;
+      } else {
+        io_wait_for_input(mrb);
+      }
+    }
+    if (i < len) {
+      mrb_str_resize(mrb, str, i);
+    }
+    return str;
+  }
+  /* No argument (or negative): read until EOF */
+  mrb_value str = mrb_str_new(mrb, "", 0);
+  char buf[1];
+  while (true) {
+    int c = hal_getchar();
+    if (c == 3) {
+      raise_interrupt(mrb);
+    } else if (c == 26) {
+      raise_sigtstp(mrb);
+    } else if (c == HAL_GETCHAR_EOF) {
+      break;
+    } else if (0 <= c) {
+      buf[0] = (char)c;
+      mrb_str_cat(mrb, str, buf, 1);
+    } else {
+      io_wait_for_input(mrb);
+    }
+  }
+  return str;
+}
+#endif
+
+#if !defined(PICORB_PLATFORM_POSIX)
+static mrb_value
+mrb_s_debug_puts(mrb_state *mrb, mrb_value self)
+{
+  mrb_value *argv;
+  mrb_int argc;
+  mrb_get_args(mrb, "*", &argv, &argc);
+  if (argc == 0) {
+    hal_write(2, "\n", 1);
+  } else {
+    int ai = mrb_gc_arena_save(mrb);
+    for (mrb_int i = 0; i < argc; i++) {
+      debug_print_sub(mrb, argv[i]);
+      hal_write(2, "\n", 1);
+    }
+    mrb_gc_arena_restore(mrb, ai);
+  }
+  return mrb_nil_value();
+}
+#endif
+
+static mrb_value
+mrb_s_exit(mrb_state *mrb, mrb_value self)
+{
+  mrb_int status = 0;
+  mrb_get_args(mrb, "|i", &status);
+  Machine_exit(status);
+  return mrb_nil_value();
+}
+
+static mrb_value
+mrb_s__reboot(mrb_state *mrb, mrb_value self)
+{
+#if defined(PICORB_PLATFORM_POSIX)
+  Machine_reboot();
+#else
+  mrb_raise(mrb, E_NOTIMP_ERROR, "Machine._reboot is not supported on this platform");
+#endif
+  return mrb_nil_value();
+}
+
+void
+mrb_picoruby_machine_gem_init(mrb_state* mrb)
+{
+  mrb_define_class_id(mrb, MRB_SYM(IOError), E_STANDARD_ERROR);
+
+  struct RClass *module_Machine = mrb_define_module_id(mrb, MRB_SYM(Machine));
+
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(tud_task), mrb_s_tud_task, MRB_ARGS_NONE());
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM_Q(tud_mounted), mrb_s_tud_mounted_p, MRB_ARGS_NONE());
+
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(delay_ms), mrb_s_delay_ms, MRB_ARGS_REQ(1));
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(busy_wait_ms), mrb_s_busy_wait_ms, MRB_ARGS_REQ(1));
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(sleep), mrb_s_sleep, MRB_ARGS_REQ(1));
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(deep_sleep), mrb_s_deep_sleep, MRB_ARGS_REQ(3));
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(unique_id), mrb_s_unique_id, MRB_ARGS_NONE());
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(read_memory), mrb_s_read_memory, MRB_ARGS_REQ(2));
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(stack_usage), mrb_s_stack_usage, MRB_ARGS_NONE());
+
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(set_hwclock), mrb_s_set_hwclock, MRB_ARGS_REQ(1));
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(get_hwclock), mrb_s_get_hwclock, MRB_ARGS_NONE());
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(uptime_us), mrb_s_uptime_us, MRB_ARGS_NONE());
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(board_millis), mrb_s_board_millis, MRB_ARGS_NONE());
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(uptime_formatted), mrb_s_uptime_formatted, MRB_ARGS_NONE());
+
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(exit), mrb_s_exit, MRB_ARGS_OPT(1));
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(_reboot), mrb_s__reboot, MRB_ARGS_NONE());
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(check_signal), mrb_machine_check_signal, MRB_ARGS_NONE());
+
+#if !defined(PICORB_PLATFORM_POSIX)
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(debug_puts), mrb_s_debug_puts, MRB_ARGS_ANY());
+
+  struct RClass *class_IO = mrb_define_class_id(mrb, MRB_SYM(IO), mrb->object_class);
+  mrb_define_method_id(mrb, class_IO, MRB_SYM(puts), mrb_io_puts, MRB_ARGS_ANY());
+  mrb_define_method_id(mrb, class_IO, MRB_SYM(print), mrb_io_print, MRB_ARGS_ANY());
+  mrb_define_method_id(mrb, class_IO, MRB_SYM(write), mrb_io_write, MRB_ARGS_ANY());
+  mrb_define_method_id(mrb, class_IO, MRB_SYM(read), mrb_io_read, MRB_ARGS_OPT(1));
+  mrb_define_method_id(mrb, class_IO, MRB_SYM(gets), mrb_io_gets, MRB_ARGS_NONE());
+  mrb_define_method_id(mrb, class_IO, MRB_SYM(getc), mrb_io_getc, MRB_ARGS_NONE());
+#endif
+}
+
+void
+mrb_picoruby_machine_gem_final(mrb_state* mrb)
+{
+}
