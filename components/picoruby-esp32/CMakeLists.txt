@@ -61,7 +61,7 @@ if(IDF_TARGET STREQUAL "linux")
         ${FMRB_FILESYSTEM_PORTS_SRCS}
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/hal.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32_linux/hal_freertos.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/posix/rng.c
     )
