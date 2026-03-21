@@ -105,15 +105,9 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
                 break;
             }
 
-            // Execute msg_handler synchronously with scheduler_lock.
-            // This prevents task switching during message dispatch, avoiding CI stack leaks.
-            {
-                mrb_value method = mrb_funcall(mrb, self, "method", 1,
-                                               mrb_symbol_value(mrb_intern_cstr(mrb, "msg_handler")));
-                mrb_value proc = mrb_funcall(mrb, method, "to_proc", 0);
-                mrb_value argv[1] = { hash };
-                mrb_execute_proc_synchronously(mrb, proc, 1, argv);
-            }
+            // Execute msg_handler directly.
+            // Note: Object#method is not available in mruby (CRuby-only).
+            mrb_funcall(mrb, self, "msg_handler", 1, hash);
 
             // Check for exception
             if (mrb->exc) {

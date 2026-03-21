@@ -334,15 +334,9 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
         goto cleanup;
     }
 
-    // Execute on_event synchronously with scheduler_lock.
-    // This prevents task switching during event dispatch, avoiding CI stack leaks.
-    {
-        mrb_value on_event_method = mrb_funcall(mrb, self, "method", 1,
-                                                 mrb_symbol_value(mrb_intern_cstr(mrb, "on_event")));
-        mrb_value on_event_proc = mrb_funcall(mrb, on_event_method, "to_proc", 0);
-        mrb_value argv[1] = { event_hash };
-        mrb_execute_proc_synchronously(mrb, on_event_proc, 1, argv);
-    }
+    // Execute on_event directly.
+    // Note: Object#method is not available in mruby (CRuby-only).
+    mrb_funcall(mrb, self, "on_event", 1, event_hash);
 
     #if 0
     FMRB_LOGI(TAG, "=== AFTER mrb_funcall ===");
