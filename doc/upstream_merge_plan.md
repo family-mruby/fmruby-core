@@ -18,7 +18,7 @@ components/picoruby-esp32/picoruby サブモジュールを最新版に更新し
 3. **C function境界チェック**: sleepがC関数内で呼ばれた場合のフォールバック
 4. **保守性**: 上流の改善を継続的に取り込める
 
-参照: `/home/kishima/fmrb/investigate/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c`
+参照: `/home/kishima/fmrb/family-mruby/fmruby-core/tmp/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c`
 
 ## 実行計画
 
@@ -317,3 +317,104 @@ git log --oneline --all -- lib/replace/picoruby-machine/ports/esp32/hal.c
 - 本流task.cとの差分確認(1573行 vs 967行)
 - HALマルチVM実装の問題点特定
 - 引き継ぎドキュメント作成
+
+### 2026-03-21 Step 2: サブモジュール更新前の準備 調査結果
+
+#### 2.1 現在のサブモジュール状態
+
+```
+components/picoruby-esp32/picoruby: 0f47b6bb (3.0.1-1630-g0f47b6bb)
+  最新コミット: "Fix RBS"
+```
+
+他のサブモジュール:
+- esp_littlefs: 8964c59a (v1.20.1)
+- lua: 6e22fedb (v5.4-beta-336-g6e22fedb)
+- tlsf: deff9ab5 (heads/master)
+- msgpack-c: 8792f42f (cpp-1.3.0-445-g8792f42f)
+- microtar: 27076e1b (v0.1.0-2-g27076e1)
+- tomlc99: 26b9c1ea
+
+#### 2.2 本流の最新状態 (tmp/picoruby)
+
+- 最新コミット: `c14aa44` "Fix PICORB_ROOt -> PICORUBY_ROOT" (master)
+- ブランチ: master のみ (+ origin/master)
+- リモート: https://github.com/picoruby/picoruby.git
+
+本流の最近のトピック (サブモジュール版 0f47b6bb 以降):
+- マクロリネーム: PICORUBY_hoge -> PICORB_hoge
+- mruby/c サポート追加
+- PSG (Programmable Sound Generator) サポート
+- PIO (Programmable I/O) モジュール
+- Regexp (regex_light) 実装
+- ネットワーク関連 (net/ntp等)
+- メモリチューニング
+- ビルドリファクタリング
+
+#### 2.3 重要機能の存在確認
+
+本流 (tmp/picoruby) に以下の機能が **存在することを確認**:
+
+##### scheduler_lock
+- 定義: `mruby.h:259` - `mrb_task_state` 構造体内の `uint8_t scheduler_lock` フィールド
+- 最大値: `MRB_TASK_SCHEDULER_LOCK_MAX = 255` (task.c:52)
+- チェック関数: `task_check_scheduler_lock()` (task.c:56-61)
+- 使用箇所: `mrb_task_suspend`, `mrb_task_resume`, `mrb_task_terminate`, `mrb_create_task` 等の全非同期API
+
+##### mrb_execute_proc_synchronously()
+- 定義: task.c:1130 / task.h:123
+- scheduler_lockをインクリメントして一時タスクを作成し、同期的に実行後にロック解除
+- 主な利用者: picoruby-wasm (js.c, debugger.c)
+- **注意**: 現在のargc/argvは未使用 (将来の拡張用)
+
+##### task_hal.h (新HALインターフェース)
+- `mrb_hal_task_init(mrb_state *mrb)` - VM登録含む初期化
+- `mrb_hal_task_final(mrb_state *mrb)` - VM登録解除含むクリーンアップ
+- `mrb_task_enable_irq()` / `mrb_task_disable_irq()` - 割り込み制御
+- `mrb_hal_task_idle_cpu(mrb_state *mrb)` - アイドル処理
+- `mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec)` - 実時間スリープ
+- `MRB_TASK_MAX_VMS = 8` - マルチVM対応が **本流で公式サポート**
+
+##### POSIX HAL参考実装 (hal-posix-task/src/task_hal.c)
+- `vm_list[MRB_TASK_MAX_VMS]` で複数VM管理
+- `sigalrm_handler()` で全登録VMにtickを送信
+- family-mrubyのESP32 HALとアーキテクチャが類似
+
+#### 2.4 本流と現状の差異分析
+
+##### task構造体の変更
+- 旧: `mrb_tcb` (family-mruby) -> 新: `mrb_task` (本流)
+- 新task構造体はメモリ最適化済み (union使用で約18バイト/タスク削減)
+- `mrb_context c` がインラインメンバとして含まれる
+
+##### HALインターフェースの変更
+- 旧: `hal_init()` / `hal_register_vm()` / `hal_deinit()` (family-mruby独自)
+- 新: `mrb_hal_task_init()` / `mrb_hal_task_final()` + `mrb_hal_task_idle_cpu()` / `mrb_hal_task_sleep_us()`
+- 本流にはESP32/FreeRTOS用HAL実装は **存在しない** -> family-mrubyで新規作成が必要
+
+##### irq制御の変更
+- `mrb_task_enable_irq()` / `mrb_task_disable_irq()` は本流でも同名
+- family-mruby現状: VM単位のirqフラグ管理 (g_tick_manager内)
+- 本流POSIX実装: sigprocmaskベース (プロセス全体)
+
+##### in_c_funcall の扱い
+- family-mruby現状: `mrb_set_in_c_funcall()` でVM単位のフラグ管理
+- 本流: `scheduler_lock` で代替可能 -> `mrb_set_in_c_funcall()` は不要になる
+
+#### 2.5 ESP32用HAL実装の方針 (案)
+
+本流にはESP32用task HALがないため、`hal-posix-task/src/task_hal.c` を参考に
+FreeRTOS版を新規作成する必要がある。
+
+主要な設計判断:
+1. **tick配信**: FreeRTOSタスクから全VMにmrb_tick()を呼ぶ方式を継続
+   - 本流POSIX版もSIGALRMハンドラから全VMにtickを送信しており、同じアーキテクチャ
+2. **レースコンディション対策**: `scheduler_lock` を活用
+   - イベントディスパッチ時は `mrb_execute_proc_synchronously()` を使用
+   - `mrb_set_in_c_funcall()` は廃止可能
+3. **irq制御**: FreeRTOS critical section ベースに変更
+   - VM単位のirqフラグ管理から、FreeRTOSのtaskENTER_CRITICAL / taskEXIT_CRITICAL へ
+
+必要な実装ファイル:
+- `hal-esp32-task/src/task_hal.c` (新規) - ESP32/FreeRTOS用task HAL実装
+- `lib/replace/picoruby-machine/ports/esp32/hal.c` の修正 - 新HAL IFに対応

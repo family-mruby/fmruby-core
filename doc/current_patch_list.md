@@ -193,7 +193,7 @@ lib/patch/esp_littlefs/
 $ wc -l lib/patch/picoruby-mruby/src/task.c
 967 lib/patch/picoruby-mruby/src/task.c
 
-$ wc -l /home/kishima/fmrb/investigate/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c
+$ wc -l /home/kishima/fmrb/family-mruby/fmruby-core/tmp/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c
 1573 /home/kishima/fmrb/investigate/picoruby/.../task.c
 
 # 本流の方が606行多い (scheduler_lock, mrb_execute_proc_synchronously等の実装)
@@ -208,7 +208,7 @@ git log --oneline --all -- lib/patch/picoruby-mruby/src/task.c
 git log --oneline --all -- lib/replace/picoruby-machine/ports/esp32/hal.c
 
 # 本流の最新状態
-cd /home/kishima/fmrb/investigate/picoruby
+cd /home/kishima/fmrb/family-mruby/fmruby-core/tmp/picoruby
 git log --oneline -20 mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c
 ```
 

@@ -1,4 +1,4 @@
-/home/kishima/fmrb/family-mruby/fmruby-core/doc/ に以下の3つのドキュメントがあります:
+family-mruby/fmruby-core/doc/ に以下の3つのドキュメントがあります:
 
 1. upstream_merge_plan.md - 本流PicoRuby統合の全体計画
 2. current_patch_list.md - 現在適用中のパッチ一覧
@@ -17,3 +17,5 @@ upstream_merge_plan.md の "Step 2: サブモジュール更新前の準備" か
 1. 現在のサブモジュール状態確認とバックアップ
 2. 本流の最新コミット調査
 3. scheduler_lock等の機能がいつ追加されたか調査
+
+最新のpicoruby：/home/kishima/fmrb/family-mruby/fmruby-core/tmp/picoruby
