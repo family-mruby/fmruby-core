@@ -233,10 +233,16 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
     }
 
     // Set socket timeout
-    struct timeval tv;
-    tv.tv_sec = timeout_ms / 1000;
-    tv.tv_usec = (timeout_ms % 1000) * 1000;
-    setsockopt(global_socket_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    // On Linux, SO_RCVTIMEO={0,0} means no timeout (blocking), so use MSG_DONTWAIT for non-blocking
+    int recv_flags = 0;
+    if (timeout_ms == 0) {
+        recv_flags = MSG_DONTWAIT;
+    } else {
+        struct timeval tv;
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        setsockopt(global_socket_fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
+    }
 
     // Static receive buffer for COBS frames
     static uint8_t recv_buffer[4096];
@@ -245,7 +251,7 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
     // Only call recv() if buffer is empty or doesn't contain complete frame
     if (recv_pos == 0) {
         // Try to receive data
-        ssize_t received = recv(global_socket_fd, recv_buffer + recv_pos, sizeof(recv_buffer) - recv_pos, 0);
+        ssize_t received = recv(global_socket_fd, recv_buffer + recv_pos, sizeof(recv_buffer) - recv_pos, recv_flags);
         if (received <= 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return FMRB_ERR_TIMEOUT;

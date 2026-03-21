@@ -398,6 +398,7 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t link_type,
     // Send message
     fmrb_err_t ret = send_raw_message(link_type, seq, sub_cmd, payload, payload_len, timeout_ms);
     if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "send_sync: send_raw_message failed: %d (seq=%u)", ret, sequence);
         // Mark slot as inactive on send failure
         fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
         req->active = false;
@@ -407,7 +408,11 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t link_type,
 
     // Wait for response
     fmrb_tick_t ticks = (timeout_ms == UINT32_MAX) ? FMRB_TICK_MAX : FMRB_MS_TO_TICKS(timeout_ms);
+    FMRB_LOGI(TAG, "send_sync: waiting for response seq=%u (ticks=%u, timeout_ms=%u)",
+              sequence, (unsigned)ticks, (unsigned)timeout_ms);
     fmrb_base_type_t wait_result = fmrb_semaphore_take(req->wait_sem, ticks);
+    FMRB_LOGI(TAG, "send_sync: wait returned: result=%d, response_received=%d (seq=%u)",
+              (int)wait_result, req->response_received, sequence);
 
     fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
 
@@ -415,7 +420,7 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t link_type,
         // Timeout
         req->active = false;
         fmrb_semaphore_give(ctx->sync_mutex);
-        FMRB_LOGW(TAG, "Sync send timeout for seq=%u", sequence);
+        FMRB_LOGW(TAG, "Sync send timeout for seq=%u (wait_result=%d)", sequence, (int)wait_result);
         return FMRB_ERR_TIMEOUT;
     }
 
