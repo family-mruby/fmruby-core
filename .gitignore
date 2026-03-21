@@ -27,3 +27,6 @@ host/sdl2/cmake_install.cmake
 host/sdl2/fmrb_host_sdl2
 
 tmp/
+
+# Backup files
+lib/*.backup.*

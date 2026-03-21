@@ -418,3 +418,31 @@ FreeRTOS版を新規作成する必要がある。
 必要な実装ファイル:
 - `hal-esp32-task/src/task_hal.c` (新規) - ESP32/FreeRTOS用task HAL実装
 - `lib/replace/picoruby-machine/ports/esp32/hal.c` の修正 - 新HAL IFに対応
+
+#### 2.6 本流マルチVM対応によるパッチ削減分析
+
+本流が `task_hal.h` でマルチVMを公式サポートしたことにより、
+family-mruby独自パッチの一部が不要になる。
+
+##### 不要になるもの
+
+| パッチ/実装 | 理由 |
+|-------------|------|
+| `g_tick_manager` のVM登録管理ロジック | 本流 `task_hal.h` が `MRB_TASK_MAX_VMS` で同等の仕組みを提供 |
+| `mrb_set_in_c_funcall()` + `in_c_funcall` フラグ | `scheduler_lock` で代替可能 |
+| `hal_register_vm()` / `hal_deinit()` | `mrb_hal_task_init()` / `mrb_hal_task_final()` が同等の役割 |
+| VM単位の `irq` フラグ管理 | 本流の `mrb_task_enable_irq()` / `mrb_task_disable_irq()` で対応 |
+
+##### 引き続き必要なもの
+
+| 実装 | 理由 |
+|------|------|
+| FreeRTOSタスクによるtick配信 (`mruby_tick_task`) | 本流にESP32/FreeRTOS用HALがない。ESP32版task HALとして新規作成が必要 |
+| `hal_deinit_by_pool()` | メモリプール単位のVM解除はfamily-mruby固有の要件 |
+| `hal_write` / `hal_getchar` 等のI/O関数 | プラットフォーム固有 |
+
+##### 結論
+
+現在の `lib/replace/picoruby-machine/ports/esp32/hal.c` は丸ごと置き換えではなく、
+本流の `task_hal.h` インターフェースに沿ったESP32用task HALとして書き直す形になる。
+独自のVM管理コードの大部分は本流の設計に乗せられるため、パッチの「独自度」が大幅に下がる。
