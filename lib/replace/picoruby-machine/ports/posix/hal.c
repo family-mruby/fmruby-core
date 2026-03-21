@@ -153,3 +153,11 @@ void hal_deinit_by_pool(void *pool_ptr, size_t pool_size) { (void)pool_ptr; (voi
 void mrb_set_in_c_funcall(mrb_state *mrb, int flag) { (void)mrb; (void)flag; }
 #endif
 
+/*
+ * Prism allocator mutex (used by prism_alloc.c via extern)
+ */
+#include <pthread.h>
+static pthread_mutex_t s_prism_mutex = PTHREAD_MUTEX_INITIALIZER;
+void fmrb_prism_lock(void)   { pthread_mutex_lock(&s_prism_mutex); }
+void fmrb_prism_unlock(void) { pthread_mutex_unlock(&s_prism_mutex); }
+

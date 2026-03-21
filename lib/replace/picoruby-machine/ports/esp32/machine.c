@@ -301,6 +301,20 @@ mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec)
 
 #endif /* PICORB_VM_MRUBY */
 
+/*
+ * Prism allocator mutex (used by prism_alloc.c via extern)
+ */
+static SemaphoreHandle_t s_prism_mutex = NULL;
+void fmrb_prism_lock(void)
+{
+  if (s_prism_mutex == NULL) s_prism_mutex = xSemaphoreCreateMutex();
+  xSemaphoreTake(s_prism_mutex, portMAX_DELAY);
+}
+void fmrb_prism_unlock(void)
+{
+  if (s_prism_mutex != NULL) xSemaphoreGive(s_prism_mutex);
+}
+
 int
 hal_write(int fd, const void *buf, int nbytes)
 {

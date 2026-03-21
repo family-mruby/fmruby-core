@@ -35,18 +35,15 @@ static ESTALLOC *prism_est = NULL;
   /* Target build: pool from fmrb_mempool.c */
   extern unsigned char g_prism_memory_pool[];
 
-  #if defined(PICORB_PLATFORM_POSIX)
-    #include <pthread.h>
-    static pthread_mutex_t prism_mutex = PTHREAD_MUTEX_INITIALIZER;
-    #define PRISM_LOCK()   pthread_mutex_lock(&prism_mutex)
-    #define PRISM_UNLOCK() pthread_mutex_unlock(&prism_mutex)
-  #else
-    /* ESP32: no mutex needed here.
-     * Compilation is called via mrb_execute_proc_synchronously() which holds
-     * scheduler_lock, preventing concurrent access to the prism pool. */
-    #define PRISM_LOCK()
-    #define PRISM_UNLOCK()
-  #endif
+  /*
+   * Platform-specific mutex for thread safety.
+   * Implemented in ports/ code (compiled by CMakeLists.txt which has
+   * access to platform headers like FreeRTOS or pthread).
+   */
+  extern void fmrb_prism_lock(void);
+  extern void fmrb_prism_unlock(void);
+  #define PRISM_LOCK()   fmrb_prism_lock()
+  #define PRISM_UNLOCK() fmrb_prism_unlock()
 #endif
 
 static void
