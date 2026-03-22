@@ -19,6 +19,8 @@
 
 static const char *TAG = "host";
 
+static bool g_cursor_shown = false;
+
 // Host message types
 typedef enum {
     HOST_MSG_HID_KEY_DOWN = 1,
@@ -406,6 +408,12 @@ static void host_task_process_host_message(const host_message_t *msg)
 
             fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
             if (gfx_ctx) {
+                // Show cursor on first mouse event
+                if (!g_cursor_shown) {
+                    g_cursor_shown = true;
+                    fmrb_gfx_set_cursor_visible(gfx_ctx, true);
+                    FMRB_LOGI(TAG, "Cursor made visible on first mouse event");
+                }
                 fmrb_gfx_err_t gfx_ret = fmrb_gfx_set_cursor_position(gfx_ctx, x, y);
                 if (gfx_ret != FMRB_GFX_OK) {
                     FMRB_LOGW(TAG, "Failed to set cursor position: %d", gfx_ret);

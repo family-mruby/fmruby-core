@@ -494,6 +494,58 @@ static bool ensure_screen_size(void)
     return false;
 }
 
+// Auto-detect Report Protocol format for boot mice that didn't get SET_PROTOCOL.
+// When boot layout (3-byte, no report ID) is set but actual reports are longer
+// and start with a constant byte matching the mouse protocol ID (0x02),
+// reconfigure to Report Protocol layout with 12-bit X/Y packing.
+static void auto_detect_mouse_report_format(hid_device_info_t *device, const uint8_t *data, size_t len)
+{
+    hid_mouse_report_layout_t *layout = &device->report_layout;
+
+    // Only auto-detect for boot layout (no report ID, 3-byte report)
+    if (layout->has_report_id || layout->report_byte_len != 3) {
+        return;
+    }
+
+    // If report is longer than boot format and starts with 0x02 (mouse report ID),
+    // switch to Report Protocol format
+    if (len >= 6 && data[0] == 0x02) {
+        int slot_index = (int)(device - g_hid_devices);
+        FMRB_LOGI(TAG, "Auto-detected Report Protocol format for slot %d (report_id=0x%02X, len=%d)",
+                  slot_index, data[0], (int)len);
+
+        layout->has_report_id = true;
+        layout->report_id = 0x02;
+        // After stripping report ID:
+        // Byte 0: Buttons (8 bits)
+        // Byte 1: Reserved
+        // Byte 2: X[7:0]
+        // Byte 3: Y[3:0]<<4 | X[11:8]
+        // Byte 4: Y[11:4]
+        layout->buttons.bit_offset = 0;
+        layout->buttons.bit_size = 8;
+        layout->buttons.found = true;
+        layout->x.bit_offset = 16;  // byte 2
+        layout->x.bit_size = 12;    // 12-bit signed
+        layout->x.logical_min = -2048;
+        layout->x.logical_max = 2047;
+        layout->x.is_relative = true;
+        layout->x.found = true;
+        layout->y.bit_offset = 28;  // byte 3 high nibble + byte 4
+        layout->y.bit_size = 12;    // 12-bit signed
+        layout->y.logical_min = -2048;
+        layout->y.logical_max = 2047;
+        layout->y.is_relative = true;
+        layout->y.found = true;
+        layout->report_byte_len = 7;  // 7 bytes after report ID
+        device->report_copy_len = 8;
+
+        FMRB_LOGI(TAG, "  X: offset=%d size=%d, Y: offset=%d size=%d",
+                  layout->x.bit_offset, layout->x.bit_size,
+                  layout->y.bit_offset, layout->y.bit_size);
+    }
+}
+
 static void process_mouse_report(hid_device_info_t *device, const uint8_t *data, size_t len)
 {
     hid_mouse_report_layout_t *layout = &device->report_layout;
@@ -505,6 +557,9 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         return;
     }
 
+    // Auto-detect format mismatch on first reports
+    auto_detect_mouse_report_format(device, data, len);
+
     // Dump raw report for debugging
     {
         int slot_index = (int)(device - g_hid_devices);
@@ -514,7 +569,12 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         for (int i = 0; i < dump_len && pos < (int)sizeof(hex) - 3; i++) {
             pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", data[i]);
         }
-        FMRB_LOGD(TAG, "Mouse report slot=%d len=%d: %s", slot_index, (int)len, hex);
+        // Temporarily use INFO level to diagnose report format
+        static int mouse_log_count = 0;
+        if (mouse_log_count < 20) {
+            FMRB_LOGI(TAG, "Mouse report slot=%d len=%d: %s", slot_index, (int)len, hex);
+            mouse_log_count++;
+        }
     }
 
     // Skip Report ID byte if present
@@ -535,8 +595,14 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
     int32_t raw_x = hid_report_extract_field(report_data, report_len, &layout->x);
     int32_t raw_y = hid_report_extract_field(report_data, report_len, &layout->y);
 
-    FMRB_LOGD(TAG, "  extracted: buttons=0x%02X raw_x=%"PRId32" raw_y=%"PRId32" %s",
-              buttons, raw_x, raw_y, layout->x.is_relative ? "rel" : "abs");
+    {
+        static int extract_log_count = 0;
+        if (extract_log_count < 20) {
+            FMRB_LOGI(TAG, "  extracted: buttons=0x%02X raw_x=%"PRId32" raw_y=%"PRId32" %s",
+                      buttons, raw_x, raw_y, layout->x.is_relative ? "rel" : "abs");
+            extract_log_count++;
+        }
+    }
 
     if (layout->x.is_relative) {
         // Relative coordinate device
@@ -806,7 +872,35 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
             if (hid_host_get_device_info(hid_device_handle, &dev_info) == ESP_OK) {
                 vid = dev_info.VID;
                 pid = dev_info.PID;
-                FMRB_LOGI(TAG, "HID Device Connected - VID: 0x%04X, PID: 0x%04X", vid, pid);
+                FMRB_LOGI(TAG, "========================================");
+                FMRB_LOGI(TAG, "HID Device Connected");
+                FMRB_LOGI(TAG, "  VID: 0x%04X  PID: 0x%04X", vid, pid);
+                // Print manufacturer string (wchar_t -> ASCII for logging)
+                char str_buf[64];
+                if (dev_info.iManufacturer[0] != 0) {
+                    int j = 0;
+                    for (int i = 0; i < HID_STR_DESC_MAX_LENGTH && dev_info.iManufacturer[i] != 0 && j < 62; i++) {
+                        str_buf[j++] = (char)(dev_info.iManufacturer[i] & 0x7F);
+                    }
+                    str_buf[j] = '\0';
+                    FMRB_LOGI(TAG, "  Manufacturer: %s", str_buf);
+                }
+                if (dev_info.iProduct[0] != 0) {
+                    int j = 0;
+                    for (int i = 0; i < HID_STR_DESC_MAX_LENGTH && dev_info.iProduct[i] != 0 && j < 62; i++) {
+                        str_buf[j++] = (char)(dev_info.iProduct[i] & 0x7F);
+                    }
+                    str_buf[j] = '\0';
+                    FMRB_LOGI(TAG, "  Product:      %s", str_buf);
+                }
+                if (dev_info.iSerialNumber[0] != 0) {
+                    int j = 0;
+                    for (int i = 0; i < HID_STR_DESC_MAX_LENGTH && dev_info.iSerialNumber[i] != 0 && j < 62; i++) {
+                        str_buf[j++] = (char)(dev_info.iSerialNumber[i] & 0x7F);
+                    }
+                    str_buf[j] = '\0';
+                    FMRB_LOGI(TAG, "  Serial:       %s", str_buf);
+                }
             }
 
             hid_host_dev_params_t dev_params;
@@ -818,8 +912,10 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
             if (hid_host_device_get_params(hid_device_handle, &dev_params) == ESP_OK) {
                 proto = dev_params.proto;
                 const char* proto_name = "Unknown";
+                const char* sub_class_name = "None";
                 if (dev_params.sub_class == HID_SUBCLASS_BOOT_INTERFACE) {
                     is_boot_device = true;
+                    sub_class_name = "Boot Interface";
                     if (proto == HID_PROTOCOL_KEYBOARD) {
                         proto_name = "Keyboard";
                     } else if (proto == HID_PROTOCOL_MOUSE) {
@@ -827,12 +923,19 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
                     }
                 } else if (is_gamepad) {
                     proto_name = "Gamepad";
+                    sub_class_name = "Vendor Specific";
                     proto = HID_PROTOCOL_GAMEPAD;
                 } else {
-                    proto_name = "Non-Boot";
+                    proto_name = "Non-Boot HID";
+                    sub_class_name = (dev_params.sub_class == 0) ? "No SubClass" : "Unknown";
                     is_nonboot_candidate = true;
                 }
-                FMRB_LOGI(TAG, "  Protocol: %s (sub_class=%d, proto=%d)", proto_name, dev_params.sub_class, proto);
+                FMRB_LOGI(TAG, "  USB Addr:     %d", dev_params.addr);
+                FMRB_LOGI(TAG, "  Interface:    %d", dev_params.iface_num);
+                FMRB_LOGI(TAG, "  SubClass:     %s (%d)", sub_class_name, dev_params.sub_class);
+                FMRB_LOGI(TAG, "  Protocol:     %s (%d)", proto_name, proto);
+                FMRB_LOGI(TAG, "  Boot Device:  %s", is_boot_device ? "YES" : "NO");
+                FMRB_LOGI(TAG, "========================================");
             }
 
             // Non-Boot, non-Gamepad devices: accept tentatively as mouse
@@ -965,31 +1068,74 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
                 break;
             }
 
-            // Protocol setup for Boot devices (keyboard + mouse)
-            if (is_boot_device && (proto == HID_PROTOCOL_KEYBOARD || proto == HID_PROTOCOL_MOUSE)) {
+            // Protocol setup for Boot and Non-Boot devices
+            // We skip SET_PROTOCOL to avoid control transfer timeouts that can
+            // corrupt the USB endpoint state. Instead, the device stays in Report
+            // Protocol mode and we parse the HID report descriptor to understand
+            // the actual report format.
+            if (is_boot_device && proto == HID_PROTOCOL_KEYBOARD) {
+                // Boot keyboard: no layout needed, parsed directly as 8-byte boot format.
+                FMRB_LOGI(TAG, "Boot keyboard ready for slot %d (no SET_PROTOCOL)", slot_index);
+            } else if (is_boot_device && proto == HID_PROTOCOL_MOUSE) {
+                // Boot mouse: apply boot layout directly.
+                // We skip both SET_PROTOCOL and descriptor fetch to avoid control
+                // transfer timeouts that corrupt the USB endpoint state.
+                // Boot devices in Report Protocol mode may send data with a report ID,
+                // but many boot mice also work with the standard 3-byte boot format.
+                // If the device uses a different format, the user should use a device
+                // that supports boot protocol properly or use a non-boot mouse.
                 if (is_control_transfer_broken(vid, pid)) {
-                    // Known device with broken control transfers
-                    if (proto == HID_PROTOCOL_MOUSE) {
-                        // Use hardcoded fallback layout (no SET_PROTOCOL possible)
-                        if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
-                            if (g_hid_devices[slot_index].generation == slot_generation) {
-                                set_nanokvm_mouse_layout(&g_hid_devices[slot_index].report_layout);
-                                g_hid_devices[slot_index].report_copy_len = 7;
-                                FMRB_LOGI(TAG, "Fallback layout set for known device (slot=%d)", slot_index);
-                            }
-                            fmrb_semaphore_give(g_hid_devices_mutex);
+                    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                        hid_device_info_t* device = &g_hid_devices[slot_index];
+                        if (device->connected && device->generation == slot_generation) {
+                            set_nanokvm_mouse_layout(&device->report_layout);
+                            device->report_copy_len = 7;
+                            FMRB_LOGI(TAG, "Special layout set for known device (slot=%d)", slot_index);
                         }
+                        fmrb_semaphore_give(g_hid_devices_mutex);
                     }
-                    // Boot keyboard on broken device: assume Boot format (best effort)
                 } else {
-                    // Normal Boot device: queue SET_PROTOCOL(Boot) in task context
-                    pending_protocol_setup_push(slot_index, slot_generation, true, proto);
-                    FMRB_LOGI(TAG, "Queued SET_PROTOCOL(Boot) for slot %d (proto=%d)", slot_index, proto);
+                    // Apply boot mouse layout directly in callback context.
+                    // We avoid hid_host_get_report_descriptor() because it triggers
+                    // a control transfer that can timeout and corrupt the endpoint.
+                    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                        hid_device_info_t* device = &g_hid_devices[slot_index];
+                        if (device->connected && device->generation == slot_generation) {
+                            hid_mouse_report_layout_t *layout = &device->report_layout;
+                            layout->valid = true;
+                            layout->has_report_id = false;
+                            layout->report_id = 0;
+                            layout->buttons.bit_offset = 0;
+                            layout->buttons.bit_size = 8;
+                            layout->buttons.logical_min = 0;
+                            layout->buttons.logical_max = 1;
+                            layout->buttons.is_relative = false;
+                            layout->buttons.found = true;
+                            layout->x.bit_offset = 8;
+                            layout->x.bit_size = 8;
+                            layout->x.logical_min = -127;
+                            layout->x.logical_max = 127;
+                            layout->x.is_relative = true;
+                            layout->x.found = true;
+                            layout->y.bit_offset = 16;
+                            layout->y.bit_size = 8;
+                            layout->y.logical_min = -127;
+                            layout->y.logical_max = 127;
+                            layout->y.is_relative = true;
+                            layout->y.found = true;
+                            layout->report_byte_len = 3;
+                            device->report_copy_len = 8;
+                            FMRB_LOGI(TAG, "Boot mouse layout applied for slot %d", slot_index);
+                        }
+                        fmrb_semaphore_give(g_hid_devices_mutex);
+                    }
                 }
             } else if (!is_boot_device && proto == HID_PROTOCOL_MOUSE) {
-                // Non-boot mouse: queue descriptor parse in task context
-                pending_protocol_setup_push(slot_index, slot_generation, false, proto);
-                FMRB_LOGI(TAG, "Queued descriptor parse for slot %d", slot_index);
+                // Non-boot mouse: must parse descriptor to understand report format.
+                if (!is_control_transfer_broken(vid, pid)) {
+                    pending_protocol_setup_push(slot_index, slot_generation, false, proto);
+                    FMRB_LOGI(TAG, "Queued descriptor parse for non-boot mouse slot %d", slot_index);
+                }
             }
 
             FMRB_LOGI(TAG, "HID Device Connected (proto=%d, VID=0x%04X, PID=0x%04X)", proto, vid, pid);
@@ -1145,140 +1291,137 @@ static void hid_host_task(void *arg)
             }
         }
 
-        // Process pending mouse protocol setup (deferred from callback)
-        // Boot devices first (SET_PROTOCOL is quick), then non-boot (descriptor fetch can timeout)
-        // This prevents non-boot timeouts from corrupting USB state before boot devices are configured
+        // Process pending mouse descriptor parse (deferred from callback)
         {
-            // Drain queue into local array
-            pending_protocol_setup_item_t items[PENDING_PROTOCOL_SETUP_QUEUE_SIZE];
-            int item_count = 0;
-            {
-                pending_protocol_setup_item_t tmp;
-                while (item_count < PENDING_PROTOCOL_SETUP_QUEUE_SIZE && pending_protocol_setup_pop(&tmp)) {
-                    if (tmp.slot_index >= 0 && tmp.slot_index < MAX_HID_DEVICES) {
-                        items[item_count++] = tmp;
+            pending_protocol_setup_item_t setup;
+            while (g_usb_running && pending_protocol_setup_pop(&setup)) {
+                if (setup.slot_index < 0 || setup.slot_index >= MAX_HID_DEVICES) continue;
+
+                hid_host_device_handle_t handle = NULL;
+                if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                    hid_device_info_t* device = &g_hid_devices[setup.slot_index];
+                    if (device->connected && device->generation == setup.generation &&
+                        device->handle != NULL) {
+                        handle = device->handle;
                     }
+                    fmrb_semaphore_give(g_hid_devices_mutex);
                 }
-            }
+                if (handle == NULL) continue;
 
-            // Two passes: boot devices first, then non-boot
-            for (int pass = 0; pass < 2 && g_usb_running; pass++) {
-                for (int idx = 0; idx < item_count && g_usb_running; idx++) {
-                    pending_protocol_setup_item_t *setup = &items[idx];
-                    bool want_boot = (pass == 0);
-                    if (setup->is_boot != want_boot) continue;
+                FMRB_LOGI(TAG, "Parsing report descriptor for slot %d (proto=%d)",
+                          setup.slot_index, setup.proto);
 
-                    hid_host_device_handle_t handle = NULL;
-                    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
-                        hid_device_info_t* device = &g_hid_devices[setup->slot_index];
-                        if (device->connected && device->generation == setup->generation &&
-                            device->handle != NULL) {
-                            handle = device->handle;
-                        }
-                        fmrb_semaphore_give(g_hid_devices_mutex);
-                    }
-                    if (handle == NULL) continue;
-
-                    FMRB_LOGI(TAG, "Processing protocol setup for slot %d (boot=%d proto=%d)",
-                              setup->slot_index, setup->is_boot, setup->proto);
-
-                    if (setup->is_boot) {
-                        // Boot Interface: SET_PROTOCOL(Boot) for keyboard and mouse
-                        esp_err_t sp_ret = hid_class_request_set_protocol(handle, HID_REPORT_PROTOCOL_BOOT);
-                        if (sp_ret == ESP_OK) {
-                            FMRB_LOGI(TAG, "SET_PROTOCOL(Boot) succeeded for slot %d", setup->slot_index);
-                            // For Boot Mouse: enable Boot layout now that protocol is confirmed
-                            if (setup->proto == HID_PROTOCOL_MOUSE) {
-                                if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
-                                    hid_device_info_t* device = &g_hid_devices[setup->slot_index];
-                                    if (device->connected && device->generation == setup->generation) {
-                                        hid_mouse_report_layout_t *layout = &device->report_layout;
-                                        layout->valid = true;
-                                        layout->has_report_id = false;
-                                        layout->report_id = 0;
-                                        layout->buttons.bit_offset = 0;
-                                        layout->buttons.bit_size = 8;
-                                        layout->buttons.logical_min = 0;
-                                        layout->buttons.logical_max = 1;
-                                        layout->buttons.is_relative = false;
-                                        layout->buttons.found = true;
-                                        layout->x.bit_offset = 8;
-                                        layout->x.bit_size = 8;
-                                        layout->x.logical_min = -127;
-                                        layout->x.logical_max = 127;
-                                        layout->x.is_relative = true;
-                                        layout->x.found = true;
-                                        layout->y.bit_offset = 16;
-                                        layout->y.bit_size = 8;
-                                        layout->y.logical_min = -127;
-                                        layout->y.logical_max = 127;
-                                        layout->y.is_relative = true;
-                                        layout->y.found = true;
-                                        layout->report_byte_len = 3;
-                                        FMRB_LOGI(TAG, "Boot mouse layout enabled for slot %d", setup->slot_index);
-                                    }
-                                    fmrb_semaphore_give(g_hid_devices_mutex);
+                size_t desc_len = 0;
+                const uint8_t *desc = hid_host_get_report_descriptor(handle, &desc_len);
+                if (desc != NULL && desc_len > 0) {
+                    FMRB_LOGI(TAG, "Report descriptor: %d bytes", (int)desc_len);
+                    hid_mouse_report_layout_t parsed;
+                    memset(&parsed, 0, sizeof(parsed));
+                    if (hid_report_parse_mouse(desc, desc_len, &parsed)) {
+                        if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                            hid_device_info_t* device = &g_hid_devices[setup.slot_index];
+                            if (device->connected && device->generation == setup.generation) {
+                                device->report_layout = parsed;
+                                uint8_t calc_len = (uint8_t)(parsed.report_byte_len +
+                                                   (parsed.has_report_id ? 1 : 0));
+                                if (calc_len > 64) calc_len = 64;
+                                if (calc_len > device->report_copy_len) {
+                                    device->report_copy_len = calc_len;
                                 }
+                                FMRB_LOGI(TAG, "Descriptor parse OK: slot=%d report_id=%s(%d) copy_len=%d %s",
+                                          setup.slot_index,
+                                          parsed.has_report_id ? "yes" : "no",
+                                          parsed.report_id,
+                                          device->report_copy_len,
+                                          parsed.x.is_relative ? "rel" : "abs");
+                                FMRB_LOGI(TAG, "  buttons: offset=%d size=%d",
+                                          parsed.buttons.bit_offset, parsed.buttons.bit_size);
+                                FMRB_LOGI(TAG, "  X: offset=%d size=%d range=[%d..%d]",
+                                          parsed.x.bit_offset, parsed.x.bit_size,
+                                          parsed.x.logical_min, parsed.x.logical_max);
+                                FMRB_LOGI(TAG, "  Y: offset=%d size=%d range=[%d..%d]",
+                                          parsed.y.bit_offset, parsed.y.bit_size,
+                                          parsed.y.logical_min, parsed.y.logical_max);
                             }
-                        } else {
-                            FMRB_LOGW(TAG, "SET_PROTOCOL(Boot) failed for slot %d: 0x%x",
-                                      setup->slot_index, sp_ret);
-                            // Layout stays invalid - reports will be ignored
+                            fmrb_semaphore_give(g_hid_devices_mutex);
                         }
                     } else {
-                        // Non-Boot mouse: stay in Report Protocol, parse descriptor
-                        size_t desc_len = 0;
-                        const uint8_t *desc = hid_host_get_report_descriptor(handle, &desc_len);
-                        if (desc != NULL && desc_len > 0) {
-                            hid_mouse_report_layout_t parsed;
-                            memset(&parsed, 0, sizeof(parsed));
-                            if (hid_report_parse_mouse(desc, desc_len, &parsed)) {
-                                if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
-                                    hid_device_info_t* device = &g_hid_devices[setup->slot_index];
-                                    if (device->connected && device->generation == setup->generation) {
-                                        device->report_layout = parsed;
-                                        uint8_t calc_len = (uint8_t)(parsed.report_byte_len +
-                                                           (parsed.has_report_id ? 1 : 0));
-                                        if (calc_len > 64) calc_len = 64;
-                                        if (calc_len > device->report_copy_len) {
-                                            device->report_copy_len = calc_len;
-                                        }
-                                        FMRB_LOGI(TAG, "Descriptor parse OK: slot=%d copy_len=%d %s",
-                                                  setup->slot_index, device->report_copy_len,
-                                                  parsed.x.is_relative ? "rel" : "abs");
-                                    }
-                                    fmrb_semaphore_give(g_hid_devices_mutex);
-                                }
+                        // Descriptor parse did not find mouse fields
+                        if (setup.is_boot) {
+                            // Boot device: fall back to standard boot mouse layout
+                            FMRB_LOGW(TAG, "Descriptor parse failed for boot mouse slot=%d, using boot layout fallback",
+                                      setup.slot_index);
+                            goto apply_boot_fallback;
+                        }
+                        FMRB_LOGI(TAG, "Descriptor parse: not a mouse (slot=%d), disconnecting", setup.slot_index);
+                        if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                            hid_device_info_t* device = &g_hid_devices[setup.slot_index];
+                            if (device->connected && device->generation == setup.generation) {
+                                hid_host_device_handle_t dh = device->handle;
+                                clear_slot(device);
+                                fmrb_semaphore_give(g_hid_devices_mutex);
+                                hid_host_device_stop(dh);
+                                hid_host_device_close(dh);
                             } else {
-                                FMRB_LOGI(TAG, "Descriptor parse: not a mouse (slot=%d)", setup->slot_index);
-                                if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
-                                    hid_device_info_t* device = &g_hid_devices[setup->slot_index];
-                                    if (device->connected && device->generation == setup->generation) {
-                                        hid_host_device_handle_t dh = device->handle;
-                                        clear_slot(device);
-                                        fmrb_semaphore_give(g_hid_devices_mutex);
-                                        hid_host_device_stop(dh);
-                                        hid_host_device_close(dh);
-                                    } else {
-                                        fmrb_semaphore_give(g_hid_devices_mutex);
-                                    }
-                                }
-                            }
-                        } else {
-                            FMRB_LOGW(TAG, "Failed to get descriptor for slot %d", setup->slot_index);
-                            if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
-                                hid_device_info_t* device = &g_hid_devices[setup->slot_index];
-                                if (device->connected && device->generation == setup->generation) {
-                                    hid_host_device_handle_t dh = device->handle;
-                                    clear_slot(device);
-                                    fmrb_semaphore_give(g_hid_devices_mutex);
-                                    hid_host_device_stop(dh);
-                                    hid_host_device_close(dh);
-                                } else {
-                                    fmrb_semaphore_give(g_hid_devices_mutex);
-                                }
+                                fmrb_semaphore_give(g_hid_devices_mutex);
                             }
                         }
+                    }
+                } else {
+                    // Failed to get descriptor
+                    if (setup.is_boot) {
+                        FMRB_LOGW(TAG, "No descriptor for boot mouse slot=%d, using boot layout fallback",
+                                  setup.slot_index);
+                        goto apply_boot_fallback;
+                    }
+                    FMRB_LOGW(TAG, "Failed to get descriptor for slot %d, disconnecting", setup.slot_index);
+                    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                        hid_device_info_t* device = &g_hid_devices[setup.slot_index];
+                        if (device->connected && device->generation == setup.generation) {
+                            hid_host_device_handle_t dh = device->handle;
+                            clear_slot(device);
+                            fmrb_semaphore_give(g_hid_devices_mutex);
+                            hid_host_device_stop(dh);
+                            hid_host_device_close(dh);
+                        } else {
+                            fmrb_semaphore_give(g_hid_devices_mutex);
+                        }
+                    }
+                }
+
+                // Skip boot fallback if we already succeeded
+                if (false) {
+                apply_boot_fallback:
+                    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                        hid_device_info_t* device = &g_hid_devices[setup.slot_index];
+                        if (device->connected && device->generation == setup.generation) {
+                            hid_mouse_report_layout_t *layout = &device->report_layout;
+                            layout->valid = true;
+                            layout->has_report_id = false;
+                            layout->report_id = 0;
+                            layout->buttons.bit_offset = 0;
+                            layout->buttons.bit_size = 8;
+                            layout->buttons.logical_min = 0;
+                            layout->buttons.logical_max = 1;
+                            layout->buttons.is_relative = false;
+                            layout->buttons.found = true;
+                            layout->x.bit_offset = 8;
+                            layout->x.bit_size = 8;
+                            layout->x.logical_min = -127;
+                            layout->x.logical_max = 127;
+                            layout->x.is_relative = true;
+                            layout->x.found = true;
+                            layout->y.bit_offset = 16;
+                            layout->y.bit_size = 8;
+                            layout->y.logical_min = -127;
+                            layout->y.logical_max = 127;
+                            layout->y.is_relative = true;
+                            layout->y.found = true;
+                            layout->report_byte_len = 3;
+                            device->report_copy_len = 8;
+                            FMRB_LOGI(TAG, "Boot mouse fallback layout applied for slot %d", setup.slot_index);
+                        }
+                        fmrb_semaphore_give(g_hid_devices_mutex);
                     }
                 }
             }
