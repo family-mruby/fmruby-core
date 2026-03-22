@@ -45,4 +45,5 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.gem gemdir: "#{dir}/mruby-error"
   conf.gem gemdir: "#{dir}/mruby-sprintf"
   conf.gem gemdir: "#{dir}/mruby-math"
+  conf.gem gemdir: "#{dir}/mruby-dir"
 end

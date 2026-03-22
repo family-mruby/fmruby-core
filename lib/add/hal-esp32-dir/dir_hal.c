@@ -1,0 +1,121 @@
+/*
+** dir_hal.c - Directory HAL for ESP32 (ESP-IDF VFS)
+**
+** ESP-IDF VFS provides POSIX directory APIs (opendir/readdir/closedir/mkdir/
+** rmdir/chdir/getcwd/stat) but lacks chroot(), seekdir(), and telldir().
+*/
+
+#include <mruby.h>
+#include "dir_hal.h"
+
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <dirent.h>
+#include <unistd.h>
+#include <errno.h>
+
+struct mrb_dir_handle {
+  DIR *dir;
+};
+
+mrb_dir_handle*
+mrb_hal_dir_open(mrb_state *mrb, const char *path)
+{
+  DIR *dir = opendir(path);
+  if (dir == NULL) return NULL;
+  mrb_dir_handle *handle = (mrb_dir_handle*)mrb_malloc(mrb, sizeof(mrb_dir_handle));
+  handle->dir = dir;
+  return handle;
+}
+
+int
+mrb_hal_dir_close(mrb_state *mrb, mrb_dir_handle *handle)
+{
+  int result = closedir(handle->dir);
+  mrb_free(mrb, handle);
+  return result;
+}
+
+const char*
+mrb_hal_dir_read(mrb_state *mrb, mrb_dir_handle *handle)
+{
+  (void)mrb;
+  struct dirent *dp = readdir(handle->dir);
+  return dp ? dp->d_name : NULL;
+}
+
+void
+mrb_hal_dir_rewind(mrb_state *mrb, mrb_dir_handle *handle)
+{
+  (void)mrb;
+  rewinddir(handle->dir);
+}
+
+int
+mrb_hal_dir_seek(mrb_state *mrb, mrb_dir_handle *handle, long pos)
+{
+  /* seekdir not available on ESP-IDF VFS */
+  (void)mrb; (void)handle; (void)pos;
+  errno = ENOSYS;
+  return -1;
+}
+
+long
+mrb_hal_dir_tell(mrb_state *mrb, mrb_dir_handle *handle)
+{
+  /* telldir not available on ESP-IDF VFS */
+  (void)mrb; (void)handle;
+  errno = ENOSYS;
+  return -1;
+}
+
+int
+mrb_hal_dir_mkdir(mrb_state *mrb, const char *path, int mode)
+{
+  (void)mrb;
+  return mkdir(path, (mode_t)mode);
+}
+
+int
+mrb_hal_dir_rmdir(mrb_state *mrb, const char *path)
+{
+  (void)mrb;
+  return rmdir(path);
+}
+
+int
+mrb_hal_dir_chdir(mrb_state *mrb, const char *path)
+{
+  (void)mrb;
+  return chdir(path);
+}
+
+int
+mrb_hal_dir_getcwd(mrb_state *mrb, char *buf, size_t size)
+{
+  (void)mrb;
+  return getcwd(buf, size) ? 0 : -1;
+}
+
+int
+mrb_hal_dir_chroot(mrb_state *mrb, const char *path)
+{
+  /* chroot not available on ESP-IDF */
+  (void)mrb; (void)path;
+  errno = ENOSYS;
+  return -1;
+}
+
+int
+mrb_hal_dir_is_directory(mrb_state *mrb, const char *path)
+{
+  struct stat sb;
+  (void)mrb;
+  if (stat(path, &sb) == 0 && S_ISDIR(sb.st_mode)) {
+    return 1;
+  }
+  return 0;
+}
+
+void mrb_hal_dir_init(mrb_state *mrb) { (void)mrb; }
+void mrb_hal_dir_final(mrb_state *mrb) { (void)mrb; }

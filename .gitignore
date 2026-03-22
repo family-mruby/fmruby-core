@@ -10,6 +10,7 @@ main/prebuild_scripts/kernel/mrb/*
 main/prebuild_scripts/default_app/mrb/*
 log
 log*
+*.log
 .rake_tasks~
 managed_components/
 

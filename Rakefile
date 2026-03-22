@@ -126,6 +126,10 @@ task :setup do
   sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
   sh "cp -f lib/patch/picoruby-yaml/mrbgem.rake #{mrbgem_path}/picoruby-yaml/"
   sh "cp -f lib/patch/picoruby-sandbox/mrbgem.rake #{mrbgem_path}/picoruby-sandbox/"
+
+  # mruby-dir: patch mrbgem.rake to skip HAL auto-detection on ESP32
+  mruby_dir_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-dir"
+  sh "cp -f lib/patch/mruby-dir/mrbgem.rake #{mruby_dir_path}/"
 end
 
 namespace :set_target do

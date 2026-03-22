@@ -99,6 +99,7 @@ else()
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-i2c/ports/esp32/i2c.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-uart/ports/esp32/uart.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-require/ports/esp32/platform.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/hal-esp32-dir/dir_hal.c
     )
 endif()
 
@@ -125,6 +126,7 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-dir/include
   PRIV_REQUIRES
     ${PLATFORM_PRIV_REQUIRES}
     mbedtls
