@@ -13,7 +13,7 @@ typedef struct mrb_state mrb_state;
 typedef struct basic_state basic_state_t;
 
 #define FMRB_MAX_APP_NAME (32)
-#define FMRB_MAX_PATH_LEN (256)
+#define FMRB_MAX_PATH_LEN (128)
 
 // Load mode for script loading
 typedef enum {

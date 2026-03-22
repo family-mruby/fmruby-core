@@ -31,7 +31,8 @@ typedef enum {
 } fmrb_font_size_t;
 
 // Text buffer size for draw_text commands
-#define FMRB_GFX_MAX_TEXT_LEN 256
+// 128 chars is sufficient for max display width (480px / 6px font = 80 chars)
+#define FMRB_GFX_MAX_TEXT_LEN 128
 
 // Graphics error codes
 typedef enum {

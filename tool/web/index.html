@@ -103,10 +103,14 @@ button.danger:hover { background: #7b2020; }
 // ============================================================
 // BLE UUIDs (must match ble_task.c)
 // ============================================================
-const SERVICE_UUID      = '46524d41-4252-5942-4c45-000000000001';
-const DEVICE_INFO_UUID  = '46524d41-4252-5942-4c45-000000000002';
-const FS_RX_UUID        = '46524d41-4252-5942-4c45-000000000003';
-const FS_TX_UUID        = '46524d41-4252-5942-4c45-000000000004';
+// UUID string is big-endian representation of BLE_UUID128_INIT (little-endian).
+// BLE_UUID128_INIT(0x0Y, 0x00,..., 0x45, 0x4c, 0x42, 0x59, 0x52, 0x42, 0x4d, 0x41, 0x52, 0x46)
+//   byte[15..12]=46,52,41,4d  byte[11..10]=42,52  byte[9..8]=59,42
+//   byte[7..6]=4c,45  byte[5..0]=00,00,00,00,00,0Y
+const SERVICE_UUID      = '4652414d-4252-5942-4c45-000000000001';
+const DEVICE_INFO_UUID  = '4652414d-4252-5942-4c45-000000000002';
+const FS_RX_UUID        = '4652414d-4252-5942-4c45-000000000003';
+const FS_TX_UUID        = '4652414d-4252-5942-4c45-000000000004';
 
 // Protocol constants
 const CMD_CD  = 0x11;
