@@ -1,10 +1,10 @@
 #include "rtc_task.h"
 #include "rx8900.h"
 #include "fmrb_rtos.h"
+#include "fmrb_task_config.h"
 #include "fmrb_log.h"
 
-#define RTC_TASK_STACK_SIZE  4096
-#define RTC_TASK_PRIORITY    3
+// Stack size, priority, and flags are defined in fmrb_task_config.h
 #define RTC_I2C_BUS          1
 
 static const char *TAG = "rtc_task";
@@ -76,9 +76,10 @@ static void rtc_task(void *pvParameters)
 fmrb_err_t rtc_task_start(void)
 {
     fmrb_task_handle_t handle;
-    fmrb_task_create(rtc_task, "rtc_task",
-                     RTC_TASK_STACK_SIZE, NULL,
-                     RTC_TASK_PRIORITY, &handle);
+    fmrb_task_create_ex(rtc_task, "rtc_task",
+                     FMRB_RTC_TASK_STACK_SIZE, NULL,
+                     FMRB_RTC_TASK_PRIORITY, &handle,
+                     FMRB_RTC_TASK_FLAGS);
     FMRB_LOGI(TAG, "RTC task started");
     return FMRB_OK;
 }

@@ -1,6 +1,7 @@
 #include "spi_conn_check.h"
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
+#include "fmrb_task_config.h"
 #include "fmrb_log.h"
 #include "fmrb_pin_assign.h"
 #include "fmrb_mem.h"
@@ -160,14 +161,14 @@ void spi_conn_check_start(void)
 
     spi_running = 1;
 
-    fmrb_base_type_t ret = fmrb_task_create_pinned(
+    fmrb_base_type_t ret = fmrb_task_create_ex(
         spi_conn_check_task,
         "spi_conn_check",
-        4096,
+        FMRB_SPI_CONN_TASK_STACK_SIZE,
         NULL,
-        5,
+        FMRB_SPI_CONN_TASK_PRIORITY,
         &spi_task_handle,
-        1  // Core 1
+        FMRB_SPI_CONN_TASK_FLAGS
     );
 
     if (ret != FMRB_PASS) {

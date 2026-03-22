@@ -645,13 +645,14 @@ fmrb_err_t fs_proxy_create_task(void)
     }
 
     // Create task
-    fmrb_base_type_t result = fmrb_task_create(
+    fmrb_base_type_t result = fmrb_task_create_ex(
         fs_proxy_task,
         "fs_proxy",
         FMRB_FSPROXY_TASK_STACK_SIZE,
         &ctx,
         FMRB_FSPROXY_TASK_PRIORITY,
-        &task_handle
+        &task_handle,
+        FMRB_FSPROXY_TASK_FLAGS
     );
 
     if (result == FMRB_PASS) {

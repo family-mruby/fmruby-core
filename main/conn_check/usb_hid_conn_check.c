@@ -1,5 +1,6 @@
 #include "usb_hid_conn_check.h"
 #include "fmrb_rtos.h"
+#include "fmrb_task_config.h"
 #include "fmrb_log.h"
 
 #ifndef CONFIG_IDF_TARGET_LINUX
@@ -322,14 +323,14 @@ void usb_hid_conn_check_start(void)
     hid_task_exited = 0;
 
     // Create USB host library task
-    fmrb_base_type_t ret = fmrb_task_create_pinned(
+    fmrb_base_type_t ret = fmrb_task_create_ex(
         usb_host_lib_task,
         "usb_host_lib",
-        4096,
+        FMRB_USB_HOST_TASK_STACK_SIZE,
         NULL,
-        5,
+        FMRB_USB_HOST_TASK_PRIORITY,
         &usb_task_handle,
-        0  // Core 0
+        FMRB_USB_HOST_TASK_FLAGS
     );
     if (ret != FMRB_PASS) {
         FMRB_LOGE(TAG, "Failed to create USB host task");
@@ -338,14 +339,14 @@ void usb_hid_conn_check_start(void)
     }
 
     // Create HID host task
-    ret = fmrb_task_create_pinned(
+    ret = fmrb_task_create_ex(
         hid_host_task,
         "hid_host",
-        4096,
+        FMRB_USB_HID_TASK_STACK_SIZE,
         NULL,
-        5,
+        FMRB_USB_HID_TASK_PRIORITY,
         &hid_task_handle,
-        0  // Core 0
+        FMRB_USB_HID_TASK_FLAGS
     );
     if (ret != FMRB_PASS) {
         FMRB_LOGE(TAG, "Failed to create HID host task");

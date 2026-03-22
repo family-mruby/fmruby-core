@@ -16,6 +16,8 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
+#include <errno.h>
 
 #define TAG "fmrb_hal_file"
 
@@ -337,9 +339,43 @@ void fmrb_hal_file_deinit(void) {
 }
 
 // Open a file
+// Note: All local buffers are allocated from internal RAM heap because this
+// function may be called from tasks with PSRAM stacks. SPI flash DMA requires
+// buffers in internal RAM - stack-local variables on PSRAM cause WDT reset.
 fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out_handle) {
     if (path == NULL || out_handle == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    ESP_LOGI(TAG, "[file_open] A path=%p '%s'", path, path);
+
+    // Allocate path buffer from internal RAM (not PSRAM stack)
+    char *full_path = (char *)heap_caps_malloc(MAX_PATH_LEN, MALLOC_CAP_INTERNAL);
+    ESP_LOGI(TAG, "[file_open] B full_path=%p", full_path);
+    if (full_path == NULL) {
+        ESP_LOGE(TAG, "Failed to allocate internal RAM for path");
+        return FMRB_ERR_NO_MEMORY;
+    }
+    build_path(path, full_path, MAX_PATH_LEN);
+    ESP_LOGI(TAG, "[file_open] C '%s'", full_path);
+
+    fmrb_err_t result = FMRB_ERR_FAILED;
+
+    // Check file existence outside LOCK (avoid deadlock with LittleFS mutex)
+    if (flags == FMRB_O_RDONLY) {
+        struct stat *st = (struct stat *)heap_caps_malloc(sizeof(struct stat), MALLOC_CAP_INTERNAL);
+        if (st == NULL) {
+            ESP_LOGE(TAG, "Failed to allocate internal RAM for stat");
+            heap_caps_free(full_path);
+            return FMRB_ERR_NO_MEMORY;
+        }
+        int ret = stat(full_path, st);
+        heap_caps_free(st);
+        if (ret != 0) {
+            ESP_LOGW(TAG, "File not found: %s (errno=%d)", full_path, errno);
+            heap_caps_free(full_path);
+            return FMRB_ERR_NOT_FOUND;
+        }
     }
 
     LOCK();
@@ -347,11 +383,9 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
     fmrb_file_slot_t *slot = find_free_file_slot();
     if (slot == NULL) {
         UNLOCK();
-        return FMRB_ERR_BUSY;  // All slots are in use
+        heap_caps_free(full_path);
+        return FMRB_ERR_BUSY;
     }
-
-    char full_path[MAX_PATH_LEN];
-    build_path(path, full_path, sizeof(full_path));
 
     char mode[8];
     flags_to_mode(flags, mode);
@@ -359,12 +393,14 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
     slot->fp = fopen(full_path, mode);
     if (slot->fp == NULL) {
         UNLOCK();
+        heap_caps_free(full_path);
         return FMRB_ERR_FAILED;
     }
 
     slot->in_use = true;
     *out_handle = (fmrb_file_t)slot;
     UNLOCK();
+    heap_caps_free(full_path);
     return FMRB_OK;
 }
 

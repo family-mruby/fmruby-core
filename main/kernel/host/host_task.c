@@ -600,13 +600,14 @@ int fmrb_host_task_init(void)
     }
 
     // Create host task
-    fmrb_base_type_t result = fmrb_task_create(
+    fmrb_base_type_t result = fmrb_task_create_ex(
         fmrb_host_task,
         "fmrb_host",
         FMRB_HOST_TASK_STACK_SIZE,
         NULL,
         FMRB_HOST_TASK_PRIORITY,
-        &g_host_task_handle
+        &g_host_task_handle,
+        FMRB_HOST_TASK_FLAGS
     );
 
     if (result != FMRB_PASS) {

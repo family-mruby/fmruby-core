@@ -48,18 +48,26 @@ typedef portMUX_TYPE fmrb_spinlock_t;
 #define fmrb_enter_critical(spinlock) taskENTER_CRITICAL(spinlock)
 #define fmrb_exit_critical(spinlock) taskEXIT_CRITICAL(spinlock)
 
-// Task management
+// Task creation flags (bitfield)
+#define FMRB_TASK_FLAG_NONE       0x00
+#define FMRB_TASK_FLAG_PSRAM      0x01  // allocate stack on PSRAM
+#define FMRB_TASK_FLAG_PINNED_0   0x02  // pin to core 0
+#define FMRB_TASK_FLAG_PINNED_1   0x04  // pin to core 1
+
+// Unified task creation with flags (implemented in fmrb_task.c)
+fmrb_base_type_t fmrb_task_create_ex(
+    TaskFunction_t fn, const char *name, uint32_t stack,
+    void *param, UBaseType_t prio, TaskHandle_t *handle,
+    uint32_t flags);
+
+// Legacy macros (kept for compatibility)
 #define fmrb_task_create(fn, name, stack, param, prio, handle) \
-    xTaskCreate(fn, name, stack, param, prio, handle)
+    fmrb_task_create_ex(fn, name, stack, param, prio, handle, FMRB_TASK_FLAG_NONE)
 #define fmrb_task_create_pinned(fn, name, stack, param, prio, handle, core) \
-    xTaskCreatePinnedToCore(fn, name, stack, param, prio, handle, core)
-#ifndef CONFIG_IDF_TARGET_LINUX
+    fmrb_task_create_ex(fn, name, stack, param, prio, handle, \
+        (core) == 0 ? FMRB_TASK_FLAG_PINNED_0 : FMRB_TASK_FLAG_PINNED_1)
 #define fmrb_task_create_psram(fn, name, stack, param, prio, handle) \
-    xTaskCreateWithCaps(fn, name, stack, param, prio, handle, MALLOC_CAP_SPIRAM)
-#else
-#define fmrb_task_create_psram(fn, name, stack, param, prio, handle) \
-    xTaskCreate(fn, name, stack, param, prio, handle)
-#endif
+    fmrb_task_create_ex(fn, name, stack, param, prio, handle, FMRB_TASK_FLAG_PSRAM)
 #define fmrb_task_delete(handle) vTaskDelete(handle)
 #define fmrb_task_delay(ticks) vTaskDelay(ticks)
 #define fmrb_task_delay_ms(ms) vTaskDelay(FMRB_MS_TO_TICKS(ms))

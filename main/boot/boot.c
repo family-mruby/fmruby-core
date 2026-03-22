@@ -291,7 +291,7 @@ static bool boot_mode_check(void){
         fmrb_mem_init();
         fmrb_hal_file_init();
         // Serial FS proxy
-        fs_proxy_create_task();
+        //fs_proxy_create_task();
         return true;
     }
     return false;

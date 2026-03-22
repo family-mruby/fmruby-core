@@ -7,6 +7,7 @@ else()
 endif()
 
 idf_component_register(
+    SRCS "src/fmrb_task.c"
     INCLUDE_DIRS "include"
     REQUIRES picoruby-esp32 ${PLATFORM_REQUIRES}
 )

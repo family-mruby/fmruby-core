@@ -216,7 +216,8 @@ fmrb_err_t fmrb_kernel_start(void)
         .bytecode = fmrb_kernel_irep,
         .stack_words = FMRB_KERNEL_TASK_STACK_SIZE,
         .priority = FMRB_KERNEL_TASK_PRIORITY,
-        .core_affinity = -1,  // No core affinity
+        .flags = FMRB_KERNEL_TASK_FLAGS,
+        .core_affinity = -1,
         .headless = false
     };
 

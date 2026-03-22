@@ -1022,12 +1022,12 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
     // Already in INIT state (set at line 735)
 
-    // Create FreeRTOS task (use PSRAM for stack to avoid internal SRAM fragmentation)
+    // Create FreeRTOS task with flags from task config
     fmrb_base_type_t result;
-    FMRB_LOGI(TAG, "fmrb_task_create_psram [%s]", ctx->app_name);
-    result = fmrb_task_create_psram(
+    FMRB_LOGI(TAG, "fmrb_task_create_ex [%s] (flags=0x%02x)", ctx->app_name, (unsigned)attr->flags);
+    result = fmrb_task_create_ex(
         app_task_main, ctx->app_name, attr->stack_words,
-        ctx, attr->priority, &ctx->task);
+        ctx, attr->priority, &ctx->task, attr->flags);
 
     if (result != FMRB_PASS) {
 #ifndef CONFIG_IDF_TARGET_LINUX

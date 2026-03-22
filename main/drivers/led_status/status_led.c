@@ -1,11 +1,11 @@
 #include "status_led.h"
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
+#include "fmrb_task_config.h"
 #include "fmrb_pin_assign.h"
 #include "fmrb_log.h"
 
-#define STATUS_LED_STACK_SIZE 1024
-#define STATUS_LED_PRIORITY   2
+// Stack size, priority, and flags are defined in fmrb_task_config.h
 #define BLINK_INTERVAL_MS   250
 
 static const char *TAG = "status_led";
@@ -39,9 +39,10 @@ static void status_led_task(void *pvParameters)
 void status_led_start(void)
 {
     fmrb_task_handle_t handle;
-    fmrb_task_create(status_led_task, "status_led",
-                     STATUS_LED_STACK_SIZE, NULL,
-                     STATUS_LED_PRIORITY, &handle);
+    fmrb_task_create_ex(status_led_task, "status_led",
+                     FMRB_STATUS_LED_TASK_STACK_SIZE, NULL,
+                     FMRB_STATUS_LED_TASK_PRIORITY, &handle,
+                     FMRB_STATUS_LED_TASK_FLAGS);
 }
 
 void status_led_set_error(int level)
