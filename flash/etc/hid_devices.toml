@@ -1,0 +1,40 @@
+# HID Device Configuration
+# Define mouse report formats for specific USB devices.
+# When a device matching vid/pid is connected, this layout is used
+# instead of auto-detection or boot protocol fallback.
+#
+# Fields:
+#   vid, pid         - USB Vendor/Product ID (hex integers)
+#   name             - Human-readable device name (for logging)
+#   report_id        - Report ID byte value (-1 or omit if no report ID)
+#   report_len       - Report data length in bytes (excluding Report ID)
+#   skip_control_transfer - Skip USB control transfers for this device (default: false)
+#   buttons          - Button field: offset (bits), size (bits)
+#   x, y             - Axis fields: offset, size, min, max, relative
+#
+# Bit offsets are counted from the start of report data (after Report ID if present).
+# For signed relative axes, set min to negative value (e.g., min = -2048).
+# For absolute axes (e.g., touchpad), set relative = false.
+
+# Logitech Unifying Receiver - Report Protocol mode with 12-bit X/Y
+[[mouse]]
+vid = 0x046D
+pid = 0xC534
+name = "Logitech Unifying"
+report_id = 0x02
+report_len = 7
+buttons = { offset = 0, size = 8, min = 0, max = 1, relative = false }
+x = { offset = 16, size = 12, min = -2048, max = 2047, relative = true }
+y = { offset = 28, size = 12, min = -2048, max = 2047, relative = true }
+
+# Sipeed NanoKVM-USB - Absolute coordinates, 13-bit X/Y
+[[mouse]]
+vid = 0x359F
+pid = 0x3302
+name = "NanoKVM-USB"
+report_id = 0x02
+report_len = 6
+skip_control_transfer = true
+buttons = { offset = 0, size = 5, min = 0, max = 1, relative = false }
+x = { offset = 8, size = 13, min = 0, max = 4095, relative = false }
+y = { offset = 24, size = 13, min = 0, max = 4095, relative = false }

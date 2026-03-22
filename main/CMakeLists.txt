@@ -16,6 +16,7 @@ set(COMPONENT_LINUX_SRCS
 set(COMPONENT_ESP32_SRCS
     "drivers/usb/usb_task.c"
     "drivers/usb/hid_report_parser.c"
+    "drivers/usb/hid_device_config.c"
     "drivers/ble/ble_task.c"
     "conn_check/spi_conn_check.c"
     "conn_check/usb_hid_conn_check.c"

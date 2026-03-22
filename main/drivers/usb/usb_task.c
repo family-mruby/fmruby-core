@@ -17,6 +17,7 @@
 #include "usb/hid_usage_keyboard.h"
 #include "usb/hid_usage_mouse.h"
 #include "hid_report_parser.h"
+#include "hid_device_config.h"
 
 static const char *TAG = "usb_task";
 
@@ -569,12 +570,7 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         for (int i = 0; i < dump_len && pos < (int)sizeof(hex) - 3; i++) {
             pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", data[i]);
         }
-        // Temporarily use INFO level to diagnose report format
-        static int mouse_log_count = 0;
-        if (mouse_log_count < 20) {
-            FMRB_LOGI(TAG, "Mouse report slot=%d len=%d: %s", slot_index, (int)len, hex);
-            mouse_log_count++;
-        }
+        FMRB_LOGD(TAG, "Mouse report slot=%d len=%d: %s", slot_index, (int)len, hex);
     }
 
     // Skip Report ID byte if present
@@ -595,14 +591,8 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
     int32_t raw_x = hid_report_extract_field(report_data, report_len, &layout->x);
     int32_t raw_y = hid_report_extract_field(report_data, report_len, &layout->y);
 
-    {
-        static int extract_log_count = 0;
-        if (extract_log_count < 20) {
-            FMRB_LOGI(TAG, "  extracted: buttons=0x%02X raw_x=%"PRId32" raw_y=%"PRId32" %s",
-                      buttons, raw_x, raw_y, layout->x.is_relative ? "rel" : "abs");
-            extract_log_count++;
-        }
-    }
+    FMRB_LOGD(TAG, "  extracted: buttons=0x%02X raw_x=%"PRId32" raw_y=%"PRId32" %s",
+              buttons, raw_x, raw_y, layout->x.is_relative ? "rel" : "abs");
 
     if (layout->x.is_relative) {
         // Relative coordinate device
@@ -1068,36 +1058,26 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
                 break;
             }
 
-            // Protocol setup for Boot and Non-Boot devices
-            // We skip SET_PROTOCOL to avoid control transfer timeouts that can
-            // corrupt the USB endpoint state. Instead, the device stays in Report
-            // Protocol mode and we parse the HID report descriptor to understand
-            // the actual report format.
-            if (is_boot_device && proto == HID_PROTOCOL_KEYBOARD) {
-                // Boot keyboard: no layout needed, parsed directly as 8-byte boot format.
-                FMRB_LOGI(TAG, "Boot keyboard ready for slot %d (no SET_PROTOCOL)", slot_index);
-            } else if (is_boot_device && proto == HID_PROTOCOL_MOUSE) {
-                // Boot mouse: apply boot layout directly.
-                // We skip both SET_PROTOCOL and descriptor fetch to avoid control
-                // transfer timeouts that corrupt the USB endpoint state.
-                // Boot devices in Report Protocol mode may send data with a report ID,
-                // but many boot mice also work with the standard 3-byte boot format.
-                // If the device uses a different format, the user should use a device
-                // that supports boot protocol properly or use a non-boot mouse.
-                if (is_control_transfer_broken(vid, pid)) {
+            // Mouse layout setup priority:
+            // 1. TOML config file (hid_devices.toml) - user-defined per VID/PID
+            // 2. Boot mouse: boot protocol fallback + auto-detect
+            // 3. Non-boot mouse: parse HID report descriptor
+            if (proto == HID_PROTOCOL_MOUSE) {
+                hid_mouse_report_layout_t cfg_layout;
+                uint8_t cfg_copy_len;
+                if (hid_device_config_find_mouse(vid, pid, &cfg_layout, &cfg_copy_len)) {
+                    // TOML config matched - apply directly
                     if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
                         hid_device_info_t* device = &g_hid_devices[slot_index];
                         if (device->connected && device->generation == slot_generation) {
-                            set_nanokvm_mouse_layout(&device->report_layout);
-                            device->report_copy_len = 7;
-                            FMRB_LOGI(TAG, "Special layout set for known device (slot=%d)", slot_index);
+                            device->report_layout = cfg_layout;
+                            device->report_copy_len = cfg_copy_len;
+                            FMRB_LOGI(TAG, "TOML config layout applied for slot %d", slot_index);
                         }
                         fmrb_semaphore_give(g_hid_devices_mutex);
                     }
-                } else {
-                    // Apply boot mouse layout directly in callback context.
-                    // We avoid hid_host_get_report_descriptor() because it triggers
-                    // a control transfer that can timeout and corrupt the endpoint.
+                } else if (is_boot_device) {
+                    // No config: apply boot mouse layout + auto-detect on first report
                     if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
                         hid_device_info_t* device = &g_hid_devices[slot_index];
                         if (device->connected && device->generation == slot_generation) {
@@ -1125,17 +1105,17 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
                             layout->y.found = true;
                             layout->report_byte_len = 3;
                             device->report_copy_len = 8;
-                            FMRB_LOGI(TAG, "Boot mouse layout applied for slot %d", slot_index);
+                            FMRB_LOGI(TAG, "Boot mouse layout applied for slot %d (auto-detect enabled)", slot_index);
                         }
                         fmrb_semaphore_give(g_hid_devices_mutex);
                     }
-                }
-            } else if (!is_boot_device && proto == HID_PROTOCOL_MOUSE) {
-                // Non-boot mouse: must parse descriptor to understand report format.
-                if (!is_control_transfer_broken(vid, pid)) {
+                } else if (!hid_device_config_skip_control_transfer(vid, pid)) {
+                    // Non-boot, no config: parse descriptor in task context
                     pending_protocol_setup_push(slot_index, slot_generation, false, proto);
                     FMRB_LOGI(TAG, "Queued descriptor parse for non-boot mouse slot %d", slot_index);
                 }
+            } else if (is_boot_device && proto == HID_PROTOCOL_KEYBOARD) {
+                FMRB_LOGI(TAG, "Boot keyboard ready for slot %d", slot_index);
             }
 
             FMRB_LOGI(TAG, "HID Device Connected (proto=%d, VID=0x%04X, PID=0x%04X)", proto, vid, pid);

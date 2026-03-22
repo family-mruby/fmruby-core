@@ -16,6 +16,7 @@
 #include "fmrb_task_config.h"
 #include "fs_proxy_task.h"
 #include "usb_task.h"
+#include "hid_device_config.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "spi_conn_check.h"
 #include "usb_hid_conn_check.h"
@@ -243,6 +244,9 @@ static bool init_hardware(void)
     // ESP32 IPC
     // fmrb_hal_xxx_init();
 #endif
+
+    // HID device config (must be after filesystem mount, before USB init)
+    hid_device_config_init();
 
     // USB HOST
     ret = usb_task_init();
