@@ -18,6 +18,7 @@ set(COMPONENT_ESP32_SRCS
     "drivers/usb/hid_report_parser.c"
     "drivers/usb/hid_device_config.c"
     "drivers/ble/ble_task.c"
+    "drivers/hw_proxy/hw_proxy.c"
     "conn_check/spi_conn_check.c"
     "conn_check/usb_hid_conn_check.c"
     "conn_check/i2c_conn_check.c"
@@ -46,7 +47,7 @@ set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_link fmrb_toml fmrb_mem
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
-    list(APPEND COMPONENT_REQUIRES esp_littlefs usb_host_hid bt nvs_flash)
+    list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram usb_host_hid bt nvs_flash)
     list(APPEND COMPONENT_SRCS ${COMPONENT_ESP32_SRCS})
 else()
     list(APPEND COMPONENT_SRCS ${COMPONENT_LINUX_SRCS})

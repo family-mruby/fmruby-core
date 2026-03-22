@@ -18,6 +18,7 @@
 #include "usb_task.h"
 #include "hid_device_config.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
+#include "hw_proxy.h"
 #include "spi_conn_check.h"
 #include "usb_hid_conn_check.h"
 #include "i2c_conn_check.h"
@@ -241,8 +242,8 @@ static bool init_hardware(void)
     }
 
 #ifndef CONFIG_IDF_TARGET_LINUX
-    // ESP32 IPC
-    // fmrb_hal_xxx_init();
+    // HW proxy task for PSRAM tasks to access SPI flash safely
+    hw_proxy_init();
 #endif
 
 #ifndef CONFIG_IDF_TARGET_LINUX

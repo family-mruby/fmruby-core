@@ -679,7 +679,7 @@ static int fmrb_host_send_message(const host_message_t *msg)
 
 int fmrb_host_send_key_down(int key_code, int scancode, int modifier)
 {
-    FMRB_LOGI(TAG, "KEY_DOWN: code=%d scan=%d mod=0x%x", key_code, scancode, modifier);
+    FMRB_LOGD(TAG, "KEY_DOWN: code=%d scan=%d mod=0x%x", key_code, scancode, modifier);
     host_message_t msg = {
         .type = HOST_MSG_HID_KEY_DOWN,
         .data.key.key_code = key_code,
@@ -691,7 +691,7 @@ int fmrb_host_send_key_down(int key_code, int scancode, int modifier)
 
 int fmrb_host_send_key_up(int key_code, int scancode, int modifier)
 {
-    FMRB_LOGI(TAG, "KEY_UP: code=%d scan=%d mod=0x%x", key_code, scancode, modifier);
+    FMRB_LOGD(TAG, "KEY_UP: code=%d scan=%d mod=0x%x", key_code, scancode, modifier);
     host_message_t msg = {
         .type = HOST_MSG_HID_KEY_UP,
         .data.key.key_code = key_code,
@@ -711,7 +711,7 @@ int fmrb_host_send_mouse_move(int x, int y)
     }
     last_send_ms = now_ms;
 
-    FMRB_LOGI(TAG, "MOUSE_MOVE: x=%d y=%d", x, y);
+    FMRB_LOGD(TAG, "MOUSE_MOVE: x=%d y=%d", x, y);
     host_message_t msg = {
         .type = HOST_MSG_HID_MOUSE_MOVE,
         .data.mouse_move.x = x,

@@ -15,9 +15,11 @@
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_heap_caps.h"
 #include <errno.h>
+#include "hw_proxy.h"
 
 #define TAG "fmrb_hal_file"
 
@@ -339,51 +341,24 @@ void fmrb_hal_file_deinit(void) {
 }
 
 // Open a file
-// Note: All local buffers are allocated from internal RAM heap because this
-// function may be called from tasks with PSRAM stacks. SPI flash DMA requires
-// buffers in internal RAM - stack-local variables on PSRAM cause WDT reset.
+// PSRAM stack tasks are routed through hw_proxy (internal RAM stack) to avoid
+// SPI flash DMA crashes. Internal RAM stack tasks call the impl directly.
 fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out_handle) {
     if (path == NULL || out_handle == NULL) {
         return FMRB_ERR_INVALID_PARAM;
     }
-
-    ESP_LOGI(TAG, "[file_open] A path=%p '%s'", path, path);
-
-    // Allocate path buffer from internal RAM (not PSRAM stack)
-    char *full_path = (char *)heap_caps_malloc(MAX_PATH_LEN, MALLOC_CAP_INTERNAL);
-    ESP_LOGI(TAG, "[file_open] B full_path=%p", full_path);
-    if (full_path == NULL) {
-        ESP_LOGE(TAG, "Failed to allocate internal RAM for path");
-        return FMRB_ERR_NO_MEMORY;
+    if (hw_proxy_needs_proxy()) {
+        return hw_proxy_file_open(path, flags, out_handle);
     }
-    build_path(path, full_path, MAX_PATH_LEN);
-    ESP_LOGI(TAG, "[file_open] C '%s'", full_path);
 
-    fmrb_err_t result = FMRB_ERR_FAILED;
-
-    // Check file existence outside LOCK (avoid deadlock with LittleFS mutex)
-    if (flags == FMRB_O_RDONLY) {
-        struct stat *st = (struct stat *)heap_caps_malloc(sizeof(struct stat), MALLOC_CAP_INTERNAL);
-        if (st == NULL) {
-            ESP_LOGE(TAG, "Failed to allocate internal RAM for stat");
-            heap_caps_free(full_path);
-            return FMRB_ERR_NO_MEMORY;
-        }
-        int ret = stat(full_path, st);
-        heap_caps_free(st);
-        if (ret != 0) {
-            ESP_LOGW(TAG, "File not found: %s (errno=%d)", full_path, errno);
-            heap_caps_free(full_path);
-            return FMRB_ERR_NOT_FOUND;
-        }
-    }
+    char full_path[MAX_PATH_LEN];
+    build_path(path, full_path, sizeof(full_path));
 
     LOCK();
 
     fmrb_file_slot_t *slot = find_free_file_slot();
     if (slot == NULL) {
         UNLOCK();
-        heap_caps_free(full_path);
         return FMRB_ERR_BUSY;
     }
 
@@ -393,14 +368,12 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
     slot->fp = fopen(full_path, mode);
     if (slot->fp == NULL) {
         UNLOCK();
-        heap_caps_free(full_path);
         return FMRB_ERR_FAILED;
     }
 
     slot->in_use = true;
     *out_handle = (fmrb_file_t)slot;
     UNLOCK();
-    heap_caps_free(full_path);
     return FMRB_OK;
 }
 
@@ -413,6 +386,10 @@ fmrb_err_t fmrb_hal_file_close(fmrb_file_t handle) {
     // Standard streams cannot be closed
     if (is_std_stream(handle)) {
         return FMRB_OK;
+    }
+
+    if (hw_proxy_needs_proxy()) {
+        return hw_proxy_file_close(handle);
     }
 
     LOCK();
@@ -435,6 +412,10 @@ fmrb_err_t fmrb_hal_file_close(fmrb_file_t handle) {
 fmrb_err_t fmrb_hal_file_read(fmrb_file_t handle, void *buffer, size_t size, size_t *bytes_read) {
     if (handle == NULL || buffer == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (!is_std_stream(handle) && hw_proxy_needs_proxy()) {
+        return hw_proxy_file_read(handle, buffer, size, bytes_read);
     }
 
     // Handle standard streams directly
@@ -471,6 +452,10 @@ fmrb_err_t fmrb_hal_file_read(fmrb_file_t handle, void *buffer, size_t size, siz
 fmrb_err_t fmrb_hal_file_write(fmrb_file_t handle, const void *buffer, size_t size, size_t *bytes_written) {
     if (handle == NULL || buffer == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (!is_std_stream(handle) && hw_proxy_needs_proxy()) {
+        return hw_proxy_file_write(handle, buffer, size, bytes_written);
     }
 
     // Handle standard streams directly
@@ -510,6 +495,10 @@ fmrb_err_t fmrb_hal_file_seek(fmrb_file_t handle, int32_t offset, fmrb_seek_mode
         return FMRB_ERR_INVALID_PARAM;
     }
 
+    if (hw_proxy_needs_proxy()) {
+        return hw_proxy_file_seek(handle, offset, (uint32_t)mode);
+    }
+
     int whence;
     switch (mode) {
         case FMRB_SEEK_SET: whence = SEEK_SET; break;
@@ -536,6 +525,10 @@ fmrb_err_t fmrb_hal_file_seek(fmrb_file_t handle, int32_t offset, fmrb_seek_mode
 fmrb_err_t fmrb_hal_file_tell(fmrb_file_t handle, uint32_t *position) {
     if (handle == NULL || position == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (hw_proxy_needs_proxy()) {
+        return hw_proxy_file_tell(handle, position);
     }
 
     LOCK();
@@ -596,6 +589,10 @@ fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
 fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
     if (path == NULL || info == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (hw_proxy_needs_proxy()) {
+        return hw_proxy_file_stat(path, info);
     }
 
     char full_path[MAX_PATH_LEN];
@@ -767,6 +764,10 @@ fmrb_err_t fmrb_hal_file_sync(fmrb_file_t handle) {
 fmrb_err_t fmrb_hal_file_size(fmrb_file_t handle, uint32_t *size) {
     if (handle == NULL || size == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (hw_proxy_needs_proxy()) {
+        return hw_proxy_file_size(handle, size);
     }
 
     LOCK();

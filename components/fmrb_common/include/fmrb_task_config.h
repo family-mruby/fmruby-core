@@ -14,7 +14,7 @@
 #define FMRB_MRB_MAX_VMS (FMRB_MAX_SYSTEM_MRUBY_TASKS + FMRB_MAX_APPS)
 
 // Maximum number of tasks tracked by fmrb_task monitor
-#define FMRB_TASK_MONITOR_MAX (FMRB_MRB_MAX_VMS + 5) // +5 for infrastructure tasks (filesystem proxy, RTC, status LED, USB host, SPI conn check)
+#define FMRB_TASK_MONITOR_MAX (FMRB_MRB_MAX_VMS + 6) // +6 for infrastructure tasks (filesystem proxy, RTC, status LED, USB host, SPI conn check, BLE FS)
 
 #include "fmrb_rtos.h"
 
@@ -102,9 +102,19 @@
 #define FMRB_SPI_CONN_TASK_PRIORITY     (5)
 #define FMRB_SPI_CONN_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_1
 
+// HW proxy task (internal RAM, handles file I/O for PSRAM tasks)
+#define FMRB_HW_PROXY_TASK_STACK_SIZE   (8 * 1024)
+#define FMRB_HW_PROXY_TASK_PRIORITY     (6)
+#define FMRB_HW_PROXY_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_0
+
 // BLE task (managed by NimBLE, config referenced in sdkconfig)
 #define FMRB_BLE_TASK_STACK_SIZE        (4096)
 #define FMRB_BLE_TASK_PRIORITY          (4)
+
+// BLE file service processing task (file I/O needs internal RAM for flash DMA)
+#define FMRB_BLE_FS_TASK_STACK_SIZE     (8 * 1024)
+#define FMRB_BLE_FS_TASK_PRIORITY       (4)
+#define FMRB_BLE_FS_TASK_FLAGS          FMRB_TASK_FLAG_PINNED_0
 
 // ============================================================
 // Maximum number of concurrent apps

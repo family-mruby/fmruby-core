@@ -366,38 +366,38 @@ static bool is_control_transfer_broken(uint16_t vid, uint16_t pid)
     return (vid == VID_SIPEED && pid == PID_NANOKVM_USB);
 }
 
-// Set fallback layout for nanoKVM-USB absolute pointer interface
-// Based on Interface 3 Report Descriptor:
-//   Report ID 0x02, Buttons 5-bit, X 13-bit abs 0-4095, Y 13-bit abs 0-4095, Wheel 8-bit
-static void set_nanokvm_mouse_layout(hid_mouse_report_layout_t *layout)
-{
-    memset(layout, 0, sizeof(*layout));
-    layout->valid = true;
-    layout->has_report_id = true;
-    layout->report_id = 0x02;
-    layout->buttons.bit_offset = 0;
-    layout->buttons.bit_size = 5;
-    layout->buttons.logical_min = 0;
-    layout->buttons.logical_max = 1;
-    layout->buttons.is_relative = false;
-    layout->buttons.found = true;
-    // 5-bit buttons + 3-bit padding = 8 bits
-    layout->x.bit_offset = 8;
-    layout->x.bit_size = 13;
-    layout->x.logical_min = 0;
-    layout->x.logical_max = 4095;
-    layout->x.is_relative = false;
-    layout->x.found = true;
-    // 13-bit X + 3-bit padding = 16 bits (offset 24)
-    layout->y.bit_offset = 24;
-    layout->y.bit_size = 13;
-    layout->y.logical_min = 0;
-    layout->y.logical_max = 4095;
-    layout->y.is_relative = false;
-    layout->y.found = true;
-    // 13-bit Y + 3-bit padding = 16 bits, then 8-bit wheel
-    layout->report_byte_len = 6;  // Excluding Report ID
-}
+// // Set fallback layout for nanoKVM-USB absolute pointer interface
+// // Based on Interface 3 Report Descriptor:
+// //   Report ID 0x02, Buttons 5-bit, X 13-bit abs 0-4095, Y 13-bit abs 0-4095, Wheel 8-bit
+// static void set_nanokvm_mouse_layout(hid_mouse_report_layout_t *layout)
+// {
+//     memset(layout, 0, sizeof(*layout));
+//     layout->valid = true;
+//     layout->has_report_id = true;
+//     layout->report_id = 0x02;
+//     layout->buttons.bit_offset = 0;
+//     layout->buttons.bit_size = 5;
+//     layout->buttons.logical_min = 0;
+//     layout->buttons.logical_max = 1;
+//     layout->buttons.is_relative = false;
+//     layout->buttons.found = true;
+//     // 5-bit buttons + 3-bit padding = 8 bits
+//     layout->x.bit_offset = 8;
+//     layout->x.bit_size = 13;
+//     layout->x.logical_min = 0;
+//     layout->x.logical_max = 4095;
+//     layout->x.is_relative = false;
+//     layout->x.found = true;
+//     // 13-bit X + 3-bit padding = 16 bits (offset 24)
+//     layout->y.bit_offset = 24;
+//     layout->y.bit_size = 13;
+//     layout->y.logical_min = 0;
+//     layout->y.logical_max = 4095;
+//     layout->y.is_relative = false;
+//     layout->y.found = true;
+//     // 13-bit Y + 3-bit padding = 16 bits, then 8-bit wheel
+//     layout->report_byte_len = 6;  // Excluding Report ID
+// }
 
 static bool is_gamepad_device(uint16_t vid, uint16_t pid)
 {
