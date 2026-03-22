@@ -71,7 +71,8 @@ MRuby::Gem::Specification.new('picoruby-mruby') do |spec|
     end
   elsif spec.cc.defines.include?("PICORB_ALLOC_ESTALLOC")
     spec.cc.defines << "ESTALLOC_ALIGNMENT=#{align}"
-    if spec.cc.defines.any?{ _1.start_with?("PICORB_DEBUG") }
+    # Always enable ESTALLOC_DEBUG for est_take_statistics (memory monitoring)
+    unless spec.cc.defines.any?{ _1.start_with?("ESTALLOC_DEBUG") }
       spec.cc.defines << "ESTALLOC_DEBUG=1"
     end
     alloc_dir = "#{dir}/lib/estalloc"
