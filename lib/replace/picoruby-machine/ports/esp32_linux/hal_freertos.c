@@ -24,8 +24,7 @@
 #include "esp_log.h"
 
 #include "fmrb_app.h"
-
-#define MAX_MRB_VMS 16
+#include "fmrb_task_config.h"
 
 typedef struct {
     mrb_state *mrb;
@@ -35,7 +34,7 @@ typedef struct {
 } mrb_vm_entry_t;
 
 static struct {
-    mrb_vm_entry_t vms[MAX_MRB_VMS];
+    mrb_vm_entry_t vms[FMRB_MRB_MAX_VMS];
     SemaphoreHandle_t mutex;
     TaskHandle_t tick_task_handle;
     int task_created;
@@ -56,7 +55,7 @@ static void mruby_tick_task(void* arg) {
         vTaskDelay(tick_interval);
 
         if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-            for (int i = 0; i < MAX_MRB_VMS; i++) {
+            for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
                 if (g_tick_manager.vms[i].active && g_tick_manager.vms[i].mrb) {
                     if (MRB_C_FUNCALL_EXIT == g_tick_manager.vms[i].in_c_funcall && MRB_ENABLE_IRQ == g_tick_manager.vms[i].irq) {
                         mrb_tick(g_tick_manager.vms[i].mrb);
@@ -109,7 +108,7 @@ hal_register_vm(mrb_state *mrb)
 
   if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
     int added = 0;
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
+    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
       if (!g_tick_manager.vms[i].active) {
         g_tick_manager.vms[i].mrb = mrb;
         g_tick_manager.vms[i].active = 1;
@@ -135,7 +134,7 @@ mrb_task_enable_irq(void)
   mrb_state* mrb = ctx->mrb;
 
   if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
+    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
       if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
         g_tick_manager.vms[i].irq = MRB_ENABLE_IRQ;
         break;
@@ -153,7 +152,7 @@ mrb_task_disable_irq(void)
   mrb_state* mrb = ctx->mrb;
 
   if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
+    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
       if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
         g_tick_manager.vms[i].irq = MRB_DISABLE_IRQ;
         break;
@@ -169,7 +168,7 @@ hal_deinit(mrb_state *mrb)
   if (g_tick_manager.mutex == NULL) return;
 
   if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
+    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
       if (g_tick_manager.vms[i].mrb == mrb) {
         g_tick_manager.vms[i].active = 0;
         g_tick_manager.vms[i].mrb = NULL;
@@ -190,7 +189,7 @@ hal_deinit_by_pool(void* pool_ptr, size_t pool_size)
   uint8_t *end = start + pool_size;
 
   if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
+    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
       if (g_tick_manager.vms[i].active) {
         uint8_t *p = (uint8_t *)g_tick_manager.vms[i].mrb;
         if (p >= start && p < end) {
@@ -210,7 +209,7 @@ mrb_set_in_c_funcall(mrb_state *mrb, int flag)
   if (g_tick_manager.mutex == NULL) return;
 
   if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < MAX_MRB_VMS; i++) {
+    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
       if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
         g_tick_manager.vms[i].in_c_funcall = flag;
         break;

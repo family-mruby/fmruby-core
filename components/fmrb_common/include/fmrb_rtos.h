@@ -54,11 +54,32 @@ typedef portMUX_TYPE fmrb_spinlock_t;
 #define FMRB_TASK_FLAG_PINNED_0   0x02  // pin to core 0
 #define FMRB_TASK_FLAG_PINNED_1   0x04  // pin to core 1
 
+// Task status info returned by fmrb_task_get_status_list
+typedef struct {
+    const char *name;           // task name (pointer to FreeRTOS internal string)
+    TaskHandle_t handle;
+    uint32_t flags;             // FMRB_TASK_FLAG_* used at creation
+    uint32_t stack_size;        // stack size in bytes (as requested)
+    uint32_t stack_free;        // stack high water mark in bytes (minimum ever free)
+    UBaseType_t priority;
+    uint8_t active;             // 1 = running, 0 = deleted
+} fmrb_task_info_t;
+
 // Unified task creation with flags (implemented in fmrb_task.c)
+// Automatically registers the task for monitoring.
 fmrb_base_type_t fmrb_task_create_ex(
     TaskFunction_t fn, const char *name, uint32_t stack,
     void *param, UBaseType_t prio, TaskHandle_t *handle,
     uint32_t flags);
+
+// Delete task and unregister from monitor (implemented in fmrb_task.c)
+void fmrb_task_delete_ex(TaskHandle_t handle);
+
+// Get snapshot of all tracked tasks. Returns number of entries written.
+int fmrb_task_get_status_list(fmrb_task_info_t *out, int max_count);
+
+// Print task status summary to log
+void fmrb_task_dump_status(void);
 
 // Legacy macros (kept for compatibility)
 #define fmrb_task_create(fn, name, stack, param, prio, handle) \
@@ -68,7 +89,7 @@ fmrb_base_type_t fmrb_task_create_ex(
         (core) == 0 ? FMRB_TASK_FLAG_PINNED_0 : FMRB_TASK_FLAG_PINNED_1)
 #define fmrb_task_create_psram(fn, name, stack, param, prio, handle) \
     fmrb_task_create_ex(fn, name, stack, param, prio, handle, FMRB_TASK_FLAG_PSRAM)
-#define fmrb_task_delete(handle) vTaskDelete(handle)
+#define fmrb_task_delete(handle) fmrb_task_delete_ex(handle)
 #define fmrb_task_delay(ticks) vTaskDelay(ticks)
 #define fmrb_task_delay_ms(ms) vTaskDelay(FMRB_MS_TO_TICKS(ms))
 #define fmrb_task_get_current() xTaskGetCurrentTaskHandle()

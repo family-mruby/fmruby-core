@@ -1,6 +1,21 @@
 #pragma once
 
 #include <stdint.h>
+
+// ============================================================
+// System Limits
+// ============================================================
+
+#define FMRB_MAX_SYSTEM_MRUBY_TASKS (3)  // Kernel, Host, System App
+
+#define FMRB_MAX_APPS (6)  // Max number of apps (including mruby, lua and basic apps)
+
+// Maximum number of mruby VMs registered for tick delivery
+#define FMRB_MRB_MAX_VMS (FMRB_MAX_SYSTEM_MRUBY_TASKS + FMRB_MAX_APPS)
+
+// Maximum number of tasks tracked by fmrb_task monitor
+#define FMRB_TASK_MONITOR_MAX (FMRB_MRB_MAX_VMS + 5) // +5 for infrastructure tasks (filesystem proxy, RTC, status LED, USB host, SPI conn check)
+
 #include "fmrb_rtos.h"
 
 // ============================================================
@@ -19,17 +34,26 @@
 // Use heap_caps_malloc(MALLOC_CAP_INTERNAL) for DMA buffers.
 // ============================================================
 
-// --- mruby App tasks (PSRAM stack) ---
+// --- Core Assignment Policy ---
+// Core 0: HW-facing tasks (USB, SPI, GPIO, RTC, LED, FS proxy, host transport)
+// Core 1: mruby VM / app tasks (kernel, system_gui, shell, user apps)
+//
+// Note: PSRAM tasks use xTaskCreateWithCaps which does not support core pinning.
+// PSRAM tasks run on any core (FreeRTOS scheduler decides).
+// Internal RAM tasks can be pinned to a specific core.
+
+// --- mruby App tasks (Core 1, PSRAM stack) ---
 
 // Kernel task (mruby VM for OS kernel)
 #define FMRB_KERNEL_TASK_STACK_SIZE     (12 * 1024)
 #define FMRB_KERNEL_TASK_PRIORITY       (9)
 #define FMRB_KERNEL_TASK_FLAGS          FMRB_TASK_FLAG_PSRAM
 
-// Host task (graphics/audio transport, no flash I/O)
+// Host task (graphics/audio transport, SPI slave comm, heap alloc)
+// Must be internal RAM (uses realloc via msgpack)
 #define FMRB_HOST_TASK_STACK_SIZE       (12 * 1024)
 #define FMRB_HOST_TASK_PRIORITY         (10)
-#define FMRB_HOST_TASK_FLAGS            FMRB_TASK_FLAG_PSRAM
+#define FMRB_HOST_TASK_FLAGS            FMRB_TASK_FLAG_PINNED_0
 
 // System App task (mruby VM for system GUI)
 #define FMRB_SYSTEM_APP_TASK_STACK_SIZE (12 * 1024)
@@ -46,34 +70,34 @@
 #define FMRB_USER_APP_PRIORITY          (5)
 #define FMRB_USER_APP_TASK_FLAGS        FMRB_TASK_FLAG_PSRAM
 
-// --- Infrastructure tasks ---
+// --- Infrastructure tasks (Core 0, internal RAM) ---
 
 // Filesystem proxy task (UART-based external FS access, uses flash I/O)
 #define FMRB_FSPROXY_TASK_STACK_SIZE    (20 * 1024)
 #define FMRB_FSPROXY_TASK_PRIORITY      (4)
-#define FMRB_FSPROXY_TASK_FLAGS         FMRB_TASK_FLAG_NONE
+#define FMRB_FSPROXY_TASK_FLAGS         FMRB_TASK_FLAG_PINNED_0
 
-// RTC task (I2C only, no flash I/O)
+// RTC task (I2C, low priority)
 #define FMRB_RTC_TASK_STACK_SIZE        (4096)
 #define FMRB_RTC_TASK_PRIORITY          (3)
-#define FMRB_RTC_TASK_FLAGS             FMRB_TASK_FLAG_PSRAM
+#define FMRB_RTC_TASK_FLAGS             FMRB_TASK_FLAG_PINNED_1
 
-// Status LED task (GPIO only)
-#define FMRB_STATUS_LED_TASK_STACK_SIZE (1024)
+// Status LED task (GPIO, low priority)
+#define FMRB_STATUS_LED_TASK_STACK_SIZE (4096)
 #define FMRB_STATUS_LED_TASK_PRIORITY   (2)
-#define FMRB_STATUS_LED_TASK_FLAGS      FMRB_TASK_FLAG_NONE
+#define FMRB_STATUS_LED_TASK_FLAGS      FMRB_TASK_FLAG_PINNED_1
 
-// USB host library task (USB DMA needs internal RAM, pinned to core 0)
+// USB host library task (USB DMA needs internal RAM)
 #define FMRB_USB_HOST_TASK_STACK_SIZE   (4096)
 #define FMRB_USB_HOST_TASK_PRIORITY     (5)
 #define FMRB_USB_HOST_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_0
 
-// USB HID host task (pinned to core 0)
+// USB HID host task
 #define FMRB_USB_HID_TASK_STACK_SIZE    (4096)
 #define FMRB_USB_HID_TASK_PRIORITY      (5)
 #define FMRB_USB_HID_TASK_FLAGS         FMRB_TASK_FLAG_PINNED_0
 
-// SPI connection check task (SPI slave, pinned to core 0)
+// SPI connection check task (SPI slave)
 #define FMRB_SPI_CONN_TASK_STACK_SIZE   (4096)
 #define FMRB_SPI_CONN_TASK_PRIORITY     (5)
 #define FMRB_SPI_CONN_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_1
@@ -84,9 +108,9 @@
 
 // ============================================================
 // Maximum number of concurrent apps
+// (FMRB_MAX_APPS is defined in System Limits section above)
 // ============================================================
-#define FMRB_MAX_APPS (PROC_ID_MAX)
-#define FMRB_MAX_USER_APPS (PROC_ID_MAX - PROC_ID_USER_APP0)
+#define FMRB_MAX_USER_APPS (FMRB_MAX_APPS - PROC_ID_USER_APP0)
 
 // ============================================================
 // Message Queue Lengths
@@ -121,5 +145,8 @@ typedef enum FMRB_PROC_ID{
     PROC_ID_USER_APP0,
     PROC_ID_USER_APP1,
     PROC_ID_USER_APP2,
+    PROC_ID_USER_APP3,
+    PROC_ID_USER_APP4,
+    PROC_ID_USER_APP5,
     PROC_ID_MAX
 } fmrb_proc_id_t;
