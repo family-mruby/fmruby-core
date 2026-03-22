@@ -15,7 +15,7 @@ typedef struct {
     uint8_t      active;
 } task_entry_t;
 
-static task_entry_t s_tasks[FMRB_TASK_MONITOR_MAX];
+EXT_RAM_BSS_ATTR static task_entry_t s_tasks[FMRB_TASK_MONITOR_MAX];
 static int s_task_count = 0;
 
 static void register_task(TaskHandle_t handle, const char *name,

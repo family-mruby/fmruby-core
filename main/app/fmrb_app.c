@@ -34,8 +34,8 @@ static const char *TAG = "fmrb_app";
 // Global state (zero-initialized at boot)
 // ============================================================================
 
-// Fixed-size context pool
-static fmrb_app_task_context_t g_ctx_pool[FMRB_MAX_APPS];
+// Fixed-size context pool (PSRAM - no DMA dependency)
+EXT_RAM_BSS_ATTR static fmrb_app_task_context_t g_ctx_pool[FMRB_MAX_APPS];
 
 // Mutex for protecting context pool access
 static fmrb_semaphore_t g_ctx_lock = NULL;
