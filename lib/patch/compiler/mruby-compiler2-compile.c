@@ -324,7 +324,11 @@ MRC_API mrc_irep *
 mrc_load_string_cxt(mrc_ccontext *c, const uint8_t **source, size_t length)
 {
   mrc_node *root = mrc_parse_string_cxt(c, source, length);
+  if (root == NULL) {
+    return NULL;
+  }
   mrc_irep *irep = mrc_load_exec(c, root);
+  pm_node_destroy(c->p, root);
   return irep;
 }
 

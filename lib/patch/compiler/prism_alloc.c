@@ -22,7 +22,7 @@ static ESTALLOC *prism_est = NULL;
   #ifdef PRISM_BUILD_HOST
     #define PRISM_POOL_SIZE (288 * 1024)
   #else
-    #define PRISM_POOL_SIZE (64 * 1024)
+    #define PRISM_POOL_SIZE (192 * 1024)
   #endif
 #endif
 

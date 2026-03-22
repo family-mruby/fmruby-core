@@ -245,8 +245,10 @@ static bool init_hardware(void)
     // fmrb_hal_xxx_init();
 #endif
 
+#ifndef CONFIG_IDF_TARGET_LINUX
     // HID device config (must be after filesystem mount, before USB init)
     hid_device_config_init();
+#endif
 
     // USB HOST
     ret = usb_task_init();

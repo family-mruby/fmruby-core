@@ -17,8 +17,10 @@ typedef int8_t fmrb_mem_handle_t;
     // Host build (picorbc): needs ~220KB peak for compiling mrblib
     #define FMRB_MEM_PRISM_POOL_SIZE (288 * 1024)  // 288KB with safety margin
   #else
-    // Target build (ESP32/Linux eval): much smaller user code
-    #define FMRB_MEM_PRISM_POOL_SIZE (64 * 1024)   // 64KB initial - will measure actual usage
+    // Target build: prism parser needs substantial memory for AST and constant pool.
+    // 64KB was insufficient for scripts >4KB, causing silent constant pool allocation
+    // failures (PM_CONSTANT_ID_UNSET) which led to SIGSEGV in mrc_resolve_intern.
+    #define FMRB_MEM_PRISM_POOL_SIZE (192 * 1024)  // 192KB for user script compilation
   #endif
 #endif
 
