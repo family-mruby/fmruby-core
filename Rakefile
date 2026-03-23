@@ -156,29 +156,29 @@ namespace :build do
 
   desc "ESP32(S3) build"
   task :esp32 => :setup do
-    unless Dir.exist?('build')
-      Rake::Task['set_target:esp32'].invoke
-    end
     hw_target = ENV['FMRB_HW_TARGET'] || ''
-    cmake_opts = ''
 
     # Select sdkconfig.defaults based on HW target
+    # All configs are under config/ directory
     hw_config = {
       'ATOM_DISPLAY' => { chip: 'n8r8', sdkconfig: 'config/sdkconfig.defaults.n8r8' },
     }
+    default_sdkconfig = 'config/sdkconfig.defaults.n16r8'
 
+    sdkconfig_path = default_sdkconfig
     if hw_config.key?(hw_target)
       cfg = hw_config[hw_target]
-      cmake_opts += " -DSDKCONFIG_DEFAULTS=\"#{cfg[:sdkconfig]}\""
-      cmake_opts += " -DFMRB_HW_TARGET=#{hw_target}"
+      sdkconfig_path = cfg[:sdkconfig]
       puts "HW target: #{hw_target} (#{cfg[:chip]})"
-    elsif !hw_target.empty?
-      cmake_opts += " -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.n16r8\""
-      cmake_opts += " -DFMRB_HW_TARGET=#{hw_target}"
-    else
-      # Default: use original sdkconfig.defaults (N16R8 / WROVER)
     end
 
+    # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated correctly
+    unless Dir.exist?('build')
+      sh "#{DOCKER_CMD} idf.py -DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\" set-target esp32s3"
+    end
+
+    cmake_opts = "-DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\""
+    cmake_opts += " -DFMRB_HW_TARGET=#{hw_target}" unless hw_target.empty?
     cmake_opts += " #{ENV['CMAKE_OPTS']}" if ENV['CMAKE_OPTS']
     sh "#{DOCKER_CMD} idf.py #{cmake_opts.strip} build"
   end

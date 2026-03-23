@@ -100,8 +100,11 @@ endif()
 if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_ATOM_DISPLAY)
     message(STATUS "HW target: ATOM_DISPLAY")
+endif()
 
-    # Suppress warnings-as-errors in M5Unified (upstream code we cannot modify)
+# Suppress warnings-as-errors in M5Unified (upstream code we cannot modify)
+# Applied unconditionally because managed_components are always compiled
+if(TARGET __idf_m5stack__m5unified)
     idf_component_get_property(m5unified_lib m5stack__m5unified COMPONENT_LIB)
     target_compile_options(${m5unified_lib} PRIVATE -Wno-error=maybe-uninitialized)
 endif()
