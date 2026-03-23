@@ -157,9 +157,12 @@ namespace :build do
   desc "ESP32(S3) build"
   task :esp32 => :setup do
     unless Dir.exist?('build')
-      Rake::Task['set_target:esp32'].invoke    
+      Rake::Task['set_target:esp32'].invoke
     end
-    sh "#{DOCKER_CMD} idf.py build"
+    hw_target = ENV['FMRB_HW_TARGET'] || ''
+    cmake_opts = hw_target.empty? ? '' : "-DFMRB_HW_TARGET=#{hw_target}"
+    cmake_opts += " #{ENV['CMAKE_OPTS']}" if ENV['CMAKE_OPTS']
+    sh "#{DOCKER_CMD} idf.py #{cmake_opts} build"
   end
 end
 

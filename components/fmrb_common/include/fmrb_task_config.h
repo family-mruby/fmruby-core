@@ -116,6 +116,11 @@
 #define FMRB_BLE_FS_TASK_PRIORITY       (4)
 #define FMRB_BLE_FS_TASK_FLAGS          FMRB_TASK_FLAG_PINNED_0
 
+// M5GFX receiver task (GFX commands via local Message Buffer)
+#define FMRB_M5GFX_TASK_STACK_SIZE      (8 * 1024)
+#define FMRB_M5GFX_TASK_PRIORITY        (6)
+#define FMRB_M5GFX_TASK_FLAGS           FMRB_TASK_FLAG_PINNED_0
+
 // ============================================================
 // Maximum number of concurrent apps
 // (FMRB_MAX_APPS is defined in System Limits section above)

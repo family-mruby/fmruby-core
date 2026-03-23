@@ -16,12 +16,19 @@ if(IDF_TARGET STREQUAL "linux")
     set(PLATFORM_REQUIRES pthread log fmrb_msg fmrb_log fmrb_mem fmrb_cobs fmrb_common)
     set(PLATFORM_PRIV_REQUIRES )
 else()
+    set(FMRB_HW_TARGET "WROVER" CACHE STRING "Hardware target variant: WROVER, ATOM_DISPLAY")
     list(APPEND COMMON_SRCS
         "platform/esp32/fmrb_hal_spi_esp32.c"
-        "platform/esp32/fmrb_hal_link_esp32.c"
         "platform/esp32/fmrb_hal_file_esp32.c"
         "platform/esp32/fmrb_hal_uart_esp32.c"
     )
+    if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
+        list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_local.c")
+        message(STATUS "HW target: ATOM_DISPLAY (local Message Buffer link)")
+    else()
+        list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_esp32.c")
+        message(STATUS "HW target: ${FMRB_HW_TARGET} (SPI link)")
+    endif()
     set(PLATFORM_REQUIRES esp_system esp_timer freertos log spi_flash driver fmrb_msg
         fmrb_log fmrb_mem fmrb_cobs fmrb_common esp_littlefs fatfs sdmmc)
     set(PLATFORM_PRIV_REQUIRES )

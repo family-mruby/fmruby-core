@@ -47,7 +47,19 @@ set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_link fmrb_toml fmrb_mem
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
-    list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram usb_host_hid bt nvs_flash)
+    list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram bt nvs_flash)
+    if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
+        # ATOM_DISPLAY: no USB host, add M5GFX receiver
+        list(REMOVE_ITEM COMPONENT_ESP32_SRCS
+            "drivers/usb/usb_task.c"
+            "drivers/usb/hid_report_parser.c"
+            "drivers/usb/hid_device_config.c"
+            "conn_check/usb_hid_conn_check.c"
+        )
+        list(APPEND COMPONENT_SRCS "drivers/m5gfx/m5gfx_task.c")
+    else()
+        list(APPEND COMPONENT_REQUIRES usb_host_hid)
+    endif()
     list(APPEND COMPONENT_SRCS ${COMPONENT_ESP32_SRCS})
 else()
     list(APPEND COMPONENT_SRCS ${COMPONENT_LINUX_SRCS})
@@ -55,7 +67,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/fs_proxy" "drivers/usb" "drivers/ble" "drivers/rtc" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/fs_proxy" "drivers/usb" "drivers/ble" "drivers/rtc" "drivers/m5gfx" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 
@@ -83,6 +95,11 @@ endif()
 if(ENABLE_SD_TEST)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE ENABLE_SD_TEST)
     message(STATUS "SD card connection test enabled")
+endif()
+
+if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_ATOM_DISPLAY)
+    message(STATUS "HW target: ATOM_DISPLAY")
 endif()
 
 # Disable optimization for app.c to enable proper debugging

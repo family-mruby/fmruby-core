@@ -28,6 +28,9 @@
 #include "status_led.h"
 #include "ble_task.h"
 #include "rtc_task.h"
+#ifdef FMRB_HW_ATOM_DISPLAY
+#include "m5gfx_task.h"
+#endif
 #endif
 
 #include "boot.h"
@@ -218,61 +221,71 @@ static void reset_wrover(void)
 }
 #endif
 
+#ifdef CONFIG_IDF_TARGET_LINUX
 static bool init_hardware(void)
 {
-#ifndef CONFIG_IDF_TARGET_LINUX
-    // Initialize GPIO before any peripheral init
-    init_gpio();
-    status_led_start();
-    fmrb_task_delay_ms(100);
-
-//#define ENABLE_HW_WIRING_TEST 1
-    //Board wiring check
-#ifdef ENABLE_HW_WIRING_TEST
-    hw_check();
-#endif
-
-#endif
-
-    // Filesystem
     fmrb_err_t ret = fmrb_hal_file_init();
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to init filesystem");
         return false;
     }
 
-#ifndef CONFIG_IDF_TARGET_LINUX
-    // HW proxy task for PSRAM tasks to access SPI flash safely
-    hw_proxy_init();
-#endif
-
-#ifndef CONFIG_IDF_TARGET_LINUX
-    // HID device config (must be after filesystem mount, before USB init)
-    hid_device_config_init();
-#endif
-
-    // USB HOST
     ret = usb_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to init usb_task");
         return false;
     }
 
-#ifndef CONFIG_IDF_TARGET_LINUX
-    // BLE Peripheral
+    return true;
+}
+#else // ESP32
+static bool init_hardware(void)
+{
+    init_gpio();
+    status_led_start();
+    fmrb_task_delay_ms(100);
+
+#ifdef ENABLE_HW_WIRING_TEST
+    hw_check();
+#endif
+
+    fmrb_err_t ret = fmrb_hal_file_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to init filesystem");
+        return false;
+    }
+
+    hw_proxy_init();
+
+#ifndef FMRB_HW_ATOM_DISPLAY
+    hid_device_config_init();
+
+    ret = usb_task_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to init usb_task");
+        return false;
+    }
+#endif
+
     ret = ble_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init BLE, continuing without it");
     }
 
+#ifdef FMRB_HW_ATOM_DISPLAY
+    ret = m5gfx_task_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init M5GFX, continuing without it");
+    }
+#else
     reset_wrover();
-
-    // RTC (RX8900) - start after I2C conn check released the bus
-    rtc_task_start();
 #endif
+
+    rtc_task_start();
 
     return true;
 }
+#endif // CONFIG_IDF_TARGET_LINUX
 
 static void init_mem(void)
 {
