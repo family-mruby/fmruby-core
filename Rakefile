@@ -160,9 +160,27 @@ namespace :build do
       Rake::Task['set_target:esp32'].invoke
     end
     hw_target = ENV['FMRB_HW_TARGET'] || ''
-    cmake_opts = hw_target.empty? ? '' : "-DFMRB_HW_TARGET=#{hw_target}"
+    cmake_opts = ''
+
+    # Select sdkconfig.defaults based on HW target
+    hw_config = {
+      'ATOM_DISPLAY' => { chip: 'n8r8', sdkconfig: 'config/sdkconfig.defaults.n8r8' },
+    }
+
+    if hw_config.key?(hw_target)
+      cfg = hw_config[hw_target]
+      cmake_opts += " -DSDKCONFIG_DEFAULTS=\"#{cfg[:sdkconfig]}\""
+      cmake_opts += " -DFMRB_HW_TARGET=#{hw_target}"
+      puts "HW target: #{hw_target} (#{cfg[:chip]})"
+    elsif !hw_target.empty?
+      cmake_opts += " -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.n16r8\""
+      cmake_opts += " -DFMRB_HW_TARGET=#{hw_target}"
+    else
+      # Default: use original sdkconfig.defaults (N16R8 / WROVER)
+    end
+
     cmake_opts += " #{ENV['CMAKE_OPTS']}" if ENV['CMAKE_OPTS']
-    sh "#{DOCKER_CMD} idf.py #{cmake_opts} build"
+    sh "#{DOCKER_CMD} idf.py #{cmake_opts.strip} build"
   end
 end
 

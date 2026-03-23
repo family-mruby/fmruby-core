@@ -56,7 +56,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/usb/hid_device_config.c"
             "conn_check/usb_hid_conn_check.c"
         )
-        list(APPEND COMPONENT_SRCS "drivers/m5gfx/m5gfx_task.c")
+        list(APPEND COMPONENT_SRCS "drivers/m5gfx/m5gfx_task.cpp")
     else()
         list(APPEND COMPONENT_REQUIRES usb_host_hid)
     endif()
@@ -100,6 +100,10 @@ endif()
 if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_ATOM_DISPLAY)
     message(STATUS "HW target: ATOM_DISPLAY")
+
+    # Suppress warnings-as-errors in M5Unified (upstream code we cannot modify)
+    idf_component_get_property(m5unified_lib m5stack__m5unified COMPONENT_LIB)
+    target_compile_options(${m5unified_lib} PRIVATE -Wno-error=maybe-uninitialized)
 endif()
 
 # Disable optimization for app.c to enable proper debugging

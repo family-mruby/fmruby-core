@@ -4,3 +4,11 @@ dependencies:
     rules:
       - if: "idf_version >= 5.0"
       - if: "target != linux"
+  m5stack/m5gfx:
+    version: "*"
+    rules:
+      - if: "target != linux"
+  m5stack/m5unified:
+    version: "*"
+    rules:
+      - if: "target != linux"
