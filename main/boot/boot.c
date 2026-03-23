@@ -242,8 +242,11 @@ static bool init_hardware(void)
 static bool init_hardware(void)
 {
     init_gpio();
+    fmrb_task_delay_ms(10); // wait for gpio to stabilize
+
+#ifndef FMRB_HW_ATOM_DISPLAY
     status_led_start();
-    fmrb_task_delay_ms(100);
+#endif
 
 #ifdef ENABLE_HW_WIRING_TEST
     hw_check();
@@ -279,9 +282,8 @@ static bool init_hardware(void)
     }
 #else
     reset_wrover();
-#endif
-
     rtc_task_start();
+#endif
 
     return true;
 }

@@ -1,12 +1,22 @@
 // M5GFX graphics handler for Atom Display (HDMI output)
 // Receives GFX commands via fmrb_hal_link (local Message Buffer),
-// decodes msgpack, and renders using M5GFX API.
+// decodes msgpack, and renders using M5Unified + M5AtomDisplay API.
+//
+// M5Unified provides:
+// - M5.Display   : primary display (Atom Display HDMI, set via setPrimaryDisplayType)
+// - M5.Displays(0): built-in LCD (if present, e.g. AtomS3R)
+// - M5.Displays(N): additional external displays
+// GFX commands are rendered to M5.Display (HDMI).
+// Built-in LCD can be used for status display in the future.
 
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
 
-#include <M5GFX.h>
+// M5AtomDisplay.h must be included BEFORE M5Unified.h
+// so that __M5GFX_M5ATOMDISPLAY__ is defined and config_t includes atom_display member.
+#include <M5AtomDisplay.h>
+#include <M5Unified.h>
 
 extern "C" {
 #include "fmrb_rtos.h"
@@ -26,14 +36,14 @@ static const char *TAG = "m5gfx";
 // Display and rendering state
 // ============================================================
 
-static M5GFX g_display;
+// g_display points to M5.Display (primary = Atom Display HDMI).
+// M5Unified manages display lifecycle; we just hold a pointer.
+static M5GFX* g_display = nullptr;
 static bool g_display_initialized = false;
 
-// Sprite resolution (draw at low res, scale up to display)
+// Sprite resolution (set by INIT_DISPLAY command from Core)
 static uint16_t g_sprite_width = 480;
 static uint16_t g_sprite_height = 320;
-static float g_scale_x = 1.0f;
-static float g_scale_y = 1.0f;
 
 // Canvas state structure (same as graphics_handler.cpp in fmruby-graphics-audio)
 typedef struct {
@@ -147,11 +157,11 @@ static canvas_state_t* canvas_alloc(uint16_t canvas_id, uint16_t req_w, uint16_t
         return nullptr;
     }
 
-    c->draw_buffer = new LGFX_Sprite(&g_display);
+    c->draw_buffer = new LGFX_Sprite(g_display);
     c->draw_buffer->setColorDepth(8);
     c->draw_buffer->setBuffer(c->draw_buffer_mem, req_w, req_h, 8);
 
-    c->render_buffer = new LGFX_Sprite(&g_display);
+    c->render_buffer = new LGFX_Sprite(g_display);
     c->render_buffer->setColorDepth(8);
     c->render_buffer->setBuffer(c->render_buffer_mem, req_w, req_h, 8);
 
@@ -264,10 +274,8 @@ static void render_frame() {
         g_cursor_drawn = true;
     }
 
-    // Push screen buffer to display with scaling
-    float cx = g_display.width() / 2.0f;
-    float cy = g_display.height() / 2.0f;
-    screen->pushRotateZoom(&g_display, cx, cy, 0, g_scale_x, g_scale_y);
+    // Push screen buffer to display (HDMI panel handles scaling)
+    screen->pushSprite(g_display, 0, 0);
 
     xSemaphoreGive(g_canvas_mutex);
 }
@@ -285,20 +293,16 @@ static void init_display(uint16_t width, uint16_t height, uint8_t color_depth) {
     g_sprite_width = width;
     g_sprite_height = height;
 
-    // Calculate scale from sprite resolution to display resolution
-    g_scale_x = (float)g_display.width() / (float)width;
-    g_scale_y = (float)g_display.height() / (float)height;
-
-    FMRB_LOGI(TAG, "Display init: sprite=%dx%d, display=%dx%d, scale=%.2fx%.2f",
-              width, height, g_display.width(), g_display.height(), g_scale_x, g_scale_y);
+    FMRB_LOGI(TAG, "Display init: sprite=%dx%d, display=%dx%d (hw scaling)",
+              width, height, g_display->width(), g_display->height());
 
     // Create cursor sprites
-    g_cursor_sprite = new LGFX_Sprite(&g_display);
+    g_cursor_sprite = new LGFX_Sprite(g_display);
     g_cursor_sprite->setColorDepth(16);
     g_cursor_sprite->createSprite(16, 16);
     g_cursor_sprite->clear(CURSOR_TRANSPARENT_COLOR);
 
-    g_cursor_save = new LGFX_Sprite(&g_display);
+    g_cursor_save = new LGFX_Sprite(g_display);
     g_cursor_save->setColorDepth(16);
     g_cursor_save->createSprite(16, 16);
 
@@ -695,10 +699,36 @@ static void process_message(const uint8_t* msgpack_data, size_t msgpack_len) {
 static void m5gfx_task(void* arg) {
     FMRB_LOGI(TAG, "M5GFX task started");
 
-    // Initialize M5GFX display hardware
-    g_display.init();
-    g_display.setAutoDisplay(false);
-    FMRB_LOGI(TAG, "M5GFX display: %dx%d", g_display.width(), g_display.height());
+    // Initialize M5Unified (auto-detects AtomS3/AtomS3R + Atom Display)
+    auto cfg = M5.config();
+    cfg.output_power = true;
+    cfg.internal_imu = false;
+    cfg.internal_rtc = false;
+    cfg.internal_spk = false;
+    cfg.internal_mic = false;
+    cfg.external_imu = false;
+    cfg.external_rtc = false;
+    cfg.external_display.atom_display = true;
+    // Set Atom Display logical resolution for hardware scaling
+    cfg.atom_display.logical_width = g_sprite_width;
+    cfg.atom_display.logical_height = g_sprite_height;
+    M5.begin(cfg);
+
+    // Set Atom Display (HDMI) as primary display
+    M5.setPrimaryDisplayType({
+        m5::board_t::board_M5AtomDisplay,
+    });
+
+    g_display = &M5.Display;
+    g_display->setAutoDisplay(false);
+
+    int display_count = M5.getDisplayCount();
+    FMRB_LOGI(TAG, "M5Unified: %d display(s) detected", display_count);
+    for (int i = 0; i < display_count; i++) {
+        FMRB_LOGI(TAG, "  Display[%d]: %dx%d", i,
+                   M5.Displays(i).width(), M5.Displays(i).height());
+    }
+    FMRB_LOGI(TAG, "Primary display: %dx%d", g_display->width(), g_display->height());
 
     g_canvas_mutex = xSemaphoreCreateMutex();
 
@@ -717,7 +747,7 @@ static void m5gfx_task(void* arg) {
         // Render frame
         if (g_display_initialized) {
             render_frame();
-            g_display.display();
+            g_display->display();
         }
     }
 
@@ -730,6 +760,9 @@ static void m5gfx_task(void* arg) {
     g_cursor_sprite = nullptr;
     delete g_cursor_save;
     g_cursor_save = nullptr;
+
+    // g_display is managed by M5Unified, do not delete
+    g_display = nullptr;
 
     if (g_canvas_mutex) {
         vSemaphoreDelete(g_canvas_mutex);

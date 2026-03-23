@@ -3,6 +3,11 @@
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "driver/gpio.h"
 
+// ============================================================
+// Pin assignments for Narya board v3 (N16R8, default)
+// ============================================================
+#ifndef FMRB_HW_ATOM_DISPLAY
+
 // SD Card SPI Interface (SPI3)
 #define FMRB_PIN_SD_CS     GPIO_NUM_15
 #define FMRB_PIN_SD_MOSI   GPIO_NUM_16
@@ -31,13 +36,59 @@
 #define FMRB_PIN_BUTTON_UP      GPIO_NUM_6
 #define FMRB_PIN_BUTTON_DOWN    GPIO_NUM_7
 #define FMRB_PIN_BUTTON_ENTER   GPIO_NUM_8
-//#define FMRB_PIN_BUTTON_CANCEL  GPIO_NUM_9
 
 // I2C
 #define FMRB_PIN_I2C1_SDA      GPIO_NUM_14
 #define FMRB_PIN_I2C1_SCL      GPIO_NUM_21
 #define FMRB_PIN_I2C2_SDA      GPIO_NUM_47
 #define FMRB_PIN_I2C2_SCL      GPIO_NUM_48
+
+// ============================================================
+// Pin assignments for AtomS3 + Atom Display (N8R8)
+// ============================================================
+#else // FMRB_HW_ATOM_DISPLAY
+
+// Atom Display HDMI - SPI (SPI2, directly used by M5AtomDisplay)
+#define FMRB_PIN_HDMI_SPI_MOSI  GPIO_NUM_6
+#define FMRB_PIN_HDMI_SPI_MISO  GPIO_NUM_5
+#define FMRB_PIN_HDMI_SPI_SCLK  GPIO_NUM_7
+#define FMRB_PIN_HDMI_SPI_CS    GPIO_NUM_8
+
+// Atom Display HDMI - I2C (for HDMI transmitter)
+#define FMRB_PIN_HDMI_I2C_SDA   GPIO_NUM_38
+#define FMRB_PIN_HDMI_I2C_SCL   GPIO_NUM_39
+
+// AtomS3 built-in button
+#define FMRB_PIN_BUTTON_ENTER   GPIO_NUM_41
+
+// AtomS3 built-in LED (optional, IR LED on some models)
+#define FMRB_PIN_STATUS_LED     GPIO_NUM_4
+
+// I2C (Grove port on AtomS3)
+#define FMRB_PIN_I2C1_SDA      GPIO_NUM_2
+#define FMRB_PIN_I2C1_SCL      GPIO_NUM_1
+
+// Pins not available on AtomS3 (defined as GPIO_NUM_NC for compile compatibility)
+#define FMRB_PIN_SD_CS          GPIO_NUM_NC
+#define FMRB_PIN_SD_MOSI        GPIO_NUM_NC
+#define FMRB_PIN_SD_SCLK        GPIO_NUM_NC
+#define FMRB_PIN_SD_MISO        GPIO_NUM_NC
+#define FMRB_PIN_SD_DETECT      GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_MOSI   GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_MISO   GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_SCLK   GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_CS     GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_INTR   GPIO_NUM_NC
+#define FMRB_PIN_FSPROXY_TX     GPIO_NUM_NC
+#define FMRB_PIN_FSPROXY_RX     GPIO_NUM_NC
+#define FMRB_PIN_USB_POWER      GPIO_NUM_NC
+#define FMRB_PIN_WROVER_RESET   GPIO_NUM_NC
+#define FMRB_PIN_BUTTON_UP      GPIO_NUM_NC
+#define FMRB_PIN_BUTTON_DOWN    GPIO_NUM_NC
+#define FMRB_PIN_I2C2_SDA       GPIO_NUM_NC
+#define FMRB_PIN_I2C2_SCL       GPIO_NUM_NC
+
+#endif // FMRB_HW_ATOM_DISPLAY
 
 #else
 
