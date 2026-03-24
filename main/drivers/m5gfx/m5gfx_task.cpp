@@ -41,9 +41,9 @@ static const char *TAG = "m5gfx";
 static M5GFX* g_display = nullptr;
 static bool g_display_initialized = false;
 
-// Sprite resolution (set by INIT_DISPLAY command from Core)
-static uint16_t g_sprite_width = 480;
-static uint16_t g_sprite_height = 320;
+// Sprite resolution (defined in m5gfx_task.h, may be overridden by INIT_DISPLAY)
+static uint16_t g_sprite_width = M5GFX_SPRITE_WIDTH;
+static uint16_t g_sprite_height = M5GFX_SPRITE_HEIGHT;
 
 // Canvas state structure (same as graphics_handler.cpp in fmruby-graphics-audio)
 typedef struct {
@@ -112,6 +112,49 @@ static volatile bool g_running = false;
 static uint8_t g_recv_buf[M5GFX_RECV_BUF_SIZE];
 
 // ============================================================
+// Canvas memory pool (PSRAM via EXT_RAM_BSS_ATTR)
+// ============================================================
+// Statically allocated on PSRAM to avoid heap fragmentation.
+// Slot size and count defined in m5gfx_task.h.
+
+EXT_RAM_BSS_ATTR static uint8_t __attribute__((aligned(8)))
+    g_canvas_pool[M5GFX_CANVAS_MAX_SLOTS][M5GFX_CANVAS_SLOT_SIZE];
+static bool g_canvas_pool_used[M5GFX_CANVAS_MAX_SLOTS] = {};
+
+static void canvas_pool_init(void) {
+    memset(g_canvas_pool_used, 0, sizeof(g_canvas_pool_used));
+    FMRB_LOGI(TAG, "Canvas pool: %d slots x %d bytes = %zu bytes (PSRAM static)",
+               M5GFX_CANVAS_MAX_SLOTS, M5GFX_CANVAS_SLOT_SIZE,
+               (size_t)M5GFX_CANVAS_MAX_SLOTS * M5GFX_CANVAS_SLOT_SIZE);
+}
+
+static void canvas_pool_deinit(void) {
+    memset(g_canvas_pool_used, 0, sizeof(g_canvas_pool_used));
+}
+
+static void* canvas_pool_alloc(void) {
+    for (int i = 0; i < M5GFX_CANVAS_MAX_SLOTS; i++) {
+        if (!g_canvas_pool_used[i]) {
+            g_canvas_pool_used[i] = true;
+            return g_canvas_pool[i];
+        }
+    }
+    FMRB_LOGE(TAG, "Canvas pool exhausted");
+    return nullptr;
+}
+
+static void canvas_pool_free(void* ptr) {
+    if (!ptr) return;
+    for (int i = 0; i < M5GFX_CANVAS_MAX_SLOTS; i++) {
+        if ((void*)g_canvas_pool[i] == ptr) {
+            g_canvas_pool_used[i] = false;
+            return;
+        }
+    }
+    FMRB_LOGE(TAG, "canvas_pool_free: invalid pointer %p", ptr);
+}
+
+// ============================================================
 // Canvas helpers
 // ============================================================
 
@@ -142,17 +185,16 @@ static canvas_state_t* canvas_alloc(uint16_t canvas_id, uint16_t req_w, uint16_t
     c->is_visible = false;
     c->dirty = false;
 
-    size_t buf_size = (size_t)c->width * c->height;  // RGB332 = 1 byte/pixel
-    c->draw_buffer_mem = fmrb_sys_malloc(buf_size);
+    c->draw_buffer_mem = canvas_pool_alloc();
     if (!c->draw_buffer_mem) {
-        FMRB_LOGE(TAG, "Failed to alloc draw buffer (%zu bytes)", buf_size);
+        FMRB_LOGE(TAG, "Failed to alloc draw buffer from canvas pool");
         return nullptr;
     }
 
-    c->render_buffer_mem = fmrb_sys_malloc(buf_size);
+    c->render_buffer_mem = canvas_pool_alloc();
     if (!c->render_buffer_mem) {
-        FMRB_LOGE(TAG, "Failed to alloc render buffer");
-        fmrb_sys_free(c->draw_buffer_mem);
+        FMRB_LOGE(TAG, "Failed to alloc render buffer from canvas pool");
+        canvas_pool_free(c->draw_buffer_mem);
         c->draw_buffer_mem = nullptr;
         return nullptr;
     }
@@ -182,11 +224,11 @@ static void canvas_free(canvas_state_t* c) {
     c->render_buffer = nullptr;
 
     if (c->draw_buffer_mem) {
-        fmrb_sys_free(c->draw_buffer_mem);
+        canvas_pool_free(c->draw_buffer_mem);
         c->draw_buffer_mem = nullptr;
     }
     if (c->render_buffer_mem) {
-        fmrb_sys_free(c->render_buffer_mem);
+        canvas_pool_free(c->render_buffer_mem);
         c->render_buffer_mem = nullptr;
     }
 
@@ -292,6 +334,9 @@ static void init_display(uint16_t width, uint16_t height, uint8_t color_depth) {
 
     g_sprite_width = width;
     g_sprite_height = height;
+
+    // Initialize canvas memory pool on PSRAM
+    canvas_pool_init();
 
     FMRB_LOGI(TAG, "Display init: sprite=%dx%d, display=%dx%d (hw scaling)",
               width, height, g_display->width(), g_display->height());
@@ -755,6 +800,8 @@ static void m5gfx_task(void* arg) {
     while (g_canvas_count > 0) {
         canvas_free(&g_canvases[0]);
     }
+
+    canvas_pool_deinit();
 
     delete g_cursor_sprite;
     g_cursor_sprite = nullptr;
