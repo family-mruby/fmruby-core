@@ -121,6 +121,11 @@
 #define FMRB_M5GFX_TASK_PRIORITY        (6)
 #define FMRB_M5GFX_TASK_FLAGS           FMRB_TASK_FLAG_PINNED_0
 
+// I2C keyboard polling task (ATOM_DISPLAY mode)
+#define FMRB_I2C_KBD_TASK_STACK_SIZE    (4096)
+#define FMRB_I2C_KBD_TASK_PRIORITY      (5)
+#define FMRB_I2C_KBD_TASK_FLAGS         FMRB_TASK_FLAG_PINNED_0
+
 // ============================================================
 // Maximum number of concurrent apps
 // (FMRB_MAX_APPS is defined in System Limits section above)

@@ -30,6 +30,7 @@
 #include "rtc_task.h"
 #ifdef FMRB_HW_ATOM_DISPLAY
 #include "m5gfx_task.h"
+#include "i2c_keyboard.h"
 #endif
 #endif
 
@@ -279,6 +280,11 @@ static bool init_hardware(void)
     ret = m5gfx_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init M5GFX, continuing without it");
+    }
+
+    ret = i2c_keyboard_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init I2C keyboard, continuing without it");
     }
 #else
     reset_wrover();
