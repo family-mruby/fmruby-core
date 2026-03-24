@@ -244,36 +244,20 @@ static int canvas_cmp_zorder(const void* a, const void* b) {
     return ((const canvas_state_t*)a)->z_order - ((const canvas_state_t*)b)->z_order;
 }
 
-// DEBUG: Direct draw mode - bypass Canvas/Sprite, draw directly to HDMI display.
-// This matches the official AtomDisplay_Factory.ino pattern.
-// When stable, switch back to Canvas-based rendering.
-#define M5GFX_DEBUG_DIRECT_DRAW 1
-
 // Get drawing target for a command
+// Direct draw mode: all drawing goes to g_display (HDMI FPGA) directly.
+// Canvas compositing via PSRAM Sprite pushSprite causes display corruption
+// due to PSRAM/SPI bus contention. Direct draw is stable.
+// TODO: Implement line-buffer based compositing for Canvas support.
 static LovyanGFX* get_target(uint16_t canvas_id, bool mark_dirty = true) {
-#if M5GFX_DEBUG_DIRECT_DRAW
     (void)canvas_id;
     (void)mark_dirty;
-    return g_display;  // Always draw directly to HDMI display
-#else
-    if (canvas_id == FMRB_CANVAS_SCREEN) {
-        if (g_canvas_count > 0) {
-            return g_canvases[0].draw_buffer;
-        }
-        return nullptr;
-    }
-    canvas_state_t* c = canvas_find(canvas_id);
-    if (c) {
-        if (mark_dirty) c->dirty = true;
-        return c->draw_buffer;
-    }
-    FMRB_LOGE(TAG, "Canvas %u not found", canvas_id);
-    return nullptr;
-#endif
+    return g_display;
 }
 
 // ============================================================
-// Render frame (composite all canvases → display)
+// Render frame: push each canvas directly to g_display via SPI
+// No intermediate screen_buffer (avoids PSRAM→PSRAM→SPI issue)
 // ============================================================
 
 static void render_frame() {
@@ -288,52 +272,25 @@ static void render_frame() {
         qsort(g_canvases, g_canvas_count, sizeof(canvas_state_t), canvas_cmp_zorder);
     }
 
-    LGFX_Sprite* screen = g_canvases[0].render_buffer;
-    if (!screen) {
-        xSemaphoreGive(g_canvas_mutex);
-        return;
-    }
+    // Hold SPI bus for the entire render pass (same pattern as official sample)
+    g_display->startWrite();
 
-    // Restore pixels under cursor
-    if (g_cursor_drawn && g_cursor_save) {
-        g_cursor_save->pushSprite(screen, g_cursor_save_x, g_cursor_save_y);
-        g_cursor_drawn = false;
-    }
-
-    // Composite visible canvases onto screen buffer
-    for (size_t i = 1; i < g_canvas_count; i++) {
+    // Push each visible canvas render_buffer directly to display
+    for (size_t i = 0; i < g_canvas_count; i++) {
         canvas_state_t* c = &g_canvases[i];
         if (c->is_visible && c->render_buffer) {
-            c->render_buffer->pushSprite(screen, c->push_x, c->push_y);
-            c->dirty = false;
+            c->render_buffer->pushSprite(g_display, c->push_x, c->push_y);
         }
     }
 
-    // Draw cursor
-    if (g_cursor_visible && g_cursor_sprite && g_cursor_save) {
-        for (int y = 0; y < 16; y++) {
-            for (int x = 0; x < 16; x++) {
-                int sx = g_cursor_x + x;
-                int sy = g_cursor_y + y;
-                if (sx >= 0 && sx < screen->width() && sy >= 0 && sy < screen->height()) {
-                    g_cursor_save->drawPixel(x, y, screen->readPixel(sx, sy));
-                }
-            }
-        }
-        g_cursor_save_x = g_cursor_x;
-        g_cursor_save_y = g_cursor_y;
-        g_cursor_sprite->pushSprite(screen, g_cursor_x, g_cursor_y, CURSOR_TRANSPARENT_COLOR);
-        g_cursor_drawn = true;
+    // Draw cursor directly to display
+    if (g_cursor_visible && g_cursor_sprite) {
+        g_cursor_sprite->pushSprite(g_display, g_cursor_x, g_cursor_y, CURSOR_TRANSPARENT_COLOR);
     }
 
-    // Release mutex before the slow SPI transfer to avoid blocking draw commands
+    g_display->endWrite();
+
     xSemaphoreGive(g_canvas_mutex);
-
-    // Push screen buffer to display (HDMI FPGA via SPI)
-    // This is a large DMA transfer (~300KB for 480x320 RGB565).
-    screen->pushSprite(g_display, 0, 0);
-    // Wait for DMA transfer to complete before returning
-    g_display->waitDisplay();
 }
 
 // ============================================================
@@ -634,12 +591,6 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_push_canvas_t)) break;
         const auto* cmd = (const fmrb_link_graphics_push_canvas_t*)data;
 
-#if M5GFX_DEBUG_DIRECT_DRAW
-        // Direct draw mode: display() to flush (no canvas compositing)
-        g_display->display();
-        return 0;
-#endif
-
         canvas_state_t* src = canvas_find(cmd->canvas_id);
         if (!src) return -1;
 
@@ -843,11 +794,9 @@ static void m5gfx_task(void* arg) {
 
     g_canvas_mutex = xSemaphoreCreateMutex();
 
-#if M5GFX_DEBUG_DIRECT_DRAW
-    // Direct draw mode: hold SPI bus, draw commands go straight to display
+    // Direct draw mode: hold SPI bus for stable HDMI output
     g_display->startWrite();
     FMRB_LOGI(TAG, "Direct draw mode: SPI bus acquired");
-#endif
 
     while (g_running) {
         // Drain all pending commands (non-blocking after first)
@@ -863,18 +812,9 @@ static void m5gfx_task(void* arg) {
             process_message(g_recv_buf, msg.size);
             first = false;
         }
-
-#if !M5GFX_DEBUG_DIRECT_DRAW
-        // Canvas-based rendering
-        if (g_display_initialized) {
-            render_frame();
-        }
-#endif
     }
 
-#if M5GFX_DEBUG_DIRECT_DRAW
     g_display->endWrite();
-#endif
 
     // Cleanup
     while (g_canvas_count > 0) {
