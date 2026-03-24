@@ -200,12 +200,12 @@ static canvas_state_t* canvas_alloc(uint16_t canvas_id, uint16_t req_w, uint16_t
     }
 
     c->draw_buffer = new LGFX_Sprite(g_display);
-    c->draw_buffer->setColorDepth(8);
-    c->draw_buffer->setBuffer(c->draw_buffer_mem, req_w, req_h, 8);
+    c->draw_buffer->setColorDepth(M5GFX_CANVAS_COLOR_DEPTH);
+    c->draw_buffer->setBuffer(c->draw_buffer_mem, req_w, req_h, M5GFX_CANVAS_COLOR_DEPTH);
 
     c->render_buffer = new LGFX_Sprite(g_display);
-    c->render_buffer->setColorDepth(8);
-    c->render_buffer->setBuffer(c->render_buffer_mem, req_w, req_h, 8);
+    c->render_buffer->setColorDepth(M5GFX_CANVAS_COLOR_DEPTH);
+    c->render_buffer->setBuffer(c->render_buffer_mem, req_w, req_h, M5GFX_CANVAS_COLOR_DEPTH);
 
     g_canvas_count++;
 
@@ -244,10 +244,19 @@ static int canvas_cmp_zorder(const void* a, const void* b) {
     return ((const canvas_state_t*)a)->z_order - ((const canvas_state_t*)b)->z_order;
 }
 
+// DEBUG: Direct draw mode - bypass Canvas/Sprite, draw directly to HDMI display.
+// This matches the official AtomDisplay_Factory.ino pattern.
+// When stable, switch back to Canvas-based rendering.
+#define M5GFX_DEBUG_DIRECT_DRAW 1
+
 // Get drawing target for a command
-static LGFX_Sprite* get_target(uint16_t canvas_id, bool mark_dirty = true) {
+static LovyanGFX* get_target(uint16_t canvas_id, bool mark_dirty = true) {
+#if M5GFX_DEBUG_DIRECT_DRAW
+    (void)canvas_id;
+    (void)mark_dirty;
+    return g_display;  // Always draw directly to HDMI display
+#else
     if (canvas_id == FMRB_CANVAS_SCREEN) {
-        // For screen target, use canvas 0's draw buffer if available
         if (g_canvas_count > 0) {
             return g_canvases[0].draw_buffer;
         }
@@ -260,6 +269,7 @@ static LGFX_Sprite* get_target(uint16_t canvas_id, bool mark_dirty = true) {
     }
     FMRB_LOGE(TAG, "Canvas %u not found", canvas_id);
     return nullptr;
+#endif
 }
 
 // ============================================================
@@ -316,10 +326,14 @@ static void render_frame() {
         g_cursor_drawn = true;
     }
 
-    // Push screen buffer to display (HDMI panel handles scaling)
-    screen->pushSprite(g_display, 0, 0);
-
+    // Release mutex before the slow SPI transfer to avoid blocking draw commands
     xSemaphoreGive(g_canvas_mutex);
+
+    // Push screen buffer to display (HDMI FPGA via SPI)
+    // This is a large DMA transfer (~300KB for 480x320 RGB565).
+    screen->pushSprite(g_display, 0, 0);
+    // Wait for DMA transfer to complete before returning
+    g_display->waitDisplay();
 }
 
 // ============================================================
@@ -597,8 +611,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         c->push_y = cmd->y;
         c->active_width = (uint16_t)cmd->width;
         c->active_height = (uint16_t)cmd->height;
-        c->draw_buffer->setBuffer(c->draw_buffer_mem, c->active_width, c->active_height, 8);
-        c->render_buffer->setBuffer(c->render_buffer_mem, c->active_width, c->active_height, 8);
+        c->draw_buffer->setBuffer(c->draw_buffer_mem, c->active_width, c->active_height, M5GFX_CANVAS_COLOR_DEPTH);
+        c->render_buffer->setBuffer(c->render_buffer_mem, c->active_width, c->active_height, M5GFX_CANVAS_COLOR_DEPTH);
         c->dirty = true;
         xSemaphoreGive(g_canvas_mutex);
         return 0;
@@ -619,6 +633,12 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
     case FMRB_LINK_GFX_PUSH_CANVAS: {
         if (size < sizeof(fmrb_link_graphics_push_canvas_t)) break;
         const auto* cmd = (const fmrb_link_graphics_push_canvas_t*)data;
+
+#if M5GFX_DEBUG_DIRECT_DRAW
+        // Direct draw mode: display() to flush (no canvas compositing)
+        g_display->display();
+        return 0;
+#endif
 
         canvas_state_t* src = canvas_find(cmd->canvas_id);
         if (!src) return -1;
@@ -823,24 +843,38 @@ static void m5gfx_task(void* arg) {
 
     g_canvas_mutex = xSemaphoreCreateMutex();
 
-    while (g_running) {
-        // Receive commands (short timeout for ~60fps render loop)
-        fmrb_link_message_t msg = {
-            .data = g_recv_buf,
-            .size = sizeof(g_recv_buf),
-        };
+#if M5GFX_DEBUG_DIRECT_DRAW
+    // Direct draw mode: hold SPI bus, draw commands go straight to display
+    g_display->startWrite();
+    FMRB_LOGI(TAG, "Direct draw mode: SPI bus acquired");
+#endif
 
-        fmrb_err_t err = fmrb_hal_link_local_receive_cmd(FMRB_LINK_GRAPHICS, &msg, 16);
-        if (err == FMRB_OK && msg.size > 0) {
+    while (g_running) {
+        // Drain all pending commands (non-blocking after first)
+        bool first = true;
+        while (true) {
+            fmrb_link_message_t msg = {
+                .data = g_recv_buf,
+                .size = sizeof(g_recv_buf),
+            };
+            fmrb_err_t err = fmrb_hal_link_local_receive_cmd(
+                FMRB_LINK_GRAPHICS, &msg, first ? 33 : 0);
+            if (err != FMRB_OK || msg.size == 0) break;
             process_message(g_recv_buf, msg.size);
+            first = false;
         }
 
-        // Render frame
+#if !M5GFX_DEBUG_DIRECT_DRAW
+        // Canvas-based rendering
         if (g_display_initialized) {
             render_frame();
-            g_display->display();
         }
+#endif
     }
+
+#if M5GFX_DEBUG_DIRECT_DRAW
+    g_display->endWrite();
+#endif
 
     // Cleanup
     while (g_canvas_count > 0) {
