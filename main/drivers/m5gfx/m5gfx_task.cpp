@@ -367,11 +367,14 @@ static void init_display(uint16_t width, uint16_t height, uint8_t color_depth) {
     FMRB_LOGI(TAG, "Display initialized");
 }
 
+// Forward declaration
+static void send_ack(uint8_t msg_type, uint8_t seq, const uint8_t* data, size_t data_len);
+
 // ============================================================
 // Command processing
 // ============================================================
 
-static int process_gfx_command(uint8_t cmd_type, uint8_t seq, const uint8_t* data, size_t size) {
+static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, const uint8_t* data, size_t size) {
     switch (cmd_type) {
     case FMRB_LINK_GFX_CLEAR:
     case FMRB_LINK_GFX_FILL_SCREEN: {
@@ -553,9 +556,9 @@ static int process_gfx_command(uint8_t cmd_type, uint8_t seq, const uint8_t* dat
         FMRB_LOGI(TAG, "Canvas created: id=%u, %dx%d, z=%d",
                   cid, (int)cmd->width, (int)cmd->height, (int)cmd->z_order);
 
-        // TODO: send ACK with canvas_id back to transport for sync commands
-        // For now, the local link doesn't support reverse channel
-        return 1;
+        // Send ACK with canvas_id
+        send_ack(msg_type, seq, (const uint8_t*)&cid, sizeof(cid));
+        return 1;  // ACK already sent
     }
 
     case FMRB_LINK_GFX_DELETE_CANVAS: {
@@ -679,6 +682,38 @@ static int process_gfx_command(uint8_t cmd_type, uint8_t seq, const uint8_t* dat
 }
 
 // ============================================================
+// ACK response sender (m5gfx -> Core via RX buffer)
+// ============================================================
+
+static void send_ack(uint8_t msg_type, uint8_t seq, const uint8_t* data, size_t data_len) {
+    // Build ACK as msgpack: [type|ACK_REQUIRED, seq, RESPONSE_MSG_ACK, payload]
+    msgpack_sbuffer sbuf;
+    msgpack_sbuffer_init(&sbuf);
+    msgpack_packer pk;
+    msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
+
+    msgpack_pack_array(&pk, 4);
+    msgpack_pack_uint8(&pk, msg_type);
+    msgpack_pack_uint8(&pk, seq);
+    msgpack_pack_uint8(&pk, FMRB_LINK_RESPONSE_MSG_ACK);
+
+    if (data && data_len > 0) {
+        msgpack_pack_bin(&pk, data_len);
+        msgpack_pack_bin_body(&pk, data, data_len);
+    } else {
+        msgpack_pack_nil(&pk);
+    }
+
+    fmrb_link_message_t resp = {
+        .data = (uint8_t*)sbuf.data,
+        .size = sbuf.size,
+    };
+    fmrb_hal_link_local_send_response(FMRB_LINK_GRAPHICS, &resp, 1000);
+
+    msgpack_sbuffer_destroy(&sbuf);
+}
+
+// ============================================================
 // Message decode (msgpack: [type, seq, sub_cmd, payload])
 // ============================================================
 
@@ -716,16 +751,27 @@ static void process_message(const uint8_t* msgpack_data, size_t msgpack_len) {
 
     switch (base_type) {
     case FMRB_LINK_TYPE_CONTROL:
-        if (sub_cmd == FMRB_LINK_CONTROL_INIT_DISPLAY && payload_len >= sizeof(fmrb_control_init_display_t)) {
+        if (sub_cmd == FMRB_LINK_CONTROL_VERSION && payload_len >= sizeof(fmrb_control_version_req_t)) {
+            uint8_t remote_ver = payload[0];
+            uint8_t local_ver = FMRB_LINK_PROTOCOL_VERSION;
+            FMRB_LOGI(TAG, "VERSION check: remote=%d, local=%d, seq=%u", remote_ver, local_ver, seq);
+            send_ack(type, seq, &local_ver, sizeof(local_ver));
+        } else if (sub_cmd == FMRB_LINK_CONTROL_INIT_DISPLAY && payload_len >= sizeof(fmrb_control_init_display_t)) {
             const auto* init_cmd = (const fmrb_control_init_display_t*)payload;
             FMRB_LOGI(TAG, "INIT_DISPLAY: %dx%d, %d-bit", init_cmd->width, init_cmd->height, init_cmd->color_depth);
             init_display(init_cmd->width, init_cmd->height, init_cmd->color_depth);
+            send_ack(type, seq, nullptr, 0);
         }
         break;
 
     case FMRB_LINK_TYPE_GRAPHICS:
         if (payload && payload_len > 0) {
-            process_gfx_command(sub_cmd, seq, payload, payload_len);
+            int result = process_gfx_command(type, sub_cmd, seq, payload, payload_len);
+            // result == 0: success, ACK not yet sent
+            // result > 0: ACK already sent by handler (e.g. CREATE_CANVAS)
+            if (result == 0) {
+                send_ack(type, seq, nullptr, 0);
+            }
         }
         break;
 
@@ -784,7 +830,7 @@ static void m5gfx_task(void* arg) {
             .size = sizeof(g_recv_buf),
         };
 
-        fmrb_err_t err = fmrb_hal_link_receive(FMRB_LINK_GRAPHICS, &msg, 16);
+        fmrb_err_t err = fmrb_hal_link_local_receive_cmd(FMRB_LINK_GRAPHICS, &msg, 16);
         if (err == FMRB_OK && msg.size > 0) {
             process_message(g_recv_buf, msg.size);
         }

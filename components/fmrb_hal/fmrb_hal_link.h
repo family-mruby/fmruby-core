@@ -71,6 +71,17 @@ void* fmrb_hal_link_get_shared_memory(size_t size);
  */
 void fmrb_hal_link_release_shared_memory(void *ptr);
 
+// Extended API for local link (ATOM_DISPLAY only)
+// m5gfx_task uses these to read commands from Core and send ACK responses back.
+#ifdef FMRB_HW_ATOM_DISPLAY
+fmrb_err_t fmrb_hal_link_local_receive_cmd(fmrb_link_channel_t channel,
+                                            fmrb_link_message_t *msg,
+                                            uint32_t timeout_ms);
+fmrb_err_t fmrb_hal_link_local_send_response(fmrb_link_channel_t channel,
+                                              const fmrb_link_message_t *msg,
+                                              uint32_t timeout_ms);
+#endif
+
 #ifdef __cplusplus
 }
 #endif

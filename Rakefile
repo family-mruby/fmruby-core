@@ -3,7 +3,7 @@ require "rake"
 
 EXPECTED_CHIP = "ESP32-S3"
 PORT_CACHE_FILE = ".serial_port"
-PROBE_PORTS = ["/dev/ttyUSB0", "/dev/ttyUSB1"]
+PROBE_PORTS = ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyACM0", "/dev/ttyACM1"]
 
 def get_serial_port
   if File.exist?(PORT_CACHE_FILE)
