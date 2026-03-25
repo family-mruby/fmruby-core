@@ -79,14 +79,14 @@ static void i2c_keyboard_task(void *arg)
                 handle_arrow_key(keycode);
             } else if (g_prev_key == 0) {
                 // Regular key pressed (new press only)
-                FMRB_LOGD(TAG, "Key down: %d (0x%02X) '%c'",
+                FMRB_LOGI(TAG, "Key down: %d (0x%02X) '%c'",
                            keycode, keycode,
                            (keycode >= 0x20 && keycode < 0x7F) ? keycode : '.');
                 fmrb_host_send_key_down(keycode, keycode, 0);
             }
         } else if (g_prev_key != 0 && !is_arrow_key(g_prev_key)) {
             // Regular key released
-            FMRB_LOGD(TAG, "Key up: %d", g_prev_key);
+            FMRB_LOGI(TAG, "Key up: %d", g_prev_key);
             fmrb_host_send_key_up(g_prev_key, g_prev_key, 0);
         }
 

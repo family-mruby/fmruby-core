@@ -161,16 +161,23 @@ namespace :build do
     # Select sdkconfig.defaults based on HW target
     # All configs are under config/ directory
     hw_config = {
-      'ATOM_DISPLAY' => { chip: 'n8r8', sdkconfig: 'config/sdkconfig.defaults.n8r8' },
+      'ATOM_DISPLAY' => { chip: 'n8r8', sdkconfig: 'config/sdkconfig.defaults.n8r8',
+                          system_conf: 'config/system_conf_n8r8.toml' },
     }
     default_sdkconfig = 'config/sdkconfig.defaults.n16r8'
+    default_system_conf = 'config/system_conf_n16r8.toml'
 
     sdkconfig_path = default_sdkconfig
+    system_conf_path = default_system_conf
     if hw_config.key?(hw_target)
       cfg = hw_config[hw_target]
       sdkconfig_path = cfg[:sdkconfig]
+      system_conf_path = cfg[:system_conf]
       puts "HW target: #{hw_target} (#{cfg[:chip]})"
     end
+
+    # Copy HW-specific system_conf.toml to flash directory
+    cp system_conf_path, 'flash/etc/system_conf.toml', verbose: true
 
     # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated correctly
     unless Dir.exist?('build')
