@@ -1,8 +1,8 @@
 system_name = "Family mruby OS"
 display_width = 320
-display_height = 200
+display_height = 240
 default_user_app_width = 320
-default_user_app_height = 200
+default_user_app_height = 240
 display_mode = "atom_display"
 debug_mode = true
 mouse_scale_x = 1.0

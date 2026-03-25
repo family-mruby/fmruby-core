@@ -41,26 +41,28 @@ static const char *TAG = "m5gfx";
 static M5GFX* g_display = nullptr;
 static bool g_display_initialized = false;
 
-// Sprite resolution (defined in m5gfx_task.h, may be overridden by INIT_DISPLAY)
+// Sprite resolution
 static uint16_t g_sprite_width = M5GFX_SPRITE_WIDTH;
 static uint16_t g_sprite_height = M5GFX_SPRITE_HEIGHT;
 
-// Canvas state structure (same as graphics_handler.cpp in fmruby-graphics-audio)
+// ============================================================
+// FPGA offscreen Canvas management
+// ============================================================
+// Each Canvas is mapped to an offscreen region in FPGA framebuffer.
+// Visible area: Y=0..SPRITE_HEIGHT-1
+// Canvas N offscreen: Y = SPRITE_HEIGHT * (slot+1) .. SPRITE_HEIGHT * (slot+2) - 1
+// PUSH_CANVAS uses copyRect to copy offscreen → visible area.
+
 typedef struct {
     uint16_t canvas_id;
-    LGFX_Sprite* draw_buffer;
-    LGFX_Sprite* render_buffer;
-    void* draw_buffer_mem;
-    void* render_buffer_mem;
+    int16_t offscreen_slot;    // Offscreen slot index (0..MAX_OFFSCREEN-1)
     int16_t z_order;
-    int16_t push_x, push_y;
+    int16_t push_x, push_y;   // Position in visible area
     bool is_visible;
-    uint16_t width, height;
     uint16_t active_width, active_height;
-    bool dirty;
 } canvas_state_t;
 
-#define MAX_CANVAS_COUNT 16
+#define MAX_CANVAS_COUNT M5GFX_MAX_OFFSCREEN_CANVASES
 #define FMRB_CANVAS_SCREEN 0x0000
 #define FMRB_CANVAS_RENDER 0xFFF0
 #define FMRB_CANVAS_INVALID 0xFFFF
@@ -68,37 +70,17 @@ typedef struct {
 static canvas_state_t g_canvases[MAX_CANVAS_COUNT];
 static size_t g_canvas_count = 0;
 static uint16_t g_next_canvas_id = 1;
-static uint16_t g_current_target = FMRB_CANVAS_SCREEN;
 
-// Cursor
+// Get Y offset for a canvas offscreen slot
+static int get_offscreen_y(int slot) {
+    return M5GFX_SPRITE_HEIGHT * (slot + 1);
+}
+
+// Cursor (drawn directly to visible area of FPGA framebuffer)
 static LGFX_Sprite* g_cursor_sprite = nullptr;
-static LGFX_Sprite* g_cursor_save = nullptr;
 static bool g_cursor_visible = false;
-static bool g_cursor_drawn = false;
-static int g_cursor_x = 240;
-static int g_cursor_y = 160;
-static int g_cursor_save_x = 0;
-static int g_cursor_save_y = 0;
-static const uint32_t CURSOR_TRANSPARENT_COLOR = 0xFF00FF;
-
-static const uint8_t cursor_pattern[16][16] = {
-    {1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {1, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {1, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {1, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {1, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0},
-    {1, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0},
-    {1, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0, 0},
-    {1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 0, 0, 0, 0, 0},
-    {1, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0},
-    {1, 2, 2, 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
-    {1, 2, 1, 0, 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0},
-    {1, 1, 0, 0, 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 1, 2, 2, 1, 0, 0, 0, 0, 0, 0, 0},
-    {0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0},
-};
+static int g_cursor_x = 160;
+static int g_cursor_y = 100;
 
 // Mutex for canvas state protection
 static SemaphoreHandle_t g_canvas_mutex = nullptr;
@@ -112,50 +94,7 @@ static volatile bool g_running = false;
 static uint8_t g_recv_buf[M5GFX_RECV_BUF_SIZE];
 
 // ============================================================
-// Canvas memory pool (PSRAM via EXT_RAM_BSS_ATTR)
-// ============================================================
-// Statically allocated on PSRAM to avoid heap fragmentation.
-// Slot size and count defined in m5gfx_task.h.
-
-EXT_RAM_BSS_ATTR static uint8_t __attribute__((aligned(8)))
-    g_canvas_pool[M5GFX_CANVAS_MAX_SLOTS][M5GFX_CANVAS_SLOT_SIZE];
-static bool g_canvas_pool_used[M5GFX_CANVAS_MAX_SLOTS] = {};
-
-static void canvas_pool_init(void) {
-    memset(g_canvas_pool_used, 0, sizeof(g_canvas_pool_used));
-    FMRB_LOGI(TAG, "Canvas pool: %d slots x %d bytes = %zu bytes (PSRAM static)",
-               M5GFX_CANVAS_MAX_SLOTS, M5GFX_CANVAS_SLOT_SIZE,
-               (size_t)M5GFX_CANVAS_MAX_SLOTS * M5GFX_CANVAS_SLOT_SIZE);
-}
-
-static void canvas_pool_deinit(void) {
-    memset(g_canvas_pool_used, 0, sizeof(g_canvas_pool_used));
-}
-
-static void* canvas_pool_alloc(void) {
-    for (int i = 0; i < M5GFX_CANVAS_MAX_SLOTS; i++) {
-        if (!g_canvas_pool_used[i]) {
-            g_canvas_pool_used[i] = true;
-            return g_canvas_pool[i];
-        }
-    }
-    FMRB_LOGE(TAG, "Canvas pool exhausted");
-    return nullptr;
-}
-
-static void canvas_pool_free(void* ptr) {
-    if (!ptr) return;
-    for (int i = 0; i < M5GFX_CANVAS_MAX_SLOTS; i++) {
-        if ((void*)g_canvas_pool[i] == ptr) {
-            g_canvas_pool_used[i] = false;
-            return;
-        }
-    }
-    FMRB_LOGE(TAG, "canvas_pool_free: invalid pointer %p", ptr);
-}
-
-// ============================================================
-// Canvas helpers
+// Canvas helpers (FPGA offscreen approach - no PSRAM pool needed)
 // ============================================================
 
 static canvas_state_t* canvas_find(uint16_t canvas_id) {
@@ -169,68 +108,34 @@ static canvas_state_t* canvas_find(uint16_t canvas_id) {
 
 static canvas_state_t* canvas_alloc(uint16_t canvas_id, uint16_t req_w, uint16_t req_h) {
     if (g_canvas_count >= MAX_CANVAS_COUNT) {
-        FMRB_LOGE(TAG, "Max canvas count reached");
+        FMRB_LOGE(TAG, "Max offscreen canvas count reached (%d)", MAX_CANVAS_COUNT);
         return nullptr;
     }
 
     canvas_state_t* c = &g_canvases[g_canvas_count];
     c->canvas_id = canvas_id;
-    c->width = g_sprite_width;
-    c->height = g_sprite_height;
+    c->offscreen_slot = (int16_t)g_canvas_count;
     c->active_width = req_w;
     c->active_height = req_h;
     c->z_order = canvas_id;
     c->push_x = 0;
     c->push_y = 0;
     c->is_visible = false;
-    c->dirty = false;
 
-    c->draw_buffer_mem = canvas_pool_alloc();
-    if (!c->draw_buffer_mem) {
-        FMRB_LOGE(TAG, "Failed to alloc draw buffer from canvas pool");
-        return nullptr;
-    }
-
-    c->render_buffer_mem = canvas_pool_alloc();
-    if (!c->render_buffer_mem) {
-        FMRB_LOGE(TAG, "Failed to alloc render buffer from canvas pool");
-        canvas_pool_free(c->draw_buffer_mem);
-        c->draw_buffer_mem = nullptr;
-        return nullptr;
-    }
-
-    c->draw_buffer = new LGFX_Sprite(g_display);
-    c->draw_buffer->setColorDepth(M5GFX_CANVAS_COLOR_DEPTH);
-    c->draw_buffer->setBuffer(c->draw_buffer_mem, req_w, req_h, M5GFX_CANVAS_COLOR_DEPTH);
-
-    c->render_buffer = new LGFX_Sprite(g_display);
-    c->render_buffer->setColorDepth(M5GFX_CANVAS_COLOR_DEPTH);
-    c->render_buffer->setBuffer(c->render_buffer_mem, req_w, req_h, M5GFX_CANVAS_COLOR_DEPTH);
+    // Clear offscreen region in FPGA framebuffer
+    int y_off = get_offscreen_y(c->offscreen_slot);
+    g_display->fillRect(0, y_off, g_sprite_width, g_sprite_height, 0);
 
     g_canvas_count++;
 
-    FMRB_LOGI(TAG, "Canvas alloc: id=%u, active=%dx%d, alloc=%dx%d",
-              canvas_id, req_w, req_h, c->width, c->height);
+    FMRB_LOGI(TAG, "Canvas alloc: id=%u, slot=%d, offscreen_y=%d, size=%dx%d",
+              canvas_id, c->offscreen_slot, y_off, req_w, req_h);
     return c;
 }
 
 static void canvas_free(canvas_state_t* c) {
     if (!c) return;
-    FMRB_LOGI(TAG, "Canvas free: id=%u", c->canvas_id);
-
-    delete c->draw_buffer;
-    c->draw_buffer = nullptr;
-    delete c->render_buffer;
-    c->render_buffer = nullptr;
-
-    if (c->draw_buffer_mem) {
-        canvas_pool_free(c->draw_buffer_mem);
-        c->draw_buffer_mem = nullptr;
-    }
-    if (c->render_buffer_mem) {
-        canvas_pool_free(c->render_buffer_mem);
-        c->render_buffer_mem = nullptr;
-    }
+    FMRB_LOGI(TAG, "Canvas free: id=%u, slot=%d", c->canvas_id, c->offscreen_slot);
 
     size_t index = c - g_canvases;
     if (index < g_canvas_count - 1) {
@@ -244,21 +149,26 @@ static int canvas_cmp_zorder(const void* a, const void* b) {
     return ((const canvas_state_t*)a)->z_order - ((const canvas_state_t*)b)->z_order;
 }
 
-// Get drawing target for a command
-// Direct draw mode: all drawing goes to g_display (HDMI FPGA) directly.
-// Canvas compositing via PSRAM Sprite pushSprite causes display corruption
-// due to PSRAM/SPI bus contention. Direct draw is stable.
-// TODO: Implement line-buffer based compositing for Canvas support.
+// Y offset for current draw command (0 in direct draw mode, offscreen Y in canvas mode)
+static int g_draw_y_offset = 0;
+
+// Direct draw mode: all drawing to g_display at y_offset=0 (for scaling test)
 static LovyanGFX* get_target(uint16_t canvas_id, bool mark_dirty = true) {
     (void)canvas_id;
     (void)mark_dirty;
+    g_draw_y_offset = 0;
     return g_display;
 }
 
+#define YO g_draw_y_offset
+
 // ============================================================
 // Render frame: push each canvas directly to g_display via SPI
-// No intermediate screen_buffer (avoids PSRAM→PSRAM→SPI issue)
+// Composite offscreen canvases → visible area using CMD_COPYRECT
+// Each copyRect is only 13 bytes SPI - no large pixel streams.
 // ============================================================
+
+static volatile bool g_needs_render = false;
 
 static void render_frame() {
     if (!g_display_initialized || g_canvas_count == 0) return;
@@ -272,23 +182,26 @@ static void render_frame() {
         qsort(g_canvases, g_canvas_count, sizeof(canvas_state_t), canvas_cmp_zorder);
     }
 
-    // Hold SPI bus for the entire render pass (same pattern as official sample)
-    g_display->startWrite();
-
-    // Push each visible canvas render_buffer directly to display
+    // Copy each visible canvas from offscreen to visible area via CMD_COPYRECT
     for (size_t i = 0; i < g_canvas_count; i++) {
         canvas_state_t* c = &g_canvases[i];
-        if (c->is_visible && c->render_buffer) {
-            c->render_buffer->pushSprite(g_display, c->push_x, c->push_y);
+        if (c->is_visible) {
+            int src_y = get_offscreen_y(c->offscreen_slot);
+            // copyRect(dst_x, dst_y, w, h, src_x, src_y)
+            g_display->copyRect(c->push_x, c->push_y,
+                                c->active_width, c->active_height,
+                                0, src_y);
+            FMRB_LOGD(TAG, "copyRect: canvas %u, offscreen y=%d -> visible (%d,%d) %dx%d",
+                       c->canvas_id, src_y, c->push_x, c->push_y,
+                       c->active_width, c->active_height);
         }
     }
 
-    // Draw cursor directly to display
+    // Draw cursor directly to visible area
     if (g_cursor_visible && g_cursor_sprite) {
-        g_cursor_sprite->pushSprite(g_display, g_cursor_x, g_cursor_y, CURSOR_TRANSPARENT_COLOR);
+        // Cursor sprite is small (16x16) - direct draw is fine
+        g_cursor_sprite->pushSprite(g_display, g_cursor_x, g_cursor_y, (uint32_t)0xFF00FF);
     }
-
-    g_display->endWrite();
 
     xSemaphoreGive(g_canvas_mutex);
 }
@@ -303,32 +216,52 @@ static void init_display(uint16_t width, uint16_t height, uint8_t color_depth) {
         return;
     }
 
-    g_sprite_width = width;
-    g_sprite_height = height;
+    // Use local display resolution (not Core's, which may be larger)
+    g_sprite_width = M5GFX_SPRITE_WIDTH;
+    g_sprite_height = M5GFX_SPRITE_HEIGHT;
+    FMRB_LOGI(TAG, "Core requested %dx%d, using local %dx%d (FPGA offscreen)",
+              width, height, g_sprite_width, g_sprite_height);
 
-    // Initialize canvas memory pool on PSRAM
-    canvas_pool_init();
+    // Clear visible area
+    g_display->fillRect(0, 0, g_sprite_width, g_sprite_height, 0);
 
-    FMRB_LOGI(TAG, "Display init: sprite=%dx%d, display=%dx%d (hw scaling)",
-              width, height, g_display->width(), g_display->height());
+    FMRB_LOGI(TAG, "Display init: sprite=%dx%d, logical=%dx%d, display=%dx%d",
+              g_sprite_width, g_sprite_height,
+              M5GFX_SPRITE_WIDTH, M5GFX_LOGICAL_HEIGHT,
+              g_display->width(), g_display->height());
 
-    // Create cursor sprites
+    // Create cursor sprite (small, internal RAM is fine)
     g_cursor_sprite = new LGFX_Sprite(g_display);
     g_cursor_sprite->setColorDepth(16);
+    g_cursor_sprite->setPsram(false);
     g_cursor_sprite->createSprite(16, 16);
-    g_cursor_sprite->clear(CURSOR_TRANSPARENT_COLOR);
+    g_cursor_sprite->clear((uint32_t)0xFF00FF);
 
-    g_cursor_save = new LGFX_Sprite(g_display);
-    g_cursor_save->setColorDepth(16);
-    g_cursor_save->createSprite(16, 16);
-
+    static const uint8_t cursor_pattern[16][16] = {
+        {1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {1,2,1,0,0,0,0,0,0,0,0,0,0,0,0,0},
+        {1,2,2,1,0,0,0,0,0,0,0,0,0,0,0,0},
+        {1,2,2,2,1,0,0,0,0,0,0,0,0,0,0,0},
+        {1,2,2,2,2,1,0,0,0,0,0,0,0,0,0,0},
+        {1,2,2,2,2,2,1,0,0,0,0,0,0,0,0,0},
+        {1,2,2,2,2,2,2,1,0,0,0,0,0,0,0,0},
+        {1,2,2,2,2,2,2,2,1,0,0,0,0,0,0,0},
+        {1,2,2,2,2,2,2,2,2,1,0,0,0,0,0,0},
+        {1,2,2,2,2,2,2,2,2,2,1,0,0,0,0,0},
+        {1,2,2,2,2,2,1,1,1,1,1,1,0,0,0,0},
+        {1,2,2,1,2,2,1,0,0,0,0,0,0,0,0,0},
+        {1,2,1,0,1,2,2,1,0,0,0,0,0,0,0,0},
+        {1,1,0,0,1,2,2,1,0,0,0,0,0,0,0,0},
+        {0,0,0,0,0,1,2,2,1,0,0,0,0,0,0,0},
+        {0,0,0,0,0,1,1,1,0,0,0,0,0,0,0,0},
+    };
     for (int y = 0; y < 16; y++) {
         for (int x = 0; x < 16; x++) {
             uint32_t color;
             switch (cursor_pattern[y][x]) {
                 case 1: color = 0xFFFFFF; break;
                 case 2: color = 0x000000; break;
-                default: color = CURSOR_TRANSPARENT_COLOR; break;
+                default: color = 0xFF00FF; break;
             }
             g_cursor_sprite->drawPixel(x, y, color);
         }
@@ -352,7 +285,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_clear_t)) break;
         const auto* cmd = (const fmrb_link_graphics_clear_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->fillScreen(cmd->color);
+        // fillScreen would clear entire FPGA framebuffer; use fillRect for canvas region only
+        if (t) t->fillRect(0, YO, g_sprite_width, g_sprite_height, cmd->color);
         return 0;
     }
 
@@ -360,7 +294,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_pixel_t)) break;
         const auto* cmd = (const fmrb_link_graphics_pixel_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->drawPixel(cmd->x, cmd->y, cmd->color);
+        if (t) t->drawPixel(cmd->x, cmd->y + YO, cmd->color);
         return 0;
     }
 
@@ -368,7 +302,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_line_t)) break;
         const auto* cmd = (const fmrb_link_graphics_line_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->drawLine(cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
+        if (t) t->drawLine(cmd->x1, cmd->y1 + YO, cmd->x2, cmd->y2 + YO, cmd->color);
         return 0;
     }
 
@@ -376,7 +310,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_line_t)) break;
         const auto* cmd = (const fmrb_link_graphics_line_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->drawFastVLine(cmd->x1, cmd->y1, cmd->y2 - cmd->y1, cmd->color);
+        if (t) t->drawFastVLine(cmd->x1, cmd->y1 + YO, cmd->y2 - cmd->y1, cmd->color);
         return 0;
     }
 
@@ -384,7 +318,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_line_t)) break;
         const auto* cmd = (const fmrb_link_graphics_line_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->drawFastHLine(cmd->x1, cmd->y1, cmd->x2 - cmd->x1, cmd->color);
+        if (t) t->drawFastHLine(cmd->x1, cmd->y1 + YO, cmd->x2 - cmd->x1, cmd->color);
         return 0;
     }
 
@@ -392,7 +326,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_rect_t)) break;
         const auto* cmd = (const fmrb_link_graphics_rect_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->drawRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
+        if (t) t->drawRect(cmd->x, cmd->y + YO, cmd->width, cmd->height, cmd->color);
         return 0;
     }
 
@@ -400,7 +334,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_rect_t)) break;
         const auto* cmd = (const fmrb_link_graphics_rect_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->fillRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->color);
+        if (t) t->fillRect(cmd->x, cmd->y + YO, cmd->width, cmd->height, cmd->color);
         return 0;
     }
 
@@ -408,7 +342,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_round_rect_t)) break;
         const auto* cmd = (const fmrb_link_graphics_round_rect_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->drawRoundRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->radius, cmd->color);
+        if (t) t->drawRoundRect(cmd->x, cmd->y + YO, cmd->width, cmd->height, cmd->radius, cmd->color);
         return 0;
     }
 
@@ -416,7 +350,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_round_rect_t)) break;
         const auto* cmd = (const fmrb_link_graphics_round_rect_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->fillRoundRect(cmd->x, cmd->y, cmd->width, cmd->height, cmd->radius, cmd->color);
+        if (t) t->fillRoundRect(cmd->x, cmd->y + YO, cmd->width, cmd->height, cmd->radius, cmd->color);
         return 0;
     }
 
@@ -424,7 +358,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_circle_t)) break;
         const auto* cmd = (const fmrb_link_graphics_circle_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->drawCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
+        if (t) t->drawCircle(cmd->x, cmd->y + YO, cmd->radius, cmd->color);
         return 0;
     }
 
@@ -432,7 +366,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_circle_t)) break;
         const auto* cmd = (const fmrb_link_graphics_circle_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->fillCircle(cmd->x, cmd->y, cmd->radius, cmd->color);
+        if (t) t->fillCircle(cmd->x, cmd->y + YO, cmd->radius, cmd->color);
         return 0;
     }
 
@@ -440,7 +374,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_ellipse_t)) break;
         const auto* cmd = (const fmrb_link_graphics_ellipse_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->drawEllipse(cmd->x, cmd->y, cmd->rx, cmd->ry, cmd->color);
+        if (t) t->drawEllipse(cmd->x, cmd->y + YO, cmd->rx, cmd->ry, cmd->color);
         return 0;
     }
 
@@ -448,7 +382,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_ellipse_t)) break;
         const auto* cmd = (const fmrb_link_graphics_ellipse_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->fillEllipse(cmd->x, cmd->y, cmd->rx, cmd->ry, cmd->color);
+        if (t) t->fillEllipse(cmd->x, cmd->y + YO, cmd->rx, cmd->ry, cmd->color);
         return 0;
     }
 
@@ -456,7 +390,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_triangle_t)) break;
         const auto* cmd = (const fmrb_link_graphics_triangle_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->drawTriangle(cmd->x0, cmd->y0, cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
+        if (t) t->drawTriangle(cmd->x0, cmd->y0 + YO, cmd->x1, cmd->y1 + YO, cmd->x2, cmd->y2 + YO, cmd->color);
         return 0;
     }
 
@@ -464,7 +398,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         if (size < sizeof(fmrb_link_graphics_triangle_t)) break;
         const auto* cmd = (const fmrb_link_graphics_triangle_t*)data;
         auto* t = get_target(cmd->canvas_id);
-        if (t) t->fillTriangle(cmd->x0, cmd->y0, cmd->x1, cmd->y1, cmd->x2, cmd->y2, cmd->color);
+        if (t) t->fillTriangle(cmd->x0, cmd->y0 + YO, cmd->x1, cmd->y1 + YO, cmd->x2, cmd->y2 + YO, cmd->color);
         return 0;
     }
 
@@ -487,7 +421,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
             } else {
                 t->setTextColor(cmd->color, cmd->bg_color);
             }
-            t->setCursor(cmd->x, cmd->y);
+            t->setCursor(cmd->x, cmd->y + YO);
             t->print(text_buf);
         }
         return 0;
@@ -539,9 +473,6 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         canvas_state_t* c = canvas_find(cmd->canvas_id);
         if (!c) return -1;
 
-        if (g_current_target == cmd->canvas_id) {
-            g_current_target = FMRB_CANVAS_SCREEN;
-        }
         canvas_free(c);
         return 0;
     }
@@ -563,27 +494,15 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         canvas_state_t* c = canvas_find(cmd->canvas_id);
         if (!c) return -1;
 
-        xSemaphoreTake(g_canvas_mutex, portMAX_DELAY);
         c->push_x = cmd->x;
         c->push_y = cmd->y;
         c->active_width = (uint16_t)cmd->width;
         c->active_height = (uint16_t)cmd->height;
-        c->draw_buffer->setBuffer(c->draw_buffer_mem, c->active_width, c->active_height, M5GFX_CANVAS_COLOR_DEPTH);
-        c->render_buffer->setBuffer(c->render_buffer_mem, c->active_width, c->active_height, M5GFX_CANVAS_COLOR_DEPTH);
-        c->dirty = true;
-        xSemaphoreGive(g_canvas_mutex);
         return 0;
     }
 
     case FMRB_LINK_GFX_SET_TARGET: {
-        if (size < sizeof(fmrb_link_graphics_set_target_t)) break;
-        const auto* cmd = (const fmrb_link_graphics_set_target_t*)data;
-
-        if (cmd->target_id != FMRB_CANVAS_SCREEN && !canvas_find(cmd->target_id)) {
-            FMRB_LOGE(TAG, "Canvas %u not found for set_target", cmd->target_id);
-            return -1;
-        }
-        g_current_target = cmd->target_id;
+        // SET_TARGET is not used in offscreen mode (canvas_id in each command determines target)
         return 0;
     }
 
@@ -594,36 +513,17 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         canvas_state_t* src = canvas_find(cmd->canvas_id);
         if (!src) return -1;
 
-        LGFX_Sprite* dst;
-        int px, py;
-
-        if (cmd->dest_canvas_id == FMRB_CANVAS_RENDER) {
-            xSemaphoreTake(g_canvas_mutex, portMAX_DELAY);
-            dst = src->render_buffer;
+        if (cmd->dest_canvas_id == FMRB_CANVAS_RENDER ||
+            cmd->dest_canvas_id == FMRB_CANVAS_SCREEN) {
+            // Store push position and mark visible
             src->push_x = cmd->x;
             src->push_y = cmd->y;
             src->is_visible = true;
-            px = 0;
-            py = 0;
-        } else if (cmd->dest_canvas_id == FMRB_CANVAS_SCREEN) {
-            dst = (g_canvas_count > 0) ? g_canvases[0].render_buffer : nullptr;
-            px = cmd->x;
-            py = cmd->y;
+            // Trigger render (copyRect from offscreen to visible area)
+            g_needs_render = true;
         } else {
             FMRB_LOGE(TAG, "Dest canvas %u not supported", cmd->dest_canvas_id);
             return -1;
-        }
-
-        if (dst) {
-            if (cmd->use_transparency) {
-                src->draw_buffer->pushSprite(dst, px, py, cmd->transparent_color);
-            } else {
-                src->draw_buffer->pushSprite(dst, px, py);
-            }
-        }
-
-        if (cmd->dest_canvas_id == FMRB_CANVAS_RENDER) {
-            xSemaphoreGive(g_canvas_mutex);
         }
         return 0;
     }
@@ -772,8 +672,13 @@ static void m5gfx_task(void* arg) {
     cfg.external_rtc = false;
     cfg.external_display.atom_display = true;
     // Set Atom Display logical resolution for hardware scaling
-    cfg.atom_display.logical_width = g_sprite_width;
-    cfg.atom_display.logical_height = g_sprite_height;
+    // Test: logical = display resolution, no offscreen
+    cfg.atom_display.logical_width = M5GFX_SPRITE_WIDTH;   // 320
+    cfg.atom_display.logical_height = M5GFX_SPRITE_HEIGHT;  // 240 (not LOGICAL_HEIGHT)
+    cfg.atom_display.output_width = 1280;
+    cfg.atom_display.output_height = 720;
+    cfg.atom_display.scale_w = 4;   // 320 * 4 = 1280
+    cfg.atom_display.scale_h = 3;   // 240 * 3 = 720
     M5.begin(cfg);
 
     // Set Atom Display (HDMI) as primary display
@@ -794,12 +699,11 @@ static void m5gfx_task(void* arg) {
 
     g_canvas_mutex = xSemaphoreCreateMutex();
 
-    // Direct draw mode: hold SPI bus for stable HDMI output
+    // Direct draw mode: hold SPI bus
     g_display->startWrite();
-    FMRB_LOGI(TAG, "Direct draw mode: SPI bus acquired");
+    FMRB_LOGI(TAG, "Direct draw mode: SPI bus acquired (scaling test)");
 
     while (g_running) {
-        // Drain all pending commands (non-blocking after first)
         bool first = true;
         while (true) {
             fmrb_link_message_t msg = {
@@ -821,12 +725,8 @@ static void m5gfx_task(void* arg) {
         canvas_free(&g_canvases[0]);
     }
 
-    canvas_pool_deinit();
-
     delete g_cursor_sprite;
     g_cursor_sprite = nullptr;
-    delete g_cursor_save;
-    g_cursor_save = nullptr;
 
     // g_display is managed by M5Unified, do not delete
     g_display = nullptr;
