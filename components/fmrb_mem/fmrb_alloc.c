@@ -78,12 +78,16 @@ fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size, enum FMRB_MEM_
     void *tlsf_pool_start = (void*)((char*)pool + sizeof(fmrb_pool_node_t));
     size_t tlsf_pool_size = size - sizeof(fmrb_pool_node_t);
 
+    FMRB_LOGI(TAG, "create_handle: pool_id=%d, pool=%p, size=%zu, node_size=%zu, tlsf_start=%p, tlsf_size=%zu",
+              mem_pool_id, pool, size, sizeof(fmrb_pool_node_t), tlsf_pool_start, tlsf_pool_size);
+
     // Create TLSF instance with the memory pool
     node->tlsf = tlsf_create_with_pool(tlsf_pool_start, tlsf_pool_size);
     if (node->tlsf == NULL) {
-        FMRB_LOGE(TAG, "tlsf_create_with_pool failed");
+        FMRB_LOGE(TAG, "tlsf_create_with_pool FAILED: pool_id=%d, ptr=%p, size=%zu", mem_pool_id, tlsf_pool_start, tlsf_pool_size);
         return -1;
     }
+    FMRB_LOGI(TAG, "create_handle: tlsf created OK, pool_id=%d", mem_pool_id);
 
     node->pool = tlsf_get_pool(node->tlsf);
 
@@ -152,6 +156,10 @@ void* fmrb_malloc(fmrb_mem_handle_t handle, size_t size) {
     void *ptr = tlsf_malloc(node->tlsf, size);
     MUTEX_UNLOCK(node->mutex);
 
+    if (ptr == NULL && size > 0) {
+        FMRB_LOGE(TAG, "fmrb_malloc FAILED: handle=%d, pool_id=%d, size=%zu",
+                  handle, node->mem_pool_id, size);
+    }
     return ptr;
 }
 
@@ -285,13 +293,28 @@ int fmrb_mem_get_stats(fmrb_mem_handle_t handle, fmrb_pool_stats_t* stats) {
 }
 
 static void fmrb_sys_mem_init(void){
-    system_handle = fmrb_mem_create_handle(fmrb_get_mempool_ptr(POOL_ID_SYSTEM), FMRB_MEM_POOL_SIZE_SYSTEM, POOL_ID_SYSTEM);
+    void* sys_pool = fmrb_get_mempool_ptr(POOL_ID_SYSTEM);
+    FMRB_LOGI(TAG, "sys_mem_init: pool_ptr=%p, pool_size=%d", sys_pool, FMRB_MEM_POOL_SIZE_SYSTEM);
+    system_handle = fmrb_mem_create_handle(sys_pool, FMRB_MEM_POOL_SIZE_SYSTEM, POOL_ID_SYSTEM);
     FMRB_LOGI(TAG, "System mem allocator initialized. Handle = %d", system_handle);
+
+    // Verify: try a small allocation
+    void* test = fmrb_sys_malloc(64);
+    if (test) {
+        FMRB_LOGI(TAG, "sys_mem verify: 64 byte alloc OK at %p", test);
+        fmrb_sys_free(test);
+    } else {
+        FMRB_LOGE(TAG, "sys_mem verify: 64 byte alloc FAILED!");
+    }
 }
 
 void* fmrb_sys_malloc(size_t size)
 {
-    return fmrb_malloc(system_handle, size);
+    void* ptr = fmrb_malloc(system_handle, size);
+    if (ptr == NULL) {
+        FMRB_LOGE(TAG, "fmrb_sys_malloc FAILED: size=%zu, handle=%d", size, system_handle);
+    }
+    return ptr;
 }
 
 void fmrb_sys_free(void* ptr)
