@@ -23,7 +23,9 @@ if File.exist?(".env")
     line.strip!
     next if line.empty? || line.start_with?("#")
     key, value = line.split("=", 2)
-    ENV[key] = value if key && value
+    next unless key && value
+    value = value.split("#", 2).first.strip  # Remove inline comments
+    ENV[key.strip] = value unless value.empty?
   end
 end
 
