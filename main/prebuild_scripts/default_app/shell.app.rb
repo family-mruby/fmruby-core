@@ -378,6 +378,10 @@ class ShellApp < FmrbApp
     @irb_mode = true
     @prompt = "irb> "  # Change prompt for IRB mode
     @irb_sandbox = Sandbox.new
+    @irb_sandbox.compile("_ = nil")
+    @irb_sandbox.execute
+    @irb_sandbox.wait(timeout: nil)
+    @irb_sandbox.suspend
   end
 
   def irb_eval(script)

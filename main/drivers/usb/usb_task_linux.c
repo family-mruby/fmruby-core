@@ -88,7 +88,10 @@ static void usb_task_thread(void *arg) {
 
     while (g_running) {
         // Try to receive data
-        ssize_t received = recv(g_socket_fd, recv_buffer + recv_pos, sizeof(recv_buffer) - recv_pos, MSG_DONTWAIT);
+        ssize_t received;
+        do {
+            received = recv(g_socket_fd, recv_buffer + recv_pos, sizeof(recv_buffer) - recv_pos, MSG_DONTWAIT);
+        } while (received < 0 && errno == EINTR);
 
         if (received > 0) {
             recv_pos += received;

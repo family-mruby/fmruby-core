@@ -36,7 +36,10 @@ static void linux_link_thread(void *arg) {
 
     while (ch->running) {
         uint8_t buffer[1024];
-        ssize_t received = recv(ch->socket_fd, buffer, sizeof(buffer), 0);
+        ssize_t received;
+        do {
+            received = recv(ch->socket_fd, buffer, sizeof(buffer), 0);
+        } while (received < 0 && errno == EINTR);
 
         if (received > 0 && ch->callback) {
             fmrb_link_message_t msg = {
@@ -254,7 +257,10 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
     // Only call recv() if buffer is empty or doesn't contain complete frame
     if (recv_pos == 0) {
         // Try to receive data
-        ssize_t received = recv(global_socket_fd, recv_buffer + recv_pos, sizeof(recv_buffer) - recv_pos, recv_flags);
+        ssize_t received;
+        do {
+            received = recv(global_socket_fd, recv_buffer + recv_pos, sizeof(recv_buffer) - recv_pos, recv_flags);
+        } while (received < 0 && errno == EINTR);
         if (received <= 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return FMRB_ERR_TIMEOUT;
