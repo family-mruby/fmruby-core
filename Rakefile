@@ -149,6 +149,9 @@ end
 namespace :build do
   desc "Linux target build (dev/test)"
   task :linux => :setup do
+    # Copy Linux-specific system config
+    cp 'config/system_conf_linux.toml', 'flash/etc/system_conf.toml', verbose: true
+
     unless Dir.exist?('build')
       Rake::Task['set_target:linux'].invoke
     end
