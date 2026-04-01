@@ -204,8 +204,11 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     size_t encoded_len = fmrb_link_cobs_encode(buffer, total_size, encoded);
     fmrb_sys_free(buffer);
 
-    // Send encoded data
-    ssize_t sent = send(global_socket_fd, encoded, encoded_len, 0);
+    // Send encoded data (retry on EINTR from SIGALRM)
+    ssize_t sent;
+    do {
+        sent = send(global_socket_fd, encoded, encoded_len, 0);
+    } while (sent < 0 && errno == EINTR);
 
     ESP_LOGD(TAG, "Sent %zu bytes (payload+crc: %zu, encoded: %zu) to channel %d", msg->size, total_size, encoded_len, channel);
 
