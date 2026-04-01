@@ -137,7 +137,7 @@ end
 namespace :set_target do
   desc "Linux target (dev/test)"
   task :linux => :setup do
-    sh "#{DOCKER_CMD} idf.py --preview set-target linux"
+    sh "#{DOCKER_CMD} idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" set-target linux"
   end
 
   desc "Set ESP32(S3) target"
@@ -152,7 +152,7 @@ namespace :build do
     unless Dir.exist?('build')
       Rake::Task['set_target:linux'].invoke
     end
-    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview -DCMAKE_BUILD_TYPE=Debug build'"
+    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" -DCMAKE_BUILD_TYPE=Debug build'"
     puts 'Linux build complete. Run with: ./build/fmruby-core.elf'
   end
 
