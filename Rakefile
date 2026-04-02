@@ -128,6 +128,12 @@ task :setup do
   sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
   sh "cp -f lib/patch/picoruby-yaml/mrbgem.rake #{mrbgem_path}/picoruby-yaml/"
   sh "cp -f lib/patch/picoruby-sandbox/mrbgem.rake #{mrbgem_path}/picoruby-sandbox/"
+  # picoruby-sandbox: fix uninitialized mrb_value name in Sandbox.new
+  sh "cp -f lib/patch/picoruby-sandbox/src/mruby/sandbox.c #{mrbgem_path}/picoruby-sandbox/src/mruby/"
+
+  # mruby-task: add stack clearing in mrb_task_reset_context
+  mruby_task_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-task"
+  sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c #{mruby_task_path}/src/"
 
   # mruby-dir: patch mrbgem.rake to skip HAL auto-detection on ESP32
   mruby_dir_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-dir"
