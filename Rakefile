@@ -266,9 +266,10 @@ task :clean_all do
   sh "rm -rf components/picoruby-esp32/picoruby/build/*"
 end
 
-desc "Full clean build artifacts (including host)"
+desc "Clean picoruby build artifacts"
 task :clean do
   sh "rm -rf components/picoruby-esp32/picoruby/build/*"
+  sh "rm -f build/esp-idf/picoruby-esp32/libpicoruby-esp32.a"
 end
 
 desc "Serial monitor"
