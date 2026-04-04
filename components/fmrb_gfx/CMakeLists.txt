@@ -3,5 +3,5 @@ idf_component_register(
         "fmrb_gfx.c"
         "fmrb_gfx_commands.c"
     INCLUDE_DIRS "."
-    REQUIRES fmrb_hal fmrb_link fmrb_common log
+    REQUIRES fmrb_hal fmrb_transport fmrb_common log
 )

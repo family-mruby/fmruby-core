@@ -12,7 +12,7 @@ Family mRubyシステムでは、Core (ESP32-S3, Master) と Graphics-Audio (ESP
 +---------------------------------------------------+
                     ↓↑
 +---------------------------------------------------+
-|  Transport Layer (fmrb_link_transport)            |
+|  Transport Layer (fmrb_transport)            |
 |  - MessagePack シリアライズ [type, seq, sub_cmd,  |
 |    payload]                                       |
 |  - 同期/非同期送信                                 |
@@ -42,18 +42,18 @@ Family mRubyシステムでは、Core (ESP32-S3, Master) と Graphics-Audio (ESP
 
 ### Transport Layer
 
-**ファイル**: `fmruby-core/components/fmrb_link/fmrb_link_transport.c`
+**ファイル**: `fmruby-core/components/fmrb_transport/fmrb_transport.c`
 
 **主要API**:
 ```c
 // 非同期送信（ACKはHAL層で待機、pendingリストで追跡）
-fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
+fmrb_err_t fmrb_transport_send(uint8_t link_type,
                                     uint8_t sub_cmd,
                                     const uint8_t *payload,
                                     uint32_t payload_len);
 
 // 同期送信（レスポンスを待機、セマフォでブロック）
-fmrb_err_t fmrb_link_transport_send_sync(uint8_t link_type,
+fmrb_err_t fmrb_transport_send_sync(uint8_t link_type,
                                          uint8_t sub_cmd,
                                          const uint8_t *payload,
                                          uint32_t payload_len,
@@ -62,7 +62,7 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t link_type,
                                          uint32_t timeout_ms);
 
 // 受信処理（host_taskのメインループから定期呼び出し）
-fmrb_err_t fmrb_link_transport_process(void);
+fmrb_err_t fmrb_transport_process(void);
 ```
 
 **MessagePackフォーマット**:
@@ -74,13 +74,13 @@ msgpack array [4]:
   [3] payload  (bin)   - ペイロード（バイナリ）
 ```
 
-**送信フロー (`fmrb_link_transport_send`)**:
-1. `fmrb_link_transport_process()` を呼び出し、未処理ACKを排出
+**送信フロー (`fmrb_transport_send`)**:
+1. `fmrb_transport_process()` を呼び出し、未処理ACKを排出
 2. シーケンス番号を割り当て、msgpackでシリアライズ
 3. `fmrb_hal_link_send()` を呼び出し（HAL層でACK完了まで待機）
 4. retransmit有効時はpendingリストに追加
 
-**受信フロー (`fmrb_link_transport_process`)**:
+**受信フロー (`fmrb_transport_process`)**:
 1. `fmrb_hal_link_receive()` でACKキューからデータ取得
 2. msgpackデシリアライズ → `handle_received_message()`
 3. ACK/NACKの場合: sync_requestsまたはpending_messagesとseq番号をマッチング
@@ -120,7 +120,7 @@ while (!ack_received && !timeout) {
 **ACK受信キュー (`ack_recv_queue`)**:
 
 HAL層とTransport層のブリッジ。HAL層でACKをデコードした後、ack_recv_queueにキューイング。
-Transport層の `fmrb_link_transport_process()` がデキューし、seq番号でマッチングする。
+Transport層の `fmrb_transport_process()` がデキューし、seq番号でマッチングする。
 
 - サイズ: 32エントリ
 - エントリ: `{data*, size}` （呼び出し側がfree責任）
@@ -305,10 +305,10 @@ Master (ESP32-S3)                GPIO    Slave (ESP32-WROVER)
 
 [GFX Layer - fmrb_gfx.c]
   fmrb_gfx_fill_rect() → send_graphics_command()
-      ↓ fmrb_link_transport_send(GRAPHICS, FILL_RECT, payload)
+      ↓ fmrb_transport_send(GRAPHICS, FILL_RECT, payload)
 
 [Transport Layer]
-  1. fmrb_link_transport_process()  ← 未処理ACKを排出
+  1. fmrb_transport_process()  ← 未処理ACKを排出
   2. msgpack: [type=2, seq=N, sub_cmd=0x05, payload]
   3. send_raw_message() → fmrb_hal_link_send(1000ms)
 
@@ -355,7 +355,7 @@ Master (ESP32-S3)                GPIO    Slave (ESP32-WROVER)
 | HOST_QUEUE_SIZE | 64 | host_task.c |
 | GFX_CMD_BUFFER_SIZE | 128 | host_task.c |
 | ACKポーリング | 1→2→4→8ms (指数バックオフ) | fmrb_hal_link_esp32.c |
-| ACKタイムアウト | 1000ms | fmrb_link_transport.c |
+| ACKタイムアウト | 1000ms | fmrb_transport.c |
 | send_gfx_command timeout | 500ms | gfx.c |
 | Slave NUM_BUFFERS | 2 (ダブルバッファ) | comm_spi_slave.c |
 | Slave MSG_QUEUE | PSRAM (525KB) | comm_spi_slave.c |

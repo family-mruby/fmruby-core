@@ -1,4 +1,4 @@
-#include "fmrb_link_transport.h"
+#include "fmrb_transport.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_link_fragment.h"
 #include "fmrb_hal.h"
@@ -17,7 +17,7 @@
 
 typedef struct {
     uint8_t msg_type;
-    fmrb_link_transport_callback_t callback;
+    fmrb_transport_callback_t callback;
     void *user_data;
 } callback_entry_t;
 
@@ -44,7 +44,7 @@ typedef struct {
 } sync_request_t;
 
 typedef struct {
-    fmrb_link_transport_config_t config;
+    fmrb_transport_config_t config;
     uint16_t next_sequence;
 
     callback_entry_t callbacks[MAX_CALLBACKS];
@@ -63,13 +63,13 @@ typedef struct {
 
 static transport_context_t g_tranport_context;
 
-static const char *TAG = "fmrb_link_transport";
+static const char *TAG = "fmrb_transport";
 
 // Forward declarations
 static void handle_received_message(transport_context_t *ctx, uint8_t type, uint8_t seq,
                                     uint8_t sub_cmd, const uint8_t *payload, uint32_t payload_len);
 
-fmrb_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config) {
+fmrb_err_t fmrb_transport_init(const fmrb_transport_config_t *config) {
     if (!config) {
         return FMRB_ERR_INVALID_PARAM;
     }
@@ -114,7 +114,7 @@ fmrb_err_t fmrb_link_transport_init(const fmrb_link_transport_config_t *config) 
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_deinit(void) {
+fmrb_err_t fmrb_transport_deinit(void) {
     transport_context_t *ctx = &g_tranport_context;
 
     // Free pending messages
@@ -307,7 +307,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
 //     return FMRB_OK;
 // }
 
-fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
+fmrb_err_t fmrb_transport_send(uint8_t link_type,
                                     uint8_t sub_cmd,
                                     const uint8_t *payload,
                                     uint32_t payload_len,
@@ -329,7 +329,7 @@ fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
 
     // Drain pending ACKs before sending to prevent ack_recv_queue overflow
     // during rapid consecutive sends (e.g., command_buffer_execute)
-    fmrb_link_transport_process();
+    fmrb_transport_process();
 
     uint16_t sequence = ctx->next_sequence++;
     uint8_t seq = (uint8_t)(sequence & 0xFF);
@@ -352,7 +352,7 @@ fmrb_err_t fmrb_link_transport_send(uint8_t link_type,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_send_sync(uint8_t link_type,
+fmrb_err_t fmrb_transport_send_sync(uint8_t link_type,
                                          uint8_t sub_cmd,
                                          const uint8_t *payload,
                                          uint32_t payload_len,
@@ -441,8 +441,8 @@ fmrb_err_t fmrb_link_transport_send_sync(uint8_t link_type,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_register_callback(uint8_t msg_type,
-                                                 fmrb_link_transport_callback_t callback,
+fmrb_err_t fmrb_transport_register_callback(uint8_t msg_type,
+                                                 fmrb_transport_callback_t callback,
                                                  void *user_data) {
     if (!callback) {
         return FMRB_ERR_INVALID_PARAM;
@@ -466,7 +466,7 @@ fmrb_err_t fmrb_link_transport_register_callback(uint8_t msg_type,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_link_transport_unregister_callback(uint8_t msg_type) {
+fmrb_err_t fmrb_transport_unregister_callback(uint8_t msg_type) {
     transport_context_t *ctx = &g_tranport_context;
     if (!ctx->initialized) {
         return FMRB_ERR_INVALID_STATE;
@@ -579,7 +579,7 @@ static void handle_received_message(transport_context_t *ctx, uint8_t type, uint
     send_raw_message(FMRB_LINK_TYPE_CONTROL, ack_seq, FMRB_LINK_RESPONSE_MSG_ACK, (uint8_t*)&ack, sizeof(ack), ctx->config.timeout_ms);
 }
 
-fmrb_err_t fmrb_link_transport_process(void) {
+fmrb_err_t fmrb_transport_process(void) {
     transport_context_t *ctx = &g_tranport_context;
     if (!ctx->initialized) {
         return FMRB_ERR_INVALID_STATE;
@@ -673,11 +673,11 @@ fmrb_err_t fmrb_link_transport_process(void) {
     return FMRB_OK;
 }
 
-fmrb_link_transport_handle_t fmrb_link_transport_get_handle(void) {
+fmrb_transport_handle_t fmrb_transport_get_handle(void) {
     return g_tranport_context.initialized ? &g_tranport_context : NULL;
 }
 
-fmrb_err_t fmrb_link_transport_check_version(uint32_t timeout_ms) {
+fmrb_err_t fmrb_transport_check_version(uint32_t timeout_ms) {
     transport_context_t *ctx = &g_tranport_context;
     if (!ctx->initialized) {
         return FMRB_ERR_INVALID_STATE;
@@ -695,8 +695,8 @@ fmrb_err_t fmrb_link_transport_check_version(uint32_t timeout_ms) {
     FMRB_LOGI(TAG, "Checking protocol version (local=%d)", FMRB_LINK_PROTOCOL_VERSION);
 
     // Send version request synchronously
-    // This works because host_task is running and calling fmrb_link_transport_process()
-    fmrb_err_t ret = fmrb_link_transport_send_sync(
+    // This works because host_task is running and calling fmrb_transport_process()
+    fmrb_err_t ret = fmrb_transport_send_sync(
         FMRB_LINK_TYPE_CONTROL,
         FMRB_LINK_CONTROL_VERSION,
         (const uint8_t*)&req,

@@ -14,7 +14,7 @@
 #include "fmrb_app.h"
 #include "fmrb_kernel.h"
 #include "boot.h"
-#include "fmrb_link_transport.h"
+#include "fmrb_transport.h"
 #include "host/host_task.h"
 #include "fmrb_toml.h"
 
@@ -143,14 +143,14 @@ static bool init_hal(void)
     FMRB_LOGI(TAG, "Message queue initialized");
 
     // Initialize transport (singleton)
-    fmrb_link_transport_config_t transport_config = {
+    fmrb_transport_config_t transport_config = {
         .timeout_ms = 1000, //default timeout for sync messages (can be overridden per message)
         .enable_retransmit = true,
         .max_retries = 3,
         .window_size = 8
     };
 
-    ret = fmrb_link_transport_init(&transport_config);
+    ret = fmrb_transport_init(&transport_config);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to initialize Transport");
         return false;

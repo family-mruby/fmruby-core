@@ -16,7 +16,7 @@
 #include "fmrb_hid_msg.h"
 #include "fmrb_task_config.h"
 #include "fmrb_log.h"
-#include "fmrb_link_transport.h"
+#include "fmrb_transport.h"
 #include "boot.h"
 #include "hal.h"
 
@@ -169,7 +169,7 @@ static mrb_value mrb_kernel_check_protocol_version(mrb_state *mrb, mrb_value sel
 
     FMRB_LOGI(TAG, "Checking protocol version (timeout=%d ms)...", (int)timeout_ms);
 
-    fmrb_err_t ret = fmrb_link_transport_check_version((uint32_t)timeout_ms);
+    fmrb_err_t ret = fmrb_transport_check_version((uint32_t)timeout_ms);
 
     if (ret == FMRB_OK) {
         FMRB_LOGI(TAG, "Protocol version check succeeded");

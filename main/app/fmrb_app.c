@@ -17,7 +17,7 @@
 #endif
 #include "fmrb_lua.h"
 #include "fmrb_basic.h"
-#include "fmrb_link_transport.h"
+#include "fmrb_transport.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_gfx_msg.h"
 #include "fmrb_msg.h"
@@ -1408,12 +1408,12 @@ static void reorder_z_orders(void) {
                 .z_order = (int16_t)windows[i]->z_order
             };
 
-            fmrb_link_transport_send(
+            fmrb_transport_send(
                 FMRB_LINK_TYPE_GRAPHICS,
                 FMRB_LINK_GFX_SET_WINDOW_ORDER,
                 (const uint8_t*)&cmd,
                 sizeof(cmd),
-                FMRB_LINK_TIMEOUT_DEFAULT
+                FMRB_TRANSPORT_TIMEOUT_DEFAULT
             );
         }
     }
@@ -1502,12 +1502,12 @@ fmrb_err_t fmrb_app_bring_to_front(uint8_t pid) {
         .z_order = (int16_t)target_ctx->z_order
     };
 
-    fmrb_err_t ret = fmrb_link_transport_send(
+    fmrb_err_t ret = fmrb_transport_send(
         FMRB_LINK_TYPE_GRAPHICS,
         FMRB_LINK_GFX_SET_WINDOW_ORDER,
         (const uint8_t*)&cmd,
         sizeof(cmd),
-        FMRB_LINK_TIMEOUT_DEFAULT
+        FMRB_TRANSPORT_TIMEOUT_DEFAULT
     );
 
     if (ret != FMRB_OK) {
@@ -1642,12 +1642,12 @@ fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t hei
         .height = (int32_t)height
     };
 
-    fmrb_err_t ret = fmrb_link_transport_send(
+    fmrb_err_t ret = fmrb_transport_send(
         FMRB_LINK_TYPE_GRAPHICS,
         FMRB_LINK_GFX_UPDATE_WINDOW,
         (const uint8_t*)&update_cmd,
         sizeof(update_cmd),
-        FMRB_LINK_TIMEOUT_DEFAULT
+        FMRB_TRANSPORT_TIMEOUT_DEFAULT
     );
 
     if (ret != FMRB_OK) {

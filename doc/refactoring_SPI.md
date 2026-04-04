@@ -19,7 +19,7 @@ COBS（Consistent Overhead Byte Stuffing：0x00を避ける符号化）終端0x0
 
 ### 1) 「非同期送信」が実質非同期じゃない
 
-`fmrb_link_transport_send()` が最終的に `fmrb_hal_link_send()` でACK待ちブロックしてるので、説明の「非同期（pending追跡）」と矛盾します。
+`fmrb_transport_send()` が最終的に `fmrb_hal_link_send()` でACK待ちブロックしてるので、説明の「非同期（pending追跡）」と矛盾します。
 
 これだと「送信APIは非同期のつもり」でも呼び出し元は詰まるし、host_taskの設計意図ともズレます。
 

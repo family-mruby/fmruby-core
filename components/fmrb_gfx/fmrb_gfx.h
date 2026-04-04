@@ -58,16 +58,16 @@ typedef struct {
 } fmrb_gfx_config_t;
 
 // Forward declaration for transport handle
-// (fully defined in fmrb_link_transport.h, included by implementation files)
-#ifndef FMRB_LINK_TRANSPORT_HANDLE_DEFINED
-#define FMRB_LINK_TRANSPORT_HANDLE_DEFINED
-typedef void* fmrb_link_transport_handle_t;
+// (fully defined in fmrb_transport.h, included by implementation files)
+#ifndef FMRB_TRANSPORT_HANDLE_DEFINED
+#define FMRB_TRANSPORT_HANDLE_DEFINED
+typedef void* fmrb_transport_handle_t;
 #endif
 
 // Graphics context implementation structure
 typedef struct {
     fmrb_gfx_config_t config;
-    fmrb_link_transport_handle_t transport;
+    fmrb_transport_handle_t transport;
     fmrb_rect_t clip_rect;
     bool clip_enabled;
     bool initialized;

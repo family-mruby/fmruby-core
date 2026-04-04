@@ -1,7 +1,7 @@
 #include "fmrb_gfx.h"
 #include "fmrb_hal.h"
 #include "fmrb_link_protocol.h"
-#include "fmrb_link_transport.h"
+#include "fmrb_transport.h"
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
 #include <stdlib.h>
@@ -31,7 +31,7 @@ static fmrb_gfx_err_t send_graphics_command(fmrb_gfx_context_impl_t *ctx, uint8_
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    fmrb_err_t ret = fmrb_link_transport_send(FMRB_LINK_TYPE_GRAPHICS, cmd_type, (const uint8_t*)cmd_data, cmd_size, FMRB_LINK_TIMEOUT_DEFAULT);
+    fmrb_err_t ret = fmrb_transport_send(FMRB_LINK_TYPE_GRAPHICS, cmd_type, (const uint8_t*)cmd_data, cmd_size, FMRB_TRANSPORT_TIMEOUT_DEFAULT);
 
     switch (ret) {
         case FMRB_OK:
@@ -61,7 +61,7 @@ static fmrb_gfx_err_t send_graphics_command_sync(
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    fmrb_err_t ret = fmrb_link_transport_send_sync(
+    fmrb_err_t ret = fmrb_transport_send_sync(
         FMRB_LINK_TYPE_GRAPHICS,
         cmd_type,
         (const uint8_t*)cmd_data,
@@ -103,7 +103,7 @@ fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config) {
     ctx->config = *config;
 
     // TODO: Initialize IPC transport for graphics (singleton, no handle needed)
-    // fmrb_link_transport_config_t transport_config = {
+    // fmrb_transport_config_t transport_config = {
     //     .timeout_ms = 1000,
     //     .enable_retransmit = true,
     //     .max_retries = 3,
@@ -127,7 +127,7 @@ fmrb_gfx_err_t fmrb_gfx_deinit(void) {
     // Only deinitialize if this is the global context
     if (g_gfx_context != NULL) {
         // Deinitialize singleton transport
-        fmrb_link_transport_deinit();
+        fmrb_transport_deinit();
 
         g_gfx_context->initialized = false;
         g_gfx_context = NULL;

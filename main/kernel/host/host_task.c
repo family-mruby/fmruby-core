@@ -12,7 +12,7 @@
 #include "fmrb_audio.h"
 #include "fmrb_kernel.h"
 #include "boot.h"
-#include "fmrb_link_transport.h"
+#include "fmrb_transport.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_keymap.h"
 #include "status_led.h"
@@ -133,7 +133,7 @@ static int init_gfx_audio(void)
 
         // Use singleton transport API (no handle needed)
         // Display initialization on slave takes ~2100ms (CVBS + PSRAM 2.3MB alloc)
-        fmrb_err_t ret = fmrb_link_transport_send(
+        fmrb_err_t ret = fmrb_transport_send(
             FMRB_LINK_TYPE_CONTROL,
             FMRB_LINK_CONTROL_INIT_DISPLAY,
             (const uint8_t*)&init_cmd,
@@ -549,7 +549,7 @@ static void fmrb_host_task(void *pvParameters)
 
         // Process incoming IPC messages (ACK/NACK responses)
         // This MUST be called regularly to receive responses for sync requests
-        fmrb_link_transport_process();
+        fmrb_transport_process();
 
         // Periodic update processing
         fmrb_tick_t now = fmrb_task_get_tick_count();

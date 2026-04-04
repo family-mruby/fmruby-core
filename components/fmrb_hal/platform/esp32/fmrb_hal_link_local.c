@@ -163,7 +163,7 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
     }
 
     // Always use internal buffer for safety.
-    // Callers like fmrb_link_transport_process() may pass uninitialized msg->data.
+    // Callers like fmrb_transport_process() may pass uninitialized msg->data.
     uint8_t *recv_buf = g_recv_internal_buf;
     size_t recv_buf_size = sizeof(g_recv_internal_buf);
 
