@@ -163,13 +163,13 @@ void fmrb_hal_link_deinit(void) {
 }
 
 fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
-                              const fmrb_link_message_t *msg,
+                              const fmrb_link_message_t *msgs,
+                              size_t msg_count,
                               uint32_t timeout_ms) {
     // NOTE: Linux/Socket version does NOT wait for ACK in this function
     // ACKs are received separately via fmrb_hal_link_receive()
-    // This differs from ESP32/SPI which uses full-duplex and can receive ACK immediately
 
-    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msg) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msgs || msg_count == 0) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
@@ -180,51 +180,55 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
 
     fmrb_semaphore_take(socket_mutex, FMRB_TICK_MAX);
 
-    // The message already contains [frame_hdr | payload]
-    // We need to add CRC32 and COBS encode
+    fmrb_err_t result = FMRB_OK;
 
-    // Prepare buffer: [data | CRC32]
-    size_t total_size = msg->size + sizeof(uint32_t);
-    uint8_t *buffer = (uint8_t*)fmrb_sys_malloc(total_size);
-    if (!buffer) {
-        fmrb_semaphore_give(socket_mutex);
-        return FMRB_ERR_NO_MEMORY;
-    }
+    for (size_t i = 0; i < msg_count; i++) {
+        const fmrb_link_message_t *msg = &msgs[i];
 
-    memcpy(buffer, msg->data, msg->size);
-    uint32_t crc = fmrb_link_crc32_update(0, msg->data, msg->size);
-    memcpy(buffer + msg->size, &crc, sizeof(uint32_t));
+        // Prepare buffer: [data | CRC32]
+        size_t total_size = msg->size + sizeof(uint32_t);
+        uint8_t *buffer = (uint8_t*)fmrb_sys_malloc(total_size);
+        if (!buffer) {
+            result = FMRB_ERR_NO_MEMORY;
+            break;
+        }
 
-    // COBS encode
-    size_t max_encoded_size = COBS_ENC_MAX(total_size);
-    uint8_t *encoded = (uint8_t*)fmrb_sys_malloc(max_encoded_size);
-    if (!encoded) {
+        memcpy(buffer, msg->data, msg->size);
+        uint32_t crc = fmrb_link_crc32_update(0, msg->data, msg->size);
+        memcpy(buffer + msg->size, &crc, sizeof(uint32_t));
+
+        // COBS encode
+        size_t max_encoded_size = COBS_ENC_MAX(total_size);
+        uint8_t *encoded = (uint8_t*)fmrb_sys_malloc(max_encoded_size);
+        if (!encoded) {
+            fmrb_sys_free(buffer);
+            result = FMRB_ERR_NO_MEMORY;
+            break;
+        }
+
+        size_t encoded_len = fmrb_link_cobs_encode(buffer, total_size, encoded);
         fmrb_sys_free(buffer);
-        fmrb_semaphore_give(socket_mutex);
-        return FMRB_ERR_NO_MEMORY;
+
+        // Send encoded data (retry on EINTR from SIGALRM)
+        ssize_t sent;
+        do {
+            sent = send(global_socket_fd, encoded, encoded_len, 0);
+        } while (sent < 0 && errno == EINTR);
+
+        ESP_LOGD(TAG, "Sent %zu bytes (encoded: %zu) to channel %d [%zu/%zu]",
+                 msg->size, encoded_len, channel, i + 1, msg_count);
+
+        fmrb_sys_free(encoded);
+
+        if (sent != (ssize_t)encoded_len) {
+            ESP_LOGE(TAG, "Failed to send data: %s", strerror(errno));
+            result = FMRB_ERR_FAILED;
+            break;
+        }
     }
-
-    size_t encoded_len = fmrb_link_cobs_encode(buffer, total_size, encoded);
-    fmrb_sys_free(buffer);
-
-    // Send encoded data (retry on EINTR from SIGALRM)
-    ssize_t sent;
-    do {
-        sent = send(global_socket_fd, encoded, encoded_len, 0);
-    } while (sent < 0 && errno == EINTR);
-
-    ESP_LOGD(TAG, "Sent %zu bytes (payload+crc: %zu, encoded: %zu) to channel %d", msg->size, total_size, encoded_len, channel);
-
-    fmrb_sys_free(encoded);
 
     fmrb_semaphore_give(socket_mutex);
-
-    if (sent != (ssize_t)encoded_len) {
-        ESP_LOGE(TAG, "Failed to send data: %s", strerror(errno));
-        return FMRB_ERR_FAILED;
-    }
-
-    return FMRB_OK;
+    return result;
 }
 
 fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,

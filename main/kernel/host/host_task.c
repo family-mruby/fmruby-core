@@ -90,6 +90,7 @@ static uint64_t g_gfx_stats_last_us = 0;     // Last stats log time
 
 // Internal forward declarations
 static void host_task_process_host_message(const host_message_t *msg);
+static void host_task_process_message(const fmrb_msg_t *hal_msg);
 
 /**
  * Initialize Graphics Audio layer and subsystems
@@ -167,159 +168,208 @@ static int init_gfx_audio(void)
     return 0;
 }
 
-/**
- * Process GFX command message - Passthrough to Graphics-Audio board
- *
- * HOST task simply forwards all graphics commands to Graphics-Audio board.
- * No local buffering or processing - Graphics-Audio handles all command buffering
- * and present() operations.
- */
-static void host_task_process_gfx_command(const fmrb_msg_t *msg)
-{
-    gfx_cmd_t *gfx_cmd = (gfx_cmd_t *)msg->data;
+// Maximum batch size for GFX commands
+#define GFX_BATCH_MAX 16
 
-    fmrb_gfx_context_t ctx = fmrb_gfx_get_global_context();
-    if (!ctx) {
-        FMRB_LOGE(TAG, "Graphics context not available");
-        return;
-    }
+// Payload buffer for batch entries (stack-allocated, shared across batch)
+// Each entry needs at most sizeof(fmrb_link_graphics_text_t) + 255 bytes
+#define GFX_BATCH_PAYLOAD_BUF_SIZE 512
 
-    fmrb_gfx_err_t ret = FMRB_GFX_OK;
-
-    // Forward command directly to Graphics-Audio board
-    switch (gfx_cmd->cmd_type) {
-        case GFX_CMD_CLEAR:
-            FMRB_LOGD(TAG, "Forwarding CLEAR: canvas=%d, color=0x%02X",
-                     gfx_cmd->canvas_id, gfx_cmd->params.clear.color);
-            ret = fmrb_gfx_clear(ctx, gfx_cmd->canvas_id, gfx_cmd->params.clear.color);
-            break;
-
-        case GFX_CMD_PIXEL:
-            FMRB_LOGD(TAG, "Forwarding PIXEL: canvas=%d, pos=(%d,%d), color=0x%02X",
-                     gfx_cmd->canvas_id, gfx_cmd->params.pixel.x, gfx_cmd->params.pixel.y,
-                     gfx_cmd->params.pixel.color);
-            ret = fmrb_gfx_set_pixel(ctx, gfx_cmd->canvas_id,
-                                    gfx_cmd->params.pixel.x, gfx_cmd->params.pixel.y,
-                                    gfx_cmd->params.pixel.color);
-            break;
-
-        case GFX_CMD_LINE:
-            FMRB_LOGD(TAG, "Forwarding LINE: canvas=%d, from=(%d,%d) to=(%d,%d), color=0x%02X",
-                     gfx_cmd->canvas_id,
-                     gfx_cmd->params.line.x1, gfx_cmd->params.line.y1,
-                     gfx_cmd->params.line.x2, gfx_cmd->params.line.y2,
-                     gfx_cmd->params.line.color);
-            ret = fmrb_gfx_draw_line(ctx, gfx_cmd->canvas_id,
-                                    gfx_cmd->params.line.x1, gfx_cmd->params.line.y1,
-                                    gfx_cmd->params.line.x2, gfx_cmd->params.line.y2,
-                                    gfx_cmd->params.line.color);
-            break;
-
-        case GFX_CMD_RECT:
-            FMRB_LOGD(TAG, "Forwarding RECT: canvas=%d, rect=(%d,%d,%d,%d), color=0x%02X, filled=%d",
-                     gfx_cmd->canvas_id,
-                     gfx_cmd->params.rect.rect.x, gfx_cmd->params.rect.rect.y,
-                     gfx_cmd->params.rect.rect.width, gfx_cmd->params.rect.rect.height,
-                     gfx_cmd->params.rect.color, gfx_cmd->params.rect.filled);
-            if (gfx_cmd->params.rect.filled) {
-                ret = fmrb_gfx_fill_rect(ctx, gfx_cmd->canvas_id,
-                                        &gfx_cmd->params.rect.rect,
-                                        gfx_cmd->params.rect.color);
-            } else {
-                ret = fmrb_gfx_draw_rect(ctx, gfx_cmd->canvas_id,
-                                        &gfx_cmd->params.rect.rect,
-                                        gfx_cmd->params.rect.color);
-            }
-            break;
-
-        case GFX_CMD_CIRCLE:
-            FMRB_LOGD(TAG, "Forwarding CIRCLE: canvas=%d, center=(%d,%d), r=%d, color=0x%02X, filled=%d",
-                     gfx_cmd->canvas_id,
-                     gfx_cmd->params.circle.x, gfx_cmd->params.circle.y,
-                     gfx_cmd->params.circle.radius,
-                     gfx_cmd->params.circle.color, gfx_cmd->params.circle.filled);
-            if (gfx_cmd->params.circle.filled) {
-                ret = fmrb_gfx_fill_circle(ctx, gfx_cmd->canvas_id,
-                                          gfx_cmd->params.circle.x, gfx_cmd->params.circle.y,
-                                          gfx_cmd->params.circle.radius,
-                                          gfx_cmd->params.circle.color);
-            } else {
-                ret = fmrb_gfx_draw_circle(ctx, gfx_cmd->canvas_id,
-                                          gfx_cmd->params.circle.x, gfx_cmd->params.circle.y,
-                                          gfx_cmd->params.circle.radius,
-                                          gfx_cmd->params.circle.color);
-            }
-            break;
-
-        case GFX_CMD_TEXT:
-            FMRB_LOGD(TAG, "Forwarding TEXT: canvas=%d, pos=(%d,%d), text='%s', color=0x%02X",
-                     gfx_cmd->canvas_id,
-                     gfx_cmd->params.text.x, gfx_cmd->params.text.y,
-                     gfx_cmd->params.text.text, gfx_cmd->params.text.color);
-            ret = fmrb_gfx_draw_text(ctx, gfx_cmd->canvas_id,
-                                    gfx_cmd->params.text.x, gfx_cmd->params.text.y,
-                                    gfx_cmd->params.text.text,
-                                    gfx_cmd->params.text.color,
-                                    gfx_cmd->params.text.bg_color,
-                                    gfx_cmd->params.text.bg_transparent,
-                                    gfx_cmd->params.text.font_size);
-            break;
-
-        case GFX_CMD_PRESENT:
-            FMRB_LOGD(TAG, "Forwarding PRESENT: canvas=%d, pos=(%d,%d), transparent=0x%02X",
-                     gfx_cmd->canvas_id,
-                     gfx_cmd->params.present.x, gfx_cmd->params.present.y,
-                     gfx_cmd->params.present.transparent_color);
-
-            // Push canvas to render buffer
-            ret = fmrb_gfx_push_canvas(ctx,
-                                       gfx_cmd->canvas_id,
-                                       FMRB_CANVAS_RENDER,
-                                       gfx_cmd->params.present.x,
-                                       gfx_cmd->params.present.y,
-                                       gfx_cmd->params.present.transparent_color);
-
-            // Update statistics
-            g_gfx_present_count++;
-            g_gfx_total_cmds++;
-
-            // Log stats periodically
-            fmrb_time_t now_us = fmrb_hal_time_get_us();
-            if (g_gfx_stats_last_us == 0) {
-                g_gfx_stats_last_us = now_us;
-            } else if ((now_us - g_gfx_stats_last_us) >= GFX_STATS_INTERVAL_US) {
-                uint64_t elapsed_us = now_us - g_gfx_stats_last_us;
-                float elapsed_s = (float)elapsed_us / 1000000.0f;
-                float cmds_per_sec = (float)g_gfx_total_cmds / elapsed_s;
-                float presents_per_sec = (float)g_gfx_present_count / elapsed_s;
-
-                FMRB_LOGI(TAG, "GFX STATS: %.1f cmds/s, %.1f presents/s",
-                         cmds_per_sec, presents_per_sec);
-
-                g_gfx_total_cmds = 0;
-                g_gfx_present_count = 0;
-                g_gfx_stats_last_us = now_us;
-            }
-            break;
-
+// Convert a gfx_cmd_t to batch entry (sub_cmd + payload).
+// payload_buf must be at least GFX_BATCH_PAYLOAD_BUF_SIZE bytes.
+// Returns payload size, or -1 on error.
+static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
+                                   uint8_t *sub_cmd_out,
+                                   uint8_t *payload_buf) {
+    switch (cmd->cmd_type) {
+        case GFX_CMD_CLEAR: {
+            fmrb_link_graphics_clear_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x = 0, .y = 0, .width = 0, .height = 0,
+                .color = cmd->params.clear.color
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_FILL_SCREEN;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_PIXEL: {
+            fmrb_link_graphics_pixel_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x = cmd->params.pixel.x,
+                .y = cmd->params.pixel.y,
+                .color = cmd->params.pixel.color
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DRAW_PIXEL;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_LINE: {
+            fmrb_link_graphics_line_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x1 = cmd->params.line.x1,
+                .y1 = cmd->params.line.y1,
+                .x2 = cmd->params.line.x2,
+                .y2 = cmd->params.line.y2,
+                .color = cmd->params.line.color
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DRAW_LINE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_RECT: {
+            fmrb_link_graphics_rect_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x = cmd->params.rect.rect.x,
+                .y = cmd->params.rect.rect.y,
+                .width = cmd->params.rect.rect.width,
+                .height = cmd->params.rect.rect.height,
+                .color = cmd->params.rect.color,
+                .filled = cmd->params.rect.filled
+            };
+            *sub_cmd_out = cmd->params.rect.filled ? FMRB_LINK_GFX_FILL_RECT : FMRB_LINK_GFX_DRAW_RECT;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_CIRCLE: {
+            fmrb_link_graphics_circle_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x = cmd->params.circle.x,
+                .y = cmd->params.circle.y,
+                .radius = cmd->params.circle.radius,
+                .color = cmd->params.circle.color
+            };
+            *sub_cmd_out = cmd->params.circle.filled ? FMRB_LINK_GFX_FILL_CIRCLE : FMRB_LINK_GFX_DRAW_CIRCLE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_TEXT: {
+            size_t text_len = strlen(cmd->params.text.text);
+            if (text_len > 255) text_len = 255;
+            size_t total = sizeof(fmrb_link_graphics_text_t) + text_len;
+            fmrb_link_graphics_text_t *t = (fmrb_link_graphics_text_t *)payload_buf;
+            t->canvas_id = cmd->canvas_id;
+            t->x = cmd->params.text.x;
+            t->y = cmd->params.text.y;
+            t->color = cmd->params.text.color;
+            t->bg_color = cmd->params.text.bg_color;
+            t->bg_transparent = cmd->params.text.bg_transparent ? 1 : 0;
+            t->text_len = text_len;
+            memcpy(payload_buf + sizeof(fmrb_link_graphics_text_t), cmd->params.text.text, text_len);
+            *sub_cmd_out = FMRB_LINK_GFX_DRAW_STRING;
+            return (int)total;
+        }
+        case GFX_CMD_PRESENT: {
+            fmrb_link_graphics_push_canvas_t c = {
+                .canvas_id = cmd->canvas_id,
+                .dest_canvas_id = FMRB_CANVAS_RENDER,
+                .x = cmd->params.present.x,
+                .y = cmd->params.present.y,
+                .transparent_color = cmd->params.present.transparent_color,
+                .use_transparency = (cmd->params.present.transparent_color != 0xFF) ? 1 : 0
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_PUSH_CANVAS;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         default:
-            FMRB_LOGW(TAG, "Unknown graphics command type: %d", gfx_cmd->cmd_type);
-            return;
+            return -1;
     }
+}
 
-    if (ret != FMRB_GFX_OK) {
-        FMRB_LOGE(TAG, "Failed to forward graphics command type=%d: %d", gfx_cmd->cmd_type, ret);
-    } else {
-        // Count non-present commands
-        if (gfx_cmd->cmd_type != GFX_CMD_PRESENT) {
-            g_gfx_total_cmds++;
+// Update GFX statistics
+static void gfx_stats_update(int cmd_count, int present_count) {
+    g_gfx_total_cmds += cmd_count;
+    g_gfx_present_count += present_count;
+
+    fmrb_time_t now_us = fmrb_hal_time_get_us();
+    if (g_gfx_stats_last_us == 0) {
+        g_gfx_stats_last_us = now_us;
+    } else if ((now_us - g_gfx_stats_last_us) >= GFX_STATS_INTERVAL_US) {
+        uint64_t elapsed_us = now_us - g_gfx_stats_last_us;
+        float elapsed_s = (float)elapsed_us / 1000000.0f;
+        FMRB_LOGI(TAG, "GFX STATS: %.1f cmds/s, %.1f presents/s",
+                 (float)g_gfx_total_cmds / elapsed_s,
+                 (float)g_gfx_present_count / elapsed_s);
+        g_gfx_total_cmds = 0;
+        g_gfx_present_count = 0;
+        g_gfx_stats_last_us = now_us;
+    }
+}
+
+/**
+ * Process GFX command messages with batch optimization.
+ *
+ * Drains all pending GFX messages from the queue and sends them
+ * via fmrb_transport_send_batch() to pack multiple commands into
+ * minimal SPI frames.
+ */
+static void host_task_process_gfx_batch(const fmrb_msg_t *first_msg)
+{
+    // Collect GFX commands into batch
+    gfx_cmd_t cmds[GFX_BATCH_MAX];
+    int count = 0;
+
+    // First message is already received
+    cmds[count++] = *(gfx_cmd_t *)first_msg->data;
+
+    // Drain additional GFX messages (non-blocking)
+    fmrb_msg_t next;
+    while (count < GFX_BATCH_MAX &&
+           fmrb_msg_receive(PROC_ID_HOST, &next, 0) == FMRB_OK) {
+        if (next.type == FMRB_MSG_TYPE_APP_GFX) {
+            cmds[count++] = *(gfx_cmd_t *)next.data;
+        } else {
+            // Non-GFX message: process it immediately, stop batching
+            host_task_process_message(&next);
+            break;
         }
     }
 
-    // Release semaphore slot now that command has been processed
-    // This allows the sending app task to proceed with the next command
+    // Convert all commands to batch entries
+    fmrb_transport_batch_entry_t entries[GFX_BATCH_MAX];
+    uint8_t payload_bufs[GFX_BATCH_MAX][GFX_BATCH_PAYLOAD_BUF_SIZE];
+    int batch_count = 0;
+    int present_count = 0;
+
+    for (int i = 0; i < count; i++) {
+        uint8_t sub_cmd;
+        int payload_len = gfx_cmd_to_batch_entry(&cmds[i], &sub_cmd, payload_bufs[batch_count]);
+        if (payload_len < 0) {
+            FMRB_LOGW(TAG, "Unknown GFX command type: %d", cmds[i].cmd_type);
+            continue;
+        }
+        entries[batch_count].sub_cmd = sub_cmd;
+        entries[batch_count].payload = payload_bufs[batch_count];
+        entries[batch_count].payload_len = (uint32_t)payload_len;
+        batch_count++;
+
+        if (cmds[i].cmd_type == GFX_CMD_PRESENT) {
+            present_count++;
+        }
+    }
+
+    // Send batch
+    if (batch_count > 0) {
+        fmrb_err_t ret = fmrb_transport_send_batch(
+            FMRB_LINK_TYPE_GRAPHICS, entries, batch_count,
+            FMRB_TRANSPORT_TIMEOUT_DEFAULT);
+
+        if (ret != FMRB_OK) {
+            FMRB_LOGE(TAG, "Batch send failed: %d (count=%d)", ret, batch_count);
+        }
+
+        gfx_stats_update(batch_count, present_count);
+
+        if (batch_count > 1) {
+            FMRB_LOGD(TAG, "GFX batch: %d commands sent", batch_count);
+        }
+    }
+
+    // Release semaphore slots for all processed commands
     if (g_host_gfx_queue_semaphore) {
-        fmrb_semaphore_give(g_host_gfx_queue_semaphore);
+        for (int i = 0; i < count; i++) {
+            fmrb_semaphore_give(g_host_gfx_queue_semaphore);
+        }
     }
 }
 
@@ -328,9 +378,9 @@ static void host_task_process_gfx_command(const fmrb_msg_t *msg)
  */
 static void host_task_process_message(const fmrb_msg_t *hal_msg)
 {
-    // Check if it's a GFX message first
+    // Check if it's a GFX message first - use batch processing
     if (hal_msg->type == FMRB_MSG_TYPE_APP_GFX) {
-        host_task_process_gfx_command(hal_msg);
+        host_task_process_gfx_batch(hal_msg);
         return;
     }
 

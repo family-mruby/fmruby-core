@@ -118,10 +118,11 @@ void fmrb_hal_link_deinit(void)
 
 // send: Core -> m5gfx (via TX buffer)
 fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
-                               const fmrb_link_message_t *msg,
+                               const fmrb_link_message_t *msgs,
+                               size_t msg_count,
                                uint32_t timeout_ms)
 {
-    if (channel >= FMRB_LINK_MAX_CHANNELS || !msg || !msg->data) {
+    if (channel >= FMRB_LINK_MAX_CHANNELS || !msgs || msg_count == 0) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
@@ -132,17 +133,24 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
 
     fmrb_semaphore_take(ch->send_mutex, FMRB_TICK_MAX);
 
-    size_t sent = xMessageBufferSend(ch->tx_buffer, msg->data, msg->size,
-                                      FMRB_MS_TO_TICKS(timeout_ms));
-
-    fmrb_semaphore_give(ch->send_mutex);
-
-    if (sent == 0) {
-        FMRB_LOGW(TAG, "Send timeout on channel %d (size=%zu)", channel, msg->size);
-        return FMRB_ERR_TIMEOUT;
+    fmrb_err_t result = FMRB_OK;
+    for (size_t i = 0; i < msg_count; i++) {
+        const fmrb_link_message_t *msg = &msgs[i];
+        if (!msg->data) {
+            result = FMRB_ERR_INVALID_PARAM;
+            break;
+        }
+        size_t sent = xMessageBufferSend(ch->tx_buffer, msg->data, msg->size,
+                                          FMRB_MS_TO_TICKS(timeout_ms));
+        if (sent == 0) {
+            FMRB_LOGW(TAG, "Send timeout on channel %d (size=%zu)", channel, msg->size);
+            result = FMRB_ERR_TIMEOUT;
+            break;
+        }
     }
 
-    return FMRB_OK;
+    fmrb_semaphore_give(ch->send_mutex);
+    return result;
 }
 
 // receive: Core reads ACK from m5gfx (via RX buffer)

@@ -256,10 +256,73 @@ void fmrb_hal_link_deinit(void) {
     link_initialized = false;
 }
 
+// Send one SPI frame and poll for ACK (called with spi_mutex held)
+static fmrb_err_t send_frame_and_wait_ack(fmrb_link_channel_t channel,
+                                           const spi_frame_t *tx_frame,
+                                           uint8_t seq,
+                                           uint32_t timeout_ms) {
+    spi_frame_t rx;
+
+    // Wait for READY=HIGH before sending
+    if (!wait_ready(timeout_ms)) {
+        return FMRB_ERR_TIMEOUT;
+    }
+
+    // Clear stale READY notification
+    if (ack_notify_sem) {
+        xSemaphoreTake(ack_notify_sem, 0);
+    }
+
+    // SPI transfer
+    fmrb_err_t ret = spi_transfer_frame(tx_frame, &rx);
+
+    // Reset ACK received flag
+    esp32_link_channel_t *ch = &channels[channel];
+    ch->ack_received = false;
+    ch->expected_seq = seq;
+
+    // Process RX frame (may contain response to previous command)
+    if (ret == FMRB_OK) {
+        process_received_frame(channel, &rx);
+    } else {
+        ESP_LOGE(TAG, "SPI transfer failed: %d", ret);
+        return FMRB_ERR_FAILED;
+    }
+
+    // Poll for matching ACK if not yet received
+    if (!ch->ack_received && timeout_ms > 0) {
+        fmrb_time_t start_time = fmrb_hal_time_get_us();
+
+        while (!ch->ack_received) {
+            if (fmrb_hal_time_is_timeout(start_time, timeout_ms * 1000)) {
+                ESP_LOGW(TAG, "ACK timeout after %u ms (seq=%u)", timeout_ms, seq);
+                return FMRB_ERR_TIMEOUT;
+            }
+
+            uint64_t elapsed_us = fmrb_hal_time_get_us() - start_time;
+            uint32_t remaining_ms = (elapsed_us / 1000 < timeout_ms) ?
+                                    (timeout_ms - (uint32_t)(elapsed_us / 1000)) : 1;
+
+            if (!wait_ready(remaining_ms < 50 ? remaining_ms : 50)) {
+                continue;
+            }
+
+            poll_for_ack(channel, 10);
+
+            if (!ch->ack_received) {
+                fmrb_hal_time_delay_ms(2);
+            }
+        }
+    }
+
+    return ch->ack_received ? FMRB_OK : FMRB_ERR_TIMEOUT;
+}
+
 fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
-                              const fmrb_link_message_t *msg,
+                              const fmrb_link_message_t *msgs,
+                              size_t msg_count,
                               uint32_t timeout_ms) {
-    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msg) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msgs || msg_count == 0) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
@@ -273,102 +336,64 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
         return FMRB_ERR_TIMEOUT;
     }
 
-    // Extract seq from msgpack for frame header
-    uint8_t seq = extract_seq_from_msgpack(msg->data, msg->size);
+    // Accumulate COBS-encoded messages into frame data buffer
+    uint8_t frame_data[SPI_MAX_DATA];
+    size_t frame_data_len = 0;
+    uint8_t last_seq = 0;
+    fmrb_err_t result = FMRB_OK;
 
-    // COBS encode msgpack data (no CRC32; transport-level CRC16 in spi_frame_t)
-    size_t max_encoded = COBS_ENC_MAX(msg->size);
-    uint8_t *cobs_buf = (uint8_t*)fmrb_sys_malloc(max_encoded);
-    if (!cobs_buf) {
-        xSemaphoreGive(spi_mutex);
-        return FMRB_ERR_NO_MEMORY;
+    // Temporary buffer for COBS encoding a single message
+    uint8_t cobs_buf[SPI_MAX_DATA];
+
+    for (size_t i = 0; i < msg_count; i++) {
+        const fmrb_link_message_t *msg = &msgs[i];
+        uint8_t seq = extract_seq_from_msgpack(msg->data, msg->size);
+
+        size_t cobs_len = fmrb_link_cobs_encode(msg->data, msg->size, cobs_buf);
+
+        // Check if adding this message would overflow the frame
+        if (frame_data_len + cobs_len > SPI_MAX_DATA) {
+            if (frame_data_len == 0) {
+                // Single message too large for one frame
+                ESP_LOGE(TAG, "COBS encoded data too large: %zu > %d", cobs_len, SPI_MAX_DATA);
+                result = FMRB_ERR_INVALID_PARAM;
+                break;
+            }
+
+            // Flush current frame before adding this message
+            spi_frame_t tx;
+            build_command_frame(&tx, last_seq, frame_data, (uint8_t)frame_data_len);
+
+            result = send_frame_and_wait_ack(channel, &tx, last_seq, timeout_ms);
+            if (result != FMRB_OK) {
+                break;
+            }
+
+            ESP_LOGD(TAG, "Batch frame sent: seq=%u, data_len=%zu", last_seq, frame_data_len);
+            frame_data_len = 0;
+        }
+
+        // Append COBS-encoded message to frame buffer
+        memcpy(frame_data + frame_data_len, cobs_buf, cobs_len);
+        frame_data_len += cobs_len;
+        last_seq = seq;
     }
 
-    size_t cobs_len = fmrb_link_cobs_encode(msg->data, msg->size, cobs_buf);
+    // Send remaining data
+    if (result == FMRB_OK && frame_data_len > 0) {
+        spi_frame_t tx;
+        build_command_frame(&tx, last_seq, frame_data, (uint8_t)frame_data_len);
 
-    // Check if COBS data fits in spi_frame_t.data[]
-    if (cobs_len > SPI_MAX_DATA) {
-        ESP_LOGE(TAG, "COBS encoded data too large: %zu > %d", cobs_len, SPI_MAX_DATA);
-        fmrb_sys_free(cobs_buf);
-        xSemaphoreGive(spi_mutex);
-        return FMRB_ERR_INVALID_PARAM;
-    }
+        result = send_frame_and_wait_ack(channel, &tx, last_seq, timeout_ms);
 
-    // Build spi_frame_t
-    spi_frame_t tx, rx;
-    build_command_frame(&tx, seq, cobs_buf, (uint8_t)cobs_len);
-    fmrb_sys_free(cobs_buf);
-
-    // Wait for READY=HIGH before sending
-    if (!wait_ready(timeout_ms)) {
-        xSemaphoreGive(spi_mutex);
-        return FMRB_ERR_TIMEOUT;
-    }
-
-    // Clear stale READY notification
-    if (ack_notify_sem) {
-        xSemaphoreTake(ack_notify_sem, 0);
-    }
-
-    // SPI transfer
-    fmrb_err_t ret = spi_transfer_frame(&tx, &rx);
-
-    // if (ret == FMRB_OK) {
-    //     ESP_LOGD(TAG, "SEND TX: seq=%u ack=%u st=0x%02x dlen=%u | RX: seq=%u ack=%u st=0x%02x dlen=%u",
-    //              tx.seq, tx.ack_seq, tx.status, tx.data_len,
-    //              rx.seq, rx.ack_seq, rx.status, rx.data_len);
-    // }
-
-    // Reset ACK received flag
-    esp32_link_channel_t *ch = &channels[channel];
-    ch->ack_received = false;
-    ch->expected_seq = seq;
-
-    // Process RX frame (may contain response to previous command)
-    if (ret == FMRB_OK) {
-        process_received_frame(channel, &rx);
+        if (result == FMRB_OK) {
+            ESP_LOGD(TAG, "Batch frame sent: seq=%u, data_len=%zu, msgs=%zu",
+                     last_seq, frame_data_len, msg_count);
+        }
     }
 
     xSemaphoreGive(spi_mutex);
-
-    if (ret != FMRB_OK) {
-        ESP_LOGE(TAG, "SPI transfer failed: %d", ret);
-        return FMRB_ERR_FAILED;
-    }
-
-    ESP_LOGD(TAG, "Sent seq=%u, %zu bytes (cobs=%zu) to channel %d",
-             seq, msg->size, cobs_len, channel);
-
-    // Poll for matching ACK if not yet received
-    if (!ch->ack_received && timeout_ms > 0) {
-        fmrb_time_t start_time = fmrb_hal_time_get_us();
-
-        while (!ch->ack_received) {
-            if (fmrb_hal_time_is_timeout(start_time, timeout_ms * 1000)) {
-                ESP_LOGW(TAG, "ACK timeout after %u ms (seq=%u)", timeout_ms, seq);
-                return FMRB_ERR_TIMEOUT;
-            }
-
-            // Wait for READY=HIGH (slave has re-queued)
-            uint64_t elapsed_us = fmrb_hal_time_get_us() - start_time;
-            uint32_t remaining_ms = (elapsed_us / 1000 < timeout_ms) ?
-                                    (timeout_ms - (uint32_t)(elapsed_us / 1000)) : 1;
-
-            if (!wait_ready(remaining_ms < 50 ? remaining_ms : 50)) {
-                continue;  // Timeout on READY, retry
-            }
-
-            poll_for_ack(channel, 10);
-
-            if (!ch->ack_received) {
-                fmrb_hal_time_delay_ms(2);
-            }
-        }
-
-        ESP_LOGD(TAG, "ACK received (seq=%u, channel=%d)", seq, channel);
-    }
-
-    return ch->ack_received ? FMRB_OK : FMRB_ERR_TIMEOUT;
+    return result;
 }
 
 fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,

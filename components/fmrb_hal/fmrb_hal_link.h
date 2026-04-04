@@ -19,14 +19,20 @@ fmrb_err_t fmrb_hal_link_init(void);
 void fmrb_hal_link_deinit(void);
 
 /**
- * @brief Send message to specified channel
+ * @brief Send messages to specified channel (batch)
+ *
+ * Multiple messages are packed into SPI frames (up to SPI_MAX_DATA per frame).
+ * ACK is waited per frame. For single message, pass msg_count=1.
+ *
  * @param channel link communication channel
- * @param msg Message to send
+ * @param msgs Array of messages to send
+ * @param msg_count Number of messages in the array
  * @param timeout_ms Timeout in milliseconds
  * @return FMRB_OK on success, error code otherwise
  */
 fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
-                              const fmrb_link_message_t *msg,
+                              const fmrb_link_message_t *msgs,
+                              size_t msg_count,
                               uint32_t timeout_ms);
 
 /**

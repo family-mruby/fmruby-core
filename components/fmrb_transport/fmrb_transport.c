@@ -188,7 +188,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
         };
 
         fmrb_link_channel_t hal_channel = (link_type == FMRB_LINK_TYPE_CONTROL) ? FMRB_LINK_GRAPHICS : FMRB_LINK_GRAPHICS;
-        fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, timeout_ms);
+        fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1, timeout_ms);
 
         if (ret != FMRB_OK && link_type == FMRB_LINK_TYPE_GRAPHICS) {
             FMRB_LOGE(TAG, "HAL send failed: ret=%d, type=%d, sub_cmd=0x%02X", ret, link_type, sub_cmd);
@@ -248,7 +248,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
                 .size = chunk_sbuf.size
             };
 
-            ret = fmrb_hal_link_send(hal_channel, &hal_msg, timeout_ms);
+            ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1, timeout_ms);
 
             msgpack_sbuffer_destroy(&chunk_sbuf);
 
@@ -350,6 +350,88 @@ fmrb_err_t fmrb_transport_send(uint8_t link_type,
     // Success means ACK was already received at the HAL level.
 
     return FMRB_OK;
+}
+
+fmrb_err_t fmrb_transport_send_batch(uint8_t link_type,
+                                      const fmrb_transport_batch_entry_t *entries,
+                                      size_t entry_count,
+                                      int32_t timeout_ms) {
+    transport_context_t *ctx = &g_tranport_context;
+    if (!ctx->initialized) {
+        return FMRB_ERR_INVALID_STATE;
+    }
+    if (!entries || entry_count == 0) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Resolve timeout
+    uint32_t effective_timeout;
+    if (timeout_ms < 0) {
+        effective_timeout = ctx->config.timeout_ms;
+    } else if (timeout_ms == 0) {
+        effective_timeout = UINT32_MAX;
+    } else {
+        effective_timeout = (uint32_t)timeout_ms;
+    }
+
+    fmrb_transport_process();
+
+    // Msgpack-encode each entry into hal_msgs array
+    fmrb_link_message_t *hal_msgs = (fmrb_link_message_t *)fmrb_sys_malloc(
+        entry_count * sizeof(fmrb_link_message_t));
+    if (!hal_msgs) {
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    msgpack_sbuffer *sbufs = (msgpack_sbuffer *)fmrb_sys_malloc(
+        entry_count * sizeof(msgpack_sbuffer));
+    if (!sbufs) {
+        fmrb_sys_free(hal_msgs);
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    for (size_t i = 0; i < entry_count; i++) {
+        msgpack_sbuffer_init(&sbufs[i]);
+        msgpack_packer pk;
+        msgpack_packer_init(&pk, &sbufs[i], msgpack_sbuffer_write);
+
+        uint16_t sequence = ctx->next_sequence++;
+        uint8_t seq = (uint8_t)(sequence & 0xFF);
+
+        msgpack_pack_array(&pk, 4);
+        msgpack_pack_uint8(&pk, link_type);
+        msgpack_pack_uint8(&pk, seq);
+        msgpack_pack_uint8(&pk, entries[i].sub_cmd);
+
+        if (entries[i].payload && entries[i].payload_len > 0) {
+            msgpack_pack_bin(&pk, entries[i].payload_len);
+            msgpack_pack_bin_body(&pk, entries[i].payload, entries[i].payload_len);
+        } else {
+            msgpack_pack_nil(&pk);
+        }
+
+        hal_msgs[i].data = (uint8_t *)sbufs[i].data;
+        hal_msgs[i].size = sbufs[i].size;
+    }
+
+    // Send all messages as batch via HAL
+    fmrb_link_channel_t hal_channel = FMRB_LINK_GRAPHICS;
+    fmrb_err_t ret = fmrb_hal_link_send(hal_channel, hal_msgs, entry_count, effective_timeout);
+
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Batch send failed: ret=%d, count=%zu", ret, entry_count);
+    } else {
+        FMRB_LOGD(TAG, "Batch sent: %zu messages", entry_count);
+    }
+
+    // Cleanup
+    for (size_t i = 0; i < entry_count; i++) {
+        msgpack_sbuffer_destroy(&sbufs[i]);
+    }
+    fmrb_sys_free(sbufs);
+    fmrb_sys_free(hal_msgs);
+
+    return ret;
 }
 
 fmrb_err_t fmrb_transport_send_sync(uint8_t link_type,
