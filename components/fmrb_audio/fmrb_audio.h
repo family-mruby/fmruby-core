@@ -18,17 +18,6 @@ typedef enum {
     FMRB_AUDIO_ERR_TIMEOUT = -5
 } fmrb_audio_err_t;
 
-// APU command types
-typedef enum {
-    FMRB_APU_CMD_LOAD_BINARY = 0x01,     // Load music binary data
-    FMRB_APU_CMD_PLAY = 0x02,            // Start playback
-    FMRB_APU_CMD_STOP = 0x03,            // Stop playback
-    FMRB_APU_CMD_PAUSE = 0x04,           // Pause playback
-    FMRB_APU_CMD_RESUME = 0x05,          // Resume playback
-    FMRB_APU_CMD_SET_VOLUME = 0x06,      // Set volume level
-    FMRB_APU_CMD_GET_STATUS = 0x07       // Get playback status
-} fmrb_apu_cmd_t;
-
 // APU playback status
 typedef enum {
     FMRB_APU_STATUS_STOPPED = 0,
