@@ -338,6 +338,7 @@ static void host_task_process_gfx_batch(const fmrb_msg_t *first_msg)
             FMRB_LOGW(TAG, "Unknown GFX command type: %d", cmds[i].cmd_type);
             continue;
         }
+        entries[batch_count].link_type = FMRB_LINK_TYPE_GRAPHICS;
         entries[batch_count].sub_cmd = sub_cmd;
         entries[batch_count].payload = payload_bufs[batch_count];
         entries[batch_count].payload_len = (uint32_t)payload_len;
@@ -351,7 +352,7 @@ static void host_task_process_gfx_batch(const fmrb_msg_t *first_msg)
     // Send batch
     if (batch_count > 0) {
         fmrb_err_t ret = fmrb_transport_send_batch(
-            FMRB_LINK_TYPE_GRAPHICS, entries, batch_count,
+            entries, batch_count,
             FMRB_TRANSPORT_TIMEOUT_DEFAULT);
 
         if (ret != FMRB_OK) {

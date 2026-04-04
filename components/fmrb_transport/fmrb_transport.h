@@ -60,6 +60,7 @@ fmrb_err_t fmrb_transport_send(uint8_t link_type,
 
 // Batch entry for fmrb_transport_send_batch()
 typedef struct {
+    uint8_t link_type;
     uint8_t sub_cmd;
     const uint8_t *payload;
     uint32_t payload_len;
@@ -67,14 +68,12 @@ typedef struct {
 
 /**
  * @brief Send multiple messages in batch (packed into minimal SPI frames)
- * @param link_type Link type (FMRB_LINK_TYPE_CONTROL, FMRB_LINK_TYPE_GRAPHICS, etc.)
- * @param entries Array of batch entries
+ * @param entries Array of batch entries (each entry has its own link_type)
  * @param entry_count Number of entries
  * @param timeout_ms ACK timeout in milliseconds (>0: specified value, 0: no timeout, <0: use default)
  * @return FMRB_OK on success, error code otherwise
  */
-fmrb_err_t fmrb_transport_send_batch(uint8_t link_type,
-                                      const fmrb_transport_batch_entry_t *entries,
+fmrb_err_t fmrb_transport_send_batch(const fmrb_transport_batch_entry_t *entries,
                                       size_t entry_count,
                                       int32_t timeout_ms);
 

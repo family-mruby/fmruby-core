@@ -352,8 +352,7 @@ fmrb_err_t fmrb_transport_send(uint8_t link_type,
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_transport_send_batch(uint8_t link_type,
-                                      const fmrb_transport_batch_entry_t *entries,
+fmrb_err_t fmrb_transport_send_batch(const fmrb_transport_batch_entry_t *entries,
                                       size_t entry_count,
                                       int32_t timeout_ms) {
     transport_context_t *ctx = &g_tranport_context;
@@ -399,7 +398,7 @@ fmrb_err_t fmrb_transport_send_batch(uint8_t link_type,
         uint8_t seq = (uint8_t)(sequence & 0xFF);
 
         msgpack_pack_array(&pk, 4);
-        msgpack_pack_uint8(&pk, link_type);
+        msgpack_pack_uint8(&pk, entries[i].link_type);
         msgpack_pack_uint8(&pk, seq);
         msgpack_pack_uint8(&pk, entries[i].sub_cmd);
 
