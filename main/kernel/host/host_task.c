@@ -134,7 +134,7 @@ static int init_gfx_audio(void)
         FMRB_LOGI(TAG, "Sending display initialization to host: %dx%d, %d-bit",
                   init_cmd.width, init_cmd.height, init_cmd.color_depth);
 
-        // Use singleton transport API (no handle needed)
+        // Fire-and-forget: frame-level SPI ACK is sufficient.
         // Display initialization on slave takes ~2100ms (CVBS + PSRAM 2.3MB alloc)
         fmrb_err_t ret = fmrb_transport_send(
             FMRB_LINK_TYPE_CONTROL,

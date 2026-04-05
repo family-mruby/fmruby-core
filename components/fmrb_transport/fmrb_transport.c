@@ -476,8 +476,8 @@ fmrb_err_t fmrb_transport_send_sync(uint8_t link_type,
 
     fmrb_semaphore_give(ctx->sync_mutex);
 
-    // Send message
-    fmrb_err_t ret = send_raw_message(link_type, seq, sub_cmd, payload, payload_len, timeout_ms);
+    // Send message with ACK_REQUIRED flag so the receiver sends a per-message ACK
+    fmrb_err_t ret = send_raw_message(link_type | FMRB_LINK_FLAG_ACK_REQUIRED, seq, sub_cmd, payload, payload_len, timeout_ms);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "send_sync: send_raw_message failed: %d (seq=%u)", ret, sequence);
         // Mark slot as inactive on send failure

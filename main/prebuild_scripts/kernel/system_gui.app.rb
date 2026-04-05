@@ -8,6 +8,7 @@ class SystemGuiApp < FmrbApp
     @bg_col = 0xF6
 
     @st = 0
+    @boot_wait = 0
     @mem_update_interval = 30  # Update memory stats every 30 frames
   end
 
@@ -27,7 +28,7 @@ class SystemGuiApp < FmrbApp
 
   def on_create()
     Log.info("on_create called")
-    show_boot_image
+    #show_boot_image
 
     if @boot_wait == 0
       draw_current

@@ -51,7 +51,7 @@
 
 // Host task (graphics/audio transport, SPI slave comm, heap alloc)
 // Must be internal RAM (uses realloc via msgpack)
-#define FMRB_HOST_TASK_STACK_SIZE       (12 * 1024)
+#define FMRB_HOST_TASK_STACK_SIZE       (16 * 1024)
 #define FMRB_HOST_TASK_PRIORITY         (10)
 #define FMRB_HOST_TASK_FLAGS            FMRB_TASK_FLAG_PINNED_0
 

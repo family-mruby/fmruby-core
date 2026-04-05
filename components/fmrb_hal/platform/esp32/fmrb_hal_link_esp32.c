@@ -558,19 +558,18 @@ static void process_received_frame(fmrb_link_channel_t channel, const spi_frame_
 
 /**
  * Poll for ACK by sending empty spi_frame_t (seq=0, data_len=0)
+ * NOTE: Caller must hold spi_mutex (called from send_frame_and_wait_ack
+ *       which is invoked under fmrb_hal_link_send's mutex lock)
  */
 static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms) {
+    (void)timeout_ms;
+
     if (!link_initialized || !spi_handle) {
         return FMRB_ERR_INVALID_STATE;
     }
 
     // Only poll when READY=HIGH (slave has queued slots)
     if (fmrb_hal_gpio_get_level(FMRB_PIN_GFX_SPI_INTR) != 1) {
-        return FMRB_ERR_TIMEOUT;
-    }
-
-    // Take SPI mutex
-    if (xSemaphoreTake(spi_mutex, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
         return FMRB_ERR_TIMEOUT;
     }
 
@@ -586,8 +585,6 @@ static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms)
                  rx.seq, rx.ack_seq, rx.status, rx.data_len);
         process_received_frame(channel, &rx);
     }
-
-    xSemaphoreGive(spi_mutex);
 
     return FMRB_OK;
 }

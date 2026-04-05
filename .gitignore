@@ -13,6 +13,7 @@ log*
 *.log
 .rake_tasks~
 managed_components/
+.serial_port
 
 # Generated documentation
 doc/local/
