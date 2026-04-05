@@ -210,14 +210,9 @@ static void sync_files_to_host(void)
             continue;
         }
 
-        // Build local path (prepend /flash if not absolute with /flash)
-        char local_path[128];
-        if (strncmp(src, "/flash", 6) == 0) {
-            strncpy(local_path, src, sizeof(local_path) - 1);
-        } else {
-            snprintf(local_path, sizeof(local_path), "/flash%s", src);
-        }
-        local_path[sizeof(local_path) - 1] = '\0';
+        // Use src path directly - fmrb_hal_file_open's build_path handles
+        // platform-specific prefix (/flash on ESP32, flash/ on Linux)
+        const char *local_path = src;
 
         // Calculate local file CRC32 and size
         uint32_t local_size = 0;
