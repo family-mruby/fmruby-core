@@ -439,6 +439,24 @@ class FmrbKernelImpl < FmrbKernel
     end
   end
 
+  def sync_files
+    files = _get_sync_files
+    if files.empty?
+      Log.info("No files to sync")
+      return
+    end
+    Log.info("File sync: #{files.size} file(s) configured")
+    files.each_with_index do |entry, i|
+      result = _sync_file(entry[:src], entry[:dest])
+      if result
+        Log.info("File sync [#{i}]: #{entry[:src]} synced")
+      else
+        Log.warn("File sync [#{i}]: #{entry[:src]} failed or not found")
+      end
+    end
+    Log.info("File sync complete")
+  end
+
   def initial_sequence
     # Check protocol version with host
     Log.info("Checking protocol version...")
@@ -447,6 +465,9 @@ class FmrbKernelImpl < FmrbKernel
       raise "Protocol version mismatch with host"
     end
     Log.info("Protocol version check passed")
+
+    # Sync files to host (after protocol version confirmed)
+    sync_files
 
     # Spawn system GUI app
     gui_pid = _spawn_app_req("system/gui_app")

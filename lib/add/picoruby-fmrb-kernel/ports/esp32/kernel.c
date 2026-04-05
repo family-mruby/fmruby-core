@@ -315,6 +315,34 @@ static mrb_value mrb_kernel_update_window_position(mrb_state *mrb, mrb_value sel
     return mrb_bool_value(ret == FMRB_OK);
 }
 
+// FmrbKernel#_get_sync_files() -> Array of Hashes [{src: "...", dest: "..."}, ...]
+static mrb_value mrb_kernel_get_sync_files(mrb_state *mrb, mrb_value self)
+{
+    fmrb_sync_file_entry_t entries[8];
+    int count = fmrb_kernel_get_sync_files(entries, 8);
+
+    mrb_value array = mrb_ary_new_capa(mrb, count);
+    for (int i = 0; i < count; i++) {
+        mrb_value hash = mrb_hash_new(mrb);
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "src")),
+                     mrb_str_new_cstr(mrb, entries[i].src));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "dest")),
+                     mrb_str_new_cstr(mrb, entries[i].dest));
+        mrb_ary_push(mrb, array, hash);
+    }
+    return array;
+}
+
+// FmrbKernel#_sync_file(src, dest) -> true/false
+static mrb_value mrb_kernel_sync_file(mrb_state *mrb, mrb_value self)
+{
+    const char *src, *dest;
+    mrb_get_args(mrb, "zz", &src, &dest);
+
+    fmrb_err_t ret = fmrb_kernel_sync_file(src, dest);
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
 // FmrbKernel#_update_window_size(pid, width, height) -> bool
 // Update window size for resize operation
 static mrb_value mrb_kernel_update_window_size(mrb_state *mrb, mrb_value self)
@@ -350,6 +378,8 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_bring_to_front", mrb_kernel_bring_to_front, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_update_window_position", mrb_kernel_update_window_position, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_update_window_size", mrb_kernel_update_window_size, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, handler_class, "_get_sync_files", mrb_kernel_get_sync_files, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_sync_file", mrb_kernel_sync_file, MRB_ARGS_REQ(2));
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }

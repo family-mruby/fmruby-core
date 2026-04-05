@@ -179,120 +179,133 @@ static uint32_t calc_file_crc32(const char *path, uint32_t *out_size)
     return crc;
 }
 
-// Sync files from S3 LittleFS to WROVER LittleFS based on system_conf.toml
-static void sync_files_to_host(void)
+// Public API: Sync a single file from local to host
+fmrb_err_t fmrb_kernel_sync_file(const char *src, const char *dest)
 {
+    if (!src || !dest) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Calculate local file CRC32 and size
+    // fmrb_hal_file_open's build_path handles platform-specific prefix
+    uint32_t local_size = 0;
+    uint32_t local_crc = calc_file_crc32(src, &local_size);
+    if (local_size == 0) {
+        FMRB_LOGW(TAG, "File sync: source %s not found or empty", src);
+        return FMRB_ERR_FAILED;
+    }
+
+    // Strip /flash/ prefix: WROVER's build_full_path prepends it
+    const char *rel_dest = dest;
+    if (strncmp(rel_dest, "/flash/", 7) == 0) {
+        rel_dest += 7;
+    } else if (rel_dest[0] == '/') {
+        rel_dest += 1;
+    }
+
+    // Static result to avoid dangling pointer if host_task responds after timeout
+    static file_cmd_result_t s_sync_result;
+
+    // Query remote file status
+    file_cmd_t cmd = {0};
+    memset(&s_sync_result, 0, sizeof(s_sync_result));
+    cmd.cmd_type = FILE_CMD_STATUS;
+    cmd.path_len = (uint16_t)strlen(rel_dest);
+    memcpy(cmd.path, rel_dest, cmd.path_len);
+
+    fmrb_err_t ret = send_file_cmd(&cmd, &s_sync_result, 5000);
+    if (ret == FMRB_OK &&
+        s_sync_result.data.status.exists &&
+        s_sync_result.data.status.file_size == local_size &&
+        s_sync_result.data.status.checksum == local_crc) {
+        FMRB_LOGI(TAG, "File sync: %s up-to-date (size=%lu, crc=0x%08lx)",
+                   rel_dest, (unsigned long)local_size, (unsigned long)local_crc);
+        return FMRB_OK;
+    }
+
+    // Transfer needed
+    FMRB_LOGI(TAG, "File sync: transferring %s -> %s (%lu bytes)",
+               src, rel_dest, (unsigned long)local_size);
+
+    // Read entire file into memory
+    uint8_t *file_data = (uint8_t *)fmrb_sys_malloc(local_size);
+    if (!file_data) {
+        FMRB_LOGE(TAG, "File sync: malloc failed for %lu bytes",
+                   (unsigned long)local_size);
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    fmrb_file_t fh;
+    if (fmrb_hal_file_open(src, FMRB_O_RDONLY, &fh) != FMRB_OK) {
+        fmrb_sys_free(file_data);
+        return FMRB_ERR_FAILED;
+    }
+    size_t bytes_read;
+    size_t offset = 0;
+    while (fmrb_hal_file_read(fh, file_data + offset, 512, &bytes_read) == FMRB_OK && bytes_read > 0) {
+        offset += bytes_read;
+    }
+    fmrb_hal_file_close(fh);
+
+    // Send transfer command (host_task will chunk and send to WROVER)
+    memset(&cmd, 0, sizeof(cmd));
+    memset(&s_sync_result, 0, sizeof(s_sync_result));
+    cmd.cmd_type = FILE_CMD_TRANSFER;
+    cmd.path_len = (uint16_t)strlen(rel_dest);
+    memcpy(cmd.path, rel_dest, cmd.path_len);
+    cmd.params.transfer.data = file_data;  // Ownership transfers to host_task
+    cmd.params.transfer.data_len = local_size;
+
+    ret = send_file_cmd(&cmd, &s_sync_result, 30000);  // 30s timeout for large files
+    if (ret == FMRB_OK) {
+        FMRB_LOGI(TAG, "File sync: transfer complete");
+    } else {
+        FMRB_LOGE(TAG, "File sync: transfer failed: %d", ret);
+    }
+    return ret;
+}
+
+// Public API: Get sync_files entries from system_conf.toml
+int fmrb_kernel_get_sync_files(fmrb_sync_file_entry_t *entries, int max_entries)
+{
+    if (!entries || max_entries <= 0) {
+        return 0;
+    }
+
     const char *config_path = "/etc/system_conf.toml";
     char errbuf[200];
 
     toml_table_t *conf = fmrb_toml_load_file(config_path, errbuf, sizeof(errbuf));
     if (!conf) {
-        return;
+        return 0;
     }
 
     toml_array_t *sync_arr = toml_array_in(conf, "sync_files");
     if (!sync_arr) {
         toml_free(conf);
-        return;
+        return 0;
     }
 
     int n = toml_array_nelem(sync_arr);
-    FMRB_LOGI(TAG, "File sync: %d file(s) configured", n);
+    int count = 0;
 
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < n && count < max_entries; i++) {
         const toml_table_t *entry = toml_table_at(sync_arr, i);
         if (!entry) continue;
 
         const char *src = fmrb_toml_get_string(entry, "src", NULL);
         const char *dest = fmrb_toml_get_string(entry, "dest", NULL);
-        if (!src || !dest) {
-            FMRB_LOGW(TAG, "File sync [%d]: missing src or dest, skipping", i);
-            continue;
-        }
+        if (!src || !dest) continue;
 
-        // Use src path directly - fmrb_hal_file_open's build_path handles
-        // platform-specific prefix (/flash on ESP32, flash/ on Linux)
-        const char *local_path = src;
-
-        // Calculate local file CRC32 and size
-        uint32_t local_size = 0;
-        uint32_t local_crc = calc_file_crc32(local_path, &local_size);
-        if (local_size == 0) {
-            FMRB_LOGW(TAG, "File sync [%d]: source %s not found or empty", i, local_path);
-            continue;
-        }
-
-        // Strip /flash/ prefix: WROVER's build_full_path prepends it
-        const char *rel_dest = dest;
-        if (strncmp(rel_dest, "/flash/", 7) == 0) {
-            rel_dest += 7;
-        } else if (rel_dest[0] == '/') {
-            rel_dest += 1;
-        }
-
-        // Static result to avoid dangling pointer if host_task responds after timeout
-        static file_cmd_result_t s_sync_result;
-
-        // Query remote file status
-        file_cmd_t cmd = {0};
-        memset(&s_sync_result, 0, sizeof(s_sync_result));
-        cmd.cmd_type = FILE_CMD_STATUS;
-        cmd.path_len = (uint16_t)strlen(rel_dest);
-        memcpy(cmd.path, rel_dest, cmd.path_len);
-
-        fmrb_err_t ret = send_file_cmd(&cmd, &s_sync_result, 5000);
-        if (ret == FMRB_OK &&
-            s_sync_result.data.status.exists &&
-            s_sync_result.data.status.file_size == local_size &&
-            s_sync_result.data.status.checksum == local_crc) {
-            FMRB_LOGI(TAG, "File sync [%d]: %s up-to-date (size=%lu, crc=0x%08lx)",
-                       i, rel_dest, (unsigned long)local_size, (unsigned long)local_crc);
-            continue;
-        }
-
-        // Transfer needed
-        FMRB_LOGI(TAG, "File sync [%d]: transferring %s -> %s (%lu bytes)",
-                   i, local_path, rel_dest, (unsigned long)local_size);
-
-        // Read entire file into memory
-        uint8_t *file_data = (uint8_t *)fmrb_sys_malloc(local_size);
-        if (!file_data) {
-            FMRB_LOGE(TAG, "File sync [%d]: malloc failed for %lu bytes",
-                       i, (unsigned long)local_size);
-            continue;
-        }
-
-        fmrb_file_t fh;
-        if (fmrb_hal_file_open(local_path, FMRB_O_RDONLY, &fh) != FMRB_OK) {
-            fmrb_sys_free(file_data);
-            continue;
-        }
-        size_t bytes_read;
-        size_t offset = 0;
-        while (fmrb_hal_file_read(fh, file_data + offset, 512, &bytes_read) == FMRB_OK && bytes_read > 0) {
-            offset += bytes_read;
-        }
-        fmrb_hal_file_close(fh);
-
-        // Send transfer command (host_task will chunk and send to WROVER)
-        memset(&cmd, 0, sizeof(cmd));
-        memset(&s_sync_result, 0, sizeof(s_sync_result));
-        cmd.cmd_type = FILE_CMD_TRANSFER;
-        cmd.path_len = (uint16_t)strlen(rel_dest);
-        memcpy(cmd.path, rel_dest, cmd.path_len);
-        cmd.params.transfer.data = file_data;  // Ownership transfers to host_task
-        cmd.params.transfer.data_len = local_size;
-
-        ret = send_file_cmd(&cmd, &s_sync_result, 30000);  // 30s timeout for large files
-        if (ret == FMRB_OK) {
-            FMRB_LOGI(TAG, "File sync [%d]: transfer complete", i);
-        } else {
-            FMRB_LOGE(TAG, "File sync [%d]: transfer failed: %d", i, ret);
-        }
+        strncpy(entries[count].src, src, sizeof(entries[count].src) - 1);
+        entries[count].src[sizeof(entries[count].src) - 1] = '\0';
+        strncpy(entries[count].dest, dest, sizeof(entries[count].dest) - 1);
+        entries[count].dest[sizeof(entries[count].dest) - 1] = '\0';
+        count++;
     }
 
     toml_free(conf);
-    FMRB_LOGI(TAG, "File sync complete");
+    return count;
 }
 
 /**
@@ -379,9 +392,6 @@ fmrb_err_t fmrb_kernel_start(void)
         }
         cnt++;
     }
-
-    // Sync files from S3 to WROVER (before kernel mruby task starts)
-    sync_files_to_host();
 
     // Create kernel task using spawn API
     fmrb_spawn_attr_t attr = {

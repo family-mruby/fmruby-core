@@ -84,6 +84,32 @@ fmrb_err_t fmrb_kernel_set_focused_window(uint8_t window_id);
  */
 fmrb_err_t fmrb_kernel_enable_hid_routing(bool enable);
 
+/**
+ * @brief Sync file entry from system_conf.toml
+ */
+#define FMRB_SYNC_FILE_PATH_MAX 128
+
+typedef struct {
+    char src[FMRB_SYNC_FILE_PATH_MAX];
+    char dest[FMRB_SYNC_FILE_PATH_MAX];
+} fmrb_sync_file_entry_t;
+
+/**
+ * @brief Get sync_files configuration from system_conf.toml
+ * @param entries Array to fill with sync file entries
+ * @param max_entries Maximum number of entries to read
+ * @return Number of entries read
+ */
+int fmrb_kernel_get_sync_files(fmrb_sync_file_entry_t *entries, int max_entries);
+
+/**
+ * @brief Sync a single file from local storage to host
+ * @param src Source path (local, e.g. "/usr/share/sounds/test.nsf")
+ * @param dest Destination path (remote, e.g. "/flash/data/test.nsf")
+ * @return FMRB_OK on success or if already up-to-date
+ */
+fmrb_err_t fmrb_kernel_sync_file(const char *src, const char *dest);
+
 #ifdef __cplusplus
 }
 #endif
