@@ -4,6 +4,7 @@
 #include <mruby/data.h>
 #include <mruby/string.h>
 #include <mruby/variable.h>
+#include <mruby/hash.h>
 
 #include "fmrb_app.h"
 #include "fmrb_hal.h"
@@ -13,7 +14,11 @@
 #include "fmrb_log.h"
 #include "fmrb_msg.h"
 #include "fmrb_gfx_msg.h"
+#include "fmrb_file_transfer_msg.h"
+#include "fmrb_mem.h"
 #include "fmrb_task_config.h"
+#include "fmrb_link_protocol.h"
+#include "fmrb_transport.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
 #include "host_task.h"
@@ -425,6 +430,320 @@ static mrb_value mrb_gfx_destroy(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// ============================================================
+// File Transfer API
+// ============================================================
+
+// Helper: send file_cmd_t to host_task and wait for result
+static fmrb_err_t send_file_cmd_sync(file_cmd_t *cmd,
+                                     file_cmd_result_t *result,
+                                     uint32_t timeout_ms)
+{
+    result->done_sem = fmrb_semaphore_create_binary();
+    if (!result->done_sem) {
+        return FMRB_ERR_NO_MEMORY;
+    }
+    result->result = -99;  // Sentinel
+
+    // Point cmd to the caller's result structure
+    cmd->result = result;
+
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_FILE_TRANSFER,
+        .src_pid = 0,
+        .size = sizeof(file_cmd_t)
+    };
+
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (ctx) {
+        msg.src_pid = ctx->app_id;
+    }
+
+    memcpy(msg.data, cmd, sizeof(file_cmd_t));
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    if (ret != FMRB_OK) {
+        fmrb_semaphore_delete(result->done_sem);
+        return ret;
+    }
+
+    // Wait for host_task to complete the operation
+    fmrb_base_type_t sem_ret = fmrb_semaphore_take(result->done_sem,
+        FMRB_MS_TO_TICKS(timeout_ms));
+    fmrb_semaphore_delete(result->done_sem);
+
+    if (sem_ret != FMRB_PASS) {
+        return FMRB_ERR_TIMEOUT;
+    }
+
+    return FMRB_OK;
+}
+
+// FmrbGfx#_transfer_file(path) -> true/false
+static mrb_value mrb_gfx_transfer_file(mrb_state *mrb, mrb_value self)
+{
+    char *path;
+    mrb_get_args(mrb, "z", &path);
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+
+    // Read file from local filesystem
+    size_t path_len = strlen(path);
+    if (path_len >= 120) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Path too long");
+    }
+
+    // HAL adds base path ("/flash" on ESP32, "flash" on POSIX) automatically
+    fmrb_file_info_t info;
+    fmrb_err_t ret = fmrb_hal_file_stat(path, &info);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "transfer_file: file not found: %s", path);
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "File not found: %s", path);
+    }
+
+    uint32_t file_size = (uint32_t)info.size;
+    if (file_size == 0) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "File is empty");
+    }
+
+    // Allocate buffer and read file
+    uint8_t *file_data = (uint8_t *)fmrb_sys_malloc(file_size);
+    if (!file_data) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to allocate %d bytes", file_size);
+    }
+
+    fmrb_file_t fh;
+    ret = fmrb_hal_file_open(path, FMRB_O_RDONLY, &fh);
+    if (ret != FMRB_OK) {
+        fmrb_sys_free(file_data);
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to open file: %s", path);
+    }
+
+    size_t bytes_read = 0;
+    ret = fmrb_hal_file_read(fh, file_data, file_size, &bytes_read);
+    fmrb_hal_file_close(fh);
+
+    if (ret != FMRB_OK || bytes_read != file_size) {
+        fmrb_sys_free(file_data);
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to read file");
+    }
+
+    // Send transfer command to host_task
+    // Note: file_data ownership is transferred to host_task
+    file_cmd_t cmd = {0};
+    file_cmd_result_t result = {0};
+    cmd.cmd_type = FILE_CMD_TRANSFER;
+    cmd.path_len = (uint16_t)path_len;
+    memcpy(cmd.path, path, path_len);
+    cmd.params.transfer.data = file_data;
+    cmd.params.transfer.data_len = file_size;
+
+    ret = send_file_cmd_sync(&cmd, &result, 30000);  // 30s timeout for large files
+    if (ret != FMRB_OK) {
+        // If send failed, we still own the buffer
+        fmrb_sys_free(file_data);
+        mrb_raise(mrb, E_RUNTIME_ERROR, "File transfer timeout");
+    }
+
+    // Check result (set by host_task via result pointer)
+    if (result.result != 0) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "File transfer failed: %d", result.result);
+    }
+
+    FMRB_LOGI(TAG, "transfer_file: %s (%u bytes) transferred", path, (unsigned)file_size);
+    return mrb_true_value();
+}
+
+// FmrbGfx#_file_status(path) -> Hash {exists: bool, size: int}
+// NOTE: Calls transport_send_sync directly (not via host_task) to avoid deadlock.
+// host_task runs transport_process() in its loop, so send_sync from host_task
+// would block the process loop and never receive the ACK.
+static mrb_value mrb_gfx_file_status(mrb_state *mrb, mrb_value self)
+{
+    char *path;
+    mrb_get_args(mrb, "z", &path);
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+
+    size_t path_len = strlen(path);
+    if (path_len >= 120) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Path too long");
+    }
+
+    // Build payload: header + path
+    uint8_t payload_buf[sizeof(fmrb_link_file_transfer_status_t) + 120];
+    size_t payload_len = sizeof(fmrb_link_file_transfer_status_t) + path_len;
+
+    fmrb_link_file_transfer_status_t *hdr = (fmrb_link_file_transfer_status_t *)payload_buf;
+    hdr->path_len = (uint16_t)path_len;
+    memcpy(payload_buf + sizeof(fmrb_link_file_transfer_status_t), path, path_len);
+
+    // Send directly via transport (bypasses host_task to avoid deadlock)
+    uint8_t resp_buf[sizeof(fmrb_link_file_transfer_status_resp_t)];
+    uint32_t resp_len = sizeof(resp_buf);
+
+    fmrb_err_t ret = fmrb_transport_send_sync(
+        FMRB_LINK_TYPE_FILE_TRANSFER,
+        FMRB_LINK_FILE_TRANSFER_STATUS,
+        payload_buf, payload_len,
+        resp_buf, &resp_len,
+        5000);
+
+    mrb_value hash = mrb_hash_new(mrb);
+    if (ret == FMRB_OK && resp_len >= sizeof(fmrb_link_file_transfer_status_resp_t)) {
+        fmrb_link_file_transfer_status_resp_t *resp =
+            (fmrb_link_file_transfer_status_resp_t *)resp_buf;
+        mrb_hash_set(mrb, hash,
+            mrb_symbol_value(mrb_intern_lit(mrb, "exists")),
+            resp->exists ? mrb_true_value() : mrb_false_value());
+        mrb_hash_set(mrb, hash,
+            mrb_symbol_value(mrb_intern_lit(mrb, "size")),
+            mrb_fixnum_value(resp->file_size));
+    } else {
+        mrb_hash_set(mrb, hash,
+            mrb_symbol_value(mrb_intern_lit(mrb, "exists")),
+            mrb_false_value());
+        mrb_hash_set(mrb, hash,
+            mrb_symbol_value(mrb_intern_lit(mrb, "size")),
+            mrb_fixnum_value(0));
+    }
+
+    return hash;
+}
+
+// ============================================================
+// Image API
+// ============================================================
+
+// FmrbGfx#_draw_image(image_id, x, y)
+static mrb_value mrb_gfx_draw_image(mrb_state *mrb, mrb_value self)
+{
+    mrb_int image_id, x, y;
+    mrb_get_args(mrb, "iii", &image_id, &x, &y);
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_DRAW_IMAGE,
+        .canvas_id = data->canvas_id,
+        .params.draw_image = {
+            .image_id = (uint16_t)image_id,
+            .x = (int16_t)x,
+            .y = (int16_t)y,
+            .flags = 0
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "draw_image failed: %d", ret);
+    }
+
+    return self;
+}
+
+// FmrbGfx#_delete_image(image_id)
+static mrb_value mrb_gfx_delete_image(mrb_state *mrb, mrb_value self)
+{
+    mrb_int image_id;
+    mrb_get_args(mrb, "i", &image_id);
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_DELETE_IMAGE,
+        .canvas_id = data->canvas_id,
+        .params.delete_image = {
+            .image_id = (uint16_t)image_id
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "delete_image failed: %d", ret);
+    }
+
+    return self;
+}
+
+// FmrbGfx#_create_image_from_file(path) -> image_id
+// Sends CREATE_IMAGE_FROM_FILE directly via transport (bypasses host_task to avoid deadlock)
+static mrb_value mrb_gfx_create_image_from_file(mrb_state *mrb, mrb_value self)
+{
+    char *path;
+    mrb_get_args(mrb, "z", &path);
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+
+    size_t path_len = strlen(path);
+    if (path_len >= 120) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Path too long");
+    }
+
+    // Build payload: header + path
+    uint8_t payload_buf[sizeof(fmrb_link_graphics_create_image_from_file_t) + 120];
+    size_t payload_len = sizeof(fmrb_link_graphics_create_image_from_file_t) + path_len;
+
+    fmrb_link_graphics_create_image_from_file_t *hdr =
+        (fmrb_link_graphics_create_image_from_file_t *)payload_buf;
+    hdr->canvas_id = data->canvas_id;
+    hdr->path_len = (uint16_t)path_len;
+    memcpy(payload_buf + sizeof(fmrb_link_graphics_create_image_from_file_t), path, path_len);
+
+    // Send sync to get image_id back
+    uint8_t resp_buf[sizeof(fmrb_link_graphics_image_created_t)];
+    uint32_t resp_len = sizeof(resp_buf);
+
+    fmrb_err_t ret = fmrb_transport_send_sync(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_CREATE_IMAGE_FROM_FILE,
+        payload_buf, payload_len,
+        resp_buf, &resp_len,
+        10000);  // 10s timeout for PNG decode
+
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "create_image_from_file failed: %d", ret);
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "create_image_from_file failed: %d", ret);
+    }
+
+    if (resp_len >= sizeof(fmrb_link_graphics_image_created_t)) {
+        fmrb_link_graphics_image_created_t *resp =
+            (fmrb_link_graphics_image_created_t *)resp_buf;
+        FMRB_LOGI(TAG, "create_image_from_file: id=%u, %ux%u",
+                  resp->image_id, resp->width, resp->height);
+        // Return Hash {id: image_id, width: w, height: h}
+        mrb_value hash = mrb_hash_new(mrb);
+        mrb_hash_set(mrb, hash,
+            mrb_symbol_value(mrb_intern_lit(mrb, "id")),
+            mrb_fixnum_value(resp->image_id));
+        mrb_hash_set(mrb, hash,
+            mrb_symbol_value(mrb_intern_lit(mrb, "width")),
+            mrb_fixnum_value(resp->width));
+        mrb_hash_set(mrb, hash,
+            mrb_symbol_value(mrb_intern_lit(mrb, "height")),
+            mrb_fixnum_value(resp->height));
+        return hash;
+    }
+
+    FMRB_LOGW(TAG, "create_image_from_file: no response data");
+    return mrb_nil_value();
+}
+
 void mrb_fmrb_gfx_init(mrb_state *mrb)
 {
     struct RClass *gfx_class = mrb_define_class(mrb, "FmrbGfx", mrb->object_class);
@@ -441,6 +760,15 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "draw_text", mrb_gfx_draw_text, MRB_ARGS_ARG(4, 1));
     mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_NONE());
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());
+
+    // File transfer API
+    mrb_define_method(mrb, gfx_class, "_transfer_file", mrb_gfx_transfer_file, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "_file_status", mrb_gfx_file_status, MRB_ARGS_REQ(1));
+
+    // Image API
+    mrb_define_method(mrb, gfx_class, "_create_image_from_file", mrb_gfx_create_image_from_file, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "_draw_image", mrb_gfx_draw_image, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, gfx_class, "_delete_image", mrb_gfx_delete_image, MRB_ARGS_REQ(1));
 
     // Color constants
     mrb_define_const(mrb, gfx_class, "BLACK", mrb_fixnum_value(FMRB_COLOR_BLACK));

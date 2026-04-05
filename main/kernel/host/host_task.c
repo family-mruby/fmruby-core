@@ -16,6 +16,8 @@
 #include "fmrb_link_protocol.h"
 #include "fmrb_keymap.h"
 #include "status_led.h"
+#include "fmrb_file_transfer_msg.h"
+#include "fmrb_mem.h"
 
 static const char *TAG = "host";
 
@@ -271,6 +273,26 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_DRAW_IMAGE: {
+            fmrb_link_graphics_draw_image_t c = {
+                .canvas_id = cmd->canvas_id,
+                .image_id = cmd->params.draw_image.image_id,
+                .x = cmd->params.draw_image.x,
+                .y = cmd->params.draw_image.y,
+                .flags = cmd->params.draw_image.flags
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DRAW_IMAGE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_DELETE_IMAGE: {
+            fmrb_link_graphics_delete_image_t c = {
+                .image_id = cmd->params.delete_image.image_id
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DELETE_IMAGE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         default:
             return -1;
     }
@@ -293,6 +315,267 @@ static void gfx_stats_update(int cmd_count, int present_count) {
         g_gfx_total_cmds = 0;
         g_gfx_present_count = 0;
         g_gfx_stats_last_us = now_us;
+    }
+}
+
+// ============================================================
+// File Transfer State Machine
+// ============================================================
+
+// Chunk size must fit within COMM_MSG_MAX_PAYLOAD (256 bytes) on graphics-audio side.
+// Account for: fmrb_link_file_transfer_data_t header (6 bytes) + msgpack overhead (~10 bytes)
+#define FILE_TRANSFER_CHUNK_SIZE 240
+
+// File transfer state (one active transfer at a time)
+typedef struct {
+    bool active;
+    char path[120];
+    uint16_t path_len;
+    uint8_t *data;
+    uint32_t total_len;
+    uint32_t offset;
+    file_cmd_result_t *cmd_result;  // Points to caller's stack variable
+} file_transfer_state_t;
+
+static file_transfer_state_t g_file_transfer = {0};
+
+// Send BEGIN command for file transfer
+static fmrb_err_t file_transfer_send_begin(file_transfer_state_t *ft)
+{
+    size_t payload_len = sizeof(fmrb_link_file_transfer_begin_t) + ft->path_len;
+    uint8_t payload_buf[sizeof(fmrb_link_file_transfer_begin_t) + 120];
+
+    fmrb_link_file_transfer_begin_t *hdr = (fmrb_link_file_transfer_begin_t *)payload_buf;
+    hdr->total_size = ft->total_len;
+    hdr->path_len = ft->path_len;
+    memcpy(payload_buf + sizeof(fmrb_link_file_transfer_begin_t), ft->path, ft->path_len);
+
+    return fmrb_transport_send(
+        FMRB_LINK_TYPE_FILE_TRANSFER,
+        FMRB_LINK_FILE_TRANSFER_BEGIN,
+        payload_buf, payload_len,
+        5000);
+}
+
+// Send one DATA chunk for file transfer
+static fmrb_err_t file_transfer_send_chunk(file_transfer_state_t *ft)
+{
+    uint32_t remaining = ft->total_len - ft->offset;
+    uint16_t chunk_len = (remaining > FILE_TRANSFER_CHUNK_SIZE)
+                         ? FILE_TRANSFER_CHUNK_SIZE : (uint16_t)remaining;
+
+    size_t payload_len = sizeof(fmrb_link_file_transfer_data_t) + chunk_len;
+    // Allocate on stack for small chunks
+    uint8_t *payload_buf = (uint8_t *)fmrb_sys_malloc(payload_len);
+    if (!payload_buf) {
+        FMRB_LOGE(TAG, "file_transfer: chunk alloc failed (%u bytes)", (unsigned)payload_len);
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    fmrb_link_file_transfer_data_t *hdr = (fmrb_link_file_transfer_data_t *)payload_buf;
+    hdr->offset = ft->offset;
+    hdr->chunk_len = chunk_len;
+    memcpy(payload_buf + sizeof(fmrb_link_file_transfer_data_t),
+           ft->data + ft->offset, chunk_len);
+
+    fmrb_err_t ret = fmrb_transport_send(
+        FMRB_LINK_TYPE_FILE_TRANSFER,
+        FMRB_LINK_FILE_TRANSFER_DATA,
+        payload_buf, payload_len,
+        5000);
+
+    fmrb_sys_free(payload_buf);
+
+    if (ret == FMRB_OK) {
+        ft->offset += chunk_len;
+    }
+    return ret;
+}
+
+// Send END command for file transfer
+static fmrb_err_t file_transfer_send_end(file_transfer_state_t *ft)
+{
+    fmrb_link_file_transfer_end_t end_cmd = {
+        .total_size = ft->total_len,
+        .checksum = 0  // TODO: CRC32 calculation
+    };
+
+    return fmrb_transport_send(
+        FMRB_LINK_TYPE_FILE_TRANSFER,
+        FMRB_LINK_FILE_TRANSFER_END,
+        (const uint8_t *)&end_cmd, sizeof(end_cmd),
+        5000);
+}
+
+// Complete file transfer (success or failure)
+static void file_transfer_complete(file_transfer_state_t *ft, int32_t result)
+{
+    // Free the file data buffer (ownership was transferred from caller)
+    if (ft->data) {
+        fmrb_sys_free(ft->data);
+        ft->data = NULL;
+    }
+    ft->active = false;
+    // Write result and signal completion to caller
+    if (ft->cmd_result) {
+        ft->cmd_result->result = result;
+        fmrb_semaphore_give(ft->cmd_result->done_sem);
+        ft->cmd_result = NULL;
+    }
+}
+
+// Process one step of file transfer (called from main loop)
+// Returns true if transfer is active (more work to do)
+static bool file_transfer_process_step(void)
+{
+    file_transfer_state_t *ft = &g_file_transfer;
+    if (!ft->active) {
+        return false;
+    }
+
+    if (ft->offset == 0) {
+        // Send BEGIN
+        fmrb_err_t ret = file_transfer_send_begin(ft);
+        if (ret != FMRB_OK) {
+            FMRB_LOGE(TAG, "file_transfer: BEGIN failed: %d", ret);
+            file_transfer_complete(ft, -1);
+            return false;
+        }
+        FMRB_LOGI(TAG, "file_transfer: BEGIN sent, path=%.*s, size=%u",
+                  (int)ft->path_len, ft->path, (unsigned)ft->total_len);
+    }
+
+    if (ft->offset < ft->total_len) {
+        // Send one chunk
+        fmrb_err_t ret = file_transfer_send_chunk(ft);
+        if (ret != FMRB_OK) {
+            FMRB_LOGE(TAG, "file_transfer: DATA chunk failed at offset %u: %d",
+                      (unsigned)ft->offset, ret);
+            file_transfer_complete(ft, -2);
+            return false;
+        }
+    }
+
+    if (ft->offset >= ft->total_len) {
+        // Send END
+        fmrb_err_t ret = file_transfer_send_end(ft);
+        if (ret != FMRB_OK) {
+            FMRB_LOGE(TAG, "file_transfer: END failed: %d", ret);
+            file_transfer_complete(ft, -3);
+            return false;
+        }
+        FMRB_LOGI(TAG, "file_transfer: complete, %u bytes transferred", (unsigned)ft->total_len);
+        file_transfer_complete(ft, 0);
+        return false;
+    }
+
+    return true;  // More chunks to send
+}
+
+// Start a new file transfer from a FILE_CMD_TRANSFER message
+static void file_transfer_start(const file_cmd_t *cmd)
+{
+    file_transfer_state_t *ft = &g_file_transfer;
+
+    if (ft->active) {
+        FMRB_LOGE(TAG, "file_transfer: already active, rejecting new transfer");
+        if (cmd->result) {
+            cmd->result->result = -4;
+            fmrb_semaphore_give(cmd->result->done_sem);
+        }
+        return;
+    }
+
+    ft->active = true;
+    ft->path_len = cmd->path_len;
+    memcpy(ft->path, cmd->path, cmd->path_len);
+    ft->data = cmd->params.transfer.data;
+    ft->total_len = cmd->params.transfer.data_len;
+    ft->offset = 0;
+    ft->cmd_result = cmd->result;
+
+    FMRB_LOGI(TAG, "file_transfer: starting, path=%.*s, size=%u",
+              (int)ft->path_len, ft->path, (unsigned)ft->total_len);
+}
+
+// Handle FILE_CMD_STATUS synchronously
+static void file_transfer_handle_status(const file_cmd_t *cmd)
+{
+    size_t payload_len = sizeof(fmrb_link_file_transfer_status_t) + cmd->path_len;
+    uint8_t payload_buf[sizeof(fmrb_link_file_transfer_status_t) + 120];
+
+    fmrb_link_file_transfer_status_t *hdr = (fmrb_link_file_transfer_status_t *)payload_buf;
+    hdr->path_len = cmd->path_len;
+    memcpy(payload_buf + sizeof(fmrb_link_file_transfer_status_t), cmd->path, cmd->path_len);
+
+    uint8_t resp_buf[sizeof(fmrb_link_file_transfer_status_resp_t)];
+    uint32_t resp_len = 0;
+
+    fmrb_err_t ret = fmrb_transport_send_sync(
+        FMRB_LINK_TYPE_FILE_TRANSFER,
+        FMRB_LINK_FILE_TRANSFER_STATUS,
+        payload_buf, payload_len,
+        resp_buf, &resp_len,
+        5000);
+
+    if (cmd->result) {
+        if (ret == FMRB_OK && resp_len >= sizeof(fmrb_link_file_transfer_status_resp_t)) {
+            fmrb_link_file_transfer_status_resp_t *resp =
+                (fmrb_link_file_transfer_status_resp_t *)resp_buf;
+            cmd->result->data.status.exists = resp->exists;
+            cmd->result->data.status.file_size = resp->file_size;
+            cmd->result->data.status.checksum = resp->checksum;
+            cmd->result->result = 0;
+        } else {
+            cmd->result->data.status.exists = 0;
+            cmd->result->data.status.file_size = 0;
+            cmd->result->data.status.checksum = 0;
+            cmd->result->result = (ret != FMRB_OK) ? -1 : -2;
+        }
+        fmrb_semaphore_give(cmd->result->done_sem);
+    }
+}
+
+// Handle FILE_CMD_DELETE synchronously
+static void file_transfer_handle_delete(const file_cmd_t *cmd)
+{
+    size_t payload_len = sizeof(fmrb_link_file_transfer_delete_t) + cmd->path_len;
+    uint8_t payload_buf[sizeof(fmrb_link_file_transfer_delete_t) + 120];
+
+    fmrb_link_file_transfer_delete_t *hdr = (fmrb_link_file_transfer_delete_t *)payload_buf;
+    hdr->path_len = cmd->path_len;
+    memcpy(payload_buf + sizeof(fmrb_link_file_transfer_delete_t), cmd->path, cmd->path_len);
+
+    fmrb_err_t ret = fmrb_transport_send(
+        FMRB_LINK_TYPE_FILE_TRANSFER,
+        FMRB_LINK_FILE_TRANSFER_DELETE,
+        payload_buf, payload_len,
+        5000);
+
+    if (cmd->result) {
+        cmd->result->result = (ret == FMRB_OK) ? 0 : -1;
+        fmrb_semaphore_give(cmd->result->done_sem);
+    }
+}
+
+// Process a FILE_TRANSFER message from the queue
+static void host_task_process_file_transfer(const fmrb_msg_t *msg)
+{
+    file_cmd_t *cmd = (file_cmd_t *)msg->data;
+
+    switch (cmd->cmd_type) {
+        case FILE_CMD_TRANSFER:
+            file_transfer_start(cmd);
+            break;
+        case FILE_CMD_STATUS:
+            file_transfer_handle_status(cmd);
+            break;
+        case FILE_CMD_DELETE:
+            file_transfer_handle_delete(cmd);
+            break;
+        default:
+            FMRB_LOGW(TAG, "Unknown file command type: %d", cmd->cmd_type);
+            break;
     }
 }
 
@@ -382,6 +665,12 @@ static void host_task_process_message(const fmrb_msg_t *hal_msg)
     // Check if it's a GFX message first - use batch processing
     if (hal_msg->type == FMRB_MSG_TYPE_APP_GFX) {
         host_task_process_gfx_batch(hal_msg);
+        return;
+    }
+
+    // File transfer message
+    if (hal_msg->type == FMRB_MSG_TYPE_FILE_TRANSFER) {
+        host_task_process_file_transfer(hal_msg);
         return;
     }
 
@@ -597,6 +886,10 @@ static void fmrb_host_task(void *pvParameters)
             host_task_process_message(&msg);
             first = false;
         }
+
+        // File transfer interleaving: send one chunk per loop iteration
+        // This ensures GFX commands are processed between chunks
+        file_transfer_process_step();
 
         // Process incoming IPC messages (ACK/NACK responses)
         // This MUST be called regularly to receive responses for sync requests

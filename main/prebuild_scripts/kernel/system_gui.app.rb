@@ -11,9 +11,27 @@ class SystemGuiApp < FmrbApp
     @mem_update_interval = 30  # Update memory stats every 30 frames
   end
 
+  BOOT_DISPLAY_FRAMES = 6  # Number of frames to show boot image (~2s at 330ms/frame)
+
+  def show_boot_image
+    @gfx.clear(0x00)
+    begin
+      #@gfx.load_image("/boot/boot.png", coord: [0, 0])
+      @gfx.load_image("/boot/boot.png", coord: :center)
+      @boot_wait = BOOT_DISPLAY_FRAMES
+    rescue => e
+      Log.error("Boot image not available: #{e.message}")
+      @boot_wait = 0
+    end
+  end
+
   def on_create()
     Log.info("on_create called")
-    draw_current
+    show_boot_image
+
+    if @boot_wait == 0
+      draw_current
+    end
   end
 
   def spawn_app(app_name)
@@ -119,8 +137,13 @@ class SystemGuiApp < FmrbApp
   end
 
   def on_update()
-    if @counter % 30 == 0
-      #Log.debug("on_update() tick #{@counter / 30}s")
+    # Boot image display countdown
+    if @boot_wait > 0
+      @boot_wait -= 1
+      if @boot_wait == 0
+        draw_current
+      end
+      return 330
     end
 
     #debug
@@ -128,12 +151,11 @@ class SystemGuiApp < FmrbApp
       #spawn_app("default/shell")
     end
 
-    @counter += 1
-
     draw_system_frame
     draw_memory_stats
     @gfx.present
 
+    @counter += 1
     330
   end
 

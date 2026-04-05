@@ -13,7 +13,7 @@ class FmrbApp
 
     # Initialize graphics only for non-headless apps (@canvas is set)
     if @canvas
-      @gfx = FmrbGfx.new(@canvas)  # Pass canvas_id to FmrbGfx
+      @gfx = FmrbGfx.new(@canvas, width: @window_width, height: @window_height)
       Log.debug("FmrbGfx initialized: canvas_id=#{@canvas}")
       @user_area_x0 = 1
       @user_area_y0 = 10

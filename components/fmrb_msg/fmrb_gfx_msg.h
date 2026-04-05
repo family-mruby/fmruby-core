@@ -24,7 +24,10 @@ typedef enum {
     GFX_CMD_RECT,
     GFX_CMD_CIRCLE,
     GFX_CMD_TEXT,
-    GFX_CMD_PRESENT
+    GFX_CMD_PRESENT,
+    GFX_CMD_CREATE_IMAGE_FROM_FILE,
+    GFX_CMD_DRAW_IMAGE,
+    GFX_CMD_DELETE_IMAGE
 } gfx_cmd_type_t;
 
 // Graphics command structure
@@ -73,6 +76,15 @@ typedef struct {
             int16_t y;  // Screen Y position
             fmrb_color_t transparent_color;  // Transparent color (0xFF = no transparency)
         } present;
+        struct {
+            uint16_t image_id;
+            int16_t x;
+            int16_t y;
+            uint8_t flags;
+        } draw_image;
+        struct {
+            uint16_t image_id;
+        } delete_image;
     } params;
 } gfx_cmd_t;
 

@@ -16,7 +16,73 @@ class FmrbGfx
 
   # Initialize graphics context
   # @param canvas_id [Integer] Canvas ID for this graphics instance
-  def initialize(canvas_id)
+  # @param width [Integer] Canvas width (optional, for :center support)
+  # @param height [Integer] Canvas height (optional, for :center support)
+  def initialize(canvas_id, width: 0, height: 0)
     _init(canvas_id)
+    @canvas_width = width
+    @canvas_height = height
+  end
+
+  # Transfer a file from core to graphics-audio LittleFS
+  def transfer_file(path)
+    _transfer_file(path)
+  end
+
+  # Check if a file exists on graphics-audio side
+  # Returns Hash: {exists: bool, size: int}
+  def file_status(path)
+    _file_status(path)
+  end
+
+  # Create an image from a file on graphics-audio side
+  # Returns Hash {id: image_id, width: w, height: h} or nil
+  def create_image(path)
+    _create_image_from_file(path)
+  end
+
+  # Draw a previously created image on the canvas
+  def draw_image(image_id, x: 0, y: 0)
+    _draw_image(image_id, x, y)
+  end
+
+  # Delete a previously created image
+  def delete_image(image_id)
+    _delete_image(image_id)
+  end
+
+  # High-level API: transfer if needed, create, draw, delete
+  # coord: [x, y] array, :center symbol, or nil (defaults to [0,0])
+  # mode: :fade_in (reserved for future use)
+  def load_image(path, coord: nil, mode: nil)
+    # Transfer file if not already on graphics-audio
+    status = file_status(path)
+    unless status[:exists]
+      transfer_file(path)
+    end
+
+    # Create image from local file
+    img = create_image(path)
+    return if img.nil?
+
+    img_id = img[:id]
+    img_w = img[:width]
+    img_h = img[:height]
+
+    # Calculate position
+    if coord == :center
+      x = (@canvas_width - img_w) / 2
+      y = (@canvas_height - img_h) / 2
+    elsif coord
+      x = coord[0]
+      y = coord[1]
+    else
+      x = 0
+      y = 0
+    end
+
+    draw_image(img_id, x: x, y: y)
+    present
+    delete_image(img_id)
   end
 end

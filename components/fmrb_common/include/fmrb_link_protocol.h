@@ -19,6 +19,7 @@ typedef enum {
     FMRB_LINK_TYPE_CONTROL = 1,
     FMRB_LINK_TYPE_GRAPHICS = 2,
     FMRB_LINK_TYPE_AUDIO = 4,
+    FMRB_LINK_TYPE_FILE_TRANSFER = 5,
     FMRB_LINK_TYPE_INPUT = 128,  // Linux only
 
     // Flags
@@ -280,6 +281,71 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;  // Canvas to present (0=screen/back_buffer, other=canvas ID)
 } fmrb_link_graphics_present_t;
+
+// Image management structures
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint16_t path_len;
+    // Followed by path string (path_len bytes, no null terminator required)
+} fmrb_link_graphics_create_image_from_file_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t image_id;    // Allocated image ID (0 = error)
+    uint16_t width;       // Decoded image width
+    uint16_t height;      // Decoded image height
+} fmrb_link_graphics_image_created_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint16_t image_id;
+    int16_t x, y;
+    uint8_t flags;        // Bit 0: fade_in (reserved for future use)
+} fmrb_link_graphics_draw_image_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t image_id;
+} fmrb_link_graphics_delete_image_t;
+
+// File transfer sub-commands
+#define FMRB_LINK_FILE_TRANSFER_BEGIN   0x01
+#define FMRB_LINK_FILE_TRANSFER_DATA    0x02
+#define FMRB_LINK_FILE_TRANSFER_END     0x03
+#define FMRB_LINK_FILE_TRANSFER_STATUS  0x04
+#define FMRB_LINK_FILE_TRANSFER_DELETE  0x05
+
+// File transfer message structures
+typedef struct __attribute__((packed)) {
+    uint32_t total_size;
+    uint16_t path_len;
+    // Followed by path string (path_len bytes)
+} fmrb_link_file_transfer_begin_t;
+
+typedef struct __attribute__((packed)) {
+    uint32_t offset;
+    uint16_t chunk_len;
+    // Followed by chunk data (chunk_len bytes)
+} fmrb_link_file_transfer_data_t;
+
+typedef struct __attribute__((packed)) {
+    uint32_t total_size;
+    uint32_t checksum;       // CRC32
+} fmrb_link_file_transfer_end_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t path_len;
+    // Followed by path string (path_len bytes)
+} fmrb_link_file_transfer_status_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t exists;          // 0=not found, 1=exists
+    uint32_t file_size;      // File size (0 if not exists)
+    uint32_t checksum;       // CRC32 of existing file (0 if not exists)
+} fmrb_link_file_transfer_status_resp_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t path_len;
+    // Followed by path string (path_len bytes)
+} fmrb_link_file_transfer_delete_t;
 
 // Audio message structures
 typedef struct __attribute__((packed)) {
