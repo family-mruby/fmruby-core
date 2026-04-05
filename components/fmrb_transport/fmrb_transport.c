@@ -31,16 +31,21 @@ typedef struct {
     uint8_t retry_count;
 } pending_message_t;
 
-// Synchronous request tracking
+// Async/sync request tracking
 typedef struct {
-    uint16_t sequence;           // Sequence number of the request
-    bool active;                 // Whether this slot is in use
-    bool response_received;      // Whether response has been received
-    uint8_t response_status;     // Response status (0=OK, others=error)
-    uint8_t *response_payload;   // Response payload buffer
-    uint32_t response_len;       // Actual response length
-    uint32_t response_max_len;   // Maximum response buffer size
-    fmrb_semaphore_t wait_sem;   // Semaphore for waiting
+    uint16_t sequence;
+    bool active;
+    // Async callback (if set, invoked in host_task context on response)
+    fmrb_transport_response_cb_t callback;
+    void *callback_user_data;
+    fmrb_tick_t timeout_tick;    // Expiry tick (0 = no timeout)
+    // Sync fields (used when callback == NULL)
+    bool response_received;
+    uint8_t response_status;
+    uint8_t *response_payload;
+    uint32_t response_len;
+    uint32_t response_max_len;
+    fmrb_semaphore_t wait_sem;
 } sync_request_t;
 
 typedef struct {
@@ -157,46 +162,43 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
     msgpack_packer pk;
     msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
 
-    // Check if fragmentation is needed
-    bool needs_chunking = fmrb_fragment_needs_chunking(payload_len);
+    // Try non-chunked path first: encode, then check if it fits in one SPI frame
+    msgpack_pack_array(&pk, 4);
+    msgpack_pack_uint8(&pk, link_type);
+    msgpack_pack_uint8(&pk, seq);
+    msgpack_pack_uint8(&pk, sub_cmd);
 
-    if (!needs_chunking) {
-        // Normal path: send as single message
-        // Pack as array: [type, seq, sub_cmd, payload]
-        msgpack_pack_array(&pk, 4);
-        msgpack_pack_uint8(&pk, link_type);  // type (CONTROL=1, GRAPHICS=2, AUDIO=4)
-        msgpack_pack_uint8(&pk, seq);        // seq
-        msgpack_pack_uint8(&pk, sub_cmd);    // sub_cmd (command within type)
+    if (payload && payload_len > 0) {
+        msgpack_pack_bin(&pk, payload_len);
+        msgpack_pack_bin_body(&pk, payload, payload_len);
+    } else {
+        msgpack_pack_nil(&pk);
+    }
 
-        // Pack payload as binary
-        if (payload && payload_len > 0) {
-            msgpack_pack_bin(&pk, payload_len);
-            msgpack_pack_bin_body(&pk, payload, payload_len);
-        } else {
-            msgpack_pack_nil(&pk);
-        }
+    // COBS worst case: input_len + ceil(input_len/254) + 1 (terminator)
+    size_t cobs_worst = sbuf.size + (sbuf.size / 254) + 2;
 
-        // Debug: log msgpack size for GRAPHICS commands (only at DEBUG level)
-        if (link_type == FMRB_LINK_TYPE_GRAPHICS) {
-            FMRB_LOGD(TAG, "msgpack data (size=%zu)", sbuf.size);
-        }
-
-        // Send via HAL (HAL will add CRC32 and COBS encode)
+    if (cobs_worst <= SPI_MAX_DATA) {
+        // Fits in a single SPI frame: send directly
         fmrb_link_message_t hal_msg = {
             .data = (uint8_t*)sbuf.data,
             .size = sbuf.size
         };
 
-        fmrb_link_channel_t hal_channel = (link_type == FMRB_LINK_TYPE_CONTROL) ? FMRB_LINK_GRAPHICS : FMRB_LINK_GRAPHICS;
+        fmrb_link_channel_t hal_channel = FMRB_LINK_GRAPHICS;
         fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1, timeout_ms);
 
-        if (ret != FMRB_OK && link_type == FMRB_LINK_TYPE_GRAPHICS) {
+        if (ret != FMRB_OK && link_type != FMRB_LINK_TYPE_GRAPHICS) {
             FMRB_LOGE(TAG, "HAL send failed: ret=%d, type=%d, sub_cmd=0x%02X", ret, link_type, sub_cmd);
         }
 
         msgpack_sbuffer_destroy(&sbuf);
         return ret;
-    } else {
+    }
+
+    // Does not fit: use fragmentation
+    msgpack_sbuffer_destroy(&sbuf);
+    {
         // Fragmentation path: split into multiple chunks
         FMRB_LOGI(TAG, "Large message (%u bytes), using fragmentation", payload_len);
 
@@ -209,7 +211,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
                                      link_type | FMRB_LINK_FLAG_CHUNKED, seq, chunk_id);
 
         fmrb_err_t ret = FMRB_OK;
-        fmrb_link_channel_t hal_channel = (link_type == FMRB_LINK_TYPE_CONTROL) ? FMRB_LINK_GRAPHICS : FMRB_LINK_GRAPHICS;
+        fmrb_link_channel_t hal_channel = FMRB_LINK_GRAPHICS;
 
         // Send all chunks
         while (true) {
@@ -272,7 +274,6 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
             // For now, send all chunks without waiting for ACKs
         }
 
-        msgpack_sbuffer_destroy(&sbuf);
         return ret;
     }
 }
@@ -433,19 +434,19 @@ fmrb_err_t fmrb_transport_send_batch(const fmrb_transport_batch_entry_t *entries
     return ret;
 }
 
-fmrb_err_t fmrb_transport_send_sync(uint8_t link_type,
-                                         uint8_t sub_cmd,
-                                         const uint8_t *payload,
-                                         uint32_t payload_len,
-                                         uint8_t *response_payload,
-                                         uint32_t *response_len,
-                                         uint32_t timeout_ms) {
+fmrb_err_t fmrb_transport_send_async(uint8_t link_type,
+                                      uint8_t sub_cmd,
+                                      const uint8_t *payload,
+                                      uint32_t payload_len,
+                                      fmrb_transport_response_cb_t callback,
+                                      void *user_data,
+                                      uint32_t timeout_ms) {
     transport_context_t *ctx = &g_tranport_context;
-    if (!ctx->initialized) {
+    if (!ctx->initialized || !callback) {
         return FMRB_ERR_INVALID_STATE;
     }
 
-    // Find available sync request slot
+    // Allocate request slot
     fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
 
     int slot = -1;
@@ -458,64 +459,103 @@ fmrb_err_t fmrb_transport_send_sync(uint8_t link_type,
 
     if (slot == -1) {
         fmrb_semaphore_give(ctx->sync_mutex);
-        FMRB_LOGE(TAG, "No available sync request slots");
+        FMRB_LOGE(TAG, "No available request slots for send_async");
         return FMRB_ERR_BUSY;
     }
 
     uint16_t sequence = ctx->next_sequence++;
     uint8_t seq = (uint8_t)(sequence & 0xFF);
 
-    // Setup sync request
     sync_request_t *req = &ctx->sync_requests[slot];
     req->sequence = sequence;
     req->active = true;
+    req->callback = callback;
+    req->callback_user_data = user_data;
+    req->timeout_tick = (timeout_ms > 0) ?
+        fmrb_task_get_tick_count() + FMRB_MS_TO_TICKS(timeout_ms) : 0;
     req->response_received = false;
-    req->response_payload = response_payload;
-    req->response_max_len = response_payload ? (response_len ? *response_len : 0) : 0;
+    req->response_payload = NULL;
+    req->response_max_len = 0;
     req->response_len = 0;
 
     fmrb_semaphore_give(ctx->sync_mutex);
 
-    // Send message with ACK_REQUIRED flag so the receiver sends a per-message ACK
-    fmrb_err_t ret = send_raw_message(link_type | FMRB_LINK_FLAG_ACK_REQUIRED, seq, sub_cmd, payload, payload_len, timeout_ms);
+    // Send with ACK_REQUIRED
+    fmrb_err_t ret = send_raw_message(link_type | FMRB_LINK_FLAG_ACK_REQUIRED,
+                                       seq, sub_cmd, payload, payload_len, timeout_ms);
     if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "send_sync: send_raw_message failed: %d (seq=%u)", ret, sequence);
-        // Mark slot as inactive on send failure
+        FMRB_LOGE(TAG, "send_async: send_raw_message failed: %d (seq=%u)", ret, sequence);
         fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
         req->active = false;
         fmrb_semaphore_give(ctx->sync_mutex);
         return ret;
     }
 
-    // Wait for response
+    return FMRB_OK;
+}
+
+// Sync wrapper callback context
+typedef struct {
+    fmrb_semaphore_t done;
+    uint8_t status;
+    uint8_t *buf;
+    uint32_t buf_max;
+    uint32_t len;
+} sync_wrapper_t;
+
+static void sync_response_callback(uint8_t status, const uint8_t *payload,
+                                    uint32_t payload_len, void *user_data) {
+    sync_wrapper_t *w = (sync_wrapper_t *)user_data;
+    w->status = status;
+    if (payload && payload_len > 0 && w->buf && payload_len <= w->buf_max) {
+        memcpy(w->buf, payload, payload_len);
+        w->len = payload_len;
+    }
+    fmrb_semaphore_give(w->done);
+}
+
+fmrb_err_t fmrb_transport_send_sync(uint8_t link_type,
+                                         uint8_t sub_cmd,
+                                         const uint8_t *payload,
+                                         uint32_t payload_len,
+                                         uint8_t *response_payload,
+                                         uint32_t *response_len,
+                                         uint32_t timeout_ms) {
+    sync_wrapper_t wrapper = {
+        .done = fmrb_semaphore_create_binary(),
+        .status = 0xFF,
+        .buf = response_payload,
+        .buf_max = (response_payload && response_len) ? *response_len : 0,
+        .len = 0,
+    };
+    if (!wrapper.done) {
+        return FMRB_ERR_NO_MEMORY;
+    }
+
+    fmrb_err_t ret = fmrb_transport_send_async(link_type, sub_cmd, payload, payload_len,
+                                                sync_response_callback, &wrapper, timeout_ms);
+    if (ret != FMRB_OK) {
+        fmrb_semaphore_delete(wrapper.done);
+        return ret;
+    }
+
+    // Block calling task until callback signals or timeout
     fmrb_tick_t ticks = (timeout_ms == UINT32_MAX) ? FMRB_TICK_MAX : FMRB_MS_TO_TICKS(timeout_ms);
-    FMRB_LOGI(TAG, "send_sync: waiting for response seq=%u (ticks=%u, timeout_ms=%u)",
-              sequence, (unsigned)ticks, (unsigned)timeout_ms);
-    fmrb_base_type_t wait_result = fmrb_semaphore_take(req->wait_sem, ticks);
-    FMRB_LOGI(TAG, "send_sync: wait returned: result=%d, response_received=%d (seq=%u)",
-              (int)wait_result, req->response_received, sequence);
+    FMRB_LOGI(TAG, "send_sync: waiting for response (timeout_ms=%u)", (unsigned)timeout_ms);
+    fmrb_base_type_t wait_result = fmrb_semaphore_take(wrapper.done, ticks);
+    fmrb_semaphore_delete(wrapper.done);
 
-    fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
-
-    if (wait_result != FMRB_TRUE || !req->response_received) {
-        // Timeout
-        req->active = false;
-        fmrb_semaphore_give(ctx->sync_mutex);
-        FMRB_LOGW(TAG, "Sync send timeout for seq=%u (wait_result=%d)", sequence, (int)wait_result);
+    if (wait_result != FMRB_TRUE) {
+        FMRB_LOGW(TAG, "send_sync: timeout");
         return FMRB_ERR_TIMEOUT;
     }
 
-    // Response received
-    uint8_t status = req->response_status;
     if (response_len) {
-        *response_len = req->response_len;
+        *response_len = wrapper.len;
     }
-    req->active = false;
 
-    fmrb_semaphore_give(ctx->sync_mutex);
-
-    if (status != 0) {
-        FMRB_LOGW(TAG, "Sync send received error response: status=%u", status);
+    if (wrapper.status != 0) {
+        FMRB_LOGW(TAG, "send_sync: error response status=%u", wrapper.status);
         return FMRB_ERR_FAILED;
     }
 
@@ -582,28 +622,40 @@ static void handle_received_message(transport_context_t *ctx, uint8_t type, uint
         const uint8_t *response_data = payload;
         uint32_t response_data_len = payload_len;
 
-        // Check if this is a response to a sync request
+        // Check if this is a response to a pending request (async or sync)
         fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
         for (int i = 0; i < MAX_SYNC_REQUESTS; i++) {
             if (ctx->sync_requests[i].active && (ctx->sync_requests[i].sequence & 0xFF) == seq_8bit) {
                 sync_request_t *req = &ctx->sync_requests[i];
-                req->response_received = true;
-                req->response_status = response_status;
 
-                // Copy response data if provided
-                if (response_data && response_data_len > 0 && req->response_payload) {
-                    uint32_t copy_len = (response_data_len < req->response_max_len) ? response_data_len : req->response_max_len;
-                    memcpy(req->response_payload, response_data, copy_len);
-                    req->response_len = copy_len;
+                if (req->callback) {
+                    // Async path: invoke callback in current (host_task) context
+                    fmrb_transport_response_cb_t cb = req->callback;
+                    void *ud = req->callback_user_data;
+                    req->active = false;
+                    fmrb_semaphore_give(ctx->sync_mutex);
+
+                    FMRB_LOGD(TAG, "ACK matched async request: seq=%u, resp_len=%u",
+                              seq_8bit, response_data_len);
+                    cb(response_status, response_data, response_data_len, ud);
+                } else {
+                    // Sync path: fill buffer and signal semaphore
+                    req->response_received = true;
+                    req->response_status = response_status;
+
+                    if (response_data && response_data_len > 0 && req->response_payload) {
+                        uint32_t copy_len = (response_data_len < req->response_max_len) ? response_data_len : req->response_max_len;
+                        memcpy(req->response_payload, response_data, copy_len);
+                        req->response_len = copy_len;
+                    }
+
+                    FMRB_LOGD(TAG, "ACK matched sync request: seq=%u, resp_len=%u",
+                              seq_8bit, req->response_len);
+                    fmrb_semaphore_give(req->wait_sem);
+                    fmrb_semaphore_give(ctx->sync_mutex);
                 }
 
-                // Signal waiting thread
-                FMRB_LOGD(TAG, "ACK matched sync_request: seq=%u, resp_len=%u",
-                          seq_8bit, req->response_len);
-                fmrb_semaphore_give(req->wait_sem);
-                fmrb_semaphore_give(ctx->sync_mutex);
-
-                // Also remove from pending list for retransmit tracking
+                // Remove from pending list for retransmit tracking
                 for (int j = 0; j < ctx->pending_count; j++) {
                     if ((ctx->pending_messages[j].sequence & 0xFF) == seq_8bit) {
                         if (ctx->pending_messages[j].payload) {
@@ -750,6 +802,18 @@ fmrb_err_t fmrb_transport_process(void) {
             }
         }
     }
+
+    // Expire timed-out async request slots
+    fmrb_tick_t now = fmrb_task_get_tick_count();
+    fmrb_semaphore_take(ctx->sync_mutex, FMRB_TICK_MAX);
+    for (int i = 0; i < MAX_SYNC_REQUESTS; i++) {
+        sync_request_t *req = &ctx->sync_requests[i];
+        if (req->active && req->callback && req->timeout_tick > 0 && now >= req->timeout_tick) {
+            FMRB_LOGW(TAG, "Async request expired: seq=%u", req->sequence);
+            req->active = false;
+        }
+    }
+    fmrb_semaphore_give(ctx->sync_mutex);
 
     return FMRB_OK;
 }

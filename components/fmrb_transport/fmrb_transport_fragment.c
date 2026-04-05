@@ -25,11 +25,6 @@ void fmrb_fragment_manager_cleanup(fmrb_fragment_manager_t *manager) {
     }
 }
 
-// Check if message needs fragmentation
-bool fmrb_fragment_needs_chunking(size_t payload_len) {
-    return payload_len > FMRB_LINK_FRAG_CHUNK_THRESHOLD;
-}
-
 // Calculate number of chunks needed
 uint32_t fmrb_fragment_calculate_num_chunks(uint32_t payload_len) {
     return (payload_len + FMRB_LINK_FRAG_MAX_CHUNK_PAYLOAD - 1) /

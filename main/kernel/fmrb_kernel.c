@@ -17,6 +17,8 @@
 #include "fmrb_transport.h"
 #include "host/host_task.h"
 #include "fmrb_toml.h"
+#include "fmrb_file_transfer_msg.h"
+#include "fmrb_link_cobs.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
 extern const uint8_t fmrb_kernel_irep[];
@@ -121,6 +123,183 @@ static bool read_system_config(void)
 }
 
 
+// Send file command to host_task and wait for completion
+static fmrb_err_t send_file_cmd(file_cmd_t *cmd, file_cmd_result_t *result, uint32_t timeout_ms)
+{
+    result->done_sem = fmrb_semaphore_create_binary();
+    if (!result->done_sem) {
+        return FMRB_ERR_NO_MEMORY;
+    }
+    result->result = -99;
+    cmd->result = result;
+
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_FILE_TRANSFER,
+        .src_pid = 0,
+        .size = sizeof(file_cmd_t)
+    };
+    memcpy(msg.data, cmd, sizeof(file_cmd_t));
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    if (ret != FMRB_OK) {
+        fmrb_semaphore_delete(result->done_sem);
+        return ret;
+    }
+
+    fmrb_base_type_t sem_ret = fmrb_semaphore_take(result->done_sem, FMRB_MS_TO_TICKS(timeout_ms));
+    fmrb_semaphore_delete(result->done_sem);
+
+    if (sem_ret != FMRB_PASS) {
+        return FMRB_ERR_TIMEOUT;
+    }
+    return (result->result == 0) ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+// Calculate CRC32 of a local file
+static uint32_t calc_file_crc32(const char *path, uint32_t *out_size)
+{
+    fmrb_file_t fh;
+    uint32_t crc = 0;
+    uint32_t total = 0;
+
+    if (fmrb_hal_file_open(path, FMRB_O_RDONLY, &fh) != FMRB_OK) {
+        if (out_size) *out_size = 0;
+        return 0;
+    }
+
+    uint8_t buf[256];
+    size_t bytes_read;
+    while (fmrb_hal_file_read(fh, buf, sizeof(buf), &bytes_read) == FMRB_OK && bytes_read > 0) {
+        crc = fmrb_link_crc32_update(crc, buf, bytes_read);
+        total += bytes_read;
+    }
+
+    fmrb_hal_file_close(fh);
+    if (out_size) *out_size = total;
+    return crc;
+}
+
+// Sync files from S3 LittleFS to WROVER LittleFS based on system_conf.toml
+static void sync_files_to_host(void)
+{
+    const char *config_path = "/etc/system_conf.toml";
+    char errbuf[200];
+
+    toml_table_t *conf = fmrb_toml_load_file(config_path, errbuf, sizeof(errbuf));
+    if (!conf) {
+        return;
+    }
+
+    toml_array_t *sync_arr = toml_array_in(conf, "sync_files");
+    if (!sync_arr) {
+        toml_free(conf);
+        return;
+    }
+
+    int n = toml_array_nelem(sync_arr);
+    FMRB_LOGI(TAG, "File sync: %d file(s) configured", n);
+
+    for (int i = 0; i < n; i++) {
+        const toml_table_t *entry = toml_table_at(sync_arr, i);
+        if (!entry) continue;
+
+        const char *src = fmrb_toml_get_string(entry, "src", NULL);
+        const char *dest = fmrb_toml_get_string(entry, "dest", NULL);
+        if (!src || !dest) {
+            FMRB_LOGW(TAG, "File sync [%d]: missing src or dest, skipping", i);
+            continue;
+        }
+
+        // Build local path (prepend /flash if not absolute with /flash)
+        char local_path[128];
+        if (strncmp(src, "/flash", 6) == 0) {
+            strncpy(local_path, src, sizeof(local_path) - 1);
+        } else {
+            snprintf(local_path, sizeof(local_path), "/flash%s", src);
+        }
+        local_path[sizeof(local_path) - 1] = '\0';
+
+        // Calculate local file CRC32 and size
+        uint32_t local_size = 0;
+        uint32_t local_crc = calc_file_crc32(local_path, &local_size);
+        if (local_size == 0) {
+            FMRB_LOGW(TAG, "File sync [%d]: source %s not found or empty", i, local_path);
+            continue;
+        }
+
+        // Strip /flash/ prefix: WROVER's build_full_path prepends it
+        const char *rel_dest = dest;
+        if (strncmp(rel_dest, "/flash/", 7) == 0) {
+            rel_dest += 7;
+        } else if (rel_dest[0] == '/') {
+            rel_dest += 1;
+        }
+
+        // Static result to avoid dangling pointer if host_task responds after timeout
+        static file_cmd_result_t s_sync_result;
+
+        // Query remote file status
+        file_cmd_t cmd = {0};
+        memset(&s_sync_result, 0, sizeof(s_sync_result));
+        cmd.cmd_type = FILE_CMD_STATUS;
+        cmd.path_len = (uint16_t)strlen(rel_dest);
+        memcpy(cmd.path, rel_dest, cmd.path_len);
+
+        fmrb_err_t ret = send_file_cmd(&cmd, &s_sync_result, 5000);
+        if (ret == FMRB_OK &&
+            s_sync_result.data.status.exists &&
+            s_sync_result.data.status.file_size == local_size &&
+            s_sync_result.data.status.checksum == local_crc) {
+            FMRB_LOGI(TAG, "File sync [%d]: %s up-to-date (size=%lu, crc=0x%08lx)",
+                       i, rel_dest, (unsigned long)local_size, (unsigned long)local_crc);
+            continue;
+        }
+
+        // Transfer needed
+        FMRB_LOGI(TAG, "File sync [%d]: transferring %s -> %s (%lu bytes)",
+                   i, local_path, rel_dest, (unsigned long)local_size);
+
+        // Read entire file into memory
+        uint8_t *file_data = (uint8_t *)fmrb_sys_malloc(local_size);
+        if (!file_data) {
+            FMRB_LOGE(TAG, "File sync [%d]: malloc failed for %lu bytes",
+                       i, (unsigned long)local_size);
+            continue;
+        }
+
+        fmrb_file_t fh;
+        if (fmrb_hal_file_open(local_path, FMRB_O_RDONLY, &fh) != FMRB_OK) {
+            fmrb_sys_free(file_data);
+            continue;
+        }
+        size_t bytes_read;
+        size_t offset = 0;
+        while (fmrb_hal_file_read(fh, file_data + offset, 512, &bytes_read) == FMRB_OK && bytes_read > 0) {
+            offset += bytes_read;
+        }
+        fmrb_hal_file_close(fh);
+
+        // Send transfer command (host_task will chunk and send to WROVER)
+        memset(&cmd, 0, sizeof(cmd));
+        memset(&s_sync_result, 0, sizeof(s_sync_result));
+        cmd.cmd_type = FILE_CMD_TRANSFER;
+        cmd.path_len = (uint16_t)strlen(rel_dest);
+        memcpy(cmd.path, rel_dest, cmd.path_len);
+        cmd.params.transfer.data = file_data;  // Ownership transfers to host_task
+        cmd.params.transfer.data_len = local_size;
+
+        ret = send_file_cmd(&cmd, &s_sync_result, 30000);  // 30s timeout for large files
+        if (ret == FMRB_OK) {
+            FMRB_LOGI(TAG, "File sync [%d]: transfer complete", i);
+        } else {
+            FMRB_LOGE(TAG, "File sync [%d]: transfer failed: %d", i, ret);
+        }
+    }
+
+    toml_free(conf);
+    FMRB_LOGI(TAG, "File sync complete");
+}
+
 /**
  * Initialize HAL layer and subsystems
  */
@@ -205,6 +384,9 @@ fmrb_err_t fmrb_kernel_start(void)
         }
         cnt++;
     }
+
+    // Sync files from S3 to WROVER (before kernel mruby task starts)
+    sync_files_to_host();
 
     // Create kernel task using spawn API
     fmrb_spawn_attr_t attr = {

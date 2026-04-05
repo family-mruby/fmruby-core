@@ -7,3 +7,7 @@ display_mode = "ntsc_ipc" # spi_XXXX, etc...
 debug_mode = true
 mouse_scale_x = 0.5
 mouse_scale_y = 0.5
+
+[[sync_files]]
+src = "/usr/share/sounds/test.nsf"
+dest = "/flash/data/test.nsf"

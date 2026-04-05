@@ -18,6 +18,7 @@
 #include "status_led.h"
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_mem.h"
+#include "spi_frame.h"
 
 static const char *TAG = "host";
 
@@ -322,9 +323,11 @@ static void gfx_stats_update(int cmd_count, int present_count) {
 // File Transfer State Machine
 // ============================================================
 
-// Chunk size must fit within COMM_MSG_MAX_PAYLOAD (256 bytes) on graphics-audio side.
-// Account for: fmrb_link_file_transfer_data_t header (6 bytes) + msgpack overhead (~10 bytes)
-#define FILE_TRANSFER_CHUNK_SIZE 240
+// Chunk size derived from SPI frame capacity.
+// fmrb_link_file_transfer_data_t header (6 bytes) + msgpack array/bin headers (~10 bytes)
+// + COBS overhead (~2 bytes) must fit within SPI_MAX_DATA.
+#define FILE_TRANSFER_OVERHEAD 18
+#define FILE_TRANSFER_CHUNK_SIZE (SPI_MAX_DATA - FILE_TRANSFER_OVERHEAD)
 
 // File transfer state (one active transfer at a time)
 typedef struct {
@@ -498,7 +501,29 @@ static void file_transfer_start(const file_cmd_t *cmd)
               (int)ft->path_len, ft->path, (unsigned)ft->total_len);
 }
 
-// Handle FILE_CMD_STATUS synchronously
+// Callback for FILE_CMD_STATUS async response (runs in host_task context)
+static void file_status_response_cb(uint8_t status, const uint8_t *payload,
+                                     uint32_t payload_len, void *user_data) {
+    file_cmd_result_t *result = (file_cmd_result_t *)user_data;
+    if (!result) return;
+
+    if (status == 0 && payload_len >= sizeof(fmrb_link_file_transfer_status_resp_t)) {
+        const fmrb_link_file_transfer_status_resp_t *resp =
+            (const fmrb_link_file_transfer_status_resp_t *)payload;
+        result->data.status.exists = resp->exists;
+        result->data.status.file_size = resp->file_size;
+        result->data.status.checksum = resp->checksum;
+        result->result = 0;
+    } else {
+        result->data.status.exists = 0;
+        result->data.status.file_size = 0;
+        result->data.status.checksum = 0;
+        result->result = -1;
+    }
+    fmrb_semaphore_give(result->done_sem);
+}
+
+// Handle FILE_CMD_STATUS asynchronously (non-blocking for host_task)
 static void file_transfer_handle_status(const file_cmd_t *cmd)
 {
     size_t payload_len = sizeof(fmrb_link_file_transfer_status_t) + cmd->path_len;
@@ -508,32 +533,19 @@ static void file_transfer_handle_status(const file_cmd_t *cmd)
     hdr->path_len = cmd->path_len;
     memcpy(payload_buf + sizeof(fmrb_link_file_transfer_status_t), cmd->path, cmd->path_len);
 
-    uint8_t resp_buf[sizeof(fmrb_link_file_transfer_status_resp_t)];
-    uint32_t resp_len = 0;
-
-    fmrb_err_t ret = fmrb_transport_send_sync(
+    fmrb_err_t ret = fmrb_transport_send_async(
         FMRB_LINK_TYPE_FILE_TRANSFER,
         FMRB_LINK_FILE_TRANSFER_STATUS,
         payload_buf, payload_len,
-        resp_buf, &resp_len,
+        file_status_response_cb, cmd->result,
         5000);
 
-    if (cmd->result) {
-        if (ret == FMRB_OK && resp_len >= sizeof(fmrb_link_file_transfer_status_resp_t)) {
-            fmrb_link_file_transfer_status_resp_t *resp =
-                (fmrb_link_file_transfer_status_resp_t *)resp_buf;
-            cmd->result->data.status.exists = resp->exists;
-            cmd->result->data.status.file_size = resp->file_size;
-            cmd->result->data.status.checksum = resp->checksum;
-            cmd->result->result = 0;
-        } else {
-            cmd->result->data.status.exists = 0;
-            cmd->result->data.status.file_size = 0;
-            cmd->result->data.status.checksum = 0;
-            cmd->result->result = (ret != FMRB_OK) ? -1 : -2;
-        }
+    if (ret != FMRB_OK && cmd->result) {
+        // Send failed: signal caller immediately
+        cmd->result->result = -1;
         fmrb_semaphore_give(cmd->result->done_sem);
     }
+    // On success: callback will signal cmd->result->done_sem when response arrives
 }
 
 // Handle FILE_CMD_DELETE synchronously

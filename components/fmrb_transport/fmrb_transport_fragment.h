@@ -5,14 +5,17 @@
 #include <stddef.h>
 #include "fmrb_link_protocol.h"
 #include "fmrb_err.h"
+#include "spi_frame.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 // Fragmentation configuration
-#define FMRB_LINK_FRAG_CHUNK_THRESHOLD 200    // Start chunking above this size
-#define FMRB_LINK_FRAG_MAX_CHUNK_PAYLOAD 230  // Max payload per chunk (for 256-byte frames)
+// Chunked msgpack: [type(2) + seq(2) + sub_cmd(2) + bin_hdr(3) + chunk_info(12) + bin_hdr(3) + payload(N)]
+// + COBS worst-case (~2 bytes). Total must fit within SPI_MAX_DATA.
+#define FMRB_LINK_FRAG_CHUNKED_OVERHEAD 28
+#define FMRB_LINK_FRAG_MAX_CHUNK_PAYLOAD (SPI_MAX_DATA - FMRB_LINK_FRAG_CHUNKED_OVERHEAD)
 #define FMRB_LINK_FRAG_WINDOW_SIZE 8          // Sliding window size
 #define FMRB_LINK_FRAG_MAX_CONCURRENT 4       // Max concurrent reassembly contexts
 #define FMRB_LINK_FRAG_TIMEOUT_MS 5000        // Reassembly timeout
@@ -66,13 +69,6 @@ void fmrb_fragment_manager_init(fmrb_fragment_manager_t *manager);
  * @param manager Fragment manager instance
  */
 void fmrb_fragment_manager_cleanup(fmrb_fragment_manager_t *manager);
-
-/**
- * Check if message needs fragmentation
- * @param payload_len Payload length
- * @return true if fragmentation needed
- */
-bool fmrb_fragment_needs_chunking(size_t payload_len);
 
 /**
  * Calculate number of chunks needed for a message

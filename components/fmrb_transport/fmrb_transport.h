@@ -25,10 +25,16 @@ typedef struct {
     uint16_t window_size;
 } fmrb_transport_config_t;
 
-// Message callback
+// Message callback (for register_callback)
 typedef void (*fmrb_transport_callback_t)(uint8_t type, uint8_t seq, uint8_t sub_cmd,
                                           const uint8_t *payload, uint32_t payload_len,
                                           void *user_data);
+
+// Response callback for send_async (invoked in host_task context)
+typedef void (*fmrb_transport_response_cb_t)(uint8_t status,
+                                             const uint8_t *payload,
+                                             uint32_t payload_len,
+                                             void *user_data);
 
 /**
  * @brief Initialize IPC transport
@@ -78,9 +84,37 @@ fmrb_err_t fmrb_transport_send_batch(const fmrb_transport_batch_entry_t *entries
                                       int32_t timeout_ms);
 
 /**
+ * @brief Send message asynchronously with callback on response
+ *
+ * Sends with ACK_REQUIRED flag. When the response arrives (processed by
+ * fmrb_transport_process()), the callback is invoked in the host_task context.
+ * The callback MUST NOT perform blocking operations.
+ *
+ * @param link_type Link type
+ * @param sub_cmd Sub-command
+ * @param payload Payload data
+ * @param payload_len Payload length
+ * @param callback Response callback (invoked in host_task context)
+ * @param user_data User data passed to callback
+ * @param timeout_ms Timeout (slot freed if no response within this time)
+ * @return FMRB_OK on success, error code otherwise
+ */
+fmrb_err_t fmrb_transport_send_async(uint8_t link_type,
+                                      uint8_t sub_cmd,
+                                      const uint8_t *payload,
+                                      uint32_t payload_len,
+                                      fmrb_transport_response_cb_t callback,
+                                      void *user_data,
+                                      uint32_t timeout_ms);
+
+/**
  * @brief Send message synchronously and wait for ACK
- * @param link_type Link type (FMRB_LINK_TYPE_CONTROL, FMRB_LINK_TYPE_GRAPHICS, etc.)
- * @param sub_cmd Sub-command within the link type
+ *
+ * Built on top of send_async + semaphore. Blocks the calling task until
+ * response arrives or timeout. MUST NOT be called from host_task.
+ *
+ * @param link_type Link type
+ * @param sub_cmd Sub-command
  * @param payload Payload data
  * @param payload_len Payload length
  * @param response_payload Buffer for response payload (optional)
