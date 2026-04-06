@@ -30,6 +30,10 @@ class SystemGuiApp < FmrbApp
     Log.info("on_create called")
     #show_boot_image
 
+    # Start background music
+    @audio = FmrbAudio.new(self)
+    @audio.play(0)
+
     if @boot_wait == 0
       draw_current
     end

@@ -686,6 +686,19 @@ static void host_task_process_message(const fmrb_msg_t *hal_msg)
         return;
     }
 
+    // Audio message from kernel
+    if (hal_msg->type == FMRB_MSG_TYPE_APP_AUDIO) {
+        if (hal_msg->size > 0) {
+            FMRB_LOGI(TAG, "Audio command: cmd_type=0x%02x, size=%lu",
+                      hal_msg->data[0], (unsigned long)hal_msg->size);
+            fmrb_transport_send(
+                FMRB_LINK_TYPE_AUDIO, 0,
+                hal_msg->data, hal_msg->size,
+                FMRB_TRANSPORT_TIMEOUT_DEFAULT);
+        }
+        return;
+    }
+
     // Otherwise, extract host_message_t (for HID messages)
     host_message_t *msg = (host_message_t *)hal_msg->data;
     host_task_process_host_message(msg);

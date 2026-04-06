@@ -58,7 +58,7 @@ class FmrbKernelImpl < FmrbKernel
     when FmrbConst::MSG_TYPE_APP_GFX
       Log.debug("Graphics message (not implemented)")
     when FmrbConst::MSG_TYPE_APP_AUDIO
-      Log.debug("Audio message (not implemented)")
+      handle_audio_message(msg)
     else
       Log.warn("Unknown message type: #{msg[:type]}")
     end
@@ -116,6 +116,48 @@ class FmrbKernelImpl < FmrbKernel
       Log.info("Resume request (not implemented)")
     else
       Log.warn("Unknown app control command: #{cmd}")
+    end
+  end
+
+  def handle_audio_message(msg)
+    data_binary = msg[:data]
+    pid = msg[:src_pid]
+
+    begin
+      data = MessagePack.unpack(data_binary)
+    rescue => e
+      Log.error("Failed to unpack audio message: #{e}")
+      return
+    end
+
+    unless data.is_a?(Hash) && data.key?("cmd")
+      Log.error("Invalid audio message format")
+      return
+    end
+
+    cmd = data["cmd"]
+    Log.info("Audio command '#{cmd}' from pid=#{pid}")
+
+    # Forward audio command to host task as raw binary
+    # Format: cmd_type(1 byte) + music_id(4 bytes, little endian)
+    case cmd
+    when "play"
+      music_id = data["music_id"] || 0
+      # Build binary: cmd_type=0x02 (PLAY) + music_id (4 bytes LE)
+      bin = "\x02\x00\x00\x00\x00"
+      bin.setbyte(1, music_id & 0xFF)
+      bin.setbyte(2, (music_id >> 8) & 0xFF)
+      bin.setbyte(3, (music_id >> 16) & 0xFF)
+      bin.setbyte(4, (music_id >> 24) & 0xFF)
+      _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
+    when "stop"
+      _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x03")
+    when "pause"
+      _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x04")
+    when "resume"
+      _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x05")
+    else
+      Log.warn("Unknown audio command: #{cmd}")
     end
   end
 
