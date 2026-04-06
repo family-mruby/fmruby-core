@@ -142,13 +142,12 @@ class FmrbKernelImpl < FmrbKernel
     # Format: cmd_type(1 byte) + music_id(4 bytes, little endian)
     case cmd
     when "play"
-      music_id = data["music_id"] || 0
-      # Build binary: cmd_type=0x02 (PLAY) + music_id (4 bytes LE)
-      bin = "\x02\x00\x00\x00\x00"
-      bin.setbyte(1, music_id & 0xFF)
-      bin.setbyte(2, (music_id >> 8) & 0xFF)
-      bin.setbyte(3, (music_id >> 16) & 0xFF)
-      bin.setbyte(4, (music_id >> 24) & 0xFF)
+      path = data["path"] || ""
+      # Build binary: cmd_type=0x02 (PLAY) + path_len(2 bytes LE) + path
+      path_len = path.length
+      bin = "\x02\x00\x00" + path
+      bin.setbyte(1, path_len & 0xFF)
+      bin.setbyte(2, (path_len >> 8) & 0xFF)
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
     when "stop"
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x03")

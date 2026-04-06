@@ -32,7 +32,7 @@ class SystemGuiApp < FmrbApp
 
     # Start background music
     @audio = FmrbAudio.new(self)
-    @audio.play(0)
+    @audio.play("/data/test.nsf")
 
     if @boot_wait == 0
       draw_current
