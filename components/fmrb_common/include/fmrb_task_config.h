@@ -6,9 +6,9 @@
 // System Limits
 // ============================================================
 
-#define FMRB_MAX_SYSTEM_MRUBY_TASKS (3)  // Kernel, Host, System App
+#define FMRB_MAX_SYSTEM_MRUBY_TASKS (4)  // Kernel, Host, System Desktop, System Overlay
 
-#define FMRB_MAX_APPS (6)  // Max number of apps (including mruby, lua and basic apps)
+#define FMRB_MAX_APPS (7)  // Max number of apps (including system, mruby, lua and basic apps)
 
 // Maximum number of mruby VMs registered for tick delivery
 #define FMRB_MRB_MAX_VMS (FMRB_MAX_SYSTEM_MRUBY_TASKS + FMRB_MAX_APPS)
@@ -36,7 +36,7 @@
 
 // --- Core Assignment Policy ---
 // Core 0: HW-facing tasks (USB, SPI, GPIO, RTC, LED, FS proxy, host transport)
-// Core 1: mruby VM / app tasks (kernel, system_gui, shell, user apps)
+// Core 1: mruby VM / app tasks (kernel, system_desktop, system_overlay, shell, user apps)
 //
 // Note: PSRAM tasks use xTaskCreateWithCaps which does not support core pinning.
 // PSRAM tasks run on any core (FreeRTOS scheduler decides).
@@ -162,6 +162,7 @@ typedef enum FMRB_PROC_ID{
     PROC_ID_KERNEL = 0,
     PROC_ID_HOST,
     PROC_ID_SYSTEM_APP,
+    PROC_ID_SYSTEM_OVERLAY,
     PROC_ID_USER_APP0,
     PROC_ID_USER_APP1,
     PROC_ID_USER_APP2,

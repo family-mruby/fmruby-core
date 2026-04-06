@@ -15,28 +15,29 @@
 static const char *TAG = "fmrb_default_apps";
 
 // External irep declarations (compiled by picorbc)
-extern const uint8_t system_gui_irep[];
+extern const uint8_t system_desktop_irep[];
+extern const uint8_t system_overlay_irep[];
 extern const uint8_t shell_irep[];
 extern const uint8_t editor_irep[];
 extern const uint8_t config_irep[];
 
-static fmrb_err_t spawn_system_gui_app(int32_t* out_pid)
+static fmrb_err_t spawn_system_desktop_app(int32_t* out_pid)
 {
-    FMRB_LOGI(TAG, "Creating system GUI app...");
+    FMRB_LOGI(TAG, "Creating system desktop app...");
     fmrb_spawn_attr_t attr = {
         .app_id = PROC_ID_SYSTEM_APP,
         .type = APP_TYPE_SYSTEM_APP,
-        .name = "system_gui",
+        .name = "system_desktop",
         .vm_type = FMRB_VM_TYPE_MRUBY,
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
-        .bytecode = system_gui_irep,
+        .bytecode = system_desktop_irep,
         .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
         .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
         .flags = FMRB_SYSTEM_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
-        .window_width = 0,    // Use system default (fullscreen)
-        .window_height = 0,   // Use system default (fullscreen)
+        .window_width = 0,
+        .window_height = 0,
         .window_pos_x = 0,
         .window_pos_y = 0
     };
@@ -45,12 +46,47 @@ static fmrb_err_t spawn_system_gui_app(int32_t* out_pid)
     fmrb_err_t result;
     result = fmrb_app_spawn(&attr, &app_id);
     if (result == FMRB_OK) {
-        FMRB_LOGI(TAG, "system GUI app spawned: id=%d", app_id);
+        FMRB_LOGI(TAG, "system desktop app spawned: id=%d", app_id);
         if (out_pid) {
             *out_pid = app_id;
         }
     } else {
-        FMRB_LOGE(TAG, "Failed to spawn system GUI app: %d", result);
+        FMRB_LOGE(TAG, "Failed to spawn system desktop app: %d", result);
+    }
+    return result;
+}
+
+static fmrb_err_t spawn_system_overlay_app(int32_t* out_pid)
+{
+    FMRB_LOGI(TAG, "Creating system overlay app...");
+    fmrb_spawn_attr_t attr = {
+        .app_id = PROC_ID_SYSTEM_OVERLAY,
+        .type = APP_TYPE_SYSTEM_APP,
+        .name = "system_overlay",
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = system_overlay_irep,
+        .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
+        .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
+        .flags = FMRB_SYSTEM_APP_TASK_FLAGS,
+        .core_affinity = -1,
+        .headless = false,
+        .window_width = 0,
+        .window_height = 0,
+        .window_pos_x = 0,
+        .window_pos_y = 0
+    };
+
+    int32_t app_id;
+    fmrb_err_t result;
+    result = fmrb_app_spawn(&attr, &app_id);
+    if (result == FMRB_OK) {
+        FMRB_LOGI(TAG, "system overlay app spawned: id=%d", app_id);
+        if (out_pid) {
+            *out_pid = app_id;
+        }
+    } else {
+        FMRB_LOGE(TAG, "Failed to spawn system overlay app: %d", result);
     }
     return result;
 }
@@ -265,8 +301,10 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid)
 
     // Match app_name to spawn function
     // PreBuild Apps
-    if (strcmp(app_name, "system/gui_app") == 0) {
-        return spawn_system_gui_app(out_pid);
+    if (strcmp(app_name, "system/desktop") == 0) {
+        return spawn_system_desktop_app(out_pid);
+    } else if (strcmp(app_name, "system/overlay") == 0) {
+        return spawn_system_overlay_app(out_pid);
     } else if (strcmp(app_name, "default/shell") == 0) {
         return spawn_shell_app(out_pid);
     } else if (strcmp(app_name, "default/editor") == 0) {

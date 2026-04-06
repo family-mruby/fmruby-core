@@ -18,7 +18,7 @@
 #include "usb_task.h"
 #include "host_task.h"
 
-#define INPUT_SOCKET_PATH "/tmp/fmrb_input_socket"
+#define INPUT_SOCKET_PATH "/var/run/fmrb/fmrb_input_socket"
 #define MAX_PACKET_SIZE 512
 
 static const char *TAG = "usb_task";

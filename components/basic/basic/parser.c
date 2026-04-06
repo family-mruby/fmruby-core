@@ -5,6 +5,7 @@
 
 #include "basic_internal.h"
 #include "fmrb_log.h"
+#include "fmrb_rtos.h"
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
@@ -373,6 +374,86 @@ static fmrb_err_t exec_next(basic_state_t* state) {
 }
 
 /**
+ * Execute CLS statement: CLS
+ * Clears the graphics user area and text buffer.
+ */
+static fmrb_err_t exec_cls(basic_state_t* state) {
+    if (state->gfx_ops.cls) {
+        state->gfx_ops.cls(state->gfx_ops.user_data);
+    }
+    return FMRB_OK;
+}
+
+/**
+ * Execute CIRCLE statement: CIRCLE x, y, r, color
+ */
+static fmrb_err_t exec_circle(basic_state_t* state) {
+    value_t x_val = eval_expression(state);
+    token_t tok = lexer_next_token();
+    if (tok.type != TOK_COMMA) {
+        basic_output(state, "Error: Expected ','\n");
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    value_t y_val = eval_expression(state);
+    tok = lexer_next_token();
+    if (tok.type != TOK_COMMA) {
+        basic_output(state, "Error: Expected ','\n");
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    value_t r_val = eval_expression(state);
+    tok = lexer_next_token();
+    if (tok.type != TOK_COMMA) {
+        basic_output(state, "Error: Expected ','\n");
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    value_t c_val = eval_expression(state);
+
+    if (x_val.type != VAL_NUMBER || y_val.type != VAL_NUMBER ||
+        r_val.type != VAL_NUMBER || c_val.type != VAL_NUMBER) {
+        basic_output(state, "Error: CIRCLE requires numeric arguments\n");
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (state->gfx_ops.circle) {
+        state->gfx_ops.circle(state->gfx_ops.user_data,
+                              (int16_t)x_val.num, (int16_t)y_val.num,
+                              (int16_t)r_val.num, (uint8_t)c_val.num, true);
+    }
+    return FMRB_OK;
+}
+
+/**
+ * Execute WAIT statement: WAIT ms
+ * Delays execution for the specified milliseconds.
+ */
+static fmrb_err_t exec_wait(basic_state_t* state) {
+    value_t ms_val = eval_expression(state);
+    if (ms_val.type != VAL_NUMBER) {
+        basic_output(state, "Error: WAIT requires numeric argument\n");
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (ms_val.num > 0) {
+        fmrb_task_delay_ms(ms_val.num);
+    }
+    return FMRB_OK;
+}
+
+/**
+ * Execute PRESENT statement: PRESENT
+ * Flushes the canvas to the screen.
+ */
+static fmrb_err_t exec_present(basic_state_t* state) {
+    if (state->gfx_ops.present) {
+        state->gfx_ops.present(state->gfx_ops.user_data);
+    }
+    return FMRB_OK;
+}
+
+/**
  * Execute REM statement: REM comment (do nothing)
  */
 static fmrb_err_t exec_rem(basic_state_t* state) {
@@ -452,6 +533,22 @@ fmrb_err_t parse_statement(basic_state_t* state, const char* line) {
         case TOK_END:
             lexer_next_token();
             return exec_end(state);
+
+        case TOK_CLS:
+            lexer_next_token();
+            return exec_cls(state);
+
+        case TOK_CIRCLE:
+            lexer_next_token();
+            return exec_circle(state);
+
+        case TOK_WAIT:
+            lexer_next_token();
+            return exec_wait(state);
+
+        case TOK_PRESENT:
+            lexer_next_token();
+            return exec_present(state);
 
         default:
             basic_output(state, "Error: Unknown statement\n");

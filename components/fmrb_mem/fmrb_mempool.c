@@ -11,6 +11,7 @@ EXT_RAM_BSS_ATTR unsigned char __attribute__((aligned(8))) g_prism_memory_pool[F
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system[FMRB_MEM_POOL_SIZE_SYSTEM];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_kernel[FMRB_MEM_POOL_SIZE_KERNEL];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system_app[FMRB_MEM_POOL_SIZE_SYSTEM_APP];
+EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system_overlay[FMRB_MEM_POOL_SIZE_SYSTEM_OVERLAY];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app0[FMRB_MEM_POOL_SIZE_USER_APP];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app1[FMRB_MEM_POOL_SIZE_USER_APP];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app2[FMRB_MEM_POOL_SIZE_USER_APP];
@@ -18,8 +19,9 @@ EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user
 static unsigned char* g_mempool_list[POOL_ID_MAX] = {
     [POOL_ID_SYSTEM]     = g_mempool_system,
     [POOL_ID_KERNEL]     = g_mempool_kernel,
-    [POOL_ID_SYSTEM_APP] = g_mempool_system_app,
-    [POOL_ID_USER_APP0]  = g_mempool_user_app0,
+    [POOL_ID_SYSTEM_APP]     = g_mempool_system_app,
+    [POOL_ID_SYSTEM_OVERLAY] = g_mempool_system_overlay,
+    [POOL_ID_USER_APP0]      = g_mempool_user_app0,
     [POOL_ID_USER_APP1]  = g_mempool_user_app1,
     [POOL_ID_USER_APP2]  = g_mempool_user_app2,
 };
@@ -48,6 +50,8 @@ size_t fmrb_get_mempool_size(int32_t id){
             return FMRB_MEM_POOL_SIZE_KERNEL;
         case POOL_ID_SYSTEM_APP:
             return FMRB_MEM_POOL_SIZE_SYSTEM_APP;
+        case POOL_ID_SYSTEM_OVERLAY:
+            return FMRB_MEM_POOL_SIZE_SYSTEM_OVERLAY;
         case POOL_ID_USER_APP0:
         case POOL_ID_USER_APP1:
         case POOL_ID_USER_APP2:
@@ -61,8 +65,9 @@ static const char* fmrb_get_mempool_name(int32_t id){
     switch(id){
         case POOL_ID_SYSTEM:     return "SYSTEM";
         case POOL_ID_KERNEL:     return "KERNEL";
-        case POOL_ID_SYSTEM_APP: return "SYSTEM_APP";
-        case POOL_ID_USER_APP0:  return "USER_APP0";
+        case POOL_ID_SYSTEM_APP:     return "SYSTEM_APP";
+        case POOL_ID_SYSTEM_OVERLAY: return "SYS_OVERLAY";
+        case POOL_ID_USER_APP0:      return "USER_APP0";
         case POOL_ID_USER_APP1:  return "USER_APP1";
         case POOL_ID_USER_APP2:  return "USER_APP2";
         default:                 return "UNKNOWN";

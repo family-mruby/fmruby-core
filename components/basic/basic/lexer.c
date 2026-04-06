@@ -35,6 +35,10 @@ static const keyword_entry_t keywords[] = {
     {"NEXT", TOK_NEXT},
     {"REM", TOK_REM},
     {"END", TOK_END},
+    {"CLS", TOK_CLS},
+    {"CIRCLE", TOK_CIRCLE},
+    {"WAIT", TOK_WAIT},
+    {"PRESENT", TOK_PRESENT},
     {NULL, TOK_EOF}
 };
 

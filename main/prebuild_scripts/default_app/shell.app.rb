@@ -31,10 +31,10 @@ end
 class ShellApp < FmrbApp
   # Gradient colors for logo (red -> magenta in RGB332)
   LOGO_GRAD_COLORS = [0xE0, 0xE1, 0xE2, 0xE3, 0xE3]
-  # Shadow colors (light gray, close to white: 0xDB = R6 G6 B3)
-  LOGO_SHADOW_COLORS = [0xDB, 0xDB, 0xDB, 0xDB, 0xDB]
-  # Author text color (dark red: 0x60 = R3 G0 B0)
-  LOGO_AUTHOR_COLOR = 0x60
+  # Shadow colors (dark gray for dark background: 0x49 = R2 G2 B1)
+  LOGO_SHADOW_COLORS = [0x49, 0x49, 0x49, 0x49, 0x49]
+  # Author text color (bright red: 0xE0 = R7 G0 B0)
+  LOGO_AUTHOR_COLOR = 0xE3
 
   def initialize
     super()
@@ -53,10 +53,14 @@ class ShellApp < FmrbApp
     @frame_ms = 33
     @irb_mode = false  # IRB mode flag
     @irb_sandbox = nil  # Sandbox for IRB
+
+    @bg_col = 0x00
+    @ch_col = 0xFF
+
   end
 
   def on_create()
-    @gfx.clear(FmrbGfx::WHITE)
+    @gfx.clear(@bg_col)
     draw_window_frame
     show_logo
     draw_prompt
@@ -485,8 +489,8 @@ class ShellApp < FmrbApp
 
       # On the last line, author text takes priority over shadow
       if is_last_line && i < author_line.length && author_line[i] != ' '
-        # Author text character (dark red on white background)
-        @gfx.draw_text(char_x, y, author_line[i], LOGO_AUTHOR_COLOR, FmrbGfx::WHITE)
+        # Author text character on background
+        @gfx.draw_text(char_x, y, author_line[i], LOGO_AUTHOR_COLOR, @bg_col)
       else
         case c
         when '1'
@@ -512,7 +516,7 @@ class ShellApp < FmrbApp
         draw_logo_line(x, y, entry)
       else
         # Normal text line
-        @gfx.draw_text(x, y, entry.to_s, FmrbGfx::BLACK)
+        @gfx.draw_text(x, y, entry.to_s, @ch_col)
       end
     end
 
@@ -521,18 +525,18 @@ class ShellApp < FmrbApp
     y = @user_area_y0 + 2 + (@history.length * @char_height)
     full_line = @prompt + @current_line
     #Log.debug("draw_prompt: drawing '#{full_line}' (length=#{full_line.length}) at (#{x}, #{y})")
-    @gfx.draw_text(x, y, full_line, FmrbGfx::BLACK)
+    @gfx.draw_text(x, y, full_line, @ch_col)
 
     # Draw cursor (underline at end of input)
     cursor_x = x + (full_line.length * @char_width)
     cursor_y = y + @char_height - 1
-    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, FmrbGfx::BLACK)
+    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
   end
 
   def redraw_screen
     # Full redraw: Clear user area and redraw everything including logo
     @gfx.fill_rect(@user_area_x0, @user_area_y0,
-                    @user_area_width, @user_area_height, FmrbGfx::WHITE)
+                    @user_area_width, @user_area_height, @bg_col)
     draw_window_frame
     draw_prompt
     @gfx.present
@@ -544,16 +548,16 @@ class ShellApp < FmrbApp
     y = @user_area_y0 + 2 + (@history.length * @char_height)
 
     # Clear only the input line area
-    @gfx.fill_rect(x, y, @user_area_width - 4, @char_height, FmrbGfx::WHITE)
+    @gfx.fill_rect(x, y, @user_area_width - 4, @char_height, @bg_col)
 
     # Draw prompt and current input
     full_line = @prompt + @current_line
-    @gfx.draw_text(x, y, full_line, FmrbGfx::BLACK)
+    @gfx.draw_text(x, y, full_line, @ch_col)
 
     # Draw cursor (underline at end of input)
     cursor_x = x + (full_line.length * @char_width)
     cursor_y = y + @char_height - 1
-    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, FmrbGfx::GRAY)
+    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
 
     @gfx.present
   end

@@ -1,7 +1,7 @@
-# System GUI Application
-# This is the default system GUI that provides basic UI elements
+# System Desktop Application
+# Background layer: wallpaper, toolbar, memory stats (z=0)
 
-class SystemGuiApp < FmrbApp
+class SystemDesktopApp < FmrbApp
   def initialize
     super()
     @counter = 0
@@ -197,10 +197,10 @@ class SystemGuiApp < FmrbApp
 end
 
 # Create and start the system GUI app instance
-Log.info("SystemGuiApp.new")
+Log.info("SystemDesktopApp.new")
 begin
-  app = SystemGuiApp.new
-  Log.info("SystemGuiApp created successfully")
+  app = SystemDesktopApp.new
+  Log.info("SystemDesktopApp created successfully")
   app.start
 rescue => e
   Log.error("Exception caught: #{e.class}")

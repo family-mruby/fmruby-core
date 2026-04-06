@@ -17,6 +17,7 @@
 #endif
 #include "fmrb_lua.h"
 #include "fmrb_basic.h"
+#include "fmrb_basic_gfx.h"
 #include "fmrb_transport.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_gfx_msg.h"
@@ -565,13 +566,42 @@ static int execute_basic_script(fmrb_app_task_context_t* ctx,
         fmrb_sys_free(script_buffer);
         script_buffer = NULL;
 
+        // Initialize console window for PRINT output (if not headless)
+        basic_console_ctx_t* console = NULL;
+        if (!ctx->headless) {
+            console = (basic_console_ctx_t*)fmrb_malloc(ctx->mem_handle,
+                                                         sizeof(basic_console_ctx_t));
+            if (console) {
+                memset(console, 0, sizeof(basic_console_ctx_t));
+                if (basic_console_init(console, ctx) == FMRB_OK) {
+                    fmrb_basic_set_output_cb(ctx->basic,
+                                             basic_console_output_cb, console);
+                    basic_console_register_gfx_ops(ctx->basic, console);
+                } else {
+                    fmrb_free(ctx->mem_handle, console);
+                    console = NULL;
+                }
+            } else {
+                FMRB_LOGW(TAG, "[%s] Failed to allocate console context", ctx->app_name);
+            }
+        }
+
         // Execute BASIC program
         fmrb_err_t exec_result = fmrb_basic_run(ctx->basic);
         if (exec_result != FMRB_OK) {
             FMRB_LOGE(TAG, "[%s] BASIC execution error", ctx->app_name);
-            return -1;
         } else {
             FMRB_LOGI(TAG, "[%s] BASIC program executed successfully", ctx->app_name);
+        }
+
+        // Cleanup console
+        if (console) {
+            basic_console_destroy(console);
+            fmrb_free(ctx->mem_handle, console);
+        }
+
+        if (exec_result != FMRB_OK) {
+            return -1;
         }
     }
 
@@ -917,7 +947,11 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
             ctx->mempool_id = POOL_ID_KERNEL;
             break;
         case APP_TYPE_SYSTEM_APP:
-            ctx->mempool_id = POOL_ID_SYSTEM_APP;
+            if (idx == PROC_ID_SYSTEM_OVERLAY) {
+                ctx->mempool_id = POOL_ID_SYSTEM_OVERLAY;
+            } else {
+                ctx->mempool_id = POOL_ID_SYSTEM_APP;
+            }
             break;
         case APP_TYPE_USER_APP:
             if (idx >= PROC_ID_USER_APP0 && idx < PROC_ID_MAX) {
@@ -997,16 +1031,19 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         ctx->window_height = 0;
     }
 
-    // Initialize Z-order: system_gui is always at back (0), others on top
-    if (strcmp(ctx->app_name, "system_gui") == 0) {
-        ctx->z_order = 0;  // system_gui always at bottom
+    // Initialize Z-order: desktop at back (0), overlay always on top (254), others in between
+    if (strcmp(ctx->app_name, "system_desktop") == 0) {
+        ctx->z_order = 0;
+    } else if (strcmp(ctx->app_name, "system_overlay") == 0) {
+        ctx->z_order = 254;
     } else {
-        // Find max z_order and assign next value
+        // Find max z_order among user apps (exclude desktop=0 and overlay=254)
         uint8_t max_z = 0;
         for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
             if (g_ctx_pool[i].state != PROC_STATE_FREE &&
                 !g_ctx_pool[i].headless &&
-                g_ctx_pool[i].z_order > max_z) {
+                g_ctx_pool[i].z_order > max_z &&
+                g_ctx_pool[i].z_order < 254) {
                 max_z = g_ctx_pool[i].z_order;
             }
         }
@@ -1365,10 +1402,10 @@ int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
 
 /**
  * Reorder all z_order values to compact them
- * system_gui stays at Z=0, others are reassigned sequentially
+ * system_desktop stays at Z=0, system_overlay stays at Z=254, others are reassigned sequentially
  */
 static void reorder_z_orders(void) {
-    // Collect all windows (excluding system_gui and headless)
+    // Collect user app windows (excluding desktop, overlay, and headless)
     fmrb_app_task_context_t* windows[FMRB_MAX_APPS];
     int32_t count = 0;
 
@@ -1376,7 +1413,8 @@ static void reorder_z_orders(void) {
         fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
         if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
             !ctx->headless &&
-            strcmp(ctx->app_name, "system_gui") != 0) {
+            strcmp(ctx->app_name, "system_desktop") != 0 &&
+            strcmp(ctx->app_name, "system_overlay") != 0) {
             windows[count++] = ctx;
         }
     }
@@ -1446,19 +1484,21 @@ fmrb_err_t fmrb_app_bring_to_front(uint8_t pid) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    // system_gui (z=0) stays at bottom
-    if (strcmp(target_ctx->app_name, "system_gui") == 0) {
+    // system_desktop (z=0) and system_overlay (z=254) have fixed z-order
+    if (strcmp(target_ctx->app_name, "system_desktop") == 0 ||
+        strcmp(target_ctx->app_name, "system_overlay") == 0) {
         fmrb_semaphore_give(g_ctx_lock);
-        return FMRB_OK;  // No error, just do nothing
+        return FMRB_OK;
     }
 
-    // Find current max z_order (excluding system_gui)
+    // Find current max z_order (excluding desktop and overlay)
     uint8_t max_z = 0;
     for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
         fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
         if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
             !ctx->headless &&
-            strcmp(ctx->app_name, "system_gui") != 0 &&
+            strcmp(ctx->app_name, "system_desktop") != 0 &&
+            strcmp(ctx->app_name, "system_overlay") != 0 &&
             ctx->z_order > max_z) {
             max_z = ctx->z_order;
         }
@@ -1482,7 +1522,8 @@ fmrb_err_t fmrb_app_bring_to_front(uint8_t pid) {
             fmrb_app_task_context_t* ctx = &g_ctx_pool[i];
             if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
                 !ctx->headless &&
-                strcmp(ctx->app_name, "system_gui") != 0 &&
+                strcmp(ctx->app_name, "system_desktop") != 0 &&
+                strcmp(ctx->app_name, "system_overlay") != 0 &&
                 ctx->z_order > max_z) {
                 max_z = ctx->z_order;
             }
@@ -1543,7 +1584,7 @@ fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y) 
     }
 
     // system_gui cannot be moved
-    if (strcmp(ctx->app_name, "system_gui") == 0) {
+    if (strcmp(ctx->app_name, "system_desktop") == 0) {
         fmrb_semaphore_give(g_ctx_lock);
         return FMRB_ERR_INVALID_PARAM;
     }
@@ -1621,7 +1662,7 @@ fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t hei
     }
 
     // system_gui cannot be resized
-    if (strcmp(ctx->app_name, "system_gui") == 0) {
+    if (strcmp(ctx->app_name, "system_desktop") == 0) {
         fmrb_semaphore_give(g_ctx_lock);
         return FMRB_ERR_INVALID_PARAM;
     }

@@ -36,6 +36,9 @@ class FmrbKernelImpl < FmrbKernel
     # Window list optimization
     @window_list_dirty = true
 
+    # Overlay state (skip hit-test when inactive)
+    @overlay_active = false
+
     # Periodic cleanup tracking
     @tick_count = 0
     @last_cleanup_tick = 0
@@ -212,7 +215,7 @@ class FmrbKernelImpl < FmrbKernel
 
         # Check for resize handle (bottom-right 10x10 area) first
         # Resize handle only for non-system_gui windows
-        if target_name != "system_gui" &&
+        if target_name != "system_desktop" && target_name != "system_overlay" &&
            relative_x >= win_width - 10 && relative_y >= win_height - 10
           # Start resize and capture mouse
           @capture_mode = :resize
@@ -223,7 +226,7 @@ class FmrbKernelImpl < FmrbKernel
           @resize_start_y = y
           Log.info("Start resize: PID #{target_pid}, size=(#{win_width}x#{win_height})")
         # Check if click is in menu bar region (not resizing and not close button)
-        elsif target_name != "system_gui" && relative_y < 11 && relative_x < win_width - 10
+        elsif target_name != "system_desktop" && target_name != "system_overlay" && relative_y < 11 && relative_x < win_width - 10
           # Start drag and capture mouse (excluding close button area on the right)
           @capture_mode = :drag
           @capture_pid = target_pid
@@ -387,6 +390,9 @@ class FmrbKernelImpl < FmrbKernel
     max_z_order = -1
 
     @window_list.each do |win|
+      # Skip overlay when inactive (it covers entire screen)
+      next if win[:app_name] == "system_overlay" && !@overlay_active
+
       # Use <= for right and bottom edges to include boundary pixels
       if x >= win[:x] && x <= win[:x] + win[:width] - 1 &&
          y >= win[:y] && y <= win[:y] + win[:height] - 1
@@ -499,10 +505,19 @@ class FmrbKernelImpl < FmrbKernel
   end
 
   def initial_sequence
-    # Check protocol version with host
-    Log.info("Checking protocol version...")
-    unless check_protocol_version(5000)
-      Log.error("ERROR: Protocol version check failed")
+    # Check protocol version with host (retry up to 3 times for startup timing)
+    version_ok = false
+    3.times do |attempt|
+      Log.info("Checking protocol version... (attempt #{attempt + 1}/3)")
+      if check_protocol_version(5000)
+        version_ok = true
+        break
+      end
+      Log.warn("Protocol version check attempt #{attempt + 1} failed, retrying...")
+      sleep_ms(500)
+    end
+    unless version_ok
+      Log.error("ERROR: Protocol version check failed after 3 attempts")
       raise "Protocol version mismatch with host"
     end
     Log.info("Protocol version check passed")
@@ -510,13 +525,21 @@ class FmrbKernelImpl < FmrbKernel
     # Sync files to host (after protocol version confirmed)
     sync_files
 
-    # Spawn system GUI app
-    gui_pid = _spawn_app_req("system/gui_app")
-    if gui_pid
-      _set_hid_target(gui_pid)
-      @hid_target_pid = gui_pid  # Track HID target
+    # Spawn system desktop app (z=0, background)
+    desktop_pid = _spawn_app_req("system/desktop")
+    if desktop_pid
+      _set_hid_target(desktop_pid)
+      @hid_target_pid = desktop_pid
     else
-      Log.error("Failed to spawn system GUI app")
+      Log.error("Failed to spawn system desktop app")
+    end
+
+    # Spawn system overlay app (z=254, topmost)
+    overlay_pid = _spawn_app_req("system/overlay")
+    if overlay_pid
+      Log.info("System overlay app spawned: pid=#{overlay_pid}")
+    else
+      Log.error("Failed to spawn system overlay app")
     end
   end
 

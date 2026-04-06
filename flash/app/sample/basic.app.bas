@@ -3,6 +3,7 @@
 30 PRINT "Hello from BASIC!"
 40 PRINT "FMRuby BASIC Interpreter"
 50 PRINT ""
+51 WAIT 1000
 60 REM Test variables and arithmetic
 70 LET A = 10
 80 LET B = 20
@@ -14,6 +15,7 @@
 140 REM Test FOR loop
 150 PRINT "Counting from 1 to 5:"
 160 FOR I = 1 TO 5
+161 WAIT 500
 170 PRINT "  ", I
 180 NEXT I
 190 PRINT ""
@@ -31,8 +33,10 @@
 310 IF X = 15 THEN PRINT "X equals 15"
 320 PRINT ""
 330 REM Test GOSUB/RETURN
+331 WAIT 500
 340 PRINT "Calling subroutine..."
 350 GOSUB 500
+351 WAIT 500
 360 PRINT "Returned from subroutine"
 370 PRINT ""
 380 REM Test multiplication and division
@@ -42,6 +46,7 @@
 420 PRINT "  (2 + 3) * 4 = "; (2 + 3) * 4
 430 PRINT ""
 440 PRINT "Program completed!"
+441 WAIT 5000
 450 END
 500 REM Subroutine
 510 PRINT "  Inside subroutine"

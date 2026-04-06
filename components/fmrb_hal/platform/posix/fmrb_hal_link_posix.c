@@ -13,7 +13,7 @@
 #include <errno.h>
 #include <fcntl.h>
 
-#define SOCKET_PATH "/tmp/fmrb_socket"
+#define SOCKET_PATH "/var/run/fmrb/fmrb_socket"
 
 typedef struct {
     int socket_fd;

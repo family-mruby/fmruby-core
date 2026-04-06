@@ -56,6 +56,12 @@ typedef enum {
     TOK_NEXT,
     TOK_REM,
     TOK_END,
+
+    // Graphics extension keywords
+    TOK_CLS,
+    TOK_CIRCLE,
+    TOK_WAIT,
+    TOK_PRESENT,
 } token_type_t;
 
 // Token structure
@@ -110,6 +116,15 @@ typedef struct {
     int32_t return_line_idx;
 } gosub_context_t;
 
+// Graphics extension callbacks
+typedef struct {
+    void (*cls)(void* user_data);
+    void (*circle)(void* user_data, int16_t x, int16_t y, int16_t r,
+                   uint8_t color, bool filled);
+    void (*present)(void* user_data);
+    void* user_data;
+} basic_gfx_ops_t;
+
 // BASIC interpreter state
 struct basic_state {
     // Memory management
@@ -140,6 +155,9 @@ struct basic_state {
     void* output_user_data;
     basic_input_cb_t input_cb;
     void* input_user_data;
+
+    // Graphics extension callbacks
+    basic_gfx_ops_t gfx_ops;
 };
 
 // Lexer functions
