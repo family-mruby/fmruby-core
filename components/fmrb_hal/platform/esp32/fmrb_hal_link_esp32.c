@@ -90,13 +90,13 @@ static bool wait_ready(uint32_t timeout_ms) {
 
 // SPI transfer: send/receive spi_frame_t via DMA buffers
 static fmrb_err_t spi_transfer_frame(const spi_frame_t *tx, spi_frame_t *rx) {
-    memcpy(s_tx_dma_buf, tx, SPI_FRAME_SIZE);
-    memset(s_rx_dma_buf, 0, SPI_FRAME_SIZE);
+    memcpy(s_tx_dma_buf, tx, FMRB_LINK_FRAME_SIZE);
+    memset(s_rx_dma_buf, 0, FMRB_LINK_FRAME_SIZE);
 
     fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, s_tx_dma_buf, s_rx_dma_buf,
-                                             SPI_FRAME_SIZE, 100);
+                                             FMRB_LINK_FRAME_SIZE, 100);
     if (ret == FMRB_OK && rx) {
-        memcpy(rx, s_rx_dma_buf, SPI_FRAME_SIZE);
+        memcpy(rx, s_rx_dma_buf, FMRB_LINK_FRAME_SIZE);
     }
     return ret;
 }
@@ -104,7 +104,7 @@ static fmrb_err_t spi_transfer_frame(const spi_frame_t *tx, spi_frame_t *rx) {
 // Build a command frame with COBS payload in data[]
 static void build_command_frame(spi_frame_t *f, uint8_t seq,
                                 const uint8_t *cobs_data, uint8_t cobs_len) {
-    memset(f, 0, SPI_FRAME_SIZE);
+    memset(f, 0, FMRB_LINK_FRAME_SIZE);
     f->magic = SPI_FRAME_MAGIC;
     f->seq = seq;
     f->ack_seq = 0;
@@ -185,8 +185,8 @@ fmrb_err_t fmrb_hal_link_init(void) {
     }
 
     // Allocate DMA-capable SPI buffers
-    s_tx_dma_buf = (uint8_t *)heap_caps_malloc(SPI_FRAME_SIZE, MALLOC_CAP_DMA);
-    s_rx_dma_buf = (uint8_t *)heap_caps_malloc(SPI_FRAME_SIZE, MALLOC_CAP_DMA);
+    s_tx_dma_buf = (uint8_t *)heap_caps_malloc(FMRB_LINK_FRAME_SIZE, MALLOC_CAP_DMA);
+    s_rx_dma_buf = (uint8_t *)heap_caps_malloc(FMRB_LINK_FRAME_SIZE, MALLOC_CAP_DMA);
     if (!s_tx_dma_buf || !s_rx_dma_buf) {
         ESP_LOGE(TAG, "Failed to allocate DMA buffers");
         heap_caps_free(s_tx_dma_buf);
@@ -337,13 +337,13 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     }
 
     // Accumulate COBS-encoded messages into frame data buffer
-    uint8_t frame_data[SPI_MAX_DATA];
+    uint8_t frame_data[FMRB_LINK_FRAME_MAX_DATA];
     size_t frame_data_len = 0;
     uint8_t last_seq = 0;
     fmrb_err_t result = FMRB_OK;
 
     // Temporary buffer for COBS encoding a single message
-    uint8_t cobs_buf[SPI_MAX_DATA];
+    uint8_t cobs_buf[FMRB_LINK_FRAME_MAX_DATA];
 
     for (size_t i = 0; i < msg_count; i++) {
         const fmrb_link_message_t *msg = &msgs[i];
@@ -352,10 +352,10 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
         size_t cobs_len = fmrb_link_cobs_encode(msg->data, msg->size, cobs_buf);
 
         // Check if adding this message would overflow the frame
-        if (frame_data_len + cobs_len > SPI_MAX_DATA) {
+        if (frame_data_len + cobs_len > FMRB_LINK_FRAME_MAX_DATA) {
             if (frame_data_len == 0) {
                 // Single message too large for one frame
-                ESP_LOGE(TAG, "COBS encoded data too large: %zu > %d", cobs_len, SPI_MAX_DATA);
+                ESP_LOGE(TAG, "COBS encoded data too large: %zu > %d", cobs_len, FMRB_LINK_FRAME_MAX_DATA);
                 result = FMRB_ERR_INVALID_PARAM;
                 break;
             }
@@ -510,7 +510,7 @@ static void process_received_frame(fmrb_link_channel_t channel, const spi_frame_
                 size_t frame_len = pos - frame_start;
 
                 // COBS decode (no CRC32)
-                uint8_t decoded[SPI_MAX_DATA];
+                uint8_t decoded[FMRB_LINK_FRAME_MAX_DATA];
                 ssize_t decoded_len = fmrb_link_cobs_decode(
                     rx->data + frame_start, frame_len, decoded);
 

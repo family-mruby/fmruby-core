@@ -178,7 +178,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
     // COBS worst case: input_len + ceil(input_len/254) + 1 (terminator)
     size_t cobs_worst = sbuf.size + (sbuf.size / 254) + 2;
 
-    if (cobs_worst <= SPI_MAX_DATA) {
+    if (cobs_worst <= FMRB_LINK_FRAME_MAX_DATA) {
         // Fits in a single SPI frame: send directly
         fmrb_link_message_t hal_msg = {
             .data = (uint8_t*)sbuf.data,

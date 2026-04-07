@@ -79,6 +79,8 @@ typedef struct fmrb_app_task_context_s {
     uint16_t              window_pos_y;
     uint8_t               z_order;           // Z-order (0=back, higher=front)
     uint16_t              canvas_id;         // Canvas ID (0 for headless apps)
+    bool                  has_background_canvas; // Desktop only: has additional bg canvas (z=0)
+    uint16_t              bg_canvas_id;      // Background canvas ID (0 if none)
 
     // Load mode and data (replaces encoded user_data pointer tagging)
     fmrb_load_mode_t      load_mode;         // How to load the script
@@ -105,6 +107,7 @@ typedef struct {
     uint32_t              flags;            // FMRB_TASK_FLAG_* bitfield
     fmrb_base_type_t      core_affinity;    // -1 = no affinity, 0/1 = specific core (legacy)
     bool                  headless;         // Headless app flag (no graphics, no canvas)
+    bool                  has_background_canvas; // Desktop only: create bg canvas (z=0)
     uint16_t              window_width;     // Window Width (if headless, =0)
     uint16_t              window_height;    // Window Height (if headless, =0)
     uint16_t              window_pos_x;

@@ -36,8 +36,10 @@ class FmrbKernelImpl < FmrbKernel
     # Window list optimization
     @window_list_dirty = true
 
-    # Overlay state (skip hit-test when inactive)
-    @overlay_active = false
+    # Desktop overlay state (dropdown menu)
+    @desktop_overlay_active = false
+    @desktop_overlay_rect = { x: 0, y: 0, w: 0, h: 0 }
+    @desktop_pid = nil
 
     # Periodic cleanup tracking
     @tick_count = 0
@@ -110,6 +112,13 @@ class FmrbKernelImpl < FmrbKernel
     when "exit"
       Log.info("App exit notification from pid=#{pid}")
       cleanup_terminated_app(pid)
+    when "overlay_state"
+      @desktop_overlay_active = data["active"] || false
+      @desktop_overlay_rect = {
+        x: data["rect_x"] || 0, y: data["rect_y"] || 0,
+        w: data["rect_w"] || 0, h: data["rect_h"] || 0
+      }
+      Log.info("Desktop overlay: active=#{@desktop_overlay_active}")
     when "kill"
       Log.info("Kill request from pid=#{pid} (not implemented)")
       # TODO: Implement kill command to forcefully terminate app
@@ -142,7 +151,7 @@ class FmrbKernelImpl < FmrbKernel
     Log.info("Audio command '#{cmd}' from pid=#{pid}")
 
     # Forward audio command to host task as raw binary
-    # Format: cmd_type(1 byte) + music_id(4 bytes, little endian)
+    # Format: cmd_type(1) + path_len(2, LE) + path
     case cmd
     when "play"
       path = data["path"] || ""
@@ -383,17 +392,42 @@ class FmrbKernelImpl < FmrbKernel
     nil
   end
 
+  MENU_BAR_HEIGHT = 13
+
   def find_window_at(x, y)
+    # Desktop foreground (z=254) special hit-testing:
+    # 1. Menu bar region: always hit-testable
+    # 2. Dropdown open: dropdown rect is hit-testable, outside closes it
+    # 3. Otherwise: transparent (skip to windows below)
+    if @desktop_pid
+      if y < MENU_BAR_HEIGHT
+        # Menu bar click -> route to desktop
+        return find_window_by_pid(@desktop_pid)
+      end
+
+      if @desktop_overlay_active
+        r = @desktop_overlay_rect
+        if x >= r[:x] && x < r[:x] + r[:w] &&
+           y >= r[:y] && y < r[:y] + r[:h]
+          # Click inside dropdown -> route to desktop
+          return find_window_by_pid(@desktop_pid)
+        else
+          # Click outside dropdown -> close it, then fall through
+          _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_HID_EVENT,
+                            build_hid_close_overlay)
+          @desktop_overlay_active = false
+        end
+      end
+    end
+
     # Search from front to back (highest z_order first)
-    # Find window with highest z_order that contains the point
     target_window = nil
     max_z_order = -1
 
     @window_list.each do |win|
-      # Skip overlay when inactive (it covers entire screen)
-      next if win[:app_name] == "system_overlay" && !@overlay_active
+      # Skip desktop (handled above with special logic)
+      next if win[:app_name] == "system_desktop"
 
-      # Use <= for right and bottom edges to include boundary pixels
       if x >= win[:x] && x <= win[:x] + win[:width] - 1 &&
          y >= win[:y] && y <= win[:y] + win[:height] - 1
         if win[:z_order] > max_z_order
@@ -404,6 +438,14 @@ class FmrbKernelImpl < FmrbKernel
     end
 
     target_window
+  end
+
+  def build_hid_close_overlay
+    # Send a special mouse_up event at (0,0) to trigger dropdown close
+    data = "\x00\x00\x00\x00\x00\x00"
+    data.setbyte(0, 5)  # subtype: mouse_up
+    data.setbyte(1, 1)  # button: left
+    data
   end
 
   def cleanup_terminated_app(pid)
@@ -525,21 +567,14 @@ class FmrbKernelImpl < FmrbKernel
     # Sync files to host (after protocol version confirmed)
     sync_files
 
-    # Spawn system desktop app (z=0, background)
+    # Spawn system desktop app (bg canvas z=0, fg canvas z=254)
     desktop_pid = _spawn_app_req("system/desktop")
     if desktop_pid
+      @desktop_pid = desktop_pid
       _set_hid_target(desktop_pid)
       @hid_target_pid = desktop_pid
     else
       Log.error("Failed to spawn system desktop app")
-    end
-
-    # Spawn system overlay app (z=254, topmost)
-    overlay_pid = _spawn_app_req("system/overlay")
-    if overlay_pid
-      Log.info("System overlay app spawned: pid=#{overlay_pid}")
-    else
-      Log.error("Failed to spawn system overlay app")
     end
   end
 

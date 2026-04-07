@@ -134,6 +134,15 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@name"),
                mrb_str_new_cstr(mrb, ctx->app_name));
 
+    // Set @platform symbol (:linux or :esp32)
+#ifdef CONFIG_IDF_TARGET_LINUX
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@platform"),
+               mrb_symbol_value(mrb_intern_cstr(mrb, "linux")));
+#else
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@platform"),
+               mrb_symbol_value(mrb_intern_cstr(mrb, "esp32")));
+#endif
+
     // Set @window_width and @window_height instance variables
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@window_width"),
                mrb_fixnum_value(ctx->window_width));
@@ -179,6 +188,27 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
 
         FMRB_LOGI(TAG, "Created canvas %u (%dx%d) for app %s",
                  canvas_id, ctx->window_width, ctx->window_height, ctx->app_name);
+
+        // Create background canvas for desktop (z=0, wallpaper layer)
+        if (ctx->has_background_canvas) {
+            fmrb_canvas_handle_t bg_canvas_id = FMRB_CANVAS_SCREEN;
+            fmrb_gfx_err_t bg_ret = fmrb_gfx_create_canvas(
+                gfx_ctx,
+                ctx->window_width,
+                ctx->window_height,
+                0,  // z=0: background
+                &bg_canvas_id
+            );
+            if (bg_ret == FMRB_GFX_OK) {
+                ctx->bg_canvas_id = bg_canvas_id;
+                mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@bg_canvas"),
+                           mrb_fixnum_value(bg_canvas_id));
+                FMRB_LOGI(TAG, "Created background canvas %u for app %s",
+                         bg_canvas_id, ctx->app_name);
+            } else {
+                FMRB_LOGE(TAG, "Failed to create background canvas: %d", bg_ret);
+            }
+        }
     } else {
         // Headless app: no canvas, @canvas remains unset (nil)
         FMRB_LOGI(TAG, "Headless app %s: no canvas allocated", ctx->app_name);

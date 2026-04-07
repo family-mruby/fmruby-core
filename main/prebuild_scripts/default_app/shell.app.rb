@@ -44,7 +44,11 @@ class ShellApp < FmrbApp
     @cursor_y = 0
     @char_width = 6
     @char_height = 8
-    @current_dir = "/"  # Current working directory
+    @current_dir = "/"  # Virtual working directory (user-visible)
+
+    # Filesystem root mapping: Dir.open uses OS paths, user sees "/"
+    # Linux: "flash" (relative), ESP32: "/flash" (LittleFS mount)
+    @fs_root = detect_fs_root
     @prompt = "> "
     @need_full_redraw = false   # Full screen redraw (includes logo)
     @need_line_redraw = false   # Only current input line redraw
@@ -249,6 +253,28 @@ class ShellApp < FmrbApp
     end
   end
 
+  # Filesystem root path for Dir.open (platform-dependent)
+  def detect_fs_root
+    @platform == :linux ? "flash" : "/flash"
+  end
+
+  # Convert virtual path (user-visible "/") to OS path for Dir.open
+  def to_os_dir_path(virtual_path)
+    if virtual_path == "/"
+      @fs_root
+    else
+      "#{@fs_root}#{virtual_path}"
+    end
+  end
+
+  # Convert virtual path to path for File.open (HAL adds "flash/" on Linux)
+  # On ESP32: HAL expects path like "/app/..." (it prepends "/flash")
+  # On Linux: HAL expects path like "app/..." (it prepends "flash/")
+  def to_file_path(virtual_path)
+    # Strip leading "/" - HAL adds the flash prefix
+    virtual_path.start_with?("/") ? virtual_path[1..-1] : virtual_path
+  end
+
   def cmd_cd(args)
     Log.debug("cmd_cd called with args: #{args.inspect}")
     target_dir = if args.empty?
@@ -279,17 +305,17 @@ class ShellApp < FmrbApp
     new_dir = new_dir[0...-1] if new_dir.length > 1 && new_dir.end_with?("/")
     Log.debug("new_dir (after normalize): #{new_dir}")
 
-    # Check if directory exists
+    # Check if directory exists using OS path
     begin
-      # Try to open directory to verify it exists
-      Log.debug("Trying to open directory: #{new_dir}")
-      dir = Dir.open(new_dir)
+      os_path = to_os_dir_path(new_dir)
+      Log.debug("Trying to open directory: #{os_path}")
+      dir = Dir.open(os_path)
       dir.close
       @current_dir = new_dir
       Log.info("Changed to directory: #{@current_dir}")
     rescue => e
       Log.error("Error: #{e.message}")
-      @history << "cd: #{target_dir}: #{e.message}"
+      @history << "cd: #{target_dir}: No such directory"
     end
   end
 
@@ -298,21 +324,20 @@ class ShellApp < FmrbApp
   end
 
   def cmd_ls(args)
-    path = if args.empty?
-             @current_dir  # Use current directory
-           elsif args[0].start_with?("/")
-             args[0]  # Absolute path
-           else
-             # Relative path
-             if @current_dir == "/"
-               "/" + args[0]
-             else
-               @current_dir + "/" + args[0]
-             end
-           end
+    virtual_path = if args.empty?
+                     @current_dir
+                   elsif args[0].start_with?("/")
+                     args[0]
+                   else
+                     if @current_dir == "/"
+                       "/" + args[0]
+                     else
+                       @current_dir + "/" + args[0]
+                     end
+                   end
 
     begin
-      dir = Dir.open(path)
+      dir = Dir.open(to_os_dir_path(virtual_path))
       entries = []
       while (entry = dir.read)
         entries << entry
@@ -322,7 +347,7 @@ class ShellApp < FmrbApp
       if entries.empty?
         @history << "(empty directory)"
       else
-        entries.each do |entry|
+        entries.sort.each do |entry|
           @history << "  #{entry}"
         end
       end
@@ -339,20 +364,19 @@ class ShellApp < FmrbApp
 
     path = args.join(' ')
 
-    # Resolve relative path
-    path = if path.start_with?("/")
-             path  # Absolute path
-           else
-             # Relative path
-             if @current_dir == "/"
-               "/" + path
-             else
-               @current_dir + "/" + path
-             end
-           end
+    # Resolve to virtual path first
+    virtual_path = if path.start_with?("/")
+                     path
+                   else
+                     if @current_dir == "/"
+                       "/" + path
+                     else
+                       @current_dir + "/" + path
+                     end
+                   end
 
     begin
-      file = File.open(path, "r")
+      file = File.open(to_file_path(virtual_path), "r")
       content = file.read
       file.close
 

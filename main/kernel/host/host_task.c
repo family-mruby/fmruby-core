@@ -18,7 +18,6 @@
 #include "status_led.h"
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_mem.h"
-#include "spi_frame.h"
 
 static const char *TAG = "host";
 
@@ -325,9 +324,9 @@ static void gfx_stats_update(int cmd_count, int present_count) {
 
 // Chunk size derived from SPI frame capacity.
 // fmrb_link_file_transfer_data_t header (6 bytes) + msgpack array/bin headers (~10 bytes)
-// + COBS overhead (~2 bytes) must fit within SPI_MAX_DATA.
+// + COBS overhead (~2 bytes) must fit within FMRB_LINK_FRAME_MAX_DATA.
 #define FILE_TRANSFER_OVERHEAD 18
-#define FILE_TRANSFER_CHUNK_SIZE (SPI_MAX_DATA - FILE_TRANSFER_OVERHEAD)
+#define FILE_TRANSFER_CHUNK_SIZE (FMRB_LINK_FRAME_MAX_DATA - FILE_TRANSFER_OVERHEAD)
 
 // File transfer state (one active transfer at a time)
 typedef struct {

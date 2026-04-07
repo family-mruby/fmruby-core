@@ -16,7 +16,6 @@ static const char *TAG = "fmrb_default_apps";
 
 // External irep declarations (compiled by picorbc)
 extern const uint8_t system_desktop_irep[];
-extern const uint8_t system_overlay_irep[];
 extern const uint8_t shell_irep[];
 extern const uint8_t editor_irep[];
 extern const uint8_t config_irep[];
@@ -36,6 +35,7 @@ static fmrb_err_t spawn_system_desktop_app(int32_t* out_pid)
         .flags = FMRB_SYSTEM_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
+        .has_background_canvas = true,  // Desktop has bg (z=0) + fg (z=254)
         .window_width = 0,
         .window_height = 0,
         .window_pos_x = 0,
@@ -52,41 +52,6 @@ static fmrb_err_t spawn_system_desktop_app(int32_t* out_pid)
         }
     } else {
         FMRB_LOGE(TAG, "Failed to spawn system desktop app: %d", result);
-    }
-    return result;
-}
-
-static fmrb_err_t spawn_system_overlay_app(int32_t* out_pid)
-{
-    FMRB_LOGI(TAG, "Creating system overlay app...");
-    fmrb_spawn_attr_t attr = {
-        .app_id = PROC_ID_SYSTEM_OVERLAY,
-        .type = APP_TYPE_SYSTEM_APP,
-        .name = "system_overlay",
-        .vm_type = FMRB_VM_TYPE_MRUBY,
-        .load_mode = FMRB_LOAD_MODE_BYTECODE,
-        .bytecode = system_overlay_irep,
-        .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
-        .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
-        .flags = FMRB_SYSTEM_APP_TASK_FLAGS,
-        .core_affinity = -1,
-        .headless = false,
-        .window_width = 0,
-        .window_height = 0,
-        .window_pos_x = 0,
-        .window_pos_y = 0
-    };
-
-    int32_t app_id;
-    fmrb_err_t result;
-    result = fmrb_app_spawn(&attr, &app_id);
-    if (result == FMRB_OK) {
-        FMRB_LOGI(TAG, "system overlay app spawned: id=%d", app_id);
-        if (out_pid) {
-            *out_pid = app_id;
-        }
-    } else {
-        FMRB_LOGE(TAG, "Failed to spawn system overlay app: %d", result);
     }
     return result;
 }
@@ -109,7 +74,7 @@ static fmrb_err_t spawn_shell_app(int32_t* out_pid)
         .window_width = 350,
         .window_height = 200,
         .window_pos_x = 10,
-        .window_pos_y = 20
+        .window_pos_y = 15
     };
 
     int32_t shell_id;
@@ -121,6 +86,40 @@ static fmrb_err_t spawn_shell_app(int32_t* out_pid)
         }
     } else {
         FMRB_LOGE(TAG, "Failed to spawn shell app: %d", result);
+    }
+    return result;
+}
+
+static fmrb_err_t spawn_editor_app(int32_t* out_pid)
+{
+    FMRB_LOGI(TAG, "spawn_editor_app: Starting");
+    fmrb_spawn_attr_t attr = {
+        .app_id = -1,
+        .type = APP_TYPE_USER_APP,
+        .name = "editor",
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = editor_irep,
+        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
+        .priority = FMRB_SHELL_APP_PRIORITY,
+        .flags = FMRB_SHELL_APP_TASK_FLAGS,
+        .core_affinity = -1,
+        .headless = false,
+        .window_width = 320,
+        .window_height = 240,
+        .window_pos_x = 5,
+        .window_pos_y = 15
+    };
+
+    int32_t editor_id;
+    fmrb_err_t result = fmrb_app_spawn(&attr, &editor_id);
+    if (result == FMRB_OK) {
+        FMRB_LOGI(TAG, "Editor app spawned: id=%d", editor_id);
+        if (out_pid) {
+            *out_pid = editor_id;
+        }
+    } else {
+        FMRB_LOGE(TAG, "Failed to spawn editor app: %d", result);
     }
     return result;
 }
@@ -303,14 +302,10 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid)
     // PreBuild Apps
     if (strcmp(app_name, "system/desktop") == 0) {
         return spawn_system_desktop_app(out_pid);
-    } else if (strcmp(app_name, "system/overlay") == 0) {
-        return spawn_system_overlay_app(out_pid);
     } else if (strcmp(app_name, "default/shell") == 0) {
         return spawn_shell_app(out_pid);
     } else if (strcmp(app_name, "default/editor") == 0) {
-        // Future implementation
-        FMRB_LOGW(TAG, "Editor app not yet implemented");
-        return FMRB_ERR_NOT_SUPPORTED;
+        return spawn_editor_app(out_pid);
     } else if (strcmp(app_name, "default/config") == 0) {
         // Future implementation
         FMRB_LOGW(TAG, "Config app not yet implemented");

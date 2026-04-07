@@ -5,7 +5,6 @@
 #include <stddef.h>
 #include "fmrb_link_protocol.h"
 #include "fmrb_err.h"
-#include "spi_frame.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -13,9 +12,9 @@ extern "C" {
 
 // Fragmentation configuration
 // Chunked msgpack: [type(2) + seq(2) + sub_cmd(2) + bin_hdr(3) + chunk_info(12) + bin_hdr(3) + payload(N)]
-// + COBS worst-case (~2 bytes). Total must fit within SPI_MAX_DATA.
+// + COBS worst-case (~2 bytes). Total must fit within FMRB_LINK_FRAME_MAX_DATA.
 #define FMRB_LINK_FRAG_CHUNKED_OVERHEAD 28
-#define FMRB_LINK_FRAG_MAX_CHUNK_PAYLOAD (SPI_MAX_DATA - FMRB_LINK_FRAG_CHUNKED_OVERHEAD)
+#define FMRB_LINK_FRAG_MAX_CHUNK_PAYLOAD (FMRB_LINK_FRAME_MAX_DATA - FMRB_LINK_FRAG_CHUNKED_OVERHEAD)
 #define FMRB_LINK_FRAG_WINDOW_SIZE 8          // Sliding window size
 #define FMRB_LINK_FRAG_MAX_CONCURRENT 4       // Max concurrent reassembly contexts
 #define FMRB_LINK_FRAG_TIMEOUT_MS 5000        // Reassembly timeout

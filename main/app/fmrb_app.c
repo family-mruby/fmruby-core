@@ -1031,13 +1031,17 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         ctx->window_height = 0;
     }
 
-    // Initialize Z-order: desktop at back (0), overlay always on top (254), others in between
-    if (strcmp(ctx->app_name, "system_desktop") == 0) {
-        ctx->z_order = 0;
+    // Initialize Z-order
+    // Desktop with background canvas: main canvas at z=254 (foreground menu bar),
+    // background canvas at z=0 (created later in _init)
+    ctx->has_background_canvas = attr->has_background_canvas;
+    ctx->bg_canvas_id = 0;
+    if (ctx->has_background_canvas) {
+        ctx->z_order = 254;  // Main canvas is foreground (menu bar)
     } else if (strcmp(ctx->app_name, "system_overlay") == 0) {
         ctx->z_order = 254;
     } else {
-        // Find max z_order among user apps (exclude desktop=0 and overlay=254)
+        // Find max z_order among user apps (exclude z=0 and z=254)
         uint8_t max_z = 0;
         for (int32_t i = 0; i < FMRB_MAX_APPS; i++) {
             if (g_ctx_pool[i].state != PROC_STATE_FREE &&
@@ -1484,9 +1488,8 @@ fmrb_err_t fmrb_app_bring_to_front(uint8_t pid) {
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    // system_desktop (z=0) and system_overlay (z=254) have fixed z-order
-    if (strcmp(target_ctx->app_name, "system_desktop") == 0 ||
-        strcmp(target_ctx->app_name, "system_overlay") == 0) {
+    // system_desktop has fixed z-order (z=0 bg + z=254 fg)
+    if (strcmp(target_ctx->app_name, "system_desktop") == 0) {
         fmrb_semaphore_give(g_ctx_lock);
         return FMRB_OK;
     }
@@ -1498,7 +1501,6 @@ fmrb_err_t fmrb_app_bring_to_front(uint8_t pid) {
         if ((ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) &&
             !ctx->headless &&
             strcmp(ctx->app_name, "system_desktop") != 0 &&
-            strcmp(ctx->app_name, "system_overlay") != 0 &&
             ctx->z_order > max_z) {
             max_z = ctx->z_order;
         }

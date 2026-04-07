@@ -34,9 +34,16 @@ else()
     set(PLATFORM_PRIV_REQUIRES )
 endif()
 
+if(NOT IDF_TARGET STREQUAL "linux")
+    set(PRIV_INCLUDE "platform/esp32")
+else()
+    set(PRIV_INCLUDE "")
+endif()
+
 idf_component_register(
     SRCS ${COMMON_SRCS}
     INCLUDE_DIRS "." "platform"
+    PRIV_INCLUDE_DIRS ${PRIV_INCLUDE}
     REQUIRES ${PLATFORM_REQUIRES}
     PRIV_REQUIRES ${PLATFORM_PRIV_REQUIRES}
 )

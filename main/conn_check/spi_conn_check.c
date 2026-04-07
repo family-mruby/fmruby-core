@@ -5,6 +5,7 @@
 #include "fmrb_log.h"
 #include "fmrb_pin_assign.h"
 #include "fmrb_mem.h"
+#include "fmrb_link_protocol.h"
 
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "esp_heap_caps.h"
@@ -18,9 +19,6 @@ static const char *TAG = "spi_conn_check";
 #define SPI_SCLK_PIN    FMRB_PIN_GFX_SPI_SCLK
 #define SPI_CS_PIN      FMRB_PIN_GFX_SPI_CS
 #define SPI_FREQUENCY   (10 * 1000 * 1000)  // 10MHz
-
-// Fixed frame size - MUST match Slave
-#define SPI_FRAME_SIZE  64
 
 static fmrb_spi_handle_t spi_handle = NULL;
 static fmrb_task_handle_t spi_task_handle = NULL;
@@ -42,7 +40,7 @@ static void spi_conn_check_task(void *arg)
         // Send test data every 5 seconds (500 * 10ms)
         if (send_count >= 500) {
             // Prepare test data in DMA buffer
-            memset(tx_buffer, 0, SPI_FRAME_SIZE);
+            memset(tx_buffer, 0, FMRB_LINK_FRAME_SIZE);
             tx_buffer[0] = 0xAA;
             tx_buffer[1] = 0x55;
             tx_buffer[2] = 0x01;
@@ -50,12 +48,12 @@ static void spi_conn_check_task(void *arg)
             tx_buffer[4] = 0x03;
             tx_buffer[5] = 0x04;
 
-            memset(rx_buffer, 0, SPI_FRAME_SIZE);
+            memset(rx_buffer, 0, FMRB_LINK_FRAME_SIZE);
 
-            FMRB_LOGI(TAG, "Sending %d bytes (frame_size=%d)...", 6, SPI_FRAME_SIZE);
+            FMRB_LOGI(TAG, "Sending %d bytes (frame_size=%d)...", 6, FMRB_LINK_FRAME_SIZE);
 
             // Transfer full frame
-            fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, tx_buffer, rx_buffer, SPI_FRAME_SIZE, 1000);
+            fmrb_err_t ret = fmrb_hal_spi_transfer(spi_handle, tx_buffer, rx_buffer, FMRB_LINK_FRAME_SIZE, 1000);
             if (ret == FMRB_OK) {
                 FMRB_LOGI(TAG, "SPI transfer OK");
                 FMRB_LOGI(TAG, "TX: %02X %02X %02X %02X %02X %02X ...",
@@ -87,11 +85,11 @@ int spi_conn_check_init(void)
 
 #ifndef CONFIG_IDF_TARGET_LINUX
     // Allocate DMA-capable buffers
-    tx_buffer = (uint8_t *)heap_caps_malloc(SPI_FRAME_SIZE, MALLOC_CAP_DMA);
-    rx_buffer = (uint8_t *)heap_caps_malloc(SPI_FRAME_SIZE, MALLOC_CAP_DMA);
+    tx_buffer = (uint8_t *)heap_caps_malloc(FMRB_LINK_FRAME_SIZE, MALLOC_CAP_DMA);
+    rx_buffer = (uint8_t *)heap_caps_malloc(FMRB_LINK_FRAME_SIZE, MALLOC_CAP_DMA);
 #else
-    tx_buffer = (uint8_t *)fmrb_sys_malloc(SPI_FRAME_SIZE);
-    rx_buffer = (uint8_t *)fmrb_sys_malloc(SPI_FRAME_SIZE);
+    tx_buffer = (uint8_t *)fmrb_sys_malloc(FMRB_LINK_FRAME_SIZE);
+    rx_buffer = (uint8_t *)fmrb_sys_malloc(FMRB_LINK_FRAME_SIZE);
 #endif
 
     if (!tx_buffer || !rx_buffer) {
@@ -116,7 +114,7 @@ int spi_conn_check_init(void)
     }
 
     FMRB_LOGI(TAG, "DMA buffers allocated at tx=%p rx=%p (size=%d)",
-             tx_buffer, rx_buffer, SPI_FRAME_SIZE);
+             tx_buffer, rx_buffer, FMRB_LINK_FRAME_SIZE);
 
     fmrb_spi_config_t config = {
         .mosi_pin = SPI_MOSI_PIN,
@@ -142,7 +140,7 @@ int spi_conn_check_init(void)
     }
 
     FMRB_LOGI(TAG, "SPI initialized - MOSI:%d MISO:%d SCLK:%d CS:%d @ %dHz (frame=%d)",
-             SPI_MOSI_PIN, SPI_MISO_PIN, SPI_SCLK_PIN, SPI_CS_PIN, SPI_FREQUENCY, SPI_FRAME_SIZE);
+             SPI_MOSI_PIN, SPI_MISO_PIN, SPI_SCLK_PIN, SPI_CS_PIN, SPI_FREQUENCY, FMRB_LINK_FRAME_SIZE);
 
     return 0;
 }

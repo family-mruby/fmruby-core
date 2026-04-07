@@ -13,6 +13,13 @@ extern "C" {
 // Protocol version
 #define FMRB_LINK_PROTOCOL_VERSION 1
 
+// Link frame size constants (single source of truth)
+// Change FMRB_LINK_FRAME_SIZE to resize frames (e.g. 1024); all derived values follow.
+#define FMRB_LINK_FRAME_SIZE          256
+#define FMRB_LINK_FRAME_HEADER_SIZE   6   // magic(1) + seq(1) + ack_seq(1) + status(1) + data_len(2)
+#define FMRB_LINK_FRAME_CRC_SIZE      2
+#define FMRB_LINK_FRAME_MAX_DATA      (FMRB_LINK_FRAME_SIZE - FMRB_LINK_FRAME_HEADER_SIZE - FMRB_LINK_FRAME_CRC_SIZE)
+
 // Message types (based on IPC_spec.md)
 typedef enum {
     FMRB_LINK_TYPE_EMPTY = 0,

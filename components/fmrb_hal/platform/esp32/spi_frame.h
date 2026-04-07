@@ -3,16 +3,13 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include "fmrb_link_protocol.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 #define SPI_FRAME_MAGIC  0xA5
-#define SPI_FRAME_SIZE   256
-#define SPI_HEADER_SIZE  5    // magic + seq + ack_seq + status + data_len
-#define SPI_CRC_SIZE     2    // CRC16 at end
-#define SPI_MAX_DATA     (SPI_FRAME_SIZE - SPI_HEADER_SIZE - SPI_CRC_SIZE)  // 249
 
 typedef enum {
     STS_BOOT    = 0x00,  // Initial state (after boot)
@@ -27,10 +24,10 @@ typedef struct __attribute__((packed)) {
     uint8_t seq;            // Master: command seq / Slave: 0
     uint8_t ack_seq;        // Slave: ack target master seq / Master: 0
     uint8_t status;         // Slave: STS_* / Master: 0
-    uint8_t data_len;       // COBS payload length (0 = no data, includes 0x00 delimiters)
-    uint8_t data[249];      // COBS encoded messages (msgpack)
-    uint16_t crc16;         // CRC16-CCITT over first 254 bytes
-} spi_frame_t;              // 256 bytes total
+    uint16_t data_len;      // COBS payload length (0 = no data, includes 0x00 delimiters)
+    uint8_t data[FMRB_LINK_FRAME_MAX_DATA];  // COBS encoded messages (msgpack)
+    uint16_t crc16;         // CRC16-CCITT over first (FMRB_LINK_FRAME_SIZE - 2) bytes
+} spi_frame_t;              // FMRB_LINK_FRAME_SIZE bytes total
 
 // CRC16-CCITT (polynomial 0x1021, init 0xFFFF)
 static inline uint16_t crc16_ccitt(const uint8_t *data, size_t len)
@@ -48,14 +45,14 @@ static inline uint16_t crc16_ccitt(const uint8_t *data, size_t len)
 // Build frame header + CRC16 (data[] must be filled before calling)
 static inline void spi_frame_finalize(spi_frame_t *f)
 {
-    f->crc16 = crc16_ccitt((const uint8_t *)f, SPI_FRAME_SIZE - SPI_CRC_SIZE);
+    f->crc16 = crc16_ccitt((const uint8_t *)f, FMRB_LINK_FRAME_SIZE - FMRB_LINK_FRAME_CRC_SIZE);
 }
 
 // Validate frame (magic + CRC16)
 static inline bool spi_frame_validate(const spi_frame_t *f)
 {
     if (f->magic != SPI_FRAME_MAGIC) return false;
-    uint16_t expected = crc16_ccitt((const uint8_t *)f, SPI_FRAME_SIZE - SPI_CRC_SIZE);
+    uint16_t expected = crc16_ccitt((const uint8_t *)f, FMRB_LINK_FRAME_SIZE - FMRB_LINK_FRAME_CRC_SIZE);
     return expected == f->crc16;
 }
 

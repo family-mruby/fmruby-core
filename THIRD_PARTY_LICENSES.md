@@ -391,3 +391,9 @@ The following libraries are external dependencies not included in this repositor
 - **SDL2** (zlib License) - https://github.com/libsdl-org/SDL
 
 These are required for building but are not distributed with this software.
+
+The following are ESP-IDF managed components, downloaded at build time:
+
+- **espressif/usb_host_hid** (Apache License 2.0) - https://components.espressif.com/components/espressif/usb_host_hid
+- **m5stack/m5gfx** (MIT License) - https://github.com/m5stack/M5GFX
+- **m5stack/m5unified** (MIT License) - https://github.com/m5stack/M5Unified

@@ -2,7 +2,7 @@
 # User app should inherit this class and override lifecycle methods.
 
 class FmrbApp
-  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y
+  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform
 
   def initialize()
     Log.debug("initialize")
@@ -22,9 +22,18 @@ class FmrbApp
       @user_area_width = @window_width - 2
       @user_area_height = @window_height - 12
 
+      # Background canvas (desktop only)
+      if @bg_canvas
+        @bg_gfx = FmrbGfx.new(@bg_canvas, width: @window_width, height: @window_height)
+        Log.debug("Background GFX initialized: canvas_id=#{@bg_canvas}")
+      else
+        @bg_gfx = nil
+      end
+
       draw_window_frame
     else
       @gfx = nil
+      @bg_gfx = nil
       Log.debug("Headless app: no graphics initialized")
     end
 
