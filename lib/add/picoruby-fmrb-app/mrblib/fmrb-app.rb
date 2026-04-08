@@ -2,7 +2,7 @@
 # User app should inherit this class and override lifecycle methods.
 
 class FmrbApp
-  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform
+  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen
 
   def initialize()
     Log.debug("initialize")
@@ -79,6 +79,16 @@ class FmrbApp
     Log.debug("on_destroy")
   end
 
+  def on_suspend
+    # Called when app is suspended (fullscreen app taking over)
+    Log.debug("on_suspend")
+  end
+
+  def on_resume
+    # Called when app is resumed (fullscreen app exited)
+    Log.debug("on_resume")
+  end
+
   def on_event(ev)
     # Called from C
     # Handle close button click
@@ -96,11 +106,40 @@ class FmrbApp
   # Internal methods
   def main_loop
     Log.debug("main_loop started")
+    @suspended = false
     loop do
       return if !@running
+      if @suspended
+        _spin(500)  # Sleep longer while suspended, still process messages
+        next
+      end
       timeout_ms = on_update
       Task.pass  # Yield control to other tasks
       _spin(timeout_ms)
+    end
+  end
+
+  # Called by C _spin via on_control for system commands
+  def _handle_system_control(msg)
+    case msg["cmd"]
+    when "suspend"
+      @suspended = true
+      on_suspend
+      Log.info("App #{@name} suspended")
+    when "resume"
+      @suspended = false
+      on_resume
+      Log.info("App #{@name} resumed")
+    when "stop"
+      Log.info("App #{@name} received stop command")
+      stop
+    when "clear_and_stop"
+      Log.info("App #{@name} clearing canvas and stopping")
+      if @gfx
+        @gfx.clear(0x00)
+        @gfx.present
+      end
+      stop
     end
   end
 
@@ -115,6 +154,11 @@ class FmrbApp
   end
 
   def publish()
+  end
+
+  def request_file_select(mode = "open")
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      { "cmd" => "file_select", "mode" => mode })
   end
 
   def send_message(dest_pid, msg_type, data)

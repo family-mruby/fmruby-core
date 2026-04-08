@@ -1,0 +1,4 @@
+app_handle_name = "slideshow"
+app_screen_name = "SlideShow"
+default_window_mode = "fullscreen"
+icon = "usr/share/icon/ruby.icon"

@@ -1036,6 +1036,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     // background canvas at z=0 (created later in _init)
     ctx->has_background_canvas = attr->has_background_canvas;
     ctx->bg_canvas_id = 0;
+    ctx->fullscreen = attr->fullscreen;
     if (ctx->has_background_canvas) {
         ctx->z_order = 254;  // Main canvas is foreground (menu bar)
     } else if (strcmp(ctx->app_name, "system_overlay") == 0) {
@@ -1393,6 +1394,7 @@ int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
             list[count].width = ctx->window_width;
             list[count].height = ctx->window_height;
             list[count].z_order = ctx->z_order;
+            list[count].fullscreen = ctx->fullscreen;
 
             count++;
         }

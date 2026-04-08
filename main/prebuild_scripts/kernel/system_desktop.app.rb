@@ -6,8 +6,8 @@
 class SystemDesktopApp < FmrbApp
   MENU_BAR_HEIGHT = 13
   MENU_BG = 0xC5
-  DROPDOWN_BG = 0x60
-  DROPDOWN_TEXT = 0xFF
+  DROPDOWN_BG = 0xFF
+  DROPDOWN_TEXT = 0x00
   DROPDOWN_HIGHLIGHT = 0xC5
   BG_COLOR = 0xF6
 
@@ -31,23 +31,35 @@ class SystemDesktopApp < FmrbApp
   LAUNCHER_ICON_COLS = 4
   LAUNCHER_ICON_PAD_X = 12
   LAUNCHER_ICON_PAD_Y = 8
-  LAUNCHER_BG = 0x60
+  LAUNCHER_BG = 0xFF
   LAUNCHER_TITLE_BG = 0xC5
-  LAUNCHER_ICON_BG = 0x49
+  LAUNCHER_ICON_BG = 0xFF
   LAUNCHER_ICON_SEL = 0xC5
-  LAUNCHER_TEXT = 0xFF
+  LAUNCHER_TEXT = 0x00
+
+  # File selector layout
+  FSEL_W = 260
+  FSEL_H = 200
+  FSEL_TITLE_H = 14
+  FSEL_ITEM_H = 12
+  FSEL_BG = 0xFF
+  FSEL_TITLE_BG = 0xC5
+  FSEL_TEXT = 0x00
+  FSEL_DIR_COLOR = 0x03   # Blue for directories
+  FSEL_SEL_BG = 0xC5
+  FSEL_CANCEL_BG = 0x60
 
   # Built-in app entries
   BUILTIN_APPS = [
-    { label: "Shell",  app: "default/shell",  icon_file: "icon/shell.icon" },
-    { label: "Editor", app: "default/editor", icon_file: "icon/editor.icon" },
+    { label: "Shell",  app: "default/shell",  icon_file: "usr/share/icon/shell.icon" },
+    { label: "Editor", app: "default/editor", icon_file: "usr/share/icon/editor.icon" },
   ]
 
   # Default icon files per VM type
   VM_ICON_FILES = {
-    "rb"  => "icon/ruby.icon",
-    "lua" => "icon/lua.icon",
-    "bas" => "icon/basic.icon",
+    "rb"  => "usr/share/icon/ruby.icon",
+    "lua" => "usr/share/icon/lua.icon",
+    "bas" => "usr/share/icon/basic.icon",
   }
 
   # Fallback icon characters (when icon file is not available)
@@ -68,7 +80,19 @@ class SystemDesktopApp < FmrbApp
     @last_click_time = 0
     @last_click_idx = -1
     @launcher_apps = []
-    @icon_cache = {}  # icon_file => [[row_string, ...], color]
+    @icon_cache = {}
+
+    # File selector state
+    @file_selector_open = false
+    @file_selector_mode = "open"
+    @file_selector_requester = nil
+    @file_selector_dir = "/"
+    @file_selector_entries = []
+    @file_selector_scroll = 0
+    @file_selector_selected = -1
+    @file_selector_filename = ""
+    @fsel_x = 0
+    @fsel_y = 0
 
     # Launcher window position (centered)
     @launcher_x = 0
@@ -84,6 +108,10 @@ class SystemDesktopApp < FmrbApp
 
     # Build app list
     scan_apps
+
+    # Center file selector
+    @fsel_x = (@window_width - FSEL_W) / 2
+    @fsel_y = MENU_BAR_HEIGHT + (@window_height - MENU_BAR_HEIGHT - FSEL_H) / 2
 
     # Start background music
     @audio = FmrbAudio.new(self)
@@ -328,11 +356,12 @@ class SystemDesktopApp < FmrbApp
     draw_menu_bar
     draw_dropdown if @dropdown_open
     draw_launcher if @launcher_open
+    draw_file_selector if @file_selector_open
     @gfx.present
   end
 
   def draw_menu_bar
-    @gfx.clear(0x00)  # Transparent (clear foreground)
+    @gfx.clear(0x01)  # Transparent (clear foreground, 0x01 = transparent color key)
     @gfx.fill_rect(0, 0, @window_width, MENU_BAR_HEIGHT, MENU_BG)
     @gfx.draw_text(2, 2, "Family mruby", FmrbGfx::WHITE)
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, 0x60)
@@ -358,18 +387,11 @@ class SystemDesktopApp < FmrbApp
 
     # Window frame
     @gfx.fill_rect(x, y, LAUNCHER_W, LAUNCHER_H, LAUNCHER_BG)
-    @gfx.draw_rect(x, y, LAUNCHER_W, LAUNCHER_H, 0x00)
+    @gfx.draw_rect(x, y, LAUNCHER_W, LAUNCHER_H, 0x60)
 
     # Title bar
-    @gfx.fill_rect(x, y, LAUNCHER_W, LAUNCHER_TITLE_H, LAUNCHER_TITLE_BG)
+    @gfx.fill_rect(x + 1, y + 1, LAUNCHER_W - 2, LAUNCHER_TITLE_H - 1, LAUNCHER_TITLE_BG)
     @gfx.draw_text(x + 4, y + 3, "Launcher", FmrbGfx::WHITE, LAUNCHER_TITLE_BG)
-
-    # Close button
-    close_x = x + LAUNCHER_W - 12
-    close_y = y + 3
-    @gfx.fill_rect(close_x, close_y, 8, 8, 0xE0)
-    @gfx.draw_line(close_x + 2, close_y + 2, close_x + 5, close_y + 5, FmrbGfx::WHITE)
-    @gfx.draw_line(close_x + 5, close_y + 2, close_x + 2, close_y + 5, FmrbGfx::WHITE)
 
     # Icon grid
     content_y = y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
@@ -384,7 +406,7 @@ class SystemDesktopApp < FmrbApp
       # Icon background
       bg = (i == @launcher_selected) ? LAUNCHER_ICON_SEL : LAUNCHER_ICON_BG
       @gfx.fill_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 10, bg)
-      @gfx.draw_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 10, 0x00)
+      #@gfx.draw_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 10, 0x00)
 
       # Draw icon bitmap or fallback character
       icon_data = app[:icon_file] ? load_icon(app[:icon_file]) : nil
@@ -401,7 +423,7 @@ class SystemDesktopApp < FmrbApp
       else
         char_x = icon_x + (LAUNCHER_ICON_W - 6) / 2
         char_y = icon_y + (LAUNCHER_ICON_H - 10 - 8) / 2
-        @gfx.draw_text(char_x, char_y, app[:icon_char] || "?", FmrbGfx::WHITE, bg)
+        @gfx.draw_text(char_x, char_y, app[:icon_char] || "?", 0x00, bg)
       end
 
       # Label below icon
@@ -475,6 +497,241 @@ class SystemDesktopApp < FmrbApp
 
   # ---- Update loop ----
 
+  # ---- File selector ----
+
+  def open_file_selector(requester_pid, mode = "open")
+    @file_selector_open = true
+    @file_selector_mode = mode
+    @file_selector_requester = requester_pid
+    @file_selector_dir = "/"
+    @file_selector_scroll = 0
+    @file_selector_selected = -1
+    @file_selector_filename = ""
+    close_launcher
+    close_dropdown
+    scan_file_selector_dir
+    notify_overlay_state(true, @fsel_x, @fsel_y, FSEL_W, FSEL_H)
+    draw_foreground
+  end
+
+  def close_file_selector(selected_path = nil)
+    return unless @file_selector_open
+    mode = @file_selector_mode
+    @file_selector_open = false
+
+    # Send result back to kernel
+    data = {
+      "cmd" => "file_select_result",
+      "target_pid" => @file_selector_requester,
+      "path" => selected_path,
+      "mode" => mode
+    }
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+
+    @file_selector_requester = nil
+    notify_overlay_state(false, 0, 0, 0, 0)
+    draw_foreground
+  end
+
+  def scan_file_selector_dir
+    @file_selector_entries = []
+    # Add parent directory entry unless at root
+    @file_selector_entries << { name: "..", is_dir: true } unless @file_selector_dir == "/"
+
+    os_path = to_os_dir_path(@file_selector_dir)
+    begin
+      dir = Dir.open(os_path)
+      entries = []
+      while (e = dir.read)
+        entries << e unless e == "." || e == ".."
+      end
+      dir.close
+
+      entries.sort.each do |name|
+        # Try to open as directory
+        full = "#{os_path}/#{name}"
+        full = "#{os_path}#{name}" if os_path.end_with?("/")
+        is_dir = false
+        begin
+          d = Dir.open(full)
+          d.close
+          is_dir = true
+        rescue
+        end
+        @file_selector_entries << { name: name, is_dir: is_dir }
+      end
+    rescue => e
+      Log.warn("File selector: cannot scan #{os_path}: #{e.message}")
+    end
+
+    @file_selector_scroll = 0
+    @file_selector_selected = -1
+  end
+
+  def to_os_dir_path(virtual_path)
+    fs_root = @platform == :linux ? "flash" : "/flash"
+    if virtual_path == "/"
+      fs_root
+    else
+      "#{fs_root}#{virtual_path}"
+    end
+  end
+
+  def to_file_path(virtual_path)
+    virtual_path.start_with?("/") ? virtual_path[1..-1] : virtual_path
+  end
+
+  def draw_file_selector
+    return unless @file_selector_open
+
+    x = @fsel_x
+    y = @fsel_y
+
+    # Window
+    @gfx.fill_rect(x, y, FSEL_W, FSEL_H, FSEL_BG)
+    @gfx.draw_rect(x, y, FSEL_W, FSEL_H, 0x60)
+
+    # Title bar
+    @gfx.fill_rect(x + 1, y + 1, FSEL_W - 2, FSEL_TITLE_H - 1, FSEL_TITLE_BG)
+    title = "Open: #{@file_selector_dir}"
+    title = title[0, FSEL_W / 6 - 2] if title.length > FSEL_W / 6 - 2
+    @gfx.draw_text(x + 4, y + 3, title, FmrbGfx::WHITE, FSEL_TITLE_BG)
+
+    # Bottom area: filename input (save mode) + buttons
+    bottom_y = y + FSEL_H - 32
+
+    if @file_selector_mode == "save"
+      # Filename label and input field
+      @gfx.draw_text(x + 4, bottom_y, "Name:", FSEL_TEXT, FSEL_BG)
+      # Input field
+      field_x = x + 40
+      field_w = FSEL_W - 100
+      @gfx.fill_rect(field_x, bottom_y - 1, field_w, 10, FmrbGfx::WHITE)
+      @gfx.draw_rect(field_x, bottom_y - 1, field_w, 10, 0x60)
+      @gfx.draw_text(field_x + 2, bottom_y, @file_selector_filename, FSEL_TEXT, FmrbGfx::WHITE)
+      # Cursor
+      cursor_x = field_x + 2 + @file_selector_filename.length * 6
+      @gfx.draw_line(cursor_x, bottom_y, cursor_x, bottom_y + 7, FSEL_TEXT)
+
+      # Save button
+      save_x = x + FSEL_W - 100
+      save_y = bottom_y + 14
+      @gfx.fill_rect(save_x, save_y, 40, 12, FSEL_TITLE_BG)
+      @gfx.draw_text(save_x + 6, save_y + 2, "Save", FmrbGfx::WHITE, FSEL_TITLE_BG)
+    end
+
+    # Cancel button
+    cancel_x = x + FSEL_W - 50
+    cancel_y = bottom_y + 14
+    @gfx.fill_rect(cancel_x, cancel_y, 44, 12, FSEL_CANCEL_BG)
+    @gfx.draw_text(cancel_x + 6, cancel_y + 2, "Cancel", FmrbGfx::WHITE, FSEL_CANCEL_BG)
+
+    # File list
+    list_y = y + FSEL_TITLE_H + 2
+    list_h = bottom_y - list_y - 2
+    max_visible = list_h / FSEL_ITEM_H
+
+    max_visible.times do |i|
+      idx = @file_selector_scroll + i
+      break if idx >= @file_selector_entries.size
+
+      entry = @file_selector_entries[idx]
+      item_y = list_y + i * FSEL_ITEM_H
+
+      if idx == @file_selector_selected
+        @gfx.fill_rect(x + 2, item_y, FSEL_W - 4, FSEL_ITEM_H, FSEL_SEL_BG)
+        text_color = FmrbGfx::WHITE
+        text_bg = FSEL_SEL_BG
+      else
+        text_color = entry[:is_dir] ? FSEL_DIR_COLOR : FSEL_TEXT
+        text_bg = FSEL_BG
+      end
+
+      prefix = entry[:is_dir] ? "[" : " "
+      suffix = entry[:is_dir] ? "]" : ""
+      label = "#{prefix}#{entry[:name]}#{suffix}"
+      label = label[0, (FSEL_W - 12) / 6] if label.length > (FSEL_W - 12) / 6
+      @gfx.draw_text(x + 6, item_y + 2, label, text_color, text_bg)
+    end
+  end
+
+  def handle_file_selector_click(x, y)
+    bottom_y = @fsel_y + FSEL_H - 32
+
+    # Cancel button
+    cancel_x = @fsel_x + FSEL_W - 50
+    cancel_y = bottom_y + 14
+    if x >= cancel_x && x < cancel_x + 44 && y >= cancel_y && y < cancel_y + 12
+      close_file_selector(nil)
+      return
+    end
+
+    # Save button (save mode only)
+    if @file_selector_mode == "save"
+      save_x = @fsel_x + FSEL_W - 100
+      save_y = bottom_y + 14
+      if x >= save_x && x < save_x + 40 && y >= save_y && y < save_y + 12
+        if @file_selector_filename.length > 0
+          path = if @file_selector_dir == "/"
+                   "/#{@file_selector_filename}"
+                 else
+                   "#{@file_selector_dir}/#{@file_selector_filename}"
+                 end
+          close_file_selector(to_file_path(path))
+        end
+        return
+      end
+    end
+
+    # File list
+    list_y = @fsel_y + FSEL_TITLE_H + 2
+    list_h = bottom_y - list_y - 2
+    max_visible = list_h / FSEL_ITEM_H
+
+    if y >= list_y && y < list_y + max_visible * FSEL_ITEM_H
+      idx = @file_selector_scroll + (y - list_y) / FSEL_ITEM_H
+      if idx >= 0 && idx < @file_selector_entries.size
+        entry = @file_selector_entries[idx]
+        if entry[:is_dir]
+          # Navigate into directory
+          if entry[:name] == ".."
+            # Go up
+            parts = @file_selector_dir.split("/")
+            parts.pop
+            @file_selector_dir = parts.empty? ? "/" : parts.join("/")
+          else
+            if @file_selector_dir == "/"
+              @file_selector_dir = "/#{entry[:name]}"
+            else
+              @file_selector_dir = "#{@file_selector_dir}/#{entry[:name]}"
+            end
+          end
+          scan_file_selector_dir
+          draw_foreground
+        else
+          if @file_selector_mode == "save"
+            # In save mode, clicking a file sets the filename
+            @file_selector_filename = entry[:name]
+            draw_foreground
+          else
+            # In open mode, select the file
+            path = if @file_selector_dir == "/"
+                     "/#{entry[:name]}"
+                   else
+                     "#{@file_selector_dir}/#{entry[:name]}"
+                   end
+            close_file_selector(to_file_path(path))
+          end
+        end
+      end
+    end
+  end
+
+  def hit_file_selector?(x, y)
+    x >= @fsel_x && x < @fsel_x + FSEL_W &&
+      y >= @fsel_y && y < @fsel_y + FSEL_H
+  end
+
   def on_update()
     draw_memory_stats
     @counter += 1
@@ -483,13 +740,52 @@ class SystemDesktopApp < FmrbApp
 
   # ---- Event handling ----
 
+  def on_control(msg)
+    if msg["cmd"] == "file_select"
+      open_file_selector(msg["requester_pid"], msg["mode"] || "open")
+    end
+  end
+
   def on_event(ev)
     if ev[:type] == :mouse_up
       handle_click(ev[:x], ev[:y])
     end
+
+    # Key input for file selector filename (save mode)
+    if @file_selector_open && @file_selector_mode == "save" && ev[:type] == :key_down
+      character = ev[:character] || 0
+      if character == 10 || character == 13  # Enter
+        if @file_selector_filename.length > 0
+          path = if @file_selector_dir == "/"
+                   "/#{@file_selector_filename}"
+                 else
+                   "#{@file_selector_dir}/#{@file_selector_filename}"
+                 end
+          close_file_selector(to_file_path(path))
+        end
+      elsif character == 8  # Backspace
+        if @file_selector_filename.length > 0
+          @file_selector_filename = @file_selector_filename[0...-1]
+          draw_foreground
+        end
+      elsif character >= 32 && character <= 126  # Printable
+        @file_selector_filename += character.chr
+        draw_foreground
+      end
+    end
   end
 
   def handle_click(x, y)
+    # File selector has priority
+    if @file_selector_open
+      if hit_file_selector?(x, y)
+        handle_file_selector_click(x, y)
+        return
+      end
+      close_file_selector(nil)
+      return
+    end
+
     # Launcher window has priority when open
     if @launcher_open
       if hit_launcher?(x, y)
@@ -542,14 +838,6 @@ class SystemDesktopApp < FmrbApp
   end
 
   def handle_launcher_click(x, y)
-    # Close button
-    close_x = @launcher_x + LAUNCHER_W - 12
-    close_y = @launcher_y + 3
-    if x >= close_x && x < close_x + 8 && y >= close_y && y < close_y + 8
-      close_launcher
-      return
-    end
-
     # Icon hit test
     content_y = @launcher_y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
     icon_idx = find_icon_at(x, y, content_y)
@@ -589,6 +877,19 @@ class SystemDesktopApp < FmrbApp
       end
     end
     -1
+  end
+
+  def on_suspend
+    # Hide foreground canvas (clear to transparent)
+    @gfx.clear(0x01)
+    @gfx.present
+    Log.info("Desktop suspended")
+  end
+
+  def on_resume
+    draw_foreground
+    draw_background
+    Log.info("Desktop resumed")
   end
 
   def on_destroy

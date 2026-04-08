@@ -204,6 +204,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     const char* toml_screen_name = NULL;
     const char* toml_window_mode = NULL;
     bool headless = false;
+    bool fullscreen = false;
     int window_width = 100;
     int window_height = 100;
     int window_pos_x = 50;
@@ -226,16 +227,26 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         if (toml_window_mode) {
             if (strcmp(toml_window_mode, "background") == 0) {
                 headless = true;
+            } else if (strcmp(toml_window_mode, "fullscreen") == 0) {
+                fullscreen = true;
             } else {
                 headless = false;
             }
         }
 
         // Parse window dimensions and position
-        window_width = (int)fmrb_toml_get_int(config, "default_window_width", 100);
-        window_height = (int)fmrb_toml_get_int(config, "default_window_height", 100);
-        window_pos_x = (int)fmrb_toml_get_int(config, "default_window_pos_x", 50);
-        window_pos_y = (int)fmrb_toml_get_int(config, "default_window_pos_y", 50);
+        if (fullscreen) {
+            const fmrb_system_config_t* sys_config = fmrb_kernel_get_config();
+            window_width = sys_config->display_width;
+            window_height = sys_config->display_height;
+            window_pos_x = 0;
+            window_pos_y = 0;
+        } else {
+            window_width = (int)fmrb_toml_get_int(config, "default_window_width", 100);
+            window_height = (int)fmrb_toml_get_int(config, "default_window_height", 100);
+            window_pos_x = (int)fmrb_toml_get_int(config, "default_window_pos_x", 50);
+            window_pos_y = (int)fmrb_toml_get_int(config, "default_window_pos_y", 50);
+        }
     } else {
         FMRB_LOGW(TAG, "No TOML config found or parse error: %s (%s)", toml_path, errbuf);
     }
@@ -254,6 +265,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .flags = FMRB_USER_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = headless,
+        .fullscreen = fullscreen,
         .window_width = window_width,
         .window_height = window_height,
         .window_pos_x = window_pos_x,

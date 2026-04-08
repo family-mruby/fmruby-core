@@ -28,6 +28,126 @@ class OutputCapturer
   end
 end
 
+# Stdout wrapper that pushes output directly to ShellApp's history
+class ShellStdout
+  def initialize(shell_app)
+    @shell = shell_app
+    @remainder = ""
+  end
+
+  def write(str)
+    @remainder += str.to_s
+    flush_lines
+    str.to_s.size
+  end
+
+  def puts(*args)
+    if args.empty?
+      write("\n")
+    else
+      i = 0
+      while i < args.size
+        str = args[i].to_s
+        write(str)
+        write("\n") unless str.end_with?("\n")
+        i += 1
+      end
+    end
+    nil
+  end
+
+  def print(*args)
+    i = 0
+    while i < args.size
+      write(args[i].to_s)
+      i += 1
+    end
+    nil
+  end
+
+  def flush
+    unless @remainder.empty?
+      @shell.append_output(@remainder)
+      @remainder = ""
+    end
+    self
+  end
+
+  # Return and clear remainder without adding to history (used by ShellStdin#gets)
+  def drain_remainder
+    r = @remainder
+    @remainder = ""
+    r
+  end
+
+  private
+
+  def flush_lines
+    while (idx = @remainder.index("\n"))
+      line = @remainder[0...idx]
+      @shell.append_output(line)
+      @remainder = @remainder[(idx + 1)..-1] || ""
+    end
+  end
+end
+
+# Stdin wrapper that reads from ShellApp's keyboard input buffer
+class ShellStdin
+  def initialize(shell_app)
+    @shell = shell_app
+  end
+
+  def gets
+    # Drain pending partial output (e.g. "Name? " from print) as input prompt prefix
+    prompt_prefix = ""
+    if $stdout.respond_to?(:drain_remainder)
+      prompt_prefix = $stdout.drain_remainder
+    end
+    # Show the prompt prefix immediately
+    @shell.redraw_script_input(prompt_prefix) unless prompt_prefix.empty?
+
+    line_buf = ""
+    loop do
+      ch = @shell.getch
+      return nil if ch.nil?
+
+      case ch
+      when 10, 13  # Enter
+        @shell.append_output(prompt_prefix + line_buf)
+        return line_buf + "\n"
+      when 8  # Backspace
+        if line_buf.length > 0
+          line_buf = line_buf[0...-1]
+          @shell.redraw_script_input(prompt_prefix + line_buf)
+        end
+      when 32..126
+        line_buf += ch.chr
+        @shell.redraw_script_input(prompt_prefix + line_buf)
+      end
+    end
+  end
+
+  def getch
+    ch = @shell.getch
+    return nil if ch.nil?
+    ch.chr
+  end
+
+  def read_nonblock(maxlen)
+    result = ""
+    while !@shell.input_buffer_empty? && result.length < maxlen
+      ch = @shell.getch_nonblock
+      break if ch.nil?
+      result += ch.chr
+    end
+    result.empty? ? nil : result
+  end
+
+  def flush
+    self
+  end
+end
+
 class ShellApp < FmrbApp
   # Gradient colors for logo (red -> magenta in RGB332)
   LOGO_GRAD_COLORS = [0xE0, 0xE1, 0xE2, 0xE3, 0xE3]
@@ -44,7 +164,7 @@ class ShellApp < FmrbApp
     @cursor_y = 0
     @char_width = 6
     @char_height = 8
-    @current_dir = "/"  # Virtual working directory (user-visible)
+    @current_dir = "/home"  # Virtual working directory (user-visible)
 
     # Filesystem root mapping: Dir.open uses OS paths, user sees "/"
     # Linux: "flash" (relative), ESP32: "/flash" (LittleFS mount)
@@ -60,6 +180,11 @@ class ShellApp < FmrbApp
 
     @bg_col = 0x00
     @ch_col = 0xFF
+
+    @fg_sandbox = nil   # Foreground sandbox (set during run_foreground)
+    @script_input_line = nil  # Current script input text (shown during fg execution)
+    @ctrl_pressed = false  # Track Ctrl key state for Ctrl-C detection
+    @jobs = []          # Background job list
 
   end
 
@@ -189,6 +314,35 @@ class ShellApp < FmrbApp
     !@input_buffer.empty?
   end
 
+  def input_buffer_empty?
+    @input_buffer.empty?
+  end
+
+  def getch_nonblock
+    @input_buffer.shift
+  end
+
+  def append_output(line)
+    @history << line
+    max_lines = @user_area_height / @char_height
+    while @history.length >= max_lines - 1
+      @history.shift
+    end
+    @need_full_redraw = true
+  end
+
+  def redraw_script_input(partial_line)
+    @script_input_line = partial_line
+    x = @user_area_x0 + 2
+    y = @user_area_y0 + 2 + (@history.length * @char_height)
+    @gfx.fill_rect(x, y, @user_area_width - 4, @char_height, @bg_col)
+    @gfx.draw_text(x, y, partial_line, @ch_col)
+    cursor_x = x + (partial_line.length * @char_width)
+    cursor_y = y + @char_height - 1
+    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
+    @gfx.present
+  end
+
   def spawn_app(app_name)
     app_name = "/app/sample/mruby.app.rb" if app_name == "mruby.app"
     app_name = "/app/sample/lua.app.lua" if app_name == "lua.app"
@@ -232,12 +386,11 @@ class ShellApp < FmrbApp
     when "irb"
       cmd_irb
     when "run"
-      if args.empty?
-        @history << "Error: run requires an app path"
-        return
-      end
-      app_path = args.join(' ')
-      spawn_app(app_path)
+      cmd_run(args)
+    when "jobs"
+      cmd_jobs
+    when "kill"
+      cmd_kill(args)
     when "help"
       @history << "Available commands:"
       @history << "  cd [path] - Change directory"
@@ -245,7 +398,10 @@ class ShellApp < FmrbApp
       @history << "  ls [path] - List directory contents"
       @history << "  cat <file> - Display file contents"
       @history << "  irb - Interactive Ruby"
-      @history << "  run <app_path> - Launch an application"
+      @history << "  run <script> [&] - Run script"
+      @history << "  run <script> > <file> - Redirect output"
+      @history << "  jobs - List background jobs"
+      @history << "  kill <id> - Kill background job"
       @history << "  help - Show this help message"
     else
       @history << "Unknown command: #{cmd}"
@@ -400,6 +556,284 @@ class ShellApp < FmrbApp
     end
   end
 
+  # --- Run command ---
+
+  def cmd_run(args)
+    if args.empty?
+      @history << "Usage: run <script> [args] [&]"
+      return
+    end
+
+    background = (args.last == "&")
+    args.pop if background
+
+    script_args, redirect_in, redirect_out, redirect_mode = parse_redirects(args)
+    if script_args.empty?
+      @history << "Usage: run <script> [args] [&]"
+      return
+    end
+
+    script_path = resolve_script_path(script_args.shift)
+    mode = detect_run_mode(script_path)
+
+    case mode
+    when :spawn
+      spawn_app(script_path)
+    when :sandbox
+      if background
+        run_background(script_path, script_args, redirect_out, redirect_mode)
+      else
+        run_foreground(script_path, script_args, redirect_in, redirect_out, redirect_mode)
+      end
+    end
+  end
+
+  def detect_run_mode(script_path)
+    # Build TOML path by replacing last extension (no regex in mruby)
+    parts = script_path.split(".")
+    if parts.size > 1
+      parts[-1] = "toml"
+      toml_path = parts.join(".")
+    else
+      toml_path = script_path + ".toml"
+    end
+    file_path = to_file_path(toml_path)
+    begin
+      f = File.open(file_path, "r")
+      f.close
+      return :spawn
+    rescue
+      return :sandbox
+    end
+  end
+
+  def resolve_script_path(path)
+    if path.start_with?("/")
+      path
+    else
+      if @current_dir == "/"
+        "/" + path
+      else
+        @current_dir + "/" + path
+      end
+    end
+  end
+
+  def parse_redirects(args)
+    script_args = []
+    redirect_in = nil
+    redirect_out = nil
+    redirect_mode = nil
+
+    i = 0
+    while i < args.length
+      case args[i]
+      when "<"
+        redirect_in = args[i + 1]
+        i += 2
+      when ">"
+        redirect_out = args[i + 1]
+        redirect_mode = :write
+        i += 2
+      when ">>"
+        redirect_out = args[i + 1]
+        redirect_mode = :append
+        i += 2
+      else
+        script_args << args[i]
+        i += 1
+      end
+    end
+
+    [script_args, redirect_in, redirect_out, redirect_mode]
+  end
+
+  def run_foreground(script_path, script_args, redirect_in, redirect_out, redirect_mode)
+    file_path = to_file_path(script_path)
+
+    # Read script file first
+    Log.info("run_foreground: loading #{file_path}")
+    script_code = nil
+    begin
+      f = File.open(file_path, "r")
+      script_code = f.read
+      f.close
+    rescue => e
+      append_output("Error: #{e.message}")
+      return
+    end
+
+    if script_code.nil? || script_code.empty?
+      append_output("Error: empty script: #{script_path}")
+      return
+    end
+
+    Log.info("run_foreground: script loaded (#{script_code.size} bytes)")
+
+    # Setup stdout
+    if redirect_out
+      out_path = to_file_path(resolve_script_path(redirect_out))
+      mode = redirect_mode == :append ? "a" : "w"
+      stdout_obj = File.open(out_path, mode)
+    else
+      stdout_obj = ShellStdout.new(self)
+    end
+
+    # Setup stdin
+    if redirect_in
+      in_path = to_file_path(resolve_script_path(redirect_in))
+      stdin_obj = File.open(in_path, "r")
+    else
+      stdin_obj = ShellStdin.new(self)
+    end
+
+    old_stdout = $stdout
+    old_stdin = $stdin
+
+    begin
+      $stdout = stdout_obj
+      $stdin = stdin_obj
+      @fg_sandbox = Sandbox.new("run")
+      Log.info("run_foreground: compiling script")
+      unless @fg_sandbox.compile(script_code)
+        $stdout = old_stdout
+        append_output("Error: compile failed: #{script_path}")
+        return
+      end
+      Log.info("run_foreground: executing")
+      @fg_sandbox.execute
+      @fg_sandbox.wait(timeout: nil)
+      Log.info("run_foreground: finished (state=#{@fg_sandbox.state})")
+      if error = @fg_sandbox.error
+        $stdout = old_stdout
+        append_output("Error: #{error.message}")
+      end
+    rescue => e
+      $stdout = old_stdout
+      append_output("Error: #{e.message}")
+    ensure
+      stdout_obj.flush if stdout_obj.respond_to?(:flush)
+      stdout_obj.close if redirect_out && stdout_obj.respond_to?(:close)
+      stdin_obj.close if redirect_in && stdin_obj.respond_to?(:close)
+      $stdout = old_stdout
+      $stdin = old_stdin
+      @fg_sandbox = nil
+      @script_input_line = nil
+      @need_full_redraw = true
+    end
+  end
+
+  def run_background(script_path, script_args, redirect_out, redirect_mode)
+    file_path = to_file_path(script_path)
+
+    # Read script file first (before spawning task)
+    script_code = nil
+    begin
+      f = File.open(file_path, "r")
+      script_code = f.read
+      f.close
+    rescue => e
+      append_output("Error: #{e.message}")
+      return
+    end
+
+    if script_code.nil? || script_code.empty?
+      append_output("Error: empty script: #{script_path}")
+      return
+    end
+
+    job_id = @jobs.length
+
+    job_entry = {
+      :name => script_path,
+      :state => :running,
+      :sandbox => nil,
+      :task => nil
+    }
+    @jobs << job_entry
+
+    app_self = self
+    code = script_code
+    rout = redirect_out
+    rmode = redirect_mode
+
+    job_entry[:task] = Task.new(name: "bg_#{job_id}", priority: 50) do
+      if rout
+        out_path = app_self.to_file_path(app_self.resolve_script_path(rout))
+        mode = rmode == :append ? "a" : "w"
+        stdout_obj = File.open(out_path, mode)
+      else
+        stdout_obj = ShellStdout.new(app_self)
+      end
+
+      old_stdout = $stdout
+      old_stdin = $stdin
+      begin
+        $stdout = stdout_obj
+        $stdin = nil
+        sandbox = Sandbox.new("bg")
+        job_entry[:sandbox] = sandbox
+        if sandbox.compile(code)
+          sandbox.execute
+          sandbox.wait(timeout: nil)
+        else
+          app_self.append_output("[#{job_id}] Error: compile failed")
+        end
+        if error = sandbox.error
+          app_self.append_output("[#{job_id}] Error: #{error.message}")
+        end
+      rescue => e
+        app_self.append_output("[#{job_id}] Error: #{e.message}")
+      ensure
+        stdout_obj.flush if stdout_obj.respond_to?(:flush)
+        stdout_obj.close if rout && stdout_obj.respond_to?(:close)
+        $stdout = old_stdout
+        $stdin = old_stdin
+        job_entry[:state] = :done
+        app_self.append_output("[#{job_id}] Done: #{job_entry[:name]}")
+      end
+    end
+
+    @history << "[#{job_id}] Running: #{script_path}"
+  end
+
+  # --- Job management ---
+
+  def cmd_jobs
+    if @jobs.empty?
+      @history << "No background jobs"
+      return
+    end
+    i = 0
+    while i < @jobs.size
+      job = @jobs[i]
+      @history << "[#{i}] #{job[:state]}  #{job[:name]}"
+      i += 1
+    end
+  end
+
+  def cmd_kill(args)
+    if args.empty?
+      @history << "Usage: kill <job_id>"
+      return
+    end
+    job_id = args[0].to_i
+    if job_id < @jobs.size
+      job = @jobs[job_id]
+      if job[:state] == :running && job[:sandbox]
+        job[:sandbox].stop
+        job[:state] = :killed
+        @history << "[#{job_id}] Killed: #{job[:name]}"
+      else
+        @history << "[#{job_id}] Not running"
+      end
+    else
+      @history << "kill: no such job: #{job_id}"
+    end
+  end
+
+  # --- IRB ---
+
   def cmd_irb
     @history << "IRB mode - Type 'exit' or 'quit' to return"
     @need_full_redraw = true
@@ -544,17 +978,23 @@ class ShellApp < FmrbApp
       end
     end
 
-    # Draw current input line
+    # Draw input line at bottom of history
     x = @user_area_x0 + 2
     y = @user_area_y0 + 2 + (@history.length * @char_height)
-    full_line = @prompt + @current_line
-    #Log.debug("draw_prompt: drawing '#{full_line}' (length=#{full_line.length}) at (#{x}, #{y})")
-    @gfx.draw_text(x, y, full_line, @ch_col)
-
-    # Draw cursor (underline at end of input)
-    cursor_x = x + (full_line.length * @char_width)
-    cursor_y = y + @char_height - 1
-    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
+    if @fg_sandbox && @script_input_line
+      # During foreground execution: redraw script input (e.g. "Name? user_input")
+      @gfx.draw_text(x, y, @script_input_line, @ch_col)
+      cursor_x = x + (@script_input_line.length * @char_width)
+      cursor_y = y + @char_height - 1
+      @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
+    elsif !@fg_sandbox
+      # Normal shell prompt
+      full_line = @prompt + @current_line
+      @gfx.draw_text(x, y, full_line, @ch_col)
+      cursor_x = x + (full_line.length * @char_width)
+      cursor_y = y + @char_height - 1
+      @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
+    end
   end
 
   def redraw_screen
@@ -591,13 +1031,32 @@ class ShellApp < FmrbApp
     super(ev)
 
     if ev[:type] == :key_down
-      # Add character to input buffer for getch
       character = ev[:character] || 0
+      keycode = ev[:keycode] || 0
+      # Track Ctrl key state (224=LCtrl, 228=RCtrl)
+      if keycode == 224 || keycode == 228
+        @ctrl_pressed = true
+        return
+      end
+      # Detect Ctrl-C
+      if @ctrl_pressed && (keycode == 99 || character == 99)  # 'c'
+        @ctrl_pressed = false
+        if @fg_sandbox
+          Log.info("Ctrl-C: stopping foreground sandbox")
+          @fg_sandbox.stop
+          append_output("^C")
+        end
+        return
+      end
+      @ctrl_pressed = false
       if character > 0
         @input_buffer << character
       end
-
-      # Don't call handle_key_input - let shell_task handle it via getch
+    elsif ev[:type] == :key_up
+      keycode = ev[:keycode] || 0
+      if keycode == 224 || keycode == 228
+        @ctrl_pressed = false
+      end
     end
   end
 
@@ -662,21 +1121,26 @@ class ShellApp < FmrbApp
   def handle_enter
     Log.info("Command: #{@current_line}")
 
-    # Add current line to history
-    @history << (@prompt + @current_line)
+    # Add current line to history and clear input before executing
+    # (so the old input line doesn't remain on screen during execution)
+    entered_line = @current_line
+    @history << (@prompt + entered_line)
+    @current_line = ""
 
     # Execute command or IRB eval
-    if @irb_mode
-      irb_eval(@current_line)
-    else
-      cmd, args = parse_command(@current_line)
-      if cmd
-        execute_command(cmd, args)
+    begin
+      if @irb_mode
+        irb_eval(entered_line)
+      else
+        cmd, args = parse_command(entered_line)
+        if cmd
+          execute_command(cmd, args)
+        end
       end
+    rescue => e
+      Log.error("Command error: #{e.message}")
+      @history << "Error: #{e.message}"
     end
-
-    # Clear current line
-    @current_line = ""
 
     # Check if we need to scroll
     max_lines = @user_area_height / @char_height

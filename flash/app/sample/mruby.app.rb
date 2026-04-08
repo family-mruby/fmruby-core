@@ -128,7 +128,7 @@ class BouncingBallApp < FmrbApp
     @counter += 1
 
     # Return sleep time in milliseconds (33ms = ~30fps)
-    33
+    200
   end
 
   # def on_event(ev)

@@ -134,6 +134,10 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@name"),
                mrb_str_new_cstr(mrb, ctx->app_name));
 
+    // Set @fullscreen flag
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@fullscreen"),
+               ctx->fullscreen ? mrb_true_value() : mrb_false_value());
+
     // Set @platform symbol (:linux or :esp32)
 #ifdef CONFIG_IDF_TARGET_LINUX
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@platform"),
@@ -492,6 +496,13 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                 if (mrb_respond_to(mrb, self, on_resize_sym)) {
                                     mrb_funcall(mrb, self, "on_resize", 2, width_val, height_val);
                                 }
+                            }
+                        } else if (strcmp(cmd, "suspend") == 0 || strcmp(cmd, "resume") == 0 ||
+                                   strcmp(cmd, "stop") == 0 || strcmp(cmd, "clear_and_stop") == 0) {
+                            // System suspend/resume: call _handle_system_control
+                            mrb_sym sys_ctrl_sym = mrb_intern_lit(mrb, "_handle_system_control");
+                            if (mrb_respond_to(mrb, self, sys_ctrl_sym)) {
+                                mrb_funcall(mrb, self, "_handle_system_control", 1, data_hash);
                             }
                         } else {
                             // Other control commands: call on_control if exists

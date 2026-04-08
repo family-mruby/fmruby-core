@@ -243,6 +243,8 @@ static mrb_value mrb_kernel_get_window_list(mrb_state *mrb, mrb_value self)
                      mrb_fixnum_value(windows[i].height));
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "z_order")),
                      mrb_fixnum_value(windows[i].z_order));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "fullscreen")),
+                     mrb_bool_value(windows[i].fullscreen));
 
         mrb_ary_push(mrb, array, hash);
     }

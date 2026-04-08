@@ -41,6 +41,10 @@ class FmrbKernelImpl < FmrbKernel
     @desktop_overlay_rect = { x: 0, y: 0, w: 0, h: 0 }
     @desktop_pid = nil
 
+    # Fullscreen mode state
+    @fullscreen_pid = nil
+    @suspended_pids = []
+
     # Periodic cleanup tracking
     @tick_count = 0
     @last_cleanup_tick = 0
@@ -102,6 +106,10 @@ class FmrbKernelImpl < FmrbKernel
         # Mark window list as dirty (new window created)
         mark_window_list_dirty
 
+        # Check if fullscreen app after a short delay for init to complete
+        # Schedule check in tick_process instead of immediate
+        @pending_fullscreen_check = new_pid
+
         # Set HID target to the newly spawned app
         _set_hid_target(new_pid)
         @hid_target_pid = new_pid  # Track HID target
@@ -112,6 +120,36 @@ class FmrbKernelImpl < FmrbKernel
     when "exit"
       Log.info("App exit notification from pid=#{pid}")
       cleanup_terminated_app(pid)
+    when "file_select"
+      # Forward file select request to desktop
+      if @desktop_pid
+        @file_select_requester = pid
+        @file_select_prev_hid_target = @hid_target_pid
+        # Redirect keyboard input to desktop for filename entry
+        _set_hid_target(@desktop_pid)
+        @hid_target_pid = @desktop_pid
+        fwd = { "cmd" => "file_select", "mode" => data["mode"] || "open", "requester_pid" => pid }
+        binary = MessagePack.pack(fwd)
+        _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
+        Log.info("File select request from pid=#{pid} forwarded to desktop, HID -> desktop")
+      end
+    when "file_select_result"
+      # Forward result back to requester app
+      target = data["target_pid"] || @file_select_requester
+      if target
+        result = { "cmd" => "file_selected", "path" => data["path"], "mode" => data["mode"] }
+        binary = MessagePack.pack(result)
+        _send_raw_message(target, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
+        Log.info("File select result: path=#{data["path"]} -> pid=#{target}")
+        # Restore HID target
+        if @file_select_prev_hid_target
+          _set_hid_target(@file_select_prev_hid_target)
+          @hid_target_pid = @file_select_prev_hid_target
+          Log.info("HID target restored to pid=#{@file_select_prev_hid_target}")
+        end
+        @file_select_requester = nil
+        @file_select_prev_hid_target = nil
+      end
     when "overlay_state"
       @desktop_overlay_active = data["active"] || false
       @desktop_overlay_rect = {
@@ -119,6 +157,11 @@ class FmrbKernelImpl < FmrbKernel
         w: data["rect_w"] || 0, h: data["rect_h"] || 0
       }
       Log.info("Desktop overlay: active=#{@desktop_overlay_active}")
+    when "system_interrupt"
+      Log.info("System interrupt (Ctrl+Q)")
+      if @fullscreen_pid
+        exit_fullscreen
+      end
     when "kill"
       Log.info("Kill request from pid=#{pid} (not implemented)")
       # TODO: Implement kill command to forcefully terminate app
@@ -193,8 +236,14 @@ class FmrbKernelImpl < FmrbKernel
         target_window = find_window_at(x, y)
 
         if target_window.nil?
-          Log.info("No window at (#{x},#{y})")
-          return
+          # Fallback to desktop (click on empty area)
+          if @desktop_pid
+            target_window = find_window_by_pid(@desktop_pid)
+          end
+          if target_window.nil?
+            Log.info("No window at (#{x},#{y})")
+            return
+          end
         end
 
         target_pid = target_window[:pid]
@@ -448,8 +497,87 @@ class FmrbKernelImpl < FmrbKernel
     data
   end
 
+  # ---- Fullscreen mode management ----
+
+  def is_fullscreen_app?(pid)
+    win = find_window_by_pid(pid)
+    win && win[:fullscreen] == true
+  end
+
+  def enter_fullscreen(pid)
+    Log.info("Entering fullscreen mode: PID #{pid}")
+    @fullscreen_pid = pid
+    @suspended_pids = []
+
+    # Suspend all other user apps (not kernel, not the fullscreen app itself)
+    update_window_list
+    @window_list.each do |win|
+      next if win[:pid] == pid
+      next if win[:app_name] == "system_desktop"  # Desktop suspends differently
+      next if win[:pid] == 0  # kernel
+
+      suspend_app(win[:pid])
+      @suspended_pids << win[:pid]
+    end
+
+    # Notify desktop to stop drawing
+    if @desktop_pid
+      suspend_app(@desktop_pid)
+      @suspended_pids << @desktop_pid
+    end
+  end
+
+  def exit_fullscreen
+    return unless @fullscreen_pid
+    Log.info("Exiting fullscreen mode: stopping PID #{@fullscreen_pid}")
+
+    # Stop the fullscreen app
+    fs_pid = @fullscreen_pid
+    @fullscreen_pid = nil
+
+    # Send clear + stop to fullscreen app (clear canvas before stopping)
+    clear_data = MessagePack.pack({ "cmd" => "clear_and_stop" })
+    _send_raw_message(fs_pid, FmrbConst::MSG_TYPE_APP_CONTROL, clear_data)
+
+    # Resume all suspended apps
+    @suspended_pids.each do |spid|
+      resume_app(spid)
+    end
+    @suspended_pids = []
+
+    # Restore HID target to desktop
+    if @desktop_pid
+      _set_hid_target(@desktop_pid)
+      @hid_target_pid = @desktop_pid
+    end
+
+    mark_window_list_dirty
+  end
+
+  def suspend_app(pid)
+    data = MessagePack.pack({ "cmd" => "suspend" })
+    _send_raw_message(pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+    Log.info("Suspended app PID #{pid}")
+  end
+
+  def resume_app(pid)
+    data = MessagePack.pack({ "cmd" => "resume" })
+    _send_raw_message(pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+    Log.info("Resumed app PID #{pid}")
+  end
+
   def cleanup_terminated_app(pid)
     Log.info("Cleaning up terminated app: pid=#{pid}")
+
+    # If fullscreen app terminated, resume all suspended apps
+    if @fullscreen_pid == pid
+      Log.info("Fullscreen app terminated, resuming suspended apps")
+      @fullscreen_pid = nil
+      @suspended_pids.each do |spid|
+        resume_app(spid)
+      end
+      @suspended_pids = []
+    end
 
     # Reset HID target if this was the target app
     if @hid_target_pid == pid
@@ -512,6 +640,16 @@ class FmrbKernelImpl < FmrbKernel
   def tick_process
     # Periodic kernel tasks
     @tick_count += 1
+
+    # Deferred fullscreen check (after app init completes)
+    if @pending_fullscreen_check
+      pid = @pending_fullscreen_check
+      @pending_fullscreen_check = nil
+      update_window_list(true)
+      if is_fullscreen_app?(pid)
+        enter_fullscreen(pid)
+      end
+    end
 
     # Periodic cleanup check for terminated apps
     if @tick_count - @last_cleanup_tick >= @cleanup_interval

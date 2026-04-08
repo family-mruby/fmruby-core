@@ -711,6 +711,29 @@ static void host_task_process_host_message(const host_message_t *msg)
     switch (msg->type) {
         case HOST_MSG_HID_KEY_DOWN:
         case HOST_MSG_HID_KEY_UP: {
+            // Global hotkey: Ctrl+Q (intercept before routing)
+            if (msg->type == HOST_MSG_HID_KEY_DOWN) {
+                uint8_t mod = (uint8_t)(msg->data.key.modifier & 0xFF);
+                uint8_t sc = (uint8_t)(msg->data.key.scancode & 0xFF);
+                // Check for Ctrl key: both FMRB format (0x04/0x08) and SDL2 format (0x40/0x80)
+                bool has_ctrl = (mod & (FMRB_KEYMAP_MOD_LCTRL | FMRB_KEYMAP_MOD_RCTRL | 0x40 | 0x80)) != 0;
+                if (has_ctrl && sc == 0x14) {  // Q scancode
+                    FMRB_LOGI(TAG, "Ctrl+Q detected - sending system interrupt");
+                    // Send system interrupt to kernel (PID 0)
+                    fmrb_msg_t sys_msg = {
+                        .type = FMRB_MSG_TYPE_APP_CONTROL,
+                        .src_pid = PROC_ID_HOST,
+                        .size = 0
+                    };
+                    // Pack minimal msgpack: {"cmd": "system_interrupt"}
+                    const char *payload = "\x81\xa3""cmd\xb0""system_interrupt";
+                    sys_msg.size = 22;
+                    memcpy(sys_msg.data, payload, sys_msg.size);
+                    fmrb_msg_send(0, &sys_msg, 1000);  // PID 0 = kernel
+                    break;  // Don't forward to app
+                }
+            }
+
             // Get routing table
             fmrb_hid_routing_t routing;
             if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) {

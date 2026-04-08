@@ -16,6 +16,15 @@ class EditorApp < FmrbApp
   CHAR_H = 8
   TAB_SIZE = 2
 
+  # File dropdown
+  DROPDOWN_BG = 0xFF
+  DROPDOWN_TEXT = 0x00
+  DROPDOWN_SEL_BG = 0xC5
+  DROPDOWN_SEL_TEXT = 0xFF
+  DROPDOWN_ITEMS = ["Open", "Save", "Save as"]
+  DROPDOWN_W = 54
+  DROPDOWN_ITEM_H = 10
+
   def initialize
     super()
     @lines = [""]       # Document lines
@@ -26,6 +35,9 @@ class EditorApp < FmrbApp
     @input_buffer = []
     @frame_ms = 33
     @modified = false
+    @current_file = nil
+    @file_dropdown_open = false
+    @pending_file_op = nil  # :open or :save
   end
 
   def on_create
@@ -92,8 +104,9 @@ class EditorApp < FmrbApp
     col_num = @cx + 1
     total = @lines.length
 
-    status = " Ln #{line_num}, Col #{col_num}  Lines: #{total}"
-    status += "  [Modified]" if @modified
+    fname = @current_file ? @current_file.split("/").last : "[New]"
+    status = " #{fname}  Ln #{line_num}, Col #{col_num}"
+    status += " *" if @modified
 
     @gfx.draw_text(@user_area_x0 + 2, y, status, STATUS_TEXT, STATUS_BG)
   end
@@ -277,10 +290,136 @@ class EditorApp < FmrbApp
     @cx = line.length if @cx > line.length
   end
 
+  # ---- File dropdown ----
+
+  def draw_file_dropdown
+    return unless @file_dropdown_open
+
+    x = @user_area_x0 + 2
+    y = @menu_y + CHAR_H
+    h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
+
+    @gfx.fill_rect(x, y, DROPDOWN_W, h, DROPDOWN_BG)
+    @gfx.draw_rect(x, y, DROPDOWN_W, h, 0x60)
+
+    DROPDOWN_ITEMS.each_with_index do |item, i|
+      item_y = y + 1 + i * DROPDOWN_ITEM_H
+      @gfx.draw_text(x + 4, item_y + 1, item, DROPDOWN_TEXT, DROPDOWN_BG)
+    end
+  end
+
+  def open_file_dropdown
+    @file_dropdown_open = true
+    redraw_all
+    draw_file_dropdown
+    @gfx.present
+  end
+
+  def close_file_dropdown
+    @file_dropdown_open = false
+    @need_redraw = true
+  end
+
+  def handle_file_dropdown_click(x, y)
+    dx = @user_area_x0 + 2
+    dy = @menu_y + CHAR_H
+
+    if x >= dx && x < dx + DROPDOWN_W && y >= dy
+      idx = (y - dy - 1) / DROPDOWN_ITEM_H
+      close_file_dropdown
+
+      case idx
+      when 0  # Open
+        @pending_file_op = :open
+        request_file_select("open")
+      when 1  # Save
+        save_file
+      when 2  # Save as
+        @pending_file_op = :save
+        request_file_select("save")
+      end
+      return
+    end
+
+    close_file_dropdown
+  end
+
+  # ---- File operations ----
+
+  def load_file(path)
+    begin
+      file = File.open(path, "r")
+      content = file.read
+      file.close
+
+      @lines = content.split("\n")
+      @lines = [""] if @lines.empty?
+      @cx = 0
+      @cy = 0
+      @scroll_y = 0
+      @modified = false
+      @current_file = path
+      @need_redraw = true
+      Log.info("Loaded file: #{path} (#{@lines.length} lines)")
+    rescue => e
+      Log.error("Failed to load file: #{e.message}")
+    end
+  end
+
+  def save_file
+    unless @current_file
+      Log.warn("No file to save (use Save as)")
+      return
+    end
+
+    begin
+      file = File.open(@current_file, "w")
+      file.write(@lines.join("\n"))
+      file.close
+      @modified = false
+      @need_redraw = true
+      Log.info("Saved file: #{@current_file}")
+    rescue => e
+      Log.error("Failed to save file: #{e.message}")
+    end
+  end
+
   # ---- Events ----
+
+  def on_control(msg)
+    if msg["cmd"] == "file_selected" && msg["path"]
+      if msg["mode"] == "save" || @pending_file_op == :save
+        save_file_as(msg["path"])
+      else
+        load_file(msg["path"])
+      end
+      @pending_file_op = nil
+    end
+  end
+
+  def save_file_as(path)
+    @current_file = path
+    save_file
+  end
 
   def on_event(ev)
     super(ev)
+
+    if ev[:type] == :mouse_up
+      # File dropdown click handling
+      if @file_dropdown_open
+        handle_file_dropdown_click(ev[:x], ev[:y])
+        return
+      end
+
+      # Menu bar click
+      if ev[:y] >= @menu_y && ev[:y] < @menu_y + CHAR_H
+        if ev[:x] >= @user_area_x0 + 2 && ev[:x] < @user_area_x0 + 2 + 4 * CHAR_W
+          open_file_dropdown
+          return
+        end
+      end
+    end
 
     if ev[:type] == :key_down
       keycode = ev[:keycode] || 0
