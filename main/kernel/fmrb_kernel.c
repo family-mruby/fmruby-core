@@ -19,6 +19,7 @@
 #include "fmrb_toml.h"
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_link_cobs.h"
+#include "picoruby_fmrb_const.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
 extern const uint8_t fmrb_kernel_irep[];
@@ -111,6 +112,23 @@ static bool read_system_config(void)
     FMRB_LOGI(TAG, "Display Mode: %d", g_system_config.display_mode);
     FMRB_LOGI(TAG, "Debug Mode: %s", g_system_config.debug_mode ? "enabled" : "disabled");
     FMRB_LOGI(TAG, "Mouse Scale: x=%.2f, y=%.2f", g_system_config.mouse_scale_x, g_system_config.mouse_scale_y);
+
+    // Read [theme] section
+    toml_table_t *theme_tab = toml_table_in(conf, "theme");
+    if (theme_tab) {
+        fmrb_theme_t theme = *fmrb_theme_get();  // Start from defaults
+        theme.desktop_bg  = (uint8_t)fmrb_toml_get_int(theme_tab, "desktop_bg",  theme.desktop_bg);
+        theme.menu_bg     = (uint8_t)fmrb_toml_get_int(theme_tab, "menu_bg",     theme.menu_bg);
+        theme.window_bg   = (uint8_t)fmrb_toml_get_int(theme_tab, "window_bg",   theme.window_bg);
+        theme.text        = (uint8_t)fmrb_toml_get_int(theme_tab, "text",        theme.text);
+        theme.text_light  = (uint8_t)fmrb_toml_get_int(theme_tab, "text_light",  theme.text_light);
+        theme.highlight   = (uint8_t)fmrb_toml_get_int(theme_tab, "highlight",   theme.highlight);
+        theme.border      = (uint8_t)fmrb_toml_get_int(theme_tab, "border",      theme.border);
+        theme.button      = (uint8_t)fmrb_toml_get_int(theme_tab, "button",      theme.button);
+        theme.dir_color   = (uint8_t)fmrb_toml_get_int(theme_tab, "dir_color",   theme.dir_color);
+        fmrb_theme_set(&theme);
+        FMRB_LOGI(TAG, "Theme loaded from config");
+    }
 
     // Dump full configuration for debugging
     FMRB_LOGI(TAG, "Full configuration:");

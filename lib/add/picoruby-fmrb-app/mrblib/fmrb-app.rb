@@ -57,6 +57,33 @@ class FmrbApp
     @gfx.draw_rect(0, 0, @window_width, @window_height, 0x60)
   end
 
+  # Scroll bar constants and helpers
+  SCROLLBAR_W = 8
+
+  # Draw a vertical scroll bar
+  # x, y: scroll area top-left (in window coords)
+  # w, h: scroll area size
+  # scroll: current scroll position (0-based)
+  # total: total item count
+  # visible: number of visible items
+  def draw_scrollbar(x, y, w, h, scroll, total, visible)
+    return if total <= visible
+    bar_x = x + w - SCROLLBAR_W
+    thumb_h = [h * visible / total, 8].max
+    max_scroll = total - visible
+    thumb_y = y + (max_scroll > 0 ? (h - thumb_h) * scroll / max_scroll : 0)
+    @gfx.fill_rect(bar_x, thumb_y, SCROLLBAR_W, thumb_h, FmrbConst::THEME_BORDER)
+  end
+
+  # Hit test for scroll bar click
+  # Returns :up, :down, or nil
+  def scrollbar_hit(x, y, w, h, click_x, click_y)
+    bar_x = x + w - SCROLLBAR_W - 2
+    return nil unless click_x >= bar_x && click_y >= y && click_y < y + h
+    mid = y + h / 2
+    click_y < mid ? :up : :down
+  end
+
   # Lifecycle methods (override in subclass)
 
   def on_create

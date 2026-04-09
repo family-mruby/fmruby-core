@@ -2,12 +2,31 @@
 
 // ESP-IDF includes (available on both ESP32 and Linux simulation)
 #include "esp_log.h"
+#include "fmrb_log_buffer.h"
 
-// Re-export ESP log macros with FMRB_ prefix
-#define FMRB_LOGE(tag, format, ...) ESP_LOGE(tag, format, ##__VA_ARGS__)
-#define FMRB_LOGW(tag, format, ...) ESP_LOGW(tag, format, ##__VA_ARGS__)
-#define FMRB_LOGI(tag, format, ...) ESP_LOGI(tag, format, ##__VA_ARGS__)
-#define FMRB_LOGD(tag, format, ...) ESP_LOGD(tag, format, ##__VA_ARGS__)
+// Re-export ESP log macros with FMRB_ prefix + log buffer hook
+#define FMRB_LOGE(tag, format, ...) do { \
+    ESP_LOGE(tag, format, ##__VA_ARGS__); \
+    fmrb_log_buffer_printf(tag, 'E', format, ##__VA_ARGS__); \
+} while(0)
+
+#define FMRB_LOGW(tag, format, ...) do { \
+    ESP_LOGW(tag, format, ##__VA_ARGS__); \
+    fmrb_log_buffer_printf(tag, 'W', format, ##__VA_ARGS__); \
+} while(0)
+
+#define FMRB_LOGI(tag, format, ...) do { \
+    ESP_LOGI(tag, format, ##__VA_ARGS__); \
+    fmrb_log_buffer_printf(tag, 'I', format, ##__VA_ARGS__); \
+} while(0)
+
+#define FMRB_LOGD(tag, format, ...) do { \
+    ESP_LOGD(tag, format, ##__VA_ARGS__); \
+    if (fmrb_log_buffer_level_enabled('D')) { \
+        fmrb_log_buffer_printf(tag, 'D', format, ##__VA_ARGS__); \
+    } \
+} while(0)
+
 #define FMRB_LOGV(tag, format, ...) ESP_LOGV(tag, format, ##__VA_ARGS__)
 
 // Log level constants (matching ESP-IDF)
@@ -23,5 +42,3 @@
 #define fmrb_disable_log()   esp_log_level_set("*", ESP_LOG_NONE)
 #define fmrb_set_log_level_info()   esp_log_level_set("*", ESP_LOG_INFO)
 #define fmrb_set_log_level_debug()   esp_log_level_set("*", ESP_LOG_DEBUG)
-
-

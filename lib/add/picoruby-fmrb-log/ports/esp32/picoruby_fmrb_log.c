@@ -2,6 +2,8 @@
 #include <stdio.h>
 #include <mruby.h>
 #include <mruby/string.h>
+#include <mruby/array.h>
+#include <string.h>
 #include "fmrb_log.h"
 #include "fmrb_app.h"
 
@@ -221,6 +223,72 @@ mrb_log_d(mrb_state *mrb, mrb_value self)
   return mrb_nil_value();
 }
 
+// Log.read_lines(max_lines, read_pos) -> [lines_array, new_read_pos]
+static mrb_value
+mrb_log_read_lines(mrb_state *mrb, mrb_value self)
+{
+  mrb_int max_lines = 20;
+  mrb_int read_pos_val = 0;
+  mrb_get_args(mrb, "|ii", &max_lines, &read_pos_val);
+
+  if (max_lines <= 0) max_lines = 1;
+  if (max_lines > 100) max_lines = 100;
+
+  // Allocate temporary buffer on stack (limit to reasonable size)
+  size_t buf_size = (size_t)max_lines * 256;
+  if (buf_size > 8192) buf_size = 8192;
+  char *buf = (char *)mrb_malloc(mrb, buf_size);
+
+  uint32_t rp = (uint32_t)read_pos_val;
+  int count = fmrb_log_buffer_read_lines(buf, buf_size, (int)max_lines, &rp);
+
+  // Build result array of strings
+  mrb_value lines = mrb_ary_new_capa(mrb, count);
+  char *p = buf;
+  for (int i = 0; i < count; i++) {
+    char *nl = strchr(p, '\n');
+    if (!nl) break;
+    mrb_ary_push(mrb, lines, mrb_str_new(mrb, p, nl - p));
+    p = nl + 1;
+  }
+
+  mrb_free(mrb, buf);
+
+  // Return [lines_array, new_read_pos]
+  mrb_value result = mrb_ary_new_capa(mrb, 2);
+  mrb_ary_push(mrb, result, lines);
+  mrb_ary_push(mrb, result, mrb_fixnum_value((mrb_int)rp));
+  return result;
+}
+
+// Log.write_pos -> Integer
+static mrb_value
+mrb_log_write_pos(mrb_state *mrb, mrb_value self)
+{
+  return mrb_fixnum_value((mrb_int)fmrb_log_buffer_get_write_pos());
+}
+
+// Log.set_buffer_level(level_string) -> nil
+// level_string: "E", "W", "I", "D"
+static mrb_value
+mrb_log_set_buffer_level(mrb_state *mrb, mrb_value self)
+{
+  char *level_str;
+  mrb_get_args(mrb, "z", &level_str);
+  if (level_str && level_str[0]) {
+    fmrb_log_buffer_set_level(level_str[0]);
+  }
+  return mrb_nil_value();
+}
+
+// Log.buffer_level -> String
+static mrb_value
+mrb_log_get_buffer_level(mrb_state *mrb, mrb_value self)
+{
+  char buf[2] = { fmrb_log_buffer_get_level(), '\0' };
+  return mrb_str_new_cstr(mrb, buf);
+}
+
 void
 mrb_fmrb_log_init(mrb_state *mrb)
 {
@@ -243,6 +311,12 @@ mrb_fmrb_log_init(mrb_state *mrb)
   mrb_define_module_function(mrb, log_module, "warn", mrb_log_w, MRB_ARGS_ARG(1, 1));
   mrb_define_module_function(mrb, log_module, "info", mrb_log_i, MRB_ARGS_ARG(1, 1));
   mrb_define_module_function(mrb, log_module, "debug", mrb_log_d, MRB_ARGS_ARG(1, 1));
+
+  // Log buffer methods
+  mrb_define_module_function(mrb, log_module, "read_lines", mrb_log_read_lines, MRB_ARGS_OPT(2));
+  mrb_define_module_function(mrb, log_module, "write_pos", mrb_log_write_pos, MRB_ARGS_NONE());
+  mrb_define_module_function(mrb, log_module, "set_buffer_level", mrb_log_set_buffer_level, MRB_ARGS_REQ(1));
+  mrb_define_module_function(mrb, log_module, "buffer_level", mrb_log_get_buffer_level, MRB_ARGS_NONE());
 
   // Short aliases
   mrb_define_module_function(mrb, log_module, "e", mrb_log_e, MRB_ARGS_ARG(1, 1));

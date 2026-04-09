@@ -1,10 +1,36 @@
 #include <mruby.h>
+#include <string.h>
 
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
 #include "../../include/picoruby_fmrb_const.h"
+
+/* Default theme (can be overridden by system_conf.toml before VMs start) */
+static fmrb_theme_t g_theme = {
+    .desktop_bg  = 0xF6,
+    .menu_bg     = 0xC5,
+    .window_bg   = 0xFF,
+    .text        = 0x00,
+    .text_light  = 0xFF,
+    .highlight   = 0xC5,
+    .border      = 0x60,
+    .button      = 0x60,
+    .dir_color   = 0x03,
+};
+
+void fmrb_theme_set(const fmrb_theme_t *theme)
+{
+    if (theme) {
+        memcpy(&g_theme, theme, sizeof(fmrb_theme_t));
+    }
+}
+
+const fmrb_theme_t* fmrb_theme_get(void)
+{
+    return &g_theme;
+}
 
 void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
 {
@@ -40,4 +66,16 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
 
     // Path length constant
     mrb_define_const(mrb, const_module, "MAX_PATH_LEN", mrb_fixnum_value(FMRB_MAX_PATH_LEN));
+
+    // Theme color constants (from g_theme, possibly overridden by system_conf.toml)
+    const fmrb_theme_t *t = fmrb_theme_get();
+    mrb_define_const(mrb, const_module, "THEME_DESKTOP_BG", mrb_fixnum_value(t->desktop_bg));
+    mrb_define_const(mrb, const_module, "THEME_MENU_BG", mrb_fixnum_value(t->menu_bg));
+    mrb_define_const(mrb, const_module, "THEME_WINDOW_BG", mrb_fixnum_value(t->window_bg));
+    mrb_define_const(mrb, const_module, "THEME_TEXT", mrb_fixnum_value(t->text));
+    mrb_define_const(mrb, const_module, "THEME_TEXT_LIGHT", mrb_fixnum_value(t->text_light));
+    mrb_define_const(mrb, const_module, "THEME_HIGHLIGHT", mrb_fixnum_value(t->highlight));
+    mrb_define_const(mrb, const_module, "THEME_BORDER", mrb_fixnum_value(t->border));
+    mrb_define_const(mrb, const_module, "THEME_BUTTON", mrb_fixnum_value(t->button));
+    mrb_define_const(mrb, const_module, "THEME_DIR_COLOR", mrb_fixnum_value(t->dir_color));
 }

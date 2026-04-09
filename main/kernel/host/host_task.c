@@ -244,6 +244,72 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_ROUND_RECT: {
+            fmrb_link_graphics_round_rect_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x = cmd->params.round_rect.x,
+                .y = cmd->params.round_rect.y,
+                .width = cmd->params.round_rect.w,
+                .height = cmd->params.round_rect.h,
+                .radius = cmd->params.round_rect.radius,
+                .color = cmd->params.round_rect.color
+            };
+            *sub_cmd_out = cmd->params.round_rect.filled ? FMRB_LINK_GFX_FILL_ROUND_RECT : FMRB_LINK_GFX_DRAW_ROUND_RECT;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_ELLIPSE: {
+            fmrb_link_graphics_ellipse_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x = cmd->params.ellipse.x,
+                .y = cmd->params.ellipse.y,
+                .rx = cmd->params.ellipse.rx,
+                .ry = cmd->params.ellipse.ry,
+                .color = cmd->params.ellipse.color
+            };
+            *sub_cmd_out = cmd->params.ellipse.filled ? FMRB_LINK_GFX_FILL_ELLIPSE : FMRB_LINK_GFX_DRAW_ELLIPSE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_TRIANGLE: {
+            fmrb_link_graphics_triangle_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x0 = cmd->params.triangle.x0,
+                .y0 = cmd->params.triangle.y0,
+                .x1 = cmd->params.triangle.x1,
+                .y1 = cmd->params.triangle.y1,
+                .x2 = cmd->params.triangle.x2,
+                .y2 = cmd->params.triangle.y2,
+                .color = cmd->params.triangle.color
+            };
+            *sub_cmd_out = cmd->params.triangle.filled ? FMRB_LINK_GFX_FILL_TRIANGLE : FMRB_LINK_GFX_DRAW_TRIANGLE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_ARC: {
+            fmrb_link_graphics_arc_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x = cmd->params.arc.x,
+                .y = cmd->params.arc.y,
+                .r0 = cmd->params.arc.r0,
+                .r1 = cmd->params.arc.r1,
+                .angle0 = cmd->params.arc.angle0,
+                .angle1 = cmd->params.arc.angle1,
+                .color = cmd->params.arc.color
+            };
+            *sub_cmd_out = cmd->params.arc.filled ? FMRB_LINK_GFX_FILL_ARC : FMRB_LINK_GFX_DRAW_ARC;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_TEXT_SIZE: {
+            fmrb_link_graphics_text_size_t c = {
+                .canvas_id = cmd->canvas_id,
+                .size = cmd->params.text_size.size
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_SET_TEXT_SIZE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         case GFX_CMD_TEXT: {
             size_t text_len = strlen(cmd->params.text.text);
             if (text_len > 255) text_len = 255;

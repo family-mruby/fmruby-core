@@ -335,6 +335,144 @@ static mrb_value mrb_gfx_fill_circle(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// Graphics#draw_round_rect(x, y, w, h, r, color)
+static mrb_value mrb_gfx_draw_round_rect(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y, w, h, r, color;
+    mrb_get_args(mrb, "iiiiii", &x, &y, &w, &h, &r, &color);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ROUND_RECT, .canvas_id = data->canvas_id,
+        .params.round_rect = { .x=(int16_t)x, .y=(int16_t)y, .w=(int16_t)w, .h=(int16_t)h,
+                               .radius=(int16_t)r, .color=(fmrb_color_t)color, .filled=false }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw round rect failed: %d", ret);
+    return self;
+}
+
+// Graphics#fill_round_rect(x, y, w, h, r, color)
+static mrb_value mrb_gfx_fill_round_rect(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y, w, h, r, color;
+    mrb_get_args(mrb, "iiiiii", &x, &y, &w, &h, &r, &color);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ROUND_RECT, .canvas_id = data->canvas_id,
+        .params.round_rect = { .x=(int16_t)x, .y=(int16_t)y, .w=(int16_t)w, .h=(int16_t)h,
+                               .radius=(int16_t)r, .color=(fmrb_color_t)color, .filled=true }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill round rect failed: %d", ret);
+    return self;
+}
+
+// Graphics#draw_ellipse(x, y, rx, ry, color)
+static mrb_value mrb_gfx_draw_ellipse(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y, rx, ry, color;
+    mrb_get_args(mrb, "iiiii", &x, &y, &rx, &ry, &color);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ELLIPSE, .canvas_id = data->canvas_id,
+        .params.ellipse = { .x=(int16_t)x, .y=(int16_t)y, .rx=(int16_t)rx, .ry=(int16_t)ry,
+                            .color=(fmrb_color_t)color, .filled=false }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw ellipse failed: %d", ret);
+    return self;
+}
+
+// Graphics#fill_ellipse(x, y, rx, ry, color)
+static mrb_value mrb_gfx_fill_ellipse(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y, rx, ry, color;
+    mrb_get_args(mrb, "iiiii", &x, &y, &rx, &ry, &color);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ELLIPSE, .canvas_id = data->canvas_id,
+        .params.ellipse = { .x=(int16_t)x, .y=(int16_t)y, .rx=(int16_t)rx, .ry=(int16_t)ry,
+                            .color=(fmrb_color_t)color, .filled=true }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill ellipse failed: %d", ret);
+    return self;
+}
+
+// Graphics#draw_triangle(x0, y0, x1, y1, x2, y2, color)
+static mrb_value mrb_gfx_draw_triangle(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x0, y0, x1, y1, x2, y2, color;
+    mrb_get_args(mrb, "iiiiiii", &x0, &y0, &x1, &y1, &x2, &y2, &color);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_TRIANGLE, .canvas_id = data->canvas_id,
+        .params.triangle = { .x0=(int16_t)x0, .y0=(int16_t)y0, .x1=(int16_t)x1, .y1=(int16_t)y1,
+                             .x2=(int16_t)x2, .y2=(int16_t)y2, .color=(fmrb_color_t)color, .filled=false }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw triangle failed: %d", ret);
+    return self;
+}
+
+// Graphics#fill_triangle(x0, y0, x1, y1, x2, y2, color)
+static mrb_value mrb_gfx_fill_triangle(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x0, y0, x1, y1, x2, y2, color;
+    mrb_get_args(mrb, "iiiiiii", &x0, &y0, &x1, &y1, &x2, &y2, &color);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_TRIANGLE, .canvas_id = data->canvas_id,
+        .params.triangle = { .x0=(int16_t)x0, .y0=(int16_t)y0, .x1=(int16_t)x1, .y1=(int16_t)y1,
+                             .x2=(int16_t)x2, .y2=(int16_t)y2, .color=(fmrb_color_t)color, .filled=true }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill triangle failed: %d", ret);
+    return self;
+}
+
+// Graphics#draw_arc(x, y, r0, r1, angle0, angle1, color)
+static mrb_value mrb_gfx_draw_arc(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y, r0, r1, angle0, angle1, color;
+    mrb_get_args(mrb, "iiiiiii", &x, &y, &r0, &r1, &angle0, &angle1, &color);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ARC, .canvas_id = data->canvas_id,
+        .params.arc = { .x=(int16_t)x, .y=(int16_t)y, .r0=(int16_t)r0, .r1=(int16_t)r1,
+                        .angle0=(int16_t)angle0, .angle1=(int16_t)angle1,
+                        .color=(fmrb_color_t)color, .filled=false }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw arc failed: %d", ret);
+    return self;
+}
+
+// Graphics#fill_arc(x, y, r0, r1, angle0, angle1, color)
+static mrb_value mrb_gfx_fill_arc(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y, r0, r1, angle0, angle1, color;
+    mrb_get_args(mrb, "iiiiiii", &x, &y, &r0, &r1, &angle0, &angle1, &color);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ARC, .canvas_id = data->canvas_id,
+        .params.arc = { .x=(int16_t)x, .y=(int16_t)y, .r0=(int16_t)r0, .r1=(int16_t)r1,
+                        .angle0=(int16_t)angle0, .angle1=(int16_t)angle1,
+                        .color=(fmrb_color_t)color, .filled=true }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill arc failed: %d", ret);
+    return self;
+}
+
+// Graphics#set_text_size(size)
+static mrb_value mrb_gfx_set_text_size(mrb_state *mrb, mrb_value self)
+{
+    mrb_int size;
+    mrb_get_args(mrb, "i", &size);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    if (size < 1) size = 1;
+    if (size > 4) size = 4;
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_TEXT_SIZE, .canvas_id = data->canvas_id,
+        .params.text_size = { .size = (uint8_t)size }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Set text size failed: %d", ret);
+    return self;
+}
+
 // Graphics#draw_text(x, y, text, color [, bg_color])
 static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
 {
@@ -757,6 +895,15 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "fill_rect", mrb_gfx_fill_rect, MRB_ARGS_REQ(5));
     mrb_define_method(mrb, gfx_class, "draw_circle", mrb_gfx_draw_circle, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "fill_circle", mrb_gfx_fill_circle, MRB_ARGS_REQ(4));
+    mrb_define_method(mrb, gfx_class, "draw_round_rect", mrb_gfx_draw_round_rect, MRB_ARGS_REQ(6));
+    mrb_define_method(mrb, gfx_class, "fill_round_rect", mrb_gfx_fill_round_rect, MRB_ARGS_REQ(6));
+    mrb_define_method(mrb, gfx_class, "draw_ellipse", mrb_gfx_draw_ellipse, MRB_ARGS_REQ(5));
+    mrb_define_method(mrb, gfx_class, "fill_ellipse", mrb_gfx_fill_ellipse, MRB_ARGS_REQ(5));
+    mrb_define_method(mrb, gfx_class, "draw_triangle", mrb_gfx_draw_triangle, MRB_ARGS_REQ(7));
+    mrb_define_method(mrb, gfx_class, "fill_triangle", mrb_gfx_fill_triangle, MRB_ARGS_REQ(7));
+    mrb_define_method(mrb, gfx_class, "draw_arc", mrb_gfx_draw_arc, MRB_ARGS_REQ(7));
+    mrb_define_method(mrb, gfx_class, "fill_arc", mrb_gfx_fill_arc, MRB_ARGS_REQ(7));
+    mrb_define_method(mrb, gfx_class, "set_text_size", mrb_gfx_set_text_size, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "draw_text", mrb_gfx_draw_text, MRB_ARGS_ARG(4, 1));
     mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_NONE());
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());

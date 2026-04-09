@@ -186,6 +186,10 @@ class ShellApp < FmrbApp
     @ctrl_pressed = false  # Track Ctrl key state for Ctrl-C detection
     @jobs = []          # Background job list
 
+    @cmd_history = []       # Command history
+    @cmd_history_index = -1 # Current position in history (-1 = not browsing)
+    @cmd_saved_line = ""    # Saved current line when browsing history
+
   end
 
   def on_create()
@@ -227,10 +231,15 @@ class ShellApp < FmrbApp
       when 8  # Backspace
         handle_backspace
       when 9  # Tab
-        # TODO: tab completion
+        handle_tab
+      when -1  # Arrow UP
+        handle_history_up
+      when -2  # Arrow DOWN
+        handle_history_down
       when 32..126  # Printable characters
         if @current_line.length < @max_line_length
           @current_line += ch.chr
+          @cmd_history_index = -1  # Reset history browsing on new input
           @need_line_redraw = true
         end
       end
@@ -387,8 +396,8 @@ class ShellApp < FmrbApp
       cmd_irb
     when "run"
       cmd_run(args)
-    when "jobs"
-      cmd_jobs
+    when "ps"
+      cmd_ps
     when "kill"
       cmd_kill(args)
     when "help"
@@ -400,7 +409,7 @@ class ShellApp < FmrbApp
       @history << "  irb - Interactive Ruby"
       @history << "  run <script> [&] - Run script"
       @history << "  run <script> > <file> - Redirect output"
-      @history << "  jobs - List background jobs"
+      @history << "  ps - List processes"
       @history << "  kill <id> - Kill background job"
       @history << "  help - Show this help message"
     else
@@ -797,18 +806,33 @@ class ShellApp < FmrbApp
     @history << "[#{job_id}] Running: #{script_path}"
   end
 
-  # --- Job management ---
+  # --- Process / Job management ---
 
-  def cmd_jobs
-    if @jobs.empty?
-      @history << "No background jobs"
-      return
-    end
+  STATE_NAMES = ["free", "init", "run", "suspend", "stop"]
+  TYPE_NAMES = ["kernel", "system", "user"]
+
+  def cmd_ps
+    # Kernel-spawned processes (FmrbApp.ps)
+    @history << " PID TYPE    STATE   NAME"
+    procs = FmrbApp.ps
     i = 0
-    while i < @jobs.size
-      job = @jobs[i]
-      @history << "[#{i}] #{job[:state]}  #{job[:name]}"
+    while i < procs.size
+      p = procs[i]
+      state = STATE_NAMES[p[:state]] || "?"
+      type = TYPE_NAMES[p[:type]] || "?"
+      @history << "  #{p[:id]}  #{type.ljust(7)} #{state.ljust(7)} #{p[:name]}"
       i += 1
+    end
+
+    # Sandbox background jobs
+    if @jobs.size > 0
+      @history << " JOB STATE   NAME"
+      j = 0
+      while j < @jobs.size
+        job = @jobs[j]
+        @history << "  #{j}  #{job[:state].to_s.ljust(7)} #{job[:name]}"
+        j += 1
+      end
     end
   end
 
@@ -1049,6 +1073,14 @@ class ShellApp < FmrbApp
         return
       end
       @ctrl_pressed = false
+      # Arrow keys: encode as negative values (character=0 for these)
+      if keycode == 82  # UP
+        @input_buffer << -1
+        return
+      elsif keycode == 81  # DOWN
+        @input_buffer << -2
+        return
+      end
       if character > 0
         @input_buffer << character
       end
@@ -1121,9 +1153,14 @@ class ShellApp < FmrbApp
   def handle_enter
     Log.info("Command: #{@current_line}")
 
-    # Add current line to history and clear input before executing
-    # (so the old input line doesn't remain on screen during execution)
+    # Add to command history (skip empty and duplicates)
     entered_line = @current_line
+    if !entered_line.empty? && entered_line != @cmd_history.last
+      @cmd_history << entered_line
+    end
+    @cmd_history_index = -1
+
+    # Add current line to display history and clear input before executing
     @history << (@prompt + entered_line)
     @current_line = ""
 
@@ -1156,6 +1193,121 @@ class ShellApp < FmrbApp
     if @current_line.length > 0
       @current_line = @current_line[0...-1]
       @need_line_redraw = true
+    end
+  end
+
+  def handle_history_up
+    return if @cmd_history.empty?
+    if @cmd_history_index == -1
+      # Start browsing: save current line, go to last entry
+      @cmd_saved_line = @current_line
+      @cmd_history_index = @cmd_history.size - 1
+    elsif @cmd_history_index > 0
+      @cmd_history_index -= 1
+    else
+      return  # Already at oldest
+    end
+    @current_line = @cmd_history[@cmd_history_index]
+    @need_line_redraw = true
+  end
+
+  def handle_history_down
+    return if @cmd_history_index == -1  # Not browsing
+    if @cmd_history_index < @cmd_history.size - 1
+      @cmd_history_index += 1
+      @current_line = @cmd_history[@cmd_history_index]
+    else
+      # Back to current input
+      @cmd_history_index = -1
+      @current_line = @cmd_saved_line
+    end
+    @need_line_redraw = true
+  end
+
+  def handle_tab
+    # Tab completion: complete file/directory names
+    parts = @current_line.split(" ")
+
+    # Determine the prefix to complete
+    if parts.size >= 2
+      prefix = parts.last
+    elsif parts.size == 1 && @current_line.end_with?(" ")
+      prefix = ""
+    else
+      return  # Nothing to complete
+    end
+
+    # Split prefix into directory part and name part
+    # e.g. "sub/foo" -> search_dir="sub", name_prefix="foo"
+    # e.g. "foo"     -> search_dir="", name_prefix="foo"
+    # e.g. ""        -> search_dir="", name_prefix=""
+    last_slash = prefix.rindex("/")
+    if last_slash
+      dir_part = prefix[0..last_slash]   # includes trailing /
+      name_prefix = prefix[(last_slash + 1)..-1] || ""
+    else
+      dir_part = ""
+      name_prefix = prefix
+    end
+
+    # Resolve search directory
+    if dir_part.empty?
+      search_virtual = @current_dir
+    elsif dir_part.start_with?("/")
+      search_virtual = dir_part
+    else
+      search_virtual = @current_dir == "/" ? "/#{dir_part}" : "#{@current_dir}/#{dir_part}"
+    end
+
+    # List entries matching name_prefix
+    begin
+      dir = Dir.open(to_os_dir_path(search_virtual))
+      candidates = []
+      while (entry = dir.read)
+        next if entry == "." || entry == ".."
+        if name_prefix.empty? || entry.start_with?(name_prefix)
+          # Check if entry is a directory
+          entry_virtual = search_virtual == "/" ? "/#{entry}" : "#{search_virtual}/#{entry}"
+          is_dir = false
+          begin
+            d = Dir.open(to_os_dir_path(entry_virtual))
+            d.close
+            is_dir = true
+          rescue
+          end
+          candidates << { :name => entry, :dir => is_dir }
+        end
+      end
+      dir.close
+    rescue
+      return
+    end
+
+    return if candidates.empty?
+
+    if candidates.size == 1
+      # Single match: complete it
+      c = candidates[0]
+      completed = dir_part + c[:name]
+      completed += "/" if c[:dir]
+      if prefix.empty?
+        @current_line += completed
+      else
+        parts[-1] = completed
+        @current_line = parts.join(" ")
+      end
+      @need_line_redraw = true
+    else
+      # Multiple matches: show candidates
+      append_output(@prompt + @current_line)
+      i = 0
+      while i < candidates.size
+        c = candidates[i]
+        label = c[:dir] ? "#{c[:name]}/" : c[:name]
+        append_output("  #{label}")
+        i += 1
+      end
+      @need_full_redraw = true
     end
   end
 

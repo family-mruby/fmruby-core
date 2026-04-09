@@ -102,6 +102,26 @@ mrb_file_s_size(mrb_state *mrb, mrb_value self)
   return mrb_int_value(mrb, (mrb_int)info.size);
 }
 
+/*
+ * call-seq:
+ *   File.delete(path) -> 1
+ *   File.unlink(path) -> 1
+ *
+ * Deletes the named file. Returns 1 on success.
+ */
+static mrb_value
+mrb_file_s_unlink(mrb_state *mrb, mrb_value self)
+{
+  char *path;
+  mrb_get_args(mrb, "z", &path);
+
+  if (fmrb_hal_file_remove(path) != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "cannot delete %s", path);
+  }
+
+  return mrb_int_value(mrb, 1);
+}
+
 // Helper: Convert mode string to HAL flags
 static uint32_t mode_to_flags(const char *mode)
 {
@@ -258,6 +278,8 @@ mrb_picoruby_fmrb_filesystem_init_impl(mrb_state *mrb)
   mrb_define_class_method(mrb, file_class, "exists?", mrb_file_s_exist_p, MRB_ARGS_REQ(1));  // Alias
   mrb_define_class_method(mrb, file_class, "directory?", mrb_file_s_directory_p, MRB_ARGS_REQ(1));
   mrb_define_class_method(mrb, file_class, "size", mrb_file_s_size, MRB_ARGS_REQ(1));
+  mrb_define_class_method(mrb, file_class, "delete", mrb_file_s_unlink, MRB_ARGS_REQ(1));
+  mrb_define_class_method(mrb, file_class, "unlink", mrb_file_s_unlink, MRB_ARGS_REQ(1));
 
   // Instance methods (File-specific methods only)
   // write, close, closed? are inherited from IO

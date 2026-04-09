@@ -241,6 +241,19 @@ typedef struct __attribute__((packed)) {
     uint8_t color;  // RGB332 format
 } fmrb_link_graphics_triangle_t;
 
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    int16_t x, y;
+    int16_t r0, r1;         // inner and outer radius
+    int16_t angle0, angle1; // start and end angle in degrees (0-360)
+    uint8_t color;
+} fmrb_link_graphics_arc_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint8_t size;  // text size multiplier (1-4)
+} fmrb_link_graphics_text_size_t;
+
 // Canvas management structures
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;

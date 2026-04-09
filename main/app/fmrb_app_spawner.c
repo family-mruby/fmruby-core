@@ -18,6 +18,7 @@ static const char *TAG = "fmrb_default_apps";
 extern const uint8_t system_desktop_irep[];
 extern const uint8_t shell_irep[];
 extern const uint8_t editor_irep[];
+extern const uint8_t logviewer_irep[];
 extern const uint8_t config_irep[];
 
 static fmrb_err_t spawn_system_desktop_app(int32_t* out_pid)
@@ -120,6 +121,40 @@ static fmrb_err_t spawn_editor_app(int32_t* out_pid)
         }
     } else {
         FMRB_LOGE(TAG, "Failed to spawn editor app: %d", result);
+    }
+    return result;
+}
+
+static fmrb_err_t spawn_logviewer_app(int32_t* out_pid)
+{
+    FMRB_LOGI(TAG, "spawn_logviewer_app: Starting");
+    fmrb_spawn_attr_t attr = {
+        .app_id = -1,
+        .type = APP_TYPE_USER_APP,
+        .name = "logviewer",
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = logviewer_irep,
+        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
+        .priority = FMRB_SHELL_APP_PRIORITY,
+        .flags = FMRB_SHELL_APP_TASK_FLAGS,
+        .core_affinity = -1,
+        .headless = false,
+        .window_width = 400,
+        .window_height = 200,
+        .window_pos_x = 40,
+        .window_pos_y = 60
+    };
+
+    int32_t app_id;
+    fmrb_err_t result = fmrb_app_spawn(&attr, &app_id);
+    if (result == FMRB_OK) {
+        FMRB_LOGI(TAG, "LogViewer app spawned: id=%d", app_id);
+        if (out_pid) {
+            *out_pid = app_id;
+        }
+    } else {
+        FMRB_LOGE(TAG, "Failed to spawn logviewer app: %d", result);
     }
     return result;
 }
@@ -318,6 +353,8 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid)
         return spawn_shell_app(out_pid);
     } else if (strcmp(app_name, "default/editor") == 0) {
         return spawn_editor_app(out_pid);
+    } else if (strcmp(app_name, "default/logviewer") == 0) {
+        return spawn_logviewer_app(out_pid);
     } else if (strcmp(app_name, "default/config") == 0) {
         // Future implementation
         FMRB_LOGW(TAG, "Config app not yet implemented");

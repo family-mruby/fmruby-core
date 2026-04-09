@@ -298,6 +298,14 @@ static bool init_hardware(void)
 static void init_mem(void)
 {
     fmrb_mem_init();
+
+    // Initialize log ring buffer (must be before any FMRB_LOG calls that need buffering)
+    void *log_buf = fmrb_get_mempool_ptr(POOL_ID_LOG_BUFFER);
+    size_t log_size = fmrb_get_mempool_size(POOL_ID_LOG_BUFFER);
+    if (log_buf && log_size > 0) {
+        fmrb_log_buffer_init(log_buf, log_size);
+    }
+
     fmrb_mempool_print_ranges();
     fmrb_toml_init();
 }

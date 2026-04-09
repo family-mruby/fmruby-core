@@ -531,8 +531,13 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
     case FMRB_LINK_GFX_CURSOR_SET_POSITION: {
         if (size < sizeof(fmrb_link_graphics_cursor_position_t)) break;
         const auto* cmd = (const fmrb_link_graphics_cursor_position_t*)data;
-        g_cursor_x = cmd->x;
-        g_cursor_y = cmd->y;
+        if (g_cursor_x != cmd->x || g_cursor_y != cmd->y) {
+            g_cursor_x = cmd->x;
+            g_cursor_y = cmd->y;
+            if (g_cursor_visible) {
+                g_needs_render = true;
+            }
+        }
         return 0;
     }
 
@@ -715,6 +720,11 @@ static void m5gfx_task(void* arg) {
             if (err != FMRB_OK || msg.size == 0) break;
             process_message(g_recv_buf, msg.size);
             first = false;
+        }
+
+        if (g_needs_render) {
+            g_needs_render = false;
+            render_frame();
         }
     }
 

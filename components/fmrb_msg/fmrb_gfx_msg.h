@@ -27,7 +27,12 @@ typedef enum {
     GFX_CMD_PRESENT,
     GFX_CMD_CREATE_IMAGE_FROM_FILE,
     GFX_CMD_DRAW_IMAGE,
-    GFX_CMD_DELETE_IMAGE
+    GFX_CMD_DELETE_IMAGE,
+    GFX_CMD_ROUND_RECT,
+    GFX_CMD_ELLIPSE,
+    GFX_CMD_TRIANGLE,
+    GFX_CMD_ARC,
+    GFX_CMD_TEXT_SIZE
 } gfx_cmd_type_t;
 
 // Graphics command structure
@@ -85,6 +90,36 @@ typedef struct {
         struct {
             uint16_t image_id;
         } delete_image;
+        struct {
+            int16_t x, y;
+            int16_t w, h;
+            int16_t radius;
+            fmrb_color_t color;
+            bool filled;
+        } round_rect;
+        struct {
+            int16_t x, y;
+            int16_t rx, ry;
+            fmrb_color_t color;
+            bool filled;
+        } ellipse;
+        struct {
+            int16_t x0, y0;
+            int16_t x1, y1;
+            int16_t x2, y2;
+            fmrb_color_t color;
+            bool filled;
+        } triangle;
+        struct {
+            int16_t x, y;
+            int16_t r0, r1;
+            int16_t angle0, angle1;
+            fmrb_color_t color;
+            bool filled;
+        } arc;
+        struct {
+            uint8_t size;
+        } text_size;
     } params;
 } gfx_cmd_t;
 
