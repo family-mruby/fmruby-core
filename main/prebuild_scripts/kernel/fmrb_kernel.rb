@@ -162,6 +162,35 @@ class FmrbKernelImpl < FmrbKernel
       if @fullscreen_pid
         exit_fullscreen
       end
+    when "reload_confirm"
+      # App requests reload confirmation via desktop dialog
+      info = _get_app_info(pid)
+      if info && info[:load_mode] == 1 && info[:path]
+        app_name = info[:name] || "App"
+        # Ask desktop to show confirm dialog
+        if @desktop_pid
+          fwd = {
+            "cmd" => "confirm_dialog",
+            "message" => "Reload #{app_name}?",
+            "on_yes_cmd" => "reload",
+            "reload_pid" => pid,
+            "reload_path" => info[:path]
+          }
+          binary = MessagePack.pack(fwd)
+          _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
+        end
+      end
+    when "reload"
+      # Confirmed reload: stop app and re-spawn
+      reload_pid = data["reload_pid"]
+      reload_path = data["reload_path"]
+      if reload_pid && reload_path
+        Log.info("Reload: stopping PID #{reload_pid}, will respawn #{reload_path}")
+        @pending_reload = { path: reload_path }
+        # Send stop to the target app
+        stop_data = MessagePack.pack({ "cmd" => "clear_and_stop" })
+        _send_raw_message(reload_pid, FmrbConst::MSG_TYPE_APP_CONTROL, stop_data)
+      end
     when "kill"
       Log.info("Kill request from pid=#{pid} (not implemented)")
       # TODO: Implement kill command to forcefully terminate app
@@ -641,6 +670,22 @@ class FmrbKernelImpl < FmrbKernel
     # Clear mouse_down state if needed
     if @mouse_down_pid == pid
       @mouse_down_pid = nil
+    end
+
+    # Handle pending reload (re-spawn after termination)
+    if @pending_reload
+      path = @pending_reload[:path]
+      @pending_reload = nil
+      Log.info("Reload: re-spawning #{path}")
+      new_pid = _spawn_app_req(path)
+      if new_pid
+        mark_window_list_dirty
+        _set_hid_target(new_pid)
+        @hid_target_pid = new_pid
+        Log.info("Reload: spawned PID #{new_pid}")
+      else
+        Log.error("Reload: failed to spawn #{path}")
+      end
     end
 
     # Force immediate check (app may still be transitioning to STOPPING state)

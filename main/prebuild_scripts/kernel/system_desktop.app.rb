@@ -11,6 +11,7 @@ class SystemDesktopApp < FmrbApp
   include LauncherMixin
   include FileSelectorMixin
   include FileManagerMixin
+  include ConfirmDialogMixin
 
   MENU_BAR_HEIGHT = 13
   MENU_BG = FmrbConst::THEME_MENU_BG
@@ -79,6 +80,14 @@ class SystemDesktopApp < FmrbApp
     @fmgr_copy_path = nil
     @fmgr_copy_is_dir = false
     @fmgr_pending_edit_path = nil
+
+    # Confirm dialog state
+    @cdlg_open = false
+    @cdlg_message = nil
+    @cdlg_on_yes_cmd = nil
+    @cdlg_on_yes_data = nil
+    @cdlg_x = 0
+    @cdlg_y = 0
   end
 
   def on_create()
@@ -172,6 +181,7 @@ class SystemDesktopApp < FmrbApp
     draw_launcher if @launcher_open
     draw_file_selector if @file_selector_open
     draw_file_manager if @file_manager_open
+    draw_confirm_dialog if @cdlg_open
     @gfx.present
   end
 
@@ -267,6 +277,14 @@ class SystemDesktopApp < FmrbApp
   def on_control(msg)
     if msg["cmd"] == "file_select"
       open_file_selector(msg["requester_pid"], msg["mode"] || "open")
+    elsif msg["cmd"] == "confirm_dialog"
+      # Build callback data hash from message fields
+      cb_data = {}
+      msg.each do |k, v|
+        next if k == "cmd" || k == "message" || k == "on_yes_cmd"
+        cb_data[k] = v
+      end
+      open_confirm_dialog(msg["message"], msg["on_yes_cmd"], cb_data)
     end
   end
 
@@ -308,6 +326,16 @@ class SystemDesktopApp < FmrbApp
   end
 
   def handle_click(x, y)
+    # Confirm dialog has highest priority
+    if @cdlg_open
+      if hit_confirm_dialog?(x, y)
+        handle_confirm_dialog_click(x, y)
+        return
+      end
+      close_confirm_dialog
+      return
+    end
+
     # File selector has priority
     if @file_selector_open
       if hit_file_selector?(x, y)

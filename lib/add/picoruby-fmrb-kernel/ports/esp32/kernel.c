@@ -364,6 +364,32 @@ static mrb_value mrb_kernel_update_window_size(mrb_state *mrb, mrb_value self)
     return mrb_bool_value(ret == FMRB_OK);
 }
 
+// FmrbKernel#_get_app_info(pid) -> Hash or nil
+// Returns { load_mode: Int, path: String, name: String }
+static mrb_value mrb_kernel_get_app_info(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid;
+    mrb_get_args(mrb, "i", &pid);
+
+    fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id((int32_t)pid);
+    if (!ctx) {
+        return mrb_nil_value();
+    }
+
+    mrb_value hash = mrb_hash_new_capa(mrb, 3);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "load_mode")),
+                 mrb_fixnum_value(ctx->load_mode));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "name")),
+                 mrb_str_new_cstr(mrb, ctx->app_name));
+
+    if (ctx->load_mode == FMRB_LOAD_MODE_FILE && ctx->load_data) {
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "path")),
+                     mrb_str_new_cstr(mrb, (const char *)ctx->load_data));
+    }
+
+    return hash;
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -382,6 +408,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_update_window_size", mrb_kernel_update_window_size, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_get_sync_files", mrb_kernel_get_sync_files, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_sync_file", mrb_kernel_sync_file, MRB_ARGS_REQ(2));
+    mrb_define_method(mrb, handler_class, "_get_app_info", mrb_kernel_get_app_info, MRB_ARGS_REQ(1));
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }

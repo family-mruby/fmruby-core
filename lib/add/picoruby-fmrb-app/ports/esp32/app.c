@@ -641,6 +641,14 @@ static mrb_value mrb_fmrb_app_set_window_param(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// FmrbApp#_is_file_app -> true/false
+static mrb_value mrb_fmrb_app_is_file_app(mrb_state *mrb, mrb_value self)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) return mrb_false_value();
+    return mrb_bool_value(ctx->load_mode == FMRB_LOAD_MODE_FILE);
+}
+
 // FmrbApp#_send_message(dest_pid, msg_type, data) -> bool
 // Send a message to another task
 static mrb_value mrb_fmrb_app_send_message(mrb_state *mrb, mrb_value self)
@@ -839,6 +847,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_cleanup", mrb_fmrb_app_cleanup, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, app_class, "_set_window_param", mrb_fmrb_app_set_window_param, MRB_ARGS_REQ(2));
+
+    mrb_define_method(mrb, app_class, "_is_file_app", mrb_fmrb_app_is_file_app, MRB_ARGS_NONE());
 
     // Class methods
     mrb_define_class_method(mrb, app_class, "ps", mrb_fmrb_app_s_ps, MRB_ARGS_NONE());

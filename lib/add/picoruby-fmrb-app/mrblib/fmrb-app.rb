@@ -118,16 +118,24 @@ class FmrbApp
 
   def on_event(ev)
     # Called from C
-    # Handle close button click
+    # Handle close button click (left click)
     if ev[:type] == :mouse_up && ev[:button] == 1
       close_btn_x = @window_width - 10
       close_btn_y = 2
-      # Check if click is within close button area
       if ev[:x] >= close_btn_x && ev[:x] < close_btn_x + 8 &&
          ev[:y] >= close_btn_y && ev[:y] < close_btn_y + 8
         stop
       end
     end
+    # Handle title bar right click (reload for file-based apps)
+    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11
+      request_reload if _is_file_app
+    end
+  end
+
+  def request_reload
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      {"cmd" => "reload_confirm"})
   end
 
   # Internal methods
