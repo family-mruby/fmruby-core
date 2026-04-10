@@ -346,8 +346,8 @@ class FmrbKernelImpl < FmrbKernel
         @mouse_down_pid = target_pid
 
         # Check for resize handle (bottom-right 10x10 area) first
-        # Resize handle only for non-system_gui windows
-        if target_name != "system_desktop" && target_name != "system_overlay" &&
+        # Only for resizable windows
+        if target_window[:resizable] &&
            relative_x >= win_width - 10 && relative_y >= win_height - 10
           # Start resize and capture mouse
           @capture_mode = :resize

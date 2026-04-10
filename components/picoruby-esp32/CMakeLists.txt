@@ -87,16 +87,16 @@ else()
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/src/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/ports/esp32/io-console.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-env/ports/esp32/env.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-gpio/ports/esp32/gpio.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/picoruby-gpio-proxy/gpio.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-adc/ports/esp32/adc.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-spi/ports/esp32/spi.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/esp32/rng.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-pwm/ports/esp32/pwm.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rmt/ports/esp32/rmt.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/picoruby-rmt-proxy/rmt.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-watchdog/ports/esp32/watchdog.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/esp32/timing_alt.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/cipher.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-i2c/ports/esp32/i2c.c
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/picoruby-i2c-proxy/i2c.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-uart/ports/esp32/uart.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-require/ports/esp32/platform.c
         ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/hal-esp32-dir/dir_hal.c
@@ -127,6 +127,9 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-dir/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-gpio/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-i2c/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rmt/include
   PRIV_REQUIRES
     ${PLATFORM_PRIV_REQUIRES}
     mbedtls

@@ -82,6 +82,7 @@ typedef struct fmrb_app_task_context_s {
     bool                  has_background_canvas; // Desktop only: has additional bg canvas (z=0)
     uint16_t              bg_canvas_id;      // Background canvas ID (0 if none)
     bool                  fullscreen;        // Fullscreen app flag
+    bool                  resizable;         // Allow window resize (default: false)
 
     // Load mode and data (replaces encoded user_data pointer tagging)
     fmrb_load_mode_t      load_mode;         // How to load the script
@@ -110,6 +111,7 @@ typedef struct {
     bool                  headless;         // Headless app flag (no graphics, no canvas)
     bool                  has_background_canvas; // Desktop only: create bg canvas (z=0)
     bool                  fullscreen;       // Fullscreen app (suspend others, no menu bar)
+    bool                  resizable;        // Allow window resize (default: false)
     uint16_t              window_width;     // Window Width (if headless, =0)
     uint16_t              window_height;    // Window Height (if headless, =0)
     uint16_t              window_pos_x;
@@ -144,6 +146,7 @@ typedef struct {
     uint16_t              height;           // Window height
     uint8_t               z_order;          // Z-order (0=back, higher=front)
     bool                  fullscreen;       // Fullscreen app flag
+    bool                  resizable;        // Allow window resize
 } fmrb_window_info_t;
 
 // Core APIs

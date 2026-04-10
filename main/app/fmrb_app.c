@@ -1037,6 +1037,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     ctx->has_background_canvas = attr->has_background_canvas;
     ctx->bg_canvas_id = 0;
     ctx->fullscreen = attr->fullscreen;
+    ctx->resizable = attr->resizable;
     if (ctx->has_background_canvas) {
         ctx->z_order = 254;  // Main canvas is foreground (menu bar)
     } else if (strcmp(ctx->app_name, "system_overlay") == 0) {
@@ -1395,6 +1396,7 @@ int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
             list[count].height = ctx->window_height;
             list[count].z_order = ctx->z_order;
             list[count].fullscreen = ctx->fullscreen;
+            list[count].resizable = ctx->resizable;
 
             count++;
         }
@@ -1665,10 +1667,11 @@ fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t hei
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    // system_gui cannot be resized
-    if (strcmp(ctx->app_name, "system_desktop") == 0) {
+    // Only resizable windows can be resized
+    if (!ctx->resizable) {
         fmrb_semaphore_give(g_ctx_lock);
-        return FMRB_ERR_INVALID_PARAM;
+        FMRB_LOGW(TAG, "Window '%s' is not resizable", ctx->app_name);
+        return FMRB_ERR_NOT_SUPPORTED;
     }
 
     // Update size

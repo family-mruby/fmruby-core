@@ -22,6 +22,13 @@ typedef enum {
 
 
 /**
+ * @brief Reset GPIO pin to default state
+ * @param gpio_num GPIO pin number
+ * @return FMRB_OK on success, error code otherwise
+ */
+fmrb_err_t fmrb_hal_gpio_reset(fmrb_gpio_num_t gpio_num);
+
+/**
  * @brief Configure GPIO pin
  * @param gpio_num GPIO pin number
  * @param mode GPIO mode (input/output)

@@ -2,12 +2,15 @@
 set(COMMON_SRCS
     "fmrb_hal.c"
     "fmrb_hal_time.c"
-    "fmrb_hal_gpio.c"
 )
 
 # Set platform-specific sources and requirements
 if(IDF_TARGET STREQUAL "linux")
     list(APPEND COMMON_SRCS
+        "platform/posix/fmrb_hal_gpio_posix.c"
+        "platform/posix/fmrb_hal_i2c_posix.c"
+        "platform/posix/fmrb_hal_rmt_posix.c"
+        "platform/posix/fmrb_hal_pin_manager_posix.c"
         "platform/posix/fmrb_hal_spi_posix.c"
         "platform/posix/fmrb_hal_link_posix.c"
         "platform/posix/fmrb_hal_file_posix.c"
@@ -18,6 +21,10 @@ if(IDF_TARGET STREQUAL "linux")
 else()
     set(FMRB_HW_TARGET "WROVER" CACHE STRING "Hardware target variant: WROVER, ATOM_DISPLAY")
     list(APPEND COMMON_SRCS
+        "platform/esp32/fmrb_hal_gpio_esp32.c"
+        "platform/esp32/fmrb_hal_i2c_esp32.c"
+        "platform/esp32/fmrb_hal_rmt_esp32.c"
+        "platform/esp32/fmrb_hal_pin_manager_esp32.c"
         "platform/esp32/fmrb_hal_spi_esp32.c"
         "platform/esp32/fmrb_hal_file_esp32.c"
         "platform/esp32/fmrb_hal_uart_esp32.c"
@@ -30,7 +37,8 @@ else()
         message(STATUS "HW target: ${FMRB_HW_TARGET} (SPI link)")
     endif()
     set(PLATFORM_REQUIRES esp_system esp_timer freertos log spi_flash driver fmrb_msg
-        fmrb_log fmrb_mem fmrb_cobs fmrb_common esp_littlefs fatfs sdmmc)
+        fmrb_log fmrb_mem fmrb_cobs fmrb_common esp_littlefs fatfs sdmmc
+        esp_driver_i2c esp_driver_rmt)
     set(PLATFORM_PRIV_REQUIRES )
 endif()
 
@@ -42,7 +50,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMMON_SRCS}
-    INCLUDE_DIRS "." "platform"
+    INCLUDE_DIRS "." "platform" "hw_proxy"
     PRIV_INCLUDE_DIRS ${PRIV_INCLUDE}
     REQUIRES ${PLATFORM_REQUIRES}
     PRIV_REQUIRES ${PLATFORM_PRIV_REQUIRES}

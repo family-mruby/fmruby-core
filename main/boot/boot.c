@@ -19,6 +19,7 @@
 #include "hid_device_config.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "hw_proxy.h"
+#include "fmrb_hal_pin_manager.h"
 #include "spi_conn_check.h"
 #include "usb_hid_conn_check.h"
 #include "i2c_conn_check.h"
@@ -259,6 +260,7 @@ static bool init_hardware(void)
         return false;
     }
 
+    fmrb_pin_manager_init();
     hw_proxy_init();
 
 #ifndef FMRB_HW_ATOM_DISPLAY

@@ -11,3 +11,5 @@ default_window_height = 150
 # if fullscreen/fullwindow, they will be ignored
 default_window_pos_x = 310
 default_window_pos_y = 45
+
+resizable = 1

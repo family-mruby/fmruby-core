@@ -5,6 +5,7 @@
 #include <mruby/string.h>
 #include <mruby/variable.h>
 #include <mruby/hash.h>
+#include <mruby/array.h>
 
 #include "fmrb_app.h"
 #include "fmrb_hal.h"
@@ -882,6 +883,64 @@ static mrb_value mrb_gfx_create_image_from_file(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// FmrbGfx.hsv_to_rgb(h, s, v) -> [r, g, b]
+// h: 0-360, s: 0-255, v: 0-255
+static mrb_value mrb_gfx_s_hsv_to_rgb(mrb_state *mrb, mrb_value klass)
+{
+    mrb_int h, s, v;
+    mrb_get_args(mrb, "iii", &h, &s, &v);
+
+    if (h < 0) h = 0;
+    if (h >= 360) h = h % 360;
+    if (s < 0) s = 0;
+    if (s > 255) s = 255;
+    if (v < 0) v = 0;
+    if (v > 255) v = 255;
+
+    int r, g, b;
+    if (s == 0) {
+        r = g = b = v;
+    } else {
+        int region = h / 60;
+        int remainder = (h - region * 60) * 255 / 60;
+        int p = v * (255 - s) / 255;
+        int q = v * (255 - s * remainder / 255) / 255;
+        int t = v * (255 - s * (255 - remainder) / 255) / 255;
+
+        switch (region) {
+        case 0:  r = v; g = t; b = p; break;
+        case 1:  r = q; g = v; b = p; break;
+        case 2:  r = p; g = v; b = t; break;
+        case 3:  r = p; g = q; b = v; break;
+        case 4:  r = t; g = p; b = v; break;
+        default: r = v; g = p; b = q; break;
+        }
+    }
+
+    mrb_value ary = mrb_ary_new_capa(mrb, 3);
+    mrb_ary_push(mrb, ary, mrb_fixnum_value(r));
+    mrb_ary_push(mrb, ary, mrb_fixnum_value(g));
+    mrb_ary_push(mrb, ary, mrb_fixnum_value(b));
+    return ary;
+}
+
+// FmrbGfx.rgb_to_332(r, g, b) -> Integer
+// r,g,b: 0-255
+static mrb_value mrb_gfx_s_rgb_to_332(mrb_state *mrb, mrb_value klass)
+{
+    mrb_int r, g, b;
+    mrb_get_args(mrb, "iii", &r, &g, &b);
+
+    if (r < 0) r = 0;
+    if (r > 255) r = 255;
+    if (g < 0) g = 0;
+    if (g > 255) g = 255;
+    if (b < 0) b = 0;
+    if (b > 255) b = 255;
+
+    return mrb_fixnum_value(((r >> 5) << 5) | ((g >> 5) << 2) | (b >> 6));
+}
+
 void mrb_fmrb_gfx_init(mrb_state *mrb)
 {
     struct RClass *gfx_class = mrb_define_class(mrb, "FmrbGfx", mrb->object_class);
@@ -916,6 +975,10 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_create_image_from_file", mrb_gfx_create_image_from_file, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "_draw_image", mrb_gfx_draw_image, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, gfx_class, "_delete_image", mrb_gfx_delete_image, MRB_ARGS_REQ(1));
+
+    // Color utility class methods
+    mrb_define_class_method(mrb, gfx_class, "hsv_to_rgb", mrb_gfx_s_hsv_to_rgb, MRB_ARGS_REQ(3));
+    mrb_define_class_method(mrb, gfx_class, "rgb_to_332", mrb_gfx_s_rgb_to_332, MRB_ARGS_REQ(3));
 
     // Color constants
     mrb_define_const(mrb, gfx_class, "BLACK", mrb_fixnum_value(FMRB_COLOR_BLACK));

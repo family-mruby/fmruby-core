@@ -1,10 +1,13 @@
 #include <mruby.h>
+#include <mruby/array.h>
+#include <mruby/hash.h>
 #include <string.h>
 
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
+#include "fmrb_hal_pin_manager.h"
 #include "../../include/picoruby_fmrb_const.h"
 
 /* Default theme (can be overridden by system_conf.toml before VMs start) */
@@ -32,10 +35,51 @@ const fmrb_theme_t* fmrb_theme_get(void)
     return &g_theme;
 }
 
+// FmrbHw.pin_status(pin) -> Integer (usage type)
+static mrb_value mrb_fmrb_hw_pin_status(mrb_state *mrb, mrb_value klass)
+{
+    mrb_int pin;
+    mrb_get_args(mrb, "i", &pin);
+    fmrb_pin_status_t st = fmrb_pin_manager_get_status(pin);
+    return mrb_fixnum_value(st.usage);
+}
+
+// FmrbHw.pin_available?(pin) -> true/false
+static mrb_value mrb_fmrb_hw_pin_available_p(mrb_state *mrb, mrb_value klass)
+{
+    mrb_int pin;
+    mrb_get_args(mrb, "i", &pin);
+    return mrb_bool_value(fmrb_pin_manager_is_available(pin));
+}
+
+// FmrbHw.pin_status_all -> Array of Integer (index=pin, value=usage)
+static mrb_value mrb_fmrb_hw_pin_status_all(mrb_state *mrb, mrb_value klass)
+{
+    mrb_value ary = mrb_ary_new_capa(mrb, FMRB_PIN_MAX);
+    for (int i = 0; i < FMRB_PIN_MAX; i++) {
+        fmrb_pin_status_t st = fmrb_pin_manager_get_status(i);
+        mrb_ary_push(mrb, ary, mrb_fixnum_value(st.usage));
+    }
+    return ary;
+}
+
+// FmrbHw.pin_count -> Integer
+static mrb_value mrb_fmrb_hw_pin_count(mrb_state *mrb, mrb_value klass)
+{
+    return mrb_fixnum_value(FMRB_PIN_MAX);
+}
+
 void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
 {
     // Define FmrbConst module
     struct RClass *const_module = mrb_define_module(mrb, "FmrbConst");
+
+    // Platform constants
+#ifdef CONFIG_IDF_TARGET_LINUX
+    mrb_define_const(mrb, const_module, "PLATFORM", mrb_str_new_cstr(mrb, "linux"));
+#else
+    mrb_define_const(mrb, const_module, "PLATFORM", mrb_str_new_cstr(mrb, "esp32"));
+#endif
 
     // Process ID constants
     mrb_define_const(mrb, const_module, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
@@ -78,4 +122,23 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "THEME_BORDER", mrb_fixnum_value(t->border));
     mrb_define_const(mrb, const_module, "THEME_BUTTON", mrb_fixnum_value(t->button));
     mrb_define_const(mrb, const_module, "THEME_DIR_COLOR", mrb_fixnum_value(t->dir_color));
+
+    // Define FmrbHw module for hardware resource management
+    struct RClass *hw_module = mrb_define_module(mrb, "FmrbHw");
+
+    // Pin usage type constants
+    mrb_define_const(mrb, hw_module, "PIN_UNUSED",    mrb_fixnum_value(FMRB_PIN_UNUSED));
+    mrb_define_const(mrb, hw_module, "PIN_SYSTEM",    mrb_fixnum_value(FMRB_PIN_SYSTEM));
+    mrb_define_const(mrb, hw_module, "PIN_USER_GPIO", mrb_fixnum_value(FMRB_PIN_USER_GPIO));
+    mrb_define_const(mrb, hw_module, "PIN_USER_I2C",  mrb_fixnum_value(FMRB_PIN_USER_I2C));
+    mrb_define_const(mrb, hw_module, "PIN_USER_RMT",  mrb_fixnum_value(FMRB_PIN_USER_RMT));
+    mrb_define_const(mrb, hw_module, "PIN_USER_SPI",  mrb_fixnum_value(FMRB_PIN_USER_SPI));
+    mrb_define_const(mrb, hw_module, "PIN_USER_PWM",  mrb_fixnum_value(FMRB_PIN_USER_PWM));
+    mrb_define_const(mrb, hw_module, "PIN_USER_UART", mrb_fixnum_value(FMRB_PIN_USER_UART));
+
+    // Class methods
+    mrb_define_class_method(mrb, hw_module, "pin_status", mrb_fmrb_hw_pin_status, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, hw_module, "pin_available?", mrb_fmrb_hw_pin_available_p, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, hw_module, "pin_status_all", mrb_fmrb_hw_pin_status_all, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, hw_module, "pin_count", mrb_fmrb_hw_pin_count, MRB_ARGS_NONE());
 }

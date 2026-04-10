@@ -8,6 +8,20 @@
 // ============================================================
 #ifndef FMRB_HW_ATOM_DISPLAY
 
+// ============================================================
+// ESP32-S3 WROOM package: hardware-restricted pins
+// These pins must not be used by user applications.
+// ============================================================
+#define FMRB_PIN_RESTRICTED_BOOT    GPIO_NUM_0   // UART reflash strapping pin
+#define FMRB_PIN_RESTRICTED_JTAG    GPIO_NUM_3   // JTAG pull-down
+#define FMRB_PIN_RESTRICTED_USB_DN  GPIO_NUM_19  // USB D-
+#define FMRB_PIN_RESTRICTED_USB_DP  GPIO_NUM_20  // USB D+
+#define FMRB_PIN_RESTRICTED_PSRAM0  GPIO_NUM_35  // PSRAM 8M (N8R8/N16R8)
+#define FMRB_PIN_RESTRICTED_PSRAM1  GPIO_NUM_36  // PSRAM 8M
+#define FMRB_PIN_RESTRICTED_PSRAM2  GPIO_NUM_37  // PSRAM 8M
+#define FMRB_PIN_RESTRICTED_STRAP1  GPIO_NUM_45  // Strapping pin (VDD_SPI)
+#define FMRB_PIN_RESTRICTED_STRAP2  GPIO_NUM_46  // Strapping pin (boot mode)
+
 // SD Card SPI Interface (SPI3)
 #define FMRB_PIN_SD_CS     GPIO_NUM_15
 #define FMRB_PIN_SD_MOSI   GPIO_NUM_16

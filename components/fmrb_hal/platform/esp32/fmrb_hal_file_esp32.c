@@ -20,6 +20,7 @@
 #include "esp_heap_caps.h"
 #include <errno.h>
 #include "hw_proxy.h"
+#include "hw_proxy_internal.h"
 
 #define TAG "fmrb_hal_file"
 
@@ -348,7 +349,9 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
         return FMRB_ERR_INVALID_PARAM;
     }
     if (hw_proxy_needs_proxy()) {
-        return hw_proxy_file_open(path, flags, out_handle);
+        hw_proxy_file_open_params_t p = { .path = path, .flags = flags, .out_handle = out_handle };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FILE_OPEN, .params = &p };
+        return hw_proxy_call(&req);
     }
 
     char full_path[MAX_PATH_LEN];
@@ -389,7 +392,9 @@ fmrb_err_t fmrb_hal_file_close(fmrb_file_t handle) {
     }
 
     if (hw_proxy_needs_proxy()) {
-        return hw_proxy_file_close(handle);
+        hw_proxy_file_close_params_t p = { .handle = handle };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FILE_CLOSE, .params = &p };
+        return hw_proxy_call(&req);
     }
 
     LOCK();
@@ -415,7 +420,9 @@ fmrb_err_t fmrb_hal_file_read(fmrb_file_t handle, void *buffer, size_t size, siz
     }
 
     if (!is_std_stream(handle) && hw_proxy_needs_proxy()) {
-        return hw_proxy_file_read(handle, buffer, size, bytes_read);
+        hw_proxy_file_read_params_t p = { .handle = handle, .buf = buffer, .size = size, .out_read = bytes_read };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FILE_READ, .params = &p };
+        return hw_proxy_call(&req);
     }
 
     // Handle standard streams directly
@@ -455,7 +462,9 @@ fmrb_err_t fmrb_hal_file_write(fmrb_file_t handle, const void *buffer, size_t si
     }
 
     if (!is_std_stream(handle) && hw_proxy_needs_proxy()) {
-        return hw_proxy_file_write(handle, buffer, size, bytes_written);
+        hw_proxy_file_write_params_t p = { .handle = handle, .buf = buffer, .size = size, .out_written = bytes_written };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FILE_WRITE, .params = &p };
+        return hw_proxy_call(&req);
     }
 
     // Handle standard streams directly
@@ -496,7 +505,9 @@ fmrb_err_t fmrb_hal_file_seek(fmrb_file_t handle, int32_t offset, fmrb_seek_mode
     }
 
     if (hw_proxy_needs_proxy()) {
-        return hw_proxy_file_seek(handle, offset, (uint32_t)mode);
+        hw_proxy_file_seek_params_t p = { .handle = handle, .offset = offset, .whence = (uint32_t)mode };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FILE_SEEK, .params = &p };
+        return hw_proxy_call(&req);
     }
 
     int whence;
@@ -528,7 +539,9 @@ fmrb_err_t fmrb_hal_file_tell(fmrb_file_t handle, uint32_t *position) {
     }
 
     if (hw_proxy_needs_proxy()) {
-        return hw_proxy_file_tell(handle, position);
+        hw_proxy_file_tell_params_t p = { .handle = handle, .position = position };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FILE_TELL, .params = &p };
+        return hw_proxy_call(&req);
     }
 
     LOCK();
@@ -592,7 +605,9 @@ fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
     }
 
     if (hw_proxy_needs_proxy()) {
-        return hw_proxy_file_stat(path, info);
+        hw_proxy_file_stat_params_t p = { .path = path, .info = info };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FILE_STAT, .params = &p };
+        return hw_proxy_call(&req);
     }
 
     char full_path[MAX_PATH_LEN];
@@ -767,7 +782,9 @@ fmrb_err_t fmrb_hal_file_size(fmrb_file_t handle, uint32_t *size) {
     }
 
     if (hw_proxy_needs_proxy()) {
-        return hw_proxy_file_size(handle, size);
+        hw_proxy_file_size_params_t p = { .handle = handle, .size = size };
+        hw_proxy_request_t req = { .op = HW_PROXY_OP_FILE_SIZE, .params = &p };
+        return hw_proxy_call(&req);
     }
 
     LOCK();

@@ -14,6 +14,7 @@
 #include "fmrb_err.h"
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
+#include "hw_proxy.h"
 #include "fmrb_hid_msg.h"
 #include "fmrb_task_config.h"
 #include "fmrb_gfx.h"
@@ -592,6 +593,11 @@ static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
         FMRB_LOGW(TAG, "Failed to delete message queue for app %s: %d",
                  ctx->app_name, ret);
     }
+
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // Release HW resources owned by this task (I2C buses, RMT channels, etc.)
+    hw_proxy_release_resources((hw_proxy_task_handle_t)fmrb_task_get_current());
+#endif
 
     return mrb_nil_value();
 }
