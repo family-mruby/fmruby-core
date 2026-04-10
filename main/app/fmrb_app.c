@@ -23,8 +23,12 @@
 #include "fmrb_basic_gfx.h"
 #include "fmrb_transport.h"
 #include "fmrb_link_protocol.h"
+#include "fmrb_gfx.h"
 #include "fmrb_gfx_msg.h"
 #include "fmrb_msg.h"
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "hw_proxy.h"
+#endif
 
 // Forward declaration for estalloc helper function
 extern int mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free, int32_t* frag);
@@ -850,6 +854,47 @@ cleanup:
 
     // Close VM based on type (BEFORE destroying memory handle!)
     destroy_vm(ctx);
+
+    // Delete canvas if not already cleaned up by Ruby _cleanup()
+    // (e.g. uncaught exception skips destroy() -> _cleanup())
+    if (ctx->canvas_id != 0) {
+        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+        if (gfx_ctx) {
+            FMRB_LOGI(TAG, "[%s] C cleanup: deleting canvas %u", ctx->app_name, ctx->canvas_id);
+            fmrb_gfx_delete_canvas(gfx_ctx, ctx->canvas_id);
+        }
+        ctx->canvas_id = 0;
+    }
+    if (ctx->has_background_canvas && ctx->bg_canvas_id != 0) {
+        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+        if (gfx_ctx) {
+            fmrb_gfx_delete_canvas(gfx_ctx, ctx->bg_canvas_id);
+        }
+        ctx->bg_canvas_id = 0;
+    }
+
+    // Notify kernel of app termination
+    {
+        fmrb_msg_t exit_msg = {
+            .type = FMRB_MSG_TYPE_APP_CONTROL,
+            .src_pid = ctx->app_id,
+        };
+        uint8_t *d = exit_msg.data;
+        size_t p = 0;
+        d[p++] = 0x81;  // fixmap 1
+        d[p++] = 0xA3; memcpy(&d[p], "cmd", 3); p += 3;
+        d[p++] = 0xA4; memcpy(&d[p], "exit", 4); p += 4;
+        exit_msg.size = p;
+        fmrb_msg_send(PROC_ID_KERNEL, &exit_msg, 100);
+    }
+
+    // Delete message queue
+    fmrb_msg_delete_queue(ctx->app_id);
+
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // Release HW resources (I2C, RMT, GPIO pins)
+    hw_proxy_release_resources((hw_proxy_task_handle_t)fmrb_task_get_current());
+#endif
 
     // Free script buffer AFTER VM is closed (IRep may reference this buffer)
     if (need_free_script && script_buffer) {
