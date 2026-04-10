@@ -1,5 +1,5 @@
 app_handle_name = "fail_app"
-app_screen_name = "Fail"
+app_screen_name = "CompileErr"
 default_window_mode = "window"
 
 default_window_width = 50

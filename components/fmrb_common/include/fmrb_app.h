@@ -175,3 +175,7 @@ int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count);
 fmrb_err_t fmrb_app_bring_to_front(uint8_t pid);
 fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y);
 fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t height);
+
+// Last error info (stored in PSRAM static buffer)
+const char* fmrb_app_get_last_error_name(void);
+const char* fmrb_app_get_last_error_msg(void);

@@ -3,6 +3,9 @@
 #include <stdint.h>
 
 #include <picoruby.h>
+#include <mruby/internal.h>
+#include <mruby/string.h>
+#include <mruby/array.h>
 #include "hal.h"
 #include "picoruby_fmrb_app.h"
 #include "fmrb_hal.h"
@@ -343,6 +346,80 @@ static int create_vm_lua(fmrb_app_task_context_t* ctx) {
     return 0;
 }
 
+// Last error buffer (PSRAM on ESP32)
+#define FMRB_ERROR_BUF_SIZE 1024
+static char s_last_error_name[32] = {0};
+#ifndef CONFIG_IDF_TARGET_LINUX
+EXT_RAM_BSS_ATTR static char s_last_error_msg[FMRB_ERROR_BUF_SIZE];
+#else
+static char s_last_error_msg[FMRB_ERROR_BUF_SIZE];
+#endif
+
+const char* fmrb_app_get_last_error_name(void) { return s_last_error_name; }
+const char* fmrb_app_get_last_error_msg(void) { return s_last_error_msg; }
+
+// Store error with backtrace into static buffer
+static void set_last_error(fmrb_app_task_context_t *ctx, const char *plain_msg, mrb_state *mrb)
+{
+    strncpy(s_last_error_name, ctx->app_name, sizeof(s_last_error_name) - 1);
+    s_last_error_name[sizeof(s_last_error_name) - 1] = '\0';
+
+    size_t pos = 0;
+    pos += snprintf(s_last_error_msg + pos, FMRB_ERROR_BUF_SIZE - pos, "%s", plain_msg);
+
+    // Append backtrace if exception is available
+    if (mrb && mrb->exc) {
+        mrb_value bt = mrb_exc_backtrace(mrb, mrb_obj_value(mrb->exc));
+        if (mrb_array_p(bt)) {
+            mrb_int bt_len = RARRAY_LEN(bt);
+            for (mrb_int i = 0; i < bt_len && pos < FMRB_ERROR_BUF_SIZE - 2; i++) {
+                mrb_value line = mrb_ary_ref(mrb, bt, i);
+                if (mrb_string_p(line)) {
+                    pos += snprintf(s_last_error_msg + pos, FMRB_ERROR_BUF_SIZE - pos,
+                                   "\n%s", RSTRING_PTR(line));
+                }
+            }
+        }
+    }
+}
+
+// Send lightweight error notification to kernel
+// Full error details are in static buffer, kernel reads via fmrb_app_get_last_error_*
+static void notify_error_to_kernel(fmrb_app_task_context_t *ctx)
+{
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = ctx->app_id,
+    };
+
+    uint8_t *data = msg.data;
+    size_t pos = 0;
+
+    // Map with 2 entries: {"cmd": "app_error", "name": app_name}
+    data[pos++] = 0x82;
+
+    // "cmd" => "app_error"
+    data[pos++] = 0xA3;
+    memcpy(&data[pos], "cmd", 3); pos += 3;
+    data[pos++] = 0xA9;
+    memcpy(&data[pos], "app_error", 9); pos += 9;
+
+    // "name" => app_name
+    size_t name_len = strlen(ctx->app_name);
+    if (name_len > 31) name_len = 31;
+    data[pos++] = 0xA4;
+    memcpy(&data[pos], "name", 4); pos += 4;
+    data[pos++] = 0xA0 | (uint8_t)name_len;
+    memcpy(&data[pos], ctx->app_name, name_len); pos += name_len;
+
+    msg.size = pos;
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &msg, 100);
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send error notification to kernel: %d", ret);
+    }
+}
+
 /**
  * Execute mruby script
  * @param ctx Task context
@@ -408,7 +485,14 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
         if (!irep_obj) {
             FMRB_LOGE(TAG, "[%s] Failed to compile Ruby script", ctx->app_name);
             if (ctx->mrb->exc) {
+                mrb_value exc_str = mrb_exc_get_output(ctx->mrb, (struct RObject *)ctx->mrb->exc);
+                set_last_error(ctx, RSTRING_PTR(exc_str), ctx->mrb);
+                FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, s_last_error_msg);
+                notify_error_to_kernel(ctx);
                 mrb_print_error(ctx->mrb);
+            } else {
+                set_last_error(ctx, "Compile error (unknown)", NULL);
+                notify_error_to_kernel(ctx);
             }
             mrc_ccontext_free(cc);
             fmrb_sys_free(script_buffer);
@@ -447,11 +531,12 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
     mrb_task_run(ctx->mrb);
     FMRB_LOGI(TAG, "[%s] mrb_task_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
 
-    //TODO: check proper free process
     if (ctx->mrb->exc) {
-        FMRB_LOGI(TAG, "[%s] Exception detected, calling mrb_print_error", ctx->app_name);
+        mrb_value exc_str = mrb_exc_get_output(ctx->mrb, (struct RObject *)ctx->mrb->exc);
+        set_last_error(ctx, RSTRING_PTR(exc_str), ctx->mrb);
+        FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, s_last_error_msg);
+        notify_error_to_kernel(ctx);
         mrb_print_error(ctx->mrb);
-        FMRB_LOGI(TAG, "[%s] mrb_print_error completed", ctx->app_name);
     } else {
         FMRB_LOGI(TAG, "[%s] No exception detected", ctx->app_name);
     }

@@ -12,6 +12,7 @@ class SystemDesktopApp < FmrbApp
   include FileSelectorMixin
   include FileManagerMixin
   include ConfirmDialogMixin
+  include ErrorDialogMixin
 
   MENU_BAR_HEIGHT = 13
   MENU_BG = FmrbConst::THEME_MENU_BG
@@ -182,6 +183,7 @@ class SystemDesktopApp < FmrbApp
     draw_file_selector if @file_selector_open
     draw_file_manager if @file_manager_open
     draw_confirm_dialog if @cdlg_open
+    draw_error_dialog if @error_dlg_open
     @gfx.present
   end
 
@@ -277,6 +279,8 @@ class SystemDesktopApp < FmrbApp
   def on_control(msg)
     if msg["cmd"] == "file_select"
       open_file_selector(msg["requester_pid"], msg["mode"] || "open")
+    elsif msg["cmd"] == "show_error"
+      open_error_dialog(msg["name"] || "Unknown", msg["error"] || "Unknown error")
     elsif msg["cmd"] == "confirm_dialog"
       # Build callback data hash from message fields
       cb_data = {}
@@ -326,6 +330,16 @@ class SystemDesktopApp < FmrbApp
   end
 
   def handle_click(x, y)
+    # Error dialog has highest priority
+    if @error_dlg_open
+      if hit_error_dialog?(x, y)
+        handle_error_dialog_click(x, y)
+        return
+      end
+      close_error_dialog
+      return
+    end
+
     # Confirm dialog has highest priority
     if @cdlg_open
       if hit_confirm_dialog?(x, y)

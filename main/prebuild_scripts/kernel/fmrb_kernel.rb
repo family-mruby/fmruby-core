@@ -191,6 +191,16 @@ class FmrbKernelImpl < FmrbKernel
         stop_data = MessagePack.pack({ "cmd" => "clear_and_stop" })
         _send_raw_message(reload_pid, FmrbConst::MSG_TYPE_APP_CONTROL, stop_data)
       end
+    when "app_error"
+      err = _get_last_error
+      if err
+        Log.error("App '#{err[:name]}': #{err[:error]}")
+        if @desktop_pid
+          fwd = { "cmd" => "show_error", "name" => err[:name], "error" => err[:error] }
+          binary = MessagePack.pack(fwd)
+          _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
+        end
+      end
     when "kill"
       Log.info("Kill request from pid=#{pid} (not implemented)")
       # TODO: Implement kill command to forcefully terminate app

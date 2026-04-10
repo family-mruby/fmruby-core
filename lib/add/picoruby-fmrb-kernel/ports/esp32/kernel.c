@@ -392,6 +392,24 @@ static mrb_value mrb_kernel_get_app_info(mrb_state *mrb, mrb_value self)
     return hash;
 }
 
+// FmrbKernel#_get_last_error -> Hash {name:, error:} or nil
+static mrb_value mrb_kernel_get_last_error(mrb_state *mrb, mrb_value self)
+{
+    const char *name = fmrb_app_get_last_error_name();
+    const char *msg = fmrb_app_get_last_error_msg();
+
+    if (name[0] == '\0') {
+        return mrb_nil_value();
+    }
+
+    mrb_value hash = mrb_hash_new_capa(mrb, 2);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "name")),
+                 mrb_str_new_cstr(mrb, name));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "error")),
+                 mrb_str_new_cstr(mrb, msg));
+    return hash;
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -411,6 +429,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_get_sync_files", mrb_kernel_get_sync_files, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_sync_file", mrb_kernel_sync_file, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, handler_class, "_get_app_info", mrb_kernel_get_app_info, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_get_last_error", mrb_kernel_get_last_error, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }
