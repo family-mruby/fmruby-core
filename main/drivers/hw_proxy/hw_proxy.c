@@ -14,7 +14,7 @@ static hw_proxy_request_t *s_current_req = NULL;
 
 static void execute_request(hw_proxy_request_t *req)
 {
-    if (req->op <= HW_PROXY_OP_FILE_STAT) {
+    if (req->op <= HW_PROXY_OP_DIR_STAT) {
         hw_proxy_file_execute(req);
     } else if (req->op >= HW_PROXY_OP_I2C_INIT && req->op <= HW_PROXY_OP_I2C_WRITE) {
         hw_proxy_i2c_execute(req);

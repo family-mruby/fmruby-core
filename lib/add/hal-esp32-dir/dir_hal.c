@@ -3,6 +3,9 @@
 **
 ** ESP-IDF VFS provides POSIX directory APIs (opendir/readdir/closedir/mkdir/
 ** rmdir/chdir/getcwd/stat) but lacks chroot(), seekdir(), and telldir().
+**
+** PSRAM stack tasks are routed through hw_proxy (internal RAM stack) for
+** opendir/readdir/closedir/stat to avoid SPI flash DMA crashes.
 */
 
 #include <mruby.h>
@@ -14,6 +17,11 @@
 #include <unistd.h>
 #include <errno.h>
 
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "hw_proxy.h"
+#include "hw_proxy_internal.h"
+#endif
+
 struct mrb_dir_handle {
   DIR *dir;
 };
@@ -21,6 +29,16 @@ struct mrb_dir_handle {
 mrb_dir_handle*
 mrb_hal_dir_open(mrb_state *mrb, const char *path)
 {
+#ifndef CONFIG_IDF_TARGET_LINUX
+  if (hw_proxy_needs_proxy()) {
+    hw_proxy_dir_open_params_t p = { .path = path, .out_dir = NULL };
+    hw_proxy_request_t req = { .op = HW_PROXY_OP_DIR_OPEN, .params = &p };
+    if (hw_proxy_call(&req) != 0 || p.out_dir == NULL) return NULL;
+    mrb_dir_handle *handle = (mrb_dir_handle*)mrb_malloc(mrb, sizeof(mrb_dir_handle));
+    handle->dir = (DIR *)p.out_dir;
+    return handle;
+  }
+#endif
   DIR *dir = opendir(path);
   if (dir == NULL) return NULL;
   mrb_dir_handle *handle = (mrb_dir_handle*)mrb_malloc(mrb, sizeof(mrb_dir_handle));
@@ -31,6 +49,15 @@ mrb_hal_dir_open(mrb_state *mrb, const char *path)
 int
 mrb_hal_dir_close(mrb_state *mrb, mrb_dir_handle *handle)
 {
+#ifndef CONFIG_IDF_TARGET_LINUX
+  if (hw_proxy_needs_proxy()) {
+    hw_proxy_dir_close_params_t p = { .dir = handle->dir };
+    hw_proxy_request_t req = { .op = HW_PROXY_OP_DIR_CLOSE, .params = &p };
+    hw_proxy_call(&req);
+    mrb_free(mrb, handle);
+    return 0;
+  }
+#endif
   int result = closedir(handle->dir);
   mrb_free(mrb, handle);
   return result;
@@ -40,6 +67,15 @@ const char*
 mrb_hal_dir_read(mrb_state *mrb, mrb_dir_handle *handle)
 {
   (void)mrb;
+#ifndef CONFIG_IDF_TARGET_LINUX
+  if (hw_proxy_needs_proxy()) {
+    const char *name = NULL;
+    hw_proxy_dir_read_params_t p = { .dir = handle->dir, .out_name = &name };
+    hw_proxy_request_t req = { .op = HW_PROXY_OP_DIR_READ, .params = &p };
+    hw_proxy_call(&req);
+    return name;
+  }
+#endif
   struct dirent *dp = readdir(handle->dir);
   return dp ? dp->d_name : NULL;
 }
@@ -109,8 +145,17 @@ mrb_hal_dir_chroot(mrb_state *mrb, const char *path)
 int
 mrb_hal_dir_is_directory(mrb_state *mrb, const char *path)
 {
-  struct stat sb;
   (void)mrb;
+#ifndef CONFIG_IDF_TARGET_LINUX
+  if (hw_proxy_needs_proxy()) {
+    int is_dir = 0;
+    hw_proxy_dir_stat_params_t p = { .path = path, .out_is_dir = &is_dir };
+    hw_proxy_request_t req = { .op = HW_PROXY_OP_DIR_STAT, .params = &p };
+    hw_proxy_call(&req);
+    return is_dir;
+  }
+#endif
+  struct stat sb;
   if (stat(path, &sb) == 0 && S_ISDIR(sb.st_mode)) {
     return 1;
   }

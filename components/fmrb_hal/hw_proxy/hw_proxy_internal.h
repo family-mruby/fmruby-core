@@ -61,6 +61,27 @@ typedef struct {
     fmrb_file_info_t *info;
 } hw_proxy_file_stat_params_t;
 
+// ----- DIR params -----
+
+typedef struct {
+    const char *path;
+    void *out_dir;       // DIR* result (opaque)
+} hw_proxy_dir_open_params_t;
+
+typedef struct {
+    void *dir;           // DIR* handle
+    const char **out_name; // pointer to dirent name (static, valid until next readdir)
+} hw_proxy_dir_read_params_t;
+
+typedef struct {
+    void *dir;           // DIR* handle
+} hw_proxy_dir_close_params_t;
+
+typedef struct {
+    const char *path;
+    int *out_is_dir;     // 1 if directory, 0 otherwise
+} hw_proxy_dir_stat_params_t;
+
 // ----- GPIO params -----
 
 typedef struct {

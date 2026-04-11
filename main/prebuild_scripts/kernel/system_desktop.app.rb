@@ -99,7 +99,9 @@ class SystemDesktopApp < FmrbApp
     @launcher_y = MENU_BAR_HEIGHT + 16
 
     # Build app list
+    Log.info("on_create: scan_apps start")
     scan_apps
+    Log.info("on_create: scan_apps done")
 
     # Center file selector
     @fsel_x = (@window_width - FSEL_W) / 2
@@ -109,8 +111,11 @@ class SystemDesktopApp < FmrbApp
     @fmgr_x = (@window_width - FMGR_W) / 2
     @fmgr_y = MENU_BAR_HEIGHT + (@window_height - MENU_BAR_HEIGHT - FMGR_H) / 2
 
+    Log.info("on_create: draw_background start")
     draw_background
+    Log.info("on_create: draw_foreground start")
     draw_foreground
+    Log.info("on_create: done")
   end
 
   # ---- Background layer (@bg_gfx) ----

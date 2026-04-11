@@ -21,6 +21,12 @@ typedef enum {
     HW_PROXY_OP_FILE_SIZE  = 0x06,
     HW_PROXY_OP_FILE_STAT  = 0x07,
 
+    // Directory ops (0x08-0x0F)
+    HW_PROXY_OP_DIR_OPEN   = 0x08,
+    HW_PROXY_OP_DIR_READ   = 0x09,
+    HW_PROXY_OP_DIR_CLOSE  = 0x0A,
+    HW_PROXY_OP_DIR_STAT   = 0x0B,
+
     // I2C ops (0x10-0x1F)
     HW_PROXY_OP_I2C_INIT   = 0x10,
     HW_PROXY_OP_I2C_READ   = 0x11,
