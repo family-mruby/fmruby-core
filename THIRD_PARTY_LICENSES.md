@@ -17,7 +17,7 @@ Family mruby Core includes code from several open source projects. The following
 7. [Lua](#lua)
 8. [LovyanGFX](#lovyangfx)
 9. [RX8900RTC](#rx8900rtc)
-10. [picoruby-syntax-highlight](#picoruby-syntax-highlight)
+10. [harucom-os](#picoruby-syntax-highlight)
 
 ---
 
@@ -385,10 +385,12 @@ SOFTWARE.
 
 
 ================================================================================
-## picoruby-syntax-highlight
+## harucom-os
 Repository: https://github.com/harukasan/harucom-os
 Path: mrbgems/picoruby-syntax-highlight/
 License: MIT License
+
+Note: Using picoruby-syntax-highlight
 --------------------------------------------------------------------------------
 
 Copyright (c) Shunsuke Michii
