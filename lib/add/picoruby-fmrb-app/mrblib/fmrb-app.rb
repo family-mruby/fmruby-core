@@ -58,9 +58,10 @@ class FmrbApp
   end
 
   # Scroll bar constants and helpers
-  SCROLLBAR_W = 8
+  SCROLLBAR_W = 10
+  SCROLLBAR_BTN_H = 10
 
-  # Draw a vertical scroll bar
+  # Draw a vertical scroll bar with up/down arrow buttons
   # x, y: scroll area top-left (in window coords)
   # w, h: scroll area size
   # scroll: current scroll position (0-based)
@@ -69,19 +70,55 @@ class FmrbApp
   def draw_scrollbar(x, y, w, h, scroll, total, visible)
     return if total <= visible
     bar_x = x + w - SCROLLBAR_W
-    thumb_h = [h * visible / total, 8].max
-    max_scroll = total - visible
-    thumb_y = y + (max_scroll > 0 ? (h - thumb_h) * scroll / max_scroll : 0)
-    @gfx.fill_rect(bar_x, thumb_y, SCROLLBAR_W, thumb_h, FmrbConst::THEME_BORDER)
+    btn_h = SCROLLBAR_BTN_H
+    border = FmrbConst::THEME_BORDER
+    bg = FmrbConst::THEME_WINDOW_BG
+
+    # Separator line between content and scrollbar
+    @gfx.draw_line(bar_x - 1, y, bar_x - 1, y + h - 1, border)
+
+    # Up button
+    @gfx.fill_rect(bar_x, y, SCROLLBAR_W, btn_h, bg)
+    @gfx.draw_rect(bar_x, y, SCROLLBAR_W, btn_h, border)
+    # Up arrow triangle
+    cx = bar_x + SCROLLBAR_W / 2
+    @gfx.draw_line(cx, y + 2, cx - 3, y + 7, border)
+    @gfx.draw_line(cx, y + 2, cx + 3, y + 7, border)
+    @gfx.draw_line(cx - 3, y + 7, cx + 3, y + 7, border)
+
+    # Down button
+    dy = y + h - btn_h
+    @gfx.fill_rect(bar_x, dy, SCROLLBAR_W, btn_h, bg)
+    @gfx.draw_rect(bar_x, dy, SCROLLBAR_W, btn_h, border)
+    # Down arrow triangle
+    @gfx.draw_line(cx, dy + 7, cx - 3, dy + 2, border)
+    @gfx.draw_line(cx, dy + 7, cx + 3, dy + 2, border)
+    @gfx.draw_line(cx - 3, dy + 2, cx + 3, dy + 2, border)
+
+    # Thumb in track area
+    track_y = y + btn_h
+    track_h = h - btn_h * 2
+    if track_h > 4
+      thumb_h = [track_h * visible / total, 6].max
+      max_scroll = total - visible
+      thumb_y = track_y + (max_scroll > 0 ? (track_h - thumb_h) * scroll / max_scroll : 0)
+      @gfx.fill_rect(bar_x + 1, thumb_y, SCROLLBAR_W - 2, thumb_h, border)
+    end
   end
 
   # Hit test for scroll bar click
-  # Returns :up, :down, or nil
+  # Returns :up, :down, or nil (only responds to arrow button clicks)
   def scrollbar_hit(x, y, w, h, click_x, click_y)
-    bar_x = x + w - SCROLLBAR_W - 2
+    bar_x = x + w - SCROLLBAR_W - 1
     return nil unless click_x >= bar_x && click_y >= y && click_y < y + h
-    mid = y + h / 2
-    click_y < mid ? :up : :down
+    btn_h = SCROLLBAR_BTN_H
+    if click_y < y + btn_h
+      :up
+    elsif click_y >= y + h - btn_h
+      :down
+    else
+      nil
+    end
   end
 
   # Lifecycle methods (override in subclass)
