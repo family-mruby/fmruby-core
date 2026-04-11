@@ -243,6 +243,9 @@ static bool init_hardware(void)
 #else // ESP32
 static bool init_hardware(void)
 {
+    fmrb_pin_manager_init();
+    hw_proxy_init();
+
     init_gpio();
     fmrb_task_delay_ms(10); // wait for gpio to stabilize
 
@@ -259,9 +262,6 @@ static bool init_hardware(void)
         FMRB_LOGE(TAG, "Failed to init filesystem");
         return false;
     }
-
-    fmrb_pin_manager_init();
-    hw_proxy_init();
 
 #ifndef FMRB_HW_ATOM_DISPLAY
     hid_device_config_init();
