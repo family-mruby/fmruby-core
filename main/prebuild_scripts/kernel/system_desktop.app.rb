@@ -280,7 +280,10 @@ class SystemDesktopApp < FmrbApp
     if msg["cmd"] == "file_select"
       open_file_selector(msg["requester_pid"], msg["mode"] || "open")
     elsif msg["cmd"] == "show_error"
-      open_error_dialog(msg["name"] || "Unknown", msg["error"] || "Unknown error")
+      err = FmrbApp._get_last_error
+      if err
+        open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error")
+      end
     elsif msg["cmd"] == "confirm_dialog"
       # Build callback data hash from message fields
       cb_data = {}

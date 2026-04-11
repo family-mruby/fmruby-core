@@ -45,6 +45,9 @@ class FmrbKernelImpl < FmrbKernel
     @fullscreen_pid = nil
     @suspended_pids = []
 
+    # PUB/SUB topic subscriptions: {"topic" => [pid1, pid2, ...]}
+    @subscriptions = {}
+
     # Periodic cleanup tracking
     @tick_count = 0
     @last_cleanup_tick = 0
@@ -196,7 +199,7 @@ class FmrbKernelImpl < FmrbKernel
       if err
         Log.error("App '#{err[:name]}': #{err[:error]}")
         if @desktop_pid
-          fwd = { "cmd" => "show_error", "name" => err[:name], "error" => err[:error] }
+          fwd = { "cmd" => "show_error" }
           binary = MessagePack.pack(fwd)
           _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
         end
@@ -204,6 +207,32 @@ class FmrbKernelImpl < FmrbKernel
     when "kill"
       Log.info("Kill request from pid=#{pid} (not implemented)")
       # TODO: Implement kill command to forcefully terminate app
+    when "subscribe"
+      topic = data["topic"]
+      if topic
+        @subscriptions[topic] ||= []
+        @subscriptions[topic] << pid unless @subscriptions[topic].include?(pid)
+        Log.info("PID #{pid} subscribed to '#{topic}'")
+      end
+    when "unsubscribe"
+      topic = data["topic"]
+      if topic && @subscriptions[topic]
+        @subscriptions[topic].delete(pid)
+        @subscriptions.delete(topic) if @subscriptions[topic].empty?
+        Log.info("PID #{pid} unsubscribed from '#{topic}'")
+      end
+    when "publish"
+      topic = data["topic"]
+      payload = data["data"]
+      subscribers = @subscriptions[topic]
+      if subscribers && subscribers.length > 0
+        fwd = {"cmd" => "topic_data", "topic" => topic, "data" => payload, "src_pid" => pid}
+        binary = MessagePack.pack(fwd)
+        subscribers.each do |sub_pid|
+          next if sub_pid == pid
+          _send_raw_message(sub_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
+        end
+      end
     when "suspend"
       Log.info("Suspend request (not implemented)")
     when "resume"
@@ -681,6 +710,14 @@ class FmrbKernelImpl < FmrbKernel
     if @mouse_down_pid == pid
       @mouse_down_pid = nil
     end
+
+    # Remove all topic subscriptions for terminated app
+    empty_topics = []
+    @subscriptions.each do |topic, pids|
+      pids.delete(pid)
+      empty_topics << topic if pids.empty?
+    end
+    empty_topics.each { |topic| @subscriptions.delete(topic) }
 
     # Handle pending reload (re-spawn after termination)
     if @pending_reload

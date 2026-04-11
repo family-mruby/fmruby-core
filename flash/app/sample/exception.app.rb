@@ -9,11 +9,19 @@ class ExceptionApp < FmrbApp
     @gfx.present
   end
 
+  def method1
+    method2
+  end
+
+  def method2
+    # This will raise an uncaught exception
+      nil.no_such_method
+  end
+
   def on_update
     @tick += 1
     if @tick >= 30
-      # This will raise an uncaught exception
-      nil.no_such_method
+      method1
     end
     100
   end

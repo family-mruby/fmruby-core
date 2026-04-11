@@ -748,6 +748,25 @@ static mrb_value mrb_fmrb_app_s_ps(mrb_state *mrb, mrb_value self)
     return result;
 }
 
+// FmrbApp._get_last_error -> Hash {name:, error:} or nil
+// Read last error from shared static buffer (set by crashed app)
+static mrb_value mrb_fmrb_app_s_get_last_error(mrb_state *mrb, mrb_value self)
+{
+    const char *name = fmrb_app_get_last_error_name();
+    const char *msg = fmrb_app_get_last_error_msg();
+
+    if (name[0] == '\0') {
+        return mrb_nil_value();
+    }
+
+    mrb_value hash = mrb_hash_new_capa(mrb, 2);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "name")),
+                 mrb_str_new_cstr(mrb, name));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "error")),
+                 mrb_str_new_cstr(mrb, msg));
+    return hash;
+}
+
 // FmrbApp.sys_pool_info() -> Hash
 // Get system pool (fmrb_sys_malloc) information (TLSF allocator)
 static mrb_value mrb_fmrb_app_s_sys_pool_info(mrb_state *mrb, mrb_value self)
@@ -860,6 +879,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "ps", mrb_fmrb_app_s_ps, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "heap_info", mrb_fmrb_app_s_heap_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "sys_pool_info", mrb_fmrb_app_s_sys_pool_info, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 

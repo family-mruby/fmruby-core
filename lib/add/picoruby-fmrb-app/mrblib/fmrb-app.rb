@@ -185,10 +185,19 @@ class FmrbApp
   def clear_time(timer_id)
   end
 
-  def subscribe(from,type,name, &blk)
+  def subscribe(topic)
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      {"cmd" => "subscribe", "topic" => topic})
   end
 
-  def publish()
+  def unsubscribe(topic)
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      {"cmd" => "unsubscribe", "topic" => topic})
+  end
+
+  def publish(topic, data = nil)
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      {"cmd" => "publish", "topic" => topic, "data" => data})
   end
 
   def request_file_select(mode = "open")
