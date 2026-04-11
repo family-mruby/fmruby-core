@@ -17,7 +17,7 @@
 static uint8_t *s_tx_dma_buf = NULL;
 static uint8_t *s_rx_dma_buf = NULL;
 
-#define SPI_FREQUENCY (10 * 1000 * 1000)  // 10MHz
+#define SPI_FREQUENCY (5 * 1000 * 1000)  // 5MHz
 #define ACK_RECV_QUEUE_SIZE 32
 
 typedef struct {
@@ -72,11 +72,13 @@ static void IRAM_ATTR ready_gpio_isr_handler(void *arg) {
 }
 
 // Wait for READY=HIGH (with timeout)
+// NOTE: Direct gpio_get_level() call instead of fmrb_hal_gpio_get_level()
+// to avoid hw_proxy overhead in SPI hot path.
 static bool wait_ready(uint32_t timeout_ms) {
     TickType_t start = xTaskGetTickCount();
     TickType_t timeout_ticks = pdMS_TO_TICKS(timeout_ms);
     while ((xTaskGetTickCount() - start) < timeout_ticks) {
-        if (fmrb_hal_gpio_get_level(FMRB_PIN_GFX_SPI_INTR) == 1) {
+        if (gpio_get_level(FMRB_PIN_GFX_SPI_INTR) == 1) {
             return true;
         }
         if (ack_notify_sem) {
@@ -295,7 +297,9 @@ static fmrb_err_t send_frame_and_wait_ack(fmrb_link_channel_t channel,
 
         while (!ch->ack_received) {
             if (fmrb_hal_time_is_timeout(start_time, timeout_ms * 1000)) {
-                ESP_LOGW(TAG, "ACK timeout after %u ms (seq=%u)", timeout_ms, seq);
+                int ready_level = gpio_get_level(FMRB_PIN_GFX_SPI_INTR);
+                ESP_LOGW(TAG, "ACK timeout after %u ms (seq=%u) READY=%d",
+                         timeout_ms, seq, ready_level);
                 return FMRB_ERR_TIMEOUT;
             }
 
@@ -468,12 +472,32 @@ void fmrb_hal_link_release_shared_memory(void *ptr) {
 /**
  * Process received spi_frame_t: validate, check ack_seq/status, decode COBS data
  */
+static uint32_t s_rx_log_count = 0;
+static uint32_t s_rx_valid_count = 0;
+#define RX_LOG_LIMIT 50
+
 static void process_received_frame(fmrb_link_channel_t channel, const spi_frame_t *rx) {
     esp32_link_channel_t *ch = &channels[channel];
 
     // Validate frame
     if (!spi_frame_validate(rx)) {
-        return;  // Invalid frame (magic or CRC16 mismatch)
+        s_rx_log_count++;
+        if (s_rx_log_count <= RX_LOG_LIMIT) {
+            const uint8_t *raw = (const uint8_t *)rx;
+            uint16_t exp_crc = crc16_ccitt(raw, FMRB_LINK_FRAME_SIZE - FMRB_LINK_FRAME_CRC_SIZE);
+            ESP_LOGW(TAG, "RX invalid #%lu (valid=%lu): magic=0x%02X exp=0x%04X act=0x%04X",
+                     s_rx_log_count, s_rx_valid_count, rx->magic, exp_crc, rx->crc16);
+            ESP_LOGW(TAG, "  head: %02X %02X %02X %02X %02X %02X %02X %02X",
+                     raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7]);
+        }
+        return;
+    }
+
+    // Log valid frames too
+    s_rx_valid_count++;
+    if (s_rx_valid_count <= RX_LOG_LIMIT) {
+        ESP_LOGI(TAG, "RX valid #%lu: magic=0x%02X ack_seq=%u status=0x%02X dlen=%u",
+                 s_rx_valid_count, rx->magic, rx->ack_seq, rx->status, rx->data_len);
     }
 
     // Check if this response matches our expected seq
@@ -569,7 +593,8 @@ static fmrb_err_t poll_for_ack(fmrb_link_channel_t channel, uint32_t timeout_ms)
     }
 
     // Only poll when READY=HIGH (slave has queued slots)
-    if (fmrb_hal_gpio_get_level(FMRB_PIN_GFX_SPI_INTR) != 1) {
+    // Direct gpio_get_level() to avoid hw_proxy overhead
+    if (gpio_get_level(FMRB_PIN_GFX_SPI_INTR) != 1) {
         return FMRB_ERR_TIMEOUT;
     }
 

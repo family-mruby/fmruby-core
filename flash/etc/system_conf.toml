@@ -19,6 +19,6 @@ border = 0x60
 button = 0x60
 dir_color = 0x03
 
-[[sync_files]]
-src = "/usr/share/sounds/test.nsf"
-dest = "/flash/data/test.nsf"
+# [[sync_files]]
+# src = "/usr/share/sounds/test.nsf"
+# dest = "/flash/data/test.nsf"

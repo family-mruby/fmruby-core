@@ -40,12 +40,12 @@ fmrb_err_t fmrb_hal_spi_init(const fmrb_spi_config_t *config, fmrb_spi_handle_t 
     // Configure SPI device
     spi_device_interface_config_t dev_config = {
         .clock_speed_hz = config->frequency,
-        .mode = 0,  // SPI mode 0 (CPOL=0, CPHA=0)
+        .mode = 0,  // SPI mode 0 (CPOL=0, CPHA=0) - best result with DMA slave at 5MHz
         .spics_io_num = config->cs_pin,
         .queue_size = 1,
         .cs_ena_pretrans = 8,   // CS low before first clock (in SPI clock cycles)
         .cs_ena_posttrans = 2,  // CS hold after last clock
-        .input_delay_ns = 0,    
+        .input_delay_ns = 25,   // sweep test: 25ns
     };
 
     ret = spi_bus_add_device(SPI2_HOST, &dev_config, &esp_handle->device);
