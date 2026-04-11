@@ -95,6 +95,9 @@ task :setup do
   # io
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-io"
   sh "cp -rf lib/add/picoruby-fmrb-io #{mrbgem_path}/"
+  # syntax-highlight
+  sh "rm -rf #{mrbgem_path}/picoruby-syntax-highlight"
+  sh "cp -rf lib/add/picoruby-syntax-highlight #{mrbgem_path}/"
   # conf
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"

@@ -12,6 +12,19 @@ class EditorApp < FmrbApp
   STATUS_TEXT   = 0x1F  # Cyan status text
   CURSOR_COLOR  = 0xFC  # Yellow cursor
 
+  # Syntax highlight category colors (RGB332)
+  HL_COLORS = [
+    0xFF,  # 0: default    - white
+    0xE0,  # 1: keyword    - red
+    0x1C,  # 2: string     - green
+    0x92,  # 3: comment    - gray
+    0xFC,  # 4: number     - yellow
+    0xE3,  # 5: symbol     - magenta
+    0x1F,  # 6: constant   - cyan
+    0xFE,  # 7: variable   - light pink
+    0x9F,  # 8: method     - light blue
+  ]
+
   CHAR_W = 6
   CHAR_H = 8
   TAB_SIZE = 2
@@ -38,6 +51,9 @@ class EditorApp < FmrbApp
     @current_file = nil
     @file_dropdown_open = false
     @pending_file_op = nil  # :open or :save
+    @highlight_map = nil
+    @highlight_dirty = true
+    @line_offsets = nil
   end
 
   def on_create
@@ -111,24 +127,67 @@ class EditorApp < FmrbApp
     @gfx.draw_text(@user_area_x0 + 2, y, status, STATUS_TEXT, STATUS_BG)
   end
 
+  def update_highlight
+    return unless @highlight_dirty
+    @highlight_dirty = false
+
+    source = @lines.join("\n")
+    @highlight_map = SyntaxHighlight.tokenize(source)
+
+    # Build line offset table
+    @line_offsets = []
+    offset = 0
+    @lines.each do |line|
+      @line_offsets << offset
+      offset += line.length + 1  # +1 for newline
+    end
+  end
+
   def draw_edit_area
     @gfx.fill_rect(@user_area_x0, @edit_y,
                     @user_area_width, @edit_height, BG_COLOR)
+
+    update_highlight
 
     @edit_rows.times do |row|
       line_idx = @scroll_y + row
       break if line_idx >= @lines.length
 
       text = @lines[line_idx]
-      # Truncate to visible width
-      visible = text.length > @edit_cols ? text[0, @edit_cols] : text
+      visible_len = text.length > @edit_cols ? @edit_cols : text.length
+      next if visible_len == 0
 
       x = @user_area_x0 + 1
       y = @edit_y + row * CHAR_H
-      @gfx.draw_text(x, y, visible, TEXT_COLOR, BG_COLOR) unless visible.empty?
+
+      if @highlight_map && @line_offsets
+        draw_highlighted_line(x, y, text, visible_len, @line_offsets[line_idx])
+      else
+        @gfx.draw_text(x, y, text[0, visible_len], TEXT_COLOR, BG_COLOR)
+      end
     end
 
     draw_cursor
+  end
+
+  def draw_highlighted_line(x, y, text, visible_len, offset)
+    i = 0
+    while i < visible_len
+      cat = @highlight_map.getbyte(offset + i) || 0
+      color = HL_COLORS[cat] || TEXT_COLOR
+
+      # Gather consecutive characters with the same category
+      j = i + 1
+      while j < visible_len
+        next_cat = @highlight_map.getbyte(offset + j) || 0
+        break if next_cat != cat
+        j += 1
+      end
+
+      chunk = text[i, j - i]
+      @gfx.draw_text(x + i * CHAR_W, y, chunk, color, BG_COLOR)
+      i = j
+    end
   end
 
   def draw_cursor
@@ -188,6 +247,7 @@ class EditorApp < FmrbApp
     @lines[@cy] = line[0, @cx].to_s + c + line[@cx..-1].to_s
     @cx += 1
     @modified = true
+    @highlight_dirty = true
     @need_redraw = true
   end
 
@@ -201,6 +261,7 @@ class EditorApp < FmrbApp
     @cy += 1
     @cx = 0
     @modified = true
+    @highlight_dirty = true
     ensure_cursor_visible
     @need_redraw = true
   end
@@ -211,6 +272,7 @@ class EditorApp < FmrbApp
       @lines[@cy] = line[0, @cx - 1].to_s + line[@cx..-1].to_s
       @cx -= 1
       @modified = true
+      @highlight_dirty = true
       @need_redraw = true
     elsif @cy > 0
       # Merge with previous line
@@ -220,6 +282,7 @@ class EditorApp < FmrbApp
       @cy -= 1
       @cx = prev_len
       @modified = true
+      @highlight_dirty = true
       ensure_cursor_visible
       @need_redraw = true
     end
@@ -230,12 +293,14 @@ class EditorApp < FmrbApp
     if @cx < line.length
       @lines[@cy] = line[0, @cx].to_s + line[@cx + 1..-1].to_s
       @modified = true
+      @highlight_dirty = true
       @need_redraw = true
     elsif @cy < @lines.length - 1
       # Merge next line
       @lines[@cy] += @lines[@cy + 1]
       @lines.delete_at(@cy + 1)
       @modified = true
+      @highlight_dirty = true
       @need_redraw = true
     end
   end
@@ -358,6 +423,7 @@ class EditorApp < FmrbApp
       @cy = 0
       @scroll_y = 0
       @modified = false
+      @highlight_dirty = true
       @current_file = path
       @need_redraw = true
       Log.info("Loaded file: #{path} (#{@lines.length} lines)")
