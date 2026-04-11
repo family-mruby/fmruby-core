@@ -29,9 +29,13 @@ else()
         "platform/esp32/fmrb_hal_file_esp32.c"
         "platform/esp32/fmrb_hal_uart_esp32.c"
     )
+    set(FMRB_LINK_TRANSPORT "UART" CACHE STRING "Link transport: SPI, UART")
     if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_local.c")
         message(STATUS "HW target: ATOM_DISPLAY (local Message Buffer link)")
+    elseif(FMRB_LINK_TRANSPORT STREQUAL "UART")
+        list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_uart_esp32.c")
+        message(STATUS "HW target: ${FMRB_HW_TARGET} (UART link)")
     else()
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_esp32.c")
         message(STATUS "HW target: ${FMRB_HW_TARGET} (SPI link)")

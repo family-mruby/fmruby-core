@@ -63,8 +63,16 @@ typedef struct {
 
     fmrb_fragment_manager_t fragment_manager;  // Fragment manager for chunking
 
+    // Throughput statistics (reset every STATS_INTERVAL_MS)
+    uint32_t stats_tx_bytes;
+    uint32_t stats_tx_msgs;
+    uint32_t stats_rx_msgs;
+    fmrb_time_t stats_last_us;
+
     bool initialized;
 } transport_context_t;
+
+#define TRANSPORT_STATS_INTERVAL_MS  3000
 
 static transport_context_t g_tranport_context;
 
@@ -188,7 +196,10 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
         fmrb_link_channel_t hal_channel = FMRB_LINK_GRAPHICS;
         fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1, timeout_ms);
 
-        if (ret != FMRB_OK && link_type != FMRB_LINK_TYPE_GRAPHICS) {
+        if (ret == FMRB_OK) {
+            ctx->stats_tx_bytes += sbuf.size;
+            ctx->stats_tx_msgs++;
+        } else if (link_type != FMRB_LINK_TYPE_GRAPHICS) {
             FMRB_LOGE(TAG, "HAL send failed: ret=%d, type=%d, sub_cmd=0x%02X", ret, link_type, sub_cmd);
         }
 
@@ -421,6 +432,10 @@ fmrb_err_t fmrb_transport_send_batch(const fmrb_transport_batch_entry_t *entries
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Batch send failed: ret=%d, count=%zu", ret, entry_count);
     } else {
+        for (size_t i = 0; i < entry_count; i++) {
+            ctx->stats_tx_bytes += sbufs[i].size;
+        }
+        ctx->stats_tx_msgs += entry_count;
         FMRB_LOGD(TAG, "Batch sent: %zu messages", entry_count);
     }
 
@@ -770,6 +785,7 @@ fmrb_err_t fmrb_transport_process(void) {
     }
 
     if (processed_count > 0) {
+        ctx->stats_rx_msgs += processed_count;
         FMRB_LOGD(TAG, "Processed %d frames in this call", processed_count);
     }
 
@@ -814,6 +830,26 @@ fmrb_err_t fmrb_transport_process(void) {
         }
     }
     fmrb_semaphore_give(ctx->sync_mutex);
+
+    // Periodic throughput statistics
+    fmrb_time_t now_us = fmrb_hal_time_get_us();
+    if (ctx->stats_last_us == 0) {
+        ctx->stats_last_us = now_us;
+    } else {
+        uint64_t elapsed_us = now_us - ctx->stats_last_us;
+        if (elapsed_us >= (uint64_t)TRANSPORT_STATS_INTERVAL_MS * 1000) {
+            uint32_t elapsed_ms = (uint32_t)(elapsed_us / 1000);
+            uint32_t tx_bps = (ctx->stats_tx_bytes * 1000) / elapsed_ms;
+            uint32_t tx_mps = (ctx->stats_tx_msgs * 1000) / elapsed_ms;
+            uint32_t rx_mps = (ctx->stats_rx_msgs * 1000) / elapsed_ms;
+            FMRB_LOGI(TAG, "stats: tx=%lu B/s tx_msg=%lu/s rx_msg=%lu/s",
+                      tx_bps, tx_mps, rx_mps);
+            ctx->stats_tx_bytes = 0;
+            ctx->stats_tx_msgs = 0;
+            ctx->stats_rx_msgs = 0;
+            ctx->stats_last_us = now_us;
+        }
+    }
 
     return FMRB_OK;
 }
