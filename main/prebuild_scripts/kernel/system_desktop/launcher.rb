@@ -257,7 +257,7 @@ module LauncherMixin
 
         # Icon background
         bg = (i == @launcher_selected) ? LAUNCHER_ICON_SEL : LAUNCHER_ICON_BG
-        @gfx.fill_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 10, bg)
+        @gfx.fill_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 18, bg)
 
         # Draw icon bitmap or fallback character
         icon_data = app[:icon_file] ? load_icon(app[:icon_file]) : nil
@@ -265,22 +265,34 @@ module LauncherMixin
           icon_rows = icon_data[:rows]
           icon_h = icon_rows.size
           icon_w = icon_rows[0] ? icon_rows[0].length : 0
-          scale = [(LAUNCHER_ICON_W - 4) / icon_w, (LAUNCHER_ICON_H - 14) / icon_h].min
+          scale = [(LAUNCHER_ICON_W - 4) / icon_w, (LAUNCHER_ICON_H - 22) / icon_h].min
           scale = 1 if scale < 1
           bmp_x = icon_x + (LAUNCHER_ICON_W - icon_w * scale) / 2
-          bmp_y = icon_y + (LAUNCHER_ICON_H - 10 - icon_h * scale) / 2
+          bmp_y = icon_y + (LAUNCHER_ICON_H - 18 - icon_h * scale) / 2
           draw_icon_bitmap(bmp_x, bmp_y, icon_data, scale, bg)
         else
           char_x = icon_x + (LAUNCHER_ICON_W - 6) / 2
-          char_y = icon_y + (LAUNCHER_ICON_H - 10 - 8) / 2
+          char_y = icon_y + (LAUNCHER_ICON_H - 18 - 8) / 2
           @gfx.draw_text(char_x, char_y, app[:icon_char] || "?", 0x00, bg)
         end
 
-        # Label below icon
+        # Label below icon (2-line with truncation)
         label = app[:label]
-        label_x = icon_x + (LAUNCHER_ICON_W - label.length * 6) / 2
-        label_y = icon_y + LAUNCHER_ICON_H - 8
-        @gfx.draw_text(label_x, label_y, label, LAUNCHER_TEXT)
+        max_chars = LAUNCHER_ICON_W / 6
+        if label.length <= max_chars
+          label_x = icon_x + (LAUNCHER_ICON_W - label.length * 6) / 2
+          @gfx.draw_text(label_x, icon_y + LAUNCHER_ICON_H - 8, label, LAUNCHER_TEXT)
+        else
+          line1 = label[0, max_chars]
+          line2 = label[max_chars..]
+          if line2.length > max_chars
+            line2 = line2[0, max_chars - 2] + ".."
+          end
+          l1x = icon_x + (LAUNCHER_ICON_W - line1.length * 6) / 2
+          l2x = icon_x + (LAUNCHER_ICON_W - line2.length * 6) / 2
+          @gfx.draw_text(l1x, icon_y + LAUNCHER_ICON_H - 16, line1, LAUNCHER_TEXT)
+          @gfx.draw_text(l2x, icon_y + LAUNCHER_ICON_H - 8, line2, LAUNCHER_TEXT)
+        end
       end
     end
 
