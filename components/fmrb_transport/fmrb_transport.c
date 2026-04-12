@@ -200,7 +200,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
         };
 
         fmrb_link_channel_t hal_channel = FMRB_LINK_GRAPHICS;
-        fmrb_err_t ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1, timeout_ms);
+        fmrb_err_t ret = fmrb_hal_link_send_noack(hal_channel, &hal_msg, 1, timeout_ms);
 
         if (ret == FMRB_OK) {
             ctx->stats_tx_bytes += sbuf.size;
@@ -267,7 +267,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
                 .size = chunk_sbuf.size
             };
 
-            ret = fmrb_hal_link_send(hal_channel, &hal_msg, 1, timeout_ms);
+            ret = fmrb_hal_link_send_noack(hal_channel, &hal_msg, 1, timeout_ms);
 
             msgpack_sbuffer_destroy(&chunk_sbuf);
 
@@ -364,8 +364,8 @@ fmrb_err_t fmrb_transport_send(uint8_t link_type,
         return ret;
     }
 
-    // Note: No pending list tracking needed because fmrb_hal_link_send() is synchronous.
-    // Success means ACK was already received at the HAL level.
+    // Note: Fire-and-forget send. No frame-level ACK waiting.
+    // App-level responses are received via fmrb_transport_process().
 
     return FMRB_OK;
 }
@@ -467,9 +467,9 @@ fmrb_err_t fmrb_transport_send_batch(const fmrb_transport_batch_entry_t *entries
         FMRB_LOGW(TAG, "Batch: %zu/%zu entries encoded successfully", valid_count, entry_count);
     }
 
-    // Send batch via HAL
+    // Send batch via HAL (fire-and-forget)
     fmrb_link_channel_t hal_channel = FMRB_LINK_GRAPHICS;
-    fmrb_err_t ret = fmrb_hal_link_send(hal_channel, hal_msgs, valid_count, effective_timeout);
+    fmrb_err_t ret = fmrb_hal_link_send_noack(hal_channel, hal_msgs, valid_count, effective_timeout);
 
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Batch send failed: ret=%d, count=%zu", ret, valid_count);

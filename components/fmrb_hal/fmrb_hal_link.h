@@ -36,6 +36,17 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
                               uint32_t timeout_ms);
 
 /**
+ * @brief Send messages without waiting for ACK (fire-and-forget)
+ *
+ * Same batching as fmrb_hal_link_send(), but returns immediately after TX.
+ * Use for non-critical commands where frame-level ACK is not required.
+ */
+fmrb_err_t fmrb_hal_link_send_noack(fmrb_link_channel_t channel,
+                                     const fmrb_link_message_t *msgs,
+                                     size_t msg_count,
+                                     uint32_t timeout_ms);
+
+/**
  * @brief Receive message from specified channel
  * @param channel link communication channel
  * @param msg Buffer to store received message

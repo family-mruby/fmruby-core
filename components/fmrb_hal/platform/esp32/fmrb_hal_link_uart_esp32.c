@@ -86,72 +86,75 @@ static void process_received_frame(fmrb_link_channel_t channel,
         return;
     }
 
-    if (hdr->ack_seq == ch->expected_seq) {
-        if (hdr->status == UART_LINK_STS_RX_OK) {
-            ESP_LOGD(TAG, "RX_OK for seq=%u, waiting for app result", hdr->ack_seq);
-            return;
-        }
+    // With fire-and-forget sends, we no longer gate on expected_seq.
+    // Transport layer handles seq matching for sync requests.
 
-        if (hdr->status == UART_LINK_STS_CRC_ERR) {
-            ESP_LOGW(TAG, "Slave reported CRC error for seq=%u", hdr->ack_seq);
-            return;
-        }
+    if (hdr->status == UART_LINK_STS_RX_OK) {
+        ESP_LOGD(TAG, "RX_OK for seq=%u", hdr->ack_seq);
+        return;
+    }
 
-        // Final status: APP_OK or APP_ERR
-        if (data_len > 0) {
-            // Parse COBS messages from data
-            size_t pos = 0;
-            while (pos < data_len) {
-                while (pos < data_len && data[pos] == 0x00) pos++;
-                if (pos >= data_len) break;
+    if (hdr->status == UART_LINK_STS_CRC_ERR) {
+        ESP_LOGW(TAG, "Slave reported CRC error for seq=%u", hdr->ack_seq);
+        return;
+    }
 
-                size_t frame_start = pos;
-                while (pos < data_len && data[pos] != 0x00) pos++;
-                size_t frame_len = pos - frame_start;
+    // Final status: APP_OK or APP_ERR
+    if (data_len > 0) {
+        // Parse COBS messages from data
+        size_t pos = 0;
+        while (pos < data_len) {
+            while (pos < data_len && data[pos] == 0x00) pos++;
+            if (pos >= data_len) break;
 
-                uint8_t decoded[UART_LINK_MAX_DATA];
-                ssize_t decoded_len = fmrb_link_cobs_decode(
-                    data + frame_start, frame_len, decoded);
+            size_t frame_start = pos;
+            while (pos < data_len && data[pos] != 0x00) pos++;
+            size_t frame_len = pos - frame_start;
 
-                if (decoded_len <= 0) continue;
+            uint8_t decoded[UART_LINK_MAX_DATA];
+            ssize_t decoded_len = fmrb_link_cobs_decode(
+                data + frame_start, frame_len, decoded);
 
-                // Skip EMPTY frame
-                if (decoded_len >= 2 && decoded[0] == 0x94 && decoded[1] == 0x00) {
-                    continue;
-                }
+            if (decoded_len <= 0) continue;
 
-                // Queue for transport layer
-                if (ack_recv_queue) {
-                    uint8_t *queued_data = (uint8_t*)fmrb_sys_malloc(decoded_len);
-                    if (queued_data) {
-                        memcpy(queued_data, decoded, decoded_len);
-                        ack_queue_entry_t entry = { .data = queued_data, .size = (size_t)decoded_len };
-                        if (xQueueSend(ack_recv_queue, &entry, 0) != pdTRUE) {
-                            ESP_LOGW(TAG, "ACK queue full, dropping data");
-                            fmrb_sys_free(queued_data);
-                        }
-                    }
-                }
+            // Skip EMPTY frame
+            if (decoded_len >= 2 && decoded[0] == 0x94 && decoded[1] == 0x00) {
+                continue;
+            }
 
-                // Notify via callback
-                if (ch->callback) {
-                    uint8_t *copy = (uint8_t*)fmrb_sys_malloc(decoded_len);
-                    if (copy) {
-                        memcpy(copy, decoded, decoded_len);
-                        fmrb_link_message_t ack_msg = {
-                            .data = copy,
-                            .size = (size_t)decoded_len
-                        };
-                        ch->callback(channel, &ack_msg, ch->user_data);
+            // Queue for transport layer
+            if (ack_recv_queue) {
+                uint8_t *queued_data = (uint8_t*)fmrb_sys_malloc(decoded_len);
+                if (queued_data) {
+                    memcpy(queued_data, decoded, decoded_len);
+                    ack_queue_entry_t entry = { .data = queued_data, .size = (size_t)decoded_len };
+                    if (xQueueSend(ack_recv_queue, &entry, 0) != pdTRUE) {
+                        ESP_LOGW(TAG, "ACK queue full, dropping data");
+                        fmrb_sys_free(queued_data);
                     }
                 }
             }
-        }
 
-        ch->ack_received = true;
-        ESP_LOGD(TAG, "ACK final: seq=%u status=0x%02x data_len=%u",
-                 hdr->ack_seq, hdr->status, data_len);
+            // Notify via callback
+            if (ch->callback) {
+                uint8_t *copy = (uint8_t*)fmrb_sys_malloc(decoded_len);
+                if (copy) {
+                    memcpy(copy, decoded, decoded_len);
+                    fmrb_link_message_t ack_msg = {
+                        .data = copy,
+                        .size = (size_t)decoded_len
+                    };
+                    ch->callback(channel, &ack_msg, ch->user_data);
+                }
+            }
+        }
     }
+
+    if (hdr->ack_seq == ch->expected_seq) {
+        ch->ack_received = true;
+    }
+    ESP_LOGD(TAG, "ACK final: seq=%u status=0x%02x data_len=%u",
+             hdr->ack_seq, hdr->status, data_len);
 }
 
 // Feed one byte into RX state machine. Returns true if a complete frame was processed.
@@ -393,6 +396,23 @@ void fmrb_hal_link_deinit(void) {
     link_initialized = false;
 }
 
+// Send frame without waiting for ACK (called with uart_mutex held)
+static fmrb_err_t send_frame_no_ack(fmrb_link_channel_t channel,
+                                     uint8_t seq,
+                                     const uint8_t *data, uint16_t data_len) {
+    // Drain stale RX data to prevent UART RX buffer overflow
+    poll_uart_rx(channel, 0);
+
+    size_t frame_size = uart_link_build_frame(s_tx_buf, seq, 0, 0, data, data_len);
+    int written = uart_write_bytes(UART_PORT_NUM, s_tx_buf, frame_size);
+    if (written < 0) {
+        ESP_LOGE(TAG, "UART write failed (noack)");
+        return FMRB_ERR_FAILED;
+    }
+    uart_wait_tx_done(UART_PORT_NUM, pdMS_TO_TICKS(100));
+    return FMRB_OK;
+}
+
 fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
                               const fmrb_link_message_t *msgs,
                               size_t msg_count,
@@ -475,11 +495,73 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     return result;
 }
 
+fmrb_err_t fmrb_hal_link_send_noack(fmrb_link_channel_t channel,
+                                     const fmrb_link_message_t *msgs,
+                                     size_t msg_count,
+                                     uint32_t timeout_ms) {
+    if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msgs || msg_count == 0) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (xSemaphoreTake(uart_mutex, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
+        return FMRB_ERR_TIMEOUT;
+    }
+
+    uint8_t frame_data[UART_LINK_MAX_DATA];
+    size_t frame_data_len = 0;
+    uint8_t last_seq = 0;
+    fmrb_err_t result = FMRB_OK;
+    uint8_t cobs_buf[UART_LINK_MAX_DATA];
+
+    for (size_t i = 0; i < msg_count; i++) {
+        const fmrb_link_message_t *msg = &msgs[i];
+        if (msg->size == 0 || msg->data == NULL) {
+            continue;
+        }
+
+        uint8_t seq = extract_seq_from_msgpack(msg->data, msg->size);
+        size_t cobs_len = fmrb_link_cobs_encode(msg->data, msg->size, cobs_buf);
+
+        if (frame_data_len + cobs_len > UART_LINK_MAX_DATA) {
+            if (frame_data_len == 0) {
+                ESP_LOGE(TAG, "COBS encoded data too large: %zu > %d",
+                         cobs_len, UART_LINK_MAX_DATA);
+                result = FMRB_ERR_INVALID_PARAM;
+                break;
+            }
+            result = send_frame_no_ack(channel, last_seq,
+                                        frame_data, (uint16_t)frame_data_len);
+            if (result != FMRB_OK) break;
+            frame_data_len = 0;
+        }
+
+        memcpy(frame_data + frame_data_len, cobs_buf, cobs_len);
+        frame_data_len += cobs_len;
+        last_seq = seq;
+    }
+
+    if (result == FMRB_OK && frame_data_len > 0) {
+        result = send_frame_no_ack(channel, last_seq,
+                                    frame_data, (uint16_t)frame_data_len);
+    }
+
+    xSemaphoreGive(uart_mutex);
+    return result;
+}
+
 fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
                                  fmrb_link_message_t *msg,
                                  uint32_t timeout_ms) {
     if (!link_initialized || channel >= FMRB_LINK_MAX_CHANNELS || !msg) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Actively poll UART RX to receive app-level responses.
+    // With fire-and-forget sends, RX is no longer polled during send,
+    // so we must poll here to pick up responses for sync requests.
+    if (xSemaphoreTake(uart_mutex, 0) == pdTRUE) {
+        poll_uart_rx(channel, 0);
+        xSemaphoreGive(uart_mutex);
     }
 
     // Check ACK queue

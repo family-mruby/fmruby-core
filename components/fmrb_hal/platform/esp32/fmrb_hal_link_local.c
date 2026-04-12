@@ -153,6 +153,14 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     return result;
 }
 
+fmrb_err_t fmrb_hal_link_send_noack(fmrb_link_channel_t channel,
+                                     const fmrb_link_message_t *msgs,
+                                     size_t msg_count,
+                                     uint32_t timeout_ms) {
+    // Local link: delegate to existing send
+    return fmrb_hal_link_send(channel, msgs, msg_count, timeout_ms);
+}
+
 // receive: Core reads ACK from m5gfx (via RX buffer)
 // Internal buffer for callers that don't provide their own
 static uint8_t g_recv_internal_buf[LINK_LOCAL_RECV_BUF_SIZE];

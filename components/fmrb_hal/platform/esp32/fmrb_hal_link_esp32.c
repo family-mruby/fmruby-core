@@ -400,6 +400,14 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
     return result;
 }
 
+fmrb_err_t fmrb_hal_link_send_noack(fmrb_link_channel_t channel,
+                                     const fmrb_link_message_t *msgs,
+                                     size_t msg_count,
+                                     uint32_t timeout_ms) {
+    // SPI full-duplex: delegate to existing send
+    return fmrb_hal_link_send(channel, msgs, msg_count, timeout_ms);
+}
+
 fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
                                  fmrb_link_message_t *msg,
                                  uint32_t timeout_ms) {
