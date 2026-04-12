@@ -56,7 +56,10 @@ typedef struct {
     bool connected;
     uint16_t vid;  // Vendor ID
     uint16_t pid;  // Product ID
+    uint8_t dev_addr;  // USB device address (to identify sibling interfaces)
     uint8_t report_copy_len;  // Bytes to copy from report (device-type specific)
+    bool dump_mode;  // True when descriptor fetch failed - dump raw reports for debugging
+    uint8_t dump_count;  // Number of reports dumped so far (to limit output)
     uint32_t generation;  // Generation counter (incremented on connect/disconnect)
     // Per-device state
     hid_keyboard_input_report_boot_t prev_kbd_report;
@@ -346,7 +349,10 @@ static void clear_slot(hid_device_info_t* device)
     device->connected = false;
     device->vid = 0;
     device->pid = 0;
+    device->dev_addr = 0;
     device->report_copy_len = 0;
+    device->dump_mode = false;
+    device->dump_count = 0;
     memset(&device->prev_kbd_report, 0, sizeof(hid_keyboard_input_report_boot_t));
     device->mouse_state.cursor_x = 0;
     device->mouse_state.cursor_y = 0;
@@ -364,6 +370,21 @@ static void clear_slot(hid_device_info_t* device)
 static bool is_control_transfer_broken(uint16_t vid, uint16_t pid)
 {
     return (vid == VID_SIPEED && pid == PID_NANOKVM_USB);
+}
+
+// Check if another active slot shares the same USB device address.
+// Used to avoid closing a device handle when sibling interfaces are still active.
+// Caller must hold g_hid_devices_mutex.
+static bool has_sibling_interface(int slot_index, uint8_t dev_addr)
+{
+    if (dev_addr == 0) return false;
+    for (int i = 0; i < MAX_HID_DEVICES; i++) {
+        if (i == slot_index) continue;
+        if (g_hid_devices[i].connected && g_hid_devices[i].dev_addr == dev_addr) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // // Set fallback layout for nanoKVM-USB absolute pointer interface
@@ -548,8 +569,31 @@ static void auto_detect_mouse_report_format(hid_device_info_t *device, const uin
     }
 }
 
+// Maximum number of raw reports to dump in dump mode
+#define DUMP_MODE_MAX_REPORTS 50
+
 static void process_mouse_report(hid_device_info_t *device, const uint8_t *data, size_t len)
 {
+    // Dump mode: hex-dump raw reports for manual device configuration
+    if (device->dump_mode) {
+        if (device->dump_count < DUMP_MODE_MAX_REPORTS) {
+            int slot_index = (int)(device - g_hid_devices);
+            char hex[128];
+            int pos = 0;
+            int dump_len = (len > 32) ? 32 : (int)len;
+            for (int i = 0; i < dump_len && pos < (int)sizeof(hex) - 3; i++) {
+                pos += snprintf(hex + pos, sizeof(hex) - pos, "%02X ", data[i]);
+            }
+            FMRB_LOGW(TAG, "DUMP slot=%d len=%d: %s", slot_index, (int)len, hex);
+            device->dump_count++;
+            if (device->dump_count == DUMP_MODE_MAX_REPORTS) {
+                FMRB_LOGW(TAG, "DUMP slot=%d: reached %d reports, stopping dump",
+                          slot_index, DUMP_MODE_MAX_REPORTS);
+            }
+        }
+        return;
+    }
+
     hid_mouse_report_layout_t *layout = &device->report_layout;
     if (!layout->valid) {
         return;
@@ -959,6 +1003,7 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
             slot->connected = true;
             slot->vid = vid;
             slot->pid = pid;
+            slot->dev_addr = dev_params.addr;
             slot->generation++;
 
             // Set report copy length based on device type
@@ -1111,9 +1156,21 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
                         fmrb_semaphore_give(g_hid_devices_mutex);
                     }
                 } else if (!hid_device_config_skip_control_transfer(vid, pid)) {
-                    // Non-boot, no config: parse descriptor in task context
-                    pending_protocol_setup_push(slot_index, slot_generation, false, proto);
-                    FMRB_LOGI(TAG, "Queued descriptor parse for non-boot mouse slot %d", slot_index);
+                    // Non-boot, no config: enter dump mode directly
+                    // Control transfer (descriptor fetch) can corrupt HID library state
+                    // and break the IN endpoint, so skip it and capture raw reports instead
+                    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
+                        hid_device_info_t* device = &g_hid_devices[slot_index];
+                        if (device->connected && device->generation == slot_generation) {
+                            device->dump_mode = true;
+                            device->dump_count = 0;
+                            device->report_copy_len = 32;
+                        }
+                        fmrb_semaphore_give(g_hid_devices_mutex);
+                    }
+                    FMRB_LOGW(TAG, "Non-boot mouse slot %d: no config, entering dump mode (VID=0x%04X PID=0x%04X)",
+                              slot_index, vid, pid);
+                    FMRB_LOGW(TAG, "  Add this device to /etc/hid_devices.toml to configure it");
                 }
             } else if (is_boot_device && proto == HID_PROTOCOL_KEYBOARD) {
                 FMRB_LOGI(TAG, "Boot keyboard ready for slot %d", slot_index);
@@ -1292,8 +1349,20 @@ static void hid_host_task(void *arg)
                 FMRB_LOGI(TAG, "Parsing report descriptor for slot %d (proto=%d)",
                           setup.slot_index, setup.proto);
 
+                // Retry descriptor fetch (composite devices may need time to settle)
+                #define DESC_FETCH_MAX_RETRIES 3
+                #define DESC_FETCH_RETRY_DELAY_MS 500
                 size_t desc_len = 0;
-                const uint8_t *desc = hid_host_get_report_descriptor(handle, &desc_len);
+                const uint8_t *desc = NULL;
+                for (int retry = 0; retry < DESC_FETCH_MAX_RETRIES; retry++) {
+                    if (retry > 0) {
+                        FMRB_LOGI(TAG, "Retrying descriptor fetch for slot %d (attempt %d/%d)",
+                                  setup.slot_index, retry + 1, DESC_FETCH_MAX_RETRIES);
+                        fmrb_task_delay_ms(DESC_FETCH_RETRY_DELAY_MS);
+                    }
+                    desc = hid_host_get_report_descriptor(handle, &desc_len);
+                    if (desc != NULL && desc_len > 0) break;
+                }
                 if (desc != NULL && desc_len > 0) {
                     FMRB_LOGI(TAG, "Report descriptor: %d bytes", (int)desc_len);
                     hid_mouse_report_layout_t parsed;
@@ -1339,10 +1408,15 @@ static void hid_host_task(void *arg)
                             hid_device_info_t* device = &g_hid_devices[setup.slot_index];
                             if (device->connected && device->generation == setup.generation) {
                                 hid_host_device_handle_t dh = device->handle;
+                                bool sibling = has_sibling_interface(setup.slot_index, device->dev_addr);
                                 clear_slot(device);
                                 fmrb_semaphore_give(g_hid_devices_mutex);
-                                hid_host_device_stop(dh);
-                                hid_host_device_close(dh);
+                                if (sibling) {
+                                    FMRB_LOGI(TAG, "Sibling interface active, skipping device close for slot %d", setup.slot_index);
+                                } else {
+                                    hid_host_device_stop(dh);
+                                    hid_host_device_close(dh);
+                                }
                             } else {
                                 fmrb_semaphore_give(g_hid_devices_mutex);
                             }
@@ -1355,15 +1429,29 @@ static void hid_host_task(void *arg)
                                   setup.slot_index);
                         goto apply_boot_fallback;
                     }
-                    FMRB_LOGW(TAG, "Failed to get descriptor for slot %d, disconnecting", setup.slot_index);
+                    FMRB_LOGW(TAG, "Failed to get descriptor for slot %d after %d attempts",
+                              setup.slot_index, DESC_FETCH_MAX_RETRIES);
+                    // Keep slot alive in dump mode to capture raw reports for manual config
                     if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
                         hid_device_info_t* device = &g_hid_devices[setup.slot_index];
                         if (device->connected && device->generation == setup.generation) {
+                            device->dump_mode = true;
+                            device->dump_count = 0;
+                            device->report_copy_len = 32;  // Capture enough bytes for analysis
                             hid_host_device_handle_t dh = device->handle;
-                            clear_slot(device);
+                            FMRB_LOGW(TAG, "Slot %d entering dump mode (VID=0x%04X PID=0x%04X) - send HID input to see raw reports",
+                                      setup.slot_index, device->vid, device->pid);
                             fmrb_semaphore_give(g_hid_devices_mutex);
+                            // Restart IN endpoint polling (control transfer failures may have disrupted it)
                             hid_host_device_stop(dh);
-                            hid_host_device_close(dh);
+                            fmrb_task_delay_ms(50);
+                            esp_err_t restart_ret = hid_host_device_start(dh);
+                            if (restart_ret != ESP_OK) {
+                                FMRB_LOGW(TAG, "Failed to restart IN endpoint for slot %d: 0x%x",
+                                          setup.slot_index, restart_ret);
+                            } else {
+                                FMRB_LOGI(TAG, "IN endpoint restarted for dump mode slot %d", setup.slot_index);
+                            }
                         } else {
                             fmrb_semaphore_give(g_hid_devices_mutex);
                         }
