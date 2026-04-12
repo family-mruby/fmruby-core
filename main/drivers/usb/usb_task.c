@@ -1423,39 +1423,10 @@ static void hid_host_task(void *arg)
                         }
                     }
                 } else {
-                    // Failed to get descriptor
-                    if (setup.is_boot) {
-                        FMRB_LOGW(TAG, "No descriptor for boot mouse slot=%d, using boot layout fallback",
-                                  setup.slot_index);
-                        goto apply_boot_fallback;
-                    }
-                    FMRB_LOGW(TAG, "Failed to get descriptor for slot %d after %d attempts",
-                              setup.slot_index, DESC_FETCH_MAX_RETRIES);
-                    // Keep slot alive in dump mode to capture raw reports for manual config
-                    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MAX_DELAY) == FMRB_TRUE) {
-                        hid_device_info_t* device = &g_hid_devices[setup.slot_index];
-                        if (device->connected && device->generation == setup.generation) {
-                            device->dump_mode = true;
-                            device->dump_count = 0;
-                            device->report_copy_len = 32;  // Capture enough bytes for analysis
-                            hid_host_device_handle_t dh = device->handle;
-                            FMRB_LOGW(TAG, "Slot %d entering dump mode (VID=0x%04X PID=0x%04X) - send HID input to see raw reports",
-                                      setup.slot_index, device->vid, device->pid);
-                            fmrb_semaphore_give(g_hid_devices_mutex);
-                            // Restart IN endpoint polling (control transfer failures may have disrupted it)
-                            hid_host_device_stop(dh);
-                            fmrb_task_delay_ms(50);
-                            esp_err_t restart_ret = hid_host_device_start(dh);
-                            if (restart_ret != ESP_OK) {
-                                FMRB_LOGW(TAG, "Failed to restart IN endpoint for slot %d: 0x%x",
-                                          setup.slot_index, restart_ret);
-                            } else {
-                                FMRB_LOGI(TAG, "IN endpoint restarted for dump mode slot %d", setup.slot_index);
-                            }
-                        } else {
-                            fmrb_semaphore_give(g_hid_devices_mutex);
-                        }
-                    }
+                    // Failed to get descriptor - fall back to boot layout
+                    FMRB_LOGW(TAG, "No descriptor for boot mouse slot=%d, using boot layout fallback",
+                              setup.slot_index);
+                    goto apply_boot_fallback;
                 }
 
                 // Skip boot fallback if we already succeeded
