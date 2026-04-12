@@ -128,7 +128,9 @@ static int init_gfx_audio(void)
         fmrb_control_init_display_t init_cmd = {
             .width = conf->display_width,
             .height = conf->display_height,
-            .color_depth = 8  // RGB332
+            .color_depth = 8,  // RGB332
+            .margin_x = conf->display_margin_x,
+            .margin_y = conf->display_margin_y
         };
 
         FMRB_LOGI(TAG, "Sending display initialization to host: %dx%d, %d-bit",

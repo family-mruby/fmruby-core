@@ -32,10 +32,12 @@ static bool init_hid_routing(void);
 // System configuration (global, initialized once)
 static fmrb_system_config_t g_system_config = {
     .system_name = "Family mruby OS",
-    .display_width = 480,
-    .display_height = 320,
-    .default_user_app_width = 320,
-    .default_user_app_height = 240,
+    .display_width = 360,
+    .display_height = 240,
+    .display_margin_x = 0,
+    .display_margin_y = 0,
+    .default_user_app_width = 280,
+    .default_user_app_height = 180,
     .display_mode = FMRB_DISPLAY_MODE_NTSC_IPC,
     .debug_mode = true,
     .mouse_scale_x = 1.0,
@@ -78,11 +80,15 @@ static bool read_system_config(void)
         fmrb_sys_free((void*)system_name);
     }
 
-    // Read display dimensions
+    // Read display dimensions and margin
     g_system_config.display_width = (uint16_t)fmrb_toml_get_int(conf, "display_width",
                                                                  g_system_config.display_width);
     g_system_config.display_height = (uint16_t)fmrb_toml_get_int(conf, "display_height",
                                                                   g_system_config.display_height);
+    g_system_config.display_margin_x = (uint8_t)fmrb_toml_get_int(conf, "display_margin_x",
+                                                                    g_system_config.display_margin_x);
+    g_system_config.display_margin_y = (uint8_t)fmrb_toml_get_int(conf, "display_margin_y",
+                                                                    g_system_config.display_margin_y);
 
     // Read default user app window size
     g_system_config.default_user_app_width = (uint16_t)fmrb_toml_get_int(conf, "default_user_app_width",

@@ -1154,8 +1154,8 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
         ctx->window_width = (attr->window_width > 0) ? attr->window_width : sys_config->default_user_app_width;
         ctx->window_height = (attr->window_height > 0) ? attr->window_height : sys_config->default_user_app_height;
     } else if (attr->type == APP_TYPE_SYSTEM_APP) {
-        ctx->window_width = sys_config->display_width;
-        ctx->window_height = sys_config->display_height;
+        ctx->window_width = sys_config->display_width - sys_config->display_margin_x;
+        ctx->window_height = sys_config->display_height - sys_config->display_margin_y;
     } else {
         ctx->window_width = 0;   // Headless
         ctx->window_height = 0;

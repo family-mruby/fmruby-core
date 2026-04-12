@@ -12,7 +12,7 @@ static const char *TAG = "status_led";
 
 static volatile int s_error_flag = 0;
 
-#define TASK_DUMP_INTERVAL_MS 5000
+#define TASK_DUMP_INTERVAL_MS 10000
 
 static void status_led_task(void *pvParameters)
 {

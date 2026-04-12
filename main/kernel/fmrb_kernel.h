@@ -24,6 +24,8 @@ typedef struct {
     char system_name[64];                   // System name string
     uint16_t display_width;                 // Physical display width in pixels
     uint16_t display_height;                // Physical display height in pixels
+    uint8_t display_margin_x;              // Horizontal margin (left+right) in pixels
+    uint8_t display_margin_y;              // Vertical margin (top+bottom) in pixels
     uint16_t default_user_app_width;        // Default user app window width
     uint16_t default_user_app_height;       // Default user app window height
     fmrb_display_mode_t display_mode;       // Display output mode

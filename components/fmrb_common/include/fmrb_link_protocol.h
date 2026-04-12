@@ -53,6 +53,8 @@ typedef struct __attribute__((packed)) {
     uint16_t width;
     uint16_t height;
     uint8_t color_depth;     // 8 for RGB332
+    uint8_t margin_x;       // Horizontal margin (left+right) in pixels
+    uint8_t margin_y;       // Vertical margin (top+bottom) in pixels
 } fmrb_control_init_display_t;
 
 // Protocol response codes

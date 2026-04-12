@@ -273,8 +273,8 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // Parse window dimensions and position
         if (fullscreen) {
             const fmrb_system_config_t* sys_config = fmrb_kernel_get_config();
-            window_width = sys_config->display_width;
-            window_height = sys_config->display_height;
+            window_width = sys_config->display_width - sys_config->display_margin_x;
+            window_height = sys_config->display_height - sys_config->display_margin_y;
             window_pos_x = 0;
             window_pos_y = 0;
         } else {
