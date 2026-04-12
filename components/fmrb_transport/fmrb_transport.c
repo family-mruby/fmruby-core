@@ -9,6 +9,12 @@
 #include <string.h>
 #include <stdio.h>
 #include <inttypes.h>
+
+// Override msgpack sbuffer initial allocation before including msgpack.h.
+// Default is 8192 bytes; a single message is at most FMRB_LINK_FRAME_MAX_DATA
+// payload + msgpack overhead (~10 bytes). Use 2x frame data size as margin.
+#define MSGPACK_SBUFFER_INIT_SIZE  (FMRB_LINK_FRAME_MAX_DATA * 2)
+
 #include <msgpack.h>
 
 #define MAX_CALLBACKS 16
@@ -387,24 +393,23 @@ fmrb_err_t fmrb_transport_send_batch(const fmrb_transport_batch_entry_t *entries
 
     fmrb_transport_process();
 
-    // Msgpack-encode each entry into hal_msgs array
+    // Msgpack-encode each entry into hal_msgs array.
+    // Each entry is encoded with a single reusable sbuffer, then the encoded
+    // data is copied to a compact allocation so the 8KB sbuffer can be freed
+    // immediately. This avoids holding N * 8KB simultaneously.
     fmrb_link_message_t *hal_msgs = (fmrb_link_message_t *)fmrb_sys_malloc(
         entry_count * sizeof(fmrb_link_message_t));
     if (!hal_msgs) {
         return FMRB_ERR_NO_MEMORY;
     }
 
-    msgpack_sbuffer *sbufs = (msgpack_sbuffer *)fmrb_sys_malloc(
-        entry_count * sizeof(msgpack_sbuffer));
-    if (!sbufs) {
-        fmrb_sys_free(hal_msgs);
-        return FMRB_ERR_NO_MEMORY;
-    }
+    msgpack_sbuffer sbuf;
+    bool encode_failed = false;
 
     for (size_t i = 0; i < entry_count; i++) {
-        msgpack_sbuffer_init(&sbufs[i]);
+        msgpack_sbuffer_init(&sbuf);
         msgpack_packer pk;
-        msgpack_packer_init(&pk, &sbufs[i], msgpack_sbuffer_write);
+        msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
 
         uint16_t sequence = ctx->next_sequence++;
         uint8_t seq = (uint8_t)(sequence & 0xFF);
@@ -421,29 +426,67 @@ fmrb_err_t fmrb_transport_send_batch(const fmrb_transport_batch_entry_t *entries
             msgpack_pack_nil(&pk);
         }
 
-        hal_msgs[i].data = (uint8_t *)sbufs[i].data;
-        hal_msgs[i].size = sbufs[i].size;
+        if (sbuf.size == 0) {
+            FMRB_LOGE(TAG, "Batch entry %zu/%zu msgpack encode failed", i, entry_count);
+            hal_msgs[i].data = NULL;
+            hal_msgs[i].size = 0;
+            encode_failed = true;
+            msgpack_sbuffer_destroy(&sbuf);
+            continue;
+        }
+
+        // Copy encoded data to a compact buffer and release the 8KB sbuffer
+        uint8_t *msg_data = (uint8_t *)fmrb_sys_malloc(sbuf.size);
+        if (!msg_data) {
+            FMRB_LOGE(TAG, "Batch entry %zu/%zu copy alloc failed (%zu bytes)", i, entry_count, sbuf.size);
+            hal_msgs[i].data = NULL;
+            hal_msgs[i].size = 0;
+            encode_failed = true;
+            msgpack_sbuffer_destroy(&sbuf);
+            continue;
+        }
+        memcpy(msg_data, sbuf.data, sbuf.size);
+        hal_msgs[i].data = msg_data;
+        hal_msgs[i].size = sbuf.size;
+
+        msgpack_sbuffer_destroy(&sbuf);
     }
 
-    // Send all messages as batch via HAL
+    // Build a compact array without gaps (skip failed entries)
+    size_t valid_count = 0;
+    for (size_t i = 0; i < entry_count; i++) {
+        if (hal_msgs[i].data && hal_msgs[i].size > 0) {
+            if (valid_count != i) {
+                hal_msgs[valid_count] = hal_msgs[i];
+            }
+            valid_count++;
+        }
+    }
+
+    if (encode_failed) {
+        FMRB_LOGW(TAG, "Batch: %zu/%zu entries encoded successfully", valid_count, entry_count);
+    }
+
+    // Send batch via HAL
     fmrb_link_channel_t hal_channel = FMRB_LINK_GRAPHICS;
-    fmrb_err_t ret = fmrb_hal_link_send(hal_channel, hal_msgs, entry_count, effective_timeout);
+    fmrb_err_t ret = fmrb_hal_link_send(hal_channel, hal_msgs, valid_count, effective_timeout);
 
     if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Batch send failed: ret=%d, count=%zu", ret, entry_count);
+        FMRB_LOGE(TAG, "Batch send failed: ret=%d, count=%zu", ret, valid_count);
     } else {
-        for (size_t i = 0; i < entry_count; i++) {
-            ctx->stats_tx_bytes += sbufs[i].size;
+        for (size_t i = 0; i < valid_count; i++) {
+            ctx->stats_tx_bytes += hal_msgs[i].size;
         }
-        ctx->stats_tx_msgs += entry_count;
-        FMRB_LOGD(TAG, "Batch sent: %zu messages", entry_count);
+        ctx->stats_tx_msgs += valid_count;
+        FMRB_LOGD(TAG, "Batch sent: %zu messages", valid_count);
     }
 
-    // Cleanup
-    for (size_t i = 0; i < entry_count; i++) {
-        msgpack_sbuffer_destroy(&sbufs[i]);
+    // Free all compact buffers
+    for (size_t i = 0; i < valid_count; i++) {
+        if (hal_msgs[i].data) {
+            fmrb_sys_free(hal_msgs[i].data);
+        }
     }
-    fmrb_sys_free(sbufs);
     fmrb_sys_free(hal_msgs);
 
     return ret;

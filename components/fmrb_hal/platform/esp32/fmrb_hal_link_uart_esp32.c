@@ -414,9 +414,25 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
 
     for (size_t i = 0; i < msg_count; i++) {
         const fmrb_link_message_t *msg = &msgs[i];
+
+        if (msg->size == 0 || msg->data == NULL) {
+            ESP_LOGW(TAG, "Skipping empty message %zu/%zu (size=%zu data=%p)",
+                     i, msg_count, msg->size, msg->data);
+            continue;
+        }
+
         uint8_t seq = extract_seq_from_msgpack(msg->data, msg->size);
 
         size_t cobs_len = fmrb_link_cobs_encode(msg->data, msg->size, cobs_buf);
+
+        if (cobs_len == 2 && cobs_buf[0] == 0x01) {
+            ESP_LOGW(TAG, "Empty COBS from msg %zu/%zu (msg_size=%zu, data[0..3]=%02X %02X %02X %02X)",
+                     i, msg_count, msg->size,
+                     msg->size > 0 ? msg->data[0] : 0,
+                     msg->size > 1 ? msg->data[1] : 0,
+                     msg->size > 2 ? msg->data[2] : 0,
+                     msg->size > 3 ? msg->data[3] : 0);
+        }
 
         if (frame_data_len + cobs_len > UART_LINK_MAX_DATA) {
             if (frame_data_len == 0) {
