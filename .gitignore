@@ -13,6 +13,7 @@ log/
 .rake_tasks~
 managed_components/
 .serial_port
+flash/etc/system_conf.toml
 
 # Generated documentation
 doc/local/

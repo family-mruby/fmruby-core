@@ -313,7 +313,8 @@ fmrb_err_t fmrb_hal_link_init(void) {
         .data_bits = UART_DATA_8_BITS,
         .parity = UART_PARITY_DISABLE,
         .stop_bits = UART_STOP_BITS_1,
-        .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+        .flow_ctrl = UART_HW_FLOWCTRL_CTS_RTS,
+        .rx_flow_ctrl_thresh = 120,
         .source_clk = UART_SCLK_DEFAULT,
     };
 
@@ -327,7 +328,7 @@ fmrb_err_t fmrb_hal_link_init(void) {
 
     err = uart_set_pin(UART_PORT_NUM,
                        FMRB_PIN_GFX_UART_TX, FMRB_PIN_GFX_UART_RX,
-                       UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+                       FMRB_PIN_GFX_UART_RTS, FMRB_PIN_GFX_UART_CTS);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "UART set pin failed: %d", err);
         vSemaphoreDelete(uart_mutex);

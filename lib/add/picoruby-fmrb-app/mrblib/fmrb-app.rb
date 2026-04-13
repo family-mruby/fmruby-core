@@ -15,12 +15,21 @@ class FmrbApp
     if @canvas
       @gfx = FmrbGfx.new(@canvas, width: @window_width, height: @window_height)
       Log.debug("FmrbGfx initialized: canvas_id=#{@canvas}")
-      @user_area_x0 = 1
-      @user_area_y0 = 10
-      @user_area_x1 = @window_width - 1
-      @user_area_y1 = @window_height  - 1
-      @user_area_width = @window_width - 2
-      @user_area_height = @window_height - 12
+      if @fullscreen
+        @user_area_x0 = 0
+        @user_area_y0 = 0
+        @user_area_x1 = @window_width
+        @user_area_y1 = @window_height
+        @user_area_width = @window_width
+        @user_area_height = @window_height
+      else
+        @user_area_x0 = 1
+        @user_area_y0 = 10
+        @user_area_x1 = @window_width - 1
+        @user_area_y1 = @window_height  - 1
+        @user_area_width = @window_width - 2
+        @user_area_height = @window_height - 12
+      end
 
       # Background canvas (desktop only)
       if @bg_canvas
@@ -40,6 +49,7 @@ class FmrbApp
   end
 
   def draw_window_frame
+    return if @fullscreen
     # Draw title bar
     @gfx.fill_rect(0, 0, @window_width, 11, 0xC5)
     @gfx.fill_rect(2, 2, 8, 8, 0x60) # menu button

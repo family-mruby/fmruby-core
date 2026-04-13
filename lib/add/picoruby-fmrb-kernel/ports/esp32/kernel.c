@@ -378,11 +378,13 @@ static mrb_value mrb_kernel_get_app_info(mrb_state *mrb, mrb_value self)
         return mrb_nil_value();
     }
 
-    mrb_value hash = mrb_hash_new_capa(mrb, 3);
+    mrb_value hash = mrb_hash_new_capa(mrb, 4);
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "load_mode")),
                  mrb_fixnum_value(ctx->load_mode));
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "name")),
                  mrb_str_new_cstr(mrb, ctx->app_name));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "fullscreen")),
+                 mrb_bool_value(ctx->fullscreen));
 
     if (ctx->load_mode == FMRB_LOAD_MODE_FILE && ctx->load_data) {
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "path")),
@@ -410,6 +412,22 @@ static mrb_value mrb_kernel_get_last_error(mrb_state *mrb, mrb_value self)
     return hash;
 }
 
+// Kernel#_suspend_app(pid) -> true/false
+static mrb_value mrb_kernel_suspend_app(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid;
+    mrb_get_args(mrb, "i", &pid);
+    return fmrb_app_suspend((int32_t)pid) ? mrb_true_value() : mrb_false_value();
+}
+
+// Kernel#_resume_app(pid) -> true/false
+static mrb_value mrb_kernel_resume_app(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid;
+    mrb_get_args(mrb, "i", &pid);
+    return fmrb_app_resume((int32_t)pid) ? mrb_true_value() : mrb_false_value();
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -430,6 +448,8 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_sync_file", mrb_kernel_sync_file, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, handler_class, "_get_app_info", mrb_kernel_get_app_info, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_get_last_error", mrb_kernel_get_last_error, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_suspend_app", mrb_kernel_suspend_app, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_resume_app", mrb_kernel_resume_app, MRB_ARGS_REQ(1));
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }

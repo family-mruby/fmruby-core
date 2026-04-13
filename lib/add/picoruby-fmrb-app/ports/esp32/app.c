@@ -334,6 +334,50 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
             break;
         }
 
+        case HID_MSG_GAMEPAD_BUTTON_DOWN:
+        case HID_MSG_GAMEPAD_BUTTON_UP: {
+            if (msg->size < sizeof(fmrb_hid_gamepad_button_event_t)) {
+                FMRB_LOGW(TAG, "Gamepad button event too small: expected=%d, actual=%d",
+                         sizeof(fmrb_hid_gamepad_button_event_t), msg->size);
+                goto cleanup;
+            }
+
+            const fmrb_hid_gamepad_button_event_t *gp_event =
+                (const fmrb_hid_gamepad_button_event_t*)msg->data;
+
+            mrb_value type_sym = (gp_event->subtype == HID_MSG_GAMEPAD_BUTTON_DOWN)
+                ? mrb_symbol_value(mrb_intern_cstr(mrb, "gamepad_down"))
+                : mrb_symbol_value(mrb_intern_cstr(mrb, "gamepad_up"));
+
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")), type_sym);
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "gamepad_id")),
+                        mrb_fixnum_value(gp_event->gamepad_id));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "button")),
+                        mrb_fixnum_value(gp_event->button_num));
+            break;
+        }
+
+        case HID_MSG_GAMEPAD_AXIS: {
+            if (msg->size < sizeof(fmrb_hid_gamepad_axis_event_t)) {
+                FMRB_LOGW(TAG, "Gamepad axis event too small: expected=%d, actual=%d",
+                         sizeof(fmrb_hid_gamepad_axis_event_t), msg->size);
+                goto cleanup;
+            }
+
+            const fmrb_hid_gamepad_axis_event_t *axis_event =
+                (const fmrb_hid_gamepad_axis_event_t*)msg->data;
+
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
+                        mrb_symbol_value(mrb_intern_cstr(mrb, "gamepad_axis")));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "gamepad_id")),
+                        mrb_fixnum_value(axis_event->gamepad_id));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "axis")),
+                        mrb_fixnum_value(axis_event->axis_num));
+            mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "value")),
+                        mrb_fixnum_value(axis_event->value));
+            break;
+        }
+
         default:
             FMRB_LOGW(TAG, "Unknown HID event subtype: %d", subtype);
             goto cleanup;

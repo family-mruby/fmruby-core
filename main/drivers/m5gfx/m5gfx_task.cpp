@@ -528,6 +528,17 @@ static int process_gfx_command(uint8_t msg_type, uint8_t cmd_type, uint8_t seq, 
         return 0;
     }
 
+    case FMRB_LINK_GFX_SET_CANVAS_VISIBLE: {
+        if (size < sizeof(fmrb_link_graphics_set_canvas_visible_t)) break;
+        const auto* cmd = (const fmrb_link_graphics_set_canvas_visible_t*)data;
+        canvas_state_t* c = canvas_find(cmd->canvas_id);
+        if (!c) return -1;
+        c->is_visible = (cmd->visible != 0);
+        g_needs_render = true;
+        FMRB_LOGI(TAG, "Canvas %u visibility set to %d", cmd->canvas_id, cmd->visible);
+        return 0;
+    }
+
     case FMRB_LINK_GFX_CURSOR_SET_POSITION: {
         if (size < sizeof(fmrb_link_graphics_cursor_position_t)) break;
         const auto* cmd = (const fmrb_link_graphics_cursor_position_t*)data;

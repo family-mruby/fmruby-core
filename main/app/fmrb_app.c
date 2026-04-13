@@ -1321,11 +1321,41 @@ bool fmrb_app_suspend(int32_t id) {
 
     transition_state(ctx, PROC_STATE_SUSPENDED);
     fmrb_task_handle_t task = ctx->task;
+    uint16_t canvas_id = ctx->canvas_id;
+    uint16_t bg_canvas_id = ctx->bg_canvas_id;
+    bool has_bg = ctx->has_background_canvas;
+    bool headless = ctx->headless;
     fmrb_semaphore_give(g_ctx_lock);
 
     if (task) {
         fmrb_task_suspend(task);
         FMRB_LOGI(TAG, "[%s gen=%u] Suspended", ctx->app_name, ctx->gen);
+
+        // Hide canvas on suspend
+        if (!headless && canvas_id > 0) {
+            fmrb_link_graphics_set_canvas_visible_t cmd = {
+                .canvas_id = canvas_id,
+                .visible = 0
+            };
+            fmrb_transport_send(
+                FMRB_LINK_TYPE_GRAPHICS,
+                FMRB_LINK_GFX_SET_CANVAS_VISIBLE,
+                (const uint8_t*)&cmd,
+                sizeof(cmd),
+                FMRB_TRANSPORT_TIMEOUT_DEFAULT
+            );
+            if (has_bg && bg_canvas_id > 0) {
+                cmd.canvas_id = bg_canvas_id;
+                fmrb_transport_send(
+                    FMRB_LINK_TYPE_GRAPHICS,
+                    FMRB_LINK_GFX_SET_CANVAS_VISIBLE,
+                    (const uint8_t*)&cmd,
+                    sizeof(cmd),
+                    FMRB_TRANSPORT_TIMEOUT_DEFAULT
+                );
+            }
+        }
+
         return true;
     }
 
@@ -1348,11 +1378,41 @@ bool fmrb_app_resume(int32_t id) {
 
     transition_state(ctx, PROC_STATE_RUNNING);
     fmrb_task_handle_t task = ctx->task;
+    uint16_t canvas_id = ctx->canvas_id;
+    uint16_t bg_canvas_id = ctx->bg_canvas_id;
+    bool has_bg = ctx->has_background_canvas;
+    bool headless = ctx->headless;
     fmrb_semaphore_give(g_ctx_lock);
 
     if (task) {
         fmrb_task_resume(task);
         FMRB_LOGI(TAG, "[%s gen=%u] Resumed", ctx->app_name, ctx->gen);
+
+        // Show canvas on resume
+        if (!headless && canvas_id > 0) {
+            fmrb_link_graphics_set_canvas_visible_t cmd = {
+                .canvas_id = canvas_id,
+                .visible = 1
+            };
+            fmrb_transport_send(
+                FMRB_LINK_TYPE_GRAPHICS,
+                FMRB_LINK_GFX_SET_CANVAS_VISIBLE,
+                (const uint8_t*)&cmd,
+                sizeof(cmd),
+                FMRB_TRANSPORT_TIMEOUT_DEFAULT
+            );
+            if (has_bg && bg_canvas_id > 0) {
+                cmd.canvas_id = bg_canvas_id;
+                fmrb_transport_send(
+                    FMRB_LINK_TYPE_GRAPHICS,
+                    FMRB_LINK_GFX_SET_CANVAS_VISIBLE,
+                    (const uint8_t*)&cmd,
+                    sizeof(cmd),
+                    FMRB_TRANSPORT_TIMEOUT_DEFAULT
+                );
+            }
+        }
+
         return true;
     }
 
@@ -1728,9 +1788,6 @@ fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y) 
     // Update position
     ctx->window_pos_x = x;
     ctx->window_pos_y = y;
-
-    FMRB_LOGI(TAG, "Window '%s' (PID %d) moved to (%d, %d)",
-              ctx->app_name, pid, x, y);
 
     // Send PRESENT command to Host to reflect new position immediately
     gfx_cmd_t cmd = {

@@ -39,6 +39,8 @@
 // UART for Graphics-Audio board communication (UART1 - reuses SPI wiring)
 #define FMRB_PIN_GFX_UART_TX   GPIO_NUM_11  // -> WROVER RX (GPIO21)
 #define FMRB_PIN_GFX_UART_RX   GPIO_NUM_13  // <- WROVER TX (GPIO18)
+#define FMRB_PIN_GFX_UART_RTS  GPIO_NUM_12  // -> WROVER CTS (GPIO19)
+#define FMRB_PIN_GFX_UART_CTS  GPIO_NUM_10  // <- WROVER RTS (GPIO22)
 
 // FS Proxy UART (UART0 - ESP32-S3 default console pins)
 #define FMRB_PIN_FSPROXY_TX    GPIO_NUM_42

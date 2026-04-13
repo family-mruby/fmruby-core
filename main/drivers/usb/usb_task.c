@@ -75,8 +75,10 @@ typedef struct {
         int gamepad_id;  // 0 or 1
         uint16_t prev_buttons;  // Button state bitmask (16 bits)
         int16_t prev_axes[MAX_GAMEPAD_AXES];  // Previous axis values
+        uint8_t prev_hat;  // Previous HAT switch value
     } gamepad_state;
     hid_mouse_report_layout_t report_layout;  // Parsed HID report layout for mouse
+    hid_gamepad_report_layout_t gamepad_layout;  // Parsed gamepad report layout from TOML
 } hid_device_info_t;
 
 // Task handles and state
@@ -434,6 +436,12 @@ static bool is_gamepad_device(uint16_t vid, uint16_t pid)
         }
     }
 
+    // Check TOML configuration
+    hid_gamepad_report_layout_t layout;
+    if (hid_device_config_find_gamepad(vid, pid, &layout)) {
+        return true;
+    }
+
     return false;
 }
 
@@ -718,66 +726,108 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
     }
 }
 
+// Extract unsigned bits from report data at arbitrary bit offset
+static uint32_t extract_bits(const uint8_t *data, size_t data_len, uint16_t bit_offset, uint8_t bit_size)
+{
+    if (bit_size == 0 || bit_size > 32) return 0;
+    uint32_t result = 0;
+    for (int i = 0; i < bit_size; i++) {
+        uint16_t bit_pos = bit_offset + i;
+        uint16_t byte_idx = bit_pos / 8;
+        uint8_t bit_idx = bit_pos % 8;
+        if (byte_idx >= data_len) break;
+        if (data[byte_idx] & (1 << bit_idx)) {
+            result |= (1U << i);
+        }
+    }
+    return result;
+}
+
 static void process_gamepad_report(hid_device_info_t *device, const uint8_t *data, size_t len)
 {
-    if (len < 8) {
-        return;  // Too short for any gamepad report
-    }
-
     int gamepad_id = device->gamepad_state.gamepad_id;
     if (gamepad_id < 0 || gamepad_id >= MAX_GAMEPAD_DEVICES) {
         return;
     }
 
-    // Parse report based on VID/PID
     uint16_t buttons = 0;
     int16_t axes[MAX_GAMEPAD_AXES] = {0};
 
-    if (device->vid == VID_SONY && device->pid == PID_PS5_DUALSENSE) {
-        // PS5 DualSense report format (64 bytes, USB mode)
-        // Byte 0: Report ID (0x01)
-        // Byte 1: Left stick X (0=left, 128=center, 255=right)
-        // Byte 2: Left stick Y (0=up, 128=center, 255=down)
-        // Byte 3: Right stick X
-        // Byte 4: Right stick Y
-        // Byte 5: L2 trigger (0-255)
-        // Byte 6: R2 trigger (0-255)
-        // Byte 7: Button bitfield byte 1
-        // Byte 8: Button bitfield byte 2
+    const hid_gamepad_report_layout_t *layout = &device->gamepad_layout;
 
-        if (len >= 10) {
-            // Convert analog sticks from 0-255 to -128..127
-            axes[GAMEPAD_AXIS_LEFT_X] = (int16_t)((int)data[1] - 128);
-            axes[GAMEPAD_AXIS_LEFT_Y] = (int16_t)((int)data[2] - 128);
-            axes[GAMEPAD_AXIS_RIGHT_X] = (int16_t)((int)data[3] - 128);
-            axes[GAMEPAD_AXIS_RIGHT_Y] = (int16_t)((int)data[4] - 128);
-            axes[GAMEPAD_AXIS_L2] = data[5];
-            axes[GAMEPAD_AXIS_R2] = data[6];
+    if (layout->valid) {
+        // TOML-configured gamepad: generic bit-field extraction
+        if (len < layout->report_len) return;
 
-            // Parse buttons (simplified - actual PS5 has complex button mapping)
-            buttons = ((uint16_t)data[8]) | (((uint16_t)data[9]) << 8);
+        // Extract buttons
+        if (layout->buttons_bit_size > 0) {
+            buttons = (uint16_t)extract_bits(data, len,
+                                             layout->buttons_bit_offset,
+                                             layout->buttons_bit_size);
         }
-    } else if (device->vid == VID_LOGITECH) {
-        // Logitech gamepad report format (standard HID, 8 bytes)
-        // Byte 0: Left stick X (signed)
-        // Byte 1: Left stick Y (signed)
-        // Byte 2: Right stick X (signed)
-        // Byte 3: Right stick Y (signed)
-        // Byte 4: Button bits (lower 8 bits)
-        // Byte 5: Button bits (upper 8 bits)
-        if (len >= 6) {
-            axes[GAMEPAD_AXIS_LEFT_X] = (int8_t)data[0];
-            axes[GAMEPAD_AXIS_LEFT_Y] = (int8_t)data[1];
-            axes[GAMEPAD_AXIS_RIGHT_X] = (int8_t)data[2];
-            axes[GAMEPAD_AXIS_RIGHT_Y] = (int8_t)data[3];
-            buttons = ((uint16_t)data[4]) | (((uint16_t)data[5]) << 8);
 
-            // Triggers (if available)
-            if (len >= 8) {
-                axes[GAMEPAD_AXIS_L2] = data[6];
-                axes[GAMEPAD_AXIS_R2] = data[7];
+        // Extract axes
+        for (int a = 0; a < GAMEPAD_MAX_AXES; a++) {
+            if (!layout->axes[a].found) continue;
+            uint32_t raw = extract_bits(data, len,
+                                        layout->axes[a].bit_offset,
+                                        layout->axes[a].bit_size);
+            axes[a] = (int16_t)((int32_t)raw - layout->axes[a].center);
+        }
+
+        // HAT switch -> D-pad buttons (bits 12-15: up, down, left, right)
+        if (layout->has_hat) {
+            uint8_t hat = (uint8_t)extract_bits(data, len,
+                                                layout->hat_bit_offset,
+                                                layout->hat_bit_size);
+            // Convert HAT to direction bits
+            uint16_t hat_buttons = 0;
+            if (hat <= 7) {
+                // HAT values: 0=N, 1=NE, 2=E, 3=SE, 4=S, 5=SW, 6=W, 7=NW
+                static const uint16_t hat_map[8] = {
+                    0x1000,         // 0: up
+                    0x1000 | 0x8000, // 1: up+right
+                    0x8000,         // 2: right
+                    0x2000 | 0x8000, // 3: down+right
+                    0x2000,         // 4: down
+                    0x2000 | 0x4000, // 5: down+left
+                    0x4000,         // 6: left
+                    0x1000 | 0x4000, // 7: up+left
+                };
+                hat_buttons = hat_map[hat];
+            }
+            buttons |= hat_buttons;
+
+            // Send HAT change events
+            uint8_t prev_hat = device->gamepad_state.prev_hat;
+            if (hat != prev_hat) {
+                device->gamepad_state.prev_hat = hat;
             }
         }
+    } else if (device->vid == VID_SONY && device->pid == PID_PS5_DUALSENSE) {
+        // PS5 DualSense report format (64 bytes, USB mode)
+        if (len < 10) return;
+        axes[GAMEPAD_AXIS_LEFT_X] = (int16_t)((int)data[1] - 128);
+        axes[GAMEPAD_AXIS_LEFT_Y] = (int16_t)((int)data[2] - 128);
+        axes[GAMEPAD_AXIS_RIGHT_X] = (int16_t)((int)data[3] - 128);
+        axes[GAMEPAD_AXIS_RIGHT_Y] = (int16_t)((int)data[4] - 128);
+        axes[GAMEPAD_AXIS_L2] = data[5];
+        axes[GAMEPAD_AXIS_R2] = data[6];
+        buttons = ((uint16_t)data[8]) | (((uint16_t)data[9]) << 8);
+    } else if (device->vid == VID_LOGITECH) {
+        // Logitech gamepad report format (8 bytes)
+        if (len < 6) return;
+        axes[GAMEPAD_AXIS_LEFT_X] = (int8_t)data[0];
+        axes[GAMEPAD_AXIS_LEFT_Y] = (int8_t)data[1];
+        axes[GAMEPAD_AXIS_RIGHT_X] = (int8_t)data[2];
+        axes[GAMEPAD_AXIS_RIGHT_Y] = (int8_t)data[3];
+        buttons = ((uint16_t)data[4]) | (((uint16_t)data[5]) << 8);
+        if (len >= 8) {
+            axes[GAMEPAD_AXIS_L2] = data[6];
+            axes[GAMEPAD_AXIS_R2] = data[7];
+        }
+    } else {
+        return;  // Unknown format, skip
     }
 
     // Detect button changes
@@ -792,6 +842,7 @@ static void process_gamepad_report(hid_device_info_t *device, const uint8_t *dat
         }
         device->gamepad_state.prev_buttons = buttons;
     }
+
     // Detect axis changes (with deadzone of 5)
     const int deadzone = 5;
     for (int axis = 0; axis < MAX_GAMEPAD_AXES; axis++) {
@@ -1012,7 +1063,12 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
             } else if (proto == HID_PROTOCOL_MOUSE) {
                 slot->report_copy_len = 16;  // Default, may be overridden by descriptor parse
             } else if (proto == HID_PROTOCOL_GAMEPAD) {
-                if (vid == VID_SONY && pid == PID_PS5_DUALSENSE) {
+                // Check TOML config for report length
+                hid_gamepad_report_layout_t gp_layout;
+                if (hid_device_config_find_gamepad(vid, pid, &gp_layout)) {
+                    slot->report_copy_len = gp_layout.report_len;
+                    if (slot->report_copy_len > 64) slot->report_copy_len = 64;
+                } else if (vid == VID_SONY && pid == PID_PS5_DUALSENSE) {
                     slot->report_copy_len = 64;
                 } else if (vid == VID_LOGITECH) {
                     slot->report_copy_len = 8;
@@ -1033,7 +1089,10 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
             // This prevents misinterpreting Report Protocol data as Boot format
 
             // Initialize gamepad state if it's a gamepad
+            memset(&slot->gamepad_layout, 0, sizeof(slot->gamepad_layout));
             if (is_gamepad) {
+                // Try to load TOML layout for this gamepad
+                hid_device_config_find_gamepad(vid, pid, &slot->gamepad_layout);
                 int free_id = -1;
                 bool id_used[MAX_GAMEPAD_DEVICES] = {false, false};
                 for (int i = 0; i < MAX_HID_DEVICES; i++) {
@@ -1055,6 +1114,7 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
                 if (free_id >= 0) {
                     slot->gamepad_state.gamepad_id = free_id;
                     slot->gamepad_state.prev_buttons = 0;
+                    slot->gamepad_state.prev_hat = 0x0F;  // Neutral
                     memset(slot->gamepad_state.prev_axes, 0, sizeof(slot->gamepad_state.prev_axes));
                     FMRB_LOGI(TAG, "Gamepad assigned ID: %d", free_id);
                 } else {

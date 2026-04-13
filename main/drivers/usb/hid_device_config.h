@@ -12,6 +12,32 @@ extern "C" {
 #define HID_DEVICE_CONFIG_PATH "/etc/hid_devices.toml"
 #define HID_DEVICE_CONFIG_MAX_ENTRIES 16
 
+#define GAMEPAD_MAX_AXES 6
+
+typedef struct {
+    uint16_t bit_offset;
+    uint8_t bit_size;
+    int16_t center;       // Center value (e.g. 128 for unsigned 0-255)
+    bool found;
+} hid_gamepad_axis_info_t;
+
+typedef struct {
+    bool valid;
+    uint16_t vid;
+    uint16_t pid;
+    char name[32];
+    uint8_t report_len;   // Total report length in bytes
+    // Buttons bitmask field
+    uint16_t buttons_bit_offset;
+    uint8_t buttons_bit_size;
+    // HAT switch field
+    bool has_hat;
+    uint16_t hat_bit_offset;
+    uint8_t hat_bit_size;
+    // Axes: left_x, left_y, right_x, right_y, l2, r2
+    hid_gamepad_axis_info_t axes[GAMEPAD_MAX_AXES];
+} hid_gamepad_report_layout_t;
+
 /**
  * Initialize HID device configuration from TOML file.
  * Must be called after filesystem is mounted and before usb_task_init().
@@ -31,6 +57,17 @@ void hid_device_config_init(void);
 bool hid_device_config_find_mouse(uint16_t vid, uint16_t pid,
                                    hid_mouse_report_layout_t *layout_out,
                                    uint8_t *copy_len_out);
+
+/**
+ * Look up a gamepad layout by VID/PID.
+ *
+ * @param vid           USB Vendor ID
+ * @param pid           USB Product ID
+ * @param layout_out    Output: gamepad report layout
+ * @return true if a matching entry was found
+ */
+bool hid_device_config_find_gamepad(uint16_t vid, uint16_t pid,
+                                     hid_gamepad_report_layout_t *layout_out);
 
 /**
  * Check if control transfers should be skipped for this device.

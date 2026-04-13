@@ -17,6 +17,9 @@ typedef enum {
     HID_MSG_MOUSE_MOVE = 3,
     HID_MSG_MOUSE_BUTTON_DOWN = 4,
     HID_MSG_MOUSE_BUTTON_UP = 5,
+    HID_MSG_GAMEPAD_BUTTON_DOWN = 6,
+    HID_MSG_GAMEPAD_BUTTON_UP = 7,
+    HID_MSG_GAMEPAD_AXIS = 8,
 } hid_msg_subtype_t;
 
 // Keyboard event payload
@@ -42,6 +45,21 @@ typedef struct {
     uint16_t x;
     uint16_t y;
 } __attribute__((packed)) fmrb_hid_mouse_motion_event_t;
+
+// Gamepad button event payload
+typedef struct {
+    uint8_t subtype;       // HID_MSG_GAMEPAD_BUTTON_DOWN or UP
+    uint8_t gamepad_id;    // Gamepad ID (0-1)
+    uint8_t button_num;    // Button number (0-15)
+} __attribute__((packed)) fmrb_hid_gamepad_button_event_t;
+
+// Gamepad axis event payload
+typedef struct {
+    uint8_t subtype;       // HID_MSG_GAMEPAD_AXIS
+    uint8_t gamepad_id;    // Gamepad ID (0-1)
+    uint8_t axis_num;      // Axis number (0-5)
+    int16_t value;         // Axis value
+} __attribute__((packed)) fmrb_hid_gamepad_axis_event_t;
 
 #ifdef __cplusplus
 }

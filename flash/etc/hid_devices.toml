@@ -1,9 +1,9 @@
 # HID Device Configuration
-# Define mouse report formats for specific USB devices.
+# Define mouse and gamepad report formats for specific USB devices.
 # When a device matching vid/pid is connected, this layout is used
 # instead of auto-detection or boot protocol fallback.
 #
-# Fields:
+# [[mouse]] fields:
 #   vid, pid         - USB Vendor/Product ID (hex integers)
 #   name             - Human-readable device name (for logging)
 #   report_id        - Report ID byte value (-1 or omit if no report ID)
@@ -11,6 +11,14 @@
 #   skip_control_transfer - Skip USB control transfers for this device (default: false)
 #   buttons          - Button field: offset (bits), size (bits)
 #   x, y             - Axis fields: offset, size, min, max, relative
+#
+# [[gamepad]] fields:
+#   vid, pid         - USB Vendor/Product ID (hex integers)
+#   name             - Human-readable device name (for logging)
+#   report_len       - Report data length in bytes
+#   buttons          - Button bitmask: offset (bits), size (bits)
+#   hat              - HAT/D-pad field: offset (bits), size (bits) (optional)
+#   left_x, left_y, right_x, right_y, l2, r2 - Axis fields: offset, size, center
 #
 # Bit offsets are counted from the start of report data (after Report ID if present).
 # For signed relative axes, set min to negative value (e.g., min = -2048).
@@ -37,6 +45,31 @@ report_len = 5
 buttons = { offset = 0, size = 8, min = 0, max = 1, relative = false }
 x = { offset = 8, size = 8, min = -127, max = 127, relative = true }
 y = { offset = 16, size = 8, min = -127, max = 127, relative = true }
+
+# HORI PAD 3 TURBO (PS3 era gamepad, 19-byte report)
+# Byte layout: [buttons_lo, buttons_hi, hat|0x0F, lx, ly, rx, ry, ...]
+#
+# Button mapping (verified):
+#   0=Square  1=Cross  2=Circle  3=Triangle
+#   4=L1  5=R1  6=L2  7=R2
+#   8=SELECT  9=START  10=L3  11=R3
+#   12=Up  13=Down  14=Left  15=Right  (from HAT switch)
+#
+# Axis mapping (verified, range -128 ~ 127):
+#   0=Left stick X   1=Left stick Y
+#   2=Right stick X  3=Right stick Y
+#
+[[gamepad]]
+vid = 0x0F0D
+pid = 0x0009
+name = "HORI PAD 3 TURBO"
+report_len = 19
+buttons = { offset = 0, size = 16 }
+hat = { offset = 16, size = 4 }
+left_x = { offset = 24, size = 8, center = 128 }
+left_y = { offset = 32, size = 8, center = 128 }
+right_x = { offset = 40, size = 8, center = 128 }
+right_y = { offset = 48, size = 8, center = 128 }
 
 # Sipeed NanoKVM-USB - Absolute coordinates, 13-bit X/Y
 [[mouse]]

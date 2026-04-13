@@ -139,13 +139,11 @@ static void init_gpio(void)
     fmrb_hal_gpio_set_level(FMRB_PIN_USB_POWER, 1);
     FMRB_LOGI(TAG, "FMRB_PIN_USB_POWER set to HIGH");
 
-    // Set SPI pins for Graphics-Audio board to floating (no internal pull-up/down)
-    // At 10MHz, internal pull-ups can cause signal degradation
-    fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_SPI_MOSI, FMRB_GPIO_PULL_NONE);
-    fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_SPI_MISO, FMRB_GPIO_PULL_NONE);
-    fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_SPI_SCLK, FMRB_GPIO_PULL_NONE);
-    fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_SPI_CS, FMRB_GPIO_PULL_NONE);  // Master drives CS
-    FMRB_LOGI(TAG, "SPI pins set to floating");
+    // Set UART data pins to floating (no internal pull-up/down)
+    fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_UART_TX, FMRB_GPIO_PULL_NONE);
+    fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_UART_RX, FMRB_GPIO_PULL_NONE);
+    // RTS/CTS pins (GPIO12, GPIO10) are configured by UART driver with HW flow control
+    FMRB_LOGI(TAG, "UART data pins set to floating");
 
     // Status LED (GPIO configured, task started later)
     fmrb_hal_gpio_config(FMRB_PIN_STATUS_LED, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);

@@ -950,21 +950,75 @@ static void host_task_process_host_message(const host_message_t *msg)
             // TODO: Implement audio command processing
             break;
 
-        case HOST_MSG_HID_GAMEPAD_BUTTON:
+        case HOST_MSG_HID_GAMEPAD_BUTTON: {
             FMRB_LOGD(TAG, "Gamepad button: id=%d, button=%d, state=%s",
                      msg->data.gamepad_button.gamepad_id,
                      msg->data.gamepad_button.button_num,
                      msg->data.gamepad_button.state ? "pressed" : "released");
-            // TODO: Implement gamepad button event routing
-            break;
 
-        case HOST_MSG_HID_GAMEPAD_AXIS:
+            fmrb_hid_routing_t routing;
+            if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) {
+                break;
+            }
+            if (!routing.routing_enabled || routing.target_pid == 0xFF) {
+                break;
+            }
+
+            fmrb_msg_t hid_msg = {
+                .type = FMRB_MSG_TYPE_HID_EVENT,
+                .src_pid = PROC_ID_HOST,
+                .size = sizeof(fmrb_hid_gamepad_button_event_t)
+            };
+            fmrb_hid_gamepad_button_event_t *btn_event =
+                (fmrb_hid_gamepad_button_event_t*)hid_msg.data;
+            btn_event->subtype = msg->data.gamepad_button.state
+                ? HID_MSG_GAMEPAD_BUTTON_DOWN : HID_MSG_GAMEPAD_BUTTON_UP;
+            btn_event->gamepad_id = (uint8_t)msg->data.gamepad_button.gamepad_id;
+            btn_event->button_num = (uint8_t)msg->data.gamepad_button.button_num;
+
+            fmrb_err_t ret = FMRB_ERR_TIMEOUT;
+            for (int retry = 0; retry < 3; retry++) {
+                ret = fmrb_msg_send(routing.target_pid, &hid_msg, 5000);
+                if (ret == FMRB_OK) break;
+                fmrb_task_delay(FMRB_MS_TO_TICKS(100));
+            }
+            if (ret != FMRB_OK) {
+                FMRB_LOGE(TAG, "Gamepad button event dropped after 3 retries to PID %d",
+                         routing.target_pid);
+            }
+            break;
+        }
+
+        case HOST_MSG_HID_GAMEPAD_AXIS: {
             FMRB_LOGD(TAG, "Gamepad axis: id=%d, axis=%d, value=%d",
                      msg->data.gamepad_axis.gamepad_id,
                      msg->data.gamepad_axis.axis_num,
                      msg->data.gamepad_axis.value);
-            // TODO: Implement gamepad axis event routing
+
+            fmrb_hid_routing_t routing;
+            if (fmrb_kernel_get_hid_routing(&routing) != FMRB_OK) {
+                break;
+            }
+            if (!routing.routing_enabled || routing.target_pid == 0xFF) {
+                break;
+            }
+
+            fmrb_msg_t hid_msg = {
+                .type = FMRB_MSG_TYPE_HID_EVENT,
+                .src_pid = PROC_ID_HOST,
+                .size = sizeof(fmrb_hid_gamepad_axis_event_t)
+            };
+            fmrb_hid_gamepad_axis_event_t *axis_event =
+                (fmrb_hid_gamepad_axis_event_t*)hid_msg.data;
+            axis_event->subtype = HID_MSG_GAMEPAD_AXIS;
+            axis_event->gamepad_id = (uint8_t)msg->data.gamepad_axis.gamepad_id;
+            axis_event->axis_num = (uint8_t)msg->data.gamepad_axis.axis_num;
+            axis_event->value = (int16_t)msg->data.gamepad_axis.value;
+
+            // Axis events can be dropped if queue is full (high-frequency)
+            fmrb_msg_send(routing.target_pid, &hid_msg, 5000);
             break;
+        }
 
         default:
             FMRB_LOGW(TAG, "Unknown message type: %d", msg->type);
