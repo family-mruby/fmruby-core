@@ -12,12 +12,12 @@ class ShooterApp < FmrbApp
   TEXT_COLOR   = 0xFF  # white
   GAMEOVER_BG  = 0xE0  # red
 
-  PLAYER_W = 8
-  PLAYER_H = 8
+  PLAYER_W = 8*2
+  PLAYER_H = 8*2
   BULLET_W = 2
   BULLET_H = 4
-  ENEMY_W  = 8
-  ENEMY_H  = 6
+  ENEMY_W  = 8*2
+  ENEMY_H  = 6*2
   PLAYER_SPEED = 3
   BULLET_SPEED = 5
   ENEMY_SPEED_BASE = 1
@@ -41,7 +41,6 @@ class ShooterApp < FmrbApp
     @score = 0
     @game_over = false
     @spawn_timer = 0
-    @frame_count = 0
     @input = {}
     @shoot_pressed = false
     draw_all
@@ -114,13 +113,9 @@ class ShooterApp < FmrbApp
     spawn_enemies
     check_collisions
 
-    # Draw every other frame to reduce WROVER load
-    @frame_count += 1
-    if @frame_count % 2 == 0
-      draw_all
-    end
+    draw_all
 
-    50
+    100
   end
 
   def update_player

@@ -5,3 +5,6 @@ module FmrbConst
   # Constants are defined in C layer (ports/esp32/const.c)
   # This file is a placeholder for future Ruby-level helpers if needed
 end
+
+# Default load path for require
+$LOAD_PATH = ["/lib"]

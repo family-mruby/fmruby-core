@@ -10,7 +10,7 @@ static fmrb_pin_status_t s_pins[FMRB_PIN_MAX];
 static void register_system_pin(int pin)
 {
     if (pin >= 0 && pin < FMRB_PIN_MAX) {
-        s_pins[pin].usage = FMRB_PIN_SYSTEM;
+        s_pins[pin].usage = FMRB_PIN_SYSTEM_EXCLUSIVE;
         s_pins[pin].owner = NULL;
     }
 }
@@ -64,11 +64,8 @@ void fmrb_pin_manager_init(void)
 #endif
     register_system_pin(FMRB_PIN_BUTTON_ENTER);
 
-    // System I2C pins
-    register_system_pin(FMRB_PIN_I2C1_SDA);
-    register_system_pin(FMRB_PIN_I2C1_SCL);
-    register_system_pin(FMRB_PIN_I2C2_SDA);
-    register_system_pin(FMRB_PIN_I2C2_SCL);
+    // I2C pins: not system-reserved. Acquired dynamically via hw_proxy I2C init.
+    // Kernel acquires first (e.g., for RTC), preventing user apps from conflicting.
 
 #ifdef FMRB_HW_ATOM_DISPLAY
     // HDMI SPI
@@ -115,7 +112,7 @@ void fmrb_pin_manager_release(int pin)
         return;
     }
     // Do not release system pins
-    if (s_pins[pin].usage == FMRB_PIN_SYSTEM) {
+    if (s_pins[pin].usage == FMRB_PIN_SYSTEM_EXCLUSIVE) {
         return;
     }
     s_pins[pin].usage = FMRB_PIN_UNUSED;
@@ -125,7 +122,7 @@ void fmrb_pin_manager_release(int pin)
 void fmrb_pin_manager_release_by_owner(void *owner)
 {
     for (int i = 0; i < FMRB_PIN_MAX; i++) {
-        if (s_pins[i].owner == owner && s_pins[i].usage != FMRB_PIN_SYSTEM) {
+        if (s_pins[i].owner == owner && s_pins[i].usage != FMRB_PIN_SYSTEM_EXCLUSIVE) {
             FMRB_LOGI(TAG, "Releasing pin %d (usage=%d)", i, s_pins[i].usage);
             s_pins[i].usage = FMRB_PIN_UNUSED;
             s_pins[i].owner = NULL;

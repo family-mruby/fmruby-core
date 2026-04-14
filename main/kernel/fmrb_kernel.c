@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <picoruby.h>
 #include "fmrb_log.h"
@@ -109,6 +110,15 @@ static bool read_system_config(void)
     // Read mouse sensitivity
     g_system_config.mouse_scale_x = fmrb_toml_get_double(conf, "mouse_scale_x", g_system_config.mouse_scale_x);
     g_system_config.mouse_scale_y = fmrb_toml_get_double(conf, "mouse_scale_y", g_system_config.mouse_scale_y);
+
+    // Read timezone and apply
+    const char *tz = fmrb_toml_get_string(conf, "timezone", NULL);
+    if (tz) {
+        setenv("TZ", tz, 1);
+        tzset();
+        FMRB_LOGI(TAG, "Timezone set to: %s", tz);
+        fmrb_sys_free((void *)tz);
+    }
 
     // Log loaded configuration
     FMRB_LOGI(TAG, "System Name: %s", g_system_config.system_name);
@@ -330,6 +340,90 @@ int fmrb_kernel_get_sync_files(fmrb_sync_file_entry_t *entries, int max_entries)
 
     toml_free(conf);
     return count;
+}
+
+// Helper: extract key-value pairs from a TOML table into fmrb_config_table_t
+static void extract_table_kv(const toml_table_t *tab, fmrb_config_table_t *out)
+{
+    out->count = 0;
+    const char *key;
+    for (int i = 0; (key = toml_key_in(tab, i)) && out->count < FMRB_CONFIG_MAX_ENTRIES; i++) {
+        fmrb_config_kv_t *kv = &out->kv[out->count];
+        strncpy(kv->key, key, FMRB_CONFIG_KEY_MAX - 1);
+        kv->key[FMRB_CONFIG_KEY_MAX - 1] = '\0';
+
+        // Try string first, then int, then bool, then double
+        toml_datum_t vs = toml_string_in(tab, key);
+        if (vs.ok) {
+            strncpy(kv->value, vs.u.s, FMRB_CONFIG_VAL_MAX - 1);
+            kv->value[FMRB_CONFIG_VAL_MAX - 1] = '\0';
+            fmrb_sys_free(vs.u.s);
+            out->count++;
+            continue;
+        }
+        toml_datum_t vi = toml_int_in(tab, key);
+        if (vi.ok) {
+            snprintf(kv->value, FMRB_CONFIG_VAL_MAX, "%lld", (long long)vi.u.i);
+            out->count++;
+            continue;
+        }
+        toml_datum_t vb = toml_bool_in(tab, key);
+        if (vb.ok) {
+            strncpy(kv->value, vb.u.b ? "true" : "false", FMRB_CONFIG_VAL_MAX - 1);
+            out->count++;
+            continue;
+        }
+        toml_datum_t vd = toml_double_in(tab, key);
+        if (vd.ok) {
+            snprintf(kv->value, FMRB_CONFIG_VAL_MAX, "%g", vd.u.d);
+            out->count++;
+            continue;
+        }
+        // Skip nested tables/arrays (not supported in flat kv output)
+    }
+}
+
+int fmrb_kernel_get_config_section(const char *section,
+                                   fmrb_config_table_t *tables_out,
+                                   int max_tables)
+{
+    if (!section || !tables_out || max_tables <= 0) {
+        return 0;
+    }
+
+    const char *config_path = "/etc/system_conf.toml";
+    char errbuf[200];
+    toml_table_t *conf = fmrb_toml_load_file(config_path, errbuf, sizeof(errbuf));
+    if (!conf) {
+        return 0;
+    }
+
+    int result = 0;
+
+    // Try as array-of-tables first ([[section]])
+    toml_array_t *arr = toml_array_in(conf, section);
+    if (arr) {
+        int n = toml_array_nelem(arr);
+        for (int i = 0; i < n && result < max_tables; i++) {
+            const toml_table_t *entry = toml_table_at(arr, i);
+            if (entry) {
+                extract_table_kv(entry, &tables_out[result]);
+                result++;
+            }
+        }
+        toml_free(conf);
+        return result;
+    }
+
+    // Try as single table ([section])
+    toml_table_t *tab = toml_table_in(conf, section);
+    if (tab) {
+        extract_table_kv(tab, &tables_out[0]);
+        result = 1;
+    }
+
+    toml_free(conf);
+    return result;
 }
 
 /**

@@ -1,3 +1,4 @@
+# Compile Error Test - Invalid Ruby syntax
 Log.info("Fail App started")
 
 p 0/1

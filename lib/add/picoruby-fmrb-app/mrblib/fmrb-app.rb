@@ -2,6 +2,8 @@
 # User app should inherit this class and override lifecycle methods.
 
 class FmrbApp
+  TITLE_BAR_H = 11
+
   attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen
 
   def initialize()
@@ -24,11 +26,11 @@ class FmrbApp
         @user_area_height = @window_height
       else
         @user_area_x0 = 1
-        @user_area_y0 = 10
+        @user_area_y0 = TITLE_BAR_H
         @user_area_x1 = @window_width - 1
-        @user_area_y1 = @window_height  - 1
+        @user_area_y1 = @window_height - 1
         @user_area_width = @window_width - 2
-        @user_area_height = @window_height - 12
+        @user_area_height = @window_height - TITLE_BAR_H - 1
       end
 
       # Background canvas (desktop only)
@@ -51,7 +53,7 @@ class FmrbApp
   def draw_window_frame
     return if @fullscreen
     # Draw title bar
-    @gfx.fill_rect(0, 0, @window_width, 11, 0xC5)
+    @gfx.fill_rect(0, 0, @window_width, TITLE_BAR_H, 0xC5)
     @gfx.fill_rect(2, 2, 8, 8, 0x60) # menu button
     @gfx.draw_text(12, 2, @name, FmrbGfx::WHITE)
 
@@ -72,12 +74,11 @@ class FmrbApp
   SCROLLBAR_BTN_H = 10
 
   # Draw a vertical scroll bar with up/down arrow buttons
-  # x, y: scroll area top-left (in window coords)
-  # w, h: scroll area size
   # scroll: current scroll position (0-based)
   # total: total item count
   # visible: number of visible items
-  def draw_scrollbar(x, y, w, h, scroll, total, visible)
+  # x, y, w, h: scroll area (defaults to user area)
+  def draw_scrollbar(scroll, total, visible, x = @user_area_x0, y = @user_area_y0, w = @user_area_width, h = @user_area_height)
     return if total <= visible
     bar_x = x + w - SCROLLBAR_W
     btn_h = SCROLLBAR_BTN_H
@@ -86,6 +87,7 @@ class FmrbApp
 
     # Separator line between content and scrollbar
     @gfx.draw_line(bar_x - 1, y, bar_x - 1, y + h - 1, border)
+    @gfx.draw_line(bar_x    , y, bar_x    , y + h - 1, bg)
 
     # Up button
     @gfx.fill_rect(bar_x, y, SCROLLBAR_W, btn_h, bg)
@@ -117,17 +119,20 @@ class FmrbApp
   end
 
   # Hit test for scroll bar click
-  # Returns :up, :down, or nil (only responds to arrow button clicks)
-  def scrollbar_hit(x, y, w, h, click_x, click_y)
+  # Returns :up, :down, or nil
+  def scrollbar_hit(click_x, click_y, x = @user_area_x0, y = @user_area_y0, w = @user_area_width, h = @user_area_height)
     bar_x = x + w - SCROLLBAR_W - 1
     return nil unless click_x >= bar_x && click_y >= y && click_y < y + h
     btn_h = SCROLLBAR_BTN_H
+    mid_y = y + h / 2
     if click_y < y + btn_h
       :up
     elsif click_y >= y + h - btn_h
       :down
+    elsif click_y < mid_y
+      :up
     else
-      nil
+      :down
     end
   end
 
@@ -298,6 +303,23 @@ class FmrbApp
 
   def stop
     @running = false
+  end
+
+  # Convert virtual path (e.g. "/home/music/x.nsf") to OS file path for File.open.
+  # Strips the leading "/" since HAL adds the flash prefix.
+  def to_file_path(virtual_path)
+    virtual_path.start_with?("/") ? virtual_path[1..-1] : virtual_path
+  end
+
+  # Convert virtual path to OS directory path for Dir.open.
+  # Linux: "flash/home/music", ESP32: "/flash/home/music"
+  def to_os_dir_path(virtual_path)
+    fs_root = @platform == :linux ? "flash" : "/flash"
+    if virtual_path == "/"
+      fs_root
+    else
+      "#{fs_root}#{virtual_path}"
+    end
   end
 
 end

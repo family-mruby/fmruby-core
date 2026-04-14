@@ -13,6 +13,8 @@ class SystemDesktopApp < FmrbApp
   include FileManagerMixin
   include ConfirmDialogMixin
   include ErrorDialogMixin
+  include ClockSettingMixin
+  include TaskbarMixin
 
   MENU_BAR_HEIGHT = 13
   MENU_BG = FmrbConst::THEME_MENU_BG
@@ -20,12 +22,15 @@ class SystemDesktopApp < FmrbApp
   DROPDOWN_TEXT = FmrbConst::THEME_TEXT
   DROPDOWN_HIGHLIGHT = FmrbConst::THEME_HIGHLIGHT
   BG_COLOR = FmrbConst::THEME_DESKTOP_BG
+  BG_IMAGE_PATH = "/data/BG_sample.png"
 
   # Dropdown menu items
   DROPDOWN_ITEMS = [
     { label: "Launcher" },
     { label: "File Manager" },
     { label: "Log Viewer" },
+    { label: "Monitor" },
+    { label: "Set Clock" },
     { label: "Config", app: "default/config" },
   ]
 
@@ -89,14 +94,24 @@ class SystemDesktopApp < FmrbApp
     @cdlg_on_yes_data = nil
     @cdlg_x = 0
     @cdlg_y = 0
+
+    # Clock setting state
+    @clk_open = false
+    @clk_values = nil
+    @clk_selected = 0
+    @clk_x = 0
+    @clk_y = 0
   end
 
   def on_create()
     Log.info("on_create called")
 
+    # Load keyboard shortcuts from config
+    @shortcuts = load_shortcuts
+
     # Position launcher near top-left (below menu bar, with margin)
-    @launcher_x = 16
-    @launcher_y = MENU_BAR_HEIGHT + 16
+    @launcher_x = 8
+    @launcher_y = MENU_BAR_HEIGHT + 8
 
     # Build app list
     scan_apps
@@ -109,8 +124,38 @@ class SystemDesktopApp < FmrbApp
     @fmgr_x = (@window_width - FMGR_W) / 2
     @fmgr_y = MENU_BAR_HEIGHT + (@window_height - MENU_BAR_HEIGHT - FMGR_H) / 2
 
+    init_taskbar
+    @taskbar_focused_pid = nil
+
     draw_background
     draw_foreground
+  end
+
+  def load_shortcuts
+    entries = FmrbApp.config("shortcuts")
+    return [] unless entries
+    entries.map { |e| { key: e["key"], app: e["app"] } }
+  rescue => e
+    Log.error("Failed to load shortcuts: #{e.message}")
+    []
+  end
+
+  def handle_shortcut(character)
+    return false if @dropdown_open || @launcher_open || @file_selector_open ||
+                    @file_manager_open || @cdlg_open || @error_dlg_open || @clk_open
+    ch = character.chr rescue nil
+    return false unless ch
+    @shortcuts.each do |sc|
+      next unless sc[:key] && sc[:key].downcase == ch.downcase
+      case sc[:app]
+      when "launcher" then open_launcher
+      when "file_manager" then open_file_manager
+      when "log_viewer" then spawn_app("default/logviewer")
+      else spawn_app(sc[:app])
+      end
+      return true
+    end
+    false
   end
 
   # ---- Background layer (@bg_gfx) ----
@@ -118,6 +163,11 @@ class SystemDesktopApp < FmrbApp
   def draw_background
     return unless @bg_gfx
     @bg_gfx.clear(BG_COLOR)
+    img = @bg_gfx.create_image(BG_IMAGE_PATH)
+    if img
+      @bg_gfx.draw_image(img[:id], x: 0, y: 0)
+      @bg_gfx.delete_image(img[:id])
+    end
     @bg_gfx.present
   end
 
@@ -183,6 +233,7 @@ class SystemDesktopApp < FmrbApp
     draw_file_selector if @file_selector_open
     draw_file_manager if @file_manager_open
     draw_confirm_dialog if @cdlg_open
+    draw_clock_setting if @clk_open
     draw_error_dialog if @error_dlg_open
     @gfx.present
   end
@@ -191,7 +242,17 @@ class SystemDesktopApp < FmrbApp
     @gfx.clear(0x01)  # Transparent (clear foreground, 0x01 = transparent color key)
     @gfx.fill_rect(0, 0, @window_width, MENU_BAR_HEIGHT, MENU_BG)
     @gfx.draw_text(2, 2, "Family mruby", FmrbGfx::WHITE)
+    draw_taskbar
+    draw_clock
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, 0x60)
+  end
+
+  def draw_clock
+    wc = FmrbApp.wallclock
+    return unless wc
+    text = sprintf("%02d/%02d %02d:%02d:%02d",
+                   wc[:month], wc[:day], wc[:hour], wc[:minute], wc[:second])
+    @gfx.draw_text(@window_width - 90, 2, text, FmrbGfx::WHITE, MENU_BG)
   end
 
   def draw_dropdown
@@ -242,8 +303,14 @@ class SystemDesktopApp < FmrbApp
   # ---- Update loop ----
 
   def on_update()
-    draw_memory_stats
+    #draw_memory_stats
     @counter += 1
+
+    # Update clock and taskbar every ~1 second (330ms * 3 = ~1s)
+    if @counter % 3 == 0
+      update_taskbar_apps
+      draw_foreground
+    end
 
     # Deferred: send file path to editor after it has started
     if @fmgr_pending_edit_path && @fmgr_pending_edit_counter
@@ -308,26 +375,35 @@ class SystemDesktopApp < FmrbApp
       handle_click(ev[:x], ev[:y])
     end
 
-    # Key input for file selector filename (save mode)
-    if @file_selector_open && @file_selector_mode == "save" && ev[:type] == :key_down
+    if ev[:type] == :key_down
       character = ev[:character] || 0
-      if character == 10 || character == 13  # Enter
-        if @file_selector_filename.length > 0
-          path = if @file_selector_dir == "/"
-                   "/#{@file_selector_filename}"
-                 else
-                   "#{@file_selector_dir}/#{@file_selector_filename}"
-                 end
-          close_file_selector(to_file_path(path))
-        end
-      elsif character == 8  # Backspace
-        if @file_selector_filename.length > 0
-          @file_selector_filename = @file_selector_filename[0...-1]
+
+      # Key input for file selector filename (save mode)
+      if @file_selector_open && @file_selector_mode == "save"
+        if character == 10 || character == 13  # Enter
+          if @file_selector_filename.length > 0
+            path = if @file_selector_dir == "/"
+                     "/#{@file_selector_filename}"
+                   else
+                     "#{@file_selector_dir}/#{@file_selector_filename}"
+                   end
+            close_file_selector(to_file_path(path))
+          end
+        elsif character == 8  # Backspace
+          if @file_selector_filename.length > 0
+            @file_selector_filename = @file_selector_filename[0...-1]
+            draw_foreground
+          end
+        elsif character >= 32 && character <= 126  # Printable
+          @file_selector_filename += character.chr
           draw_foreground
         end
-      elsif character >= 32 && character <= 126  # Printable
-        @file_selector_filename += character.chr
-        draw_foreground
+        return
+      end
+
+      # Keyboard shortcuts (only when no dialog/overlay is active)
+      if character >= 32 && character <= 126
+        handle_shortcut(character)
       end
     end
   end
@@ -350,6 +426,16 @@ class SystemDesktopApp < FmrbApp
         return
       end
       close_confirm_dialog
+      return
+    end
+
+    # Clock setting dialog
+    if @clk_open
+      if hit_clock_setting?(x, y)
+        handle_clock_setting_click(x, y)
+        return
+      end
+      close_clock_setting
       return
     end
 
@@ -394,8 +480,12 @@ class SystemDesktopApp < FmrbApp
     end
 
     # Menu bar
-    if y < MENU_BAR_HEIGHT && x < 80
-      open_dropdown
+    if y < MENU_BAR_HEIGHT
+      if x < 80
+        open_dropdown
+      else
+        handle_taskbar_click(x, y)
+      end
     end
   end
 
@@ -419,6 +509,10 @@ class SystemDesktopApp < FmrbApp
       open_file_manager
     when "Log Viewer"
       spawn_app("default/logviewer")
+    when "Monitor"
+      spawn_app("default/monitor")
+    when "Set Clock"
+      open_clock_setting
     else
       spawn_app(item[:app]) if item[:app]
     end

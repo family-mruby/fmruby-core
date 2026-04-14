@@ -13,6 +13,9 @@
 #include <unistd.h>
 #include <stdint.h>
 
+/* hal_init is provided by hal_freertos.c (linked at final link time) */
+extern void hal_init(mrb_state *mrb);
+
 /* Time conversion constants */
 #define NSEC_PER_MSEC 1000000ULL
 #define NSEC_PER_SEC  1000000000ULL
@@ -23,7 +26,7 @@ mrb_hal_task_init(mrb_state *mrb)
 {
   int i;
 
-  /* Initialize task state only */
+  /* Initialize task state */
   for (i = 0; i < 4; i++) {
     mrb->task.queues[i] = NULL;
   }
@@ -31,7 +34,8 @@ mrb_hal_task_init(mrb_state *mrb)
   mrb->task.wakeup_tick = UINT32_MAX;
   mrb->task.switching = FALSE;
 
-  /* No SIGALRM setup - ticks handled by FreeRTOS task in hal_freertos.c */
+  /* Create tick task (FreeRTOS) - idempotent, only creates once */
+  hal_init(mrb);
 }
 
 /* mrb_task_enable_irq / mrb_task_disable_irq are provided by hal_freertos.c */

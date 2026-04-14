@@ -2,27 +2,27 @@
 # MS-DOS style text editor with menu bar and status line
 
 class EditorApp < FmrbApp
-  # Colors (RGB332)
-  BG_COLOR      = 0x00  # Dark blue background
-  TEXT_COLOR    = 0xFF  # White text
-  MENU_BG       = 0x01  # Black menu bar
-  MENU_TEXT     = 0xFF  # White menu text
-  MENU_KEY      = 0xFC  # Yellow highlight for hotkey letter
-  STATUS_BG     = 0x00  # Black status line
-  STATUS_TEXT   = 0x1F  # Cyan status text
-  CURSOR_COLOR  = 0xFC  # Yellow cursor
+  # Colors - Light pink theme
+  BG_COLOR      = FmrbGfx.rgb_to_332(255, 230, 240)  # Nearly white pink
+  TEXT_COLOR     = FmrbGfx.rgb_to_332(0, 0, 0)        # Black text
+  MENU_BG       = FmrbGfx.rgb_to_332(100, 60, 100)    # Dark purple menu bar
+  MENU_TEXT     = FmrbGfx.rgb_to_332(255, 255, 255)   # White menu text
+  MENU_KEY      = FmrbGfx.rgb_to_332(255, 255, 0)     # Yellow hotkey
+  STATUS_BG     = FmrbGfx.rgb_to_332(40, 40, 60)      # Dark gray status line
+  STATUS_TEXT   = FmrbGfx.rgb_to_332(255, 255, 255)   # White status text
+  CURSOR_COLOR  = FmrbGfx.rgb_to_332(0, 0, 200)       # Blue cursor
 
-  # Syntax highlight category colors (RGB332)
+  # Syntax highlight colors (for light background)
   HL_COLORS = [
-    0xFF,  # 0: default    - white
-    0xE0,  # 1: keyword    - red
-    0x1C,  # 2: string     - green
-    0x92,  # 3: comment    - gray
-    0xFC,  # 4: number     - yellow
-    0xE3,  # 5: symbol     - magenta
-    0x1F,  # 6: constant   - cyan
-    0xFE,  # 7: variable   - light pink
-    0x9F,  # 8: method     - light blue
+    FmrbGfx.rgb_to_332(0, 0, 0),        # 0: default    - black
+    FmrbGfx.rgb_to_332(180, 0, 0),      # 1: keyword    - dark red
+    FmrbGfx.rgb_to_332(0, 120, 0),      # 2: string     - dark green
+    FmrbGfx.rgb_to_332(120, 120, 120),  # 3: comment    - gray
+    FmrbGfx.rgb_to_332(160, 100, 0),    # 4: number     - brown
+    FmrbGfx.rgb_to_332(140, 0, 140),    # 5: symbol     - dark magenta
+    FmrbGfx.rgb_to_332(0, 100, 140),    # 6: constant   - dark cyan
+    FmrbGfx.rgb_to_332(180, 0, 60),     # 7: variable   - crimson
+    FmrbGfx.rgb_to_332(0, 0, 180),      # 8: method     - dark blue
   ]
 
   CHAR_W = 6
@@ -30,13 +30,17 @@ class EditorApp < FmrbApp
   TAB_SIZE = 2
 
   # File dropdown
-  DROPDOWN_BG = 0xFF
-  DROPDOWN_TEXT = 0x00
-  DROPDOWN_SEL_BG = 0xC5
-  DROPDOWN_SEL_TEXT = 0xFF
-  DROPDOWN_ITEMS = ["Open", "Save", "Save as"]
+  DROPDOWN_BG = FmrbGfx.rgb_to_332(255, 255, 255)
+  DROPDOWN_TEXT = FmrbGfx.rgb_to_332(0, 0, 0)
+  DROPDOWN_SEL_BG = FmrbGfx.rgb_to_332(100, 60, 100)
+  DROPDOWN_SEL_TEXT = FmrbGfx.rgb_to_332(255, 255, 255)
+  DROPDOWN_ITEMS = ["Open", "Save", "Save as", "Exit"]
   DROPDOWN_W = 54
   DROPDOWN_ITEM_H = 10
+
+  # Key repeat timing (in frames, ~33ms each)
+  KEY_REPEAT_DELAY = 12  # ~400ms before repeat starts
+  KEY_REPEAT_RATE = 3    # ~100ms between repeats
 
   def initialize
     super()
@@ -44,6 +48,7 @@ class EditorApp < FmrbApp
     @cx = 0             # Cursor column in current line
     @cy = 0             # Cursor line index
     @scroll_y = 0       # First visible line index
+    @scroll_x = 0       # Horizontal scroll offset (columns)
     @need_redraw = true
     @input_buffer = []
     @frame_ms = 33
@@ -54,6 +59,9 @@ class EditorApp < FmrbApp
     @highlight_map = nil
     @highlight_dirty = true
     @line_offsets = nil
+    # Key repeat state
+    @held_keycode = nil
+    @hold_frames = 0
   end
 
   def on_create
@@ -118,7 +126,6 @@ class EditorApp < FmrbApp
 
     line_num = @cy + 1
     col_num = @cx + 1
-    total = @lines.length
 
     fname = @current_file ? @current_file.split("/").last : "[New]"
     status = " #{fname}  Ln #{line_num}, Col #{col_num}"
@@ -153,7 +160,9 @@ class EditorApp < FmrbApp
       line_idx = @scroll_y + row
       break if line_idx >= @lines.length
 
-      text = @lines[line_idx]
+      full_line = @lines[line_idx]
+      # Apply horizontal scroll
+      text = @scroll_x > 0 ? (full_line[@scroll_x..-1] || "") : full_line
       visible_len = text.length > @edit_cols ? @edit_cols : text.length
       next if visible_len == 0
 
@@ -161,7 +170,7 @@ class EditorApp < FmrbApp
       y = @edit_y + row * CHAR_H
 
       if @highlight_map && @line_offsets
-        draw_highlighted_line(x, y, text, visible_len, @line_offsets[line_idx])
+        draw_highlighted_line(x, y, text, visible_len, @line_offsets[line_idx] + @scroll_x)
       else
         @gfx.draw_text(x, y, text[0, visible_len], TEXT_COLOR, BG_COLOR)
       end
@@ -195,7 +204,10 @@ class EditorApp < FmrbApp
     screen_row = @cy - @scroll_y
     return if screen_row < 0 || screen_row >= @edit_rows
 
-    x = @user_area_x0 + 1 + @cx * CHAR_W
+    screen_col = @cx - @scroll_x
+    return if screen_col < 0 || screen_col >= @edit_cols
+
+    x = @user_area_x0 + 1 + screen_col * CHAR_W
     y = @edit_y + screen_row * CHAR_H
 
     # Draw block cursor
@@ -218,10 +230,17 @@ class EditorApp < FmrbApp
   # ---- Scrolling ----
 
   def ensure_cursor_visible
+    # Vertical
     if @cy < @scroll_y
       @scroll_y = @cy
     elsif @cy >= @scroll_y + @edit_rows
       @scroll_y = @cy - @edit_rows + 1
+    end
+    # Horizontal
+    if @cx < @scroll_x
+      @scroll_x = @cx
+    elsif @cx >= @scroll_x + @edit_cols
+      @scroll_x = @cx - @edit_cols + 1
     end
   end
 
@@ -248,6 +267,7 @@ class EditorApp < FmrbApp
     @cx += 1
     @modified = true
     @highlight_dirty = true
+    ensure_cursor_visible
     @need_redraw = true
   end
 
@@ -273,6 +293,7 @@ class EditorApp < FmrbApp
       @cx -= 1
       @modified = true
       @highlight_dirty = true
+      ensure_cursor_visible
       @need_redraw = true
     elsif @cy > 0
       # Merge with previous line
@@ -305,7 +326,21 @@ class EditorApp < FmrbApp
     end
   end
 
-  # ---- Arrow keys (via keycode) ----
+  # ---- Navigation (arrow keys, page up/down, home/end) ----
+
+  def execute_key_action(keycode)
+    case keycode
+    when 79 then move_right
+    when 80 then move_left
+    when 81 then move_down
+    when 82 then move_up
+    when 75 then page_up
+    when 78 then page_down
+    when 74 then move_home
+    when 77 then move_end
+    when 76 then handle_delete  # Delete forward key
+    end
+  end
 
   def move_up
     if @cy > 0
@@ -328,6 +363,7 @@ class EditorApp < FmrbApp
   def move_left
     if @cx > 0
       @cx -= 1
+      ensure_cursor_visible
       @need_redraw = true
     elsif @cy > 0
       @cy -= 1
@@ -341,6 +377,7 @@ class EditorApp < FmrbApp
     line = @lines[@cy] || ""
     if @cx < line.length
       @cx += 1
+      ensure_cursor_visible
       @need_redraw = true
     elsif @cy < @lines.length - 1
       @cy += 1
@@ -348,6 +385,35 @@ class EditorApp < FmrbApp
       ensure_cursor_visible
       @need_redraw = true
     end
+  end
+
+  def page_up
+    @cy -= @edit_rows
+    @cy = 0 if @cy < 0
+    clamp_cx
+    ensure_cursor_visible
+    @need_redraw = true
+  end
+
+  def page_down
+    @cy += @edit_rows
+    max = @lines.length - 1
+    @cy = max if @cy > max
+    clamp_cx
+    ensure_cursor_visible
+    @need_redraw = true
+  end
+
+  def move_home
+    @cx = 0
+    ensure_cursor_visible
+    @need_redraw = true
+  end
+
+  def move_end
+    @cx = (@lines[@cy] || "").length
+    ensure_cursor_visible
+    @need_redraw = true
   end
 
   def clamp_cx
@@ -402,6 +468,8 @@ class EditorApp < FmrbApp
       when 2  # Save as
         @pending_file_op = :save
         request_file_select("save")
+      when 3  # Exit
+        stop
       end
       return
     end
@@ -422,6 +490,7 @@ class EditorApp < FmrbApp
       @cx = 0
       @cy = 0
       @scroll_y = 0
+      @scroll_x = 0
       @modified = false
       @highlight_dirty = true
       @current_file = path
@@ -491,19 +560,13 @@ class EditorApp < FmrbApp
       keycode = ev[:keycode] || 0
       character = ev[:character] || 0
 
-      # Arrow keys (USB HID keycodes)
+      # Navigation keys (USB HID keycodes) - handle immediately + start repeat
       case keycode
-      when 79  # Right
-        move_right
-        return
-      when 80  # Left
-        move_left
-        return
-      when 81  # Down
-        move_down
-        return
-      when 82  # Up
-        move_up
+      when 79, 80, 81, 82, 75, 78, 74, 77, 76
+        # Right, Left, Down, Up, PageUp, PageDown, Home, End, Delete
+        execute_key_action(keycode)
+        @held_keycode = keycode
+        @hold_frames = 0
         return
       end
 
@@ -515,9 +578,28 @@ class EditorApp < FmrbApp
         @input_buffer << character
       end
     end
+
+    if ev[:type] == :key_up
+      keycode = ev[:keycode] || 0
+      # Stop key repeat when key is released
+      if keycode == @held_keycode
+        @held_keycode = nil
+        @hold_frames = 0
+      end
+    end
   end
 
   def on_update
+    # Key repeat: if a navigation key is held down, repeat the action
+    if @held_keycode
+      @hold_frames += 1
+      if @hold_frames >= KEY_REPEAT_DELAY
+        if (@hold_frames - KEY_REPEAT_DELAY) % KEY_REPEAT_RATE == 0
+          execute_key_action(@held_keycode)
+        end
+      end
+    end
+
     if @need_redraw
       redraw_all
       @need_redraw = false

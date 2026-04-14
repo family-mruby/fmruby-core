@@ -217,6 +217,15 @@ class FmrbKernelImpl < FmrbKernel
           _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
         end
       end
+    when "focus_app"
+      target_pid = data["pid"]
+      if target_pid
+        _bring_to_front(target_pid)
+        _set_hid_target(target_pid)
+        @hid_target_pid = target_pid
+        mark_window_list_dirty
+        Log.info("Focus switched to PID #{target_pid} (requested by pid=#{pid})")
+      end
     when "kill"
       Log.info("Kill request from pid=#{pid} (not implemented)")
       # TODO: Implement kill command to forcefully terminate app
@@ -281,6 +290,28 @@ class FmrbKernelImpl < FmrbKernel
     Log.info("File sync complete")
   end
 
+  def sync_rtc
+    unless FmrbConst::PLATFORM == "esp32"
+      Log.info("RTC sync: skipped (not ESP32)")
+      return
+    end
+    begin
+      i2c = I2C.new(unit: :ESP32_I2C1,
+                    sda_pin: FmrbHw::PIN_I2C1_SDA,
+                    scl_pin: FmrbHw::PIN_I2C1_SCL)
+      rtc = RX8900.new(i2c)
+      rtc.init
+      if rtc.sync_system_clock
+        t = rtc.read_time
+        Log.info("RTC sync: #{t[:year]}/#{t[:month]}/#{t[:day]} #{t[:hour]}:#{t[:minute]}:#{t[:second]}")
+      else
+        Log.warn("RTC sync: failed to read time")
+      end
+    rescue => e
+      Log.error("RTC sync error: #{e.message}")
+    end
+  end
+
   def initial_sequence
     # Check protocol version with host (retry up to 3 times for startup timing)
     version_ok = false
@@ -301,6 +332,9 @@ class FmrbKernelImpl < FmrbKernel
 
     # Sync files to host (after protocol version confirmed)
     sync_files
+
+    # Sync RTC to system clock (ESP32 only)
+    sync_rtc
 
     # Spawn system desktop app (bg canvas z=0, fg canvas z=254)
     desktop_pid = _spawn_app_req("system/desktop")

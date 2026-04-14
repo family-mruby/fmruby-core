@@ -20,11 +20,16 @@ extern const uint8_t shell_irep[];
 extern const uint8_t editor_irep[];
 extern const uint8_t logviewer_irep[];
 extern const uint8_t config_irep[];
+extern const uint8_t monitor_irep[];
 
-static fmrb_err_t spawn_system_desktop_app(int32_t* out_pid)
-{
-    FMRB_LOGI(TAG, "Creating system desktop app...");
-    fmrb_spawn_attr_t attr = {
+// Built-in app configuration table
+typedef struct {
+    const char*       lookup_name;   // Name used in fmrb_app_spawn_app()
+    fmrb_spawn_attr_t attr;
+} builtin_app_entry_t;
+
+static const builtin_app_entry_t builtin_app_table[] = {
+    { "system/desktop", {
         .app_id = PROC_ID_SYSTEM_APP,
         .type = APP_TYPE_SYSTEM_APP,
         .name = "system_desktop",
@@ -36,32 +41,14 @@ static fmrb_err_t spawn_system_desktop_app(int32_t* out_pid)
         .flags = FMRB_SYSTEM_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
-        .has_background_canvas = true,  // Desktop has bg (z=0) + fg (z=254)
+        .has_background_canvas = true,
         .window_width = 0,
         .window_height = 0,
         .window_pos_x = 0,
         .window_pos_y = 0
-    };
-
-    int32_t app_id;
-    fmrb_err_t result;
-    result = fmrb_app_spawn(&attr, &app_id);
-    if (result == FMRB_OK) {
-        FMRB_LOGI(TAG, "system desktop app spawned: id=%d", app_id);
-        if (out_pid) {
-            *out_pid = app_id;
-        }
-    } else {
-        FMRB_LOGE(TAG, "Failed to spawn system desktop app: %d", result);
-    }
-    return result;
-}
-
-static fmrb_err_t spawn_shell_app(int32_t* out_pid)
-{
-    FMRB_LOGI(TAG, "spawn_shell_app: Starting");
-    fmrb_spawn_attr_t attr = {
-        .app_id = -1,  // Auto-assign available slot
+    }},
+    { "default/shell", {
+        .app_id = -1,
         .type = APP_TYPE_USER_APP,
         .name = "shell",
         .vm_type = FMRB_VM_TYPE_MRUBY,
@@ -72,29 +59,12 @@ static fmrb_err_t spawn_shell_app(int32_t* out_pid)
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
-        .window_width = 350,
+        .window_width = 300,
         .window_height = 200,
-        .window_pos_x = 10,
+        .window_pos_x = 5,
         .window_pos_y = 15
-    };
-
-    int32_t shell_id;
-    fmrb_err_t result = fmrb_app_spawn(&attr, &shell_id);
-    if (result == FMRB_OK) {
-        FMRB_LOGI(TAG, "Shell app spawned: id=%d", shell_id);
-        if (out_pid) {
-            *out_pid = shell_id;
-        }
-    } else {
-        FMRB_LOGE(TAG, "Failed to spawn shell app: %d", result);
-    }
-    return result;
-}
-
-static fmrb_err_t spawn_editor_app(int32_t* out_pid)
-{
-    FMRB_LOGI(TAG, "spawn_editor_app: Starting");
-    fmrb_spawn_attr_t attr = {
+    }},
+    { "default/editor", {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,
         .name = "editor",
@@ -106,29 +76,12 @@ static fmrb_err_t spawn_editor_app(int32_t* out_pid)
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
-        .window_width = 320,
-        .window_height = 240,
+        .window_width = 300,
+        .window_height = 200,
         .window_pos_x = 5,
         .window_pos_y = 15
-    };
-
-    int32_t editor_id;
-    fmrb_err_t result = fmrb_app_spawn(&attr, &editor_id);
-    if (result == FMRB_OK) {
-        FMRB_LOGI(TAG, "Editor app spawned: id=%d", editor_id);
-        if (out_pid) {
-            *out_pid = editor_id;
-        }
-    } else {
-        FMRB_LOGE(TAG, "Failed to spawn editor app: %d", result);
-    }
-    return result;
-}
-
-static fmrb_err_t spawn_logviewer_app(int32_t* out_pid)
-{
-    FMRB_LOGI(TAG, "spawn_logviewer_app: Starting");
-    fmrb_spawn_attr_t attr = {
+    }},
+    { "default/logviewer", {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,
         .name = "logviewer",
@@ -140,21 +93,46 @@ static fmrb_err_t spawn_logviewer_app(int32_t* out_pid)
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
-        .window_width = 400,
+        .window_width = 300,
         .window_height = 200,
-        .window_pos_x = 40,
-        .window_pos_y = 60
-    };
+        .window_pos_x = 5,
+        .window_pos_y = 15
+    }},
+    { "default/monitor", {
+        .app_id = -1,
+        .type = APP_TYPE_USER_APP,
+        .name = "monitor",
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = monitor_irep,
+        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
+        .priority = FMRB_SHELL_APP_PRIORITY,
+        .flags = FMRB_SHELL_APP_TASK_FLAGS,
+        .core_affinity = -1,
+        .headless = false,
+        .window_width = 180,
+        .window_height = 120,
+        .window_pos_x = 10,
+        .window_pos_y = 10
+    }},
+};
 
+#define BUILTIN_APP_COUNT (sizeof(builtin_app_table) / sizeof(builtin_app_table[0]))
+
+static fmrb_err_t spawn_builtin_app(const builtin_app_entry_t* entry, int32_t* out_pid)
+{
+    FMRB_LOGI(TAG, "Spawning built-in app: %s", entry->lookup_name);
+
+    fmrb_spawn_attr_t attr = entry->attr;
     int32_t app_id;
     fmrb_err_t result = fmrb_app_spawn(&attr, &app_id);
     if (result == FMRB_OK) {
-        FMRB_LOGI(TAG, "LogViewer app spawned: id=%d", app_id);
+        FMRB_LOGI(TAG, "Built-in app spawned: id=%d, name=%s", app_id, entry->lookup_name);
         if (out_pid) {
             *out_pid = app_id;
         }
     } else {
-        FMRB_LOGE(TAG, "Failed to spawn logviewer app: %d", result);
+        FMRB_LOGE(TAG, "Failed to spawn built-in app: %s (error=%d)", entry->lookup_name, result);
     }
     return result;
 }
@@ -350,29 +328,25 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid)
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    // Match app_name to spawn function
-    // PreBuild Apps
-    if (strcmp(app_name, "system/desktop") == 0) {
-        return spawn_system_desktop_app(out_pid);
-    } else if (strcmp(app_name, "default/shell") == 0) {
-        return spawn_shell_app(out_pid);
-    } else if (strcmp(app_name, "default/editor") == 0) {
-        return spawn_editor_app(out_pid);
-    } else if (strcmp(app_name, "default/logviewer") == 0) {
-        return spawn_logviewer_app(out_pid);
-    } else if (strcmp(app_name, "default/config") == 0) {
-        // Future implementation
+    // Search built-in app table
+    for (size_t i = 0; i < BUILTIN_APP_COUNT; i++) {
+        if (strcmp(app_name, builtin_app_table[i].lookup_name) == 0) {
+            return spawn_builtin_app(&builtin_app_table[i], out_pid);
+        }
+    }
+
+    // Config app (not yet in table)
+    if (strcmp(app_name, "default/config") == 0) {
         FMRB_LOGW(TAG, "Config app not yet implemented");
         return FMRB_ERR_NOT_SUPPORTED;
     }
 
-    // For paths starting with system/ or default/, reject as unknown built-in app
+    // Reject unknown built-in app names
     if (strncmp(app_name, "system/", 7) == 0 || strncmp(app_name, "default/", 8) == 0) {
         FMRB_LOGE(TAG, "Unknown built-in app name: %s", app_name);
         return FMRB_ERR_NOT_FOUND;
     }
 
     // User App from filesystem
-    // Assume any other path is a filesystem path (e.g., "/flash/app/myapp.rb")
     return spawn_user_app(app_name, out_pid);
 }

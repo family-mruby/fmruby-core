@@ -117,6 +117,8 @@ machine_hal_init(mrb_state *mrb)
 {
   (void)mrb;  /* VM registration is deferred to hal_register_vm() */
 
+  ESP_LOGI("hal", "machine_hal_init called");
+
   if (!g_tick_manager.task_created) {
     g_tick_manager.mutex = xSemaphoreCreateMutex();
     if (g_tick_manager.mutex == NULL) {
@@ -135,6 +137,7 @@ machine_hal_init(mrb_state *mrb)
 
     if (ret == pdPASS) {
       g_tick_manager.task_created = 1;
+      ESP_LOGI("hal", "mruby_tick_task created (interval=%dms)", MRB_TICK_UNIT);
     } else {
       ESP_LOGE("hal", "Failed to create mruby_tick_task");
       vSemaphoreDelete(g_tick_manager.mutex);
@@ -268,9 +271,8 @@ hal_idle_cpu(mrb_state *mrb)
 void
 mrb_hal_task_init(mrb_state *mrb)
 {
-  /* VM registration and tick task creation are handled by
-   * machine_hal_init() and hal_register_vm() */
-  (void)mrb;
+  /* Create tick task (idempotent, only creates once) */
+  machine_hal_init(mrb);
 }
 
 void

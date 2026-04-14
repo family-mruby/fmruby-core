@@ -198,8 +198,8 @@ module FileManagerMixin
     end
 
     # Scroll bar
-    draw_scrollbar(x, list_y, FMGR_W, m[:list_h], @file_manager_scroll,
-                   @file_manager_entries.size, max_visible)
+    draw_scrollbar(@file_manager_scroll, @file_manager_entries.size, max_visible,
+                   x, list_y, FMGR_W, m[:list_h])
 
     # Context menu (drawn on top)
     draw_fmgr_context_menu if @fmgr_ctx_open
@@ -284,7 +284,7 @@ module FileManagerMixin
     total = @file_manager_entries.size
 
     # Scroll bar hit test
-    sb = scrollbar_hit(fx, list_y, FMGR_W, m[:list_h], x, y)
+    sb = scrollbar_hit(x, y, fx, list_y, FMGR_W, m[:list_h])
     if sb
       handle_file_manager_scroll(sb == :up ? -1 : 1)
       return

@@ -32,7 +32,10 @@ typedef enum {
     GFX_CMD_ELLIPSE,
     GFX_CMD_TRIANGLE,
     GFX_CMD_ARC,
-    GFX_CMD_TEXT_SIZE
+    GFX_CMD_TEXT_SIZE,
+    GFX_CMD_BLEND_RECT,
+    GFX_CMD_SET_OUTPUT_LEVEL,
+    GFX_CMD_SET_CHROMA_LEVEL
 } gfx_cmd_type_t;
 
 // Graphics command structure
@@ -86,6 +89,8 @@ typedef struct {
             int16_t x;
             int16_t y;
             uint8_t flags;
+            int16_t scale_x_fp8;  // Fixed-point scale (x256): 256 = 1.0
+            int16_t scale_y_fp8;  // 0 = same as scale_x
         } draw_image;
         struct {
             uint16_t image_id;
@@ -120,6 +125,17 @@ typedef struct {
         struct {
             uint8_t size;
         } text_size;
+        struct {
+            fmrb_rect_t rect;
+            fmrb_color_t color;
+            uint8_t mode;  // FMRB_BLEND_MODE_*
+        } blend_rect;
+        struct {
+            uint8_t level;
+        } set_output_level;
+        struct {
+            uint8_t level;
+        } set_chroma_level;
     } params;
 } gfx_cmd_t;
 

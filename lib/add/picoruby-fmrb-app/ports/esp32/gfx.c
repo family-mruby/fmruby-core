@@ -268,6 +268,37 @@ static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// Graphics#blend_rect(x, y, w, h, color, mode)
+// Blend color into each pixel in the rectangle
+// mode: 0=ADD (saturating), 1=XOR
+static mrb_value mrb_gfx_blend_rect(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y, w, h, color, mode;
+    mrb_get_args(mrb, "iiiiii", &x, &y, &w, &h, &color, &mode);
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_BLEND_RECT,
+        .canvas_id = data->canvas_id,
+        .params.blend_rect = {
+            .rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h},
+            .color = (fmrb_color_t)color,
+            .mode = (uint8_t)mode
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "blend_rect failed: %d", ret);
+    }
+
+    return self;
+}
+
 // Graphics#draw_circle(x, y, r, color)
 static mrb_value mrb_gfx_draw_circle(mrb_state *mrb, mrb_value self)
 {
@@ -618,21 +649,24 @@ static fmrb_err_t send_file_cmd_sync(file_cmd_t *cmd,
     return FMRB_OK;
 }
 
-// FmrbGfx#_transfer_file(path) -> true/false
+// FmrbGfx#_transfer_file(src_path, dest_path) -> true/false
+// src_path: local file to read (HAL resolves flash prefix)
+// dest_path: destination path on graphics-audio LittleFS
 static mrb_value mrb_gfx_transfer_file(mrb_state *mrb, mrb_value self)
 {
     char *path;
-    mrb_get_args(mrb, "z", &path);
+    char *dest;
+    mrb_get_args(mrb, "zz", &path, &dest);
 
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    // Read file from local filesystem
-    size_t path_len = strlen(path);
-    if (path_len >= 120) {
-        mrb_raise(mrb, E_ARGUMENT_ERROR, "Path too long");
+    // Validate dest path length (must fit in file_cmd_t.path[120])
+    size_t dest_len = strlen(dest);
+    if (dest_len >= 120) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Dest path too long");
     }
 
     // HAL adds base path ("/flash" on ESP32, "flash" on POSIX) automatically
@@ -672,11 +706,12 @@ static mrb_value mrb_gfx_transfer_file(mrb_state *mrb, mrb_value self)
 
     // Send transfer command to host_task
     // Note: file_data ownership is transferred to host_task
+    // Use dest path as the target location on graphics-audio LittleFS
     file_cmd_t cmd = {0};
     file_cmd_result_t result = {0};
     cmd.cmd_type = FILE_CMD_TRANSFER;
-    cmd.path_len = (uint16_t)path_len;
-    memcpy(cmd.path, path, path_len);
+    cmd.path_len = (uint16_t)dest_len;
+    memcpy(cmd.path, dest, dest_len);
     cmd.params.transfer.data = file_data;
     cmd.params.transfer.data_len = file_size;
 
@@ -692,7 +727,7 @@ static mrb_value mrb_gfx_transfer_file(mrb_state *mrb, mrb_value self)
         mrb_raisef(mrb, E_RUNTIME_ERROR, "File transfer failed: %d", result.result);
     }
 
-    FMRB_LOGI(TAG, "transfer_file: %s (%u bytes) transferred", path, (unsigned)file_size);
+    FMRB_LOGI(TAG, "transfer_file: %s -> %s (%u bytes) transferred", path, dest, (unsigned)file_size);
     return mrb_true_value();
 }
 
@@ -764,7 +799,8 @@ static mrb_value mrb_gfx_file_status(mrb_state *mrb, mrb_value self)
 static mrb_value mrb_gfx_draw_image(mrb_state *mrb, mrb_value self)
 {
     mrb_int image_id, x, y;
-    mrb_get_args(mrb, "iii", &image_id, &x, &y);
+    mrb_float scale_x, scale_y;
+    mrb_get_args(mrb, "iiiff", &image_id, &x, &y, &scale_x, &scale_y);
 
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
@@ -778,7 +814,9 @@ static mrb_value mrb_gfx_draw_image(mrb_state *mrb, mrb_value self)
             .image_id = (uint16_t)image_id,
             .x = (int16_t)x,
             .y = (int16_t)y,
-            .flags = 0
+            .flags = 0,
+            .scale_x_fp8 = (int16_t)(scale_x * 256.0f),
+            .scale_y_fp8 = (int16_t)(scale_y * 256.0f)
         }
     };
 
@@ -941,6 +979,36 @@ static mrb_value mrb_gfx_s_rgb_to_332(mrb_state *mrb, mrb_value klass)
     return mrb_fixnum_value(((r >> 5) << 5) | ((g >> 5) << 2) | (b >> 6));
 }
 
+static mrb_value mrb_gfx_set_output_level(mrb_state *mrb, mrb_value self)
+{
+    mrb_int level;
+    mrb_get_args(mrb, "i", &level);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    if (level < 0) level = 0;
+    if (level > 255) level = 255;
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_SET_OUTPUT_LEVEL, .canvas_id = data->canvas_id,
+        .params.set_output_level = { .level = (uint8_t)level }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Set output level failed: %d", ret);
+    return self;
+}
+
+static mrb_value mrb_gfx_set_chroma_level(mrb_state *mrb, mrb_value self)
+{
+    mrb_int level;
+    mrb_get_args(mrb, "i", &level);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    if (level < 0) level = 0;
+    if (level > 255) level = 255;
+    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_SET_CHROMA_LEVEL, .canvas_id = data->canvas_id,
+        .params.set_chroma_level = { .level = (uint8_t)level }};
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Set chroma level failed: %d", ret);
+    return self;
+}
+
 void mrb_fmrb_gfx_init(mrb_state *mrb)
 {
     struct RClass *gfx_class = mrb_define_class(mrb, "FmrbGfx", mrb->object_class);
@@ -952,6 +1020,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "draw_line", mrb_gfx_draw_line, MRB_ARGS_REQ(5));
     mrb_define_method(mrb, gfx_class, "draw_rect", mrb_gfx_draw_rect, MRB_ARGS_REQ(5));
     mrb_define_method(mrb, gfx_class, "fill_rect", mrb_gfx_fill_rect, MRB_ARGS_REQ(5));
+    mrb_define_method(mrb, gfx_class, "blend_rect", mrb_gfx_blend_rect, MRB_ARGS_REQ(6));
     mrb_define_method(mrb, gfx_class, "draw_circle", mrb_gfx_draw_circle, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "fill_circle", mrb_gfx_fill_circle, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "draw_round_rect", mrb_gfx_draw_round_rect, MRB_ARGS_REQ(6));
@@ -968,13 +1037,17 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());
 
     // File transfer API
-    mrb_define_method(mrb, gfx_class, "_transfer_file", mrb_gfx_transfer_file, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "_transfer_file", mrb_gfx_transfer_file, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, gfx_class, "_file_status", mrb_gfx_file_status, MRB_ARGS_REQ(1));
 
     // Image API
     mrb_define_method(mrb, gfx_class, "_create_image_from_file", mrb_gfx_create_image_from_file, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "_draw_image", mrb_gfx_draw_image, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, gfx_class, "_delete_image", mrb_gfx_delete_image, MRB_ARGS_REQ(1));
+
+    // CVBS/NTSC output control
+    mrb_define_method(mrb, gfx_class, "set_output_level", mrb_gfx_set_output_level, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "set_chroma_level", mrb_gfx_set_chroma_level, MRB_ARGS_REQ(1));
 
     // Color utility class methods
     mrb_define_class_method(mrb, gfx_class, "hsv_to_rgb", mrb_gfx_s_hsv_to_rgb, MRB_ARGS_REQ(3));

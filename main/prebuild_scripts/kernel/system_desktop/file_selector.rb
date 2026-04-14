@@ -83,18 +83,6 @@ module FileSelectorMixin
     @file_selector_selected = -1
   end
 
-  def to_os_dir_path(virtual_path)
-    fs_root = @platform == :linux ? "flash" : "/flash"
-    if virtual_path == "/"
-      fs_root
-    else
-      "#{fs_root}#{virtual_path}"
-    end
-  end
-
-  def to_file_path(virtual_path)
-    virtual_path.start_with?("/") ? virtual_path[1..-1] : virtual_path
-  end
 
   def draw_file_selector
     return unless @file_selector_open
@@ -145,6 +133,8 @@ module FileSelectorMixin
     list_y = y + FSEL_TITLE_H + 2
     list_h = bottom_y - list_y - 2
     max_visible = list_h / FSEL_ITEM_H
+    has_scrollbar = @file_selector_entries.size > max_visible
+    text_area_w = has_scrollbar ? FSEL_W - FmrbApp::SCROLLBAR_W - 4 : FSEL_W - 12
 
     max_visible.times do |i|
       idx = @file_selector_scroll + i
@@ -154,7 +144,8 @@ module FileSelectorMixin
       item_y = list_y + i * FSEL_ITEM_H
 
       if idx == @file_selector_selected
-        @gfx.fill_rect(x + 2, item_y, FSEL_W - 4, FSEL_ITEM_H, FSEL_SEL_BG)
+        item_w = has_scrollbar ? FSEL_W - FmrbApp::SCROLLBAR_W - 2 : FSEL_W - 4
+        @gfx.fill_rect(x + 2, item_y, item_w, FSEL_ITEM_H, FSEL_SEL_BG)
         text_color = FmrbGfx::WHITE
         text_bg = FSEL_SEL_BG
       else
@@ -165,8 +156,14 @@ module FileSelectorMixin
       prefix = entry[:is_dir] ? "[" : " "
       suffix = entry[:is_dir] ? "]" : ""
       label = "#{prefix}#{entry[:name]}#{suffix}"
-      label = label[0, (FSEL_W - 12) / 6] if label.length > (FSEL_W - 12) / 6
+      label = label[0, text_area_w / 6] if label.length > text_area_w / 6
       @gfx.draw_text(x + 6, item_y + 2, label, text_color, text_bg)
+    end
+
+    # Draw scrollbar if needed
+    if has_scrollbar
+      draw_scrollbar(@file_selector_scroll, @file_selector_entries.size,
+                     max_visible, x, list_y, FSEL_W, list_h)
     end
   end
 
@@ -202,6 +199,19 @@ module FileSelectorMixin
     list_y = @fsel_y + FSEL_TITLE_H + 2
     list_h = bottom_y - list_y - 2
     max_visible = list_h / FSEL_ITEM_H
+
+    # Scrollbar click
+    sb = scrollbar_hit(x, y, @fsel_x, list_y, FSEL_W, list_h)
+    if sb
+      if sb == :up
+        @file_selector_scroll -= 1 if @file_selector_scroll > 0
+      else
+        max_scroll = @file_selector_entries.size - max_visible
+        @file_selector_scroll += 1 if @file_selector_scroll < max_scroll
+      end
+      draw_foreground
+      return
+    end
 
     if y >= list_y && y < list_y + max_visible * FSEL_ITEM_H
       idx = @file_selector_scroll + (y - list_y) / FSEL_ITEM_H

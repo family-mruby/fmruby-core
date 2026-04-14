@@ -112,6 +112,33 @@ int fmrb_kernel_get_sync_files(fmrb_sync_file_entry_t *entries, int max_entries)
  */
 fmrb_err_t fmrb_kernel_sync_file(const char *src, const char *dest);
 
+/**
+ * @brief Config section key-value pair
+ */
+#define FMRB_CONFIG_MAX_ENTRIES 16
+#define FMRB_CONFIG_KEY_MAX 32
+#define FMRB_CONFIG_VAL_MAX 128
+
+typedef struct {
+    char key[FMRB_CONFIG_KEY_MAX];
+    char value[FMRB_CONFIG_VAL_MAX];
+} fmrb_config_kv_t;
+
+typedef struct {
+    fmrb_config_kv_t kv[FMRB_CONFIG_MAX_ENTRIES];
+    int count;
+} fmrb_config_table_t;
+
+/**
+ * @brief Read a TOML section from system_conf.toml
+ * For [[array-of-tables]], each table fills one entry in tables_out (returns table count).
+ * For [table], tables_out[0] is filled (returns 1).
+ * @return Number of tables read, 0 if section not found
+ */
+int fmrb_kernel_get_config_section(const char *section,
+                                   fmrb_config_table_t *tables_out,
+                                   int max_tables);
+
 #ifdef __cplusplus
 }
 #endif

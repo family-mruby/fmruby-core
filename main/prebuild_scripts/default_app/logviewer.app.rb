@@ -129,7 +129,7 @@ class LogViewerApp < FmrbApp
     end
 
     # Scroll bar
-    draw_scrollbar(x0, log_y0, w, log_h, @scroll, @lines.size, vis)
+    draw_scrollbar(@scroll, @lines.size, vis, x0, log_y0, w, log_h)
 
     draw_window_frame
     @gfx.present
@@ -160,7 +160,7 @@ class LogViewerApp < FmrbApp
       # Scroll bar hold start
       log_y0 = @user_area_y0 + TOOLBAR_H
       log_h = @user_area_height - TOOLBAR_H
-      sb = scrollbar_hit(@user_area_x0, log_y0, @user_area_width, log_h, x, y)
+      sb = scrollbar_hit(x, y, @user_area_x0, log_y0, @user_area_width, log_h)
       if sb
         @scroll_hold = (sb == :up) ? -1 : 1
         sb == :up ? scroll_up : scroll_down
@@ -182,7 +182,7 @@ class LogViewerApp < FmrbApp
       # Click on log area (not scroll bar) = toggle auto-scroll
       log_y0 = @user_area_y0 + TOOLBAR_H
       log_h = @user_area_height - TOOLBAR_H
-      sb_check = scrollbar_hit(@user_area_x0, log_y0, @user_area_width, log_h, x, y)
+      sb_check = scrollbar_hit(x, y, @user_area_x0, log_y0, @user_area_width, log_h)
       if y >= log_y0 && sb_check.nil?
         @auto_scroll = !@auto_scroll
         if @auto_scroll

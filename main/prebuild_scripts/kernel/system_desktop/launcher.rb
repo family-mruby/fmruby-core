@@ -3,8 +3,8 @@
 
 module LauncherMixin
   # Launcher window layout
-  LAUNCHER_W = 280
-  LAUNCHER_H = 200
+  LAUNCHER_W = 300
+  LAUNCHER_H = 190
   LAUNCHER_TITLE_H = 14
   LAUNCHER_ICON_W = 56
   LAUNCHER_ICON_H = 48
@@ -14,7 +14,7 @@ module LauncherMixin
   LAUNCHER_BG = FmrbConst::THEME_WINDOW_BG
   LAUNCHER_TITLE_BG = FmrbConst::THEME_MENU_BG
   LAUNCHER_ICON_BG = FmrbConst::THEME_WINDOW_BG
-  LAUNCHER_ICON_SEL = FmrbConst::THEME_HIGHLIGHT
+  LAUNCHER_ICON_SEL = FmrbGfx.rgb_to_332(200, 180, 180)
   LAUNCHER_TEXT = FmrbConst::THEME_TEXT
 
   # Built-in app entries
@@ -255,9 +255,8 @@ module LauncherMixin
         # Skip if below window
         next if icon_y + LAUNCHER_ICON_H > y + LAUNCHER_H
 
-        # Icon background
-        bg = (i == @launcher_selected) ? LAUNCHER_ICON_SEL : LAUNCHER_ICON_BG
-        @gfx.fill_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 18, bg)
+        # Icon background (always normal bg; selection overlay applied later)
+        @gfx.fill_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 18, LAUNCHER_ICON_BG)
 
         # Draw icon bitmap or fallback character
         icon_data = app[:icon_file] ? load_icon(app[:icon_file]) : nil
@@ -269,11 +268,11 @@ module LauncherMixin
           scale = 1 if scale < 1
           bmp_x = icon_x + (LAUNCHER_ICON_W - icon_w * scale) / 2
           bmp_y = icon_y + (LAUNCHER_ICON_H - 18 - icon_h * scale) / 2
-          draw_icon_bitmap(bmp_x, bmp_y, icon_data, scale, bg)
+          draw_icon_bitmap(bmp_x, bmp_y, icon_data, scale, LAUNCHER_ICON_BG)
         else
           char_x = icon_x + (LAUNCHER_ICON_W - 6) / 2
           char_y = icon_y + (LAUNCHER_ICON_H - 18 - 8) / 2
-          @gfx.draw_text(char_x, char_y, app[:icon_char] || "?", 0x00, bg)
+          @gfx.draw_text(char_x, char_y, app[:icon_char] || "?", 0x00, LAUNCHER_ICON_BG)
         end
 
         # Label below icon (2-line with truncation)
@@ -297,9 +296,47 @@ module LauncherMixin
     end
 
     # Scroll bar
-    bar_y = y + LAUNCHER_TITLE_H + 2
-    bar_h = LAUNCHER_H - LAUNCHER_TITLE_H - 4
-    draw_scrollbar(x, bar_y, LAUNCHER_W, bar_h, @launcher_scroll, total_rows, vis_rows)
+    bar_y = y + LAUNCHER_TITLE_H
+    bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
+    draw_scrollbar(@launcher_scroll, total_rows, vis_rows, x, bar_y, LAUNCHER_W, bar_h)
+
+    # Selection highlight
+    redraw_launcher_icon(@launcher_selected, LAUNCHER_ICON_SEL) if @launcher_selected >= 0
+  end
+
+  # Redraw a single icon with specified background color
+  def redraw_launcher_icon(idx, bg)
+    return if idx < 0 || idx >= @launcher_apps.size
+    start_idx = @launcher_scroll * LAUNCHER_ICON_COLS
+    vis_end = start_idx + launcher_visible_rows * LAUNCHER_ICON_COLS
+    return if idx < start_idx || idx >= vis_end
+
+    vrow = (idx - start_idx) / LAUNCHER_ICON_COLS
+    col  = (idx - start_idx) % LAUNCHER_ICON_COLS
+    content_y = @launcher_y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
+    icon_x = @launcher_x + LAUNCHER_ICON_PAD_X + col * (LAUNCHER_ICON_W + LAUNCHER_ICON_PAD_X)
+    icon_y = content_y + vrow * (LAUNCHER_ICON_H + LAUNCHER_ICON_PAD_Y)
+
+    # Background
+    @gfx.fill_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 18, bg)
+
+    # Icon bitmap or fallback
+    app = @launcher_apps[idx]
+    icon_data = app[:icon_file] ? load_icon(app[:icon_file]) : nil
+    if icon_data
+      icon_rows = icon_data[:rows]
+      ih = icon_rows.size
+      iw = icon_rows[0] ? icon_rows[0].length : 0
+      scale = [(LAUNCHER_ICON_W - 4) / iw, (LAUNCHER_ICON_H - 22) / ih].min
+      scale = 1 if scale < 1
+      bmp_x = icon_x + (LAUNCHER_ICON_W - iw * scale) / 2
+      bmp_y = icon_y + (LAUNCHER_ICON_H - 18 - ih * scale) / 2
+      draw_icon_bitmap(bmp_x, bmp_y, icon_data, scale, bg)
+    else
+      char_x = icon_x + (LAUNCHER_ICON_W - 6) / 2
+      char_y = icon_y + (LAUNCHER_ICON_H - 18 - 8) / 2
+      @gfx.draw_text(char_x, char_y, app[:icon_char] || "?", 0x00, bg)
+    end
   end
 
   # ---- Launcher state ----
@@ -344,9 +381,9 @@ module LauncherMixin
 
   def handle_launcher_click(x, y)
     # Scroll bar hit test
-    bar_y = @launcher_y + LAUNCHER_TITLE_H + 2
-    bar_h = LAUNCHER_H - LAUNCHER_TITLE_H - 4
-    sb = scrollbar_hit(@launcher_x, bar_y, LAUNCHER_W, bar_h, x, y)
+    bar_y = @launcher_y + LAUNCHER_TITLE_H
+    bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
+    sb = scrollbar_hit(x, y, @launcher_x, bar_y, LAUNCHER_W, bar_h)
     if sb
       sb == :up ? launcher_scroll_up : launcher_scroll_down
       return
@@ -365,15 +402,25 @@ module LauncherMixin
         close_launcher
         spawn_app(app_name)
       else
-        # Single click - select
-        @launcher_selected = icon_idx
+        # Single click - partial redraw for selection change
+        prev = @launcher_selected
+        redraw_launcher_icon(prev, LAUNCHER_ICON_BG) if prev >= 0
+        if icon_idx == prev
+          @launcher_selected = -1
+        else
+          @launcher_selected = icon_idx
+          redraw_launcher_icon(icon_idx, LAUNCHER_ICON_SEL)
+        end
         @last_click_idx = icon_idx
         @last_click_time = now
-        draw_foreground
+        @gfx.present
       end
     else
-      @launcher_selected = -1
-      draw_foreground
+      if @launcher_selected >= 0
+        redraw_launcher_icon(@launcher_selected, LAUNCHER_ICON_BG)
+        @launcher_selected = -1
+        @gfx.present
+      end
     end
   end
 

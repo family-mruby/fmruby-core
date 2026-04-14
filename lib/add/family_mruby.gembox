@@ -24,4 +24,5 @@ MRuby::GemBox.new do |conf|
   conf.gem core: "picoruby-fmrb-msgpack"
   conf.gem core: "picoruby-fmrb-kernel"
   conf.gem core: "picoruby-fmrb-app"
+  conf.gem core: "picoruby-fmrb-picorabbit"
 end

@@ -51,7 +51,10 @@ MRuby::CrossBuild.new("esp32") do |conf|
   hw = "#{MRUBY_ROOT}/mrbgems"
   conf.gem gemdir: "#{hw}/picoruby-gpio"
   conf.gem gemdir: "#{hw}/picoruby-rmt"
-  # conf.gem gemdir: "#{hw}/picoruby-i2c"
+  conf.gem gemdir: "#{hw}/picoruby-i2c"
+
+  # RTC driver (pure Ruby, depends on picoruby-i2c)
+  conf.gem core: "picoruby-rx8900"
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"
   # conf.gem gemdir: "#{hw}/picoruby-spi"

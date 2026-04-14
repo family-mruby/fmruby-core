@@ -13,7 +13,7 @@ extern "C" {
 // Pin usage type
 typedef enum {
     FMRB_PIN_UNUSED       = 0,
-    FMRB_PIN_SYSTEM       = 1,  // Reserved by system (from fmrb_pin_assign.h)
+    FMRB_PIN_SYSTEM_EXCLUSIVE = 1,  // Absolutely reserved by system (USB, PSRAM, SPI, etc.)
     FMRB_PIN_USER_GPIO    = 2,  // Acquired by user app as GPIO
     FMRB_PIN_USER_I2C     = 3,  // Acquired by I2C init
     FMRB_PIN_USER_RMT     = 4,  // Acquired by RMT init

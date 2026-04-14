@@ -27,8 +27,6 @@ set(COMPONENT_ESP32_SRCS
     "conn_check/usb_hid_conn_check.c"
     "conn_check/i2c_conn_check.c"
     "conn_check/sd_conn_check.c"
-    "drivers/rtc/rx8900.c"
-    "drivers/rtc/rtc_task.c"
 )
 
 # Include Ruby to bytecode compilation script
@@ -74,7 +72,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/fs_proxy" "drivers/usb" "drivers/ble" "drivers/rtc" "drivers/m5gfx" "drivers/i2c_keyboard" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/fs_proxy" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 

@@ -121,7 +121,14 @@ typedef enum {
 
     // Cursor control (global resource, no canvas_id)
     FMRB_LINK_GFX_CURSOR_SET_POSITION = 0x60,
-    FMRB_LINK_GFX_CURSOR_SET_VISIBLE = 0x61
+    FMRB_LINK_GFX_CURSOR_SET_VISIBLE = 0x61,
+
+    // Pixel blending
+    FMRB_LINK_GFX_BLEND_RECT = 0x68,
+
+    // Display output control (CVBS/NTSC)
+    FMRB_LINK_GFX_SET_OUTPUT_LEVEL = 0x70,
+    FMRB_LINK_GFX_SET_CHROMA_LEVEL = 0x71
 } fmrb_link_graphics_cmd_t;
 
 // Audio sub-commands
@@ -202,6 +209,18 @@ typedef struct __attribute__((packed)) {
     uint8_t color;  // RGB332 format
     bool filled;
 } fmrb_link_graphics_rect_t;
+
+// Blend modes for BLEND_RECT
+#define FMRB_BLEND_MODE_ADD  0  // Per-component saturating add
+#define FMRB_BLEND_MODE_XOR  1  // Per-pixel XOR
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // Target canvas ID (0=screen)
+    uint16_t x, y;
+    uint16_t width, height;
+    uint8_t color;  // RGB332 color operand
+    uint8_t mode;   // FMRB_BLEND_MODE_*
+} fmrb_link_graphics_blend_rect_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;  // Target canvas ID (0=screen)
@@ -328,6 +347,8 @@ typedef struct __attribute__((packed)) {
     uint16_t image_id;
     int16_t x, y;
     uint8_t flags;        // Bit 0: fade_in (reserved for future use)
+    int16_t scale_x_fp8;  // Fixed-point scale (x256): 256 = 1.0, 512 = 2.0, 128 = 0.5
+    int16_t scale_y_fp8;  // 0 = same as scale_x
 } fmrb_link_graphics_draw_image_t;
 
 typedef struct __attribute__((packed)) {

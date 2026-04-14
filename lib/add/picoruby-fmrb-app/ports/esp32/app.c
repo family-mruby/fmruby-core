@@ -18,6 +18,8 @@
 #include "fmrb_hid_msg.h"
 #include "fmrb_task_config.h"
 #include "fmrb_gfx.h"
+#include "fmrb_kernel.h"
+#include "fmrb_hal_time.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
 #include "app_debug.h"
@@ -282,7 +284,6 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
 
         case HID_MSG_MOUSE_BUTTON_DOWN:
         case HID_MSG_MOUSE_BUTTON_UP: {
-            FMRB_LOGI(TAG, "Processing MOUSE_BUTTON event");
             // Validate size before casting
             if (msg->size < sizeof(fmrb_hid_mouse_button_event_t)) {
                 FMRB_LOGW(TAG, "Mouse button event message too small: expected=%d, actual=%d",
@@ -298,7 +299,7 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
                 ? mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_down"))
                 : mrb_symbol_value(mrb_intern_cstr(mrb, "mouse_up"));
 
-            FMRB_LOGI(TAG, "Mouse event: subtype=%d, button=%d, pos=(%d,%d)",
+            FMRB_LOGD(TAG, "Mouse event: subtype=%d, button=%d, pos=(%d,%d)",
                      mouse_event->subtype, mouse_event->button, mouse_event->x, mouse_event->y);
 
             mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")), type_sym);
@@ -811,6 +812,60 @@ static mrb_value mrb_fmrb_app_s_get_last_error(mrb_state *mrb, mrb_value self)
     return hash;
 }
 
+// FmrbApp.config(section_name) -> Array of Hash, or nil
+// Read a section from system_conf.toml
+// [[array-of-tables]] and [table] both return Array of Hash for consistency.
+static mrb_value mrb_fmrb_app_s_config(mrb_state *mrb, mrb_value self)
+{
+    const char *section;
+    mrb_get_args(mrb, "z", &section);
+
+    #define CONFIG_MAX_TABLES 16
+    fmrb_config_table_t tables[CONFIG_MAX_TABLES];
+    int table_count = fmrb_kernel_get_config_section(section, tables, CONFIG_MAX_TABLES);
+
+    if (table_count <= 0) {
+        return mrb_nil_value();
+    }
+
+    mrb_value result = mrb_ary_new_capa(mrb, table_count);
+    for (int t = 0; t < table_count; t++) {
+        mrb_value hash = mrb_hash_new_capa(mrb, tables[t].count);
+        for (int k = 0; k < tables[t].count; k++) {
+            mrb_hash_set(mrb, hash,
+                         mrb_str_new_cstr(mrb, tables[t].kv[k].key),
+                         mrb_str_new_cstr(mrb, tables[t].kv[k].value));
+        }
+        mrb_ary_push(mrb, result, hash);
+    }
+
+    return result;
+}
+
+// FmrbApp.wallclock() -> Hash {year:, month:, day:, hour:, minute:, second:} or nil
+static mrb_value mrb_fmrb_app_s_wallclock(mrb_state *mrb, mrb_value self)
+{
+    fmrb_wallclock_t wc;
+    if (fmrb_hal_time_get_wallclock(&wc) != FMRB_OK) {
+        return mrb_nil_value();
+    }
+
+    mrb_value hash = mrb_hash_new_capa(mrb, 6);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "year")),
+                 mrb_fixnum_value(wc.year));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "month")),
+                 mrb_fixnum_value(wc.month));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "day")),
+                 mrb_fixnum_value(wc.day));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "hour")),
+                 mrb_fixnum_value(wc.hour));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "minute")),
+                 mrb_fixnum_value(wc.minute));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "second")),
+                 mrb_fixnum_value(wc.second));
+    return hash;
+}
+
 // FmrbApp.sys_pool_info() -> Hash
 // Get system pool (fmrb_sys_malloc) information (TLSF allocator)
 static mrb_value mrb_fmrb_app_s_sys_pool_info(mrb_state *mrb, mrb_value self)
@@ -924,6 +979,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "heap_info", mrb_fmrb_app_s_heap_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "sys_pool_info", mrb_fmrb_app_s_sys_pool_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "wallclock", mrb_fmrb_app_s_wallclock, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 

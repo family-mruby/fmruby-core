@@ -19,7 +19,7 @@ module InputRouterMixin
     begin
       case subtype
       when 4  # Mouse button down
-        update_window_list(true)  # Show log on click
+        update_window_list(false)  # Show log on click
         target_window = find_window_at(x, y)
 
         if target_window.nil?

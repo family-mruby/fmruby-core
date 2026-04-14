@@ -1,0 +1,3 @@
+app_handle_name = "ntsc_color_test"
+app_screen_name = "NTSC Test"
+default_window_mode = "fullscreen"

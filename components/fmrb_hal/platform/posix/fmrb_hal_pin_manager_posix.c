@@ -38,7 +38,7 @@ void fmrb_pin_manager_release(int pin)
     if (pin < 0 || pin >= FMRB_PIN_MAX) {
         return;
     }
-    if (s_pins[pin].usage == FMRB_PIN_SYSTEM) {
+    if (s_pins[pin].usage == FMRB_PIN_SYSTEM_EXCLUSIVE) {
         return;
     }
     s_pins[pin].usage = FMRB_PIN_UNUSED;
@@ -48,7 +48,7 @@ void fmrb_pin_manager_release(int pin)
 void fmrb_pin_manager_release_by_owner(void *owner)
 {
     for (int i = 0; i < FMRB_PIN_MAX; i++) {
-        if (s_pins[i].owner == owner && s_pins[i].usage != FMRB_PIN_SYSTEM) {
+        if (s_pins[i].owner == owner && s_pins[i].usage != FMRB_PIN_SYSTEM_EXCLUSIVE) {
             s_pins[i].usage = FMRB_PIN_UNUSED;
             s_pins[i].owner = NULL;
         }

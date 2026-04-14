@@ -26,11 +26,13 @@ module AudioHandlerMixin
     case cmd
     when "play"
       path = data["path"] || ""
-      # Build binary: cmd_type=0x02 (PLAY) + path_len(2 bytes LE) + path
+      track = data["track"] || 0
+      # Build binary: cmd_type=0x02 (PLAY) + path_len(2 bytes LE) + path + track(1)
       path_len = path.length
-      bin = "\x02\x00\x00" + path
+      bin = "\x02\x00\x00" + path + "\x00"
       bin.setbyte(1, path_len & 0xFF)
       bin.setbyte(2, (path_len >> 8) & 0xFF)
+      bin.setbyte(3 + path_len, track & 0xFF)
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
     when "stop"
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x03")

@@ -1,0 +1,7 @@
+app_handle_name = "encoder8"
+app_screen_name = "8Encoder"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 100
+default_window_pos_x = 10
+default_window_pos_y = 20

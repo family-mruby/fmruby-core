@@ -1,7 +1,7 @@
 system_name = "Family mruby OS"
-display_width = 360
+display_width = 320
 display_height = 240
-display_margin_x = 0
+display_margin_x = 2
 display_margin_y = 16
 default_user_app_width = 280
 default_user_app_height = 180
@@ -9,6 +9,7 @@ display_mode = "ntsc_ipc" # spi_XXXX, etc...
 debug_mode = true
 mouse_scale_x = 0.5
 mouse_scale_y = 0.5
+timezone = "JST-9"
 
 [theme]
 desktop_bg = 0xF6
@@ -20,6 +21,22 @@ highlight = 0xC5
 border = 0x60
 button = 0x60
 dir_color = 0x03
+
+[[shortcuts]]
+key = "l"
+app = "launcher"
+
+[[shortcuts]]
+key = "s"
+app = "default/shell"
+
+[[shortcuts]]
+key = "e"
+app = "default/editor"
+
+[[shortcuts]]
+key = "n"
+app = "app/sample/nsf_player.app.rb"
 
 [[sync_files]]
 src = "/usr/share/sounds/test.nsf"

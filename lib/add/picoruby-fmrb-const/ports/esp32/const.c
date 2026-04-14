@@ -8,6 +8,7 @@
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
 #include "fmrb_hal_pin_manager.h"
+#include "fmrb_pin_assign.h"
 #include "../../include/picoruby_fmrb_const.h"
 
 /* Default theme (can be overridden by system_conf.toml before VMs start) */
@@ -128,13 +129,21 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
 
     // Pin usage type constants
     mrb_define_const(mrb, hw_module, "PIN_UNUSED",    mrb_fixnum_value(FMRB_PIN_UNUSED));
-    mrb_define_const(mrb, hw_module, "PIN_SYSTEM",    mrb_fixnum_value(FMRB_PIN_SYSTEM));
+    mrb_define_const(mrb, hw_module, "PIN_SYSTEM_EXCLUSIVE", mrb_fixnum_value(FMRB_PIN_SYSTEM_EXCLUSIVE));
     mrb_define_const(mrb, hw_module, "PIN_USER_GPIO", mrb_fixnum_value(FMRB_PIN_USER_GPIO));
     mrb_define_const(mrb, hw_module, "PIN_USER_I2C",  mrb_fixnum_value(FMRB_PIN_USER_I2C));
     mrb_define_const(mrb, hw_module, "PIN_USER_RMT",  mrb_fixnum_value(FMRB_PIN_USER_RMT));
     mrb_define_const(mrb, hw_module, "PIN_USER_SPI",  mrb_fixnum_value(FMRB_PIN_USER_SPI));
     mrb_define_const(mrb, hw_module, "PIN_USER_PWM",  mrb_fixnum_value(FMRB_PIN_USER_PWM));
     mrb_define_const(mrb, hw_module, "PIN_USER_UART", mrb_fixnum_value(FMRB_PIN_USER_UART));
+
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // I2C bus pin assignments (ESP32 only)
+    mrb_define_const(mrb, hw_module, "PIN_I2C1_SDA", mrb_fixnum_value(FMRB_PIN_I2C1_SDA));
+    mrb_define_const(mrb, hw_module, "PIN_I2C1_SCL", mrb_fixnum_value(FMRB_PIN_I2C1_SCL));
+    mrb_define_const(mrb, hw_module, "PIN_I2C2_SDA", mrb_fixnum_value(FMRB_PIN_I2C2_SDA));
+    mrb_define_const(mrb, hw_module, "PIN_I2C2_SCL", mrb_fixnum_value(FMRB_PIN_I2C2_SCL));
+#endif
 
     // Class methods
     mrb_define_class_method(mrb, hw_module, "pin_status", mrb_fmrb_hw_pin_status, MRB_ARGS_REQ(1));

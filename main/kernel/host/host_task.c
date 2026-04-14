@@ -312,6 +312,20 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_BLEND_RECT: {
+            fmrb_link_graphics_blend_rect_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x = cmd->params.blend_rect.rect.x,
+                .y = cmd->params.blend_rect.rect.y,
+                .width = cmd->params.blend_rect.rect.width,
+                .height = cmd->params.blend_rect.rect.height,
+                .color = cmd->params.blend_rect.color,
+                .mode = cmd->params.blend_rect.mode
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_BLEND_RECT;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         case GFX_CMD_TEXT: {
             size_t text_len = strlen(cmd->params.text.text);
             if (text_len > 255) text_len = 255;
@@ -347,7 +361,9 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
                 .image_id = cmd->params.draw_image.image_id,
                 .x = cmd->params.draw_image.x,
                 .y = cmd->params.draw_image.y,
-                .flags = cmd->params.draw_image.flags
+                .flags = cmd->params.draw_image.flags,
+                .scale_x_fp8 = cmd->params.draw_image.scale_x_fp8,
+                .scale_y_fp8 = cmd->params.draw_image.scale_y_fp8
             };
             *sub_cmd_out = FMRB_LINK_GFX_DRAW_IMAGE;
             memcpy(payload_buf, &c, sizeof(c));
@@ -360,6 +376,18 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             *sub_cmd_out = FMRB_LINK_GFX_DELETE_IMAGE;
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
+        }
+        case GFX_CMD_SET_OUTPUT_LEVEL: {
+            uint8_t level = cmd->params.set_output_level.level;
+            *sub_cmd_out = FMRB_LINK_GFX_SET_OUTPUT_LEVEL;
+            memcpy(payload_buf, &level, sizeof(level));
+            return sizeof(level);
+        }
+        case GFX_CMD_SET_CHROMA_LEVEL: {
+            uint8_t level = cmd->params.set_chroma_level.level;
+            *sub_cmd_out = FMRB_LINK_GFX_SET_CHROMA_LEVEL;
+            memcpy(payload_buf, &level, sizeof(level));
+            return sizeof(level);
         }
         default:
             return -1;
@@ -904,10 +932,10 @@ static void host_task_process_host_message(const host_message_t *msg)
         case HOST_MSG_HID_MOUSE_CLICK: {
             int x = msg->data.mouse_click.x;
             int y = msg->data.mouse_click.y;
-            int button = msg->data.mouse_click.button;
+        int button = msg->data.mouse_click.button;
             int state = msg->data.mouse_click.state;
 
-            FMRB_LOGI(TAG, "Mouse click: button=%d, pos=(%d,%d), state=%s - forwarding to Kernel for hit test",
+            FMRB_LOGD(TAG, "Mouse click: button=%d, pos=(%d,%d), state=%s - forwarding to Kernel for hit test",
                      button, x, y, state ? "pressed" : "released");
 
             // Forward mouse click to Kernel for window hit testing
@@ -1235,7 +1263,7 @@ int fmrb_host_send_mouse_move(int x, int y)
 
 int fmrb_host_send_mouse_click(int x, int y, int button, int state)
 {
-    FMRB_LOGI(TAG, "MOUSE_CLICK: x=%d y=%d btn=%d state=%d", x, y, button, state);
+    FMRB_LOGD(TAG, "MOUSE_CLICK: x=%d y=%d btn=%d state=%d", x, y, button, state);
     host_message_t msg = {
         .type = HOST_MSG_HID_MOUSE_CLICK,
         .data.mouse_click.x = x,

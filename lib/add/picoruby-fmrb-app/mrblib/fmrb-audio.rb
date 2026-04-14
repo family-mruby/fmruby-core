@@ -6,9 +6,9 @@ class FmrbAudio
     @app = app
   end
 
-  def play(path)
+  def play(path, track: 0)
     @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "play", "path" => path})
+      {"cmd" => "play", "path" => path, "track" => track})
   end
 
   def stop

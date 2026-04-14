@@ -42,6 +42,23 @@ void fmrb_hal_time_delay_ms(uint32_t ms);
  */
 bool fmrb_hal_time_is_timeout(fmrb_time_t start_time, uint32_t timeout_us);
 
+// Wall clock time (calendar date/time)
+typedef struct {
+    uint16_t year;
+    uint8_t month;
+    uint8_t day;
+    uint8_t hour;
+    uint8_t minute;
+    uint8_t second;
+} fmrb_wallclock_t;
+
+/**
+ * @brief Get current wall clock time
+ * @param out Pointer to wallclock structure to fill
+ * @return FMRB_OK on success
+ */
+fmrb_err_t fmrb_hal_time_get_wallclock(fmrb_wallclock_t *out);
+
 #ifdef __cplusplus
 }
 #endif

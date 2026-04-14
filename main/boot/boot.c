@@ -28,7 +28,6 @@
 #include "fmrb_hal_gpio.h"
 #include "status_led.h"
 #include "ble_task.h"
-#include "rtc_task.h"
 #ifdef FMRB_HW_ATOM_DISPLAY
 #include "m5gfx_task.h"
 #include "i2c_keyboard.h"
@@ -288,7 +287,6 @@ static bool init_hardware(void)
     }
 #else
     reset_wrover();
-    rtc_task_start();
 #endif
 
     return true;

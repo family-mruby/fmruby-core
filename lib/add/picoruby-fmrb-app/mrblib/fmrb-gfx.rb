@@ -14,6 +14,10 @@ class FmrbGfx
   COLOR_MAGENTA = 0xE3  # R=7, G=0, B=3
   COLOR_GRAY    = 0x6D  # R=3, G=3, B=1
 
+  # Blend modes for blend_rect
+  BLEND_ADD = 0  # Per-component saturating add
+  BLEND_XOR = 1  # Per-pixel XOR
+
   # Initialize graphics context
   # @param canvas_id [Integer] Canvas ID for this graphics instance
   # @param width [Integer] Canvas width (optional, for :center support)
@@ -25,8 +29,9 @@ class FmrbGfx
   end
 
   # Transfer a file from core to graphics-audio LittleFS
-  def transfer_file(path)
-    _transfer_file(path)
+  # dest: destination path on graphics-audio (defaults to same as source path)
+  def transfer_file(path, dest: nil)
+    _transfer_file(path, dest || path)
   end
 
   # Check if a file exists on graphics-audio side
@@ -42,8 +47,10 @@ class FmrbGfx
   end
 
   # Draw a previously created image on the canvas
-  def draw_image(image_id, x: 0, y: 0)
-    _draw_image(image_id, x, y)
+  # scale_x/scale_y: scaling factor (1.0 = original size, 2.0 = double, 0.5 = half)
+  # When scale_y is 0.0, it uses the same value as scale_x (uniform scaling)
+  def draw_image(image_id, x: 0, y: 0, scale_x: 1.0, scale_y: 0.0)
+    _draw_image(image_id, x, y, scale_x, scale_y)
   end
 
   # Delete a previously created image

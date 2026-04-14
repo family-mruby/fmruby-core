@@ -14,6 +14,7 @@ log/
 managed_components/
 .serial_port
 flash/etc/system_conf.toml
+flash/home/music/
 
 # Generated documentation
 doc/local/
