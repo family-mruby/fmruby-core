@@ -599,7 +599,7 @@ fmrb_err_t fmrb_transport_send_sync(uint8_t link_type,
 
     // Block calling task until callback signals or timeout
     fmrb_tick_t ticks = (timeout_ms == UINT32_MAX) ? FMRB_TICK_MAX : FMRB_MS_TO_TICKS(timeout_ms);
-    FMRB_LOGI(TAG, "send_sync: waiting for response (timeout_ms=%u)", (unsigned)timeout_ms);
+    FMRB_LOGD(TAG, "send_sync: waiting for response (timeout_ms=%u)", (unsigned)timeout_ms);
     fmrb_base_type_t wait_result = fmrb_semaphore_take(wrapper.done, ticks);
     fmrb_semaphore_delete(wrapper.done);
 

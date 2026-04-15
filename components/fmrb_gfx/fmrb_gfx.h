@@ -559,6 +559,104 @@ fmrb_gfx_err_t fmrb_gfx_set_cursor_visible(
     fmrb_gfx_context_t context,
     bool visible);
 
+// Sprite API
+
+/**
+ * @brief Create a sprite image buffer on graphics-audio side
+ * @param context Graphics context
+ * @param canvas_id Parent canvas
+ * @param width Image width
+ * @param height Image height
+ * @param transparent_color Color key for transparency
+ * @param use_transparent Enable transparency
+ * @return image_id (>0) on success, 0 on failure
+ */
+uint16_t fmrb_gfx_create_sprite_image(
+    fmrb_gfx_context_t context,
+    uint16_t canvas_id,
+    uint16_t width, uint16_t height,
+    uint8_t transparent_color, bool use_transparent);
+
+/**
+ * @brief Load a BMP file into a sprite image (on graphics-audio side)
+ * @param image_id Target sprite image
+ * @param path File path on flash
+ * @return FMRB_GFX_OK on success
+ */
+fmrb_gfx_err_t fmrb_gfx_load_sprite_image_bmp(
+    fmrb_gfx_context_t context,
+    uint16_t image_id,
+    const char *path);
+
+/**
+ * @brief Delete a sprite image
+ */
+fmrb_gfx_err_t fmrb_gfx_delete_sprite_image(
+    fmrb_gfx_context_t context,
+    uint16_t image_id);
+
+/**
+ * @brief Set drawing target to a sprite image
+ * @param image_id Sprite image to target (0 = reset to canvas)
+ */
+fmrb_gfx_err_t fmrb_gfx_set_sprite_image_target(
+    fmrb_gfx_context_t context,
+    uint16_t image_id);
+
+/**
+ * @brief Create a sprite instance (placement)
+ * @param canvas_id Parent canvas
+ * @param image_ids Array of image IDs for animation frames
+ * @param frame_count Number of frames
+ * @param x Window-local X position
+ * @param y Window-local Y position
+ * @param z_order Z-order within window
+ * @return instance_id (>0) on success, 0 on failure
+ */
+uint16_t fmrb_gfx_create_sprite_instance(
+    fmrb_gfx_context_t context,
+    uint16_t canvas_id,
+    const uint16_t *image_ids, uint8_t frame_count,
+    int16_t x, int16_t y, int16_t z_order);
+
+/**
+ * @brief Delete a sprite instance
+ */
+fmrb_gfx_err_t fmrb_gfx_delete_sprite_instance(
+    fmrb_gfx_context_t context,
+    uint16_t instance_id);
+
+/**
+ * @brief Move a sprite instance
+ */
+fmrb_gfx_err_t fmrb_gfx_sprite_instance_move(
+    fmrb_gfx_context_t context,
+    uint16_t instance_id,
+    int16_t x, int16_t y);
+
+/**
+ * @brief Set sprite instance visibility
+ */
+fmrb_gfx_err_t fmrb_gfx_sprite_instance_set_visible(
+    fmrb_gfx_context_t context,
+    uint16_t instance_id,
+    bool visible);
+
+/**
+ * @brief Set sprite instance animation frame
+ */
+fmrb_gfx_err_t fmrb_gfx_sprite_instance_set_frame(
+    fmrb_gfx_context_t context,
+    uint16_t instance_id,
+    uint8_t frame_index);
+
+/**
+ * @brief Delete all sprites belonging to a canvas
+ */
+fmrb_gfx_err_t fmrb_gfx_delete_all_sprites(
+    fmrb_gfx_context_t context,
+    uint16_t canvas_id);
+
 #ifdef __cplusplus
 }
 #endif

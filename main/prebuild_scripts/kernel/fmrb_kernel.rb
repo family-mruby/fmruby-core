@@ -295,6 +295,7 @@ class FmrbKernelImpl < FmrbKernel
       Log.info("RTC sync: skipped (not ESP32)")
       return
     end
+    i2c = nil
     begin
       i2c = I2C.new(unit: :ESP32_I2C1,
                     sda_pin: FmrbHw::PIN_I2C1_SDA,
@@ -309,6 +310,8 @@ class FmrbKernelImpl < FmrbKernel
       end
     rescue => e
       Log.error("RTC sync error: #{e.message}")
+    ensure
+      i2c.close if i2c
     end
   end
 

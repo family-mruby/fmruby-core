@@ -624,6 +624,8 @@ static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
                 if (ret == FMRB_GFX_OK) {
                     FMRB_LOGI(TAG, "Deleted canvas %u for app %s",
                              canvas_id, ctx->app_name);
+                    // Mark as deleted so C-level fallback won't try again
+                    ctx->canvas_id = 0;
                 } else {
                     FMRB_LOGW(TAG, "Failed to delete canvas %u: %d",
                              canvas_id, ret);

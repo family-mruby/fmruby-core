@@ -52,6 +52,7 @@ if(IDF_TARGET STREQUAL "linux")
     file(GLOB FMRB_IO_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-io/ports/esp32/*.c")
     file(GLOB FMRB_FILESYSTEM_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-filesystem/ports/esp32/*.c")
     file(GLOB FMRB_MSGPACK_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/ports/esp32/*.c")
+    file(GLOB FMRB_BMP332_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/ports/esp32/*.c")
     set(PICORUBY_SRCS
         ${FMRB_APP_PORTS_SRCS}
         ${FMRB_KERNEL_PORTS_SRCS}
@@ -60,6 +61,8 @@ if(IDF_TARGET STREQUAL "linux")
         ${FMRB_IO_PORTS_SRCS}
         ${FMRB_FILESYSTEM_PORTS_SRCS}
         ${FMRB_MSGPACK_PORTS_SRCS}
+        ${FMRB_BMP332_PORTS_SRCS}
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/src/fmrb_bmp332.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32_linux/hal_freertos.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
@@ -73,6 +76,7 @@ else()
     file(GLOB FMRB_IO_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-io/ports/esp32/*.c")
     file(GLOB FMRB_FILESYSTEM_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-filesystem/ports/esp32/*.c")
     file(GLOB FMRB_MSGPACK_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/ports/esp32/*.c")
+    file(GLOB FMRB_BMP332_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/ports/esp32/*.c")
 
     set(PICORUBY_SRCS
         ${FMRB_APP_PORTS_SRCS}
@@ -82,6 +86,8 @@ else()
         ${FMRB_IO_PORTS_SRCS}
         ${FMRB_FILESYSTEM_PORTS_SRCS}
         ${FMRB_MSGPACK_PORTS_SRCS}
+        ${FMRB_BMP332_PORTS_SRCS}
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/src/fmrb_bmp332.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/src/machine.c
@@ -118,6 +124,7 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-io-console/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-const/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/include

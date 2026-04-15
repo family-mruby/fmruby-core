@@ -23,6 +23,13 @@ extern "C" {
 int fmrb_hal_i2c_init(int unit, uint32_t frequency, int8_t sda_pin, int8_t scl_pin);
 
 /**
+ * @brief Release I2C bus owned by the calling task
+ * @param unit I2C port number (0 or 1)
+ * @return 0 on success, negative on error
+ */
+int fmrb_hal_i2c_release(int unit);
+
+/**
  * @brief Read from I2C device
  * @return Number of bytes read, or negative on error
  */

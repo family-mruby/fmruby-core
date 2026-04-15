@@ -1,0 +1,7 @@
+app_handle_name = "sprite_editor"
+app_screen_name = "SpriteEd"
+default_window_mode = "window"
+default_window_width = 280
+default_window_height = 180
+default_window_pos_x = 5
+default_window_pos_y = 5

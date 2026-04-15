@@ -104,6 +104,9 @@ task :setup do
   # picorabbit
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-picorabbit"
   sh "cp -rf lib/add/picoruby-fmrb-picorabbit #{mrbgem_path}/"
+  # bmp332
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-bmp332"
+  sh "cp -rf lib/add/picoruby-fmrb-bmp332 #{mrbgem_path}/"
   # conf
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"

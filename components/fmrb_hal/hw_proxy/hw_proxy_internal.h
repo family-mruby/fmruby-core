@@ -127,6 +127,10 @@ typedef struct {
     uint32_t timeout_us;
 } hw_proxy_i2c_rw_params_t;
 
+typedef struct {
+    int unit;
+} hw_proxy_i2c_release_params_t;
+
 // ----- RMT params -----
 
 typedef struct {

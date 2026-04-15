@@ -9,6 +9,12 @@ int fmrb_hal_i2c_init(int unit, uint32_t frequency, int8_t sda_pin, int8_t scl_p
     return FMRB_I2C_OK;
 }
 
+int fmrb_hal_i2c_release(int unit)
+{
+    ESP_LOGI(TAG, "Linux I2C%d release", unit);
+    return FMRB_I2C_OK;
+}
+
 int fmrb_hal_i2c_read(int unit, uint8_t addr, uint8_t *dst, size_t len,
                        bool nostop, uint32_t timeout_us)
 {

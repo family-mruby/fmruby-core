@@ -1025,3 +1025,186 @@ fmrb_gfx_err_t fmrb_gfx_set_cursor_visible(
 
     return ret;
 }
+
+// Sprite API implementations
+
+uint16_t fmrb_gfx_create_sprite_image(
+    fmrb_gfx_context_t context,
+    uint16_t canvas_id,
+    uint16_t width, uint16_t height,
+    uint8_t transparent_color, bool use_transparent)
+{
+    if (!context || width == 0 || height == 0) return 0;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return 0;
+
+    fmrb_link_graphics_create_sprite_image_t cmd = {
+        .canvas_id = canvas_id,
+        .width = width,
+        .height = height,
+        .transparent_color = transparent_color,
+        .use_transparent = use_transparent ? 1 : 0
+    };
+
+    uint8_t response_data[sizeof(fmrb_link_graphics_sprite_image_created_t)];
+    uint32_t response_len = sizeof(response_data);
+
+    fmrb_gfx_err_t ret = send_graphics_command_sync(
+        ctx, FMRB_LINK_GFX_CREATE_SPRITE_IMAGE,
+        &cmd, sizeof(cmd),
+        response_data, &response_len, 1000);
+
+    if (ret == FMRB_GFX_OK && response_len >= sizeof(uint16_t)) {
+        uint16_t image_id;
+        memcpy(&image_id, response_data, sizeof(uint16_t));
+        ESP_LOGI(TAG, "Sprite image created: id=%u, %ux%u", image_id, width, height);
+        return image_id;
+    }
+
+    ESP_LOGE(TAG, "Failed to create sprite image: %ux%u, err=%d", width, height, ret);
+    return 0;
+}
+
+fmrb_gfx_err_t fmrb_gfx_load_sprite_image_bmp(
+    fmrb_gfx_context_t context, uint16_t image_id, const char *path)
+{
+    if (!context || !path) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    size_t path_len = strlen(path);
+    if (path_len >= 200) return FMRB_GFX_ERR_INVALID_PARAM;
+
+    // Build payload: header + path
+    uint8_t payload[256];
+    fmrb_link_graphics_load_sprite_image_bmp_t *cmd =
+        (fmrb_link_graphics_load_sprite_image_bmp_t *)payload;
+    cmd->image_id = image_id;
+    cmd->path_len = (uint16_t)path_len;
+    memcpy(payload + sizeof(*cmd), path, path_len);
+
+    return send_graphics_command(ctx, FMRB_LINK_GFX_LOAD_SPRITE_IMAGE_BMP,
+                                 payload, sizeof(*cmd) + path_len);
+}
+
+fmrb_gfx_err_t fmrb_gfx_delete_sprite_image(
+    fmrb_gfx_context_t context, uint16_t image_id)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    fmrb_link_graphics_delete_sprite_image_t cmd = { .image_id = image_id };
+    return send_graphics_command(ctx, FMRB_LINK_GFX_DELETE_SPRITE_IMAGE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_set_sprite_image_target(
+    fmrb_gfx_context_t context, uint16_t image_id)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    fmrb_link_graphics_set_sprite_image_target_t cmd = { .image_id = image_id };
+    return send_graphics_command(ctx, FMRB_LINK_GFX_SET_SPRITE_IMAGE_TARGET, &cmd, sizeof(cmd));
+}
+
+uint16_t fmrb_gfx_create_sprite_instance(
+    fmrb_gfx_context_t context,
+    uint16_t canvas_id,
+    const uint16_t *image_ids, uint8_t frame_count,
+    int16_t x, int16_t y, int16_t z_order)
+{
+    if (!context || !image_ids || frame_count == 0 || frame_count > FMRB_SPRITE_MAX_FRAMES) return 0;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return 0;
+
+    fmrb_link_graphics_create_sprite_instance_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.canvas_id = canvas_id;
+    cmd.frame_count = frame_count;
+    memcpy(cmd.image_ids, image_ids, sizeof(uint16_t) * frame_count);
+    cmd.x = x;
+    cmd.y = y;
+    cmd.z_order = z_order;
+
+    uint8_t response_data[sizeof(fmrb_link_graphics_sprite_instance_created_t)];
+    uint32_t response_len = sizeof(response_data);
+
+    fmrb_gfx_err_t ret = send_graphics_command_sync(
+        ctx, FMRB_LINK_GFX_CREATE_SPRITE_INSTANCE,
+        &cmd, sizeof(cmd),
+        response_data, &response_len, 1000);
+
+    if (ret == FMRB_GFX_OK && response_len >= sizeof(uint16_t)) {
+        uint16_t instance_id;
+        memcpy(&instance_id, response_data, sizeof(uint16_t));
+        ESP_LOGD(TAG, "Sprite instance created: id=%u", instance_id);
+        return instance_id;
+    }
+
+    ESP_LOGE(TAG, "Failed to create sprite instance, err=%d", ret);
+    return 0;
+}
+
+fmrb_gfx_err_t fmrb_gfx_delete_sprite_instance(
+    fmrb_gfx_context_t context, uint16_t instance_id)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    fmrb_link_graphics_delete_sprite_instance_t cmd = { .instance_id = instance_id };
+    return send_graphics_command(ctx, FMRB_LINK_GFX_DELETE_SPRITE_INSTANCE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_sprite_instance_move(
+    fmrb_gfx_context_t context, uint16_t instance_id,
+    int16_t x, int16_t y)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    fmrb_link_graphics_sprite_instance_move_t cmd = {
+        .instance_id = instance_id, .x = x, .y = y
+    };
+    return send_graphics_command(ctx, FMRB_LINK_GFX_SPRITE_INSTANCE_MOVE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_sprite_instance_set_visible(
+    fmrb_gfx_context_t context, uint16_t instance_id, bool visible)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    fmrb_link_graphics_sprite_instance_set_visible_t cmd = {
+        .instance_id = instance_id, .visible = visible ? 1 : 0
+    };
+    return send_graphics_command(ctx, FMRB_LINK_GFX_SPRITE_INSTANCE_SET_VISIBLE, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_sprite_instance_set_frame(
+    fmrb_gfx_context_t context, uint16_t instance_id, uint8_t frame_index)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    fmrb_link_graphics_sprite_instance_set_frame_t cmd = {
+        .instance_id = instance_id, .frame_index = frame_index
+    };
+    return send_graphics_command(ctx, FMRB_LINK_GFX_SPRITE_INSTANCE_SET_FRAME, &cmd, sizeof(cmd));
+}
+
+fmrb_gfx_err_t fmrb_gfx_delete_all_sprites(
+    fmrb_gfx_context_t context, uint16_t canvas_id)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    fmrb_link_graphics_delete_all_sprites_t cmd = { .canvas_id = canvas_id };
+    return send_graphics_command(ctx, FMRB_LINK_GFX_DELETE_ALL_SPRITES, &cmd, sizeof(cmd));
+}

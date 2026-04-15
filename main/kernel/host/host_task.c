@@ -97,6 +97,14 @@ static void host_task_process_message(const fmrb_msg_t *hal_msg);
 /**
  * Initialize Graphics Audio layer and subsystems
  */
+// Callback for INIT_DISPLAY async response
+static void init_display_response_cb(uint8_t status, const uint8_t *payload,
+                                      uint32_t payload_len, void *user_data) {
+    volatile bool *flag = (volatile bool *)user_data;
+    *flag = true;
+    FMRB_LOGI(TAG, "INIT_DISPLAY ACK received (status=%u)", status);
+}
+
 static int init_gfx_audio(void)
 {
     const fmrb_system_config_t* conf = fmrb_kernel_get_config();
@@ -136,14 +144,20 @@ static int init_gfx_audio(void)
         FMRB_LOGI(TAG, "Sending display initialization to host: %dx%d, %d-bit",
                   init_cmd.width, init_cmd.height, init_cmd.color_depth);
 
-        // Fire-and-forget: frame-level SPI ACK is sufficient.
-        // Display initialization on slave takes ~2100ms (CVBS + PSRAM 2.3MB alloc)
-        fmrb_err_t ret = fmrb_transport_send(
+        // Send INIT_DISPLAY with async + manual polling.
+        // Cannot use send_sync here because host_task main loop is not running yet,
+        // so fmrb_transport_process() would never be called to receive the ACK.
+        static volatile bool s_init_display_ack = false;
+        s_init_display_ack = false;
+
+        fmrb_err_t ret = fmrb_transport_send_async(
             FMRB_LINK_TYPE_CONTROL,
             FMRB_LINK_CONTROL_INIT_DISPLAY,
             (const uint8_t*)&init_cmd,
             sizeof(init_cmd),
-            5000
+            init_display_response_cb,
+            (void*)&s_init_display_ack,
+            15000  // 15 second slot timeout
         );
 
         if (ret != FMRB_OK) {
@@ -151,10 +165,21 @@ static int init_gfx_audio(void)
             return -1;
         }
 
-        FMRB_LOGI(TAG, "Display initialization command sent successfully");
+        FMRB_LOGI(TAG, "Display init command sent, polling for ACK...");
 
-        // Give host time to initialize the display (200ms)
-        fmrb_task_delay(FMRB_MS_TO_TICKS(200));
+        // Poll for ACK while calling fmrb_transport_process() to receive responses
+        fmrb_tick_t start_tick = fmrb_task_get_tick_count();
+        fmrb_tick_t timeout_ticks = FMRB_MS_TO_TICKS(10000);
+        while (!s_init_display_ack) {
+            fmrb_transport_process();
+            fmrb_task_delay(FMRB_MS_TO_TICKS(10));
+            if ((fmrb_task_get_tick_count() - start_tick) > timeout_ticks) {
+                FMRB_LOGE(TAG, "INIT_DISPLAY ACK timeout");
+                return -1;
+            }
+        }
+
+        FMRB_LOGI(TAG, "Display initialization confirmed by host");
 
         FMRB_LOGI(TAG, "Graphics fully initialized: %dx%d", gfx_config.screen_width, gfx_config.screen_height);
     }

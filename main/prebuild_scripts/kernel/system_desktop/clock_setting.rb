@@ -50,6 +50,7 @@ module ClockSettingMixin
 
     # Set system clock and RTC (ESP32 only - avoid overwriting host PC clock on Linux)
     if FmrbConst::PLATFORM == "esp32"
+      i2c = nil
       begin
         # Calculate epoch seconds (UTC) and set via Machine API
         mdays = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
@@ -73,6 +74,8 @@ module ClockSettingMixin
         Log.info("RTC hardware updated")
       rescue => e
         Log.error("Failed to set clock: #{e.message}")
+      ensure
+        i2c.close if i2c
       end
     end
 

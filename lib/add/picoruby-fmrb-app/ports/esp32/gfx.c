@@ -1009,6 +1009,123 @@ static mrb_value mrb_gfx_set_chroma_level(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// --- Sprite API bindings ---
+
+static mrb_value mrb_gfx_create_sprite_image(mrb_state *mrb, mrb_value self)
+{
+    mrb_int width, height, trans_color, use_trans;
+    mrb_get_args(mrb, "iiii", &width, &height, &trans_color, &use_trans);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    uint16_t id = fmrb_gfx_create_sprite_image(data->ctx, data->canvas_id,
+        (uint16_t)width, (uint16_t)height, (uint8_t)trans_color, use_trans != 0);
+    if (id == 0) mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to create sprite image");
+    return mrb_fixnum_value(id);
+}
+
+// FmrbGfx#_load_sprite_image_bmp(image_id, path)
+static mrb_value mrb_gfx_load_sprite_image_bmp(mrb_state *mrb, mrb_value self)
+{
+    mrb_int image_id;
+    char *path;
+    mrb_get_args(mrb, "iz", &image_id, &path);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+    fmrb_gfx_err_t ret = fmrb_gfx_load_sprite_image_bmp(data->ctx, (uint16_t)image_id, path);
+    if (ret != FMRB_GFX_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to load BMP: %d", ret);
+    }
+    return self;
+}
+
+static mrb_value mrb_gfx_delete_sprite_image(mrb_state *mrb, mrb_value self)
+{
+    mrb_int image_id;
+    mrb_get_args(mrb, "i", &image_id);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+    fmrb_gfx_delete_sprite_image(data->ctx, (uint16_t)image_id);
+    return self;
+}
+
+static mrb_value mrb_gfx_set_sprite_image_target(mrb_state *mrb, mrb_value self)
+{
+    mrb_int image_id;
+    mrb_get_args(mrb, "i", &image_id);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+    fmrb_gfx_set_sprite_image_target(data->ctx, (uint16_t)image_id);
+    return self;
+}
+
+static mrb_value mrb_gfx_create_sprite_instance(mrb_state *mrb, mrb_value self)
+{
+    mrb_value ary;
+    mrb_int x, y, z_order;
+    mrb_get_args(mrb, "Aiii", &ary, &x, &y, &z_order);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    mrb_int frame_count = RARRAY_LEN(ary);
+    if (frame_count <= 0 || frame_count > FMRB_SPRITE_MAX_FRAMES)
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid frame count");
+    uint16_t image_ids[FMRB_SPRITE_MAX_FRAMES];
+    for (mrb_int i = 0; i < frame_count; i++)
+        image_ids[i] = (uint16_t)mrb_fixnum(mrb_ary_ref(mrb, ary, i));
+    uint16_t id = fmrb_gfx_create_sprite_instance(data->ctx, data->canvas_id,
+        image_ids, (uint8_t)frame_count, (int16_t)x, (int16_t)y, (int16_t)z_order);
+    if (id == 0) mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to create sprite instance");
+    return mrb_fixnum_value(id);
+}
+
+static mrb_value mrb_gfx_delete_sprite_instance(mrb_state *mrb, mrb_value self)
+{
+    mrb_int instance_id;
+    mrb_get_args(mrb, "i", &instance_id);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+    fmrb_gfx_delete_sprite_instance(data->ctx, (uint16_t)instance_id);
+    return self;
+}
+
+static mrb_value mrb_gfx_sprite_move(mrb_state *mrb, mrb_value self)
+{
+    mrb_int instance_id, x, y;
+    mrb_get_args(mrb, "iii", &instance_id, &x, &y);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+    fmrb_gfx_sprite_instance_move(data->ctx, (uint16_t)instance_id, (int16_t)x, (int16_t)y);
+    return self;
+}
+
+static mrb_value mrb_gfx_sprite_visible(mrb_state *mrb, mrb_value self)
+{
+    mrb_int instance_id;
+    mrb_bool visible;
+    mrb_get_args(mrb, "ib", &instance_id, &visible);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+    fmrb_gfx_sprite_instance_set_visible(data->ctx, (uint16_t)instance_id, visible);
+    return self;
+}
+
+static mrb_value mrb_gfx_sprite_frame(mrb_state *mrb, mrb_value self)
+{
+    mrb_int instance_id, frame_index;
+    mrb_get_args(mrb, "ii", &instance_id, &frame_index);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+    fmrb_gfx_sprite_instance_set_frame(data->ctx, (uint16_t)instance_id, (uint8_t)frame_index);
+    return self;
+}
+
+static mrb_value mrb_gfx_delete_all_sprites(mrb_state *mrb, mrb_value self)
+{
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+    fmrb_gfx_delete_all_sprites(data->ctx, data->canvas_id);
+    return self;
+}
+
 void mrb_fmrb_gfx_init(mrb_state *mrb)
 {
     struct RClass *gfx_class = mrb_define_class(mrb, "FmrbGfx", mrb->object_class);
@@ -1048,6 +1165,18 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     // CVBS/NTSC output control
     mrb_define_method(mrb, gfx_class, "set_output_level", mrb_gfx_set_output_level, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "set_chroma_level", mrb_gfx_set_chroma_level, MRB_ARGS_REQ(1));
+
+    // Sprite API
+    mrb_define_method(mrb, gfx_class, "_create_sprite_image", mrb_gfx_create_sprite_image, MRB_ARGS_REQ(4));
+    mrb_define_method(mrb, gfx_class, "_delete_sprite_image", mrb_gfx_delete_sprite_image, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "_load_sprite_image_bmp", mrb_gfx_load_sprite_image_bmp, MRB_ARGS_REQ(2));
+    mrb_define_method(mrb, gfx_class, "_set_sprite_image_target", mrb_gfx_set_sprite_image_target, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "_create_sprite_instance", mrb_gfx_create_sprite_instance, MRB_ARGS_REQ(4));
+    mrb_define_method(mrb, gfx_class, "_delete_sprite_instance", mrb_gfx_delete_sprite_instance, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "_sprite_move", mrb_gfx_sprite_move, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, gfx_class, "_sprite_visible", mrb_gfx_sprite_visible, MRB_ARGS_REQ(2));
+    mrb_define_method(mrb, gfx_class, "_sprite_frame", mrb_gfx_sprite_frame, MRB_ARGS_REQ(2));
+    mrb_define_method(mrb, gfx_class, "_delete_all_sprites", mrb_gfx_delete_all_sprites, MRB_ARGS_NONE());
 
     // Color utility class methods
     mrb_define_class_method(mrb, gfx_class, "hsv_to_rgb", mrb_gfx_s_hsv_to_rgb, MRB_ARGS_REQ(3));

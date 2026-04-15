@@ -128,7 +128,19 @@ typedef enum {
 
     // Display output control (CVBS/NTSC)
     FMRB_LINK_GFX_SET_OUTPUT_LEVEL = 0x70,
-    FMRB_LINK_GFX_SET_CHROMA_LEVEL = 0x71
+    FMRB_LINK_GFX_SET_CHROMA_LEVEL = 0x71,
+
+    // Sprite management
+    FMRB_LINK_GFX_CREATE_SPRITE_IMAGE = 0x80,
+    FMRB_LINK_GFX_DELETE_SPRITE_IMAGE = 0x81,
+    FMRB_LINK_GFX_SET_SPRITE_IMAGE_TARGET = 0x82,
+    FMRB_LINK_GFX_LOAD_SPRITE_IMAGE_BMP = 0x83,
+    FMRB_LINK_GFX_CREATE_SPRITE_INSTANCE = 0x88,
+    FMRB_LINK_GFX_DELETE_SPRITE_INSTANCE = 0x89,
+    FMRB_LINK_GFX_SPRITE_INSTANCE_MOVE = 0x8A,
+    FMRB_LINK_GFX_SPRITE_INSTANCE_SET_VISIBLE = 0x8B,
+    FMRB_LINK_GFX_SPRITE_INSTANCE_SET_FRAME = 0x8C,
+    FMRB_LINK_GFX_DELETE_ALL_SPRITES = 0x8F
 } fmrb_link_graphics_cmd_t;
 
 // Audio sub-commands
@@ -354,6 +366,69 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     uint16_t image_id;
 } fmrb_link_graphics_delete_image_t;
+
+// Sprite management structures
+#define FMRB_SPRITE_MAX_FRAMES 8
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;       // Parent window
+    uint16_t width, height;
+    uint8_t transparent_color;
+    uint8_t use_transparent;  // 0=no, 1=yes
+} fmrb_link_graphics_create_sprite_image_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t image_id;        // Allocated sprite image ID (0 = error)
+} fmrb_link_graphics_sprite_image_created_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t image_id;
+} fmrb_link_graphics_delete_sprite_image_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t image_id;        // 0 = reset to canvas target
+} fmrb_link_graphics_set_sprite_image_target_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t image_id;        // Target sprite image (must already be created)
+    uint16_t path_len;
+    // Followed by path string (path_len bytes)
+} fmrb_link_graphics_load_sprite_image_bmp_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;       // Parent window
+    uint8_t frame_count;      // Number of image_ids (1..FMRB_SPRITE_MAX_FRAMES)
+    uint16_t image_ids[FMRB_SPRITE_MAX_FRAMES];
+    int16_t x, y;             // Window-local position
+    int16_t z_order;
+} fmrb_link_graphics_create_sprite_instance_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t instance_id;     // Allocated instance ID (0 = error)
+} fmrb_link_graphics_sprite_instance_created_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t instance_id;
+} fmrb_link_graphics_delete_sprite_instance_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t instance_id;
+    int16_t x, y;
+} fmrb_link_graphics_sprite_instance_move_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t instance_id;
+    uint8_t visible;          // 0=hidden, 1=visible
+} fmrb_link_graphics_sprite_instance_set_visible_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t instance_id;
+    uint8_t frame_index;
+} fmrb_link_graphics_sprite_instance_set_frame_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;       // Delete all sprites belonging to this window
+} fmrb_link_graphics_delete_all_sprites_t;
 
 // File transfer sub-commands
 #define FMRB_LINK_FILE_TRANSFER_BEGIN   0x01

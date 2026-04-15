@@ -30,7 +30,8 @@ typedef enum {
     // I2C ops (0x10-0x1F)
     HW_PROXY_OP_I2C_INIT   = 0x10,
     HW_PROXY_OP_I2C_READ   = 0x11,
-    HW_PROXY_OP_I2C_WRITE  = 0x12,
+    HW_PROXY_OP_I2C_WRITE   = 0x12,
+    HW_PROXY_OP_I2C_RELEASE = 0x13,
 
     // GPIO ops (0x20-0x2F)
     HW_PROXY_OP_GPIO_RESET    = 0x20,

@@ -12,6 +12,14 @@ int fmrb_hal_i2c_init(int unit, uint32_t frequency, int8_t sda_pin, int8_t scl_p
     return (ret == FMRB_OK) ? FMRB_I2C_OK : FMRB_I2C_ERROR;
 }
 
+int fmrb_hal_i2c_release(int unit)
+{
+    hw_proxy_i2c_release_params_t params = { .unit = unit };
+    hw_proxy_request_t req = { .op = HW_PROXY_OP_I2C_RELEASE, .params = &params };
+    fmrb_err_t ret = hw_proxy_call(&req);
+    return (ret == FMRB_OK) ? FMRB_I2C_OK : FMRB_I2C_ERROR;
+}
+
 int fmrb_hal_i2c_read(int unit, uint8_t addr, uint8_t *dst, size_t len,
                        bool nostop, uint32_t timeout_us)
 {

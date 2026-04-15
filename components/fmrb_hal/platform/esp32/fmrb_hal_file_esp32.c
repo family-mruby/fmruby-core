@@ -633,6 +633,7 @@ fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
     }
     snprintf(info->name, sizeof(info->name), "%s", basename);
 
+    info->mode = st.st_mode;
     info->size = st.st_size;
     info->is_dir = S_ISDIR(st.st_mode);
     info->mtime = st.st_mtime;

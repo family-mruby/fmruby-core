@@ -111,6 +111,31 @@ static void handle_read(hw_proxy_request_t *req)
     req->result = (err == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
 }
 
+static void handle_release_unit(hw_proxy_request_t *req)
+{
+    hw_proxy_i2c_release_params_t *p = (hw_proxy_i2c_release_params_t *)req->params;
+
+    if (p->unit < 0 || p->unit > 1 || !s_i2c[p->unit].initialized) {
+        req->result = FMRB_ERR_INVALID_PARAM;
+        return;
+    }
+
+    if (s_i2c[p->unit].owner != req->caller) {
+        FMRB_LOGE(TAG, "I2C%d release denied: not owner", p->unit);
+        req->result = FMRB_ERR_BUSY;
+        return;
+    }
+
+    FMRB_LOGI(TAG, "Releasing I2C%d bus (explicit)", p->unit);
+    fmrb_pin_manager_release(s_i2c[p->unit].sda);
+    fmrb_pin_manager_release(s_i2c[p->unit].scl);
+    i2c_del_master_bus(s_i2c[p->unit].bus_handle);
+    s_i2c[p->unit].initialized = false;
+    s_i2c[p->unit].owner = NULL;
+
+    req->result = FMRB_OK;
+}
+
 static void handle_write(hw_proxy_request_t *req)
 {
     hw_proxy_i2c_rw_params_t *p = (hw_proxy_i2c_rw_params_t *)req->params;
@@ -153,6 +178,9 @@ void hw_proxy_i2c_execute(hw_proxy_request_t *req)
         break;
     case HW_PROXY_OP_I2C_WRITE:
         handle_write(req);
+        break;
+    case HW_PROXY_OP_I2C_RELEASE:
+        handle_release_unit(req);
         break;
     default:
         FMRB_LOGE(TAG, "Unknown I2C op: %d", req->op);
