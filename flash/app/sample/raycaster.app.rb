@@ -25,7 +25,7 @@ class RaycasterApp < FmrbApp
   # Colors (RGB332)
   C_BLACK   = 0x00
   C_WHITE   = 0xFF
-  C_CEIL    = 0x02  # dark blue
+  C_CEIL    = 0x24  # dark gray-blue
   C_FLOOR   = 0x49  # dark gray-brown
   C_HUD_BG  = 0x00
   C_HUD_TXT = 0xFF
@@ -39,7 +39,7 @@ class RaycasterApp < FmrbApp
     nil,
     [0xE0, 0x80],  # 1: red wall, dark red
     [0x1C, 0x08],  # 2: green wall, dark green
-    [0x03, 0x02],  # 3: blue wall, dark blue
+    [0x17, 0x03],  # 3: cyan-blue wall, dark blue
     [0xFC, 0x90],  # 4: yellow wall, dark yellow
   ]
 
@@ -75,6 +75,7 @@ class RaycasterApp < FmrbApp
     @py = FP_ONE + FP_HALF
     @pa = 0  # angle in degrees (0=right, 90=down)
     @frame_count = 0
+    @needs_draw = true
   end
 
   def on_create
@@ -87,10 +88,8 @@ class RaycasterApp < FmrbApp
   def build_sin_table
     tbl = []
     360.times do |deg|
-      # radians * 1000 = deg * PI * 1000 / 180
-      # = deg * 3142 / 180 (PI*1000 = 3142)
-      rad_x1k = deg * 3142 / 180
-      tbl << sin_approx(rad_x1k)
+      rad = deg * Math::PI / 180.0
+      tbl << (Math.sin(rad) * FP_ONE).to_i
     end
     tbl
   end
@@ -98,41 +97,10 @@ class RaycasterApp < FmrbApp
   def build_cos_table
     tbl = []
     360.times do |deg|
-      rad_x1k = deg * 3142 / 180
-      tbl << cos_approx(rad_x1k)
+      rad = deg * Math::PI / 180.0
+      tbl << (Math.cos(rad) * FP_ONE).to_i
     end
     tbl
-  end
-
-  # sin approximation using Taylor series (input: radians * 1000)
-  # Returns fixed-point value (-256 to 256)
-  # Uses scale of 1000 to avoid 32-bit integer overflow on ESP32
-  def sin_approx(r1k)
-    # Normalize to 0..6283 (2*PI*1000)
-    r1k = r1k % 6283
-    r1k += 6283 if r1k < 0
-
-    # Map to -PI..PI range (*1000)
-    r1k -= 6283 if r1k > 3142
-
-    # Taylor: sin(x) ~ x - x^3/6 + x^5/120
-    # x is scaled by 1000, intermediate values stay within 32-bit range
-    # max |x| = 3142, x^2/1000 = 9872, x^3/1000^2 = 31,011 (safe)
-    x = r1k
-    x2 = x * x / 1000
-    x3 = x2 * x / 1000
-    x5 = x3 * x / 1000 * x / 1000
-
-    # sin(x) * 1000 ~ x - x^3/6 + x^5/120
-    sin_1k = x - x3 / 6 + x5 / 120
-
-    # Convert to fixed-point (*256) from *1000
-    sin_1k * 256 / 1000
-  end
-
-  def cos_approx(r1k)
-    # cos(x) = sin(x + PI/2)
-    sin_approx(r1k + 1571)
   end
 
   # ---- Helpers ----
@@ -201,18 +169,25 @@ class RaycasterApp < FmrbApp
 
   def on_update
     @frame_count += 1
-    update_player
-    draw_frame
+    moved = update_player
+    if moved || @needs_draw
+      draw_frame
+      @needs_draw = false
+    end
     100
   end
 
   def update_player
+    moved = false
+
     # Rotation
     if @input[:left]
       @pa = (@pa - ROT_SPEED) % 360
+      moved = true
     end
     if @input[:right]
       @pa = (@pa + ROT_SPEED) % 360
+      moved = true
     end
 
     # Movement (forward/backward along facing direction)
@@ -220,12 +195,15 @@ class RaycasterApp < FmrbApp
       dx = fp_cos(@pa) * MOVE_SPEED / FP_ONE
       dy = fp_sin(@pa) * MOVE_SPEED / FP_ONE
       try_move(@px + dx, @py + dy)
+      moved = true
     end
     if @input[:down]
       dx = fp_cos(@pa) * MOVE_SPEED / FP_ONE
       dy = fp_sin(@pa) * MOVE_SPEED / FP_ONE
       try_move(@px - dx, @py - dy)
+      moved = true
     end
+    moved
   end
 
   def try_move(nx, ny)
