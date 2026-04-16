@@ -6,6 +6,7 @@
 #include <mruby/hash.h>
 #include <mruby/array.h>
 #include <string.h>
+#include <sys/time.h>
 #include "hal.h"
 #include "task.h"
 #include "fmrb_kernel.h"
@@ -428,6 +429,29 @@ static mrb_value mrb_kernel_resume_app(mrb_state *mrb, mrb_value self)
     return fmrb_app_resume((int32_t)pid) ? mrb_true_value() : mrb_false_value();
 }
 
+// FmrbKernel#_sync_time_to_host() -> true/false
+// Send current system time to graphics-audio side via CONTROL SET_TIME
+static mrb_value mrb_kernel_sync_time_to_host(mrb_state *mrb, mrb_value self)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    fmrb_control_set_time_t cmd = {
+        .tv_sec = (int64_t)tv.tv_sec,
+        .tv_usec = (int32_t)tv.tv_usec
+    };
+
+    fmrb_err_t ret = fmrb_transport_send(
+        FMRB_LINK_TYPE_CONTROL,
+        FMRB_LINK_CONTROL_SET_TIME,
+        (const uint8_t*)&cmd,
+        sizeof(cmd),
+        FMRB_TRANSPORT_TIMEOUT_DEFAULT
+    );
+
+    return (ret == FMRB_OK) ? mrb_true_value() : mrb_false_value();
+}
+
 void mrb_fmrb_kernel_init(mrb_state *mrb)
 {
     // Define FmrbKernel class
@@ -450,6 +474,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_get_last_error", mrb_kernel_get_last_error, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_suspend_app", mrb_kernel_suspend_app, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_resume_app", mrb_kernel_resume_app, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_sync_time_to_host", mrb_kernel_sync_time_to_host, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 }

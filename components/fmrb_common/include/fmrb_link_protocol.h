@@ -4,7 +4,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <sys/types.h>
-#include "fmrb_link_types.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -20,18 +19,26 @@ extern "C" {
 #define FMRB_LINK_FRAME_CRC_SIZE      2
 #define FMRB_LINK_FRAME_MAX_DATA      (FMRB_LINK_FRAME_SIZE - FMRB_LINK_FRAME_HEADER_SIZE - FMRB_LINK_FRAME_CRC_SIZE)
 
-// Message types (based on IPC_spec.md)
+// Message type byte layout:
+//   bit 7:   CHUNKED flag
+//   bit 6:   ACK_REQUIRED flag
+//   bit 5:   (reserved)
+//   bit 4-0: Type (sequential, 0-31)
+#define FMRB_LINK_TYPE_MASK  0x1F
+#define FMRB_LINK_FLAG_MASK  0xE0
+
 typedef enum {
+    // Types (bit 4-0, sequential)
     FMRB_LINK_TYPE_EMPTY = 0,
     FMRB_LINK_TYPE_CONTROL = 1,
     FMRB_LINK_TYPE_GRAPHICS = 2,
-    FMRB_LINK_TYPE_AUDIO = 4,
-    FMRB_LINK_TYPE_FILE_TRANSFER = 5,
-    FMRB_LINK_TYPE_INPUT = 128,  // Linux only
+    FMRB_LINK_TYPE_AUDIO = 3,
+    FMRB_LINK_TYPE_FILE_TRANSFER = 4,
+    FMRB_LINK_TYPE_INPUT = 5,
 
-    // Flags
-    FMRB_LINK_FLAG_ACK_REQUIRED = 32,
-    FMRB_LINK_FLAG_CHUNKED = 64
+    // Flags (bit 7-6)
+    FMRB_LINK_FLAG_ACK_REQUIRED = 0x40,
+    FMRB_LINK_FLAG_CHUNKED = 0x80
 } fmrb_link_type_t;
 
 //---------------------------
@@ -39,6 +46,7 @@ typedef enum {
 //---------------------------
 #define FMRB_LINK_CONTROL_VERSION      0x01
 #define FMRB_LINK_CONTROL_INIT_DISPLAY 0x02
+#define FMRB_LINK_CONTROL_SET_TIME     0x03
 
 // Control command structures
 typedef struct __attribute__((packed)) {
@@ -56,6 +64,11 @@ typedef struct __attribute__((packed)) {
     uint8_t margin_x;       // Horizontal margin (left+right) in pixels
     uint8_t margin_y;       // Vertical margin (top+bottom) in pixels
 } fmrb_control_init_display_t;
+
+typedef struct __attribute__((packed)) {
+    int64_t tv_sec;          // Seconds since epoch (Unix time)
+    int32_t tv_usec;         // Microseconds
+} fmrb_control_set_time_t;
 
 // Protocol response codes
 #define FMRB_LINK_RESPONSE_MSG_ACK     0xF0

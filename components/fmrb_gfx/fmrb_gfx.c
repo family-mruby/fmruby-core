@@ -4,6 +4,8 @@
 #include "fmrb_transport.h"
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
+#include "fmrb_msg.h"
+#include "fmrb_gfx_msg.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -47,44 +49,52 @@ static fmrb_gfx_err_t send_graphics_command(fmrb_gfx_context_impl_t *ctx, uint8_
     }
 }
 
-// Helper function to send graphics command synchronously and wait for response
-static fmrb_gfx_err_t send_graphics_command_sync(
-    fmrb_gfx_context_impl_t *ctx,
-    uint8_t cmd_type,
-    const void *cmd_data,
-    size_t cmd_size,
+// Helper: send sync GFX command via Host Task queue.
+// Builds a gfx_cmd_t with sync context, sends to Host Task, blocks until response.
+static fmrb_gfx_err_t send_gfx_sync_via_host(
+    gfx_cmd_t *cmd,
     uint8_t *response_data,
-    uint32_t *response_len,
+    uint16_t response_buf_size,
     uint32_t timeout_ms)
 {
-    if (!ctx) {
-        return FMRB_GFX_ERR_NOT_INITIALIZED;
+    // Sync context on caller's stack (valid while we block)
+    gfx_cmd_sync_ctx_t sc;
+    sc.done = fmrb_semaphore_create_binary();
+    if (!sc.done) {
+        return FMRB_GFX_ERR_NO_MEMORY;
+    }
+    sc.response_buf = response_data;
+    sc.response_len = response_buf_size;
+    sc.result = -1;
+
+    cmd->sync = &sc;
+
+    // Send to Host Task queue
+    fmrb_msg_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = FMRB_MSG_TYPE_APP_GFX;
+    msg.size = sizeof(gfx_cmd_t);
+    memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
+    // Restore sync pointer in the copy (points to our stack)
+    ((gfx_cmd_t *)msg.data)->sync = &sc;
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, timeout_ms);
+    if (ret != FMRB_OK) {
+        fmrb_semaphore_delete(sc.done);
+        return FMRB_GFX_ERR_FAILED;
     }
 
-    fmrb_err_t ret = fmrb_transport_send_sync(
-        FMRB_LINK_TYPE_GRAPHICS,
-        cmd_type,
-        (const uint8_t*)cmd_data,
-        cmd_size,
-        response_data,
-        response_len,
-        timeout_ms
-    );
+    // Block calling task until Host Task signals completion
+    fmrb_tick_t ticks = (timeout_ms == UINT32_MAX) ? FMRB_TICK_MAX : FMRB_MS_TO_TICKS(timeout_ms);
+    fmrb_base_type_t wait_result = fmrb_semaphore_take(sc.done, ticks);
+    fmrb_semaphore_delete(sc.done);
 
-    switch (ret) {
-        case FMRB_OK:
-            return FMRB_GFX_OK;
-        case FMRB_ERR_INVALID_PARAM:
-            return FMRB_GFX_ERR_INVALID_PARAM;
-        case FMRB_ERR_NO_MEMORY:
-            return FMRB_GFX_ERR_NO_MEMORY;
-        case FMRB_ERR_TIMEOUT:
-            return FMRB_GFX_ERR_FAILED;  // Map timeout to generic failure
-        case FMRB_ERR_BUSY:
-            return FMRB_GFX_ERR_FAILED;  // No available sync slots
-        default:
-            return FMRB_GFX_ERR_FAILED;
+    if (wait_result != FMRB_TRUE) {
+        ESP_LOGW(TAG, "send_gfx_sync_via_host: timeout");
+        return FMRB_GFX_ERR_FAILED;
     }
+
+    return (sc.result == 0) ? FMRB_GFX_OK : FMRB_GFX_ERR_FAILED;
 }
 
 fmrb_gfx_err_t fmrb_gfx_init(const fmrb_gfx_config_t *config) {
@@ -832,40 +842,21 @@ fmrb_gfx_err_t fmrb_gfx_create_canvas(
         return FMRB_GFX_ERR_NOT_INITIALIZED;
     }
 
-    // Send create canvas command to host (without canvas_id, host will assign it)
-    // Note: cmd structure still has canvas_id field for compatibility, set to 0
-    fmrb_link_graphics_create_canvas_t cmd = {
-        .canvas_id = 0,  // Host will assign the actual ID
-        .width = width,
-        .height = height,
-        .z_order = z_order
-    };
+    gfx_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.cmd_type = GFX_CMD_CREATE_CANVAS;
+    cmd.params.create_canvas.width = width;
+    cmd.params.create_canvas.height = height;
+    cmd.params.create_canvas.z_order = z_order;
 
-    // Use synchronous send to wait for response with canvas_id
-    uint8_t response_data[sizeof(uint16_t)];  // Expect canvas_id as uint16_t
-    uint32_t response_len = sizeof(response_data);
-
-    fmrb_gfx_err_t ret = send_graphics_command_sync(
-        ctx,
-        FMRB_LINK_GFX_CREATE_CANVAS,
-        &cmd,
-        sizeof(cmd),
-        response_data,
-        &response_len,
-        1000  // 1 second timeout
-    );
+    uint8_t response_data[sizeof(uint16_t)];
+    fmrb_gfx_err_t ret = send_gfx_sync_via_host(&cmd, response_data, sizeof(response_data), 1000);
 
     if (ret == FMRB_GFX_OK) {
-        // Extract canvas_id from response
-        if (response_len >= sizeof(uint16_t)) {
-            uint16_t canvas_id;
-            memcpy(&canvas_id, response_data, sizeof(uint16_t));
-            *canvas_handle = canvas_id;
-            ESP_LOGI(TAG, "Canvas created: ID=%u, %dx%d", canvas_id, width, height);
-        } else {
-            ESP_LOGE(TAG, "Canvas creation response too short: %u bytes", response_len);
-            return FMRB_GFX_ERR_FAILED;
-        }
+        uint16_t canvas_id;
+        memcpy(&canvas_id, response_data, sizeof(uint16_t));
+        *canvas_handle = canvas_id;
+        ESP_LOGI(TAG, "Canvas created: ID=%u, %dx%d", canvas_id, width, height);
     } else {
         ESP_LOGE(TAG, "Failed to create canvas: %dx%d, error=%d", width, height, ret);
     }
@@ -1038,23 +1029,19 @@ uint16_t fmrb_gfx_create_sprite_image(
     fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) return 0;
 
-    fmrb_link_graphics_create_sprite_image_t cmd = {
-        .canvas_id = canvas_id,
-        .width = width,
-        .height = height,
-        .transparent_color = transparent_color,
-        .use_transparent = use_transparent ? 1 : 0
-    };
+    gfx_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.cmd_type = GFX_CMD_CREATE_SPRITE_IMAGE;
+    cmd.canvas_id = canvas_id;
+    cmd.params.create_sprite_image.width = width;
+    cmd.params.create_sprite_image.height = height;
+    cmd.params.create_sprite_image.transparent_color = transparent_color;
+    cmd.params.create_sprite_image.use_transparent = use_transparent ? 1 : 0;
 
-    uint8_t response_data[sizeof(fmrb_link_graphics_sprite_image_created_t)];
-    uint32_t response_len = sizeof(response_data);
+    uint8_t response_data[sizeof(uint16_t)];
+    fmrb_gfx_err_t ret = send_gfx_sync_via_host(&cmd, response_data, sizeof(response_data), 1000);
 
-    fmrb_gfx_err_t ret = send_graphics_command_sync(
-        ctx, FMRB_LINK_GFX_CREATE_SPRITE_IMAGE,
-        &cmd, sizeof(cmd),
-        response_data, &response_len, 1000);
-
-    if (ret == FMRB_GFX_OK && response_len >= sizeof(uint16_t)) {
+    if (ret == FMRB_GFX_OK) {
         uint16_t image_id;
         memcpy(&image_id, response_data, sizeof(uint16_t));
         ESP_LOGI(TAG, "Sprite image created: id=%u, %ux%u", image_id, width, height);
@@ -1119,24 +1106,20 @@ uint16_t fmrb_gfx_create_sprite_instance(
     fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) return 0;
 
-    fmrb_link_graphics_create_sprite_instance_t cmd;
+    gfx_cmd_t cmd;
     memset(&cmd, 0, sizeof(cmd));
+    cmd.cmd_type = GFX_CMD_CREATE_SPRITE_INSTANCE;
     cmd.canvas_id = canvas_id;
-    cmd.frame_count = frame_count;
-    memcpy(cmd.image_ids, image_ids, sizeof(uint16_t) * frame_count);
-    cmd.x = x;
-    cmd.y = y;
-    cmd.z_order = z_order;
+    cmd.params.create_sprite_instance.frame_count = frame_count;
+    memcpy(cmd.params.create_sprite_instance.image_ids, image_ids, sizeof(uint16_t) * frame_count);
+    cmd.params.create_sprite_instance.x = x;
+    cmd.params.create_sprite_instance.y = y;
+    cmd.params.create_sprite_instance.z_order = z_order;
 
-    uint8_t response_data[sizeof(fmrb_link_graphics_sprite_instance_created_t)];
-    uint32_t response_len = sizeof(response_data);
+    uint8_t response_data[sizeof(uint16_t)];
+    fmrb_gfx_err_t ret = send_gfx_sync_via_host(&cmd, response_data, sizeof(response_data), 1000);
 
-    fmrb_gfx_err_t ret = send_graphics_command_sync(
-        ctx, FMRB_LINK_GFX_CREATE_SPRITE_INSTANCE,
-        &cmd, sizeof(cmd),
-        response_data, &response_len, 1000);
-
-    if (ret == FMRB_GFX_OK && response_len >= sizeof(uint16_t)) {
+    if (ret == FMRB_GFX_OK) {
         uint16_t instance_id;
         memcpy(&instance_id, response_data, sizeof(uint16_t));
         ESP_LOGD(TAG, "Sprite instance created: id=%u", instance_id);

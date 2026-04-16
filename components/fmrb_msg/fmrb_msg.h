@@ -25,7 +25,7 @@ extern "C" {
  * - Thread-safe queue operations
  */
 
- #define FMRB_MAX_MSG_PAYLOAD_SIZE (160)  // Max payload: gfx_cmd_t text(~148B), spawn_req(~136B)
+ #define FMRB_MAX_MSG_PAYLOAD_SIZE (176)  // Max payload: gfx_cmd_t text(~148B) + sync ptr(8B on 64bit)
 
 typedef enum{
     FMRB_MSG_TYPE_APP_CONTROL=0,

@@ -11,3 +11,6 @@ CONFIG_FREERTOS_USE_TICKLESS_IDLE=n
 
 # FreeRTOS TLS: index 0 is reserved for pthreads, index 1 used by FMRB_APP_TLS_INDEX
 CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=3
+
+# Log timestamp: system time (HH:MM:SS.mmm) instead of boot milliseconds
+CONFIG_LOG_TIMESTAMP_SOURCE_SYSTEM=y

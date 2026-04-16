@@ -305,6 +305,9 @@ class FmrbKernelImpl < FmrbKernel
       if rtc.sync_system_clock
         t = rtc.read_time
         Log.info("RTC sync: #{t[:year]}/#{t[:month]}/#{t[:day]} #{t[:hour]}:#{t[:minute]}:#{t[:second]}")
+        # Send time to graphics-audio side
+        _sync_time_to_host
+        Log.info("RTC sync: time sent to host")
       else
         Log.warn("RTC sync: failed to read time")
       end

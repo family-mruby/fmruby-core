@@ -17,9 +17,10 @@ extern "C" {
  */
 
 // Link communication channel types
+// Currently single channel only.
+// TODO: consider removing channel abstraction entirely
 typedef enum {
-    FMRB_LINK_GRAPHICS = 0,
-    FMRB_LINK_AUDIO = 1,
+    FMRB_LINK_CHANNEL_DEFAULT = 0,
     FMRB_LINK_MAX_CHANNELS
 } fmrb_link_channel_t;
 

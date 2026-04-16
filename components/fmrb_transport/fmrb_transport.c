@@ -199,7 +199,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
             .size = sbuf.size
         };
 
-        fmrb_link_channel_t hal_channel = FMRB_LINK_GRAPHICS;
+        fmrb_link_channel_t hal_channel = FMRB_LINK_CHANNEL_DEFAULT;
         fmrb_err_t ret = fmrb_hal_link_send_noack(hal_channel, &hal_msg, 1, timeout_ms);
 
         if (ret == FMRB_OK) {
@@ -228,7 +228,7 @@ static fmrb_err_t send_raw_message(uint8_t link_type, uint8_t seq, uint8_t sub_c
                                      link_type | FMRB_LINK_FLAG_CHUNKED, seq, chunk_id);
 
         fmrb_err_t ret = FMRB_OK;
-        fmrb_link_channel_t hal_channel = FMRB_LINK_GRAPHICS;
+        fmrb_link_channel_t hal_channel = FMRB_LINK_CHANNEL_DEFAULT;
 
         // Send all chunks
         while (true) {
@@ -468,7 +468,7 @@ fmrb_err_t fmrb_transport_send_batch(const fmrb_transport_batch_entry_t *entries
     }
 
     // Send batch via HAL (fire-and-forget)
-    fmrb_link_channel_t hal_channel = FMRB_LINK_GRAPHICS;
+    fmrb_link_channel_t hal_channel = FMRB_LINK_CHANNEL_DEFAULT;
     fmrb_err_t ret = fmrb_hal_link_send_noack(hal_channel, hal_msgs, valid_count, effective_timeout);
 
     if (ret != FMRB_OK) {
@@ -782,7 +782,7 @@ fmrb_err_t fmrb_transport_process(void) {
     const int max_process_per_call = 10;  // Prevent infinite loop
 
     while (processed_count < max_process_per_call &&
-           fmrb_hal_link_receive(FMRB_LINK_GRAPHICS, &hal_msg, 0) == FMRB_OK) {
+           fmrb_hal_link_receive(FMRB_LINK_CHANNEL_DEFAULT, &hal_msg, 0) == FMRB_OK) {
         processed_count++;
         FMRB_LOGD(TAG, "Processing frame %d (size=%u)", processed_count, hal_msg.size);
 

@@ -750,35 +750,45 @@ static mrb_value mrb_gfx_file_status(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_ARGUMENT_ERROR, "Path too long");
     }
 
-    // Build payload: header + path
-    uint8_t payload_buf[sizeof(fmrb_link_file_transfer_status_t) + 120];
-    size_t payload_len = sizeof(fmrb_link_file_transfer_status_t) + path_len;
+    // Send via Host Task queue (same pattern as file transfer)
+    file_cmd_result_t result;
+    result.done_sem = fmrb_semaphore_create_binary();
+    if (!result.done_sem) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to create semaphore");
+    }
+    result.result = -1;
+    memset(&result.data, 0, sizeof(result.data));
 
-    fmrb_link_file_transfer_status_t *hdr = (fmrb_link_file_transfer_status_t *)payload_buf;
-    hdr->path_len = (uint16_t)path_len;
-    memcpy(payload_buf + sizeof(fmrb_link_file_transfer_status_t), path, path_len);
+    fmrb_msg_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = FMRB_MSG_TYPE_FILE_TRANSFER;
 
-    // Send directly via transport (bypasses host_task to avoid deadlock)
-    uint8_t resp_buf[sizeof(fmrb_link_file_transfer_status_resp_t)];
-    uint32_t resp_len = sizeof(resp_buf);
+    file_cmd_t *cmd = (file_cmd_t *)msg.data;
+    cmd->cmd_type = FILE_CMD_STATUS;
+    cmd->result = &result;
+    cmd->path_len = (uint16_t)path_len;
+    memcpy(cmd->path, path, path_len);
 
-    fmrb_err_t ret = fmrb_transport_send_sync(
-        FMRB_LINK_TYPE_FILE_TRANSFER,
-        FMRB_LINK_FILE_TRANSFER_STATUS,
-        payload_buf, payload_len,
-        resp_buf, &resp_len,
-        5000);
+    msg.size = sizeof(file_cmd_t);
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    if (ret != FMRB_OK) {
+        fmrb_semaphore_delete(result.done_sem);
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to send file status request");
+    }
+
+    // Block until Host Task signals completion
+    fmrb_base_type_t wait_ret = fmrb_semaphore_take(result.done_sem, FMRB_MS_TO_TICKS(5000));
+    fmrb_semaphore_delete(result.done_sem);
 
     mrb_value hash = mrb_hash_new(mrb);
-    if (ret == FMRB_OK && resp_len >= sizeof(fmrb_link_file_transfer_status_resp_t)) {
-        fmrb_link_file_transfer_status_resp_t *resp =
-            (fmrb_link_file_transfer_status_resp_t *)resp_buf;
+    if (wait_ret == FMRB_TRUE && result.result == 0) {
         mrb_hash_set(mrb, hash,
             mrb_symbol_value(mrb_intern_lit(mrb, "exists")),
-            resp->exists ? mrb_true_value() : mrb_false_value());
+            result.data.status.exists ? mrb_true_value() : mrb_false_value());
         mrb_hash_set(mrb, hash,
             mrb_symbol_value(mrb_intern_lit(mrb, "size")),
-            mrb_fixnum_value(resp->file_size));
+            mrb_fixnum_value(result.data.status.file_size));
     } else {
         mrb_hash_set(mrb, hash,
             mrb_symbol_value(mrb_intern_lit(mrb, "exists")),

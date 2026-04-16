@@ -66,7 +66,7 @@
 #define FMRB_SHELL_APP_TASK_FLAGS       FMRB_TASK_FLAG_PSRAM
 
 // User App task (mruby/lua/basic VM for user apps)
-#define FMRB_USER_APP_TASK_STACK_SIZE   (12 * 1024)
+#define FMRB_USER_APP_TASK_STACK_SIZE   (16 * 1024)
 #define FMRB_USER_APP_PRIORITY          (5)
 #define FMRB_USER_APP_TASK_FLAGS        FMRB_TASK_FLAG_PSRAM
 

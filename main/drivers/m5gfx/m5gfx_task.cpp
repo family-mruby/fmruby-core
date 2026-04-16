@@ -595,7 +595,7 @@ static void send_ack(uint8_t msg_type, uint8_t seq, const uint8_t* data, size_t 
         .data = (uint8_t*)sbuf.data,
         .size = sbuf.size,
     };
-    fmrb_hal_link_local_send_response(FMRB_LINK_GRAPHICS, &resp, 1000);
+    fmrb_hal_link_local_send_response(FMRB_LINK_CHANNEL_DEFAULT, &resp, 1000);
 
     msgpack_sbuffer_destroy(&sbuf);
 }
@@ -727,7 +727,7 @@ static void m5gfx_task(void* arg) {
                 .size = sizeof(g_recv_buf),
             };
             fmrb_err_t err = fmrb_hal_link_local_receive_cmd(
-                FMRB_LINK_GRAPHICS, &msg, first ? 33 : 0);
+                FMRB_LINK_CHANNEL_DEFAULT, &msg, first ? 33 : 0);
             if (err != FMRB_OK || msg.size == 0) break;
             process_message(g_recv_buf, msg.size);
             first = false;

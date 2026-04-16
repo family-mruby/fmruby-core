@@ -414,8 +414,65 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &level, sizeof(level));
             return sizeof(level);
         }
+        case GFX_CMD_CREATE_CANVAS: {
+            fmrb_link_graphics_create_canvas_t c = {
+                .canvas_id = 0,
+                .width = cmd->params.create_canvas.width,
+                .height = cmd->params.create_canvas.height,
+                .z_order = cmd->params.create_canvas.z_order
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_CREATE_CANVAS;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_CREATE_SPRITE_IMAGE: {
+            fmrb_link_graphics_create_sprite_image_t c = {
+                .canvas_id = cmd->canvas_id,
+                .width = cmd->params.create_sprite_image.width,
+                .height = cmd->params.create_sprite_image.height,
+                .transparent_color = cmd->params.create_sprite_image.transparent_color,
+                .use_transparent = cmd->params.create_sprite_image.use_transparent
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_CREATE_SPRITE_IMAGE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_CREATE_SPRITE_INSTANCE: {
+            fmrb_link_graphics_create_sprite_instance_t c;
+            memset(&c, 0, sizeof(c));
+            c.canvas_id = cmd->canvas_id;
+            c.frame_count = cmd->params.create_sprite_instance.frame_count;
+            memcpy(c.image_ids, cmd->params.create_sprite_instance.image_ids,
+                   sizeof(uint16_t) * c.frame_count);
+            c.x = cmd->params.create_sprite_instance.x;
+            c.y = cmd->params.create_sprite_instance.y;
+            c.z_order = cmd->params.create_sprite_instance.z_order;
+            *sub_cmd_out = FMRB_LINK_GFX_CREATE_SPRITE_INSTANCE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         default:
             return -1;
+    }
+}
+
+// Callback for sync GFX command response (called from transport layer context)
+static void gfx_sync_response_cb(uint8_t status, const uint8_t *payload,
+                                  uint32_t payload_len, void *user_data) {
+    gfx_cmd_sync_ctx_t *sc = (gfx_cmd_sync_ctx_t *)user_data;
+    if (!sc) return;
+
+    sc->result = (status == 0) ? 0 : -1;
+    if (sc->response_buf && payload && payload_len > 0) {
+        uint16_t copy_len = (payload_len < sc->response_len) ? (uint16_t)payload_len : sc->response_len;
+        memcpy(sc->response_buf, payload, copy_len);
+        sc->response_len = copy_len;
+    } else {
+        sc->response_len = 0;
+    }
+
+    if (sc->done) {
+        fmrb_semaphore_give(sc->done);
     }
 }
 
@@ -723,16 +780,33 @@ static void host_task_process_gfx_batch(const fmrb_msg_t *first_msg)
     // Collect GFX commands into batch
     gfx_cmd_t cmds[GFX_BATCH_MAX];
     int count = 0;
+    gfx_cmd_t *pending_sync_cmd = NULL;  // Sync command found during batching
 
     // First message is already received
-    cmds[count++] = *(gfx_cmd_t *)first_msg->data;
+    gfx_cmd_t *first_cmd = (gfx_cmd_t *)first_msg->data;
+    if (first_cmd->sync != NULL) {
+        // First command is sync - no batch, handle directly
+        pending_sync_cmd = first_cmd;
+        goto handle_sync;
+    }
+    cmds[count++] = *first_cmd;
 
     // Drain additional GFX messages (non-blocking)
+    // Stop at sync command - don't skip past it
     fmrb_msg_t next;
     while (count < GFX_BATCH_MAX &&
            fmrb_msg_receive(PROC_ID_HOST, &next, 0) == FMRB_OK) {
         if (next.type == FMRB_MSG_TYPE_APP_GFX) {
-            cmds[count++] = *(gfx_cmd_t *)next.data;
+            gfx_cmd_t *queued = (gfx_cmd_t *)next.data;
+            if (queued->sync != NULL) {
+                // Sync command: stop batching, save for after batch send
+                // Copy sync pointer before next.data gets reused
+                static gfx_cmd_t s_sync_cmd_buf;
+                s_sync_cmd_buf = *queued;
+                pending_sync_cmd = &s_sync_cmd_buf;
+                break;
+            }
+            cmds[count++] = *queued;
         } else {
             // Non-GFX message: process it immediately, stop batching
             host_task_process_message(&next);
@@ -779,6 +853,35 @@ static void host_task_process_gfx_batch(const fmrb_msg_t *first_msg)
         if (batch_count > 1) {
             FMRB_LOGD(TAG, "GFX batch: %d commands sent", batch_count);
         }
+    }
+
+    // Handle pending sync command (after batch is sent, so order is preserved)
+handle_sync:
+    if (pending_sync_cmd != NULL) {
+        uint8_t sub_cmd;
+        uint8_t sync_payload[GFX_BATCH_PAYLOAD_BUF_SIZE];
+        int payload_len = gfx_cmd_to_batch_entry(pending_sync_cmd, &sub_cmd, sync_payload);
+
+        if (payload_len >= 0 && pending_sync_cmd->sync != NULL) {
+            gfx_cmd_sync_ctx_t *sc = pending_sync_cmd->sync;
+            fmrb_err_t ret = fmrb_transport_send_async(
+                FMRB_LINK_TYPE_GRAPHICS | FMRB_LINK_FLAG_ACK_REQUIRED,
+                sub_cmd,
+                sync_payload,
+                (uint32_t)payload_len,
+                gfx_sync_response_cb,
+                sc,
+                5000  // 5 second timeout
+            );
+            if (ret != FMRB_OK) {
+                FMRB_LOGE(TAG, "Sync GFX send_async failed: %d", ret);
+                sc->result = -1;
+                sc->response_len = 0;
+                fmrb_semaphore_give(sc->done);
+            }
+        }
+        // Count sync command for semaphore release
+        count++;
     }
 
     // Release semaphore slots for all processed commands

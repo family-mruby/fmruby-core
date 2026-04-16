@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include "fmrb_msg.h"
 #include "fmrb_gfx.h"
+#include "fmrb_rtos.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,7 +36,11 @@ typedef enum {
     GFX_CMD_TEXT_SIZE,
     GFX_CMD_BLEND_RECT,
     GFX_CMD_SET_OUTPUT_LEVEL,
-    GFX_CMD_SET_CHROMA_LEVEL
+    GFX_CMD_SET_CHROMA_LEVEL,
+    // Sync commands (require response from WROVER)
+    GFX_CMD_CREATE_CANVAS,
+    GFX_CMD_CREATE_SPRITE_IMAGE,
+    GFX_CMD_CREATE_SPRITE_INSTANCE
 } gfx_cmd_type_t;
 
 // Graphics command structure
@@ -136,8 +141,35 @@ typedef struct {
         struct {
             uint8_t level;
         } set_chroma_level;
+        struct {
+            int32_t width, height;
+            int16_t z_order;
+        } create_canvas;
+        struct {
+            uint16_t width, height;
+            uint8_t transparent_color;
+            uint8_t use_transparent;
+        } create_sprite_image;
+        struct {
+            uint8_t frame_count;
+            uint16_t image_ids[8];
+            int16_t x, y;
+            int16_t z_order;
+        } create_sprite_instance;
     } params;
+
+    // Sync context pointer (NULL = fire-and-forget, non-NULL = response expected)
+    // Points to caller's stack. Caller blocks on sync->done until Host Task signals.
+    struct gfx_cmd_sync_ctx *sync;
 } gfx_cmd_t;
+
+// Sync context for response-awaiting GFX commands (allocated on caller's stack)
+typedef struct gfx_cmd_sync_ctx {
+    fmrb_semaphore_t done;        // Signaled when response is ready
+    uint8_t *response_buf;        // Response data buffer (caller-owned)
+    uint16_t response_len;        // in: buffer size, out: actual data length
+    int8_t result;                // 0=success, <0=error
+} gfx_cmd_sync_ctx_t;
 
 #ifdef __cplusplus
 }
