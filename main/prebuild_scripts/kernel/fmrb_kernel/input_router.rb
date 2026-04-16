@@ -20,11 +20,18 @@ module InputRouterMixin
       case subtype
       when 4  # Mouse button down
         update_window_list(false)  # Show log on click
-        target_window = find_window_at(x, y)
+
+        # In fullscreen mode, route directly to fullscreen app
+        # (except menu bar area which is handled by find_window_at)
+        if @fullscreen_pid && y >= $menu_bar_height
+          target_window = find_window_by_pid(@fullscreen_pid)
+        else
+          target_window = find_window_at(x, y)
+        end
 
         if target_window.nil?
-          # Fallback to desktop (click on empty area)
-          if @desktop_pid
+          # Fallback to desktop (only if not suspended)
+          if @desktop_pid && !app_suspended?(@desktop_pid)
             target_window = find_window_by_pid(@desktop_pid)
           end
           if target_window.nil?

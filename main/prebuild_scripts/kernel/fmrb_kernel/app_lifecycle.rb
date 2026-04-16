@@ -59,6 +59,10 @@ module AppLifecycleMixin
     mark_window_list_dirty
   end
 
+  def app_suspended?(pid)
+    @suspended_pids && @suspended_pids.include?(pid)
+  end
+
   def suspend_app(pid)
     _suspend_app(pid)
     Log.info("Suspended app PID #{pid}")

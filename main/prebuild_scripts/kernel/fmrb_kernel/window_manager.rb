@@ -1,8 +1,9 @@
 # Window Manager module for FmrbKernelImpl
 # Window list management, hit testing, z-order tracking
 
+$menu_bar_height = 13
+
 module WindowManagerMixin
-  MENU_BAR_HEIGHT = 13
 
   def update_window_list(show_log = false)
     # Only update if dirty flag is set
@@ -37,7 +38,7 @@ module WindowManagerMixin
     # 2. Dropdown open: dropdown rect is hit-testable, outside closes it
     # 3. Otherwise: transparent (skip to windows below)
     if @desktop_pid
-      if y < MENU_BAR_HEIGHT
+      if y < $menu_bar_height
         # Menu bar click -> route to desktop
         return find_window_by_pid(@desktop_pid)
       end
@@ -64,6 +65,8 @@ module WindowManagerMixin
     @window_list.each do |win|
       # Skip desktop (handled above with special logic)
       next if win[:app_name] == "system_desktop"
+      # Skip suspended apps
+      next if app_suspended?(win[:pid])
 
       if x >= win[:x] && x <= win[:x] + win[:width] - 1 &&
          y >= win[:y] && y <= win[:y] + win[:height] - 1

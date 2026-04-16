@@ -18,6 +18,7 @@
 #include "status_led.h"
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_mem.h"
+#include "fmrb_app.h"
 
 static const char *TAG = "host";
 
@@ -969,6 +970,16 @@ static void host_task_process_host_message(const host_message_t *msg)
                 // No target, discard event
                 FMRB_LOGD(TAG, "No HID target, discarding key event");
                 break;
+            }
+
+            // Check if target app is still running (not suspended/stopped)
+            {
+                fmrb_app_task_context_t* target_ctx = fmrb_app_get_context_by_id(routing.target_pid);
+                if (!target_ctx || target_ctx->state != PROC_STATE_RUNNING) {
+                    FMRB_LOGW(TAG, "Key event target PID %d not running (state=%d), discarding",
+                             routing.target_pid, target_ctx ? target_ctx->state : -1);
+                    break;
+                }
             }
 
             FMRB_LOGD(TAG, "Key %s: %d -> PID %d",
