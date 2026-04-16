@@ -1060,18 +1060,22 @@ fmrb_gfx_err_t fmrb_gfx_load_sprite_image_bmp(
     if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
 
     size_t path_len = strlen(path);
-    if (path_len >= 200) return FMRB_GFX_ERR_INVALID_PARAM;
+    if (path_len >= FMRB_MAX_PATH_LEN) return FMRB_GFX_ERR_INVALID_PARAM;
 
-    // Build payload: header + path
-    uint8_t payload[256];
+    size_t payload_len = sizeof(fmrb_link_graphics_load_sprite_image_bmp_t) + path_len;
+    uint8_t *payload = (uint8_t *)fmrb_sys_malloc(payload_len);
+    if (!payload) return FMRB_GFX_ERR_NO_MEMORY;
+
     fmrb_link_graphics_load_sprite_image_bmp_t *cmd =
         (fmrb_link_graphics_load_sprite_image_bmp_t *)payload;
     cmd->image_id = image_id;
     cmd->path_len = (uint16_t)path_len;
     memcpy(payload + sizeof(*cmd), path, path_len);
 
-    return send_graphics_command(ctx, FMRB_LINK_GFX_LOAD_SPRITE_IMAGE_BMP,
-                                 payload, sizeof(*cmd) + path_len);
+    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_LOAD_SPRITE_IMAGE_BMP,
+                                                payload, payload_len);
+    fmrb_sys_free(payload);
+    return ret;
 }
 
 fmrb_gfx_err_t fmrb_gfx_delete_sprite_image(
