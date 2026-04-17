@@ -153,7 +153,12 @@ typedef enum {
     FMRB_LINK_GFX_SPRITE_INSTANCE_MOVE = 0x8A,
     FMRB_LINK_GFX_SPRITE_INSTANCE_SET_VISIBLE = 0x8B,
     FMRB_LINK_GFX_SPRITE_INSTANCE_SET_FRAME = 0x8C,
-    FMRB_LINK_GFX_DELETE_ALL_SPRITES = 0x8F
+    FMRB_LINK_GFX_DELETE_ALL_SPRITES = 0x8F,
+
+    // GfxBlock VM (draw-batch programs)
+    FMRB_LINK_GFX_DEFINE_PROG = 0x90,
+    FMRB_LINK_GFX_EXEC_PROG = 0x91,
+    FMRB_LINK_GFX_DELETE_PROG = 0x92
 } fmrb_link_graphics_cmd_t;
 
 // Audio sub-commands
@@ -444,6 +449,31 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;       // Delete all sprites belonging to this window
 } fmrb_link_graphics_delete_all_sprites_t;
+
+// GfxBlock VM message structures
+// DEFINE_PROG is synchronous; ACK payload contains one uint8_t prog_id
+// (FMRB_GFX_VM_INVALID_PROG_ID = pool full or invalid request).
+#define FMRB_GFX_VM_INVALID_PROG_ID 0xFF
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint16_t bytecode_len;
+    uint16_t strtable_len;
+    // Followed by: bytecode[bytecode_len] + strtable[strtable_len]
+} fmrb_link_graphics_define_prog_t;
+
+// EXEC_PROG is asynchronous.
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint8_t prog_id;
+    uint8_t reg_count;
+    // Followed by: [uint8_t reg_id, int16_t value] * reg_count
+} fmrb_link_graphics_exec_prog_t;
+
+// DELETE_PROG is asynchronous. canvas_id is tracked on the WROVER side.
+typedef struct __attribute__((packed)) {
+    uint8_t prog_id;
+} fmrb_link_graphics_delete_prog_t;
 
 // File transfer sub-commands
 #define FMRB_LINK_FILE_TRANSFER_BEGIN   0x01

@@ -1,0 +1,7 @@
+app_handle_name = "gfx_block_test"
+app_screen_name = "GfxBlock"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 160
+default_window_pos_x = 40
+default_window_pos_y = 30

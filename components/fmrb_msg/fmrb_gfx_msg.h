@@ -40,7 +40,10 @@ typedef enum {
     // Sync commands (require response from WROVER)
     GFX_CMD_CREATE_CANVAS,
     GFX_CMD_CREATE_SPRITE_IMAGE,
-    GFX_CMD_CREATE_SPRITE_INSTANCE
+    GFX_CMD_CREATE_SPRITE_INSTANCE,
+    GFX_CMD_DEFINE_PROG,         // Sync; returns prog_id
+    GFX_CMD_EXEC_PROG,           // Async
+    GFX_CMD_DELETE_PROG          // Async
 } gfx_cmd_type_t;
 
 // Graphics command structure
@@ -158,6 +161,25 @@ typedef struct {
             int16_t x, y;
             int16_t z_order;
         } create_sprite_instance;
+        // GfxBlock VM: define program. bytecode_buf/strtable_buf are fmrb_malloc'd
+        // in the caller; the Host Task copies their contents into the payload and
+        // frees them after send. Ownership transfers to Host Task.
+        struct {
+            uint8_t *bytecode_buf;
+            uint16_t bytecode_len;
+            uint8_t *strtable_buf;
+            uint16_t strtable_len;
+        } define_prog;
+        // GfxBlock VM: execute program. reg_updates_buf is fmrb_malloc'd; Host Task frees.
+        // Packed as [uint8_t reg_id, int16_t value] * reg_count = 3 bytes per entry.
+        struct {
+            uint8_t prog_id;
+            uint8_t reg_count;
+            uint8_t *reg_updates_buf;
+        } exec_prog;
+        struct {
+            uint8_t prog_id;
+        } delete_prog;
     } params;
 
     // Sync context pointer (NULL = fire-and-forget, non-NULL = response expected)

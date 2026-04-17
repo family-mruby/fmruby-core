@@ -454,6 +454,41 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_DEFINE_PROG: {
+            uint16_t bc_len = cmd->params.define_prog.bytecode_len;
+            uint16_t st_len = cmd->params.define_prog.strtable_len;
+            size_t total = sizeof(fmrb_link_graphics_define_prog_t) + bc_len + st_len;
+            if (total > GFX_BATCH_PAYLOAD_BUF_SIZE) {
+                FMRB_LOGE(TAG, "DEFINE_PROG: payload %zu exceeds buf %d",
+                          total, GFX_BATCH_PAYLOAD_BUF_SIZE);
+                return -1;
+            }
+            fmrb_link_graphics_define_prog_t hdr = {
+                .canvas_id = cmd->canvas_id,
+                .bytecode_len = bc_len,
+                .strtable_len = st_len,
+            };
+            memcpy(payload_buf, &hdr, sizeof(hdr));
+            if (bc_len > 0 && cmd->params.define_prog.bytecode_buf) {
+                memcpy(payload_buf + sizeof(hdr),
+                       cmd->params.define_prog.bytecode_buf, bc_len);
+            }
+            if (st_len > 0 && cmd->params.define_prog.strtable_buf) {
+                memcpy(payload_buf + sizeof(hdr) + bc_len,
+                       cmd->params.define_prog.strtable_buf, st_len);
+            }
+            *sub_cmd_out = FMRB_LINK_GFX_DEFINE_PROG;
+            return (int)total;
+        }
+        case GFX_CMD_EXEC_PROG: {
+            // Should not reach here: EXEC_PROG uses send_graphics_command directly.
+            // Kept for completeness if ever routed through Host Task.
+            return -1;
+        }
+        case GFX_CMD_DELETE_PROG: {
+            // Should not reach here: DELETE_PROG uses send_graphics_command directly.
+            return -1;
+        }
         default:
             return -1;
     }

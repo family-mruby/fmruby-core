@@ -1199,3 +1199,83 @@ fmrb_gfx_err_t fmrb_gfx_delete_all_sprites(
     fmrb_link_graphics_delete_all_sprites_t cmd = { .canvas_id = canvas_id };
     return send_graphics_command(ctx, FMRB_LINK_GFX_DELETE_ALL_SPRITES, &cmd, sizeof(cmd));
 }
+
+// ---------- GfxBlock VM ----------
+
+fmrb_gfx_err_t fmrb_gfx_define_prog(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_id,
+    const uint8_t *bytecode, uint16_t bytecode_len,
+    const uint8_t *strtable, uint16_t strtable_len,
+    uint8_t *out_prog_id)
+{
+    if (!context || !out_prog_id) return FMRB_GFX_ERR_INVALID_PARAM;
+    if (bytecode_len > 0 && !bytecode) return FMRB_GFX_ERR_INVALID_PARAM;
+    if (strtable_len > 0 && !strtable) return FMRB_GFX_ERR_INVALID_PARAM;
+
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    // Caller blocks on semaphore, so its buffers stay valid while Host Task reads them.
+    gfx_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.cmd_type = GFX_CMD_DEFINE_PROG;
+    cmd.canvas_id = canvas_id;
+    cmd.params.define_prog.bytecode_buf = (uint8_t *)bytecode;
+    cmd.params.define_prog.bytecode_len = bytecode_len;
+    cmd.params.define_prog.strtable_buf = (uint8_t *)strtable;
+    cmd.params.define_prog.strtable_len = strtable_len;
+
+    uint8_t response[1] = { FMRB_GFX_VM_INVALID_PROG_ID };
+    fmrb_gfx_err_t ret = send_gfx_sync_via_host(&cmd, response, sizeof(response), 2000);
+    if (ret != FMRB_GFX_OK) {
+        ESP_LOGE(TAG, "define_prog: send failed: %d", ret);
+        return ret;
+    }
+    *out_prog_id = response[0];
+    if (response[0] == FMRB_GFX_VM_INVALID_PROG_ID) {
+        ESP_LOGE(TAG, "define_prog: WROVER returned INVALID_PROG_ID (pool full?)");
+        return FMRB_GFX_ERR_NO_MEMORY;
+    }
+    ESP_LOGD(TAG, "define_prog: canvas=%u prog_id=%u bc=%u st=%u",
+             canvas_id, response[0], bytecode_len, strtable_len);
+    return FMRB_GFX_OK;
+}
+
+fmrb_gfx_err_t fmrb_gfx_exec_prog(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_id,
+    uint8_t prog_id,
+    const uint8_t *reg_updates,
+    uint8_t reg_count)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    if (reg_count > 0 && !reg_updates) return FMRB_GFX_ERR_INVALID_PARAM;
+
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    // Build wire payload on the stack: header + reg updates (3 bytes each)
+    uint8_t buf[sizeof(fmrb_link_graphics_exec_prog_t) + 3 * 16];
+    fmrb_link_graphics_exec_prog_t *hdr = (fmrb_link_graphics_exec_prog_t *)buf;
+    hdr->canvas_id = canvas_id;
+    hdr->prog_id = prog_id;
+    hdr->reg_count = reg_count;
+    if (reg_count > 0) {
+        memcpy(buf + sizeof(*hdr), reg_updates, (size_t)reg_count * 3);
+    }
+    return send_graphics_command(ctx, FMRB_LINK_GFX_EXEC_PROG, buf,
+                                 sizeof(*hdr) + (size_t)reg_count * 3);
+}
+
+fmrb_gfx_err_t fmrb_gfx_delete_prog(
+    fmrb_gfx_context_t context,
+    uint8_t prog_id)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    fmrb_link_graphics_delete_prog_t cmd = { .prog_id = prog_id };
+    return send_graphics_command(ctx, FMRB_LINK_GFX_DELETE_PROG, &cmd, sizeof(cmd));
+}

@@ -662,6 +662,49 @@ fmrb_gfx_err_t fmrb_gfx_delete_all_sprites(
     fmrb_gfx_context_t context,
     uint16_t canvas_id);
 
+// ---------- GfxBlock VM (draw-batch programs) ----------
+
+/**
+ * @brief Register a drawing program on the WROVER side (synchronous).
+ * @param context Graphics context
+ * @param canvas_id Target canvas
+ * @param bytecode Compiled bytecode buffer (copied into payload)
+ * @param bytecode_len Length in bytes
+ * @param strtable String table buffer (copied into payload)
+ * @param strtable_len Length in bytes
+ * @param out_prog_id Receives the prog_id allocated by WROVER (0xFF = pool full)
+ * @return FMRB_GFX_OK on success
+ */
+fmrb_gfx_err_t fmrb_gfx_define_prog(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_id,
+    const uint8_t *bytecode, uint16_t bytecode_len,
+    const uint8_t *strtable, uint16_t strtable_len,
+    uint8_t *out_prog_id);
+
+/**
+ * @brief Execute a registered program, applying register updates (asynchronous).
+ * @param context Graphics context
+ * @param canvas_id Target canvas
+ * @param prog_id Program id returned by define_prog
+ * @param reg_updates Packed [uint8_t reg_id, int16_t value] * reg_count
+ * @param reg_count Number of register updates
+ * @return FMRB_GFX_OK on success
+ */
+fmrb_gfx_err_t fmrb_gfx_exec_prog(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_id,
+    uint8_t prog_id,
+    const uint8_t *reg_updates,
+    uint8_t reg_count);
+
+/**
+ * @brief Delete a registered program, freeing the WROVER slot (asynchronous).
+ */
+fmrb_gfx_err_t fmrb_gfx_delete_prog(
+    fmrb_gfx_context_t context,
+    uint8_t prog_id);
+
 #ifdef __cplusplus
 }
 #endif

@@ -994,6 +994,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 
     // Initialize graphics subsystem
     mrb_fmrb_gfx_init(mrb);
+    mrb_fmrb_gfx_block_init(mrb);
 
     // Audio subsystem will be initialized when needed
     //mrb_fmrb_audio_init(mrb);
