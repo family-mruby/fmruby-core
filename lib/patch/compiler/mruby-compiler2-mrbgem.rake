@@ -5,6 +5,7 @@ MRuby::Gem::Specification.new('mruby-compiler2') do |spec|
 
   lib_dir = "#{dir}/lib"
   cc.include_paths << "#{dir}/include"
+  cc.include_paths << "#{dir}/../../../../fmrb_common/include"
 
   prism_dir = "#{lib_dir}/prism"
   ruby_dir = "#{lib_dir}/ruby"

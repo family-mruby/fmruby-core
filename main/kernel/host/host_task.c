@@ -420,7 +420,9 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
                 .canvas_id = 0,
                 .width = cmd->params.create_canvas.width,
                 .height = cmd->params.create_canvas.height,
-                .z_order = cmd->params.create_canvas.z_order
+                .z_order = cmd->params.create_canvas.z_order,
+                .use_transparent = cmd->params.create_canvas.use_transparent,
+                .transparent_color = cmd->params.create_canvas.transparent_color
             };
             *sub_cmd_out = FMRB_LINK_GFX_CREATE_CANVAS;
             memcpy(payload_buf, &c, sizeof(c));

@@ -831,6 +831,8 @@ fmrb_gfx_err_t fmrb_gfx_create_canvas(
     fmrb_gfx_context_t context,
     int32_t width, int32_t height,
     int16_t z_order,
+    bool use_transparent,
+    uint8_t transparent_color,
     fmrb_canvas_handle_t *canvas_handle)
 {
     if (!context || !canvas_handle || width <= 0 || height <= 0) {
@@ -848,6 +850,8 @@ fmrb_gfx_err_t fmrb_gfx_create_canvas(
     cmd.params.create_canvas.width = width;
     cmd.params.create_canvas.height = height;
     cmd.params.create_canvas.z_order = z_order;
+    cmd.params.create_canvas.use_transparent = use_transparent ? 1 : 0;
+    cmd.params.create_canvas.transparent_color = transparent_color;
 
     uint8_t response_data[sizeof(uint16_t)];
     fmrb_gfx_err_t ret = send_gfx_sync_via_host(&cmd, response_data, sizeof(response_data), 1000);

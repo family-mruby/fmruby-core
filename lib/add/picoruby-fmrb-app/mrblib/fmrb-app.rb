@@ -3,6 +3,8 @@
 
 class FmrbApp
   TITLE_BAR_H = 11
+  CORNER_R = 4
+  TRANSPARENT_COLOR = 0x01
 
   attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen
 
@@ -52,21 +54,30 @@ class FmrbApp
 
   def draw_window_frame
     return if @fullscreen
-    # Draw title bar
-    @gfx.fill_rect(0, 0, @window_width, TITLE_BAR_H, 0xC5)
-    @gfx.fill_rect(2, 2, 8, 8, 0x60) # menu button
+
+    # Title bar with rounded top corners only. Draw a rounded rect of the full
+    # title bar height first (which rounds all 4 corners), then overwrite the
+    # bottom portion with a plain fill_rect to make the bottom edge straight.
+    # This keeps the original TITLE_BAR_H thickness while adding rounded top corners.
+    @gfx.fill_round_rect(0, 0, @window_width, TITLE_BAR_H, CORNER_R, 0xC5)
+    @gfx.fill_rect(0, CORNER_R, @window_width, TITLE_BAR_H - CORNER_R, 0xC5)
+
+    # Menu button and title text
+    @gfx.fill_rect(2, 2, 8, 8, 0x60)
     @gfx.draw_text(12, 2, @name, FmrbGfx::WHITE)
 
-    # Draw close button (X) on the right side of title bar
+    # Close button (X)
     close_btn_x = @window_width - 10
     close_btn_y = 2
-    @gfx.fill_rect(close_btn_x, close_btn_y, 8, 8, 0xE0) # red background
-    # Draw X mark (two diagonal lines)
+    @gfx.fill_rect(close_btn_x, close_btn_y, 8, 8, 0xE0)
     @gfx.draw_line(close_btn_x + 2, close_btn_y + 2, close_btn_x + 5, close_btn_y + 5, FmrbGfx::WHITE)
     @gfx.draw_line(close_btn_x + 5, close_btn_y + 2, close_btn_x + 2, close_btn_y + 5, FmrbGfx::WHITE)
 
-    # Draw window border
-    @gfx.draw_rect(0, 0, @window_width, @window_height, 0x60)
+    # Rounded window border. The bottom corners show rounded because the outer
+    # column (x=0, x=w-1) and bottom row (y=h-1) pixels were never drawn by app
+    # content (user_area starts at x=1, y=TITLE_BAR_H and ends at y=h-2), so
+    # they retain the canvas's transparent color.
+    @gfx.draw_round_rect(0, 0, @window_width, @window_height, CORNER_R, 0x60)
   end
 
   # Scroll bar constants and helpers

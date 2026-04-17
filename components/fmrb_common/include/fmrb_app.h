@@ -112,6 +112,7 @@ typedef struct {
     bool                  has_background_canvas; // Desktop only: create bg canvas (z=0)
     bool                  fullscreen;       // Fullscreen app (suspend others, no menu bar)
     bool                  resizable;        // Allow window resize (default: false)
+    bool                  large_memory;     // Use LARGE memory pool (1MB)
     uint16_t              window_width;     // Window Width (if headless, =0)
     uint16_t              window_height;    // Window Height (if headless, =0)
     uint16_t              window_pos_x;

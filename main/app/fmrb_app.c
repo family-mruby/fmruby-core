@@ -47,6 +47,7 @@ EXT_RAM_BSS_ATTR static fmrb_app_task_context_t g_ctx_pool[FMRB_MAX_APPS];
 
 // Mutex for protecting context pool access
 static fmrb_semaphore_t g_ctx_lock = NULL;
+static bool g_large_pool_in_use = false;
 
 // State transition strings for debugging
 static const char* state_names[] = {
@@ -913,6 +914,12 @@ cleanup:
         ctx->semaphore = NULL;
     }
 
+    // Release LARGE pool if this app was using it
+    if (ctx->mempool_id == POOL_ID_USER_APP_LARGE) {
+        g_large_pool_in_use = false;
+        FMRB_LOGI(TAG, "[%s] Released LARGE memory pool", ctx->app_name);
+    }
+
     // Transition to FREE
     transition_state(ctx, PROC_STATE_FREE);
 
@@ -1085,7 +1092,17 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
             break;
         case APP_TYPE_USER_APP:
             if (idx >= PROC_ID_USER_APP0 && idx < PROC_ID_MAX) {
-                ctx->mempool_id = POOL_ID_USER_APP0 + (idx - PROC_ID_USER_APP0);
+                if (attr->large_memory) {
+                    if (g_large_pool_in_use) {
+                        FMRB_LOGE(TAG, "[%s] LARGE memory pool already in use", attr->name);
+                        goto unwind;
+                    }
+                    ctx->mempool_id = POOL_ID_USER_APP_LARGE;
+                    g_large_pool_in_use = true;
+                    FMRB_LOGI(TAG, "USER_APP using LARGE pool (1MB): idx=%d", idx);
+                } else {
+                    ctx->mempool_id = POOL_ID_USER_APP0 + (idx - PROC_ID_USER_APP0);
+                }
                 FMRB_LOGI(TAG, "USER_APP mempool_id: idx=%d, PROC_ID_USER_APP0=%d, POOL_ID_USER_APP0=%d, calculated mempool_id=%d",
                           idx, PROC_ID_USER_APP0, POOL_ID_USER_APP0, ctx->mempool_id);
             } else {

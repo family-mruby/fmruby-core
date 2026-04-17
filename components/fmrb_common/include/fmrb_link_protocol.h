@@ -306,6 +306,8 @@ typedef struct __attribute__((packed)) {
     uint16_t canvas_id;
     int32_t width, height;
     int16_t z_order;
+    uint8_t use_transparent;    // 1=enable color-key transparency during composition
+    uint8_t transparent_color;  // RGB332 color treated as transparent
 } fmrb_link_graphics_create_canvas_t;
 
 typedef struct __attribute__((packed)) {

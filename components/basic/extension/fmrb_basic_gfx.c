@@ -264,6 +264,8 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
         ctx->window_width,
         ctx->window_height,
         ctx->z_order,
+        false,
+        0,
         &console->canvas_id
     );
     if (gfx_ret != FMRB_GFX_OK) {

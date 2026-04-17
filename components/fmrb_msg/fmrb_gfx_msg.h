@@ -144,6 +144,8 @@ typedef struct {
         struct {
             int32_t width, height;
             int16_t z_order;
+            uint8_t use_transparent;
+            uint8_t transparent_color;
         } create_canvas;
         struct {
             uint16_t width, height;

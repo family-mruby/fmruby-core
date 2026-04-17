@@ -15,6 +15,7 @@ EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_syst
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app0[FMRB_MEM_POOL_SIZE_USER_APP];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app1[FMRB_MEM_POOL_SIZE_USER_APP];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app2[FMRB_MEM_POOL_SIZE_USER_APP];
+EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app_large[FMRB_MEM_POOL_SIZE_USER_APP_LARGE];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_log_buffer[FMRB_MEM_POOL_SIZE_LOG_BUFFER];
 
 static unsigned char* g_mempool_list[POOL_ID_MAX] = {
@@ -25,6 +26,7 @@ static unsigned char* g_mempool_list[POOL_ID_MAX] = {
     [POOL_ID_USER_APP0]      = g_mempool_user_app0,
     [POOL_ID_USER_APP1]  = g_mempool_user_app1,
     [POOL_ID_USER_APP2]  = g_mempool_user_app2,
+    [POOL_ID_USER_APP_LARGE] = g_mempool_user_app_large,
     [POOL_ID_LOG_BUFFER] = g_mempool_log_buffer,
 };
 
@@ -58,6 +60,8 @@ size_t fmrb_get_mempool_size(int32_t id){
         case POOL_ID_USER_APP1:
         case POOL_ID_USER_APP2:
             return FMRB_MEM_POOL_SIZE_USER_APP;
+        case POOL_ID_USER_APP_LARGE:
+            return FMRB_MEM_POOL_SIZE_USER_APP_LARGE;
         case POOL_ID_LOG_BUFFER:
             return FMRB_MEM_POOL_SIZE_LOG_BUFFER;
         default:
@@ -74,6 +78,7 @@ static const char* fmrb_get_mempool_name(int32_t id){
         case POOL_ID_USER_APP0:      return "USER_APP0";
         case POOL_ID_USER_APP1:  return "USER_APP1";
         case POOL_ID_USER_APP2:  return "USER_APP2";
+        case POOL_ID_USER_APP_LARGE: return "USER_LARGE";
         case POOL_ID_LOG_BUFFER: return "LOG_BUFFER";
         default:                 return "UNKNOWN";
     }

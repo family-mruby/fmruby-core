@@ -22,7 +22,8 @@ static ESTALLOC *prism_est = NULL;
   #ifdef PRISM_BUILD_HOST
     #define PRISM_POOL_SIZE (288 * 1024)
   #else
-    #define PRISM_POOL_SIZE (192 * 1024)
+    #include "fmrb_mem_config.h"
+    #define PRISM_POOL_SIZE FMRB_MEM_PRISM_POOL_SIZE
   #endif
 #endif
 

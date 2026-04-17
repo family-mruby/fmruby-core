@@ -479,6 +479,9 @@ fmrb_gfx_err_t fmrb_gfx_fill_screen(fmrb_gfx_context_t context, fmrb_canvas_hand
  * @param context Graphics context
  * @param width Canvas width
  * @param height Canvas height
+ * @param z_order Z-order of the canvas
+ * @param use_transparent Enable color-key transparency during composition
+ * @param transparent_color RGB332 color treated as transparent (ignored if use_transparent=false)
  * @param canvas_handle Pointer to store canvas handle
  * @return Graphics error code
  *
@@ -488,6 +491,8 @@ fmrb_gfx_err_t fmrb_gfx_create_canvas(
     fmrb_gfx_context_t context,
     int32_t width, int32_t height,
     int16_t z_order,
+    bool use_transparent,
+    uint8_t transparent_color,
     fmrb_canvas_handle_t *canvas_handle);
 
 /**

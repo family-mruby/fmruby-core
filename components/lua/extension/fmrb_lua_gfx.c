@@ -300,6 +300,8 @@ static int lua_app_create_canvas(lua_State* L) {
         (uint16_t)width,
         (uint16_t)height,
         ctx->z_order,
+        false,
+        0,
         &canvas_id
     );
 

@@ -33,6 +33,9 @@ class RaycasterApp < FmrbApp
   C_GREEN   = 0x1C
   C_BLUE    = 0x03
   C_YELLOW  = 0xFC
+  C_ENEMY   = 0xE3  # magenta
+  C_ENEMY_D = 0x61  # dark magenta
+  C_CROSS   = 0xFF  # crosshair
 
   # Wall colors by map value (1-4)
   WALL_COLORS = [
@@ -43,18 +46,22 @@ class RaycasterApp < FmrbApp
     [0xFC, 0x90],  # 4: yellow wall, dark yellow
   ]
 
-  # 8x8 map (0=empty, 1-4=wall types)
-  MAP_W = 8
-  MAP_H = 8
+  # 12x12 map (0=empty, 1-4=wall types)
+  MAP_W = 12
+  MAP_H = 12
   WORLD_MAP = [
-    1, 1, 1, 1, 1, 1, 1, 1,
-    1, 0, 0, 0, 0, 0, 0, 1,
-    1, 0, 2, 0, 0, 3, 0, 1,
-    1, 0, 0, 0, 0, 0, 0, 1,
-    1, 0, 0, 0, 0, 0, 0, 1,
-    1, 0, 3, 0, 0, 2, 0, 1,
-    1, 0, 0, 0, 0, 0, 0, 4,
-    1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 2, 0, 0, 0, 0, 3, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 1, 0, 0, 0, 2, 0, 0, 0, 0, 4, 1,
+    1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1,
+    1, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 1,
+    1, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
   ]
 
   # FOV = 60 degrees
@@ -76,10 +83,24 @@ class RaycasterApp < FmrbApp
     @pa = 0  # angle in degrees (0=right, 90=down)
     @frame_count = 0
     @needs_draw = true
+    @shoot_pressed = false
+    @shoot_flash = 0
+    @hit_flash = 0
+    @score = 0
+
+    # Enemies: array of {x:, y:, alive:}  (fixed-point positions)
+    @enemies = [
+      { x: 6 * CELL_SIZE + FP_HALF, y: 3 * CELL_SIZE + FP_HALF, alive: true },
+      { x: 4 * CELL_SIZE + FP_HALF, y: 7 * CELL_SIZE + FP_HALF, alive: true },
+      { x: 9 * CELL_SIZE + FP_HALF, y: 8 * CELL_SIZE + FP_HALF, alive: true },
+      { x: 6 * CELL_SIZE + FP_HALF, y: 9 * CELL_SIZE + FP_HALF, alive: true },
+      { x: 10 * CELL_SIZE + FP_HALF, y: 2 * CELL_SIZE + FP_HALF, alive: true },
+    ]
   end
 
   def on_create
     Log.info("Raycaster on_create")
+    @depth_buf = cast_all_rays
     draw_frame
   end
 
@@ -129,6 +150,7 @@ class RaycasterApp < FmrbApp
       when 13 then @input[:down] = true
       when 14 then @input[:left] = true
       when 15 then @input[:right] = true
+      when 2  then @shoot_pressed = true  # Circle = Shoot
       when 9 then stop  # Start = Quit
       end
     when :gamepad_up
@@ -155,6 +177,11 @@ class RaycasterApp < FmrbApp
       when 82 then @input[:up] = true      # Up arrow
       when 81 then @input[:down] = true    # Down arrow
       end
+      if ev[:character] == 32  # Space = Shoot
+        @shoot_pressed = true
+      elsif ev[:character] == 113  # q = Quit
+        stop
+      end
     when :key_up
       case ev[:keycode]
       when 80 then @input[:left] = false
@@ -170,7 +197,26 @@ class RaycasterApp < FmrbApp
   def on_update
     @frame_count += 1
     moved = update_player
+    shot = false
+    if @shoot_pressed
+      @shoot_pressed = false
+      @shoot_flash = 3
+      shot = true
+      @needs_draw = true
+    end
+    if @shoot_flash > 0
+      @shoot_flash -= 1
+      @needs_draw = true
+    end
+    if @hit_flash > 0
+      @hit_flash -= 1
+      @needs_draw = true
+    end
     if moved || @needs_draw
+      @depth_buf = cast_all_rays
+      if shot
+        try_shoot
+      end
       draw_frame
       @needs_draw = false
     end
@@ -285,7 +331,7 @@ class RaycasterApp < FmrbApp
     hit = 0
     depth = 0
 
-    20.times do
+    24.times do
       # Compare t_x vs t_y using cross multiplication
       if t_x_num * t_y_den < t_y_num * t_x_den
         # Step in X
@@ -319,6 +365,149 @@ class RaycasterApp < FmrbApp
     { dist: depth, wall: hit, side: side }
   end
 
+  # ---- Ray buffer ----
+
+  def cast_all_rays
+    buf = []
+    NUM_RAYS.times do |i|
+      ray_angle = @pa - HALF_FOV + (i * FOV / NUM_RAYS)
+      buf << cast_ray(ray_angle)
+    end
+    buf
+  end
+
+  # ---- Enemies ----
+
+  def try_shoot
+    # Check if center ray (crosshair) hits an enemy
+    # Find closest alive enemy near the center of view
+    center_angle = @pa
+    best_enemy = nil
+    best_dist = 999999
+
+    @enemies.each do |e|
+      next unless e[:alive]
+      dx = e[:x] - @px
+      dy = e[:y] - @py
+      dist = isqrt(dx * dx + dy * dy)
+      next if dist < 10  # too close
+
+      # Angle to enemy
+      enemy_angle = atan2_deg(dy, dx)
+      angle_diff = (enemy_angle - center_angle) % 360
+      angle_diff -= 360 if angle_diff > 180
+
+      # Enemy must be within ~5 degrees of crosshair
+      if angle_diff.abs < 5 && dist < best_dist
+        # Check wall occlusion: is wall closer than enemy?
+        center_ray = @depth_buf[NUM_RAYS / 2]
+        if center_ray && dist < center_ray[:dist]
+          # Enemy is NOT occluded
+        elsif center_ray && dist >= center_ray[:dist]
+          next  # Wall is closer, skip
+        end
+        best_dist = dist
+        best_enemy = e
+      end
+    end
+
+    if best_enemy
+      best_enemy[:alive] = false
+      @score += 100
+      @hit_flash = 5
+    end
+  end
+
+  # Integer square root
+  def isqrt(n)
+    return 0 if n <= 0
+    x = n
+    y = (x + 1) / 2
+    while y < x
+      x = y
+      y = (x + n / x) / 2
+    end
+    x
+  end
+
+  # atan2 returning degrees (0-359), using LUT
+  def atan2_deg(dy, dx)
+    # Use Math.atan2 for accuracy (only called for enemies, not per-pixel)
+    rad = Math.atan2(dy, dx)
+    deg = (rad * 180.0 / Math::PI).to_i
+    deg += 360 if deg < 0
+    deg % 360
+  end
+
+  def draw_enemies(vp_x, vp_y)
+    @enemies.each do |e|
+      next unless e[:alive]
+
+      dx = e[:x] - @px
+      dy = e[:y] - @py
+      dist = isqrt(dx * dx + dy * dy)
+      next if dist < 10
+
+      # Angle to enemy relative to player
+      enemy_angle = atan2_deg(dy, dx)
+      angle_diff = (enemy_angle - @pa) % 360
+      angle_diff -= 360 if angle_diff > 180
+
+      # Skip if outside FOV
+      next if angle_diff.abs > HALF_FOV + 5
+
+      # Fisheye correction
+      cos_diff = fp_cos(angle_diff)
+      cos_diff = 1 if cos_diff == 0
+      perp_dist = dist * cos_diff / FP_ONE
+      perp_dist = 1 if perp_dist <= 0
+
+      # Screen X position
+      screen_x = VP_W / 2 + angle_diff * VP_W / FOV
+      # Enemy height on screen
+      enemy_h = VP_H * CELL_SIZE * 3 / (perp_dist * 4)
+      enemy_h = VP_H if enemy_h > VP_H
+      enemy_w = enemy_h / 2
+      enemy_w = 4 if enemy_w < 4
+
+      # Screen coordinates
+      ex = vp_x + screen_x - enemy_w / 2
+      ey = vp_y + (VP_H - enemy_h) / 2
+
+      # Skip if completely outside viewport
+      next if ex + enemy_w <= vp_x || ex >= vp_x + VP_W
+      next if ey + enemy_h <= vp_y || ey >= vp_y + VP_H
+
+      # Check wall occlusion using depth buffer
+      strip_idx = screen_x / STRIP_W
+      if strip_idx >= 0 && strip_idx < NUM_RAYS
+        wall_dist = @depth_buf[strip_idx][:dist]
+        next if perp_dist >= wall_dist
+      end
+
+      # Clamp draw rect to viewport
+      draw_x = ex < vp_x ? vp_x : ex
+      draw_y = ey < vp_y ? vp_y : ey
+      draw_r = ex + enemy_w > vp_x + VP_W ? vp_x + VP_W : ex + enemy_w
+      draw_b = ey + enemy_h > vp_y + VP_H ? vp_y + VP_H : ey + enemy_h
+      draw_w = draw_r - draw_x
+      draw_h = draw_b - draw_y
+      next if draw_w <= 0 || draw_h <= 0
+
+      @gfx.fill_rect(draw_x, draw_y, draw_w, draw_h, C_ENEMY)
+      # Eyes
+      eye_y = ey + enemy_h / 3
+      eye_w = enemy_w / 4
+      eye_w = 2 if eye_w < 2
+      if eye_y >= vp_y && eye_y + eye_w <= vp_y + VP_H
+        lx = ex + enemy_w / 3 - 1
+        rx = ex + enemy_w * 2 / 3 - 1
+        @gfx.fill_rect(lx, eye_y, eye_w, eye_w, C_BLACK) if lx >= vp_x && lx + eye_w <= vp_x + VP_W
+        @gfx.fill_rect(rx, eye_y, eye_w, eye_w, C_BLACK) if rx >= vp_x && rx + eye_w <= vp_x + VP_W
+      end
+    end
+  end
+
   # ---- Drawing ----
 
   def draw_frame
@@ -327,32 +516,24 @@ class RaycasterApp < FmrbApp
 
     # Viewport position (centered horizontally, top-aligned)
     vp_x = ox + (@user_area_width - VP_W) / 2
-    vp_y = oy + 2
+    vp_y = oy + 22
 
     # Draw ceiling and floor for entire viewport
     half_h = VP_H / 2
     @gfx.fill_rect(vp_x, vp_y, VP_W, half_h, C_CEIL)
     @gfx.fill_rect(vp_x, vp_y + half_h, VP_W, half_h, C_FLOOR)
 
-    # Cast rays and draw wall strips
+    # Draw wall strips from ray buffer
     NUM_RAYS.times do |i|
-      # Ray angle: from pa - HALF_FOV to pa + HALF_FOV
-      ray_angle = @pa - HALF_FOV + (i * FOV / NUM_RAYS)
-      result = cast_ray(ray_angle)
-
+      result = @depth_buf[i]
       dist = result[:dist]
       wall = result[:wall]
       side = result[:side]
 
-      # Wall height proportional to inverse distance
-      # At distance CELL_SIZE (one cell away), wall fills viewport
       wall_h = VP_H * CELL_SIZE / dist
       wall_h = VP_H if wall_h > VP_H
-
-      # Center wall strip vertically
       wall_top = vp_y + (VP_H - wall_h) / 2
 
-      # Pick color based on wall type and side (darker for Y-side)
       colors = WALL_COLORS[wall]
       if colors
         color = side == 1 ? colors[1] : colors[0]
@@ -360,18 +541,37 @@ class RaycasterApp < FmrbApp
         color = C_WHITE
       end
 
-      # Draw wall strip
       strip_x = vp_x + i * STRIP_W
       @gfx.fill_rect(strip_x, wall_top, STRIP_W, wall_h, color)
+    end
+
+    # Draw enemies (after walls, using depth buffer for occlusion)
+    draw_enemies(vp_x, vp_y)
+
+    # Crosshair + shoot beam
+    cx = vp_x + VP_W / 2
+    cy = vp_y + VP_H / 2
+    if @shoot_flash > 0
+      # Beam effect: vertical line from bottom to center
+      @gfx.fill_rect(cx - 3, cy, 7, vp_y + VP_H - cy, C_YELLOW)
+      @gfx.fill_rect(cx - 6, cy, 13, 1, C_YELLOW)
+      @gfx.fill_rect(cx, cy - 6, 1, 13, C_YELLOW)
+    else
+      @gfx.fill_rect(cx - 4, cy, 9, 1, C_CROSS)
+      @gfx.fill_rect(cx, cy - 4, 1, 9, C_CROSS)
+    end
+
+    # HIT! indicator
+    if @hit_flash > 0
+      @gfx.draw_text(cx - 10, vp_y + 10, "HIT!", C_YELLOW, C_RED)
     end
 
     # HUD area (below viewport)
     hud_y = vp_y + VP_H + 4
     @gfx.fill_rect(ox, hud_y, @user_area_width, 20, C_HUD_BG)
-    # Show player position and angle
-    cell_x = @px / CELL_SIZE
-    cell_y = @py / CELL_SIZE
-    @gfx.draw_text(ox + 4, hud_y + 2, "POS:#{cell_x},#{cell_y} ANG:#{@pa}", C_HUD_TXT, C_HUD_BG)
+    alive_count = 0
+    @enemies.each { |e| alive_count += 1 if e[:alive] }
+    @gfx.draw_text(ox + 4, hud_y + 2, "SCORE:#{@score} ENEMY:#{alive_count}", C_HUD_TXT, C_HUD_BG)
 
     # Mini-map (right side of viewport, every 4th frame to save draw calls)
     if (@frame_count % 4) == 0
@@ -383,7 +583,7 @@ class RaycasterApp < FmrbApp
   end
 
   def draw_minimap(mx0, my0)
-    cell_px = 4  # pixels per cell
+    cell_px = 3  # pixels per cell
     map_w_px = MAP_W * cell_px
     map_h_px = MAP_H * cell_px
 
@@ -402,10 +602,18 @@ class RaycasterApp < FmrbApp
       end
     end
 
-    # Player dot
+    # Enemy dots (magenta)
+    @enemies.each do |e|
+      next unless e[:alive]
+      edx = e[:x] * cell_px / CELL_SIZE
+      edy = e[:y] * cell_px / CELL_SIZE
+      @gfx.fill_rect(mx0 + edx, my0 + edy, 2, 2, C_ENEMY)
+    end
+
+    # Player dot (white)
     pdx = @px * cell_px / CELL_SIZE
     pdy = @py * cell_px / CELL_SIZE
-    @gfx.fill_rect(mx0 + pdx - 1, my0 + pdy - 1, 3, 3, C_YELLOW)
+    @gfx.fill_rect(mx0 + pdx - 1, my0 + pdy - 1, 3, 3, C_WHITE)
   end
 
   def on_destroy

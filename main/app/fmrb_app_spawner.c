@@ -223,6 +223,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     int window_pos_x = 50;
     int window_pos_y = 50;
     bool resizable = false;
+    bool large_memory = false;
 
     FMRB_LOGI(TAG, "[spawn] 6 toml_load '%s'", toml_path);
     // Try loading TOML configuration
@@ -264,6 +265,9 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
 
         // Parse resizable flag (default: false)
         resizable = (bool)fmrb_toml_get_int(config, "resizable", 0);
+
+        // Parse large_memory flag (default: false)
+        large_memory = (bool)fmrb_toml_get_int(config, "large_memory", 0);
     } else {
         FMRB_LOGW(TAG, "No TOML config found or parse error: %s (%s)", toml_path, errbuf);
     }
@@ -284,6 +288,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .headless = headless,
         .fullscreen = fullscreen,
         .resizable = resizable,
+        .large_memory = large_memory,
         .window_width = window_width,
         .window_height = window_height,
         .window_pos_x = window_pos_x,
