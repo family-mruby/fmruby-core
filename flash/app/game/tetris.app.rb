@@ -8,9 +8,11 @@ class TetrisApp < FmrbApp
   CELL = 8  # Cell size in pixels
 
   # Colors (RGB332)
-  BG_COLOR    = 0x00
-  GRID_COLOR  = 0x24
-  BORDER_COLOR = 0x60
+  BG_COLOR     = 0x00  # Playfield interior (kept black for piece contrast)
+  PANEL_COLOR  = 0x29  # Area outside the playfield (dark blue-gray)
+  BORDER_OUTER = 0x92  # Bright outer border line
+  BORDER_INNER = 0x49  # Dark inner border line
+  GHOST_COLOR  = 0x6D  # Dim gray for ghost-piece preview
   TEXT_COLOR   = 0xFF
   GAMEOVER_BG  = 0xE0
 
@@ -60,10 +62,16 @@ class TetrisApp < FmrbApp
     @drop_counter = 0
     @input_buffer = []
     @frame_ms = 33
+    @next_piece_type = nil
+
+    @bg_block = nil
+    @piece_block = nil
+    @next_block = nil
   end
 
   def on_create
     Log.info("Tetris on_create")
+    build_blocks
     reset_board
     spawn_piece
     draw_all
@@ -76,10 +84,16 @@ class TetrisApp < FmrbApp
     @level = 1
     @game_over = false
     @drop_counter = 0
+    @next_piece_type = nil
   end
 
   def spawn_piece
-    @piece_type = RNG.random_int % PIECES.size
+    if @next_piece_type
+      @piece_type = @next_piece_type
+    else
+      @piece_type = RNG.random_int % PIECES.size
+    end
+    @next_piece_type = RNG.random_int % PIECES.size
     @piece_rot = 0
     @piece_x = COLS / 2 - 1
     @piece_y = 0
@@ -144,7 +158,15 @@ class TetrisApp < FmrbApp
     speed
   end
 
-  # ---- Drawing ----
+  def calc_ghost_y(px, py, rot)
+    gy = py
+    while !collides?(px, gy + 1, rot)
+      gy += 1
+    end
+    gy
+  end
+
+  # ---- Layout helpers ----
 
   def board_x0
     @user_area_x0 + 2
@@ -154,28 +176,112 @@ class TetrisApp < FmrbApp
     @user_area_y0 + 2
   end
 
+  def info_x
+    board_x0 + COLS * CELL + 6
+  end
+
+  def info_y
+    board_y0 + 2
+  end
+
+  def next_box_x
+    info_x
+  end
+
+  def next_box_y
+    info_y + 74
+  end
+
+  # ---- GfxBlock setup ----
+  #
+  # Three reusable bytecode blocks are uploaded once to WROVER and re-executed
+  # with changing register values to avoid resending static command sequences.
+
+  def build_blocks
+    pf_w  = COLS * CELL
+    pf_h  = ROWS * CELL
+    pf_x  = board_x0
+    pf_y  = board_y0
+    nb_x  = next_box_x
+    nb_y  = next_box_y
+    nb_sz = 4 * CELL
+    ix    = info_x
+    iy    = info_y
+
+    # @bg_block: panel background, playfield interior, double border, info
+    # labels, and the empty NEXT preview frame. Drawn at start and after every
+    # board update (lock_piece) to refresh the static layout. No kwargs because
+    # nothing about it changes per draw.
+    @bg_block = GfxBlock.new(@gfx) do |r|
+      # Panel area (covers the whole user area beneath the title bar).
+      r.fill_rect @user_area_x0, @user_area_y0,
+                  @user_area_width, @user_area_height, PANEL_COLOR
+      # Playfield interior.
+      r.fill_rect pf_x, pf_y, pf_w, pf_h, BG_COLOR
+      # Double border around the playfield (outer bright, inner dark).
+      r.draw_rect pf_x - 2, pf_y - 2, pf_w + 4, pf_h + 4, BORDER_OUTER
+      r.draw_rect pf_x - 1, pf_y - 1, pf_w + 2, pf_h + 2, BORDER_INNER
+      # Info labels (values are drawn separately because their text changes).
+      r.draw_text ix, iy,      "SCORE", TEXT_COLOR
+      r.draw_text ix, iy + 24, "LINES", TEXT_COLOR
+      r.draw_text ix, iy + 48, "LV",    TEXT_COLOR
+      r.draw_text ix, iy + 64, "NEXT",  TEXT_COLOR
+      # NEXT preview frame.
+      r.draw_rect nb_x - 1, nb_y - 1, nb_sz + 2, nb_sz + 2, BORDER_INNER
+    end
+
+    # @piece_block: four colored cells. Reused for the active piece and the
+    # ghost piece (different color and positions).
+    @piece_block = GfxBlock.new(@gfx,
+                                x0: 0, y0: 0, x1: 0, y1: 0,
+                                x2: 0, y2: 0, x3: 0, y3: 0,
+                                color: 0) do |r,
+                                                x0:, y0:, x1:, y1:,
+                                                x2:, y2:, x3:, y3:, color:|
+      r.fill_rect x0, y0, CELL - 1, CELL - 1, color
+      r.fill_rect x1, y1, CELL - 1, CELL - 1, color
+      r.fill_rect x2, y2, CELL - 1, CELL - 1, color
+      r.fill_rect x3, y3, CELL - 1, CELL - 1, color
+    end
+
+    # @next_block: clear the NEXT preview area, then draw the four cells of
+    # the upcoming piece. Separated from @piece_block because it has the
+    # extra clear command (Block command sequences must match across calls).
+    @next_block = GfxBlock.new(@gfx,
+                               x0: 0, y0: 0, x1: 0, y1: 0,
+                               x2: 0, y2: 0, x3: 0, y3: 0,
+                               color: 0) do |r,
+                                              x0:, y0:, x1:, y1:,
+                                              x2:, y2:, x3:, y3:, color:|
+      r.fill_rect nb_x, nb_y, nb_sz, nb_sz, BG_COLOR
+      r.fill_rect x0, y0, CELL - 1, CELL - 1, color
+      r.fill_rect x1, y1, CELL - 1, CELL - 1, color
+      r.fill_rect x2, y2, CELL - 1, CELL - 1, color
+      r.fill_rect x3, y3, CELL - 1, CELL - 1, color
+    end
+  end
+
+  # ---- Drawing ----
+
   def draw_all
-    @gfx.fill_rect(@user_area_x0, @user_area_y0,
-                    @user_area_width, @user_area_height, BG_COLOR)
+    @bg_block.draw
     draw_window_frame
     draw_board
+    draw_ghost
     draw_piece
+    draw_next
     draw_info
     @gfx.present
   end
 
   def draw_board
-    # Draw border
-    bx = board_x0 - 1
-    by = board_y0 - 1
-    bw = COLS * CELL + 2
-    bh = ROWS * CELL + 2
-    @gfx.draw_rect(bx, by, bw, bh, BORDER_COLOR)
-
-    # Draw cells
+    # Border and empty-cell background are part of @bg_block, so just paint
+    # the occupied cells here.
     ROWS.times do |r|
       COLS.times do |c|
-        draw_cell(c, r, @board[r][c])
+        val = @board[r][c]
+        next if val == 0
+        draw_cell(c, r, val)
       end
     end
   end
@@ -191,18 +297,31 @@ class TetrisApp < FmrbApp
     end
   end
 
+  def draw_4cells_at(px, py, rot, color)
+    cells = PIECES[@piece_type][rot]
+    @piece_block.draw(
+      x0: board_x0 + (px + cells[0][1]) * CELL,
+      y0: board_y0 + (py + cells[0][0]) * CELL,
+      x1: board_x0 + (px + cells[1][1]) * CELL,
+      y1: board_y0 + (py + cells[1][0]) * CELL,
+      x2: board_x0 + (px + cells[2][1]) * CELL,
+      y2: board_y0 + (py + cells[2][0]) * CELL,
+      x3: board_x0 + (px + cells[3][1]) * CELL,
+      y3: board_y0 + (py + cells[3][0]) * CELL,
+      color: color
+    )
+  end
+
   def draw_piece
     return if @game_over
-    color = PIECE_COLORS[@piece_type]
-    current_cells.each do |cell|
-      r = @piece_y + cell[0]
-      c = @piece_x + cell[1]
-      if r >= 0 && r < ROWS && c >= 0 && c < COLS
-        x = board_x0 + c * CELL
-        y = board_y0 + r * CELL
-        @gfx.fill_rect(x, y, CELL - 1, CELL - 1, color)
-      end
-    end
+    draw_4cells_at(@piece_x, @piece_y, @piece_rot, PIECE_COLORS[@piece_type])
+  end
+
+  def draw_ghost
+    return if @game_over
+    gy = calc_ghost_y(@piece_x, @piece_y, @piece_rot)
+    return if gy == @piece_y  # piece already at landing position
+    draw_4cells_at(@piece_x, gy, @piece_rot, GHOST_COLOR)
   end
 
   def erase_piece
@@ -215,20 +334,47 @@ class TetrisApp < FmrbApp
     end
   end
 
+  def erase_ghost
+    return if @game_over
+    gy = calc_ghost_y(@piece_x, @piece_y, @piece_rot)
+    return if gy == @piece_y
+    current_cells.each do |cell|
+      r = gy + cell[0]
+      c = @piece_x + cell[1]
+      if r >= 0 && r < ROWS && c >= 0 && c < COLS
+        draw_cell(c, r, @board[r][c])
+      end
+    end
+  end
+
+  def draw_next
+    return if @next_piece_type.nil?
+    cells = PIECES[@next_piece_type][0]
+    color = PIECE_COLORS[@next_piece_type]
+    @next_block.draw(
+      x0: next_box_x + cells[0][1] * CELL,
+      y0: next_box_y + cells[0][0] * CELL,
+      x1: next_box_x + cells[1][1] * CELL,
+      y1: next_box_y + cells[1][0] * CELL,
+      x2: next_box_x + cells[2][1] * CELL,
+      y2: next_box_y + cells[2][0] * CELL,
+      x3: next_box_x + cells[3][1] * CELL,
+      y3: next_box_y + cells[3][0] * CELL,
+      color: color
+    )
+  end
+
   def draw_info
-    ix = board_x0 + COLS * CELL + 6
-    iy = board_y0 + 2
+    ix = info_x
+    iy = info_y
+    # Clear value rows (panel background) before rewriting numbers.
+    @gfx.fill_rect(ix, iy + 8,  38, 8, PANEL_COLOR)
+    @gfx.fill_rect(ix, iy + 32, 38, 8, PANEL_COLOR)
+    @gfx.fill_rect(ix, iy + 56, 38, 8, PANEL_COLOR)
 
-    # Clear info area
-    @gfx.fill_rect(ix, iy, 50, 60, BG_COLOR)
-
-    @gfx.draw_text(ix, iy, "SCORE", TEXT_COLOR)
-    @gfx.draw_text(ix, iy + 10, @score.to_s, TEXT_COLOR)
-
-    @gfx.draw_text(ix, iy + 24, "LINES", TEXT_COLOR)
-    @gfx.draw_text(ix, iy + 34, @lines.to_s, TEXT_COLOR)
-
-    @gfx.draw_text(ix, iy + 48, "LV #{@level}", TEXT_COLOR)
+    @gfx.draw_text(ix, iy + 8,  @score.to_s, TEXT_COLOR, PANEL_COLOR)
+    @gfx.draw_text(ix, iy + 32, @lines.to_s, TEXT_COLOR, PANEL_COLOR)
+    @gfx.draw_text(ix, iy + 56, @level.to_s, TEXT_COLOR, PANEL_COLOR)
   end
 
   def draw_game_over
@@ -295,28 +441,33 @@ class TetrisApp < FmrbApp
 
   def try_move(dx, dy)
     return if @game_over
+    erase_ghost
     erase_piece
     if !collides?(@piece_x + dx, @piece_y + dy, @piece_rot)
       @piece_x += dx
       @piece_y += dy
     end
+    draw_ghost
     draw_piece
     @gfx.present
   end
 
   def try_rotate
     return if @game_over
+    erase_ghost
     erase_piece
     new_rot = (@piece_rot + 1) % 4
     if !collides?(@piece_x, @piece_y, new_rot)
       @piece_rot = new_rot
     end
+    draw_ghost
     draw_piece
     @gfx.present
   end
 
   def move_down
     return if @game_over
+    erase_ghost
     erase_piece
     if collides?(@piece_x, @piece_y + 1, @piece_rot)
       draw_piece
@@ -328,6 +479,7 @@ class TetrisApp < FmrbApp
       end
     else
       @piece_y += 1
+      draw_ghost
       draw_piece
       @gfx.present
     end
@@ -335,6 +487,7 @@ class TetrisApp < FmrbApp
 
   def hard_drop
     return if @game_over
+    erase_ghost
     erase_piece
     while !collides?(@piece_x, @piece_y + 1, @piece_rot)
       @piece_y += 1
@@ -367,6 +520,12 @@ class TetrisApp < FmrbApp
   end
 
   def on_destroy
+    @bg_block&.destroy
+    @piece_block&.destroy
+    @next_block&.destroy
+    @bg_block = nil
+    @piece_block = nil
+    @next_block = nil
     Log.info("Tetris destroyed")
   end
 end
