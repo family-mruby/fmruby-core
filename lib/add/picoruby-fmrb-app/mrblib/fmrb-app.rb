@@ -5,6 +5,8 @@ class FmrbApp
   TITLE_BAR_H = 11
   CORNER_R = 4
   TRANSPARENT_COLOR = 0x01
+  SCROLLBAR_W = 10
+  SCROLLBAR_BTN_H = 10
 
   # Debug toggle: set false to bypass GfxBlock for the window frame and fall
   # back to per-primitive draws (used for isolating ESP32 mruby-task issues).
@@ -90,13 +92,13 @@ class FmrbApp
       # overwrite the bottom portion so the bottom edge is straight.
       r.fill_round_rect 0, 0, w, TITLE_BAR_H, CORNER_R, 0xC5
       r.fill_rect       0, CORNER_R, w, TITLE_BAR_H - CORNER_R, 0xC5
-      # Menu button + title text
-      r.fill_rect       2, 2, 8, 8, 0x60
+      # Menu button (hamburger: 3 horizontal lines) + title text
+      r.fill_rect       2, 3, 8, 1, 0xFB
+      r.fill_rect       2, 5, 8, 1, 0xFB
+      r.fill_rect       2, 7, 8, 1, 0xFB
       r.draw_text       12, 2, title, FmrbGfx::WHITE
-      # Close button (red square with white X)
-      r.fill_rect       w - 10, 2, 8, 8, 0xE0
-      r.draw_line       w - 8, 4, w - 5, 7, FmrbGfx::WHITE
-      r.draw_line       w - 5, 4, w - 8, 7, FmrbGfx::WHITE
+      # Close button (red circle with white X)
+      r.fill_circle     w - 6, 5, 3, 0xFF
       # Rounded window border. Outer edge rows/columns stay transparent because
       # app content never fills them (user_area excludes x=0, x=w-1, y=h-1).
       r.draw_round_rect 0, 0, w, h, CORNER_R, 0x60
@@ -108,21 +110,47 @@ class FmrbApp
   def _draw_window_frame_direct
     @gfx.fill_round_rect(0, 0, @window_width, TITLE_BAR_H, CORNER_R, 0xC5)
     @gfx.fill_rect(0, CORNER_R, @window_width, TITLE_BAR_H - CORNER_R, 0xC5)
-    @gfx.fill_rect(2, 2, 8, 8, 0x60)
+    @gfx.fill_rect(2, 3, 8, 1, 0xFB)
+    @gfx.fill_rect(2, 5, 8, 1, 0xFB)
+    @gfx.fill_rect(2, 7, 8, 1, 0xFB)
     @gfx.draw_text(12, 2, @name, FmrbGfx::WHITE)
-    close_btn_x = @window_width - 10
-    close_btn_y = 2
-    @gfx.fill_rect(close_btn_x, close_btn_y, 8, 8, 0xE0)
-    @gfx.draw_line(close_btn_x + 2, close_btn_y + 2, close_btn_x + 5, close_btn_y + 5, FmrbGfx::WHITE)
-    @gfx.draw_line(close_btn_x + 5, close_btn_y + 2, close_btn_x + 2, close_btn_y + 5, FmrbGfx::WHITE)
+    @gfx.fill_circle(@window_width - 6, 5, 3, 0xFF)
     @gfx.draw_round_rect(0, 0, @window_width, @window_height, CORNER_R, 0x60)
   end
 
-  public
+  # Build a scrollbar GfxBlock for a fixed geometry. Static parts (separator,
+  # up/down buttons, arrows) are baked into bytecode; only the thumb rectangle
+  # is driven by kwargs (thumb_y, thumb_h) and updated per draw.
+  def _build_scrollbar_block(x, y, w, h)
+    bar_x = x + w - SCROLLBAR_W
+    btn_h = SCROLLBAR_BTN_H
+    border = FmrbConst::THEME_BORDER
+    bg = FmrbConst::THEME_WINDOW_BG
+    cx = bar_x + SCROLLBAR_W / 2
+    dy = y + h - btn_h
 
-  # Scroll bar constants and helpers
-  SCROLLBAR_W = 10
-  SCROLLBAR_BTN_H = 10
+    GfxBlock.new(@gfx, thumb_y: y + btn_h, thumb_h: 6) do |r, thumb_y:, thumb_h:|
+      # Separator column between content and scrollbar
+      r.draw_line(bar_x - 1, y, bar_x - 1, y + h - 1, border)
+      r.draw_line(bar_x    , y, bar_x    , y + h - 1, bg)
+      # Up button + arrow
+      r.fill_rect(bar_x, y, SCROLLBAR_W, btn_h, bg)
+      r.draw_rect(bar_x, y, SCROLLBAR_W, btn_h, border)
+      r.draw_line(cx, y + 2, cx - 3, y + 7, border)
+      r.draw_line(cx, y + 2, cx + 3, y + 7, border)
+      r.draw_line(cx - 3, y + 7, cx + 3, y + 7, border)
+      # Down button + arrow
+      r.fill_rect(bar_x, dy, SCROLLBAR_W, btn_h, bg)
+      r.draw_rect(bar_x, dy, SCROLLBAR_W, btn_h, border)
+      r.draw_line(cx, dy + 7, cx - 3, dy + 2, border)
+      r.draw_line(cx, dy + 7, cx + 3, dy + 2, border)
+      r.draw_line(cx - 3, dy + 2, cx + 3, dy + 2, border)
+      # Thumb (dynamic)
+      r.fill_rect(bar_x + 1, thumb_y, SCROLLBAR_W - 2, thumb_h, border)
+    end
+  end
+
+  public
 
   # Draw a vertical scroll bar with up/down arrow buttons
   # scroll: current scroll position (0-based)
@@ -131,42 +159,19 @@ class FmrbApp
   # x, y, w, h: scroll area (defaults to user area)
   def draw_scrollbar(scroll, total, visible, x = @user_area_x0, y = @user_area_y0, w = @user_area_width, h = @user_area_height)
     return if total <= visible
-    bar_x = x + w - SCROLLBAR_W
     btn_h = SCROLLBAR_BTN_H
-    border = FmrbConst::THEME_BORDER
-    bg = FmrbConst::THEME_WINDOW_BG
-
-    # Separator line between content and scrollbar
-    @gfx.draw_line(bar_x - 1, y, bar_x - 1, y + h - 1, border)
-    @gfx.draw_line(bar_x    , y, bar_x    , y + h - 1, bg)
-
-    # Up button
-    @gfx.fill_rect(bar_x, y, SCROLLBAR_W, btn_h, bg)
-    @gfx.draw_rect(bar_x, y, SCROLLBAR_W, btn_h, border)
-    # Up arrow triangle
-    cx = bar_x + SCROLLBAR_W / 2
-    @gfx.draw_line(cx, y + 2, cx - 3, y + 7, border)
-    @gfx.draw_line(cx, y + 2, cx + 3, y + 7, border)
-    @gfx.draw_line(cx - 3, y + 7, cx + 3, y + 7, border)
-
-    # Down button
-    dy = y + h - btn_h
-    @gfx.fill_rect(bar_x, dy, SCROLLBAR_W, btn_h, bg)
-    @gfx.draw_rect(bar_x, dy, SCROLLBAR_W, btn_h, border)
-    # Down arrow triangle
-    @gfx.draw_line(cx, dy + 7, cx - 3, dy + 2, border)
-    @gfx.draw_line(cx, dy + 7, cx + 3, dy + 2, border)
-    @gfx.draw_line(cx - 3, dy + 2, cx + 3, dy + 2, border)
-
-    # Thumb in track area
     track_y = y + btn_h
     track_h = h - btn_h * 2
-    if track_h > 4
-      thumb_h = [track_h * visible / total, 6].max
-      max_scroll = total - visible
-      thumb_y = track_y + (max_scroll > 0 ? (track_h - thumb_h) * scroll / max_scroll : 0)
-      @gfx.fill_rect(bar_x + 1, thumb_y, SCROLLBAR_W - 2, thumb_h, border)
-    end
+    return if track_h <= 4
+
+    thumb_h = [track_h * visible / total, 6].max
+    max_scroll = total - visible
+    thumb_y = track_y + (max_scroll > 0 ? (track_h - thumb_h) * scroll / max_scroll : 0)
+
+    @scrollbar_blocks ||= {}
+    key = [x, y, w, h]
+    block = (@scrollbar_blocks[key] ||= _build_scrollbar_block(x, y, w, h))
+    block.draw(thumb_y: thumb_y, thumb_h: thumb_h)
   end
 
   # Hit test for scroll bar click
@@ -200,7 +205,7 @@ class FmrbApp
     # Called by user defined cycle
     # Update your app logic here
     # Return: sleep cycle(msec)
-    33 
+    330
   end
 
   def on_destroy
@@ -337,6 +342,10 @@ class FmrbApp
     if @frame_block
       @frame_block.destroy
       @frame_block = nil
+    end
+    if @scrollbar_blocks
+      @scrollbar_blocks.each_value { |b| b.destroy }
+      @scrollbar_blocks = nil
     end
     if @gfx
       @gfx.destroy  # Cleanup graphics resources
