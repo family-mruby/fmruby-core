@@ -78,7 +78,7 @@ typedef struct {
     bool initialized;
 } transport_context_t;
 
-#define TRANSPORT_STATS_INTERVAL_MS  3000
+#define TRANSPORT_STATS_INTERVAL_MS  5000
 
 static transport_context_t g_tranport_context;
 

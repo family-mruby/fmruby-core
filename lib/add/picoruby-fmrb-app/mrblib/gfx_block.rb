@@ -220,7 +220,10 @@ class GfxBlock
       changed << [i, new_regs[i]] if new_regs[i] != @prev_regs[i]
       i += 1
     end
-    return if changed.empty?
+    # Always issue EXEC_PROG so the WROVER re-runs the program and restores
+    # any pixels the app may have overwritten (e.g. by @gfx.clear). The
+    # payload still includes only changed registers, so the extra cost vs a
+    # true no-op send is just the EXEC_PROG header (~4 bytes).
     exec_updates(changed)
     @prev_regs = new_regs
   end
