@@ -113,8 +113,10 @@ class SystemDesktopApp < FmrbApp
     @launcher_x = 8
     @launcher_y = MENU_BAR_HEIGHT + 8
 
-    # Build app list
+    # Build app list and pre-create launcher icon sprites so the first
+    # open_launcher is cheap (all WROVER-side sprite uploads happen here).
     scan_apps
+    ensure_icon_sprites
 
     # Center file selector
     @fsel_x = (@window_width - FSEL_W) / 2
@@ -532,6 +534,7 @@ class SystemDesktopApp < FmrbApp
   end
 
   def on_destroy
+    destroy_icon_sprites
     Log.info("Destroyed")
   end
 end

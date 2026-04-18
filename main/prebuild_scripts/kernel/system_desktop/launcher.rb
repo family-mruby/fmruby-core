@@ -37,6 +37,81 @@ module LauncherMixin
     "bas" => "B",
   }
 
+  # ---- Icon sprite lifecycle ----
+
+  # Build SpriteImage + SpriteInstance for every app with an icon file.
+  # Idempotent: instances already created are skipped. SpriteImages are shared
+  # across apps that reference the same icon file.
+  def ensure_icon_sprites
+    @icon_sprite_images    ||= {}
+    @icon_sprite_instances ||= []
+    @icon_sprite_metrics   ||= []
+
+    @launcher_apps.each_with_index do |app, idx|
+      next if @icon_sprite_instances[idx]
+      icon_file = app[:icon_file]
+      next unless icon_file
+      icon_data = load_icon(icon_file)
+      next unless icon_data
+
+      rows = icon_data[:rows]
+      ih = rows.size
+      iw = rows[0] ? rows[0].length : 0
+      next if iw == 0 || ih == 0
+
+      scale = [(LAUNCHER_ICON_W - 4) / iw, (LAUNCHER_ICON_H - 22) / ih].min
+      scale = 1 if scale < 1
+      spr_w = iw * scale
+      spr_h = ih * scale
+
+      img = @icon_sprite_images[icon_file]
+      unless img
+        color = icon_data[:color]
+        img = SpriteImage.new(@gfx, width: spr_w, height: spr_h,
+                              transparent_color: 0, use_transparent: true)
+        img.draw do |g|
+          g.fill_rect(0, 0, spr_w, spr_h, 0)
+          rows.each_with_index do |row, iy|
+            row.length.times do |ix|
+              next unless row[ix] == '1'
+              if scale > 1
+                g.fill_rect(ix * scale, iy * scale, scale, scale, color)
+              else
+                g.set_pixel(ix, iy, color)
+              end
+            end
+          end
+        end
+        @icon_sprite_images[icon_file] = img
+      end
+
+      inst = SpriteInstance.new(@gfx, img, x: 0, y: 0, z: 1)
+      inst.visible = false
+      @icon_sprite_instances[idx] = inst
+      @icon_sprite_metrics[idx] = { bmp_w: spr_w, bmp_h: spr_h }
+    end
+  end
+
+  # Hide every icon sprite. Called from close_launcher to keep the cache alive
+  # but invisible.
+  def hide_all_icon_sprites
+    return unless @icon_sprite_instances
+    @icon_sprite_instances.each { |inst| inst.visible = false if inst }
+  end
+
+  # Release every sprite/image the launcher created. Called from on_destroy.
+  def destroy_icon_sprites
+    if @icon_sprite_instances
+      @icon_sprite_instances.each { |inst| inst.destroy if inst }
+    end
+    if @icon_sprite_images
+      @icon_sprite_images.each_value { |img| img.destroy }
+    end
+    @icon_sprite_instances = []
+    @icon_sprite_images = {}
+    @icon_sprite_metrics = []
+  end
+
   # ---- Icon loading ----
 
   def load_icon(icon_file)
@@ -73,24 +148,6 @@ module LauncherMixin
     icon_data = { rows: rows, color: color }
     @icon_cache[icon_file] = icon_data
     icon_data
-  end
-
-  def draw_icon_bitmap(x, y, icon_data, scale, bg_color)
-    return unless icon_data
-    rows = icon_data[:rows]
-    color = icon_data[:color]
-
-    rows.each_with_index do |row, iy|
-      row.length.times do |ix|
-        if row[ix] == '1'
-          if scale > 1
-            @gfx.fill_rect(x + ix * scale, y + iy * scale, scale, scale, color)
-          else
-            @gfx.set_pixel(x + ix, y + iy, color)
-          end
-        end
-      end
-    end
   end
 
   # ---- App scanning ----
@@ -226,22 +283,49 @@ module LauncherMixin
   # ---- Launcher drawing ----
 
   def draw_launcher
+    draw_launcher_frame
+    draw_launcher_cells
+  end
+
+  # Repaint launcher only (skip menu bar / clock / taskbar). Used on scroll so
+  # we do not send redraw commands for UI that has not changed.
+  def redraw_launcher_only
+    draw_launcher_frame
+    draw_launcher_cells
+    @gfx.present
+  end
+
+  # Window frame, title bar, scrollbar. Also paints the full launcher rect with
+  # LAUNCHER_BG which overwrites the previous frame's cell content.
+  def draw_launcher_frame
     x = @launcher_x
     y = @launcher_y
-
-    # Window frame
     @gfx.fill_rect(x, y, LAUNCHER_W, LAUNCHER_H, LAUNCHER_BG)
     @gfx.draw_rect(x, y, LAUNCHER_W, LAUNCHER_H, FmrbConst::THEME_BORDER)
-
-    # Title bar
     @gfx.fill_rect(x + 1, y + 1, LAUNCHER_W - 2, LAUNCHER_TITLE_H - 1, LAUNCHER_TITLE_BG)
     @gfx.draw_text(x + 4, y + 3, "Launcher", FmrbGfx::WHITE, LAUNCHER_TITLE_BG)
+    bar_y = y + LAUNCHER_TITLE_H
+    bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
+    draw_scrollbar(@launcher_scroll, launcher_total_rows, launcher_visible_rows,
+                   x, bar_y, LAUNCHER_W, bar_h)
+  end
 
-    # Icon grid (only visible rows)
-    total_rows = launcher_total_rows
+  # Icon cell backgrounds, labels, and sprite placement/visibility.
+  def draw_launcher_cells
+    x = @launcher_x
+    y = @launcher_y
     vis_rows = launcher_visible_rows
     content_y = y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
     start_idx = @launcher_scroll * LAUNCHER_ICON_COLS
+    vis_end = start_idx + vis_rows * LAUNCHER_ICON_COLS
+
+    # Hide sprites that are not in the visible range
+    if @icon_sprite_instances
+      @icon_sprite_instances.each_with_index do |inst, idx|
+        next unless inst
+        inst.visible = false if idx < start_idx || idx >= vis_end
+      end
+    end
 
     vis_rows.times do |vrow|
       LAUNCHER_ICON_COLS.times do |col|
@@ -252,27 +336,26 @@ module LauncherMixin
         icon_x = x + LAUNCHER_ICON_PAD_X + col * (LAUNCHER_ICON_W + LAUNCHER_ICON_PAD_X)
         icon_y = content_y + vrow * (LAUNCHER_ICON_H + LAUNCHER_ICON_PAD_Y)
 
-        # Skip if below window
-        next if icon_y + LAUNCHER_ICON_H > y + LAUNCHER_H
+        if icon_y + LAUNCHER_ICON_H > y + LAUNCHER_H
+          inst = @icon_sprite_instances ? @icon_sprite_instances[i] : nil
+          inst.visible = false if inst
+          next
+        end
 
-        # Icon background (always normal bg; selection overlay applied later)
-        @gfx.fill_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 18, LAUNCHER_ICON_BG)
+        bg = (i == @launcher_selected) ? LAUNCHER_ICON_SEL : LAUNCHER_ICON_BG
+        @gfx.fill_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 18, bg)
 
-        # Draw icon bitmap or fallback character
-        icon_data = app[:icon_file] ? load_icon(app[:icon_file]) : nil
-        if icon_data
-          icon_rows = icon_data[:rows]
-          icon_h = icon_rows.size
-          icon_w = icon_rows[0] ? icon_rows[0].length : 0
-          scale = [(LAUNCHER_ICON_W - 4) / icon_w, (LAUNCHER_ICON_H - 22) / icon_h].min
-          scale = 1 if scale < 1
-          bmp_x = icon_x + (LAUNCHER_ICON_W - icon_w * scale) / 2
-          bmp_y = icon_y + (LAUNCHER_ICON_H - 18 - icon_h * scale) / 2
-          draw_icon_bitmap(bmp_x, bmp_y, icon_data, scale, LAUNCHER_ICON_BG)
+        inst = @icon_sprite_instances ? @icon_sprite_instances[i] : nil
+        metrics = @icon_sprite_metrics ? @icon_sprite_metrics[i] : nil
+        if inst && metrics
+          bmp_x = icon_x + (LAUNCHER_ICON_W - metrics[:bmp_w]) / 2
+          bmp_y = icon_y + (LAUNCHER_ICON_H - 18 - metrics[:bmp_h]) / 2
+          inst.move(bmp_x, bmp_y)
+          inst.visible = true
         else
           char_x = icon_x + (LAUNCHER_ICON_W - 6) / 2
           char_y = icon_y + (LAUNCHER_ICON_H - 18 - 8) / 2
-          @gfx.draw_text(char_x, char_y, app[:icon_char] || "?", 0x00, LAUNCHER_ICON_BG)
+          @gfx.draw_text(char_x, char_y, app[:icon_char] || "?", 0x00, bg)
         end
 
         # Label below icon (2-line with truncation)
@@ -294,17 +377,11 @@ module LauncherMixin
         end
       end
     end
-
-    # Scroll bar
-    bar_y = y + LAUNCHER_TITLE_H
-    bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
-    draw_scrollbar(@launcher_scroll, total_rows, vis_rows, x, bar_y, LAUNCHER_W, bar_h)
-
-    # Selection highlight
-    redraw_launcher_icon(@launcher_selected, LAUNCHER_ICON_SEL) if @launcher_selected >= 0
   end
 
-  # Redraw a single icon with specified background color
+  # Redraw a single icon cell background. The sprite on top of this cell stays
+  # in place and is composited by WROVER, so we only repaint the bg rect. For
+  # fallback-character apps (no sprite) we redraw the character.
   def redraw_launcher_icon(idx, bg)
     return if idx < 0 || idx >= @launcher_apps.size
     start_idx = @launcher_scroll * LAUNCHER_ICON_COLS
@@ -317,22 +394,11 @@ module LauncherMixin
     icon_x = @launcher_x + LAUNCHER_ICON_PAD_X + col * (LAUNCHER_ICON_W + LAUNCHER_ICON_PAD_X)
     icon_y = content_y + vrow * (LAUNCHER_ICON_H + LAUNCHER_ICON_PAD_Y)
 
-    # Background
     @gfx.fill_rect(icon_x, icon_y, LAUNCHER_ICON_W, LAUNCHER_ICON_H - 18, bg)
 
-    # Icon bitmap or fallback
-    app = @launcher_apps[idx]
-    icon_data = app[:icon_file] ? load_icon(app[:icon_file]) : nil
-    if icon_data
-      icon_rows = icon_data[:rows]
-      ih = icon_rows.size
-      iw = icon_rows[0] ? icon_rows[0].length : 0
-      scale = [(LAUNCHER_ICON_W - 4) / iw, (LAUNCHER_ICON_H - 22) / ih].min
-      scale = 1 if scale < 1
-      bmp_x = icon_x + (LAUNCHER_ICON_W - iw * scale) / 2
-      bmp_y = icon_y + (LAUNCHER_ICON_H - 18 - ih * scale) / 2
-      draw_icon_bitmap(bmp_x, bmp_y, icon_data, scale, bg)
-    else
+    inst = @icon_sprite_instances ? @icon_sprite_instances[idx] : nil
+    unless inst
+      app = @launcher_apps[idx]
       char_x = icon_x + (LAUNCHER_ICON_W - 6) / 2
       char_y = icon_y + (LAUNCHER_ICON_H - 18 - 8) / 2
       @gfx.draw_text(char_x, char_y, app[:icon_char] || "?", 0x00, bg)
@@ -357,6 +423,7 @@ module LauncherMixin
     return unless @launcher_open
     @launcher_open = false
     @launcher_selected = -1
+    hide_all_icon_sprites
     notify_overlay_state(false, 0, 0, 0, 0)
     draw_foreground
   end
@@ -448,7 +515,7 @@ module LauncherMixin
   def launcher_scroll_up
     if @launcher_scroll > 0
       @launcher_scroll -= 1
-      draw_foreground
+      redraw_launcher_only
     end
   end
 
@@ -456,7 +523,7 @@ module LauncherMixin
     max_scroll = launcher_total_rows - launcher_visible_rows
     if max_scroll > 0 && @launcher_scroll < max_scroll
       @launcher_scroll += 1
-      draw_foreground
+      redraw_launcher_only
     end
   end
 end
