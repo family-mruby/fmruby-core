@@ -271,8 +271,9 @@ hal_idle_cpu(mrb_state *mrb)
 void
 mrb_hal_task_init(mrb_state *mrb)
 {
-  /* Create tick task (idempotent, only creates once) */
-  machine_hal_init(mrb);
+  /* DEBUG: Tick task disabled to isolate VM corruption issue.
+   * See doc/known_issues.md for the crash we are hunting. */
+  (void)mrb;
 }
 
 void
