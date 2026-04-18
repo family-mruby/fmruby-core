@@ -84,6 +84,14 @@ static uint32_t g_gfx_present_count = 0;     // Number of PRESENT calls since la
 static uint64_t g_gfx_stats_last_us = 0;     // Last stats log time
 #define GFX_STATS_INTERVAL_US (5000000ULL)    // Log stats every 5 seconds
 
+// Cumulative GFX counters exposed to Ruby apps (e.g. MonitorApp). Written only
+// from the Host Task (gfx_stats_update), read from arbitrary tasks. Aligned
+// 32-bit reads/writes are atomic on ESP32 / Linux, so volatile is sufficient.
+// Callers compute rate = (now - prev) / dt; they may wrap modulo 2^32 but
+// deltas over reasonable sample intervals stay well within range.
+static volatile uint32_t g_gfx_cum_cmds = 0;
+static volatile uint32_t g_gfx_cum_presents = 0;
+
 // Forward declarations (implemented in picoruby-fmrb-app)
 // extern int fmrb_app_dispatch_update(uint32_t delta_time_ms);
 // extern int fmrb_app_dispatch_key_down(int key_code);
@@ -518,6 +526,9 @@ static void gfx_sync_response_cb(uint8_t status, const uint8_t *payload,
 static void gfx_stats_update(int cmd_count, int present_count) {
     g_gfx_total_cmds += cmd_count;
     g_gfx_present_count += present_count;
+    // Monotonic counters queried by apps like MonitorApp
+    g_gfx_cum_cmds += (uint32_t)cmd_count;
+    g_gfx_cum_presents += (uint32_t)present_count;
 
     fmrb_time_t now_us = fmrb_hal_time_get_us();
     if (g_gfx_stats_last_us == 0) {
@@ -1475,4 +1486,14 @@ int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value)
 fmrb_semaphore_t fmrb_host_get_gfx_queue_semaphore(void)
 {
     return g_host_gfx_queue_semaphore;
+}
+
+void fmrb_host_get_gfx_counters(uint32_t *out_cmds, uint32_t *out_presents)
+{
+    // Single volatile read each; on supported platforms aligned 32-bit access
+    // is atomic, so no lock is required for snapshot consistency at the byte
+    // level. The pair may differ by at most one Host Task batch between reads,
+    // which is acceptable for monitoring purposes.
+    if (out_cmds)     *out_cmds     = g_gfx_cum_cmds;
+    if (out_presents) *out_presents = g_gfx_cum_presents;
 }

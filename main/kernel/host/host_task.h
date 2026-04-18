@@ -85,6 +85,17 @@ int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value);
  */
 fmrb_semaphore_t fmrb_host_get_gfx_queue_semaphore(void);
 
+/**
+ * @brief Read cumulative GFX counters (for runtime monitoring).
+ * @param out_cmds Cumulative GFX command count since boot (may be NULL)
+ * @param out_presents Cumulative GFX present() count since boot (may be NULL)
+ *
+ * Counters wrap modulo 2^32. Callers should compute rate from deltas between
+ * successive samples; the delta computation wraps correctly as long as the
+ * sampling interval is shorter than the wrap period.
+ */
+void fmrb_host_get_gfx_counters(uint32_t *out_cmds, uint32_t *out_presents);
+
 #ifdef __cplusplus
 }
 #endif

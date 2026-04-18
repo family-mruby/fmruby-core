@@ -23,6 +23,7 @@
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
 #include "app_debug.h"
+#include "host_task.h"
 
 #include "hal.h"
 #include "task.h"
@@ -874,6 +875,23 @@ static mrb_value mrb_fmrb_app_s_wallclock(mrb_state *mrb, mrb_value self)
     return hash;
 }
 
+// FmrbApp.gfx_stats() -> Hash { cmds: uint32, presents: uint32 }
+// Returns cumulative counters from the Host Task. Counters wrap modulo 2^32;
+// callers should compute rate from deltas between successive samples.
+static mrb_value mrb_fmrb_app_s_gfx_stats(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    uint32_t cmds = 0, presents = 0;
+    fmrb_host_get_gfx_counters(&cmds, &presents);
+
+    mrb_value hash = mrb_hash_new_capa(mrb, 2);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "cmds")),
+                 mrb_fixnum_value((mrb_int)cmds));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "presents")),
+                 mrb_fixnum_value((mrb_int)presents));
+    return hash;
+}
+
 // FmrbApp.sys_pool_info() -> Hash
 // Get system pool (fmrb_sys_malloc) information (TLSF allocator)
 static mrb_value mrb_fmrb_app_s_sys_pool_info(mrb_state *mrb, mrb_value self)
@@ -989,6 +1007,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "wallclock", mrb_fmrb_app_s_wallclock, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 
