@@ -144,9 +144,13 @@ static void init_gpio(void)
     // RTS/CTS pins (GPIO12, GPIO10) are configured by UART driver with HW flow control
     FMRB_LOGI(TAG, "UART data pins set to floating");
 
-    // Status LED (GPIO configured, task started later)
+    // Status LED (green, GPIO configured, task started later)
     fmrb_hal_gpio_config(FMRB_PIN_STATUS_LED, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);
     fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
+
+    // Error LED (red, shared with MTCK)
+    fmrb_hal_gpio_config(FMRB_PIN_ERROR_LED, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);
+    fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED, 0);
 
     // WROVER-RESET: open-drain HIGH (high-impedance), external pull-up keeps WROVER running
     fmrb_hal_gpio_config(FMRB_PIN_WROVER_RESET, FMRB_GPIO_MODE_OUTPUT_OD, FMRB_GPIO_PULL_NONE);

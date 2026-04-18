@@ -49,6 +49,7 @@
 #define FMRB_PIN_USB_POWER  GPIO_NUM_1
 
 #define FMRB_PIN_STATUS_LED  GPIO_NUM_4
+#define FMRB_PIN_ERROR_LED   GPIO_NUM_39  // Red LED, shared with MTCK
 
 #define FMRB_PIN_WROVER_RESET  GPIO_NUM_5
 
@@ -83,6 +84,7 @@
 
 // AtomS3 built-in LED (optional, IR LED on some models)
 #define FMRB_PIN_STATUS_LED     GPIO_NUM_4
+#define FMRB_PIN_ERROR_LED      GPIO_NUM_NC
 
 // I2C (Grove port on AtomS3)
 #define FMRB_PIN_I2C1_SDA      GPIO_NUM_2
@@ -120,7 +122,8 @@
 #define FMRB_PIN_SD_DETECT 0
 
 #define FMRB_PIN_WROVER_RESET  0
-#define FMRB_PIN_STATUS_LED    0 
+#define FMRB_PIN_STATUS_LED    0
+#define FMRB_PIN_ERROR_LED     0
 
 #define FMRB_PIN_FSPROXY_TX    0
 #define FMRB_PIN_FSPROXY_RX    0

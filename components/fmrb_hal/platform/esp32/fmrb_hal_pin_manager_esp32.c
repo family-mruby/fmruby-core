@@ -53,6 +53,7 @@ void fmrb_pin_manager_init(void)
     // System GPIOs
     register_system_pin(FMRB_PIN_USB_POWER);
     register_system_pin(FMRB_PIN_STATUS_LED);
+    register_system_pin(FMRB_PIN_ERROR_LED);
     register_system_pin(FMRB_PIN_WROVER_RESET);
 
     // Buttons

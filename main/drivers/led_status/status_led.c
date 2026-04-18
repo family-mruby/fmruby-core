@@ -6,38 +6,35 @@
 #include "fmrb_log.h"
 
 // Stack size, priority, and flags are defined in fmrb_task_config.h
-#define BLINK_INTERVAL_MS   250
+#define HEARTBEAT_TICK_MS       100
+#define ERROR_LED_SELFTEST_MS   1000
+#define TASK_DUMP_INTERVAL_MS   10000
 
 static const char *TAG = "status_led";
 
 static volatile int s_error_flag = 0;
 
-#define TASK_DUMP_INTERVAL_MS 10000
-
 static void status_led_task(void *pvParameters)
 {
-    int led_state = 1;
     uint32_t dump_counter = 0;
-    fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
+
+    // Red LED self-test: ON for 1s then OFF
+    fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED, 1);
+    fmrb_task_delay_ms(ERROR_LED_SELFTEST_MS);
+    fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED, 0);
 
     while (1) {
-        if (s_error_flag) {
-            led_state = !led_state;
-            fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, led_state);
-            fmrb_task_delay_ms(BLINK_INTERVAL_MS);
-            dump_counter += BLINK_INTERVAL_MS;
-        } else {
-            fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
-            for (int i = 0; i < 19 && !s_error_flag; i++) {
-                fmrb_task_delay_ms(100);
-                dump_counter += 100;
-            }
-            if (!s_error_flag) {
-                fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 0);
-                fmrb_task_delay_ms(100);
-                dump_counter += 100;
-            }
+        // Green LED heartbeat: 1.9s ON, 0.1s OFF
+        fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
+        for (int i = 0; i < 19; i++) {
+            fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED, s_error_flag ? 1 : 0);
+            fmrb_task_delay_ms(HEARTBEAT_TICK_MS);
+            dump_counter += HEARTBEAT_TICK_MS;
         }
+        fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 0);
+        fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED, s_error_flag ? 1 : 0);
+        fmrb_task_delay_ms(HEARTBEAT_TICK_MS);
+        dump_counter += HEARTBEAT_TICK_MS;
 
         if (dump_counter >= TASK_DUMP_INTERVAL_MS) {
             fmrb_task_dump_status();
