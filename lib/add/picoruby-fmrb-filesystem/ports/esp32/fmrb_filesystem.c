@@ -13,17 +13,14 @@
 #include "fmrb_hal_file.h"
 #include "../../include/picoruby_fmrb_filesystem.h"
 
-// File object data structure (same as mrb_io_data_t in fmrb_io.c)
+// File shares IO's data struct layout, attached via mrb_data_init from
+// IO._new. File-specific methods access it through DATA_PTR using this local
+// alias for readability.
 typedef struct {
   fmrb_file_t handle;  // File handle from HAL
   int flags;           // Open flags
   int closed;          // Closed flag
 } mrb_file_data_t;
-
-// File data type (must match mrb_io_type name from fmrb_io.c for inheritance)
-static const struct mrb_data_type mrb_file_type = {
-  "IO", mrb_free,  // Use "IO" name for inheritance compatibility
-};
 
 /*
  * call-seq:
@@ -120,67 +117,6 @@ mrb_file_s_unlink(mrb_state *mrb, mrb_value self)
   }
 
   return mrb_int_value(mrb, 1);
-}
-
-// Helper: Convert mode string to HAL flags
-static uint32_t mode_to_flags(const char *mode)
-{
-  uint32_t flags = 0;
-
-  if (!mode || !*mode) {
-    return FMRB_O_RDONLY;  // Default to read-only
-  }
-
-  switch (mode[0]) {
-    case 'r':
-      flags = FMRB_O_RDONLY;
-      if (mode[1] == '+') flags = FMRB_O_RDWR;
-      break;
-    case 'w':
-      flags = FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC;
-      if (mode[1] == '+') flags = FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_TRUNC;
-      break;
-    case 'a':
-      flags = FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_APPEND;
-      if (mode[1] == '+') flags = FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_APPEND;
-      break;
-    default:
-      flags = FMRB_O_RDONLY;
-  }
-
-  return flags;
-}
-
-/*
- * call-seq:
- *   file._open(path, mode = "r") -> file
- *
- * Internal method to open a file with C data.
- * Called from Ruby's initialize method.
- */
-static mrb_value
-mrb_file__open(mrb_state *mrb, mrb_value self)
-{
-  char *path;
-  const char *mode = "r";
-  mrb_file_data_t *file;
-  fmrb_err_t err;
-
-  mrb_get_args(mrb, "z|z", &path, &mode);
-
-  file = (mrb_file_data_t *)mrb_malloc(mrb, sizeof(mrb_file_data_t));
-  file->flags = mode_to_flags(mode);
-  file->closed = 0;
-
-  // Open file using HAL
-  err = fmrb_hal_file_open(path, file->flags, &file->handle);
-  if (err != FMRB_OK) {
-    mrb_free(mrb, file);
-    mrb_raisef(mrb, E_RUNTIME_ERROR, "failed to open file: %s", path);
-  }
-
-  mrb_data_init(self, file, &mrb_file_type);
-  return self;
 }
 
 /*
@@ -282,8 +218,9 @@ mrb_picoruby_fmrb_filesystem_init_impl(mrb_state *mrb)
   mrb_define_class_method(mrb, file_class, "unlink", mrb_file_s_unlink, MRB_ARGS_REQ(1));
 
   // Instance methods (File-specific methods only)
-  // write, close, closed? are inherited from IO
-  mrb_define_method(mrb, file_class, "_open", mrb_file__open, MRB_ARGS_ARG(1, 1));
+  // _new/write/close/closed?/_flush are inherited from IO; File.new (Ruby)
+  // opens via IO.sysopen and delegates to IO.new(fd, mode), so File instances
+  // share the IO data layout and do not need a separate _open.
   mrb_define_method(mrb, file_class, "read", mrb_file_read, MRB_ARGS_OPT(1));  // Override IO#read
 
   // Define File::Constants module

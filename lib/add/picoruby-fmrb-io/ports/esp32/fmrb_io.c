@@ -26,13 +26,69 @@ static const struct mrb_data_type mrb_io_type = {
   "IO", mrb_free,
 };
 
+// Convert fopen-style mode string to FMRB_O_* open flags.
+static uint32_t
+io_mode_to_flags(const char *mode)
+{
+  if (!mode || !*mode) return FMRB_O_RDONLY;
+
+  uint32_t flags;
+  switch (mode[0]) {
+    case 'r':
+      flags = FMRB_O_RDONLY;
+      if (mode[1] == '+') flags = FMRB_O_RDWR;
+      break;
+    case 'w':
+      flags = FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC;
+      if (mode[1] == '+') flags = FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_TRUNC;
+      break;
+    case 'a':
+      flags = FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_APPEND;
+      if (mode[1] == '+') flags = FMRB_O_RDWR | FMRB_O_CREAT | FMRB_O_APPEND;
+      break;
+    default:
+      flags = FMRB_O_RDONLY;
+  }
+  return flags;
+}
+
+/*
+ * call-seq:
+ *   IO.sysopen(path, mode = "r", perm = 0666) -> Integer
+ *
+ * Open the file at path and return its descriptor as an Integer.
+ * The descriptor is the fmrb_hal_file handle cast to uintptr_t and fits
+ * in mrb_int on supported targets. Intended to be paired with IO.new(fd).
+ * perm is accepted for API compatibility but ignored (no POSIX perms on
+ * LittleFS/FAT mounts).
+ */
+static mrb_value
+mrb_io_s_sysopen(mrb_state *mrb, mrb_value klass)
+{
+  char *path;
+  const char *mode = "r";
+  mrb_int perm = 0666;
+  (void)perm;
+
+  mrb_get_args(mrb, "z|zi", &path, &mode, &perm);
+
+  uint32_t flags = io_mode_to_flags(mode);
+  fmrb_file_t handle = NULL;
+  fmrb_err_t err = fmrb_hal_file_open(path, flags, &handle);
+  if (err != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "failed to open file: %s", path);
+  }
+  return mrb_int_value(mrb, (mrb_int)(uintptr_t)handle);
+}
+
 /*
  * call-seq:
  *   io._new(fd, mode = "r") -> io
  *
  * Internal method to initialize IO object with C data.
- * Called from Ruby's initialize method.
- * fd: 0 (stdin), 1 (stdout), 2 (stderr)
+ * fd meanings:
+ *   0 -> stdin sentinel, 1 -> stdout, 2 -> stderr
+ *   other -> fmrb_hal_file handle cast to uintptr_t (from IO.sysopen)
  */
 static mrb_value
 mrb_io__new(mrb_state *mrb, mrb_value self)
@@ -47,7 +103,6 @@ mrb_io__new(mrb_state *mrb, mrb_value self)
   io->flags = 0;
   io->closed = 0;
 
-  // Map fd to standard stream handle
   switch (fd) {
     case 0:
       io->handle = FMRB_STDIN_HANDLE;
@@ -62,9 +117,15 @@ mrb_io__new(mrb_state *mrb, mrb_value self)
       io->flags |= 1; // writable
       break;
     default:
-      mrb_free(mrb, io);
-      mrb_raisef(mrb, E_ARGUMENT_ERROR, "invalid file descriptor: %d", fd);
-      return mrb_nil_value();
+      if (fd <= 0) {
+        mrb_free(mrb, io);
+        mrb_raisef(mrb, E_ARGUMENT_ERROR, "invalid file descriptor: %d", fd);
+        return mrb_nil_value();
+      }
+      // Non-standard fd: interpret as fmrb_hal_file handle value.
+      io->handle = (fmrb_file_t)(uintptr_t)fd;
+      io->flags = io_mode_to_flags(mode);
+      break;
   }
 
   mrb_data_init(self, io, &mrb_io_type);
@@ -153,6 +214,30 @@ mrb_io_write(mrb_state *mrb, mrb_value self)
 
 /*
  * call-seq:
+ *   io._flush -> self
+ *
+ * Flush internal stdio buffer to the underlying storage.
+ * No-op for standard streams and closed handles.
+ */
+static mrb_value
+mrb_io_flush_internal(mrb_state *mrb, mrb_value self)
+{
+  mrb_io_data_t *io;
+
+  io = (mrb_io_data_t *)DATA_PTR(self);
+  if (io && !io->closed) {
+    fmrb_err_t err = fmrb_hal_file_sync(io->handle);
+    if (err != FMRB_OK && err != FMRB_ERR_INVALID_PARAM) {
+      // INVALID_PARAM happens for standard streams; silently ignore.
+      mrb_raise(mrb, E_RUNTIME_ERROR, "flush failed");
+    }
+  }
+
+  return self;
+}
+
+/*
+ * call-seq:
  *   io.close -> nil
  *
  * Closes io.
@@ -205,11 +290,13 @@ mrb_picoruby_fmrb_io_init_impl(mrb_state *mrb)
   // Note: IO.new and initialize are defined in Ruby (mrblib/io.rb)
   // They call _new to perform C-level initialization
   // Note: IO.open is also defined in Ruby (mrblib/io.rb)
+  mrb_define_class_method(mrb, io_class, "sysopen", mrb_io_s_sysopen, MRB_ARGS_ARG(1, 2));
   mrb_define_method(mrb, io_class, "_new", mrb_io__new, MRB_ARGS_ARG(1, 1));
   mrb_define_method(mrb, io_class, "read", mrb_io_read, MRB_ARGS_OPT(1));
   mrb_define_method(mrb, io_class, "write", mrb_io_write, MRB_ARGS_REQ(1));
   mrb_define_method(mrb, io_class, "close", mrb_io_close, MRB_ARGS_NONE());
   mrb_define_method(mrb, io_class, "closed?", mrb_io_closed_p, MRB_ARGS_NONE());
+  mrb_define_method(mrb, io_class, "_flush", mrb_io_flush_internal, MRB_ARGS_NONE());
 
   // Note: STDIN/STDOUT/STDERR constants and $stdin/$stdout/$stderr global variables
   // are now defined in Ruby code (picoruby-machine/mrblib/kernel.rb) using IO.open

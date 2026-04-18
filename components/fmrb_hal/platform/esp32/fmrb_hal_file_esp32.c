@@ -21,6 +21,7 @@
 #include <errno.h>
 #include "hw_proxy.h"
 #include "hw_proxy_internal.h"
+#include "fmrb_log.h"
 
 #define TAG "fmrb_hal_file"
 
@@ -45,6 +46,13 @@ typedef struct {
 // Static file and directory handle pools
 EXT_RAM_BSS_ATTR static fmrb_file_slot_t s_file_slots[MAX_OPEN_FILES];
 EXT_RAM_BSS_ATTR static fmrb_dir_slot_t s_dir_slots[MAX_OPEN_DIRS];
+
+// Internal-RAM bounce buffer for writes whose source resides in PSRAM. SPI
+// flash writes require the source to be in internal RAM; otherwise the write
+// silently fails. Sized to balance syscall count against IRAM footprint.
+// Access is serialized by s_file_mutex.
+#define FILE_WRITE_BOUNCE_SIZE 4096
+static uint8_t s_file_write_bounce[FILE_WRITE_BOUNCE_SIZE];
 
 // Global mutex for thread safety
 static SemaphoreHandle_t s_file_mutex = NULL;
@@ -374,6 +382,13 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
         return FMRB_ERR_FAILED;
     }
 
+    // Disable libc stdio buffering. The newlib FILE buffer can be allocated in
+    // PSRAM by the default heap, and SPI flash writes from a PSRAM source
+    // silently fail. With _IONBF every write goes straight to the VFS layer,
+    // so the source buffer we pass in (bounced to internal RAM in
+    // fmrb_hal_file_write) is what reaches the flash driver.
+    setvbuf(slot->fp, NULL, _IONBF, 0);
+
     slot->in_use = true;
     *out_handle = (fmrb_file_t)slot;
     UNLOCK();
@@ -489,7 +504,32 @@ fmrb_err_t fmrb_hal_file_write(fmrb_file_t handle, const void *buffer, size_t si
     }
 
     fmrb_file_slot_t *slot = (fmrb_file_slot_t *)handle;
-    size_t n = fwrite(buffer, 1, size, slot->fp);
+
+    // SPI flash writes require the source buffer to live in internal RAM.
+    // Callers may pass a PSRAM-resident buffer (Ruby strings, mempool data),
+    // and writing directly from PSRAM silently fails (no error, 0 bytes
+    // persisted). Bounce through the file-scope internal-RAM buffer in that
+    // case. Single-threaded by s_file_mutex, so no concurrency on the buffer.
+    uintptr_t addr = (uintptr_t)buffer;
+    bool needs_bounce = (size > 0 && addr >= 0x3C000000 && addr < 0x3E000000);
+
+    size_t n;
+    if (needs_bounce) {
+        const uint8_t *src_bytes = (const uint8_t *)buffer;
+        size_t total = 0;
+        while (total < size) {
+            size_t chunk = size - total;
+            if (chunk > FILE_WRITE_BOUNCE_SIZE) chunk = FILE_WRITE_BOUNCE_SIZE;
+            memcpy(s_file_write_bounce, src_bytes + total, chunk);
+            size_t wrote = fwrite(s_file_write_bounce, 1, chunk, slot->fp);
+            total += wrote;
+            if (wrote != chunk) break;
+        }
+        n = total;
+    } else {
+        n = fwrite(buffer, 1, size, slot->fp);
+    }
+
     if (bytes_written != NULL) {
         *bytes_written = n;
     }

@@ -7,12 +7,23 @@ class File < IO
   SEPARATOR = "/"
   ALT_SEPARATOR = nil  # Not Windows
 
+  attr_accessor :path
+
   # File::Constants module is defined in C (src/fmrb_filesystem.c)
   # and includes both FNM_* and file open mode constants
 
-  # Initialize File object
-  def initialize(path, mode = "r")
-    _open(path, mode)
+  # Accept either an integer fd or a path. For a path, sysopen first and then
+  # delegate to the inherited IO.new(fd, mode). Matches picoruby-posix-io /
+  # CRuby semantics so IO#read/#write/#close dispatch works unchanged.
+  def self.new(fd_or_path, mode = "r", perm = 0666)
+    if fd_or_path.is_a? Integer
+      super(fd_or_path, mode)
+    else
+      fd = IO.sysopen(fd_or_path, mode, perm)
+      instance = super(fd, mode)
+      instance.path = fd_or_path
+      instance
+    end
   end
 
   # Open a file

@@ -29,8 +29,9 @@ class IO
     nil
   end
 
-  # Flush output (no-op for now)
+  # Flush internal stdio buffer to the underlying storage.
   def flush
+    _flush
     self
   end
 end
