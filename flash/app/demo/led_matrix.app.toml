@@ -2,3 +2,5 @@ app_screen_name = "LED Matrix"
 default_window_mode = "window"
 default_window_width = 160
 default_window_height = 180
+default_window_pos_x = 10
+default_window_pos_y = 15

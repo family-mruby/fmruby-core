@@ -1,7 +1,0 @@
-app_handle_name = "sub_demo"
-app_screen_name = "SubDemo"
-default_window_mode = "window"
-default_window_width = 160
-default_window_height = 80
-default_window_pos_x = 200
-default_window_pos_y = 30

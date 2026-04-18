@@ -80,7 +80,7 @@ fmrb_basic_close(state);
 
 ## サンプルプログラム
 
-`flash/app/sample/basic.app.bas` に実行可能なサンプルプログラムがあります。
+`flash/app/tool/basic.app.bas` に実行可能なサンプルプログラムがあります。
 
 ## 命令の追加方法
 

@@ -154,10 +154,16 @@ module LauncherMixin
 
   def scan_apps
     @launcher_apps = BUILTIN_APPS.dup
+    builtin_count = BUILTIN_APPS.size
     # Try both ESP32 (LittleFS at /flash) and Linux (relative flash/) paths
     ["/flash/app", "flash/app"].each do |path|
       scan_app_dir(path)
     end
+    # Keep BUILTIN_APPS fixed at the front; sort the scanned apps by label
+    # so launcher order is stable regardless of filesystem enumeration order.
+    scanned = @launcher_apps[builtin_count..-1] || []
+    scanned.sort! { |a, b| a[:label] <=> b[:label] }
+    @launcher_apps = @launcher_apps[0, builtin_count] + scanned
     Log.info("Launcher: #{@launcher_apps.size} apps found")
   end
 
@@ -213,6 +219,7 @@ module LauncherMixin
   def parse_app_toml(toml_path, dir_path)
     label = nil
     icon_field = nil
+    launcher_visible = true
     begin
       file = File.open(strip_flash_prefix(toml_path), "r")
       content = file.read
@@ -225,6 +232,12 @@ module LauncherMixin
           if m[1]
             label = m[1].strip.gsub('"', '')
           end
+        elsif line.start_with?("launcher_visible")
+          m = line.split("=", 2)
+          if m[1]
+            v = m[1].strip.gsub('"', '').downcase
+            launcher_visible = !(v == "false" || v == "0")
+          end
         elsif line.start_with?("icon")
           m = line.split("=", 2)
           if m[1]
@@ -236,6 +249,8 @@ module LauncherMixin
       Log.warn("Cannot read #{toml_path}: #{e.message}")
       return nil
     end
+
+    return nil unless launcher_visible
 
     # Derive script filename from toml filename
     toml_name = toml_path.split("/").last

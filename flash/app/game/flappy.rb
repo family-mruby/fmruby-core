@@ -21,7 +21,7 @@ class SpriteTestApp < FmrbApp
     @ready = false
 
     # Transfer sprite BMP files to graphics-audio
-    src_dir = "/app/sample/sprites"
+    src_dir = "/usr/share/sprites"
     cache_dir = "/cache/app/sprite_test"
     files = ["bird_up.bmp", "bird_down.bmp", "pipe.bmp"]
     files.each_with_index do |name, i|
