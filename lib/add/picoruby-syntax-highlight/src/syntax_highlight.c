@@ -35,7 +35,7 @@
 #define HIGHLIGHT_VARIABLE  7
 #define HIGHLIGHT_METHOD    8
 
-#define HIGHLIGHT_MAX_SOURCE_SIZE 8192
+#define HIGHLIGHT_MAX_SOURCE_SIZE 32768
 
 typedef struct {
     uint8_t        *map;

@@ -42,6 +42,12 @@ class EditorApp < FmrbApp
   KEY_REPEAT_DELAY = 12  # ~400ms before repeat starts
   KEY_REPEAT_RATE = 3    # ~100ms between repeats
 
+  # Re-tokenize for syntax highlight after this many idle frames (~1s)
+  HL_DEBOUNCE_FRAMES = 30
+
+  # Auto-disable syntax highlight when loaded file exceeds this size
+  HL_AUTO_LIMIT_BYTES = 1024
+
   def initialize
     super()
     @lines = [""]       # Document lines
@@ -58,6 +64,8 @@ class EditorApp < FmrbApp
     @pending_file_op = nil  # :open or :save
     @highlight_map = nil
     @highlight_dirty = true
+    @hl_idle_frames = HL_DEBOUNCE_FRAMES  # Allow immediate tokenize on first draw
+    @hl_enabled = true
     @line_offsets = nil
     # Key repeat state
     @held_keycode = nil
@@ -105,14 +113,18 @@ class EditorApp < FmrbApp
     @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H, MENU_BG)
 
     x = @user_area_x0 + 2
-    # File
+    @menu_file_x = x
     draw_menu_item(x, y, "F", "ile")
     x += 6 * CHAR_W
-    # Edit
+    @menu_edit_x = x
     draw_menu_item(x, y, "E", "dit")
     x += 6 * CHAR_W
-    # Search
+    @menu_search_x = x
     draw_menu_item(x, y, "S", "earch")
+    x += 8 * CHAR_W  # "Search" is 6 chars, leave 2-char gap
+    @menu_hilight_x = x
+    # Trailing "*" marks enabled state, space marks disabled
+    draw_menu_item(x, y, "H", @hl_enabled ? "ilight*" : "ilight ")
   end
 
   def draw_menu_item(x, y, key_char, rest)
@@ -130,24 +142,57 @@ class EditorApp < FmrbApp
     fname = @current_file ? @current_file.split("/").last : "[New]"
     status = " #{fname}  Ln #{line_num}, Col #{col_num}"
     status += " *" if @modified
+    if !@hl_enabled
+      status += "  [HL off]"
+    elsif @highlight_map.nil? && @lines.any? { |l| !l.empty? }
+      status += "  [No HL]"
+    end
 
     @gfx.draw_text(@user_area_x0 + 2, y, status, STATUS_TEXT, STATUS_BG)
   end
 
   def update_highlight
     return unless @highlight_dirty
+    # Debounce: skip tokenize while user is actively editing
+    return if @hl_idle_frames < HL_DEBOUNCE_FRAMES
     @highlight_dirty = false
 
-    source = @lines.join("\n")
-    @highlight_map = SyntaxHighlight.tokenize(source)
+    unless @hl_enabled
+      @highlight_map = nil
+      @line_offsets = nil
+      return
+    end
 
-    # Build line offset table
+    source = @lines.join("\n")
+    begin
+      @highlight_map = SyntaxHighlight.tokenize(source)
+    rescue => e
+      Log.warn("SyntaxHighlight.tokenize failed: #{e.message}")
+      @highlight_map = nil
+    end
+
     @line_offsets = []
     offset = 0
     @lines.each do |line|
       @line_offsets << offset
       offset += line.length + 1  # +1 for newline
     end
+  end
+
+  def toggle_highlight
+    @hl_enabled = !@hl_enabled
+    @highlight_dirty = true
+    @hl_idle_frames = HL_DEBOUNCE_FRAMES  # Tokenize immediately
+    @need_redraw = true
+    Log.info("Highlight #{@hl_enabled ? 'ON' : 'OFF'}")
+  end
+
+  # Mark buffer as edited; restarts the highlight debounce timer so we
+  # re-tokenize only after the user stops typing.
+  def mark_edited
+    @modified = true
+    @highlight_dirty = true
+    @hl_idle_frames = 0
   end
 
   def draw_edit_area
@@ -169,7 +214,9 @@ class EditorApp < FmrbApp
       x = @user_area_x0 + 1
       y = @edit_y + row * CHAR_H
 
-      if @highlight_map && @line_offsets
+      # Use plain render while highlight is stale (debouncing during edit)
+      # to avoid color misalignment against the changed source.
+      if !@highlight_dirty && @highlight_map && @line_offsets
         draw_highlighted_line(x, y, text, visible_len, @line_offsets[line_idx] + @scroll_x)
       else
         @gfx.draw_text(x, y, text[0, visible_len], TEXT_COLOR, BG_COLOR)
@@ -247,6 +294,14 @@ class EditorApp < FmrbApp
   # ---- Key handling ----
 
   def handle_key(ch)
+    # Hotkey mode while File dropdown is open: H toggles highlight
+    if @file_dropdown_open
+      if ch == 72 || ch == 104  # 'H' or 'h'
+        close_file_dropdown
+        toggle_highlight
+      end
+      return
+    end
     case ch
     when 10, 13  # Enter
       handle_enter
@@ -265,8 +320,7 @@ class EditorApp < FmrbApp
     line = @lines[@cy] || ""
     @lines[@cy] = line[0, @cx].to_s + c + line[@cx..-1].to_s
     @cx += 1
-    @modified = true
-    @highlight_dirty = true
+    mark_edited
     ensure_cursor_visible
     @need_redraw = true
   end
@@ -280,8 +334,7 @@ class EditorApp < FmrbApp
     @lines.insert(@cy + 1, right)
     @cy += 1
     @cx = 0
-    @modified = true
-    @highlight_dirty = true
+    mark_edited
     ensure_cursor_visible
     @need_redraw = true
   end
@@ -291,8 +344,7 @@ class EditorApp < FmrbApp
       line = @lines[@cy] || ""
       @lines[@cy] = line[0, @cx - 1].to_s + line[@cx..-1].to_s
       @cx -= 1
-      @modified = true
-      @highlight_dirty = true
+      mark_edited
       ensure_cursor_visible
       @need_redraw = true
     elsif @cy > 0
@@ -302,8 +354,7 @@ class EditorApp < FmrbApp
       @lines.delete_at(@cy)
       @cy -= 1
       @cx = prev_len
-      @modified = true
-      @highlight_dirty = true
+      mark_edited
       ensure_cursor_visible
       @need_redraw = true
     end
@@ -313,15 +364,13 @@ class EditorApp < FmrbApp
     line = @lines[@cy] || ""
     if @cx < line.length
       @lines[@cy] = line[0, @cx].to_s + line[@cx + 1..-1].to_s
-      @modified = true
-      @highlight_dirty = true
+      mark_edited
       @need_redraw = true
     elsif @cy < @lines.length - 1
       # Merge next line
       @lines[@cy] += @lines[@cy + 1]
       @lines.delete_at(@cy + 1)
-      @modified = true
-      @highlight_dirty = true
+      mark_edited
       @need_redraw = true
     end
   end
@@ -493,6 +542,8 @@ class EditorApp < FmrbApp
       @scroll_x = 0
       @modified = false
       @highlight_dirty = true
+      @hl_idle_frames = HL_DEBOUNCE_FRAMES  # Tokenize immediately on file open
+      @hl_enabled = content.bytesize <= HL_AUTO_LIMIT_BYTES
       @current_file = path
       @need_redraw = true
       Log.info("Loaded file: #{path} (#{@lines.length} lines)")
@@ -508,12 +559,20 @@ class EditorApp < FmrbApp
     end
 
     begin
+      content = @lines.join("\n")
+      expected = content.bytesize
       file = File.open(@current_file, "w")
-      file.write(@lines.join("\n"))
+      written = file.write(content)
+      file.flush
       file.close
-      @modified = false
-      @need_redraw = true
-      Log.info("Saved file: #{@current_file}")
+      actual = File.size(@current_file) rescue -1
+      if written != expected || actual != expected
+        Log.error("Save mismatch for #{@current_file}: expected=#{expected}, written=#{written}, on_disk=#{actual}")
+      else
+        @modified = false
+        @need_redraw = true
+        Log.info("Saved file: #{@current_file} (#{expected} bytes)")
+      end
     rescue => e
       Log.error("Failed to save file: #{e.message}")
     end
@@ -549,8 +608,12 @@ class EditorApp < FmrbApp
 
       # Menu bar click
       if ev[:y] >= @menu_y && ev[:y] < @menu_y + CHAR_H
-        if ev[:x] >= @user_area_x0 + 2 && ev[:x] < @user_area_x0 + 2 + 4 * CHAR_W
+        if @menu_file_x && ev[:x] >= @menu_file_x && ev[:x] < @menu_file_x + 4 * CHAR_W
           open_file_dropdown
+          return
+        end
+        if @menu_hilight_x && ev[:x] >= @menu_hilight_x && ev[:x] < @menu_hilight_x + 7 * CHAR_W
+          toggle_highlight
           return
         end
       end
@@ -598,6 +661,12 @@ class EditorApp < FmrbApp
           execute_key_action(@held_keycode)
         end
       end
+    end
+
+    # Re-tokenize once the user has paused editing for HL_DEBOUNCE_FRAMES frames.
+    if @highlight_dirty && @hl_idle_frames < HL_DEBOUNCE_FRAMES
+      @hl_idle_frames += 1
+      @need_redraw = true if @hl_idle_frames >= HL_DEBOUNCE_FRAMES
     end
 
     if @need_redraw
