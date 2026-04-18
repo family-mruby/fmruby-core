@@ -17,6 +17,7 @@
 #include <fcntl.h>
 #include "usb_task.h"
 #include "host_task.h"
+#include "fmrb_keymap.h"
 
 #define INPUT_SOCKET_PATH "/var/run/fmrb/fmrb_input_socket"
 #define MAX_PACKET_SIZE 512
@@ -27,6 +28,19 @@ static int g_socket_fd = -1;
 static bool g_running = false;
 static fmrb_task_handle_t g_task_handle = 0;
 
+// Convert SDL2 keysym.mod (low byte) to FMRB_KEYMAP_MOD_* bit layout. The
+// upstream sender (sdl2-display) already truncated the high byte so ALT/GUI
+// bits are unrecoverable here.
+static uint8_t sdl2_mod_to_fmrb(uint8_t sdl_mod)
+{
+    uint8_t f = 0;
+    if (sdl_mod & 0x01) f |= FMRB_KEYMAP_MOD_LSHIFT;  // KMOD_LSHIFT
+    if (sdl_mod & 0x02) f |= FMRB_KEYMAP_MOD_RSHIFT;  // KMOD_RSHIFT
+    if (sdl_mod & 0x40) f |= FMRB_KEYMAP_MOD_LCTRL;   // KMOD_LCTRL
+    if (sdl_mod & 0x80) f |= FMRB_KEYMAP_MOD_RCTRL;   // KMOD_RCTRL
+    return f;
+}
+
 /**
  * @brief Process received HID event
  */
@@ -35,18 +49,20 @@ static void process_hid_event(uint8_t type, const uint8_t *data, uint16_t len) {
         case HID_EVENT_KEY_DOWN:
             if (len >= sizeof(hid_keyboard_event_t)) {
                 const hid_keyboard_event_t *kbd = (const hid_keyboard_event_t*)data;
-                FMRB_LOGD(TAG, "Keyboard DOWN: scancode=%u keycode=%u modifier=0x%02x",
-                         kbd->scancode, kbd->keycode, kbd->modifier);
-                fmrb_host_send_key_down(kbd->keycode, kbd->scancode, kbd->modifier);
+                uint8_t mod_fmrb = sdl2_mod_to_fmrb(kbd->modifier);
+                FMRB_LOGD(TAG, "Keyboard DOWN: scancode=%u keycode=%u modifier=0x%02x(sdl)->0x%02x(fmrb)",
+                         kbd->scancode, kbd->keycode, kbd->modifier, mod_fmrb);
+                fmrb_host_send_key_down(kbd->keycode, kbd->scancode, mod_fmrb);
             }
             break;
 
         case HID_EVENT_KEY_UP:
             if (len >= sizeof(hid_keyboard_event_t)) {
                 const hid_keyboard_event_t *kbd = (const hid_keyboard_event_t*)data;
-                FMRB_LOGD(TAG, "Keyboard UP: scancode=%u keycode=%u modifier=0x%02x",
-                         kbd->scancode, kbd->keycode, kbd->modifier);
-                fmrb_host_send_key_up(kbd->keycode, kbd->scancode, kbd->modifier);
+                uint8_t mod_fmrb = sdl2_mod_to_fmrb(kbd->modifier);
+                FMRB_LOGD(TAG, "Keyboard UP: scancode=%u keycode=%u modifier=0x%02x(sdl)->0x%02x(fmrb)",
+                         kbd->scancode, kbd->keycode, kbd->modifier, mod_fmrb);
+                fmrb_host_send_key_up(kbd->keycode, kbd->scancode, mod_fmrb);
             }
             break;
 

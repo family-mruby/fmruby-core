@@ -988,8 +988,10 @@ static void host_task_process_host_message(const host_message_t *msg)
             if (msg->type == HOST_MSG_HID_KEY_DOWN) {
                 uint8_t mod = (uint8_t)(msg->data.key.modifier & 0xFF);
                 uint8_t sc = (uint8_t)(msg->data.key.scancode & 0xFF);
-                // Check for Ctrl key: both FMRB format (0x04/0x08) and SDL2 format (0x40/0x80)
-                bool has_ctrl = (mod & (FMRB_KEYMAP_MOD_LCTRL | FMRB_KEYMAP_MOD_RCTRL | 0x40 | 0x80)) != 0;
+                // Modifier is normalized to FMRB_KEYMAP_MOD_* by the input source
+                // (usb_task on ESP32, usb_task_linux on Linux), so a single mask
+                // works for all paths.
+                bool has_ctrl = (mod & (FMRB_KEYMAP_MOD_LCTRL | FMRB_KEYMAP_MOD_RCTRL)) != 0;
                 if (has_ctrl && sc == 0x14) {  // Q scancode
                     FMRB_LOGI(TAG, "Ctrl+Q detected - sending system interrupt");
                     // Send system interrupt to kernel (PID 0)

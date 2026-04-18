@@ -19,6 +19,7 @@
 #include "usb/hid_usage_mouse.h"
 #include "hid_report_parser.h"
 #include "hid_device_config.h"
+#include "fmrb_keymap.h"
 
 static const char *TAG = "usb_task";
 
@@ -455,6 +456,21 @@ static bool key_in_report(uint8_t key, const hid_keyboard_input_report_boot_t *r
     return false;
 }
 
+// Convert USB HID Boot Keyboard modifier byte to FMRB_KEYMAP_MOD_* bit layout.
+// Required because the rest of the system (host_task.c hotkey check,
+// fmrb_keymap_scancode_to_char) expects FMRB format, not raw HID bits.
+static uint8_t usb_hid_mod_to_fmrb(uint8_t hid_mod)
+{
+    uint8_t f = 0;
+    if (hid_mod & 0x01) f |= FMRB_KEYMAP_MOD_LCTRL;
+    if (hid_mod & 0x02) f |= FMRB_KEYMAP_MOD_LSHIFT;
+    if (hid_mod & 0x04) f |= FMRB_KEYMAP_MOD_LALT;
+    if (hid_mod & 0x10) f |= FMRB_KEYMAP_MOD_RCTRL;
+    if (hid_mod & 0x20) f |= FMRB_KEYMAP_MOD_RSHIFT;
+    if (hid_mod & 0x40) f |= FMRB_KEYMAP_MOD_RALT;
+    return f;
+}
+
 static void process_keyboard_report(hid_device_info_t *device, const uint8_t *data, size_t len)
 {
     if (len < sizeof(hid_keyboard_input_report_boot_t)) {
@@ -463,6 +479,7 @@ static void process_keyboard_report(hid_device_info_t *device, const uint8_t *da
 
     const hid_keyboard_input_report_boot_t *report = (const hid_keyboard_input_report_boot_t *)data;
     uint8_t modifier = report->modifier.val;
+    uint8_t mod_fmrb = usb_hid_mod_to_fmrb(modifier);
 
     // Detect modifier changes and generate events for individual modifier bits
     uint8_t mod_changed = modifier ^ device->prev_kbd_report.modifier.val;
@@ -474,9 +491,9 @@ static void process_keyboard_report(hid_device_info_t *device, const uint8_t *da
         for (int i = 0; i < 8; i++) {
             if (mod_changed & (1 << i)) {
                 if (modifier & (1 << i)) {
-                    fmrb_host_send_key_down(mod_scancodes[i], mod_scancodes[i], modifier);
+                    fmrb_host_send_key_down(mod_scancodes[i], mod_scancodes[i], mod_fmrb);
                 } else {
-                    fmrb_host_send_key_up(mod_scancodes[i], mod_scancodes[i], modifier);
+                    fmrb_host_send_key_up(mod_scancodes[i], mod_scancodes[i], mod_fmrb);
                 }
             }
         }
@@ -486,8 +503,8 @@ static void process_keyboard_report(hid_device_info_t *device, const uint8_t *da
     for (int i = 0; i < HID_KEYBOARD_KEY_MAX; i++) {
         uint8_t prev_key = device->prev_kbd_report.key[i];
         if (prev_key != HID_KEY_NO_PRESS && !key_in_report(prev_key, report)) {
-            FMRB_LOGD(TAG, "Key UP: scancode=0x%02X modifier=0x%02X", prev_key, modifier);
-            fmrb_host_send_key_up(prev_key, prev_key, modifier);
+            FMRB_LOGD(TAG, "Key UP: scancode=0x%02X modifier=0x%02X", prev_key, mod_fmrb);
+            fmrb_host_send_key_up(prev_key, prev_key, mod_fmrb);
         }
     }
 
@@ -495,8 +512,8 @@ static void process_keyboard_report(hid_device_info_t *device, const uint8_t *da
     for (int i = 0; i < HID_KEYBOARD_KEY_MAX; i++) {
         uint8_t cur_key = report->key[i];
         if (cur_key != HID_KEY_NO_PRESS && !key_in_report(cur_key, &device->prev_kbd_report)) {
-            FMRB_LOGD(TAG, "Key DOWN: scancode=0x%02X modifier=0x%02X", cur_key, modifier);
-            fmrb_host_send_key_down(cur_key, cur_key, modifier);
+            FMRB_LOGD(TAG, "Key DOWN: scancode=0x%02X modifier=0x%02X", cur_key, mod_fmrb);
+            fmrb_host_send_key_down(cur_key, cur_key, mod_fmrb);
         }
     }
 
