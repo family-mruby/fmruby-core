@@ -1,4 +1,4 @@
-app_handle_name = "slideshow"
-app_screen_name = "SlideShow"
+app_handle_name = "picorabbit"
+app_screen_name = "PicoRabbit"
 default_window_mode = "fullscreen"
 icon = "usr/share/icon/ruby.icon"
