@@ -1202,6 +1202,12 @@ fmrb_gfx_err_t fmrb_gfx_delete_all_sprites(
 
 // ---------- GfxBlock VM ----------
 
+// Maximum DEFINE_PROG payload that reliably fits in one UART frame without
+// relying on transport-layer fragmentation (which is untested and blocks the
+// Host Task during reassembly). Derived from FMRB_LINK_FRAME_MAX_DATA(248)
+// minus msgpack encoding overhead (~12B) and COBS worst case (~3B).
+#define FMRB_GFX_DEFINE_PROG_SINGLE_FRAME_LIMIT 220
+
 fmrb_gfx_err_t fmrb_gfx_define_prog(
     fmrb_gfx_context_t context,
     fmrb_canvas_handle_t canvas_id,
@@ -1215,6 +1221,15 @@ fmrb_gfx_err_t fmrb_gfx_define_prog(
 
     fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+
+    // Reject programs that would require transport-layer fragmentation.
+    size_t total = sizeof(fmrb_link_graphics_define_prog_t)
+                 + (size_t)bytecode_len + (size_t)strtable_len;
+    if (total > FMRB_GFX_DEFINE_PROG_SINGLE_FRAME_LIMIT) {
+        ESP_LOGE(TAG, "define_prog: payload %zu bytes exceeds single-frame limit %d",
+                 total, FMRB_GFX_DEFINE_PROG_SINGLE_FRAME_LIMIT);
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
 
     // Caller blocks on semaphore, so its buffers stay valid while Host Task reads them.
     gfx_cmd_t cmd;

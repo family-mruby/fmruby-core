@@ -43,7 +43,9 @@ class FmrbApp
         @bg_gfx = nil
       end
 
-      draw_window_frame
+      # Non-fullscreen windows cache their frame as a GfxBlock program on
+      # WROVER. The initial EXEC is issued as part of GfxBlock.new.
+      _build_frame_block unless @fullscreen
     else
       @gfx = nil
       @bg_gfx = nil
@@ -52,33 +54,40 @@ class FmrbApp
 
   end
 
+  # Re-run the window frame program. If w/h are unchanged since the last
+  # call, no bytes are sent; otherwise only the changed register values
+  # go over the wire.
   def draw_window_frame
     return if @fullscreen
-
-    # Title bar with rounded top corners only. Draw a rounded rect of the full
-    # title bar height first (which rounds all 4 corners), then overwrite the
-    # bottom portion with a plain fill_rect to make the bottom edge straight.
-    # This keeps the original TITLE_BAR_H thickness while adding rounded top corners.
-    @gfx.fill_round_rect(0, 0, @window_width, TITLE_BAR_H, CORNER_R, 0xC5)
-    @gfx.fill_rect(0, CORNER_R, @window_width, TITLE_BAR_H - CORNER_R, 0xC5)
-
-    # Menu button and title text
-    @gfx.fill_rect(2, 2, 8, 8, 0x60)
-    @gfx.draw_text(12, 2, @name, FmrbGfx::WHITE)
-
-    # Close button (X)
-    close_btn_x = @window_width - 10
-    close_btn_y = 2
-    @gfx.fill_rect(close_btn_x, close_btn_y, 8, 8, 0xE0)
-    @gfx.draw_line(close_btn_x + 2, close_btn_y + 2, close_btn_x + 5, close_btn_y + 5, FmrbGfx::WHITE)
-    @gfx.draw_line(close_btn_x + 5, close_btn_y + 2, close_btn_x + 2, close_btn_y + 5, FmrbGfx::WHITE)
-
-    # Rounded window border. The bottom corners show rounded because the outer
-    # column (x=0, x=w-1) and bottom row (y=h-1) pixels were never drawn by app
-    # content (user_area starts at x=1, y=TITLE_BAR_H and ends at y=h-2), so
-    # they retain the canvas's transparent color.
-    @gfx.draw_round_rect(0, 0, @window_width, @window_height, CORNER_R, 0x60)
+    @frame_block&.draw(w: @window_width, h: @window_height)
   end
+
+  private
+
+  # Build the window-frame GfxBlock once. The block captures @name as a closure
+  # so the title text is interned into the bytecode's strtable at new time
+  # (strings are immutable after that).
+  def _build_frame_block
+    title = @name
+    @frame_block = GfxBlock.new(@gfx, w: @window_width, h: @window_height) do |r, w:, h:|
+      # Title bar with rounded top corners. Draw full-height rounded rect then
+      # overwrite the bottom portion so the bottom edge is straight.
+      r.fill_round_rect 0, 0, w, TITLE_BAR_H, CORNER_R, 0xC5
+      r.fill_rect       0, CORNER_R, w, TITLE_BAR_H - CORNER_R, 0xC5
+      # Menu button + title text
+      r.fill_rect       2, 2, 8, 8, 0x60
+      r.draw_text       12, 2, title, FmrbGfx::WHITE
+      # Close button (red square with white X)
+      r.fill_rect       w - 10, 2, 8, 8, 0xE0
+      r.draw_line       w - 8, 4, w - 5, 7, FmrbGfx::WHITE
+      r.draw_line       w - 5, 4, w - 8, 7, FmrbGfx::WHITE
+      # Rounded window border. Outer edge rows/columns stay transparent because
+      # app content never fills them (user_area excludes x=0, x=w-1, y=h-1).
+      r.draw_round_rect 0, 0, w, h, CORNER_R, 0x60
+    end
+  end
+
+  public
 
   # Scroll bar constants and helpers
   SCROLLBAR_W = 10
@@ -293,6 +302,11 @@ class FmrbApp
       Log.error("Failed to send exit notification: #{e}")
     end
 
+    # Release the window-frame program before the canvas it belongs to is freed.
+    if @frame_block
+      @frame_block.destroy
+      @frame_block = nil
+    end
     if @gfx
       @gfx.destroy  # Cleanup graphics resources
       @gfx = nil    # Prevent finalizer from running during mrb_close

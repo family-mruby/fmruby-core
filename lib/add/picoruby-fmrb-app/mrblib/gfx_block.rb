@@ -14,8 +14,13 @@ class GfxBlock
   class StructureError < Error; end
   class TooManyRegsError < Error; end
   class UnsupportedKwargError < Error; end
+  class PayloadTooLargeError < Error; end
 
   MAX_REGS = 16
+  # Max DEFINE_PROG payload that fits in a single UART frame (conservative).
+  # Must match FMRB_GFX_DEFINE_PROG_SINGLE_FRAME_LIMIT in fmrb_gfx.c.
+  # Payload layout: header(6) + bytecode + strtable.
+  DEFINE_PROG_MAX_PAYLOAD = 220
 
   # Recorder used while evaluating the block. Captures drawing calls as
   # [opcode, arg, arg, ...] entries and interns strings into a table.
@@ -170,6 +175,14 @@ class GfxBlock
 
     # Compile bytecode and strtable.
     bc_str, st_str = @gfx._gfx_compile_block(rec1.cmds, @var_map, rec1.strings)
+
+    # Reject programs that would need transport-layer fragmentation.
+    payload_size = 6 + bc_str.length + st_str.length   # header + bytecode + strtable
+    if payload_size > DEFINE_PROG_MAX_PAYLOAD
+      raise PayloadTooLargeError,
+            "GfxBlock payload #{payload_size} B exceeds single-frame limit " \
+            "#{DEFINE_PROG_MAX_PAYLOAD} B (bytecode=#{bc_str.length} strtable=#{st_str.length})"
+    end
 
     # Register program on WROVER (sync; returns prog_id).
     @prog_id = @gfx._gfx_define_prog(bc_str, st_str)
