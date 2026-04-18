@@ -2,9 +2,35 @@
 # Controls 64 WS2812B LEDs via RMT and displays a color preview grid on screen.
 # On Linux (no RMT), only the GUI preview is shown.
 #
-# Subscribes to "encoder8" topic for real-time control:
+# ---- Inputs ----
+# encoder8 topic (real-time control):
 #   ch 0: hue offset, ch 1: saturation, ch 2: brightness,
-#   ch 3: animation speed, btn: toggle row on/off, switch: pause
+#   ch 3: animation speed, ch 4: pattern,
+#   btn 0-7: toggle row on/off, switch: pause
+# i2c_kbd topic:
+#   text       -> auto-switches to TextScroll pattern
+#   clear / "" -> back to Rainbow
+# Mouse (on the LED grid area):
+#   left click  -> next pattern
+#   right click -> previous pattern
+#
+# ---- Tuning knobs ----
+# Overall brightness:
+#   @brightness (initialize, default 32; clamp range 1-128) scales hsv_to_rgb
+#   V for the real LEDs. The 128 upper bound is a safety cap to keep total
+#   WS2812B current within a safe range. The GUI preview adds a +150 boost
+#   (clamped to 255) so the on-screen grid stays bright independently of the
+#   LED safety cap.
+# Background / off cells:
+#   pattern_color returns (hue, 0) to mark a cell as off. update_leds treats
+#   sat==0 as fully dark (r=g=b=0), so TextScroll background, dead Life cells,
+#   and non-sparkle Sparkle cells stay black regardless of @brightness.
+# Animation speed (three independent knobs):
+#   1. on_update return value (default 100 ms) - global frame interval.
+#   2. @speed (default 4, encoder ch 3) - hue-cycle advance per frame.
+#   3. Per-pattern step gates: (@frame % 3) advances Life, (@frame % 2)
+#      advances TextScroll column. Shrink the divisor to speed up, enlarge
+#      to slow down.
 
 # Change this to the GPIO pin connected to WS2812B data line
 LED_PIN = 48
@@ -113,8 +139,8 @@ class LedMatrixApp < FmrbApp
     @rmt = nil
     @hue_offset = 0
     @saturation = 255
-    @brightness = 64
-    @speed = 4
+    @brightness = 32 # Default brightness (1-128; capped to limit LED current)
+    @speed = 15 # Default animation speed (0-30)
     @paused = false
     @row_mask = 0xFF
     @pattern = 0
@@ -188,9 +214,10 @@ class LedMatrixApp < FmrbApp
         @saturation = 0 if @saturation < 0
         @saturation = 255 if @saturation > 255
       when 2  # Brightness
+        # Capped at 128 to keep total WS2812B current within a safe range.
         @brightness += delta * 4
         @brightness = 1 if @brightness < 1
-        @brightness = 255 if @brightness > 255
+        @brightness = 128 if @brightness > 128
       when 3  # Speed
         @speed += delta
         @speed = 0 if @speed < 0
@@ -221,7 +248,7 @@ class LedMatrixApp < FmrbApp
         life_step
       end
       # Scroll text every 2 frames
-      if @pattern == 7 && (@frame % 2) == 0 && @scroll_bitmap.size > 0
+      if @pattern == 7 && (@frame % 1) == 0 && @scroll_bitmap.size > 0
         @scroll_offset = (@scroll_offset + 1) % (@scroll_bitmap.size + LED_COLS)
       end
     end
@@ -231,6 +258,17 @@ class LedMatrixApp < FmrbApp
 
   def on_event(ev)
     super(ev)
+    return unless ev[:type] == :mouse_up
+    # Ignore clicks on the title bar (super handles close / reload there).
+    return if ev[:y] < @user_area_y0
+    return if ev[:x] < @user_area_x0 || ev[:x] >= @user_area_x1
+
+    case ev[:button]
+    when 1  # Left click: next pattern
+      @pattern = (@pattern + 1) % PATTERN_COUNT
+    when 3  # Right click: previous pattern
+      @pattern = (@pattern - 1) % PATTERN_COUNT
+    end
   end
 
   def on_destroy
@@ -425,7 +463,12 @@ class LedMatrixApp < FmrbApp
       LED_COLS.times do |col|
         if row_active
           hue, sat = pattern_color(row, col)
-          r, g, b = FmrbGfx.hsv_to_rgb(hue, sat, @brightness)
+          if sat == 0
+            # Treat sat==0 as "off" for background/dead/idle cells.
+            r = 0; g = 0; b = 0
+          else
+            r, g, b = FmrbGfx.hsv_to_rgb(hue, sat, @brightness)
+          end
         else
           r = 0; g = 0; b = 0
         end
@@ -434,9 +477,11 @@ class LedMatrixApp < FmrbApp
           grb_data << g << r << b
         end
 
-        # Draw GUI cell (use brighter value for display visibility)
+        # Draw GUI cell. Boost V by +150 (clamped to 255) so the preview is
+        # bright and legible on screen regardless of the LED safety cap on
+        # @brightness.
         if row_active && (r > 0 || g > 0 || b > 0)
-          disp_v = @brightness > 128 ? @brightness : @brightness + 100
+          disp_v = @brightness + 150
           disp_v = 255 if disp_v > 255
           dr, dg, db = FmrbGfx.hsv_to_rgb(hue, sat, disp_v)
           color332 = FmrbGfx.rgb_to_332(dr, dg, db)
