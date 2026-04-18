@@ -76,7 +76,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
-        .window_width = 300,
+        .window_width = 240,
         .window_height = 200,
         .window_pos_x = 5,
         .window_pos_y = 15
@@ -84,7 +84,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
     { "default/logviewer", {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,
-        .name = "logviewer",
+        .name = "LogViewer",
         .vm_type = FMRB_VM_TYPE_MRUBY,
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
         .bytecode = logviewer_irep,
@@ -101,7 +101,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
     { "default/monitor", {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,
-        .name = "monitor",
+        .name = "Monitor",
         .vm_type = FMRB_VM_TYPE_MRUBY,
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
         .bytecode = monitor_irep,
