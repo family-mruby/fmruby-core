@@ -45,35 +45,54 @@ static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
 }
 
 // Draw window frame (matching FmrbApp draw_window_frame in fmrb-app.rb)
+// Title bar: rounded top corners, hamburger icon on left, name, round close button on right.
 static void draw_window_frame(basic_console_ctx_t* console) {
+    const int16_t CORNER_R = 4;
     uint16_t w = console->window_width;
     uint16_t h = console->window_height;
     fmrb_canvas_handle_t cid = console->canvas_id;
     const char* name = console->app_ctx->app_name;
 
-    // Title bar background
+    // Title bar background: rounded rect on top, flatten the bottom edge with a plain rect
     gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_RECT,
+        .cmd_type = GFX_CMD_ROUND_RECT,
         .canvas_id = cid,
-        .params.rect = {
-            .rect = {.x = 0, .y = 0, .width = w, .height = BASIC_CONSOLE_TITLEBAR_H},
+        .params.round_rect = {
+            .x = 0, .y = 0,
+            .w = (int16_t)w, .h = BASIC_CONSOLE_TITLEBAR_H,
+            .radius = CORNER_R,
             .color = 0xC5,
             .filled = true
         }
     };
     send_gfx_command(&cmd);
 
-    // Menu button
     cmd = (gfx_cmd_t){
         .cmd_type = GFX_CMD_RECT,
         .canvas_id = cid,
         .params.rect = {
-            .rect = {.x = 2, .y = 2, .width = 8, .height = 8},
-            .color = 0x60,
+            .rect = {.x = 0, .y = CORNER_R,
+                     .width = w, .height = (uint16_t)(BASIC_CONSOLE_TITLEBAR_H - CORNER_R)},
+            .color = 0xC5,
             .filled = true
         }
     };
     send_gfx_command(&cmd);
+
+    // Hamburger menu icon (three horizontal lines)
+    for (int16_t row = 0; row < 3; row++) {
+        int16_t hy = (int16_t)(3 + row * 2);
+        cmd = (gfx_cmd_t){
+            .cmd_type = GFX_CMD_RECT,
+            .canvas_id = cid,
+            .params.rect = {
+                .rect = {.x = 2, .y = hy, .width = 8, .height = 1},
+                .color = 0xFB,
+                .filled = true
+            }
+        };
+        send_gfx_command(&cmd);
+    }
 
     // App name in title bar
     cmd = (gfx_cmd_t){
@@ -91,49 +110,28 @@ static void draw_window_frame(basic_console_ctx_t* console) {
     cmd.params.text.text[sizeof(cmd.params.text.text) - 1] = '\0';
     send_gfx_command(&cmd);
 
-    // Close button (red background)
-    int16_t close_x = (int16_t)(w - 10);
-    int16_t close_y = 2;
+    // Close button: filled white circle (click region is the 8x8 box at (w-10, 2))
     cmd = (gfx_cmd_t){
-        .cmd_type = GFX_CMD_RECT,
+        .cmd_type = GFX_CMD_CIRCLE,
         .canvas_id = cid,
-        .params.rect = {
-            .rect = {.x = close_x, .y = close_y, .width = 8, .height = 8},
-            .color = 0xE0,  // RED
+        .params.circle = {
+            .x = (int16_t)(w - 6),
+            .y = 5,
+            .radius = 3,
+            .color = 0xFF,
             .filled = true
         }
     };
     send_gfx_command(&cmd);
 
-    // Close button X mark (two diagonal lines)
+    // Rounded window border
     cmd = (gfx_cmd_t){
-        .cmd_type = GFX_CMD_LINE,
+        .cmd_type = GFX_CMD_ROUND_RECT,
         .canvas_id = cid,
-        .params.line = {
-            .x1 = (int16_t)(close_x + 2), .y1 = (int16_t)(close_y + 2),
-            .x2 = (int16_t)(close_x + 5), .y2 = (int16_t)(close_y + 5),
-            .color = 0xFF  // WHITE
-        }
-    };
-    send_gfx_command(&cmd);
-
-    cmd = (gfx_cmd_t){
-        .cmd_type = GFX_CMD_LINE,
-        .canvas_id = cid,
-        .params.line = {
-            .x1 = (int16_t)(close_x + 5), .y1 = (int16_t)(close_y + 2),
-            .x2 = (int16_t)(close_x + 2), .y2 = (int16_t)(close_y + 5),
-            .color = 0xFF  // WHITE
-        }
-    };
-    send_gfx_command(&cmd);
-
-    // Window border
-    cmd = (gfx_cmd_t){
-        .cmd_type = GFX_CMD_RECT,
-        .canvas_id = cid,
-        .params.rect = {
-            .rect = {.x = 0, .y = 0, .width = w, .height = h},
+        .params.round_rect = {
+            .x = 0, .y = 0,
+            .w = (int16_t)w, .h = (int16_t)h,
+            .radius = CORNER_R,
             .color = 0x60,
             .filled = false
         }

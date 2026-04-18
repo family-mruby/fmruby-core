@@ -14,11 +14,22 @@ print("Lua version: " .. _VERSION)
 print("Sample Lua app is running successfully")
 
 function draw_window_frame()
-    gfx:fill_rect(0, 0, FmrbApp.WINDOW_WIDTH, 12, 0xC5)
-    gfx:fill_rect(2, 2, 8, 8, 0x60)
-    gfx:draw_rect(0, 0, FmrbApp.WINDOW_WIDTH, FmrbApp.WINDOW_HEIGHT, 0x60)
-    gfx:draw_rect(0, 0, FmrbApp.WINDOW_WIDTH, 12, 0x60)
+    local TITLE_BAR_H = 11
+    local CORNER_R = 4
+    local w = FmrbApp.WINDOW_WIDTH
+    local h = FmrbApp.WINDOW_HEIGHT
+    -- Title bar background: rounded rect on top, flatten the bottom edge
+    gfx:fill_round_rect(0, 0, w, TITLE_BAR_H, CORNER_R, 0xC5)
+    gfx:fill_rect(0, CORNER_R, w, TITLE_BAR_H - CORNER_R, 0xC5)
+    -- Hamburger menu (3 horizontal lines)
+    gfx:fill_rect(2, 3, 8, 1, 0xFB)
+    gfx:fill_rect(2, 5, 8, 1, 0xFB)
+    gfx:fill_rect(2, 7, 8, 1, 0xFB)
     gfx:draw_text("Lua App", 12, 2, FmrbGfx.WHITE)
+    -- Close button (filled white circle)
+    gfx:fill_circle(w - 6, 5, 3, 0xFF)
+    -- Rounded window border
+    gfx:draw_round_rect(0, 0, w, h, CORNER_R, 0x60)
 end
 
 -- Clear screen with BG clolor

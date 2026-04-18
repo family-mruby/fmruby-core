@@ -248,10 +248,148 @@ static int lua_gfx_clear(lua_State* L) {
     return 1;
 }
 
+// gfx:draw_line(x1, y1, x2, y2, color)
+static int lua_gfx_draw_line(lua_State* L) {
+    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
+    int x1 = luaL_checkinteger(L, 2);
+    int y1 = luaL_checkinteger(L, 3);
+    int x2 = luaL_checkinteger(L, 4);
+    int y2 = luaL_checkinteger(L, 5);
+    int color = luaL_checkinteger(L, 6);
+
+    if (!data || !data->ctx) {
+        return luaL_error(L, "Graphics not initialized");
+    }
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_LINE,
+        .canvas_id = data->canvas_id,
+        .params.line = {
+            .x1 = (int16_t)x1, .y1 = (int16_t)y1,
+            .x2 = (int16_t)x2, .y2 = (int16_t)y2,
+            .color = (fmrb_color_t)color
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        return luaL_error(L, "draw_line failed: %d", ret);
+    }
+
+    lua_pushvalue(L, 1);  // Return self
+    return 1;
+}
+
+// gfx:fill_round_rect(x, y, w, h, radius, color)
+static int lua_gfx_fill_round_rect(lua_State* L) {
+    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
+    int x = luaL_checkinteger(L, 2);
+    int y = luaL_checkinteger(L, 3);
+    int w = luaL_checkinteger(L, 4);
+    int h = luaL_checkinteger(L, 5);
+    int r = luaL_checkinteger(L, 6);
+    int color = luaL_checkinteger(L, 7);
+
+    if (!data || !data->ctx) {
+        return luaL_error(L, "Graphics not initialized");
+    }
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_ROUND_RECT,
+        .canvas_id = data->canvas_id,
+        .params.round_rect = {
+            .x = (int16_t)x, .y = (int16_t)y,
+            .w = (int16_t)w, .h = (int16_t)h,
+            .radius = (int16_t)r,
+            .color = (fmrb_color_t)color,
+            .filled = true
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        return luaL_error(L, "fill_round_rect failed: %d", ret);
+    }
+
+    lua_pushvalue(L, 1);  // Return self
+    return 1;
+}
+
+// gfx:draw_round_rect(x, y, w, h, radius, color)
+static int lua_gfx_draw_round_rect(lua_State* L) {
+    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
+    int x = luaL_checkinteger(L, 2);
+    int y = luaL_checkinteger(L, 3);
+    int w = luaL_checkinteger(L, 4);
+    int h = luaL_checkinteger(L, 5);
+    int r = luaL_checkinteger(L, 6);
+    int color = luaL_checkinteger(L, 7);
+
+    if (!data || !data->ctx) {
+        return luaL_error(L, "Graphics not initialized");
+    }
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_ROUND_RECT,
+        .canvas_id = data->canvas_id,
+        .params.round_rect = {
+            .x = (int16_t)x, .y = (int16_t)y,
+            .w = (int16_t)w, .h = (int16_t)h,
+            .radius = (int16_t)r,
+            .color = (fmrb_color_t)color,
+            .filled = false
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        return luaL_error(L, "draw_round_rect failed: %d", ret);
+    }
+
+    lua_pushvalue(L, 1);  // Return self
+    return 1;
+}
+
+// gfx:fill_circle(x, y, radius, color)
+static int lua_gfx_fill_circle(lua_State* L) {
+    lua_gfx_data *data = (lua_gfx_data *)luaL_checkudata(L, 1, "FmrbGfx");
+    int x = luaL_checkinteger(L, 2);
+    int y = luaL_checkinteger(L, 3);
+    int r = luaL_checkinteger(L, 4);
+    int color = luaL_checkinteger(L, 5);
+
+    if (!data || !data->ctx) {
+        return luaL_error(L, "Graphics not initialized");
+    }
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_CIRCLE,
+        .canvas_id = data->canvas_id,
+        .params.circle = {
+            .x = (int16_t)x, .y = (int16_t)y,
+            .radius = (int16_t)r,
+            .color = (fmrb_color_t)color,
+            .filled = true
+        }
+    };
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        return luaL_error(L, "fill_circle failed: %d", ret);
+    }
+
+    lua_pushvalue(L, 1);  // Return self
+    return 1;
+}
+
 // Method table
 static const luaL_Reg gfx_methods[] = {
     {"fill_rect", lua_gfx_fill_rect},
     {"draw_rect", lua_gfx_draw_rect},
+    {"fill_round_rect", lua_gfx_fill_round_rect},
+    {"draw_round_rect", lua_gfx_draw_round_rect},
+    {"draw_line", lua_gfx_draw_line},
+    {"fill_circle", lua_gfx_fill_circle},
     {"draw_text", lua_gfx_draw_string},
     {"present", lua_gfx_present},
     {"clear", lua_gfx_clear},
