@@ -50,7 +50,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
     { "default/shell", {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,
-        .name = "shell",
+        .name = "FM-Shell",
         .vm_type = FMRB_VM_TYPE_MRUBY,
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
         .bytecode = shell_irep,
@@ -67,7 +67,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
     { "default/editor", {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,
-        .name = "editor",
+        .name = "FM-Editor",
         .vm_type = FMRB_VM_TYPE_MRUBY,
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
         .bytecode = editor_irep,

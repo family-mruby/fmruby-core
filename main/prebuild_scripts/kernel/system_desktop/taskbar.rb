@@ -9,10 +9,10 @@ module TaskbarMixin
 
   # Colors for app icons by VM type (index matches vm_type from FmrbApp.ps)
   TASKBAR_COLORS = [
-    0xC0,  # 0: mruby    - red
-    0xFA,  # 1: lua      - yellow
-    0x03,  # 2: basic    - blue
-    0x1C,  # 3: native   - green
+    0xCE,  # 0: mruby    - red
+    0x27,  # 1: lua      - blue
+    0x2C,  # 2: basic    - green
+    0x92,  # 3: native   - gray
   ]
   TASKBAR_FOCUSED_BORDER = 0xFF  # white border for focused app
 
