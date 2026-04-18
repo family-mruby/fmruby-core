@@ -23,6 +23,12 @@ class SystemDesktopApp < FmrbApp
   DROPDOWN_HIGHLIGHT = FmrbConst::THEME_HIGHLIGHT
   BG_COLOR = FmrbConst::THEME_DESKTOP_BG
   BG_IMAGE_PATH = "/data/BG_sample.png"
+  BOOT_IMAGE_PATH = "/boot/boot.png"
+  BOOT_TILE_W = 32
+  BOOT_TILE_H = 24
+  BOOT_TILES_PER_FRAME = 5
+  BOOT_FRAME_MS = 60
+  BOOT_HOLD_MS = 1000  # Wait time after full reveal, before swapping to desktop
 
   # Dropdown menu items
   DROPDOWN_ITEMS = [
@@ -101,6 +107,12 @@ class SystemDesktopApp < FmrbApp
     @clk_selected = 0
     @clk_x = 0
     @clk_y = 0
+
+    # Boot animation state
+    @boot_anim_state = :init  # :init -> :revealing -> :wait_to_finish -> :done
+    @boot_anim_idx = 0
+    @boot_tiles = nil
+    @boot_img = nil
   end
 
   def on_create()
@@ -129,8 +141,85 @@ class SystemDesktopApp < FmrbApp
     init_taskbar
     @taskbar_focused_pid = nil
 
+    start_boot_animation
+  end
+
+  # ---- Boot animation ----
+
+  def start_boot_animation
+    return unless @gfx && @bg_gfx
+
+    # Cover both canvases with opaque black first.
+    @bg_gfx.clear(0x00)
+    @bg_gfx.present
+    @gfx.clear(0x00)
+    @gfx.present
+
+    # Load logo onto background layer (hidden under black @gfx).
+    @boot_img = @bg_gfx.create_image(BOOT_IMAGE_PATH)
+    if @boot_img
+      @bg_gfx.draw_image(@boot_img[:id], x: 0, y: 0)
+      @bg_gfx.present
+    else
+      Log.warn("Boot logo not found: #{BOOT_IMAGE_PATH}")
+    end
+
+    # Precompute tile positions covering the whole foreground.
+    cols = (@window_width + BOOT_TILE_W - 1) / BOOT_TILE_W
+    rows = (@window_height + BOOT_TILE_H - 1) / BOOT_TILE_H
+    tiles = []
+    rows.times do |r|
+      cols.times do |c|
+        tiles << [c * BOOT_TILE_W, r * BOOT_TILE_H]
+      end
+    end
+    # Fisher-Yates shuffle. Use a temporary; picoruby/mruby breaks on
+    # multi-assignment whose LHS targets are array element references
+    # (tiles[i], tiles[j] = tiles[j], tiles[i] raises TypeError).
+    i = tiles.size - 1
+    while i > 0
+      j = rand(i + 1)
+      tmp = tiles[i]
+      tiles[i] = tiles[j]
+      tiles[j] = tmp
+      i -= 1
+    end
+    @boot_tiles = tiles
+    @boot_anim_idx = 0
+    @boot_anim_state = :revealing
+  end
+
+  def tick_boot_animation
+    case @boot_anim_state
+    when :revealing
+      BOOT_TILES_PER_FRAME.times do
+        break if @boot_anim_idx >= @boot_tiles.size
+        tx, ty = @boot_tiles[@boot_anim_idx]
+        # 0x01 is the foreground canvas' color key -> pixel becomes transparent.
+        @gfx.fill_rect(tx, ty, BOOT_TILE_W, BOOT_TILE_H, 0x01)
+        @boot_anim_idx += 1
+      end
+      @gfx.present
+      if @boot_anim_idx >= @boot_tiles.size
+        @gfx.clear(0x01)  # Ensure full transparency
+        @gfx.present
+        @boot_tiles = nil
+        @boot_anim_state = :wait_to_finish
+      end
+    when :wait_to_finish
+      finish_boot_animation
+    end
+  end
+
+  def finish_boot_animation
+    if @boot_img
+      @bg_gfx.delete_image(@boot_img[:id])
+      @boot_img = nil
+    end
     draw_background
     draw_foreground
+    FmrbApp.enable_cursor
+    @boot_anim_state = :done
   end
 
   def load_shortcuts
@@ -305,6 +394,14 @@ class SystemDesktopApp < FmrbApp
   # ---- Update loop ----
 
   def on_update()
+    if @boot_anim_state != :done
+      tick_boot_animation
+      # After full reveal, hold the logo on screen for BOOT_HOLD_MS before
+      # the :wait_to_finish tick swaps to the regular desktop.
+      return BOOT_HOLD_MS if @boot_anim_state == :wait_to_finish
+      return BOOT_FRAME_MS
+    end
+
     #draw_memory_stats
     @counter += 1
 
@@ -354,6 +451,7 @@ class SystemDesktopApp < FmrbApp
         open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error")
       end
     elsif msg["cmd"] == "confirm_dialog"
+      Log.info("[reload-dbg] desktop on_control confirm_dialog received: #{msg.inspect}")
       # Build callback data hash from message fields
       cb_data = {}
       msg.each do |k, v|

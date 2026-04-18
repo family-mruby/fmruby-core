@@ -86,6 +86,15 @@ int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value);
 fmrb_semaphore_t fmrb_host_get_gfx_queue_semaphore(void);
 
 /**
+ * @brief Allow the on-screen cursor to appear on the next mouse event.
+ *
+ * The cursor stays hidden after boot until this is called, so the boot
+ * animation is not interrupted by a stray mouse cursor sprite. After this
+ * call the next mouse-move event makes the cursor visible (one-shot).
+ */
+void fmrb_host_enable_cursor(void);
+
+/**
  * @brief Read cumulative GFX counters (for runtime monitoring).
  * @param out_cmds Cumulative GFX command count since boot (may be NULL)
  * @param out_presents Cumulative GFX present() count since boot (may be NULL)

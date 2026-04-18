@@ -23,6 +23,14 @@
 static const char *TAG = "host";
 
 static bool g_cursor_shown = false;
+// Gates the auto-show on first mouse event. Stays false until system_desktop
+// finishes its boot animation (calls fmrb_host_enable_cursor via FmrbApp.enable_cursor).
+static bool g_cursor_enabled = false;
+
+void fmrb_host_enable_cursor(void)
+{
+    g_cursor_enabled = true;
+}
 
 // Host message types
 typedef enum {
@@ -1080,8 +1088,10 @@ static void host_task_process_host_message(const host_message_t *msg)
 
             fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
             if (gfx_ctx) {
-                // Show cursor on first mouse event
-                if (!g_cursor_shown) {
+                // Show cursor on first mouse event (only after Ruby has
+                // enabled it via fmrb_host_enable_cursor; keeps the boot
+                // animation free of a stray cursor).
+                if (!g_cursor_shown && g_cursor_enabled) {
                     g_cursor_shown = true;
                     fmrb_gfx_set_cursor_visible(gfx_ctx, true);
                     FMRB_LOGI(TAG, "Cursor made visible on first mouse event");

@@ -1001,6 +1001,16 @@ static mrb_value mrb_fmrb_app_s_heap_info(mrb_state *mrb, mrb_value self)
     return hash;
 }
 
+// FmrbApp.enable_cursor -> nil
+// Allow the OS cursor to appear on the next mouse event. system_desktop calls
+// this once its boot animation is complete so the cursor stays hidden during
+// the boot logo reveal.
+static mrb_value mrb_fmrb_app_s_enable_cursor(mrb_state *mrb, mrb_value klass)
+{
+    fmrb_host_enable_cursor();
+    return mrb_nil_value();
+}
+
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 {
     // Define FmrbApp class
@@ -1023,6 +1033,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "wallclock", mrb_fmrb_app_s_wallclock, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 
