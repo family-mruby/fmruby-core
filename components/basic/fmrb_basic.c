@@ -221,6 +221,14 @@ fmrb_err_t fmrb_basic_run(basic_state_t* state) {
 
     // Execute lines
     while (state->running && state->current_line_idx < state->line_count) {
+        // Cooperative exit: bail out if the kernel asked the app to stop.
+        // fmrb_current() returns the context for the running task.
+        if (fmrb_app_poll_exit_signal(fmrb_current())) {
+            FMRB_LOGI(TAG, "BASIC close requested, exiting run loop");
+            state->running = false;
+            break;
+        }
+
         if (!state->lines[state->current_line_idx].used) {
             state->current_line_idx++;
             continue;

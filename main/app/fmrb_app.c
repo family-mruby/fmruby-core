@@ -38,6 +38,35 @@ static const char *TAG = "fmrb_app";
 // Max script file size (configurable)
 #define MAX_SCRIPT_FILE_SIZE (64 * 1024)  // 64KB
 
+/**
+ * Drain APP_CONTROL messages and latch should_exit on stop/exit commands.
+ * Used by Lua/Basic runtimes that don't otherwise process kernel messages.
+ *
+ * Msgpack payload matched: fixmap(1) "cmd" str => "stop" or "exit" str.
+ *   {"cmd":"stop"} -> 0x81 0xA3 'cmd' 0xA4 'stop'  (10 bytes)
+ *   {"cmd":"exit"} -> 0x81 0xA3 'cmd' 0xA4 'exit'  (10 bytes)
+ */
+bool fmrb_app_poll_exit_signal(fmrb_app_task_context_t* ctx) {
+    if (!ctx) return false;
+    if (ctx->should_exit) return true;
+
+    fmrb_msg_t msg;
+    while (fmrb_msg_receive(ctx->app_id, &msg, 0) == FMRB_OK) {
+        if (msg.type != FMRB_MSG_TYPE_APP_CONTROL || msg.size < 10) {
+            continue;
+        }
+        if (msg.data[0] != 0x81 || msg.data[1] != 0xA3 ||
+            memcmp(&msg.data[2], "cmd", 3) != 0 || msg.data[5] != 0xA4) {
+            continue;
+        }
+        const uint8_t* cmd = &msg.data[6];
+        if (memcmp(cmd, "stop", 4) == 0 || memcmp(cmd, "exit", 4) == 0) {
+            ctx->should_exit = true;
+        }
+    }
+    return ctx->should_exit;
+}
+
 // ============================================================================
 // Global state (zero-initialized at boot)
 // ============================================================================
@@ -558,6 +587,22 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
 }
 
 /**
+ * Lua debug hook: count-based, periodically polls for a stop request from
+ * the kernel. When the kernel asks the app to close, this raises a Lua
+ * error so lua_pcall returns and the task wrapper can run its cleanup.
+ */
+static void lua_exit_check_hook(lua_State* L, lua_Debug* ar) {
+    (void)ar;
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) return;
+    if (fmrb_app_poll_exit_signal(ctx)) {
+        FMRB_LOGI(TAG, "[%s] Lua close requested, unwinding VM", ctx->app_name);
+        lua_pushliteral(L, "__fmrb_close_requested__");
+        lua_error(L);  // longjmp out of pcall; does not return
+    }
+}
+
+/**
  * Execute Lua script
  * @return 0 on success, -1 on error
  */
@@ -600,10 +645,21 @@ static int execute_lua_script(fmrb_app_task_context_t* ctx,
         fmrb_sys_free(script_buffer);
         script_buffer = NULL;
 
+        // Install exit-signal hook: fires every N VM instructions so the
+        // kernel can request graceful shutdown without killing the task.
+        lua_sethook(ctx->lua, lua_exit_check_hook, LUA_MASKCOUNT, 100);
+
         // Execute Lua script
         int exec_result = lua_pcall(ctx->lua, 0, LUA_MULTRET, 0);
         if (exec_result != LUA_OK) {
             const char* err_msg = lua_tostring(ctx->lua, -1);
+            // Close-request sentinel is not a real error; log as info so users
+            // don't see a scary E-level line on normal shutdown.
+            if (err_msg && strstr(err_msg, "__fmrb_close_requested__")) {
+                FMRB_LOGI(TAG, "[%s] Lua script closed by user", ctx->app_name);
+                lua_pop(ctx->lua, 1);
+                return 0;
+            }
             FMRB_LOGE(TAG, "[%s] Lua execution error: %s",
                       ctx->app_name, err_msg ? err_msg : "unknown error");
             lua_pop(ctx->lua, 1);  // Pop error message
@@ -764,6 +820,9 @@ static void app_task_main(void* arg) {
     char* script_buffer = NULL;
     bool need_free_script = false;
 
+    // Reset per-run termination flag (context slots are reused on respawn)
+    ctx->should_exit = false;
+
     // Register in TLS with destructor
     fmrb_task_set_tls_with_del(0, FMRB_APP_TLS_INDEX, ctx, tls_destructor);
 
@@ -796,6 +855,22 @@ static void app_task_main(void* arg) {
         default:
             FMRB_LOGE(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
             goto cleanup;
+    }
+
+    // Ensure a message queue exists for non-mruby apps so the kernel can
+    // deliver APP_CONTROL messages (e.g., close request). Ruby apps create
+    // their own queue from the FmrbApp#_init binding.
+    if (ctx->vm_type != FMRB_VM_TYPE_MRUBY) {
+        fmrb_msg_queue_config_t queue_config = {
+            .queue_length = FMRB_USER_APP_MSG_QUEUE_LEN,
+            .message_size = sizeof(fmrb_msg_t)
+        };
+        fmrb_err_t qret = fmrb_msg_create_queue(ctx->app_id, &queue_config);
+        if (qret != FMRB_OK) {
+            FMRB_LOGE(TAG, "[%s] Failed to create message queue: %d",
+                      ctx->app_name, qret);
+            goto cleanup;
+        }
     }
 
     // Transition to RUNNING

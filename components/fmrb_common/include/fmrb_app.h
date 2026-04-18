@@ -87,6 +87,12 @@ typedef struct fmrb_app_task_context_s {
     // Load mode and data (replaces encoded user_data pointer tagging)
     fmrb_load_mode_t      load_mode;         // How to load the script
     void*                 load_data;         // Bytecode ptr or filepath ptr
+
+    // Cooperative termination flag. Set by runtimes that poll APP_CONTROL
+    // messages (Lua hook, BASIC run loop) when the kernel requests close
+    // via {"cmd": "stop"}. The VM unwinds and the task exits normally so
+    // canvas/queue cleanup in the task wrapper runs.
+    volatile bool         should_exit;
 } fmrb_app_task_context_t;
 
 // Spawn attributes for creating new app task
@@ -168,6 +174,18 @@ static inline fmrb_app_task_context_t* fmrb_current(void) {
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
 fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid);
+
+/**
+ * @brief Drain APP_CONTROL messages and set should_exit when a stop/exit is seen
+ *
+ * Non-blocking poll intended for Lua/Basic runtimes that would otherwise
+ * ignore kernel messages. Any APP_CONTROL msg with cmd="stop" or cmd="exit"
+ * flips ctx->should_exit so the runtime can unwind gracefully.
+ *
+ * @param ctx Task context (usually fmrb_current())
+ * @return true if an exit has been requested (latched)
+ */
+bool fmrb_app_poll_exit_signal(fmrb_app_task_context_t* ctx);
 
 void* fmrb_app_get_current_est(void);
 void fmrb_app_set_current_est(void* est);

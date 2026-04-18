@@ -179,6 +179,8 @@ module InputRouterMixin
           if target_window
             relative_x = x - target_window[:x]
             relative_y = y - target_window[:y]
+            win_width = target_window[:width]
+            target_name = target_window[:app_name]
 
             # Create new binary message with relative coordinates
             relative_data = "\x00\x00\x00\x00\x00\x00"
@@ -190,6 +192,20 @@ module InputRouterMixin
             relative_data.setbyte(5, (relative_y >> 8) & 0xFF) # y high byte
 
             _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
+
+            # Close-button click: ask non-mruby apps to stop via APP_CONTROL so
+            # their runtime can unwind in its own context (Lua hook / BASIC
+            # loop poll) and let the task wrapper run its cleanup. Ruby apps
+            # still self-close via their own on_event handler.
+            if button == 1 && relative_y < 11 && relative_x >= win_width - 10 &&
+               target_name != "system_desktop" && target_name != "system_overlay"
+              info = _get_app_info(target_pid)
+              if info && info[:vm_type] != :mruby
+                Log.info("Close button on #{info[:vm_type]} app: request stop PID #{target_pid}")
+                stop_data = MessagePack.pack({"cmd" => "stop"})
+                _send_raw_message(target_pid, FmrbConst::MSG_TYPE_APP_CONTROL, stop_data)
+              end
+            end
           end
         end
 
