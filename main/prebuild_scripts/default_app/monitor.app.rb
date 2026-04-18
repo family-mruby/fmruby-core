@@ -123,6 +123,20 @@ class MonitorApp < FmrbApp
     @gfx.draw_text(@content_x, y, "Memory", COLOR_TEXT, COLOR_BG)
     y += CHAR_H + 4
 
+    # IRAM line above the per-task PSRAM pool bars.
+    hi = FmrbApp.heap_info
+    if hi
+      iram_free = hi[:iram_free] || 0
+      iram_total = hi[:iram_total] || 0
+      if iram_total > 0
+        iram_text = "IRAM free: #{iram_free / 1024}/#{iram_total / 1024}K"
+      else
+        iram_text = "IRAM free: #{iram_free / 1024}K"
+      end
+      @gfx.draw_text(@content_x, y, iram_text, COLOR_TEXT, COLOR_BG)
+      y += CHAR_H + 2
+    end
+
     procs = FmrbApp.ps
     return unless procs
 

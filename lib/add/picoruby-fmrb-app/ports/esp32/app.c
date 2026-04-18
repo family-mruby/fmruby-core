@@ -946,6 +946,9 @@ static mrb_value mrb_fmrb_app_s_heap_info(mrb_state *mrb, mrb_value self)
     size_t total_heap = heap_caps_get_total_size(MALLOC_CAP_DEFAULT);
     size_t min_free_heap = heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
     size_t largest_free_block = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+    // IRAM: internal SRAM free / total (matches fmrb_task status log).
+    size_t iram_free = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    size_t iram_total = heap_caps_get_total_size(MALLOC_CAP_INTERNAL);
 
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free")),
                  mrb_fixnum_value(free_heap));
@@ -955,6 +958,10 @@ static mrb_value mrb_fmrb_app_s_heap_info(mrb_state *mrb, mrb_value self)
                  mrb_fixnum_value(min_free_heap));
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "largest_block")),
                  mrb_fixnum_value(largest_free_block));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "iram_free")),
+                 mrb_fixnum_value(iram_free));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "iram_total")),
+                 mrb_fixnum_value(iram_total));
 #else
     // Linux: Use sysinfo to get system memory information
     struct sysinfo si;
@@ -970,11 +977,19 @@ static mrb_value mrb_fmrb_app_s_heap_info(mrb_state *mrb, mrb_value self)
                      mrb_fixnum_value(free_ram));  // Linux has no equivalent, use current free
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "largest_block")),
                      mrb_fixnum_value(free_ram));  // Linux has no equivalent, use current free
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "iram_free")),
+                     mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "iram_total")),
+                     mrb_fixnum_value(0));
     } else {
         // If sysinfo fails, return zeros
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "free")),
                      mrb_fixnum_value(0));
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "total")),
+                     mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "iram_free")),
+                     mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "iram_total")),
                      mrb_fixnum_value(0));
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "min_free")),
                      mrb_fixnum_value(0));
