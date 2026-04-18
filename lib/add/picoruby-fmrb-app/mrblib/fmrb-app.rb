@@ -6,6 +6,10 @@ class FmrbApp
   CORNER_R = 4
   TRANSPARENT_COLOR = 0x01
 
+  # Debug toggle: set false to bypass GfxBlock for the window frame and fall
+  # back to per-primitive draws (used for isolating ESP32 mruby-task issues).
+  USE_FRAME_BLOCK = true
+
   attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen
 
   def initialize()
@@ -43,9 +47,17 @@ class FmrbApp
         @bg_gfx = nil
       end
 
-      # Non-fullscreen windows cache their frame as a GfxBlock program on
-      # WROVER. The initial EXEC is issued as part of GfxBlock.new.
-      _build_frame_block unless @fullscreen
+      unless @fullscreen
+        if USE_FRAME_BLOCK
+          # Cached path: frame program uploaded to WROVER once; runs the
+          # initial EXEC as part of GfxBlock.new.
+          _build_frame_block
+        else
+          # Legacy path: immediately emit per-primitive draws so the window
+          # frame appears; draw_window_frame will repaint on every call.
+          _draw_window_frame_direct
+        end
+      end
     else
       @gfx = nil
       @bg_gfx = nil
@@ -54,12 +66,16 @@ class FmrbApp
 
   end
 
-  # Re-run the window frame program. If w/h are unchanged since the last
-  # call, no bytes are sent; otherwise only the changed register values
-  # go over the wire.
+  # Repaint the window frame. Uses the GfxBlock program when
+  # USE_FRAME_BLOCK=true (skip/diff-send), otherwise sends per-primitive
+  # commands each call.
   def draw_window_frame
     return if @fullscreen
-    @frame_block&.draw(w: @window_width, h: @window_height)
+    if @frame_block
+      @frame_block.draw(w: @window_width, h: @window_height)
+    else
+      _draw_window_frame_direct
+    end
   end
 
   private
@@ -85,6 +101,21 @@ class FmrbApp
       # app content never fills them (user_area excludes x=0, x=w-1, y=h-1).
       r.draw_round_rect 0, 0, w, h, CORNER_R, 0x60
     end
+  end
+
+  # Legacy per-primitive window frame drawing. Used when USE_FRAME_BLOCK=false
+  # for A/B comparison or when debugging mruby-task issues on ESP32.
+  def _draw_window_frame_direct
+    @gfx.fill_round_rect(0, 0, @window_width, TITLE_BAR_H, CORNER_R, 0xC5)
+    @gfx.fill_rect(0, CORNER_R, @window_width, TITLE_BAR_H - CORNER_R, 0xC5)
+    @gfx.fill_rect(2, 2, 8, 8, 0x60)
+    @gfx.draw_text(12, 2, @name, FmrbGfx::WHITE)
+    close_btn_x = @window_width - 10
+    close_btn_y = 2
+    @gfx.fill_rect(close_btn_x, close_btn_y, 8, 8, 0xE0)
+    @gfx.draw_line(close_btn_x + 2, close_btn_y + 2, close_btn_x + 5, close_btn_y + 5, FmrbGfx::WHITE)
+    @gfx.draw_line(close_btn_x + 5, close_btn_y + 2, close_btn_x + 2, close_btn_y + 5, FmrbGfx::WHITE)
+    @gfx.draw_round_rect(0, 0, @window_width, @window_height, CORNER_R, 0x60)
   end
 
   public

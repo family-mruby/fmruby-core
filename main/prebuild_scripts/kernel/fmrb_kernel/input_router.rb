@@ -126,6 +126,15 @@ module InputRouterMixin
           new_x = x - @drag_offset_x
           new_y = y - @drag_offset_y
 
+          # Clamp to the range accepted by the C API (0..65535). The C function
+          # raises ArgumentError on out-of-range values, and accumulating those
+          # exceptions from mouse_move events has been observed to corrupt the
+          # mruby-task context on ESP32. Clamp here to avoid the raise.
+          new_x = 0 if new_x < 0
+          new_x = 65535 if new_x > 65535
+          new_y = 0 if new_y < 0
+          new_y = 65535 if new_y > 65535
+
           # Update window position
           if _update_window_position(@capture_pid, new_x, new_y)
             mark_window_list_dirty  # Position changed
