@@ -305,6 +305,9 @@ class FmrbKernelImpl < FmrbKernel
       if rtc.sync_system_clock
         t = rtc.read_time
         Log.info("RTC sync: #{t[:year]}/#{t[:month]}/#{t[:day]} #{t[:hour]}:#{t[:minute]}:#{t[:second]}")
+        # Dump system clock to cross-check TZ handling
+        # (ESP-IDF log prefix uses localtime; Time.now here reflects the same)
+        Log.info("System time after sync: #{Time.now} (epoch=#{Time.now.to_i})")
         # Send time to graphics-audio side
         _sync_time_to_host
         Log.info("RTC sync: time sent to host")

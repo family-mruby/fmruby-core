@@ -7,6 +7,7 @@ display_mode = "atom_display"
 debug_mode = true
 mouse_scale_x = 1.0
 mouse_scale_y = 1.0
+timezone = "JST-9"
 
 [theme]
 desktop_bg = 0xF6

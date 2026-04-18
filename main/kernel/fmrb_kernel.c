@@ -118,6 +118,8 @@ static bool read_system_config(void)
         tzset();
         FMRB_LOGI(TAG, "Timezone set to: %s", tz);
         fmrb_sys_free((void *)tz);
+    } else {
+        FMRB_LOGW(TAG, "Timezone not configured, logs will use UTC");
     }
 
     // Log loaded configuration

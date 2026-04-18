@@ -6,6 +6,7 @@
 #include <mruby/hash.h>
 #include <mruby/array.h>
 #include <string.h>
+#include <stdlib.h>
 #include <sys/time.h>
 #include "hal.h"
 #include "task.h"
@@ -442,7 +443,7 @@ static mrb_value mrb_kernel_resume_app(mrb_state *mrb, mrb_value self)
 }
 
 // FmrbKernel#_sync_time_to_host() -> true/false
-// Send current system time to graphics-audio side via CONTROL SET_TIME
+// Send current system time (and TZ) to graphics-audio side via CONTROL SET_TIME
 static mrb_value mrb_kernel_sync_time_to_host(mrb_state *mrb, mrb_value self)
 {
     struct timeval tv;
@@ -452,6 +453,11 @@ static mrb_value mrb_kernel_sync_time_to_host(mrb_state *mrb, mrb_value self)
         .tv_sec = (int64_t)tv.tv_sec,
         .tv_usec = (int32_t)tv.tv_usec
     };
+    memset(cmd.tz, 0, sizeof(cmd.tz));
+    const char *tz = getenv("TZ");
+    if (tz) {
+        strncpy(cmd.tz, tz, sizeof(cmd.tz) - 1);
+    }
 
     fmrb_err_t ret = fmrb_transport_send(
         FMRB_LINK_TYPE_CONTROL,
