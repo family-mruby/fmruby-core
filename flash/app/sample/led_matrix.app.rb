@@ -7,7 +7,7 @@
 #   ch 3: animation speed, btn: toggle row on/off, switch: pause
 
 # Change this to the GPIO pin connected to WS2812B data line
-LED_PIN = 47
+LED_PIN = 48
 
 LED_COLS = 8
 LED_ROWS = 8
