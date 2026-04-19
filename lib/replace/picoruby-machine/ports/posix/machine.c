@@ -51,6 +51,48 @@ Machine_tud_mounted_q(void)
 void
 Machine_delay_ms(uint32_t ms)
 {
+  if (ms == 0) return;
+
+  /*
+   * Why the chunked wall-clock loop?
+   *
+   * FreeRTOS-posix (used for the Linux simulation target) emulates task ticks
+   * by installing an ITIMER_REAL at ~1 ms. That delivers SIGALRM to whichever
+   * thread happens to be running, and any in-flight nanosleep() returns early
+   * with EINTR at the very first tick - so a naive `nanosleep(ms, NULL)` here
+   * returns after a single millisecond instead of the requested duration.
+   *
+   * The standard "loop on EINTR with the remaining time" idiom also does not
+   * work reliably: some platforms clamp the returned remainder, and we were
+   * observed to exit early under heavy SIGALRM load.
+   *
+   * Instead we record an absolute wake-up time via CLOCK_MONOTONIC and sleep
+   * in short (10 ms) chunks, rechecking the clock on every iteration. Each
+   * chunk may be cut short by SIGALRM, but the outer loop terminates only
+   * when wall-clock time actually reaches the target - so the function always
+   * sleeps at least `ms` milliseconds regardless of signal activity. The
+   * second nanosleep() argument is NULL because we do not care about the
+   * remainder; the wall-clock check is the source of truth.
+   *
+   * Trade-off: accuracy is bounded by the chunk size (~10 ms over-sleep in
+   * the worst case) plus scheduler jitter. This is intentional - the caller
+   * is asking for a coarse delay, not precision timing.
+   */
+
+  struct timespec now;
+  clock_gettime(CLOCK_MONOTONIC, &now);
+  uint64_t target_ns = (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec
+                     + (uint64_t)ms * 1000000ULL;
+
+  const struct timespec chunk = { .tv_sec = 0, .tv_nsec = 10 * 1000000 }; /* 10 ms */
+  for (;;) {
+    struct timespec c = chunk;
+    nanosleep(&c, NULL); /* EINTR is fine; the wall-clock check below is authoritative. */
+
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    uint64_t now_ns = (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
+    if (now_ns >= target_ns) break;
+  }
 }
 
 void
