@@ -143,6 +143,10 @@ task :setup do
   # picoruby-sandbox: fix uninitialized mrb_value name in Sandbox.new
   sh "cp -f lib/patch/picoruby-sandbox/src/mruby/sandbox.c #{mrbgem_path}/picoruby-sandbox/src/mruby/"
 
+  # picoruby-i2c: add I2C#close method and I2C_release declaration
+  sh "cp -f lib/patch/picoruby-i2c/include/i2c.h #{mrbgem_path}/picoruby-i2c/include/"
+  sh "cp -f lib/patch/picoruby-i2c/src/mruby/i2c.c #{mrbgem_path}/picoruby-i2c/src/mruby/"
+
   # mruby-task: add stack clearing in mrb_task_reset_context
   mruby_task_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-task"
   sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c #{mruby_task_path}/src/"
