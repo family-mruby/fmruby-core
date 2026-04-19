@@ -7,7 +7,7 @@ module ConfirmDialogMixin
   CDLG_BG = FmrbConst::THEME_WINDOW_BG
   CDLG_TITLE_BG = FmrbConst::THEME_MENU_BG
   CDLG_TEXT = FmrbConst::THEME_TEXT
-  CDLG_BTN_YES = 0x1C  # Green
+  CDLG_BTN_YES = 0x34  # Green
   CDLG_BTN_NO = FmrbConst::THEME_BUTTON
 
   def open_confirm_dialog(message, on_yes_cmd, on_yes_data = nil)
