@@ -9,8 +9,7 @@
 extern "C" {
 #endif
 
-// Protocol version
-#define FMRB_LINK_PROTOCOL_VERSION 1
+// Link protocol version is defined in fmrb.h (FMRB_LINK_VERSION)
 
 // Link frame size constants (single source of truth)
 // Change FMRB_LINK_FRAME_SIZE to resize frames (e.g. 1024); all derived values follow.
@@ -47,6 +46,10 @@ typedef enum {
 #define FMRB_LINK_CONTROL_VERSION      0x01
 #define FMRB_LINK_CONTROL_INIT_DISPLAY 0x02
 #define FMRB_LINK_CONTROL_SET_TIME     0x03
+#define FMRB_LINK_CONTROL_GA_VERSION   0x04
+
+// Max length of GA firmware version string including NUL
+#define FMRB_GA_VERSION_MAX_LEN        16
 
 // Control command structures
 typedef struct __attribute__((packed)) {
@@ -56,6 +59,10 @@ typedef struct __attribute__((packed)) {
 typedef struct __attribute__((packed)) {
     uint8_t version;  // Protocol version number
 } fmrb_control_version_resp_t;
+
+typedef struct __attribute__((packed)) {
+    char version[FMRB_GA_VERSION_MAX_LEN];  // NUL-terminated GA firmware version
+} fmrb_control_ga_version_resp_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t width;

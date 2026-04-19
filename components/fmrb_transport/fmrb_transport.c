@@ -1,4 +1,5 @@
 #include "fmrb_transport.h"
+#include "fmrb.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_transport_fragment.h"
 #include "fmrb_hal.h"
@@ -909,14 +910,14 @@ fmrb_err_t fmrb_transport_check_version(uint32_t timeout_ms) {
 
     // Prepare version request
     fmrb_control_version_req_t req = {
-        .version = FMRB_LINK_PROTOCOL_VERSION
+        .version = FMRB_LINK_VERSION
     };
 
     // Buffer for response
     fmrb_control_version_resp_t resp;
     uint32_t resp_len = sizeof(resp);
 
-    FMRB_LOGI(TAG, "Checking protocol version (local=%d)", FMRB_LINK_PROTOCOL_VERSION);
+    FMRB_LOGI(TAG, "Checking protocol version (local=%d)", FMRB_LINK_VERSION);
 
     // Send version request synchronously
     // This works because host_task is running and calling fmrb_transport_process()
@@ -941,12 +942,57 @@ fmrb_err_t fmrb_transport_check_version(uint32_t timeout_ms) {
     }
 
     // Check version match
-    if (resp.version != FMRB_LINK_PROTOCOL_VERSION) {
+    if (resp.version != FMRB_LINK_VERSION) {
         FMRB_LOGE(TAG, "Version mismatch: local=%d, remote=%d",
-                  FMRB_LINK_PROTOCOL_VERSION, resp.version);
+                  FMRB_LINK_VERSION, resp.version);
         return FMRB_ERR_FAILED;
     }
 
     FMRB_LOGI(TAG, "Protocol version matched (version=%d)", resp.version);
+    return FMRB_OK;
+}
+
+fmrb_err_t fmrb_transport_check_ga_version(uint32_t timeout_ms) {
+    transport_context_t *ctx = &g_tranport_context;
+    if (!ctx->initialized) {
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    fmrb_control_ga_version_resp_t resp;
+    memset(&resp, 0, sizeof(resp));
+    uint32_t resp_len = sizeof(resp);
+
+    FMRB_LOGI(TAG, "Checking GA firmware version (expected=%s)", FMRB_GA_VERSION);
+
+    fmrb_err_t ret = fmrb_transport_send_sync(
+        FMRB_LINK_TYPE_CONTROL,
+        FMRB_LINK_CONTROL_GA_VERSION,
+        NULL,
+        0,
+        (uint8_t*)&resp,
+        &resp_len,
+        timeout_ms
+    );
+
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "GA version check failed: no response (err=%d)", ret);
+        return ret;
+    }
+
+    if (resp_len != sizeof(resp)) {
+        FMRB_LOGE(TAG, "GA version check failed: invalid response length (%u)", resp_len);
+        return FMRB_ERR_FAILED;
+    }
+
+    // Ensure NUL-termination before string compare
+    resp.version[FMRB_GA_VERSION_MAX_LEN - 1] = '\0';
+
+    if (strncmp(resp.version, FMRB_GA_VERSION, FMRB_GA_VERSION_MAX_LEN) != 0) {
+        FMRB_LOGE(TAG, "GA version mismatch: expected=%s, remote=%s",
+                  FMRB_GA_VERSION, resp.version);
+        return FMRB_ERR_FAILED;
+    }
+
+    FMRB_LOGI(TAG, "GA firmware version matched (version=%s)", resp.version);
     return FMRB_OK;
 }

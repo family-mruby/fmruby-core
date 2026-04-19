@@ -19,6 +19,7 @@
 #include "fmrb_task_config.h"
 #include "fmrb_log.h"
 #include "fmrb_transport.h"
+#include "status_led.h"
 #include "boot.h"
 #include "hal.h"
 
@@ -180,6 +181,36 @@ static mrb_value mrb_kernel_check_protocol_version(mrb_state *mrb, mrb_value sel
         FMRB_LOGE(TAG, "Protocol version check failed: %d", ret);
         return mrb_false_value();
     }
+}
+
+// Kernel#check_ga_version(timeout_ms = 5000) -> bool
+// Check Graphics-Audio firmware version with host
+static mrb_value mrb_kernel_check_ga_version(mrb_state *mrb, mrb_value self)
+{
+    mrb_int timeout_ms = 5000;
+    mrb_get_args(mrb, "|i", &timeout_ms);
+
+    FMRB_LOGI(TAG, "Checking GA firmware version (timeout=%d ms)...", (int)timeout_ms);
+
+    fmrb_err_t ret = fmrb_transport_check_ga_version((uint32_t)timeout_ms);
+
+    if (ret == FMRB_OK) {
+        FMRB_LOGI(TAG, "GA version check succeeded");
+        return mrb_true_value();
+    } else {
+        FMRB_LOGE(TAG, "GA version check failed: %d", ret);
+        return mrb_false_value();
+    }
+}
+
+// Kernel#_set_error_led(level) -> nil
+// Set the Status LED error pattern (see FmrbConst::LED_ERR_*).
+static mrb_value mrb_kernel_set_error_led(mrb_state *mrb, mrb_value self)
+{
+    mrb_int level;
+    mrb_get_args(mrb, "i", &level);
+    status_led_set_error((int)level);
+    return mrb_nil_value();
 }
 
 // FmrbKernel#_set_hid_target(pid) - Set HID event target app
@@ -479,6 +510,8 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_spin", mrb_kernel_handler_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_spawn_app_req", mrb_kernel_handler_spawn_app_req, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "check_protocol_version", mrb_kernel_check_protocol_version, MRB_ARGS_OPT(1));
+    mrb_define_method(mrb, handler_class, "check_ga_version", mrb_kernel_check_ga_version, MRB_ARGS_OPT(1));
+    mrb_define_method(mrb, handler_class, "_set_error_led", mrb_kernel_set_error_led, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_get_window_list", mrb_kernel_get_window_list, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));

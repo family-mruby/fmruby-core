@@ -167,6 +167,13 @@ fmrb_transport_handle_t fmrb_transport_get_handle(void);
  */
 fmrb_err_t fmrb_transport_check_version(uint32_t timeout_ms);
 
+/**
+ * @brief Check Graphics-Audio firmware version with remote
+ * @param timeout_ms Timeout in milliseconds
+ * @return FMRB_OK on success (GA version matched FMRB_GA_VERSION), error code otherwise
+ */
+fmrb_err_t fmrb_transport_check_ga_version(uint32_t timeout_ms);
+
 #ifdef __cplusplus
 }
 #endif

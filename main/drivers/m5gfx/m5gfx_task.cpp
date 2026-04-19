@@ -24,6 +24,7 @@ extern "C" {
 #include "fmrb_task_config.h"
 #include "fmrb_hal_link.h"
 #include "fmrb_link_types.h"
+#include "fmrb.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_mem.h"
 #include "m5gfx_task.h"
@@ -640,7 +641,7 @@ static void process_message(const uint8_t* msgpack_data, size_t msgpack_len) {
     case FMRB_LINK_TYPE_CONTROL:
         if (sub_cmd == FMRB_LINK_CONTROL_VERSION && payload_len >= sizeof(fmrb_control_version_req_t)) {
             uint8_t remote_ver = payload[0];
-            uint8_t local_ver = FMRB_LINK_PROTOCOL_VERSION;
+            uint8_t local_ver = FMRB_LINK_VERSION;
             FMRB_LOGI(TAG, "VERSION check: remote=%d, local=%d, seq=%u", remote_ver, local_ver, seq);
             send_ack(type, seq, &local_ver, sizeof(local_ver));
         } else if (sub_cmd == FMRB_LINK_CONTROL_INIT_DISPLAY && payload_len >= sizeof(fmrb_control_init_display_t)) {

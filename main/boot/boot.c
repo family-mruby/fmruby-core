@@ -370,7 +370,7 @@ void fmrb_os_init(void)
     if(result != FMRB_OK){
         FMRB_LOGE(TAG, "Failed to start kernel");
 #ifndef CONFIG_IDF_TARGET_LINUX
-        status_led_set_error(1);
+        status_led_set_error(FMRB_LED_STATUS_FATAL);
 #endif
         return;
     }

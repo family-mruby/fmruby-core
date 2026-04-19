@@ -4,7 +4,10 @@
 extern "C" {
 #endif
 
-#define FMRB_LED_STATUS_FATAL 0
+// Error LED patterns
+#define FMRB_LED_STATUS_NONE              0
+#define FMRB_LED_STATUS_FATAL             1  // Solid red
+#define FMRB_LED_STATUS_VERSION_MISMATCH  2  // 3 quick red pulses + long gap
 
 /**
  * Start the status LED task.
@@ -12,7 +15,8 @@ extern "C" {
 void status_led_start(void);
 
 /**
- * Set error flag — LED starts blinking.
+ * Set error flag — LED starts blinking / showing the selected pattern.
+ * @param level one of FMRB_LED_STATUS_*
  */
 void status_led_set_error(int level);
 

@@ -325,19 +325,38 @@ class FmrbKernelImpl < FmrbKernel
     # Check protocol version with host (retry up to 3 times for startup timing)
     version_ok = false
     3.times do |attempt|
-      Log.info("Checking protocol version... (attempt #{attempt + 1}/3)")
+      Log.info("Checking Protocol version... (attempt #{attempt + 1}/3)")
       if check_protocol_version(5000)
         version_ok = true
         break
       end
       Log.warn("Protocol version check attempt #{attempt + 1} failed, retrying...")
-      sleep_ms(500)
+      Machine.delay_ms(500)
     end
     unless version_ok
       Log.error("ERROR: Protocol version check failed after 3 attempts")
-      raise "Protocol version mismatch with host"
+      _set_error_led(FmrbConst::LED_ERR_VERSION_MISMATCH)
+      raise "Protocol version check failed"
     end
     Log.info("Protocol version check passed")
+
+    # Check GA firmware version (retry up to 3 times)
+    ga_ok = false
+    3.times do |attempt|
+      Log.info("Checking GA version... (attempt #{attempt + 1}/3)")
+      if check_ga_version(5000)
+        ga_ok = true
+        break
+      end
+      Log.warn("GA version check attempt #{attempt + 1} failed, retrying...")
+      Machine.delay_ms(500)
+    end
+    unless ga_ok
+      Log.error("ERROR: GA version check failed after 3 attempts")
+      _set_error_led(FmrbConst::LED_ERR_VERSION_MISMATCH)
+      raise "GA version check failed"
+    end
+    Log.info("GA version check passed")
 
     # Sync files to host (after protocol version confirmed)
     sync_files

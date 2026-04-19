@@ -15,6 +15,7 @@ class SystemDesktopApp < FmrbApp
   include ErrorDialogMixin
   include ClockSettingMixin
   include TaskbarMixin
+  include AboutDialogMixin
 
   MENU_BAR_HEIGHT = 13
   MENU_BG = FmrbConst::THEME_MENU_BG
@@ -38,6 +39,7 @@ class SystemDesktopApp < FmrbApp
     { label: "Monitor" },
     { label: "Set Clock" },
     { label: "Config", app: "default/config" },
+    { label: "About" },
   ]
 
   DROPDOWN_X = 0
@@ -51,6 +53,10 @@ class SystemDesktopApp < FmrbApp
     @mem_update_interval = 30
 
     @dropdown_open = false
+    @dropdown_hover_idx = -1
+    @about_open = false
+    @about_x = 0
+    @about_y = 0
     @launcher_open = false
     @launcher_selected = -1
     @launcher_scroll = 0
@@ -391,6 +397,7 @@ class SystemDesktopApp < FmrbApp
     draw_confirm_dialog if @cdlg_open
     draw_clock_setting if @clk_open
     draw_error_dialog if @error_dlg_open
+    draw_about_dialog if @about_open
     @gfx.present
   end
 
@@ -421,8 +428,20 @@ class SystemDesktopApp < FmrbApp
 
     DROPDOWN_ITEMS.each_with_index do |item, i|
       item_y = y + 1 + i * DROPDOWN_ITEM_H
-      @gfx.draw_text(x + 6, item_y + 2, item[:label], DROPDOWN_TEXT, DROPDOWN_BG)
+      if i == @dropdown_hover_idx
+        @gfx.fill_rect(x + 1, item_y, DROPDOWN_W - 2, DROPDOWN_ITEM_H, DROPDOWN_HIGHLIGHT)
+        @gfx.draw_text(x + 6, item_y + 2, item[:label], DROPDOWN_TEXT, DROPDOWN_HIGHLIGHT)
+      else
+        @gfx.draw_text(x + 6, item_y + 2, item[:label], DROPDOWN_TEXT, DROPDOWN_BG)
+      end
     end
+  end
+
+  def dropdown_item_at(x, y)
+    return -1 unless hit_dropdown?(x, y)
+    idx = (y - DROPDOWN_Y - 1) / DROPDOWN_ITEM_H
+    return -1 if idx < 0 || idx >= DROPDOWN_ITEMS.size
+    idx
   end
 
   # ---- State management ----
@@ -440,6 +459,7 @@ class SystemDesktopApp < FmrbApp
   def close_dropdown
     return unless @dropdown_open
     @dropdown_open = false
+    @dropdown_hover_idx = -1
     unless @launcher_open
       notify_overlay_state(false, 0, 0, 0, 0)
     end
@@ -527,6 +547,11 @@ class SystemDesktopApp < FmrbApp
   end
 
   def on_event(ev)
+    if ev[:type] == :mouse_move
+      handle_mouse_move(ev[:x], ev[:y])
+      return
+    end
+
     if ev[:type] == :mouse_up
       button = ev[:button] || 1
       if button == 3 && @file_manager_open
@@ -572,7 +597,24 @@ class SystemDesktopApp < FmrbApp
     end
   end
 
+  def handle_mouse_move(x, y)
+    # Update dropdown hover highlight; redraw only when the hovered item changes
+    if @dropdown_open
+      idx = dropdown_item_at(x, y)
+      if idx != @dropdown_hover_idx
+        @dropdown_hover_idx = idx
+        draw_foreground
+      end
+    end
+  end
+
   def handle_click(x, y)
+    # About dialog has highest priority — any click closes it
+    if @about_open
+      close_about_dialog
+      return
+    end
+
     # Error dialog has highest priority
     if @error_dlg_open
       if hit_error_dialog?(x, y)
@@ -677,6 +719,8 @@ class SystemDesktopApp < FmrbApp
       spawn_app("default/monitor")
     when "Set Clock"
       open_clock_setting
+    when "About"
+      open_about_dialog
     else
       spawn_app(item[:app]) if item[:app]
     end

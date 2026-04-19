@@ -10,13 +10,36 @@
 #define ERROR_LED_SELFTEST_MS   1000
 #define TASK_DUMP_INTERVAL_MS   10000
 
+// VERSION_MISMATCH pattern: [on 100, off 100] x 3 + off 1000 = 1600ms cycle (16 ticks)
+#define VERSION_MISMATCH_CYCLE_TICKS  16
+#define VERSION_MISMATCH_PULSE_TICKS  6  // 3 on/off pairs
+
 static const char *TAG = "status_led";
 
-static volatile int s_error_flag = 0;
+static volatile int s_error_pattern = FMRB_LED_STATUS_NONE;
+
+static int compute_red_level(int pattern, uint32_t step)
+{
+    switch (pattern) {
+        case FMRB_LED_STATUS_FATAL:
+            return 1;
+        case FMRB_LED_STATUS_VERSION_MISMATCH: {
+            uint32_t s = step % VERSION_MISMATCH_CYCLE_TICKS;
+            if (s < VERSION_MISMATCH_PULSE_TICKS) {
+                return (s % 2 == 0) ? 1 : 0;
+            }
+            return 0;
+        }
+        case FMRB_LED_STATUS_NONE:
+        default:
+            return 0;
+    }
+}
 
 static void status_led_task(void *pvParameters)
 {
     uint32_t dump_counter = 0;
+    uint32_t red_step = 0;
 
     // Red LED self-test: ON for 1s then OFF
     fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED, 1);
@@ -27,12 +50,14 @@ static void status_led_task(void *pvParameters)
         // Green LED heartbeat: 1.9s ON, 0.1s OFF
         fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
         for (int i = 0; i < 19; i++) {
-            fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED, s_error_flag ? 1 : 0);
+            fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED,
+                                    compute_red_level(s_error_pattern, red_step++));
             fmrb_task_delay_ms(HEARTBEAT_TICK_MS);
             dump_counter += HEARTBEAT_TICK_MS;
         }
         fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 0);
-        fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED, s_error_flag ? 1 : 0);
+        fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED,
+                                compute_red_level(s_error_pattern, red_step++));
         fmrb_task_delay_ms(HEARTBEAT_TICK_MS);
         dump_counter += HEARTBEAT_TICK_MS;
 
@@ -54,12 +79,12 @@ void status_led_start(void)
 
 void status_led_set_error(int level)
 {
-    FMRB_LOGE(TAG, "Set Error flag");
-    s_error_flag = 1;
+    FMRB_LOGE(TAG, "Set Error pattern=%d", level);
+    s_error_pattern = level;
 }
 
 void status_led_clear_error(void)
 {
-    FMRB_LOGI(TAG, "Clear Error flag");
-    s_error_flag = 0;
+    FMRB_LOGI(TAG, "Clear Error pattern");
+    s_error_pattern = FMRB_LED_STATUS_NONE;
 }

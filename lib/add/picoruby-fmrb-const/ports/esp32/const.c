@@ -3,12 +3,14 @@
 #include <mruby/hash.h>
 #include <string.h>
 
+#include "fmrb.h"
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
 #include "fmrb_hal_pin_manager.h"
 #include "fmrb_pin_assign.h"
+#include "status_led.h"
 #include "../../include/picoruby_fmrb_const.h"
 
 /* Default theme (can be overridden by system_conf.toml before VMs start) */
@@ -111,6 +113,16 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
 
     // Path length constant
     mrb_define_const(mrb, const_module, "MAX_PATH_LEN", mrb_fixnum_value(FMRB_MAX_PATH_LEN));
+
+    // Version constants (from fmrb.h)
+    mrb_define_const(mrb, const_module, "OS_VERSION",   mrb_str_new_cstr(mrb, FMRB_OS_VERSION));
+    mrb_define_const(mrb, const_module, "GA_VERSION",   mrb_str_new_cstr(mrb, FMRB_GA_VERSION));
+    mrb_define_const(mrb, const_module, "LINK_VERSION", mrb_fixnum_value(FMRB_LINK_VERSION));
+
+    // Status LED error pattern constants
+    mrb_define_const(mrb, const_module, "LED_ERR_NONE",              mrb_fixnum_value(FMRB_LED_STATUS_NONE));
+    mrb_define_const(mrb, const_module, "LED_ERR_FATAL",             mrb_fixnum_value(FMRB_LED_STATUS_FATAL));
+    mrb_define_const(mrb, const_module, "LED_ERR_VERSION_MISMATCH",  mrb_fixnum_value(FMRB_LED_STATUS_VERSION_MISMATCH));
 
     // Theme color constants (from g_theme, possibly overridden by system_conf.toml)
     const fmrb_theme_t *t = fmrb_theme_get();
