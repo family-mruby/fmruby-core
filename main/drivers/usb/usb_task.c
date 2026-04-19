@@ -730,13 +730,18 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
     uint8_t changed = buttons ^ device->mouse_state.prev_buttons;
 
     if (changed) {
+        // USB HID button bit layout differs from the SDL-style button number used
+        // downstream. HID: bit0=Primary(Left), bit1=Secondary(Right), bit2=Tertiary(Middle).
+        // SDL: 1=Left, 2=Middle, 3=Right. Map bit index -> SDL number.
+        static const int usb_bit_to_sdl_btn[3] = { 1, 3, 2 };
         for (int btn = 0; btn < 3; btn++) {
             if (changed & (1 << btn)) {
                 int state = (buttons & (1 << btn)) ? 1 : 0;
+                int sdl_btn = usb_bit_to_sdl_btn[btn];
                 FMRB_LOGD(TAG, "Mouse button %d %s at (%d,%d)",
-                         btn + 1, state ? "pressed" : "released",
+                         sdl_btn, state ? "pressed" : "released",
                          device->mouse_state.cursor_x, device->mouse_state.cursor_y);
-                fmrb_host_send_mouse_click(device->mouse_state.cursor_x, device->mouse_state.cursor_y, btn + 1, state);
+                fmrb_host_send_mouse_click(device->mouse_state.cursor_x, device->mouse_state.cursor_y, sdl_btn, state);
             }
         }
         device->mouse_state.prev_buttons = buttons;
@@ -1368,14 +1373,16 @@ static void hid_host_task(void *arg)
                         memset(&g_hid_devices[i].prev_kbd_report, 0, sizeof(hid_keyboard_input_report_boot_t));
 
                     } else if (g_hid_devices[i].proto == HID_PROTOCOL_MOUSE) {
-                        // Send mouse button release for all pressed buttons
+                        // Send mouse button release for all pressed buttons.
+                        // Same USB-bit -> SDL-button mapping as the live path above.
+                        static const int usb_bit_to_sdl_btn[3] = { 1, 3, 2 };
                         uint8_t buttons = g_hid_devices[i].mouse_state.prev_buttons;
                         for (int btn = 0; btn < 3; btn++) {
                             if (buttons & (1 << btn)) {
                                 fmrb_host_send_mouse_click(
                                     g_hid_devices[i].mouse_state.cursor_x,
                                     g_hid_devices[i].mouse_state.cursor_y,
-                                    btn + 1, 0);  // 0 = released
+                                    usb_bit_to_sdl_btn[btn], 0);  // 0 = released
                             }
                         }
                         g_hid_devices[i].mouse_state.prev_buttons = 0;

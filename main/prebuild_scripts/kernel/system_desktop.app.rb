@@ -451,7 +451,6 @@ class SystemDesktopApp < FmrbApp
         open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error")
       end
     elsif msg["cmd"] == "confirm_dialog"
-      Log.info("[reload-dbg] desktop on_control confirm_dialog received: #{msg.inspect}")
       # Build callback data hash from message fields
       cb_data = {}
       msg.each do |k, v|

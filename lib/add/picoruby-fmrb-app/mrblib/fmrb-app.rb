@@ -258,13 +258,11 @@ class FmrbApp
     end
     # Handle title bar right click (reload for file-based apps)
     if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11
-      Log.info("[reload-dbg] title-bar right-click: y=#{ev[:y]} file_app=#{_is_file_app}")
       request_reload if _is_file_app
     end
   end
 
   def request_reload
-    Log.info("[reload-dbg] request_reload -> kernel reload_confirm")
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
       {"cmd" => "reload_confirm"})
   end
