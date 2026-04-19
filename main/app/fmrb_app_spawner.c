@@ -112,8 +112,8 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .headless = false,
         .window_width = 180,
         .window_height = 120,
-        .window_pos_x = 10,
-        .window_pos_y = 10
+        .window_pos_x = 5,
+        .window_pos_y = 15
     }},
 };
 

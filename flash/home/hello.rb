@@ -1,5 +1,5 @@
 # hello sample
-puts "Edited Hello! 2"
+puts "Edited Hello!"
 puts "Hello from headless!"
 3.times { |i| puts "count: #{i}" }
 
