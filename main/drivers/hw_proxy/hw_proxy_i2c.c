@@ -26,12 +26,22 @@ static void handle_init(hw_proxy_request_t *req)
     }
 
     if (s_i2c[p->unit].initialized) {
-        if (s_i2c[p->unit].owner != req->caller) {
+        // Bus stays alive across release/init cycles to avoid an ESP-IDF
+        // i2c_master heap-corruption crash on re-creating the same port (see
+        // doc/known_issue). Reuse the existing bus regardless of ownership;
+        // claim ownership and re-acquire pins for the new caller.
+        if (s_i2c[p->unit].owner == NULL) {
+            // Bus was released by previous owner: take over.
+            s_i2c[p->unit].owner = req->caller;
+            s_i2c[p->unit].sda = p->sda;
+            s_i2c[p->unit].scl = p->scl;
+            fmrb_pin_manager_acquire(p->sda, FMRB_PIN_USER_I2C, req->caller);
+            fmrb_pin_manager_acquire(p->scl, FMRB_PIN_USER_I2C, req->caller);
+        } else if (s_i2c[p->unit].owner != req->caller) {
             FMRB_LOGE(TAG, "I2C%d already owned by another task", p->unit);
             req->result = FMRB_ERR_BUSY;
             return;
         }
-        // Same owner: reuse existing bus, update frequency
         s_i2c[p->unit].frequency = p->freq;
         req->result = FMRB_OK;
         return;
@@ -68,13 +78,13 @@ static void handle_init(hw_proxy_request_t *req)
 
 void hw_proxy_i2c_release(hw_proxy_task_handle_t owner)
 {
+    // Drop ownership and pin reservations only; keep the underlying ESP-IDF
+    // bus handle alive (see handle_init for rationale).
     for (int i = 0; i < 2; i++) {
         if (s_i2c[i].initialized && s_i2c[i].owner == owner) {
-            FMRB_LOGI(TAG, "Releasing I2C%d bus", i);
+            FMRB_LOGI(TAG, "Releasing I2C%d ownership (bus kept)", i);
             fmrb_pin_manager_release(s_i2c[i].sda);
             fmrb_pin_manager_release(s_i2c[i].scl);
-            i2c_del_master_bus(s_i2c[i].bus_handle);
-            s_i2c[i].initialized = false;
             s_i2c[i].owner = NULL;
         }
     }
@@ -126,11 +136,11 @@ static void handle_release_unit(hw_proxy_request_t *req)
         return;
     }
 
-    FMRB_LOGI(TAG, "Releasing I2C%d bus (explicit)", p->unit);
+    // Keep ESP-IDF bus alive across release/init cycles; only drop ownership
+    // and pin reservations (see handle_init for rationale).
+    FMRB_LOGI(TAG, "Releasing I2C%d ownership (explicit, bus kept)", p->unit);
     fmrb_pin_manager_release(s_i2c[p->unit].sda);
     fmrb_pin_manager_release(s_i2c[p->unit].scl);
-    i2c_del_master_bus(s_i2c[p->unit].bus_handle);
-    s_i2c[p->unit].initialized = false;
     s_i2c[p->unit].owner = NULL;
 
     req->result = FMRB_OK;
