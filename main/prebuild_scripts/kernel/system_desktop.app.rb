@@ -113,6 +113,9 @@ class SystemDesktopApp < FmrbApp
     @boot_anim_idx = 0
     @boot_tiles = nil
     @boot_img = nil
+    @boot_audio = nil
+    @boot_audio_tick = 0
+    @boot_audio_finished = false
   end
 
   def on_create()
@@ -145,6 +148,37 @@ class SystemDesktopApp < FmrbApp
   end
 
   # ---- Boot animation ----
+
+  # Famicom-style chord progression with a sweep flourish on the
+  # final tonic. Each event: [tick, ch, freq, vol, duty, sweep].
+  # ch: 0=P1, 1=P2, 2=Triangle, 3=Noise. Tick uses BOOT_FRAME_MS (60ms).
+  # freq=0 means note_off on that channel.
+  # Sweep byte: 0x80 | (period<<4) | negate(0x08=up) | shift.
+  BOOT_SWEEP_UP = 0x80 | (5 << 4) | 0x08 | 2  # slow rising sweep on tonic
+  BOOT_EVENTS = [
+    # Beat 1 (~0ms): C major + noise kick
+    [0, 0, 523,  9, 2, 0],   # P1 C5
+    [0, 1, 659,  6, 1, 0],   # P2 E5  (third, slight detune by harmonic)
+    [0, 2, 131, 12, 0, 0],   # Tri C3 bass
+    [0, 3,   6,  8, 0, 0],   # Noise short kick
+    [1, 3,   0,  0, 0, 0],   # Noise off (~60ms)
+    # Beat 2 (~180ms): F major
+    [3, 0, 698,  9, 2, 0],   # P1 F5
+    [3, 1, 880,  6, 1, 0],   # P2 A5
+    [3, 2, 175, 12, 0, 0],   # Tri F3
+    # Beat 3 (~360ms): G major
+    [6, 0, 784,  9, 2, 0],   # P1 G5
+    [6, 1, 988,  6, 1, 0],   # P2 B5
+    [6, 2, 196, 12, 0, 0],   # Tri G3
+    # Beat 4 (~540ms): C major resolution + up-sweep flourish on top
+    [9, 0, 1047, 10, 2, BOOT_SWEEP_UP],  # P1 C6 with up sweep
+    [9, 1, 659,  6, 1, 0],               # P2 E5
+    [9, 2, 262, 12, 0, 0],               # Tri C4
+    # End (~960ms): silence everything
+    [16, 0, 0, 0, 0, 0],
+    [16, 1, 0, 0, 0, 0],
+    [16, 2, 0, 0, 0, 0],
+  ]
 
   def start_boot_animation
     return unless @gfx && @bg_gfx
@@ -187,11 +221,16 @@ class SystemDesktopApp < FmrbApp
     @boot_tiles = tiles
     @boot_anim_idx = 0
     @boot_anim_state = :revealing
+
+    @boot_audio = FmrbAudio.new(self)
+    @boot_audio_tick = 0
+    @boot_audio_finished = false
   end
 
   def tick_boot_animation
     case @boot_anim_state
     when :revealing
+      tick_boot_jingle
       BOOT_TILES_PER_FRAME.times do
         break if @boot_anim_idx >= @boot_tiles.size
         tx, ty = @boot_tiles[@boot_anim_idx]
@@ -211,11 +250,37 @@ class SystemDesktopApp < FmrbApp
     end
   end
 
+  # Fire any BOOT_EVENTS scheduled for the current animation tick.
+  def tick_boot_jingle
+    return unless @boot_audio
+    return if @boot_audio_finished
+    BOOT_EVENTS.each do |ev|
+      next unless ev[0] == @boot_audio_tick
+      ch = ev[1]
+      if ev[2] == 0
+        @boot_audio.note_off(ch)
+      else
+        @boot_audio.note_on(ch, ev[2], ev[3], ev[4], ev[5])
+      end
+    end
+    last_tick = BOOT_EVENTS.last[0]
+    @boot_audio_finished = true if @boot_audio_tick >= last_tick
+    @boot_audio_tick += 1
+  end
+
   def finish_boot_animation
     if @boot_img
       @bg_gfx.delete_image(@boot_img[:id])
       @boot_img = nil
     end
+    if @boot_audio && !@boot_audio_finished
+      @boot_audio.note_off(0)
+      @boot_audio.note_off(1)
+      @boot_audio.note_off(2)
+      @boot_audio.note_off(3)
+      @boot_audio_finished = true
+    end
+    @boot_audio = nil
     draw_background
     draw_foreground
     FmrbApp.enable_cursor

@@ -19,6 +19,8 @@ class SpriteTestApp < FmrbApp
     @score = 0
     @game_over = false
     @ready = false
+    @audio = FmrbAudio.new(self)
+    @crash_off_in = nil
 
     # Transfer sprite BMP files to graphics-audio
     src_dir = "/usr/share/sprites"
@@ -66,6 +68,7 @@ class SpriteTestApp < FmrbApp
   end
 
   def on_update
+    tick_audio
     return 50 if @game_over
     return 50 unless @ready
 
@@ -78,7 +81,7 @@ class SpriteTestApp < FmrbApp
     end
     if @bird_y > @h - SPRITE_SIZE
       @bird_y = @h - SPRITE_SIZE
-      @game_over = true
+      trigger_game_over
     end
 
     @bird.move(@ox + @bird_x, @oy + @bird_y)
@@ -101,7 +104,7 @@ class SpriteTestApp < FmrbApp
         gap_top = pipe[:gap_y]
         gap_bottom = pipe[:gap_y] + PIPE_GAP
         if @bird_y < gap_top || @bird_y + SPRITE_SIZE > gap_bottom
-          @game_over = true
+          trigger_game_over
         end
       end
     end
@@ -125,12 +128,17 @@ class SpriteTestApp < FmrbApp
         else
           @ready = true
           @bird_vy = FLAP_POWER
+          play_flap
         end
       end
     end
   end
 
   def on_destroy
+    if @audio
+      @audio.note_off(0)
+      @audio.note_off(3)
+    end
     @bird.destroy if @bird
     @bird_frames.each { |f| f.destroy } if @bird_frames
     @pipes.each { |pipe| pipe[:segments].each { |s| s.destroy } } if @pipes
@@ -138,6 +146,41 @@ class SpriteTestApp < FmrbApp
   end
 
   private
+
+  # Up-sweep blip on pulse-1. Sweep auto-silences the channel so we
+  # only emit one note_on message per flap (no scheduled note_off),
+  # keeping input responsiveness. period=0 (60Hz update), shift=2
+  # (25% per step) yields ~160ms snappy chirp before muting.
+  # sweep byte: enable | (period<<4) | negate(0x08=up) | shift
+  FLAP_SWEEP = 0x80 | (0 << 4) | 0x08 | 2
+
+  def play_flap
+    return unless @audio
+    @audio.note_on(0, 880, 8, 1, FLAP_SWEEP)
+  end
+
+  # Noise burst + low pulse for the crash. Game-over so input-latency
+  # no longer matters; keep scheduled note_off for a clean tail.
+  def trigger_game_over
+    return if @game_over
+    @game_over = true
+    return unless @audio
+    @audio.note_on(0, 196, 12, 0, 0)  # G3 thud
+    @audio.note_on(3, 0, 14, 0, 0)    # noise rumble
+    @crash_off_in = 8                 # ~400ms at 50ms ticks
+  end
+
+  def tick_audio
+    return unless @audio
+    if @crash_off_in
+      @crash_off_in -= 1
+      if @crash_off_in <= 0
+        @audio.note_off(0)
+        @audio.note_off(3)
+        @crash_off_in = nil
+      end
+    end
+  end
 
   def random_gap_y
     # Snap to tile grid: gap starts at tile boundary
