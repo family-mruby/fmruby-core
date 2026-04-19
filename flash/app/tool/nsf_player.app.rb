@@ -2,7 +2,8 @@
 # Browse and play NSF music files with track selection.
 
 class NsfPlayerApp < FmrbApp
-  MUSIC_DIR = "/home/music"
+  #MUSIC_DIR = "/home/music"
+  MUSIC_DIR = "/usr/share/sounds"
   CACHE_DIR = "/cache/nsf_player"
   LIST_Y = 2
   LIST_ITEM_H = 10
