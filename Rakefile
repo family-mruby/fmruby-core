@@ -147,9 +147,10 @@ task :setup do
   sh "cp -f lib/patch/picoruby-i2c/include/i2c.h #{mrbgem_path}/picoruby-i2c/include/"
   sh "cp -f lib/patch/picoruby-i2c/src/mruby/i2c.c #{mrbgem_path}/picoruby-i2c/src/mruby/"
 
-  # mruby-task: add stack clearing in mrb_task_reset_context
+  # mruby-task: add stack clearing in mrb_task_reset_context + disable HAL auto-load
   mruby_task_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-task"
   sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c #{mruby_task_path}/src/"
+  sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/mrbgem.rake #{mruby_task_path}/"
 
   # mruby-dir: patch mrbgem.rake to skip HAL auto-detection on ESP32
   mruby_dir_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-dir"
