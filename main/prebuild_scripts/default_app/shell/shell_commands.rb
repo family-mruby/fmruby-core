@@ -52,12 +52,15 @@ module ShellCommandsMixin
       cmd_ps
     when "kill"
       cmd_kill(args)
+    when "edit"
+      cmd_edit(args)
     when "help"
       @history << "Available commands:"
       @history << "  cd [path] - Change directory"
       @history << "  pwd - Print working directory"
       @history << "  ls [path] - List directory contents"
       @history << "  cat <file> - Display file contents"
+      @history << "  edit <file> - Open file in the editor"
       @history << "  irb - Interactive Ruby"
       @history << "  run <script> [&] - Run script"
       @history << "  run <script> > <file> - Redirect output"
@@ -201,6 +204,65 @@ module ShellCommandsMixin
     rescue => e
       @history << "Error: #{e.message}"
     end
+  end
+
+  # --- Edit command ---
+  #
+  # `edit <file>` spawns the default editor and forwards the resolved file
+  # path to it. Mirrors system_desktop's file_manager edit flow: spawn first,
+  # poll for the editor PID over a few on_update ticks, then send a
+  # file_select_result via the kernel so the editor opens the file.
+
+  def cmd_edit(args)
+    if args.empty?
+      @history << "Usage: edit <file>"
+      return
+    end
+    virtual_path = resolve_script_path(args.join(' '))
+    file_path = to_file_path(virtual_path)
+
+    spawn_app("default/editor")
+    @pending_edit_path = file_path
+    @pending_edit_counter = 3
+  end
+
+  # Drives the deferred file-path forwarding to the just-spawned editor.
+  # Called once per on_update from shell.app.rb.
+  def tick_pending_edit
+    return unless @pending_edit_path && @pending_edit_counter
+    @pending_edit_counter -= 1
+    return if @pending_edit_counter > 0
+
+    procs = FmrbApp.ps
+    editor = nil
+    if procs
+      i = procs.size - 1
+      while i >= 0
+        p = procs[i]
+        if p[:name] == "FM-Editor" && p[:state] == FmrbConst::PROC_STATE_RUNNING
+          editor = p
+          break
+        end
+        i -= 1
+      end
+    end
+
+    if editor
+      data = {
+        "cmd" => "file_select_result",
+        "target_pid" => editor[:id],
+        "path" => @pending_edit_path,
+        "mode" => "open"
+      }
+      send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+      Log.info("Sent file_selected to Editor PID #{editor[:id]}: #{@pending_edit_path}")
+    else
+      @history << "edit: editor process not found"
+      @need_full_redraw = true
+    end
+
+    @pending_edit_path = nil
+    @pending_edit_counter = nil
   end
 
   # --- Run command ---

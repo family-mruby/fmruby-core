@@ -10,6 +10,8 @@ class EditorApp < FmrbApp
   MENU_KEY      = FmrbGfx.rgb_to_332(255, 255, 0)     # Yellow hotkey
   STATUS_BG     = FmrbGfx.rgb_to_332(40, 40, 60)      # Dark gray status line
   STATUS_TEXT   = FmrbGfx.rgb_to_332(255, 255, 255)   # White status text
+  STATUS_OK_BG  = FmrbGfx.rgb_to_332(0, 160, 0)       # Green flash for save success
+  STATUS_OK_TEXT = FmrbGfx.rgb_to_332(255, 255, 255)
   CURSOR_COLOR  = FmrbGfx.rgb_to_332(0, 0, 200)       # Blue cursor
 
   # Syntax highlight colors (for light background)
@@ -44,6 +46,7 @@ class EditorApp < FmrbApp
 
   # Re-tokenize for syntax highlight after this many idle frames (~1s)
   HL_DEBOUNCE_FRAMES = 30
+  SAVE_OK_FRAMES = 60     # ~2s flash of "Saved" on the status line
 
   # Auto-disable syntax highlight when loaded file exceeds this size
   HL_AUTO_LIMIT_BYTES = 1024
@@ -70,6 +73,10 @@ class EditorApp < FmrbApp
     # Key repeat state
     @held_keycode = nil
     @hold_frames = 0
+    # Transient "Saved" indicator: counts down per on_update tick.
+    @save_ok_frames = 0
+    # Modal "save before quit?" dialog raised by Ctrl-X when @modified.
+    @quit_dialog_open = false
   end
 
   def on_create
@@ -149,6 +156,15 @@ class EditorApp < FmrbApp
     end
 
     @gfx.draw_text(@user_area_x0 + 2, y, status, STATUS_TEXT, STATUS_BG)
+
+    # Right-aligned green "Saved" badge that fades after SAVE_OK_FRAMES ticks.
+    if @save_ok_frames > 0
+      label = " Saved "
+      bw = label.length * CHAR_W
+      bx = @user_area_x0 + @user_area_width - bw - 2
+      @gfx.fill_rect(bx, y, bw, CHAR_H, STATUS_OK_BG)
+      @gfx.draw_text(bx, y, label, STATUS_OK_TEXT, STATUS_OK_BG)
+    end
   end
 
   def update_highlight
@@ -271,7 +287,60 @@ class EditorApp < FmrbApp
     draw_menu_bar
     draw_edit_area
     draw_status_line
+    draw_quit_dialog if @quit_dialog_open
     @gfx.present
+  end
+
+  # ---- Quit-confirm dialog ----
+
+  QUIT_DLG_BG     = FmrbGfx.rgb_to_332(255, 255, 255)
+  QUIT_DLG_BORDER = FmrbGfx.rgb_to_332(0, 0, 0)
+  QUIT_DLG_TEXT   = FmrbGfx.rgb_to_332(0, 0, 0)
+  QUIT_DLG_KEY    = FmrbGfx.rgb_to_332(180, 0, 0)
+
+  def quit_dialog_rect
+    w = 26 * CHAR_W + 8
+    h = 4 * CHAR_H + 10
+    x = @user_area_x0 + (@user_area_width  - w) / 2
+    y = @user_area_y0 + (@user_area_height - h) / 2
+    [x, y, w, h]
+  end
+
+  def draw_quit_dialog
+    x, y, w, h = quit_dialog_rect
+    @gfx.fill_rect(x, y, w, h, QUIT_DLG_BG)
+    @gfx.draw_rect(x, y, w, h, QUIT_DLG_BORDER)
+    @gfx.draw_rect(x + 1, y + 1, w - 2, h - 2, QUIT_DLG_BORDER)
+
+    tx = x + 4
+    ty = y + 4
+    @gfx.draw_text(tx, ty, "Unsaved changes",            QUIT_DLG_TEXT, QUIT_DLG_BG)
+    @gfx.draw_text(tx, ty + CHAR_H + 2, "Save before exit?", QUIT_DLG_TEXT, QUIT_DLG_BG)
+
+    by = ty + (CHAR_H + 2) * 2 + 2
+    draw_quit_choice(tx,                  by, "Y", "es")
+    draw_quit_choice(tx + 8  * CHAR_W,    by, "N", "o")
+    draw_quit_choice(tx + 14 * CHAR_W,    by, "C", "ancel/Esc")
+  end
+
+  def draw_quit_choice(x, y, key_char, rest)
+    @gfx.draw_text(x,            y, "[",       QUIT_DLG_TEXT, QUIT_DLG_BG)
+    @gfx.draw_text(x + CHAR_W,   y, key_char,  QUIT_DLG_KEY,  QUIT_DLG_BG)
+    @gfx.draw_text(x + 2*CHAR_W, y, "]" + rest, QUIT_DLG_TEXT, QUIT_DLG_BG)
+  end
+
+  def handle_quit_dialog_key(character)
+    case character
+    when 121, 89  # 'y' / 'Y'
+      save_file
+      stop unless @modified  # Save failed (e.g. no current_file) -> stay open
+      @need_redraw = true
+    when 110, 78  # 'n' / 'N'
+      stop
+    when 99, 67, 27  # 'c' / 'C' / Esc
+      @quit_dialog_open = false
+      @need_redraw = true
+    end
   end
 
   # ---- Scrolling ----
@@ -570,6 +639,7 @@ class EditorApp < FmrbApp
         Log.error("Save mismatch for #{@current_file}: expected=#{expected}, written=#{written}, on_disk=#{actual}")
       else
         @modified = false
+        @save_ok_frames = SAVE_OK_FRAMES
         @need_redraw = true
         Log.info("Saved file: #{@current_file} (#{expected} bytes)")
       end
@@ -623,6 +693,31 @@ class EditorApp < FmrbApp
       keycode = ev[:keycode] || 0
       character = ev[:character] || 0
 
+      # Modal quit-confirm dialog steals all keys until dismissed.
+      if @quit_dialog_open
+        handle_quit_dialog_key(character)
+        return
+      end
+
+      # Ctrl shortcuts. ev_ctrl? + scancode (USB HID Usage ID) is uniform
+      # across ESP32 and Linux/SDL2; ev[:keycode] for letters differs by
+      # platform. 0x16=S, 0x1B=X.
+      if ev_ctrl?(ev)
+        case ev[:scancode] || 0
+        when 0x16  # Ctrl-S -> save
+          save_file
+          return
+        when 0x1B  # Ctrl-X -> quit (prompt if unsaved)
+          if @modified
+            @quit_dialog_open = true
+            @need_redraw = true
+          else
+            stop
+          end
+          return
+        end
+      end
+
       # Navigation keys (USB HID keycodes) - handle immediately + start repeat
       case keycode
       when 79, 80, 81, 82, 75, 78, 74, 77, 76
@@ -634,7 +729,7 @@ class EditorApp < FmrbApp
       end
 
       # Modifier keys - ignore
-      return if keycode >= 225 && keycode <= 229
+      return if keycode >= 224 && keycode <= 231
 
       # Printable / control characters
       if character > 0
@@ -661,6 +756,12 @@ class EditorApp < FmrbApp
           execute_key_action(@held_keycode)
         end
       end
+    end
+
+    # Tick down the "Saved" badge and trigger a final repaint when it expires.
+    if @save_ok_frames > 0
+      @save_ok_frames -= 1
+      @need_redraw = true if @save_ok_frames == 0
     end
 
     # Re-tokenize once the user has paused editing for HL_DEBOUNCE_FRAMES frames.

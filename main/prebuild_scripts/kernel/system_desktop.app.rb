@@ -418,7 +418,7 @@ class SystemDesktopApp < FmrbApp
         # Find editor PID from window list (most recently spawned)
         processes = FmrbApp.ps
         if processes
-          editor = processes.select { |p| p[:name] == "editor" && p[:state] == FmrbConst::PROC_STATE_RUNNING }.last
+          editor = processes.select { |p| p[:name] == "FM-Editor" && p[:state] == FmrbConst::PROC_STATE_RUNNING }.last
           if editor
             editor_pid = editor[:id]
             # Use file_select_result via kernel to forward to editor

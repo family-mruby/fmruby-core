@@ -93,10 +93,10 @@ class FmrbApp
       r.fill_round_rect 0, 0, w, TITLE_BAR_H, CORNER_R, 0xC5
       r.fill_rect       0, CORNER_R, w, TITLE_BAR_H - CORNER_R, 0xC5
       # Menu button (hamburger: 3 horizontal lines) + title text
-      r.fill_rect       2, 3, 8, 1, 0xFB
-      r.fill_rect       2, 5, 8, 1, 0xFB
-      r.fill_rect       2, 7, 8, 1, 0xFB
-      r.draw_text       12, 2, title, FmrbGfx::WHITE
+      r.fill_rect       3, 3, 9, 1, 0xFB
+      r.fill_rect       3, 5, 9, 1, 0xFB
+      r.fill_rect       3, 7, 9, 1, 0xFB
+      r.draw_text       15, 2, title, FmrbGfx::WHITE
       # Close button (red circle with white X)
       r.fill_circle     w - 6, 5, 3, 0xFF
       # Rounded window border. Outer edge rows/columns stay transparent because
@@ -192,6 +192,27 @@ class FmrbApp
     end
   end
 
+  # ---- Modifier key helpers (for use inside on_event) ----
+  #
+  # The modifier byte uses the project-specific FMRB_KEYMAP_MOD_* layout
+  # (see fmrb_keymap.h), NOT the USB HID standard byte:
+  #   bit0=LSHIFT 0x01, bit1=RSHIFT 0x02, bit2=LCTRL 0x04, bit3=RCTRL 0x08,
+  #   bit4=LALT   0x10, bit5=RALT   0x20.
+  # Pair with `ev[:scancode]` (USB HID Usage ID) when matching letter keys --
+  # `ev[:keycode]` differs across platforms (SDL2 reports ASCII for letters),
+  # while scancode is uniform.
+  def ev_ctrl?(ev)
+    ((ev[:modifier] || 0) & 0x0C) != 0
+  end
+
+  def ev_shift?(ev)
+    ((ev[:modifier] || 0) & 0x03) != 0
+  end
+
+  def ev_alt?(ev)
+    ((ev[:modifier] || 0) & 0x30) != 0
+  end
+
   # Lifecycle methods (override in subclass)
 
   def on_create
@@ -237,11 +258,13 @@ class FmrbApp
     end
     # Handle title bar right click (reload for file-based apps)
     if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11
+      Log.info("[reload-dbg] title-bar right-click: y=#{ev[:y]} file_app=#{_is_file_app}")
       request_reload if _is_file_app
     end
   end
 
   def request_reload
+    Log.info("[reload-dbg] request_reload -> kernel reload_confirm")
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
       {"cmd" => "reload_confirm"})
   end

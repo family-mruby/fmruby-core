@@ -48,6 +48,11 @@ class ShellApp < FmrbApp
     @auto_scroll = true   # Auto-scroll to bottom on new output
     @scroll_hold = 0      # Scrollbar hold: -1=up, 0=none, 1=down
     @prev_input_rows = 1  # Track input row count for wrap change detection
+
+    # `edit <file>` deferred dispatch: filled by cmd_edit, drained by
+    # tick_pending_edit on later on_update ticks once the editor has spawned.
+    @pending_edit_path = nil
+    @pending_edit_counter = nil
   end
 
   def on_create()
@@ -236,6 +241,8 @@ class ShellApp < FmrbApp
   # ---- Update loop ----
 
   def on_update()
+    tick_pending_edit
+
     # Continuous scroll while holding scrollbar
     if @scroll_hold != 0
       @scroll_hold > 0 ? scroll_down : scroll_up
