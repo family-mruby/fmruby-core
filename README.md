@@ -100,3 +100,5 @@ Run `rake clean` after editing anything under `lib/` (mrbgems/patches are re-cop
 See the [LICENSE](LICENSE) file for details.
 
 This project uses third-party open source software. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for dependency licenses.
+
+Creative assets bundled with this repository ship under their own licenses (CC0 / CC BY) — see [ASSETS.md](ASSETS.md).
