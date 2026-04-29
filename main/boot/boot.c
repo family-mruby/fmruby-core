@@ -274,10 +274,19 @@ static bool init_hardware(void)
         FMRB_LOGE(TAG, "Failed to init usb_task");
         return false;
     }
-    // USB Host PHY is up; now enable Vbus so the hub/device sees a clean
-    // power-up edge after the host is ready to debounce the connection.
+    // Bus-powered hubs need a long enough Vbus-LOW dwell to fully discharge
+    // their internal caps before they will see Vbus HIGH as a clean rising
+    // edge. Hold LOW a bit more here on top of the elapsed init time.
+    fmrb_task_delay_ms(150);
     fmrb_hal_gpio_set_level(FMRB_PIN_USB_POWER, 1);
     FMRB_LOGI(TAG, "FMRB_PIN_USB_POWER set to HIGH (post-USB-init)");
+    // Let the hub power-up and PHY signaling settle before the host stack
+    // starts driving the bus, then enable the root port to trigger
+    // enumeration with the host already listening.
+    fmrb_task_delay_ms(200);
+    if (usb_task_power_on_root_port() != FMRB_OK) {
+        FMRB_LOGW(TAG, "USB root port power-on failed; enumeration may not start");
+    }
 #endif
 
     ret = ble_task_init();

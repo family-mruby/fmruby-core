@@ -1751,8 +1751,13 @@ fmrb_err_t usb_task_init(void)
 
     FMRB_LOGI(TAG, "Initializing USB Host...");
 
+    // Keep root port unpowered at install time so the host does not probe
+    // the bus while external Vbus is still off (or while a bus-powered hub
+    // is still settling). Caller raises Vbus and then calls
+    // usb_task_power_on_root_port() to trigger enumeration with a clean edge.
     const usb_host_config_t host_config = {
         .skip_phy_setup = false,
+        .root_port_unpowered = true,
         .intr_flags = ESP_INTR_FLAG_LEVEL1,
     };
     esp_err_t ret = usb_host_install(&host_config);
@@ -1783,6 +1788,17 @@ fmrb_err_t usb_task_init(void)
     FMRB_LOGI(TAG, "HID Host driver installed");
 
     usb_task_start();
+    return FMRB_OK;
+}
+
+fmrb_err_t usb_task_power_on_root_port(void)
+{
+    esp_err_t ret = usb_host_lib_set_root_port_power(true);
+    if (ret != ESP_OK) {
+        FMRB_LOGE(TAG, "usb_host_lib_set_root_port_power failed: 0x%x", ret);
+        return FMRB_ERR_FAILED;
+    }
+    FMRB_LOGI(TAG, "Root port power enabled (enumeration triggered)");
     return FMRB_OK;
 }
 
