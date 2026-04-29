@@ -133,10 +133,12 @@ void show_config(void)
 // Initialize GPIO pins before peripheral initialization
 static void init_gpio(void)
 {
-    // USB HOST power
+    // USB HOST power: keep LOW until USB Host PHY is initialized.
+    // Bus-powered hubs draw inrush current; enabling Vbus before the host
+    // is ready can cause the upstream connection event to be missed.
     fmrb_hal_gpio_config(FMRB_PIN_USB_POWER, FMRB_GPIO_MODE_OUTPUT, FMRB_GPIO_PULL_NONE);
-    fmrb_hal_gpio_set_level(FMRB_PIN_USB_POWER, 1);
-    FMRB_LOGI(TAG, "FMRB_PIN_USB_POWER set to HIGH");
+    fmrb_hal_gpio_set_level(FMRB_PIN_USB_POWER, 0);
+    FMRB_LOGI(TAG, "FMRB_PIN_USB_POWER held LOW (Vbus deferred until USB Host ready)");
 
     // Set UART data pins to floating (no internal pull-up/down)
     fmrb_hal_gpio_set_pull_mode(FMRB_PIN_GFX_UART_TX, FMRB_GPIO_PULL_NONE);
@@ -272,6 +274,10 @@ static bool init_hardware(void)
         FMRB_LOGE(TAG, "Failed to init usb_task");
         return false;
     }
+    // USB Host PHY is up; now enable Vbus so the hub/device sees a clean
+    // power-up edge after the host is ready to debounce the connection.
+    fmrb_hal_gpio_set_level(FMRB_PIN_USB_POWER, 1);
+    FMRB_LOGI(TAG, "FMRB_PIN_USB_POWER set to HIGH (post-USB-init)");
 #endif
 
     ret = ble_task_init();
