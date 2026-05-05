@@ -260,9 +260,11 @@ task :"check-port" do
   end
 end
 
-desc "Flash to ESP32"
+desc "Flash to ESP32 (override baud with FLASH_BAUD=115200 etc; default 460800)"
 task :flash do
-  sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{get_serial_port} flash"
+  baud = ENV['FLASH_BAUD']
+  baud_opt = baud && !baud.empty? ? "-b #{baud}" : ''
+  sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{get_serial_port} #{baud_opt} flash".gsub(/\s+/, ' ')
 end
 
 desc "Check ESP32 HW"
