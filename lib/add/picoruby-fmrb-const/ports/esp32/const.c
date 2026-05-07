@@ -2,6 +2,18 @@
 #include <mruby/array.h>
 #include <mruby/hash.h>
 #include <string.h>
+#include <stdio.h>
+
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "esp_idf_version.h"
+#include "esp_mac.h"
+#include "esp_chip_info.h"
+#include "esp_flash.h"
+#include "esp_system.h"
+#if CONFIG_SPIRAM
+#include "esp_psram.h"
+#endif
+#endif
 
 #include "fmrb.h"
 #include "fmrb_app.h"
@@ -72,6 +84,45 @@ static mrb_value mrb_fmrb_hw_pin_count(mrb_state *mrb, mrb_value klass)
     return mrb_fixnum_value(FMRB_PIN_MAX);
 }
 
+#ifndef CONFIG_IDF_TARGET_LINUX
+static const char* reset_reason_str(esp_reset_reason_t r)
+{
+    switch (r) {
+        case ESP_RST_POWERON:   return "POWERON";
+        case ESP_RST_EXT:       return "EXT";
+        case ESP_RST_SW:        return "SW";
+        case ESP_RST_PANIC:     return "PANIC";
+        case ESP_RST_INT_WDT:   return "INT_WDT";
+        case ESP_RST_TASK_WDT:  return "TASK_WDT";
+        case ESP_RST_WDT:       return "WDT";
+        case ESP_RST_DEEPSLEEP: return "DEEPSLEEP";
+        case ESP_RST_BROWNOUT:  return "BROWNOUT";
+        case ESP_RST_SDIO:      return "SDIO";
+        case ESP_RST_USB:       return "USB";
+        case ESP_RST_JTAG:      return "JTAG";
+        case ESP_RST_EFUSE:     return "EFUSE";
+        case ESP_RST_PWR_GLITCH:return "PWR_GLITCH";
+        case ESP_RST_CPU_LOCKUP:return "CPU_LOCKUP";
+        case ESP_RST_UNKNOWN:
+        default:                return "UNKNOWN";
+    }
+}
+
+static const char* chip_model_str(esp_chip_model_t m)
+{
+    switch (m) {
+        case CHIP_ESP32:    return "ESP32";
+        case CHIP_ESP32S2:  return "ESP32-S2";
+        case CHIP_ESP32S3:  return "ESP32-S3";
+        case CHIP_ESP32C3:  return "ESP32-C3";
+        case CHIP_ESP32H2:  return "ESP32-H2";
+        case CHIP_ESP32C2:  return "ESP32-C2";
+        case CHIP_ESP32C6:  return "ESP32-C6";
+        default:            return "UNKNOWN";
+    }
+}
+#endif
+
 void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
 {
     // Define FmrbConst module
@@ -118,6 +169,76 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "OS_VERSION",   mrb_str_new_cstr(mrb, FMRB_OS_VERSION));
     mrb_define_const(mrb, const_module, "GA_VERSION",   mrb_str_new_cstr(mrb, FMRB_GA_VERSION));
     mrb_define_const(mrb, const_module, "LINK_VERSION", mrb_fixnum_value(FMRB_LINK_VERSION));
+
+    // System info constants (frozen at init)
+#ifdef CONFIG_IDF_TARGET_LINUX
+    mrb_define_const(mrb, const_module, "IDF_VERSION",   mrb_str_new_cstr(mrb, "-"));
+    mrb_define_const(mrb, const_module, "MAC_ADDRESS",   mrb_str_new_cstr(mrb, "-"));
+    mrb_define_const(mrb, const_module, "CHIP_MODEL",    mrb_str_new_cstr(mrb, "linux"));
+    mrb_define_const(mrb, const_module, "CHIP_REVISION", mrb_str_new_cstr(mrb, "-"));
+    mrb_define_const(mrb, const_module, "CHIP_CORES",    mrb_fixnum_value(0));
+    mrb_define_const(mrb, const_module, "FLASH_SIZE_MB", mrb_fixnum_value(0));
+    mrb_define_const(mrb, const_module, "PSRAM_SIZE_MB", mrb_fixnum_value(0));
+    mrb_define_const(mrb, const_module, "RESET_REASON",  mrb_str_new_cstr(mrb, "-"));
+#else
+    // IDF version (build-time string, e.g. "v5.5.4")
+    mrb_define_const(mrb, const_module, "IDF_VERSION",
+                     mrb_str_new_cstr(mrb, IDF_VER));
+
+    // MAC address (WIFI STA, formatted "AA:BB:CC:DD:EE:FF")
+    {
+        uint8_t mac[6] = {0};
+        char mac_str[18] = {0};
+        if (esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK) {
+            snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
+                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        } else {
+            snprintf(mac_str, sizeof(mac_str), "??:??:??:??:??:??");
+        }
+        mrb_define_const(mrb, const_module, "MAC_ADDRESS",
+                         mrb_str_new_cstr(mrb, mac_str));
+    }
+
+    // Chip info: model / revision / cores
+    {
+        esp_chip_info_t info;
+        esp_chip_info(&info);
+        char rev_str[16];
+        // info.revision is encoded as major*100 + minor (IDF v5.x)
+        snprintf(rev_str, sizeof(rev_str), "v%d.%d",
+                 info.revision / 100, info.revision % 100);
+        mrb_define_const(mrb, const_module, "CHIP_MODEL",
+                         mrb_str_new_cstr(mrb, chip_model_str(info.model)));
+        mrb_define_const(mrb, const_module, "CHIP_REVISION",
+                         mrb_str_new_cstr(mrb, rev_str));
+        mrb_define_const(mrb, const_module, "CHIP_CORES",
+                         mrb_fixnum_value(info.cores));
+    }
+
+    // Flash size (MB, rounded down)
+    {
+        uint32_t flash_bytes = 0;
+        if (esp_flash_get_size(NULL, &flash_bytes) != ESP_OK) {
+            flash_bytes = 0;
+        }
+        mrb_define_const(mrb, const_module, "FLASH_SIZE_MB",
+                         mrb_fixnum_value(flash_bytes / (1024 * 1024)));
+    }
+
+    // PSRAM size (MB)
+    {
+        size_t psram_bytes = 0;
+#if CONFIG_SPIRAM
+        psram_bytes = esp_psram_get_size();
+#endif
+        mrb_define_const(mrb, const_module, "PSRAM_SIZE_MB",
+                         mrb_fixnum_value((mrb_int)(psram_bytes / (1024 * 1024))));
+    }
+
+    // Reset reason
+    mrb_define_const(mrb, const_module, "RESET_REASON",
+                     mrb_str_new_cstr(mrb, reset_reason_str(esp_reset_reason())));
+#endif
 
     // Status LED error pattern constants
     mrb_define_const(mrb, const_module, "LED_ERR_NONE",              mrb_fixnum_value(FMRB_LED_STATUS_NONE));

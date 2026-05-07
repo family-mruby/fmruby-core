@@ -37,6 +37,8 @@ else()
         esp_driver_rmt
         esp_driver_i2c
         esp_hw_support
+        esp_psram
+        esp_system
         fmrb_hal
         fmrb_gfx
         fmrb_log
