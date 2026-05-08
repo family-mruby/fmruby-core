@@ -24,6 +24,11 @@ CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=2
 # for DRAM overflow issue
 CONFIG_ESP_WIFI_ENABLED=n
 
+# Disable WiFi/BT software coexistence: WiFi is unused, but coex still
+# allocates time slots assuming WiFi is active, which causes NimBLE host to
+# lose sync ~10s after boot (Host not enabled. Dropping the packet!).
+CONFIG_ESP_COEX_SW_COEXIST_ENABLE=n
+
 # Bluetooth Configuration - BLE Peripheral (NimBLE)
 CONFIG_BT_ENABLED=y
 CONFIG_BT_NIMBLE_ENABLED=y
@@ -35,6 +40,10 @@ CONFIG_BT_NIMBLE_ROLE_BROADCASTER=y
 CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y
 CONFIG_BT_NIMBLE_NVS_PERSIST=y
 CONFIG_BT_NIMBLE_50_FEATURE_SUPPORT=n
+# Pin NimBLE host task to core 1 to fully isolate it from core 0 contention
+# (fmrb_host UART blocking, USB host, etc.). Priority boost alone wasn't enough.
+CONFIG_BT_NIMBLE_PINNED_TO_CORE_1=y
+CONFIG_NIMBLE_PINNED_TO_CORE_1=y
 
 # SPI-RAM
 CONFIG_SPIRAM=y

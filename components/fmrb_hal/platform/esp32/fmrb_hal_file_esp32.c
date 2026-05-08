@@ -41,6 +41,11 @@ typedef struct {
 typedef struct {
     DIR *dir;
     bool in_use;
+    // Full path used at opendir() time. Needed by readdir() to call stat()
+    // on each entry and report its size/mtime. POSIX readdir() only returns
+    // d_name and d_type, so size/mtime require a separate stat() call which
+    // needs the entry's full path.
+    char path[MAX_PATH_LEN];
 } fmrb_dir_slot_t;
 
 // Static file and directory handle pools
@@ -737,6 +742,8 @@ fmrb_err_t fmrb_hal_file_opendir(const char *path, fmrb_dir_t *out_handle) {
     }
 
     slot->in_use = true;
+    // Remember full path so readdir() can stat() each entry by full path.
+    snprintf(slot->path, sizeof(slot->path), "%s", full_path);
     *out_handle = (fmrb_dir_t)slot;
 
     UNLOCK();
@@ -780,6 +787,10 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info) {
 
     fmrb_dir_slot_t *slot = (fmrb_dir_slot_t *)handle;
     struct dirent *entry = readdir(slot->dir);
+    // Snapshot the dir's stored path before releasing the lock so we can
+    // stat() the entry below without holding the file mutex.
+    char dir_path[MAX_PATH_LEN];
+    snprintf(dir_path, sizeof(dir_path), "%s", slot->path);
 
     UNLOCK();
 
@@ -792,6 +803,20 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info) {
     info->is_dir = (entry->d_type == DT_DIR);
     info->size = 0;
     info->mtime = 0;
+
+    // POSIX readdir() does not return size/mtime; stat() the entry here
+    // so callers (BLE LS, fs_proxy LS, picoruby Dir.read) get real values.
+    char entry_path[MAX_PATH_LEN + 1 + sizeof(info->name)];
+    if (strcmp(dir_path, "/") == 0) {
+        snprintf(entry_path, sizeof(entry_path), "/%s", entry->d_name);
+    } else {
+        snprintf(entry_path, sizeof(entry_path), "%s/%s", dir_path, entry->d_name);
+    }
+    struct stat st;
+    if (stat(entry_path, &st) == 0) {
+        info->size = (uint32_t)st.st_size;
+        info->mtime = (uint32_t)st.st_mtime;
+    }
 
     return FMRB_OK;
 }

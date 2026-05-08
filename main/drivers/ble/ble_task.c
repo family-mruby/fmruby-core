@@ -45,12 +45,14 @@ static bool g_tx_subscribed = false;
 #define BLE_FS_MAX_CHUNK_SIZE 2048
 
 // Command codes (same as fs_proxy)
-#define BLE_FS_CMD_CD   0x11
-#define BLE_FS_CMD_LS   0x12
-#define BLE_FS_CMD_RM   0x13
-#define BLE_FS_CMD_GET  0x21
-#define BLE_FS_CMD_PUT  0x22
-#define BLE_FS_RESP     0x00
+#define BLE_FS_CMD_CD     0x11
+#define BLE_FS_CMD_LS     0x12
+#define BLE_FS_CMD_RM     0x13
+#define BLE_FS_CMD_MKDIR  0x14
+#define BLE_FS_CMD_STATFS 0x15
+#define BLE_FS_CMD_GET    0x21
+#define BLE_FS_CMD_PUT    0x22
+#define BLE_FS_RESP       0x00
 
 // File service context
 typedef struct {
@@ -405,10 +407,10 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
             g_ble_advertising = false;
             g_conn_handle = event->connect.conn_handle;
             g_connected = true;
-            int sec_rc = ble_gap_security_initiate(event->connect.conn_handle);
-            if (sec_rc != 0) {
-                FMRB_LOGW(TAG, "Security initiation failed: %d (non-fatal)", sec_rc);
-            }
+            // No security_initiate here: characteristics are unencrypted, so
+            // forcing pairing on connect deadlocks Web Bluetooth on Windows
+            // (Chrome/Edge surface the OS pair dialog only via toast and the
+            // GATT promise hangs if the user does not act on it).
         } else {
             FMRB_LOGE(TAG, "BLE connection failed (status=%d)", event->connect.status);
             g_ble_advertising = false;
@@ -676,6 +678,46 @@ static void ble_fs_cmd_rm(const char *json_params, char *response, size_t respon
     snprintf(response, response_size, "{\"ok\":true}");
 }
 
+static void ble_fs_cmd_mkdir(const char *json_params, char *response, size_t response_size)
+{
+    char path[BLE_FS_MAX_PATH_LEN];
+
+    if (!json_get_string(json_params, "path", path, sizeof(path))) {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"Missing path parameter\"}");
+        return;
+    }
+
+    fmrb_err_t err = fmrb_hal_file_mkdir(path);
+    if (err != FMRB_OK) {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"mkdir failed\"}");
+        return;
+    }
+
+    snprintf(response, response_size, "{\"ok\":true}");
+}
+
+static void ble_fs_cmd_statfs(const char *json_params, char *response, size_t response_size)
+{
+    char path[BLE_FS_MAX_PATH_LEN];
+
+    if (!json_get_string(json_params, "path", path, sizeof(path))) {
+        strncpy(path, "/", sizeof(path));
+    }
+
+    uint64_t total_bytes = 0;
+    uint64_t free_bytes = 0;
+    fmrb_err_t err = fmrb_hal_file_statfs(path, &total_bytes, &free_bytes);
+    if (err != FMRB_OK) {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"statfs failed\"}");
+        return;
+    }
+
+    snprintf(response, response_size,
+             "{\"ok\":true,\"total\":%llu,\"free\":%llu}",
+             (unsigned long long)total_bytes,
+             (unsigned long long)free_bytes);
+}
+
 static void ble_fs_cmd_get(const char *json_params, char *response, size_t response_size,
                            uint8_t *binary_data, size_t *binary_size, size_t binary_max)
 {
@@ -848,6 +890,16 @@ static void ble_fs_process_frame(const uint8_t *frame, size_t frame_len)
         ble_fs_send_response(json_response, NULL, 0);
         break;
 
+    case BLE_FS_CMD_MKDIR:
+        ble_fs_cmd_mkdir(json_params, json_response, sizeof(json_response));
+        ble_fs_send_response(json_response, NULL, 0);
+        break;
+
+    case BLE_FS_CMD_STATFS:
+        ble_fs_cmd_statfs(json_params, json_response, sizeof(json_response));
+        ble_fs_send_response(json_response, NULL, 0);
+        break;
+
     case BLE_FS_CMD_GET:
         ble_fs_cmd_get(json_params, json_response, sizeof(json_response),
                        binary_buffer, &response_binary_size, sizeof(binary_buffer));
@@ -880,7 +932,29 @@ static void ble_fs_task_func(void *arg)
 
     strncpy(g_fs_ctx.current_dir, "/", sizeof(g_fs_ctx.current_dir));
 
+    int diag_counter = 0;
+    int last_synced = -1;
+    int last_enabled = -1;
+    bool last_advertising = false;
+    bool last_connected = false;
     while (1) {
+        // Periodic diagnostic: log NimBLE state transitions
+        diag_counter++;
+        if (diag_counter >= 1) {
+            diag_counter = 0;
+            int synced = ble_hs_synced();
+            int enabled = ble_hs_is_enabled();
+            if (synced != last_synced || enabled != last_enabled ||
+                g_ble_advertising != last_advertising || g_connected != last_connected) {
+                FMRB_LOGI(TAG, "BLE state: synced=%d enabled=%d adv=%d conn=%d",
+                          synced, enabled, g_ble_advertising, g_connected);
+                last_synced = synced;
+                last_enabled = enabled;
+                last_advertising = g_ble_advertising;
+                last_connected = g_connected;
+            }
+        }
+
         // Wait for a complete frame
         if (fmrb_semaphore_take(g_fs_ctx.rx_sem, FMRB_MS_TO_TICKS(1000)) != FMRB_TRUE) {
             continue;
@@ -911,6 +985,8 @@ static void ble_on_sync(void)
 {
     int rc;
 
+    FMRB_LOGI(TAG, "ble_on_sync: synced=%d", ble_hs_synced());
+
     rc = ble_hs_util_ensure_addr(0);
     if (rc != 0) {
         FMRB_LOGE(TAG, "Failed to ensure address: %d", rc);
@@ -927,6 +1003,21 @@ static void ble_on_sync(void)
     ble_hs_id_copy_addr(g_own_addr_type, addr, NULL);
     FMRB_LOGI(TAG, "BLE address: %02x:%02x:%02x:%02x:%02x:%02x",
               addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
+
+    // Override the static device name with one that includes the last 3
+    // bytes of the MAC, so multiple devices can be distinguished from a
+    // browser's pairing dialog. Format: "Family-mruby-XXXXXX" (lowercase
+    // hex, no separator). addr[] is little-endian (LSB first), so the last
+    // 3 bytes of the printed MAC correspond to addr[2], addr[1], addr[0].
+    char devname[32];
+    snprintf(devname, sizeof(devname), "Family-mruby-%02x%02x%02x",
+             addr[2], addr[1], addr[0]);
+    rc = ble_svc_gap_device_name_set(devname);
+    if (rc != 0) {
+        FMRB_LOGW(TAG, "ble_svc_gap_device_name_set failed: %d", rc);
+    } else {
+        FMRB_LOGI(TAG, "BLE device name: %s", devname);
+    }
 
     ble_advertise();
 }
@@ -976,12 +1067,16 @@ fmrb_err_t ble_task_init(void)
 
     ble_hs_cfg.reset_cb = ble_on_reset;
     ble_hs_cfg.sync_cb = ble_on_sync;
+    // No pairing / bonding: characteristics carry no encryption flags, so the
+    // GATT operations work over an unencrypted link. Enabling bonding causes
+    // Windows BT stack to retain half-paired entries that deadlock subsequent
+    // gatt.connect() attempts from Web Bluetooth (Chrome/Edge).
     ble_hs_cfg.sm_io_cap = BLE_SM_IO_CAP_NO_IO;
-    ble_hs_cfg.sm_bonding = 1;
-    ble_hs_cfg.sm_sc = 1;
+    ble_hs_cfg.sm_bonding = 0;
+    ble_hs_cfg.sm_sc = 0;
     ble_hs_cfg.sm_mitm = 0;
-    ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
-    ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
+    ble_hs_cfg.sm_our_key_dist = 0;
+    ble_hs_cfg.sm_their_key_dist = 0;
 
     ble_store_config_init();
 
@@ -1036,8 +1131,29 @@ fmrb_err_t ble_task_init(void)
 
     nimble_port_freertos_init(ble_host_task);
 
+    // Boost NimBLE host task priority above fmrb_host (priority 10) so that
+    // core-0 UART blocking in fmrb_host cannot starve the BLE event loop and
+    // let the host sync state silently degrade. NimBLE port creates the task
+    // named "nimble_host" via xTaskCreatePinnedToCore at default priority 4.
+    // Retry briefly because nimble_port_freertos_init is async.
+    {
+        TaskHandle_t nimble_host_handle = NULL;
+        for (int i = 0; i < 50; i++) {
+            nimble_host_handle = xTaskGetHandle("nimble_host");
+            if (nimble_host_handle) break;
+            vTaskDelay(pdMS_TO_TICKS(2));
+        }
+        if (nimble_host_handle) {
+            vTaskPrioritySet(nimble_host_handle, 11);
+            FMRB_LOGI(TAG, "NimBLE host task priority raised to 11");
+        } else {
+            FMRB_LOGW(TAG, "Failed to get nimble_host handle; priority not adjusted");
+        }
+    }
+
     g_ble_initialized = true;
     FMRB_LOGI(TAG, "BLE initialized (with file service)");
+
     return FMRB_OK;
 }
 

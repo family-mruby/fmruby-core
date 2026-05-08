@@ -45,17 +45,26 @@
 // --- mruby App tasks (Core 1, PSRAM stack) ---
 
 // Kernel task (mruby VM for OS kernel)
+// TEMPORARY: pinned to core 1 with INTERNAL DRAM stack to test the
+// hypothesis that PSRAM-stack tasks are involved in the BSS guard
+// corruption near _bt_bss_start. Revert to FMRB_TASK_FLAG_PSRAM if the
+// corruption is unrelated.
 #define FMRB_KERNEL_TASK_STACK_SIZE     (12 * 1024)
 #define FMRB_KERNEL_TASK_PRIORITY       (9)
 #define FMRB_KERNEL_TASK_FLAGS          FMRB_TASK_FLAG_PINNED_1
 
 // Host task (graphics/audio transport, SPI slave comm, heap alloc)
 // Must be internal RAM (uses realloc via msgpack)
-#define FMRB_HOST_TASK_STACK_SIZE       (16 * 1024)
+// Bumped 16KB -> 32KB: heavy GFX flood (~80 cmds/s + msgpack encode + UART)
+// was leaving only ~1KB free, which corrupted NimBLE BSS via stack overflow
+// (ble_hs_state_ctx pointer overwritten with ASCII "app." path bytes, causing
+// "Host not enabled. Dropping the packet!" and Web Bluetooth disconnect).
+#define FMRB_HOST_TASK_STACK_SIZE       (32 * 1024)
 #define FMRB_HOST_TASK_PRIORITY         (10)
 #define FMRB_HOST_TASK_FLAGS            FMRB_TASK_FLAG_PINNED_0
 
 // System App task (mruby VM for system GUI)
+// TEMPORARY: pinned to core 1 with INTERNAL DRAM stack — see KERNEL note.
 #define FMRB_SYSTEM_APP_TASK_STACK_SIZE (12 * 1024)
 #define FMRB_SYSTEM_APP_TASK_PRIORITY   (8)
 #define FMRB_SYSTEM_APP_TASK_FLAGS      FMRB_TASK_FLAG_PINNED_1

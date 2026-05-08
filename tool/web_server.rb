@@ -89,7 +89,7 @@ require 'uri'
 
 server = TCPServer.new(bind, port)
 
-puts "FamilyMruby Web File Manager"
+puts "Family mruby Web File Manager"
 puts "  http://localhost:#{port}/"
 puts "  Document root: #{DOC_ROOT}"
 puts "  Press Ctrl+C to stop"
