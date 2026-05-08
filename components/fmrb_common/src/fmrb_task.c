@@ -1,3 +1,5 @@
+#include <stdbool.h>
+#include <string.h>
 #include "fmrb_task_config.h"
 #include "fmrb_rtos.h"
 #include "esp_log.h"
@@ -5,10 +7,14 @@
 
 static const char *TAG = "fmrb_task";
 
-// Task monitor registry
+// Task monitor registry. The `name` field is a private copy because the
+// caller often passes a pointer to a per-app context buffer that gets
+// overwritten when the slot is reused.
+#define TASK_ENTRY_NAME_MAX 16
+
 typedef struct {
     TaskHandle_t handle;
-    const char  *name;
+    char         name[TASK_ENTRY_NAME_MAX];
     uint32_t     stack_size;  // requested size in bytes
     uint32_t     flags;
     UBaseType_t  priority;
@@ -27,7 +33,8 @@ static void register_task(TaskHandle_t handle, const char *name,
     }
     task_entry_t *e = &s_tasks[s_task_count++];
     e->handle = handle;
-    e->name = name;
+    strncpy(e->name, name ? name : "", sizeof(e->name) - 1);
+    e->name[sizeof(e->name) - 1] = '\0';
     e->stack_size = stack_size;
     e->flags = flags;
     e->priority = prio;
@@ -36,9 +43,16 @@ static void register_task(TaskHandle_t handle, const char *name,
 
 static void unregister_task(TaskHandle_t handle)
 {
+    // Remove the entry entirely (shift remaining entries down) so dumps
+    // show only currently-tracked tasks. FreeRTOS reuses freed TCB
+    // addresses, so a stale handle value can match a later-registered task;
+    // we still verify `active` defensively.
     for (int i = 0; i < s_task_count; i++) {
-        if (s_tasks[i].handle == handle) {
-            s_tasks[i].active = 0;
+        if (s_tasks[i].active && s_tasks[i].handle == handle) {
+            for (int j = i; j < s_task_count - 1; j++) {
+                s_tasks[j] = s_tasks[j + 1];
+            }
+            s_task_count--;
             return;
         }
     }
@@ -89,10 +103,18 @@ int fmrb_task_get_status_list(fmrb_task_info_t *out, int max_count)
         info->stack_size = e->stack_size;
         info->priority = e->priority;
         info->active = e->active;
+        info->stack_free = 0;
         if (e->active && e->handle) {
+#ifndef CONFIG_IDF_TARGET_LINUX
+            eTaskState st = eTaskGetState(e->handle);
+            if (st != eDeleted && st != eInvalid) {
+                info->stack_free = (uint32_t)(uxTaskGetStackHighWaterMark(e->handle) * sizeof(StackType_t));
+            } else {
+                info->active = 0;  // hint to caller: this entry is stale
+            }
+#else
             info->stack_free = (uint32_t)(uxTaskGetStackHighWaterMark(e->handle) * sizeof(StackType_t));
-        } else {
-            info->stack_free = 0;
+#endif
         }
         count++;
     }
@@ -108,11 +130,23 @@ void fmrb_task_dump_status(void)
         task_entry_t *e = &s_tasks[i];
         uint32_t free_bytes = 0;
         int core = -1;
-        if (e->active && e->handle) {
-            free_bytes = (uint32_t)(uxTaskGetStackHighWaterMark(e->handle) * sizeof(StackType_t));
+        bool active = e->active;
+        if (active && e->handle) {
 #ifndef CONFIG_IDF_TARGET_LINUX
-            core = xTaskGetAffinity(e->handle);  // -1 (0x7FFFFFFF) = no affinity
-            if (core == 0x7FFFFFFF) core = -1;
+            // Defend against stale handles: skip stack/affinity probes if
+            // FreeRTOS already considers the task deleted/invalid. Should not
+            // happen now that unregister_task skips inactive duplicates, but
+            // belt-and-braces against any future regression.
+            eTaskState st = eTaskGetState(e->handle);
+            if (st == eDeleted || st == eInvalid) {
+                active = false;
+            } else {
+                free_bytes = (uint32_t)(uxTaskGetStackHighWaterMark(e->handle) * sizeof(StackType_t));
+                core = xTaskGetAffinity(e->handle);  // -1 (0x7FFFFFFF) = no affinity
+                if (core == 0x7FFFFFFF) core = -1;
+            }
+#else
+            free_bytes = (uint32_t)(uxTaskGetStackHighWaterMark(e->handle) * sizeof(StackType_t));
 #endif
         }
         const char *mem_str = (e->flags & FMRB_TASK_FLAG_PSRAM) ? "PSRAM" : "IRAM";
@@ -128,7 +162,7 @@ void fmrb_task_dump_status(void)
         }
         ESP_LOGI(TAG, "%-16s %3s %4s %5u %5u %-5s %s",
                  e->name,
-                 e->active ? "Y" : "N",
+                 active ? "Y" : "N",
                  core_str,
                  (unsigned)e->stack_size,
                  (unsigned)free_bytes,

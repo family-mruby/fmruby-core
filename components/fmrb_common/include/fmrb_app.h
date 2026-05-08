@@ -162,6 +162,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id);
 fmrb_err_t fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id);
 bool fmrb_app_kill(int32_t id);
 bool fmrb_app_stop(int32_t id);
+bool fmrb_app_reap(int32_t id);  // External delete after self-cleanup (called from kernel)
 bool fmrb_app_suspend(int32_t id);
 bool fmrb_app_resume(int32_t id);
 int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count);

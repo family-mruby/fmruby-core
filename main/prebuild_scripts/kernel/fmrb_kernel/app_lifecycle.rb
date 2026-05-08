@@ -131,8 +131,12 @@ module AppLifecycleMixin
       end
     end
 
-    # Force immediate check (app may still be transitioning to STOPPING state)
-    # This will be rechecked periodically until the app fully terminates
+    # Reap the parked task: deletes its FreeRTOS task and frees the slot.
+    # The app self-cleans its resources then parks; we delete it from this
+    # kernel context to avoid SMP self-delete races (idempotent).
+    _reap_app(pid)
+
+    # Force immediate check (window list update after task deletion)
     mark_window_list_dirty
     check_terminated_apps
   end

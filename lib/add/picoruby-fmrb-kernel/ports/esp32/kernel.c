@@ -473,6 +473,16 @@ static mrb_value mrb_kernel_resume_app(mrb_state *mrb, mrb_value self)
     return fmrb_app_resume((int32_t)pid) ? mrb_true_value() : mrb_false_value();
 }
 
+// Kernel#_reap_app(pid) -> true/false
+// Delete the FreeRTOS task associated with pid after the app has self-cleaned
+// and parked itself. Idempotent: true if already reaped.
+static mrb_value mrb_kernel_reap_app(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid;
+    mrb_get_args(mrb, "i", &pid);
+    return fmrb_app_reap((int32_t)pid) ? mrb_true_value() : mrb_false_value();
+}
+
 // FmrbKernel#_sync_time_to_host() -> true/false
 // Send current system time (and TZ) to graphics-audio side via CONTROL SET_TIME
 static mrb_value mrb_kernel_sync_time_to_host(mrb_state *mrb, mrb_value self)
@@ -525,6 +535,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_get_last_error", mrb_kernel_get_last_error, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_suspend_app", mrb_kernel_suspend_app, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_resume_app", mrb_kernel_resume_app, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_reap_app", mrb_kernel_reap_app, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_sync_time_to_host", mrb_kernel_sync_time_to_host, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)

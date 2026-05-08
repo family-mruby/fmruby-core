@@ -923,10 +923,12 @@ cleanup:
     // Perform cleanup immediately before task deletion
     fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
 
-    // Transition toward FREE: RUNNING/SUSPENDED → STOPPING first, INIT → FREE directly
+    // Move to STOPPING so the kernel reaper sees a consistent state.
+    // INIT (setup failed before RUNNING) is also reapable.
     if (ctx->state == PROC_STATE_RUNNING || ctx->state == PROC_STATE_SUSPENDED) {
         transition_state(ctx, PROC_STATE_STOPPING);
     }
+    // INIT remains INIT here — fmrb_app_reap() accepts INIT or STOPPING.
 
     // Close VM based on type (BEFORE destroying memory handle!)
     destroy_vm(ctx);
@@ -947,21 +949,6 @@ cleanup:
             fmrb_gfx_delete_canvas(gfx_ctx, ctx->bg_canvas_id);
         }
         ctx->bg_canvas_id = 0;
-    }
-
-    // Notify kernel of app termination
-    {
-        fmrb_msg_t exit_msg = {
-            .type = FMRB_MSG_TYPE_APP_CONTROL,
-            .src_pid = ctx->app_id,
-        };
-        uint8_t *d = exit_msg.data;
-        size_t p = 0;
-        d[p++] = 0x81;  // fixmap 1
-        d[p++] = 0xA3; memcpy(&d[p], "cmd", 3); p += 3;
-        d[p++] = 0xA4; memcpy(&d[p], "exit", 4); p += 4;
-        exit_msg.size = p;
-        fmrb_msg_send(PROC_ID_KERNEL, &exit_msg, 100);
     }
 
     // Delete message queue
@@ -995,18 +982,35 @@ cleanup:
         FMRB_LOGI(TAG, "[%s] Released LARGE memory pool", ctx->app_name);
     }
 
-    // Transition to FREE
-    transition_state(ctx, PROC_STATE_FREE);
-
-    // Clear task handle
-    ctx->task = 0;
-
+    // Slot stays in STOPPING; the kernel reaper transitions to FREE after
+    // deleting this task externally (see fmrb_app_reap).
     fmrb_semaphore_give(g_ctx_lock);
 
     FMRB_LOGI(TAG, "[%s gen=%u] Resources cleaned up", ctx->app_name, ctx->gen);
 
-    // Delete task (TLS destructor will be called but resources are already freed)
-    fmrb_task_delete(0);
+    // Notify kernel of app termination AFTER all resources are released.
+    // Kernel will call fmrb_app_reap() which deletes this task externally —
+    // self-delete on SMP races with the TLS destructor and IDLE-task TCB
+    // reclaim, leaving stale entries in the task monitor table.
+    {
+        fmrb_msg_t exit_msg = {
+            .type = FMRB_MSG_TYPE_APP_CONTROL,
+            .src_pid = ctx->app_id,
+        };
+        uint8_t *d = exit_msg.data;
+        size_t p = 0;
+        d[p++] = 0x81;  // fixmap 1
+        d[p++] = 0xA3; memcpy(&d[p], "cmd", 3); p += 3;
+        d[p++] = 0xA4; memcpy(&d[p], "exit", 4); p += 4;
+        exit_msg.size = p;
+        fmrb_msg_send(PROC_ID_KERNEL, &exit_msg, 100);
+    }
+
+    // Park until the kernel reaps this task. fmrb_task_delete() called from
+    // the kernel context wakes us up by deleting the TCB.
+    while (1) {
+        fmrb_task_delay(FMRB_MS_TO_TICKS(10000));
+    }
 }
 
 #ifdef CONFIG_IDF_TARGET_LINUX
@@ -1377,6 +1381,7 @@ bool fmrb_app_kill(int32_t id) {
 
     transition_state(ctx, PROC_STATE_STOPPING);
     fmrb_task_handle_t task = ctx->task;
+    ctx->task = 0;  // prevent double-delete from a subsequent reap
     fmrb_semaphore_give(g_ctx_lock);
 
     // Notify task to terminate
@@ -1385,7 +1390,65 @@ bool fmrb_app_kill(int32_t id) {
         fmrb_task_delete(task);       // Force delete
     }
 
+    // Move slot to FREE so it can be reused. Note: this leaves resources
+    // (mem handle, semaphore, etc.) leaked since kill bypasses app_task_main
+    // cleanup. Kill is an emergency path; prefer graceful exit when possible.
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    if (ctx->state == PROC_STATE_STOPPING) {
+        transition_state(ctx, PROC_STATE_FREE);
+    }
+    fmrb_semaphore_give(g_ctx_lock);
+
     FMRB_LOGI(TAG, "[%s gen=%u] Killed", ctx->app_name, ctx->gen);
+    return true;
+}
+
+/**
+ * Reap a parked app task: delete its FreeRTOS task and free the slot.
+ *
+ * Called by the kernel after receiving an exit notification from an app that
+ * has finished its own resource cleanup and parked itself in app_task_main().
+ * Deleting the task from another context avoids the SMP self-delete races
+ * (TLS destructor + IDLE-task TCB reclaim) that previously left stale
+ * entries in the task monitor table.
+ *
+ * Idempotent: returns true if the slot was already freed.
+ */
+bool fmrb_app_reap(int32_t id) {
+    if (id < 0 || id >= FMRB_MAX_APPS) return false;
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    fmrb_app_task_context_t* ctx = &g_ctx_pool[id];
+
+    // Already reaped or never spawned
+    if (ctx->state == PROC_STATE_FREE) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return true;
+    }
+
+    // Reap from STOPPING (normal exit) or INIT (setup failed early).
+    // RUNNING/SUSPENDED here is the expected case for the early "exit"
+    // notification sent from Ruby's FmrbApp#destroy before the C-side
+    // app_task_main cleanup runs — silently skip; the second exit
+    // notification (from app_task_main, after STOPPING) will reap.
+    if (ctx->state != PROC_STATE_STOPPING && ctx->state != PROC_STATE_INIT) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return false;
+    }
+
+    fmrb_task_handle_t task = ctx->task;
+    ctx->task = 0;
+    transition_state(ctx, PROC_STATE_FREE);
+    uint32_t gen = ctx->gen;
+    const char* name = ctx->app_name;
+    fmrb_semaphore_give(g_ctx_lock);
+
+    // Delete task outside the lock (unregister_task + vTaskDelete)
+    if (task) {
+        fmrb_task_delete(task);
+    }
+
+    FMRB_LOGI(TAG, "[%s gen=%u] Reaped", name, gen);
     return true;
 }
 
