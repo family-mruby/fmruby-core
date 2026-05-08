@@ -27,6 +27,21 @@ static bool g_cursor_shown = false;
 // finishes its boot animation (calls fmrb_host_enable_cursor via FmrbApp.enable_cursor).
 static bool g_cursor_enabled = false;
 
+// Mouse move leading + trailing throttle state.
+// Without trailing flush, the very last position before the cursor stops can be
+// dropped (it falls inside the active window with no follow-up event to push
+// it through), leaving the on-screen cursor a few pixels off from where the
+// user actually stopped. The pending slot stores the latest dropped (x,y) so
+// it can be sent once the window expires.
+#define MOUSE_MOVE_THROTTLE_MS 33  // 30Hz, matches WROVER 30fps render loop
+static fmrb_semaphore_t g_mouse_throttle_mutex = NULL;
+static uint32_t g_mouse_last_send_ms = 0;
+static int g_mouse_pending_x = 0;
+static int g_mouse_pending_y = 0;
+static bool g_mouse_pending_valid = false;
+
+static void fmrb_host_flush_pending_mouse_move(void);
+
 void fmrb_host_enable_cursor(void)
 {
     g_cursor_enabled = true;
@@ -1291,6 +1306,11 @@ static void fmrb_host_task(void *pvParameters)
         // This MUST be called regularly to receive responses for sync requests
         fmrb_transport_process();
 
+        // Trailing flush of throttled mouse move so the cursor settles at the
+        // exact stopped position (otherwise the last event in a burst is dropped
+        // and never reaches WROVER).
+        fmrb_host_flush_pending_mouse_move();
+
         // Periodic update processing
         fmrb_tick_t now = fmrb_task_get_tick_count();
         if ((now - xLastUpdate) >= xUpdatePeriod) {
@@ -1325,6 +1345,14 @@ int fmrb_host_task_init(void)
     FMRB_LOGI(TAG, "Created GFX queue semaphore: %d available slots (reserving %d for HID)",
               FMRB_HOST_GFX_AVAILABLE_SLOTS, FMRB_HOST_HID_RESERVED_SLOTS);
 
+    g_mouse_throttle_mutex = fmrb_semaphore_create_mutex();
+    if (!g_mouse_throttle_mutex) {
+        FMRB_LOGE(TAG, "Failed to create mouse throttle mutex");
+        fmrb_semaphore_delete(g_host_gfx_queue_semaphore);
+        g_host_gfx_queue_semaphore = NULL;
+        return -1;
+    }
+
     // Register host task's message queue
     fmrb_msg_queue_config_t queue_config = {
         .queue_length = FMRB_HOST_MSG_QUEUE_LEN,
@@ -1336,6 +1364,8 @@ int fmrb_host_task_init(void)
         FMRB_LOGE(TAG, "Failed to create host message queue: %d", hal_ret);
         fmrb_semaphore_delete(g_host_gfx_queue_semaphore);
         g_host_gfx_queue_semaphore = NULL;
+        fmrb_semaphore_delete(g_mouse_throttle_mutex);
+        g_mouse_throttle_mutex = NULL;
         return -1;
     }
 
@@ -1380,6 +1410,11 @@ void fmrb_host_task_deinit(void)
     if (g_host_gfx_queue_semaphore) {
         fmrb_semaphore_delete(g_host_gfx_queue_semaphore);
         g_host_gfx_queue_semaphore = NULL;
+    }
+
+    if (g_mouse_throttle_mutex) {
+        fmrb_semaphore_delete(g_mouse_throttle_mutex);
+        g_mouse_throttle_mutex = NULL;
     }
 
     FMRB_LOGI(TAG, "Host task deinitialized");
@@ -1443,13 +1478,29 @@ int fmrb_host_send_key_up(int key_code, int scancode, int modifier)
 
 int fmrb_host_send_mouse_move(int x, int y)
 {
-    // Rate limit mouse move events (~15fps, 66ms interval)
-    static uint32_t last_send_ms = 0;
-    uint32_t now_ms = (uint32_t)fmrb_hal_time_get_ms();
-    if (now_ms - last_send_ms < 66) {
-        return 0;  // Silently skip
+    // Leading + trailing throttle. Inside the active window we buffer the
+    // latest (x,y) so the trailing flush in host_task main loop can deliver
+    // the final stopped position even if no further events arrive.
+    bool should_send = false;
+    if (g_mouse_throttle_mutex) {
+        fmrb_semaphore_take(g_mouse_throttle_mutex, FMRB_MAX_DELAY);
     }
-    last_send_ms = now_ms;
+    uint32_t now_ms = (uint32_t)fmrb_hal_time_get_ms();
+    if (now_ms - g_mouse_last_send_ms >= MOUSE_MOVE_THROTTLE_MS) {
+        g_mouse_last_send_ms = now_ms;
+        g_mouse_pending_valid = false;
+        should_send = true;
+    } else {
+        g_mouse_pending_x = x;
+        g_mouse_pending_y = y;
+        g_mouse_pending_valid = true;
+    }
+    if (g_mouse_throttle_mutex) {
+        fmrb_semaphore_give(g_mouse_throttle_mutex);
+    }
+    if (!should_send) {
+        return 0;
+    }
 
     FMRB_LOGD(TAG, "MOUSE_MOVE: x=%d y=%d", x, y);
     host_message_t msg = {
@@ -1458,6 +1509,39 @@ int fmrb_host_send_mouse_move(int x, int y)
         .data.mouse_move.y = y
     };
     return fmrb_host_send_message(&msg);
+}
+
+// Must be called from host_task context only. Bypasses the host message queue
+// and invokes the processing path directly: a self-send via fmrb_msg_send would
+// risk a 10ms stall if the queue ever filled (host_task is the sole consumer)
+// and would also consume a HID slot that USB/BLE producers depend on.
+static void fmrb_host_flush_pending_mouse_move(void)
+{
+    if (!g_mouse_throttle_mutex) {
+        return;
+    }
+    int x = 0, y = 0;
+    bool should_send = false;
+    fmrb_semaphore_take(g_mouse_throttle_mutex, FMRB_MAX_DELAY);
+    uint32_t now_ms = (uint32_t)fmrb_hal_time_get_ms();
+    if (g_mouse_pending_valid && (now_ms - g_mouse_last_send_ms) >= MOUSE_MOVE_THROTTLE_MS) {
+        x = g_mouse_pending_x;
+        y = g_mouse_pending_y;
+        g_mouse_pending_valid = false;
+        g_mouse_last_send_ms = now_ms;
+        should_send = true;
+    }
+    fmrb_semaphore_give(g_mouse_throttle_mutex);
+
+    if (should_send) {
+        FMRB_LOGD(TAG, "MOUSE_MOVE flush: x=%d y=%d", x, y);
+        host_message_t msg = {
+            .type = HOST_MSG_HID_MOUSE_MOVE,
+            .data.mouse_move.x = x,
+            .data.mouse_move.y = y
+        };
+        host_task_process_host_message(&msg);
+    }
 }
 
 int fmrb_host_send_mouse_click(int x, int y, int button, int state)
