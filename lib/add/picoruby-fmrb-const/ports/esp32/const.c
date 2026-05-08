@@ -185,11 +185,16 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "IDF_VERSION",
                      mrb_str_new_cstr(mrb, IDF_VER));
 
-    // MAC address (WIFI STA, formatted "AA:BB:CC:DD:EE:FF")
+    // MAC address (BLE, formatted "AA:BB:CC:DD:EE:FF").
+    // ESP32-S3 derives per-interface MACs from a single base MAC
+    // (WiFi STA = base, SoftAP = base+1, BLE = base+2, Eth = base+3),
+    // so reading WIFI_STA would show a value that differs from the BLE
+    // device-name suffix by 2 in the last byte. WiFi is disabled in this
+    // build, so the BLE MAC is the relevant one to display in About.
     {
         uint8_t mac[6] = {0};
         char mac_str[18] = {0};
-        if (esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK) {
+        if (esp_read_mac(mac, ESP_MAC_BT) == ESP_OK) {
             snprintf(mac_str, sizeof(mac_str), "%02X:%02X:%02X:%02X:%02X:%02X",
                      mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
         } else {
