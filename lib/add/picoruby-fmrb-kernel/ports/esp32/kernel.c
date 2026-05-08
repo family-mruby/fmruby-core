@@ -26,7 +26,9 @@
 static const char* TAG = "kernel";
 
 // Kernel#_init() - Initialize kernel handler
-// Sets @tick, @max_app_num instance variables and creates message queue
+// Sets @tick, @max_app_num instance variables. The message queue is created
+// at task spawn time in fmrb_app.c (before the RUNNING state transition) so
+// senders cannot race ahead of the queue's existence.
 static mrb_value mrb_kernel_handler_init(mrb_state *mrb, mrb_value self)
 {
     // Set @tick instance variable (default 33ms)
@@ -40,18 +42,6 @@ static mrb_value mrb_kernel_handler_init(mrb_state *mrb, mrb_value self)
     // Set @max_path_len instance variable
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@max_path_len"),
                mrb_fixnum_value(FMRB_MAX_PATH_LEN));
-
-    // Create message queue for kernel
-    fmrb_msg_queue_config_t queue_config = {
-        .queue_length = FMRB_KERNEL_MSG_QUEUE_LEN,
-        .message_size = sizeof(fmrb_msg_t)
-    };
-
-    fmrb_err_t ret = fmrb_msg_create_queue(PROC_ID_KERNEL, &queue_config);
-    if (ret != FMRB_OK) {
-        mrb_raisef(mrb, E_RUNTIME_ERROR,
-                   "Failed to create kernel message queue: %d", ret);
-    }
 
     FMRB_LOGI(TAG, "Kernel handler initialized: tick=%d, max_apps=%d",
              33, FMRB_MAX_APPS);

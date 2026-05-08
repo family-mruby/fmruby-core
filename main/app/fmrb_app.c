@@ -857,12 +857,16 @@ static void app_task_main(void* arg) {
             goto cleanup;
     }
 
-    // Ensure a message queue exists for non-mruby apps so the kernel can
-    // deliver APP_CONTROL messages (e.g., close request). Ruby apps create
-    // their own queue from the FmrbApp#_init binding.
-    if (ctx->vm_type != FMRB_VM_TYPE_MRUBY) {
+    // Create the message queue before the state transitions to RUNNING so
+    // any sender that observes RUNNING is guaranteed to find a registered
+    // queue. Otherwise messages sent during the window between RUNNING and
+    // the mruby task's _init binding are silently dropped (FMRB_ERR_NOT_FOUND).
+    {
+        uint32_t queue_len = (ctx->type == APP_TYPE_KERNEL)
+                             ? FMRB_KERNEL_MSG_QUEUE_LEN
+                             : FMRB_USER_APP_MSG_QUEUE_LEN;
         fmrb_msg_queue_config_t queue_config = {
-            .queue_length = FMRB_USER_APP_MSG_QUEUE_LEN,
+            .queue_length = queue_len,
             .message_size = sizeof(fmrb_msg_t)
         };
         fmrb_err_t qret = fmrb_msg_create_queue(ctx->app_id, &queue_config);

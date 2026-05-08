@@ -193,6 +193,8 @@ fmrb_err_t fmrb_msg_send(fmrb_proc_id_t dest_task_id,
     // Check if queue exists
     if (!g_msg_queues[dest_task_id].registered) {
         fmrb_semaphore_give(g_registry_lock);
+        FMRB_LOGW(TAG, "msg_send DROPPED: dest=%d queue not registered, type=%d, src=%d",
+                  dest_task_id, msg->type, msg->src_pid);
         return FMRB_ERR_NOT_FOUND;
     }
 

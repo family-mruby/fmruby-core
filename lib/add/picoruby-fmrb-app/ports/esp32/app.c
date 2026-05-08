@@ -230,17 +230,9 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
         FMRB_LOGI(TAG, "Headless app %s: no canvas allocated", ctx->app_name);
     }
 
-    // Create message queue for this app
-    fmrb_msg_queue_config_t queue_config = {
-        .queue_length = FMRB_USER_APP_MSG_QUEUE_LEN,
-        .message_size = sizeof(fmrb_msg_t)
-    };
-
-    fmrb_err_t ret = fmrb_msg_create_queue(ctx->app_id, &queue_config);
-    if (ret != FMRB_OK) {
-        mrb_raisef(mrb, E_RUNTIME_ERROR,
-                   "Failed to create message queue: %d", ret);
-    }
+    // Message queue is created at task spawn time in fmrb_app.c (before the
+    // RUNNING state transition) so senders cannot race ahead of the queue's
+    // existence.
 
     return self;
 }

@@ -617,7 +617,7 @@ class EditorApp < FmrbApp
       @need_redraw = true
       Log.info("Loaded file: #{path} (#{@lines.length} lines)")
     rescue => e
-      Log.error("Failed to load file: #{e.message}")
+      Log.error("Failed to load file '#{path}': #{e.class}: #{e.message}")
     end
   end
 
