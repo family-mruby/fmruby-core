@@ -47,7 +47,7 @@
 // Kernel task (mruby VM for OS kernel)
 #define FMRB_KERNEL_TASK_STACK_SIZE     (12 * 1024)
 #define FMRB_KERNEL_TASK_PRIORITY       (9)
-#define FMRB_KERNEL_TASK_FLAGS          FMRB_TASK_FLAG_PSRAM
+#define FMRB_KERNEL_TASK_FLAGS          FMRB_TASK_FLAG_PINNED_1
 
 // Host task (graphics/audio transport, SPI slave comm, heap alloc)
 // Must be internal RAM (uses realloc via msgpack)
@@ -58,17 +58,17 @@
 // System App task (mruby VM for system GUI)
 #define FMRB_SYSTEM_APP_TASK_STACK_SIZE (12 * 1024)
 #define FMRB_SYSTEM_APP_TASK_PRIORITY   (8)
-#define FMRB_SYSTEM_APP_TASK_FLAGS      FMRB_TASK_FLAG_PSRAM
+#define FMRB_SYSTEM_APP_TASK_FLAGS      FMRB_TASK_FLAG_PINNED_1
 
 // Shell App task (mruby VM for shell)
 #define FMRB_SHELL_APP_TASK_STACK_SIZE  (12 * 1024)
 #define FMRB_SHELL_APP_PRIORITY         (5)
-#define FMRB_SHELL_APP_TASK_FLAGS       FMRB_TASK_FLAG_PSRAM
+#define FMRB_SHELL_APP_TASK_FLAGS       FMRB_TASK_FLAG_PINNED_1
 
 // User App task (mruby/lua/basic VM for user apps)
 #define FMRB_USER_APP_TASK_STACK_SIZE   (16 * 1024)
 #define FMRB_USER_APP_PRIORITY          (5)
-#define FMRB_USER_APP_TASK_FLAGS        FMRB_TASK_FLAG_PSRAM
+#define FMRB_USER_APP_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_1
 
 // --- Infrastructure tasks (Core 0, internal RAM) ---
 
