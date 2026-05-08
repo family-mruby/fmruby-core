@@ -14,9 +14,20 @@ class FmrbApp
 
   attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen
 
+  # Close-button hit zone (used by both draw and event-handler paths).
+  CLOSE_BTN_CX_OFFSET = 6   # distance from right edge to circle center
+  CLOSE_BTN_CY        = 5   # vertical center of circle in title bar
+  CLOSE_BTN_R         = 3   # circle radius
+  CLOSE_BTN_HIT_R     = 5   # hit-zone radius (slightly bigger for tolerance)
+  CLOSE_BTN_NORMAL_COLOR  = 0xFF  # white
+  CLOSE_BTN_PRESSED_COLOR = 0x49  # dark gray, gives an "inset" feel on the
+                                  # ruby title bar (still visible, clearly
+                                  # distinct from the released state)
+
   def initialize()
     Log.debug("initialize")
     @running = false
+    @close_btn_pressed = false
     _init() # C function, variables are defined here
     Log.debug("name=#{@name}")
     Log.debug("After _init(), @canvas=#{@canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}")
@@ -247,13 +258,33 @@ class FmrbApp
 
   def on_event(ev)
     # Called from C
-    # Handle close button click (left click)
-    if ev[:type] == :mouse_up && ev[:button] == 1
-      close_btn_x = @window_width - 10
-      close_btn_y = 2
-      if ev[:x] >= close_btn_x && ev[:x] < close_btn_x + 8 &&
-         ev[:y] >= close_btn_y && ev[:y] < close_btn_y + 8
-        stop
+    # Handle close button press feedback + click
+    if ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
+      cx = @window_width - CLOSE_BTN_CX_OFFSET
+      cy = CLOSE_BTN_CY
+      hit = (ev[:x] - cx).abs <= CLOSE_BTN_HIT_R &&
+            (ev[:y] - cy).abs <= CLOSE_BTN_HIT_R
+
+      case ev[:type]
+      when :mouse_down
+        if hit && !@fullscreen && @gfx
+          @close_btn_pressed = true
+          @gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_PRESSED_COLOR)
+          @gfx.present
+        end
+      when :mouse_up
+        if @close_btn_pressed
+          @close_btn_pressed = false
+          if hit
+            stop
+          elsif @gfx
+            # Released outside the button — restore the normal circle.
+            @gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_NORMAL_COLOR)
+            @gfx.present
+          end
+        elsif hit
+          stop  # safety net: down event missed but click landed on button
+        end
       end
     end
     # Handle title bar right click (reload for file-based apps)

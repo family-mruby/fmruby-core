@@ -4,7 +4,7 @@
 module FileManagerMixin
   # File manager layout
   FMGR_W = 300
-  FMGR_H = 220
+  FMGR_H = 206
   FMGR_TITLE_H = 14
   FMGR_ITEM_H = 12
   FMGR_BG = FmrbConst::THEME_WINDOW_BG
@@ -12,7 +12,6 @@ module FileManagerMixin
   FMGR_TEXT = FmrbConst::THEME_TEXT
   FMGR_DIR_COLOR = FmrbConst::THEME_DIR_COLOR
   FMGR_SEL_BG = FmrbConst::THEME_HIGHLIGHT
-  FMGR_CLOSE_BG = FmrbConst::THEME_BUTTON
   FMGR_SIZE_COLOR = 0x49
 
   # Context menu
@@ -141,11 +140,10 @@ module FileManagerMixin
     title = title[0, max_title_len] if title.length > max_title_len
     @gfx.draw_text(x + 4, y + 3, title, FmrbGfx::WHITE, FMGR_TITLE_BG)
 
-    # Close button on title bar
-    close_x = x + FMGR_W - 44
-    close_y = y + 1
-    @gfx.fill_rect(close_x, close_y, 42, FMGR_TITLE_H - 2, FMGR_CLOSE_BG)
-    @gfx.draw_text(close_x + 6, y + 3, "Close", FmrbGfx::WHITE, FMGR_CLOSE_BG)
+    # Close button on title bar (small filled circle, matches app windows).
+    close_cx = x + FMGR_W - 7
+    close_cy = y + FMGR_TITLE_H / 2
+    @gfx.fill_circle(close_cx, close_cy, 3, FmrbGfx::WHITE)
 
     # Column header
     header_y = y + FMGR_TITLE_H + 1
@@ -270,10 +268,12 @@ module FileManagerMixin
     fx = @fmgr_x
     fy = @fmgr_y
 
-    # Close button
-    close_x = fx + FMGR_W - 44
-    close_y = fy + 1
-    if x >= close_x && x < close_x + 42 && y >= close_y && y < close_y + FMGR_TITLE_H - 2
+    # Close button hit zone — square around the circle drawn in
+    # draw_file_manager. Slightly larger than the circle for tap tolerance.
+    close_cx = fx + FMGR_W - 7
+    close_cy = fy + FMGR_TITLE_H / 2
+    if x >= close_cx - 5 && x <= close_cx + 5 &&
+       y >= close_cy - 5 && y <= close_cy + 5
       close_file_manager
       return
     end

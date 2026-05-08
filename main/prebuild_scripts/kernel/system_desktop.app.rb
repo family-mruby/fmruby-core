@@ -16,6 +16,7 @@ class SystemDesktopApp < FmrbApp
   include ClockSettingMixin
   include TaskbarMixin
   include AboutDialogMixin
+  include TbdDialogMixin
 
   MENU_BAR_HEIGHT = 13
   MENU_BG = FmrbConst::THEME_MENU_BG
@@ -55,6 +56,8 @@ class SystemDesktopApp < FmrbApp
     @dropdown_open = false
     @dropdown_hover_idx = -1
     @about_open = false
+    @tbd_open = false
+    @tbd_title = "TBD"
     @about_x = 0
     @about_y = 0
     @launcher_open = false
@@ -143,9 +146,10 @@ class SystemDesktopApp < FmrbApp
     @fsel_x = (@window_width - FSEL_W) / 2
     @fsel_y = MENU_BAR_HEIGHT + (@window_height - MENU_BAR_HEIGHT - FSEL_H) / 2
 
-    # Center file manager
+    # Center file manager (nudge 2px down so the title bar clears the menu
+    # bar boundary visually).
     @fmgr_x = (@window_width - FMGR_W) / 2
-    @fmgr_y = MENU_BAR_HEIGHT + (@window_height - MENU_BAR_HEIGHT - FMGR_H) / 2
+    @fmgr_y = MENU_BAR_HEIGHT + (@window_height - MENU_BAR_HEIGHT - FMGR_H) / 2 + 2
 
     init_taskbar
     @taskbar_focused_pid = nil
@@ -398,6 +402,7 @@ class SystemDesktopApp < FmrbApp
     draw_clock_setting if @clk_open
     draw_error_dialog if @error_dlg_open
     draw_about_dialog if @about_open
+    draw_tbd_dialog if @tbd_open
     @gfx.present
   end
 
@@ -615,6 +620,12 @@ class SystemDesktopApp < FmrbApp
       return
     end
 
+    # TBD dialog — any click closes it
+    if @tbd_open
+      close_tbd_dialog
+      return
+    end
+
     # Error dialog has highest priority
     if @error_dlg_open
       if hit_error_dialog?(x, y)
@@ -721,6 +732,8 @@ class SystemDesktopApp < FmrbApp
       open_clock_setting
     when "About"
       open_about_dialog
+    when "Config"
+      open_tbd_dialog("Config")
     else
       spawn_app(item[:app]) if item[:app]
     end
