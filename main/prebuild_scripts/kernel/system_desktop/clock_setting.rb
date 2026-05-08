@@ -46,32 +46,34 @@ module ClockSettingMixin
   def apply_clock_setting
     year, month, day, hour, minute, second = @clk_values
 
-    Log.info("Clock setting: #{year}/#{month}/#{day} #{hour}:#{minute}:#{second}")
+    Log.info("Clock setting (local): #{year}/#{month}/#{day} #{hour}:#{minute}:#{second}")
 
     # Set system clock and RTC (ESP32 only - avoid overwriting host PC clock on Linux)
     if FmrbConst::PLATFORM == "esp32"
       i2c = nil
       begin
-        # Calculate epoch seconds (UTC) and set via Machine API
-        mdays = [0, 31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        days = 0
-        (1970...year).each { |y| days += (y % 4 == 0 && y % 100 != 0) || (y % 400 == 0) ? 366 : 365 }
-        (1...month).each { |m| days += mdays[m]; days += 1 if m == 2 && ((year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)) }
-        days += day - 1
-        epoch = days * 86400 + hour * 3600 + minute * 60 + second
-        Machine.set_hwclock(epoch)
-        Log.info("System clock updated (epoch=#{epoch})")
+        # FmrbApp.set_wallclock interprets the six fields as LOCAL time,
+        # converts to a UTC epoch via mktime() (respects TZ env), and sets
+        # the system clock. It returns the UTC equivalent as a hash, which
+        # we feed straight into the RX8900 RTC so the chip stores UTC.
+        utc = FmrbApp.set_wallclock(year, month, day, hour, minute, second)
+        if utc.nil?
+          Log.error("FmrbApp.set_wallclock failed (invalid date?)")
+          close_clock_setting
+          return
+        end
+        Log.info("System clock updated; UTC=#{utc[:year]}/#{utc[:month]}/#{utc[:day]} #{utc[:hour]}:#{utc[:minute]}:#{utc[:second]}")
 
-        # Write to RX8900 RTC hardware
+        # Write UTC fields to RX8900 RTC hardware (rx8900.rb's
+        # sync_system_clock at boot reads these back and passes them to
+        # Machine.set_hwclock as a UTC epoch, so storing UTC keeps the
+        # whole chain self-consistent).
         i2c = I2C.new(unit: :ESP32_I2C1,
                       sda_pin: FmrbHw::PIN_I2C1_SDA,
                       scl_pin: FmrbHw::PIN_I2C1_SCL)
         rtc = RX8900.new(i2c)
-        rtc.write_time({
-          year: year, month: month, day: day,
-          hour: hour, minute: minute, second: second
-        })
-        Log.info("RTC hardware updated")
+        rtc.write_time(utc)
+        Log.info("RTC hardware updated (UTC)")
       rescue => e
         Log.error("Failed to set clock: #{e.message}")
       ensure

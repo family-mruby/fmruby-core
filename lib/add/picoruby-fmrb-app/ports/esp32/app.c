@@ -1,4 +1,6 @@
 #include <string.h>
+#include <time.h>
+#include <sys/time.h>
 #include <mruby.h>
 #include <mruby/class.h>
 #include <mruby/string.h>
@@ -875,6 +877,63 @@ static mrb_value mrb_fmrb_app_s_wallclock(mrb_state *mrb, mrb_value self)
     return hash;
 }
 
+// FmrbApp.set_wallclock(year, month, day, hour, minute, second)
+//   -> Hash {year:, month:, day:, hour:, minute:, second:}
+//
+// Interprets the six arguments as LOCAL time fields, converts to a UTC
+// epoch via mktime() (which respects the TZ env set by fmrb_kernel),
+// and updates the system clock with clock_settime().
+//
+// The returned hash holds the UTC equivalent of the same instant, so
+// the caller can write it to a UTC-storing RTC (RX8900) without any
+// further timezone math. This keeps the on-screen display, the system
+// clock, and the RTC self-consistent: RTC always stores UTC fields,
+// the boot path (rx8900.rb sync_system_clock) reads them as UTC, and
+// localtime_r() converts to local for display.
+static mrb_value mrb_fmrb_app_s_set_wallclock(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    mrb_int year, month, day, hour, minute, second;
+    mrb_get_args(mrb, "iiiiii", &year, &month, &day, &hour, &minute, &second);
+
+    struct tm local_tm = {0};
+    local_tm.tm_year  = (int)year - 1900;
+    local_tm.tm_mon   = (int)month - 1;
+    local_tm.tm_mday  = (int)day;
+    local_tm.tm_hour  = (int)hour;
+    local_tm.tm_min   = (int)minute;
+    local_tm.tm_sec   = (int)second;
+    local_tm.tm_isdst = -1;  // Let mktime decide DST from TZ rules
+
+    time_t epoch = mktime(&local_tm);
+    if (epoch == (time_t)-1) {
+        return mrb_nil_value();
+    }
+
+    struct timespec ts = { .tv_sec = epoch, .tv_nsec = 0 };
+    if (clock_settime(CLOCK_REALTIME, &ts) != 0) {
+        return mrb_nil_value();
+    }
+
+    struct tm utc_tm;
+    gmtime_r(&epoch, &utc_tm);
+
+    mrb_value hash = mrb_hash_new_capa(mrb, 6);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "year")),
+                 mrb_fixnum_value(utc_tm.tm_year + 1900));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "month")),
+                 mrb_fixnum_value(utc_tm.tm_mon + 1));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "day")),
+                 mrb_fixnum_value(utc_tm.tm_mday));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "hour")),
+                 mrb_fixnum_value(utc_tm.tm_hour));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "minute")),
+                 mrb_fixnum_value(utc_tm.tm_min));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "second")),
+                 mrb_fixnum_value(utc_tm.tm_sec));
+    return hash;
+}
+
 // FmrbApp.gfx_stats() -> Hash { cmds: uint32, presents: uint32 }
 // Returns cumulative counters from the Host Task. Counters wrap modulo 2^32;
 // callers should compute rate from deltas between successive samples.
@@ -1032,6 +1091,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "wallclock", mrb_fmrb_app_s_wallclock, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "set_wallclock", mrb_fmrb_app_s_set_wallclock, MRB_ARGS_REQ(6));
     mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
 
