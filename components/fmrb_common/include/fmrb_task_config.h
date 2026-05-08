@@ -14,7 +14,7 @@
 #define FMRB_MRB_MAX_VMS (FMRB_MAX_SYSTEM_MRUBY_TASKS + FMRB_MAX_APPS)
 
 // Maximum number of tasks tracked by fmrb_task monitor
-#define FMRB_TASK_MONITOR_MAX (FMRB_MRB_MAX_VMS + 6) // +6 for infrastructure tasks (filesystem proxy, RTC, status LED, USB host, SPI conn check, BLE FS)
+#define FMRB_TASK_MONITOR_MAX (FMRB_MRB_MAX_VMS + 6) // +6 for infrastructure tasks (RTC, status LED, USB host, USB HID, SPI conn check, BLE FS)
 
 #include "fmrb_rtos.h"
 
@@ -80,11 +80,6 @@
 #define FMRB_USER_APP_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_1
 
 // --- Infrastructure tasks (Core 0, internal RAM) ---
-
-// Filesystem proxy task (UART-based external FS access, uses flash I/O)
-#define FMRB_FSPROXY_TASK_STACK_SIZE    (20 * 1024)
-#define FMRB_FSPROXY_TASK_PRIORITY      (4)
-#define FMRB_FSPROXY_TASK_FLAGS         FMRB_TASK_FLAG_PINNED_0
 
 // RTC task (I2C, low priority)
 #define FMRB_RTC_TASK_STACK_SIZE        (4096)

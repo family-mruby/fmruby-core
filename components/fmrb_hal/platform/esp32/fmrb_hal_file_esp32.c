@@ -805,7 +805,7 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info) {
     info->mtime = 0;
 
     // POSIX readdir() does not return size/mtime; stat() the entry here
-    // so callers (BLE LS, fs_proxy LS, picoruby Dir.read) get real values.
+    // so callers (BLE LS, picoruby Dir.read) get real values.
     char entry_path[MAX_PATH_LEN + 1 + sizeof(info->name)];
     if (strcmp(dir_path, "/") == 0) {
         snprintf(entry_path, sizeof(entry_path), "/%s", entry->d_name);

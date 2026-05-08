@@ -46,10 +46,6 @@ void fmrb_pin_manager_init(void)
     register_system_pin(FMRB_PIN_GFX_SPI_CS);
     register_system_pin(FMRB_PIN_GFX_SPI_INTR);
 
-    // FS Proxy UART
-    register_system_pin(FMRB_PIN_FSPROXY_TX);
-    register_system_pin(FMRB_PIN_FSPROXY_RX);
-
     // System GPIOs
     register_system_pin(FMRB_PIN_USB_POWER);
     register_system_pin(FMRB_PIN_STATUS_LED);

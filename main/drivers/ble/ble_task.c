@@ -35,7 +35,7 @@ static bool g_tx_subscribed = false;
 // ============================================================
 // File service over BLE - protocol definitions
 // ============================================================
-// Same protocol as fs_proxy_task: COBS-encoded frames with CRC32
+// COBS-encoded frames with CRC32.
 // Frame: COBS([cmd(1B)][json_len(2B BE)][json][binary][CRC32(4B)]) + 0x00
 
 #define BLE_FS_DELIM          0x00
@@ -44,7 +44,7 @@ static bool g_tx_subscribed = false;
 #define BLE_FS_MAX_JSON_LEN   2048
 #define BLE_FS_MAX_CHUNK_SIZE 2048
 
-// Command codes (same as fs_proxy)
+// Command codes
 #define BLE_FS_CMD_CD     0x11
 #define BLE_FS_CMD_LS     0x12
 #define BLE_FS_CMD_RM     0x13

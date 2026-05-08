@@ -6,7 +6,6 @@ set(COMPONENT_SRCS
     "app/fmrb_app_spawner.c"
     "kernel/fmrb_kernel.c"
     "kernel/host/host_task.c"
-    "drivers/fs_proxy/fs_proxy_task.c"
     "drivers/usb/fmrb_keymap.c"
     "drivers/led_status/status_led.c"
 )
@@ -72,7 +71,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/fs_proxy" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 
@@ -114,10 +113,11 @@ if(TARGET __idf_m5stack__m5unified)
     target_compile_options(${m5unified_lib} PRIVATE -Wno-error=maybe-uninitialized)
 endif()
 
-# Disable optimization for app.c to enable proper debugging
-# Todo: disable it on official release
+# Optimize main component (-O2) while keeping full debug info (-g3) so
+# panic backtraces still resolve. Switch to -O0 locally if a particular
+# crash needs step debugging.
 target_compile_options(${COMPONENT_LIB} PRIVATE
-    $<$<COMPILE_LANGUAGE:C>:-O0 -g3>
+    $<$<COMPILE_LANGUAGE:C>:-O2 -g3>
 )
 
 # Step 2: Generate Ruby bytecode compilation commands (must be after idf_component_register)

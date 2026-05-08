@@ -14,7 +14,6 @@
 #include "host/host_task.h"
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
-#include "fs_proxy_task.h"
 #include "usb_task.h"
 #include "hid_device_config.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
@@ -327,31 +326,9 @@ static void init_mem(void)
     fmrb_toml_init();
 }
 
-static bool boot_mode_check(void){
-    //TODO check GPIO condition
-
-    // if File transer mode
-    if(false){
-        // disable all log
-        fmrb_disable_log();
-        // minimum init for FS proxy
-        fmrb_mem_init();
-        fmrb_hal_file_init();
-        // Serial FS proxy
-        //fs_proxy_create_task();
-        return true;
-    }
-    return false;
-}
-
 // Family mruby OS initialization
 void fmrb_os_init(void)
 {
-    if( boot_mode_check() )
-    {
-        return;
-    }
-
     //set log level
     fmrb_set_log_level_info();
     //fmrb_set_log_level_debug();
