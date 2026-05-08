@@ -21,6 +21,7 @@
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_link_cobs.h"
 #include "picoruby_fmrb_const.h"
+#include "fmrb_keymap.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
 extern const uint8_t fmrb_kernel_irep[];
@@ -44,6 +45,15 @@ static fmrb_system_config_t g_system_config = {
     .mouse_scale_x = 1.0,
     .mouse_scale_y = 1.0
 };
+
+// Parse keyboard_layout string to enum
+static fmrb_keymap_layout_t parse_keyboard_layout(const char* layout_str)
+{
+    if (strcmp(layout_str, "us") == 0) {
+        return FMRB_KEYMAP_LAYOUT_US;
+    }
+    return FMRB_KEYMAP_LAYOUT_JP;  // Default
+}
 
 // Parse display_mode string to enum
 static fmrb_display_mode_t parse_display_mode(const char* mode_str)
@@ -120,6 +130,17 @@ static bool read_system_config(void)
         fmrb_sys_free((void *)tz);
     } else {
         FMRB_LOGW(TAG, "Timezone not configured, logs will use UTC");
+    }
+
+    // Read keyboard layout and apply
+    const char *kbd_layout_str = fmrb_toml_get_string(conf, "keyboard_layout", NULL);
+    if (kbd_layout_str) {
+        fmrb_keymap_layout_t layout = parse_keyboard_layout(kbd_layout_str);
+        fmrb_keymap_set_layout(layout);
+        FMRB_LOGI(TAG, "Keyboard layout set to: %s", kbd_layout_str);
+        fmrb_sys_free((void *)kbd_layout_str);
+    } else {
+        FMRB_LOGI(TAG, "Keyboard layout not configured, using default (JP)");
     }
 
     // Log loaded configuration
