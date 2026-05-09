@@ -112,6 +112,19 @@ module LauncherMixin
     @icon_sprite_metrics = []
   end
 
+  # Destroy only sprite instances; keep the SpriteImage cache (keyed by
+  # icon_file) intact. Used by rescan: re-uploading icon bitmaps to WROVER
+  # is expensive (~300ms each), but instances are cheap (just position +
+  # image reference).
+  def destroy_icon_instances_only
+    if @icon_sprite_instances
+      @icon_sprite_instances.each { |inst| inst.destroy if inst }
+    end
+    @icon_sprite_instances = []
+    @icon_sprite_metrics = []
+    # @icon_sprite_images is kept (cached by icon_file path).
+  end
+
   # ---- Icon loading ----
 
   def load_icon(icon_file)
@@ -431,6 +444,51 @@ module LauncherMixin
 
     # Notify kernel: overlay covers launcher area
     notify_overlay_state(true, @launcher_x, @launcher_y, LAUNCHER_W, LAUNCHER_H)
+    draw_foreground
+  end
+
+  # Right-click anywhere inside the launcher rescans the app directories so
+  # newly added/removed apps (e.g. via `create_app` or BLE upload) appear
+  # without rebooting.
+  def handle_launcher_right_click(x, y)
+    rescan_launcher
+  end
+
+  # Show immediate visual feedback in the title bar so the user knows the
+  # rescan was accepted. The actual work (filesystem scan + sprite uploads)
+  # may take 1-2 seconds before the new icons are visible.
+  def draw_launcher_status(text, color = FmrbGfx::YELLOW)
+    x = @launcher_x
+    y = @launcher_y
+    @gfx.fill_rect(x + 1, y + 1, LAUNCHER_W - 2, LAUNCHER_TITLE_H - 1, LAUNCHER_TITLE_BG)
+    @gfx.draw_text(x + 4, y + 3, text, color, LAUNCHER_TITLE_BG)
+    @gfx.present
+  end
+
+  # Re-scan /flash/app/ for apps and rebuild icon sprites if the app list
+  # changed. Called from handle_launcher_right_click.
+  def rescan_launcher
+    # Immediate feedback: change the title bar before the slow work starts.
+    draw_launcher_status("Rescanning...")
+
+    prev_handles = @launcher_apps.map { |a| a[:app] }
+    scan_apps
+    new_handles = @launcher_apps.map { |a| a[:app] }
+
+    if prev_handles != new_handles
+      # App list changed: existing instance indexes may no longer match the
+      # new @launcher_apps order, so rebuild instances. The SpriteImage cache
+      # (icon bitmaps already uploaded to WROVER) is kept intact.
+      destroy_icon_instances_only
+      Log.info("Launcher: rescan rebuilt instances (#{prev_handles.size} -> #{new_handles.size})")
+    else
+      Log.info("Launcher: rescan no change (#{new_handles.size} apps)")
+    end
+    ensure_icon_sprites
+
+    # Reset selection/scroll because indexes may have shifted.
+    @launcher_selected = -1
+    @launcher_scroll = 0
     draw_foreground
   end
 

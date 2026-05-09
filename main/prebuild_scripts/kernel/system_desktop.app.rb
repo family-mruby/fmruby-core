@@ -566,6 +566,13 @@ class SystemDesktopApp < FmrbApp
           return
         end
       end
+      if button == 3 && @launcher_open
+        # Right click in launcher: rescan to pick up newly added apps
+        if hit_launcher?(ev[:x], ev[:y])
+          handle_launcher_right_click(ev[:x], ev[:y])
+          return
+        end
+      end
       handle_click(ev[:x], ev[:y])
     end
 
