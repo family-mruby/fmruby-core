@@ -115,6 +115,7 @@ button.danger:hover { background: #8c0000; }
     <button id="btnConnect" class="primary" onclick="toggleConnection()">Connect</button>
     <button id="btnRefresh" disabled onclick="refreshDir()">Refresh</button>
     <button id="btnMkdir" disabled onclick="createDir()">New Folder</button>
+    <button id="btnNewFile" disabled onclick="createFile()">New File</button>
   </div>
 
   <div class="breadcrumb" id="breadcrumb"></div>
@@ -448,6 +449,7 @@ function setConnected(connected) {
   btn.textContent = connected ? 'Disconnect' : 'Connect';
   document.getElementById('btnRefresh').disabled = !connected;
   document.getElementById('btnMkdir').disabled = !connected;
+  document.getElementById('btnNewFile').disabled = !connected;
 }
 
 // ============================================================
@@ -728,6 +730,22 @@ async function createDir() {
     await refreshDir();
   } catch (e) {
     log('mkdir error: ' + e.message, 'err');
+  }
+}
+
+async function createFile() {
+  const name = prompt('New file name:');
+  if (!name) return;
+
+  const filePath = currentPath === '/' ? '/' + name : currentPath + '/' + name;
+
+  try {
+    await putFile(filePath, new Uint8Array(0));
+    log('Created file: ' + name, 'ok');
+    await refreshDir();
+    await refreshStatfs();
+  } catch (e) {
+    log('create file error: ' + e.message, 'err');
   }
 }
 
