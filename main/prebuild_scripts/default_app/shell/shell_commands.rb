@@ -50,8 +50,8 @@ module ShellCommandsMixin
       cmd_run(args)
     when "ps"
       cmd_ps
-    when "kill"
-      cmd_kill(args)
+    when "kill_job"
+      cmd_kill_job(args)
     when "edit"
       cmd_edit(args)
     when "help"
@@ -64,8 +64,8 @@ module ShellCommandsMixin
       @history << "  irb - Interactive Ruby"
       @history << "  run <script> [&] - Run script"
       @history << "  run <script> > <file> - Redirect output"
-      @history << "  ps - List processes"
-      @history << "  kill <id> - Kill background job"
+      @history << "  ps - List tasks and jobs"
+      @history << "  kill_job <id> - Stop a background job (JOB id from ps)"
       @history << "  help - Show this help message"
     else
       @history << "Unknown command: #{cmd}"
@@ -507,8 +507,9 @@ module ShellCommandsMixin
         stdout_obj.close if rout && stdout_obj.respond_to?(:close)
         $stdout = old_stdout
         $stdin = old_stdin
-        job_entry[:state] = :done
-        app_self.append_output("[#{job_id}] Done: #{job_entry[:name]}")
+        # Preserve :killed if cmd_kill_job already marked it; otherwise mark done
+        job_entry[:state] = :done unless job_entry[:state] == :killed
+        app_self.append_output("[#{job_id}] #{job_entry[:state] == :killed ? 'Stopped' : 'Done'}: #{job_entry[:name]}")
       end
     end
 
@@ -518,7 +519,9 @@ module ShellCommandsMixin
   # --- Process / Job management ---
 
   def cmd_ps
-    # Kernel-spawned processes (FmrbApp.ps)
+    # Kernel-managed tasks (FmrbApp.ps). PID is a kernel handle and cannot be
+    # killed from the shell.
+    @history << "Tasks (kernel-managed, not killable):"
     @history << " PID TYPE    STATE   NAME"
     procs = FmrbApp.ps
     i = 0
@@ -530,8 +533,11 @@ module ShellCommandsMixin
       i += 1
     end
 
-    # Sandbox background jobs
-    if @jobs.size > 0
+    # Sandbox background jobs. JOB ids are shell-local; use `kill_job <id>`.
+    @history << "Jobs (sandbox bg, use 'kill_job <id>'):"
+    if @jobs.size == 0
+      @history << "  (none)"
+    else
       @history << " JOB STATE   NAME"
       j = 0
       while j < @jobs.size
@@ -542,9 +548,9 @@ module ShellCommandsMixin
     end
   end
 
-  def cmd_kill(args)
+  def cmd_kill_job(args)
     if args.empty?
-      @history << "Usage: kill <job_id>"
+      @history << "Usage: kill_job <job_id>"
       return
     end
     job_id = args[0].to_i
@@ -558,7 +564,7 @@ module ShellCommandsMixin
         @history << "[#{job_id}] Not running"
       end
     else
-      @history << "kill: no such job: #{job_id}"
+      @history << "kill_job: no such job: #{job_id}"
     end
   end
 
