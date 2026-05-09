@@ -2,10 +2,12 @@
 # Displays script compilation errors and uncaught exceptions with backtrace
 
 module ErrorDialogMixin
-  EDLG_W = 320
+  EDLG_W = 310
   EDLG_LINE_H = 10
   EDLG_MAX_LINES = 12
-  EDLG_BG = FmrbGfx::BLACK
+  # Near-black opaque color. FmrbGfx::BLACK (0x00) collides with the foreground
+  # canvas color-key on some paths and renders transparent.
+  EDLG_BG = 0x24
   EDLG_BORDER = FmrbGfx::RED
   EDLG_TITLE_BG = FmrbGfx::RED
   EDLG_TEXT = FmrbGfx::YELLOW
@@ -81,13 +83,13 @@ module ErrorDialogMixin
     lines.each_with_index do |line, i|
       break if displayed >= EDLG_MAX_LINES
       color = colors[i] || EDLG_TRACE
-      @gfx.draw_text(x + 8, ty, line, color)
+      @gfx.draw_text(x + 8, ty, line, color, EDLG_BG)
       ty += EDLG_LINE_H
       displayed += 1
     end
 
     # Footer
-    @gfx.draw_text(x + EDLG_W - 96, y + h - 12, "(click to close)", FmrbGfx::GRAY)
+    @gfx.draw_text(x + EDLG_W - 96, y + h - 12, "(click to close)", FmrbGfx::GRAY, EDLG_BG)
   end
 
   def handle_error_dialog_click(x, y)
