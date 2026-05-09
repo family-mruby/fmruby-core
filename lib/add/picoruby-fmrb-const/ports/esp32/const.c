@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "sdkconfig.h"
+
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "esp_idf_version.h"
 #include "esp_mac.h"
