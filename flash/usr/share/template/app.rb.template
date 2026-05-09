@@ -1,0 +1,45 @@
+# {{name}}.app.rb
+class {{class}} < FmrbApp
+  # Called once at startup
+  def on_create
+    redraw
+  end
+
+  # Called repeatedly. Return value = sleep ms until next on_update.
+  def on_update
+    500
+  end
+
+  # Keyboard / mouse / gamepad events.
+  # Always call super to keep the close button and reload working.
+  def on_event(ev)
+    super
+    # case ev[:type]
+    # when :key_down
+    # when :mouse_down
+    # when :gamepad_down
+    # end
+  end
+
+  # Called when a fullscreen app takes over.
+  def on_suspend
+  end
+
+  # Called when returning from suspend.
+  def on_resume
+  end
+
+  # Called once at shutdown. Release resources here.
+  def on_destroy
+  end
+
+  def redraw
+    clear_user_area(FmrbGfx::WHITE)
+    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
+                   "{{title}}", FmrbGfx::BLACK)
+    draw_window_frame
+    @gfx.present
+  end
+end
+
+{{class}}.new.start

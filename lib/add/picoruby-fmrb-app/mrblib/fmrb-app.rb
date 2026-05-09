@@ -91,6 +91,16 @@ class FmrbApp
     end
   end
 
+  # Clear the user area (region inside the window frame, excluding the title
+  # bar) with the given color. Use this instead of @gfx.clear to keep the
+  # title bar and close button intact.
+  # @param color [Integer] RGB332 color (default: FmrbGfx::BLACK)
+  def clear_user_area(color = FmrbGfx::BLACK)
+    return unless @gfx
+    @gfx.fill_rect(@user_area_x0, @user_area_y0,
+                   @user_area_width, @user_area_height, color)
+  end
+
   private
 
   # Build the window-frame GfxBlock once. The block captures @name as a closure

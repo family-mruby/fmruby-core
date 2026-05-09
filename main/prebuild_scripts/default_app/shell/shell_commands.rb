@@ -54,6 +54,8 @@ module ShellCommandsMixin
       cmd_kill_job(args)
     when "edit"
       cmd_edit(args)
+    when "create_app"
+      cmd_create_app(args)
     when "help"
       @history << "Available commands:"
       @history << "  cd [path] - Change directory"
@@ -61,6 +63,7 @@ module ShellCommandsMixin
       @history << "  ls [path] - List directory contents"
       @history << "  cat <file> - Display file contents"
       @history << "  edit <file> - Open file in the editor"
+      @history << "  create_app <name> - Generate /app/usr/<name>.app.{rb,toml} from template"
       @history << "  irb - Interactive Ruby"
       @history << "  run <script> [&] - Run script"
       @history << "  run <script> > <file> - Redirect output"
@@ -682,6 +685,150 @@ module ShellCommandsMixin
         end
         @need_full_redraw = true
       end
+    end
+  end
+
+  # --- create_app: generate app from template ---
+
+  TEMPLATE_RB_PATH   = "/usr/share/template/app.rb.template"
+  TEMPLATE_TOML_PATH = "/usr/share/template/app.toml.template"
+
+  def cmd_create_app(args)
+    if args.empty?
+      @history << "Usage: create_app <name>"
+      @history << "  Generates /app/usr/<name>.app.{rb,toml} from template"
+      return
+    end
+
+    name = args[0]
+    unless valid_app_name?(name)
+      @history << "Error: name must be lowercase letters/digits/underscore,"
+      @history << "       starting with a letter (e.g. hello, my_clock)"
+      return
+    end
+
+    rb_virtual   = "/app/usr/#{name}.app.rb"
+    toml_virtual = "/app/usr/#{name}.app.toml"
+
+    if app_file_exists?(rb_virtual)
+      @history << "Error: #{rb_virtual} already exists"
+      return
+    end
+    if app_file_exists?(toml_virtual)
+      @history << "Error: #{toml_virtual} already exists"
+      return
+    end
+
+    return unless ensure_app_usr_dir
+
+    rb_tmpl   = read_template(TEMPLATE_RB_PATH)
+    toml_tmpl = read_template(TEMPLATE_TOML_PATH)
+    return if rb_tmpl.nil? || toml_tmpl.nil?
+
+    class_name = to_class_name(name)
+    title      = to_title_case(name)
+
+    rb_content   = substitute_template(rb_tmpl, name, class_name, title)
+    toml_content = substitute_template(toml_tmpl, name, class_name, title)
+
+    return unless write_text_file(rb_virtual, rb_content)
+    return unless write_text_file(toml_virtual, toml_content)
+
+    @history << "Created: #{rb_virtual}"
+    @history << "Created: #{toml_virtual}"
+    @history << "Tip: edit it with `edit #{rb_virtual}`"
+  end
+
+  def valid_app_name?(name)
+    return false if name.nil? || name.length == 0
+    first = name[0]
+    return false unless first >= 'a' && first <= 'z'
+    i = 0
+    while i < name.length
+      c = name[i]
+      ok = (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'
+      return false unless ok
+      i += 1
+    end
+    true
+  end
+
+  def to_class_name(snake)
+    parts = snake.split('_')
+    result = ""
+    parts.each do |p|
+      next if p.length == 0
+      result += p[0].upcase + (p.length > 1 ? p[1..-1] : "")
+    end
+    result + "App"
+  end
+
+  def to_title_case(snake)
+    parts = snake.split('_')
+    out = []
+    parts.each do |p|
+      next if p.length == 0
+      out << p[0].upcase + (p.length > 1 ? p[1..-1] : "")
+    end
+    out.join(' ')
+  end
+
+  def app_file_exists?(virtual_path)
+    begin
+      f = File.open(to_file_path(virtual_path), "r")
+      f.close
+      return true
+    rescue
+      return false
+    end
+  end
+
+  def ensure_app_usr_dir
+    begin
+      d = Dir.open(to_os_dir_path("/app/usr"))
+      d.close
+      return true
+    rescue
+      # Not present, fall through to mkdir
+    end
+    begin
+      Dir.mkdir(to_os_dir_path("/app/usr"))
+      return true
+    rescue => e
+      @history << "Error: cannot create /app/usr: #{e.message}"
+      return false
+    end
+  end
+
+  def read_template(virtual_path)
+    begin
+      f = File.open(to_file_path(virtual_path), "r")
+      content = f.read
+      f.close
+      return content
+    rescue => e
+      @history << "Error: cannot read template #{virtual_path}: #{e.message}"
+      return nil
+    end
+  end
+
+  def substitute_template(template, name, class_name, title)
+    out = template
+    out = out.gsub("{{name}}", name)
+    out = out.gsub("{{class}}", class_name)
+    out = out.gsub("{{title}}", title)
+    out
+  end
+
+  def write_text_file(virtual_path, content)
+    begin
+      f = File.open(to_file_path(virtual_path), "w")
+      f.write(content)
+      f.close
+      return true
+    rescue => e
+      @history << "Error: cannot write #{virtual_path}: #{e.message}"
+      return false
     end
   end
 end
