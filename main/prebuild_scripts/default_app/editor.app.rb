@@ -117,7 +117,8 @@ class EditorApp < FmrbApp
 
   def draw_menu_bar
     y = @menu_y
-    @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H, MENU_BG)
+    # +1 covers the 1px separator row between menu bar and edit area
+    @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H + 1, MENU_BG)
 
     x = @user_area_x0 + 2
     @menu_file_x = x
