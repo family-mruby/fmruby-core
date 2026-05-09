@@ -50,6 +50,7 @@ static bool g_tx_subscribed = false;
 #define BLE_FS_CMD_RM     0x13
 #define BLE_FS_CMD_MKDIR  0x14
 #define BLE_FS_CMD_STATFS 0x15
+#define BLE_FS_CMD_RENAME 0x16
 #define BLE_FS_CMD_GET    0x21
 #define BLE_FS_CMD_PUT    0x22
 #define BLE_FS_RESP       0x00
@@ -696,6 +697,29 @@ static void ble_fs_cmd_mkdir(const char *json_params, char *response, size_t res
     snprintf(response, response_size, "{\"ok\":true}");
 }
 
+static void ble_fs_cmd_rename(const char *json_params, char *response, size_t response_size)
+{
+    char from[BLE_FS_MAX_PATH_LEN];
+    char to[BLE_FS_MAX_PATH_LEN];
+
+    if (!json_get_string(json_params, "from", from, sizeof(from))) {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"Missing from parameter\"}");
+        return;
+    }
+    if (!json_get_string(json_params, "to", to, sizeof(to))) {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"Missing to parameter\"}");
+        return;
+    }
+
+    fmrb_err_t err = fmrb_hal_file_rename(from, to);
+    if (err != FMRB_OK) {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"rename failed\"}");
+        return;
+    }
+
+    snprintf(response, response_size, "{\"ok\":true}");
+}
+
 static void ble_fs_cmd_statfs(const char *json_params, char *response, size_t response_size)
 {
     char path[BLE_FS_MAX_PATH_LEN];
@@ -892,6 +916,11 @@ static void ble_fs_process_frame(const uint8_t *frame, size_t frame_len)
 
     case BLE_FS_CMD_MKDIR:
         ble_fs_cmd_mkdir(json_params, json_response, sizeof(json_response));
+        ble_fs_send_response(json_response, NULL, 0);
+        break;
+
+    case BLE_FS_CMD_RENAME:
+        ble_fs_cmd_rename(json_params, json_response, sizeof(json_response));
         ble_fs_send_response(json_response, NULL, 0);
         break;
 

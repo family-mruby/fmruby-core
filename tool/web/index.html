@@ -179,6 +179,7 @@ const CMD_LS     = 0x12;
 const CMD_RM     = 0x13;
 const CMD_MKDIR  = 0x14;
 const CMD_STATFS = 0x15;
+const CMD_RENAME = 0x16;
 const CMD_GET    = 0x21;
 const CMD_PUT    = 0x22;
 
@@ -749,6 +750,32 @@ async function createFile() {
   }
 }
 
+async function renameEntry(name, isDir) {
+  const newName = prompt('New name:', name);
+  if (newName === null) return;
+  const trimmed = newName.trim();
+  if (trimmed === '' || trimmed === name) return;
+  if (trimmed.indexOf('/') !== -1) {
+    log('Rename: name must not contain "/"', 'err');
+    return;
+  }
+
+  const from = currentPath === '/' ? '/' + name : currentPath + '/' + name;
+  const to = currentPath === '/' ? '/' + trimmed : currentPath + '/' + trimmed;
+
+  try {
+    const { meta } = await sendCommand(CMD_RENAME, { from: from, to: to });
+    if (!meta.ok) {
+      log('Rename failed: ' + (meta.err || 'unknown'), 'err');
+      return;
+    }
+    log('Renamed: ' + name + ' -> ' + trimmed, 'ok');
+    await refreshDir();
+  } catch (e) {
+    log('Rename error: ' + e.message, 'err');
+  }
+}
+
 async function refreshStatfs() {
   try {
     const { meta } = await sendCommand(CMD_STATFS, { path: '/' });
@@ -836,6 +863,7 @@ function renderFileList(entries) {
       }
       html += '<button onclick="downloadFile(\'' + escapeAttr(entry.n) + '\')">DL</button>';
     }
+    html += '<button onclick="renameEntry(\'' + escapeAttr(entry.n) + '\',' + isDir + ')">Rn</button>';
     html += '<button class="danger" onclick="deleteFile(\'' + escapeAttr(entry.n) + '\',' + isDir + ')">Del</button>';
     html += '</div>';
     html += '</div>';
