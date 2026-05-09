@@ -154,7 +154,16 @@ module ShellCommandsMixin
         @history << "(empty directory)"
       else
         entries.sort.each do |entry|
-          @history << "  #{entry}"
+          entry_virtual = virtual_path == "/" ? "/#{entry}" : "#{virtual_path}/#{entry}"
+          is_dir = false
+          begin
+            d = Dir.open(to_os_dir_path(entry_virtual))
+            d.close
+            is_dir = true
+          rescue
+          end
+          label = is_dir ? "#{entry}/" : entry
+          @history << "  #{label}"
         end
       end
     rescue => e
@@ -629,16 +638,44 @@ module ShellCommandsMixin
       end
       @need_line_redraw = true
     else
-      # Multiple matches: show candidates
-      append_output(@prompt + @current_line)
-      i = 0
+      # Multiple matches: extend to longest common prefix if any
+      common = candidates[0][:name]
+      i = 1
       while i < candidates.size
-        c = candidates[i]
-        label = c[:dir] ? "#{c[:name]}/" : c[:name]
-        append_output("  #{label}")
+        name = candidates[i][:name]
+        # Shrink common to the shared prefix with name
+        max_len = common.length < name.length ? common.length : name.length
+        j = 0
+        while j < max_len && common[j] == name[j]
+          j += 1
+        end
+        common = common[0...j]
+        break if common.empty?
         i += 1
       end
-      @need_full_redraw = true
+
+      if common.length > name_prefix.length
+        # Extend the input up to the common prefix (no trailing slash, since it's not a complete name)
+        completed = dir_part + common
+        if prefix.empty?
+          @current_line += completed
+        else
+          parts[-1] = completed
+          @current_line = parts.join(" ")
+        end
+        @need_line_redraw = true
+      else
+        # No further extension possible: show candidates
+        append_output(@prompt + @current_line)
+        i = 0
+        while i < candidates.size
+          c = candidates[i]
+          label = c[:dir] ? "#{c[:name]}/" : c[:name]
+          append_output("  #{label}")
+          i += 1
+        end
+        @need_full_redraw = true
+      end
     end
   end
 end
