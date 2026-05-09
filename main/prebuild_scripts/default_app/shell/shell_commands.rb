@@ -3,6 +3,7 @@
 module ShellCommandsMixin
   STATE_NAMES = ["free", "init", "run", "suspend", "stop"]
   TYPE_NAMES = ["kernel", "system", "user"]
+  CP_CHUNK_SIZE = 4096  # cp/mv copy chunk size in bytes
 
   def spawn_app(app_name)
     app_name = "/app/tool/mruby.app.rb" if app_name == "mruby.app"
@@ -44,6 +45,16 @@ module ShellCommandsMixin
       cmd_ls(args)
     when "cat"
       cmd_cat(args)
+    when "less"
+      cmd_less(args)
+    when "mkdir"
+      cmd_mkdir(args)
+    when "rm"
+      cmd_rm(args)
+    when "cp"
+      cmd_cp(args)
+    when "mv"
+      cmd_mv(args)
     when "irb"
       cmd_irb
     when "run"
@@ -62,6 +73,11 @@ module ShellCommandsMixin
       @history << "  pwd - Print working directory"
       @history << "  ls [path] - List directory contents"
       @history << "  cat <file> - Display file contents"
+      @history << "  less <file> - View file with paging (q to quit)"
+      @history << "  mkdir <dir> - Create directory"
+      @history << "  rm <path...> - Remove files (or empty directories)"
+      @history << "  cp <src> <dst> - Copy file"
+      @history << "  mv <src> <dst> - Move/rename file"
       @history << "  edit <file> - Open file in the editor"
       @history << "  create_app <name> - Generate /app/usr/<name>.app.{rb,toml} from template"
       @history << "  irb - Interactive Ruby"
@@ -216,6 +232,235 @@ module ShellCommandsMixin
     rescue => e
       @history << "Error: #{e.message}"
     end
+  end
+
+  # Resolve user-supplied path against @current_dir into a normalized virtual
+  # path (always absolute, no trailing slash except for root, no "//").
+  def resolve_virtual_path(path)
+    v = if path.start_with?("/")
+          path
+        elsif @current_dir == "/"
+          "/" + path
+        else
+          @current_dir + "/" + path
+        end
+    while v.include?("//")
+      v = v.gsub("//", "/")
+    end
+    v = v[0...-1] if v.length > 1 && v.end_with?("/")
+    v
+  end
+
+  def virtual_basename(virtual_path)
+    return "" if virtual_path.nil? || virtual_path.empty?
+    idx = virtual_path.rindex("/")
+    idx ? virtual_path[(idx + 1)..-1] : virtual_path
+  end
+
+  def virtual_is_dir?(virtual_path)
+    d = Dir.open(to_os_dir_path(virtual_path))
+    d.close
+    true
+  rescue
+    false
+  end
+
+  def virtual_file_exists?(virtual_path)
+    File.exist?(to_file_path(virtual_path))
+  rescue
+    false
+  end
+
+  def cmd_mkdir(args)
+    if args.empty?
+      @history << "Usage: mkdir <dir>"
+      return
+    end
+    target = resolve_virtual_path(args[0])
+    if virtual_is_dir?(target)
+      @history << "mkdir: #{args[0]}: already exists"
+      return
+    end
+    begin
+      Dir.mkdir(to_os_dir_path(target))
+      Log.info("mkdir: #{target}")
+    rescue => e
+      @history << "mkdir: #{args[0]}: #{e.message}"
+    end
+  end
+
+  def cmd_rm(args)
+    if args.empty?
+      @history << "Usage: rm <path...>"
+      return
+    end
+    args.each do |arg|
+      target = resolve_virtual_path(arg)
+      if virtual_is_dir?(target)
+        # Try to remove as empty directory
+        begin
+          Dir.delete(to_os_dir_path(target))
+          Log.info("rm: dir #{target}")
+        rescue => e
+          @history << "rm: #{arg}: #{e.message} (not empty?)"
+        end
+      elsif virtual_file_exists?(target)
+        begin
+          File.delete(to_file_path(target))
+          Log.info("rm: file #{target}")
+        rescue => e
+          @history << "rm: #{arg}: #{e.message}"
+        end
+      else
+        @history << "rm: #{arg}: No such file or directory"
+      end
+    end
+  end
+
+  # Copy a single file in CP_CHUNK_SIZE chunks. Returns true on success.
+  def copy_file_chunked(src_virtual, dst_virtual)
+    src = nil
+    dst = nil
+    begin
+      src = File.open(to_file_path(src_virtual), "r")
+      dst = File.open(to_file_path(dst_virtual), "w")
+      loop do
+        chunk = src.read(CP_CHUNK_SIZE)
+        break if chunk.nil? || chunk.length == 0
+        dst.write(chunk)
+      end
+      true
+    rescue => e
+      @history << "Error: #{e.message}"
+      false
+    ensure
+      src.close if src
+      dst.close if dst
+    end
+  end
+
+  # Resolve cp/mv destination: if dst is an existing directory,
+  # append basename(src). Returns the final destination virtual path.
+  def resolve_cp_dst(src_virtual, dst_arg)
+    dst = resolve_virtual_path(dst_arg)
+    if virtual_is_dir?(dst)
+      base = virtual_basename(src_virtual)
+      dst = dst == "/" ? "/" + base : dst + "/" + base
+    end
+    dst
+  end
+
+  def cmd_cp(args)
+    if args.length < 2
+      @history << "Usage: cp <src> <dst>"
+      return
+    end
+    src = resolve_virtual_path(args[0])
+    unless virtual_file_exists?(src)
+      @history << "cp: #{args[0]}: No such file"
+      return
+    end
+    if virtual_is_dir?(src)
+      @history << "cp: #{args[0]}: is a directory (not supported)"
+      return
+    end
+    dst = resolve_cp_dst(src, args[1])
+    if src == dst
+      @history << "cp: source and destination are the same"
+      return
+    end
+    if copy_file_chunked(src, dst)
+      Log.info("cp: #{src} -> #{dst}")
+    end
+  end
+
+  def cmd_mv(args)
+    if args.length < 2
+      @history << "Usage: mv <src> <dst>"
+      return
+    end
+    src = resolve_virtual_path(args[0])
+    unless virtual_file_exists?(src)
+      @history << "mv: #{args[0]}: No such file"
+      return
+    end
+    if virtual_is_dir?(src)
+      @history << "mv: #{args[0]}: is a directory (not supported)"
+      return
+    end
+    dst = resolve_cp_dst(src, args[1])
+    if src == dst
+      @history << "mv: source and destination are the same"
+      return
+    end
+    begin
+      File.rename(to_file_path(src), to_file_path(dst))
+      Log.info("mv: #{src} -> #{dst}")
+    rescue => e
+      @history << "mv: #{e.message}"
+    end
+  end
+
+  # Read entire file in chunks, splitting into wrapped lines for the less
+  # viewport. Returns an array of strings, each with length <= max_chars.
+  def read_file_wrapped(virtual_path, max_chars)
+    lines = []
+    leftover = ""
+    file = nil
+    begin
+      file = File.open(to_file_path(virtual_path), "r")
+      loop do
+        chunk = file.read(CP_CHUNK_SIZE)
+        break if chunk.nil? || chunk.length == 0
+        leftover += chunk
+        # Process complete lines from leftover
+        while (nl = leftover.index("\n"))
+          line = leftover[0...nl]
+          leftover = leftover[(nl + 1)..-1] || ""
+          append_wrapped(lines, line, max_chars)
+        end
+      end
+      # Final partial line (no trailing newline)
+      append_wrapped(lines, leftover, max_chars) unless leftover.empty?
+    ensure
+      file.close if file
+    end
+    lines
+  end
+
+  def append_wrapped(lines, line, max_chars)
+    if line.empty?
+      lines << ""
+      return
+    end
+    pos = 0
+    while pos < line.length
+      lines << line[pos, max_chars]
+      pos += max_chars
+    end
+  end
+
+  def cmd_less(args)
+    if args.empty?
+      @history << "Usage: less <file>"
+      return
+    end
+    target = resolve_virtual_path(args[0])
+    unless virtual_file_exists?(target)
+      @history << "less: #{args[0]}: No such file"
+      return
+    end
+    if virtual_is_dir?(target)
+      @history << "less: #{args[0]}: is a directory"
+      return
+    end
+    begin
+      lines = read_file_wrapped(target, @max_chars)
+    rescue => e
+      @history << "less: #{e.message}"
+      return
+    end
+    enter_less_mode(args[0], lines)
   end
 
   # --- Edit command ---

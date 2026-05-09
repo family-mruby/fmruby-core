@@ -53,7 +53,29 @@ class ShellApp < FmrbApp
     # tick_pending_edit on later on_update ticks once the editor has spawned.
     @pending_edit_path = nil
     @pending_edit_counter = nil
+
+    # less mode: modal pager state. While @less_mode is true, key events are
+    # routed to handle_less_key instead of the normal shell input loop.
+    @less_mode = false
+    @less_lines = []
+    @less_offset = 0
+    @less_filename = ""
+    @less_help_visible = false
   end
+
+  # Key reference shown by the less-mode help overlay (toggled with '?').
+  LESS_HELP_LINES = [
+    "less keys:",
+    "",
+    "  q / ESC      quit",
+    "  Space/PgDn   next page",
+    "  b / PgUp     prev page",
+    "  j / Down     line down",
+    "  k / Up       line up",
+    "  g            top",
+    "  G            bottom",
+    "  ?            toggle help"
+  ]
 
   def on_create()
     # Layout: reserve scrollbar width for consistent text wrapping
@@ -269,14 +291,16 @@ class ShellApp < FmrbApp
     super(ev)
 
     if ev[:type] == :mouse_down
-      # Scrollbar hold start
-      avail = history_avail_rows
-      sb_h = avail * @char_height + 2
-      sb = scrollbar_hit(ev[:x], ev[:y], @user_area_x0, @user_area_y0,
-                         @user_area_width, sb_h)
-      if sb
-        @scroll_hold = (sb == :up) ? -1 : 1
-        sb == :up ? scroll_up : scroll_down
+      # Scrollbar hold start (suppressed while less mode owns the viewport)
+      unless @less_mode
+        avail = history_avail_rows
+        sb_h = avail * @char_height + 2
+        sb = scrollbar_hit(ev[:x], ev[:y], @user_area_x0, @user_area_y0,
+                           @user_area_width, sb_h)
+        if sb
+          @scroll_hold = (sb == :up) ? -1 : 1
+          sb == :up ? scroll_up : scroll_down
+        end
       end
     elsif ev[:type] == :mouse_up
       @scroll_hold = 0
@@ -285,6 +309,13 @@ class ShellApp < FmrbApp
     if ev[:type] == :key_down
       character = ev[:character] || 0
       keycode = ev[:keycode] || 0
+
+      # Less mode swallows all key input for paging navigation.
+      if @less_mode
+        handle_less_key(character, keycode)
+        return
+      end
+
       # Track Ctrl key state (224=LCtrl, 228=RCtrl)
       if keycode == 224 || keycode == 228
         @ctrl_pressed = true
@@ -416,6 +447,10 @@ class ShellApp < FmrbApp
       @history << "Error: #{e.message}"
     end
 
+    # If the command entered less mode, leave the viewport drawn by cmd_less
+    # alone — skip shell-history trim/scroll/redraw which would clobber it.
+    return if @less_mode
+
     # Trim old entries (keep ~3 pages)
     max_entries = @visible_rows * 3
     while @history.length > max_entries
@@ -460,6 +495,138 @@ class ShellApp < FmrbApp
       @current_line = @cmd_saved_line
     end
     @need_line_redraw = true
+  end
+
+  # ---- less mode (modal pager) ----
+
+  def enter_less_mode(filename, lines)
+    @less_mode = true
+    @less_filename = filename
+    @less_lines = lines
+    @less_offset = 0
+    draw_less_view
+  end
+
+  def exit_less_mode
+    @less_mode = false
+    @less_lines = []
+    @less_offset = 0
+    @less_help_visible = false
+    @need_full_redraw = true
+  end
+
+  # Number of content rows in the less viewport (status bar takes 1 row).
+  def less_page_rows
+    rows = @visible_rows - 1
+    rows < 1 ? 1 : rows
+  end
+
+  def clamp_less_offset
+    max_offset = @less_lines.length - less_page_rows
+    max_offset = 0 if max_offset < 0
+    @less_offset = 0 if @less_offset < 0
+    @less_offset = max_offset if @less_offset > max_offset
+  end
+
+  def draw_less_view
+    clamp_less_offset
+    @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height, @bg_col)
+    draw_window_frame
+
+    content_x = @user_area_x0 + 2
+    rows = less_page_rows
+    rows.times do |i|
+      idx = @less_offset + i
+      break if idx >= @less_lines.length
+      y = @user_area_y0 + 2 + i * @char_height
+      line = @less_lines[idx]
+      @gfx.draw_text(content_x, y, line, @ch_col) unless line.empty?
+    end
+
+    # Status bar on the last visible row. Keep concise; full key reference
+    # is available via the '?' help overlay.
+    total = @less_lines.length
+    if total == 0
+      status = "#{@less_filename}  (empty)  ?=help q=quit"
+    else
+      last = [@less_offset + rows, total].min
+      first = @less_offset + 1
+      status = "#{@less_filename}  #{first}-#{last}/#{total}  ?=help q=quit"
+    end
+    max_status = (@user_area_width - 4) / @char_width
+    status = status[0...max_status] if status.length > max_status
+    sy = @user_area_y0 + 2 + rows * @char_height
+    @gfx.fill_rect(@user_area_x0 + 1, sy, @user_area_width - 2, @char_height, @ch_col)
+    inv_col = @bg_col
+    @gfx.draw_text(content_x, sy, status, inv_col)
+
+    draw_less_help if @less_help_visible
+    @gfx.present
+  end
+
+  def draw_less_help
+    lines = LESS_HELP_LINES
+    # Box: 1-char padding on each side
+    box_chars = 26
+    box_w = (box_chars + 2) * @char_width
+    box_h = (lines.length + 2) * @char_height
+    if box_w > @user_area_width - 4
+      box_w = @user_area_width - 4
+    end
+    box_x = @user_area_x0 + (@user_area_width - box_w) / 2
+    box_y = @user_area_y0 + (@user_area_height - box_h) / 2
+
+    @gfx.fill_rect(box_x, box_y, box_w, box_h, @ch_col)
+    @gfx.draw_rect(box_x, box_y, box_w, box_h, @bg_col)
+
+    n = lines.length
+    n.times do |i|
+      ty = box_y + @char_height + i * @char_height
+      @gfx.draw_text(box_x + @char_width, ty, lines[i], @bg_col)
+    end
+  end
+
+  def handle_less_key(character, keycode)
+    rows = less_page_rows
+
+    # '?' toggles the help overlay regardless of current state.
+    if character == 63
+      @less_help_visible = !@less_help_visible
+      draw_less_view
+      return
+    end
+
+    # While help overlay is visible, dismiss on any key. q/ESC still quits.
+    if @less_help_visible
+      @less_help_visible = false
+      if character == 113 || character == 27
+        exit_less_mode
+      else
+        draw_less_view
+      end
+      return
+    end
+
+    case
+    when character == 113 || character == 27  # 'q' or ESC
+      exit_less_mode
+      return
+    when character == 32 || keycode == 78  # Space or PageDown
+      @less_offset += rows
+    when character == 98 || keycode == 75  # 'b' or PageUp
+      @less_offset -= rows
+    when character == 106 || keycode == 81  # 'j' or Down
+      @less_offset += 1
+    when character == 107 || keycode == 82  # 'k' or Up
+      @less_offset -= 1
+    when character == 103  # 'g' top
+      @less_offset = 0
+    when character == 71  # 'G' bottom
+      @less_offset = @less_lines.length - rows
+    else
+      return
+    end
+    draw_less_view
   end
 
   def on_destroy

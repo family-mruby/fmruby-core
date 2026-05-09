@@ -121,6 +121,25 @@ mrb_file_s_unlink(mrb_state *mrb, mrb_value self)
 
 /*
  * call-seq:
+ *   File.rename(old_path, new_path) -> 0
+ *
+ * Renames or moves a file. Returns 0 on success.
+ */
+static mrb_value
+mrb_file_s_rename(mrb_state *mrb, mrb_value self)
+{
+  char *old_path, *new_path;
+  mrb_get_args(mrb, "zz", &old_path, &new_path);
+
+  if (fmrb_hal_file_rename(old_path, new_path) != FMRB_OK) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "cannot rename %s to %s", old_path, new_path);
+  }
+
+  return mrb_int_value(mrb, 0);
+}
+
+/*
+ * call-seq:
  *   file.read(length = nil) -> string or nil
  *
  * Reads length bytes from file, or all remaining bytes if length is nil.
@@ -216,6 +235,7 @@ mrb_picoruby_fmrb_filesystem_init_impl(mrb_state *mrb)
   mrb_define_class_method(mrb, file_class, "size", mrb_file_s_size, MRB_ARGS_REQ(1));
   mrb_define_class_method(mrb, file_class, "delete", mrb_file_s_unlink, MRB_ARGS_REQ(1));
   mrb_define_class_method(mrb, file_class, "unlink", mrb_file_s_unlink, MRB_ARGS_REQ(1));
+  mrb_define_class_method(mrb, file_class, "rename", mrb_file_s_rename, MRB_ARGS_REQ(2));
 
   // Instance methods (File-specific methods only)
   // _new/write/close/closed?/_flush are inherited from IO; File.new (Ruby)
