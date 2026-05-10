@@ -984,8 +984,15 @@ static void host_task_process_message(const fmrb_msg_t *hal_msg)
     // Audio message from kernel
     if (hal_msg->type == FMRB_MSG_TYPE_APP_AUDIO) {
         if (hal_msg->size > 0) {
-            FMRB_LOGI(TAG, "Audio command: cmd_type=0x%02x, size=%lu",
-                      hal_msg->data[0], (unsigned long)hal_msg->size);
+            uint8_t cmd_type = hal_msg->data[0];
+            // 0x09=note_on, 0x0A=note_off are high-frequency; demote to DEBUG
+            if (cmd_type == 0x09 || cmd_type == 0x0A) {
+                FMRB_LOGD(TAG, "Audio command: cmd_type=0x%02x, size=%lu",
+                          cmd_type, (unsigned long)hal_msg->size);
+            } else {
+                FMRB_LOGI(TAG, "Audio command: cmd_type=0x%02x, size=%lu",
+                          cmd_type, (unsigned long)hal_msg->size);
+            }
             fmrb_transport_send(
                 FMRB_LINK_TYPE_AUDIO, 0,
                 hal_msg->data, hal_msg->size,

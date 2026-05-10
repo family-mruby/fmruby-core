@@ -19,7 +19,11 @@ module AudioHandlerMixin
     end
 
     cmd = data["cmd"]
-    Log.info("Audio command '#{cmd}' from pid=#{pid}")
+    if cmd == "note_on" || cmd == "note_off"
+      Log.debug("Audio command '#{cmd}' from pid=#{pid}")
+    else
+      Log.info("Audio command '#{cmd}' from pid=#{pid}")
+    end
 
     # Forward audio command to host task as raw binary
     # Format: cmd_type(1) + path_len(2, LE) + path

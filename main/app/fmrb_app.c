@@ -144,23 +144,23 @@ static void inspect_irep(mrb_state *mrb, const char* app_name, const mrc_irep *i
         return;
     }
 
-    FMRB_LOGI(TAG, "[%s] === IREP Inspection ===", app_name);
-    FMRB_LOGI(TAG, "[%s] irep=%p", app_name, irep);
-    FMRB_LOGI(TAG, "[%s] nlocals=%u, nregs=%u, clen=%u, flags=0x%02x",
+    FMRB_LOGD(TAG, "[%s] === IREP Inspection ===", app_name);
+    FMRB_LOGD(TAG, "[%s] irep=%p", app_name, irep);
+    FMRB_LOGD(TAG, "[%s] nlocals=%u, nregs=%u, clen=%u, flags=0x%02x",
               app_name, irep->nlocals, irep->nregs,
               irep->clen, irep->flags);
-    FMRB_LOGI(TAG, "[%s] iseq=%p", app_name, irep->iseq);
-    FMRB_LOGI(TAG, "[%s] pool=%p (plen=%u)", app_name, irep->pool, irep->plen);
-    FMRB_LOGI(TAG, "[%s] syms=%p (slen=%u)", app_name, irep->syms, irep->slen);
-    FMRB_LOGI(TAG, "[%s] reps=%p (rlen=%u)", app_name, irep->reps, irep->rlen);
+    FMRB_LOGD(TAG, "[%s] iseq=%p", app_name, irep->iseq);
+    FMRB_LOGD(TAG, "[%s] pool=%p (plen=%u)", app_name, irep->pool, irep->plen);
+    FMRB_LOGD(TAG, "[%s] syms=%p (slen=%u)", app_name, irep->syms, irep->slen);
+    FMRB_LOGD(TAG, "[%s] reps=%p (rlen=%u)", app_name, irep->reps, irep->rlen);
 
     // Check symbol table validity - show first 5 symbols
     if (irep->syms && irep->slen > 0) {
-        FMRB_LOGI(TAG, "[%s] Symbol table (slen=%u, first 5):", app_name, irep->slen);
+        FMRB_LOGD(TAG, "[%s] Symbol table (slen=%u, first 5):", app_name, irep->slen);
         for (int i = 0; i < 5 && i < irep->slen; i++) {
             mrb_sym sym = irep->syms[i];
             const char* name = mrb_sym_name(mrb, sym);
-            FMRB_LOGI(TAG, "[%s]   syms[%d] = %u ('%s')",
+            FMRB_LOGD(TAG, "[%s]   syms[%d] = %u ('%s')",
                       app_name, i, sym, name ? name : "NULL");
         }
     } else {
@@ -169,12 +169,12 @@ static void inspect_irep(mrb_state *mrb, const char* app_name, const mrc_irep *i
 
     // Check pool content
     if (irep->pool && irep->plen > 0) {
-        FMRB_LOGI(TAG, "[%s] Pool (plen=%u, first 3):", app_name, irep->plen);
+        FMRB_LOGD(TAG, "[%s] Pool (plen=%u, first 3):", app_name, irep->plen);
         for (int i = 0; i < 3 && i < irep->plen; i++) {
             const mrc_pool_value *pv = &irep->pool[i];
             uint32_t tt = pv->tt;
             uint32_t type = tt & 0x7;  // Lower 3 bits = type
-            FMRB_LOGI(TAG, "[%s]   pool[%d] type=%u (tt=0x%08x)", app_name, i, type, tt);
+            FMRB_LOGD(TAG, "[%s]   pool[%d] type=%u (tt=0x%08x)", app_name, i, type, tt);
             if (type == 0 || type == 2) {  // IREP_TT_STR or IREP_TT_SSTR
                 const char* str = pv->u.str;
                 bool in_script_buf = false;
@@ -182,17 +182,17 @@ static void inspect_irep(mrb_state *mrb, const char* app_name, const mrc_irep *i
                     in_script_buf = (str >= (const char*)script_buf_start &&
                                     str < (const char*)script_buf_end);
                 }
-                FMRB_LOGI(TAG, "[%s]     -> string_ptr=%p, in_script_buf=%s, content=\"%s\"",
+                FMRB_LOGD(TAG, "[%s]     -> string_ptr=%p, in_script_buf=%s, content=\"%s\"",
                           app_name, (void*)str, in_script_buf ? "YES" : "NO", str ? str : "NULL");
             }
         }
     } else {
-        FMRB_LOGI(TAG, "[%s] Pool is NULL or empty (plen=%u)", app_name, irep->plen);
+        FMRB_LOGD(TAG, "[%s] Pool is NULL or empty (plen=%u)", app_name, irep->plen);
     }
 
     // Show first 10 instruction bytes
     if (irep->iseq) {
-        FMRB_LOGI(TAG, "[%s] First 10 iseq bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
+        FMRB_LOGD(TAG, "[%s] First 10 iseq bytes: %02x %02x %02x %02x %02x %02x %02x %02x %02x %02x",
                   app_name,
                   irep->iseq[0], irep->iseq[1], irep->iseq[2], irep->iseq[3], irep->iseq[4],
                   irep->iseq[5], irep->iseq[6], irep->iseq[7], irep->iseq[8], irep->iseq[9]);
@@ -200,7 +200,7 @@ static void inspect_irep(mrb_state *mrb, const char* app_name, const mrc_irep *i
         FMRB_LOGW(TAG, "[%s] iseq is NULL", app_name);
     }
 
-    FMRB_LOGI(TAG, "[%s] === End IREP Inspection ===", app_name);
+    FMRB_LOGD(TAG, "[%s] === End IREP Inspection ===", app_name);
 }
 
 /**
@@ -349,7 +349,7 @@ static int create_vm_mruby(fmrb_app_task_context_t* ctx) {
     fmrb_mempool_check_pointer(pool_ptr);
 
     ctx->mrb = mrb_open_with_custom_alloc(pool_ptr, pool_size);
-    FMRB_LOGI(TAG, "[%s] mrb_open_with_custom_alloc returned: %p", ctx->app_name, ctx->mrb);
+    FMRB_LOGD(TAG, "[%s] mrb_open_with_custom_alloc returned: %p", ctx->app_name, ctx->mrb);
 
     if (!ctx->mrb) {
         FMRB_LOGE(TAG, "[%s] Failed to open mruby VM", ctx->app_name);
@@ -548,7 +548,7 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
     }
 
     // Execute irep
-    FMRB_LOGI(TAG, "[%s] Execute irep", ctx->app_name);
+    FMRB_LOGD(TAG, "[%s] Execute irep", ctx->app_name);
 
     mrb_value name = mrb_str_new_cstr(ctx->mrb, ctx->app_name);
     mrb_value task = mrc_create_task(cc, irep_obj, name, mrb_nil_value(), mrb_obj_value(ctx->mrb->top_self));
@@ -561,9 +561,9 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
         return -1;
     }
 
-    FMRB_LOGI(TAG, "[%s] mrb_task_run - BEFORE execution", ctx->app_name);
+    FMRB_LOGD(TAG, "[%s] mrb_task_run - BEFORE execution", ctx->app_name);
     mrb_task_run(ctx->mrb);
-    FMRB_LOGI(TAG, "[%s] mrb_task_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
+    FMRB_LOGD(TAG, "[%s] mrb_task_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
 
     if (ctx->mrb->exc) {
         mrb_value exc_str = mrb_exc_get_output(ctx->mrb, (struct RObject *)ctx->mrb->exc);
@@ -1715,7 +1715,7 @@ void* fmrb_get_current_est(void)
 void fmrb_set_current_est(void* est)
 {
     fmrb_app_task_context_t *ctx = fmrb_current();
-    ESP_LOGI(TAG, "init estalloc: app = %s est = %p", ctx->app_name ,est);
+    FMRB_LOGD(TAG, "init estalloc: app = %s est = %p", ctx->app_name, est);
     ctx->est = est;
 }
 
