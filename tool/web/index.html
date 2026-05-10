@@ -101,6 +101,35 @@ button.danger:hover { background: #8c0000; }
                  font-size: 0.8em; color: var(--text-mute); }
 .editor-footer .stats { flex: 1; }
 .editor-footer .err { color: var(--err); }
+
+/* Tab strip */
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.tabs button { padding: 8px 18px; background: transparent; color: var(--text-mute);
+               border-radius: 6px 6px 0 0; border: 1px solid transparent; border-bottom: none;
+               margin-bottom: -1px; }
+.tabs button.active { background: var(--bg-surface); color: var(--text);
+                      border-color: var(--border); }
+.pane { display: none; }
+.pane.active { display: block; }
+
+/* Device log view */
+.devlog-toolbar { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+.devlog-toolbar label { font-size: 0.85em; color: var(--text-mute); display: flex; align-items: center; gap: 4px; }
+.devlog-toolbar select, .devlog-toolbar input[type="text"] {
+  background: var(--bg-surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 8px; font-size: 0.9em;
+}
+.devlog-toolbar input[type="text"] { min-width: 140px; }
+.devlog-status { font-size: 0.8em; color: var(--text-mute); margin-left: auto; }
+.devlog-box { background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px;
+              padding: 8px; font-family: monospace; font-size: 0.85em; height: 60vh;
+              min-height: 320px; overflow-y: auto; white-space: pre; }
+.devlog-line { padding: 1px 0; word-break: break-all; white-space: pre-wrap; }
+.devlog-line.lv-E { color: var(--err); }
+.devlog-line.lv-W { color: var(--warn); }
+.devlog-line.lv-I { color: var(--text); }
+.devlog-line.lv-D { color: var(--text-mute); }
+.devlog-line.dropped { color: var(--warn); font-style: italic; }
 </style>
 </head>
 <body>
@@ -118,20 +147,48 @@ button.danger:hover { background: #8c0000; }
     <button id="btnNewFile" disabled onclick="createFile()">New File</button>
   </div>
 
-  <div class="breadcrumb" id="breadcrumb"></div>
-
-  <div class="file-list" id="fileList">
-    <div class="empty-msg">Connect to a Family-mruby device to browse files.</div>
+  <div class="tabs">
+    <button id="tabFiles" class="active" onclick="switchTab('files')">Files</button>
+    <button id="tabLogs" onclick="switchTab('logs')">Logs</button>
   </div>
 
-  <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
-    <input type="file" id="fileInput" multiple onchange="uploadFiles(this.files)">
-    Drop files here or click to upload
+  <div id="filesPane" class="pane active">
+    <div class="breadcrumb" id="breadcrumb"></div>
+
+    <div class="file-list" id="fileList">
+      <div class="empty-msg">Connect to a Family-mruby device to browse files.</div>
+    </div>
+
+    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+      <input type="file" id="fileInput" multiple onchange="uploadFiles(this.files)">
+      Drop files here or click to upload
+    </div>
+
+    <div class="progress" id="progress">
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+      <div class="progress-text" id="progressText"></div>
+    </div>
   </div>
 
-  <div class="progress" id="progress">
-    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
-    <div class="progress-text" id="progressText"></div>
+  <div id="logsPane" class="pane">
+    <div class="devlog-toolbar">
+      <button id="btnLogSubscribe" class="primary" disabled onclick="toggleLogSubscribe()">Subscribe</button>
+      <label>Level
+        <select id="logLevelSelect" onchange="onLogLevelChange()">
+          <option value="E">E (Error)</option>
+          <option value="W">W (Warn)</option>
+          <option value="I" selected>I (Info)</option>
+          <option value="D">D (Debug)</option>
+        </select>
+      </label>
+      <label>Filter
+        <input type="text" id="logFilterInput" placeholder="substring" oninput="applyLogFilter()">
+      </label>
+      <label><input type="checkbox" id="logAutoScroll" checked> Auto-scroll</label>
+      <button onclick="clearDeviceLog()">Clear</button>
+      <span class="devlog-status" id="logStatus">idle</span>
+    </div>
+    <div class="devlog-box" id="deviceLogBox"></div>
   </div>
 
   <div class="log-area">
@@ -182,6 +239,9 @@ const CMD_STATFS = 0x15;
 const CMD_RENAME = 0x16;
 const CMD_GET    = 0x21;
 const CMD_PUT    = 0x22;
+const CMD_LOG_SUBSCRIBE   = 0x31;
+const CMD_LOG_UNSUBSCRIBE = 0x32;
+const CMD_LOG_SET_LEVEL   = 0x33;
 
 const WRITE_CHUNK_SIZE = 200; // Conservative BLE write chunk size
 const FILE_CHUNK_SIZE  = 2048;
@@ -202,6 +262,14 @@ let currentPath = '/';
 let rxBuffer = new Uint8Array(0);
 let pendingResolve = null;
 let pendingReject = null;
+
+// Log streaming state
+let logSubscribed = false;       // server has accepted SUBSCRIBE, push is live
+let logWantSubscribe = false;    // user intent (re-subscribe automatically on reconnect)
+let logLastSeq = -1;             // last seen seq (for gap detection)
+let logLineCap = 1000;           // max DOM lines kept in #deviceLogBox
+let logFilterText = '';
+const logTextDecoder = new TextDecoder();
 
 // ============================================================
 // CRC32
@@ -348,13 +416,27 @@ function onTxNotification(event) {
     const frameData = rxBuffer.slice(0, delimIdx);
     rxBuffer = rxBuffer.slice(delimIdx + 1);
 
-    if (pendingResolve) {
-      try {
-        const result = parseResponse(frameData);
-        pendingResolve(result);
-      } catch (e) {
+    let result;
+    try {
+      result = parseResponse(frameData);
+    } catch (e) {
+      if (pendingReject) {
         pendingReject(e);
+        pendingResolve = null;
+        pendingReject = null;
       }
+      return;
+    }
+
+    // Unsolicited "log" event: route to log handler instead of resolving
+    // the pending request promise (which expects a 1:1 response).
+    if (result.meta && result.meta.evt === 'log') {
+      handleLogEvent(result.meta, result.binData);
+      return;
+    }
+
+    if (pendingResolve) {
+      pendingResolve(result);
       pendingResolve = null;
       pendingReject = null;
     }
@@ -425,6 +507,15 @@ async function connect() {
 
     await refreshDir();
     await refreshStatfs();
+
+    // If user had a log subscription before disconnecting, restore it.
+    if (logWantSubscribe) {
+      try {
+        await subscribeLogs();
+      } catch (e) {
+        log('Auto re-subscribe failed: ' + e.message, 'err');
+      }
+    }
   } catch (e) {
     log('Connection failed: ' + e.message, 'err');
     setConnected(false);
@@ -439,6 +530,12 @@ function onDisconnected() {
   rxBuffer = new Uint8Array(0);
   pendingResolve = null;
   pendingReject = null;
+  // Server clears its subscription on disconnect; we keep `logWantSubscribe`
+  // so reconnect can restore the stream.
+  logSubscribed = false;
+  logLastSeq = -1;
+  setLogStatus(logWantSubscribe ? 'disconnected (will resubscribe)' : 'idle');
+  updateLogSubscribeButton();
   document.getElementById('storageInfo').textContent = '';
 }
 
@@ -451,6 +548,7 @@ function setConnected(connected) {
   document.getElementById('btnRefresh').disabled = !connected;
   document.getElementById('btnMkdir').disabled = !connected;
   document.getElementById('btnNewFile').disabled = !connected;
+  updateLogSubscribeButton();
 }
 
 // ============================================================
@@ -884,6 +982,171 @@ uploadArea.addEventListener('drop', (e) => {
     uploadFiles(e.dataTransfer.files);
   }
 });
+
+// ============================================================
+// Device log streaming (BLE LOG_SUBSCRIBE/UNSUBSCRIBE/SET_LEVEL)
+// ============================================================
+function switchTab(name) {
+  const isFiles = (name === 'files');
+  document.getElementById('tabFiles').classList.toggle('active', isFiles);
+  document.getElementById('tabLogs').classList.toggle('active', !isFiles);
+  document.getElementById('filesPane').classList.toggle('active', isFiles);
+  document.getElementById('logsPane').classList.toggle('active', !isFiles);
+}
+
+function setLogStatus(text) {
+  const el = document.getElementById('logStatus');
+  if (el) el.textContent = text;
+}
+
+function updateLogSubscribeButton() {
+  const btn = document.getElementById('btnLogSubscribe');
+  if (!btn) return;
+  const connected = !!(rxChar && txChar);
+  btn.disabled = !connected;
+  btn.textContent = logSubscribed ? 'Unsubscribe' : 'Subscribe';
+  btn.className = logSubscribed ? '' : 'primary';
+}
+
+async function toggleLogSubscribe() {
+  if (logSubscribed) {
+    logWantSubscribe = false;
+    await unsubscribeLogs();
+  } else {
+    logWantSubscribe = true;
+    await subscribeLogs();
+  }
+}
+
+async function subscribeLogs() {
+  const level = document.getElementById('logLevelSelect').value || 'I';
+  setLogStatus('subscribing...');
+  try {
+    const { meta } = await sendCommand(CMD_LOG_SUBSCRIBE, {
+      period: 200, max_lines: 20, level: level
+    });
+    if (!meta.ok) {
+      setLogStatus('subscribe failed: ' + (meta.err || 'unknown'));
+      return;
+    }
+    logSubscribed = true;
+    logLastSeq = -1;
+    setLogStatus('subscribed (level=' + (meta.level || level) +
+                 ', period=' + (meta.period || 200) + 'ms)');
+    updateLogSubscribeButton();
+  } catch (e) {
+    setLogStatus('subscribe error: ' + e.message);
+  }
+}
+
+async function unsubscribeLogs() {
+  setLogStatus('unsubscribing...');
+  try {
+    await sendCommand(CMD_LOG_UNSUBSCRIBE, {});
+  } catch (e) {
+    // Ignore — server clears state on disconnect anyway
+  }
+  logSubscribed = false;
+  setLogStatus('idle');
+  updateLogSubscribeButton();
+}
+
+async function onLogLevelChange() {
+  const level = document.getElementById('logLevelSelect').value || 'I';
+  if (!rxChar || !txChar) return;        // not connected yet
+  if (!logSubscribed) return;            // change applies on next subscribe
+  try {
+    const { meta } = await sendCommand(CMD_LOG_SET_LEVEL, { level: level });
+    if (meta.ok) {
+      setLogStatus('subscribed (level=' + (meta.level || level) + ')');
+    } else {
+      setLogStatus('set_level failed: ' + (meta.err || 'unknown'));
+    }
+  } catch (e) {
+    setLogStatus('set_level error: ' + e.message);
+  }
+}
+
+function clearDeviceLog() {
+  const box = document.getElementById('deviceLogBox');
+  while (box.firstChild) box.removeChild(box.firstChild);
+}
+
+function applyLogFilter() {
+  logFilterText = (document.getElementById('logFilterInput').value || '').toLowerCase();
+  const box = document.getElementById('deviceLogBox');
+  for (const child of box.children) {
+    const txt = child.dataset.raw || child.textContent;
+    child.style.display = (logFilterText === '' || txt.toLowerCase().indexOf(logFilterText) !== -1)
+      ? '' : 'none';
+  }
+}
+
+// Append log lines from a server push event. `meta.evt === 'log'`,
+// `meta.bin` = number of bytes in `binData`. Lines are '\n' separated.
+function handleLogEvent(meta, binData) {
+  // Gap detection
+  if (logLastSeq >= 0 && meta.seq !== (logLastSeq + 1) >>> 0) {
+    appendDeviceLogLine('-- gap: seq jump ' + logLastSeq + ' -> ' + meta.seq + ' --',
+                        'dropped', null);
+  }
+  logLastSeq = meta.seq >>> 0;
+
+  if (meta.dropped) {
+    appendDeviceLogLine('-- log buffer overrun: some lines dropped --',
+                        'dropped', null);
+  }
+
+  if (!binData || binData.length === 0) return;
+
+  const text = logTextDecoder.decode(binData);
+  // Lines are '\n'-terminated; the trailing newline produces an empty
+  // last element which we discard.
+  const lines = text.split('\n');
+  if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+
+  const box = document.getElementById('deviceLogBox');
+  const wasAtBottom = isLogAtBottom(box);
+  for (const line of lines) {
+    appendDeviceLogLine(line, parseLogLevelClass(line), box);
+  }
+  capDeviceLogLines(box);
+  if (document.getElementById('logAutoScroll').checked && wasAtBottom) {
+    box.scrollTop = box.scrollHeight;
+  }
+}
+
+function parseLogLevelClass(line) {
+  // fmrb_log_buffer_printf prefixes lines with '[<level>][<tag>] ...'
+  if (line.length >= 3 && line[0] === '[') {
+    const lv = line[1];
+    if (lv === 'E' || lv === 'W' || lv === 'I' || lv === 'D') return 'lv-' + lv;
+  }
+  return 'lv-I';
+}
+
+function appendDeviceLogLine(text, cls, boxArg) {
+  const box = boxArg || document.getElementById('deviceLogBox');
+  const div = document.createElement('div');
+  div.className = 'devlog-line' + (cls ? ' ' + cls : '');
+  div.dataset.raw = text;
+  div.textContent = text;
+  if (logFilterText && text.toLowerCase().indexOf(logFilterText) === -1) {
+    div.style.display = 'none';
+  }
+  box.appendChild(div);
+}
+
+function capDeviceLogLines(box) {
+  const over = box.children.length - logLineCap;
+  for (let i = 0; i < over; i++) {
+    box.removeChild(box.firstChild);
+  }
+}
+
+function isLogAtBottom(box) {
+  return (box.scrollHeight - box.scrollTop - box.clientHeight) < 24;
+}
 
 // ============================================================
 // Helpers

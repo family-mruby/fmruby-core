@@ -1,6 +1,7 @@
 #include <string.h>
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
+#include "fmrb_log_buffer.h"
 #include "fmrb_task_config.h"
 #include "fmrb_err.h"
 #include "fmrb_hal.h"
@@ -53,7 +54,18 @@ static bool g_tx_subscribed = false;
 #define BLE_FS_CMD_RENAME 0x16
 #define BLE_FS_CMD_GET    0x21
 #define BLE_FS_CMD_PUT    0x22
+#define BLE_FS_CMD_LOG_SUBSCRIBE   0x31
+#define BLE_FS_CMD_LOG_UNSUBSCRIBE 0x32
+#define BLE_FS_CMD_LOG_SET_LEVEL   0x33
 #define BLE_FS_RESP       0x00
+
+// Log streaming defaults / limits
+#define BLE_LOG_DEFAULT_PERIOD_MS  200
+#define BLE_LOG_MIN_PERIOD_MS      50
+#define BLE_LOG_MAX_PERIOD_MS      2000
+#define BLE_LOG_DEFAULT_MAX_LINES  20
+#define BLE_LOG_MAX_MAX_LINES      40
+#define BLE_LOG_LINE_BUF_SIZE      1024
 
 // File service context
 typedef struct {
@@ -63,6 +75,12 @@ typedef struct {
     char current_dir[BLE_FS_MAX_PATH_LEN];
     fmrb_semaphore_t rx_sem;
     fmrb_semaphore_t mutex;
+    // Log streaming state (filled in by LOG_SUBSCRIBE handler)
+    bool     log_subscribed;
+    uint32_t log_read_pos;
+    uint32_t log_seq;
+    uint16_t log_period_ms;
+    uint16_t log_max_lines;
 } ble_fs_context_t;
 
 static ble_fs_context_t g_fs_ctx;
@@ -430,6 +448,8 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
         // Reset FS receive state
         g_fs_ctx.rx_len = 0;
         g_fs_ctx.frame_ready = false;
+        // Stop log streaming so we don't try to notify a gone peer
+        g_fs_ctx.log_subscribed = false;
         ble_advertise_if_needed();
         break;
 
@@ -720,6 +740,116 @@ static void ble_fs_cmd_rename(const char *json_params, char *response, size_t re
     snprintf(response, response_size, "{\"ok\":true}");
 }
 
+// ============================================================
+// Log streaming commands
+// ============================================================
+
+static bool log_level_valid(char level)
+{
+    return level == 'E' || level == 'W' || level == 'I' || level == 'D';
+}
+
+static void ble_fs_cmd_log_subscribe(const char *json_params, char *response, size_t response_size)
+{
+    int32_t period = BLE_LOG_DEFAULT_PERIOD_MS;
+    int32_t max_lines = BLE_LOG_DEFAULT_MAX_LINES;
+    char level_str[8] = {0};
+
+    json_get_int(json_params, "period", &period);
+    json_get_int(json_params, "max_lines", &max_lines);
+
+    if (period < BLE_LOG_MIN_PERIOD_MS) period = BLE_LOG_MIN_PERIOD_MS;
+    if (period > BLE_LOG_MAX_PERIOD_MS) period = BLE_LOG_MAX_PERIOD_MS;
+    if (max_lines < 1) max_lines = 1;
+    if (max_lines > BLE_LOG_MAX_MAX_LINES) max_lines = BLE_LOG_MAX_MAX_LINES;
+
+    if (json_get_string(json_params, "level", level_str, sizeof(level_str)) &&
+        log_level_valid(level_str[0])) {
+        fmrb_log_buffer_set_level(level_str[0]);
+    }
+
+    g_fs_ctx.log_period_ms = (uint16_t)period;
+    g_fs_ctx.log_max_lines = (uint16_t)max_lines;
+    g_fs_ctx.log_read_pos  = fmrb_log_buffer_get_write_pos();
+    g_fs_ctx.log_seq       = 0;
+    g_fs_ctx.log_subscribed = true;
+
+    snprintf(response, response_size,
+             "{\"ok\":true,\"start_pos\":%lu,\"period\":%u,\"max_lines\":%u,\"level\":\"%c\"}",
+             (unsigned long)g_fs_ctx.log_read_pos,
+             g_fs_ctx.log_period_ms,
+             g_fs_ctx.log_max_lines,
+             fmrb_log_buffer_get_level());
+}
+
+static void ble_fs_cmd_log_unsubscribe(char *response, size_t response_size)
+{
+    g_fs_ctx.log_subscribed = false;
+    snprintf(response, response_size, "{\"ok\":true}");
+}
+
+static void ble_fs_cmd_log_set_level(const char *json_params, char *response, size_t response_size)
+{
+    char level_str[8] = {0};
+
+    if (!json_get_string(json_params, "level", level_str, sizeof(level_str)) ||
+        !log_level_valid(level_str[0])) {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"Invalid level\"}");
+        return;
+    }
+
+    fmrb_log_buffer_set_level(level_str[0]);
+    snprintf(response, response_size, "{\"ok\":true,\"level\":\"%c\"}", level_str[0]);
+}
+
+// Poll the log ring buffer; if new lines exist, push one event frame.
+// Called from ble_fs_task_func (same task as frame handler), so no extra
+// locking is required against ble_fs_send_response's static buffers.
+static void ble_fs_poll_logs(void)
+{
+    if (!g_fs_ctx.log_subscribed) return;
+    if (!g_connected || !g_tx_subscribed) return;
+
+    uint32_t wp = fmrb_log_buffer_get_write_pos();
+    if (wp == g_fs_ctx.log_read_pos) return;
+
+    static char line_buf[BLE_LOG_LINE_BUF_SIZE];
+    static char json_hdr[96];
+
+    uint32_t before_pos = g_fs_ctx.log_read_pos;
+    int n = fmrb_log_buffer_read_lines(line_buf, sizeof(line_buf),
+                                       g_fs_ctx.log_max_lines,
+                                       &g_fs_ctx.log_read_pos);
+
+    // Detect ring overrun: fmrb_log_buffer_read_lines silently clamps
+    // read_pos forward when oldest_pos overtook it. The expected ring
+    // advance for n returned lines is bin_len + 2*n (each entry: u16 len
+    // + text), and out_buf adds one '\n' per line so bin_len = sum(text)+n,
+    // giving expected_advance = bin_len + n. A larger actual advance means
+    // some entries were skipped.
+    size_t bin_len = (n > 0) ? strlen(line_buf) : 0;
+    uint32_t actual_advance = g_fs_ctx.log_read_pos - before_pos;
+    uint32_t expected_advance = (uint32_t)(bin_len + (size_t)n);
+    bool dropped = (actual_advance > expected_advance);
+
+    if (n <= 0 && !dropped) return;
+
+    int hdr_len;
+    if (dropped) {
+        hdr_len = snprintf(json_hdr, sizeof(json_hdr),
+                           "{\"evt\":\"log\",\"seq\":%lu,\"bin\":%zu,\"dropped\":true}",
+                           (unsigned long)g_fs_ctx.log_seq, bin_len);
+    } else {
+        hdr_len = snprintf(json_hdr, sizeof(json_hdr),
+                           "{\"evt\":\"log\",\"seq\":%lu,\"bin\":%zu}",
+                           (unsigned long)g_fs_ctx.log_seq, bin_len);
+    }
+    if (hdr_len <= 0) return;
+
+    g_fs_ctx.log_seq++;
+    ble_fs_send_response(json_hdr, (const uint8_t *)line_buf, bin_len);
+}
+
 static void ble_fs_cmd_statfs(const char *json_params, char *response, size_t response_size)
 {
     char path[BLE_FS_MAX_PATH_LEN];
@@ -941,6 +1071,21 @@ static void ble_fs_process_frame(const uint8_t *frame, size_t frame_len)
         ble_fs_send_response(json_response, NULL, 0);
         break;
 
+    case BLE_FS_CMD_LOG_SUBSCRIBE:
+        ble_fs_cmd_log_subscribe(json_params, json_response, sizeof(json_response));
+        ble_fs_send_response(json_response, NULL, 0);
+        break;
+
+    case BLE_FS_CMD_LOG_UNSUBSCRIBE:
+        ble_fs_cmd_log_unsubscribe(json_response, sizeof(json_response));
+        ble_fs_send_response(json_response, NULL, 0);
+        break;
+
+    case BLE_FS_CMD_LOG_SET_LEVEL:
+        ble_fs_cmd_log_set_level(json_params, json_response, sizeof(json_response));
+        ble_fs_send_response(json_response, NULL, 0);
+        break;
+
     default:
         snprintf(json_response, sizeof(json_response),
                  "{\"ok\":false,\"err\":\"Unknown command 0x%02x\"}", cmd);
@@ -984,25 +1129,28 @@ static void ble_fs_task_func(void *arg)
             }
         }
 
-        // Wait for a complete frame
-        if (fmrb_semaphore_take(g_fs_ctx.rx_sem, FMRB_MS_TO_TICKS(1000)) != FMRB_TRUE) {
-            continue;
+        // When a log subscription is active, shorten the wait so we can poll
+        // the log ring buffer at the requested cadence. Otherwise idle 1s.
+        uint32_t wait_ms = g_fs_ctx.log_subscribed ? g_fs_ctx.log_period_ms : 1000;
+        bool got_frame = (fmrb_semaphore_take(g_fs_ctx.rx_sem,
+                                              FMRB_MS_TO_TICKS(wait_ms)) == FMRB_TRUE);
+
+        if (got_frame && g_fs_ctx.frame_ready) {
+            // Copy frame data and release buffer for next receive
+            static uint8_t frame_copy[BLE_FS_MAX_FRAME_SIZE];
+            size_t frame_len = g_fs_ctx.rx_len;
+            memcpy(frame_copy, g_fs_ctx.rx_buffer, frame_len);
+
+            g_fs_ctx.rx_len = 0;
+            g_fs_ctx.frame_ready = false;
+
+            FMRB_LOGD(TAG, "Processing BLE FS frame (%zu bytes)", frame_len);
+            ble_fs_process_frame(frame_copy, frame_len);
         }
 
-        if (!g_fs_ctx.frame_ready) {
-            continue;
-        }
-
-        // Copy frame data and release buffer for next receive
-        static uint8_t frame_copy[BLE_FS_MAX_FRAME_SIZE];
-        size_t frame_len = g_fs_ctx.rx_len;
-        memcpy(frame_copy, g_fs_ctx.rx_buffer, frame_len);
-
-        g_fs_ctx.rx_len = 0;
-        g_fs_ctx.frame_ready = false;
-
-        FMRB_LOGD(TAG, "Processing BLE FS frame (%zu bytes)", frame_len);
-        ble_fs_process_frame(frame_copy, frame_len);
+        // Always poll the log ring after a wait (or after a frame). The
+        // helper is a no-op when no subscription / no client is attached.
+        ble_fs_poll_logs();
     }
 }
 
