@@ -31,14 +31,25 @@ class EditorApp < FmrbApp
   CHAR_H = 8
   TAB_SIZE = 2
 
-  # File dropdown
+  # Menu dropdown common style
   DROPDOWN_BG = FmrbGfx.rgb_to_332(255, 255, 255)
   DROPDOWN_TEXT = FmrbGfx.rgb_to_332(0, 0, 0)
   DROPDOWN_SEL_BG = FmrbGfx.rgb_to_332(100, 60, 100)
   DROPDOWN_SEL_TEXT = FmrbGfx.rgb_to_332(255, 255, 255)
-  DROPDOWN_ITEMS = ["Open", "Save", "Save as", "Exit"]
-  DROPDOWN_W = 54
   DROPDOWN_ITEM_H = 10
+
+  # Per-menu config: items + scancode hotkeys + dropdown pixel width.
+  # Hotkey scancodes pick a distinguishing letter per item (DOS-Edit style).
+  MENU_FILE_ITEMS    = ["Open", "Save", "Save as", "Exit"]
+  MENU_FILE_HOTKEYS  = [0x12, 0x16, 0x04, 0x1B]  # O, S, A, X
+  MENU_FILE_W        = 54
+
+  MENU_EDIT_ITEMS    = ["Cut", "Copy", "Paste", "Select All"]
+  MENU_EDIT_HOTKEYS  = [0x17, 0x06, 0x13, 0x04]  # T (cuT), C, P, A
+  MENU_EDIT_W        = 72
+
+  # Selection / clipboard colors
+  SEL_BG = FmrbGfx.rgb_to_332(180, 200, 255)  # Light blue selection
 
   # Key repeat timing (in frames, ~33ms each)
   KEY_REPEAT_DELAY = 12  # ~400ms before repeat starts
@@ -50,6 +61,10 @@ class EditorApp < FmrbApp
 
   # Auto-disable syntax highlight when loaded file exceeds this size
   HL_AUTO_LIMIT_BYTES = 1024
+
+  # Search dialog
+  SEARCH_QUERY_MAX = 32
+  SEARCH_NOT_FOUND = FmrbGfx.rgb_to_332(180, 0, 0)
 
   def initialize
     super()
@@ -63,8 +78,14 @@ class EditorApp < FmrbApp
     @frame_ms = 33
     @modified = false
     @current_file = nil
-    @file_dropdown_open = false
+    @active_menu = nil   # :file, :edit, or nil when no dropdown is open
+    @menu_idx = 0
     @pending_file_op = nil  # :open or :save
+    # Selection (anchor side; cursor side is the moving end). nil = no selection.
+    @sel_anchor_x = nil
+    @sel_anchor_y = nil
+    # Clipboard for Cut/Copy/Paste. May contain newlines.
+    @clipboard = ""
     @highlight_map = nil
     @highlight_dirty = true
     @hl_idle_frames = HL_DEBOUNCE_FRAMES  # Allow immediate tokenize on first draw
@@ -77,6 +98,11 @@ class EditorApp < FmrbApp
     @save_ok_frames = 0
     # Modal "save before quit?" dialog raised by Ctrl-X when @modified.
     @quit_dialog_open = false
+    # Modal Find dialog (Alt-S / Search menu / F3 for find next).
+    @search_open = false
+    @search_query = ""
+    @search_last = ""
+    @search_status = ""
   end
 
   def on_create
@@ -220,19 +246,51 @@ class EditorApp < FmrbApp
 
     update_highlight
 
+    sel_range = selection_range  # [sx, sy, ex, ey] or nil
+
     row = -1
     while (row += 1) < @edit_rows
       line_idx = @scroll_y + row
       break if line_idx >= @lines.length
 
-      full_line = @lines[line_idx]
+      full_line = @lines[line_idx] || ""
       # Apply horizontal scroll
       text = @scroll_x > 0 ? (full_line[@scroll_x..-1] || "") : full_line
       visible_len = text.length > @edit_cols ? @edit_cols : text.length
-      next if visible_len == 0
 
       x = @user_area_x0 + 1
       y = @edit_y + row * CHAR_H
+
+      # Selection background goes down before the text so we can overpaint
+      # the selected glyphs with SEL_BG as their background.
+      sel_vstart = nil
+      sel_vend = nil
+      if sel_range
+        sel = line_selection_cols(line_idx, full_line.length)
+        if sel
+          vstart = sel[0] - @scroll_x
+          vend   = sel[1] - @scroll_x
+          vstart = 0 if vstart < 0
+          vend = visible_len if vend > visible_len
+          if vstart < vend
+            @gfx.fill_rect(x + vstart * CHAR_W, y,
+                           (vend - vstart) * CHAR_W, CHAR_H, SEL_BG)
+            sel_vstart = vstart
+            sel_vend = vend
+          end
+        end
+        # Multi-line selection: fill from end of visible text to the right
+        # edit margin so the wrapped newline is visible.
+        if line_idx >= sel_range[1] && line_idx < sel_range[3]
+          fill_x0 = x + visible_len * CHAR_W
+          fill_x1 = x + @edit_cols * CHAR_W
+          if fill_x0 < fill_x1
+            @gfx.fill_rect(fill_x0, y, fill_x1 - fill_x0, CHAR_H, SEL_BG)
+          end
+        end
+      end
+
+      next if visible_len == 0
 
       # Use plain render while highlight is stale (debouncing during edit)
       # to avoid color misalignment against the changed source.
@@ -240,6 +298,13 @@ class EditorApp < FmrbApp
         draw_highlighted_line(x, y, text, visible_len, @line_offsets[line_idx] + @scroll_x)
       else
         @gfx.draw_text(x, y, text[0, visible_len], TEXT_COLOR, BG_COLOR)
+      end
+
+      # Overpaint the selected substring so its glyph background matches.
+      if sel_vstart
+        sel_text = text[sel_vstart, sel_vend - sel_vstart]
+        @gfx.draw_text(x + sel_vstart * CHAR_W, y, sel_text,
+                       TEXT_COLOR, SEL_BG)
       end
     end
 
@@ -291,6 +356,8 @@ class EditorApp < FmrbApp
     draw_menu_bar
     draw_edit_area
     draw_status_line
+    draw_active_menu if @active_menu
+    draw_search_dialog if @search_open
     draw_quit_dialog if @quit_dialog_open
     @gfx.present
   end
@@ -347,6 +414,153 @@ class EditorApp < FmrbApp
     end
   end
 
+  # ---- Search (Find / Find-next) dialog ----
+
+  def search_dialog_rect
+    w = (SEARCH_QUERY_MAX + 2) * CHAR_W + 8
+    h = 5 * CHAR_H + 14
+    x = @user_area_x0 + (@user_area_width  - w) / 2
+    y = @user_area_y0 + (@user_area_height - h) / 2
+    [x, y, w, h]
+  end
+
+  def draw_search_dialog
+    x, y, w, h = search_dialog_rect
+    @gfx.fill_rect(x, y, w, h, QUIT_DLG_BG)
+    @gfx.draw_rect(x, y, w, h, QUIT_DLG_BORDER)
+    @gfx.draw_rect(x + 1, y + 1, w - 2, h - 2, QUIT_DLG_BORDER)
+
+    tx = x + 4
+    ty = y + 4
+    @gfx.draw_text(tx, ty, "Find:", QUIT_DLG_TEXT, QUIT_DLG_BG)
+
+    iy = ty + CHAR_H + 4
+    iw = SEARCH_QUERY_MAX * CHAR_W + 2
+    @gfx.fill_rect(tx, iy, iw, CHAR_H + 2, BG_COLOR)
+    @gfx.draw_rect(tx, iy, iw, CHAR_H + 2, QUIT_DLG_BORDER)
+    @gfx.draw_text(tx + 1, iy + 1, @search_query, TEXT_COLOR, BG_COLOR)
+    cur_x = tx + 1 + @search_query.length * CHAR_W
+    @gfx.fill_rect(cur_x, iy + 1, CHAR_W, CHAR_H, CURSOR_COLOR)
+
+    sy = iy + CHAR_H + 4
+    if @search_status && @search_status.length > 0
+      @gfx.draw_text(tx, sy, @search_status, SEARCH_NOT_FOUND, QUIT_DLG_BG)
+    end
+
+    hy = sy + CHAR_H + 2
+    @gfx.draw_text(tx, hy, "[Enter]Find  [F3]Next  [Esc]Cancel",
+                   QUIT_DLG_TEXT, QUIT_DLG_BG)
+  end
+
+  def open_search_dialog
+    @search_open = true
+    # Pre-fill with the previous query so the user can re-search quickly.
+    @search_query = @search_last.dup
+    # Pre-filled query: Enter acts as Find-Next.
+    # User-modified query: Enter searches from the current cursor position.
+    @search_query_dirty = false
+    @search_status = ""
+    @need_redraw = true
+  end
+
+  def close_search_dialog
+    @search_open = false
+    @search_status = ""
+    @need_redraw = true
+  end
+
+  def handle_search_dialog_key(ev)
+    keycode = ev[:keycode] || 0
+    character = ev[:character] || 0
+
+    case keycode
+    when 40, 88  # Enter / Keypad-Enter
+      if @search_query.length == 0
+        close_search_dialog
+      else
+        @search_last = @search_query
+        # Unchanged pre-filled query advances; edited query searches from cursor.
+        after_cursor = !@search_query_dirty
+        if find_from_cursor(@search_query, after_cursor)
+          close_search_dialog
+        else
+          @search_status = "Not found"
+          @need_redraw = true
+        end
+      end
+      return
+    when 41  # ESC
+      close_search_dialog
+      return
+    end
+
+    case character
+    when 8, 127  # Backspace / Delete
+      if @search_query.length > 0
+        @search_query = @search_query[0, @search_query.length - 1]
+        @search_query_dirty = true
+        @search_status = ""
+        @need_redraw = true
+      end
+    when 32..126  # Printable
+      if @search_query.length < SEARCH_QUERY_MAX
+        @search_query += character.chr
+        @search_query_dirty = true
+        @search_status = ""
+        @need_redraw = true
+      end
+    end
+  end
+
+  # Find +query+ starting from the cursor, wrapping to the top once.
+  # When +after_cursor+ is true (F3 / Find Next), skip the character at the
+  # cursor so we advance past the previous hit. Returns true on match.
+  def find_from_cursor(query, after_cursor)
+    return false if query.nil? || query.length == 0
+
+    abs_cursor = 0
+    i = 0
+    while i < @cy
+      abs_cursor += (@lines[i] || "").length + 1  # +1 for '\n'
+      i += 1
+    end
+    abs_cursor += @cx
+
+    full = @lines.join("\n")
+    start_at = after_cursor ? abs_cursor + 1 : abs_cursor
+    start_at = full.length if start_at > full.length
+
+    idx = full.index(query, start_at)
+    if idx.nil?
+      # Wrap: only accept matches strictly before the cursor.
+      idx = full.index(query)
+      return false if idx.nil? || idx >= abs_cursor
+    end
+
+    pos = 0
+    ly = 0
+    while ly < @lines.length
+      line_len = (@lines[ly] || "").length
+      if idx <= pos + line_len
+        @cy = ly
+        @cx = idx - pos
+        ensure_cursor_visible
+        @need_redraw = true
+        return true
+      end
+      pos += line_len + 1
+      ly += 1
+    end
+    false
+  end
+
+  def find_next
+    return false if @search_last.length == 0
+    found = find_from_cursor(@search_last, true)
+    Log.info("Find: not found '#{@search_last}'") unless found
+    found
+  end
+
   # ---- Scrolling ----
 
   def ensure_cursor_visible
@@ -367,14 +581,6 @@ class EditorApp < FmrbApp
   # ---- Key handling ----
 
   def handle_key(ch)
-    # Hotkey mode while File dropdown is open: H toggles highlight
-    if @file_dropdown_open
-      if ch == 72 || ch == 104  # 'H' or 'h'
-        close_file_dropdown
-        toggle_highlight
-      end
-      return
-    end
     case ch
     when 10, 13  # Enter
       handle_enter
@@ -394,6 +600,7 @@ class EditorApp < FmrbApp
   end
 
   def insert_char(c)
+    delete_selection if has_selection?
     line = @lines[@cy] || ""
     @lines[@cy] = line[0, @cx].to_s + c + line[@cx..-1].to_s
     @cx += 1
@@ -403,6 +610,7 @@ class EditorApp < FmrbApp
   end
 
   def handle_enter
+    delete_selection if has_selection?
     line = @lines[@cy] || ""
     # Split line at cursor
     left = line[0, @cx].to_s
@@ -417,6 +625,7 @@ class EditorApp < FmrbApp
   end
 
   def handle_backspace
+    return if delete_selection
     if @cx > 0
       line = @lines[@cy] || ""
       @lines[@cy] = line[0, @cx - 1].to_s + line[@cx..-1].to_s
@@ -438,6 +647,7 @@ class EditorApp < FmrbApp
   end
 
   def handle_delete
+    return if delete_selection
     line = @lines[@cy] || ""
     if @cx < line.length
       @lines[@cy] = line[0, @cx].to_s + line[@cx + 1..-1].to_s
@@ -547,60 +757,300 @@ class EditorApp < FmrbApp
     @cx = line.length if @cx > line.length
   end
 
-  # ---- File dropdown ----
+  # ---- Menu dropdown (File / Edit) ----
 
-  def draw_file_dropdown
-    return unless @file_dropdown_open
-
-    x = @user_area_x0 + 2
-    y = @menu_y + CHAR_H
-    h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
-
-    @gfx.fill_rect(x, y, DROPDOWN_W, h, DROPDOWN_BG)
-    @gfx.draw_rect(x, y, DROPDOWN_W, h, 0x60)
-
-    DROPDOWN_ITEMS.each_with_index do |item, i|
-      item_y = y + 1 + i * DROPDOWN_ITEM_H
-      @gfx.draw_text(x + 4, item_y + 1, item, DROPDOWN_TEXT, DROPDOWN_BG)
+  def menu_items
+    case @active_menu
+    when :file then MENU_FILE_ITEMS
+    when :edit then MENU_EDIT_ITEMS
     end
   end
 
-  def open_file_dropdown
-    @file_dropdown_open = true
+  def menu_hotkeys
+    case @active_menu
+    when :file then MENU_FILE_HOTKEYS
+    when :edit then MENU_EDIT_HOTKEYS
+    end
+  end
+
+  def menu_width
+    case @active_menu
+    when :file then MENU_FILE_W
+    when :edit then MENU_EDIT_W
+    end
+  end
+
+  # Top-left of the dropdown panel for the active menu (just below its label).
+  def menu_origin
+    case @active_menu
+    when :file then [@menu_file_x, @menu_y + CHAR_H]
+    when :edit then [@menu_edit_x, @menu_y + CHAR_H]
+    else            [0, 0]
+    end
+  end
+
+  def draw_active_menu
+    return unless @active_menu
+    items = menu_items
+    w = menu_width
+    x, y = menu_origin
+    h = DROPDOWN_ITEM_H * items.size + 2
+
+    @gfx.fill_rect(x, y, w, h, DROPDOWN_BG)
+    @gfx.draw_rect(x, y, w, h, 0x60)
+
+    items.each_with_index do |item, i|
+      item_y = y + 1 + i * DROPDOWN_ITEM_H
+      if i == @menu_idx
+        @gfx.fill_rect(x + 1, item_y, w - 2, DROPDOWN_ITEM_H, DROPDOWN_SEL_BG)
+        @gfx.draw_text(x + 4, item_y + 1, item,
+                       DROPDOWN_SEL_TEXT, DROPDOWN_SEL_BG)
+      else
+        @gfx.draw_text(x + 4, item_y + 1, item, DROPDOWN_TEXT, DROPDOWN_BG)
+      end
+    end
+  end
+
+  def open_menu(kind)
+    @active_menu = kind
+    @menu_idx = 0
+    render_with_dropdown
+  end
+
+  # Re-render the screen with the dropdown overlay (used on open / nav move).
+  def render_with_dropdown
     redraw_all
-    draw_file_dropdown
+    draw_active_menu
     @gfx.present
   end
 
-  def close_file_dropdown
-    @file_dropdown_open = false
+  def close_menu
+    @active_menu = nil
     @need_redraw = true
   end
 
-  def handle_file_dropdown_click(x, y)
-    dx = @user_area_x0 + 2
-    dy = @menu_y + CHAR_H
+  # Modal key handling while a menu dropdown is open.
+  # keycode/scancode are USB HID Usage IDs (uniform across ESP32 / SDL2).
+  def handle_menu_key(ev)
+    keycode = ev[:keycode] || 0
+    scancode = ev[:scancode] || 0
+    items = menu_items
 
-    if x >= dx && x < dx + DROPDOWN_W && y >= dy
-      idx = (y - dy - 1) / DROPDOWN_ITEM_H
-      close_file_dropdown
-
-      case idx
-      when 0  # Open
-        @pending_file_op = :open
-        request_file_select("open")
-      when 1  # Save
-        save_file
-      when 2  # Save as
-        @pending_file_op = :save
-        request_file_select("save")
-      when 3  # Exit
-        stop
-      end
+    case keycode
+    when 82  # Up
+      n = items.size
+      @menu_idx = (@menu_idx + n - 1) % n
+      render_with_dropdown
+      return
+    when 81  # Down
+      @menu_idx = (@menu_idx + 1) % items.size
+      render_with_dropdown
+      return
+    when 40, 88  # Enter (Return / Keypad-Enter)
+      activate_menu_item(@menu_idx)
+      return
+    when 41  # ESC
+      close_menu
       return
     end
 
-    close_file_dropdown
+    # Per-item letter hotkey (scancode-based; case-insensitive by nature).
+    idx = menu_hotkeys.index(scancode)
+    activate_menu_item(idx) if idx
+  end
+
+  def handle_menu_click(x, y)
+    dx, dy = menu_origin
+    w = menu_width
+    items = menu_items
+    if x >= dx && x < dx + w && y >= dy
+      idx = (y - dy - 1) / DROPDOWN_ITEM_H
+      if idx >= 0 && idx < items.size
+        activate_menu_item(idx)
+        return
+      end
+    end
+    close_menu
+  end
+
+  def activate_menu_item(idx)
+    kind = @active_menu
+    close_menu
+    case kind
+    when :file then activate_file_item(idx)
+    when :edit then activate_edit_item(idx)
+    end
+  end
+
+  def activate_file_item(idx)
+    case idx
+    when 0  # Open
+      @pending_file_op = :open
+      request_file_select("open")
+    when 1  # Save
+      save_file
+    when 2  # Save as
+      @pending_file_op = :save
+      request_file_select("save")
+    when 3  # Exit
+      stop
+    end
+  end
+
+  def activate_edit_item(idx)
+    case idx
+    when 0 then cut_selection
+    when 1 then copy_selection
+    when 2 then paste_clipboard
+    when 3 then select_all
+    end
+  end
+
+  # ---- Selection ----
+
+  def has_selection?
+    !@sel_anchor_y.nil?
+  end
+
+  # Returns [sx, sy, ex, ey] with start <= end in document order, or nil.
+  def selection_range
+    return nil unless has_selection?
+    if @sel_anchor_y < @cy || (@sel_anchor_y == @cy && @sel_anchor_x <= @cx)
+      [@sel_anchor_x, @sel_anchor_y, @cx, @cy]
+    else
+      [@cx, @cy, @sel_anchor_x, @sel_anchor_y]
+    end
+  end
+
+  def clear_selection
+    return unless has_selection?
+    @sel_anchor_x = nil
+    @sel_anchor_y = nil
+    @need_redraw = true
+  end
+
+  def begin_selection_if_needed
+    return if has_selection?
+    @sel_anchor_x = @cx
+    @sel_anchor_y = @cy
+  end
+
+  def select_all
+    return if @lines.empty?
+    @sel_anchor_x = 0
+    @sel_anchor_y = 0
+    @cy = @lines.length - 1
+    @cx = (@lines[@cy] || "").length
+    ensure_cursor_visible
+    @need_redraw = true
+  end
+
+  # Pixel column range of the selection on +line_idx+, accounting for
+  # multi-line spans. Returns [start_col, end_col_exclusive] or nil.
+  def line_selection_cols(line_idx, line_len)
+    range = selection_range
+    return nil unless range
+    sx, sy, ex, ey = range
+    return nil if line_idx < sy || line_idx > ey
+    start_col = (line_idx == sy) ? sx : 0
+    end_col   = (line_idx == ey) ? ex : line_len
+    end_col = line_len if end_col > line_len
+    return nil if start_col >= end_col
+    [start_col, end_col]
+  end
+
+  def selected_text
+    range = selection_range
+    return "" unless range
+    sx, sy, ex, ey = range
+    if sy == ey
+      (@lines[sy] || "")[sx, ex - sx].to_s
+    else
+      out = (@lines[sy] || "")[sx..-1].to_s
+      ly = sy + 1
+      while ly < ey
+        out += "\n" + (@lines[ly] || "")
+        ly += 1
+      end
+      out += "\n" + (@lines[ey] || "")[0, ex].to_s
+      out
+    end
+  end
+
+  def delete_selection
+    range = selection_range
+    return false unless range
+    sx, sy, ex, ey = range
+    if sy == ey
+      line = @lines[sy] || ""
+      @lines[sy] = line[0, sx].to_s + line[ex..-1].to_s
+    else
+      head = (@lines[sy] || "")[0, sx].to_s
+      tail = (@lines[ey] || "")[ex..-1].to_s
+      @lines[sy] = head + tail
+      # Drop intermediate + end lines (delete from sy+1 .. ey inclusive).
+      del_count = ey - sy
+      del_count.times { @lines.delete_at(sy + 1) }
+    end
+    @cy = sy
+    @cx = sx
+    clear_selection
+    mark_edited
+    ensure_cursor_visible
+    @need_redraw = true
+    true
+  end
+
+  # ---- Clipboard ops ----
+
+  def copy_selection
+    return unless has_selection?
+    @clipboard = selected_text
+    Log.info("Copied #{@clipboard.length} bytes")
+  end
+
+  def cut_selection
+    return unless has_selection?
+    copy_selection
+    delete_selection
+  end
+
+  def paste_clipboard
+    return if @clipboard.nil? || @clipboard.length == 0
+    delete_selection if has_selection?
+    text = @clipboard
+    parts = text.split("\n")
+    # mruby's String#split drops trailing empty fields. Restore them so each
+    # "\n" becomes its own line break.
+    trailing = 0
+    ti = text.length - 1
+    while ti >= 0 && text[ti] == "\n"
+      trailing += 1
+      ti -= 1
+    end
+    trailing.times { parts << "" }
+    return if parts.length == 0
+
+    line = @lines[@cy] || ""
+    if parts.length == 1
+      @lines[@cy] = line[0, @cx].to_s + parts[0] + line[@cx..-1].to_s
+      @cx += parts[0].length
+    else
+      head = line[0, @cx].to_s
+      tail = line[@cx..-1].to_s
+      @lines[@cy] = head + parts[0]
+      i = 1
+      while i < parts.length - 1
+        @lines.insert(@cy + i, parts[i])
+        i += 1
+      end
+      @lines.insert(@cy + parts.length - 1, parts[-1] + tail)
+      @cy += parts.length - 1
+      @cx = parts[-1].length
+    end
+    mark_edited
+    ensure_cursor_visible
+    @need_redraw = true
   end
 
   # ---- File operations ----
@@ -678,16 +1128,24 @@ class EditorApp < FmrbApp
     super(ev)
 
     if ev[:type] == :mouse_up
-      # File dropdown click handling
-      if @file_dropdown_open
-        handle_file_dropdown_click(ev[:x], ev[:y])
+      # Open dropdown click handling
+      if @active_menu
+        handle_menu_click(ev[:x], ev[:y])
         return
       end
 
       # Menu bar click
       if ev[:y] >= @menu_y && ev[:y] < @menu_y + CHAR_H
         if @menu_file_x && ev[:x] >= @menu_file_x && ev[:x] < @menu_file_x + 4 * CHAR_W
-          open_file_dropdown
+          open_menu(:file)
+          return
+        end
+        if @menu_edit_x && ev[:x] >= @menu_edit_x && ev[:x] < @menu_edit_x + 4 * CHAR_W
+          open_menu(:edit)
+          return
+        end
+        if @menu_search_x && ev[:x] >= @menu_search_x && ev[:x] < @menu_search_x + 6 * CHAR_W
+          open_search_dialog
           return
         end
         if @menu_hilight_x && ev[:x] >= @menu_hilight_x && ev[:x] < @menu_hilight_x + 7 * CHAR_W
@@ -707,9 +1165,27 @@ class EditorApp < FmrbApp
         return
       end
 
+      # Open dropdown is modal: arrows / Enter / hotkey letters / ESC.
+      if @active_menu
+        handle_menu_key(ev)
+        return
+      end
+
+      # Find dialog is modal: typed chars build the query, Enter searches.
+      if @search_open
+        handle_search_dialog_key(ev)
+        return
+      end
+
+      # F3 -> Find Next (uses last query). Available without modifiers.
+      if (ev[:scancode] || 0) == 0x3C
+        find_next
+        return
+      end
+
       # Ctrl shortcuts. ev_ctrl? + scancode (USB HID Usage ID) is uniform
       # across ESP32 and Linux/SDL2; ev[:keycode] for letters differs by
-      # platform. 0x16=S, 0x1B=X.
+      # platform. 0x04=A, 0x06=C, 0x16=S, 0x19=V, 0x1B=X.
       if ev_ctrl?(ev)
         case ev[:scancode] || 0
         when 0x16  # Ctrl-S -> save
@@ -723,6 +1199,34 @@ class EditorApp < FmrbApp
             stop
           end
           return
+        when 0x06  # Ctrl-C -> Copy
+          copy_selection
+          return
+        when 0x19  # Ctrl-V -> Paste
+          paste_clipboard
+          return
+        when 0x04  # Ctrl-A -> Select All
+          select_all
+          return
+        end
+      end
+
+      # Alt shortcuts mirror the menu bar hotkey letters (yellow chars).
+      # 0x09=F, 0x08=E, 0x16=S, 0x0B=H.
+      if ev_alt?(ev)
+        case ev[:scancode] || 0
+        when 0x09  # Alt-F -> open File menu
+          open_menu(:file)
+          return
+        when 0x08  # Alt-E -> open Edit menu
+          open_menu(:edit)
+          return
+        when 0x16  # Alt-S -> open Search (Find) dialog
+          open_search_dialog
+          return
+        when 0x0B  # Alt-H -> toggle Highlight
+          toggle_highlight
+          return
         end
       end
 
@@ -730,6 +1234,13 @@ class EditorApp < FmrbApp
       case keycode
       when 79, 80, 81, 82, 75, 78, 74, 77, 76
         # Right, Left, Down, Up, PageUp, PageDown, Home, End, Delete
+        # Shift+Arrow extends a selection; bare arrow drops it.
+        # Forward-Delete (76) ignores Shift (no selection extend semantic).
+        if ev_shift?(ev) && keycode != 76
+          begin_selection_if_needed
+        else
+          clear_selection
+        end
         execute_key_action(keycode)
         @held_keycode = keycode
         @hold_frames = 0
