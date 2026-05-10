@@ -266,7 +266,7 @@ class FmrbKernelImpl < FmrbKernel
 
   def main_loop
     Log.info("main_loop started")
-    loop do
+    while true
       tick_process
       _spin(@tick)
     end
@@ -324,7 +324,8 @@ class FmrbKernelImpl < FmrbKernel
   def initial_sequence
     # Check protocol version with host (retry up to 3 times for startup timing)
     version_ok = false
-    3.times do |attempt|
+    attempt = 0
+    while attempt < 3
       Log.info("Checking Protocol version... (attempt #{attempt + 1}/3)")
       if check_protocol_version(5000)
         version_ok = true
@@ -332,6 +333,7 @@ class FmrbKernelImpl < FmrbKernel
       end
       Log.warn("Protocol version check attempt #{attempt + 1} failed, retrying...")
       Machine.delay_ms(500)
+      attempt += 1
     end
     unless version_ok
       Log.error("ERROR: Protocol version check failed after 3 attempts")
@@ -342,7 +344,8 @@ class FmrbKernelImpl < FmrbKernel
 
     # Check GA firmware version (retry up to 3 times)
     ga_ok = false
-    3.times do |attempt|
+    attempt = 0
+    while attempt < 3
       Log.info("Checking GA version... (attempt #{attempt + 1}/3)")
       if check_ga_version(5000)
         ga_ok = true
@@ -350,6 +353,7 @@ class FmrbKernelImpl < FmrbKernel
       end
       Log.warn("GA version check attempt #{attempt + 1} failed, retrying...")
       Machine.delay_ms(500)
+      attempt += 1
     end
     unless ga_ok
       Log.error("ERROR: GA version check failed after 3 attempts")

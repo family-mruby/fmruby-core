@@ -97,8 +97,7 @@ class EditorApp < FmrbApp
   end
 
   def editor_loop
-    loop do
-      break unless @running
+    while @running
       ch = getch
       break if ch.nil?
       handle_key(ch)
@@ -190,9 +189,12 @@ class EditorApp < FmrbApp
 
     @line_offsets = []
     offset = 0
-    @lines.each do |line|
+    li = 0
+    ln = @lines.length
+    while li < ln
       @line_offsets << offset
-      offset += line.length + 1  # +1 for newline
+      offset += @lines[li].length + 1  # +1 for newline
+      li += 1
     end
   end
 
@@ -218,7 +220,8 @@ class EditorApp < FmrbApp
 
     update_highlight
 
-    @edit_rows.times do |row|
+    row = -1
+    while (row += 1) < @edit_rows
       line_idx = @scroll_y + row
       break if line_idx >= @lines.length
 
@@ -380,7 +383,11 @@ class EditorApp < FmrbApp
     when 127     # Delete (some terminals)
       handle_delete
     when 9       # Tab
-      TAB_SIZE.times { insert_char(' ') }
+      ti = 0
+      while ti < TAB_SIZE
+        insert_char(' ')
+        ti += 1
+      end
     when 32..126 # Printable
       insert_char(ch.chr)
     end

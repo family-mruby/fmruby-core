@@ -65,7 +65,8 @@ class BouncingBallApp < FmrbApp
     bw = _ball_area_w
     bh = _ball_area_h
 
-    BALL_COUNT.times do |i|
+    i = 0
+    while i < BALL_COUNT
       radius = 6 + (i % 3) * 2   # 6, 8, or 10
 
       x = bx + radius + (RNG.random_int % (bw - radius * 2))
@@ -82,6 +83,7 @@ class BouncingBallApp < FmrbApp
         x: x, y: y, vx: vx, vy: vy,
         radius: radius, color: color
       }
+      i += 1
     end
 
     Log.info("Initialized #{@balls.length} balls")
@@ -139,7 +141,10 @@ class BouncingBallApp < FmrbApp
     Log.info("Resize event: #{new_width}x#{new_height}")
 
     # Clamp balls to new ball-area boundaries
-    @balls.each do |ball|
+    bi = 0
+    bn = @balls.length
+    while bi < bn
+      ball = @balls[bi]
       left_boundary = _ball_area_x0 + ball[:radius]
       right_boundary = _ball_area_x0 + _ball_area_w - ball[:radius]
       top_boundary = _ball_area_y0 + ball[:radius]
@@ -149,6 +154,7 @@ class BouncingBallApp < FmrbApp
       ball[:x] = right_boundary if ball[:x] > right_boundary
       ball[:y] = top_boundary if ball[:y] < top_boundary
       ball[:y] = bottom_boundary if ball[:y] > bottom_boundary
+      bi += 1
     end
 
     # Ball block captured old bounds; rebuild for the new size.
@@ -221,19 +227,30 @@ class BouncingBallApp < FmrbApp
   # --- Legacy (per-primitive) drawing -----------------------------------------
 
   def draw_balls()
-    @balls.each do |ball|
+    bi = 0
+    bn = @balls.length
+    while bi < bn
+      ball = @balls[bi]
       @gfx.fill_circle(ball[:x], ball[:y], ball[:radius], ball[:color])
+      bi += 1
     end
   end
 
   def erase_balls()
-    @balls.each do |ball|
+    bi = 0
+    bn = @balls.length
+    while bi < bn
+      ball = @balls[bi]
       @gfx.fill_circle(ball[:x], ball[:y], ball[:radius], FmrbGfx::WHITE)
+      bi += 1
     end
   end
 
   def update_ball_positions
-    @balls.each do |ball|
+    bi = 0
+    bn = @balls.length
+    while bi < bn
+      ball = @balls[bi]
       ball[:x] += ball[:vx]
       ball[:y] += ball[:vy]
 
@@ -252,6 +269,7 @@ class BouncingBallApp < FmrbApp
         ball[:y] += ball[:vy]
         @bounce_count += 1
       end
+      bi += 1
     end
   end
 

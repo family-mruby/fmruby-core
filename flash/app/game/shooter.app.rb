@@ -138,13 +138,23 @@ class ShooterApp < FmrbApp
   end
 
   def update_bullets
-    @bullets.each { |b| b[:y] -= BULLET_SPEED }
+    bi = 0
+    bn = @bullets.length
+    while bi < bn
+      @bullets[bi][:y] -= BULLET_SPEED
+      bi += 1
+    end
     @bullets.reject! { |b| b[:y] < -BULLET_H }
   end
 
   def update_enemies
     speed = ENEMY_SPEED_BASE + @score / 500
-    @enemies.each { |e| e[:y] += speed }
+    ei = 0
+    en = @enemies.length
+    while ei < en
+      @enemies[ei][:y] += speed
+      ei += 1
+    end
     @enemies.reject! { |e| e[:y] > @user_area_height + ENEMY_H }
   end
 
@@ -179,7 +189,10 @@ class ShooterApp < FmrbApp
     # Enemy vs Player
     px = @player_x - PLAYER_W / 2
     py = @player_y
-    @enemies.each do |e|
+    ei = 0
+    en = @enemies.length
+    while ei < en
+      e = @enemies[ei]
       if rect_hit?(px, py, PLAYER_W, PLAYER_H,
                    e[:x] - ENEMY_W / 2, e[:y], ENEMY_W, ENEMY_H)
         @game_over = true
@@ -187,6 +200,7 @@ class ShooterApp < FmrbApp
         draw_game_over
         return
       end
+      ei += 1
     end
   end
 
@@ -210,15 +224,23 @@ class ShooterApp < FmrbApp
                         px + PLAYER_W / 2, py + PLAYER_H, PLAYER_COLOR)
 
     # Bullets
-    @bullets.each do |b|
+    bi = 0
+    bn = @bullets.length
+    while bi < bn
+      b = @bullets[bi]
       @gfx.fill_rect(ox + b[:x] - BULLET_W / 2, oy + b[:y], BULLET_W, BULLET_H, BULLET_COLOR)
+      bi += 1
     end
 
     # Enemies
-    @enemies.each do |e|
+    ei = 0
+    en = @enemies.length
+    while ei < en
+      e = @enemies[ei]
       ex = ox + e[:x]
       ey = oy + e[:y]
       @gfx.fill_rect(ex - ENEMY_W / 2, ey, ENEMY_W, ENEMY_H, ENEMY_COLOR)
+      ei += 1
     end
 
     # Score

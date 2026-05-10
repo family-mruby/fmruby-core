@@ -136,7 +136,8 @@ module FileSelectorMixin
     has_scrollbar = @file_selector_entries.size > max_visible
     text_area_w = has_scrollbar ? FSEL_W - FmrbApp::SCROLLBAR_W - 4 : FSEL_W - 12
 
-    max_visible.times do |i|
+    i = 0
+    while i < max_visible
       idx = @file_selector_scroll + i
       break if idx >= @file_selector_entries.size
 
@@ -158,6 +159,7 @@ module FileSelectorMixin
       label = "#{prefix}#{entry[:name]}#{suffix}"
       label = label[0, text_area_w / 6] if label.length > text_area_w / 6
       @gfx.draw_text(x + 6, item_y + 2, label, text_color, text_bg)
+      i += 1
     end
 
     # Draw scrollbar if needed

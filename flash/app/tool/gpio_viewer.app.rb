@@ -70,7 +70,8 @@ class GpioViewerApp < FmrbApp
 
     status = @prev_status || FmrbHw.pin_status_all
 
-    PIN_COUNT.times do |pin|
+    pin = 0
+    while pin < PIN_COUNT
       col = pin % GRID_COLS
       row = pin / GRID_COLS
 
@@ -91,6 +92,7 @@ class GpioViewerApp < FmrbApp
       if label != "" && @cell_h >= 18
         @gfx.draw_text(cx + 1, cy + 10, label, FmrbGfx::BLACK)
       end
+      pin += 1
     end
 
     # Legend (2 rows)

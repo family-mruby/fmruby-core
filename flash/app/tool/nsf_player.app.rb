@@ -80,7 +80,8 @@ class NsfPlayerApp < FmrbApp
 
     # File list
     list_h = vc * LIST_ITEM_H
-    vc.times do |i|
+    i = 0
+    while i < vc
       fi = @scroll + i
       break if fi >= @files.length
       iy = y0 + LIST_Y + i * LIST_ITEM_H
@@ -98,6 +99,7 @@ class NsfPlayerApp < FmrbApp
                         fi == @selected ? FmrbGfx::WHITE : TEXT_COLOR,
                         fi == @selected ? HL_COLOR : BG_COLOR)
       end
+      i += 1
     end
 
     # Scrollbar

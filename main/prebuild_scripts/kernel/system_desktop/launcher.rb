@@ -72,13 +72,17 @@ module LauncherMixin
         img.draw do |g|
           g.fill_rect(0, 0, spr_w, spr_h, 0)
           rows.each_with_index do |row, iy|
-            row.length.times do |ix|
-              next unless row[ix] == '1'
-              if scale > 1
-                g.fill_rect(ix * scale, iy * scale, scale, scale, color)
-              else
-                g.set_pixel(ix, iy, color)
+            ix = 0
+            rl = row.length
+            while ix < rl
+              if row[ix] == '1'
+                if scale > 1
+                  g.fill_rect(ix * scale, iy * scale, scale, scale, color)
+                else
+                  g.set_pixel(ix, iy, color)
+                end
               end
+              ix += 1
             end
           end
         end
@@ -349,14 +353,21 @@ module LauncherMixin
 
     # Hide sprites that are not in the visible range
     if @icon_sprite_instances
-      @icon_sprite_instances.each_with_index do |inst, idx|
-        next unless inst
-        inst.visible = false if idx < start_idx || idx >= vis_end
+      idx = 0
+      isn = @icon_sprite_instances.length
+      while idx < isn
+        inst = @icon_sprite_instances[idx]
+        if inst && (idx < start_idx || idx >= vis_end)
+          inst.visible = false
+        end
+        idx += 1
       end
     end
 
-    vis_rows.times do |vrow|
-      LAUNCHER_ICON_COLS.times do |col|
+    vrow = 0
+    while vrow < vis_rows
+      col = -1
+      while (col += 1) < LAUNCHER_ICON_COLS
         i = start_idx + vrow * LAUNCHER_ICON_COLS + col
         break if i >= @launcher_apps.size
 
@@ -404,6 +415,7 @@ module LauncherMixin
           @gfx.draw_text(l2x, icon_y + LAUNCHER_ICON_H - 8, line2, LAUNCHER_TEXT)
         end
       end
+      vrow += 1
     end
   end
 
@@ -568,8 +580,10 @@ module LauncherMixin
     start_idx = @launcher_scroll * LAUNCHER_ICON_COLS
     vis_rows = launcher_visible_rows
 
-    vis_rows.times do |vrow|
-      LAUNCHER_ICON_COLS.times do |col|
+    vrow = 0
+    while vrow < vis_rows
+      col = 0
+      while col < LAUNCHER_ICON_COLS
         i = start_idx + vrow * LAUNCHER_ICON_COLS + col
         return -1 if i >= @launcher_apps.size
 
@@ -580,7 +594,9 @@ module LauncherMixin
            y >= icon_y && y < icon_y + LAUNCHER_ICON_H
           return i
         end
+        col += 1
       end
+      vrow += 1
     end
     -1
   end

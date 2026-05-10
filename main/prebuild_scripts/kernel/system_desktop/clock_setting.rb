@@ -102,23 +102,29 @@ module ClockSettingMixin
     fy = y0 + 16
 
     # Label row
-    CLK_FIELDS.size.times do |i|
+    nf = CLK_FIELDS.size
+    i = 0
+    while i < nf
       lx = fx + i * (CLK_FIELD_W + 2)
       @gfx.draw_text(lx + 4, fy, CLK_FIELD_LABELS[i], CLK_TEXT, CLK_BG)
+      i += 1
     end
 
     # Up buttons
     fy += 12
-    CLK_FIELDS.size.times do |i|
+    i = 0
+    while i < nf
       lx = fx + i * (CLK_FIELD_W + 2)
       bg = (i == @clk_selected) ? CLK_HL : CLK_BTN_BG
       @gfx.fill_rect(lx, fy, CLK_FIELD_W, CLK_FIELD_H, bg)
       @gfx.draw_text(lx + 10, fy + 1, "+", FmrbGfx::WHITE, bg)
+      i += 1
     end
 
     # Value row
     fy += CLK_FIELD_H + 2
-    CLK_FIELDS.size.times do |i|
+    i = 0
+    while i < nf
       lx = fx + i * (CLK_FIELD_W + 2)
       val = @clk_values[i]
       text = (i == 0) ? sprintf("%04d", val) : sprintf("%02d", val)
@@ -126,15 +132,18 @@ module ClockSettingMixin
       @gfx.fill_rect(lx, fy, CLK_FIELD_W, CLK_FIELD_H, bg)
       tx = (i == 0) ? lx + 2 : lx + 6
       @gfx.draw_text(tx, fy + 1, text, CLK_TEXT, bg)
+      i += 1
     end
 
     # Down buttons
     fy += CLK_FIELD_H + 2
-    CLK_FIELDS.size.times do |i|
+    i = 0
+    while i < nf
       lx = fx + i * (CLK_FIELD_W + 2)
       bg = (i == @clk_selected) ? CLK_HL : CLK_BTN_BG
       @gfx.fill_rect(lx, fy, CLK_FIELD_W, CLK_FIELD_H, bg)
       @gfx.draw_text(lx + 10, fy + 1, "-", FmrbGfx::WHITE, bg)
+      i += 1
     end
 
     # OK / Cancel buttons
@@ -159,9 +168,12 @@ module ClockSettingMixin
     fy_down = fy_val + CLK_FIELD_H + 2
     fy_btns = fy_down + CLK_FIELD_H + 4
 
+    nf = CLK_FIELDS.size
+
     # Up buttons
     if y >= fy_up && y < fy_up + CLK_FIELD_H
-      CLK_FIELDS.size.times do |i|
+      i = 0
+      while i < nf
         lx = fx + i * (CLK_FIELD_W + 2)
         if x >= lx && x < lx + CLK_FIELD_W
           @clk_selected = i
@@ -169,24 +181,28 @@ module ClockSettingMixin
           draw_foreground
           return
         end
+        i += 1
       end
     end
 
     # Value row (select field)
     if y >= fy_val && y < fy_val + CLK_FIELD_H
-      CLK_FIELDS.size.times do |i|
+      i = 0
+      while i < nf
         lx = fx + i * (CLK_FIELD_W + 2)
         if x >= lx && x < lx + CLK_FIELD_W
           @clk_selected = i
           draw_foreground
           return
         end
+        i += 1
       end
     end
 
     # Down buttons
     if y >= fy_down && y < fy_down + CLK_FIELD_H
-      CLK_FIELDS.size.times do |i|
+      i = 0
+      while i < nf
         lx = fx + i * (CLK_FIELD_W + 2)
         if x >= lx && x < lx + CLK_FIELD_W
           @clk_selected = i
@@ -194,6 +210,7 @@ module ClockSettingMixin
           draw_foreground
           return
         end
+        i += 1
       end
     end
 

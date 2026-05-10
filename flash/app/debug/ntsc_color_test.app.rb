@@ -56,10 +56,12 @@ class NtscColorTestApp < FmrbApp
   def draw_white_on_black
     @gfx.clear(0x00)
     y = 4
-    [1, 2, 3, 4].each do |sz|
+    sz = 1
+    while sz <= 4
       @gfx.set_text_size(sz)
       @gfx.draw_text(4, y, "White on Black sz=#{sz}", 0xFF)
       y += sz * 10 + 4
+      sz += 1
     end
   end
 
@@ -67,10 +69,12 @@ class NtscColorTestApp < FmrbApp
   def draw_black_on_white
     @gfx.clear(0xFF)
     y = 4
-    [1, 2, 3, 4].each do |sz|
+    sz = 1
+    while sz <= 4
       @gfx.set_text_size(sz)
       @gfx.draw_text(4, y, "Black on White sz=#{sz}", 0x00, 0xFF)
       y += sz * 10 + 4
+      sz += 1
     end
   end
 
@@ -78,10 +82,12 @@ class NtscColorTestApp < FmrbApp
   def draw_black_on_gray
     @gfx.clear(0xDB)
     y = 4
-    [1, 2, 3, 4].each do |sz|
+    sz = 1
+    while sz <= 4
       @gfx.set_text_size(sz)
       @gfx.draw_text(4, y, "Black on Gray sz=#{sz}", 0x00, 0xDB)
       y += sz * 10 + 4
+      sz += 1
     end
   end
 
@@ -93,15 +99,22 @@ class NtscColorTestApp < FmrbApp
       [0xFC, "Yel"], [0xE3, "Mag"], [0x1F, "Cyn"], [0xFF, "Wht"]
     ]
     bar_w = @w / colors.length
-    colors.each_with_index do |c, i|
+    cn = colors.length
+    i = 0
+    while i < cn
+      c = colors[i]
       x = i * bar_w
       @gfx.fill_rect(x, 0, bar_w, @h - @status_h, c[0])
+      i += 1
     end
     @gfx.set_text_size(1)
-    colors.each_with_index do |c, i|
+    i = 0
+    while i < cn
+      c = colors[i]
       x = i * bar_w + 1
       tc = (c[0] == 0x00 || c[0] == 0x03) ? 0xFF : 0x00
       @gfx.draw_text(x, @h - @status_h - 12, c[1], tc)
+      i += 1
     end
   end
 
@@ -111,13 +124,17 @@ class NtscColorTestApp < FmrbApp
     grays = [0x00, 0x49, 0x92, 0xDB, 0xFF]
     bar_h = (@h - @status_h - 4) / grays.length
     @gfx.set_text_size(1)
-    grays.each_with_index do |g, i|
+    i = 0
+    gn = grays.length
+    while i < gn
+      g = grays[i]
       y = i * bar_h
       @gfx.fill_rect(0, y, @w, bar_h, g)
       tc = g < 0x80 ? 0xFF : 0x00
       hex = g.to_s(16)
       hex = "0" + hex if hex.length < 2
       @gfx.draw_text(4, y + 2, "0x#{hex} (#{g})", tc)
+      i += 1
     end
   end
 
@@ -132,13 +149,17 @@ class NtscColorTestApp < FmrbApp
 
     cell = 6
     top = 12
-    8.times do |r|
-      8.times do |g|
+    r = 0
+    while r < 8
+      g = 0
+      while g < 8
         c0 = (r << 5) | (g << 2) | 0
         @gfx.fill_rect(g * cell + 2, top + r * cell, cell, cell, c0)
         c3 = (r << 5) | (g << 2) | 3
         @gfx.fill_rect(half_w + g * cell + 2, top + r * cell, cell, cell, c3)
+        g += 1
       end
+      r += 1
     end
   end
 

@@ -20,7 +20,12 @@ module ShellScrollMixin
 
   def total_display_rows
     rows = 0
-    @history.each { |e| rows += display_rows_for(e) }
+    i = 0
+    n = @history.length
+    while i < n
+      rows += display_rows_for(@history[i])
+      i += 1
+    end
     rows
   end
 
@@ -112,7 +117,9 @@ module ShellScrollMixin
     # Apply margin offset
     char_x = x + (margin.length * @char_width)
 
-    data.length.times do |i|
+    i = 0
+    n = data.length
+    while i < n
       c = data[i]
 
       # Calculate gradient index (0 to LOGO_GRAD_COLORS.length - 1)
@@ -135,6 +142,7 @@ module ShellScrollMixin
         end
       end
       char_x += @char_width
+      i += 1
     end
   end
 
@@ -148,7 +156,10 @@ module ShellScrollMixin
     current_row = 0
     screen_row = 0
 
-    @history.each do |entry|
+    hi = 0
+    hn = @history.length
+    while hi < hn
+      entry = @history[hi]
       entry_rows = display_rows_for(entry)
       entry_end = current_row + entry_rows
 
@@ -177,6 +188,7 @@ module ShellScrollMixin
 
       current_row = entry_end
       break if screen_row >= avail
+      hi += 1
     end
 
     # Draw input line (after history, or at bottom if history fills screen)

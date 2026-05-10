@@ -324,7 +324,7 @@ module ShellCommandsMixin
     begin
       src = File.open(to_file_path(src_virtual), "r")
       dst = File.open(to_file_path(dst_virtual), "w")
-      loop do
+      while true
         chunk = src.read(CP_CHUNK_SIZE)
         break if chunk.nil? || chunk.length == 0
         dst.write(chunk)
@@ -409,7 +409,7 @@ module ShellCommandsMixin
     file = nil
     begin
       file = File.open(to_file_path(virtual_path), "r")
-      loop do
+      while true
         chunk = file.read(CP_CHUNK_SIZE)
         break if chunk.nil? || chunk.length == 0
         leftover += chunk

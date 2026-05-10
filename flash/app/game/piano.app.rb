@@ -122,7 +122,8 @@ class PianoApp < FmrbApp
 
     # Row 1: Channel buttons
     bx = x0 + 2
-    4.times do |i|
+    i = 0
+    while i < 4
       bw = (i < 2) ? 18 : 22
       if mx >= bx && mx < bx + bw && my >= btn_y && my < btn_y + btn_h
         @channel = i
@@ -131,6 +132,7 @@ class PianoApp < FmrbApp
         return
       end
       bx += bw + 2
+      i += 1
     end
 
     # Row 2: Sweep direction
@@ -138,7 +140,8 @@ class PianoApp < FmrbApp
     bx = x0 + 2
     # Label "Sw:"
     bx += 18
-    3.times do |i|
+    i = 0
+    while i < 3
       bw = 22
       if mx >= bx && mx < bx + bw && my >= btn_y2 && my < btn_y2 + btn_h
         if pulse_ch?
@@ -148,11 +151,13 @@ class PianoApp < FmrbApp
         return
       end
       bx += bw + 2
+      i += 1
     end
 
     # Sweep speed
     bx += 6
-    3.times do |i|
+    i = 0
+    while i < 3
       bw = 12
       if mx >= bx && mx < bx + bw && my >= btn_y2 && my < btn_y2 + btn_h
         if pulse_ch? && @sweep_dir != 0
@@ -162,6 +167,7 @@ class PianoApp < FmrbApp
         return
       end
       bx += bw + 2
+      i += 1
     end
   end
 
@@ -188,12 +194,14 @@ class PianoApp < FmrbApp
 
     # Row 1: Channel select
     bx = x0 + 2
-    4.times do |i|
+    i = 0
+    while i < 4
       bw = (i < 2) ? 18 : 22
       col = (i == @channel) ? COL_BTN_ON : COL_BTN
       @gfx.fill_rect(bx, btn_y, bw, btn_h, col)
       @gfx.draw_text(bx + 2, btn_y + 2, CH_LABELS[i], COL_TEXT)
       bx += bw + 2
+      i += 1
     end
 
     # Row 2: Sweep
@@ -203,7 +211,8 @@ class PianoApp < FmrbApp
     bx += 18
 
     # Sweep direction buttons
-    3.times do |i|
+    i = 0
+    while i < 3
       bw = 22
       if !pulse_ch?
         col = COL_BTN_DIS
@@ -215,11 +224,13 @@ class PianoApp < FmrbApp
       @gfx.fill_rect(bx, btn_y2, bw, btn_h, col)
       @gfx.draw_text(bx + 2, btn_y2 + 2, SW_LABELS[i], COL_TEXT)
       bx += bw + 2
+      i += 1
     end
 
     # Speed buttons
     bx += 6
-    3.times do |i|
+    i = 0
+    while i < 3
       bw = 12
       if !pulse_ch? || @sweep_dir == 0
         col = COL_BTN_DIS
@@ -231,6 +242,7 @@ class PianoApp < FmrbApp
       @gfx.fill_rect(bx, btn_y2, bw, btn_h, col)
       @gfx.draw_text(bx + 3, btn_y2 + 2, SPD_LABELS[i], COL_TEXT)
       bx += bw + 2
+      i += 1
     end
   end
 
@@ -245,10 +257,14 @@ class PianoApp < FmrbApp
     key_w = w / 7
     key_h = h - 2
 
-    WHITE_KEYS.each_with_index do |note_idx, i|
+    i = 0
+    wn = WHITE_KEYS.length
+    while i < wn
+      note_idx = WHITE_KEYS[i]
       kx = x0 + i * key_w
       col = (@active_key == note_idx) ? COL_GRAY : COL_WHITE
       @gfx.fill_rect(kx + 1, y0 + 1, key_w - 2, key_h, col)
+      i += 1
     end
 
     # Black keys
@@ -256,11 +272,15 @@ class PianoApp < FmrbApp
     bk_h = key_h * 3 / 5
     bk_positions = [0, 1, 3, 4, 5]
 
-    BLACK_KEYS.each_with_index do |note_idx, i|
+    i = 0
+    bn = BLACK_KEYS.length
+    while i < bn
+      note_idx = BLACK_KEYS[i]
       wi = bk_positions[i]
       kx = x0 + (wi + 1) * key_w - bk_w / 2
       col = (@active_key == note_idx) ? COL_GRAY : COL_BLACK
       @gfx.fill_rect(kx, y0 + 1, bk_w, bk_h, col)
+      i += 1
     end
   end
 
@@ -278,21 +298,29 @@ class PianoApp < FmrbApp
     return -1 if my < y0
 
     bk_positions = [0, 1, 3, 4, 5]
-    BLACK_KEYS.each_with_index do |note_idx, i|
+    i = 0
+    bn = BLACK_KEYS.length
+    while i < bn
+      note_idx = BLACK_KEYS[i]
       wi = bk_positions[i]
       kx = x0 + (wi + 1) * key_w - bk_w / 2
       ky = y0 + 1
       if mx >= kx && mx < kx + bk_w && my >= ky && my < ky + bk_h
         return note_idx
       end
+      i += 1
     end
 
-    WHITE_KEYS.each_with_index do |note_idx, i|
+    i = 0
+    wn = WHITE_KEYS.length
+    while i < wn
+      note_idx = WHITE_KEYS[i]
       kx = x0 + i * key_w
       ky = y0 + 1
       if mx >= kx && mx < kx + key_w && my >= ky && my < ky + key_h
         return note_idx
       end
+      i += 1
     end
 
     -1

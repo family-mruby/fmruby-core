@@ -119,13 +119,15 @@ class LogViewerApp < FmrbApp
     start = @scroll
     max_chars = (w - 10) / 6
 
-    vis.times do |i|
+    i = 0
+    while i < vis
       idx = start + i
       break if idx >= @lines.size
       line = @lines[idx]
       color = level_color(line)
       text = line.length > max_chars ? line[0, max_chars] : line
       @gfx.draw_text(x0 + 2, log_y0 + 1 + i * 8, text, color, LOG_BG)
+      i += 1
     end
 
     # Scroll bar

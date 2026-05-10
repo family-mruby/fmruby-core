@@ -162,7 +162,8 @@ module FileManagerMixin
     list_y = m[:list_y]
     max_visible = m[:max_visible]
 
-    max_visible.times do |i|
+    i = 0
+    while i < max_visible
       idx = @file_manager_scroll + i
       break if idx >= @file_manager_entries.size
 
@@ -193,6 +194,7 @@ module FileManagerMixin
         size_str = format_size(entry[:size])
         @gfx.draw_text(size_col_x, item_y + 2, size_str, size_color, text_bg)
       end
+      i += 1
     end
 
     # Scroll bar

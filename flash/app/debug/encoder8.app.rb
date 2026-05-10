@@ -29,8 +29,16 @@ class Encoder8App < FmrbApp
                        scl_pin: FmrbHw::PIN_I2C1_SCL)
         @enc = Unit8Encoder.new(@i2c)
         # Flush initial increment values
-        NUM_ENC.times { |i| @enc.get_increment(i) }
-        NUM_ENC.times { |i| @buttons[i] = @enc.get_button(i) }
+        i = 0
+        while i < NUM_ENC
+          @enc.get_increment(i)
+          i += 1
+        end
+        i = 0
+        while i < NUM_ENC
+          @buttons[i] = @enc.get_button(i)
+          i += 1
+        end
         @switch = @enc.get_switch
       rescue => e
         Log.error("Encoder8App: I2C init failed: #{e.message}")
@@ -45,7 +53,8 @@ class Encoder8App < FmrbApp
     if @enc
       changed = false
 
-      NUM_ENC.times do |i|
+      i = 0
+      while i < NUM_ENC
         inc = @enc.get_increment(i)
         if inc != 0
           @positions[i] += inc
@@ -60,6 +69,7 @@ class Encoder8App < FmrbApp
                           "value" => btn ? 1 : 0})
           changed = true
         end
+        i += 1
       end
 
       sw = @enc.get_switch
@@ -136,7 +146,8 @@ class Encoder8App < FmrbApp
     cell_w = w / COLS
     cell_h = (h - 10) / 2
 
-    NUM_ENC.times do |i|
+    i = 0
+    while i < NUM_ENC
       col = i % COLS
       row = i / COLS
       cx = x0 + col * cell_w + cell_w / 2
@@ -144,6 +155,7 @@ class Encoder8App < FmrbApp
       dx = mx - cx
       dy = my - cy
       return i if dx * dx + dy * dy <= RADIUS * RADIUS + 100
+      i += 1
     end
     nil
   end
@@ -160,7 +172,8 @@ class Encoder8App < FmrbApp
     cell_w = w / COLS
     cell_h = (h - 10) / 2  # 2 rows, reserve bottom for switch
 
-    NUM_ENC.times do |i|
+    i = 0
+    while i < NUM_ENC
       col = i % COLS
       row = i / COLS
       cx = x0 + col * cell_w + cell_w / 2
@@ -184,6 +197,7 @@ class Encoder8App < FmrbApp
 
       # Channel number
       @gfx.draw_text(cx - 2, cy + RADIUS + 2, i.to_s, FmrbGfx::GRAY)
+      i += 1
     end
 
     # Switch

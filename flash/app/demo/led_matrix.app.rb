@@ -294,8 +294,10 @@ class LedMatrixApp < FmrbApp
       cols.each do |col_bits|
         # Map 7-bit column to 8-row (top bit = row 0)
         byte = 0
-        7.times do |bit|
+        bit = 0
+        while bit < 7
           byte |= (1 << (bit + 1)) if (col_bits & (1 << bit)) != 0
+          bit += 1
         end
         @scroll_bitmap << byte
       end
@@ -405,11 +407,15 @@ class LedMatrixApp < FmrbApp
   def life_randomize
     @life_grid = Array.new(LED_ROWS, 0)
     # Seed with pseudo-random pattern using frame counter
-    LED_ROWS.times do |r|
-      LED_COLS.times do |c|
+    r = 0
+    while r < LED_ROWS
+      c = 0
+      while c < LED_COLS
         seed = (r * 13 + c * 7 + @frame + @hue_offset) % 5
         @life_grid[r] |= (1 << c) if seed < 2
+        c += 1
       end
+      r += 1
     end
     @life_gen = 0
   end
@@ -418,8 +424,10 @@ class LedMatrixApp < FmrbApp
     return unless @life_grid
     new_grid = Array.new(LED_ROWS, 0)
 
-    LED_ROWS.times do |r|
-      LED_COLS.times do |c|
+    r = 0
+    while r < LED_ROWS
+      c = 0
+      while c < LED_COLS
         n = life_neighbors(r, c)
         alive = (@life_grid[r] & (1 << c)) != 0
         if alive
@@ -429,7 +437,9 @@ class LedMatrixApp < FmrbApp
           # Birth with exactly 3 neighbors
           new_grid[r] |= (1 << c) if n == 3
         end
+        c += 1
       end
+      r += 1
     end
 
     # If grid is empty or unchanged, re-seed
@@ -443,13 +453,18 @@ class LedMatrixApp < FmrbApp
 
   def life_neighbors(r, c)
     count = 0
-    (-1..1).each do |dr|
-      (-1..1).each do |dc|
-        next if dr == 0 && dc == 0
-        nr = (r + dr) % LED_ROWS  # wrap around
-        nc = (c + dc) % LED_COLS
-        count += 1 if (@life_grid[nr] & (1 << nc)) != 0
+    dr = -1
+    while dr <= 1
+      dc = -1
+      while dc <= 1
+        unless dr == 0 && dc == 0
+          nr = (r + dr) % LED_ROWS  # wrap around
+          nc = (c + dc) % LED_COLS
+          count += 1 if (@life_grid[nr] & (1 << nc)) != 0
+        end
+        dc += 1
       end
+      dr += 1
     end
     count
   end
@@ -457,10 +472,12 @@ class LedMatrixApp < FmrbApp
   def update_leds
     grb_data = @rmt ? [] : nil
 
-    LED_ROWS.times do |row|
+    row = 0
+    while row < LED_ROWS
       row_active = (@row_mask & (1 << row)) != 0
 
-      LED_COLS.times do |col|
+      col = 0
+      while col < LED_COLS
         if row_active
           hue, sat = pattern_color(row, col)
           if sat == 0
@@ -491,7 +508,9 @@ class LedMatrixApp < FmrbApp
         cx = @grid_x + col * @cell
         cy = @grid_y + row * @cell
         @gfx.fill_rect(cx, cy, @cell - 1, @cell - 1, color332)
+        col += 1
       end
+      row += 1
     end
 
     if @rmt && grb_data

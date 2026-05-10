@@ -58,8 +58,10 @@ class SpriteTestApp < FmrbApp
 
     # Pipe pairs
     @pipes = []
-    3.times do |i|
+    i = 0
+    while i < 3
       spawn_pipe(@w + i * 70)
+      i += 1
     end
 
     @frame = 0
@@ -89,10 +91,18 @@ class SpriteTestApp < FmrbApp
     @frame += 1
     @bird.frame = (@frame / 3) % 2
 
-    @pipes.each do |pipe|
+    pi = 0
+    pn = @pipes.length
+    while pi < pn
+      pipe = @pipes[pi]
       pipe[:x] -= PIPE_SPEED
-      pipe[:segments].each_with_index do |inst, idx|
-        inst.move(@ox + pipe[:x], @oy + pipe[:seg_ys][idx])
+      segs = pipe[:segments]
+      seg_ys = pipe[:seg_ys]
+      si = 0
+      sn = segs.length
+      while si < sn
+        segs[si].move(@ox + pipe[:x], @oy + seg_ys[si])
+        si += 1
       end
 
       if !pipe[:scored] && pipe[:x] + SPRITE_SIZE < @bird_x
@@ -107,10 +117,14 @@ class SpriteTestApp < FmrbApp
           trigger_game_over
         end
       end
+      pi += 1
     end
 
-    @pipes.each do |pipe|
+    pi = 0
+    while pi < pn
+      pipe = @pipes[pi]
       recycle_pipe(pipe) if pipe[:x] + SPRITE_SIZE < 0
+      pi += 1
     end
 
     draw_screen

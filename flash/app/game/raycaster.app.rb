@@ -108,18 +108,22 @@ class RaycasterApp < FmrbApp
 
   def build_sin_table
     tbl = []
-    360.times do |deg|
+    deg = 0
+    while deg < 360
       rad = deg * Math::PI / 180.0
       tbl << (Math.sin(rad) * FP_ONE).to_i
+      deg += 1
     end
     tbl
   end
 
   def build_cos_table
     tbl = []
-    360.times do |deg|
+    deg = 0
+    while deg < 360
       rad = deg * Math::PI / 180.0
       tbl << (Math.cos(rad) * FP_ONE).to_i
+      deg += 1
     end
     tbl
   end
@@ -331,7 +335,8 @@ class RaycasterApp < FmrbApp
     hit = 0
     depth = 0
 
-    24.times do
+    step_n = 0
+    while step_n < 24
       # Compare t_x vs t_y using cross multiplication
       if t_x_num * t_y_den < t_y_num * t_x_den
         # Step in X
@@ -349,6 +354,7 @@ class RaycasterApp < FmrbApp
 
       hit = map_at(map_x, map_y)
       break if hit > 0
+      step_n += 1
     end
 
     # Fix fisheye: multiply by cos of angle offset from player angle
@@ -369,9 +375,11 @@ class RaycasterApp < FmrbApp
 
   def cast_all_rays
     buf = []
-    NUM_RAYS.times do |i|
+    i = 0
+    while i < NUM_RAYS
       ray_angle = @pa - HALF_FOV + (i * FOV / NUM_RAYS)
       buf << cast_ray(ray_angle)
+      i += 1
     end
     buf
   end
@@ -385,7 +393,10 @@ class RaycasterApp < FmrbApp
     best_enemy = nil
     best_dist = 999999
 
-    @enemies.each do |e|
+    ei = -1
+    en = @enemies.length
+    while (ei += 1) < en
+      e = @enemies[ei]
       next unless e[:alive]
       dx = e[:x] - @px
       dy = e[:y] - @py
@@ -440,7 +451,10 @@ class RaycasterApp < FmrbApp
   end
 
   def draw_enemies(vp_x, vp_y)
-    @enemies.each do |e|
+    ei = -1
+    en = @enemies.length
+    while (ei += 1) < en
+      e = @enemies[ei]
       next unless e[:alive]
 
       dx = e[:x] - @px
@@ -524,7 +538,8 @@ class RaycasterApp < FmrbApp
     @gfx.fill_rect(vp_x, vp_y + half_h, VP_W, half_h, C_FLOOR)
 
     # Draw wall strips from ray buffer
-    NUM_RAYS.times do |i|
+    i = 0
+    while i < NUM_RAYS
       result = @depth_buf[i]
       dist = result[:dist]
       wall = result[:wall]
@@ -543,6 +558,7 @@ class RaycasterApp < FmrbApp
 
       strip_x = vp_x + i * STRIP_W
       @gfx.fill_rect(strip_x, wall_top, STRIP_W, wall_h, color)
+      i += 1
     end
 
     # Draw enemies (after walls, using depth buffer for occlusion)
@@ -570,7 +586,12 @@ class RaycasterApp < FmrbApp
     hud_y = vp_y + VP_H + 4
     @gfx.fill_rect(ox, hud_y, @user_area_width, 20, C_HUD_BG)
     alive_count = 0
-    @enemies.each { |e| alive_count += 1 if e[:alive] }
+    ei = 0
+    en = @enemies.length
+    while ei < en
+      alive_count += 1 if @enemies[ei][:alive]
+      ei += 1
+    end
     @gfx.draw_text(ox + 4, hud_y + 2, "SCORE:#{@score} ENEMY:#{alive_count}", C_HUD_TXT, C_HUD_BG)
 
     # Mini-map (right side of viewport, every 4th frame to save draw calls)
@@ -591,19 +612,26 @@ class RaycasterApp < FmrbApp
     @gfx.fill_rect(mx0, my0, map_w_px, map_h_px, C_BLACK)
 
     # Draw wall cells
-    MAP_H.times do |cy|
-      MAP_W.times do |cx|
+    cy = 0
+    while cy < MAP_H
+      cx = 0
+      while cx < MAP_W
         wall = WORLD_MAP[cy * MAP_W + cx]
         if wall > 0
           colors = WALL_COLORS[wall]
           c = colors ? colors[0] : C_WHITE
           @gfx.fill_rect(mx0 + cx * cell_px, my0 + cy * cell_px, cell_px, cell_px, c)
         end
+        cx += 1
       end
+      cy += 1
     end
 
     # Enemy dots (magenta)
-    @enemies.each do |e|
+    ei = -1
+    en = @enemies.length
+    while (ei += 1) < en
+      e = @enemies[ei]
       next unless e[:alive]
       edx = e[:x] * cell_px / CELL_SIZE
       edy = e[:y] * cell_px / CELL_SIZE

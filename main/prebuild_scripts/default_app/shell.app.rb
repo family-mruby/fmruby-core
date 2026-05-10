@@ -106,10 +106,7 @@ class ShellApp < FmrbApp
   end
 
   def shell_task
-    loop do
-      # Check if app is still running
-      break if !@running
-
+    while @running
       ch = getch
       break if ch.nil?  # getch returns nil when app is terminating
 
@@ -165,13 +162,18 @@ class ShellApp < FmrbApp
     margin = " " * ((max_line_width - logo_width) / 2) if max_line_width > logo_width
 
     # Add shadow effect
-    logo.size.times do |y|
-      break if logo[y+1].nil?
-      logo[y].length.times do |x|
-        if logo[y][x] == '1' && x > 0 && logo[y+1][x-1] == '0'
-          logo[y+1][x-1] = '2'
+    ly = 0
+    while ly < logo.size
+      break if logo[ly+1].nil?
+      lx = 0
+      lxn = logo[ly].length
+      while lx < lxn
+        if logo[ly][lx] == '1' && lx > 0 && logo[ly+1][lx-1] == '0'
+          logo[ly+1][lx-1] = '2'
         end
+        lx += 1
       end
+      ly += 1
     end
 
     # Store logo lines as Hash entries for colored rendering
@@ -535,12 +537,14 @@ class ShellApp < FmrbApp
 
     content_x = @user_area_x0 + 2
     rows = less_page_rows
-    rows.times do |i|
+    i = 0
+    while i < rows
       idx = @less_offset + i
       break if idx >= @less_lines.length
       y = @user_area_y0 + 2 + i * @char_height
       line = @less_lines[idx]
       @gfx.draw_text(content_x, y, line, @ch_col) unless line.empty?
+      i += 1
     end
 
     # Status bar on the last visible row. Keep concise; full key reference
@@ -580,9 +584,11 @@ class ShellApp < FmrbApp
     @gfx.draw_rect(box_x, box_y, box_w, box_h, @bg_col)
 
     n = lines.length
-    n.times do |i|
+    i = 0
+    while i < n
       ty = box_y + @char_height + i * @char_height
       @gfx.draw_text(box_x + @char_width, ty, lines[i], @bg_col)
+      i += 1
     end
   end
 

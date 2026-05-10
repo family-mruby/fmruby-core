@@ -108,22 +108,32 @@ class TetrisApp < FmrbApp
   end
 
   def collides?(px, py, rot)
-    PIECES[@piece_type][rot].each do |cell|
+    cells = PIECES[@piece_type][rot]
+    ci = 0
+    cn = cells.length
+    while ci < cn
+      cell = cells[ci]
       r = py + cell[0]
       c = px + cell[1]
       return true if c < 0 || c >= COLS || r >= ROWS
       return true if r >= 0 && @board[r][c] != 0
+      ci += 1
     end
     false
   end
 
   def lock_piece
-    current_cells.each do |cell|
+    cells = current_cells
+    ci = 0
+    cn = cells.length
+    while ci < cn
+      cell = cells[ci]
       r = @piece_y + cell[0]
       c = @piece_x + cell[1]
       if r >= 0 && r < ROWS && c >= 0 && c < COLS
         @board[r][c] = @piece_type + 1
       end
+      ci += 1
     end
     clear_lines
     spawn_piece
@@ -277,12 +287,17 @@ class TetrisApp < FmrbApp
   def draw_board
     # Border and empty-cell background are part of @bg_block, so just paint
     # the occupied cells here.
-    ROWS.times do |r|
-      COLS.times do |c|
+    r = 0
+    while r < ROWS
+      c = 0
+      while c < COLS
         val = @board[r][c]
-        next if val == 0
-        draw_cell(c, r, val)
+        if val != 0
+          draw_cell(c, r, val)
+        end
+        c += 1
       end
+      r += 1
     end
   end
 
@@ -325,12 +340,17 @@ class TetrisApp < FmrbApp
   end
 
   def erase_piece
-    current_cells.each do |cell|
+    cells = current_cells
+    ci = 0
+    cn = cells.length
+    while ci < cn
+      cell = cells[ci]
       r = @piece_y + cell[0]
       c = @piece_x + cell[1]
       if r >= 0 && r < ROWS && c >= 0 && c < COLS
         draw_cell(c, r, @board[r][c])
       end
+      ci += 1
     end
   end
 
@@ -338,12 +358,17 @@ class TetrisApp < FmrbApp
     return if @game_over
     gy = calc_ghost_y(@piece_x, @piece_y, @piece_rot)
     return if gy == @piece_y
-    current_cells.each do |cell|
+    cells = current_cells
+    ci = 0
+    cn = cells.length
+    while ci < cn
+      cell = cells[ci]
       r = gy + cell[0]
       c = @piece_x + cell[1]
       if r >= 0 && r < ROWS && c >= 0 && c < COLS
         draw_cell(c, r, @board[r][c])
       end
+      ci += 1
     end
   end
 

@@ -109,7 +109,7 @@ class ShellStdin
     @shell.redraw_script_input(prompt_prefix) unless prompt_prefix.empty?
 
     line_buf = ""
-    loop do
+    while true
       ch = @shell.getch
       return nil if ch.nil?
 

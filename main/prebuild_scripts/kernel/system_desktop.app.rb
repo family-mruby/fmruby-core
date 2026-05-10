@@ -212,10 +212,14 @@ class SystemDesktopApp < FmrbApp
     cols = (@window_width + BOOT_TILE_W - 1) / BOOT_TILE_W
     rows = (@window_height + BOOT_TILE_H - 1) / BOOT_TILE_H
     tiles = []
-    rows.times do |r|
-      cols.times do |c|
+    r = 0
+    while r < rows
+      c = 0
+      while c < cols
         tiles << [c * BOOT_TILE_W, r * BOOT_TILE_H]
+        c += 1
       end
+      r += 1
     end
     # Fisher-Yates shuffle. Use a temporary; picoruby/mruby breaks on
     # multi-assignment whose LHS targets are array element references
@@ -241,12 +245,14 @@ class SystemDesktopApp < FmrbApp
     case @boot_anim_state
     when :revealing
       tick_boot_jingle
-      BOOT_TILES_PER_FRAME.times do
+      bt = 0
+      while bt < BOOT_TILES_PER_FRAME
         break if @boot_anim_idx >= @boot_tiles.size
         tx, ty = @boot_tiles[@boot_anim_idx]
         # 0x01 is the foreground canvas' color key -> pixel becomes transparent.
         @gfx.fill_rect(tx, ty, BOOT_TILE_W, BOOT_TILE_H, 0x01)
         @boot_anim_idx += 1
+        bt += 1
       end
       @gfx.present
       if @boot_anim_idx >= @boot_tiles.size

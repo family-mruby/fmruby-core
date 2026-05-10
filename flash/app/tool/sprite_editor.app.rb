@@ -188,29 +188,41 @@ class SpriteEditorApp < FmrbApp
     @gfx.fill_rect(@ox, @oy, @w, @h, 0x49)
 
     # Sheet view
-    @rows.times do |ty|
-      @cols.times do |tx|
-        TILE.times do |py|
-          TILE.times do |px|
+    ty = 0
+    while ty < @rows
+      tx = 0
+      while tx < @cols
+        py = 0
+        while py < TILE
+          px = 0
+          while px < TILE
             sx = tx * TILE + px
             sy = ty * TILE + py
             color = @sheet_pixels[sy * @sheet_w + sx]
             @gfx.set_pixel(@sheet_x + sx, @sheet_y + sy, color)
+            px += 1
           end
+          py += 1
         end
+        tx += 1
       end
+      ty += 1
     end
     @gfx.draw_rect(@sheet_x + @sel_tile_x * TILE - 1,
                     @sheet_y + @sel_tile_y * TILE - 1,
                     TILE + 2, TILE + 2, FmrbGfx::WHITE)
 
     # Zoom editor
-    TILE.times do |py|
-      TILE.times do |px|
+    py = 0
+    while py < TILE
+      px = 0
+      while px < TILE
         color = get_tile_pixel(px, py)
         @gfx.fill_rect(@editor_x + px * ZOOM, @editor_y + py * ZOOM,
                         ZOOM, ZOOM, color)
+        px += 1
       end
+      py += 1
     end
     (0..TILE).each do |i|
       @gfx.draw_line(@editor_x + i * ZOOM, @editor_y,
