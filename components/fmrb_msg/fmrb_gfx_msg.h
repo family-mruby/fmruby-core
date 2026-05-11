@@ -37,6 +37,11 @@ typedef enum {
     GFX_CMD_BLEND_RECT,
     GFX_CMD_SET_OUTPUT_LEVEL,
     GFX_CMD_SET_CHROMA_LEVEL,
+    // Sprite image target switch. Must travel the same queue as the pixel
+    // commands it brackets, otherwise the trailing draws can be processed on
+    // WROVER after target=0 already arrived through a faster path, causing
+    // tail-of-icon clipping in launcher sprites.
+    GFX_CMD_SET_SPRITE_IMAGE_TARGET,
     // Sync commands (require response from WROVER)
     GFX_CMD_CREATE_CANVAS,
     GFX_CMD_CREATE_SPRITE_IMAGE,
@@ -155,6 +160,9 @@ typedef struct {
             uint8_t transparent_color;
             uint8_t use_transparent;
         } create_sprite_image;
+        struct {
+            uint16_t image_id;  // 0 = reset target to canvas
+        } set_sprite_image_target;
         struct {
             uint8_t frame_count;
             uint16_t image_ids[8];

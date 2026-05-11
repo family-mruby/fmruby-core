@@ -1064,7 +1064,20 @@ static mrb_value mrb_gfx_set_sprite_image_target(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "i", &image_id);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
-    fmrb_gfx_set_sprite_image_target(data->ctx, (uint16_t)image_id);
+
+    // Route through the host_task GFX queue so this target switch stays in
+    // order with the surrounding pixel commands. Bypassing the queue (calling
+    // fmrb_gfx_set_sprite_image_target directly) lets target=0 race past the
+    // tail of a sprite draw and clips the bottom-right pixels.
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_SET_SPRITE_IMAGE_TARGET,
+        .canvas_id = data->canvas_id,
+        .params.set_sprite_image_target = { .image_id = (uint16_t)image_id }
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "set_sprite_image_target send_gfx_command failed: %d", ret);
+    }
     return self;
 }
 
