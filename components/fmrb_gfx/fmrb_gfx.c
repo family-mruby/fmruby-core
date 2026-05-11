@@ -27,28 +27,6 @@ static bool is_clipped(fmrb_gfx_context_impl_t *ctx, int16_t x, int16_t y) {
             y >= ctx->clip_rect.y + ctx->clip_rect.height);
 }
 
-// Helper function to send graphics command (asynchronous)
-static fmrb_gfx_err_t send_graphics_command(fmrb_gfx_context_impl_t *ctx, uint8_t cmd_type, const void *cmd_data, size_t cmd_size) {
-    if (!ctx) {
-        return FMRB_GFX_ERR_NOT_INITIALIZED;
-    }
-
-    fmrb_err_t ret = fmrb_transport_send(FMRB_LINK_TYPE_GRAPHICS, cmd_type, (const uint8_t*)cmd_data, cmd_size, FMRB_TRANSPORT_TIMEOUT_DEFAULT);
-
-    switch (ret) {
-        case FMRB_OK:
-            return FMRB_GFX_OK;
-        case FMRB_ERR_INVALID_PARAM:
-            return FMRB_GFX_ERR_INVALID_PARAM;
-        case FMRB_ERR_NO_MEMORY:
-            return FMRB_GFX_ERR_NO_MEMORY;
-        case FMRB_ERR_TIMEOUT:
-            return FMRB_GFX_ERR_FAILED;  // Map timeout to generic failure
-        default:
-            return FMRB_GFX_ERR_FAILED;
-    }
-}
-
 // Helper: send sync GFX command via Host Task queue.
 // Builds a gfx_cmd_t with sync context, sends to Host Task, blocks until response.
 static fmrb_gfx_err_t send_gfx_sync_via_host(
@@ -237,62 +215,6 @@ fmrb_gfx_err_t fmrb_gfx_delete_canvas(
     ESP_LOGI(TAG, "Canvas delete queued: ID=%u", canvas_handle);
     return FMRB_GFX_OK;
 }
-
-// Cursor control API
-
-fmrb_gfx_err_t fmrb_gfx_set_cursor_position(
-    fmrb_gfx_context_t context,
-    int32_t x, int32_t y)
-{
-    if (!context) {
-        return FMRB_GFX_ERR_INVALID_PARAM;
-    }
-
-    fmrb_gfx_context_impl_t *ctx = context;
-    if (!ctx->initialized) {
-        return FMRB_GFX_ERR_NOT_INITIALIZED;
-    }
-
-    // Send cursor position command to host
-    fmrb_link_graphics_cursor_position_t cmd = {
-        .x = x,
-        .y = y
-    };
-
-    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_CURSOR_SET_POSITION, &cmd, sizeof(cmd));
-    if (ret == FMRB_GFX_OK) {
-        ESP_LOGD(TAG, "Cursor position set: (%d, %d)", x, y);
-    }
-
-    return ret;
-}
-
-fmrb_gfx_err_t fmrb_gfx_set_cursor_visible(
-    fmrb_gfx_context_t context,
-    bool visible)
-{
-    if (!context) {
-        return FMRB_GFX_ERR_INVALID_PARAM;
-    }
-
-    fmrb_gfx_context_impl_t *ctx = context;
-    if (!ctx->initialized) {
-        return FMRB_GFX_ERR_NOT_INITIALIZED;
-    }
-
-    // Send cursor visibility command to host
-    fmrb_link_graphics_cursor_visible_t cmd = {
-        .visible = visible
-    };
-
-    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_CURSOR_SET_VISIBLE, &cmd, sizeof(cmd));
-    if (ret == FMRB_GFX_OK) {
-        ESP_LOGD(TAG, "Cursor visibility set: %s", visible ? "visible" : "hidden");
-    }
-
-    return ret;
-}
-
 // Sprite API implementations
 
 uint16_t fmrb_gfx_create_sprite_image(

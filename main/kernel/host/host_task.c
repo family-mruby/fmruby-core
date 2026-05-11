@@ -229,6 +229,34 @@ static int init_gfx_audio(void)
     return 0;
 }
 
+// host_task-internal cursor control. The cursor is driven by host_task
+// itself in response to HID events, so we cannot route this through the
+// host_task GFX queue (would self-enqueue) and we do not want it to wait
+// behind queued GFX batches. Goes out as a fire-and-forget transport_send.
+static void host_send_cursor_visible(bool visible) {
+    fmrb_link_graphics_cursor_visible_t cmd = { .visible = visible };
+    fmrb_err_t ret = fmrb_transport_send(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_CURSOR_SET_VISIBLE,
+        (const uint8_t *)&cmd, sizeof(cmd),
+        FMRB_TRANSPORT_TIMEOUT_DEFAULT);
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "cursor_visible send failed: %d", ret);
+    }
+}
+
+static void host_send_cursor_position(int32_t x, int32_t y) {
+    fmrb_link_graphics_cursor_position_t cmd = { .x = x, .y = y };
+    fmrb_err_t ret = fmrb_transport_send(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_CURSOR_SET_POSITION,
+        (const uint8_t *)&cmd, sizeof(cmd),
+        FMRB_TRANSPORT_TIMEOUT_DEFAULT);
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "cursor_position send failed: %d", ret);
+    }
+}
+
 // Maximum batch size for GFX commands
 #define GFX_BATCH_MAX 16
 
@@ -1218,25 +1246,18 @@ static void host_task_process_host_message(const host_message_t *msg)
         }
 
         case HOST_MSG_HID_MOUSE_MOVE: {
-            // Update cursor position via GFX API
             int x = msg->data.mouse_move.x;
             int y = msg->data.mouse_move.y;
 
-            fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-            if (gfx_ctx) {
-                // Show cursor on first mouse event (only after Ruby has
-                // enabled it via fmrb_host_enable_cursor; keeps the boot
-                // animation free of a stray cursor).
-                if (!g_cursor_shown && g_cursor_enabled) {
-                    g_cursor_shown = true;
-                    fmrb_gfx_set_cursor_visible(gfx_ctx, true);
-                    FMRB_LOGI(TAG, "Cursor made visible on first mouse event");
-                }
-                fmrb_gfx_err_t gfx_ret = fmrb_gfx_set_cursor_position(gfx_ctx, x, y);
-                if (gfx_ret != FMRB_GFX_OK) {
-                    FMRB_LOGW(TAG, "Failed to set cursor position: %d", gfx_ret);
-                }
+            // Show cursor on first mouse event (only after Ruby has
+            // enabled it via fmrb_host_enable_cursor; keeps the boot
+            // animation free of a stray cursor).
+            if (!g_cursor_shown && g_cursor_enabled) {
+                g_cursor_shown = true;
+                host_send_cursor_visible(true);
+                FMRB_LOGI(TAG, "Cursor made visible on first mouse event");
             }
+            host_send_cursor_position(x, y);
 
             FMRB_LOGD(TAG, "Mouse move: (%d, %d) - forwarding to Kernel", x, y);
 

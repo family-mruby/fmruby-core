@@ -174,31 +174,6 @@ fmrb_gfx_err_t fmrb_gfx_delete_canvas(
 
 // Cursor control API (global resource)
 
-/**
- * @brief Set cursor position
- * @param context Graphics context
- * @param x Cursor X coordinate
- * @param y Cursor Y coordinate
- * @return Graphics error code
- *
- * Note: Cursor is a global resource shared across all canvases
- */
-fmrb_gfx_err_t fmrb_gfx_set_cursor_position(
-    fmrb_gfx_context_t context,
-    int32_t x, int32_t y);
-
-/**
- * @brief Set cursor visibility
- * @param context Graphics context
- * @param visible true to show cursor, false to hide
- * @return Graphics error code
- *
- * Note: Cursor is a global resource shared across all canvases
- */
-fmrb_gfx_err_t fmrb_gfx_set_cursor_visible(
-    fmrb_gfx_context_t context,
-    bool visible);
-
 // Sprite API
 
 /**
