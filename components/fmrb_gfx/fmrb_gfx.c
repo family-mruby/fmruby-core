@@ -886,17 +886,26 @@ fmrb_gfx_err_t fmrb_gfx_delete_canvas(
         ctx->current_target = FMRB_CANVAS_SCREEN;
     }
 
-    // Send delete canvas command to host
-    fmrb_link_graphics_delete_canvas_t cmd = {
-        .canvas_id = canvas_handle
-    };
+    // Route through host_task batch queue so the delete stays in order with
+    // any pending draws / sprite ops that reference this canvas.
+    gfx_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.cmd_type = GFX_CMD_DELETE_CANVAS;
+    cmd.canvas_id = canvas_handle;
 
-    fmrb_gfx_err_t ret = send_graphics_command(ctx, FMRB_LINK_GFX_DELETE_CANVAS, &cmd, sizeof(cmd));
-    if (ret == FMRB_GFX_OK) {
-        ESP_LOGI(TAG, "Canvas deleted: ID=%u", canvas_handle);
+    fmrb_msg_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = FMRB_MSG_TYPE_APP_GFX;
+    msg.size = sizeof(gfx_cmd_t);
+    memcpy(msg.data, &cmd, sizeof(gfx_cmd_t));
+
+    fmrb_err_t send_ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    if (send_ret != FMRB_OK) {
+        ESP_LOGE(TAG, "Failed to queue delete_canvas: %d", send_ret);
+        return FMRB_GFX_ERR_FAILED;
     }
-
-    return ret;
+    ESP_LOGI(TAG, "Canvas delete queued: ID=%u", canvas_handle);
+    return FMRB_GFX_OK;
 }
 
 fmrb_gfx_err_t fmrb_gfx_set_target(
