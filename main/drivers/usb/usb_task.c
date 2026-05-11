@@ -3,6 +3,7 @@
 #include <inttypes.h>
 #include <math.h>
 
+#include "esp_attr.h"
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
@@ -103,7 +104,7 @@ typedef struct {
 
 // Input report ring buffer (for deferred processing from callbacks)
 #define INPUT_REPORT_QUEUE_SIZE 16  // Large enough to avoid overflow under normal load
-static hid_input_report_t g_input_reports[INPUT_REPORT_QUEUE_SIZE];
+EXT_RAM_BSS_ATTR static hid_input_report_t g_input_reports[INPUT_REPORT_QUEUE_SIZE];
 static volatile int g_input_report_head = 0;  // Write index
 static volatile int g_input_report_tail = 0;  // Read index
 static volatile bool g_input_report_overflow = false;  // Ring overflow flag

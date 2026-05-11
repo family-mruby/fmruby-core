@@ -1,4 +1,5 @@
 #include <string.h>
+#include "esp_attr.h"
 #include "hid_device_config.h"
 #include "fmrb_toml.h"
 #include "fmrb_log.h"
@@ -14,10 +15,10 @@ typedef struct {
     uint8_t copy_len;  // report_len + 1 if has_report_id
 } hid_mouse_config_entry_t;
 
-static hid_mouse_config_entry_t g_mouse_entries[HID_DEVICE_CONFIG_MAX_ENTRIES];
+EXT_RAM_BSS_ATTR static hid_mouse_config_entry_t g_mouse_entries[HID_DEVICE_CONFIG_MAX_ENTRIES];
 static int g_mouse_entry_count = 0;
 
-static hid_gamepad_report_layout_t g_gamepad_entries[HID_DEVICE_CONFIG_MAX_ENTRIES];
+EXT_RAM_BSS_ATTR static hid_gamepad_report_layout_t g_gamepad_entries[HID_DEVICE_CONFIG_MAX_ENTRIES];
 static int g_gamepad_entry_count = 0;
 
 static void parse_field(const toml_table_t *tab, const char *key, hid_field_info_t *field)
