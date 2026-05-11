@@ -1,4 +1,5 @@
 #include <string.h>
+#include "esp_attr.h"
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_log_buffer.h"
@@ -560,8 +561,8 @@ static fmrb_err_t ble_fs_send_notify(const uint8_t *data, size_t len)
 static void ble_fs_send_response(const char *json_response,
                                  const uint8_t *binary_data, size_t binary_size)
 {
-    static uint8_t packet[BLE_FS_MAX_FRAME_SIZE];
-    static uint8_t encoded[BLE_FS_MAX_FRAME_SIZE];
+    EXT_RAM_BSS_ATTR static uint8_t packet[BLE_FS_MAX_FRAME_SIZE];
+    EXT_RAM_BSS_ATTR static uint8_t encoded[BLE_FS_MAX_FRAME_SIZE];
 
     size_t json_len = strlen(json_response);
     size_t pos = 0;
@@ -813,8 +814,8 @@ static void ble_fs_poll_logs(void)
     uint32_t wp = fmrb_log_buffer_get_write_pos();
     if (wp == g_fs_ctx.log_read_pos) return;
 
-    static char line_buf[BLE_LOG_LINE_BUF_SIZE];
-    static char json_hdr[96];
+    EXT_RAM_BSS_ATTR static char line_buf[BLE_LOG_LINE_BUF_SIZE];
+    EXT_RAM_BSS_ATTR static char json_hdr[96];
 
     uint32_t before_pos = g_fs_ctx.log_read_pos;
     int n = fmrb_log_buffer_read_lines(line_buf, sizeof(line_buf),
@@ -978,9 +979,9 @@ static void ble_fs_cmd_put(const char *json_params,
 
 static void ble_fs_process_frame(const uint8_t *frame, size_t frame_len)
 {
-    static uint8_t decoded[BLE_FS_MAX_FRAME_SIZE];
-    static uint8_t binary_buffer[BLE_FS_MAX_CHUNK_SIZE];
-    static char json_response[BLE_FS_MAX_JSON_LEN];
+    EXT_RAM_BSS_ATTR static uint8_t decoded[BLE_FS_MAX_FRAME_SIZE];
+    EXT_RAM_BSS_ATTR static uint8_t binary_buffer[BLE_FS_MAX_CHUNK_SIZE];
+    EXT_RAM_BSS_ATTR static char json_response[BLE_FS_MAX_JSON_LEN];
 
     size_t decoded_len = cobs_decode(frame, frame_len, decoded, sizeof(decoded));
     if (decoded_len < 7) {
@@ -1137,7 +1138,7 @@ static void ble_fs_task_func(void *arg)
 
         if (got_frame && g_fs_ctx.frame_ready) {
             // Copy frame data and release buffer for next receive
-            static uint8_t frame_copy[BLE_FS_MAX_FRAME_SIZE];
+            EXT_RAM_BSS_ATTR static uint8_t frame_copy[BLE_FS_MAX_FRAME_SIZE];
             size_t frame_len = g_fs_ctx.rx_len;
             memcpy(frame_copy, g_fs_ctx.rx_buffer, frame_len);
 
