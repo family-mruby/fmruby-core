@@ -601,13 +601,38 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             return (int)total;
         }
         case GFX_CMD_EXEC_PROG: {
-            // Should not reach here: EXEC_PROG uses send_graphics_command directly.
-            // Kept for completeness if ever routed through Host Task.
-            return -1;
+            uint8_t reg_count = cmd->params.exec_prog.reg_count;
+            if (reg_count > 16) {
+                FMRB_LOGE(TAG, "EXEC_PROG: reg_count %u exceeds inline limit", reg_count);
+                return -1;
+            }
+            size_t total = sizeof(fmrb_link_graphics_exec_prog_t)
+                         + (size_t)reg_count * 3;
+            if (total > GFX_BATCH_PAYLOAD_BUF_SIZE) {
+                FMRB_LOGE(TAG, "EXEC_PROG: payload %zu exceeds buf %d",
+                          total, GFX_BATCH_PAYLOAD_BUF_SIZE);
+                return -1;
+            }
+            fmrb_link_graphics_exec_prog_t hdr = {
+                .canvas_id = cmd->canvas_id,
+                .prog_id = cmd->params.exec_prog.prog_id,
+                .reg_count = reg_count,
+            };
+            memcpy(payload_buf, &hdr, sizeof(hdr));
+            if (reg_count > 0) {
+                memcpy(payload_buf + sizeof(hdr),
+                       cmd->params.exec_prog.reg_updates, (size_t)reg_count * 3);
+            }
+            *sub_cmd_out = FMRB_LINK_GFX_EXEC_PROG;
+            return (int)total;
         }
         case GFX_CMD_DELETE_PROG: {
-            // Should not reach here: DELETE_PROG uses send_graphics_command directly.
-            return -1;
+            fmrb_link_graphics_delete_prog_t c = {
+                .prog_id = cmd->params.delete_prog.prog_id
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DELETE_PROG;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
         }
         default:
             return -1;

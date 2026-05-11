@@ -428,21 +428,31 @@ fmrb_gfx_err_t fmrb_gfx_exec_prog(
 {
     if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
     if (reg_count > 0 && !reg_updates) return FMRB_GFX_ERR_INVALID_PARAM;
+    if (reg_count > 16) return FMRB_GFX_ERR_INVALID_PARAM;
 
     fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
 
-    // Build wire payload on the stack: header + reg updates (3 bytes each)
-    uint8_t buf[sizeof(fmrb_link_graphics_exec_prog_t) + 3 * 16];
-    fmrb_link_graphics_exec_prog_t *hdr = (fmrb_link_graphics_exec_prog_t *)buf;
-    hdr->canvas_id = canvas_id;
-    hdr->prog_id = prog_id;
-    hdr->reg_count = reg_count;
+    // Route through host_task queue so EXEC_PROG stays in order with any
+    // surrounding gfx_cmd_t-based draw commands from the same app task.
+    gfx_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.cmd_type = GFX_CMD_EXEC_PROG;
+    cmd.canvas_id = canvas_id;
+    cmd.params.exec_prog.prog_id = prog_id;
+    cmd.params.exec_prog.reg_count = reg_count;
     if (reg_count > 0) {
-        memcpy(buf + sizeof(*hdr), reg_updates, (size_t)reg_count * 3);
+        memcpy(cmd.params.exec_prog.reg_updates, reg_updates, (size_t)reg_count * 3);
     }
-    return send_graphics_command(ctx, FMRB_LINK_GFX_EXEC_PROG, buf,
-                                 sizeof(*hdr) + (size_t)reg_count * 3);
+
+    fmrb_msg_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = FMRB_MSG_TYPE_APP_GFX;
+    msg.size = sizeof(gfx_cmd_t);
+    memcpy(msg.data, &cmd, sizeof(gfx_cmd_t));
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    return (ret == FMRB_OK) ? FMRB_GFX_OK : FMRB_GFX_ERR_FAILED;
 }
 
 fmrb_gfx_err_t fmrb_gfx_delete_prog(
@@ -453,6 +463,17 @@ fmrb_gfx_err_t fmrb_gfx_delete_prog(
     fmrb_gfx_context_impl_t *ctx = context;
     if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
 
-    fmrb_link_graphics_delete_prog_t cmd = { .prog_id = prog_id };
-    return send_graphics_command(ctx, FMRB_LINK_GFX_DELETE_PROG, &cmd, sizeof(cmd));
+    gfx_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.cmd_type = GFX_CMD_DELETE_PROG;
+    cmd.params.delete_prog.prog_id = prog_id;
+
+    fmrb_msg_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = FMRB_MSG_TYPE_APP_GFX;
+    msg.size = sizeof(gfx_cmd_t);
+    memcpy(msg.data, &cmd, sizeof(gfx_cmd_t));
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    return (ret == FMRB_OK) ? FMRB_GFX_OK : FMRB_GFX_ERR_FAILED;
 }

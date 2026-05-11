@@ -213,12 +213,14 @@ typedef struct {
             uint8_t *strtable_buf;
             uint16_t strtable_len;
         } define_prog;
-        // GfxBlock VM: execute program. reg_updates_buf is fmrb_malloc'd; Host Task frees.
-        // Packed as [uint8_t reg_id, int16_t value] * reg_count = 3 bytes per entry.
+        // GfxBlock VM: execute program. Inlined fixed-size buffer so the
+        // gfx_cmd_t can travel through the host_task queue without lifetime
+        // worries. Packed as [uint8_t reg_id, int16_t value] * reg_count
+        // = 3 bytes per entry. 16 regs max matches the prior stack budget.
         struct {
             uint8_t prog_id;
             uint8_t reg_count;
-            uint8_t *reg_updates_buf;
+            uint8_t reg_updates[3 * 16];
         } exec_prog;
         struct {
             uint8_t prog_id;
