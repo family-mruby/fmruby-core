@@ -1041,8 +1041,18 @@ static mrb_value mrb_gfx_load_sprite_image_bmp(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iz", &image_id, &path);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
-    fmrb_gfx_err_t ret = fmrb_gfx_load_sprite_image_bmp(data->ctx, (uint16_t)image_id, path);
-    if (ret != FMRB_GFX_OK) {
+
+    gfx_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.cmd_type = GFX_CMD_LOAD_SPRITE_IMAGE_BMP;
+    cmd.canvas_id = data->canvas_id;
+    cmd.params.load_sprite_image_bmp.image_id = (uint16_t)image_id;
+    size_t path_len = strnlen(path, sizeof(cmd.params.load_sprite_image_bmp.path) - 1);
+    memcpy(cmd.params.load_sprite_image_bmp.path, path, path_len);
+    cmd.params.load_sprite_image_bmp.path[path_len] = '\0';
+
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to load BMP: %d", ret);
     }
     return self;
@@ -1054,7 +1064,16 @@ static mrb_value mrb_gfx_delete_sprite_image(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "i", &image_id);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
-    fmrb_gfx_delete_sprite_image(data->ctx, (uint16_t)image_id);
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_DELETE_SPRITE_IMAGE,
+        .canvas_id = data->canvas_id,
+        .params.delete_sprite_image = { .image_id = (uint16_t)image_id }
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "delete_sprite_image send_gfx_command failed: %d", ret);
+    }
     return self;
 }
 
@@ -1106,7 +1125,16 @@ static mrb_value mrb_gfx_delete_sprite_instance(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "i", &instance_id);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
-    fmrb_gfx_delete_sprite_instance(data->ctx, (uint16_t)instance_id);
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_DELETE_SPRITE_INSTANCE,
+        .canvas_id = data->canvas_id,
+        .params.delete_sprite_instance = { .instance_id = (uint16_t)instance_id }
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "delete_sprite_instance send_gfx_command failed: %d", ret);
+    }
     return self;
 }
 
@@ -1116,7 +1144,20 @@ static mrb_value mrb_gfx_sprite_move(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iii", &instance_id, &x, &y);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
-    fmrb_gfx_sprite_instance_move(data->ctx, (uint16_t)instance_id, (int16_t)x, (int16_t)y);
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_SPRITE_INSTANCE_MOVE,
+        .canvas_id = data->canvas_id,
+        .params.sprite_instance_move = {
+            .instance_id = (uint16_t)instance_id,
+            .x = (int16_t)x,
+            .y = (int16_t)y
+        }
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "sprite_move send_gfx_command failed: %d", ret);
+    }
     return self;
 }
 
@@ -1127,7 +1168,19 @@ static mrb_value mrb_gfx_sprite_visible(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "ib", &instance_id, &visible);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
-    fmrb_gfx_sprite_instance_set_visible(data->ctx, (uint16_t)instance_id, visible);
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_SPRITE_INSTANCE_SET_VISIBLE,
+        .canvas_id = data->canvas_id,
+        .params.sprite_instance_set_visible = {
+            .instance_id = (uint16_t)instance_id,
+            .visible = visible ? 1 : 0
+        }
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "sprite_visible send_gfx_command failed: %d", ret);
+    }
     return self;
 }
 
@@ -1137,7 +1190,19 @@ static mrb_value mrb_gfx_sprite_frame(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "ii", &instance_id, &frame_index);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
-    fmrb_gfx_sprite_instance_set_frame(data->ctx, (uint16_t)instance_id, (uint8_t)frame_index);
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_SPRITE_INSTANCE_SET_FRAME,
+        .canvas_id = data->canvas_id,
+        .params.sprite_instance_set_frame = {
+            .instance_id = (uint16_t)instance_id,
+            .frame_index = (uint8_t)frame_index
+        }
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "sprite_frame send_gfx_command failed: %d", ret);
+    }
     return self;
 }
 
@@ -1145,7 +1210,15 @@ static mrb_value mrb_gfx_delete_all_sprites(mrb_state *mrb, mrb_value self)
 {
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
-    fmrb_gfx_delete_all_sprites(data->ctx, data->canvas_id);
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_DELETE_ALL_SPRITES,
+        .canvas_id = data->canvas_id,
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "delete_all_sprites send_gfx_command failed: %d", ret);
+    }
     return self;
 }
 

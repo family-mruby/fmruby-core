@@ -42,10 +42,19 @@ typedef enum {
     // WROVER after target=0 already arrived through a faster path, causing
     // tail-of-icon clipping in launcher sprites.
     GFX_CMD_SET_SPRITE_IMAGE_TARGET,
+    // Sprite lifecycle / instance state. All routed through host_task queue so
+    // they stay in order with surrounding draw commands.
+    GFX_CMD_DELETE_SPRITE_IMAGE,
+    GFX_CMD_DELETE_SPRITE_INSTANCE,
+    GFX_CMD_SPRITE_INSTANCE_MOVE,
+    GFX_CMD_SPRITE_INSTANCE_SET_VISIBLE,
+    GFX_CMD_SPRITE_INSTANCE_SET_FRAME,
+    GFX_CMD_DELETE_ALL_SPRITES,
     // Sync commands (require response from WROVER)
     GFX_CMD_CREATE_CANVAS,
     GFX_CMD_CREATE_SPRITE_IMAGE,
     GFX_CMD_CREATE_SPRITE_INSTANCE,
+    GFX_CMD_LOAD_SPRITE_IMAGE_BMP,  // Sync (returns success/failure)
     GFX_CMD_DEFINE_PROG,         // Sync; returns prog_id
     GFX_CMD_EXEC_PROG,           // Async
     GFX_CMD_DELETE_PROG          // Async
@@ -163,6 +172,31 @@ typedef struct {
         struct {
             uint16_t image_id;  // 0 = reset target to canvas
         } set_sprite_image_target;
+        struct {
+            uint16_t image_id;
+        } delete_sprite_image;
+        // Sync load: path is NUL-terminated and stays within this fixed buffer.
+        // Caps at FMRB_GFX_LOAD_BMP_PATH_MAX bytes including NUL.
+        struct {
+            uint16_t image_id;
+            char path[120];
+        } load_sprite_image_bmp;
+        struct {
+            uint16_t instance_id;
+        } delete_sprite_instance;
+        struct {
+            uint16_t instance_id;
+            int16_t x, y;
+        } sprite_instance_move;
+        struct {
+            uint16_t instance_id;
+            uint8_t visible;  // 0 = hidden, 1 = visible
+        } sprite_instance_set_visible;
+        struct {
+            uint16_t instance_id;
+            uint8_t frame_index;
+        } sprite_instance_set_frame;
+        // delete_all_sprites uses cmd->canvas_id only — no extra params.
         struct {
             uint8_t frame_count;
             uint16_t image_ids[8];

@@ -479,6 +479,79 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_DELETE_SPRITE_IMAGE: {
+            fmrb_link_graphics_delete_sprite_image_t c = {
+                .image_id = cmd->params.delete_sprite_image.image_id
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DELETE_SPRITE_IMAGE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_LOAD_SPRITE_IMAGE_BMP: {
+            size_t path_len = strnlen(cmd->params.load_sprite_image_bmp.path,
+                                     sizeof(cmd->params.load_sprite_image_bmp.path));
+            size_t total = sizeof(fmrb_link_graphics_load_sprite_image_bmp_t) + path_len;
+            if (total > GFX_BATCH_PAYLOAD_BUF_SIZE) {
+                FMRB_LOGE(TAG, "LOAD_SPRITE_IMAGE_BMP: payload %zu exceeds buf %d",
+                          total, GFX_BATCH_PAYLOAD_BUF_SIZE);
+                return -1;
+            }
+            fmrb_link_graphics_load_sprite_image_bmp_t hdr = {
+                .image_id = cmd->params.load_sprite_image_bmp.image_id,
+                .path_len = (uint16_t)path_len,
+            };
+            memcpy(payload_buf, &hdr, sizeof(hdr));
+            if (path_len > 0) {
+                memcpy(payload_buf + sizeof(hdr),
+                       cmd->params.load_sprite_image_bmp.path, path_len);
+            }
+            *sub_cmd_out = FMRB_LINK_GFX_LOAD_SPRITE_IMAGE_BMP;
+            return (int)total;
+        }
+        case GFX_CMD_DELETE_SPRITE_INSTANCE: {
+            fmrb_link_graphics_delete_sprite_instance_t c = {
+                .instance_id = cmd->params.delete_sprite_instance.instance_id
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DELETE_SPRITE_INSTANCE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_SPRITE_INSTANCE_MOVE: {
+            fmrb_link_graphics_sprite_instance_move_t c = {
+                .instance_id = cmd->params.sprite_instance_move.instance_id,
+                .x = cmd->params.sprite_instance_move.x,
+                .y = cmd->params.sprite_instance_move.y
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_SPRITE_INSTANCE_MOVE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_SPRITE_INSTANCE_SET_VISIBLE: {
+            fmrb_link_graphics_sprite_instance_set_visible_t c = {
+                .instance_id = cmd->params.sprite_instance_set_visible.instance_id,
+                .visible = cmd->params.sprite_instance_set_visible.visible
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_SPRITE_INSTANCE_SET_VISIBLE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_SPRITE_INSTANCE_SET_FRAME: {
+            fmrb_link_graphics_sprite_instance_set_frame_t c = {
+                .instance_id = cmd->params.sprite_instance_set_frame.instance_id,
+                .frame_index = cmd->params.sprite_instance_set_frame.frame_index
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_SPRITE_INSTANCE_SET_FRAME;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_DELETE_ALL_SPRITES: {
+            fmrb_link_graphics_delete_all_sprites_t c = {
+                .canvas_id = cmd->canvas_id
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DELETE_ALL_SPRITES;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         case GFX_CMD_CREATE_SPRITE_INSTANCE: {
             fmrb_link_graphics_create_sprite_instance_t c;
             memset(&c, 0, sizeof(c));
