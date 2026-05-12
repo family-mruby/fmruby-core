@@ -12,15 +12,18 @@ class ShooterApp < FmrbApp
   TEXT_COLOR   = 0xFF  # white
   GAMEOVER_BG  = 0xE0  # red
 
-  PLAYER_W = 8*2
-  PLAYER_H = 8*2
+  PLAYER_W = 16
+  PLAYER_H = 16
   BULLET_W = 2
   BULLET_H = 4
-  ENEMY_W  = 8*2
-  ENEMY_H  = 6*2
+  ENEMY_W  = 16
+  ENEMY_H  = 12
   PLAYER_SPEED = 3
   BULLET_SPEED = 5
   ENEMY_SPEED_BASE = 1
+
+  MAX_BULLETS = 16
+  MAX_ENEMIES = 24
 
   def initialize
     super()
@@ -30,20 +33,78 @@ class ShooterApp < FmrbApp
 
   def on_create
     Log.info("Shooter on_create")
+    setup_sprites
     reset_game
+  end
+
+  def setup_sprites
+    # Player triangle on a transparent background
+    @player_img = SpriteImage.new(@gfx, width: PLAYER_W, height: PLAYER_H,
+                                  transparent_color: 0, use_transparent: true)
+    @player_img.draw do |g|
+      g.fill_triangle(PLAYER_W / 2, 0,
+                      0, PLAYER_H - 1,
+                      PLAYER_W - 1, PLAYER_H - 1, PLAYER_COLOR)
+    end
+
+    @bullet_img = SpriteImage.new(@gfx, width: BULLET_W, height: BULLET_H)
+    @bullet_img.draw do |g|
+      g.fill_rect(0, 0, BULLET_W, BULLET_H, BULLET_COLOR)
+    end
+
+    @enemy_img = SpriteImage.new(@gfx, width: ENEMY_W, height: ENEMY_H)
+    @enemy_img.draw do |g|
+      g.fill_rect(0, 0, ENEMY_W, ENEMY_H, ENEMY_COLOR)
+    end
+
+    @player_sprite = SpriteInstance.new(@gfx, @player_img,
+                                        x: @user_area_x0, y: @user_area_y0, z: 2)
+    @player_sprite.visible = false
+
+    @bullet_pool = []
+    MAX_BULLETS.times do
+      inst = SpriteInstance.new(@gfx, @bullet_img, x: 0, y: 0, z: 1)
+      inst.visible = false
+      @bullet_pool << inst
+    end
+
+    @enemy_pool = []
+    MAX_ENEMIES.times do
+      inst = SpriteInstance.new(@gfx, @enemy_img, x: 0, y: 0, z: 1)
+      inst.visible = false
+      @enemy_pool << inst
+    end
   end
 
   def reset_game
     @player_x = @user_area_width / 2
     @player_y = @user_area_height - 20
+
+    # Recycle any active sprites back into their pools
+    if @bullets
+      @bullets.each { |b| b[:sprite].visible = false }
+    end
+    if @enemies
+      @enemies.each { |e| e[:sprite].visible = false }
+    end
     @bullets = []
     @enemies = []
+    @free_bullets = @bullet_pool.dup
+    @free_enemies = @enemy_pool.dup
+
     @score = 0
     @game_over = false
     @spawn_timer = 0
     @input = {}
     @shoot_pressed = false
-    draw_all
+
+    draw_background
+    draw_score
+
+    @player_sprite.visible = true
+    move_player_sprite
+
+    @gfx.present
   end
 
   # ---- Input ----
@@ -112,9 +173,10 @@ class ShooterApp < FmrbApp
     update_enemies
     spawn_enemies
     check_collisions
+    return 100 if @game_over
 
-    draw_all
-
+    draw_score
+    @gfx.present
     100
   end
 
@@ -124,66 +186,116 @@ class ShooterApp < FmrbApp
     @player_y -= PLAYER_SPEED if @input[:up]
     @player_y += PLAYER_SPEED if @input[:down]
 
-    # Clamp
     half_w = PLAYER_W / 2
     @player_x = half_w if @player_x < half_w
     @player_x = @user_area_width - half_w if @player_x > @user_area_width - half_w
     @player_y = 0 if @player_y < 0
     @player_y = @user_area_height - PLAYER_H if @player_y > @user_area_height - PLAYER_H
 
+    move_player_sprite
+
     if @shoot_pressed
       @shoot_pressed = false
-      @bullets << { x: @player_x, y: @player_y - BULLET_H }
+      spawn_bullet(@player_x, @player_y - BULLET_H)
     end
   end
 
+  def move_player_sprite
+    @player_sprite.move(@user_area_x0 + @player_x - PLAYER_W / 2,
+                        @user_area_y0 + @player_y)
+  end
+
+  def spawn_bullet(x, y)
+    return if @free_bullets.empty?
+    sprite = @free_bullets.pop
+    sprite.visible = true
+    sprite.move(@user_area_x0 + x - BULLET_W / 2, @user_area_y0 + y)
+    @bullets << { x: x, y: y, sprite: sprite }
+  end
+
   def update_bullets
+    alive = []
     bi = 0
     bn = @bullets.length
     while bi < bn
-      @bullets[bi][:y] -= BULLET_SPEED
+      b = @bullets[bi]
+      b[:y] -= BULLET_SPEED
+      if b[:y] < -BULLET_H
+        b[:sprite].visible = false
+        @free_bullets.push(b[:sprite])
+      else
+        b[:sprite].move(@user_area_x0 + b[:x] - BULLET_W / 2,
+                        @user_area_y0 + b[:y])
+        alive << b
+      end
       bi += 1
     end
-    @bullets.reject! { |b| b[:y] < -BULLET_H }
+    @bullets = alive
   end
 
   def update_enemies
     speed = ENEMY_SPEED_BASE + @score / 500
+    alive = []
     ei = 0
     en = @enemies.length
     while ei < en
-      @enemies[ei][:y] += speed
+      e = @enemies[ei]
+      e[:y] += speed
+      if e[:y] > @user_area_height + ENEMY_H
+        e[:sprite].visible = false
+        @free_enemies.push(e[:sprite])
+      else
+        e[:sprite].move(@user_area_x0 + e[:x] - ENEMY_W / 2,
+                        @user_area_y0 + e[:y])
+        alive << e
+      end
       ei += 1
     end
-    @enemies.reject! { |e| e[:y] > @user_area_height + ENEMY_H }
+    @enemies = alive
   end
 
   def spawn_enemies
     @spawn_timer += 1
     interval = 20 - @score / 300
     interval = 8 if interval < 8
-    if @spawn_timer >= interval
+    if @spawn_timer >= interval && !@free_enemies.empty?
       @spawn_timer = 0
       ex = (RNG.random_int % (@user_area_width - ENEMY_W * 2)) + ENEMY_W
-      @enemies << { x: ex, y: -ENEMY_H }
+      sprite = @free_enemies.pop
+      sprite.visible = true
+      sprite.move(@user_area_x0 + ex - ENEMY_W / 2, @user_area_y0 + (-ENEMY_H))
+      @enemies << { x: ex, y: -ENEMY_H, sprite: sprite }
     end
   end
 
   def check_collisions
     # Bullet vs Enemy
-    @bullets.reject! do |b|
-      hit = false
-      @enemies.reject! do |e|
-        if !hit && rect_hit?(b[:x] - BULLET_W / 2, b[:y], BULLET_W, BULLET_H,
-                             e[:x] - ENEMY_W / 2, e[:y], ENEMY_W, ENEMY_H)
-          @score += 100
-          hit = true
-          true
-        else
-          false
+    bi = @bullets.length - 1
+    while bi >= 0
+      b = @bullets[bi]
+      hit_idx = -1
+      ei = @enemies.length - 1
+      while ei >= 0
+        e = @enemies[ei]
+        if rect_hit?(b[:x] - BULLET_W / 2, b[:y], BULLET_W, BULLET_H,
+                     e[:x] - ENEMY_W / 2, e[:y], ENEMY_W, ENEMY_H)
+          hit_idx = ei
+          break
         end
+        ei -= 1
       end
-      hit
+      if hit_idx >= 0
+        e = @enemies[hit_idx]
+        e[:sprite].visible = false
+        @free_enemies.push(e[:sprite])
+        @enemies.delete_at(hit_idx)
+
+        b[:sprite].visible = false
+        @free_bullets.push(b[:sprite])
+        @bullets.delete_at(bi)
+        @score += 100
+      end
+      bi -= 1
     end
 
     # Enemy vs Player
@@ -195,13 +307,22 @@ class ShooterApp < FmrbApp
       e = @enemies[ei]
       if rect_hit?(px, py, PLAYER_W, PLAYER_H,
                    e[:x] - ENEMY_W / 2, e[:y], ENEMY_W, ENEMY_H)
-        @game_over = true
-        draw_all
-        draw_game_over
+        trigger_game_over
         return
       end
       ei += 1
     end
+  end
+
+  def trigger_game_over
+    @game_over = true
+    # Hide every sprite so the GAME OVER overlay is not occluded
+    @player_sprite.visible = false
+    @bullets.each { |b| b[:sprite].visible = false }
+    @enemies.each { |e| e[:sprite].visible = false }
+    draw_score
+    draw_game_over
+    @gfx.present
   end
 
   def rect_hit?(x1, y1, w1, h1, x2, y2, w2, h2)
@@ -210,44 +331,18 @@ class ShooterApp < FmrbApp
 
   # ---- Drawing ----
 
-  def draw_all
+  def draw_background
     ox = @user_area_x0
     oy = @user_area_y0
-
-    # Background
     @gfx.fill_rect(ox, oy, @user_area_width, @user_area_height, BG_COLOR)
-
-    # Player (triangle shape)
-    px = ox + @player_x
-    py = oy + @player_y
-    @gfx.fill_triangle(px, py - 2, px - PLAYER_W / 2, py + PLAYER_H,
-                        px + PLAYER_W / 2, py + PLAYER_H, PLAYER_COLOR)
-
-    # Bullets
-    bi = 0
-    bn = @bullets.length
-    while bi < bn
-      b = @bullets[bi]
-      @gfx.fill_rect(ox + b[:x] - BULLET_W / 2, oy + b[:y], BULLET_W, BULLET_H, BULLET_COLOR)
-      bi += 1
-    end
-
-    # Enemies
-    ei = 0
-    en = @enemies.length
-    while ei < en
-      e = @enemies[ei]
-      ex = ox + e[:x]
-      ey = oy + e[:y]
-      @gfx.fill_rect(ex - ENEMY_W / 2, ey, ENEMY_W, ENEMY_H, ENEMY_COLOR)
-      ei += 1
-    end
-
-    # Score
-    @gfx.draw_text(ox + 2, oy + 2, "SCORE:#{@score}", TEXT_COLOR, BG_COLOR)
-
     draw_window_frame
-    @gfx.present
+  end
+
+  # Fixed-width score keeps prior digits from leaking through when the
+  # background is no longer cleared every frame.
+  def draw_score
+    @gfx.draw_text(@user_area_x0 + 2, @user_area_y0 + 2,
+                   sprintf("SCORE:%06d", @score), TEXT_COLOR, BG_COLOR)
   end
 
   def draw_game_over
@@ -258,10 +353,15 @@ class ShooterApp < FmrbApp
     @gfx.fill_rect(cx - 40, cy - 16, 80, 34, GAMEOVER_BG)
     @gfx.draw_text(cx - 27, cy - 12, "GAME OVER", TEXT_COLOR, GAMEOVER_BG)
     @gfx.draw_text(cx - 38, cy + 4, "X:Retry ST:Quit", TEXT_COLOR, GAMEOVER_BG)
-    @gfx.present
   end
 
   def on_destroy
+    @bullet_pool.each { |s| s.destroy } if @bullet_pool
+    @enemy_pool.each { |s| s.destroy } if @enemy_pool
+    @player_sprite.destroy if @player_sprite
+    @player_img.destroy if @player_img
+    @bullet_img.destroy if @bullet_img
+    @enemy_img.destroy if @enemy_img
     Log.info("Shooter destroyed")
   end
 end
