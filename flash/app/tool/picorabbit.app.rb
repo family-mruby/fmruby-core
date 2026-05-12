@@ -129,19 +129,19 @@ class SlideShowApp < FmrbApp
       ch = ev[:character] || 0
 
       case kc
-      when 79  # Right
+      when FmrbConst::KEY_RIGHT
         advance
-      when 80  # Left
+      when FmrbConst::KEY_LEFT
         go_back
-      when 82  # Up - rabbit jump
+      when FmrbConst::KEY_UP  # rabbit jump
         @renderer.jump_rabbit if @renderer
-      when 74  # Home
+      when FmrbConst::KEY_HOME
         go_first
-      when 77  # End
+      when FmrbConst::KEY_END
         go_last
-      when 75  # PageUp
+      when FmrbConst::KEY_PGUP
         go_back
-      when 78  # PageDown
+      when FmrbConst::KEY_PGDN
         advance
       else
         if ch == 10 || ch == 13 || ch == 32  # Enter or Space

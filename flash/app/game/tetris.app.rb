@@ -421,13 +421,13 @@ class TetrisApp < FmrbApp
       character = ev[:character] || 0
 
       case keycode
-      when 80  # Left
+      when FmrbConst::KEY_LEFT
         @input_buffer << :left
-      when 79  # Right
+      when FmrbConst::KEY_RIGHT
         @input_buffer << :right
-      when 81  # Down
+      when FmrbConst::KEY_DOWN
         @input_buffer << :down
-      when 82  # Up (rotate)
+      when FmrbConst::KEY_UP  # rotate
         @input_buffer << :rotate
       end
 

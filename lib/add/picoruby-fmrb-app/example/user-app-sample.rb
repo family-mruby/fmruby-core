@@ -83,13 +83,13 @@ class SampleApp < FmrbApp
 
     # Move position based on arrow keys
     case key_code
-    when 0x50  # Up arrow
+    when FmrbConst::KEY_UP
       @y -= 10
-    when 0x51  # Down arrow
+    when FmrbConst::KEY_DOWN
       @y += 10
-    when 0x4F  # Right arrow
+    when FmrbConst::KEY_RIGHT
       @x += 10
-    when 0x50  # Left arrow
+    when FmrbConst::KEY_LEFT
       @x -= 10
     end
 

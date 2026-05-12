@@ -199,22 +199,22 @@ class NsfPlayerApp < FmrbApp
       kc = ev[:keycode] || 0
 
       case kc
-      when 82  # Up (HID scancode)
+      when FmrbConst::KEY_UP
         if @selected > 0
           select_file(@selected - 1)
           @scroll = @selected if @selected < @scroll
           draw_ui
         end
-      when 81  # Down (HID scancode)
+      when FmrbConst::KEY_DOWN
         if @selected < @files.length - 1
           select_file(@selected + 1)
           @scroll = @selected - visible_count + 1 if @selected >= @scroll + visible_count
           @scroll = 0 if @scroll < 0
           draw_ui
         end
-      when 80  # Left (HID scancode)
+      when FmrbConst::KEY_LEFT
         change_track(@track - 1) if @nsf_info
-      when 79  # Right (HID scancode)
+      when FmrbConst::KEY_RIGHT
         change_track(@track + 1) if @nsf_info
       else
         if ch == 10 || ch == 13  # Enter

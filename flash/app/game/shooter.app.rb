@@ -114,38 +114,38 @@ class ShooterApp < FmrbApp
     case ev[:type]
     when :gamepad_down
       case ev[:button]
-      when 12 then @input[:up] = true
-      when 13 then @input[:down] = true
-      when 14 then @input[:left] = true
-      when 15 then @input[:right] = true
-      when 2  then @shoot_pressed = true   # Circle
-      when 1                               # Cross
+      when FmrbConst::GP_UP    then @input[:up]    = true
+      when FmrbConst::GP_DOWN  then @input[:down]  = true
+      when FmrbConst::GP_LEFT  then @input[:left]  = true
+      when FmrbConst::GP_RIGHT then @input[:right] = true
+      when FmrbConst::GP_CIRCLE then @shoot_pressed = true
+      when FmrbConst::GP_CROSS
         reset_game if @game_over
-      when 9 then stop                     # Start = Quit
+      when FmrbConst::GP_START then stop
       end
     when :gamepad_up
       case ev[:button]
-      when 12 then @input[:up] = false
-      when 13 then @input[:down] = false
-      when 14 then @input[:left] = false
-      when 15 then @input[:right] = false
+      when FmrbConst::GP_UP    then @input[:up]    = false
+      when FmrbConst::GP_DOWN  then @input[:down]  = false
+      when FmrbConst::GP_LEFT  then @input[:left]  = false
+      when FmrbConst::GP_RIGHT then @input[:right] = false
       end
     when :gamepad_axis
-      if ev[:axis] == 0  # Left stick X
+      if ev[:axis] == FmrbConst::GP_AXIS_LX
         v = ev[:value]
         @input[:left] = v < -30
         @input[:right] = v > 30
-      elsif ev[:axis] == 1  # Left stick Y
+      elsif ev[:axis] == FmrbConst::GP_AXIS_LY
         v = ev[:value]
         @input[:up] = v < -30
         @input[:down] = v > 30
       end
     when :key_down
       case ev[:keycode]
-      when 80 then @input[:left] = true
-      when 79 then @input[:right] = true
-      when 82 then @input[:up] = true
-      when 81 then @input[:down] = true
+      when FmrbConst::KEY_LEFT  then @input[:left]  = true
+      when FmrbConst::KEY_RIGHT then @input[:right] = true
+      when FmrbConst::KEY_UP    then @input[:up]    = true
+      when FmrbConst::KEY_DOWN  then @input[:down]  = true
       end
       if ev[:character] == 32  # Space
         @shoot_pressed = true
@@ -155,10 +155,10 @@ class ShooterApp < FmrbApp
       end
     when :key_up
       case ev[:keycode]
-      when 80 then @input[:left] = false
-      when 79 then @input[:right] = false
-      when 82 then @input[:up] = false
-      when 81 then @input[:down] = false
+      when FmrbConst::KEY_LEFT  then @input[:left]  = false
+      when FmrbConst::KEY_RIGHT then @input[:right] = false
+      when FmrbConst::KEY_UP    then @input[:up]    = false
+      when FmrbConst::KEY_DOWN  then @input[:down]  = false
       end
     end
   end

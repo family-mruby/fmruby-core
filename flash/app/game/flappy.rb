@@ -136,7 +136,7 @@ class SpriteTestApp < FmrbApp
     if ev[:type] == :key_down
       keycode = ev[:keycode] || 0
       character = ev[:character] || 0
-      if keycode == 82 || character == 32
+      if keycode == FmrbConst::KEY_UP || character == 32
         if @game_over
           restart
         else

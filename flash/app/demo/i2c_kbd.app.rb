@@ -60,7 +60,7 @@ class I2cKbdApp < FmrbApp
     if ev[:type] == :key_down
       keycode = ev[:keycode] || 0
       character = ev[:character] || 0
-      if character == 27 || keycode == 41  # Escape: clear all
+      if character == 27 || keycode == FmrbConst::KEY_ESC  # Escape: clear all
         clear_text
       elsif character >= 0x20 && character < 0x7F
         append_char(character.chr)

@@ -94,17 +94,17 @@ class Encoder8App < FmrbApp
       character = ev[:character] || 0
 
       case keycode
-      when 79  # Right - next channel
+      when FmrbConst::KEY_RIGHT  # next channel
         @selected_ch = (@selected_ch + 1) % NUM_ENC
         draw_screen
-      when 80  # Left - previous channel
+      when FmrbConst::KEY_LEFT  # previous channel
         @selected_ch = (@selected_ch - 1) % NUM_ENC
         draw_screen
-      when 82  # Up - rotate clockwise
+      when FmrbConst::KEY_UP  # rotate clockwise
         @positions[@selected_ch] += 1
         publish(TOPIC, {"type" => "encoder", "ch" => @selected_ch, "delta" => 1})
         draw_screen
-      when 81  # Down - rotate counter-clockwise
+      when FmrbConst::KEY_DOWN  # rotate counter-clockwise
         @positions[@selected_ch] -= 1
         publish(TOPIC, {"type" => "encoder", "ch" => @selected_ch, "delta" => -1})
         draw_screen
