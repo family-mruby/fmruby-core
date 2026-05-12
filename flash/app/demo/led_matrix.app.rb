@@ -307,7 +307,7 @@ class LedMatrixApp < FmrbApp
   end
 
   def draw_frame
-    @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height, FmrbGfx::BLACK)
+    clear_user_area
     draw_header
     draw_window_frame
     @gfx.present

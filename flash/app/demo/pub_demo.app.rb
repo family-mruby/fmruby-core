@@ -14,8 +14,7 @@ class PubDemoApp < FmrbApp
   end
 
   def draw_screen
-    @gfx.fill_rect(@user_area_x0, @user_area_y0,
-                   @user_area_width, @user_area_height, FmrbGfx::BLACK)
+    clear_user_area
     # Info
     @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
                    "Sent: #{@count}", FmrbGfx::WHITE)

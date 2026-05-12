@@ -82,7 +82,7 @@ class ShellApp < FmrbApp
     @max_chars = (@user_area_width - 4 - FmrbApp::SCROLLBAR_W) / @char_width
     @visible_rows = (@user_area_height - 2) / @char_height
 
-    @gfx.clear(@bg_col)
+    clear_user_area(@bg_col)
     draw_window_frame
     show_logo
     draw_prompt
@@ -532,7 +532,7 @@ class ShellApp < FmrbApp
 
   def draw_less_view
     clamp_less_offset
-    @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height, @bg_col)
+    clear_user_area(@bg_col)
     draw_window_frame
 
     content_x = @user_area_x0 + 2

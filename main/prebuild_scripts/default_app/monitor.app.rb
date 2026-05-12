@@ -106,8 +106,7 @@ class MonitorApp < FmrbApp
   end
 
   def draw_all
-    @gfx.fill_rect(@user_area_x0, @user_area_y0,
-                    @user_area_width, @user_area_height, COLOR_BG)
+    clear_user_area(COLOR_BG)
     if @page == 0
       draw_page_memory
     else

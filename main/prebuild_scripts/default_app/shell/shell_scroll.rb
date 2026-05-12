@@ -210,8 +210,7 @@ module ShellScrollMixin
 
   def redraw_screen
     # Full redraw: Clear user area and redraw everything
-    @gfx.fill_rect(@user_area_x0, @user_area_y0,
-                    @user_area_width, @user_area_height, @bg_col)
+    clear_user_area(@bg_col)
     draw_window_frame
     draw_prompt
 

@@ -65,7 +65,7 @@ class GpioViewerApp < FmrbApp
   private
 
   def draw_all
-    @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height, FmrbGfx::BLACK)
+    clear_user_area
     @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 2, "GPIO Status", FmrbGfx::WHITE)
 
     status = @prev_status || FmrbHw.pin_status_all
