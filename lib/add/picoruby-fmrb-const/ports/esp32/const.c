@@ -125,6 +125,181 @@ static const char* chip_model_str(esp_chip_model_t m)
 }
 #endif
 
+// Helper: define a single integer constant on a module.
+static inline void define_int_const(mrb_state *mrb, struct RClass *m,
+                                    const char *name, mrb_int v)
+{
+    mrb_define_const(mrb, m, name, mrb_fixnum_value(v));
+}
+
+// Define USB HID keyboard Usage ID constants (KEY_*).
+// Match ev[:scancode] (uniform) and ev[:keycode] for non-letter keys.
+// For letter keys (A-Z, 0-9), ev[:keycode] is platform-dependent (ASCII on
+// SDL2) -- match against ev[:scancode] for portability.
+static void define_key_constants(mrb_state *mrb, struct RClass *m)
+{
+    // Letters: A-Z = 0x04-0x1D
+    define_int_const(mrb, m, "KEY_A", 0x04);
+    define_int_const(mrb, m, "KEY_B", 0x05);
+    define_int_const(mrb, m, "KEY_C", 0x06);
+    define_int_const(mrb, m, "KEY_D", 0x07);
+    define_int_const(mrb, m, "KEY_E", 0x08);
+    define_int_const(mrb, m, "KEY_F", 0x09);
+    define_int_const(mrb, m, "KEY_G", 0x0A);
+    define_int_const(mrb, m, "KEY_H", 0x0B);
+    define_int_const(mrb, m, "KEY_I", 0x0C);
+    define_int_const(mrb, m, "KEY_J", 0x0D);
+    define_int_const(mrb, m, "KEY_K", 0x0E);
+    define_int_const(mrb, m, "KEY_L", 0x0F);
+    define_int_const(mrb, m, "KEY_M", 0x10);
+    define_int_const(mrb, m, "KEY_N", 0x11);
+    define_int_const(mrb, m, "KEY_O", 0x12);
+    define_int_const(mrb, m, "KEY_P", 0x13);
+    define_int_const(mrb, m, "KEY_Q", 0x14);
+    define_int_const(mrb, m, "KEY_R", 0x15);
+    define_int_const(mrb, m, "KEY_S", 0x16);
+    define_int_const(mrb, m, "KEY_T", 0x17);
+    define_int_const(mrb, m, "KEY_U", 0x18);
+    define_int_const(mrb, m, "KEY_V", 0x19);
+    define_int_const(mrb, m, "KEY_W", 0x1A);
+    define_int_const(mrb, m, "KEY_X", 0x1B);
+    define_int_const(mrb, m, "KEY_Y", 0x1C);
+    define_int_const(mrb, m, "KEY_Z", 0x1D);
+
+    // Number row: 1-9, 0 = 0x1E-0x27
+    define_int_const(mrb, m, "KEY_1", 0x1E);
+    define_int_const(mrb, m, "KEY_2", 0x1F);
+    define_int_const(mrb, m, "KEY_3", 0x20);
+    define_int_const(mrb, m, "KEY_4", 0x21);
+    define_int_const(mrb, m, "KEY_5", 0x22);
+    define_int_const(mrb, m, "KEY_6", 0x23);
+    define_int_const(mrb, m, "KEY_7", 0x24);
+    define_int_const(mrb, m, "KEY_8", 0x25);
+    define_int_const(mrb, m, "KEY_9", 0x26);
+    define_int_const(mrb, m, "KEY_0", 0x27);
+
+    // Common keys
+    define_int_const(mrb, m, "KEY_ENTER",     0x28);
+    define_int_const(mrb, m, "KEY_ESC",       0x29);
+    define_int_const(mrb, m, "KEY_BACKSPACE", 0x2A);
+    define_int_const(mrb, m, "KEY_TAB",       0x2B);
+    define_int_const(mrb, m, "KEY_SPACE",     0x2C);
+
+    // Punctuation (US layout names)
+    define_int_const(mrb, m, "KEY_MINUS",     0x2D);
+    define_int_const(mrb, m, "KEY_EQUAL",     0x2E);
+    define_int_const(mrb, m, "KEY_LBRACKET",  0x2F);
+    define_int_const(mrb, m, "KEY_RBRACKET",  0x30);
+    define_int_const(mrb, m, "KEY_BACKSLASH", 0x31);
+    define_int_const(mrb, m, "KEY_SEMICOLON", 0x33);
+    define_int_const(mrb, m, "KEY_QUOTE",     0x34);
+    define_int_const(mrb, m, "KEY_GRAVE",     0x35);
+    define_int_const(mrb, m, "KEY_COMMA",     0x36);
+    define_int_const(mrb, m, "KEY_PERIOD",    0x37);
+    define_int_const(mrb, m, "KEY_SLASH",     0x38);
+
+    define_int_const(mrb, m, "KEY_CAPSLOCK", 0x39);
+
+    // Function keys F1-F12
+    define_int_const(mrb, m, "KEY_F1",  0x3A);
+    define_int_const(mrb, m, "KEY_F2",  0x3B);
+    define_int_const(mrb, m, "KEY_F3",  0x3C);
+    define_int_const(mrb, m, "KEY_F4",  0x3D);
+    define_int_const(mrb, m, "KEY_F5",  0x3E);
+    define_int_const(mrb, m, "KEY_F6",  0x3F);
+    define_int_const(mrb, m, "KEY_F7",  0x40);
+    define_int_const(mrb, m, "KEY_F8",  0x41);
+    define_int_const(mrb, m, "KEY_F9",  0x42);
+    define_int_const(mrb, m, "KEY_F10", 0x43);
+    define_int_const(mrb, m, "KEY_F11", 0x44);
+    define_int_const(mrb, m, "KEY_F12", 0x45);
+
+    // System keys
+    define_int_const(mrb, m, "KEY_PRINTSCREEN", 0x46);
+    define_int_const(mrb, m, "KEY_SCROLLLOCK",  0x47);
+    define_int_const(mrb, m, "KEY_PAUSE",       0x48);
+
+    // Navigation cluster
+    define_int_const(mrb, m, "KEY_INSERT", 0x49);
+    define_int_const(mrb, m, "KEY_HOME",   0x4A);
+    define_int_const(mrb, m, "KEY_PGUP",   0x4B);
+    define_int_const(mrb, m, "KEY_DELETE", 0x4C);
+    define_int_const(mrb, m, "KEY_END",    0x4D);
+    define_int_const(mrb, m, "KEY_PGDN",   0x4E);
+
+    // Arrow keys
+    define_int_const(mrb, m, "KEY_RIGHT", 0x4F);
+    define_int_const(mrb, m, "KEY_LEFT",  0x50);
+    define_int_const(mrb, m, "KEY_DOWN",  0x51);
+    define_int_const(mrb, m, "KEY_UP",    0x52);
+
+    define_int_const(mrb, m, "KEY_NUMLOCK", 0x53);
+
+    // Modifier keys (as keycodes; for masks use MOD_* below)
+    define_int_const(mrb, m, "KEY_LCTRL",  0xE0);
+    define_int_const(mrb, m, "KEY_LSHIFT", 0xE1);
+    define_int_const(mrb, m, "KEY_LALT",   0xE2);
+    define_int_const(mrb, m, "KEY_LMETA",  0xE3);
+    define_int_const(mrb, m, "KEY_RCTRL",  0xE4);
+    define_int_const(mrb, m, "KEY_RSHIFT", 0xE5);
+    define_int_const(mrb, m, "KEY_RALT",   0xE6);
+    define_int_const(mrb, m, "KEY_RMETA",  0xE7);
+}
+
+// Define modifier-mask constants (MOD_*) for ev[:modifier].
+// Values mirror FMRB_KEYMAP_MOD_* in main/drivers/usb/fmrb_keymap.h.
+static void define_mod_constants(mrb_state *mrb, struct RClass *m)
+{
+    define_int_const(mrb, m, "MOD_LSHIFT", 0x01);
+    define_int_const(mrb, m, "MOD_RSHIFT", 0x02);
+    define_int_const(mrb, m, "MOD_LCTRL",  0x04);
+    define_int_const(mrb, m, "MOD_RCTRL",  0x08);
+    define_int_const(mrb, m, "MOD_LALT",   0x10);
+    define_int_const(mrb, m, "MOD_RALT",   0x20);
+    // Left|Right composite masks for "any side"
+    define_int_const(mrb, m, "MOD_SHIFT",  0x03);
+    define_int_const(mrb, m, "MOD_CTRL",   0x0C);
+    define_int_const(mrb, m, "MOD_ALT",    0x30);
+}
+
+// Define gamepad button/axis index constants (GP_*).
+// Button bit indices come from the project's canonical mapping documented in
+// flash/etc/hid_devices.toml (HORI PAD layout, used as the reference order).
+static void define_gamepad_constants(mrb_state *mrb, struct RClass *m)
+{
+    // Face buttons
+    define_int_const(mrb, m, "GP_SQUARE",   0);
+    define_int_const(mrb, m, "GP_CROSS",    1);
+    define_int_const(mrb, m, "GP_CIRCLE",   2);
+    define_int_const(mrb, m, "GP_TRIANGLE", 3);
+
+    // Shoulders / triggers
+    define_int_const(mrb, m, "GP_L1", 4);
+    define_int_const(mrb, m, "GP_R1", 5);
+    define_int_const(mrb, m, "GP_L2", 6);
+    define_int_const(mrb, m, "GP_R2", 7);
+
+    // System buttons
+    define_int_const(mrb, m, "GP_SELECT", 8);
+    define_int_const(mrb, m, "GP_START",  9);
+
+    // Stick clicks
+    define_int_const(mrb, m, "GP_L3", 10);
+    define_int_const(mrb, m, "GP_R3", 11);
+
+    // D-pad (synthesized from HAT)
+    define_int_const(mrb, m, "GP_UP",    12);
+    define_int_const(mrb, m, "GP_DOWN",  13);
+    define_int_const(mrb, m, "GP_LEFT",  14);
+    define_int_const(mrb, m, "GP_RIGHT", 15);
+
+    // Axes for ev[:axis] on :gamepad_axis events
+    define_int_const(mrb, m, "GP_AXIS_LX", 0);
+    define_int_const(mrb, m, "GP_AXIS_LY", 1);
+    define_int_const(mrb, m, "GP_AXIS_RX", 2);
+    define_int_const(mrb, m, "GP_AXIS_RY", 3);
+}
+
 void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
 {
     // Define FmrbConst module
@@ -263,6 +438,11 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "THEME_BORDER", mrb_fixnum_value(t->border));
     mrb_define_const(mrb, const_module, "THEME_BUTTON", mrb_fixnum_value(t->button));
     mrb_define_const(mrb, const_module, "THEME_DIR_COLOR", mrb_fixnum_value(t->dir_color));
+
+    // Input constants: USB HID keycodes, modifier masks, gamepad buttons/axes
+    define_key_constants(mrb, const_module);
+    define_mod_constants(mrb, const_module);
+    define_gamepad_constants(mrb, const_module);
 
     // Define FmrbHw module for hardware resource management
     struct RClass *hw_module = mrb_define_module(mrb, "FmrbHw");
