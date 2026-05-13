@@ -32,6 +32,7 @@ typedef struct {
     bool debug_mode;                        // Debug mode enabled/disabled
     double mouse_scale_x;                   // Mouse X sensitivity multiplier
     double mouse_scale_y;                   // Mouse Y sensitivity multiplier
+    char language[8];                       // UI language code, e.g. "ja" or "en"
 } fmrb_system_config_t;
 
 

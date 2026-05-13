@@ -34,6 +34,7 @@ typedef enum {
     GFX_CMD_TRIANGLE,
     GFX_CMD_ARC,
     GFX_CMD_TEXT_SIZE,
+    GFX_CMD_SET_FONT,
     GFX_CMD_BLEND_RECT,
     GFX_CMD_SET_OUTPUT_LEVEL,
     GFX_CMD_SET_CHROMA_LEVEL,
@@ -101,6 +102,7 @@ typedef struct {
             fmrb_color_t bg_color;
             bool bg_transparent;  // true = no background, false = use bg_color
             fmrb_font_size_t font_size;
+            uint8_t hybrid_mode;  // 0 = use current font, 1 = ASCII/JA hybrid render
         } text;
         struct {
             int16_t x;  // Screen X position
@@ -148,6 +150,10 @@ typedef struct {
         struct {
             uint8_t size;
         } text_size;
+        struct {
+            uint8_t family;  // 0=default, 1=ja
+            uint8_t size;    // pixel height (JA: 12 supported now)
+        } set_font;
         struct {
             fmrb_rect_t rect;
             fmrb_color_t color;

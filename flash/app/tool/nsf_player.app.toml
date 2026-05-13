@@ -1,5 +1,6 @@
 app_handle_name = "nsf_player"
 app_screen_name = "NSF Player"
+app_screen_name_ja = "NSFプレーヤ"
 default_window_mode = "window"
 default_window_width = 280
 default_window_height = 200

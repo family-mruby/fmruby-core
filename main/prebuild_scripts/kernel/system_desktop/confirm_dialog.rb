@@ -41,11 +41,11 @@ module ConfirmDialogMixin
     @gfx.fill_rect(x + 1, y + 1, CDLG_W - 2, 13, CDLG_TITLE_BG)
     @gfx.draw_text(x + 4, y + 3, "Confirm", FmrbGfx::WHITE, CDLG_TITLE_BG)
 
-    # Message
+    # Message. Uses mixed:true so localized strings (e.g. JA "再起動しますか?")
+    # render via misaki_8 for multi-byte and Font0 for ASCII in the same line.
     msg = @cdlg_message || ""
-    max_chars = (CDLG_W - 16) / 6
-    msg = msg[0, max_chars] if msg.length > max_chars
-    @gfx.draw_text(x + 8, y + 24, msg, CDLG_TEXT, CDLG_BG)
+    msg = FmrbI18n.truncate_to(msg, CDLG_W - 16)
+    @gfx.draw_text(x + 8, y + 24, msg, CDLG_TEXT, CDLG_BG, mixed: true)
 
     # Yes button
     yes_x = x + CDLG_W / 2 - 50

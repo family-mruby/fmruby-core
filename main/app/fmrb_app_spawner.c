@@ -19,7 +19,6 @@ extern const uint8_t system_desktop_irep[];
 extern const uint8_t shell_irep[];
 extern const uint8_t editor_irep[];
 extern const uint8_t logviewer_irep[];
-extern const uint8_t config_irep[];
 extern const uint8_t monitor_irep[];
 
 // Built-in app configuration table
@@ -338,12 +337,6 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid)
         if (strcmp(app_name, builtin_app_table[i].lookup_name) == 0) {
             return spawn_builtin_app(&builtin_app_table[i], out_pid);
         }
-    }
-
-    // Config app (not yet in table)
-    if (strcmp(app_name, "default/config") == 0) {
-        FMRB_LOGW(TAG, "Config app not yet implemented");
-        return FMRB_ERR_NOT_SUPPORTED;
     }
 
     // Reject unknown built-in app names

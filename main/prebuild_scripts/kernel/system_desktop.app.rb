@@ -12,6 +12,7 @@ class SystemDesktopApp < FmrbApp
   include FileSelectorMixin
   include FileManagerMixin
   include ConfirmDialogMixin
+  include ConfigDialogMixin
   include ErrorDialogMixin
   include ClockSettingMixin
   include TaskbarMixin
@@ -32,16 +33,19 @@ class SystemDesktopApp < FmrbApp
   BOOT_FRAME_MS = 60
   BOOT_HOLD_MS = 1000  # Wait time after full reveal, before swapping to desktop
 
-  # Dropdown menu items
+  # Dropdown menu items. `:key` drives both the dispatch in handle_dropdown_click
+  # and the localized label resolved via FmrbI18n.t(:key) at draw time, so the
+  # menu picks up the system language ("ja" / "en") from system_conf.toml.
+  # Reset is ESP32-only (esp_restart); on Linux the host process just exits.
   DROPDOWN_ITEMS = [
-    { label: "Launcher" },
-    { label: "File Manager" },
-    { label: "Log Viewer" },
-    { label: "Monitor" },
-    { label: "Set Clock" },
-    { label: "Config", app: "default/config" },
-    { label: "About" },
-  ]
+    { key: :launcher },
+    { key: :file_manager },
+    { key: :log_viewer },
+    { key: :monitor },
+    { key: :set_clock },
+    { key: :config },
+    { key: :about },
+  ] + (FmrbConst::PLATFORM == "esp32" ? [{ key: :reset }] : [])
 
   DROPDOWN_X = 0
   DROPDOWN_Y = MENU_BAR_HEIGHT
@@ -116,6 +120,12 @@ class SystemDesktopApp < FmrbApp
     @clk_selected = 0
     @clk_x = 0
     @clk_y = 0
+
+    # Config dialog state
+    @cfg_open = false
+    @cfg_selected = -1
+    @cfg_status = nil
+    @cfg_status_until = 0
 
     # Boot animation state
     @boot_anim_state = :init  # :init -> :revealing -> :wait_to_finish -> :done
@@ -406,6 +416,7 @@ class SystemDesktopApp < FmrbApp
     draw_file_manager if @file_manager_open
     draw_confirm_dialog if @cdlg_open
     draw_clock_setting if @clk_open
+    draw_config_dialog if @cfg_open
     draw_error_dialog if @error_dlg_open
     draw_about_dialog if @about_open
     draw_tbd_dialog if @tbd_open
@@ -418,7 +429,7 @@ class SystemDesktopApp < FmrbApp
     @gfx.draw_text(2, 2, "Family mruby", FmrbGfx::WHITE)
     draw_taskbar
     draw_clock
-    @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, 0x60)
+    @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
   end
 
   def draw_clock
@@ -439,11 +450,12 @@ class SystemDesktopApp < FmrbApp
 
     DROPDOWN_ITEMS.each_with_index do |item, i|
       item_y = y + 1 + i * DROPDOWN_ITEM_H
+      label = FmrbI18n.t(item[:key])
       if i == @dropdown_hover_idx
         @gfx.fill_rect(x + 1, item_y, DROPDOWN_W - 2, DROPDOWN_ITEM_H, DROPDOWN_HIGHLIGHT)
-        @gfx.draw_text(x + 6, item_y + 2, item[:label], DROPDOWN_TEXT, DROPDOWN_HIGHLIGHT)
+        @gfx.draw_text(x + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_HIGHLIGHT, mixed: true)
       else
-        @gfx.draw_text(x + 6, item_y + 2, item[:label], DROPDOWN_TEXT, DROPDOWN_BG)
+        @gfx.draw_text(x + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_BG, mixed: true)
       end
     end
   end
@@ -504,6 +516,7 @@ class SystemDesktopApp < FmrbApp
     # Update clock and taskbar every ~1 second (330ms * 3 = ~1s)
     if @counter % 3 == 0
       update_taskbar_apps
+      tick_config_dialog if @cfg_open
       draw_foreground
     end
 
@@ -554,6 +567,9 @@ class SystemDesktopApp < FmrbApp
         cb_data[k] = v
       end
       open_confirm_dialog(msg["message"], msg["on_yes_cmd"], cb_data)
+    elsif msg["cmd"] == "do_reboot"
+      Log.info("Desktop: do_reboot received, calling FmrbApp.reboot")
+      FmrbApp.reboot
     end
   end
 
@@ -669,6 +685,16 @@ class SystemDesktopApp < FmrbApp
       return
     end
 
+    # Config dialog
+    if @cfg_open
+      if hit_config_dialog?(x, y)
+        handle_config_dialog_click(x, y)
+        return
+      end
+      close_config_dialog
+      return
+    end
+
     # File selector has priority
     if @file_selector_open
       if hit_file_selector?(x, y)
@@ -732,21 +758,23 @@ class SystemDesktopApp < FmrbApp
     item = DROPDOWN_ITEMS[item_idx]
     close_dropdown
 
-    case item[:label]
-    when "Launcher"
+    case item[:key]
+    when :launcher
       open_launcher
-    when "File Manager"
+    when :file_manager
       open_file_manager
-    when "Log Viewer"
+    when :log_viewer
       spawn_app("default/logviewer")
-    when "Monitor"
+    when :monitor
       spawn_app("default/monitor")
-    when "Set Clock"
+    when :set_clock
       open_clock_setting
-    when "About"
+    when :about
       open_about_dialog
-    when "Config"
-      open_tbd_dialog("Config")
+    when :config
+      open_config_dialog
+    when :reset
+      open_confirm_dialog(FmrbI18n.t(:reboot_confirm), "reboot", {})
     else
       spawn_app(item[:app]) if item[:app]
     end

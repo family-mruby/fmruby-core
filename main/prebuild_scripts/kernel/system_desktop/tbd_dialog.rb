@@ -36,7 +36,7 @@ module TbdDialogMixin
     @gfx.fill_rect(x, y, TBD_W, TBD_H, TBD_BG)
     @gfx.draw_rect(x, y, TBD_W, TBD_H, TBD_BORDER)
     @gfx.fill_rect(x + 1, y + 1, TBD_W - 2, 13, TBD_TITLE_BG)
-    @gfx.draw_text(x + 6, y + 3, @tbd_title.to_s, TBD_TITLE_TEXT, TBD_TITLE_BG)
+    @gfx.draw_text(x + 6, y + 3, @tbd_title.to_s, TBD_TITLE_TEXT, TBD_TITLE_BG, mixed: true)
     @gfx.draw_text(x + TBD_W / 2 - 12, y + 26, "TBD", TBD_TEXT, TBD_BG)
     @gfx.draw_text(x + TBD_W - 96, y + TBD_H - 10, "(click to close)", TBD_LABEL)
   end

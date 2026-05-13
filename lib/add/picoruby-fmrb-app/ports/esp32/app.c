@@ -32,8 +32,10 @@
 
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "esp_heap_caps.h"
+#include "esp_system.h"
 #else
 #include <sys/sysinfo.h>
+#include <stdlib.h>
 #endif
 
 static const char* TAG = "app";
@@ -1052,6 +1054,25 @@ static mrb_value mrb_fmrb_app_s_heap_info(mrb_state *mrb, mrb_value self)
     return hash;
 }
 
+// FmrbApp.reboot -> never returns
+// Restarts the system. On ESP32 calls esp_restart() (returns no power-cycle
+// reset reason on next boot). On Linux exits the host process so the SDL
+// harness comes back via the launcher script. The dropdown only exposes the
+// menu entry on ESP32 (FmrbConst::PLATFORM == "esp32"), but the API itself is
+// safe to call on either platform.
+static mrb_value mrb_fmrb_app_s_reboot(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    FMRB_LOGI(TAG, "Reboot requested by user");
+    fmrb_task_delay_ms(100);
+#ifdef CONFIG_IDF_TARGET_LINUX
+    exit(0);
+#else
+    esp_restart();
+#endif
+    return mrb_nil_value();  // unreachable
+}
+
 // FmrbApp.enable_cursor -> nil
 // Allow the OS cursor to appear on the next mouse event. system_desktop calls
 // this once its boot animation is complete so the cursor stays hidden during
@@ -1086,6 +1107,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "set_wallclock", mrb_fmrb_app_s_set_wallclock, MRB_ARGS_REQ(6));
     mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 

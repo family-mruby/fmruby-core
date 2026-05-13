@@ -1,4 +1,5 @@
 app_screen_name = "GPIO Viewer"
+app_screen_name_ja = "GPIO表示"
 default_window_mode = "window"
 default_window_width = 300
 default_window_height = 180

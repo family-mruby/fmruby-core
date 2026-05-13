@@ -17,11 +17,14 @@ module LauncherMixin
   LAUNCHER_ICON_SEL = FmrbGfx.rgb_to_332(200, 180, 180)
   LAUNCHER_TEXT = FmrbConst::THEME_TEXT
 
-  # Built-in app entries
-  BUILTIN_APPS = [
-    { label: "Shell",  app: "default/shell",  icon_file: "usr/share/icon/shell.icon" },
-    { label: "Editor", app: "default/editor", icon_file: "usr/share/icon/editor.icon" },
-  ]
+  # Built-in app entries. Labels are resolved through FmrbI18n at scan time so
+  # they pick up the active language ("ja" / "en") from system_conf.toml.
+  def builtin_apps
+    [
+      { label: FmrbI18n.t(:shell),  app: "default/shell",  icon_file: "usr/share/icon/shell.icon" },
+      { label: FmrbI18n.t(:editor), app: "default/editor", icon_file: "usr/share/icon/editor.icon" },
+    ]
+  end
 
   # Default icon files per VM type
   VM_ICON_FILES = {
@@ -170,8 +173,8 @@ module LauncherMixin
   # ---- App scanning ----
 
   def scan_apps
-    @launcher_apps = BUILTIN_APPS.dup
-    builtin_count = BUILTIN_APPS.size
+    @launcher_apps = builtin_apps
+    builtin_count = @launcher_apps.size
     # Try both ESP32 (LittleFS at /flash) and Linux (relative flash/) paths
     ["/flash/app", "flash/app"].each do |path|
       scan_app_dir(path)
@@ -235,8 +238,10 @@ module LauncherMixin
 
   def parse_app_toml(toml_path, dir_path)
     label = nil
+    label_lang = nil   # Localized label from app_screen_name_<lang>, takes precedence
     icon_field = nil
     launcher_visible = true
+    lang_key = "app_screen_name_#{FmrbI18n.lang}"
     begin
       file = File.open(strip_flash_prefix(toml_path), "r")
       content = file.read
@@ -244,22 +249,21 @@ module LauncherMixin
 
       content.split("\n").each do |line|
         line = line.strip
-        if line.start_with?("app_screen_name")
-          m = line.split("=", 2)
-          if m[1]
-            label = m[1].strip.gsub('"', '')
-          end
-        elsif line.start_with?("launcher_visible")
-          m = line.split("=", 2)
-          if m[1]
-            v = m[1].strip.gsub('"', '').downcase
-            launcher_visible = !(v == "false" || v == "0")
-          end
-        elsif line.start_with?("icon")
-          m = line.split("=", 2)
-          if m[1]
-            icon_field = m[1].strip.gsub('"', '')
-          end
+        next if line.empty? || line.start_with?("#")
+        m = line.split("=", 2)
+        next unless m[1]
+        key = m[0].strip
+        val = m[1].strip.gsub('"', '')
+        case key
+        when lang_key
+          label_lang = val
+        when "app_screen_name"
+          label = val
+        when "launcher_visible"
+          v = val.downcase
+          launcher_visible = !(v == "false" || v == "0")
+        when "icon"
+          icon_field = val
         end
       end
     rescue => e
@@ -288,7 +292,7 @@ module LauncherMixin
 
     icon_char = VM_ICONS[ext] || "?"
     icon_file = icon_field || VM_ICON_FILES[ext]
-    label ||= base
+    label = label_lang || label || base
     app_path = strip_flash_prefix("#{dir_path}/#{base}.#{ext}")
 
     { label: label, app: app_path, icon_char: icon_char, icon_file: icon_file }
@@ -335,7 +339,7 @@ module LauncherMixin
     @gfx.fill_rect(x, y, LAUNCHER_W, LAUNCHER_H, LAUNCHER_BG)
     @gfx.draw_rect(x, y, LAUNCHER_W, LAUNCHER_H, FmrbConst::THEME_BORDER)
     @gfx.fill_rect(x + 1, y + 1, LAUNCHER_W - 2, LAUNCHER_TITLE_H - 1, LAUNCHER_TITLE_BG)
-    @gfx.draw_text(x + 4, y + 3, "Launcher", FmrbGfx::WHITE, LAUNCHER_TITLE_BG)
+    @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:launcher), FmrbGfx::WHITE, LAUNCHER_TITLE_BG, mixed: true)
     bar_y = y + LAUNCHER_TITLE_H
     bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
     draw_scrollbar(@launcher_scroll, launcher_total_rows, launcher_visible_rows,
@@ -397,22 +401,26 @@ module LauncherMixin
           @gfx.draw_text(char_x, char_y, app[:icon_char] || "?", 0x00, bg)
         end
 
-        # Label below icon (2-line with truncation)
+        # Label below icon. Uses mixed:true so Japanese (UTF-8) labels render
+        # with misaki_8 (8px) while ASCII stays on Font0 (6px). Width helpers
+        # in FmrbI18n keep centering and ellipsis correct for either case.
         label = app[:label]
-        max_chars = LAUNCHER_ICON_W / 6
-        if label.length <= max_chars
-          label_x = icon_x + (LAUNCHER_ICON_W - label.length * 6) / 2
-          @gfx.draw_text(label_x, icon_y + LAUNCHER_ICON_H - 8, label, LAUNCHER_TEXT)
+        max_px = LAUNCHER_ICON_W
+        full_w = FmrbI18n.text_width(label)
+        if full_w <= max_px
+          label_x = icon_x + (LAUNCHER_ICON_W - full_w) / 2
+          @gfx.draw_text(label_x, icon_y + LAUNCHER_ICON_H - 8, label, LAUNCHER_TEXT, mixed: true)
         else
-          line1 = label[0, max_chars]
-          line2 = label[max_chars..]
-          if line2.length > max_chars
-            line2 = line2[0, max_chars - 2] + ".."
-          end
-          l1x = icon_x + (LAUNCHER_ICON_W - line1.length * 6) / 2
-          l2x = icon_x + (LAUNCHER_ICON_W - line2.length * 6) / 2
-          @gfx.draw_text(l1x, icon_y + LAUNCHER_ICON_H - 16, line1, LAUNCHER_TEXT)
-          @gfx.draw_text(l2x, icon_y + LAUNCHER_ICON_H - 8, line2, LAUNCHER_TEXT)
+          line1 = FmrbI18n.truncate_to(label, max_px, "")
+          consumed = line1.bytesize
+          line2 = (consumed < label.bytesize) ? label.byteslice(consumed, label.bytesize - consumed) : ""
+          line2 = FmrbI18n.truncate_to(line2, max_px) if line2.length > 0
+          w1 = FmrbI18n.text_width(line1)
+          w2 = FmrbI18n.text_width(line2)
+          l1x = icon_x + (LAUNCHER_ICON_W - w1) / 2
+          l2x = icon_x + (LAUNCHER_ICON_W - w2) / 2
+          @gfx.draw_text(l1x, icon_y + LAUNCHER_ICON_H - 16, line1, LAUNCHER_TEXT, mixed: true)
+          @gfx.draw_text(l2x, icon_y + LAUNCHER_ICON_H - 8,  line2, LAUNCHER_TEXT, mixed: true)
         end
       end
       vrow += 1
@@ -473,7 +481,7 @@ module LauncherMixin
     x = @launcher_x
     y = @launcher_y
     @gfx.fill_rect(x + 1, y + 1, LAUNCHER_W - 2, LAUNCHER_TITLE_H - 1, LAUNCHER_TITLE_BG)
-    @gfx.draw_text(x + 4, y + 3, text, color, LAUNCHER_TITLE_BG)
+    @gfx.draw_text(x + 4, y + 3, text, color, LAUNCHER_TITLE_BG, mixed: true)
     @gfx.present
   end
 

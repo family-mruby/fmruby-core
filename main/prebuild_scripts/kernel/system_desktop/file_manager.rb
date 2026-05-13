@@ -131,7 +131,7 @@ module FileManagerMixin
 
     # Window frame
     @gfx.fill_rect(x, y, FMGR_W, FMGR_H, FMGR_BG)
-    @gfx.draw_rect(x, y, FMGR_W, FMGR_H, 0x60)
+    @gfx.draw_rect(x, y, FMGR_W, FMGR_H, FmrbConst::THEME_BORDER)
 
     # Title bar
     @gfx.fill_rect(x + 1, y + 1, FMGR_W - 2, FMGR_TITLE_H - 1, FMGR_TITLE_BG)
@@ -147,14 +147,15 @@ module FileManagerMixin
 
     # Column header
     header_y = y + FMGR_TITLE_H + 1
-    @gfx.fill_rect(x + 1, header_y, FMGR_W - 2, FMGR_ITEM_H, 0xDB)
-    @gfx.draw_text(x + 6, header_y + 2, "Name", FMGR_TEXT, 0xDB)
+    header_bg = FmrbConst::THEME_HIGHLIGHT
+    @gfx.fill_rect(x + 1, header_y, FMGR_W - 2, FMGR_ITEM_H, header_bg)
+    @gfx.draw_text(x + 6, header_y + 2, "Name", FMGR_TEXT, header_bg)
     size_col_x = x + FMGR_W - 60
-    @gfx.draw_text(size_col_x, header_y + 2, "Size", FMGR_TEXT, 0xDB)
+    @gfx.draw_text(size_col_x, header_y + 2, "Size", FMGR_TEXT, header_bg)
 
-    # Copy indicator
+    # Copy indicator — themed accent so it pops against the header band.
     if @fmgr_copy_path
-      @gfx.draw_text(x + 40, header_y + 2, "[Copy]", 0xE0, 0xDB)
+      @gfx.draw_text(x + 40, header_y + 2, "[Copy]", FmrbConst::THEME_DIR_COLOR, header_bg)
     end
 
     # File list

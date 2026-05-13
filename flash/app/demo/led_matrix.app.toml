@@ -1,4 +1,5 @@
 app_screen_name = "LED Matrix"
+app_screen_name_ja = "LEDマトリクス"
 default_window_mode = "window"
 default_window_width = 160
 default_window_height = 180

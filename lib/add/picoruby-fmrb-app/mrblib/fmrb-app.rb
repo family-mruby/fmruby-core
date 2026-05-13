@@ -82,12 +82,27 @@ class FmrbApp
   # Repaint the window frame. Uses the GfxBlock program when
   # USE_FRAME_BLOCK=true (skip/diff-send), otherwise sends per-primitive
   # commands each call.
+  #
+  # The system title bar is always rendered with the default 8px ASCII
+  # font. The caller's font / text-size selection is saved on entry and
+  # restored on exit, so apps using set_font(:ja, ...) never need to
+  # re-apply the font after every frame call.
   def draw_window_frame
     return if @fullscreen
+    if @gfx
+      saved_font = @gfx.current_font
+      saved_size = @gfx.current_text_size
+      @gfx.set_font(:default)
+      @gfx.set_text_size(1)
+    end
     if @frame_block
       @frame_block.draw(w: @window_width, h: @window_height)
     else
       _draw_window_frame_direct
+    end
+    if @gfx
+      @gfx.set_font(*saved_font) unless saved_font == [:default]
+      @gfx.set_text_size(saved_size) unless saved_size == 1
     end
   end
 

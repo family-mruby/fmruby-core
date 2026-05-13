@@ -1,5 +1,6 @@
 app_handle_name = "tetris"
 app_screen_name = "Tetris"
+app_screen_name_ja = "テトリス"
 default_window_mode = "window"
 default_window_width = 130
 default_window_height = 180

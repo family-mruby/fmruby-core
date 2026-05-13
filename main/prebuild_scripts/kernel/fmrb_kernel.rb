@@ -255,6 +255,15 @@ class FmrbKernelImpl < FmrbKernel
           _send_raw_message(sub_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
         end
       end
+    when "reboot"
+      Log.info("Reboot requested by PID #{pid}; forwarding to desktop")
+      # Desktop VM has FmrbApp.reboot available; route there to perform the
+      # actual esp_restart/exit. Keeping the kernel VM agnostic to FmrbApp.
+      if @desktop_pid
+        fwd = { "cmd" => "do_reboot" }
+        binary = MessagePack.pack(fwd)
+        _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
+      end
     when "suspend"
       Log.info("Suspend request (not implemented)")
     when "resume"

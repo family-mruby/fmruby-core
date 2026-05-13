@@ -18,6 +18,11 @@ class FmrbGfx
   BLEND_ADD = 0  # Per-component saturating add
   BLEND_XOR = 1  # Per-pixel XOR
 
+  # Currently selected font and text size. Tracked here (not on the WROVER
+  # side) so the window frame can save and restore the app's choice
+  # without an extra round trip.
+  attr_reader :current_font, :current_text_size
+
   # Initialize graphics context
   # @param canvas_id [Integer] Canvas ID for this graphics instance
   # @param width [Integer] Canvas width (optional, for :center support)
@@ -26,6 +31,47 @@ class FmrbGfx
     _init(canvas_id)
     @canvas_width = width
     @canvas_height = height
+    # LovyanGFX boots a fresh target with Font0 and text size 1.
+    @current_font = [:default]
+    @current_text_size = 1
+  end
+
+  # Select the font family for subsequent draw_text calls on this canvas.
+  # @param family [Symbol] :default (Font0 6x8 ASCII) or :ja (Japanese)
+  # @param size [Integer, nil] Pixel height. :ja supports 8 (misaki) and
+  #   12 (efontJA_12). Ignored for :default.
+  def set_font(family, size = nil)
+    @current_font = size ? [family, size] : [family]
+    size ? _set_font(family, size) : _set_font(family)
+    self
+  end
+
+  # Set the text scale multiplier (1..4). Applies on top of the active font.
+  def set_text_size(size)
+    @current_text_size = size
+    _set_text_size(size)
+    self
+  end
+
+  # Draw a single line of text at (x, y).
+  # @param mixed [Boolean] When true, ASCII bytes render with the system
+  #   Font0 (6x8) and UTF-8 multi-byte runs render with misaki_8 (8x8).
+  #   The current_font selection is preserved on either side of the call.
+  def draw_text(x, y, str, color, bg_color = nil, mixed: false)
+    if mixed
+      if bg_color
+        _draw_text_hybrid(x, y, str, color, bg_color)
+      else
+        _draw_text_hybrid(x, y, str, color)
+      end
+    else
+      if bg_color
+        _draw_text(x, y, str, color, bg_color)
+      else
+        _draw_text(x, y, str, color)
+      end
+    end
+    self
   end
 
   # Transfer a file from core to graphics-audio LittleFS

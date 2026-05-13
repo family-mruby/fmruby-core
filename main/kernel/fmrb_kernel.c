@@ -43,7 +43,8 @@ static fmrb_system_config_t g_system_config = {
     .display_mode = FMRB_DISPLAY_MODE_NTSC_IPC,
     .debug_mode = true,
     .mouse_scale_x = 1.0,
-    .mouse_scale_y = 1.0
+    .mouse_scale_y = 1.0,
+    .language = "en"
 };
 
 // Parse keyboard_layout string to enum
@@ -130,6 +131,17 @@ static bool read_system_config(void)
         fmrb_sys_free((void *)tz);
     } else {
         FMRB_LOGW(TAG, "Timezone not configured, logs will use UTC");
+    }
+
+    // Read UI language ("ja" / "en"); used by FmrbI18n in launcher and prebuilt apps
+    const char *language_str = fmrb_toml_get_string(conf, "language", NULL);
+    if (language_str) {
+        strncpy(g_system_config.language, language_str, sizeof(g_system_config.language) - 1);
+        g_system_config.language[sizeof(g_system_config.language) - 1] = '\0';
+        FMRB_LOGI(TAG, "Language set to: %s", g_system_config.language);
+        fmrb_sys_free((void *)language_str);
+    } else {
+        FMRB_LOGI(TAG, "Language not configured, using default: %s", g_system_config.language);
     }
 
     // Read keyboard layout and apply

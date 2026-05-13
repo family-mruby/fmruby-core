@@ -11,6 +11,7 @@ mouse_scale_x = 0.5
 mouse_scale_y = 0.5
 timezone = "JST-9"
 keyboard_layout = "jp" # "jp" or "us"
+language = "en" # "ja" or "en"
 
 [theme]
 desktop_bg = 0xF6

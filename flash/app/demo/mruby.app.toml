@@ -1,6 +1,7 @@
 # script name must be "app_handle_name.app.rb"
 app_handle_name = "sample_ruby_app"
 app_screen_name = "ruby app"
+app_screen_name_ja = "Rubyアプリデモ"
 #default_window_mode = "background" # or "fullwindow" or "window" or "background"
 default_window_mode = "window" # or "fullwindow" or "window" or "background"
 

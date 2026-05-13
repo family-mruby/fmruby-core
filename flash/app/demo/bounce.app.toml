@@ -1,5 +1,6 @@
 app_handle_name = "bounce_basic_app"
 app_screen_name = "Bounce"
+app_screen_name_ja = "バウンス"
 default_window_mode = "window"
 
 default_window_width = 200

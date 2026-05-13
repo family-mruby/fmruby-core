@@ -123,6 +123,7 @@ typedef enum {
     FMRB_LINK_GFX_DRAW_CHAR = 0x21,
     FMRB_LINK_GFX_SET_TEXT_SIZE = 0x22,
     FMRB_LINK_GFX_SET_TEXT_COLOR = 0x23,
+    FMRB_LINK_GFX_SET_FONT = 0x24,
 
     // Clear and fill
     FMRB_LINK_GFX_CLEAR = 0x30,
@@ -266,6 +267,7 @@ typedef struct __attribute__((packed)) {
     uint8_t color;  // RGB332 format (foreground)
     uint8_t bg_color;  // RGB332 format (background)
     uint8_t bg_transparent;  // 1 = transparent (no background), 0 = use bg_color
+    uint8_t hybrid_mode;  // 0 = use current font; 1 = ASCII -> Font0, multi-byte UTF-8 -> misaki_8
     uint16_t text_len;
     // Followed by text data
 } fmrb_link_graphics_text_t;
@@ -313,6 +315,16 @@ typedef struct __attribute__((packed)) {
     uint16_t canvas_id;
     uint8_t size;  // text size multiplier (1-4)
 } fmrb_link_graphics_text_size_t;
+
+// Font family identifiers for fmrb_link_graphics_set_font_t
+#define FMRB_LINK_GFX_FONT_FAMILY_DEFAULT 0  // LovyanGFX Font0 (6x8 ASCII)
+#define FMRB_LINK_GFX_FONT_FAMILY_JA      1  // efontJA_* (UTF-8, Japanese)
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint8_t family;  // FMRB_LINK_GFX_FONT_FAMILY_*
+    uint8_t size;    // Pixel height (used for JA: 12 currently supported)
+} fmrb_link_graphics_set_font_t;
 
 // Canvas management structures
 typedef struct __attribute__((packed)) {

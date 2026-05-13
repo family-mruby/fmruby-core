@@ -397,6 +397,16 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_SET_FONT: {
+            fmrb_link_graphics_set_font_t c = {
+                .canvas_id = cmd->canvas_id,
+                .family = cmd->params.set_font.family,
+                .size = cmd->params.set_font.size
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_SET_FONT;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         case GFX_CMD_BLEND_RECT: {
             fmrb_link_graphics_blend_rect_t c = {
                 .canvas_id = cmd->canvas_id,
@@ -422,6 +432,7 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             t->color = cmd->params.text.color;
             t->bg_color = cmd->params.text.bg_color;
             t->bg_transparent = cmd->params.text.bg_transparent ? 1 : 0;
+            t->hybrid_mode = cmd->params.text.hybrid_mode;
             t->text_len = text_len;
             memcpy(payload_buf + sizeof(fmrb_link_graphics_text_t), cmd->params.text.text, text_len);
             *sub_cmd_out = FMRB_LINK_GFX_DRAW_STRING;

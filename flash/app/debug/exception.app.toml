@@ -1,4 +1,5 @@
 app_screen_name = "Exception Test"
+app_screen_name_ja = "例外テスト"
 default_window_mode = "window"
 default_window_width = 160
 default_window_height = 60

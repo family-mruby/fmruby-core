@@ -1,5 +1,6 @@
 app_handle_name = "fail_app"
 app_screen_name = "CompileErr"
+app_screen_name_ja = "構文エラー"
 default_window_mode = "window"
 
 default_window_width = 50

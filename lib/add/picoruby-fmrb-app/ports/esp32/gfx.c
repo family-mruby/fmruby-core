@@ -505,8 +505,51 @@ static mrb_value mrb_gfx_set_text_size(mrb_state *mrb, mrb_value self)
     return self;
 }
 
-// Graphics#draw_text(x, y, text, color [, bg_color])
-static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
+// Graphics#set_font(family[, size])
+//   family: :default or :ja
+//   size:   pixel height. Supported JA sizes: 8 (misaki, matches system UI),
+//           12 (efontJA_12, readability). Ignored for :default.
+static mrb_value mrb_gfx_set_font(mrb_state *mrb, mrb_value self)
+{
+    mrb_sym family_sym;
+    mrb_int size = 12;
+    mrb_int argc = mrb_get_argc(mrb);
+    if (argc >= 2) {
+        mrb_get_args(mrb, "ni", &family_sym, &size);
+    } else {
+        mrb_get_args(mrb, "n", &family_sym);
+    }
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+
+    const char *family_name = mrb_sym2name(mrb, family_sym);
+    uint8_t family;
+    if (strcmp(family_name, "default") == 0) {
+        family = FMRB_LINK_GFX_FONT_FAMILY_DEFAULT;
+    } else if (strcmp(family_name, "ja") == 0) {
+        family = FMRB_LINK_GFX_FONT_FAMILY_JA;
+        if (size != 8 && size != 12) {
+            mrb_raisef(mrb, E_ARGUMENT_ERROR, "set_font(:ja, size): only size=8 or 12 is supported (got %d)", (int)size);
+        }
+    } else {
+        mrb_raisef(mrb, E_ARGUMENT_ERROR, "set_font: unknown family :%s (expected :default or :ja)", family_name);
+    }
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_SET_FONT,
+        .canvas_id = data->canvas_id,
+        .params.set_font = { .family = family, .size = (uint8_t)size }
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Set font failed: %d", ret);
+    return self;
+}
+
+// Shared implementation for _draw_text / _draw_text_hybrid. The Ruby
+// wrapper in fmrb-gfx.rb picks the right C method based on the mixed:
+// keyword so this function only differs by the hybrid_mode flag.
+static mrb_value draw_text_impl(mrb_state *mrb, mrb_value self, uint8_t hybrid_mode)
 {
     mrb_int x, y, color;
     mrb_int bg_color = 0;
@@ -526,8 +569,8 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    FMRB_LOGD("gfx", "draw_text called: x=%d, y=%d, text='%s', color=0x%02X, bg_color=0x%02X, bg_transparent=%d, canvas_id=%d",
-              (int)x, (int)y, text, (int)color, (int)bg_color, !bg_given, data->canvas_id);
+    FMRB_LOGD("gfx", "draw_text called: x=%d, y=%d, text='%s', color=0x%02X, bg_color=0x%02X, bg_transparent=%d, hybrid=%u, canvas_id=%d",
+              (int)x, (int)y, text, (int)color, (int)bg_color, !bg_given, hybrid_mode, data->canvas_id);
 
     // Send GFX command to Host Task
     gfx_cmd_t cmd = {
@@ -539,7 +582,8 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
             .color = (fmrb_color_t)color,
             .bg_color = (fmrb_color_t)bg_color,
             .bg_transparent = !bg_given,
-            .font_size = FMRB_FONT_SIZE_MEDIUM
+            .font_size = FMRB_FONT_SIZE_MEDIUM,
+            .hybrid_mode = hybrid_mode
         }
     };
     strncpy(cmd.params.text.text, text, sizeof(cmd.params.text.text) - 1);
@@ -552,6 +596,19 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
     }
 
     return self;
+}
+
+// Graphics#_draw_text(x, y, text, color [, bg_color]) — uses current font.
+static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
+{
+    return draw_text_impl(mrb, self, 0);
+}
+
+// Graphics#_draw_text_hybrid(x, y, text, color [, bg_color]) — switches
+// between Font0 (ASCII) and misaki_8 (UTF-8 multi-byte) per glyph.
+static mrb_value mrb_gfx_draw_text_hybrid(mrb_state *mrb, mrb_value self)
+{
+    return draw_text_impl(mrb, self, 1);
 }
 
 // Graphics#present
@@ -1244,8 +1301,15 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "fill_triangle", mrb_gfx_fill_triangle, MRB_ARGS_REQ(7));
     mrb_define_method(mrb, gfx_class, "draw_arc", mrb_gfx_draw_arc, MRB_ARGS_REQ(7));
     mrb_define_method(mrb, gfx_class, "fill_arc", mrb_gfx_fill_arc, MRB_ARGS_REQ(7));
-    mrb_define_method(mrb, gfx_class, "set_text_size", mrb_gfx_set_text_size, MRB_ARGS_REQ(1));
-    mrb_define_method(mrb, gfx_class, "draw_text", mrb_gfx_draw_text, MRB_ARGS_ARG(4, 1));
+    // _set_text_size / _set_font are the raw transport-level methods.
+    // Ruby wrappers in fmrb-gfx.rb cache the current font / size so the
+    // window frame can save and restore the app's choice automatically.
+    mrb_define_method(mrb, gfx_class, "_set_text_size", mrb_gfx_set_text_size, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "_set_font", mrb_gfx_set_font, MRB_ARGS_ARG(1, 1));
+    // draw_text is exposed through a Ruby wrapper in fmrb-gfx.rb so the
+    // `mixed:` keyword can route to the hybrid variant.
+    mrb_define_method(mrb, gfx_class, "_draw_text",        mrb_gfx_draw_text,        MRB_ARGS_ARG(4, 1));
+    mrb_define_method(mrb, gfx_class, "_draw_text_hybrid", mrb_gfx_draw_text_hybrid, MRB_ARGS_ARG(4, 1));
     mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_NONE());
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());
 

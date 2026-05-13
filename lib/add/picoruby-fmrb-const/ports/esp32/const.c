@@ -24,6 +24,7 @@
 #include "fmrb_msg_payload.h"
 #include "fmrb_hal_pin_manager.h"
 #include "fmrb_pin_assign.h"
+#include "fmrb_kernel.h"
 #include "status_led.h"
 #include "../../include/picoruby_fmrb_const.h"
 
@@ -426,6 +427,13 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "LED_ERR_NONE",              mrb_fixnum_value(FMRB_LED_STATUS_NONE));
     mrb_define_const(mrb, const_module, "LED_ERR_FATAL",             mrb_fixnum_value(FMRB_LED_STATUS_FATAL));
     mrb_define_const(mrb, const_module, "LED_ERR_VERSION_MISMATCH",  mrb_fixnum_value(FMRB_LED_STATUS_VERSION_MISMATCH));
+
+    // UI language code (from system_conf.toml, e.g. "ja" / "en")
+    {
+        const fmrb_system_config_t *sys_cfg = fmrb_kernel_get_config();
+        const char *lang = (sys_cfg && sys_cfg->language[0]) ? sys_cfg->language : "en";
+        mrb_define_const(mrb, const_module, "LANGUAGE", mrb_str_new_cstr(mrb, lang));
+    }
 
     // Theme color constants (from g_theme, possibly overridden by system_conf.toml)
     const fmrb_theme_t *t = fmrb_theme_get();

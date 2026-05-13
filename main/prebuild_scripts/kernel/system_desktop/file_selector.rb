@@ -92,7 +92,7 @@ module FileSelectorMixin
 
     # Window
     @gfx.fill_rect(x, y, FSEL_W, FSEL_H, FSEL_BG)
-    @gfx.draw_rect(x, y, FSEL_W, FSEL_H, 0x60)
+    @gfx.draw_rect(x, y, FSEL_W, FSEL_H, FmrbConst::THEME_BORDER)
 
     # Title bar
     @gfx.fill_rect(x + 1, y + 1, FSEL_W - 2, FSEL_TITLE_H - 1, FSEL_TITLE_BG)
@@ -110,7 +110,7 @@ module FileSelectorMixin
       field_x = x + 40
       field_w = FSEL_W - 100
       @gfx.fill_rect(field_x, bottom_y - 1, field_w, 10, FmrbGfx::WHITE)
-      @gfx.draw_rect(field_x, bottom_y - 1, field_w, 10, 0x60)
+      @gfx.draw_rect(field_x, bottom_y - 1, field_w, 10, FmrbConst::THEME_BORDER)
       @gfx.draw_text(field_x + 2, bottom_y, @file_selector_filename, FSEL_TEXT, FmrbGfx::WHITE)
       # Cursor
       cursor_x = field_x + 2 + @file_selector_filename.length * 6

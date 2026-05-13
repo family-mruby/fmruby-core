@@ -1,5 +1,6 @@
 app_handle_name = "shapes"
 app_screen_name = "Shapes"
+app_screen_name_ja = "図形描画"
 default_window_mode = "window"
 default_window_width = 240
 default_window_height = 200

@@ -1,3 +1,4 @@
 app_handle_name = "shooter"
 app_screen_name = "Shooter"
+app_screen_name_ja = "シューター"
 default_window_mode = "fullscreen"

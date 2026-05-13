@@ -1,4 +1,5 @@
 app_handle_name = "raycaster"
 app_screen_name = "Raycaster"
+app_screen_name_ja = "迷路"
 default_window_mode = "fullscreen"
 large_memory = 1
