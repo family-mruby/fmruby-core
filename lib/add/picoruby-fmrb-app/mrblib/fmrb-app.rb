@@ -136,8 +136,7 @@ class FmrbApp
 
     GfxBlock.new(@gfx, thumb_y: y + btn_h, thumb_h: 6) do |r, thumb_y:, thumb_h:|
       # Separator column between content and scrollbar
-      r.draw_line(bar_x - 1, y, bar_x - 1, y + h - 1, border)
-      r.draw_line(bar_x    , y, bar_x    , y + h - 1, bg)
+      r.draw_line(bar_x , y, bar_x , y + h - 1, border)
       # Up button + arrow
       r.fill_rect(bar_x, y, SCROLLBAR_W, btn_h, bg)
       r.draw_rect(bar_x, y, SCROLLBAR_W, btn_h, border)
@@ -151,7 +150,7 @@ class FmrbApp
       r.draw_line(cx, dy + 7, cx + 3, dy + 2, border)
       r.draw_line(cx - 3, dy + 2, cx + 3, dy + 2, border)
       # Thumb (dynamic)
-      r.fill_rect(bar_x + 1, thumb_y, SCROLLBAR_W - 2, thumb_h, border)
+      r.fill_rect(bar_x + 2, thumb_y, SCROLLBAR_W - 3, thumb_h, border)
     end
   end
 

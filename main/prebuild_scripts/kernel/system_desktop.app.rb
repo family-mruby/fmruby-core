@@ -600,6 +600,19 @@ class SystemDesktopApp < FmrbApp
 
     if ev[:type] == :key_down
       character = ev[:character] || 0
+      keycode = ev[:keycode] || 0
+
+      # Launcher: arrow keys scroll the visible range while it is open.
+      if @launcher_open
+        case keycode
+        when FmrbConst::KEY_UP
+          launcher_scroll_up
+          return
+        when FmrbConst::KEY_DOWN
+          launcher_scroll_down
+          return
+        end
+      end
 
       # Key input for file selector filename (save mode)
       if @file_selector_open && @file_selector_mode == "save"
