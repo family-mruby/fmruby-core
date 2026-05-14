@@ -1,5 +1,6 @@
 # RX8900 RTC driver (pure Ruby, uses I2C gem)
 # Ported from the C driver (main/drivers/rtc/rx8900.c)
+# Loaded via require "rx8900" (placed under /lib); ESP32 only because of I2C.
 
 class RX8900
   I2C_ADDR = 0x32

@@ -7,6 +7,9 @@
 #   AppLifecycleMixin   - Fullscreen, suspend/resume, app termination
 #   AudioHandlerMixin   - Audio message forwarding to host task
 
+# RX8900 driver lives at /lib/rx8900.rb; only ESP32 has the I2C gem to use it.
+require "rx8900" if FmrbConst::PLATFORM == "esp32"
+
 # FmrbKernelImpl extends FmrbKernel with application-level kernel logic
 class FmrbKernelImpl < FmrbKernel
   include WindowManagerMixin

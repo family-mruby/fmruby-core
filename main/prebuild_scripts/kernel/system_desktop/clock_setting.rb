@@ -1,6 +1,8 @@
 # Clock Setting module for SystemDesktopApp
 # Provides a dialog to manually set the system clock.
-# On ESP32, also writes to RTC hardware (when RX8900 gem is available).
+# On ESP32, also writes to RTC hardware (RX8900 is loaded from /lib/rx8900.rb).
+
+require "rx8900" if FmrbConst::PLATFORM == "esp32"
 
 module ClockSettingMixin
   CLK_W = 200
