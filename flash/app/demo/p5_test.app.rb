@@ -2,6 +2,8 @@
 # Click anywhere on the user area to cycle through pages. Window
 # frame is left intact (we clear only the user area).
 
+require "p5"
+
 class P5TestApp < FmrbApp
   PAGES = %w[basics transform bezier text arc blend get_pixel image_masked]
   # Pages whose content changes every frame; everything else is drawn

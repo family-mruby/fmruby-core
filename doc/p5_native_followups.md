@@ -42,7 +42,7 @@
   [fmruby-graphics-audio/main/graphics/graphics_handler.cpp](../../fmruby-graphics-audio/main/graphics/graphics_handler.cpp)
   に `case FMRB_LINK_GFX_GET_PIXEL` を追加 (`target->readPixel(x, y)` で
   RGB332 値を読み出し、`send_ack` で 2 バイト応答)
-- P5 公開: [lib/add/picoruby-fmrb-app/mrblib/p5.rb](../lib/add/picoruby-fmrb-app/mrblib/p5.rb)
+- P5 公開: [flash/lib/p5.rb](../flash/lib/p5.rb)
   の `P5#get_pixel` を `@gfx.get_pixel(x, y)` 委譲に変更
 
 ### 性能注意点
@@ -94,7 +94,7 @@ LovyanGFX に組み込み `pushImageWithMask` 相当はなく、行単位の
   [fmruby-graphics-audio/main/graphics/graphics_handler.cpp](../../fmruby-graphics-audio/main/graphics/graphics_handler.cpp)
   にマスクストア (16 スロット、PSRAM 確保) と 3 ケース追加。描画は
   `sprite->readPixelValue` + `canvas->draw_buffer->drawPixel` の 2 重ループ。
-- P5 公開: [lib/add/picoruby-fmrb-app/mrblib/p5.rb](../lib/add/picoruby-fmrb-app/mrblib/p5.rb)
+- P5 公開: [flash/lib/p5.rb](../flash/lib/p5.rb)
   の `P5#image_masked(image_id, mask_data, x, y, w, h)` を create→draw→delete
   ラップに変更。長寿命マスクは `@gfx.create_mask` を直接使う。
 
@@ -166,7 +166,7 @@ LovyanGFX に組み込み `pushImageWithMask` 相当はなく、行単位の
 - canvas / sprite 両方のターゲットに描画できるよう、現状 `set_sprite_image_target`
   で切り替え中のターゲットを尊重する
 
-### P5 側 (`mrblib/p5.rb`)
+### P5 側 (`flash/lib/p5.rb`)
 インライン版 (旧 harucom 互換) は段階的に提供する:
 
 ```ruby
