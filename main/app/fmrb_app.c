@@ -2024,7 +2024,7 @@ fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t hei
     ctx->window_width = width;
     ctx->window_height = height;
 
-    FMRB_LOGI(TAG, "Window '%s' (PID %d) resized to %dx%d",
+    FMRB_LOGD(TAG, "Window '%s' (PID %d) resized to %dx%d",
               ctx->app_name, pid, width, height);
 
     // Send UPDATE_WINDOW command to Host to update canvas active size
@@ -2098,7 +2098,7 @@ fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t hei
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to send resize event to app PID %d: %d", pid, ret);
     } else {
-        FMRB_LOGI(TAG, "Resize event sent to app PID %d", pid);
+        FMRB_LOGD(TAG, "Resize event sent to app PID %d", pid);
     }
 
     fmrb_semaphore_give(g_ctx_lock);

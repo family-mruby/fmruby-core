@@ -633,7 +633,7 @@ fmrb_err_t fmrb_kernel_set_hid_target(uint8_t target_pid)
     g_hid_routing.target_pid = target_pid;
     fmrb_semaphore_give(g_hid_routing_mutex);
 
-    FMRB_LOGI(TAG, "HID target set to PID=%d", target_pid);
+    FMRB_LOGD(TAG, "HID target set to PID=%d", target_pid);
     return FMRB_OK;
 }
 

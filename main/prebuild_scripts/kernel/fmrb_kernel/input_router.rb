@@ -2,6 +2,12 @@
 # HID event routing and coordinate transformation
 
 module InputRouterMixin
+  # Must match the floor enforced by fmrb_app_update_window_size() in
+  # main/app/fmrb_app.c; bare const inside a mixin method only resolves
+  # against the mixin's own scope, so the constants must live here.
+  MIN_WINDOW_WIDTH = 64
+  MIN_WINDOW_HEIGHT = 64
+
   def handle_hid_event(msg)
     data_binary = msg[:data]
     src_pid = msg[:src_pid]
@@ -48,7 +54,7 @@ module InputRouterMixin
         win_width = target_window[:width]
         win_height = target_window[:height]
 
-        Log.info("Click at (#{x},#{y}) -> '#{target_name}' (PID #{target_pid}, Z=#{target_z})")
+        #Log.debug("Click at (#{x},#{y}) -> '#{target_name}' (PID #{target_pid}, Z=#{target_z})")
 
         # Bring clicked window to front
         _bring_to_front(target_pid)
@@ -60,7 +66,7 @@ module InputRouterMixin
         relative_x = x - win_x
         relative_y = y - win_y
 
-        Log.info("Relative pos in window: (#{relative_x},#{relative_y}), size=#{win_width}x#{win_height}")
+        #Log.debug("Relative pos in window: (#{relative_x},#{relative_y}), size=#{win_width}x#{win_height}")
 
         # Record mouse_down window for button_up event routing
         @mouse_down_pid = target_pid

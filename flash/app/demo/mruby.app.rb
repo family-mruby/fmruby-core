@@ -97,8 +97,8 @@ class BouncingBallApp < FmrbApp
                       _ball_area_w, _ball_area_h, FmrbGfx::WHITE)
       draw_balls
     end
-    draw_window_frame
     draw_nav
+    draw_window_frame
     @gfx.present
   end
 

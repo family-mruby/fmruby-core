@@ -8,10 +8,6 @@ class FmrbApp
   SCROLLBAR_W = 10
   SCROLLBAR_BTN_H = 10
 
-  # Debug toggle: set false to bypass GfxBlock for the window frame and fall
-  # back to per-primitive draws (used for isolating ESP32 mruby-task issues).
-  USE_FRAME_BLOCK = true
-
   attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen
 
   # Close-button hit zone (used by both draw and event-handler paths).
@@ -61,15 +57,7 @@ class FmrbApp
       end
 
       unless @fullscreen
-        if USE_FRAME_BLOCK
-          # Cached path: frame program uploaded to WROVER once; runs the
-          # initial EXEC as part of GfxBlock.new.
-          _build_frame_block
-        else
-          # Legacy path: immediately emit per-primitive draws so the window
-          # frame appears; draw_window_frame will repaint on every call.
-          _draw_window_frame_direct
-        end
+        _build_frame_block
       end
     else
       @gfx = nil
@@ -79,10 +67,6 @@ class FmrbApp
 
   end
 
-  # Repaint the window frame. Uses the GfxBlock program when
-  # USE_FRAME_BLOCK=true (skip/diff-send), otherwise sends per-primitive
-  # commands each call.
-  #
   # The system title bar is always rendered with the default 8px ASCII
   # font. The caller's font / text-size selection is saved on entry and
   # restored on exit, so apps using set_font(:ja, ...) never need to
@@ -97,8 +81,6 @@ class FmrbApp
     end
     if @frame_block
       @frame_block.draw(w: @window_width, h: @window_height)
-    else
-      _draw_window_frame_direct
     end
     if @gfx
       @gfx.set_font(*saved_font) unless saved_font == [:default]
@@ -139,19 +121,6 @@ class FmrbApp
       # app content never fills them (user_area excludes x=0, x=w-1, y=h-1).
       r.draw_round_rect 0, 0, w, h, CORNER_R, 0x60
     end
-  end
-
-  # Legacy per-primitive window frame drawing. Used when USE_FRAME_BLOCK=false
-  # for A/B comparison or when debugging mruby-task issues on ESP32.
-  def _draw_window_frame_direct
-    @gfx.fill_round_rect(0, 0, @window_width, TITLE_BAR_H, CORNER_R, 0xC5)
-    @gfx.fill_rect(0, CORNER_R, @window_width, TITLE_BAR_H - CORNER_R, 0xC5)
-    @gfx.fill_rect(2, 3, 8, 1, 0xFB)
-    @gfx.fill_rect(2, 5, 8, 1, 0xFB)
-    @gfx.fill_rect(2, 7, 8, 1, 0xFB)
-    @gfx.draw_text(12, 2, @name, FmrbGfx::WHITE)
-    @gfx.fill_circle(@window_width - 6, 5, 3, 0xFF)
-    @gfx.draw_round_rect(0, 0, @window_width, @window_height, CORNER_R, 0x60)
   end
 
   # Build a scrollbar GfxBlock for a fixed geometry. Static parts (separator,
