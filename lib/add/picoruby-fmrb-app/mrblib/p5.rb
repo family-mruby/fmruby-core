@@ -375,9 +375,27 @@ class P5
     @gfx.draw_image(image_id, x: tx, y: ty, scale_x: scale_x, scale_y: scale_y)
   end
 
-  # Not implemented: the graphics backend has no masked-blit primitive.
-  def image_masked(_data, _mask, _x, _y, _w, _h)
-    raise NotImplementedError, "image_masked: not supported by fmruby-core backend"
+  # Blit a SpriteImage onto the canvas using a 1bpp mask. The signature
+  # differs from harucom-os' image_masked (which took raw RGB332 pixel
+  # data inline) because the fmruby-core backend uses a SpriteImage id
+  # for the source pixels — see doc/p5.md for the rationale.
+  #
+  # Usage:
+  #   sprite = SpriteImage.new(@gfx, width: 32, height: 32)
+  #   sprite.draw { |g| g.fill_rect(0, 0, 32, 32, P5::RED) }
+  #   p5.image_masked(sprite.id, mask_bytes, x, y, 32, 32)
+  #
+  # mask_data is a binary string of ceil(w/8)*h bytes, MSB-first per byte
+  # (1 bit = drawn, 0 bit = transparent). A throw-away mask_id is
+  # allocated for the call and released before returning.
+  def image_masked(image_id, mask_data, x, y, w, h)
+    tx, ty = transform(x, y)
+    mid = @gfx.create_mask(w, h, mask_data)
+    begin
+      @gfx.draw_image_masked(image_id, mid, x: tx, y: ty)
+    ensure
+      @gfx.delete_mask(mid)
+    end
   end
 
   # Pixel access. set_pixel intentionally bypasses the transform stack

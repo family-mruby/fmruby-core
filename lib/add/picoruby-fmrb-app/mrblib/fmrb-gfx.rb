@@ -143,6 +143,34 @@ class FmrbGfx
     _get_pixel(x, y)
   end
 
+  # Upload a 1bpp mask to the graphics backend.
+  # @param width  [Integer]
+  # @param height [Integer]
+  # @param data   [String] binary string, ceil(width/8)*height bytes,
+  #   MSB-first per byte. 1 bit = pixel drawn, 0 bit = transparent.
+  # @return [Integer] mask_id, for use with draw_image_masked / delete_mask
+  def create_mask(width, height, data)
+    _create_mask(width, height, data)
+  end
+
+  # Release a mask uploaded with create_mask. Safe to call from any task;
+  # routed through the host queue so it stays ordered with preceding
+  # draw_image_masked calls that may still reference the mask.
+  def delete_mask(mask_id)
+    _delete_mask(mask_id)
+  end
+
+  # Blit a SpriteImage onto this canvas using a 1bpp mask cutout. Pixels
+  # are sampled from the SpriteImage at local (xx, yy) and written at
+  # (x+xx, y+yy) only where the mask bit is set.
+  # @param image_id [Integer] SpriteImage id (from SpriteImage#id)
+  # @param mask_id  [Integer] mask id (from create_mask)
+  # @param x [Integer]
+  # @param y [Integer]
+  def draw_image_masked(image_id, mask_id, x:, y:)
+    _draw_image_masked(image_id, mask_id, x, y)
+  end
+
   # Draw a thick line by stacking parallel 1-pixel lines along the
   # perpendicular direction. The graphics backend has no native thick-line
   # primitive, so this is implemented in Ruby. Aliased on top of draw_line.

@@ -3,12 +3,16 @@
 # frame is left intact (we clear only the user area).
 
 class P5TestApp < FmrbApp
-  PAGES = %w[basics transform bezier text arc blend get_pixel]
+  PAGES = %w[basics transform bezier text arc blend get_pixel image_masked]
+  # Pages whose content changes every frame; everything else is drawn
+  # once on page change and left alone.
+  DYNAMIC_PAGES = %w[transform]
 
   def initialize
     super()
     @page = 0
     @t = 0
+    @needs_redraw = true
   end
 
   def on_create
@@ -17,10 +21,14 @@ class P5TestApp < FmrbApp
   end
 
   def on_update
-    @t += 0.05
-    draw_page
-    @p5.present
-    33
+    dynamic = DYNAMIC_PAGES.include?(PAGES[@page])
+    if @needs_redraw || dynamic
+      @t += 0.05 if dynamic
+      draw_page
+      @p5.present
+      @needs_redraw = false
+    end
+    66
   end
 
   def on_event(ev)
@@ -29,7 +37,20 @@ class P5TestApp < FmrbApp
       close_btn_x = @window_width - 10
       return if ev[:x] >= close_btn_x && ev[:y] >= 2 && ev[:y] < 10
       @page = (@page + 1) % PAGES.size
+      @needs_redraw = true
     end
+  end
+
+  def on_resume
+    super
+    @needs_redraw = true
+  end
+
+  def on_destroy
+    # Masks and sprite-images are bound to this app's canvas on the
+    # graphics-audio side, so DELETE_CANVAS (issued by FmrbApp#destroy
+    # before on_destroy) frees them automatically. No explicit cleanup
+    # needed here.
   end
 
   def draw_page
@@ -53,6 +74,7 @@ class P5TestApp < FmrbApp
     when "arc"       then draw_arc_page
     when "blend"     then draw_blend
     when "get_pixel" then draw_get_pixel
+    when "image_masked" then draw_image_masked_page
     end
   end
 
@@ -72,7 +94,11 @@ class P5TestApp < FmrbApp
     @p5.stroke(P5::MAGENTA); @p5.stroke_weight(3)
     @p5.line(100, uh - 60, uw - 50, uh - 40)
     @p5.no_stroke; @p5.fill(P5::BLUE)
-    10.times { |i| @p5.point(uw - 30 + i, uh - 80 + i * 2) }
+    i = 0
+    while i < 10
+      @p5.point(uw - 30 + i, uh - 80 + i * 2)
+      i += 1
+    end
   end
 
   def draw_transform
@@ -148,6 +174,115 @@ class P5TestApp < FmrbApp
       value = @gfx.get_pixel(sx, sy)
       @p5.text(sprintf("%s read=0x%02X", label, value), 110, y + 11)
     end
+  end
+
+  # Builds a 1bpp circular mask (size x size pixels) as a binary string.
+  # MSB-first per byte; 1 bit = pixel drawn.
+  # Uses while loops because Integer#times block invocation is heavy in
+  # picoruby and this runs over thousands of pixels at app start.
+  def circle_mask(size)
+    row_bytes = (size + 7) / 8
+    buf = "\x00" * (row_bytes * size)
+    r = size / 2
+    cx = r
+    cy = r
+    r2 = r * r
+    y = 0
+    while y < size
+      dy = y - cy
+      row_off = y * row_bytes
+      x = 0
+      while x < size
+        dx = x - cx
+        if dx * dx + dy * dy <= r2
+          idx = row_off + (x >> 3)
+          buf.setbyte(idx, buf.getbyte(idx) | (0x80 >> (x & 7)))
+        end
+        x += 1
+      end
+      y += 1
+    end
+    buf
+  end
+
+  # Star-shaped mask: 5-pointed star using a simple radius-vs-angle test.
+  def star_mask(size)
+    row_bytes = (size + 7) / 8
+    buf = "\x00" * (row_bytes * size)
+    cx = size / 2
+    cy = size / 2
+    rmax = size / 2 - 1
+    y = 0
+    while y < size
+      dy = y - cy
+      row_off = y * row_bytes
+      x = 0
+      while x < size
+        dx = x - cx
+        d = Math.sqrt(dx * dx + dy * dy)
+        if d <= rmax
+          ang = Math.atan2(dy, dx)
+          wave = Math.cos(5 * ang)
+          limit = rmax * (0.55 + 0.45 * wave)
+          if d <= limit
+            idx = row_off + (x >> 3)
+            buf.setbyte(idx, buf.getbyte(idx) | (0x80 >> (x & 7)))
+          end
+        end
+        x += 1
+      end
+      y += 1
+    end
+    buf
+  end
+
+  def draw_image_masked_page
+    # Lazy-create the source sprite and the long-lived masks once. This
+    # is the pattern apps should follow — rebuilding masks every frame
+    # works but wastes SPI bandwidth (each round trip uploads the mask
+    # in N small chunks). Masks here are static per shape/size.
+    @masked_sprite ||= build_masked_sprite
+    @masks ||= {
+      circle48: @gfx.create_mask(48, 48, circle_mask(48)),
+      star48:   @gfx.create_mask(48, 48, star_mask(48)),
+      circle32: @gfx.create_mask(32, 32, circle_mask(32)),
+    }
+
+    # Background bands so the cutout effect is visible against varied pixels.
+    @p5.no_stroke
+    @p5.fill(P5::BLUE);    @p5.rect(0, 20, uw, (uh - 20) / 3)
+    @p5.fill(P5::MAGENTA); @p5.rect(0, 20 + (uh - 20) / 3, uw, (uh - 20) / 3)
+    @p5.fill(P5::GREEN);   @p5.rect(0, 20 + 2 * (uh - 20) / 3, uw, (uh - 20) / 3 + 4)
+
+    @p5.fill(P5::WHITE)
+    @p5.text_align(:left, :top)
+    @p5.text("image_masked: SpriteImage + 1bpp mask (cached)", 4, 22)
+
+    sid = @masked_sprite.id
+    @gfx.draw_image_masked(sid, @masks[:circle48], x: @user_area_x0 +  20, y: @user_area_y0 + 50)
+    @gfx.draw_image_masked(sid, @masks[:star48],   x: @user_area_x0 +  90, y: @user_area_y0 + 50)
+    @gfx.draw_image_masked(sid, @masks[:circle32], x: @user_area_x0 + 170, y: @user_area_y0 + 60)
+  end
+
+  # Build a 48x48 RGB332 sprite with a colorful gradient so the mask cutout
+  # is visually distinctive. while-loops to avoid Integer#times overhead.
+  def build_masked_sprite
+    sprite = SpriteImage.new(@gfx, width: 48, height: 48)
+    sprite.draw do |g|
+      g.fill_rect(0, 0, 48, 48, FmrbGfx::WHITE)
+      y = 0
+      while y < 48
+        col_r = (y * 7 / 47) << 5
+        x = 0
+        while x < 48
+          col_g = (x * 7 / 47) << 2
+          g.set_pixel(x, y, col_r | col_g | 0x02)
+          x += 1
+        end
+        y += 1
+      end
+    end
+    sprite
   end
 
   def draw_blend

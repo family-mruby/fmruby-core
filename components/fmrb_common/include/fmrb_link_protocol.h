@@ -158,6 +158,14 @@ typedef enum {
     FMRB_LINK_GFX_DELETE_SPRITE_IMAGE = 0x81,
     FMRB_LINK_GFX_SET_SPRITE_IMAGE_TARGET = 0x82,
     FMRB_LINK_GFX_LOAD_SPRITE_IMAGE_BMP = 0x83,
+    // 1bpp mask + masked image blit (uses SpriteImage as the image source).
+    // Mask upload is streamed: CREATE_MASK reserves a slot, then MASK_DATA
+    // chunks fill the buffer at byte offsets (each chunk fits in a single
+    // SPI frame, modeled on file_transfer's BEGIN/DATA flow).
+    FMRB_LINK_GFX_CREATE_MASK = 0x84,         // sync; returns mask_id (reserves buffer)
+    FMRB_LINK_GFX_DELETE_MASK = 0x85,         // async
+    FMRB_LINK_GFX_DRAW_IMAGE_MASKED = 0x86,   // async
+    FMRB_LINK_GFX_MASK_DATA = 0x87,           // async; appends chunk to a reserved mask
     FMRB_LINK_GFX_CREATE_SPRITE_INSTANCE = 0x88,
     FMRB_LINK_GFX_DELETE_SPRITE_INSTANCE = 0x89,
     FMRB_LINK_GFX_SPRITE_INSTANCE_MOVE = 0x8A,
@@ -446,6 +454,50 @@ typedef struct __attribute__((packed)) {
     uint16_t path_len;
     // Followed by path string (path_len bytes)
 } fmrb_link_graphics_load_sprite_image_bmp_t;
+
+// CREATE_MASK: reserve a 1bpp mask slot on the backend. Bit-packed,
+// MSB-first per byte. Row stride = ceil(width / 8) bytes. The backend
+// allocates a zero-filled buffer of that size; chunks are then sent via
+// MASK_DATA. This decoupling keeps each SPI frame small (modeled on
+// file_transfer BEGIN/DATA), avoiding the 256-byte MessageBuffer cap on
+// reassembled chunked messages.
+//
+// canvas_id binds the mask's lifetime to the canvas: when the canvas is
+// deleted (or the app exits), masks with the matching canvas_id are
+// freed automatically. This matches how SpriteImage lifetimes work.
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint16_t width, height;
+} fmrb_link_graphics_create_mask_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t mask_id;  // 0 = error (pool full / alloc failed / bad payload)
+} fmrb_link_graphics_mask_created_t;
+
+// MASK_DATA: append a chunk into a previously reserved mask buffer.
+// offset is in bytes from the start of the mask data. chunk_len bytes
+// follow this header.
+typedef struct __attribute__((packed)) {
+    uint16_t mask_id;
+    uint32_t offset;
+    uint16_t chunk_len;
+    // Followed by chunk_len bytes of mask data.
+} fmrb_link_graphics_mask_data_t;
+
+typedef struct __attribute__((packed)) {
+    uint16_t mask_id;
+} fmrb_link_graphics_delete_mask_t;
+
+// DRAW_IMAGE_MASKED: blit a SpriteImage onto a canvas using a 1bpp mask.
+// Mask dimensions drive the per-pixel loop; pixels are sampled from the
+// source sprite at the same local (xx, yy) and written at (x+xx, y+yy)
+// only when the mask bit is set.
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint16_t image_id;   // SpriteImage ID (source)
+    uint16_t mask_id;
+    int16_t x, y;        // destination top-left on canvas (local coords)
+} fmrb_link_graphics_draw_image_masked_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;       // Parent window

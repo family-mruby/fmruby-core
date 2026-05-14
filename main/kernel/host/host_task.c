@@ -508,6 +508,26 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_DELETE_MASK: {
+            fmrb_link_graphics_delete_mask_t c = {
+                .mask_id = cmd->params.delete_mask.mask_id,
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DELETE_MASK;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
+        case GFX_CMD_DRAW_IMAGE_MASKED: {
+            fmrb_link_graphics_draw_image_masked_t c = {
+                .canvas_id = cmd->canvas_id,
+                .image_id = cmd->params.draw_image_masked.image_id,
+                .mask_id = cmd->params.draw_image_masked.mask_id,
+                .x = cmd->params.draw_image_masked.x,
+                .y = cmd->params.draw_image_masked.y,
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DRAW_IMAGE_MASKED;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         case GFX_CMD_CREATE_SPRITE_IMAGE: {
             fmrb_link_graphics_create_sprite_image_t c = {
                 .canvas_id = cmd->canvas_id,

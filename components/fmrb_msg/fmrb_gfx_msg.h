@@ -60,7 +60,14 @@ typedef enum {
     GFX_CMD_DEFINE_PROG,         // Sync; returns prog_id
     GFX_CMD_EXEC_PROG,           // Async
     GFX_CMD_DELETE_PROG,         // Async
-    GFX_CMD_GET_PIXEL            // Sync; returns RGB332 byte
+    GFX_CMD_GET_PIXEL,           // Sync; returns RGB332 byte
+    // CREATE_MASK is NOT in this enum — it is sent directly via
+    // fmrb_transport_send_sync (variable-length payload up to ~10 KB,
+    // bypasses host_task batching). DELETE_MASK and DRAW_IMAGE_MASKED
+    // ride the batching queue so they preserve order with surrounding
+    // drawing commands.
+    GFX_CMD_DELETE_MASK,         // Async
+    GFX_CMD_DRAW_IMAGE_MASKED    // Async
 } gfx_cmd_type_t;
 
 // Graphics command structure
@@ -236,6 +243,15 @@ typedef struct {
         struct {
             int16_t x, y;
         } get_pixel;
+        // Mask lifetime / masked image blit (both async).
+        struct {
+            uint16_t mask_id;
+        } delete_mask;
+        struct {
+            uint16_t image_id;
+            uint16_t mask_id;
+            int16_t x, y;
+        } draw_image_masked;
     } params;
 
     // Sync context pointer (NULL = fire-and-forget, non-NULL = response expected)

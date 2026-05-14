@@ -1042,6 +1042,152 @@ static mrb_value mrb_gfx_create_image_from_file(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// FmrbGfx#_create_mask(width, height, data) -> Integer
+//
+// Uploads a 1bpp mask to the graphics backend in two phases (modeled on
+// file_transfer's BEGIN/DATA flow):
+//   1. CREATE_MASK (sync, tiny payload): reserves a zero-filled buffer on
+//      the backend and returns mask_id.
+//   2. MASK_DATA chunks (async, each fits in one SPI frame): fill the
+//      reserved buffer by offset.
+// This avoids the 256-byte receive-buffer cap on reassembled chunked
+// messages — every individual frame stays small.
+//
+// The chunks are sent via fmrb_transport_send directly. They precede any
+// subsequent host_task draws because Ruby is sequential and the transport
+// mutex serializes SPI frames in submit order.
+#define MASK_CHUNK_OVERHEAD 18  // msgpack + COBS headroom (same as file_transfer)
+#define MASK_CHUNK_SIZE     (FMRB_LINK_FRAME_MAX_DATA - sizeof(fmrb_link_graphics_mask_data_t) - MASK_CHUNK_OVERHEAD)
+
+static mrb_value mrb_gfx_create_mask(mrb_state *mrb, mrb_value self)
+{
+    mrb_int width, height;
+    char *mask_data;
+    mrb_int mask_len;
+    mrb_get_args(mrb, "iis", &width, &height, &mask_data, &mask_len);
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+    if (width <= 0 || height <= 0 || width > 1024 || height > 1024) {
+        mrb_raisef(mrb, E_ARGUMENT_ERROR,
+                   "create_mask: invalid dimensions %dx%d", (int)width, (int)height);
+    }
+    size_t expected = (size_t)(((width + 7) / 8) * height);
+    if ((size_t)mask_len < expected) {
+        mrb_raisef(mrb, E_ARGUMENT_ERROR,
+                   "create_mask: mask too short (got %d bytes, need %zu for %dx%d)",
+                   (int)mask_len, expected, (int)width, (int)height);
+    }
+
+    // Phase 1: BEGIN — reserve buffer on backend.
+    fmrb_link_graphics_create_mask_t begin = {
+        .canvas_id = (uint16_t)data->canvas_id,
+        .width = (uint16_t)width,
+        .height = (uint16_t)height,
+    };
+    fmrb_link_graphics_mask_created_t resp = { .mask_id = 0 };
+    uint32_t resp_len = sizeof(resp);
+    fmrb_err_t ret = fmrb_transport_send_sync(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_CREATE_MASK,
+        (const uint8_t *)&begin, sizeof(begin),
+        (uint8_t *)&resp, &resp_len,
+        5000);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "create_mask BEGIN failed: %d", ret);
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "create_mask BEGIN failed: %d", ret);
+    }
+    if (resp_len < sizeof(resp) || resp.mask_id == 0) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "create_mask: backend rejected (pool full or alloc failed)");
+    }
+    uint16_t mask_id = resp.mask_id;
+
+    // Phase 2: stream the mask data as small chunks. Each chunk is its
+    // own SPI frame, fits well below FMRB_LINK_FRAME_MAX_DATA.
+    uint8_t chunk_buf[FMRB_LINK_FRAME_MAX_DATA];
+    size_t offset = 0;
+    while (offset < expected) {
+        size_t remaining = expected - offset;
+        size_t chunk_len = (remaining > MASK_CHUNK_SIZE) ? MASK_CHUNK_SIZE : remaining;
+
+        fmrb_link_graphics_mask_data_t *hdr = (fmrb_link_graphics_mask_data_t *)chunk_buf;
+        hdr->mask_id = mask_id;
+        hdr->offset = (uint32_t)offset;
+        hdr->chunk_len = (uint16_t)chunk_len;
+        memcpy(chunk_buf + sizeof(*hdr), mask_data + offset, chunk_len);
+
+        ret = fmrb_transport_send(
+            FMRB_LINK_TYPE_GRAPHICS,
+            FMRB_LINK_GFX_MASK_DATA,
+            chunk_buf, sizeof(*hdr) + chunk_len,
+            FMRB_TRANSPORT_TIMEOUT_DEFAULT);
+        if (ret != FMRB_OK) {
+            FMRB_LOGE(TAG, "create_mask DATA chunk @%zu failed: %d", offset, ret);
+            // Best-effort cleanup — the backend slot will eventually be
+            // freed when the app exits, or via explicit delete_mask.
+            mrb_raisef(mrb, E_RUNTIME_ERROR,
+                       "create_mask DATA chunk failed (offset=%zu, err=%d)",
+                       offset, ret);
+        }
+        offset += chunk_len;
+    }
+    return mrb_fixnum_value(mask_id);
+}
+
+// FmrbGfx#_delete_mask(mask_id)
+static mrb_value mrb_gfx_delete_mask(mrb_state *mrb, mrb_value self)
+{
+    mrb_int mask_id;
+    mrb_get_args(mrb, "i", &mask_id);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_DELETE_MASK,
+        .canvas_id = data->canvas_id,
+        .params.delete_mask = { .mask_id = (uint16_t)mask_id }
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "delete_mask failed: %d", ret);
+    }
+    return self;
+}
+
+// FmrbGfx#_draw_image_masked(image_id, mask_id, x, y)
+// image_id refers to a SpriteImage (created via _create_sprite_image and
+// populated via load_bmp or SpriteImage#draw). The mask dimensions drive
+// the per-pixel loop on the backend; pixels are read from the sprite at
+// the same local (xx, yy) and written to the canvas at (x+xx, y+yy)
+// only where the mask bit is set.
+static mrb_value mrb_gfx_draw_image_masked(mrb_state *mrb, mrb_value self)
+{
+    mrb_int image_id, mask_id, x, y;
+    mrb_get_args(mrb, "iiii", &image_id, &mask_id, &x, &y);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_DRAW_IMAGE_MASKED,
+        .canvas_id = data->canvas_id,
+        .params.draw_image_masked = {
+            .image_id = (uint16_t)image_id,
+            .mask_id = (uint16_t)mask_id,
+            .x = (int16_t)x,
+            .y = (int16_t)y,
+        }
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "draw_image_masked failed: %d", ret);
+    }
+    return self;
+}
+
 // FmrbGfx.hsv_to_rgb(h, s, v) -> [r, g, b]
 // h: 0-360, s: 0-255, v: 0-255
 static mrb_value mrb_gfx_s_hsv_to_rgb(mrb_state *mrb, mrb_value klass)
@@ -1374,6 +1520,9 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
 
     // Image API
     mrb_define_method(mrb, gfx_class, "_create_image_from_file", mrb_gfx_create_image_from_file, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "_create_mask", mrb_gfx_create_mask, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, gfx_class, "_delete_mask", mrb_gfx_delete_mask, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "_draw_image_masked", mrb_gfx_draw_image_masked, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "_draw_image", mrb_gfx_draw_image, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, gfx_class, "_delete_image", mrb_gfx_delete_image, MRB_ARGS_REQ(1));
 

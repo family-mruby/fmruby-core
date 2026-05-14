@@ -59,9 +59,52 @@
 
 ---
 
-## 2. `image_masked(...)` のネイティブ実装
+## 2. `image_masked(...)` — 実装済み
 
-### 全体像
+実装は推奨パス B (マスク事前登録) を採用。プロトコルは 3 コマンド:
+`FMRB_LINK_GFX_CREATE_MASK` (sync, fragment 対応) /
+`FMRB_LINK_GFX_DELETE_MASK` (async) /
+`FMRB_LINK_GFX_DRAW_IMAGE_MASKED` (async)。
+
+画像ソースは PNG ベース `image_id` ではなく **SpriteImage** (LGFX_Sprite を
+保持しているため `readPixelValue` でピクセル直サンプル可)。WROVER 側で
+事前登録 PNG をピクセルアクセス可能な形に変換するのはコスト高なため除外。
+
+LovyanGFX に組み込み `pushImageWithMask` 相当はなく、行単位の
+`drawPixel` ループ実装 (大型マスクではやや重め)。
+
+### 実装ファイル
+- Protocol:
+  [components/fmrb_common/include/fmrb_link_protocol.h](../components/fmrb_common/include/fmrb_link_protocol.h)
+  に enum (`0x84/0x85/0x86`) と `create_mask_t` / `mask_created_t` /
+  `delete_mask_t` / `draw_image_masked_t` を追加。graphics-audio 側
+  [main/common/fmrb_link_protocol.h](../../fmruby-graphics-audio/main/common/fmrb_link_protocol.h)
+  にも同じ定義を追加。
+- 内部 enum: [components/fmrb_msg/fmrb_gfx_msg.h](../components/fmrb_msg/fmrb_gfx_msg.h)
+  に `GFX_CMD_DELETE_MASK` / `GFX_CMD_DRAW_IMAGE_MASKED` (CREATE_MASK は
+  ペイロードが大きく可変長なので host_task を経由しない直接 transport_send_sync)。
+- host_task: [main/kernel/host/host_task.c](../main/kernel/host/host_task.c)
+  の `gfx_cmd_to_batch_entry()` に 2 ケース追加。
+- S3 binding: [lib/add/picoruby-fmrb-app/ports/esp32/gfx.c](../lib/add/picoruby-fmrb-app/ports/esp32/gfx.c)
+  に `mrb_gfx_create_mask` (transport_send_sync 直送 + 自動 fragmentation)、
+  `mrb_gfx_delete_mask`、`mrb_gfx_draw_image_masked` を追加。
+- Ruby ラッパ: [lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb](../lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb)
+  に `create_mask` / `delete_mask` / `draw_image_masked` を追加。
+- WROVER ハンドラ:
+  [fmruby-graphics-audio/main/graphics/graphics_handler.cpp](../../fmruby-graphics-audio/main/graphics/graphics_handler.cpp)
+  にマスクストア (16 スロット、PSRAM 確保) と 3 ケース追加。描画は
+  `sprite->readPixelValue` + `canvas->draw_buffer->drawPixel` の 2 重ループ。
+- P5 公開: [lib/add/picoruby-fmrb-app/mrblib/p5.rb](../lib/add/picoruby-fmrb-app/mrblib/p5.rb)
+  の `P5#image_masked(image_id, mask_data, x, y, w, h)` を create→draw→delete
+  ラップに変更。長寿命マスクは `@gfx.create_mask` を直接使う。
+
+### 既存スコープ外 (検討メモ)
+- PNG image_id をマスク描画ソースにする (RGB332 ピクセルバッファのキャッシュ
+  追加) は未実装。SpriteImage で代替可能なので優先度低。
+- 大きなマスクの drawPixel ループ最適化 (行単位 pushImage + マスク前計算など)
+  は未実装。性能ボトルネックになるなら検討。
+
+### 全体像 (旧設計メモ)
 `pushImage` 系 LovyanGFX API に 1bpp マスクを組み合わせて描画する。
 画像本体は既存の `create_image` (ファイルベース) で WROVER に登録済みの
 `image_id` を再利用し、マスクの渡し方だけ新規設計する。
@@ -141,17 +184,15 @@ end
 
 ---
 
-## 3. 実装順とリスク
+## 3. 残課題と将来の拡張
 
-1. **`GFX_CMD_GET_PIXEL` 単発実装** (低リスク)
-   - 既存 sync インフラに 1 コマンド足すだけ。fragment 不要
-   - 単体ユニットとして区切れる
-2. **`get_pixels` 拡張** (中リスク)
-   - 応答が大きいので transport 側の fragment 経路に注意
-3. **マスク登録 + draw_image_masked** (高リスク)
-   - WROVER 側の固定上限マスクプール設計、PSRAM 配分、削除タイミングの testing が
-     必要
-   - 描画パスは LovyanGFX のバージョン依存があり、`pushImageWithMask` がなければ
-     行ループ手書きになる
-
-実装スコープ・サイズに応じて段階的に取り込むのが安全。
+1. **`get_pixels` (bulk readback)** — 中規模対応 (中リスク)
+   - `readRect` 経由で矩形領域の RGB332 をまとめて返す
+   - 応答が transport の MTU を超える場合があり、`fmrb_transport_send_sync` の
+     既存 fragment 経路に乗せれば対応可能。応答長制限と PSRAM 上限の検討必要
+2. **PNG image_id を image_masked のソースに対応** — オプション
+   - 現在は SpriteImage のみがソース。PNG image_id を使う場合は、復号後の
+     RGB332 ピクセルバッファをキャッシュする実装が必要 (PSRAM 配分が増える)
+3. **マスク描画の性能改善** — オプション
+   - 行単位 `pushImage` + 行ごとのマスク bit パターンで `drawPixel` ループを
+     置換できれば数倍高速化可能。複雑度と引き換え
