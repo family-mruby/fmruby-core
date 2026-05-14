@@ -59,7 +59,8 @@ typedef enum {
     GFX_CMD_LOAD_SPRITE_IMAGE_BMP,  // Sync (returns success/failure)
     GFX_CMD_DEFINE_PROG,         // Sync; returns prog_id
     GFX_CMD_EXEC_PROG,           // Async
-    GFX_CMD_DELETE_PROG          // Async
+    GFX_CMD_DELETE_PROG,         // Async
+    GFX_CMD_GET_PIXEL            // Sync; returns RGB332 byte
 } gfx_cmd_type_t;
 
 // Graphics command structure
@@ -231,6 +232,10 @@ typedef struct {
         struct {
             uint8_t prog_id;
         } delete_prog;
+        // Sync readback: returns 2 bytes (color, status) via sync_ctx.
+        struct {
+            int16_t x, y;
+        } get_pixel;
     } params;
 
     // Sync context pointer (NULL = fire-and-forget, non-NULL = response expected)

@@ -498,6 +498,16 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_GET_PIXEL: {
+            fmrb_link_graphics_get_pixel_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x = cmd->params.get_pixel.x,
+                .y = cmd->params.get_pixel.y,
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_GET_PIXEL;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         case GFX_CMD_CREATE_SPRITE_IMAGE: {
             fmrb_link_graphics_create_sprite_image_t c = {
                 .canvas_id = cmd->canvas_id,

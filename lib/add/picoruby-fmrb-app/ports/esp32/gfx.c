@@ -173,6 +173,60 @@ static mrb_value mrb_gfx_set_pixel(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// FmrbGfx#_get_pixel(x, y) -> Integer (RGB332)
+// Routed through host_task as a sync command so all preceding queued
+// drawing commands are flushed to the WROVER before the read is performed
+// (preserves "draw -> read what I just drew" semantics). Returns 0 on
+// out-of-range coordinates; raises on transport error.
+static mrb_value mrb_gfx_get_pixel(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y;
+    mrb_get_args(mrb, "ii", &x, &y);
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+
+    fmrb_link_graphics_pixel_value_t resp = { .color = 0, .status = 0xFF };
+    gfx_cmd_sync_ctx_t sync = {
+        .done = fmrb_semaphore_create_binary(),
+        .response_buf = (uint8_t *)&resp,
+        .response_len = sizeof(resp),
+        .result = -1,
+    };
+    if (!sync.done) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "get_pixel: failed to create semaphore");
+    }
+
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_GET_PIXEL,
+        .canvas_id = data->canvas_id,
+        .params.get_pixel = { .x = (int16_t)x, .y = (int16_t)y },
+        .sync = &sync,
+    };
+
+    fmrb_err_t send_ret = send_gfx_command(&cmd);
+    if (send_ret != FMRB_OK) {
+        fmrb_semaphore_delete(sync.done);
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "get_pixel send failed: %d", send_ret);
+    }
+
+    // Wait for host_task to forward the response (5s ceiling, well above
+    // a normal single SPI round trip).
+    fmrb_base_type_t took = fmrb_semaphore_take(sync.done, FMRB_MS_TO_TICKS(5000));
+    fmrb_semaphore_delete(sync.done);
+    if (took != FMRB_TRUE) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "get_pixel: response timeout");
+    }
+    if (sync.result != 0 || sync.response_len < sizeof(resp) || resp.status == 0xFF) {
+        FMRB_LOGW(TAG, "get_pixel: failed (result=%d, len=%u, status=%u)",
+                  (int)sync.result, (unsigned)sync.response_len, (unsigned)resp.status);
+        return mrb_fixnum_value(0);
+    }
+    return mrb_fixnum_value(resp.color);
+}
+
 // Graphics#draw_line(x1, y1, x2, y2, color)
 static mrb_value mrb_gfx_draw_line(mrb_state *mrb, mrb_value self)
 {
@@ -1287,6 +1341,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_init", mrb_gfx_initialize, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "clear", mrb_gfx_clear, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "set_pixel", mrb_gfx_set_pixel, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, gfx_class, "_get_pixel", mrb_gfx_get_pixel, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, gfx_class, "draw_line", mrb_gfx_draw_line, MRB_ARGS_REQ(5));
     mrb_define_method(mrb, gfx_class, "draw_rect", mrb_gfx_draw_rect, MRB_ARGS_REQ(5));
     mrb_define_method(mrb, gfx_class, "fill_rect", mrb_gfx_fill_rect, MRB_ARGS_REQ(5));

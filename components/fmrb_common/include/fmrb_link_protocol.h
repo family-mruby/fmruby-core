@@ -140,6 +140,7 @@ typedef enum {
     FMRB_LINK_GFX_SET_TARGET = 0x52,
     FMRB_LINK_GFX_PUSH_CANVAS = 0x53,
     FMRB_LINK_GFX_SET_CANVAS_VISIBLE = 0x54,
+    FMRB_LINK_GFX_GET_PIXEL = 0x55,
 
     // Cursor control (global resource, no canvas_id)
     FMRB_LINK_GFX_CURSOR_SET_POSITION = 0x60,
@@ -366,6 +367,17 @@ typedef struct __attribute__((packed)) {
     uint16_t canvas_id;
     uint8_t visible;  // 0=hidden, 1=visible
 } fmrb_link_graphics_set_canvas_visible_t;
+
+// GET_PIXEL: read a single RGB332 pixel from a canvas back buffer.
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;  // 0 = screen, others = back buffer of that canvas
+    int16_t x, y;
+} fmrb_link_graphics_get_pixel_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t color;   // RGB332 pixel value (0 when status != 0)
+    uint8_t status;  // 0 = success, 1 = out of range, 0xFF = error
+} fmrb_link_graphics_pixel_value_t;
 
 // Cursor control structures (no canvas_id - cursor is global)
 typedef struct __attribute__((packed)) {
