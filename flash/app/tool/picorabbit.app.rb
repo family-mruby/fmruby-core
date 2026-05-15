@@ -4,8 +4,6 @@
 #             Home = first slide, End = last slide
 #             Up = rabbit jump, Escape = exit
 
-require "picorabbit"
-
 class SlideShowApp < FmrbApp
   SLIDES_DIR = "/home/slides"
 

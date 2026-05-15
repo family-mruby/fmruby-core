@@ -98,6 +98,12 @@ task :setup do
   # syntax-highlight
   sh "rm -rf #{mrbgem_path}/picoruby-syntax-highlight"
   sh "cp -rf lib/add/picoruby-syntax-highlight #{mrbgem_path}/"
+  # rx8900
+  sh "rm -rf #{mrbgem_path}/picoruby-rx8900"
+  sh "cp -rf lib/add/picoruby-rx8900 #{mrbgem_path}/"
+  # picorabbit
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-picorabbit"
+  sh "cp -rf lib/add/picoruby-fmrb-picorabbit #{mrbgem_path}/"
   # bmp332
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-bmp332"
   sh "cp -rf lib/add/picoruby-fmrb-bmp332 #{mrbgem_path}/"

@@ -53,8 +53,8 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.gem gemdir: "#{hw}/picoruby-rmt"
   conf.gem gemdir: "#{hw}/picoruby-i2c"
 
-  # RTC driver (RX8900): now provided as a flash library at /lib/rx8900.rb;
-  # callers do `require "rx8900"` only when running on ESP32 (needs I2C).
+  # RTC driver (pure Ruby, depends on picoruby-i2c)
+  conf.gem core: "picoruby-rx8900"
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"
   # conf.gem gemdir: "#{hw}/picoruby-spi"

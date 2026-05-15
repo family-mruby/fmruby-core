@@ -2,8 +2,6 @@
 # Click anywhere on the user area to cycle through pages. Window
 # frame is left intact (we clear only the user area).
 
-require "p5"
-
 class P5TestApp < FmrbApp
   PAGES = %w[basics transform bezier text arc blend get_pixel image_masked]
   # Pages whose content changes every frame; everything else is drawn
@@ -160,7 +158,9 @@ class P5TestApp < FmrbApp
       [P5::GREEN,  "GREEN  0x1C", 70],
       [P5::CYAN,   "CYAN   0x1F", 110],
     ]
-    swatches.each do |(color, _label, y)|
+    swatches.each do |sw|
+      color = sw[0]
+      y = sw[2]
       @p5.fill(color); @p5.no_stroke
       @p5.rect(30, y, 60, 30)
     end
@@ -169,7 +169,9 @@ class P5TestApp < FmrbApp
     @p5.fill(P5::WHITE)
     @p5.text_font(:default)
     @p5.text_align(:left, :top)
-    swatches.each_with_index do |(_color, label, y), _i|
+    swatches.each_with_index do |sw, _i|
+      label = sw[1]
+      y = sw[2]
       # Sample at the swatch center.
       sx = @user_area_x0 + 60
       sy = @user_area_y0 + y + 15
