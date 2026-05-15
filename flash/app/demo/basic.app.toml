@@ -1,6 +1,6 @@
 # script name must be "app_handle_name.app.bas"
 app_handle_name = "sample_basic_app"
-app_screen_name = "BASIC app"
+app_screen_name = "BASIC app demo"
 app_screen_name_ja = "BASICデモ"
 #default_window_mode = "background" # or "fullwindow" or "window" or "background"
 default_window_mode = "window" # or "fullwindow" or "window" or "background"

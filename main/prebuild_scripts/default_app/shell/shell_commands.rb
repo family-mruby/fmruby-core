@@ -483,6 +483,18 @@ module ShellCommandsMixin
     virtual_path = resolve_script_path(args.join(' '))
     file_path = to_file_path(virtual_path)
 
+    # Create an empty file when the target does not exist so the editor can
+    # open it as a fresh buffer rather than reporting "file not found".
+    unless File.exist?(file_path)
+      begin
+        File.open(file_path, "w") { |f| }
+        @history << "edit: created #{virtual_path}"
+      rescue => e
+        @history << "edit: cannot create #{virtual_path}: #{e.message}"
+        return
+      end
+    end
+
     spawn_app("default/editor")
     @pending_edit_path = file_path
     @pending_edit_counter = 3

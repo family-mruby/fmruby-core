@@ -1,6 +1,6 @@
 # script name must be "app_handle_name.app.rb"
 app_handle_name = "sample_lua_app"
-app_screen_name = "lua app"
+app_screen_name = "Lua app demo"
 app_screen_name_ja = "Luaデモ"
 #default_window_mode = "background" # or "fullwindow" or "window" or "background"
 default_window_mode = "window" # or "fullwindow" or "window" or "background"
