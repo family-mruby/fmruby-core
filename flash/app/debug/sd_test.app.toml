@@ -1,0 +1,8 @@
+app_handle_name = "sd_test"
+app_screen_name = "SD Test"
+app_screen_name_ja = "SDテスト"
+default_window_mode = "window"
+default_window_width = 240
+default_window_height = 130
+default_window_pos_x = 20
+default_window_pos_y = 30
