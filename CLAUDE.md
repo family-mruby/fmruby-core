@@ -13,7 +13,8 @@
 
 ### 開発時の注意
 
-- .gitsubmoduleに含まれるディレクトリは編集禁止
+- .gitsubmoduleに含まれるディレクトリは直接編集禁止
+- .gitsubmoduleに含まれるディレクトリ以下を編集する際は、lib/add lib/patch lib/replace 以下にファイルを配置して、 Rakefile で、対象のファイルやディレクトリを追加、上書き、削除する。
 - sdkconfigおよびsdkconfig.defaults は編集禁止
   - sdkconfig に関する変更が必要なときは、編集せずに、提案すること
 - mrbgem で ESP32やFreeRTOSのヘッダを利用するものは、`components/picoruby-esp32/CMakeLists.txt` の `set(PICORUBY_SRCS` でビルド管理する。
