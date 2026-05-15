@@ -343,7 +343,7 @@ module LauncherMixin
     bar_y = y + LAUNCHER_TITLE_H
     bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
     draw_scrollbar(@launcher_scroll, launcher_total_rows, launcher_visible_rows,
-                   x, bar_y, LAUNCHER_W, bar_h)
+                   x, bar_y, LAUNCHER_W-1, bar_h)
   end
 
   # Icon cell backgrounds, labels, and sprite placement/visibility.
