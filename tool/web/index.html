@@ -330,7 +330,6 @@ const PRISM_LANG_BY_EXT = {
   md: 'markdown',
   markdown: 'markdown'
 };
-const EDITOR_HL_DEBOUNCE_MS = 60;
 
 // ============================================================
 // State
@@ -804,7 +803,10 @@ async function openEditor(name) {
     syncEditorScroll();
     updateEditorStats();
     document.getElementById('editorModal').classList.add('open');
-    setTimeout(() => { ta.focus(); syncEditorScroll(); }, 0);
+    ta.scrollTop = 0;
+    ta.scrollLeft = 0;
+    ta.setSelectionRange(0, 0);
+    setTimeout(() => { ta.focus(); ta.setSelectionRange(0, 0); syncEditorScroll(); }, 0);
     log('Loaded: ' + name + ' (' + formatSize(totalSize) + ')', 'ok');
   } catch (e) {
     log('Open error: ' + e.message, 'err');
@@ -863,19 +865,28 @@ function updateEditorStats() {
 
 document.addEventListener('DOMContentLoaded', () => {
   const ta = document.getElementById('editorTextarea');
-  let hlTimer = null;
+  let refreshRaf = null;
   ta.addEventListener('input', () => {
-    const dirty = ta.value !== editorState.original;
-    if (dirty !== editorState.dirty) {
-      editorState.dirty = dirty;
-      document.getElementById('editorDirty').textContent = dirty ? 'modified' : '';
+    // Synchronous: flip the dirty badge so it reacts on the very keystroke.
+    if (!editorState.dirty) {
+      editorState.dirty = true;
+      document.getElementById('editorDirty').textContent = 'modified';
     }
-    updateEditorStats();
-    if (hlTimer) clearTimeout(hlTimer);
-    hlTimer = setTimeout(() => {
+    // Coalesce: one Prism highlight per animation frame at most.
+    // The overlay <code> keeps its previous highlighted HTML until the
+    // frame callback runs (~16ms), so we never flash plain text.
+    if (refreshRaf !== null) return;
+    refreshRaf = requestAnimationFrame(() => {
+      refreshRaf = null;
+      const stillDirty = ta.value !== editorState.original;
+      if (stillDirty !== editorState.dirty) {
+        editorState.dirty = stillDirty;
+        document.getElementById('editorDirty').textContent = stillDirty ? 'modified' : '';
+      }
+      updateEditorStats();
       highlightEditorContent();
       syncEditorScroll();
-    }, EDITOR_HL_DEBOUNCE_MS);
+    });
   });
 
   ta.addEventListener('scroll', syncEditorScroll, { passive: true });
