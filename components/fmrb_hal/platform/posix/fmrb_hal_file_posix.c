@@ -50,13 +50,33 @@ static FILE* get_std_stream_fp(fmrb_file_t handle) {
     return NULL;
 }
 
-// Helper function to build full path
-static void build_path(const char *path, char *full_path, size_t max_len) {
-    if (path[0] == '/') {
-        snprintf(full_path, max_len, "%s%s", BASE_PATH, path);
-    } else {
-        snprintf(full_path, max_len, "%s/%s", BASE_PATH, path);
+// Resolve a virtual path to the underlying VFS path. POSIX has no SD/flash
+// alias table; everything is rooted under BASE_PATH (the local "flash"
+// directory) so the dev environment mirrors the on-device "/" namespace.
+fmrb_err_t fmrb_hal_file_resolve_path(const char *virtual_path,
+                                      char *out, size_t out_len) {
+    if (virtual_path == NULL || out == NULL || out_len == 0) {
+        return FMRB_ERR_INVALID_PARAM;
     }
+    if (virtual_path[0] == '/') {
+        snprintf(out, out_len, "%s%s", BASE_PATH, virtual_path);
+    } else {
+        snprintf(out, out_len, "%s/%s", BASE_PATH, virtual_path);
+    }
+    return FMRB_OK;
+}
+
+// Internal alias for legacy callsites in this file.
+static inline void build_path(const char *path, char *full_path, size_t max_len) {
+    fmrb_hal_file_resolve_path(path, full_path, max_len);
+}
+
+// POSIX dev environment has no SD card and no virtual mount points.
+const char *const *fmrb_hal_file_virtual_children(const char *virtual_path,
+                                                  size_t *out_count) {
+    (void)virtual_path;
+    if (out_count) *out_count = 0;
+    return NULL;
 }
 
 // Convert flags to POSIX mode string

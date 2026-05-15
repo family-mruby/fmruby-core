@@ -92,14 +92,12 @@ module ShellCommandsMixin
     end
   end
 
-  # Filesystem root path for Dir.open (platform-dependent)
+  # Filesystem root - "/" is the user-facing root. The HAL resolver maps it
+  # to LittleFS (ESP32) or to the local "flash" directory (Linux).
   def detect_fs_root
-    @platform == :linux ? "flash" : "/flash"
+    "/"
   end
 
-  # Convert virtual path to path for File.open (HAL adds "flash/" on Linux)
-  # On ESP32: HAL expects path like "/app/..." (it prepends "/flash")
-  # On Linux: HAL expects path like "app/..." (it prepends "flash/")
   def cmd_cd(args)
     Log.debug("cmd_cd called with args: #{args.inspect}")
     target_dir = if args.empty?
@@ -122,19 +120,26 @@ module ShellCommandsMixin
               end
     Log.debug("new_dir (before normalize): #{new_dir}")
 
-    # Normalize path (remove duplicate slashes)
-    while new_dir.include?("//")
-      new_dir = new_dir.gsub("//", "/")
+    # Normalize path: resolve "." / ".." segments and collapse "//" runs so
+    # the result is a clean absolute path. Done in Ruby because some VFS
+    # backings (e.g. LittleFS) do not understand ".." on opendir.
+    resolved = []
+    new_dir.split("/").each do |seg|
+      next if seg.empty? || seg == "."
+      if seg == ".."
+        resolved.pop
+      else
+        resolved << seg
+      end
     end
-    # Remove trailing slash except for root
-    new_dir = new_dir[0...-1] if new_dir.length > 1 && new_dir.end_with?("/")
+    new_dir = resolved.empty? ? "/" : "/" + resolved.join("/")
     Log.debug("new_dir (after normalize): #{new_dir}")
 
-    # Check if directory exists using OS path
+    # Existence check via opendir - the HAL recognises virtual mount-point
+    # parents like "/mnt" so this works for them too.
     begin
-      os_path = to_os_dir_path(new_dir)
-      Log.debug("Trying to open directory: #{os_path}")
-      dir = Dir.open(os_path)
+      Log.debug("Trying to open directory: #{new_dir}")
+      dir = Dir.open(new_dir)
       dir.close
       @current_dir = new_dir
       Log.info("Changed to directory: #{@current_dir}")
@@ -162,7 +167,7 @@ module ShellCommandsMixin
                    end
 
     begin
-      dir = Dir.open(to_os_dir_path(virtual_path))
+      dir = Dir.open(virtual_path)
       entries = []
       while (entry = dir.read)
         entries << entry
@@ -176,7 +181,7 @@ module ShellCommandsMixin
           entry_virtual = virtual_path == "/" ? "/#{entry}" : "#{virtual_path}/#{entry}"
           is_dir = false
           begin
-            d = Dir.open(to_os_dir_path(entry_virtual))
+            d = Dir.open(entry_virtual)
             d.close
             is_dir = true
           rescue

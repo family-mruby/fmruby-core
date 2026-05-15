@@ -53,22 +53,19 @@ module FileSelectorMixin
     # Add parent directory entry unless at root
     @file_selector_entries << { name: "..", is_dir: true } unless @file_selector_dir == "/"
 
-    os_path = to_os_dir_path(@file_selector_dir)
     begin
-      dir = Dir.open(os_path)
-      entries = []
+      dir = Dir.open(@file_selector_dir)
+      names = []
       while (e = dir.read)
-        entries << e unless e == "." || e == ".."
+        names << e unless e == "." || e == ".."
       end
       dir.close
 
-      entries.sort.each do |name|
-        # Try to open as directory
-        full = "#{os_path}/#{name}"
-        full = "#{os_path}#{name}" if os_path.end_with?("/")
+      names.sort.each do |name|
+        vpath = @file_selector_dir == "/" ? "/#{name}" : "#{@file_selector_dir}/#{name}"
         is_dir = false
         begin
-          d = Dir.open(full)
+          d = Dir.open(vpath)
           d.close
           is_dir = true
         rescue
@@ -76,7 +73,7 @@ module FileSelectorMixin
         @file_selector_entries << { name: name, is_dir: is_dir }
       end
     rescue => e
-      Log.warn("File selector: cannot scan #{os_path}: #{e.message}")
+      Log.warn("File selector: cannot scan #{@file_selector_dir}: #{e.message}")
     end
 
     @file_selector_scroll = 0

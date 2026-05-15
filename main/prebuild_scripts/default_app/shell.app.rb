@@ -20,8 +20,8 @@ class ShellApp < FmrbApp
     @char_height = 8
     @current_dir = "/home"  # Virtual working directory (user-visible)
 
-    # Filesystem root mapping: Dir.open uses OS paths, user sees "/"
-    # Linux: "flash" (relative), ESP32: "/flash" (LittleFS mount)
+    # User-facing filesystem root. The HAL resolver maps "/" to LittleFS on
+    # ESP32 and to the local "flash" directory on Linux.
     @fs_root = detect_fs_root
     @prompt = "> "
     @need_full_redraw = false   # Full screen redraw (includes logo)

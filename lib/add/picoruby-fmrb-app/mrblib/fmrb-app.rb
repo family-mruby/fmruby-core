@@ -415,21 +415,17 @@ class FmrbApp
     @running = false
   end
 
-  # Convert virtual path (e.g. "/home/music/x.nsf") to OS file path for File.open.
-  # Strips the leading "/" since HAL adds the flash prefix.
+  # Deprecated. The HAL owns every aspect of virtual -> OS path translation:
+  # alias rewriting (fmrb_hal_file_resolve_path) and synthetic mount-point
+  # children (fmrb_hal_file_virtual_children). Callers should pass virtual
+  # paths straight to File.open / Dir.open. These helpers remain as identity
+  # pass-throughs to keep older code compiling; new code should not call them.
   def to_file_path(virtual_path)
-    virtual_path.start_with?("/") ? virtual_path[1..-1] : virtual_path
+    virtual_path
   end
 
-  # Convert virtual path to OS directory path for Dir.open.
-  # Linux: "flash/home/music", ESP32: "/flash/home/music"
   def to_os_dir_path(virtual_path)
-    fs_root = @platform == :linux ? "flash" : "/flash"
-    if virtual_path == "/"
-      fs_root
-    else
-      "#{fs_root}#{virtual_path}"
-    end
+    virtual_path
   end
 
 end

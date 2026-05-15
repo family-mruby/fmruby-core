@@ -175,10 +175,9 @@ module LauncherMixin
   def scan_apps
     @launcher_apps = builtin_apps
     builtin_count = @launcher_apps.size
-    # Try both ESP32 (LittleFS at /flash) and Linux (relative flash/) paths
-    ["/flash/app", "flash/app"].each do |path|
-      scan_app_dir(path)
-    end
+    # Single virtual path - the HAL resolver maps "/app" to LittleFS on ESP32
+    # and to the local "flash/app" directory on Linux.
+    scan_app_dir("/app")
     # Keep BUILTIN_APPS fixed at the front; sort the scanned apps by label
     # so launcher order is stable regardless of filesystem enumeration order.
     scanned = @launcher_apps[builtin_count..-1] || []
@@ -225,17 +224,6 @@ module LauncherMixin
     end
   end
 
-  # Strip "flash/" or "flash" prefix for File.open (HAL adds it automatically)
-  def strip_flash_prefix(path)
-    if path.start_with?("flash/")
-      path[6..-1]
-    elsif path.start_with?("/flash/")
-      path  # absolute path, keep as-is
-    else
-      path
-    end
-  end
-
   def parse_app_toml(toml_path, dir_path)
     label = nil
     label_lang = nil   # Localized label from app_screen_name_<lang>, takes precedence
@@ -243,7 +231,7 @@ module LauncherMixin
     launcher_visible = true
     lang_key = "app_screen_name_#{FmrbI18n.lang}"
     begin
-      file = File.open(strip_flash_prefix(toml_path), "r")
+      file = File.open(toml_path, "r")
       content = file.read
       file.close
 
@@ -280,7 +268,7 @@ module LauncherMixin
     ext = nil
     ["rb", "lua", "bas"].each do |try_ext|
       begin
-        f = File.open(strip_flash_prefix("#{dir_path}/#{base}.#{try_ext}"), "r")
+        f = File.open("#{dir_path}/#{base}.#{try_ext}", "r")
         f.close
         ext = try_ext
         break
@@ -293,7 +281,7 @@ module LauncherMixin
     icon_char = VM_ICONS[ext] || "?"
     icon_file = icon_field || VM_ICON_FILES[ext]
     label = label_lang || label || base
-    app_path = strip_flash_prefix("#{dir_path}/#{base}.#{ext}")
+    app_path = "#{dir_path}/#{base}.#{ext}"
 
     { label: label, app: app_path, icon_char: icon_char, icon_file: icon_file }
   end
@@ -485,7 +473,7 @@ module LauncherMixin
     @gfx.present
   end
 
-  # Re-scan /flash/app/ for apps and rebuild icon sprites if the app list
+  # Re-scan /app/ for apps and rebuild icon sprites if the app list
   # changed. Called from handle_launcher_right_click.
   def rescan_launcher
     # Immediate feedback: change the title bar before the slow work starts.

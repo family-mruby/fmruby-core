@@ -57,29 +57,25 @@ module FileManagerMixin
     @file_manager_entries = []
     @file_manager_entries << { name: "..", is_dir: true, size: 0 } unless @file_manager_dir == "/"
 
-    os_path = to_os_dir_path(@file_manager_dir)
     begin
-      dir = Dir.open(os_path)
-      entries = []
+      dir = Dir.open(@file_manager_dir)
+      names = []
       while (e = dir.read)
-        entries << e unless e == "." || e == ".."
+        names << e unless e == "." || e == ".."
       end
       dir.close
 
-      entries.sort.each do |name|
-        full = os_path.end_with?("/") ? "#{os_path}#{name}" : "#{os_path}/#{name}"
+      names.sort.each do |name|
+        vpath = @file_manager_dir == "/" ? "/#{name}" : "#{@file_manager_dir}/#{name}"
         is_dir = false
         file_size = 0
         begin
-          d = Dir.open(full)
+          d = Dir.open(vpath)
           d.close
           is_dir = true
         rescue
           begin
-            file_path = to_file_path(
-              @file_manager_dir == "/" ? "/#{name}" : "#{@file_manager_dir}/#{name}"
-            )
-            file_size = File.size(file_path)
+            file_size = File.size(vpath)
           rescue
             file_size = 0
           end
@@ -87,7 +83,7 @@ module FileManagerMixin
         @file_manager_entries << { name: name, is_dir: is_dir, size: file_size }
       end
     rescue => e
-      Log.warn("File manager: cannot scan #{os_path}: #{e.message}")
+      Log.warn("File manager: cannot scan #{@file_manager_dir}: #{e.message}")
     end
 
     @file_manager_scroll = 0

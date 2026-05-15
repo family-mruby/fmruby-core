@@ -1,11 +1,11 @@
 # SD Card Connection Test
-# Writes a text file to /sd/sd_test.txt, reads it back, and verifies the
+# Writes a text file to /mnt/sd/sd_test.txt, reads it back, and verifies the
 # content matches. File I/O on the mruby task runs on a PSRAM stack, so the
 # fmrb_hal_file layer routes the open/read/write/close calls through hw_proxy
 # (internal-RAM stack) automatically. Press Space to re-run the test.
 
 class SdTestApp < FmrbApp
-  TEST_PATH = "/sd/sd_test.txt"
+  TEST_PATH = "/mnt/sd/sd_test.txt"
 
   def on_create
     @run = 0

@@ -65,6 +65,42 @@ typedef struct {
 } fmrb_file_info_t;
 
 /**
+ * @brief Resolve a virtual path to the path the underlying VFS uses.
+ *
+ * Implements the single source of truth for path aliasing. On ESP32 the
+ * implementation owns an alias table (e.g. "/" and "/flash" -> LittleFS
+ * mount, "/sd" and "/mnt/sd" -> SD mount). On POSIX (Linux dev mode) it
+ * roots everything under the local "flash" directory. Callers (file and
+ * directory HALs alike) should run user-facing paths through this before
+ * touching libc.
+ *
+ * @param virtual_path Path as seen by user code (must not be NULL).
+ * @param out          Output buffer (must not be NULL).
+ * @param out_len      Size of the output buffer.
+ * @return FMRB_OK on success, FMRB_ERR_INVALID_PARAM if the buffer is too
+ *         small or arguments are NULL.
+ */
+fmrb_err_t fmrb_hal_file_resolve_path(const char *virtual_path,
+                                      char *out, size_t out_len);
+
+/**
+ * @brief Look up the synthetic children of a virtual mount-point directory.
+ *
+ * Some directories ("/" containing the "mnt" mount-point parent, "/mnt"
+ * containing "sd", etc.) only exist conceptually - no real entry sits on the
+ * underlying VFS. The directory HAL uses this table to make Dir.open and
+ * stat behave consistently for those paths so callers can navigate the full
+ * Unix-style namespace without any special-case code.
+ *
+ * @param virtual_path Path to look up (must not be NULL).
+ * @param out_count    Optional out param receiving the number of children.
+ * @return Pointer to a static, contiguous array of `*out_count` C strings,
+ *         or NULL if the path is not a known virtual directory.
+ */
+const char *const *fmrb_hal_file_virtual_children(const char *virtual_path,
+                                                  size_t *out_count);
+
+/**
  * @brief Initialize file system
  * @return FMRB_OK on success, error code otherwise
  */

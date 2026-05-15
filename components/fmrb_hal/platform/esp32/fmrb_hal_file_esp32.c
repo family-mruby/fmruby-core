@@ -81,21 +81,93 @@ static sdmmc_card_t *s_sd_card = NULL;
 static bool s_sd_mounted = false;
 static bool s_spi_initialized = false;
 
-// Helper function to build full path
-// Accepts paths with /flash or /sd prefix, or bare paths (defaults to /flash)
-static void build_path(const char *path, char *full_path, size_t max_len) {
-    // Check if path already has /flash or /sd prefix
-    if (strncmp(path, "/flash/", 7) == 0 || strcmp(path, "/flash") == 0) {
-        snprintf(full_path, max_len, "%s", path);
-    } else if (strncmp(path, "/sd/", 4) == 0 || strcmp(path, "/sd") == 0) {
-        snprintf(full_path, max_len, "%s", path);
-    } else if (path[0] == '/') {
-        // Absolute path without prefix - default to flash
-        snprintf(full_path, max_len, "%s%s", LITTLEFS_PATH, path);
-    } else {
-        // Relative path - default to flash
-        snprintf(full_path, max_len, "%s/%s", LITTLEFS_PATH, path);
+// Path-prefix alias table. Each entry maps a user-visible prefix to the
+// underlying VFS mount point. An entry whose `mount` equals its `prefix` is
+// the canonical name; other entries are aliases (the prefix is rewritten to
+// `mount` before reaching the VFS). To add a new alias, add one row here -
+// no other code needs to change.
+typedef struct {
+    const char *prefix;  // user-visible prefix, no trailing slash
+    const char *mount;   // actual VFS mount point, no trailing slash
+} path_alias_t;
+
+static const path_alias_t s_path_aliases[] = {
+    { "/flash",  LITTLEFS_PATH },  // canonical flash mount
+    { "/sd",     SDCARD_PATH },    // canonical SD mount
+    { "/mnt/sd", SDCARD_PATH },    // Unix-style alias for SD
+};
+
+#define PATH_ALIAS_COUNT (sizeof(s_path_aliases) / sizeof(s_path_aliases[0]))
+
+// Virtual mount-point directories that the underlying VFS does not own. They
+// only exist as "containers" so the real mounts (/mnt/sd) are reachable via a
+// Unix-style namespace. opendir/readdir on these returns the synthetic child
+// list; stat reports them as directories.
+typedef struct {
+    const char *path;            // virtual directory path, no trailing slash
+    const char *const *children; // null-terminated? no - count is explicit
+    size_t count;
+} path_virtual_t;
+
+static const char *const s_root_extra[]    = { "mnt" };
+static const char *const s_mnt_children[]  = { "sd" };
+
+static const path_virtual_t s_virtual_dirs[] = {
+    { "/",    s_root_extra,   1 },  // "mnt" appears in addition to flash entries
+    { "/mnt", s_mnt_children, 1 },  // purely virtual: only contains "sd"
+};
+
+#define PATH_VIRTUAL_COUNT (sizeof(s_virtual_dirs) / sizeof(s_virtual_dirs[0]))
+
+// Resolve a virtual path to the underlying VFS path.
+// Order of resolution:
+//   1. Match against the alias table (prefix must terminate at '/' or '\0').
+//   2. Otherwise, treat as living under the flash mount (legacy behavior:
+//      both absolute and relative bare paths land under LITTLEFS_PATH).
+fmrb_err_t fmrb_hal_file_resolve_path(const char *virtual_path,
+                                      char *out, size_t out_len) {
+    if (virtual_path == NULL || out == NULL || out_len == 0) {
+        return FMRB_ERR_INVALID_PARAM;
     }
+    for (size_t i = 0; i < PATH_ALIAS_COUNT; i++) {
+        const char *prefix = s_path_aliases[i].prefix;
+        size_t plen = strlen(prefix);
+        if (strncmp(virtual_path, prefix, plen) == 0 &&
+            (virtual_path[plen] == '\0' || virtual_path[plen] == '/')) {
+            snprintf(out, out_len, "%s%s",
+                     s_path_aliases[i].mount, virtual_path + plen);
+            return FMRB_OK;
+        }
+    }
+    if (virtual_path[0] == '/') {
+        snprintf(out, out_len, "%s%s", LITTLEFS_PATH, virtual_path);
+    } else {
+        snprintf(out, out_len, "%s/%s", LITTLEFS_PATH, virtual_path);
+    }
+    return FMRB_OK;
+}
+
+// Internal alias for legacy callsites in this file.
+static inline void build_path(const char *path, char *full_path, size_t max_len) {
+    fmrb_hal_file_resolve_path(path, full_path, max_len);
+}
+
+// Look up the synthetic children for a virtual mount-point directory.
+// Returns NULL if `virtual_path` is not a known virtual directory.
+const char *const *fmrb_hal_file_virtual_children(const char *virtual_path,
+                                                  size_t *out_count) {
+    if (virtual_path == NULL) {
+        if (out_count) *out_count = 0;
+        return NULL;
+    }
+    for (size_t i = 0; i < PATH_VIRTUAL_COUNT; i++) {
+        if (strcmp(virtual_path, s_virtual_dirs[i].path) == 0) {
+            if (out_count) *out_count = s_virtual_dirs[i].count;
+            return s_virtual_dirs[i].children;
+        }
+    }
+    if (out_count) *out_count = 0;
+    return NULL;
 }
 
 // Convert flags to POSIX mode string
@@ -647,6 +719,19 @@ fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
 fmrb_err_t fmrb_hal_file_stat(const char *path, fmrb_file_info_t *info) {
     if (path == NULL || info == NULL) {
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    // Virtual mount-point parents have no on-disk entry. Report them as
+    // directories so File.exist? / File.directory? answer consistently with
+    // Dir.open behavior.
+    if (fmrb_hal_file_virtual_children(path, NULL) != NULL) {
+        memset(info, 0, sizeof(fmrb_file_info_t));
+        const char *basename = strrchr(path, '/');
+        basename = (basename && basename[1]) ? basename + 1 : path;
+        snprintf(info->name, sizeof(info->name), "%s", basename);
+        info->mode = FMRB_S_IFDIR;
+        info->is_dir = true;
+        return FMRB_OK;
     }
 
     if (hw_proxy_needs_proxy()) {
