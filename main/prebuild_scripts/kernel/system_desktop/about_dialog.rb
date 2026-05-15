@@ -40,16 +40,17 @@ module AboutDialogMixin
     ty = y + 20
     line_h = 10
     chip = "#{FmrbConst::CHIP_MODEL} #{FmrbConst::CHIP_REVISION} (#{FmrbConst::CHIP_CORES}c)"
-    draw_about_row(x, ty,              "OS",       FmrbConst::OS_VERSION)
-    draw_about_row(x, ty + line_h,     "GA",       FmrbConst::GA_VERSION)
-    draw_about_row(x, ty + line_h * 2, "Link",     FmrbConst::LINK_VERSION.to_s)
-    draw_about_row(x, ty + line_h * 3, "Platform", FmrbConst::PLATFORM)
-    draw_about_row(x, ty + line_h * 4, "IDF",      FmrbConst::IDF_VERSION)
-    draw_about_row(x, ty + line_h * 5, "MAC",      FmrbConst::MAC_ADDRESS)
-    draw_about_row(x, ty + line_h * 6, "Chip",     chip)
-    draw_about_row(x, ty + line_h * 7, "Flash",    "#{FmrbConst::FLASH_SIZE_MB}MB")
-    draw_about_row(x, ty + line_h * 8, "PSRAM",    "#{FmrbConst::PSRAM_SIZE_MB}MB")
-    draw_about_row(x, ty + line_h * 9, "Reset",    FmrbConst::RESET_REASON)
+    draw_about_row(x, ty,              "Copyright","(C) 2026 kishima")
+    draw_about_row(x, ty + line_h,     "Core",     FmrbConst::OS_VERSION)
+    draw_about_row(x, ty + line_h * 2, "GfxAudio", FmrbConst::GA_VERSION)
+    draw_about_row(x, ty + line_h * 3, "Protocol", FmrbConst::LINK_VERSION.to_s)
+    draw_about_row(x, ty + line_h * 4, "Platform", FmrbConst::PLATFORM)
+    draw_about_row(x, ty + line_h * 5, "IDF Ver",  FmrbConst::IDF_VERSION)
+    draw_about_row(x, ty + line_h * 6, "BT-MAC",   FmrbConst::MAC_ADDRESS)
+    draw_about_row(x, ty + line_h * 7, "Chip",     chip)
+    draw_about_row(x, ty + line_h * 8, "Flash",    "#{FmrbConst::FLASH_SIZE_MB}MB")
+    draw_about_row(x, ty + line_h * 9, "PSRAM",    "#{FmrbConst::PSRAM_SIZE_MB}MB")
+    draw_about_row(x, ty + line_h * 10,"Reset",    FmrbConst::RESET_REASON)
 
     @gfx.draw_text(x + ABOUT_W - 96, y + ABOUT_H - 10, "(click to close)", ABOUT_LABEL)
   end
