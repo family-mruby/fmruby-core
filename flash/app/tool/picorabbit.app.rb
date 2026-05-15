@@ -32,7 +32,7 @@ class SlideShowApp < FmrbApp
   def scan_md_files
     files = []
     begin
-      dir = Dir.open(to_os_dir_path(SLIDES_DIR))
+      dir = Dir.open(SLIDES_DIR)
       while (entry = dir.read)
         next if entry == "." || entry == ".."
         files << entry if entry.end_with?(".md")
@@ -46,7 +46,7 @@ class SlideShowApp < FmrbApp
   end
 
   def load_presentation(filename)
-    path = to_file_path("#{SLIDES_DIR}/#{filename}")
+    path = "#{SLIDES_DIR}/#{filename}"
     begin
       @result = PicoRabbit::Parser.parse_file(path)
       @renderer = PicoRabbit::FmrbRenderer.new(

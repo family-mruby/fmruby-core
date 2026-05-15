@@ -215,7 +215,7 @@ module ShellCommandsMixin
                    end
 
     begin
-      file = File.open(to_file_path(virtual_path), "r")
+      file = File.open(virtual_path, "r")
       content = file.read
       file.close
 
@@ -263,7 +263,7 @@ module ShellCommandsMixin
   end
 
   def virtual_is_dir?(virtual_path)
-    d = Dir.open(to_os_dir_path(virtual_path))
+    d = Dir.open(virtual_path)
     d.close
     true
   rescue
@@ -271,7 +271,7 @@ module ShellCommandsMixin
   end
 
   def virtual_file_exists?(virtual_path)
-    File.exist?(to_file_path(virtual_path))
+    File.exist?(virtual_path)
   rescue
     false
   end
@@ -287,7 +287,7 @@ module ShellCommandsMixin
       return
     end
     begin
-      Dir.mkdir(to_os_dir_path(target))
+      Dir.mkdir(target)
       Log.info("mkdir: #{target}")
     rescue => e
       @history << "mkdir: #{args[0]}: #{e.message}"
@@ -304,14 +304,14 @@ module ShellCommandsMixin
       if virtual_is_dir?(target)
         # Try to remove as empty directory
         begin
-          Dir.delete(to_os_dir_path(target))
+          Dir.delete(target)
           Log.info("rm: dir #{target}")
         rescue => e
           @history << "rm: #{arg}: #{e.message} (not empty?)"
         end
       elsif virtual_file_exists?(target)
         begin
-          File.delete(to_file_path(target))
+          File.delete(target)
           Log.info("rm: file #{target}")
         rescue => e
           @history << "rm: #{arg}: #{e.message}"
@@ -327,8 +327,8 @@ module ShellCommandsMixin
     src = nil
     dst = nil
     begin
-      src = File.open(to_file_path(src_virtual), "r")
-      dst = File.open(to_file_path(dst_virtual), "w")
+      src = File.open(src_virtual, "r")
+      dst = File.open(dst_virtual, "w")
       while true
         chunk = src.read(CP_CHUNK_SIZE)
         break if chunk.nil? || chunk.length == 0
@@ -399,7 +399,7 @@ module ShellCommandsMixin
       return
     end
     begin
-      File.rename(to_file_path(src), to_file_path(dst))
+      File.rename(src, dst)
       Log.info("mv: #{src} -> #{dst}")
     rescue => e
       @history << "mv: #{e.message}"
@@ -413,7 +413,7 @@ module ShellCommandsMixin
     leftover = ""
     file = nil
     begin
-      file = File.open(to_file_path(virtual_path), "r")
+      file = File.open(virtual_path, "r")
       while true
         chunk = file.read(CP_CHUNK_SIZE)
         break if chunk.nil? || chunk.length == 0
@@ -481,7 +481,7 @@ module ShellCommandsMixin
       return
     end
     virtual_path = resolve_script_path(args.join(' '))
-    file_path = to_file_path(virtual_path)
+    file_path = virtual_path
 
     # Create an empty file when the target does not exist so the editor can
     # open it as a fresh buffer rather than reporting "file not found".
@@ -580,7 +580,7 @@ module ShellCommandsMixin
     else
       toml_path = script_path + ".toml"
     end
-    file_path = to_file_path(toml_path)
+    file_path = toml_path
     begin
       f = File.open(file_path, "r")
       f.close
@@ -632,7 +632,7 @@ module ShellCommandsMixin
   end
 
   def run_foreground(script_path, script_args, redirect_in, redirect_out, redirect_mode)
-    file_path = to_file_path(script_path)
+    file_path = script_path
 
     # Read script file first
     Log.info("run_foreground: loading #{file_path}")
@@ -655,7 +655,7 @@ module ShellCommandsMixin
 
     # Setup stdout
     if redirect_out
-      out_path = to_file_path(resolve_script_path(redirect_out))
+      out_path = resolve_script_path(redirect_out)
       mode = redirect_mode == :append ? "a" : "w"
       stdout_obj = File.open(out_path, mode)
     else
@@ -664,7 +664,7 @@ module ShellCommandsMixin
 
     # Setup stdin
     if redirect_in
-      in_path = to_file_path(resolve_script_path(redirect_in))
+      in_path = resolve_script_path(redirect_in)
       stdin_obj = File.open(in_path, "r")
     else
       stdin_obj = ShellStdin.new(self)
@@ -707,7 +707,7 @@ module ShellCommandsMixin
   end
 
   def run_background(script_path, script_args, redirect_out, redirect_mode)
-    file_path = to_file_path(script_path)
+    file_path = script_path
 
     # Read script file first (before spawning task)
     script_code = nil
@@ -742,7 +742,7 @@ module ShellCommandsMixin
 
     job_entry[:task] = Task.new(name: "bg_#{job_id}", priority: 50) do
       if rout
-        out_path = app_self.to_file_path(app_self.resolve_script_path(rout))
+        out_path = app_self.resolve_script_path(rout)
         mode = rmode == :append ? "a" : "w"
         stdout_obj = File.open(out_path, mode)
       else
@@ -872,7 +872,7 @@ module ShellCommandsMixin
 
     # List entries matching name_prefix
     begin
-      dir = Dir.open(to_os_dir_path(search_virtual))
+      dir = Dir.open(search_virtual)
       candidates = []
       while (entry = dir.read)
         next if entry == "." || entry == ".."
@@ -881,7 +881,7 @@ module ShellCommandsMixin
           entry_virtual = search_virtual == "/" ? "/#{entry}" : "#{search_virtual}/#{entry}"
           is_dir = false
           begin
-            d = Dir.open(to_os_dir_path(entry_virtual))
+            d = Dir.open(entry_virtual)
             d.close
             is_dir = true
           rescue
@@ -1037,7 +1037,7 @@ module ShellCommandsMixin
 
   def app_file_exists?(virtual_path)
     begin
-      f = File.open(to_file_path(virtual_path), "r")
+      f = File.open(virtual_path, "r")
       f.close
       return true
     rescue
@@ -1047,14 +1047,14 @@ module ShellCommandsMixin
 
   def ensure_app_usr_dir
     begin
-      d = Dir.open(to_os_dir_path("/app/usr"))
+      d = Dir.open("/app/usr")
       d.close
       return true
     rescue
       # Not present, fall through to mkdir
     end
     begin
-      Dir.mkdir(to_os_dir_path("/app/usr"))
+      Dir.mkdir("/app/usr")
       return true
     rescue => e
       @history << "Error: cannot create /app/usr: #{e.message}"
@@ -1064,7 +1064,7 @@ module ShellCommandsMixin
 
   def read_template(virtual_path)
     begin
-      f = File.open(to_file_path(virtual_path), "r")
+      f = File.open(virtual_path, "r")
       content = f.read
       f.close
       return content
@@ -1084,7 +1084,7 @@ module ShellCommandsMixin
 
   def write_text_file(virtual_path, content)
     begin
-      f = File.open(to_file_path(virtual_path), "w")
+      f = File.open(virtual_path, "w")
       f.write(content)
       f.close
       return true

@@ -415,17 +415,4 @@ class FmrbApp
     @running = false
   end
 
-  # Deprecated. The HAL owns every aspect of virtual -> OS path translation:
-  # alias rewriting (fmrb_hal_file_resolve_path) and synthetic mount-point
-  # children (fmrb_hal_file_virtual_children). Callers should pass virtual
-  # paths straight to File.open / Dir.open. These helpers remain as identity
-  # pass-throughs to keep older code compiling; new code should not call them.
-  def to_file_path(virtual_path)
-    virtual_path
-  end
-
-  def to_os_dir_path(virtual_path)
-    virtual_path
-  end
-
 end

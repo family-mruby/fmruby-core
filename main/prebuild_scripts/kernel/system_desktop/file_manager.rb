@@ -410,7 +410,7 @@ module FileManagerMixin
     vpath = fmgr_selected_virtual_path
     return unless vpath
 
-    file_path = to_file_path(vpath)
+    file_path = vpath
     Log.info("File manager: run #{file_path}")
     close_file_manager
     spawn_app(file_path)
@@ -423,7 +423,7 @@ module FileManagerMixin
 
     vpath = fmgr_selected_virtual_path
     return unless vpath
-    file_path = to_file_path(vpath)
+    file_path = vpath
 
     Log.info("File manager: edit #{file_path}")
     close_file_manager
@@ -459,8 +459,8 @@ module FileManagerMixin
                    "#{@file_manager_dir}/#{src_name}"
                  end
 
-    src_file = to_file_path(@fmgr_copy_path)
-    dest_file = to_file_path(dest_vpath)
+    src_file = @fmgr_copy_path
+    dest_file = dest_vpath
 
     if src_file == dest_file
       Log.warn("File manager: cannot copy to same location")
@@ -495,7 +495,7 @@ module FileManagerMixin
             else
               "#{@file_manager_dir}/#{entry[:name]}"
             end
-    file_path = to_file_path(vpath)
+    file_path = vpath
 
     begin
       File.unlink(file_path)

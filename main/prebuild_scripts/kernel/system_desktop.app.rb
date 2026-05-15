@@ -623,7 +623,7 @@ class SystemDesktopApp < FmrbApp
                    else
                      "#{@file_selector_dir}/#{@file_selector_filename}"
                    end
-            close_file_selector(to_file_path(path))
+            close_file_selector(path)
           end
         elsif character == 8  # Backspace
           if @file_selector_filename.length > 0

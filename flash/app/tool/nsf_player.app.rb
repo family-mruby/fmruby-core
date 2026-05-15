@@ -37,7 +37,7 @@ class NsfPlayerApp < FmrbApp
   def scan_files
     @files = []
     begin
-      dir = Dir.open(to_os_dir_path(MUSIC_DIR))
+      dir = Dir.open(MUSIC_DIR)
       while (entry = dir.read)
         next if entry == "." || entry == ".."
         @files << entry if entry.end_with?(".nsf")
@@ -62,7 +62,7 @@ class NsfPlayerApp < FmrbApp
     return if idx < 0 || idx >= @files.length
     @selected = idx
     @track = 0
-    path = to_file_path("#{MUSIC_DIR}/#{@files[idx]}")
+    path = "#{MUSIC_DIR}/#{@files[idx]}"
     @nsf_info = NsfHeader.parse(path)
     if @nsf_info
       @track = @nsf_info.starting_song > 0 ? @nsf_info.starting_song - 1 : 0

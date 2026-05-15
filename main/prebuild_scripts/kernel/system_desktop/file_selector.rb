@@ -188,7 +188,7 @@ module FileSelectorMixin
                  else
                    "#{@file_selector_dir}/#{@file_selector_filename}"
                  end
-          close_file_selector(to_file_path(path))
+          close_file_selector(path)
         end
         return
       end
@@ -244,7 +244,7 @@ module FileSelectorMixin
                    else
                      "#{@file_selector_dir}/#{entry[:name]}"
                    end
-            close_file_selector(to_file_path(path))
+            close_file_selector(path)
           end
         end
       end

@@ -103,7 +103,7 @@ module ConfigDialogMixin
   # ---- Loading ----
 
   def cfg_load
-    path = to_file_path(CFG_PATH)
+    path = CFG_PATH
     @cfg_file_lines = []
     begin
       f = File.open(path, "r")
@@ -389,7 +389,7 @@ module ConfigDialogMixin
   # before the first [section] header; a missing [theme] section gets
   # appended at the end.
   def cfg_write
-    path = to_file_path(CFG_PATH)
+    path = CFG_PATH
 
     top_updates = {}
     CFG_SETTINGS.each do |s|
