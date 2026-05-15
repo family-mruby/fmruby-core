@@ -82,6 +82,13 @@ class FmrbApp
     if @frame_block
       @frame_block.draw(w: @window_width, h: @window_height)
     end
+    # Re-stamp the 3 outer pixels of each rounded corner with the canvas
+    # color key, so resize / clear-induced opaque pixels there composite
+    # as transparent again. Runs after the frame draw so the round-rect
+    # border (drawn last by the frame block) stays intact.
+    if @corner_clear_block
+      @corner_clear_block.draw(w: @window_width, h: @window_height)
+    end
     if @gfx
       @gfx.set_font(*saved_font) unless saved_font == [:default]
       @gfx.set_text_size(saved_size) unless saved_size == 1
@@ -120,6 +127,30 @@ class FmrbApp
       # Rounded window border. Outer edge rows/columns stay transparent because
       # app content never fills them (user_area excludes x=0, x=w-1, y=h-1).
       r.draw_round_rect 0, 0, w, h, CORNER_R, 0x60
+    end
+    _build_corner_clear_block
+  end
+
+  # CORNER_R=4 の弧外側 3 px ずつ (= 12 px / window) を canvas color key
+  # (0x01) で塗り直す。canvas resize やアプリの clear で角丸の外側ピクセルが
+  # 不透明色に書き換わると compositing で透けなくなるための保険。
+  # 別 GfxBlock に分離しているのは _build_frame_block と合体させると
+  # DEFINE_PROG_MAX_PAYLOAD (220B) を超えるリスクがあるため。
+  def _build_corner_clear_block
+    t = TRANSPARENT_COLOR
+    @corner_clear_block = GfxBlock.new(@gfx, w: @window_width, h: @window_height) do |r, w:, h:|
+      # top-left: (0,0)(1,0)(0,1)
+      r.draw_line 0,     0,     1,     0,     t
+      r.draw_line 0,     1,     0,     1,     t
+      # top-right: (w-2,0)(w-1,0)(w-1,1)
+      r.draw_line w - 2, 0,     w - 1, 0,     t
+      r.draw_line w - 1, 1,     w - 1, 1,     t
+      # bottom-left: (0,h-2)(0,h-1)(1,h-1)
+      r.draw_line 0,     h - 2, 0,     h - 1, t
+      r.draw_line 1,     h - 1, 1,     h - 1, t
+      # bottom-right: (w-1,h-2)(w-1,h-1)(w-2,h-1)
+      r.draw_line w - 1, h - 2, w - 1, h - 1, t
+      r.draw_line w - 2, h - 1, w - 2, h - 1, t
     end
   end
 
@@ -391,6 +422,10 @@ class FmrbApp
     if @frame_block
       @frame_block.destroy
       @frame_block = nil
+    end
+    if @corner_clear_block
+      @corner_clear_block.destroy
+      @corner_clear_block = nil
     end
     if @scrollbar_blocks
       @scrollbar_blocks.each_value { |b| b.destroy }
