@@ -1,6 +1,6 @@
 # NTSC Color Test - Display test patterns for CVBS output calibration
-# Left click: next page (or adjust on pages 7-8)
-# Right click: previous page
+# Left click / Right arrow: next page (or adjust on pages 7-8 via click)
+# Right click / Left arrow: previous page
 # 8 test pages for verifying NTSC signal quality
 
 class NtscColorTestApp < FmrbApp
@@ -18,7 +18,8 @@ class NtscColorTestApp < FmrbApp
 
   def on_event(ev)
     super(ev)
-    if ev[:type] == :mouse_down
+    case ev[:type]
+    when :mouse_down
       x = ev[:x]
       y = ev[:y]
       btn = ev[:button]
@@ -31,6 +32,15 @@ class NtscColorTestApp < FmrbApp
         end
         draw_page
       elsif btn == 3 # right click
+        @page = (@page - 1) % NUM_PAGES
+        draw_page
+      end
+    when :key_down
+      case ev[:keycode]
+      when FmrbConst::KEY_RIGHT
+        @page = (@page + 1) % NUM_PAGES
+        draw_page
+      when FmrbConst::KEY_LEFT
         @page = (@page - 1) % NUM_PAGES
         draw_page
       end
@@ -240,7 +250,9 @@ class NtscColorTestApp < FmrbApp
     y = @h - @status_h
     @gfx.fill_rect(0, y, @w, @status_h, 0x00)
     @gfx.set_text_size(1)
-    @gfx.draw_text(2, y + 2, "P#{@page + 1}/#{NUM_PAGES} L:next R:prev", 0xFF)
+    @gfx.draw_text(2, y + 2,
+                   "P#{@page + 1}/#{NUM_PAGES} click:L=next/R=prev key:<-/->",
+                   0xFF)
   end
 end
 

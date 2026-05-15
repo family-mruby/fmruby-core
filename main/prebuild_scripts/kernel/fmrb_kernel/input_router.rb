@@ -25,7 +25,16 @@ module InputRouterMixin
     begin
       case subtype
       when 4  # Mouse button down
-        update_window_list(false)  # Show log on click
+        # Force refresh: spawn marks the list dirty BEFORE the new app's task
+        # has reached PROC_STATE_RUNNING, so update_window_list() inside
+        # enter_fullscreen captures a list that excludes the new fullscreen
+        # app. Subsequent INIT->RUNNING transitions in C don't propagate up
+        # as a dirty mark, so the cached list stays stale until something
+        # else (drag, resize, focus_app, ...) marks it again. Refreshing on
+        # every click costs one fmrb_app_get_window_list call (semaphore +
+        # FMRB_MAX_APPS=7 loop) and removes the routing race.
+        mark_window_list_dirty
+        update_window_list(false)
 
         # In fullscreen mode, route directly to fullscreen app
         # (except menu bar area which is handled by find_window_at)
