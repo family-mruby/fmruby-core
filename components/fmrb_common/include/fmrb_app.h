@@ -83,6 +83,8 @@ typedef struct fmrb_app_task_context_s {
     uint16_t              bg_canvas_id;      // Background canvas ID (0 if none)
     bool                  fullscreen;        // Fullscreen app flag
     bool                  resizable;         // Allow window resize (default: false)
+    uint16_t              min_window_width;  // Per-app minimum width (0 = use global default)
+    uint16_t              min_window_height; // Per-app minimum height (0 = use global default)
 
     // Load mode and data (replaces encoded user_data pointer tagging)
     fmrb_load_mode_t      load_mode;         // How to load the script
@@ -123,6 +125,8 @@ typedef struct {
     uint16_t              window_height;    // Window Height (if headless, =0)
     uint16_t              window_pos_x;
     uint16_t              window_pos_y;
+    uint16_t              min_window_width;  // Per-app minimum width (0 = use global default)
+    uint16_t              min_window_height; // Per-app minimum height (0 = use global default)
 } fmrb_spawn_attr_t;
 
 // App info for ps-style listing
@@ -154,6 +158,8 @@ typedef struct {
     uint8_t               z_order;          // Z-order (0=back, higher=front)
     bool                  fullscreen;       // Fullscreen app flag
     bool                  resizable;        // Allow window resize
+    uint16_t              min_width;        // Per-app minimum width (0 = use global default)
+    uint16_t              min_height;       // Per-app minimum height (0 = use global default)
 } fmrb_window_info_t;
 
 // Core APIs

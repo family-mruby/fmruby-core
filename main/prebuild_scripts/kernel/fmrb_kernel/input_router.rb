@@ -99,6 +99,11 @@ module InputRouterMixin
           @resize_start_height = win_height
           @resize_start_x = x
           @resize_start_y = y
+          # Per-app minimum (falls back to the global floor when unset / 0).
+          tw_min_w = target_window[:min_width]
+          tw_min_h = target_window[:min_height]
+          @resize_min_w = (tw_min_w && tw_min_w > 0) ? tw_min_w : MIN_WINDOW_WIDTH
+          @resize_min_h = (tw_min_h && tw_min_h > 0) ? tw_min_h : MIN_WINDOW_HEIGHT
           # Outline-only preview: do not call _update_window_size until mouse_up.
           # Track the live (uncommitted) rectangle and ask SystemDesktop to draw
           # the outline on its z=254 foreground layer.
@@ -140,9 +145,11 @@ module InputRouterMixin
           new_width = @resize_start_width + (x - @resize_start_x)
           new_height = @resize_start_height + (y - @resize_start_y)
 
-          # Apply minimum size constraints
-          new_width = MIN_WINDOW_WIDTH if new_width < MIN_WINDOW_WIDTH
-          new_height = MIN_WINDOW_HEIGHT if new_height < MIN_WINDOW_HEIGHT
+          # Apply per-app minimum size (captured at mouse_down).
+          min_w = @resize_min_w || MIN_WINDOW_WIDTH
+          min_h = @resize_min_h || MIN_WINDOW_HEIGHT
+          new_width = min_w if new_width < min_w
+          new_height = min_h if new_height < min_h
 
           # Outline-only preview: track the rectangle and refresh the overlay,
           # but defer the actual _update_window_size (and the on_resize it

@@ -75,10 +75,14 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
+        .resizable = true,
         .window_width = 240,
         .window_height = 200,
         .window_pos_x = 5,
-        .window_pos_y = 15
+        .window_pos_y = 15,
+        // Menu bar needs ~218px; one edit row + menu + status fits in ~80px.
+        .min_window_width = 220,
+        .min_window_height = 80
     }},
     { "default/logviewer", {
         .app_id = -1,
@@ -223,6 +227,8 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     int window_pos_y = 50;
     bool resizable = false;
     bool large_memory = false;
+    int min_window_width = 0;
+    int min_window_height = 0;
 
     FMRB_LOGI(TAG, "[spawn] 6 toml_load '%s'", toml_path);
     // Try loading TOML configuration
@@ -265,6 +271,10 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // Parse resizable flag (default: false)
         resizable = (bool)fmrb_toml_get_int(config, "resizable", 0);
 
+        // Parse per-app minimum window size (0 = use global default 64)
+        min_window_width  = (int)fmrb_toml_get_int(config, "min_window_width",  0);
+        min_window_height = (int)fmrb_toml_get_int(config, "min_window_height", 0);
+
         // Parse large_memory flag (default: false)
         large_memory = (bool)fmrb_toml_get_int(config, "large_memory", 0);
     } else {
@@ -291,7 +301,9 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .window_width = window_width,
         .window_height = window_height,
         .window_pos_x = window_pos_x,
-        .window_pos_y = window_pos_y
+        .window_pos_y = window_pos_y,
+        .min_window_width  = (uint16_t)min_window_width,
+        .min_window_height = (uint16_t)min_window_height
     };
 
     // Spawn the app

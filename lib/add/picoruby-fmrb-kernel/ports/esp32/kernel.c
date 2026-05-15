@@ -270,6 +270,10 @@ static mrb_value mrb_kernel_get_window_list(mrb_state *mrb, mrb_value self)
                      mrb_bool_value(windows[i].fullscreen));
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "resizable")),
                      mrb_bool_value(windows[i].resizable));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "min_width")),
+                     mrb_fixnum_value(windows[i].min_width));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "min_height")),
+                     mrb_fixnum_value(windows[i].min_height));
 
         mrb_ary_push(mrb, array, hash);
     }

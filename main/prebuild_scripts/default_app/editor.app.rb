@@ -106,20 +106,30 @@ class EditorApp < FmrbApp
   end
 
   def on_create
-    # Calculate layout
-    @menu_y = @user_area_y0
-    @edit_y = @menu_y + CHAR_H + 1
-    @status_y = @user_area_y0 + @user_area_height - CHAR_H
-    @edit_height = @status_y - @edit_y
-    @edit_cols = (@user_area_width - 2) / CHAR_W
-    @edit_rows = @edit_height / CHAR_H
-
+    recompute_layout
     @need_redraw = true
 
     app_self = self
     @editor_task = Task.new(name: "editor_task", priority: 100) do
       app_self.editor_loop
     end
+  end
+
+  def on_resize(new_width, new_height)
+    Log.info("Editor resize: #{new_width}x#{new_height}")
+    recompute_layout
+    # Shrinking can leave the cursor off-screen; re-clamp scroll position.
+    ensure_cursor_visible
+    @need_redraw = true
+  end
+
+  def recompute_layout
+    @menu_y = @user_area_y0
+    @edit_y = @menu_y + CHAR_H + 1
+    @status_y = @user_area_y0 + @user_area_height - CHAR_H
+    @edit_height = @status_y - @edit_y
+    @edit_cols = (@user_area_width - 2) / CHAR_W
+    @edit_rows = @edit_height / CHAR_H
   end
 
   def editor_loop
@@ -359,6 +369,9 @@ class EditorApp < FmrbApp
     draw_active_menu if @active_menu
     draw_search_dialog if @search_open
     draw_quit_dialog if @quit_dialog_open
+    # Re-issue the title-bar / border GfxBlock with current window size so the
+    # frame survives canvas resize (the block is bound to @window_width / @window_height kwargs).
+    draw_window_frame
     @gfx.present
   end
 

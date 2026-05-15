@@ -1268,6 +1268,8 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     ctx->bg_canvas_id = 0;
     ctx->fullscreen = attr->fullscreen;
     ctx->resizable = attr->resizable;
+    ctx->min_window_width = attr->min_window_width;
+    ctx->min_window_height = attr->min_window_height;
     if (ctx->has_background_canvas) {
         ctx->z_order = 254;  // Main canvas is foreground (menu bar)
     } else if (strcmp(ctx->app_name, "system_overlay") == 0) {
@@ -1746,6 +1748,8 @@ int32_t fmrb_app_get_window_list(fmrb_window_info_t* list, int32_t max_count) {
             list[count].z_order = ctx->z_order;
             list[count].fullscreen = ctx->fullscreen;
             list[count].resizable = ctx->resizable;
+            list[count].min_width = ctx->min_window_width;
+            list[count].min_height = ctx->min_window_height;
 
             count++;
         }
@@ -1982,20 +1986,8 @@ fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y) 
  * Minimum size constraints: 64x64 pixels
  */
 fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t height) {
-    // Minimum window size constraints
-    const uint16_t MIN_WINDOW_WIDTH = 64;
-    const uint16_t MIN_WINDOW_HEIGHT = 64;
-
     if (pid >= FMRB_MAX_APPS) {
         return FMRB_ERR_INVALID_PARAM;
-    }
-
-    // Apply minimum size constraints
-    if (width < MIN_WINDOW_WIDTH) {
-        width = MIN_WINDOW_WIDTH;
-    }
-    if (height < MIN_WINDOW_HEIGHT) {
-        height = MIN_WINDOW_HEIGHT;
     }
 
     fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
@@ -2019,6 +2011,12 @@ fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t hei
         FMRB_LOGW(TAG, "Window '%s' is not resizable", ctx->app_name);
         return FMRB_ERR_NOT_SUPPORTED;
     }
+
+    // Apply per-app minimum size (fallback: global 64x64)
+    uint16_t min_w = ctx->min_window_width  > 0 ? ctx->min_window_width  : 64;
+    uint16_t min_h = ctx->min_window_height > 0 ? ctx->min_window_height : 64;
+    if (width  < min_w) width  = min_w;
+    if (height < min_h) height = min_h;
 
     // Update size
     ctx->window_width = width;
