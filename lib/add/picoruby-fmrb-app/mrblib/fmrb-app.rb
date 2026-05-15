@@ -286,6 +286,10 @@ class FmrbApp
     end
   end
 
+  def on_resize(new_width, new_height)
+    # Called from C
+  end
+
   def request_reload
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
       {"cmd" => "reload_confirm"})

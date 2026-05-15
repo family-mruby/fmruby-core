@@ -8,6 +8,14 @@ module InputRouterMixin
   MIN_WINDOW_WIDTH = 64
   MIN_WINDOW_HEIGHT = 64
 
+  # Minimum interval between resize_preview_update messages sent to
+  # SystemDesktop. The desktop's draw_foreground takes ~30-50 ms per call
+  # (clear + menu_bar + clock + taskbar + outline + present), so anything
+  # tighter than this just piles up in the queue and makes the outline
+  # lag behind the cursor. 100 ms (10 Hz) is enough for a drag-resize
+  # outline and leaves plenty of headroom for the desktop.
+  RESIZE_PREVIEW_MIN_INTERVAL_MS = 100
+
   def handle_hid_event(msg)
     data_binary = msg[:data]
     src_pid = msg[:src_pid]
@@ -91,6 +99,16 @@ module InputRouterMixin
           @resize_start_height = win_height
           @resize_start_x = x
           @resize_start_y = y
+          # Outline-only preview: do not call _update_window_size until mouse_up.
+          # Track the live (uncommitted) rectangle and ask SystemDesktop to draw
+          # the outline on its z=254 foreground layer.
+          @resize_preview_win_x = win_x
+          @resize_preview_win_y = win_y
+          @resize_preview_w = win_width
+          @resize_preview_h = win_height
+          @resize_preview_last_send_ms = 0
+          send_resize_preview("resize_preview_start",
+                              win_x, win_y, win_width, win_height)
           Log.info("Start resize: PID #{target_pid}, size=(#{win_width}x#{win_height})")
         # Check if click is in menu bar region (not resizing and not close button)
         elsif target_name != "system_desktop" && target_name != "system_overlay" && relative_y < 11 && relative_x < win_width - 10
@@ -126,15 +144,14 @@ module InputRouterMixin
           new_width = MIN_WINDOW_WIDTH if new_width < MIN_WINDOW_WIDTH
           new_height = MIN_WINDOW_HEIGHT if new_height < MIN_WINDOW_HEIGHT
 
-          # Update window size
-          if _update_window_size(@capture_pid, new_width, new_height)
-            mark_window_list_dirty  # Size changed
-          else
-            Log.info("Failed to update window size")
-            # Release capture on error
-            @capture_pid = nil
-            @capture_mode = nil
-          end
+          # Outline-only preview: track the rectangle and refresh the overlay,
+          # but defer the actual _update_window_size (and the on_resize it
+          # triggers) until mouse_up to avoid per-pixel redraw storms.
+          @resize_preview_w = new_width
+          @resize_preview_h = new_height
+          send_resize_preview("resize_preview_update",
+                              @resize_preview_win_x, @resize_preview_win_y,
+                              new_width, new_height)
 
         elsif @capture_mode == :drag && @capture_pid
           # Calculate new window position
@@ -162,9 +179,18 @@ module InputRouterMixin
         end
 
         # Forward mouse_move event:
-        # - If capture is active (drag/resize): send to @capture_pid
-        # - Otherwise: send to @hid_target_pid (focused window)
-        target_pid = @capture_pid || @hid_target_pid
+        # - Resize: do NOT forward to the app. The app is not interactive
+        #   while being resized (we only draw an outline overlay), and the
+        #   high-rate mouse_move stream was overflowing the app's message
+        #   queue, blocking the router for 100 ms per send and making the
+        #   outline visibly lag behind the cursor.
+        # - Drag: forward to @capture_pid so the app sees the cursor leaving.
+        # - Otherwise: forward to @hid_target_pid (focused window).
+        target_pid = if @capture_mode == :resize
+                       nil
+                     else
+                       @capture_pid || @hid_target_pid
+                     end
         if target_pid
           # Convert to window-relative coordinates
           target_window = find_window_by_pid(target_pid)
@@ -226,11 +252,28 @@ module InputRouterMixin
 
         # Release capture and reset state based on @capture_mode
         if @capture_mode == :resize
-          Log.info("End resize: PID #{@capture_pid}")
+          # Commit the final size once on mouse_up. This is the only call to
+          # _update_window_size during a resize gesture, so the app's on_resize
+          # callback fires exactly once.
+          final_w = @resize_preview_w || @resize_start_width
+          final_h = @resize_preview_h || @resize_start_height
+          if @capture_pid && final_w > 0 && final_h > 0
+            if _update_window_size(@capture_pid, final_w, final_h)
+              mark_window_list_dirty
+            else
+              Log.info("Failed to commit window size on mouse_up")
+            end
+          end
+          send_resize_preview("resize_preview_end", 0, 0, 0, 0)
+          Log.info("End resize: PID #{@capture_pid}, final=(#{final_w}x#{final_h})")
           @resize_start_width = 0
           @resize_start_height = 0
           @resize_start_x = 0
           @resize_start_y = 0
+          @resize_preview_win_x = 0
+          @resize_preview_win_y = 0
+          @resize_preview_w = 0
+          @resize_preview_h = 0
         elsif @capture_mode == :drag
           Log.info("End drag: PID #{@capture_pid}")
           @drag_offset_x = 0
@@ -246,5 +289,42 @@ module InputRouterMixin
     rescue => e
       Log.error("Error in handle_hid_event: #{e.class}: #{e.message}")
     end
+  end
+
+  # Notify SystemDesktop to draw / update / clear the resize-preview outline
+  # on its foreground layer (z=254). The desktop renders only a rectangle
+  # frame so the app underneath is not forced to repaint per mouse_move.
+  #
+  # USB mice generate ~100 Hz of mouse_move events; SystemDesktop's
+  # draw_foreground takes ~30-50 ms. Forwarding every event would fill the
+  # desktop's message queue and force the router to chew through stale
+  # coordinates while the cursor keeps moving — the outline visibly trails
+  # the cursor. Two defenses:
+  #   1. Rate-limit "resize_preview_update" to RESIZE_PREVIEW_MIN_INTERVAL_MS
+  #      so we never push the queue faster than the desktop can drain it.
+  #   2. Use _try_send_raw_message (timeout=0) for updates so that even if
+  #      the queue is momentarily full (e.g. desktop busy with a dropdown),
+  #      the router does not block — the update is simply dropped.
+  # "resize_preview_start" / "resize_preview_end" bracket the gesture and
+  # MUST be delivered, so they bypass both the rate limit and the drop.
+  def send_resize_preview(cmd, x, y, w, h)
+    return unless @desktop_pid
+    if cmd == "resize_preview_update"
+      now = Machine.board_millis
+      @resize_preview_last_send_ms ||= 0
+      return if (now - @resize_preview_last_send_ms) < RESIZE_PREVIEW_MIN_INTERVAL_MS
+      @resize_preview_last_send_ms = now
+    end
+    data = MessagePack.pack({
+      "cmd" => cmd,
+      "x" => x, "y" => y, "w" => w, "h" => h
+    })
+    if cmd == "resize_preview_update"
+      _try_send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+    else
+      _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+    end
+  rescue => e
+    Log.error("send_resize_preview failed: #{e.class}: #{e.message}")
   end
 end

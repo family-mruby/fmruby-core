@@ -277,9 +277,9 @@ static mrb_value mrb_kernel_get_window_list(mrb_state *mrb, mrb_value self)
     return array;
 }
 
-// FmrbKernel#_send_raw_message(dest_pid, msg_type, data) -> bool
-// Send raw binary message to another process
-static mrb_value mrb_kernel_send_raw_message(mrb_state *mrb, mrb_value self)
+// Internal helper shared by _send_raw_message / _try_send_raw_message.
+// timeout_ms: ticks to wait for queue space. Use 0 for non-blocking send.
+static mrb_value kernel_send_raw_message_impl(mrb_state *mrb, mrb_value self, uint32_t timeout_ms)
 {
     mrb_int dest_pid, msg_type;
     mrb_value data_val;
@@ -303,9 +303,26 @@ static mrb_value mrb_kernel_send_raw_message(mrb_state *mrb, mrb_value self)
     memcpy(msg.data, data_ptr, data_len);
 
     // Send message
-    fmrb_err_t ret = fmrb_msg_send((uint8_t)dest_pid, &msg, 100);
+    fmrb_err_t ret = fmrb_msg_send((uint8_t)dest_pid, &msg, timeout_ms);
 
     return mrb_bool_value(ret == FMRB_OK);
+}
+
+// FmrbKernel#_send_raw_message(dest_pid, msg_type, data) -> bool
+// Send raw binary message to another process (blocking up to 100 ms)
+static mrb_value mrb_kernel_send_raw_message(mrb_state *mrb, mrb_value self)
+{
+    return kernel_send_raw_message_impl(mrb, self, 100);
+}
+
+// FmrbKernel#_try_send_raw_message(dest_pid, msg_type, data) -> bool
+// Non-blocking variant: returns false immediately if the destination queue
+// is full. Use for high-rate, drop-tolerant messages such as resize-preview
+// updates, where blocking the kernel for 100 ms per send causes the router
+// to fall behind the mouse cursor.
+static mrb_value mrb_kernel_try_send_raw_message(mrb_state *mrb, mrb_value self)
+{
+    return kernel_send_raw_message_impl(mrb, self, 0);
 }
 
 // FmrbKernel#_bring_to_front(pid) -> bool
@@ -516,6 +533,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_send_raw_message", mrb_kernel_send_raw_message, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, handler_class, "_try_send_raw_message", mrb_kernel_try_send_raw_message, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_bring_to_front", mrb_kernel_bring_to_front, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_update_window_position", mrb_kernel_update_window_position, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_update_window_size", mrb_kernel_update_window_size, MRB_ARGS_REQ(3));

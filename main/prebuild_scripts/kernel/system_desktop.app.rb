@@ -57,6 +57,12 @@ class SystemDesktopApp < FmrbApp
     @counter = 0
     @mem_update_interval = 30
 
+    @resize_preview_active = false
+    @resize_preview_x = 0
+    @resize_preview_y = 0
+    @resize_preview_w = 0
+    @resize_preview_h = 0
+
     @dropdown_open = false
     @dropdown_hover_idx = -1
     @about_open = false
@@ -420,7 +426,27 @@ class SystemDesktopApp < FmrbApp
     draw_error_dialog if @error_dlg_open
     draw_about_dialog if @about_open
     draw_tbd_dialog if @tbd_open
+    draw_resize_preview if @resize_preview_active
     @gfx.present
+  end
+
+  # Outline overlay drawn while the user is dragging the resize handle of a
+  # window. The kernel input router sends start/update/end messages so the
+  # underlying app does not repaint until mouse_up.
+  #
+  # A single-color frame disappears against same-color backgrounds (e.g. a
+  # white window). Use a black-outside / white-inside double frame so at
+  # least one of the two strokes contrasts with whatever is underneath.
+  def draw_resize_preview
+    return unless @resize_preview_w && @resize_preview_h
+    return if @resize_preview_w <= 0 || @resize_preview_h <= 0
+    x = @resize_preview_x
+    y = @resize_preview_y
+    w = @resize_preview_w
+    h = @resize_preview_h
+    @gfx.draw_rect(x, y, w, h, FmrbGfx::BLACK)
+    return if w < 4 || h < 4
+    @gfx.draw_rect(x + 1, y + 1, w - 2, h - 2, FmrbGfx::WHITE)
   end
 
   def draw_menu_bar
@@ -570,6 +596,16 @@ class SystemDesktopApp < FmrbApp
     elsif msg["cmd"] == "do_reboot"
       Log.info("Desktop: do_reboot received, calling FmrbApp.reboot")
       FmrbApp.reboot
+    elsif msg["cmd"] == "resize_preview_start" || msg["cmd"] == "resize_preview_update"
+      @resize_preview_active = true
+      @resize_preview_x = msg["x"] || 0
+      @resize_preview_y = msg["y"] || 0
+      @resize_preview_w = msg["w"] || 0
+      @resize_preview_h = msg["h"] || 0
+      draw_foreground
+    elsif msg["cmd"] == "resize_preview_end"
+      @resize_preview_active = false
+      draw_foreground
     end
   end
 
