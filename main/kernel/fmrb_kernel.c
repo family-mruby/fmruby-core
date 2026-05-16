@@ -558,7 +558,8 @@ fmrb_err_t fmrb_kernel_start(void)
         .priority = FMRB_KERNEL_TASK_PRIORITY,
         .flags = FMRB_KERNEL_TASK_FLAGS,
         .core_affinity = -1,
-        .headless = false
+        .headless = false,
+        .rounded_corners = true
     };
 
     int32_t kernel_id;

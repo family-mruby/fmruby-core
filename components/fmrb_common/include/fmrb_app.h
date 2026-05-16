@@ -85,6 +85,7 @@ typedef struct fmrb_app_task_context_s {
     bool                  resizable;         // Allow window resize (default: false)
     uint16_t              min_window_width;  // Per-app minimum width (0 = use global default)
     uint16_t              min_window_height; // Per-app minimum height (0 = use global default)
+    bool                  rounded_corners;   // Window has rounded corners; if false, canvas is opaque (skips transparent compositing)
 
     // Load mode and data (replaces encoded user_data pointer tagging)
     fmrb_load_mode_t      load_mode;         // How to load the script
@@ -127,6 +128,7 @@ typedef struct {
     uint16_t              window_pos_y;
     uint16_t              min_window_width;  // Per-app minimum width (0 = use global default)
     uint16_t              min_window_height; // Per-app minimum height (0 = use global default)
+    bool                  rounded_corners;   // Window has rounded corners (default: true). false = opaque canvas, no transparent compositing
 } fmrb_spawn_attr_t;
 
 // App info for ps-style listing

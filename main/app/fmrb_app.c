@@ -1270,6 +1270,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     ctx->resizable = attr->resizable;
     ctx->min_window_width = attr->min_window_width;
     ctx->min_window_height = attr->min_window_height;
+    ctx->rounded_corners = attr->rounded_corners;
     if (ctx->has_background_canvas) {
         ctx->z_order = 254;  // Main canvas is foreground (menu bar)
     } else if (strcmp(ctx->app_name, "system_overlay") == 0) {

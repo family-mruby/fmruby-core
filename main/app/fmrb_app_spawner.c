@@ -44,7 +44,8 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_width = 0,
         .window_height = 0,
         .window_pos_x = 0,
-        .window_pos_y = 0
+        .window_pos_y = 0,
+        .rounded_corners = true
     }},
     { "default/shell", {
         .app_id = -1,
@@ -61,7 +62,8 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_width = 300,
         .window_height = 200,
         .window_pos_x = 5,
-        .window_pos_y = 15
+        .window_pos_y = 15,
+        .rounded_corners = true
     }},
     { "default/editor", {
         .app_id = -1,
@@ -82,7 +84,8 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_pos_y = 15,
         // Menu bar needs ~218px; one edit row + menu + status fits in ~80px.
         .min_window_width = 220,
-        .min_window_height = 80
+        .min_window_height = 80,
+        .rounded_corners = true
     }},
     { "default/logviewer", {
         .app_id = -1,
@@ -99,7 +102,8 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_width = 300,
         .window_height = 200,
         .window_pos_x = 5,
-        .window_pos_y = 15
+        .window_pos_y = 15,
+        .rounded_corners = true
     }},
     { "default/monitor", {
         .app_id = -1,
@@ -116,7 +120,8 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_width = 180,
         .window_height = 120,
         .window_pos_x = 5,
-        .window_pos_y = 15
+        .window_pos_y = 15,
+        .rounded_corners = true
     }},
 };
 
@@ -229,6 +234,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     bool large_memory = false;
     int min_window_width = 0;
     int min_window_height = 0;
+    bool rounded_corners = true;
 
     FMRB_LOGI(TAG, "[spawn] 6 toml_load '%s'", toml_path);
     // Try loading TOML configuration
@@ -277,6 +283,11 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
 
         // Parse large_memory flag (default: false)
         large_memory = (bool)fmrb_toml_get_int(config, "large_memory", 0);
+
+        // Parse rounded_corners flag (default: true).
+        // When false, the window canvas is created opaque (no transparent compositing),
+        // which is faster but disables the rounded corner / shaped window look.
+        rounded_corners = (bool)fmrb_toml_get_int(config, "rounded_corners", 1);
     } else {
         FMRB_LOGW(TAG, "No TOML config found or parse error: %s (%s)", toml_path, errbuf);
     }
@@ -303,7 +314,8 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .window_pos_x = window_pos_x,
         .window_pos_y = window_pos_y,
         .min_window_width  = (uint16_t)min_window_width,
-        .min_window_height = (uint16_t)min_window_height
+        .min_window_height = (uint16_t)min_window_height,
+        .rounded_corners = rounded_corners
     };
 
     // Spawn the app

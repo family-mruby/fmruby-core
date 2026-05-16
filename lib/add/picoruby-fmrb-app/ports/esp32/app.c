@@ -179,14 +179,16 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
         }
 
         // Create canvas for app window
-        // Enable color-key transparency for non-fullscreen windows to allow rounded corners
-        // to show the background through. Transparent color is 0x01 (very dark blue in RGB332).
+        // Enable color-key transparency only for non-fullscreen windows that
+        // declared rounded_corners=true (default). Opting out (rounded_corners=false)
+        // skips the per-pixel transparent compare in the compositor. Transparent
+        // color is 0x01 (very dark blue in RGB332).
         fmrb_gfx_err_t ret = fmrb_gfx_create_canvas(
             gfx_ctx,
             ctx->window_width,
             ctx->window_height,
             ctx->z_order,
-            !ctx->fullscreen,
+            !ctx->fullscreen && ctx->rounded_corners,
             0x01,
             &canvas_id
         );
