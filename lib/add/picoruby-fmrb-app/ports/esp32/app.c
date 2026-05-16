@@ -26,6 +26,7 @@
 #include "app_local.h"
 #include "app_debug.h"
 #include "host_task.h"
+#include "usb_task.h"
 
 #include "hal.h"
 #include "task.h"
@@ -1083,6 +1084,39 @@ static mrb_value mrb_fmrb_app_s_enable_cursor(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();
 }
 
+// FmrbApp.usb_devices -> Array of Hash {type:, vid:, pid:, addr:}
+// Snapshot of currently connected USB HID devices. `type` is a short
+// string ("KBD"/"MOUSE"/"GAMEPAD"/"OTHER") suitable for one-line display.
+// Returns an empty array on Linux (no HID enumeration there) or when the
+// USB task is not yet ready.
+static mrb_value mrb_fmrb_app_s_usb_devices(mrb_state *mrb, mrb_value klass)
+{
+    fmrb_usb_device_info_t devs[USB_TASK_MAX_DEVICES];
+    int count = usb_task_get_device_info(devs, USB_TASK_MAX_DEVICES);
+
+    mrb_value result = mrb_ary_new_capa(mrb, count);
+    for (int i = 0; i < count; i++) {
+        const char *type_str;
+        switch (devs[i].type) {
+            case FMRB_USB_DEV_TYPE_KEYBOARD: type_str = "KBD";     break;
+            case FMRB_USB_DEV_TYPE_MOUSE:    type_str = "MOUSE";   break;
+            case FMRB_USB_DEV_TYPE_GAMEPAD:  type_str = "GAMEPAD"; break;
+            default:                         type_str = "OTHER";   break;
+        }
+        mrb_value hash = mrb_hash_new_capa(mrb, 4);
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
+                     mrb_str_new_cstr(mrb, type_str));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "vid")),
+                     mrb_fixnum_value(devs[i].vid));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "pid")),
+                     mrb_fixnum_value(devs[i].pid));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "addr")),
+                     mrb_fixnum_value(devs[i].dev_addr));
+        mrb_ary_push(mrb, result, hash);
+    }
+    return result;
+}
+
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 {
     // Define FmrbApp class
@@ -1108,6 +1142,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "usb_devices", mrb_fmrb_app_s_usb_devices, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 

@@ -334,6 +334,41 @@ static void pending_disconnect_request_cleanup(void)
     g_pending_disconnect_cleanup_needed = true;
     fmrb_exit_critical(&g_pending_disconnect_spinlock);
 }
+// Snapshot connected devices for callers outside the USB task (e.g. Ruby
+// FmrbApp.usb_devices). Uses a short mutex timeout so the Ruby VM is not
+// blocked by transient HID activity.
+int usb_task_get_device_info(fmrb_usb_device_info_t *out, int max_count)
+{
+    if (!out || max_count <= 0 || g_hid_devices_mutex == NULL) {
+        return 0;
+    }
+
+    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MS_TO_TICKS(10)) != FMRB_TRUE) {
+        return 0;
+    }
+
+    int written = 0;
+    for (int i = 0; i < MAX_HID_DEVICES && written < max_count; i++) {
+        if (!g_hid_devices[i].connected) continue;
+
+        fmrb_usb_dev_type_t type;
+        switch (g_hid_devices[i].proto) {
+            case HID_PROTOCOL_KEYBOARD: type = FMRB_USB_DEV_TYPE_KEYBOARD; break;
+            case HID_PROTOCOL_MOUSE:    type = FMRB_USB_DEV_TYPE_MOUSE;    break;
+            case HID_PROTOCOL_GAMEPAD:  type = FMRB_USB_DEV_TYPE_GAMEPAD;  break;
+            default:                    type = FMRB_USB_DEV_TYPE_OTHER;    break;
+        }
+        out[written].type     = (uint8_t)type;
+        out[written].vid      = g_hid_devices[i].vid;
+        out[written].pid      = g_hid_devices[i].pid;
+        out[written].dev_addr = g_hid_devices[i].dev_addr;
+        written++;
+    }
+
+    fmrb_semaphore_give(g_hid_devices_mutex);
+    return written;
+}
+
 static hid_device_info_t* find_empty_slot(void)
 {
     for (int i = 0; i < MAX_HID_DEVICES; i++) {

@@ -160,3 +160,17 @@ fmrb_keymap_layout_t fmrb_keymap_get_layout(void)
 {
     return g_current_layout;
 }
+
+#ifdef FMRB_HW_ATOM_DISPLAY
+/* ATOM_DISPLAY builds exclude usb_task.c (no USB host on this hardware),
+ * so provide a stub of the public device-info accessor here.
+ * fmrb_keymap.c is part of every build, which keeps the linker happy
+ * without dragging in the full USB host stack. */
+#include "usb_task.h"
+int usb_task_get_device_info(fmrb_usb_device_info_t *out, int max_count)
+{
+    (void)out;
+    (void)max_count;
+    return 0;
+}
+#endif

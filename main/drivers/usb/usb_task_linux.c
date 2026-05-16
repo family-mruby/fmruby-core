@@ -241,3 +241,17 @@ void usb_task_start(void)
 
     FMRB_LOGI(TAG, "USB task started");
 }
+
+/**
+ * @brief Snapshot connected HID devices (Linux: always empty)
+ *
+ * On Linux the host process forwards SDL2 input events over a socket,
+ * so there is no per-device HID enumeration to report. Return 0 so
+ * callers (Ruby FmrbApp.usb_devices) see an empty device list.
+ */
+int usb_task_get_device_info(fmrb_usb_device_info_t *out, int max_count)
+{
+    (void)out;
+    (void)max_count;
+    return 0;
+}
