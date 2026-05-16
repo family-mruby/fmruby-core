@@ -73,18 +73,7 @@ rake monitor      # open idf.py monitor
 
 ### Running the Linux simulation
 
-The Linux simulation relies on the SDL2 host process shipped with [fmruby-graphics-audio](../fmruby-graphics-audio/sdl2-display/). Start the SDL2 display and `fmruby-graphics-audio.elf` before launching the core:
-
-```bash
-./build/fmruby-core.elf
-```
-
-See the repository root [README.md](../README.md) for a one-shot `docker compose up` integration path.
-
-### Configuration and firmware content
-
-- HW-specific defaults live under [config/](config/) (`sdkconfig.defaults.*`, `system_conf_*.toml`, `partitions_*.csv`).
-- Ruby / app / system files shipped to the device come from [flash/](flash/) (apps under `flash/app/`, home scripts under `flash/home/`).
+See the repository root [README.md](https://github.com/family-mruby/family-mruby/blob/main/README.md) for a one-shot `docker compose up` integration path.
 
 ### Cleaning
 
