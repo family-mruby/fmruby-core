@@ -615,6 +615,15 @@ class SystemDesktopApp < FmrbApp
       return
     end
 
+    if ev[:type] == :mouse_down
+      # Press feedback for the file manager: highlight the entry under the
+      # cursor until release. Other overlays do not currently need this.
+      if @file_manager_open && hit_file_manager?(ev[:x], ev[:y])
+        handle_file_manager_press(ev[:x], ev[:y])
+      end
+      return
+    end
+
     if ev[:type] == :mouse_up
       button = ev[:button] || 1
       if button == 3 && @file_manager_open

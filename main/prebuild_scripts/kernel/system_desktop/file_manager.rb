@@ -31,6 +31,7 @@ module FileManagerMixin
     @file_manager_entries = []
     @file_manager_scroll = 0
     @file_manager_selected = -1
+    @fmgr_pressed_idx = -1
     @fmgr_last_click_idx = -1
     @fmgr_last_click_time = 0
     @fmgr_ctx_open = false
@@ -88,6 +89,7 @@ module FileManagerMixin
 
     @file_manager_scroll = 0
     @file_manager_selected = -1
+    @fmgr_pressed_idx = -1
     @fmgr_last_click_idx = -1
     @fmgr_last_click_time = 0
   end
@@ -167,7 +169,7 @@ module FileManagerMixin
       entry = @file_manager_entries[idx]
       item_y = list_y + i * FMGR_ITEM_H
 
-      if idx == @file_manager_selected
+      if idx == @file_manager_selected || idx == @fmgr_pressed_idx
         @gfx.fill_rect(x + 2, item_y, FMGR_W - 4, FMGR_ITEM_H, FMGR_SEL_BG)
         text_color = FmrbGfx::WHITE
         text_bg = FMGR_SEL_BG
@@ -252,7 +254,43 @@ module FileManagerMixin
 
   # ---- Click handling ----
 
+  # Index of the list entry under (x, y), or -1 if outside the rows.
+  # Excludes scrollbar column and "no entry" gaps so press feedback only
+  # highlights real entries.
+  def fmgr_entry_at(x, y)
+    m = fmgr_list_metrics
+    list_y = m[:list_y]
+    list_h = m[:list_h]
+    max_visible = m[:max_visible]
+    return -1 if scrollbar_hit(x, y, @fmgr_x, list_y, FMGR_W, list_h)
+    return -1 unless y >= list_y && y < list_y + max_visible * FMGR_ITEM_H
+    idx = @file_manager_scroll + (y - list_y) / FMGR_ITEM_H
+    return -1 if idx < 0 || idx >= @file_manager_entries.size
+    idx
+  end
+
+  # Called on mouse_down inside the file manager. Highlights the pressed
+  # entry until mouse_up so the user gets visual feedback that the click
+  # was registered — directories navigate immediately on release, and
+  # without this they had no pre-navigation feedback.
+  def handle_file_manager_press(x, y)
+    return unless @file_manager_open
+    return if @fmgr_ctx_open
+
+    new_pressed = fmgr_entry_at(x, y)
+    if new_pressed != @fmgr_pressed_idx
+      @fmgr_pressed_idx = new_pressed
+      draw_foreground
+    end
+  end
+
   def handle_file_manager_click(x, y)
+    # Mouse released — drop the press highlight regardless of where the
+    # release landed. Redraw if needed; later branches may redraw again
+    # but the extra draw is cheap relative to the user-visible feedback.
+    had_pressed = @fmgr_pressed_idx >= 0
+    @fmgr_pressed_idx = -1
+
     # Context menu takes priority
     if @fmgr_ctx_open
       if hit_fmgr_context_menu?(x, y)
@@ -263,6 +301,8 @@ module FileManagerMixin
       end
       return
     end
+
+    draw_foreground if had_pressed
 
     fx = @fmgr_x
     fy = @fmgr_y
