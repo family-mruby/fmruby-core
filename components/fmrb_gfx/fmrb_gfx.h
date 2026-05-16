@@ -172,6 +172,41 @@ fmrb_gfx_err_t fmrb_gfx_delete_canvas(
     fmrb_gfx_context_t context,
     fmrb_canvas_handle_t canvas_handle);
 
+// Composite region descriptor (public API mirror of the link-protocol struct).
+// Each region describes one sub-rect copy from a canvas render buffer onto the
+// screen buffer at compositing time. When transparent is true the per-pixel
+// color-key compare uses the canvas's transparent_color; otherwise the rect is
+// memcpy'd.
+typedef struct {
+    int16_t src_x, src_y;     // Source top-left inside the canvas render buffer
+    int16_t dst_x, dst_y;     // Destination offset relative to the canvas position
+    int16_t w, h;             // Region dimensions in pixels
+    uint8_t use_transparent;  // 1 = color-key compare, 0 = opaque memcpy
+} fmrb_gfx_composite_region_t;
+
+#define FMRB_GFX_MAX_COMPOSITE_REGIONS 8
+
+/**
+ * @brief Replace the composite region list for a canvas (asynchronous).
+ *
+ * When count > 0, the WROVER-side compositor copies only the listed regions
+ * instead of pushing the whole active area. count = 0 clears regions and
+ * restores the default full-area pushSprite path. Typically used to keep
+ * rounded-corner windows fast: interior region is opaque (memcpy fast path)
+ * and only the corner regions stay transparent (per-pixel compare).
+ *
+ * @param context Graphics context
+ * @param canvas_handle Canvas to update
+ * @param regions Array of region descriptors (may be NULL when count == 0)
+ * @param count Number of regions (0..FMRB_GFX_MAX_COMPOSITE_REGIONS)
+ * @return FMRB_GFX_OK on success
+ */
+fmrb_gfx_err_t fmrb_gfx_set_composite_regions(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_handle,
+    const fmrb_gfx_composite_region_t *regions,
+    uint8_t count);
+
 // Cursor control API (global resource)
 
 // Sprite API

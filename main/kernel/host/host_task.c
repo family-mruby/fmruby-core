@@ -629,6 +629,33 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_SET_COMPOSITE_REGIONS: {
+            uint8_t count = cmd->params.set_composite_regions.count;
+            if (count > FMRB_LINK_MAX_COMPOSITE_REGIONS) {
+                count = FMRB_LINK_MAX_COMPOSITE_REGIONS;
+            }
+            fmrb_link_graphics_set_composite_regions_t c;
+            memset(&c, 0, sizeof(c));
+            c.canvas_id = cmd->canvas_id;
+            c.count = count;
+            for (uint8_t i = 0; i < count; i++) {
+                const fmrb_gfx_composite_region_t *r =
+                    &cmd->params.set_composite_regions.regions[i];
+                c.regions[i].src_x = r->src_x;
+                c.regions[i].src_y = r->src_y;
+                c.regions[i].dst_x = r->dst_x;
+                c.regions[i].dst_y = r->dst_y;
+                c.regions[i].w = r->w;
+                c.regions[i].h = r->h;
+                c.regions[i].use_transparent = r->use_transparent;
+            }
+            *sub_cmd_out = FMRB_LINK_GFX_SET_COMPOSITE_REGIONS;
+            size_t payload_size =
+                offsetof(fmrb_link_graphics_set_composite_regions_t, regions)
+                + (size_t)count * sizeof(fmrb_link_graphics_composite_region_t);
+            memcpy(payload_buf, &c, payload_size);
+            return (int)payload_size;
+        }
         case GFX_CMD_CREATE_SPRITE_INSTANCE: {
             fmrb_link_graphics_create_sprite_instance_t c;
             memset(&c, 0, sizeof(c));

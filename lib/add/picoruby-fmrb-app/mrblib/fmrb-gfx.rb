@@ -265,6 +265,46 @@ class FmrbGfx
     delete_image(img_id)
   end
 
+  # Replace this canvas's composite region list. The compositor on the
+  # graphics-audio side copies only the listed sub-rects each frame instead
+  # of pushing the whole canvas; each region picks its own transparent /
+  # opaque mode independently. Pass nil or [] to restore the default
+  # full-area pushSprite path.
+  #
+  # Each region is a Hash:
+  #   {
+  #     src_x:, src_y:,        # source top-left within the canvas (optional;
+  #                            #   defaults to dst_x / dst_y for the common
+  #                            #   case where source == destination)
+  #     dst_x:, dst_y:,        # destination offset relative to canvas origin
+  #                            #   (defaults to 0, 0)
+  #     w:, h:,                # region width / height in pixels
+  #     transparent:           # true = per-pixel color-key compare,
+  #                            #   false = opaque memcpy fast path
+  #   }
+  #
+  # Up to 8 regions can be set in one call (graphics-audio buffer cap).
+  def set_composite_regions(regions)
+    if regions.nil? || regions.empty?
+      _set_composite_regions([])
+      return self
+    end
+
+    flat = []
+    regions.each do |r|
+      dst_x = r[:dst_x] || 0
+      dst_y = r[:dst_y] || 0
+      src_x = r[:src_x] || dst_x
+      src_y = r[:src_y] || dst_y
+      w = r[:w] || 0
+      h = r[:h] || 0
+      trans = r[:transparent] ? 1 : 0
+      flat << src_x << src_y << dst_x << dst_y << w << h << trans
+    end
+    _set_composite_regions(flat)
+    self
+  end
+
   private
 
   # Normalize a (family, size) pair against the current selection so the

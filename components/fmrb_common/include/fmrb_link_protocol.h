@@ -141,6 +141,7 @@ typedef enum {
     FMRB_LINK_GFX_PUSH_CANVAS = 0x53,
     FMRB_LINK_GFX_SET_CANVAS_VISIBLE = 0x54,
     FMRB_LINK_GFX_GET_PIXEL = 0x55,
+    FMRB_LINK_GFX_SET_COMPOSITE_REGIONS = 0x56,
 
     // Cursor control (global resource, no canvas_id)
     FMRB_LINK_GFX_CURSOR_SET_POSITION = 0x60,
@@ -375,6 +376,30 @@ typedef struct __attribute__((packed)) {
     uint16_t canvas_id;
     uint8_t visible;  // 0=hidden, 1=visible
 } fmrb_link_graphics_set_canvas_visible_t;
+
+// Composite regions: per-canvas sub-rect compositing.
+// When count > 0, the compositor copies only the listed regions (each with its
+// own transparent/opaque mode) instead of pushing the whole active area.
+// count = 0 clears regions and restores the full-area pushSprite fallback.
+#define FMRB_LINK_MAX_COMPOSITE_REGIONS 8
+
+typedef struct __attribute__((packed)) {
+    int16_t src_x;            // Source rect top-left within the canvas render buffer
+    int16_t src_y;
+    int16_t dst_x;            // Destination offset relative to canvas push_x/push_y
+    int16_t dst_y;
+    int16_t w;                // Region width / height (pixels)
+    int16_t h;
+    uint8_t use_transparent;  // 1 = per-pixel color-key compare, 0 = opaque memcpy
+    uint8_t _pad;
+} fmrb_link_graphics_composite_region_t;  // 14 bytes
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint8_t count;            // 0 = clear, otherwise number of valid regions
+    uint8_t _pad;
+    fmrb_link_graphics_composite_region_t regions[FMRB_LINK_MAX_COMPOSITE_REGIONS];
+} fmrb_link_graphics_set_composite_regions_t;
 
 // GET_PIXEL: read a single RGB332 pixel from a canvas back buffer.
 typedef struct __attribute__((packed)) {

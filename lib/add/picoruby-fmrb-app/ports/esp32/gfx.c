@@ -1276,6 +1276,47 @@ static mrb_value mrb_gfx_set_chroma_level(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// Set per-canvas composite regions. The Ruby wrapper in fmrb-gfx.rb flattens
+// a hash array into [src_x, src_y, dst_x, dst_y, w, h, transparent] * N before
+// calling this method. An empty array clears regions (= full-area fallback).
+static mrb_value mrb_gfx_set_composite_regions(mrb_state *mrb, mrb_value self)
+{
+    mrb_value ary;
+    mrb_get_args(mrb, "A", &ary);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+
+    mrb_int len = RARRAY_LEN(ary);
+    if (len % 7 != 0) {
+        mrb_raisef(mrb, E_ARGUMENT_ERROR,
+                   "set_composite_regions: flat array length %d not a multiple of 7", (int)len);
+    }
+    mrb_int count = len / 7;
+    if (count > FMRB_GFX_MAX_COMPOSITE_REGIONS) {
+        mrb_raisef(mrb, E_ARGUMENT_ERROR,
+                   "set_composite_regions: %d regions exceeds max %d",
+                   (int)count, FMRB_GFX_MAX_COMPOSITE_REGIONS);
+    }
+
+    fmrb_gfx_composite_region_t regions[FMRB_GFX_MAX_COMPOSITE_REGIONS];
+    for (mrb_int i = 0; i < count; i++) {
+        regions[i].src_x = (int16_t)mrb_fixnum(mrb_ary_ref(mrb, ary, i * 7 + 0));
+        regions[i].src_y = (int16_t)mrb_fixnum(mrb_ary_ref(mrb, ary, i * 7 + 1));
+        regions[i].dst_x = (int16_t)mrb_fixnum(mrb_ary_ref(mrb, ary, i * 7 + 2));
+        regions[i].dst_y = (int16_t)mrb_fixnum(mrb_ary_ref(mrb, ary, i * 7 + 3));
+        regions[i].w     = (int16_t)mrb_fixnum(mrb_ary_ref(mrb, ary, i * 7 + 4));
+        regions[i].h     = (int16_t)mrb_fixnum(mrb_ary_ref(mrb, ary, i * 7 + 5));
+        regions[i].use_transparent = (uint8_t)(mrb_fixnum(mrb_ary_ref(mrb, ary, i * 7 + 6)) ? 1 : 0);
+    }
+
+    fmrb_gfx_err_t ret = fmrb_gfx_set_composite_regions(
+        data->ctx, data->canvas_id, regions, (uint8_t)count);
+    if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE(TAG, "set_composite_regions failed: %d", ret);
+    }
+    return self;
+}
+
 // --- Sprite API bindings ---
 
 static mrb_value mrb_gfx_create_sprite_image(mrb_state *mrb, mrb_value self)
@@ -1529,6 +1570,10 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     // CVBS/NTSC output control
     mrb_define_method(mrb, gfx_class, "set_output_level", mrb_gfx_set_output_level, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "set_chroma_level", mrb_gfx_set_chroma_level, MRB_ARGS_REQ(1));
+
+    // Composite regions (sub-rect compositing). Pair with the higher-level
+    // Ruby wrapper `set_composite_regions` defined in fmrb-gfx.rb.
+    mrb_define_method(mrb, gfx_class, "_set_composite_regions", mrb_gfx_set_composite_regions, MRB_ARGS_REQ(1));
 
     // Sprite API
     mrb_define_method(mrb, gfx_class, "_create_sprite_image", mrb_gfx_create_sprite_image, MRB_ARGS_REQ(4));

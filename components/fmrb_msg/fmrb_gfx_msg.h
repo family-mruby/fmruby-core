@@ -52,6 +52,7 @@ typedef enum {
     GFX_CMD_SPRITE_INSTANCE_SET_FRAME,
     GFX_CMD_DELETE_ALL_SPRITES,
     GFX_CMD_DELETE_CANVAS,
+    GFX_CMD_SET_COMPOSITE_REGIONS,  // Async; updates per-canvas sub-rect compositing list
     // Sync commands (require response from WROVER)
     GFX_CMD_CREATE_CANVAS,
     GFX_CMD_CREATE_SPRITE_IMAGE,
@@ -243,6 +244,12 @@ typedef struct {
         struct {
             int16_t x, y;
         } get_pixel;
+        // Composite region list update (async). 8 regions x 9 bytes = 72 B
+        // inline; fits comfortably inside the gfx_cmd_t payload budget.
+        struct {
+            uint8_t count;  // 0 = clear, 1..FMRB_GFX_MAX_COMPOSITE_REGIONS = valid entries
+            fmrb_gfx_composite_region_t regions[FMRB_GFX_MAX_COMPOSITE_REGIONS];
+        } set_composite_regions;
         // Mask lifetime / masked image blit (both async).
         struct {
             uint16_t mask_id;
