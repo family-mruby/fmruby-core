@@ -536,6 +536,21 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_DRAW_TILE: {
+            fmrb_link_graphics_draw_tile_t c = {
+                .canvas_id = cmd->canvas_id,
+                .image_id  = cmd->params.draw_tile.image_id,
+                .src_x     = cmd->params.draw_tile.src_x,
+                .src_y     = cmd->params.draw_tile.src_y,
+                .w         = cmd->params.draw_tile.w,
+                .h         = cmd->params.draw_tile.h,
+                .dst_x     = cmd->params.draw_tile.dst_x,
+                .dst_y     = cmd->params.draw_tile.dst_y,
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_DRAW_TILE;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         case GFX_CMD_CREATE_SPRITE_IMAGE: {
             fmrb_link_graphics_create_sprite_image_t c = {
                 .canvas_id = cmd->canvas_id,

@@ -172,6 +172,11 @@ typedef enum {
     FMRB_LINK_GFX_SPRITE_INSTANCE_MOVE = 0x8A,
     FMRB_LINK_GFX_SPRITE_INSTANCE_SET_VISIBLE = 0x8B,
     FMRB_LINK_GFX_SPRITE_INSTANCE_SET_FRAME = 0x8C,
+    // Stamp a sub-region of a SpriteImage onto a canvas. No SpriteInstance is
+    // allocated. Source pixels equal to the SpriteImage's transparent_color
+    // (when use_transparent is set) are skipped. Designed for stateless BG
+    // tile rendering.
+    FMRB_LINK_GFX_DRAW_TILE = 0x8D,           // async
     FMRB_LINK_GFX_DELETE_ALL_SPRITES = 0x8F,
 
     // GfxBlock VM (draw-batch programs)
@@ -523,6 +528,17 @@ typedef struct __attribute__((packed)) {
     uint16_t mask_id;
     int16_t x, y;        // destination top-left on canvas (local coords)
 } fmrb_link_graphics_draw_image_masked_t;
+
+// DRAW_TILE: stamp the sub-region (src_x, src_y, w, h) of a SpriteImage onto
+// a canvas at (dst_x, dst_y). Honors the source SpriteImage's transparent
+// color. No SpriteInstance is allocated.
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint16_t image_id;   // SpriteImage ID (source / tilesheet)
+    int16_t  src_x, src_y;
+    uint16_t w, h;
+    int16_t  dst_x, dst_y;
+} fmrb_link_graphics_draw_tile_t;
 
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;       // Parent window

@@ -1188,6 +1188,39 @@ static mrb_value mrb_gfx_draw_image_masked(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// FmrbGfx#_draw_tile(image_id, src_x, src_y, w, h, dst_x, dst_y)
+// Stamps a sub-region of a SpriteImage onto this canvas. Source pixels equal
+// to the SpriteImage's transparent_color (when use_transparent is set) are
+// skipped. No SpriteInstance is allocated.
+static mrb_value mrb_gfx_draw_tile(mrb_state *mrb, mrb_value self)
+{
+    mrb_int image_id, src_x, src_y, w, h, dst_x, dst_y;
+    mrb_get_args(mrb, "iiiiiii",
+                 &image_id, &src_x, &src_y, &w, &h, &dst_x, &dst_y);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_DRAW_TILE,
+        .canvas_id = data->canvas_id,
+        .params.draw_tile = {
+            .image_id = (uint16_t)image_id,
+            .src_x = (int16_t)src_x,
+            .src_y = (int16_t)src_y,
+            .w = (uint16_t)w,
+            .h = (uint16_t)h,
+            .dst_x = (int16_t)dst_x,
+            .dst_y = (int16_t)dst_y,
+        }
+    };
+    fmrb_err_t ret = send_gfx_command(&cmd);
+    if (ret != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "draw_tile failed: %d", ret);
+    }
+    return self;
+}
+
 // FmrbGfx.hsv_to_rgb(h, s, v) -> [r, g, b]
 // h: 0-360, s: 0-255, v: 0-255
 static mrb_value mrb_gfx_s_hsv_to_rgb(mrb_state *mrb, mrb_value klass)
@@ -1564,6 +1597,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_create_mask", mrb_gfx_create_mask, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, gfx_class, "_delete_mask", mrb_gfx_delete_mask, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "_draw_image_masked", mrb_gfx_draw_image_masked, MRB_ARGS_REQ(4));
+    mrb_define_method(mrb, gfx_class, "_draw_tile",         mrb_gfx_draw_tile,         MRB_ARGS_REQ(7));
     mrb_define_method(mrb, gfx_class, "_draw_image", mrb_gfx_draw_image, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, gfx_class, "_delete_image", mrb_gfx_delete_image, MRB_ARGS_REQ(1));
 

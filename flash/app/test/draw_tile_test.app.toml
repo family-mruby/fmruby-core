@@ -1,0 +1,8 @@
+app_handle_name = "draw_tile_test"
+app_screen_name = "DrawTile Test"
+app_screen_name_ja = "draw_tile確認"
+default_window_mode = "window"
+default_window_width = 160
+default_window_height = 80
+default_window_pos_x = 20
+default_window_pos_y = 30

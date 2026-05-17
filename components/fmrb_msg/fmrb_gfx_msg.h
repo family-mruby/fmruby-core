@@ -68,7 +68,11 @@ typedef enum {
     // ride the batching queue so they preserve order with surrounding
     // drawing commands.
     GFX_CMD_DELETE_MASK,         // Async
-    GFX_CMD_DRAW_IMAGE_MASKED    // Async
+    GFX_CMD_DRAW_IMAGE_MASKED,   // Async
+    // Stateless sub-rect stamp from a SpriteImage onto a canvas. No
+    // SpriteInstance allocated. Source pixels equal to the SpriteImage's
+    // transparent_color (when use_transparent is set) are skipped.
+    GFX_CMD_DRAW_TILE            // Async
 } gfx_cmd_type_t;
 
 // Graphics command structure
@@ -259,6 +263,12 @@ typedef struct {
             uint16_t mask_id;
             int16_t x, y;
         } draw_image_masked;
+        struct {
+            uint16_t image_id;
+            int16_t  src_x, src_y;
+            uint16_t w, h;
+            int16_t  dst_x, dst_y;
+        } draw_tile;
     } params;
 
     // Sync context pointer (NULL = fire-and-forget, non-NULL = response expected)

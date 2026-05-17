@@ -171,6 +171,22 @@ class FmrbGfx
     _draw_image_masked(image_id, mask_id, x, y)
   end
 
+  # Stamp the sub-region (src_x, src_y, w, h) of a SpriteImage onto this
+  # canvas at (dst_x, dst_y). Source pixels equal to the SpriteImage's
+  # transparent_color (when use_transparent is set) are skipped. No
+  # SpriteInstance is allocated; the stamp is a one-shot canvas write.
+  # Designed for stateless BG tile rendering.
+  # @param image_id [Integer] SpriteImage id (typically a tilesheet)
+  # @param src_x [Integer] source rect top-left x inside the SpriteImage
+  # @param src_y [Integer] source rect top-left y
+  # @param w [Integer] source rect width (= dest width)
+  # @param h [Integer] source rect height
+  # @param dst_x [Integer] destination x on this canvas
+  # @param dst_y [Integer] destination y on this canvas
+  def draw_tile(image_id, src_x, src_y, w, h, dst_x:, dst_y:)
+    _draw_tile(image_id, src_x, src_y, w, h, dst_x, dst_y)
+  end
+
   # Draw a thick line by stacking parallel 1-pixel lines along the
   # perpendicular direction. The graphics backend has no native thick-line
   # primitive, so this is implemented in Ruby. Aliased on top of draw_line.
