@@ -4,6 +4,7 @@
 #include "fmrb_task_config.h"
 #include "fmrb_pin_assign.h"
 #include "fmrb_log.h"
+#include "fmrb_debug.h"
 
 // Stack size, priority, and flags are defined in fmrb_task_config.h
 #define HEARTBEAT_TICK_MS       100
@@ -62,7 +63,12 @@ static void status_led_task(void *pvParameters)
         dump_counter += HEARTBEAT_TICK_MS;
 
         if (dump_counter >= TASK_DUMP_INTERVAL_MS) {
-            fmrb_task_dump_status();
+            // Skip the dump entirely when debug mode is off: the dump walks
+            // each task's stack via uxTaskGetStackHighWaterMark and the heap
+            // free list twice, so the measurement itself is the dominant cost.
+            if (fmrb_debug_mode_enabled()) {
+                fmrb_task_dump_status();
+            }
             dump_counter = 0;
         }
     }

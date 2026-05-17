@@ -22,6 +22,7 @@
 #include "fmrb_link_cobs.h"
 #include "picoruby_fmrb_const.h"
 #include "fmrb_keymap.h"
+#include "fmrb_debug.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
 extern const uint8_t fmrb_kernel_irep[];
@@ -117,6 +118,7 @@ static bool read_system_config(void)
 
     // Read debug mode
     g_system_config.debug_mode = fmrb_toml_get_bool(conf, "debug_mode", g_system_config.debug_mode);
+    fmrb_debug_mode_set(g_system_config.debug_mode);
 
     // Read mouse sensitivity
     g_system_config.mouse_scale_x = fmrb_toml_get_double(conf, "mouse_scale_x", g_system_config.mouse_scale_x);

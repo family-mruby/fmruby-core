@@ -6,6 +6,7 @@
 #include "fmrb_rtos.h"
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
+#include "fmrb_debug.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -886,8 +887,10 @@ fmrb_err_t fmrb_transport_process(void) {
             uint32_t tx_bps = (ctx->stats_tx_bytes * 1000) / elapsed_ms;
             uint32_t tx_mps = (ctx->stats_tx_msgs * 1000) / elapsed_ms;
             uint32_t rx_mps = (ctx->stats_rx_msgs * 1000) / elapsed_ms;
-            FMRB_LOGI(TAG, "stats: tx=%lu B/s tx_msg=%lu/s rx_msg=%lu/s",
-                      tx_bps, tx_mps, rx_mps);
+            if (fmrb_debug_mode_enabled()) {
+                FMRB_LOGI(TAG, "stats: tx=%lu B/s tx_msg=%lu/s rx_msg=%lu/s",
+                          tx_bps, tx_mps, rx_mps);
+            }
             ctx->stats_tx_bytes = 0;
             ctx->stats_tx_msgs = 0;
             ctx->stats_rx_msgs = 0;

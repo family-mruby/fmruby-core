@@ -19,6 +19,7 @@
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_mem.h"
 #include "fmrb_app.h"
+#include "fmrb_debug.h"
 
 static const char *TAG = "host";
 
@@ -792,9 +793,11 @@ static void gfx_stats_update(int cmd_count, int present_count) {
     } else if ((now_us - g_gfx_stats_last_us) >= GFX_STATS_INTERVAL_US) {
         uint64_t elapsed_us = now_us - g_gfx_stats_last_us;
         float elapsed_s = (float)elapsed_us / 1000000.0f;
-        FMRB_LOGI(TAG, "GFX STATS: %.1f cmds/s, %.1f presents/s",
-                 (float)g_gfx_total_cmds / elapsed_s,
-                 (float)g_gfx_present_count / elapsed_s);
+        if (fmrb_debug_mode_enabled()) {
+            FMRB_LOGI(TAG, "GFX STATS: %.1f cmds/s, %.1f presents/s",
+                     (float)g_gfx_total_cmds / elapsed_s,
+                     (float)g_gfx_present_count / elapsed_s);
+        }
         g_gfx_total_cmds = 0;
         g_gfx_present_count = 0;
         g_gfx_stats_last_us = now_us;
