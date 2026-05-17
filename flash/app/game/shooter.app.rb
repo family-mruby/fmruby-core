@@ -33,6 +33,7 @@ class ShooterApp < FmrbApp
 
   def on_create
     Log.info("Shooter on_create")
+    FmrbApp.set_cursor_visible(false)
     setup_sprites
     reset_game
   end
@@ -362,6 +363,7 @@ class ShooterApp < FmrbApp
     @player_img.destroy if @player_img
     @bullet_img.destroy if @bullet_img
     @enemy_img.destroy if @enemy_img
+    FmrbApp.set_cursor_visible(true)
     Log.info("Shooter destroyed")
   end
 end

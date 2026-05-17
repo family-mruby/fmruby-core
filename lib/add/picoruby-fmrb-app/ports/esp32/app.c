@@ -1086,6 +1086,17 @@ static mrb_value mrb_fmrb_app_s_enable_cursor(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();
 }
 
+// FmrbApp.set_cursor_visible(visible) -> nil
+// Show or hide the OS cursor immediately. Fullscreen apps use this to
+// suppress the cursor while running and restore it on exit.
+static mrb_value mrb_fmrb_app_s_set_cursor_visible(mrb_state *mrb, mrb_value klass)
+{
+    mrb_bool visible;
+    mrb_get_args(mrb, "b", &visible);
+    fmrb_host_set_cursor_visible(visible ? true : false);
+    return mrb_nil_value();
+}
+
 // FmrbApp.usb_devices -> Array of Hash {type:, vid:, pid:, addr:}
 // Snapshot of currently connected USB HID devices. `type` is a short
 // string ("KBD"/"MOUSE"/"GAMEPAD"/"OTHER") suitable for one-line display.
@@ -1143,6 +1154,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "set_wallclock", mrb_fmrb_app_s_set_wallclock, MRB_ARGS_REQ(6));
     mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "set_cursor_visible", mrb_fmrb_app_s_set_cursor_visible, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "usb_devices", mrb_fmrb_app_s_usb_devices, MRB_ARGS_NONE());
 

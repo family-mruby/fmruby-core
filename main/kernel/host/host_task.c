@@ -41,10 +41,18 @@ static int g_mouse_pending_y = 0;
 static bool g_mouse_pending_valid = false;
 
 static void fmrb_host_flush_pending_mouse_move(void);
+static void host_send_cursor_visible(bool visible);
 
 void fmrb_host_enable_cursor(void)
 {
     g_cursor_enabled = true;
+}
+
+void fmrb_host_set_cursor_visible(bool visible)
+{
+    // Bypass the first-mouse-move latch — Ruby callers (fullscreen apps)
+    // need direct control over visibility while running.
+    host_send_cursor_visible(visible);
 }
 
 // Host message types

@@ -95,6 +95,18 @@ fmrb_semaphore_t fmrb_host_get_gfx_queue_semaphore(void);
 void fmrb_host_enable_cursor(void);
 
 /**
+ * @brief Explicitly show or hide the on-screen cursor.
+ *
+ * Sends FMRB_LINK_GFX_CURSOR_SET_VISIBLE to GA directly, bypassing the
+ * one-shot first-mouse-move latch used by fmrb_host_enable_cursor().
+ * Intended for fullscreen apps that want to suppress the cursor during
+ * gameplay and restore it on exit.
+ *
+ * @param visible true to show, false to hide
+ */
+void fmrb_host_set_cursor_visible(bool visible);
+
+/**
  * @brief Read cumulative GFX counters (for runtime monitoring).
  * @param out_cmds Cumulative GFX command count since boot (may be NULL)
  * @param out_presents Cumulative GFX present() count since boot (may be NULL)
