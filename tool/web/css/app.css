@@ -1,0 +1,183 @@
+/* ----------------------------------------------------------------------
+ * Color palette: matches the Family mruby on-device system theme
+ * (RGB332 menu_bg=0xC5 → #D82455 ruby red; border/button=0x60 → #6C0000;
+ * desktop_bg=0xF6 → #FCB4AA salmon; text=#FFFFFF/#000000).
+ * The web client uses a darker, web-friendly variation that keeps the
+ * ruby red as the primary accent.
+ * ---------------------------------------------------------------------- */
+:root {
+  --ruby:        #d82455;  /* primary accent (= menu_bg) */
+  --ruby-dark:   #6c0000;  /* button / border (= border/button) */
+  --ruby-deeper: #4a0014;  /* surface tint */
+  --ruby-pale:   #fcb4aa;  /* desktop_bg, used for highlights */
+  --bg-base:     #1a0a10;  /* main window background */
+  --bg-surface:  #2a0e18;  /* panels / breadcrumb / toolbar buttons */
+  --bg-surface2: #3a0e1a;  /* hover surfaces */
+  --bg-deep:     #0d0508;  /* deep background (logs, editor) */
+  --border:      #4a1c28;
+  --text:        #f0e0e0;
+  --text-mute:   #b08890;
+  --ok:          #66bb6a;
+  --err:         #ef5350;
+  --warn:        #ffb74d;
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-base); color: var(--text); }
+.container { max-width: 800px; margin: 0 auto; padding: 16px; }
+
+header { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); margin-bottom: 16px; }
+header h1 { font-size: 1.2em; flex: 1; color: var(--ruby-pale); }
+.status { font-size: 0.85em; padding: 4px 10px; border-radius: 12px; background: var(--bg-surface); }
+.status.connected { background: var(--ruby); color: #fff; }
+
+.toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+button { padding: 8px 16px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9em;
+         background: var(--bg-surface); color: var(--text); transition: background 0.2s; }
+button:hover { background: var(--bg-surface2); }
+button:disabled { opacity: 0.4; cursor: default; }
+button.primary { background: var(--ruby); color: #fff; }
+button.primary:hover { background: #b81e47; }
+button.danger { background: var(--ruby-dark); color: #fff; }
+button.danger:hover { background: #8c0000; }
+
+.breadcrumb { display: flex; gap: 4px; align-items: center; padding: 8px 12px; background: var(--bg-surface);
+              border-radius: 6px; margin-bottom: 12px; font-size: 0.9em; min-height: 36px; flex-wrap: wrap; }
+.breadcrumb span { cursor: pointer; color: var(--ruby-pale); }
+.breadcrumb span:hover { text-decoration: underline; }
+.breadcrumb .sep { color: var(--text-mute); cursor: default; }
+
+.file-list { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.file-row { display: flex; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--border);
+            cursor: pointer; transition: background 0.15s; }
+.file-row:last-child { border-bottom: none; }
+.file-row:hover { background: var(--bg-surface); }
+.file-row .icon { width: 24px; margin-right: 10px; text-align: center; font-size: 1.1em; }
+.file-row .name { flex: 1; }
+.file-row .size { color: var(--text-mute); font-size: 0.85em; min-width: 80px; text-align: right; }
+.file-row .actions { display: flex; gap: 4px; }
+.file-row .actions button { padding: 4px 8px; font-size: 0.8em; }
+
+.empty-msg { padding: 24px; text-align: center; color: var(--text-mute); }
+
+.upload-area { border: 2px dashed var(--border); border-radius: 6px; padding: 24px; text-align: center;
+               margin-top: 12px; cursor: pointer; transition: border-color 0.2s; }
+.upload-area:hover, .upload-area.drag { border-color: var(--ruby); }
+.upload-area input { display: none; }
+
+.log-area { margin-top: 16px; }
+.log-area summary { cursor: pointer; color: var(--text-mute); font-size: 0.85em; }
+.log-box { max-height: 200px; overflow-y: auto; background: var(--bg-deep); border-radius: 6px;
+           padding: 8px; font-family: monospace; font-size: 0.8em; margin-top: 8px; }
+.log-box .log-line { padding: 2px 0; word-break: break-all; }
+.log-box .err { color: var(--err); }
+.log-box .ok { color: var(--ok); }
+
+.progress { margin-top: 8px; display: none; }
+.progress-bar { height: 4px; background: var(--bg-surface); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: var(--ruby); transition: width 0.2s; width: 0%; }
+.progress-text { font-size: 0.8em; color: var(--text-mute); margin-top: 4px; }
+
+.editor-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: none;
+                align-items: center; justify-content: center; z-index: 100; }
+.editor-modal.open { display: flex; }
+.editor-card { background: var(--bg-base); border: 1px solid var(--border); border-radius: 8px;
+               width: 92%; max-width: 900px; height: 86%; display: flex; flex-direction: column; }
+.editor-header { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+                 border-bottom: 1px solid var(--border); }
+.editor-header .path { flex: 1; font-family: monospace; font-size: 0.9em; word-break: break-all; }
+.editor-header .dirty { color: var(--warn); font-size: 0.85em; }
+.editor-area { flex: 1; padding: 0; min-height: 0; }
+.editor-stack { position: relative; width: 100%; height: 100%;
+                background: var(--bg-deep); overflow: hidden; }
+.editor-highlight,
+.editor-stack textarea {
+  position: absolute; inset: 0;
+  margin: 0; padding: 12px;
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+  font-size: 1.1em; line-height: 1.5;
+  tab-size: 2; -moz-tab-size: 2;
+  white-space: pre-wrap; word-wrap: break-word; overflow-wrap: break-word;
+  border: 0; outline: 0;
+}
+.editor-highlight {
+  pointer-events: none; overflow: hidden;
+  color: var(--text); background: transparent;
+  text-shadow: none; z-index: 1;
+}
+.editor-highlight code { display: block; min-height: 100%; background: transparent;
+                         color: inherit; text-shadow: none; font: inherit; }
+.editor-stack textarea {
+  background: transparent; color: transparent; caret-color: var(--ruby-pale);
+  resize: none; overflow: auto; z-index: 2;
+}
+.editor-stack textarea::selection      { background: rgba(216,36,85,0.35); color: transparent; }
+.editor-stack textarea::-moz-selection { background: rgba(216,36,85,0.35); color: transparent; }
+
+/* Prism token colors (Family mruby dark + ruby red theme). */
+.editor-highlight .token.comment,
+.editor-highlight .token.prolog,
+.editor-highlight .token.doctype,
+.editor-highlight .token.cdata        { color: #8a6470; font-style: italic; }
+.editor-highlight .token.punctuation  { color: #c0a0a8; }
+.editor-highlight .token.keyword,
+.editor-highlight .token.builtin,
+.editor-highlight .token.tag,
+.editor-highlight .token.boolean,
+.editor-highlight .token.null         { color: var(--ruby); font-weight: 600; }
+.editor-highlight .token.string,
+.editor-highlight .token.char,
+.editor-highlight .token.attr-value,
+.editor-highlight .token.regex,
+.editor-highlight .token.url          { color: var(--ruby-pale); }
+.editor-highlight .token.number,
+.editor-highlight .token.constant,
+.editor-highlight .token.date         { color: #ffb074; }
+.editor-highlight .token.symbol       { color: #ff9ec0; }
+.editor-highlight .token.class-name,
+.editor-highlight .token.function,
+.editor-highlight .token.property,
+.editor-highlight .token.key,
+.editor-highlight .token.table        { color: #ffd0b0; }
+.editor-highlight .token.operator,
+.editor-highlight .token.entity       { color: #e08090; background: transparent; }
+.editor-highlight .token.variable     { color: var(--text); }
+.editor-highlight .token.interpolation .token.interpolation-punctuation { color: #ffd0b0; }
+.editor-highlight .token.title,
+.editor-highlight .token.bold,
+.editor-highlight .token.important    { color: var(--ruby-pale); font-weight: 700; }
+.editor-highlight .token.italic       { font-style: italic; }
+.editor-highlight .token.deleted      { color: var(--err); }
+.editor-highlight .token.inserted     { color: var(--ok); }
+.editor-footer { display: flex; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--border);
+                 font-size: 0.8em; color: var(--text-mute); }
+.editor-footer .stats { flex: 1; }
+.editor-footer .err { color: var(--err); }
+
+/* Tab strip */
+.tabs { display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.tabs button { padding: 8px 18px; background: transparent; color: var(--text-mute);
+               border-radius: 6px 6px 0 0; border: 1px solid transparent; border-bottom: none;
+               margin-bottom: -1px; }
+.tabs button.active { background: var(--bg-surface); color: var(--text);
+                      border-color: var(--border); }
+.pane { display: none; }
+.pane.active { display: block; }
+
+/* Device log view */
+.devlog-toolbar { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; flex-wrap: wrap; }
+.devlog-toolbar label { font-size: 0.85em; color: var(--text-mute); display: flex; align-items: center; gap: 4px; }
+.devlog-toolbar select, .devlog-toolbar input[type="text"] {
+  background: var(--bg-surface); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 8px; font-size: 0.9em;
+}
+.devlog-toolbar input[type="text"] { min-width: 140px; }
+.devlog-status { font-size: 0.8em; color: var(--text-mute); margin-left: auto; }
+.devlog-box { background: var(--bg-deep); border: 1px solid var(--border); border-radius: 6px;
+              padding: 8px; font-family: monospace; font-size: 0.85em; height: 60vh;
+              min-height: 320px; overflow-y: auto; white-space: pre; }
+.devlog-line { padding: 1px 0; word-break: break-all; white-space: pre-wrap; }
+.devlog-line.lv-E { color: var(--err); }
+.devlog-line.lv-W { color: var(--warn); }
+.devlog-line.lv-I { color: var(--text); }
+.devlog-line.lv-D { color: var(--text-mute); }
+.devlog-line.dropped { color: var(--warn); font-style: italic; }
