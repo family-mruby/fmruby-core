@@ -8,7 +8,7 @@ class FmrbApp
   SCROLLBAR_W = 10
   SCROLLBAR_BTN_H = 10
 
-  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen
+  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen, :rounded_corners
 
   # Close-button hit zone (used by both draw and event-handler paths).
   CLOSE_BTN_CX_OFFSET = 6   # distance from right edge to circle center
@@ -58,6 +58,7 @@ class FmrbApp
 
       unless @fullscreen
         _build_frame_block
+        _apply_rounded_corner_regions
       end
     else
       @gfx = nil
@@ -93,6 +94,9 @@ class FmrbApp
       @gfx.set_font(*saved_font) unless saved_font == [:default]
       @gfx.set_text_size(saved_size) unless saved_size == 1
     end
+    # Re-apply composite regions after every frame redraw so resize updates
+    # take effect. Internally cached on (w, h); a no-op when size is unchanged.
+    _apply_rounded_corner_regions
   end
 
   # Clear the user area (region inside the window frame, excluding the title
@@ -129,6 +133,43 @@ class FmrbApp
       r.draw_round_rect 0, 0, w, h, CORNER_R, 0x60
     end
     _build_corner_clear_block
+  end
+
+  # Declare composite regions so the GA-side compositor only does the
+  # per-pixel transparent compare on the 4 small CORNER_R x CORNER_R corner
+  # squares; the rest of the canvas takes the opaque memcpy fast path.
+  # Visually identical to a full-area transparent push (rounded corners
+  # remain rounded), but the transparent-compare load drops from
+  # window_w * window_h to 4 * CORNER_R^2 pixels per frame.
+  #
+  # Cached on (w, h) so re-running on every draw_window_frame call is a
+  # no-op unless the window was just resized.
+  def _apply_rounded_corner_regions
+    return if @fullscreen
+    return unless @gfx
+    return unless @rounded_corners
+    # Apps that own a bg_canvas (system_desktop) manage their own composite
+    # regions and toggle them on/off around the boot animation, so don't
+    # clobber them with the generic rounded-corner layout.
+    return if @bg_canvas
+    w = @window_width
+    h = @window_height
+    return if @composite_region_w == w && @composite_region_h == h
+    c = CORNER_R
+    @gfx.set_composite_regions([
+      # 4 corner squares: per-pixel transparent compare so the rounded
+      # shape composites correctly against whatever sits underneath.
+      { dst_x: 0,     dst_y: 0,     w: c,         h: c,         transparent: true  },
+      { dst_x: w - c, dst_y: 0,     w: c,         h: c,         transparent: true  },
+      { dst_x: 0,     dst_y: h - c, w: c,         h: c,         transparent: true  },
+      { dst_x: w - c, dst_y: h - c, w: c,         h: c,         transparent: true  },
+      # 3 opaque strips covering the rest of the canvas (memcpy fast path).
+      { dst_x: c,     dst_y: 0,     w: w - 2 * c, h: c,         transparent: false },
+      { dst_x: c,     dst_y: h - c, w: w - 2 * c, h: c,         transparent: false },
+      { dst_x: 0,     dst_y: c,     w: w,         h: h - 2 * c, transparent: false },
+    ])
+    @composite_region_w = w
+    @composite_region_h = h
   end
 
   # CORNER_R=4 の弧外側 3 px ずつ (= 12 px / window) を canvas color key

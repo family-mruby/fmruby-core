@@ -147,6 +147,11 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@fullscreen"),
                ctx->fullscreen ? mrb_true_value() : mrb_false_value());
 
+    // Set @rounded_corners flag (drives composite-region-based corner
+    // shaping in fmrb-app.rb). Always false for fullscreen apps.
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@rounded_corners"),
+               (!ctx->fullscreen && ctx->rounded_corners) ? mrb_true_value() : mrb_false_value());
+
     // Set @platform symbol (:linux or :esp32)
 #ifdef CONFIG_IDF_TARGET_LINUX
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@platform"),
