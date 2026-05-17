@@ -1,0 +1,8 @@
+app_handle_name = "tile_map_test"
+app_screen_name = "TileMap Test"
+app_screen_name_ja = "TileMap確認"
+default_window_mode = "window"
+default_window_width = 110
+default_window_height = 95
+default_window_pos_x = 20
+default_window_pos_y = 30

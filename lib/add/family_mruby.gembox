@@ -16,6 +16,7 @@ MRuby::GemBox.new do |conf|
   # Optional
   conf.gem core: "picoruby-eval"
   conf.gem core: "picoruby-yaml"
+  conf.gem core: "picoruby-json"
   conf.gem core: 'picoruby-syntax-highlight'
 
   # Family mruby specific
