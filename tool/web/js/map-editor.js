@@ -580,7 +580,7 @@ async function mapSaveDevice() {
   const path = prompt('Save map JSON to device path:', def);
   if (!path) return;
   try {
-    const text = JSON.stringify(mapSerialize(), null, 2);
+    const text = JSON.stringify(mapSerialize());
     const data = new TextEncoder().encode(text);
     showProgress(0, 'Saving ' + path + '...');
     await deviceWriteFile(path, data, (sent, total) => {
@@ -626,7 +626,7 @@ function mapOnLocalJson(fileList) {
 }
 
 function mapSaveLocal() {
-  const text = JSON.stringify(mapSerialize(), null, 2);
+  const text = JSON.stringify(mapSerialize());
   const blob = new Blob([text], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
