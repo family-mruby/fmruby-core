@@ -47,6 +47,7 @@ module ErrorDialogMixin
     end
 
     notify_overlay_state(true, @error_dlg_x, @error_dlg_y, EDLG_W, @error_dlg_h)
+    update_composite_regions
     draw_foreground
   end
 
@@ -54,6 +55,7 @@ module ErrorDialogMixin
     return unless @error_dlg_open
     @error_dlg_open = false
     notify_overlay_state(false, 0, 0, 0, 0)
+    update_composite_regions
     draw_foreground
   end
 

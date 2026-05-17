@@ -141,6 +141,13 @@ class SystemDesktopApp < FmrbApp
     @boot_audio = nil
     @boot_audio_tick = 0
     @boot_audio_finished = false
+
+    # Composite regions opt-in. While false the desktop main canvas is
+    # composited as the full transparent area (boot screen path). Switched
+    # on after finish_boot_animation so the compositor can skip the ~95%
+    # of the canvas that is empty (= color-key 0x01) and only push the
+    # menu bar + currently open overlays.
+    @composite_regions_enabled = false
   end
 
   def on_create()
@@ -317,6 +324,13 @@ class SystemDesktopApp < FmrbApp
     draw_foreground
     FmrbApp.enable_cursor
     @boot_anim_state = :done
+
+    # From here on the desktop main canvas only ever has the menu bar +
+    # whatever overlays are open. Switch to region-based compositing so
+    # the graphics-audio side stops walking the ~71k transparent pixels
+    # in the rest of the canvas every frame.
+    @composite_regions_enabled = true
+    update_composite_regions
   end
 
   def load_shortcuts
@@ -502,6 +516,7 @@ class SystemDesktopApp < FmrbApp
 
     dropdown_h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
     notify_overlay_state(true, DROPDOWN_X, DROPDOWN_Y, DROPDOWN_W, dropdown_h)
+    update_composite_regions
     draw_foreground
   end
 
@@ -512,6 +527,7 @@ class SystemDesktopApp < FmrbApp
     unless @launcher_open
       notify_overlay_state(false, 0, 0, 0, 0)
     end
+    update_composite_regions
     draw_foreground
   end
 
@@ -523,6 +539,69 @@ class SystemDesktopApp < FmrbApp
       "rect_w" => w, "rect_h" => h
     }
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+  end
+
+  # Rebuild the desktop canvas composite region list from the current UI
+  # state. Called after every open_*/close_* (paired with notify_overlay_state).
+  # Sends one opaque region per visible UI element; everything else on the
+  # canvas is left as color-key 0x01 and skipped by the compositor.
+  #
+  # The fmgr right-click context menu is positioned inside the file manager
+  # window (see handle_file_manager_right_click clamp), so it is implicitly
+  # covered by the file_manager region and does not need its own entry.
+  #
+  # Constants defined in mixin modules are referenced via the explicit
+  # ModuleName::CONST form because picoruby does not resolve bare mixin
+  # constants from the including class (see feedback memory).
+  def update_composite_regions
+    return unless @composite_regions_enabled
+    return unless @gfx
+
+    regions = [
+      { dst_x: 0, dst_y: 0, w: @window_width, h: MENU_BAR_HEIGHT, transparent: false }
+    ]
+    if @dropdown_open
+      dropdown_h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
+      regions << { dst_x: DROPDOWN_X, dst_y: DROPDOWN_Y, w: DROPDOWN_W, h: dropdown_h, transparent: false }
+    end
+    if @launcher_open
+      regions << { dst_x: @launcher_x, dst_y: @launcher_y,
+                   w: LauncherMixin::LAUNCHER_W, h: LauncherMixin::LAUNCHER_H, transparent: false }
+    end
+    if @file_selector_open
+      regions << { dst_x: @fsel_x, dst_y: @fsel_y,
+                   w: FileSelectorMixin::FSEL_W, h: FileSelectorMixin::FSEL_H, transparent: false }
+    end
+    if @file_manager_open
+      regions << { dst_x: @fmgr_x, dst_y: @fmgr_y,
+                   w: FileManagerMixin::FMGR_W, h: FileManagerMixin::FMGR_H, transparent: false }
+    end
+    if @cdlg_open
+      regions << { dst_x: @cdlg_x, dst_y: @cdlg_y,
+                   w: ConfirmDialogMixin::CDLG_W, h: ConfirmDialogMixin::CDLG_H, transparent: false }
+    end
+    if @clk_open
+      regions << { dst_x: @clk_x, dst_y: @clk_y,
+                   w: ClockSettingMixin::CLK_W, h: ClockSettingMixin::CLK_H, transparent: false }
+    end
+    if @cfg_open
+      regions << { dst_x: @cfg_x, dst_y: @cfg_y,
+                   w: ConfigDialogMixin::CFG_W, h: ConfigDialogMixin::CFG_H, transparent: false }
+    end
+    if @about_open
+      regions << { dst_x: @about_x, dst_y: @about_y,
+                   w: AboutDialogMixin::ABOUT_W, h: @about_h, transparent: false }
+    end
+    if @error_dlg_open
+      regions << { dst_x: @error_dlg_x, dst_y: @error_dlg_y,
+                   w: ErrorDialogMixin::EDLG_W, h: @error_dlg_h, transparent: false }
+    end
+    if @tbd_open
+      regions << { dst_x: @tbd_x, dst_y: @tbd_y,
+                   w: TbdDialogMixin::TBD_W, h: TbdDialogMixin::TBD_H, transparent: false }
+    end
+
+    @gfx.set_composite_regions(regions)
   end
 
   # ---- Update loop ----

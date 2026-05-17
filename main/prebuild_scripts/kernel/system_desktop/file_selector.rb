@@ -26,6 +26,7 @@ module FileSelectorMixin
     close_dropdown
     scan_file_selector_dir
     notify_overlay_state(true, @fsel_x, @fsel_y, FSEL_W, FSEL_H)
+    update_composite_regions
     draw_foreground
   end
 
@@ -45,6 +46,7 @@ module FileSelectorMixin
 
     @file_selector_requester = nil
     notify_overlay_state(false, 0, 0, 0, 0)
+    update_composite_regions
     draw_foreground
   end
 

@@ -43,6 +43,7 @@ module FileManagerMixin
     close_dropdown
     scan_file_manager_dir
     notify_overlay_state(true, @fmgr_x, @fmgr_y, FMGR_W, FMGR_H)
+    update_composite_regions
     draw_foreground
   end
 
@@ -51,6 +52,7 @@ module FileManagerMixin
     @file_manager_open = false
     @fmgr_ctx_open = false
     notify_overlay_state(false, 0, 0, 0, 0)
+    update_composite_regions
     draw_foreground
   end
 

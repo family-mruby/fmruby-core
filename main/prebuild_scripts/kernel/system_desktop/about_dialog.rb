@@ -26,6 +26,7 @@ module AboutDialogMixin
     @about_y = (@window_height - @about_h) / 2
     @about_y = 12 if @about_y < 12
     notify_overlay_state(true, @about_x, @about_y, ABOUT_W, @about_h)
+    update_composite_regions
     draw_foreground
   end
 
@@ -33,6 +34,7 @@ module AboutDialogMixin
     return unless @about_open
     @about_open = false
     notify_overlay_state(false, 0, 0, 0, 0)
+    update_composite_regions
     draw_foreground
   end
 

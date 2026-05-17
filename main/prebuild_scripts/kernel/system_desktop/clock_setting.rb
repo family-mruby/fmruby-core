@@ -33,6 +33,7 @@ module ClockSettingMixin
     end
 
     notify_overlay_state(true, @clk_x, @clk_y, CLK_W, CLK_H)
+    update_composite_regions
     draw_foreground
   end
 
@@ -40,6 +41,7 @@ module ClockSettingMixin
     return unless @clk_open
     @clk_open = false
     notify_overlay_state(false, 0, 0, 0, 0)
+    update_composite_regions
     draw_foreground
   end
 

@@ -84,6 +84,7 @@ module ConfigDialogMixin
     close_launcher
     close_dropdown
     notify_overlay_state(true, @cfg_x, @cfg_y, CFG_W, CFG_H)
+    update_composite_regions
     draw_foreground
   end
 
@@ -91,6 +92,7 @@ module ConfigDialogMixin
     return unless @cfg_open
     @cfg_open = false
     notify_overlay_state(false, 0, 0, 0, 0)
+    update_composite_regions
     draw_foreground
   end
 

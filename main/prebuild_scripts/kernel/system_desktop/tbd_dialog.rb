@@ -19,6 +19,7 @@ module TbdDialogMixin
     @tbd_y = (@window_height - TBD_H) / 2
     @tbd_y = 12 if @tbd_y < 12
     notify_overlay_state(true, @tbd_x, @tbd_y, TBD_W, TBD_H)
+    update_composite_regions
     draw_foreground
   end
 
@@ -26,6 +27,7 @@ module TbdDialogMixin
     return unless @tbd_open
     @tbd_open = false
     notify_overlay_state(false, 0, 0, 0, 0)
+    update_composite_regions
     draw_foreground
   end
 

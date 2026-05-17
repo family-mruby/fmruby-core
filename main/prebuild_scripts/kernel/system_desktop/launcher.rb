@@ -452,6 +452,7 @@ module LauncherMixin
 
     # Notify kernel: overlay covers launcher area
     notify_overlay_state(true, @launcher_x, @launcher_y, LAUNCHER_W, LAUNCHER_H)
+    update_composite_regions
     draw_foreground
   end
 
@@ -506,6 +507,7 @@ module LauncherMixin
     @launcher_selected = -1
     hide_all_icon_sprites
     notify_overlay_state(false, 0, 0, 0, 0)
+    update_composite_regions
     draw_foreground
   end
 

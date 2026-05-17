@@ -18,6 +18,7 @@ module ConfirmDialogMixin
     @cdlg_x = (@window_width - CDLG_W) / 2
     @cdlg_y = (@window_height - CDLG_H) / 2
     notify_overlay_state(true, @cdlg_x, @cdlg_y, CDLG_W, CDLG_H)
+    update_composite_regions
     draw_foreground
   end
 
@@ -25,6 +26,7 @@ module ConfirmDialogMixin
     return unless @cdlg_open
     @cdlg_open = false
     notify_overlay_state(false, 0, 0, 0, 0)
+    update_composite_regions
     draw_foreground
   end
 
