@@ -291,14 +291,27 @@ function spriteOnLocalFile(fileList) {
   if (!fileList || !fileList.length) return;
   const file = fileList[0];
   file.arrayBuffer().then(buf => {
-    try { sprLoadBmpFromBuffer(buf, null); log('Sprite: loaded local ' + file.name, 'ok'); }
-    catch (e) { log('Sprite load failed: ' + e.message, 'err'); }
-  }).catch(e => log('Sprite read error: ' + e.message, 'err'));
+    try {
+      sprLoadBmpFromBuffer(buf, null);
+      log('Sprite: loaded local ' + file.name, 'ok');
+      toast('Sprite loaded: ' + file.name, 'ok');
+    } catch (e) {
+      log('Sprite load failed: ' + e.message, 'err');
+      toast('Sprite load failed: ' + e.message, 'err');
+    }
+  }).catch(e => {
+    log('Sprite read error: ' + e.message, 'err');
+    toast('Sprite read error: ' + e.message, 'err');
+  });
   document.getElementById('sprFileInput').value = '';
 }
 
 function spriteSaveLocal() {
-  if (!sprite.pixels) { log('Sprite: nothing to save', 'err'); return; }
+  if (!sprite.pixels) {
+    log('Sprite: nothing to save', 'err');
+    toast('Nothing to save', 'err');
+    return;
+  }
   const data = encodeBmp332(sprSheetWidth(), sprSheetHeight(), sprite.pixels);
   const blob = new Blob([data], { type: 'image/bmp' });
   const url = URL.createObjectURL(blob);
@@ -308,6 +321,7 @@ function spriteSaveLocal() {
   a.click();
   URL.revokeObjectURL(url);
   log('Sprite: downloaded ' + a.download, 'ok');
+  toast('Downloaded ' + a.download, 'ok');
 }
 
 async function spriteLoadDevice() {
@@ -319,14 +333,20 @@ async function spriteLoadDevice() {
     const data = await deviceReadFile(path, n => showProgress(-1, 'Loading ' + path + '... ' + formatSize(n)));
     sprLoadBmpFromBuffer(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength), path);
     log('Sprite: loaded ' + path + ' (' + formatSize(data.length) + ')', 'ok');
+    toast('Loaded ' + path + ' (' + formatSize(data.length) + ')', 'ok');
   } catch (e) {
     log('Sprite load failed: ' + e.message, 'err');
+    toast('Load failed: ' + e.message, 'err');
   }
   hideProgress();
 }
 
 async function spriteSaveDevice() {
-  if (!sprite.pixels) { log('Sprite: nothing to save', 'err'); return; }
+  if (!sprite.pixels) {
+    log('Sprite: nothing to save', 'err');
+    toast('Nothing to save', 'err');
+    return;
+  }
   const def = sprite.path || (SPR_DEFAULT_DIR + '/sprite.bmp');
   const path = prompt('Save sprite BMP to device path:', def);
   if (!path) return;
@@ -342,11 +362,13 @@ async function spriteSaveDevice() {
     sprite.dirty = false;
     sprUpdateToolbar();
     log('Sprite: saved ' + path + ' (' + formatSize(data.length) + ')', 'ok');
+    toast('Saved ' + path + ' (' + formatSize(data.length) + ')', 'ok');
     if (typeof refreshDir === 'function' && currentPath && path.startsWith(currentPath)) {
       refreshDir().catch(() => {});
     }
   } catch (e) {
     log('Sprite save failed: ' + e.message, 'err');
+    toast('Save failed: ' + e.message, 'err');
   }
   hideProgress();
 }

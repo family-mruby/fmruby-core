@@ -849,7 +849,7 @@ uploadArea.addEventListener('drop', (e) => {
 // ============================================================
 // Device log streaming (BLE LOG_SUBSCRIBE/UNSUBSCRIBE/SET_LEVEL)
 // ============================================================
-const TAB_IDS = ['files', 'logs', 'sprite'];
+const TAB_IDS = ['files', 'logs', 'sprite', 'map'];
 const tabChangeListeners = {};
 
 function registerTabChangeListener(name, cb) {
@@ -1084,6 +1084,31 @@ function log(msg, cls) {
   line.textContent = '[' + time + '] ' + msg;
   box.appendChild(line);
   box.scrollTop = box.scrollHeight;
+}
+
+// Transient on-screen status (the log box lives inside a collapsed <details>
+// so save/load results would otherwise be invisible). `kind` is 'ok' | 'err' |
+// 'info' (default); errors stay visible longer.
+function toast(msg, kind) {
+  let container = document.getElementById('toastContainer');
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'toastContainer';
+    container.className = 'toast-container';
+    document.body.appendChild(container);
+  }
+  const el = document.createElement('div');
+  el.className = 'toast ' + (kind || 'info');
+  el.textContent = msg;
+  const dismiss = () => {
+    if (!el.parentNode) return;
+    el.classList.remove('show');
+    setTimeout(() => el.remove(), 300);
+  };
+  el.addEventListener('click', dismiss);
+  container.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('show'));
+  setTimeout(dismiss, kind === 'err' ? 5000 : 3000);
 }
 
 function showProgress(pct, text) {

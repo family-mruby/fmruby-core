@@ -182,6 +182,20 @@ button.danger:hover { background: #8c0000; }
 .devlog-line.lv-D { color: var(--text-mute); }
 .devlog-line.dropped { color: var(--warn); font-style: italic; }
 
+/* ---------------- Toast notifications --------------------------------- */
+.toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 200;
+                   display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
+.toast { background: var(--bg-surface); color: var(--text); border: 1px solid var(--border);
+         border-left-width: 4px; border-radius: 6px; padding: 10px 14px;
+         max-width: 360px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+         opacity: 0; transform: translateY(8px);
+         transition: opacity 0.25s ease, transform 0.25s ease;
+         pointer-events: auto; cursor: pointer; font-size: 0.9em; }
+.toast.show { opacity: 1; transform: translateY(0); }
+.toast.ok   { border-left-color: var(--ok); }
+.toast.err  { border-left-color: var(--err); }
+.toast.info { border-left-color: var(--ruby); }
+
 /* ---------------- Generic modal (shared by sprite/map dialogs) -------------- */
 .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7);
          display: none; align-items: center; justify-content: center; z-index: 100; }
@@ -214,3 +228,32 @@ button.danger:hover { background: #8c0000; }
 canvas.spr-canvas { image-rendering: pixelated; image-rendering: crisp-edges;
                     display: block; cursor: crosshair; background: #000; }
 canvas#sprPaletteCanvas { cursor: pointer; }
+
+/* ---------------- Map editor ------------------------------------------ */
+.map-toolbar { display: flex; gap: 8px; margin-bottom: 8px;
+               align-items: center; flex-wrap: wrap; }
+.map-toolbar .info { color: var(--text-mute); font-size: 0.85em; margin-left: 4px; }
+.map-toolbar .path-info { color: var(--ruby-pale); font-family: monospace;
+                          font-size: 0.85em; margin-left: 4px; }
+.map-toolbar input[type="number"] {
+  background: var(--bg-deep); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 6px; font-family: inherit;
+}
+.map-toolbar label { color: var(--text-mute); font-size: 0.85em; }
+
+.map-main { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
+            align-items: flex-start; }
+.map-box { border: 1px solid var(--border); background: var(--bg-deep);
+           padding: 8px; border-radius: 6px; }
+.map-box .label { font-size: 0.8em; color: var(--text-mute); margin-bottom: 6px; }
+.map-canvas-wrap { max-width: 90vw; max-height: 70vh; overflow: auto; }
+canvas#mapPaletteCanvas { cursor: pointer; }
+canvas#mapCanvas { cursor: crosshair; }
+
+.event-row { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.event-row label { color: var(--text-mute); font-size: 0.85em; min-width: 100px; }
+.event-data {
+  width: 100%; min-height: 100px; background: var(--bg-deep); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px; padding: 6px;
+  font-family: ui-monospace, Consolas, monospace; font-size: 0.85em;
+}

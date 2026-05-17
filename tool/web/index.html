@@ -25,6 +25,7 @@
     <button id="tabFiles" class="active" onclick="switchTab('files')">Files</button>
     <button id="tabLogs" onclick="switchTab('logs')">Logs</button>
     <button id="tabSprite" onclick="switchTab('sprite')">Sprite</button>
+    <button id="tabMap" onclick="switchTab('map')">Map</button>
   </div>
 
   <div id="filesPane" class="pane active">
@@ -70,6 +71,65 @@
     <div class="sprite-box" style="display:inline-block">
       <div class="label">Palette (RGB332 256 colors) <span id="sprColorInfo" class="info"></span></div>
       <canvas id="sprPaletteCanvas" class="spr-canvas"></canvas>
+    </div>
+  </div>
+
+  <div id="mapPane" class="pane">
+    <div class="map-toolbar">
+      <button onclick="mapNew()">New</button>
+      <button id="mapBtnLoadDev" data-needs-device disabled onclick="mapLoadDevice()">Load Map from Device...</button>
+      <button id="mapBtnSaveDev" data-needs-device disabled onclick="mapSaveDevice()">Save Map to Device...</button>
+      <button onclick="document.getElementById('mapJsonInput').click()">Open Local Map...</button>
+      <input type="file" id="mapJsonInput" accept=".json" style="display:none" onchange="mapOnLocalJson(this.files)">
+      <button onclick="mapSaveLocal()">Download Map JSON</button>
+    </div>
+    <div class="map-toolbar">
+      <button id="mapBtnLoadSheetDev" data-needs-device disabled onclick="mapLoadTilesheetDevice()">Load Tilesheet from Device...</button>
+      <button onclick="document.getElementById('mapSheetInput').click()">Open Local Tilesheet...</button>
+      <input type="file" id="mapSheetInput" accept=".bmp" style="display:none" onchange="mapOnLocalTilesheet(this.files)">
+      <span class="info">Size:</span>
+      <input type="number" id="mapWidth"  min="1" max="256" value="32" style="width:60px">
+      <span class="info">x</span>
+      <input type="number" id="mapHeight" min="1" max="256" value="24" style="width:60px">
+      <button onclick="mapApplySize()">Apply Size</button>
+    </div>
+    <div class="map-toolbar">
+      <span class="info">Sheet: <span id="mapSheetInfo">(none)</span></span>
+      <span class="info">Map: <span id="mapSizeInfo">-</span></span>
+      <span class="info">Path: <span id="mapPathInfo" class="path-info">(unsaved)</span></span>
+    </div>
+    <div class="map-toolbar">
+      <span class="info">Mode:</span>
+      <label><input type="radio" name="mapMode" value="tile"  checked onchange="mapSetMode('tile')"> Tile</label>
+      <label><input type="radio" name="mapMode" value="erase" onchange="mapSetMode('erase')"> Erase</label>
+      <label><input type="radio" name="mapMode" value="event" onchange="mapSetMode('event')"> Event</label>
+    </div>
+    <div class="map-main">
+      <div class="map-box">
+        <div class="label">Tile Palette (from tilesheet)</div>
+        <canvas id="mapPaletteCanvas" class="spr-canvas"></canvas>
+      </div>
+      <div class="map-box">
+        <div class="label">Map Canvas (L=draw  R=erase/delete)</div>
+        <div class="map-canvas-wrap"><canvas id="mapCanvas" class="spr-canvas"></canvas></div>
+      </div>
+    </div>
+    <div class="map-box" id="mapEventInspector" style="display:none">
+      <div class="label">Event Inspector</div>
+      <div class="event-row">
+        <label>ID:</label>
+        <input type="number" id="mapEvId" min="0" style="width:80px">
+        <span class="info">Position: <span id="mapEvPos">-</span></span>
+      </div>
+      <div class="event-row">
+        <label>Data (JSON):</label>
+      </div>
+      <textarea id="mapEvData" rows="5" class="event-data"></textarea>
+      <div class="event-row" style="margin-top:8px">
+        <button class="primary" onclick="mapEventApply()">Apply</button>
+        <button onclick="mapEventDelete()">Delete</button>
+        <span id="mapEvMsg" class="info"></span>
+      </div>
     </div>
   </div>
 
@@ -147,5 +207,6 @@
 <script src="js/app.js"></script>
 <script src="js/bmp332.js"></script>
 <script src="js/sprite-editor.js"></script>
+<script src="js/map-editor.js"></script>
 </body>
 </html>
