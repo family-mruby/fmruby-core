@@ -24,6 +24,7 @@
   <div class="tabs">
     <button id="tabFiles" class="active" onclick="switchTab('files')">Files</button>
     <button id="tabLogs" onclick="switchTab('logs')">Logs</button>
+    <button id="tabSprite" onclick="switchTab('sprite')">Sprite</button>
   </div>
 
   <div id="filesPane" class="pane active">
@@ -41,6 +42,34 @@
     <div class="progress" id="progress">
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
       <div class="progress-text" id="progressText"></div>
+    </div>
+  </div>
+
+  <div id="spritePane" class="pane">
+    <div class="sprite-toolbar">
+      <button onclick="spriteNew()">New</button>
+      <button id="sprBtnLoadDev" data-needs-device disabled onclick="spriteLoadDevice()">Load from Device...</button>
+      <button id="sprBtnSaveDev" data-needs-device disabled onclick="spriteSaveDevice()">Save to Device...</button>
+      <button onclick="document.getElementById('sprFileInput').click()">Open Local BMP...</button>
+      <input type="file" id="sprFileInput" accept=".bmp" style="display:none" onchange="spriteOnLocalFile(this.files)">
+      <button onclick="spriteSaveLocal()">Download BMP</button>
+      <span class="info">Sheet: <span id="sprSheetInfo">-</span></span>
+      <span class="info">Tile: <span id="sprTileInfo">-</span></span>
+      <span class="info">Path: <span id="sprPathInfo" class="path-info">(unsaved)</span></span>
+    </div>
+    <div class="sprite-main">
+      <div class="sprite-box">
+        <div class="label">Tile Sheet (click to select tile)</div>
+        <canvas id="sprSheetCanvas" class="spr-canvas"></canvas>
+      </div>
+      <div class="sprite-box">
+        <div class="label">Tile Editor (L=paint  R=erase  M=eyedropper)</div>
+        <canvas id="sprTileCanvas" class="spr-canvas"></canvas>
+      </div>
+    </div>
+    <div class="sprite-box" style="display:inline-block">
+      <div class="label">Palette (RGB332 256 colors) <span id="sprColorInfo" class="info"></span></div>
+      <canvas id="sprPaletteCanvas" class="spr-canvas"></canvas>
     </div>
   </div>
 
@@ -94,7 +123,29 @@
   </div>
 </div>
 
+<div class="modal" id="sprNewModal">
+  <div class="modal-card">
+    <h3>New Sprite Sheet</h3>
+    <div class="row">
+      <label>Columns:</label>
+      <input type="number" id="sprNewCols" value="8" min="1" max="16">
+      <span class="hint">tiles wide (16 px each)</span>
+    </div>
+    <div class="row">
+      <label>Rows:</label>
+      <input type="number" id="sprNewRows" value="8" min="1" max="16">
+      <span class="hint">tiles tall (16 px each)</span>
+    </div>
+    <div class="actions">
+      <button onclick="spriteNewCancel()">Cancel</button>
+      <button class="primary" onclick="spriteNewConfirm()">Create</button>
+    </div>
+  </div>
+</div>
+
 <script src="vendor/prism.js"></script>
 <script src="js/app.js"></script>
+<script src="js/bmp332.js"></script>
+<script src="js/sprite-editor.js"></script>
 </body>
 </html>

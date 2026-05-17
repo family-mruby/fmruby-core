@@ -335,6 +335,7 @@ function setConnected(connected) {
   document.getElementById('btnRefresh').disabled = !connected;
   document.getElementById('btnMkdir').disabled = !connected;
   document.getElementById('btnNewFile').disabled = !connected;
+  document.querySelectorAll('[data-needs-device]').forEach(el => { el.disabled = !connected; });
   updateLogSubscribeButton();
 }
 
@@ -449,6 +450,45 @@ async function uploadFiles(fileList) {
   document.getElementById('fileInput').value = '';
   await refreshDir();
   await refreshStatfs();
+}
+
+// ============================================================
+// Generic device file I/O (reusable for binary asset transfer)
+// ============================================================
+async function deviceReadFile(path, progressCb) {
+  if (!rxChar || !txChar) throw new Error('Not connected');
+  const chunks = [];
+  let offset = 0;
+  let totalRead = 0;
+  while (true) {
+    const { meta, binData } = await sendCommand(CMD_GET, { path, off: offset });
+    if (!meta.ok) throw new Error(meta.err || 'read failed');
+    if (binData && binData.length > 0) {
+      chunks.push(binData);
+      totalRead += binData.length;
+      offset += binData.length;
+      if (progressCb) progressCb(totalRead);
+    }
+    if (meta.eof) break;
+  }
+  const out = new Uint8Array(totalRead);
+  let p = 0;
+  for (const c of chunks) { out.set(c, p); p += c.length; }
+  return out;
+}
+
+async function deviceWriteFile(path, data, progressCb) {
+  if (!rxChar || !txChar) throw new Error('Not connected');
+  const arr = data instanceof Uint8Array ? data : new Uint8Array(data);
+  let offset = 0;
+  while (offset <= arr.length) {
+    const chunk = arr.slice(offset, offset + FILE_CHUNK_SIZE);
+    const { meta } = await sendCommand(CMD_PUT, { path, off: offset }, chunk);
+    if (!meta.ok) throw new Error(meta.err || 'write failed');
+    offset += chunk.length;
+    if (progressCb) progressCb(offset, arr.length);
+    if (chunk.length === 0) break;
+  }
 }
 
 // ============================================================
@@ -809,12 +849,22 @@ uploadArea.addEventListener('drop', (e) => {
 // ============================================================
 // Device log streaming (BLE LOG_SUBSCRIBE/UNSUBSCRIBE/SET_LEVEL)
 // ============================================================
+const TAB_IDS = ['files', 'logs', 'sprite'];
+const tabChangeListeners = {};
+
+function registerTabChangeListener(name, cb) {
+  tabChangeListeners[name] = cb;
+}
+
 function switchTab(name) {
-  const isFiles = (name === 'files');
-  document.getElementById('tabFiles').classList.toggle('active', isFiles);
-  document.getElementById('tabLogs').classList.toggle('active', !isFiles);
-  document.getElementById('filesPane').classList.toggle('active', isFiles);
-  document.getElementById('logsPane').classList.toggle('active', !isFiles);
+  TAB_IDS.forEach(id => {
+    const tabBtn = document.getElementById('tab' + id.charAt(0).toUpperCase() + id.slice(1));
+    const pane   = document.getElementById(id + 'Pane');
+    if (tabBtn) tabBtn.classList.toggle('active', id === name);
+    if (pane)   pane.classList.toggle('active', id === name);
+  });
+  const cb = tabChangeListeners[name];
+  if (cb) cb();
 }
 
 function setLogStatus(text) {

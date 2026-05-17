@@ -181,3 +181,36 @@ button.danger:hover { background: #8c0000; }
 .devlog-line.lv-I { color: var(--text); }
 .devlog-line.lv-D { color: var(--text-mute); }
 .devlog-line.dropped { color: var(--warn); font-style: italic; }
+
+/* ---------------- Generic modal (shared by sprite/map dialogs) -------------- */
+.modal { position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+         display: none; align-items: center; justify-content: center; z-index: 100; }
+.modal.open { display: flex; }
+.modal-card { background: var(--bg-base); border: 1px solid var(--border);
+              border-radius: 8px; padding: 20px; min-width: 320px; max-width: 90%; }
+.modal-card h3 { margin-bottom: 12px; color: var(--ruby-pale); }
+.modal-card .row { margin-bottom: 8px; display: flex; gap: 8px; align-items: center; }
+.modal-card .row label { min-width: 80px; font-size: 0.9em; }
+.modal-card .row input[type="number"], .modal-card .row input[type="text"] {
+  background: var(--bg-deep); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 4px 8px; flex: 1; font-family: inherit;
+}
+.modal-card .row .hint { color: var(--text-mute); font-size: 0.8em; }
+.modal-card .actions { display: flex; gap: 8px; margin-top: 12px; justify-content: flex-end; }
+
+/* ---------------- Sprite editor ----------------------------------------- */
+.sprite-toolbar { display: flex; gap: 8px; margin-bottom: 12px;
+                  align-items: center; flex-wrap: wrap; }
+.sprite-toolbar .info { color: var(--text-mute); font-size: 0.85em; margin-left: 4px; }
+.sprite-toolbar .path-info { color: var(--ruby-pale); font-family: monospace;
+                             font-size: 0.85em; margin-left: 4px; }
+
+.sprite-main { display: flex; gap: 12px; margin-bottom: 12px; flex-wrap: wrap;
+               align-items: flex-start; }
+.sprite-box { border: 1px solid var(--border); background: var(--bg-deep);
+              padding: 8px; border-radius: 6px; }
+.sprite-box .label { font-size: 0.8em; color: var(--text-mute); margin-bottom: 6px; }
+
+canvas.spr-canvas { image-rendering: pixelated; image-rendering: crisp-edges;
+                    display: block; cursor: crosshair; background: #000; }
+canvas#sprPaletteCanvas { cursor: pointer; }
