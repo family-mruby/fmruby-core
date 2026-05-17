@@ -202,17 +202,41 @@ module LauncherMixin
           sub_dir = Dir.open(path)
           sub_entries = []
           while (e = sub_dir.read)
-            sub_entries << e
+            sub_entries << e unless e == "." || e == ".."
           end
           sub_dir.close
 
           sub_entries.each do |f|
-            next unless f.end_with?(".toml")
-            toml_path = "#{path}/#{f}"
-            app_entry = parse_app_toml(toml_path, path)
-            if app_entry
-              @launcher_apps << app_entry
-              Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
+            full = "#{path}/#{f}"
+            if f.end_with?(".toml")
+              app_entry = parse_app_toml(full, path)
+              if app_entry
+                @launcher_apps << app_entry
+                Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
+              end
+            else
+              # 3rd-level scan: a subdirectory under a category may itself
+              # contain a .toml + script, so a self-contained app bundle
+              # (assets co-located with .rb / .toml, e.g. /app/game/rpg_demo/)
+              # also shows up in the launcher.
+              begin
+                dd = Dir.open(full)
+                dd_entries = []
+                while (df = dd.read)
+                  dd_entries << df unless df == "." || df == ".."
+                end
+                dd.close
+                dd_entries.each do |df|
+                  next unless df.end_with?(".toml")
+                  app_entry = parse_app_toml("#{full}/#{df}", full)
+                  if app_entry
+                    @launcher_apps << app_entry
+                    Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
+                  end
+                end
+              rescue
+                # Not a directory, skip
+              end
             end
           end
         rescue
