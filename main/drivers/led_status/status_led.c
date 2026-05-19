@@ -8,6 +8,7 @@
 
 // Stack size, priority, and flags are defined in fmrb_task_config.h
 #define HEARTBEAT_TICK_MS       100
+#define BOOT_BLINK_HALF_MS      150
 #define ERROR_LED_SELFTEST_MS   1000
 #define TASK_DUMP_INTERVAL_MS   10000
 
@@ -18,6 +19,7 @@
 static const char *TAG = "status_led";
 
 static volatile int s_error_pattern = FMRB_LED_STATUS_NONE;
+static volatile int s_boot_complete = 0;
 
 static int compute_red_level(int pattern, uint32_t step)
 {
@@ -48,19 +50,35 @@ static void status_led_task(void *pvParameters)
     fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED, 0);
 
     while (1) {
-        // Green LED heartbeat: 1.9s ON, 0.1s OFF
-        fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
-        for (int i = 0; i < 19; i++) {
+        if (!s_boot_complete) {
+            // Boot phase: symmetric fast blink so the user sees the system is
+            // alive while INIT_DISPLAY and the desktop boot animation run.
+            fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
+            fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED,
+                                    compute_red_level(s_error_pattern, red_step++));
+            fmrb_task_delay_ms(BOOT_BLINK_HALF_MS);
+            dump_counter += BOOT_BLINK_HALF_MS;
+
+            fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 0);
+            fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED,
+                                    compute_red_level(s_error_pattern, red_step++));
+            fmrb_task_delay_ms(BOOT_BLINK_HALF_MS);
+            dump_counter += BOOT_BLINK_HALF_MS;
+        } else {
+            // Normal heartbeat: 1.9s ON, 0.1s OFF
+            fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 1);
+            for (int i = 0; i < 19; i++) {
+                fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED,
+                                        compute_red_level(s_error_pattern, red_step++));
+                fmrb_task_delay_ms(HEARTBEAT_TICK_MS);
+                dump_counter += HEARTBEAT_TICK_MS;
+            }
+            fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 0);
             fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED,
                                     compute_red_level(s_error_pattern, red_step++));
             fmrb_task_delay_ms(HEARTBEAT_TICK_MS);
             dump_counter += HEARTBEAT_TICK_MS;
         }
-        fmrb_hal_gpio_set_level(FMRB_PIN_STATUS_LED, 0);
-        fmrb_hal_gpio_set_level(FMRB_PIN_ERROR_LED,
-                                compute_red_level(s_error_pattern, red_step++));
-        fmrb_task_delay_ms(HEARTBEAT_TICK_MS);
-        dump_counter += HEARTBEAT_TICK_MS;
 
         if (dump_counter >= TASK_DUMP_INTERVAL_MS) {
             // Skip the dump entirely when debug mode is off: the dump walks
@@ -93,4 +111,12 @@ void status_led_clear_error(void)
 {
     FMRB_LOGI(TAG, "Clear Error pattern");
     s_error_pattern = FMRB_LED_STATUS_NONE;
+}
+
+void status_led_set_boot_complete(void)
+{
+    if (!s_boot_complete) {
+        FMRB_LOGI(TAG, "Boot complete: switching to heartbeat");
+    }
+    s_boot_complete = 1;
 }

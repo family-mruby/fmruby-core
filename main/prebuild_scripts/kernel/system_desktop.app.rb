@@ -325,6 +325,11 @@ class SystemDesktopApp < FmrbApp
     FmrbApp.enable_cursor
     @boot_anim_state = :done
 
+    # Status LED switches from boot fast-blink to heartbeat once the desktop
+    # is fully interactive. After this point, a missing heartbeat is the
+    # primary signal of a real system hang (WDT IDLE monitoring is off).
+    FmrbKernel.boot_complete!
+
     # From here on the desktop main canvas only ever has the menu bar +
     # whatever overlays are open. Switch to region-based compositing so
     # the graphics-audio side stops walking the ~71k transparent pixels

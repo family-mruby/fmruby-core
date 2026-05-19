@@ -74,6 +74,14 @@ CONFIG_FREERTOS_IDLE_TASK_STACKSIZE=1024
 CONFIG_FREERTOS_WATCHPOINT_END_OF_STACK=y
 CONFIG_FREERTOS_USE_TICKLESS_IDLE=n
 
+# Task Watchdog: keep WDT enabled for explicitly subscribed tasks,
+# but stop monitoring the IDLE tasks. system_desktop (prio 8 on Core 1)
+# can transiently starve IDLE1 during heavy mruby GC sweeps triggered by
+# desktop overlay redraw bursts. Real deadlocks are still detectable via
+# the status_led task heartbeat going dark.
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU0=n
+CONFIG_ESP_TASK_WDT_CHECK_IDLE_TASK_CPU1=n
+
 # SPI driver optimizations for real-time performance
 CONFIG_SPI_MASTER_ISR_IN_IRAM=y
 CONFIG_SPI_SLAVE_ISR_IN_IRAM=y

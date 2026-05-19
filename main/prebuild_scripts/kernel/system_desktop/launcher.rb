@@ -96,6 +96,9 @@ module LauncherMixin
       inst.visible = false
       @icon_sprite_instances[idx] = inst
       @icon_sprite_metrics[idx] = { bmp_w: spr_w, bmp_h: spr_h }
+      # Each SpriteImage upload to WROVER is ~100-300ms; yield so status_led
+      # gets to toggle while sprites are being uploaded.
+      Machine.delay_ms(1)
     end
   end
 
@@ -242,6 +245,11 @@ module LauncherMixin
         rescue
           # Not a directory, skip
         end
+        # Yield to FreeRTOS so lower-priority tasks on Core 1 (status_led
+        # prio 2) get scheduled during the filesystem scan. Each top-level
+        # entry may issue many hw_proxy round-trips that keep this task in
+        # ready state continuously otherwise.
+        Machine.delay_ms(1)
       end
     rescue => e
       Log.warn("Cannot scan #{base_path}: #{e.message}")

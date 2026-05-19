@@ -203,6 +203,17 @@ static mrb_value mrb_kernel_set_error_led(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// FmrbKernel.boot_complete! -> nil
+// Signal that the desktop boot animation has finished and the system is
+// fully interactive. Switches the green status LED from the fast boot
+// blink to the slow heartbeat. Callable from any mruby VM (class method)
+// since the status_led state is process-global.
+static mrb_value mrb_kernel_boot_complete(mrb_state *mrb, mrb_value self)
+{
+    status_led_set_boot_complete();
+    return mrb_nil_value();
+}
+
 // FmrbKernel#_set_hid_target(pid) - Set HID event target app
 static mrb_value mrb_kernel_set_hid_target(mrb_state *mrb, mrb_value self)
 {
@@ -533,6 +544,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "check_protocol_version", mrb_kernel_check_protocol_version, MRB_ARGS_OPT(1));
     mrb_define_method(mrb, handler_class, "check_ga_version", mrb_kernel_check_ga_version, MRB_ARGS_OPT(1));
     mrb_define_method(mrb, handler_class, "_set_error_led", mrb_kernel_set_error_led, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, handler_class, "boot_complete!", mrb_kernel_boot_complete, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_get_window_list", mrb_kernel_get_window_list, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_set_hid_target", mrb_kernel_set_hid_target, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_set_focused_window", mrb_kernel_set_focused_window, MRB_ARGS_REQ(1));

@@ -25,6 +25,12 @@ void status_led_set_error(int level);
  */
 void status_led_clear_error(void);
 
+/**
+ * Mark boot complete. Switches the green LED from the boot fast-blink
+ * pattern to the normal heartbeat pattern. Safe to call multiple times.
+ */
+void status_led_set_boot_complete(void);
+
 #ifdef __cplusplus
 }
 #endif
