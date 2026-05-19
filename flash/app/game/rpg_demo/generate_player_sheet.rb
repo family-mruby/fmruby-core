@@ -1,14 +1,16 @@
 #!/usr/bin/env ruby
 # Generates eight 16x16 player frame BMPs (player_<dir>_<step>.bmp).
 #
-# Pixel bytes are RGB332 values (the renderer ignores the BMP palette and
-# reads pixels as RGB332 directly). See generate_tiles.rb for the rationale.
+# Style references (Dragon Quest 1/2 Famicom hero):
+#   - dotartplay.com/dragonquest-dot  (DQ pixel-art conventions)
+#   - nyaonyao21.com/entry/2019/04/28/123402  (Famicom 16x16 RPG sprites)
+# Common rules followed here: 3-4 color hero silhouette, hooded helmet, eyes
+# 2 dots apart on the face, "one foot forward at a time" walking animation,
+# black outline so the figure reads on any terrain tile.
 #
-# Output frames:
-#   player_down_0.bmp   player_down_1.bmp
-#   player_up_0.bmp     player_up_1.bmp
-#   player_left_0.bmp   player_left_1.bmp
-#   player_right_0.bmp  player_right_1.bmp
+# Pixel bytes are RGB332 (the WROVER BMP loader ignores the BMP palette and
+# reads pixel bytes directly as RRRGGGBB). Palette is emitted self-consistently
+# so the BMP also views correctly in normal viewers.
 
 TILE = 16
 
@@ -16,103 +18,201 @@ def rgb332(r, g, b)
   ((r & 0xE0)) | ((g & 0xE0) >> 3) | ((b & 0xC0) >> 6)
 end
 
-BG      = rgb332(  0,   0,   0)   # transparent key
-OUTLINE = rgb332( 32,  32,  32)
-SKIN    = rgb332(255, 192, 160)
-HAIR    = rgb332(255, 192,  32)
-HAIR_S  = rgb332(192, 128,  32)
-TUNIC   = rgb332(192,  32,  32)
-TUNIC_S = rgb332(128,  16,  16)
-BOOTS   = rgb332( 64,  32,  16)
-EYEW    = rgb332(255, 255, 255)
-PUPIL   = rgb332( 32,  32,  64)
+BG       = rgb332(  0,   0,   0)   # transparent key
+OUTLINE  = rgb332( 32,  32,  32)
+SKIN     = rgb332(255, 192, 128)
+SKIN_S   = rgb332(192, 128,  64)
+HOOD     = rgb332( 96,  64, 192)   # dark purple-blue hood / helmet
+HOOD_S   = rgb332( 64,  32, 128)
+TUNIC    = rgb332( 64, 160,  32)   # bright green over-tunic
+TUNIC_S  = rgb332( 32,  96,  32)
+BOOTS    = rgb332(128,  64,  32)   # brown boots / belt
+EYE      = rgb332( 32,  32,  64)
 
+# --------------------------------------------------------------------------
+# Pixel buffer helpers
+# --------------------------------------------------------------------------
 def new_tile
   Array.new(TILE * TILE, BG)
 end
 
-def px!(tile, x, y, col)
+def px!(t, x, y, c)
   return if x < 0 || y < 0 || x >= TILE || y >= TILE
-  tile[y * TILE + x] = col
+  t[y * TILE + x] = c
 end
 
-def hline!(tile, x0, x1, y, col)
-  (x0..x1).each { |x| px!(tile, x, y, col) }
+def hline!(t, x0, x1, y, c); (x0..x1).each { |x| px!(t, x, y, c) }; end
+def vline!(t, x, y0, y1, c); (y0..y1).each { |y| px!(t, x, y, c) }; end
+def fill_rect!(t, x0, y0, w, h, c)
+  (y0...y0 + h).each { |y| (x0...x0 + w).each { |x| px!(t, x, y, c) } }
 end
 
-def vline!(tile, x, y0, y1, col)
-  (y0..y1).each { |y| px!(tile, x, y, col) }
-end
+# --------------------------------------------------------------------------
+# Shared parts
+# --------------------------------------------------------------------------
 
-def fill_rect!(tile, x0, y0, w, h, col)
-  (y0...y0 + h).each { |y| (x0...x0 + w).each { |x| px!(tile, x, y, col) } }
-end
+# Hood / helmet that covers the upper head. Shape varies with facing so the
+# silhouette reads correctly from each angle.
+def draw_hood!(t, dir)
+  # Top crown common to all directions.
+  hline!(t,  5, 10, 0, OUTLINE)
+  hline!(t,  5, 10, 1, HOOD)
+  hline!(t,  4, 11, 2, HOOD)
+  hline!(t,  3, 12, 3, HOOD)
+  hline!(t,  3, 12, 4, HOOD)
+  # Crown outline corners.
+  px!(t,  4, 1, OUTLINE)
+  px!(t, 11, 1, OUTLINE)
+  px!(t,  3, 2, OUTLINE)
+  px!(t, 12, 2, OUTLINE)
+  px!(t,  2, 3, OUTLINE)
+  px!(t, 13, 3, OUTLINE)
 
-def draw_body!(t, step)
-  fill_rect!(t, 5, 8, 6, 5, TUNIC)
-  vline!(t, 10, 8, 12, TUNIC_S)
-  hline!(t, 5, 10, 12, BOOTS)
-  fill_rect!(t, 5, 13, 6, 2, TUNIC)
-  if step == 0
-    fill_rect!(t, 5, 14, 2, 1, BOOTS)
-    fill_rect!(t, 9, 14, 2, 1, BOOTS)
-  else
-    fill_rect!(t, 4, 14, 2, 1, BOOTS)
-    fill_rect!(t, 10, 14, 2, 1, BOOTS)
+  case dir
+  when :down
+    # Hood frames the face: cheek tabs descend on both sides.
+    vline!(t,  3, 4, 6, HOOD)
+    vline!(t, 12, 4, 6, HOOD)
+    vline!(t,  2, 4, 6, OUTLINE)
+    vline!(t, 13, 4, 6, OUTLINE)
+    # Inner shadow line under the hood brim.
+    hline!(t,  4, 11, 4, HOOD_S)
+  when :up
+    # Back of the hood: solid cap, no face cutout.
+    fill_rect!(t, 3, 4, 10, 3, HOOD)
+    hline!(t,  2, 13, 4, HOOD)  # widen
+    px!(t,  2, 4, OUTLINE)
+    px!(t, 13, 4, OUTLINE)
+    vline!(t,  2, 5, 6, OUTLINE)
+    vline!(t, 13, 5, 6, OUTLINE)
+    # Shadow seam.
+    hline!(t,  4, 11, 6, HOOD_S)
+  when :left
+    # Hood pulled to the right (the side away from the player) so the face
+    # opens on the left.
+    fill_rect!(t,  6, 4, 7, 3, HOOD)
+    px!(t,  5, 4, OUTLINE)
+    px!(t, 13, 4, OUTLINE)
+    vline!(t,  5, 5, 6, HOOD)
+    vline!(t, 13, 5, 6, OUTLINE)
+    px!(t, 12, 6, HOOD_S)
+  when :right
+    fill_rect!(t,  3, 4, 7, 3, HOOD)
+    px!(t,  2, 4, OUTLINE)
+    px!(t, 10, 4, OUTLINE)
+    vline!(t,  2, 5, 6, OUTLINE)
+    vline!(t, 10, 5, 6, HOOD)
+    px!(t,  3, 6, HOOD_S)
   end
-  vline!(t,  4, 8, 14, OUTLINE)
-  vline!(t, 11, 8, 14, OUTLINE)
-  hline!(t,  5, 10,  7, OUTLINE)
-  hline!(t,  5, 10, 15, OUTLINE)
 end
 
-def draw_head_box!(t)
-  fill_rect!(t, 4, 1, 8, 6, SKIN)
-  hline!(t,  4, 11, 0, OUTLINE)
+# Face: visible only for down / left / right. Eyes are 2 dots apart on
+# down-facing frames (Famicom DQ convention).
+def draw_face!(t, dir)
+  case dir
+  when :down
+    fill_rect!(t, 4, 4, 8, 3, SKIN)
+    # Hood inner brim shadow already covers row 4 with HOOD_S; reapply.
+    px!(t, 6, 5, EYE)
+    px!(t, 9, 5, EYE)
+    # Mouth.
+    px!(t, 7, 6, OUTLINE)
+    px!(t, 8, 6, OUTLINE)
+    # Chin / jaw line for definition.
+    hline!(t, 5, 10, 7, SKIN_S)
+  when :left
+    fill_rect!(t, 3, 5, 3, 2, SKIN)
+    px!(t, 4, 5, EYE)
+    px!(t, 5, 6, SKIN_S)
+    px!(t, 3, 6, OUTLINE)  # chin/jaw outline
+  when :right
+    fill_rect!(t, 11, 5, 3, 2, SKIN)
+    px!(t, 12, 5, EYE)
+    px!(t, 10, 6, SKIN_S)
+    px!(t, 13, 6, OUTLINE)
+  end
+end
+
+# Torso: green tunic with belt at the waist.
+def draw_torso!(t)
+  fill_rect!(t, 4, 8, 8, 4, TUNIC)
+  # Outline shoulders + sides.
   hline!(t,  4, 11, 7, OUTLINE)
-  vline!(t,  3, 1, 6, OUTLINE)
-  vline!(t, 12, 1, 6, OUTLINE)
+  vline!(t,  3, 8, 11, OUTLINE)
+  vline!(t, 12, 8, 11, OUTLINE)
+  # Tunic shadow on right.
+  vline!(t, 11, 8, 11, TUNIC_S)
+  # Belt.
+  hline!(t, 4, 11, 11, BOOTS)
+  px!(t, 3, 11, OUTLINE)
+  px!(t, 12, 11, OUTLINE)
 end
 
+# Lower body: legs + boots. The step changes which foot is forward (drops 1
+# row below). This is the main visual change for walking - made deliberately
+# obvious so it's readable on TV.
+def draw_legs!(t, step)
+  # Tunic skirt continues to y=13.
+  fill_rect!(t, 4, 12, 8, 2, TUNIC)
+  vline!(t,  3, 12, 13, OUTLINE)
+  vline!(t, 12, 12, 13, OUTLINE)
+  # A vertical cleft in the skirt suggests two legs.
+  vline!(t,  7, 12, 13, TUNIC_S)
+  vline!(t,  8, 12, 13, TUNIC_S)
+
+  # Boots. Two states differ by 2 px horizontally so the motion is visible
+  # even with subtle TV scaling.
+  if step.zero?
+    # Standing / both feet planted close to center.
+    fill_rect!(t, 5, 14, 2, 2, BOOTS)
+    fill_rect!(t, 9, 14, 2, 2, BOOTS)
+    px!(t, 4, 14, OUTLINE); px!(t, 7, 14, OUTLINE)
+    px!(t, 4, 15, OUTLINE); px!(t, 7, 15, OUTLINE)
+    px!(t, 8, 14, OUTLINE); px!(t, 11, 14, OUTLINE)
+    px!(t, 8, 15, OUTLINE); px!(t, 11, 15, OUTLINE)
+  else
+    # Striding / feet spread outward.
+    fill_rect!(t, 3, 14, 2, 2, BOOTS)
+    fill_rect!(t, 11, 14, 2, 2, BOOTS)
+    px!(t, 2, 14, OUTLINE); px!(t, 5, 14, OUTLINE)
+    px!(t, 2, 15, OUTLINE); px!(t, 5, 15, OUTLINE)
+    px!(t, 10, 14, OUTLINE); px!(t, 13, 14, OUTLINE)
+    px!(t, 10, 15, OUTLINE); px!(t, 13, 15, OUTLINE)
+  end
+end
+
+# --------------------------------------------------------------------------
+# Per-direction frames
+# --------------------------------------------------------------------------
 def draw_down(t, step)
-  draw_body!(t, step)
-  draw_head_box!(t)
-  fill_rect!(t, 4, 1, 8, 2, HAIR)
-  px!(t, 4, 3, HAIR_S)
-  px!(t, 11, 3, HAIR_S)
-  px!(t, 6, 4, EYEW)
-  px!(t, 6, 5, PUPIL)
-  px!(t, 9, 4, EYEW)
-  px!(t, 9, 5, PUPIL)
-  px!(t, 7, 6, OUTLINE)
-  px!(t, 8, 6, OUTLINE)
+  draw_hood!(t, :down)
+  draw_face!(t, :down)
+  draw_torso!(t)
+  draw_legs!(t, step)
 end
 
 def draw_up(t, step)
-  draw_body!(t, step)
-  draw_head_box!(t)
-  fill_rect!(t, 4, 1, 8, 5, HAIR)
-  hline!(t, 4, 11, 6, HAIR_S)
+  draw_hood!(t, :up)
+  # No face for back view.
+  draw_torso!(t)
+  draw_legs!(t, step)
+  # A small belt-knot accent at center back.
+  px!(t, 7, 11, OUTLINE)
+  px!(t, 8, 11, OUTLINE)
 end
 
 def draw_left(t, step)
-  draw_body!(t, step)
-  draw_head_box!(t)
-  fill_rect!(t, 4, 1, 8, 2, HAIR)
-  fill_rect!(t, 4, 3, 2, 2, HAIR_S)
-  px!(t, 7, 4, EYEW)
-  px!(t, 7, 5, PUPIL)
-  px!(t, 4, 5, OUTLINE)
+  draw_hood!(t, :left)
+  draw_face!(t, :left)
+  draw_torso!(t)
+  draw_legs!(t, step)
 end
 
 def draw_right(t, step)
-  draw_body!(t, step)
-  draw_head_box!(t)
-  fill_rect!(t, 4, 1, 8, 2, HAIR)
-  fill_rect!(t, 10, 3, 2, 2, HAIR_S)
-  px!(t, 8, 4, EYEW)
-  px!(t, 8, 5, PUPIL)
-  px!(t, 11, 5, OUTLINE)
+  draw_hood!(t, :right)
+  draw_face!(t, :right)
+  draw_torso!(t)
+  draw_legs!(t, step)
 end
 
 FRAMES = [
@@ -126,6 +226,9 @@ FRAMES = [
   ["right", 1, :draw_right, 1],
 ].freeze
 
+# --------------------------------------------------------------------------
+# BMP writer
+# --------------------------------------------------------------------------
 def write_bmp(path, width, height, pixels_top_down)
   raise "bad pixel size" unless pixels_top_down.size == width * height
   raise "row not aligned to 4" unless (width % 4).zero?
@@ -160,12 +263,4 @@ FRAMES.each do |dir, step, drawer, step_arg|
   path = File.join(__dir__, "player_#{dir}_#{step}.bmp")
   write_bmp(path, TILE, TILE, t)
   puts "Wrote #{path}"
-end
-
-# Remove the now-unused sheet file if it exists, so stale assets don't get
-# transferred to the WROVER cache.
-sheet_path = File.join(__dir__, "player.bmp")
-if File.exist?(sheet_path)
-  File.delete(sheet_path)
-  puts "Deleted obsolete #{sheet_path}"
 end

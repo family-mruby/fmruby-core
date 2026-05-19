@@ -27,7 +27,7 @@ class RpgDemoApp < FmrbApp
   SLIDE_STEPS       = 4
   SLIDE_PX_PER_STEP = TILE / SLIDE_STEPS
   FRAME_MS          = 33
-  IDLE_MS           = 100
+  IDLE_ANIM_MS      = 300   # foot-tap cadence while standing still
 
   # Frame indices into @player_frames. [stand, step] per direction.
   DIR_FRAMES = {
@@ -104,7 +104,8 @@ class RpgDemoApp < FmrbApp
       advance_slide
       FRAME_MS
     else
-      IDLE_MS
+      advance_idle_anim
+      IDLE_ANIM_MS
     end
   end
 
@@ -195,6 +196,14 @@ class RpgDemoApp < FmrbApp
   def apply_facing_frame
     pair = DIR_FRAMES[@dir]
     @player.frame = pair[@anim_step] if pair
+  end
+
+  # Toggle the foot-tap pose while standing still. Only the sprite frame
+  # changes, so we skip the BG redraw and just present.
+  def advance_idle_anim
+    @anim_step = 1 - @anim_step
+    apply_facing_frame
+    @gfx.present
   end
 
   def dir_of(dx, dy)
