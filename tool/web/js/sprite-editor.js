@@ -21,8 +21,28 @@ const sprite = {
   selectedColor: SPR_DEFAULT_COLOR,
   path: null,
   dirty: false,
-  painting: 0,                        // 0 = idle, 1 = paint, 2 = erase
+  painting: 0,                        // 0 = idle, 1 = paint
 };
+
+// Diagonal-stripe hatch used to mark RGB332 index 0 (transparent chroma key)
+// distinctly from solid black throughout the sprite editor canvases.
+let sprTransparencyTexture = null;
+function sprGetTransparencyTexture() {
+  if (sprTransparencyTexture) return sprTransparencyTexture;
+  const t = document.createElement('canvas');
+  t.width = 4; t.height = 4;
+  const c = t.getContext('2d');
+  c.fillStyle = '#1a1a1a';
+  c.fillRect(0, 0, 4, 4);
+  c.strokeStyle = '#d82455';
+  c.lineWidth = 1;
+  c.lineCap = 'square';
+  c.beginPath();
+  c.moveTo(0, 4); c.lineTo(4, 0);
+  c.stroke();
+  sprTransparencyTexture = t;
+  return t;
+}
 
 function sprSheetWidth()  { return sprite.tileCols * SPR_TILE; }
 function sprSheetHeight() { return sprite.tileRows * SPR_TILE; }
@@ -87,10 +107,15 @@ function sprRedrawSheet() {
   const w = sprSheetWidth();
   const h = sprSheetHeight();
 
-  // Pixel-by-pixel fill using ImageData for full sheet.
+  // Pixel-by-pixel fill using ImageData. Index 0 is left transparent so the
+  // hatch background below shines through and marks the chroma-key cells.
   const img = ctx.createImageData(w, h);
   for (let i = 0; i < w * h; i++) {
     const c = sprite.pixels[i];
+    if (c === 0) {
+      img.data[i * 4 + 3] = 0;
+      continue;
+    }
     img.data[i * 4 + 0] = RGB332_RGB[c * 3 + 0];
     img.data[i * 4 + 1] = RGB332_RGB[c * 3 + 1];
     img.data[i * 4 + 2] = RGB332_RGB[c * 3 + 2];
@@ -100,7 +125,8 @@ function sprRedrawSheet() {
   const off = document.createElement('canvas');
   off.width = w; off.height = h;
   off.getContext('2d').putImageData(img, 0, 0);
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = ctx.createPattern(sprGetTransparencyTexture(), 'repeat');
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(off, 0, 0, canvas.width, canvas.height);
 
   // Tile grid
@@ -134,10 +160,11 @@ function sprRedrawTile() {
   const ty = sprite.selectedTile.row * SPR_TILE;
   const sw = sprSheetWidth();
 
+  const hatch = ctx.createPattern(sprGetTransparencyTexture(), 'repeat');
   for (let y = 0; y < SPR_TILE; y++) {
     for (let x = 0; x < SPR_TILE; x++) {
       const c = sprite.pixels[(ty + y) * sw + (tx + x)];
-      ctx.fillStyle = rgb332ToCss(c);
+      ctx.fillStyle = (c === 0) ? hatch : rgb332ToCss(c);
       ctx.fillRect(x * SPR_TILE_ZOOM, y * SPR_TILE_ZOOM,
                    SPR_TILE_ZOOM, SPR_TILE_ZOOM);
     }
@@ -159,10 +186,11 @@ function sprRedrawPalette() {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+  const hatch = ctx.createPattern(sprGetTransparencyTexture(), 'repeat');
   for (let i = 0; i < 256; i++) {
     const px = (i & 0x0f) * SPR_PAL_SWATCH;
     const py = (i >> 4)   * SPR_PAL_SWATCH;
-    ctx.fillStyle = rgb332ToCss(i);
+    ctx.fillStyle = (i === 0) ? hatch : rgb332ToCss(i);
     ctx.fillRect(px, py, SPR_PAL_SWATCH, SPR_PAL_SWATCH);
   }
 
@@ -207,7 +235,6 @@ function sprTilePaintAt(px, py, mode) {
   const ty = sprite.selectedTile.row * SPR_TILE + py;
   const idx = ty * sprSheetWidth() + tx;
   if (mode === 1) sprite.pixels[idx] = sprite.selectedColor;
-  else if (mode === 2) sprite.pixels[idx] = 0;
   else if (mode === 3) {
     // eyedropper
     sprite.selectedColor = sprite.pixels[idx];
@@ -224,9 +251,10 @@ function sprTileMouseDown(e) {
   e.preventDefault();
   const p = sprTileEventToPixel(e);
   if (!p) return;
-  if (e.button === 0)      sprite.painting = 1;
-  else if (e.button === 2) sprite.painting = 2;
-  else if (e.button === 1) { sprTilePaintAt(p.px, p.py, 3); return; }
+  // Right-click and middle-click both act as one-shot eyedropper.
+  // To erase, pick palette index 0 (transparent) and paint with left-click.
+  if (e.button === 2 || e.button === 1) { sprTilePaintAt(p.px, p.py, 3); return; }
+  sprite.painting = 1;
   sprTilePaintAt(p.px, p.py, sprite.painting);
 }
 

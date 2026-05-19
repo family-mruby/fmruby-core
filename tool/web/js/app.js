@@ -804,6 +804,9 @@ function renderFileList(entries) {
   for (const entry of entries) {
     const isDir = entry.t === 'd';
     const editable = !isDir && isTextFile(entry.n, entry.s);
+    const ext = isDir ? '' : fileExtension(entry.n);
+    const isBmp  = ext === 'bmp';
+    const isJson = ext === 'json';
     const icon = isDir ? '&#x1F4C1;' : (editable ? '&#x1F4DD;' : '&#x1F4C4;');
     const size = isDir ? '' : formatSize(entry.s);
     const name = escapeHtml(entry.n);
@@ -822,6 +825,12 @@ function renderFileList(entries) {
       if (editable) {
         html += '<button onclick="openEditor(\'' + escapeAttr(entry.n) + '\')">Edit</button>';
       }
+      if (isBmp) {
+        html += '<button onclick="openInSpriteEditor(\'' + escapeAttr(entry.n) + '\')">Spr</button>';
+      }
+      if (isJson) {
+        html += '<button onclick="openInMapEditor(\'' + escapeAttr(entry.n) + '\')">Map</button>';
+      }
       html += '<button onclick="downloadFile(\'' + escapeAttr(entry.n) + '\')">DL</button>';
     }
     html += '<button onclick="renameEntry(\'' + escapeAttr(entry.n) + '\',' + isDir + ')">Rn</button>';
@@ -830,6 +839,72 @@ function renderFileList(entries) {
     html += '</div>';
   }
   el.innerHTML = html;
+}
+
+// ============================================================
+// File Manager -> editor jumps (BMP -> Sprite Editor, JSON -> Map Editor)
+// Loads the chosen device file directly into the target editor and switches
+// to its tab. The target load path itself is responsible for validating the
+// file shape — we just surface the error via toast/log if it rejects.
+// ============================================================
+async function openInSpriteEditor(name) {
+  const filePath = currentPath === '/' ? '/' + name : currentPath + '/' + name;
+  if (typeof sprite !== 'undefined' && sprite.dirty &&
+      !confirm('Discard unsaved sprite changes to open ' + name + '?')) return;
+  switchTab('sprite');
+  try {
+    showProgress(-1, 'Loading ' + filePath + '...');
+    const data = await deviceReadFile(filePath,
+      n => showProgress(-1, 'Loading ' + filePath + '... ' + formatSize(n)));
+    sprLoadBmpFromBuffer(
+      data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
+      filePath);
+    log('Sprite: opened ' + filePath, 'ok');
+    toast('Sprite opened: ' + filePath, 'ok');
+  } catch (e) {
+    log('Sprite open failed: ' + e.message, 'err');
+    toast('Not a valid sprite BMP: ' + e.message, 'err');
+  }
+  hideProgress();
+}
+
+async function openInMapEditor(name) {
+  const filePath = currentPath === '/' ? '/' + name : currentPath + '/' + name;
+  if (typeof mapEd !== 'undefined' && mapEd.dirty &&
+      !confirm('Discard unsaved map changes to open ' + name + '?')) return;
+  switchTab('map');
+  try {
+    showProgress(-1, 'Loading ' + filePath + '...');
+    const data = await deviceReadFile(filePath);
+    let obj;
+    try {
+      obj = JSON.parse(new TextDecoder().decode(data));
+    } catch (e) {
+      throw new Error('JSON parse error: ' + e.message);
+    }
+    mapDeserialize(obj, filePath);
+    log('Map: opened ' + filePath, 'ok');
+    toast('Map opened: ' + filePath, 'ok');
+    // Auto-fetch the referenced tilesheet so the map renders with art.
+    if (mapEd.tilesheetPath) {
+      try {
+        showProgress(-1, 'Loading tilesheet ' + mapEd.tilesheetPath + '...');
+        const sheetData = await deviceReadFile(mapEd.tilesheetPath);
+        mapLoadTilesheetFromBuffer(
+          sheetData.buffer.slice(sheetData.byteOffset, sheetData.byteOffset + sheetData.byteLength),
+          mapEd.tilesheetPath);
+        log('Map: tilesheet auto-loaded ' + mapEd.tilesheetPath, 'ok');
+      } catch (e) {
+        log('Map: tilesheet auto-load failed (' + e.message +
+            '). Use "Load Tilesheet from Device..." manually.', 'err');
+        toast('Tilesheet auto-load failed: ' + e.message, 'err');
+      }
+    }
+  } catch (e) {
+    log('Map open failed: ' + e.message, 'err');
+    toast('Not a valid map JSON: ' + e.message, 'err');
+  }
+  hideProgress();
 }
 
 // ============================================================
