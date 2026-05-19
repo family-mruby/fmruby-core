@@ -45,6 +45,7 @@ class SystemDesktopApp < FmrbApp
     { key: :monitor },
     { key: :set_clock },
     { key: :config },
+    { key: :storage },
     { key: :about },
   ] + (FmrbConst::PLATFORM == "esp32" ? [{ key: :reset }] : [])
 
@@ -945,6 +946,8 @@ class SystemDesktopApp < FmrbApp
       open_about_dialog
     when :config
       open_config_dialog
+    when :storage
+      open_storage_dialog
     when :reset
       open_confirm_dialog(FmrbI18n.t(:reboot_confirm), "reboot", {})
     else

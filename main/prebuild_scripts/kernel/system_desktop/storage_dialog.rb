@@ -70,9 +70,12 @@ module StorageDialogMixin
     @gfx.fill_rect(x + 1, y + 1, STR_W - 2, STR_TITLE_H - 1, STR_HEADER)
     @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:storage), FmrbGfx::WHITE, STR_HEADER, mixed: true)
 
-    # Body line: cache root path + last status
+    # Body line: clarify the target lives on WROVER (/flash/cache there),
+    # not the Core's local filesystem, then show any status from the last
+    # action below it.
     body_y = y + STR_TITLE_H + 6
-    @gfx.draw_text(x + 8, body_y, CACHE_ROOT, STR_TEXT, STR_BG)
+    @gfx.draw_text(x + 8, body_y, FmrbI18n.t(:clear_cache_target),
+                   STR_TEXT, STR_BG, mixed: true)
     if @str_status
       @gfx.draw_text(x + 8, body_y + 14, @str_status, STR_TEXT, STR_BG, mixed: true)
     end
