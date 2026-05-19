@@ -2,20 +2,29 @@
 #
 # Layout:
 #   - 320x240 fullscreen
-#   - Left 176x176 (11x11 tiles) = map area (BG baked via TileMap + draw_tile)
-#   - Right 144x240             = status panel (player position, last event)
+#   - Left 176x176 viewport (= 11x11 tiles) onto a 64x64 tile world
+#   - Right 144x240 status panel (player position, last event)
 #
-# Player is a SpriteInstance (separate BMP). Map BG is stamped once into the
-# canvas at on_create; no per-frame redraw of the BG.
+# The player stays near the viewport center; moving slides the map under the
+# player at 4 px/frame for 4 frames per tile (16 px). When the player
+# approaches a world edge the camera clamps and the player walks the rest of
+# the way to the corner. Each slide frame re-stamps only the tiles that
+# intersect the viewport (sub-tile clipping in TileSheet#stamp keeps the
+# status panel area untouched).
 
 class RpgDemoApp < FmrbApp
-  TILE       = 16
-  MAP_ORIGIN_X = 16      # offset map by one tile so it isn't flush with the
-  MAP_ORIGIN_Y = 16      # window edge; gives a uniform border on top/left.
-  MAP_AREA_W   = 176     # 11 tiles wide
-  MAP_AREA_H   = 176     # 11 tiles tall
-  STATUS_X   = MAP_ORIGIN_X + MAP_AREA_W   # 192
-  STATUS_W   = 320 - STATUS_X              # 128
+  TILE              = 16
+  MAP_ORIGIN_X      = 16      # viewport top-left on the canvas
+  MAP_ORIGIN_Y      = 16
+  VIEWPORT_W        = 176     # 11 tiles wide
+  VIEWPORT_H        = 176     # 11 tiles tall
+  STATUS_X          = MAP_ORIGIN_X + VIEWPORT_W   # 192
+  STATUS_W          = 320 - STATUS_X              # 128
+
+  SLIDE_STEPS       = 4
+  SLIDE_PX_PER_STEP = TILE / SLIDE_STEPS          # 4
+  FRAME_MS          = 16
+  IDLE_MS           = 100
 
   APP_DIR    = "/app/game/rpg_demo"
   MAP_PATH   = "#{APP_DIR}/world.map.json"
@@ -38,23 +47,31 @@ class RpgDemoApp < FmrbApp
                                   transparent_color: 0, use_transparent: true)
     @player_img.load_bmp(cache_path_for(PLAYER_SRC))
 
-    # Bake the BG.
+    @map_w = @map.width  * TILE
+    @map_h = @map.height * TILE
+
+    # Player starts at the center of the world (matches the embedded spawn
+    # island in generate_world.rb).
+    @player_tx = @map.width  / 2
+    @player_ty = @map.height / 2
+    @player_px = @player_tx * TILE
+    @player_py = @player_ty * TILE
+
+    @view_x = clamp(@player_px + TILE / 2 - VIEWPORT_W / 2, 0, @map_w - VIEWPORT_W)
+    @view_y = clamp(@player_py + TILE / 2 - VIEWPORT_H / 2, 0, @map_h - VIEWPORT_H)
+
+    @slide_step = nil
+    @slide_dx = @slide_dy = 0
+    @slide_target_tx = @player_tx
+    @slide_target_ty = @player_ty
+    @last_event = @map.event_at(@player_tx, @player_ty)
+
     @gfx.fill_rect(0, 0, @user_area_width, @user_area_height, FmrbGfx::BLACK)
-    cols = MAP_AREA_W / TILE
-    rows = MAP_AREA_H / TILE
-    @map.render(@sheet, origin_x: MAP_ORIGIN_X, origin_y: MAP_ORIGIN_Y,
-                max_cols: cols, max_rows: rows)
-
-    # Player (single SpriteInstance).
-    @px = 0
-    @py = 0
     @player = SpriteInstance.new(@gfx, @player_img,
-                                 x: MAP_ORIGIN_X + @px * TILE,
-                                 y: MAP_ORIGIN_Y + @py * TILE, z: 1)
-
-    @last_event = nil
+                                 x: MAP_ORIGIN_X + @player_px - @view_x,
+                                 y: MAP_ORIGIN_Y + @player_py - @view_y, z: 1)
     draw_status
-    @gfx.present
+    update_camera_and_draw
   end
 
   def on_event(ev)
@@ -62,11 +79,16 @@ class RpgDemoApp < FmrbApp
     return unless ev[:type] == :key_down || ev[:type] == :gamepad_down
     dx, dy = direction_for(ev)
     return if dx.nil?
-    try_move(dx, dy)
+    try_slide(dx, dy)
   end
 
   def on_update
-    100   # idle; input is event-driven
+    if @slide_step
+      advance_slide
+      FRAME_MS
+    else
+      IDLE_MS
+    end
   end
 
   private
@@ -84,23 +106,59 @@ class RpgDemoApp < FmrbApp
     "#{CACHE_DIR}/#{src.split("/").last}"
   end
 
-  def try_move(dx, dy)
-    nx = @px + dx
-    ny = @py + dy
-    mc = MAP_AREA_W / TILE
-    mr = MAP_AREA_H / TILE
-    bounds_x = @map.width  < mc ? @map.width  : mc
-    bounds_y = @map.height < mr ? @map.height : mr
-    return if nx < 0 || ny < 0 || nx >= bounds_x || ny >= bounds_y
-    @px = nx
-    @py = ny
-    @player.move(MAP_ORIGIN_X + @px * TILE, MAP_ORIGIN_Y + @py * TILE)
-    @last_event = @map.event_at(@px, @py)
+  def try_slide(dx, dy)
+    return unless @slide_step.nil?
+    nx = @player_tx + dx
+    ny = @player_ty + dy
+    return if nx < 0 || ny < 0 || nx >= @map.width || ny >= @map.height
+    @slide_dx = dx
+    @slide_dy = dy
+    @slide_target_tx = nx
+    @slide_target_ty = ny
+    @slide_step = 0
+  end
+
+  def advance_slide
+    @slide_step += 1
+    @player_px = @player_tx * TILE + @slide_dx * SLIDE_PX_PER_STEP * @slide_step
+    @player_py = @player_ty * TILE + @slide_dy * SLIDE_PX_PER_STEP * @slide_step
+    if @slide_step >= SLIDE_STEPS
+      @player_tx = @slide_target_tx
+      @player_ty = @slide_target_ty
+      @player_px = @player_tx * TILE
+      @player_py = @player_ty * TILE
+      @slide_step = nil
+      @slide_dx = @slide_dy = 0
+      fire_event_at(@player_tx, @player_ty)
+      draw_status
+    end
+    update_camera_and_draw
+  end
+
+  def update_camera_and_draw
+    @view_x = clamp(@player_px + TILE / 2 - VIEWPORT_W / 2, 0, @map_w - VIEWPORT_W)
+    @view_y = clamp(@player_py + TILE / 2 - VIEWPORT_H / 2, 0, @map_h - VIEWPORT_H)
+    @gfx.fill_rect(MAP_ORIGIN_X, MAP_ORIGIN_Y, VIEWPORT_W, VIEWPORT_H, FmrbGfx::BLACK)
+    @map.render_view(@sheet,
+                     origin_x: MAP_ORIGIN_X, origin_y: MAP_ORIGIN_Y,
+                     view_x: @view_x, view_y: @view_y,
+                     view_w: VIEWPORT_W, view_h: VIEWPORT_H)
+    @player.move(MAP_ORIGIN_X + @player_px - @view_x,
+                 MAP_ORIGIN_Y + @player_py - @view_y)
+    @gfx.present
+  end
+
+  def fire_event_at(tx, ty)
+    @last_event = @map.event_at(tx, ty)
     if @last_event
       Log.info("event: id=#{@last_event["id"]} name=#{(@last_event["data"] || {})["name"]}")
     end
-    draw_status
-    @gfx.present
+  end
+
+  def clamp(v, lo, hi)
+    return lo if v < lo
+    return hi if v > hi
+    v
   end
 
   def direction_for(ev)
@@ -131,7 +189,7 @@ class RpgDemoApp < FmrbApp
     y += 16
     @gfx.draw_text(STATUS_X + 8, y, "Position", FmrbGfx::GRAY)
     y += 12
-    @gfx.draw_text(STATUS_X + 16, y, "(#{@px}, #{@py})", FmrbGfx::CYAN)
+    @gfx.draw_text(STATUS_X + 16, y, "(#{@player_tx}, #{@player_ty})", FmrbGfx::CYAN)
 
     y += 24
     @gfx.draw_text(STATUS_X + 8, y, "Last event", FmrbGfx::GRAY)

@@ -52,12 +52,35 @@ class TileSheet
   # Stamp tile #index onto the current canvas at (dst_x, dst_y). index is
   # row-major: row * cols + col. nil / negative indices are no-ops (used to
   # represent empty map cells).
-  def stamp(index, dst_x:, dst_y:)
+  #
+  # Optional clip_{x,y,w,h} restricts output to the given canvas rect: the
+  # source/destination rects are intersected with it so a tile straddling the
+  # rect edge is partially blitted instead of bleeding past it. Used by
+  # TileMap#render_view for sub-tile scrolling.
+  def stamp(index, dst_x:, dst_y:, clip_x: nil, clip_y: nil, clip_w: nil, clip_h: nil)
     return if index.nil? || index < 0
     sx = (index % @cols) * @tile_size
     sy = (index / @cols) * @tile_size
-    @gfx.draw_tile(@image.id, sx, sy, @tile_size, @tile_size,
-                   dst_x: dst_x, dst_y: dst_y)
+    w  = @tile_size
+    h  = @tile_size
+    if clip_x
+      rx0 = dst_x > clip_x ? dst_x : clip_x
+      ry0 = dst_y > clip_y ? dst_y : clip_y
+      rx1_a = dst_x + w
+      rx1_b = clip_x + clip_w
+      rx1   = rx1_a < rx1_b ? rx1_a : rx1_b
+      ry1_a = dst_y + h
+      ry1_b = clip_y + clip_h
+      ry1   = ry1_a < ry1_b ? ry1_a : ry1_b
+      return if rx0 >= rx1 || ry0 >= ry1
+      sx += rx0 - dst_x
+      sy += ry0 - dst_y
+      w   = rx1 - rx0
+      h   = ry1 - ry0
+      dst_x = rx0
+      dst_y = ry0
+    end
+    @gfx.draw_tile(@image.id, sx, sy, w, h, dst_x: dst_x, dst_y: dst_y)
   end
 
   def destroy
@@ -114,6 +137,47 @@ class TileMap
               sheet.stamp(row[x],
                           dst_x: origin_x + x * @tile_size,
                           dst_y: origin_y + y * @tile_size)
+              x += 1
+            end
+          end
+          y += 1
+        end
+      end
+      li += 1
+    end
+  end
+
+  # Render only the tiles that intersect the viewport rect, with sub-tile
+  # offset support. (origin_x, origin_y) is where the viewport's top-left
+  # corner lands on the canvas; (view_x, view_y) is the top-left of the
+  # viewport expressed in full-map pixel coordinates.
+  def render_view(sheet, origin_x:, origin_y:, view_x:, view_y:, view_w:, view_h:)
+    ts = @tile_size
+    col0 = view_x / ts
+    col0 = 0 if col0 < 0
+    col1 = (view_x + view_w - 1) / ts
+    col1 = @width - 1 if col1 > @width - 1
+    row0 = view_y / ts
+    row0 = 0 if row0 < 0
+    row1 = (view_y + view_h - 1) / ts
+    row1 = @height - 1 if row1 > @height - 1
+    return if col0 > col1 || row0 > row1
+
+    li = 0
+    while li < @layers.size
+      data = @layers[li]["data"]
+      if data.is_a?(Array)
+        y = row0
+        while y <= row1
+          row = data[y]
+          if row.is_a?(Array)
+            x = col0
+            while x <= col1
+              sheet.stamp(row[x],
+                          dst_x: origin_x + x * ts - view_x,
+                          dst_y: origin_y + y * ts - view_y,
+                          clip_x: origin_x, clip_y: origin_y,
+                          clip_w: view_w,   clip_h: view_h)
               x += 1
             end
           end
