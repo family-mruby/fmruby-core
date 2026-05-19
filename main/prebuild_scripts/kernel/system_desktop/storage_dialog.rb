@@ -91,18 +91,26 @@ module StorageDialogMixin
     btn_y = @str_y + STR_H - 22
     btn_h = 16
 
-    label_clear = FmrbI18n.t(:clear_cache)
     label_close = FmrbI18n.t(:close)
-    bw_clear = FmrbI18n.text_width(label_clear) + 12
     bw_close = FmrbI18n.text_width(label_close) + 12
 
-    total = bw_clear + 8 + bw_close
-    bx = @str_x + (STR_W - total) / 2
+    # After a clear has run, the cache is already empty: drop the Clear
+    # button so the user doesn't think a second click does something
+    # different. Re-opening the dialog from the menu starts fresh in :idle.
+    if @str_phase == :done
+      bx = @str_x + (STR_W - bw_close) / 2
+      @str_clear_btn_rect = nil
+    else
+      label_clear = FmrbI18n.t(:clear_cache)
+      bw_clear = FmrbI18n.text_width(label_clear) + 12
+      total = bw_clear + 8 + bw_close
+      bx = @str_x + (STR_W - total) / 2
 
-    @str_clear_btn_rect = [bx, btn_y, bw_clear, btn_h]
-    @gfx.fill_rect(bx, btn_y, bw_clear, btn_h, STR_BTN_WARN)
-    @gfx.draw_text(bx + 6, btn_y + 4, label_clear, FmrbGfx::WHITE, STR_BTN_WARN, mixed: true)
-    bx += bw_clear + 8
+      @str_clear_btn_rect = [bx, btn_y, bw_clear, btn_h]
+      @gfx.fill_rect(bx, btn_y, bw_clear, btn_h, STR_BTN_WARN)
+      @gfx.draw_text(bx + 6, btn_y + 4, label_clear, FmrbGfx::WHITE, STR_BTN_WARN, mixed: true)
+      bx += bw_clear + 8
+    end
 
     @str_close_btn_rect = [bx, btn_y, bw_close, btn_h]
     @gfx.fill_rect(bx, btn_y, bw_close, btn_h, STR_BTN)
@@ -119,9 +127,15 @@ module StorageDialogMixin
     bw = STR_W - 8
     bh = STR_H - STR_TITLE_H - 8
     @gfx.fill_rect(bx, by, bw, bh, STR_BG)
+    # The localized confirm prompt is pre-wrapped with "\n" so it fits the
+    # 220 px dialog width without truncation. Render each line in order.
     msg = FmrbI18n.t(:clear_cache_confirm)
-    msg = FmrbI18n.truncate_to(msg, STR_W - 16)
-    @gfx.draw_text(@str_x + 8, by + 4, msg, STR_TEXT, STR_BG, mixed: true)
+    line_y = by + 4
+    msg.split("\n").each do |line|
+      line = FmrbI18n.truncate_to(line, STR_W - 16)
+      @gfx.draw_text(@str_x + 8, line_y, line, STR_TEXT, STR_BG, mixed: true)
+      line_y += 12
+    end
 
     btn_y = @str_y + STR_H - 22
     btn_h = 16
