@@ -2,34 +2,51 @@
 #
 # Layout:
 #   - 320x240 fullscreen
-#   - Left 176x176 viewport (= 11x11 tiles) onto a 64x64 tile world
-#   - Right 144x240 status panel (player position, last event)
+#   - Left 176x176 viewport onto a 64x64 tile world (Dragon-Quest-1 style)
+#   - Right 144x240 status panel (position, last event)
 #
-# The player stays near the viewport center; moving slides the map under the
-# player at 4 px/frame for 4 frames per tile (16 px). When the player
-# approaches a world edge the camera clamps and the player walks the rest of
-# the way to the corner. Each slide frame re-stamps only the tiles that
-# intersect the viewport (sub-tile clipping in TileSheet#stamp keeps the
-# status panel area untouched).
+# Terrain tiles (see generate_tiles.rb / generate_world.rb):
+#   0 plain  1 forest  2 desert  3 sea  4 hill  5 mountain  6 cave  7 castle
+# Sea and mountain are not walkable. Cave / castle are walkable and trigger
+# named events. The walkable_tiles array is read from world.map.json.
+#
+# Player sheet is one BMP (128x16) with 8 frames laid out horizontally:
+#   0 down_0  1 down_1  2 up_0  3 up_1  4 left_0  5 left_1  6 right_0  7 right_1
+# The sheet is loaded into one SpriteImage, then split into eight 16x16
+# SpriteImage frames so SpriteInstance#frame= can toggle the walking pose.
 
 class RpgDemoApp < FmrbApp
   TILE              = 16
-  MAP_ORIGIN_X      = 16      # viewport top-left on the canvas
+  MAP_ORIGIN_X      = 16
   MAP_ORIGIN_Y      = 16
-  VIEWPORT_W        = 176     # 11 tiles wide
-  VIEWPORT_H        = 176     # 11 tiles tall
-  STATUS_X          = MAP_ORIGIN_X + VIEWPORT_W   # 192
-  STATUS_W          = 320 - STATUS_X              # 128
+  VIEWPORT_W        = 176
+  VIEWPORT_H        = 176
+  STATUS_X          = MAP_ORIGIN_X + VIEWPORT_W
+  STATUS_W          = 320 - STATUS_X
 
   SLIDE_STEPS       = 4
-  SLIDE_PX_PER_STEP = TILE / SLIDE_STEPS          # 4
-  FRAME_MS          = 16
+  SLIDE_PX_PER_STEP = TILE / SLIDE_STEPS
+  FRAME_MS          = 33
   IDLE_MS           = 100
+
+  # Frame indices into @player_frames. [stand, step] per direction.
+  DIR_FRAMES = {
+    :down  => [0, 1],
+    :up    => [2, 3],
+    :left  => [4, 5],
+    :right => [6, 7],
+  }
+
+  PLAYER_FRAME_NAMES = [
+    "player_down_0.bmp",  "player_down_1.bmp",
+    "player_up_0.bmp",    "player_up_1.bmp",
+    "player_left_0.bmp",  "player_left_1.bmp",
+    "player_right_0.bmp", "player_right_1.bmp",
+  ]
 
   APP_DIR    = "/app/game/rpg_demo"
   MAP_PATH   = "#{APP_DIR}/world.map.json"
   SHEET_SRC  = "#{APP_DIR}/world.bmp"
-  PLAYER_SRC = "#{APP_DIR}/player.bmp"
   CACHE_DIR  = "/cache/app/rpg_demo"
 
   def on_create
@@ -43,17 +60,14 @@ class RpgDemoApp < FmrbApp
     @sheet = TileSheet.new(@gfx, cache_path_for(SHEET_SRC),
                            cols: @map.tilesheet_cols,
                            tile_size: @map.tile_size)
-    @player_img = SpriteImage.new(@gfx, width: TILE, height: TILE,
-                                  transparent_color: 0, use_transparent: true)
-    @player_img.load_bmp(cache_path_for(PLAYER_SRC))
+
+    load_player_frames
 
     @map_w = @map.width  * TILE
     @map_h = @map.height * TILE
 
-    # Player starts at the center of the world (matches the embedded spawn
-    # island in generate_world.rb).
-    @player_tx = @map.width  / 2
-    @player_ty = @map.height / 2
+    @player_tx = @map.spawn_x
+    @player_ty = @map.spawn_y
     @player_px = @player_tx * TILE
     @player_py = @player_ty * TILE
 
@@ -64,12 +78,15 @@ class RpgDemoApp < FmrbApp
     @slide_dx = @slide_dy = 0
     @slide_target_tx = @player_tx
     @slide_target_ty = @player_ty
+    @dir = :down
+    @anim_step = 0
     @last_event = @map.event_at(@player_tx, @player_ty)
 
     @gfx.fill_rect(0, 0, @user_area_width, @user_area_height, FmrbGfx::BLACK)
-    @player = SpriteInstance.new(@gfx, @player_img,
+    @player = SpriteInstance.new(@gfx, @player_frames,
                                  x: MAP_ORIGIN_X + @player_px - @view_x,
                                  y: MAP_ORIGIN_Y + @player_py - @view_y, z: 1)
+    apply_facing_frame
     draw_status
     update_camera_and_draw
   end
@@ -94,11 +111,12 @@ class RpgDemoApp < FmrbApp
   private
 
   def transfer_assets
-    pairs = [[SHEET_SRC, cache_path_for(SHEET_SRC)],
-             [PLAYER_SRC, cache_path_for(PLAYER_SRC)]]
-    pairs.each do |src, dst|
-      status = @gfx.file_status(dst)
-      @gfx.transfer_file(src, dest: dst) unless status[:exists]
+    # Transfer unconditionally: regenerating BMPs locally can change their
+    # size, and skipping on @gfx.file_status[:exists] would leave the WROVER
+    # cache stale.
+    srcs = [SHEET_SRC] + PLAYER_FRAME_NAMES.map { |n| "#{APP_DIR}/#{n}" }
+    srcs.each do |src|
+      @gfx.transfer_file(src, dest: cache_path_for(src))
     end
   end
 
@@ -106,16 +124,35 @@ class RpgDemoApp < FmrbApp
     "#{CACHE_DIR}/#{src.split("/").last}"
   end
 
+  # Load each player frame from its own 16x16 BMP into a separate SpriteImage.
+  def load_player_frames
+    @player_frames = []
+    PLAYER_FRAME_NAMES.each do |name|
+      frm = SpriteImage.new(@gfx, width: TILE, height: TILE,
+                            transparent_color: 0, use_transparent: true)
+      frm.load_bmp(cache_path_for("#{APP_DIR}/#{name}"))
+      @player_frames << frm
+    end
+  end
+
   def try_slide(dx, dy)
     return unless @slide_step.nil?
+    # Always update facing so the player turns even when bumping a wall.
+    @dir = dir_of(dx, dy)
+    apply_facing_frame
     nx = @player_tx + dx
     ny = @player_ty + dy
     return if nx < 0 || ny < 0 || nx >= @map.width || ny >= @map.height
+    return unless @map.walkable?(nx, ny)
     @slide_dx = dx
     @slide_dy = dy
     @slide_target_tx = nx
     @slide_target_ty = ny
     @slide_step = 0
+    # Toggle walking step at the start of each tile so consecutive moves
+    # alternate left / right foot.
+    @anim_step = 1 - @anim_step
+    apply_facing_frame
   end
 
   def advance_slide
@@ -153,6 +190,19 @@ class RpgDemoApp < FmrbApp
     if @last_event
       Log.info("event: id=#{@last_event["id"]} name=#{(@last_event["data"] || {})["name"]}")
     end
+  end
+
+  def apply_facing_frame
+    pair = DIR_FRAMES[@dir]
+    @player.frame = pair[@anim_step] if pair
+  end
+
+  def dir_of(dx, dy)
+    return :left  if dx < 0
+    return :right if dx > 0
+    return :up    if dy < 0
+    return :down  if dy > 0
+    @dir
   end
 
   def clamp(v, lo, hi)

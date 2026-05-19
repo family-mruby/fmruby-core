@@ -95,7 +95,7 @@ class TileMap
   VERSION = 1
 
   attr_reader :width, :height, :tile_size, :tilesheet_path,
-              :tilesheet_cols, :layers, :events
+              :tilesheet_cols, :layers, :events, :walkable_tiles, :spawn_x, :spawn_y
 
   # @param json_path [String] core-side JSON path readable by File.open
   def initialize(json_path)
@@ -114,6 +114,29 @@ class TileMap
     @tilesheet_cols = obj["tilesheet_cols"].to_i
     @layers         = obj["layers"] || []
     @events         = obj["events"] || []
+    @walkable_tiles = obj["walkable_tiles"] || []
+    sp = obj["spawn"] || {}
+    @spawn_x = (sp["x"] || 0).to_i
+    @spawn_y = (sp["y"] || 0).to_i
+  end
+
+  # Return the tile id at (x, y) on the given layer, or nil if out of range.
+  def tile_at(x, y, layer: 0)
+    return nil if x < 0 || y < 0 || x >= @width || y >= @height
+    lyr = @layers[layer]
+    return nil unless lyr
+    data = lyr["data"]
+    return nil unless data.is_a?(Array)
+    row = data[y]
+    return nil unless row.is_a?(Array)
+    row[x]
+  end
+
+  # True if the tile at (x, y) is in walkable_tiles. Out-of-range = false.
+  def walkable?(x, y)
+    t = tile_at(x, y)
+    return false if t.nil?
+    @walkable_tiles.include?(t)
   end
 
   # Render all layers onto the current canvas via repeated draw_tile stamps.
