@@ -557,6 +557,15 @@ class SystemDesktopApp < FmrbApp
     return unless @composite_regions_enabled
     return unless @gfx
 
+    # While the user is dragging a window resize handle, the preview frame
+    # is drawn at arbitrary screen coordinates on the desktop canvas. Fall
+    # back to full-area transparent push so the outline is visible anywhere
+    # on screen; region compositing is restored on resize_preview_end.
+    if @resize_preview_active
+      @gfx.set_composite_regions(nil)
+      return
+    end
+
     regions = [
       { dst_x: 0, dst_y: 0, w: @window_width, h: MENU_BAR_HEIGHT, transparent: false }
     ]
@@ -676,14 +685,19 @@ class SystemDesktopApp < FmrbApp
       Log.info("Desktop: do_reboot received, calling FmrbApp.reboot")
       FmrbApp.reboot
     elsif msg["cmd"] == "resize_preview_start" || msg["cmd"] == "resize_preview_update"
+      was_active = @resize_preview_active
       @resize_preview_active = true
       @resize_preview_x = msg["x"] || 0
       @resize_preview_y = msg["y"] || 0
       @resize_preview_w = msg["w"] || 0
       @resize_preview_h = msg["h"] || 0
+      # State edge only: disable region compositing once at drag start so
+      # the preview outline is not clipped to the menu bar / overlay rects.
+      update_composite_regions unless was_active
       draw_foreground
     elsif msg["cmd"] == "resize_preview_end"
       @resize_preview_active = false
+      update_composite_regions
       draw_foreground
     end
   end
