@@ -6,3 +6,4 @@ default_window_width = 110
 default_window_height = 95
 default_window_pos_x = 20
 default_window_pos_y = 30
+launcher_visible = false
