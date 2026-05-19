@@ -13,6 +13,7 @@ class SystemDesktopApp < FmrbApp
   include FileManagerMixin
   include ConfirmDialogMixin
   include ConfigDialogMixin
+  include StorageDialogMixin
   include ErrorDialogMixin
   include ClockSettingMixin
   include TaskbarMixin
@@ -442,6 +443,7 @@ class SystemDesktopApp < FmrbApp
     draw_confirm_dialog if @cdlg_open
     draw_clock_setting if @clk_open
     draw_config_dialog if @cfg_open
+    draw_storage_dialog if @str_open
     draw_error_dialog if @error_dlg_open
     draw_about_dialog if @about_open
     draw_tbd_dialog if @tbd_open
@@ -601,6 +603,10 @@ class SystemDesktopApp < FmrbApp
     if @cfg_open
       regions << { dst_x: @cfg_x, dst_y: @cfg_y,
                    w: ConfigDialogMixin::CFG_W, h: ConfigDialogMixin::CFG_H, transparent: false }
+    end
+    if @str_open
+      regions << { dst_x: @str_x, dst_y: @str_y,
+                   w: StorageDialogMixin::STR_W, h: StorageDialogMixin::STR_H, transparent: false }
     end
     if @about_open
       regions << { dst_x: @about_x, dst_y: @about_y,
@@ -848,6 +854,16 @@ class SystemDesktopApp < FmrbApp
         return
       end
       close_config_dialog
+      return
+    end
+
+    # Storage dialog
+    if @str_open
+      if hit_storage_dialog?(x, y)
+        handle_storage_dialog_click(x, y)
+        return
+      end
+      close_storage_dialog
       return
     end
 

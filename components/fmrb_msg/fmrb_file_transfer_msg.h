@@ -13,6 +13,7 @@ typedef enum {
     FILE_CMD_TRANSFER = 0,  // Transfer file to graphics-audio LittleFS
     FILE_CMD_STATUS,        // Check if file exists on graphics-audio
     FILE_CMD_DELETE,        // Delete file on graphics-audio
+    FILE_CMD_RMDIR,         // Recursively delete a directory (cache root only)
 } file_cmd_type_t;
 
 // Shared result structure (allocated by caller, pointed to by file_cmd_t)
@@ -25,6 +26,10 @@ typedef struct {
             uint32_t file_size;
             uint32_t checksum;  // CRC32
         } status;
+        struct {
+            uint32_t deleted_count;
+            uint8_t  remote_status;  // Mirrors fmrb_link_file_transfer_rmdir_resp_t.status
+        } rmdir;
     } data;
 } file_cmd_result_t;
 

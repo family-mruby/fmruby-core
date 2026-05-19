@@ -16,6 +16,7 @@
 #include "fmrb_err.h"
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
+#include "fmrb_file_transfer_msg.h"
 #include "hw_proxy.h"
 #include "fmrb_hid_msg.h"
 #include "fmrb_task_config.h"
@@ -1081,6 +1082,74 @@ static mrb_value mrb_fmrb_app_s_reboot(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();  // unreachable
 }
 
+// FmrbApp._clear_cache(path) -> Hash {ok:, deleted:, status:}
+// Sends FILE_CMD_RMDIR via host_task. WROVER enforces that path resolves
+// inside its cache root, so callers cannot target arbitrary directories. The
+// returned :deleted reports how many entries (files + directories) were
+// removed; :status mirrors the remote status byte (0=ok, 1=rejected, 2=fs
+// error).
+static mrb_value mrb_fmrb_app_s_clear_cache(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    char *path;
+    mrb_get_args(mrb, "z", &path);
+
+    size_t path_len = strlen(path);
+    if (path_len == 0 || path_len >= 120) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid path length");
+    }
+
+    file_cmd_result_t result;
+    result.done_sem = fmrb_semaphore_create_binary();
+    if (!result.done_sem) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to create semaphore");
+    }
+    result.result = -1;
+    memset(&result.data, 0, sizeof(result.data));
+
+    fmrb_msg_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = FMRB_MSG_TYPE_FILE_TRANSFER;
+    msg.size = sizeof(file_cmd_t);
+
+    file_cmd_t *cmd = (file_cmd_t *)msg.data;
+    cmd->cmd_type = FILE_CMD_RMDIR;
+    cmd->result = &result;
+    cmd->path_len = (uint16_t)path_len;
+    memcpy(cmd->path, path, path_len);
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    if (ret != FMRB_OK) {
+        fmrb_semaphore_delete(result.done_sem);
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Failed to enqueue clear_cache request");
+    }
+
+    // Wait long enough for the WROVER walk to finish on a large cache.
+    fmrb_base_type_t wait_ret = fmrb_semaphore_take(result.done_sem,
+                                                    FMRB_MS_TO_TICKS(20000));
+    fmrb_semaphore_delete(result.done_sem);
+
+    mrb_value hash = mrb_hash_new(mrb);
+    mrb_value k_ok      = mrb_symbol_value(mrb_intern_lit(mrb, "ok"));
+    mrb_value k_deleted = mrb_symbol_value(mrb_intern_lit(mrb, "deleted"));
+    mrb_value k_status  = mrb_symbol_value(mrb_intern_lit(mrb, "status"));
+
+    if (wait_ret != FMRB_PASS) {
+        mrb_hash_set(mrb, hash, k_ok, mrb_false_value());
+        mrb_hash_set(mrb, hash, k_deleted, mrb_fixnum_value(0));
+        mrb_hash_set(mrb, hash, k_status, mrb_fixnum_value(-1));
+        return hash;
+    }
+
+    bool ok = (result.result == 0);
+    mrb_hash_set(mrb, hash, k_ok, ok ? mrb_true_value() : mrb_false_value());
+    mrb_hash_set(mrb, hash, k_deleted,
+                 mrb_fixnum_value((mrb_int)result.data.rmdir.deleted_count));
+    mrb_hash_set(mrb, hash, k_status,
+                 mrb_fixnum_value((mrb_int)result.data.rmdir.remote_status));
+    return hash;
+}
+
 // FmrbApp.enable_cursor -> nil
 // Allow the OS cursor to appear on the next mouse event. system_desktop calls
 // this once its boot animation is complete so the cursor stays hidden during
@@ -1161,6 +1230,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_cursor_visible", mrb_fmrb_app_s_set_cursor_visible, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "_clear_cache", mrb_fmrb_app_s_clear_cache, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "usb_devices", mrb_fmrb_app_s_usb_devices, MRB_ARGS_NONE());
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)

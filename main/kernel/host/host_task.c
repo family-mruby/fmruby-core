@@ -1055,6 +1055,51 @@ static void file_transfer_handle_delete(const file_cmd_t *cmd)
     }
 }
 
+// Callback for FILE_CMD_RMDIR async response (runs in host_task context)
+static void file_rmdir_response_cb(uint8_t status, const uint8_t *payload,
+                                   uint32_t payload_len, void *user_data) {
+    file_cmd_result_t *result = (file_cmd_result_t *)user_data;
+    if (!result) return;
+
+    if (status == 0 && payload_len >= sizeof(fmrb_link_file_transfer_rmdir_resp_t)) {
+        const fmrb_link_file_transfer_rmdir_resp_t *resp =
+            (const fmrb_link_file_transfer_rmdir_resp_t *)payload;
+        result->data.rmdir.deleted_count = resp->deleted_count;
+        result->data.rmdir.remote_status = resp->status;
+        result->result = (resp->status == 0) ? 0 : -2;
+    } else {
+        result->data.rmdir.deleted_count = 0;
+        result->data.rmdir.remote_status = 0xFF;
+        result->result = -1;
+    }
+    fmrb_semaphore_give(result->done_sem);
+}
+
+// Handle FILE_CMD_RMDIR asynchronously: WROVER walks the tree and replies with
+// a count. The walk can take a moment on a populated cache, so allow a longer
+// transport timeout than DELETE.
+static void file_transfer_handle_rmdir(const file_cmd_t *cmd)
+{
+    size_t payload_len = sizeof(fmrb_link_file_transfer_rmdir_t) + cmd->path_len;
+    uint8_t payload_buf[sizeof(fmrb_link_file_transfer_rmdir_t) + 120];
+
+    fmrb_link_file_transfer_rmdir_t *hdr = (fmrb_link_file_transfer_rmdir_t *)payload_buf;
+    hdr->path_len = cmd->path_len;
+    memcpy(payload_buf + sizeof(fmrb_link_file_transfer_rmdir_t), cmd->path, cmd->path_len);
+
+    fmrb_err_t ret = fmrb_transport_send_async(
+        FMRB_LINK_TYPE_FILE_TRANSFER,
+        FMRB_LINK_FILE_TRANSFER_RMDIR,
+        payload_buf, payload_len,
+        file_rmdir_response_cb, cmd->result,
+        15000);
+
+    if (ret != FMRB_OK && cmd->result) {
+        cmd->result->result = -1;
+        fmrb_semaphore_give(cmd->result->done_sem);
+    }
+}
+
 // Process a FILE_TRANSFER message from the queue
 static void host_task_process_file_transfer(const fmrb_msg_t *msg)
 {
@@ -1069,6 +1114,9 @@ static void host_task_process_file_transfer(const fmrb_msg_t *msg)
             break;
         case FILE_CMD_DELETE:
             file_transfer_handle_delete(cmd);
+            break;
+        case FILE_CMD_RMDIR:
+            file_transfer_handle_rmdir(cmd);
             break;
         default:
             FMRB_LOGW(TAG, "Unknown file command type: %d", cmd->cmd_type);

@@ -21,8 +21,12 @@ module LauncherMixin
   # they pick up the active language ("ja" / "en") from system_conf.toml.
   def builtin_apps
     [
-      { label: FmrbI18n.t(:shell),  app: "default/shell",  icon_file: "usr/share/icon/shell.icon" },
-      { label: FmrbI18n.t(:editor), app: "default/editor", icon_file: "usr/share/icon/editor.icon" },
+      { label: FmrbI18n.t(:shell),   app: "default/shell",  icon_file: "usr/share/icon/shell.icon" },
+      { label: FmrbI18n.t(:editor),  app: "default/editor", icon_file: "usr/share/icon/editor.icon" },
+      # "system/storage" is a synthetic name handled inside the launcher click
+      # path: instead of spawning a separate process it opens StorageDialog,
+      # which is a sub-dialog of system_desktop itself.
+      { label: FmrbI18n.t(:storage), app: "system/storage", icon_file: "usr/share/icon/storage.icon" },
     ]
   end
 
@@ -582,7 +586,13 @@ module LauncherMixin
         # Double click - launch app
         app_name = @launcher_apps[icon_idx][:app]
         close_launcher
-        spawn_app(app_name)
+        # Synthetic system entries open as sub-dialogs of system_desktop
+        # rather than spawning a separate process.
+        if app_name == "system/storage"
+          open_storage_dialog
+        else
+          spawn_app(app_name)
+        end
       else
         # Single click - partial redraw for selection change
         prev = @launcher_selected

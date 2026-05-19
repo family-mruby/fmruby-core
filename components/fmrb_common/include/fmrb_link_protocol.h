@@ -606,6 +606,7 @@ typedef struct __attribute__((packed)) {
 #define FMRB_LINK_FILE_TRANSFER_END     0x03
 #define FMRB_LINK_FILE_TRANSFER_STATUS  0x04
 #define FMRB_LINK_FILE_TRANSFER_DELETE  0x05
+#define FMRB_LINK_FILE_TRANSFER_RMDIR   0x06
 
 // File transfer message structures
 typedef struct __attribute__((packed)) {
@@ -640,6 +641,19 @@ typedef struct __attribute__((packed)) {
     uint16_t path_len;
     // Followed by path string (path_len bytes)
 } fmrb_link_file_transfer_delete_t;
+
+// RMDIR: recursively delete everything under path. The handler restricts the
+// allowed root (e.g. "/flash/cache") so this cannot be aimed at the bytecode
+// or config partitions. ACK payload carries the number of removed entries.
+typedef struct __attribute__((packed)) {
+    uint16_t path_len;
+    // Followed by path string (path_len bytes)
+} fmrb_link_file_transfer_rmdir_t;
+
+typedef struct __attribute__((packed)) {
+    uint32_t deleted_count;  // Files and directories removed
+    uint8_t  status;         // 0=success, 1=path rejected, 2=fs error
+} fmrb_link_file_transfer_rmdir_resp_t;
 
 // Audio message structures
 typedef struct __attribute__((packed)) {
