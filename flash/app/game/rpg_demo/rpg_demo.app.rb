@@ -27,7 +27,10 @@ class RpgDemoApp < FmrbApp
   SLIDE_STEPS       = 4
   SLIDE_PX_PER_STEP = TILE / SLIDE_STEPS
   FRAME_MS          = 33
-  IDLE_ANIM_MS      = 300   # foot-tap cadence while standing still
+  # Idle tick: doubles as both the foot-tap cadence and the input-poll
+  # cadence (key_down still queued by the host, but on_update only runs
+  # after each _spin completes). Keep short so held keys feel responsive.
+  IDLE_ANIM_MS      = 60
 
   # Frame indices into @player_frames. [stand, step] per direction.
   DIR_FRAMES = {
@@ -80,6 +83,9 @@ class RpgDemoApp < FmrbApp
     @slide_target_ty = @player_ty
     @dir = :down
     @anim_step = 0
+    @idle_ticks = 0
+    @held_dx = nil
+    @held_dy = nil
     @last_event = @map.event_at(@player_tx, @player_ty)
 
     @gfx.fill_rect(0, 0, @user_area_width, @user_area_height, FmrbGfx::BLACK)
@@ -93,10 +99,21 @@ class RpgDemoApp < FmrbApp
 
   def on_event(ev)
     super(ev)
-    return unless ev[:type] == :key_down || ev[:type] == :gamepad_down
-    dx, dy = direction_for(ev)
-    return if dx.nil?
-    try_slide(dx, dy)
+    case ev[:type]
+    when :key_down, :gamepad_down
+      dx, dy = direction_for(ev)
+      return if dx.nil?
+      @held_dx = dx
+      @held_dy = dy
+      try_slide(dx, dy)
+    when :key_up, :gamepad_up
+      dx, dy = direction_for(ev)
+      return if dx.nil?
+      if dx == @held_dx && dy == @held_dy
+        @held_dx = nil
+        @held_dy = nil
+      end
+    end
   end
 
   def on_update
@@ -169,6 +186,8 @@ class RpgDemoApp < FmrbApp
       @slide_dx = @slide_dy = 0
       fire_event_at(@player_tx, @player_ty)
       draw_status
+      # Continue moving if a direction key is still held.
+      try_slide(@held_dx, @held_dy) if @held_dx
     end
     update_camera_and_draw
   end
@@ -198,12 +217,16 @@ class RpgDemoApp < FmrbApp
     @player.frame = pair[@anim_step] if pair
   end
 
-  # Toggle the foot-tap pose while standing still. Only the sprite frame
-  # changes, so we skip the BG redraw and just present.
+  # Idle tick driver. Runs every IDLE_ANIM_MS (~60 ms) so held keys are
+  # picked up quickly, but the visible foot-tap only updates every ~300 ms.
   def advance_idle_anim
-    @anim_step = 1 - @anim_step
-    apply_facing_frame
-    @gfx.present
+    @idle_ticks += 1
+    if @idle_ticks * IDLE_ANIM_MS >= 300
+      @idle_ticks = 0
+      @anim_step = 1 - @anim_step
+      apply_facing_frame
+      @gfx.present
+    end
   end
 
   def dir_of(dx, dy)
@@ -221,14 +244,15 @@ class RpgDemoApp < FmrbApp
   end
 
   def direction_for(ev)
-    if ev[:type] == :key_down
+    type = ev[:type]
+    if type == :key_down || type == :key_up
       case ev[:keycode]
       when FmrbConst::KEY_LEFT  then return [-1, 0]
       when FmrbConst::KEY_RIGHT then return [1, 0]
       when FmrbConst::KEY_UP    then return [0, -1]
       when FmrbConst::KEY_DOWN  then return [0, 1]
       end
-    elsif ev[:type] == :gamepad_down
+    elsif type == :gamepad_down || type == :gamepad_up
       case ev[:button]
       when FmrbConst::GP_LEFT  then return [-1, 0]
       when FmrbConst::GP_RIGHT then return [1, 0]
