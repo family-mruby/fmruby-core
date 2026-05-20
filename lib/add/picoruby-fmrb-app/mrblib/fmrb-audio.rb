@@ -39,9 +39,12 @@ class FmrbAudio
       {"cmd" => "load_fmsq_file", "slot" => slot_id, "path" => path})
   end
 
-  def play_slot(slot_id)
+  # Play a previously-loaded FMSQ slot. instance picks the APU instance:
+  # 0 = MAIN (mixed with NSF), 1 = SUB (mixed with note_on/off SE). Use
+  # SUB for short FMSQ sound effects so a long BGM on MAIN keeps playing.
+  def play_slot(slot_id, instance: 0)
     @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      {"cmd" => "play_slot", "slot" => slot_id})
+      {"cmd" => "play_slot", "slot" => slot_id, "instance" => instance})
   end
 
   def note_on(channel, freq, volume = 10, duty = 2, sweep = 0)

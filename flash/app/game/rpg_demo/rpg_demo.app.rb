@@ -54,8 +54,9 @@ class RpgDemoApp < FmrbApp
   CACHE_DIR  = "/cache/app/rpg_demo"
 
   BGM_SLOT      = 0
-  SE_NOISE_CH   = 3
-  BUMP_SE_TICKS = 2   # short noise burst, auto-silenced after this many ticks
+  SE_TRI_CH     = 2          # APU triangle channel (FMRB_APU_CH_TRIANGLE)
+  SE_BUMP_FREQ  = 90         # ~kick-drum range
+  BUMP_SE_TICKS = 2          # short thump, auto-silenced after this many ticks
 
   def on_create
     splash("Loading map...")
@@ -165,11 +166,11 @@ class RpgDemoApp < FmrbApp
   def play_bump_se
     return unless @audio
     return if @bump_off_in   # already playing; let it finish
-    # Noise channel: a short rough rumble. Bottom 4 bits of `freq` select
-    # the noise period (1..15); bit 7 toggles short/long mode. Must be
-    # non-zero - audio_task_note_on rejects freq==0 outright (it's a
-    # pulse-channel safety check that also blocks the noise ch).
-    @audio.note_on(SE_NOISE_CH, 0x08, 12, 0, 0)
+    # Low-frequency triangle wave produces a short "doon" thump rather
+    # than a buzzy noise burst. The triangle channel ignores volume /
+    # duty / sweep; only freq matters. Goes to SUB APU (note_on always
+    # targets SUB), so it doesn't fight the BGM on MAIN.
+    @audio.note_on(SE_TRI_CH, SE_BUMP_FREQ, 0, 0, 0)
     @bump_off_in = BUMP_SE_TICKS
   end
 
@@ -177,7 +178,7 @@ class RpgDemoApp < FmrbApp
     return unless @bump_off_in
     @bump_off_in -= 1
     if @bump_off_in <= 0
-      @audio.note_off(SE_NOISE_CH) if @audio
+      @audio.note_off(SE_TRI_CH) if @audio
       @bump_off_in = nil
     end
   end

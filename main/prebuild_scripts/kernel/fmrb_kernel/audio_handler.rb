@@ -61,12 +61,16 @@ module AudioHandlerMixin
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
     when "play_slot"
       slot = data["slot"] || 0
-      # Build binary: cmd_type=0x08 (PLAY_SLOT) + music_id(4 LE)
-      bin = "\x08\x00\x00\x00\x00"
+      instance = data["instance"] || 0
+      # Build binary: cmd_type=0x08 (PLAY_SLOT) + music_id(4 LE) + instance(1)
+      # Older audio handlers stop one byte short and treat the payload as
+      # MAIN-only; the trailing instance byte is forwards-only metadata.
+      bin = "\x08\x00\x00\x00\x00\x00"
       bin.setbyte(1, slot & 0xFF)
       bin.setbyte(2, (slot >> 8) & 0xFF)
       bin.setbyte(3, (slot >> 16) & 0xFF)
       bin.setbyte(4, (slot >> 24) & 0xFF)
+      bin.setbyte(5, instance & 0xFF)
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
     when "load_fmsq_file"
       # Tell the audio task to read an FMSQ from its own LittleFS path
