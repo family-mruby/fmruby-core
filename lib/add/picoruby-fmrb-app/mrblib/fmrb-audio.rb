@@ -31,6 +31,14 @@ class FmrbAudio
       {"cmd" => "load_fmsq", "slot" => slot_id, "data" => binary_data})
   end
 
+  # Load an FMSQ slot from a file already present on the graphics-audio side
+  # (push it there first with @gfx.transfer_file). Use this when the FMSQ
+  # data would exceed the inline IPC payload limit of load_fmsq.
+  def load_fmsq_file(slot_id, path)
+    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
+      {"cmd" => "load_fmsq_file", "slot" => slot_id, "path" => path})
+  end
+
   def play_slot(slot_id)
     @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
       {"cmd" => "play_slot", "slot" => slot_id})

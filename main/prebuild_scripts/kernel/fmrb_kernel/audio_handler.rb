@@ -68,6 +68,23 @@ module AudioHandlerMixin
       bin.setbyte(3, (slot >> 16) & 0xFF)
       bin.setbyte(4, (slot >> 24) & 0xFF)
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
+    when "load_fmsq_file"
+      # Tell the audio task to read an FMSQ from its own LittleFS path
+      # instead of sending the bytes inline. Use this when the FMSQ would
+      # exceed the IPC payload limit; the file must have been pushed via
+      # @gfx.transfer_file first.
+      # Binary: cmd_type=0x0B (LOAD_FMSQ_FILE) + music_id(4 LE) + path_len(2 LE) + path
+      slot = data["slot"] || 0
+      path = data["path"] || ""
+      path_len = path.length
+      bin = "\x0B\x00\x00\x00\x00\x00\x00" + path
+      bin.setbyte(1, slot & 0xFF)
+      bin.setbyte(2, (slot >> 8) & 0xFF)
+      bin.setbyte(3, (slot >> 16) & 0xFF)
+      bin.setbyte(4, (slot >> 24) & 0xFF)
+      bin.setbyte(5, path_len & 0xFF)
+      bin.setbyte(6, (path_len >> 8) & 0xFF)
+      _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
     when "note_on"
       ch = data["ch"] || 0
       freq = data["freq"] || 440

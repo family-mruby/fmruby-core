@@ -50,7 +50,12 @@ class RpgDemoApp < FmrbApp
   APP_DIR    = "/app/game/rpg_demo"
   MAP_PATH   = "#{APP_DIR}/world.map.json"
   SHEET_SRC  = "#{APP_DIR}/world.bmp"
+  BGM_SRC    = "#{APP_DIR}/bgm.fmsq"
   CACHE_DIR  = "/cache/app/rpg_demo"
+
+  BGM_SLOT      = 0
+  SE_NOISE_CH   = 3
+  BUMP_SE_TICKS = 2   # short noise burst, auto-silenced after this many ticks
 
   def on_create
     splash("Loading map...")
@@ -86,6 +91,7 @@ class RpgDemoApp < FmrbApp
     @idle_ticks = 0
     @held_dx = nil
     @held_dy = nil
+    @bump_off_in = nil
     @last_event = @map.event_at(@player_tx, @player_ty)
 
     @gfx.fill_rect(0, 0, @user_area_width, @user_area_height, FmrbGfx::BLACK)
@@ -95,6 +101,8 @@ class RpgDemoApp < FmrbApp
     apply_facing_frame
     draw_status
     update_camera_and_draw
+
+    start_bgm
   end
 
   def on_event(ev)
@@ -129,12 +137,48 @@ class RpgDemoApp < FmrbApp
   private
 
   def transfer_assets
-    # Transfer unconditionally: regenerating BMPs locally can change their
+    # Transfer unconditionally: regenerating assets locally can change their
     # size, and skipping on @gfx.file_status[:exists] would leave the WROVER
-    # cache stale.
-    srcs = [SHEET_SRC] + PLAYER_FRAME_NAMES.map { |n| "#{APP_DIR}/#{n}" }
+    # cache stale. BGM_SRC is included so the audio task can load it via
+    # load_fmsq_file (which bypasses the inline IPC payload cap).
+    srcs = [SHEET_SRC, BGM_SRC] + PLAYER_FRAME_NAMES.map { |n| "#{APP_DIR}/#{n}" }
     srcs.each do |src|
       @gfx.transfer_file(src, dest: cache_path_for(src))
+    end
+  end
+
+  def start_bgm
+    # picoruby has no `defined?`, so just try to instantiate; rescue covers
+    # both "FmrbAudio class missing" (NameError) and audio-side failures.
+    # We push bgm.fmsq via transfer_file (handled in transfer_assets) and
+    # then ask the audio task to load it from its own LittleFS path with
+    # load_fmsq_file, which avoids the inline IPC payload cap (~150 B).
+    @audio = FmrbAudio.new(self)
+    @audio.load_fmsq_file(BGM_SLOT, cache_path_for(BGM_SRC))
+    @audio.play_slot(BGM_SLOT)
+    Log.info("BGM started from #{cache_path_for(BGM_SRC)}")
+  rescue => e
+    Log.error("BGM load failed: #{e.message}")
+    @audio = nil
+  end
+
+  def play_bump_se
+    return unless @audio
+    return if @bump_off_in   # already playing; let it finish
+    # Noise channel: a short rough rumble. Bottom 4 bits of `freq` select
+    # the noise period (1..15); bit 7 toggles short/long mode. Must be
+    # non-zero - audio_task_note_on rejects freq==0 outright (it's a
+    # pulse-channel safety check that also blocks the noise ch).
+    @audio.note_on(SE_NOISE_CH, 0x08, 12, 0, 0)
+    @bump_off_in = BUMP_SE_TICKS
+  end
+
+  def tick_se
+    return unless @bump_off_in
+    @bump_off_in -= 1
+    if @bump_off_in <= 0
+      @audio.note_off(SE_NOISE_CH) if @audio
+      @bump_off_in = nil
     end
   end
 
@@ -160,8 +204,12 @@ class RpgDemoApp < FmrbApp
     apply_facing_frame
     nx = @player_tx + dx
     ny = @player_ty + dy
-    return if nx < 0 || ny < 0 || nx >= @map.width || ny >= @map.height
-    return unless @map.walkable?(nx, ny)
+    blocked = nx < 0 || ny < 0 || nx >= @map.width || ny >= @map.height ||
+              !@map.walkable?(nx, ny)
+    if blocked
+      play_bump_se
+      return
+    end
     @slide_dx = dx
     @slide_dy = dy
     @slide_target_tx = nx
@@ -190,6 +238,7 @@ class RpgDemoApp < FmrbApp
       try_slide(@held_dx, @held_dy) if @held_dx
     end
     update_camera_and_draw
+    tick_se
   end
 
   def update_camera_and_draw
@@ -227,6 +276,7 @@ class RpgDemoApp < FmrbApp
       apply_facing_frame
       @gfx.present
     end
+    tick_se
   end
 
   def dir_of(dx, dy)
