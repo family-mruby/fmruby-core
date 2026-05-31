@@ -53,6 +53,12 @@ class KamonApp < FmrbApp
     100
   end
 
+  def on_destroy
+    # Restore the global font in case we were interrupted mid-draw with
+    # the ja font selected.
+    @gfx.set_font(:default) if @gfx
+  end
+
   def on_event(ev)
     super(ev)
     return unless @running
@@ -85,9 +91,8 @@ class KamonApp < FmrbApp
     list = []
 
     # 5 motif buttons (2 cols x 3 rows; the 5th sits alone on the bottom row).
-    # Labels are romanized Japanese (MARU/HISI/HANA/OUGI/UROK) - the app is
-    # a Japanese-crest generator so this matches the source motif names.
-    motif_labels = ["MARU", "HISI", "HANA", "OUGI", "UROK"]
+    # Japanese single-kanji labels for at-a-glance recognition.
+    motif_labels = ["円", "菱", "花", "扇", "鱗"]
     motif_labels.each_with_index do |lab, i|
       col = i % 2
       row = i / 2
@@ -97,9 +102,8 @@ class KamonApp < FmrbApp
       }
     end
 
-    # 4 center buttons (2x2). NONE = no center mark, WHITE/BLACK = filled
-    # disc of that color, RING = thin outlined circle.
-    center_labels = ["NONE", "WHITE", "BLACK", "RING"]
+    # 4 center buttons (2x2).
+    center_labels = ["無", "白", "黒", "輪"]
     center_labels.each_with_index do |lab, i|
       col = i % 2
       row = i / 2
@@ -320,22 +324,27 @@ class KamonApp < FmrbApp
   # Control panel
   # -----------------------------------------------------------------------
 
+  # Panel draws everything with the misaki 8px Japanese font so that kanji
+  # labels render. ASCII glyphs (used by the < / > stepper buttons and the
+  # numeric readouts) are passed through the same font via mixed: true so
+  # they stay legible. The window frame title still uses the default font
+  # because draw_window_frame sets it itself.
   def draw_panel
     base_y = @user_area_y0
-    @gfx.draw_text(PANEL_X, base_y + 4,   "Motif",  FmrbGfx::BLACK)
-    @gfx.draw_text(PANEL_X, base_y + 72,  "Center", FmrbGfx::BLACK)
-    @gfx.draw_text(PANEL_X, base_y + 120, "Count",  FmrbGfx::BLACK)
-    @gfx.draw_text(PANEL_X, base_y + 148, "Size",   FmrbGfx::BLACK)
+    @gfx.set_font(:ja, 8)
+
+    @gfx.draw_text(PANEL_X, base_y + 4,   "紋様",   FmrbGfx::BLACK)
+    @gfx.draw_text(PANEL_X, base_y + 72,  "中央",   FmrbGfx::BLACK)
+    @gfx.draw_text(PANEL_X, base_y + 120, "数",     FmrbGfx::BLACK)
+    @gfx.draw_text(PANEL_X, base_y + 148, "大きさ", FmrbGfx::BLACK)
 
     @buttons.each { |b| draw_button(b) }
 
-    # Live value readouts (drawn after the < / > buttons so they overlay
-    # the gap between them).
     draw_value_label(PANEL_X + 24, base_y + 130, 60, 14, "#{@count}")
     draw_value_label(PANEL_X + 24, base_y + 160, 60, 14, "#{(@size * 100).round}%")
-  end
 
-  CHAR_W = 6  # Font0 ASCII glyph width approximation
+    @gfx.set_font(:default)
+  end
 
   def draw_button(b)
     selected = button_selected?(b)
@@ -349,9 +358,10 @@ class KamonApp < FmrbApp
     end
 
     label = b[:label]
-    label = "INVERT: #{@inverted ? 'ON' : 'OFF'}" if b[:group] == :invert
+    label = "反転 #{@inverted ? '入' : '切'}" if b[:group] == :invert
 
-    tx = b[:x] + (b[:w] - label.length * CHAR_W) / 2
+    tw = @gfx.text_width(label, :ja, 8)
+    tx = b[:x] + (b[:w] - tw) / 2
     ty = b[:y] + (b[:h] - 8) / 2
     @gfx.draw_text(tx, ty, label, text_color)
   end
@@ -359,7 +369,8 @@ class KamonApp < FmrbApp
   def draw_value_label(x, y, w, h, label)
     @gfx.fill_rect(x, y, w, h, FmrbGfx::WHITE)
     @gfx.draw_rect(x, y, w, h, FmrbGfx::GRAY)
-    tx = x + (w - label.length * CHAR_W) / 2
+    tw = @gfx.text_width(label, :ja, 8)
+    tx = x + (w - tw) / 2
     ty = y + (h - 8) / 2
     @gfx.draw_text(tx, ty, label, FmrbGfx::BLACK)
   end
