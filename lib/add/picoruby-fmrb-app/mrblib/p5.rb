@@ -63,6 +63,7 @@ class P5
     @text_leading = 0
     @matrix = [1.0, 0.0, 0.0, 1.0, 0.0, 0.0]
     @matrix_stack = []
+    @shape_vertices = nil  # populated between begin_shape/end_shape
   end
 
   # Screen and frame control
@@ -271,6 +272,74 @@ class P5
       draw_edge(ax, ay, bx, by)
       draw_edge(bx, by, cx, cy)
       draw_edge(cx, cy, ax, ay)
+    end
+  end
+
+  # Four-vertex quadrilateral. Fill is split as two triangles fanned from
+  # the first vertex; the caller is responsible for keeping the quad
+  # non-self-intersecting (matches p5.js semantics).
+  def quad(x0, y0, x1, y1, x2, y2, x3, y3)
+    ax, ay = transform(x0, y0)
+    bx, by = transform(x1, y1)
+    cx, cy = transform(x2, y2)
+    dx, dy = transform(x3, y3)
+    if @fill_enabled
+      @gfx.fill_triangle(ax, ay, bx, by, cx, cy, @fill_color)
+      @gfx.fill_triangle(ax, ay, cx, cy, dx, dy, @fill_color)
+    end
+    if @stroke_enabled
+      draw_edge(ax, ay, bx, by)
+      draw_edge(bx, by, cx, cy)
+      draw_edge(cx, cy, dx, dy)
+      draw_edge(dx, dy, ax, ay)
+    end
+  end
+
+  # Custom polygon: begin_shape -> vertex(x, y) * N -> end_shape(close).
+  # Vertices are stored in screen coordinates (transform is applied at
+  # vertex() time so subsequent translate/rotate before end_shape don't
+  # surprise the caller). Fill is rasterized as a triangle fan anchored at
+  # vertex 0; this is correct for convex (and near-convex) polygons only -
+  # heavily concave shapes will visibly leak. Stroke connects adjacent
+  # vertices, closing back to vertex 0 when close=true.
+  def begin_shape
+    @shape_vertices = []
+  end
+
+  def vertex(x, y)
+    return unless @shape_vertices
+    @shape_vertices << transform(x, y)
+  end
+
+  def end_shape(close = false)
+    vs = @shape_vertices
+    @shape_vertices = nil
+    return unless vs
+    n = vs.length
+    return if n < 2
+    if @fill_enabled && n >= 3
+      v0 = vs[0]
+      i = 1
+      while i < n - 1
+        v1 = vs[i]
+        v2 = vs[i + 1]
+        @gfx.fill_triangle(v0[0], v0[1], v1[0], v1[1], v2[0], v2[1], @fill_color)
+        i += 1
+      end
+    end
+    if @stroke_enabled
+      i = 0
+      while i < n - 1
+        a = vs[i]
+        b = vs[i + 1]
+        draw_edge(a[0], a[1], b[0], b[1])
+        i += 1
+      end
+      if close
+        a = vs[n - 1]
+        b = vs[0]
+        draw_edge(a[0], a[1], b[0], b[1])
+      end
     end
   end
 
