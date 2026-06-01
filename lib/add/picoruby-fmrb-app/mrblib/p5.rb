@@ -237,14 +237,14 @@ class P5
     tcx, tcy = transform(cx, cy)
     if translate_only?
       @gfx.fill_circle(tcx, tcy, r, @fill_color) if @fill_enabled
-      @gfx.draw_circle(tcx, tcy, r, @stroke_color) if @stroke_enabled
+      _stroke_circle(tcx, tcy, r) if @stroke_enabled
     else
       sx = Math.sqrt(@matrix[0] * @matrix[0] + @matrix[2] * @matrix[2])
       sy = Math.sqrt(@matrix[1] * @matrix[1] + @matrix[3] * @matrix[3])
       rx = (r * sx).round
       ry = (r * sy).round
       @gfx.fill_ellipse(tcx, tcy, rx, ry, @fill_color) if @fill_enabled
-      @gfx.draw_ellipse(tcx, tcy, rx, ry, @stroke_color) if @stroke_enabled
+      _stroke_ellipse(tcx, tcy, rx, ry) if @stroke_enabled
     end
   end
 
@@ -252,14 +252,51 @@ class P5
     tcx, tcy = transform(cx, cy)
     if translate_only?
       @gfx.fill_ellipse(tcx, tcy, rx, ry, @fill_color) if @fill_enabled
-      @gfx.draw_ellipse(tcx, tcy, rx, ry, @stroke_color) if @stroke_enabled
+      _stroke_ellipse(tcx, tcy, rx, ry) if @stroke_enabled
     else
       sx = Math.sqrt(@matrix[0] * @matrix[0] + @matrix[2] * @matrix[2])
       sy = Math.sqrt(@matrix[1] * @matrix[1] + @matrix[3] * @matrix[3])
       trx = (rx * sx).round
       tryv = (ry * sy).round
       @gfx.fill_ellipse(tcx, tcy, trx, tryv, @fill_color) if @fill_enabled
-      @gfx.draw_ellipse(tcx, tcy, trx, tryv, @stroke_color) if @stroke_enabled
+      _stroke_ellipse(tcx, tcy, trx, tryv) if @stroke_enabled
+    end
+  end
+
+  # Draw a circle outline honoring @stroke_weight. For weights > 1 we render
+  # a true annulus via fill_arc(inner..outer, 0..360); stacking concentric
+  # draw_circle calls leaves 1-pixel gaps at certain angles because each
+  # integer-radius outline is angle-quantized independently.
+  def _stroke_circle(cx, cy, r)
+    if @stroke_weight > 1
+      half = (@stroke_weight - 1) / 2
+      inner = r - half
+      outer = r + (@stroke_weight - 1 - half)
+      inner = 0 if inner < 0
+      @gfx.fill_arc(cx, cy, inner, outer, 0, 360, @stroke_color)
+    else
+      @gfx.draw_circle(cx, cy, r, @stroke_color)
+    end
+  end
+
+  # Ellipse outlines fall back to stacked concentric outlines because the
+  # backend has no elliptical-annulus primitive. Acceptable for thin strokes
+  # (~3px); thicker ellipse outlines may show angle-quantization gaps and
+  # should be filled differently (e.g., fill_ellipse with a hole drawn on top
+  # by the caller).
+  def _stroke_ellipse(cx, cy, rx, ry)
+    if @stroke_weight > 1
+      half = (@stroke_weight - 1) / 2
+      i = -half
+      last = @stroke_weight - 1 - half
+      while i <= last
+        irx = rx + i
+        iry = ry + i
+        @gfx.draw_ellipse(cx, cy, irx, iry, @stroke_color) if irx > 0 && iry > 0
+        i += 1
+      end
+    else
+      @gfx.draw_ellipse(cx, cy, rx, ry, @stroke_color)
     end
   end
 
