@@ -255,3 +255,16 @@ int usb_task_get_device_info(fmrb_usb_device_info_t *out, int max_count)
     (void)max_count;
     return 0;
 }
+
+fmrb_err_t usb_task_subscribe_raw_reports(int8_t slot_index, uint16_t subscriber_pid)
+{
+    (void)slot_index;
+    (void)subscriber_pid;
+    return FMRB_ERR_INVALID_PARAM;  // No HID enumeration on Linux
+}
+
+fmrb_err_t usb_task_unsubscribe_raw_reports(int8_t slot_index)
+{
+    (void)slot_index;
+    return FMRB_ERR_INVALID_PARAM;
+}

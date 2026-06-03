@@ -12,6 +12,7 @@
 #include "host_task.h"
 #include "boot.h"
 #include "fmrb_kernel.h"
+#include "fmrb_msg.h"
 #include "status_led.h"
 
 #include "usb/usb_host.h"
@@ -93,6 +94,37 @@ static volatile int g_hid_task_exited = 0;
 // Device tracking
 static hid_device_info_t g_hid_devices[MAX_HID_DEVICES];
 static fmrb_semaphore_t g_hid_devices_mutex = NULL;
+
+// Raw report subscribers: per-slot PID that wants raw HID reports forwarded
+// (0 = no subscriber). Used by the HID Inspector app to receive bytes even
+// when normal interpretation fails. Protected by g_hid_devices_mutex.
+static uint16_t g_raw_report_subscribers[MAX_HID_DEVICES] = {0};
+
+// Per-slot last raw-forward tick, to rate-limit forwarding. A mouse can emit
+// ~125 reports/s; forwarding all of them floods the subscriber's 32-deep
+// message queue while it is busy drawing. ~15Hz is ample for the Inspector's
+// human-driven diff sampling and keeps queue/GFX load low. Accessed only from
+// the HID task loop.
+static fmrb_tick_t g_raw_report_last_tick[MAX_HID_DEVICES] = {0};
+#define RAW_REPORT_MIN_INTERVAL_MS 67  // ~15Hz
+
+// Maximum raw report bytes forwarded to a subscriber. Mouse reports are far
+// smaller; the cap keeps the msgpack payload within FMRB_MAX_MSG_PAYLOAD_SIZE.
+#define RAW_REPORT_FORWARD_MAX 32
+
+// Trailing-flush state for raw forwarding. Instead of dropping reports that
+// arrive inside the rate-limit window (which loses the LAST report of a
+// gesture — button release, final motion — so the Inspector shows a stale
+// value), we keep the latest report per slot as "pending" and flush it from
+// the HID task loop at the rate limit. The trailing report is therefore
+// always delivered (within one loop iteration). Accessed only from the HID
+// task, so no extra locking is needed beyond the subscriber-pid read.
+static uint8_t  g_raw_pending[MAX_HID_DEVICES] = {0};
+static uint16_t g_raw_pending_pid[MAX_HID_DEVICES] = {0};
+static uint16_t g_raw_pending_vid[MAX_HID_DEVICES] = {0};
+static uint16_t g_raw_pending_dev_pid[MAX_HID_DEVICES] = {0};
+static uint8_t  g_raw_pending_len[MAX_HID_DEVICES] = {0};
+static uint8_t  g_raw_pending_data[MAX_HID_DEVICES][RAW_REPORT_FORWARD_MAX];
 
 // Input report structure for queueing raw reports from callback
 typedef struct {
@@ -362,11 +394,108 @@ int usb_task_get_device_info(fmrb_usb_device_info_t *out, int max_count)
         out[written].vid      = g_hid_devices[i].vid;
         out[written].pid      = g_hid_devices[i].pid;
         out[written].dev_addr = g_hid_devices[i].dev_addr;
+        out[written].slot     = (int8_t)i;
+        out[written].report_byte_len = g_hid_devices[i].report_layout.report_byte_len;
+        out[written].layout_valid = (g_hid_devices[i].report_layout.x.found &&
+                                     g_hid_devices[i].report_layout.y.found) ? 1 : 0;
         written++;
     }
 
     fmrb_semaphore_give(g_hid_devices_mutex);
     return written;
+}
+
+// Register/clear a raw-report subscriber PID for a device slot. Takes the
+// device-list mutex so the dispatch loop sees a consistent value.
+fmrb_err_t usb_task_subscribe_raw_reports(int8_t slot_index, uint16_t subscriber_pid)
+{
+    if (slot_index < 0 || slot_index >= MAX_HID_DEVICES || g_hid_devices_mutex == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MS_TO_TICKS(10)) != FMRB_TRUE) {
+        return FMRB_ERR_TIMEOUT;
+    }
+    g_raw_report_subscribers[slot_index] = subscriber_pid;
+    fmrb_semaphore_give(g_hid_devices_mutex);
+    FMRB_LOGI(TAG, "Raw report subscribe: slot=%d pid=%d", slot_index, subscriber_pid);
+    return FMRB_OK;
+}
+
+fmrb_err_t usb_task_unsubscribe_raw_reports(int8_t slot_index)
+{
+    if (slot_index < 0 || slot_index >= MAX_HID_DEVICES || g_hid_devices_mutex == NULL) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    if (fmrb_semaphore_take(g_hid_devices_mutex, FMRB_MS_TO_TICKS(10)) != FMRB_TRUE) {
+        return FMRB_ERR_TIMEOUT;
+    }
+    g_raw_report_subscribers[slot_index] = 0;
+    g_raw_pending[slot_index] = 0;
+    fmrb_semaphore_give(g_hid_devices_mutex);
+    FMRB_LOGI(TAG, "Raw report unsubscribe: slot=%d", slot_index);
+    return FMRB_OK;
+}
+
+// Forward a raw HID report to a subscriber as an APP_CONTROL msgpack hash:
+//   {"cmd":"hid_raw", "slot":i, "vid":v, "pid":p, "data":[b0,b1,...]}
+// Each data byte is encoded as a uint8 (0xCC) for uniform sizing.
+static void send_raw_report_to_subscriber(uint16_t pid, int8_t slot,
+                                          uint16_t vid, uint16_t pid_dev,
+                                          const uint8_t *data, uint8_t len)
+{
+    if (len > RAW_REPORT_FORWARD_MAX) {
+        len = RAW_REPORT_FORWARD_MAX;
+    }
+
+    // Static (not on the caller's stack): fmrb_msg_t embeds a 176-byte payload
+    // and this runs in the small (4KB) HID task. Only the single HID task calls
+    // this, serialized within the dispatch loop, so reuse is safe.
+    static fmrb_msg_t msg;
+    msg.type = FMRB_MSG_TYPE_APP_CONTROL;
+    msg.src_pid = PROC_ID_KERNEL;
+    msg.size = 0;
+    uint8_t *d = msg.data;
+    size_t p = 0;
+
+    d[p++] = 0x85;  // fixmap with 5 entries
+
+    // "cmd" => "hid_raw"
+    d[p++] = 0xA3; d[p++] = 'c'; d[p++] = 'm'; d[p++] = 'd';
+    d[p++] = 0xA7; d[p++] = 'h'; d[p++] = 'i'; d[p++] = 'd';
+    d[p++] = '_'; d[p++] = 'r'; d[p++] = 'a'; d[p++] = 'w';
+
+    // "slot" => uint8
+    d[p++] = 0xA4; d[p++] = 's'; d[p++] = 'l'; d[p++] = 'o'; d[p++] = 't';
+    d[p++] = 0xCC; d[p++] = (uint8_t)slot;
+
+    // "vid" => uint16
+    d[p++] = 0xA3; d[p++] = 'v'; d[p++] = 'i'; d[p++] = 'd';
+    d[p++] = 0xCD; d[p++] = (uint8_t)(vid >> 8); d[p++] = (uint8_t)(vid & 0xFF);
+
+    // "pid" => uint16
+    d[p++] = 0xA3; d[p++] = 'p'; d[p++] = 'i'; d[p++] = 'd';
+    d[p++] = 0xCD; d[p++] = (uint8_t)(pid_dev >> 8); d[p++] = (uint8_t)(pid_dev & 0xFF);
+
+    // "data" => array of uint8
+    d[p++] = 0xA4; d[p++] = 'd'; d[p++] = 'a'; d[p++] = 't'; d[p++] = 'a';
+    if (len <= 15) {
+        d[p++] = (uint8_t)(0x90 | len);  // fixarray
+    } else {
+        d[p++] = 0xDC; d[p++] = 0x00; d[p++] = len;  // array16
+    }
+    for (uint8_t i = 0; i < len; i++) {
+        d[p++] = 0xCC; d[p++] = data[i];
+    }
+
+    msg.size = (uint32_t)p;
+    if (msg.size > FMRB_MAX_MSG_PAYLOAD_SIZE) {
+        return;  // Should never happen given the cap, but stay safe
+    }
+
+    // Best-effort, fully non-blocking (timeout 0): the HID task must never
+    // stall here. Reports are rate-limited by the caller, so a full queue is
+    // rare; a dropped report is harmless for the Inspector's diff sampling.
+    fmrb_msg_send((fmrb_proc_id_t)pid, &msg, 0);
 }
 
 static hid_device_info_t* find_empty_slot(void)
@@ -382,6 +511,11 @@ static hid_device_info_t* find_empty_slot(void)
 // Clear a device slot (slot direct access version)
 static void clear_slot(hid_device_info_t* device)
 {
+    int slot_index = (int)(device - g_hid_devices);
+    if (slot_index >= 0 && slot_index < MAX_HID_DEVICES) {
+        g_raw_report_subscribers[slot_index] = 0;  // Drop any raw subscriber
+        g_raw_pending[slot_index] = 0;             // Drop any pending raw report
+    }
     device->generation++;  // Increment generation on disconnect (invalidates queued reports)
     device->handle = NULL;
     device->proto = 0;
@@ -1377,6 +1511,23 @@ static void hid_host_task(void *arg)
                 // Validate generation to detect stale reports (from disconnected devices)
                 // This prevents race condition where disconnect happens after callback queued report
                 if (device->connected && device->generation == report.generation) {
+                    // If a subscriber (HID Inspector) is registered, stash the
+                    // latest report as pending; the rate-limited flush below
+                    // (run from this same task) delivers it. Keeping the latest
+                    // rather than dropping guarantees the final report is sent.
+                    uint16_t sub = g_raw_report_subscribers[report.slot_index];
+                    if (sub != 0) {
+                        int s = report.slot_index;
+                        uint8_t l = report.report_len;
+                        if (l > RAW_REPORT_FORWARD_MAX) l = RAW_REPORT_FORWARD_MAX;
+                        g_raw_pending[s] = 1;
+                        g_raw_pending_pid[s] = sub;
+                        g_raw_pending_vid[s] = device->vid;
+                        g_raw_pending_dev_pid[s] = device->pid;
+                        g_raw_pending_len[s] = l;
+                        memcpy(g_raw_pending_data[s], report.report_data, l);
+                    }
+
                     // Call process_* functions (which call fmrb_host_send_*) in task context
                     if (device->proto == HID_PROTOCOL_KEYBOARD) {
                         process_keyboard_report(device, report.report_data, report.report_len);
@@ -1389,6 +1540,26 @@ static void hid_host_task(void *arg)
                 // If generation mismatch or device disconnected, silently drop the report
 
                 fmrb_semaphore_give(g_hid_devices_mutex);
+            }
+        }
+
+        // Trailing flush of pending raw reports at the rate limit. Sending the
+        // latest pending here (instead of dropping in the loop above) ensures
+        // the LAST report of a gesture reaches the subscriber.
+        {
+            fmrb_tick_t now = fmrb_task_get_tick_count();
+            for (int s = 0; s < MAX_HID_DEVICES; s++) {
+                if (!g_raw_pending[s]) continue;
+                if ((now - g_raw_report_last_tick[s]) < FMRB_MS_TO_TICKS(RAW_REPORT_MIN_INTERVAL_MS)) {
+                    continue;
+                }
+                uint16_t pid = g_raw_pending_pid[s];
+                g_raw_pending[s] = 0;
+                if (pid == 0) continue;
+                g_raw_report_last_tick[s] = now;
+                send_raw_report_to_subscriber(pid, (int8_t)s,
+                                              g_raw_pending_vid[s], g_raw_pending_dev_pid[s],
+                                              g_raw_pending_data[s], g_raw_pending_len[s]);
             }
         }
 

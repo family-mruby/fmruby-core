@@ -835,10 +835,18 @@ static mrb_value mrb_fmrb_app_s_config(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "z", &section);
 
     #define CONFIG_MAX_TABLES 16
-    fmrb_config_table_t tables[CONFIG_MAX_TABLES];
+    // sizeof(fmrb_config_table_t) is ~2.5KB, so the full array is ~40KB. That
+    // must NOT live on the stack: this runs in the system_desktop task whose
+    // stack is only 12KB. The oversized frame overflowed into adjacent memory
+    // and crashed once enough sections were written deep into the array
+    // (e.g. a 5th [[shortcuts]] entry). Allocate on the heap instead.
+    fmrb_config_table_t *tables =
+        (fmrb_config_table_t *)mrb_malloc(mrb, sizeof(fmrb_config_table_t) * CONFIG_MAX_TABLES);
+
     int table_count = fmrb_kernel_get_config_section(section, tables, CONFIG_MAX_TABLES);
 
     if (table_count <= 0) {
+        mrb_free(mrb, tables);
         return mrb_nil_value();
     }
 
@@ -853,6 +861,7 @@ static mrb_value mrb_fmrb_app_s_config(mrb_state *mrb, mrb_value self)
         mrb_ary_push(mrb, result, hash);
     }
 
+    mrb_free(mrb, tables);
     return result;
 }
 
@@ -1199,9 +1208,40 @@ static mrb_value mrb_fmrb_app_s_usb_devices(mrb_state *mrb, mrb_value klass)
                      mrb_fixnum_value(devs[i].pid));
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "addr")),
                      mrb_fixnum_value(devs[i].dev_addr));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "slot")),
+                     mrb_fixnum_value(devs[i].slot));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "report_len")),
+                     mrb_fixnum_value(devs[i].report_byte_len));
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "layout_valid")),
+                     devs[i].layout_valid ? mrb_true_value() : mrb_false_value());
         mrb_ary_push(mrb, result, hash);
     }
     return result;
+}
+
+// FmrbApp.hid_raw_subscribe(slot) -> bool
+// Ask the USB task to forward raw HID reports from `slot` to this app
+// (delivered via on_control with cmd "hid_raw"). Used by the HID Inspector.
+static mrb_value mrb_fmrb_app_s_hid_raw_subscribe(mrb_state *mrb, mrb_value klass)
+{
+    mrb_int slot;
+    mrb_get_args(mrb, "i", &slot);
+
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        return mrb_false_value();
+    }
+    fmrb_err_t ret = usb_task_subscribe_raw_reports((int8_t)slot, (uint16_t)ctx->app_id);
+    return (ret == FMRB_OK) ? mrb_true_value() : mrb_false_value();
+}
+
+// FmrbApp.hid_raw_unsubscribe(slot) -> bool
+static mrb_value mrb_fmrb_app_s_hid_raw_unsubscribe(mrb_state *mrb, mrb_value klass)
+{
+    mrb_int slot;
+    mrb_get_args(mrb, "i", &slot);
+    fmrb_err_t ret = usb_task_unsubscribe_raw_reports((int8_t)slot);
+    return (ret == FMRB_OK) ? mrb_true_value() : mrb_false_value();
 }
 
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
@@ -1232,6 +1272,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_clear_cache", mrb_fmrb_app_s_clear_cache, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "usb_devices", mrb_fmrb_app_s_usb_devices, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "hid_raw_subscribe", mrb_fmrb_app_s_hid_raw_subscribe, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "hid_raw_unsubscribe", mrb_fmrb_app_s_hid_raw_unsubscribe, MRB_ARGS_REQ(1));
 
     // Note: Constants now defined in FmrbConst module (picoruby-fmrb-const gem)
 

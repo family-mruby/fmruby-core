@@ -20,6 +20,7 @@ extern const uint8_t shell_irep[];
 extern const uint8_t editor_irep[];
 extern const uint8_t logviewer_irep[];
 extern const uint8_t monitor_irep[];
+extern const uint8_t inspector_irep[];
 
 // Built-in app configuration table
 typedef struct {
@@ -119,6 +120,24 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .headless = false,
         .window_width = 180,
         .window_height = 120,
+        .window_pos_x = 5,
+        .window_pos_y = 15,
+        .rounded_corners = true
+    }},
+    { "default/inspector", {
+        .app_id = -1,
+        .type = APP_TYPE_USER_APP,
+        .name = "HID Inspector",
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = inspector_irep,
+        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
+        .priority = FMRB_SHELL_APP_PRIORITY,
+        .flags = FMRB_SHELL_APP_TASK_FLAGS,
+        .core_affinity = -1,
+        .headless = false,
+        .window_width = 280,
+        .window_height = 200,
         .window_pos_x = 5,
         .window_pos_y = 15,
         .rounded_corners = true

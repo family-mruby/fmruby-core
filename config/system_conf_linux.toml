@@ -40,6 +40,10 @@ app = "default/editor"
 key = "n"
 app = "app/demo/nsf_player.app.rb"
 
+[[shortcuts]]
+key = "i"
+app = "default/inspector"
+
 [[sync_files]]
 src = "/usr/share/sounds/test.nsf"
 dest = "/flash/data/test.nsf"
