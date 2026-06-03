@@ -32,9 +32,8 @@ class InspectorApp < FmrbApp
   # Wizard step indices
   W_BASE = 0
   W_BTN  = 1
-  W_X    = 2
-  W_Y    = 3
-  W_NUM  = 4
+  W_MOVE = 2
+  W_NUM  = 3
 
   def initialize
     super()
@@ -106,6 +105,7 @@ class InspectorApp < FmrbApp
     if @collecting && @samples.length < SAMPLE_CAP
       @samples.push(data)
     end
+    verify_report(data) if @state == :verify
     @dirty = true
   end
 
@@ -169,6 +169,20 @@ class InspectorApp < FmrbApp
         @state = :inspect
         @collecting = false
       end
+    when :verify
+      if ch == "n" || sc == FmrbConst::KEY_ENTER
+        build_result
+        @state = :result
+      elsif ch == "p"
+        @wstep = W_MOVE
+        start_collecting
+        @state = :wizard
+      elsif ch == "c"
+        @vx = @user_area_x0 + @user_area_width / 2
+        @vy = @user_area_y0 + (@user_area_height + 18) / 2
+      elsif sc == FmrbConst::KEY_ESC
+        @state = :inspect
+      end
     when :result
       if ch == "s"
         save_toml
@@ -220,10 +234,7 @@ class InspectorApp < FmrbApp
     @btn_field = nil
     @x_raw = nil
     @y_raw = nil
-    @x_counts = nil
-    @y_counts = nil
-    @x_n = 0
-    @y_n = 0
+    @move_range = nil   # [lo,hi] bit range that moved during the shake step
   end
 
   def start_collecting
@@ -240,14 +251,39 @@ class InspectorApp < FmrbApp
       @baseline = @samples.empty? ? Array.new(rlen, 0) : @samples.last
     when W_BTN
       @btn_field = detect_button
-    when W_X
-      @x_counts = bit_change_counts(@samples)
-      @x_n = @samples.length
-      @x_raw = significant_range(@x_counts, @x_n)
-    when W_Y
-      @y_counts = bit_change_counts(@samples)
-      @y_n = @samples.length
-      @y_raw = significant_range(@y_counts, @y_n)
+    when W_MOVE
+      counts = bit_change_counts(@samples)
+      mask_button_bits(counts)
+      @move_range = significant_range(counts, @samples.length)
+      split_move_range
+    end
+  end
+
+  # Split the moved bit range in half: lower half = X, upper half = Y.
+  # Standard mice place X then Y, contiguous and equal width, so halving the
+  # shaken range recovers both fields (and divides a shared byte at the nibble).
+  def split_move_range
+    @x_raw = nil
+    @y_raw = nil
+    return unless @move_range
+    lo = @move_range[0]
+    hi = @move_range[1]
+    total = hi - lo + 1
+    return if total < 2
+    half = total / 2
+    @x_raw = [lo, lo + half - 1]
+    @y_raw = [lo + half, hi]
+  end
+
+  # Zero out counts for bits inside the detected button field, so an accidental
+  # click during the shake step does not pollute the moved range.
+  def mask_button_bits(counts)
+    return unless @btn_field
+    b = @btn_field[:off]
+    last = b + @btn_field[:size] - 1
+    while b <= last && b < counts.length
+      counts[b] = 0
+      b += 1
     end
   end
 
@@ -256,9 +292,19 @@ class InspectorApp < FmrbApp
       @wstep += 1
       start_collecting
     else
-      build_result
-      @state = :result
+      compute_layout
+      enter_verify
     end
+  end
+
+  # Live test of the detected layout: parse incoming reports with @lay_* and
+  # move a dot so the user can confirm the mapping before saving.
+  def enter_verify
+    @collecting = false
+    @vx = @user_area_x0 + @user_area_width / 2
+    @vy = @user_area_y0 + (@user_area_height + 18) / 2
+    @vbtn = 0
+    @state = :verify
   end
 
   def prev_step
@@ -302,10 +348,11 @@ class InspectorApp < FmrbApp
     [minb, maxb]
   end
 
-  # Per-bit count of how many samples differ from baseline at that bit.
-  # Used to separate X from Y: a bit "belongs" to whichever axis step flipped
-  # it more often (human motion is never axis-pure, so a plain changed-or-not
-  # union would mark the same bits for both axes).
+  # Per-bit count of how many samples that bit changed from baseline, summed
+  # over the whole gesture (an integrated statistic: a momentary off-axis
+  # spike adds at most a few counts, while sustained intended motion piles up
+  # many). Per-bit resolution lets us split fields that share a byte (e.g. the
+  # 12-bit packed format's middle byte = X high nibble + Y low nibble).
   def bit_change_counts(samples)
     base = @baseline.empty? ? Array.new(rlen, 0) : @baseline
     nbits = base.length * 8
@@ -328,7 +375,7 @@ class InspectorApp < FmrbApp
     counts
   end
 
-  # Bits that changed in a meaningful fraction of samples -> [min,max] (display).
+  # Bits active in a meaningful fraction of samples -> [min,max] (provisional).
   def significant_range(counts, n)
     return nil unless counts
     thr = n / 8
@@ -347,32 +394,6 @@ class InspectorApp < FmrbApp
     [minb, maxb]
   end
 
-  # Final X/Y separation: a bit is X if it flipped more under X-motion than
-  # Y-motion (and vice versa). Returns [x_range, y_range], each [min,max] or nil.
-  def separate_xy
-    return [@x_raw, @y_raw] unless @x_counts && @y_counts
-    nbits = @x_counts.length > @y_counts.length ? @x_counts.length : @y_counts.length
-    xthr = @x_n / 8; xthr = 2 if xthr < 2
-    ythr = @y_n / 8; ythr = 2 if ythr < 2
-    xmin = nil; xmax = nil; ymin = nil; ymax = nil
-    bit = 0
-    while bit < nbits
-      xc = @x_counts[bit] || 0
-      yc = @y_counts[bit] || 0
-      if xc >= xthr && xc > yc
-        xmin = bit if xmin.nil?
-        xmax = bit
-      elsif yc >= ythr && yc > xc
-        ymin = bit if ymin.nil?
-        ymax = bit
-      end
-      bit += 1
-    end
-    xr = xmin.nil? ? nil : [xmin, xmax]
-    yr = ymin.nil? ? nil : [ymin, ymax]
-    [xr, yr]
-  end
-
   # Buttons: snap the changed range to the enclosing byte (8-bit field).
   def detect_button
     r = changed_bit_range(@samples)
@@ -383,54 +404,62 @@ class InspectorApp < FmrbApp
 
   # ---- Layout synthesis + TOML ----------------------------------------------
 
-  def build_result
-    @result_warn = nil
+  # Turn the detected raw bit ranges into a concrete layout (offsets are
+  # relative to report data, i.e. after the Report ID byte if present).
+  # Stored in @lay_* so both the VERIFY step and the TOML output use the
+  # exact same interpretation.
+  def compute_layout
     rl = rlen
 
     # Report ID heuristic: buttons not in byte0 => byte0 is a constant Report ID.
     has_id = @btn_field && @btn_field[:off] >= 8
     shift = has_id ? 8 : 0
-    report_id = has_id ? (@baseline[0] || 0) : nil
-    data_len = rl - (has_id ? 1 : 0)
 
     btn_off = (@btn_field ? @btn_field[:off] : 0) - shift
     btn_off = 0 if btn_off < 0
 
-    # Separate X from Y by per-bit dominance so they don't collapse to the
-    # same range when the user's motion isn't perfectly axis-pure.
-    sep = separate_xy
-    @x_raw = sep[0] if sep[0]
-    @y_raw = sep[1] if sep[1]
-
+    # @x_raw / @y_raw were produced by halving the shaken bit range
+    # (lower half = X, upper half = Y) in capture_step.
     x = field_from_raw(@x_raw, shift)
     y = field_from_raw(@y_raw, shift)
 
     # Snap to known templates for the common cases the generic path misses.
-    if !has_id && data_len == 3 && x && y &&
+    if !has_id && (rl == 3) && x && y &&
        near?(x[:off], 8) && near?(y[:off], 16)
       # Standard 3-byte Boot mouse
       x = { off: 8, size: 8 }
       y = { off: 16, size: 8 }
-    elsif !has_id && data_len >= 5 && x && y &&
+    elsif !has_id && (rl >= 5) && x && y &&
           near?(x[:off], 8) && y && y[:off] >= 16
       # 12-bit packed (e.g. generic OEM "USB Optical Mouse")
       x = { off: 8, size: 12 }
       y = { off: 20, size: 12 }
     end
 
+    @lay_warn = nil
     if x.nil? || y.nil?
-      @result_warn = "X/Y not detected - move firmly both ways and retry"
-      x ||= { off: 8, size: 8 }
-      y ||= { off: 16, size: 8 }
+      @lay_warn = "X/Y not detected - shake harder and retry"
+      x = { off: 8, size: 8 } if x.nil?
+      y = { off: 16, size: 8 } if y.nil?
     end
 
+    @lay_has_id = has_id
+    @lay_report_id = has_id ? (@baseline[0] || 0) : nil
+    @lay_data_len = rl - (has_id ? 1 : 0)
+    @lay_btn_off = btn_off
+    @lay_x = x
+    @lay_y = y
+  end
+
+  def build_result
+    @result_warn = @lay_warn
     vid = @cur[:vid]
     pid = @cur[:pid]
     if toml_has_vidpid?(vid, pid)
       @result_warn = "VID/PID already in TOML - duplicate appended"
     end
-
-    @result_toml = build_toml(vid, pid, report_id, data_len, btn_off, x, y)
+    @result_toml = build_toml(vid, pid, @lay_report_id, @lay_data_len,
+                              @lay_btn_off, @lay_x, @lay_y)
   end
 
   # Convert a detected raw bit range into {off,size} with size snapped to a
@@ -446,6 +475,45 @@ class InspectorApp < FmrbApp
 
   def near?(a, b)
     (a - b).abs <= 2
+  end
+
+  # Extract a signed little-endian bit field from a raw report using the
+  # detected layout (offset is relative to data, after Report ID if present).
+  def extract_field(report, off, size)
+    base = (@lay_has_id ? 8 : 0) + off
+    val = 0
+    i = 0
+    while i < size
+      bit = base + i
+      byte = bit / 8
+      if byte < report.length
+        val |= ((report[byte] >> (bit % 8)) & 1) << i
+      end
+      i += 1
+    end
+    val -= (1 << size) if size > 0 && (val & (1 << (size - 1))) != 0  # sign-extend
+    val
+  end
+
+  def verify_buttons(report)
+    byte = (@lay_has_id ? 1 : 0) + @lay_btn_off / 8
+    byte < report.length ? report[byte] : 0
+  end
+
+  # Apply one report to the test dot using the detected layout.
+  def verify_report(report)
+    return unless @lay_x && @lay_y
+    @vx += extract_field(report, @lay_x[:off], @lay_x[:size])
+    @vy += extract_field(report, @lay_y[:off], @lay_y[:size])
+    x0 = @user_area_x0 + 3
+    x1 = @user_area_x0 + @user_area_width - 3
+    y0 = @user_area_y0 + 24
+    y1 = @user_area_y0 + @user_area_height - 12
+    @vx = x0 if @vx < x0
+    @vx = x1 if @vx > x1
+    @vy = y0 if @vy < y0
+    @vy = y1 if @vy > y1
+    @vbtn = verify_buttons(report)
   end
 
   def build_toml(vid, pid, report_id, report_len, btn_off, x, y)
@@ -516,6 +584,7 @@ class InspectorApp < FmrbApp
     when :list    then draw_list
     when :inspect then draw_inspect
     when :wizard  then draw_wizard
+    when :verify  then draw_verify
     when :result  then draw_result
     end
     draw_window_frame
@@ -578,12 +647,11 @@ class InspectorApp < FmrbApp
   end
 
   def draw_wizard
-    titles = ["1/4 Baseline", "2/4 Left button", "3/4 X axis", "4/4 Y axis"]
+    titles = ["1/3 Baseline", "2/3 Left button", "3/3 Move (X & Y)"]
     instrs = [
       "Keep mouse STILL, then SPACE.",
       "Hold LEFT button, then SPACE.",
-      "Move LEFT<->RIGHT firmly, SPACE.",
-      "Move UP<->DOWN firmly, SPACE.",
+      "Shake L/R & U/D HARD, then SPACE.",
     ]
     line(0, "Wizard " + titles[@wstep], COL_HI)
     line(1, instrs[@wstep], COL_TEXT)
@@ -596,11 +664,27 @@ class InspectorApp < FmrbApp
     if @btn_field
       line(r, "buttons @bit #{@btn_field[:off]}", COL_OK); r += 1
     end
-    line(r, "X bits: " + range_str(@x_raw), @x_raw ? COL_OK : COL_DIM); r += 1
-    line(r, "Y bits: " + range_str(@y_raw), @y_raw ? COL_OK : COL_DIM); r += 1
+    line(r, "moved bits: " + range_str(@move_range), @move_range ? COL_OK : COL_DIM); r += 1
+    line(r, "  -> X: " + range_str(@x_raw) + "  Y: " + range_str(@y_raw),
+         @x_raw ? COL_OK : COL_DIM); r += 1
 
-    nxt = @wstep < W_NUM - 1 ? "N:next" : "N:finish"
+    nxt = @wstep < W_NUM - 1 ? "N:next" : "N:verify"
     line(@max_lines - 1, "SPACE:capture #{nxt} P:prev Esc:cancel", COL_DIM)
+  end
+
+  def draw_verify
+    line(0, "Verify - does the dot follow?", COL_HI)
+    bl = (@vbtn & 0x01) != 0
+    br = (@vbtn & 0x02) != 0
+    bm = (@vbtn & 0x04) != 0
+    line(1, "Btn:  L#{bl ? '*' : '-'}  R#{br ? '*' : '-'}  M#{bm ? '*' : '-'}",
+         (@vbtn != 0) ? COL_OK : COL_DIM)
+    lx = @lay_x || { off: 0, size: 0 }
+    ly = @lay_y || { off: 0, size: 0 }
+    line(2, "x@#{lx[:off]}/#{lx[:size]} y@#{ly[:off]}/#{ly[:size]}", COL_DIM)
+    # The test dot, moved by verify_report using the detected layout.
+    @gfx.fill_circle(@vx, @vy, 3, COL_RAW) if @gfx
+    line(@max_lines - 1, "Enter:OK P:redo C:center Esc:cancel", COL_DIM)
   end
 
   def draw_result
