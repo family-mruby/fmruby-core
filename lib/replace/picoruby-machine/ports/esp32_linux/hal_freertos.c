@@ -29,8 +29,8 @@
 typedef struct {
     mrb_state *mrb;
     int active;
-    int in_c_funcall;
-    int irq;
+    uint32_t pending_ticks;   /* 案D: ticks accumulated by signal source, drained by VM thread */
+    uint32_t tick_countdown;  /* 案D: ticks until next preemption signal (timeslice cadence) */
 } mrb_vm_entry_t;
 
 static struct {
@@ -45,6 +45,13 @@ static struct {
     .task_created = 0
 };
 
+/*
+ * 案D top-half: signal source only. Must NOT call mrb_tick() from this thread
+ * (would race the VM thread on the task queues). It only accumulates a pending
+ * tick count and sets mrb->task.switching so a running task yields. The real
+ * mrb_tick() runs on the VM's own thread in mrb_task_run() via
+ * mrb_hal_task_take_pending_ticks(). See doc/known_issue.
+ */
 static void mruby_tick_task(void* arg) {
     (void)arg;
     const TickType_t tick_interval = pdMS_TO_TICKS(MRB_TICK_UNIT);
@@ -56,15 +63,47 @@ static void mruby_tick_task(void* arg) {
 
         if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
             for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-                if (g_tick_manager.vms[i].active && g_tick_manager.vms[i].mrb) {
-                    if (MRB_C_FUNCALL_EXIT == g_tick_manager.vms[i].in_c_funcall && MRB_ENABLE_IRQ == g_tick_manager.vms[i].irq) {
-                        mrb_tick(g_tick_manager.vms[i].mrb);
+                mrb_vm_entry_t *vm = &g_tick_manager.vms[i];
+                if (vm->active && vm->mrb) {
+                    /* Time tracking: applied on the VM's own thread in
+                     * mrb_task_run (bottom-half). */
+                    vm->pending_ticks++;
+                    /* Preempt at timeslice cadence. Safe because the VM acts on
+                     * switching only at a top-level bytecode boundary
+                     * (mrb_task_yield_ok in vm.c), never inside a nested C call. */
+                    if (vm->tick_countdown > 0) vm->tick_countdown--;
+                    if (vm->tick_countdown == 0) {
+                        mrb_task_request_switch(vm->mrb);
+                        vm->tick_countdown = MRB_TIMESLICE_TICK_COUNT;
                     }
                 }
             }
             xSemaphoreGive(g_tick_manager.mutex);
         }
     }
+}
+
+/*
+ * Return and zero the pending-tick count for this VM (案D bottom-half source).
+ * Called from mrb_task_run() on the VM's own thread.
+ */
+uint32_t
+mrb_hal_task_take_pending_ticks(mrb_state *mrb)
+{
+    uint32_t n = 0;
+    if (g_tick_manager.mutex == NULL) return 0;
+
+    if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+        for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
+            if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
+                n = g_tick_manager.vms[i].pending_ticks;
+                g_tick_manager.vms[i].pending_ticks = 0;
+                break;
+            }
+        }
+        xSemaphoreGive(g_tick_manager.mutex);
+    }
+    return n;
 }
 
 void
@@ -112,8 +151,8 @@ hal_register_vm(mrb_state *mrb)
       if (!g_tick_manager.vms[i].active) {
         g_tick_manager.vms[i].mrb = mrb;
         g_tick_manager.vms[i].active = 1;
-        g_tick_manager.vms[i].in_c_funcall = MRB_C_FUNCALL_EXIT;
-        g_tick_manager.vms[i].irq = MRB_ENABLE_IRQ;
+        g_tick_manager.vms[i].pending_ticks = 0;
+        g_tick_manager.vms[i].tick_countdown = MRB_TIMESLICE_TICK_COUNT;
         ESP_LOGI("hal", "mrb VM registered at slot %d (mrb=%p)", i, mrb);
         added = 1;
         break;
@@ -126,40 +165,18 @@ hal_register_vm(mrb_state *mrb)
   }
 }
 
+/*
+ * 案D: queues are mutated only by each VM's own thread now, so no IRQ/lock
+ * guard is needed. Kept as no-ops to satisfy the mruby-task HAL contract.
+ */
 void
 mrb_task_enable_irq(void)
 {
-  if (g_tick_manager.mutex == NULL) return;
-  fmrb_app_task_context_t* ctx = fmrb_current();
-  mrb_state* mrb = ctx->mrb;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].irq = MRB_ENABLE_IRQ;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
 }
 
 void
 mrb_task_disable_irq(void)
 {
-  if (g_tick_manager.mutex == NULL) return;
-  fmrb_app_task_context_t* ctx = fmrb_current();
-  mrb_state* mrb = ctx->mrb;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].irq = MRB_DISABLE_IRQ;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
 }
 
 void
@@ -197,22 +214,6 @@ hal_deinit_by_pool(void* pool_ptr, size_t pool_size)
           g_tick_manager.vms[i].mrb = NULL;
           ESP_LOGI("hal", "mrb VM unregistered from slot %d (pool cleanup)", i);
         }
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
-}
-
-void
-mrb_set_in_c_funcall(mrb_state *mrb, int flag)
-{
-  if (g_tick_manager.mutex == NULL) return;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].in_c_funcall = flag;
-        break;
       }
     }
     xSemaphoreGive(g_tick_manager.mutex);

@@ -70,8 +70,8 @@ void hal_idle_cpu(void) { vTaskDelay(1); }
 typedef struct {
   mrb_state *mrb;
   int active;
-  int in_c_funcall;  /* MRB_C_FUNCALL_EXIT=0, MRB_C_FUNCALL_ENTER=1 */
-  int irq;           /* MRB_ENABLE_IRQ=0, MRB_DISABLE_IRQ=1 */
+  uint32_t pending_ticks;   /* 案D: ticks accumulated by signal source, drained by VM thread */
+  uint32_t tick_countdown;  /* 案D: ticks until next preemption signal (timeslice cadence) */
 } mrb_vm_entry_t;
 
 static struct {
@@ -88,7 +88,17 @@ static struct {
 
 volatile int sigint_status = 0; /* MACHINE_SIG_NONE */
 
-/* FreeRTOS task: deliver mrb_tick() to all registered VMs periodically */
+/*
+ * FreeRTOS tick signal source (案D top-half).
+ *
+ * This task runs on a thread other than the VMs. It must therefore NOT call
+ * mrb_tick() (which mutates the per-VM task queues) - doing so races the VM's
+ * own thread and corrupts the task context (see doc/known_issue). Instead it
+ * only: (1) accumulates a pending-tick count, and (2) sets mrb->task.switching
+ * so a running (possibly CPU-bound) task yields at the next bytecode boundary.
+ * The real mrb_tick() is applied by the VM itself in mrb_task_run() via
+ * mrb_hal_task_take_pending_ticks().
+ */
 static void
 mruby_tick_task(void *arg)
 {
@@ -100,16 +110,48 @@ mruby_tick_task(void *arg)
 
     if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
       for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-        if (g_tick_manager.vms[i].active && g_tick_manager.vms[i].mrb) {
-          if (g_tick_manager.vms[i].in_c_funcall == MRB_C_FUNCALL_EXIT &&
-              g_tick_manager.vms[i].irq == MRB_ENABLE_IRQ) {
-            mrb_tick(g_tick_manager.vms[i].mrb);
+        mrb_vm_entry_t *vm = &g_tick_manager.vms[i];
+        if (vm->active && vm->mrb) {
+          /* Time tracking: ticks are applied on the VM's own thread in
+           * mrb_task_run (bottom-half), never from this thread. */
+          vm->pending_ticks++;
+          /* Preempt CPU-bound tasks at timeslice cadence. Requesting the switch
+           * asynchronously is safe: the VM acts on switching only at a top-level
+           * bytecode boundary (mrb_task_yield_ok in vm.c), never inside a nested
+           * C call, so the pending switch is deferred to the next safe point. */
+          if (vm->tick_countdown > 0) vm->tick_countdown--;
+          if (vm->tick_countdown == 0) {
+            mrb_task_request_switch(vm->mrb);
+            vm->tick_countdown = MRB_TIMESLICE_TICK_COUNT;
           }
         }
       }
       xSemaphoreGive(g_tick_manager.mutex);
     }
   }
+}
+
+/*
+ * Return and zero the pending-tick count for this VM (案D bottom-half source).
+ * Called from mrb_task_run() on the VM's own thread.
+ */
+uint32_t
+mrb_hal_task_take_pending_ticks(mrb_state *mrb)
+{
+  uint32_t n = 0;
+  if (g_tick_manager.mutex == NULL) return 0;
+
+  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
+    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
+      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
+        n = g_tick_manager.vms[i].pending_ticks;
+        g_tick_manager.vms[i].pending_ticks = 0;
+        break;
+      }
+    }
+    xSemaphoreGive(g_tick_manager.mutex);
+  }
+  return n;
 }
 
 void
@@ -157,8 +199,8 @@ hal_register_vm(mrb_state *mrb)
       if (!g_tick_manager.vms[i].active) {
         g_tick_manager.vms[i].mrb = mrb;
         g_tick_manager.vms[i].active = 1;
-        g_tick_manager.vms[i].in_c_funcall = MRB_C_FUNCALL_EXIT;
-        g_tick_manager.vms[i].irq = MRB_ENABLE_IRQ;
+        g_tick_manager.vms[i].pending_ticks = 0;
+        g_tick_manager.vms[i].tick_countdown = MRB_TIMESLICE_TICK_COUNT;
         break;
       }
     }
@@ -205,56 +247,19 @@ hal_deinit_by_pool(void *pool_ptr, size_t pool_size)
   }
 }
 
+/*
+ * 案D: the task queues are now mutated only by each VM's own thread (the signal
+ * source no longer calls mrb_tick), so the scheduler needs no IRQ/lock guard.
+ * These remain as no-ops to satisfy the mruby-task HAL contract.
+ */
 void
 mrb_task_enable_irq(void)
 {
-  if (g_tick_manager.mutex == NULL) return;
-  fmrb_app_task_context_t *ctx = fmrb_current();
-  mrb_state *mrb = ctx->mrb;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].irq = MRB_ENABLE_IRQ;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
 }
 
 void
 mrb_task_disable_irq(void)
 {
-  if (g_tick_manager.mutex == NULL) return;
-  fmrb_app_task_context_t *ctx = fmrb_current();
-  mrb_state *mrb = ctx->mrb;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].irq = MRB_DISABLE_IRQ;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
-}
-
-void
-mrb_set_in_c_funcall(mrb_state *mrb, int flag)
-{
-  if (g_tick_manager.mutex == NULL) return;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].in_c_funcall = flag;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
 }
 
 void
@@ -271,9 +276,10 @@ hal_idle_cpu(mrb_state *mrb)
 void
 mrb_hal_task_init(mrb_state *mrb)
 {
-  /* DEBUG: Tick task disabled to isolate VM corruption issue.
-   * See doc/known_issues.md for the crash we are hunting. */
-  (void)mrb;
+  /* 案D: re-enabled. The tick task is now a signal-only source (sets
+   * switching + accumulates pending ticks); it no longer calls mrb_tick from
+   * a foreign thread, so the VM-corruption race is gone. Idempotent. */
+  machine_hal_init(mrb);
 }
 
 void

@@ -11,6 +11,9 @@ extern "C" {
 #if defined(PICORB_VM_MRUBY)
 #include "mruby.h"
 void mrb_tick(mrb_state *mrb);
+/* 案D tick split: signal source (HAL) <-> scheduler (mruby-task). */
+void mrb_task_request_switch(mrb_state *mrb);      /* defined in mruby-task/task.c */
+uint32_t mrb_hal_task_take_pending_ticks(mrb_state *mrb);  /* defined in the HAL port */
 void hal_init(mrb_state *mrb);
 
 /* Avoid conflict with hal_init() from libpp used in ESP-IDF. */
@@ -54,12 +57,6 @@ int hal_write(int fd, const void *buf, int nbytes);
 void hal_register_vm(mrb_state *mrb);
 void hal_deinit(mrb_state *mrb);
 void hal_deinit_by_pool(void *pool_ptr, size_t pool_size);
-
-#define MRB_C_FUNCALL_ENTER 1
-#define MRB_C_FUNCALL_EXIT  0
-#define MRB_DISABLE_IRQ 1
-#define MRB_ENABLE_IRQ  0
-void mrb_set_in_c_funcall(mrb_state *mrb, int flag);
 #endif
 
 /* Task HAL functions (implemented in hal-posix-task or platform-specific code) */

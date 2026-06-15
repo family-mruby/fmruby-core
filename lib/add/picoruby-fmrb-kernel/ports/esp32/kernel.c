@@ -61,8 +61,6 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
     fmrb_tick_t start_tick = fmrb_task_get_tick_count();
     fmrb_tick_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
 
-    mrb_set_in_c_funcall(mrb, MRB_C_FUNCALL_ENTER);
-
     // Receive messages until timeout expires
     while (true) {
         // Calculate remaining time
@@ -121,8 +119,6 @@ static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
         }
     }
 
-    mrb_set_in_c_funcall(mrb, MRB_C_FUNCALL_EXIT);
-    
     return mrb_nil_value();
 }
 

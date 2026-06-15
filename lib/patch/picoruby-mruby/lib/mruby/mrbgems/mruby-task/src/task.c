@@ -23,6 +23,21 @@
 #include "task_hal.h"
 
 /*
+ * family-mruby (案D, top-half / bottom-half tick split):
+ * The platform tick signal source (a FreeRTOS task in the machine HAL) only
+ * sets mrb->task.switching and accumulates a per-VM pending-tick count; it must
+ * NOT call mrb_tick() itself, because that would mutate the task queues from a
+ * thread other than the one running this VM (data race -> ci->proc corruption).
+ * This function returns and zeroes the pending-tick count for the given VM, and
+ * is called below on the VM's own thread (the scheduler loop), where queue
+ * access is single-threaded. Defined per-platform in the machine HAL port.
+ */
+extern uint32_t mrb_hal_task_take_pending_ticks(mrb_state *mrb);
+
+/* Defined below; called from the HAL tick signal source (other thread). */
+MRB_API void mrb_task_request_switch(mrb_state *mrb);
+
+/*
  * Queue helper macros
  */
 #define q_dormant_   (mrb->task.queues[MRB_TASK_QUEUE_DORMANT])
@@ -448,6 +463,21 @@ mrb_tick(mrb_state *mrb)
   }
 }
 
+/*
+ * Request a cooperative yield for the VM running on `mrb` (案D top-half helper).
+ * Called from the platform tick signal source, which runs on a thread other
+ * than this VM and therefore cannot touch mrb->task directly (the struct field
+ * is guarded by MRB_USE_TASK_SCHEDULER, undefined in the HAL port's TU). The VM
+ * dispatch loop checks switching on every bytecode boundary, so setting it makes
+ * a running (CPU-bound) task return to the scheduler. switching is a single
+ * volatile word, so a cross-thread set is safe (worst case: one extra/late yield).
+ */
+MRB_API void
+mrb_task_request_switch(mrb_state *mrb)
+{
+  switching_ = TRUE;
+}
+
 /* Main scheduler loop */
 MRB_API mrb_value
 mrb_task_run(mrb_state *mrb)
@@ -455,6 +485,16 @@ mrb_task_run(mrb_state *mrb)
   mrb_task *t;
 
   while (1) {
+    /* Bottom-half: apply ticks accumulated by the signal source on this, the
+     * VM's own thread (single-threaded queue access). Runs every iteration,
+     * including idle ones, so sleeping tasks wake up on time. */
+    {
+      uint32_t pending = mrb_hal_task_take_pending_ticks(mrb);
+      for (uint32_t i = 0; i < pending; i++) {
+        mrb_tick(mrb);
+      }
+    }
+
     t = q_ready_;
 
     /* No task ready - check if all tasks are done */
@@ -497,6 +537,14 @@ mrb_task_run(mrb_state *mrb)
 MRB_API mrb_value
 mrb_task_run_once(mrb_state *mrb)
 {
+  /* Bottom-half: apply ticks accumulated by the signal source (see mrb_task_run). */
+  {
+    uint32_t pending = mrb_hal_task_take_pending_ticks(mrb);
+    for (uint32_t i = 0; i < pending; i++) {
+      mrb_tick(mrb);
+    }
+  }
+
   mrb_task *t = q_ready_;
 
   /* No task ready */

@@ -478,7 +478,6 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
     }
     FMRB_LOGD(TAG, ">>>>>>>>> _spin(%s) START >>>>>>>>>>>>>",ctx->app_name);
-    mrb_set_in_c_funcall(mrb, MRB_C_FUNCALL_ENTER);
 
     mrb_int timeout_ms;
     mrb_get_args(mrb, "i", &timeout_ms);
@@ -586,25 +585,10 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
         }
     }
 
-    // Clear in_c_funcall flag
-    mrb_set_in_c_funcall(mrb, MRB_C_FUNCALL_EXIT);
-
-    // Compensate for missed mruby ticks during C funcall
-    // Calculate elapsed time and call mrb_tick() for each missed tick
-    fmrb_tick_t end_tick = fmrb_task_get_tick_count();
-    fmrb_tick_t elapsed_ticks = end_tick - start_tick;
-
-    // MRB_TICK_UNIT is in milliseconds (typically 4-5ms)
-    // Convert elapsed FreeRTOS ticks to milliseconds, then to mruby tick count
-    mrb_int elapsed_ms = pdTICKS_TO_MS(elapsed_ticks);
-    mrb_int missed_ticks = (elapsed_ms + MRB_TICK_UNIT - 1) / MRB_TICK_UNIT;  // Round up
-
-    FMRB_LOGD(TAG, "_spin(%s): elapsed=%ldms, compensating %ld ticks",
-              ctx->app_name, (long)elapsed_ms, (long)missed_ticks);
-
-    for (mrb_int i = 0; i < missed_ticks; i++) {
-        mrb_tick(mrb);
-    }
+    // 案D: do NOT apply mrb_tick() here. Ticks accumulated by the signal source
+    // during this C funcall are drained and applied by the scheduler loop
+    // (mrb_task_run) -- the single, universal tick-application point for every
+    // VM. Applying them here too would double-count tick_.
 
     FMRB_LOGD(TAG, "<<<<<<<<< _spin(%s) END <<<<<<<<<<<<<",ctx->app_name);
     return mrb_nil_value();

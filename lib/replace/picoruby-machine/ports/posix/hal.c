@@ -36,7 +36,7 @@ typedef void mrb_state;
 
 /*
  * hal_init, hal_register_vm, hal_deinit, hal_deinit_by_pool,
- * mrb_set_in_c_funcall, hal_idle_cpu are provided by hal_freertos.c
+ * hal_idle_cpu are provided by hal_freertos.c
  * (ESP-IDF build) and resolved at final link time.
  * They are NOT defined here to avoid libmruby.a shadowing them.
  */
@@ -80,7 +80,7 @@ hal_abort(const char *s)
   exit(1);
 }
 
-/* hal_register_vm, hal_deinit, hal_deinit_by_pool, mrb_set_in_c_funcall
+/* hal_register_vm, hal_deinit, hal_deinit_by_pool
  * are provided by hal_freertos.c (ESP-IDF) at link time. */
 
 /*
