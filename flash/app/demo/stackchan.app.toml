@@ -1,0 +1,10 @@
+# script name must be "app_handle_name.app.rb"
+app_handle_name = "stackchan"
+app_screen_name = "StackChan"
+app_screen_name_ja = "スタックチャン"
+default_window_mode = "window"
+default_window_width = 160
+default_window_height = 120
+default_window_pos_x = 0
+default_window_pos_y = 12
+resizable = 1

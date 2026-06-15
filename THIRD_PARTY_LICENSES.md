@@ -18,6 +18,7 @@ Family mruby Core includes code from several open source projects. The following
 8. [LovyanGFX](#lovyangfx)
 9. [RX8900RTC](#rx8900rtc)
 10. [harucom-os](#harucom-os)
+11. [StackChan](#stackchan)
 
 ---
 
@@ -393,6 +394,37 @@ Note: Using picoruby-syntax-highlight, picorabbit
 --------------------------------------------------------------------------------
 
 Copyright (c) Shunsuke Michii
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+## StackChan
+Repository: https://github.com/m5stack/StackChan
+License: MIT License
+
+Note: The parametric face in flash/app/demo/stackchan.app.rb (eye/mouth
+geometry, blink/breath animation, and emotion parameters) is reimplemented in
+Ruby for Family mruby, derived from the StackChan avatar design. No StackChan
+source code or image assets are included.
+--------------------------------------------------------------------------------
+
+Copyright (c) 2026 M5Stack Technology CO LTD
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
