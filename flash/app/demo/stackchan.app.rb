@@ -20,8 +20,18 @@
 # stays proportional when the window is resized.
 #
 # Left click cycles through every expression/emote preset.
+#
+# Remote control (inter-app pub/sub): other apps drive the face by
+# `publish("stackchan", payload)` where payload is a small hash keyed by "type":
+#   {"type"=>"talk",    "on"=>true/false}     # start/stop the talking animation
+#   {"type"=>"mouth",   "level"=>0..100}      # set mouth open directly (lip-sync;
+#                                             #   auto-released if no update ~250ms)
+#   {"type"=>"emotion", "name"=>"Happy"}      # Neutral/Happy/Angry/Sad/Doubt/Sleepy
+#   {"type"=>"emote",   "name"=>"heart"}      # heart/shy/sweat/angry/dizzy, nil=clear
+# See stackchan_remote.app.rb for a demo publisher.
 
 class StackChanApp < FmrbApp
+  TOPIC = "stackchan"         # pub/sub topic other apps publish to (remote control)
   FRAME_INTERVAL    = 50      # ms (20fps)
   DESIGN_W = 320              # reference screen the center-origin params assume
   DESIGN_H = 240
@@ -40,6 +50,7 @@ class StackChanApp < FmrbApp
 
   # Talking (StackChan SpeakingModifier: 180ms toggle, open 40-80, closed 0-20)
   TALK_TOGGLE_MS    = 180
+  EXT_MOUTH_HOLD    = 250     # ms to hold an externally-set mouth level (lip-sync)
 
   # Eye / mouth base geometry (design space, center origin).
   # StackChan default eye is a 20px circle (radius 10); mouth params from mouth.cpp.
@@ -109,7 +120,12 @@ class StackChanApp < FmrbApp
     @mouth_toggle_at = 0
     @mouth_open      = false
     @talk_weight     = 0
-    log_mode
+    # Remote-control state (driven by on_control via the "stackchan" topic)
+    @remote_talk     = false
+    @ext_mouth_level = 0
+    @ext_mouth_until = 0
+    subscribe(TOPIC)
+    apply_preset(0)
     draw_face
   end
 
@@ -139,15 +155,65 @@ class StackChanApp < FmrbApp
       return if (ev[:x] - cbx).abs <= CLOSE_BTN_HIT_R &&
                 (ev[:y] - CLOSE_BTN_CY).abs <= CLOSE_BTN_HIT_R
       @idx = (@idx + 1) % PRESETS.size
-      log_mode
+      apply_preset(@idx)
     end
   end
 
+  # Apply a local preset to the independent face state (also used as the base
+  # state that remote-control commands then override piecemeal).
+  def apply_preset(idx)
+    p = PRESETS[idx]
+    @emotion     = p[:emo]
+    @deco        = p[:deco]
+    @dizzy       = p[:dizzy]
+    @preset_talk = p[:talk]
+    @mode_name   = p[:name]
+    log_mode
+  end
+
   def log_mode
-    p = PRESETS[@idx]
-    ep = EYE_PARAMS[p[:emo]]
+    ep = EYE_PARAMS[@emotion]
     arch = (ep[:rot].abs >= 900) ? " (^_^)" : ""   # lid swings below center
-    Log.info("mode: #{p[:name]} (emotion=#{p[:emo]}, deco=#{p[:deco] || "none"}, talk=#{p[:talk]}, dizzy=#{p[:dizzy]})#{arch}")
+    Log.info("mode: #{@mode_name} (emotion=#{@emotion}, deco=#{@deco || "none"}, talk=#{@preset_talk}, dizzy=#{@dizzy})#{arch}")
+  end
+
+  # Remote control: another app published to the "stackchan" topic. Only update
+  # state here; the next on_update repaints (avoids reentrant drawing).
+  def on_control(msg)
+    return unless msg["cmd"] == "topic_data" && msg["topic"] == TOPIC
+    data = msg["data"]
+    return unless data
+    case data["type"]
+    when "talk"
+      @remote_talk = data["on"] ? true : false
+      Log.info("remote: talk=#{@remote_talk}")
+    when "mouth"
+      lv = data["level"].to_i
+      lv = 0 if lv < 0
+      lv = 100 if lv > 100
+      @ext_mouth_level = lv
+      @ext_mouth_until = @elapsed_ms + EXT_MOUTH_HOLD
+    when "emotion"
+      name = data["name"]
+      if name && EYE_PARAMS[name]
+        @emotion = name
+        Log.info("remote: emotion=#{name}")
+      end
+    when "emote"
+      name = data["name"]
+      if name == "dizzy"
+        @dizzy = true
+        @deco = nil
+      else
+        @dizzy = false
+        @deco = name ? name.to_sym : nil
+      end
+      Log.info("remote: emote=#{name || "none"}")
+    end
+  end
+
+  def on_destroy
+    unsubscribe(TOPIC)
   end
 
   def on_resize(new_width, new_height)
@@ -196,11 +262,16 @@ class StackChanApp < FmrbApp
     end
   end
 
-  # Resolve the mouth open weight, factoring in talking (explicit preset or the
-  # occasional auto-talk). Returns the weight to draw this frame.
-  def resolve_mouth(preset)
-    base = EYE_PARAMS[preset[:emo]][:mouth]
-    unless preset[:dizzy] || preset[:talk]
+  # Resolve the mouth open weight. Priority:
+  #   1. external lip-sync level (recent "mouth" command)
+  #   2. talking (remote talk, the "Talking" preset, or occasional auto-talk)
+  #   3. the current emotion's resting mouth
+  def resolve_mouth
+    return @ext_mouth_level if @elapsed_ms < @ext_mouth_until
+
+    base = EYE_PARAMS[@emotion][:mouth]
+    forced = @preset_talk || @remote_talk
+    unless @dizzy || forced
       if !@talk_active && @elapsed_ms >= @next_talk_at
         @talk_active = true
         @talk_end_at = @elapsed_ms + 1500 + rand(1500)
@@ -210,7 +281,7 @@ class StackChanApp < FmrbApp
         @next_talk_at = @elapsed_ms + 5000 + rand(7000)
       end
     end
-    talking = preset[:talk] || @talk_active
+    talking = forced || @talk_active
     return base unless talking
     if @elapsed_ms >= @mouth_toggle_at
       @mouth_open = !@mouth_open
@@ -345,14 +416,12 @@ class StackChanApp < FmrbApp
   # --- Frame -----------------------------------------------------------------
 
   def draw_face
-    preset = PRESETS[@idx]
-    emo    = preset[:emo]
-    ep     = EYE_PARAMS[emo]
+    ep     = EYE_PARAMS[@emotion]
     sc     = compute_scale
 
     blink     = compute_blink_frac
     breath_dy = compute_breath_dy(sc)
-    mouth_w   = resolve_mouth(preset)
+    mouth_w   = resolve_mouth
 
     cx = @user_area_x0 + @user_area_width  / 2
     cy = @user_area_y0 + @user_area_height / 2
@@ -370,7 +439,7 @@ class StackChanApp < FmrbApp
     rx = cx + ( EYE_DX_DESIGN * sc).to_i + gx
     ey = cy + ( EYE_DY_DESIGN * sc).to_i + breath_dy + gy
 
-    if preset[:dizzy]
+    if @dizzy
       draw_spiral(lx, ey, r, @spin)
       draw_spiral(rx, ey, r, @spin + Math::PI / 4.0)
     else
@@ -384,7 +453,7 @@ class StackChanApp < FmrbApp
     my = cy + (MOUTH_DY_DESIGN * sc).to_i + breath_dy
     draw_mouth(mx, my, sc, mouth_w)
 
-    draw_decorator(preset[:deco], cx, cy, sc, breath_dy)
+    draw_decorator(@deco, cx, cy, sc, breath_dy)
 
     draw_window_frame
     @gfx.present

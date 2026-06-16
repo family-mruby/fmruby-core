@@ -1,0 +1,10 @@
+# script name must be "app_handle_name.app.rb"
+app_handle_name = "stackchan_remote"
+app_screen_name = "StackChan Remote"
+app_screen_name_ja = "スタックチャン操作"
+default_window_mode = "window"
+default_window_width = 210
+default_window_height = 150
+default_window_pos_x = 95
+default_window_pos_y = 20
+resizable = 1
