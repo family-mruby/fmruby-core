@@ -1,7 +1,7 @@
 # Rakefile — Family mruby ESP-IDF build wrapper (Docker)
 require "rake"
 
-EXPECTED_CHIP = "ESP32-S3"
+# EXPECTED_CHIP is derived from the HW target after .env is loaded (see below).
 PORT_CACHE_FILE = ".serial_port"
 PROBE_PORTS = ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyACM0", "/dev/ttyACM1"]
 
@@ -44,6 +44,8 @@ DEVICE_ARGS     = ENV["DEVICE_ARGS"].to_s
 MODERN_HW_TARGETS = %w[NARYAv4]
 HW_TARGET = ENV.fetch("FMRB_HW_TARGET", "").strip
 ESP_CHIP  = MODERN_HW_TARGETS.include?(HW_TARGET) ? "esp32p4" : "esp32s3"
+# Chip name as reported by esptool (used by check-port to match the device).
+EXPECTED_CHIP = (ESP_CHIP == "esp32p4") ? "ESP32-P4" : "ESP32-S3"
 
 # Always use current user's UID:GID to avoid permission issues
 USER_OPT = "--user #{UID}:#{GID}"
