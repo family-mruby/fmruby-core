@@ -48,7 +48,21 @@ set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_transport fmrb_toml fmrb_
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
-    list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram bt nvs_flash)
+    list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram nvs_flash)
+    # ESP32-P4 (Modern/Tab5) has no built-in radio; BLE is provided by an
+    # ESP32-C6 coprocessor (not yet wired). Drop the bt component and ble_task,
+    # and add the local Tab5 display task (MIPI-DSI via LovyanGFX) + Tab5
+    # Keyboard. Modern keeps USB host (added in the else branch below).
+    if(IDF_TARGET STREQUAL "esp32p4")
+        list(REMOVE_ITEM COMPONENT_ESP32_SRCS "drivers/ble/ble_task.c")
+        list(APPEND COMPONENT_SRCS
+            "drivers/display_p4/display_p4_task.cpp"
+            "drivers/tab5_keyboard/tab5_keyboard.c"
+        )
+        list(APPEND COMPONENT_REQUIRES m5gfx)
+    else()
+        list(APPEND COMPONENT_REQUIRES bt)
+    endif()
     if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
         # ATOM_DISPLAY: no USB host, add M5GFX receiver
         list(REMOVE_ITEM COMPONENT_ESP32_SRCS
@@ -71,7 +85,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/tab5_keyboard" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 
@@ -104,6 +118,11 @@ endif()
 if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_ATOM_DISPLAY)
     message(STATUS "HW target: ATOM_DISPLAY")
+endif()
+
+if(IDF_TARGET STREQUAL "esp32p4")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_MODERN)
+    message(STATUS "HW target: Modern (ESP32-P4 / Tab5)")
 endif()
 
 # Suppress warnings-as-errors in M5Unified (upstream code we cannot modify)

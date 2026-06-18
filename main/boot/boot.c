@@ -26,10 +26,18 @@
 #include "fmrb_pin_assign.h"
 #include "fmrb_hal_gpio.h"
 #include "status_led.h"
+// ESP32-P4 (Modern) has no built-in radio; BLE is handled by an ESP32-C6
+// coprocessor (not yet wired), so ble_task is excluded there.
+#ifndef CONFIG_IDF_TARGET_ESP32P4
 #include "ble_task.h"
+#endif
 #ifdef FMRB_HW_ATOM_DISPLAY
 #include "m5gfx_task.h"
 #include "i2c_keyboard.h"
+#endif
+#ifdef FMRB_HW_MODERN
+#include "display_p4_task.h"
+#include "tab5_keyboard.h"
 #endif
 #endif
 
@@ -288,12 +296,14 @@ static bool init_hardware(void)
     }
 #endif
 
+#ifndef CONFIG_IDF_TARGET_ESP32P4
     ret = ble_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init BLE, continuing without it");
     }
+#endif
 
-#ifdef FMRB_HW_ATOM_DISPLAY
+#if defined(FMRB_HW_ATOM_DISPLAY)
     ret = m5gfx_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init M5GFX, continuing without it");
@@ -302,6 +312,18 @@ static bool init_hardware(void)
     ret = i2c_keyboard_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init I2C keyboard, continuing without it");
+    }
+#elif defined(FMRB_HW_MODERN)
+    // Modern (ESP32-P4 / Tab5): local display task drives the MIPI-DSI panel;
+    // the Tab5 Keyboard accessory provides key input. No WROVER child chip.
+    ret = display_p4_task_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init P4 display, continuing without it");
+    }
+
+    ret = tab5_keyboard_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init Tab5 keyboard, continuing without it");
     }
 #else
     reset_wrover();

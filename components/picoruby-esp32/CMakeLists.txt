@@ -20,11 +20,19 @@ if(IDF_TARGET STREQUAL "linux")
     endif()
 
 else()
-    set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/add/family_mruby_esp32.rb")  # ESP32ビルド用
-    set(MRUBY_BUILD_DIR "esp32")
-    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/esp32/lib/libmruby.a)
-    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/esp32/mrbgems)
-    set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/esp32/include)
+    # libmruby.a must be built with the matching toolchain: Xtensa for the Retro
+    # esp32* targets, RISC-V for the Modern esp32p4 target. Separate build dir
+    # per ISA so objects never get mixed.
+    if(IDF_TARGET STREQUAL "esp32p4")
+        set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/add/family_mruby_esp32p4.rb")
+        set(MRUBY_BUILD_DIR "esp32p4")
+    else()
+        set(MRUBY_CONFIG "${CMAKE_SOURCE_DIR}/lib/add/family_mruby_esp32.rb")  # ESP32ビルド用
+        set(MRUBY_BUILD_DIR "esp32")
+    endif()
+    set(LIBMRUBY_FILE ${PICORUBY_DIR}/build/${MRUBY_BUILD_DIR}/lib/libmruby.a)
+    set(MRBGEMS_DIR ${PICORUBY_DIR}/build/${MRUBY_BUILD_DIR}/mrbgems)
+    set(PICORUBY_BUILD_INCLUDE ${COMPONENT_DIR}/picoruby/build/${MRUBY_BUILD_DIR}/include)
     set(PLATFORM_PRIV_REQUIRES
         freertos
         spi_flash

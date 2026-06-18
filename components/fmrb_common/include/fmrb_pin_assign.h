@@ -4,9 +4,70 @@
 #include "driver/gpio.h"
 
 // ============================================================
+// Pin assignments for Modern (ESP32-P4 / M5Stack Tab5)
+// NOTE: only the Tab5 Keyboard / touch / backlight pins are confirmed.
+// Pins marked TODO are GPIO_NUM_NC placeholders until verified against the
+// Tab5 schematic; register_system_pin / HAL gpio calls skip NC safely.
+// ============================================================
+#if defined(FMRB_HW_MODERN)
+
+// Tab5 Keyboard accessory (STM32F030 @ I2C 0x6D)
+#define FMRB_PIN_KBD_I2C_SDA   GPIO_NUM_0
+#define FMRB_PIN_KBD_I2C_SCL   GPIO_NUM_1
+#define FMRB_PIN_KBD_INT       GPIO_NUM_50
+
+// Body capacitive touch (GT911/ST7123 @ I2C 0x55) + display backlight.
+// The DSI panel and touch are driven via LovyanGFX; these are informational
+// (LovyanGFX configures the bus/INT itself from its panel config).
+#define FMRB_PIN_TOUCH_I2C_SDA GPIO_NUM_31
+#define FMRB_PIN_TOUCH_I2C_SCL GPIO_NUM_32
+#define FMRB_PIN_TOUCH_INT     GPIO_NUM_23
+#define FMRB_PIN_LCD_BACKLIGHT GPIO_NUM_22
+
+// Generic I2C (reuse the body touch bus as I2C1 for now)
+#define FMRB_PIN_I2C1_SDA      GPIO_NUM_31
+#define FMRB_PIN_I2C1_SCL      GPIO_NUM_32
+#define FMRB_PIN_I2C2_SDA      GPIO_NUM_NC
+#define FMRB_PIN_I2C2_SCL      GPIO_NUM_NC
+
+// Restricted pins (TODO: set real ESP32-P4 flash/PSRAM/USB/strap pins)
+#define FMRB_PIN_RESTRICTED_BOOT    GPIO_NUM_NC
+#define FMRB_PIN_RESTRICTED_JTAG    GPIO_NUM_NC
+#define FMRB_PIN_RESTRICTED_USB_DN  GPIO_NUM_NC
+#define FMRB_PIN_RESTRICTED_USB_DP  GPIO_NUM_NC
+#define FMRB_PIN_RESTRICTED_PSRAM0  GPIO_NUM_NC
+#define FMRB_PIN_RESTRICTED_PSRAM1  GPIO_NUM_NC
+#define FMRB_PIN_RESTRICTED_PSRAM2  GPIO_NUM_NC
+#define FMRB_PIN_RESTRICTED_STRAP1  GPIO_NUM_NC
+#define FMRB_PIN_RESTRICTED_STRAP2  GPIO_NUM_NC
+
+// Not applicable / not yet mapped on Tab5 (no WROVER child chip). NC = unused.
+#define FMRB_PIN_SD_CS         GPIO_NUM_NC
+#define FMRB_PIN_SD_MOSI       GPIO_NUM_NC
+#define FMRB_PIN_SD_SCLK       GPIO_NUM_NC
+#define FMRB_PIN_SD_MISO       GPIO_NUM_NC
+#define FMRB_PIN_SD_DETECT     GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_MOSI  GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_MISO  GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_SCLK  GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_CS    GPIO_NUM_NC
+#define FMRB_PIN_GFX_SPI_INTR  GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_TX   GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_RX   GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_RTS  GPIO_NUM_NC
+#define FMRB_PIN_GFX_UART_CTS  GPIO_NUM_NC
+#define FMRB_PIN_USB_POWER     GPIO_NUM_NC
+#define FMRB_PIN_STATUS_LED    GPIO_NUM_NC
+#define FMRB_PIN_ERROR_LED     GPIO_NUM_NC
+#define FMRB_PIN_WROVER_RESET  GPIO_NUM_NC
+#define FMRB_PIN_BUTTON_UP     GPIO_NUM_NC
+#define FMRB_PIN_BUTTON_DOWN   GPIO_NUM_NC
+#define FMRB_PIN_BUTTON_ENTER  GPIO_NUM_NC
+
+// ============================================================
 // Pin assignments for Narya board v3 (N16R8, default)
 // ============================================================
-#ifndef FMRB_HW_ATOM_DISPLAY
+#elif !defined(FMRB_HW_ATOM_DISPLAY)
 
 // ============================================================
 // ESP32-S3 WROOM package: hardware-restricted pins

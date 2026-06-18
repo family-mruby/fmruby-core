@@ -1,0 +1,163 @@
+# ESP32-P4対応指針
+
+現在のHWは、ESP32S3とESP32で構成されているが、これをESP32P4に統合する。
+
+既存のものは、Family mruby Retro として残す。NTSCの表示も価値があるため。
+ESP32P4番は、Family mruby Modern　として、HDMI出力を持たせる。
+
+HDMI出力はP4単体ではできないので、以下の方法が考えられる。いずれもP4から搭載されたグラフィック機能を生かす。
+・SPI出力＞RP2350でHDMI（DVI）変換する
+・パラレルRGB出力＞HDMI変換
+LovyanGFXで、P4のアクセラレーションが使えるのか気になる。使えないなら、必要な機能に限って、LovyanGFX互換の描画ライブラリを自作する。
+
+P4からの音声をHDMIの音声にどう変換するかは要検討。
+
+fmruby-core にP4の場合のみ有効な、描画と音声のレイヤーを追加する形として、コンパイルオプションでModernのときは、リンクレイヤーを差し替えることで、RetroとModern双方で同じRubyアプリが動くようにする。
+開発対象はfmruby-core になる。
+ESP32のモデル違いに関する違いはIFDEFで切り替える必要も出て来るはず。
+
+Linuxでのシミュレーション機能は、Retroと同じように使いたい。
+
+開発環境は、最新のESPIDFに更新したい。
+
+## ハードウェア仕様（Modern）
+
+会話で整理した前提仕様。実機（NARYAv4）は M5Stack Tab5 と同じSoC/無線構成を採用する予定。
+https://docs.m5stack.com/ja/core/Tab5
+https://github.com/m5stack/M5GFX
+
+
+- **SoC**: ESP32-P4（デュアルコア RISC-V HP 最大360/400MHz + LPコア）
+- **無線**: ESP32-C6 をコプロセッサとして搭載（SDIO等で接続）。P4自体は無線非搭載のため、WiFi/BLEはC6経由となる（Tab5と同じ構成）。
+- **PSRAM**: 32MB
+- **Flash**: 16MB
+- **ディスプレイ**: Tab5本体は MIPI-DSI 1280x720 タッチIPS。本プロジェクトのModernはHDMI出力を目標とするため、表示経路（DSIパネル直結 or HDMI変換）は要検討（上記HDMI方式の候補参照）。
+- USB-A(host)/USB-C、MIPI-CSIカメラ、IMU、マイク/スピーカー等
+
+ファームウェアへの影響:
+
+- BLEは現状 P4 の `bt` コンポーネント/NimBLE に直接依存しているが、P4単体では無線が無い。Modernでは無線をC6経由化する必要があり、それまでP4ビルドではBT/WiFiを無効化する。
+- 映像/音声は現状 WROVER への SPI/UART 連携前提。Modernでは描画/音声レイヤーの差し替えが必要。
+
+## 方針変更（重要）: 単一 IDF v5.5.4 に統一
+
+当初 Modern を **IDF v6.0.1** でビルドしたが、IDF6 はメジャー初版で破壊的変更が多く（picolibc 移行、
+driver コンポーネント分割、GCC15 厳格化、特に **linux preview の上流バグ**）、回避策が積み上がり脆い。
+ESP32-P4 自体は **IDF v5.3+ で正式サポート**、M5GFX(Tab5/P4 DSI) も IDF5.x 前提のため、**P4 対応に IDF6 は不要**。
+
+→ **Retro / Modern / Linux すべてを単一 IDF v5.5.4 コンテナでビルド**する方針へ変更。
+3ターゲット全てのビルド成功を確認済み（IDF6 固有の回避策ゼロ）。
+
+- 作業ブランチ: **`feat/fmruby-modern-p4-idf55`**（develop から分岐。IDF非依存の P4 本体作業のみ適用）
+- 旧 `feat/fmruby-modern-p4`（IDF6 経緯入り）はそのまま残す。IDF6 で判明した課題は `doc/idf6_migration_notes.md` 参照。
+
+## 作業計画
+
+- [x] ESP32-P4(NARYAv4)向け sdkconfig / partition / system_conf 追加と build タスク配線
+- [x] **単一 IDF v5.5.4 コンテナで Retro(esp32s3) / Modern(esp32p4) / Linux すべてビルド成功**
+- [x] Tab5表示 Phase 1: 自前LGFXクラス(LGFX_Tab5) + PI4IO電源/リセット + ブートテストパターン（ビルド成功、実機点灯確認待ち）
+- [ ] Tab5表示 Phase 2: ローカルリンクseam + gfxコマンドデコード + コンポジタ→デスクトップ表示
+- [ ] Tab5表示 Phase 3: Tab5 Keyboard(I2C 0x6D) 入力
+- [ ] Tab5表示 Phase 4: 本体タッチ(GT911)→マウス
+- [ ] Phase 1 実機点灯確認（Tab5 実機）
+- [ ] 無線(BLE/WiFi)のC6経由化（現状P4では無効）
+- [ ] LovyanGFX のP4アクセラレーション(PPA等)対応調査
+- [ ] 実機での sdkconfig 微調整
+
+備考: 以下の「作業記録」は IDF6 で進めた当時の経緯を含む（履歴）。現行 v5.5.4 では IDF6 固有の回避策
+（picolibc specs / timespec シム / idf::esp_driver 連結 / -Wno-error / linux EXCLUDE）は **すべて不要**で、
+本ブランチには入れていない。P4 本体作業（config、表示バックエンド/LGFX_Tab5、Tab5キーボード、リンク層差し替え）は
+IDF 非依存でそのまま有効。
+
+## 作業記録
+
+### ビルド環境のRetro/Modern分離
+
+ビルドコンテナを2系統に分離した。
+
+- **Retro**（ESP32-S3 + WROVER, NTSC）: ESP-IDF `v5.5.4` を維持
+- **Modern**（ESP32-P4, HDMI）: ESP-IDF `v6.0.1`（6.x系、pin指定。ローカル所持のベースイメージに合わせ再現性確保）
+
+実装方針:
+
+- Dockerfile は二重管理せず1つを共用し、`ARG IDF_VER` でバージョンを切替えて別タグの2イメージをビルドする。
+  - Retro イメージ: `ghcr.io/family-mruby/fmruby-esp32-build`
+  - Modern イメージ: `ghcr.io/family-mruby/fmruby-esp32-build-modern`
+  - libasan のパッケージ名がIDF5/IDF6のUbuntuベースで異なるため、apt インストールはフォールバックさせて両対応とした。
+- バージョンは `.env` の `ESP_IDF_VERSION_RETRO` / `ESP_IDF_VERSION_MODERN` で管理。
+- 使用コンテナは `FMRB_HW_TARGET` で自動選択（`NARYAv4`=ESP32P4 → Modern、それ以外 → Retro）。Rakefile が起動時に選択結果を表示する。
+- `docker/build.sh` はローカルビルド用に `./build.sh` / `./build.sh modern` で系統を選択。
+- CI（`.github/workflows/docker-publish.yml`）は matrix で両イメージを publish。
+
+変更ファイル: `.env`, `docker/Dockerfile`, `docker/build.sh`, `Rakefile`, `.github/workflows/docker-publish.yml`
+
+注: Modern専用のビルド差分（P4用ツールチェーン等）が出てきた場合はDockerfileを分割する。
+
+### ESP32-P4 ビルドターゲットの配線
+
+`FMRB_HW_TARGET=NARYAv4` で esp32p4 ターゲットをビルドする経路を追加した（この段階ではコンパイルの完全通過は目標としない。BT/WROVER依存のソース修正は次段階）。
+
+- `Rakefile`: `set_target:esp32` / `build:esp32` を Retro=esp32s3 / Modern(NARYAv4)=esp32p4 で切替。`hw_config` に `NARYAv4` を追加し P4 用 config を選択。
+- 追加した config（Tab5相当: Flash 16MB / PSRAM 32MB、無線はC6前提で BT/WiFi 無効）:
+  - `config/sdkconfig.defaults.p4`
+  - `config/partitions_p4.csv`
+  - `config/system_conf_p4.toml`
+- sdkconfig は実機（PSRAM速度、パーティション等）に合わせ menuconfig での調整が必要。
+
+既知の未対応（次段階のポーティング作業）:
+
+- `main/CMakeLists.txt` の `bt`/`drivers/ble/ble_task.c` 等が P4 では無線非搭載のためそのままでは通らない。C6経由化 or IFDEF分離が必要。
+- 映像/音声の WROVER(SPI/UART)依存を Modern 用レイヤーに差し替える必要がある。
+
+### Modern コンテナ実ビルドと IDF6 ソースポーティング（コンパイル&リンク成功）
+
+Modern コンテナ（`espressif/idf:v6.0.1` ベース、ローカルタグ `esp32_build_container_modern:v6.0.1`）を `docker/build.sh modern` でビルドし、`FMRB_HW_TARGET=NARYAv4` で esp32p4 ファームのコンパイル&リンクを通した（`fmruby-core.bin` 生成、app パーティション 4MB に約58%空き）。
+
+ローカル開発時は Modern イメージを `DOCKER_IMAGE_MODERN=esp32_build_container_modern:v6.0.1 rake build:esp32` のように指定（CI publish 前のため）。`.env` の `FMRB_HW_TARGET` を `NARYAv4` にして切替。
+
+対応した IDF6 / RISC-V 移行ポイント:
+
+- **M5GFX/M5Unified を esp32p4 で除外**（`main/idf_component.yml` の `rules`）。旧版が IDF6 で削除された `driver/i2s.h` を含むため。Modern では未使用。
+- **BLE を esp32p4 で除外**（`main/CMakeLists.txt`）。`bt` コンポーネント要求と `drivers/ble/ble_task.c` を外し、`boot.c` の `ble_task_init()` を `CONFIG_IDF_TARGET_ESP32P4` でガード。無線はC6経由化が将来課題。
+- **IDF6 の driver コンポーネント分割対応**。monolithic `driver` から個別 `esp_driver_uart/gpio/spi/sdspi` 等へ REQUIRES を追加（`fmrb_hal`, `fmrb_common`, `main` の CMakeLists）。IDF5.5 でも有効で Retro 互換。
+- **FreeRTOS API**: `xTaskGetAffinity`（IDF6で削除）→ `xTaskGetCoreID`（`fmrb_common/src/fmrb_task.c`）。
+- **picoruby のデッドgem除外**（esp32p4のみ、`components/picoruby-esp32/CMakeLists.txt`）。gembox 未収録で未使用の `picoruby-pwm`(pwm.c) と `picoruby-mbedtls`(cipher.c) を PICORUBY_SRCS から除外。後者は IDF6 で mbedtls cipher API が PSA へ移行したため。
+- **libmruby を RISC-V でビルド**。`lib/add/family_mruby_esp32p4.rb` を新規追加し、`riscv32-esp-elf-*` ツールチェーン + IDF と同じ `-march=rv32imafc_zicsr_zifencei_zaamo_zalrsc_xesploop_xespv -mabi=ilp32f` を使用。`picoruby-esp32/CMakeLists.txt` が esp32p4 では別 build dir(`build/esp32p4`) と本設定を選択。
+- **picolibc 対応**。IDF6 の esp32p4 は newlib でなく picolibc をリンクするため、libmruby も `-specs=picolibc.specs` でビルド（`<ctype.h>` の `_ctype_` 未定義を回避）。
+- **C11 `timespec_get` シム**。picolibc が同関数を提供せず mruby-time がリンク失敗するため、`main/compat/fmrb_libc_compat.c` に `clock_gettime` ベースの実装を esp32p4 限定で追加。
+
+注: この段階は「コンパイル&リンクが通る」ことが目標。映像/音声/transport は WROVER 前提のままで、Modern 実機での動作は未確認（表示経路・無線C6化が今後）。
+
+### Tab5 表示/入力（設計と Phase 0）
+
+実機 Tab5 で画面表示まで到達する作業。設計判断:
+
+- 表示は Modern 単体(WROVERなし)なので **fmruby-core 内の新規軽量描画層**で行う。gfxコマンド経路(`fmrb_gfx`→host_task→transport→`fmrb_hal_link`)は不変で、**`fmrb_hal_link` の差し替え**でローカル描画する（ATOM_DISPLAY と同じ `fmrb_hal_link_local.c` ＝ Message Buffer ループバックを esp32p4 でも選択）。Retro/Linux/Rubyアプリ不変。
+- 描画ライブラリは **LovyanGFX を直接利用**（M5Unified のボード自動判定/`M5.begin()` は使わない）。Tab5 の DSI/ST7123/GT911 は自前 LGFX クラスで構成（将来のパラレルRGB対応や fork の土台）。表示バックエンドを薄い抽象の裏に隠す。
+- マウスは Tab5 本体タッチ(GT911 @ I2C 0x55)を LGFX `getTouch()` で読む。キーボードは Tab5 Keyboard(I2C 0x6D, STM32F030, character mode)。
+- 論理解像度は当面 320x240 のまま、最終 present で 1280x720 にアップスケール。
+
+**Phase 0（ビルド配線 + M5GFX の IDF6/P4 統合）完了:**
+
+- `main/idf_component.yml`: m5gfx を esp32p4 でも取得可に（LGFX部分のみ利用。M5Unified は除外）。
+- `main/CMakeLists.txt`: esp32p4 アームに `drivers/display_p4`(表示タスク stub) と `drivers/tab5_keyboard`(stub) を追加、`FMRB_HW_MODERN` define、m5gfx を REQUIRES に。
+- M5GFX の IDF6/P4 ビルド問題を解決（managed_components は gitignore のため非編集、main 側で対処）:
+  - device.hpp が P4 でも legacy esp32 バス(Bus_Parallel8/Light_PWM)を強制 include し、IDF6 で分割された driver ヘッダを要求 → m5gfx ライブラリを **`idf::esp_driver_i2s` / `idf::esp_driver_ledc` に link** して推移的 include を供給（`driver/i2s_types.h`, `driver/ledc.h`+`hal/ledc_types.h`）。`driver/dac.h` 等は esp32-classic ガード内でP4非コンパイル。
+  - GCC15/IDF6 で M5GFX が IDF ヘッダの `[[noreturn]]` 等で `-Werror` に当たるため、m5gfx に `-Wno-error`（upstream コードのため、既存の m5unified 対応と同方針）。
+- `components/fmrb_hal/`: esp32p4 で `fmrb_hal_link_local.c` を選択、拡張API guard を `FMRB_HW_MODERN` にも拡張。
+- `main/boot/boot.c`: `FMRB_HW_MODERN` アームで display/keyboard を起動。
+- `components/fmrb_common/include/fmrb_pin_assign.h`: Modern(Tab5) ピン（KBD I2C SDA0/SCL1/INT50, TOUCH INT23, LCD backlight 22 ほかは NC で TODO）。
+
+結果: M5GFX を含む P4 ファームがリンク成功（app 4MB に 59% 空き）。表示/入力本体は次フェーズ。
+
+**Phase 1（Tab5 DSI パネル起動 + テストパターン）— ビルド成功・実機確認待ち:**
+
+- `main/drivers/display_p4/lgfx_tab5.hpp`: M5Unified 非依存の自前 `LGFX_Tab5 : lgfx::LGFX_Device`。Bus_DSI(2レーン/1040Mbps/LDO ch3 2500mV) + Panel_ST7123(720x1280, dpi80MHz, hsync40/2/40, vsync8/2/220) + Touch_GT911(SDA31/SCL32/INT23, port1) を明示構成。M5GFX.h は LGFX ライブラリ用に include するが M5GFX/M5Unified オブジェクトは使わない。Panel_ST7123/Touch_GT911 は device.hpp が include しないので個別 include。
+- `main/drivers/display_p4/display_p4_task.cpp`: PI4IO 拡張IC(0x43/0x44, IDF i2c_master で一時バス→LCD/タッチ reset 解除→削除しLGFXにI2C port1を譲る) + TP INT(GPIO23) + バックライト(GPIO22 full-on)。LGFX_Tab5.init() 後にカラーバー+文字のテストパターン描画。FreeRTOS タスク(core1)。
+- `main/CMakeLists.txt`: display_p4_task.cpp が M5GFX.h を引くため main(esp32p4) にも esp_driver_i2s/ledc を REQUIRES 追加 + 当該ファイルに -Wno-error。
+- Phase 1 はパネル ST7123 をハードコード（現行Tab5）。ILI9881C/ST7121 個体は Panel クラス/タイミング差し替えが必要。
+
+**実機テスト前に必要な sdkconfig 提案（sdkconfig.defaults 編集禁止のため menuconfig 等で適用）:**
+
+- `CONFIG_SPIRAM_SPEED_200M=y`（Tab5/P4 PSRAM は 200MHz。M5GFX も 200MHz 要求。DSI フレームバッファ帯域に必要）
+- DSI PHY LDO(ch3/2500mV) と esp_lcd MIPI-DSI は IDF6/P4 で実行時取得・自動有効のため追加不要の見込み（点灯しない場合は LDO 予約系 Kconfig を確認）。

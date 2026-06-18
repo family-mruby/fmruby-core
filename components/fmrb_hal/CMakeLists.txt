@@ -33,6 +33,11 @@ else()
     if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_local.c")
         message(STATUS "HW target: ATOM_DISPLAY (local Message Buffer link)")
+    elseif(IDF_TARGET STREQUAL "esp32p4")
+        # Modern (Tab5): monolithic, no WROVER. gfx commands are consumed
+        # in-process by the local display task, so use the local link.
+        list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_local.c")
+        message(STATUS "HW target: Modern P4 (local Message Buffer link)")
     elseif(FMRB_LINK_TRANSPORT STREQUAL "UART")
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_uart_esp32.c")
         message(STATUS "HW target: ${FMRB_HW_TARGET} (UART link)")

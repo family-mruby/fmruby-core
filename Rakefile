@@ -37,6 +37,14 @@ ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
 IMAGE           = ENV.fetch("DOCKER_IMAGE", "ghcr.io/family-mruby/fmruby-esp32-build:latest")
 DEVICE_ARGS     = ENV["DEVICE_ARGS"].to_s
 
+# All targets (Retro esp32s3, Modern esp32p4, Linux) build in the single IDF
+# v5.5.4 container above. The HW target only selects the ESP32 chip:
+#   Modern (Family mruby Modern / Tab5) -> esp32p4
+#   everything else (Retro)             -> esp32s3
+MODERN_HW_TARGETS = %w[NARYAv4]
+HW_TARGET = ENV.fetch("FMRB_HW_TARGET", "").strip
+ESP_CHIP  = MODERN_HW_TARGETS.include?(HW_TARGET) ? "esp32p4" : "esp32s3"
+
 # Always use current user's UID:GID to avoid permission issues
 USER_OPT = "--user #{UID}:#{GID}"
 
@@ -168,9 +176,9 @@ namespace :set_target do
     sh "#{DOCKER_CMD} idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" set-target linux"
   end
 
-  desc "Set ESP32(S3) target"
+  desc "Set ESP32 target (esp32s3 Retro / esp32p4 Modern)"
   task :esp32 => :setup do
-    sh "#{DOCKER_CMD} idf.py set-target esp32s3"
+    sh "#{DOCKER_CMD} idf.py set-target #{ESP_CHIP}"
   end
 end
 
@@ -196,6 +204,9 @@ namespace :build do
     hw_config = {
       'ATOM_DISPLAY' => { chip: 'n8r8', sdkconfig: 'config/sdkconfig.defaults.n8r8',
                           system_conf: 'config/system_conf_n8r8.toml' },
+      # Family mruby Modern: ESP32-P4 (M5Stack Tab5 equivalent)
+      'NARYAv4'      => { chip: 'esp32p4', sdkconfig: 'config/sdkconfig.defaults.p4',
+                          system_conf: 'config/system_conf_p4.toml' },
     }
     default_sdkconfig = 'config/sdkconfig.defaults.n16r8'
     default_system_conf = 'config/system_conf_n16r8.toml'
@@ -214,7 +225,7 @@ namespace :build do
 
     # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated correctly
     unless Dir.exist?('build')
-      sh "#{DOCKER_CMD} idf.py -DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\" set-target esp32s3"
+      sh "#{DOCKER_CMD} idf.py -DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\" set-target #{ESP_CHIP}"
     end
 
     # Link transport: default is UART. To use SPI instead:
