@@ -55,11 +55,11 @@ ESP32-P4 自体は **IDF v5.3+ で正式サポート**、M5GFX(Tab5/P4 DSI) も 
 
 - [x] ESP32-P4(NARYAv4)向け sdkconfig / partition / system_conf 追加と build タスク配線
 - [x] **単一 IDF v5.5.4 コンテナで Retro(esp32s3) / Modern(esp32p4) / Linux すべてビルド成功**
-- [x] Tab5表示 Phase 1: 自前LGFXクラス(LGFX_Tab5) + PI4IO電源/リセット + ブートテストパターン（ビルド成功、実機点灯確認待ち）
+- [x] Tab5表示 Phase 1: 自前LGFXクラス(LGFX_Tab5) + PI4IO電源/リセット + ブートテストパターン（実機表示確認済み）
+- [x] Phase 1 実機確認（Tab5 実機: ブートテキスト表示・カーネル/デスクトップ起動確認）
 - [ ] Tab5表示 Phase 2: ローカルリンクseam + gfxコマンドデコード + コンポジタ→デスクトップ表示
 - [ ] Tab5表示 Phase 3: Tab5 Keyboard(I2C 0x6D) 入力
 - [ ] Tab5表示 Phase 4: 本体タッチ(GT911)→マウス
-- [ ] Phase 1 実機点灯確認（Tab5 実機）
 - [ ] 無線(BLE/WiFi)のC6経由化（現状P4では無効）
 - [ ] LovyanGFX のP4アクセラレーション(PPA等)対応調査
 - [ ] 実機での sdkconfig 微調整
@@ -161,3 +161,23 @@ Modern コンテナ（`espressif/idf:v6.0.1` ベース、ローカルタグ `esp
 
 - `CONFIG_SPIRAM_SPEED_200M=y`（Tab5/P4 PSRAM は 200MHz。M5GFX も 200MHz 要求。DSI フレームバッファ帯域に必要）
 - DSI PHY LDO(ch3/2500mV) と esp_lcd MIPI-DSI は IDF6/P4 で実行時取得・自動有効のため追加不要の見込み（点灯しない場合は LDO 予約系 Kconfig を確認）。
+
+**Phase 1 実機確認（Tab5 実機）— 完了:**
+
+実機 Tab5 で起動・表示を確認。以下の問題を発見・修正した。すべて **M5GFX の Tab5 実装（M5GFX.cpp）を参照** して解決した。
+
+1. **チップ名誤表示**: `boot.c` の chip 名判定に `CONFIG_IDF_TARGET_ESP32P4` 分岐を追加。
+
+2. **kernel 起動待ちタイムアウト**: `display_p4_task` がトランスポートの受信側を実装していなかった。`fmrb_hal_link_local_receive_cmd` でコマンドをポーリングし、msgpack でパースして ACK を返す実装を追加（VERSION/INIT_DISPLAY/GA_VERSION/DEFINE_PROG 対応）。
+
+3. **PSRAM 速度**: DSI DPI フレームバッファの帯域が足りず画面がアンダーランしていた。`CONFIG_SPIRAM_SPEED_200M` は `CONFIG_IDF_EXPERIMENTAL_FEATURES=y` が前提になっていたため、`config/sdkconfig.defaults.p4` に追加して 200MHz を有効化。
+
+4. **パネル型番の誤認識（主因）**: `lgfx_tab5.hpp` を当初 ST7123 でハードコードしていたが、実機は **ILI9881C**（Tab5 は生産時期でパネルが異なる）。M5GFX.cpp の Tab5 検出コードを参照し、以下に修正:
+   - `Bus_DSI`: lane_mbps 1040 → **900**
+   - パネル: `Panel_ST7123` → **`Panel_ILI9881C`**
+   - DPI タイミング: M5GFX の ILI9881C 値（hsync_back=140, hsync_pulse=40, hsync_front=40, vsync_back=20, vsync_pulse=4, vsync_front=20）に変更
+   - タッチ: `Touch_GT911` はそのまま（ILI9881C は GT911 が正しい）
+
+5. **バックライト点灯しない**: `gpio_set_level(GPIO22, 1)` では Tab5 のバックライトドライバ IC が点灯しなかった。M5GFX に倣い `Light_PWM`（LEDC ch7 / 44100Hz / GPIO22）に変更し、LovyanGFX の init 内でバックライトを起動するよう修正。
+
+現状: ブートテキスト表示・カーネル/system_desktop 起動・25アプリ認識を確認。GFX コマンド（91.5 cmds/s, 4.4 presents/s）は ACK のみで未描画（Phase 2 の作業）。I2C1 の hw_proxy 競合（GT911 が保持するため）は軽微エラーとして残存。

@@ -35,8 +35,8 @@ CONFIG_ESP_WIFI_ENABLED=n
 
 # SPI-RAM (Tab5: 32MB PSRAM on ESP32-P4)
 # Tab5 uses 16-line (HEX) PSRAM at 200MHz; M5GFX/the DSI framebuffer require
-# 200MHz. These match the IDF esp32p4 defaults but are set explicitly to make
-# the Tab5 requirement intentional.
+# 200MHz. SPIRAM_SPEED_200M depends on IDF_EXPERIMENTAL_FEATURES.
+CONFIG_IDF_EXPERIMENTAL_FEATURES=y
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_HEX=y
 CONFIG_SPIRAM_SPEED_200M=y

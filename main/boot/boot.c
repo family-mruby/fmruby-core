@@ -360,6 +360,8 @@ void fmrb_os_init(void)
     FMRB_LOGD(TAG, "Debug log level enabled");
 #ifdef CONFIG_IDF_TARGET_LINUX
     FMRB_LOGI(TAG, "Running on Linux target - Development mode");
+#elif defined(CONFIG_IDF_TARGET_ESP32P4)
+    FMRB_LOGI(TAG, "Running on ESP32-P4 (M5Stack Tab5) - Production mode");
 #else
     FMRB_LOGI(TAG, "Running on ESP32-S3-N16R8 - Production mode");
 #endif

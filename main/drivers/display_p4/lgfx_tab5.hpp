@@ -6,25 +6,30 @@
 // ecosystem and gives a clean base for a future parallel-RGB / forked backend.
 //
 // Config values mirror M5GFX's Tab5 bring-up (managed_components/m5stack__m5gfx
-// /src/M5GFX.cpp): Bus_DSI 2 lanes @ 1040Mbps, LDO ch3 2500mV; Panel_ST7123
-// 720x1280 DPI 80MHz; Touch_GT911 on I2C port 1 (SDA31/SCL32/INT23).
+// /src/M5GFX.cpp) for the ILI9881C panel variant:
+//   Bus_DSI 2 lanes @ 900Mbps, LDO ch3 2500mV; Panel_ILI9881C 720x1280 DPI
+//   80MHz; Touch_GT911 on I2C port 1 (SDA31/SCL32/INT23 addr 0x14).
+//   Backlight: LEDC PWM ch7 @ 44100Hz on GPIO22.
 //
-// NOTE: Phase 1 hardcodes the ST7123 panel (current Tab5). Boards using the
-// legacy ILI9881C or the ST7121 need a different Panel class / timings.
+// NOTE: Tab5 panels vary by production batch. This file targets the ILI9881C
+// variant. ST7123 / ST7121 variants need Panel_ST7123/Panel_ST7121 with
+// Touch_ST7123 and lane_mbps=1040/900 respectively.
 #pragma once
 
 #include <M5GFX.h>  // LovyanGFX library headers (we do not use the M5GFX/M5Unified device objects)
 // device.hpp (via M5GFX.h) pulls Bus_DSI on esp32p4 but NOT the Tab5 panel/touch
 // classes; include them explicitly.
 #include <lgfx/v1/platforms/esp32p4/Bus_DSI.hpp>
-#include <lgfx/v1/platforms/esp32p4/Panel_ST7123.hpp>
+#include <lgfx/v1/platforms/esp32p4/Panel_ILI9881C.hpp>
 #include <lgfx/v1/touch/Touch_GT911.hpp>
+#include <lgfx/v1/platforms/esp32/Light_PWM.hpp>
 
 class LGFX_Tab5 : public lgfx::LGFX_Device
 {
-    lgfx::Bus_DSI       _bus;
-    lgfx::Panel_ST7123  _panel;
-    lgfx::Touch_GT911   _touch;
+    lgfx::Bus_DSI        _bus;
+    lgfx::Panel_ILI9881C _panel;
+    lgfx::Touch_GT911    _touch;
+    lgfx::Light_PWM      _light;
 
 public:
     LGFX_Tab5()
@@ -33,7 +38,7 @@ public:
             auto cfg = _bus.config();
             cfg.bus_id         = 0;
             cfg.lane_num       = 2;
-            cfg.lane_mbps      = 1040;   // ST7123 (ILI9881C uses 900)
+            cfg.lane_mbps      = 900;    // ILI9881C (ST7123 uses 1040)
             cfg.ldo_chan_id    = 3;
             cfg.ldo_voltage_mv = 2500;
             _bus.config(cfg);
@@ -56,17 +61,19 @@ public:
 
             auto det = _panel.config_detail();
             det.dpi_freq_mhz      = 80;
-            det.hsync_back_porch  = 40;
-            det.hsync_pulse_width = 2;
+            det.hsync_back_porch  = 140;
+            det.hsync_pulse_width = 40;
             det.hsync_front_porch = 40;
-            det.vsync_back_porch  = 8;
-            det.vsync_pulse_width = 2;
-            det.vsync_front_porch = 220;
+            det.vsync_back_porch  = 20;
+            det.vsync_pulse_width = 4;
+            det.vsync_front_porch = 20;
             _panel.config_detail(det);
         }
         _panel.setBus(&_bus);
 
         {
+            // GT911 touch: TP INT held HIGH during reset selects I2C address 0x14.
+            // This is done in tab5_power_on() before LGFX init.
             auto cfg = _touch.config();
             cfg.pin_rst    = -1;
             cfg.pin_sda    = GPIO_NUM_31;
@@ -82,6 +89,19 @@ public:
             cfg.offset_rotation = 0;
             _touch.config(cfg);
             _panel.setTouch(&_touch);
+        }
+
+        {
+            // Backlight: LEDC PWM ch7 @ 44100Hz on GPIO22, matching M5GFX Tab5 init.
+            // Simple gpio_set_level(HIGH) does not drive the Tab5 backlight IC.
+            auto cfg = _light.config();
+            cfg.pin_bl      = GPIO_NUM_22;
+            cfg.freq        = 44100;
+            cfg.pwm_channel = 7;
+            cfg.invert      = false;
+            cfg.offset      = 0;
+            _light.config(cfg);
+            _panel.setLight(&_light);
         }
 
         setPanel(&_panel);

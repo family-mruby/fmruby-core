@@ -239,6 +239,12 @@ namespace :build do
   end
 end
 
+desc "Attach USB device to WSL2 via usbipd (Windows side); busid can be overridden with BUSID=x-y"
+task :attach do
+  busid = ENV["BUSID"] || "1-1"
+  sh "powershell.exe -Command \"usbipd attach --wsl --busid #{busid}\""
+end
+
 desc "Detect and cache the correct serial port for #{EXPECTED_CHIP}"
 task :"check-port" do
   ports = PROBE_PORTS.select { |p| File.exist?(p) }
