@@ -57,6 +57,8 @@ if(NOT IDF_TARGET STREQUAL "linux")
         list(REMOVE_ITEM COMPONENT_ESP32_SRCS "drivers/ble/ble_task.c")
         list(APPEND COMPONENT_SRCS
             "drivers/display_p4/display_p4_task.cpp"
+            "drivers/display_p4/display_p4_vm.cpp"
+            "drivers/display_p4/display_p4_sprite.cpp"
             "drivers/tab5_keyboard/tab5_keyboard.c"
         )
         list(APPEND COMPONENT_REQUIRES m5gfx)
