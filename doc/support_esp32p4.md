@@ -60,6 +60,7 @@ ESP32-P4 自体は **IDF v5.3+ で正式サポート**、M5GFX(Tab5/P4 DSI) も 
 - [ ] Tab5表示 Phase 2: ローカルリンクseam + gfxコマンドデコード + コンポジタ→デスクトップ表示
 - [ ] Tab5表示 Phase 3: Tab5 Keyboard(I2C 0x6D) 入力
 - [ ] Tab5表示 Phase 4: 本体タッチ(GT911)→マウス
+- [ ] lgfx_tab5: パネル自動判定（ILI9881C / ST7123 / ST7121 をDSI ID読み取りで切替。NARYAv4量産対応）
 - [ ] 無線(BLE/WiFi)のC6経由化（現状P4では無効）
 - [ ] LovyanGFX のP4アクセラレーション(PPA等)対応調査
 - [ ] 実機での sdkconfig 微調整
@@ -172,7 +173,7 @@ Modern コンテナ（`espressif/idf:v6.0.1` ベース、ローカルタグ `esp
 
 3. **PSRAM 速度**: DSI DPI フレームバッファの帯域が足りず画面がアンダーランしていた。`CONFIG_SPIRAM_SPEED_200M` は `CONFIG_IDF_EXPERIMENTAL_FEATURES=y` が前提になっていたため、`config/sdkconfig.defaults.p4` に追加して 200MHz を有効化。
 
-4. **パネル型番の誤認識（主因）**: `lgfx_tab5.hpp` を当初 ST7123 でハードコードしていたが、実機は **ILI9881C**（Tab5 は生産時期でパネルが異なる）。M5GFX.cpp の Tab5 検出コードを参照し、以下に修正:
+4. **パネル型番の誤認識（主因）**: `lgfx_tab5.hpp` を当初 ST7123 でハードコードしていたが、実機は **ILI9881C**（Tab5 は生産時期でパネルが異なる。背面ラベルで確認）。M5GFX.cpp の Tab5 検出コードを参照し、以下に修正:
    - `Bus_DSI`: lane_mbps 1040 → **900**
    - パネル: `Panel_ST7123` → **`Panel_ILI9881C`**
    - DPI タイミング: M5GFX の ILI9881C 値（hsync_back=140, hsync_pulse=40, hsync_front=40, vsync_back=20, vsync_pulse=4, vsync_front=20）に変更
@@ -181,3 +182,14 @@ Modern コンテナ（`espressif/idf:v6.0.1` ベース、ローカルタグ `esp
 5. **バックライト点灯しない**: `gpio_set_level(GPIO22, 1)` では Tab5 のバックライトドライバ IC が点灯しなかった。M5GFX に倣い `Light_PWM`（LEDC ch7 / 44100Hz / GPIO22）に変更し、LovyanGFX の init 内でバックライトを起動するよう修正。
 
 現状: ブートテキスト表示・カーネル/system_desktop 起動・25アプリ認識を確認。GFX コマンド（91.5 cmds/s, 4.4 presents/s）は ACK のみで未描画（Phase 2 の作業）。I2C1 の hw_proxy 競合（GT911 が保持するため）は軽微エラーとして残存。
+
+**Tab5 パネルバリアントについて（M5Stack 公式情報）:**
+
+Tab5 は生産時期によりパネルドライバが異なる。背面ラベルで確認可能。
+
+| 生産時期 | 表示ドライバ | タッチドライバ | lgfx_tab5.hpp の対応 |
+|----------|-------------|---------------|----------------------|
+| 2025/10/14 以前 | ILI9881C（独立） | GT911（独立） | 現在実装済み（ハードコード） |
+| 2025/10/14 以降 | ST7123（一体型） | ST7123（一体型） | 未実装（将来課題） |
+
+M5GFX は DSI 経由でパネル ID を読み取り実行時に自動判定する。NARYAv4 量産時の調達ロットによって ST7123 になる可能性があるため、自動判定の実装が将来的に必要。

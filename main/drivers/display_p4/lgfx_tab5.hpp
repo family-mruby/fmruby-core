@@ -11,9 +11,15 @@
 //   80MHz; Touch_GT911 on I2C port 1 (SDA31/SCL32/INT23 addr 0x14).
 //   Backlight: LEDC PWM ch7 @ 44100Hz on GPIO22.
 //
-// NOTE: Tab5 panels vary by production batch. This file targets the ILI9881C
-// variant. ST7123 / ST7121 variants need Panel_ST7123/Panel_ST7121 with
-// Touch_ST7123 and lane_mbps=1040/900 respectively.
+// NOTE: Tab5 panel variant depends on production batch (check rear label):
+//   Pre 2025-10-14 : ILI9881C (display) + GT911 (touch, separate chips)
+//                    -> This file. lane_mbps=900, Panel_ILI9881C, Touch_GT911.
+//   Post 2025-10-14: ST7123 (display+touch integrated)
+//                    -> Needs Panel_ST7123, Touch_ST7123, lane_mbps=1040,
+//                       dpi=80MHz, hsync 40/2/40, vsync 8/2/220.
+//   Legacy ST7121   : Panel_ST7121, Touch_ST7123, lane_mbps=900, dpi=70MHz.
+// M5GFX detects the variant at runtime via DSI ID reads; this file hardcodes
+// ILI9881C. Auto-detection is a future task (needed for NARYAv4 production).
 #pragma once
 
 #include <M5GFX.h>  // LovyanGFX library headers (we do not use the M5GFX/M5Unified device objects)
