@@ -79,6 +79,43 @@ static uint16_t    g_next_canvas_id = 1;
 // When non-zero, draw commands are redirected to this SpriteImage's sprite.
 static uint16_t    g_sprite_target_id = 0;
 
+// ============================================================
+// PNG image store (CREATE_IMAGE_FROM_FILE / DRAW_IMAGE / DELETE_IMAGE)
+// Separate ID space from SpriteImage. PNG files are decoded into
+// LGFX_Sprite objects (8bpp RGB332 in PSRAM).
+// ============================================================
+
+#define DISPLAY_P4_MAX_IMAGES 8
+
+typedef struct {
+    bool         in_use;
+    uint16_t     image_id;
+    LGFX_Sprite *sprite;
+    uint16_t     width, height;
+} p4_image_t;
+
+static p4_image_t g_images_store[DISPLAY_P4_MAX_IMAGES];
+static uint16_t   g_next_image_store_id = 1;
+
+static p4_image_t* image_store_find(uint16_t id) {
+    for (int i = 0; i < DISPLAY_P4_MAX_IMAGES; i++) {
+        if (g_images_store[i].in_use && g_images_store[i].image_id == id)
+            return &g_images_store[i];
+    }
+    return nullptr;
+}
+
+static void image_store_destroy(p4_image_t *img) {
+    if (!img || !img->in_use) return;
+    if (img->sprite) {
+        img->sprite->deleteSprite();
+        delete img->sprite;
+        img->sprite = nullptr;
+    }
+    img->in_use = false;
+    FMRB_LOGI(TAG, "Image store free: id=%u", img->image_id);
+}
+
 // Shared composition framebuffer (320x240 8bpp) — canvases and sprites are
 // composited here at original resolution, then pushed to g_lcd with 3x zoom.
 static LGFX_Sprite *g_framebuffer = nullptr;
@@ -903,25 +940,144 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         return 0;
     }
 
-    // --- Draw image (SpriteImage → canvas) ---
+    // --- File-based image management (PNG → LGFX_Sprite) ---
+
+    case FMRB_LINK_GFX_CREATE_IMAGE_FROM_FILE: {
+        if (size < sizeof(fmrb_link_graphics_create_image_from_file_t)) break;
+        const auto *cmd = (const fmrb_link_graphics_create_image_from_file_t *)data;
+        if (size < sizeof(*cmd) + cmd->path_len) break;
+
+        const char *p  = (const char *)(data + sizeof(*cmd));
+        int         pl = (int)cmd->path_len;
+        if (pl > 0 && p[0] == '/') { p++; pl--; }
+        char full_path[256];
+        snprintf(full_path, sizeof(full_path), "/flash/%.*s", pl, p);
+
+        fmrb_link_graphics_image_created_t resp = {};
+
+        // Find free slot
+        p4_image_t *slot = nullptr;
+        for (int i = 0; i < DISPLAY_P4_MAX_IMAGES; i++) {
+            if (!g_images_store[i].in_use) { slot = &g_images_store[i]; break; }
+        }
+        if (!slot) {
+            FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: image store full");
+            send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+            return 1;
+        }
+
+        // Read file
+        FILE *fp = fopen(full_path, "rb");
+        if (!fp) {
+            FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: cannot open %s", full_path);
+            send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+            return 1;
+        }
+        fseek(fp, 0, SEEK_END);
+        long fsz = ftell(fp);
+        fseek(fp, 0, SEEK_SET);
+        if (fsz <= 0 || fsz > 256 * 1024) {
+            FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: bad size %ld", fsz);
+            fclose(fp);
+            send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+            return 1;
+        }
+
+        uint8_t *buf = (uint8_t *)fmrb_sys_malloc((size_t)fsz);
+        if (!buf) {
+            fclose(fp);
+            send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+            return 1;
+        }
+        fread(buf, 1, (size_t)fsz, fp);
+        fclose(fp);
+
+        // Extract image dimensions from PNG IHDR chunk (bytes 16..23)
+        int img_w = 0, img_h = 0;
+        if (fsz >= 24 && buf[0] == 0x89 && buf[1] == 'P' &&
+            buf[2] == 'N' && buf[3] == 'G') {
+            img_w = (int)((uint32_t)buf[16] << 24 | (uint32_t)buf[17] << 16 |
+                          (uint32_t)buf[18] << 8  | (uint32_t)buf[19]);
+            img_h = (int)((uint32_t)buf[20] << 24 | (uint32_t)buf[21] << 16 |
+                          (uint32_t)buf[22] << 8  | (uint32_t)buf[23]);
+        }
+        if (img_w <= 0 || img_h <= 0 || img_w > 2048 || img_h > 2048) {
+            FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: bad PNG dims %dx%d: %s",
+                      img_w, img_h, full_path);
+            fmrb_sys_free(buf);
+            send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+            return 1;
+        }
+
+        // Create 8bpp sprite and decode PNG directly into it
+        auto *spr = new LGFX_Sprite();
+        spr->setColorDepth(8);
+        spr->setPsram(true);
+        if (!spr->createSprite(img_w, img_h)) {
+            FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: sprite alloc failed %dx%d", img_w, img_h);
+            fmrb_sys_free(buf);
+            delete spr;
+            send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+            return 1;
+        }
+        spr->drawPng(buf, (size_t)fsz, 0, 0);
+        fmrb_sys_free(buf);
+
+        uint16_t id = g_next_image_store_id++;
+        if (id == 0) id = g_next_image_store_id++;
+
+        slot->in_use   = true;
+        slot->image_id = id;
+        slot->sprite   = spr;
+        slot->width    = (uint16_t)img_w;
+        slot->height   = (uint16_t)img_h;
+
+        resp.image_id = id;
+        resp.width    = (uint16_t)img_w;
+        resp.height   = (uint16_t)img_h;
+        FMRB_LOGI(TAG, "CREATE_IMAGE_FROM_FILE: %s -> id=%u %dx%d",
+                  full_path, id, img_w, img_h);
+        send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+        return 1;
+    }
+
+    case FMRB_LINK_GFX_DELETE_IMAGE: {
+        if (size < sizeof(uint16_t)) break;
+        uint16_t image_id = *(const uint16_t *)data;
+        image_store_destroy(image_store_find(image_id));
+        return 0;
+    }
+
+    // --- Draw image (SpriteImage or PNG image → canvas) ---
 
     case FMRB_LINK_GFX_DRAW_IMAGE: {
         if (size < sizeof(fmrb_link_graphics_draw_image_t)) break;
         const auto *cmd = (const fmrb_link_graphics_draw_image_t *)data;
-        LGFX_Sprite *src = display_p4_sprite_image_get(cmd->image_id);
-        if (!src) return -1;
         auto *dst = get_sprite(cmd->canvas_id);
         if (!dst) return -1;
 
-        uint8_t trans_color = 0;
-        bool use_trans = display_p4_sprite_image_get_transparent(cmd->image_id, &trans_color);
-        // 1:1 scale only (scale_x_fp8=256 means 1.0); ignoring scale for now.
-        if (use_trans) {
-            src->pushSprite(dst, cmd->x, cmd->y, (uint32_t)trans_color);
-        } else {
-            src->pushSprite(dst, cmd->x, cmd->y);
+        // Try sprite image first
+        LGFX_Sprite *src = display_p4_sprite_image_get(cmd->image_id);
+        if (src) {
+            uint8_t trans_color = 0;
+            bool use_trans = display_p4_sprite_image_get_transparent(cmd->image_id, &trans_color);
+            if (use_trans) {
+                src->pushSprite(dst, cmd->x, cmd->y, (uint32_t)trans_color);
+            } else {
+                src->pushSprite(dst, cmd->x, cmd->y);
+            }
+            return 0;
         }
-        return 0;
+
+        // Try PNG image store
+        p4_image_t *img = image_store_find(cmd->image_id);
+        if (img && img->sprite) {
+            img->sprite->pushSprite(dst, cmd->x, cmd->y);
+            return 0;
+        }
+
+        FMRB_LOGW(TAG, "DRAW_IMAGE: image %u not found", cmd->image_id);
+        return -1;
     }
 
     case FMRB_LINK_GFX_DRAW_TILE: {
@@ -997,8 +1153,6 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_DRAW_CHAR:
     case FMRB_LINK_GFX_DRAW_BITMAP:
     case FMRB_LINK_GFX_CREATE_IMAGE_FROM_MEM:
-    case FMRB_LINK_GFX_CREATE_IMAGE_FROM_FILE:
-    case FMRB_LINK_GFX_DELETE_IMAGE:
         FMRB_LOGD(TAG, "GFX cmd 0x%02x: ACK only (not implemented)", sub_cmd);
         return 0;
 
