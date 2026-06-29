@@ -1048,7 +1048,9 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         return 0;
     }
 
-    // --- Draw image (SpriteImage or PNG image → canvas) ---
+    // --- Draw image (PNG image store → canvas) ---
+    // DRAW_IMAGE uses PNG image IDs (from CREATE_IMAGE_FROM_FILE).
+    // Sprite images use separate commands (DRAW_TILE, sprite compositing).
 
     case FMRB_LINK_GFX_DRAW_IMAGE: {
         if (size < sizeof(fmrb_link_graphics_draw_image_t)) break;
@@ -1056,20 +1058,6 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         auto *dst = get_sprite(cmd->canvas_id);
         if (!dst) return -1;
 
-        // Try sprite image first
-        LGFX_Sprite *src = display_p4_sprite_image_get(cmd->image_id);
-        if (src) {
-            uint8_t trans_color = 0;
-            bool use_trans = display_p4_sprite_image_get_transparent(cmd->image_id, &trans_color);
-            if (use_trans) {
-                src->pushSprite(dst, cmd->x, cmd->y, (uint32_t)trans_color);
-            } else {
-                src->pushSprite(dst, cmd->x, cmd->y);
-            }
-            return 0;
-        }
-
-        // Try PNG image store
         p4_image_t *img = image_store_find(cmd->image_id);
         if (img && img->sprite) {
             img->sprite->pushSprite(dst, cmd->x, cmd->y);
