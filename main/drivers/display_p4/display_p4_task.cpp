@@ -79,6 +79,11 @@ static uint16_t    g_next_canvas_id = 1;
 // When non-zero, draw commands are redirected to this SpriteImage's sprite.
 static uint16_t    g_sprite_target_id = 0;
 
+// Shared composition framebuffer (320x240 8bpp) — canvases and sprites are
+// composited here at original resolution, then pushed to g_lcd with 3x zoom.
+static LGFX_Sprite *g_framebuffer = nullptr;
+#define DISPLAY_P4_SCALE_FACTOR 3
+
 static p4_canvas_t* canvas_find(uint16_t canvas_id) {
     for (size_t i = 0; i < g_canvas_count; i++) {
         if (g_canvases[i].canvas_id == canvas_id)
@@ -210,13 +215,25 @@ static void cursor_init(void) {
 }
 
 // ============================================================
-// Render frame: composite all visible canvases onto g_lcd
-// Sprite instances for each canvas are composited onto the canvas
-// sprite before it is pushed to g_lcd.
+// Render frame: composite all visible canvases + sprite instances
+// into the shared framebuffer, then push to g_lcd with 3x scaling.
+//
+// Canvas sprites are NOT modified — sprite instances are composited
+// directly into the framebuffer after the canvas, keeping the canvas
+// buffer clean for subsequent frames.
 // ============================================================
 
+static bool g_first_render = true;
+
 static void render_frame(void) {
-    if (g_canvas_count == 0) return;
+    if (!g_framebuffer || g_canvas_count == 0) return;
+
+    if (g_first_render) {
+        g_lcd.fillScreen(0);
+        g_first_render = false;
+    }
+
+    g_framebuffer->clear(0);
 
     if (g_canvas_count > 1) {
         qsort(g_canvases, g_canvas_count, sizeof(p4_canvas_t), canvas_cmp_zorder);
@@ -226,22 +243,33 @@ static void render_frame(void) {
         p4_canvas_t *c = &g_canvases[i];
         if (!c->is_visible || !c->sprite) continue;
 
-        // Composite sprite instances into the canvas sprite first.
-        display_p4_sprite_composite(c->canvas_id, c->sprite);
-
-        // Push canvas sprite to g_lcd.
+        // Push canvas sprite into the framebuffer (non-destructive to canvas).
         if (c->use_transparency) {
-            c->sprite->pushSprite(&g_lcd, c->push_x, c->push_y,
+            c->sprite->pushSprite(g_framebuffer, c->push_x, c->push_y,
                                   (uint32_t)c->transparent_color);
         } else {
-            c->sprite->pushSprite(&g_lcd, c->push_x, c->push_y);
+            c->sprite->pushSprite(g_framebuffer, c->push_x, c->push_y);
         }
+
+        // Composite sprite instances on top, offset by canvas position.
+        display_p4_sprite_composite(c->canvas_id, g_framebuffer,
+                                    c->push_x, c->push_y);
     }
 
     if (g_cursor_visible && g_cursor_sprite) {
-        g_cursor_sprite->pushSprite(&g_lcd, g_cursor_x, g_cursor_y,
+        g_cursor_sprite->pushSprite(g_framebuffer, g_cursor_x, g_cursor_y,
                                     (uint32_t)CURSOR_TRANSPARENT);
     }
+
+    // Push framebuffer to LCD with 3x nearest-neighbor scaling, centered.
+    int scaled_w = g_framebuffer->width()  * DISPLAY_P4_SCALE_FACTOR;
+    int scaled_h = g_framebuffer->height() * DISPLAY_P4_SCALE_FACTOR;
+    int center_x = (g_lcd.width()  - scaled_w) / 2 + scaled_w / 2;
+    int center_y = (g_lcd.height() - scaled_h) / 2 + scaled_h / 2;
+    g_framebuffer->pushRotateZoom(&g_lcd, center_x, center_y,
+                                  0.0f,
+                                  (float)DISPLAY_P4_SCALE_FACTOR,
+                                  (float)DISPLAY_P4_SCALE_FACTOR);
 }
 
 // ============================================================
@@ -827,8 +855,11 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_CREATE_SPRITE_INSTANCE: {
         if (size < sizeof(fmrb_link_graphics_create_sprite_instance_t)) break;
         const auto *cmd = (const fmrb_link_graphics_create_sprite_instance_t *)data;
+        // Copy image_ids to avoid taking address of packed member
+        uint16_t local_image_ids[FMRB_SPRITE_MAX_FRAMES];
+        memcpy(local_image_ids, cmd->image_ids, sizeof(uint16_t) * cmd->frame_count);
         uint16_t inst_id = display_p4_sprite_instance_create(
-            cmd->canvas_id, cmd->image_ids, cmd->frame_count,
+            cmd->canvas_id, local_image_ids, cmd->frame_count,
             cmd->x, cmd->y, cmd->z_order);
         FMRB_LOGI(TAG, "CREATE_SPRITE_INSTANCE: canvas=%u frames=%u -> id=%u",
                   cmd->canvas_id, cmd->frame_count, inst_id);
@@ -963,7 +994,6 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_SET_OUTPUT_LEVEL:
     case FMRB_LINK_GFX_SET_CHROMA_LEVEL:
     case FMRB_LINK_GFX_SET_COMPOSITE_REGIONS:
-    case FMRB_LINK_GFX_SET_TARGET:
     case FMRB_LINK_GFX_DRAW_CHAR:
     case FMRB_LINK_GFX_DRAW_BITMAP:
     case FMRB_LINK_GFX_CREATE_IMAGE_FROM_MEM:
@@ -1080,7 +1110,7 @@ static void display_p4_task(void *arg) {
     if (!g_lcd.init()) {
         FMRB_LOGE(TAG, "LGFX init failed");
     } else {
-        g_lcd.setRotation(1); // landscape: 1280x720 (native portrait 720x1280 rotated 90deg CW)
+        g_lcd.setRotation(3); // landscape: 1280x720 (native portrait 720x1280 rotated 90deg CCW)
         FMRB_LOGI(TAG, "LGFX init OK (%dx%d)", g_lcd.width(), g_lcd.height());
         g_lcd.fillScreen(g_lcd.color888(0, 0, 64));
         g_lcd.setTextColor(g_lcd.color888(255, 255, 255));
@@ -1092,6 +1122,22 @@ static void display_p4_task(void *arg) {
         g_lcd.setTextSize(2);
         g_lcd.setCursor(20, 160);
         g_lcd.print("Initializing...");
+
+        // Allocate the shared composition framebuffer (320x240 8bpp in PSRAM).
+        // All canvas/sprite compositing happens here at original resolution,
+        // then it is pushed to g_lcd with 3x nearest-neighbor scaling.
+        g_framebuffer = new LGFX_Sprite(&g_lcd);
+        g_framebuffer->setColorDepth(8);
+        g_framebuffer->setPsram(true);
+        if (!g_framebuffer->createSprite(320, 240)) {
+            FMRB_LOGE(TAG, "Framebuffer alloc failed");
+            delete g_framebuffer;
+            g_framebuffer = nullptr;
+        } else {
+            g_framebuffer->clear(0);
+            FMRB_LOGI(TAG, "Framebuffer allocated: 320x240 8bpp (scale=%dx)",
+                      DISPLAY_P4_SCALE_FACTOR);
+        }
     }
 
     FMRB_LOGI(TAG, "Tab5 display: entering command receive loop");

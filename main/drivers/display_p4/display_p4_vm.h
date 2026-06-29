@@ -30,8 +30,10 @@
 #define DISPLAY_P4_VM_OP_FILL_CIRCLE     0x07
 #define DISPLAY_P4_VM_OP_DRAW_TEXT       0x08
 
-// Forward-declare to avoid pulling in heavy LovyanGFX headers here.
-namespace lgfx { class LGFX_Sprite; }
+// LovyanGFX uses inline namespace v1 inside lgfx, so a plain forward
+// declaration in namespace lgfx creates an ambiguous symbol.  Pull in the
+// real definition instead.
+#include <M5GFX.h>
 
 // Initialize VM state (call once at boot, before any other VM function).
 void display_p4_vm_init(void);

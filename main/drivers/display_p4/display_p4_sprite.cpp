@@ -4,7 +4,6 @@
 
 #include "display_p4_sprite.h"
 
-#include <M5GFX.h>   // LovyanGFX v1 with LGFX_Sprite
 #include <cstring>
 #include <cstdlib>   // qsort
 
@@ -223,8 +222,9 @@ void display_p4_sprite_delete_all_for_canvas(uint16_t canvas_id) {
 }
 
 void display_p4_sprite_composite(uint16_t canvas_id,
-                                  lgfx::LGFX_Sprite *canvas_sprite) {
-    if (!canvas_sprite) return;
+                                  lgfx::LGFX_Sprite *target,
+                                  int16_t offset_x, int16_t offset_y) {
+    if (!target) return;
 
     int count = 0;
     for (int i = 0; i < DISPLAY_P4_MAX_SPRITE_INSTANCES; i++) {
@@ -244,11 +244,13 @@ void display_p4_sprite_composite(uint16_t canvas_id,
         p4_sprite_image_t *img = image_find(inst->image_ids[inst->current_frame]);
         if (!img || !img->sprite) continue;
 
+        int16_t dx = inst->x + offset_x;
+        int16_t dy = inst->y + offset_y;
         if (img->use_transparent) {
-            img->sprite->pushSprite(canvas_sprite, inst->x, inst->y,
+            img->sprite->pushSprite(target, dx, dy,
                                     (uint32_t)img->transparent_color);
         } else {
-            img->sprite->pushSprite(canvas_sprite, inst->x, inst->y);
+            img->sprite->pushSprite(target, dx, dy);
         }
     }
 }

@@ -4,7 +4,6 @@
 
 #include "display_p4_vm.h"
 
-#include <M5GFX.h>  // pulls in LovyanGFX v1 with LGFX_Sprite
 #include <cstring>
 
 #include "fmrb_log.h"

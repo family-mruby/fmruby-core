@@ -18,8 +18,10 @@
 #define DISPLAY_P4_MAX_SPRITE_INSTANCES 32
 #define DISPLAY_P4_MAX_MASKS             8
 
-// Forward-declare to avoid pulling in heavy LovyanGFX headers.
-namespace lgfx { class LGFX_Sprite; }
+// LovyanGFX uses inline namespace v1 inside lgfx, so a plain forward
+// declaration in namespace lgfx creates an ambiguous symbol.  Pull in the
+// real definition instead.
+#include <M5GFX.h>
 
 // ---------------------------------------------------------------------------
 // SpriteImage
@@ -61,10 +63,13 @@ void display_p4_sprite_instance_move(uint16_t instance_id, int16_t x, int16_t y)
 void display_p4_sprite_instance_set_visible(uint16_t instance_id, bool visible);
 void display_p4_sprite_instance_set_frame(uint16_t instance_id, uint8_t frame_index);
 
-// Composite visible instances for canvas_id onto the destination LGFX_Sprite
-// (the canvas sprite), sorted by z_order.
+// Composite visible instances for canvas_id onto the destination LGFX_Sprite,
+// sorted by z_order.  Instance positions are offset by (offset_x, offset_y)
+// so that sprites placed relative to a canvas origin can be composited onto
+// a shared framebuffer at the canvas's screen position.
 void display_p4_sprite_composite(uint16_t canvas_id,
-                                  lgfx::LGFX_Sprite *canvas_sprite);
+                                  lgfx::LGFX_Sprite *target,
+                                  int16_t offset_x, int16_t offset_y);
 
 // ---------------------------------------------------------------------------
 // Mask
