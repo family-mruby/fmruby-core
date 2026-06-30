@@ -38,6 +38,7 @@
 #ifdef FMRB_HW_MODERN
 #include "display_p4_task.h"
 #include "tab5_keyboard.h"
+#include "touch_task.h"
 #endif
 #endif
 
@@ -324,6 +325,11 @@ static bool init_hardware(void)
     ret = tab5_keyboard_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init Tab5 keyboard, continuing without it");
+    }
+
+    ret = touch_task_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init touch, continuing without it");
     }
 #else
     reset_wrover();

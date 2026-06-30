@@ -59,6 +59,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/display_p4/display_p4_task.cpp"
             "drivers/display_p4/display_p4_vm.cpp"
             "drivers/display_p4/display_p4_sprite.cpp"
+            "drivers/touch/touch_task.c"
             "drivers/tab5_keyboard/tab5_keyboard.c"
         )
         list(APPEND COMPONENT_REQUIRES m5gfx)
@@ -87,7 +88,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/tab5_keyboard" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+#include <stdbool.h>
 #include "fmrb_err.h"
 
 #ifdef __cplusplus
@@ -21,6 +23,24 @@ fmrb_err_t display_p4_task_init(void);
  * @return FMRB_OK on success.
  */
 fmrb_err_t display_p4_task_deinit(void);
+
+/**
+ * @brief Check if the LGFX display is initialized and ready.
+ * @return true if g_lcd.init() has completed successfully.
+ */
+bool display_p4_is_ready(void);
+
+/**
+ * @brief Read touch coordinates from the GT911 touch panel.
+ *
+ * Wraps LovyanGFX g_lcd.getTouch() for cross-file access.
+ * Coordinates are in panel space (after rotation).
+ *
+ * @param out_x Pointer to receive X coordinate
+ * @param out_y Pointer to receive Y coordinate
+ * @return Number of touch points detected (0 or 1)
+ */
+int display_p4_get_touch(int16_t *out_x, int16_t *out_y);
 
 #ifdef __cplusplus
 }

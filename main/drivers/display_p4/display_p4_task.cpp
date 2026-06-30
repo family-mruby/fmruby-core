@@ -46,6 +46,7 @@ static const char *TAG = "display_p4";
 #define PI4IO2_ADDR     0x44   // PI4IO GPIO expander #2 (power rails)
 
 static LGFX_Tab5 g_lcd;
+static volatile bool g_lcd_ready = false;
 
 // Receive buffer for local link commands
 #define DISPLAY_P4_RECV_BUF_SIZE 4096
@@ -1361,6 +1362,7 @@ static void display_p4_task(void *arg) {
             FMRB_LOGI(TAG, "Framebuffer allocated: 320x240 8bpp (scale=%dx)",
                       DISPLAY_P4_SCALE_FACTOR);
         }
+        g_lcd_ready = true;
     }
 
     FMRB_LOGI(TAG, "Tab5 display: entering command receive loop");
@@ -1390,4 +1392,19 @@ extern "C" fmrb_err_t display_p4_task_init(void) {
 
 extern "C" fmrb_err_t display_p4_task_deinit(void) {
     return FMRB_OK;
+}
+
+extern "C" bool display_p4_is_ready(void) {
+    return g_lcd_ready;
+}
+
+extern "C" int display_p4_get_touch(int16_t *out_x, int16_t *out_y) {
+    if (!g_lcd_ready) return 0;
+    lgfx::touch_point_t tp;
+    int count = g_lcd.getTouch(&tp, 1);
+    if (count > 0) {
+        *out_x = tp.x;
+        *out_y = tp.y;
+    }
+    return count;
 }
