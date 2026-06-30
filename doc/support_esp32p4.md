@@ -57,12 +57,14 @@ ESP32-P4 自体は **IDF v5.3+ で正式サポート**、M5GFX(Tab5/P4 DSI) も 
 - [x] **単一 IDF v5.5.4 コンテナで Retro(esp32s3) / Modern(esp32p4) / Linux すべてビルド成功**
 - [x] Tab5表示 Phase 1: 自前LGFXクラス(LGFX_Tab5) + PI4IO電源/リセット + ブートテストパターン（実機表示確認済み）
 - [x] Phase 1 実機確認（Tab5 実機: ブートテキスト表示・カーネル/デスクトップ起動確認）
-- [ ] Tab5表示 Phase 2: ローカルリンクseam + gfxコマンドデコード + コンポジタ→デスクトップ表示
-- [ ] Tab5表示 Phase 3: Tab5 Keyboard(I2C 0x6D) 入力
-- [ ] Tab5表示 Phase 4: 本体タッチ(GT911)→マウス
+- [x] Tab5表示 Phase 2: GFX コマンドデコード + フレームバッファ合成 + 3x スケーリング表示
+- [x] Tab5表示 Phase 2.5: スプライト(SpriteImage/Instance/Mask) + GfxBlock VM + PNG画像ロード
+- [x] Tab5表示 Phase 3: Tab5 Keyboard(I2C 0x6D, HID mode) 入力
+- [x] Tab5表示 Phase 4: 本体タッチ(GT911)→トラックパッド方式マウス
+- [x] 仮想画面サイズ 426x240 (3x→1278x720, LCD中央配置)
+- [ ] PPA (Pixel Processing Accelerator) によるハードウェアスケーリング（調査・試行済み、未完了）
 - [ ] lgfx_tab5: パネル自動判定（ILI9881C / ST7123 / ST7121 をDSI ID読み取りで切替。NARYAv4量産対応）
 - [ ] 無線(BLE/WiFi)のC6経由化（現状P4では無効）
-- [ ] LovyanGFX のP4アクセラレーション(PPA等)対応調査
 - [ ] 実機での sdkconfig 微調整
 
 備考: 以下の「作業記録」は IDF6 で進めた当時の経緯を含む（履歴）。現行 v5.5.4 では IDF6 固有の回避策
@@ -193,3 +195,73 @@ Tab5 は生産時期によりパネルドライバが異なる。背面ラベル
 | 2025/10/14 以降 | ST7123（一体型） | ST7123（一体型） | 未実装（将来課題） |
 
 M5GFX は DSI 経由でパネル ID を読み取り実行時に自動判定する。NARYAv4 量産時の調達ロットによって ST7123 になる可能性があるため、自動判定の実装が将来的に必要。
+
+### Phase 2〜4: GFX 描画・スプライト・キーボード・タッチ — 完了
+
+**Phase 2 (GFX 描画 + フレームバッファ合成):**
+
+- `display_p4_task.cpp` を全面実装。全 GFX コマンド（描画プリミティブ、キャンバス管理、カーソル、GfxBlock VM、スプライト、PNG 画像）を処理。
+- フレームバッファ方式: 8bpp (RGB332) の共有フレームバッファ（INIT_DISPLAY で動的サイズ確保）にキャンバスを z-order 順で合成 → `pushRotateZoom` で 3x スケーリングして g_lcd に出力。
+- キャンバス合成: 不透明は行単位 `memcpy`、透過は RGB332 値でバイト比較ループ。LovyanGFX の `pushSprite` は 8bpp 透過色を RGB888 に誤変換するため使用せず、直接バッファ操作で実装。
+- PNG 画像: `CREATE_IMAGE_FROM_FILE` で 16bpp 中間スプライトに `drawPng` → 8bpp に `pushSprite` 変換して保存。RGBA PNG は白背景で事前クリア。
+- 仮想画面サイズを 320x240 → 426x240 に変更（1280/3=426, LCD 横幅をフル活用）。
+
+**Phase 2.5 (スプライト + VM):**
+
+- `display_p4_vm.cpp/h`: GfxBlock バイトコード VM（9オペコード、16レジスタ、16プログラム）。
+- `display_p4_sprite.cpp/h`: SpriteImage（8bpp PSRAM）、SpriteInstance（マルチフレーム、z-order）、1bpp Mask プール。
+- スプライトはフレームバッファに直接合成（キャンバスバッファを破壊しない設計）。
+
+**Phase 3 (Tab5 Keyboard):**
+
+- `tab5_keyboard.c` を HID mode (レジスタ 0x10=1) で実装。I2C0 (GPIO0/1) で STM32F030 (0x6D) にアクセス。
+- 50ms ポーリングで INT_STA (0x01) + HID_EVENT (0x30, 2バイト: modifier+keycode) を読み取り。
+- USB HID と同じ modifier 変換 + `fmrb_host_send_key_down/up` でイベント送信。
+- キーボード未接続時は probe 失敗で非致命的スキップ。
+
+**Phase 4 (タッチ入力):**
+
+- `drivers/touch/touch_task.c`: GT911 タッチをトラックパッド方式で実装。
+- `display_p4_get_touch()` (g_lcd.getTouch のラッパー) を 33ms ポーリング。
+- 絶対座標ではなく相対移動（指の移動量をカーソルに加算）。パネル座標の差分を 3 で割って仮想座標に変換。
+- タッチダウン=クリック、ドラッグ=カーソル移動、タッチアップ=リリース。
+
+### PPA (Pixel Processing Accelerator) 対応の経緯と今後
+
+**調査結果:**
+
+ESP32-P4 は PPA ハードウェアを搭載し、ESP-IDF v5.5 の `esp_driver_ppa` コンポーネント (`driver/ppa.h`) で SRM (Scale-Rotate-Mirror) / Blend / Fill の 3 操作が利用可能。
+
+- SRM: 入力画像を 1/16 ステップでスケーリング + 0/90/180/270度回転 + ミラー
+- 対応色空間: **RGB565, RGB888, ARGB8888, YUV 各種, GRAY8**
+- **RGB332 は非対応**
+
+**試行と問題:**
+
+フレームバッファを RGB565 に変更し、PPA SRM で 3x ハードウェアスケーリングを試みた。
+
+1. フレームバッファ RGB565 化: キャンバス (8bpp) → pushSprite → フレームバッファ (16bpp) で合成。
+2. PPA SRM: フレームバッファ → Panel_DSI の内部フレームバッファに直接 3x スケーリング出力。
+3. PPA SRM 初期化・呼び出しは成功（`ppa_register_client` / `ppa_do_scale_rotate_mirror`）。
+
+**発生した問題:**
+
+- **PPA 出力の画面乱れ**: Panel_DSI フレームバッファへの直接書き込みが LovyanGFX の DMA2D パイプラインと衝突し、画面が完全に崩壊。PPA の出力バッファレイアウトと DSI パネルの期待するフォーマット（バイトオーダー、行アライメント）の整合が取れていない可能性。
+- **pushSprite の透過色問題**: 8bpp→16bpp 変換時に LovyanGFX の `pushSprite` が透過色 (RGB332) を RGB888 として解釈し、RGB565 変換後に不一致が発生。全体の色味もおかしくなった。
+
+**現状の結論:**
+
+- フレームバッファは **8bpp (RGB332) に戻し**、正常動作を回復。
+- 最終スケーリングは **pushRotateZoom** (ソフトウェア) で行っている。
+
+**PPA 活用の今後の計画:**
+
+PPA を有効に使うには以下のアプローチが考えられる:
+
+1. **全バッファ RGB565 化**: カーネル側の色フォーマット（fmrb_gfx の 8bpp 前提）を 16bpp に変更する大規模改修。透過色の扱いも再設計が必要。最も効果的だが影響範囲が大きい。
+
+2. **スケーリング専用の RGB565 中間バッファ**: 8bpp フレームバッファを合成完了後に CPU で RGB565 に変換し、PPA SRM でスケーリングのみ行う。合成は 8bpp のまま。変換コスト vs pushRotateZoom のコストのトレードオフ。
+
+3. **Panel_DSI フレームバッファ直接アクセスの調整**: LovyanGFX の Panel_DSI が内部で行う DMA2D 転送と PPA 出力の競合を解決する。`config_detail().buffer` の実際のレイアウト（行ストライド、バイトオーダー）を詳細に調査し、PPA 出力を正しく書き込む。`esp_cache_msync` のタイミングも要検証。
+
+現時点では方式 2 が最もリスクが低い。ただし 426x240 の 8→16bpp 変換（102,240 ピクセル）のオーバーヘッドと、pushRotateZoom のソフトウェアスケーリングコストの比較が必要。

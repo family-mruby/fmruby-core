@@ -121,8 +121,9 @@ static void image_store_destroy(p4_image_t *img) {
     FMRB_LOGI(TAG, "Image store free: id=%u", img->image_id);
 }
 
-// Shared composition framebuffer (allocated at INIT_DISPLAY with the kernel's
-// display_width x display_height), pushed to g_lcd with 3x zoom.
+// Shared composition framebuffer (8bpp RGB332, allocated at INIT_DISPLAY).
+// Canvases are composited here via direct buffer ops, then pushed to
+// g_lcd with 3x scaling via pushRotateZoom.
 static LGFX_Sprite *g_framebuffer = nullptr;
 static uint16_t g_display_width  = 0;
 static uint16_t g_display_height = 0;
@@ -285,6 +286,9 @@ static void render_frame(void) {
         qsort(g_canvases, g_canvas_count, sizeof(p4_canvas_t), canvas_cmp_zorder);
     }
 
+    // Composite canvases into the 8bpp framebuffer using direct buffer ops.
+    // Both canvases and framebuffer are 8bpp RGB332, so transparency color
+    // comparison works correctly at the byte level.
     int fb_w = g_framebuffer->width();
     int fb_h = g_framebuffer->height();
     uint8_t *fb_buf = (uint8_t *)g_framebuffer->getBuffer();
@@ -293,8 +297,6 @@ static void render_frame(void) {
         p4_canvas_t *c = &g_canvases[i];
         if (!c->is_visible || !c->sprite) continue;
 
-        // Direct 8bpp buffer compositing avoids LovyanGFX pushSprite color
-        // conversion, which misinterprets RGB332 transparent colors as RGB888.
         uint8_t *src_buf = (uint8_t *)c->sprite->getBuffer();
         int sw = c->sprite->width();
         int sh = c->sprite->height();
@@ -337,12 +339,13 @@ static void render_frame(void) {
                                     (uint32_t)CURSOR_TRANSPARENT);
     }
 
-    // Push framebuffer to LCD with 3x nearest-neighbor scaling, centered.
-    int scaled_w = g_framebuffer->width()  * DISPLAY_P4_SCALE_FACTOR;
-    int scaled_h = g_framebuffer->height() * DISPLAY_P4_SCALE_FACTOR;
+    // Push 8bpp framebuffer to LCD with 3x scaling.
+    // pushRotateZoom handles 8bpp→16bpp conversion internally.
+    int scaled_w = fb_w * DISPLAY_P4_SCALE_FACTOR;
+    int scaled_h = fb_h * DISPLAY_P4_SCALE_FACTOR;
     int center_x = (g_lcd.width()  - scaled_w) / 2 + scaled_w / 2;
     int center_y = (g_lcd.height() - scaled_h) / 2 + scaled_h / 2;
-    g_framebuffer->pushRotateZoom(&g_lcd, center_x, center_y,
+    g_framebuffer->pushRotateZoom(&g_lcd, (float)center_x, (float)center_y,
                                   0.0f,
                                   (float)DISPLAY_P4_SCALE_FACTOR,
                                   (float)DISPLAY_P4_SCALE_FACTOR);
@@ -1289,12 +1292,12 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
                       init_cmd->width, init_cmd->height, init_cmd->color_depth,
                       init_cmd->margin_x, init_cmd->margin_y);
 
-            // Allocate framebuffer matching the kernel's display size
+            // Allocate 8bpp framebuffer matching the kernel's display size
             if (!g_framebuffer && init_cmd->width > 0 && init_cmd->height > 0) {
                 g_display_width  = init_cmd->width;
                 g_display_height = init_cmd->height;
                 g_framebuffer = new LGFX_Sprite(&g_lcd);
-                g_framebuffer->setColorDepth(8);
+                g_framebuffer->setColorDepth(8);  // RGB332, same as canvases
                 g_framebuffer->setPsram(true);
                 if (!g_framebuffer->createSprite(g_display_width, g_display_height)) {
                     FMRB_LOGE(TAG, "Framebuffer alloc failed: %dx%d",
