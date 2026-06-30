@@ -67,6 +67,10 @@ typedef struct {
     int16_t      z_order;
     int16_t      push_x, push_y;
     bool         is_visible;
+    // Creation-time transparency (used during render_frame compositing)
+    uint8_t      create_transparent_color;
+    bool         create_use_transparency;
+    // Push-time transparency (used for canvas-to-canvas PUSH_CANVAS only)
     uint8_t      transparent_color;
     bool         use_transparency;
     uint16_t     width, height;
@@ -147,17 +151,19 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     }
     sprite->clear(0);
 
-    p4_canvas_t *c       = &g_canvases[g_canvas_count++];
-    c->canvas_id         = canvas_id;
-    c->sprite            = sprite;
-    c->z_order           = z_order;
-    c->push_x            = 0;
-    c->push_y            = 0;
-    c->is_visible        = false;
-    c->transparent_color = transparent_color;
-    c->use_transparency  = use_transparency;
-    c->width             = width;
-    c->height            = height;
+    p4_canvas_t *c              = &g_canvases[g_canvas_count++];
+    c->canvas_id                = canvas_id;
+    c->sprite                   = sprite;
+    c->z_order                  = z_order;
+    c->push_x                   = 0;
+    c->push_y                   = 0;
+    c->is_visible               = false;
+    c->create_transparent_color = transparent_color;
+    c->create_use_transparency  = use_transparency;
+    c->transparent_color        = transparent_color;
+    c->use_transparency         = use_transparency;
+    c->width                    = width;
+    c->height                   = height;
 
     FMRB_LOGI(TAG, "Canvas alloc: id=%u %dx%d z=%d transp=%u/%u",
               canvas_id, width, height, z_order, transparent_color, (uint8_t)use_transparency);
@@ -276,16 +282,46 @@ static void render_frame(void) {
         qsort(g_canvases, g_canvas_count, sizeof(p4_canvas_t), canvas_cmp_zorder);
     }
 
+    int fb_w = g_framebuffer->width();
+    int fb_h = g_framebuffer->height();
+    uint8_t *fb_buf = (uint8_t *)g_framebuffer->getBuffer();
+
     for (size_t i = 0; i < g_canvas_count; i++) {
         p4_canvas_t *c = &g_canvases[i];
         if (!c->is_visible || !c->sprite) continue;
 
-        // Push canvas sprite into the framebuffer (non-destructive to canvas).
-        if (c->use_transparency) {
-            c->sprite->pushSprite(g_framebuffer, c->push_x, c->push_y,
-                                  (uint32_t)c->transparent_color);
-        } else {
-            c->sprite->pushSprite(g_framebuffer, c->push_x, c->push_y);
+        // Direct 8bpp buffer compositing avoids LovyanGFX pushSprite color
+        // conversion, which misinterprets RGB332 transparent colors as RGB888.
+        uint8_t *src_buf = (uint8_t *)c->sprite->getBuffer();
+        int sw = c->sprite->width();
+        int sh = c->sprite->height();
+
+        if (src_buf && fb_buf) {
+            bool use_trans = c->create_use_transparency;
+            uint8_t trans = c->create_transparent_color;
+
+            for (int y = 0; y < sh; y++) {
+                int dy = c->push_y + y;
+                if (dy < 0 || dy >= fb_h) continue;
+                int sx0 = 0, dx = c->push_x;
+                int cw = sw;
+                if (dx < 0) { sx0 = -dx; cw += dx; dx = 0; }
+                if (dx + cw > fb_w) cw = fb_w - dx;
+                if (cw <= 0) continue;
+
+                uint8_t *src_row = src_buf + y * sw + sx0;
+                uint8_t *dst_row = fb_buf + dy * fb_w + dx;
+
+                if (!use_trans) {
+                    memcpy(dst_row, src_row, (size_t)cw);
+                } else {
+                    for (int x = 0; x < cw; x++) {
+                        if (src_row[x] != trans) {
+                            dst_row[x] = src_row[x];
+                        }
+                    }
+                }
+            }
         }
 
         // Composite sprite instances on top, offset by canvas position.
@@ -1009,19 +1045,37 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             return 1;
         }
 
-        // Create 8bpp sprite and decode PNG directly into it
+        // Decode PNG into a 16bpp temp sprite, then convert to 8bpp.
+        // drawPng on 8bpp targets may not render correctly.
+        auto *tmp = new LGFX_Sprite();
+        tmp->setColorDepth(16);
+        tmp->setPsram(true);
+        if (!tmp->createSprite(img_w, img_h)) {
+            FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: tmp sprite alloc failed %dx%d", img_w, img_h);
+            fmrb_sys_free(buf);
+            delete tmp;
+            send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+            return 1;
+        }
+        // Fill with white so RGBA transparent pixels become white background
+        tmp->fillScreen(0xFFFF);
+        tmp->drawPng(buf, (size_t)fsz, 0, 0);
+        fmrb_sys_free(buf);
+
         auto *spr = new LGFX_Sprite();
         spr->setColorDepth(8);
         spr->setPsram(true);
         if (!spr->createSprite(img_w, img_h)) {
             FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: sprite alloc failed %dx%d", img_w, img_h);
-            fmrb_sys_free(buf);
+            tmp->deleteSprite();
+            delete tmp;
             delete spr;
             send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
             return 1;
         }
-        spr->drawPng(buf, (size_t)fsz, 0, 0);
-        fmrb_sys_free(buf);
+        tmp->pushSprite(spr, 0, 0);
+        tmp->deleteSprite();
+        delete tmp;
 
         uint16_t id = g_next_image_store_id++;
         if (id == 0) id = g_next_image_store_id++;
@@ -1056,11 +1110,38 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_draw_image_t)) break;
         const auto *cmd = (const fmrb_link_graphics_draw_image_t *)data;
         auto *dst = get_sprite(cmd->canvas_id);
-        if (!dst) return -1;
+        if (!dst) {
+            FMRB_LOGW(TAG, "DRAW_IMAGE: canvas %u not found", cmd->canvas_id);
+            return -1;
+        }
 
         p4_image_t *img = image_store_find(cmd->image_id);
         if (img && img->sprite) {
-            img->sprite->pushSprite(dst, cmd->x, cmd->y);
+            // Both src and dst are 8bpp (RGB332) sprites; direct buffer memcpy
+            // per row is faster and more reliable than pushSprite across sprites
+            // with different parent configurations.
+            auto *src_spr = img->sprite;
+            int sw = src_spr->width();
+            int sh = src_spr->height();
+            int dw = dst->width();
+            int dh = dst->height();
+            uint8_t *src_buf = (uint8_t *)src_spr->getBuffer();
+            uint8_t *dst_buf = (uint8_t *)dst->getBuffer();
+            if (src_buf && dst_buf) {
+                for (int y = 0; y < sh; y++) {
+                    int dy = cmd->y + y;
+                    if (dy < 0 || dy >= dh) continue;
+                    int sx0 = 0, dx = cmd->x;
+                    int cw = sw;
+                    if (dx < 0) { sx0 = -dx; cw += dx; dx = 0; }
+                    if (dx + cw > dw) cw = dw - dx;
+                    if (cw <= 0) continue;
+                    memcpy(dst_buf + dy * dw + dx,
+                           src_buf + y * sw + sx0, (size_t)cw);
+                }
+            }
+            FMRB_LOGI(TAG, "DRAW_IMAGE: id=%u -> canvas=%u (%d,%d) %dx%d",
+                      cmd->image_id, cmd->canvas_id, cmd->x, cmd->y, sw, sh);
             return 0;
         }
 
@@ -1299,7 +1380,7 @@ static void display_p4_task(void *arg) {
 
 extern "C" fmrb_err_t display_p4_task_init(void) {
     BaseType_t ok = xTaskCreatePinnedToCore(display_p4_task, "display_p4",
-                                            8192, NULL, 5, NULL, 1);
+                                            16384, NULL, 5, NULL, 1);
     if (ok != pdPASS) {
         FMRB_LOGE(TAG, "Failed to create display_p4 task");
         return FMRB_ERR_FAILED;
