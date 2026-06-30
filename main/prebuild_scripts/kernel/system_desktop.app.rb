@@ -218,16 +218,18 @@ class SystemDesktopApp < FmrbApp
   def start_boot_animation
     return unless @gfx && @bg_gfx
 
-    # Cover both canvases with opaque black first.
-    @bg_gfx.clear(0x00)
+    # Cover both canvases: white background, black foreground overlay.
+    @bg_gfx.clear(0xFF)
     @bg_gfx.present
     @gfx.clear(0x00)
     @gfx.present
 
-    # Load logo onto background layer (hidden under black @gfx).
+    # Load logo onto background layer, centered (hidden under black @gfx).
     @boot_img = @bg_gfx.create_image(BOOT_IMAGE_PATH)
     if @boot_img
-      @bg_gfx.draw_image(@boot_img[:id], x: 0, y: 0)
+      cx = (@window_width  - @boot_img[:width])  / 2
+      cy = (@window_height - @boot_img[:height]) / 2
+      @bg_gfx.draw_image(@boot_img[:id], x: cx, y: cy)
       @bg_gfx.present
     else
       Log.warn("Boot logo not found: #{BOOT_IMAGE_PATH}")
