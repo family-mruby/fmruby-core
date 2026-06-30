@@ -121,9 +121,11 @@ static void image_store_destroy(p4_image_t *img) {
     FMRB_LOGI(TAG, "Image store free: id=%u", img->image_id);
 }
 
-// Shared composition framebuffer (320x240 8bpp) — canvases and sprites are
-// composited here at original resolution, then pushed to g_lcd with 3x zoom.
+// Shared composition framebuffer (allocated at INIT_DISPLAY with the kernel's
+// display_width x display_height), pushed to g_lcd with 3x zoom.
 static LGFX_Sprite *g_framebuffer = nullptr;
+static uint16_t g_display_width  = 0;
+static uint16_t g_display_height = 0;
 #define DISPLAY_P4_SCALE_FACTOR 3
 
 static p4_canvas_t* canvas_find(uint16_t canvas_id) {
@@ -1286,6 +1288,25 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
             FMRB_LOGI(TAG, "INIT_DISPLAY: %dx%d %d-bit margin=%d,%d",
                       init_cmd->width, init_cmd->height, init_cmd->color_depth,
                       init_cmd->margin_x, init_cmd->margin_y);
+
+            // Allocate framebuffer matching the kernel's display size
+            if (!g_framebuffer && init_cmd->width > 0 && init_cmd->height > 0) {
+                g_display_width  = init_cmd->width;
+                g_display_height = init_cmd->height;
+                g_framebuffer = new LGFX_Sprite(&g_lcd);
+                g_framebuffer->setColorDepth(8);
+                g_framebuffer->setPsram(true);
+                if (!g_framebuffer->createSprite(g_display_width, g_display_height)) {
+                    FMRB_LOGE(TAG, "Framebuffer alloc failed: %dx%d",
+                              g_display_width, g_display_height);
+                    delete g_framebuffer;
+                    g_framebuffer = nullptr;
+                } else {
+                    g_framebuffer->clear(0);
+                    FMRB_LOGI(TAG, "Framebuffer allocated: %dx%d 8bpp (scale=%dx)",
+                              g_display_width, g_display_height, DISPLAY_P4_SCALE_FACTOR);
+                }
+            }
             send_ack(type, seq, nullptr, 0);
         } else if (sub_cmd == FMRB_LINK_CONTROL_GA_VERSION) {
             fmrb_control_ga_version_resp_t resp = {};
@@ -1347,21 +1368,8 @@ static void display_p4_task(void *arg) {
         g_lcd.setCursor(20, 160);
         g_lcd.print("Initializing...");
 
-        // Allocate the shared composition framebuffer (320x240 8bpp in PSRAM).
-        // All canvas/sprite compositing happens here at original resolution,
-        // then it is pushed to g_lcd with 3x nearest-neighbor scaling.
-        g_framebuffer = new LGFX_Sprite(&g_lcd);
-        g_framebuffer->setColorDepth(8);
-        g_framebuffer->setPsram(true);
-        if (!g_framebuffer->createSprite(320, 240)) {
-            FMRB_LOGE(TAG, "Framebuffer alloc failed");
-            delete g_framebuffer;
-            g_framebuffer = nullptr;
-        } else {
-            g_framebuffer->clear(0);
-            FMRB_LOGI(TAG, "Framebuffer allocated: 320x240 8bpp (scale=%dx)",
-                      DISPLAY_P4_SCALE_FACTOR);
-        }
+        // Framebuffer is allocated later in INIT_DISPLAY when the kernel
+        // reports the actual display_width x display_height.
         g_lcd_ready = true;
     }
 

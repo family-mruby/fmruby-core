@@ -22,11 +22,11 @@ static const char *TAG = "touch";
 
 // Coordinate conversion from panel space to virtual display.
 // Tab5 LCD (rotation=3): 1280x720 landscape.
-// Framebuffer: 320x240 rendered at 3x scale, centered on LCD.
+// Framebuffer: 426x240 rendered at 3x scale (1278x720), centered on LCD.
 #define TOUCH_SCALE       3
-#define TOUCH_X_OFFSET    160   // (1280 - 960) / 2
+#define TOUCH_X_OFFSET    1     // (1280 - 1278) / 2
 #define TOUCH_Y_OFFSET    0     // (720 - 720) / 2
-#define TOUCH_VIRTUAL_W   320
+#define TOUCH_VIRTUAL_W   426
 #define TOUCH_VIRTUAL_H   240
 
 typedef enum {
