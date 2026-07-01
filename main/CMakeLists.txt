@@ -62,7 +62,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/touch/touch_task.c"
             "drivers/tab5_keyboard/tab5_keyboard.c"
         )
-        list(APPEND COMPONENT_REQUIRES m5gfx)
+        list(APPEND COMPONENT_REQUIRES m5gfx esp_driver_ppa)
     else()
         list(APPEND COMPONENT_REQUIRES bt)
     endif()

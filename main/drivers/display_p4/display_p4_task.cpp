@@ -3,13 +3,9 @@
 // Receives msgpack-encoded GFX/CONTROL commands from the hal_link_local TX
 // buffer, dispatches them, and sends ACK responses via the RX buffer.
 //
-// Phase 2: Full GFX rendering via LGFX_Sprite canvas compositing.
-//   - Each canvas is an 8bpp (RGB332) LGFX_Sprite allocated in PSRAM.
-//   - SpriteImages are separate 8bpp sprites for bitmap assets.
-//   - SpriteInstances are placed on canvases and composited after the canvas.
-//   - PUSH_CANVAS: sort by z-order → pushSprite to g_lcd → composite instances.
-//   - GfxBlock VM programs are executed locally (display_p4_vm).
-//   - Pixel-perfect 1:1 scale (no upscaling). Tab5 LCD-size profile TBD.
+// All internal buffers use RGB565 (16bpp) for PPA hardware acceleration.
+// GFX commands carry RGB332 color values which are converted to RGB565
+// at the command dispatch layer.
 
 #include "display_p4_task.h"
 #include "display_p4_vm.h"
@@ -26,6 +22,9 @@
 #include "freertos/task.h"
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
+#include "driver/ppa.h"
+#include "esp_cache.h"
+#include "esp_heap_caps.h"
 
 extern "C" {
 #include "fmrb_bmp332.h"
@@ -69,7 +68,8 @@ typedef struct {
     int16_t      push_x, push_y;
     bool         is_visible;
     // Creation-time transparency (used during render_frame compositing)
-    uint8_t      create_transparent_color;
+    uint8_t      create_transparent_color;     // Original RGB332 value
+    uint8_t      create_trans_r, create_trans_g, create_trans_b; // RGB888 for PPA color-key
     bool         create_use_transparency;
     // Push-time transparency (used for canvas-to-canvas PUSH_CANVAS only)
     uint8_t      transparent_color;
@@ -121,13 +121,18 @@ static void image_store_destroy(p4_image_t *img) {
     FMRB_LOGI(TAG, "Image store free: id=%u", img->image_id);
 }
 
-// Shared composition framebuffer (8bpp RGB332, allocated at INIT_DISPLAY).
-// Canvases are composited here via direct buffer ops, then pushed to
-// g_lcd with 3x scaling via pushRotateZoom.
+// Shared composition framebuffer (RGB565 16bpp, allocated at INIT_DISPLAY).
+// Canvases are composited via pushSprite, then PPA SRM 3x scales to LCD.
 static LGFX_Sprite *g_framebuffer = nullptr;
 static uint16_t g_display_width  = 0;
 static uint16_t g_display_height = 0;
 #define DISPLAY_P4_SCALE_FACTOR 3
+
+// PPA (Pixel Processing Accelerator) for hardware operations
+static ppa_client_handle_t g_ppa_srm = NULL;    // Scale-Rotate-Mirror (3x scaling)
+static ppa_client_handle_t g_ppa_blend = NULL;  // Blend (canvas compositing with color-key)
+static void *g_ppa_out_buf = NULL;
+static size_t g_ppa_out_buf_size = 0;
 
 static p4_canvas_t* canvas_find(uint16_t canvas_id) {
     for (size_t i = 0; i < g_canvas_count; i++) {
@@ -145,15 +150,20 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
         return nullptr;
     }
 
-    auto *sprite = new LGFX_Sprite(&g_lcd);
-    sprite->setColorDepth(8);  // 8bpp = RGB332, matches kernel color format
-    sprite->setPsram(true);
-    if (!sprite->createSprite(width, height)) {
-        FMRB_LOGE(TAG, "Sprite alloc failed: %dx%d", (int)width, (int)height);
-        delete sprite;
+    // Allocate cache-aligned buffer for PPA compatibility (64-byte alignment)
+    size_t buf_size = (size_t)width * height * 2;  // RGB565 = 2 bytes/pixel
+    buf_size = (buf_size + 63) & ~63;  // Round up to cache line
+    void *buf = heap_caps_aligned_alloc(64, buf_size,
+                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!buf) {
+        FMRB_LOGE(TAG, "Canvas buffer alloc failed: %dx%d (%u bytes)",
+                  (int)width, (int)height, (unsigned)buf_size);
         return nullptr;
     }
-    sprite->clear(0);
+    memset(buf, 0, buf_size);
+
+    auto *sprite = new LGFX_Sprite(&g_lcd);
+    sprite->setBuffer(buf, width, height, 16);  // RGB565, cache-aligned
 
     p4_canvas_t *c              = &g_canvases[g_canvas_count++];
     c->canvas_id                = canvas_id;
@@ -162,10 +172,16 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     c->push_x                   = 0;
     c->push_y                   = 0;
     c->is_visible               = false;
-    c->create_transparent_color = transparent_color;
-    c->create_use_transparency  = use_transparency;
-    c->transparent_color        = transparent_color;
-    c->use_transparency         = use_transparency;
+    c->create_transparent_color     = transparent_color;
+    // Convert to RGB888 for PPA Blend color-key
+    lgfx::rgb332_t tc; tc.raw = transparent_color;
+    lgfx::rgb888_t tc888; tc888 = tc;
+    c->create_trans_r = tc888.r;
+    c->create_trans_g = tc888.g;
+    c->create_trans_b = tc888.b;
+    c->create_use_transparency      = use_transparency;
+    c->transparent_color            = transparent_color;
+    c->use_transparency             = use_transparency;
     c->width                    = width;
     c->height                   = height;
 
@@ -182,9 +198,11 @@ static void canvas_free(p4_canvas_t *c) {
     display_p4_sprite_delete_all_for_canvas(c->canvas_id);
 
     if (c->sprite) {
+        void *buf = c->sprite->getBuffer();
         c->sprite->deleteSprite();
         delete c->sprite;
         c->sprite = nullptr;
+        if (buf) heap_caps_free(buf);
     }
 
     size_t idx = (size_t)(c - g_canvases);
@@ -286,50 +304,90 @@ static void render_frame(void) {
         qsort(g_canvases, g_canvas_count, sizeof(p4_canvas_t), canvas_cmp_zorder);
     }
 
-    // Composite canvases into the 8bpp framebuffer using direct buffer ops.
-    // Both canvases and framebuffer are 8bpp RGB332, so transparency color
-    // comparison works correctly at the byte level.
     int fb_w = g_framebuffer->width();
     int fb_h = g_framebuffer->height();
-    uint8_t *fb_buf = (uint8_t *)g_framebuffer->getBuffer();
 
     for (size_t i = 0; i < g_canvas_count; i++) {
         p4_canvas_t *c = &g_canvases[i];
         if (!c->is_visible || !c->sprite) continue;
 
-        uint8_t *src_buf = (uint8_t *)c->sprite->getBuffer();
         int sw = c->sprite->width();
         int sh = c->sprite->height();
 
-        if (src_buf && fb_buf) {
-            bool use_trans = c->create_use_transparency;
-            uint8_t trans = c->create_transparent_color;
+        // Clip canvas to framebuffer bounds
+        int sx0 = 0, sy0 = 0, dx = c->push_x, dy = c->push_y;
+        int cw = sw, ch = sh;
+        if (dx < 0) { sx0 = -dx; cw += dx; dx = 0; }
+        if (dy < 0) { sy0 = -dy; ch += dy; dy = 0; }
+        if (dx + cw > fb_w) cw = fb_w - dx;
+        if (dy + ch > fb_h) ch = fb_h - dy;
 
-            for (int y = 0; y < sh; y++) {
-                int dy = c->push_y + y;
-                if (dy < 0 || dy >= fb_h) continue;
-                int sx0 = 0, dx = c->push_x;
-                int cw = sw;
-                if (dx < 0) { sx0 = -dx; cw += dx; dx = 0; }
-                if (dx + cw > fb_w) cw = fb_w - dx;
-                if (cw <= 0) continue;
+        if (cw > 0 && ch > 0 && g_ppa_blend) {
+            void *fg_buf = c->sprite->getBuffer();
+            void *bg_buf = g_framebuffer->getBuffer();
+            size_t fg_size = (size_t)(sw * sh * 2);
+            size_t bg_size = (size_t)(fb_w * fb_h * 2);
 
-                uint8_t *src_row = src_buf + y * sw + sx0;
-                uint8_t *dst_row = fb_buf + dy * fb_w + dx;
+            esp_cache_msync(fg_buf, fg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+            esp_cache_msync(bg_buf, bg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
 
-                if (!use_trans) {
-                    memcpy(dst_row, src_row, (size_t)cw);
-                } else {
-                    for (int x = 0; x < cw; x++) {
-                        if (src_row[x] != trans) {
-                            dst_row[x] = src_row[x];
-                        }
-                    }
-                }
+            ppa_blend_oper_config_t blend = {};
+            // Background: framebuffer
+            blend.in_bg.buffer         = bg_buf;
+            blend.in_bg.pic_w          = (uint32_t)fb_w;
+            blend.in_bg.pic_h          = (uint32_t)fb_h;
+            blend.in_bg.block_w        = (uint32_t)cw;
+            blend.in_bg.block_h        = (uint32_t)ch;
+            blend.in_bg.block_offset_x = (uint32_t)dx;
+            blend.in_bg.block_offset_y = (uint32_t)dy;
+            blend.in_bg.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
+
+            // Foreground: canvas
+            blend.in_fg.buffer         = fg_buf;
+            blend.in_fg.pic_w          = (uint32_t)sw;
+            blend.in_fg.pic_h          = (uint32_t)sh;
+            blend.in_fg.block_w        = (uint32_t)cw;
+            blend.in_fg.block_h        = (uint32_t)ch;
+            blend.in_fg.block_offset_x = (uint32_t)sx0;
+            blend.in_fg.block_offset_y = (uint32_t)sy0;
+            blend.in_fg.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
+
+            // Output: framebuffer (in-place, Blend allows BG==OUT)
+            blend.out.buffer         = bg_buf;
+            blend.out.buffer_size    = bg_size;
+            blend.out.pic_w          = (uint32_t)fb_w;
+            blend.out.pic_h          = (uint32_t)fb_h;
+            blend.out.block_offset_x = (uint32_t)dx;
+            blend.out.block_offset_y = (uint32_t)dy;
+            blend.out.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
+
+            // FG fully opaque
+            blend.fg_alpha_update_mode = PPA_ALPHA_FIX_VALUE;
+            blend.fg_alpha_fix_val     = 255;
+            blend.bg_alpha_update_mode = PPA_ALPHA_NO_CHANGE;
+
+            // Color-key for transparent canvas
+            if (c->create_use_transparency) {
+                blend.fg_ck_en = true;
+                blend.fg_ck_rgb_low_thres  = {.b = c->create_trans_b,
+                                               .g = c->create_trans_g,
+                                               .r = c->create_trans_r};
+                blend.fg_ck_rgb_high_thres = {.b = c->create_trans_b,
+                                               .g = c->create_trans_g,
+                                               .r = c->create_trans_r};
             }
+
+            blend.mode = PPA_TRANS_MODE_BLOCKING;
+
+            esp_err_t err = ppa_do_blend(g_ppa_blend, &blend);
+            if (err != ESP_OK) {
+                FMRB_LOGE(TAG, "PPA Blend failed: %d", err);
+            }
+
+            esp_cache_msync(bg_buf, bg_size,
+                            ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
         }
 
-        // Composite sprite instances on top, offset by canvas position.
         display_p4_sprite_composite(c->canvas_id, g_framebuffer,
                                     c->push_x, c->push_y);
     }
@@ -339,16 +397,70 @@ static void render_frame(void) {
                                     (uint32_t)CURSOR_TRANSPARENT);
     }
 
-    // Push 8bpp framebuffer to LCD with 3x scaling.
-    // pushRotateZoom handles 8bpp→16bpp conversion internally.
-    int scaled_w = fb_w * DISPLAY_P4_SCALE_FACTOR;
-    int scaled_h = fb_h * DISPLAY_P4_SCALE_FACTOR;
-    int center_x = (g_lcd.width()  - scaled_w) / 2 + scaled_w / 2;
-    int center_y = (g_lcd.height() - scaled_h) / 2 + scaled_h / 2;
-    g_framebuffer->pushRotateZoom(&g_lcd, (float)center_x, (float)center_y,
-                                  0.0f,
-                                  (float)DISPLAY_P4_SCALE_FACTOR,
-                                  (float)DISPLAY_P4_SCALE_FACTOR);
+    // Scale framebuffer 3x to LCD via PPA SRM hardware accelerator.
+    if (g_ppa_srm && g_ppa_out_buf) {
+        int fb_w = g_framebuffer->width();
+        int fb_h = g_framebuffer->height();
+        void *fb_ptr = g_framebuffer->getBuffer();
+        size_t fb_size = (size_t)(fb_w * fb_h * 2);
+
+        // Flush framebuffer cache so PPA reads current data
+        esp_cache_msync(fb_ptr, fb_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+
+        int out_w = fb_w * DISPLAY_P4_SCALE_FACTOR;
+        int out_h = fb_h * DISPLAY_P4_SCALE_FACTOR;
+
+        ppa_srm_oper_config_t srm = {};
+        srm.in.buffer         = fb_ptr;
+        srm.in.pic_w          = (uint32_t)fb_w;
+        srm.in.pic_h          = (uint32_t)fb_h;
+        srm.in.block_w        = (uint32_t)fb_w;
+        srm.in.block_h        = (uint32_t)fb_h;
+        srm.in.block_offset_x = 0;
+        srm.in.block_offset_y = 0;
+        srm.in.srm_cm         = PPA_SRM_COLOR_MODE_RGB565;
+
+        srm.out.buffer         = g_ppa_out_buf;
+        srm.out.buffer_size    = g_ppa_out_buf_size;
+        srm.out.pic_w          = (uint32_t)out_w;
+        srm.out.pic_h          = (uint32_t)out_h;
+        srm.out.block_offset_x = 0;
+        srm.out.block_offset_y = 0;
+        srm.out.srm_cm         = PPA_SRM_COLOR_MODE_RGB565;
+
+        srm.rotation_angle = PPA_SRM_ROTATION_ANGLE_0;
+        srm.scale_x        = (float)DISPLAY_P4_SCALE_FACTOR;
+        srm.scale_y        = (float)DISPLAY_P4_SCALE_FACTOR;
+        srm.mirror_x       = false;
+        srm.mirror_y       = false;
+        srm.rgb_swap       = false;
+        srm.byte_swap      = false;
+        srm.mode           = PPA_TRANS_MODE_BLOCKING;
+
+        esp_err_t err = ppa_do_scale_rotate_mirror(g_ppa_srm, &srm);
+        if (err == ESP_OK) {
+            // Flush PPA output cache for DMA2D readback
+            esp_cache_msync(g_ppa_out_buf, g_ppa_out_buf_size,
+                            ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+            // Push scaled buffer to LCD via LovyanGFX (handles DMA2D)
+            int offset_x = (g_lcd.width() - out_w) / 2;
+            g_lcd.pushImage(offset_x, 0, out_w, out_h, (lgfx::rgb565_t *)g_ppa_out_buf);
+        } else {
+            FMRB_LOGE(TAG, "PPA SRM failed: %d", err);
+        }
+    } else {
+        // Fallback: software scaling
+        int fb_w = g_framebuffer->width();
+        int fb_h = g_framebuffer->height();
+        int scaled_w = fb_w * DISPLAY_P4_SCALE_FACTOR;
+        int scaled_h = fb_h * DISPLAY_P4_SCALE_FACTOR;
+        int center_x = (g_lcd.width()  - scaled_w) / 2 + scaled_w / 2;
+        int center_y = (g_lcd.height() - scaled_h) / 2 + scaled_h / 2;
+        g_framebuffer->pushRotateZoom(&g_lcd, (float)center_x, (float)center_y,
+                                      0.0f,
+                                      (float)DISPLAY_P4_SCALE_FACTOR,
+                                      (float)DISPLAY_P4_SCALE_FACTOR);
+    }
 }
 
 // ============================================================
@@ -742,11 +854,35 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             // Push canvas-to-canvas
             p4_canvas_t *dst = canvas_find(cmd->dest_canvas_id);
             if (!dst || !src->sprite || !dst->sprite) return -1;
-            if (cmd->use_transparency) {
-                src->sprite->pushSprite(dst->sprite, cmd->x, cmd->y,
-                                        (uint32_t)cmd->transparent_color);
-            } else {
-                src->sprite->pushSprite(dst->sprite, cmd->x, cmd->y);
+            // Canvas-to-canvas push with direct buffer ops for reliable transparency
+            uint16_t *s_buf = (uint16_t *)src->sprite->getBuffer();
+            uint16_t *d_buf = (uint16_t *)dst->sprite->getBuffer();
+            int s_w = src->sprite->width();
+            int s_h = src->sprite->height();
+            int d_w = dst->sprite->width();
+            int d_h = dst->sprite->height();
+            if (s_buf && d_buf) {
+                lgfx::rgb332_t tr332; tr332.raw = cmd->transparent_color;
+                lgfx::swap565_t tr_s; tr_s = tr332;
+                uint16_t tr565 = tr_s.raw;
+                for (int yy = 0; yy < s_h; yy++) {
+                    int dy = cmd->y + yy;
+                    if (dy < 0 || dy >= d_h) continue;
+                    int sx0 = 0, dx = cmd->x;
+                    int cw = s_w;
+                    if (dx < 0) { sx0 = -dx; cw += dx; dx = 0; }
+                    if (dx + cw > d_w) cw = d_w - dx;
+                    if (cw <= 0) continue;
+                    uint16_t *sr = s_buf + yy * s_w + sx0;
+                    uint16_t *dr = d_buf + dy * d_w + dx;
+                    if (!cmd->use_transparency) {
+                        memcpy(dr, sr, (size_t)cw * 2);
+                    } else {
+                        for (int xx = 0; xx < cw; xx++) {
+                            if (sr[xx] != tr565) dr[xx] = sr[xx];
+                        }
+                    }
+                }
             }
         }
         return 0;
@@ -771,8 +907,11 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         auto *s = get_sprite(cmd->canvas_id);
         if (s && cmd->x >= 0 && cmd->x < (int16_t)s->width() &&
                  cmd->y >= 0 && cmd->y < (int16_t)s->height()) {
-            // readPixelValue returns the raw palette index = RGB332 value for 8bpp
-            resp.color  = (uint8_t)s->readPixelValue(cmd->x, cmd->y);
+            // Read pixel as RGB888, then convert to RGB332 for kernel
+            lgfx::rgb888_t px888 = s->readPixel(cmd->x, cmd->y);
+            lgfx::rgb332_t px332;
+            px332 = px888;
+            resp.color = px332.raw;
             resp.status = 0;
         } else {
             resp.color  = 0;
@@ -1063,25 +1202,21 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
             return 1;
         }
-        // Fill with white so RGBA transparent pixels become white background
-        tmp->fillScreen(0xFFFF);
-        tmp->drawPng(buf, (size_t)fsz, 0, 0);
-        fmrb_sys_free(buf);
-
+        // Decode PNG directly into 16bpp sprite (RGB565, same as all buffers).
+        // Fill with white so RGBA transparent pixels become white background.
         auto *spr = new LGFX_Sprite();
-        spr->setColorDepth(8);
+        spr->setColorDepth(16);
         spr->setPsram(true);
         if (!spr->createSprite(img_w, img_h)) {
             FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: sprite alloc failed %dx%d", img_w, img_h);
-            tmp->deleteSprite();
-            delete tmp;
+            fmrb_sys_free(buf);
             delete spr;
             send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
             return 1;
         }
-        tmp->pushSprite(spr, 0, 0);
-        tmp->deleteSprite();
-        delete tmp;
+        spr->fillScreen(0xFFFF);
+        spr->drawPng(buf, (size_t)fsz, 0, 0);
+        fmrb_sys_free(buf);
 
         uint16_t id = g_next_image_store_id++;
         if (id == 0) id = g_next_image_store_id++;
@@ -1123,31 +1258,11 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
 
         p4_image_t *img = image_store_find(cmd->image_id);
         if (img && img->sprite) {
-            // Both src and dst are 8bpp (RGB332) sprites; direct buffer memcpy
-            // per row is faster and more reliable than pushSprite across sprites
-            // with different parent configurations.
-            auto *src_spr = img->sprite;
-            int sw = src_spr->width();
-            int sh = src_spr->height();
-            int dw = dst->width();
-            int dh = dst->height();
-            uint8_t *src_buf = (uint8_t *)src_spr->getBuffer();
-            uint8_t *dst_buf = (uint8_t *)dst->getBuffer();
-            if (src_buf && dst_buf) {
-                for (int y = 0; y < sh; y++) {
-                    int dy = cmd->y + y;
-                    if (dy < 0 || dy >= dh) continue;
-                    int sx0 = 0, dx = cmd->x;
-                    int cw = sw;
-                    if (dx < 0) { sx0 = -dx; cw += dx; dx = 0; }
-                    if (dx + cw > dw) cw = dw - dx;
-                    if (cw <= 0) continue;
-                    memcpy(dst_buf + dy * dw + dx,
-                           src_buf + y * sw + sx0, (size_t)cw);
-                }
-            }
-            FMRB_LOGI(TAG, "DRAW_IMAGE: id=%u -> canvas=%u (%d,%d) %dx%d",
-                      cmd->image_id, cmd->canvas_id, cmd->x, cmd->y, sw, sh);
+            // All sprites are RGB565; pushSprite works directly.
+            img->sprite->pushSprite(dst, cmd->x, cmd->y);
+            FMRB_LOGI(TAG, "DRAW_IMAGE: id=%u -> canvas=%u (%d,%d) %ux%u",
+                      cmd->image_id, cmd->canvas_id, cmd->x, cmd->y,
+                      img->width, img->height);
             return 0;
         }
 
@@ -1163,8 +1278,12 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         auto *dst = get_sprite(cmd->canvas_id);
         if (!dst) return -1;
 
-        uint8_t trans_color = 0;
-        bool use_trans = display_p4_sprite_image_get_transparent(cmd->image_id, &trans_color);
+        uint8_t trans_color_332 = 0;
+        bool use_trans = display_p4_sprite_image_get_transparent(cmd->image_id, &trans_color_332);
+        // Convert via LovyanGFX for exact match with sprite buffer content
+        lgfx::rgb332_t tc332; tc332.raw = trans_color_332;
+        lgfx::swap565_t tc565; tc565 = tc332;
+        uint16_t trans_raw = tc565.raw;
         int sw = src->width();
         int sh = src->height();
         for (int yy = 0; yy < (int)cmd->h; yy++) {
@@ -1173,9 +1292,9 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             for (int xx = 0; xx < (int)cmd->w; xx++) {
                 int sx = cmd->src_x + xx;
                 if (sx < 0 || sx >= sw) continue;
-                uint8_t pixel = (uint8_t)src->readPixelValue(sx, sy);
-                if (use_trans && pixel == trans_color) continue;
-                dst->drawPixel(cmd->dst_x + xx, cmd->dst_y + yy, pixel);
+                uint16_t pixel = (uint16_t)src->readPixelValue(sx, sy);
+                if (use_trans && pixel == trans_raw) continue;
+                dst->drawPixel(cmd->dst_x + xx, cmd->dst_y + yy, (lgfx::rgb565_t){pixel});
             }
         }
         return 0;
@@ -1292,22 +1411,60 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
                       init_cmd->width, init_cmd->height, init_cmd->color_depth,
                       init_cmd->margin_x, init_cmd->margin_y);
 
-            // Allocate 8bpp framebuffer matching the kernel's display size
+            // Allocate cache-aligned RGB565 framebuffer + PPA
             if (!g_framebuffer && init_cmd->width > 0 && init_cmd->height > 0) {
                 g_display_width  = init_cmd->width;
                 g_display_height = init_cmd->height;
-                g_framebuffer = new LGFX_Sprite(&g_lcd);
-                g_framebuffer->setColorDepth(8);  // RGB332, same as canvases
-                g_framebuffer->setPsram(true);
-                if (!g_framebuffer->createSprite(g_display_width, g_display_height)) {
+
+                size_t fb_buf_size = (size_t)g_display_width * g_display_height * 2;
+                fb_buf_size = (fb_buf_size + 63) & ~63;
+                void *fb_buf = heap_caps_aligned_alloc(64, fb_buf_size,
+                    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                if (!fb_buf) {
                     FMRB_LOGE(TAG, "Framebuffer alloc failed: %dx%d",
                               g_display_width, g_display_height);
-                    delete g_framebuffer;
-                    g_framebuffer = nullptr;
                 } else {
-                    g_framebuffer->clear(0);
-                    FMRB_LOGI(TAG, "Framebuffer allocated: %dx%d 8bpp (scale=%dx)",
+                    memset(fb_buf, 0, fb_buf_size);
+                    g_framebuffer = new LGFX_Sprite(&g_lcd);
+                    g_framebuffer->setBuffer(fb_buf, g_display_width, g_display_height, 16);
+                    FMRB_LOGI(TAG, "Framebuffer allocated: %dx%d RGB565 (scale=%dx)",
                               g_display_width, g_display_height, DISPLAY_P4_SCALE_FACTOR);
+                }
+
+                // Initialize PPA Blend for canvas compositing
+                ppa_client_config_t blend_cfg = {};
+                blend_cfg.oper_type = PPA_OPERATION_BLEND;
+                if (ppa_register_client(&blend_cfg, &g_ppa_blend) == ESP_OK) {
+                    FMRB_LOGI(TAG, "PPA Blend initialized for canvas compositing");
+                } else {
+                    FMRB_LOGW(TAG, "PPA Blend init failed");
+                    g_ppa_blend = NULL;
+                }
+
+                // Initialize PPA SRM for hardware 3x scaling
+                ppa_client_config_t ppa_cfg = {};
+                ppa_cfg.oper_type = PPA_OPERATION_SRM;
+                if (ppa_register_client(&ppa_cfg, &g_ppa_srm) == ESP_OK) {
+                    int out_w = g_display_width * DISPLAY_P4_SCALE_FACTOR;
+                    int out_h = g_display_height * DISPLAY_P4_SCALE_FACTOR;
+                    g_ppa_out_buf_size = (size_t)(out_w * out_h * 2);
+                    g_ppa_out_buf = heap_caps_aligned_alloc(
+                        64, g_ppa_out_buf_size,
+                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                    if (g_ppa_out_buf) {
+                        memset(g_ppa_out_buf, 0, g_ppa_out_buf_size);
+                        FMRB_LOGI(TAG, "PPA SRM initialized: %dx%d -> %dx%d (%u KB)",
+                                  g_display_width, g_display_height,
+                                  out_w, out_h,
+                                  (unsigned)(g_ppa_out_buf_size / 1024));
+                    } else {
+                        FMRB_LOGW(TAG, "PPA output buffer alloc failed, using software scaling");
+                        ppa_unregister_client(g_ppa_srm);
+                        g_ppa_srm = NULL;
+                    }
+                } else {
+                    FMRB_LOGW(TAG, "PPA SRM init failed, using software scaling");
+                    g_ppa_srm = NULL;
                 }
             }
             send_ack(type, seq, nullptr, 0);

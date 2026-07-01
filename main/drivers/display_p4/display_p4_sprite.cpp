@@ -5,6 +5,7 @@
 #include "display_p4_sprite.h"
 
 #include <cstring>
+#include "esp_heap_caps.h"
 #include <cstdlib>   // qsort
 
 #include "fmrb_log.h"
@@ -52,15 +53,19 @@ uint16_t display_p4_sprite_image_create(uint16_t canvas_id,
         return 0;
     }
 
-    auto *spr = new LGFX_Sprite();
-    spr->setColorDepth(lgfx::color_depth_t::rgb332_1Byte);
-    spr->setPsram(true);
-    if (!spr->createSprite(width, height)) {
+    // Cache-aligned buffer for PPA compatibility
+    size_t buf_size = (size_t)width * height * 2;
+    buf_size = (buf_size + 63) & ~63;
+    void *buf = heap_caps_aligned_alloc(64, buf_size,
+                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!buf) {
         FMRB_LOGE(TAG, "Sprite image alloc failed: %ux%u", (unsigned)width, (unsigned)height);
-        delete spr;
         return 0;
     }
-    spr->clear(0);
+    memset(buf, 0, buf_size);
+
+    auto *spr = new LGFX_Sprite();
+    spr->setBuffer(buf, width, height, 16);  // RGB565
 
     uint16_t id = g_next_image_id++;
     if (id == 0) id = g_next_image_id++;
@@ -93,9 +98,11 @@ bool display_p4_sprite_image_get_transparent(uint16_t image_id, uint8_t *out_col
 static void image_destroy(p4_sprite_image_t *img) {
     if (!img || !img->in_use) return;
     if (img->sprite) {
+        void *buf = img->sprite->getBuffer();
         img->sprite->deleteSprite();
         delete img->sprite;
         img->sprite = nullptr;
+        if (buf) heap_caps_free(buf);
     }
     img->in_use = false;
     FMRB_LOGI(TAG, "Image free: id=%u", img->image_id);
@@ -361,8 +368,8 @@ void display_p4_mask_blit(uint16_t mask_id,
         for (int xx = 0; xx < mw && xx < sw; xx++) {
             uint8_t bit = (row[xx >> 3] >> (7 - (xx & 7))) & 1;
             if (!bit) continue;
-            // readPixelValue returns the raw palette index (= RGB332 value for 8bpp)
-            uint8_t pixel = (uint8_t)src_sprite->readPixelValue(xx, yy);
+            // readPixelValue returns RGB565 value for 16bpp sprites
+            uint16_t pixel = (uint16_t)src_sprite->readPixelValue(xx, yy);
             dst_sprite->drawPixel(x + xx, y + yy, pixel);
         }
     }
