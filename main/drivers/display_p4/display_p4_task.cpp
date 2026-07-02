@@ -102,6 +102,9 @@ typedef struct {
     uint8_t      transparent_color;
     bool         use_transparency;
     uint16_t     width, height;
+    // Cache-line-aligned size of the sprite buffer (esp_cache_msync requires
+    // both address and size aligned to the cache line, or it fails silently)
+    size_t       buf_aligned_size;
 } p4_canvas_t;
 
 static p4_canvas_t g_canvases[DISPLAY_P4_MAX_CANVAS];
@@ -151,6 +154,7 @@ static void image_store_destroy(p4_image_t *img) {
 // Shared composition framebuffer (RGB565 16bpp, allocated at INIT_DISPLAY).
 // Canvases are composited via pushSprite, then PPA SRM 3x scales to LCD.
 static LGFX_Sprite *g_framebuffer = nullptr;
+static size_t g_fb_aligned_size = 0;  // cache-line-aligned framebuffer size for msync
 static uint16_t g_display_width  = 0;
 static uint16_t g_display_height = 0;
 #define DISPLAY_P4_SCALE_FACTOR 3
@@ -187,8 +191,11 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     }
 
     auto *sprite = new LGFX_Sprite(&g_lcd);
-    sprite->setBuffer(buf, width, height, 16);
+    // Depth must be set BEFORE setBuffer: LGFX_Sprite::setColorDepth() on a
+    // sprite that already has a buffer deletes it and reallocates internally
+    // (leaking the aligned PPA buffer and moving pixels to internal RAM).
     set_ppa_native_depth(sprite);
+    sprite->setBuffer(buf, width, height);
 
     p4_canvas_t *c              = &g_canvases[g_canvas_count++];
     c->canvas_id                = canvas_id;
@@ -214,6 +221,7 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     c->use_transparency             = use_transparency;
     c->width                    = width;
     c->height                   = height;
+    c->buf_aligned_size         = aligned_size;
 
     FMRB_LOGI(TAG, "Canvas alloc: id=%u %dx%d z=%d transp=%u/%u",
               canvas_id, width, height, z_order, transparent_color, (uint8_t)use_transparency);
@@ -273,10 +281,9 @@ static int          g_cursor_y = 0;
 
 static void cursor_init(void) {
     g_cursor_sprite = new LGFX_Sprite(&g_lcd);
-    g_cursor_sprite->setColorDepth(16);
+    set_ppa_native_depth(g_cursor_sprite);
     g_cursor_sprite->setPsram(false);
     g_cursor_sprite->createSprite(16, 16);
-    set_ppa_native_depth(g_cursor_sprite);
     g_cursor_sprite->clear((uint32_t)CURSOR_TRANSPARENT);
 
     static const uint8_t pat[16][16] = {
@@ -356,12 +363,17 @@ static void render_frame(void) {
         if (cw > 0 && ch > 0 && g_ppa_blend) {
             void *fg_buf = c->sprite->getBuffer();
             void *bg_buf = g_framebuffer->getBuffer();
-            size_t fg_size = (size_t)(sw * sh * 2);
-            size_t bg_size = (size_t)(fb_w * fb_h * 2);
+            // msync requires cache-line-aligned sizes; use the aligned
+            // allocation sizes, not the raw pixel byte counts
+            size_t fg_size = c->buf_aligned_size;
+            size_t bg_size = g_fb_aligned_size;
 
             // Flush CPU cache to PSRAM so PPA DMA reads current pixel data
-            esp_cache_msync(fg_buf, fg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            esp_cache_msync(bg_buf, bg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+            esp_err_t sync_err;
+            sync_err = esp_cache_msync(fg_buf, fg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+            if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fg msync C2M failed: %d", sync_err);
+            sync_err = esp_cache_msync(bg_buf, bg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+            if (sync_err != ESP_OK) FMRB_LOGE(TAG, "bg msync C2M failed: %d", sync_err);
 
             ppa_blend_oper_config_t blend = {};
             // Background: framebuffer
@@ -440,8 +452,9 @@ static void render_frame(void) {
         void *fb_ptr = g_framebuffer->getBuffer();
 
         // Flush framebuffer cache before SRM DMA reads it
-        size_t fb_size = (size_t)(fb_w * fb_h * 2);
-        esp_cache_msync(fb_ptr, fb_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+        esp_err_t sync_err = esp_cache_msync(fb_ptr, g_fb_aligned_size,
+                                             ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+        if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fb msync C2M failed: %d", sync_err);
 
         int out_w = fb_w * DISPLAY_P4_SCALE_FACTOR;
         int out_h = fb_h * DISPLAY_P4_SCALE_FACTOR;
@@ -1445,8 +1458,10 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
                               g_display_width, g_display_height);
                 } else {
                     g_framebuffer = new LGFX_Sprite(&g_lcd);
-                    g_framebuffer->setBuffer(fb_buf, g_display_width, g_display_height, 16);
+                    // Depth must be set BEFORE setBuffer (see canvas_alloc)
                     set_ppa_native_depth(g_framebuffer);
+                    g_framebuffer->setBuffer(fb_buf, g_display_width, g_display_height);
+                    g_fb_aligned_size = fb_aligned;
                     FMRB_LOGI(TAG, "Framebuffer allocated: %dx%d RGB565 PPA-native (scale=%dx)",
                               g_display_width, g_display_height, DISPLAY_P4_SCALE_FACTOR);
                 }
@@ -1516,6 +1531,514 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
 }
 
 // ============================================================
+// PPA / LovyanGFX verification test
+// Verified on device 2026-07-03: PPA Blend/SRM I/O is little-endian RGB565;
+// byte_swap affects input only, output is always non-swapped.
+// Re-enable the define below to run the test again (blocks boot ~30s,
+// which makes the kernel host-ready wait time out).
+// ============================================================
+// #define PPA_VERIFICATION_TEST
+
+#ifdef PPA_VERIFICATION_TEST
+
+static void hex_dump(const char *label, const void *buf, size_t len) {
+    const uint8_t *p = (const uint8_t *)buf;
+    char line[128];
+    int off = snprintf(line, sizeof(line), "%s: ", label);
+    for (size_t i = 0; i < len && off < (int)sizeof(line) - 4; i++) {
+        off += snprintf(line + off, sizeof(line) - (size_t)off, "%02X ", p[i]);
+    }
+    FMRB_LOGI(TAG, "%s", line);
+}
+
+static void hex_dump_16(const char *label, const uint16_t *buf, size_t count) {
+    char line[128];
+    int off = snprintf(line, sizeof(line), "%s: ", label);
+    for (size_t i = 0; i < count && off < (int)sizeof(line) - 6; i++) {
+        off += snprintf(line + off, sizeof(line) - (size_t)off, "%04X ", buf[i]);
+    }
+    FMRB_LOGI(TAG, "%s", line);
+}
+
+static void ppa_verification_test(void) {
+    FMRB_LOGI(TAG, "======== PPA VERIFICATION TEST START ========");
+
+    const int SZ = 32;   // small sprite size
+    const int SZ2 = 64;  // bg/framebuffer size for blend test
+
+    // ========== Test 1: LovyanGFX color values in both depths ==========
+    FMRB_LOGI(TAG, "--- Test 1: RGB565 color values comparison ---");
+    {
+        // rgb565_2Byte (swapped, depth=16)
+        auto *spr_swap = new LGFX_Sprite();
+        spr_swap->setColorDepth(16);
+        spr_swap->setPsram(false);
+        spr_swap->createSprite(4, 4);
+
+        // rgb565_nonswapped (depth=272)
+        auto *spr_native = new LGFX_Sprite();
+        spr_native->setColorDepth(lgfx::rgb565_nonswapped);
+        spr_native->setPsram(false);
+        spr_native->createSprite(4, 4);
+
+        // Fill with pure red (R=255, G=0, B=0)
+        spr_swap->fillScreen(spr_swap->color888(255, 0, 0));
+        spr_native->fillScreen(spr_native->color888(255, 0, 0));
+
+        uint16_t *buf_swap = (uint16_t *)spr_swap->getBuffer();
+        uint16_t *buf_native = (uint16_t *)spr_native->getBuffer();
+
+        FMRB_LOGI(TAG, "RED: swap=%04X native=%04X", buf_swap[0], buf_native[0]);
+        hex_dump("RED swap bytes", buf_swap, 4);
+        hex_dump("RED native bytes", buf_native, 4);
+
+        // Fill with green
+        spr_swap->fillScreen(spr_swap->color888(0, 255, 0));
+        spr_native->fillScreen(spr_native->color888(0, 255, 0));
+        FMRB_LOGI(TAG, "GRN: swap=%04X native=%04X", buf_swap[0], buf_native[0]);
+        hex_dump("GRN swap bytes", buf_swap, 4);
+        hex_dump("GRN native bytes", buf_native, 4);
+
+        // Fill with blue
+        spr_swap->fillScreen(spr_swap->color888(0, 0, 255));
+        spr_native->fillScreen(spr_native->color888(0, 0, 255));
+        FMRB_LOGI(TAG, "BLU: swap=%04X native=%04X", buf_swap[0], buf_native[0]);
+        hex_dump("BLU swap bytes", buf_swap, 4);
+        hex_dump("BLU native bytes", buf_native, 4);
+
+        // Fill with white
+        spr_swap->fillScreen(spr_swap->color888(255, 255, 255));
+        spr_native->fillScreen(spr_native->color888(255, 255, 255));
+        FMRB_LOGI(TAG, "WHT: swap=%04X native=%04X", buf_swap[0], buf_native[0]);
+
+        // pushImage test: display both side by side on LCD
+        g_lcd.fillScreen(0);
+        g_lcd.setTextSize(2);
+        g_lcd.setTextColor(0xFFFF);
+
+        // Test pushImage with swap565_t (as LCD expects)
+        spr_swap->fillScreen(spr_swap->color888(255, 0, 0));
+        g_lcd.pushImage(20, 20, 4, 4, (lgfx::swap565_t *)buf_swap);
+        g_lcd.setCursor(20, 30);
+        g_lcd.print("swap pushImage(swap565)");
+
+        // Test pushImage with rgb565_t
+        spr_native->fillScreen(spr_native->color888(255, 0, 0));
+        g_lcd.pushImage(20, 60, 4, 4, (lgfx::rgb565_t *)buf_native);
+        g_lcd.setCursor(20, 70);
+        g_lcd.print("native pushImage(rgb565)");
+
+        // Test pushSprite for both
+        spr_swap->fillScreen(spr_swap->color888(0, 255, 0));
+        spr_swap->pushSprite(&g_lcd, 20, 100);
+        g_lcd.setCursor(20, 110);
+        g_lcd.print("swap pushSprite GREEN");
+
+        spr_native->fillScreen(spr_native->color888(0, 255, 0));
+        spr_native->pushSprite(&g_lcd, 20, 140);
+        g_lcd.setCursor(20, 150);
+        g_lcd.print("native pushSprite GREEN");
+
+        // Cleanup
+        spr_swap->deleteSprite(); delete spr_swap;
+        spr_native->deleteSprite(); delete spr_native;
+    }
+    FMRB_LOGI(TAG, "--- Test 1 complete, waiting 5s ---");
+    vTaskDelay(pdMS_TO_TICKS(5000));
+
+    // ========== Test 2: PPA SRM with both formats ==========
+    FMRB_LOGI(TAG, "--- Test 2: PPA SRM scaling test ---");
+    {
+        ppa_client_handle_t srm_client = NULL;
+        ppa_client_config_t srm_cfg = {};
+        srm_cfg.oper_type = PPA_OPERATION_SRM;
+        esp_err_t err = ppa_register_client(&srm_cfg, &srm_client);
+        FMRB_LOGI(TAG, "PPA SRM register: %d", err);
+
+        if (err == ESP_OK) {
+            g_lcd.fillScreen(0);
+            g_lcd.setTextSize(2);
+            g_lcd.setTextColor(0xFFFF);
+
+            // Test with rgb565_nonswapped input
+            size_t in_aligned = 0, out_aligned = 0;
+            void *in_buf = ppa_alloc_buffer(SZ * SZ * 2, &in_aligned);
+            void *out_buf = ppa_alloc_buffer(SZ * 3 * SZ * 3 * 2, &out_aligned);
+
+            if (in_buf && out_buf) {
+                // Fill input with red (nonswapped: R=0xF800)
+                uint16_t *in16 = (uint16_t *)in_buf;
+                for (int i = 0; i < SZ * SZ; i++) in16[i] = 0xF800; // red nonswapped
+
+                hex_dump_16("SRM in (nonswap red)", in16, 4);
+
+                esp_cache_msync(in_buf, in_aligned, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+
+                ppa_srm_oper_config_t srm = {};
+                srm.in.buffer = in_buf;
+                srm.in.pic_w = SZ; srm.in.pic_h = SZ;
+                srm.in.block_w = SZ; srm.in.block_h = SZ;
+                srm.in.block_offset_x = 0; srm.in.block_offset_y = 0;
+                srm.in.srm_cm = PPA_SRM_COLOR_MODE_RGB565;
+                srm.out.buffer = out_buf;
+                srm.out.buffer_size = out_aligned;
+                srm.out.pic_w = SZ * 3; srm.out.pic_h = SZ * 3;
+                srm.out.block_offset_x = 0; srm.out.block_offset_y = 0;
+                srm.out.srm_cm = PPA_SRM_COLOR_MODE_RGB565;
+                srm.rotation_angle = PPA_SRM_ROTATION_ANGLE_0;
+                srm.scale_x = 3.0f; srm.scale_y = 3.0f;
+                srm.rgb_swap = false;
+                srm.byte_swap = false;
+                srm.mode = PPA_TRANS_MODE_BLOCKING;
+
+                err = ppa_do_scale_rotate_mirror(srm_client, &srm);
+                FMRB_LOGI(TAG, "SRM (byte_swap=false): %d", err);
+
+                esp_cache_msync(out_buf, out_aligned,
+                                ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+
+                uint16_t *out16 = (uint16_t *)out_buf;
+                hex_dump_16("SRM out (byte_swap=false)", out16, 4);
+                FMRB_LOGI(TAG, "SRM in[0]=%04X -> out[0]=%04X (same=%s)",
+                          in16[0], out16[0], in16[0] == out16[0] ? "YES" : "NO");
+
+                // Display with pushImage as rgb565_t
+                g_lcd.pushImage(20, 20, SZ * 3, SZ * 3, (lgfx::rgb565_t *)out_buf);
+                g_lcd.setCursor(20 + SZ * 3 + 10, 20);
+                g_lcd.print("SRM bs=0");
+                g_lcd.setCursor(20 + SZ * 3 + 10, 40);
+                g_lcd.printf("in=%04X out=%04X", in16[0], out16[0]);
+
+                // Also try with byte_swap=true
+                memset(out_buf, 0, out_aligned);
+                esp_cache_msync(out_buf, out_aligned, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+
+                srm.byte_swap = true;
+                err = ppa_do_scale_rotate_mirror(srm_client, &srm);
+                FMRB_LOGI(TAG, "SRM (byte_swap=true): %d", err);
+
+                esp_cache_msync(out_buf, out_aligned,
+                                ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+
+                hex_dump_16("SRM out (byte_swap=true)", out16, 4);
+                FMRB_LOGI(TAG, "SRM in[0]=%04X -> out[0]=%04X (swapped=%s)",
+                          in16[0], out16[0],
+                          in16[0] == __builtin_bswap16(out16[0]) ? "YES" : "NO");
+
+                g_lcd.pushImage(20, 140, SZ * 3, SZ * 3, (lgfx::rgb565_t *)out_buf);
+                g_lcd.setCursor(20 + SZ * 3 + 10, 140);
+                g_lcd.print("SRM bs=1");
+                g_lcd.setCursor(20 + SZ * 3 + 10, 160);
+                g_lcd.printf("in=%04X out=%04X", in16[0], out16[0]);
+
+                // Also try rgb_swap
+                memset(out_buf, 0, out_aligned);
+                esp_cache_msync(out_buf, out_aligned, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+                srm.byte_swap = false;
+                srm.rgb_swap = true;
+                err = ppa_do_scale_rotate_mirror(srm_client, &srm);
+                esp_cache_msync(out_buf, out_aligned,
+                                ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+                FMRB_LOGI(TAG, "SRM (rgb_swap=true): %d, in=%04X -> out=%04X",
+                          err, in16[0], out16[0]);
+
+                g_lcd.pushImage(20, 360, SZ * 3, SZ * 3, (lgfx::rgb565_t *)out_buf);
+                g_lcd.setCursor(20 + SZ * 3 + 10, 360);
+                g_lcd.print("SRM rgb_swap=1");
+                g_lcd.setCursor(20 + SZ * 3 + 10, 380);
+                g_lcd.printf("in=%04X out=%04X", in16[0], out16[0]);
+            }
+
+            if (in_buf) heap_caps_free(in_buf);
+            if (out_buf) heap_caps_free(out_buf);
+            ppa_unregister_client(srm_client);
+        }
+    }
+    FMRB_LOGI(TAG, "--- Test 2 complete, waiting 5s ---");
+    vTaskDelay(pdMS_TO_TICKS(5000));
+
+    // ========== Test 3: PPA Blend test ==========
+    FMRB_LOGI(TAG, "--- Test 3: PPA Blend compositing test ---");
+    {
+        ppa_client_handle_t blend_client = NULL;
+        ppa_client_config_t blend_cfg = {};
+        blend_cfg.oper_type = PPA_OPERATION_BLEND;
+        esp_err_t err = ppa_register_client(&blend_cfg, &blend_client);
+        FMRB_LOGI(TAG, "PPA Blend register: %d", err);
+
+        if (err == ESP_OK) {
+            g_lcd.fillScreen(0);
+            g_lcd.setTextSize(2);
+            g_lcd.setTextColor(0xFFFF);
+
+            size_t fg_aligned = 0, bg_aligned = 0;
+            void *fg_buf = ppa_alloc_buffer(SZ * SZ * 2, &fg_aligned);
+            void *bg_buf = ppa_alloc_buffer(SZ2 * SZ2 * 2, &bg_aligned);
+
+            if (fg_buf && bg_buf) {
+                uint16_t *fg16 = (uint16_t *)fg_buf;
+                uint16_t *bg16 = (uint16_t *)bg_buf;
+
+                // FG: red, BG: blue (nonswapped values)
+                for (int i = 0; i < SZ * SZ; i++) fg16[i] = 0xF800;
+                for (int i = 0; i < SZ2 * SZ2; i++) bg16[i] = 0x001F;
+
+                hex_dump_16("Blend FG (red)", fg16, 2);
+                hex_dump_16("Blend BG (blue)", bg16, 2);
+
+                esp_cache_msync(fg_buf, fg_aligned, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+                esp_cache_msync(bg_buf, bg_aligned, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+
+                ppa_blend_oper_config_t blend = {};
+                blend.in_bg.buffer = bg_buf;
+                blend.in_bg.pic_w = SZ2; blend.in_bg.pic_h = SZ2;
+                blend.in_bg.block_w = SZ; blend.in_bg.block_h = SZ;
+                blend.in_bg.block_offset_x = 16; blend.in_bg.block_offset_y = 16;
+                blend.in_bg.blend_cm = PPA_BLEND_COLOR_MODE_RGB565;
+
+                blend.in_fg.buffer = fg_buf;
+                blend.in_fg.pic_w = SZ; blend.in_fg.pic_h = SZ;
+                blend.in_fg.block_w = SZ; blend.in_fg.block_h = SZ;
+                blend.in_fg.block_offset_x = 0; blend.in_fg.block_offset_y = 0;
+                blend.in_fg.blend_cm = PPA_BLEND_COLOR_MODE_RGB565;
+
+                blend.out.buffer = bg_buf;
+                blend.out.buffer_size = bg_aligned;
+                blend.out.pic_w = SZ2; blend.out.pic_h = SZ2;
+                blend.out.block_offset_x = 16; blend.out.block_offset_y = 16;
+                blend.out.blend_cm = PPA_BLEND_COLOR_MODE_RGB565;
+
+                blend.fg_alpha_update_mode = PPA_ALPHA_FIX_VALUE;
+                blend.fg_alpha_fix_val = 255;
+                blend.bg_alpha_update_mode = PPA_ALPHA_NO_CHANGE;
+
+                // Test A: byte_swap=false
+                blend.fg_byte_swap = false;
+                blend.bg_byte_swap = false;
+                blend.mode = PPA_TRANS_MODE_BLOCKING;
+
+                err = ppa_do_blend(blend_client, &blend);
+                FMRB_LOGI(TAG, "Blend (byte_swap=false): %d", err);
+
+                esp_cache_msync(bg_buf, bg_aligned,
+                                ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+
+                // Check: bg[0] should be blue (untouched), bg[16*64+16] should be red (blended)
+                FMRB_LOGI(TAG, "Blend out: bg[0,0]=%04X (expect blue 001F), bg[16,16]=%04X (expect red F800)",
+                          bg16[0], bg16[16 * SZ2 + 16]);
+                hex_dump_16("Blend row0", bg16, 8);
+                hex_dump_16("Blend row16", &bg16[16 * SZ2], 24);
+
+                g_lcd.pushImage(20, 20, SZ2, SZ2, (lgfx::rgb565_t *)bg_buf);
+                g_lcd.setCursor(20 + SZ2 + 10, 20);
+                g_lcd.print("Blend bs=0");
+                g_lcd.setCursor(20 + SZ2 + 10, 40);
+                g_lcd.printf("[0,0]=%04X", bg16[0]);
+                g_lcd.setCursor(20 + SZ2 + 10, 60);
+                g_lcd.printf("[16,16]=%04X", bg16[16 * SZ2 + 16]);
+
+                // Test B: reset BG, try byte_swap=true
+                for (int i = 0; i < SZ2 * SZ2; i++) bg16[i] = 0x001F;
+                esp_cache_msync(fg_buf, fg_aligned, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+                esp_cache_msync(bg_buf, bg_aligned, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+
+                blend.fg_byte_swap = true;
+                blend.bg_byte_swap = true;
+
+                err = ppa_do_blend(blend_client, &blend);
+                FMRB_LOGI(TAG, "Blend (byte_swap=true): %d", err);
+
+                esp_cache_msync(bg_buf, bg_aligned,
+                                ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+
+                FMRB_LOGI(TAG, "Blend out bs=1: bg[0,0]=%04X, bg[16,16]=%04X",
+                          bg16[0], bg16[16 * SZ2 + 16]);
+                hex_dump_16("Blend bs=1 row16", &bg16[16 * SZ2], 24);
+
+                g_lcd.pushImage(20, 120, SZ2, SZ2, (lgfx::rgb565_t *)bg_buf);
+                g_lcd.setCursor(20 + SZ2 + 10, 120);
+                g_lcd.print("Blend bs=1");
+                g_lcd.setCursor(20 + SZ2 + 10, 140);
+                g_lcd.printf("[0,0]=%04X", bg16[0]);
+                g_lcd.setCursor(20 + SZ2 + 10, 160);
+                g_lcd.printf("[16,16]=%04X", bg16[16 * SZ2 + 16]);
+
+                // Test C: input as swap565 (byte_swap=true to unswap for PPA)
+                // This simulates the original code path: sprites in swap565,
+                // PPA byte_swap=true to read them correctly
+                for (int i = 0; i < SZ * SZ; i++) fg16[i] = 0x00F8;  // red in swap565
+                for (int i = 0; i < SZ2 * SZ2; i++) bg16[i] = 0x1F00; // blue in swap565
+                esp_cache_msync(fg_buf, fg_aligned, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+                esp_cache_msync(bg_buf, bg_aligned, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+
+                blend.fg_byte_swap = true;
+                blend.bg_byte_swap = true;
+
+                err = ppa_do_blend(blend_client, &blend);
+                FMRB_LOGI(TAG, "Blend (swap565 input, byte_swap=true): %d", err);
+
+                esp_cache_msync(bg_buf, bg_aligned,
+                                ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+
+                FMRB_LOGI(TAG, "Blend out swap: bg[0,0]=%04X, bg[16,16]=%04X",
+                          bg16[0], bg16[16 * SZ2 + 16]);
+
+                g_lcd.pushImage(20, 220, SZ2, SZ2, (lgfx::swap565_t *)bg_buf);
+                g_lcd.setCursor(20 + SZ2 + 10, 220);
+                g_lcd.print("swap565 in bs=1");
+                g_lcd.setCursor(20 + SZ2 + 10, 240);
+                g_lcd.printf("[0,0]=%04X", bg16[0]);
+                g_lcd.setCursor(20 + SZ2 + 10, 260);
+                g_lcd.printf("[16,16]=%04X", bg16[16 * SZ2 + 16]);
+
+                // pushImage as swap565_t for this test
+                g_lcd.pushImage(20, 320, SZ2, SZ2, (lgfx::rgb565_t *)bg_buf);
+                g_lcd.setCursor(20 + SZ2 + 10, 320);
+                g_lcd.print("same as rgb565_t");
+            }
+
+            if (fg_buf) heap_caps_free(fg_buf);
+            if (bg_buf) heap_caps_free(bg_buf);
+            ppa_unregister_client(blend_client);
+        }
+    }
+    FMRB_LOGI(TAG, "--- Test 3 complete, waiting 5s ---");
+    vTaskDelay(pdMS_TO_TICKS(5000));
+
+    // ========== Test 4: Full pipeline Blend -> SRM -> pushImage ==========
+    FMRB_LOGI(TAG, "--- Test 4: Full pipeline Blend -> SRM -> LCD ---");
+    {
+        ppa_client_handle_t blend_client = NULL, srm_client = NULL;
+        ppa_client_config_t bcfg = {}, scfg = {};
+        bcfg.oper_type = PPA_OPERATION_BLEND;
+        scfg.oper_type = PPA_OPERATION_SRM;
+        esp_err_t e1 = ppa_register_client(&bcfg, &blend_client);
+        esp_err_t e2 = ppa_register_client(&scfg, &srm_client);
+
+        if (e1 == ESP_OK && e2 == ESP_OK) {
+            g_lcd.fillScreen(0);
+            g_lcd.setTextSize(2);
+            g_lcd.setTextColor(0xFFFF);
+
+            size_t fg_al = 0, fb_al = 0, out_al = 0;
+            void *fg_buf = ppa_alloc_buffer(SZ * SZ * 2, &fg_al);
+            void *fb_buf = ppa_alloc_buffer(SZ2 * SZ2 * 2, &fb_al);
+            void *out_buf = ppa_alloc_buffer(SZ2 * 3 * SZ2 * 3 * 2, &out_al);
+
+            if (fg_buf && fb_buf && out_buf) {
+                uint16_t *fg16 = (uint16_t *)fg_buf;
+                uint16_t *fb16 = (uint16_t *)fb_buf;
+
+                // Pattern A: nonswapped, byte_swap=false
+                for (int i = 0; i < SZ * SZ; i++) fg16[i] = 0xF800; // red
+                for (int i = 0; i < SZ2 * SZ2; i++) fb16[i] = 0x001F; // blue
+
+                esp_cache_msync(fg_buf, fg_al, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+                esp_cache_msync(fb_buf, fb_al, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+
+                // Blend
+                ppa_blend_oper_config_t blend = {};
+                blend.in_bg.buffer = fb_buf;
+                blend.in_bg.pic_w = SZ2; blend.in_bg.pic_h = SZ2;
+                blend.in_bg.block_w = SZ; blend.in_bg.block_h = SZ;
+                blend.in_bg.block_offset_x = 16; blend.in_bg.block_offset_y = 16;
+                blend.in_bg.blend_cm = PPA_BLEND_COLOR_MODE_RGB565;
+                blend.in_fg.buffer = fg_buf;
+                blend.in_fg.pic_w = SZ; blend.in_fg.pic_h = SZ;
+                blend.in_fg.block_w = SZ; blend.in_fg.block_h = SZ;
+                blend.in_fg.block_offset_x = 0; blend.in_fg.block_offset_y = 0;
+                blend.in_fg.blend_cm = PPA_BLEND_COLOR_MODE_RGB565;
+                blend.out.buffer = fb_buf;
+                blend.out.buffer_size = fb_al;
+                blend.out.pic_w = SZ2; blend.out.pic_h = SZ2;
+                blend.out.block_offset_x = 16; blend.out.block_offset_y = 16;
+                blend.out.blend_cm = PPA_BLEND_COLOR_MODE_RGB565;
+                blend.fg_alpha_update_mode = PPA_ALPHA_FIX_VALUE;
+                blend.fg_alpha_fix_val = 255;
+                blend.bg_alpha_update_mode = PPA_ALPHA_NO_CHANGE;
+                blend.fg_byte_swap = false;
+                blend.bg_byte_swap = false;
+                blend.mode = PPA_TRANS_MODE_BLOCKING;
+
+                esp_err_t err = ppa_do_blend(blend_client, &blend);
+                esp_cache_msync(fb_buf, fb_al,
+                                ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+
+                FMRB_LOGI(TAG, "Pipeline A (nonswap,bs=0): blend=%d fb[0]=%04X fb[16,16]=%04X",
+                          err, fb16[0], fb16[16 * SZ2 + 16]);
+
+                // SRM 3x
+                esp_cache_msync(fb_buf, fb_al, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+                ppa_srm_oper_config_t srm = {};
+                srm.in.buffer = fb_buf;
+                srm.in.pic_w = SZ2; srm.in.pic_h = SZ2;
+                srm.in.block_w = SZ2; srm.in.block_h = SZ2;
+                srm.in.srm_cm = PPA_SRM_COLOR_MODE_RGB565;
+                srm.out.buffer = out_buf;
+                srm.out.buffer_size = out_al;
+                srm.out.pic_w = SZ2 * 3; srm.out.pic_h = SZ2 * 3;
+                srm.out.srm_cm = PPA_SRM_COLOR_MODE_RGB565;
+                srm.rotation_angle = PPA_SRM_ROTATION_ANGLE_0;
+                srm.scale_x = 3.0f; srm.scale_y = 3.0f;
+                srm.byte_swap = false;
+                srm.mode = PPA_TRANS_MODE_BLOCKING;
+
+                err = ppa_do_scale_rotate_mirror(srm_client, &srm);
+                esp_cache_msync(out_buf, out_al,
+                                ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+
+                uint16_t *out16 = (uint16_t *)out_buf;
+                FMRB_LOGI(TAG, "Pipeline A SRM: %d, out[0]=%04X", err, out16[0]);
+
+                g_lcd.pushImage(20, 20, SZ2 * 3, SZ2 * 3, (lgfx::rgb565_t *)out_buf);
+                g_lcd.setCursor(20 + SZ2 * 3 + 10, 20);
+                g_lcd.print("A: nonswap bs=0");
+
+                // Pattern B: swap565, byte_swap=true (original approach)
+                for (int i = 0; i < SZ * SZ; i++) fg16[i] = 0x00F8; // red swap565
+                for (int i = 0; i < SZ2 * SZ2; i++) fb16[i] = 0x1F00; // blue swap565
+
+                esp_cache_msync(fg_buf, fg_al, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+                esp_cache_msync(fb_buf, fb_al, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+
+                blend.fg_byte_swap = true;
+                blend.bg_byte_swap = true;
+                err = ppa_do_blend(blend_client, &blend);
+                esp_cache_msync(fb_buf, fb_al,
+                                ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+
+                FMRB_LOGI(TAG, "Pipeline B (swap565,bs=1): blend=%d fb[0]=%04X fb[16,16]=%04X",
+                          err, fb16[0], fb16[16 * SZ2 + 16]);
+
+                esp_cache_msync(fb_buf, fb_al, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+                srm.byte_swap = true;
+                err = ppa_do_scale_rotate_mirror(srm_client, &srm);
+                esp_cache_msync(out_buf, out_al,
+                                ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+
+                FMRB_LOGI(TAG, "Pipeline B SRM: %d, out[0]=%04X", err, out16[0]);
+
+                g_lcd.pushImage(20, 240, SZ2 * 3, SZ2 * 3, (lgfx::swap565_t *)out_buf);
+                g_lcd.setCursor(20 + SZ2 * 3 + 10, 240);
+                g_lcd.print("B: swap bs=1");
+            }
+
+            if (fg_buf) heap_caps_free(fg_buf);
+            if (fb_buf) heap_caps_free(fb_buf);
+            if (out_buf) heap_caps_free(out_buf);
+            if (blend_client) ppa_unregister_client(blend_client);
+            if (srm_client) ppa_unregister_client(srm_client);
+        }
+    }
+    FMRB_LOGI(TAG, "--- Test 4 complete, waiting 10s ---");
+    vTaskDelay(pdMS_TO_TICKS(10000));
+
+    FMRB_LOGI(TAG, "======== PPA VERIFICATION TEST END ========");
+}
+
+#endif // PPA_VERIFICATION_TEST
+
+// ============================================================
 // Main task
 // ============================================================
 
@@ -1548,6 +2071,10 @@ static void display_p4_task(void *arg) {
         // Framebuffer is allocated later in INIT_DISPLAY when the kernel
         // reports the actual display_width x display_height.
         g_lcd_ready = true;
+
+#ifdef PPA_VERIFICATION_TEST
+        ppa_verification_test();
+#endif
     }
 
     FMRB_LOGI(TAG, "Tab5 display: entering command receive loop");

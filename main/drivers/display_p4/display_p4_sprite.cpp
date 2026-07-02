@@ -68,9 +68,11 @@ uint16_t display_p4_sprite_image_create(uint16_t canvas_id,
     memset(buf, 0, buf_size);
 
     auto *spr = new LGFX_Sprite();
-    spr->setBuffer(buf, width, height, 16);
-    // PPA-native RGB565 (non-byte-swapped)
+    // PPA-native RGB565 (non-byte-swapped). Depth must be set BEFORE
+    // setBuffer: setColorDepth() on a sprite that already has a buffer
+    // deletes it and reallocates internally (leak + wrong memory for PPA).
     spr->setColorDepth(lgfx::rgb565_nonswapped);
+    spr->setBuffer(buf, width, height);
 
     uint16_t id = g_next_image_id++;
     if (id == 0) id = g_next_image_id++;
