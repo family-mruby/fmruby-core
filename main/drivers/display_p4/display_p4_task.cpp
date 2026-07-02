@@ -23,7 +23,6 @@
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "driver/ppa.h"
-#include "esp_cache.h"
 #include "esp_heap_caps.h"
 
 extern "C" {
@@ -33,8 +32,32 @@ extern "C" {
 #include <msgpack.h>
 #include <cstring>
 #include <cstdlib>  // qsort
+#include "esp_private/esp_cache_private.h"
+#include "esp_cache.h"
 
 static const char *TAG = "display_p4";
+
+// PPA-native RGB565 (non-byte-swapped), matching PPA hardware I/O format.
+// LovyanGFX setBuffer(buf, w, h, 16) defaults to rgb565_2Byte (byte-swapped),
+// which causes double-swap on PPA Blend output. Override to non-swapped so that
+// all buffers use the same pixel format as PPA hardware.
+static void set_ppa_native_depth(LGFX_Sprite *sprite) {
+    sprite->setColorDepth(lgfx::rgb565_nonswapped);
+}
+
+// Allocate cache-aligned buffer for PPA DMA compatibility.
+// Uses esp_cache_get_alignment() to query the actual cache line size
+// (L2 cache on Tab5 is 128B, not 64B).
+static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
+    size_t cache_line_size = 64;
+    esp_cache_get_alignment(MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA, &cache_line_size);
+    size_t aligned = (length + cache_line_size - 1) & ~(cache_line_size - 1);
+    void *buf = heap_caps_aligned_alloc(cache_line_size, aligned,
+                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (buf) memset(buf, 0, aligned);
+    if (out_aligned_size) *out_aligned_size = buf ? aligned : 0;
+    return buf;
+}
 
 // Tab5 board pins / I2C (see fmrb_pin_assign.h; kept local to the driver).
 #define TAB5_I2C_PORT   I2C_NUM_1
@@ -69,7 +92,11 @@ typedef struct {
     bool         is_visible;
     // Creation-time transparency (used during render_frame compositing)
     uint8_t      create_transparent_color;     // Original RGB332 value
-    uint8_t      create_trans_r, create_trans_g, create_trans_b; // RGB888 for PPA color-key
+    // PPA Blend color-key range (RGB888). PPA internally expands RGB565 to
+    // RGB888 before comparison; range accounts for quantization ambiguity.
+    uint8_t      create_ck_r_low, create_ck_r_high;
+    uint8_t      create_ck_g_low, create_ck_g_high;
+    uint8_t      create_ck_b_low, create_ck_b_high;
     bool         create_use_transparency;
     // Push-time transparency (used for canvas-to-canvas PUSH_CANVAS only)
     uint8_t      transparent_color;
@@ -150,20 +177,18 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
         return nullptr;
     }
 
-    // Allocate cache-aligned buffer for PPA compatibility (64-byte alignment)
     size_t buf_size = (size_t)width * height * 2;  // RGB565 = 2 bytes/pixel
-    buf_size = (buf_size + 63) & ~63;  // Round up to cache line
-    void *buf = heap_caps_aligned_alloc(64, buf_size,
-                                         MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    size_t aligned_size = 0;
+    void *buf = ppa_alloc_buffer(buf_size, &aligned_size);
     if (!buf) {
         FMRB_LOGE(TAG, "Canvas buffer alloc failed: %dx%d (%u bytes)",
                   (int)width, (int)height, (unsigned)buf_size);
         return nullptr;
     }
-    memset(buf, 0, buf_size);
 
     auto *sprite = new LGFX_Sprite(&g_lcd);
-    sprite->setBuffer(buf, width, height, 16);  // RGB565, cache-aligned
+    sprite->setBuffer(buf, width, height, 16);
+    set_ppa_native_depth(sprite);
 
     p4_canvas_t *c              = &g_canvases[g_canvas_count++];
     c->canvas_id                = canvas_id;
@@ -173,12 +198,17 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     c->push_y                   = 0;
     c->is_visible               = false;
     c->create_transparent_color     = transparent_color;
-    // Convert to RGB888 for PPA Blend color-key
+    // Convert RGB332 -> RGB565(nonswapped) -> extract R5/G6/B5 -> RGB888 range
+    // for PPA Blend color-key. PPA expands RGB565 to RGB888 internally;
+    // range covers the quantization ambiguity in the lower bits.
     lgfx::rgb332_t tc; tc.raw = transparent_color;
-    lgfx::rgb888_t tc888; tc888 = tc;
-    c->create_trans_r = tc888.r;
-    c->create_trans_g = tc888.g;
-    c->create_trans_b = tc888.b;
+    lgfx::rgb565_t tc565; tc565 = tc;
+    c->create_ck_r_low  = tc565.r5 << 3;
+    c->create_ck_r_high = (tc565.r5 << 3) | 0x07;
+    c->create_ck_g_low  = tc565.g6 << 2;
+    c->create_ck_g_high = (tc565.g6 << 2) | 0x03;
+    c->create_ck_b_low  = tc565.b5 << 3;
+    c->create_ck_b_high = (tc565.b5 << 3) | 0x07;
     c->create_use_transparency      = use_transparency;
     c->transparent_color            = transparent_color;
     c->use_transparency             = use_transparency;
@@ -246,6 +276,7 @@ static void cursor_init(void) {
     g_cursor_sprite->setColorDepth(16);
     g_cursor_sprite->setPsram(false);
     g_cursor_sprite->createSprite(16, 16);
+    set_ppa_native_depth(g_cursor_sprite);
     g_cursor_sprite->clear((uint32_t)CURSOR_TRANSPARENT);
 
     static const uint8_t pat[16][16] = {
@@ -328,6 +359,7 @@ static void render_frame(void) {
             size_t fg_size = (size_t)(sw * sh * 2);
             size_t bg_size = (size_t)(fb_w * fb_h * 2);
 
+            // Flush CPU cache to PSRAM so PPA DMA reads current pixel data
             esp_cache_msync(fg_buf, fg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
             esp_cache_msync(bg_buf, bg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
 
@@ -361,20 +393,24 @@ static void render_frame(void) {
             blend.out.block_offset_y = (uint32_t)dy;
             blend.out.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
 
+            // All sprites use PPA-native RGB565 (non-swapped); no byte swap needed
+            blend.fg_byte_swap = false;
+            blend.bg_byte_swap = false;
+
             // FG fully opaque
             blend.fg_alpha_update_mode = PPA_ALPHA_FIX_VALUE;
             blend.fg_alpha_fix_val     = 255;
             blend.bg_alpha_update_mode = PPA_ALPHA_NO_CHANGE;
 
-            // Color-key for transparent canvas
+            // Color-key for transparent canvas (range covers RGB565->RGB888 quantization)
             if (c->create_use_transparency) {
                 blend.fg_ck_en = true;
-                blend.fg_ck_rgb_low_thres  = {.b = c->create_trans_b,
-                                               .g = c->create_trans_g,
-                                               .r = c->create_trans_r};
-                blend.fg_ck_rgb_high_thres = {.b = c->create_trans_b,
-                                               .g = c->create_trans_g,
-                                               .r = c->create_trans_r};
+                blend.fg_ck_rgb_low_thres  = {.b = c->create_ck_b_low,
+                                               .g = c->create_ck_g_low,
+                                               .r = c->create_ck_r_low};
+                blend.fg_ck_rgb_high_thres = {.b = c->create_ck_b_high,
+                                               .g = c->create_ck_g_high,
+                                               .r = c->create_ck_r_high};
             }
 
             blend.mode = PPA_TRANS_MODE_BLOCKING;
@@ -383,7 +419,7 @@ static void render_frame(void) {
             if (err != ESP_OK) {
                 FMRB_LOGE(TAG, "PPA Blend failed: %d", err);
             }
-
+            // Invalidate output cache so CPU sees DMA-written data
             esp_cache_msync(bg_buf, bg_size,
                             ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
         }
@@ -402,9 +438,9 @@ static void render_frame(void) {
         int fb_w = g_framebuffer->width();
         int fb_h = g_framebuffer->height();
         void *fb_ptr = g_framebuffer->getBuffer();
-        size_t fb_size = (size_t)(fb_w * fb_h * 2);
 
-        // Flush framebuffer cache so PPA reads current data
+        // Flush framebuffer cache before SRM DMA reads it
+        size_t fb_size = (size_t)(fb_w * fb_h * 2);
         esp_cache_msync(fb_ptr, fb_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
 
         int out_w = fb_w * DISPLAY_P4_SCALE_FACTOR;
@@ -434,15 +470,14 @@ static void render_frame(void) {
         srm.mirror_x       = false;
         srm.mirror_y       = false;
         srm.rgb_swap       = false;
-        srm.byte_swap      = false;
+        srm.byte_swap      = false;  // All buffers use PPA-native RGB565
         srm.mode           = PPA_TRANS_MODE_BLOCKING;
 
         esp_err_t err = ppa_do_scale_rotate_mirror(g_ppa_srm, &srm);
         if (err == ESP_OK) {
-            // Flush PPA output cache for DMA2D readback
+            // Invalidate SRM output cache so CPU reads DMA-written data
             esp_cache_msync(g_ppa_out_buf, g_ppa_out_buf_size,
-                            ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            // Push scaled buffer to LCD via LovyanGFX (handles DMA2D)
+                            ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
             int offset_x = (g_lcd.width() - out_w) / 2;
             g_lcd.pushImage(offset_x, 0, out_w, out_h, (lgfx::rgb565_t *)g_ppa_out_buf);
         } else {
@@ -863,7 +898,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             int d_h = dst->sprite->height();
             if (s_buf && d_buf) {
                 lgfx::rgb332_t tr332; tr332.raw = cmd->transparent_color;
-                lgfx::swap565_t tr_s; tr_s = tr332;
+                lgfx::rgb565_t tr_s; tr_s = tr332;
                 uint16_t tr565 = tr_s.raw;
                 for (int yy = 0; yy < s_h; yy++) {
                     int dy = cmd->y + yy;
@@ -1190,22 +1225,9 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             return 1;
         }
 
-        // Decode PNG into a 16bpp temp sprite, then convert to 8bpp.
-        // drawPng on 8bpp targets may not render correctly.
-        auto *tmp = new LGFX_Sprite();
-        tmp->setColorDepth(16);
-        tmp->setPsram(true);
-        if (!tmp->createSprite(img_w, img_h)) {
-            FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: tmp sprite alloc failed %dx%d", img_w, img_h);
-            fmrb_sys_free(buf);
-            delete tmp;
-            send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
-            return 1;
-        }
-        // Decode PNG directly into 16bpp sprite (RGB565, same as all buffers).
-        // Fill with white so RGBA transparent pixels become white background.
+        // Decode PNG into PPA-native RGB565 sprite.
         auto *spr = new LGFX_Sprite();
-        spr->setColorDepth(16);
+        spr->setColorDepth(lgfx::rgb565_nonswapped);
         spr->setPsram(true);
         if (!spr->createSprite(img_w, img_h)) {
             FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: sprite alloc failed %dx%d", img_w, img_h);
@@ -1258,7 +1280,6 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
 
         p4_image_t *img = image_store_find(cmd->image_id);
         if (img && img->sprite) {
-            // All sprites are RGB565; pushSprite works directly.
             img->sprite->pushSprite(dst, cmd->x, cmd->y);
             FMRB_LOGI(TAG, "DRAW_IMAGE: id=%u -> canvas=%u (%d,%d) %ux%u",
                       cmd->image_id, cmd->canvas_id, cmd->x, cmd->y,
@@ -1282,7 +1303,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         bool use_trans = display_p4_sprite_image_get_transparent(cmd->image_id, &trans_color_332);
         // Convert via LovyanGFX for exact match with sprite buffer content
         lgfx::rgb332_t tc332; tc332.raw = trans_color_332;
-        lgfx::swap565_t tc565; tc565 = tc332;
+        lgfx::rgb565_t tc565; tc565 = tc332;
         uint16_t trans_raw = tc565.raw;
         int sw = src->width();
         int sh = src->height();
@@ -1417,17 +1438,16 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
                 g_display_height = init_cmd->height;
 
                 size_t fb_buf_size = (size_t)g_display_width * g_display_height * 2;
-                fb_buf_size = (fb_buf_size + 63) & ~63;
-                void *fb_buf = heap_caps_aligned_alloc(64, fb_buf_size,
-                    MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                size_t fb_aligned = 0;
+                void *fb_buf = ppa_alloc_buffer(fb_buf_size, &fb_aligned);
                 if (!fb_buf) {
                     FMRB_LOGE(TAG, "Framebuffer alloc failed: %dx%d",
                               g_display_width, g_display_height);
                 } else {
-                    memset(fb_buf, 0, fb_buf_size);
                     g_framebuffer = new LGFX_Sprite(&g_lcd);
                     g_framebuffer->setBuffer(fb_buf, g_display_width, g_display_height, 16);
-                    FMRB_LOGI(TAG, "Framebuffer allocated: %dx%d RGB565 (scale=%dx)",
+                    set_ppa_native_depth(g_framebuffer);
+                    FMRB_LOGI(TAG, "Framebuffer allocated: %dx%d RGB565 PPA-native (scale=%dx)",
                               g_display_width, g_display_height, DISPLAY_P4_SCALE_FACTOR);
                 }
 
@@ -1447,12 +1467,9 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
                 if (ppa_register_client(&ppa_cfg, &g_ppa_srm) == ESP_OK) {
                     int out_w = g_display_width * DISPLAY_P4_SCALE_FACTOR;
                     int out_h = g_display_height * DISPLAY_P4_SCALE_FACTOR;
-                    g_ppa_out_buf_size = (size_t)(out_w * out_h * 2);
-                    g_ppa_out_buf = heap_caps_aligned_alloc(
-                        64, g_ppa_out_buf_size,
-                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                    size_t raw_size = (size_t)(out_w * out_h * 2);
+                    g_ppa_out_buf = ppa_alloc_buffer(raw_size, &g_ppa_out_buf_size);
                     if (g_ppa_out_buf) {
-                        memset(g_ppa_out_buf, 0, g_ppa_out_buf_size);
                         FMRB_LOGI(TAG, "PPA SRM initialized: %dx%d -> %dx%d (%u KB)",
                                   g_display_width, g_display_height,
                                   out_w, out_h,

@@ -91,3 +91,4 @@ void display_p4_mask_blit(uint16_t mask_id,
                            lgfx::LGFX_Sprite *src_sprite,
                            lgfx::LGFX_Sprite *dst_sprite,
                            int16_t x, int16_t y);
+

@@ -68,7 +68,7 @@ ESP32-P4 自体は **IDF v5.3+ で正式サポート**、M5GFX(Tab5/P4 DSI) も 
 - [ ] 実機での sdkconfig 微調整
 
 備考: 以下の「作業記録」は IDF6 で進めた当時の経緯を含む（履歴）。現行 v5.5.4 では IDF6 固有の回避策
-（picolibc specs / timespec シム / idf::esp_driver 連結 / -Wno-error / linux EXCLUDE）は **すべて不要**で、
+（picolibc specs / timespec シム / idf::esp_driver 連結 / -Wno-error / linux EXCLUDE）は **すべて不要*で、
 本ブランチには入れていない。P4 本体作業（config、表示バックエンド/LGFX_Tab5、Tab5キーボード、リンク層差し替え）は
 IDF 非依存でそのまま有効。
 
@@ -236,32 +236,75 @@ ESP32-P4 は PPA ハードウェアを搭載し、ESP-IDF v5.5 の `esp_driver_p
 - 対応色空間: **RGB565, RGB888, ARGB8888, YUV 各種, GRAY8**
 - **RGB332 は非対応**
 
-**試行と問題:**
+**実装経緯 (全 3 回の試行):**
 
-フレームバッファを RGB565 に変更し、PPA SRM で 3x ハードウェアスケーリングを試みた。
+**試行 1: RGB565 フレームバッファ + PPA SRM + Panel_DSI 直接出力**
+- フレームバッファ RGB565 化 + PPA SRM 3x スケーリング → Panel_DSI 内部バッファに直接書き込み
+- 結果: 画面完全崩壊。DMA2D パイプラインとの競合が原因
 
-1. フレームバッファ RGB565 化: キャンバス (8bpp) → pushSprite → フレームバッファ (16bpp) で合成。
-2. PPA SRM: フレームバッファ → Panel_DSI の内部フレームバッファに直接 3x スケーリング出力。
-3. PPA SRM 初期化・呼び出しは成功（`ppa_register_client` / `ppa_do_scale_rotate_mirror`）。
+**試行 2: RGB565 フレームバッファ + pushSprite 合成 + pushRotateZoom**
+- 8bpp→16bpp の pushSprite が透過色を RGB888 として誤解釈 → 色化け
+- pushSprite の代わりに手動 rgb332_to_565 変換を追加 → 変換誤差で色ずれ（赤→青）
+- 8bpp に戻して正常動作回復
 
-**発生した問題:**
+**試行 3 (現在): 全バッファ RGB565 + PPA Blend + PPA SRM + pushImage 出力**
+- 全バッファ（キャンバス/フレームバッファ/SpriteImage）を RGB565 16bpp に統一
+- GFX コマンドの色引数は `uint8_t` のまま渡す（LovyanGFX が RGB332→RGB565 自動変換）
+- キャンバス合成: PPA Blend (color-key で透過色スキップ)
+- スケーリング: PPA SRM 3x → 専用出力バッファ → `g_lcd.pushImage()` で転送
+- バッファは `heap_caps_aligned_alloc(64, ...)` + `LGFX_Sprite::setBuffer()` でキャッシュアライン
+- cache alignment エラー解消済み
 
-- **PPA 出力の画面乱れ**: Panel_DSI フレームバッファへの直接書き込みが LovyanGFX の DMA2D パイプラインと衝突し、画面が完全に崩壊。PPA の出力バッファレイアウトと DSI パネルの期待するフォーマット（バイトオーダー、行アライメント）の整合が取れていない可能性。
-- **pushSprite の透過色問題**: 8bpp→16bpp 変換時に LovyanGFX の `pushSprite` が透過色 (RGB332) を RGB888 として解釈し、RGB565 変換後に不一致が発生。全体の色味もおかしくなった。
+**残存問題 (対応中):**
 
-**現状の結論:**
+1. **R/B 色スワップ**: LovyanGFX の RGB565 メモリ格納が `rgb565_2Byte` (バイトスワップ済み: `GGGBBBBB RRRRRGGG`)。PPA は標準 RGB565 (`RRRRRGGG GGGBBBBB`) として読むためR/Bが入れ替わる。
+   - 対策: PPA SRM/Blend の `byte_swap` フラグを `true` に設定。PPA が入力バイトペアをスワップして読むことで LovyanGFX の格納フォーマットに対応。
+   - Blend では `fg_byte_swap` / `bg_byte_swap` の両方を `true` に。
 
-- フレームバッファは **8bpp (RGB332) に戻し**、正常動作を回復。
-- 最終スケーリングは **pushRotateZoom** (ソフトウェア) で行っている。
+2. **背景画像が見えず濃い緑**: PPA Blend の color-key 比較は PPA が byte_swap 後のピクセル値に対して行われるはず。byte_swap 修正で解消される見込み。
 
-**PPA 活用の今後の計画:**
+3. **描画が右→左に見える**: PPA SRM 出力を `pushImage` で毎フレーム 1278x720 全転送しているため遅い。パネルの vsync に同期していないので描画途中が見える。
+   - 将来: ダブルバッファまたは DMA2D 転送完了待ちの導入が必要。
 
-PPA を有効に使うには以下のアプローチが考えられる:
+**LovyanGFX のバイトオーダーまとめ:**
 
-1. **全バッファ RGB565 化**: カーネル側の色フォーマット（fmrb_gfx の 8bpp 前提）を 16bpp に変更する大規模改修。透過色の扱いも再設計が必要。最も効果的だが影響範囲が大きい。
+```
+rgb565_2Byte (swapped, default):  メモリ上 [GGGBBBBB] [RRRRRGGG] (MSB first)
+rgb565_nonswapped:                メモリ上 [RRRRRGGG] [GGGBBBBB] (LSB first)
+PPA RGB565 期待:                  メモリ上 [RRRRRGGG] [GGGBBBBB]
+```
 
-2. **スケーリング専用の RGB565 中間バッファ**: 8bpp フレームバッファを合成完了後に CPU で RGB565 に変換し、PPA SRM でスケーリングのみ行う。合成は 8bpp のまま。変換コスト vs pushRotateZoom のコストのトレードオフ。
+`setBuffer(buf, w, h, 16)` は bpp=16 → `rgb565_2Byte` を設定。PPA と不一致のため `byte_swap=true` が必須。
 
-3. **Panel_DSI フレームバッファ直接アクセスの調整**: LovyanGFX の Panel_DSI が内部で行う DMA2D 転送と PPA 出力の競合を解決する。`config_detail().buffer` の実際のレイアウト（行ストライド、バイトオーダー）を詳細に調査し、PPA 出力を正しく書き込む。`esp_cache_msync` のタイミングも要検証。
+### PPA 修正計画（試行4）: 全スプライトを PPA ネイティブ RGB565 に統一
 
-現時点では方式 2 が最もリスクが低い。ただし 426x240 の 8→16bpp 変換（102,240 ピクセル）のオーバーヘッドと、pushRotateZoom のソフトウェアスケーリングコストの比較が必要。
+**根本原因の特定（ESP-IDF PPA ドライバソース精読による）:**
+
+PPA の `byte_swap` は **INPUT(RX) のみ** で、OUTPUT(TX) に byte_swap レジスタは存在しない
+（`ppa_ll.h`: `sr_rx_byte_swap_en`, `blend0_rx_byte_swap_en` 等。TX 側に対応フラグなし）。
+
+従って、PPA Blend の出力は常に PPA ネイティブ（非スワップ）RGB565 でフレームバッファに書き戻される。
+次の Blend で `bg_byte_swap=true` すると二重スワップとなり、色崩壊する。これが R/B 反転と緑背景の原因。
+
+参考: LGFX_PPA ライブラリ（M5Stack 公式 PPA ラッパー, `tmp/LGFX_PPA/`）は、
+RGB565 での PPA Blend を避け RGB888 を使用している。SRM では `byte_swap = is_panel` として
+Panel_DSI バッファへの直接書き込み時のみ byte_swap を使用。
+
+**修正方針:**
+
+全 LGFX_Sprite を `rgb565_nonswapped` (= PPA ネイティブ RGB565) に設定する。
+`setBuffer(buf, w, h, 16)` 後に `setColorDepth((lgfx::color_depth_t)17)` で override。
+これにより PPA の入出力フォーマットが全段で統一され、byte_swap が一切不要になる。
+
+LovyanGFX の描画関数（drawPixel, fillRect, drawPng, pushSprite 等）は内部で色深度に応じた
+変換を行うため、`rgb565_nonswapped` でも正しく動作する。
+
+**変更箇所:**
+
+1. 全 LGFX_Sprite 生成箇所で `setColorDepth((lgfx::color_depth_t)17)` を追加
+   - canvas_alloc(), cursor_init(), INIT_DISPLAY(framebuffer), CREATE_IMAGE_FROM_FILE, sprite_image_create()
+2. PPA Blend: `fg_byte_swap=false`, `bg_byte_swap=false`
+3. PPA SRM: `byte_swap=false`
+4. Color-key: RGB332→RGB565(非スワップ)→R5G6B5 成分抽出→範囲指定で RGB888 閾値設定
+5. 透過色比較: `swap565_t` → `rgb565_t` に変更（PUSH_CANVAS, DRAW_TILE）
+6. キャッシュアラインメント: `esp_cache_get_alignment()` で動的取得（LGFX_PPA と同方式）

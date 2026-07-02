@@ -6,6 +6,7 @@
 
 #include <cstring>
 #include "esp_heap_caps.h"
+#include "esp_private/esp_cache_private.h"
 #include <cstdlib>   // qsort
 
 #include "fmrb_log.h"
@@ -55,8 +56,10 @@ uint16_t display_p4_sprite_image_create(uint16_t canvas_id,
 
     // Cache-aligned buffer for PPA compatibility
     size_t buf_size = (size_t)width * height * 2;
-    buf_size = (buf_size + 63) & ~63;
-    void *buf = heap_caps_aligned_alloc(64, buf_size,
+    size_t cache_line_size = 64;
+    esp_cache_get_alignment(MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA, &cache_line_size);
+    buf_size = (buf_size + cache_line_size - 1) & ~(cache_line_size - 1);
+    void *buf = heap_caps_aligned_alloc(cache_line_size, buf_size,
                                          MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     if (!buf) {
         FMRB_LOGE(TAG, "Sprite image alloc failed: %ux%u", (unsigned)width, (unsigned)height);
@@ -65,7 +68,9 @@ uint16_t display_p4_sprite_image_create(uint16_t canvas_id,
     memset(buf, 0, buf_size);
 
     auto *spr = new LGFX_Sprite();
-    spr->setBuffer(buf, width, height, 16);  // RGB565
+    spr->setBuffer(buf, width, height, 16);
+    // PPA-native RGB565 (non-byte-swapped)
+    spr->setColorDepth(lgfx::rgb565_nonswapped);
 
     uint16_t id = g_next_image_id++;
     if (id == 0) id = g_next_image_id++;
