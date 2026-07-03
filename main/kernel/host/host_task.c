@@ -1417,9 +1417,16 @@ static void host_task_process_host_message(const host_message_t *msg)
             hid_msg.data[4] = (uint8_t)(y & 0xFF);
             hid_msg.data[5] = (uint8_t)((y >> 8) & 0xFF);
 
-            // Mouse move events can be dropped if queue is full (already rate-limited to 66ms)
+            // Mouse move events can be dropped if queue is full (already rate-limited to 33ms)
             // Use single 5000ms timeout without retry to avoid blocking HOST task
+            uint32_t send_start_ms = (uint32_t)fmrb_hal_time_get_ms();
             fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &hid_msg, 5000);
+            uint32_t send_ms = (uint32_t)fmrb_hal_time_get_ms() - send_start_ms;
+            if (send_ms > 50) {
+                // Kernel queue backlog indicator: send should be instant
+                FMRB_LOGW(TAG, "Mouse move send to Kernel blocked %lums",
+                          (unsigned long)send_ms);
+            }
             if (ret != FMRB_OK) {
                 // Silently drop - mouse moves are high-frequency and already rate-limited
                 FMRB_LOGD(TAG, "Mouse move dropped (Kernel queue full)");

@@ -112,4 +112,11 @@ public:
 
         setPanel(&_panel);
     }
+
+    // Direct pointer to the esp_lcd DPI framebuffer (rgb565 non-swapped,
+    // native portrait 720x1280, row stride = panel_width * 2 bytes).
+    // Valid after init(). Used by display_p4 to let PPA SRM write the
+    // scaled+rotated frame directly, bypassing the per-pixel rotated copy
+    // that pushImage performs under setRotation(3).
+    void* getFrameBuffer(void) { return _panel.config_detail().buffer; }
 };

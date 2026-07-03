@@ -30,6 +30,7 @@ module InputRouterMixin
     x = data_binary.getbyte(2) | (data_binary.getbyte(3) << 8)
     y = data_binary.getbyte(4) | (data_binary.getbyte(5) << 8)
 
+    t0 = Machine.board_millis
     begin
       case subtype
       when 4  # Mouse button down
@@ -291,6 +292,13 @@ module InputRouterMixin
         @capture_pid = nil
         @capture_mode = nil
         @mouse_down_pid = nil
+      end
+
+      # Slow-event indicator: mouse moves arrive at 30 Hz, so anything
+      # over one 33 ms interval accumulates backlog in the kernel queue
+      elapsed = Machine.board_millis - t0
+      if elapsed > 25
+        Log.warn("hid_event slow: subtype=#{subtype} capture=#{@capture_mode} #{elapsed}ms")
       end
 
     rescue => e

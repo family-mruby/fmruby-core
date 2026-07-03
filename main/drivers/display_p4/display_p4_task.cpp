@@ -160,10 +160,23 @@ static uint16_t g_display_height = 0;
 #define DISPLAY_P4_SCALE_FACTOR 3
 
 // PPA (Pixel Processing Accelerator) for hardware operations
-static ppa_client_handle_t g_ppa_srm = NULL;    // Scale-Rotate-Mirror (3x scaling)
+static ppa_client_handle_t g_ppa_srm = NULL;    // Scale-Rotate-Mirror (3x scale + rotate)
 static ppa_client_handle_t g_ppa_blend = NULL;  // Blend (canvas compositing with color-key)
-static void *g_ppa_out_buf = NULL;
-static size_t g_ppa_out_buf_size = 0;
+
+// Direct DSI framebuffer output. The esp_lcd DPI framebuffer is rgb565
+// non-swapped in native portrait orientation (720x1280); SRM writes the
+// scaled frame there directly, rotating in hardware. Going through
+// g_lcd.pushImage instead costs ~100 ms/frame because setRotation(3)
+// forces a per-pixel rotated copy of the whole 1.8 MB frame.
+//
+// Logical (landscape 1280x720) -> native (portrait 720x1280) mapping,
+// confirmed on device (ANGLE_270 rendered upside down):
+//   PPA SRM ROTATION_ANGLE_90 (CCW), i.e. for a logical image pixel
+//   (ix, iy):  nx = iy,  ny = margin + imgH - 1 - ix
+// where imgH = 426*3 = 1278 and margin = (1280 - 1278) / 2 = 1.
+#define DSI_FB_W 720
+#define DSI_FB_H 1280
+static uint16_t *g_dsi_fb = nullptr;
 
 static p4_canvas_t* canvas_find(uint16_t canvas_id) {
     for (size_t i = 0; i < g_canvas_count; i++) {
@@ -366,6 +379,42 @@ static void cursor_patch(int fx, int fy, bool with_cursor) {
     const uint16_t key = 0xF81F;
     const int S = DISPLAY_P4_SCALE_FACTOR;
 
+    if (g_dsi_fb) {
+        // Write directly into the native-orientation DSI framebuffer using
+        // the same logical->native mapping as the SRM hardware rotation
+        // (ANGLE_90): nx = iy, ny = margin + imgH - 1 - ix
+        const int img_h_native = fb_w * S;
+        const int margin = ((int)DSI_FB_H - img_h_native) / 2;
+        for (int y = 0; y < h; y++) {
+            const uint16_t *fb_row  = fb  + (size_t)(y0 + y) * fb_w + x0;
+            const uint16_t *cur_row = cur + (size_t)(sy + y) * CURSOR_W + sx;
+            for (int x = 0; x < w; x++) {
+                uint16_t px = fb_row[x];
+                if (with_cursor && cur_row[x] != key) px = cur_row[x];
+                for (int dy = 0; dy < S; dy++) {
+                    int nx = (y0 + y) * S + dy;
+                    for (int dx = 0; dx < S; dx++) {
+                        int ix = (x0 + x) * S + dx;
+                        int ny = margin + img_h_native - 1 - ix;
+                        g_dsi_fb[(size_t)ny * DSI_FB_W + nx] = px;
+                    }
+                }
+            }
+        }
+        // Write back the affected native rows so dirty cache lines cannot
+        // evict later over PPA-written frame data. Rows ny span
+        // [margin + imgH - (x0+w)*S, margin + imgH - x0*S).
+        // C2M writeback tolerates unaligned spans with the UNALIGNED flag.
+        int span_row = margin + img_h_native - (x0 + w) * S;
+        uint8_t *span = (uint8_t *)&g_dsi_fb[(size_t)span_row * DSI_FB_W];
+        size_t span_len = (size_t)(w * S) * DSI_FB_W * 2;
+        esp_cache_msync(span, span_len,
+                        ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
+        return;
+    }
+
+    // Fallback (no direct framebuffer access): compose + scale into a temp
+    // buffer and push via LovyanGFX
     static uint16_t scaled[CURSOR_W * DISPLAY_P4_SCALE_FACTOR *
                            CURSOR_H * DISPLAY_P4_SCALE_FACTOR];
 
@@ -421,6 +470,14 @@ static void render_frame(void) {
 
     if (g_first_render) {
         g_lcd.fillScreen(0);
+        if (g_dsi_fb) {
+            // Flush LovyanGFX's cached CPU writes (boot screen, fill) once;
+            // from here on the framebuffer is written by PPA DMA and the
+            // cursor patch (which writes back its own region), so no dirty
+            // CPU cache lines may remain to evict over DMA output.
+            esp_cache_msync(g_dsi_fb, (size_t)DSI_FB_W * DSI_FB_H * 2,
+                            ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+        }
         g_first_render = false;
     }
 
@@ -529,7 +586,7 @@ static void render_frame(void) {
     }
 
     // Scale framebuffer 3x to LCD via PPA SRM hardware accelerator.
-    if (g_ppa_srm && g_ppa_out_buf) {
+    if (g_ppa_srm && g_dsi_fb) {
         int fb_w = g_framebuffer->width();
         int fb_h = g_framebuffer->height();
         void *fb_ptr = g_framebuffer->getBuffer();
@@ -539,8 +596,12 @@ static void render_frame(void) {
                                              ESP_CACHE_MSYNC_FLAG_DIR_C2M);
         if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fb msync C2M failed: %d", sync_err);
 
-        int out_w = fb_w * DISPLAY_P4_SCALE_FACTOR;
-        int out_h = fb_h * DISPLAY_P4_SCALE_FACTOR;
+        // Scale 3x and rotate to native portrait in one hardware pass,
+        // writing directly into the DSI framebuffer (no CPU copy, and no
+        // M2C invalidate: the CPU never reads the SRM output).
+        // Rotated output is fb_h*3 (=720) wide, fb_w*3 (=1278) high;
+        // center it vertically in the 1280-high native framebuffer.
+        int out_native_h = fb_w * DISPLAY_P4_SCALE_FACTOR;
 
         ppa_srm_oper_config_t srm = {};
         srm.in.buffer         = fb_ptr;
@@ -552,15 +613,16 @@ static void render_frame(void) {
         srm.in.block_offset_y = 0;
         srm.in.srm_cm         = PPA_SRM_COLOR_MODE_RGB565;
 
-        srm.out.buffer         = g_ppa_out_buf;
-        srm.out.buffer_size    = g_ppa_out_buf_size;
-        srm.out.pic_w          = (uint32_t)out_w;
-        srm.out.pic_h          = (uint32_t)out_h;
+        srm.out.buffer         = g_dsi_fb;
+        srm.out.buffer_size    = (uint32_t)DSI_FB_W * DSI_FB_H * 2;
+        srm.out.pic_w          = DSI_FB_W;
+        srm.out.pic_h          = DSI_FB_H;
         srm.out.block_offset_x = 0;
-        srm.out.block_offset_y = 0;
+        srm.out.block_offset_y = (uint32_t)((DSI_FB_H - out_native_h) / 2);
         srm.out.srm_cm         = PPA_SRM_COLOR_MODE_RGB565;
 
-        srm.rotation_angle = PPA_SRM_ROTATION_ANGLE_0;
+        // Logical landscape -> native portrait (confirmed on device)
+        srm.rotation_angle = PPA_SRM_ROTATION_ANGLE_90;
         srm.scale_x        = (float)DISPLAY_P4_SCALE_FACTOR;
         srm.scale_y        = (float)DISPLAY_P4_SCALE_FACTOR;
         srm.mirror_x       = false;
@@ -570,13 +632,7 @@ static void render_frame(void) {
         srm.mode           = PPA_TRANS_MODE_BLOCKING;
 
         esp_err_t err = ppa_do_scale_rotate_mirror(g_ppa_srm, &srm);
-        if (err == ESP_OK) {
-            // Invalidate SRM output cache so CPU reads DMA-written data
-            esp_cache_msync(g_ppa_out_buf, g_ppa_out_buf_size,
-                            ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
-            int offset_x = (g_lcd.width() - out_w) / 2;
-            g_lcd.pushImage(offset_x, 0, out_w, out_h, (lgfx::rgb565_t *)g_ppa_out_buf);
-        } else {
+        if (err != ESP_OK) {
             FMRB_LOGE(TAG, "PPA SRM failed: %d", err);
         }
     } else {
@@ -1576,21 +1632,18 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
                     g_ppa_blend = NULL;
                 }
 
-                // Initialize PPA SRM for hardware 3x scaling
+                // Initialize PPA SRM for hardware 3x scale + rotate,
+                // writing directly into the DSI framebuffer
                 ppa_client_config_t ppa_cfg = {};
                 ppa_cfg.oper_type = PPA_OPERATION_SRM;
                 if (ppa_register_client(&ppa_cfg, &g_ppa_srm) == ESP_OK) {
-                    int out_w = g_display_width * DISPLAY_P4_SCALE_FACTOR;
-                    int out_h = g_display_height * DISPLAY_P4_SCALE_FACTOR;
-                    size_t raw_size = (size_t)(out_w * out_h * 2);
-                    g_ppa_out_buf = ppa_alloc_buffer(raw_size, &g_ppa_out_buf_size);
-                    if (g_ppa_out_buf) {
-                        FMRB_LOGI(TAG, "PPA SRM initialized: %dx%d -> %dx%d (%u KB)",
+                    g_dsi_fb = (uint16_t *)g_lcd.getFrameBuffer();
+                    if (g_dsi_fb) {
+                        FMRB_LOGI(TAG, "PPA SRM initialized: %dx%d -> DSI fb %dx%d @%p",
                                   g_display_width, g_display_height,
-                                  out_w, out_h,
-                                  (unsigned)(g_ppa_out_buf_size / 1024));
+                                  DSI_FB_W, DSI_FB_H, (void *)g_dsi_fb);
                     } else {
-                        FMRB_LOGW(TAG, "PPA output buffer alloc failed, using software scaling");
+                        FMRB_LOGW(TAG, "DSI framebuffer unavailable, using software scaling");
                         ppa_unregister_client(g_ppa_srm);
                         g_ppa_srm = NULL;
                     }
@@ -2179,6 +2232,10 @@ static void display_p4_task(void *arg) {
 
     FMRB_LOGI(TAG, "Tab5 display: entering command receive loop");
 
+    // Render loop stats (logged every 5 s while frames are being rendered)
+    uint32_t stat_frames = 0, stat_render_ms_total = 0, stat_render_ms_max = 0;
+    uint32_t stat_last_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+
     while (1) {
         // Render when requested, paced to RENDER_MIN_INTERVAL_MS so bursts
         // of cursor moves / presents coalesce into a single frame.
@@ -2188,6 +2245,22 @@ static void display_p4_task(void *arg) {
                 g_needs_render = false;
                 render_frame();
                 g_last_render_ms = now;
+
+                uint32_t render_ms =
+                    (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS) - now;
+                stat_frames++;
+                stat_render_ms_total += render_ms;
+                if (render_ms > stat_render_ms_max) stat_render_ms_max = render_ms;
+                if ((uint32_t)(now - stat_last_ms) >= 5000) {
+                    FMRB_LOGI(TAG, "render: %lu frames/5s avg=%lums max=%lums",
+                              (unsigned long)stat_frames,
+                              (unsigned long)(stat_render_ms_total / stat_frames),
+                              (unsigned long)stat_render_ms_max);
+                    stat_frames = 0;
+                    stat_render_ms_total = 0;
+                    stat_render_ms_max = 0;
+                    stat_last_ms = now;
+                }
             }
         }
 
