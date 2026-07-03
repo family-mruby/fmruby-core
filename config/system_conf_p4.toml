@@ -1,8 +1,10 @@
 system_name = "Family mruby OS (Modern)"
 display_width = 426
 display_height = 240
-display_margin_x = 2
-display_margin_y = 16
+# No overscan margin: the Tab5 LCD shows the full framebuffer, unlike
+# the NTSC output where the border area is hidden by overscan.
+display_margin_x = 0
+display_margin_y = 0
 default_user_app_width = 386
 default_user_app_height = 180
 display_mode = "ntsc_ipc" # spi_XXXX, etc... (Modern display path TBD: DSI/HDMI)
