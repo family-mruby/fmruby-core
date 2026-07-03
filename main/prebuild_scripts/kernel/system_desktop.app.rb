@@ -21,6 +21,9 @@ class SystemDesktopApp < FmrbApp
   include TbdDialogMixin
 
   MENU_BAR_HEIGHT = 13
+  # Max cursor travel (virtual px) between mouse_down and mouse_up for the
+  # release to still count as a click; larger travel is treated as a drag.
+  CLICK_MOVE_THRESHOLD = 3
   MENU_BG = FmrbConst::THEME_MENU_BG
   DROPDOWN_BG = FmrbConst::THEME_WINDOW_BG
   DROPDOWN_TEXT = FmrbConst::THEME_TEXT
@@ -723,6 +726,10 @@ class SystemDesktopApp < FmrbApp
     end
 
     if ev[:type] == :mouse_down
+      # Record the press position: the click decision happens at mouse_up,
+      # and only when the cursor stayed near this point (drag != click).
+      @mouse_down_x = ev[:x]
+      @mouse_down_y = ev[:y]
       # Press feedback for the file manager: highlight the entry under the
       # cursor until release. Other overlays do not currently need this.
       if @file_manager_open && hit_file_manager?(ev[:x], ev[:y])
@@ -732,6 +739,18 @@ class SystemDesktopApp < FmrbApp
     end
 
     if ev[:type] == :mouse_up
+      # A press that traveled since mouse_down is a drag, not a click.
+      dx = (ev[:x] - (@mouse_down_x || ev[:x])).abs
+      dy = (ev[:y] - (@mouse_down_y || ev[:y])).abs
+      if dx > CLICK_MOVE_THRESHOLD || dy > CLICK_MOVE_THRESHOLD
+        # Drop the file manager press highlight without activating anything
+        if @fmgr_pressed_idx && @fmgr_pressed_idx >= 0
+          @fmgr_pressed_idx = -1
+          draw_foreground
+        end
+        return
+      end
+
       button = ev[:button] || 1
       if button == 3 && @file_manager_open
         # Right click in file manager
