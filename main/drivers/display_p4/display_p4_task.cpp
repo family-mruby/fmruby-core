@@ -269,13 +269,29 @@ static LGFX_Sprite* get_sprite(uint16_t canvas_id) {
 }
 
 // ============================================================
-// Mouse cursor (16x16 sprite, drawn last on each render)
+// Mouse cursor (16x16 sprite, drawn as a small LCD patch on top of
+// the scaled output; never baked into the framebuffer)
 // ============================================================
+
+#define CURSOR_W 16
+#define CURSOR_H 16
 
 static LGFX_Sprite *g_cursor_sprite  = nullptr;
 static bool         g_cursor_visible = false;
 static int          g_cursor_x = 0;
 static int          g_cursor_y = 0;
+// Position of the patch currently drawn on the LCD (for erase on move)
+static int          g_cursor_drawn_x = 0;
+static int          g_cursor_drawn_y = 0;
+static bool         g_cursor_drawn   = false;
+
+// Deferred rendering: canvas-level commands only request a render; the
+// task main loop performs it, paced to at most one frame per
+// RENDER_MIN_INTERVAL_MS, coalescing bursts of requests into a single
+// frame. Cursor moves bypass this entirely via cursor_overlay_update().
+#define RENDER_MIN_INTERVAL_MS 33
+static bool     g_needs_render   = false;
+static uint32_t g_last_render_ms = 0;
 
 #define CURSOR_TRANSPARENT 0xFF00FF
 
@@ -314,6 +330,78 @@ static void cursor_init(void) {
             }
             g_cursor_sprite->drawPixel(x, y, color);
         }
+    }
+}
+
+// ============================================================
+// Cursor patch drawing (small-region update, carried over from the
+// retro/m5gfx drivers). The cursor is NOT part of the framebuffer;
+// it is drawn onto the LCD as a 48x48 (16x16 scaled 3x) patch built
+// from the framebuffer content, so cursor moves transfer ~4.6 KB
+// instead of re-rendering and pushing the whole 1.8 MB screen.
+// ============================================================
+
+// Push the framebuffer region under (fx,fy), optionally with the cursor
+// composited on top, to the LCD as a scaled patch.
+static void cursor_patch(int fx, int fy, bool with_cursor) {
+    if (!g_framebuffer || !g_cursor_sprite) return;
+    const int fb_w = g_framebuffer->width();
+    const int fb_h = g_framebuffer->height();
+
+    // Clip the 16x16 patch to framebuffer bounds
+    int x0 = fx, y0 = fy;
+    int w = CURSOR_W, h = CURSOR_H;
+    int sx = 0, sy = 0;  // offset inside the cursor sprite after clipping
+    if (x0 < 0) { sx = -x0; w += x0; x0 = 0; }
+    if (y0 < 0) { sy = -y0; h += y0; y0 = 0; }
+    if (x0 + w > fb_w) w = fb_w - x0;
+    if (y0 + h > fb_h) h = fb_h - y0;
+    if (w <= 0 || h <= 0) return;
+
+    const uint16_t *fb  = (const uint16_t *)g_framebuffer->getBuffer();
+    const uint16_t *cur = (const uint16_t *)g_cursor_sprite->getBuffer();
+    if (!fb || !cur) return;
+
+    // CURSOR_TRANSPARENT (magenta 0xFF00FF) in RGB565 non-swapped
+    const uint16_t key = 0xF81F;
+    const int S = DISPLAY_P4_SCALE_FACTOR;
+
+    static uint16_t scaled[CURSOR_W * DISPLAY_P4_SCALE_FACTOR *
+                           CURSOR_H * DISPLAY_P4_SCALE_FACTOR];
+
+    for (int y = 0; y < h; y++) {
+        const uint16_t *fb_row  = fb  + (size_t)(y0 + y) * fb_w + x0;
+        const uint16_t *cur_row = cur + (size_t)(sy + y) * CURSOR_W + sx;
+        for (int x = 0; x < w; x++) {
+            uint16_t px = fb_row[x];
+            if (with_cursor && cur_row[x] != key) px = cur_row[x];
+            // Nearest-neighbor expand into the scaled patch
+            for (int dy = 0; dy < S; dy++) {
+                uint16_t *o = scaled + (size_t)(y * S + dy) * (w * S) + x * S;
+                for (int dx = 0; dx < S; dx++) o[dx] = px;
+            }
+        }
+    }
+
+    int offset_x = (g_lcd.width() - fb_w * S) / 2;
+    g_lcd.pushImage(offset_x + x0 * S, y0 * S, w * S, h * S,
+                    (lgfx::rgb565_t *)scaled);
+}
+
+// Erase the previously drawn patch (restore framebuffer content) and
+// draw the cursor at its current position. Display task context only.
+static void cursor_overlay_update(void) {
+    if (g_cursor_drawn &&
+        (g_cursor_drawn_x != g_cursor_x || g_cursor_drawn_y != g_cursor_y ||
+         !g_cursor_visible)) {
+        cursor_patch(g_cursor_drawn_x, g_cursor_drawn_y, false);
+        g_cursor_drawn = false;
+    }
+    if (g_cursor_visible && !g_cursor_drawn) {
+        cursor_patch(g_cursor_x, g_cursor_y, true);
+        g_cursor_drawn_x = g_cursor_x;
+        g_cursor_drawn_y = g_cursor_y;
+        g_cursor_drawn   = true;
     }
 }
 
@@ -440,11 +528,6 @@ static void render_frame(void) {
                                     c->push_x, c->push_y);
     }
 
-    if (g_cursor_visible && g_cursor_sprite) {
-        g_cursor_sprite->pushSprite(g_framebuffer, g_cursor_x, g_cursor_y,
-                                    (uint32_t)CURSOR_TRANSPARENT);
-    }
-
     // Scale framebuffer 3x to LCD via PPA SRM hardware accelerator.
     if (g_ppa_srm && g_ppa_out_buf) {
         int fb_w = g_framebuffer->width();
@@ -509,6 +592,11 @@ static void render_frame(void) {
                                       (float)DISPLAY_P4_SCALE_FACTOR,
                                       (float)DISPLAY_P4_SCALE_FACTOR);
     }
+
+    // The full-screen push overwrote any previous cursor patch;
+    // redraw the cursor on top of the fresh frame.
+    g_cursor_drawn = false;
+    cursor_overlay_update();
 }
 
 // ============================================================
@@ -897,7 +985,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             src->transparent_color = cmd->transparent_color;
             src->use_transparency  = (bool)cmd->use_transparency;
             src->is_visible        = true;
-            render_frame();
+            g_needs_render = true;
         } else {
             // Push canvas-to-canvas
             p4_canvas_t *dst = canvas_find(cmd->dest_canvas_id);
@@ -940,12 +1028,15 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_set_canvas_visible_t)) break;
         const auto *cmd = (const fmrb_link_graphics_set_canvas_visible_t *)data;
         p4_canvas_t *c = canvas_find(cmd->canvas_id);
-        if (c) c->is_visible = (cmd->visible != 0);
+        if (c && c->is_visible != (cmd->visible != 0)) {
+            c->is_visible = (cmd->visible != 0);
+            g_needs_render = true;
+        }
         return 0;
     }
 
     case FMRB_LINK_GFX_PRESENT:
-        render_frame();
+        g_needs_render = true;
         return 0;
 
     case FMRB_LINK_GFX_GET_PIXEL: {
@@ -974,15 +1065,24 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_CURSOR_SET_POSITION: {
         if (size < sizeof(fmrb_link_graphics_cursor_position_t)) break;
         const auto *cmd = (const fmrb_link_graphics_cursor_position_t *)data;
-        g_cursor_x = cmd->x;
-        g_cursor_y = cmd->y;
+        if (g_cursor_x != cmd->x || g_cursor_y != cmd->y) {
+            g_cursor_x = cmd->x;
+            g_cursor_y = cmd->y;
+            // Small-patch update only; no full re-render for cursor moves.
+            // Before the first full render the LCD content is undefined,
+            // so just record the position (render_frame draws the patch).
+            if (!g_first_render) cursor_overlay_update();
+        }
         return 0;
     }
 
     case FMRB_LINK_GFX_CURSOR_SET_VISIBLE: {
         if (size < sizeof(fmrb_link_graphics_cursor_visible_t)) break;
         const auto *cmd = (const fmrb_link_graphics_cursor_visible_t *)data;
-        g_cursor_visible = cmd->visible;
+        if (g_cursor_visible != (bool)cmd->visible) {
+            g_cursor_visible = cmd->visible;
+            if (!g_first_render) cursor_overlay_update();
+        }
         return 0;
     }
 
@@ -2080,12 +2180,26 @@ static void display_p4_task(void *arg) {
     FMRB_LOGI(TAG, "Tab5 display: entering command receive loop");
 
     while (1) {
+        // Render when requested, paced to RENDER_MIN_INTERVAL_MS so bursts
+        // of cursor moves / presents coalesce into a single frame.
+        if (g_needs_render) {
+            uint32_t now = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+            if ((uint32_t)(now - g_last_render_ms) >= RENDER_MIN_INTERVAL_MS) {
+                g_needs_render = false;
+                render_frame();
+                g_last_render_ms = now;
+            }
+        }
+
         fmrb_link_message_t msg = {
             .data = g_recv_buf,
             .size = sizeof(g_recv_buf),
         };
+        // Short receive timeout while a render is pending so the pacing
+        // deadline is honored even if no further commands arrive.
+        uint32_t timeout_ms = g_needs_render ? 10 : 100;
         fmrb_err_t err = fmrb_hal_link_local_receive_cmd(
-            FMRB_LINK_CHANNEL_DEFAULT, &msg, 100);
+            FMRB_LINK_CHANNEL_DEFAULT, &msg, timeout_ms);
         if (err == FMRB_OK && msg.size > 0) {
             process_message(g_recv_buf, msg.size);
         }
