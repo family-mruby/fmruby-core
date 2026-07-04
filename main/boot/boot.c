@@ -39,6 +39,7 @@
 #include "display_p4_task.h"
 #include "tab5_keyboard.h"
 #include "touch_task.h"
+#include "audio_p4.h"
 #endif
 #endif
 
@@ -330,6 +331,12 @@ static bool init_hardware(void)
     ret = touch_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init touch, continuing without it");
+    }
+
+    // Local APU audio engine (codec hw is brought up by the display task)
+    ret = audio_p4_task_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init Tab5 audio, continuing without it");
     }
 #else
     reset_wrover();

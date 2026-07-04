@@ -61,8 +61,14 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/display_p4/display_p4_sprite.cpp"
             "drivers/touch/touch_task.c"
             "drivers/tab5_keyboard/tab5_keyboard.c"
+            "drivers/audio_p4/audio_p4_hw.c"
+            "drivers/audio_p4/audio_p4_handler.c"
+            "drivers/audio_p4/audio_p4_task.c"
+            "kernel/host/host_file_local.c"
         )
-        list(APPEND COMPONENT_REQUIRES m5gfx esp_driver_ppa)
+        # Local audio: APU emulator + ES8388 codec (esp_codec_dev) over I2S
+        list(APPEND COMPONENT_REQUIRES m5gfx esp_driver_ppa apu_emu
+             esp_codec_dev esp_driver_i2s esp_driver_i2c)
     else()
         list(APPEND COMPONENT_REQUIRES bt)
     endif()
@@ -88,7 +94,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
 )
 

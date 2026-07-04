@@ -11,6 +11,7 @@
 #include "display_p4_vm.h"
 #include "display_p4_sprite.h"
 #include "lgfx_tab5.hpp"
+#include "../audio_p4/audio_p4.h"
 
 #include "fmrb_log.h"
 #include "fmrb_hal_link.h"
@@ -1675,6 +1676,15 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
         }
         break;
 
+    case FMRB_LINK_TYPE_AUDIO:
+        // Packed audio command bytes (see audio_commands.h); on Modern
+        // the local APU backend consumes them instead of the WROVER.
+        if (payload && payload_len > 0) {
+            audio_p4_process_command(payload, payload_len);
+        }
+        if (ack_required) send_ack(type, seq, nullptr, 0);
+        break;
+
     default:
         if (ack_required) send_ack(type, seq, nullptr, 0);
         break;
@@ -2220,6 +2230,13 @@ static void display_p4_task(void *arg) {
         g_lcd.setTextSize(2);
         g_lcd.setCursor(20, 160);
         g_lcd.print("Initializing...");
+
+        // Bring up the Tab5 audio codec now: the ES8388 shares the I2C
+        // bus with GT911, and the touch task only starts polling after
+        // g_lcd_ready below, so this is the race-free window.
+        if (audio_p4_hw_init() != FMRB_OK) {
+            FMRB_LOGW(TAG, "Tab5 audio init failed (no sound)");
+        }
 
         // Framebuffer is allocated later in INIT_DISPLAY when the kernel
         // reports the actual display_width x display_height.

@@ -12,3 +12,8 @@ dependencies:
     version: "*"
     rules:
       - if: "target != linux"
+  # ES8388 codec control for Tab5 speaker output (Modern/P4 only)
+  espressif/esp_codec_dev:
+    version: "^1.3.0"
+    rules:
+      - if: "target == esp32p4"
