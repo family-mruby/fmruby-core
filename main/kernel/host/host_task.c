@@ -17,6 +17,9 @@
 #include "fmrb_keymap.h"
 #include "status_led.h"
 #include "fmrb_file_transfer_msg.h"
+#if defined(FMRB_HW_MODERN)
+#include "host_file_local.h"
+#endif
 #include "fmrb_mem.h"
 #include "fmrb_app.h"
 #include "fmrb_debug.h"
@@ -963,6 +966,22 @@ static bool file_transfer_process_step(void)
 // Start a new file transfer from a FILE_CMD_TRANSFER message
 static void file_transfer_start(const file_cmd_t *cmd)
 {
+#if defined(FMRB_HW_MODERN)
+    // Modern: "GA storage" is the core's own /flash LittleFS. Write the
+    // file locally instead of streaming it over the link (there is no
+    // link receiver, and none is needed).
+    fmrb_err_t ret = host_file_local_write(cmd->path, cmd->path_len,
+                                           cmd->params.transfer.data,
+                                           cmd->params.transfer.data_len);
+    if (cmd->params.transfer.data) {
+        fmrb_sys_free(cmd->params.transfer.data);
+    }
+    if (cmd->result) {
+        cmd->result->result = (ret == FMRB_OK) ? 0 : -1;
+        fmrb_semaphore_give(cmd->result->done_sem);
+    }
+    return;
+#endif
     file_transfer_state_t *ft = &g_file_transfer;
 
     if (ft->active) {
@@ -1011,6 +1030,19 @@ static void file_status_response_cb(uint8_t status, const uint8_t *payload,
 // Handle FILE_CMD_STATUS asynchronously (non-blocking for host_task)
 static void file_transfer_handle_status(const file_cmd_t *cmd)
 {
+#if defined(FMRB_HW_MODERN)
+    uint8_t exists = 0;
+    uint32_t size = 0;
+    host_file_local_status(cmd->path, cmd->path_len, &exists, &size);
+    if (cmd->result) {
+        cmd->result->data.status.exists = exists;
+        cmd->result->data.status.file_size = size;
+        cmd->result->data.status.checksum = 0;  // parity with WROVER (no CRC)
+        cmd->result->result = 0;
+        fmrb_semaphore_give(cmd->result->done_sem);
+    }
+    return;
+#endif
     size_t payload_len = sizeof(fmrb_link_file_transfer_status_t) + cmd->path_len;
     uint8_t payload_buf[sizeof(fmrb_link_file_transfer_status_t) + 120];
 
@@ -1036,6 +1068,14 @@ static void file_transfer_handle_status(const file_cmd_t *cmd)
 // Handle FILE_CMD_DELETE synchronously
 static void file_transfer_handle_delete(const file_cmd_t *cmd)
 {
+#if defined(FMRB_HW_MODERN)
+    fmrb_err_t local_ret = host_file_local_delete(cmd->path, cmd->path_len);
+    if (cmd->result) {
+        cmd->result->result = (local_ret == FMRB_OK) ? 0 : -1;
+        fmrb_semaphore_give(cmd->result->done_sem);
+    }
+    return;
+#endif
     size_t payload_len = sizeof(fmrb_link_file_transfer_delete_t) + cmd->path_len;
     uint8_t payload_buf[sizeof(fmrb_link_file_transfer_delete_t) + 120];
 
@@ -1080,6 +1120,19 @@ static void file_rmdir_response_cb(uint8_t status, const uint8_t *payload,
 // transport timeout than DELETE.
 static void file_transfer_handle_rmdir(const file_cmd_t *cmd)
 {
+#if defined(FMRB_HW_MODERN)
+    uint32_t deleted = 0;
+    uint8_t status = 0;
+    fmrb_err_t local_ret = host_file_local_rmdir(cmd->path, cmd->path_len,
+                                                 &deleted, &status);
+    if (cmd->result) {
+        cmd->result->data.rmdir.deleted_count = deleted;
+        cmd->result->data.rmdir.remote_status = status;
+        cmd->result->result = (local_ret == FMRB_OK) ? 0 : -2;
+        fmrb_semaphore_give(cmd->result->done_sem);
+    }
+    return;
+#endif
     size_t payload_len = sizeof(fmrb_link_file_transfer_rmdir_t) + cmd->path_len;
     uint8_t payload_buf[sizeof(fmrb_link_file_transfer_rmdir_t) + 120];
 
