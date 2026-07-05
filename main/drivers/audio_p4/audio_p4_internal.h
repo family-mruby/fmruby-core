@@ -15,6 +15,8 @@ extern "C" {
 bool audio_p4_hw_ready(void);
 void audio_p4_hw_write(const int16_t *samples, int len, int channels);
 void audio_p4_hw_set_volume(uint8_t volume_0_255);
+// Poll the headphone jack and mute/unmute the speaker amp (call ~2 Hz)
+void audio_p4_hw_poll_headphone(void);
 
 // --- audio_p4_handler.c (music track slots) ---
 int audio_p4_store_track(uint32_t music_id, const uint8_t *data, uint32_t size);

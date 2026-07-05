@@ -37,6 +37,14 @@ static const char *TAG = "audio_p4";
 #define AUDIO_P4_SAMPLE_RATE   (15720 * AUDIO_P4_UPSAMPLE)
 #define AUDIO_P4_DEFAULT_VOL   70       // esp_codec_dev volume 0-100
 
+// PI4IO expander #1 (0x43): P1 = speaker amp enable (SPK_EN),
+// P7 = headphone jack detect input (high = plugged)
+#define PI4IO1_ADDR            0x43
+#define PI4IO_REG_OUT_SET      0x05
+#define PI4IO_REG_IN_STA       0x0F
+#define PI4IO_BIT_SPK_EN       (1 << 1)
+#define PI4IO_BIT_HP_DETECT    (1 << 7)
+
 // Max APU frame is ~263 mono samples; x3 upsample, x2 channels
 #define AUDIO_P4_STEREO_BUF_SAMPLES (264 * AUDIO_P4_UPSAMPLE * 2)
 
@@ -45,8 +53,70 @@ static esp_codec_dev_handle_t s_codec = NULL;
 static volatile bool s_hw_ready = false;
 static int16_t s_stereo_buf[AUDIO_P4_STEREO_BUF_SAMPLES];
 
+// Headphone detect / speaker mute state
+static i2c_master_dev_handle_t s_pi4io1 = NULL;
+static bool s_headphone_in = false;
+static int s_hp_debounce = 0;
+
 bool audio_p4_hw_ready(void) {
     return s_hw_ready;
+}
+
+// Read the headphone jack state from PI4IO #1 (P7, high = plugged).
+// Returns FMRB_OK with *out set, or an error on I2C failure.
+static fmrb_err_t pi4io_read_headphone(bool *out) {
+    uint8_t reg = PI4IO_REG_IN_STA;
+    uint8_t val = 0;
+    if (!s_pi4io1) return FMRB_ERR_INVALID_STATE;
+    if (i2c_master_transmit_receive(s_pi4io1, &reg, 1, &val, 1, 100) != ESP_OK) {
+        return FMRB_ERR_FAILED;
+    }
+    *out = (val & PI4IO_BIT_HP_DETECT) != 0;
+    return FMRB_OK;
+}
+
+// Enable/disable the speaker class-D amp (PI4IO #1 P1, SPK_EN) with a
+// read-modify-write so the other output bits (LCD/TP/CAM resets, EXT5V)
+// keep their state.
+static void pi4io_set_speaker(bool enable) {
+    uint8_t reg = PI4IO_REG_OUT_SET;
+    uint8_t val = 0;
+    if (!s_pi4io1) return;
+    if (i2c_master_transmit_receive(s_pi4io1, &reg, 1, &val, 1, 100) != ESP_OK) {
+        FMRB_LOGW(TAG, "SPK_EN read failed");
+        return;
+    }
+    uint8_t new_val = enable ? (val | PI4IO_BIT_SPK_EN)
+                             : (val & (uint8_t)~PI4IO_BIT_SPK_EN);
+    if (new_val == val) return;
+    uint8_t buf[2] = { PI4IO_REG_OUT_SET, new_val };
+    if (i2c_master_transmit(s_pi4io1, buf, 2, 100) != ESP_OK) {
+        FMRB_LOGW(TAG, "SPK_EN write failed");
+    }
+}
+
+// Poll the headphone jack and gate the speaker amp accordingly.
+// Called from the audio task every ~0.5 s. The PI4IO shares the I2C bus
+// with the GT911 (driven at register level by LovyanGFX), so a corrupted
+// read is possible in rare collisions; requiring two consecutive equal
+// samples before switching filters those out.
+void audio_p4_hw_poll_headphone(void) {
+    if (!s_hw_ready || !s_pi4io1) return;
+
+    bool hp = false;
+    if (pi4io_read_headphone(&hp) != FMRB_OK) return;
+
+    if (hp == s_headphone_in) {
+        s_hp_debounce = 0;
+        return;
+    }
+    if (++s_hp_debounce < 2) return;
+
+    s_hp_debounce = 0;
+    s_headphone_in = hp;
+    pi4io_set_speaker(!hp);
+    FMRB_LOGI(TAG, "Headphone %s: speaker %s",
+              hp ? "plugged" : "removed", hp ? "muted" : "enabled");
 }
 
 fmrb_err_t audio_p4_hw_init(void) {
@@ -166,6 +236,28 @@ fmrb_err_t audio_p4_hw_init(void) {
         return FMRB_ERR_FAILED;
     }
     esp_codec_dev_set_out_vol(s_codec, AUDIO_P4_DEFAULT_VOL);
+
+    // PI4IO #1 for headphone detect + speaker amp gating. Optional: on
+    // failure the speaker simply stays enabled.
+    i2c_device_config_t pi_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = PI4IO1_ADDR,
+        .scl_speed_hz = 100000,
+    };
+    if (i2c_master_bus_add_device(bus, &pi_cfg, &s_pi4io1) == ESP_OK) {
+        // Apply the initial jack state (booting with headphones plugged
+        // should not blast the speaker). Still inside the init window
+        // before GT911 polling starts, so the bus is uncontended.
+        bool hp = false;
+        if (pi4io_read_headphone(&hp) == FMRB_OK && hp) {
+            s_headphone_in = true;
+            pi4io_set_speaker(false);
+            FMRB_LOGI(TAG, "Headphone plugged at boot: speaker muted");
+        }
+    } else {
+        FMRB_LOGW(TAG, "PI4IO#1 attach failed; headphone detect disabled");
+        s_pi4io1 = NULL;
+    }
 
     FMRB_LOGI(TAG, "Tab5 audio ready: ES8388 %d Hz 16-bit stereo (APU %d Hz x%d)",
               AUDIO_P4_SAMPLE_RATE, 15720, AUDIO_P4_UPSAMPLE);
