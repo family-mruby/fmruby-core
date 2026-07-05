@@ -69,6 +69,13 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
 #define PI4IO1_ADDR     0x43   // PI4IO GPIO expander #1 (LCD/touch reset)
 #define PI4IO2_ADDR     0x44   // PI4IO GPIO expander #2 (power rails)
 
+// PI4IO #1 runtime bits: P1 = speaker amp enable, P7 = headphone detect
+#define PI4IO_REG_OUT_SET   0x05
+#define PI4IO_REG_IN_STA    0x0F
+#define PI4IO_BIT_SPK_EN    (1 << 1)
+#define PI4IO_BIT_HP_DETECT (1 << 7)
+#define PI4IO_I2C_FREQ      400000
+
 static LGFX_Tab5 g_lcd;
 static volatile bool g_lcd_ready = false;
 
@@ -2249,6 +2256,54 @@ static void ppa_verification_test(void) {
 #endif // PPA_VERIFICATION_TEST
 
 // ============================================================
+// Headphone jack detect / speaker amp gating (PI4IO #1).
+//
+// The PI4IO shares the I2C controller with the GT911, which LovyanGFX
+// drives at register level (save/restore of the peripheral state), so
+// any i2c_master-driver access on this controller is corrupted once
+// touch polling runs. All runtime PI4IO access therefore goes through
+// lgfx's own I2C helpers, and display_p4_poll_headphone() is called
+// from the TOUCH TASK so it is serialized with the GT911 transactions.
+// ============================================================
+
+static bool g_headphone_in = false;
+static int  g_hp_debounce = 0;
+
+static void hp_apply_speaker(bool headphone_in) {
+    // RMW of OUT_SET through the lgfx path; other bits (LCD/TP/CAM
+    // resets, EXT5V) keep their state.
+    if (headphone_in) {
+        lgfx::i2c::bitOff(TAB5_I2C_PORT, PI4IO1_ADDR, PI4IO_REG_OUT_SET,
+                          PI4IO_BIT_SPK_EN, PI4IO_I2C_FREQ);
+    } else {
+        lgfx::i2c::bitOn(TAB5_I2C_PORT, PI4IO1_ADDR, PI4IO_REG_OUT_SET,
+                         PI4IO_BIT_SPK_EN, PI4IO_I2C_FREQ);
+    }
+    FMRB_LOGI(TAG, "Headphone %s: speaker %s",
+              headphone_in ? "plugged" : "removed",
+              headphone_in ? "muted" : "enabled");
+}
+
+extern "C" void display_p4_poll_headphone(void) {
+    if (!g_lcd_ready) return;
+
+    auto res = lgfx::i2c::readRegister8(TAB5_I2C_PORT, PI4IO1_ADDR,
+                                        PI4IO_REG_IN_STA, PI4IO_I2C_FREQ);
+    if (res.has_error()) return;
+    bool hp = (res.value() & PI4IO_BIT_HP_DETECT) != 0;
+
+    if (hp == g_headphone_in) {
+        g_hp_debounce = 0;
+        return;
+    }
+    if (++g_hp_debounce < 2) return;
+
+    g_hp_debounce = 0;
+    g_headphone_in = hp;
+    hp_apply_speaker(hp);
+}
+
+// ============================================================
 // Main task
 // ============================================================
 
@@ -2283,6 +2338,20 @@ static void display_p4_task(void *arg) {
         // g_lcd_ready below, so this is the race-free window.
         if (audio_p4_hw_init() != FMRB_OK) {
             FMRB_LOGW(TAG, "Tab5 audio init failed (no sound)");
+        }
+
+        // Apply the initial headphone state so booting with headphones
+        // plugged does not play the boot sound on the speaker. If lgfx's
+        // I2C is not up yet the read fails silently and the touch-task
+        // poll corrects the state within ~0.5 s.
+        {
+            auto hp_res = lgfx::i2c::readRegister8(TAB5_I2C_PORT, PI4IO1_ADDR,
+                                                   PI4IO_REG_IN_STA,
+                                                   PI4IO_I2C_FREQ);
+            if (!hp_res.has_error() && (hp_res.value() & PI4IO_BIT_HP_DETECT)) {
+                g_headphone_in = true;
+                hp_apply_speaker(true);
+            }
         }
 
         // Framebuffer is allocated later in INIT_DISPLAY when the kernel
@@ -2371,3 +2440,4 @@ extern "C" int display_p4_get_touch(int16_t *out_x, int16_t *out_y) {
     }
     return count;
 }
+

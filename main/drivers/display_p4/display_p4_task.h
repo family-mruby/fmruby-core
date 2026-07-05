@@ -42,6 +42,15 @@ bool display_p4_is_ready(void);
  */
 int display_p4_get_touch(int16_t *out_x, int16_t *out_y);
 
+/**
+ * @brief Poll the headphone jack and gate the speaker amp (PI4IO #1).
+ *
+ * Must be called from the touch task only: it uses lgfx's I2C helpers,
+ * which share the controller with the GT911 transactions and are only
+ * safe when serialized in the same task context.
+ */
+void display_p4_poll_headphone(void);
+
 #ifdef __cplusplus
 }
 #endif

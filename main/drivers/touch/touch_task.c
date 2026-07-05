@@ -91,8 +91,16 @@ static void touch_task(void *arg) {
     }
     FMRB_LOGI(TAG, "Touch task started (trackpad mode, poll=%dms)", TOUCH_POLL_MS);
 
+    uint32_t poll_count = 0;
+
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(TOUCH_POLL_MS));
+
+        // Headphone jack polling shares this task so its lgfx-level I2C
+        // access stays serialized with the GT911 reads (every ~165 ms)
+        if ((poll_count++ % 5) == 0) {
+            display_p4_poll_headphone();
+        }
 
         int16_t tx, ty;
         int count = display_p4_get_touch(&tx, &ty);

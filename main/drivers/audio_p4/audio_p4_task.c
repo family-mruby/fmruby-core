@@ -236,14 +236,8 @@ static void audio_p4_task(void *arg) {
     // 60 Hz timing
     const uint64_t target_frame_time_us = 16667;
     uint64_t next_frame_time = esp_timer_get_time();
-    uint32_t frame_count = 0;
 
     while (1) {
-        // Headphone jack polling: every 30 frames (~0.5 s)
-        if ((frame_count++ % 30) == 0) {
-            audio_p4_hw_poll_headphone();
-        }
-
         engine_lock();
 
         // Tick NSF player on the main APU instance
