@@ -1,0 +1,19 @@
+Misaki Font (8x8 Japanese bitmap font)
+Copyright (C) 2002-2021 Num Kadoma
+
+These fonts are free softwares.
+Unlimited permission is granted to use, copy, and distribute it,
+with or without modification, either commercially and noncommercially.
+THESE FONTS ARE PROVIDED "AS IS" WITHOUT WARRANTY.
+
+これらのフォントはフリー(自由な)ソフトウエアです。
+あらゆる改変の有無に関わらず、また商業的な利用であっても、
+自由にご利用、複製、再配布することができますが、
+全て無保証とさせていただきます。
+
+Original source: https://littlelimit.net/misaki.htm
+Version:         misaki_gothic.bdf 2021-05-05
+Conversion:      u8g2 tools/font/bdfconv (BDF -> u8g2 binary, C array)
+                 bdfconv -f 1 -b 1 -m '32-$FFFF' -n lgfx_misaki_8
+Coverage:        7,171 glyphs (ASCII, hiragana, katakana, JIS L1 kanji,
+                 punctuation, full-width forms)

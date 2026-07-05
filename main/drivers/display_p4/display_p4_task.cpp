@@ -11,6 +11,7 @@
 #include "display_p4_vm.h"
 #include "display_p4_sprite.h"
 #include "lgfx_tab5.hpp"
+#include "fonts/misaki/lgfx_misaki_fonts.hpp"
 #include "../audio_p4/audio_p4.h"
 
 #include "fmrb_log.h"
@@ -938,7 +939,37 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 s->setTextColor(cmd->color, cmd->bg_color);
             }
             s->setCursor(cmd->x, cmd->y);
-            s->print(buf);
+            if (cmd->hybrid_mode == 1) {
+                // Hybrid mode: render ASCII runs with Font0 and UTF-8
+                // multi-byte runs with misaki_8 (same behavior as the
+                // WROVER graphics_handler). print() keeps the cursor
+                // between calls so runs stitch together naturally.
+                const lgfx::IFont *saved_font = s->getFont();
+                const uint8_t *p = (const uint8_t *)buf;
+                const uint8_t *end = p + len;
+                char run_buf[256];
+                while (p < end) {
+                    const uint8_t *run_start = p;
+                    bool is_ascii = (*p < 0x80);
+                    if (is_ascii) {
+                        while (p < end && *p < 0x80) p++;
+                        s->setFont(&fonts::Font0);
+                    } else {
+                        while (p < end && *p >= 0x80) p++;
+                        s->setFont(&fonts::misaki_8);
+                    }
+                    size_t run_len = (size_t)(p - run_start);
+                    if (run_len >= sizeof(run_buf)) run_len = sizeof(run_buf) - 1;
+                    memcpy(run_buf, run_start, run_len);
+                    run_buf[run_len] = '\0';
+                    s->print(run_buf);
+                }
+                // Restore the caller's font selection so subsequent draws
+                // (and the Ruby-side font cache) stay consistent.
+                s->setFont(saved_font);
+            } else {
+                s->print(buf);
+            }
         }
         return 0;
     }
@@ -965,10 +996,26 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(fmrb_link_graphics_set_font_t)) break;
         const auto *cmd = (const fmrb_link_graphics_set_font_t *)data;
         auto *s = get_sprite(cmd->canvas_id);
-        if (s && cmd->family == FMRB_LINK_GFX_FONT_FAMILY_DEFAULT) {
-            s->setFont(&fonts::Font0);
+        if (s) {
+            switch (cmd->family) {
+            case FMRB_LINK_GFX_FONT_FAMILY_DEFAULT:
+                s->setFont(&fonts::Font0);
+                break;
+            case FMRB_LINK_GFX_FONT_FAMILY_JA:
+                // size=8 -> misaki (matches the system 8px UI height),
+                // size=12 -> efontJA_12 (bundled with M5GFX), same
+                // mapping as the WROVER graphics_handler.
+                if (cmd->size == 8) {
+                    s->setFont(&fonts::misaki_8);
+                } else {
+                    s->setFont(&fonts::efontJA_12);
+                }
+                break;
+            default:
+                FMRB_LOGW(TAG, "SET_FONT: unknown family=%u", cmd->family);
+                return -1;
+            }
         }
-        // JA font support is a future task.
         return 0;
     }
 

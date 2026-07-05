@@ -64,6 +64,8 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/audio_p4/audio_p4_hw.c"
             "drivers/audio_p4/audio_p4_handler.c"
             "drivers/audio_p4/audio_p4_task.c"
+            "drivers/display_p4/fonts/misaki/lgfx_misaki.c"
+            "drivers/display_p4/fonts/misaki/lgfx_misaki.cpp"
             "kernel/host/host_file_local.c"
         )
         # Local audio: APU emulator + ES8388 codec (esp_codec_dev) over I2S
