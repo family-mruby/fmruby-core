@@ -11,6 +11,16 @@
 #include "nvs_flash.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
+#if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)
+// Modern (Tab5): the BLE controller lives on the ESP32-C6 coprocessor,
+// reached over SDIO via esp_hosted (host-only NimBLE + vHCI transport).
+#include "esp_hosted.h"
+
+// esp_hosted 1.4.0 implements ble_transport_ll_init() but not the deinit
+// counterpart that IDF 5.5's nimble_port_deinit() references. BLE stays
+// up for the firmware's lifetime here, so an empty stub suffices.
+void ble_transport_ll_deinit(void) {}
+#endif
 #include "host/ble_hs.h"
 #include "host/ble_store.h"
 #include "host/util/util.h"
@@ -1237,11 +1247,36 @@ fmrb_err_t ble_task_init(void)
         return FMRB_ERR_FAILED;
     }
 
+#if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)
+    // esp_hosted self-initializes from a constructor at startup. The SDIO
+    // link to the C6 (slave reset via GPIO15 + handshake) is brought up
+    // lazily by ble_transport_ll_init() inside nimble_port_init() below,
+    // which blocks until the slave connects. Do NOT issue any esp_hosted
+    // RPC before that point: the 1.4.0 pre-transport failure path
+    // (uninitialized semaphore / double free in rpc_core) corrupts the
+    // heap and crash-loops the system.
+    FMRB_LOGI(TAG, "Connecting to C6 controller via esp_hosted (SDIO)...");
+#endif
+
     int rc = nimble_port_init();
     if (rc != 0) {
         FMRB_LOGE(TAG, "nimble_port_init failed: %d", rc);
         return FMRB_ERR_FAILED;
     }
+
+#if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)
+    // Transport is up now (nimble_port_init blocked on the slave
+    // handshake), so RPC calls are safe. Log the C6 firmware version to
+    // judge stock-firmware compatibility.
+    esp_hosted_coprocessor_fwver_t cop_ver = {0};
+    if (esp_hosted_get_coprocessor_fwversion(&cop_ver) == ESP_OK) {
+        FMRB_LOGI(TAG, "C6 coprocessor fw: %u.%u.%u",
+                  (unsigned)cop_ver.major1, (unsigned)cop_ver.minor1,
+                  (unsigned)cop_ver.patch1);
+    } else {
+        FMRB_LOGW(TAG, "C6 fw version query failed (continuing)");
+    }
+#endif
 
     ble_hs_cfg.reset_cb = ble_on_reset;
     ble_hs_cfg.sync_cb = ble_on_sync;

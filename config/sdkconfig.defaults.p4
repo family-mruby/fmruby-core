@@ -1,8 +1,9 @@
 # Family mruby Modern - ESP32-P4 (M5Stack Tab5 equivalent: 16MB flash, 32MB PSRAM)
 #
-# NOTE: ESP32-P4 has NO built-in radio. Wireless (WiFi/BLE) is provided by an
-# ESP32-C6 coprocessor (like Tab5), so BT/WiFi are disabled here for now.
-# BLE-over-C6 (esp_wifi_remote / esp_hosted) is future Modern work.
+# NOTE: ESP32-P4 has NO built-in radio. Wireless is provided by an ESP32-C6
+# coprocessor over SDIO (like Tab5). BLE runs as host-only NimBLE on the P4
+# with the controller on the C6 via esp_hosted vHCI (see the Bluetooth /
+# esp_hosted sections below and doc/ble_c6_web_console.md).
 #
 # This file gets the build system wired for esp32p4; values still need tuning
 # with menuconfig against real hardware (PSRAM speed, partition layout, etc.).
@@ -29,9 +30,42 @@ CONFIG_PARTITION_TABLE_FILENAME="config/partitions_p4.csv"
 # for task info
 CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=2
 
-# Wireless: P4 has no radio (handled by ESP32-C6 coprocessor). Disable for now.
-CONFIG_ESP_WIFI_ENABLED=n
-# BT is intentionally left disabled (no CONFIG_BT_ENABLED).
+# --- Bluetooth: host-only NimBLE, controller on ESP32-C6 via esp_hosted vHCI ---
+CONFIG_BT_ENABLED=y
+CONFIG_BT_CONTROLLER_DISABLED=y
+CONFIG_BT_NIMBLE_ENABLED=y
+# UART HCI transport must be off: esp_hosted's vHCI option
+# (ESP_HOSTED_ENABLE_BT_NIMBLE) depends on !BT_NIMBLE_TRANSPORT_UART
+CONFIG_BT_NIMBLE_TRANSPORT_UART=n
+CONFIG_BT_NIMBLE_SVC_GAP_DEVICE_NAME="FamilyMruby"
+CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
+CONFIG_BT_NIMBLE_ROLE_OBSERVER=n
+CONFIG_BT_NIMBLE_NVS_PERSIST=y
+CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
+
+# --- esp_hosted: SDIO transport to ESP32-C6 (Tab5 wiring, from M5Tab5-UserDemo) ---
+CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE=y
+CONFIG_ESP_HOSTED_SDIO_4_BIT_BUS=y
+CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ=40000
+CONFIG_ESP_HOSTED_SDIO_PIN_CMD=13
+CONFIG_ESP_HOSTED_SDIO_PIN_CLK=12
+CONFIG_ESP_HOSTED_SDIO_PIN_D0=11
+# D1 is a derived symbol; the user-configurable one is the PRIV_ variant
+CONFIG_ESP_HOSTED_SDIO_PRIV_PIN_D1_4BIT_BUS=10
+CONFIG_ESP_HOSTED_SDIO_PIN_D2=9
+CONFIG_ESP_HOSTED_SDIO_PIN_D3=8
+CONFIG_ESP_HOSTED_SDIO_OPTIMIZATION_RX_STREAMING_MODE=y
+CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=15
+CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_LOW=y
+
+# --- esp_hosted: Bluetooth over hosted transport (vHCI) ---
+CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE=y
+CONFIG_ESP_HOSTED_NIMBLE_HCI_VHCI=y
+
+# --- esp_wifi_remote: slave target selection (read by esp_hosted 1.4.0) ---
+CONFIG_SLAVE_IDF_TARGET_ESP32C6=y
+CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED=y
 
 # SPI-RAM (Tab5: 32MB PSRAM on ESP32-P4)
 # Tab5 uses 16-line (HEX) PSRAM at 200MHz; M5GFX/the DSI framebuffer require

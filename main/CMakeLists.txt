@@ -49,12 +49,12 @@ set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_transport fmrb_toml fmrb_
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
     list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram nvs_flash)
-    # ESP32-P4 (Modern/Tab5) has no built-in radio; BLE is provided by an
-    # ESP32-C6 coprocessor (not yet wired). Drop the bt component and ble_task,
-    # and add the local Tab5 display task (MIPI-DSI via LovyanGFX) + Tab5
-    # Keyboard. Modern keeps USB host (added in the else branch below).
+    # ESP32-P4 (Modern/Tab5) has no built-in radio; BLE runs as host-only
+    # NimBLE with the controller on the ESP32-C6 coprocessor via esp_hosted
+    # (SDIO + vHCI), so ble_task.c builds here too. Also add the local Tab5
+    # display task (MIPI-DSI via LovyanGFX) + Tab5 Keyboard + local audio.
+    # Modern keeps USB host (added in the else branch below).
     if(IDF_TARGET STREQUAL "esp32p4")
-        list(REMOVE_ITEM COMPONENT_ESP32_SRCS "drivers/ble/ble_task.c")
         list(APPEND COMPONENT_SRCS
             "drivers/display_p4/display_p4_task.cpp"
             "drivers/display_p4/display_p4_vm.cpp"
@@ -69,6 +69,8 @@ if(NOT IDF_TARGET STREQUAL "linux")
         # Local audio: APU emulator + ES8388 codec (esp_codec_dev) over I2S
         list(APPEND COMPONENT_REQUIRES m5gfx esp_driver_ppa apu_emu
              esp_codec_dev esp_driver_i2s esp_driver_i2c)
+        # BLE: NimBLE host on P4, controller on the C6 via esp_hosted
+        list(APPEND COMPONENT_REQUIRES bt esp_hosted)
     else()
         list(APPEND COMPONENT_REQUIRES bt)
     endif()

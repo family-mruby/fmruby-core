@@ -17,3 +17,14 @@ dependencies:
     version: "^1.3.0"
     rules:
       - if: "target == esp32p4"
+  # BLE via the ESP32-C6 coprocessor over SDIO (Modern/P4 only).
+  # Versions pinned to match the stock Tab5 C6 slave firmware (V1.4.1)
+  # and the M5Tab5-UserDemo reference configuration.
+  espressif/esp_hosted:
+    version: "1.4.0"
+    rules:
+      - if: "target == esp32p4"
+  espressif/esp_wifi_remote:
+    version: "0.8.5"
+    rules:
+      - if: "target == esp32p4"

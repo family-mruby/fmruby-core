@@ -26,11 +26,9 @@
 #include "fmrb_pin_assign.h"
 #include "fmrb_hal_gpio.h"
 #include "status_led.h"
-// ESP32-P4 (Modern) has no built-in radio; BLE is handled by an ESP32-C6
-// coprocessor (not yet wired), so ble_task is excluded there.
-#ifndef CONFIG_IDF_TARGET_ESP32P4
+// BLE: built-in radio on retro targets; on Modern (ESP32-P4) the controller
+// is on the ESP32-C6 coprocessor via esp_hosted (host-only NimBLE).
 #include "ble_task.h"
-#endif
 #ifdef FMRB_HW_ATOM_DISPLAY
 #include "m5gfx_task.h"
 #include "i2c_keyboard.h"
@@ -253,6 +251,25 @@ static bool init_hardware(void)
     return true;
 }
 #else // ESP32
+#ifdef FMRB_HW_MODERN
+// One-shot helper for Modern: the C6 coprocessor power rail is switched
+// by the display task (tab5_power_on via PI4IO #2), so wait for the
+// display before starting the esp_hosted SDIO handshake + NimBLE host.
+static void modern_ble_init_task(void *arg)
+{
+    (void)arg;
+    for (int i = 0; i < 300 && !display_p4_is_ready(); i++) {
+        fmrb_task_delay_ms(10);
+    }
+    if (!display_p4_is_ready()) {
+        FMRB_LOGW(TAG, "Display not ready, skipping BLE init");
+    } else if (ble_task_init() != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init BLE via C6, continuing without it");
+    }
+    fmrb_task_delete_ex(NULL);
+}
+#endif
+
 static bool init_hardware(void)
 {
     fmrb_pin_manager_init();
@@ -337,6 +354,13 @@ static bool init_hardware(void)
     ret = audio_p4_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init Tab5 audio, continuing without it");
+    }
+
+    // BLE via the ESP32-C6 coprocessor: run in a one-shot helper task so
+    // the SDIO handshake / RPC timeouts never delay the rest of boot.
+    if (fmrb_task_create(modern_ble_init_task, "ble_init", 4096, NULL,
+                         4, NULL) != FMRB_PASS) {
+        FMRB_LOGW(TAG, "Failed to spawn BLE init task");
     }
 #else
     reset_wrover();
