@@ -13,9 +13,13 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-// Pool limits
-#define DISPLAY_P4_MAX_SPRITE_IMAGES    16
-#define DISPLAY_P4_MAX_SPRITE_INSTANCES 32
+// Pool limits. Modern has abundant PSRAM, so these are ~10x the old
+// values (the WROVER retro backend keeps its own smaller limits). The
+// desktop launcher alone holds 25 instances, so the previous limit of
+// 32 starved windowed apps (FlappyDemo needed 8 more and failed).
+// The pools live in PSRAM (EXT_RAM_BSS_ATTR in display_p4_sprite.cpp).
+#define DISPLAY_P4_MAX_SPRITE_IMAGES    160
+#define DISPLAY_P4_MAX_SPRITE_INSTANCES 320
 #define DISPLAY_P4_MAX_MASKS             8
 
 // LovyanGFX uses inline namespace v1 inside lgfx, so a plain forward

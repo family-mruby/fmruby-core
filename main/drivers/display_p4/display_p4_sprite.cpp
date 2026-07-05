@@ -7,6 +7,7 @@
 #include <cstring>
 #include "esp_heap_caps.h"
 #include "esp_private/esp_cache_private.h"
+#include "esp_attr.h"
 #include <cstdlib>   // qsort
 
 #include "fmrb_log.h"
@@ -29,7 +30,8 @@ typedef struct {
     bool         use_transparent;
 } p4_sprite_image_t;
 
-static p4_sprite_image_t g_images[DISPLAY_P4_MAX_SPRITE_IMAGES];
+// Pools are large (see display_p4_sprite.h); keep them in PSRAM
+EXT_RAM_BSS_ATTR static p4_sprite_image_t g_images[DISPLAY_P4_MAX_SPRITE_IMAGES];
 static uint16_t g_next_image_id = 1;
 
 static p4_sprite_image_t* image_find(uint16_t id) {
@@ -137,7 +139,7 @@ typedef struct {
     bool     visible;
 } p4_sprite_instance_t;
 
-static p4_sprite_instance_t g_instances[DISPLAY_P4_MAX_SPRITE_INSTANCES];
+EXT_RAM_BSS_ATTR static p4_sprite_instance_t g_instances[DISPLAY_P4_MAX_SPRITE_INSTANCES];
 static uint16_t g_next_instance_id = 1;
 
 // Scratch array for z-order sort in composite.
