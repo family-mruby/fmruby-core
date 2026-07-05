@@ -132,6 +132,11 @@ class FmrbKernelImpl < FmrbKernel
         Log.info("HID target set to new app pid=#{new_pid}")
       else
         Log.error("Failed to spawn app: #{app_name}")
+        # Let the desktop show an error dialog to the user
+        if @desktop_pid
+          data = MessagePack.pack({"cmd" => "spawn_failed", "app" => app_name})
+          _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+        end
       end
     when "exit"
       Log.info("App exit notification from pid=#{pid}")

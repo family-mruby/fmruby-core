@@ -690,6 +690,9 @@ class SystemDesktopApp < FmrbApp
       if err
         open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error")
       end
+    elsif msg["cmd"] == "spawn_failed"
+      open_error_dialog(msg["app"] || "Unknown",
+                        "Failed to launch.\nApps launched from files need a .toml config with app_screen_name.")
     elsif msg["cmd"] == "confirm_dialog"
       # Build callback data hash from message fields
       cb_data = {}

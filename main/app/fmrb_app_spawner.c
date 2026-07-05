@@ -311,6 +311,16 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         FMRB_LOGW(TAG, "No TOML config found or parse error: %s (%s)", toml_path, errbuf);
     }
 
+    // Apps launched from files require a .toml providing app_screen_name.
+    // Plain scripts without a TOML are meant to be run via the shell's
+    // "run" command (in-process Sandbox), not spawned as windowed apps.
+    if (!app_screen_name) {
+        FMRB_LOGE(TAG, "Cannot launch %s: %s with app_screen_name is required",
+                  app_name, toml_path);
+        result = FMRB_ERR_INVALID_PARAM;
+        goto cleanup_toml;
+    }
+
     FMRB_LOGI(TAG, "[spawn] 7 fmrb_app_spawn vm=%d", vm_type);
     // Set spawn attributes
     fmrb_spawn_attr_t attr = {
@@ -351,6 +361,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         FMRB_LOGE(TAG, "Failed to spawn user app: %s (error=%d)", app_name, result);
     }
 
+cleanup_toml:
     // Free TOML config and allocated strings
     if (toml_screen_name) {
         fmrb_sys_free((void*)toml_screen_name);
