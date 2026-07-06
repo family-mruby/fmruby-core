@@ -32,6 +32,12 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   conf.cc.defines << "NDEBUG"
   conf.cc.defines << "ESP32_PLATFORM"
   conf.cc.defines << "FMRB_NO_IO_CONSOLE"
+  # Select the Modern (Tab5) section of fmrb_pin_assign.h for any rake-built
+  # source that includes it. NOTE: gem port sources that use ESP-IDF headers
+  # (e.g. picoruby-fmrb-const ports/esp32/const.c, which exposes
+  # FmrbHw::PIN_*) are compiled by the picoruby-esp32 IDF component instead;
+  # that CMakeLists.txt defines FMRB_HW_MODERN for esp32p4 as well.
+  conf.cc.defines << "FMRB_HW_MODERN"
 
   if ENV['PICORB_DEBUG']
     conf.cc.defines << "ESTALLOC_DEBUG"
@@ -62,8 +68,10 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   conf.gem gemdir: "#{hw}/picoruby-rmt"
   conf.gem gemdir: "#{hw}/picoruby-i2c"
 
-  # RTC driver (pure Ruby, depends on picoruby-i2c)
+  # RTC drivers (pure Ruby, depend on picoruby-i2c).
+  # Tab5 carries an RX8130; RX8900 stays in for code shared with Retro.
   conf.gem core: "picoruby-rx8900"
+  conf.gem core: "picoruby-rx8130"
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"
   # conf.gem gemdir: "#{hw}/picoruby-spi"
