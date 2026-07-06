@@ -228,6 +228,13 @@ namespace :build do
     # Copy HW-specific system_conf.toml to flash directory
     cp system_conf_path, 'flash/etc/system_conf.toml', verbose: true
 
+    # WiFi credentials (Modern remote desktop): config/wifi_p4.toml is
+    # kept out of git (see config/wifi_p4.toml.example). Copied into the
+    # flash image only when present.
+    if File.exist?('config/wifi_p4.toml')
+      cp 'config/wifi_p4.toml', 'flash/etc/wifi.toml', verbose: true
+    end
+
     # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated correctly
     unless Dir.exist?('build')
       sh "#{DOCKER_CMD} idf.py -DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\" set-target #{ESP_CHIP}"

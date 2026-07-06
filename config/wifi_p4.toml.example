@@ -1,0 +1,13 @@
+# WiFi credentials for Modern (ESP32-P4 / Tab5) remote desktop.
+#
+# Copy this file to config/wifi_p4.toml and fill in your network.
+# config/wifi_p4.toml is listed in .gitignore so credentials never end
+# up in the repository. When present it is copied to /etc/wifi.toml in
+# the flash image by `rake build:esp32`.
+
+[wifi]
+enable = true
+ssid = "your-ssid"
+password = "your-password"
+# mDNS hostname: the viewer becomes reachable at http://<hostname>.local/
+hostname = "fmruby"

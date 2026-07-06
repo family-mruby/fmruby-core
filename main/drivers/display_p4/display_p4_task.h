@@ -68,6 +68,51 @@ fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
 fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
                                      uint8_t value, uint32_t freq);
 
+/**
+ * @brief Captured frame descriptor for the remote-desktop stream.
+ */
+typedef struct {
+    const uint16_t *pixels;   // RGB565 non-swapped, width x height
+    uint16_t width, height;
+    uint32_t seq;             // increments per captured frame
+} display_p4_capture_frame_t;
+
+/**
+ * @brief Enable/disable per-frame capture of the composited framebuffer.
+ *
+ * While enabled, render_frame copies each composited 426x240 RGB565 frame
+ * into an internal double buffer (PSRAM, DMA-capable). Single reader.
+ */
+fmrb_err_t display_p4_capture_enable(bool enable);
+
+/**
+ * @brief Wait for a captured frame newer than min_seq and lock it.
+ *
+ * On FMRB_OK the frame stays valid until display_p4_capture_release().
+ * Returns FMRB_ERR_TIMEOUT when no such frame arrived in timeout_ms
+ * (the caller may re-acquire with min_seq=0 to resend the last frame).
+ */
+fmrb_err_t display_p4_capture_acquire(uint32_t min_seq, uint32_t timeout_ms,
+                                      display_p4_capture_frame_t *out);
+
+/**
+ * @brief Unlock the frame returned by display_p4_capture_acquire().
+ */
+void display_p4_capture_release(void);
+
+/**
+ * @brief Request one re-render (e.g. so a fresh capture exists on connect).
+ */
+void display_p4_capture_kick(void);
+
+/**
+ * @brief Current cursor position/visibility in virtual 426x240 coordinates.
+ *
+ * The cursor is not part of the captured framebuffer (it is patched into
+ * the DSI buffer directly); remote clients draw it themselves.
+ */
+void display_p4_get_cursor(int *x, int *y, bool *visible);
+
 #ifdef __cplusplus
 }
 #endif

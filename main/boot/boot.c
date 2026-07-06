@@ -38,6 +38,8 @@
 #include "tab5_keyboard.h"
 #include "touch_task.h"
 #include "audio_p4.h"
+#include "wifi_task.h"
+#include "rd_task.h"
 #endif
 #endif
 
@@ -254,17 +256,28 @@ static bool init_hardware(void)
 #ifdef FMRB_HW_MODERN
 // One-shot helper for Modern: the C6 coprocessor power rail is switched
 // by the display task (tab5_power_on via PI4IO #2), so wait for the
-// display before starting the esp_hosted SDIO handshake + NimBLE host.
-static void modern_ble_init_task(void *arg)
+// display before starting the esp_hosted SDIO handshake. BLE goes first
+// (its nimble_port_init brings the SDIO transport up, the proven path),
+// WiFi strictly after: esp_hosted 1.4.0 corrupts the heap when an RPC is
+// issued before the transport is up (see doc/ble_c6_web_console.md).
+static void modern_radio_init_task(void *arg)
 {
     (void)arg;
     for (int i = 0; i < 300 && !display_p4_is_ready(); i++) {
         fmrb_task_delay_ms(10);
     }
     if (!display_p4_is_ready()) {
-        FMRB_LOGW(TAG, "Display not ready, skipping BLE init");
-    } else if (ble_task_init() != FMRB_OK) {
+        FMRB_LOGW(TAG, "Display not ready, skipping BLE/WiFi init");
+        fmrb_task_delete_ex(NULL);
+        return;
+    }
+    if (ble_task_init() != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init BLE via C6, continuing without it");
+    }
+    if (wifi_task_init() != FMRB_OK) {
+        FMRB_LOGW(TAG, "WiFi not started (disabled or failed)");
+    } else if (rd_task_init() != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init remote desktop, continuing without it");
     }
     fmrb_task_delete_ex(NULL);
 }
@@ -356,11 +369,11 @@ static bool init_hardware(void)
         FMRB_LOGW(TAG, "Failed to init Tab5 audio, continuing without it");
     }
 
-    // BLE via the ESP32-C6 coprocessor: run in a one-shot helper task so
-    // the SDIO handshake / RPC timeouts never delay the rest of boot.
-    if (fmrb_task_create(modern_ble_init_task, "ble_init", 4096, NULL,
+    // BLE + WiFi via the ESP32-C6 coprocessor: run in a one-shot helper
+    // task so the SDIO handshake / RPC timeouts never delay boot.
+    if (fmrb_task_create(modern_radio_init_task, "radio_init", 6144, NULL,
                          4, NULL) != FMRB_PASS) {
-        FMRB_LOGW(TAG, "Failed to spawn BLE init task");
+        FMRB_LOGW(TAG, "Failed to spawn radio init task");
     }
 #else
     reset_wrover();

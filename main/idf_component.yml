@@ -28,3 +28,14 @@ dependencies:
     version: "0.8.5"
     rules:
       - if: "target == esp32p4"
+  # Remote desktop (Modern/P4 only): mDNS so the browser can reach the
+  # device as http://<hostname>.local/ without knowing the DHCP address
+  espressif/mdns:
+    version: "^1.8.0"
+    rules:
+      - if: "target == esp32p4"
+  # Remote desktop Phase 2: P4 hardware H.264 encoder
+  espressif/esp_h264:
+    version: "^1.1.0"
+    rules:
+      - if: "target == esp32p4"

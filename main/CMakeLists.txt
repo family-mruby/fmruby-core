@@ -67,12 +67,23 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/display_p4/fonts/misaki/lgfx_misaki.c"
             "drivers/display_p4/fonts/misaki/lgfx_misaki.cpp"
             "kernel/host/host_file_local.c"
+            "drivers/wifi/wifi_task.c"
+            "drivers/remote_desktop/rd_task.c"
+            "drivers/remote_desktop/rd_http.c"
+            "drivers/remote_desktop/rd_encoder_jpeg.c"
+            "drivers/remote_desktop/rd_encoder_h264.c"
+            "drivers/remote_desktop/rd_stream.c"
+            "drivers/remote_desktop/rd_input.c"
         )
         # Local audio: APU emulator + ES8388 codec (esp_codec_dev) over I2S
         list(APPEND COMPONENT_REQUIRES m5gfx esp_driver_ppa apu_emu
              esp_codec_dev esp_driver_i2s esp_driver_i2c)
         # BLE: NimBLE host on P4, controller on the C6 via esp_hosted
         list(APPEND COMPONENT_REQUIRES bt esp_hosted)
+        # Remote desktop: WiFi STA over esp_hosted (esp_wifi_remote) +
+        # HTTP/WS server + JPEG (MJPEG) / H.264 hardware encoders
+        list(APPEND COMPONENT_REQUIRES esp_wifi esp_netif esp_event
+             esp_http_server esp_driver_jpeg esp_h264)
     else()
         list(APPEND COMPONENT_REQUIRES bt)
     endif()
@@ -96,10 +107,21 @@ else()
     list(APPEND COMPONENT_SRCS ${COMPONENT_LINUX_SRCS})
 endif()
 
+# Remote desktop viewer page (Modern only): embedded into the binary and
+# served by the on-device HTTP server. Sources live in tool/web/remote/.
+set(RD_EMBED_FILES "")
+if(IDF_TARGET STREQUAL "esp32p4")
+    set(RD_EMBED_FILES
+        "${CMAKE_CURRENT_LIST_DIR}/../tool/web/remote/index.html"
+        "${CMAKE_CURRENT_LIST_DIR}/../tool/web/remote/remote.js"
+        "${CMAKE_CURRENT_LIST_DIR}/../tool/web/remote/keymap.js")
+endif()
+
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
+    EMBED_FILES ${RD_EMBED_FILES}
 )
 
 # Test mode flags

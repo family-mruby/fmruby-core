@@ -115,3 +115,17 @@ CONFIG_USB_HOST_HUBS_SUPPORTED=y
 # Avoid LittleFS Crash in app task
 CONFIG_LITTLEFS_MALLOC_STRATEGY_DEFAULT=n
 CONFIG_LITTLEFS_MALLOC_STRATEGY_INTERNAL=y
+
+# --- Remote desktop: WiFi STA via esp_wifi_remote (radio on ESP32-C6 over
+# esp_hosted SDIO; esp_netif + lwIP run locally on the P4). The BLE/hosted
+# configuration above is left untouched. See doc/remote_desktop_design.md.
+
+# HTTP server: WebSocket support for the remote-desktop input channel
+CONFIG_HTTPD_WS_SUPPORT=y
+
+# Keep lwIP out of IRAM (P4 IRAM headroom is tight; the ~2Mbps streaming
+# target does not need IRAM-optimized lwIP)
+CONFIG_LWIP_IRAM_OPTIMIZATION=n
+
+# A few extra sockets for httpd (viewer page + MJPEG stream + WS + mDNS)
+CONFIG_LWIP_MAX_SOCKETS=16

@@ -49,3 +49,13 @@ app = "default/inspector"
 [[sync_files]]
 src = "/usr/share/sounds/test.nsf"
 dest = "/flash/data/test.nsf"
+
+# Remote desktop (browser viewer via WiFi). WiFi credentials live in
+# /etc/wifi.toml (see config/wifi_p4.toml.example).
+[remote_desktop]
+enable = true
+mode = "h264"              # "h264" (WebCodecs viewer) | "mjpeg" only
+fps_cap = 15
+jpeg_quality = 80
+h264_bitrate_kbps = 1000
+h264_gop = 30

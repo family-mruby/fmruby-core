@@ -338,6 +338,26 @@ static bool         g_cursor_drawn   = false;
 static bool     g_needs_render   = false;
 static uint32_t g_last_render_ms = 0;
 
+// ============================================================
+// Frame capture for the remote desktop stream.
+//
+// When enabled, render_frame() copies the composited 426x240 RGB565
+// framebuffer into a double buffer (~200KB memcpy) and signals the
+// semaphore. Single-reader design: while the reader holds the front
+// buffer, the writer keeps overwriting the back buffer (frames drop).
+// Buffers use ppa_alloc_buffer (cache-line aligned PSRAM), which is
+// also valid DMA input for the P4 JPEG/PPA engines downstream.
+// ============================================================
+
+static SemaphoreHandle_t g_cap_sem = NULL;          // "new frame" signal
+static portMUX_TYPE g_cap_lock = portMUX_INITIALIZER_UNLOCKED;
+static uint8_t  *g_cap_buf[2] = { NULL, NULL };
+static size_t    g_cap_buf_size = 0;
+static int       g_cap_front = -1;                  // index of newest frame
+static int       g_cap_locked_idx = -1;             // slot held by the reader
+static uint32_t  g_cap_seq = 0;
+static volatile bool g_cap_enabled = false;
+
 #define CURSOR_TRANSPARENT 0xFF00FF
 
 static void cursor_init(void) {
@@ -698,6 +718,32 @@ static void render_frame(void) {
             display_p4_sprite_composite(c->canvas_id, g_framebuffer,
                                         c->push_x, c->push_y);
         }
+    }
+
+    // Remote-desktop capture: grab the composited frame before the SRM
+    // scale-out. The writer (this task) never touches the slot locked by
+    // the reader; while the reader is slow, frames simply overwrite the
+    // other slot and drop.
+    if (g_cap_enabled && g_cap_buf[0]) {
+        void *fb_ptr = g_framebuffer->getBuffer();
+        size_t copy_len = (size_t)g_framebuffer->width()
+                        * g_framebuffer->height() * 2;
+        if (copy_len > g_cap_buf_size) copy_len = g_cap_buf_size;
+
+        portENTER_CRITICAL(&g_cap_lock);
+        int target;
+        if (g_cap_locked_idx >= 0)   target = 1 - g_cap_locked_idx;
+        else if (g_cap_front >= 0)   target = 1 - g_cap_front;
+        else                         target = 0;
+        portEXIT_CRITICAL(&g_cap_lock);
+
+        memcpy(g_cap_buf[target], fb_ptr, copy_len);
+
+        portENTER_CRITICAL(&g_cap_lock);
+        g_cap_front = target;
+        g_cap_seq++;
+        portEXIT_CRITICAL(&g_cap_lock);
+        xSemaphoreGive(g_cap_sem);
     }
 
     // Scale framebuffer 3x to LCD via PPA SRM hardware accelerator.
@@ -2627,3 +2673,100 @@ extern "C" int display_p4_get_touch(int16_t *out_x, int16_t *out_y) {
     return count;
 }
 
+
+// ============================================================
+// Remote-desktop capture API (see the capture state block above).
+// Enable/disable from any task; acquire/release from ONE reader task.
+// ============================================================
+
+// Reference-counted: the MJPEG and H.264 streamers enable independently
+// and capture stays on until the last consumer disables it.
+static int g_cap_refcount = 0;
+
+extern "C" fmrb_err_t display_p4_capture_enable(bool enable) {
+    if (enable) {
+        if (g_cap_buf[0]) {
+            g_cap_refcount++;
+            g_cap_enabled = true;
+            return FMRB_OK;
+        }
+        if (!g_framebuffer) return FMRB_ERR_INVALID_STATE;
+        size_t need = (size_t)g_framebuffer->width()
+                    * g_framebuffer->height() * 2;
+        size_t aligned = 0;
+        g_cap_buf[0] = (uint8_t *)ppa_alloc_buffer(need, &aligned);
+        g_cap_buf[1] = (uint8_t *)ppa_alloc_buffer(need, &aligned);
+        if (!g_cap_buf[0] || !g_cap_buf[1]) {
+            if (g_cap_buf[0]) { heap_caps_free(g_cap_buf[0]); g_cap_buf[0] = NULL; }
+            if (g_cap_buf[1]) { heap_caps_free(g_cap_buf[1]); g_cap_buf[1] = NULL; }
+            return FMRB_ERR_NO_MEMORY;
+        }
+        g_cap_buf_size = need;
+        if (!g_cap_sem) g_cap_sem = xSemaphoreCreateBinary();
+        if (!g_cap_sem) return FMRB_ERR_NO_MEMORY;
+        portENTER_CRITICAL(&g_cap_lock);
+        g_cap_front = -1;
+        g_cap_locked_idx = -1;
+        g_cap_seq = 0;
+        portEXIT_CRITICAL(&g_cap_lock);
+        g_cap_refcount = 1;
+        g_cap_enabled = true;
+        FMRB_LOGI(TAG, "Capture enabled (%ux%u, 2x%u bytes)",
+                  g_framebuffer->width(), g_framebuffer->height(),
+                  (unsigned)need);
+    } else {
+        if (g_cap_refcount > 0) g_cap_refcount--;
+        if (g_cap_refcount > 0) return FMRB_OK;  // another consumer active
+        g_cap_enabled = false;
+        // Do not free while a reader may hold a buffer; the reader must
+        // release before disabling. Buffers are small enough to keep.
+        portENTER_CRITICAL(&g_cap_lock);
+        g_cap_front = -1;
+        portEXIT_CRITICAL(&g_cap_lock);
+        FMRB_LOGI(TAG, "Capture disabled");
+    }
+    return FMRB_OK;
+}
+
+extern "C" fmrb_err_t display_p4_capture_acquire(uint32_t min_seq,
+                                                 uint32_t timeout_ms,
+                                                 display_p4_capture_frame_t *out) {
+    if (!out || !g_cap_enabled || !g_cap_sem) return FMRB_ERR_INVALID_STATE;
+
+    TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(timeout_ms);
+    for (;;) {
+        portENTER_CRITICAL(&g_cap_lock);
+        bool ready = (g_cap_front >= 0 && g_cap_seq >= min_seq &&
+                      g_cap_locked_idx < 0);
+        if (ready) {
+            g_cap_locked_idx = g_cap_front;
+            out->pixels = (const uint16_t *)g_cap_buf[g_cap_locked_idx];
+            out->seq = g_cap_seq;
+        }
+        portEXIT_CRITICAL(&g_cap_lock);
+        if (ready) {
+            out->width  = (uint16_t)g_framebuffer->width();
+            out->height = (uint16_t)g_framebuffer->height();
+            return FMRB_OK;
+        }
+        TickType_t now = xTaskGetTickCount();
+        if (now >= deadline) return FMRB_ERR_TIMEOUT;
+        xSemaphoreTake(g_cap_sem, deadline - now);
+    }
+}
+
+extern "C" void display_p4_capture_release(void) {
+    portENTER_CRITICAL(&g_cap_lock);
+    g_cap_locked_idx = -1;
+    portEXIT_CRITICAL(&g_cap_lock);
+}
+
+extern "C" void display_p4_capture_kick(void) {
+    g_needs_render = true;
+}
+
+extern "C" void display_p4_get_cursor(int *x, int *y, bool *visible) {
+    if (x) *x = g_cursor_x;
+    if (y) *y = g_cursor_y;
+    if (visible) *visible = g_cursor_visible;
+}
