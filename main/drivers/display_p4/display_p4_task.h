@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include "fmrb_err.h"
 
 #ifdef __cplusplus
@@ -45,11 +46,27 @@ int display_p4_get_touch(int16_t *out_x, int16_t *out_y);
 /**
  * @brief Poll the headphone jack and gate the speaker amp (PI4IO #1).
  *
- * Must be called from the touch task only: it uses lgfx's I2C helpers,
- * which share the controller with the GT911 transactions and are only
- * safe when serialized in the same task context.
+ * Called from the touch task loop. Serialized with all other bus
+ * traffic by the internal I2C service mutex.
  */
 void display_p4_poll_headphone(void);
+
+/**
+ * @brief Shared-bus I2C service (Tab5 internal bus, GPIO31/32).
+ *
+ * LovyanGFX drives this I2C controller at register level, so runtime
+ * access from other modules must go through these wrappers: they use
+ * lgfx's I2C path and serialize against the GT911 touch reads with an
+ * internal mutex. Callable from any task once the display is ready
+ * (returns FMRB_ERR_INVALID_STATE before that). len is limited to 255
+ * bytes per transaction.
+ */
+fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
+                                size_t len, uint32_t freq);
+fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
+                               size_t len, uint32_t freq);
+fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
+                                     uint8_t value, uint32_t freq);
 
 #ifdef __cplusplus
 }

@@ -53,6 +53,7 @@ typedef enum {
     GFX_CMD_DELETE_ALL_SPRITES,
     GFX_CMD_DELETE_CANVAS,
     GFX_CMD_SET_COMPOSITE_REGIONS,  // Async; updates per-canvas sub-rect compositing list
+    GFX_CMD_SET_CANVAS_VIEWPORT,    // Async; source-rect scroll register (P4 backend only)
     // Sync commands (require response from WROVER)
     GFX_CMD_CREATE_CANVAS,
     GFX_CMD_CREATE_SPRITE_IMAGE,
@@ -254,6 +255,11 @@ typedef struct {
             uint8_t count;  // 0 = clear, 1..FMRB_GFX_MAX_COMPOSITE_REGIONS = valid entries
             fmrb_gfx_composite_region_t regions[FMRB_GFX_MAX_COMPOSITE_REGIONS];
         } set_composite_regions;
+        // Canvas viewport (source-rect scroll). view_w == 0 clears.
+        struct {
+            uint16_t src_x, src_y;
+            uint16_t view_w, view_h;
+        } set_canvas_viewport;
         // Mask lifetime / masked image blit (both async).
         struct {
             uint16_t mask_id;

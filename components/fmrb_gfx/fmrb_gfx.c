@@ -261,6 +261,44 @@ fmrb_gfx_err_t fmrb_gfx_set_composite_regions(
     return FMRB_GFX_OK;
 }
 
+fmrb_gfx_err_t fmrb_gfx_set_canvas_viewport(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_handle,
+    uint16_t src_x, uint16_t src_y,
+    uint16_t view_w, uint16_t view_h)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+    if (canvas_handle == FMRB_CANVAS_SCREEN || canvas_handle == FMRB_CANVAS_INVALID) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    // Route through host_task batch queue so the viewport update stays in
+    // order with surrounding draws / present commands on the same canvas.
+    gfx_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.cmd_type = GFX_CMD_SET_CANVAS_VIEWPORT;
+    cmd.canvas_id = canvas_handle;
+    cmd.params.set_canvas_viewport.src_x = src_x;
+    cmd.params.set_canvas_viewport.src_y = src_y;
+    cmd.params.set_canvas_viewport.view_w = view_w;
+    cmd.params.set_canvas_viewport.view_h = view_h;
+
+    fmrb_msg_t msg;
+    memset(&msg, 0, sizeof(msg));
+    msg.type = FMRB_MSG_TYPE_APP_GFX;
+    msg.size = sizeof(gfx_cmd_t);
+    memcpy(msg.data, &cmd, sizeof(gfx_cmd_t));
+
+    fmrb_err_t send_ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    if (send_ret != FMRB_OK) {
+        ESP_LOGE(TAG, "Failed to queue set_canvas_viewport: %d", send_ret);
+        return FMRB_GFX_ERR_FAILED;
+    }
+    return FMRB_GFX_OK;
+}
+
 // Sprite API implementations
 
 uint16_t fmrb_gfx_create_sprite_image(

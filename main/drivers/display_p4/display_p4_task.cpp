@@ -22,6 +22,7 @@
 #include "fmrb.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/semphr.h"
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "driver/ppa.h"
@@ -50,9 +51,14 @@ static void set_ppa_native_depth(LGFX_Sprite *sprite) {
 // Allocate cache-aligned buffer for PPA DMA compatibility.
 // Uses esp_cache_get_alignment() to query the actual cache line size
 // (L2 cache on Tab5 is 128B, not 64B).
+// Cache line size of the PSRAM/DMA region (queried once in ppa_alloc_buffer;
+// used for partial esp_cache_msync ranges in render_frame).
+static size_t g_cache_line_size = 64;
+
 static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
     size_t cache_line_size = 64;
     esp_cache_get_alignment(MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA, &cache_line_size);
+    g_cache_line_size = cache_line_size;
     size_t aligned = (length + cache_line_size - 1) & ~(cache_line_size - 1);
     void *buf = heap_caps_aligned_alloc(cache_line_size, aligned,
                                          MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -78,6 +84,13 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
 
 static LGFX_Tab5 g_lcd;
 static volatile bool g_lcd_ready = false;
+
+// Serializes every runtime access to the shared I2C controller (GT911
+// touch reads, PI4IO, ES8388, mruby-app transactions). LovyanGFX drives
+// this controller at register level, so all runtime traffic must go
+// through lgfx's I2C path AND be mutually excluded; this mutex is the
+// single gate (see doc/tab5_i2c_bus_notes.md).
+static SemaphoreHandle_t g_i2c_mutex = NULL;
 
 // Receive buffer for local link commands
 #define DISPLAY_P4_RECV_BUF_SIZE 4096
@@ -111,6 +124,12 @@ typedef struct {
     uint8_t      transparent_color;
     bool         use_transparency;
     uint16_t     width, height;
+    // Composite source viewport (SET_CANVAS_VIEWPORT). view_w == 0 means no
+    // viewport: the full canvas is composited (default). When set, only the
+    // (view_x, view_y, view_w, view_h) sub-rect is blended at push_x/push_y,
+    // turning a large canvas into a hardware-scrolled surface.
+    uint16_t     view_x, view_y;
+    uint16_t     view_w, view_h;
     // Cache-line-aligned size of the sprite buffer (esp_cache_msync requires
     // both address and size aligned to the cache line, or it fails silently)
     size_t       buf_aligned_size;
@@ -243,6 +262,10 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     c->use_transparency             = use_transparency;
     c->width                    = width;
     c->height                   = height;
+    c->view_x                   = 0;
+    c->view_y                   = 0;
+    c->view_w                   = 0;   // 0 = no viewport (full composite)
+    c->view_h                   = 0;
     c->buf_aligned_size         = aligned_size;
 
     FMRB_LOGI(TAG, "Canvas alloc: id=%u %dx%d z=%d transp=%u/%u",
@@ -474,6 +497,121 @@ static void cursor_overlay_update(void) {
 
 static bool g_first_render = true;
 
+// Blend one source block of a canvas into the framebuffer at (dst_x, dst_y),
+// clipping to framebuffer bounds. render_frame composites a normal canvas
+// with a single block; a viewport canvas (torus addressing) with up to four.
+static void blend_canvas_block(p4_canvas_t *c, int sw, int sh,
+                               int src_x, int src_y, int bw, int bh,
+                               int dst_x, int dst_y, int fb_w, int fb_h) {
+    // Clip the on-screen footprint to framebuffer bounds
+    int sx0 = 0, sy0 = 0, dx = dst_x, dy = dst_y;
+    int cw = bw, ch = bh;
+    if (dx < 0) { sx0 = -dx; cw += dx; dx = 0; }
+    if (dy < 0) { sy0 = -dy; ch += dy; dy = 0; }
+    if (dx + cw > fb_w) cw = fb_w - dx;
+    if (dy + ch > fb_h) ch = fb_h - dy;
+    if (cw <= 0 || ch <= 0 || !g_ppa_blend) return;
+
+    void *fg_buf = c->sprite->getBuffer();
+    void *bg_buf = g_framebuffer->getBuffer();
+    // msync requires cache-line-aligned addresses and sizes; the aligned
+    // allocation size is used for the framebuffer, a row range for the canvas
+    size_t bg_size = g_fb_aligned_size;
+
+    // Flush CPU cache to PSRAM so PPA DMA reads current pixel data.
+    // For the canvas, flush only the rows the blend block reads (rounded to
+    // cache lines): a scroll canvas may be much larger than the visible part.
+    esp_err_t sync_err;
+    {
+        uintptr_t row_start = (uintptr_t)fg_buf + (size_t)(src_y + sy0) * sw * 2;
+        size_t row_len = (size_t)ch * sw * 2;
+        uintptr_t astart = row_start & ~(uintptr_t)(g_cache_line_size - 1);
+        uintptr_t aend = (row_start + row_len + g_cache_line_size - 1)
+            & ~(uintptr_t)(g_cache_line_size - 1);
+        uintptr_t buf_end = (uintptr_t)fg_buf + c->buf_aligned_size;
+        if (aend > buf_end) aend = buf_end;
+        sync_err = esp_cache_msync((void *)astart, (size_t)(aend - astart),
+                                   ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    }
+    if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fg msync C2M failed: %d", sync_err);
+    sync_err = esp_cache_msync(bg_buf, bg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    if (sync_err != ESP_OK) FMRB_LOGE(TAG, "bg msync C2M failed: %d", sync_err);
+
+    ppa_blend_oper_config_t blend = {};
+    // Background: framebuffer
+    blend.in_bg.buffer         = bg_buf;
+    blend.in_bg.pic_w          = (uint32_t)fb_w;
+    blend.in_bg.pic_h          = (uint32_t)fb_h;
+    blend.in_bg.block_w        = (uint32_t)cw;
+    blend.in_bg.block_h        = (uint32_t)ch;
+    blend.in_bg.block_offset_x = (uint32_t)dx;
+    blend.in_bg.block_offset_y = (uint32_t)dy;
+    blend.in_bg.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
+
+    // Foreground: canvas source block
+    blend.in_fg.buffer         = fg_buf;
+    blend.in_fg.pic_w          = (uint32_t)sw;
+    blend.in_fg.pic_h          = (uint32_t)sh;
+    blend.in_fg.block_w        = (uint32_t)cw;
+    blend.in_fg.block_h        = (uint32_t)ch;
+    blend.in_fg.block_offset_x = (uint32_t)(src_x + sx0);
+    blend.in_fg.block_offset_y = (uint32_t)(src_y + sy0);
+    blend.in_fg.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
+
+    // Output: framebuffer (in-place, Blend allows BG==OUT)
+    blend.out.buffer         = bg_buf;
+    blend.out.buffer_size    = bg_size;
+    blend.out.pic_w          = (uint32_t)fb_w;
+    blend.out.pic_h          = (uint32_t)fb_h;
+    blend.out.block_offset_x = (uint32_t)dx;
+    blend.out.block_offset_y = (uint32_t)dy;
+    blend.out.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
+
+    // All sprites use PPA-native RGB565 (non-swapped); no byte swap needed
+    blend.fg_byte_swap = false;
+    blend.bg_byte_swap = false;
+
+    // FG fully opaque
+    blend.fg_alpha_update_mode = PPA_ALPHA_FIX_VALUE;
+    blend.fg_alpha_fix_val     = 255;
+    blend.bg_alpha_update_mode = PPA_ALPHA_NO_CHANGE;
+
+    // Color-key for transparent canvas (range covers RGB565->RGB888 quantization)
+    if (c->create_use_transparency) {
+        blend.fg_ck_en = true;
+        blend.fg_ck_rgb_low_thres  = {.b = c->create_ck_b_low,
+                                       .g = c->create_ck_g_low,
+                                       .r = c->create_ck_r_low};
+        blend.fg_ck_rgb_high_thres = {.b = c->create_ck_b_high,
+                                       .g = c->create_ck_g_high,
+                                       .r = c->create_ck_r_high};
+    }
+
+    blend.mode = PPA_TRANS_MODE_BLOCKING;
+
+    esp_err_t err = ppa_do_blend(g_ppa_blend, &blend);
+    if (err == ESP_OK) {
+        // Invalidate output cache so CPU sees DMA-written data
+        esp_cache_msync(bg_buf, bg_size,
+                        ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+    } else {
+        FMRB_LOGE(TAG, "PPA Blend failed: %d (canvas=%u view_w=%u)",
+                  err, c->canvas_id, c->view_w);
+        if (c->view_w > 0) {
+            // Fallback for viewport canvases in case the PPA rejects the
+            // source block: opaque CPU row copy. The CPU writes stay in
+            // cache and are flushed by the framebuffer C2M msync before SRM.
+            const uint16_t *src = (const uint16_t *)fg_buf
+                + (size_t)(src_y + sy0) * sw + (src_x + sx0);
+            uint16_t *dst = (uint16_t *)bg_buf + (size_t)dy * fb_w + dx;
+            for (int row = 0; row < ch; row++) {
+                memcpy(dst + (size_t)row * fb_w,
+                       src + (size_t)row * sw, (size_t)cw * 2);
+            }
+        }
+    }
+}
+
 static void render_frame(void) {
     if (!g_framebuffer || g_canvas_count == 0) return;
 
@@ -506,92 +644,60 @@ static void render_frame(void) {
         int sw = c->sprite->width();
         int sh = c->sprite->height();
 
-        // Clip canvas to framebuffer bounds
-        int sx0 = 0, sy0 = 0, dx = c->push_x, dy = c->push_y;
-        int cw = sw, ch = sh;
-        if (dx < 0) { sx0 = -dx; cw += dx; dx = 0; }
-        if (dy < 0) { sy0 = -dy; ch += dy; dy = 0; }
-        if (dx + cw > fb_w) cw = fb_w - dx;
-        if (dy + ch > fb_h) ch = fb_h - dy;
+        if (c->view_w == 0) {
+            // Default path: composite the whole canvas at its push position
+            blend_canvas_block(c, sw, sh, 0, 0, sw, sh,
+                               c->push_x, c->push_y, fb_w, fb_h);
+        } else {
+            // Viewport path (SET_CANVAS_VIEWPORT): the canvas is a torus.
+            // The source rect may wrap around the canvas edges, so the
+            // footprint is composited in up to four blocks. This lets a
+            // ring-buffer canvas barely larger than the viewport scroll an
+            // arbitrarily large world (the app stamps newly exposed tiles
+            // on the hidden side as the viewport moves).
+            int vx = c->view_x % sw;
+            int vy = c->view_y % sh;
+            int vw = (c->view_w < sw) ? c->view_w : sw;
+            int vh = (c->view_h < sh) ? c->view_h : sh;
+            int w1 = sw - vx; if (w1 > vw) w1 = vw;
+            int w2 = vw - w1;
+            int h1 = sh - vy; if (h1 > vh) h1 = vh;
+            int h2 = vh - h1;
 
-        if (cw > 0 && ch > 0 && g_ppa_blend) {
-            void *fg_buf = c->sprite->getBuffer();
-            void *bg_buf = g_framebuffer->getBuffer();
-            // msync requires cache-line-aligned sizes; use the aligned
-            // allocation sizes, not the raw pixel byte counts
-            size_t fg_size = c->buf_aligned_size;
-            size_t bg_size = g_fb_aligned_size;
-
-            // Flush CPU cache to PSRAM so PPA DMA reads current pixel data
-            esp_err_t sync_err;
-            sync_err = esp_cache_msync(fg_buf, fg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fg msync C2M failed: %d", sync_err);
-            sync_err = esp_cache_msync(bg_buf, bg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-            if (sync_err != ESP_OK) FMRB_LOGE(TAG, "bg msync C2M failed: %d", sync_err);
-
-            ppa_blend_oper_config_t blend = {};
-            // Background: framebuffer
-            blend.in_bg.buffer         = bg_buf;
-            blend.in_bg.pic_w          = (uint32_t)fb_w;
-            blend.in_bg.pic_h          = (uint32_t)fb_h;
-            blend.in_bg.block_w        = (uint32_t)cw;
-            blend.in_bg.block_h        = (uint32_t)ch;
-            blend.in_bg.block_offset_x = (uint32_t)dx;
-            blend.in_bg.block_offset_y = (uint32_t)dy;
-            blend.in_bg.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
-
-            // Foreground: canvas
-            blend.in_fg.buffer         = fg_buf;
-            blend.in_fg.pic_w          = (uint32_t)sw;
-            blend.in_fg.pic_h          = (uint32_t)sh;
-            blend.in_fg.block_w        = (uint32_t)cw;
-            blend.in_fg.block_h        = (uint32_t)ch;
-            blend.in_fg.block_offset_x = (uint32_t)sx0;
-            blend.in_fg.block_offset_y = (uint32_t)sy0;
-            blend.in_fg.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
-
-            // Output: framebuffer (in-place, Blend allows BG==OUT)
-            blend.out.buffer         = bg_buf;
-            blend.out.buffer_size    = bg_size;
-            blend.out.pic_w          = (uint32_t)fb_w;
-            blend.out.pic_h          = (uint32_t)fb_h;
-            blend.out.block_offset_x = (uint32_t)dx;
-            blend.out.block_offset_y = (uint32_t)dy;
-            blend.out.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
-
-            // All sprites use PPA-native RGB565 (non-swapped); no byte swap needed
-            blend.fg_byte_swap = false;
-            blend.bg_byte_swap = false;
-
-            // FG fully opaque
-            blend.fg_alpha_update_mode = PPA_ALPHA_FIX_VALUE;
-            blend.fg_alpha_fix_val     = 255;
-            blend.bg_alpha_update_mode = PPA_ALPHA_NO_CHANGE;
-
-            // Color-key for transparent canvas (range covers RGB565->RGB888 quantization)
-            if (c->create_use_transparency) {
-                blend.fg_ck_en = true;
-                blend.fg_ck_rgb_low_thres  = {.b = c->create_ck_b_low,
-                                               .g = c->create_ck_g_low,
-                                               .r = c->create_ck_r_low};
-                blend.fg_ck_rgb_high_thres = {.b = c->create_ck_b_high,
-                                               .g = c->create_ck_g_high,
-                                               .r = c->create_ck_r_high};
-            }
-
-            blend.mode = PPA_TRANS_MODE_BLOCKING;
-
-            esp_err_t err = ppa_do_blend(g_ppa_blend, &blend);
-            if (err != ESP_OK) {
-                FMRB_LOGE(TAG, "PPA Blend failed: %d", err);
-            }
-            // Invalidate output cache so CPU sees DMA-written data
-            esp_cache_msync(bg_buf, bg_size,
-                            ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
+            blend_canvas_block(c, sw, sh, vx, vy, w1, h1,
+                               c->push_x, c->push_y, fb_w, fb_h);
+            if (w2 > 0)
+                blend_canvas_block(c, sw, sh, 0, vy, w2, h1,
+                                   c->push_x + w1, c->push_y, fb_w, fb_h);
+            if (h2 > 0)
+                blend_canvas_block(c, sw, sh, vx, 0, w1, h2,
+                                   c->push_x, c->push_y + h1, fb_w, fb_h);
+            if (w2 > 0 && h2 > 0)
+                blend_canvas_block(c, sw, sh, 0, 0, w2, h2,
+                                   c->push_x + w1, c->push_y + h1, fb_w, fb_h);
         }
 
-        display_p4_sprite_composite(c->canvas_id, g_framebuffer,
-                                    c->push_x, c->push_y);
+        if (c->view_w > 0) {
+            // Sprites on a viewport canvas use viewport-relative coordinates
+            // and must not spill outside the visible footprint (sprite
+            // compositing otherwise clips to framebuffer bounds only)
+            int dx = c->push_x, dy = c->push_y;
+            int cw = (c->view_w < sw) ? c->view_w : sw;
+            int ch = (c->view_h < sh) ? c->view_h : sh;
+            if (dx < 0) { cw += dx; dx = 0; }
+            if (dy < 0) { ch += dy; dy = 0; }
+            if (dx + cw > fb_w) cw = fb_w - dx;
+            if (dy + ch > fb_h) ch = fb_h - dy;
+            if (cw > 0 && ch > 0) {
+                g_framebuffer->setClipRect(dx, dy, cw, ch);
+                display_p4_sprite_composite(c->canvas_id, g_framebuffer,
+                                            c->push_x, c->push_y);
+                g_framebuffer->clearClipRect();
+            }
+        } else {
+            display_p4_sprite_composite(c->canvas_id, g_framebuffer,
+                                        c->push_x, c->push_y);
+        }
     }
 
     // Scale framebuffer 3x to LCD via PPA SRM hardware accelerator.
@@ -1149,6 +1255,30 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_PRESENT:
         g_needs_render = true;
         return 0;
+
+    case FMRB_LINK_GFX_SET_CANVAS_VIEWPORT: {
+        if (size < sizeof(fmrb_link_graphics_set_canvas_viewport_t)) break;
+        const auto *cmd = (const fmrb_link_graphics_set_canvas_viewport_t *)data;
+        p4_canvas_t *c = canvas_find(cmd->canvas_id);
+        if (!c) {
+            FMRB_LOGW(TAG, "SET_CANVAS_VIEWPORT: canvas %u not found", cmd->canvas_id);
+            return 0;
+        }
+        if (cmd->view_w == 0 || cmd->view_h == 0) {
+            c->view_x = c->view_y = c->view_w = c->view_h = 0;
+        } else {
+            // Torus addressing: the source origin wraps around the canvas,
+            // so a ring-buffer canvas barely larger than the viewport can
+            // scroll an arbitrarily large world. Only the view size is
+            // clamped (it cannot exceed the canvas).
+            c->view_x = cmd->src_x % c->width;
+            c->view_y = cmd->src_y % c->height;
+            c->view_w = (cmd->view_w < c->width)  ? cmd->view_w : c->width;
+            c->view_h = (cmd->view_h < c->height) ? cmd->view_h : c->height;
+        }
+        g_needs_render = true;
+        return 0;
+    }
 
     case FMRB_LINK_GFX_GET_PIXEL: {
         if (size < sizeof(fmrb_link_graphics_get_pixel_t)) break;
@@ -2256,19 +2386,65 @@ static void ppa_verification_test(void) {
 #endif // PPA_VERIFICATION_TEST
 
 // ============================================================
+// Shared I2C service (lgfx path, mutex-serialized).
+//
+// The Tab5 internal bus (GPIO31/32) is driven by LovyanGFX at register
+// level, so any i2c_master-driver access on this controller is
+// corrupted once touch polling runs. Every runtime transaction must go
+// through lgfx's I2C helpers under g_i2c_mutex. These wrappers are the
+// only sanctioned entry points for other modules (audio volume,
+// hw_proxy mediation for mruby apps).
+// ============================================================
+
+static bool i2c_service_lock(void) {
+    if (!g_lcd_ready || !g_i2c_mutex) return false;
+    return xSemaphoreTake(g_i2c_mutex, pdMS_TO_TICKS(500)) == pdTRUE;
+}
+
+static void i2c_service_unlock(void) {
+    xSemaphoreGive(g_i2c_mutex);
+}
+
+extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
+                                           size_t len, uint32_t freq) {
+    if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
+    if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
+    auto res = lgfx::i2c::transactionWrite(TAB5_I2C_PORT, addr, data,
+                                           (uint8_t)len, freq);
+    i2c_service_unlock();
+    return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
+}
+
+extern "C" fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
+                                          size_t len, uint32_t freq) {
+    if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
+    if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
+    auto res = lgfx::i2c::transactionRead(TAB5_I2C_PORT, addr, data,
+                                          (uint8_t)len, freq);
+    i2c_service_unlock();
+    return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
+}
+
+extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
+                                                uint8_t value, uint32_t freq) {
+    if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
+    auto res = lgfx::i2c::writeRegister8(TAB5_I2C_PORT, addr, reg, value,
+                                         0, freq);
+    i2c_service_unlock();
+    return res.has_error() ? FMRB_ERR_FAILED : FMRB_OK;
+}
+
+// ============================================================
 // Headphone jack detect / speaker amp gating (PI4IO #1).
 //
-// The PI4IO shares the I2C controller with the GT911, which LovyanGFX
-// drives at register level (save/restore of the peripheral state), so
-// any i2c_master-driver access on this controller is corrupted once
-// touch polling runs. All runtime PI4IO access therefore goes through
-// lgfx's own I2C helpers, and display_p4_poll_headphone() is called
-// from the TOUCH TASK so it is serialized with the GT911 transactions.
+// display_p4_poll_headphone() is called from the touch task loop; the
+// PI4IO transactions take g_i2c_mutex like every other bus user.
 // ============================================================
 
 static bool g_headphone_in = false;
 static int  g_hp_debounce = 0;
 
+// Caller must hold g_i2c_mutex (or be in the single-task init window).
 static void hp_apply_speaker(bool headphone_in) {
     // RMW of OUT_SET through the lgfx path; other bits (LCD/TP/CAM
     // resets, EXT5V) keep their state.
@@ -2285,22 +2461,24 @@ static void hp_apply_speaker(bool headphone_in) {
 }
 
 extern "C" void display_p4_poll_headphone(void) {
-    if (!g_lcd_ready) return;
+    if (!i2c_service_lock()) return;
 
     auto res = lgfx::i2c::readRegister8(TAB5_I2C_PORT, PI4IO1_ADDR,
                                         PI4IO_REG_IN_STA, PI4IO_I2C_FREQ);
-    if (res.has_error()) return;
+    if (res.has_error()) {
+        i2c_service_unlock();
+        return;
+    }
     bool hp = (res.value() & PI4IO_BIT_HP_DETECT) != 0;
 
     if (hp == g_headphone_in) {
         g_hp_debounce = 0;
-        return;
+    } else if (++g_hp_debounce >= 2) {
+        g_hp_debounce = 0;
+        g_headphone_in = hp;
+        hp_apply_speaker(hp);
     }
-    if (++g_hp_debounce < 2) return;
-
-    g_hp_debounce = 0;
-    g_headphone_in = hp;
-    hp_apply_speaker(hp);
+    i2c_service_unlock();
 }
 
 // ============================================================
@@ -2413,6 +2591,13 @@ static void display_p4_task(void *arg) {
 }
 
 extern "C" fmrb_err_t display_p4_task_init(void) {
+    if (!g_i2c_mutex) {
+        g_i2c_mutex = xSemaphoreCreateMutex();
+        if (!g_i2c_mutex) {
+            FMRB_LOGE(TAG, "Failed to create I2C mutex");
+            return FMRB_ERR_FAILED;
+        }
+    }
     BaseType_t ok = xTaskCreatePinnedToCore(display_p4_task, "display_p4",
                                             16384, NULL, 5, NULL, 1);
     if (ok != pdPASS) {
@@ -2431,9 +2616,10 @@ extern "C" bool display_p4_is_ready(void) {
 }
 
 extern "C" int display_p4_get_touch(int16_t *out_x, int16_t *out_y) {
-    if (!g_lcd_ready) return 0;
+    if (!i2c_service_lock()) return 0;
     lgfx::touch_point_t tp;
     int count = g_lcd.getTouch(&tp, 1);
+    i2c_service_unlock();
     if (count > 0) {
         *out_x = tp.x;
         *out_y = tp.y;

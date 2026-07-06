@@ -683,6 +683,18 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, payload_size);
             return (int)payload_size;
         }
+        case GFX_CMD_SET_CANVAS_VIEWPORT: {
+            fmrb_link_graphics_set_canvas_viewport_t c = {
+                .canvas_id = cmd->canvas_id,
+                .src_x = cmd->params.set_canvas_viewport.src_x,
+                .src_y = cmd->params.set_canvas_viewport.src_y,
+                .view_w = cmd->params.set_canvas_viewport.view_w,
+                .view_h = cmd->params.set_canvas_viewport.view_h,
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_SET_CANVAS_VIEWPORT;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         case GFX_CMD_CREATE_SPRITE_INSTANCE: {
             fmrb_link_graphics_create_sprite_instance_t c;
             memset(&c, 0, sizeof(c));

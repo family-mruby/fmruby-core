@@ -207,6 +207,30 @@ fmrb_gfx_err_t fmrb_gfx_set_composite_regions(
     const fmrb_gfx_composite_region_t *regions,
     uint8_t count);
 
+/**
+ * @brief Set the composite source viewport of a canvas (asynchronous).
+ *
+ * The compositor shows only the (src_x, src_y, view_w, view_h) sub-rect of
+ * the canvas at its push position, which turns a large canvas into a
+ * hardware-scrolled surface: updating the viewport is a register write, no
+ * redraw. view_w == 0 clears the viewport (full-canvas composite, default).
+ * Implemented by the Modern (P4/PPA) backend only; apps must gate usage on
+ * the platform.
+ *
+ * @param context Graphics context
+ * @param canvas_handle Canvas to update
+ * @param src_x Left edge of the visible sub-rect inside the canvas
+ * @param src_y Top edge of the visible sub-rect inside the canvas
+ * @param view_w Visible width (0 = clear viewport)
+ * @param view_h Visible height
+ * @return FMRB_GFX_OK on success
+ */
+fmrb_gfx_err_t fmrb_gfx_set_canvas_viewport(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_handle,
+    uint16_t src_x, uint16_t src_y,
+    uint16_t view_w, uint16_t view_h);
+
 // Cursor control API (global resource)
 
 // Sprite API

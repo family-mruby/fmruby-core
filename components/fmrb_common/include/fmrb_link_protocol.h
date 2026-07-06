@@ -142,6 +142,7 @@ typedef enum {
     FMRB_LINK_GFX_SET_CANVAS_VISIBLE = 0x54,
     FMRB_LINK_GFX_GET_PIXEL = 0x55,
     FMRB_LINK_GFX_SET_COMPOSITE_REGIONS = 0x56,
+    FMRB_LINK_GFX_SET_CANVAS_VIEWPORT = 0x57,
 
     // Cursor control (global resource, no canvas_id)
     FMRB_LINK_GFX_CURSOR_SET_POSITION = 0x60,
@@ -405,6 +406,21 @@ typedef struct __attribute__((packed)) {
     uint8_t _pad;
     fmrb_link_graphics_composite_region_t regions[FMRB_LINK_MAX_COMPOSITE_REGIONS];
 } fmrb_link_graphics_set_composite_regions_t;
+
+// SET_CANVAS_VIEWPORT: composite only the (src_x, src_y, view_w, view_h)
+// sub-rect of the canvas at its push position instead of the full buffer.
+// The canvas is addressed as a torus: the source rect wraps around the
+// canvas edges, so a ring-buffer canvas barely larger than the viewport can
+// scroll an arbitrarily large world while the app stamps newly exposed
+// tiles on the hidden side. view_w == 0 clears the viewport (full-canvas
+// composite, the default). view_w/view_h are clamped to the canvas size.
+// Supported by the Modern (P4/PPA) backend only; apps must gate on
+// FmrbConst::CHIP_MODEL.
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    uint16_t src_x, src_y;
+    uint16_t view_w, view_h;
+} fmrb_link_graphics_set_canvas_viewport_t;
 
 // GET_PIXEL: read a single RGB332 pixel from a canvas back buffer.
 typedef struct __attribute__((packed)) {
