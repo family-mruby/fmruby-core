@@ -223,3 +223,82 @@ class TileMap
     nil
   end
 end
+
+# Ring-buffer tile renderer for the hardware-scrolled canvas viewport
+# (FmrbGfx#set_viewport, Modern/P4 only).
+#
+# The backing canvas is a small torus (viewport + 1 tile of margin, e.g.
+# 12x12 tiles for a 176x176 viewport). Each world tile column/row maps to
+# buffer slot (tile % buf_tiles); as the camera moves, only the tiles that
+# newly enter the visible range are stamped into their slot on the hidden
+# side of the torus. Per frame this is usually zero stamps, at most one
+# column/row worth when the camera crosses a tile boundary.
+#
+# Usage:
+#   ring = TileRing.new(map, sheet, tiles_w: 12, tiles_h: 12)
+#   # per frame:
+#   ring.ensure_view(view_x, view_y, view_w, view_h)
+#   map_gfx.set_viewport(view_x % ring.buf_w, view_y % ring.buf_h, view_w, view_h)
+class TileRing
+  attr_reader :buf_w, :buf_h
+
+  # @param map     [TileMap]   world data
+  # @param sheet   [TileSheet] tilesheet bound to the ring canvas gfx
+  # @param tiles_w [Integer]   buffer width in tiles (>= visible tiles + 1)
+  # @param tiles_h [Integer]   buffer height in tiles
+  def initialize(map, sheet, tiles_w:, tiles_h:)
+    @map = map
+    @sheet = sheet
+    @tw = tiles_w
+    @th = tiles_h
+    @ts = map.tile_size
+    @buf_w = @tw * @ts
+    @buf_h = @th * @ts
+    # stamped[slot_y][slot_x] = world tile key currently in that slot (-1 = empty)
+    @stamped = Array.new(@th) { Array.new(@tw, -1) }
+  end
+
+  # Stamp any missing tiles for the world-pixel rect (view_x, view_y, w, h).
+  # Cheap when nothing changed: skips entirely while the visible tile range
+  # stays the same as the previous call.
+  def ensure_view(view_x, view_y, view_w, view_h)
+    ts = @ts
+    tx0 = view_x / ts
+    ty0 = view_y / ts
+    tx1 = (view_x + view_w - 1) / ts
+    ty1 = (view_y + view_h - 1) / ts
+    return if tx0 == @last_tx0 && ty0 == @last_ty0 &&
+              tx1 == @last_tx1 && ty1 == @last_ty1
+    @last_tx0 = tx0
+    @last_ty0 = ty0
+    @last_tx1 = tx1
+    @last_ty1 = ty1
+
+    map_w = @map.width
+    layer_count = @map.layers.size
+    ty = ty0
+    while ty <= ty1
+      row = @stamped[ty % @th]
+      dst_y = (ty % @th) * ts
+      tx = tx0
+      while tx <= tx1
+        key = ty * map_w + tx
+        sx = tx % @tw
+        if row[sx] != key
+          # Stamp every layer in order. NOTE: a slot is not cleared first,
+          # so maps whose bottom layer has empty (nil) cells would leave
+          # stale pixels; fmrb_map ground layers are fully populated.
+          li = 0
+          while li < layer_count
+            @sheet.stamp(@map.tile_at(tx, ty, layer: li),
+                         dst_x: sx * ts, dst_y: dst_y)
+            li += 1
+          end
+          row[sx] = key
+        end
+        tx += 1
+      end
+      ty += 1
+    end
+  end
+end

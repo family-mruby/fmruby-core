@@ -27,6 +27,7 @@ class FmrbGfx
   # libraries (e.g. P5) can query the drawable area without an extra
   # round trip to the graphics board.
   attr_reader :canvas_width, :canvas_height
+  attr_reader :canvas_id
 
   # Pixel metrics for the fonts currently supported by the graphics
   # backend (LovyanGFX on the WROVER side). All supported fonts are
@@ -46,6 +47,7 @@ class FmrbGfx
   # @param height [Integer] Canvas height (optional, for :center support)
   def initialize(canvas_id, width: 0, height: 0)
     _init(canvas_id)
+    @canvas_id = canvas_id
     @canvas_width = width
     @canvas_height = height
     # LovyanGFX boots a fresh target with Font0 and text size 1.
@@ -318,6 +320,25 @@ class FmrbGfx
       flat << src_x << src_y << dst_x << dst_y << w << h << trans
     end
     _set_composite_regions(flat)
+    self
+  end
+
+  # Composite source viewport (hardware scroll register, Modern/P4 only):
+  # show only the (src_x, src_y, w, h) sub-rect of this canvas at its push
+  # position. The canvas is addressed as a torus (the source rect wraps
+  # around the canvas edges), so a ring-buffer canvas slightly larger than
+  # the viewport can scroll an arbitrarily large world: pass the world
+  # scroll offset directly and stamp newly exposed tiles as it moves (see
+  # TileRing). Gate usage on FmrbConst::CHIP_MODEL == "ESP32-P4"; the
+  # Retro backend ignores this command.
+  def set_viewport(src_x, src_y, w, h)
+    _set_canvas_viewport(src_x, src_y, w, h)
+    self
+  end
+
+  # Restore full-canvas compositing (clears the viewport).
+  def clear_viewport
+    _set_canvas_viewport(0, 0, 0, 0)
     self
   end
 

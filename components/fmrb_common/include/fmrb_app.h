@@ -81,6 +81,12 @@ typedef struct fmrb_app_task_context_s {
     uint16_t              canvas_id;         // Canvas ID (0 for headless apps)
     bool                  has_background_canvas; // Desktop only: has additional bg canvas (z=0)
     uint16_t              bg_canvas_id;      // Background canvas ID (0 if none)
+    // Extra canvases created by the app at runtime (FmrbApp#create_canvas_gfx,
+    // e.g. a hardware-scrolled map layer). Registered here so the kernel's
+    // suspend/resume visibility control and the C-level cleanup on kill/crash
+    // cover them like the main canvas (0 = empty slot).
+#define FMRB_APP_MAX_EXTRA_CANVAS 2
+    uint16_t              extra_canvas_ids[FMRB_APP_MAX_EXTRA_CANVAS];
     bool                  fullscreen;        // Fullscreen app flag
     bool                  resizable;         // Allow window resize (default: false)
     uint16_t              min_window_width;  // Per-app minimum width (0 = use global default)

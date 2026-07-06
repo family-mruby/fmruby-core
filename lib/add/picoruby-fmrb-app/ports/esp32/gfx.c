@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdint.h>
 #include <mruby.h>
 #include <mruby/class.h>
 #include <mruby/data.h>
@@ -665,9 +666,16 @@ static mrb_value mrb_gfx_draw_text_hybrid(mrb_state *mrb, mrb_value self)
     return draw_text_impl(mrb, self, 1);
 }
 
-// Graphics#present
+// Graphics#present(x = nil, y = nil)
+// Without arguments the canvas is presented at the app window position
+// (backward-compatible default). With explicit coordinates the canvas is
+// presented at that absolute position: used for extra canvases created via
+// FmrbApp#create_canvas_gfx, which are not tracked by the window manager.
 static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
 {
+    mrb_int px = INT32_MIN, py = INT32_MIN;
+    mrb_get_args(mrb, "|ii", &px, &py);
+
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
         FMRB_LOGE(TAG, "present() failed: Graphics not initialized");
@@ -681,13 +689,15 @@ static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "No app context");
     }
 
-    // Send PRESENT command to Host Task with window position
+    bool explicit_pos = (px != INT32_MIN && py != INT32_MIN);
+
+    // Send PRESENT command to Host Task with the target position
     gfx_cmd_t cmd = {
         .cmd_type = GFX_CMD_PRESENT,
         .canvas_id = data->canvas_id,
         .params.present = {
-            .x = (int16_t)ctx->window_pos_x,
-            .y = (int16_t)ctx->window_pos_y,
+            .x = explicit_pos ? (int16_t)px : (int16_t)ctx->window_pos_x,
+            .y = explicit_pos ? (int16_t)py : (int16_t)ctx->window_pos_y,
             .transparent_color = 0xFF  // No transparency by default
         }
     };
@@ -1469,6 +1479,26 @@ static mrb_value mrb_gfx_delete_sprite_instance(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// Graphics#_set_canvas_viewport(src_x, src_y, view_w, view_h)
+// Composite source viewport of this canvas (hardware scroll register).
+// view_w == 0 clears. Implemented by the Modern (P4/PPA) backend only.
+static mrb_value mrb_gfx_set_canvas_viewport(mrb_state *mrb, mrb_value self)
+{
+    mrb_int src_x, src_y, view_w, view_h;
+    mrb_get_args(mrb, "iiii", &src_x, &src_y, &view_w, &view_h);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+
+    fmrb_gfx_err_t ret = fmrb_gfx_set_canvas_viewport(
+        data->ctx, data->canvas_id,
+        (uint16_t)src_x, (uint16_t)src_y,
+        (uint16_t)view_w, (uint16_t)view_h);
+    if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE(TAG, "set_canvas_viewport failed: %d", ret);
+    }
+    return self;
+}
+
 static mrb_value mrb_gfx_sprite_move(mrb_state *mrb, mrb_value self)
 {
     mrb_int instance_id, x, y;
@@ -1585,7 +1615,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     // `mixed:` keyword can route to the hybrid variant.
     mrb_define_method(mrb, gfx_class, "_draw_text",        mrb_gfx_draw_text,        MRB_ARGS_ARG(4, 1));
     mrb_define_method(mrb, gfx_class, "_draw_text_hybrid", mrb_gfx_draw_text_hybrid, MRB_ARGS_ARG(4, 1));
-    mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_NONE());
+    mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_OPT(2));
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());
 
     // File transfer API
@@ -1608,6 +1638,10 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     // Composite regions (sub-rect compositing). Pair with the higher-level
     // Ruby wrapper `set_composite_regions` defined in fmrb-gfx.rb.
     mrb_define_method(mrb, gfx_class, "_set_composite_regions", mrb_gfx_set_composite_regions, MRB_ARGS_REQ(1));
+
+    // Canvas viewport (hardware scroll register; P4/PPA backend only).
+    // Pair with the Ruby wrappers `set_viewport` / `clear_viewport`.
+    mrb_define_method(mrb, gfx_class, "_set_canvas_viewport", mrb_gfx_set_canvas_viewport, MRB_ARGS_REQ(4));
 
     // Sprite API
     mrb_define_method(mrb, gfx_class, "_create_sprite_image", mrb_gfx_create_sprite_image, MRB_ARGS_REQ(4));

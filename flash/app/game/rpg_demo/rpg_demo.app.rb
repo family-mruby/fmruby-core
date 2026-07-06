@@ -66,14 +66,32 @@ class RpgDemoApp < FmrbApp
     splash("Transferring assets...")
     transfer_assets
 
-    @sheet = TileSheet.new(@gfx, cache_path_for(SHEET_SRC),
-                           cols: @map.tilesheet_cols,
-                           tile_size: @map.tile_size)
-
-    load_player_frames
-
     @map_w = @map.width  * TILE
     @map_h = @map.height * TILE
+
+    # Modern (P4) has a PPA-composited display with torus canvas viewports:
+    # keep a small ring-buffer canvas (viewport + 1 tile of margin), stamp
+    # only the tiles that newly enter the visible range as the camera moves,
+    # and scroll with set_viewport (a register update) instead of
+    # re-stamping ~150 tiles per frame. Retro keeps the classic per-frame
+    # tile redraw below.
+    @hw_scroll = (FmrbConst::CHIP_MODEL == "ESP32-P4")
+
+    if @hw_scroll
+      buf_tiles = VIEWPORT_W / TILE + 1   # 12x12 tiles for the 176px viewport
+      @map_gfx = create_canvas_gfx(width: buf_tiles * TILE,
+                                   height: buf_tiles * TILE)
+      @sheet = TileSheet.new(@map_gfx, cache_path_for(SHEET_SRC),
+                             cols: @map.tilesheet_cols,
+                             tile_size: @map.tile_size)
+      @ring = TileRing.new(@map, @sheet, tiles_w: buf_tiles, tiles_h: buf_tiles)
+    else
+      @sheet = TileSheet.new(@gfx, cache_path_for(SHEET_SRC),
+                             cols: @map.tilesheet_cols,
+                             tile_size: @map.tile_size)
+    end
+
+    load_player_frames
 
     @player_tx = @map.spawn_x
     @player_ty = @map.spawn_y
@@ -96,9 +114,20 @@ class RpgDemoApp < FmrbApp
     @last_event = @map.event_at(@player_tx, @player_ty)
 
     @gfx.fill_rect(0, 0, @user_area_width, @user_area_height, FmrbGfx::BLACK)
-    @player = SpriteInstance.new(@gfx, @player_frames,
-                                 x: MAP_ORIGIN_X + @player_px - @view_x,
-                                 y: MAP_ORIGIN_Y + @player_py - @view_y, z: 1)
+    if @hw_scroll
+      # Player rides the map canvas: coordinates are viewport-relative
+      @player = SpriteInstance.new(@map_gfx, @player_frames,
+                                   x: @player_px - @view_x,
+                                   y: @player_py - @view_y, z: 1)
+      @ring.ensure_view(@view_x, @view_y, VIEWPORT_W, VIEWPORT_H)
+      @map_gfx.set_viewport(@view_x % @ring.buf_w, @view_y % @ring.buf_h,
+                            VIEWPORT_W, VIEWPORT_H)
+      @map_gfx.present(MAP_ORIGIN_X, MAP_ORIGIN_Y)
+    else
+      @player = SpriteInstance.new(@gfx, @player_frames,
+                                   x: MAP_ORIGIN_X + @player_px - @view_x,
+                                   y: MAP_ORIGIN_Y + @player_py - @view_y, z: 1)
+    end
     apply_facing_frame
     draw_status
     update_camera_and_draw
@@ -126,6 +155,10 @@ class RpgDemoApp < FmrbApp
   end
 
   def on_update
+    # Resume walking while a direction key is held: covers chains broken by
+    # a wall bump (slide ends blocked, then the player turns free) or any
+    # missed key event.
+    try_slide(@held_dx, @held_dy) if @slide_step.nil? && @held_dx
     if @slide_step
       advance_slide
       FRAME_MS
@@ -188,10 +221,13 @@ class RpgDemoApp < FmrbApp
   end
 
   # Load each player frame from its own 16x16 BMP into a separate SpriteImage.
+  # With hardware scroll the frames live on the map canvas (the player
+  # instance rides that canvas and everything is freed with it).
   def load_player_frames
+    target = @hw_scroll ? @map_gfx : @gfx
     @player_frames = []
     PLAYER_FRAME_NAMES.each do |name|
-      frm = SpriteImage.new(@gfx, width: TILE, height: TILE,
+      frm = SpriteImage.new(target, width: TILE, height: TILE,
                             transparent_color: 0, use_transparent: true)
       frm.load_bmp(cache_path_for("#{APP_DIR}/#{name}"))
       @player_frames << frm
@@ -245,14 +281,24 @@ class RpgDemoApp < FmrbApp
   def update_camera_and_draw
     @view_x = clamp(@player_px + TILE / 2 - VIEWPORT_W / 2, 0, @map_w - VIEWPORT_W)
     @view_y = clamp(@player_py + TILE / 2 - VIEWPORT_H / 2, 0, @map_h - VIEWPORT_H)
-    @gfx.fill_rect(MAP_ORIGIN_X, MAP_ORIGIN_Y, VIEWPORT_W, VIEWPORT_H, FmrbGfx::BLACK)
-    @map.render_view(@sheet,
-                     origin_x: MAP_ORIGIN_X, origin_y: MAP_ORIGIN_Y,
-                     view_x: @view_x, view_y: @view_y,
-                     view_w: VIEWPORT_W, view_h: VIEWPORT_H)
-    @player.move(MAP_ORIGIN_X + @player_px - @view_x,
-                 MAP_ORIGIN_Y + @player_py - @view_y)
-    @gfx.present
+    if @hw_scroll
+      # PPA scroll: stamp only newly exposed tiles (usually none), then
+      # move the composite source window over the torus canvas
+      @ring.ensure_view(@view_x, @view_y, VIEWPORT_W, VIEWPORT_H)
+      @map_gfx.set_viewport(@view_x % @ring.buf_w, @view_y % @ring.buf_h,
+                            VIEWPORT_W, VIEWPORT_H)
+      @player.move(@player_px - @view_x, @player_py - @view_y)
+      @gfx.present
+    else
+      @gfx.fill_rect(MAP_ORIGIN_X, MAP_ORIGIN_Y, VIEWPORT_W, VIEWPORT_H, FmrbGfx::BLACK)
+      @map.render_view(@sheet,
+                       origin_x: MAP_ORIGIN_X, origin_y: MAP_ORIGIN_Y,
+                       view_x: @view_x, view_y: @view_y,
+                       view_w: VIEWPORT_W, view_h: VIEWPORT_H)
+      @player.move(MAP_ORIGIN_X + @player_px - @view_x,
+                   MAP_ORIGIN_Y + @player_py - @view_y)
+      @gfx.present
+    end
   end
 
   def fire_event_at(tx, ty)

@@ -690,6 +690,88 @@ static mrb_value mrb_fmrb_app_set_window_param(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// FmrbApp#_create_canvas(w, h, z_offset, use_transparent, transparent_color) -> canvas_id
+//
+// Create an extra canvas owned by this app (e.g. a hardware-scrolled map
+// layer used with FmrbGfx#set_viewport). The canvas is registered in the
+// app context so kernel suspend/resume visibility control and the C-level
+// cleanup on kill/crash cover it like the main canvas.
+//
+// Limitation: the window manager does not re-assign the z-order of extra
+// canvases on focus changes; intended for fullscreen apps.
+static mrb_value mrb_fmrb_app_create_canvas(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    mrb_int w, h, z_offset, use_transparent, transparent_color;
+    mrb_get_args(mrb, "iiiii", &w, &h, &z_offset, &use_transparent, &transparent_color);
+
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
+    }
+    if (w <= 0 || h <= 0 || w > 4096 || h > 4096) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid canvas size");
+    }
+
+    int slot = -1;
+    for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
+        if (ctx->extra_canvas_ids[i] == 0) { slot = i; break; }
+    }
+    if (slot < 0) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "Extra canvas limit reached (%d)",
+                   FMRB_APP_MAX_EXTRA_CANVAS);
+    }
+
+    fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+    if (!gfx_ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics context not initialized");
+    }
+
+    fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
+    fmrb_gfx_err_t ret = fmrb_gfx_create_canvas(
+        gfx_ctx,
+        (uint16_t)w,
+        (uint16_t)h,
+        (int16_t)(ctx->z_order + z_offset),
+        use_transparent != 0,
+        (uint8_t)transparent_color,
+        &canvas_id
+    );
+    if (ret != FMRB_GFX_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to create canvas: %d", ret);
+    }
+
+    ctx->extra_canvas_ids[slot] = canvas_id;
+    FMRB_LOGI(TAG, "Created extra canvas %u (%dx%d) for app %s",
+              canvas_id, (int)w, (int)h, ctx->app_name);
+    return mrb_fixnum_value(canvas_id);
+}
+
+// FmrbApp#_delete_canvas(canvas_id) -> nil
+static mrb_value mrb_fmrb_app_delete_canvas(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    mrb_int canvas_id;
+    mrb_get_args(mrb, "i", &canvas_id);
+
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
+    }
+
+    for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
+        if (ctx->extra_canvas_ids[i] == (uint16_t)canvas_id) {
+            fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+            if (gfx_ctx) {
+                fmrb_gfx_delete_canvas(gfx_ctx, (fmrb_canvas_handle_t)canvas_id);
+            }
+            ctx->extra_canvas_ids[i] = 0;
+            return mrb_nil_value();
+        }
+    }
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "Not an extra canvas of this app");
+}
+
 // FmrbApp#_is_file_app -> true/false
 static mrb_value mrb_fmrb_app_is_file_app(mrb_state *mrb, mrb_value self)
 {
@@ -1241,6 +1323,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_set_window_param", mrb_fmrb_app_set_window_param, MRB_ARGS_REQ(2));
 
     mrb_define_method(mrb, app_class, "_is_file_app", mrb_fmrb_app_is_file_app, MRB_ARGS_NONE());
+    mrb_define_method(mrb, app_class, "_create_canvas", mrb_fmrb_app_create_canvas, MRB_ARGS_REQ(5));
+    mrb_define_method(mrb, app_class, "_delete_canvas", mrb_fmrb_app_delete_canvas, MRB_ARGS_REQ(1));
 
     // Class methods
     mrb_define_class_method(mrb, app_class, "ps", mrb_fmrb_app_s_ps, MRB_ARGS_NONE());

@@ -954,6 +954,17 @@ cleanup:
         }
         ctx->bg_canvas_id = 0;
     }
+    for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
+        if (ctx->extra_canvas_ids[i] != 0) {
+            fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+            if (gfx_ctx) {
+                FMRB_LOGI(TAG, "[%s] C cleanup: deleting extra canvas %u",
+                          ctx->app_name, ctx->extra_canvas_ids[i]);
+                fmrb_gfx_delete_canvas(gfx_ctx, ctx->extra_canvas_ids[i]);
+            }
+            ctx->extra_canvas_ids[i] = 0;
+        }
+    }
 
     // Delete message queue
     fmrb_msg_delete_queue(ctx->app_id);
@@ -1485,6 +1496,8 @@ bool fmrb_app_suspend(int32_t id) {
     fmrb_task_handle_t task = ctx->task;
     uint16_t canvas_id = ctx->canvas_id;
     uint16_t bg_canvas_id = ctx->bg_canvas_id;
+    uint16_t extra_ids[FMRB_APP_MAX_EXTRA_CANVAS];
+    memcpy(extra_ids, ctx->extra_canvas_ids, sizeof(extra_ids));
     bool has_bg = ctx->has_background_canvas;
     bool headless = ctx->headless;
     fmrb_semaphore_give(g_ctx_lock);
@@ -1508,6 +1521,17 @@ bool fmrb_app_suspend(int32_t id) {
             );
             if (has_bg && bg_canvas_id > 0) {
                 cmd.canvas_id = bg_canvas_id;
+                fmrb_transport_send(
+                    FMRB_LINK_TYPE_GRAPHICS,
+                    FMRB_LINK_GFX_SET_CANVAS_VISIBLE,
+                    (const uint8_t*)&cmd,
+                    sizeof(cmd),
+                    FMRB_TRANSPORT_TIMEOUT_DEFAULT
+                );
+            }
+            for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
+                if (extra_ids[i] == 0) continue;
+                cmd.canvas_id = extra_ids[i];
                 fmrb_transport_send(
                     FMRB_LINK_TYPE_GRAPHICS,
                     FMRB_LINK_GFX_SET_CANVAS_VISIBLE,
@@ -1542,6 +1566,8 @@ bool fmrb_app_resume(int32_t id) {
     fmrb_task_handle_t task = ctx->task;
     uint16_t canvas_id = ctx->canvas_id;
     uint16_t bg_canvas_id = ctx->bg_canvas_id;
+    uint16_t extra_ids[FMRB_APP_MAX_EXTRA_CANVAS];
+    memcpy(extra_ids, ctx->extra_canvas_ids, sizeof(extra_ids));
     bool has_bg = ctx->has_background_canvas;
     bool headless = ctx->headless;
     fmrb_semaphore_give(g_ctx_lock);
@@ -1565,6 +1591,17 @@ bool fmrb_app_resume(int32_t id) {
             );
             if (has_bg && bg_canvas_id > 0) {
                 cmd.canvas_id = bg_canvas_id;
+                fmrb_transport_send(
+                    FMRB_LINK_TYPE_GRAPHICS,
+                    FMRB_LINK_GFX_SET_CANVAS_VISIBLE,
+                    (const uint8_t*)&cmd,
+                    sizeof(cmd),
+                    FMRB_TRANSPORT_TIMEOUT_DEFAULT
+                );
+            }
+            for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
+                if (extra_ids[i] == 0) continue;
+                cmd.canvas_id = extra_ids[i];
                 fmrb_transport_send(
                     FMRB_LINK_TYPE_GRAPHICS,
                     FMRB_LINK_GFX_SET_CANVAS_VISIBLE,

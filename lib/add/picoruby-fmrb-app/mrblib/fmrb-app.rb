@@ -447,6 +447,20 @@ class FmrbApp
     self
   end
 
+  # Create an extra canvas owned by this app and return an FmrbGfx bound to
+  # it. Deleted automatically on app exit (also on crash/kill). Intended for
+  # fullscreen apps (the window manager does not track extra canvases across
+  # focus changes). Position and show it with gfx.present(x, y); combine
+  # with gfx.set_viewport for hardware-scrolled layers (Modern/P4 only).
+  def create_canvas_gfx(width:, height:, z_offset: 1, transparent: false, transparent_color: 0)
+    id = _create_canvas(width, height, z_offset, transparent ? 1 : 0, transparent_color)
+    FmrbGfx.new(id, width: width, height: height)
+  end
+
+  def delete_canvas_gfx(gfx)
+    _delete_canvas(gfx.canvas_id)
+  end
+
   def destroy
     Log.debug("destroy() called")
 
