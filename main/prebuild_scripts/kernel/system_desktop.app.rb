@@ -14,6 +14,7 @@ class SystemDesktopApp < FmrbApp
   include ConfirmDialogMixin
   include ConfigDialogMixin
   include StorageDialogMixin
+  include NetworkDialogMixin
   include ErrorDialogMixin
   include ClockSettingMixin
   include TaskbarMixin
@@ -40,6 +41,7 @@ class SystemDesktopApp < FmrbApp
   # Dropdown menu items. `:key` drives both the dispatch in handle_dropdown_click
   # and the localized label resolved via FmrbI18n.t(:key) at draw time, so the
   # menu picks up the system language ("ja" / "en") from system_conf.toml.
+  # Network is Modern-only (ESP32-P4 has WiFi via the C6 coprocessor).
   # Reset is ESP32-only (esp_restart); on Linux the host process just exits.
   DROPDOWN_ITEMS = [
     { key: :launcher },
@@ -49,6 +51,7 @@ class SystemDesktopApp < FmrbApp
     { key: :set_clock },
     { key: :config },
     { key: :storage },
+  ] + (FmrbConst::CHIP_MODEL == "ESP32-P4" ? [{ key: :network }] : []) + [
     { key: :about },
   ] + (FmrbConst::PLATFORM == "esp32" ? [{ key: :reset }] : [])
 
@@ -137,6 +140,10 @@ class SystemDesktopApp < FmrbApp
     @cfg_selected = -1
     @cfg_status = nil
     @cfg_status_until = 0
+
+    # Network dialog state (Modern only)
+    @net_open = false
+    @net_info = nil
 
     # Boot animation state
     @boot_anim_state = :init  # :init -> :revealing -> :wait_to_finish -> :done
@@ -450,6 +457,7 @@ class SystemDesktopApp < FmrbApp
     draw_clock_setting if @clk_open
     draw_config_dialog if @cfg_open
     draw_storage_dialog if @str_open
+    draw_network_dialog if @net_open
     draw_error_dialog if @error_dlg_open
     draw_about_dialog if @about_open
     draw_tbd_dialog if @tbd_open
@@ -614,6 +622,10 @@ class SystemDesktopApp < FmrbApp
       regions << { dst_x: @str_x, dst_y: @str_y,
                    w: StorageDialogMixin::STR_W, h: StorageDialogMixin::STR_H, transparent: false }
     end
+    if @net_open
+      regions << { dst_x: @net_x, dst_y: @net_y,
+                   w: NetworkDialogMixin::NET_W, h: NetworkDialogMixin::NET_H, transparent: false }
+    end
     if @about_open
       regions << { dst_x: @about_x, dst_y: @about_y,
                    w: AboutDialogMixin::ABOUT_W, h: @about_h, transparent: false }
@@ -648,6 +660,7 @@ class SystemDesktopApp < FmrbApp
     if @counter % 3 == 0
       update_taskbar_apps
       tick_config_dialog if @cfg_open
+      tick_network_dialog if @net_open
       draw_foreground
     end
 
@@ -892,6 +905,16 @@ class SystemDesktopApp < FmrbApp
       return
     end
 
+    # Network dialog
+    if @net_open
+      if hit_network_dialog?(x, y)
+        handle_network_dialog_click(x, y)
+        return
+      end
+      close_network_dialog
+      return
+    end
+
     # File selector has priority
     if @file_selector_open
       if hit_file_selector?(x, y)
@@ -972,6 +995,8 @@ class SystemDesktopApp < FmrbApp
       open_config_dialog
     when :storage
       open_storage_dialog
+    when :network
+      open_network_dialog
     when :reset
       open_confirm_dialog(FmrbI18n.t(:reboot_confirm), "reboot", {})
     else

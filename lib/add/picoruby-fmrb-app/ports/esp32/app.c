@@ -40,6 +40,12 @@
 #include <stdlib.h>
 #endif
 
+#if defined(FMRB_HW_MODERN)
+// WiFi STA lives on the Modern (ESP32-P4) target only; on Retro/Linux
+// FmrbApp.wifi_info returns nil (see below).
+#include "wifi_task.h"
+#endif
+
 static const char* TAG = "app";
 
 // Helper function: Check mruby ci pointer validity
@@ -1157,6 +1163,37 @@ static mrb_value mrb_fmrb_app_s_reboot(mrb_state *mrb, mrb_value klass)
     return mrb_nil_value();  // unreachable
 }
 
+// FmrbApp.wifi_info() -> Hash {connected:, ip:, ssid:, hostname:} or nil.
+// Modern (ESP32-P4) only: the WiFi STA runs locally on the P4 (radio on the
+// C6 coprocessor). On Retro / Linux there is no WiFi, so this returns nil and
+// the system desktop hides the Network menu entry accordingly.
+static mrb_value mrb_fmrb_app_s_wifi_info(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+#if defined(FMRB_HW_MODERN)
+    char ip[16];
+    char ssid[33];
+    char host[32];
+    wifi_get_ip_str(ip, sizeof(ip));
+    wifi_get_ssid(ssid, sizeof(ssid));
+    wifi_get_hostname(host, sizeof(host));
+
+    mrb_value hash = mrb_hash_new_capa(mrb, 4);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "connected")),
+                 mrb_bool_value(wifi_is_connected()));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "ip")),
+                 mrb_str_new_cstr(mrb, ip));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "ssid")),
+                 mrb_str_new_cstr(mrb, ssid));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "hostname")),
+                 mrb_str_new_cstr(mrb, host));
+    return hash;
+#else
+    (void)mrb;
+    return mrb_nil_value();
+#endif
+}
+
 // FmrbApp._clear_cache(path) -> Hash {ok:, deleted:, status:}
 // Sends FILE_CMD_RMDIR via host_task. WROVER enforces that path resolves
 // inside its cache root, so callers cannot target arbitrary directories. The
@@ -1338,6 +1375,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "enable_cursor", mrb_fmrb_app_s_enable_cursor, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_cursor_visible", mrb_fmrb_app_s_set_cursor_visible, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "wifi_info", mrb_fmrb_app_s_wifi_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_clear_cache", mrb_fmrb_app_s_clear_cache, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "usb_devices", mrb_fmrb_app_s_usb_devices, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "hid_raw_subscribe", mrb_fmrb_app_s_hid_raw_subscribe, MRB_ARGS_REQ(1));

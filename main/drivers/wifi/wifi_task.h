@@ -42,6 +42,16 @@ bool wifi_is_connected(void);
  */
 void wifi_get_ip_str(char *buf, size_t buf_len);
 
+/**
+ * @brief Copy the configured SSID (empty string when WiFi is unconfigured).
+ */
+void wifi_get_ssid(char *buf, size_t buf_len);
+
+/**
+ * @brief Copy the mDNS hostname (defaults to "fmruby").
+ */
+void wifi_get_hostname(char *buf, size_t buf_len);
+
 #ifdef __cplusplus
 }
 #endif

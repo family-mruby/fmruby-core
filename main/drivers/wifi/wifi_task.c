@@ -50,6 +50,7 @@ static volatile bool s_connected = false;
 static esp_netif_t *s_netif = NULL;
 static char s_ip_str[16] = "0.0.0.0";
 static char s_hostname[32] = "fmruby";
+static char s_ssid[33] = "";
 
 static void reconnect_timer_cb(void *arg)
 {
@@ -145,6 +146,7 @@ fmrb_err_t wifi_task_init(void)
     strlcpy((char *)sta_cfg.sta.ssid, ssid, sizeof(sta_cfg.sta.ssid));
     strlcpy((char *)sta_cfg.sta.password, pass, sizeof(sta_cfg.sta.password));
     strlcpy(s_hostname, host, sizeof(s_hostname));
+    strlcpy(s_ssid, ssid, sizeof(s_ssid));
     toml_free(root);
 
     // --- Make sure the esp_hosted transport is up before any WiFi RPC
@@ -245,4 +247,14 @@ bool wifi_is_connected(void)
 void wifi_get_ip_str(char *buf, size_t buf_len)
 {
     strlcpy(buf, s_ip_str, buf_len);
+}
+
+void wifi_get_ssid(char *buf, size_t buf_len)
+{
+    strlcpy(buf, s_ssid, buf_len);
+}
+
+void wifi_get_hostname(char *buf, size_t buf_len)
+{
+    strlcpy(buf, s_hostname, buf_len);
 }
