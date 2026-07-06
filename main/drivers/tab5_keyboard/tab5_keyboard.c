@@ -75,14 +75,12 @@ static void tab5_keyboard_task(void *arg) {
         uint8_t status = 0;
         if (!reg_read(KBD_REG_INT_STA, &status)) continue;
         if (!(status & 0x02)) {
-            // No HID event (bit1 = HID mode trigger)
-            // Check if key was released (no event, but previous key was pressed)
-            if (g_prev_keycode != 0) {
-                uint8_t mod_fmrb = hid_mod_to_fmrb(g_prev_modifier);
-                fmrb_host_send_key_up(g_prev_keycode, g_prev_keycode, mod_fmrb);
-                g_prev_keycode = 0;
-                g_prev_modifier = 0;
-            }
+            // No HID event this poll (bit1 = HID mode trigger). The keyboard
+            // is event-driven: a held key produces no events between press
+            // and release, so "no event" must NOT be treated as a release
+            // (that used to synthesize key_up 50 ms after every press and
+            // broke hold-to-move in games). The release arrives as an
+            // explicit event with keycode == 0, handled below.
             continue;
         }
 
