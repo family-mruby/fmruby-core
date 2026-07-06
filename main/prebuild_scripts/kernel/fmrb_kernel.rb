@@ -314,7 +314,8 @@ class FmrbKernelImpl < FmrbKernel
       i2c = I2C.new(unit: :ESP32_I2C1,
                     sda_pin: FmrbHw::PIN_I2C1_SDA,
                     scl_pin: FmrbHw::PIN_I2C1_SCL)
-      rtc = RX8900.new(i2c)
+      # Retro carries an RX8900; Modern (Tab5 / ESP32-P4) an RX8130
+      rtc = (FmrbConst::CHIP_MODEL == "ESP32-P4") ? RX8130.new(i2c) : RX8900.new(i2c)
       rtc.init
       if rtc.sync_system_clock
         t = rtc.read_time

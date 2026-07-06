@@ -7,10 +7,12 @@
 //
 // The codec control interface attaches to the existing I2C bus on
 // GPIO31/32 (port 1) owned by LovyanGFX; the bus handle is obtained
-// with i2c_master_get_bus_handle(). Codec register access happens only
-// during init (before GT911 polling starts) and on volume changes, so
-// collisions with LovyanGFX's register-level I2C use are avoided /
-// negligibly rare.
+// with i2c_master_get_bus_handle(). esp_codec_dev (i2c_master driver)
+// is used only inside the init window, before GT911 polling starts;
+// after that the i2c_master path is unusable on this controller, so
+// runtime volume changes write the ES8388 DAC volume registers
+// directly through the display driver's I2C service (lgfx path,
+// mutex-serialized). See doc/tab5_i2c_bus_notes.md.
 //
 // Output format: 47160 Hz (= 3 x 15720 Hz NTSC APU rate) 16-bit stereo.
 // The APU produces mono 15720 Hz; audio_p4_hw_write() expands each
@@ -19,6 +21,7 @@
 #include "audio_p4_internal.h"
 
 #include "fmrb_log.h"
+#include "display_p4_task.h"
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
 #include "esp_codec_dev.h"
@@ -206,9 +209,34 @@ void audio_p4_hw_write(const int16_t *samples, int len, int channels) {
     }
 }
 
+// ES8388 DAC digital volume (LDACVOL/RDACVOL): 0.5 dB attenuation steps,
+// 0x00 = 0 dB, 0xC0 = -96 dB. esp_codec_dev's default curve maps volume
+// 0-100 linearly to -50..0 dB, i.e. reg = 100 - vol; keep that mapping so
+// runtime changes sound identical to the boot default, but treat 0 as a
+// full mute (-96 dB).
+#define ES8388_I2C_ADDR_7BIT  (ES8388_CODEC_DEFAULT_ADDR >> 1)
+#define ES8388_REG_LDACVOL    0x1A  // ES8388_DACCONTROL4
+#define ES8388_REG_RDACVOL    0x1B  // ES8388_DACCONTROL5
+#define ES8388_I2C_FREQ       400000
+
 void audio_p4_hw_set_volume(uint8_t volume_0_255) {
     if (!s_hw_ready) return;
     int vol = (volume_0_255 * 100) / 255;
-    esp_codec_dev_set_out_vol(s_codec, vol);
-    FMRB_LOGI(TAG, "volume set to %d/100", vol);
+    // esp_codec_dev talks through i2c_master, which is broken on this
+    // controller once touch polling runs; write the codec registers
+    // through the display driver's serialized lgfx I2C service instead.
+    uint8_t reg = (vol == 0) ? 0xC0 : (uint8_t)(100 - vol);
+    fmrb_err_t err = display_p4_i2c_write_reg8(ES8388_I2C_ADDR_7BIT,
+                                               ES8388_REG_RDACVOL, reg,
+                                               ES8388_I2C_FREQ);
+    if (err == FMRB_OK) {
+        err = display_p4_i2c_write_reg8(ES8388_I2C_ADDR_7BIT,
+                                        ES8388_REG_LDACVOL, reg,
+                                        ES8388_I2C_FREQ);
+    }
+    if (err != FMRB_OK) {
+        FMRB_LOGW(TAG, "volume set failed: %d", err);
+        return;
+    }
+    FMRB_LOGI(TAG, "volume set to %d/100 (dacvol=0x%02X)", vol, reg);
 }

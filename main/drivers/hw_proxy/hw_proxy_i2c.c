@@ -3,11 +3,24 @@
 #include "fmrb_log.h"
 #include "driver/i2c_master.h"
 
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+// On Modern (Tab5) the I2C1 pins are the internal panel bus (GPIO31/32),
+// which LovyanGFX owns and drives at register level: creating an
+// i2c_master bus on it fails ("already acquired") and raw transactions
+// would corrupt the controller state. Mediate all unit-1 traffic through
+// the display driver's serialized lgfx I2C service instead.
+#include "display_p4_task.h"
+#define HW_PROXY_I2C_MEDIATED_UNIT  1
+#define HW_PROXY_I2C_MEDIATED_SDA   31
+#define HW_PROXY_I2C_MEDIATED_SCL   32
+#endif
+
 static const char *TAG = "hw_proxy_i2c";
 
 typedef struct {
     i2c_master_bus_handle_t bus_handle;
     bool initialized;
+    bool mediated;   // routed via display_p4 I2C service (Modern unit 1)
     uint32_t frequency;
     int8_t sda;
     int8_t scl;
@@ -46,6 +59,37 @@ static void handle_init(hw_proxy_request_t *req)
         req->result = FMRB_OK;
         return;
     }
+
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+    if (p->unit == HW_PROXY_I2C_MEDIATED_UNIT) {
+        if (p->sda != HW_PROXY_I2C_MEDIATED_SDA ||
+            p->scl != HW_PROXY_I2C_MEDIATED_SCL) {
+            FMRB_LOGE(TAG, "I2C%d on Modern is fixed to SDA=%d SCL=%d",
+                      p->unit, HW_PROXY_I2C_MEDIATED_SDA,
+                      HW_PROXY_I2C_MEDIATED_SCL);
+            req->result = FMRB_ERR_INVALID_PARAM;
+            return;
+        }
+        if (!display_p4_is_ready()) {
+            FMRB_LOGE(TAG, "I2C%d mediation unavailable (display not ready)",
+                      p->unit);
+            req->result = FMRB_ERR_BUSY;
+            return;
+        }
+        s_i2c[p->unit].bus_handle = NULL;
+        s_i2c[p->unit].mediated = true;
+        s_i2c[p->unit].initialized = true;
+        s_i2c[p->unit].frequency = p->freq;
+        s_i2c[p->unit].sda = p->sda;
+        s_i2c[p->unit].scl = p->scl;
+        s_i2c[p->unit].owner = req->caller;
+        fmrb_pin_manager_acquire(p->sda, FMRB_PIN_USER_I2C, req->caller);
+        fmrb_pin_manager_acquire(p->scl, FMRB_PIN_USER_I2C, req->caller);
+        FMRB_LOGI(TAG, "I2C%d mediated via display I2C service", p->unit);
+        req->result = FMRB_OK;
+        return;
+    }
+#endif
 
     i2c_master_bus_config_t cfg = {
         .clk_source = I2C_CLK_SRC_DEFAULT,
@@ -98,6 +142,14 @@ static void handle_read(hw_proxy_request_t *req)
         req->result = FMRB_ERR_INVALID_PARAM;
         return;
     }
+
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+    if (s_i2c[p->unit].mediated) {
+        req->result = display_p4_i2c_read(p->addr, p->buf, p->len,
+                                          s_i2c[p->unit].frequency);
+        return;
+    }
+#endif
 
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -154,6 +206,14 @@ static void handle_write(hw_proxy_request_t *req)
         req->result = FMRB_ERR_INVALID_PARAM;
         return;
     }
+
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+    if (s_i2c[p->unit].mediated) {
+        req->result = display_p4_i2c_write(p->addr, p->buf, p->len,
+                                           s_i2c[p->unit].frequency);
+        return;
+    }
+#endif
 
     i2c_device_config_t dev_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,

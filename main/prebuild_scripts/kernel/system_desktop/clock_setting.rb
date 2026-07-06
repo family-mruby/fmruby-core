@@ -66,14 +66,15 @@ module ClockSettingMixin
         end
         Log.info("System clock updated; UTC=#{utc[:year]}/#{utc[:month]}/#{utc[:day]} #{utc[:hour]}:#{utc[:minute]}:#{utc[:second]}")
 
-        # Write UTC fields to RX8900 RTC hardware (rx8900.rb's
+        # Write UTC fields to the RTC hardware (the RTC driver's
         # sync_system_clock at boot reads these back and passes them to
         # Machine.set_hwclock as a UTC epoch, so storing UTC keeps the
         # whole chain self-consistent).
+        # Retro carries an RX8900; Modern (Tab5 / ESP32-P4) an RX8130.
         i2c = I2C.new(unit: :ESP32_I2C1,
                       sda_pin: FmrbHw::PIN_I2C1_SDA,
                       scl_pin: FmrbHw::PIN_I2C1_SCL)
-        rtc = RX8900.new(i2c)
+        rtc = (FmrbConst::CHIP_MODEL == "ESP32-P4") ? RX8130.new(i2c) : RX8900.new(i2c)
         rtc.write_time(utc)
         Log.info("RTC hardware updated (UTC)")
       rescue => e

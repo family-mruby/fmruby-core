@@ -38,12 +38,20 @@ I2C ペリフェラルのレジスタを直接操作し、トランザクショ�
 
 ## 設計ルール
 
-1. **ランタイムに繰り返しアクセスするデバイス (PI4IO, GT911) は、
-   lgfx の I2C ヘルパ (`lgfx::i2c::readRegister8` / `bitOn` / `bitOff`
-   等) を使い、かつタッチタスクの文脈から呼ぶこと。**
-   GT911 の読み取りと同一タスクに直列化することで競合を構造的に防ぐ。
-   実装例: `display_p4_poll_headphone()` (display_p4_task.cpp) を
-   touch_task のループから 165ms 毎に呼んでいる
+ランタイムのバスアクセスは **display_p4 の I2C サービス**に一本化して
+いる (display_p4_task.cpp)。lgfx の I2C ヘルパ
+(`lgfx::i2c::transactionWrite/Read`, `writeRegister8` 等) を内部
+ミューテックス (`g_i2c_mutex`) で直列化したもので、GT911 タッチ読み
+(`display_p4_get_touch`) とヘッドホンポーリング
+(`display_p4_poll_headphone`) も同じミューテックスを取る。これにより
+「タッチタスク文脈からのみ」という当初の制約は「サービス経由なら
+任意タスクから可」に一般化された。
+
+1. **ランタイムのアクセスは display_p4_i2c_write / display_p4_i2c_read /
+   display_p4_i2c_write_reg8 (display_p4_task.h) を使うこと。**
+   g_lcd_ready 前は FMRB_ERR_INVALID_STATE を返す。1トランザクション
+   最大 255 バイト。利用者: ES8388 音量変更 (audio_p4_hw.c)、
+   hw_proxy_i2c の Modern 仲介
 2. **i2c_master ドライバでのアクセスは「初期化ウィンドウ」内のみ許容。**
    初期化ウィンドウ = display task が LGFX init を終えてから
    `g_lcd_ready` を立てるまでの区間 (タッチタスクは g_lcd_ready を
@@ -53,15 +61,23 @@ I2C ペリフェラルのレジスタを直接操作し、トランザクショ�
    作成して PI4IO を初期化し、**バスを削除してから** LGFX init に進む。
    この一時バスは他と重ならないので問題ない
 
-## 既知の課題
+## 対策済み (2026-07-06)
 
-- **音量変更 (SET_VOLUME) は esp_codec_dev = i2c_master 経由**のため、
-  タッチポーリング開始後は失敗する可能性が高い (未対策)。
-  対策案: ES8388 の音量レジスタ書き込みを lgfx::i2c 経由に置き換えて
-  タッチタスク文脈で実行する、または音量変更時のみタッチポーリングを
-  一時停止する
-- hw_proxy_i2c は Modern では I2C1 を使えない (error 259)。mruby アプリ
-  からの I2C アクセスを Modern で提供するなら lgfx 経由の仲介が必要
+- **音量変更 (SET_VOLUME)**: esp_codec_dev (i2c_master) を経由せず、
+  ES8388 の DAC 音量レジスタ (0x1A/0x1B, 0.5dB刻み) を I2C サービスで
+  直接書く。マッピングは esp_codec_dev のデフォルトカーブと同一
+  (vol% -> reg = 100 - vol, 0% は 0xC0 = -96dB でミュート扱い)
+- **hw_proxy_i2c (mruby アプリの I2C)**: Modern の I2C1 (GPIO31/32
+  固定) は i2c_master バスを作らず I2C サービスへ仲介する
+  (hw_proxy_i2c.c の mediated パス)。boot 時の error 259 も解消。
+  ピン指定が 31/32 以外なら INVALID_PARAM、display 未 ready なら BUSY
+- **RTC**: Tab5 の RTC は RX8900 ではなく **RX8130** (アドレスは同じ
+  0x32 だがレジスタマップが別物; 時刻レジスタは 0x10 起点)。
+  picoruby-rx8130 gem (lib/add) を追加し、kernel / clock_setting は
+  `FmrbConst::CHIP_MODEL == "ESP32-P4"` で RX8130/RX8900 を分岐。
+  CHIP_MODEL が P4 で "ESP32-P4" を返すよう const.c にも case 追加。
+  RX8130 ドライバは VLF (電源喪失) が立っている間は
+  sync_system_clock を拒否し、時刻書き込み時にフラグをクリアする
 
 ## 参考: ヘッドホン挿抜によるスピーカーミュートの実装
 
