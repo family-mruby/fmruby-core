@@ -1,0 +1,8 @@
+app_handle_name = "net_test"
+app_screen_name = "Net Test"
+app_screen_name_ja = "ネット確認"
+default_window_mode = "window"
+default_window_width = 240
+default_window_height = 190
+default_window_pos_x = 20
+default_window_pos_y = 20
