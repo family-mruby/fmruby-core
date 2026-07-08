@@ -41,9 +41,18 @@
 #endif
 
 #if defined(FMRB_HW_MODERN)
-// WiFi STA lives on the Modern (ESP32-P4) target only; on Retro/Linux
+// WiFi STA lives on the Modern (ESP32-P4) target only; on Retro
 // FmrbApp.wifi_info returns nil (see below).
 #include "wifi_task.h"
+#endif
+
+#if defined(CONFIG_IDF_TARGET_LINUX)
+// Linux dev build reports the host network state through FmrbApp.wifi_info
+// so the desktop status icon and network dialog work like on Modern.
+#include <ifaddrs.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <unistd.h>
 #endif
 
 static const char* TAG = "app";
@@ -1164,9 +1173,10 @@ static mrb_value mrb_fmrb_app_s_reboot(mrb_state *mrb, mrb_value klass)
 }
 
 // FmrbApp.wifi_info() -> Hash {connected:, ip:, ssid:, hostname:} or nil.
-// Modern (ESP32-P4) only: the WiFi STA runs locally on the P4 (radio on the
-// C6 coprocessor). On Retro / Linux there is no WiFi, so this returns nil and
-// the system desktop hides the Network menu entry accordingly.
+// Modern (ESP32-P4): the WiFi STA runs locally on the P4 (radio on the C6
+// coprocessor). Linux dev build: reports the host network state (first
+// non-loopback IPv4) so the desktop icon/dialog behave like on Modern.
+// Retro: no WiFi, returns nil and the desktop hides the icon.
 static mrb_value mrb_fmrb_app_s_wifi_info(mrb_state *mrb, mrb_value klass)
 {
     (void)klass;
@@ -1187,6 +1197,39 @@ static mrb_value mrb_fmrb_app_s_wifi_info(mrb_state *mrb, mrb_value klass)
                  mrb_str_new_cstr(mrb, ssid));
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "hostname")),
                  mrb_str_new_cstr(mrb, host));
+    return hash;
+#elif defined(CONFIG_IDF_TARGET_LINUX)
+    char ip[16] = "127.0.0.1";
+    bool connected = false;
+    struct ifaddrs *ifaddr = NULL;
+    if (getifaddrs(&ifaddr) == 0) {
+        for (struct ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
+            if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) {
+                continue;
+            }
+            struct sockaddr_in *sin = (struct sockaddr_in *)ifa->ifa_addr;
+            uint32_t a = ntohl(sin->sin_addr.s_addr);
+            if ((a >> 24) == 127) {
+                continue;  // skip loopback
+            }
+            inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
+            connected = true;
+            break;
+        }
+        freeifaddrs(ifaddr);
+    }
+
+    mrb_value hash = mrb_hash_new_capa(mrb, 4);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "connected")),
+                 mrb_bool_value(connected));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "ip")),
+                 mrb_str_new_cstr(mrb, ip));
+    // No SSID/mDNS hostname on the Linux dev build; the dialog shows "-"
+    // for the AP row and hides the hostname row.
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "ssid")),
+                 mrb_str_new_cstr(mrb, ""));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "hostname")),
+                 mrb_str_new_cstr(mrb, ""));
     return hash;
 #else
     (void)mrb;

@@ -502,10 +502,10 @@ class SystemDesktopApp < FmrbApp
     @gfx.draw_text(@window_width - 90, 2, text, FmrbGfx::WHITE, MENU_BG)
   end
 
-  # WiFi status icon just left of the clock. Modern only: wifi_info is
-  # nil on Retro/Linux and the icon is hidden. Signal-bars pictogram;
-  # gray bars with a red slash while disconnected. Clicking the icon
-  # opens the network dialog (see handle_click).
+  # Network status icon just left of the clock. Shown on Modern (WiFi) and
+  # Linux (host network); wifi_info is nil on Retro and the icon is hidden.
+  # Signal-bars pictogram; gray bars with a red slash while disconnected.
+  # Clicking the icon opens the network dialog (see handle_click).
   WIFI_ICON_W = 10
 
   def draw_wifi_icon

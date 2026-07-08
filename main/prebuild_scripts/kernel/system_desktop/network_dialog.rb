@@ -1,13 +1,14 @@
-# Network info dialog for SystemDesktopApp (Modern / ESP32-P4 only).
+# Network info dialog for SystemDesktopApp (Modern / ESP32-P4 and Linux).
 #
-# Read-only status view of the WiFi station: connection state, associated
-# access point (SSID), acquired IPv4 address, and the mDNS hostname used for
-# the on-device web console (http://<hostname>.local/).
+# Read-only status view of the network: connection state, associated
+# access point (SSID, Modern only), acquired IPv4 address, and the mDNS
+# hostname used for the on-device web console (http://<hostname>.local/).
 #
-# The data comes from FmrbApp.wifi_info, which returns nil on non-Modern
-# targets. The desktop only wires the "Network" menu entry in on Modern
-# (FmrbConst::CHIP_MODEL == "ESP32-P4"), so this dialog is never opened
-# elsewhere; net_refresh still guards against a nil result defensively.
+# The data comes from FmrbApp.wifi_info: WiFi STA state on Modern, host
+# network state on the Linux dev build, nil on Retro (icon hidden, and the
+# "Network" menu entry is only wired in on Modern via
+# FmrbConst::CHIP_MODEL == "ESP32-P4"); net_refresh still guards against a
+# nil result defensively.
 #
 # While open, on_update re-reads wifi_info every ~1s so the IP appears as
 # soon as DHCP completes without the user reopening the dialog.
