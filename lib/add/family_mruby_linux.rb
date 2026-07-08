@@ -44,4 +44,13 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   conf.gem gemdir: "#{dir}/mruby-error"
   conf.gem gemdir: "#{dir}/mruby-sprintf"
   conf.gem gemdir: "#{dir}/mruby-math"
+
+  # Ruby networking client API (see doc/ruby_network_api_design.md).
+  # ports/posix sources are compiled automatically by the picoruby build.
+  # NOTE: SSL is a stub on the Linux dev build (build container lacks OpenSSL
+  # headers; see lib/patch/picoruby-socket/ports/posix/ssl_socket.c);
+  # HTTPS raises RuntimeError. Use the esp32p4 target for TLS tests.
+  conf.gem core: "picoruby-socket"
+  conf.gem core: "picoruby-net-http"
+  conf.gem core: "picoruby-net-websocket"
 end

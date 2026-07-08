@@ -160,6 +160,22 @@ task :setup do
   sh "cp -f lib/patch/picoruby-i2c/include/i2c.h #{mrbgem_path}/picoruby-i2c/include/"
   sh "cp -f lib/patch/picoruby-i2c/src/mruby/i2c.c #{mrbgem_path}/picoruby-i2c/src/mruby/"
 
+  # picoruby-socket: esp32p4 (ESP-IDF) build support, default socket timeouts,
+  # and TLS via the ESP-IDF certificate bundle (esp_crt_bundle)
+  sh "cp -f lib/patch/picoruby-socket/mrbgem.rake #{mrbgem_path}/picoruby-socket/"
+  sh "cp -f lib/patch/picoruby-socket/src/mruby/socket.c #{mrbgem_path}/picoruby-socket/src/mruby/"
+  sh "cp -f lib/patch/picoruby-socket/ports/esp32/tcp_socket.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
+  sh "cp -f lib/patch/picoruby-socket/ports/esp32/ssl_socket.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
+  # POSIX SSL is stubbed: the build container lacks OpenSSL headers
+  sh "cp -f lib/patch/picoruby-socket/ports/posix/ssl_socket.c #{mrbgem_path}/picoruby-socket/ports/posix/"
+
+  # picoruby-mbedtls: skip bundled-library objects on esp32p4 (ESP-IDF provides mbedTLS)
+  sh "cp -f lib/patch/picoruby-mbedtls/mrbgem.rake #{mrbgem_path}/picoruby-mbedtls/"
+
+  # picoruby-net-websocket: fix mruby-pack gemdir (upstream points to a
+  # non-existent picoruby-pack path inside the mruby tree)
+  sh "cp -f lib/patch/picoruby-net-websocket/mrbgem.rake #{mrbgem_path}/picoruby-net-websocket/"
+
   # mruby-task: add stack clearing in mrb_task_reset_context + disable HAL auto-load
   mruby_task_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-task"
   sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c #{mruby_task_path}/src/"

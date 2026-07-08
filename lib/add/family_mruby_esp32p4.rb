@@ -72,6 +72,14 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   # Tab5 carries an RX8130; RX8900 stays in for code shared with Retro.
   conf.gem core: "picoruby-rx8900"
   conf.gem core: "picoruby-rx8130"
+
+  # Ruby networking client API (Modern/P4 only, see doc/ruby_network_api_design.md).
+  # picoruby-socket pulls picoruby-mbedtls; ESP-IDF port sources are compiled by
+  # components/picoruby-esp32/CMakeLists.txt (PICORUBY_SRCS), lib/patch applies
+  # the esp32p4 build fixes to both mrbgem.rake files.
+  conf.gem core: "picoruby-socket"
+  conf.gem core: "picoruby-net-http"
+  conf.gem core: "picoruby-net-websocket"
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"
   # conf.gem gemdir: "#{hw}/picoruby-spi"

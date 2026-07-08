@@ -47,6 +47,7 @@ else()
         esp_hw_support
         esp_psram
         esp_system
+        lwip
         fmrb_hal
         fmrb_gfx
         fmrb_log
@@ -77,6 +78,10 @@ if(IDF_TARGET STREQUAL "linux")
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32_linux/hal_freertos.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/posix/rng.c
+        # NOTE: picoruby-socket / picoruby-mbedtls port sources are NOT listed
+        # here for linux: the picoruby build compiles every gem's ports/posix
+        # and ports/common automatically on POSIX builds (lib/picoruby/build.rb).
+        # SSL on linux is a stub (lib/patch/picoruby-socket/ports/posix).
     )
 else()
     file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")
@@ -112,11 +117,30 @@ else()
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-watchdog/ports/esp32/watchdog.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/esp32/timing_alt.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/cipher.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/digest.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/cmac.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/hmac.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/md.c
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mbedtls/ports/common/pkey.c
         ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/picoruby-i2c-proxy/i2c.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-uart/ports/esp32/uart.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-require/ports/esp32/platform.c
         ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/hal-esp32-dir/dir_hal.c
     )
+
+    # Ruby networking (picoruby-socket) ESP-IDF port: Modern/P4 only.
+    # The gems are enabled in lib/add/family_mruby_esp32p4.rb; these sources
+    # use ESP-IDF LwIP (BSD sockets) and mbedTLS. tcp_socket.c is patched via
+    # lib/patch/picoruby-socket (default timeouts).
+    if(IDF_TARGET STREQUAL "esp32p4")
+        list(APPEND PICORUBY_SRCS
+            ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-socket/ports/esp32/tcp_socket.c
+            ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-socket/ports/esp32/udp_socket.c
+            ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-socket/ports/esp32/tcp_server.c
+            ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-socket/ports/esp32/ssl_socket.c
+            ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-socket/ports/esp32/net_helpers.c
+        )
+    endif()
 endif()
 
 # Add a dummy source file for Linux build to avoid INTERFACE library

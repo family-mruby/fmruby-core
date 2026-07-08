@@ -181,6 +181,8 @@ mrb_kernel_message_queue_exists(mrb_state *mrb, mrb_value self)
 
 // Forward declaration for FmrbKernel class initialization (defined in ports/esp32/kernel.c)
 extern void mrb_fmrb_kernel_init(mrb_state *mrb);
+// Forward declaration for FmrbNet module initialization (defined in ports/esp32/net.c)
+extern void mrb_fmrb_net_init(mrb_state *mrb);
 
 void
 mrb_picoruby_fmrb_kernel_init(mrb_state *mrb)
@@ -204,6 +206,7 @@ mrb_picoruby_fmrb_kernel_gem_init(mrb_state *mrb)
 {
   mrb_picoruby_fmrb_kernel_init(mrb);
   mrb_fmrb_kernel_init(mrb);  // Initialize FmrbKernel class
+  mrb_fmrb_net_init(mrb);     // Initialize FmrbNet module
 }
 
 void
