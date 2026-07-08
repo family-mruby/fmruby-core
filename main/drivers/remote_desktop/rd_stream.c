@@ -74,10 +74,16 @@ static void stream_task(void *arg)
     while (!s_stop && rd_stream_has_clients()) {
         int64_t t_frame = esp_timer_get_time();
 
+        // Wait one frame interval for new content, otherwise re-encode the
+        // latest frame: browser H.264 decoders pipeline several frames and
+        // only emit output as more input arrives, so a low-rate stream
+        // (event-driven rendering idles at 1-2fps) shows seconds of latency.
+        // A steady fps_cap stream keeps the decoder drained; unchanged
+        // frames encode to near-empty P frames.
         display_p4_capture_frame_t frame;
-        fmrb_err_t err = display_p4_capture_acquire(last_seq + 1, 500, &frame);
+        fmrb_err_t err = display_p4_capture_acquire(last_seq + 1,
+                                                    frame_interval_ms, &frame);
         if (err == FMRB_ERR_TIMEOUT) {
-            // Static screen: resend the latest frame as keepalive
             err = display_p4_capture_acquire(0, 100, &frame);
         }
         if (err != FMRB_OK) {

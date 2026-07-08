@@ -69,8 +69,15 @@ function startVideo() {
       output: (f) => { ctx.drawImage(f, 0, 0); f.close(); },
       error: (e) => { console.error('decoder error', e); fallbackToMjpeg(); },
     });
-    // Annex B mode: no description
-    decoder.configure({ codec: 'avc1.42e01e', optimizeForLatency: true });
+    // Annex B mode: no description. Prefer the software decoder: at this
+    // resolution it is trivially fast and has no multi-frame pipeline
+    // latency (hardware decoders can hold frames back for seconds on a
+    // low-fps stream).
+    const base = { codec: 'avc1.42e01e', optimizeForLatency: true };
+    const sw = Object.assign({ hardwareAcceleration: 'prefer-software' }, base);
+    VideoDecoder.isConfigSupported(sw)
+      .then((r) => decoder.configure(r.supported ? sw : base))
+      .catch(() => decoder.configure(base));
   }
   newDecoder();
 
@@ -102,6 +109,11 @@ function startVideo() {
     const w = d.getUint16(2, true);
     const pts = d.getUint32(4, true);
     if (w !== encW) { encW = w; setupScreen(); }
+    if (decoder.state !== 'configured') {
+      // configure() is async; if we had to drop a keyframe, ask again
+      if (key) vws.send(new Uint8Array([0x04]).buffer);
+      return;
+    }
     if (!gotKey && !key) return;   // wait for the first keyframe
     gotKey = true;
     try {

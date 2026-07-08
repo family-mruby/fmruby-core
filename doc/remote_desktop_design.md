@@ -26,10 +26,13 @@
     - display_p4_capture_enable は参照カウント化 (MJPEG と H.264 が併用
       するため)
   - バイナリ: 3.10MB / 4MB (26% free)。Phase1: 3.06MB
-- **実機検証: 一部実施 (2026-07-08)**
+- **実機検証: A〜D 全て完了 (2026-07-08)**
   - 検証A (WiFi): OK。指数バックオフ再接続も動作確認 (connect failed 2回後に接続成功)
-  - 検証B (MJPEG): OK。`http://<ip>/` で画面表示を確認
-  - 検証D (H.264): 進行中。判明した問題2件と対処:
+  - 検証B (MJPEG): OK。画面表示 + async 化後のカーソルオーバレイ/入力も確認
+  - 検証C (入力): OK。マウス/キーがリアルタイムに実機反映
+  - 検証D (H.264): OK。PPA YUV420 変換で映像・入力とも動作。
+    体感遅延も定常レート送出 + prefer-software で解消 (下記4)。
+    検証過程で判明した問題と対処:
     1. ブラウザが MJPEG にフォールバック → 下記「WebCodecs と Secure Context」
     2. Secure Context 解決後、`esp_h264_enc_hw_new` が RGB565_LE を拒否
        (`Un-supported h264 picture type parameter, pic_type: 4c424752`="RGBL")
@@ -38,6 +41,17 @@
     3. MJPEG 配信中にカーソルオーバレイが表示されない (WS入力も同時に
        飢餓) → 下記「MJPEG ハンドラによる httpd タスク占有」。async 化で
        修正済 (ビルドOK・実機確認待ち)
+    4. H.264 映像の体感遅延 ~3秒 (カーソル/入力はリアルタイム)。
+       原因: 描画がイベント駆動でアイドル時 1-2fps しか流れず、
+       ブラウザの H.264 デコーダ (特にHW) は数フレームをパイプラインに
+       抱えて次の入力が来るまで出力しない → 低fpsストリームでは
+       パイプライン滞留分が秒単位の遅延になる。
+       対処: (a) rd_stream は静止中も frame_interval 毎に最新フレームを
+       再エンコードして **fps_cap の定常レートで送出** (無変化Pフレームは
+       ほぼスキップMBで数百バイト)。(b) remote.js は
+       `hardwareAcceleration: 'prefer-software'` を isConfigSupported
+       ガード付きで優先 (この解像度ではSWデコードが軽く、リオーダ遅延なし)
+       → **実機で遅延解消を確認済み**
 
 ### MJPEG ハンドラによる httpd タスク占有 (実機検証で判明)
 
