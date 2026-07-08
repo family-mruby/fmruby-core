@@ -10,10 +10,11 @@ extern "C" {
 #endif
 
 // P4 hardware H.264 encoder wrapper (Phase 2).
-// The hardware encoder accepts RGB565_LE directly (internal color
-// conversion), so frames go straight from the display capture buffer
-// after 426 -> 432 row padding. Output is an Annex B access unit; IDR
-// frames carry SPS/PPS automatically.
+// On chip rev < v3.0 the hardware encoder only accepts the
+// O_UYY_E_VYY YUV420 layout, so each RGB565 capture frame is first
+// color-converted (and 426 -> 432 padded) by the PPA SRM engine.
+// Output is an Annex B access unit; IDR frames carry SPS/PPS
+// automatically.
 
 typedef struct {
     uint16_t src_w, src_h;

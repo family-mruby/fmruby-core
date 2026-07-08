@@ -13,11 +13,11 @@
     - EMBED_FILES のシンボル名は `_binary_<basename>_start` (パス除去)
 - **Phase 2: 実装済み・ビルドOK (2026-07-07)、実機検証待ち**
   - 実装で判明した事実 (設計からの変更点):
-    - **esp_h264 v1.1.x の HWエンコーダは `ESP_H264_RAW_FMT_RGB565_LE` を
-      直接サポート** (旧READMEのYUV限定情報は誤り/古い)。よって
-      **PPA/CPUの色変換は不要**になり、キャプチャバッファ(RGB565
-      non-swapped LE)を 432px 行パディングしてそのまま投入する。
-      色の正しさ(赤青反転)は実機検証項目
+    - ~~esp_h264 の HWエンコーダは RGB565_LE を直接サポート~~ →
+      **実機で否定 (2026-07-08)**。RGB565_LE 直接入力は chip rev v3.0
+      以降のみで、Tab5 (rev v1.0) は O_UYY_E_VYY のみ。当初設計どおり
+      PPA 色変換を実装。詳細は
+      「H.264 HW 入力フォーマットとチップリビジョン」参照
     - IDR フレームには SPS/PPS が自動付与される (esp_h264 仕様) →
       サーバ側での SPS/PPS キャッシュ/前置は不要
     - IDR オンデマンドの直接APIは無い → `esp_h264_enc_set_gop(param, 1)`
@@ -26,7 +26,94 @@
     - display_p4_capture_enable は参照カウント化 (MJPEG と H.264 が併用
       するため)
   - バイナリ: 3.10MB / 4MB (26% free)。Phase1: 3.06MB
-- **実機検証: 未実施** (検証計画 A〜D を参照)
+- **実機検証: 一部実施 (2026-07-08)**
+  - 検証A (WiFi): OK。指数バックオフ再接続も動作確認 (connect failed 2回後に接続成功)
+  - 検証B (MJPEG): OK。`http://<ip>/` で画面表示を確認
+  - 検証D (H.264): 進行中。判明した問題2件と対処:
+    1. ブラウザが MJPEG にフォールバック → 下記「WebCodecs と Secure Context」
+    2. Secure Context 解決後、`esp_h264_enc_hw_new` が RGB565_LE を拒否
+       (`Un-supported h264 picture type parameter, pic_type: 4c424752`="RGBL")
+       → 下記「H.264 HW 入力フォーマットとチップリビジョン」。PPA 変換で修正済
+       (ビルドOK・実機確認待ち)
+    3. MJPEG 配信中にカーソルオーバレイが表示されない (WS入力も同時に
+       飢餓) → 下記「MJPEG ハンドラによる httpd タスク占有」。async 化で
+       修正済 (ビルドOK・実機確認待ち)
+
+### MJPEG ハンドラによる httpd タスク占有 (実機検証で判明)
+
+esp_http_server は**シングルタスク**であり、/stream ハンドラ内で
+capture→encode→send を無限ループする Phase 1 設計では、配信中は同じ
+httpd タスクで処理されるものが全て止まる:
+- `httpd_queue_work` によるカーソル "cur" JSON push → **カーソル不可視**
+- /ws の受信フレーム処理 → **リモート入力が配信中は効かない**
+- /status 応答、新規接続の accept
+
+リスク表の「httpd 長寿命ハンドラによるワーカ枯渇」を 1 クライアント制限
+(503) で対策したつもりだったが、ワーカプールではなく単一タスクなので
+制限では防げない。
+
+対処 (rd_http.c): `httpd_req_async_handler_begin()` でリクエストを
+デタッチし、専用タスク rd_mjpeg (core0, prio4, stack 8192) が配信ループを
+実行。ハンドラは即 return し httpd タスクは解放される。終了時に
+`httpd_req_async_handler_complete()`。rd_http_stop は配信タスクの完了を
+待ってから httpd_stop する。
+
+### H.264 HW 入力フォーマットとチップリビジョン (実機検証で判明)
+
+esp_h264 (v1.3.6) の対応表は HW encoder = RGB565_LE 対応と書いてあるが、
+`ESP_H264_HW_IS_SUPPORTED_PIC_TYPE` (esp_h264_types.h) は
+**`CONFIG_ESP_REV_MIN_FULL < 300` (チップ rev < v3.0) では
+O_UYY_E_VYY のみ許可**するリビジョン分岐になっている。
+Tab5 の P4 は chip rev v1.0 のため **RGB565 直接入力は使えず、
+YUV420 (O_UYY_E_VYY) 変換が必須** (Phase 2 設計当初の想定が正しかった。
+「RGB565_LE 直接サポート」は rev v3.0 以降のみの話)。
+
+対処 (rd_encoder_h264.c 実装):
+- PPA SRM で RGB565 426x240 → YUV420 432x240 に HWカラーコンバート
+  (`PPA_SRM_COLOR_MODE_YUV420` 出力、BT.601 limited range、426→432
+  パディングは出力 pic_w=432 の (0,0) にブロック書込 + 右6px は
+  事前黒クリア Y=16/UV=128)
+- P4 の PPA/2D-DMA の YUV420 packed レイアウトが esp_h264 の
+  O_UYY_E_VYY (奇数行 UYY.../偶数行 VYY...) と一致する前提。
+  **色が破綻していないかは実機検証項目**
+- 併せてエンコーダ初期化失敗時の後始末を修正:
+  rd_stream はクライアント解放 + ソケットclose + rd_http_disable_h264()
+  (以後の info は h264:false)。remote.js はデータ無しclose 3回連続で
+  MJPEG にフォールバック (従来は黒画面のまま2秒毎に無限リトライ)
+
+### WebCodecs と Secure Context (実機検証で判明した制約)
+
+**WebCodecs API (`VideoDecoder`) は Secure Context 限定**。
+`http://192.168.10.15/` や `http://fmruby.local/` のような平文 HTTP の
+LAN オリジンでは Chrome でも `window.VideoDecoder` が undefined になり、
+remote.js の判定 (`useH264 = !!msg.h264 && typeof window.VideoDecoder === 'function'`)
+が false → 常に MJPEG フォールバックになる。設計時のリスク表 (平文HTTP) では
+見落としていた点。
+
+確認方法:
+- ビューアのステータスバー表示が `mode: mjpeg` / `mode: h264` のどちらか
+- DevTools コンソールで `typeof VideoDecoder` → `"undefined"` なら Secure
+  Context 外
+- デバイス側ログ: MJPEG なら `rd_http: MJPEG client connected`、H.264 なら
+  /ws_video 接続 (rd_stream クライアント登録) のログが出る
+
+H.264 パスを使うための手順 (いずれか):
+
+1. **Chrome フラグで origin を信頼させる (開発用に推奨)**
+   - `chrome://flags/#unsafely-treat-insecure-origin-as-secure` を開く
+   - テキスト欄に `http://192.168.10.15,http://fmruby.local` を入力し
+     Enabled に設定 → Chrome 再起動
+2. **localhost 経由でアクセスする** (`localhost` は Secure Context 扱い)
+   - PC 側でポートフォワードして `http://localhost:8080/` を開く:
+     ```
+     ssh -L 8080:192.168.10.15:80 localhost -N
+     # または
+     socat TCP-LISTEN:8080,fork TCP:192.168.10.15:80
+     ```
+   - 注意: WS も同一オリジン (`ws://localhost:8080/...`) 経由になるため
+     追加設定は不要
+3. **デバイス側 HTTPS 化** (esp_https_server + 自己署名証明書):
+   TLS のメモリ/CPU 負荷と証明書警告があり、ホビー用途では非推奨。採らない
 
 Tab5 (ESP32-P4) のデスクトップ画面をPCブラウザへ配信し、マウス/キーボード
 入力を送り返すブラウザ経由のリモートデスクトップ機能。
@@ -162,7 +249,8 @@ void       display_p4_get_cursor(int *x, int *y, bool *visible);
 | タスク | core | prio | stack | 備考 |
 |---|---|---|---|---|
 | modern_radio_init_task (one-shot) | - | 4 | 6144 | BLE init → WiFi init 逐次。既存 ble init タスクを改名拡張 |
-| httpd (esp_http_server内部) | 0 | 5 | 8192 | hosted/lwip と同じ core0。Phase1 は MJPEG エンコードもこの文脈 (追加タスクゼロ) |
+| httpd (esp_http_server内部) | 0 | 5 | 8192 | hosted/lwip と同じ core0。長寿命ハンドラ禁止 (シングルタスク) |
+| rd_mjpeg (MJPEGクライアント接続中のみ) | 0 | 4 | 8192 | async handler でデタッチした /stream 配信ループ。当初の「httpdハンドラ内でループ」はWS入力/カーソルpushを飢餓させたため変更 |
 | rd_stream (Phase2のみ) | 1 | 4 | 8192 | display(prio5) より下。core1 でフレームバッファに近接 |
 
 ## WiFi ライフサイクル
@@ -307,9 +395,10 @@ Phase 2:
 | BLE 併用で帯域半減 | MJPEG 15fps ~2Mbps << 18Mbps。fps/quality を TOML で調整可 |
 | JPEG/H.264 の色順序・レイアウト不一致 | 実機カラーバー確認を検証手順化。PPA YUV 検証を Phase2 の独立最初ステップに |
 | キャプチャ copy が描画を遅延 | capture 有効時のみ・~1-2ms/フレーム。render 統計ログで回帰確認 |
-| httpd 長寿命ハンドラによるワーカ枯渇 | /stream 1 クライアント制限 (503) |
+| httpd 長寿命ハンドラによるワーカ枯渇 | /stream 1 クライアント制限 (503)。**実機で発覚: esp_http_server は単一タスクのため制限では不十分** → async handler + rd_mjpeg タスク化で解消 |
 | IRAM 逼迫 / Flash 残量 | LWIP_IRAM_OPTIMIZATION=n、新規コードに IRAM 属性禁止。P1 +~500KB / P2 +~300KB 見込み、各フェーズでサイズ計測 |
 | セキュリティ (平文HTTP・無認証) | LAN のホビー用途として許容し明記。将来 URL トークン等を検討 |
+| 平文HTTPでは WebCodecs が使えず H.264 表示不可 | 「WebCodecs と Secure Context」の手順 (Chromeフラグ or localhostフォワード) で回避。実機検証で判明 |
 
 ## 検証計画
 

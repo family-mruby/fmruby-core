@@ -12,6 +12,7 @@
 
 #include "rd_stream.h"
 #include "rd_encoder_h264.h"
+#include "rd_http.h"
 
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
@@ -145,9 +146,9 @@ static void stream_task(void *arg)
     fmrb_task_delete_ex(NULL);
 }
 
-static void ensure_task_running(void)
+static bool ensure_task_running(void)
 {
-    if (s_task_running) return;
+    if (s_task_running) return true;
 
     rd_h264_config_t ecfg = {
         .src_w = 426, .src_h = 240,
@@ -157,14 +158,15 @@ static void ensure_task_running(void)
     };
     if (rd_encoder_h264_init(&ecfg) != FMRB_OK) {
         FMRB_LOGE(TAG, "H.264 encoder init failed");
-        return;
+        return false;
     }
     if (!s_pkt) {
         s_pkt_cap = RD_VIDEO_HDR_LEN + (size_t)432 * 240 * 2;
         s_pkt = heap_caps_malloc(s_pkt_cap, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
         if (!s_pkt) {
             FMRB_LOGE(TAG, "pkt buffer alloc failed");
-            return;
+            rd_encoder_h264_deinit();
+            return false;
         }
     }
     s_task_running = true;
@@ -172,7 +174,10 @@ static void ensure_task_running(void)
                                 NULL, 1) != pdPASS) {
         FMRB_LOGE(TAG, "failed to create stream task");
         s_task_running = false;
+        rd_encoder_h264_deinit();
+        return false;
     }
+    return true;
 }
 
 void rd_stream_add_client(int fd)
@@ -188,10 +193,18 @@ void rd_stream_add_client(int fd)
     portEXIT_CRITICAL(&s_lock);
     if (!added) {
         FMRB_LOGW(TAG, "video client limit reached, fd=%d rejected", fd);
+        httpd_sess_trigger_close(s_server, fd);
         return;
     }
     FMRB_LOGI(TAG, "video client fd=%d", fd);
-    ensure_task_running();
+    if (!ensure_task_running()) {
+        // Encoder is unusable: release the slot, tell rd_http to stop
+        // offering H.264 and close the socket so the viewer falls back
+        rd_stream_remove_client(fd);
+        rd_http_disable_h264();
+        httpd_sess_trigger_close(s_server, fd);
+        return;
+    }
     rd_encoder_h264_request_idr();
 }
 

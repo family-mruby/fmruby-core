@@ -23,6 +23,12 @@ typedef struct {
 fmrb_err_t rd_http_start(const rd_http_config_t *cfg);
 void       rd_http_stop(void);
 
+/**
+ * @brief Stop offering H.264 to new clients (encoder failed at runtime).
+ * Subsequent /ws info messages report h264:false so viewers pick MJPEG.
+ */
+void rd_http_disable_h264(void);
+
 #ifdef __cplusplus
 }
 #endif

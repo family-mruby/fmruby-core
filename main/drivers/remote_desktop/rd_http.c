@@ -2,15 +2,17 @@
 //
 // - "/"           embedded viewer page (tool/web/remote/)
 // - "/stream"     MJPEG via multipart/x-mixed-replace; one client at a
-//                 time (a second request gets 503). The handler runs the
-//                 capture->encode->send loop until the client disconnects.
+//                 time (a second request gets 503). The URI handler
+//                 detaches the request (httpd_req_async_handler_begin)
+//                 and a dedicated task runs the capture->encode->send
+//                 loop: esp_http_server is single-task, so looping in
+//                 the handler would starve the WS input frames and the
+//                 queued cursor pushes for as long as a client streams.
 // - "/ws"         WebSocket: binary input messages (rd_input) from the
 //                 browser; JSON cursor/info messages to the browser.
 // - "/status"     small JSON status document.
 //
-// The httpd instance runs on core 0 next to the hosted/lwIP tasks. All
-// JPEG encoding happens in the /stream handler context, so Phase 1 adds
-// no dedicated streaming task.
+// The httpd instance runs on core 0 next to the hosted/lwIP tasks.
 
 #include "rd_http.h"
 #include "rd_encoder_jpeg.h"
@@ -18,6 +20,7 @@
 #include "rd_stream.h"
 
 #include "fmrb_log.h"
+#include "fmrb_rtos.h"
 #include "display_p4_task.h"
 #include "wifi_task.h"
 
@@ -86,21 +89,17 @@ static esp_err_t asset_handler(httpd_req_t *req)
 
 #define RD_BOUNDARY "fmrbframe"
 
-static esp_err_t stream_handler(httpd_req_t *req)
+// Runs on its own task: the request has been detached from the httpd
+// task with httpd_req_async_handler_begin() so WS input and cursor
+// pushes keep flowing while the stream is live.
+static void mjpeg_stream_task(void *arg)
 {
-    bool expected = false;
-    if (!atomic_compare_exchange_strong(&s_stream_busy, &expected, true)) {
-        httpd_resp_set_status(req, "503 Service Unavailable");
-        httpd_resp_set_type(req, "text/plain");
-        httpd_resp_send(req, "stream busy (one client at a time)", -1);
-        return ESP_OK;
-    }
+    httpd_req_t *req = (httpd_req_t *)arg;
 
     FMRB_LOGI(TAG, "MJPEG client connected");
     display_p4_capture_enable(true);
     display_p4_capture_kick();
 
-    esp_err_t ret = ESP_OK;
     httpd_resp_set_type(req,
         "multipart/x-mixed-replace; boundary=" RD_BOUNDARY);
     httpd_resp_set_hdr(req, "Cache-Control", "no-store");
@@ -132,7 +131,6 @@ static esp_err_t stream_handler(httpd_req_t *req)
         err = rd_encoder_jpeg_encode(frame.pixels, &jpeg, &jpeg_len);
         display_p4_capture_release();
         if (err != FMRB_OK) {
-            ret = ESP_FAIL;
             break;
         }
 
@@ -170,9 +168,36 @@ static esp_err_t stream_handler(httpd_req_t *req)
     display_p4_capture_enable(false);
     s_stat_fps_x10 = 0;
     s_stat_kbps = 0;
-    atomic_store(&s_stream_busy, false);
     FMRB_LOGI(TAG, "MJPEG client disconnected");
-    return ret;
+    httpd_req_async_handler_complete(req);
+    atomic_store(&s_stream_busy, false);
+    fmrb_task_delete_ex(NULL);
+}
+
+static esp_err_t stream_handler(httpd_req_t *req)
+{
+    bool expected = false;
+    if (!atomic_compare_exchange_strong(&s_stream_busy, &expected, true)) {
+        httpd_resp_set_status(req, "503 Service Unavailable");
+        httpd_resp_set_type(req, "text/plain");
+        httpd_resp_send(req, "stream busy (one client at a time)", -1);
+        return ESP_OK;
+    }
+
+    httpd_req_t *async_req = NULL;
+    if (httpd_req_async_handler_begin(req, &async_req) != ESP_OK) {
+        atomic_store(&s_stream_busy, false);
+        httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, NULL);
+        return ESP_FAIL;
+    }
+    if (xTaskCreatePinnedToCore(mjpeg_stream_task, "rd_mjpeg", 8192,
+                                async_req, 4, NULL, 0) != pdPASS) {
+        FMRB_LOGE(TAG, "failed to create mjpeg task");
+        httpd_req_async_handler_complete(async_req);
+        atomic_store(&s_stream_busy, false);
+        return ESP_FAIL;
+    }
+    return ESP_OK;
 }
 
 // ---------------------------------------------------------------
@@ -436,9 +461,22 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
     return FMRB_OK;
 }
 
+void rd_http_disable_h264(void)
+{
+    if (s_cfg.h264_enable) {
+        s_cfg.h264_enable = false;
+        FMRB_LOGW(TAG, "H.264 disabled at runtime, viewers fall back to MJPEG");
+    }
+}
+
 void rd_http_stop(void)
 {
     atomic_store(&s_stop, true);
+    // Wait for the detached MJPEG task to complete its async request
+    // before tearing the server down
+    while (atomic_load(&s_stream_busy)) {
+        vTaskDelay(pdMS_TO_TICKS(20));
+    }
     if (s_cursor_timer) {
         esp_timer_stop(s_cursor_timer);
         esp_timer_delete(s_cursor_timer);

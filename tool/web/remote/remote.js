@@ -46,12 +46,15 @@ function setupScreen() {
 
 // --- H.264 path: /ws_video + WebCodecs VideoDecoder -> canvas ---
 
+let videoDeadCount = 0;   // consecutive /ws_video closes with no data
+
 function startVideo() {
   if (videoStarted) return;
   videoStarted = true;
   const ctx = canvas.getContext('2d');
   let decoder = null;
   let gotKey = false;
+  let gotData = false;
 
   function fallbackToMjpeg() {
     console.warn('H.264 path failed, falling back to MJPEG');
@@ -78,14 +81,21 @@ function startVideo() {
     vws.send(new Uint8Array([0x04]).buffer);
   };
   vws.onclose = () => {
-    if (useH264) {
-      videoStarted = false;
-      setTimeout(startVideo, 2000);
+    if (!useH264) return;
+    // Server closes /ws_video without data when its encoder is broken:
+    // give up after a few dead connections instead of retrying forever
+    videoDeadCount = gotData ? 0 : videoDeadCount + 1;
+    if (videoDeadCount >= 3) {
+      fallbackToMjpeg();
+      return;
     }
+    videoStarted = false;
+    setTimeout(startVideo, 2000);
   };
   vws.onerror = () => vws.close();
   vws.onmessage = (ev) => {
     if (typeof ev.data === 'string') return;
+    gotData = true;
     const d = new DataView(ev.data);
     if (d.getUint8(0) !== 0x01) return;
     const key = (d.getUint8(1) & 1) !== 0;
