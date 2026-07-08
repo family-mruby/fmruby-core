@@ -490,6 +490,7 @@ class SystemDesktopApp < FmrbApp
     @gfx.draw_text(2, 2, "Family mruby", FmrbGfx::WHITE)
     draw_taskbar
     draw_clock
+    draw_wifi_icon
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
   end
 
@@ -499,6 +500,30 @@ class SystemDesktopApp < FmrbApp
     text = sprintf("%02d/%02d %02d:%02d:%02d",
                    wc[:month], wc[:day], wc[:hour], wc[:minute], wc[:second])
     @gfx.draw_text(@window_width - 90, 2, text, FmrbGfx::WHITE, MENU_BG)
+  end
+
+  # WiFi status icon just left of the clock. Modern only: wifi_info is
+  # nil on Retro/Linux and the icon is hidden. Signal-bars pictogram;
+  # gray bars with a red slash while disconnected. Clicking the icon
+  # opens the network dialog (see handle_click).
+  WIFI_ICON_W = 10
+
+  def draw_wifi_icon
+    info = FmrbApp.wifi_info
+    unless info
+      @wifi_icon_x = nil
+      return
+    end
+    x = @window_width - 90 - WIFI_ICON_W - 4
+    @wifi_icon_x = x
+    connected = info[:connected]
+    color = connected ? FmrbGfx::WHITE : FmrbGfx::GRAY
+    @gfx.fill_rect(x,     7, 2, 3, color)   # bars grow up from y=10
+    @gfx.fill_rect(x + 3, 5, 2, 5, color)
+    @gfx.fill_rect(x + 6, 3, 2, 7, color)
+    unless connected
+      @gfx.draw_line(x, 10, x + 8, 2, FmrbGfx::RED)
+    end
   end
 
   def draw_dropdown
@@ -959,6 +984,8 @@ class SystemDesktopApp < FmrbApp
     if y < MENU_BAR_HEIGHT
       if x < 80
         open_dropdown
+      elsif @wifi_icon_x && x >= @wifi_icon_x - 2 && x < @wifi_icon_x + WIFI_ICON_W + 2
+        open_network_dialog
       else
         handle_taskbar_click(x, y)
       end
