@@ -1,0 +1,8 @@
+app_handle_name = "weather"
+app_screen_name = "Weather"
+app_screen_name_ja = "天気"
+default_window_mode = "window"
+default_window_width = 170
+default_window_height = 92
+default_window_pos_x = 30
+default_window_pos_y = 30
