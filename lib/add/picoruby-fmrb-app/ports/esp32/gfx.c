@@ -1025,8 +1025,10 @@ static mrb_value mrb_gfx_create_image_from_file(mrb_state *mrb, mrb_value self)
         10000);  // 10s timeout for PNG decode
 
     if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "create_image_from_file failed: %d", ret);
-        mrb_raisef(mrb, E_RUNTIME_ERROR, "create_image_from_file failed: %d", ret);
+        // A missing/broken image must not kill the calling app; Ruby callers
+        // (e.g. system_desktop draw_background) treat nil as "no image".
+        FMRB_LOGE(TAG, "create_image_from_file failed: %d (path=%s)", ret, path);
+        return mrb_nil_value();
     }
 
     if (resp_len >= sizeof(fmrb_link_graphics_image_created_t)) {
