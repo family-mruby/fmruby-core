@@ -18,7 +18,8 @@ RUN existing_user=$(getent passwd $USER_ID | cut -d: -f1) && \
     echo $USER_NAME:$USER_NAME | chpasswd && \
     echo "$USER_NAME ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 
-RUN apt-get update && apt-get install -y ruby gdb libasan5 libasan6 libsdl2-dev
+# libssl-dev: OpenSSL headers for the Linux build of picoruby-socket SSL port
+RUN apt-get update && apt-get install -y ruby gdb libasan5 libasan6 libsdl2-dev libssl-dev
 
 USER $USER_NAME
 
