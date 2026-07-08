@@ -31,11 +31,14 @@
     picoruby-pack を参照) → lib/patch で mruby-pack に修正。
     `require 'pack'` は mruby-* gem が prebuilt_gems[] に "pack" として
     登録されるため実行時も解決される
-  - **Linux ビルドの SSL はスタブ**: ビルドコンテナに OpenSSL ヘッダが無く
-    ports/posix/ssl_socket.c (OpenSSL 依存) をコンパイルできないため、
-    SSLContext_create が NULL を返すスタブを組込み (HTTPS は RuntimeError)。
-    TLS の動作確認は esp32p4 実機で行う。コンテナに libssl-dev を追加すれば
-    本物の OpenSSL 実装に切替可能 (docker/Dockerfile 変更の要判断)
+  - **Linux ビルドの SSL は OpenSSL 実装 (2026-07-08 更新)**: 当初はビルド
+    コンテナに OpenSSL ヘッダが無くスタブ化していたが、docker/Dockerfile に
+    libssl-dev を追加して上流の ports/posix/ssl_socket.c (OpenSSL) をそのまま
+    使用する構成に変更。デフォルトで `SSL_CTX_set_default_verify_paths`
+    (システム CA ストア) + VERIFY_PEER なので、esp32p4 (esp_crt_bundle) と
+    同じ「デフォルトで検証付き HTTPS」の挙動になる。
+    Dockerfile 変更は develop への push で CI (docker-publish.yml) が
+    ghcr:latest を再公開する。ローカルには同タグの派生イメージを構築済み
 
 ## 目的
 
@@ -264,9 +267,9 @@ end
 - `lib/patch/picoruby-mbedtls/mrbgem.rake`: esp32p4 で同梱 mbedtls の
   コンパイルをスキップ (ESP-IDF の mbedtls を使用)
 - `lib/patch/picoruby-net-websocket/mrbgem.rake`: mruby-pack の gemdir 修正
-- `lib/patch/picoruby-socket/ports/posix/ssl_socket.c`: Linux 用 SSL スタブ
-  (posix ビルドは picoruby ビルドが ports/posix を自動コンパイルするため、
-  lib/patch でファイルごと置換)
+- `docker/Dockerfile`: libssl-dev を追加 (Linux ビルドの OpenSSL SSL ポート用)。
+  posix ビルドは picoruby ビルドが ports/posix を自動コンパイルするため、
+  上流の OpenSSL 実装がそのまま使われる (パッチ不要)
 - `lib/add/picoruby-fmrb-kernel/ports/esp32/net.c`: FmrbNet モジュール
   (connected? / ip_address / hostname / ssid / wait_for_ip)
 - `lib/add/picoruby-fmrb-kernel/src/picoruby_fmrb_kernel.c`: FmrbNet init 呼出し
@@ -392,8 +395,8 @@ end
 ## 検証計画
 
 1. **Linux ターゲット (WSL2)**: posix ポートで Net::HTTP / WebSocket の
-   ロジック検証 (SSL はスタブのため平文のみ。GUI 不要のスクリプトなら
-   CLAUDE Code 環境でも実行可能か確認)
+   ロジック検証。HTTPS も OpenSSL + システム CA で実機同様に検証可能
+   (GUI 不要のスクリプトなら CLAUDE Code 環境でも実行可能か確認)
 2. **実機 Phase 1**: LAN 内 HTTP サーバへ GET/POST、外部サイト GET。
    RD 併用状態での動作、タイムアウト動作 (サーバ無応答時に指定秒で例外)
 3. **実機 Phase 2**: 実在 HTTPS サイトへの GET (バンドル検証成功)、

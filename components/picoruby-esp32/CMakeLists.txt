@@ -81,7 +81,7 @@ if(IDF_TARGET STREQUAL "linux")
         # NOTE: picoruby-socket / picoruby-mbedtls port sources are NOT listed
         # here for linux: the picoruby build compiles every gem's ports/posix
         # and ports/common automatically on POSIX builds (lib/picoruby/build.rb).
-        # SSL on linux is a stub (lib/patch/picoruby-socket/ports/posix).
+        # SSL on linux uses OpenSSL (linked below).
     )
 else()
     file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")
@@ -181,6 +181,8 @@ idf_component_register(
 # Add platform-specific dependencies for Linux
 if(IDF_TARGET STREQUAL "linux")
   target_link_libraries(${COMPONENT_LIB} PRIVATE mbedtls)
+  # OpenSSL for the picoruby-socket POSIX SSL port (libssl-dev in the container)
+  target_link_libraries(${COMPONENT_LIB} PRIVATE ssl crypto)
   # Disable optimization for debugging
   # Todo: disable it on official release
   target_compile_options(${COMPONENT_LIB} PRIVATE -O0 -g3)
