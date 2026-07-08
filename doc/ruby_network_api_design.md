@@ -4,7 +4,21 @@
 
 ## 実装状況
 
-- **Phase 1〜3 実装済み・esp32p4 ビルドOK (2026-07-08)、実機検証待ち**
+- **実機検証済み (2026-07-09, Tab5)**: NET STATUS / HTTP / HTTPS(バンドル検証) /
+  不正証明書の拒否 / 接続タイムアウト、全て Net Test アプリ
+  (flash/app/tool/net_test.app.rb) で確認
+  - HTTPS: 200 応答まで約1.1秒 (TLS1.2ハンドシェイク+検証込み)
+  - TLSセッション中の内部RAM消費: 定常 約7KB (設計時見積り30-50KBより軽い)。
+    アプリタスクスタック16KBで残8.8KB (スタック増量は不要だった)
+  - 既知の揺らぎ: WiFi接続直後の最初のTCPフローのみ応答が来ず10秒タイムアウト
+    することがある (esp_hosted経由の初回フロー確立。リトライで成功)
+  - **実機クラッシュ修正 (2026-07-09)**: 上流の ports/esp32/{ssl_socket,tcp_server}.c
+    は `picorb_alloc(NULL, ...)` を使っており、mruby VMでは
+    `mrb_malloc(NULL, ...)` に展開されてNULLの mrb_state をデリファレンスし
+    即クラッシュする (mruby/cではvm=NULLが合法のため未発覚だった上流バグ)。
+    lib/patch で mutex保護済みの `fmrb_sys_malloc/free` に置換
+- **Linux 検証済み (2026-07-09)**: 全テストOK (WSエコー含む)
+- **Phase 1〜3 実装済み・esp32p4 ビルドOK (2026-07-08)**
   - TCPSocket / UDPSocket / TCPServer / SSLSocket / Net::HTTP /
     Net::WebSocket::Client を esp32p4 と linux のビルドに組込み
   - バイナリ: 3.38MB / 4MB (19% free)。組込み前 3.10MB から +0.28MB

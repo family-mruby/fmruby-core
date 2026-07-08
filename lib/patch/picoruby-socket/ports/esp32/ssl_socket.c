@@ -11,10 +11,15 @@
  * - Read timeout (FMRB_SOCKET_IO_TIMEOUT_MS) so a silent peer cannot stall
  *   the mruby VM task forever.
  * - Failures are logged with the mbedtls error code.
+ * - Allocations use fmrb_sys_malloc: upstream used picorb_alloc with a NULL
+ *   VM, which on the mruby VM expands to mrb_malloc(NULL, ...) and crashes
+ *   with a NULL mrb_state dereference (observed as a Load access fault in
+ *   mrb_realloc on the first HTTPS request on Tab5).
  */
 
 #include "../../include/socket.h"
 #include "picoruby.h"
+#include "fmrb_mem.h"
 
 /* mbedtls includes */
 #include "mbedtls/net_sockets.h"
@@ -73,7 +78,7 @@ struct picorb_ssl_socket {
 picorb_ssl_context_t*
 SSLContext_create(void)
 {
-  picorb_ssl_context_t *ctx = (picorb_ssl_context_t *)picorb_alloc(NULL, sizeof(picorb_ssl_context_t));
+  picorb_ssl_context_t *ctx = (picorb_ssl_context_t *)fmrb_sys_malloc(sizeof(picorb_ssl_context_t));
   if (!ctx) return NULL;
 
   mbedtls_ssl_config_init(&ctx->ssl_config);
@@ -136,7 +141,7 @@ SSLContext_free(picorb_ssl_context_t *ctx)
   mbedtls_ssl_config_free(&ctx->ssl_config);
   mbedtls_ctr_drbg_free(&ctx->ctr_drbg);
   mbedtls_entropy_free(&ctx->entropy);
-  picorb_free(NULL, ctx);
+  fmrb_sys_free(ctx);
 }
 
 bool
@@ -256,7 +261,7 @@ SSLSocket_create(picorb_ssl_context_t *ssl_ctx)
 {
   if (!ssl_ctx) return NULL;
 
-  picorb_ssl_socket_t *ssl_sock = (picorb_ssl_socket_t *)picorb_alloc(NULL, sizeof(picorb_ssl_socket_t));
+  picorb_ssl_socket_t *ssl_sock = (picorb_ssl_socket_t *)fmrb_sys_malloc(sizeof(picorb_ssl_socket_t));
   if (!ssl_sock) return NULL;
   memset(ssl_sock, 0, sizeof(picorb_ssl_socket_t));
 
@@ -273,8 +278,8 @@ bool
 SSLSocket_set_hostname(picorb_ssl_socket_t *ssl_sock, const char *hostname)
 {
   if (!ssl_sock || !hostname) return false;
-  if (ssl_sock->hostname) picorb_free(NULL, ssl_sock->hostname);
-  ssl_sock->hostname = (char *)picorb_alloc(NULL, strlen(hostname) + 1);
+  if (ssl_sock->hostname) fmrb_sys_free(ssl_sock->hostname);
+  ssl_sock->hostname = (char *)fmrb_sys_malloc(strlen(hostname) + 1);
   if (!ssl_sock->hostname) return false;
   strcpy(ssl_sock->hostname, hostname);
   return true;
@@ -400,11 +405,11 @@ SSLSocket_close(picorb_ssl_socket_t *ssl_sock)
   mbedtls_ssl_free(&ssl_sock->ssl);
 
   if (ssl_sock->hostname) {
-    picorb_free(NULL, ssl_sock->hostname);
+    fmrb_sys_free(ssl_sock->hostname);
     ssl_sock->hostname = NULL;
   }
 
-  picorb_free(NULL, ssl_sock);
+  fmrb_sys_free(ssl_sock);
   return true;
 }
 
