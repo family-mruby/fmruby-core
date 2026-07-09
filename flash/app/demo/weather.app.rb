@@ -38,16 +38,27 @@ class WeatherApp < FmrbApp
     @updated_at = nil
     @last_fetch_ms = 0
     @retries = 0
+    @net_up = false
   end
 
   def on_create
     Log.info("Weather: on_create #{@user_area_width}x#{@user_area_height}")
+    @net_up = FmrbNet.connected?
     draw_all
-    fetch_weather
-    draw_all
+    if @net_up
+      fetch_weather
+      draw_all
+    else
+      Log.info("Weather: network down, waiting...")
+    end
   end
 
   def on_update
+    # While the network is down (WiFi still associating, or no WiFi at all),
+    # just watch FmrbNet once a second instead of burning fetch retries.
+    unless network_up?
+      return 1000
+    end
     # Retry quickly until the first success, then settle to the slow refresh.
     interval = @weather ? REFRESH_INTERVAL_MS : RETRY_INTERVAL_MS
     if now_ms - @last_fetch_ms > interval
@@ -62,6 +73,10 @@ class WeatherApp < FmrbApp
   def on_event(ev)
     super(ev)
     return unless ev[:type] == :mouse_up && ev[:button] == 1
+    unless network_up?
+      Log.info("Weather: click ignored, network down")
+      return
+    end
     @retries = 0   # manual click always retries
     fetch_weather
     draw_all
@@ -78,6 +93,22 @@ class WeatherApp < FmrbApp
   private
 
   # --- Data ---------------------------------------------------------------
+
+  # Poll FmrbNet and redraw on state transitions. Regaining the network
+  # resets the retry budget so fetching starts over immediately.
+  def network_up?
+    up = FmrbNet.connected?
+    if up != @net_up
+      @net_up = up
+      Log.info("Weather: network #{up ? 'up' : 'down'}")
+      if up
+        @retries = 0
+        @last_fetch_ms = 0
+      end
+      draw_all
+    end
+    up
+  end
 
   def fetch_weather
     @last_fetch_ms = now_ms
@@ -158,6 +189,8 @@ class WeatherApp < FmrbApp
       @gfx.draw_text(tx, y0 + 22, "#{@weather[:temp]} C", COLOR_TEXT, COLOR_BG)
       @gfx.draw_text(tx, y0 + 34, label, COLOR_DIM, COLOR_BG)
       @gfx.draw_text(tx, y0 + 46, "wind #{@weather[:wind]} km/h", COLOR_DIM, COLOR_BG)
+    elsif !@net_up
+      @gfx.draw_text(x0 + 6, y0 + 26, "waiting for network...", COLOR_DIM, COLOR_BG)
     elsif @error
       @gfx.draw_text(x0 + 6, y0 + 26, "error: #{@error}", COLOR_ERR, COLOR_BG)
       if @retries < MAX_RETRIES
@@ -171,6 +204,7 @@ class WeatherApp < FmrbApp
 
     footer_y = y0 + @user_area_height - CHAR_H - 2
     note = @updated_at ? "upd #{@updated_at}  click=refresh" : "click=refresh"
+    note = "no network  #{note}" if @weather && !@net_up
     @gfx.draw_text(x0 + 6, footer_y, note, COLOR_DIM, COLOR_BG)
 
     draw_window_frame
