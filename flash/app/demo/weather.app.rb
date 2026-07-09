@@ -14,13 +14,18 @@ class WeatherApp < FmrbApp
   LONGITUDE = 139.69
   CITY      = "Tokyo"
   REFRESH_INTERVAL_MS = 10 * 60 * 1000
+  # Until the first successful fetch, retry quickly. On the device the very
+  # first TCP/TLS flow after WiFi association is sometimes dropped by the
+  # esp_hosted path (seen as a ~10s handshake timeout); a retry gets through.
+  RETRY_INTERVAL_MS = 3000
+  MAX_RETRIES = 5
 
   CHAR_W = 6
   CHAR_H = 8
   COLOR_BG    = 0x02   # deep night blue
   COLOR_TEXT  = 0xFF
   COLOR_DIM   = 0xB6   # light gray
-  COLOR_SUN   = 0xF8   # yellow
+  COLOR_SUN   = 0xE0   # red (rising-sun style)
   COLOR_CLOUD = 0xDB   # light gray
   COLOR_RAIN  = 0x1F   # cyan-blue
   COLOR_SNOW  = 0xFF
@@ -32,6 +37,7 @@ class WeatherApp < FmrbApp
     @error = nil
     @updated_at = nil
     @last_fetch_ms = 0
+    @retries = 0
   end
 
   def on_create
@@ -42,9 +48,13 @@ class WeatherApp < FmrbApp
   end
 
   def on_update
-    if now_ms - @last_fetch_ms > REFRESH_INTERVAL_MS
-      fetch_weather
-      draw_all
+    # Retry quickly until the first success, then settle to the slow refresh.
+    interval = @weather ? REFRESH_INTERVAL_MS : RETRY_INTERVAL_MS
+    if now_ms - @last_fetch_ms > interval
+      if @weather || @retries < MAX_RETRIES
+        fetch_weather
+        draw_all
+      end
     end
     1000
   end
@@ -52,6 +62,7 @@ class WeatherApp < FmrbApp
   def on_event(ev)
     super(ev)
     return unless ev[:type] == :mouse_up && ev[:button] == 1
+    @retries = 0   # manual click always retries
     fetch_weather
     draw_all
   end
@@ -73,31 +84,46 @@ class WeatherApp < FmrbApp
     url = "https://api.open-meteo.com/v1/forecast" \
           "?latitude=#{LATITUDE}&longitude=#{LONGITUDE}&current_weather=true"
     Log.info("Weather: GET #{url}")
-    res = Net::HTTP.get_response(URI.parse(url))
-    if res.code != "200"
-      @error = "HTTP #{res.code}"
-      Log.error("Weather: #{@error}")
-      return
+    ok = false
+    begin
+      res = Net::HTTP.get_response(URI.parse(url))
+      if res.code != "200"
+        @error = "HTTP #{res.code}"
+      else
+        data = JSON.parse(res.body)
+        cw = data.is_a?(Hash) ? data["current_weather"] : nil
+        if cw.is_a?(Hash)
+          @weather = {
+            temp: cw["temperature"],
+            code: cw["weathercode"].to_i,
+            wind: cw["windspeed"],
+          }
+          @error = nil
+          t = Time.now
+          @updated_at = "%02d:%02d" % [t.hour, t.min]
+          Log.info("Weather: OK #{@weather[:temp]}C code=#{@weather[:code]}")
+          ok = true
+        else
+          @error = "bad data"
+        end
+      end
+    rescue => e
+      @error = "#{e.class}"
+      Log.error("Weather: fetch failed: #{e.class}: #{e.message}")
     end
-    data = JSON.parse(res.body)
-    cw = data["current_weather"]
-    unless cw
-      @error = "no data"
-      return
+    # Count every non-success so retries are bounded (see on_update guard);
+    # otherwise a persistent failure would loop forever and drain internal RAM.
+    if ok
+      @retries = 0
+    else
+      @retries += 1
+      Log.info("Weather: retry count=#{@retries}")
     end
-    @weather = {
-      temp: cw["temperature"],
-      code: cw["weathercode"].to_i,
-      wind: cw["windspeed"],
-      day: cw["is_day"].to_i == 1,
-    }
-    @error = nil
-    t = Time.now
-    @updated_at = "%02d:%02d" % [t.hour, t.min]
-    Log.info("Weather: #{@weather[:temp]}C code=#{@weather[:code]} wind=#{@weather[:wind]}")
-  rescue => e
-    @error = "#{e.class}"
-    Log.error("Weather: fetch failed: #{e.class}: #{e.message}")
+    # Reclaim the per-request SSLContext/SSLSocket promptly: their mbedtls
+    # buffers live in internal RAM that mruby's GC accounting does not see,
+    # so without a nudge repeated requests exhaust DMA-capable RAM (seen as
+    # esp-aes DMA descriptor allocation failures).
+    GC.start rescue nil
   end
 
   # WMO weather interpretation codes -> kind symbol + label
@@ -134,6 +160,11 @@ class WeatherApp < FmrbApp
       @gfx.draw_text(tx, y0 + 46, "wind #{@weather[:wind]} km/h", COLOR_DIM, COLOR_BG)
     elsif @error
       @gfx.draw_text(x0 + 6, y0 + 26, "error: #{@error}", COLOR_ERR, COLOR_BG)
+      if @retries < MAX_RETRIES
+        @gfx.draw_text(x0 + 6, y0 + 38, "retrying...", COLOR_DIM, COLOR_BG)
+      else
+        @gfx.draw_text(x0 + 6, y0 + 38, "click to retry", COLOR_DIM, COLOR_BG)
+      end
     else
       @gfx.draw_text(x0 + 6, y0 + 26, "loading...", COLOR_DIM, COLOR_BG)
     end
