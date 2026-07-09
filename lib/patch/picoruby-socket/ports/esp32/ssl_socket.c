@@ -381,8 +381,14 @@ SSLSocket_recv(picorb_ssl_socket_t *ssl_sock, void *buf, size_t len)
       return -1;
     }
     if (ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
-      // Connection closed by peer
+      /* Clean TLS shutdown from the peer: report EOF, not an error.
+       * Servers that close after a Connection: close response (e.g.
+       * api.open-meteo.com) send close_notify; upstream treated it as an
+       * error and every such request raised "SSL recv failed". */
+      ssl_sock->state = SSL_STATE_NONE;
+      return 0;
     }
+    ESP_LOGW(TAG, "ssl_read failed: -0x%04x", -ret);
     ssl_sock->state = SSL_STATE_ERROR;
     return -1;
   }

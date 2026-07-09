@@ -161,9 +161,11 @@ task :setup do
   sh "cp -f lib/patch/picoruby-i2c/src/mruby/i2c.c #{mrbgem_path}/picoruby-i2c/src/mruby/"
 
   # picoruby-socket: esp32p4 (ESP-IDF) build support, default socket timeouts,
-  # and TLS via the ESP-IDF certificate bundle (esp_crt_bundle)
+  # TLS via the ESP-IDF certificate bundle (esp_crt_bundle), and a GC-time
+  # release of native TLS sessions (leak fix)
   sh "cp -f lib/patch/picoruby-socket/mrbgem.rake #{mrbgem_path}/picoruby-socket/"
   sh "cp -f lib/patch/picoruby-socket/src/mruby/socket.c #{mrbgem_path}/picoruby-socket/src/mruby/"
+  sh "cp -f lib/patch/picoruby-socket/src/mruby/ssl_socket.c #{mrbgem_path}/picoruby-socket/src/mruby/"
   sh "cp -f lib/patch/picoruby-socket/ports/esp32/tcp_socket.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
   sh "cp -f lib/patch/picoruby-socket/ports/esp32/ssl_socket.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
   sh "cp -f lib/patch/picoruby-socket/ports/esp32/tcp_server.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
@@ -179,6 +181,9 @@ task :setup do
 
   # picoruby-net-http: accept URI objects in get/get_response/post_form (CRuby style)
   sh "cp -f lib/patch/picoruby-net-http/mrblib/http_client.rb #{mrbgem_path}/picoruby-net-http/mrblib/"
+
+  # picoruby-json: fix parse_float dropping the decimal point ("26.2" -> 262.0)
+  sh "cp -f lib/patch/picoruby-json/mrblib/json.rb #{mrbgem_path}/picoruby-json/mrblib/"
 
   # mruby-task: add stack clearing in mrb_task_reset_context + disable HAL auto-load
   mruby_task_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-task"

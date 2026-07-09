@@ -75,8 +75,16 @@ module Net
 
     # Finish HTTP session
     def finish
-      if @socket && !@socket.closed?
-        @socket.close
+      # Always close: SSLSocket#closed? also reports true after a peer EOF
+      # while the native TLS session is still allocated, so guarding on it
+      # leaked the session. #close on an already-released socket raises,
+      # which is safe to ignore here.
+      if @socket
+        begin
+          @socket.close
+        rescue
+          # already released
+        end
       end
       @socket = nil
       @started = false
@@ -311,22 +319,26 @@ module Net
 
       # Read body based on headers
       if content_length
-        # Read exact content length
-        body_start = response.length
+        # Read exact content length (may span several reads)
         remaining = content_length - (response.length - header_end - 4)
-        if remaining > 0
+        while remaining > 0
           body_part = @socket.read(remaining)
-          response += body_part if body_part
+          break unless body_part
+          response += body_part
+          remaining -= body_part.length
         end
       elsif chunked
-        # Read chunked encoding (simplified)
-        while true
+        # Read until the terminating zero-length chunk, then de-frame.
+        # (Guard against re-reading when the whole body already arrived with
+        # the headers: reading again would block until the socket timeout.)
+        until response.end_with?("0\r\n\r\n")
           chunk = @socket.read(8192)
           break unless chunk
           response += chunk
-          # Simple check for end of chunks
-          break if response.end_with?("\r\n0\r\n\r\n")
         end
+        headers_part = response[0..header_end + 3] || ''
+        raw = response[header_end + 4, response.length] || ''
+        response = headers_part + dechunk(raw)
       else
         # Read until connection closes
         while true
@@ -337,6 +349,46 @@ module Net
       end
 
       response
+    end
+
+    # Decode HTTP/1.1 chunked transfer-encoding into the raw body.
+    # Each chunk is "<hex-size>[;ext]\r\n<data>\r\n"; a zero size ends it.
+    def dechunk(raw)
+      decoded = ""
+      pos = 0
+      len = raw.length
+      while pos < len
+        crlf = raw.index("\r\n", pos)
+        break unless crlf
+        size = hex_to_i(raw[pos...crlf])
+        break if size <= 0
+        data_start = crlf + 2
+        break if data_start + size > len
+        decoded += raw[data_start, size]
+        pos = data_start + size + 2  # skip the data and its trailing CRLF
+      end
+      decoded
+    end
+
+    # Parse a hex string up to the first non-hex character (chunk-size line
+    # may carry ";extensions"). String#to_i(16) is avoided for portability.
+    def hex_to_i(str)
+      v = 0
+      i = 0
+      while i < str.length
+        c = str[i]
+        if c >= '0' && c <= '9'
+          v = v * 16 + (c.ord - '0'.ord)
+        elsif c >= 'a' && c <= 'f'
+          v = v * 16 + (c.ord - 'a'.ord + 10)
+        elsif c >= 'A' && c <= 'F'
+          v = v * 16 + (c.ord - 'A'.ord + 10)
+        else
+          break
+        end
+        i += 1
+      end
+      v
     end
 
     # Check if using SSL
