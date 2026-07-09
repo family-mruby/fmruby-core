@@ -697,26 +697,26 @@ static void render_frame(void) {
                                    c->push_x + w1, c->push_y + h1, fb_w, fb_h);
         }
 
+        // Sprites use canvas-local coordinates and must not spill outside
+        // the canvas footprint on screen (sprite compositing otherwise
+        // clips to framebuffer bounds only, leaking sprites onto the
+        // desktop and other windows). For viewport canvases the visible
+        // footprint is the viewport instead of the full canvas.
+        int dx = c->push_x, dy = c->push_y;
+        int cw = sw, ch = sh;
         if (c->view_w > 0) {
-            // Sprites on a viewport canvas use viewport-relative coordinates
-            // and must not spill outside the visible footprint (sprite
-            // compositing otherwise clips to framebuffer bounds only)
-            int dx = c->push_x, dy = c->push_y;
-            int cw = (c->view_w < sw) ? c->view_w : sw;
-            int ch = (c->view_h < sh) ? c->view_h : sh;
-            if (dx < 0) { cw += dx; dx = 0; }
-            if (dy < 0) { ch += dy; dy = 0; }
-            if (dx + cw > fb_w) cw = fb_w - dx;
-            if (dy + ch > fb_h) ch = fb_h - dy;
-            if (cw > 0 && ch > 0) {
-                g_framebuffer->setClipRect(dx, dy, cw, ch);
-                display_p4_sprite_composite(c->canvas_id, g_framebuffer,
-                                            c->push_x, c->push_y);
-                g_framebuffer->clearClipRect();
-            }
-        } else {
+            cw = (c->view_w < sw) ? c->view_w : sw;
+            ch = (c->view_h < sh) ? c->view_h : sh;
+        }
+        if (dx < 0) { cw += dx; dx = 0; }
+        if (dy < 0) { ch += dy; dy = 0; }
+        if (dx + cw > fb_w) cw = fb_w - dx;
+        if (dy + ch > fb_h) ch = fb_h - dy;
+        if (cw > 0 && ch > 0) {
+            g_framebuffer->setClipRect(dx, dy, cw, ch);
             display_p4_sprite_composite(c->canvas_id, g_framebuffer,
                                         c->push_x, c->push_y);
+            g_framebuffer->clearClipRect();
         }
     }
 
