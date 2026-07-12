@@ -240,9 +240,13 @@ mrb_machine_check_signal(mrb_state *mrb, mrb_value self)
 static mrb_value
 mrb_machine_poll_signal(mrb_state *mrb, mrb_value self)
 {
+#ifndef FMRB_NO_IO_CONSOLE
   io_raw_bang(true);
+#endif
   Machine_tud_task();
+#ifndef FMRB_NO_IO_CONSOLE
   io_cooked_bang();
+#endif
   if (sigint_status == MACHINE_SIGINT_RECEIVED) {
     sigint_status = MACHINE_SIG_NONE;
     return mrb_symbol_value(MRB_SYM(INT));
