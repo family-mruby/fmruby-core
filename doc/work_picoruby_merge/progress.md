@@ -2,13 +2,14 @@
 
 中断復帰の起点。新しい作業は末尾に追記する。日付は JST。
 
-> **【重要・ビルド禁止の中間状態】**
-> 現在、lib/ の解決済みファイルは **新 HEAD 前提**の内容 (新述語 `build.picoruby?`、新 mruby ツリーの
-> パス等) に書き換わっているが、**submodule はまだ旧 pin (c14aa4400)** のままである。
-> この状態で `rake build:linux` / `rake build:esp32` を実行すると、setup が新前提のファイルを
-> **旧ツリーに被せる**ため、無意味なビルド失敗になる (マージの正否とは無関係の失敗)。
-> **ビルド検証は submodule を新 pin (c932f70b0 および各入れ子の新 pin) に切り替えてからでないと不可能。**
-> それまでビルドで検証しようとしないこと。
+> **【重要・現在の状態: pin 切替済み / Rakefile・再導出 未完のためビルド不可】**
+> submodule は **新 pin に切替済み** (L0 picoruby c932f70b, nested も全て新 pin。working tree の
+> checkout であり fmruby-core には未 commit = pointer 未更新)。
+> ただし **(1) Rakefile setup が旧パス (mruby-compiler2 等) と撤去予定の prism/vm.c コピー行を
+> まだ参照** しており、**(2) D4/D7/B1/D2/D6 の再導出と socket TLS/net-http 統合が未完** のため、
+> まだ `rake build:linux` は通らない。ビルド検証は Rakefile 更新 + 再導出完了後。
+> 復帰時の注意: fmruby-core で `git submodule update` すると旧 pin に戻るので実行しないこと。
+> submodule の pin 切替手順は progress 末尾「pin 切替」ログ参照 (再現可能)。
 
 ---
 
@@ -196,3 +197,29 @@ fetch 実施: picoruby master, mruby/mruby master, mruby-compiler2 master (全�
 - socket TLS/net-http はビルド検証しながらの集中統合。
 - **ビルド検証は不可(先頭「ビルド禁止の中間状態」を参照)**。submodule 新 pin 切替後に限り可能。
   切替前の rake build:* は無意味に失敗するので「マージ失敗」と誤認しないこと。ビルド前に `rake clean`(切替時 `clean_all`)。
+
+### pin 切替 完了 (2026-07-12) — submodule を新 pin へ (working tree checkout, 未 commit)
+
+手順 (再現可能。全て picoruby submodule 内のローカル操作):
+1. L0 working tree を clean (`git checkout -- . && git clean -fd`。scratch は lib/ から再生成可)。
+2. `git checkout c932f70b0` (新 master, detached)。旧 mruby-compiler2/mrbc2 dir は stale 化。
+3. `git submodule sync` (mruby remote を hasumikin→本家 mruby/mruby に、改名パスを反映)。
+4. `git submodule update mrbgems/picoruby-mruby/lib/{estalloc,mruby}` → estalloc 971b793 / mruby f56d44e。
+5. `git submodule update --init mrbgems/mruby-compiler mrbgems/mruby-bin-mrbc` → 10408c3 / 8456898 (改名パス)。
+6. `git -C mrbgems/mruby-compiler submodule update --init lib/prism` → prism c0e37816 (据置)。
+7. stale dir 除去: `rm -rf mrbgems/mruby-compiler2 mrbgems/mruby-bin-mrbc2`。
+8. `git submodule update` で mrubyc(71a231b)/regex_light(39e112a) も新 pin へ。
+- funicular / littlefs は **未初期化のまま** (依頼者方針: 新規 gem 不採用)。
+- 結果: L0 working tree クリーン (modified tracked = 0)。ツリーは upstream 新 pin の素の状態
+  (まだ lib/ パッチ未適用)。
+
+### 次アクション (実装フェーズ / Linux ビルドで反復)
+
+- **Rakefile setup 更新**: (a) compiler パス改名 mruby-compiler2→mruby-compiler、
+  (b) prism 撤去 (prism_xallocator.h/prism_alloc.c/mrbgem.rake 行削除)、(c) vm.c コピー行削除 (D1 撤去)。
+- **rake setup** で lib/ を新ツリーに適用 → コンパイルエラーを見ながら D4/D7/D6/D5/D2/B1 を再導出。
+- D4/D7 は rederive_vm_task.md の設計どおり (bottom-half を task_run_body へ、FreeRTOS top-half、
+  take_pending_ticks の原子性、per-VM カウンタ)。
+- B1 machine 再導出 (+prism-lock 除去)、fmrb_mem/config の Option A cleanup、global_mrb 配線確認。
+- socket TLS/net-http 集中統合。
+- `rake build:linux` を主検証に反復 → 通ったら esp32 → 実機は依頼者。
