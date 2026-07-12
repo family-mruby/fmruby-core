@@ -147,7 +147,12 @@ mruby build で `picorb_alloc(mrb,size)=mrb_malloc(mrb,size)` となり安全。
   (switching+pending 蓄積、mrb_tick 呼ばない) を実装。B1 の hal_freertos.c と統合。rederive_vm_task.md 参照。
 - **D5 mruby-dir/mrbgem.rake** [TODO] — 新 mruby-dir は ports/{posix,win}+mrbgem.rake で port 自動選択。
   ESP32 で auto-detect 破綻しないか確認し「ESP32 で HAL 自動検出スキップ」を再適用。
-- **D2 picoruby-mruby/src/alloc.c** [TODO・高リスク] — estalloc マルチ VM。新 estalloc pin 971b793。
+- **D2 picoruby-mruby/src/alloc.c** [DONE・要実機確認] — estalloc マルチ VM。新 estalloc pin 971b793。
+  新 upstream alloc.c (TLSF/O1HEAP/TINYALLOC/ESTALLOC/DEFAULT の複数分岐) を土台に、**ESTALLOC 分岐のみ**を
+  per-VM 化: module-static `est` → `fmrb_get_current_est()`/`fmrb_set_current_est()` (per-task TLS)。
+  **upstream 新規の `mrb_alloc_set_critical_section` / `est_set_critical_section` を保持**しつつ per-VM est に適合。
+  `mrb_get_estalloc_stats` ヘルパも追加。ESTALLOC_DEBUG guard は upstream 版採用 (mrbgem.rake で常時 on 予定)。
+  実機確認: 複数 VM 並走時に各 est が正しく分離されるか、critical_section が正しい est に効くか。
 - **D3 mruby-io/file_constants.rb** [clean] — 現 pin と diff 無し。新 pin で再確認。
 - **picoruby-mruby/mrbgem.rake** (L0) [TODO] — hal-posix-task 依存廃止に伴い upstream 構造採用+mruby-io 除去
   (batch 3 参照)。D4/D7 と同時に確定。

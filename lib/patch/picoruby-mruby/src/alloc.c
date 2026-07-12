@@ -240,11 +240,15 @@ mrb_open_with_custom_alloc(void* mem, size_t bytes)
 
 #include "../lib/estalloc/estalloc.h"
 
-/* family-mruby: per-VM estalloc via thread-local accessor */
+/* family-mruby: per-VM estalloc via a thread-local accessor. fmrb runs one VM
+ * per app (ctx->mrb), each on its own FreeRTOS task with its own est heap; the
+ * upstream module-static `est` would make every VM share the last opener's heap.
+ * fmrb_{get,set}_current_est are provided by the fmrb runtime (per-task TLS). */
 extern void* fmrb_get_current_est(void);
 extern void  fmrb_set_current_est(void*);
 
 void *
+//mrb_estalloc_allocf(mrb_state *mrb, void *p, size_t size, void *est)
 mrb_basic_alloc_func(void* ptr, size_t size)
 {
   ESTALLOC *est = (ESTALLOC*)fmrb_get_current_est();
@@ -261,7 +265,9 @@ mrb_value
 mrb_alloc_statistics(mrb_state *mrb)
 {
   ESTALLOC *est = (ESTALLOC*)fmrb_get_current_est();
+#if defined(ESTALLOC_DEBUG)
   est_take_statistics(est);
+#endif
   ESTALLOC_STAT *stat = &est->stat;
   mrb_value hash = mrb_hash_new_capa(mrb, 5);
   mrb_hash_set(mrb, hash, mrb_symbol_value(MRB_SYM(allocator)), mrb_symbol_value(MRB_SYM(ESTALLOC)));
@@ -280,7 +286,18 @@ mrb_open_with_custom_alloc(void* mem, size_t bytes)
   return mrb_open();
 }
 
-/* family-mruby: helper to get stats from an est pointer */
+void
+mrb_alloc_set_critical_section(void (*enter)(void), void (*exit_func)(void))
+{
+  ESTALLOC *est = (ESTALLOC*)fmrb_get_current_est();
+  if (est) {
+    est_set_critical_section(est, enter, exit_func);
+  }
+}
+
+/* family-mruby: read stats from an explicit est pointer (per-VM monitoring;
+ * the caller passes the VM's own est, so this works regardless of which task
+ * is current). */
 int
 mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free_out, int32_t* frag)
 {
