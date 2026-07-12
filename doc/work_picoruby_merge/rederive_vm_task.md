@@ -154,6 +154,9 @@ bottom-half 適用時点ではタスクが RUNNING でないため、mrb_tick �
   - `mrb_hal_task_init(mrb)`: FreeRTOS timer タスク/タイマ生成 (周期 = MRB_TICK_UNIT ms)。
   - timer コールバック (別スレッド): `mrb->task.switching = TRUE; pending_ticks[vm]++;` のみ (mrb_tick 呼ばない)。
   - `mrb_hal_task_take_pending_ticks(mrb)`: pending を返し 0 クリア (VM スレッドから呼ばれる)。
+    **【必須】この read→0クリアは原子的に** (FreeRTOS クリティカルセクション or atomic exchange)。
+    timer スレッドの pending++ との read-modify-write 競合が案D で唯一残る本物のクロススレッド点。
+    忘れると tick 取りこぼし=sleep が稀に長引く、検出困難なレースになる (詳細は下の per-VM 項の後を参照)。
   - `mrb_hal_task_idle_cpu(mrb)`: FreeRTOS の短い vTaskDelay 等 (busy-wait 回避)。
   - `mrb_hal_task_sleep_us(mrb, usec)`: vTaskDelay 換算。
   - `mrb_task_enable_irq/disable_irq`: tick タスク優先度制御 or クリティカルセクション。
