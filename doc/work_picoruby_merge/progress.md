@@ -253,3 +253,40 @@ pin 切替 (55a3659) 以降の実装コミット。詳細は resolutions.md 各�
 - B1 着手前に旧 tick API の呼び出し元棚卸し (main/ lib/add grep、CMake PICORUBY_SRCS 確認) → resolutions.md へ。
 - B1: merge-file で machine 差分を洗い出し → tick 撤去 + prism-lock 除去を重ねる。
 - → global_mrb 配線 → rake setup → build:linux 反復。
+
+## 2026-07-12 (続き) — B1 大半完了 + rake setup 検証OK
+
+- **B1 picoruby-machine**: 3-way マージで CLEAN 16 + conflict 5 を解決 (posix/hal.c=ours,
+  src/mruby/machine.c=#if対応, mrbgem.rake=マージ, hal.h=upstream alias採用+fmrb宣言追加)。
+  esp32/machine.c は残 (esp32 専用; Linux は esp32_linux port 使用)。
+- **呼び出し元付け替え**: fmrb_app.c hal_register_vm→mrb_hal_task_register_vm,
+  fmrb-app app.c hal_deinit→mrb_hal_task_final。
+- **picoruby-mruby/mrbgem.rake 確定**: mruby-io 除去, mruby-task 単独, ESTALLOC_DEBUG 常時on。
+- **`rake setup` 完走 (エラー無し)** — Rakefile 改名パス・lib/ 構造の整合を検証。submodule working tree に
+  patch 適用済 (build 準備状態)。
+
+### 現在地: オフライン再導出フェーズ ほぼ完了 → build 反復フェーズへ
+
+lib/ 側で完了: L0 8ファイル, compiler(Option A), D1撤去, D2, D4, D5撤去, D6, D7(freertos port),
+B1(machine 大半), port選択, 付け替え, picoruby-mruby/mrbgem.rake。
+
+**build 反復フェーズで解決する残件** (`rake build:linux` = idf.py/Docker を回して実エラーで対応):
+1. **hal_freertos.c の tick manager 撤去** (Linux 重複シンボル): hal_freertos.c は 228行全体が tick manager で
+   freertos task_hal.c と重複。CMake PICORUBY_SRCS(L78) から外す or ファイル gut。**build:linux は idf.py(CMake)**
+   なので、rake の freertos port と CMake の hal_freertos.c のコンパイル経路整合を実ビルドで確定。
+2. **esp32/machine.c の tick manager 撤去** (esp32 ビルド)。
+3. **socket TLS/net-http 統合** (deferred): esp32/posix ssl_socket.c, src ssl_socket.c, posix/tcp_socket.c,
+   net-http/http_client.rb は旧パッチのまま。新 upstream に対して統合が必要 (build エラーで顕在化)。
+   判定は resolutions.md「socket TLS/TCP 群」参照 (alloc/close_notify=upstream, ready=ours, crt_bundle/timeout=保持)。
+4. **prism-lock/pool cleanup** (Option A): fmrb_mempool.c の g_prism_memory_pool + est 初期化除去,
+   fmrb_mem_config.h の FMRB_MEM_PRISM_POOL_SIZE 除去, machine ports の fmrb_prism_lock/unlock 除去
+   (prism_alloc.c 削除済で呼び出し元無し=defined-but-unused、build は通るが cleanup)。
+5. **global_mrb 配線** (runtime): compile 点で mutex→設定→compile→復元 (依頼者決定=mutex 方式)。build は通る
+   (global_mrb は mruby-compiler ccontext.c 定義)、runtime で prism alloc に必要。
+6. **mbedtls/socket rake の platform 判定** (ビルド時判断、resolutions 参照)。
+
+### 次アクション
+
+- `rake build:linux` を回し、上記 1→3→2 の順 (Linux 優先) でコンパイル/リンクエラーを潰す。
+- lib/ 編集ごとに `rake clean`。ターゲット切替時 `rake clean_all`。
+- green 後 esp32 ビルド。実機(デュアルコア)長時間走行・GUI 実行は依頼者確認項目 (tasklist)。
