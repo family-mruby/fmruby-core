@@ -1,10 +1,23 @@
-#define PICORB_PLATFORM_POSIX 1
+/*
+ * Family mruby patch of ports/posix/tcp_socket.c: default socket timeouts,
+ * matching the esp32 port. Upstream has none, so a dead peer blocks the
+ * mruby VM for the OS default (minutes). connect() gives up after
+ * FMRB_SOCKET_CONNECT_TIMEOUT_MS, recv()/send() after FMRB_SOCKET_IO_TIMEOUT_MS.
+ *
+ * All blocking calls retry on EINTR: the FreeRTOS Linux port drives the
+ * scheduler with a 1 ms SIGALRM (ITIMER_REAL), which constantly interrupts
+ * blocking syscalls in this process.
+ */
 
 #include "../../include/socket.h"
-
-#include "lwip/sockets.h"
-#include "lwip/netdb.h"
-
+#include <stdio.h>
+#include <sys/socket.h>
+#include <sys/select.h>
+#include <sys/time.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <unistd.h>
 #include <string.h>
 #include <errno.h>
 #include <sys/ioctl.h>
@@ -14,9 +27,6 @@
 #undef socket
 #endif
 
-/* Family mruby patch: default timeouts so a dead peer cannot stall the
- * cooperative mruby VM task forever. recv()/send() give up after
- * FMRB_SOCKET_IO_TIMEOUT_MS, connect() after FMRB_SOCKET_CONNECT_TIMEOUT_MS. */
 #ifndef FMRB_SOCKET_IO_TIMEOUT_MS
 #define FMRB_SOCKET_IO_TIMEOUT_MS      10000
 #endif
@@ -44,14 +54,20 @@ socket_connect_timeout(int fd, const struct sockaddr *addr, socklen_t addrlen,
   fcntl(fd, F_SETFL, flags | O_NONBLOCK);
 
   int ret = connect(fd, addr, addrlen);
-  if (ret < 0 && errno == EINPROGRESS) {
+  /* EINTR on a non-blocking connect: the connection attempt continues in
+   * the background, so treat it like EINPROGRESS and wait with select. */
+  if (ret < 0 && (errno == EINPROGRESS || errno == EINTR)) {
     fd_set wfds;
-    FD_ZERO(&wfds);
-    FD_SET(fd, &wfds);
     struct timeval tv;
     tv.tv_sec = timeout_ms / 1000;
     tv.tv_usec = (timeout_ms % 1000) * 1000;
-    ret = select(fd + 1, NULL, &wfds, NULL, &tv);
+    do {
+      FD_ZERO(&wfds);
+      FD_SET(fd, &wfds);
+      /* On Linux, select() updates tv to the remaining time, so retrying
+       * after EINTR keeps the total wait bounded by timeout_ms. */
+      ret = select(fd + 1, NULL, &wfds, NULL, &tv);
+    } while (ret < 0 && errno == EINTR);
     if (ret <= 0) {
       /* timeout (0) or select error (<0) */
       if (ret == 0) errno = ETIMEDOUT;
@@ -75,6 +91,7 @@ socket_connect_timeout(int fd, const struct sockaddr *addr, socklen_t addrlen,
   return ret;
 }
 
+/* Create a new TCP socket */
 bool
 TCPSocket_create(picorb_state *vm, picorb_socket_t *sock)
 {
@@ -98,6 +115,7 @@ TCPSocket_create(picorb_state *vm, picorb_socket_t *sock)
   return true;
 }
 
+/* Connect to remote host */
 bool
 TCPSocket_connect(picorb_state *vm, picorb_socket_t *sock, const char *host, int port)
 {
@@ -105,34 +123,43 @@ TCPSocket_connect(picorb_state *vm, picorb_socket_t *sock, const char *host, int
     return false;
   }
 
-  if (sock->family != AF_INET || sock->fd < 0) {
+  /* Create socket if not already created */
+  if (sock->fd < 0) {
     if (!TCPSocket_create(vm, sock)) {
       return false;
     }
   }
 
-  struct addrinfo hints;
-  struct addrinfo *res = NULL;
-  char port_str[6];
-  snprintf(port_str, sizeof(port_str), "%d", port);
-
-  memset(&hints, 0, sizeof(hints));
-  hints.ai_family = AF_INET;
-  hints.ai_socktype = SOCK_STREAM;
-
-  int err = getaddrinfo(host, port_str, &hints, &res);
-  if (err != 0 || !res) {
-    snprintf(sock->errmsg, sizeof(sock->errmsg), "getaddrinfo(\"%s\"): %d", host, err);
-    return false;
-  }
-
+  /* Resolve hostname */
   struct sockaddr_in addr;
   memset(&addr, 0, sizeof(addr));
   addr.sin_family = AF_INET;
   addr.sin_port = htons(port);
-  memcpy(&addr.sin_addr, &((struct sockaddr_in *)res->ai_addr)->sin_addr, sizeof(struct in_addr));
-  freeaddrinfo(res);
 
+  if (inet_pton(AF_INET, host, &addr.sin_addr) != 1) {
+    /* Not an IP address, try DNS resolution */
+    struct addrinfo hints;
+    struct addrinfo *res = NULL;
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+
+    int err = getaddrinfo(host, NULL, &hints, &res);
+    if (err != 0 || !res) {
+      snprintf(sock->errmsg, sizeof(sock->errmsg),
+               "getaddrinfo(\"%s\"): %s", host, gai_strerror(err));
+      close(sock->fd);
+      sock->fd = -1;
+      return false;
+    }
+
+    struct sockaddr_in *ai_addr = (struct sockaddr_in *)res->ai_addr;
+    addr.sin_addr = ai_addr->sin_addr;
+    freeaddrinfo(res);
+  }
+
+  /* Connect */
   if (socket_connect_timeout(sock->fd, (struct sockaddr *)&addr, sizeof(addr),
                              FMRB_SOCKET_CONNECT_TIMEOUT_MS) < 0) {
     snprintf(sock->errmsg, sizeof(sock->errmsg),
@@ -142,6 +169,7 @@ TCPSocket_connect(picorb_state *vm, picorb_socket_t *sock, const char *host, int
     return false;
   }
 
+  /* Save connection info */
   strncpy(sock->remote_host, host, sizeof(sock->remote_host) - 1);
   sock->remote_host[sizeof(sock->remote_host) - 1] = '\0';
   sock->remote_port = port;
@@ -150,6 +178,7 @@ TCPSocket_connect(picorb_state *vm, picorb_socket_t *sock, const char *host, int
   return true;
 }
 
+/* Send data */
 ssize_t
 TCPSocket_send(picorb_state *vm, picorb_socket_t *sock, const void *data, size_t len)
 {
@@ -157,7 +186,10 @@ TCPSocket_send(picorb_state *vm, picorb_socket_t *sock, const void *data, size_t
     return -1;
   }
 
-  ssize_t sent = send(sock->fd, data, len, 0);
+  ssize_t sent;
+  do {
+    sent = send(sock->fd, data, len, 0);
+  } while (sent < 0 && errno == EINTR);
   if (sent < 0) {
     return -1;
   }
@@ -165,6 +197,20 @@ TCPSocket_send(picorb_state *vm, picorb_socket_t *sock, const void *data, size_t
   return sent;
 }
 
+<<<<<<< ours
+/* Receive data - blocks until len bytes are read or EOF/error.
+ * MSG_WAITALL tells the kernel to wait until the full request is satisfied,
+ * which avoids partial-read issues without requiring application-level loops
+ * or setsockopt calls between recv() invocations. With SO_RCVTIMEO set, a
+ * silent peer makes recv return the partial data (or -1/EAGAIN) after the
+ * timeout instead of blocking forever. */
+=======
+/* Receive data.
+ * If nonblock is true, uses MSG_DONTWAIT and returns
+ * PICORB_RECV_WOULD_BLOCK when no data is available.
+ * Otherwise uses a blocking recv() and returns as soon as any data
+ * is available, or 0 on EOF, or -1 on error (readpartial semantics). */
+>>>>>>> upstream
 ssize_t
 TCPSocket_recv(picorb_state *vm, picorb_socket_t *sock, void *buf, size_t len, bool nonblock)
 {
@@ -172,12 +218,29 @@ TCPSocket_recv(picorb_state *vm, picorb_socket_t *sock, void *buf, size_t len, b
     return -1;
   }
 
+<<<<<<< ours
+#ifdef MSG_WAITALL
+  /* EINTR with no data received returns -1; with partial data MSG_WAITALL
+   * returns the partial count, which is fine for the callers. */
+  ssize_t received;
+  do {
+    received = recv(sock->fd, buf, len, MSG_WAITALL);
+  } while (received < 0 && errno == EINTR);
+#else
+  /* Fallback: loop until len bytes received or EOF/error. */
+  size_t total = 0;
+  char *p = (char *)buf;
+  while (total < len) {
+    ssize_t r = recv(sock->fd, p + total, len - total, 0);
+    if (r < 0) {
+=======
   if (nonblock) {
     ssize_t received = recv(sock->fd, buf, len, MSG_DONTWAIT);
     if (received < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         return PICORB_RECV_WOULD_BLOCK;
       }
+>>>>>>> upstream
       return -1;
     }
     if (received == 0) {
@@ -186,16 +249,15 @@ TCPSocket_recv(picorb_state *vm, picorb_socket_t *sock, void *buf, size_t len, b
     return received;
   }
 
-  /* Blocking path */
+  /* Return as soon as any data is available (readpartial semantics). */
   ssize_t received = recv(sock->fd, buf, len, 0);
+
   if (received < 0) {
     return -1;
   }
-
   if (received == 0) {
     sock->connected = false;
   }
-
   return received;
 }
 
@@ -215,6 +277,7 @@ Socket_ready(picorb_state *vm, picorb_socket_t *sock)
   return available > 0;
 }
 
+/* Close socket */
 bool
 TCPSocket_close(picorb_state *vm, picorb_socket_t *sock)
 {
@@ -230,6 +293,7 @@ TCPSocket_close(picorb_state *vm, picorb_socket_t *sock)
   return true;
 }
 
+/* Get remote host */
 const char*
 TCPSocket_remote_host(picorb_state *vm, picorb_socket_t *sock)
 {
@@ -237,6 +301,7 @@ TCPSocket_remote_host(picorb_state *vm, picorb_socket_t *sock)
   return sock->remote_host;
 }
 
+/* Get remote port */
 int
 TCPSocket_remote_port(picorb_state *vm, picorb_socket_t *sock)
 {
@@ -244,6 +309,7 @@ TCPSocket_remote_port(picorb_state *vm, picorb_socket_t *sock)
   return sock->remote_port;
 }
 
+/* Check if socket is closed */
 bool
 TCPSocket_closed(picorb_state *vm, picorb_socket_t *sock)
 {

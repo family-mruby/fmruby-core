@@ -1,0 +1,700 @@
+#include <stdlib.h>
+#include <string.h>
+#include "mruby/presym.h"
+#include "mruby/class.h"
+#include "mruby/data.h"
+#include "mruby/string.h"
+#include "mruby/variable.h"
+
+#define E_SOCKET_ERROR (mrb_class_get_id(mrb, MRB_SYM(SocketError)))
+#define E_EOF_ERROR    (mrb_class_get_id(mrb, MRB_SYM(EOFError)))
+
+/* Data type for SSLContext */
+static void
+mrb_ssl_context_free(mrb_state *mrb, void *ptr)
+{
+  if (ptr) {
+    picorb_ssl_context_t *ctx = (picorb_ssl_context_t *)ptr;
+    SSLContext_free(mrb, ctx);
+  }
+}
+
+static const struct mrb_data_type mrb_ssl_context_type = {
+  "SSLContext", mrb_ssl_context_free,
+};
+
+/* SSLContext.new */
+static mrb_value
+mrb_ssl_context_initialize(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_context_t *ctx;
+
+  ctx = SSLContext_create(mrb);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to create SSL context");
+  }
+
+  mrb_data_init(self, ctx, &mrb_ssl_context_type);
+
+  return self;
+}
+
+/* ssl_context.ca_file = path */
+static mrb_value
+mrb_ssl_context_set_ca_file(mrb_state *mrb, mrb_value self)
+{
+#ifdef PICORB_PLATFORM_POSIX
+  picorb_ssl_context_t *ctx;
+  const char *ca_file;
+
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mrb_get_args(mrb, "z", &ca_file);
+
+  if (!SSLContext_set_ca_file(mrb, ctx, ca_file)) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "failed to set CA file: %s", ca_file);
+  }
+
+  return mrb_str_new_cstr(mrb, ca_file);
+#else
+  (void)self;
+  mrb_raise(mrb, E_NOTIMP_ERROR, "ca_file= is not supported on this platform. Use set_ca instead");
+  return mrb_nil_value();
+#endif
+}
+
+/* ssl_context.set_ca(addr, size) */
+static mrb_value
+mrb_ssl_context_set_ca(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_context_t *ctx;
+  mrb_int addr, size;
+
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mrb_get_args(mrb, "ii", &addr, &size);
+
+  if (!SSLContext_set_ca(mrb, ctx, (const void *)(uintptr_t)addr, (size_t)size)) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set CA certificate");
+  }
+
+  return mrb_nil_value();
+}
+
+/* ssl_context.cert_file = path */
+static mrb_value
+mrb_ssl_context_set_cert_file(mrb_state *mrb, mrb_value self)
+{
+#ifdef PICORB_PLATFORM_POSIX
+  picorb_ssl_context_t *ctx;
+  const char *cert_file;
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mrb_get_args(mrb, "z", &cert_file);
+
+  if (!SSLContext_set_cert_file(mrb, ctx, cert_file)) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "failed to set cert file: %s", cert_file);
+  }
+
+  return mrb_str_new_cstr(mrb, cert_file);
+#else
+  (void)self;
+  mrb_raise(mrb, E_NOTIMP_ERROR, "cert_file= is not supported on this platform. Use set_cert instead");
+  return mrb_nil_value();
+#endif
+}
+
+/* ssl_context.set_cert(addr, size) */
+static mrb_value
+mrb_ssl_context_set_cert(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_context_t *ctx;
+  mrb_int addr, size;
+
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mrb_get_args(mrb, "ii", &addr, &size);
+
+  if (!SSLContext_set_cert(mrb, ctx, (const void *)(uintptr_t)addr, (size_t)size)) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set certificate");
+  }
+
+  return mrb_nil_value();
+}
+
+/* ssl_context.key_file = path */
+static mrb_value
+mrb_ssl_context_set_key_file(mrb_state *mrb, mrb_value self)
+{
+#ifdef PICORB_PLATFORM_POSIX
+  picorb_ssl_context_t *ctx;
+  const char *key_file;
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mrb_get_args(mrb, "z", &key_file);
+
+  if (!SSLContext_set_key_file(mrb, ctx, key_file)) {
+    mrb_raisef(mrb, E_RUNTIME_ERROR, "failed to set key file: %s", key_file);
+  }
+
+  return mrb_str_new_cstr(mrb, key_file);
+#else
+  (void)self;
+  mrb_raise(mrb, E_NOTIMP_ERROR, "key_file= is not supported on this platform. Use set_key instead");
+  return mrb_nil_value();
+#endif
+}
+
+/* ssl_context.set_key(addr, size) */
+static mrb_value
+mrb_ssl_context_set_key(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_context_t *ctx;
+  mrb_int addr, size;
+
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mrb_get_args(mrb, "ii", &addr, &size);
+
+  if (!SSLContext_set_key(mrb, ctx, (const void *)(uintptr_t)addr, (size_t)size)) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set key");
+  }
+
+  return mrb_nil_value();
+}
+
+/* ssl_context.set_ca_pem(str) -- store pointer to String buffer; ivar keeps it alive */
+static mrb_value
+mrb_ssl_context_set_ca_pem(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_context_t *ctx;
+  mrb_value str;
+
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mrb_get_args(mrb, "S", &str);
+  mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@ca_pem"), str);
+
+  if (!SSLContext_set_ca(mrb, ctx, RSTRING_PTR(str), (size_t)RSTRING_LEN(str))) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set CA certificate");
+  }
+
+  return mrb_nil_value();
+}
+
+/* ssl_context.set_cert_pem(str) */
+static mrb_value
+mrb_ssl_context_set_cert_pem(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_context_t *ctx;
+  mrb_value str;
+
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mrb_get_args(mrb, "S", &str);
+  mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@cert_pem"), str);
+
+  if (!SSLContext_set_cert(mrb, ctx, RSTRING_PTR(str), (size_t)RSTRING_LEN(str))) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set certificate");
+  }
+
+  return mrb_nil_value();
+}
+
+/* ssl_context.set_key_pem(str) */
+static mrb_value
+mrb_ssl_context_set_key_pem(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_context_t *ctx;
+  mrb_value str;
+
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mrb_get_args(mrb, "S", &str);
+  mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@key_pem"), str);
+
+  if (!SSLContext_set_key(mrb, ctx, RSTRING_PTR(str), (size_t)RSTRING_LEN(str))) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set key");
+  }
+
+  return mrb_nil_value();
+}
+
+/* ssl_context.verify_mode = mode */
+static mrb_value
+mrb_ssl_context_set_verify_mode(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_context_t *ctx;
+  mrb_int mode;
+
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mrb_get_args(mrb, "i", &mode);
+
+  if (!SSLContext_set_verify_mode(mrb, ctx, (int)mode)) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set verify mode");
+  }
+
+  return mrb_fixnum_value(mode);
+}
+
+/* ssl_context.verify_mode */
+static mrb_value
+mrb_ssl_context_get_verify_mode(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_context_t *ctx;
+  int mode;
+
+  ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_context_type);
+  if (!ctx) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL context is not initialized");
+  }
+
+  mode = SSLContext_get_verify_mode(mrb, ctx);
+  if (mode < 0) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to get verify mode");
+  }
+
+  return mrb_fixnum_value(mode);
+}
+
+/* Data type for SSLSocket */
+/* Family mruby patch: always release the native session. SSLSocket_closed
+ * only reports the CONNECTED state, so after a peer EOF or an error the
+ * socket looks "closed" while the mbedTLS session (about 21KB of internal
+ * RAM) and the underlying fd are still alive; upstream skipped
+ * SSLSocket_close here and leaked them permanently. SSLSocket_close frees
+ * everything safely in any state, and an explicitly #close'd socket has
+ * DATA_PTR set to NULL so it never reaches this with a stale pointer. */
+static void
+mrb_ssl_socket_free(mrb_state *mrb, void *ptr)
+{
+  if (ptr) {
+<<<<<<< ours
+    SSLSocket_close((picorb_ssl_socket_t *)ptr);
+=======
+    picorb_ssl_socket_t *ssl_sock = (picorb_ssl_socket_t *)ptr;
+    if (!SSLSocket_closed(mrb, ssl_sock)) {
+      SSLSocket_close(mrb, ssl_sock);
+    }
+>>>>>>> upstream
+  }
+}
+
+static const struct mrb_data_type mrb_ssl_socket_type = {
+  "SSLSocket", mrb_ssl_socket_free,
+};
+
+/* SSLSocket.new(tcp_socket, ssl_context) */
+static mrb_value
+mrb_ssl_socket_initialize(mrb_state *mrb, mrb_value self)
+{
+  mrb_value tcp_socket_obj, ssl_context_obj;
+  picorb_ssl_context_t *ssl_ctx;
+  picorb_ssl_socket_t *ssl_sock;
+
+  mrb_get_args(mrb, "oo", &tcp_socket_obj, &ssl_context_obj);
+
+  /* Get SSL context */
+  ssl_ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, ssl_context_obj, &mrb_ssl_context_type);
+  if (!ssl_ctx) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "second argument must be an SSLContext");
+  }
+
+  /* Create SSL socket */
+  ssl_sock = SSLSocket_create(mrb, ssl_ctx);
+  if (!ssl_sock) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to create SSL socket");
+  }
+
+  /* Get remote_host and remote_port from TCPSocket */
+  mrb_value host = mrb_funcall(mrb, tcp_socket_obj, "remote_host", 0);
+  mrb_value port = mrb_funcall(mrb, tcp_socket_obj, "remote_port", 0);
+
+  if (!mrb_string_p(host)) {
+    SSLSocket_close(mrb, ssl_sock);
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "TCPSocket must have remote_host");
+  }
+
+  if (!mrb_fixnum_p(port)) {
+    SSLSocket_close(mrb, ssl_sock);
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "TCPSocket must have remote_port");
+  }
+
+  /* Set hostname and port from TCPSocket */
+  if (!SSLSocket_set_hostname(mrb, ssl_sock, RSTRING_PTR(host))) {
+    SSLSocket_close(mrb, ssl_sock);
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set hostname");
+  }
+
+  if (!SSLSocket_set_port(mrb, ssl_sock, (int)mrb_fixnum(port))) {
+    SSLSocket_close(mrb, ssl_sock);
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set port");
+  }
+
+  /* Close the original TCP socket to avoid resource leak */
+  /* The SSL connection will create its own TCP socket internally */
+  if (!mrb_bool(mrb_funcall(mrb, tcp_socket_obj, "closed?", 0))) {
+    mrb_funcall(mrb, tcp_socket_obj, "close", 0);
+  }
+
+  /* Store references for GC protection */
+  mrb_iv_set(mrb, self, MRB_IVSYM(tcp_socket), tcp_socket_obj);
+  mrb_iv_set(mrb, self, MRB_IVSYM(ssl_context), ssl_context_obj);
+
+  mrb_data_init(self, ssl_sock, &mrb_ssl_socket_type);
+
+  return self;
+}
+
+/* SSLSocket.open(hostname, port, ssl_context) - connect directly without TCPSocket */
+static mrb_value
+mrb_ssl_socket_s_open(mrb_state *mrb, mrb_value klass)
+{
+  const char *hostname;
+  mrb_int port;
+  mrb_value ssl_context_obj;
+  picorb_ssl_context_t *ssl_ctx;
+  picorb_ssl_socket_t *ssl_sock;
+
+  mrb_get_args(mrb, "zio", &hostname, &port, &ssl_context_obj);
+
+  ssl_ctx = (picorb_ssl_context_t *)mrb_data_get_ptr(mrb, ssl_context_obj, &mrb_ssl_context_type);
+  if (!ssl_ctx) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "third argument must be an SSLContext");
+  }
+
+  ssl_sock = SSLSocket_create(mrb, ssl_ctx);
+  if (!ssl_sock) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to create SSL socket");
+  }
+
+  if (!SSLSocket_set_hostname(mrb, ssl_sock, hostname)) {
+    SSLSocket_close(mrb, ssl_sock);
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set hostname");
+  }
+
+  if (!SSLSocket_set_port(mrb, ssl_sock, (int)port)) {
+    SSLSocket_close(mrb, ssl_sock);
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to set port");
+  }
+
+  if (!SSLSocket_connect(mrb, ssl_sock)) {
+    SSLSocket_close(mrb, ssl_sock);
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL connection failed");
+  }
+
+  /* Create instance without calling initialize */
+  struct RClass *cls = mrb_class_ptr(klass);
+  struct RData *data = mrb_data_object_alloc(mrb, cls, ssl_sock, &mrb_ssl_socket_type);
+  mrb_value self = mrb_obj_value(data);
+
+  mrb_iv_set(mrb, self, MRB_IVSYM(ssl_context), ssl_context_obj);
+
+  return self;
+}
+
+/* ssl_socket.connect */
+static mrb_value
+mrb_ssl_socket_connect(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_socket_t *ssl_sock;
+
+  ssl_sock = (picorb_ssl_socket_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_socket_type);
+  if (!ssl_sock) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL socket is not initialized");
+  }
+
+  if (!SSLSocket_connect(mrb, ssl_sock)) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL handshake failed");
+  }
+
+  return self;
+}
+
+/* ssl_socket.send(data, flags) */
+static mrb_value
+mrb_ssl_socket_send(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_socket_t *ssl_sock;
+  mrb_value data;
+  // flags is required parameter for compatibility with CRuby.
+  // Currently check only if it's an Integer. It can be used for future extensions
+  mrb_int flags;
+
+  ssl_sock = (picorb_ssl_socket_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_socket_type);
+  if (!ssl_sock) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL socket is not initialized");
+  }
+
+  mrb_get_args(mrb, "Si", &data, &flags);
+  (void)flags; // Unused for now
+
+  ssize_t sent = SSLSocket_send(mrb, ssl_sock, RSTRING_PTR(data), RSTRING_LEN(data));
+  if (sent < 0) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL send failed");
+  }
+
+  return mrb_fixnum_value(sent);
+}
+
+/* ssl_socket.readpartial(maxlen) */
+static mrb_value
+mrb_ssl_socket_readpartial(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_socket_t *ssl_sock;
+  mrb_int maxlen;
+  mrb_value buf;
+
+  ssl_sock = (picorb_ssl_socket_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_socket_type);
+  if (!ssl_sock) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL socket is not initialized");
+  }
+
+  mrb_get_args(mrb, "i", &maxlen);
+
+  if (maxlen <= 0) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "maxlen must be positive");
+  }
+
+  char stack_buf[PICORB_SOCKET_STACK_BUF_SIZE];
+  char *read_buf = (maxlen < PICORB_SOCKET_STACK_BUF_SIZE)
+    ? stack_buf
+    : (char *)mrb_malloc(mrb, maxlen);
+  if (!read_buf) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to allocate buffer");
+  }
+
+  ssize_t received = SSLSocket_recv(mrb, ssl_sock, read_buf, maxlen, false);
+
+  if (received == 0) {
+    if (read_buf != stack_buf) mrb_free(mrb, read_buf);
+    mrb_raise(mrb, E_EOF_ERROR, "end of file reached");
+  }
+
+  if (received == PICORB_RECV_TIMEOUT) {
+    if (read_buf != stack_buf) mrb_free(mrb, read_buf);
+    mrb_raise(mrb, E_SOCKET_ERROR, "read timeout");
+  }
+
+  if (received < 0) {
+    if (read_buf != stack_buf) mrb_free(mrb, read_buf);
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL read failed");
+  }
+
+  buf = mrb_str_new(mrb, read_buf, received);
+  if (read_buf != stack_buf) mrb_free(mrb, read_buf);
+
+  return buf;
+}
+
+/* ssl_socket.read_nonblock(maxlen) */
+static mrb_value
+mrb_ssl_socket_read_nonblock(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_socket_t *ssl_sock;
+  mrb_int maxlen;
+  mrb_value buf;
+
+  ssl_sock = (picorb_ssl_socket_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_socket_type);
+  if (!ssl_sock) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL socket is not initialized");
+  }
+
+  mrb_get_args(mrb, "i", &maxlen);
+
+  if (maxlen <= 0) {
+    mrb_raise(mrb, E_ARGUMENT_ERROR, "maxlen must be positive");
+  }
+
+  char stack_buf[PICORB_SOCKET_STACK_BUF_SIZE];
+  char *read_buf = (maxlen < PICORB_SOCKET_STACK_BUF_SIZE)
+    ? stack_buf
+    : (char *)mrb_malloc(mrb, maxlen);
+  if (!read_buf) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "failed to allocate buffer");
+  }
+
+  ssize_t received = SSLSocket_recv(mrb, ssl_sock, read_buf, maxlen, true);
+
+  if (received == PICORB_RECV_WOULD_BLOCK) {
+    if (read_buf != stack_buf) mrb_free(mrb, read_buf);
+    return mrb_nil_value();
+  }
+
+  if (received == 0) {
+    if (read_buf != stack_buf) mrb_free(mrb, read_buf);
+    mrb_raise(mrb, E_EOF_ERROR, "end of file reached");
+  }
+
+  if (received < 0) {
+    if (read_buf != stack_buf) mrb_free(mrb, read_buf);
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL read failed");
+  }
+
+  buf = mrb_str_new(mrb, read_buf, received);
+  if (read_buf != stack_buf) mrb_free(mrb, read_buf);
+
+  return buf;
+}
+
+/* ssl_socket.close */
+static mrb_value
+mrb_ssl_socket_close(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_socket_t *ssl_sock;
+
+  ssl_sock = (picorb_ssl_socket_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_socket_type);
+  if (!ssl_sock) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL socket is not initialized");
+  }
+
+  if (!SSLSocket_close(mrb, ssl_sock)) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL close failed");
+  }
+
+  /* Clear the data pointer to prevent double-free */
+  DATA_PTR(self) = NULL;
+
+  return mrb_nil_value();
+}
+
+/* ssl_socket.closed? */
+static mrb_value
+mrb_ssl_socket_closed_p(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_socket_t *ssl_sock;
+
+  ssl_sock = (picorb_ssl_socket_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_socket_type);
+  if (!ssl_sock) {
+    return mrb_true_value();
+  }
+
+  return mrb_bool_value(SSLSocket_closed(mrb, ssl_sock));
+}
+
+/* ssl_socket.remote_host */
+static mrb_value
+mrb_ssl_socket_remote_host(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_socket_t *ssl_sock;
+
+  ssl_sock = (picorb_ssl_socket_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_socket_type);
+  if (!ssl_sock) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL socket is not initialized");
+  }
+
+  const char *host = SSLSocket_remote_host(mrb, ssl_sock);
+  if (!host) {
+    return mrb_nil_value();
+  }
+
+  return mrb_str_new_cstr(mrb, host);
+}
+
+/* ssl_socket.remote_port */
+static mrb_value
+mrb_ssl_socket_remote_port(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_socket_t *ssl_sock;
+
+  ssl_sock = (picorb_ssl_socket_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_socket_type);
+  if (!ssl_sock) {
+    mrb_raise(mrb, E_RUNTIME_ERROR, "SSL socket is not initialized");
+  }
+
+  int port = SSLSocket_remote_port(mrb, ssl_sock);
+  if (port < 0) {
+    return mrb_nil_value();
+  }
+
+  return mrb_fixnum_value(port);
+}
+
+/* ssl_socket.ready? */
+static mrb_value
+mrb_ssl_socket_ready_p(mrb_state *mrb, mrb_value self)
+{
+  picorb_ssl_socket_t *ssl_sock;
+
+  ssl_sock = (picorb_ssl_socket_t *)mrb_data_get_ptr(mrb, self, &mrb_ssl_socket_type);
+  if (!ssl_sock) {
+    return mrb_false_value();
+  }
+
+  return mrb_bool_value(SSLSocket_ready(mrb, ssl_sock));
+}
+
+void
+ssl_socket_init(mrb_state *mrb, struct RClass *basic_socket_class)
+{
+  struct RClass *ssl_context_class;
+  struct RClass *ssl_socket_class;
+
+  /* SSLContext class */
+  ssl_context_class = mrb_define_class_id(mrb, MRB_SYM(SSLContext), mrb->object_class);
+  MRB_SET_INSTANCE_TT(ssl_context_class, MRB_TT_DATA);
+
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM(initialize), mrb_ssl_context_initialize, MRB_ARGS_NONE());
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM_E(ca_file), mrb_ssl_context_set_ca_file, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM(set_ca), mrb_ssl_context_set_ca, MRB_ARGS_REQ(2));
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM(set_ca_pem), mrb_ssl_context_set_ca_pem, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM_E(cert_file), mrb_ssl_context_set_cert_file, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM(set_cert), mrb_ssl_context_set_cert, MRB_ARGS_REQ(2));
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM(set_cert_pem), mrb_ssl_context_set_cert_pem, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM_E(key_file), mrb_ssl_context_set_key_file, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM(set_key), mrb_ssl_context_set_key, MRB_ARGS_REQ(2));
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM(set_key_pem), mrb_ssl_context_set_key_pem, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM_E(verify_mode), mrb_ssl_context_set_verify_mode, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, ssl_context_class, MRB_SYM(verify_mode), mrb_ssl_context_get_verify_mode, MRB_ARGS_NONE());
+
+  /* SSLContext constants */
+  mrb_define_const_id(mrb, ssl_context_class, MRB_SYM(VERIFY_NONE), mrb_fixnum_value(SSL_VERIFY_NONE));
+  mrb_define_const_id(mrb, ssl_context_class, MRB_SYM(VERIFY_PEER), mrb_fixnum_value(SSL_VERIFY_PEER));
+
+  /* SSLSocket class */
+  ssl_socket_class = mrb_define_class_id(mrb, MRB_SYM(SSLSocket), basic_socket_class);
+  MRB_SET_INSTANCE_TT(ssl_socket_class, MRB_TT_DATA);
+
+  mrb_define_method_id(mrb, ssl_socket_class, MRB_SYM(initialize), mrb_ssl_socket_initialize, MRB_ARGS_REQ(2));
+  mrb_define_class_method_id(mrb, ssl_socket_class, MRB_SYM(open), mrb_ssl_socket_s_open, MRB_ARGS_REQ(3));
+  mrb_define_method_id(mrb, ssl_socket_class, MRB_SYM(connect), mrb_ssl_socket_connect, MRB_ARGS_NONE());
+  mrb_define_method_id(mrb, ssl_socket_class, MRB_SYM(send), mrb_ssl_socket_send, MRB_ARGS_REQ(2));
+  mrb_define_method_id(mrb, ssl_socket_class, MRB_SYM(readpartial), mrb_ssl_socket_readpartial, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, ssl_socket_class, MRB_SYM(read_nonblock), mrb_ssl_socket_read_nonblock, MRB_ARGS_REQ(1));
+  mrb_define_method_id(mrb, ssl_socket_class, MRB_SYM(close), mrb_ssl_socket_close, MRB_ARGS_NONE());
+  mrb_define_method_id(mrb, ssl_socket_class, MRB_SYM_Q(closed), mrb_ssl_socket_closed_p, MRB_ARGS_NONE());
+  mrb_define_method_id(mrb, ssl_socket_class, MRB_SYM_Q(ready), mrb_ssl_socket_ready_p, MRB_ARGS_NONE());
+  mrb_define_method_id(mrb, ssl_socket_class, MRB_SYM(remote_host), mrb_ssl_socket_remote_host, MRB_ARGS_NONE());
+  mrb_define_method_id(mrb, ssl_socket_class, MRB_SYM(remote_port), mrb_ssl_socket_remote_port, MRB_ARGS_NONE());
+}

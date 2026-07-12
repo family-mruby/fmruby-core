@@ -3,6 +3,11 @@
 # This is a simple JSON parser and generator for PicoRuby.
 # It is designed to be small and simple, not to be fast or complete.
 #
+# Family mruby patch: fix parse_float dropping the decimal point. Upstream
+# never switched to the fractional branch (the '.' case did nothing and the
+# branch condition depended on decimal_divider, which never changed), so
+# every fractional digit was appended as an integer digit: "26.2" -> 262.0.
+#
 # Author: Hitoshi HASUMI
 # License: MIT
 #
@@ -669,6 +674,7 @@ module JSON
       is_negative = @json[start] == '-'
       exponent_negative = false
       parsing_exponent = false
+      in_fraction = false
       start += 1 if is_negative
 
       i = start
@@ -680,6 +686,17 @@ module JSON
           # appears earlier in the string.
           byte = @json[i]&.ord or raise "Invalid number format"
           if parsing_exponent
+<<<<<<< ours
+            exponent = exponent * 10 + (ord - '0'.ord)
+          elsif in_fraction
+            decimal_divider *= 10
+            result += (ord - '0'.ord) / decimal_divider
+          else
+            result = result * 10 + (ord - '0'.ord)
+          end
+        when '.'
+          in_fraction = true
+=======
             exponent = exponent * 10 + (byte - 48) # '0'.ord is 48
           elsif decimal_divider == 1.0
             result = result * 10 + (byte - 48)
@@ -689,6 +706,7 @@ module JSON
           end
         when '.'
           decimal_divider = 10.0
+>>>>>>> upstream
         when 'e', 'E'
           parsing_exponent = true
         when '-'

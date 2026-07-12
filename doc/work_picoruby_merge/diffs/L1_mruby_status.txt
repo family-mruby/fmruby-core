@@ -1,0 +1,6 @@
+ M mrbgems/hal-posix-dir/src/dir_hal.c
+ M mrbgems/hal-posix-task/src/task_hal.c
+ M mrbgems/mruby-dir/mrbgem.rake
+ M mrbgems/mruby-task/mrbgem.rake
+ M mrbgems/mruby-task/src/task.c
+ M src/vm.c
