@@ -1,6 +1,6 @@
 MRuby::GemBox.new do |conf|
   # Compiler must be included for runtime compilation (sandbox, eval)
-  conf.gem core: 'mruby-compiler2'
+  conf.gem core: 'mruby-compiler'
 
   # loading order is important
   conf.gem core: 'picoruby-fmrb-io'

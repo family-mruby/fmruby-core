@@ -143,11 +143,11 @@ task :setup do
   # picoruby-env
   sh "cp -f lib/patch/picoruby-env/ports/posix/env.c #{mrbgem_path}/picoruby-env/ports/posix/"
 
-  # mruby-compiler2
-  sh "cp -f lib/patch/compiler/prism_xallocator.h #{mrbgem_path}/mruby-compiler2/include/"
-  sh "cp -f lib/patch/compiler/prism_alloc.c #{mrbgem_path}/mruby-compiler2/lib/"
-  sh "cp -f lib/patch/compiler/mruby-compiler2-mrbgem.rake #{mrbgem_path}/mruby-compiler2/mrbgem.rake"
-  sh "cp -f lib/patch/compiler/mruby-compiler2-compile.c #{mrbgem_path}/mruby-compiler2/src/compile.c"
+  # mruby-compiler (renamed upstream from mruby-compiler2; same repo).
+  # prism allocator patches dropped: upstream routes prism through the VM
+  # estalloc heap via global_mrb (owner decision "Option A"). Only the
+  # compile.c NULL-guard remains.
+  sh "cp -f lib/patch/compiler/mruby-compiler2-compile.c #{mrbgem_path}/mruby-compiler/src/compile.c"
 
   # mrbgem.rake patches
   sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
