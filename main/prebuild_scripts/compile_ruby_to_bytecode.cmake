@@ -33,7 +33,9 @@ endfunction()
 #   RUBY_FILES_VAR - Variable name containing list of Ruby files
 #   OUTPUT_DIR - Directory where C files will be generated
 function(generate_ruby_bytecode_commands RUBY_FILES_VAR OUTPUT_DIR)
-  set(PICORBC ${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/picoruby/bin/picorbc)
+  # Upstream renamed the prism-based compiler binary picorbc -> mrbc
+  # (mruby-bin-mrbc). Same -B<sym> -o<out> <in> CLI.
+  set(PICORBC ${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/picoruby/bin/mrbc)
 
   # Get the list of Ruby files from the variable
   set(RUBY_FILES ${${RUBY_FILES_VAR}})
