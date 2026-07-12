@@ -199,11 +199,17 @@ if(IDF_TARGET STREQUAL "linux")
   add_compile_definitions(MRB_INT64=1)
   add_compile_definitions(MRB_TICK_UNIT=5)
   add_compile_definitions(MRB_TIMESLICE_TICK_COUNT=10)
+  # Must match the rake mruby build (mruby-task adds this globally); otherwise
+  # mrb_state's `task` member is absent here -> struct-layout/ABI mismatch with
+  # libmruby.a and "no member named task" when compiling the freertos task_hal /
+  # fmrb ports.
+  add_compile_definitions(MRB_USE_TASK_SCHEDULER)
 else()
   add_compile_definitions(PICORB_VM_MRUBY=1)
   add_compile_definitions(MRB_INT64=1)
   add_compile_definitions(MRB_TICK_UNIT=5)
   add_compile_definitions(MRB_TIMESLICE_TICK_COUNT=10)
+  add_compile_definitions(MRB_USE_TASK_SCHEDULER)
   add_compile_definitions(NDEBUG)
   #MRBC definitions is used by machine.
   add_definitions(
