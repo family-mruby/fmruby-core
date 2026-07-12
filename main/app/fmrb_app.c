@@ -356,8 +356,10 @@ static int create_vm_mruby(fmrb_app_task_context_t* ctx) {
         return -1;
     }
 
-    // Register VM to tick manager after successful creation
-    hal_register_vm(ctx->mrb);
+    // Register VM to tick manager after successful creation.
+    // (Renamed from hal_register_vm: the tick manager moved from picoruby-machine
+    //  to mruby-task's freertos HAL port as part of the case-D consolidation.)
+    mrb_hal_task_register_vm(ctx->mrb);
 
     FMRB_LOGI(TAG, "[%s] mruby VM created successfully", ctx->app_name);
     return 0;

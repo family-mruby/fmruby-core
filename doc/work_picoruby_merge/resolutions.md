@@ -163,8 +163,13 @@ mruby build で `picorb_alloc(mrb,size)=mrb_malloc(mrb,size)` となり安全。
   `mrb_get_estalloc_stats` ヘルパも追加。ESTALLOC_DEBUG guard は upstream 版採用 (mrbgem.rake で常時 on 予定)。
   実機確認: 複数 VM 並走時に各 est が正しく分離されるか、critical_section が正しい est に効くか。
 - **D3 mruby-io/file_constants.rb** [clean] — 現 pin と diff 無し。新 pin で再確認。
-- **picoruby-mruby/mrbgem.rake** (L0) [TODO] — hal-posix-task 依存廃止に伴い upstream 構造採用+mruby-io 除去
-  (batch 3 参照)。D4/D7 と同時に確定。
+- **picoruby-mruby/mrbgem.rake** (L0) [DONE] — 新 upstream 版を土台に: (1) posix の `add_dependency 'mruby-io'`
+  を除去 (fmrb-io を使う、mruby-io 競合)、(2) mruby-task を単独 add_dependency (hal-*-task gem は upstream で廃止、
+  HAL は conf.ports :freertos が供給)、(3) ESTALLOC_DEBUG を常時 on 化 (est_take_statistics 用、冗長解消)。
+
+**呼び出し元付け替え [DONE]**:
+- main/app/fmrb_app.c:360 `hal_register_vm(ctx->mrb)` → `mrb_hal_task_register_vm(ctx->mrb)`。
+- lib/add/picoruby-fmrb-app/ports/esp32/app.c:673 `hal_deinit(mrb)` → `mrb_hal_task_final(mrb)`。
 
 ## D7 + B1 (FreeRTOS tick top-half / picoruby-machine) — 指示書 instruct_d7_b1_tick.md に従う
 
