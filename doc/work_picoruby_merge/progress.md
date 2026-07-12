@@ -290,3 +290,30 @@ B1(machine 大半), port選択, 付け替え, picoruby-mruby/mrbgem.rake。
 - `rake build:linux` を回し、上記 1→3→2 の順 (Linux 優先) でコンパイル/リンクエラーを潰す。
 - lib/ 編集ごとに `rake clean`。ターゲット切替時 `rake clean_all`。
 - green 後 esp32 ビルド。実機(デュアルコア)長時間走行・GUI 実行は依頼者確認項目 (tasklist)。
+
+## 2026-07-12 (続き) — build 反復フェーズ開始 (rake build:linux)
+
+`rake build:linux` (idf.py/Docker) を実行し実エラーで反復。
+
+- **修正済 (コミット)**: CMakeLists の `mruby-compiler2/include`→`mruby-compiler`(a…), 
+  `conf.microruby`→`conf.picoruby`(build.rb で改名, 旧picoruby→femtoruby), 
+  syntax-highlight の gem 依存 `mruby-compiler2`→`mruby-compiler`。
+  → ESP-IDF component 群を通過し mruby(libmruby)ビルド段階まで到達。
+- **到達エラー + 構造決定**: rake が hal_freertos.c を compile → `freertos/FreeRTOS.h` 無し。
+  FreeRTOS 依存 port は CMake(PRIV_REQUIRES freertos)でしか compile 不可。
+  → **依頼者承認の holistic 再配置**: conf.ports :posix + `hal-task-freertos` ダミー gem
+  (resolve_external_hal! で mruby-task の SIGALRM port 抑止) + freertos task_hal.c を
+  PICORUBY_SRCS へ + hal_freertos.c 除去/削除 + machine posix を PICORUBY_SRCS から除去。
+  詳細は resolutions.md「FreeRTOS port のコンパイル経路」節。
+- **§3.5 (Linux シグナル禁止) コンプライアンス確認 [済]**: instruct §3.5 = FreeRTOS POSIX sim は
+  signal 内部利用のため、リンクコードで sigaction/setitimer/signal() 禁止。
+  - posix/hal.c は ours 解決で upstream の SIGALRM+setitimer を不採用 (準拠)。
+  - posix/machine.c (CLEAN merge) は pthread_sigmask + sigaddset(許容) と ITIMER/SIGALRM の
+    コメントのみ (Machine_delay_ms chunked ループの根拠)。実際の sigaction/setitimer 呼び出しは無し。
+  - freertos task_hal.c もシグナル不使用。→ **B1 マージは §3.5 準拠**。
+  - build:linux green 後、検証項目5・6 (SIGALRM port 未リンク, sigaction/setitimer 呼び出し元が
+    sim 内部のみ) を nm/objdump で確認し resolutions.md に記録する (TODO)。
+- **注**: conf.ports :posix は **Linux ビルドの決定**。esp32 の番で port マトリクスを別途確定し
+  instruct_d7_b1_tick.md の表を実態に更新する (TODO)。
+
+### 次アクション: holistic 再配置を実施 → build:linux 継続
