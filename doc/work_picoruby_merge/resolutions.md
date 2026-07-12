@@ -30,6 +30,26 @@ staging: `doc/work_picoruby_merge/merge/<layer>/<path>`。解決結果は lib/ �
   (旧 `vm_mruby?`/`vm_mrubyc?` の別名) を採用しつつ、我々の正しい gemdir パス `mruby-pack` を維持
   (upstream は依然 `picoruby-pack` を指すバグ、pr#6)。`mruby-pack` は新 mruby tree に存在確認済。
 
+### 【build 環境ブロッカー】build コンテナに openssl (libssl-dev) が無い
+
+build 反復で socket TLS まで到達し `picoruby-socket/ports/posix/ssl_socket.c:20: openssl/ssl.h 無し`。
+調査結果:
+- **我々版・upstream 新版どちらの posix ssl_socket.c も OpenSSL を使う** (SSL_CTX_new / TLS_client_method 等)。
+  → マージ/統合の問題ではない。
+- **build コンテナ `ghcr.io/family-mruby/fmruby-esp32-build:latest` に openssl ヘッダが存在しない**
+  (`/usr/include/openssl/ssl.h` 不在、`find / -name ssl.h -path *openssl*` 空、`pkg-config --cflags openssl` 空)。
+- CMakeLists L188-189 は `target_link_libraries(... ssl crypto)` で openssl リンク前提だが、現行イメージに
+  ヘッダもライブラリも無い (コメント「libssl-dev in the container」は現行イメージで不成立)。
+- **意味**: これが Linux build の唯一の残ブロッカー。merge 由来の修正 (compiler 改名, microruby→picoruby,
+  FreeRTOS port 再配置) は全て通過し、mruby build は socket TLS の compile まで到達している
+  = マージの大半がビルド上検証された。
+- **要依頼者判断/対応** (環境側):
+  (a) build コンテナイメージに libssl-dev を追加 (Dockerfile 更新 + 再 publish)、または
+  (b) 旧 build が使っていたイメージ (openssl 入り) を確認し DOCKER_CMD をそれに合わせる、または
+  (c) posix TLS を mbedtls ベースに変更 (ESP-IDF の mbedtls を使う大改修。upstream も openssl なので非推奨)。
+- 参考: build:linux をここまで通すための merge 修正コミット: mruby-compiler 改名 (CMake/gembox/syntax-highlight),
+  microruby→picoruby, FreeRTOS port holistic 再配置 (hal-task-freertos gem + PICORUBY_SRCS)。
+
 ### socket TLS/TCP 群 (pr#1 系統は upstream が解決済みと判明)
 
 **重要発見**: upstream は ports API を `picorb_state *vm` 貫通型にリファクタし、pr#1
