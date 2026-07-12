@@ -200,6 +200,31 @@ mruby build で `picorb_alloc(mrb,size)=mrb_malloc(mrb,size)` となり安全。
   (b) 旧 `hal_register_vm`/`hal_deinit_by_pool` (fmrb_app.c から呼ばれる) と本 port の register の統合、
   (c) MRB_TASK_MAX_VMS(=8) と FMRB_MRB_MAX_VMS の整合。
 
+### B1 着手前の棚卸し (旧 tick / prism API 呼び出し元、CMake、削除前に記録)
+
+grep 実施 (main/ lib/add components/fmrb_mem components/fmrb_common)。B1 で撤去する前に付け替え先を確定。
+
+**旧 tick / VM registry API の呼び出し元** → D7 (task_hal.c) の新契約へ付け替え:
+- `main/app/fmrb_app.c:360` `hal_register_vm(ctx->mrb)` → **`mrb_hal_task_register_vm(ctx->mrb)`** に改名。
+  (D7 の init が呼び出し VM を登録するが、fmrb_app は VM 生成直後の明示登録を続ける。register は idempotent。)
+- `lib/add/picoruby-fmrb-app/ports/esp32/app.c:673` `hal_deinit(mrb)` → **`mrb_hal_task_final(mrb)`** に付け替え。
+- `mrb_hal_task_take_pending_ticks` は D7 が提供 (task.c bottom-half が使用)。machine 側の同名定義は撤去。
+- `machine_hal_init` / `mruby_tick_task` / `g_tick_manager` は machine から撤去 (freertos port へ移動済)。
+
+**prism-lock / prism pool (Option A 除去)**:
+- `components/fmrb_mem/fmrb_mempool.c`: `g_prism_memory_pool` 定義 (L9) と est 初期化 (L90-92)、
+  release 判定 (L112-117) を除去。他プールは残す。
+- `components/fmrb_common/include/fmrb_mem_config.h`: `FMRB_MEM_PRISM_POOL_SIZE` (L21,25) を除去。
+- `fmrb_prism_lock/unlock` は machine ports (esp32/machine.c, posix/hal.c) 内定義で、唯一の呼び出し元
+  だった prism_alloc.c は削除済 → machine から定義ごと撤去。
+
+**CMake PICORUBY_SRCS** (components/picoruby-esp32/CMakeLists.txt):
+- Linux (L67-79): `ports/posix/machine.c` (L77), **`ports/esp32_linux/hal_freertos.c` (L78)**, `ports/common/machine.c` (L79)。
+- ESP32 (L96-108): **`ports/esp32/machine.c` (L106)**, `ports/common/machine.c` (L107), `src/machine.c` (L108)。
+- tick manager は hal_freertos.c (Linux) と esp32/machine.c (ESP32) に在る → B1 で撤去。
+  freertos/task_hal.c は **rake の port 機構**でコンパイル (conf.ports :freertos)。CMake との二重コンパイルは
+  起きない (task_hal.c は PICORUBY_SRCS に無い)。撤去後、hal_freertos.c / machine.c は tick 以外の責務で存続。
+
 ### B1 picoruby-machine [TODO・merge-file 方式]
 
 - replace は upstream をほぼ鏡写し (upstream 変化 19 files +853/-208, 新規 nrf52 のみ)。

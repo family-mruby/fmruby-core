@@ -223,3 +223,33 @@ fetch 実施: picoruby master, mruby/mruby master, mruby-compiler2 master (全�
 - B1 machine 再導出 (+prism-lock 除去)、fmrb_mem/config の Option A cleanup、global_mrb 配線確認。
 - socket TLS/net-http 集中統合。
 - `rake build:linux` を主検証に反復 → 通ったら esp32 → 実機は依頼者。
+
+## 2026-07-12 (続き) — 実装フェーズ (pin 切替後)
+
+pin 切替 (55a3659) 以降の実装コミット。詳細は resolutions.md 各節。
+
+- **a87c65a Step A**: gembox `mruby-compiler2`→`mruby-compiler`、Rakefile compiler section
+  (prism 撤去・compile.c パス改名)、**D1 vm.c パッチ削除**(upstream 化)、prism 3ファイル削除(Option A)。
+- **43d992b D2**: alloc.c を新 upstream (複数アロケータ分岐) 上で ESTALLOC 分岐のみ per-VM 化
+  (fmrb_get/set_current_est) + upstream の est_set_critical_section 保持 + stats ヘルパ。
+- **2c9b92f D5/D6**: D5 撤去(upstream が mruby-dir の HAL 自動検出削除)。D6 dir_hal の "flash/" prefix を
+  新 location mruby-dir/ports/posix/dir_hal.c へ再導出、全 path 関数に適用。
+- **51e262e D4**: task.c 案D bottom-half を新 task_run_body へ (stack-clear は upstream 化で撤去)。
+  task mrbgem.rake パッチ撤去 (upstream は effective_ports 方式)。
+- **03fd034 D7/B1 Step1**: port 選択 matrix を build_config に。linux=`:esp32_linux,:freertos,:posix`,
+  esp32/p4=`:esp32,:freertos,:posix`。消滅 hal-posix-task/dir gem 行を linux config から削除。
+- **856d4ee D7**: mruby-task/ports/freertos/task_hal.c 新設 (案D top-half)。既存 machine 側 tick manager を
+  抽出・共通化、原子性は g_tick_manager.mutex、notification idle、per-VM。
+
+### 現在地
+
+- lib/ 側の再導出: D1(撤去)/D2/D4/D5(撤去)/D6/D7 完了。compiler(Option A)完了。L0 の 8ファイル完了。
+- **未完**: B1 picoruby-machine (merge-file + machine 側 tick manager 撤去 + prism-lock 除去)、
+  global_mrb 配線、picoruby-mruby/mrbgem.rake 確定、socket TLS/net-http 統合、fmrb_mem cleanup、build 反復。
+- submodule は新 pin (working tree checkout, fmruby-core 未 commit)。ビルドは B1 等未完のため未実施。
+
+### 次アクション
+
+- B1 着手前に旧 tick API の呼び出し元棚卸し (main/ lib/add grep、CMake PICORUBY_SRCS 確認) → resolutions.md へ。
+- B1: merge-file で machine 差分を洗い出し → tick 撤去 + prism-lock 除去を重ねる。
+- → global_mrb 配線 → rake setup → build:linux 反復。
