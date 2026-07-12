@@ -162,8 +162,8 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/include
-    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
-    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include
@@ -244,8 +244,8 @@ target_link_libraries(${COMPONENT_LIB} PRIVATE libmruby)
 target_include_directories(
   ${COMPONENT_LIB}
   PUBLIC
-    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
-    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/lib/prism/include
     ${PICORUBY_BUILD_INCLUDE}
     ${MRBGEMS_DIR}
 )
