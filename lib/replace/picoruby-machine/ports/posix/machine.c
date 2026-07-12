@@ -90,8 +90,12 @@ picorb_hal_stdin_push(uint8_t ch)
 {
   /* Only intercept signal chars in cooked mode (mirror rp2040). In raw
    * mode, pass all bytes through for binary data and the shell's own
-   * line editor. */
-  if (!io_raw_q()) {
+   * line editor. Without io-console (FMRB_NO_IO_CONSOLE) we cannot query
+   * raw/cooked state, so default to the cooked behavior (intercept). */
+#ifndef FMRB_NO_IO_CONSOLE
+  if (!io_raw_q())
+#endif
+  {
     if (ch == 3) {
       sigint_status = MACHINE_SIGINT_RECEIVED;
       return true;  /* signal consumed, not an overflow */

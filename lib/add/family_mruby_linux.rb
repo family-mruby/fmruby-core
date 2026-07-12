@@ -10,6 +10,12 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   conf.cc.defines << 'MRB_TICK_UNIT=5'
   conf.cc.defines << 'MRB_TIMESLICE_TICK_COUNT=10'
   conf.cc.defines << 'MRB_INT64'
+  # Set UTF-8 string support at the build_config level so it applies to the
+  # mruby core (which defines mrb_utf8len_table / mrb_utf8len / mrb_utf8_strlen)
+  # as well as the gems that reference them (mruby-string-ext). Setting it only
+  # inside picoruby-mruby's mrbgem.rake ran after the core, leaving the table
+  # undefined at link.
+  conf.cc.defines << 'MRB_UTF8_STRING'
   conf.cc.defines << 'PICORB_PLATFORM_POSIX'
   conf.cc.defines << 'PICORB_ALLOC_ESTALLOC'
   conf.cc.defines << 'PICORB_ALLOC_ALIGN=8'
