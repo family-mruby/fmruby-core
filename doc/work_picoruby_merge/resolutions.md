@@ -137,12 +137,15 @@ mruby build で `picorb_alloc(mrb,size)=mrb_malloc(mrb,size)` となり安全。
   (`task_across_c_boundary` + `mrb->jmp=prev_jmp` 復元 + `!exc`/`!gc.iterating`/`c!=root_c` まで拡張、
   issues #6862/#6863/#6864/#6868/#6887)。我々の ESP32 検証済み修正が本家へ取込まれた形。
   → lib/patch の vm.c を削除、Rakefile setup の vm.c 行も削除 (pin 切替フェーズで)。**最高リスクが1件消滅**。
-- **D4 task.c** [**一部撤去・案D のみ再導出**] — 詳細設計 rederive_vm_task.md。
-  - stack nil クリア → **upstream 化済** (task.c l.124-126, 300-303) → 撤去。
-  - **案D top/bottom-half tick split は依然必要** (fmrb は FreeRTOS 別スレッド tick。mrb_tick を
-    cross-thread で呼ぶと queue 破壊)。新 `task_run_body` ループ先頭に bottom-half
-    (`mrb_hal_task_take_pending_ticks`→`mrb_tick` ×N) を挿入。top-half は D7。
-  - mrbgem.rake の HAL auto-load 削除パッチは陳腐化 (upstream は effective_ports/conf.ports 方式)。
+- **D4 task.c** [**DONE (bottom-half)・要実機確認**] — 詳細設計 rederive_vm_task.md。
+  - stack nil クリア → upstream 化済につき**撤去** (新 upstream task.c をそのまま土台に採用)。
+  - **案D bottom-half を実装済**: 新 `task_run_body` の `while(1)` ループ先頭 (`t = q_ready_` 直前) に
+    `{ uint32_t pending = mrb_hal_task_take_pending_ticks(mrb); while (pending--) mrb_tick(mrb); }` を挿入。
+    `extern uint32_t mrb_hal_task_take_pending_ticks(mrb_state*)` を task.c 冒頭に宣言。
+    mrb_tick は排他を取らない (IRQ 側) ので排他外呼び出しで正。run_once には入れない (fmrb 未使用)。
+    top-half は D7 (FreeRTOS port)。**実機確認: preempt/sleep/wake、tick 破壊非再発**。
+  - **mrbgem.rake は upstream 採用 (パッチ撤去)**: 新版は effective_ports/conf.ports 方式。旧 HAL-auto-load
+    削除パッチは陳腐化。**port 選択は build_config で行う (D7)**。task.c/task_hal は -rf コピーで配布。
 - **D7 task_hal.c** [再導出] — 新 location mruby-task/ports/posix/task_hal.c。FreeRTOS top-half
   (switching+pending 蓄積、mrb_tick 呼ばない) を実装。B1 の hal_freertos.c と統合。rederive_vm_task.md 参照。
 - **D5 mruby-dir/mrbgem.rake** [**不要化・撤去**] — 新 upstream mruby-dir/mrbgem.rake は 3 行 (metadata のみ) で

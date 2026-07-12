@@ -185,10 +185,12 @@ task :setup do
   # picoruby-json: fix parse_float dropping the decimal point ("26.2" -> 262.0)
   sh "cp -f lib/patch/picoruby-json/mrblib/json.rb #{mrbgem_path}/picoruby-json/mrblib/"
 
-  # mruby-task: add stack clearing in mrb_task_reset_context + disable HAL auto-load
-  mruby_task_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-task"
-  sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c #{mruby_task_path}/src/"
-  sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/mrbgem.rake #{mruby_task_path}/"
+  # mruby-task (case-D tick split): task.c (bottom-half) and the FreeRTOS
+  # ports/posix/task_hal.c (top-half) are delivered by the bulk
+  # `cp -rf lib/patch/picoruby-mruby` above. The mrbgem.rake patch is dropped:
+  # upstream rewrote it to select ports via conf.ports/effective_ports, so
+  # the old HAL-auto-load removal no longer applies (port wiring is done in
+  # build_config instead).
 
   # mruby-dir: the "flash/" prefix dir_hal now lives at
   # mruby-dir/ports/posix/dir_hal.c (hal-posix-dir gem was removed upstream)
