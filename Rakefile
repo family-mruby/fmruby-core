@@ -190,14 +190,11 @@ task :setup do
   sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c #{mruby_task_path}/src/"
   sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/mrbgem.rake #{mruby_task_path}/"
 
-  # mruby-dir: patch mrbgem.rake to skip HAL auto-detection on ESP32
-  mruby_dir_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-dir"
-  sh "cp -f lib/patch/mruby-dir/mrbgem.rake #{mruby_dir_path}/"
-
-  # hal-posix-dir: apply "flash/" path prefix so Linux Dir.open mirrors the
-  # virtual namespace served by fmrb_hal_file_posix.c.
-  hal_posix_dir_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/hal-posix-dir"
-  sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/hal-posix-dir/src/dir_hal.c #{hal_posix_dir_path}/src/"
+  # mruby-dir: the "flash/" prefix dir_hal now lives at
+  # mruby-dir/ports/posix/dir_hal.c (hal-posix-dir gem was removed upstream)
+  # and is delivered by the bulk `cp -rf lib/patch/picoruby-mruby` above.
+  # D5 (skip HAL auto-detection on ESP32) is dropped: upstream removed the
+  # auto-detection logic from mruby-dir/mrbgem.rake entirely.
 end
 
 namespace :set_target do

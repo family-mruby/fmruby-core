@@ -145,8 +145,14 @@ mruby build で `picorb_alloc(mrb,size)=mrb_malloc(mrb,size)` となり安全。
   - mrbgem.rake の HAL auto-load 削除パッチは陳腐化 (upstream は effective_ports/conf.ports 方式)。
 - **D7 task_hal.c** [再導出] — 新 location mruby-task/ports/posix/task_hal.c。FreeRTOS top-half
   (switching+pending 蓄積、mrb_tick 呼ばない) を実装。B1 の hal_freertos.c と統合。rederive_vm_task.md 参照。
-- **D5 mruby-dir/mrbgem.rake** [TODO] — 新 mruby-dir は ports/{posix,win}+mrbgem.rake で port 自動選択。
-  ESP32 で auto-detect 破綻しないか確認し「ESP32 で HAL 自動検出スキップ」を再適用。
+- **D5 mruby-dir/mrbgem.rake** [**不要化・撤去**] — 新 upstream mruby-dir/mrbgem.rake は 3 行 (metadata のみ) で
+  **HAL 自動検出ロジックを丸ごと削除済**。我々の「ESP32 で自動検出スキップ」パッチは対象消滅。
+  lib/patch/mruby-dir/mrbgem.rake + Rakefile 該当行を削除。
+- **D6 dir_hal.c ("flash/" prefix)** [DONE・要確認] — hal-posix-dir 消滅 → 新 location
+  **mruby-dir/ports/posix/dir_hal.c** に再導出。新版は path 関数が増えている (open/mkdir/rmdir/chdir/chroot/
+  is_directory) ため resolve_path("flash" prefix) を**全 path 関数に適用**、getcwd は逆変換 (prefix 除去) を追加。
+  lib/patch 内の旧 hal-posix-dir/ を削除し新 path へ移設。`cp -rf lib/patch/picoruby-mruby` で配布 (Rakefile 個別行不要)。
+  要確認: getcwd 逆変換・chroot の "flash" 化が fmrb の Dir 利用と整合するか (実機/Linux)。
 - **D2 picoruby-mruby/src/alloc.c** [DONE・要実機確認] — estalloc マルチ VM。新 estalloc pin 971b793。
   新 upstream alloc.c (TLSF/O1HEAP/TINYALLOC/ESTALLOC/DEFAULT の複数分岐) を土台に、**ESTALLOC 分岐のみ**を
   per-VM 化: module-static `est` → `fmrb_get_current_est()`/`fmrb_set_current_est()` (per-task TLS)。
