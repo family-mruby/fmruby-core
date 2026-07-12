@@ -21,6 +21,7 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/ioctl.h>
+#include <fcntl.h>   /* fcntl / F_GETFL / F_SETFL / O_NONBLOCK for nonblock recv */
 
 /* Prevent name collision with embedded Ruby bytecode */
 #ifdef socket
