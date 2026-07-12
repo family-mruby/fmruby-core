@@ -120,6 +120,11 @@ task :setup do
   # bmp332
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-bmp332"
   sh "cp -rf lib/add/picoruby-fmrb-bmp332 #{mrbgem_path}/"
+  # hal-task-freertos (name-only gem: makes mruby-task drop its own task_hal
+  # port so the FreeRTOS case-D port is used via CMake instead; see the gem's
+  # mrbgem.rake and doc/work_picoruby_merge/instruct_d7_b1_tick.md sec 3.5)
+  sh "rm -rf #{mrbgem_path}/hal-task-freertos"
+  sh "cp -rf lib/add/hal-task-freertos #{mrbgem_path}/"
   # conf
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"

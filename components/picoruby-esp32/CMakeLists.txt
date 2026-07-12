@@ -74,14 +74,18 @@ if(IDF_TARGET STREQUAL "linux")
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${FMRB_BMP332_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/src/fmrb_bmp332.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32_linux/hal_freertos.c
+        # The mruby-task case-D tick (top-half) needs FreeRTOS headers, so it is
+        # compiled here (this component PRIV_REQUIRES freertos) rather than by the
+        # rake mruby build. A name-only hal-task-freertos gem stops mruby-task
+        # from compiling its own posix (SIGALRM) port. hal_freertos.c is gone:
+        # its tick manager moved into this port.
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/freertos/task_hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/posix/rng.c
-        # NOTE: picoruby-socket / picoruby-mbedtls port sources are NOT listed
-        # here for linux: the picoruby build compiles every gem's ports/posix
-        # and ports/common automatically on POSIX builds (lib/picoruby/build.rb).
-        # SSL on linux uses OpenSSL (linked below).
+        # NOTE: picoruby-socket / picoruby-mbedtls / picoruby-machine posix port
+        # sources are NOT listed here for linux: with conf.ports :posix the rake
+        # build compiles each gem's ports/posix (and picoruby-machine console)
+        # automatically. SSL on linux uses OpenSSL (linked below).
     )
 else()
     file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")

@@ -27,15 +27,20 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   # Common gems
   conf.gembox 'family_mruby'
 
-  # HAL port selection. Upstream folded the standalone hal-*-task / hal-*-dir
-  # gems into per-gem ports/<name>/ dirs, selected by conf.ports (first match
-  # per gem). A CrossBuild compiles NO port unless conf.ports is set, so this
-  # is mandatory. Order matters:
-  #   - mruby-task -> ports/freertos (our case-D top-half; NOT ports/posix,
-  #     whose SIGALRM tick would double-tick against case-D)
-  #   - picoruby-machine -> ports/esp32_linux (FreeRTOS-on-POSIX)
-  #   - picoruby-socket / mruby-dir -> ports/posix
-  conf.ports :esp32_linux, :freertos, :posix
+  # HAL port selection. Upstream folded the standalone hal-*-task/-dir gems into
+  # per-gem ports/<name>/ dirs, compiled by the rake build when conf.ports lists
+  # a matching port (a CrossBuild compiles none unless set). The rake build has
+  # no FreeRTOS headers, so FreeRTOS-dependent ports (the machine tick and the
+  # mruby-task case-D tick) are compiled on the CMake/ESP-IDF side instead
+  # (PICORUBY_SRCS, which PRIV_REQUIRES freertos). Here we only let the rake
+  # build pick posix ports (socket, mruby-dir, and picoruby-machine's console).
+  conf.ports :posix
+  # ...but mruby-task's posix port is a SIGALRM+setitimer timer that collides
+  # with the Linux FreeRTOS POSIX simulator's own signal scheduler (instruct
+  # sec 3.5) and would race case-D. This name-only gem makes mruby-task drop its
+  # port (resolve_external_hal!); its HAL comes from the CMake-built freertos
+  # port (mrbgems/mruby-task/ports/freertos/task_hal.c).
+  conf.gem core: 'hal-task-freertos'
 
   # mruby-dir is still an explicit dep (it is not pulled in transitively).
   # NOTE: hal-posix-io is NOT loaded (it depends on mruby-io which conflicts with fmrb-io)
