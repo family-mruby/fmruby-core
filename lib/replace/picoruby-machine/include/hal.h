@@ -8,76 +8,71 @@
 extern "C" {
 #endif
 
+#if defined(PICORB_VM_MRUBYC)
+  #define picorb_hal_init         mrbc_hal_init
+  #define picorb_hal_final        mrbc_hal_final
+  #define picorb_hal_enable_irq   mrbc_hal_enable_irq
+  #define picorb_hal_disable_irq  mrbc_hal_disable_irq
+  #define picorb_hal_idle_cpu     mrbc_hal_idle_cpu
+  #define picorb_hal_sleep_us     mrbc_hal_sleep_us
+  #define picorb_tick             mrbc_tick
+  #define picorb_hal_write        mrbc_hal_write
+  #define picorb_hal_abort        mrbc_hal_abort
+  #define picorb_hal_flush        mrbc_hal_flush
+#else
+  #define picorb_hal_init         mrb_hal_task_init
+  #define picorb_hal_final        mrb_hal_task_final
+  #define picorb_hal_enable_irq   mrb_task_enable_irq
+  #define picorb_hal_disable_irq  mrb_task_disable_irq
+  #define picorb_hal_idle_cpu     mrb_hal_task_idle_cpu
+  #define picorb_hal_sleep_us     mrb_hal_task_sleep_us
+  #define picorb_tick             mrb_tick
+  #define picorb_hal_write        mrb_hal_write
+  #define picorb_hal_abort        mrb_hal_abort
+  #define picorb_hal_flush        mrb_hal_flush
+#endif
+
 #if defined(PICORB_VM_MRUBY)
 #include "mruby.h"
-void mrb_tick(mrb_state *mrb);
-/* 案D tick split: signal source (HAL) <-> scheduler (mruby-task). */
-void mrb_task_request_switch(mrb_state *mrb);      /* defined in mruby-task/task.c */
-uint32_t mrb_hal_task_take_pending_ticks(mrb_state *mrb);  /* defined in the HAL port */
-void hal_init(mrb_state *mrb);
-
-/* Avoid conflict with hal_init() from libpp used in ESP-IDF. */
-#ifdef ESP32_PLATFORM
-void machine_hal_init(mrb_state *mrb);
-#define hal_init(mrb) machine_hal_init(mrb)
-#endif
-
+void picorb_tick(mrb_state *mrb);
+void picorb_hal_init(mrb_state *mrb);
+void picorb_hal_idle_cpu(mrb_state *mrb);
+/* family-mruby (case-D tick split): exposed by the freertos HAL port to the
+ * scheduler and the fmrb runtime. take_pending_ticks drains this VM's pending
+ * tick count on the VM's own thread (task.c bottom-half); register_vm records
+ * the VM and its FreeRTOS task with the tick manager (idempotent). */
+uint32_t mrb_hal_task_take_pending_ticks(mrb_state *mrb);
+void mrb_hal_task_register_vm(mrb_state *mrb);
 #elif defined(PICORB_VM_MRUBYC)
-void mrbc_tick();
-void hal_init(void);
-
-/* Avoid conflict with hal_init() from libpp used in ESP-IDF. */
-#ifdef ESP32_PLATFORM
-void machine_hal_init(void);
-#define hal_init() machine_hal_init()
+void picorb_tick();
+void picorb_hal_init(void);
+void picorb_hal_idle_cpu(void);
+#ifndef picorb_SCHEDULER_EXIT
+#define picorb_SCHEDULER_EXIT 1
+#endif
 #endif
 
-#ifndef MRBC_SCHEDULER_EXIT
-#define MRBC_SCHEDULER_EXIT 1
-#endif
+int picorb_hal_write(int fd, const void *buf, int nbytes);
+void picorb_hal_enable_irq(void);
+void picorb_hal_disable_irq(void);
+void picorb_hal_abort(const char *s);
+int picorb_hal_flush(int fd);
 
-#endif
+/* The mrb_hal_task_* contract (init/final/idle_cpu/sleep_us, enable/disable_irq)
+ * is declared by mruby-task's task_hal.h and implemented by the freertos port;
+ * the picorb_hal_* aliases above map onto it. family-mruby no longer declares
+ * the old hal_register_vm / hal_deinit / hal_deinit_by_pool / hal_write /
+ * mrb_task_request_switch here: registration is mrb_hal_task_register_vm and
+ * teardown is mrb_hal_task_final (see above / task_hal.h). */
 
-int hal_write(int fd, const void *buf, int nbytes);
-
-#if defined(PICORB_VM_MRUBYC)
-  void hal_enable_irq(void);
-  void hal_disable_irq(void);
-  void hal_idle_cpu(void);
-#else
-  void mrb_task_enable_irq(void);
-  void mrb_task_disable_irq(void);
-  void hal_idle_cpu(mrb_state *mrb);
-  #define hal_enable_irq() mrb_task_enable_irq()
-  #define hal_disable_irq() mrb_task_disable_irq()
-#endif
-
-/* family-mruby: multi-VM management */
-#if defined(PICORB_VM_MRUBY)
-void hal_register_vm(mrb_state *mrb);
-void hal_deinit(mrb_state *mrb);
-void hal_deinit_by_pool(void *pool_ptr, size_t pool_size);
-#endif
-
-/* Task HAL functions (implemented in hal-posix-task or platform-specific code) */
-#if defined(PICORB_VM_MRUBY)
-void mrb_hal_task_init(mrb_state *mrb);
-void mrb_hal_task_final(mrb_state *mrb);
-void mrb_hal_task_idle_cpu(mrb_state *mrb);
-void mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec);
-#endif
-
-void hal_abort(const char *s);
-int hal_flush(int fd);
 #define HAL_GETCHAR_NODATA  (-1)
 #define HAL_GETCHAR_EOF     (-2)
 
-int hal_read_available(void);
-int hal_getchar(void);
+int picorb_hal_read_available(void);
+int picorb_hal_getchar(void);
 /* Push a byte into the stdin ring buffer.
  * Returns true on success, false if the buffer is full (byte NOT stored). */
-bool hal_stdin_push(uint8_t ch);
-
+bool picorb_hal_stdin_push(uint8_t ch);
 
 #ifdef __cplusplus
 }
