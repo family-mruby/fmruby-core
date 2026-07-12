@@ -317,3 +317,43 @@ B1(machine 大半), port選択, 付け替え, picoruby-mruby/mrbgem.rake。
   instruct_d7_b1_tick.md の表を実態に更新する (TODO)。
 
 ### 次アクション: holistic 再配置を実施 → build:linux 継続
+
+## 2026-07-13 — Linux ビルド GREEN + §3.5 検証
+
+**`rake build:linux` GREEN**: `build/fmruby-core.elf` (5.5MB) 生成、EXIT 0。
+picoruby 最新版マージ全体 (vm/task 案D, compiler 改名, socket TLS/OpenSSL, machine 再構成,
+estalloc per-VM, dir_hal, prism Option A 等) が Linux でビルド成立。
+
+### build 反復で解決した実エラー (コミット列)
+
+1. CMake `mruby-compiler2/include` → `mruby-compiler` (改名)。
+2. `conf.microruby` → `conf.picoruby` (VM setup メソッド改名; 旧 picoruby→femtoruby)。
+3. syntax-highlight の gem 依存 `mruby-compiler2` → `mruby-compiler`。
+4. **build コンテナに openssl (libssl-dev) 追加** — docker/Dockerfile は既に libssl-dev 記載だが
+   published :latest が古かった。同タグでローカル再ビルドして解決 (依頼者承認)。
+5. socket TLS を upstream の vm 貫通 API へ 3-way 統合 (src/mruby/ssl_socket.c で pr#2 保持,
+   posix ports は upstream の nonblock recv 採用) + posix tcp_socket.c に `<fcntl.h>`。
+6. src/mruby/machine.c poll_signal の io_raw_bang/io_cooked_bang を FMRB_NO_IO_CONSOLE でガード。
+7. prebuild のコンパイラ binary `picorbc` → `mrbc` (mruby-bin-mrbc 改名)。
+8. CMake 側に `MRB_USE_TASK_SCHEDULER` 追加 (rake libmruby.a と mrb_state.task の ABI 整合)。
+9. posix machine.c の io_raw_q を FMRB_NO_IO_CONSOLE でガード + `MRB_UTF8_STRING` を build_config へ
+   (core と string-ext の mrb_utf8len_table 整合)。
+10. **mruby-task posix task_hal.c を空スタブに patch** — conf.ports :posix で rake が SIGALRM 版を
+    compile し CMake freertos port と mrb_hal_task_* が二重定義 → 空スタブで解消 (実シンボルは CMake freertos)。
+
+### §3.5 (Linux シグナル禁止) 検証 — 準拠確認 (nm/objdump on elf)
+
+- **項目5 (SIGALRM port 未リンク)**: mruby-task posix task_hal は空スタブ→未提供。tick は
+  `mruby_tick_task`/`mrb_hal_task_init` (我々の freertos port) が定義。SIGALRM 二重 tick 源 無し。
+- **項目6 (signal 呼び出し元)**: `sigaction`/`setitimer` の呼び出し元は FreeRTOS POSIX シミュレータ内部の
+  `prvSetupSignalsAndSchedulerPolicy` (scheduler signal 設定) のみ。fmrb シンボル (mrb_/picorb_/machine/hal_)
+  は sigaction/setitimer を一切呼ばない (objdump 確認)。許容の pthread_sigmask は posix/machine.c のみ。
+- → **B1 マージ + case-D は §3.5 準拠**。
+
+### 残作業 (Linux GREEN 後)
+
+- **実機/Linux 実行時検証** (依頼者): preempt / sleep 精度 / ブロッキング後まとめ適用 / 長時間 tick 破壊非再発。
+- **esp32 ビルド**: port マトリクス確定 (task_hal の rake/CMake 経路)、CMake 側の同型対応。
+- prism-pool cleanup (fmrb_mempool/fmrb_mem_config の prism プール除去) + global_mrb 配線 (mutex 方式)。
+- deferred socket の timeout/EINTR 堅牢化を runtime 再検証。
+- fmruby-core への commit / submodule pointer 更新は依頼者確認事項 (未実施)。
