@@ -84,5 +84,67 @@ mruby build で `picorb_alloc(mrb,size)=mrb_malloc(mrb,size)` となり安全。
 - **picoruby-mruby/src/alloc.c** [TODO・高リスク D2] — estalloc マルチ VM。2 conflict。alloc.c/vm.c/estalloc
   と合わせて最高リスク再導出フェーズで対応。
 
-## L1 mruby / L1 compiler / B1 machine
-- 未着手 (triage_matrix.md 参照)。vm.c / task.c / 消滅 HAL / machine は再導出。
+## L1 compiler (mruby-compiler2 -> mruby-compiler, 同一 repo・path 改名, 新 pin 10408c3)
+
+3-way 結果: compile.c CLEAN / prism_alloc.c NEW-FILE / mrbgem.rake CONFLICT(2) / prism_xallocator.h CONFLICT(1)。
+
+- **src/compile.c** [DONE] — 我々の NULL ガード (`mrc_load_string_cxt` で parse root==NULL → return NULL、
+  NULL deref 防止) が upstream の 99/22 書換にクリーンに載る。配置も正 (parse 直後・load_exec 前)。lib/ 反映済。
+- **prism アロケータ trio (prism_xallocator.h / prism_alloc.c / mrbgem.rake の prism_alloc 統合)** [BLOCKED・設計判断待ち]
+  - **upstream の新方式**: mrbgem.rake が自前で `PRISM_XALLOCATOR` + `PRISM_DEPTH_MAXIMUM=256` (スタック保護) を定義。
+    新 prism_xallocator.h は MRC_TARGET_MRUBY 非 LIBC 時 `extern mrb_state *global_mrb; xmalloc=mrb_malloc(global_mrb,..)`
+    → **prism を VM の estalloc ヒープに流す**。global_mrb は upstream で picoruby.h:127 のマクロが設定 (配線可能)。
+  - **我々の方式 (現行パッチ)**: prism 専用 estalloc プール (`g_prism_memory_pool` from fmrb_mempool.c、
+    サイズ `FMRB_MEM_PRISM_POOL_SIZE`、`fmrb_prism_lock` で mutex 保護)。VM ヒープから隔離。
+    横断インフラ: fmrb_mem/fmrb_mempool.c, fmrb_common/fmrb_mem_config.h, picoruby-machine ports(esp32/posix)の lock フック。
+  - **依頼者判断 (2026-07-12): Option A = upstream 方式に統一**。専用プールを撤去し prism を VM estalloc ヒープへ流す。
+  - **Option A 実行計画**:
+    - [撤去] lib/patch/compiler/prism_xallocator.h (upstream 版を使う。setup の cp 行も削除)
+    - [撤去] lib/patch/compiler/prism_alloc.c (新規ファイル削除。setup の cp 行も削除)
+    - [撤去] lib/patch/compiler/mruby-compiler2-mrbgem.rake (upstream mrbgem.rake を使う。setup の cp 行も削除)
+      - mrbgem.rake の conflict 1 (我々の include path 追加) も撤去: `#{dir}/include` は upstream 既存で重複、
+        `fmrb_common/include` は prism_alloc.c 撤去で不要。
+    - [維持] lib/patch/compiler/mruby-compiler2-compile.c (NULL ガードのみ。upstream 新 base に適用済)。
+    - **波及削除 (Option A cleanup)**:
+      - components/fmrb_mem/fmrb_mempool.c: prism 専用プール (g_prism_memory_pool) 部分を除去 (他プールは残す)。
+      - components/fmrb_common/include/fmrb_mem_config.h: FMRB_MEM_PRISM_POOL_SIZE 除去。
+      - lib/replace/picoruby-machine ports (esp32/machine.c, posix/hal.c): fmrb_prism_lock/unlock と
+        g_prism_memory_pool 定義を除去 → **B1 machine 再導出に含める**。
+      - **global_mrb 配線確認**: upstream は picoruby.h:127 のマクロで global_mrb=vm を設定。我々の compile 経路
+        (sandbox/compile 呼び出し) でこのマクロが通り global_mrb が設定されるか、ビルド/実機で確認。
+    - 実際の rm + Rakefile setup 行削除 + path 改名 (mruby-compiler2→mruby-compiler) は Rakefile/pin 切替
+      フェーズでまとめて実施 (整合を保つため。それまでビルド不可なので問題なし)。
+- **prism submodule pin 据置 (c0e37816)** なので prism 本体 API 変化は無し。
+
+## L1 mruby (7a4622678 hasumikin -> f56d44e 本家 mruby/mruby)
+
+### 構造変化: HAL が独立 gem 廃止 → 各 gem の ports/ に統合
+
+- 旧: hal-posix-task, hal-posix-dir, hal-posix-io, hal-posix-socket, hal-win-* が独立 gem。
+- 新: **mruby-task/ports/{posix,glib,win}/task_hal.c**, **mruby-dir/ports/{posix,win}/dir_hal.c** に統合。
+  mruby-task は task_queue.c/gc.c/queue.rb/examples/tests を持つ成熟版。
+
+### 我々のパッチ移設マップ (再導出タスク)
+
+- **D7 task_hal.c** [TODO・再導出・tick 高リスク] — 旧 hal-posix-task/src/task_hal.c → 新
+  **mruby-task/ports/posix/task_hal.c**。新版も **SIGALRM/setitimer を使用** (strip されていない) ため、
+  我々の「SIGALRM 撤去・FreeRTOS tick 一元化」の意図は依然必要。新 ports/posix/task_hal.c に対し再導出。
+  fmrb は esp32/posix-linux 双方で FreeRTOS tick (picoruby-machine esp32_linux/hal_freertos.c=B1) を使う。
+- **D6 dir_hal.c** [TODO・再導出] — 旧 hal-posix-dir/src/dir_hal.c → 新 **mruby-dir/ports/posix/dir_hal.c**。
+  "flash/" prefix (fmrb_hal_file_posix.c の仮想 namespace 整合) を新版へ再適用。
+- **D4 task.c** [TODO・要 diff・一部 upstream 化の可能性] — 新 mruby-task/src/task.c は
+  task context 初期化で stack を nil クリアする処理を持つ (l.259-322)。我々の「mrb_task_reset_context の
+  stack clear 追加」が upstream 化していないか精査。HAL auto-load 無効化は mrbgem.rake 側。
+- **D5 mruby-dir/mrbgem.rake** [TODO] — 新 mruby-dir は ports/{posix,win} を持ち mrbgem.rake で port 自動選択。
+  ESP32 (posix/win でない) で auto-detect が破綻しないか確認し、我々の「ESP32 で HAL 自動検出スキップ」を再適用。
+- **D1 src/vm.c** [TODO・最高リスク・再導出] — 976/480 の VM 全面書換だが MRB_USE_TASK_SCHEDULER は存続。
+  我々の mrb_task_yield_ok() / RETURN_IF_TASK_STOPPED (cci>0 の C 再入中は async task-switch を延期、
+  mrb->jmp=prev_jmp 復元) を新 vm.c の task-switch 実装に合わせて再導出。**実機確認必須**。
+- **D2 picoruby-mruby/src/alloc.c** [TODO・高リスク] — estalloc マルチ VM。新 estalloc pin 971b793。
+- **D3 mruby-io/file_constants.rb** [clean] — 現 pin と diff 無し。新 pin で再確認。
+- **picoruby-mruby/mrbgem.rake** (L0) [TODO] — hal-posix-task 依存廃止に伴い upstream 構造採用+mruby-io 除去
+  (batch 3 参照)。D4/D7 と同時に確定。
+
+## B1 machine
+- 未着手。vm.c/task.c/HAL 再導出と密接。Option A の prism-lock 除去も含む。
+- **注**: prism アロケータ Option A 決定済 → B1 で fmrb_prism_lock/unlock と g_prism_memory_pool 定義を除去。

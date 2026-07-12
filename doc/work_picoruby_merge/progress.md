@@ -145,12 +145,42 @@ fetch 実施: picoruby master, mruby/mruby master, mruby-compiler2 master (全�
   picoruby-mruby/mrbgem.rake(mruby層と), alloc.c(最高リスク)。
 - L1(mruby/compiler), B1(machine), Rakefile 改名対応 未着手。
 
-### 次アクション
+### L1 compiler 層 — 完了 (prism は Option A 決定で簡素化)
 
-- compiler 層 (path 改名 mruby-compiler2→mruby-compiler; prism pin 据置で流用性高) を進める。
-- L1 mruby の HAL/task 再構成 (D4/D6/D7) を理解し picoruby-mruby/mrbgem.rake を確定。
-- 最高リスク (vm.c/task.c/estalloc/machine) 再導出は upstream 実装精読の上で。実機確認引き継ぎ。
+- rename: mruby-compiler2 → mruby-compiler (同一 repo, path のみ), 新 pin 10408c3, prism pin 据置(c0e37816)。
+- **compile.c [DONE]**: NULL ガード (parse root==NULL 防御) を upstream 99/22 書換に載せ lib/ 反映。
+- **prism アロケータ [依頼者判断: Option A = upstream 方式に統一]**:
+  - 撤去対象: prism_xallocator.h, prism_alloc.c, mruby-compiler2-mrbgem.rake (全て upstream 採用)。
+  - 波及削除: fmrb_mempool.c の prism プール, fmrb_mem_config.h の FMRB_MEM_PRISM_POOL_SIZE,
+    picoruby-machine ports の fmrb_prism_lock (B1 で), global_mrb 配線確認。
+  - 実際の rm + Rakefile 行削除 + path 改名は Rakefile/pin 切替フェーズでまとめて実施。
+  - 詳細は resolutions.md「L1 compiler」節。
+- 結果: compiler 層は「再導出」不要になり、compile.c 1点維持 + prism 撤去のみ。パッチ負債さらに減。
+
+### L1 mruby 層 — 構造マップ完了 (再導出の設計図)
+
+- HAL 独立 gem 廃止 → mruby-task/ports/posix/task_hal.c, mruby-dir/ports/posix/dir_hal.c に統合。
+- 移設マップ確定 (resolutions.md「L1 mruby」節):
+  - D7 → mruby-task/ports/posix/task_hal.c (新版も SIGALRM、FreeRTOS 化は依然必要・再導出)
+  - D6 → mruby-dir/ports/posix/dir_hal.c ("flash/" prefix 再導出)
+  - D4 task.c (新版が stack nil クリアを持つ → 一部 upstream 化の可能性・要 diff)
+  - D5 mruby-dir/mrbgem.rake (port 自動選択の ESP32 対応)
+  - D1 vm.c (tick、976/480 書換、再導出・最高リスク・実機必須)
+  - D2 alloc.c (estalloc マルチ VM、新 estalloc pin 971b793)
+- ここまでで「どのパッチを新構造のどこへどう再適用するか」の設計図が揃った。以降は C 実装の再導出。
+
+### 次アクション (back-half: 深い再導出。実機検証が要るため集中セッション向け)
+
+- **D1 vm.c / D4 task.c 再導出** (最高リスク)。新実装を精読し tick 安全化・stack clear を再適用。
+- **D6/D7 HAL ports 再導出** (dir_hal "flash/", task_hal FreeRTOS 化)。
+- **B1 picoruby-machine 再導出** (+Option A の prism-lock 除去)。
+- **D2 estalloc/alloc.c 再導出**。
+- **Rakefile/pin 切替フェーズ**: 改名 path 更新、prism 撤去行削除、全 submodule 新 pin へ、
+  fmrb_mem/config の Option A cleanup、global_mrb 配線確認。
+- **socket TLS/net-http 集中統合** (ビルド検証しながら)。
+- **B1 picoruby-machine 再導出** (prism lock 除去含む Option A cleanup も)。
+- **estalloc/alloc.c (D2)** 再導出。
+- Rakefile/pin 切替フェーズ: 改名 path 更新 + prism 撤去行削除 + 全 submodule 新 pin へ + fmrb_mem/config cleanup。
 - socket TLS/net-http はビルド検証しながらの集中統合。
-- **ビルド検証は不可(上記「ビルド禁止の中間状態」を参照)**。submodule を新 pin へ切替後に限り可能。
-  切替前に rake build:* を試すと無意味に失敗するので、それを「マージ失敗」と誤認しないこと。
-  ビルド確認前には `rake clean`(ターゲット切替時は `rake clean_all`)も必要。
+- **ビルド検証は不可(先頭「ビルド禁止の中間状態」を参照)**。submodule 新 pin 切替後に限り可能。
+  切替前の rake build:* は無意味に失敗するので「マージ失敗」と誤認しないこと。ビルド前に `rake clean`(切替時 `clean_all`)。
