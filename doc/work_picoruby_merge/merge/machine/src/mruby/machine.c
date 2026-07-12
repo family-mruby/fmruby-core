@@ -494,34 +494,25 @@ mrb_picoruby_machine_gem_init(mrb_state* mrb)
 #if !defined(PICORB_PLATFORM_POSIX)
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(debug_puts), mrb_s_debug_puts, MRB_ARGS_ANY());
 
-<<<<<<< ours
   // family-mruby: IO instance methods (puts/print/write/read/gets/getc) are
   // provided by picoruby-fmrb-io, which routes through fmrb_hal_file_* so the
   // same dispatch works for STDIO and regular files. Defining them here would
   // blanket-override fmrb-io's versions and force every IO#write — including
   // File#write — to go to fd=1 (UART), silently losing file writes.
-  // The mrb_io_* functions above are unused on this build.
+  // The mrb_io_* functions above are unused on this (non-POSIX) build.
   (void)mrb_io_puts;
   (void)mrb_io_print;
   (void)mrb_io_write;
   (void)mrb_io_read;
   (void)mrb_io_gets;
   (void)mrb_io_getc;
-=======
-  struct RClass *class_IO = mrb_define_class_id(mrb, MRB_SYM(IO), mrb->object_class);
-  mrb_define_method_id(mrb, class_IO, MRB_SYM(puts), mrb_io_puts, MRB_ARGS_ANY());
-  mrb_define_method_id(mrb, class_IO, MRB_SYM(print), mrb_io_print, MRB_ARGS_ANY());
-  mrb_define_method_id(mrb, class_IO, MRB_SYM(write), mrb_io_write, MRB_ARGS_ANY());
-  mrb_define_method_id(mrb, class_IO, MRB_SYM(read), mrb_io_read, MRB_ARGS_OPT(1));
-  mrb_define_method_id(mrb, class_IO, MRB_SYM(gets), mrb_io_gets, MRB_ARGS_NONE());
-  mrb_define_method_id(mrb, class_IO, MRB_SYM(getc), mrb_io_getc, MRB_ARGS_NONE());
 #else
   /* POSIX keeps mruby-io for general IO (files), but stdin must be read
    * through the HAL ring buffer so Ctrl-C becomes Interrupt. mrblib/kernel.rb
-   * wires these onto the STDIN singleton. */
+   * wires these onto the STDIN singleton. (fmrb: only these stdin class
+   * methods are defined; the IO instance methods stay with fmrb-io.) */
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(_stdin_gets), mrb_io_gets, MRB_ARGS_NONE());
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(_stdin_getc), mrb_io_getc, MRB_ARGS_NONE());
->>>>>>> upstream
 #endif
 }
 
