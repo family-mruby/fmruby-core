@@ -3,5 +3,5 @@ MRuby::Gem::Specification.new('picoruby-syntax-highlight') do |spec|
   spec.author  = 'Shunsuke Michii'
   spec.summary = 'Ruby syntax highlighting using Prism lexer'
 
-  spec.add_dependency 'mruby-compiler2'
+  spec.add_dependency 'mruby-compiler'
 end
