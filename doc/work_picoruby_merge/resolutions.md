@@ -184,13 +184,21 @@ mruby build で `picorb_alloc(mrb,size)=mrb_malloc(mrb,size)` となり安全。
 - **esp32 の CMake 二重コンパイル要確認**: esp32 は gem C ソースを CMake (PICORUBY_SRCS) でもビルド。
   task_hal.c が rake port と CMake の二重コンパイル / どちらも拾わない、を排除する (Linux 検証後に確認)。
 
-### D7 ports/freertos/task_hal.c (top-half, 案b) [TODO]
+### D7 ports/freertos/task_hal.c (top-half, 案b) [DONE (初版)・build 反復で調整]
 
-- 配置: lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/freertos/task_hal.c。
-- FreeRTOS API のみ (esp_timer 等 IDF 固有不可)。Linux(FreeRTOS posix sim)/ESP32 共有。
-- 契約: init(timer タスク生成+VM registry 登録) / timer callback=top-half(switching_=TRUE; pending[vm]++; notify) /
-  take_pending_ticks(**原子的** return+0クリア) / idle_cpu(notification 待ち timeout 付き) /
-  sleep_us / enable_irq / disable_irq / final。**pending と registry は per-VM** (upstream posix vm_list 参照)。
+- 作成: lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/freertos/task_hal.c。
+  既存の案D 実装 (lib/replace/picoruby-machine/ports/esp32/machine.c の g_tick_manager +
+  mruby_tick_task + take_pending_ticks) を**抽出・共通化**し、ESP_LOG(IDF 固有)除去、FreeRTOS-only 化。
+- **原子性**: pending の read+0クリアと timer 側 increment は**両方 g_tick_manager.mutex で保護** (既存資産が
+  既に満たす。レビュー要件)。**この mutex は削除しないこと**とコメントに明記。
+- **idle**: `ulTaskNotifyTake(timeout)`。top-half が tick 毎に vm_task へ `xTaskNotifyGive` → idle 起床レイテンシ≒0。
+- **registry per-VM**: `vms[MRB_TASK_MAX_VMS]`, 各 entry に vm_task handle 保持 (notification 先)。
+  `mrb_hal_task_init` が tick タスク生成 (idempotent) + 呼び出し VM を登録。register は idempotent。
+- **include 衝突回避**: mruby-task の task.h は include せず、`mrb->task.switching` を mruby.h 経由で直接使用。
+  FreeRTOS は `<freertos/...>` prefix (fmrb 規約、同名衝突回避)。
+- **build 反復で確認する点**: (a) mruby-task gem の port ビルドに FreeRTOS include path が通るか、
+  (b) 旧 `hal_register_vm`/`hal_deinit_by_pool` (fmrb_app.c から呼ばれる) と本 port の register の統合、
+  (c) MRB_TASK_MAX_VMS(=8) と FMRB_MRB_MAX_VMS の整合。
 
 ### B1 picoruby-machine [TODO・merge-file 方式]
 
