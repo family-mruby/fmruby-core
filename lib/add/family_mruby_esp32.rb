@@ -31,6 +31,13 @@ MRuby::CrossBuild.new("esp32") do |conf|
 
   conf.microruby
 
+  # HAL port selection (see family_mruby_linux.rb for the rationale).
+  # mruby-task -> ports/freertos (case-D top-half), machine/socket -> ports/esp32.
+  # TODO(esp32 build): confirm task_hal.c is compiled by exactly one of the rake
+  # port mechanism vs CMake PICORUBY_SRCS (avoid double-compile / neither) and
+  # record the result in resolutions.md.
+  conf.ports :esp32, :freertos, :posix
+
   # Common gems
   conf.gembox "family_mruby"
 

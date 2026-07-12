@@ -166,6 +166,49 @@ mruby build で `picorb_alloc(mrb,size)=mrb_malloc(mrb,size)` となり安全。
 - **picoruby-mruby/mrbgem.rake** (L0) [TODO] — hal-posix-task 依存廃止に伴い upstream 構造採用+mruby-io 除去
   (batch 3 参照)。D4/D7 と同時に確定。
 
-## B1 machine
-- 未着手。vm.c/task.c/HAL 再導出と密接。Option A の prism-lock 除去も含む。
-- **注**: prism アロケータ Option A 決定済 → B1 で fmrb_prism_lock/unlock と g_prism_memory_pool 定義を除去。
+## D7 + B1 (FreeRTOS tick top-half / picoruby-machine) — 指示書 instruct_d7_b1_tick.md に従う
+
+### port 選択機構 (確定)
+
+- `conf.ports(:a, :b)` → build ごとの port 優先リスト。gem は `ports/<name>/` のうち**リスト先頭一致の 1 つ**を
+  コンパイル (mruby core lib/mruby/gem.rb:65-77)。
+- **重要: `effective_ports` は CrossBuild で `conf.ports` 未指定なら `[]` (port 一切非コンパイル)**
+  (lib/mruby/build.rb:199-209。host build のみ posix/win にフォールバック)。fmrb は CrossBuild なので
+  **conf.ports 明示必須**。未指定だと mruby-task の HAL が付かずリンクエラー、あるいは (旧構成の名残で)
+  posix SIGALRM port を拾って案D と二重 tick になる罠。
+- **port 選択マトリクス** (instruct 指示):
+  - linux: `conf.ports :esp32_linux, :freertos, :posix` → mruby-task=freertos(新設), machine=esp32_linux, socket=posix, mruby-dir=posix(D6 flash)
+  - esp32: `conf.ports :esp32, :freertos, :posix` → mruby-task=freertos, machine=esp32, socket=esp32
+- **build_config 修正**: 消滅した `hal-posix-task`/`hal-posix-dir` の `conf.gem gemdir:` 行を削除
+  (family_mruby_linux.rb)、`conf.ports` を追加。
+- **esp32 の CMake 二重コンパイル要確認**: esp32 は gem C ソースを CMake (PICORUBY_SRCS) でもビルド。
+  task_hal.c が rake port と CMake の二重コンパイル / どちらも拾わない、を排除する (Linux 検証後に確認)。
+
+### D7 ports/freertos/task_hal.c (top-half, 案b) [TODO]
+
+- 配置: lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/freertos/task_hal.c。
+- FreeRTOS API のみ (esp_timer 等 IDF 固有不可)。Linux(FreeRTOS posix sim)/ESP32 共有。
+- 契約: init(timer タスク生成+VM registry 登録) / timer callback=top-half(switching_=TRUE; pending[vm]++; notify) /
+  take_pending_ticks(**原子的** return+0クリア) / idle_cpu(notification 待ち timeout 付き) /
+  sleep_us / enable_irq / disable_irq / final。**pending と registry は per-VM** (upstream posix vm_list 参照)。
+
+### B1 picoruby-machine [TODO・merge-file 方式]
+
+- replace は upstream をほぼ鏡写し (upstream 変化 19 files +853/-208, 新規 nrf52 のみ)。
+  **per-file 3-way (git merge-file)** で進める。base=旧 pin machine, ours=lib/replace, theirs=新 HEAD。
+- **tick 責務 (timer タスク/pending/request_switch) は machine から撤去 → ports/freertos/task_hal.c へ一本化**。
+  machine は sleep/console I/O/HAL init 等に限定。
+- esp32_linux port は持ち越し (upstream に無い)。nrf52 は不採用。
+- **Option A prism-lock 除去**: fmrb_prism_lock/unlock と g_prism_memory_pool 定義を machine ports から除去。
+
+### global_mrb (compiler Option A) [TODO・mutex 方式 (依頼者決定)]
+
+- 各コンパイル呼び出し点 (sandbox 経由が主) で **mutex → global_mrb 設定 → compile → 復元 → unlock**。
+  性能考慮不要。設定箇所と mutex の実体を本節に追記すること。
+
+### 検証 (Linux ビルド、instruct §検証項目)
+
+preempt / sleep 精度 / ブロッキング後まとめ適用 / 長時間走行で tick 破壊非再発 /
+**二重 tick 源不在 (ports/posix/task_hal.c=SIGALRM がリンクに無いこと)**。
+pending 原子性は Linux(単一スレッド sim)では検証不可 → **コードレビューで critical section 確認**。
+実機デュアルコア長時間走行は依頼者確認項目 (tasklist に残す)。

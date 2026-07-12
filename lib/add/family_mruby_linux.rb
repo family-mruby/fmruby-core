@@ -27,11 +27,19 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   # Common gems
   conf.gembox 'family_mruby'
 
-  # POSIX HAL gems and their dependents
+  # HAL port selection. Upstream folded the standalone hal-*-task / hal-*-dir
+  # gems into per-gem ports/<name>/ dirs, selected by conf.ports (first match
+  # per gem). A CrossBuild compiles NO port unless conf.ports is set, so this
+  # is mandatory. Order matters:
+  #   - mruby-task -> ports/freertos (our case-D top-half; NOT ports/posix,
+  #     whose SIGALRM tick would double-tick against case-D)
+  #   - picoruby-machine -> ports/esp32_linux (FreeRTOS-on-POSIX)
+  #   - picoruby-socket / mruby-dir -> ports/posix
+  conf.ports :esp32_linux, :freertos, :posix
+
+  # mruby-dir is still an explicit dep (it is not pulled in transitively).
   # NOTE: hal-posix-io is NOT loaded (it depends on mruby-io which conflicts with fmrb-io)
   dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
-  conf.gem gemdir: "#{dir}/hal-posix-task"
-  conf.gem gemdir: "#{dir}/hal-posix-dir"
   conf.gem gemdir: "#{dir}/mruby-dir"
 
   # mruby extension gems
