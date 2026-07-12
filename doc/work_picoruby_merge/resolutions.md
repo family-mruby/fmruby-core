@@ -189,6 +189,34 @@ mruby build で `picorb_alloc(mrb,size)=mrb_malloc(mrb,size)` となり安全。
 - **esp32 の CMake 二重コンパイル要確認**: esp32 は gem C ソースを CMake (PICORUBY_SRCS) でもビルド。
   task_hal.c が rake port と CMake の二重コンパイル / どちらも拾わない、を排除する (Linux 検証後に確認)。
 
+### 【build 反復で判明・要決定】FreeRTOS port のコンパイル経路 (指示書§1 の宿題)
+
+**症状**: `conf.ports :esp32_linux` により rake mruby build が machine/ports/esp32_linux/hal_freertos.c を
+コンパイルしようとし `freertos/FreeRTOS.h: No such file` で失敗。
+
+**構造的原因** (完全診断):
+- 新 picoruby は CrossBuild で `effective_ports=[]` (何もコンパイルしない) がデフォルト → conf.ports 明示必須。
+  旧 picoruby は POSIX ビルドで全 gem の ports/posix を自動コンパイルしていた (CMakeLists L81-84 コメント)。
+- **FreeRTOS ヘッダは CMake (picoruby-esp32 component, PRIV_REQUIRES freertos) にのみ有り、rake build には無い**。
+  よって FreeRTOS 依存 port (machine hal_freertos.c, mruby-task freertos task_hal.c) は CMake でしかコンパイル不可。
+- しかし socket/mruby-dir の ports/posix は rake でコンパイルする必要があり `conf.ports :posix` が要る。
+  その conf.ports :posix が **mruby-task に posix(SIGALRM) port を拾わせ** (二重 tick) + machine posix port を
+  rake compile して CMake PICORUBY_SRCS の posix/machine.c と重複させる。
+- **`resolve_external_hal!`** (gem.rb:474): gem `hal-<short>-*` (short=対象 gem 名末尾) が読み込まれると対象の
+  port_objs を drop。mruby-task の short="task" → **`hal-task-*` gem** で mruby-task の port compile を止められる。
+
+**推奨案 (holistic、Linux)**:
+1. `conf.ports :posix` に変更 (socket/mruby-dir/machine が posix port を rake compile。posix ヘッダのみで OK)。
+2. **`hal-task-freertos` ダミー gem を新設** (lib/add、C ソース無し。名前だけで resolve_external_hal! を発火させ
+   mruby-task の posix SIGALRM port compile を抑止)。
+3. **freertos task_hal.c を CMake PICORUBY_SRCS に追加** (FreeRTOS ヘッダ有り)。mruby-task の HAL はこれが供給。
+4. **hal_freertos.c を PICORUBY_SRCS から除去 + ファイル削除** (tick は freertos task_hal.c へ移動済で重複)。
+5. **machine posix/machine.c を PICORUBY_SRCS(L77) から除去** (conf.ports :posix で rake compile されるため重複回避)。
+   common/machine.c(L79) は port でないので CMake のまま (rake は posix のみ compile、重複しない)。
+- esp32 ビルドも同型 (machine=esp32 port は CMake、conf.ports で rake は posix。task_hal freertos は PICORUBY_SRCS)。
+  Linux green 後に確定。
+- **要決定**: この holistic 再配置で進めてよいか (architectural、指示書が記録指定した判断)。
+
 ### D7 ports/freertos/task_hal.c (top-half, 案b) [DONE (初版)・build 反復で調整]
 
 - 作成: lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/freertos/task_hal.c。
