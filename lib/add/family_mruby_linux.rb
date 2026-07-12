@@ -22,7 +22,7 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
     conf.cc.defines << 'ESTALLOC_DEBUG=1'
   end
 
-  conf.microruby
+  conf.picoruby
 
   # Common gems
   conf.gembox 'family_mruby'

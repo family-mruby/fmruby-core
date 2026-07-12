@@ -29,7 +29,7 @@ MRuby::CrossBuild.new("esp32") do |conf|
     conf.enable_debug
   end
 
-  conf.microruby
+  conf.picoruby
 
   # HAL port selection (see family_mruby_linux.rb for the rationale).
   # mruby-task -> ports/freertos (case-D top-half), machine/socket -> ports/esp32.
