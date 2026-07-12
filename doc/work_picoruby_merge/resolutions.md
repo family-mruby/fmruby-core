@@ -132,14 +132,21 @@ mruby build で `picorb_alloc(mrb,size)=mrb_malloc(mrb,size)` となり安全。
   fmrb は esp32/posix-linux 双方で FreeRTOS tick (picoruby-machine esp32_linux/hal_freertos.c=B1) を使う。
 - **D6 dir_hal.c** [TODO・再導出] — 旧 hal-posix-dir/src/dir_hal.c → 新 **mruby-dir/ports/posix/dir_hal.c**。
   "flash/" prefix (fmrb_hal_file_posix.c の仮想 namespace 整合) を新版へ再適用。
-- **D4 task.c** [TODO・要 diff・一部 upstream 化の可能性] — 新 mruby-task/src/task.c は
-  task context 初期化で stack を nil クリアする処理を持つ (l.259-322)。我々の「mrb_task_reset_context の
-  stack clear 追加」が upstream 化していないか精査。HAL auto-load 無効化は mrbgem.rake 側。
-- **D5 mruby-dir/mrbgem.rake** [TODO] — 新 mruby-dir は ports/{posix,win} を持ち mrbgem.rake で port 自動選択。
-  ESP32 (posix/win でない) で auto-detect が破綻しないか確認し、我々の「ESP32 で HAL 自動検出スキップ」を再適用。
-- **D1 src/vm.c** [TODO・最高リスク・再導出] — 976/480 の VM 全面書換だが MRB_USE_TASK_SCHEDULER は存続。
-  我々の mrb_task_yield_ok() / RETURN_IF_TASK_STOPPED (cci>0 の C 再入中は async task-switch を延期、
-  mrb->jmp=prev_jmp 復元) を新 vm.c の task-switch 実装に合わせて再導出。**実機確認必須**。
+- **D1 src/vm.c** [**不要化・撤去 (upstream 採用)**] — 詳細設計 rederive_vm_task.md。
+  **新 upstream vm.c が我々の tick 修正の厳密な上位互換を実装済**
+  (`task_across_c_boundary` + `mrb->jmp=prev_jmp` 復元 + `!exc`/`!gc.iterating`/`c!=root_c` まで拡張、
+  issues #6862/#6863/#6864/#6868/#6887)。我々の ESP32 検証済み修正が本家へ取込まれた形。
+  → lib/patch の vm.c を削除、Rakefile setup の vm.c 行も削除 (pin 切替フェーズで)。**最高リスクが1件消滅**。
+- **D4 task.c** [**一部撤去・案D のみ再導出**] — 詳細設計 rederive_vm_task.md。
+  - stack nil クリア → **upstream 化済** (task.c l.124-126, 300-303) → 撤去。
+  - **案D top/bottom-half tick split は依然必要** (fmrb は FreeRTOS 別スレッド tick。mrb_tick を
+    cross-thread で呼ぶと queue 破壊)。新 `task_run_body` ループ先頭に bottom-half
+    (`mrb_hal_task_take_pending_ticks`→`mrb_tick` ×N) を挿入。top-half は D7。
+  - mrbgem.rake の HAL auto-load 削除パッチは陳腐化 (upstream は effective_ports/conf.ports 方式)。
+- **D7 task_hal.c** [再導出] — 新 location mruby-task/ports/posix/task_hal.c。FreeRTOS top-half
+  (switching+pending 蓄積、mrb_tick 呼ばない) を実装。B1 の hal_freertos.c と統合。rederive_vm_task.md 参照。
+- **D5 mruby-dir/mrbgem.rake** [TODO] — 新 mruby-dir は ports/{posix,win}+mrbgem.rake で port 自動選択。
+  ESP32 で auto-detect 破綻しないか確認し「ESP32 で HAL 自動検出スキップ」を再適用。
 - **D2 picoruby-mruby/src/alloc.c** [TODO・高リスク] — estalloc マルチ VM。新 estalloc pin 971b793。
 - **D3 mruby-io/file_constants.rb** [clean] — 現 pin と diff 無し。新 pin で再確認。
 - **picoruby-mruby/mrbgem.rake** (L0) [TODO] — hal-posix-task 依存廃止に伴い upstream 構造採用+mruby-io 除去

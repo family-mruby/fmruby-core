@@ -169,10 +169,22 @@ fetch 実施: picoruby master, mruby/mruby master, mruby-compiler2 master (全�
   - D2 alloc.c (estalloc マルチ VM、新 estalloc pin 971b793)
 - ここまでで「どのパッチを新構造のどこへどう再適用するか」の設計図が揃った。以降は C 実装の再導出。
 
-### 次アクション (back-half: 深い再導出。実機検証が要るため集中セッション向け)
+### vm.c/task.c 再導出設計 完了 (rederive_vm_task.md) — 検証は Linux で
 
-- **D1 vm.c / D4 task.c 再導出** (最高リスク)。新実装を精読し tick 安全化・stack clear を再適用。
-- **D6/D7 HAL ports 再導出** (dir_hal "flash/", task_hal FreeRTOS 化)。
+- 依頼者方針: **検証は Linux 版**。fmrb Linux も FreeRTOS tick パス (esp32_linux port) を通るので
+  Linux で案D 経路を検証可能。
+- **D1 vm.c [不要化・撤去]**: **新 upstream vm.c が我々の tick 修正の上位互換を実装済**
+  (issues #6862-6887。task_across_c_boundary + jmp 復元 + exc/gc/root 拡張)。
+  我々の ESP32 検証済み修正が本家へ取込。→ vm.c パッチ削除、upstream 採用。**最高リスク1件消滅**。
+- **D4 task.c [一部撤去+案D 再導出]**: stack-clear は upstream 化済→撤去。
+  案D top/bottom-half tick split のみ再導出 (bottom-half を task_run_body ループ先頭へ)。
+- **D7 task_hal [再導出]**: FreeRTOS top-half を実装 (switching+pending 蓄積)、B1 と統合。
+- 詳細な再適用箇所・コード片・未確定点は rederive_vm_task.md に記載。
+
+### 次アクション (back-half: 実装フェーズ。Linux ビルドで反復)
+
+- **D4/D7 実装** (案D bottom-half + FreeRTOS top-half)。
+- **D6 dir_hal "flash/" 再導出** (新 mruby-dir/ports/posix/dir_hal.c)、D5 mruby-dir/mrbgem.rake。
 - **B1 picoruby-machine 再導出** (+Option A の prism-lock 除去)。
 - **D2 estalloc/alloc.c 再導出**。
 - **Rakefile/pin 切替フェーズ**: 改名 path 更新、prism 撤去行削除、全 submodule 新 pin へ、
