@@ -225,14 +225,44 @@ grep 実施 (main/ lib/add components/fmrb_mem components/fmrb_common)。B1 で�
   freertos/task_hal.c は **rake の port 機構**でコンパイル (conf.ports :freertos)。CMake との二重コンパイルは
   起きない (task_hal.c は PICORUBY_SRCS に無い)。撤去後、hal_freertos.c / machine.c は tick 以外の責務で存続。
 
-### B1 picoruby-machine [TODO・merge-file 方式]
+### B1 picoruby-machine [進行中・merge-file 方式]
 
-- replace は upstream をほぼ鏡写し (upstream 変化 19 files +853/-208, 新規 nrf52 のみ)。
-  **per-file 3-way (git merge-file)** で進める。base=旧 pin machine, ours=lib/replace, theirs=新 HEAD。
-- **tick 責務 (timer タスク/pending/request_switch) は machine から撤去 → ports/freertos/task_hal.c へ一本化**。
-  machine は sleep/console I/O/HAL init 等に限定。
-- esp32_linux port は持ち越し (upstream に無い)。nrf52 は不採用。
-- **Option A prism-lock 除去**: fmrb_prism_lock/unlock と g_prism_memory_pool 定義を machine ports から除去。
+per-file 3-way (git merge-file) 実施。base=旧 pin, ours=lib/replace, theirs=新 HEAD c932f70b。staging=merge/machine/。
+triage: CLEAN 16 / CONFLICT 5 / OURS-NEW 1 (esp32_linux/hal_freertos.c)。
+
+**完了**:
+- CLEAN 16ファイルを lib/replace へ書き戻し済 (posix/machine.c 179/11 も含め fmrb 内容保持を確認)。
+- **ports/posix/hal.c** [DONE] — ours 解決 (upstream の SIGALRM tick を破棄。案D では tick は freertos port。
+  かつ Linux は machine=esp32_linux port を使うため posix/hal.c は未コンパイル)。
+
+**残 CONFLICT (要慎重解決)**:
+- **include/hal.h** [TODO・複雑] — upstream が `picorb_hal_*` マクロ alias 体系に refactor
+  (picorb_hal_init→mrb_hal_task_init 等)。解決方針: upstream の alias 体系を採用しつつ、fmrb 宣言を保持/改名:
+  - `hal_register_vm` → **`mrb_hal_task_register_vm`** 宣言 (定義は freertos port)。`hal_deinit`→`mrb_hal_task_final`。
+  - **`mrb_task_request_switch` 宣言は撤去** (port が mrb->task.switching を直接立てる)。
+  - `mrb_hal_task_take_pending_ticks` の machine 側宣言は撤去 (task.c が extern 宣言、freertos port が定義)。
+  - `hal_deinit_by_pool` は fmrb_app が使うなら保持 (要確認)。
+- **mrbgem.rake** [TODO] — upstream 追加: picoruby-require dep, picoruby-io-console dep, posix で -pthread
+  (stdin reader thread), posix で mruby-io。我々: io-console 不使用 (fmrb-io), mruby-task/mruby include path 追加。
+  解決: upstream の -pthread + require を採用、io-console は我々どおり不使用、include path は両立。
+- **ports/esp32/machine.c** [TODO・**tick manager 撤去**] — 5 conflict + 我々の tick manager (g_tick_manager,
+  mruby_tick_task, take_pending_ticks, machine_hal_init, hal_register_vm, hal_deinit, hal_deinit_by_pool) を撤去
+  (freertos port へ移動済)。撤去後 machine は sleep/console/HAL init 等に限定。**fmrb_prism_lock/unlock も除去**。
+- **src/mruby/machine.c** [TODO・#if 対応] — IO override 無効化 (memory: project_picoruby_machine_io_override)。
+  conflict は `#if PICORB_VM_MRUBY` 内で ours=(void)suppression / upstream=IO methods 定義 + `#else` posix 分岐
+  (_stdin_gets/getc)。**fmrb は posix+mruby VM なので #else 分岐を失わないよう #if 構造を保って解決**すること
+  (盲目的 ours 不可)。要 490-525 精読。
+
+**呼び出し元付け替え (B1 と同時)**:
+- main/app/fmrb_app.c:360 hal_register_vm → mrb_hal_task_register_vm。
+- lib/add/picoruby-fmrb-app/ports/esp32/app.c:673 hal_deinit → mrb_hal_task_final。
+
+**Option A prism-lock / prism pool 除去 (B1 と同時)**:
+- machine ports (esp32/machine.c, posix/hal.c) の fmrb_prism_lock/unlock 定義除去。
+- components/fmrb_mem/fmrb_mempool.c の g_prism_memory_pool + est 初期化除去、fmrb_mem_config.h の
+  FMRB_MEM_PRISM_POOL_SIZE 除去。
+
+**hal_freertos.c (esp32_linux, OURS-NEW)**: tick manager をここからも撤去 (freertos port へ一本化)。tick 以外の責務は存続。
 
 ### global_mrb (compiler Option A) [TODO・mutex 方式 (依頼者決定)]
 
