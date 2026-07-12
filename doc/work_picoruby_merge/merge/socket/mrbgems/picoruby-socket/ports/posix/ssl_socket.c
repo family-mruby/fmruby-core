@@ -533,11 +533,24 @@ SSLSocket_recv(picorb_state *vm, picorb_ssl_socket_t *ssl_sock, void *buf, size_
     return -1;
   }
 
+<<<<<<< ours
+  int ret;
+  do {
+    errno = 0;
+    ret = SSL_read(ssl_sock->ssl, buf, (int)len);
+  } while (ret < 0 && ssl_retryable(ssl_sock->ssl, ret));
+  if (ret < 0) {
+    int err = SSL_get_error(ssl_sock->ssl, ret);
+    if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
+      // Would block (SO_RCVTIMEO expiry on the underlying fd)
+      return 0;
+=======
   if (nonblock) {
     int fd = ssl_sock->base_socket->fd;
     int fd_flags = fcntl(fd, F_GETFL, 0);
     if (fd_flags == -1) {
       return -1;
+>>>>>>> upstream
     }
     if (fcntl(fd, F_SETFL, fd_flags | O_NONBLOCK) == -1) return -1;
 

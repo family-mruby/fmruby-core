@@ -197,11 +197,20 @@ TCPSocket_send(picorb_state *vm, picorb_socket_t *sock, const void *data, size_t
   return sent;
 }
 
+<<<<<<< ours
+/* Receive data - blocks until len bytes are read or EOF/error.
+ * MSG_WAITALL tells the kernel to wait until the full request is satisfied,
+ * which avoids partial-read issues without requiring application-level loops
+ * or setsockopt calls between recv() invocations. With SO_RCVTIMEO set, a
+ * silent peer makes recv return the partial data (or -1/EAGAIN) after the
+ * timeout instead of blocking forever. */
+=======
 /* Receive data.
  * If nonblock is true, uses MSG_DONTWAIT and returns
  * PICORB_RECV_WOULD_BLOCK when no data is available.
  * Otherwise uses a blocking recv() and returns as soon as any data
  * is available, or 0 on EOF, or -1 on error (readpartial semantics). */
+>>>>>>> upstream
 ssize_t
 TCPSocket_recv(picorb_state *vm, picorb_socket_t *sock, void *buf, size_t len, bool nonblock)
 {
@@ -209,12 +218,29 @@ TCPSocket_recv(picorb_state *vm, picorb_socket_t *sock, void *buf, size_t len, b
     return -1;
   }
 
+<<<<<<< ours
+#ifdef MSG_WAITALL
+  /* EINTR with no data received returns -1; with partial data MSG_WAITALL
+   * returns the partial count, which is fine for the callers. */
+  ssize_t received;
+  do {
+    received = recv(sock->fd, buf, len, MSG_WAITALL);
+  } while (received < 0 && errno == EINTR);
+#else
+  /* Fallback: loop until len bytes received or EOF/error. */
+  size_t total = 0;
+  char *p = (char *)buf;
+  while (total < len) {
+    ssize_t r = recv(sock->fd, p + total, len - total, 0);
+    if (r < 0) {
+=======
   if (nonblock) {
     ssize_t received = recv(sock->fd, buf, len, MSG_DONTWAIT);
     if (received < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         return PICORB_RECV_WOULD_BLOCK;
       }
+>>>>>>> upstream
       return -1;
     }
     if (received == 0) {
