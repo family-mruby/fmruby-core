@@ -53,10 +53,10 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
 
   conf.picoruby
 
-  # HAL port selection (see family_mruby_linux.rb). mruby-task -> ports/freertos
-  # (case-D top-half), machine/socket -> ports/esp32. TODO(esp32 build): confirm
-  # task_hal.c is compiled by exactly one of rake ports vs CMake PICORUBY_SRCS.
-  conf.ports :esp32, :freertos, :posix
+  # HAL port selection: on esp32 the rake build compiles NO ports at all
+  # (CrossBuild default when conf.ports is unset). Every needed port requires
+  # ESP-IDF headers and is compiled by the picoruby-esp32 CMake component
+  # (PICORUBY_SRCS); see family_mruby_esp32.rb for details.
 
   # Common gems
   conf.gembox "family_mruby"
