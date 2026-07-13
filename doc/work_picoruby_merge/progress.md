@@ -462,3 +462,41 @@ _draw_image 修正後の実行を、新設のヘッドレス検証フローで�
   ルーティング・シェルの Ruby 実行が通しで動作している。
 - Launcher のアプリアイコンがハート状に見えたのは Ruby (宝石) アイコンで正常表示
   (依頼者確認済み、2026-07-13)。退行ではない。
+
+### Linux ネットワーク動作確認 PASS (2026-07-13)
+
+入力注入で Shell から `run /app/demo/weather.app.rb` を実行し、Open-Meteo への
+HTTPS 取得 → JSON パース → 天気表示 (Tokyo 24.8C/Rain) まで成功。
+- net-http (http_client.rb, 旧パッチのまま) は新 socket 層の Ruby API と互換で動作。
+  保留していた「net-http 統合」は不要と実測で確認 (upstream 版への置換は将来課題として任意)。
+- TLS (OpenSSL posix ports)、DNS、picoruby-json (upstream 採用版) も実データで動作。
+- 注入ツールに記号キー (/ . - 等, US scancode + unshifted ascii keycode) を追加。
+- WebSocket は未 runtime テスト (パッチは mrbgem.rake のみで低リスク)。
+
+### ESP32 (esp32p4) ビルド GREEN (2026-07-13)
+
+`rake build:esp32` 成功 (fmruby-core.bin 0x363a90, app partition 15% free)。
+これで **マージ計画のスコープ (Linux/ESP32 双方のビルド成立) を達成**。
+build 反復で解決した内容:
+
+1. **esp32 の rake は port を一切コンパイルしない構成に確定**:
+   family_mruby_esp32(p4).rb から conf.ports 行を削除 (CrossBuild デフォルト = port 無し)。
+   必要な port (machine/env/rng/io-console/uart/require esp32, mbedtls common,
+   dir_hal, socket, task_hal) は全て CMake (PICORUBY_SRCS) が担当。conf.ports を
+   置くと IDF ヘッダ不足 or CMake との二重定義になる (fmrb_io/rng で実測)。
+2. **案D 統合を esp32 経路にも適用 (B1 完結)**: machine/ports/esp32/machine.c から
+   重複 tick manager (~250行, 旧 mrb_task_request_switch 参照含む) を撤去し、
+   mruby-task/ports/freertos/task_hal.c を esp32 側 PICORUBY_SRCS に追加。
+   tick 責務は両ターゲットとも task_hal.c に一本化された。
+3. **esp32 ssl_socket.c の保留統合を実施**: 3-way (base=旧pin/ours/upstream c932f70b) で
+   7 conflict を記録済み方針どおり解決 — alloc/free 5件= upstream の vm 貫通 API 採用
+   (pr#1 不要化)、close_notify コメント= ours 保持、SSLSocket_ready= ours 保持
+   (upstream pr#10 未修正: base_socket 未割当)。crt_bundle / FMRB_SOCKET_IO_TIMEOUT_MS は
+   非 conflict 領域で残存。fmrb_sys_malloc 置換は撤去 (ヘッダコメントも更新)。
+4. **esp32 machine.c の console HAL を picorb_hal_* 命名体系へ改名**:
+   hal_write/flush/read_available/getchar/abort → picorb_hal_* (hal.h の alias で
+   mrb_hal_* に展開、posix hal.c と同方式)。mrb_hal_write 未定義リンクエラーの解消。
+
+注意: Linux ビルドの入力は今回の変更で不変 (esp32 専用 TU / esp32 config のみ) のため
+GREEN のまま。実機確認項目は既存リスト (tick 破壊回帰・案D デュアルコア・estalloc
+マルチ VM・TLS 実通信・fps/メモリ基準比較) を参照。
