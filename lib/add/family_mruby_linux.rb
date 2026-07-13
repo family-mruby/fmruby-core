@@ -16,6 +16,14 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   # inside picoruby-mruby's mrbgem.rake ran after the core, leaving the table
   # undefined at link.
   conf.cc.defines << 'MRB_UTF8_STRING'
+  # MRB_NO_BOXING and the profile must also be build-wide: they change
+  # sizeof(mrb_state) / mrb_value. Setting them only in picoruby-mruby's
+  # mrbgem.rake reaches the mruby core and dependency gems but NOT
+  # picoruby-mruby's own sources (a gem's compiler is cloned before its
+  # mrbgem.rake body runs), splitting the ABI inside libmruby itself.
+  # Keep in sync with components/picoruby-esp32/mruby_abi_defines.cmake.
+  conf.cc.defines << 'MRB_NO_BOXING'
+  conf.cc.defines << 'MRB_BASELINE_PROFILE=1'
   conf.cc.defines << 'PICORB_PLATFORM_POSIX'
   conf.cc.defines << 'PICORB_ALLOC_ESTALLOC'
   conf.cc.defines << 'PICORB_ALLOC_ALIGN=8'

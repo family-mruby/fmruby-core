@@ -192,24 +192,17 @@ if(IDF_TARGET STREQUAL "linux")
   target_compile_options(${COMPONENT_LIB} PRIVATE -O0 -g3)
 endif()
 
-# Add platform-specific compile definitions
+# Add platform-specific compile definitions.
+# All layout-affecting MRB_* macros come from mruby_abi_defines.cmake and must
+# match the rake-built libmruby exactly (see that file for the sync rules).
+include(${CMAKE_CURRENT_LIST_DIR}/mruby_abi_defines.cmake)
+fmrb_add_mruby_abi_defines()
+
 if(IDF_TARGET STREQUAL "linux")
   add_compile_definitions(PICORB_PLATFORM_POSIX)
   add_compile_definitions(PICORB_VM_MRUBY=1)
-  add_compile_definitions(MRB_INT64=1)
-  add_compile_definitions(MRB_TICK_UNIT=5)
-  add_compile_definitions(MRB_TIMESLICE_TICK_COUNT=10)
-  # Must match the rake mruby build (mruby-task adds this globally); otherwise
-  # mrb_state's `task` member is absent here -> struct-layout/ABI mismatch with
-  # libmruby.a and "no member named task" when compiling the freertos task_hal /
-  # fmrb ports.
-  add_compile_definitions(MRB_USE_TASK_SCHEDULER)
 else()
   add_compile_definitions(PICORB_VM_MRUBY=1)
-  add_compile_definitions(MRB_INT64=1)
-  add_compile_definitions(MRB_TICK_UNIT=5)
-  add_compile_definitions(MRB_TIMESLICE_TICK_COUNT=10)
-  add_compile_definitions(MRB_USE_TASK_SCHEDULER)
   add_compile_definitions(NDEBUG)
   #MRBC definitions is used by machine.
   add_definitions(

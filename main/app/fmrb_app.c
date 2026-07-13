@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include <picoruby.h>
 #include <mruby/internal.h>
@@ -1056,10 +1057,25 @@ static void app_task_test(void* arg) {
 /**
  * Initialize app context management (call once at boot)
  */
+// Provided by the rake-built libmruby (picoruby-mruby/src/alloc.c). Used by
+// the boot-time ABI guard below.
+extern size_t picorb_abi_mrb_state_size(void);
+
 bool fmrb_app_init(void) {
     if (g_ctx_lock != NULL) {
         FMRB_LOGW(TAG, "App context already initialized");
         return false;
+    }
+
+    // ABI guard: rake-built libmruby and this CMake-built TU must agree on
+    // every layout-affecting MRB_* define (mruby_abi_defines.cmake). On
+    // mismatch, struct offsets shift and the VM corrupts at runtime, so fail
+    // loudly here instead.
+    if (picorb_abi_mrb_state_size() != sizeof(mrb_state)) {
+        FMRB_LOGE(TAG, "mruby ABI mismatch: libmruby sizeof(mrb_state)=%u, main=%u. "
+                  "Sync mruby_abi_defines.cmake with the rake build defines.",
+                  (unsigned)picorb_abi_mrb_state_size(), (unsigned)sizeof(mrb_state));
+        abort();
     }
 
     // Create mutex

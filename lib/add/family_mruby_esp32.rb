@@ -17,6 +17,13 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.cc.defines << "MRBC_CONVERT_CRLF=1"
   conf.cc.defines << "MRB_INT64"
   conf.cc.defines << "MRB_32BIT"
+  # Build-wide ABI defines: these change sizeof(mrb_state) / mrb_value, and
+  # setting them only in picoruby-mruby's mrbgem.rake does not reach that gem's
+  # own sources (its compiler is cloned before the mrbgem.rake body runs).
+  # Keep in sync with components/picoruby-esp32/mruby_abi_defines.cmake.
+  conf.cc.defines << "MRB_NO_BOXING"
+  conf.cc.defines << "MRB_UTF8_STRING"
+  conf.cc.defines << "MRB_CONSTRAINED_BASELINE_PROFILE=1"
   conf.cc.defines << "PICORB_ALLOC_ESTALLOC"
   conf.cc.defines << "PICORB_ALLOC_ALIGN=8"
   conf.cc.defines << "USE_FAT_FLASH_DISK"

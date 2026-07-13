@@ -393,3 +393,15 @@ mrb_open_with_custom_alloc(void* mem, size_t bytes)
 }
 
 #endif
+
+/* ABI guard: size of mrb_state as compiled into the rake-built libmruby.
+ * The CMake side (fmrb_app_init) compares this against its own
+ * sizeof(mrb_state). Every layout-affecting MRB_* define (boxing, profiles,
+ * caches, task scheduler) must match across the two build systems, or struct
+ * offsets shift and the VM is corrupted at runtime; see
+ * components/picoruby-esp32/mruby_abi_defines.cmake. */
+size_t
+picorb_abi_mrb_state_size(void)
+{
+  return sizeof(mrb_state);
+}
