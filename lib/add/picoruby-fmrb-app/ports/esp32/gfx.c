@@ -926,7 +926,7 @@ static mrb_value mrb_gfx_file_status(mrb_state *mrb, mrb_value self)
 // Image API
 // ============================================================
 
-// FmrbGfx#_draw_image(image_id, x, y)
+// FmrbGfx#_draw_image(image_id, x, y, scale_x, scale_y)
 static mrb_value mrb_gfx_draw_image(mrb_state *mrb, mrb_value self)
 {
     mrb_int image_id, x, y;
@@ -1630,7 +1630,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_delete_mask", mrb_gfx_delete_mask, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "_draw_image_masked", mrb_gfx_draw_image_masked, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "_draw_tile",         mrb_gfx_draw_tile,         MRB_ARGS_REQ(7));
-    mrb_define_method(mrb, gfx_class, "_draw_image", mrb_gfx_draw_image, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, gfx_class, "_draw_image", mrb_gfx_draw_image, MRB_ARGS_REQ(5));
     mrb_define_method(mrb, gfx_class, "_delete_image", mrb_gfx_delete_image, MRB_ARGS_REQ(1));
 
     // CVBS/NTSC output control
