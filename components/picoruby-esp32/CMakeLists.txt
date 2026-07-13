@@ -107,6 +107,9 @@ else()
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${FMRB_BMP332_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/src/fmrb_bmp332.c
+        # case-D tick top-half + mruby-task HAL (same consolidation as linux:
+        # the machine esp32 port no longer carries its own tick manager)
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/freertos/task_hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/src/machine.c
