@@ -4,11 +4,51 @@
 Linux/実機(Tab5)検証で発見した picoruby 本体のバグと修正の一覧。
 いずれ上流 (https://github.com/picoruby/picoruby) へPRを出すための引き継ぎ資料。
 
+## 2026-07-13 棚卸し (picoruby c932f70b マージ後の状況)
+
+upstream master c932f70b への追従マージ (doc/work_picoruby_merge/) で、各候補の
+生死を実コードで確認した。**マージ後の pin は c932f70b0** (以下の旧文中の
+c14aa4400 は旧 pin)。mruby 本体 (vm.c / task.c / mruby-task) は hasumikin fork が
+本家 **mruby/mruby** に統合されたため、その領域の PR 先は mruby/mruby になる。
+
+| # | 状況 | 備考 |
+|---|------|------|
+| 1 | **解消 (upstream が根本修正)** | ports API を vm 貫通型に refactor。PR 不要 |
+| 2 | 残存 (要最新確認) | マージで我々の GC リーク修正を保持 (da09a4e) |
+| 3 | **残存・有力** | upstream read 実装は簡略なまま。我々の版は HTTPS 実測済み |
+| 4 | **残存・有力** | 同上 (dechunk 無し) |
+| 5 | 解消 (upstream が独自修正) | decimal_divider 方式。PR 不要 |
+| 6 | **残存・確認済み・最有力** | c932f70b でも gemdir が picoruby-pack のまま。1 行修正 |
+| 7 | 解消 (upstream が実装) | recv で close_notify → return 0 済み |
+| 8-9 | 残存 | net-http 系。#3/#4 とまとめて 1 PR が妥当 |
+| 10 | **残存・確認済み・有力** | c932f70b でも base_socket 未割当で ready 常時 false |
+| 11 | 残存 | freeaddrinfo リーク。tcp_socket 統合時にクリーン残存を確認 |
+| 12 | 残存 (低) | ESP32_PLATFORM ガードで回避継続 |
+| 13 | 一部改善 | upstream が build.platform?(:esp32) を導入。外部 CMake ビルド連携の論点は残る |
+| 14 | ほぼ解消 | upstream が posix ports を nonblock recv 化。残課題は要確認 |
+
+### 新規候補 (マージ作業で発生)
+
+- **N1: mruby-task の FreeRTOS port + 外部 tick 源フック [PR先: mruby/mruby]** —
+  価値最大。upstream の port は glib/posix/win のみで、「timer が mrb_tick() を直接
+  呼ぶ」前提はマルチスレッド RTOS で task queue を破壊する (実測済み)。我々の
+  ports/freertos/task_hal.c (純 FreeRTOS API、IDF 非依存、top/bottom-half 分割 +
+  notification idle) と task.c への数行フック (mrb_hal_task_take_pending_ticks を
+  task_run_body ループ先頭で適用) をセットで提案する。採用されれば vm/task 系の
+  vendored パッチが恒久的に消え、次回マージのコストが激減する。設計根拠は
+  doc/work_picoruby_merge/instruct_d7_b1_tick.md の「なぜ安定稼働するか」節。
+- **N2: gem compiler が自 mrbgem.rake 実行前に確定する件 [issue先: picoruby]** —
+  gem の mrbgem.rake 内の `build.cc.defines <<` は mruby core と依存 gem には効くが
+  **自 gem のソースには効かない** (compiler が先に clone される)。picoruby-mruby の
+  mrbgem.rake 自体がこのパターンで MRB_NO_BOXING 等を注入しており、
+  libmruby 内で mrb_state レイアウトが分裂する実害を確認 (ABI 事故の第 2 原因)。
+  修正は設計判断を伴うため、まず issue として報告。
+
 ## 前提と引き継ぎ手順
 
-- 本リポジトリが参照する picoruby は **c14aa4400cbdb54956de234fc7534fa642c356cc
-  (3.0.1-2402-gc14aa440)** で古い。**PR前に必ず上流HEADで各ファイルの現状を確認**
-  すること (既に直っている / 実装が書き換わっている可能性がある)
+- 本リポジトリが参照する picoruby は **c932f70b0** (2026-07 マージ済み)。
+  **PR前に必ず上流HEADで各ファイルの現状を確認**すること
+  (既に直っている / 実装が書き換わっている可能性がある)
 - こちらの修正の実体は全て `lib/patch/` 以下にある (rake setup がサブモジュールへ
   コピーする方式)。各ファイル先頭の "Family mruby patch" コメントに修正理由を記載済み
 - 手順: (1) 上流HEADで該当箇所を確認 → (2) 残存していれば lib/patch との diff から
