@@ -139,6 +139,28 @@ base = 旧 pin の picoruby-machine、ours = lib/replace、theirs = 新 HEAD。
 - 我々の独自資産 esp32_linux port は upstream に存在しないのでそのまま持ち越し。
   nrf52 は fmrb 未使用なので replace に取り込まなくてよい。
 
+### 3.5 Linux シグナル禁止の制約 (B1 マージ時の必須ルール)
+
+**fmrb の Linux ターゲットが使う FreeRTOS POSIX シミュレータは、タスクの suspend/resume と
+tick 供給を Linux シグナルで内部実装している。したがって Linux ターゲットにリンクされる
+コードは、シグナルを「使う」行為 (sigaction / signal() / setitimer / kill 等) が原則禁止。**
+シミュレータの内部機構と衝突し、タスク切替や時間管理が壊れる。
+
+- **upstream の machine ports/posix/hal.c は新 pin で sigaction(SIGALRM) + setitimer(ITIMER_REAL)
+  を自前で仕込んでいる** (bare-posix 用の独自 tick)。B1 の merge-file でこのブロックを
+  絶対に採用しないこと。tick は D7 (task_hal.c) の専任であり、machine が timer を arm する
+  必要はもう無い。
+- 我々の replace 版 ports/posix/ はこの制約を守る設計になっている (handler 設置や setitimer は
+  無し)。以下は「使う」に当たらないので維持してよい:
+  - `pthread_sigmask` による防御的マスク (stdin_reader スレッド等)。
+  - `Machine_delay_ms` の chunked wall-clock ループ (シミュレータの SIGALRM で nanosleep が
+    EINTR early-return する問題への対処。コメント参照)。
+- 同じ理由で、mruby-task の SIGALRM port 抑止 (hal-task-freertos ダミー gem) は
+  「二重 tick の回避」ではなく「シミュレータ破壊の回避」であり、必須要件である。
+- socket 等の posix port にある EINTR リトライはシグナルを「受ける」側の堅牢化なので問題ない。
+  マージで新たに取り込むコードに sigaction / setitimer / signal() が現れたら、その場で停止して
+  依頼者に確認すること。
+
 ### 4. global_mrb (compiler Option A)
 
 決定事項 1 のとおり mutex 方式。コンパイル呼び出し点 (sandbox 経由が主のはず) で
@@ -157,6 +179,10 @@ resolutions.md の compiler 節に記録すること。
    corrupted) が再発しないこと。
 5. 二重 tick 源の不在確認: Linux ビルドのリンク結果に mruby-task の
    ports/posix/task_hal.c (SIGALRM) が**含まれていない**ことをビルドログ/シンボルで確認。
+6. シグナル禁止の確認 (3.5節): 最終バイナリ中の sigaction / setitimer 呼び出し元が
+   FreeRTOS シミュレータ内部 (と、許容済みの pthread_sigmask) のみであることを
+   nm / objdump で確認し、resolutions.md に記録する。upstream machine posix hal.c の
+   SIGALRM tick ブロックが混入していればここで検出できる。
 
 注意: Linux の FreeRTOS シミュレータは実質単一スレッド実行のため、pending カウンタの
 原子性はテストでは検証できない (実機のみで顕在化する)。**コードレビューで

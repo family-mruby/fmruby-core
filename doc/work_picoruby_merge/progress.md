@@ -2,12 +2,12 @@
 
 中断復帰の起点。新しい作業は末尾に追記する。日付は JST。
 
-> **【重要・現在の状態: pin 切替済み / Rakefile・再導出 未完のためビルド不可】**
+> **【現在の状態 (2026-07-13): rake build:linux 成功 / 起動時セグフォは ABI 修正済み・実行確認待ち】**
 > submodule は **新 pin に切替済み** (L0 picoruby c932f70b, nested も全て新 pin。working tree の
 > checkout であり fmruby-core には未 commit = pointer 未更新)。
-> ただし **(1) Rakefile setup が旧パス (mruby-compiler2 等) と撤去予定の prism/vm.c コピー行を
-> まだ参照** しており、**(2) D4/D7/B1/D2/D6 の再導出と socket TLS/net-http 統合が未完** のため、
-> まだ `rake build:linux` は通らない。ビルド検証は Rakefile 更新 + 再導出完了後。
+> 初回実行のセグフォは rake/CMake の mrb_state レイアウト不一致が原因で修正済み
+> (progress 末尾「2026-07-13 ABI 修正」参照)。依頼者による docker compose 実行確認と、
+> socket TLS/net-http 集中統合、ESP32 ビルドが残作業。
 > 復帰時の注意: fmruby-core で `git submodule update` すると旧 pin に戻るので実行しないこと。
 > submodule の pin 切替手順は progress 末尾「pin 切替」ログ参照 (再現可能)。
 
@@ -357,3 +357,108 @@ estalloc per-VM, dir_hal, prism Option A 等) が Linux でビルド成立。
 - prism-pool cleanup (fmrb_mempool/fmrb_mem_config の prism プール除去) + global_mrb 配線 (mutex 方式)。
 - deferred socket の timeout/EINTR 堅牢化を runtime 再検証。
 - fmruby-core への commit / submodule pointer 更新は依頼者確認事項 (未実施)。
+
+## 2026-07-13
+
+### 実行時セグフォ (初回起動) の root cause 特定と修正 [レビューセッションで実施]
+
+症状: build:linux 成功後の初回実行で、kernel VM 生成直後 (mrb_open 中の GC mark,
+mrb_task_mark_all) に GPF。
+
+root cause: **rake ビルド (libmruby) と CMake ビルド (task_hal.c / fmrb gems / main) の
+mrb_state レイアウト不一致 (0x200 バイト)**。
+- lib/patch/picoruby-mruby/mrbgem.rake が rake 側 build-wide に MRB_NO_BOXING /
+  MRB_UTF8_STRING / MRB_BASELINE_PROFILE=1 を注入するが、CMake 側は未複製だった
+  (MRB_INT64 / MRB_USE_TASK_SCHEDULER のみ複製済みだった)。
+- mruby 4.0 は mrb_state 内に const_cache (mrb_value 配列 64 entry) を持つため、
+  boxing 差で mrb->task のオフセットが 0x200 ずれる (旧 mruby 1.0 系では顕在化しなかった罠)。
+- 実証: dmesg の GPF アドレス -> mrb_task_mark_all、objdump で switching 書き込みが
+  CMake 側 0x5ff0 vs rake 側 0x61f0、define 別 offsetof 検算で完全一致。
+
+修正:
+- **components/picoruby-esp32/mruby_abi_defines.cmake 新設**: レイアウトに効く MRB_* を一元化
+  (共通: MRB_INT64/MRB_NO_BOXING/MRB_UTF8_STRING/MRB_USE_TASK_SCHEDULER/MRB_TICK_UNIT/
+  MRB_TIMESLICE_TICK_COUNT、linux: MRB_BASELINE_PROFILE=1、else: MRB_32BIT +
+  MRB_CONSTRAINED_BASELINE_PROFILE=1)。rake 側 define との同期ルールをコメントに明記。
+- components/picoruby-esp32/CMakeLists.txt と main/CMakeLists.txt から include して適用。
+  **注意: idf_component_register より後に置くこと** (IDF の要求列挙パスは script mode で
+  register まで実行するため、前に置くと add_compile_definitions が未定義エラー)。
+- **boot 時 ABI ガード追加**: lib/patch/picoruby-mruby/src/alloc.c に
+  picorb_abi_mrb_state_size() (rake 側 sizeof(mrb_state))、main/app/fmrb_app.c の
+  fmrb_app_init() で CMake 側 sizeof と比較、不一致なら LOGE + abort。
+
+検証 (build:linux 成功後のバイナリ):
+- mruby_tick_task (CMake) と mrb_tick (rake) の switching 書き込みが共に 0x61f0 で一致。
+- picorb_abi_mrb_state_size リンク済み。
+- 検証項目5/6: SIGALRM 関連シンボル無し、setitimer/sigaction の呼び出し元 0 件
+  (mruby-task posix port 不在、machine posix hal.c の upstream tick ブロック非混入を確認)。
+- 実行確認 (docker compose) は依頼者にて。
+
+### ABI 修正 第2段: rake ビルド内部の不整合 (ガードが検出) [レビューセッションで実施]
+
+第1段修正後の実行で boot 時 ABI ガードが発動: libmruby=24584 (0x6008) vs main=25096 (0x6208)。
+CMake 側は正しくなったが、**rake ビルド自体が内部で不整合**だった。
+
+root cause: gem の compiler は自分の mrbgem.rake 本文が実行される前に clone されるため、
+picoruby-mruby の mrbgem.rake にある `build.cc.defines << "MRB_NO_BOXING"` は
+mruby core (vm.c) と依存 gem (task.c) には効くが、**picoruby-mruby 自身のソース
+(alloc.c 等) には効かない**。MRB_UTF8_STRING で過去に同じ罠を踏んだ前例が
+family_mruby_linux.rb のコメントに残っていた (リンク未定義で顕在化したケース)。
+
+修正: ABI define (MRB_NO_BOXING / MRB_UTF8_STRING / MRB_(CONSTRAINED_)BASELINE_PROFILE)
+を **build_config (lib/add/family_mruby_{linux,esp32,esp32p4}.rb) の gembox 読込より前**に
+移設 (= rake 側の single source of truth)。mruby_abi_defines.cmake のコメントも更新。
+
+検証 (build:linux 成功後のバイナリ、objdump):
+- rake 側 picorb_abi_mrb_state_size の戻り値定数 = 0x6208
+- main 側 fmrb_app_init のガード比較定数 = 0x6208 (一致、ガード通過)
+- switching 書き込み: mruby_tick_task (CMake) / mrb_tick (rake) 共に 0x61f0 で一致
+- 実行確認 (docker compose) は依頼者にて。
+
+### 実行確認 第2ラウンド: ABI ガード通過、_draw_image arity バグ修正 [レビューセッションで実施]
+
+ABI 修正後の実行結果 (依頼者): **kernel VM 生成成功・案D スケジューラ動作・desktop 起動・
+27 アプリ列挙まで到達**。ただし画面は暗いまま = desktop アプリが背景描画直前に
+ArgumentError (given 5, expected 3) で終了していた。
+
+root cause: picoruby-fmrb-app の C バインディング `_draw_image` が実装は 5 引数
+(`mrb_get_args "iiiff"`, scale 対応済) なのに登録が `MRB_ARGS_REQ(3)` のままという
+**既存の潜在バグ**。旧 mruby は C 関数の aspec を検査しなかったが、新 mruby 4.0 は
+VM 側で arity を厳格チェックするため顕在化した。
+
+- 修正: lib/add/picoruby-fmrb-app/ports/esp32/gfx.c の登録を MRB_ARGS_REQ(5) に。
+- 水平展開: lib/ 配下の全 C バインディングについて aspec と mrb_get_args フォーマットの
+  引数個数を機械照合。実バグはこの 1 件のみ (他の検出は argc 手動分岐や impl 委譲の誤検出)。
+- 教訓: **mruby 4.0 は C 関数の aspec を実際に強制する**。今後 aspec と get_args の
+  不一致は起動後の該当メソッド初呼び出しで ArgumentError として現れる。
+- rake clean + build:linux 成功。実行確認は依頼者にて (desktop 描画まで進むはず)。
+
+### 自律画面検証ツール整備 + Linux 版デスクトップ起動確認 (2026-07-13)
+
+_draw_image 修正後の実行を、新設のヘッドレス検証フローで確認:
+**デスクトップ描画成功** (メニューバー + 時計 + 壁紙 draw_image)。マージ後の Linux 版は
+デスクトップまで完全起動する。
+
+新設ツール (エージェント/CI が GUI なしで画面確認できる):
+- `tools/fmrb_screenshot.py` … /dev/shm/fmrb_display (RGB332 double buffer) を PNG 化。
+  Docker Desktop では host に SHM が見えないため docker exec fallback 内蔵。
+- `docker-compose.headless.yml` … sdl2-display を SDL dummy driver で起動する override。
+- `tools/dev_run_check.sh` … up -d (headless) → boot marker 待ち → screenshot → down。
+  稼働中スタックがあれば reuse (down しない)。
+- fmruby-graphics-audio/sdl2-display/main.c: accelerated renderer が無い環境 (dummy) で
+  software renderer へ fallback する 2 行を追加 (要 `docker compose build sdl2-display`)。
+
+### 入力注入ツール追加 + 操作込みの自律検証成功 (2026-07-13)
+
+- **tools/fmrb_input.py 新設**: 合成マウス/キーボードイベントを注入。
+  sdl2-display が Unix DGRAM /var/run/fmrb/fmrb_inject を bind し、受信パケット
+  ([type][len16][payload] = fmrb_hid_event.h の wire format) を通常入力ストリームへ転送
+  (実SDLイベントと直列化)。ソケット名は shm_display.h に FMRB_INJECT_SOCKET_PATH として定義。
+- 使い方はルート CLAUDE.md「自律検証ツール」に記載。fmruby-core/CLAUDE.md の
+  「GUI必要のため実行不可」記述も更新。
+- **マージ後 Linux 版の操作込み検証に成功**: メニュー開閉 → Launcher → Shell を
+  ダブルクリック起動 → `help` をタイプして Enter → コマンド一覧表示まで、全て
+  ヘッドレス + スクリーンショット確認で自律実行できた。VM・スケジューラ・GFX・HID
+  ルーティング・シェルの Ruby 実行が通しで動作している。
+- Launcher のアプリアイコンがハート状に見えたのは Ruby (宝石) アイコンで正常表示
+  (依頼者確認済み、2026-07-13)。退行ではない。
