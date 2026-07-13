@@ -11,15 +11,15 @@
  * - Read timeout (FMRB_SOCKET_IO_TIMEOUT_MS) so a silent peer cannot stall
  *   the mruby VM task forever.
  * - Failures are logged with the mbedtls error code.
- * - Allocations use fmrb_sys_malloc: upstream used picorb_alloc with a NULL
- *   VM, which on the mruby VM expands to mrb_malloc(NULL, ...) and crashes
- *   with a NULL mrb_state dereference (observed as a Load access fault in
- *   mrb_realloc on the first HTTPS request on Tab5).
+ * Allocations use upstream's vm-threaded picorb_alloc(vm, ...): the old
+ * picorb_alloc(NULL) crash is fixed upstream by passing the VM through the
+ * ports API, so the former fmrb_sys_malloc replacement is gone.
  */
 
 #include "../../include/socket.h"
 #include "picoruby.h"
-#include "fmrb_mem.h"
+
+#include <fcntl.h>
 
 /* mbedtls includes */
 #include "mbedtls/net_sockets.h"
@@ -76,9 +76,9 @@ struct picorb_ssl_socket {
  * ======================================================================== */
 
 picorb_ssl_context_t*
-SSLContext_create(void)
+SSLContext_create(picorb_state *vm)
 {
-  picorb_ssl_context_t *ctx = (picorb_ssl_context_t *)fmrb_sys_malloc(sizeof(picorb_ssl_context_t));
+  picorb_ssl_context_t *ctx = (picorb_ssl_context_t *)picorb_alloc(vm, sizeof(picorb_ssl_context_t));
   if (!ctx) return NULL;
 
   mbedtls_ssl_config_init(&ctx->ssl_config);
@@ -94,7 +94,7 @@ SSLContext_create(void)
 
   /* Seed the random number generator */
   if (mbedtls_ctr_drbg_seed(&ctx->ctr_drbg, mbedtls_entropy_func, &ctx->entropy, NULL, 0) != 0) {
-    SSLContext_free(ctx);
+    SSLContext_free(vm, ctx);
     return NULL;
   }
 
@@ -103,7 +103,7 @@ SSLContext_create(void)
                                 MBEDTLS_SSL_IS_CLIENT,
                                 MBEDTLS_SSL_TRANSPORT_STREAM,
                                 MBEDTLS_SSL_PRESET_DEFAULT) != 0) {
-    SSLContext_free(ctx);
+    SSLContext_free(vm, ctx);
     return NULL;
   }
 
@@ -129,7 +129,7 @@ SSLContext_create(void)
 }
 
 void
-SSLContext_free(picorb_ssl_context_t *ctx)
+SSLContext_free(picorb_state *vm, picorb_ssl_context_t *ctx)
 {
   if (!ctx) return;
   if (ctx->crt_bundle_attached) {
@@ -141,11 +141,11 @@ SSLContext_free(picorb_ssl_context_t *ctx)
   mbedtls_ssl_config_free(&ctx->ssl_config);
   mbedtls_ctr_drbg_free(&ctx->ctr_drbg);
   mbedtls_entropy_free(&ctx->entropy);
-  fmrb_sys_free(ctx);
+  picorb_free(vm, ctx);
 }
 
 bool
-SSLContext_set_ca_file(picorb_ssl_context_t *ctx, const char *ca_file)
+SSLContext_set_ca_file(picorb_state *vm, picorb_ssl_context_t *ctx, const char *ca_file)
 {
   (void)ctx;
   (void)ca_file;
@@ -153,7 +153,7 @@ SSLContext_set_ca_file(picorb_ssl_context_t *ctx, const char *ca_file)
 }
 
 bool
-SSLContext_set_ca(picorb_ssl_context_t *ctx, const void *addr, size_t size)
+SSLContext_set_ca(picorb_state *vm, picorb_ssl_context_t *ctx, const void *addr, size_t size)
 {
   if (!ctx || !addr || size == 0) return false;
 
@@ -172,7 +172,7 @@ SSLContext_set_ca(picorb_ssl_context_t *ctx, const void *addr, size_t size)
 }
 
 bool
-SSLContext_set_cert_file(picorb_ssl_context_t *ctx, const char *cert_file)
+SSLContext_set_cert_file(picorb_state *vm, picorb_ssl_context_t *ctx, const char *cert_file)
 {
   (void)ctx;
   (void)cert_file;
@@ -180,7 +180,7 @@ SSLContext_set_cert_file(picorb_ssl_context_t *ctx, const char *cert_file)
 }
 
 bool
-SSLContext_set_cert(picorb_ssl_context_t *ctx, const void *addr, size_t size)
+SSLContext_set_cert(picorb_state *vm, picorb_ssl_context_t *ctx, const void *addr, size_t size)
 {
   if (!ctx || !addr || size == 0) return false;
 
@@ -199,7 +199,7 @@ SSLContext_set_cert(picorb_ssl_context_t *ctx, const void *addr, size_t size)
 }
 
 bool
-SSLContext_set_key_file(picorb_ssl_context_t *ctx, const char *key_file)
+SSLContext_set_key_file(picorb_state *vm, picorb_ssl_context_t *ctx, const char *key_file)
 {
   (void)ctx;
   (void)key_file;
@@ -207,7 +207,7 @@ SSLContext_set_key_file(picorb_ssl_context_t *ctx, const char *key_file)
 }
 
 bool
-SSLContext_set_key(picorb_ssl_context_t *ctx, const void *addr, size_t size)
+SSLContext_set_key(picorb_state *vm, picorb_ssl_context_t *ctx, const void *addr, size_t size)
 {
   if (!ctx || !addr || size == 0) return false;
 
@@ -226,7 +226,7 @@ SSLContext_set_key(picorb_ssl_context_t *ctx, const void *addr, size_t size)
 }
 
 bool
-SSLContext_set_verify_mode(picorb_ssl_context_t *ctx, int mode)
+SSLContext_set_verify_mode(picorb_state *vm, picorb_ssl_context_t *ctx, int mode)
 {
   if (!ctx) return false;
   int mbedtls_mode;
@@ -246,7 +246,7 @@ SSLContext_set_verify_mode(picorb_ssl_context_t *ctx, int mode)
 }
 
 int
-SSLContext_get_verify_mode(picorb_ssl_context_t *ctx)
+SSLContext_get_verify_mode(picorb_state *vm, picorb_ssl_context_t *ctx)
 {
   if (!ctx) return -1;
   return ctx->verify_mode;
@@ -257,11 +257,11 @@ SSLContext_get_verify_mode(picorb_ssl_context_t *ctx)
  * ======================================================================== */
 
 picorb_ssl_socket_t*
-SSLSocket_create(picorb_ssl_context_t *ssl_ctx)
+SSLSocket_create(picorb_state *vm, picorb_ssl_context_t *ssl_ctx)
 {
   if (!ssl_ctx) return NULL;
 
-  picorb_ssl_socket_t *ssl_sock = (picorb_ssl_socket_t *)fmrb_sys_malloc(sizeof(picorb_ssl_socket_t));
+  picorb_ssl_socket_t *ssl_sock = (picorb_ssl_socket_t *)picorb_alloc(vm, sizeof(picorb_ssl_socket_t));
   if (!ssl_sock) return NULL;
   memset(ssl_sock, 0, sizeof(picorb_ssl_socket_t));
 
@@ -275,18 +275,18 @@ SSLSocket_create(picorb_ssl_context_t *ssl_ctx)
 }
 
 bool
-SSLSocket_set_hostname(picorb_ssl_socket_t *ssl_sock, const char *hostname)
+SSLSocket_set_hostname(picorb_state *vm, picorb_ssl_socket_t *ssl_sock, const char *hostname)
 {
   if (!ssl_sock || !hostname) return false;
-  if (ssl_sock->hostname) fmrb_sys_free(ssl_sock->hostname);
-  ssl_sock->hostname = (char *)fmrb_sys_malloc(strlen(hostname) + 1);
+  if (ssl_sock->hostname) picorb_free(vm, ssl_sock->hostname);
+  ssl_sock->hostname = (char *)picorb_alloc(vm, strlen(hostname) + 1);
   if (!ssl_sock->hostname) return false;
   strcpy(ssl_sock->hostname, hostname);
   return true;
 }
 
 bool
-SSLSocket_set_port(picorb_ssl_socket_t *ssl_sock, int port)
+SSLSocket_set_port(picorb_state *vm, picorb_ssl_socket_t *ssl_sock, int port)
 {
   if (!ssl_sock || port <= 0 || port > 65535) return false;
   ssl_sock->port = port;
@@ -294,7 +294,7 @@ SSLSocket_set_port(picorb_ssl_socket_t *ssl_sock, int port)
 }
 
 bool
-SSLSocket_connect(picorb_ssl_socket_t *ssl_sock)
+SSLSocket_connect(picorb_state *vm, picorb_ssl_socket_t *ssl_sock)
 {
   if (!ssl_sock || !ssl_sock->hostname || ssl_sock->state != SSL_STATE_NONE) return false;
 
@@ -350,7 +350,7 @@ SSLSocket_connect(picorb_ssl_socket_t *ssl_sock)
 }
 
 ssize_t
-SSLSocket_send(picorb_ssl_socket_t *ssl_sock, const void *data, size_t len)
+SSLSocket_send(picorb_state *vm, picorb_ssl_socket_t *ssl_sock, const void *data, size_t len)
 {
   if (!ssl_sock || ssl_sock->state != SSL_STATE_CONNECTED || !data) return -1;
 
@@ -366,14 +366,30 @@ SSLSocket_send(picorb_ssl_socket_t *ssl_sock, const void *data, size_t len)
 }
 
 ssize_t
-SSLSocket_recv(picorb_ssl_socket_t *ssl_sock, void *buf, size_t len)
+SSLSocket_recv(picorb_state *vm, picorb_ssl_socket_t *ssl_sock, void *buf, size_t len, bool nonblock)
 {
   if (!ssl_sock || ssl_sock->state != SSL_STATE_CONNECTED || !buf) return -1;
 
-  int ret = mbedtls_ssl_read(&ssl_sock->ssl, (unsigned char *)buf, len);
-  if (ret < 0) {
+  if (nonblock) {
+    int fd = ssl_sock->net_ctx.fd;
+    int old_flags = fcntl(fd, F_GETFL, 0);
+    if (old_flags == -1) return -1;
+    if (fcntl(fd, F_SETFL, old_flags | O_NONBLOCK) == -1) return -1;
+
+    int ret = mbedtls_ssl_read(&ssl_sock->ssl, (unsigned char *)buf, len);
+
+    if (fcntl(fd, F_SETFL, old_flags) == -1) {
+      ssl_sock->state = SSL_STATE_ERROR;
+      return -1;
+    }
+
+    if (ret > 0) return (ssize_t)ret;
+    if (ret == 0) {
+      ssl_sock->state = SSL_STATE_NONE;
+      return 0;
+    }
     if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
-      return 0; // Would block
+      return PICORB_RECV_WOULD_BLOCK;
     }
     if (ret == MBEDTLS_ERR_SSL_TIMEOUT) {
       /* Read timeout: report an error but keep the session usable */
@@ -392,15 +408,31 @@ SSLSocket_recv(picorb_ssl_socket_t *ssl_sock, void *buf, size_t len)
     ssl_sock->state = SSL_STATE_ERROR;
     return -1;
   }
+
+  /* Blocking path */
+  int ret;
+  do {
+    ret = mbedtls_ssl_read(&ssl_sock->ssl, (unsigned char *)buf, len);
+    if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
+      continue;
+    }
+    if (ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
+      ssl_sock->state = SSL_STATE_NONE;
+      return 0;
+    }
+    if (ret < 0) {
+      ssl_sock->state = SSL_STATE_ERROR;
+      return -1;
+    }
+  } while (ret < 0);
   if (ret == 0) {
-    // EOF
     ssl_sock->state = SSL_STATE_NONE;
   }
   return (ssize_t)ret;
 }
 
 bool
-SSLSocket_close(picorb_ssl_socket_t *ssl_sock)
+SSLSocket_close(picorb_state *vm, picorb_ssl_socket_t *ssl_sock)
 {
   if (!ssl_sock) return false;
 
@@ -411,22 +443,22 @@ SSLSocket_close(picorb_ssl_socket_t *ssl_sock)
   mbedtls_ssl_free(&ssl_sock->ssl);
 
   if (ssl_sock->hostname) {
-    fmrb_sys_free(ssl_sock->hostname);
+    picorb_free(vm, ssl_sock->hostname);
     ssl_sock->hostname = NULL;
   }
 
-  fmrb_sys_free(ssl_sock);
+  picorb_free(vm, ssl_sock);
   return true;
 }
 
 bool
-SSLSocket_closed(picorb_ssl_socket_t *ssl_sock)
+SSLSocket_closed(picorb_state *vm, picorb_ssl_socket_t *ssl_sock)
 {
   return !ssl_sock || ssl_sock->state != SSL_STATE_CONNECTED;
 }
 
 bool
-SSLSocket_ready(picorb_ssl_socket_t *ssl_sock)
+SSLSocket_ready(picorb_state *vm, picorb_ssl_socket_t *ssl_sock)
 {
   if (!ssl_sock || ssl_sock->state != SSL_STATE_CONNECTED) {
     return false;
@@ -449,14 +481,14 @@ SSLSocket_ready(picorb_ssl_socket_t *ssl_sock)
 }
 
 const char*
-SSLSocket_remote_host(picorb_ssl_socket_t *ssl_sock)
+SSLSocket_remote_host(picorb_state *vm, picorb_ssl_socket_t *ssl_sock)
 {
   if (!ssl_sock) return NULL;
   return ssl_sock->hostname;
 }
 
 int
-SSLSocket_remote_port(picorb_ssl_socket_t *ssl_sock)
+SSLSocket_remote_port(picorb_state *vm, picorb_ssl_socket_t *ssl_sock)
 {
   if (!ssl_sock) return -1;
   return ssl_sock->port;
