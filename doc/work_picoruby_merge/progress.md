@@ -532,3 +532,15 @@ fps/メモリの旧ベースライン比較。
 - 軽微ノイズ: mrb_open 毎の `system_api: 2 mac type` エラーの発生源特定、RTC sync 失敗の切り分け
 - system_desktop stack 消費の監視 (free 944B)
 - 上流還元: PR 候補 N1 (freertos port) / #6 (websocket gemdir) / #10 (SSLSocket_ready) 等
+
+### 後片付け実施 (2026-07-16): DROP パッチ削除 + prism プール解放
+
+- upstream 同一の 3 パッチ (sandbox.c / json.rb / tcp_server.c) を lib/patch から削除、
+  Rakefile setup 行も整理 (b364528)。
+- **prism 専用プール (320KB PSRAM) と fmrb_prism_lock を除去** (1e79416)。
+  唯一の消費者 prism_alloc.c は Option A で撤去済みだった。安全性の根拠:
+  upstream prism_xallocator は mrb_malloc(global_mrb) へ流すが、我々の
+  mrb_basic_alloc_func は呼び出しタスクの TLS から est を引くため、並行コンパイル
+  でも各アプリが自分のヒープから割り当てる (global_mrb はエラー処理用で
+  ヒープ整合性に global lock 不要)。Option A の「mutex 排他」は実装不要と判明。
+- 両ターゲット rebuild GREEN 確認済み。boot ログから MEMPOOL: PRISM 行が消える。
