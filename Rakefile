@@ -120,6 +120,11 @@ task :setup do
   # bmp332
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-bmp332"
   sh "cp -rf lib/add/picoruby-fmrb-bmp332 #{mrbgem_path}/"
+  # hal-task-freertos (name-only gem: makes mruby-task drop its own task_hal
+  # port so the FreeRTOS case-D port is used via CMake instead; see the gem's
+  # mrbgem.rake and doc/work_picoruby_merge/instruct_d7_b1_tick.md sec 3.5)
+  sh "rm -rf #{mrbgem_path}/hal-task-freertos"
+  sh "cp -rf lib/add/hal-task-freertos #{mrbgem_path}/"
   # conf
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
@@ -143,18 +148,17 @@ task :setup do
   # picoruby-env
   sh "cp -f lib/patch/picoruby-env/ports/posix/env.c #{mrbgem_path}/picoruby-env/ports/posix/"
 
-  # mruby-compiler2
-  sh "cp -f lib/patch/compiler/prism_xallocator.h #{mrbgem_path}/mruby-compiler2/include/"
-  sh "cp -f lib/patch/compiler/prism_alloc.c #{mrbgem_path}/mruby-compiler2/lib/"
-  sh "cp -f lib/patch/compiler/mruby-compiler2-mrbgem.rake #{mrbgem_path}/mruby-compiler2/mrbgem.rake"
-  sh "cp -f lib/patch/compiler/mruby-compiler2-compile.c #{mrbgem_path}/mruby-compiler2/src/compile.c"
+  # mruby-compiler (renamed upstream from mruby-compiler2; same repo).
+  # prism allocator patches dropped: upstream routes prism through the VM
+  # estalloc heap via global_mrb (owner decision "Option A"). Only the
+  # compile.c NULL-guard remains.
+  sh "cp -f lib/patch/compiler/mruby-compiler2-compile.c #{mrbgem_path}/mruby-compiler/src/compile.c"
 
   # mrbgem.rake patches
   sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
   sh "cp -f lib/patch/picoruby-yaml/mrbgem.rake #{mrbgem_path}/picoruby-yaml/"
   sh "cp -f lib/patch/picoruby-sandbox/mrbgem.rake #{mrbgem_path}/picoruby-sandbox/"
-  # picoruby-sandbox: fix uninitialized mrb_value name in Sandbox.new
-  sh "cp -f lib/patch/picoruby-sandbox/src/mruby/sandbox.c #{mrbgem_path}/picoruby-sandbox/src/mruby/"
+  # (sandbox.c patch dropped: upstream fixed the uninitialized name in Sandbox.new)
 
   # picoruby-i2c: add I2C#close method and I2C_release declaration
   sh "cp -f lib/patch/picoruby-i2c/include/i2c.h #{mrbgem_path}/picoruby-i2c/include/"
@@ -168,7 +172,7 @@ task :setup do
   sh "cp -f lib/patch/picoruby-socket/src/mruby/ssl_socket.c #{mrbgem_path}/picoruby-socket/src/mruby/"
   sh "cp -f lib/patch/picoruby-socket/ports/esp32/tcp_socket.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
   sh "cp -f lib/patch/picoruby-socket/ports/esp32/ssl_socket.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
-  sh "cp -f lib/patch/picoruby-socket/ports/esp32/tcp_server.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
+  # (tcp_server.c patch dropped: upstream's vm-threaded ports API fixed the alloc crash)
   sh "cp -f lib/patch/picoruby-socket/ports/posix/tcp_socket.c #{mrbgem_path}/picoruby-socket/ports/posix/"
   sh "cp -f lib/patch/picoruby-socket/ports/posix/ssl_socket.c #{mrbgem_path}/picoruby-socket/ports/posix/"
 
@@ -182,22 +186,20 @@ task :setup do
   # picoruby-net-http: accept URI objects in get/get_response/post_form (CRuby style)
   sh "cp -f lib/patch/picoruby-net-http/mrblib/http_client.rb #{mrbgem_path}/picoruby-net-http/mrblib/"
 
-  # picoruby-json: fix parse_float dropping the decimal point ("26.2" -> 262.0)
-  sh "cp -f lib/patch/picoruby-json/mrblib/json.rb #{mrbgem_path}/picoruby-json/mrblib/"
+  # (picoruby-json parse_float patch dropped: upstream fixed the decimal handling)
 
-  # mruby-task: add stack clearing in mrb_task_reset_context + disable HAL auto-load
-  mruby_task_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-task"
-  sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/src/task.c #{mruby_task_path}/src/"
-  sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/mruby-task/mrbgem.rake #{mruby_task_path}/"
+  # mruby-task (case-D tick split): task.c (bottom-half) and the FreeRTOS
+  # ports/posix/task_hal.c (top-half) are delivered by the bulk
+  # `cp -rf lib/patch/picoruby-mruby` above. The mrbgem.rake patch is dropped:
+  # upstream rewrote it to select ports via conf.ports/effective_ports, so
+  # the old HAL-auto-load removal no longer applies (port wiring is done in
+  # build_config instead).
 
-  # mruby-dir: patch mrbgem.rake to skip HAL auto-detection on ESP32
-  mruby_dir_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/mruby-dir"
-  sh "cp -f lib/patch/mruby-dir/mrbgem.rake #{mruby_dir_path}/"
-
-  # hal-posix-dir: apply "flash/" path prefix so Linux Dir.open mirrors the
-  # virtual namespace served by fmrb_hal_file_posix.c.
-  hal_posix_dir_path = "#{mrbgem_path}/picoruby-mruby/lib/mruby/mrbgems/hal-posix-dir"
-  sh "cp -f lib/patch/picoruby-mruby/lib/mruby/mrbgems/hal-posix-dir/src/dir_hal.c #{hal_posix_dir_path}/src/"
+  # mruby-dir: the "flash/" prefix dir_hal now lives at
+  # mruby-dir/ports/posix/dir_hal.c (hal-posix-dir gem was removed upstream)
+  # and is delivered by the bulk `cp -rf lib/patch/picoruby-mruby` above.
+  # D5 (skip HAL auto-detection on ESP32) is dropped: upstream removed the
+  # auto-detection logic from mruby-dir/mrbgem.rake entirely.
 end
 
 namespace :set_target do

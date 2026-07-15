@@ -15,17 +15,6 @@ enum FMRB_MEM_POOL_ID{
 
 typedef int8_t fmrb_mem_handle_t;
 
-#ifndef PRISM_POOL_SIZE
-  #ifdef PRISM_BUILD_HOST
-    // Host build (picorbc): needs ~220KB peak for compiling mrblib
-    #define FMRB_MEM_PRISM_POOL_SIZE (288 * 1024)  // 288KB with safety margin
-  #else
-    // Target build: prism parser needs substantial memory for AST and constant pool.
-    // 192KB was insufficient for scripts >15KB (raycaster with enemies).
-    #define FMRB_MEM_PRISM_POOL_SIZE (320 * 1024)  // 320KB for user script compilation
-  #endif
-#endif
-
 //SRAM
 #define FMRB_MEM_POOL_SIZE_HAL_FILE (1*1024)
 

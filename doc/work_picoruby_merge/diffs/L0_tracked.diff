@@ -1,0 +1,2074 @@
+diff --git a/mrbgems/mruby-compiler2 b/mrbgems/mruby-compiler2
+--- a/mrbgems/mruby-compiler2
++++ b/mrbgems/mruby-compiler2
+@@ -1 +1 @@
+-Subproject commit 29113090151cf38a925f4e44ea0a2343646caa06
++Subproject commit 29113090151cf38a925f4e44ea0a2343646caa06-dirty
+diff --git a/mrbgems/picoruby-i2c/include/i2c.h b/mrbgems/picoruby-i2c/include/i2c.h
+index e4dcfe51..3c6eb5ea 100644
+--- a/mrbgems/picoruby-i2c/include/i2c.h
++++ b/mrbgems/picoruby-i2c/include/i2c.h
+@@ -18,6 +18,7 @@ typedef enum {
+ 
+ int I2C_unit_name_to_unit_num(const char *);
+ i2c_status_t I2C_gpio_init(int, uint32_t, int8_t, int8_t);
++void I2C_release(int);
+ int I2C_read_timeout_us(int, uint8_t, uint8_t*, size_t, bool, uint32_t);
+ int I2C_write_timeout_us(int, uint8_t, uint8_t*, size_t, bool, uint32_t);
+ 
+diff --git a/mrbgems/picoruby-i2c/src/mruby/i2c.c b/mrbgems/picoruby-i2c/src/mruby/i2c.c
+index 30a49aa7..ab6f88a4 100644
+--- a/mrbgems/picoruby-i2c/src/mruby/i2c.c
++++ b/mrbgems/picoruby-i2c/src/mruby/i2c.c
+@@ -171,6 +171,14 @@ mrb_i2c_read(mrb_state *mrb, mrb_value self)
+   }
+ }
+ 
++static mrb_value
++mrb_i2c_close(mrb_state *mrb, mrb_value self)
++{
++  mrb_int unit_num = mrb_fixnum(mrb_iv_get(mrb, self, MRB_IVSYM(unit_num)));
++  I2C_release((int)unit_num);
++  return mrb_nil_value();
++}
++
+ static mrb_value
+ mrb_i2c__init(mrb_state *mrb, mrb_value self)
+ {
+@@ -198,6 +206,7 @@ mrb_picoruby_i2c_gem_init(mrb_state* mrb)
+   struct RClass *class_I2C = mrb_define_class_id(mrb, MRB_SYM(I2C), mrb->object_class);
+ 
+   mrb_define_method_id(mrb, class_I2C, MRB_SYM(_init), mrb_i2c__init, MRB_ARGS_REQ(4));
++  mrb_define_method_id(mrb, class_I2C, MRB_SYM(close), mrb_i2c_close, MRB_ARGS_NONE());
+   mrb_define_method_id(mrb, class_I2C, MRB_SYM(write), mrb_i2c_write, MRB_ARGS_REQ(1)|MRB_ARGS_REST()|MRB_ARGS_KEY(1, 0));
+   mrb_define_method_id(mrb, class_I2C, MRB_SYM(read), mrb_i2c_read, MRB_ARGS_REQ(2)|MRB_ARGS_REST()|MRB_ARGS_KEY(1, 0));
+ }
+diff --git a/mrbgems/picoruby-json/mrblib/json.rb b/mrbgems/picoruby-json/mrblib/json.rb
+index c600fe77..1c9bdef2 100644
+--- a/mrbgems/picoruby-json/mrblib/json.rb
++++ b/mrbgems/picoruby-json/mrblib/json.rb
+@@ -3,6 +3,11 @@
+ # This is a simple JSON parser and generator for PicoRuby.
+ # It is designed to be small and simple, not to be fast or complete.
+ #
++# Family mruby patch: fix parse_float dropping the decimal point. Upstream
++# never switched to the fractional branch (the '.' case did nothing and the
++# branch condition depended on decimal_divider, which never changed), so
++# every fractional digit was appended as an integer digit: "26.2" -> 262.0.
++#
+ # Author: Hitoshi HASUMI
+ # License: MIT
+ #
+@@ -596,6 +601,7 @@ module JSON
+       is_negative = @json[start] == '-'
+       exponent_negative = false
+       parsing_exponent = false
++      in_fraction = false
+       start += 1 if is_negative
+ 
+       i = start
+@@ -606,14 +612,14 @@ module JSON
+           ord = @json[i]&.ord
+           if parsing_exponent
+             exponent = exponent * 10 + (ord - '0'.ord)
+-          elsif decimal_divider == 1.0
+-            result = result * 10 + (ord - '0'.ord)
+-          else
++          elsif in_fraction
+             decimal_divider *= 10
+             result += (ord - '0'.ord) / decimal_divider
++          else
++            result = result * 10 + (ord - '0'.ord)
+           end
+         when '.'
+-          # Do nothing, just move to the next character
++          in_fraction = true
+         when 'e', 'E'
+           parsing_exponent = true
+         when '-'
+diff --git a/mrbgems/picoruby-machine/include/hal.h b/mrbgems/picoruby-machine/include/hal.h
+index f040cec3..841ef7fe 100644
+--- a/mrbgems/picoruby-machine/include/hal.h
++++ b/mrbgems/picoruby-machine/include/hal.h
+@@ -11,6 +11,9 @@ extern "C" {
+ #if defined(PICORB_VM_MRUBY)
+ #include "mruby.h"
+ void mrb_tick(mrb_state *mrb);
++/* 案D tick split: signal source (HAL) <-> scheduler (mruby-task). */
++void mrb_task_request_switch(mrb_state *mrb);      /* defined in mruby-task/task.c */
++uint32_t mrb_hal_task_take_pending_ticks(mrb_state *mrb);  /* defined in the HAL port */
+ void hal_init(mrb_state *mrb);
+ 
+ /* Avoid conflict with hal_init() from libpp used in ESP-IDF. */
+@@ -44,7 +47,24 @@ int hal_write(int fd, const void *buf, int nbytes);
+ #else
+   void mrb_task_enable_irq(void);
+   void mrb_task_disable_irq(void);
+-  void mrb_hal_task_idle_cpu(mrb_state *mrb);
++  void hal_idle_cpu(mrb_state *mrb);
++  #define hal_enable_irq() mrb_task_enable_irq()
++  #define hal_disable_irq() mrb_task_disable_irq()
++#endif
++
++/* family-mruby: multi-VM management */
++#if defined(PICORB_VM_MRUBY)
++void hal_register_vm(mrb_state *mrb);
++void hal_deinit(mrb_state *mrb);
++void hal_deinit_by_pool(void *pool_ptr, size_t pool_size);
++#endif
++
++/* Task HAL functions (implemented in hal-posix-task or platform-specific code) */
++#if defined(PICORB_VM_MRUBY)
++void mrb_hal_task_init(mrb_state *mrb);
++void mrb_hal_task_final(mrb_state *mrb);
++void mrb_hal_task_idle_cpu(mrb_state *mrb);
++void mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec);
+ #endif
+ 
+ void hal_abort(const char *s);
+diff --git a/mrbgems/picoruby-machine/mrbgem.rake b/mrbgems/picoruby-machine/mrbgem.rake
+index e8f7b401..b2072100 100644
+--- a/mrbgems/picoruby-machine/mrbgem.rake
++++ b/mrbgems/picoruby-machine/mrbgem.rake
+@@ -3,14 +3,22 @@ MRuby::Gem::Specification.new('picoruby-machine') do |spec|
+   spec.author  = 'HASUMI Hitoshi'
+   spec.summary = 'Machine class'
+ 
+-  spec.add_dependency 'picoruby-io-console'
++  # family-mruby: picoruby-io-console is not used; fmrb-io provides IO
++  # spec.add_dependency 'picoruby-io-console'
+ 
+-  if build.gems.map(&:name).include?('picoruby-mruby')
+-    # Workaround:
+-    #   Locate mruby-io at the top of gem_init.c
+-    #   to define IO.open earlier than this gems
+-    if build.posix?
+-      spec.add_dependency 'mruby-io'
+-    end
++  spec.cc.include_paths << "#{dir}/include"
++  if build.vm_mruby?
++    # mruby-task include path for task.h and task_hal.h
++    spec.cc.include_paths << "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include"
++    # mruby include path for mruby.h
++    spec.cc.include_paths << "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/include"
++    spec.cc.include_paths << "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/include"
+   end
++
++  if build.posix?
++    cc.defines << "PICORB_PLATFORM_POSIX"
++  end
++
++  # family-mruby: mruby-io is NOT used; picoruby-fmrb-io provides IO
++  # (mruby-io conflicts with picoruby-fmrb-io)
+ end
+diff --git a/mrbgems/picoruby-machine/mrblib/kernel.rb b/mrbgems/picoruby-machine/mrblib/kernel.rb
+index 06dd19ce..e9014239 100644
+--- a/mrbgems/picoruby-machine/mrblib/kernel.rb
++++ b/mrbgems/picoruby-machine/mrblib/kernel.rb
+@@ -1,4 +1,12 @@
+-require 'io/console'
++# family-mruby: Initialize IO streams before defining Kernel methods that use them.
++# Upstream has 'require io/console' here, but family-mruby uses fmrb-io instead.
++STDIN  = IO.open(0, "r")
++STDOUT = IO.open(1, "w")
++STDERR = IO.open(2, "w")
++
++$stdin = STDIN
++$stdout = STDOUT
++$stderr = STDERR
+ 
+ module Kernel
+ 
+@@ -35,11 +43,3 @@ module Kernel
+     Machine.exit(status)
+   end
+ end
+-
+-STDIN  = IO.open(0, "r")
+-STDOUT = IO.open(1, "w")
+-STDERR = IO.open(2, "w")
+-
+-$stdin = STDIN
+-$stdout = STDOUT
+-$stderr = STDERR
+diff --git a/mrbgems/picoruby-machine/ports/esp32/CANONICAL_BUFFER_MEMO.md b/mrbgems/picoruby-machine/ports/esp32/CANONICAL_BUFFER_MEMO.md
+deleted file mode 100644
+index 4a00cecd..00000000
+--- a/mrbgems/picoruby-machine/ports/esp32/CANONICAL_BUFFER_MEMO.md
++++ /dev/null
+@@ -1,38 +0,0 @@
+-# ESP32向け Canonical Buffer 対応メモ
+-
+-## RP2040側でやったこと
+-
+-### 1. `io_echo_eq` の反転バグ修正
+-- `ports/rp2040/io-console.c` と `ports/esp32/io-console.c` の両方を修正済み
+-- 修正前: `io_echo_eq(true)` で `echo_mode = false` になっていた（POSIX と逆）
+-- 修正後: `echo_mode = flag` に統一
+-
+-### 2. `hal.h` に定数追加
+-```c
+-#define HAL_GETCHAR_NODATA  (-1)
+-#define HAL_GETCHAR_EOF     (-2)
+-```
+-
+-### 3. RP2040の `hal_getchar()` に canonical buffer を実装
+-- cooked mode（`io_raw_q() == false`）のとき、HAL層でエコー・バックスペース編集・Ctrl-D(EOF)を処理
+-- raw mode のときは RingBuffer から直接バイトを返す
+-
+-### 4. `IO#gets` / `IO#read` の簡略化（mruby/mrubyc共通）
+-- エコー出力（`hal_write`）、バックスペース処理（`"\b \b"`）、ESCスキップのロジックを削除
+-- `HAL_GETCHAR_EOF`（-2）のハンドリングを追加
+-- `IO#read` を引数なしで呼べるように変更（EOF まで読む）
+-
+-## ESP32で予想される影響
+-
+-### おそらく問題ないこと
+-- `io_echo_eq` の修正は適用済みなので、echo フラグの意味が正しくなった
+-- ESP-IDF の VFS/UART ドライバが canonical 処理（エコー、行編集）を担当しているなら、IO メソッドからエコー/BS ロジックを削除しても影響なし
+-
+-### 確認が必要なこと
+-1. EOF の区別: ESP32 の `hal_getchar()` は `fgetc(stdin)` を使っており、`EOF`（-1）を返す。これは `HAL_GETCHAR_NODATA`（-1）と同じ値なので、`IO#read`（引数なし）が EOF を検出できず永久ブロックする可能性がある
+-2. エコー: ESP-IDF の VFS が UART の echo を処理しているか確認。していなければ `IO#gets` で入力が見えなくなる
+-3. バックスペース: 同様に VFS 側で処理されているか確認
+-
+-### ESP32側で対応が必要になりそうなこと
+-- `hal_getchar()` で `fgetc()` の戻り値が `EOF` のとき `HAL_GETCHAR_EOF`（-2）を返すようにする
+-- VFS が canonical 処理をしていない場合は、RP2040 と同様の canonical buffer を実装するか、VFS の設定で有効にする
+diff --git a/mrbgems/picoruby-machine/ports/esp32/machine.c b/mrbgems/picoruby-machine/ports/esp32/machine.c
+index 5cae0113..d9f90340 100644
+--- a/mrbgems/picoruby-machine/ports/esp32/machine.c
++++ b/mrbgems/picoruby-machine/ports/esp32/machine.c
+@@ -11,9 +11,11 @@
+ #include <freertos/FreeRTOS.h>
+ #include <freertos/portmacro.h>
+ #include <freertos/task.h>
++#include <freertos/semphr.h>
+ 
+ #include "esp_sleep.h"
+ #include "esp_timer.h"
++#include "esp_log.h"
+ #include "hal/efuse_hal.h"
+ #include "rom/ets_sys.h"
+ 
+@@ -24,33 +26,21 @@
+   #error "MRBC_NO_TIMER is not supported"
+ #endif
+ 
+-#if defined(PICORB_VM_MRUBY)
+-static mrb_state *mrb_;
+-#endif
++#if defined(PICORB_VM_MRUBYC)
+ 
++/* mrubyc: single VM, esp_timer based */
+ static esp_timer_handle_t periodic_timer;
+ volatile int sigint_status = 0; /* MACHINE_SIG_NONE */
+ 
+ static void
+ alarm_handler(void *arg)
+ {
+-#if defined(PICORB_VM_MRUBYC)
+   mrbc_tick();
+-#else
+-  mrb_tick(mrb_);
+-#endif
+ }
+ 
+ void
+-#if defined(PICORB_VM_MRUBY)
+-machine_hal_init(mrb_state *mrb)
+-#elif defined(PICORB_VM_MRUBYC)
+ machine_hal_init(void)
+-#endif
+ {
+-#if defined(PICORB_VM_MRUBY)
+-  mrb_ = (mrb_state *)mrb;
+-#endif
+   esp_timer_create_args_t timer_create_args;
+   timer_create_args.callback = &alarm_handler;
+   timer_create_args.arg = NULL;
+@@ -58,43 +48,279 @@ machine_hal_init(void)
+   timer_create_args.name = "mrbc_tick_timer";
+ 
+   esp_timer_create(&timer_create_args, &periodic_timer);
+-#if defined(PICORB_VM_MRUBY)
+-  esp_timer_start_periodic(periodic_timer, MRB_TICK_UNIT * 1000);
+-#else
+   esp_timer_start_periodic(periodic_timer, MRBC_TICK_UNIT * 1000);
+-#endif
+ }
+ 
+-void
+-#if defined(PICORB_VM_MRUBYC)
+-hal_enable_irq(void)
++void hal_enable_irq(void) { portENABLE_INTERRUPTS(); }
++void hal_disable_irq(void) { portDISABLE_INTERRUPTS(); }
++void hal_idle_cpu(void) { vTaskDelay(1); }
++
+ #elif defined(PICORB_VM_MRUBY)
+-mrb_task_enable_irq()
+-#endif
++
++/*
++ * mruby: multi-VM tick management via FreeRTOS task
++ *
++ * Each mrb_state is registered/unregistered dynamically.
++ * A dedicated FreeRTOS task delivers mrb_tick() to all active VMs.
++ */
++
++#include "fmrb_app.h"
++#include "fmrb_task_config.h"
++
++typedef struct {
++  mrb_state *mrb;
++  int active;
++  uint32_t pending_ticks;   /* 案D: ticks accumulated by signal source, drained by VM thread */
++  uint32_t tick_countdown;  /* 案D: ticks until next preemption signal (timeslice cadence) */
++} mrb_vm_entry_t;
++
++static struct {
++  mrb_vm_entry_t vms[FMRB_MRB_MAX_VMS];
++  SemaphoreHandle_t mutex;
++  TaskHandle_t tick_task_handle;
++  int task_created;
++} g_tick_manager = {
++  .vms = {{NULL, 0, 0, 0}},
++  .mutex = NULL,
++  .tick_task_handle = NULL,
++  .task_created = 0
++};
++
++volatile int sigint_status = 0; /* MACHINE_SIG_NONE */
++
++/*
++ * FreeRTOS tick signal source (案D top-half).
++ *
++ * This task runs on a thread other than the VMs. It must therefore NOT call
++ * mrb_tick() (which mutates the per-VM task queues) - doing so races the VM's
++ * own thread and corrupts the task context (see doc/known_issue). Instead it
++ * only: (1) accumulates a pending-tick count, and (2) sets mrb->task.switching
++ * so a running (possibly CPU-bound) task yields at the next bytecode boundary.
++ * The real mrb_tick() is applied by the VM itself in mrb_task_run() via
++ * mrb_hal_task_take_pending_ticks().
++ */
++static void
++mruby_tick_task(void *arg)
+ {
+-  portENABLE_INTERRUPTS();
++  (void)arg;
++  const TickType_t tick_interval = pdMS_TO_TICKS(MRB_TICK_UNIT);
++
++  while (1) {
++    vTaskDelay(tick_interval);
++
++    if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
++      for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
++        mrb_vm_entry_t *vm = &g_tick_manager.vms[i];
++        if (vm->active && vm->mrb) {
++          /* Time tracking: ticks are applied on the VM's own thread in
++           * mrb_task_run (bottom-half), never from this thread. */
++          vm->pending_ticks++;
++          /* Preempt CPU-bound tasks at timeslice cadence. Requesting the switch
++           * asynchronously is safe: the VM acts on switching only at a top-level
++           * bytecode boundary (mrb_task_yield_ok in vm.c), never inside a nested
++           * C call, so the pending switch is deferred to the next safe point. */
++          if (vm->tick_countdown > 0) vm->tick_countdown--;
++          if (vm->tick_countdown == 0) {
++            mrb_task_request_switch(vm->mrb);
++            vm->tick_countdown = MRB_TIMESLICE_TICK_COUNT;
++          }
++        }
++      }
++      xSemaphoreGive(g_tick_manager.mutex);
++    }
++  }
++}
++
++/*
++ * Return and zero the pending-tick count for this VM (案D bottom-half source).
++ * Called from mrb_task_run() on the VM's own thread.
++ */
++uint32_t
++mrb_hal_task_take_pending_ticks(mrb_state *mrb)
++{
++  uint32_t n = 0;
++  if (g_tick_manager.mutex == NULL) return 0;
++
++  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
++    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
++      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
++        n = g_tick_manager.vms[i].pending_ticks;
++        g_tick_manager.vms[i].pending_ticks = 0;
++        break;
++      }
++    }
++    xSemaphoreGive(g_tick_manager.mutex);
++  }
++  return n;
+ }
+ 
+ void
+-#if defined(PICORB_VM_MRUBYC)
+-hal_disable_irq(void)
+-#elif defined(PICORB_VM_MRUBY)
+-mrb_task_disable_irq()
+-#endif
++machine_hal_init(mrb_state *mrb)
++{
++  (void)mrb;  /* VM registration is deferred to hal_register_vm() */
++
++  ESP_LOGI("hal", "machine_hal_init called");
++
++  if (!g_tick_manager.task_created) {
++    g_tick_manager.mutex = xSemaphoreCreateMutex();
++    if (g_tick_manager.mutex == NULL) {
++      ESP_LOGE("hal", "Failed to create mutex");
++      return;
++    }
++
++    BaseType_t ret = xTaskCreate(
++      mruby_tick_task,
++      "mruby_tick",
++      2048,
++      NULL,
++      5,
++      &g_tick_manager.tick_task_handle
++    );
++
++    if (ret == pdPASS) {
++      g_tick_manager.task_created = 1;
++      ESP_LOGI("hal", "mruby_tick_task created (interval=%dms)", MRB_TICK_UNIT);
++    } else {
++      ESP_LOGE("hal", "Failed to create mruby_tick_task");
++      vSemaphoreDelete(g_tick_manager.mutex);
++      g_tick_manager.mutex = NULL;
++      return;
++    }
++  }
++}
++
++void
++hal_register_vm(mrb_state *mrb)
++{
++  if (g_tick_manager.mutex == NULL) return;
++
++  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
++    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
++      if (!g_tick_manager.vms[i].active) {
++        g_tick_manager.vms[i].mrb = mrb;
++        g_tick_manager.vms[i].active = 1;
++        g_tick_manager.vms[i].pending_ticks = 0;
++        g_tick_manager.vms[i].tick_countdown = MRB_TIMESLICE_TICK_COUNT;
++        break;
++      }
++    }
++    xSemaphoreGive(g_tick_manager.mutex);
++  }
++}
++
++void
++hal_deinit(mrb_state *mrb)
++{
++  if (g_tick_manager.mutex == NULL) return;
++
++  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
++    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
++      if (g_tick_manager.vms[i].mrb == mrb) {
++        g_tick_manager.vms[i].active = 0;
++        g_tick_manager.vms[i].mrb = NULL;
++        break;
++      }
++    }
++    xSemaphoreGive(g_tick_manager.mutex);
++  }
++}
++
++void
++hal_deinit_by_pool(void *pool_ptr, size_t pool_size)
++{
++  if (g_tick_manager.mutex == NULL) return;
++
++  uint8_t *start = (uint8_t *)pool_ptr;
++  uint8_t *end = start + pool_size;
++
++  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
++    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
++      if (g_tick_manager.vms[i].active) {
++        uint8_t *p = (uint8_t *)g_tick_manager.vms[i].mrb;
++        if (p >= start && p < end) {
++          g_tick_manager.vms[i].active = 0;
++          g_tick_manager.vms[i].mrb = NULL;
++        }
++      }
++    }
++    xSemaphoreGive(g_tick_manager.mutex);
++  }
++}
++
++/*
++ * 案D: the task queues are now mutated only by each VM's own thread (the signal
++ * source no longer calls mrb_tick), so the scheduler needs no IRQ/lock guard.
++ * These remain as no-ops to satisfy the mruby-task HAL contract.
++ */
++void
++mrb_task_enable_irq(void)
++{
++}
++
++void
++mrb_task_disable_irq(void)
+ {
+-  portDISABLE_INTERRUPTS();
+ }
+ 
+ void
+-#if defined(PICORB_VM_MRUBYC)
+-hal_idle_cpu()
+-#elif defined(PICORB_VM_MRUBY)
+ hal_idle_cpu(mrb_state *mrb)
+-#endif
+ {
++  (void)mrb;
+   vTaskDelay(1);
+ }
+ 
++/*
++ * Task HAL interface (required by mruby-task gem)
++ * On ESP32, tick delivery is handled by mruby_tick_task above.
++ */
++void
++mrb_hal_task_init(mrb_state *mrb)
++{
++  /* 案D: re-enabled. The tick task is now a signal-only source (sets
++   * switching + accumulates pending ticks); it no longer calls mrb_tick from
++   * a foreign thread, so the VM-corruption race is gone. Idempotent. */
++  machine_hal_init(mrb);
++}
++
++void
++mrb_hal_task_final(mrb_state *mrb)
++{
++  hal_deinit(mrb);
++}
++
++void
++mrb_hal_task_idle_cpu(mrb_state *mrb)
++{
++  (void)mrb;
++  vTaskDelay(1);
++}
++
++void
++mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec)
++{
++  (void)mrb;
++  if (usec <= 0) return;
++  TickType_t ticks = pdMS_TO_TICKS(usec / 1000);
++  if (ticks < 1) ticks = 1;
++  vTaskDelay(ticks);
++}
++
++#endif /* PICORB_VM_MRUBY */
++
++/*
++ * Prism allocator mutex (used by prism_alloc.c via extern)
++ */
++static SemaphoreHandle_t s_prism_mutex = NULL;
++void fmrb_prism_lock(void)
++{
++  if (s_prism_mutex == NULL) s_prism_mutex = xSemaphoreCreateMutex();
++  xSemaphoreTake(s_prism_mutex, portMAX_DELAY);
++}
++void fmrb_prism_unlock(void)
++{
++  if (s_prism_mutex != NULL) xSemaphoreGive(s_prism_mutex);
++}
++
+ int
+ hal_write(int fd, const void *buf, int nbytes)
+ {
+@@ -238,3 +464,17 @@ Machine_uptime_us(void)
+ {
+   return (uint64_t)esp_timer_get_time();
+ }
++
++/* family-mruby: config query for boot diagnostics */
++int
++Machine_get_config_int(int type)
++{
++  switch(type)
++  {
++    case 0:
++      return MRB_TICK_UNIT;
++    case 1:
++      return MRB_TIMESLICE_TICK_COUNT;
++  }
++  return 0;
++}
+diff --git a/mrbgems/picoruby-machine/ports/posix/hal.c b/mrbgems/picoruby-machine/ports/posix/hal.c
+index ec602d2e..49394ba8 100644
+--- a/mrbgems/picoruby-machine/ports/posix/hal.c
++++ b/mrbgems/picoruby-machine/ports/posix/hal.c
+@@ -9,7 +9,6 @@
+ */
+ 
+ 
+-/***** Feature test switches ************************************************/
+ /***** System headers *******************************************************/
+ #include <stdlib.h>
+ #include <string.h>
+@@ -22,80 +21,25 @@
+ #include "hal.h"
+ 
+ 
+-/***** Constat values *******************************************************/
+-/***** Macros ***************************************************************/
+-/***** Typedefs *************************************************************/
+-/***** Function prototypes **************************************************/
+ /***** Local variables ******************************************************/
++#if defined(PICORB_VM_MRUBYC)
+ #ifndef __EMSCRIPTEN__
+ static sigset_t sigset_, sigset2_;
+ #endif
+-
+-#if defined(PICORB_VM_MRUBY)
+-static mrb_state *mrb_;
+-#elif defined(PICORB_VM_MRUBYC)
+ typedef void mrb_state;
+ #define mrb_tick(mrb) mrbc_tick()
+ #define hal_init(mrb) hal_init()
+ #define MRB_TICK_UNIT MRBC_TICK_UNIT
+ #endif
+ 
+-/***** Global variables *****************************************************/
+-/***** Signal catching functions ********************************************/
+-//================================================================
+-/*!@brief
+-  alarm signal handler
+-
+-*/
+-
+-
+-/***** Local functions ******************************************************/
+ /***** Global functions *****************************************************/
+ 
+-//================================================================
+-/*!@brief
+-  initialize
+-
+-*/
+-#ifndef __EMSCRIPTEN__
+-static void
+-sig_alarm(int dummy)
+-{
+-  (void)dummy;
+-  mrb_tick(mrb_);
+-}
+-#endif
+-
+-#if defined(PICORB_VM_MRUBY)
+-void
+-hal_init(mrb_state *mrb)
+-{
+-  mrb_ = mrb;
+-#else
+-void
+-hal_init(void)
+-{
+-#endif
+-#ifndef __EMSCRIPTEN__
+-  sigemptyset(&sigset_);
+-  sigaddset(&sigset_, SIGALRM);
+-
+-  struct sigaction sa;
+-  sa.sa_handler = sig_alarm;
+-  sa.sa_flags   = SA_RESTART;
+-  sa.sa_mask    = sigset_;
+-  sigaction(SIGALRM, &sa, 0);
+-
+-  struct itimerval tval;
+-  int sec  = 0;
+-  int usec = MRB_TICK_UNIT * 1000;
+-  tval.it_interval.tv_sec  = sec;
+-  tval.it_interval.tv_usec = usec;
+-  tval.it_value.tv_sec     = sec;
+-  tval.it_value.tv_usec    = usec;
+-  setitimer(ITIMER_REAL, &tval, 0);
+-#endif
+-}
++/*
++ * hal_init, hal_register_vm, hal_deinit, hal_deinit_by_pool,
++ * hal_idle_cpu are provided by hal_freertos.c
++ * (ESP-IDF build) and resolved at final link time.
++ * They are NOT defined here to avoid libmruby.a shadowing them.
++ */
+ 
+ #if defined(PICORB_VM_MRUBYC)
+ void hal_enable_irq(void)
+@@ -125,39 +69,8 @@ hal_write(int fd, const void *buf, int nbytes)
+ }
+ 
+ 
+-//================================================================
+-/*!@brief
+-  enable interrupt
++/* mrb_task_enable_irq / mrb_task_disable_irq are provided by hal-posix-task */
+ 
+-*/
+-void
+-mrb_task_enable_irq(void)
+-{
+-#ifndef __EMSCRIPTEN__
+-  sigprocmask(SIG_SETMASK, &sigset2_, 0);
+-#endif
+-}
+-
+-
+-//================================================================
+-/*!@brief
+-  disable interrupt
+-
+-*/
+-void
+-mrb_task_disable_irq(void)
+-{
+-#ifndef __EMSCRIPTEN__
+-  sigprocmask(SIG_BLOCK, &sigset_, &sigset2_);
+-#endif
+-}
+-
+-
+-//================================================================
+-/*!@brief
+-  abort program
+-
+-*/
+ void
+ hal_abort(const char *s)
+ {
+@@ -167,3 +80,13 @@ hal_abort(const char *s)
+   exit(1);
+ }
+ 
++/* hal_register_vm, hal_deinit, hal_deinit_by_pool
++ * are provided by hal_freertos.c (ESP-IDF) at link time. */
++
++/*
++ * Prism allocator mutex (used by prism_alloc.c via extern)
++ */
++#include <pthread.h>
++static pthread_mutex_t s_prism_mutex = PTHREAD_MUTEX_INITIALIZER;
++void fmrb_prism_lock(void)   { pthread_mutex_lock(&s_prism_mutex); }
++void fmrb_prism_unlock(void) { pthread_mutex_unlock(&s_prism_mutex); }
+diff --git a/mrbgems/picoruby-machine/ports/posix/machine.c b/mrbgems/picoruby-machine/ports/posix/machine.c
+index 56c9f95f..f4487878 100644
+--- a/mrbgems/picoruby-machine/ports/posix/machine.c
++++ b/mrbgems/picoruby-machine/ports/posix/machine.c
+@@ -51,6 +51,48 @@ Machine_tud_mounted_q(void)
+ void
+ Machine_delay_ms(uint32_t ms)
+ {
++  if (ms == 0) return;
++
++  /*
++   * Why the chunked wall-clock loop?
++   *
++   * FreeRTOS-posix (used for the Linux simulation target) emulates task ticks
++   * by installing an ITIMER_REAL at ~1 ms. That delivers SIGALRM to whichever
++   * thread happens to be running, and any in-flight nanosleep() returns early
++   * with EINTR at the very first tick - so a naive `nanosleep(ms, NULL)` here
++   * returns after a single millisecond instead of the requested duration.
++   *
++   * The standard "loop on EINTR with the remaining time" idiom also does not
++   * work reliably: some platforms clamp the returned remainder, and we were
++   * observed to exit early under heavy SIGALRM load.
++   *
++   * Instead we record an absolute wake-up time via CLOCK_MONOTONIC and sleep
++   * in short (10 ms) chunks, rechecking the clock on every iteration. Each
++   * chunk may be cut short by SIGALRM, but the outer loop terminates only
++   * when wall-clock time actually reaches the target - so the function always
++   * sleeps at least `ms` milliseconds regardless of signal activity. The
++   * second nanosleep() argument is NULL because we do not care about the
++   * remainder; the wall-clock check is the source of truth.
++   *
++   * Trade-off: accuracy is bounded by the chunk size (~10 ms over-sleep in
++   * the worst case) plus scheduler jitter. This is intentional - the caller
++   * is asking for a coarse delay, not precision timing.
++   */
++
++  struct timespec now;
++  clock_gettime(CLOCK_MONOTONIC, &now);
++  uint64_t target_ns = (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec
++                     + (uint64_t)ms * 1000000ULL;
++
++  const struct timespec chunk = { .tv_sec = 0, .tv_nsec = 10 * 1000000 }; /* 10 ms */
++  for (;;) {
++    struct timespec c = chunk;
++    nanosleep(&c, NULL); /* EINTR is fine; the wall-clock check below is authoritative. */
++
++    clock_gettime(CLOCK_MONOTONIC, &now);
++    uint64_t now_ns = (uint64_t)now.tv_sec * 1000000000ULL + (uint64_t)now.tv_nsec;
++    if (now_ns >= target_ns) break;
++  }
+ }
+ 
+ void
+@@ -134,3 +176,17 @@ Machine_uptime_us(void)
+   clock_gettime(CLOCK_MONOTONIC, &ts);
+   return (uint64_t)ts.tv_sec * 1000000ULL + ts.tv_nsec / 1000;
+ }
++
++/* family-mruby: config query for boot diagnostics */
++int
++Machine_get_config_int(int type)
++{
++  switch(type)
++  {
++    case 0:
++      return MRB_TICK_UNIT;
++    case 1:
++      return MRB_TIMESLICE_TICK_COUNT;
++  }
++  return 0;
++}
+diff --git a/mrbgems/picoruby-machine/src/mruby/machine.c b/mrbgems/picoruby-machine/src/mruby/machine.c
+index fa6b210b..b2ca9821 100644
+--- a/mrbgems/picoruby-machine/src/mruby/machine.c
++++ b/mrbgems/picoruby-machine/src/mruby/machine.c
+@@ -4,7 +4,9 @@
+ #include "mruby/array.h"
+ #include "../../include/machine.h"
+ #include "../../include/hal.h"
++#ifndef FMRB_NO_IO_CONSOLE
+ #include "../../../picoruby-io-console/include/io-console.h"
++#endif
+ 
+ static inline void
+ io_wait_for_input(mrb_state *mrb)
+@@ -199,9 +201,13 @@ raise_sigtstp(mrb_state *mrb)
+ static mrb_value
+ mrb_machine_check_signal(mrb_state *mrb, mrb_value self)
+ {
++#ifndef FMRB_NO_IO_CONSOLE
+   io_raw_bang(true);
++#endif
+   Machine_tud_task();
++#ifndef FMRB_NO_IO_CONSOLE
+   io_cooked_bang();
++#endif
+   if (sigint_status == MACHINE_SIGINT_RECEIVED) {
+     sigint_status = MACHINE_SIG_NONE;
+     raise_interrupt(mrb);
+@@ -445,13 +451,18 @@ mrb_picoruby_machine_gem_init(mrb_state* mrb)
+ #if !defined(PICORB_PLATFORM_POSIX)
+   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(debug_puts), mrb_s_debug_puts, MRB_ARGS_ANY());
+ 
+-  struct RClass *class_IO = mrb_define_class_id(mrb, MRB_SYM(IO), mrb->object_class);
+-  mrb_define_method_id(mrb, class_IO, MRB_SYM(puts), mrb_io_puts, MRB_ARGS_ANY());
+-  mrb_define_method_id(mrb, class_IO, MRB_SYM(print), mrb_io_print, MRB_ARGS_ANY());
+-  mrb_define_method_id(mrb, class_IO, MRB_SYM(write), mrb_io_write, MRB_ARGS_ANY());
+-  mrb_define_method_id(mrb, class_IO, MRB_SYM(read), mrb_io_read, MRB_ARGS_OPT(1));
+-  mrb_define_method_id(mrb, class_IO, MRB_SYM(gets), mrb_io_gets, MRB_ARGS_NONE());
+-  mrb_define_method_id(mrb, class_IO, MRB_SYM(getc), mrb_io_getc, MRB_ARGS_NONE());
++  // family-mruby: IO instance methods (puts/print/write/read/gets/getc) are
++  // provided by picoruby-fmrb-io, which routes through fmrb_hal_file_* so the
++  // same dispatch works for STDIO and regular files. Defining them here would
++  // blanket-override fmrb-io's versions and force every IO#write — including
++  // File#write — to go to fd=1 (UART), silently losing file writes.
++  // The mrb_io_* functions above are unused on this build.
++  (void)mrb_io_puts;
++  (void)mrb_io_print;
++  (void)mrb_io_write;
++  (void)mrb_io_read;
++  (void)mrb_io_gets;
++  (void)mrb_io_getc;
+ #endif
+ }
+ 
+diff --git a/mrbgems/picoruby-mbedtls/mrbgem.rake b/mrbgems/picoruby-mbedtls/mrbgem.rake
+index bd680a14..05d0dea5 100644
+--- a/mrbgems/picoruby-mbedtls/mrbgem.rake
++++ b/mrbgems/picoruby-mbedtls/mrbgem.rake
+@@ -1,3 +1,10 @@
++# Family mruby patch of picoruby-mbedtls/mrbgem.rake.
++#
++# Upstream skips compiling the bundled mbedtls library only for build names
++# "esp32" / "esp32-microruby" (mbedTLS comes from ESP-IDF there). The Family
++# mruby Modern target builds under the name "esp32p4" and must be skipped the
++# same way, otherwise the bundled mbedtls would clash with ESP-IDF's mbedtls
++# at firmware link time.
+ MRuby::Gem::Specification.new('picoruby-mbedtls') do |spec|
+   spec.license = 'MIT'
+   spec.authors = ['HASUMI Hitoshi', 'Ryo Kajiwara']
+@@ -79,7 +86,8 @@ MRuby::Gem::Specification.new('picoruby-mbedtls') do |spec|
+   spec.cc.include_paths << "#{dir}/include"
+ 
+   # For ESP32, use Mbed TLS provided by ESP-IDF
+-  unless ['esp32', 'esp32-microruby'].include?(build.name)
++  # (Family mruby patch: esp32p4 added)
++  unless ['esp32', 'esp32-microruby', 'esp32p4'].include?(build.name)
+     spec.objs += Dir.glob("#{mbedtls_dir}/library/*.{c,cpp,m,asm,S}").map do |f|
+       f.relative_path_from(dir).pathmap("#{build_dir}/%X.o")
+     end
+diff --git a/mrbgems/picoruby-mruby/lib/mruby b/mrbgems/picoruby-mruby/lib/mruby
+--- a/mrbgems/picoruby-mruby/lib/mruby
++++ b/mrbgems/picoruby-mruby/lib/mruby
+@@ -1 +1 @@
+-Subproject commit 7a4622678ddc480dadcb3149ec29de1e9dded84d
++Subproject commit 7a4622678ddc480dadcb3149ec29de1e9dded84d-dirty
+diff --git a/mrbgems/picoruby-mruby/mrbgem.rake b/mrbgems/picoruby-mruby/mrbgem.rake
+index f5796b6a..74c96210 100644
+--- a/mrbgems/picoruby-mruby/mrbgem.rake
++++ b/mrbgems/picoruby-mruby/mrbgem.rake
+@@ -20,7 +20,8 @@ MRuby::Gem::Specification.new('picoruby-mruby') do |spec|
+   # Load HAL gem first so mruby-task can find it
+   if build.posix?
+     spec.add_dependency 'hal-posix-task', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/hal-posix-task"
+-    spec.add_dependency 'mruby-io', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-io"
++    # family-mruby: mruby-io is NOT loaded here; picoruby-fmrb-io is used instead
++    # (mruby-io conflicts with picoruby-fmrb-io)
+   else
+     spec.add_dependency 'hal-picoruby-task', gemdir: "#{MRUBY_ROOT}/mrbgems/hal-picoruby-task"
+   end
+@@ -70,7 +71,8 @@ MRuby::Gem::Specification.new('picoruby-mruby') do |spec|
+     end
+   elsif spec.cc.defines.include?("PICORB_ALLOC_ESTALLOC")
+     spec.cc.defines << "ESTALLOC_ALIGNMENT=#{align}"
+-    if spec.cc.defines.any?{ _1.start_with?("PICORB_DEBUG") }
++    # Always enable ESTALLOC_DEBUG for est_take_statistics (memory monitoring)
++    unless spec.cc.defines.any?{ _1.start_with?("ESTALLOC_DEBUG") }
+       spec.cc.defines << "ESTALLOC_DEBUG=1"
+     end
+     alloc_dir = "#{dir}/lib/estalloc"
+diff --git a/mrbgems/picoruby-mruby/src/alloc.c b/mrbgems/picoruby-mruby/src/alloc.c
+index c46a3d37..539b31e6 100644
+--- a/mrbgems/picoruby-mruby/src/alloc.c
++++ b/mrbgems/picoruby-mruby/src/alloc.c
+@@ -240,12 +240,14 @@ mrb_open_with_custom_alloc(void* mem, size_t bytes)
+ 
+ #include "../lib/estalloc/estalloc.h"
+ 
+-static ESTALLOC *est = NULL;
++/* family-mruby: per-VM estalloc via thread-local accessor */
++extern void* fmrb_get_current_est(void);
++extern void  fmrb_set_current_est(void*);
+ 
+ void *
+-//mrb_estalloc_allocf(mrb_state *mrb, void *p, size_t size, void *est)
+ mrb_basic_alloc_func(void* ptr, size_t size)
+ {
++  ESTALLOC *est = (ESTALLOC*)fmrb_get_current_est();
+   if (size == 0) {
+     /* `free(NULL)` should be no-op */
+     est_free(est, ptr);
+@@ -258,6 +260,7 @@ mrb_basic_alloc_func(void* ptr, size_t size)
+ mrb_value
+ mrb_alloc_statistics(mrb_state *mrb)
+ {
++  ESTALLOC *est = (ESTALLOC*)fmrb_get_current_est();
+   est_take_statistics(est);
+   ESTALLOC_STAT *stat = &est->stat;
+   mrb_value hash = mrb_hash_new_capa(mrb, 5);
+@@ -272,10 +275,31 @@ mrb_alloc_statistics(mrb_state *mrb)
+ mrb_state *
+ mrb_open_with_custom_alloc(void* mem, size_t bytes)
+ {
+-  est = est_init(mem, bytes);
++  ESTALLOC *est = est_init(mem, bytes);
++  fmrb_set_current_est(est);
+   return mrb_open();
+ }
+ 
++/* family-mruby: helper to get stats from an est pointer */
++int
++mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free_out, int32_t* frag)
++{
++  if (!est_ptr || !total || !used || !free_out || !frag) {
++    return -1;
++  }
++
++  ESTALLOC *est = (ESTALLOC*)est_ptr;
++  est_take_statistics(est);
++  ESTALLOC_STAT *stat = &est->stat;
++
++  *total = stat->total;
++  *used = stat->used;
++  *free_out = stat->free;
++  *frag = stat->frag;
++
++  return 0;
++}
++
+ // PICORB_ALLOC_ESTALLOC
+ #else
+ // DEFAULT
+diff --git a/mrbgems/picoruby-mruby/src/file_ext.c b/mrbgems/picoruby-mruby/src/file_ext.c
+index 90031f4f..89b13549 100644
+--- a/mrbgems/picoruby-mruby/src/file_ext.c
++++ b/mrbgems/picoruby-mruby/src/file_ext.c
+@@ -1,48 +1,14 @@
+ /*
+ ** file_ext.c - Extensions to mruby-io File class
+ **
+-** Adds File#fsync for POSIX platforms.
++** family-mruby: fsync is not needed (fmrb-io does not use mruby-io).
++** This stub replaces the upstream version that depends on mruby-io.
+ */
+ 
+ #include <mruby.h>
+-#include <mruby/presym.h>
+-#include <mruby/class.h>
+-#include "../lib/mruby/mrbgems/mruby-io/include/mruby/io.h"
+-
+-#include <unistd.h>
+-#include <errno.h>
+-#include <string.h>
+-
+-#if defined(_WIN32) || defined(_WIN64)
+-#include <io.h>
+-#endif
+-
+-/*
+- * call-seq:
+- *   file.fsync -> 0
+- *
+- * Flushes file data and metadata to disk.
+- * Raises IOError on failure.
+- */
+-static mrb_value
+-mrb_file_fsync(mrb_state *mrb, mrb_value self)
+-{
+-  int fd = mrb_io_fileno(mrb, self);
+-
+-#if defined(_WIN32) || defined(_WIN64)
+-  if (_commit(fd) < 0) {
+-#else
+-  if (fsync(fd) < 0) {
+-#endif
+-    mrb_raisef(mrb, E_IO_ERROR, "fsync failed: %s", strerror(errno));
+-  }
+-
+-  return mrb_fixnum_value(0);
+-}
+ 
+ void
+ mrb_file_ext_init(mrb_state *mrb)
+ {
+-  struct RClass *file = mrb_class_get_id(mrb, MRB_SYM(File));
+-  mrb_define_method_id(mrb, file, MRB_SYM(fsync), mrb_file_fsync, MRB_ARGS_NONE());
++  (void)mrb;
+ }
+diff --git a/mrbgems/picoruby-net-http/mrblib/http_client.rb b/mrbgems/picoruby-net-http/mrblib/http_client.rb
+index e78c0dd2..7bdbabbe 100644
+--- a/mrbgems/picoruby-net-http/mrblib/http_client.rb
++++ b/mrbgems/picoruby-net-http/mrblib/http_client.rb
+@@ -1,3 +1,9 @@
++# Family mruby patch of picoruby-net-http/mrblib/http_client.rb.
++# Upstream only accepts URL Strings in Net::HTTP.get / get_response /
++# post_form; passing a URI object (the canonical CRuby style,
++# Net::HTTP.get_response(URI.parse(...))) fell into the plain-host branch
++# and tried to connect to the URI object itself on port 80. Accept URI
++# objects via duck typing (respond_to?(:host)) in the three class methods.
+ require 'socket'
+ 
+ module Net
+@@ -69,8 +75,16 @@ module Net
+ 
+     # Finish HTTP session
+     def finish
+-      if @socket && !@socket.closed?
+-        @socket.close
++      # Always close: SSLSocket#closed? also reports true after a peer EOF
++      # while the native TLS session is still allocated, so guarding on it
++      # leaked the session. #close on an already-released socket raises,
++      # which is safe to ignore here.
++      if @socket
++        begin
++          @socket.close
++        rescue
++          # already released
++        end
+       end
+       @socket = nil
+       @started = false
+@@ -154,20 +168,28 @@ module Net
+     # Class method: Simple GET request
+     # Note: Renamed from 'get' to avoid mruby/c limitation where class methods
+     # and instance methods cannot have the same name
+-    def self._get(host, path, port = nil)
+-      if path.nil?
+-        raise ArgumentError, "Path cannot be nil"
+-      end
+-      if host.start_with?('http')
++    def self._get(host, path = nil, port = nil)
++      if host.respond_to?(:host)
++        # URI object (CRuby style: Net::HTTP.get(URI.parse(...)))
++        uri = host
++        host = uri.host
++        path ||= uri.request_uri
++        port ||= uri.port
++        use_ssl = uri.scheme == 'https'
++      elsif host.start_with?('http')
+         # Parse URI
+         uri = URI.parse(host)
+         host = uri.host
++        path ||= uri.request_uri
+         port ||= uri.port
+         use_ssl = uri.scheme == 'https'
+       else
+         port ||= 80
+         use_ssl = false
+       end
++      if path.nil?
++        raise ArgumentError, "Path cannot be nil"
++      end
+ 
+       http = new(host, port)
+       http.use_ssl = use_ssl if use_ssl
+@@ -188,7 +210,14 @@ module Net
+     # Class method: Get response object
+     # Note: Safe from mruby/c limitation as no instance method with same name exists
+     def self.get_response(uri_or_host, path = nil, port = nil)
+-      if uri_or_host.is_a?(String) && uri_or_host.start_with?('http')
++      if uri_or_host.respond_to?(:host)
++        # URI object (CRuby style: Net::HTTP.get_response(URI.parse(...)))
++        uri = uri_or_host
++        host = uri.host
++        path ||= uri.request_uri
++        port ||= uri.port
++        use_ssl = uri.scheme == 'https'
++      elsif uri_or_host.is_a?(String) && uri_or_host.start_with?('http')
+         # Parse URI
+         uri = URI.parse(uri_or_host)
+         host = uri.host
+@@ -204,24 +233,30 @@ module Net
+ 
+       http = new(host, port)
+       http.use_ssl = use_ssl if use_ssl
++      # HTTP#start returns self, not the block value; capture the response
++      res = nil
+       http.start do |h|
+-        h.get(path)
++        res = h.get(path)
+       end
++      res
+     end
+ 
+     # Class method: POST form data
+     # Note: Safe from mruby/c limitation as no instance method with same name exists
+     def self.post_form(url, params)
+-      uri = URI.parse(url)
++      uri = url.respond_to?(:host) ? url : URI.parse(url)
+       req = Post.new(uri.request_uri)
+       req['content-type'] = 'application/x-www-form-urlencoded'
+       req.body = URI.encode_www_form(params)
+ 
+       http = new(uri.host, uri.port)
+       http.use_ssl = (uri.scheme == 'https')
++      # HTTP#start returns self, not the block value; capture the response
++      res = nil
+       http.start do |h|
+-        h.request(req)
++        res = h.request(req)
+       end
++      res
+     end
+ 
+     private
+@@ -284,22 +319,26 @@ module Net
+ 
+       # Read body based on headers
+       if content_length
+-        # Read exact content length
+-        body_start = response.length
++        # Read exact content length (may span several reads)
+         remaining = content_length - (response.length - header_end - 4)
+-        if remaining > 0
++        while remaining > 0
+           body_part = @socket.read(remaining)
+-          response += body_part if body_part
++          break unless body_part
++          response += body_part
++          remaining -= body_part.length
+         end
+       elsif chunked
+-        # Read chunked encoding (simplified)
+-        while true
++        # Read until the terminating zero-length chunk, then de-frame.
++        # (Guard against re-reading when the whole body already arrived with
++        # the headers: reading again would block until the socket timeout.)
++        until response.end_with?("0\r\n\r\n")
+           chunk = @socket.read(8192)
+           break unless chunk
+           response += chunk
+-          # Simple check for end of chunks
+-          break if response.end_with?("\r\n0\r\n\r\n")
+         end
++        headers_part = response[0..header_end + 3] || ''
++        raw = response[header_end + 4, response.length] || ''
++        response = headers_part + dechunk(raw)
+       else
+         # Read until connection closes
+         while true
+@@ -312,6 +351,46 @@ module Net
+       response
+     end
+ 
++    # Decode HTTP/1.1 chunked transfer-encoding into the raw body.
++    # Each chunk is "<hex-size>[;ext]\r\n<data>\r\n"; a zero size ends it.
++    def dechunk(raw)
++      decoded = ""
++      pos = 0
++      len = raw.length
++      while pos < len
++        crlf = raw.index("\r\n", pos)
++        break unless crlf
++        size = hex_to_i(raw[pos...crlf])
++        break if size <= 0
++        data_start = crlf + 2
++        break if data_start + size > len
++        decoded += raw[data_start, size]
++        pos = data_start + size + 2  # skip the data and its trailing CRLF
++      end
++      decoded
++    end
++
++    # Parse a hex string up to the first non-hex character (chunk-size line
++    # may carry ";extensions"). String#to_i(16) is avoided for portability.
++    def hex_to_i(str)
++      v = 0
++      i = 0
++      while i < str.length
++        c = str[i]
++        if c >= '0' && c <= '9'
++          v = v * 16 + (c.ord - '0'.ord)
++        elsif c >= 'a' && c <= 'f'
++          v = v * 16 + (c.ord - 'a'.ord + 10)
++        elsif c >= 'A' && c <= 'F'
++          v = v * 16 + (c.ord - 'A'.ord + 10)
++        else
++          break
++        end
++        i += 1
++      end
++      v
++    end
++
+     # Check if using SSL
+     def use_ssl?
+       @use_ssl
+diff --git a/mrbgems/picoruby-net-websocket/mrbgem.rake b/mrbgems/picoruby-net-websocket/mrbgem.rake
+index e9c9e8f3..afde1927 100644
+--- a/mrbgems/picoruby-net-websocket/mrbgem.rake
++++ b/mrbgems/picoruby-net-websocket/mrbgem.rake
+@@ -1,3 +1,10 @@
++# Family mruby patch of picoruby-net-websocket/mrbgem.rake.
++#
++# Upstream points the mruby-VM pack dependency at
++# picoruby-mruby/lib/mruby/mrbgems/picoruby-pack, which does not exist in the
++# vendored mruby tree (the gem there is mruby-pack). Fix the gemdir so the
++# esp32p4/linux (microruby) builds resolve it; `require 'pack'` then succeeds
++# because mruby-* gems are registered in prebuilt_gems[] as "pack".
+ MRuby::Gem::Specification.new('picoruby-net-websocket') do |spec|
+   spec.license = 'MIT'
+   spec.author  = 'HASUMI Hitoshi'
+@@ -6,7 +13,7 @@ MRuby::Gem::Specification.new('picoruby-net-websocket') do |spec|
+   spec.require_name = 'net/websocket'
+ 
+   if build.vm_mruby?
+-    spec.add_dependency 'mruby-pack', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/picoruby-pack"
++    spec.add_dependency 'mruby-pack', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-pack"
+   elsif build.vm_mrubyc?
+     spec.add_dependency 'picoruby-pack'
+   end
+diff --git a/mrbgems/picoruby-require/mrbgem.rake b/mrbgems/picoruby-require/mrbgem.rake
+index 8a92dcfd..e53d0f12 100644
+--- a/mrbgems/picoruby-require/mrbgem.rake
++++ b/mrbgems/picoruby-require/mrbgem.rake
+@@ -6,6 +6,7 @@ MRuby::Gem::Specification.new('picoruby-require') do |spec|
+   spec.summary = 'PicoRuby require gem'
+ 
+   spec.add_dependency 'picoruby-sandbox'
++  spec.add_dependency 'picoruby-fmrb-filesystem'
+ 
+   if build.vm_mrubyc?
+     if build.posix?
+diff --git a/mrbgems/picoruby-sandbox/src/mruby/sandbox.c b/mrbgems/picoruby-sandbox/src/mruby/sandbox.c
+index ae41a69b..e3d5f33b 100644
+--- a/mrbgems/picoruby-sandbox/src/mruby/sandbox.c
++++ b/mrbgems/picoruby-sandbox/src/mruby/sandbox.c
+@@ -45,7 +45,7 @@ mrb_sandbox_initialize(mrb_state *mrb, mrb_value self)
+   size_t size = strlen((const char *)script);
+   ss->irep = mrc_load_string_cxt(ss->cc, (const uint8_t **)&script, size);
+ 
+-  mrb_value name;
++  mrb_value name = mrb_nil_value();
+   mrb_get_args(mrb, "|S", &name);
+   if (mrb_nil_p(name)) {
+     name = mrb_str_new_cstr(mrb, "sandbox");
+diff --git a/mrbgems/picoruby-socket/mrbgem.rake b/mrbgems/picoruby-socket/mrbgem.rake
+index ab81ba83..3fca765a 100644
+--- a/mrbgems/picoruby-socket/mrbgem.rake
++++ b/mrbgems/picoruby-socket/mrbgem.rake
+@@ -1,3 +1,15 @@
++# Family mruby patch of picoruby-socket/mrbgem.rake.
++#
++# Upstream only recognizes the ESP-IDF build as build.name == "esp32"; the
++# Family mruby Modern target builds libmruby.a under the name "esp32p4".
++# Without this patch the esp32p4 build would clone its own LwIP tree and
++# compile it (rp2040/cyw43 path), which conflicts with ESP-IDF's LwIP.
++#
++# Changes from upstream:
++# - esp_idf_build covers esp32 / esp32-microruby / esp32p4
++# - ESP-IDF builds define PICORB_PLATFORM_POSIX for the gem's own sources so
++#   picorb_socket_t has the same (fd-based) layout as ports/esp32/*.c, which
++#   are compiled by the picoruby-esp32 IDF component against ESP-IDF LwIP.
+ MRuby::Gem::Specification.new('picoruby-socket') do |spec|
+   spec.license = 'MIT'
+   spec.author  = 'HASUMI Hitoshi'
+@@ -6,6 +18,8 @@ MRuby::Gem::Specification.new('picoruby-socket') do |spec|
+ 
+   spec.require_name = 'socket'
+ 
++  esp_idf_build = %w[esp32 esp32-microruby esp32p4].include?(build.name)
++
+   # Dependencies
+   unless build.posix?
+     spec.add_dependency 'picoruby-mbedtls'  # SSL/TLS support for non-POSIX platforms
+@@ -15,15 +29,23 @@ MRuby::Gem::Specification.new('picoruby-socket') do |spec|
+   # Add include directory
+   spec.cc.include_paths << "#{dir}/include"
+ 
++  if esp_idf_build
++    # Match the struct layout used by ports/esp32/*.c (BSD sockets on LwIP).
++    # The bare-metal toolchain has no <sys/socket.h>; src/mruby/socket.c is
++    # patched (lib/patch) to use its fallback constants when ESP32_PLATFORM
++    # is defined.
++    spec.cc.defines << 'PICORB_PLATFORM_POSIX=1'
++  end
++
+   # Add mbedtls include path for SSL support (non-POSIX only)
+-  unless build.posix? || build.name == "esp32"
++  unless build.posix? || esp_idf_build
+     mbedtls_dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mbedtls/lib/mbedtls"
+     if File.directory?(mbedtls_dir)
+       spec.cc.include_paths << "#{mbedtls_dir}/include"
+     end
+   end
+ 
+-  unless build.posix? || build.name == "esp32"
++  unless build.posix? || esp_idf_build
+     # LwIP configuration
+     LWIP_VERSION = "STABLE-2_2_1_RELEASE"
+     LWIP_REPO = "https://github.com/lwip-tcpip/lwip"
+diff --git a/mrbgems/picoruby-socket/ports/esp32/ssl_socket.c b/mrbgems/picoruby-socket/ports/esp32/ssl_socket.c
+index 187e3c7a..4a91b45e 100644
+--- a/mrbgems/picoruby-socket/ports/esp32/ssl_socket.c
++++ b/mrbgems/picoruby-socket/ports/esp32/ssl_socket.c
+@@ -1,9 +1,25 @@
+ /*
+  * SSL Socket implementation for esp32 using mbedtls
++ *
++ * Family mruby patch of ports/esp32/ssl_socket.c:
++ * - Certificate verification uses the ESP-IDF certificate bundle
++ *   (esp_crt_bundle, enabled in sdkconfig) by default, so HTTPS to public
++ *   servers works out of the box. SSLContext#set_ca replaces the bundle
++ *   with a user-supplied CA (self-signed servers).
++ * - SSLSocket_ready no longer depends on the never-allocated base_socket;
++ *   it checks buffered TLS bytes and polls the underlying fd.
++ * - Read timeout (FMRB_SOCKET_IO_TIMEOUT_MS) so a silent peer cannot stall
++ *   the mruby VM task forever.
++ * - Failures are logged with the mbedtls error code.
++ * - Allocations use fmrb_sys_malloc: upstream used picorb_alloc with a NULL
++ *   VM, which on the mruby VM expands to mrb_malloc(NULL, ...) and crashes
++ *   with a NULL mrb_state dereference (observed as a Load access fault in
++ *   mrb_realloc on the first HTTPS request on Tab5).
+  */
+ 
+ #include "../../include/socket.h"
+ #include "picoruby.h"
++#include "fmrb_mem.h"
+ 
+ /* mbedtls includes */
+ #include "mbedtls/net_sockets.h"
+@@ -12,6 +28,18 @@
+ #include "mbedtls/ctr_drbg.h"
+ #include "mbedtls/error.h"
+ 
++#include "esp_crt_bundle.h"
++#include "esp_log.h"
++
++#include <sys/select.h>
++#include <sys/time.h>
++
++static const char *TAG = "ssl_socket";
++
++#ifndef FMRB_SOCKET_IO_TIMEOUT_MS
++#define FMRB_SOCKET_IO_TIMEOUT_MS 10000
++#endif
++
+ /* SSL connection states */
+ #define SSL_STATE_NONE           0
+ #define SSL_STATE_CONNECTING     1
+@@ -28,6 +56,7 @@ struct picorb_ssl_context {
+   mbedtls_pk_context key;
+   bool client_cert_loaded;
+   bool client_key_loaded;
++  bool crt_bundle_attached;
+   int verify_mode;
+ };
+ 
+@@ -49,7 +78,7 @@ struct picorb_ssl_socket {
+ picorb_ssl_context_t*
+ SSLContext_create(void)
+ {
+-  picorb_ssl_context_t *ctx = (picorb_ssl_context_t *)picorb_alloc(NULL, sizeof(picorb_ssl_context_t));
++  picorb_ssl_context_t *ctx = (picorb_ssl_context_t *)fmrb_sys_malloc(sizeof(picorb_ssl_context_t));
+   if (!ctx) return NULL;
+ 
+   mbedtls_ssl_config_init(&ctx->ssl_config);
+@@ -60,6 +89,7 @@ SSLContext_create(void)
+   mbedtls_pk_init(&ctx->key);
+   ctx->client_cert_loaded = false;
+   ctx->client_key_loaded = false;
++  ctx->crt_bundle_attached = false;
+   ctx->verify_mode = SSL_VERIFY_PEER;
+ 
+   /* Seed the random number generator */
+@@ -82,6 +112,19 @@ SSLContext_create(void)
+   /* Default to verifying peer certificate */
+   mbedtls_ssl_conf_authmode(&ctx->ssl_config, MBEDTLS_SSL_VERIFY_REQUIRED);
+ 
++  /* Verify against the ESP-IDF certificate bundle by default; replaced by
++   * a user CA when SSLContext#set_ca is called. */
++  if (esp_crt_bundle_attach(&ctx->ssl_config) == ESP_OK) {
++    ctx->crt_bundle_attached = true;
++  }
++  else {
++    ESP_LOGW(TAG, "esp_crt_bundle_attach failed; set a CA with SSLContext#set_ca");
++  }
++
++  /* Give up on a silent peer instead of blocking the VM task forever.
++   * Requires the recv_timeout BIO installed in SSLSocket_connect. */
++  mbedtls_ssl_conf_read_timeout(&ctx->ssl_config, FMRB_SOCKET_IO_TIMEOUT_MS);
++
+   return ctx;
+ }
+ 
+@@ -89,13 +132,16 @@ void
+ SSLContext_free(picorb_ssl_context_t *ctx)
+ {
+   if (!ctx) return;
++  if (ctx->crt_bundle_attached) {
++    esp_crt_bundle_detach(&ctx->ssl_config);
++  }
+   mbedtls_x509_crt_free(&ctx->cacert);
+   mbedtls_x509_crt_free(&ctx->cert);
+   mbedtls_pk_free(&ctx->key);
+   mbedtls_ssl_config_free(&ctx->ssl_config);
+   mbedtls_ctr_drbg_free(&ctx->ctr_drbg);
+   mbedtls_entropy_free(&ctx->entropy);
+-  picorb_free(NULL, ctx);
++  fmrb_sys_free(ctx);
+ }
+ 
+ bool
+@@ -113,8 +159,14 @@ SSLContext_set_ca(picorb_ssl_context_t *ctx, const void *addr, size_t size)
+ 
+   int ret = mbedtls_x509_crt_parse(&ctx->cacert, (const unsigned char *)addr, size + 1);
+   if (ret != 0) {
++    ESP_LOGW(TAG, "x509_crt_parse failed: -0x%04x", -ret);
+     return false;
+   }
++  /* A user CA replaces the default certificate bundle */
++  if (ctx->crt_bundle_attached) {
++    esp_crt_bundle_detach(&ctx->ssl_config);
++    ctx->crt_bundle_attached = false;
++  }
+   mbedtls_ssl_conf_ca_chain(&ctx->ssl_config, &ctx->cacert, NULL);
+   return true;
+ }
+@@ -209,7 +261,7 @@ SSLSocket_create(picorb_ssl_context_t *ssl_ctx)
+ {
+   if (!ssl_ctx) return NULL;
+ 
+-  picorb_ssl_socket_t *ssl_sock = (picorb_ssl_socket_t *)picorb_alloc(NULL, sizeof(picorb_ssl_socket_t));
++  picorb_ssl_socket_t *ssl_sock = (picorb_ssl_socket_t *)fmrb_sys_malloc(sizeof(picorb_ssl_socket_t));
+   if (!ssl_sock) return NULL;
+   memset(ssl_sock, 0, sizeof(picorb_ssl_socket_t));
+ 
+@@ -226,8 +278,8 @@ bool
+ SSLSocket_set_hostname(picorb_ssl_socket_t *ssl_sock, const char *hostname)
+ {
+   if (!ssl_sock || !hostname) return false;
+-  if (ssl_sock->hostname) picorb_free(NULL, ssl_sock->hostname);
+-  ssl_sock->hostname = (char *)picorb_alloc(NULL, strlen(hostname) + 1);
++  if (ssl_sock->hostname) fmrb_sys_free(ssl_sock->hostname);
++  ssl_sock->hostname = (char *)fmrb_sys_malloc(strlen(hostname) + 1);
+   if (!ssl_sock->hostname) return false;
+   strcpy(ssl_sock->hostname, hostname);
+   return true;
+@@ -256,6 +308,7 @@ SSLSocket_connect(picorb_ssl_socket_t *ssl_sock)
+   /* 1. TCP Connect */
+   ret = mbedtls_net_connect(&ssl_sock->net_ctx, ssl_sock->hostname, port_str, MBEDTLS_NET_PROTO_TCP);
+   if (ret != 0) {
++    ESP_LOGW(TAG, "net_connect(%s:%s) failed: -0x%04x", ssl_sock->hostname, port_str, -ret);
+     ssl_sock->state = SSL_STATE_ERROR;
+     return false;
+   }
+@@ -263,6 +316,7 @@ SSLSocket_connect(picorb_ssl_socket_t *ssl_sock)
+   /* 2. Setup SSL */
+   ret = mbedtls_ssl_setup(&ssl_sock->ssl, &ssl_sock->ssl_ctx->ssl_config);
+   if (ret != 0) {
++    ESP_LOGW(TAG, "ssl_setup failed: -0x%04x", -ret);
+     mbedtls_net_free(&ssl_sock->net_ctx);
+     ssl_sock->state = SSL_STATE_ERROR;
+     return false;
+@@ -275,11 +329,16 @@ SSLSocket_connect(picorb_ssl_socket_t *ssl_sock)
+     return false;
+   }
+ 
+-  mbedtls_ssl_set_bio(&ssl_sock->ssl, &ssl_sock->net_ctx, mbedtls_net_send, mbedtls_net_recv, NULL);
++  /* recv_timeout BIO so mbedtls_ssl_conf_read_timeout takes effect */
++  mbedtls_ssl_set_bio(&ssl_sock->ssl, &ssl_sock->net_ctx,
++                      mbedtls_net_send, NULL, mbedtls_net_recv_timeout);
+ 
+   /* 3. Handshake */
+   while ((ret = mbedtls_ssl_handshake(&ssl_sock->ssl)) != 0) {
+     if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
++      ESP_LOGW(TAG, "handshake with %s failed: -0x%04x (verify result: 0x%08x)",
++               ssl_sock->hostname, -ret,
++               (unsigned int)mbedtls_ssl_get_verify_result(&ssl_sock->ssl));
+       mbedtls_net_free(&ssl_sock->net_ctx);
+       ssl_sock->state = SSL_STATE_ERROR;
+       return false;
+@@ -316,9 +375,20 @@ SSLSocket_recv(picorb_ssl_socket_t *ssl_sock, void *buf, size_t len)
+     if (ret == MBEDTLS_ERR_SSL_WANT_READ || ret == MBEDTLS_ERR_SSL_WANT_WRITE) {
+       return 0; // Would block
+     }
++    if (ret == MBEDTLS_ERR_SSL_TIMEOUT) {
++      /* Read timeout: report an error but keep the session usable */
++      ESP_LOGW(TAG, "recv timeout (%d ms)", FMRB_SOCKET_IO_TIMEOUT_MS);
++      return -1;
++    }
+     if (ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY) {
+-      // Connection closed by peer
++      /* Clean TLS shutdown from the peer: report EOF, not an error.
++       * Servers that close after a Connection: close response (e.g.
++       * api.open-meteo.com) send close_notify; upstream treated it as an
++       * error and every such request raised "SSL recv failed". */
++      ssl_sock->state = SSL_STATE_NONE;
++      return 0;
+     }
++    ESP_LOGW(TAG, "ssl_read failed: -0x%04x", -ret);
+     ssl_sock->state = SSL_STATE_ERROR;
+     return -1;
+   }
+@@ -341,11 +411,11 @@ SSLSocket_close(picorb_ssl_socket_t *ssl_sock)
+   mbedtls_ssl_free(&ssl_sock->ssl);
+ 
+   if (ssl_sock->hostname) {
+-    picorb_free(NULL, ssl_sock->hostname);
++    fmrb_sys_free(ssl_sock->hostname);
+     ssl_sock->hostname = NULL;
+   }
+ 
+-  picorb_free(NULL, ssl_sock);
++  fmrb_sys_free(ssl_sock);
+   return true;
+ }
+ 
+@@ -358,10 +428,24 @@ SSLSocket_closed(picorb_ssl_socket_t *ssl_sock)
+ bool
+ SSLSocket_ready(picorb_ssl_socket_t *ssl_sock)
+ {
+-  if (!ssl_sock || !ssl_sock->base_socket) {
++  if (!ssl_sock || ssl_sock->state != SSL_STATE_CONNECTED) {
++    return false;
++  }
++  /* TLS records already decrypted and buffered? */
++  if (mbedtls_ssl_get_bytes_avail(&ssl_sock->ssl) > 0) {
++    return true;
++  }
++  /* Poll the underlying socket without blocking. The ESP-IDF mbedtls port
++   * does not provide mbedtls_net_poll, so use select() via the VFS layer. */
++  int fd = ssl_sock->net_ctx.fd;
++  if (fd < 0) {
+     return false;
+   }
+-  return Socket_ready(ssl_sock->base_socket);
++  fd_set rfds;
++  struct timeval tv = {0, 0};
++  FD_ZERO(&rfds);
++  FD_SET(fd, &rfds);
++  return select(fd + 1, &rfds, NULL, NULL, &tv) > 0;
+ }
+ 
+ const char*
+diff --git a/mrbgems/picoruby-socket/ports/esp32/tcp_server.c b/mrbgems/picoruby-socket/ports/esp32/tcp_server.c
+index 845b4c02..83d38928 100644
+--- a/mrbgems/picoruby-socket/ports/esp32/tcp_server.c
++++ b/mrbgems/picoruby-socket/ports/esp32/tcp_server.c
+@@ -1,7 +1,12 @@
++/* Family mruby patch of ports/esp32/tcp_server.c: allocations use
++ * fmrb_sys_malloc. Upstream used picorb_alloc with a NULL VM, which on the
++ * mruby VM expands to mrb_malloc(NULL, ...) and dereferences a NULL
++ * mrb_state (same crash class as the HTTPS one fixed in ssl_socket.c). */
+ #define PICORB_PLATFORM_POSIX 1
+ 
+ #include "../../include/socket.h"
+ #include "picoruby.h"
++#include "fmrb_mem.h"
+ 
+ #include "lwip/sockets.h"
+ #include "lwip/netdb.h"
+@@ -14,19 +19,19 @@
+ picorb_tcp_server_t*
+ TCPServer_create(int port, int backlog)
+ {
+-  picorb_tcp_server_t *server = picorb_alloc(NULL, sizeof(picorb_tcp_server_t));
++  picorb_tcp_server_t *server = fmrb_sys_malloc(sizeof(picorb_tcp_server_t));
+   if (!server) return NULL;
+ 
+   server->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+   if (server->listen_fd < 0) {
+-    picorb_free(NULL, server);
++    fmrb_sys_free(server);
+     return NULL;
+   }
+ 
+   int opt = 1;
+   if (setsockopt(server->listen_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+     close(server->listen_fd);
+-    picorb_free(NULL, server);
++    fmrb_sys_free(server);
+     return NULL;
+   }
+ 
+@@ -37,13 +42,13 @@ TCPServer_create(int port, int backlog)
+ 
+   if (bind(server->listen_fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+     close(server->listen_fd);
+-    picorb_free(NULL, server);
++    fmrb_sys_free(server);
+     return NULL;
+   }
+ 
+   if (listen(server->listen_fd, backlog) < 0) {
+     close(server->listen_fd);
+-    picorb_free(NULL, server);
++    fmrb_sys_free(server);
+     return NULL;
+   }
+ 
+@@ -89,7 +94,7 @@ TCPServer_accept_nonblock(picorb_tcp_server_t *server)
+     return NULL;
+   }
+ 
+-  picorb_socket_t *client = (picorb_socket_t *)picorb_alloc(NULL, sizeof(picorb_socket_t));
++  picorb_socket_t *client = (picorb_socket_t *)fmrb_sys_malloc(sizeof(picorb_socket_t));
+   if (!client) {
+     close(client_fd);
+     return NULL;
+@@ -120,7 +125,7 @@ TCPServer_close(picorb_tcp_server_t *server)
+     server->listening = false;
+   }
+ 
+-  picorb_free(NULL, server);
++  fmrb_sys_free(server);
+   return true;
+ }
+ 
+diff --git a/mrbgems/picoruby-socket/ports/esp32/tcp_socket.c b/mrbgems/picoruby-socket/ports/esp32/tcp_socket.c
+index 573a1bb7..11b0290d 100644
+--- a/mrbgems/picoruby-socket/ports/esp32/tcp_socket.c
++++ b/mrbgems/picoruby-socket/ports/esp32/tcp_socket.c
+@@ -15,6 +15,67 @@
+ #undef socket
+ #endif
+ 
++/* Family mruby patch: default timeouts so a dead peer cannot stall the
++ * cooperative mruby VM task forever. recv()/send() give up after
++ * FMRB_SOCKET_IO_TIMEOUT_MS, connect() after FMRB_SOCKET_CONNECT_TIMEOUT_MS. */
++#ifndef FMRB_SOCKET_IO_TIMEOUT_MS
++#define FMRB_SOCKET_IO_TIMEOUT_MS      10000
++#endif
++#ifndef FMRB_SOCKET_CONNECT_TIMEOUT_MS
++#define FMRB_SOCKET_CONNECT_TIMEOUT_MS 10000
++#endif
++
++static void
++socket_set_default_timeouts(int fd)
++{
++  struct timeval tv;
++  tv.tv_sec = FMRB_SOCKET_IO_TIMEOUT_MS / 1000;
++  tv.tv_usec = (FMRB_SOCKET_IO_TIMEOUT_MS % 1000) * 1000;
++  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
++  setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
++}
++
++/* connect() with a timeout: temporarily non-blocking + select() */
++static int
++socket_connect_timeout(int fd, const struct sockaddr *addr, socklen_t addrlen,
++                       int timeout_ms)
++{
++  int flags = fcntl(fd, F_GETFL, 0);
++  if (flags < 0) flags = 0;
++  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
++
++  int ret = connect(fd, addr, addrlen);
++  if (ret < 0 && errno == EINPROGRESS) {
++    fd_set wfds;
++    FD_ZERO(&wfds);
++    FD_SET(fd, &wfds);
++    struct timeval tv;
++    tv.tv_sec = timeout_ms / 1000;
++    tv.tv_usec = (timeout_ms % 1000) * 1000;
++    ret = select(fd + 1, NULL, &wfds, NULL, &tv);
++    if (ret <= 0) {
++      /* timeout (0) or select error (<0) */
++      if (ret == 0) errno = ETIMEDOUT;
++      ret = -1;
++    }
++    else {
++      int so_error = 0;
++      socklen_t len = sizeof(so_error);
++      getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
++      if (so_error != 0) {
++        errno = so_error;
++        ret = -1;
++      }
++      else {
++        ret = 0;
++      }
++    }
++  }
++
++  fcntl(fd, F_SETFL, flags);
++  return ret;
++}
++
+ bool
+ TCPSocket_create(picorb_socket_t *sock)
+ {
+@@ -27,6 +88,8 @@ TCPSocket_create(picorb_socket_t *sock)
+     return false;
+   }
+ 
++  socket_set_default_timeouts(sock->fd);
++
+   sock->family = AF_INET;
+   sock->socktype = SOCK_STREAM;
+   sock->protocol = IPPROTO_TCP;
+@@ -69,8 +132,10 @@ TCPSocket_connect(picorb_socket_t *sock, const char *host, int port)
+   addr.sin_family = AF_INET;
+   addr.sin_port = htons(port);
+   memcpy(&addr.sin_addr, &((struct sockaddr_in *)res->ai_addr)->sin_addr, sizeof(struct in_addr));
++  freeaddrinfo(res);
+ 
+-  if (connect(sock->fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
++  if (socket_connect_timeout(sock->fd, (struct sockaddr *)&addr, sizeof(addr),
++                             FMRB_SOCKET_CONNECT_TIMEOUT_MS) < 0) {
+     snprintf(sock->errmsg, sizeof(sock->errmsg),
+              "connect(\"%s\":%d): %s", host, port, strerror(errno));
+     close(sock->fd);
+diff --git a/mrbgems/picoruby-socket/ports/posix/ssl_socket.c b/mrbgems/picoruby-socket/ports/posix/ssl_socket.c
+index 4bc04698..fe278df4 100644
+--- a/mrbgems/picoruby-socket/ports/posix/ssl_socket.c
++++ b/mrbgems/picoruby-socket/ports/posix/ssl_socket.c
+@@ -1,6 +1,12 @@
+ /*
+  * SSLSocket implementation for PicoRuby (POSIX)
+  * Uses OpenSSL for TLS/SSL support over TCP sockets
++ *
++ * Family mruby patch: SSL_connect/SSL_read/SSL_write retry when the
++ * underlying blocking recv/send is interrupted by a signal. The FreeRTOS
++ * Linux port drives the scheduler with a 1 ms SIGALRM (ITIMER_REAL), so
++ * without the retry every TLS operation fails almost immediately with
++ * SSL_ERROR_WANT_READ (EINTR surfaced through the blocking BIO).
+  */
+ 
+ #include "../../include/socket.h"
+@@ -17,6 +23,20 @@
+ 
+ /* SSL Context and SSL Socket structures are now defined in socket.h */
+ 
++/* On a blocking fd, WANT_READ/WANT_WRITE can only come from the transport
++ * recv/send returning early: EINTR (the 1 ms tick signal - retry) or
++ * EAGAIN (SO_RCVTIMEO expiry - a genuine timeout, do not retry). */
++static bool
++ssl_retryable(SSL *ssl, int ret)
++{
++  int err = SSL_get_error(ssl, ret);
++  if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE ||
++      err == SSL_ERROR_SYSCALL) {
++    return errno == EINTR;
++  }
++  return false;
++}
++
+ /*
+  * Initialize OpenSSL library (call once)
+  */
+@@ -425,8 +445,12 @@ SSLSocket_connect(picorb_ssl_socket_t *ssl_sock)
+     return false;
+   }
+ 
+-  /* Perform SSL handshake */
+-  int ret = SSL_connect(ssl_sock->ssl);
++  /* Perform SSL handshake (retrying when interrupted by the tick signal) */
++  int ret;
++  do {
++    errno = 0;
++    ret = SSL_connect(ssl_sock->ssl);
++  } while (ret != 1 && ssl_retryable(ssl_sock->ssl, ret));
+   if (ret != 1) {
+     int err = SSL_get_error(ssl_sock->ssl, ret);
+     fprintf(stderr, "SSL: SSL_connect failed with error %d\n", err);
+@@ -467,7 +491,11 @@ SSLSocket_send(picorb_ssl_socket_t *ssl_sock, const void *data, size_t len)
+     return -1;
+   }
+ 
+-  int ret = SSL_write(ssl_sock->ssl, data, (int)len);
++  int ret;
++  do {
++    errno = 0;
++    ret = SSL_write(ssl_sock->ssl, data, (int)len);
++  } while (ret <= 0 && ssl_retryable(ssl_sock->ssl, ret));
+   if (ret <= 0) {
+     int err = SSL_get_error(ssl_sock->ssl, ret);
+     fprintf(stderr, "SSL: SSL_write failed with error %d\n", err);
+@@ -488,11 +516,15 @@ SSLSocket_recv(picorb_ssl_socket_t *ssl_sock, void *buf, size_t len)
+     return -1;
+   }
+ 
+-  int ret = SSL_read(ssl_sock->ssl, buf, (int)len);
++  int ret;
++  do {
++    errno = 0;
++    ret = SSL_read(ssl_sock->ssl, buf, (int)len);
++  } while (ret < 0 && ssl_retryable(ssl_sock->ssl, ret));
+   if (ret < 0) {
+     int err = SSL_get_error(ssl_sock->ssl, ret);
+     if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
+-      // Would block
++      // Would block (SO_RCVTIMEO expiry on the underlying fd)
+       return 0;
+     }
+     fprintf(stderr, "SSL: SSL_read failed with error %d\n", err);
+diff --git a/mrbgems/picoruby-socket/ports/posix/tcp_socket.c b/mrbgems/picoruby-socket/ports/posix/tcp_socket.c
+index df481801..7fde594e 100644
+--- a/mrbgems/picoruby-socket/ports/posix/tcp_socket.c
++++ b/mrbgems/picoruby-socket/ports/posix/tcp_socket.c
+@@ -1,6 +1,19 @@
++/*
++ * Family mruby patch of ports/posix/tcp_socket.c: default socket timeouts,
++ * matching the esp32 port. Upstream has none, so a dead peer blocks the
++ * mruby VM for the OS default (minutes). connect() gives up after
++ * FMRB_SOCKET_CONNECT_TIMEOUT_MS, recv()/send() after FMRB_SOCKET_IO_TIMEOUT_MS.
++ *
++ * All blocking calls retry on EINTR: the FreeRTOS Linux port drives the
++ * scheduler with a 1 ms SIGALRM (ITIMER_REAL), which constantly interrupts
++ * blocking syscalls in this process.
++ */
++
+ #include "../../include/socket.h"
+ #include <stdio.h>
+ #include <sys/socket.h>
++#include <sys/select.h>
++#include <sys/time.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
+ #include <netdb.h>
+@@ -15,6 +28,70 @@
+ #undef socket
+ #endif
+ 
++#ifndef FMRB_SOCKET_IO_TIMEOUT_MS
++#define FMRB_SOCKET_IO_TIMEOUT_MS      10000
++#endif
++#ifndef FMRB_SOCKET_CONNECT_TIMEOUT_MS
++#define FMRB_SOCKET_CONNECT_TIMEOUT_MS 10000
++#endif
++
++static void
++socket_set_default_timeouts(int fd)
++{
++  struct timeval tv;
++  tv.tv_sec = FMRB_SOCKET_IO_TIMEOUT_MS / 1000;
++  tv.tv_usec = (FMRB_SOCKET_IO_TIMEOUT_MS % 1000) * 1000;
++  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
++  setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
++}
++
++/* connect() with a timeout: temporarily non-blocking + select() */
++static int
++socket_connect_timeout(int fd, const struct sockaddr *addr, socklen_t addrlen,
++                       int timeout_ms)
++{
++  int flags = fcntl(fd, F_GETFL, 0);
++  if (flags < 0) flags = 0;
++  fcntl(fd, F_SETFL, flags | O_NONBLOCK);
++
++  int ret = connect(fd, addr, addrlen);
++  /* EINTR on a non-blocking connect: the connection attempt continues in
++   * the background, so treat it like EINPROGRESS and wait with select. */
++  if (ret < 0 && (errno == EINPROGRESS || errno == EINTR)) {
++    fd_set wfds;
++    struct timeval tv;
++    tv.tv_sec = timeout_ms / 1000;
++    tv.tv_usec = (timeout_ms % 1000) * 1000;
++    do {
++      FD_ZERO(&wfds);
++      FD_SET(fd, &wfds);
++      /* On Linux, select() updates tv to the remaining time, so retrying
++       * after EINTR keeps the total wait bounded by timeout_ms. */
++      ret = select(fd + 1, NULL, &wfds, NULL, &tv);
++    } while (ret < 0 && errno == EINTR);
++    if (ret <= 0) {
++      /* timeout (0) or select error (<0) */
++      if (ret == 0) errno = ETIMEDOUT;
++      ret = -1;
++    }
++    else {
++      int so_error = 0;
++      socklen_t len = sizeof(so_error);
++      getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &len);
++      if (so_error != 0) {
++        errno = so_error;
++        ret = -1;
++      }
++      else {
++        ret = 0;
++      }
++    }
++  }
++
++  fcntl(fd, F_SETFL, flags);
++  return ret;
++}
++
+ /* Create a new TCP socket */
+ bool
+ TCPSocket_create(picorb_socket_t *sock)
+@@ -28,6 +105,8 @@ TCPSocket_create(picorb_socket_t *sock)
+     return false;
+   }
+ 
++  socket_set_default_timeouts(sock->fd);
++
+   sock->family = AF_INET;
+   sock->socktype = SOCK_STREAM;
+   sock->protocol = IPPROTO_TCP;
+@@ -82,7 +161,8 @@ TCPSocket_connect(picorb_socket_t *sock, const char *host, int port)
+   }
+ 
+   /* Connect */
+-  if (connect(sock->fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
++  if (socket_connect_timeout(sock->fd, (struct sockaddr *)&addr, sizeof(addr),
++                             FMRB_SOCKET_CONNECT_TIMEOUT_MS) < 0) {
+     snprintf(sock->errmsg, sizeof(sock->errmsg),
+              "connect(\"%s\":%d): %s", host, port, strerror(errno));
+     close(sock->fd);
+@@ -107,7 +187,10 @@ TCPSocket_send(picorb_socket_t *sock, const void *data, size_t len)
+     return -1;
+   }
+ 
+-  ssize_t sent = send(sock->fd, data, len, 0);
++  ssize_t sent;
++  do {
++    sent = send(sock->fd, data, len, 0);
++  } while (sent < 0 && errno == EINTR);
+   if (sent < 0) {
+     return -1;
+   }
+@@ -118,7 +201,9 @@ TCPSocket_send(picorb_socket_t *sock, const void *data, size_t len)
+ /* Receive data - blocks until len bytes are read or EOF/error.
+  * MSG_WAITALL tells the kernel to wait until the full request is satisfied,
+  * which avoids partial-read issues without requiring application-level loops
+- * or setsockopt calls between recv() invocations. */
++ * or setsockopt calls between recv() invocations. With SO_RCVTIMEO set, a
++ * silent peer makes recv return the partial data (or -1/EAGAIN) after the
++ * timeout instead of blocking forever. */
+ ssize_t
+ TCPSocket_recv(picorb_socket_t *sock, void *buf, size_t len)
+ {
+@@ -127,7 +212,12 @@ TCPSocket_recv(picorb_socket_t *sock, void *buf, size_t len)
+   }
+ 
+ #ifdef MSG_WAITALL
+-  ssize_t received = recv(sock->fd, buf, len, MSG_WAITALL);
++  /* EINTR with no data received returns -1; with partial data MSG_WAITALL
++   * returns the partial count, which is fine for the callers. */
++  ssize_t received;
++  do {
++    received = recv(sock->fd, buf, len, MSG_WAITALL);
++  } while (received < 0 && errno == EINTR);
+ #else
+   /* Fallback: loop until len bytes received or EOF/error. */
+   size_t total = 0;
+diff --git a/mrbgems/picoruby-socket/src/mruby/socket.c b/mrbgems/picoruby-socket/src/mruby/socket.c
+index 1d271840..985f9cc4 100644
+--- a/mrbgems/picoruby-socket/src/mruby/socket.c
++++ b/mrbgems/picoruby-socket/src/mruby/socket.c
+@@ -3,7 +3,10 @@
+ #include "mruby/data.h"
+ 
+ /* Socket type constants (matching socket.h) */
+-#if defined(PICORB_PLATFORM_POSIX)
++/* Family mruby patch: the ESP-IDF cross toolchain (bare-metal newlib) has no
++ * <sys/socket.h>; the socket constants come from LwIP at runtime and match
++ * the fallback values below, so use them when ESP32_PLATFORM is defined. */
++#if defined(PICORB_PLATFORM_POSIX) && !defined(ESP32_PLATFORM)
+ #include <sys/socket.h>
+ #else
+ #define SOCK_STREAM 1
+diff --git a/mrbgems/picoruby-socket/src/mruby/ssl_socket.c b/mrbgems/picoruby-socket/src/mruby/ssl_socket.c
+index 71bd0a4b..2ece65bb 100644
+--- a/mrbgems/picoruby-socket/src/mruby/ssl_socket.c
++++ b/mrbgems/picoruby-socket/src/mruby/ssl_socket.c
+@@ -220,14 +220,18 @@ mrb_ssl_context_get_verify_mode(mrb_state *mrb, mrb_value self)
+ }
+ 
+ /* Data type for SSLSocket */
++/* Family mruby patch: always release the native session. SSLSocket_closed
++ * only reports the CONNECTED state, so after a peer EOF or an error the
++ * socket looks "closed" while the mbedTLS session (about 21KB of internal
++ * RAM) and the underlying fd are still alive; upstream skipped
++ * SSLSocket_close here and leaked them permanently. SSLSocket_close frees
++ * everything safely in any state, and an explicitly #close'd socket has
++ * DATA_PTR set to NULL so it never reaches this with a stale pointer. */
+ static void
+ mrb_ssl_socket_free(mrb_state *mrb, void *ptr)
+ {
+   if (ptr) {
+-    picorb_ssl_socket_t *ssl_sock = (picorb_ssl_socket_t *)ptr;
+-    if (!SSLSocket_closed(ssl_sock)) {
+-      SSLSocket_close(ssl_sock);
+-    }
++    SSLSocket_close((picorb_ssl_socket_t *)ptr);
+   }
+ }
+ 
+diff --git a/mrbgems/picoruby-yaml/mrbgem.rake b/mrbgems/picoruby-yaml/mrbgem.rake
+index d117caa1..333899a0 100644
+--- a/mrbgems/picoruby-yaml/mrbgem.rake
++++ b/mrbgems/picoruby-yaml/mrbgem.rake
+@@ -3,15 +3,7 @@ MRuby::Gem::Specification.new('picoruby-yaml') do |spec|
+   spec.author  = 'HASUMI Hitoshi'
+   spec.summary = 'YAML parser for PicoRuby'
+ 
+-  if build.posix?
+-    if build.vm_mrubyc?
+-      spec.add_dependency 'picoruby-posix-io'
+-    else
+-      spec.add_dependency 'mruby-io'
+-    end
+-  else
+-    spec.add_dependency 'picoruby-filesystem-fat'
+-    spec.add_dependency 'picoruby-vfs'
+-  end
++  # family-mruby: use fmrb-io instead of upstream IO dependencies
++  spec.add_dependency 'picoruby-fmrb-io'
+ end
+ 

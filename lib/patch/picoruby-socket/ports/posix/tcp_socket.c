@@ -20,8 +20,8 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <sys/ioctl.h>
+#include <fcntl.h>   /* fcntl / F_GETFL / F_SETFL / O_NONBLOCK for nonblock recv */
 
 /* Prevent name collision with embedded Ruby bytecode */
 #ifdef socket
@@ -94,7 +94,7 @@ socket_connect_timeout(int fd, const struct sockaddr *addr, socklen_t addrlen,
 
 /* Create a new TCP socket */
 bool
-TCPSocket_create(picorb_socket_t *sock)
+TCPSocket_create(picorb_state *vm, picorb_socket_t *sock)
 {
   if (!sock) return false;
 
@@ -118,7 +118,7 @@ TCPSocket_create(picorb_socket_t *sock)
 
 /* Connect to remote host */
 bool
-TCPSocket_connect(picorb_socket_t *sock, const char *host, int port)
+TCPSocket_connect(picorb_state *vm, picorb_socket_t *sock, const char *host, int port)
 {
   if (!sock || !host || port <= 0 || port > 65535) {
     return false;
@@ -126,7 +126,7 @@ TCPSocket_connect(picorb_socket_t *sock, const char *host, int port)
 
   /* Create socket if not already created */
   if (sock->fd < 0) {
-    if (!TCPSocket_create(sock)) {
+    if (!TCPSocket_create(vm, sock)) {
       return false;
     }
   }
@@ -181,7 +181,7 @@ TCPSocket_connect(picorb_socket_t *sock, const char *host, int port)
 
 /* Send data */
 ssize_t
-TCPSocket_send(picorb_socket_t *sock, const void *data, size_t len)
+TCPSocket_send(picorb_state *vm, picorb_socket_t *sock, const void *data, size_t len)
 {
   if (!sock || !data || sock->fd < 0 || sock->closed) {
     return -1;
@@ -198,43 +198,34 @@ TCPSocket_send(picorb_socket_t *sock, const void *data, size_t len)
   return sent;
 }
 
-/* Receive data - blocks until len bytes are read or EOF/error.
- * MSG_WAITALL tells the kernel to wait until the full request is satisfied,
- * which avoids partial-read issues without requiring application-level loops
- * or setsockopt calls between recv() invocations. With SO_RCVTIMEO set, a
- * silent peer makes recv return the partial data (or -1/EAGAIN) after the
- * timeout instead of blocking forever. */
+/* Receive data.
+ * If nonblock is true, uses MSG_DONTWAIT and returns
+ * PICORB_RECV_WOULD_BLOCK when no data is available.
+ * Otherwise uses a blocking recv() and returns as soon as any data
+ * is available, or 0 on EOF, or -1 on error (readpartial semantics). */
 ssize_t
-TCPSocket_recv(picorb_socket_t *sock, void *buf, size_t len)
+TCPSocket_recv(picorb_state *vm, picorb_socket_t *sock, void *buf, size_t len, bool nonblock)
 {
   if (!sock || !buf || sock->fd < 0 || sock->closed) {
     return -1;
   }
 
-#ifdef MSG_WAITALL
-  /* EINTR with no data received returns -1; with partial data MSG_WAITALL
-   * returns the partial count, which is fine for the callers. */
-  ssize_t received;
-  do {
-    received = recv(sock->fd, buf, len, MSG_WAITALL);
-  } while (received < 0 && errno == EINTR);
-#else
-  /* Fallback: loop until len bytes received or EOF/error. */
-  size_t total = 0;
-  char *p = (char *)buf;
-  while (total < len) {
-    ssize_t r = recv(sock->fd, p + total, len - total, 0);
-    if (r < 0) {
+  if (nonblock) {
+    ssize_t received = recv(sock->fd, buf, len, MSG_DONTWAIT);
+    if (received < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        return PICORB_RECV_WOULD_BLOCK;
+      }
       return -1;
     }
-    if (r == 0) {
+    if (received == 0) {
       sock->connected = false;
-      return (ssize_t)total;
     }
-    total += (size_t)r;
+    return received;
   }
-  ssize_t received = (ssize_t)total;
-#endif
+
+  /* Return as soon as any data is available (readpartial semantics). */
+  ssize_t received = recv(sock->fd, buf, len, 0);
 
   if (received < 0) {
     return -1;
@@ -247,7 +238,7 @@ TCPSocket_recv(picorb_socket_t *sock, void *buf, size_t len)
 
 /* Check if data is ready to read */
 bool
-Socket_ready(picorb_socket_t *sock)
+Socket_ready(picorb_state *vm, picorb_socket_t *sock)
 {
   if (!sock || sock->fd < 0 || sock->closed) {
     return false;
@@ -263,7 +254,7 @@ Socket_ready(picorb_socket_t *sock)
 
 /* Close socket */
 bool
-TCPSocket_close(picorb_socket_t *sock)
+TCPSocket_close(picorb_state *vm, picorb_socket_t *sock)
 {
   if (!sock || sock->fd < 0) {
     return false;
@@ -279,7 +270,7 @@ TCPSocket_close(picorb_socket_t *sock)
 
 /* Get remote host */
 const char*
-TCPSocket_remote_host(picorb_socket_t *sock)
+TCPSocket_remote_host(picorb_state *vm, picorb_socket_t *sock)
 {
   if (!sock) return NULL;
   return sock->remote_host;
@@ -287,7 +278,7 @@ TCPSocket_remote_host(picorb_socket_t *sock)
 
 /* Get remote port */
 int
-TCPSocket_remote_port(picorb_socket_t *sock)
+TCPSocket_remote_port(picorb_state *vm, picorb_socket_t *sock)
 {
   if (!sock) return -1;
   return sock->remote_port;
@@ -295,7 +286,7 @@ TCPSocket_remote_port(picorb_socket_t *sock)
 
 /* Check if socket is closed */
 bool
-TCPSocket_closed(picorb_socket_t *sock)
+TCPSocket_closed(picorb_state *vm, picorb_socket_t *sock)
 {
   if (!sock) return true;
   return sock->closed || sock->fd < 0;

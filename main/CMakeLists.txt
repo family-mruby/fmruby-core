@@ -124,6 +124,14 @@ idf_component_register(
     EMBED_FILES ${RD_EMBED_FILES}
 )
 
+# mruby ABI defines: main/ calls mruby APIs (fmrb_app.c etc.), so it must use
+# the exact same layout-affecting MRB_* macros as the rake-built libmruby.
+# Must come after idf_component_register: IDF's early requirement scan runs
+# this file in script mode (stopping at the register call), where project
+# commands like add_compile_definitions do not exist.
+include(${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/mruby_abi_defines.cmake)
+fmrb_add_mruby_abi_defines()
+
 # Test mode flags
 option(ENABLE_SPI_TEST "Enable SPI connection test" OFF)
 option(ENABLE_USB_HID_TEST "Enable USB HID connection test" OFF)

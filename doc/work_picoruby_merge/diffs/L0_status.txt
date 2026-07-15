@@ -1,0 +1,47 @@
+ m mrbgems/mruby-compiler2
+ M mrbgems/picoruby-i2c/include/i2c.h
+ M mrbgems/picoruby-i2c/src/mruby/i2c.c
+ M mrbgems/picoruby-json/mrblib/json.rb
+ M mrbgems/picoruby-machine/include/hal.h
+ M mrbgems/picoruby-machine/mrbgem.rake
+ M mrbgems/picoruby-machine/mrblib/kernel.rb
+ D mrbgems/picoruby-machine/ports/esp32/CANONICAL_BUFFER_MEMO.md
+ M mrbgems/picoruby-machine/ports/esp32/machine.c
+ M mrbgems/picoruby-machine/ports/posix/hal.c
+ M mrbgems/picoruby-machine/ports/posix/machine.c
+ M mrbgems/picoruby-machine/src/mruby/machine.c
+ M mrbgems/picoruby-mbedtls/mrbgem.rake
+ m mrbgems/picoruby-mruby/lib/mruby
+ M mrbgems/picoruby-mruby/mrbgem.rake
+ M mrbgems/picoruby-mruby/src/alloc.c
+ M mrbgems/picoruby-mruby/src/file_ext.c
+ M mrbgems/picoruby-net-http/mrblib/http_client.rb
+ M mrbgems/picoruby-net-websocket/mrbgem.rake
+ M mrbgems/picoruby-require/mrbgem.rake
+ M mrbgems/picoruby-sandbox/src/mruby/sandbox.c
+ M mrbgems/picoruby-socket/mrbgem.rake
+ M mrbgems/picoruby-socket/ports/esp32/ssl_socket.c
+ M mrbgems/picoruby-socket/ports/esp32/tcp_server.c
+ M mrbgems/picoruby-socket/ports/esp32/tcp_socket.c
+ M mrbgems/picoruby-socket/ports/posix/ssl_socket.c
+ M mrbgems/picoruby-socket/ports/posix/tcp_socket.c
+ M mrbgems/picoruby-socket/src/mruby/socket.c
+ M mrbgems/picoruby-socket/src/mruby/ssl_socket.c
+ M mrbgems/picoruby-yaml/mrbgem.rake
+?? build_config/family_mruby_esp32.rb
+?? build_config/family_mruby_linux.rb
+?? mrbgems/family_mruby.gembox
+?? mrbgems/picoruby-fmrb-app/
+?? mrbgems/picoruby-fmrb-bmp332/
+?? mrbgems/picoruby-fmrb-const/
+?? mrbgems/picoruby-fmrb-filesystem/
+?? mrbgems/picoruby-fmrb-io/
+?? mrbgems/picoruby-fmrb-kernel/
+?? mrbgems/picoruby-fmrb-log/
+?? mrbgems/picoruby-fmrb-msgpack/
+?? mrbgems/picoruby-fmrb-picorabbit/
+?? mrbgems/picoruby-machine/ports/esp32_linux/
+?? mrbgems/picoruby-mruby/mrbgems/
+?? mrbgems/picoruby-rx8130/
+?? mrbgems/picoruby-rx8900/
+?? mrbgems/picoruby-syntax-highlight/

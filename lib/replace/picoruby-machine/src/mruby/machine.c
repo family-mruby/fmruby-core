@@ -12,7 +12,7 @@ static inline void
 io_wait_for_input(mrb_state *mrb)
 {
   Machine_tud_task();
-  mrb_hal_task_idle_cpu(mrb);
+  picorb_hal_idle_cpu(mrb);
 }
 
 static mrb_value
@@ -30,6 +30,20 @@ mrb_s_tud_mounted_p(mrb_state *mrb, mrb_value klass)
   } else {
     return mrb_false_value();
   }
+}
+
+static mrb_value
+mrb_s_bootsel_pressed_p(mrb_state *mrb, mrb_value klass)
+{
+#if defined(PICORB_PLATFORM_RP2)
+  if (Machine_bootsel_pressed_q()) {
+    return mrb_true_value();
+  } else {
+    return mrb_false_value();
+  }
+#else
+  mrb_raise(mrb, E_NOTIMP_ERROR, "Machine.bootsel_pressed? is not supported on this platform");
+#endif
 }
 
 static mrb_value
@@ -219,6 +233,31 @@ mrb_machine_check_signal(mrb_state *mrb, mrb_value self)
   return mrb_nil_value();
 }
 
+/* Like check_signal but returns the pending signal as a symbol (:INT / :TSTP)
+ * instead of raising Interrupt / SignalException. Lets a waiter (e.g. the
+ * shell's JobControl.wait loop) handle Ctrl-C / Ctrl-Z with plain control flow
+ * rather than rescuing exceptions. */
+static mrb_value
+mrb_machine_poll_signal(mrb_state *mrb, mrb_value self)
+{
+#ifndef FMRB_NO_IO_CONSOLE
+  io_raw_bang(true);
+#endif
+  Machine_tud_task();
+#ifndef FMRB_NO_IO_CONSOLE
+  io_cooked_bang();
+#endif
+  if (sigint_status == MACHINE_SIGINT_RECEIVED) {
+    sigint_status = MACHINE_SIG_NONE;
+    return mrb_symbol_value(MRB_SYM(INT));
+  }
+  if (sigint_status == MACHINE_SIGTSTP_RECEIVED) {
+    sigint_status = MACHINE_SIG_NONE;
+    return mrb_symbol_value(MRB_SYM(TSTP));
+  }
+  return mrb_nil_value();
+}
+
 #if !defined(PICORB_PLATFORM_POSIX)
 static size_t
 print_sub(mrb_state *mrb, mrb_value obj)
@@ -226,7 +265,7 @@ print_sub(mrb_state *mrb, mrb_value obj)
   mrb_value str = mrb_funcall(mrb, obj, "to_s", 0);
   const char *cstr = RSTRING_PTR(str);
   size_t len = RSTRING_LEN(str);
-  hal_write(1, cstr, len);
+  picorb_hal_write(1, cstr, len);
   return len;
 }
 
@@ -236,7 +275,7 @@ debug_print_sub(mrb_state *mrb, mrb_value obj)
   mrb_value str = mrb_funcall(mrb, obj, "to_s", 0);
   const char *cstr = RSTRING_PTR(str);
   size_t len = RSTRING_LEN(str);
-  hal_write(2, cstr, len);
+  picorb_hal_write(2, cstr, len);
   return len;
 }
 
@@ -247,12 +286,12 @@ mrb_io_puts(mrb_state *mrb, mrb_value self)
   mrb_int argc;
   mrb_get_args(mrb, "*", &argv, &argc);
   if (argc == 0) {
-    hal_write(1, "\n", 1);
+    picorb_hal_write(1, "\n", 1);
   } else {
     int ai = mrb_gc_arena_save(mrb);
     for (mrb_int i = 0; i < argc; i++) {
       print_sub(mrb, argv[i]);
-      hal_write(1, "\n", 1);
+      picorb_hal_write(1, "\n", 1);
     }
     mrb_gc_arena_restore(mrb, ai);
   }
@@ -285,14 +324,19 @@ mrb_io_write(mrb_state *mrb, mrb_value self)
   }
   return mrb_fixnum_value(total);
 }
+#endif
 
+/* gets/getc read stdin through the HAL so Ctrl-C (byte 0x03) and the
+ * pseudo-SIGINT set by the stdin reader become Interrupt. Compiled on
+ * every platform; on POSIX they are wired to the STDIN singleton (see
+ * mrblib/kernel.rb) so mruby-io keeps handling file IO. */
 static mrb_value
 mrb_io_gets(mrb_state *mrb, mrb_value self)
 {
   mrb_value str = mrb_str_new(mrb, "", 0);
   char buf[1];
   while (true) {
-    int c = hal_getchar();
+    int c = picorb_hal_getchar();
     if (c == 3) {
       raise_interrupt(mrb);
     } else if (c == 26) {
@@ -325,6 +369,7 @@ mrb_io_getc(mrb_state *mrb, mrb_value self)
   return str;
 }
 
+#if !defined(PICORB_PLATFORM_POSIX)
 static mrb_value
 mrb_io_read(mrb_state *mrb, mrb_value self)
 {
@@ -339,7 +384,7 @@ mrb_io_read(mrb_state *mrb, mrb_value self)
     char *buf = RSTRING_PTR(str);
     mrb_int i;
     for (i = 0; i < len; ) {
-      int c = hal_getchar();
+      int c = picorb_hal_getchar();
       if (c == 3) {
         raise_interrupt(mrb);
       } else if (c == 26) {
@@ -361,7 +406,7 @@ mrb_io_read(mrb_state *mrb, mrb_value self)
   mrb_value str = mrb_str_new(mrb, "", 0);
   char buf[1];
   while (true) {
-    int c = hal_getchar();
+    int c = picorb_hal_getchar();
     if (c == 3) {
       raise_interrupt(mrb);
     } else if (c == 26) {
@@ -387,12 +432,12 @@ mrb_s_debug_puts(mrb_state *mrb, mrb_value self)
   mrb_int argc;
   mrb_get_args(mrb, "*", &argv, &argc);
   if (argc == 0) {
-    hal_write(2, "\n", 1);
+    picorb_hal_write(2, "\n", 1);
   } else {
     int ai = mrb_gc_arena_save(mrb);
     for (mrb_int i = 0; i < argc; i++) {
       debug_print_sub(mrb, argv[i]);
-      hal_write(2, "\n", 1);
+      picorb_hal_write(2, "\n", 1);
     }
     mrb_gc_arena_restore(mrb, ai);
   }
@@ -429,6 +474,7 @@ mrb_picoruby_machine_gem_init(mrb_state* mrb)
 
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(tud_task), mrb_s_tud_task, MRB_ARGS_NONE());
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM_Q(tud_mounted), mrb_s_tud_mounted_p, MRB_ARGS_NONE());
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM_Q(bootsel_pressed), mrb_s_bootsel_pressed_p, MRB_ARGS_NONE());
 
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(delay_ms), mrb_s_delay_ms, MRB_ARGS_REQ(1));
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(busy_wait_ms), mrb_s_busy_wait_ms, MRB_ARGS_REQ(1));
@@ -447,6 +493,7 @@ mrb_picoruby_machine_gem_init(mrb_state* mrb)
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(exit), mrb_s_exit, MRB_ARGS_OPT(1));
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(_reboot), mrb_s__reboot, MRB_ARGS_NONE());
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(check_signal), mrb_machine_check_signal, MRB_ARGS_NONE());
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(poll_signal), mrb_machine_poll_signal, MRB_ARGS_NONE());
 
 #if !defined(PICORB_PLATFORM_POSIX)
   mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(debug_puts), mrb_s_debug_puts, MRB_ARGS_ANY());
@@ -456,13 +503,20 @@ mrb_picoruby_machine_gem_init(mrb_state* mrb)
   // same dispatch works for STDIO and regular files. Defining them here would
   // blanket-override fmrb-io's versions and force every IO#write — including
   // File#write — to go to fd=1 (UART), silently losing file writes.
-  // The mrb_io_* functions above are unused on this build.
+  // The mrb_io_* functions above are unused on this (non-POSIX) build.
   (void)mrb_io_puts;
   (void)mrb_io_print;
   (void)mrb_io_write;
   (void)mrb_io_read;
   (void)mrb_io_gets;
   (void)mrb_io_getc;
+#else
+  /* POSIX keeps mruby-io for general IO (files), but stdin must be read
+   * through the HAL ring buffer so Ctrl-C becomes Interrupt. mrblib/kernel.rb
+   * wires these onto the STDIN singleton. (fmrb: only these stdin class
+   * methods are defined; the IO instance methods stay with fmrb-io.) */
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(_stdin_gets), mrb_io_gets, MRB_ARGS_NONE());
+  mrb_define_class_method_id(mrb, module_Machine, MRB_SYM(_stdin_getc), mrb_io_getc, MRB_ARGS_NONE());
 #endif
 }
 

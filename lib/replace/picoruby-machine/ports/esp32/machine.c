@@ -58,271 +58,20 @@ void hal_idle_cpu(void) { vTaskDelay(1); }
 #elif defined(PICORB_VM_MRUBY)
 
 /*
- * mruby: multi-VM tick management via FreeRTOS task
- *
- * Each mrb_state is registered/unregistered dynamically.
- * A dedicated FreeRTOS task delivers mrb_tick() to all active VMs.
+ * mruby: the case-D tick manager (top-half timer task, per-VM pending-tick
+ * registry) and the whole mruby-task HAL contract (mrb_hal_task_init/final,
+ * mrb_hal_task_register_vm, mrb_hal_task_take_pending_ticks, idle_cpu,
+ * sleep_us, mrb_task_enable/disable_irq) live in
+ * mruby-task/ports/freertos/task_hal.c, compiled by the picoruby-esp32
+ * CMake component (PICORUBY_SRCS). This file keeps only machine duties.
  */
-
-#include "fmrb_app.h"
-#include "fmrb_task_config.h"
-
-typedef struct {
-  mrb_state *mrb;
-  int active;
-  uint32_t pending_ticks;   /* 案D: ticks accumulated by signal source, drained by VM thread */
-  uint32_t tick_countdown;  /* 案D: ticks until next preemption signal (timeslice cadence) */
-} mrb_vm_entry_t;
-
-static struct {
-  mrb_vm_entry_t vms[FMRB_MRB_MAX_VMS];
-  SemaphoreHandle_t mutex;
-  TaskHandle_t tick_task_handle;
-  int task_created;
-} g_tick_manager = {
-  .vms = {{NULL, 0, 0, 0}},
-  .mutex = NULL,
-  .tick_task_handle = NULL,
-  .task_created = 0
-};
 
 volatile int sigint_status = 0; /* MACHINE_SIG_NONE */
 
-/*
- * FreeRTOS tick signal source (案D top-half).
- *
- * This task runs on a thread other than the VMs. It must therefore NOT call
- * mrb_tick() (which mutates the per-VM task queues) - doing so races the VM's
- * own thread and corrupts the task context (see doc/known_issue). Instead it
- * only: (1) accumulates a pending-tick count, and (2) sets mrb->task.switching
- * so a running (possibly CPU-bound) task yields at the next bytecode boundary.
- * The real mrb_tick() is applied by the VM itself in mrb_task_run() via
- * mrb_hal_task_take_pending_ticks().
- */
-static void
-mruby_tick_task(void *arg)
-{
-  (void)arg;
-  const TickType_t tick_interval = pdMS_TO_TICKS(MRB_TICK_UNIT);
-
-  while (1) {
-    vTaskDelay(tick_interval);
-
-    if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-      for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-        mrb_vm_entry_t *vm = &g_tick_manager.vms[i];
-        if (vm->active && vm->mrb) {
-          /* Time tracking: ticks are applied on the VM's own thread in
-           * mrb_task_run (bottom-half), never from this thread. */
-          vm->pending_ticks++;
-          /* Preempt CPU-bound tasks at timeslice cadence. Requesting the switch
-           * asynchronously is safe: the VM acts on switching only at a top-level
-           * bytecode boundary (mrb_task_yield_ok in vm.c), never inside a nested
-           * C call, so the pending switch is deferred to the next safe point. */
-          if (vm->tick_countdown > 0) vm->tick_countdown--;
-          if (vm->tick_countdown == 0) {
-            mrb_task_request_switch(vm->mrb);
-            vm->tick_countdown = MRB_TIMESLICE_TICK_COUNT;
-          }
-        }
-      }
-      xSemaphoreGive(g_tick_manager.mutex);
-    }
-  }
-}
-
-/*
- * Return and zero the pending-tick count for this VM (案D bottom-half source).
- * Called from mrb_task_run() on the VM's own thread.
- */
-uint32_t
-mrb_hal_task_take_pending_ticks(mrb_state *mrb)
-{
-  uint32_t n = 0;
-  if (g_tick_manager.mutex == NULL) return 0;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb && g_tick_manager.vms[i].active) {
-        n = g_tick_manager.vms[i].pending_ticks;
-        g_tick_manager.vms[i].pending_ticks = 0;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
-  return n;
-}
-
-void
-machine_hal_init(mrb_state *mrb)
-{
-  (void)mrb;  /* VM registration is deferred to hal_register_vm() */
-
-  ESP_LOGI("hal", "machine_hal_init called");
-
-  if (!g_tick_manager.task_created) {
-    g_tick_manager.mutex = xSemaphoreCreateMutex();
-    if (g_tick_manager.mutex == NULL) {
-      ESP_LOGE("hal", "Failed to create mutex");
-      return;
-    }
-
-    BaseType_t ret = xTaskCreate(
-      mruby_tick_task,
-      "mruby_tick",
-      2048,
-      NULL,
-      5,
-      &g_tick_manager.tick_task_handle
-    );
-
-    if (ret == pdPASS) {
-      g_tick_manager.task_created = 1;
-      ESP_LOGI("hal", "mruby_tick_task created (interval=%dms)", MRB_TICK_UNIT);
-    } else {
-      ESP_LOGE("hal", "Failed to create mruby_tick_task");
-      vSemaphoreDelete(g_tick_manager.mutex);
-      g_tick_manager.mutex = NULL;
-      return;
-    }
-  }
-}
-
-void
-hal_register_vm(mrb_state *mrb)
-{
-  if (g_tick_manager.mutex == NULL) return;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-      if (!g_tick_manager.vms[i].active) {
-        g_tick_manager.vms[i].mrb = mrb;
-        g_tick_manager.vms[i].active = 1;
-        g_tick_manager.vms[i].pending_ticks = 0;
-        g_tick_manager.vms[i].tick_countdown = MRB_TIMESLICE_TICK_COUNT;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
-}
-
-void
-hal_deinit(mrb_state *mrb)
-{
-  if (g_tick_manager.mutex == NULL) return;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-      if (g_tick_manager.vms[i].mrb == mrb) {
-        g_tick_manager.vms[i].active = 0;
-        g_tick_manager.vms[i].mrb = NULL;
-        break;
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
-}
-
-void
-hal_deinit_by_pool(void *pool_ptr, size_t pool_size)
-{
-  if (g_tick_manager.mutex == NULL) return;
-
-  uint8_t *start = (uint8_t *)pool_ptr;
-  uint8_t *end = start + pool_size;
-
-  if (xSemaphoreTake(g_tick_manager.mutex, portMAX_DELAY) == pdTRUE) {
-    for (int i = 0; i < FMRB_MRB_MAX_VMS; i++) {
-      if (g_tick_manager.vms[i].active) {
-        uint8_t *p = (uint8_t *)g_tick_manager.vms[i].mrb;
-        if (p >= start && p < end) {
-          g_tick_manager.vms[i].active = 0;
-          g_tick_manager.vms[i].mrb = NULL;
-        }
-      }
-    }
-    xSemaphoreGive(g_tick_manager.mutex);
-  }
-}
-
-/*
- * 案D: the task queues are now mutated only by each VM's own thread (the signal
- * source no longer calls mrb_tick), so the scheduler needs no IRQ/lock guard.
- * These remain as no-ops to satisfy the mruby-task HAL contract.
- */
-void
-mrb_task_enable_irq(void)
-{
-}
-
-void
-mrb_task_disable_irq(void)
-{
-}
-
-void
-hal_idle_cpu(mrb_state *mrb)
-{
-  (void)mrb;
-  vTaskDelay(1);
-}
-
-/*
- * Task HAL interface (required by mruby-task gem)
- * On ESP32, tick delivery is handled by mruby_tick_task above.
- */
-void
-mrb_hal_task_init(mrb_state *mrb)
-{
-  /* 案D: re-enabled. The tick task is now a signal-only source (sets
-   * switching + accumulates pending ticks); it no longer calls mrb_tick from
-   * a foreign thread, so the VM-corruption race is gone. Idempotent. */
-  machine_hal_init(mrb);
-}
-
-void
-mrb_hal_task_final(mrb_state *mrb)
-{
-  hal_deinit(mrb);
-}
-
-void
-mrb_hal_task_idle_cpu(mrb_state *mrb)
-{
-  (void)mrb;
-  vTaskDelay(1);
-}
-
-void
-mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec)
-{
-  (void)mrb;
-  if (usec <= 0) return;
-  TickType_t ticks = pdMS_TO_TICKS(usec / 1000);
-  if (ticks < 1) ticks = 1;
-  vTaskDelay(ticks);
-}
-
 #endif /* PICORB_VM_MRUBY */
 
-/*
- * Prism allocator mutex (used by prism_alloc.c via extern)
- */
-static SemaphoreHandle_t s_prism_mutex = NULL;
-void fmrb_prism_lock(void)
-{
-  if (s_prism_mutex == NULL) s_prism_mutex = xSemaphoreCreateMutex();
-  xSemaphoreTake(s_prism_mutex, portMAX_DELAY);
-}
-void fmrb_prism_unlock(void)
-{
-  if (s_prism_mutex != NULL) xSemaphoreGive(s_prism_mutex);
-}
-
 int
-hal_write(int fd, const void *buf, int nbytes)
+picorb_hal_write(int fd, const void *buf, int nbytes)
 {
   FILE *stream = (fd == 1) ? stdout : stderr;
   for (int i = 0 ; i < nbytes ; i++) {
@@ -332,29 +81,29 @@ hal_write(int fd, const void *buf, int nbytes)
   return nbytes;
 }
 
-int hal_flush(int fd) {
+int picorb_hal_flush(int fd) {
   FILE *stream = (fd == 1) ? stdout : stderr;
   return fflush(stream);
 }
 
 int
-hal_read_available(void)
+picorb_hal_read_available(void)
 {
   int c = fgetc(stdin);
   return ungetc(c, stdin) == EOF ? 0 : 1;
 }
 
 int
-hal_getchar(void)
+picorb_hal_getchar(void)
 {
   return fgetc(stdin);
 }
 
 void
-hal_abort(const char *s)
+picorb_hal_abort(const char *s)
 {
   if(s) {
-    hal_write(1, s, strlen(s));
+    picorb_hal_write(1, s, strlen(s));
   }
 
   abort();

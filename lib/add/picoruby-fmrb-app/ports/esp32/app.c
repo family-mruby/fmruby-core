@@ -668,9 +668,10 @@ void fmrb_app_vm_cleanup(mrb_state *mrb)
         return;
     }
 
-    // Unregister VM from HAL tick manager
-    // This stops the tick task from calling mrb_tick() on this VM
-    hal_deinit(mrb);
+    // Unregister VM from the tick manager.
+    // (Renamed from hal_deinit -> mrb_hal_task_final: the tick manager moved to
+    //  mruby-task's freertos HAL port as part of the case-D consolidation.)
+    mrb_hal_task_final(mrb);
     FMRB_LOGI(TAG, "VM unregistered from HAL tick manager");
 }
 

@@ -6,8 +6,6 @@
 
 #define TAG "MEMPOOL"
 
-EXT_RAM_BSS_ATTR unsigned char __attribute__((aligned(8))) g_prism_memory_pool[FMRB_MEM_PRISM_POOL_SIZE];
-
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system[FMRB_MEM_POOL_SIZE_SYSTEM];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_kernel[FMRB_MEM_POOL_SIZE_KERNEL];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system_app[FMRB_MEM_POOL_SIZE_SYSTEM_APP];
@@ -86,11 +84,6 @@ static const char* fmrb_get_mempool_name(int32_t id){
 
 void fmrb_mempool_print_ranges(void){
     FMRB_LOGI(TAG, "Memory Pool Address Ranges:");
-    FMRB_LOGI(TAG, "  PRISM:       %p - %p (%zu bytes)",
-                  g_prism_memory_pool,
-                  g_prism_memory_pool + FMRB_MEM_PRISM_POOL_SIZE,
-                  FMRB_MEM_PRISM_POOL_SIZE);
-
     for(int32_t id = 0; id < POOL_ID_MAX; id++){
         void* pool = g_mempool_list[id];
         size_t size = fmrb_get_mempool_size(id);
@@ -105,16 +98,6 @@ void fmrb_mempool_print_ranges(void){
 void fmrb_mempool_check_pointer(const void* ptr){
     if(ptr == NULL){
         FMRB_LOGI(TAG, "Pointer check: NULL");
-        return;
-    }
-
-    // Check PRISM pool
-    if(ptr >= (void*)g_prism_memory_pool &&
-       ptr < (void*)(g_prism_memory_pool + FMRB_MEM_PRISM_POOL_SIZE)){
-        FMRB_LOGI(TAG, "Pointer %p is in PRISM pool [%p - %p]",
-                      ptr,
-                      g_prism_memory_pool,
-                      g_prism_memory_pool + FMRB_MEM_PRISM_POOL_SIZE);
         return;
     }
 

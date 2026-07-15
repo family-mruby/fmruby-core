@@ -74,14 +74,18 @@ if(IDF_TARGET STREQUAL "linux")
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${FMRB_BMP332_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/src/fmrb_bmp332.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/posix/machine.c
-        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32_linux/hal_freertos.c
+        # The mruby-task case-D tick (top-half) needs FreeRTOS headers, so it is
+        # compiled here (this component PRIV_REQUIRES freertos) rather than by the
+        # rake mruby build. A name-only hal-task-freertos gem stops mruby-task
+        # from compiling its own posix (SIGALRM) port. hal_freertos.c is gone:
+        # its tick manager moved into this port.
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/freertos/task_hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-rng/ports/posix/rng.c
-        # NOTE: picoruby-socket / picoruby-mbedtls port sources are NOT listed
-        # here for linux: the picoruby build compiles every gem's ports/posix
-        # and ports/common automatically on POSIX builds (lib/picoruby/build.rb).
-        # SSL on linux uses OpenSSL (linked below).
+        # NOTE: picoruby-socket / picoruby-mbedtls / picoruby-machine posix port
+        # sources are NOT listed here for linux: with conf.ports :posix the rake
+        # build compiles each gem's ports/posix (and picoruby-machine console)
+        # automatically. SSL on linux uses OpenSSL (linked below).
     )
 else()
     file(GLOB FMRB_APP_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports/esp32/*.c")
@@ -103,6 +107,9 @@ else()
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${FMRB_BMP332_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/src/fmrb_bmp332.c
+        # case-D tick top-half + mruby-task HAL (same consolidation as linux:
+        # the machine esp32 port no longer carries its own tick manager)
+        ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/ports/freertos/task_hal.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/esp32/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/ports/common/machine.c
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-machine/src/machine.c
@@ -162,8 +169,8 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/include
-    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
-    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include
@@ -188,18 +195,17 @@ if(IDF_TARGET STREQUAL "linux")
   target_compile_options(${COMPONENT_LIB} PRIVATE -O0 -g3)
 endif()
 
-# Add platform-specific compile definitions
+# Add platform-specific compile definitions.
+# All layout-affecting MRB_* macros come from mruby_abi_defines.cmake and must
+# match the rake-built libmruby exactly (see that file for the sync rules).
+include(${CMAKE_CURRENT_LIST_DIR}/mruby_abi_defines.cmake)
+fmrb_add_mruby_abi_defines()
+
 if(IDF_TARGET STREQUAL "linux")
   add_compile_definitions(PICORB_PLATFORM_POSIX)
   add_compile_definitions(PICORB_VM_MRUBY=1)
-  add_compile_definitions(MRB_INT64=1)
-  add_compile_definitions(MRB_TICK_UNIT=5)
-  add_compile_definitions(MRB_TIMESLICE_TICK_COUNT=10)
 else()
   add_compile_definitions(PICORB_VM_MRUBY=1)
-  add_compile_definitions(MRB_INT64=1)
-  add_compile_definitions(MRB_TICK_UNIT=5)
-  add_compile_definitions(MRB_TIMESLICE_TICK_COUNT=10)
   add_compile_definitions(NDEBUG)
   #MRBC definitions is used by machine.
   add_definitions(
@@ -244,8 +250,8 @@ target_link_libraries(${COMPONENT_LIB} PRIVATE libmruby)
 target_include_directories(
   ${COMPONENT_LIB}
   PUBLIC
-    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/include
-    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler2/lib/prism/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/lib/prism/include
     ${PICORUBY_BUILD_INCLUDE}
     ${MRBGEMS_DIR}
 )

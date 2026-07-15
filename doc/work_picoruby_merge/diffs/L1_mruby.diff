@@ -1,0 +1,698 @@
+diff --git a/mrbgems/hal-posix-dir/src/dir_hal.c b/mrbgems/hal-posix-dir/src/dir_hal.c
+index 2ad1c33c7..52caf6f5e 100644
+--- a/mrbgems/hal-posix-dir/src/dir_hal.c
++++ b/mrbgems/hal-posix-dir/src/dir_hal.c
+@@ -1,10 +1,13 @@
+ /*
+-** dir_hal.c - POSIX HAL implementation for mruby-dir
++** dir_hal.c - POSIX HAL for mruby-dir (family-mruby patch)
+ **
+-** See Copyright Notice in mruby.h
+-**
+-** POSIX implementation for directory operations using standard POSIX APIs.
+-** Supported platforms: Linux, macOS, BSD, Unix
++** Upstream hal-posix-dir passes paths straight to opendir/stat/etc., so a
++** virtual path like "/app" hits the real host filesystem. The Linux dev
++** environment serves the on-device "/" namespace from a local "flash/"
++** directory (see components/fmrb_hal/platform/posix/fmrb_hal_file_posix.c),
++** so this patch applies the same "flash" prefix before delegating to the
++** POSIX API. Logic mirrors fmrb_hal_file_resolve_path() for POSIX; the dev
++** build has no SD card / virtual mount points, so no children synthesis.
+ */
+ 
+ #include <mruby.h>
+@@ -15,28 +18,41 @@
+ #include <dirent.h>
+ #include <unistd.h>
+ #include <errno.h>
++#include <stdio.h>
++#include <string.h>
+ 
+ #ifdef HAVE_SYS_PARAM_H
+ #include <sys/param.h>
+ #endif
+ 
+-/* On POSIX, mrb_dir_handle wraps DIR */
++#define POSIX_BASE_PATH "flash"
++#define POSIX_PATH_MAX 512
++
++static void
++resolve_path(const char *virtual_path, char *out, size_t out_len)
++{
++  if (out == NULL || out_len == 0) return;
++  if (virtual_path == NULL) { out[0] = '\0'; return; }
++  if (virtual_path[0] == '/') {
++    snprintf(out, out_len, "%s%s", POSIX_BASE_PATH, virtual_path);
++  } else {
++    snprintf(out, out_len, "%s/%s", POSIX_BASE_PATH, virtual_path);
++  }
++}
++
+ struct mrb_dir_handle {
+   DIR *dir;
+ };
+ 
+-/*
+- * Directory Operations
+- */
+-
+ mrb_dir_handle*
+ mrb_hal_dir_open(mrb_state *mrb, const char *path)
+ {
+-  DIR *dir = opendir(path);
++  char resolved[POSIX_PATH_MAX];
++  resolve_path(path, resolved, sizeof(resolved));
++  DIR *dir = opendir(resolved);
+   if (dir == NULL) {
+     return NULL;
+   }
+-
+   mrb_dir_handle *handle = (mrb_dir_handle*)mrb_malloc(mrb, sizeof(mrb_dir_handle));
+   handle->dir = dir;
+   return handle;
+@@ -65,15 +81,10 @@ mrb_hal_dir_rewind(mrb_state *mrb, mrb_dir_handle *handle)
+   rewinddir(handle->dir);
+ }
+ 
+-/*
+- * Optional Operations
+- */
+-
+ int
+ mrb_hal_dir_seek(mrb_state *mrb, mrb_dir_handle *handle, long pos)
+ {
+ #if defined(__ANDROID__)
+-  /* Android doesn't have reliable seekdir */
+   (void)mrb; (void)handle; (void)pos;
+   errno = ENOSYS;
+   return -1;
+@@ -88,7 +99,6 @@ long
+ mrb_hal_dir_tell(mrb_state *mrb, mrb_dir_handle *handle)
+ {
+ #if defined(__ANDROID__)
+-  /* Android doesn't have reliable telldir */
+   (void)mrb; (void)handle;
+   errno = ENOSYS;
+   return -1;
+@@ -98,29 +108,31 @@ mrb_hal_dir_tell(mrb_state *mrb, mrb_dir_handle *handle)
+ #endif
+ }
+ 
+-/*
+- * Filesystem Operations
+- */
+-
+ int
+ mrb_hal_dir_mkdir(mrb_state *mrb, const char *path, int mode)
+ {
+   (void)mrb;
+-  return mkdir(path, (mode_t)mode);
++  char resolved[POSIX_PATH_MAX];
++  resolve_path(path, resolved, sizeof(resolved));
++  return mkdir(resolved, (mode_t)mode);
+ }
+ 
+ int
+ mrb_hal_dir_rmdir(mrb_state *mrb, const char *path)
+ {
+   (void)mrb;
+-  return rmdir(path);
++  char resolved[POSIX_PATH_MAX];
++  resolve_path(path, resolved, sizeof(resolved));
++  return rmdir(resolved);
+ }
+ 
+ int
+ mrb_hal_dir_chdir(mrb_state *mrb, const char *path)
+ {
+   (void)mrb;
+-  return chdir(path);
++  char resolved[POSIX_PATH_MAX];
++  resolve_path(path, resolved, sizeof(resolved));
++  return chdir(resolved);
+ }
+ 
+ int
+@@ -134,7 +146,6 @@ int
+ mrb_hal_dir_chroot(mrb_state *mrb, const char *path)
+ {
+ #if defined(__ANDROID__) || defined(__MSDOS__)
+-  /* Not available on these platforms */
+   (void)mrb; (void)path;
+   errno = ENOSYS;
+   return -1;
+@@ -147,47 +158,36 @@ mrb_hal_dir_chroot(mrb_state *mrb, const char *path)
+ int
+ mrb_hal_dir_is_directory(mrb_state *mrb, const char *path)
+ {
+-  struct stat sb;
+   (void)mrb;
+-
+-  if (stat(path, &sb) == 0 && S_ISDIR(sb.st_mode)) {
++  char resolved[POSIX_PATH_MAX];
++  resolve_path(path, resolved, sizeof(resolved));
++  struct stat sb;
++  if (stat(resolved, &sb) == 0 && S_ISDIR(sb.st_mode)) {
+     return 1;
+   }
+   return 0;
+ }
+ 
+-/*
+- * HAL Initialization/Finalization
+- */
+-
+ void
+ mrb_hal_dir_init(mrb_state *mrb)
+ {
+   (void)mrb;
+-  /* No initialization needed for POSIX */
+ }
+ 
+ void
+ mrb_hal_dir_final(mrb_state *mrb)
+ {
+   (void)mrb;
+-  /* No cleanup needed for POSIX */
+ }
+ 
+-/*
+- * Gem initialization
+- */
+-
+ void
+ mrb_hal_posix_dir_gem_init(mrb_state *mrb)
+ {
+   (void)mrb;
+-  /* HAL interface functions are called by mruby-dir gem */
+ }
+ 
+ void
+ mrb_hal_posix_dir_gem_final(mrb_state *mrb)
+ {
+   (void)mrb;
+-  /* Cleanup handled by mrb_hal_dir_final called from mruby-dir */
+ }
+diff --git a/mrbgems/hal-posix-task/src/task_hal.c b/mrbgems/hal-posix-task/src/task_hal.c
+index 6e293b704..fe84bbafc 100644
+--- a/mrbgems/hal-posix-task/src/task_hal.c
++++ b/mrbgems/hal-posix-task/src/task_hal.c
+@@ -1,58 +1,26 @@
+ /*
+-** task_hal.c - POSIX HAL implementation for mruby-task
++** task_hal.c - HAL implementation for mruby-task (Family mruby patched)
+ **
+-** See Copyright Notice in mruby.h
+-**
+-** POSIX implementation using SIGALRM and setitimer() for timer,
+-** and sigprocmask() for interrupt protection.
+-**
+-** Supported platforms: Linux, macOS, BSD, Unix
+-**
+-** Note: When compiled for Emscripten/WASM, the SIGALRM timer is disabled
+-** because JavaScript handles tick calls via setInterval. Using both would
+-** cause tick_ to increment twice as fast, making sleep wake up early.
++** On Family mruby, tick management and IRQ control are handled by
++** hal_freertos.c (FreeRTOS task-based). This file only initializes
++** the mruby task state fields in mrb_hal_task_init().
++** SIGALRM/setitimer are NOT used to avoid conflicting with FreeRTOS.
+ */
+ 
+ #include <mruby.h>
+ #include "task_hal.h"
+-#ifndef __EMSCRIPTEN__
+-#include <signal.h>
+-#include <sys/time.h>
+-#endif
+ #include <time.h>
+ #include <unistd.h>
+ #include <stdint.h>
+ 
++/* hal_init is provided by hal_freertos.c (linked at final link time) */
++extern void hal_init(mrb_state *mrb);
++
+ /* Time conversion constants */
+ #define NSEC_PER_MSEC 1000000ULL
+ #define NSEC_PER_SEC  1000000000ULL
+ #define USEC_PER_MSEC 1000ULL
+ 
+-#ifndef __EMSCRIPTEN__
+-/* Multi-VM support */
+-static mrb_state *vm_list[MRB_TASK_MAX_VMS];
+-static volatile sig_atomic_t vm_count = 0;
+-static sigset_t alarm_mask;
+-
+-/* SIGALRM signal handler - ticks all registered VMs */
+-static void
+-sigalrm_handler(int sig)
+-{
+-  int i;
+-  (void)sig;
+-  /* Tick all registered VMs */
+-  for (i = 0; i < vm_count; i++) {
+-    if (vm_list[i]) {
+-      mrb_tick(vm_list[i]);
+-    }
+-  }
+-}
+-#endif /* __EMSCRIPTEN__ */
+-
+-/*
+- * HAL Interface Implementation
+- */
+-
+ void
+ mrb_hal_task_init(mrb_state *mrb)
+ {
+@@ -66,79 +34,16 @@ mrb_hal_task_init(mrb_state *mrb)
+   mrb->task.wakeup_tick = UINT32_MAX;
+   mrb->task.switching = FALSE;
+ 
+-#ifndef __EMSCRIPTEN__
+-  /* POSIX: Set up SIGALRM timer for tick handling */
+-  struct sigaction sa;
+-  struct itimerval timer;
+-  int vm_index = -1;
+-
+-  /* Block SIGALRM during registration to avoid race */
+-  sigemptyset(&alarm_mask);
+-  sigaddset(&alarm_mask, SIGALRM);
+-  sigprocmask(SIG_BLOCK, &alarm_mask, NULL);
+-
+-  /* Check if this VM is already registered */
+-  for (i = 0; i < vm_count; i++) {
+-    if (vm_list[i] == mrb) {
+-      vm_index = i;
+-      break;
+-    }
+-  }
+-
+-  /* Register new VM if not already present */
+-  if (vm_index < 0) {
+-    if (vm_count >= MRB_TASK_MAX_VMS) {
+-      sigprocmask(SIG_UNBLOCK, &alarm_mask, NULL);
+-      mrb_raisef(mrb, E_RUNTIME_ERROR,
+-                 "too many mrb_states with task scheduler (max: %d)",
+-                 MRB_TASK_MAX_VMS);
+-    }
+-    vm_list[vm_count] = mrb;
+-    vm_count++;
+-  }
+-
+-  /* Set up signal handler and timer only for first VM */
+-  if (vm_count == 1) {
+-    /* Set up signal handler - SA_RESTART to avoid breaking IO operations */
+-    sa.sa_handler = sigalrm_handler;
+-    sa.sa_flags = SA_RESTART;
+-    sigemptyset(&sa.sa_mask);
+-    sigaction(SIGALRM, &sa, NULL);
+-
+-    /* Start timer */
+-    timer.it_value.tv_sec = 0;
+-    timer.it_value.tv_usec = MRB_TICK_UNIT * 1000;
+-    timer.it_interval.tv_sec = 0;
+-    timer.it_interval.tv_usec = MRB_TICK_UNIT * 1000;
+-    setitimer(ITIMER_REAL, &timer, NULL);
+-  }
+-
+-  /* Unblock SIGALRM */
+-  sigprocmask(SIG_UNBLOCK, &alarm_mask, NULL);
+-#endif
+-}
+-
+-void
+-mrb_task_enable_irq(void)
+-{
+-#ifndef __EMSCRIPTEN__
+-  sigprocmask(SIG_UNBLOCK, &alarm_mask, NULL);
+-#endif
++  /* Create tick task (FreeRTOS) - idempotent, only creates once */
++  hal_init(mrb);
+ }
+ 
+-void
+-mrb_task_disable_irq(void)
+-{
+-#ifndef __EMSCRIPTEN__
+-  sigprocmask(SIG_BLOCK, &alarm_mask, NULL);
+-#endif
+-}
++/* mrb_task_enable_irq / mrb_task_disable_irq are provided by hal_freertos.c */
+ 
+ void
+ mrb_hal_task_idle_cpu(mrb_state *mrb)
+ {
+   (void)mrb;
+-  /* On POSIX, just pause briefly */
+   usleep(MRB_TICK_UNIT * 1000);
+ }
+ 
+@@ -150,25 +55,22 @@ mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec)
+ 
+   (void)mrb;
+ 
+-  /* Validate input to prevent overflow */
+   if (usec < 0) {
+     return;
+   }
+ 
+   ret = clock_gettime(CLOCK_MONOTONIC, &start);
+   if (ret != 0) {
+-    /* Fallback to simple usleep if clock_gettime fails */
+     usleep(usec);
+     return;
+   }
+ 
+   uint64_t target_ns = (uint64_t)usec * USEC_PER_MSEC;
+ 
+-  /* Loop until enough real time has elapsed */
+   while (1) {
+     ret = clock_gettime(CLOCK_MONOTONIC, &now);
+     if (ret != 0) {
+-      break;  /* Clock failure - exit loop */
++      break;
+     }
+ 
+     uint64_t elapsed_ns = (uint64_t)(now.tv_sec - start.tv_sec) * NSEC_PER_SEC +
+@@ -178,7 +80,6 @@ mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec)
+       break;
+     }
+ 
+-    /* Sleep for remaining time, but at least 1ms to allow timer interrupts */
+     uint64_t remaining_ns = target_ns - elapsed_ns;
+     if (remaining_ns > NSEC_PER_MSEC) {
+       sleep_time.tv_sec = remaining_ns / NSEC_PER_SEC;
+@@ -189,64 +90,24 @@ mrb_hal_task_sleep_us(mrb_state *mrb, mrb_int usec)
+       sleep_time.tv_nsec = NSEC_PER_MSEC;
+     }
+ 
+-    nanosleep(&sleep_time, NULL);  /* Interrupted by signals - that's OK */
++    nanosleep(&sleep_time, NULL);
+   }
+ }
+ 
+ void
+ mrb_hal_task_final(mrb_state *mrb)
+ {
+-#ifndef __EMSCRIPTEN__
+-  struct itimerval timer;
+-  int i, j;
+-
+-  /* Block SIGALRM during unregistration */
+-  sigprocmask(SIG_BLOCK, &alarm_mask, NULL);
+-
+-  /* Find and remove this VM from the list */
+-  for (i = 0; i < vm_count; i++) {
+-    if (vm_list[i] == mrb) {
+-      /* Shift remaining VMs down */
+-      for (j = i; j < vm_count - 1; j++) {
+-        vm_list[j] = vm_list[j + 1];
+-      }
+-      vm_list[vm_count - 1] = NULL;
+-      vm_count--;
+-      break;
+-    }
+-  }
+-
+-  /* Stop timer if last VM */
+-  if (vm_count == 0) {
+-    timer.it_value.tv_sec = 0;
+-    timer.it_value.tv_usec = 0;
+-    timer.it_interval.tv_sec = 0;
+-    timer.it_interval.tv_usec = 0;
+-    setitimer(ITIMER_REAL, &timer, NULL);
+-  }
+-
+-  /* Unblock SIGALRM */
+-  sigprocmask(SIG_UNBLOCK, &alarm_mask, NULL);
+-#else
+-  /* WASM: No timer cleanup needed */
+   (void)mrb;
+-#endif
+ }
+ 
+-/*
+- * Gem initialization (empty - HAL functions called by mruby-task)
+- */
+-
+ void
+ mrb_hal_posix_task_gem_init(mrb_state *mrb)
+ {
+   (void)mrb;
+-  /* HAL interface functions are called by mruby-task gem */
+ }
+ 
+ void
+ mrb_hal_posix_task_gem_final(mrb_state *mrb)
+ {
+   (void)mrb;
+-  /* Cleanup handled by mrb_hal_task_final called from mruby-task */
+ }
+diff --git a/mrbgems/mruby-dir/mrbgem.rake b/mrbgems/mruby-dir/mrbgem.rake
+index 71ed21cbd..29b497173 100644
+--- a/mrbgems/mruby-dir/mrbgem.rake
++++ b/mrbgems/mruby-dir/mrbgem.rake
+@@ -2,34 +2,32 @@ MRuby::Gem::Specification.new('mruby-dir') do |spec|
+   spec.license = 'MIT and MIT-like license'
+   spec.authors = ['Internet Initiative Japan Inc.', 'Kevlin Henney']
+ 
+-  # Check if HAL gem is loaded
+-  # HAL gems must be explicitly specified in build config (recommended) or via auto-selection below
+-  spec.build.gems.one? { |g| g.name =~ /^hal-.*-dir$/ } or begin
+-    # No HAL found - determine appropriate error message or auto-load
+-    suggested_hal = if ENV['MRUBY_DIR_HAL']
+-      ENV['MRUBY_DIR_HAL']
+-    elsif spec.for_windows?
+-      'hal-win-dir'
+-    elsif RUBY_PLATFORM =~ /linux|darwin|bsd/
+-      'hal-posix-dir'
+-    else
+-      nil
+-    end
++  # family-mruby: On ESP32, dir_hal.c is built via CMakeLists.txt (not as a HAL gem).
++  # Skip HAL gem auto-detection for cross-builds targeting ESP32.
++  unless cc.defines.include?("ESP32_PLATFORM")
++    spec.build.gems.one? { |g| g.name =~ /^hal-.*-dir$/ } or begin
++      suggested_hal = if ENV['MRUBY_DIR_HAL']
++        ENV['MRUBY_DIR_HAL']
++      elsif spec.for_windows?
++        'hal-win-dir'
++      elsif RUBY_PLATFORM =~ /linux|darwin|bsd/
++        'hal-posix-dir'
++      else
++        nil
++      end
+ 
+-    if suggested_hal
+-      # Auto-load HAL gem for convenience (for development)
+-      # This works because HAL gems declare dependency on mruby-dir
+-      warn "mruby-dir: No HAL specified, loading #{suggested_hal} (explicit selection recommended)"
+-      spec.build.gem core: suggested_hal
+-    else
+-      # Unknown platform - fail with helpful message
+-      fail "mruby-dir: No HAL available for platform '#{RUBY_PLATFORM}'.\n" \
+-           "Please specify HAL gem explicitly in your build config:\n" \
+-           "  conf.gem core: 'hal-posix-dir'   # For Linux/macOS/BSD\n" \
+-           "  conf.gem core: 'hal-win-dir'     # For Windows\n" \
+-           "Or set environment variable:\n" \
+-           "  MRUBY_DIR_HAL=hal-myplatform-dir\n" \
+-           "See mrbgems/mruby-dir/README.md for creating custom HAL."
++      if suggested_hal
++        warn "mruby-dir: No HAL specified, loading #{suggested_hal} (explicit selection recommended)"
++        spec.build.gem core: suggested_hal
++      else
++        fail "mruby-dir: No HAL available for platform '#{RUBY_PLATFORM}'.\n" \
++             "Please specify HAL gem explicitly in your build config:\n" \
++             "  conf.gem core: 'hal-posix-dir'   # For Linux/macOS/BSD\n" \
++             "  conf.gem core: 'hal-win-dir'     # For Windows\n" \
++             "Or set environment variable:\n" \
++             "  MRUBY_DIR_HAL=hal-myplatform-dir\n" \
++             "See mrbgems/mruby-dir/README.md for creating custom HAL."
++      end
+     end
+   end
+ end
+diff --git a/mrbgems/mruby-task/mrbgem.rake b/mrbgems/mruby-task/mrbgem.rake
+index 7edc62081..0eb515766 100644
+--- a/mrbgems/mruby-task/mrbgem.rake
++++ b/mrbgems/mruby-task/mrbgem.rake
+@@ -6,31 +6,7 @@ MRuby::Gem::Specification.new('mruby-task') do |spec|
+   # Enable task scheduler globally (required for vm.c integration)
+   spec.build.defines << 'MRB_USE_TASK_SCHEDULER'
+ 
+-  # Check if HAL gem is loaded
+-  # HAL gems must be explicitly specified in build config (recommended) or via auto-selection below
+-  spec.build.gems.one? { |g| g.name =~ /^hal-.*-task$/ } or begin
+-    # No HAL found - determine appropriate error message or auto-load
+-    suggested_hal = if spec.for_windows?
+-      # Windows (including MinGW) - use Windows HAL
+-      'hal-win-task'
+-    elsif RUBY_PLATFORM =~ /linux|darwin|bsd/
+-      'hal-posix-task'
+-    else
+-      nil
+-    end
+-
+-    if suggested_hal
+-      # Auto-load HAL gem for convenience (for development)
+-      # This works because HAL gems declare dependency on mruby-task
+-      warn "mruby-task: No HAL specified, loading #{suggested_hal} (explicit selection recommended)"
+-      spec.build.gem core: suggested_hal
+-    else
+-      # Unknown platform - fail with helpful message
+-      fail "mruby-task: No HAL available for platform '#{RUBY_PLATFORM}'.\n" \
+-           "Please specify HAL gem explicitly in your build config:\n" \
+-           "  conf.gem core: 'hal-posix-task'   # For Linux/macOS/BSD\n" \
+-           "  conf.gem core: 'hal-win-task'     # For Windows\n" \
+-           "Or create custom HAL - see mrbgems/mruby-task/README.md"
+-    end
+-  end
++  # family-mruby: Task HAL functions are provided by ports/posix/hal.c
++  # and ports/esp32/machine.c using FreeRTOS task-based tick delivery.
++  # No HAL gem auto-loading needed.
+ end
+diff --git a/mrbgems/mruby-task/src/task.c b/mrbgems/mruby-task/src/task.c
+index afefe957c..4cc2223e8 100644
+--- a/mrbgems/mruby-task/src/task.c
++++ b/mrbgems/mruby-task/src/task.c
+@@ -22,6 +22,21 @@
+ #include "task.h"
+ #include "task_hal.h"
+ 
++/*
++ * family-mruby (案D, top-half / bottom-half tick split):
++ * The platform tick signal source (a FreeRTOS task in the machine HAL) only
++ * sets mrb->task.switching and accumulates a per-VM pending-tick count; it must
++ * NOT call mrb_tick() itself, because that would mutate the task queues from a
++ * thread other than the one running this VM (data race -> ci->proc corruption).
++ * This function returns and zeroes the pending-tick count for the given VM, and
++ * is called below on the VM's own thread (the scheduler loop), where queue
++ * access is single-threaded. Defined per-platform in the machine HAL port.
++ */
++extern uint32_t mrb_hal_task_take_pending_ticks(mrb_state *mrb);
++
++/* Defined below; called from the HAL tick signal source (other thread). */
++MRB_API void mrb_task_request_switch(mrb_state *mrb);
++
+ /*
+  * Queue helper macros
+  */
+@@ -448,6 +463,21 @@ mrb_tick(mrb_state *mrb)
+   }
+ }
+ 
++/*
++ * Request a cooperative yield for the VM running on `mrb` (案D top-half helper).
++ * Called from the platform tick signal source, which runs on a thread other
++ * than this VM and therefore cannot touch mrb->task directly (the struct field
++ * is guarded by MRB_USE_TASK_SCHEDULER, undefined in the HAL port's TU). The VM
++ * dispatch loop checks switching on every bytecode boundary, so setting it makes
++ * a running (CPU-bound) task return to the scheduler. switching is a single
++ * volatile word, so a cross-thread set is safe (worst case: one extra/late yield).
++ */
++MRB_API void
++mrb_task_request_switch(mrb_state *mrb)
++{
++  switching_ = TRUE;
++}
++
+ /* Main scheduler loop */
+ MRB_API mrb_value
+ mrb_task_run(mrb_state *mrb)
+@@ -455,6 +485,16 @@ mrb_task_run(mrb_state *mrb)
+   mrb_task *t;
+ 
+   while (1) {
++    /* Bottom-half: apply ticks accumulated by the signal source on this, the
++     * VM's own thread (single-threaded queue access). Runs every iteration,
++     * including idle ones, so sleeping tasks wake up on time. */
++    {
++      uint32_t pending = mrb_hal_task_take_pending_ticks(mrb);
++      for (uint32_t i = 0; i < pending; i++) {
++        mrb_tick(mrb);
++      }
++    }
++
+     t = q_ready_;
+ 
+     /* No task ready - check if all tasks are done */
+@@ -497,6 +537,14 @@ mrb_task_run(mrb_state *mrb)
+ MRB_API mrb_value
+ mrb_task_run_once(mrb_state *mrb)
+ {
++  /* Bottom-half: apply ticks accumulated by the signal source (see mrb_task_run). */
++  {
++    uint32_t pending = mrb_hal_task_take_pending_ticks(mrb);
++    for (uint32_t i = 0; i < pending; i++) {
++      mrb_tick(mrb);
++    }
++  }
++
+   mrb_task *t = q_ready_;
+ 
+   /* No task ready */
+@@ -1483,6 +1531,16 @@ mrb_task_reset_context(mrb_state *mrb, mrb_value task)
+   c->status = MRB_TASK_CREATED;
+   if (c->ci) {
+     mrb_vm_ci_target_class_set(c->ci, mrb->object_class);
++    c->ci->stack = c->stbase;
++  }
++  /* Clear stack values to prevent GC from marking stale data */
++  if (c->stbase) {
++    mrb_value *s = c->stbase + 1;
++    mrb_value *send = c->stend;
++    while (s < send) {
++      SET_NIL_VALUE(*s);
++      s++;
++    }
+   }
+ }
+ 
+diff --git a/src/vm.c b/src/vm.c
+index ff2d63c7f..b292d4441 100644
+--- a/src/vm.c
++++ b/src/vm.c
+@@ -1535,9 +1535,42 @@ prepare_tagged_break(mrb_state *mrb, uint32_t tag, const mrb_callinfo *return_ci
+ #define CALL_CODE_HOOKS() do { insn = BYTECODE_DECODER(*ci->pc); CODE_FETCH_HOOK(mrb, irep, ci->pc, regs); } while (0)
+ 
+ #ifdef MRB_USE_TASK_SCHEDULER
++/*
++ * family-mruby: true if it is safe to yield the current task right now, i.e. we
++ * are executing the task's own bytecode and NOT nested inside a C function that
++ * re-entered the VM via mrb_funcall (any ci with cci > 0 above the task base).
++ * Yielding across such a C boundary returns from a nested mrb_vm_exec without
++ * unwinding it: it strands the C frame, leaves mrb->c->ci at the wrong depth
++ * ("task context corrupted: no proc on resume") and dangles the longjmp
++ * context. So an asynchronously requested switch (set by the tick signal) is
++ * deferred until execution returns to a safe top-level point. The walk runs
++ * only when a switch is actually pending, so the cost is paid rarely.
++ */
++static inline mrb_bool
++mrb_task_yield_ok(mrb_state *mrb)
++{
++  mrb_callinfo *ci;
++  for (ci = mrb->c->ci; ci >= mrb->c->cibase; ci--) {
++    if (ci->cci > 0) return FALSE;
++  }
++  return TRUE;
++}
++
++/*
++ * On an early return for a task switch / stop, restore mrb->jmp to the value
++ * saved at mrb_vm_exec entry (prev_jmp). The normal exit path (OP_STOP) does
++ * this; a bare `return` here would otherwise leave mrb->jmp dangling at this
++ * frame's local c_jmp, causing a later longjmp to land on a dead stack frame.
++ */
+ #define RETURN_IF_TASK_STOPPED(mrb) do { \
+-  if ((mrb)->task.switching || (mrb)->c->status == MRB_TASK_STOPPED) \
++  if ((mrb)->c->status == MRB_TASK_STOPPED) { \
++    (mrb)->jmp = prev_jmp; \
++    return mrb_nil_value(); \
++  } \
++  if ((mrb)->task.switching && mrb_task_yield_ok(mrb)) { \
++    (mrb)->jmp = prev_jmp; \
+     return mrb_nil_value(); \
++  } \
+ } while (0)
+ #define TASK_STOP(mrb) do { \
+   if (mrb->c->status != MRB_TASK_STOPPED) \

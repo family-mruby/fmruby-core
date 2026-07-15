@@ -10,6 +10,20 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   conf.cc.defines << 'MRB_TICK_UNIT=5'
   conf.cc.defines << 'MRB_TIMESLICE_TICK_COUNT=10'
   conf.cc.defines << 'MRB_INT64'
+  # Set UTF-8 string support at the build_config level so it applies to the
+  # mruby core (which defines mrb_utf8len_table / mrb_utf8len / mrb_utf8_strlen)
+  # as well as the gems that reference them (mruby-string-ext). Setting it only
+  # inside picoruby-mruby's mrbgem.rake ran after the core, leaving the table
+  # undefined at link.
+  conf.cc.defines << 'MRB_UTF8_STRING'
+  # MRB_NO_BOXING and the profile must also be build-wide: they change
+  # sizeof(mrb_state) / mrb_value. Setting them only in picoruby-mruby's
+  # mrbgem.rake reaches the mruby core and dependency gems but NOT
+  # picoruby-mruby's own sources (a gem's compiler is cloned before its
+  # mrbgem.rake body runs), splitting the ABI inside libmruby itself.
+  # Keep in sync with components/picoruby-esp32/mruby_abi_defines.cmake.
+  conf.cc.defines << 'MRB_NO_BOXING'
+  conf.cc.defines << 'MRB_BASELINE_PROFILE=1'
   conf.cc.defines << 'PICORB_PLATFORM_POSIX'
   conf.cc.defines << 'PICORB_ALLOC_ESTALLOC'
   conf.cc.defines << 'PICORB_ALLOC_ALIGN=8'
@@ -22,16 +36,29 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
     conf.cc.defines << 'ESTALLOC_DEBUG=1'
   end
 
-  conf.microruby
+  conf.picoruby
 
   # Common gems
   conf.gembox 'family_mruby'
 
-  # POSIX HAL gems and their dependents
+  # HAL port selection. Upstream folded the standalone hal-*-task/-dir gems into
+  # per-gem ports/<name>/ dirs, compiled by the rake build when conf.ports lists
+  # a matching port (a CrossBuild compiles none unless set). The rake build has
+  # no FreeRTOS headers, so FreeRTOS-dependent ports (the machine tick and the
+  # mruby-task case-D tick) are compiled on the CMake/ESP-IDF side instead
+  # (PICORUBY_SRCS, which PRIV_REQUIRES freertos). Here we only let the rake
+  # build pick posix ports (socket, mruby-dir, and picoruby-machine's console).
+  conf.ports :posix
+  # ...but mruby-task's posix port is a SIGALRM+setitimer timer that collides
+  # with the Linux FreeRTOS POSIX simulator's own signal scheduler (instruct
+  # sec 3.5) and would race case-D. This name-only gem makes mruby-task drop its
+  # port (resolve_external_hal!); its HAL comes from the CMake-built freertos
+  # port (mrbgems/mruby-task/ports/freertos/task_hal.c).
+  conf.gem core: 'hal-task-freertos'
+
+  # mruby-dir is still an explicit dep (it is not pulled in transitively).
   # NOTE: hal-posix-io is NOT loaded (it depends on mruby-io which conflicts with fmrb-io)
   dir = "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems"
-  conf.gem gemdir: "#{dir}/hal-posix-task"
-  conf.gem gemdir: "#{dir}/hal-posix-dir"
   conf.gem gemdir: "#{dir}/mruby-dir"
 
   # mruby extension gems

@@ -17,19 +17,14 @@ MRuby::Gem::Specification.new('picoruby-mruby') do |spec|
 
   # Use mruby-task gem instead of src/task.c
   # NOTE: src/task.c has been moved to deprecated/task.c.bak
-  # Load HAL gem first so mruby-task can find it
-  if build.posix?
-    spec.add_dependency 'hal-posix-task', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/hal-posix-task"
-    # family-mruby: mruby-io is NOT loaded here; picoruby-fmrb-io is used instead
-    # (mruby-io conflicts with picoruby-fmrb-io)
-  else
-    spec.add_dependency 'hal-picoruby-task', gemdir: "#{MRUBY_ROOT}/mrbgems/hal-picoruby-task"
-  end
+  # family-mruby: upstream loads mruby-io on posix; we do NOT (picoruby-fmrb-io
+  # provides IO and conflicts with mruby-io). The mruby-task HAL is provided by
+  # its ports/freertos port (selected via conf.ports), not a hal-*-task gem.
   spec.add_dependency 'mruby-task', gemdir: "#{MRUBY_ROOT}/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task"
 
-  # I don't know why but removing this causes a problem
-  # even if build_config has the same define
-  spec.cc.defines << "MRB_INT64"
+  build.cc.defines << "MRB_INT64"
+  build.cc.defines << "MRB_NO_BOXING"
+  build.cc.defines << "MRB_UTF8_STRING"
 
   align = build.cc.defines.find{_1.start_with?("PICORB_ALLOC_ALIGN=")}.then do |define|
     define&.split("=")&.last || 4
@@ -71,7 +66,8 @@ MRuby::Gem::Specification.new('picoruby-mruby') do |spec|
     end
   elsif spec.cc.defines.include?("PICORB_ALLOC_ESTALLOC")
     spec.cc.defines << "ESTALLOC_ALIGNMENT=#{align}"
-    # Always enable ESTALLOC_DEBUG for est_take_statistics (memory monitoring)
+    # family-mruby: always enable ESTALLOC_DEBUG (not only under PICORB_DEBUG) so
+    # est_take_statistics is available for the runtime memory monitor. Idempotent.
     unless spec.cc.defines.any?{ _1.start_with?("ESTALLOC_DEBUG") }
       spec.cc.defines << "ESTALLOC_DEBUG=1"
     end
