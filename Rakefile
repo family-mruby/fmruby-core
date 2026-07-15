@@ -158,8 +158,7 @@ task :setup do
   sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
   sh "cp -f lib/patch/picoruby-yaml/mrbgem.rake #{mrbgem_path}/picoruby-yaml/"
   sh "cp -f lib/patch/picoruby-sandbox/mrbgem.rake #{mrbgem_path}/picoruby-sandbox/"
-  # picoruby-sandbox: fix uninitialized mrb_value name in Sandbox.new
-  sh "cp -f lib/patch/picoruby-sandbox/src/mruby/sandbox.c #{mrbgem_path}/picoruby-sandbox/src/mruby/"
+  # (sandbox.c patch dropped: upstream fixed the uninitialized name in Sandbox.new)
 
   # picoruby-i2c: add I2C#close method and I2C_release declaration
   sh "cp -f lib/patch/picoruby-i2c/include/i2c.h #{mrbgem_path}/picoruby-i2c/include/"
@@ -173,7 +172,7 @@ task :setup do
   sh "cp -f lib/patch/picoruby-socket/src/mruby/ssl_socket.c #{mrbgem_path}/picoruby-socket/src/mruby/"
   sh "cp -f lib/patch/picoruby-socket/ports/esp32/tcp_socket.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
   sh "cp -f lib/patch/picoruby-socket/ports/esp32/ssl_socket.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
-  sh "cp -f lib/patch/picoruby-socket/ports/esp32/tcp_server.c #{mrbgem_path}/picoruby-socket/ports/esp32/"
+  # (tcp_server.c patch dropped: upstream's vm-threaded ports API fixed the alloc crash)
   sh "cp -f lib/patch/picoruby-socket/ports/posix/tcp_socket.c #{mrbgem_path}/picoruby-socket/ports/posix/"
   sh "cp -f lib/patch/picoruby-socket/ports/posix/ssl_socket.c #{mrbgem_path}/picoruby-socket/ports/posix/"
 
@@ -187,8 +186,7 @@ task :setup do
   # picoruby-net-http: accept URI objects in get/get_response/post_form (CRuby style)
   sh "cp -f lib/patch/picoruby-net-http/mrblib/http_client.rb #{mrbgem_path}/picoruby-net-http/mrblib/"
 
-  # picoruby-json: fix parse_float dropping the decimal point ("26.2" -> 262.0)
-  sh "cp -f lib/patch/picoruby-json/mrblib/json.rb #{mrbgem_path}/picoruby-json/mrblib/"
+  # (picoruby-json parse_float patch dropped: upstream fixed the decimal handling)
 
   # mruby-task (case-D tick split): task.c (bottom-half) and the FreeRTOS
   # ports/posix/task_hal.c (top-half) are delivered by the bulk
