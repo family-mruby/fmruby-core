@@ -81,10 +81,3 @@ picorb_hal_abort(const char *s)
 /* hal_register_vm, hal_deinit, hal_deinit_by_pool
  * are provided by hal_freertos.c (ESP-IDF) at link time. */
 
-/*
- * Prism allocator mutex (used by prism_alloc.c via extern)
- */
-#include <pthread.h>
-static pthread_mutex_t s_prism_mutex = PTHREAD_MUTEX_INITIALIZER;
-void fmrb_prism_lock(void)   { pthread_mutex_lock(&s_prism_mutex); }
-void fmrb_prism_unlock(void) { pthread_mutex_unlock(&s_prism_mutex); }

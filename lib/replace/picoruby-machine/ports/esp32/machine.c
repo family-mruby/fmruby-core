@@ -70,20 +70,6 @@ volatile int sigint_status = 0; /* MACHINE_SIG_NONE */
 
 #endif /* PICORB_VM_MRUBY */
 
-/*
- * Prism allocator mutex (used by prism_alloc.c via extern)
- */
-static SemaphoreHandle_t s_prism_mutex = NULL;
-void fmrb_prism_lock(void)
-{
-  if (s_prism_mutex == NULL) s_prism_mutex = xSemaphoreCreateMutex();
-  xSemaphoreTake(s_prism_mutex, portMAX_DELAY);
-}
-void fmrb_prism_unlock(void)
-{
-  if (s_prism_mutex != NULL) xSemaphoreGive(s_prism_mutex);
-}
-
 int
 picorb_hal_write(int fd, const void *buf, int nbytes)
 {
