@@ -2,14 +2,11 @@
 
 中断復帰の起点。新しい作業は末尾に追記する。日付は JST。
 
-> **【現在の状態 (2026-07-13): rake build:linux 成功 / 起動時セグフォは ABI 修正済み・実行確認待ち】**
-> submodule は **新 pin に切替済み** (L0 picoruby c932f70b, nested も全て新 pin。working tree の
-> checkout であり fmruby-core には未 commit = pointer 未更新)。
-> 初回実行のセグフォは rake/CMake の mrb_state レイアウト不一致が原因で修正済み
-> (progress 末尾「2026-07-13 ABI 修正」参照)。依頼者による docker compose 実行確認と、
-> socket TLS/net-http 集中統合、ESP32 ビルドが残作業。
-> 復帰時の注意: fmruby-core で `git submodule update` すると旧 pin に戻るので実行しないこと。
-> submodule の pin 切替手順は progress 末尾「pin 切替」ログ参照 (再現可能)。
+> **【現在の状態 (2026-07-15): マージ完了 — Linux/ESP32 ビルド + Linux 実行 + 実機検証まで全て合格】**
+> 詳細は progress 末尾「実機検証 完了」参照。残タスクは任意の後片付けのみ
+> (DROP 候補パッチ削除、PRISM プール確認、軽微ノイズ調査、上流 PR)。
+> 復帰時の注意: submodule pointer は commit 済み (cd70f9a) のため、
+> `git submodule update` は新 pin (c932f70b) を checkout する。旧警告は解消済み。
 
 ---
 
@@ -500,3 +497,38 @@ build 反復で解決した内容:
 注意: Linux ビルドの入力は今回の変更で不変 (esp32 専用 TU / esp32 config のみ) のため
 GREEN のまま。実機確認項目は既存リスト (tick 破壊回帰・案D デュアルコア・estalloc
 マルチ VM・TLS 実通信・fps/メモリ基準比較) を参照。
+
+### 実機 (ESP32-P4/Tab5) ブート成功 (2026-07-15, 依頼者確認)
+
+マージ後 firmware (1.0.0-114-gd895971) が実機で起動、以下を確認:
+- ABI ガード通過 (mismatch なしで kernel VM 生成)
+- マルチ VM 4 並走 (kernel/desktop/editor/led_matrix、各専用プール) = per-VM estalloc TLS 方式が実機で動作
+- 案D: VM タスク群 (core1) と非ピンの tick タイマーが真に並行する構成で、アニメーション+ドラッグ+複数アプリが安定
+- draw_image (arity 修正箇所) / スプライト / ウィンドウ操作 / タッチ HID / WiFi (esp_hosted) / BLE / remote desktop 起動
+- render 24-33ms avg
+
+軽微な気づき (要追跡):
+- `E system_api: 2 mac type is incorrect` が mrb_open のたびに出る (P4 に BT MAC が無い。
+  どの gem init が MAC type 2 を読むか未特定。実害は未観測)
+- RTC sync 読み取り失敗 (マージ起因か既存かの切り分け未)
+- system_desktop の stack free 944B (mruby 4.0 でスタック消費増の可能性。overflow 検知は有効)
+
+残: 長時間走行 (tick 回帰 / 案D レース)、TLS 実通信 (Weather)、アプリ終了→再起動サイクル、
+fps/メモリの旧ベースライン比較。
+
+### 実機検証 完了 (2026-07-15, 依頼者確認) — マージ作業クローズ
+
+- **長時間走行**: 以前クラッシュしていた時間を超えて稼働、落ちない。
+  → vm.c upstream 採用の回帰なし + 案D (freertos task_hal) のデュアルコア実走 OK。
+- **TLS 実通信**: Weather アプリ OK (esp_crt_bundle + 統合版 esp32 ssl_socket.c の初実走)。
+- **複数アプリの起動/停止サイクル**: OK (VM 破棄→再生成、estalloc per-VM TLS のクリーンアップ)。
+- **メモリ**: Monitor アプリで確認、問題なし。
+
+これで picoruby c932f70b マージは **Linux/ESP32 ビルド + Linux 実行 + 実機検証** の
+全段階を完了。残タスクは任意の後片付けのみ:
+- DROP 候補パッチの削除 (sandbox.c / json.rb / tcp_server.c は upstream と同一内容の
+  コピーになっているので lib/patch から削除し Rakefile setup の行も整理可)
+- PRISM プール残置の確認 (Option A 後も boot ログに表示; 未使用予約の可能性)
+- 軽微ノイズ: mrb_open 毎の `system_api: 2 mac type` エラーの発生源特定、RTC sync 失敗の切り分け
+- system_desktop stack 消費の監視 (free 944B)
+- 上流還元: PR 候補 N1 (freertos port) / #6 (websocket gemdir) / #10 (SSLSocket_ready) 等
