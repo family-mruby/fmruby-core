@@ -544,3 +544,9 @@ fps/メモリの旧ベースライン比較。
   でも各アプリが自分のヒープから割り当てる (global_mrb はエラー処理用で
   ヒープ整合性に global lock 不要)。Option A の「mutex 排他」は実装不要と判明。
 - 両ターゲット rebuild GREEN 確認済み。boot ログから MEMPOOL: PRISM 行が消える。
+
+### 後片付けの実機確認 OK (2026-07-16, 依頼者ログ)
+
+develop マージ後 firmware (119-g896a751) で PRISM 行の消滅と PSRAM +320KB
+(27452K → 27772K) を実機確認。desktop 起動・描画・remote desktop まで正常。
+本マージ作業はこれで完全クローズ。
