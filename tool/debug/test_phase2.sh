@@ -28,7 +28,7 @@ python3 tools/fmrb_input.py \
 
 echo "== running DAP test =="
 set +e
-python3 "$CORE/tools/debug/test_phase2.py" localhost:$PORT "$APP" "$SRC" "$LINE"
+python3 "$CORE/tool/debug/test_phase2.py" localhost:$PORT "$APP" "$SRC" "$LINE"
 RC=$?
 set -e
 

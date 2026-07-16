@@ -9,7 +9,7 @@
 # verification tools (dev_run_check.sh / fmrb_input.py).
 set -eu
 
-HERE="$(cd "$(dirname "$0")" && pwd)"      # fmruby-core/tools/debug
+HERE="$(cd "$(dirname "$0")" && pwd)"      # fmruby-core/tool/debug
 CORE="$(cd "$HERE/../.." && pwd)"          # fmruby-core
 ROOT="$(cd "$CORE/.." && pwd)"             # family-mruby
 
@@ -29,7 +29,7 @@ python3 tools/fmrb_input.py \
     click 20 5 sleep 700 click 20 17 sleep 2500 \
     click $KAMON_XY sleep 150 click $KAMON_XY sleep 2500 >/dev/null
 
-PID=$(python3 "$CORE/tools/debug/fmrb_dbg_client.py" localhost:$PORT ps \
+PID=$(python3 "$CORE/tool/debug/fmrb_dbg_client.py" localhost:$PORT ps \
     | python3 -c "import sys,ast; d=ast.literal_eval(sys.stdin.read()); \
 print(next((a['pid'] for a in d['apps'] if a['name']=='Kamon'), ''))")
 if [ -z "$PID" ]; then
@@ -41,7 +41,7 @@ echo "Kamon pid=$PID"
 
 echo "== running debug flow =="
 set +e
-python3 "$CORE/tools/debug/test_phase1.py" localhost:$PORT "$PID" "$FILE" "$LINE"
+python3 "$CORE/tool/debug/test_phase1.py" localhost:$PORT "$PID" "$FILE" "$LINE"
 RC=$?
 set -e
 

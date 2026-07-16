@@ -4,7 +4,7 @@
 Used by main/prebuild_scripts/compile_ruby_to_bytecode.cmake in place of a
 plain `cat`, so the remote debugger can map a combined-file line number back to
 the original source file:line (the device only ever sees the combined line
-number). The map is consumed by tools/debug/fmrb_dap_adapter.py.
+number). The map is consumed by tool/debug/fmrb_dap_adapter.py.
 
 Usage:
   gen_combined_rb.py <combined_out.rb> <map_out.json> <in1.rb> [in2.rb ...]

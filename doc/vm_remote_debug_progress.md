@@ -16,15 +16,15 @@
 ### Phase 2 完了 — DAP アダプタ + VSCode 拡張 (2026-07-17)
 
 追加ファイル:
-- `tools/debug/gen_combined_rb.py`: combined.rb 連結 + `*_combined.map.json` 生成
+- `tool/debug/gen_combined_rb.py`: combined.rb 連結 + `*_combined.map.json` 生成
   (原本<->combined 行変換用)。`compile_ruby_to_bytecode.cmake` の `cat` を置換。
   ビルドで system_desktop/shell/fmrb_kernel の map.json が生成されることを確認。
-- `tools/debug/fmrb_dap_adapter.py`: stdio DAP <-> TCP。実装リクエスト:
+- `tool/debug/fmrb_dap_adapter.py`: stdio DAP <-> TCP。実装リクエスト:
   initialize/attach/setBreakpoints/configurationDone/threads/stackTrace/scopes/
   variables/continue/next/stepIn/stepOut/pause/disconnect/source。
   `Mapper` クラスで pathMappings(device<->local) + projectMappings + combinedMaps を処理。
   fmrb イベント (stopped/resumed/exited) を DAP イベント (stopped/continued/thread+terminated) へ中継。
-- `tools/debug/test_phase2.py` / `test_phase2.sh`: 自律テスト
+- `tool/debug/test_phase2.py` / `test_phase2.sh`: 自律テスト
   (Part A: 行マッパー単体 / Part B: アダプタを VSCode 相当で stdio 駆動)。
 - `family-mruby/vscode-fmrb-debug/`: 最小 VSCode 拡張
   (`package.json` contributes.debuggers type=fmrb + extensionKind:["ui"],
@@ -62,7 +62,7 @@ debugd 接続: hook系コマンド (attach/detach/bp_set/bp_clear/pause/continue
 stack_trace/frame_vars) を ctx へ委譲。events を毎ループ forward。クライアント切断で detach_all。
 attach 中 pid への kill/stop/suspend は BUSY 拒否。
 
-Python: `tools/debug/test_phase1.py` (フロー検証) + `test_phase1.sh` (ヘッドレス自律ラッパ)。
+Python: `tool/debug/test_phase1.py` (フロー検証) + `test_phase1.sh` (ヘッドレス自律ラッパ)。
 
 **検証 (ヘッドレス自律)**: `test_phase1.sh` が PASS。Kamon (オンデバイスコンパイル,
 FILE モード) に対し:
@@ -99,7 +99,7 @@ FILE モード) に対し:
   **Phase 0 PoC (fmrb_debug_poc.{c,h}) は削除** (検証完了・Legacy 排除規約)。
 - `family-mruby/docker-compose.yml`: core サービスに `ports: ["5555:5555"]` 追加
   (WSL2->Windows localhost フォワードで Phase 2 からも届く)。
-- `tools/debug/fmrb_dbg_client.py`: Python テストクライアント兼ライブラリ
+- `tool/debug/fmrb_dbg_client.py`: Python テストクライアント兼ライブラリ
   (`FmrbDebugClient` クラス + CLI/REPL)。要 `msgpack` パッケージ (pip)。
 - `doc/vm_remote_debug_protocol.md`: プロトコル仕様書 (正)。
 
@@ -113,7 +113,7 @@ FILE モード) に対し:
 
 1. `main/prebuild_scripts/compile_ruby_to_bytecode.cmake` を拡張し combined.rb 連結時に
    `<name>_combined.map.json` (`[{file,start_line,lines}]`) を生成 (原本<->combined 行変換用)。
-2. `tools/debug/fmrb_dap_adapter.py`: stdio DAP <-> TCP。initialize/attach/threads/
+2. `tool/debug/fmrb_dap_adapter.py`: stdio DAP <-> TCP。initialize/attach/threads/
    setBreakpoints/configurationDone/pause/continue/next/stepIn/stepOut/stackTrace/
    scopes/variables/source。pathMappings + basename フォールバック。map.json 行補正。
 2. `family-mruby/vscode-fmrb-debug/`: 最小 VSCode 拡張 (contributes.debuggers,

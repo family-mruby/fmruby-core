@@ -138,7 +138,7 @@ fmruby-core/
     fmrb_debug_transport_tcp.c             TCP 実装 (Linux 専用 TU)
   main/boot/boot.c                         [変更] debugd 起動
   main/CMakeLists.txt                      [変更] ソース登録 (共通 + Linux 分岐)
-  tools/debug/                             [新規] ホスト側
+  tool/debug/                             [新規] ホスト側
     fmrb_dbg_client.py                     Phase 1: CLI テストクライアント兼ライブラリ
     fmrb_dap_adapter.py                    Phase 2: DAP アダプタ
   doc/vm_remote_debug_protocol.md          [新規] プロトコル仕様 (実装と同時に確定)
@@ -454,14 +454,14 @@ WSL2 -> Windows は localhost フォワードで届くため、Phase 2 の VSCod
 - msgpack 依存 (`msgpack-esp32`) が linux ビルドの REQUIRES に含まれているか確認、
   なければ追加。
 
-### 5.8 Python テストクライアント (tools/debug/fmrb_dbg_client.py)
+### 5.8 Python テストクライアント (tool/debug/fmrb_dbg_client.py)
 
 - 標準ライブラリ + `msgpack` パッケージ (or `umsgpack` 同梱) のみ。
 - ライブラリ部: `FmrbDebugClient` クラス (connect/request/イベントコールバック)。
   Phase 2 の DAP アダプタが import して使う。
 - CLI 部: `python3 fmrb_dbg_client.py <host:port> <cmd> [args...]` +
   対話モード (`ps` / `attach 3` / `b app.rb:10` / `c` / `bt` / `vars 0` 程度)。
-- スモークテストスクリプト `tools/debug/test_phase1.sh`:
+- スモークテストスクリプト `tool/debug/test_phase1.sh`:
   1. `tools/dev_run_check.sh --keep` でスタック起動
   2. ps -> shell アプリ (または専用テストアプリ) に attach
   3. bp_set -> fmrb_input.py で操作して BP をヒットさせる -> stopped イベント受信
@@ -477,7 +477,7 @@ WSL2 -> Windows は localhost フォワードで届くため、Phase 2 の VSCod
 
 ## 6. Phase 2: DAP アダプタ + VSCode 拡張
 
-### 6.1 DAP アダプタ (tools/debug/fmrb_dap_adapter.py)
+### 6.1 DAP アダプタ (tool/debug/fmrb_dap_adapter.py)
 
 - 単一プロセス。stdio で DAP、TCP で fmrb_dbg_client.py を使用。
 - 実装する DAP リクエスト:
