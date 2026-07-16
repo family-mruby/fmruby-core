@@ -72,7 +72,7 @@ function(generate_ruby_bytecode_commands RUBY_FILES_VAR OUTPUT_DIR)
         OUTPUT ${C_FILE}
         COMMAND ${CMAKE_COMMAND} -E echo "Compiling ${COMBINED_FILE}..."
         COMMAND ${CMAKE_COMMAND} -E make_directory ${OUTPUT_DIR}
-        COMMAND ${PICORBC} -B${RB_NAME}_irep -o${C_FILE} ${COMBINED_FILE}
+        COMMAND ${PICORBC} -g -B${RB_NAME}_irep -o${C_FILE} ${COMBINED_FILE}
         DEPENDS ${COMBINED_FILE}
         COMMENT "Compiling ${RB_NAME} (with subdirectory modules) to bytecode"
         VERBATIM
@@ -83,7 +83,7 @@ function(generate_ruby_bytecode_commands RUBY_FILES_VAR OUTPUT_DIR)
         OUTPUT ${C_FILE}
         COMMAND ${CMAKE_COMMAND} -E echo "Compiling ${RB_FILE}..."
         COMMAND ${CMAKE_COMMAND} -E make_directory ${OUTPUT_DIR}
-        COMMAND ${PICORBC} -B${RB_NAME}_irep -o${C_FILE} ${RB_FILE}
+        COMMAND ${PICORBC} -g -B${RB_NAME}_irep -o${C_FILE} ${RB_FILE}
         DEPENDS ${RB_FILE}
         COMMENT "Compiling ${RB_FILE} to bytecode"
         VERBATIM

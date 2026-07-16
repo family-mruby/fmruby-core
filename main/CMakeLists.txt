@@ -11,6 +11,9 @@ set(COMPONENT_SRCS
 )
 set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
+    "drivers/debug/fmrb_debug_proto.c"
+    "drivers/debug/fmrb_debug_transport_tcp.c"
+    "drivers/debug/fmrb_debugd.c"
 )
 set(COMPONENT_ESP32_SRCS
     "drivers/usb/usb_task.c"
@@ -105,6 +108,8 @@ if(NOT IDF_TARGET STREQUAL "linux")
     list(APPEND COMPONENT_SRCS ${COMPONENT_ESP32_SRCS})
 else()
     list(APPEND COMPONENT_SRCS ${COMPONENT_LINUX_SRCS})
+    # Remote debugger (Phase 1) uses msgpack for its wire protocol.
+    list(APPEND COMPONENT_REQUIRES msgpack-esp32)
 endif()
 
 # Remote desktop viewer page (Modern only): embedded into the binary and
@@ -119,7 +124,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/debug" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
     EMBED_FILES ${RD_EMBED_FILES}
 )

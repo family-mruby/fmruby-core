@@ -45,6 +45,10 @@
 
 #include "boot.h"
 
+#ifdef CONFIG_IDF_TARGET_LINUX
+#include "fmrb_debugd.h"     // Phase 1 remote-debugger daemon
+#endif
+
 static const char *TAG = "boot";
 
 // Startup synchronization flags
@@ -456,6 +460,12 @@ void fmrb_os_init(void)
         return;
     }
     FMRB_LOGI(TAG, "Family mruby OS initialization complete");
+
+#ifdef CONFIG_IDF_TARGET_LINUX
+    // Remote debugger daemon (doc/vm_remote_debug_*). Linux/Phase 1: TCP on
+    // FMRB_DEBUG_TCP_PORT. Started after the kernel/app subsystems are up.
+    fmrb_debugd_init();
+#endif
 }
 
 void fmrb_os_close(void)

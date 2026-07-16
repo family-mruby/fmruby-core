@@ -27,6 +27,10 @@ macro(fmrb_add_mruby_abi_defines)
   )
   if(IDF_TARGET STREQUAL "linux")
     add_compile_definitions(MRB_BASELINE_PROFILE=1)
+    # Remote debugger VM hook (linux-only for Phase 0-2). Adds two function
+    # pointers to mrb_state; must match lib/add/family_mruby_linux.rb which
+    # sets MRB_USE_DEBUG_HOOK on the rake side. Keep both in sync.
+    add_compile_definitions(MRB_USE_DEBUG_HOOK)
   else()
     add_compile_definitions(
       MRB_32BIT
