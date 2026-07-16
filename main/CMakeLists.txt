@@ -13,6 +13,7 @@ set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
     "drivers/debug/fmrb_debug_proto.c"
     "drivers/debug/fmrb_debug_transport_tcp.c"
+    "drivers/debug/fmrb_debug_ctx.c"
     "drivers/debug/fmrb_debugd.c"
 )
 set(COMPONENT_ESP32_SRCS

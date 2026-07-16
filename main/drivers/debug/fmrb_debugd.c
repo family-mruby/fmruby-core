@@ -9,6 +9,7 @@
 #include "fmrb_debugd.h"
 #include "fmrb_debug_proto.h"
 #include "fmrb_debug_transport.h"
+#include "fmrb_debug_ctx.h"
 
 #include <string.h>
 
@@ -110,6 +111,14 @@ static void handle_log_read(const fmrb_dbg_req_t *req) {
 // kill / stop / suspend / resume all map to a bool-returning fmrb_app API.
 static void handle_app_ctl(const fmrb_dbg_req_t *req) {
     if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    // A debugged VM must not be killed/stopped/suspended out from under the
+    // debugger (it may be parked). Require detach first.
+    if (fmrb_debug_ctx_is_attached(req->pid) &&
+        (req->cmd == DBG_CMD_KILL || req->cmd == DBG_CMD_STOP ||
+         req->cmd == DBG_CMD_SUSPEND)) {
+        reply_ok(req, FMRB_ERR_BUSY);
+        return;
+    }
     bool ok = false;
     switch (req->cmd) {
         case DBG_CMD_KILL:    ok = fmrb_app_kill(req->pid);    break;
@@ -119,6 +128,124 @@ static void handle_app_ctl(const fmrb_dbg_req_t *req) {
         default: break;
     }
     reply_ok(req, ok ? FMRB_OK : FMRB_ERR_FAILED);
+}
+
+// --- hook-based command handlers (delegate to fmrb_debug_ctx) --------------
+
+static void handle_attach(const fmrb_dbg_req_t *req) {
+    if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    reply_ok(req, fmrb_debug_ctx_attach(req->pid));
+}
+
+static void handle_detach(const fmrb_dbg_req_t *req) {
+    if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    reply_ok(req, fmrb_debug_ctx_detach(req->pid));
+}
+
+static void handle_bp_set(const fmrb_dbg_req_t *req) {
+    if (!req->have_pid || req->file[0] == '\0') { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    int bp_id = -1;
+    fmrb_err_t err = fmrb_debug_ctx_bp_set(req->pid, req->file, req->line, &bp_id);
+
+    fmrb_dbg_writer_t w;
+    fmrb_dbg_writer_init(&w);
+    if (err == FMRB_OK) {
+        fmrb_dbg_resp_begin(&w, req->seq, FMRB_OK);
+        msgpack_pack_map(&w.pk, 1);
+        fmrb_dbg_pack_kv_int(&w.pk, "bp_id", bp_id);
+    } else {
+        fmrb_dbg_resp_begin(&w, req->seq, err);
+        msgpack_pack_nil(&w.pk);
+    }
+    send_writer(&w);
+    fmrb_dbg_writer_destroy(&w);
+}
+
+static void handle_bp_clear(const fmrb_dbg_req_t *req) {
+    if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    reply_ok(req, fmrb_debug_ctx_bp_clear(req->pid, req->bp_id));
+}
+
+static void handle_flow(const fmrb_dbg_req_t *req) {
+    if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    fmrb_err_t err;
+    switch (req->cmd) {
+        case DBG_CMD_PAUSE:     err = fmrb_debug_ctx_pause(req->pid);    break;
+        case DBG_CMD_CONTINUE:  err = fmrb_debug_ctx_continue(req->pid); break;
+        case DBG_CMD_STEP_IN:   err = fmrb_debug_ctx_step(req->pid, FMRB_STEP_IN);   break;
+        case DBG_CMD_STEP_OVER: err = fmrb_debug_ctx_step(req->pid, FMRB_STEP_OVER); break;
+        case DBG_CMD_STEP_OUT:  err = fmrb_debug_ctx_step(req->pid, FMRB_STEP_OUT);  break;
+        default: err = FMRB_ERR_INVALID_PARAM; break;
+    }
+    reply_ok(req, err);
+}
+
+// stack_trace / frame_vars: the parked VM builds the payload map; we frame it.
+static void handle_inspect(const fmrb_dbg_req_t *req) {
+    if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
+    const uint8_t *body = NULL;
+    size_t len = 0;
+    fmrb_err_t err;
+    if (req->cmd == DBG_CMD_STACK_TRACE) {
+        err = fmrb_debug_ctx_stack_trace(req->pid, req->max, &body, &len);
+    } else {
+        err = fmrb_debug_ctx_frame_vars(req->pid, req->frame, &body, &len);
+    }
+
+    fmrb_dbg_writer_t w;
+    fmrb_dbg_writer_init(&w);
+    fmrb_dbg_resp_begin(&w, req->seq, err);
+    if (err == FMRB_OK && body) {
+        // Append the pre-built payload map as the 4th array element.
+        msgpack_sbuffer_write(&w.sbuf, (const char *)body, len);
+    } else {
+        msgpack_pack_nil(&w.pk);
+    }
+    send_writer(&w);
+    fmrb_dbg_writer_destroy(&w);
+}
+
+// --- event forwarding (hook -> debugd -> client) ---------------------------
+
+static const char *stop_reason_str(int reason) {
+    switch (reason) {
+        case FMRB_STOP_BREAKPOINT: return "breakpoint";
+        case FMRB_STOP_STEP:       return "step";
+        case FMRB_STOP_PAUSE:      return "pause";
+        default:                   return "unknown";
+    }
+}
+
+static void forward_events(void) {
+    fmrb_dbg_event_t ev;
+    while (fmrb_debug_ctx_poll_event(&ev, 0)) {
+        if (!s_tp->connected()) continue;   // drain but drop when no client
+        fmrb_dbg_writer_t w;
+        fmrb_dbg_writer_init(&w);
+        switch (ev.type) {
+            case FMRB_DBG_EV_STOPPED:
+                fmrb_dbg_event_begin(&w, "stopped");
+                msgpack_pack_map(&w.pk, ev.bp_id >= 0 ? 5 : 4);
+                fmrb_dbg_pack_kv_int(&w.pk, "pid", ev.pid);
+                fmrb_dbg_pack_kv_str(&w.pk, "reason", stop_reason_str(ev.reason));
+                fmrb_dbg_pack_kv_str(&w.pk, "file", ev.file);
+                fmrb_dbg_pack_kv_int(&w.pk, "line", ev.line);
+                if (ev.bp_id >= 0) fmrb_dbg_pack_kv_int(&w.pk, "bp_id", ev.bp_id);
+                break;
+            case FMRB_DBG_EV_RESUMED:
+                fmrb_dbg_event_begin(&w, "resumed");
+                msgpack_pack_map(&w.pk, 1);
+                fmrb_dbg_pack_kv_int(&w.pk, "pid", ev.pid);
+                break;
+            case FMRB_DBG_EV_EXITED:
+                fmrb_dbg_event_begin(&w, "exited");
+                msgpack_pack_map(&w.pk, 1);
+                fmrb_dbg_pack_kv_int(&w.pk, "pid", ev.pid);
+                break;
+        }
+        send_writer(&w);
+        fmrb_dbg_writer_destroy(&w);
+    }
 }
 
 static void handle_spawn(const fmrb_dbg_req_t *req) {
@@ -153,20 +280,17 @@ static void dispatch(const fmrb_dbg_req_t *req) {
         case DBG_CMD_RESUME:   handle_app_ctl(req);  break;
         case DBG_CMD_SPAWN:    handle_spawn(req);    break;
 
-        // Hook-based commands: implemented once fmrb_debug_ctx lands.
-        case DBG_CMD_ATTACH:
-        case DBG_CMD_DETACH:
-        case DBG_CMD_BP_SET:
-        case DBG_CMD_BP_CLEAR:
+        case DBG_CMD_ATTACH:   handle_attach(req);   break;
+        case DBG_CMD_DETACH:   handle_detach(req);   break;
+        case DBG_CMD_BP_SET:   handle_bp_set(req);   break;
+        case DBG_CMD_BP_CLEAR: handle_bp_clear(req); break;
         case DBG_CMD_PAUSE:
         case DBG_CMD_CONTINUE:
         case DBG_CMD_STEP_IN:
         case DBG_CMD_STEP_OVER:
-        case DBG_CMD_STEP_OUT:
+        case DBG_CMD_STEP_OUT:  handle_flow(req);    break;
         case DBG_CMD_STACK_TRACE:
-        case DBG_CMD_FRAME_VARS:
-            reply_ok(req, FMRB_ERR_NOT_SUPPORTED);
-            break;
+        case DBG_CMD_FRAME_VARS: handle_inspect(req); break;
 
         case DBG_CMD_UNKNOWN:
         default:
@@ -179,6 +303,11 @@ static void dispatch(const fmrb_dbg_req_t *req) {
 
 static void debugd_main(void *arg) {
     (void)arg;
+    if (fmrb_debug_ctx_init() != FMRB_OK) {
+        FMRB_LOGE(TAG, "ctx init failed; debugd not running");
+        fmrb_task_delete(NULL);
+        return;
+    }
     if (s_tp->init() != FMRB_OK) {
         FMRB_LOGE(TAG, "transport init failed; debugd not running");
         fmrb_task_delete(NULL);
@@ -198,11 +327,15 @@ static void debugd_main(void *arg) {
             }
         }
 
-        // Client lifecycle transitions (detach-all on disconnect comes with
-        // fmrb_debug_ctx).
+        // Forward any stopped/resumed/exited events from the hooks.
+        forward_events();
+
+        // On client disconnect, detach every VM so the debugger dying never
+        // leaves a VM parked.
         bool now = s_tp->connected();
         if (now != was_connected) {
             FMRB_LOGI(TAG, "client %s", now ? "up" : "down");
+            if (!now) fmrb_debug_ctx_detach_all();
             was_connected = now;
         }
     }

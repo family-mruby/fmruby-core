@@ -11,7 +11,46 @@
 
 ## 現在のステータス
 
-**Phase 0 完了。Phase 1 基盤 (proto/transport/debugd 非hook系) 完了。次は fmrb_debug_ctx (attach/hook/park)。**
+**Phase 0 + Phase 1 完了・全検証済み。次は Phase 2 (DAP アダプタ + VSCode 拡張)。**
+
+### Phase 1 完了 — パーク方式デバッグコア (2026-07-17)
+
+追加ファイル: `main/drivers/debug/fmrb_debug_ctx.{h,c}`
+- per-VM デバッグコンテキスト (static 配列 `s_dctx[FMRB_DEBUG_MAX_ATTACH]`)。
+- `code_fetch_hook` 本体: mrb->dctx 逆引き (線形) -> armed 高速パス -> debug_info チェック ->
+  pause/step/BP 判定 -> park。
+- BP 判定: 行頭判定 (`is_line_start`, mrdb 移植) + basename 照合 + at_stop ラッチで
+  多重ヒット防止 (ループ内 BP は再ヒットする)。
+- step (in/over/out): ci アドレス比較で深さ判定。`step_c` (context) 一致チェックで
+  mruby-task の task 切替による誤停止を防止。
+- park ループ: VM タスク自身が hook 内でブロック。cmd_q でコマンド受信、
+  stack_trace/frame_vars は固定バッファ msgpack packer (malloc 不使用) で payload を組んで resp_q へ。
+- stack_trace: `mrb->c->cibase..ci` を降順走査。Ruby フレームのみ (proc && !CFUNC)。
+  top フレームは ci->pc、それ以外は ci->pc[-1] で行番号解決。C フレームは file=""/line=-1。
+- frame_vars: 型別安全フォーマッタ (mrb_inspect 不使用)。arena save/restore で GC 保護。
+  Integer/Float/Symbol/String(64B+truncated)/Array/Hash サマリ/その他 #<Class>。
+- attach/detach: gen チェックで PID 再利用/終了検知。detach はパーク中なら DETACH 投入で復帰。
+- hook->debugd イベントキュー (stopped/resumed/exited)。
+
+debugd 接続: hook系コマンド (attach/detach/bp_set/bp_clear/pause/continue/step_*/
+stack_trace/frame_vars) を ctx へ委譲。events を毎ループ forward。クライアント切断で detach_all。
+attach 中 pid への kill/stop/suspend は BUSY 拒否。
+
+Python: `tools/debug/test_phase1.py` (フロー検証) + `test_phase1.sh` (ヘッドレス自律ラッパ)。
+
+**検証 (ヘッドレス自律)**: `test_phase1.sh` が PASS。Kamon (オンデバイスコンパイル,
+FILE モード) に対し:
+- attach -> bp_set kamon.app.rb:53 -> **BP ヒット** (stopped, line=53)
+- stack_trace: `#0 on_update@53 / #1-4 native(main_loop/loop/start, file=""/line=-1) / #5 (top)@392`
+- step_over -> line 48 で停止 (reason=step)、continue -> 再度 BP、detach -> 走行再開
+- frame_vars 実データ確認 (on_event:70): `ev: Hash(size=4) / close_btn_x: Integer 290 / b: nil`
+- **パーク中も kernel/desktop VM は動作継続** (別 mrb_state なので波及なし; 操作/撮影が並行動作)。
+
+既知の軽微事項:
+- ABI: picoruby.h の `#define mrb_irep mrc_irep` により hook 関数型が名目上 mrc_irep。
+  フィールドへ `__typeof__` キャストで代入 (レイアウト互換、実行時は mrc_irep が渡る)。
+- ネイティブフレーム (mruby-task の main_loop/loop/start) は file=""/line=-1 で返す。
+  DAP 側で source なしフレームとして扱う。
 
 ### Phase 1 進捗 (2026-07-16)
 
@@ -44,17 +83,17 @@
 - `log_read` -> ログ行 + pos + overrun 返却
 - `attach` -> `-4` (未実装につき想定通り)
 
-### 次アクション (Phase 1 残り)
+### 次アクション (Phase 2)
 
-1. `fmrb_debug_ctx.h/.c`: per-VM dctx (static 配列)、`code_fetch_hook` 本体、
-   BP 判定 (行頭判定 + basename 照合 + 多重ヒット防止)、park ループ、
-   attach/detach、stack_trace / frame_vars。cmd_q/resp_q は `fmrb_queue_*`。
-2. debugd に hook系ディスパッチを接続 (dctx フィールド書き換え / パーク中は cmd_q 投入)、
-   hook->debugd イベントキューを追加し stopped/resumed/exited を event 送信。
-3. step (in/over/out) + pause。mruby-task の context 切替対策 (step_c 一致チェック)。
-4. `tools/debug/test_phase1.sh`: 自律スモークテスト。
-5. 実装参考: mrdb の `apibreak.c` (check_start_pc_for_line 431-439) / `mrdb.c`
-   (多重ヒット 571 / step over 605-624)、backtrace.c (50-96)。
+1. `main/prebuild_scripts/compile_ruby_to_bytecode.cmake` を拡張し combined.rb 連結時に
+   `<name>_combined.map.json` (`[{file,start_line,lines}]`) を生成 (原本<->combined 行変換用)。
+2. `tools/debug/fmrb_dap_adapter.py`: stdio DAP <-> TCP。initialize/attach/threads/
+   setBreakpoints/configurationDone/pause/continue/next/stepIn/stepOut/stackTrace/
+   scopes/variables/source。pathMappings + basename フォールバック。map.json 行補正。
+2. `family-mruby/vscode-fmrb-debug/`: 最小 VSCode 拡張 (contributes.debuggers,
+   extensionKind:["ui"], DebugAdapterExecutable で python 起動)。
+3. E2E: VSCode(Windows) -> WSL localhost:5555。combined アプリ (system_desktop 等) の
+   原本ファイル BP 検証。
 
 ### Phase 0 検証結果 (すべてOK)
 
@@ -94,9 +133,9 @@ Linux sim + ヘッドレスハーネスで PoC (`main/drivers/debug/fmrb_debug_p
 | 3 | P1 | fmrb_debug_proto (msgpack エンコード/デコード) | 完了 |
 | 4 | P1 | fmrb_debug_transport_tcp + docker compose ポート公開 | 完了 |
 | 5 | P1 | fmrb_debugd タスク + 非hook系コマンド | 完了 (version/ps/log_read/kill系/spawn 疎通OK) |
-| 6 | P1 | fmrb_debug_ctx (attach/detach/hook/BP/park) + stack_trace/frame_vars | 未着手 (次) |
-| 7 | P1 | step系 + pause + イベント通知 | 未着手 |
-| 8 | P1 | fmrb_dbg_client.py + test_phase1.sh | client.py 完了 / test_phase1.sh 未 |
+| 6 | P1 | fmrb_debug_ctx (attach/detach/hook/BP/park) + stack_trace/frame_vars | 完了 |
+| 7 | P1 | step系 + pause + イベント通知 | 完了 |
+| 8 | P1 | fmrb_dbg_client.py + test_phase1.sh | 完了 (自律 PASS) |
 | 9 | P2 | combined.map.json 生成 (cmake拡張) | 未着手 |
 | 10 | P2 | fmrb_dap_adapter.py | 未着手 |
 | 11 | P2 | VSCode拡張 + E2E確認 | 未着手 |
@@ -134,5 +173,8 @@ Linux sim + ヘッドレスハーネスで PoC (`main/drivers/debug/fmrb_debug_p
 - Phase 0 完了。
 - Phase 1: プロトコル仕様書作成 -> proto/transport_tcp/debugd 実装 ->
   CMake/boot 配線 -> docker ポート公開 -> python client -> 疎通確認 (version/ps/log_read OK)。
-  PoC 削除。次は fmrb_debug_ctx (attach/hook/park)。
+  PoC 削除。ここまでを2リポジトリにコミット (core 22cc240 / root c4712ea)。
+- Phase 1 残り: fmrb_debug_ctx (hook/park/BP/step/frame_vars) 実装 -> debugd 接続 ->
+  test_phase1.py/.sh 作成 -> Kamon で自律 E2E テスト PASS。frame_vars 実データ確認。
+  hook 型警告を __typeof__ キャストで解消。Phase 1 完了。次は Phase 2。
 </content>
