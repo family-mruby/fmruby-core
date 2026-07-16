@@ -1,7 +1,9 @@
 # PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)
 
 作成日: 2026-07-15 (追加調査反映: 同日)
-ステータス: 検討ドラフト
+ステータス: Phase 0-2 実装完了 (Linux sim + TCP + DAP)。Phase 3 (BLE) 未着手。
+  実装計画は doc/vm_remote_debug_impl_plan.md、進捗は doc/vm_remote_debug_progress.md、
+  プロトコル仕様 (正) は doc/vm_remote_debug_protocol.md を参照。本書は初期検討ドラフト。
 
 ## 1. 目的
 

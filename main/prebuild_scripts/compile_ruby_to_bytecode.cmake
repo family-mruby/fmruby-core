@@ -56,13 +56,18 @@ function(generate_ruby_bytecode_commands RUBY_FILES_VAR OUTPUT_DIR)
       list(SORT SUB_RB_FILES)  # Deterministic order
 
       set(COMBINED_FILE ${OUTPUT_DIR}/${RB_NAME}_combined.rb)
+      set(COMBINED_MAP ${OUTPUT_DIR}/${RB_NAME}_combined.map.json)
 
-      # Create concatenation command
+      # Concatenate sub/*.rb + main.rb AND emit a line map (combined line ->
+      # original file:line) for the remote debugger. Byte-identical to the old
+      # `cat`, plus the .map.json side output (see tools/debug/gen_combined_rb.py).
       add_custom_command(
-        OUTPUT ${COMBINED_FILE}
-        COMMAND ${CMAKE_COMMAND} -E echo "Concatenating ${SUBDIR}/*.rb + ${RB_FILE}..."
-        COMMAND cat ${SUB_RB_FILES} ${RB_FILE} > ${COMBINED_FILE}
+        OUTPUT ${COMBINED_FILE} ${COMBINED_MAP}
+        COMMAND ${CMAKE_COMMAND} -E echo "Concatenating ${SUBDIR}/*.rb + ${RB_FILE} (+ line map)..."
+        COMMAND python3 ${CMAKE_CURRENT_LIST_DIR}/../tools/debug/gen_combined_rb.py
+                ${COMBINED_FILE} ${COMBINED_MAP} ${SUB_RB_FILES} ${RB_FILE}
         DEPENDS ${SUB_RB_FILES} ${RB_FILE}
+                ${CMAKE_CURRENT_LIST_DIR}/../tools/debug/gen_combined_rb.py
         COMMENT "Concatenating subdirectory files for ${RB_NAME}"
         VERBATIM
       )

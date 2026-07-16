@@ -11,7 +11,33 @@
 
 ## 現在のステータス
 
-**Phase 0 + Phase 1 完了・全検証済み。次は Phase 2 (DAP アダプタ + VSCode 拡張)。**
+**Phase 0 + 1 + 2 完了。Phase 2 の VSCode GUI 操作確認のみユーザ待ち。BLE (Phase 3) は対象外。**
+
+### Phase 2 完了 — DAP アダプタ + VSCode 拡張 (2026-07-17)
+
+追加ファイル:
+- `tools/debug/gen_combined_rb.py`: combined.rb 連結 + `*_combined.map.json` 生成
+  (原本<->combined 行変換用)。`compile_ruby_to_bytecode.cmake` の `cat` を置換。
+  ビルドで system_desktop/shell/fmrb_kernel の map.json が生成されることを確認。
+- `tools/debug/fmrb_dap_adapter.py`: stdio DAP <-> TCP。実装リクエスト:
+  initialize/attach/setBreakpoints/configurationDone/threads/stackTrace/scopes/
+  variables/continue/next/stepIn/stepOut/pause/disconnect/source。
+  `Mapper` クラスで pathMappings(device<->local) + projectMappings + combinedMaps を処理。
+  fmrb イベント (stopped/resumed/exited) を DAP イベント (stopped/continued/thread+terminated) へ中継。
+- `tools/debug/test_phase2.py` / `test_phase2.sh`: 自律テスト
+  (Part A: 行マッパー単体 / Part B: アダプタを VSCode 相当で stdio 駆動)。
+- `family-mruby/vscode-fmrb-debug/`: 最小 VSCode 拡張
+  (`package.json` contributes.debuggers type=fmrb + extensionKind:["ui"],
+   `extension.js` DebugAdapterExecutable で python アダプタ起動, `README.md`)。
+
+**検証 (ヘッドレス自律, test_phase2.py PASS)**:
+- Part A: `clock_setting.rb:5` <-> `system_desktop_combined.rb:103` 往復、standalone basename 変換。
+- Part B: DAP フロー全部通過。stackTrace の source.path が
+  `.../flash/app/demo/kamon.app.rb:53` にホストパス変換される。step/continue/stopped イベント中継OK。
+
+**ユーザ確認待ち (ヘッドレス不可)**: VSCode で拡張を F5 起動 -> launch.json (type:fmrb, attach) ->
+エディタ余白 BP -> 停止線表示 -> 変数ペイン -> ステップ -> continue -> disconnect の GUI 操作。
+手順は `vscode-fmrb-debug/README.md` 参照。combined アプリ (system_desktop) の原本 BP も要確認。
 
 ### Phase 1 完了 — パーク方式デバッグコア (2026-07-17)
 
@@ -136,10 +162,10 @@ Linux sim + ヘッドレスハーネスで PoC (`main/drivers/debug/fmrb_debug_p
 | 6 | P1 | fmrb_debug_ctx (attach/detach/hook/BP/park) + stack_trace/frame_vars | 完了 |
 | 7 | P1 | step系 + pause + イベント通知 | 完了 |
 | 8 | P1 | fmrb_dbg_client.py + test_phase1.sh | 完了 (自律 PASS) |
-| 9 | P2 | combined.map.json 生成 (cmake拡張) | 未着手 |
-| 10 | P2 | fmrb_dap_adapter.py | 未着手 |
-| 11 | P2 | VSCode拡張 + E2E確認 | 未着手 |
-| 12 | - | protocol.md 清書、design.md ステータス更新 | 未着手 |
+| 9 | P2 | combined.map.json 生成 (cmake拡張) | 完了 |
+| 10 | P2 | fmrb_dap_adapter.py | 完了 (自律 PASS) |
+| 11 | P2 | VSCode拡張 + E2E確認 | 拡張作成済み / VSCode GUI 確認はユーザ |
+| 12 | - | protocol.md 清書、design.md ステータス更新 | 進行中 |
 
 ## 確定した調査事実 (コードで確認済み)
 
@@ -176,5 +202,8 @@ Linux sim + ヘッドレスハーネスで PoC (`main/drivers/debug/fmrb_debug_p
   PoC 削除。ここまでを2リポジトリにコミット (core 22cc240 / root c4712ea)。
 - Phase 1 残り: fmrb_debug_ctx (hook/park/BP/step/frame_vars) 実装 -> debugd 接続 ->
   test_phase1.py/.sh 作成 -> Kamon で自律 E2E テスト PASS。frame_vars 実データ確認。
-  hook 型警告を __typeof__ キャストで解消。Phase 1 完了。次は Phase 2。
+  hook 型警告を __typeof__ キャストで解消。Phase 1 完了・コミット (core 0e49de2)。
+- Phase 2: gen_combined_rb.py + cmake で map.json 生成 -> fmrb_dap_adapter.py 実装 ->
+  test_phase2.py/.sh 作成 -> 自律 PASS (行マッパー往復 + DAP フル)。
+  vscode-fmrb-debug 拡張作成。VSCode GUI 操作のみユーザ確認待ち。
 </content>
