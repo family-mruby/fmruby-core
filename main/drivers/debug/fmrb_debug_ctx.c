@@ -562,11 +562,14 @@ fmrb_err_t fmrb_debug_ctx_bp_set(int pid, const char *file, int line, int *out_b
     if (!d) return FMRB_ERR_NOT_FOUND;
     for (int i = 0; i < FMRB_DEBUG_MAX_BP; i++) {
         if (!d->bps[i].enabled) {
+            // Populate id/line/file before arming the slot: the hook reads bps[]
+            // concurrently while the VM runs, so `enabled` must be the last write
+            // to avoid observing a half-initialized breakpoint.
             d->bps[i].id = d->next_bp_id++;
             d->bps[i].line = line;
-            d->bps[i].enabled = true;
             strncpy(d->bps[i].file, file, sizeof(d->bps[i].file) - 1);
             d->bps[i].file[sizeof(d->bps[i].file) - 1] = '\0';
+            d->bps[i].enabled = true;
             if (out_bp_id) *out_bp_id = d->bps[i].id;
             return FMRB_OK;
         }

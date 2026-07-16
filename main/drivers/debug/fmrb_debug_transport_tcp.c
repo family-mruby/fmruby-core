@@ -174,7 +174,17 @@ static fmrb_err_t tcp_send(const uint8_t *body, size_t len) {
         while (off < parts[i].n) {
             ssize_t w = send(s_client_fd, parts[i].p + off, parts[i].n - off, MSG_NOSIGNAL);
             if (w < 0) {
-                if (errno == EAGAIN || errno == EWOULDBLOCK) continue;  // retry
+                if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                    // Socket buffer full (slow/stalled client). Block on
+                    // writability instead of spinning, so a client that stops
+                    // reading cannot busy-loop this task on the CPU.
+                    fd_set wfds;
+                    FD_ZERO(&wfds);
+                    FD_SET(s_client_fd, &wfds);
+                    struct timeval tv = { .tv_sec = 1, .tv_usec = 0 };
+                    (void)select(s_client_fd + 1, NULL, &wfds, NULL, &tv);
+                    continue;  // retry the send
+                }
                 FMRB_LOGW(TAG, "send() failed: %s", strerror(errno));
                 drop_client();
                 return FMRB_ERR_FAILED;
