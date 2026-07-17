@@ -13,6 +13,7 @@ CLI:
   python3 fmrb_dbg_client.py <host:port>                   # interactive REPL
 """
 import argparse
+import json
 import socket
 import struct
 import sys
@@ -217,14 +218,20 @@ def _print_event(name, payload):
     print(f"\n[event] {name}: {payload}")
 
 
-def cmd_oneshot(client, cmd, kv):
+def cmd_oneshot(client, cmd, kv, as_json=False):
     payload = {k: _coerce(v) for k, v in (a.split("=", 1) for a in kv)} or None
     try:
         resp = client.request(cmd, payload)
-        print(resp)
+        if as_json:
+            print(json.dumps(resp))
+        else:
+            print(resp)
         return 0
     except FmrbDebugError as e:
-        print(f"error: {e}")
+        if as_json:
+            print(json.dumps({"error": e.err, "cmd": e.cmd}))
+        else:
+            print(f"error: {e}")
         return 1
 
 
@@ -288,14 +295,17 @@ def main():
     ap.add_argument("target", help="host:port (default port 5555)")
     ap.add_argument("cmd", nargs="?", help="one-shot command (omit for REPL)")
     ap.add_argument("args", nargs="*", help="k=v payload pairs")
+    ap.add_argument("--json", action="store_true",
+                    help="one-shot: print the response as JSON (for tooling)")
     args = ap.parse_args()
 
     host, port = _parse_hostport(args.target)
-    client = FmrbDebugClient(host, port, on_event=_print_event)
+    on_event = None if args.json else _print_event
+    client = FmrbDebugClient(host, port, on_event=on_event)
     client.connect()
     try:
         if args.cmd:
-            sys.exit(cmd_oneshot(client, args.cmd, args.args))
+            sys.exit(cmd_oneshot(client, args.cmd, args.args, as_json=args.json))
         else:
             repl(client)
     finally:
