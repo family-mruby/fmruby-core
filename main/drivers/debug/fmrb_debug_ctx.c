@@ -18,8 +18,11 @@
 
 static const char *TAG = "dbg_ctx";
 
-#define PARK_BUF_SIZE   2048     // per-ctx msgpack scratch for inspect payloads
+#define PARK_BUF_SIZE   4096     // per-ctx msgpack scratch for inspect payloads
+                                 // (<= FMRB_DEBUG_MAX_FRAME transport limit)
 #define EVENT_Q_DEPTH   8
+#define MAX_HANDLES     128      // expandable-value handles live per stop
+#define MAX_CHILDREN    20       // children packed per expand (rest summarized)
 
 // --- park command / response (debugd <-> parked VM task) -------------------
 typedef enum {
@@ -29,6 +32,7 @@ typedef enum {
     PARK_STEP_OUT,
     PARK_STACK_TRACE,
     PARK_FRAME_VARS,
+    PARK_EXPAND,
     PARK_DETACH,
 } park_op_t;
 
@@ -74,6 +78,11 @@ typedef struct {
     int32_t        stop_line;
     bool           at_stop;      // sitting on the line we last stopped at
     mrb_value     *cur_regs;     // top-frame registers at park time
+
+    // expandable-value handles (variablesReference). Reset every stop; valid
+    // only while parked (no GC runs, so the stored values stay reachable).
+    mrb_value      handles[MAX_HANDLES];
+    int            nhandles;
 
     // park comms
     fmrb_queue_t  cmd_q;         // debugd -> parked VM
@@ -320,7 +329,63 @@ static void format_value(mrb_state *mrb, mrb_value v, char *out, size_t cap,
     }
 }
 
-// Build {"vars":[{name,type,value,truncated}...]} into d->park_buf.
+// Count a value's instance variables without allocating (mrb_iv_foreach).
+static int iv_count_cb(mrb_state *mrb, mrb_sym sym, mrb_value v, void *p) {
+    (void)mrb; (void)sym; (void)v;
+    (*(int *)p)++;
+    return 0;
+}
+
+// True if `v` has children worth expanding in the variables pane.
+static bool is_expandable(mrb_state *mrb, mrb_value v) {
+    switch (mrb_type(v)) {
+        case MRB_TT_ARRAY: return RARRAY_LEN(v) > 0;
+        case MRB_TT_HASH:  return mrb_hash_size(mrb, v) > 0;
+        default:
+            if (mrb_immediate_p(v)) return false;
+            int n = 0;
+            mrb_iv_foreach(mrb, v, iv_count_cb, &n);
+            return n > 0;
+    }
+}
+
+// Reserve an expand handle for `v` (1-based). 0 = not expandable / table full.
+static int expand_handle_for(fmrb_debug_ctx_t *d, mrb_state *mrb, mrb_value v) {
+    if (!is_expandable(mrb, v)) return 0;
+    if (d->nhandles >= MAX_HANDLES) return 0;
+    d->handles[d->nhandles] = v;
+    return ++d->nhandles;
+}
+
+// Pack one {name,type,value,truncated,ref} entry. `ref` > 0 means expandable.
+static void pack_one_var(msgpack_packer *pk, fmrb_debug_ctx_t *d,
+                         mrb_state *mrb, const char *name, mrb_value v) {
+    char valbuf[96];
+    const char *type = "nil";
+    bool truncated = false;
+    format_value(mrb, v, valbuf, sizeof(valbuf), &type, &truncated);
+    int ref = expand_handle_for(d, mrb, v);
+    msgpack_pack_map(pk, 5);
+    fmrb_dbg_pack_kv_str(pk, "name", name ? name : "?");
+    fmrb_dbg_pack_kv_str(pk, "type", type);
+    fmrb_dbg_pack_kv_str(pk, "value", valbuf);
+    fmrb_dbg_pack_kv_bool(pk, "truncated", truncated);
+    fmrb_dbg_pack_kv_int(pk, "ref", ref);
+}
+
+// Pack the trailing "(N more)" summary entry for truncated containers.
+static void pack_more_note(msgpack_packer *pk, long remaining) {
+    char note[32];
+    snprintf(note, sizeof(note), "(%ld more)", remaining);
+    msgpack_pack_map(pk, 5);
+    fmrb_dbg_pack_kv_str(pk, "name", "...");
+    fmrb_dbg_pack_kv_str(pk, "type", "");
+    fmrb_dbg_pack_kv_str(pk, "value", note);
+    fmrb_dbg_pack_kv_bool(pk, "truncated", true);
+    fmrb_dbg_pack_kv_int(pk, "ref", 0);
+}
+
+// Build {"vars":[{name,type,value,truncated,ref}...]} into d->park_buf.
 static park_resp_t build_frame_vars(fmrb_debug_ctx_t *d, int frame) {
     mrb_state *mrb = d->mrb;
     bool is_top;
@@ -361,17 +426,102 @@ static park_resp_t build_frame_vars(fmrb_debug_ctx_t *d, int frame) {
         if (!sym) continue;
         const char *name = mrb_sym_name(mrb, sym);
         if (!name || !name[0]) continue;
-        char valbuf[96];
-        const char *type = "nil";
-        bool truncated = false;
-        format_value(mrb, regs[reg], valbuf, sizeof(valbuf), &type, &truncated);
-
-        msgpack_pack_map(&pk, 4);
-        fmrb_dbg_pack_kv_str(&pk, "name", name ? name : "?");
-        fmrb_dbg_pack_kv_str(&pk, "type", type);
-        fmrb_dbg_pack_kv_str(&pk, "value", valbuf);
-        fmrb_dbg_pack_kv_bool(&pk, "truncated", truncated);
+        pack_one_var(&pk, d, mrb, name, regs[reg]);
         mrb_gc_arena_restore(mrb, arena);
+    }
+
+    park_resp_t r = { fb.overflow ? FMRB_ERR_NO_MEMORY : FMRB_OK,
+                      d->park_buf, fb.len };
+    return r;
+}
+
+// Context for packing object instance variables during mrb_iv_foreach.
+typedef struct {
+    msgpack_packer   *pk;
+    fmrb_debug_ctx_t *d;
+    mrb_state        *mrb;
+    int               remaining;   // slots still to pack
+    int               arena;
+} iv_pack_t;
+
+static int iv_pack_cb(mrb_state *mrb, mrb_sym sym, mrb_value v, void *p) {
+    iv_pack_t *c = (iv_pack_t *)p;
+    if (c->remaining <= 0) return 1;   // stop iteration
+    const char *name = mrb_sym_name(mrb, sym);
+    pack_one_var(c->pk, c->d, mrb, name, v);
+    mrb_gc_arena_restore(mrb, c->arena);
+    c->remaining--;
+    return 0;
+}
+
+// Build {"vars":[...]} for the children of a previously handed-out handle.
+static park_resp_t build_expand(fmrb_debug_ctx_t *d, int handle) {
+    mrb_state *mrb = d->mrb;
+    fixbuf_t fb = { d->park_buf, sizeof(d->park_buf), 0, false };
+    msgpack_packer pk;
+    msgpack_packer_init(&pk, &fb, fixbuf_write);
+
+    if (handle < 1 || handle > d->nhandles) {
+        msgpack_pack_map(&pk, 1);
+        fmrb_dbg_pack_key(&pk, "vars");
+        msgpack_pack_array(&pk, 0);
+        park_resp_t r = { FMRB_ERR_INVALID_PARAM, d->park_buf, fb.len };
+        return r;
+    }
+    mrb_value v = d->handles[handle - 1];
+
+    msgpack_pack_map(&pk, 1);
+    fmrb_dbg_pack_key(&pk, "vars");
+
+    switch (mrb_type(v)) {
+        case MRB_TT_ARRAY: {
+            long len = (long)RARRAY_LEN(v);
+            int shown = len > MAX_CHILDREN ? MAX_CHILDREN : (int)len;
+            bool more = len > shown;
+            msgpack_pack_array(&pk, shown + (more ? 1 : 0));
+            int arena = mrb_gc_arena_save(mrb);
+            for (int i = 0; i < shown; i++) {
+                char nm[16];
+                snprintf(nm, sizeof(nm), "[%d]", i);
+                pack_one_var(&pk, d, mrb, nm, mrb_ary_entry(v, i));
+                mrb_gc_arena_restore(mrb, arena);
+            }
+            if (more) pack_more_note(&pk, len - shown);
+            break;
+        }
+        case MRB_TT_HASH: {
+            int arena0 = mrb_gc_arena_save(mrb);
+            mrb_value keys = mrb_hash_keys(mrb, v);   // temp array (rooted below)
+            long n = (long)RARRAY_LEN(keys);
+            int shown = n > MAX_CHILDREN ? MAX_CHILDREN : (int)n;
+            bool more = n > shown;
+            msgpack_pack_array(&pk, shown + (more ? 1 : 0));
+            int arena1 = mrb_gc_arena_save(mrb);
+            for (int i = 0; i < shown; i++) {
+                mrb_value key = mrb_ary_entry(keys, i);
+                mrb_value val = mrb_hash_get(mrb, v, key);
+                char nm[48];
+                const char *kt = "nil";
+                bool ktr = false;
+                format_value(mrb, key, nm, sizeof(nm), &kt, &ktr);
+                pack_one_var(&pk, d, mrb, nm, val);
+                mrb_gc_arena_restore(mrb, arena1);
+            }
+            if (more) pack_more_note(&pk, n - shown);
+            mrb_gc_arena_restore(mrb, arena0);
+            break;
+        }
+        default: {
+            int total = 0;
+            mrb_iv_foreach(mrb, v, iv_count_cb, &total);
+            int shown = total > MAX_CHILDREN ? MAX_CHILDREN : total;
+            bool more = total > shown;
+            msgpack_pack_array(&pk, shown + (more ? 1 : 0));
+            iv_pack_t c = { &pk, d, mrb, shown, mrb_gc_arena_save(mrb) };
+            mrb_iv_foreach(mrb, v, iv_pack_cb, &c);
+            if (more) pack_more_note(&pk, total - shown);
+            break;
+        }
     }
 
     park_resp_t r = { fb.overflow ? FMRB_ERR_NO_MEMORY : FMRB_OK,
@@ -390,6 +540,7 @@ static void park(fmrb_debug_ctx_t *d, int reason, const mrb_irep *irep,
     d->stop_irep = irep;
     d->stop_line = line;
     d->cur_regs  = regs;
+    d->nhandles  = 0;            // expand handles are only valid within a stop
 
     const char *file = mrb_debug_get_filename(mrb, irep, pc_off);
     emit_event(FMRB_DBG_EV_STOPPED, d->pid, reason, bp_id, line, file);
@@ -415,6 +566,9 @@ static void park(fmrb_debug_ctx_t *d, int reason, const mrb_irep *irep,
             fmrb_queue_send(d->resp_q, &r, FMRB_MS_TO_TICKS(100));
         } else if (cmd.op == PARK_FRAME_VARS) {
             park_resp_t r = build_frame_vars(d, cmd.arg);
+            fmrb_queue_send(d->resp_q, &r, FMRB_MS_TO_TICKS(100));
+        } else if (cmd.op == PARK_EXPAND) {
+            park_resp_t r = build_expand(d, cmd.arg);
             fmrb_queue_send(d->resp_q, &r, FMRB_MS_TO_TICKS(100));
         }
     }
@@ -643,6 +797,11 @@ fmrb_err_t fmrb_debug_ctx_stack_trace(int pid, int max_frames,
 fmrb_err_t fmrb_debug_ctx_frame_vars(int pid, int frame,
                                      const uint8_t **out_body, size_t *out_len) {
     return inspect(pid, PARK_FRAME_VARS, frame, out_body, out_len);
+}
+
+fmrb_err_t fmrb_debug_ctx_expand(int pid, int handle,
+                                 const uint8_t **out_body, size_t *out_len) {
+    return inspect(pid, PARK_EXPAND, handle, out_body, out_len);
 }
 
 bool fmrb_debug_ctx_poll_event(fmrb_dbg_event_t *out, uint32_t timeout_ms) {

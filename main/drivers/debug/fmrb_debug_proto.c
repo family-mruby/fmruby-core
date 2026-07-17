@@ -18,6 +18,7 @@ static const struct { const char *name; fmrb_dbg_cmd_t cmd; } k_cmd_table[] = {
     { "step_out",    DBG_CMD_STEP_OUT },
     { "stack_trace", DBG_CMD_STACK_TRACE },
     { "frame_vars",  DBG_CMD_FRAME_VARS },
+    { "expand",      DBG_CMD_EXPAND },
     { "log_read",    DBG_CMD_LOG_READ },
     { "kill",        DBG_CMD_KILL },
     { "stop",        DBG_CMD_STOP },
@@ -76,6 +77,8 @@ static void decode_payload(const msgpack_object *map, fmrb_dbg_req_t *out) {
             out->bp_id = (int)obj_as_int(v);
         } else if (key_is(k, "frame") && obj_is_int(v)) {
             out->frame = (int)obj_as_int(v);
+        } else if (key_is(k, "handle") && obj_is_int(v)) {
+            out->handle = (int)obj_as_int(v);
         } else if (key_is(k, "max") && obj_is_int(v)) {
             out->max = (int)obj_as_int(v);
         } else if (key_is(k, "max_lines") && obj_is_int(v)) {

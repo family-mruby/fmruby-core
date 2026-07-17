@@ -45,6 +45,7 @@ typedef enum {
     DBG_CMD_STEP_OUT,
     DBG_CMD_STACK_TRACE,
     DBG_CMD_FRAME_VARS,
+    DBG_CMD_EXPAND,
     DBG_CMD_LOG_READ,
     DBG_CMD_KILL,
     DBG_CMD_STOP,
@@ -63,6 +64,7 @@ typedef struct {
     int             line;
     int             bp_id;
     int             frame;
+    int             handle;     // expand: value handle (variablesReference)
     int             max;        // stack_trace max frames
     int             max_lines;  // log_read
     uint32_t        pos;        // log_read read position

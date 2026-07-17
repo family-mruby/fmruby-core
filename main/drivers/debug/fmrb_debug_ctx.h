@@ -70,6 +70,12 @@ fmrb_err_t fmrb_debug_ctx_stack_trace(int pid, int max_frames,
 fmrb_err_t fmrb_debug_ctx_frame_vars(int pid, int frame,
                                      const uint8_t **out_body, size_t *out_len);
 
+// Expand a value previously handed out by frame_vars/expand (its non-zero
+// `ref`). Returns {"vars":[...]} for the container's children. Handles are
+// only valid while the VM is parked at the current stop.
+fmrb_err_t fmrb_debug_ctx_expand(int pid, int handle,
+                                 const uint8_t **out_body, size_t *out_len);
+
 // Drain one pending event (STOPPED/RESUMED/EXITED). Returns true if one was
 // dequeued within timeout_ms.
 bool fmrb_debug_ctx_poll_event(fmrb_dbg_event_t *out, uint32_t timeout_ms);

@@ -78,8 +78,43 @@ def main():
             print("== frame_vars 0 ==")
             vs = cli.frame_vars(pid, 0)
             for v in vs:
-                print(f"    {v['name']}: {v['value']} ({v['type']})")
+                print(f"    {v['name']}: {v['value']} ({v['type']}) ref={v.get('ref', 0)}")
             check(True, "frame_vars returned without error")
+            check(all("ref" in v for v in vs), "frame_vars entries carry a ref field")
+
+            # Find an expandable local across all frames (e.g. the top-level
+            # `app` object) and expand it, then expand a nested container child.
+            expandable = None
+            for f in frames:
+                fv = cli.frame_vars(pid, f["idx"])
+                expandable = next((v for v in fv if v.get("ref", 0) > 0), None)
+                if expandable:
+                    break
+            check(expandable is not None, "found an expandable value to inspect")
+            if expandable:
+                print(f"== expand {expandable['name']} (ref={expandable['ref']}) ==")
+                children = cli.expand(pid, expandable["ref"])
+                for c in children:
+                    print(f"    {c['name']}: {c['value']} ({c['type']}) ref={c.get('ref', 0)}")
+                check(isinstance(children, list) and len(children) > 0,
+                      "expand returned children")
+                check(all("ref" in c for c in children),
+                      "expand children carry a ref field")
+
+                nested = next((c for c in children if c.get("ref", 0) > 0), None)
+                if nested:
+                    print(f"== expand nested {nested['name']} (ref={nested['ref']}) ==")
+                    grand = cli.expand(pid, nested["ref"])
+                    for c in grand:
+                        print(f"    {c['name']}: {c['value']} ({c['type']}) ref={c.get('ref', 0)}")
+                    check(isinstance(grand, list), "nested expand returned a list")
+
+            try:
+                cli.expand(pid, 999999)
+                bad_ok = False
+            except FmrbDebugError:
+                bad_ok = True
+            check(bad_ok, "expand rejects an invalid handle")
 
             print("== step_over ==")
             resumed.clear(); stopped.clear()

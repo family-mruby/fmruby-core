@@ -185,6 +185,9 @@ class FmrbDebugClient:
     def frame_vars(self, pid, frame=0):
         return self.request("frame_vars", {"pid": pid, "frame": frame})["vars"]
 
+    def expand(self, pid, handle):
+        return self.request("expand", {"pid": pid, "handle": handle})["vars"]
+
     def log_read(self, pos=0, max_lines=50):
         return self.request("log_read", {"pos": pos, "max_lines": max_lines})
 

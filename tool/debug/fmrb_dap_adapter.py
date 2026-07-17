@@ -138,6 +138,19 @@ class DapAdapter:
         self.pid = None
         self.app_name = "vm"
         self._bp_seq = 0
+        # variablesReference allocation (per stop). Maps a DAP ref to either a
+        # ("frame", idx) scope or a ("handle", device_handle) expandable value.
+        self._varref = 1000
+        self._varmap = {}
+
+    def _reset_varrefs(self):
+        self._varref = 1000
+        self._varmap = {}
+
+    def _alloc_varref(self, target):
+        self._varref += 1
+        self._varmap[self._varref] = target
+        return self._varref
 
     # --- outbound helpers ---
     def _next_seq(self):
@@ -163,6 +176,8 @@ class DapAdapter:
     # --- fmrb event callback (reader thread) ---
     def on_fmrb_event(self, name, payload):
         if name == "stopped":
+            # Device handles reset each stop; drop the stale ref map too.
+            self._reset_varrefs()
             reason = payload.get("reason", "breakpoint")
             dap_reason = {"breakpoint": "breakpoint", "step": "step",
                           "pause": "pause"}.get(reason, reason)
@@ -275,19 +290,30 @@ class DapAdapter:
 
     def req_scopes(self, req):
         frame_id = req["arguments"]["frameId"]
-        # Encode the frame index into the variablesReference (frame_id+1).
+        ref = self._alloc_varref(("frame", frame_id))
         self.respond(req, {"scopes": [{
             "name": "Locals",
-            "variablesReference": frame_id + 1,
+            "variablesReference": ref,
             "expensive": False,
         }]})
 
     def req_variables(self, req):
         ref = req["arguments"]["variablesReference"]
-        frame = ref - 1
-        vs = self.client.frame_vars(self.pid, frame)
-        out = [{"name": v["name"], "value": v["value"],
-                "type": v.get("type", ""), "variablesReference": 0} for v in vs]
+        target = self._varmap.get(ref)
+        if target is None:
+            self.respond(req, {"variables": []})
+            return
+        kind, val = target
+        if kind == "frame":
+            vs = self.client.frame_vars(self.pid, val)
+        else:  # "handle": expand a container's children on the device
+            vs = self.client.expand(self.pid, val)
+        out = []
+        for v in vs:
+            dev_ref = v.get("ref", 0)
+            child = self._alloc_varref(("handle", dev_ref)) if dev_ref else 0
+            out.append({"name": v["name"], "value": v["value"],
+                        "type": v.get("type", ""), "variablesReference": child})
         self.respond(req, {"variables": out})
 
     def req_continue(self, req):

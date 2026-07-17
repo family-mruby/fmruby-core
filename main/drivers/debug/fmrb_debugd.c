@@ -188,6 +188,8 @@ static void handle_inspect(const fmrb_dbg_req_t *req) {
     fmrb_err_t err;
     if (req->cmd == DBG_CMD_STACK_TRACE) {
         err = fmrb_debug_ctx_stack_trace(req->pid, req->max, &body, &len);
+    } else if (req->cmd == DBG_CMD_EXPAND) {
+        err = fmrb_debug_ctx_expand(req->pid, req->handle, &body, &len);
     } else {
         err = fmrb_debug_ctx_frame_vars(req->pid, req->frame, &body, &len);
     }
@@ -290,7 +292,8 @@ static void dispatch(const fmrb_dbg_req_t *req) {
         case DBG_CMD_STEP_OVER:
         case DBG_CMD_STEP_OUT:  handle_flow(req);    break;
         case DBG_CMD_STACK_TRACE:
-        case DBG_CMD_FRAME_VARS: handle_inspect(req); break;
+        case DBG_CMD_FRAME_VARS:
+        case DBG_CMD_EXPAND:     handle_inspect(req); break;
 
         case DBG_CMD_UNKNOWN:
         default:

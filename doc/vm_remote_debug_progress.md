@@ -11,7 +11,32 @@
 
 ## 現在のステータス
 
-**Phase 0 + 1 + 2 完了。Phase 2 の VSCode GUI 操作確認のみユーザ待ち。BLE (Phase 3) は対象外。**
+**Phase 0 + 1 + 2 完了 + 変数の詳細展開。Phase 2 の VSCode GUI 操作確認のみユーザ待ち。BLE (Phase 3) は対象外。**
+
+### 追加機能 — 変数の詳細展開 (nested variables, 2026-07-17)
+
+Array/Hash/Object の子要素を variables ペインで展開できるようにした。
+
+- `fmrb_debug_ctx.c`: stop ごとの `handles[]` テーブル (MAX_HANDLES=128, park 開始で reset)。
+  `expand_handle_for` が展開可能値 (要素>0 の Array/Hash, ivar を持つ Object) に
+  1-based ハンドルを割当。`pack_one_var` で `{name,type,value,truncated,ref}` を共通生成
+  (`build_frame_vars` も共通化)。`build_expand`:
+  Array→`[i]` / Hash→`mrb_hash_keys`+`mrb_hash_get` / Object→`mrb_iv_foreach`。
+  MAX_CHILDREN=20 で打ち切り、超過分は `...: (N more)` 集約エントリで通知。
+  park_buf を 4096 (=MAX_FRAME) に拡大。GC は park 中に走らずハンドル値は到達可能なので安全。
+- proto: `DBG_CMD_EXPAND` + req `handle` フィールド + `"expand"` デコード。
+- debugd: `handle_inspect` で EXPAND を分岐 (`fmrb_debug_ctx_expand`)。
+- `fmrb_dbg_client.py`: `expand(pid, handle)`。
+- `fmrb_dap_adapter.py`: variablesReference をマップ化
+  (`_varmap`: DAP ref -> ("frame",idx) | ("handle",dev_handle))。stop で reset。
+  `req_scopes`/`req_variables` が frame/handle 両対応、子の `ref>0` に新 DAP ref を発行。
+
+**検証 (ヘッドレス自律, test_phase1.sh PASS)**: top の `app` (KamonApp) を展開 ->
+ivar 20 件 + `(12 more)` (全32件, 打ち切り+集約ノート動作)。入れ子 `@gfx` -> ivar、
+その中の `@current_font: Array(len=1) ref=4` も展開可能フラグ付き。スカラーは ref=0。
+不正ハンドルは INVALID_PARAM で拒否。step/continue/detach に回帰なし。
+
+**既知の制限**: 1 応答あたり子要素 20 件 (DAP paging 未対応)。超過は集約ノートで表示。
 
 ### Phase 2 完了 — DAP アダプタ + VSCode 拡張 (2026-07-17)
 
