@@ -1,7 +1,9 @@
 # PicoRuby VM リモートデバッグ 実装計画書 その2 (ESP32 実機 + BLE)
 
 作成日: 2026-07-17
-ステータス: 実装計画 (着手前)
+更新日: 2026-07-19
+ステータス: Phase 2 クローズほぼ完了 (残: 2.1-3 detach 修正, 2.2 design.md 更新)。
+  次の実装対象は Phase 3a (sec 3)。
 前提ドキュメント:
 - 設計: doc/vm_remote_debug_design.md
 - 前計画 (Phase 0-2, 完了): doc/vm_remote_debug_impl_plan.md
@@ -37,6 +39,9 @@ Phase 3 (ESP32 実機 + BLE トランスポート)、Phase 4 (仕上げ) を実�
 
 ### 2.1 レビュー指摘の修正 (fmruby-core)
 
+状況 (2026-07-19): 1 と 2 は実施済み (46e5375)。**3 は未実施** (fmrb_debug_ctx_detach は
+タイムアウト後も無条件に ctx_free している)。
+
 1. `fmrb_debug_ctx.c` `fmrb_debug_ctx_bp_set()`: 書き込み順序を
    file -> line -> id -> (最後に) enabled にする。hook が走行中 VM 上で並行に
    `bps[]` を読むため、enabled を最後に立てて部分書き込みの観測を防ぐ。
@@ -48,6 +53,11 @@ Phase 3 (ESP32 実機 + BLE トランスポート)、Phase 4 (仕上げ) を実�
    未定義動作を避ける。armed=false は設定済みなので VM が起きれば自然復帰する。
 
 ### 2.2 その他
+
+状況 (2026-07-19): ルート側コミット整理は完了 (989ac78 拡張 VSIX 対応 / 068ff72
+fmrb_input 記号対応)。VSCode 拡張は VSIX インストール運用に移行し、履歴からの
+再起動 (onDebugDynamicConfigurations) と VSIX 配置でのツールパス解決に対応済み。
+VSCode GUI 確認 (ユーザ) も完了。残るのは design.md のステータス更新のみ。
 
 - family-mruby ルートの未コミット分 (fmrb_input.py 記号キー対応、.gitignore、
   package.json の extensionKind) をコミットする。extensionKind は
@@ -279,7 +289,8 @@ debugd 側の変更は `s_tp` の選択だけ:
 依存関係順。各項目は独立にビルド・検証可能な単位。
 
 1. [P2] レビュー指摘 3 件修正 + ルートリポジトリの未コミット分整理 (2.1, 2.2)
-2. [P2] VSCode GUI 確認 (ユーザ) -> 問題があれば修正
+   -> 済 (残: 2.1-3 の detach 修正と design.md 更新。3a 着手時に併せて実施)
+2. [P2] VSCode GUI 確認 (ユーザ) -> 済 (2026-07-19 確認)
 3. [P3a] ESP32 ビルド設定 (define 共通化 + esp32/p4 build_config) + S3 ビルド確認
 4. [P3a] メモリオーダリング対応 (atomic 化) + PSRAM 配置 + Linux で回帰テスト
    (test_phase1/2 再実行)
