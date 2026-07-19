@@ -12,8 +12,8 @@ ROOT="$(cd "$CORE/.." && pwd)"
 PORT=5555
 APP=Kamon
 SRC=kamon.app.rb
+PATH_RB=/app/demo/kamon.app.rb
 LINE=53
-KAMON_XY="270 120"
 
 cd "$ROOT"
 
@@ -21,10 +21,15 @@ echo "== booting headless stack =="
 tools/dev_run_check.sh --keep /tmp/fmrb_test_phase2.png >/dev/null 2>&1 || {
     echo "boot failed"; exit 1; }
 
+# Launch through the debugger's own spawn command rather than clicking the
+# launcher: icon positions shift whenever an app is added to flash/app.
 echo "== launching Kamon =="
-python3 tools/fmrb_input.py \
-    click 20 5 sleep 700 click 20 17 sleep 2500 \
-    click $KAMON_XY sleep 150 click $KAMON_XY sleep 2500 >/dev/null
+python3 "$CORE/tool/debug/fmrb_dbg_client.py" localhost:$PORT spawn path=$PATH_RB >/dev/null
+for _ in $(seq 20); do
+    sleep 1
+    python3 "$CORE/tool/debug/fmrb_dbg_client.py" localhost:$PORT ps \
+        | grep -q "'$APP'" && break
+done
 
 echo "== running DAP test =="
 set +e
