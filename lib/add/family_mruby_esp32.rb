@@ -30,6 +30,9 @@ MRuby::CrossBuild.new("esp32") do |conf|
   conf.cc.defines << "NDEBUG"
   conf.cc.defines << "ESP32_PLATFORM"
   conf.cc.defines << "FMRB_NO_IO_CONSOLE"
+  # Remote debugger VM hook (doc/vm_remote_debug_*). ABI-relevant: adds two
+  # function pointers to mrb_state.
+  conf.cc.defines << "MRB_USE_DEBUG_HOOK"
 
   if ENV['PICORB_DEBUG']
     conf.cc.defines << "ESTALLOC_DEBUG"

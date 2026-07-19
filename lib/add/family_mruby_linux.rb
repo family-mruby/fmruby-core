@@ -27,8 +27,8 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   # Enable the VM instruction fetch hook (code_fetch_hook) used by the remote
   # debugger (doc/vm_remote_debug_*). This adds two function pointers to
   # mrb_state, changing sizeof(mrb_state), so it MUST be mirrored in
-  # components/picoruby-esp32/mruby_abi_defines.cmake (linux branch) or the
-  # boot-time ABI guard aborts. Linux-only for now (Phase 0-2).
+  # components/picoruby-esp32/mruby_abi_defines.cmake (common part) or the
+  # boot-time ABI guard aborts. Enabled on every target since Phase 3a.
   conf.cc.defines << 'MRB_USE_DEBUG_HOOK'
   conf.cc.defines << 'PICORB_PLATFORM_POSIX'
   conf.cc.defines << 'PICORB_ALLOC_ESTALLOC'

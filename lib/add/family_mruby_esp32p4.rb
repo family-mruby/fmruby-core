@@ -39,6 +39,9 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   conf.cc.defines << "NDEBUG"
   conf.cc.defines << "ESP32_PLATFORM"
   conf.cc.defines << "FMRB_NO_IO_CONSOLE"
+  # Remote debugger VM hook (doc/vm_remote_debug_*). ABI-relevant: adds two
+  # function pointers to mrb_state.
+  conf.cc.defines << "MRB_USE_DEBUG_HOOK"
   # Select the Modern (Tab5) section of fmrb_pin_assign.h for any rake-built
   # source that includes it. NOTE: gem port sources that use ESP-IDF headers
   # (e.g. picoruby-fmrb-const ports/esp32/const.c, which exposes
