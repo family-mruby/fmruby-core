@@ -51,21 +51,31 @@ typedef struct {
 typedef struct {
     int   id;
     int   line;
+    // Published last (release) after id/line/file so the hook never matches a
+    // half-written breakpoint. Read with acquire from the hook.
     bool  enabled;
     char  file[FMRB_DEBUG_MAX_FILE];
 } fmrb_dbg_bp_t;
 
 // --- per-VM context --------------------------------------------------------
+// Cross-task flags below are accessed with __atomic_* builtins rather than
+// `volatile`: on Xtensa/RISC-V volatile alone does not order the surrounding
+// stores, so a running VM could observe `in_use`/`armed` before the fields they
+// publish. Each flag documents the data it gates.
 typedef struct {
+    // Gates pid/mrb/gen/queues. Release-stored last in attach, acquire-loaded
+    // by every ctx lookup.
     bool          in_use;
     int           pid;
     mrb_state    *mrb;
     uint32_t      gen;
 
     // hook-visible control (VM task reads, debugd writes)
-    volatile bool armed;
-    volatile bool pause_req;
-    volatile int  step_mode;
+    // Gates the installed code_fetch_hook: release-stored after the hook
+    // pointer, acquire-loaded at the top of the hook.
+    bool          armed;
+    bool          pause_req;      // relaxed: a lone flag, gates no other data
+    volatile int  step_mode;      // VM task only (set in park, read in hook)
     const mrb_callinfo    *step_ci;
     const struct mrb_context *step_c;
 
@@ -73,7 +83,9 @@ typedef struct {
     int           next_bp_id;
 
     // stop state
-    volatile bool  stopped;
+    // Gates stop_irep/stop_line/cur_regs: release-stored by the VM task once
+    // they are filled in, acquire-loaded by debugd.
+    bool           stopped;
     const mrb_irep *stop_irep;
     int32_t        stop_line;
     bool           at_stop;      // sitting on the line we last stopped at
@@ -90,8 +102,14 @@ typedef struct {
     uint8_t       park_buf[PARK_BUF_SIZE];
 } fmrb_debug_ctx_t;
 
-static fmrb_debug_ctx_t s_dctx[FMRB_DEBUG_MAX_ATTACH];
+FMRB_DBG_BSS_ATTR static fmrb_debug_ctx_t s_dctx[FMRB_DEBUG_MAX_ATTACH];
 static fmrb_queue_t     s_event_q;   // hook -> debugd
+
+// Shorthands for the cross-task flag accesses described on fmrb_debug_ctx_t.
+#define DBG_LOAD_ACQ(p)     __atomic_load_n((p), __ATOMIC_ACQUIRE)
+#define DBG_STORE_REL(p, v) __atomic_store_n((p), (v), __ATOMIC_RELEASE)
+#define DBG_LOAD_RLX(p)     __atomic_load_n((p), __ATOMIC_RELAXED)
+#define DBG_STORE_RLX(p, v) __atomic_store_n((p), (v), __ATOMIC_RELAXED)
 
 // ==========================================================================
 // small helpers
@@ -109,14 +127,16 @@ static bool file_match(const char *a, const char *b) {
 // reverse lookup mrb -> ctx (hook fast path). At most FMRB_DEBUG_MAX_ATTACH.
 static fmrb_debug_ctx_t *ctx_by_mrb(mrb_state *mrb) {
     for (int i = 0; i < FMRB_DEBUG_MAX_ATTACH; i++) {
-        if (s_dctx[i].in_use && s_dctx[i].mrb == mrb) return &s_dctx[i];
+        // Acquire on in_use: pairs with the release store in attach so `mrb`
+        // is guaranteed visible to this (VM) task.
+        if (DBG_LOAD_ACQ(&s_dctx[i].in_use) && s_dctx[i].mrb == mrb) return &s_dctx[i];
     }
     return NULL;
 }
 
 static fmrb_debug_ctx_t *ctx_by_pid(int pid) {
     for (int i = 0; i < FMRB_DEBUG_MAX_ATTACH; i++) {
-        if (s_dctx[i].in_use && s_dctx[i].pid == pid) return &s_dctx[i];
+        if (DBG_LOAD_ACQ(&s_dctx[i].in_use) && s_dctx[i].pid == pid) return &s_dctx[i];
     }
     return NULL;
 }
@@ -141,6 +161,9 @@ static void ctx_free(fmrb_debug_ctx_t *d) {
     if (d->cmd_q)  { fmrb_queue_delete(d->cmd_q);  d->cmd_q = NULL; }
     if (d->resp_q) { fmrb_queue_delete(d->resp_q); d->resp_q = NULL; }
     memset(d, 0, sizeof(*d));
+    // memset already zeroed in_use; repeat it as a release store so the slot
+    // only becomes observably free after the teardown above.
+    DBG_STORE_REL(&d->in_use, false);
 }
 
 // Re-fetch the app by pid and confirm gen/mrb still match. On mismatch the app
@@ -169,7 +192,9 @@ static bool is_line_start(mrb_state *mrb, const mrb_irep *irep,
 
 static int bp_match(fmrb_debug_ctx_t *d, const char *file, int32_t line) {
     for (int i = 0; i < FMRB_DEBUG_MAX_BP; i++) {
-        if (d->bps[i].enabled && d->bps[i].line == line &&
+        // Acquire: pairs with the release store in bp_set, so line/file are
+        // fully written before we can see the slot as enabled.
+        if (DBG_LOAD_ACQ(&d->bps[i].enabled) && d->bps[i].line == line &&
             file_match(file, d->bps[i].file)) {
             return d->bps[i].id;
         }
@@ -535,12 +560,12 @@ static park_resp_t build_expand(fmrb_debug_ctx_t *d, int handle) {
 static void park(fmrb_debug_ctx_t *d, int reason, const mrb_irep *irep,
                  uint32_t pc_off, int32_t line, mrb_value *regs, int bp_id) {
     mrb_state *mrb = d->mrb;
-    d->stopped   = true;
     d->at_stop   = true;
     d->stop_irep = irep;
     d->stop_line = line;
     d->cur_regs  = regs;
     d->nhandles  = 0;            // expand handles are only valid within a stop
+    DBG_STORE_REL(&d->stopped, true);   // publishes the stop state above
 
     const char *file = mrb_debug_get_filename(mrb, irep, pc_off);
     emit_event(FMRB_DBG_EV_STOPPED, d->pid, reason, bp_id, line, file);
@@ -548,7 +573,7 @@ static void park(fmrb_debug_ctx_t *d, int reason, const mrb_irep *irep,
     for (;;) {
         park_cmd_t cmd;
         if (fmrb_queue_receive(d->cmd_q, &cmd, FMRB_MS_TO_TICKS(200)) != pdTRUE) {
-            if (!d->armed) break;   // detached out from under us
+            if (!DBG_LOAD_ACQ(&d->armed)) break;   // detached out from under us
             continue;
         }
         if (cmd.op == PARK_CONTINUE || cmd.op == PARK_DETACH) {
@@ -573,8 +598,8 @@ static void park(fmrb_debug_ctx_t *d, int reason, const mrb_irep *irep,
         }
     }
 
-    d->stopped   = false;
-    d->pause_req = false;
+    DBG_STORE_RLX(&d->pause_req, false);
+    DBG_STORE_REL(&d->stopped, false);
     emit_event(FMRB_DBG_EV_RESUMED, d->pid, 0, -1, 0, NULL);
 }
 
@@ -584,7 +609,9 @@ static void park(fmrb_debug_ctx_t *d, int reason, const mrb_irep *irep,
 static void code_fetch_hook(mrb_state *mrb, const struct mrb_irep *irep,
                             const mrb_code *pc, mrb_value *regs) {
     fmrb_debug_ctx_t *d = ctx_by_mrb(mrb);
-    if (!d || !d->armed) return;                 // fast path
+    // Acquire on armed: pairs with the release store in attach, so everything
+    // the debugd task wrote before arming (bps[], step state) is visible here.
+    if (!d || !DBG_LOAD_ACQ(&d->armed)) return;  // fast path
     if (!irep || !irep->debug_info) return;      // no line info
 
     uint32_t pc_off = (uint32_t)(pc - irep->iseq);
@@ -600,7 +627,7 @@ static void code_fetch_hook(mrb_state *mrb, const struct mrb_irep *irep,
     int reason = -1;
     int bp_id = -1;
 
-    if (d->pause_req) {
+    if (DBG_LOAD_RLX(&d->pause_req)) {
         reason = FMRB_STOP_PAUSE;
     } else if (d->step_mode != FMRB_STEP_NONE && mrb->c == d->step_c) {
         // mruby-task safety: only judge steps in the context we started in.
@@ -650,7 +677,7 @@ fmrb_err_t fmrb_debug_ctx_attach(int pid) {
 
     fmrb_debug_ctx_t *d = NULL;
     for (int i = 0; i < FMRB_DEBUG_MAX_ATTACH; i++) {
-        if (!s_dctx[i].in_use) { d = &s_dctx[i]; break; }
+        if (!DBG_LOAD_RLX(&s_dctx[i].in_use)) { d = &s_dctx[i]; break; }
     }
     if (!d) return FMRB_ERR_NO_RESOURCE;
 
@@ -663,7 +690,9 @@ fmrb_err_t fmrb_debug_ctx_attach(int pid) {
     d->mrb = ctx->mrb;
     d->gen = ctx->gen;
     d->next_bp_id = 1;
-    d->in_use = true;
+    // Publish the slot: everything the hook reads through the ctx (pid, mrb,
+    // gen, queues) must be visible before another core can observe in_use.
+    DBG_STORE_REL(&d->in_use, true);
 
     // Install the hook only after the ctx is fully initialized (VM task reads
     // either NULL or a valid pointer; the 1-word store is atomic enough).
@@ -672,7 +701,9 @@ fmrb_err_t fmrb_debug_ctx_attach(int pid) {
     // only nominally; they are layout-compatible and the VM passes mrc_irep.
     d->mrb->code_fetch_hook =
         (__typeof__(d->mrb->code_fetch_hook))code_fetch_hook;
-    d->armed = true;
+    // Arm last: the hook body bails out until it sees this, so the hook
+    // pointer store above is ordered ahead of any hook work.
+    DBG_STORE_REL(&d->armed, true);
     FMRB_LOGI(TAG, "attached pid=%d mrb=%p", pid, (void *)d->mrb);
     return FMRB_OK;
 }
@@ -681,14 +712,24 @@ fmrb_err_t fmrb_debug_ctx_detach(int pid) {
     fmrb_debug_ctx_t *d = ctx_by_pid(pid);
     if (!d) return FMRB_ERR_NOT_FOUND;
 
-    d->armed = false;
-    for (int i = 0; i < FMRB_DEBUG_MAX_BP; i++) d->bps[i].enabled = false;
+    DBG_STORE_REL(&d->armed, false);
+    for (int i = 0; i < FMRB_DEBUG_MAX_BP; i++) DBG_STORE_REL(&d->bps[i].enabled, false);
 
     // If parked, wake it so it resumes and unwinds the hook.
-    if (d->stopped) {
+    if (DBG_LOAD_ACQ(&d->stopped)) {
         park_cmd_t c = { PARK_DETACH, 0 };
         fmrb_queue_send(d->cmd_q, &c, FMRB_MS_TO_TICKS(100));
-        for (int i = 0; i < 100 && d->stopped; i++) fmrb_task_delay_ms(5);
+        for (int i = 0; i < 100 && DBG_LOAD_ACQ(&d->stopped); i++) fmrb_task_delay_ms(5);
+
+        // Still parked after 500ms: the VM task is blocked inside the park loop
+        // on cmd_q. Freeing the ctx would delete that queue out from under it,
+        // so leak the slot instead. armed is already false, so the loop exits
+        // on its own 200ms poll timeout whenever the task is scheduled again,
+        // and the disarmed hook costs one acquire load per fetch until then.
+        if (DBG_LOAD_ACQ(&d->stopped)) {
+            FMRB_LOGW(TAG, "pid %d still parked after 500ms; leaking dctx slot", pid);
+            return FMRB_ERR_TIMEOUT;
+        }
     }
 
     // Detach the hook. Re-fetch to avoid touching a freed mrb.
@@ -707,7 +748,7 @@ bool fmrb_debug_ctx_is_attached(int pid) {
 
 void fmrb_debug_ctx_detach_all(void) {
     for (int i = 0; i < FMRB_DEBUG_MAX_ATTACH; i++) {
-        if (s_dctx[i].in_use) fmrb_debug_ctx_detach(s_dctx[i].pid);
+        if (DBG_LOAD_ACQ(&s_dctx[i].in_use)) fmrb_debug_ctx_detach(s_dctx[i].pid);
     }
 }
 
@@ -723,7 +764,7 @@ fmrb_err_t fmrb_debug_ctx_bp_set(int pid, const char *file, int line, int *out_b
             d->bps[i].line = line;
             strncpy(d->bps[i].file, file, sizeof(d->bps[i].file) - 1);
             d->bps[i].file[sizeof(d->bps[i].file) - 1] = '\0';
-            d->bps[i].enabled = true;
+            DBG_STORE_REL(&d->bps[i].enabled, true);
             if (out_bp_id) *out_bp_id = d->bps[i].id;
             return FMRB_OK;
         }
@@ -736,7 +777,7 @@ fmrb_err_t fmrb_debug_ctx_bp_clear(int pid, int bp_id) {
     if (!d) return FMRB_ERR_NOT_FOUND;
     for (int i = 0; i < FMRB_DEBUG_MAX_BP; i++) {
         if (d->bps[i].enabled && (bp_id < 0 || d->bps[i].id == bp_id)) {
-            d->bps[i].enabled = false;
+            DBG_STORE_REL(&d->bps[i].enabled, false);
         }
     }
     return FMRB_OK;
@@ -745,15 +786,15 @@ fmrb_err_t fmrb_debug_ctx_bp_clear(int pid, int bp_id) {
 fmrb_err_t fmrb_debug_ctx_pause(int pid) {
     fmrb_debug_ctx_t *d = ctx_valid(pid);
     if (!d) return FMRB_ERR_NOT_FOUND;
-    if (d->stopped) return FMRB_OK;
-    d->pause_req = true;
+    if (DBG_LOAD_ACQ(&d->stopped)) return FMRB_OK;
+    DBG_STORE_RLX(&d->pause_req, true);
     return FMRB_OK;
 }
 
 fmrb_err_t fmrb_debug_ctx_continue(int pid) {
     fmrb_debug_ctx_t *d = ctx_valid(pid);
     if (!d) return FMRB_ERR_NOT_FOUND;
-    if (!d->stopped) return FMRB_ERR_INVALID_STATE;
+    if (!DBG_LOAD_ACQ(&d->stopped)) return FMRB_ERR_INVALID_STATE;
     park_cmd_t c = { PARK_CONTINUE, 0 };
     fmrb_queue_send(d->cmd_q, &c, FMRB_MS_TO_TICKS(100));
     return FMRB_OK;
@@ -762,7 +803,7 @@ fmrb_err_t fmrb_debug_ctx_continue(int pid) {
 fmrb_err_t fmrb_debug_ctx_step(int pid, int step_mode) {
     fmrb_debug_ctx_t *d = ctx_valid(pid);
     if (!d) return FMRB_ERR_NOT_FOUND;
-    if (!d->stopped) return FMRB_ERR_INVALID_STATE;
+    if (!DBG_LOAD_ACQ(&d->stopped)) return FMRB_ERR_INVALID_STATE;
     park_op_t op = (step_mode == FMRB_STEP_IN)   ? PARK_STEP_IN :
                    (step_mode == FMRB_STEP_OUT)  ? PARK_STEP_OUT : PARK_STEP_OVER;
     park_cmd_t c = { op, 0 };
@@ -774,7 +815,7 @@ static fmrb_err_t inspect(int pid, park_op_t op, int arg,
                           const uint8_t **out_body, size_t *out_len) {
     fmrb_debug_ctx_t *d = ctx_valid(pid);
     if (!d) return FMRB_ERR_NOT_FOUND;
-    if (!d->stopped) return FMRB_ERR_INVALID_STATE;
+    if (!DBG_LOAD_ACQ(&d->stopped)) return FMRB_ERR_INVALID_STATE;
 
     park_cmd_t c = { op, arg };
     if (fmrb_queue_send(d->cmd_q, &c, FMRB_MS_TO_TICKS(100)) != pdTRUE) {
