@@ -15,8 +15,14 @@ idf_component_register(
         log
 )
 
-# Add ESP32-specific definitions for MessagePack
-target_compile_definitions(${COMPONENT_LIB} PRIVATE
+# Endianness for MessagePack. PUBLIC, not PRIVATE: msgpack/sysdep.h only falls
+# back to msgpack/predef auto-detection when these are unset, and that fallback
+# knows nothing about Xtensa/RISC-V. It then depends on whether an earlier
+# include happened to pull in a header defining __BYTE_ORDER, so a consumer that
+# includes <msgpack.h> early fails to build with "supports only big endian and
+# little endian". Exporting the defines makes every consumer agree with the
+# library itself regardless of include order.
+target_compile_definitions(${COMPONENT_LIB} PUBLIC
     MSGPACK_ENDIAN_LITTLE_BYTE=1
     MSGPACK_ENDIAN_BIG_BYTE=0
 )
