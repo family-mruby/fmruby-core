@@ -16,6 +16,16 @@
 #include "fmrb_err.h"
 #include "fmrb_debug_proto.h"   // FMRB_DEBUG_MAX_* limits
 
+// Placement for the debugger's large static buffers (per-VM park scratch, the
+// request reassembly buffer). On ESP32 they go to PSRAM so the debugger costs
+// no internal RAM when idle; on the Linux build it is plain BSS.
+#ifdef CONFIG_IDF_TARGET_LINUX
+#define FMRB_DBG_BSS_ATTR
+#else
+#include "esp_attr.h"
+#define FMRB_DBG_BSS_ATTR EXT_RAM_BSS_ATTR
+#endif
+
 // Step modes.
 enum {
     FMRB_STEP_NONE = 0,

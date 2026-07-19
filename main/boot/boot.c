@@ -45,9 +45,7 @@
 
 #include "boot.h"
 
-#ifdef CONFIG_IDF_TARGET_LINUX
-#include "fmrb_debugd.h"     // Phase 1 remote-debugger daemon
-#endif
+#include "fmrb_debugd.h"     // remote-debugger daemon (all targets)
 
 static const char *TAG = "boot";
 
@@ -462,8 +460,11 @@ void fmrb_os_init(void)
     FMRB_LOGI(TAG, "Family mruby OS initialization complete");
 
 #ifdef CONFIG_IDF_TARGET_LINUX
-    // Remote debugger daemon (doc/vm_remote_debug_*). Linux/Phase 1: TCP on
+    // Remote debugger daemon (doc/vm_remote_debug_*). Linux: TCP on
     // FMRB_DEBUG_TCP_PORT. Started after the kernel/app subsystems are up.
+    // ESP32 targets build the same debug core but have no transport until the
+    // BLE service lands (Phase 3b); starting the daemon there is deferred to
+    // that phase rather than spawning a task with nothing to talk to.
     fmrb_debugd_init();
 #endif
 }

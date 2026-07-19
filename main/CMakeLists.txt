@@ -8,13 +8,14 @@ set(COMPONENT_SRCS
     "kernel/host/host_task.c"
     "drivers/usb/fmrb_keymap.c"
     "drivers/led_status/status_led.c"
+    # Remote debugger core (target independent). Transports are per-target.
+    "drivers/debug/fmrb_debug_proto.c"
+    "drivers/debug/fmrb_debug_ctx.c"
+    "drivers/debug/fmrb_debugd.c"
 )
 set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
-    "drivers/debug/fmrb_debug_proto.c"
     "drivers/debug/fmrb_debug_transport_tcp.c"
-    "drivers/debug/fmrb_debug_ctx.c"
-    "drivers/debug/fmrb_debugd.c"
 )
 set(COMPONENT_ESP32_SRCS
     "drivers/usb/usb_task.c"
@@ -48,7 +49,9 @@ prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/p
 # Set up component dependencies based on target
 set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_transport fmrb_toml fmrb_mem
     fmrb_gfx fmrb_audio lua basic
-    picoruby-esp32 mem_allocator log tar_lib)
+    picoruby-esp32 mem_allocator log tar_lib
+    # Remote debugger wire protocol (all targets since Phase 3a).
+    msgpack-esp32)
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
@@ -109,8 +112,6 @@ if(NOT IDF_TARGET STREQUAL "linux")
     list(APPEND COMPONENT_SRCS ${COMPONENT_ESP32_SRCS})
 else()
     list(APPEND COMPONENT_SRCS ${COMPONENT_LINUX_SRCS})
-    # Remote debugger (Phase 1) uses msgpack for its wire protocol.
-    list(APPEND COMPONENT_REQUIRES msgpack-esp32)
 endif()
 
 # Remote desktop viewer page (Modern only): embedded into the binary and
