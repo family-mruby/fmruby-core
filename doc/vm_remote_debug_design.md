@@ -1,9 +1,24 @@
 # PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)
 
 作成日: 2026-07-15 (追加調査反映: 同日)
-ステータス: Phase 0-2 実装完了 (Linux sim + TCP + DAP)。Phase 3 (BLE) 未着手。
-  実装計画は doc/vm_remote_debug_impl_plan.md、進捗は doc/vm_remote_debug_progress.md、
+ステータス: 実装反映済み。Phase 0-2 (Linux sim + TCP + DAP) 完了、Phase 3a
+  (ESP32 ビルド共通化 + メモリオーダリング + PSRAM 配置) 完了。Phase 3b (BLE) 未着手。
+  実装計画は doc/vm_remote_debug_impl_plan.md / impl_plan2.md、
+  進捗は doc/vm_remote_debug_progress.md、
   プロトコル仕様 (正) は doc/vm_remote_debug_protocol.md を参照。本書は初期検討ドラフト。
+
+実装との差異 (本書の記述を実装が上書きしている点):
+
+- **VM 列挙の g_tick_manager アクセサは不採用** (5.2)。pid から `mrb_state` を引くのは
+  `fmrb_app_get_context_by_id()` で足り、picoruby submodule への改変を回避できたため。
+  `fmrb_app_ps()` + `ctx->mrb` / `ctx->gen` の突き合わせで attach 対象を確定している。
+- **DEBUGGING プロセス状態は見送り** (8 のリスク表)。Linux sim ではパーク中の
+  監視系誤検知が発生しなかったため導入していない。実機で問題が出た場合に
+  impl_plan2 sec 7-4 の手順で導入する。
+- **hook は全ターゲット常時有効** (5.1 の「性能計測後に判断」に対する結論)。
+  `MRB_USE_DEBUG_HOOK` は linux/esp32/esp32p4 で共通有効。`-g` も全ターゲット共通。
+- **クロスタスクのフラグは `volatile` ではなく `__atomic_*`** (release/acquire)。
+  Xtensa/RISC-V では volatile が周囲のストア順序を保証しないため。
 
 ## 1. 目的
 

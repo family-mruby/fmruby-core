@@ -2,8 +2,8 @@
 
 作成日: 2026-07-17
 更新日: 2026-07-19
-ステータス: Phase 2 クローズほぼ完了 (残: 2.1-3 detach 修正, 2.2 design.md 更新)。
-  次の実装対象は Phase 3a (sec 3)。
+ステータス: Phase 2 クローズ完了、Phase 3a 完了 (実機起動確認・性能計測はユーザ作業)。
+  次の実装対象は Phase 3b (sec 4)。
 前提ドキュメント:
 - 設計: doc/vm_remote_debug_design.md
 - 前計画 (Phase 0-2, 完了): doc/vm_remote_debug_impl_plan.md
@@ -39,8 +39,9 @@ Phase 3 (ESP32 実機 + BLE トランスポート)、Phase 4 (仕上げ) を実�
 
 ### 2.1 レビュー指摘の修正 (fmruby-core)
 
-状況 (2026-07-19): 1 と 2 は実施済み (46e5375)。**3 は未実施** (fmrb_debug_ctx_detach は
-タイムアウト後も無条件に ctx_free している)。
+状況 (2026-07-19): 1-3 すべて実施済み。3 は 500ms 超過時に警告ログを出して
+`FMRB_ERR_TIMEOUT` を返し、スロットを in_use のまま残すようにした
+(次回の disconnect -> detach_all で回収される)。
 
 1. `fmrb_debug_ctx.c` `fmrb_debug_ctx_bp_set()`: 書き込み順序を
    file -> line -> id -> (最後に) enabled にする。hook が走行中 VM 上で並行に
@@ -73,6 +74,46 @@ VSCode GUI 確認 (ユーザ) も完了。残るのは design.md のステータ
 
 目的: BLE を書き始める前に、実機で hook + デバッグコアがビルド・動作し、
 性能とサイズが許容範囲であることを確認する。
+
+状況 (2026-07-19): 3.1-3.4 のコード変更完了。Linux 回帰 (test_phase1/2) PASS、
+S3 (NARYAv3) / P4 (NARYAv4) ビルド成功。実機起動確認と hook オーバーヘッド実測は
+ユーザ作業として残っている。
+
+作業中に判明した副次的な問題と対応:
+
+- **msgpack のエンディアン判定が ESP32 で破綻していた**。
+  `components/msgpack-esp32/CMakeLists.txt` の `MSGPACK_ENDIAN_*` が `PRIVATE`
+  だったため利用側には効かず、`msgpack/predef` の自動判定に落ちていた。
+  この判定は Xtensa/RISC-V を知らず、先行 include が `__BYTE_ORDER` を
+  定義しているかどうかで結果が変わる (display_p4_task.cpp はたまたま通っていた)。
+  `PUBLIC` にしてライブラリと利用側の認識を一致させた。
+- **test_phase1/2.sh のランチャ座標が陳腐化していた** (489b467 の Debug Sample
+  追加でアイコン位置がずれた)。クリックではなくデバッガの `spawn` コマンドで
+  起動するようにして座標依存を排除した。
+
+サイズ実測 (S3 / NARYAv3、変更前後の同条件ビルド):
+
+| | バイナリ | パーティション空き |
+|---|---|---|
+| 変更前 | 0x1f34d0 (2,045,136 B) | 0xcb30 (52,016 B, 2%) |
+| 変更後 | 0x1f4740 (2,049,856 B) | 0xb8c0 (47,296 B, 2%) |
+
+増分 +4,720 B (+0.23%)。`-g` は変更前から全ターゲット共通だったため今回の増分には
+含まれない。S3 の残り 2% は Phase 3a 以前からの既存状況であり、本変更が原因ではない。
+現時点では `FMRB_RUBY_DEBUG_INFO` のオプション化は不要と判断する。ただし
+BLE サービス追加 (3b) で数十 KB 増える見込みなので、その時点で再評価すること。
+P4 (NARYAv4) は 0x36c2a0 (3,588,768 B)、4MB パーティションに 14% 空き。
+
+RAM 実測 (P4、objdump -h でセクション確認):
+
+- `s_dctx[4]` = 0x7420 (29,728 B) が `.ext_ram.bss` に配置されていることを確認。
+  内訳は主に park_buf 4KB + handles 128 x mrb_value + bps 16 本 x4 VM。
+  計画時の見積り (約 9KB) は park_buf を 2KB としていたための過小評価で、
+  実際の `PARK_BUF_SIZE` は 4096。内部 RAM は消費しない。
+- `s_rx_body` (4KB) は現状 ESP32 側で消えている。`s_tp` が NULL 固定なので
+  `debugd_main` の本体ごと dead code 除去されるため (`debugd_main` は 0x56 バイト)。
+  Phase 3b で BLE トランスポートを繋いだ時点で PSRAM に現れる。
+- `fmrb_debug_ctx.c` のコードサイズは code_fetch_hook 0x1106 + 周辺で数 KB (フラッシュ)。
 
 ### 3.1 ビルド設定
 
@@ -288,13 +329,12 @@ debugd 側の変更は `s_tp` の選択だけ:
 
 依存関係順。各項目は独立にビルド・検証可能な単位。
 
-1. [P2] レビュー指摘 3 件修正 + ルートリポジトリの未コミット分整理 (2.1, 2.2)
-   -> 済 (残: 2.1-3 の detach 修正と design.md 更新。3a 着手時に併せて実施)
+1. [P2] レビュー指摘 3 件修正 + ルートリポジトリの未コミット分整理 (2.1, 2.2) -> 済
 2. [P2] VSCode GUI 確認 (ユーザ) -> 済 (2026-07-19 確認)
-3. [P3a] ESP32 ビルド設定 (define 共通化 + esp32/p4 build_config) + S3 ビルド確認
+3. [P3a] ESP32 ビルド設定 (define 共通化 + esp32/p4 build_config) + S3 ビルド確認 -> 済
 4. [P3a] メモリオーダリング対応 (atomic 化) + PSRAM 配置 + Linux で回帰テスト
-   (test_phase1/2 再実行)
-5. [P3a] S3 実機で起動・退行確認 + hook/フラッシュ計測 (ユーザ協力)
+   (test_phase1/2 再実行) -> 済
+5. [P3a] S3 実機で起動・退行確認 + hook/フラッシュ計測 (ユーザ協力) -> 未 (次の作業)
 6. [P3b] ble_framing 切り出し + debug GATT サービス + BLE トランスポート
 7. [P3c] Python BLE バックエンド + extensionKind 復帰 + S3 実機 E2E (ユーザ協力)
 8. [P3d] P4 疎通・実測・調整 (ユーザ協力)
