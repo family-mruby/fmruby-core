@@ -7,11 +7,56 @@
 - 実装計画: `doc/vm_remote_debug_impl_plan.md` (これに従って実装中)
 - プロトコル仕様: `doc/vm_remote_debug_protocol.md` (Phase 1 で作成予定)
 
-最終更新: 2026-07-16
+最終更新: 2026-07-21
 
 ## 現在のステータス
 
-**Phase 0 + 1 + 2 完了 + 変数の詳細展開。Phase 2 の VSCode GUI 操作確認のみユーザ待ち。BLE (Phase 3) は対象外。**
+**Phase 0 + 1 + 2 + 3a + 3b 完了。Phase 2 の VSCode GUI 操作確認と、
+Phase 3b の BLE 実疎通 (実機) がユーザ待ち。次は Phase 3c (ホスト側 bleak バックエンド)。**
+
+### Phase 3b 完了 — BLE debug GATT サービス (デバイス側, 2026-07-21)
+
+計画書: `doc/vm_remote_debug_impl_plan_phase3b.md` (逸脱なし)。
+
+追加/変更ファイル:
+- `main/drivers/ble/ble_framing.{h,c}` (新規): `ble_task.c` にあった
+  `crc32_calc` / `cobs_encode` / `cobs_decode` + crc32 表を移動し
+  `ble_framing_*` に改名。ファイル転送サービスと debug サービスで共用。
+- `main/drivers/ble/ble_debug_link.h` (新規): ble_task <-> トランスポート間の
+  受け渡し API (`ble_debug_register` / `ble_debug_send` / `ble_debug_link_ready` /
+  `ble_debug_rx_buf`) と `BLE_DBG_MAX_ENC` (4120) / `ble_dbg_frame_ref_t`。
+- `main/drivers/ble/ble_task.c`: UUID 0x05/0x06/0x07 で debug service を追加
+  (`gatt_svr_svcs[]` に 2 つ目の primary service)。`gatt_chr_dbg_rx_cb` は
+  NimBLE ホストタスク上で走るため蓄積と ready キュー投入のみ (COBS/CRC は触らない)。
+  `ble_fs_send_notify` を `ble_send_notify(val_handle, subscribed, ...)` に一般化し
+  両サービスで共用。SUBSCRIBE / DISCONNECT に debug 側の分岐を追加。
+- `main/drivers/debug/fmrb_debug_transport_ble.c` (新規): `fmrb_debug_transport_ops_t`
+  実装。free/ready キュー (深さ 2) を所有し、poll でデコード + CRC/len 検証、
+  send で plain 構築 -> CRC -> COBS -> デリミタ。作業バッファは PSRAM。
+- 配線: `fmrb_debugd.c` の `s_tp` を ESP32 で BLE に (NULL 分岐と `if (!s_tp)`
+  ガードを削除)、`boot.c` の `fmrb_debugd_init()` を全ターゲットで呼ぶよう
+  `#ifdef CONFIG_IDF_TARGET_LINUX` を撤去、`main/CMakeLists.txt` の
+  `COMPONENT_ESP32_SRCS` に新規 2 TU を追加。
+
+**設計上のポイント**: RX バッファは free -> access_cb -> ready -> poll -> free の
+一方向循環で、NimBLE タスクと debugd タスクが同一バッファを同時に触らない
+(キューがメモリバリアも兼ねる)。トランスポート init は BLE 初期化状態に依存しない
+(登録はハンドル保存のみ) ため、P4 の遅延 radio init と boot 順序が競合しない。
+
+**サイズ実測 (S3 / Retro)**: 0x1f4740 -> 0x1f8970 バイト (+16,432, 約 +0.8%)。
+factory 3MB に対し 34% 空き。新規静的バッファは全て PSRAM (約 21KB) で
+内部 RAM は消費しない。
+
+**検証**:
+- S3: `rake build:esp32` 成功、check_sizes 通過。
+- P4: `rake clean_all` 後 NARYAv4 で成功 (0x370ca0 バイト、4MB に対し 14% 空き)。
+  注: `.env` が shell の `FMRB_HW_TARGET` を上書きするので、ターゲット切替は
+  `.env` の編集が必要 (環境変数を渡すだけでは効かない)。
+- Linux 回帰: `rake clean_all` 後 `rake build:linux` 成功、
+  `test_phase1.sh` / `test_phase2.sh` ともに PASS (TCP パスに退行なし)。
+
+**ユーザ確認待ち (ヘッドレス不可)**: BLE 実疎通は Phase 3c のホスト側実装後に
+実機で行う。本フェーズで担保したのは「未接続時に何も壊さない」ことまで。
 
 ### 追加機能 — 変数の詳細展開 (nested variables, 2026-07-17)
 
@@ -191,6 +236,8 @@ Linux sim + ヘッドレスハーネスで PoC (`main/drivers/debug/fmrb_debug_p
 | 10 | P2 | fmrb_dap_adapter.py | 完了 (自律 PASS) |
 | 11 | P2 | VSCode拡張 + E2E確認 | 拡張作成済み / VSCode GUI 確認はユーザ |
 | 12 | - | protocol.md 清書、design.md ステータス更新 | 進行中 |
+| 13 | P3b | ble_framing 切り出し + debug GATT サービス + BLE トランスポート + 配線 | 完了 (S3/P4 ビルド + Linux 回帰 PASS) |
+| 14 | P3c | ホスト側 BLE バックエンド (bleak) + VSCode 拡張 extensionKind | 未着手 |
 
 ## 確定した調査事実 (コードで確認済み)
 
@@ -231,4 +278,11 @@ Linux sim + ヘッドレスハーネスで PoC (`main/drivers/debug/fmrb_debug_p
 - Phase 2: gen_combined_rb.py + cmake で map.json 生成 -> fmrb_dap_adapter.py 実装 ->
   test_phase2.py/.sh 作成 -> 自律 PASS (行マッパー往復 + DAP フル)。
   vscode-fmrb-debug 拡張作成。VSCode GUI 操作のみユーザ確認待ち。
-</content>
+
+### 2026-07-21
+
+- Phase 3b 実装 (計画書 `vm_remote_debug_impl_plan_phase3b.md` に従い逸脱なし):
+  ble_framing 切り出し -> debug GATT サービス + link API -> BLE トランスポート ->
+  debugd/boot/CMake 配線 -> ドキュメント更新。
+- S3 (+16,432 バイト, 34% 空き) / P4 いずれもビルド成功。
+  Linux 回帰 test_phase1.sh / test_phase2.sh 両方 PASS。

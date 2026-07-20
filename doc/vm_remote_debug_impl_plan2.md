@@ -175,6 +175,10 @@ Linux (x86 TSO) では問題にならなかった store 順序を、Xtensa/RISC-
 
 ## 4. Phase 3b: BLE debug GATT サービス (デバイス側)
 
+**ステータス: 実装済み (2026-07-21)。確定した詳細仕様は
+`doc/vm_remote_debug_impl_plan_phase3b.md`、ワイヤ形式は
+`doc/vm_remote_debug_protocol.md` sec 1 を参照。以下は着手時の調査メモ。**
+
 既存 BLE ファイル転送サービス (main/drivers/ble/ble_task.c) と同型で追加する。
 調査で確定した構造 (根拠行番号は 2026-07-17 時点):
 

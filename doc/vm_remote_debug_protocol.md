@@ -5,7 +5,8 @@
 関連: `doc/vm_remote_debug_design.md`, `doc/vm_remote_debug_impl_plan.md`
 
 デバイス (fmrb_debugd) とホスト (Python クライアント / DAP アダプタ) 間の
-デバッグプロトコル。Phase 1 は TCP トランスポートのみ。BLE は Phase 3。
+デバッグプロトコル。トランスポートは Linux シミュレーションが TCP、
+ESP32 実機が BLE GATT (Phase 3b で追加)。msgpack body は両者で共通。
 
 ## 1. トランスポートとフレーミング
 
@@ -19,6 +20,41 @@
 
 トランスポート層は length プレフィクスの付与/剥離を担当し、上位 (proto/debugd) には
 「完全な msgpack body 1 個」単位で受け渡す。
+
+### BLE GATT (Phase 3b)
+
+ESP32 実機 (S3 / P4) のトランスポート。msgpack body は TCP と完全に同一で、
+異なるのはフレーミングのみ。既存 BLE ファイル転送サービスと同じ COBS+CRC32 方式
+(`main/drivers/ble/ble_framing.h`) を用いる。
+
+```
+plain   = [len_hi][len_lo][msgpack body]          // len = body バイト長 (u16 BE)
+frame   = COBS( plain + CRC32(plain) ) + 0x00     // CRC32 は 4B BE
+```
+
+- CRC32 は多項式 0xEDB88320 (zlib/PNG 版)、COBS 前の平文に対して計算する。
+- COBS 出力に 0x00 は現れないため、最初の 0x00 がフレーム終端。
+- 受信側は COBS デコード -> 末尾 4B の CRC32 検証 -> `len` と `decoded_len - 6` の
+  一致検証を行い、いずれか不一致ならフレームを破棄する (警告ログのみ、切断しない)。
+- body 最大長は 4096 バイト (`FMRB_DEBUG_MAX_FRAME`)。エンコード後の最大長は
+  4120 バイト (`BLE_DBG_MAX_ENC`)。
+- デリミタ以降に同一 write で続くデータは破棄する。ホストは 1 フレームずつ write すること。
+
+GATT 特性 (ベース UUID `xxxxxxxx-4252-5942-4c45-000000000000` の byte[0] で区別。
+0x01-0x04 はファイル転送サービスが使用済み):
+
+| byte[0] | 種別 | プロパティ |
+|---|---|---|
+| 0x05 | debug service (primary) | - |
+| 0x06 | debug RX (host -> device) | WRITE / WRITE_NO_RSP |
+| 0x07 | debug TX (device -> host) | NOTIFY |
+
+- 送信は MTU-3 バイト単位に分割して notify する (ホスト側で再結合)。
+- 接続とみなす条件は「接続済み かつ debug TX を購読済み」。切断すると debugd は
+  attach 中の全 VM を detach する。
+- **登録前フレームの喪失**: boot 順序上、BLE 初期化から debugd の
+  トランスポート登録までにわずかな隙がある。この間にホストが送ったフレームは
+  黙って捨てられる。ホスト側は応答が返らない場合にリトライすること。
 
 ## 2. メッセージ構造
 
@@ -106,4 +142,4 @@ var   : {name:str, type:str, value:str, truncated:bool}
 ## 6. 変更履歴
 
 - 2026-07-16: 初版 (Phase 1 実装開始時)。
-</content>
+- 2026-07-21: BLE GATT トランスポートのフレーミング / UUID を追記 (Phase 3b)。
