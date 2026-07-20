@@ -259,6 +259,10 @@ debugd 側の変更は `s_tp` の選択だけ:
 
 ## 5. Phase 3c: ホスト側 BLE バックエンド
 
+**ステータス: 実装済み (2026-07-21)。確定した詳細仕様は
+`doc/vm_remote_debug_impl_plan_phase3c.md`、ホスト側の約束は
+`doc/vm_remote_debug_protocol.md` sec 1 "BLE GATT" を参照。以下は着手時の調査メモ。**
+
 ### 5.1 fmrb_dbg_client.py の transport 抽象化
 
 - 現状 TCP ソケット直書きの部分を `Transport` クラス (connect/send_frame/

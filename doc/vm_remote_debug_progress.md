@@ -11,8 +11,60 @@
 
 ## 現在のステータス
 
-**Phase 0 + 1 + 2 + 3a + 3b 完了。Phase 2 の VSCode GUI 操作確認と、
-Phase 3b の BLE 実疎通 (実機) がユーザ待ち。次は Phase 3c (ホスト側 bleak バックエンド)。**
+**Phase 0 + 1 + 2 + 3a + 3b + 3c 完了。残るユーザ作業は VSCode GUI 操作確認と
+BLE 実機 E2E (手順は vscode-fmrb-debug/README.md)。次は Phase 3d (P4 実機調整)。**
+
+### Phase 3c 完了 — ホスト側 BLE バックエンド + VSCode 接続 (2026-07-21)
+
+計画書: `doc/vm_remote_debug_impl_plan_phase3c.md` (逸脱なし)。デバイス側は無変更。
+
+fmruby-core/tool/debug:
+- `fmrb_ble_framing.py` (新規): COBS + CRC32 の純関数 (`cobs_encode/decode`,
+  `encode_frame`, `decode_frame`)。bleak 非依存。`__main__` にセルフテスト同梱。
+- `fmrb_ble_transport.py` (新規): `BleTransport`。bleak の asyncio を
+  デーモンスレッドのイベントループに隠蔽し、同期 API へブリッジ
+  (全 `run_coroutine_threadsafe` にタイムアウト付き)。スキャン (名前完全一致 /
+  `Family-mruby-` プレフィクスで 1 台 / MAC 指定はスキャン省略)、
+  notify 再結合、MTU-3 分割 write、`disconnected_callback`。
+- `fmrb_dbg_client.py`: `TcpTransport` を切り出し、`FmrbDebugClient(transport, ...)`
+  + `from_target(target)` に変更 (旧 `(host, port)` シグネチャは削除)。
+  target 書式は `host[:port]` / `ble` / `ble:<name-or-address>`。
+  BLE モジュールは BLE target のときだけ import (TCP 利用者に bleak 不要)。
+- `fmrb_dap_adapter.py`: launch 引数 `transport` ("tcp"|"ble"、既定 tcp) と
+  `deviceName` を追加。接続失敗 (bleak 未導入・スキャン 0/複数台・ハンドシェイク
+  枯渇) は attach 失敗の message に載せて VSCode に表示。
+- `test_phase1.py`: `from_target` 利用に変更 (`ble:...` を渡せば実機にも流用可)。
+
+**接続確立 (登録前フレーム喪失対策)**: `FmrbDebugClient.connect()` が
+`version` をタイムアウト 2 秒 x 最大 3 回リトライしてから返る。TCP も同じ経路。
+
+family-mruby/vscode-fmrb-debug:
+- `package.json`: `extensionKind` を `["ui"]` のみに (WSL2 に Bluetooth が無いため
+  拡張とアダプタを Windows 側で動かす)。`transport` / `deviceName` 属性と
+  BLE attach スニペットを追加。version 0.0.2。
+- README.md / README.ja.md: BLE セクション (Windows 側 pip、launch.json 例、
+  pythonPath の注意、UNC パスの逃げ道、BLE 固有のトラブルシューティング) を追記。
+- `fmrb-debug-0.0.2.vsix` を生成済み。**インストールはユーザ操作** (再パッケージ
+  しただけでは反映されない)。
+
+**検証**:
+- コーデックのセルフテスト `python3 tool/debug/fmrb_ble_framing.py` PASS。
+- **C 実装とのバイト一致 (クロス検証)**: `ble_framing.c` をホストでビルドした
+  ベクタ生成ツールと Python を、body 長 0-4096 のランダム 2000 本で比較し
+  **全フレームがバイト単位で一致**、かつ C 製フレームを Python デコーダが全て復元。
+  固定ベクタ (version リクエスト) `01030c940f01a776657273696f6ec0654980c900` は
+  C の出力そのものをセルフテストに埋め込んである。
+  検証ハーネスは `tool/debug/` に収録: `framing_vec.c` (ビルド手順はヘッダ参照) +
+  `test_ble_framing_cross.py` で再現でき、偽 BleakClient による
+  BleTransport ロジックテストは `test_ble_transport.py` (bleak 必要、電波不要)。
+- bleak 未導入環境で `import fmrb_dbg_client` / `fmrb_dap_adapter` が通ること、
+  BLE target 指定時のみ分かりやすい ImportError になることを確認。
+- TCP 回帰: `test_phase1.sh` / `test_phase2.sh` ともに PASS。
+- `npx @vscode/vsce package` 成功。
+
+**ユーザ E2E 待ち**: BLE 実疎通 (S3)。手順は vscode-fmrb-debug/README.md
+"Debugging hardware over BLE" / README.ja.md "実機を BLE でデバッグする"。
+確認項目は impl_plan_phase3c.md sec 8.2 参照。
 
 ### Phase 3b 完了 — BLE debug GATT サービス (デバイス側, 2026-07-21)
 
@@ -253,7 +305,7 @@ Linux sim + ヘッドレスハーネスで PoC (`main/drivers/debug/fmrb_debug_p
 | 11 | P2 | VSCode拡張 + E2E確認 | 拡張作成済み / VSCode GUI 確認はユーザ |
 | 12 | - | protocol.md 清書、design.md ステータス更新 | 進行中 |
 | 13 | P3b | ble_framing 切り出し + debug GATT サービス + BLE トランスポート + 配線 | 完了 (S3/P4 ビルド + Linux 回帰 PASS) |
-| 14 | P3c | ホスト側 BLE バックエンド (bleak) + VSCode 拡張 extensionKind | 未着手 |
+| 14 | P3c | ホスト側 BLE バックエンド (bleak) + VSCode 拡張 extensionKind | 完了 (コーデック C 突合 + TCP 回帰 PASS / 実機 E2E はユーザ) |
 
 ## 確定した調査事実 (コードで確認済み)
 
@@ -300,5 +352,10 @@ Linux sim + ヘッドレスハーネスで PoC (`main/drivers/debug/fmrb_debug_p
 - Phase 3b 実装 (計画書 `vm_remote_debug_impl_plan_phase3b.md` に従い逸脱なし):
   ble_framing 切り出し -> debug GATT サービス + link API -> BLE トランスポート ->
   debugd/boot/CMake 配線 -> ドキュメント更新。
-- S3 (+16,432 バイト, 34% 空き) / P4 いずれもビルド成功。
+- S3 (+16,496 バイト, 34% 空き) / P4 いずれもビルド成功。
   Linux 回帰 test_phase1.sh / test_phase2.sh 両方 PASS。
+- Phase 3b レビューで 2 件修正 (切断時の ready キュー drain / poll のビジーループ
+  防止)。コミット 011e9a2。
+- Phase 3c 実装: フレーミングコーデック (Python) -> transport 抽象化 ->
+  BleTransport -> DAP アダプタ引数 -> VSCode 拡張 (ui 化, 0.0.2) -> ドキュメント。
+  コーデックは C 実装と 2000 フレームでバイト一致を確認。TCP 回帰 PASS。
