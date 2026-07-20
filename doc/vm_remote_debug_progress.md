@@ -43,9 +43,17 @@ Phase 3b の BLE 実疎通 (実機) がユーザ待ち。次は Phase 3c (ホス
 (キューがメモリバリアも兼ねる)。トランスポート init は BLE 初期化状態に依存しない
 (登録はハンドル保存のみ) ため、P4 の遅延 radio init と boot 順序が競合しない。
 
-**サイズ実測 (S3 / Retro)**: 0x1f4740 -> 0x1f8970 バイト (+16,432, 約 +0.8%)。
-factory 3MB に対し 34% 空き。新規静的バッファは全て PSRAM (約 21KB) で
-内部 RAM は消費しない。
+**サイズ実測 (S3 / Retro)**: 0x1f4740 -> 0x1f89b0 バイト (+16,496, 約 +0.8%)。
+factory 3MB に対し 34% 空き。新規静的バッファは全て PSRAM で内部 RAM を消費しない
+(RX ping-pong 2 x 4120 + poll デコード 4102 + send encoded 4120 = 約 16.5KB。
+計画書の見積 21KB より小さい: send 側は plain と encoded の 2 面で足りた)。
+
+**フレーミング検証 (ネイティブ, ASan/UBSan)**: `ble_framing.c` + トランスポートの
+frame 構築/解析ロジックをホストでビルドし、body 長 0-4096 の全域 (0-600 全長 +
+境界値 + ランダム 4000 回 x 4 パターン: 全ゼロ/ゼロ無し/ランダム/疎ゼロ) で
+ラウンドトリップ PASS。**最悪エンコード長は 4119 + デリミタ = 4120 で
+`BLE_DBG_MAX_ENC` にちょうど収まる (余裕ゼロだが証明済み)**。COBS 出力に
+内部 0x00 が現れないこと、破損 (144/144) と切り詰め (39/39) が全て拒否されることも確認。
 
 **検証**:
 - S3: `rake build:esp32` 成功、check_sizes 通過。
@@ -54,6 +62,14 @@ factory 3MB に対し 34% 空き。新規静的バッファは全て PSRAM (約 
   `.env` の編集が必要 (環境変数を渡すだけでは効かない)。
 - Linux 回帰: `rake clean_all` 後 `rake build:linux` 成功、
   `test_phase1.sh` / `test_phase2.sh` ともに PASS (TCP パスに退行なし)。
+
+**レビューで見つけて直した点**:
+- 切断時に ready キューの読み残しが残ると、次のクライアント接続後に旧セッションの
+  リクエストが 1 回実行され得た (spawn 等は副作用あり)。計画書は close_client で
+  破棄する想定だったが、**debugd は close_client を呼ばない** (TCP も同様の既存仕様)
+  ため、BLE_GAP_EVENT_DISCONNECT 側で ready -> free に drain するよう修正。
+- `ble_poll` の `!s_ready_q` 防御分岐が即 return 0 で、万一到達すると debugd が
+  ビジーループする。timeout 分 delay してから返すよう修正 (init 成功後は到達しない)。
 
 **ユーザ確認待ち (ヘッドレス不可)**: BLE 実疎通は Phase 3c のホスト側実装後に
 実機で行う。本フェーズで担保したのは「未接続時に何も壊さない」ことまで。

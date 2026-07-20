@@ -488,6 +488,15 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
         }
         g_dbg_rx.fill_idx = -1;
         g_dbg_rx.fill_len = 0;
+        // Drop frames that arrived but were never decoded. debugd does not
+        // call the transport's close_client, so without this a request from
+        // the old session would be executed after the next client connects.
+        if (g_dbg_ready_q && g_dbg_free_q) {
+            ble_dbg_frame_ref_t stale;
+            while (fmrb_queue_receive(g_dbg_ready_q, &stale, 0) == FMRB_TRUE) {
+                fmrb_queue_send(g_dbg_free_q, &stale, 0);
+            }
+        }
         ble_advertise_if_needed();
         break;
 

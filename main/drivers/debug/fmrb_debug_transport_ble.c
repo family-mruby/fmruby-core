@@ -93,7 +93,12 @@ static int decode_frame(const uint8_t *enc, uint16_t enc_len, uint8_t *buf, size
 }
 
 static int ble_poll(uint8_t *buf, size_t cap, uint32_t timeout_ms) {
-    if (!s_ready_q) return 0;
+    if (!s_ready_q) {
+        // Unreachable once init() succeeded; still honour the timeout rather
+        // than spinning the debugd task at full speed.
+        fmrb_task_delay(FMRB_MS_TO_TICKS(timeout_ms));
+        return 0;
+    }
 
     ble_dbg_frame_ref_t ref;
     if (fmrb_queue_receive(s_ready_q, &ref, FMRB_MS_TO_TICKS(timeout_ms)) != FMRB_TRUE) {
