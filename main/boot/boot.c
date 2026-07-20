@@ -459,14 +459,11 @@ void fmrb_os_init(void)
     }
     FMRB_LOGI(TAG, "Family mruby OS initialization complete");
 
-#ifdef CONFIG_IDF_TARGET_LINUX
-    // Remote debugger daemon (doc/vm_remote_debug_*). Linux: TCP on
-    // FMRB_DEBUG_TCP_PORT. Started after the kernel/app subsystems are up.
-    // ESP32 targets build the same debug core but have no transport until the
-    // BLE service lands (Phase 3b); starting the daemon there is deferred to
-    // that phase rather than spawning a task with nothing to talk to.
+    // Remote debugger daemon (doc/vm_remote_debug_*). Linux talks TCP on
+    // FMRB_DEBUG_TCP_PORT, ESP32 targets talk the BLE debug GATT service.
+    // Started after the kernel/app subsystems are up. The BLE transport does
+    // not depend on BLE being initialized yet, so the order is free here.
     fmrb_debugd_init();
-#endif
 }
 
 void fmrb_os_close(void)

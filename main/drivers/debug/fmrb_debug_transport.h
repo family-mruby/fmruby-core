@@ -26,6 +26,8 @@ typedef struct {
     void (*close_client)(void);
 } fmrb_debug_transport_ops_t;
 
-// Linux TCP transport (fmrb_debug_transport_tcp.c). Only present on the Linux
-// build for Phase 1.
+// Linux TCP transport (fmrb_debug_transport_tcp.c). Linux build only.
 extern const fmrb_debug_transport_ops_t fmrb_debug_transport_tcp;
+
+// BLE GATT transport (fmrb_debug_transport_ble.c). ESP32 targets only.
+extern const fmrb_debug_transport_ops_t fmrb_debug_transport_ble;

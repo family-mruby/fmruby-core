@@ -22,13 +22,12 @@
 
 static const char *TAG = "debugd";
 
-// Transport selection. Linux uses TCP; ESP32 targets get the BLE transport in
-// Phase 3b. Until then there is no transport on device, and boot.c does not
-// start the daemon there.
+// Transport selection. Linux uses TCP; ESP32 targets use the BLE debug GATT
+// service. Everything above this line speaks bare msgpack bodies either way.
 #ifdef CONFIG_IDF_TARGET_LINUX
 static const fmrb_debug_transport_ops_t *s_tp = &fmrb_debug_transport_tcp;
 #else
-static const fmrb_debug_transport_ops_t *s_tp = NULL;
+static const fmrb_debug_transport_ops_t *s_tp = &fmrb_debug_transport_ble;
 #endif
 static bool s_started;
 
@@ -313,11 +312,6 @@ static void dispatch(const fmrb_dbg_req_t *req) {
 
 static void debugd_main(void *arg) {
     (void)arg;
-    if (!s_tp) {
-        FMRB_LOGE(TAG, "no transport for this target; debugd not running");
-        fmrb_task_delete(NULL);
-        return;
-    }
     if (fmrb_debug_ctx_init() != FMRB_OK) {
         FMRB_LOGE(TAG, "ctx init failed; debugd not running");
         fmrb_task_delete(NULL);

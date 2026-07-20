@@ -22,6 +22,8 @@ set(COMPONENT_ESP32_SRCS
     "drivers/usb/hid_report_parser.c"
     "drivers/usb/hid_device_config.c"
     "drivers/ble/ble_task.c"
+    "drivers/ble/ble_framing.c"
+    "drivers/debug/fmrb_debug_transport_ble.c"
     "drivers/hw_proxy/hw_proxy.c"
     "drivers/hw_proxy/hw_proxy_file.c"
     "drivers/hw_proxy/hw_proxy_gpio.c"
