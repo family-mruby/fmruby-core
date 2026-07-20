@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 """Debug Adapter Protocol (DAP) adapter for the PicoRuby remote debugger.
 
-Bridges VSCode (DAP over stdio) to fmrb_debugd (msgpack over TCP, via
+Bridges VSCode (DAP over stdio) to fmrb_debugd (msgpack over TCP or BLE, via
 FmrbDebugClient). One attached VM is presented as a single DAP thread.
 
 launch.json (type "fmrb", request "attach"):
   {
     "type": "fmrb", "request": "attach",
-    "host": "localhost", "port": 5555,
+    "transport": "tcp",                   // "tcp" (default) or "ble"
+    "host": "localhost", "port": 5555,    // transport "tcp"
+    "deviceName": "Family-mruby-c4823e",  // transport "ble", omit to scan
     "app": "Kamon",                       // app name or numeric pid
     "pathMappings": [                     // device path <-> local workspace
       { "device": "/app/", "local": "${workspaceFolder}/fmruby-core/flash/app/" }
@@ -200,7 +202,9 @@ class DapAdapter:
             return
         try:
             fn(req)
-        except (FmrbDebugError, TimeoutError) as e:
+        except (FmrbDebugError, TimeoutError, ConnectionError) as e:
+            # ConnectionError: the BLE link dropped mid-session; report the
+            # failure instead of letting the adapter process die.
             self.respond(req, success=False, message=str(e))
 
     # --- requests ---
@@ -214,13 +218,31 @@ class DapAdapter:
 
     def req_attach(self, req):
         args = req.get("arguments", {})
-        host = args.get("host", "localhost")
-        port = int(args.get("port", 5555))
+        transport = args.get("transport", "tcp")
+        if transport == "ble":
+            device = args.get("deviceName")
+            target = f"ble:{device}" if device else "ble"
+        elif transport == "tcp":
+            host = args.get("host", "localhost")
+            port = int(args.get("port", 5555))
+            target = f"{host}:{port}"
+        else:
+            self.respond(req, success=False,
+                         message=f"unknown transport {transport!r} (expected 'tcp' or 'ble')")
+            return
+
         self.mapper = Mapper(args.get("pathMappings"),
                              args.get("projectMappings"),
                              args.get("combinedMaps"))
-        self.client = FmrbDebugClient(host, port, on_event=self.on_fmrb_event)
-        self.client.connect()
+        try:
+            self.client = FmrbDebugClient.from_target(target, on_event=self.on_fmrb_event)
+            self.client.connect()
+        except Exception as e:
+            # Scan failures, missing bleak and handshake timeouts all land
+            # here; VSCode shows this message directly.
+            self.client = None
+            self.respond(req, success=False, message=f"cannot connect to {target}: {e}")
+            return
 
         target = args.get("app")
         apps = self.client.ps()
@@ -340,7 +362,7 @@ class DapAdapter:
         try:
             if self.client and self.pid is not None:
                 self.client.detach(self.pid)
-        except (FmrbDebugError, TimeoutError):
+        except (FmrbDebugError, TimeoutError, ConnectionError):
             pass
         self.respond(req)
         if self.client:

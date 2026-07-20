@@ -6,7 +6,8 @@ mruby app is running. Given a target pid + source file + line, it exercises the
 full flow: attach -> bp_set -> wait stopped -> stack_trace -> frame_vars ->
 step_over -> continue -> detach, asserting along the way.
 
-Usage: test_phase1.py <host:port> <pid> <file> <line>
+Usage: test_phase1.py <target> <pid> <file> <line>
+       target: host[:port] (TCP) or ble[:<name>] (device)
 Exit code 0 on success, non-zero on failure.
 """
 import sys
@@ -21,8 +22,6 @@ def main():
         print(__doc__)
         return 2
     target, pid, file, line = sys.argv[1], int(sys.argv[2]), sys.argv[3], int(sys.argv[4])
-    host, port = (target.rsplit(":", 1)[0], int(target.rsplit(":", 1)[1])) \
-        if ":" in target else (target, 5555)
 
     stopped = threading.Event()
     resumed = threading.Event()
@@ -43,7 +42,7 @@ def main():
         if not cond:
             fails.append(msg)
 
-    cli = FmrbDebugClient(host, port, on_event=on_event)
+    cli = FmrbDebugClient.from_target(target, on_event=on_event)
     cli.connect()
     try:
         print("== version =="); print(" ", cli.version())

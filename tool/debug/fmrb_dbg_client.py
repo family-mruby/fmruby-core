@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 """Test client / library for the PicoRuby remote debugger (fmrb_debugd).
 
-Speaks the msgpack protocol in doc/vm_remote_debug_protocol.md over TCP.
+Speaks the msgpack protocol in doc/vm_remote_debug_protocol.md. The protocol
+itself is transport independent; framing and I/O live in a transport object:
+
+  - TcpTransport (here)          - Linux simulation, u32 BE length prefix
+  - BleTransport (fmrb_ble_transport) - ESP32 device, COBS + CRC32 over GATT
+
 Doubles as:
   - a library (FmrbDebugClient) used by fmrb_dap_adapter.py (Phase 2), and
   - a small interactive/one-shot CLI for manual testing.
 
-Requires the `msgpack` package.
+Requires the `msgpack` package; BLE targets additionally require `bleak`,
+which is imported only when a BLE target is used.
 
 CLI:
-  python3 fmrb_dbg_client.py <host:port> <cmd> [k=v ...]   # one-shot
-  python3 fmrb_dbg_client.py <host:port>                   # interactive REPL
+  python3 fmrb_dbg_client.py <target> <cmd> [k=v ...]   # one-shot
+  python3 fmrb_dbg_client.py <target>                   # interactive REPL
+
+  <target> is host[:port] for TCP (default port 5555), or "ble" to scan for a
+  single Family-mruby device, or "ble:<name-or-address>" to pick one.
 """
 import argparse
 import json
@@ -38,31 +47,36 @@ class FmrbDebugError(Exception):
         self.cmd = cmd
 
 
-class FmrbDebugClient:
-    """Synchronous request/response client with a background event reader.
+class TcpTransport:
+    """u32 BE length-prefixed msgpack bodies over a TCP socket.
 
-    Events (stopped/resumed/exited/output) are delivered to an optional
-    on_event(name, payload) callback from the reader thread.
+    A background reader thread reassembles frames and hands each complete body
+    to the handler registered with set_body_handler().
     """
 
-    def __init__(self, host, port, on_event=None, timeout=5.0):
+    DEFAULT_PORT = 5555
+
+    def __init__(self, host, port=DEFAULT_PORT, timeout=5.0):
         self.host = host
         self.port = port
-        self.on_event = on_event
         self.timeout = timeout
         self._sock = None
-        self._seq = 0
-        self._lock = threading.Lock()
-        self._pending = {}          # seq -> (Event, [result_holder])
         self._reader = None
         self._running = False
-        self._unpacker = msgpack.Unpacker(raw=False)
+        self._rxbuf = b""
+        self._on_body = None
 
-    # --- connection -------------------------------------------------------
+    def __str__(self):
+        return f"tcp {self.host}:{self.port}"
+
+    def set_body_handler(self, cb):
+        self._on_body = cb
+
     def connect(self):
         self._sock = socket.create_connection((self.host, self.port), timeout=self.timeout)
         self._sock.settimeout(None)
         self._running = True
+        self._rxbuf = b""
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
         self._reader.start()
 
@@ -76,15 +90,9 @@ class FmrbDebugClient:
             self._sock.close()
             self._sock = None
 
-    def __enter__(self):
-        self.connect()
-        return self
-
-    def __exit__(self, *a):
-        self.close()
-
-    # --- framing ----------------------------------------------------------
-    def _send_frame(self, body):
+    def send_body(self, body):
+        if not self._sock:
+            raise ConnectionError("not connected")
         self._sock.sendall(struct.pack(">I", len(body)) + body)
 
     def _read_loop(self):
@@ -93,10 +101,6 @@ class FmrbDebugClient:
                 chunk = self._sock.recv(65536)
                 if not chunk:
                     break
-                # Our frames are length-prefixed, but msgpack bodies are
-                # self-delimiting, so we can feed the concatenated bodies
-                # (minus the 4-byte prefixes) to a streaming Unpacker. Strip
-                # prefixes manually to stay strict about frame boundaries.
                 self._feed(chunk)
         except OSError:
             pass
@@ -104,15 +108,107 @@ class FmrbDebugClient:
             self._running = False
 
     def _feed(self, chunk):
-        # Reassemble length-prefixed frames.
-        self._rxbuf = getattr(self, "_rxbuf", b"") + chunk
+        self._rxbuf += chunk
         while len(self._rxbuf) >= 4:
             (length,) = struct.unpack(">I", self._rxbuf[:4])
             if len(self._rxbuf) < 4 + length:
                 break
             body = self._rxbuf[4:4 + length]
             self._rxbuf = self._rxbuf[4 + length:]
-            self._dispatch(msgpack.unpackb(body, raw=False))
+            if self._on_body:
+                self._on_body(body)
+
+
+def _parse_target(target, timeout=5.0):
+    """Build a transport from a target string.
+
+    "host", "host:port"      -> TcpTransport
+    "ble"                    -> BleTransport, scan for a single device
+    "ble:<name-or-address>"  -> BleTransport, pick that device
+    """
+    if target == "ble" or target.startswith("ble:"):
+        # Imported lazily so TCP users do not need bleak installed.
+        try:
+            from fmrb_ble_transport import BleTransport
+        except ImportError as e:
+            raise ImportError(
+                "BLE targets need the 'bleak' package: pip install bleak "
+                f"(import failed: {e})") from e
+        spec = target[4:] if target.startswith("ble:") else ""
+        return BleTransport(spec or None, timeout=timeout)
+    if ":" in target:
+        host, port = target.rsplit(":", 1)
+        return TcpTransport(host, int(port), timeout=timeout)
+    return TcpTransport(target, TcpTransport.DEFAULT_PORT, timeout=timeout)
+
+
+class FmrbDebugClient:
+    """Synchronous request/response client with a background event reader.
+
+    Events (stopped/resumed/exited/output) are delivered to an optional
+    on_event(name, payload) callback from the reader thread.
+    """
+
+    # Connection handshake: the BLE device can silently drop frames sent
+    # between GATT connect and debugd registering its transport (see
+    # doc/vm_remote_debug_protocol.md). Retry a cheap command until it answers.
+    HANDSHAKE_TRIES = 3
+    HANDSHAKE_TIMEOUT = 2.0
+
+    def __init__(self, transport, on_event=None, timeout=5.0):
+        self.transport = transport
+        self.on_event = on_event
+        self.timeout = timeout
+        self._seq = 0
+        self._lock = threading.Lock()
+        self._pending = {}          # seq -> (Event, [result_holder])
+
+    @classmethod
+    def from_target(cls, target, on_event=None, timeout=5.0):
+        """Build a client from a target string (see _parse_target)."""
+        return cls(_parse_target(target, timeout=timeout),
+                   on_event=on_event, timeout=timeout)
+
+    # --- connection -------------------------------------------------------
+    def connect(self):
+        self.transport.set_body_handler(self._on_body)
+        self.transport.connect()
+        try:
+            self._handshake()
+        except Exception:
+            self.transport.close()
+            raise
+
+    def _handshake(self):
+        """Confirm the daemon answers before the caller sends real commands."""
+        last = None
+        for _ in range(self.HANDSHAKE_TRIES):
+            try:
+                return self.request("version", timeout=self.HANDSHAKE_TIMEOUT)
+            except TimeoutError as e:
+                last = e
+        raise TimeoutError(
+            f"no response from {self.transport} after {self.HANDSHAKE_TRIES} "
+            f"attempts; is the debugger daemon running?") from last
+
+    def close(self):
+        self.transport.close()
+
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, *a):
+        self.close()
+
+    # --- receive ----------------------------------------------------------
+    def _on_body(self, body):
+        try:
+            msg = msgpack.unpackb(body, raw=False)
+        except Exception:
+            sys.stderr.write("warning: dropping undecodable message body\n")
+            return
+        self._dispatch(msg)
 
     def _dispatch(self, msg):
         if not isinstance(msg, list) or len(msg) < 3:
@@ -142,7 +238,12 @@ class FmrbDebugClient:
             holder = []
             self._pending[seq] = (ev, holder)
         body = msgpack.packb([MSG_REQUEST, seq, cmd, payload], use_bin_type=True)
-        self._send_frame(body)
+        try:
+            self.transport.send_body(body)
+        except Exception:
+            with self._lock:
+                self._pending.pop(seq, None)
+            raise
         if not ev.wait(timeout if timeout is not None else self.timeout):
             with self._lock:
                 self._pending.pop(seq, None)
@@ -200,13 +301,6 @@ class FmrbDebugClient:
 
 
 # --- CLI ------------------------------------------------------------------
-def _parse_hostport(s):
-    if ":" in s:
-        host, port = s.rsplit(":", 1)
-        return host, int(port)
-    return s, 5555
-
-
 def _coerce(v):
     try:
         return int(v)
@@ -292,17 +386,22 @@ def repl(client):
 
 def main():
     ap = argparse.ArgumentParser(description="fmrb remote debugger test client")
-    ap.add_argument("target", help="host:port (default port 5555)")
+    ap.add_argument("target",
+                    help="host[:port] for TCP (default port 5555), "
+                         "'ble' to scan, or 'ble:<name-or-address>'")
     ap.add_argument("cmd", nargs="?", help="one-shot command (omit for REPL)")
     ap.add_argument("args", nargs="*", help="k=v payload pairs")
     ap.add_argument("--json", action="store_true",
                     help="one-shot: print the response as JSON (for tooling)")
     args = ap.parse_args()
 
-    host, port = _parse_hostport(args.target)
     on_event = None if args.json else _print_event
-    client = FmrbDebugClient(host, port, on_event=on_event)
-    client.connect()
+    client = FmrbDebugClient.from_target(args.target, on_event=on_event)
+    try:
+        client.connect()
+    except Exception as e:
+        sys.stderr.write(f"error: {e}\n")
+        sys.exit(1)
     try:
         if args.cmd:
             sys.exit(cmd_oneshot(client, args.cmd, args.args, as_json=args.json))
