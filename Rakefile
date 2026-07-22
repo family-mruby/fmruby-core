@@ -276,10 +276,37 @@ namespace :build do
   end
 end
 
-desc "Attach USB device to WSL2 via usbipd (Windows side); busid can be overridden with BUSID=x-y"
+desc "Attach USB serial devices to WSL2 via usbipd, selected by VID:PID " \
+     "(default 1a86:7523 = CH340; VIDPID=xxxx:yyyy[,xxxx:yyyy] to override, " \
+     "BUSID=x-y to force one bus id). Attaches every matching device."
 task :attach do
-  busid = ENV["BUSID"] || "1-1"
-  sh "powershell.exe -Command \"usbipd attach --wsl --busid #{busid}\""
+  if ENV["BUSID"]
+    sh "powershell.exe -Command \"usbipd attach --wsl --busid #{ENV['BUSID']}\""
+    next
+  end
+
+  vidpids = (ENV["VIDPID"]|| "1a86:7523").downcase.split(",").map(&:strip)
+  list = `powershell.exe -Command "usbipd list" 2>&1`
+  connected = list.split(/^Persisted:/).first || ""
+
+  targets = connected.lines.filter_map do |line|
+    m = line.match(/^(\d+-\d+)\s+(\h{4}:\h{4})\s+(.+?)\s+(Not shared|Shared.*|Attached.*)\s*$/i)
+    next nil unless m
+    busid, vidpid, device, state = m.captures
+    [busid, vidpid.downcase, device.strip, state.strip] if vidpids.include?(vidpid.downcase)
+  end
+  abort "No connected USB device matches VID:PID #{vidpids.join(', ')} (usbipd list)" if targets.empty?
+
+  targets.each do |busid, vidpid, device, state|
+    if state.start_with?("Attached")
+      puts "#{busid} #{vidpid} (#{device}): already attached, skipping"
+    elsif state == "Not shared"
+      puts "#{busid} #{vidpid} (#{device}): NOT SHARED - run once as admin: usbipd bind --busid #{busid}"
+    else
+      puts "#{busid} #{vidpid} (#{device}): attaching..."
+      sh "powershell.exe -Command \"usbipd attach --wsl --busid #{busid}\""
+    end
+  end
 end
 
 desc "Detect and cache the correct serial port for #{EXPECTED_CHIP}"
