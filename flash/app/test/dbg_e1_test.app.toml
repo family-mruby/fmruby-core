@@ -1,0 +1,8 @@
+app_handle_name = "dbg_e1_test"
+app_screen_name = "E1 Debug Test"
+app_screen_name_ja = "E1デバッグ試験"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 130
+default_window_pos_x = 70
+default_window_pos_y = 50
