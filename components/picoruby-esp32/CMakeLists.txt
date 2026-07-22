@@ -64,6 +64,7 @@ if(IDF_TARGET STREQUAL "linux")
     file(GLOB FMRB_FILESYSTEM_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-filesystem/ports/esp32/*.c")
     file(GLOB FMRB_MSGPACK_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/ports/esp32/*.c")
     file(GLOB FMRB_BMP332_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/ports/esp32/*.c")
+    file(GLOB FMRB_DEBUG_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-debug/ports/esp32/*.c")
     set(PICORUBY_SRCS
         ${FMRB_APP_PORTS_SRCS}
         ${FMRB_KERNEL_PORTS_SRCS}
@@ -73,6 +74,7 @@ if(IDF_TARGET STREQUAL "linux")
         ${FMRB_FILESYSTEM_PORTS_SRCS}
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${FMRB_BMP332_PORTS_SRCS}
+        ${FMRB_DEBUG_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/src/fmrb_bmp332.c
         # The mruby-task case-D tick (top-half) needs FreeRTOS headers, so it is
         # compiled here (this component PRIV_REQUIRES freertos) rather than by the
@@ -96,6 +98,7 @@ else()
     file(GLOB FMRB_FILESYSTEM_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-filesystem/ports/esp32/*.c")
     file(GLOB FMRB_MSGPACK_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/ports/esp32/*.c")
     file(GLOB FMRB_BMP332_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/ports/esp32/*.c")
+    file(GLOB FMRB_DEBUG_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-debug/ports/esp32/*.c")
 
     set(PICORUBY_SRCS
         ${FMRB_APP_PORTS_SRCS}
@@ -106,6 +109,7 @@ else()
         ${FMRB_FILESYSTEM_PORTS_SRCS}
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${FMRB_BMP332_PORTS_SRCS}
+        ${FMRB_DEBUG_PORTS_SRCS}
         ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/src/fmrb_bmp332.c
         # case-D tick top-half + mruby-task HAL (same consolidation as linux:
         # the machine esp32 port no longer carries its own tick manager)
@@ -169,6 +173,7 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-app/ports
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/include
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-debug/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/lib/prism/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
