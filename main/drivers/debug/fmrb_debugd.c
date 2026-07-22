@@ -31,6 +31,18 @@ static const fmrb_debug_transport_ops_t *s_tp = &fmrb_debug_transport_ble;
 #endif
 static bool s_started;
 
+// Session owner (Phase E0). Shared between the debugd task and VM tasks (the
+// FMRB::Debug gem), so accessed with __atomic_* (acquire/release) rather than
+// a plain read. Stored as int; values are fmrb_dbg_owner_t.
+static int s_owner = FMRB_DBG_OWNER_NONE;
+
+// Compare-and-swap the owner. Returns true if the swap happened.
+static bool owner_cas(fmrb_dbg_owner_t expect, fmrb_dbg_owner_t desired) {
+    int e = (int)expect;
+    return __atomic_compare_exchange_n(&s_owner, &e, (int)desired, false,
+                                       __ATOMIC_ACQ_REL, __ATOMIC_ACQUIRE);
+}
+
 // Request reassembly target (one frame at a time, single task).
 FMRB_DBG_BSS_ATTR static uint8_t s_rx_body[FMRB_DEBUG_MAX_FRAME];
 
@@ -140,7 +152,14 @@ static void handle_app_ctl(const fmrb_dbg_req_t *req) {
 
 static void handle_attach(const fmrb_dbg_req_t *req) {
     if (!req->have_pid) { reply_ok(req, FMRB_ERR_INVALID_PARAM); return; }
-    reply_ok(req, fmrb_debug_ctx_attach(req->pid));
+    fmrb_err_t err = fmrb_debug_ctx_attach(req->pid);
+    if (err == FMRB_OK) {
+        // Claim the remote session slot (NONE -> REMOTE). Kept until the client
+        // disconnects (reset in the task loop), matching the VSCode session
+        // lifetime and keeping local acquire out while a remote client is live.
+        owner_cas(FMRB_DBG_OWNER_NONE, FMRB_DBG_OWNER_REMOTE);
+    }
+    reply_ok(req, err);
 }
 
 static void handle_detach(const fmrb_dbg_req_t *req) {
@@ -225,6 +244,10 @@ static const char *stop_reason_str(int reason) {
 }
 
 static void forward_events(void) {
+    // While the on-device gem owns the session it is the single event consumer;
+    // draining here would steal its events (the queue has one consumer).
+    if (fmrb_debugd_owner() == FMRB_DBG_OWNER_LOCAL) return;
+
     fmrb_dbg_event_t ev;
     while (fmrb_debug_ctx_poll_event(&ev, 0)) {
         if (!s_tp->connected()) continue;   // drain but drop when no client
@@ -277,7 +300,34 @@ static void handle_spawn(const fmrb_dbg_req_t *req) {
 
 // --- dispatch --------------------------------------------------------------
 
+// Hook-based commands drive the shared debug core (attach/park/inspect). They
+// are refused while the on-device gem owns the session; the non-hook commands
+// (version/ps/log_read/spawn/app-ctl) stay available to remote clients.
+static bool is_hook_cmd(int cmd) {
+    switch (cmd) {
+        case DBG_CMD_ATTACH:
+        case DBG_CMD_DETACH:
+        case DBG_CMD_BP_SET:
+        case DBG_CMD_BP_CLEAR:
+        case DBG_CMD_PAUSE:
+        case DBG_CMD_CONTINUE:
+        case DBG_CMD_STEP_IN:
+        case DBG_CMD_STEP_OVER:
+        case DBG_CMD_STEP_OUT:
+        case DBG_CMD_STACK_TRACE:
+        case DBG_CMD_FRAME_VARS:
+        case DBG_CMD_EXPAND:
+            return true;
+        default:
+            return false;
+    }
+}
+
 static void dispatch(const fmrb_dbg_req_t *req) {
+    if (is_hook_cmd(req->cmd) && fmrb_debugd_owner() == FMRB_DBG_OWNER_LOCAL) {
+        reply_ok(req, FMRB_ERR_BUSY);   // on-device debug session holds the core
+        return;
+    }
     switch (req->cmd) {
         case DBG_CMD_VERSION:  handle_version(req);  break;
         case DBG_CMD_PS:       handle_ps(req);       break;
@@ -340,11 +390,16 @@ static void debugd_main(void *arg) {
         forward_events();
 
         // On client disconnect, detach every VM so the debugger dying never
-        // leaves a VM parked.
+        // leaves a VM parked, and drop the remote session slot. Skip both while
+        // the on-device gem owns the session: the remote transport holds no
+        // attachments then, and detach_all would tear down the gem's targets.
         bool now = s_tp->connected();
         if (now != was_connected) {
             FMRB_LOGI(TAG, "client %s", now ? "up" : "down");
-            if (!now) fmrb_debug_ctx_detach_all();
+            if (!now && fmrb_debugd_owner() != FMRB_DBG_OWNER_LOCAL) {
+                fmrb_debug_ctx_detach_all();
+                owner_cas(FMRB_DBG_OWNER_REMOTE, FMRB_DBG_OWNER_NONE);
+            }
             was_connected = now;
         }
     }
@@ -356,4 +411,26 @@ void fmrb_debugd_init(void) {
     fmrb_task_handle_t handle;
     fmrb_task_create_ex(debugd_main, "debugd", 8192, NULL, 3, &handle,
                         FMRB_TASK_FLAG_NONE);
+}
+
+// --- session owner (Phase E0) ---------------------------------------------
+
+fmrb_err_t fmrb_debugd_acquire_local(void) {
+    if (owner_cas(FMRB_DBG_OWNER_NONE, FMRB_DBG_OWNER_LOCAL)) return FMRB_OK;
+    // Re-acquiring an already-held local session is idempotent; a remote client
+    // holding it is FMRB_ERR_BUSY.
+    return (fmrb_debugd_owner() == FMRB_DBG_OWNER_LOCAL) ? FMRB_OK : FMRB_ERR_BUSY;
+}
+
+void fmrb_debugd_release_local(void) {
+    if (fmrb_debugd_owner() != FMRB_DBG_OWNER_LOCAL) return;
+    // Detach every VM before dropping ownership so a leaked gem session can
+    // never leave a target parked. forward_events stays parked-out until the
+    // owner clears, so debugd will not race us on the event queue here.
+    fmrb_debug_ctx_detach_all();
+    owner_cas(FMRB_DBG_OWNER_LOCAL, FMRB_DBG_OWNER_NONE);
+}
+
+fmrb_dbg_owner_t fmrb_debugd_owner(void) {
+    return (fmrb_dbg_owner_t)__atomic_load_n(&s_owner, __ATOMIC_ACQUIRE);
 }
