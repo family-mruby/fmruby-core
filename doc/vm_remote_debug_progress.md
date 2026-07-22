@@ -7,12 +7,23 @@
 - 実装計画: `doc/vm_remote_debug_impl_plan.md` (これに従って実装中)
 - プロトコル仕様: `doc/vm_remote_debug_protocol.md` (Phase 1 で作成予定)
 
-最終更新: 2026-07-21
+最終更新: 2026-07-22
 
 ## 現在のステータス
 
-**Phase 0 + 1 + 2 + 3a + 3b + 3c 完了。残るユーザ作業は VSCode GUI 操作確認と
-BLE 実機 E2E (手順は vscode-fmrb-debug/README.md)。次は Phase 3d (P4 実機調整)。**
+**Phase 0 + 1 + 2 + 3a + 3b + 3c 完了。2026-07-22 に S3 実機 (Retro) の BLE E2E を
+確認 (attach / BP / step / vars / 切断復帰、拡張 v0.0.7)。実機デバッガとしての
+基本機能はここで完成し、feature/vm-remote-debug を develop へマージして区切り。
+残課題は `doc/vm_remote_debug_remaining.md` に集約 (次は Phase 3d: P4 vHCI)。**
+
+### 実機 E2E で判明した拡張側の修正 (v0.0.4-v0.0.7、ルートリポジトリ 8cccace)
+
+- UI ホスト (Windows) の拡張は node fs で \\wsl.localhost UNC に触れない
+  (VSCode の UNC ホスト許可リストで existsSync が黙って false)。
+  fmruby-core 検出は vscode.workspace.fs.stat + vscode-remote URI に変更。
+- アダプタが返す source.path は vscode-remote:// URI 文字列で渡す。素の posix
+  パスだと UI ホストの VSCode が Windows ローカルパスとして解決してしまう。
+- 診断用に Output チャンネル "fmrb debug" を追加 (checkout 検出と ps 実行のログ)。
 
 ### Phase 3c 完了 — ホスト側 BLE バックエンド + VSCode 接続 (2026-07-21)
 
