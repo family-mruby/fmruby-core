@@ -31,3 +31,7 @@ flash/home/rubykaigi/
 # WiFi credentials (remote desktop) - never commit; see config/wifi_p4.toml.example
 config/wifi_p4.toml
 flash/etc/wifi.toml
+
+# Python bytecode cache
+__pycache__/
+*.pyc

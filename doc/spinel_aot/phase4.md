@@ -1,0 +1,215 @@
+# Phase 4 指示書: system_desktop の Spinel 化 (+ オプション: shell) (Linux)
+
+前提: Phase 2 (カーネル Spinel 化、性能実証済み) と Phase 3
+(マルチインスタンス化) の完了。Phase 2 のレポートにある性能データを読み、
+desktop へ投資する価値の再確認をしてから着手する
+(描画転送コストが支配的で Ruby 高速化の効果が薄いと判明している場合は、
+ユーザに方針確認を仰ぐこと)。
+
+## 目的
+
+- system_desktop (PID 2) を Spinel 化し、カーネルと合わせて
+  複数 Spinel インスタンスの同居を Linux 上で実証する。
+- **shell はオプション** (ユーザ決定: IRB / Sandbox 連携のハイブリッド
+  構成が高コストなら対象から外し、mruby のまま残す)。本 Phase の必須
+  範囲は desktop まで。shell (T4-4) は着手前に Phase 0 の境界評価と
+  Phase 2/T4-3 の結果を添えてユーザに実施可否を確認し、承認された
+  場合のみ行う。shell を外す場合、shell は mruby アプリとして従来どおり
+  動く (共存確認は T4-5 に含む)。
+
+## 事前作業
+
+1. fork の Phase 3 成果を fmruby-core へ取り込む:
+   `spinel:import` (Phase 1 の T1-4) を再実行し、sp_ctx.h 等を含む
+   スナップショットを更新。`components/fmrb_spinel_rt` を
+   `-DSP_MULTI_CTX` でビルドするよう変更。
+2. Phase 2 のカーネルを SP_MULTI_CTX 構成で再ビルドし、
+   タスク起動側 (`FMRB_LOAD_MODE_NATIVE` 経路) に
+   `sp_instance_create` + `sp_ctx_set_current` を実装
+   (Phase 3 で決めた契約どおり。config の閾値はまず default)。
+3. 回帰: Phase 2 の検証シナリオ (dev_run_check + 入力注入) を再実行し、
+   カーネル単独が multi-ctx 構成でも同一挙動であることを確認。
+
+## タスク
+
+### T4-1: FmrbApp / FmrbGfx の FFI シム (2-3 日)
+
+1. 調査: `lib/add/picoruby-fmrb-app/ports/esp32/app.c` (FmrbApp ~24
+   メソッド) と `gfx.c` (FmrbGfx ~47 メソッド) の全メソッドと、
+   その下位 C 関数を一覧化する (レポートに表として残す)。
+2. `main/app/fmrb_spx_app.c` / `fmrb_spx_gfx.c` + ヘッダを新設し、
+   Phase 1 の fmrb_spx 設計原則 (素の C ABI、構造化データは
+   固定レイアウトバイト列、fmrb_err 標準) で全メソッドをラップする。
+   - 描画系 (clear / fill_rect / draw_text / draw_line / sprite /
+     image / present / viewport 等) は int 引数中心なのでほぼ機械的。
+   - `_create_canvas` 系: canvas ハンドル (int id) を返す設計にする。
+   - 文字列引数 (draw_text 等) は `:str` + 長さで渡す。
+   - `_transfer_file` / config 読み書き / `heap_info` / `ps` /
+     `usb_devices` / `wallclock` 等の構造化戻り値はバイト列
+     スナップショット + Ruby 側パースで統一。
+   - `hid_raw_subscribe` のようなイベント購読系は「購読フラグを立てて
+     メッセージとして受ける」現行機構をそのまま使えるはず。
+     コールバック前提の API が見つかったら poll 形へ変換する
+     (C→Ruby 呼び出しは不可)。
+3. mruby バインディング側も可能な範囲で fmrb_spx_* を呼ぶ形に
+   一本化 (Phase 1 の kernel と同じ方針。lib/add を触ったら rake clean)。
+
+### T4-2: Spinel 用 FmrbApp / FmrbGfx ベースクラス (1-2 日)
+
+1. `main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb`:
+   `class FmrbApp` / `class FmrbGfx` を FFI 実装で再現。
+   `system_desktop.app.rb` が使うメソッドを網羅 (実コードを grep して
+   確定。T4-4 を実施する場合は shell 使用分も追加)。
+2. `set_timer(&blk)` / タイマ系: C 側にブロックを渡せないため、
+   Ruby 側実装にする:
+   ```ruby
+   def set_timer(ms, &blk)
+     @_timers << [FmrbSpx.board_millis + ms, blk]
+   end
+   def _run_timers
+     now = FmrbSpx.board_millis
+     due, @_timers = @_timers.partition { |t| t[0] <= now }
+     due.each { |t| t[1].call }
+   end
+   ```
+   `_run_timers` はアプリの poll ループ (on_update 相当の駆動部) から
+   呼ぶ。mruby 側の既存 set_timer の意味論 (repeat の有無、精度) を
+   実物で確認して合わせる。
+3. アプリの spin ループも kernel と同様に poll 化する。mruby 側
+   FmrbApp の `_spin` 相当の挙動 (メッセージ処理 → on_update →
+   present の順序、フレームレート制御) を読み、同一順序で再現する。
+
+### T4-3: system_desktop の Spinel ビルド (2-3 日)
+
+1. combined 生成: Phase 2 の cmake 機構を一般化し、
+   `system_desktop_combined_spinel.rb` を生成
+   (ffi + const + msgpack + app ベース層 + system_desktop/ mixin 13 本
+   + system_desktop.app.rb + 起動コード)。
+   `--entry system_desktop_entry` でコンパイル。
+2. Ruby ソース調整: Phase 0 の UNSUPPORTED 対応リストに従い、
+   mruby 互換を保つ書き換えを行う。既知の注意点:
+   - `about_dialog.rb` の `FmrbApp.respond_to?(:usb_devices)` は
+     リテラル名なので Spinel で解決可能だが、ベース層に該当メソッドを
+     必ず定義しておく (未定義だと推論が false に固定される。それが
+     意図と合うか確認)。
+   - i18n.rb の日本語文字列: UTF-8 のまま扱えるか Phase 0 で確認済みの
+     はず。問題があれば表引きをバイト列比較に変える。
+   - `sort {|a,b| ...}` や `$menu_bar_height` は対応済み機能。
+3. spawn 統合: `main/app/fmrb_app_spawner.c` の builtin_app_table に
+   NATIVE エントリを追加できるよう拡張し、`system/desktop` を
+   エンジンフラグで bytecode / native 切替。アプリごとに切替できる
+   よう `FMRB_KERNEL_ENGINE` とは別に
+   `FMRB_APP_ENGINE_DESKTOP` / `..._SHELL` (または table 内フラグ) を
+   用意する (段階投入・切り分けのため)。
+4. 2 インスタンス同居確認: カーネル (Spinel) + desktop (Spinel) で
+   起動し、dev_run_check + 基本操作。さらに
+   カーネル (mruby) + desktop (Spinel) の混成も起動確認する
+   (エンジン独立性の証明)。
+
+### T4-4 (オプション): shell の Spinel 化 (ハイブリッド) (2-3 日)
+
+**着手条件**: ユーザの明示承認。承認がなければこのタスクは実施せず、
+shell は mruby のまま残す (その場合 T4-1/T4-2 で shell 用に作る必要が
+あった分のシムも省略してよい。desktop が使う範囲だけ実装する)。
+
+1. Sandbox 委譲 API: Phase 0 の境界表に従い、C シムを実装する。
+   ```c
+   /* Execute Ruby source in an mruby sandbox. Returns exec id. */
+   int fmrb_spx_sandbox_start(const char *src, int len);
+   /* Poll sandbox: fills output chunk, returns state
+      (running / done(exit value as str) / error). */
+   int fmrb_spx_sandbox_poll(int id, uint8_t *buf, int cap, int *state);
+   int fmrb_spx_sandbox_send_input(int id, const uint8_t *b, int len);
+   int fmrb_spx_sandbox_kill(int id);
+   ```
+   実装は既存の Sandbox / FMRB_LOAD_MODE_FILE 系の機構
+   (`main/app/fmrb_app.c` の on-device コンパイル経路) を再利用する。
+   mruby VM をどのタスクで動かすか (専用 worker タスクを 1 本用意する
+   ことを推奨。shell の Spinel タスク内で mruby VM を回すことは
+   スタック/ヒープ設計が別問題になるため避ける) を設計してから
+   実装する。設計はレポートに記載。
+2. shell Ruby の再構成:
+   - Spinel 化: `shell.app.rb` 本体 + `shell_commands.rb` +
+     `shell_scroll.rb` + `shell_io.rb` ($stdout 実装含む)。
+   - `shell_irb.rb`: 入力 1 行を fmrb_spx_sandbox_* へ委譲し、
+     出力 poll を表示ループに組み込む形へ書き換え。
+   - .toml なしスクリプト実行 (in-process Sandbox 実行) も同じ
+     委譲 API 経由に変更。
+   - この書き換えは mruby ビルドでも動くようにする (mruby 版でも
+     同じ C API を呼ぶバインディングを用意して共通化。IRB の実装が
+     二重にならないようにする)。
+3. combined 生成 + spawn 統合 (T4-3 と同様、`--entry shell_entry`)。
+
+### T4-5: 検証 (2 日)
+
+構成: カーネル + desktop が Spinel (2 インスタンス同居)。
+T4-4 を実施した場合は shell も Spinel で 3 インスタンス。
+
+1. 起動と基本操作の回帰 (自律検証ツール):
+   - デスクトップ表示、メニュー、Launcher、時計表示更新
+   - shell (mruby のまま、または Spinel 化した場合はその構成) の起動、
+     `help` 実行、代表コマンド数個 (ls / cat / ps 相当、
+     shell_commands.rb を読んで選ぶ)、スクロール
+   - IRB: `1+1` → `2`、複数行、例外の表示 (shell が mruby のままなら
+     従来経路の回帰確認、Spinel 化した場合は委譲経路の確認)
+   - .toml なしスクリプト実行 (適当なテストスクリプトを flash/ に置く)
+   - editor / monitor 等 mruby のままの default_app が従来どおり
+     起動できること (mruby アプリと Spinel アプリの共存確認)
+2. 性能計測:
+   - desktop: `draw_foreground` / `on_update` の所要時間ログ
+     (Machine.board_millis ベース、mruby 版と共通コード) を
+     mruby 版と比較。目標は Ruby 実行部分の大幅短縮 (描画転送分は
+     残ることを織り込んで、内訳を分離計測する:
+     gfx 呼び出し前後の時間 vs それ以外)。
+   - resize プレビューのレート制限 (input_router / desktop 側の
+     100ms 制限) を緩められるかを実験し、体感改善の根拠を取る。
+   - shell を Spinel 化した場合のみ: 大量出力コマンド (長い ls 相当) の
+     表示時間比較。
+3. メモリ: 各 Spinel インスタンスの GC ヒープ使用量、mruby 版との比較表。
+4. soak: 30 分、マウス洪水 + アプリ起動終了 + (shell 経路の) IRB 実行の
+   混合負荷。
+
+## 受け入れ基準
+
+1. kernel + desktop の 2 インスタンス同居で T4-5 のシナリオ全パス。
+   混成構成 (一部 mruby) でも起動可能。
+2. shell (mruby のまま/Spinel 化いずれでも) の IRB とスクリプト実行が
+   ユーザ視点で従来同等に動く。
+3. desktop の Ruby 実行部分の時間が mruby 版比で明確に短縮
+   (数値でレポート)。draw 全体の改善幅は転送コストに依存するため
+   目標値は設けないが、内訳が計測されていること。
+4. soak 30 分クリーン。
+5. エンジン切替がアプリ単位で可能で、mruby 版に回帰がない。
+6. shell の扱い (Spinel 化した / 見送った) とその根拠がレポートに
+   記録され、ユーザの承認を得ている。
+
+## 落とし穴・注意
+
+- desktop は ~4,200 行 + 13 mixin と大きい。**一気に全部を通そうと
+  しない**こと。推奨順: まず boot アニメーション+メニューバーのみの
+  縮退版で起動 → mixin を数個ずつ有効化 → 全量。コンパイルエラーは
+  spinel-reduce で最小化して fork に報告 (コンパイラバグの可能性を
+  常に疑う。Ruby 側の回避とコンパイラ修正のどちらが正しいか判断し、
+  コンパイラ修正は fork へ)。
+- Float を含む UI 計算 (アニメーション等) は mruby と Spinel で
+  丸め差が出る可能性がある。座標は最終的に Integer 化されるので
+  実害は出にくいが、スクリーンショット比較で 1px 差を許容するか
+  どうかの基準を先に決める (推奨: 構造一致を目視 + 主要 UI 要素の
+  位置をピクセル判定するスクリプト)。
+- shell の $stdout / $LOAD_PATH などグローバル変数は Spinel では
+  静的型が付く。poly になって推論が悪化する場合は、$stdout を
+  単一クラス (ShellOut) に固定する設計へ寄せる。
+- Sandbox worker タスクのヒープは mruby 用 (fmrb_malloc 系) で確保。
+  Spinel 側インスタンスのヒープと混ぜない。
+- 3 プログラム分の生成 C でビルド時間・バイナリサイズが増える。
+  サイズは Linux ではただ記録し、対策は Phase 5 で考える。
+
+## 完了レポート
+
+`doc/spinel_aot/reports/phase4_report.md`:
+- FmrbApp/FmrbGfx メソッド対応表 (実装済み/未使用で省略の別)
+- Sandbox 委譲の設計 (タスク構成図) と挙動確認結果
+- 性能比較表 (desktop 内訳計測、shell、メモリ)
+- スクリーンショット一式のパス
+- fork へ報告/修正したコンパイラ問題の一覧
+- Phase 5 (ESP32) への引き継ぎ (サイズ、ヒープ設定の推奨値)

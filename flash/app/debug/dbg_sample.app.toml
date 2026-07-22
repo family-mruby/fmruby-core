@@ -1,0 +1,8 @@
+app_handle_name = "dbg_sample"
+app_screen_name = "Debug Sample"
+app_screen_name_ja = "デバッグ確認"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 110
+default_window_pos_x = 60
+default_window_pos_y = 40

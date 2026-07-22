@@ -482,6 +482,14 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
         return -1;
     }
 
+    // Set the source filename so the prism codegen emits debug_info (filename
+    // and line numbers). Without a filename, codegen skips debug_info and the
+    // remote debugger cannot map pc -> file:line for on-device compiled apps.
+    // ctx->filepath is empty for BYTECODE mode (which does not compile here).
+    if (ctx->filepath[0] != '\0') {
+        mrc_ccontext_filename(cc, ctx->filepath);
+    }
+
     if (load_mode == FMRB_LOAD_MODE_BYTECODE) {
         // Load from bytecode (IREP)
         irep_ptr = (const unsigned char*)load_data;

@@ -8,15 +8,22 @@ set(COMPONENT_SRCS
     "kernel/host/host_task.c"
     "drivers/usb/fmrb_keymap.c"
     "drivers/led_status/status_led.c"
+    # Remote debugger core (target independent). Transports are per-target.
+    "drivers/debug/fmrb_debug_proto.c"
+    "drivers/debug/fmrb_debug_ctx.c"
+    "drivers/debug/fmrb_debugd.c"
 )
 set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
+    "drivers/debug/fmrb_debug_transport_tcp.c"
 )
 set(COMPONENT_ESP32_SRCS
     "drivers/usb/usb_task.c"
     "drivers/usb/hid_report_parser.c"
     "drivers/usb/hid_device_config.c"
     "drivers/ble/ble_task.c"
+    "drivers/ble/ble_framing.c"
+    "drivers/debug/fmrb_debug_transport_ble.c"
     "drivers/hw_proxy/hw_proxy.c"
     "drivers/hw_proxy/hw_proxy_file.c"
     "drivers/hw_proxy/hw_proxy_gpio.c"
@@ -44,7 +51,9 @@ prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/p
 # Set up component dependencies based on target
 set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_transport fmrb_toml fmrb_mem
     fmrb_gfx fmrb_audio lua basic
-    picoruby-esp32 mem_allocator log tar_lib)
+    picoruby-esp32 mem_allocator log tar_lib
+    # Remote debugger wire protocol (all targets since Phase 3a).
+    msgpack-esp32)
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
@@ -119,7 +128,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/debug" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
     EMBED_FILES ${RD_EMBED_FILES}
 )
