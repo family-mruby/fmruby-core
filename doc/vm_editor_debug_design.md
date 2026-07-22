@@ -1,6 +1,8 @@
-# FM-EDITOR オンデバイスデバッガ検討・実装方針 (Modern 限定)
+# FM-EDITOR オンデバイスデバッガ検討・実装方針
 
 作成日: 2026-07-18
+更新: 2026-07-22 — 当初「Modern 限定」としていたが、Retro (S3, 320x240) でも
+有効化する方針にユーザ決定で変更 (画面縮小を許容)。UI 設計は sec 4.5 参照。
 ステータス: 検討完了・未実装 (実装は別途担当が行う。本書はその引継ぎ資料)
 
 ## 1. 目的
@@ -49,14 +51,17 @@ VSCode リモートデバッグ (doc/vm_remote_debug_design.md, Phase 0-2 実装
 
 | 項目 | FM-EDITOR 拡張デバッガ | VSCode 連携 (既存路線) |
 |---|---|---|
-| 対応ハード | **Modern (ESP32-P4) 限定** | Linux sim (TCP) + 実機 (BLE) |
+| 対応ハード | **全ターゲット** (Modern はペイン併置、Retro は下部分割 UI) | Linux sim (TCP) + 実機 (BLE) |
 | デバッグ対象 | **一般アプリのみ** (flash/app 以下のオンデバイスコンパイル .rb) | 一般アプリ + **カーネル側機能** (kernel/default_app の combined ビルド含む) |
 | ソースマッピング | 不要 (行番号がファイルと一致) | pathMappings + combined.map.json 補正 (実装済み) |
 | トランスポート | ローカル (同一デバイス内) | TCP (実装済み) / **BLE (Phase 3、計画継続)** |
 
-- **Modern 限定の理由**: 画面が広く (Tab5 720x1280)、エディタ + スタック/変数
-  ペインを併置する UI が成立する。Retro (S3, 320x240) では有効化しない。
-  ビルド時に HW ターゲット (FMRB_HW_TARGET) でゲートする。
+- **全ターゲット対応 (2026-07-22 変更)**: 当初は「画面が広い Modern のみ」と
+  していたが、Retro でも画面縮小を許容して有効化する。Modern (Tab5 720x1280)
+  はスタック/変数ペインを併置、Retro (320x240) は下部分割 + 表示切替の縮小 UI
+  (sec 4.5)。エディタは 6x8 フォントで 320x240 でも 53 桁 x 30 行が取れるため、
+  テキストベースのデバッグペインは成立する。HW ターゲットによるビルドゲートは
+  行わず、レイアウトのみ画面サイズで切り替える。
 - **一般アプリ限定の理由**: エディタ自身・system_desktop をパークすると UI /
   ウィンドウ管理が止まる。カーネル側 (system_desktop, 組み込みアプリ) の
   デバッグは従来どおり VSCode 連携で行う。
@@ -144,6 +149,33 @@ irep の debug_info はデバイス上のファイルパス・行番号と一致
 (combined 補正が要るのは kernel/default_app の組み込みアプリのみで、
 それは VSCode 連携の担当範囲)
 
+### 4.5 Retro (320x240) 向け縮小 UI 設計
+
+前提: エディタは 6x8 フォント、recompute_layout によるレイアウト再計算構造
+(editor.app.rb) を持つため、下部ペインの挿入は既存の @edit_height /
+@status_y の計算に 1 項足す形で実現できる。
+
+- **下部デバッグペイン (分割方式)**: デバッグセッション中のみ、ステータス行の
+  上に高さ 8 行程度のペインを挿入する (編集領域は約 28 行 -> 約 19 行)。
+  ペインは 1 種類ずつ表示し、キーで切替する:
+  - Stack 表示: 1 行 1 フレーム (`#0 method  file:line`)。上下キーで
+    フレーム選択、選択フレームの変数表示へ切替可能。
+  - Vars 表示: 選択フレームのローカル変数を `name = value` で列挙。
+    ref 付きは選択 + Enter で expand (1 階層、ペイン内で戻る操作あり)。
+- **BP 操作**: ガター表示の余白がないため、カーソル行に対する
+  トグルをキー (例: F9) とメニュー項目「Debug > Toggle Breakpoint」で行う。
+  BP 行は行頭 1 桁のマーカー文字 (例: `*`) + 行の色替えで示す。
+- **実行制御**: DOS 系デバッガの慣例に合わせ F5=continue / F10=step over /
+  F11=step in / Shift+F11=step out / F6=pause。メニューバーに「Debug」
+  ドロップダウンを追加し、attach 対象選択 (ps 一覧) / detach もそこから行う。
+- **停止表示**: stopped イベントで該当ファイルを開き停止行をハイライト
+  (既存のカーソル行描画と同系の色替え)。停止行が BP 行と重なる場合は
+  停止色を優先。
+- **Modern との共有**: デバッグ状態管理・イベント処理・FMRB::Debug 呼び出しは
+  共通コードとし、レイアウトのみ画面幅で分岐 (併置ペイン or 下部分割)。
+  まず Retro の下部分割を実装し、Modern の併置はその拡張として後段で足すのが
+  実装順として簡単 (Linux sim の既定解像度が 320x240 で自律検証できるため)。
+
 ## 5. 実装ステップ (フェーズ案)
 
 ### Phase E0: セッションオーナー排他
@@ -156,16 +188,19 @@ irep の debug_info はデバイス上のファイルパス・行番号と一致
 ### Phase E1: mrbgem `FMRB::Debug`
 
 1. 案B の C gem 実装 (ctx API 直結 + msgpack ボディの Ruby オブジェクト化)。
-2. Modern / Linux ビルドのみ組み込み (HW ターゲットでゲート。Linux は
-   開発検証用に含めることを推奨)。
+2. 全ターゲットに組み込み (Linux は開発検証用に必須。S3 は flash 残量
+   約 35% あり、gem + UI 追加の増分は問題にならない見込み。ビルド後に
+   残量を確認すること)。
 3. シェル (shell.app.rb) から叩ける簡易コマンド or テストアプリで
    attach → bp → stopped → stack/vars → continue の一巡を headless 検証。
 
 ### Phase E2: エディタ UI 最小構成
 
-- 4.3 の最小構成。Linux sim で自律検証 (tools/dev_run_check.sh +
-  fmrb_input.py + fmrb_screenshot.py) が可能。
-- 画面レイアウトは Linux sim の解像度設定を Modern 相当に合わせて確認する。
+- 4.3 の最小構成を **Retro 縮小 UI (4.5) で先に実装**する。Linux sim は
+  既定で 320x240 のため、tools/dev_run_check.sh + fmrb_input.py +
+  fmrb_screenshot.py による自律検証がそのまま Retro レイアウトの検証になる。
+- Modern の併置レイアウトは共通ロジックの上に後段で追加し、Linux sim の
+  解像度設定を Modern 相当に合わせて確認する。
 
 ### Phase E3: 変数ペイン強化・利便性
 
@@ -180,8 +215,9 @@ irep の debug_info はデバイス上のファイルパス・行番号と一致
 
 ## 6. 制約・注意点 (実装者向け)
 
-- **Modern (ESP32-P4) 限定**。Retro (ESP32-S3) ではビルドから外すか
-  機能フラグで無効化する。判定は FMRB_HW_TARGET (NARYAv4=Modern)。
+- **全ターゲット対応** (2026-07-22 変更)。ビルドゲートはせず、UI レイアウトのみ
+  画面サイズで切替 (320x240 は 4.5 の下部分割、広画面は併置)。S3 の flash
+  残量はビルドごとに確認する。
 - **デバッグ対象は一般アプリのみ**。エディタ自身・system_desktop・
   組み込みアプリは対象外。`ps` 一覧の時点でフィルタする
   (kernel pid=0 と system_desktop、および editor 自身の pid を除外)。
@@ -216,6 +252,9 @@ irep の debug_info はデバイス上のファイルパス・行番号と一致
 
 - spawn 直後 attach の成立性 (BP を最初の行から効かせるための
   suspended-start の要否) — Phase E1 で実測して判断。
-- Linux sim を Modern 解像度で動かす際の設定方法 (UI レイアウト検証用)。
+- Linux sim を Modern 解像度で動かす際の設定方法 (Modern 併置レイアウトの
+  検証用。Retro レイアウトは既定解像度でそのまま検証可)。
+- Retro での S3 flash 残量の実測 (現状約 35% 空き。gem + エディタ UI 追加後に
+  再確認)。
 - BP 永続化の保存先 (エディタ設定ファイルの形式)。
 - evaluate の副作用制御 (リモート版 Phase 4 と共通検討)。
