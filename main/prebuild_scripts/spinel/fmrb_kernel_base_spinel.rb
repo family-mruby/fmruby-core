@@ -41,7 +41,10 @@ module SpxBytes
 
   # NUL-padded fixed-width name field -> String (stops at first NUL). Built with
   # setbyte rather than Integer#chr (the Spinel runtime has no sp_str_chr).
-  def self.name(s, off, width)
+  # NOTE: must NOT be called `name` -- Spinel resolves `SpxBytes.name` to the
+  # built-in Module#name (returning the string "SpxBytes") instead of this
+  # method, silently corrupting every parsed field. Use a distinct verb.
+  def self.read_name(s, off, width)
     len = 0
     while len < width && s.getbyte(off + len) != 0
       len += 1
@@ -118,7 +121,7 @@ class FmrbKernel
         height: SpxBytes.u16(buf, base + 10),
         min_width: SpxBytes.u16(buf, base + 12),
         min_height: SpxBytes.u16(buf, base + 14),
-        app_name: SpxBytes.name(buf, base + 16, 32)
+        app_name: SpxBytes.read_name(buf, base + 16, 32)
       }
       i += 1
     end
@@ -158,8 +161,8 @@ class FmrbKernel
       fullscreen: buf.getbyte(1) != 0,
       vm_type: vm_sym,
       load_mode: buf.getbyte(3),
-      name: SpxBytes.name(buf, 4, 32),
-      path: SpxBytes.name(buf, 36, 128)
+      name: SpxBytes.read_name(buf, 4, 32),
+      path: SpxBytes.read_name(buf, 36, 128)
     }
   end
 
@@ -168,8 +171,8 @@ class FmrbKernel
     buf = FmrbSpx.fmrb_spx_last_error   # :binstr, 176 bytes or ""
     return nil if buf.bytesize == 0
     # name NUL error (two NUL-separated fields)
-    name = SpxBytes.name(buf, 0, 64)
-    err = SpxBytes.name(buf, 64, 112)
+    name = SpxBytes.read_name(buf, 0, 64)
+    err = SpxBytes.read_name(buf, 64, 112)
     { name: name, error: err }
   end
 

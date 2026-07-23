@@ -115,6 +115,27 @@ Spinel カーネルが実カーネルとして全経路動作、エラー/例外
 **性能計測 (max/avg latency, ヒープ) と 30 分 soak は未実施** (機能回帰は完了。
 計測はユーザ環境で継続可)。
 
+### 追加バグ修正: `SpxBytes.name` が Module#name に解決される
+
+GUI 実機確認でユーザが 2 症状を報告: (1) アプリウィンドウをマウスでドラッグ
+移動できない (メニューバーのウィンドウ切替は効く)、(2) 起動直後の最初の 1-2
+キーが落ちる。両方とも mruby では発生しない Spinel 固有。
+
+原因は **1 つ**: `SpxBytes.name(buf, off, width)` が、定義した `def self.name`
+ではなく組み込みの **Module#name (モジュール名 "SpxBytes" を返す) に解決**され、
+window / app-info / last-error の全名前フィールドが "SpxBytes" に化けていた。
+結果 `_get_window_list` の app_name が全部 "SpxBytes" になり、
+`find_window_at` の `next if win[:app_name] == "system_desktop"` が効かず、
+z=254 で全画面のデスクトップが最前面ウィンドウ扱いに。→ y>=13 の全クリックが
+デスクトップにヒットし、アプリのドラッグ不可 + クリックのたびに
+`_set_hid_target` がデスクトップに飛んでキーボードフォーカスが乱れる (初期キー
+落ち)。
+
+修正: `SpxBytes.name` -> `SpxBytes.read_name` に改名 (全 5 呼び出し)。検証済:
+ドラッグでウィンドウ移動 OK (`Start drag: PID 4`)、起動直後 `ABCDEFGH` 8/8 着弾、
+HID target のデスクトップ誤切替なし。Spinel の命名衝突ガチャ (bareword "Set" /
+poly Array#delete 等と同種) にもう 1 件追加。
+
 ## Phase 2 判定
 
 カーネル VM の Spinel 化は **機能的に完了**。Spinel コンパイル済みカーネルが
