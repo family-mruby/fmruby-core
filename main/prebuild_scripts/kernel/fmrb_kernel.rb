@@ -70,7 +70,12 @@ class FmrbKernelImpl < FmrbKernel
     _set_ready
   end
 
-  def msg_handler(msg) # called from _spin
+  # Maximum non-blocking messages drained per tick after the first, so a flood
+  # (e.g. 100 Hz mouse move) cannot starve tick_process. Matches the old _spin
+  # "drain multiple messages per tick" behavior with a bound.
+  MSG_DRAIN_BURST = 64
+
+  def msg_handler(msg) # called from main_loop (control inversion)
     Log.debug("Received message: type=#{msg[:type]}, src_pid=#{msg[:src_pid]}, data_size=#{msg[:data].length}")
 
     case msg[:type]
@@ -282,7 +287,33 @@ class FmrbKernelImpl < FmrbKernel
     Log.info("main_loop started")
     while true
       tick_process
-      _spin(@tick)
+      drain_messages(@tick)
+    end
+  end
+
+  # Poll-based message drain (control inversion): block up to budget_ms for the
+  # first message, then drain any queued burst non-blocking (bounded). Replaces
+  # the C _spin, so the mruby and Spinel kernels share this loop. Each dispatch
+  # is guarded so one bad message logs and continues instead of killing the VM
+  # (the old _spin caught per-message exceptions in C).
+  def drain_messages(budget_ms)
+    msg = _poll_message(budget_ms)
+    return unless msg
+    dispatch_message(msg)
+    n = 0
+    while n < MSG_DRAIN_BURST
+      m = _poll_message(0)
+      break unless m
+      dispatch_message(m)
+      n += 1
+    end
+  end
+
+  def dispatch_message(msg)
+    begin
+      msg_handler(msg)
+    rescue => e
+      Log.error("Error in msg_handler: #{e.class}: #{e.message}")
     end
   end
 

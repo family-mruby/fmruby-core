@@ -49,77 +49,39 @@ static mrb_value mrb_kernel_handler_init(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
-// Kernel#_spin(timeout_ms) - Process messages
-// Receives messages and calls Ruby msg_handler(msg) for each message
-// Continues to receive messages until timeout expires
-static mrb_value mrb_kernel_handler_spin(mrb_state *mrb, mrb_value self)
+// Kernel#_poll_message(timeout_ms) -> {type:, src_pid:, data:} | nil
+// Receive ONE message for the kernel proc, blocking up to timeout_ms. Returns a
+// hash (symbol keys, matching the Spinel base layer) or nil on timeout/error.
+// The Ruby main_loop drives dispatch (control inversion): it calls msg_handler
+// itself instead of C funcalling back into Ruby, so the mruby and Spinel kernels
+// share one main_loop source.
+static mrb_value mrb_kernel_handler_poll_message(mrb_state *mrb, mrb_value self)
 {
+    (void)self;
     mrb_int timeout_ms;
     mrb_get_args(mrb, "i", &timeout_ms);
 
-    // Record start time
-    fmrb_tick_t start_tick = fmrb_task_get_tick_count();
-    fmrb_tick_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
-
-    // Receive messages until timeout expires
-    while (true) {
-        // Calculate remaining time
-        fmrb_tick_t current_tick = fmrb_task_get_tick_count();
-        if (current_tick >= target_tick) {
-            // Timeout expired
-            break;
-        }
-
-        fmrb_tick_t remaining_ticks = target_tick - current_tick;
-
-        // Try to receive message with remaining timeout
-        fmrb_msg_t msg;
-        fmrb_err_t ret = fmrb_msg_receive(PROC_ID_KERNEL, &msg, remaining_ticks);
-
-        if (ret == FMRB_OK) {
-            // Save GC arena before creating Ruby objects
-            int ai = mrb_gc_arena_save(mrb);
-
-            // Build Ruby hash: {type: int, src_pid: int, data: string}
-            mrb_value hash = mrb_hash_new(mrb);
-            mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
-                         mrb_fixnum_value(msg.type));
-            mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "src_pid")),
-                         mrb_fixnum_value(msg.src_pid));
-            mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "data")),
-                         mrb_str_new(mrb, (const char*)msg.data, msg.size));
-
-            // Guard: skip if VM context is invalid
-            if (!mrb->c || !mrb->c->ci) {
-                FMRB_LOGE(TAG, "mrb->c or ci is NULL, skip msg_handler");
-                mrb_gc_arena_restore(mrb, ai);
-                break;
-            }
-
-            // Execute msg_handler directly.
-            // Note: Object#method is not available in mruby (CRuby-only).
-            mrb_funcall(mrb, self, "msg_handler", 1, hash);
-
-            // Check for exception
-            if (mrb->exc) {
-                FMRB_LOGE(TAG, "Exception in msg_handler()");
-                mrb_print_error(mrb);
-                mrb->exc = NULL;
-            }
-
-            mrb_gc_arena_restore(mrb, ai);
-
-            // Continue loop to process more messages or wait for remaining time
-        } else if (ret == FMRB_ERR_TIMEOUT) {
-            // Timeout - exit loop
-            break;
-        } else {
+    // fmrb_msg_receive takes milliseconds (applies MS_TO_TICKS internally).
+    fmrb_msg_t msg;
+    fmrb_err_t ret = fmrb_msg_receive(PROC_ID_KERNEL, &msg,
+                                      (uint32_t)(timeout_ms < 0 ? 0 : timeout_ms));
+    if (ret != FMRB_OK) {
+        // Timeout or receive error: no message this poll.
+        if (ret != FMRB_ERR_TIMEOUT) {
             FMRB_LOGW(TAG, "Kernel message receive error: %d", ret);
-            break;
         }
+        return mrb_nil_value();
     }
 
-    return mrb_nil_value();
+    // Build Ruby hash: {type: int, src_pid: int, data: string}
+    mrb_value hash = mrb_hash_new(mrb);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "type")),
+                 mrb_fixnum_value(msg.type));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "src_pid")),
+                 mrb_fixnum_value(msg.src_pid));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "data")),
+                 mrb_str_new(mrb, (const char*)msg.data, msg.size));
+    return hash;
 }
 
 // Kernel#_spawn_app_req(app_name) -> Integer (PID) or nil
@@ -535,7 +497,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     struct RClass *handler_class = mrb_define_class(mrb, "FmrbKernel", mrb->object_class);
     mrb_define_method(mrb, handler_class, "_set_ready", mrb_kernel_set_ready, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_init", mrb_kernel_handler_init, MRB_ARGS_NONE());
-    mrb_define_method(mrb, handler_class, "_spin", mrb_kernel_handler_spin, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_poll_message", mrb_kernel_handler_poll_message, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_spawn_app_req", mrb_kernel_handler_spawn_app_req, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "check_protocol_version", mrb_kernel_check_protocol_version, MRB_ARGS_OPT(1));
     mrb_define_method(mrb, handler_class, "check_ga_version", mrb_kernel_check_ga_version, MRB_ARGS_OPT(1));
