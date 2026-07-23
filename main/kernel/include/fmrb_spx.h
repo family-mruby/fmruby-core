@@ -71,17 +71,19 @@ void fmrb_spx_log_write(int level, const char *msg, int len);
 
 /**
  * @brief Poll one message for the kernel proc (blocking up to @p timeout_ms).
- * @param buf        destination for the payload bytes
- * @param cap        capacity of @p buf
+ *
+ * Returns the payload as a binary-safe string (for Spinel's `:binstr` FFI
+ * return: the byte count is published in sp_ffi_bin_len so embedded NUL bytes
+ * survive). type/src_pid are written to the out-params. On timeout the return
+ * is an empty string with *type = -1.
+ *
  * @param timeout_ms max ms to wait for a message
- * @param[out] type     message type (fmrb_msg_type_t)
- * @param[out] src_pid  source proc id
- * @return payload length (>= 0) on receipt; 0 with *type = -1 on timeout;
- *         negative on error or when the payload exceeds @p cap
- *         (FMRB_SPX_ERR_CAP).
+ * @param[out] type     message type (fmrb_msg_type_t), or -1 on timeout
+ * @param[out] src_pid  source proc id, or -1 on timeout
+ * @return pointer to the payload bytes (valid until the next call); length is
+ *         in sp_ffi_bin_len.
  */
-int fmrb_spx_recv_message(uint8_t *buf, int cap, int timeout_ms,
-                          int *type, int *src_pid);
+const char *fmrb_spx_recv_message(int timeout_ms, int *type, int *src_pid);
 
 /**
  * @brief Send a raw message (blocking up to 100 ms for queue space).

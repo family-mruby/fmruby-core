@@ -26,25 +26,20 @@ while i < 3
 end
 
 # --- poll the kernel queue up to 10 times (100 ms each), log each result ---
-buf = FmrbSpx.msg_buf
 tout = FmrbSpx.type_out
 sout = FmrbSpx.src_out
 
 polls = 0
 messages = 0
 while polls < 10
-  len = FmrbSpx.fmrb_spx_recv_message(buf, 192, 100, tout, sout)
-  if len > 0
-    type = FmrbSpx.read_i32(tout)
+  data = FmrbSpx.fmrb_spx_recv_message(100, tout, sout)
+  type = FmrbSpx.read_i32(tout)
+  if type >= 0
     src = FmrbSpx.read_i32(sout)
-    # Payload bytes live in the :ptr buffer; byte-level parsing (getbyte) needs
-    # a String, so Phase 2 will read fields via ffi_read_* or copy the buffer.
-    log(1, "msg len=#{len} type=#{type} src=#{src}")
+    log(1, "msg len=#{data.bytesize} type=#{type} src=#{src} b0=#{data.bytesize > 0 ? data.getbyte(0) : -1}")
     messages += 1
-  elsif len == 0
-    log(0, "poll #{polls}: timeout")
   else
-    log(2, "poll #{polls}: recv error #{len}")
+    log(0, "poll #{polls}: timeout")
   end
   polls += 1
 end

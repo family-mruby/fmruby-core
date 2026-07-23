@@ -107,11 +107,18 @@ module AppLifecycleMixin
       @mouse_down_pid = nil
     end
 
-    # Remove all topic subscriptions for terminated app
+    # Remove all topic subscriptions for terminated app. Rebuild each list
+    # without pid (Spinel mis-dispatches poly-receiver Array#delete to
+    # String#delete; pids here is a poly hash value).
     empty_topics = []
     @subscriptions.each do |topic, pids|
-      pids.delete(pid)
-      empty_topics << topic if pids.empty?
+      kept = []
+      pids.each { |sp| kept << sp unless sp == pid }
+      if kept.empty?
+        empty_topics << topic
+      else
+        @subscriptions[topic] = kept
+      end
     end
     empty_topics.each { |topic| @subscriptions.delete(topic) }
 

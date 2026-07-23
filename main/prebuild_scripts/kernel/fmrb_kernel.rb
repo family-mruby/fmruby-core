@@ -131,7 +131,10 @@ class FmrbKernelImpl < FmrbKernel
           enter_fullscreen(new_pid)
         end
 
-        # Set HID target to the newly spawned app
+        # Route HID target to the newly spawned app.
+        # NOTE: keep the collection-class name (S-e-t) out of kernel source even
+        # in comments -- Spinel splices `require "set"` on a bareword match and
+        # its bundled library fails to compile in this program.
         _set_hid_target(new_pid)
         @hid_target_pid = new_pid  # Track HID target
         Log.info("HID target set to new app pid=#{new_pid}")
@@ -242,15 +245,24 @@ class FmrbKernelImpl < FmrbKernel
     when "subscribe"
       topic = data["topic"]
       if topic
-        @subscriptions[topic] ||= []
+        # (Spinel has no `hash[k] ||= v` / IndexOrWriteNode; use an explicit form)
+        @subscriptions[topic] = [] unless @subscriptions[topic]
         @subscriptions[topic] << pid unless @subscriptions[topic].include?(pid)
         Log.info("PID #{pid} subscribed to '#{topic}'")
       end
     when "unsubscribe"
       topic = data["topic"]
-      if topic && @subscriptions[topic]
-        @subscriptions[topic].delete(pid)
-        @subscriptions.delete(topic) if @subscriptions[topic].empty?
+      subs = @subscriptions[topic]
+      if topic && subs
+        # Rebuild without pid instead of Array#delete: subs is a poly hash value,
+        # and Spinel mis-dispatches poly-receiver .delete to String#delete.
+        kept = []
+        subs.each { |sp| kept << sp unless sp == pid }
+        if kept.empty?
+          @subscriptions.delete(topic)
+        else
+          @subscriptions[topic] = kept
+        end
         Log.info("PID #{pid} unsubscribed from '#{topic}'")
       end
     when "publish"
@@ -340,6 +352,13 @@ class FmrbKernelImpl < FmrbKernel
       Log.info("RTC sync: skipped (not ESP32)")
       return
     end
+    # The RTC hardware access below is ESP32-only and uses picoruby C classes
+    # (I2C / RX8900 / RX8130) that do not exist in the Spinel build. The Spinel
+    # kernel targets Linux (Phase 2), where the platform check above returns
+    # first, so this block is unreachable there -- the combined-source generator
+    # (tool/spinel/gen_kernel_combined.rb) strips it between these markers so
+    # Spinel never has to resolve those classes. mruby keeps it verbatim.
+    #:spinel-strip-begin
     i2c = nil
     begin
       i2c = I2C.new(unit: :ESP32_I2C1,
@@ -365,6 +384,7 @@ class FmrbKernelImpl < FmrbKernel
     ensure
       i2c.close if i2c
     end
+    #:spinel-strip-end
   end
 
   def initial_sequence

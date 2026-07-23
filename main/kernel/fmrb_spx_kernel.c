@@ -42,32 +42,36 @@ void fmrb_spx_log_write(int level, const char *msg, int len)
     }
 }
 
-int fmrb_spx_recv_message(uint8_t *buf, int cap, int timeout_ms,
-                          int *type, int *src_pid)
+/* Byte length for Spinel's :binstr FFI return. The runtime's codegen emits
+   `extern int sp_net_bin_len` for any :binstr callsite and builds the string
+   with sp_str_from_bytes(ptr, sp_net_bin_len). sp_net.c (which normally owns
+   this global) is excluded from the fmruby runtime snapshot, so provide it
+   here. TODO (fork follow-up): generalize sp_net_bin_len -> sp_ffi_bin_len in a
+   core runtime file so any ffi_func can publish a binary length (upstream PR). */
+int sp_net_bin_len = 0;
+
+const char *fmrb_spx_recv_message(int timeout_ms, int *type, int *src_pid)
 {
-    if (!buf || cap < 0 || !type || !src_pid) {
-        return FMRB_SPX_ERR;
-    }
+    static uint8_t payload[FMRB_MAX_MSG_PAYLOAD_SIZE];
+    if (type) *type = -1;
+    if (src_pid) *src_pid = -1;
+    sp_net_bin_len = 0;
+
     fmrb_msg_t msg;
     /* fmrb_msg_receive takes milliseconds (it applies FMRB_MS_TO_TICKS
        internally); pass timeout_ms straight through. */
     fmrb_err_t ret = fmrb_msg_receive(PROC_ID_KERNEL, &msg,
                                       (uint32_t)(timeout_ms < 0 ? 0 : timeout_ms));
-    if (ret == FMRB_ERR_TIMEOUT) {
-        *type = -1;
-        *src_pid = -1;
-        return 0;
-    }
     if (ret != FMRB_OK) {
-        return FMRB_SPX_ERR;
+        return "";  /* timeout / error: empty payload, type stays -1 */
     }
-    if ((int)msg.size > cap) {
-        return FMRB_SPX_ERR_CAP;
-    }
-    memcpy(buf, msg.data, msg.size);
-    *type = (int)msg.type;
-    *src_pid = (int)msg.src_pid;
-    return (int)msg.size;
+    uint32_t n = msg.size;
+    if (n > sizeof(payload)) n = sizeof(payload);
+    memcpy(payload, msg.data, n);
+    if (type) *type = (int)msg.type;
+    if (src_pid) *src_pid = (int)msg.src_pid;
+    sp_net_bin_len = (int)n;
+    return (const char *)payload;
 }
 
 static int spx_send_impl(int dst_pid, int type, const uint8_t *data, int len,
