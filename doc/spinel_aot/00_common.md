@@ -19,11 +19,11 @@ C 化するプロジェクトの、実装担当 AI 向け指示書である。
   - Spinel は**フォークして改修**する (ライブラリモード、マルチ
     インスタンス化、ESP32 対応)。汎用変更は upstream に PR できる
     コミット粒度を保つ。
-  - Spinel 化の対象: **カーネル VM と system_desktop が必須対象**。
-    **shell はオプション** — IRB / Sandbox (実行時の Ruby 評価) との
-    ハイブリッド構成が必要になるため、コストが見合わないと判断したら
-    Spinel 化せず mruby のまま残してよい (ユーザ決定済み)。
-    editor 等その他の default_app と ユーザアプリは対象外 (mruby のまま)。
+  - Spinel 化の対象: **カーネル VM と system_desktop**。
+    **shell は対象外に確定 (2026-07-23 ユーザ決定)** — IRB / .toml なし
+    スクリプト実行が Sandbox (実行時評価 = eval 相当) に依存し AOT で
+    原理的に提供できないため、mruby のまま残す。
+    editor 等その他の default_app と ユーザアプリも対象外 (mruby のまま)。
   - **OS 側 PreBuild Ruby (Spinel 対象コード) はメタプログラミング禁止を
     正式なコーディング規約とする**: eval / instance_eval / class_eval、
     動的名の send、define_method、method_missing、ObjectSpace、
@@ -75,7 +75,7 @@ fmruby-core/CLAUDE.md と family-mruby/CLAUDE.md のルールが最優先。特�
    Legacy コードは残さず消す。ファイルを勝手に削除しない。
 7. `lib/` 以下を編集したら `rake clean` してからビルド。
    linux/ESP32 のターゲット切替時は `rake clean_all`。
-8. **フォーク (Spinel) 側の改修では**: upstream の `make test` (1,744 本) と
+8. **フォーク (Spinel) 側の改修では**: upstream の `make test` (Phase 0 実測基準: 1,991 pass / 1 既存 cosmetic fail) と
    `make bench` を毎回のゲートにする。upstream PR 可能な汎用コミットと
    fmruby 固有コミットを分ける。fork のコード規約 (C、既存スタイル) に従う。
 

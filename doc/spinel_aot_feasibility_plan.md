@@ -15,9 +15,10 @@ PreBuild コード (カーネル / system_desktop / shell) の C 言語化によ
 - 対象はカーネル VM に加えて **system_desktop を正式対象**とする。
   そのためランタイムのグローバル状態排除 (複数 Spinel プログラムの同居) を
   必須課題として計画に含める。
-- **shell はオプション扱い**。IRB / Sandbox (動的評価) との連携が必要で
-  ハイブリッド構成のコストが高いと判明した場合は Spinel 化の対象から
-  外し、mruby のまま残してよい (2026-07-18 ユーザ決定)。
+- **shell は Spinel 化の対象外に確定 (2026-07-23 ユーザ決定)**。
+  Phase 0 T0-7 の評価どおり、shell の中核 (IRB / .toml なしスクリプト
+  実行) は Sandbox = 実行時評価に依存し AOT では原理的に提供できず、
+  UI 部分は非ホットパスで便益が小さい。shell は mruby のまま残す。
 - **OS 側 PreBuild Ruby (カーネル / desktop 等の Spinel 対象コード) は
   メタプログラミング禁止を正式なコーディング規約とする** (eval、動的名の
   send、define_method、method_missing、ObjectSpace、動的リフレクション、
