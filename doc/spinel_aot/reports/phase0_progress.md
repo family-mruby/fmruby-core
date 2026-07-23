@@ -63,14 +63,14 @@
       回避不能な未対応構文ゼロ = Go 基準充足。ランナー `run_all.sh` で 9/9 パス。
       未対応 (回避策あり): U-1 poly.ljust 未dispatch、U-2 同名 rescue 複数 arm 特殊化不可(意図的)、
       U-3 nested-array poly が ctor/mixin算術で miscompile。U-1/U-3 は Phase 1 hardening 候補。
-- [~] T0-6: 32bit (-m32) ビルド検証 **ブロック中** (gcc-multilib 未導入、i386 コンテナ網不可)。
-      harness.c 生成済み (/tmp/harness32/)。`sudo apt-get install -y gcc-multilib` 導入後に
-      runtime+harness を -m32 ビルド→出力比較。mrb_int=intptr_t のため 32bit 化リスクは
-      小整数中心で低いが要実測。
+- [x] T0-6: 32bit (-m32) ビルド検証完了 (gcc-multilib 導入後)。
+      **harness 32bit == CRuby 完全一致** (trace 2089行 + bench 336k件)。mrb_int=4byte 確認。
+      **FIX-5** (`sp_time.c __int128` を 32bit 対応, commit d9e363ed) 発見・修正、回帰ゼロ。
+      msgpack: kernel サブセット 32bit で 51 pass/0 fail、64bit専用 13 skip (VM 未使用)。
+      crypt はリンクスタブで対応 (harness 未使用)。詳細 phase0_findings.md。
 - [x] T0-7: shell IRB/Sandbox 境界評価完了。Sandbox#compile/execute = 実行時 eval で
       Spinel AOT 不可。**shell は mruby のまま残す推奨** (境界表は phase0_report.md)。
-- [x] Go/NoGo 判定 -> phase0_report.md 作成済み。**判定: Go (条件付き)**。
-      T0-6 のみ環境要因で未完、Go を覆す要素なし。
+- [x] Go/NoGo 判定 -> phase0_report.md。**判定: Go (全 6 基準達成)**。次は Phase 1。
 
 ## Spinel フォーク改修状態 (fmrb-dev, コミット済み)
 

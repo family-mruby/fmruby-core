@@ -4,13 +4,13 @@
 詳細な技術知見は `phase0_findings.md`、作業ログは `phase0_progress.md`、
 未対応構文と回避は `../../tool/spinel_poc/coverage/UNSUPPORTED.md` を参照。
 
-## 総合判定: **Go (条件付き)**
+## 総合判定: **Go**
 
 input_router / window_manager (カーネル最重要ホットパス) を **実コード無改変** で
-Spinel コンパイル・実行でき、CRuby と **byte 単位で完全一致** した。ただしそれには
-Spinel フォークへの **4 件の汎用バグ修正** が必要で、いずれも修正済み・回帰ゼロ。
-性能は allocation 律速で CRuby 同等〜3.5x、実機比較対象の mruby には大差で優位。
-32bit 検証 (T0-6) のみ環境要因 (gcc-multilib 未導入) で未完 → 下記対応要。
+Spinel コンパイル・実行でき、CRuby と **byte 単位で完全一致** した (64bit / 32bit 両方)。
+それには Spinel フォークへの **5 件の汎用バグ修正** が必要で、いずれも修正済み・
+make test 回帰ゼロ。性能は allocation 律速で CRuby 同等〜3.5x、実機比較対象の
+mruby には大差で優位。全 Go 基準を満たす。
 
 ## タスク別結果
 
@@ -21,7 +21,7 @@ Spinel フォークへの **4 件の汎用バグ修正** が必要で、いず�
 | T0-3 | 性能計測 | フル 336k件: Spinel≈CRuby (alloc律速)。compute: 3.5x。mruby は Phase2 実機へ |
 | T0-4 | desktop/shell 代表 coverage 7本 | **全7本 CRuby==Spinel 一致**。回避不能な未対応構文ゼロ |
 | T0-5 | pure-Ruby MessagePack サブセット | **CRuby/Spinel とも 64 pass / 0 fail**。要 1 修正 (FIX-4) |
-| T0-6 | 32bit (-m32) ビルド | **未完** (gcc-multilib 未導入・コンテナ網不可)。下記「32bit 対応」 |
+| T0-6 | 32bit (-m32) ビルド | **完了**。harness 32bit==CRuby 一致。要 1 修正 (FIX-5)。下記「32bit 結果」 |
 | T0-7 | shell IRB/Sandbox 境界評価 | 完了。**shell は mruby のまま残す推奨**。下記「shell 判定」 |
 
 ## Spinel フォークへの改修 (fmrb-dev, コミット済み・push 未)
@@ -35,6 +35,7 @@ Spinel フォークへの **4 件の汎用バグ修正** が必要で、いず�
 | 56394f2d | runtime: poly の String#size/length を byte-exact 化 (strlen→sp_str_length) |
 | 7b820768 | analyze: include された mixin メソッドの `rescue => e` を Exception 型に (clone 後再特殊化) |
 | a8c3c201 | runtime: String#* が埋め込み NUL を保持 (strlen→sp_str_byte_len, sp_str_alloc) |
+| d9e363ed | runtime: Time.at 厳密変換を __int128 なしで 32bit ビルド可能に (ESP32 必須) |
 
 ## 重要な知見: poly (symbol-hash) が性能と互換の鍵
 
@@ -57,17 +58,17 @@ Spinel は symbol-keyed hash (`win[:x]`, `msg[:data]` 等) を **常に poly 値
 - U-3: nested-array 由来 poly を ctor/mixin 算術に渡すと miscompile → 添字アクセス /
   concrete 化で回避。Phase1 修正候補。
 
-## T0-6 32bit 対応 (要ユーザ操作)
+## T0-6 32bit 結果 (gcc-multilib 導入後・完了)
 
-- `mrb_int = intptr_t` のため ESP32-S3 (32bit) では mrb_int が 32bit になる。
-- ホストに gcc-multilib が無く `gcc -m32` 不可。i386 コンテナはネットワーク不可 +
-  公式 i386/gcc が amd64 実体で自己完結できず。
-- **依頼**: `sudo apt-get install -y gcc-multilib` を実行いただければ、生成済みの
-  `harness.c` (/tmp/harness32) + runtime を `-m32` でビルドし 64bit/CRuby と出力比較する。
-  (代替: ネットワーク可能な 32bit 環境の提示。)
-- 事前見立て: ハーネスは小整数 (座標 0-65535, PID) のみで桁あふれ懸念は低い。
-  リスクは (a) uint64/int64 を使う MessagePack の大整数ケース (実カーネルメッセージは
-  小整数なので実害限定)、(b) ポインタ/mrb_int 変換箇所。実測は multilib 導入後。
+- `mrb_int = intptr_t = 4 bytes` を実機確認 (ESP32-S3 と同じ 32bit)。
+- **harness_input_router を -m32 でビルド・実行 → CRuby と完全一致** (trace 2089 行、
+  bench 336,000 件も一致)。ELF 32-bit i386。→ **実カーネルコードは 32bit で正当**。
+- 32bit で判明・対処:
+  - FIX-5 (`sp_time.c __int128`): 32bit で不可 → guard + double fallback で修正 (ESP32 必須)。
+  - `crypt()` (String#crypt): 32bit libcrypt 不在 → harness 未使用のためリンクスタブ。実害なし。
+- msgpack: kernel 相当サブセット (小整数/文字列/bin/配列/文字列キー map) は
+  **32bit でも 51 pass / 0 fail**。>2^31 整数・int32/64・float64 は mrb_int=32bit のため
+  表現不可で 13 件 skip (fmruby VM メッセージは未使用なので実害なし)。詳細は phase0_findings.md。
 
 ## T0-7 shell IRB/Sandbox 境界と推奨
 
@@ -96,9 +97,8 @@ Spinel は symbol-keyed hash (`win[:x]`, `msg[:data]` 等) を **常に poly 値
 2. T0-3 mruby 比 2x (不能時 CRuby 比 1x 以上): **達成** (Spinel≈〜3.5x CRuby ≫ mruby)。
 3. T0-4 回避不能な未対応構文ゼロ: **達成** (U-1/2/3 すべて回避策あり)。
 4. T0-5 msgpack 両系全パス: **達成** (64/64)。
-5. T0-6 32bit 出力一致: **未検証** (環境要因、multilib 導入後に実施)。
+5. T0-6 32bit 出力一致: **達成** (harness 32bit==CRuby。FIX-5 で __int128 32bit 対応)。
 6. NoGo 材料: なし。
 
-→ **T0-6 を除き全基準達成。T0-6 は環境依存の残作業で、Go を覆す要素は現時点で無い。**
-gcc-multilib 導入後に T0-6 を完了し本レポートを更新のうえ、Phase 1 (フォーク整備 +
-ライブラリモード + typed symbol-hash 検討) へ進むことを推奨する。
+→ **全 6 基準達成。判定 Go。** Phase 1 (フォーク整備 + ライブラリモード +
+typed symbol-hash 検討) へ進むことを推奨する。
