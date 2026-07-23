@@ -110,21 +110,60 @@ typedef struct {
   size_t gc_threshold;       /* 0 = default (256KB) */
   size_t str_threshold;      /* 0 = default */
   int    root_stack_entries; /* 0 = default (SP_GC_STACK_MAX) */
-  void *(*alloc)(size_t);    /* NULL = calloc-based default */
-  void  (*dealloc)(void *);
+  void  *mem_ud;             /* opaque, passed to the hooks below
+                                (fmruby: the task's ESTALLOC* handle) */
+  void *(*alloc)(void *ud, size_t);   /* NULL = calloc-based default.
+                                MUST zero-fill (sp_gc_alloc relies on
+                                calloc semantics) */
+  void *(*realloc_fn)(void *ud, void *, size_t); /* NULL = libc realloc */
+  void  (*dealloc)(void *ud, void *);
 } sp_instance_config;
 
 sp_ctx *sp_instance_create(const sp_instance_config *cfg);
 void    sp_instance_destroy(sp_ctx *ctx);  /* frees all heaps/roots */
 ```
 
-- alloc/dealloc フックはこの Phase で配線まで行う (calloc/free 直呼びを
-  ctx 経由に変える)。ESP32 の heap_caps/PSRAM 対応 (Phase 5) の布石。
-  変更箇所: sp_alloc.c の calloc/free、sp_gc.c の free、
-  文字列ヒープの確保箇所 (sp_str_alloc 系)、mark stack / vsnap の
-  realloc 類。**性能に効く箇所なので、default モードでは間接呼び出しを
-  経ない** (直呼びのまま) ようマクロで分岐する。
+- alloc/realloc/dealloc フックはこの Phase で配線まで行う (calloc/free
+  直呼びを ctx 経由に変える)。**性能に効く箇所なので、default モードでは
+  間接呼び出しを経ない** (直呼びのまま) ようマクロで分岐する。
+- **フックは userdata (mem_ud) 付き**にする。fmruby 側の本命バックエンドは
+  mruby VM と同じ **estalloc (TLSF)** で、タスク所定の mempool 領域に
+  `est_init(pool_ptr, pool_size)` した `ESTALLOC*` を mem_ud に渡し、
+  alloc=est_calloc / realloc=est_realloc / dealloc=est_free で配線する
+  (fmruby-core 側の実配線は Phase 4/5。mruby 版と同一 allocator・
+  同一統計経路 mrb_get_estalloc_stats になり、エンジン切替でメモリ
+  構造が変わらない)。estalloc は移植性のある単体 C (24bit アドレッシング
+  なら 64bit Linux でも動作) なので、T3-4 のカスタムアロケータテストにも
+  estalloc を使い、この配線を fork 内で先行検証してよい。
 - destroy はカーネルでは使わないが、テストのリーク検出に必要。
+
+### アロケーションの完全フック化 (ESP32 制約、必須)
+
+fmruby の ESP32 ターゲットでは **素の malloc 系は禁止で、タスクごとの
+fmrb_mem プール利用が大前提** (fmruby-core CLAUDE.md の規約のランタイム
+への適用)。したがって「GC ヒープ・文字列ヒープだけフックし、一時
+バッファは libc に残す」という割り切りは不可。ランタイム内の**全**
+malloc/calloc/realloc/free をフック経由に置換する:
+
+1. `sp_mem_alloc / sp_mem_zalloc / sp_mem_realloc / sp_mem_free` の
+   薄いラッパを sp_ctx.h に用意 (default モード = libc 直呼びに展開、
+   SP_MULTI_CTX = `SP_CTX()->alloc` 系)。
+2. 対象は sp_alloc.c / sp_gc.c だけでなく、**sp_str.c (format / UTF-8
+   デコード / sub・gsub 作業バッファ等) や regexp/ など lib/ 全体に散在
+   する一時バッファの malloc/realloc/free すべて**。機械的だが範囲が
+   広い (T3-2 の工数に含める)。フックは per-ctx なので、実行中
+   インスタンスの一時バッファもそのインスタンスのプールに正しく
+   計上される。
+3. 検証: `-DSP_MULTI_CTX` でビルドした `libspinel_rt_mc.a` に対し
+   `nm` で malloc/calloc/realloc/free の未定義シンボル参照が**残って
+   いない**ことを確認し、Makefile のチェックターゲットにする
+   (漏れの再発防止)。getenv 等の非アロケーション libc は対象外。
+4. `malloc_trim` (sp_gc.c、glibc 専用) はフックモードでは no-op に
+   する (既存の Darwin 分岐と同様)。
+5. GC しきい値とプールサイズの整合: `gc_threshold` / `str_threshold`
+   はプールサイズより十分小さく設定する契約とし、multi-instance.md に
+   「しきい値 < プールサイズ」の設計指針と、プール枯渇時の挙動
+   (alloc フックが NULL を返したら sp_oom_die 経路) を明記する。
 
 ## タスク
 
@@ -141,9 +180,11 @@ void    sp_instance_destroy(sp_ctx *ctx);  /* frees all heaps/roots */
 4. この表を fork 内 `docs/internals/multi-instance.md` として追加
    (upstream PR の設計文書を兼ねる。英語で書く)。
 
-### T3-2: sp_ctx 導入 (default モード無変更) (2-3 日)
+### T3-2: sp_ctx 導入 (default モード無変更) (3-4 日)
 
 1. sp_ctx.h / sp_ctx.c を追加し、T3-1 の表に従い状態を移す。
+   lib/ 全体の malloc/calloc/realloc/free を sp_mem_* ラッパへ機械的に
+   置換する (上記「完全フック化」節)。
 2. 互換マクロを整備。`make` が通り、**default モードで**
    `make test` 1,744 本全パス、`make bench` 劣化 2% 以内。
 3. 生成 C の差分確認: 適当なベンチを `-S` で before/after 出力し、
@@ -204,6 +245,12 @@ fork 内に `test/multi_instance/` を新設 (upstream のテスト流儀に
    生成 C 無変化。
 2. SP_MULTI_CTX で multi_instance テストが ASan (または valgrind)
    クリーンで全パス。3 スレッド並行で 1000 回反復しても安定。
+   このモードのランタイムに libc malloc/calloc/realloc/free への
+   未定義シンボル参照が残っていない (nm チェックターゲットで機械検証)。
+   multi_instance テストの少なくとも 1 ケースはカスタム alloc フック
+   (推奨: estalloc を固定長バッファ上に est_init して mem_ud で渡す) を
+   使い、全確保がフック経由で賄えること + インスタンスごとの統計
+   (est stat) が独立に取れることを実証する。
 3. 設計文書 (multi-instance.md) が fork に入っている。
 4. コミットが PR 可能な粒度に整理されている。
 

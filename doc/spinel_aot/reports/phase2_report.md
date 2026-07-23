@@ -112,8 +112,41 @@ Spinel カーネルが実カーネルとして全経路動作、エラー/例外
   `HID target set` -> 別プロセス RUNNING -> 専用 canvas 描画。全経路成功。
 - `Resources cleaned up` = 0 (カーネル無終了)、spx エラーログ 0 件。
 
-**性能計測 (max/avg latency, ヒープ) と 30 分 soak は未実施** (機能回帰は完了。
-計測はユーザ環境で継続可)。
+### 性能計測 (2026-07-23 実施, Linux headless)
+
+計測コードを共有カーネルソースに追加 (mruby/Spinel 同一コード):
+`input_router.rb` の handle_hid_event 末尾で 1 イベント処理時間
+(Machine.board_millis, ms 分解能) を蓄積し、1000 イベントごとに
+`hid_lat: n/sum_ms/max_ms/ge1/ge5/ge10/gt25` を Log 出力。負荷は
+fmrb_input.py による決定的な合成イベント列 (両エンジン同一):
+(a) 通常 move 洪水 + 100 move ごとに click (上流の合成で実効 ~30Hz)、
+(b) タイトルバー drag 中の move 洪水 ~60 秒 (毎 move で
+_update_window_position + find_window_by_pid が走る最重経路)。
+対象アプリは FM-Shell を Launcher から起動しフォーカス。
+
+結果 (1000 イベント窓、sum_ms = 窓内合計処理時間):
+
+| シナリオ | エンジン | sum_ms (窓ごと) | max_ms | >=1ms 件数 | >25ms 警告 |
+|---|---|---|---|---|---|
+| move+click | mruby  | 162 / 153 / 163 | 2 | 152-161 | 0 |
+| move+click | Spinel | 2 / 0 / 0       | 0-1 | 0-2   | 0 |
+| drag 中    | mruby  | 298             | 3 | 295     | 0 |
+| drag 中    | Spinel | 2               | 1 | 2       | 0 |
+
+- **平均処理時間はおよそ 80-150 倍改善** (move: ~0.16ms -> ~0.001ms、
+  drag: ~0.30ms -> ~0.002ms)。max も 2-3ms -> 0-1ms でテールが消えた。
+  mruby 版は 15-30% のイベントが 1ms 以上かかっていた (アロケーション/GC
+  churn を含む) のに対し、Spinel 版はほぼ全イベントが ms 分解能未満。
+- `hid_event slow (>25ms)` 警告は両エンジンともゼロ (x86_64 Linux は
+  十分速い。25ms 警告は ESP32 実機での現象であり、実機比較は Phase 5)。
+- 実行全体でエラー/例外ログ 0 件 (両エンジン)。
+- 計測コードは共有ソースに残置 (イベントあたり整数演算数個 + 1000 件に
+  1 行のログで、常時有効でも無害。ESP32 実機計測にもそのまま使える)。
+
+**未実施のまま残す項目**: 30 分 soak はユーザ判断でスキップ。ヒープ使用量
+比較は Spinel 側の統計配線が Phase 3 の estalloc フック導入とセットのため
+延期 (fmrb_app_ps の FMRB_VM_TYPE_NATIVE が統計 0 を返し Monitor の
+カーネル行が消えている件も同時に解決予定)。
 
 ### 追加バグ修正: `SpxBytes.name` が Module#name に解決される
 
@@ -138,7 +171,9 @@ poly Array#delete 等と同種) にもう 1 件追加。
 
 ## Phase 2 判定
 
-カーネル VM の Spinel 化は **機能的に完了**。Spinel コンパイル済みカーネルが
-mruby カーネルの drop-in 置換として desktop / 入力 / ウィンドウ管理 /
-アプリ spawn を駆動することを headless で実証。残るは性能計測・soak と ESP32
-実機 (Phase 5)。
+カーネル VM の Spinel 化は **機能・性能とも完了**。Spinel コンパイル済み
+カーネルが mruby カーネルの drop-in 置換として desktop / 入力 / ウィンドウ
+管理 / アプリ spawn を駆動することを headless で実証し、HID 処理レイテンシは
+mruby 比およそ 80-150 倍改善 (上記計測)。残るは ESP32 実機 (Phase 5)。
+30 分 soak はユーザ判断でスキップ、ヒープ比較は Phase 3 の estalloc
+フック導入後に実施。

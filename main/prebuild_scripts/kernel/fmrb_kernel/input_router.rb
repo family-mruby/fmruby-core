@@ -301,6 +301,24 @@ module InputRouterMixin
         Log.warn("hid_event slow: subtype=#{subtype} capture=#{@capture_mode} #{elapsed}ms")
       end
 
+      @hid_lat_n += 1
+      @hid_lat_sum += elapsed
+      @hid_lat_max = elapsed if elapsed > @hid_lat_max
+      @hid_lat_ge1 += 1 if elapsed >= 1
+      @hid_lat_ge5 += 1 if elapsed >= 5
+      @hid_lat_ge10 += 1 if elapsed >= 10
+      @hid_lat_gt25 += 1 if elapsed > 25
+      if @hid_lat_n >= 1000
+        Log.info("hid_lat: n=#{@hid_lat_n} sum_ms=#{@hid_lat_sum} max_ms=#{@hid_lat_max} ge1=#{@hid_lat_ge1} ge5=#{@hid_lat_ge5} ge10=#{@hid_lat_ge10} gt25=#{@hid_lat_gt25}")
+        @hid_lat_n = 0
+        @hid_lat_sum = 0
+        @hid_lat_max = 0
+        @hid_lat_ge1 = 0
+        @hid_lat_ge5 = 0
+        @hid_lat_ge10 = 0
+        @hid_lat_gt25 = 0
+      end
+
     rescue => e
       Log.error("Error in handle_hid_event: #{e.class}: #{e.message}")
     end

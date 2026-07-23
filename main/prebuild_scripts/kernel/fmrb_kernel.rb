@@ -64,6 +64,17 @@ class FmrbKernelImpl < FmrbKernel
     @last_cleanup_tick = 0
     @cleanup_interval = 10  # Check every 10 ticks (about 167ms at 60Hz)
 
+    # HID latency stats, reported every 1000 events (engine comparison;
+    # board_millis is ms-resolution, so spikes show up in max and the
+    # threshold counters rather than in the sum)
+    @hid_lat_n = 0
+    @hid_lat_sum = 0
+    @hid_lat_max = 0
+    @hid_lat_ge1 = 0
+    @hid_lat_ge5 = 0
+    @hid_lat_ge10 = 0
+    @hid_lat_gt25 = 0
+
     _init
     Log.info("Tick = #{@tick}")
     Log.info("Max App Number = #{@max_app_num}")
