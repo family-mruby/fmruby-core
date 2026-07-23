@@ -12,8 +12,8 @@ C 化するプロジェクトの、実装担当 AI 向け指示書である。
   OS 機能 (Window マネージャ、イベント処理、デスクトップ、シェル) は
   Ruby で書かれ、ビルド時に picorbc でバイトコード化して焼いている。
 - mruby VM のインタプリタ実行と GC 停止が性能ボトルネック。
-- Spinel (`tmp/spinel`、フォーク後は専用リポジトリ) は Ruby を
-  型推論付きで単一 C ファイルへ AOT コンパイルする。これで
+- Spinel (`tmp/spinel` = フォーク kishima/spinel の作業チェックアウト) は
+  Ruby を型推論付きで単一 C ファイルへ AOT コンパイルする。これで
   カーネル → desktop / shell の順に PreBuild Ruby を C 化する。
 - 方針決定事項:
   - Spinel は**フォークして改修**する (ライブラリモード、マルチ
@@ -50,9 +50,12 @@ C 化するプロジェクトの、実装担当 AI 向け指示書である。
     (ビルド時に picoruby サブモジュールへコピーされる。
     例: `lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c` の `_spin`)
   - タスク/PID 構成: `components/fmrb_common/include/fmrb_task_config.h`
-- Spinel: 検討時点のチェックアウトは `/home/kishima/fmrb/family-mruby/tmp/spinel`。
-  Phase 1 でフォークを作成したら、以後の改修はフォーク側で行う
-  (パスは Phase 1 完了レポートに記載されたものを使う)。
+- Spinel フォーク: `/home/kishima/fmrb/family-mruby/tmp/spinel`
+  (origin = kishima/spinel、フォーク元 = matz/spinel)。**改修可能**。
+  改修は作業ブランチ `fmrb-dev` (master から作成、無ければ最初に作る) に
+  コミットする。master は upstream 追従用に保ち、直接コミットしない。
+  コミットは英語メッセージで、汎用変更と fmruby 固有変更を分ける
+  (詳細規約は phase1.md T1-1)。
 
 ## 実装 AI が厳守するルール
 

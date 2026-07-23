@@ -9,6 +9,9 @@ PreBuild コード (カーネル / system_desktop / shell) の C 言語化によ
 方針 (決定事項):
 - Spinel は **フォークして自前で改修する** (ライブラリモード、マルチ
   インスタンス化、ESP32 対応)。汎用性のある変更は upstream へ PR する。
+  **フォークは作成済み (2026-07-23)**: kishima/spinel (フォーク元
+  matz/spinel)、作業チェックアウトは `tmp/spinel`。改修は作業ブランチ
+  `fmrb-dev` にコミットする (規約は doc/spinel_aot/phase1.md T1-1)。
 - 対象はカーネル VM に加えて **system_desktop を正式対象**とする。
   そのためランタイムのグローバル状態排除 (複数 Spinel プログラムの同居) を
   必須課題として計画に含める。
@@ -169,8 +172,9 @@ shell はオプション (難しければ mruby のまま残す)。**
 ゴール: 「対象 Ruby コードが Spinel でそのまま (または軽微な書き換えで)
 コンパイル・正動作するか」「速度メリットが実測できるか」の Go/NoGo 判断。
 
-1. `tmp/spinel` で `make deps && make && make test` (この時点ではフォーク
-   作成前でよい)。
+1. `tmp/spinel` (フォークの作業チェックアウト) で
+   `make deps && make && make test`。PoC 完遂に必要な最小修正のみ
+   `fmrb-dev` ブランチへコミット可 (doc/spinel_aot/phase0.md 参照)。
 2. input_router + window_manager のロジックを、FmrbKernel API をスタブした
    単体ハーネス (合成 HID イベント列を流す) に切り出し、
    (a) CRuby、(b) mruby/picoruby、(c) Spinel でそれぞれ実行して
@@ -189,11 +193,12 @@ shell はオプション (難しければ mruby のまま残す)。**
 
 ### Phase 1: フォーク整備 + 組み込み基盤 (Linux、目安 1-2 週)
 
-1. **Spinel をフォーク**: GitHub 上に fork リポジトリを作成し、family-mruby
-   側からはサブモジュールまたはツールとして参照する (リポジトリ追加・
-   サブモジュール登録の git 操作はユーザ承認の上で実施)。upstream を
-   remote に保持し、汎用的な変更 (ライブラリモード、マルチインスタンス化、
-   32bit 修正) は upstream へ PR できる粒度でコミットを分ける。
+1. **フォーク利用準備** (fork 作成は済み: kishima/spinel @ tmp/spinel):
+   upstream remote (matz/spinel) を追加し、作業ブランチ `fmrb-dev` を
+   master から作成する。汎用的な変更 (ライブラリモード、マルチ
+   インスタンス化、32bit 修正) は upstream へ PR できる粒度でコミットを
+   分ける。family-mruby 側からの参照方法 (サブモジュール化するか) は
+   Phase 5 までに決める。
 2. **ライブラリモードをフォークに実装**:
    - `--no-main --entry <name>` を追加。`main()` の代わりに
      `int <name>(void)` を生成し、ブートストラップ (SP_GC_SAVE、

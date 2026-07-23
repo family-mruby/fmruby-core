@@ -9,21 +9,29 @@
 
 ## タスク
 
-### T1-1: フォークの作成 (ユーザ作業の依頼)
+### T1-1: フォークの利用準備 (ブランチ作成。fork 自体は作成済み)
 
-1. 以下をユーザに依頼する (git 操作・リポジトリ作成は AI が勝手に行わない):
-   - GitHub 上に Spinel の fork を作成
-   - fork のローカル配置場所の決定 (推奨: `/home/kishima/fmrb/spinel`。
-     family-mruby のサブモジュールにするかは Phase 5 までに決めれば良い)
-   - upstream を remote `upstream` として追加
-2. 以後の Spinel 改修は fork のブランチ (推奨: `fmrb/library-mode` など
-   機能単位ブランチ) で行う。`tmp/spinel` は参照用として触らない。
+fork は作成済みで、作業チェックアウトは
+`/home/kishima/fmrb/family-mruby/tmp/spinel`
+(origin = git@github.com:kishima/spinel.git、upstream 元 = matz/spinel、
+既定ブランチ master)。ここを直接改修する。
+
+1. upstream remote が未設定なら追加して fetch する:
+   `git remote add upstream https://github.com/matz/spinel.git`。
+2. **作業ブランチ `fmrb-dev` を master から作成**し、以後の Spinel 改修は
+   すべて fmrb-dev 上でコミットする。master は upstream 追従用に
+   クリーンに保つ。upstream へ PR する際は、該当する汎用コミットを
+   master ベースの短命ブランチへ cherry-pick して出す。
 3. コミット規約 (fork 内):
    - upstream へ PR しうる汎用変更と fmruby 固有変更を別コミットにする。
+   - コミットメッセージは英語。
    - 各コミットで `make` (gen2.c == gen3.c の self-check を含む)、
      `make test`、`make bench` を通す。
    - AI 支援コミットには upstream の慣習に従い
      `Co-Authored-By:` トレーラを付ける。
+4. family-mruby からの参照方法 (サブモジュール化するか等) は Phase 5 までに
+   決めれば良い。現状はルートリポジトリの gitignore 対象 (`tmp/`) の
+   チェックアウトを直接使う。
 
 ### T1-2: ライブラリモード `--no-main` / `--entry` の実装 (fork、1-2 日)
 
