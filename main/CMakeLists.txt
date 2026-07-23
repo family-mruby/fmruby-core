@@ -231,6 +231,14 @@ if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     # The Spinel-generated C pulls in sp_runtime.h, which defines many static
     # helpers a given program leaves unused; suppress warnings (it is generated,
     # not hand-written) so the project's -Werror does not reject it.
+    #
+    # Multi-instance: this generated program TU -- and ONLY it, among the main
+    # component's sources -- is compiled with SP_MULTI_CTX + the allocation
+    # override, matching the fmrb_spinel_rt runtime (both-sides flag; a mismatch
+    # is a silent ABI break). NOT applied component-wide: host_task.c / fmrb_app.c
+    # / the fmrb_spx shims use libc / fmrb_mem and must not be rerouted through an
+    # instance pool. Keep the two flags in sync with fmrb_spinel_rt SPINEL_MC_FLAGS.
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fmrb_kernel_combined.c
-        PROPERTIES COMPILE_OPTIONS "-w")
+        PROPERTIES COMPILE_OPTIONS
+        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h")
 endif()

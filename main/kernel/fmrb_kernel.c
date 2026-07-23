@@ -515,13 +515,39 @@ static bool init_hal(void)
    (FmrbKernelImpl.new.start -> main_loop); the "main_loop started" boot marker
    awaited by tools/dev_run_check.sh is emitted from Ruby (fmrb_kernel.rb). */
 extern int fmrb_kernel_entry(void);
+#include "fmrb_spinel_host.h"   /* fmrb_spinel_instance_begin/end (SP_MULTI_CTX) */
 
 static void spinel_kernel_native(void *arg)
 {
-    (void)arg;
+    /* execute_native_function passes the task context. Back the Spinel runtime
+       with this task's estalloc pool (Phase 4 memory wiring): every allocation
+       the kernel VM makes then comes from POOL_ID_KERNEL, isolated from other
+       Spinel instances, and `ps` can report it via ctx->est. */
+    fmrb_app_task_context_t *ctx = (fmrb_app_task_context_t *)arg;
+    void  *pool = fmrb_get_mempool_ptr(ctx->mempool_id);
+    size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
+    if (!pool || pool_size == 0) {
+        FMRB_LOGE(TAG, "kernel mempool %d unavailable (ptr=%p size=%zu)",
+                  ctx->mempool_id, pool, pool_size);
+        return;
+    }
+    /* GC / string-heap collection thresholds well below the pool size
+       (sp_instance_config contract: threshold < pool). */
+    size_t threshold = pool_size / 4;
+    void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
+    if (!est) {
+        FMRB_LOGE(TAG, "failed to create Spinel kernel instance (pool %d, %zu bytes)",
+                  ctx->mempool_id, pool_size);
+        return;
+    }
+    ctx->est = est;
+
     /* Runs to completion of the Ruby bootstrap; only returns on a fatal error,
        after which app_task_main performs the normal task cleanup. */
     fmrb_kernel_entry();
+
+    fmrb_spinel_instance_end(est);
+    ctx->est = NULL;
 }
 #endif /* FMRB_KERNEL_ENGINE_SPINEL */
 
