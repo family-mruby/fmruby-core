@@ -64,18 +64,60 @@ Spinel は全コードパスを型推論コンパイルするため、以下を�
 - `Integer#chr` / sp_str_chr がランタイム未実装。
 - bundled set.rb 自体が Set#& を poly `other` でコンパイル不能。
 
-## 残タスク
+## T2-5: FFI シム実装 + native ロード + ビルド統合 (完了)
 
-- **T2-5**: (a) 未実装/stub の fmrb_spx C 関数を実装 (app_info_snapshot,
-  last_error, set_error_led, set_ready, check_protocol/ga_version,
-  sync_time_to_host)。(b) `fmrb_app.c` に FMRB_LOAD_MODE_NATIVE 追加、kernel
-  spawn を FMRB_KERNEL_ENGINE で分岐 (native + fmrb_kernel_entry)。
-  (c) `compile_ruby_to_spinel.cmake` / `rake spinel:gen` を hello_kernel から
-  fmrb_kernel_combined_spinel に切替。
-- **T2-6**: dev_run_check.sh + fmrb_input.py でシナリオ回帰、性能計測
-  (max/avg latency, ヒープ)、30 分 soak。
+- **(a) fmrb_spx C 関数 7 本を実装** (`main/kernel/fmrb_spx_kernel.c`):
+  set_ready / check_protocol_version / check_ga_version / set_error_led /
+  sync_time_to_host / app_info_snapshot / last_error。既存 mruby binding
+  (`kernel.c`) と同じ下層 API を呼ぶ (fmrb_transport_check_version,
+  status_led_set_error, fmrb_kernel_set_ready, fmrb_app_get_last_error_*,
+  fmrb_app_get_context_by_id, CONTROL SET_TIME)。
+- **(b) kernel spawn の分岐** (`fmrb_kernel.c`): raw-task の hello_kernel bring-up
+  を廃し、Spinel カーネルを **FMRB_VM_TYPE_NATIVE** として `fmrb_app_spawn` で
+  起動 (native_func = fmrb_kernel_entry を呼ぶ wrapper)。PROC_ID_KERNEL の
+  context / message queue / state / lifecycle は mruby 版と同一 =挙動パリティ。
+  FMRB_VM_TYPE_NATIVE と execute_native_function は既存基盤をそのまま利用
+  (LOAD_MODE 追加は不要だった)。
+- **(c) ビルド統合**: `rake spinel:gen` を gen_kernel_combined.rb ->
+  `spinel --entry fmrb_kernel_entry` の 2 段に (combined .rb / .c を gen/ に生成)。
+  CMake の prepare/generate を hello_kernel から fmrb_kernel_combined に切替。
 
-## Phase 2 判定の見通し
+### バグ修正: ffi_buffer は getbyte を持たない (Phase 2 の実バグ)
 
-カーネル Ruby が Spinel でコンパイル可能と実証できたことで、残りは C 実装 +
-ビルド統合 + 実機検証の「配線と計測」。設計上の未知は大きく減った。
+初回 T2-6 起動で `NoMethodError: undefined method 'getbyte'` によりカーネルが
+起動直後に終了 (`check_terminated_apps -> update_window_list ->
+_get_window_list -> win_buf.getbyte`)。原因は **ffi_buffer が `:ptr` (生ポインタ)
+を返す型で、getbyte 非対応** (読み出しは ffi_read_* のみ、per-byte reader は無い)。
+recv が動いていたのは `:binstr` が実 String を返すため。
+
+**修正**: windows_snapshot / app_info_snapshot / last_error の 3 関数を
+**`:binstr` 戻り値**に変更 (recv と同じ機構、sp_net_bin_len でバイト長公開、
+実 String なので getbyte 可)。fork 変更不要。win_buf / info_buf / msg_buf の
+ffi_buffer は削除。Ruby 側 (_get_window_list/_get_app_info/_get_last_error) は
+戻り String をそのままパース。
+
+## T2-6: シナリオ回帰検証 (完了, Linux headless)
+
+`rake build:linux` (FMRB_KERNEL_ENGINE=spinel) + dev_run_check.sh + fmrb_input.py。
+Spinel カーネルが実カーネルとして全経路動作、エラー/例外ゼロ:
+
+- ブート -> desktop 描画、時刻同期 (RTC skip, host SET_TIME)、boot marker
+  `main_loop started` を Ruby (fmrb_kernel.rb) から出力。
+- 入力ルーティング: メニューバー click -> `Desktop overlay: active` トグル、
+  ドラッグ処理。
+- ウィンドウ管理: `_get_window_list` (:binstr 修正) が周期 cleanup で 2 分以上
+  無事故 (初回クラッシュ地点を通過)。
+- 実ユーザーアプリ spawn: Launcher から GPIO Viewer をダブルクリック ->
+  kernel `Spawn request` -> `_spawn_app_req` -> `_get_app_info` (:binstr 修正) ->
+  `HID target set` -> 別プロセス RUNNING -> 専用 canvas 描画。全経路成功。
+- `Resources cleaned up` = 0 (カーネル無終了)、spx エラーログ 0 件。
+
+**性能計測 (max/avg latency, ヒープ) と 30 分 soak は未実施** (機能回帰は完了。
+計測はユーザ環境で継続可)。
+
+## Phase 2 判定
+
+カーネル VM の Spinel 化は **機能的に完了**。Spinel コンパイル済みカーネルが
+mruby カーネルの drop-in 置換として desktop / 入力 / ウィンドウ管理 /
+アプリ spawn を駆動することを headless で実証。残るは性能計測・soak と ESP32
+実機 (Phase 5)。

@@ -96,11 +96,14 @@ int fmrb_spx_try_send_raw(int dst_pid, int type, const uint8_t *data, int len);
 
 /**
  * @brief Snapshot the active window list as packed records.
- * @param buf destination for N * FMRB_SPX_WIN_RECORD_SIZE bytes
- * @param cap capacity of @p buf
- * @return record count (>= 0), or FMRB_SPX_ERR_CAP if @p cap is too small.
+ *
+ * Returned as :binstr (a real String the Ruby side reads with getbyte; an
+ * ffi_buffer would return a :ptr, which has no getbyte). The byte length is
+ * count * FMRB_SPX_WIN_RECORD_SIZE, published in sp_net_bin_len. On error the
+ * return is an empty string.
+ * @return pointer to N * FMRB_SPX_WIN_RECORD_SIZE bytes (length in sp_net_bin_len).
  */
-int fmrb_spx_windows_snapshot(uint8_t *buf, int cap);
+const char *fmrb_spx_windows_snapshot(void);
 
 int fmrb_spx_set_hid_target(int pid);        /**< 0 ok, negative error */
 int fmrb_spx_set_focused_window(int win_id); /**< 0 ok, negative error */
@@ -118,11 +121,49 @@ int fmrb_spx_reap_app(int pid);              /**< 0 ok, negative error */
 int fmrb_spx_spawn_app_req(const char *name, int len);
 
 /**
- * @brief Snapshot one app's info as a packed record (layout documented in the
- *        implementation; Phase 2 will finalize it). Returns bytes written or
- *        negative.
+ * @brief Snapshot one app's info as a packed record. Mirrors the mruby
+ *        _get_app_info hash. Fixed little-endian layout (read on the Ruby side
+ *        by offset):
+ *
+ *   off  size  field
+ *   0    1     valid   (1 if the pid has a context, else 0)
+ *   1    1     fullscreen (bool)
+ *   2    1     vm_type    1=mruby 2=lua 3=basic 4=native
+ *   3    1     load_mode  (fmrb_load_mode_t)
+ *   4    32    name       (NUL-padded)
+ *   36   128   path       (NUL-padded; only for FILE load mode, else zeroed)
+ *
+ * Total 164 bytes, returned as :binstr (length in sp_net_bin_len). When the pid
+ * has no context the return is an empty string and the Ruby side returns nil.
  */
-int fmrb_spx_app_info_snapshot(int pid, uint8_t *buf, int cap);
+#define FMRB_SPX_APP_INFO_RECORD_SIZE 164
+const char *fmrb_spx_app_info_snapshot(int pid);
+
+/**
+ * @brief The last app error as two NUL-padded fields (:binstr, length in
+ *        sp_net_bin_len): name at offset 0 (width 64), message at offset 64
+ *        (width 112). Empty string when there is no error (Ruby returns nil).
+ */
+#define FMRB_SPX_LAST_ERROR_RECORD_SIZE 176
+const char *fmrb_spx_last_error(void);
+
+/** @brief Set the status-LED error pattern (FmrbConst::LED_ERR_*). Returns 0. */
+int fmrb_spx_set_error_led(int level);
+
+/** @brief Signal the kernel is ready (boot handshake). Returns 0. */
+int fmrb_spx_set_ready(void);
+
+/** @brief Check the host protocol version. 1 ok / 0 fail / negative on error. */
+int fmrb_spx_check_protocol_version(int timeout_ms);
+
+/** @brief Check the graphics-audio firmware version. 1 ok / 0 fail / neg err. */
+int fmrb_spx_check_ga_version(int timeout_ms);
+
+/**
+ * @brief Send the current wall-clock time (and TZ) to the host.
+ * @return 1 on success, 0 if not delivered, negative on error.
+ */
+int fmrb_spx_sync_time_to_host(void);
 
 #ifdef __cplusplus
 }

@@ -99,8 +99,8 @@ class FmrbKernel
   # Parse the packed window snapshot (48-byte records, layout in fmrb_spx.h)
   # into the same Array-of-Hash structure the mruby C _get_window_list returns.
   def _get_window_list
-    buf = FmrbSpx.win_buf
-    count = FmrbSpx.fmrb_spx_windows_snapshot(buf, 384)
+    buf = FmrbSpx.fmrb_spx_windows_snapshot   # :binstr, N * 48 bytes
+    count = buf.bytesize / 48
     list = []
     return list if count <= 0
     i = 0
@@ -150,9 +150,8 @@ class FmrbKernel
   APP_INFO_VM_TYPES = ["unknown", "mruby", "lua", "basic", "native"]
 
   def _get_app_info(pid)
-    buf = FmrbSpx.info_buf
-    n = FmrbSpx.fmrb_spx_app_info_snapshot(pid, buf, 176)
-    return nil if n <= 0 || buf.getbyte(0) == 0
+    buf = FmrbSpx.fmrb_spx_app_info_snapshot(pid)   # :binstr, 164 bytes or ""
+    return nil if buf.bytesize == 0 || buf.getbyte(0) == 0
     vm_idx = buf.getbyte(2)
     vm_sym = vm_idx == 1 ? :mruby : (vm_idx == 2 ? :lua : (vm_idx == 3 ? :basic : (vm_idx == 4 ? :native : :unknown)))
     {
@@ -166,9 +165,8 @@ class FmrbKernel
 
   # ---- errors / led ----
   def _get_last_error
-    buf = FmrbSpx.info_buf
-    n = FmrbSpx.fmrb_spx_last_error(buf, 176)
-    return nil if n <= 0
+    buf = FmrbSpx.fmrb_spx_last_error   # :binstr, 176 bytes or ""
+    return nil if buf.bytesize == 0
     # name NUL error (two NUL-separated fields)
     name = SpxBytes.name(buf, 0, 64)
     err = SpxBytes.name(buf, 64, 112)

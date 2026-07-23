@@ -48,8 +48,8 @@ file(GLOB DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/defa
 prepare_ruby_bytecode_sources(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/mrb COMPONENT_SRCS)
 prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/mrb COMPONENT_SRCS)
 
-# Kernel engine selection (Phase 1 T1-6). Default mruby; `spinel` swaps the
-# kernel task for the Spinel-compiled hello_kernel bring-up program.
+# Kernel engine selection (Phase 1 T1-6, Phase 2 T2-5). Default mruby; `spinel`
+# swaps the kernel task for the Spinel-compiled combined kernel VM.
 set(FMRB_KERNEL_ENGINE "$ENV{FMRB_KERNEL_ENGINE}")
 if(NOT FMRB_KERNEL_ENGINE)
     set(FMRB_KERNEL_ENGINE "mruby")
@@ -57,10 +57,10 @@ endif()
 set(FMRB_SPINEL_GEN_DIR ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/gen)
 if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_spinel.cmake)
-    prepare_ruby_spinel_source(hello_kernel ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
-    # The FFI shim (calls esp_timer / fmrb_msg) is only needed by the spinel path.
+    prepare_ruby_spinel_source(fmrb_kernel_combined ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
+    # The FFI shim (fmrb_msg / transport / status_led) is only needed by spinel.
     list(APPEND COMPONENT_SRCS "kernel/fmrb_spx_kernel.c")
-    message(STATUS "FMRB_KERNEL_ENGINE=spinel: kernel VM replaced by Spinel hello_kernel")
+    message(STATUS "FMRB_KERNEL_ENGINE=spinel: kernel VM replaced by Spinel combined kernel")
 endif()
 
 # Set up component dependencies based on target
@@ -221,12 +221,16 @@ generate_ruby_bytecode_commands(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}
 # build relies on the host-pre-generated .c (rake spinel:gen).
 if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_KERNEL_ENGINE_SPINEL)
+    # The combined .rb is itself host-generated (gen_kernel_combined.rb) into the
+    # gen/ dir by `rake spinel:gen`; this custom command only re-runs when a host
+    # SPINEL_BIN is available (native builds). The docker linux build relies on
+    # the host-pre-generated .c.
     generate_ruby_spinel_command(
-        ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/hello_kernel.rb
-        hello_kernel_entry ${FMRB_SPINEL_GEN_DIR})
+        ${FMRB_SPINEL_GEN_DIR}/fmrb_kernel_combined.rb
+        fmrb_kernel_entry ${FMRB_SPINEL_GEN_DIR})
     # The Spinel-generated C pulls in sp_runtime.h, which defines many static
     # helpers a given program leaves unused; suppress warnings (it is generated,
     # not hand-written) so the project's -Werror does not reject it.
-    set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/hello_kernel.c
+    set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fmrb_kernel_combined.c
         PROPERTIES COMPILE_OPTIONS "-w")
 endif()

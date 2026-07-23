@@ -9,13 +9,19 @@
 #include "fmrb_spx.h"
 
 #include <string.h>
+#include <stdlib.h>
 #include <time.h>
+#include <sys/time.h>
 #include "fmrb_app.h"
 #include "fmrb_kernel.h"
 #include "fmrb_msg.h"
 #include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
 #include "fmrb_log.h"
+#include "fmrb_transport.h"
+#include "fmrb_link_protocol.h"
+#include "status_led.h"
+#include "boot.h"
 
 static const char *TAG = "spx";
 
@@ -103,18 +109,21 @@ int fmrb_spx_try_send_raw(int dst_pid, int type, const uint8_t *data, int len)
     return spx_send_impl(dst_pid, type, data, len, 0);
 }
 
-int fmrb_spx_windows_snapshot(uint8_t *buf, int cap)
+const char *fmrb_spx_windows_snapshot(void)
 {
-    if (!buf || cap < 0) {
-        return FMRB_SPX_ERR;
-    }
+    /* Returned as :binstr (a real Spinel String the Ruby side reads with
+       getbyte); ffi_buffer would hand back a :ptr, which has no getbyte. The
+       byte length (count * 48) is published in sp_net_bin_len. */
+    static uint8_t buf[FMRB_MAX_APPS * FMRB_SPX_WIN_RECORD_SIZE];
+    sp_net_bin_len = 0;
+
     fmrb_window_info_t windows[FMRB_MAX_APPS];
     int32_t count = fmrb_app_get_window_list(windows, FMRB_MAX_APPS);
     if (count < 0) {
-        return FMRB_SPX_ERR;
+        return "";
     }
-    if (count * FMRB_SPX_WIN_RECORD_SIZE > cap) {
-        return FMRB_SPX_ERR_CAP;
+    if (count > FMRB_MAX_APPS) {
+        count = FMRB_MAX_APPS;
     }
     for (int32_t i = 0; i < count; i++) {
         uint8_t *r = buf + (size_t)i * FMRB_SPX_WIN_RECORD_SIZE;
@@ -134,7 +143,8 @@ int fmrb_spx_windows_snapshot(uint8_t *buf, int cap)
         size_t nl = strnlen(w->app_name, 32);
         memcpy(r + 16, w->app_name, nl);
     }
-    return (int)count;
+    sp_net_bin_len = (int)(count * FMRB_SPX_WIN_RECORD_SIZE);
+    return (const char *)buf;
 }
 
 int fmrb_spx_set_hid_target(int pid)
@@ -205,10 +215,111 @@ int fmrb_spx_spawn_app_req(const char *name, int len)
     return ret == FMRB_OK ? (int)new_pid : FMRB_SPX_ERR;
 }
 
-int fmrb_spx_app_info_snapshot(int pid, uint8_t *buf, int cap)
+/* Copy a NUL-terminated C string into a fixed-width, NUL-padded field. */
+static void spx_pack_name(uint8_t *dst, int width, const char *src)
 {
-    /* Phase 2 will finalize the app-info record layout alongside the desktop
-       Spinel port. Not needed for the hello_kernel bring-up. */
-    (void)pid; (void)buf; (void)cap;
-    return FMRB_SPX_ERR;
+    memset(dst, 0, (size_t)width);
+    if (!src) {
+        return;
+    }
+    size_t n = strnlen(src, (size_t)width);
+    memcpy(dst, src, n);
+}
+
+const char *fmrb_spx_app_info_snapshot(int pid)
+{
+    /* :binstr return (see fmrb_spx_windows_snapshot). Empty string when the pid
+       has no context, so the Ruby side returns nil. */
+    static uint8_t buf[FMRB_SPX_APP_INFO_RECORD_SIZE];
+    sp_net_bin_len = 0;
+
+    fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id((int32_t)pid);
+    if (!ctx) {
+        return "";
+    }
+    memset(buf, 0, FMRB_SPX_APP_INFO_RECORD_SIZE);
+    buf[0] = 1;                                   /* valid */
+    buf[1] = ctx->fullscreen ? 1 : 0;             /* fullscreen */
+    /* vm_type: mruby=1 lua=2 basic=3 native=4 (matches base_spinel mapping). */
+    switch (ctx->vm_type) {
+        case FMRB_VM_TYPE_MRUBY: buf[2] = 1; break;
+        case FMRB_VM_TYPE_LUA:   buf[2] = 2; break;
+        case FMRB_VM_TYPE_BASIC: buf[2] = 3; break;
+        default:                 buf[2] = 4; break;  /* native */
+    }
+    buf[3] = (uint8_t)ctx->load_mode;             /* load_mode */
+    spx_pack_name(buf + 4, 32, ctx->app_name);    /* name */
+    if (ctx->load_mode == FMRB_LOAD_MODE_FILE && ctx->load_data) {
+        spx_pack_name(buf + 36, 128, (const char *)ctx->load_data);  /* path */
+    }
+    sp_net_bin_len = FMRB_SPX_APP_INFO_RECORD_SIZE;
+    return (const char *)buf;
+}
+
+const char *fmrb_spx_last_error(void)
+{
+    /* :binstr return; empty string when there is no error (Ruby returns nil). */
+    static uint8_t buf[FMRB_SPX_LAST_ERROR_RECORD_SIZE];
+    sp_net_bin_len = 0;
+
+    const char *name = fmrb_app_get_last_error_name();
+    const char *msg = fmrb_app_get_last_error_msg();
+    if (!name || name[0] == '\0') {
+        return "";
+    }
+    memset(buf, 0, FMRB_SPX_LAST_ERROR_RECORD_SIZE);
+    spx_pack_name(buf + 0, 64, name);
+    spx_pack_name(buf + 64, 112, msg);
+    sp_net_bin_len = FMRB_SPX_LAST_ERROR_RECORD_SIZE;
+    return (const char *)buf;
+}
+
+int fmrb_spx_set_error_led(int level)
+{
+    status_led_set_error(level);
+    return 0;
+}
+
+int fmrb_spx_set_ready(void)
+{
+    fmrb_kernel_set_ready();
+    return 0;
+}
+
+int fmrb_spx_check_protocol_version(int timeout_ms)
+{
+    if (timeout_ms < 0) timeout_ms = 0;
+    fmrb_err_t ret = fmrb_transport_check_version((uint32_t)timeout_ms);
+    return ret == FMRB_OK ? 1 : 0;
+}
+
+int fmrb_spx_check_ga_version(int timeout_ms)
+{
+    if (timeout_ms < 0) timeout_ms = 0;
+    fmrb_err_t ret = fmrb_transport_check_ga_version((uint32_t)timeout_ms);
+    return ret == FMRB_OK ? 1 : 0;
+}
+
+int fmrb_spx_sync_time_to_host(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    fmrb_control_set_time_t cmd = {
+        .tv_sec = (int64_t)tv.tv_sec,
+        .tv_usec = (int32_t)tv.tv_usec,
+    };
+    memset(cmd.tz, 0, sizeof(cmd.tz));
+    const char *tz = getenv("TZ");
+    if (tz) {
+        strncpy(cmd.tz, tz, sizeof(cmd.tz) - 1);
+    }
+
+    fmrb_err_t ret = fmrb_transport_send(
+        FMRB_LINK_TYPE_CONTROL,
+        FMRB_LINK_CONTROL_SET_TIME,
+        (const uint8_t *)&cmd,
+        sizeof(cmd),
+        FMRB_TRANSPORT_TIMEOUT_DEFAULT);
+    return ret == FMRB_OK ? 1 : 0;
 }

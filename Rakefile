@@ -232,10 +232,15 @@ namespace :spinel do
       abort "spinel not found at #{SPINEL_BIN}. Build the fork: (cd ../tmp/spinel && make deps && make)"
     end
     mkdir_p SPINEL_GEN_DIR
-    rb  = "#{SPINEL_SRC_DIR}/hello_kernel.rb"
-    out = "#{SPINEL_GEN_DIR}/hello_kernel.c"
-    sh "#{SPINEL_BIN} --no-main --entry hello_kernel_entry -I #{SPINEL_SRC_DIR} -c #{rb} -o #{out}"
-    puts "Spinel generated #{out}"
+    # 1. Concatenate the kernel Ruby sources into one combined program (the
+    #    Spinel compiler needs a single translation unit; require_relative is
+    #    stripped). Host-generated into gen/ (gitignored).
+    combined_rb = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.rb"
+    out_c       = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.c"
+    sh "#{RbConfig.ruby} tool/spinel/gen_kernel_combined.rb #{combined_rb} linux"
+    # 2. Compile the combined program to C (library mode: entry fmrb_kernel_entry).
+    sh "#{SPINEL_BIN} --no-main --entry fmrb_kernel_entry -I #{SPINEL_SRC_DIR} -c #{combined_rb} -o #{out_c}"
+    puts "Spinel generated #{out_c}"
   end
 end
 

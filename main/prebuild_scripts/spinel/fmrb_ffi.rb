@@ -27,7 +27,9 @@ module FmrbSpx
   ffi_func :fmrb_spx_try_send_raw, [:int, :int, :str, :int], :int
 
   # --- window / focus / lifecycle ---
-  ffi_func :fmrb_spx_windows_snapshot, [:ptr, :int], :int
+  # windows_snapshot returns the packed records as :binstr (a real String read
+  # with getbyte); an ffi_buffer :ptr has no getbyte. Byte length = N * 48.
+  ffi_func :fmrb_spx_windows_snapshot, [], :binstr
   ffi_func :fmrb_spx_set_hid_target, [:int], :int
   ffi_func :fmrb_spx_set_focused_window, [:int], :int
   ffi_func :fmrb_spx_bring_to_front, [:int], :int
@@ -40,26 +42,22 @@ module FmrbSpx
   ffi_func :fmrb_spx_spawn_app_req, [:str, :int], :int
 
   # --- app/system info + boot handshake (Phase 2) ---
-  # Fill a packed app-info record; returns bytes written (>=0) or negative.
-  ffi_func :fmrb_spx_app_info_snapshot, [:int, :ptr, :int], :int
-  # Fill last-error name/message into the buffer (NUL-separated); returns bytes
-  # written (>0) or 0 if no error.
-  ffi_func :fmrb_spx_last_error, [:ptr, :int], :int
+  # app_info / last_error also return :binstr packed records (empty String when
+  # absent -> Ruby nil), for the same getbyte reason as windows_snapshot.
+  ffi_func :fmrb_spx_app_info_snapshot, [:int], :binstr
+  ffi_func :fmrb_spx_last_error, [], :binstr
   ffi_func :fmrb_spx_set_error_led, [:int], :int
   ffi_func :fmrb_spx_set_ready, [], :int
   ffi_func :fmrb_spx_check_protocol_version, [:int], :int  # 1 ok / 0 fail / neg err
   ffi_func :fmrb_spx_check_ga_version, [:int], :int
   ffi_func :fmrb_spx_sync_time_to_host, [], :int
 
-  # --- scratch buffers / out-params ---
-  # Payload buffer sized to the message payload max (fmrb_msg.h: 176). Round up.
-  ffi_buffer :msg_buf, 192
+  # --- out-params ---
+  # recv writes message type / src into these; read back with read_i32. (Window,
+  # app-info and last-error records now cross as :binstr Strings, not buffers,
+  # because getbyte needs a String -- an ffi_buffer is a :ptr.)
   ffi_buffer :type_out, 4
   ffi_buffer :src_out, 4
-  # Window snapshot: FMRB_MAX_APPS (<=7) records * 48 bytes.
-  ffi_buffer :win_buf, 384
-  # App-info / last-error packed record (<= payload max).
-  ffi_buffer :info_buf, 192
 
   ffi_read_i32 :read_i32, 0   # FmrbSpx.read_i32(buf) -> int32 at offset 0
 end
