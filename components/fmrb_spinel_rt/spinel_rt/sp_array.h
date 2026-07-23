@@ -17,7 +17,9 @@
 #include "sp_gc.h"      /* sp_gc_hdr, sp_gc_bytes, SP_GC_ROOT, sp_oom_die */
 #include "sp_alloc.h"   /* sp_gc_alloc, sp_str_alloc, sp_raise_cls, sp_raise_frozen_array */
 
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 const char *sp_sprintf(const char *fmt, ...);  /* defined in the generated TU */
+#endif
 
 /* ============================ sp_IntArray ============================ */
 /* `frozen` rides in the struct (not the GC header) so the hot push /

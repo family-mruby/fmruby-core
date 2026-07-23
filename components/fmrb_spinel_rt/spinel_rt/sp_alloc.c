@@ -4,20 +4,27 @@
    lib/*.c allocate onto one heap. sp_str_sweep is registered with the object GC
    via a constructor, so a collection triggered from any TU also reaps strings. */
 #include "sp_alloc.h"
+#include "sp_ctx.h"
 
+/* Under SP_MULTI_CTX these names are sp_ctx-field macros (sp_ctx.h); the
+   instance owns the storage, so the definitions here are dropped. */
+#ifndef SP_MULTI_CTX
 sp_str_hdr *sp_str_heap = NULL;
 size_t sp_str_heap_bytes = 0;
 size_t sp_str_threshold = 256 * 1024;
 size_t sp_str_threshold_init = 256 * 1024;
 int sp_str_stress_checked = 0;
+#endif
 
 const char sp_str_empty_data[] = "\xff";
 
 /* Object-heap collection threshold (was per-TU static in sp_runtime.h; now
    shared so sp_gc_alloc can live in sp_alloc.h and lib TUs allocate too). */
+#ifndef SP_MULTI_CTX
 size_t sp_gc_threshold = 256 * 1024;
 size_t sp_gc_threshold_init = 256 * 1024;
 int sp_gc_stress_checked = 0;
+#endif
 
 #ifdef SP_THREADS
 pthread_mutex_t sp_heap_lock = PTHREAD_MUTEX_INITIALIZER;   /* see sp_alloc.h */
@@ -149,10 +156,15 @@ void sp_str_sweep(void) {
 }
 
 /* Wire string sweep into the object collector. Runs before main, so the hook is
-   set before the first allocation can trigger a collection. */
+   set before the first allocation can trigger a collection.
+   SP_MULTI_CTX: the hook is a per-instance ctx field, and no current instance
+   exists at process-constructor time (SP_CTX()==NULL). sp_instance_create sets
+   c->gc_str_sweep_hook instead. */
+#ifndef SP_MULTI_CTX
 __attribute__((constructor)) static void sp_alloc_install_hooks(void) {
   sp_gc_str_sweep_hook = sp_str_sweep;
 }
+#endif
 
 /* Float#to_s / #inspect (declared in sp_alloc.h): shortest round-trip decimal.
    Moved out-of-line from the header -- cold (display only) and large. */

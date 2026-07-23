@@ -20,8 +20,12 @@ typedef double  mrb_float;
 
 /* Defined in the generated translation unit (sp_runtime.h); referenced
    here and resolved at link time. */
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 __attribute__((noreturn)) void sp_raise_cls(const char *cls, const char *msg);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 const char *sp_sprintf(const char *fmt, ...);
+#endif
 
 /* CRuby's `String#to_i` accepts a leading sign, then digits with
    `_` between consecutive digits, and stops at the first non-digit

@@ -42,12 +42,15 @@ extern pthread_mutex_t sp_heap_lock;
 #define SP_HEAP_UNLOCK() ((void)0)
 #endif
 
-/* ---- shared string-heap state (defined in sp_alloc.c) ---- */
+/* ---- shared string-heap state (defined in sp_alloc.c) ----
+   Under SP_MULTI_CTX these are sp_ctx-field macros (sp_ctx.h). */
+#ifndef SP_MULTI_CTX
 extern sp_str_hdr *sp_str_heap;          /* live-string singly-linked list head */
 extern size_t sp_str_heap_bytes;         /* live string-heap bytes */
 extern size_t sp_str_threshold;          /* string-GC trigger (own heuristic) */
 extern size_t sp_str_threshold_init;     /* recompute floor */
 extern int    sp_str_stress_checked;     /* one-shot SPINEL_GC_STRESS check */
+#endif
 
 extern const char sp_str_empty_data[];
 #define sp_str_empty (sp_str_empty_data + 1)
@@ -283,13 +286,17 @@ static inline sp_RbVal sp_box_poly_array(void *p) { return sp_box_obj(p, SP_BUIL
    sp_gc_alloc itself is an external function (defined in sp_alloc.c) so the
    cold lib C files that already link it (sp_fiber.c, sp_io.c, sp_bigint.c)
    keep resolving the same symbol. */
+#ifndef SP_MULTI_CTX  /* sp_ctx-field macros under SP_MULTI_CTX (sp_ctx.h) */
 extern size_t sp_gc_threshold;
 extern size_t sp_gc_threshold_init;
 extern int sp_gc_stress_checked;
+#endif
 void *sp_gc_alloc(size_t sz, void (*fin)(void *), void (*scn)(void *));
 void *sp_gc_alloc_nogc(size_t sz, void (*fin)(void *), void (*scn)(void *));
 
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 __attribute__((noreturn)) void sp_raise_cls(const char *cls, const char *msg);  /* lib/sp_core.c */
+#endif
 __attribute__((noreturn)) void sp_raise_frozen_str(const char *s);              /* lib/sp_str.c */
 /* The message carries the rodata marker byte: an in-flight exception's msg is
    marked by the GC (sp_mark_string reads s[-1]), so a bare literal -- whose

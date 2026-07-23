@@ -25,7 +25,9 @@ mrb_float sp_krand_float(void);           /* uniform [0, 1) */
    stream from its seed. The default instance is a window onto the shared
    Kernel stream, so srand() governs it too. */
 typedef struct { uint64_t state; mrb_int seed; } sp_Random;
+#ifndef SP_MULTI_CTX
 extern SP_TLS sp_Random sp_random_default;
+#endif
 uint64_t sp_random_next(sp_Random *r);
 sp_Random *sp_Random_new(mrb_int seed);
 sp_Random *sp_Random_new_float(mrb_float f);

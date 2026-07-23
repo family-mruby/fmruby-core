@@ -88,7 +88,9 @@ const char*sp_str_plus(const char*a,const char*b){
 }
 /* FrozenError naming the receiver, matching CRuby's
    "can't modify frozen String: \"abc\"" message shape. */
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void sp_exc_stage_recv(sp_RbVal v);   /* generated TU: stages FrozenError#receiver */
+#endif
 void sp_raise_frozen_str(const char*s){const char*ins=sp_str_inspect(s);SP_GC_ROOT_STR(ins);const char*msg=sp_str_concat(&("\xff" "can't modify frozen String: ")[1],ins);SP_GC_ROOT_STR(msg);sp_exc_stage_recv(sp_box_str(s));sp_raise_cls("FrozenError",msg);}
 /* String#inspect: wrap in double quotes and escape \, ", \n, \t, \r,
    plus any non-printable byte as \xNN. Output is always ASCII-safe. */

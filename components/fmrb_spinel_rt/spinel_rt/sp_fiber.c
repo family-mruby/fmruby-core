@@ -90,7 +90,9 @@ void sp_ctx_swap(sp_fiber_ctx *from, sp_fiber_ctx *to) { swapcontext(&from->uc, 
 
 /* ---- Reached by name in the generated TU ---- */
 void *sp_gc_alloc(size_t sz, void (*fin)(void *), void (*scn)(void *));
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 SP_NORETURN void sp_raise_cls(const char *cls, const char *msg);
+#endif
 
 /* Per-fiber exception/catch handler context (#1474): defined in the generated
    TU (sp_runtime.h), reached here by name. A fiber's begin/rescue handlers and
@@ -98,17 +100,39 @@ SP_NORETURN void sp_raise_cls(const char *cls, const char *msg);
    can't longjmp into a suspended fiber's stack frame, and an unhandled fiber
    raise is re-raised in the resumer's context rather than crossing stacks. */
 #include <setjmp.h>
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void *sp_exc_ctx_new(void);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void sp_exc_ctx_free(void *p);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void sp_exc_ctx_save(void *p);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void sp_exc_ctx_load(void *p);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void sp_exc_ctx_mark(void *p);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void sp_exc_arm(jmp_buf b);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void sp_exc_disarm(void);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 const char *sp_exc_cur_cls(void);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 const char *sp_exc_cur_msg(void);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void *sp_exc_cur_obj(void);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void sp_fiber_reraise(const char *cls, const char *msg, void *obj);
+#endif
 
 static inline sp_RbVal sp_box_nil(void) { sp_RbVal r; r.tag = SP_TAG_NIL; r.cls_id = 0; r.v.i = 0; return r; }
 static void sp_raise(const char *msg) { sp_raise_cls("RuntimeError", msg); }

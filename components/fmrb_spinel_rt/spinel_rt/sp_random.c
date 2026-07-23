@@ -3,7 +3,8 @@
 #include <time.h>
 #include <string.h>
 #include "sp_random.h"
-#include "sp_alloc.h"   /* sp_str_alloc / sp_str_set_len / sp_float_to_s / sp_raise_cls / sp_gc_alloc */
+#include "sp_alloc.h"   /* sp_str_alloc / sp_str_set_len / sp_float_to_s / sp_raise_cls / sp_gc_alloc; pulls sp_gc.h -> sp_RbVal before sp_ctx.h */
+#include "sp_ctx.h"
 #include "sp_format.h"  /* sp_Range_inspect */
 #include "sp_str.h"     /* sp_sprintf (defined in the generated TU) */
 
@@ -32,8 +33,16 @@ void sp_pcg_seed(uint64_t *state, uint64_t seed) {
 
 /* Per-worker (SP_TLS) in the threaded build: the generator has no
    internal lock, so a shared stream would race across workers. */
+#ifndef SP_MULTI_CTX
 static SP_TLS uint64_t sp_krand_state;
+#else
+/* per-ctx (sp_ctx.h) */
+#endif
+#ifndef SP_MULTI_CTX
 static SP_TLS int sp_krand_seeded;
+#else
+/* per-ctx (sp_ctx.h) */
+#endif
 
 void sp_krand_srand(uint64_t seed) {
   sp_pcg_seed(&sp_krand_state, seed);
@@ -71,7 +80,11 @@ mrb_float sp_krand_float(void) {
 
 /* ---- Random instance methods ---- */
 
+#ifndef SP_MULTI_CTX
 SP_TLS sp_Random sp_random_default;
+#else
+/* per-ctx (sp_ctx.h) */
+#endif
 uint64_t sp_random_next(sp_Random *r) {
   if (r == &sp_random_default) return sp_krand_next();
   uint64_t hi = sp_pcg32_adv(&r->state);
@@ -193,7 +206,11 @@ const char *sp_Random_inspect(sp_Random *r) {
    one). Every rand form -- bare/int/range, shuffle, sample, the Random
    default instance -- draws from that one stream, so a single srand makes
    them all reproducible. */
+#ifndef SP_MULTI_CTX
 static SP_TLS mrb_int sp_kernel_seed = 0;
+#else
+/* per-ctx (sp_ctx.h) */
+#endif
 mrb_int sp_kernel_srand(mrb_int seed) {
   mrb_int prev = sp_kernel_seed;
   sp_kernel_seed = seed;

@@ -19,13 +19,25 @@
    lib/sp_fiber.c reaches them. */
 void *sp_gc_alloc(size_t sz, void (*fin)(void *), void (*scn)(void *));
 void sp_re_push_match_roots(void);   /* lib/sp_re.c: STW match-register publishing */
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 SP_NORETURN void sp_raise_cls(const char *cls, const char *msg);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void sp_fiber_reraise(const char *cls, const char *msg, void *obj);
+#endif
 /* Per-context exception handler stack (defined in the generated TU). */
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void *sp_exc_ctx_new(void);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void  sp_exc_ctx_save(void *p);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void  sp_exc_ctx_load(void *p);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 void  sp_exc_ctx_free(void *p);
+#endif
 
 /* Safepoint (design 5.1). Set while a collector wants the world stopped; polled
    at loop back-edges (codegen) and at blocking points. Defined unconditionally

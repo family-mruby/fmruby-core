@@ -1444,15 +1444,29 @@ sp_StrArray *sp_dir_children(const char *path) { return sp_dir_entries_impl(path
 #include "sp_enum.h"
 typedef struct sp_Proc sp_Proc;
 extern char **environ;
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 extern sp_RbVal sp_box_proc(void *p);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: these are sp_ctx-field macros under SP_MULTI_CTX */
 extern const char *sp_trap_state[];
 extern struct sp_Proc *sp_trap_proc[];
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 extern SP_NORETURN void sp_raise_stop_iteration(sp_RbVal result);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: sp_ctx-field macros under SP_MULTI_CTX */
 extern SP_TLS sp_RbVal _sp_proc_poly_ret;
 extern SP_TLS sp_RbVal _sp_proc_poly_args[];
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 extern mrb_int sp_proc_call(sp_Proc *p, mrb_int argc, mrb_int *args);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 extern const char *sp_signal_signame(mrb_int no);
+#endif
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 extern SP_COLD int sp_signal_resolve(sp_RbVal sig);
+#endif
 
 sp_Enumerator *sp_Enumerator_dup(sp_Enumerator *e);
 void sp_Enumerator_scan(void *p);

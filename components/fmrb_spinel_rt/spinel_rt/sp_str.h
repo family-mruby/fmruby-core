@@ -13,7 +13,9 @@
  * at the final link (same as lib/sp_core.c). */
 #include "sp_array.h"   /* sp_StrArray, sp_IntArray + sp_alloc.h / sp_gc.h / sp_types.h */
 
+#ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
 const char *sp_sprintf(const char *fmt, ...);  /* defined in the generated TU */
+#endif
 
 /* ---- hot UTF-8 + length-cache inline core (relocated from sp_runtime.h;
    each generated TU still inlines these identically). Length-cache state
