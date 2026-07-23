@@ -14,18 +14,10 @@
 
 set(SPINEL_RT_GC_STACK_MAX 8192 CACHE STRING "SP_GC_STACK_MAX for the Spinel runtime + generated C")
 
-set(COMPILE_SRCS
-    "spinel_rt/sp_gc.c"
-    "spinel_rt/sp_alloc.c"
-    "spinel_rt/sp_core.c"
-    "spinel_rt/sp_string.c"
-    "spinel_rt/sp_str.c"
-    "spinel_rt/sp_array.c"
-    "spinel_rt/sp_inspect.c"
-    "spinel_rt/sp_format.c"
-    "spinel_rt/sp_cold.c"
-    "spinel_rt/sp_io.c"
-)
+# Compiled runtime = every .c in the snapshot (import_from_fork.rb decides the
+# set: the whole runtime minus sp_net.c / sp_crypto.c). Glob so CMake stays in
+# sync with the import without a hand-maintained list.
+file(GLOB COMPILE_SRCS ${CMAKE_CURRENT_LIST_DIR}/spinel_rt/*.c)
 
 idf_component_register(
     SRCS ${COMPILE_SRCS}

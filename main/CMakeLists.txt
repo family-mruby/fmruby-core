@@ -48,12 +48,33 @@ file(GLOB DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/defa
 prepare_ruby_bytecode_sources(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/mrb COMPONENT_SRCS)
 prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/mrb COMPONENT_SRCS)
 
+# Kernel engine selection (Phase 1 T1-6). Default mruby; `spinel` swaps the
+# kernel task for the Spinel-compiled hello_kernel bring-up program.
+set(FMRB_KERNEL_ENGINE "$ENV{FMRB_KERNEL_ENGINE}")
+if(NOT FMRB_KERNEL_ENGINE)
+    set(FMRB_KERNEL_ENGINE "mruby")
+endif()
+set(FMRB_SPINEL_GEN_DIR ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/gen)
+if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
+    include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_spinel.cmake)
+    prepare_ruby_spinel_source(hello_kernel ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
+    # The FFI shim (calls esp_timer / fmrb_msg) is only needed by the spinel path.
+    list(APPEND COMPONENT_SRCS "kernel/fmrb_spx_kernel.c")
+    message(STATUS "FMRB_KERNEL_ENGINE=spinel: kernel VM replaced by Spinel hello_kernel")
+endif()
+
 # Set up component dependencies based on target
 set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_transport fmrb_toml fmrb_mem
     fmrb_gfx fmrb_audio lua basic
     picoruby-esp32 mem_allocator log tar_lib
     # Remote debugger wire protocol (all targets since Phase 3a).
     msgpack-esp32)
+
+# Spinel engine: link the Spinel runtime (propagates SP_GC_STACK_MAX + include
+# dir INTERFACE).
+if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
+    list(APPEND COMPONENT_REQUIRES fmrb_spinel_rt)
+endif()
 
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
@@ -128,7 +149,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/debug" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/debug" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
     EMBED_FILES ${RD_EMBED_FILES}
 )
@@ -194,3 +215,18 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
 # Step 2: Generate Ruby bytecode compilation commands (must be after idf_component_register)
 generate_ruby_bytecode_commands(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/mrb)
 generate_ruby_bytecode_commands(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/mrb)
+
+# Spinel engine: define the switch macro (fmrb_kernel.c) and, when a host
+# SPINEL_BIN is available, wire the .rb -> .c regeneration. The docker linux
+# build relies on the host-pre-generated .c (rake spinel:gen).
+if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_KERNEL_ENGINE_SPINEL)
+    generate_ruby_spinel_command(
+        ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/hello_kernel.rb
+        hello_kernel_entry ${FMRB_SPINEL_GEN_DIR})
+    # The Spinel-generated C pulls in sp_runtime.h, which defines many static
+    # helpers a given program leaves unused; suppress warnings (it is generated,
+    # not hand-written) so the project's -Werror does not reject it.
+    set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/hello_kernel.c
+        PROPERTIES COMPILE_OPTIONS "-w")
+endif()

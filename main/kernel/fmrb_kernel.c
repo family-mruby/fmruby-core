@@ -506,6 +506,36 @@ static bool init_hal(void)
 /**
  * Start the kernel task
  */
+#ifdef FMRB_KERNEL_ENGINE_SPINEL
+/* Spinel engine bring-up path (Phase 1 T1-6): instead of the mruby kernel VM,
+   run the Spinel-compiled hello_kernel program as a plain FreeRTOS task. It
+   exercises the fmrb_spx FFI shim (log / board_millis / message poll). */
+extern int hello_kernel_entry(void);
+
+static void spinel_kernel_task(void *arg)
+{
+    (void)arg;
+    /* Register the kernel message queue so fmrb_spx_recv_message has a queue to
+       poll (normally done by fmrb_app_spawn for the mruby kernel). */
+    fmrb_msg_queue_config_t qcfg = {
+        .queue_length = 16,
+        .message_size = sizeof(fmrb_msg_t),
+    };
+    fmrb_msg_create_queue(PROC_ID_KERNEL, &qcfg);
+
+    /* Boot marker awaited by tools/dev_run_check.sh. */
+    FMRB_LOGI(TAG, "main_loop started");
+    FMRB_LOGI(TAG, "Spinel kernel engine: running hello_kernel_entry()");
+
+    hello_kernel_entry();
+
+    FMRB_LOGI(TAG, "hello_kernel_entry returned; idling");
+    for (;;) {
+        fmrb_task_delay_ms(1000);
+    }
+}
+#endif /* FMRB_KERNEL_ENGINE_SPINEL */
+
 fmrb_err_t fmrb_kernel_start(void)
 {
     FMRB_LOGI(TAG, "Starting Family mruby OS Kernel...");
@@ -548,6 +578,18 @@ fmrb_err_t fmrb_kernel_start(void)
         cnt++;
     }
 
+#ifdef FMRB_KERNEL_ENGINE_SPINEL
+    // Spinel engine: run the Spinel-compiled hello_kernel as a raw task instead
+    // of the mruby kernel VM (Phase 1 bring-up path).
+    fmrb_base_type_t tret = fmrb_task_create(
+        spinel_kernel_task, "spinel_kernel", FMRB_KERNEL_TASK_STACK_SIZE,
+        NULL, FMRB_KERNEL_TASK_PRIORITY, NULL);
+    if (tret != FMRB_PASS) {
+        FMRB_LOGE(TAG, "Failed to create spinel kernel task: %ld", (long)tret);
+        return FMRB_ERR_FAILED;
+    }
+    FMRB_LOGI(TAG, "Spinel kernel task created");
+#else
     // Create kernel task using spawn API
     fmrb_spawn_attr_t attr = {
         .app_id = PROC_ID_KERNEL,
@@ -571,6 +613,7 @@ fmrb_err_t fmrb_kernel_start(void)
         return FMRB_ERR_FAILED;
     }
     FMRB_LOGI(TAG, "Kernel task spawned successfully (id=%ld)", kernel_id);
+#endif
 
     context_initialized = true;
     return FMRB_OK;

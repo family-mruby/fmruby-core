@@ -33,6 +33,14 @@ UID  = `id -u`.strip
 GID  = `id -g`.strip
 PWD_ = Dir.pwd
 
+# Spinel AOT (Phase 1). The fork's compiler binary lives outside the project
+# (not mounted into the IDF docker build), so PreBuild Ruby is compiled to C on
+# the HOST before the build (see `rake spinel:gen`).
+SPINEL_BIN = File.expand_path("../tmp/spinel/bin/spinel", __dir__)
+SPINEL_SRC_DIR = "main/prebuild_scripts/spinel"
+SPINEL_GEN_DIR = "#{SPINEL_SRC_DIR}/gen"
+FMRB_KERNEL_ENGINE = ENV["FMRB_KERNEL_ENGINE"] || "mruby"
+
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
 IMAGE           = ENV.fetch("DOCKER_IMAGE", "ghcr.io/family-mruby/fmruby-esp32-build:latest")
 DEVICE_ARGS     = ENV["DEVICE_ARGS"].to_s
@@ -217,16 +225,35 @@ namespace :set_target do
   end
 end
 
+namespace :spinel do
+  desc "Generate Spinel C from PreBuild Ruby on the host (before docker build)"
+  task :gen do
+    unless File.executable?(SPINEL_BIN)
+      abort "spinel not found at #{SPINEL_BIN}. Build the fork: (cd ../tmp/spinel && make deps && make)"
+    end
+    mkdir_p SPINEL_GEN_DIR
+    rb  = "#{SPINEL_SRC_DIR}/hello_kernel.rb"
+    out = "#{SPINEL_GEN_DIR}/hello_kernel.c"
+    sh "#{SPINEL_BIN} --no-main --entry hello_kernel_entry -I #{SPINEL_SRC_DIR} -c #{rb} -o #{out}"
+    puts "Spinel generated #{out}"
+  end
+end
+
 namespace :build do
-  desc "Linux target build (dev/test)"
+  desc "Linux target build (dev/test). FMRB_KERNEL_ENGINE=spinel swaps the kernel."
   task :linux => :setup do
     # Copy Linux-specific system config
     cp 'config/system_conf_linux.toml', 'flash/etc/system_conf.toml', verbose: true
 
+    # Spinel engine: pre-generate the kernel C on the host (the compiler is not
+    # available inside the docker build) and forward the engine into the build.
+    Rake::Task['spinel:gen'].invoke if FMRB_KERNEL_ENGINE == 'spinel'
+
     unless Dir.exist?('build')
       Rake::Task['set_target:linux'].invoke
     end
-    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" -DCMAKE_BUILD_TYPE=Debug build'"
+    engine_export = FMRB_KERNEL_ENGINE == 'spinel' ? "export FMRB_KERNEL_ENGINE=spinel && " : ""
+    sh "#{DOCKER_CMD} bash -c '#{engine_export}export IDF_TARGET=linux && idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" -DCMAKE_BUILD_TYPE=Debug build'"
     puts 'Linux build complete. Run with: ./build/fmruby-core.elf'
   end
 

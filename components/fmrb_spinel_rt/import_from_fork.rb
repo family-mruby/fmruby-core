@@ -27,24 +27,36 @@ LIB = File.join(fork_dir, "lib")
 
 abort "fork lib not found: #{LIB}" unless Dir.exist?(LIB)
 
-# Every header sp_runtime.h (transitively) needs. Copy the whole header set --
-# it is small and keeps the include graph intact.
-HEADERS = Dir.glob(File.join(LIB, "*.h")).map { |p| File.basename(p) }.sort
+# Every header sp_runtime.h (transitively) needs, plus the regexp engine
+# headers. Copy the whole header set (flattened) -- it is small and keeps the
+# include graph intact.
+HEADERS = (Dir.glob(File.join(LIB, "*.h")) +
+           Dir.glob(File.join(LIB, "regexp", "*.h"))).map { |p| File.basename(p) }.sort
 
-# Minimal compiled runtime. Kept in sync with CMakeLists.txt COMPILE_SRCS.
-COMPILE_SRCS = %w[
-  sp_gc.c sp_alloc.c sp_core.c sp_string.c sp_str.c
-  sp_array.c sp_inspect.c sp_format.c sp_cold.c sp_io.c
-]
+# Compiled runtime. sp_runtime.h's static helpers cross-reference most modules
+# (e.g. sp_poly_inspect -> bigint / regexp; sp_re_mark_globals -> fiber), so a
+# truly minimal set does not link -- compile the whole runtime except the
+# modules with external OS dependencies the kernel does not use:
+#   - sp_net.c    (BSD sockets)
+#   - sp_crypto.c (libcrypt; String#crypt)
+# Their unused callers are dropped by -ffunction-sections + --gc-sections.
+EXCLUDE_C = %w[sp_net.c sp_crypto.c].freeze
+COMPILE_SRCS = (Dir.glob(File.join(LIB, "sp_*.c")).map { |p| File.basename(p) } -
+                EXCLUDE_C).sort +
+               Dir.glob(File.join(LIB, "regexp", "*.c")).map { |p| File.basename(p) }.sort
 
 FileUtils.mkdir_p(DEST)
 # clear old snapshot (only the files we manage: *.c/*.h)
 Dir.glob(File.join(DEST, "*.{c,h}")).each { |p| File.delete(p) }
 
 copied = []
+# headers may live in lib/ or lib/regexp/; find each by basename
+find_src = lambda do |name|
+  [File.join(LIB, name), File.join(LIB, "regexp", name)].find { |p| File.exist?(p) }
+end
 (HEADERS + COMPILE_SRCS).each do |name|
-  src = File.join(LIB, name)
-  unless File.exist?(src)
+  src = find_src.call(name)
+  unless src
     warn "SKIP missing #{name}"
     next
   end

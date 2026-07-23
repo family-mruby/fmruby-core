@@ -115,13 +115,71 @@ Spinel の hash 型は固定セット (src/types.h): `STR_INT/STR_STR/INT_INT/IN
   エラーなし。現状は未参照のため最終リンクで gc-sections により実体は落ちる
   (T1-6 の hello_kernel が entry を参照した時点で組み込まれる)。→ **T1-4 完了**。
 
-## 残タスク (Phase 2 への布石)
+## T1-5: FFI シム層 fmrb_spx (完了)
 
-- T1-5: FFI シム層 `main/kernel/fmrb_spx_kernel.c` + `fmrb_spx.h`。kernel.c の
-  mrb バインディングが呼ぶ下位 C 関数を調査し、mrb 非依存の C ABI (バイト列渡し、
-  poly を境界に持ち込まない) を定義。
-- T1-6: Ruby FFI 宣言 (`fmrb_ffi.rb`) + `hello_kernel.rb` + `compile_ruby_to_spinel.cmake`
-  + `FMRB_KERNEL_ENGINE` 切替 + FreeRTOS タスク疎通。docker + dev_run_check.sh で確認。
+- `main/kernel/include/fmrb_spx.h` + `main/kernel/fmrb_spx_kernel.c` を新設。
+  mrb 非依存の C ABI で、mruby バインディング (kernel.c) と同じ下位関数
+  (`fmrb_msg_receive/send`, `fmrb_app_get_window_list`, `fmrb_kernel_set_hid_target`
+  等) を呼ぶ。設計原則を実装:
+  - 戻り値は「負値=エラー、0 以上=結果/長さ」。
+  - 構造化データは**固定レイアウトのバイト列**で渡す (window record 48B を
+    fmrb_spx.h に文書化。Ruby は getbyte/ffi_read_* で読む)。
+  - **poly を境界に持ち込まない** (payload はバイト列のまま、symbol-hash 化しない)。
+  - `fmrb_spx_board_millis` は `clock_gettime(CLOCK_MONOTONIC)` (esp_timer 非依存)。
+  - `fmrb_spx_recv_message` は `fmrb_msg_receive` が **ms を取る** (内部で
+    MS_TO_TICKS) 点に合わせ ms を直接渡す (mruby _spin の ticks 渡しは是正)。
+- kernel.c (mruby バインディング) の実装一本化リファクタは、動作中の mruby 経路の
+  回帰リスクを避けるため **Phase 2 に延期** (fmrb_spx は独立実装として先行導入)。
+
+## T1-6: hello_kernel 疎通 + エンジン切替 (完了・両エンジン検証済み)
+
+- `main/prebuild_scripts/spinel/fmrb_ffi.rb`: FmrbSpx モジュールに ffi_func 宣言 +
+  ffi_buffer (msg_buf/type_out/src_out/win_buf) + ffi_read_i32。
+- `main/prebuild_scripts/spinel/hello_kernel.rb`: Log 出力 + board_millis×3 +
+  メッセージ poll×10 の最小プログラム。`require_relative "fmrb_ffi"`。
+- ビルド統合:
+  - `compile_ruby_to_spinel.cmake`: 生成 C を COMPONENT_SRCS へ。SPINEL_BIN が
+    あれば custom_command で再生成、無ければホスト事前生成物を要求。
+  - **ホスト事前生成方式**を採用: fork の spinel バイナリは docker ビルドに
+    マウントされないため、`rake spinel:gen` がホストで `.rb → --no-main
+    --entry hello_kernel_entry → .c` を生成 (gen/ は gitignore)。docker は .c を
+    コンパイルするのみ。
+  - `FMRB_KERNEL_ENGINE` (env, デフォルト mruby): spinel 時に生成 C + fmrb_spx_kernel.c
+    を追加、`FMRB_KERNEL_ENGINE_SPINEL` を定義、fmrb_spinel_rt を REQUIRE。
+    Rakefile が env を docker に転送。
+  - `fmrb_kernel.c`: `#ifdef FMRB_KERNEL_ENGINE_SPINEL` で、mruby カーネル VM の
+    spawn の代わりに `hello_kernel_entry()` を呼ぶ FreeRTOS タスクを起動
+    (kernel キューを登録してから poll)。
+- **検証結果** (rake build:linux + dev_run_check.sh):
+  - `FMRB_KERNEL_ENGINE=spinel`: core ログに
+    `spx: spinel hello` / `board_millis[0..2]=...` /
+    `spinel hello done: polls=10 messages=0` を確認。**FFI 経由の Log/millis/poll
+    が実 firmware のタスクとして動作** (基準 3 充足)。
+  - `FMRB_KERNEL_ENGINE=mruby` (デフォルト): desktop が従来どおり描画
+    (dev_run_check.sh スクリーンショットで確認、回帰なし。基準 2 充足)。
+
+## T1-4 追記: ランタイム compile set の拡張
+
+当初「最小 .c セット」を意図したが、`sp_runtime.h` の static ヘルパが多数の
+モジュールを相互参照する (`sp_poly_inspect` → bigint/regexp、`sp_re_mark_globals`
+→ fiber) ため、hello_kernel の文字列補間経由でそれらが到達コードから参照され
+リンク不能だった。対応: **sp_net.c / sp_crypto.c (外部 OS 依存 = sockets/libcrypt) を
+除く全モジュール + regexp/*.c を compile** し、`--gc-sections` で未使用関数を除去。
+`import_from_fork.rb` は glob で自動選定 (net/crypto のみ除外)、CMakeLists も
+`file(GLOB ...)` で同期。スナップショット 47 files (headers 25 + .c 22)。
+
+## 受け入れ基準の充足
+
+1. fork: `--no-main --entry` 実装 + スモークテスト、make test 1,991/1 維持、
+   make bench 58/0、T1-1b の 2 修正 (U-1/U-3)。**充足**。
+2. `FMRB_KERNEL_ENGINE=mruby` で従来と同一動作 (desktop 描画確認)。**充足**。
+3. `FMRB_KERNEL_ENGINE=spinel` で hello_kernel がタスクとして動き、FFI 経由の
+   Log/millis/poll を確認。**充足**。
+4. fmrb_spx.h が Doxygen コメントで文書化。**充足**。
+5. mruby バインディングのリファクタは Phase 2 に延期 (fmrb_spx は独立導入なので
+   既存 mruby 機能に回帰なし。desktop 描画で確認)。**回帰なしを確認**。
+
+→ **Phase 1 完了**。Phase 2 (カーネル VM の Spinel 化・制御反転 poll 化) へ。
 
 ## コミット規約メモ
 
