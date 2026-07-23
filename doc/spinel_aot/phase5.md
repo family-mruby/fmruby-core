@@ -1,9 +1,17 @@
 # Phase 5 指示書: ESP32-S3 ポート
 
-前提: Phase 2 完了 (カーネルのみ先行移植する場合) または Phase 4 完了
-(全体移植)。推奨は「Phase 2 完了時点でカーネルのみ実機に載せて
-リスクを先に消化し、Phase 4 完了後に desktop / shell を追加」。
-どちらで着手するかはユーザに確認する。
+前提: **Phase 3.5 完了は必須** (カーネルのみ先行移植する場合でも)。
+ESP32 では素の malloc が禁止で全確保を estalloc プールに向ける必要が
+あり、そのフック機構 (SP_MULTI_CTX + sp_mem_override.h) は Phase 3.5 の
+成果だからである。つまり **ESP32 ビルドは常に SP_MULTI_CTX 構成**
+(インスタンスが 1 つでも)。default (非 MC) ビルドを ESP32 に載せる
+構成は存在しない。
+
+その上で「Phase 4 完了前にカーネルのみ先行して実機リスクを消化する」
+か「Phase 4 完了後に全体を載せる」かをユーザに確認する。先行する場合、
+Phase 4 の事前作業 1-5 (pin 更新 / MC 配線 / instance create /
+estalloc 配線 / Linux 回帰) はこちらで先に実施することになる。
+desktop も載せる場合は T4-0 (マルチプログラムリンク対応) 完了が必須。
 
 対象ハード: ESP32-S3 (Xtensa LX7, 32bit, 内部 SRAM ~512KB,
 PSRAM 搭載, ESP-IDF + FreeRTOS)。グラフィクス/音声は子マイコンに
@@ -13,16 +21,17 @@ SPI で委譲されるため、Spinel 側の移植対象は計算・制御コー
 
 fork の以下の箇所が ESP-IDF/newlib で問題になる (行番号は目安):
 
-1. `lib/sp_gc.c` (必須ファイル): `#include <malloc.h>` と
-   `malloc_trim(0)` (full GC 時)。newlib に malloc_trim はない。
-   → `#if defined(ESP_PLATFORM)` 等で no-op ガード (Apple/FreeBSD の
-   既存ガードと同列に追加)。upstream PR 候補。
+1. `lib/sp_gc.c`: `#include <malloc.h>` と `malloc_trim(0)`。
+   **SP_MULTI_CTX では Phase 3.5 で既に no-op 化済み** (ESP32 は常に
+   MC なので実害なし)。`#include <malloc.h>` 自体が newlib で通るかは
+   確認し、必要なら include ガードを fork へ (upstream PR 候補)。
 2. `lib/sp_gc.h`: `SP_GC_STACK_MAX` デフォルト 65536 エントリ
-   (32bit で 256KB)。Phase 3 の instance config で縮小可能になって
-   いるはずなので、静的 BSS 側の default 配列が SP_MULTI_CTX ビルドで
-   確保されないことを確認 (されるなら fork 側で直す)。
+   (32bit で 256KB)。Phase 3 でルートスタックは per-instance の
+   heap 確保 (`root_stack_entries` config) になった。**静的 BSS 側の
+   default 配列が SP_MULTI_CTX ビルドで確保されない (BSS に残らない)
+   ことを map ファイルで確認** (残るなら fork 側で直す)。
 3. `lib/sp_alloc.c`: GC トリガ閾値デフォルト 256KB x2 (obj/str)。
-   instance config で下げる。
+   instance config で下げる (「しきい値 < プールサイズ」契約)。
 4. `sp_runtime.h:53` 付近: `#include <sys/mman.h>` が無条件。
    ESP-IDF に sys/mman.h はない → fiber を使わない構成でも
    ヘッダが通らないため、include を fiber 使用時のみに
@@ -30,9 +39,11 @@ fork の以下の箇所が ESP-IDF/newlib で問題になる (行番号は目安
 5. fiber / thread / net / system / signal 系メンバ: リンク対象外に
    する (使わなければ参照されない設計だが、ESP-IDF コンポーネントの
    SRCS に**そもそも入れない**)。
-6. `__attribute__((constructor))` (sp_alloc.c / sp_gc.c のフック登録):
-   ESP-IDF は C constructor をサポートするので動くはずだが、
-   実行タイミング (app_main 前) を確認する。
+6. `__attribute__((constructor))`: **SP_MULTI_CTX では Phase 3 で解決
+   済み** (SP_TU_CTOR は MC で空、フック登録は entry 冒頭の
+   `sp_tu_ctx_init()` と `sp_instance_create` に移動)。ESP32 は常に
+   MC なので constructor タイミング問題は存在しない。lib 側に MC でも
+   残る constructor が無いか grep で確認だけする。
 7. Ruby グローバル変数・シンボルテーブル等の生成 TU 側 static は
    そのまま .bss/.data に載る。サイズを確認し、大きければ配置を検討。
 
@@ -51,14 +62,20 @@ fork の以下の箇所が ESP-IDF/newlib で問題になる (行番号は目安
 
 ### T5-2: ESP-IDF コンポーネント化 (1-2 日)
 
-1. `spinel:import` を再実行して fmruby-core のスナップショット更新。
+1. 3 点セット (fork push 確認 → `SPINEL_PIN` 更新 → `rake spinel:setup`
+   → `import_from_fork.rb`) でスナップショット更新。
 2. `components/fmrb_spinel_rt/CMakeLists.txt` を ESP32 ビルド対応:
    - SRCS は必要メンバのみ (fiber/sched/net/system/re/bigint/crypto/
      pack を除外。time/random は生成コードが要求するなら含める)。
-   - `-DSP_MULTI_CTX`、`-ffunction-sections -fdata-sections`
+   - `-DSP_MULTI_CTX` + **`-include sp_mem_override.h`** (Phase 4
+     事前作業 2 と同じ両側一致必須の組。生成 C 側と単一変数から配る)、
+     `-ffunction-sections -fdata-sections`
      (ESP-IDF はデフォルトで有効のはず。確認して重複指定は避ける)。
    - ESP-IDF のリンクは --gc-sections が既定。生成 C とランタイムの
      未使用関数が最終 elf から落ちていることを `idf.py size` 系で確認。
+   - nm チェック (Phase 4 で移植済みのはず) を ESP32 ビルドの
+     オブジェクトにも適用: Spinel 由来オブジェクトが newlib の
+     malloc 系を参照していないこと。
 3. `sp_ctx_current` の ESP-IDF 実装を追加
    (`components/fmrb_spinel_rt/port/esp32/sp_ctx_port.c`):
    - FreeRTOS タスクローカルストレージポインタ
@@ -72,14 +89,20 @@ fork の以下の箇所が ESP-IDF/newlib で問題になる (行番号は目安
    - Linux (WSL2 コンテナ) ビルドはこれまでどおり __thread 実装。
      ESP-IDF の Linux ターゲットでビルドしている場合はどちらの
      実装が適切か確認して選ぶ。
-4. アロケータ接続: instance config の alloc/dealloc に
-   `fmrb_mem.h` の関数を渡す。方針:
-   - Spinel タスクは mruby 実行タスクの後継なので `fmrb_malloc` 系。
-   - ヒープ本体 (GC 対象オブジェクト) は PSRAM 許容、
-     root スタック・mark stack は内部 SRAM 優先、のような使い分けが
-     必要かは、まず全部 fmrb_malloc で動かして計測してから決める。
-   - fmrb_mem 側に必要なら PSRAM 明示確保のバリアントを追加
-     (fmrb_mem.h の既存設計に従う)。
+4. アロケータ接続 (**ユーザ決定 2026-07-23: estalloc 標準、Phase 4
+   事前作業 4 で配線済みの方式をそのまま ESP32 に適用**):
+   - spawn 時にタスク所定 mempool (`fmrb_get_mempool_ptr(mempool_id)`)
+     へ `est_init` → `ESTALLOC*` を `ctx->est` に格納し、instance
+     config の mem_ud + フック (est_calloc/est_realloc/est_free) へ。
+     `fmrb_app_ps` は ctx->est 経由で統計 (Monitor 表示も同一機構)。
+   - ESP32 固有の確認点: mempool 領域の配置 (PSRAM/内部 SRAM) は
+     既存の mempool 設計に従う。ヒープ本体 (GC オブジェクト) は
+     PSRAM 許容、root スタック・mark stack (sp_instance_create の
+     arena) を内部 SRAM に置く使い分けが要るかは、まず全部タスク
+     プールで動かして計測してから決める。分ける場合は instance
+     config の arena 用フックを分離する fork 改修を起案。
+   - estalloc は 24bit アドレッシング (プールあたり最大 16MB) で
+     ESP32 の PSRAM プール規模に対して十分。
 
 ### T5-3: カーネルの実機投入 (1-2 週、実機検証込み)
 
@@ -103,7 +126,12 @@ fork の以下の箇所が ESP-IDF/newlib で問題になる (行番号は目安
    - アプリ起動/終了
    - シリアルログにエラー・スタック警告がないこと
 4. 計測 (カーネル Ruby 内の共通計測コード + C 側):
-   - イベント処理 max/avg latency (mruby 版実機と比較)
+   - イベント処理 max/avg latency (mruby 版実機と比較)。計測コードは
+     Phase 2 で input_router.rb に実装済み (hid_lat ログ、1000 イベント
+     ごとの sum/max/閾値カウント)。実機でもそのまま出る。
+     Linux 実測 (mruby 比 80-150 倍、25ms 警告ゼロ) が比較基準。
+     **実機での本命確認は「hid_event slow (>25ms) 警告が Spinel 版で
+     ゼロになること」** (Linux では両版ゼロで差が出なかった項目)
    - GC 停止時間: sp_gc_collect の前後を esp_timer で計測するログを
      fmrb_spinel_rt の port 層に追加 (fork 側にフックがなければ
      fork に GC 計測フック (関数ポインタ) を追加。upstream PR 候補)

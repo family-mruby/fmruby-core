@@ -1,10 +1,16 @@
 # Phase 4 指示書: system_desktop の Spinel 化 (+ オプション: shell) (Linux)
 
-前提: Phase 2 (カーネル Spinel 化、性能実証済み) と Phase 3
-(マルチインスタンス化) の完了。Phase 2 のレポートにある性能データを読み、
+前提: Phase 2 (カーネル Spinel 化、性能実証済み) と Phase 3 + 3.5
+(マルチインスタンス化 + アロケーション完全フック化、
+reports/phase3_report.md) の完了。fork は fmrb-dev `7063b350` 以降。
+Phase 2 のレポートにある性能データを読み、
 desktop へ投資する価値の再確認をしてから着手する
 (描画転送コストが支配的で Ruby 高速化の効果が薄いと判明している場合は、
 ユーザに方針確認を仰ぐこと)。
+
+**着工順の注意**: T4-0 (fork 側のマルチプログラムリンク対応) が
+終わるまで T4-3 (desktop の生成 C を firmware にリンクする工程) は
+着手不能。T4-0 と T4-1/T4-2 (fmruby-core 側のシム/ベース層) は並行可。
 
 ## 目的
 
@@ -19,15 +25,26 @@ desktop へ投資する価値の再確認をしてから着手する
 
 ## 事前作業
 
-1. fork の Phase 3 成果を fmruby-core へ取り込む:
-   `spinel:import` (Phase 1 の T1-4) を再実行し、sp_ctx.h 等を含む
-   スナップショットを更新。`components/fmrb_spinel_rt` を
-   `-DSP_MULTI_CTX` でビルドするよう変更。
-2. Phase 2 のカーネルを SP_MULTI_CTX 構成で再ビルドし、
+1. fork の Phase 3/3.5 成果を fmruby-core へ取り込む (3 点セット):
+   - fork fmrb-dev が push 済みであることを確認し、
+     `components/fmrb_spinel_rt/SPINEL_PIN` の commit を更新
+     (T4-0 完了後はその commit)
+   - `rake spinel:setup` で vendor/spinel を pin に追従
+   - `import_from_fork.rb` を再実行 (sp_ctx.h/.c、sp_mem_override.h が
+     snapshot に入る)。IMPORT_INFO と pin の commit 一致を確認
+2. MC ビルド配線: `components/fmrb_spinel_rt` と生成 C
+   (compile_ruby_to_spinel.cmake) の**両方**に `-DSP_MULTI_CTX` と
+   `-include sp_mem_override.h` を付ける。**片側だけだと silent ABI
+   break / メモリ隔離の静かな破れになる** (SP_GC_STACK_MAX と同種の
+   両側一致必須項目。CMake 内で 1 変数から両方へ流す)。fork の
+   `check-mc-syms` 相当の nm チェックを firmware ビルドにも移植し、
+   Spinel 由来オブジェクト (spinel_rt + 生成 C) に libc malloc 系の
+   未定義参照が無いことを検証する。
+3. Phase 2 のカーネルを SP_MULTI_CTX 構成で再ビルドし、
    タスク起動側 (`FMRB_LOAD_MODE_NATIVE` 経路) に
    `sp_instance_create` + `sp_ctx_set_current` を実装
    (Phase 3 で決めた契約どおり。config の閾値はまず default)。
-3. **Spinel タスクのメモリを estalloc に配線する (ユーザ決定 2026-07-23)**:
+4. **Spinel タスクのメモリを estalloc に配線する (ユーザ決定 2026-07-23)**:
    - vm_type は FMRB_VM_TYPE_NATIVE のまま新設しない。spawn 時にタスク所定
      の mempool (`fmrb_get_mempool_ptr(ctx->mempool_id)`) へ `est_init` し、
      得た `ESTALLOC*` を **`ctx->est` に格納** (mruby タスクと同じ持ち方)
@@ -42,12 +59,50 @@ desktop へ投資する価値の再確認をしてから着手する
    - estalloc は今後の全エンジンの標準アロケータとする (優秀なため)。
    - タスク終了時は sp_instance_destroy 後に `est_cleanup` し、
      ctx->est を NULL に戻す (mruby の cleanup と同じ位置)。
-4. 回帰: Phase 2 の検証シナリオ (dev_run_check + 入力注入) を再実行し、
+5. 回帰: Phase 2 の検証シナリオ (dev_run_check + 入力注入) を再実行し、
    カーネル単独が multi-ctx 構成でも同一挙動であることを確認。
    このタイミングでヒープ使用量の mruby / Spinel 比較 (Phase 2 で延期した
    項目) を Monitor / ps の統計で取得し、レポートに載せる。
 
 ## タスク
+
+### T4-0: fork — マルチプログラム同一バイナリリンク対応 (2-3 日)
+
+**背景 (実測済みの blocker)**: 生成 TU は entry 以外に**約 27 個の
+グローバルシンボル**を定義し (`sp_exc_*` 例外機構 13 個、`sp_raise_cls`、
+`sp_sprintf`、`sp_proc_call`、`sp_box_proc`、`sp_signal_*`、
+`sp_fiber_reraise`、`sp_bigint_raise_zerodiv`、BSS の `sp_trap_*` /
+`_sp_proc_poly_args/ret`)、**ランタイム .a がこれらを参照する**
+(sp_raise_cls は 13 オブジェクト、sp_sprintf は 9 から)。このため
+kernel + desktop の生成 C を 1 つの firmware ELF にリンクすると同名
+多重定義で失敗する。phase3_report の「プログラムごとに別バイナリ」は
+fork のテストハーネス (別プロセス実行) では制約にならなかったが、
+fmruby では kernel/desktop が同一 ELF のため解決必須。
+
+**方式 (ユーザ決定 2026-07-23: fork 側修正が本筋)**: Phase 3 で
+introspection vtable 12 本に使ったのと同じ per-ctx 間接化を適用する。
+
+1. 棚卸し: 生成 TU が emit する非 static シンボルを機械列挙し
+   (`nm --defined-only` で T/B/D/R)、「runtime から参照される /
+   TU 内部のみ」に分類する (上記 27 個が起点。コンパイラの版で
+   増減しうるので機械的に確定する)。
+2. runtime → TU 方向の参照を sp_ctx の関数ポインタ経由に変更し、
+   `sp_tu_ctx_init()` で登録する (vtable と同じ流儀)。TU 側の定義は
+   library/MC モードでは static 化する (codegen 修正)。default
+   ビルドは従来どおり直接シンボル解決で byte 同一を維持する。
+3. fork にリンクテストを追加: 2 つの生成プログラムを 1 バイナリに
+   リンクし、各インスタンスで両 entry を実行して正答することを
+   test/multi_ctx に追加 (`make test-multi-ctx` に配線)。
+4. nm ゲート拡張: mc の生成 TU に「entry 以外のグローバル定義が
+   無い」チェックを追加 (シンボル漏れの再発防止)。
+5. **フォールバック** (本筋が難航した場合のみ): objcopy
+   `--prefix-symbols` でランタイムごとプログラム単位に複製する方式。
+   fork 無改修で済むが、ESP32 ではランタイムコードがプログラム数分
+   フラッシュに乗るため恒久解にはしない。採った場合はレポートに
+   サイズ実測を残し、本筋への移行条件を書く。
+
+完了後: fmrb-dev へ push し、事前作業 1 の 3 点セット (pin 更新 →
+setup → import) をやり直してから T4-3 へ進む。
 
 ### T4-1: FmrbApp / FmrbGfx の FFI シム (2-3 日)
 
@@ -173,11 +228,24 @@ T4-4 を実施した場合は shell も Spinel で 3 インスタンス。
    - editor / monitor 等 mruby のままの default_app が従来どおり
      起動できること (mruby アプリと Spinel アプリの共存確認)
 2. 性能計測:
+   - kernel 側は Phase 2 で入れた **hid_lat 計測 (input_router.rb、
+     1000 イベントごとの sum/max/閾値カウント)** をそのまま使い、
+     MC 化 + estalloc 化による劣化がないことを確認する
+     (Phase 2 実測: mruby 比 80-150 倍。これが基準線)。
    - desktop: `draw_foreground` / `on_update` の所要時間ログ
-     (Machine.board_millis ベース、mruby 版と共通コード) を
-     mruby 版と比較。目標は Ruby 実行部分の大幅短縮 (描画転送分は
-     残ることを織り込んで、内訳を分離計測する:
+     (Machine.board_millis ベース、mruby 版と共通コード、hid_lat と
+     同形式) を mruby 版と比較。目標は Ruby 実行部分の大幅短縮
+     (描画転送分は残ることを織り込んで、内訳を分離計測する:
      gfx 呼び出し前後の時間 vs それ以外)。
+   - **mc アロケーション overhead の実測**: Phase 3.5 のマイクロベンチ
+     最悪 6-7% が実ワークロードでどうかをここで確定する。恒常的に
+     5% を超える場合は raw (非 zero-fill) フック追加を fork へ起案
+     (判断材料の数値をレポートに)。
+   - **typed symbol-hash の着手判断**: desktop の Ruby 実行部で
+     poly アクセス (`win[:x]` 等の symbol-hash) が支配的と計測で出た
+     場合のみ、fork_pr_candidates.md C 節の typed symbol-hash
+     (設計評価済み、3-5 日規模) を起案する。支配的でなければ見送りを
+     レポートに明記する。
    - resize プレビューのレート制限 (input_router / desktop 側の
      100ms 制限) を緩められるかを実験し、体感改善の根拠を取る。
    - shell を Spinel 化した場合のみ: 大量出力コマンド (長い ls 相当) の
@@ -220,6 +288,11 @@ T4-4 を実施した場合は shell も Spinel で 3 インスタンス。
   Spinel 側インスタンスのヒープと混ぜない。
 - 3 プログラム分の生成 C でビルド時間・バイナリサイズが増える。
   サイズは Linux ではただ記録し、対策は Phase 5 で考える。
+- **両側一致必須フラグ** (ランタイム snapshot のビルドと生成 C の
+  コンパイルで値が食い違うと silent ABI break):
+  `SP_GC_STACK_MAX` / `SP_MULTI_CTX` / `-include sp_mem_override.h`。
+  CMake で単一の変数から両方へ配ること。加えてコンパイラ (SPINEL_PIN) と
+  snapshot (IMPORT_INFO) の commit 一致 (spinel:gen が警告する)。
 
 ## 完了レポート
 
