@@ -139,6 +139,12 @@ void    sp_instance_destroy(sp_ctx *ctx);  /* frees all heaps/roots */
 
 ### アロケーションの完全フック化 (ESP32 制約、必須)
 
+> **実施方式の更新 (2026-07-23)**: 本節が想定していた「lib/ 全域の
+> 呼び出し箇所を sp_mem_* に機械置換」は、リスク低減のため
+> **マクロ差し替え方式 (`-include sp_mem_override.h`) に変更**した。
+> 実施手順は `phase3_5.md` を正とする (要件自体 — 全アロケーションの
+> フック経由化、nm 検証、しきい値契約 — は本節のまま有効)。
+
 fmruby の ESP32 ターゲットでは **素の malloc 系は禁止で、タスクごとの
 fmrb_mem プール利用が大前提** (fmruby-core CLAUDE.md の規約のランタイム
 への適用)。したがって「GC ヒープ・文字列ヒープだけフックし、一時

@@ -1,0 +1,10 @@
+# Pinned Spinel fork revision (managed_components-style).
+# - `rake spinel:setup` clones/builds this exact commit into vendor/spinel
+#   (gitignored), so a fresh fmruby-core clone can build the spinel engine.
+# - Must match spinel_rt/IMPORT_INFO fork_commit (the runtime snapshot);
+#   `rake spinel:gen` warns on divergence.
+# - To update: push the fork, bump commit here, re-run
+#   components/fmrb_spinel_rt/import_from_fork.rb, commit both together.
+repo: https://github.com/kishima/spinel.git
+branch: fmrb-dev
+commit: 5129af95009e7c73a1dd30b22127c7b1b23013d9

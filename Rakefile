@@ -36,9 +36,37 @@ PWD_ = Dir.pwd
 # Spinel AOT (Phase 1). The fork's compiler binary lives outside the project
 # (not mounted into the IDF docker build), so PreBuild Ruby is compiled to C on
 # the HOST before the build (see `rake spinel:gen`).
-SPINEL_BIN = File.expand_path("../tmp/spinel/bin/spinel", __dir__)
+#
+# Compiler checkout resolution (managed_components-style pinning):
+#   1. SPINEL_DIR env override (developer working checkout)
+#   2. vendor/spinel -- version-pinned clone managed by `rake spinel:setup`
+#      (pin lives in components/fmrb_spinel_rt/SPINEL_PIN; a plain
+#      `git clone` of fmruby-core + `rake spinel:setup` is enough to build
+#      the spinel engine, no external checkout required)
+#   3. ../tmp/spinel -- legacy dev location (family-mruby workspace)
+SPINEL_PIN_FILE = File.expand_path("components/fmrb_spinel_rt/SPINEL_PIN", __dir__)
+SPINEL_VENDOR_DIR = File.expand_path("vendor/spinel", __dir__)
+SPINEL_DIR =
+  if ENV["SPINEL_DIR"] && !ENV["SPINEL_DIR"].empty?
+    File.expand_path(ENV["SPINEL_DIR"])
+  elsif Dir.exist?(SPINEL_VENDOR_DIR)
+    SPINEL_VENDOR_DIR
+  else
+    File.expand_path("../tmp/spinel", __dir__)
+  end
 SPINEL_SRC_DIR = "main/prebuild_scripts/spinel"
 SPINEL_GEN_DIR = "#{SPINEL_SRC_DIR}/gen"
+
+def spinel_pin
+  pin = {}
+  File.readlines(SPINEL_PIN_FILE).each do |line|
+    next if line.strip.empty? || line.start_with?("#")
+    k, v = line.split(":", 2)
+    pin[k.strip] = v.strip if v
+  end
+  abort "broken pin file #{SPINEL_PIN_FILE}" unless pin["repo"] && pin["commit"]
+  pin
+end
 FMRB_KERNEL_ENGINE = ENV["FMRB_KERNEL_ENGINE"] || "mruby"
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
@@ -226,10 +254,53 @@ namespace :set_target do
 end
 
 namespace :spinel do
+  desc "Fetch + build the pinned Spinel compiler into vendor/spinel"
+  task :setup do
+    pin = spinel_pin
+    if Dir.exist?(File.join(SPINEL_VENDOR_DIR, ".git"))
+      head = `git -C #{SPINEL_VENDOR_DIR} rev-parse HEAD 2>/dev/null`.strip
+      unless head == pin["commit"]
+        sh "git -C #{SPINEL_VENDOR_DIR} fetch --depth 100 origin #{pin["commit"]}"
+        sh "git -C #{SPINEL_VENDOR_DIR} checkout --detach #{pin["commit"]}"
+      end
+    else
+      mkdir_p File.dirname(SPINEL_VENDOR_DIR)
+      # Clone then detach at the pin (shallow; deepen if the pin is older
+      # than the branch tip).
+      sh "git clone --branch #{pin["branch"] || "fmrb-dev"} --depth 100 #{pin["repo"]} #{SPINEL_VENDOR_DIR}"
+      sh "git -C #{SPINEL_VENDOR_DIR} checkout --detach #{pin["commit"]}"
+    end
+    bin = File.join(SPINEL_VENDOR_DIR, "bin/spinel")
+    head = `git -C #{SPINEL_VENDOR_DIR} rev-parse HEAD`.strip
+    stamp = File.join(SPINEL_VENDOR_DIR, ".built_commit")
+    unless File.executable?(bin) && File.exist?(stamp) && File.read(stamp).strip == head
+      sh "cd #{SPINEL_VENDOR_DIR} && make deps && make"
+      File.write(stamp, head)
+    end
+    puts "Spinel compiler ready: #{bin} (#{head[0, 12]})"
+  end
+
   desc "Generate Spinel C from PreBuild Ruby on the host (before docker build)"
   task :gen do
-    unless File.executable?(SPINEL_BIN)
-      abort "spinel not found at #{SPINEL_BIN}. Build the fork: (cd ../tmp/spinel && make deps && make)"
+    dir = SPINEL_DIR
+    # Self-provision on a fresh clone: no usable compiler anywhere -> fetch and
+    # build the pinned vendor copy.
+    unless File.executable?(File.join(dir, "bin/spinel"))
+      Rake::Task['spinel:setup'].invoke
+      dir = SPINEL_VENDOR_DIR
+    end
+    bin = File.join(dir, "bin/spinel")
+    abort "spinel not found at #{bin}. Run `rake spinel:setup` or set SPINEL_DIR." unless File.executable?(bin)
+    # Guard against compiler/runtime-snapshot divergence: the generated C and
+    # components/fmrb_spinel_rt/spinel_rt must come from the same fork commit.
+    import_info = File.expand_path("components/fmrb_spinel_rt/spinel_rt/IMPORT_INFO", __dir__)
+    if File.exist?(import_info)
+      snap = File.read(import_info)[/^fork_commit: (\h+)/, 1]
+      head = `git -C #{dir} rev-parse HEAD 2>/dev/null`.strip
+      if snap && !head.empty? && snap != head
+        warn "WARNING: spinel compiler at #{head[0, 12]} but runtime snapshot is #{snap[0, 12]};" \
+             " regenerate the snapshot (import_from_fork.rb) or align the checkouts."
+      end
     end
     mkdir_p SPINEL_GEN_DIR
     # 1. Concatenate the kernel Ruby sources into one combined program (the
@@ -239,7 +310,7 @@ namespace :spinel do
     out_c       = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.c"
     sh "#{RbConfig.ruby} tool/spinel/gen_kernel_combined.rb #{combined_rb} linux"
     # 2. Compile the combined program to C (library mode: entry fmrb_kernel_entry).
-    sh "#{SPINEL_BIN} --no-main --entry fmrb_kernel_entry -I #{SPINEL_SRC_DIR} -c #{combined_rb} -o #{out_c}"
+    sh "#{bin} --no-main --entry fmrb_kernel_entry -I #{SPINEL_SRC_DIR} -c #{combined_rb} -o #{out_c}"
     puts "Spinel generated #{out_c}"
   end
 end

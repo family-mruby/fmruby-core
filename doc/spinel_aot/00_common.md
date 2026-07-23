@@ -56,6 +56,14 @@ C 化するプロジェクトの、実装担当 AI 向け指示書である。
   コミットする。master は upstream 追従用に保ち、直接コミットしない。
   コミットは英語メッセージで、汎用変更と fmruby 固有変更を分ける
   (詳細規約は phase1.md T1-1)。
+- fmruby-core の Spinel ビルドが使うコンパイラは
+  `components/fmrb_spinel_rt/SPINEL_PIN` の commit に固定され、
+  `rake spinel:setup` が `vendor/spinel/` (gitignore) へ clone + build する
+  (fmruby-core 単体 clone でビルド可能)。解決順は
+  `SPINEL_DIR` 環境変数 > `vendor/spinel` > `tmp/spinel`。fork の
+  ランタイム snapshot (`spinel_rt/IMPORT_INFO`) と pin の commit は
+  一致させること (`rake spinel:gen` が不一致を警告する)。fork を進めたら
+  「push -> SPINEL_PIN 更新 -> import_from_fork.rb 再実行」をセットで行う。
 
 ## 実装 AI が厳守するルール
 

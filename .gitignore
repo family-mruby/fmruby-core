@@ -35,3 +35,6 @@ flash/etc/wifi.toml
 # Python bytecode cache
 __pycache__/
 *.pyc
+
+# Pinned Spinel compiler checkout (rake spinel:setup)
+vendor/spinel/
