@@ -27,8 +27,25 @@ desktop へ投資する価値の再確認をしてから着手する
    タスク起動側 (`FMRB_LOAD_MODE_NATIVE` 経路) に
    `sp_instance_create` + `sp_ctx_set_current` を実装
    (Phase 3 で決めた契約どおり。config の閾値はまず default)。
-3. 回帰: Phase 2 の検証シナリオ (dev_run_check + 入力注入) を再実行し、
+3. **Spinel タスクのメモリを estalloc に配線する (ユーザ決定 2026-07-23)**:
+   - vm_type は FMRB_VM_TYPE_NATIVE のまま新設しない。spawn 時にタスク所定
+     の mempool (`fmrb_get_mempool_ptr(ctx->mempool_id)`) へ `est_init` し、
+     得た `ESTALLOC*` を **`ctx->est` に格納** (mruby タスクと同じ持ち方)
+     した上で、sp_instance_config の mem_ud / alloc / realloc / dealloc
+     フックに est_calloc / est_realloc / est_free を渡す。
+   - `fmrb_app_ps` の NATIVE ケースを「`ctx->est` があれば
+     `mrb_get_estalloc_stats` で統計を返す」に変更 (mruby ケースと同一
+     経路)。これで Monitor のカーネル行 (Phase 2 で消えた Heap バー) が
+     復活し、mruby / Spinel でヒープ表示が同じ意味を持つ。
+   - gc_threshold / str_threshold は「しきい値 < プールサイズ」の契約
+     (Phase 3) に従い、タスクの mempool サイズから設定する。
+   - estalloc は今後の全エンジンの標準アロケータとする (優秀なため)。
+   - タスク終了時は sp_instance_destroy 後に `est_cleanup` し、
+     ctx->est を NULL に戻す (mruby の cleanup と同じ位置)。
+4. 回帰: Phase 2 の検証シナリオ (dev_run_check + 入力注入) を再実行し、
    カーネル単独が multi-ctx 構成でも同一挙動であることを確認。
+   このタイミングでヒープ使用量の mruby / Spinel 比較 (Phase 2 で延期した
+   項目) を Monitor / ps の統計で取得し、レポートに載せる。
 
 ## タスク
 
