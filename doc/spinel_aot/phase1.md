@@ -9,29 +9,53 @@
 
 ## タスク
 
-### T1-1: フォークの利用準備 (ブランチ作成。fork 自体は作成済み)
+### T1-1: フォークの利用準備 (Phase 0 でほぼ消化済み)
 
-fork は作成済みで、作業チェックアウトは
+fork の作業チェックアウトは
 `/home/kishima/fmrb/family-mruby/tmp/spinel`
-(origin = git@github.com:kishima/spinel.git、upstream 元 = matz/spinel、
-既定ブランチ master)。ここを直接改修する。
+(origin = git@github.com:kishima/spinel.git、upstream 元 = matz/spinel)。
+作業ブランチ `fmrb-dev`、upstream remote は設定済み。Phase 0 で汎用バグ
+修正 5 件 (318f4a7b, 56394f2d, 7b820768, a8c3c201, d9e363ed) が
+fmrb-dev にコミット済み (make test 回帰ゼロ)。
 
-1. upstream remote が未設定なら追加して fetch する:
-   `git remote add upstream https://github.com/matz/spinel.git`。
-2. **作業ブランチ `fmrb-dev` を master から作成**し、以後の Spinel 改修は
-   すべて fmrb-dev 上でコミットする。master は upstream 追従用に
-   クリーンに保つ。upstream へ PR する際は、該当する汎用コミットを
-   master ベースの短命ブランチへ cherry-pick して出す。
-3. コミット規約 (fork 内):
+残作業:
+
+1. fmrb-dev を origin へ push する (未 push の場合)。
+2. コミット規約の再確認 (fork 内):
    - upstream へ PR しうる汎用変更と fmruby 固有変更を別コミットにする。
    - コミットメッセージは英語。
    - 各コミットで `make` (gen2.c == gen3.c の self-check を含む)、
      `make test`、`make bench` を通す。
    - AI 支援コミットには upstream の慣習に従い
      `Co-Authored-By:` トレーラを付ける。
-4. family-mruby からの参照方法 (サブモジュール化するか等) は Phase 5 までに
+3. family-mruby からの参照方法 (サブモジュール化するか等) は Phase 5 までに
    決めれば良い。現状はルートリポジトリの gitignore 対象 (`tmp/`) の
    チェックアウトを直接使う。
+4. fmruby-core 側の作業ブランチは `feature/spinel-aot` (develop から作成)。
+
+### T1-1b: Phase 0 知見のハードニング (fork、1 日)
+
+Phase 0 の UNSUPPORTED.md で「Phase 1 修正候補」とした 2 件を fork で
+修正する (どちらも汎用バグとして upstream PR 可能な粒度で):
+
+1. U-1: poly レシーバの `String#ljust`/`rjust` が dispatch されない。
+2. U-3: nested-array 由来の poly 値を ctor / mixin 算術に渡すと
+   miscompile する (Phase 0 では添字アクセス / concrete 化で回避した)。
+   最小再現は `tool/spinel_poc/repro/` にある。
+
+U-2 (同名 `rescue => e` の複数 arm) は Spinel の意図的制約のため
+修正しない (OS コード規約側に記載済みの回避で対応)。
+
+### T1-1c: typed symbol-hash の設計検討 (fork、設計のみ 0.5-1 日)
+
+Phase 0 の核心発見: symbol-keyed hash は常に poly 値になり、カーネルの
+ホットパスの型特殊化を妨げる (フルハーネスで CRuby 同等に留まった主因)。
+恒久対策の候補 (a) Spinel に typed symbol-hash 型 (SYM_INT/SYM_STR 等) を
+追加、の実装規模とデータレイアウトをこの Phase で**設計評価**する
+(実装は Phase 3 と同時期を想定。analyze/codegen/runtime の 3 層に
+またがるため、無理に Phase 1 で実装しない)。
+代替の (b) FFI 境界で typed String を渡す設計は T1-5 に織り込み済み、
+(c) window list の poll 化は Phase 2 で扱う。評価結果は完了レポートへ。
 
 ### T1-2: ライブラリモード `--no-main` / `--entry` の実装 (fork、1-2 日)
 
@@ -126,6 +150,11 @@ mruby バインディング (`lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c`
    - 構造化データは**固定レイアウトのバイト列**で渡す (Spinel FFI は
      struct を渡せない。Ruby 側は getbyte でパースする。カーネル Ruby は
      既に同種のバイナリ処理をしているので一貫する)。
+   - **poly を境界に持ち込まない** (Phase 0 の知見): FFI の戻り・引数は
+     typed String / Integer に限定し、Ruby 側でも受け取ったバイト列を
+     symbol-hash へ詰め直すのはホットパスでは避ける (詰め直した時点で
+     poly になり型特殊化が失われる)。ホットパスはバイト列のまま
+     getbyte で読む設計を既定とする。
    - 例 (シグネチャ案。実装時に既存下位関数へ合わせて調整可):
      ```c
      /* Poll one message. Returns payload length (>=0), 0 with *type==0
@@ -206,7 +235,8 @@ mruby バインディング (`lib/add/picoruby-fmrb-kernel/ports/esp32/kernel.c`
 ## 受け入れ基準
 
 1. fork: `--no-main --entry` が実装され、スモークテストがあり、
-   `make test` 1,744 本 + `make bench` が upstream 同等。
+   `make test` が Phase 0 基準 (1,991 pass / 1 既存 cosmetic fail) を維持し
+   `make bench` が劣化なし。T1-1b の 2 修正が入っている。
 2. fmruby-core: `FMRB_KERNEL_ENGINE=mruby` で従来と同一動作
    (dev_run_check.sh で起動確認)。
 3. `FMRB_KERNEL_ENGINE=spinel` で hello_kernel がタスクとして動き、
