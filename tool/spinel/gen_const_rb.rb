@@ -29,6 +29,9 @@ def enum_values(src, enum_marker, names)
   open = src.rindex("{", idx) or abort "enum open brace not found for #{enum_marker}"
   close = src.index("}", open) or abort "enum close brace not found"
   body = src[open + 1...close]
+  # Strip comments up front so a trailing `// ...` never spills the next
+  # entry's name onto a second line within a single comma-separated piece.
+  body = body.gsub(%r{/\*.*?\*/}m, "").gsub(%r{//[^\n]*}, "")
   vals = {}
   cur = 0
   body.split(",").each do |ent|
@@ -56,15 +59,64 @@ def define_values(src, names)
   end
 end
 
+# Parse `define_int_const(mrb, m, "NAME", 0xNN);` entries from const.c.
+def int_const_values(src, names)
+  names.each_with_object({}) do |n, h|
+    if src =~ /define_int_const\([^,]+,[^,]+,\s*"#{Regexp.escape(n)}"\s*,\s*(0x[0-9A-Fa-f]+|-?\d+)\s*\)/
+      h[n] = Integer($1)
+    else
+      abort "int const #{n} not found"
+    end
+  end
+end
+
+# Parse the `static fmrb_theme_t g_theme = { .field = 0xNN, ... };` initializer.
+def theme_values(src, fields)
+  idx = src.index("g_theme") or abort "g_theme not found"
+  open = src.index("{", idx) or abort "g_theme brace not found"
+  close = src.index("}", open) or abort "g_theme close not found"
+  body = src[open + 1...close]
+  fields.each_with_object({}) do |f, h|
+    if body =~ /\.#{Regexp.escape(f)}\s*=\s*(0x[0-9A-Fa-f]+|\d+)/
+      h[f] = Integer($1)
+    else
+      abort "theme field #{f} not found"
+    end
+  end
+end
+
+# Extract a string #define value (e.g. FMRB_OS_VERSION "1.0.0").
+def str_define(src, name)
+  if src =~ /^\s*#define\s+#{Regexp.escape(name)}\s+"([^"]*)"/
+    $1
+  else
+    abort "string #define #{name} not found"
+  end
+end
+
 msg = slurp("components/fmrb_msg/fmrb_msg.h")
 task = slurp("components/fmrb_common/include/fmrb_task_config.h")
 led = slurp("main/drivers/led_status/status_led.h")
+app_h = slurp("components/fmrb_common/include/fmrb_app.h")
+fmrb_h = slurp("components/fmrb_common/include/fmrb.h")
+const_c = slurp("lib/add/picoruby-fmrb-const/ports/esp32/const.c")
 
 msg_types = enum_values(msg, "FMRB_MSG_TYPE_APP_CONTROL",
                         %w[FMRB_MSG_TYPE_APP_CONTROL FMRB_MSG_TYPE_APP_GFX
                            FMRB_MSG_TYPE_APP_AUDIO FMRB_MSG_TYPE_HID_EVENT])
 proc_ids = enum_values(task, "PROC_ID_KERNEL", %w[PROC_ID_KERNEL PROC_ID_HOST])
 led_vals = define_values(led, %w[FMRB_LED_STATUS_VERSION_MISMATCH])
+
+# Phase 4 (desktop): the app-facing constant subset the desktop / mixins use.
+proc_states = enum_values(app_h, "PROC_STATE_FREE",
+                          %w[PROC_STATE_FREE PROC_STATE_INIT PROC_STATE_RUNNING
+                             PROC_STATE_SUSPENDED PROC_STATE_STOPPING])
+theme = theme_values(const_c, %w[desktop_bg menu_bg window_bg text text_light
+                                 highlight border button dir_color])
+keys = int_const_values(const_c, %w[KEY_UP KEY_DOWN])
+os_version = str_define(fmrb_h, "FMRB_OS_VERSION")
+ga_version = str_define(fmrb_h, "FMRB_GA_VERSION")
+link_version = define_values(fmrb_h, %w[FMRB_LINK_VERSION])["FMRB_LINK_VERSION"]
 
 chip_model = platform == "linux" ? "linux" : "ESP32-S3"
 
@@ -80,6 +132,41 @@ out << "  MSG_TYPE_HID_EVENT = #{msg_types['FMRB_MSG_TYPE_HID_EVENT']}\n"
 out << "  PROC_ID_KERNEL = #{proc_ids['PROC_ID_KERNEL']}\n"
 out << "  PROC_ID_HOST = #{proc_ids['PROC_ID_HOST']}\n"
 out << "  LED_ERR_VERSION_MISMATCH = #{led_vals['FMRB_LED_STATUS_VERSION_MISMATCH']}\n"
+# ---- Phase 4 desktop subset ----
+# HID event keycodes (USB HID Usage IDs) used by desktop key handling.
+out << "  KEY_UP = #{keys['KEY_UP']}\n"
+out << "  KEY_DOWN = #{keys['KEY_DOWN']}\n"
+# Process states (ps / taskbar).
+out << "  PROC_STATE_FREE = #{proc_states['PROC_STATE_FREE']}\n"
+out << "  PROC_STATE_INIT = #{proc_states['PROC_STATE_INIT']}\n"
+out << "  PROC_STATE_RUNNING = #{proc_states['PROC_STATE_RUNNING']}\n"
+out << "  PROC_STATE_SUSPENDED = #{proc_states['PROC_STATE_SUSPENDED']}\n"
+out << "  PROC_STATE_STOPPING = #{proc_states['PROC_STATE_STOPPING']}\n"
+# Theme colors (default g_theme; runtime system_conf override is not applied in
+# the Spinel build -- the desktop uses the compiled-in defaults).
+out << "  THEME_DESKTOP_BG = #{theme['desktop_bg']}\n"
+out << "  THEME_MENU_BG = #{theme['menu_bg']}\n"
+out << "  THEME_WINDOW_BG = #{theme['window_bg']}\n"
+out << "  THEME_TEXT = #{theme['text']}\n"
+out << "  THEME_TEXT_LIGHT = #{theme['text_light']}\n"
+out << "  THEME_HIGHLIGHT = #{theme['highlight']}\n"
+out << "  THEME_BORDER = #{theme['border']}\n"
+out << "  THEME_BUTTON = #{theme['button']}\n"
+out << "  THEME_DIR_COLOR = #{theme['dir_color']}\n"
+# Versions + platform/system placeholders (about dialog / config dialog). The
+# Linux mruby build reports the same placeholders; ESP32 fills real values at
+# runtime (not available at Spinel compile time -- acceptable for the port).
+out << "  OS_VERSION = #{os_version.inspect}\n"
+out << "  GA_VERSION = #{ga_version.inspect}\n"
+out << "  LINK_VERSION = #{link_version}\n"
+out << "  IDF_VERSION = \"-\"\n"
+out << "  MAC_ADDRESS = \"-\"\n"
+out << "  CHIP_REVISION = \"-\"\n"
+out << "  CHIP_CORES = 0\n"
+out << "  FLASH_SIZE_MB = 0\n"
+out << "  PSRAM_SIZE_MB = 0\n"
+out << "  RESET_REASON = \"-\"\n"
+out << "  LANGUAGE = \"en\"\n"
 out << "end\n"
 
 FileUtils.mkdir_p(File.dirname(out_path))
