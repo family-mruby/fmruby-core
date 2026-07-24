@@ -1093,6 +1093,11 @@ class FmrbApp
     nil
   end
 
+  # Force a full GC on this task's Spinel heap.
+  def self.gc
+    FmrbSpxApp.fmrb_spx_app_gc
+  end
+
   # ---- class methods (were C class methods; parse packed :binstr records) ----
   def self.ps
     buf = FmrbSpxApp.fmrb_spx_app_ps

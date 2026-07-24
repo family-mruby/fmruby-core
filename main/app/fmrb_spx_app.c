@@ -664,3 +664,12 @@ int fmrb_spx_app_boot_complete(void)
     status_led_set_boot_complete();
     return 0;
 }
+
+/* Force a full GC on this task's Spinel heap (SP_CTX()). Used by the launcher to
+   reclaim icon-load churn that outruns the allocator's GC threshold. */
+extern void sp_gc_collect(void);
+int fmrb_spx_app_gc(void)
+{
+    sp_gc_collect();
+    return 0;
+}

@@ -42,6 +42,19 @@ module LauncherMixin
 
   # ---- Icon sprite lifecycle ----
 
+  # Force a full GC on this task's heap. On the Spinel engine the icon-load loop
+  # below (per-pixel sprite draw = tight FFI churn) generates transient garbage
+  # faster than the allocator's GC threshold reclaims it; the true live set is
+  # ~678KB (flat across all 29 icons, measured), well inside the 800KB pool, but
+  # a churn burst momentarily exceeds the ~120KB headroom and OOMs. A periodic
+  # explicit GC keeps the churn collected. On mruby FmrbApp.gc is absent
+  # (NoMethodError -> no-op); mruby's automatic GC already keeps churn low.
+  def _force_gc
+    FmrbApp.gc
+  rescue
+    nil
+  end
+
   # Build SpriteImage + SpriteInstance for every app with an icon file.
   # Idempotent: instances already created are skipped. SpriteImages are shared
   # across apps that reference the same icon file.
@@ -52,6 +65,12 @@ module LauncherMixin
 
     @launcher_apps.each_with_index do |app, idx|
       next if @icon_sprite_instances[idx]
+      # Reclaim the previous icon's parse/draw churn before building the next.
+      # The Spinel live baseline here is ~678KB in an 800KB pool (~120KB
+      # headroom); one icon's churn fits, several do not, so GC every icon
+      # rather than every N (measured: churn-bound, not live-bound). See
+      # _force_gc. No-op on mruby (ample headroom, automatic GC).
+      _force_gc
       icon_file = app[:icon_file]
       next unless icon_file
       icon_data = load_icon(icon_file)
