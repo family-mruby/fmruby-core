@@ -74,8 +74,15 @@ module ClockSettingMixin
         i2c = I2C.new(unit: :ESP32_I2C1,
                       sda_pin: FmrbHw::PIN_I2C1_SDA,
                       scl_pin: FmrbHw::PIN_I2C1_SCL)
-        rtc = (FmrbConst::CHIP_MODEL == "ESP32-P4") ? RX8130.new(i2c) : RX8900.new(i2c)
-        rtc.write_time(utc)
+        # Call write_time on a concrete receiver in each branch: a ternary
+        # `RX8130.new : RX8900.new` unifies to a poly receiver and Spinel cannot
+        # resolve `write_time` on it (NoMethodError). Concrete per-branch keeps
+        # static dispatch; identical behavior on mruby (dual-safe).
+        if FmrbConst::CHIP_MODEL == "ESP32-P4"
+          RX8130.new(i2c).write_time(utc)
+        else
+          RX8900.new(i2c).write_time(utc)
+        end
         Log.info("RTC hardware updated (UTC)")
       rescue => e
         Log.error("Failed to set clock: #{e.message}")

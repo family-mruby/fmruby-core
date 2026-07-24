@@ -304,6 +304,11 @@ namespace :spinel do
       end
     end
     mkdir_p SPINEL_GEN_DIR
+    # Platform passed to the gen scripts (sets PLATFORM in the combined Ruby, which
+    # gates ESP32-only code like RTC HW access). Defaults to linux; build:esp32 sets
+    # SPINEL_GEN_PLATFORM=esp32. Getting this wrong silently compiles the wrong
+    # PLATFORM branch (esp32 build with linux gen = RTC/HW code dropped).
+    platform = ENV['SPINEL_GEN_PLATFORM'] || 'linux'
     # Kernel: concatenate the kernel Ruby into one combined program (the Spinel
     # compiler needs a single translation unit; require_relative is stripped)
     # and compile to C (library mode, entry fmrb_kernel_entry). Host-generated
@@ -311,7 +316,7 @@ namespace :spinel do
     if FMRB_KERNEL_ENGINE == "spinel"
       combined_rb = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.rb"
       out_c       = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.c"
-      sh "#{RbConfig.ruby} tool/spinel/gen_kernel_combined.rb #{combined_rb} linux"
+      sh "#{RbConfig.ruby} tool/spinel/gen_kernel_combined.rb #{combined_rb} #{platform}"
       sh "#{bin} --no-main --entry fmrb_kernel_entry -I #{SPINEL_SRC_DIR} -c #{combined_rb} -o #{out_c}"
       puts "Spinel generated #{out_c}"
     end
@@ -319,10 +324,55 @@ namespace :spinel do
     if FMRB_APP_ENGINE_DESKTOP == "spinel"
       d_rb = "#{SPINEL_GEN_DIR}/system_desktop_combined.rb"
       d_c  = "#{SPINEL_GEN_DIR}/system_desktop_combined.c"
-      sh "#{RbConfig.ruby} tool/spinel/gen_app_combined.rb system_desktop #{d_rb} linux"
+      sh "#{RbConfig.ruby} tool/spinel/gen_app_combined.rb system_desktop #{d_rb} #{platform}"
       sh "#{bin} --no-main --entry system_desktop_entry -I #{SPINEL_SRC_DIR} -c #{d_rb} -o #{d_c}"
       puts "Spinel generated #{d_c}"
     end
+  end
+
+  desc "Lint Spinel-targeted Ruby with spinel-doctor (source-level: unsupported/unresolved/inference)"
+  task :doctor do
+    dir = SPINEL_DIR
+    unless File.executable?(File.join(dir, "bin/spinel"))
+      Rake::Task['spinel:setup'].invoke
+      dir = SPINEL_VENDOR_DIR
+    end
+    doctor = File.join(dir, "bin/spinel-doctor")
+    abort "spinel-doctor not found at #{doctor}. Run `rake spinel:setup`." unless File.executable?(doctor)
+    mkdir_p SPINEL_GEN_DIR
+    # Lint kernel + desktop (both are Spinel-convertible programs). We generate
+    # the require-inlined combined Ruby, then run the SOURCE-LEVEL legs only.
+    # --skip build,behavior: those legs link/run the combined standalone, which
+    # flags the fmruby C shims (fmrb_spx_*) as undefined and reports a CRuby-diff
+    # -- both false positives here (the real firmware build links the shims).
+    # The gate keys on unsupported/unresolved (error severity); inference notes
+    # ("widened to untyped") are informational poly-widen hints.
+    targets = [
+      ["fmrb_kernel",    "tool/spinel/gen_kernel_combined.rb", nil],
+      ["system_desktop", "tool/spinel/gen_app_combined.rb", "system_desktop"],
+    ]
+    # Known-accepted findings: ESP32-only RTC hardware code that is dead on Linux
+    # (PLATFORM guard) but still statically analyzed. Its driver classes
+    # (RX8900 / RX8130) are not in the Linux Spinel program, so `write_time`
+    # can't resolve here. INTERIM allowlist: Phase 5 routes RTC writes through the
+    # set_wallclock FFI (decision (b), phase5.md T5-4) and deletes the direct
+    # driver instantiation from clock_setting.rb -- then REMOVE this allowlist.
+    allow = [/unresolved call 'write_time' on .* receiver/]
+    failed = []
+    targets.each do |name, gen, arg|
+      rb = "#{SPINEL_GEN_DIR}/#{name}_combined.rb"
+      sh "#{RbConfig.ruby} #{gen} #{arg ? "#{arg} " : ""}#{rb} linux"
+      puts "== spinel-doctor: #{name} =="
+      out = `SPINEL_DIR=#{dir} #{doctor} --only unsupported,unresolved #{rb} 2>&1`
+      puts out
+      findings = out.lines.select { |l| l =~ /warning:|error:/ }
+      unexpected = findings.reject { |l| allow.any? { |p| l =~ p } }
+      allowed = findings.size - unexpected.size
+      puts "  (#{allowed} known ESP32-only finding(s) allowlisted)" if allowed > 0
+      failed << name unless unexpected.empty?
+    end
+    abort "spinel-doctor UNEXPECTED findings in: #{failed.join(', ')}" unless failed.empty?
+    puts "spinel-doctor: clean (modulo allowlisted ESP32-only findings)"
   end
 end
 
@@ -335,6 +385,7 @@ namespace :build do
     # Spinel engine(s): pre-generate the C on the host (the compiler is not
     # available inside the docker build) and forward the engine(s) into the build.
     any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel'
+    ENV['SPINEL_GEN_PLATFORM'] = 'linux'
     Rake::Task['spinel:gen'].invoke if any_spinel
 
     unless Dir.exist?('build')
@@ -381,6 +432,14 @@ namespace :build do
     if File.exist?('config/wifi_p4.toml')
       cp 'config/wifi_p4.toml', 'flash/etc/wifi.toml', verbose: true
     end
+
+    # Spinel engine(s): pre-generate the C on the host (compiler is not in the
+    # docker build) with PLATFORM=esp32 so ESP32-only branches (RTC HW etc.) are
+    # compiled. Mirrors build:linux; without this the esp32 build used a manually
+    # gen'd (or stale linux) combined.
+    any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel'
+    ENV['SPINEL_GEN_PLATFORM'] = 'esp32'
+    Rake::Task['spinel:gen'].invoke if any_spinel
 
     # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated correctly
     unless Dir.exist?('build')
