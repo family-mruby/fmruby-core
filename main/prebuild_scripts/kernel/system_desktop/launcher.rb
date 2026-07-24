@@ -143,7 +143,7 @@ module LauncherMixin
     rows = []
     color = 0xFF  # default white
     begin
-      file = File.open(icon_file.to_s, "r")  # icon_file may be poly; pin to String (Spinel sp_File_open)
+      file = File.open(icon_file, "r")
       content = file.read
       file.close
 
