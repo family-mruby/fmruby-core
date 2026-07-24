@@ -368,8 +368,11 @@ class SystemDesktopApp < FmrbApp
     # String with setbyte instead (dual-build safe).
     ch = nil
     if character && character >= 0 && character <= 255
-      ch = "\x00"
-      ch.setbyte(0, character)
+      # Build the 1-byte String on a *concrete* local (a nil-initialised var is
+      # poly on Spinel, and String#setbyte does not dispatch on a poly receiver).
+      c = "\x00"
+      c.setbyte(0, character)
+      ch = c
     end
     return false unless ch
     @shortcuts.each do |sc|
