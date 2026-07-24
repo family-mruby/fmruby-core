@@ -22,6 +22,42 @@ extern const uint8_t logviewer_irep[];
 extern const uint8_t monitor_irep[];
 extern const uint8_t inspector_irep[];
 
+#ifdef FMRB_APP_ENGINE_DESKTOP_SPINEL
+/* Spinel engine (Phase 4 T4-3): system_desktop runs as the Spinel-compiled
+   combined desktop program instead of mruby bytecode. It is spawned as a NATIVE
+   task so it gets the same PROC_ID_SYSTEM_APP context, canvas(es), message queue
+   and lifecycle the mruby desktop does. Mirrors spinel_kernel_native in
+   fmrb_kernel.c: back the Spinel runtime with this task's estalloc pool so its
+   allocations are isolated per-instance and `ps` can report them via ctx->est. */
+extern int system_desktop_entry(void);
+#include "fmrb_spinel_host.h"
+
+static void spinel_desktop_native(void *arg)
+{
+    fmrb_app_task_context_t *ctx = (fmrb_app_task_context_t *)arg;
+    void  *pool = fmrb_get_mempool_ptr(ctx->mempool_id);
+    size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
+    if (!pool || pool_size == 0) {
+        FMRB_LOGE(TAG, "desktop mempool %d unavailable (ptr=%p size=%zu)",
+                  ctx->mempool_id, pool, pool_size);
+        return;
+    }
+    size_t threshold = pool_size / 4;  /* sp_instance_config: threshold < pool */
+    void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
+    if (!est) {
+        FMRB_LOGE(TAG, "failed to create Spinel desktop instance (pool %d, %zu bytes)",
+                  ctx->mempool_id, pool_size);
+        return;
+    }
+    ctx->est = est;
+
+    system_desktop_entry();  /* runs SystemDesktopApp.new.start -> main_loop */
+
+    fmrb_spinel_instance_end(est);
+    ctx->est = NULL;
+}
+#endif /* FMRB_APP_ENGINE_DESKTOP_SPINEL */
+
 // Built-in app configuration table
 typedef struct {
     const char*       lookup_name;   // Name used in fmrb_app_spawn_app()
@@ -33,9 +69,14 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .app_id = PROC_ID_SYSTEM_APP,
         .type = APP_TYPE_SYSTEM_APP,
         .name = "system_desktop",
+#ifdef FMRB_APP_ENGINE_DESKTOP_SPINEL
+        .vm_type = FMRB_VM_TYPE_NATIVE,
+        .native_func = spinel_desktop_native,
+#else
         .vm_type = FMRB_VM_TYPE_MRUBY,
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
         .bytecode = system_desktop_irep,
+#endif
         .stack_words = FMRB_SYSTEM_APP_TASK_STACK_SIZE,
         .priority = FMRB_SYSTEM_APP_TASK_PRIORITY,
         .flags = FMRB_SYSTEM_APP_TASK_FLAGS,

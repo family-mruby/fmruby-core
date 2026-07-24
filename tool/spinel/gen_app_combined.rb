@@ -55,8 +55,11 @@ spec = APPS[app] or abort "unknown app: #{app} (known: #{APPS.keys.join(', ')})"
 mixins = Dir.glob(File.join(spec[:mixin_dir], "*.rb")).sort
 
 parts = [
-  File.join(SPINEL_DIR, "fmrb_ffi.rb"),        # FmrbSpx (log / board_millis reuse)
-  File.join(SPINEL_DIR, "fmrb_app_ffi.rb"),    # FmrbSpxApp / FmrbSpxGfx
+  # NB: fmrb_ffi.rb (the full kernel FmrbSpx) is intentionally NOT included --
+  # fmrb_app_ffi.rb declares the minimal FmrbSpx (millis + log) the app needs.
+  # Splicing the kernel shim would emit externs for every kernel ffi_func and
+  # break a mixed mruby-kernel + Spinel-desktop link.
+  File.join(SPINEL_DIR, "fmrb_app_ffi.rb"),    # FmrbSpx(min) / FmrbSpxApp / FmrbSpxGfx
   const_rb,                                    # FmrbConst
   File.join(SPINEL_DIR, "msgpack_pure.rb"),    # MessagePack
   File.join(SPINEL_DIR, "fmrb_app_base_spinel.rb"), # Log/Machine/SpxBytes/FmrbGfx/GfxBlock/FmrbApp

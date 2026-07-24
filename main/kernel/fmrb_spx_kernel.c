@@ -25,36 +25,11 @@
 
 static const char *TAG = "spx";
 
-uint32_t fmrb_spx_board_millis(void)
-{
-    /* CLOCK_MONOTONIC milliseconds. Portable across the IDF Linux target and
-       the ESP32 (esp-idf provides POSIX clock_gettime), avoiding an esp_timer
-       component dependency. */
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint32_t)((uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u);
-}
-
-void fmrb_spx_log_write(int level, const char *msg, int len)
-{
-    if (!msg || len < 0) {
-        return;
-    }
-    switch (level) {
-        case 0:  FMRB_LOGD(TAG, "%.*s", len, msg); break;
-        case 2:  FMRB_LOGW(TAG, "%.*s", len, msg); break;
-        case 3:  FMRB_LOGE(TAG, "%.*s", len, msg); break;
-        default: FMRB_LOGI(TAG, "%.*s", len, msg); break;
-    }
-}
-
-/* Byte length for Spinel's :binstr FFI return. The runtime's codegen emits
-   `extern int sp_net_bin_len` for any :binstr callsite and builds the string
-   with sp_str_from_bytes(ptr, sp_net_bin_len). sp_net.c (which normally owns
-   this global) is excluded from the fmruby runtime snapshot, so provide it
-   here. TODO (fork follow-up): generalize sp_net_bin_len -> sp_ffi_bin_len in a
-   core runtime file so any ffi_func can publish a binary length (upstream PR). */
-int sp_net_bin_len = 0;
+/* fmrb_spx_board_millis / fmrb_spx_log_write and the sp_net_bin_len :binstr
+   length publisher live in fmrb_spx_common.c (compiled for any Spinel engine),
+   so a mixed mruby-kernel + Spinel-desktop build -- where this file is NOT
+   compiled -- still resolves them from the app/gfx shims + common TU. */
+extern int sp_net_bin_len;
 
 const char *fmrb_spx_recv_message(int timeout_ms, int *type, int *src_pid)
 {

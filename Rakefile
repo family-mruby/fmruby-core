@@ -68,6 +68,7 @@ def spinel_pin
   pin
 end
 FMRB_KERNEL_ENGINE = ENV["FMRB_KERNEL_ENGINE"] || "mruby"
+FMRB_APP_ENGINE_DESKTOP = ENV["FMRB_APP_ENGINE_DESKTOP"] || "mruby"
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
 IMAGE           = ENV.fetch("DOCKER_IMAGE", "ghcr.io/family-mruby/fmruby-esp32-build:latest")
@@ -303,15 +304,25 @@ namespace :spinel do
       end
     end
     mkdir_p SPINEL_GEN_DIR
-    # 1. Concatenate the kernel Ruby sources into one combined program (the
-    #    Spinel compiler needs a single translation unit; require_relative is
-    #    stripped). Host-generated into gen/ (gitignored).
-    combined_rb = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.rb"
-    out_c       = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.c"
-    sh "#{RbConfig.ruby} tool/spinel/gen_kernel_combined.rb #{combined_rb} linux"
-    # 2. Compile the combined program to C (library mode: entry fmrb_kernel_entry).
-    sh "#{bin} --no-main --entry fmrb_kernel_entry -I #{SPINEL_SRC_DIR} -c #{combined_rb} -o #{out_c}"
-    puts "Spinel generated #{out_c}"
+    # Kernel: concatenate the kernel Ruby into one combined program (the Spinel
+    # compiler needs a single translation unit; require_relative is stripped)
+    # and compile to C (library mode, entry fmrb_kernel_entry). Host-generated
+    # into gen/ (gitignored). Skipped when the kernel stays on mruby.
+    if FMRB_KERNEL_ENGINE == "spinel"
+      combined_rb = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.rb"
+      out_c       = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.c"
+      sh "#{RbConfig.ruby} tool/spinel/gen_kernel_combined.rb #{combined_rb} linux"
+      sh "#{bin} --no-main --entry fmrb_kernel_entry -I #{SPINEL_SRC_DIR} -c #{combined_rb} -o #{out_c}"
+      puts "Spinel generated #{out_c}"
+    end
+    # Desktop: same, for system_desktop (entry system_desktop_entry).
+    if FMRB_APP_ENGINE_DESKTOP == "spinel"
+      d_rb = "#{SPINEL_GEN_DIR}/system_desktop_combined.rb"
+      d_c  = "#{SPINEL_GEN_DIR}/system_desktop_combined.c"
+      sh "#{RbConfig.ruby} tool/spinel/gen_app_combined.rb system_desktop #{d_rb} linux"
+      sh "#{bin} --no-main --entry system_desktop_entry -I #{SPINEL_SRC_DIR} -c #{d_rb} -o #{d_c}"
+      puts "Spinel generated #{d_c}"
+    end
   end
 end
 
@@ -321,14 +332,17 @@ namespace :build do
     # Copy Linux-specific system config
     cp 'config/system_conf_linux.toml', 'flash/etc/system_conf.toml', verbose: true
 
-    # Spinel engine: pre-generate the kernel C on the host (the compiler is not
-    # available inside the docker build) and forward the engine into the build.
-    Rake::Task['spinel:gen'].invoke if FMRB_KERNEL_ENGINE == 'spinel'
+    # Spinel engine(s): pre-generate the C on the host (the compiler is not
+    # available inside the docker build) and forward the engine(s) into the build.
+    any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel'
+    Rake::Task['spinel:gen'].invoke if any_spinel
 
     unless Dir.exist?('build')
       Rake::Task['set_target:linux'].invoke
     end
-    engine_export = FMRB_KERNEL_ENGINE == 'spinel' ? "export FMRB_KERNEL_ENGINE=spinel && " : ""
+    engine_export = ""
+    engine_export += "export FMRB_KERNEL_ENGINE=spinel && " if FMRB_KERNEL_ENGINE == 'spinel'
+    engine_export += "export FMRB_APP_ENGINE_DESKTOP=spinel && " if FMRB_APP_ENGINE_DESKTOP == 'spinel'
     sh "#{DOCKER_CMD} bash -c '#{engine_export}export IDF_TARGET=linux && idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" -DCMAKE_BUILD_TYPE=Debug build'"
     puts 'Linux build complete. Run with: ./build/fmruby-core.elf'
   end

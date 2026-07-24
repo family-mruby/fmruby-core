@@ -10,6 +10,18 @@
 # fmrb_ffi.rb (FmrbSpx, reused for Log / board_millis) before
 # fmrb_app_base_spinel.rb.
 
+# The app VM reuses only the two generic (non-kernel) FmrbSpx entry points --
+# millis + logging (defined in fmrb_spx_common.c). The full kernel FmrbSpx
+# (fmrb_ffi.rb) is deliberately NOT spliced into an app program: Spinel emits an
+# extern for every declared ffi_func, so splicing it would drag the whole kernel
+# shim (recv_message, windows_snapshot, spawn_app_req, ...) into the app's link,
+# breaking a mixed mruby-kernel + Spinel-desktop build where fmrb_spx_kernel.c
+# is not compiled. Log / Machine in fmrb_app_base_spinel.rb use these two.
+module FmrbSpx
+  ffi_func :fmrb_spx_board_millis, [], :int
+  ffi_func :fmrb_spx_log_write, [:int, :str, :int], :void
+end
+
 module FmrbSpxGfx
   # --- basic drawing primitives (0 ok / neg err) ---
   ffi_func :fmrb_spx_gfx_clear,        [:int, :int], :int

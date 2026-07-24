@@ -54,20 +54,43 @@ set(FMRB_KERNEL_ENGINE "$ENV{FMRB_KERNEL_ENGINE}")
 if(NOT FMRB_KERNEL_ENGINE)
     set(FMRB_KERNEL_ENGINE "mruby")
 endif()
+# Desktop app engine (Phase 4 T4-3). Default mruby; `spinel` swaps system_desktop
+# for the Spinel-compiled combined desktop VM (spawned NATIVE, see
+# fmrb_app_spawner.c). Independent of the kernel engine so mixed configs
+# (mruby kernel + Spinel desktop) are buildable.
+set(FMRB_APP_ENGINE_DESKTOP "$ENV{FMRB_APP_ENGINE_DESKTOP}")
+if(NOT FMRB_APP_ENGINE_DESKTOP)
+    set(FMRB_APP_ENGINE_DESKTOP "mruby")
+endif()
 set(FMRB_SPINEL_GEN_DIR ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/gen)
-if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
+
+# Compile the Spinel machinery whenever ANY VM is Spinel.
+set(FMRB_ANY_SPINEL FALSE)
+if(FMRB_KERNEL_ENGINE STREQUAL "spinel" OR FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
+    set(FMRB_ANY_SPINEL TRUE)
     include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_spinel.cmake)
+    # sp_net_bin_len (:binstr length) -- referenced by whichever shim(s) below
+    # compile. Defined here (not in a per-engine shim) so a mixed
+    # mruby-kernel + Spinel-desktop build still resolves it.
+    list(APPEND COMPONENT_SRCS "kernel/fmrb_spx_common.c")
+endif()
+
+if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     prepare_ruby_spinel_source(fmrb_kernel_combined ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
-    # The FFI shim (fmrb_msg / transport / status_led) is only needed by spinel.
+    # The kernel FFI shim (fmrb_msg / transport / status_led) is only needed by
+    # the Spinel kernel VM.
     list(APPEND COMPONENT_SRCS "kernel/fmrb_spx_kernel.c")
-    # Phase 4 T4-1: FmrbApp / FmrbGfx FFI shims for Spinel-compiled apps
-    # (system_desktop). Plain mrb-free C, wrapping the same host_task GFX queue
-    # and fmrb_* primitives as the mruby bindings. Compiled whenever any Spinel
-    # VM is present; sp_net_bin_len (for :binstr returns) lives in
-    # fmrb_spx_kernel.c above.
+    message(STATUS "FMRB_KERNEL_ENGINE=spinel: kernel VM replaced by Spinel combined kernel")
+endif()
+
+if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
+    prepare_ruby_spinel_source(system_desktop_combined ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
+    # Phase 4 T4-1: FmrbApp / FmrbGfx FFI shims used by the Spinel desktop VM.
+    # Plain mrb-free C over the same host_task GFX queue / fmrb_* primitives as
+    # the mruby bindings.
     list(APPEND COMPONENT_SRCS "app/fmrb_spx_gfx.c")
     list(APPEND COMPONENT_SRCS "app/fmrb_spx_app.c")
-    message(STATUS "FMRB_KERNEL_ENGINE=spinel: kernel VM replaced by Spinel combined kernel")
+    message(STATUS "FMRB_APP_ENGINE_DESKTOP=spinel: system_desktop replaced by Spinel combined desktop")
 endif()
 
 # Set up component dependencies based on target
@@ -79,7 +102,10 @@ set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_transport fmrb_toml fmrb_
 
 # Spinel engine: link the Spinel runtime (propagates SP_GC_STACK_MAX + include
 # dir INTERFACE).
-if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
+# Any Spinel VM (kernel and/or desktop) needs fmrb_spinel_rt for the runtime
+# archive + its INTERFACE include dir (sp_runtime.h for the generated C,
+# fmrb_spinel_host.h for the NATIVE spawn wrappers).
+if(FMRB_ANY_SPINEL)
     list(APPEND COMPONENT_REQUIRES fmrb_spinel_rt)
 endif()
 
@@ -246,6 +272,20 @@ if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     # / the fmrb_spx shims use libc / fmrb_mem and must not be rerouted through an
     # instance pool. Keep the two flags in sync with fmrb_spinel_rt SPINEL_MC_FLAGS.
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fmrb_kernel_combined.c
+        PROPERTIES COMPILE_OPTIONS
+        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h")
+endif()
+
+# Desktop app engine: same wiring for the Spinel-compiled system_desktop program
+# (spawned NATIVE via fmrb_app_spawner.c). Independent of the kernel engine.
+if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_APP_ENGINE_DESKTOP_SPINEL)
+    generate_ruby_spinel_command(
+        ${FMRB_SPINEL_GEN_DIR}/system_desktop_combined.rb
+        system_desktop_entry ${FMRB_SPINEL_GEN_DIR})
+    # Same both-sides MC flags as the kernel combined (a mismatch is a silent ABI
+    # break). Only this generated TU gets them, never the fmrb_spx shims.
+    set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/system_desktop_combined.c
         PROPERTIES COMPILE_OPTIONS
         "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h")
 endif()
