@@ -364,7 +364,13 @@ class SystemDesktopApp < FmrbApp
   def handle_shortcut(character)
     return false if @dropdown_open || @launcher_open || @file_selector_open ||
                     @file_manager_open || @cdlg_open || @error_dlg_open || @clk_open
-    ch = character.chr rescue nil
+    # Integer#chr has no Spinel runtime backing (sp_str_chr); build the 1-byte
+    # String with setbyte instead (dual-build safe).
+    ch = nil
+    if character && character >= 0 && character <= 255
+      ch = "\x00"
+      ch.setbyte(0, character)
+    end
     return false unless ch
     @shortcuts.each do |sc|
       next unless sc[:key] && sc[:key].downcase == ch.downcase
@@ -845,7 +851,9 @@ class SystemDesktopApp < FmrbApp
             draw_foreground
           end
         elsif character >= 32 && character <= 126  # Printable
-          @file_selector_filename += character.chr
+          _c1 = "\x00"       # Integer#chr -> setbyte (no sp_str_chr in runtime)
+          _c1.setbyte(0, character)
+          @file_selector_filename += _c1
           draw_foreground
         end
         return
