@@ -16,8 +16,8 @@
   の boot 時 OOM を計測 (churn 支配) して every-icon GC + Linux のみ pool 1.5MB で解決。
 - **fork へ 5 件のコンパイラ改善を報告・修正** (全て汎用 = upstream PR 候補)。Ruby 側の
   正当な回避と fork 弱点を都度切り分けた。
-- **shell (T4-4) は未着手 (見送り)**、**soak 30 分は未実施**、**T4-1 step3 (mruby 一本化)
-  は延期**。下記「未完了・引き継ぎ」参照。
+- **shell (T4-4) は未着手 (見送り)**、**T4-1 step3 (mruby 一本化) は延期**。下記
+  「未完了・引き継ぎ」参照。soak は計画から除外 (ユーザ決定)。
 
 構成フラグ:
 
@@ -167,9 +167,10 @@ live overhead (64-bit object header/pointer)。**修正**: (a) `ensure_icon_spri
 | 1 | kernel+desktop 2 インスタンス + 混成起動 | **達成** (混成・2-Spinel 両方) |
 | 2 | shell の IRB/スクリプトが従来同等 | shell は mruby 維持 (回帰なし)。Spinel 化は見送り |
 | 3 | desktop Ruby 時間が mruby 比で短縮 (数値) | **達成** (2.0 vs 4.8 ms、内訳計測済) |
-| 4 | soak 30 分クリーン | **未実施 (引き継ぎ)** |
-| 5 | エンジン切替がアプリ単位 + mruby 回帰なし | **達成** |
-| 6 | shell の扱いと根拠をレポート化 | **達成** (上記、見送り + 根拠) |
+| 4 | エンジン切替がアプリ単位 + mruby 回帰なし | **達成** |
+| 5 | shell の扱いと根拠をレポート化 | **達成** (上記、見送り + 根拠) |
+
+(旧基準 4「soak 30 分クリーン」は計画から除外 = ユーザ決定。)
 
 ## Phase 5 (ESP32) への引き継ぎ
 
@@ -202,5 +203,5 @@ live overhead (64-bit object header/pointer)。**修正**: (a) `ensure_icon_spri
 
 **完了 (ユーザ決定)**。desktop が mruby の drop-in 置換として Spinel で全機能動作、混成と
 2-Spinel 両構成を Linux headless で実証。性能 (Ruby compute 短縮 + 低遅延分散) とメモリ
-(1.9x overhead を計測して pool/GC で解決) を数値化。fork へ 5 件の汎用修正。残 = soak 30 分、
+(1.9x overhead を計測して pool/GC で解決) を数値化。fork へ 5 件の汎用修正。残 =
 shell 化判断、mruby 一本化 (T4-1 step3)、および Phase 5 (ESP32 実機ポート)。
