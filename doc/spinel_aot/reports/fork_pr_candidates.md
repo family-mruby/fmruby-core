@@ -47,8 +47,10 @@ Phase 2 までは Ruby 側の書き換えで回避済み。汎用のものは将
 |---|---|---|---|
 | ディスパッチ | poly レシーバの `.delete(int)` が `String#delete` に誤 dispatch (`Array#delete` であるべき) | 明示ループで rebuild | phase2_report |
 | 名前解決 | module/class に定義した `def self.name` が呼ばれず、**組み込み `Module#name` (モジュール名文字列) に解決**される。実 Ruby は self.name で上書き可 | メソッド名を `name` 以外に (例 `read_name`) | phase2_report |
-| コメント誤検出 | `source_references_set` がコメント/文字列リテラル内の `Set` も検出し `require "set"` を自動 splice (その set.rb がコンパイル不能) | コメントから `Set` を除去 | phase2_report |
+| コメント誤検出 | `source_references_set` がコメント/文字列リテラル内の `Set` も検出し `require "set"` を自動 splice (その set.rb がコンパイル不能) | **fork 修正済 `44e2d57`**: コメント/文字列をスキップする state machine (`#{...}` 補間は code 走査)。回帰 test 1991/1 bench 58/0 | phase2_report / **DONE** |
 | スコープ | module レベルの mutable global 配列 (`$calls = []` + module メソッド内 `<<`) が `gv_calls undeclared` の壊れた C を生成 (int/bool の global は正常) | 配列 global を使わず直接出力 | phase0_findings |
+| 推論 | 戻り値の FFI 型が `:void` のメソッド (`Log.*`) をメソッド末尾で呼ぶと、そのメソッド全体が「値を返さない (void)」と推論される。値の位置の分岐が noreturn (`FmrbApp.reboot`) か void leaf に到達する場合も同様に void 化 | `Log.*` を末尾 `nil` で返す / メソッド末尾に明示 `nil` (末尾 nil×5) | T4-3 (48eba26) |
+| codegen/推論 | **poly 値が `const char*` (`:str`) 引数へ coercion 無しで流れる**のが根因。最小再現確認済 (V4/V5/V6): poly 返しメソッド (nilable hash lookup 等) を `sprintf`/`sp_str_concat`/`sp_File_open` に直渡し。2 形態=(a) `incompatible types ... const char* using sp_RbVal` (通常), (b) GC-root 圧下で GC-root 展開が `const char*` 初期化子に落ち `expected expression before sp_RbVal` の壊れた C (str_run_clear で発現)。**両者同一根因 → 1 修正 (`:str` 引数位置で poly→cstr coercion を statement で挿入) でカバー**。repro: `scratchpad/repro_poly_to_cstr.rb` | 当面 `.to_s` / local hoist (B 負債。byteslice/File.open/sprintf fmt で計 5 箇所) | T4-3 (48eba26)、**最小再現 DONE、fork codegen 修正 pending** |
 
 ### B-2. 機能不足 (未実装)
 
@@ -89,6 +91,11 @@ Phase 2 までは Ruby 側の書き換えで回避済み。汎用のものは将
 5. `hash[k] ||= v` / `Integer#chr` / poly `Array#delete` / module 級 mutable
    global 配列 を避ける (B 参照)。
 6. 未対応構文の最小再現は `tool/spinel_poc/coverage/UNSUPPORTED.md` (U-1/U-2/U-3)。
+7. **戻り値 `:void` の FFI メソッド (`Log.*` 等) をメソッド末尾で呼ばない**
+   (メソッド全体が void 推論される)。末尾に明示 `nil` を置く。値の位置の分岐が
+   noreturn/void leaf に達する場合も同様 (B-1 推論 参照)。
+8. **文字列返しメソッドを `sprintf`/文字列 API の実引数に直接渡さない**
+   (const char* 初期化子で壊れた C)。ローカルに hoist してから渡す (B-1 codegen 参照)。
 
 ---
 
