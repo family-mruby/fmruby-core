@@ -45,6 +45,17 @@ module Machine
   end
 end
 
+# Minimal FmrbKernel for the Spinel app VM. In the mruby build FmrbKernel is the
+# kernel's global C-extension class (available to every VM); a Spinel app program
+# has no such class, so provide the subset apps call. system_desktop only calls
+# boot_complete! (status LED: fast-blink -> heartbeat).
+module FmrbKernel
+  def self.boot_complete!
+    FmrbSpxApp.fmrb_spx_app_boot_complete
+    nil
+  end
+end
+
 # Little-endian readers/writers and NUL-padded name fields over byte Strings.
 # NOTE: never define a helper named `name` here -- Spinel resolves e.g.
 # `SpxBytes.name` to the built-in Module#name, silently corrupting parsing

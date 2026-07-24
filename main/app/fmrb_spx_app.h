@@ -194,6 +194,11 @@ const char *fmrb_spx_app_usb_devices(void);
 int fmrb_spx_app_hid_raw_subscribe(int slot);   /**< 1 ok / 0 fail */
 int fmrb_spx_app_hid_raw_unsubscribe(int slot); /**< 1 ok / 0 fail */
 
+/** @brief Signal boot complete (status LED: fast-blink -> heartbeat). The mruby
+ *  desktop calls FmrbKernel.boot_complete!; the Spinel desktop routes here.
+ *  Returns 0. */
+int fmrb_spx_app_boot_complete(void);
+
 #ifdef __cplusplus
 }
 #endif

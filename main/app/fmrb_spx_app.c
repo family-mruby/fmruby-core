@@ -27,6 +27,7 @@
 #include "fmrb_kernel.h"
 #include "host_task.h"
 #include "usb_task.h"
+#include "status_led.h"
 
 #ifdef CONFIG_IDF_TARGET_LINUX
 #include <sys/sysinfo.h>
@@ -656,4 +657,10 @@ int fmrb_spx_app_hid_raw_subscribe(int slot)
 int fmrb_spx_app_hid_raw_unsubscribe(int slot)
 {
     return usb_task_unsubscribe_raw_reports((int8_t)slot) == FMRB_OK ? 1 : 0;
+}
+
+int fmrb_spx_app_boot_complete(void)
+{
+    status_led_set_boot_complete();
+    return 0;
 }

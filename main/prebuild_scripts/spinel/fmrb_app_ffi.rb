@@ -122,6 +122,7 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_usb_devices, [], :binstr
   ffi_func :fmrb_spx_app_hid_raw_subscribe, [:int], :int
   ffi_func :fmrb_spx_app_hid_raw_unsubscribe, [:int], :int
+  ffi_func :fmrb_spx_app_boot_complete, [], :int
 
   # --- out-params for recv_message (read back with read_i32) ---
   ffi_buffer :type_out, 4
