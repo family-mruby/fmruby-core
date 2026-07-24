@@ -60,6 +60,13 @@ if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     prepare_ruby_spinel_source(fmrb_kernel_combined ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
     # The FFI shim (fmrb_msg / transport / status_led) is only needed by spinel.
     list(APPEND COMPONENT_SRCS "kernel/fmrb_spx_kernel.c")
+    # Phase 4 T4-1: FmrbApp / FmrbGfx FFI shims for Spinel-compiled apps
+    # (system_desktop). Plain mrb-free C, wrapping the same host_task GFX queue
+    # and fmrb_* primitives as the mruby bindings. Compiled whenever any Spinel
+    # VM is present; sp_net_bin_len (for :binstr returns) lives in
+    # fmrb_spx_kernel.c above.
+    list(APPEND COMPONENT_SRCS "app/fmrb_spx_gfx.c")
+    list(APPEND COMPONENT_SRCS "app/fmrb_spx_app.c")
     message(STATUS "FMRB_KERNEL_ENGINE=spinel: kernel VM replaced by Spinel combined kernel")
 endif()
 
