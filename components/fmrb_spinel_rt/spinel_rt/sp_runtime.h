@@ -36,9 +36,20 @@
    stack at raise time and Exception#backtrace / caller format it into a
    Ruby-style backtrace — no per-method shadow frames needed. Off unless the
    generated main() sets sp_bt_enabled (debug builds), so non-debug behaviour
-   and cost are unchanged. execinfo is POSIX-ish; absent on Windows. */
-#include <execinfo.h>
-#define SP_BT_AVAILABLE 1
+   and cost are unchanged. execinfo is POSIX-ish; absent on Windows and on
+   bare-metal / RTOS newlib (ESP-IDF). Auto-detect it with __has_include so those
+   targets compile the backtrace helpers out (SP_BT_AVAILABLE 0) with no port
+   flag; where the header exists SP_BT_AVAILABLE stays 1 and output is
+   byte-identical. */
+#if defined(__has_include)
+#  if __has_include(<execinfo.h>)
+#    include <execinfo.h>
+#    define SP_BT_AVAILABLE 1
+#  endif
+#endif
+#ifndef SP_BT_AVAILABLE
+#define SP_BT_AVAILABLE 0
+#endif
 extern int sp_bt_enabled;          /* set to 1 by debug-build main(); defined in lib/sp_cold.c */
 extern const char *sp_bt_srcfile;  /* toplevel .rb path, set by debug main() */
 #if SP_BT_AVAILABLE
@@ -50,7 +61,14 @@ static int sp_bt_n = 0;
 #include <fcntl.h>
 #include <fnmatch.h>
 #include <sys/file.h>
+/* <sys/mman.h> is consumed only by the fiber stack allocator (lib/sp_fiber.c,
+   a separate TU) via the MAP_ANONYMOUS fallback below. Bare-metal / RTOS ports
+   without an MMU (e.g. ESP-IDF/newlib) have no <sys/mman.h>; such a port defines
+   SP_NO_MMAN and excludes fibers from its build. Hosted platforms leave it
+   undefined, so this include (and the byte-identical output) is preserved. */
+#ifndef SP_NO_MMAN
 #include <sys/mman.h>
+#endif
 #include <sys/wait.h>
 #if !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(SP_MULTI_CTX)
 #include <malloc.h>
@@ -60,8 +78,10 @@ static int sp_bt_n = 0;
    backend; see lib/sp_mem_override.h). */
 #define malloc_trim(x) ((void)0)
 #endif
+#ifndef SP_NO_MMAN
 #ifndef MAP_ANONYMOUS
 #define MAP_ANONYMOUS MAP_ANON
+#endif
 #endif
 #ifndef S_ISDIR
 #define S_ISDIR(m) (((m) & S_IFMT) == S_IFDIR)
@@ -1877,10 +1897,10 @@ static const char *sp_exc_message(volatile struct sp_Exception_s *ve);
    full prototypes live further down (near the bigint runtime block). */
 typedef struct sp_Bigint sp_Bigint;
 const char *sp_bigint_to_s(sp_Bigint *b);
-const char *sp_bigint_to_s_base(sp_Bigint *b, mrb_int base);
+const char *sp_bigint_to_s_base(sp_Bigint *b, intptr_t base);
 int sp_bigint_even_p(sp_Bigint *b);
 sp_Bigint *sp_bigint_abs_v(sp_Bigint *b);
-mrb_int sp_bigint_bit_length(sp_Bigint *b);
+intptr_t sp_bigint_bit_length(sp_Bigint *b);
 int64_t sp_bigint_to_int(sp_Bigint *b);
 double sp_bigint_to_double(sp_Bigint *b);
 int sp_bigint_cmp(sp_Bigint *a, sp_Bigint *b);
@@ -1895,7 +1915,7 @@ sp_Bigint *sp_bigint_shl(sp_Bigint *a, int64_t n);
 sp_Bigint *sp_bigint_pow(sp_Bigint *base, int64_t exp);
 sp_Bigint *sp_bigint_round_prec(sp_Bigint *b, int64_t ndigits, int mode);
 sp_Bigint *sp_bigint_isqrt(sp_Bigint *a);
-mrb_int sp_bigint_digits_buf(sp_Bigint *a, mrb_int base, mrb_int **out);
+intptr_t sp_bigint_digits_buf(sp_Bigint *a, intptr_t base, intptr_t **out);
 int sp_bigint_sign(sp_Bigint *b);
 size_t sp_bigint_byte_len(sp_Bigint *b);
 size_t sp_bigint_to_le_bytes(sp_Bigint *b, unsigned char *out, size_t cap);
@@ -3993,7 +4013,11 @@ static sp_PolyArray *sp_PolyArray_flatten_n(sp_PolyArray *a, mrb_int depth) {
   sp_PolyArray *b = sp_PolyArray_new();
   SP_GC_ROOT(b);
   if (!a) return b;
-  if (depth < 0) depth = INT64_MAX;
+  /* A negative depth means "flatten fully". Saturate to the largest mrb_int so
+     the countdown never reaches 0 for any real nesting. INT64_MAX would narrow
+     to -1 on a 32-bit mrb_int (intptr_t); INTPTR_MAX is the type's own max on
+     both widths. */
+  if (depth < 0) depth = INTPTR_MAX;
   for (mrb_int i = 0; i < a->len; i++) sp_PolyArray_flatten_into_n(b, a->data[i], depth);
   return b;
 }
@@ -7614,7 +7638,7 @@ sp_Bigint *sp_bigint_lcm(sp_Bigint *a, sp_Bigint *b);
 sp_Bigint *sp_bigint_div(sp_Bigint *a, sp_Bigint *b);
 sp_Bigint *sp_bigint_mod(sp_Bigint *a, sp_Bigint *b);
 sp_Bigint *sp_bigint_remainder(sp_Bigint *a, sp_Bigint *b);
-sp_Bigint *sp_bigint_powmod(sp_Bigint *base, mrb_int exp, sp_Bigint *mod);
+sp_Bigint *sp_bigint_powmod(sp_Bigint *base, intptr_t exp, sp_Bigint *mod);
 sp_Bigint *sp_bigint_pow(sp_Bigint *base, int64_t exp);
 sp_Bigint *sp_bigint_round_prec(sp_Bigint *b, int64_t ndigits, int mode);
 int sp_bigint_cmp(sp_Bigint *a, sp_Bigint *b);
@@ -7652,7 +7676,7 @@ sp_Bigint *sp_bigint_lcm(sp_Bigint *a, sp_Bigint *b);
 sp_Bigint *sp_bigint_div(sp_Bigint *a, sp_Bigint *b);
 sp_Bigint *sp_bigint_mod(sp_Bigint *a, sp_Bigint *b);
 sp_Bigint *sp_bigint_remainder(sp_Bigint *a, sp_Bigint *b);
-sp_Bigint *sp_bigint_powmod(sp_Bigint *base, mrb_int exp, sp_Bigint *mod);
+sp_Bigint *sp_bigint_powmod(sp_Bigint *base, intptr_t exp, sp_Bigint *mod);
 sp_Bigint *sp_bigint_pow(sp_Bigint *base, int64_t exp);
 sp_Bigint *sp_bigint_round_prec(sp_Bigint *b, int64_t ndigits, int mode);
 int sp_bigint_cmp(sp_Bigint *a, sp_Bigint *b);

@@ -252,6 +252,27 @@ generate_ruby_bytecode_commands(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}
 # Spinel engine: define the switch macro (fmrb_kernel.c) and, when a host
 # SPINEL_BIN is available, wire the .rb -> .c regeneration. The docker linux
 # build relies on the host-pre-generated .c (rake spinel:gen).
+# SP_NO_MMAN on MMU-less targets: the generated Spinel C includes sp_runtime.h,
+# which must not pull <sys/mman.h> on ESP32/newlib (mirrors fmrb_spinel_rt's
+# SPINEL_PORT_FLAGS). Held as a literal gate here rather than read from that
+# component's cache var, because IDF component processing order is not
+# guaranteed -- the same reason the MC flags below are duplicated, not
+# referenced. Empty on Linux (CONFIG_IDF_TARGET_LINUX), so 64-bit is unchanged.
+set(SPINEL_GEN_PORT_FLAGS "")
+if(NOT CONFIG_IDF_TARGET_LINUX)
+    set(SPINEL_GEN_PORT_FLAGS ";-DSP_NO_MMAN")
+endif()
+
+# The Spinel codegen emits layout-compatible pointer kind-punning (an IntArray*
+# stored in a PolyArray* slot; SymPolyHash*/StrPolyHash* variants; a boxed
+# exception temp). gcc <14 warned; gcc 14 promotes -Wincompatible-pointer-types
+# and -Wint-conversion to hard errors by default, which the Xtensa toolchain
+# (esp-14.x) hits. The generated C is already -w and proven at runtime on Linux,
+# so demote these back to warnings for it on every target (harmless where the
+# compiler never errored). A future codegen pass emitting explicit casts would
+# let this be dropped.
+set(SPINEL_GEN_RELAX_FLAGS ";-Wno-error=incompatible-pointer-types;-Wno-error=int-conversion")
+
 if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_KERNEL_ENGINE_SPINEL)
     # The combined .rb is itself host-generated (gen_kernel_combined.rb) into the
@@ -273,7 +294,7 @@ if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     # instance pool. Keep the two flags in sync with fmrb_spinel_rt SPINEL_MC_FLAGS.
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fmrb_kernel_combined.c
         PROPERTIES COMPILE_OPTIONS
-        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h")
+        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
 endif()
 
 # Desktop app engine: same wiring for the Spinel-compiled system_desktop program
@@ -287,5 +308,5 @@ if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
     # break). Only this generated TU gets them, never the fmrb_spx shims.
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/system_desktop_combined.c
         PROPERTIES COMPILE_OPTIONS
-        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h")
+        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
 endif()

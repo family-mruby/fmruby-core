@@ -19,7 +19,18 @@
 #include <string.h>
 #include <unistd.h>   /* pipe, isatty */
 #include <sys/stat.h> /* stat() for the File predicates */
-#include <sys/ioctl.h> /* TIOCGWINSZ for #winsize */
+/* <sys/ioctl.h> provides TIOCGWINSZ for File#winsize. On bare-metal / RTOS
+   newlib (ESP-IDF) the header may still EXIST as a stub that does not define
+   TIOCGWINSZ or struct winsize, so header presence is not enough -- key the
+   feature on the TIOCGWINSZ macro itself. Absent -> report a 0x0 winsize. */
+#if defined(__has_include) && __has_include(<sys/ioctl.h>)
+#  include <sys/ioctl.h>
+#endif
+#if defined(TIOCGWINSZ)
+#  define SP_HAVE_IOCTL 1
+#else
+#  define SP_HAVE_IOCTL 0
+#endif
 
 /* Provided by the generated TU / libspinel_rt.a. */
 extern void *sp_gc_alloc(size_t sz, void (*fin)(void *), void (*scn)(void *));
@@ -105,8 +116,10 @@ sp_IntArray *sp_File_winsize(sp_File *f) {
 #else
   if (f && f->fp) {
 #endif
+#if SP_HAVE_IOCTL
     struct winsize ws;
     if (ioctl(fileno(f->fp), TIOCGWINSZ, &ws) == 0) { rows = ws.ws_row; cols = ws.ws_col; }
+#endif
   }
   sp_IntArray *a = sp_IntArray_new();
   sp_IntArray_push(a, rows);

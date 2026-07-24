@@ -10,6 +10,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>   /* tolower/toupper/isupper for %-directive case folding */
 #include <time.h>
 
 #include "sp_time.h"

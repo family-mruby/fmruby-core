@@ -34,6 +34,23 @@ endif()
 # so import_from_fork.rb does not wipe it.
 file(GLOB COMPILE_SRCS ${CMAKE_CURRENT_LIST_DIR}/spinel_rt/*.c)
 
+# Port flags for MMU-less targets (ESP32/newlib has no <sys/mman.h>). On such a
+# target sp_runtime.h must not pull <sys/mman.h>, so define SP_NO_MMAN; and the
+# coroutine pair -- sp_fiber.c (mmaps its stacks; #errors under SP_NO_MMAN) and
+# sp_sched.c (its green-thread scheduler, needs <poll.h>) -- must be dropped from
+# the build. The kernel/desktop never use fibers or threads, so --gc-sections
+# removes the remaining (uncompiled) references. Linux (CONFIG_IDF_TARGET_LINUX)
+# keeps them and the hosted headers unchanged. The flag must also reach the
+# generated Spinel C (which includes sp_runtime.h); that site is
+# main/CMakeLists.txt, kept in sync via SPINEL_PORT_FLAGS below.
+set(SPINEL_PORT_FLAGS "")
+if(NOT CONFIG_IDF_TARGET_LINUX)
+    set(SPINEL_PORT_FLAGS -DSP_NO_MMAN)
+    list(REMOVE_ITEM COMPILE_SRCS
+        "${CMAKE_CURRENT_LIST_DIR}/spinel_rt/sp_fiber.c"
+        "${CMAKE_CURRENT_LIST_DIR}/spinel_rt/sp_sched.c")
+endif()
+
 idf_component_register(
     SRCS ${COMPILE_SRCS} "fmrb_spinel_host.c"
     INCLUDE_DIRS "spinel_rt" "include"
@@ -48,6 +65,7 @@ target_compile_options(${COMPONENT_LIB} PRIVATE
     -fdata-sections
     "-DSP_GC_STACK_MAX=${SPINEL_RT_GC_STACK_MAX}"
     ${SPINEL_MC_FLAGS}
+    ${SPINEL_PORT_FLAGS}
 )
 
 # Ensure the final image links with --gc-sections so uncalled runtime functions
@@ -66,3 +84,7 @@ target_compile_definitions(${COMPONENT_LIB} INTERFACE "SP_GC_STACK_MAX=${SPINEL_
 # an instance pool. The generated C gets these flags per-file in
 # main/CMakeLists.txt. This path is exported so that site stays in sync:
 set(SPINEL_MC_FLAGS "${SPINEL_MC_FLAGS}" CACHE INTERNAL "SP_MULTI_CTX flags for the generated Spinel C")
+
+# Port flags (SP_NO_MMAN on MMU-less targets) the generated Spinel C must also
+# carry, since it includes sp_runtime.h. Applied per-file in main/CMakeLists.txt.
+set(SPINEL_PORT_FLAGS "${SPINEL_PORT_FLAGS}" CACHE INTERNAL "Port flags for the generated Spinel C")

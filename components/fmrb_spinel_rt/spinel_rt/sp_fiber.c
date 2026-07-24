@@ -3,6 +3,13 @@
  * in the generated TU and are reached by name; fiber-local storage is
  * self-contained here. */
 #include "sp_fiber.h"
+/* Fibers mmap their own stacks, so this TU cannot build on a port that lacks an
+   MMU / <sys/mman.h>. Such ports (see SP_NO_MMAN in sp_runtime.h) must exclude
+   sp_fiber.c from their SRCS; flag it explicitly rather than fail cryptically in
+   the middle of a header cascade. */
+#ifdef SP_NO_MMAN
+#error "sp_fiber.c requires <sys/mman.h>; exclude it from the build on SP_NO_MMAN ports"
+#endif
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>

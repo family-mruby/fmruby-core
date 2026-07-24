@@ -5413,7 +5413,15 @@ sp_Bigint *sp_bigint_remainder(sp_Bigint *a, sp_Bigint *b) {
 
 /* Integer#pow(exp, mod): modular exponentiation (mpz_powm_i handles a large
    exponent without materializing base**exp). */
-sp_Bigint *sp_bigint_powmod(sp_Bigint *base, mrb_int exp, sp_Bigint *mod) {
+/* NOTE on the integer boundary type. This TU compiles with mruby_shim.h, where
+   `mrb_int` is int64_t; the generated callers see sp_types.h, where `mrb_int` is
+   intptr_t (4 bytes on a 32-bit target). A public signature spelled `mrb_int`
+   therefore has a DIFFERENT width in the two TUs and its arguments get misread
+   on ILP32 (a live SIGSEGV: the exp/mod args shift). The cross-TU integer
+   boundary must use a type identical in both TUs, so these functions spell it
+   `intptr_t` (the platform Integer width, == the generated side's mrb_int, and
+   == int64_t on LP64 so 64-bit output is byte-identical). */
+sp_Bigint *sp_bigint_powmod(sp_Bigint *base, intptr_t exp, sp_Bigint *mod) {
   if (exp < 0) sp_raise_cls("RangeError", "Integer#pow() 1st argument cannot be negative when 2nd argument specified");
   if (zero_p(&mod->mpz)) sp_bigint_raise_zerodiv("divided by 0");
   sp_Bigint *r = sp_bigint_alloc();
@@ -5587,7 +5595,7 @@ const char *sp_bigint_to_s(sp_Bigint *b) {
    excluding the sign bit -- i.e. the magnitude's bit count for a non-negative
    value, and (|self| - 1)'s bit count for a negative one (a magnitude that is an
    exact power of two loses a bit). Zero has bit_length 0. */
-mrb_int sp_bigint_bit_length(sp_Bigint *b) {
+intptr_t sp_bigint_bit_length(sp_Bigint *b) {   /* intptr_t boundary: see sp_bigint_powmod */
   if (!b) return 0;
   sp_bigint_init_ctx();
   mpz_t *z = &b->mpz;
@@ -5608,7 +5616,7 @@ mrb_int sp_bigint_bit_length(sp_Bigint *b) {
 
 /* to_s(base): mpz_get_str renders any base in [2, 36]. Owner-frees contract
    matches sp_bigint_to_s. */
-const char *sp_bigint_to_s_base(sp_Bigint *b, mrb_int base) {
+const char *sp_bigint_to_s_base(sp_Bigint *b, intptr_t base) {   /* intptr_t boundary: see sp_bigint_powmod */
   if (base < 2 || base > 36) {
     sp_raise_cls("ArgumentError", sp_sprintf("invalid radix %lld", (long long)base));
     return NULL;
@@ -5667,19 +5675,24 @@ sp_Bigint *sp_bigint_isqrt(sp_Bigint *a) {
    a malloc'd mrb_int buffer (caller frees *out). Any base >= 2 -- radices
    beyond 36 can't ride the to_s(base) text path. Returns the digit count,
    or -1 for a negative receiver (the caller raises Math::DomainError). */
-mrb_int sp_bigint_digits_buf(sp_Bigint *a, mrb_int base, mrb_int **out) {
+/* intptr_t boundary (see sp_bigint_powmod): base, the returned count, and every
+   *out buffer element are the generated side's mrb_int (intptr_t). Spelling the
+   buffer int64_t here would make the caller -- which reads it as `mrb_int *`
+   (intptr_t*) -- stride past every other element on ILP32. Digits are < base, so
+   they always fit intptr_t. */
+intptr_t sp_bigint_digits_buf(sp_Bigint *a, intptr_t base, intptr_t **out) {
   *out = NULL;
   if (!a) return 0;
   if (sp_bigint_sign(a) < 0) return -1;
   sp_Bigint *q = a;
   sp_Bigint *bb = sp_bigint_new_int((int64_t)base);
-  mrb_int cap = 16, n = 0;
-  mrb_int *buf = (mrb_int *)malloc(sizeof(mrb_int) * (size_t)cap);
+  intptr_t cap = 16, n = 0;
+  intptr_t *buf = (intptr_t *)malloc(sizeof(intptr_t) * (size_t)cap);
   if (sp_bigint_sign(q) == 0) { buf[n++] = 0; *out = buf; return n; }
   while (sp_bigint_sign(q) != 0) {
     sp_Bigint *r = sp_bigint_mod(q, bb);
-    if (n == cap) { cap *= 2; buf = (mrb_int *)realloc(buf, sizeof(mrb_int) * (size_t)cap); }
-    buf[n++] = (mrb_int)sp_bigint_to_int(r);
+    if (n == cap) { cap *= 2; buf = (intptr_t *)realloc(buf, sizeof(intptr_t) * (size_t)cap); }
+    buf[n++] = (intptr_t)sp_bigint_to_int(r);
     q = sp_bigint_div(q, bb);
   }
   *out = buf;

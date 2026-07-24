@@ -58,6 +58,20 @@ static inline void sp_ctx_make(sp_fiber_ctx *ctx, void *base, size_t size,
 #endif
 }
 
+#elif defined(SP_NO_MMAN)  /* MMU-less / RTOS port: fibers excluded, no ucontext */
+
+/* On a bare-metal / RTOS target (see SP_NO_MMAN in sp_runtime.h) fibers are
+   dropped from the build -- sp_fiber.c is not compiled -- and <ucontext.h> does
+   not exist. This header is still pulled in transitively (via sp_types.h), so
+   provide a stub context type + a no-op sp_ctx_make to keep it self-consistent.
+   sp_ctx_make / sp_ctx_swap are never referenced on such a target. */
+typedef struct sp_fiber_ctx { void *sp; } sp_fiber_ctx;
+
+static inline void sp_ctx_make(sp_fiber_ctx *ctx, void *base, size_t size,
+                               void (*entry)(void)) {
+  (void)ctx; (void)base; (void)size; (void)entry;
+}
+
 #else  /* portable fallback: POSIX ucontext */
 
 #include <ucontext.h>

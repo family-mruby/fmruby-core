@@ -19,6 +19,13 @@
 #include "sp_array.h"   /* sp_StrArray for Dir.glob */
 #include <dirent.h>
 #include <sys/stat.h>
+/* Bare-metal / RTOS newlib (ESP-IDF; see SP_NO_MMAN in sp_runtime.h) has no
+   symbolic links and does not declare lstat(2). Dir.glob uses lstat only to
+   avoid descending through a symlink; with no symlinks, plain stat is the
+   correct and equivalent call. */
+#if defined(SP_NO_MMAN) && !defined(lstat)
+#define lstat stat
+#endif
 #include <errno.h>
 #include "sp_time.h"   /* sp_Time for File.mtime */
 #include "sp_io.h"     /* sp_file_directory prototype */
@@ -928,7 +935,16 @@ sp_PolyArray *sp_str_chars_poly(const char *s) {
    stays in the header next to sp_raise_cls; only the cold symbol->Ruby-frame
    formatting lives here. The two flag globals are defined here so the
    debug-build main() (generated TU) and the header callers share one copy. */
-#include <execinfo.h>
+/* execinfo.h is absent on Windows and on bare-metal / RTOS newlib (ESP-IDF).
+   Auto-detect with __has_include -- same logic as sp_runtime.h -- so those
+   targets compile the backtrace formatting out (SP_BT_AVAILABLE 0). sp_cold.c
+   deliberately does not include sp_runtime.h, so it defines the macro itself. */
+#if defined(__has_include) && __has_include(<execinfo.h>)
+#  include <execinfo.h>
+#  define SP_BT_AVAILABLE 1
+#else
+#  define SP_BT_AVAILABLE 0
+#endif
 int sp_bt_enabled = 0;          /* set to 1 by debug-build main() */
 const char *sp_bt_srcfile = ""; /* toplevel .rb path, set by debug main() */
 static int sp_bt_is_runtime(const char *n) {
@@ -1022,8 +1038,9 @@ else {                                        /* macOS: "<idx> <image> <addr> <s
 sp_StrArray *sp_bt_format(void **buf, int n) {
   sp_StrArray *a = sp_StrArray_new();
   SP_GC_ROOT(a);
+#if SP_BT_AVAILABLE
   if (!sp_bt_enabled || n <= 0) return a;
-  char **syms = backtrace_symbols(buf, n);
+  char **syms = backtrace_symbols(buf, n);   /* execinfo.h; only on hosted targets */
   if (!syms) return a;
   const char *src = (sp_bt_srcfile && sp_bt_srcfile[0]) ? sp_bt_srcfile : "(spinel)";
   for (int i = 0; i < n; i++) {
@@ -1033,6 +1050,9 @@ sp_StrArray *sp_bt_format(void **buf, int n) {
     free(name);
   }
   free(syms);
+#else
+  (void)buf; (void)n;   /* no execinfo backtrace on this target */
+#endif
   return a;
 }
 
