@@ -46,6 +46,55 @@ fork の以下の箇所が ESP-IDF/newlib で問題になる (行番号は目安
    残る constructor が無いか grep で確認だけする。
 7. Ruby グローバル変数・シンボルテーブル等の生成 TU 側 static は
    そのまま .bss/.data に載る。サイズを確認し、大きければ配置を検討。
+8. `lib/sp_io.c`: File/Dir が生 POSIX (`fopen`/`opendir`/`stat`/`fdopen`/
+   `isatty`/`ioctl`) 直叩き。**ESP32 に POSIX FS は無いため、FS に触る
+   Spinel アプリは実機で全滅する** (T4-5 で発見)。`sp_io` に VFS バックエンド
+   フックを追加 (`sp_mem_*` と同型) し、fmruby 側で `fmrb_hal_file_*` に配線する
+   fork 修正が必要 (upstream PR 候補)。desktop の launcher/icon/file manager が
+   これに依存。
+
+**ホスト/POSIX 依存の網羅版チェックリストは `esp32_host_deps_sweep.md`**
+(本一覧はその抜粋。コア/オプションの別と grep 種、`nm -u` ゲートを記載)。
+
+## Phase 4 からの引き継ぎ状態と横断決定 (2026-07-24 更新)
+
+Phase 4 完了時点で確定している状態と、Phase 5 全体に効く横断決定。詳細は各レポート参照。
+
+**機能・実装の完了状態 (Linux)**:
+- 混成 (mruby kernel + Spinel desktop) と 2-Spinel 構成が Linux headless/GUI でフル動作
+  (ユーザ確認済)。`phase4_report.md`。
+- **poly-dispatch gap は系統的に一掃済** (byteslice `d26c1f9` / rindex 他 `78c7cb20` /
+  Array#index `dea18671` / PolyArray_set no-op `b24b1956` / setbyte は Ruby 修正)。
+  生成 C を `grep sp_nomethod_msg_args` で全列挙して潰した。
+- **VFS フック実装済** (`e2497db`): `sp_io` に I/O backend フック、fmruby は `fmrb_hal_file_*`
+  を注入。**ESP32 では fmrb HAL→littlefs に繋ぐだけ** (Linux で設計・実証済)。
+- launcher の boot OOM は **every-icon GC** で対処 (churn 支配、`memory_model_findings.md`)。
+  Linux のみ SYSTEM_APP プールを 1.5MB (64-bit object model の ~2x 吸収)。
+
+**lint ゲート (Phase 5 前に通す)**:
+- `rake spinel:doctor` で kernel/desktop を source-level lint。現状 **clean**
+  (desktop の `write_time` 2 件は ESP32 専用 RTC ドライバで allowlist 済 — 下記 RTC 課題)。
+- ESP32 ビルド前 (T5-2/T5-3) に必ず `rake spinel:doctor` を通す。32-bit で新規の
+  unresolved/unsupported が出ないか、ESP32 生成 combined でも再確認。
+
+**横断決定 (Phase 5 の各タスクで守る)**:
+- **メモリ**: 64-bit Linux の live 1.9x / churn 11x は **ESP32 の数字ではない**
+  (ヘッダのポインタ半減で別物)。**32-bit 実機での live/churn 再計測が本番**
+  (`memory_model_findings.md`)。live 削減レバー = `sp_gc_hdr` スリム化
+  (`fork_pr_candidates.md` C、48→24B)。ESP32 プールサイジングはこの実測後。
+- **スタック**: Spinel は Ruby 呼び出し深さを C/RTOS タスクスタックに写し、**深度ガードが
+  無い** (深い再帰は SIGSEGV/panic、`stack_model_findings.md`)。起動後に
+  `uxTaskGetStackHighWaterMark` を必ずログ (T5-3 に既記)。fork へ C スタック深度ガード
+  起案を検討。
+- **fiber は使わない**: fiber は mmap/ucontext/asm 前提で ESP32 backend 無し。SRCS から除外
+  (T5-2) し、**Spinel 対象 Ruby で `Enumerator.new{|y|}` / `.next` / `.lazy` を使わない**
+  (`ruby_writing_constraints.md` C)。lint/レビューで確認。
+- **整数オーバーフロー**: ESP32 は 32-bit `mrb_int`。overflow ポリシー
+  (`--int-overflow` raise/wrap/promote) を Phase 5 で明示決定し spinel:gen に反映
+  (既定 raise のままで良いかを含む)。`spinel_upstream_notes.md`。
+- **RBS による poly 削減は Phase 5 後の課題** (ユーザ決定)。実機化を優先。
+- **backtrace 空**: `Exception#backtrace` が `[]` (`fork_pr_candidates.md` B-2)。実機デバッグが
+  辛いので、`--line-map` から backtrace を埋める fork 起案を Phase 5 早期にやると以後が楽。
 
 ## タスク
 
@@ -103,6 +152,16 @@ fork の以下の箇所が ESP-IDF/newlib で問題になる (行番号は目安
      config の arena 用フックを分離する fork 改修を起案。
    - estalloc は 24bit アドレッシング (プールあたり最大 16MB) で
      ESP32 の PSRAM プール規模に対して十分。
+5. **VFS backend 接続** (フック自体は Phase 4 で実装済 `e2497db`):
+   - `sp_io` の I/O backend フックに fmruby 側 `fmrb_hal_file_*` を注入する配線は
+     既存。ESP32 では `fmrb_hal_file_*` が littlefs を backing するので**追加配線は不要**、
+     ESP32 ビルドで動くことの確認が主。
+   - `nm -u` で **`sp_io` の POSIX 直呼び (`fopen`/`opendir`/`stat`/`fdopen`/`isatty`/
+     `ioctl`) が未定義参照として残っていないこと**を確認 (フック経由に置換済のはず)。
+     `esp32_host_deps_sweep.md` のコア表と照合。
+6. **lint pre-flight**: `rake spinel:doctor` を通す (kernel/desktop の unsupported/
+   unresolved がゼロ、既知 allowlist=ESP32 RTC のみ)。**fiber 混入チェック**も兼ねる
+   (`Enumerator.new`/`.next`/`.lazy` が Spinel 対象 Ruby に無いこと)。
 
 ### T5-3: カーネルの実機投入 (1-2 週、実機検証込み)
 
@@ -153,6 +212,22 @@ fork の以下の箇所が ESP-IDF/newlib で問題になる (行番号は目安
    共通 TU 化 (fork 改修が必要なので費用対効果を見る)。
 3. 検証項目は Phase 4 の T4-5 と同じセットの実機版 + ユーザによる
    操作感確認 (音声・NTSC 出力はユーザ確認事項)。
+4. **RTC ハードウェアアクセス — (b) FFI シム経由に決定 (ユーザ決定 2026-07-24)**:
+   現状 `clock_setting.rb` は `RX8900`/`RX8130` ドライバを直接インスタンス化して
+   `write_time` を呼ぶ (`PLATFORM=="esp32"` ガードの ESP32 専用ブロック。Linux では
+   未解決 = doctor allowlist 済、ternary 2クラスで poly)。
+   決定理由: システムクロック設定は既に **`FmrbApp.set_wallclock` FFI**
+   (`fmrb_spx_app_set_wallclock`, `fmrb_app_ffi.rb`) 経由。RTC チップ書き込みも同経路に
+   寄せるのが一貫 (fmruby の HW=FFI 方針)。desktop Ruby から I2C/ドライバ/チップ分岐を排除、
+   チップ選択 (RX8900/RX8130, CHIP_MODEL) はボードを知る C 側が行う。(a) は I2C FFI シムが
+   別途要り工数増で利点なし。
+   実装:
+   - C 側 `fmrb_spx_app_set_wallclock` に **RTC チップ書き込みを内包** (UTC 変換・ボード知識は
+     既にそこにある) するか、兄弟 FFI `fmrb_spx_app_set_hwclock` を追加。チップ選択と I2C は C 側。
+   - `clock_setting.rb` の `RX8900`/`RX8130` インスタンス化ブロックを削除し、上記 FFI 呼びに置換。
+   - **dual-safe**: mruby/Spinel の両 `set_wallclock` が同じ C 経路を通るようにする。
+   - 完了後、Rakefile `spinel:doctor` の allowlist (`write_time`) を外し **完全 clean** を確認。
+   - `sp_time`/`sp_random` の ESP32 backend もこの HW=FFI の流れで確定する。
 
 ## 受け入れ基準
 
@@ -165,6 +240,11 @@ fork の以下の箇所が ESP-IDF/newlib で問題になる (行番号は目安
    複数インスタンス同居が実機で安定、soak クリーン。
 5. fork の ESP32 対応が汎用ガードとして実装され、64bit テストが
    全パスのまま。
+6. `rake spinel:doctor` が clean (RTC を FFI 化した場合は allowlist ゼロ、
+   Spinel 対象 Ruby に unsupported/unresolved が無い)。RTC HW アクセスの
+   方式 ((a)/(b)) を決定・実装し、根拠をレポートに記録。
+7. ホスト/POSIX 依存の棚卸し (`esp32_host_deps_sweep.md`) が実行され、コアは
+   backend/ガード済、オプションはリンク除外で `nm -u` clean。
 
 ## 落とし穴・注意
 

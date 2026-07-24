@@ -67,6 +67,7 @@ Phase 2 までは Ruby 側の書き換えで回避済み。汎用のものは将
 | `hash[k] ||= v` (IndexOrWriteNode) 未対応 | `x = [] unless x` 形へ | phase2_report |
 | FFI: `ffi_buffer` の per-byte リーダが無い (`:ptr` に getbyte 不可、`ffi_read_u8`/`u16` 相当なし)。C 構造体のバイト列読みが `ffi_read_u32/i32/ptr` に限られる | C 関数の戻りを `:binstr` (実 String) にして getbyte | phase2_report / FFI.md |
 | bundled `set.rb` 自体が `Set#&` を poly `other` でコンパイル不能 (Set 型を使うと連鎖的に不可) | Set を使わない | phase2_report |
+| `Exception#backtrace` / `Kernel#caller` が `[]` を返す (class + message は動く)。**例外時に backtrace が空**で、poly-dispatch クラッシュ等のデバッグが困難 (生成 C を grep して原因特定していた) | 現状は生成 C から追う。**relaxable**: 公式 limitations いわく `--line-map` の call-site→source side-table から frame を埋められる。fork 起案の価値大 (今後の poly-dispatch デバッグが楽に) | fork limitations.md (Partial) / T4-5 |
 
 ### B-3. インフラ (fmruby 側の shim で暫定対応中)
 
@@ -97,6 +98,13 @@ Phase 2 までは Ruby 側の書き換えで回避済み。汎用のものは将
   ヘッダが半減する (48→24B) ため、実効メリットと優先度は 32-bit 実測後に判断**。
   関連: churn の est_calloc zero-fill 寄与が大なら **raw (非 zero-fill) alloc フック**
   (既出、B-1/事前作業) も併せて。
+
+- **RBS ヒントで poly-widen を減らす (fork でなく活用側、計画)**。Spinel は `--rbs DIR`
+  で RBS を推論ヒントに使え、`--emit-types` で per-position 型 (poly 箇所) を JSON 出力
+  できる。**typed symbol-hash が入るまでの間、method param/戻り値の poly-widen 側は RBS で
+  concrete に寄せられる**可能性 (symbol-hash 値 poly は RBS では解けない)。B の gap と live
+  overhead の両方を上流で減らすレバー。手順確立を今後の計画に (`ruby_writing_constraints.md`
+  「今後の方向性」参照)。
 
 ---
 

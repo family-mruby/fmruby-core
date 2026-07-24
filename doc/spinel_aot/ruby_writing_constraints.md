@@ -42,6 +42,10 @@ Fundamental / By design を正とする。
 | `eval` / 文字列 `class_eval` 等 | 実行時パーサが無いので不可 (ブロック形は可) | fork limitations.md |
 | `method_missing` / 動的 `define_method` / 特異メソッド | 直接 C 呼び出しのため動的ディスパッチ不可 | fork limitations.md |
 | `ObjectSpace` / `TracePoint` / `binding` オブジェクト化 | 実行時メタ機構が無い | fork limitations.md |
+| **文字列リテラルはデフォルト frozen (opt-out 不可)**。リテラルの直接ミューテート (`s = "x"; s << y`, `s.upcase!` 等) は FrozenError | `frozen_string_literal: true` 相当が baseline。可変文字列は `+"x"` / `String.new` / 補間 / `dup` から作る (非リテラルの alias ミューテートは動く) | fork limitations.md (By design) |
+| **`defined?(@ivar)` はコンパイル時に静的解決**。「プログラム中に `@ivar=` があれば truthy」で受信オブジェクトの実行時状態は見ない | ivar は C 構造体フィールドで per-object の「代入済み」記録が無い。**falsy 値メモ化 `return @x if defined?(@x)` は黙って壊れる** → `@x ||= compute` か明示フラグ (`@x_set`) を使う | fork limitations.md (By design) |
+| ユーザ定義 `#hash`/`#eql?` はハッシュキーで dispatch されない (identity 比較)。`Array#hash` も未対応 | キー毎にユーザメソッドを呼ぶ機構が無い。カスタムオブジェクト/配列をキーにすると identity 比較になる | fork limitations.md |
+| ブロックを使う (`yield`) メソッドが**自分自身に再帰**すると compile error | block 使用メソッドは呼び出し毎にインライン展開されるため、自己呼び出しが無限インラインになる (loud に落ちる) | fork limitations.md |
 | (随時追記) | | |
 
 ## B. 現 fork の弱点による暫定回避 (fork-fix pending)
@@ -71,6 +75,7 @@ Fundamental / By design を正とする。
 | nil や型が確定しない値になりうる結果 (`String#byteslice`、`FmrbI18n.t`、型未確定の変数) を、文字列連結・`sprintf`・`File.open` など具体型を必須とする箇所で使う直前に `.to_s` / `.to_i` で固定する | `byteslice` は範囲外で nil を返す等、Ruby でも nilable。Spinel は具体型を要求する箇所で型不一致になる。`.to_s` 追加は mruby でも同義で dual-safe | T4-3 (48eba26, `.to_s`×4) / phase0_findings |
 | FFI 境界で `msg[:data]` 等を、シンボルキー Hash 経由でなく **型の確定した String** で渡す | シンボルをキーにした Hash の値は常に型が確定しない値になり、具体型を要求する箇所で詰まるため | phase0_findings |
 | `$stdout` 等のグローバル変数を単一クラス (例 ShellOut) に固定する | Spinel では静的型が付くため、複数の型が混ざって型が確定しない値になり推論が悪化するのを防ぐ | phase4.md 落とし穴 |
+| **ESP32 向けアプリでは `Enumerator.new { \|y\| ... }` / 外部反復 (`.next`/`.peek`) / `.lazy` を避ける** | これらは fiber-backed で、Spinel の fiber は POSIX (mmap/ucontext/asm) 前提。**ESP32 に fiber backend が無く動かない** (Linux では動くので気付きにくい)。内部反復 (`.each`/`.map`/`.select`) は fiber 不使用で可 | fork limitations.md (Partial) / `esp32_host_deps_sweep.md` |
 | (随時追記) | | |
 
 ## メンテナンス
@@ -78,6 +83,24 @@ Fundamental / By design を正とする。
 - T4-3 で確定した各回避は、**Ruby の正当な曖昧さ (C 相当へ) か fork の推論弱点 (B) か**を
   判定して該当セクションへ移す。fork 弱点は `reports/fork_pr_candidates.md` にも起案登録。
 - 恒久制約 (A/C) が増えたら CLAUDE.md / アプリ作成ドキュメントからここへ導線を張る。
+
+### 今後の方向性: RBS で poly を減らす (未着手・計画)
+
+poly (型未確定値) は B の gap 群と live overhead の根本原因。Spinel は **RBS を型推論の
+ヒントとして受け取れる** (公式 internals: `--rbs DIR` で seed、`--emit-rbs` で推論結果を
+書き出し、`--emit-types` で per-position 型を JSON 出力)。強制ではなくヒントで、矛盾すれば
+無視される (型安全)。
+
+fmruby での活用案:
+- **method param の poly-widen を RBS で concrete に寄せる**。呼び出し側の型ばらつきで poly
+  化するパラメータに、RBS で意図した型を与えて推論を安定させる。
+- `--emit-types` を使って **desktop の生成 C で poly に落ちている箇所を機械的に棚卸し**し、
+  改善対象を可視化する (B の gap を減らす・live を減らす両方に効く)。
+- ただし **symbol-hash 値の poly は RBS でも解けない** (typed symbol-hash が無い限り常に
+  poly。`fork_pr_candidates.md` C 参照)。RBS が効くのは param/戻り値の widen 側。
+- **位置づけ: Phase 5 完了後の課題 (ユーザ決定 2026-07-24)**。ESP32 実機化を優先し、
+  RBS 検証ループ (spinel:gen に `--rbs`/`--emit-types` を通す配線) はその後に着手する。
+  詳細な外部情報とツールは `spinel_upstream_notes.md` 参照。
 
 ### T4-3 (commit 48eba26) の分類確定結果
 
