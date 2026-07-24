@@ -25,7 +25,11 @@ if File.exist?(".env")
     key, value = line.split("=", 2)
     next unless key && value
     value = value.split("#", 2).first.strip  # Remove inline comments
-    ENV[key.strip] = value unless value.empty?
+    # Shell/command-line env takes precedence over .env (standard dotenv
+    # semantics): only apply the .env value when the var is not already set.
+    # Without this a command-line override (e.g. FMRB_HW_TARGET=NARYAv4) is
+    # silently clobbered by .env and the wrong chip is built.
+    ENV[key.strip] = value unless value.empty? || ENV.key?(key.strip)
   end
 end
 
