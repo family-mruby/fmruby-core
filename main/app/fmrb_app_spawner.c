@@ -42,7 +42,10 @@ static void spinel_desktop_native(void *arg)
                   ctx->mempool_id, pool, pool_size);
         return;
     }
-    size_t threshold = pool_size / 4;  /* sp_instance_config: threshold < pool */
+    /* GC/str-heap threshold well below the pool: the desktop's app scan
+       (reading many .toml files) generates transient garbage, so collect often
+       to keep the live set inside the pool. */
+    size_t threshold = pool_size / 16;
     void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
     if (!est) {
         FMRB_LOGE(TAG, "failed to create Spinel desktop instance (pool %d, %zu bytes)",

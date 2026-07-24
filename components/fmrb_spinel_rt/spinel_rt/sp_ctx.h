@@ -150,6 +150,29 @@ typedef struct sp_ctx {
   void *(*mem_alloc)(void *ud, size_t);    /* MUST zero-fill */
   void *(*mem_realloc)(void *ud, void *, size_t);
   void  (*mem_dealloc)(void *ud, void *);
+
+  /* --- I/O backend (VFS hooks) ---
+   * Under SP_MULTI_CTX the File/Dir ops route regular-file byte I/O through
+   * these instead of raw stdio/POSIX, so a host (e.g. fmruby) can back them
+   * with a virtual filesystem (littlefs / HAL) where POSIX paths do not exist.
+   * The handle is opaque (void*), stored in sp_File.fp / sp_Dir.dp; the
+   * default backend below stores a FILE or DIR pointer there. Console streams
+   * (stdout/stderr/stdin) bypass the backend (identified by fp == std stream).
+   * Defaults to the libc/POSIX backend (sp_io_posix_*) when the config leaves
+   * a slot NULL, so an un-hooked instance behaves exactly like the default
+   * build. Minimal byte-level contract; gets/read-all/eof are reimplemented on
+   * top of read/seek/tell in the runtime, so a backend need only provide these. */
+  void  *io_ud;
+  void  *(*io_open)(void *ud, const char *path, const char *mode);        /* NULL on error */
+  long   (*io_read)(void *ud, void *h, char *buf, long n);                /* bytes, <0 error */
+  long   (*io_write)(void *ud, void *h, const char *buf, long n);         /* bytes, <0 error */
+  long   (*io_seek)(void *ud, void *h, long off, int whence);            /* 0=SET 1=CUR 2=END; new pos, <0 error */
+  long   (*io_tell)(void *ud, void *h);                                   /* pos, <0 error */
+  int    (*io_close)(void *ud, void *h);
+  int    (*io_stat)(void *ud, const char *path, long *size, int *is_dir, int *is_reg); /* 0 ok, -1 absent */
+  void  *(*io_opendir)(void *ud, const char *path);                       /* NULL on error */
+  int    (*io_readdir)(void *ud, void *dh, char *namebuf, int cap);       /* 1 = filled namebuf, 0 = end */
+  int    (*io_closedir)(void *ud, void *dh);
 } sp_ctx;
 
 /* ------------------------------------------------------------------------- */
@@ -175,6 +198,19 @@ typedef struct {
   void *(*alloc)(void *ud, size_t);          /* NULL = calloc default; MUST zero */
   void *(*realloc_fn)(void *ud, void *, size_t);
   void  (*dealloc)(void *ud, void *);
+  /* I/O backend (VFS). Any NULL slot falls back to the libc/POSIX backend, so a
+   * config that sets none behaves like the default build. See sp_ctx above. */
+  void  *io_ud;
+  void  *(*io_open)(void *ud, const char *path, const char *mode);
+  long   (*io_read)(void *ud, void *h, char *buf, long n);
+  long   (*io_write)(void *ud, void *h, const char *buf, long n);
+  long   (*io_seek)(void *ud, void *h, long off, int whence);
+  long   (*io_tell)(void *ud, void *h);
+  int    (*io_close)(void *ud, void *h);
+  int    (*io_stat)(void *ud, const char *path, long *size, int *is_dir, int *is_reg);
+  void  *(*io_opendir)(void *ud, const char *path);
+  int    (*io_readdir)(void *ud, void *dh, char *namebuf, int cap);
+  int    (*io_closedir)(void *ud, void *dh);
 } sp_instance_config;
 
 sp_ctx *sp_instance_create(const sp_instance_config *cfg);

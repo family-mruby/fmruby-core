@@ -5,6 +5,7 @@
 #include "sp_ctx.h"
 
 #ifdef SP_MULTI_CTX
+#include "sp_io.h"   /* sp_io_posix_* default backend */
 #include <stdlib.h>
 #include <string.h>
 
@@ -123,6 +124,20 @@ sp_ctx *sp_instance_create(const sp_instance_config *cfg) {
   memset(c, 0, sizeof(*c));
   c->mem_ud = cfg->mem_ud;
   c->mem_alloc = a; c->mem_realloc = re; c->mem_dealloc = de;
+
+  /* I/O backend: any NULL slot falls back to the libc/POSIX backend, so an
+     un-hooked instance reads/writes exactly like the default build. */
+  c->io_ud       = cfg->io_ud;
+  c->io_open     = cfg->io_open     ? cfg->io_open     : sp_io_posix_open;
+  c->io_read     = cfg->io_read     ? cfg->io_read     : sp_io_posix_read;
+  c->io_write    = cfg->io_write    ? cfg->io_write    : sp_io_posix_write;
+  c->io_seek     = cfg->io_seek     ? cfg->io_seek     : sp_io_posix_seek;
+  c->io_tell     = cfg->io_tell     ? cfg->io_tell     : sp_io_posix_tell;
+  c->io_close    = cfg->io_close    ? cfg->io_close    : sp_io_posix_close;
+  c->io_stat     = cfg->io_stat     ? cfg->io_stat     : sp_io_posix_stat;
+  c->io_opendir  = cfg->io_opendir  ? cfg->io_opendir  : sp_io_posix_opendir;
+  c->io_readdir  = cfg->io_readdir  ? cfg->io_readdir  : sp_io_posix_readdir;
+  c->io_closedir = cfg->io_closedir ? cfg->io_closedir : sp_io_posix_closedir;
 
   size_t gct = cfg->gc_threshold  ? cfg->gc_threshold  : (size_t)256 * 1024;
   size_t sct = cfg->str_threshold ? cfg->str_threshold : (size_t)256 * 1024;

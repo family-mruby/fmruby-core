@@ -51,7 +51,30 @@ void sp_file_delete(const char *path);
 void sp_file_rename(const char *from, const char *to);
 
 #include <dirent.h>
-/* Dir handle (Dir.open / Dir.each_child ...): ops live in lib/sp_cold.c. */
+/* Dir handle (Dir.open / Dir.each_child ...): ops live in lib/sp_cold.c.
+   dp is `DIR *` in the default build, or the backend's opaque dir handle under
+   SP_MULTI_CTX (stored through the same slot; a `void *`-sized pointer). */
 typedef struct { DIR *dp; const char *path; } sp_Dir;
+
+#ifdef SP_MULTI_CTX
+/* A console stream keeps its real FILE* and bypasses the VFS backend (its
+   handle equals the process stdout/stderr/stdin). Shared by sp_io.c and the
+   inline readers in sp_runtime.h. */
+#define SP_IS_STD(f) ((f)->fp == (void *)stdout || (f)->fp == (void *)stderr || (f)->fp == (void *)stdin)
+
+/* Default libc/POSIX I/O backend (sp_ctx io_* fall back to these when the
+   instance config leaves a slot NULL). The opaque handle is a FILE*, the dir
+   handle a DIR*. Behaves identically to the default build's direct calls. */
+void  *sp_io_posix_open(void *ud, const char *path, const char *mode);
+long   sp_io_posix_read(void *ud, void *h, char *buf, long n);
+long   sp_io_posix_write(void *ud, void *h, const char *buf, long n);
+long   sp_io_posix_seek(void *ud, void *h, long off, int whence);
+long   sp_io_posix_tell(void *ud, void *h);
+int    sp_io_posix_close(void *ud, void *h);
+int    sp_io_posix_stat(void *ud, const char *path, long *size, int *is_dir, int *is_reg);
+void  *sp_io_posix_opendir(void *ud, const char *path);
+int    sp_io_posix_readdir(void *ud, void *dh, char *namebuf, int cap);
+int    sp_io_posix_closedir(void *ud, void *dh);
+#endif
 
 #endif

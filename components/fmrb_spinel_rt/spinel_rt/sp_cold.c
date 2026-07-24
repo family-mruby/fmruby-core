@@ -1384,10 +1384,23 @@ const char *sp_dir_home(void) {
   if (!h) return sp_str_empty;
   return sp_str_dup_external(h);
 }
-void sp_Dir_fin(void *p) { sp_Dir *d = (sp_Dir *)p; if (d->dp) { closedir(d->dp); d->dp = NULL; } }
+void sp_Dir_fin(void *p) {
+  sp_Dir *d = (sp_Dir *)p;
+  if (!d->dp) return;
+#ifdef SP_MULTI_CTX
+  SP_CTX()->io_closedir(SP_CTX()->io_ud, d->dp);
+#else
+  closedir(d->dp);
+#endif
+  d->dp = NULL;
+}
 void sp_Dir_scan(void *p) { sp_Dir *d = (sp_Dir *)p; if (d->path) sp_mark_string(d->path); }
 sp_Dir *sp_Dir_new(const char *path) {
+#ifdef SP_MULTI_CTX
+  DIR *dp = (DIR *)SP_CTX()->io_opendir(SP_CTX()->io_ud, path ? path : "");
+#else
   DIR *dp = opendir(path ? path : "");
+#endif
   if (!dp)
     sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ dir_initialize - %s", path ? path : ""));
@@ -1400,13 +1413,40 @@ sp_Dir *sp_Dir_new(const char *path) {
 }
 const char *sp_Dir_read(sp_Dir *d) {
   if (!d || !d->dp) return NULL;
+#ifdef SP_MULTI_CTX
+  char nb[512];
+  if (!SP_CTX()->io_readdir(SP_CTX()->io_ud, d->dp, nb, (int)sizeof(nb))) return NULL;
+  return sp_sprintf("%s", nb);
+#else
   struct dirent *e = readdir(d->dp);
   return e ? sp_sprintf("%s", e->d_name) : NULL;
+#endif
 }
 const char *sp_Dir_path(sp_Dir *d) { return d && d->path ? d->path : sp_str_empty; }
-sp_RbVal sp_Dir_close(sp_Dir *d) { if (d && d->dp) { closedir(d->dp); d->dp = NULL; } return sp_box_nil(); }
-sp_Dir *sp_Dir_rewind(sp_Dir *d) { if (d && d->dp) rewinddir(d->dp); return d; }
-mrb_int sp_Dir_tell(sp_Dir *d) { return d && d->dp ? (mrb_int)telldir(d->dp) : 0; }
+sp_RbVal sp_Dir_close(sp_Dir *d) {
+  if (d && d->dp) {
+#ifdef SP_MULTI_CTX
+    SP_CTX()->io_closedir(SP_CTX()->io_ud, d->dp);
+#else
+    closedir(d->dp);
+#endif
+    d->dp = NULL;
+  }
+  return sp_box_nil();
+}
+sp_Dir *sp_Dir_rewind(sp_Dir *d) {
+#ifndef SP_MULTI_CTX
+  if (d && d->dp) rewinddir(d->dp);
+#endif
+  return d;
+}
+mrb_int sp_Dir_tell(sp_Dir *d) {
+#ifdef SP_MULTI_CTX
+  (void)d; return 0;  /* backend readdir has no telldir; not needed by the desktop */
+#else
+  return d && d->dp ? (mrb_int)telldir(d->dp) : 0;
+#endif
+}
 sp_StrArray *sp_dir_entries(const char *path) { return sp_dir_entries_impl(path, 0); }
 mrb_bool sp_dir_empty(const char *path) {
   struct stat st;

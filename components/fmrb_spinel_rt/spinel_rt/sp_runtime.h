@@ -1260,6 +1260,24 @@ static inline void sp_str_check_mutable(const char *s) {
 static inline const char *sp_File_gets(sp_File *f) {
   if (!f || !f->fp) return NULL;
   char buf[65536];
+#ifdef SP_MULTI_CTX
+  if (!SP_IS_STD(f)) {
+    /* one line via the backend (no fgets): read a byte at a time to '\n'. */
+    size_t i = 0;
+    while (i + 1 < sizeof(buf)) {
+      char c;
+      long got = SP_CTX()->io_read(SP_CTX()->io_ud, f->fp, &c, 1);
+      if (got <= 0) break;
+      buf[i++] = c;
+      if (c == '\n') break;
+    }
+    if (i == 0) return NULL;
+    char *r = sp_str_alloc(i);
+    memcpy(r, buf, i);
+    f->lineno++;
+    return r;
+  }
+#endif
   if (!fgets(buf, (int)sizeof(buf), f->fp)) return NULL;
   size_t n = strlen(buf);
   char *r = sp_str_alloc(n);
@@ -1272,6 +1290,17 @@ static inline const char *sp_File_gets(sp_File *f) {
    each_line loops where the line does not escape the loop body. */
 static inline const char *sp_File_gets_buf(sp_File *f, char *buf, int size) {
   if (!f || !f->fp) return NULL;
+#ifdef SP_MULTI_CTX
+  if (!SP_IS_STD(f)) {
+    int i = 0;
+    while (i + 1 < size) {
+      char c; long got = SP_CTX()->io_read(SP_CTX()->io_ud, f->fp, &c, 1);
+      if (got <= 0) break; buf[i++] = c; if (c == '\n') break;
+    }
+    if (i == 0) return NULL;
+    buf[i] = 0; return buf;
+  }
+#endif
   if (!fgets(buf, size, f->fp)) return NULL;
   return buf;
 }
@@ -1282,6 +1311,18 @@ static inline const char *sp_File_gets_buf(sp_File *f, char *buf, int size) {
    stack buffer whose [-1] byte is arbitrary memory breaks the GC mark. */
 static inline const char *sp_File_gets_into(sp_File *f, char *s, int cap) {
   if (!f || !f->fp) return NULL;
+#ifdef SP_MULTI_CTX
+  if (!SP_IS_STD(f)) {
+    int i = 0;
+    while (i + 1 < cap) {
+      char c; long got = SP_CTX()->io_read(SP_CTX()->io_ud, f->fp, &c, 1);
+      if (got <= 0) break; s[i++] = c; if (c == '\n') break;
+    }
+    if (i == 0) return NULL;
+    s[i] = 0; sp_str_set_len(s, (size_t)i); f->lineno++;
+    return s;
+  }
+#endif
   if (!fgets(s, cap, f->fp)) return NULL;
   sp_str_set_len(s, strlen(s));
   f->lineno++;
@@ -1325,6 +1366,45 @@ static mrb_int sp_io_copy_stream(const char *src, const char *dst) {
 }
 static inline const char *sp_File_read(sp_File *f) {
   if (!f || !f->fp) return sp_str_empty;
+#ifdef SP_MULTI_CTX
+  if (!SP_IS_STD(f)) {
+    /* whole-file read through the VFS backend: tell -> seek END for size ->
+       seek back -> read. */
+    long pos = SP_CTX()->io_tell(SP_CTX()->io_ud, f->fp);
+    long end = SP_CTX()->io_seek(SP_CTX()->io_ud, f->fp, 0, 2 /* END */);
+    if (pos >= 0 && end >= 0) {
+      SP_CTX()->io_seek(SP_CTX()->io_ud, f->fp, pos, 0 /* SET */);
+      long n = (end > pos) ? (end - pos) : 0;
+      if (n <= 0) return sp_str_empty;
+      char *r = sp_str_alloc((size_t)n);
+      long got = SP_CTX()->io_read(SP_CTX()->io_ud, f->fp, r, n);
+      if (got < 0) got = 0;
+      r[got] = 0;
+      return r;
+    }
+    /* non-seekable: chunked read to EOF. */
+    size_t cap = 256, len = 0;
+    char *buf = (char *)malloc(cap);
+    if (!buf) return sp_str_empty;
+    for (;;) {
+      if (len + 4096 + 1 > cap) {
+        cap = (len + 4096 + 1) * 2;
+        char *nb = (char *)realloc(buf, cap);
+        if (!nb) { free(buf); return sp_str_empty; }
+        buf = nb;
+      }
+      long got = SP_CTX()->io_read(SP_CTX()->io_ud, f->fp, buf + len, 4096);
+      if (got <= 0) break;
+      len += (size_t)got;
+      if (got < 4096) break;
+    }
+    char *r = sp_str_alloc(len);
+    memcpy(r, buf, len);
+    r[len] = 0;
+    free(buf);
+    return r;
+  }
+#endif
   long pos = ftell(f->fp);
   if (pos >= 0 && fseek(f->fp, 0, SEEK_END) == 0) {
     long end = ftell(f->fp);
@@ -1366,7 +1446,13 @@ static inline const char *sp_File_read_n(sp_File *f, mrb_int n) {
   if (n < 0) return sp_File_read(f);
   if (n == 0) return sp_str_empty;
   char *r = sp_str_alloc((size_t)n);
-  size_t got = fread(r, 1, (size_t)n, f->fp);
+  size_t got;
+#ifdef SP_MULTI_CTX
+  if (!SP_IS_STD(f)) { long g = SP_CTX()->io_read(SP_CTX()->io_ud, f->fp, r, (long)n); got = (g > 0) ? (size_t)g : 0; }
+  else got = fread(r, 1, (size_t)n, f->fp);
+#else
+  got = fread(r, 1, (size_t)n, f->fp);
+#endif
   if (got == 0) return NULL;
   if ((mrb_int)got == n) { r[got] = 0; return r; }
   char *s = sp_str_alloc(got);
