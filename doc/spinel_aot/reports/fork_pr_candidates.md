@@ -50,7 +50,8 @@ Phase 2 までは Ruby 側の書き換えで回避済み。汎用のものは将
 | コメント誤検出 | `source_references_set` がコメント/文字列リテラル内の `Set` も検出し `require "set"` を自動 splice (その set.rb がコンパイル不能) | **fork 修正済 `44e2d57`**: コメント/文字列をスキップする state machine (`#{...}` 補間は code 走査)。回帰 test 1991/1 bench 58/0 | phase2_report / **DONE** |
 | スコープ | module レベルの mutable global 配列 (`$calls = []` + module メソッド内 `<<`) が `gv_calls undeclared` の壊れた C を生成 (int/bool の global は正常) | 配列 global を使わず直接出力 | phase0_findings |
 | 推論 | 戻り値の FFI 型が `:void` のメソッド (`Log.*`) をメソッド末尾で呼ぶと、そのメソッド全体が「値を返さない (void)」と推論される。値の位置の分岐が noreturn (`FmrbApp.reboot`) か void leaf に到達する場合も同様に void 化 | `Log.*` を末尾 `nil` で返す / メソッド末尾に明示 `nil` (末尾 nil×5) | T4-3 (48eba26) |
-| codegen/推論 | **poly 値が `const char*` (`:str`) 引数へ coercion 無しで流れる**のが根因。最小再現確認済 (V4/V5/V6): poly 返しメソッド (nilable hash lookup 等) を `sprintf`/`sp_str_concat`/`sp_File_open` に直渡し。2 形態=(a) `incompatible types ... const char* using sp_RbVal` (通常), (b) GC-root 圧下で GC-root 展開が `const char*` 初期化子に落ち `expected expression before sp_RbVal` の壊れた C (str_run_clear で発現)。**両者同一根因 → 1 修正 (`:str` 引数位置で poly→cstr coercion を statement で挿入) でカバー**。repro: `scratchpad/repro_poly_to_cstr.rb` | **fork 修正済** `9474d92`(string op-write concat 引数)+`8a298cb`(sprintf/format・File.open 引数)+`286de9b`(sprintf format を const-char temp を開く前に emit=GC-root 初期化子混入解消)。`emit_str_expr` 経由で :str 位置の poly を `sp_poly_to_s` に coercion。回帰 test 1992/1 bench 58/0。fmruby-core 側は pin 286de9b + `.to_s`/hoist 撤去(byteslice/File.open/sprintf の3箇所)、2-Spinel で実行実証。残: launcher 三項の byteslice `.to_s` のみ(三項型統一の別 path) | T4-3 / **DONE** |
+| codegen/推論 | **poly 値が `const char*` (`:str`) 引数へ coercion 無しで流れる**のが根因。最小再現確認済 (V4/V5/V6): poly 返しメソッド (nilable hash lookup 等) を `sprintf`/`sp_str_concat`/`sp_File_open` に直渡し。2 形態=(a) `incompatible types ... const char* using sp_RbVal` (通常), (b) GC-root 圧下で GC-root 展開が `const char*` 初期化子に落ち `expected expression before sp_RbVal` の壊れた C (str_run_clear で発現)。**両者同一根因 → 1 修正 (`:str` 引数位置で poly→cstr coercion を statement で挿入) でカバー**。repro: `scratchpad/repro_poly_to_cstr.rb` | **fork 修正済** `9474d92`(string op-write concat 引数)+`8a298cb`(sprintf/format・File.open 引数)+`286de9b`(sprintf format を const-char temp を開く前に emit=GC-root 初期化子混入解消)。`emit_str_expr` 経由で :str 位置の poly を `sp_poly_to_s` に coercion。回帰 test 1992/1 bench 58/0。fmruby-core 側は pin 286de9b + `.to_s`/hoist 撤去(byteslice/File.open/sprintf の3箇所)、2-Spinel で実行実証。(launcher 三項の byteslice は別根因=下行の poly レシーバ dispatch gap、d26c1f9 で解決) | T4-3 / **DONE** |
+| ディスパッチ | poly レシーバの `String#byteslice(start, len)` が dispatch されず `undefined method 'byteslice' for an instance of String` を raise。concrete String は静的 dispatch 済 (codegen_call_recv.c)、poly も `sp_poly_bytesize` は持つのに byteslice だけ欠落 = ljust/rjust/center (U-1) と同族の poly-String メソッド gap。sym-hash 値 (`app[:label]`) や poly-widened な method param (`FmrbI18n.truncate_to` の str) が該当。**`.to_s` は結果に付いていた**ため受信側 poly を直せず、launcher overlay を開くと desktop がクラッシュしていた | **fork 修正済 `d26c1f9`**: `is_strjust` と同型の SP_TAG_STR pre-arm (codegen_call.c) + TY_STRING 戻り推論 (analyze_infer.c)。args の poly-widen は `sp_poly_to_i` で unbox。非 String は従来通り NoMethodError。test/poly_str_byteslice.rb。回帰 test 1993/1 bench 58/0。headless で launcher 二行ラベル (byteslice) 実行実証 | T4-5 / **DONE** |
 
 ### B-2. 機能不足 (未実装)
 
@@ -66,6 +67,7 @@ Phase 2 までは Ruby 側の書き換えで回避済み。汎用のものは将
 | 内容 | 現状 | 詳細 |
 |---|---|---|
 | `:binstr` のバイト長 global `sp_net_bin_len` が `sp_net.c` 所有で recv 系専用。任意の `ffi_func` が binary 長を publish できない | fmruby 側 (`fmrb_spx_kernel.c`) で `sp_net_bin_len` を定義して流用。**汎用化 (`sp_ffi_bin_len` 等をコア runtime に) すれば任意 ffi_func が clean に :binstr 返却可** = PR 候補 | phase2_report |
+| `sp_io.c` の File/Dir が生 POSIX (`fopen`/`opendir`/`stat`/`fdopen`/`isatty`/`ioctl`) 直叩きで、I/O バックエンドの差し替えフックが無い (`sp_ctx` のフックはメモリ T3-2 のみ)。fmrb HAL の仮想パス解決を通らず、Linux は `/app` ENOENT、**ESP32 は POSIX FS 自体が無く FS 依存機能が全滅** | **汎用フック候補 (`sp_mem_*` と同型)**: `sp_ctx` config に I/O バックエンド関数ポインタ (open/read/write/close/seek/stat + opendir/readdir/closedir) を追加、`sp_io` の POSIX 呼びをフック経由に (default は POSIX 直で byte 同一)。fmruby 側は `fmrb_hal_file_*` を注入。desktop の launcher/icon/file manager が依存 | T4-5 / `esp32_host_deps_sweep.md` / `phase5.md`(8) |
 
 ---
 
@@ -76,6 +78,19 @@ Phase 2 までは Ruby 側の書き換えで回避済み。汎用のものは将
   types/analyze/codegen/runtime 全体に及ぶ Phase 1/3 級の大改修。設計評価は
   `phase1_report.md` (sp_StrIntHash がテンプレ、3 層 3-5 日規模、Phase 3 実装推奨)。
   当面は **FFI 境界に poly を持ち込まない** (payload をバイト列のまま渡す) で回避。
+
+- **per-object GC ヘッダ `sp_gc_hdr` が太い (live RSS の主因)**。全 heap object が
+  48B/object (64-bit) のヘッダを背負う: `next` + `finalize` + `scan` + `size` +
+  flags + `recycle`。T4-5 で desktop の live が mruby 比 **1.9x** (678KB) になった主因
+  (`reports/memory_model_findings.md`)。mruby は均一スロットをアリーナから切り出す
+  ため object 単位の固定 overhead がほぼ無いのに対し、Spinel は個別確保 + 48B ヘッダ。
+  **スリム化案 (中規模・高レバレッジ)**: (1) `finalize`+`scan` の 2 ポインタを
+  **per-type ディスクリプタ 1 本**に集約 (mruby 流)。(2) `size` はアロケータから
+  引いて per-object から除去 (文字列では既に vestigial)。(3) `recycle` の要否精査。
+  → 48B→~24B に半減余地。全 Spinel アプリの RSS を下げる。**32-bit ESP32 では
+  ヘッダが半減する (48→24B) ため、実効メリットと優先度は 32-bit 実測後に判断**。
+  関連: churn の est_calloc zero-fill 寄与が大なら **raw (非 zero-fill) alloc フック**
+  (既出、B-1/事前作業) も併せて。
 
 ---
 
