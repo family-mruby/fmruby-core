@@ -57,6 +57,10 @@ Fundamental / By design を正とする。
 | 値の位置の分岐が noreturn (`FmrbApp.reboot`) か void leaf に到達するメソッド5つ (`on_control` / `cfg_do_save` / `handle_launcher_click` / `fmgr_paste_file` / `fmgr_delete_file`) が void と推論される | 同上 | メソッド末尾に明示的に `nil` を置く | 上と同一の fork 候補。48eba26 で回避済 | T4-3 |
 | 文字列を返すメソッド呼び出しを `sprintf` 等の文字列 API の実引数に**直接**渡す (`sprintf(FmrbI18n.t(:x), n)`) | 呼び出しの GC-root 展開が `const char *` の初期化子内に落ち、壊れた C を出力 (gcc: expected expression) | 一旦ローカルに退避してから渡す (`fmt = FmrbI18n.t(:x).to_s; sprintf(fmt, n)`) | **fork codegen bug**。最小再現→修正 pending。`str_run_clear` の `expected expression before sp_RbVal` も同一根因の可能性 (repro で確認) | T4-3 |
 | 型が確定しない値 (`app[:label]` 等シンボルキー Hash の値、poly-widened な method param) に対し `String#byteslice(start, len)` を呼ぶと、実行時に `undefined method 'byteslice' for an instance of String` で raise (concrete String なら静的 dispatch で動くのに poly 受信で落ちる) | poly dispatch に byteslice arm が無く NoMethod raise の C を生成。**受信側が poly なので結果への `.to_s` では直らない** (`.to_s` は戻り値に付く。教訓: レシーバの poly-dispatch gap は引数/結果の coercion では治らない) | (回避不要になった) | **fork 修正済 `d26c1f9`**。ljust/rjust/center (U-1) と同族の poly-String メソッド gap | T4-5 |
+| poly 受信の `String#index/rindex/start_with?/end_with?/split` が同様に raise (byteslice と同族)。`label.rindex("/")` でアプリ起動時に desktop クラッシュ、`f.end_with?(".toml")`/`msg.split("\n")`/`line.index("=")` 等 | poly dispatch に arm 無し | (回避不要になった) | **fork 修正済 `78c7cb20`** | T4-5 |
+| **空配列から index で要素を組む** (`a = []; a[idx] = v`) と、末尾超えの `[]=` が silent no-op で**何も保存されない** (`a` は空のまま)。CRuby は nil 埋めで auto-extend | `sp_PolyArray_set` が `i >= len` で no-op (typed array は拡張済、PolyArray だけ outlier だった) | (回避不要になった) | **fork 修正済 `b24b1956`** (runtime)。launcher のアイコンが文字化けしていた根因 | T4-5 |
+
+**poly-dispatch gap の系統的洗い出し法** (再発防止): 生成 C を `grep -oE 'sp_nomethod_msg_args\("[a-z_?!]+"' <combined>.c | sort | uniq -c` で列挙すると、**そのアプリで実際に poly-dispatch に落ちるメソッド全部**が一覧化できる (理論上の全 String メソッドでなく実 gap)。concrete で動くのに poly で欠落しているものが判る。教訓: **レシーバの poly-dispatch gap は引数/結果の `.to_s` では治らない** (再掲)。silent 誤動作 (raise しない `[]=` no-op 等) は raise 一覧に出ないので、症状 (文字化け等) からも疑う。
 
 ## C. fmruby 固有の推奨記法 (dual-safe)
 

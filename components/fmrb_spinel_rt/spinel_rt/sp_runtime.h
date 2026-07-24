@@ -3393,7 +3393,7 @@ static sp_PolyArray *sp_kernel_array(sp_RbVal x) {
   return r;
 }
 /* Issues #770, #789: NULL + bounds guard. Out-of-range set no-ops. */
-static void sp_PolyArray_set(sp_PolyArray *a, mrb_int i, sp_RbVal v) { if (!a) return; if (a->frozen) { sp_raise_frozen_array(); return; } mrb_int orig=i; if (i < 0) i += a->len; if (i < 0) sp_raise_cls("IndexError", sp_sprintf("index %lld too small for array; minimum: %lld",(long long)orig,(long long)-a->len)); if (i >= a->len) return; a->data[i] = v; }
+static void sp_PolyArray_set(sp_PolyArray *a, mrb_int i, sp_RbVal v) { if (!a) return; if (a->frozen) { sp_raise_frozen_array(); return; } mrb_int orig=i; if (i < 0) i += a->len; if (i < 0) sp_raise_cls("IndexError", sp_sprintf("index %lld too small for array; minimum: %lld",(long long)orig,(long long)-a->len)); while (a->len <= i) sp_PolyArray_push(a, sp_box_nil()); a->data[i] = v; }
 static sp_PolyArray *sp_PolyArray_slice(sp_PolyArray *a, mrb_int start, mrb_int len) { SP_GC_ROOT(a); if (start < 0) start += a->len; if (start < 0) start = 0; sp_PolyArray *b = sp_PolyArray_new(); if (start >= a->len || len <= 0) return b; if (start + len > a->len) len = a->len - start; for (mrb_int i = 0; i < len; i++) sp_PolyArray_push(b, a->data[start + i]); return b; }
 static sp_PolyArray *sp_PolyArray_slice_range(sp_PolyArray *a, mrb_int start, mrb_int end_, mrb_int excl) { if (end_ < 0) end_ += a->len; if (start < 0) start += a->len; mrb_int n = end_ - start + (excl ? 0 : 1); if (n < 0 || start < 0) n = 0; return sp_PolyArray_slice(a, start, n); }
 /* 2-arg slice on a poly receiver: dispatch to the typed slice functions. */
