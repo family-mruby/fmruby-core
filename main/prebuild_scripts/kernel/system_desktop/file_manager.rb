@@ -525,6 +525,7 @@ module FileManagerMixin
     rescue => e
       Log.error("File manager: paste failed: #{e.message}")
     end
+    nil  # begin arm ends in a void-typed call (Spinel) -> pin a concrete return
   end
 
   def fmgr_delete_file(idx)
@@ -547,6 +548,7 @@ module FileManagerMixin
     rescue => e
       Log.error("File manager: delete failed: #{e.message}")
     end
+    nil  # begin arm ends in a void-typed call (Spinel) -> pin a concrete return
   end
 
   # ---- Scroll ----

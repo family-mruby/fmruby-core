@@ -18,10 +18,13 @@
 # were verified against the Spinel compiler before authoring.
 
 module Log
-  def self.debug(msg); FmrbSpx.fmrb_spx_log_write(0, msg, msg.bytesize); end
-  def self.info(msg);  FmrbSpx.fmrb_spx_log_write(1, msg, msg.bytesize); end
-  def self.warn(msg);  FmrbSpx.fmrb_spx_log_write(2, msg, msg.bytesize); end
-  def self.error(msg); FmrbSpx.fmrb_spx_log_write(3, msg, msg.bytesize); end
+  # Return nil (not the :void FFI result): a method whose tail is a Log call is
+  # otherwise inferred to return void, and using its value (e.g. a rescue arm
+  # feeding an expression) trips Spinel's "void value not ignored".
+  def self.debug(msg); FmrbSpx.fmrb_spx_log_write(0, msg, msg.bytesize); nil; end
+  def self.info(msg);  FmrbSpx.fmrb_spx_log_write(1, msg, msg.bytesize); nil; end
+  def self.warn(msg);  FmrbSpx.fmrb_spx_log_write(2, msg, msg.bytesize); nil; end
+  def self.error(msg); FmrbSpx.fmrb_spx_log_write(3, msg, msg.bytesize); nil; end
 end
 
 module Machine
@@ -445,6 +448,51 @@ class FmrbGfx
   # owned by the app context and freed in _cleanup).
   def destroy
     nil
+  end
+
+  # Color utilities (were FmrbGfx class methods in gfx.c). Pure integer math, so
+  # reimplemented in Ruby here rather than crossing the FFI boundary. Kept
+  # integer-typed so callers like `LAUNCHER_ICON_SEL = FmrbGfx.rgb_to_332(...)`
+  # get an Integer constant (a poly return breaks a `cond ? sel : bg` ternary).
+  def self.rgb_to_332(r, g, b)
+    r = 0 if r < 0
+    r = 255 if r > 255
+    g = 0 if g < 0
+    g = 255 if g > 255
+    b = 0 if b < 0
+    b = 255 if b > 255
+    ((r >> 5) << 5) | ((g >> 5) << 2) | (b >> 6)
+  end
+
+  # h: 0-360, s: 0-255, v: 0-255 -> [r, g, b]
+  def self.hsv_to_rgb(h, s, v)
+    h = 0 if h < 0
+    h = h % 360 if h >= 360
+    s = 0 if s < 0
+    s = 255 if s > 255
+    v = 0 if v < 0
+    v = 255 if v > 255
+    if s == 0
+      return [v, v, v]
+    end
+    region = h / 60
+    remainder = (h - region * 60) * 255 / 60
+    p = v * (255 - s) / 255
+    q = v * (255 - s * remainder / 255) / 255
+    t = v * (255 - s * (255 - remainder) / 255) / 255
+    if region == 0
+      [v, t, p]
+    elsif region == 1
+      [q, v, p]
+    elsif region == 2
+      [p, v, t]
+    elsif region == 3
+      [p, q, v]
+    elsif region == 4
+      [t, p, v]
+    else
+      [v, p, q]
+    end
   end
 
   private

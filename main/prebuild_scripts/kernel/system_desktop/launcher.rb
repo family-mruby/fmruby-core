@@ -143,7 +143,7 @@ module LauncherMixin
     rows = []
     color = 0xFF  # default white
     begin
-      file = File.open(icon_file, "r")
+      file = File.open(icon_file.to_s, "r")  # icon_file may be poly; pin to String (Spinel sp_File_open)
       content = file.read
       file.close
 
@@ -433,7 +433,7 @@ module LauncherMixin
         else
           line1 = FmrbI18n.truncate_to(label, max_px, "")
           consumed = line1.bytesize
-          line2 = (consumed < label.bytesize) ? label.byteslice(consumed, label.bytesize - consumed) : ""
+          line2 = (consumed < label.bytesize) ? label.byteslice(consumed, label.bytesize - consumed).to_s : ""
           line2 = FmrbI18n.truncate_to(line2, max_px) if line2.length > 0
           w1 = FmrbI18n.text_width(line1)
           w2 = FmrbI18n.text_width(line2)
@@ -604,6 +604,7 @@ module LauncherMixin
         @gfx.present
       end
     end
+    nil  # spawn_app branch is void-typed (Spinel) -> pin a concrete return
   end
 
   def find_icon_at(x, y, content_y)

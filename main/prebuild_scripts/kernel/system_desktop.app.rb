@@ -758,6 +758,8 @@ class SystemDesktopApp < FmrbApp
       update_composite_regions
       draw_foreground
     end
+    nil  # keep a concrete return: a branch (FmrbApp.reboot) is noreturn, which
+         # would otherwise make the if/elsif value void (Spinel)
   end
 
   def on_event(ev)

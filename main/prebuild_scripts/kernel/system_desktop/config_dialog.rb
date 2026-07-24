@@ -383,6 +383,7 @@ module ConfigDialogMixin
       @cfg_status_until = 4
       draw_foreground
     end
+    nil  # FmrbApp.reboot branch is noreturn -> pin a concrete return (Spinel)
   end
 
   # Rewrite /etc/system_conf.toml by walking the existing lines and replacing

@@ -210,7 +210,12 @@ module StorageDialogMixin
 
     if res && res[:ok]
       deleted = res[:deleted] || 0
-      @str_status = sprintf(FmrbI18n.t(:clear_cache_done), deleted)
+      # Hoist the i18n lookup into a local: passing a string-returning method
+      # call directly as a sprintf argument makes Spinel emit malformed C (the
+      # call's GC-root expansion lands in a `const char *` initializer). See
+      # fork codegen bug repro in phase4 report.
+      fmt = FmrbI18n.t(:clear_cache_done).to_s  # concrete String for sp_sprintf
+      @str_status = sprintf(fmt, deleted)
       Log.info("Storage: cleared #{CACHE_ROOT} (#{deleted} entries)")
     else
       @str_status = FmrbI18n.t(:clear_cache_failed)

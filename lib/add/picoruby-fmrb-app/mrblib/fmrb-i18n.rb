@@ -95,7 +95,7 @@ module FmrbI18n
         step = 4
       end
       break if out_w + cw > budget
-      out += str.byteslice(i, step)
+      out += str.byteslice(i, step).to_s  # byteslice is nilable; pin to String (Spinel :str)
       out_w += cw
       i += step
     end
