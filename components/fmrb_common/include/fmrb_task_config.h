@@ -54,7 +54,14 @@
 // handle_app_control 4.4KB and handle_hid_event 4.1KB, on top of the entry and
 // main_loop frames and whatever the FFI shim and newlib add below them. 12KB
 // left no useful margin over that chain.
+// The mruby VM keeps its Ruby frames on the mrb stack inside the VM pool, so
+// only the C interpreter loop lives here: measured high-water on P4 is 8.8KB,
+// which 12KB covers with ~3.4KB to spare.
+#ifdef FMRB_KERNEL_ENGINE_SPINEL
 #define FMRB_KERNEL_TASK_STACK_SIZE     (16 * 1024)
+#else
+#define FMRB_KERNEL_TASK_STACK_SIZE     (12 * 1024)
+#endif
 #define FMRB_KERNEL_TASK_PRIORITY       (9)
 #define FMRB_KERNEL_TASK_FLAGS          FMRB_TASK_FLAG_PINNED_1
 
@@ -76,8 +83,13 @@
 // methods 1.7-2.0KB each -- so one on_create chain spends ~11KB before any
 // helper runs. The mruby desktop was no better off: it ran with 1020 bytes of
 // its 12KB left, the same margin that once let the host task corrupt NimBLE's
-// BSS (see FMRB_HOST_TASK_STACK_SIZE above).
+// BSS (see FMRB_HOST_TASK_STACK_SIZE above). Hence 16KB, not 12KB, for mruby:
+// its measured high-water is 11.3KB (launcher grid draw), leaving ~4.7KB.
+#ifdef FMRB_APP_ENGINE_DESKTOP_SPINEL
 #define FMRB_SYSTEM_APP_TASK_STACK_SIZE (24 * 1024)
+#else
+#define FMRB_SYSTEM_APP_TASK_STACK_SIZE (16 * 1024)
+#endif
 #define FMRB_SYSTEM_APP_TASK_PRIORITY   (8)
 #define FMRB_SYSTEM_APP_TASK_FLAGS      FMRB_TASK_FLAG_PINNED_1
 
@@ -131,6 +143,16 @@
 #define FMRB_BLE_FS_TASK_STACK_SIZE     (8 * 1024)
 #define FMRB_BLE_FS_TASK_PRIORITY       (4)
 #define FMRB_BLE_FS_TASK_FLAGS          FMRB_TASK_FLAG_PINNED_0
+
+// Remote debugger daemon task (msgpack over BLE GATT / TCP on Linux)
+// Not pinned: it is latency-tolerant and runs at a low priority, so either core
+// may take it. The frame and log line buffers are static (see fmrb_debugd.c),
+// so only the command dispatch chain lives here: measured high-water on P4 is
+// 2.7KB while idle, and the attached-session path has not been measured yet --
+// hence 6KB rather than 4KB.
+#define FMRB_DEBUGD_TASK_STACK_SIZE     (6 * 1024)
+#define FMRB_DEBUGD_TASK_PRIORITY       (3)
+#define FMRB_DEBUGD_TASK_FLAGS          FMRB_TASK_FLAG_NONE
 
 // M5GFX receiver task (GFX commands via local Message Buffer)
 #define FMRB_M5GFX_TASK_STACK_SIZE      (8 * 1024)

@@ -409,8 +409,9 @@ void fmrb_debugd_init(void) {
     if (s_started) return;
     s_started = true;
     fmrb_task_handle_t handle;
-    fmrb_task_create_ex(debugd_main, "debugd", 8192, NULL, 3, &handle,
-                        FMRB_TASK_FLAG_NONE);
+    fmrb_task_create_ex(debugd_main, "debugd", FMRB_DEBUGD_TASK_STACK_SIZE,
+                        NULL, FMRB_DEBUGD_TASK_PRIORITY, &handle,
+                        FMRB_DEBUGD_TASK_FLAGS);
 }
 
 // --- session owner (Phase E0) ---------------------------------------------
