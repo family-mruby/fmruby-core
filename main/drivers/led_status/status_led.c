@@ -5,6 +5,7 @@
 #include "fmrb_pin_assign.h"
 #include "fmrb_log.h"
 #include "fmrb_debug.h"
+#include "fmrb_app.h"
 
 // Stack size, priority, and flags are defined in fmrb_task_config.h
 #define HEARTBEAT_TICK_MS       100
@@ -86,6 +87,10 @@ static void status_led_task(void *pvParameters)
             // free list twice, so the measurement itself is the dominant cost.
             if (fmrb_debug_mode_enabled()) {
                 fmrb_task_dump_status();
+                /* Task stacks and the system heap say nothing about the
+                   per-VM mempools, which is where a Spinel instance actually
+                   runs out (sp_oom_die aborts the firmware). */
+                fmrb_app_dump_vm_pools();
             }
             dump_counter = 0;
         }

@@ -395,6 +395,31 @@ static char s_last_error_msg[FMRB_ERROR_BUF_SIZE];
 const char* fmrb_app_get_last_error_name(void) { return s_last_error_name; }
 const char* fmrb_app_get_last_error_msg(void) { return s_last_error_msg; }
 
+void fmrb_app_dump_vm_pools(void)
+{
+    FMRB_LOGI(TAG, "--- VM Pools ---");
+    FMRB_LOGI(TAG, "%-16s %4s %8s %8s %8s %5s", "Name", "VM", "Used", "Free", "Total", "Frag");
+    for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        fmrb_app_task_context_t *ctx = &g_ctx_pool[i];
+        if (ctx->state == PROC_STATE_FREE || !ctx->est) {
+            continue;
+        }
+        size_t total = 0, used = 0, free_bytes = 0;
+        int32_t frag = 0;
+        if (mrb_get_estalloc_stats(ctx->est, &total, &used, &free_bytes, &frag) != 0) {
+            continue;
+        }
+        /* NATIVE = a Spinel instance: it aborts the whole firmware through
+           sp_oom_die when its pool cannot satisfy an allocation, so its headroom
+           is the number to watch. */
+        FMRB_LOGI(TAG, "%-16s %4s %8u %8u %8u %4d%%",
+                  ctx->app_name,
+                  ctx->vm_type == FMRB_VM_TYPE_NATIVE ? "spx" : "mrb",
+                  (unsigned)used, (unsigned)free_bytes, (unsigned)total, (int)frag);
+    }
+    FMRB_LOGI(TAG, "----------------");
+}
+
 // Store error with backtrace into static buffer
 static void set_last_error(fmrb_app_task_context_t *ctx, const char *plain_msg, mrb_state *mrb)
 {

@@ -213,3 +213,10 @@ fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t hei
 // Last error info (stored in PSRAM static buffer)
 const char* fmrb_app_get_last_error_name(void);
 const char* fmrb_app_get_last_error_msg(void);
+
+// Log every live VM's pool occupancy (estalloc used/free/fragmentation), one
+// line per app. Each mruby VM and each Spinel instance owns a fixed mempool and
+// dies with sp_oom_die / an allocation failure when it fills, so the headroom is
+// only visible if it is printed: pair this with fmrb_task_dump_status(), whose
+// IRAM/PSRAM totals say nothing about the per-pool budgets.
+void fmrb_app_dump_vm_pools(void);
