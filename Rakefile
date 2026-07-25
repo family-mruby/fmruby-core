@@ -98,10 +98,23 @@ EXPECTED_CHIP = (ESP_CHIP == "esp32p4") ? "ESP32-P4" : "ESP32-S3"
 # Always use current user's UID:GID to avoid permission issues
 USER_OPT = "--user #{UID}:#{GID}"
 
+# The engine selection has to reach EVERY idf.py invocation, not just the build
+# task. main/CMakeLists.txt reads these from the environment and falls back to
+# mruby when they are absent, and ninja re-runs CMake whenever it feels like it
+# -- `rake flash` alone was enough: it re-configured without them, silently
+# rebuilt the whole app as mruby, and flashed that instead of the Spinel image
+# that had just been built. Put them on the container itself so no call site can
+# forget them.
+ENGINE_ENV_OPTS = [
+  "-e FMRB_KERNEL_ENGINE=#{FMRB_KERNEL_ENGINE}",
+  "-e FMRB_APP_ENGINE_DESKTOP=#{FMRB_APP_ENGINE_DESKTOP}"
+].join(" ")
+
 DOCKER_CMD = [
   "docker run --rm",
   USER_OPT,
   "-e HOME=/tmp",
+  ENGINE_ENV_OPTS,
   "-v #{PWD_}:/project",
   IMAGE
 ].join(" ")
@@ -112,6 +125,7 @@ DOCKER_CMD_PRIVILEGED = [
   DEVICE_ARGS,
   USER_OPT,
   "-e HOME=/tmp",
+  ENGINE_ENV_OPTS,
   "-v #{PWD_}:/project",
   "-v /dev/bus/usb:/dev/bus/usb",
   IMAGE
@@ -123,6 +137,7 @@ DOCKER_CMD_INTERACTIVE = [
   DEVICE_ARGS,
   USER_OPT,
   "-e HOME=/tmp",
+  ENGINE_ENV_OPTS,
   "-v #{PWD_}:/project",
   "-v /dev/bus/usb:/dev/bus/usb",
   IMAGE
@@ -402,10 +417,7 @@ namespace :build do
     unless Dir.exist?('build')
       Rake::Task['set_target:linux'].invoke
     end
-    engine_export = ""
-    engine_export += "export FMRB_KERNEL_ENGINE=spinel && " if FMRB_KERNEL_ENGINE == 'spinel'
-    engine_export += "export FMRB_APP_ENGINE_DESKTOP=spinel && " if FMRB_APP_ENGINE_DESKTOP == 'spinel'
-    sh "#{DOCKER_CMD} bash -c '#{engine_export}export IDF_TARGET=linux && idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" -DCMAKE_BUILD_TYPE=Debug build'"
+    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" -DCMAKE_BUILD_TYPE=Debug build'"
     puts 'Linux build complete. Run with: ./build/fmruby-core.elf'
   end
 
@@ -452,20 +464,18 @@ namespace :build do
     ENV['SPINEL_GEN_PLATFORM'] = 'esp32'
     Rake::Task['spinel:gen'].invoke if any_spinel
 
-    # main/CMakeLists.txt selects the engine from $ENV{} INSIDE the container, so
-    # the engine must be exported there -- DOCKER_CMD forwards only HOME, and a
-    # -D value would be overwritten by set(... "$ENV{...}"). Without this the
-    # host-side spinel:gen above still writes the combined .c (the build log then
-    # reads as a successful Spinel build) while cmake silently falls back to
-    # mruby and never adds the generated .c to COMPONENT_SRCS. Mirrors build:linux.
-    engine_export = ""
-    engine_export += "export FMRB_KERNEL_ENGINE=spinel && " if FMRB_KERNEL_ENGINE == 'spinel'
-    engine_export += "export FMRB_APP_ENGINE_DESKTOP=spinel && " if FMRB_APP_ENGINE_DESKTOP == 'spinel'
+    # main/CMakeLists.txt selects the engine from $ENV{} INSIDE the container (a
+    # -D value would be overwritten by set(... "$ENV{...}")), and it falls back to
+    # mruby when the variable is absent. The host-side spinel:gen above still
+    # writes the combined .c in that case, so the build log reads as a successful
+    # Spinel build while cmake quietly leaves the generated .c out of
+    # COMPONENT_SRCS. ENGINE_ENV_OPTS puts the selection on the container itself,
+    # which covers this build and every other idf.py call (flash re-configures).
 
     # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated
-    # correctly, and the engine env (it runs the first cmake configure).
+    # correctly (it runs the first cmake configure).
     unless Dir.exist?('build')
-      sh "#{DOCKER_CMD} bash -c '#{engine_export}idf.py -DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\" set-target #{ESP_CHIP}'"
+      sh "#{DOCKER_CMD} idf.py -DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\" set-target #{ESP_CHIP}"
     end
 
     # Link transport: default is UART. To use SPI instead:
@@ -473,7 +483,7 @@ namespace :build do
     cmake_opts = "-DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\""
     cmake_opts += " -DFMRB_HW_TARGET=#{hw_target}" unless hw_target.empty?
     cmake_opts += " #{ENV['CMAKE_OPTS']}" if ENV['CMAKE_OPTS']
-    sh "#{DOCKER_CMD} bash -c '#{engine_export}idf.py #{cmake_opts.strip} build'"
+    sh "#{DOCKER_CMD} idf.py #{cmake_opts.strip} build"
   end
 end
 
