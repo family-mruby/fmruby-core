@@ -20,48 +20,53 @@ Phase 5 でエンジン間の差分は潰し済み (canvas 作成パラメータ
 `TRANSPARENT_COLOR`、`clear` のコマンド割り当て、`CREATE_IMAGE_FROM_FILE` の
 コマンド構築、desktop の Ruby ソース)。詳細は phase5_report.md。
 
-残る仮説は排他な 2 つ:
+### 切り分け済み: 表示側は無罪
 
-- **(a) 画像経路**: デコード結果が canvas 2 に書けていない
-- **(b) 合成経路**: 画像は書けているが canvas 2 が合成されていない
+**混成ビルド (`FMRB_KERNEL_ENGINE=spinel` + `FMRB_APP_ENGINE_DESKTOP=mruby`) で
+壁紙も起動ロゴも正常に表示された**。同一実機・同一の display_p4・同一の画像ファイル・
+同一のカーネルで desktop エンジンだけが違うので:
 
-**まず (a)/(b) を 1 回のビルドで切り分ける**。`draw_background` の画像描画を
-一時的に「目立つ色のベタ塗り」に差し替える:
+- PNG デコード、`pushSprite`、PPA 合成、DSI 出力は**すべて正常**
+- canvas 2 の合成機構そのものも**正常に機能している**
+- **問題は Spinel desktop が送るコマンド列、またはその時点の状態にある**
+
+したがって「表示側の合成が canvas 2 を無視している」という筋は消えた。
+
+### 次の一手: `present` の対象 canvas を疑う
+
+両ビルドのログで `DRAW_IMAGE` の行は**完全に同一**
+(`id=1 -> canvas=2 (113,20) 200x200`)。**描画先は正しい**。
+つまり「画像が canvas 2 に届いていない」のではなく、
+**canvas 2 の内容が画面に出ていない**可能性が高い。合成は `present` 時に走るので、
+疑うべきは `@bg_gfx.present` である。
+
+具体的な確認項目:
+
+1. **`@bg_gfx` が canvas 2 を指しているか**。mruby 版のログには
+   `app: Created background canvas 2 for app system_desktop` と
+   `gfx: FmrbGfx.new called: canvas_id=2` があるが、Spinel 版には無い。
+   `fmrb_spx_app_init` が背景 canvas の id を Ruby 側へ正しく引き渡しているか、
+   `_init` の戻り値レコードを確認する
+2. **`present` が canvas 2 に対して発行されているか**。
+   `display_p4` 側に present の canvas_id をログする一行を足せば即座に分かる
+3. **present の座標**。`fmrb_spx_gfx_present` は `explicit_pos` が 0 のとき
+   `ctx->window_pos_x/y` を使う。背景 canvas は全画面 (0,0) 想定なので、
+   ここに desktop のウィンドウ座標が入ると位置がずれる。
+   mruby 側の present が同じ値を渡しているかを突き合わせる
+
+いずれも Spinel desktop 側 (`fmrb_spx_app.c` / `fmrb_spx_gfx.c` /
+`fmrb_app_base_spinel.rb`) の問題であり、fork の変更は要らない見込み。
+
+### それでも見つからない場合
+
+`draw_background` の画像描画を「目立つ色のベタ塗り」に一時差し替える:
 
 ```ruby
-# system_desktop.app.rb draw_background 内、create_image/draw_image の代わりに
 @bg_gfx.fill_rect(0, 0, @window_width, @window_height, 0x1C)  # 例: 緑
 ```
 
-- **色が出る** → canvas 2 の合成は正常。**(a) 画像経路**が犯人。T6-1a へ
-- **色が出ない** → canvas 2 が合成されていない。**(b) 合成経路**が犯人。T6-1b へ
-
-#### T6-1a: 画像経路を追う場合
-
-`CREATE_IMAGE_FROM_FILE` は寸法を正しく返しているので、
-ヘッダの parse までは成功している。疑うのはピクセル実体:
-
-- `display_p4` の PNG デコード先スプライトの色深度 / パレット。
-  8bpp (RGB332) canvas に対してデコード結果がどう変換されるか
-- `pushSprite` の透過色設定。ソーススプライトに透過色が設定されていて、
-  デコード結果が全面それに一致すると全画素スキップされる
-- **mruby との差分の探し方**: mruby desktop 構成
-  (`FMRB_APP_ENGINE_DESKTOP=mruby`, カーネルは spinel のまま) でビルドし、
-  `CREATE_IMAGE_FROM_FILE` / `DRAW_IMAGE` 前後の
-  display_p4 側の状態 (スプライトの色深度、パレット有無、先頭数画素) を
-  両構成でログに出して突き合わせる。表示側は同一コードなので、
-  差が出るならコマンドのパラメータか、その時点の canvas の状態しかない
-
-#### T6-1b: 合成経路を追う場合
-
-- canvas 2 (z=0, 不透明) が PPA blend の合成対象に入っているか。
-  `display_p4` の合成ループで z 順に走査している箇所を確認
-- canvas 1 (z=254, 透過色 1) が全面不透明として扱われていないか。
-  `@gfx.clear(0x01)` 後の canvas 1 の内容と、合成時の
-  `use_transparency` / `transparent_color` の実効値をログに出す
-
-**注意**: 合成は `present` 時に走る (描画コマンド単体では画面に出ない)。
-`@bg_gfx.present` が canvas 2 を対象に発行されているかも確認対象。
+- **色が出る** → present は正常で、画像経路 (デコード結果の中身) が犯人
+- **色が出ない** → present か `@bg_gfx` の指す canvas が犯人 (上記 1〜3 を深掘り)
 
 #### 参考: 疑わしいが未確定の構文
 
@@ -75,10 +80,9 @@ Phase 5 でエンジン間の差分は潰し済み (canvas 作成パラメータ
 
 ### T6-2: 例外スタックの計測と縮小 (~65 KB 回収)
 
-**現状**: 内部 DRAM は mruby 比でまだ約 87 KB 多い。その内訳はほぼ
-例外/catch スタックで、生成 TU 1 本あたり `sp_exc_*` 20,992 +
-`sp_catch_*` 21,312 = 42,304 B、2 本で 84,608 B。
-ユーザアプリ 2 つで IRAM free が 31 KB まで落ちるので、
+**現状**: 例外/catch スタックが内部 DRAM を、生成 TU 1 本あたり
+`sp_exc_*` 20,992 + `sp_catch_*` 21,312 = 42,304 B、**2 本で 84,608 B** 占めている
+(map からの実測)。ユーザアプリ 2 つで IRAM free が 31 KB まで落ちるので、
 3 つ目 (`FMRB_MAX_USER_APPS = 3`) を実用にするには回収が要る。
 
 **Phase 5 で 32 に下げて失敗している**。begin フレーム push
@@ -109,12 +113,22 @@ Phase 5 でエンジン間の差分は潰し済み (canvas 作成パラメータ
 ### T6-3: 性能計測 (Phase 5 受け入れ基準 2 の積み残し)
 
 Linux では計測済み (Spinel 2.0ms/draw vs mruby 4.8ms、max 3ms vs 14ms)。
-**実機では未計測**。mruby 比で以下を取る:
+
+**起動時間は実機で計測済み** (混成ビルドとの比較、phase5_report.md):
+`/app` スキャン 3.5x、スプライト生成 3.3x、カーネル起動→壁紙描画 3.0x
+(17.17 s → 5.73 s)。**内部 RAM は実質同等** (Spinel の静的 .bss 43 KB は
+mruby VM の実行時内部 RAM 消費で相殺され、むしろ 2.5 KB 有利)。
+
+**残りの未計測項目**:
 
 - イベントレイテンシ (入力 → 描画反映)
-- GC 停止時間の分布 (特に max)
-- ブート時間 (`/app` スキャン 29 件が支配的だった)
+- GC 停止時間の分布 (特に max)。Linux では AOT が有利だったが実機は未確認
 - フラッシュ使用量
+- **live set の公平な比較**。VM プールの used は GC トリガ条件が違うため
+  そのまま比較できない (mruby 381 KB 一定 vs Spinel 205〜325 KB 変動)。
+  両方で強制 GC 直後を採る必要がある。64bit Linux で測った
+  「Spinel は mruby の 1.9 倍」が 32bit 実機でも成り立つかは**未確認**で、
+  現状のデータはむしろ成り立たない可能性を示している
 
 計測は `board_millis` による dual-build 一時計装で行う (Phase 4 と同じ手法)。
 カーネルと desktop のエンジンを独立に切り替えられるので、
