@@ -49,7 +49,12 @@
 // hypothesis that PSRAM-stack tasks are involved in the BSS guard
 // corruption near _bt_bss_start. Revert to FMRB_TASK_FLAG_PSRAM if the
 // corruption is unrelated.
-#define FMRB_KERNEL_TASK_STACK_SIZE     (12 * 1024)
+// Sized from measured frames, not guesswork: compiling the Spinel-generated
+// kernel with -fstack-usage (ILP32, -O2) puts its heaviest Ruby methods at
+// handle_app_control 4.4KB and handle_hid_event 4.1KB, on top of the entry and
+// main_loop frames and whatever the FFI shim and newlib add below them. 12KB
+// left no useful margin over that chain.
+#define FMRB_KERNEL_TASK_STACK_SIZE     (16 * 1024)
 #define FMRB_KERNEL_TASK_PRIORITY       (9)
 #define FMRB_KERNEL_TASK_FLAGS          FMRB_TASK_FLAG_PINNED_1
 
@@ -65,7 +70,14 @@
 
 // System App task (mruby VM for system GUI)
 // TEMPORARY: pinned to core 1 with INTERNAL DRAM stack — see KERNEL note.
-#define FMRB_SYSTEM_APP_TASK_STACK_SIZE (12 * 1024)
+// 12KB overflowed: the Spinel desktop task died in vsnprintf during its first
+// draw (stack protection fault on ESP32-P4). Measured frames explain it --
+// system_desktop_entry alone is 6.2KB, FmrbApp#initialize 2.0KB, the draw_*
+// methods 1.7-2.0KB each -- so one on_create chain spends ~11KB before any
+// helper runs. The mruby desktop was no better off: it ran with 1020 bytes of
+// its 12KB left, the same margin that once let the host task corrupt NimBLE's
+// BSS (see FMRB_HOST_TASK_STACK_SIZE above).
+#define FMRB_SYSTEM_APP_TASK_STACK_SIZE (24 * 1024)
 #define FMRB_SYSTEM_APP_TASK_PRIORITY   (8)
 #define FMRB_SYSTEM_APP_TASK_FLAGS      FMRB_TASK_FLAG_PINNED_1
 
