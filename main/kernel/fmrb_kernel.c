@@ -66,8 +66,30 @@ static fmrb_display_mode_t parse_display_mode(const char* mode_str)
         return FMRB_DISPLAY_MODE_SPI_DIRECT;
     } else if (strcmp(mode_str, "headless") == 0) {
         return FMRB_DISPLAY_MODE_HEADLESS;
+    } else if (strcmp(mode_str, "tab5_dsi") == 0) {
+        return FMRB_DISPLAY_MODE_TAB5_DSI;
+    } else if (strcmp(mode_str, "sdl2") == 0) {
+        return FMRB_DISPLAY_MODE_SDL2;
+    } else if (strcmp(mode_str, "atom_display") == 0) {
+        return FMRB_DISPLAY_MODE_ATOM_DISPLAY;
     }
     return FMRB_DISPLAY_MODE_NTSC_IPC;  // Default
+}
+
+// Name for the log line: the enum number alone tells the reader nothing, and an
+// unrecognised mode_str silently becomes NTSC_IPC (see above), which is how a
+// Modern board came to report NTSC in its boot log.
+static const char *display_mode_name(fmrb_display_mode_t mode)
+{
+    switch (mode) {
+    case FMRB_DISPLAY_MODE_NTSC_IPC:   return "ntsc_ipc";
+    case FMRB_DISPLAY_MODE_SPI_DIRECT: return "spi_direct";
+    case FMRB_DISPLAY_MODE_HEADLESS:   return "headless";
+    case FMRB_DISPLAY_MODE_TAB5_DSI:   return "tab5_dsi";
+    case FMRB_DISPLAY_MODE_SDL2:       return "sdl2";
+    case FMRB_DISPLAY_MODE_ATOM_DISPLAY: return "atom_display";
+    default:                           return "unknown";
+    }
 }
 
 static bool read_system_config(void)
@@ -162,7 +184,9 @@ static bool read_system_config(void)
     FMRB_LOGI(TAG, "Display: %dx%d", g_system_config.display_width, g_system_config.display_height);
     FMRB_LOGI(TAG, "Default User App Window: %dx%d",
               g_system_config.default_user_app_width, g_system_config.default_user_app_height);
-    FMRB_LOGI(TAG, "Display Mode: %d", g_system_config.display_mode);
+    FMRB_LOGI(TAG, "Display Mode: %s (%d)",
+              display_mode_name(g_system_config.display_mode),
+              g_system_config.display_mode);
     FMRB_LOGI(TAG, "Debug Mode: %s", g_system_config.debug_mode ? "enabled" : "disabled");
     FMRB_LOGI(TAG, "Mouse Scale: x=%.2f, y=%.2f", g_system_config.mouse_scale_x, g_system_config.mouse_scale_y);
 

@@ -14,6 +14,9 @@ typedef enum {
     FMRB_DISPLAY_MODE_NTSC_IPC = 0,  // NTSC via IPC (SPI to WROVER)
     FMRB_DISPLAY_MODE_SPI_DIRECT,    // Direct SPI control
     FMRB_DISPLAY_MODE_HEADLESS,      // No display output
+    FMRB_DISPLAY_MODE_TAB5_DSI,      // Tab5 MIPI-DSI panel, driven locally (Modern)
+    FMRB_DISPLAY_MODE_SDL2,          // SDL2 window (Linux simulation)
+    FMRB_DISPLAY_MODE_ATOM_DISPLAY,  // M5Stack ATOM Display (HDMI)
     FMRB_DISPLAY_MODE_MAX
 } fmrb_display_mode_t;
 
