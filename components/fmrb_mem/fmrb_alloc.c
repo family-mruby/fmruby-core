@@ -317,6 +317,25 @@ void* fmrb_sys_malloc(size_t size)
     return ptr;
 }
 
+void* fmrb_sys_calloc(size_t nmemb, size_t size)
+{
+    void* ptr = fmrb_calloc(system_handle, nmemb, size);
+    if (ptr == NULL) {
+        FMRB_LOGE(TAG, "fmrb_sys_calloc FAILED: nmemb=%zu, size=%zu, handle=%d",
+                  nmemb, size, system_handle);
+    }
+    return ptr;
+}
+
+void* fmrb_sys_realloc(void* ptr, size_t size)
+{
+    void* new_ptr = fmrb_realloc(system_handle, ptr, size);
+    if (new_ptr == NULL && size > 0) {
+        FMRB_LOGE(TAG, "fmrb_sys_realloc FAILED: size=%zu, handle=%d", size, system_handle);
+    }
+    return new_ptr;
+}
+
 void fmrb_sys_free(void* ptr)
 {
     fmrb_free(system_handle, ptr);

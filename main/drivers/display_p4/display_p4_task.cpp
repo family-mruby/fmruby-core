@@ -891,11 +891,36 @@ static void tab5_power_on(void) {
 // ACK response sender
 // ============================================================
 
+/* Fixed-buffer msgpack sink, so packing an ACK costs no allocation.
+   msgpack_sbuffer would malloc and then realloc as it grows, and the packer
+   inlines that write callback into this TU, out of reach of the allocator remap
+   the msgpack-esp32 component applies to its own sources. Every ACK is a header
+   plus a response struct of at most a handful of bytes, so a small stack buffer
+   covers all of them; overflow is reported rather than truncated silently. */
+struct ack_buf_t {
+    uint8_t *buf;
+    size_t   cap;
+    size_t   len;
+    bool     overflow;
+};
+
+static int ack_buf_write(void *data, const char *b, size_t l) {
+    auto *f = (ack_buf_t *)data;
+    if (f->len + l > f->cap) { f->overflow = true; return -1; }
+    memcpy(f->buf + f->len, b, l);
+    f->len += l;
+    return 0;
+}
+
+/* array(4) + three small ints + a bin header, then the payload. The largest
+   response struct in fmrb_link_protocol.h is 6 bytes, so this has ample slack. */
+#define DISPLAY_P4_ACK_BUF_SIZE 64
+
 static void send_ack(uint8_t msg_type, uint8_t seq, const uint8_t *data, size_t data_len) {
-    msgpack_sbuffer sbuf;
-    msgpack_sbuffer_init(&sbuf);
+    uint8_t  storage[DISPLAY_P4_ACK_BUF_SIZE];
+    ack_buf_t sink = { storage, sizeof(storage), 0, false };
     msgpack_packer pk;
-    msgpack_packer_init(&pk, &sbuf, msgpack_sbuffer_write);
+    msgpack_packer_init(&pk, &sink, ack_buf_write);
 
     msgpack_pack_array(&pk, 4);
     msgpack_pack_uint8(&pk, msg_type);
@@ -909,12 +934,17 @@ static void send_ack(uint8_t msg_type, uint8_t seq, const uint8_t *data, size_t 
         msgpack_pack_nil(&pk);
     }
 
+    if (sink.overflow) {
+        FMRB_LOGE(TAG, "ACK too large to pack: type=0x%02x seq=%u data_len=%zu (cap=%d)",
+                  msg_type, seq, data_len, DISPLAY_P4_ACK_BUF_SIZE);
+        return;
+    }
+
     fmrb_link_message_t resp = {
-        .data = (uint8_t *)sbuf.data,
-        .size = sbuf.size,
+        .data = sink.buf,
+        .size = sink.len,
     };
     fmrb_hal_link_local_send_response(FMRB_LINK_CHANNEL_DEFAULT, &resp, 1000);
-    msgpack_sbuffer_destroy(&sbuf);
 }
 
 // ============================================================
