@@ -1792,7 +1792,17 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
     msgpack_unpack_return ret = msgpack_unpack_next(
         &msg, (const char *)msgpack_data, msgpack_len, NULL);
     if (ret != MSGPACK_UNPACK_SUCCESS) {
-        FMRB_LOGE(TAG, "msgpack unpack failed");
+        /* Dump the frame: "unpack failed" alone cannot distinguish a truncated
+           frame from a well-formed one carrying garbage, and the two point at
+           different layers (link framing vs. the sender's payload). */
+        char hex[3 * 32 + 1];
+        size_t shown = msgpack_len < 32 ? msgpack_len : 32;
+        for (size_t i = 0; i < shown; i++) {
+            snprintf(hex + i * 3, 4, "%02x ", msgpack_data[i]);
+        }
+        hex[shown ? shown * 3 - 1 : 0] = '\0';
+        FMRB_LOGE(TAG, "msgpack unpack failed: ret=%d len=%u first%u=[%s]",
+                  (int)ret, (unsigned)msgpack_len, (unsigned)shown, hex);
         msgpack_unpacked_destroy(&msg);
         return;
     }

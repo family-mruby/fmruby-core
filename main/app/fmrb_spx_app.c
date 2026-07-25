@@ -74,8 +74,18 @@ const char *fmrb_spx_app_init(void)
 
     fmrb_app_task_context_t *ctx = fmrb_current();
     if (!ctx) {
+        FMRB_LOGE(TAG, "_init: no task context");
         return "";
     }
+    /* Logged before the first canvas request goes out: on ESP32-P4 the desktop
+       stopped being heard from between SystemDesktopApp.new and its first draw,
+       and the canvas call blocks on an ACK, so it matters whether we got here
+       with sane geometry. */
+    FMRB_LOGI(TAG, "_init: app=%s id=%d %dx%d at (%d,%d) fs=%d headless=%d",
+              ctx->app_name, (int)ctx->app_id,
+              (int)ctx->window_width, (int)ctx->window_height,
+              (int)ctx->window_pos_x, (int)ctx->window_pos_y,
+              (int)ctx->fullscreen, (int)ctx->headless);
 
     memset(buf, 0, sizeof(buf));
     pack_name(buf + 0, 32, ctx->app_name);
