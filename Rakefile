@@ -445,9 +445,20 @@ namespace :build do
     ENV['SPINEL_GEN_PLATFORM'] = 'esp32'
     Rake::Task['spinel:gen'].invoke if any_spinel
 
-    # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated correctly
+    # main/CMakeLists.txt selects the engine from $ENV{} INSIDE the container, so
+    # the engine must be exported there -- DOCKER_CMD forwards only HOME, and a
+    # -D value would be overwritten by set(... "$ENV{...}"). Without this the
+    # host-side spinel:gen above still writes the combined .c (the build log then
+    # reads as a successful Spinel build) while cmake silently falls back to
+    # mruby and never adds the generated .c to COMPONENT_SRCS. Mirrors build:linux.
+    engine_export = ""
+    engine_export += "export FMRB_KERNEL_ENGINE=spinel && " if FMRB_KERNEL_ENGINE == 'spinel'
+    engine_export += "export FMRB_APP_ENGINE_DESKTOP=spinel && " if FMRB_APP_ENGINE_DESKTOP == 'spinel'
+
+    # set-target must also receive SDKCONFIG_DEFAULTS so sdkconfig is generated
+    # correctly, and the engine env (it runs the first cmake configure).
     unless Dir.exist?('build')
-      sh "#{DOCKER_CMD} idf.py -DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\" set-target #{ESP_CHIP}"
+      sh "#{DOCKER_CMD} bash -c '#{engine_export}idf.py -DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\" set-target #{ESP_CHIP}'"
     end
 
     # Link transport: default is UART. To use SPI instead:
@@ -455,7 +466,7 @@ namespace :build do
     cmake_opts = "-DSDKCONFIG_DEFAULTS=\"#{sdkconfig_path}\""
     cmake_opts += " -DFMRB_HW_TARGET=#{hw_target}" unless hw_target.empty?
     cmake_opts += " #{ENV['CMAKE_OPTS']}" if ENV['CMAKE_OPTS']
-    sh "#{DOCKER_CMD} idf.py #{cmake_opts.strip} build"
+    sh "#{DOCKER_CMD} bash -c '#{engine_export}idf.py #{cmake_opts.strip} build'"
   end
 end
 
