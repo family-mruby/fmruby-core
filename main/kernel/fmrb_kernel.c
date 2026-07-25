@@ -556,8 +556,14 @@ static void spinel_kernel_native(void *arg)
         return;
     }
     /* GC / string-heap collection thresholds well below the pool size
-       (sp_instance_config contract: threshold < pool). */
-    size_t threshold = pool_size / 4;
+       (sp_instance_config contract: threshold < pool).
+       pool/32, matching the desktop instance. The kernel allocates per input
+       event, and a real mouse drag delivers a continuous stream of them, so a
+       loose threshold lets a burst reach the top of the pool between
+       collections -- which is fatal, since exhaustion goes through sp_oom_die
+       and takes the firmware with it. Collecting early also means the GC's own
+       mark stack gets claimed while the pool is still unfragmented. */
+    size_t threshold = pool_size / 32;
     void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
     if (!est) {
         FMRB_LOGE(TAG, "failed to create Spinel kernel instance (pool %d, %zu bytes)",
