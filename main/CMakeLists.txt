@@ -258,9 +258,16 @@ generate_ruby_bytecode_commands(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}
 # component's cache var, because IDF component processing order is not
 # guaranteed -- the same reason the MC flags below are duplicated, not
 # referenced. Empty on Linux (CONFIG_IDF_TARGET_LINUX), so 64-bit is unchanged.
+# SP_STACK_SCRATCH_MAX caps every scratch buffer the runtime puts on the stack.
+# Our mruby/Spinel tasks run on 12-16KB FreeRTOS stacks and a single generated
+# Ruby method frame already costs 2-4KB there, so the hosted-sized buffers do not
+# fit: sp_sprintf's 4KB temp overflowed the system_desktop stack inside vsnprintf
+# on the first draw. Below the budget the runtime also drops the stdin/ARGF/File
+# line readers and the POSIX path helpers (expand_path/glob/realpath/pwd), so a
+# Ruby program that uses one fails to build instead of dying on the device.
 set(SPINEL_GEN_PORT_FLAGS "")
 if(NOT CONFIG_IDF_TARGET_LINUX)
-    set(SPINEL_GEN_PORT_FLAGS ";-DSP_NO_MMAN")
+    set(SPINEL_GEN_PORT_FLAGS ";-DSP_NO_MMAN;-DSP_STACK_SCRATCH_MAX=512")
 endif()
 
 # The Spinel codegen emits layout-compatible pointer kind-punning (an IntArray*

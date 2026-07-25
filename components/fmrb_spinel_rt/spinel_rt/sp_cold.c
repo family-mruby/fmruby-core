@@ -120,6 +120,8 @@ int sp_fmt_binary(const char *spec, size_t sl, char conv, long long val,
 
 /* File.expand_path(path[, base]): absolute, `.`/`..`/`//`-normalized path.
    Depends only on sp_alloc.h + libc; no program-generated symbols. */
+/* File.expand_path: 24KB of path scratch (raw/cwd/basebuf) -- omitted below the stack budget (SP_STACK_SCRATCH_MAX). */
+#if SP_HAVE_PATH_HELPERS
 const char *sp_file_expand_path(const char *path, const char *base) {
   char raw[8192];
   char cwd[4096];
@@ -196,6 +198,7 @@ const char *sp_file_expand_path(const char *path, const char *base) {
   sp_str_set_len(out, olen);
   return out;
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 
 /* ---- String#to_c parse + Dir.glob (cold; moved from sp_runtime.h) ---- */
 
@@ -261,6 +264,8 @@ else {
   return *str == 0;
 }
 
+/* Dir.glob machinery: recursive, ~6KB per level -- omitted below the stack budget (SP_STACK_SCRATCH_MAX). */
+#if SP_HAVE_PATH_HELPERS
 void sp_dir_glob_rec(const char *fsdir, const char *outprefix,
                             const char *tail, sp_StrArray *a) {
   DIR *d = opendir(fsdir);
@@ -371,6 +376,7 @@ else {
   sp_StrArray_sort_bang(a);
   return a;
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 
 /* ---- File.read/size/mtime/join/readlines + Math.lgamma (cold) ---- */
 
@@ -396,6 +402,8 @@ const char *sp_file_join(const char **parts, int n) {
   return r;
 }
 
+/* File.readlines/_chomp: line-sized fgets buffer -- omitted below the stack budget (SP_STACK_SCRATCH_MAX). */
+#if SP_HAVE_PATH_HELPERS
 sp_StrArray *sp_file_readlines(const char *path) {
   sp_StrArray *a = sp_StrArray_new();
   SP_GC_ROOT(a);
@@ -429,6 +437,7 @@ sp_StrArray *sp_file_readlines_chomp(const char *path) {
   fclose(_fp);
   return a;
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 
 double sp_lgamma_pos(double x) {  /* x > 0 */
   if (x == 1.0 || x == 2.0) return 0.0;
@@ -1122,7 +1131,10 @@ const char *sp_File_gets_sep(sp_File *f, const char *sep, mrb_int limit, mrb_boo
   if (!f || !f->fp) return NULL;
   size_t sl = sep ? strlen(sep) : 0;
   /* fast path: the default "\n" separator with no limit reads via fgets
-     (the byte-wise loop below costs a call per character) */
+     (the byte-wise loop below costs a call per character). It needs a line-sized
+     stack buffer, so a small-stack port skips it and takes the growing-heap loop
+     below -- slower, same result (see SP_STACK_SCRATCH_MAX in sp_types.h). */
+#if SP_HAVE_LINE_READERS
   if (sl == 1 && sep[0] == '\n' && limit <= 0) {
     char buf[65536];
     if (!fgets(buf, (int)sizeof buf, f->fp)) return NULL;
@@ -1134,6 +1146,7 @@ const char *sp_File_gets_sep(sp_File *f, const char *sep, mrb_int limit, mrb_boo
     f->lineno++;
     return r;
   }
+#endif
   size_t cap = 256, len = 0;
   char *buf = (char *)malloc(cap);
   if (!buf) return NULL;
@@ -1272,6 +1285,8 @@ mrb_bool sp_file_identical(const char *a, const char *b) {
   if (stat(a ? a : "", &sa) != 0 || stat(b ? b : "", &sb) != 0) return 0;
   return sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
 }
+/* File.realpath: PATH_MAX buffer, and no symlinks on a port FS -- omitted below the stack budget (SP_STACK_SCRATCH_MAX). */
+#if SP_HAVE_PATH_HELPERS
 const char *sp_file_realpath(const char *path) {
   char buf[4096];
   if (!realpath(path ? path : "", buf))
@@ -1279,6 +1294,7 @@ const char *sp_file_realpath(const char *path) {
                  sp_sprintf("No such file or directory @ realpath_rec - %s", path ? path : ""));
   return sp_sprintf("%s", buf);
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 const char *sp_file_read_len(const char *path, mrb_int n) {
   FILE *fp = fopen(path ? path : "", "rb");
   if (!fp)
@@ -1382,6 +1398,8 @@ const char *sp_file_dirname(const char *path) {
   memcpy(buf, path, n); buf[n] = 0;
   return buf;
 }
+/* Dir.pwd: PATH_MAX buffer, and no cwd on a port FS -- omitted below the stack budget (SP_STACK_SCRATCH_MAX). */
+#if SP_HAVE_PATH_HELPERS
 const char *sp_dir_pwd(void) {
   char tmp[4096];
   if (!getcwd(tmp, sizeof(tmp))) { return sp_str_empty; }
@@ -1390,6 +1408,7 @@ const char *sp_dir_pwd(void) {
   memcpy(buf, tmp, n + 1);
   return buf;
 }
+#endif /* SP_HAVE_PATH_HELPERS */
 mrb_int sp_dir_mkdir(const char *path) {
   return (mrb_int)mkdir(path, 0777);
 }

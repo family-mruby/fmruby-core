@@ -1051,9 +1051,14 @@ static inline mrb_int sp_int_clamp_range_ck(mrb_int v, sp_Range r) {
 /* `:name`, or `:"name"` when the name needs quoting -- shares the
    name-string predicates in lib/sp_str.c with the hash-key short form. */
 static const char *sp_sym_inspect(sp_sym id) { if (id == (sp_sym)-1) return "nil"; /* nilable-symbol sentinel */ return sp_sym_inspect_name(sp_sym_to_s(id)); }
+/* stdin line readers: omitted on a small-stack port (see SP_STACK_SCRATCH_MAX
+   in sp_types.h) -- a device has no stdin to read, and a shorter buffer would
+   silently split long lines. */
+#if SP_HAVE_LINE_READERS
 static const char*sp_gets(void){char buf[4096];if(!fgets(buf,sizeof(buf),stdin))return NULL;size_t l=strlen(buf);char*r=sp_str_alloc_raw(l+1);memcpy(r,buf,l+1);return r;}
 static sp_StrArray*sp_readlines(void){sp_StrArray*a=sp_StrArray_new();SP_GC_ROOT(a);char buf[4096];while(fgets(buf,sizeof(buf),stdin)){size_t l=strlen(buf);char*r=sp_str_alloc_raw(l+1);memcpy(r,buf,l+1);sp_StrArray_push(a,r);}return a;}
-SP_TU_STATIC const char*sp_sprintf(const char*fmt,...){char _sp_tmp[4096];va_list ap;va_start(ap,fmt);int _sp_n=vsnprintf(_sp_tmp,sizeof(_sp_tmp),fmt,ap);va_end(ap);if(_sp_n<0)_sp_n=0;char*b=sp_str_alloc((size_t)_sp_n);if(_sp_n<(int)sizeof(_sp_tmp)){memcpy(b,_sp_tmp,(size_t)_sp_n);}else{/* result didn't fit the stack temp; re-render at full width (sp_str_alloc gives _sp_n bytes + NUL) so long string interpolations aren't truncated. re-arm the va_list rather than va_copy so the common fast path pays nothing */va_start(ap,fmt);vsnprintf(b,(size_t)_sp_n+1,fmt,ap);va_end(ap);}return b;}
+#endif
+SP_TU_STATIC const char*sp_sprintf(const char*fmt,...){char _sp_tmp[SP_SCRATCH(4096)];va_list ap;va_start(ap,fmt);int _sp_n=vsnprintf(_sp_tmp,sizeof(_sp_tmp),fmt,ap);va_end(ap);if(_sp_n<0)_sp_n=0;char*b=sp_str_alloc((size_t)_sp_n);if(_sp_n<(int)sizeof(_sp_tmp)){memcpy(b,_sp_tmp,(size_t)_sp_n);}else{/* result didn't fit the stack temp; re-render at full width (sp_str_alloc gives _sp_n bytes + NUL) so long string interpolations aren't truncated. re-arm the va_list rather than va_copy so the common fast path pays nothing */va_start(ap,fmt);vsnprintf(b,(size_t)_sp_n+1,fmt,ap);va_end(ap);}return b;}
 /* Use a temp pointer for realloc so the original buffer is not leaked
    on allocation failure. Match the perror+exit pattern used elsewhere
    (see sp_IntArray_replace) instead of returning a partial result. */
@@ -1277,6 +1282,10 @@ static inline void sp_str_check_mutable(const char *s) {
    inline here because they allocate via the hot static sp_str_alloc,
    whose per-TU sp_str_heap can't be shared across translation units. */
 #include "sp_io.h"
+/* File line readers: like the stdin pair above, their buffer size is their
+   semantics, so a small-stack port omits them rather than shortening it (see
+   SP_STACK_SCRATCH_MAX in sp_types.h). */
+#if SP_HAVE_LINE_READERS
 static inline const char *sp_File_gets(sp_File *f) {
   if (!f || !f->fp) return NULL;
   char buf[65536];
@@ -1305,6 +1314,7 @@ static inline const char *sp_File_gets(sp_File *f) {
   f->lineno++;
   return r;
 }
+#endif /* SP_HAVE_LINE_READERS */
 /* Read a line into a caller-provided buffer without allocating. The returned
    pointer is `buf` (or NULL at EOF); valid only until the next call. Used by
    each_line loops where the line does not escape the loop body. */
@@ -1379,7 +1389,8 @@ static mrb_int sp_io_copy_stream(const char *src, const char *dst) {
   FILE *out = fopen(dst ? dst : "", "wb");
   if (!out) { fclose(in); sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ rb_sysopen - %s", dst ? dst : "")); }
-  char buf[8192]; size_t got; mrb_int total = 0;
+  /* plain copy chunk: a smaller one only means more iterations */
+  char buf[SP_SCRATCH(8192)]; size_t got; mrb_int total = 0;
   while ((got = fread(buf, 1, sizeof buf, in)) > 0) { fwrite(buf, 1, got, out); total += (mrb_int)got; }
   fclose(in); fclose(out);
   return total;
@@ -1483,12 +1494,14 @@ static inline const char *sp_File_read_n(sp_File *f, mrb_int n) {
 static inline const char *sp_File_path(sp_File *f) { return f && f->path ? f->path : sp_str_empty; }
 /* sp_file_join: moved to lib/sp_cold.c */
 const char *sp_file_join(const char **parts, int n);
+#if SP_HAVE_LINE_READERS
 static inline sp_StrArray *sp_File_readlines(sp_File *f) {
   sp_StrArray *a = sp_StrArray_new();
   const char *line;
   while ((line = sp_File_gets(f)) != NULL) sp_StrArray_push(a, line);
   return a;
 }
+#endif /* SP_HAVE_LINE_READERS */
 /* sp_file_readlines: moved to lib/sp_cold.c */
 sp_StrArray *sp_file_readlines(const char *path);
 /* sp_file_readlines_chomp: moved to lib/sp_cold.c */
@@ -1622,6 +1635,9 @@ static int sp_argf_ensure(void) {
   }
   return 0;
 }
+/* ARGF readers: line semantics again, and a device has no argument stream to
+   read -- omitted below the stack budget (see SP_STACK_SCRATCH_MAX). */
+#if SP_HAVE_LINE_READERS
 static const char *sp_argf_gets(void) {
   for (;;) {
     if (!sp_argf_ensure()) return NULL;
@@ -1645,6 +1661,7 @@ static sp_StrArray *sp_argf_readlines(void) {
   while ((line = sp_argf_gets())) sp_StrArray_push(a, line);
   return a;
 }
+#endif /* SP_HAVE_LINE_READERS */
 static const char *sp_argf_filename(void) {
   if (sp_argf_obj.fname) return sp_argf_obj.fname;
   return sp_argv.len > 0 ? sp_argv.data[0] : "-";
@@ -5809,8 +5826,11 @@ static sp_StrArray *sp_backtrace_captured(void) {
 static sp_StrArray *sp_caller_now(void) {
 #if SP_BT_AVAILABLE
   if (!sp_bt_enabled) return sp_StrArray_new();
-  void *buf[256];
-  int n = backtrace(buf, 256);
+  /* One pointer per captured frame; a port with a small stack budget captures
+     fewer frames, which is what a shallower `caller` looks like anyway. */
+  enum { SP_CALLER_MAX = SP_SCRATCH(256 * sizeof(void *)) / sizeof(void *) };
+  void *buf[SP_CALLER_MAX];
+  int n = backtrace(buf, SP_CALLER_MAX);
   return sp_bt_format(buf, n);
 #else
   return sp_StrArray_new();

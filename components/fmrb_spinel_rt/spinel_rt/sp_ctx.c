@@ -94,7 +94,7 @@ char *sp_mem_strdup(const char *s) {
 SP_NORETURN void sp_raise_cls(const char *cls, const char *msg) { g_sp_ctx->fn_raise_cls(cls, msg); }
 void sp_bigint_raise_zerodiv(const char *msg) { g_sp_ctx->fn_bigint_raise_zerodiv(msg); }
 const char *sp_sprintf(const char *fmt, ...) {
-  char tmp[4096]; va_list ap; va_start(ap, fmt);
+  char tmp[SP_SCRATCH(4096)]; va_list ap; va_start(ap, fmt);
   int n = vsnprintf(tmp, sizeof(tmp), fmt, ap); va_end(ap);
   if (n < 0) n = 0;
   char *b = sp_str_alloc((size_t)n);

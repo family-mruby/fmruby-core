@@ -32,6 +32,38 @@
 #include <stddef.h>
 #include <float.h>   /* DBL_MAX / DBL_MIN / DBL_EPSILON for Float::* constants */
 
+/* Upper bound, in bytes, for any single scratch buffer the runtime puts on the
+   stack. A hosted program runs on an 8MB main stack, so the default imposes
+   nothing beyond the size each site picks for itself.
+
+   A port whose code runs on task stacks defines this smaller. The budget there
+   is brutal: an ESP32 FreeRTOS task gets 12-16KB in total, and a single
+   generated Ruby method frame already costs 2-4KB of it, so one 4KB buffer in a
+   leaf helper is enough to run off the end of the stack -- which is exactly how
+   sp_sprintf took down a 12KB task.
+
+   Two kinds of site react to the budget:
+     - Where a smaller buffer is transparent -- a copy chunk, or a scratch the
+       caller re-renders at full width on overflow -- clamp the size with
+       SP_SCRATCH() and carry on.
+     - Where the buffer size IS the semantics -- the stdin / ARGF / File line
+       readers, where a short buffer would silently split a long line into two
+       -- the entry point is omitted below the budget instead. A program that
+       calls one then fails to link, which is where a port wants to hear about
+       it, rather than smashing a task stack on a device. Giving such a port
+       working line readers means a heap-growing (and, under SP_MULTI_CTX,
+       io-backend-aware) implementation; write that when a port needs it. */
+#ifndef SP_STACK_SCRATCH_MAX
+#define SP_STACK_SCRATCH_MAX 65536
+#endif
+#define SP_SCRATCH(n) ((n) < SP_STACK_SCRATCH_MAX ? (n) : SP_STACK_SCRATCH_MAX)
+#define SP_HAVE_LINE_READERS (SP_STACK_SCRATCH_MAX >= 65536)
+/* Same rule for the POSIX path machinery (expand_path / glob / realpath / pwd /
+   readlines): the buffers are PATH_MAX- and line-sized, truncating one silently
+   yields a wrong path, and the concepts they rest on (a cwd, symlinks, a
+   recursive directory walk) do not survive a port's flash filesystem intact. */
+#define SP_HAVE_PATH_HELPERS (SP_STACK_SCRATCH_MAX >= 4096)
+
 /* Per-worker storage under true parallelism. In the -DSP_THREADS runtime
    variant (and the generated TU when the program uses threads, compiled with
    the same define) the per-thread execution state -- the GC root stack, the

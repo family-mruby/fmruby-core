@@ -7,4 +7,4 @@
 #   components/fmrb_spinel_rt/import_from_fork.rb, commit both together.
 repo: https://github.com/kishima/spinel.git
 branch: fmrb-dev
-commit: ac0388864b2eb55342420f18e1e4fcb0f0cc7271
+commit: d0f02326f4ea71a036fb4adfaa00d717d709dce0

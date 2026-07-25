@@ -43,9 +43,12 @@ file(GLOB COMPILE_SRCS ${CMAKE_CURRENT_LIST_DIR}/spinel_rt/*.c)
 # keeps them and the hosted headers unchanged. The flag must also reach the
 # generated Spinel C (which includes sp_runtime.h); that site is
 # main/CMakeLists.txt, kept in sync via SPINEL_PORT_FLAGS below.
+# SP_STACK_SCRATCH_MAX bounds the runtime's on-stack scratch buffers to what a
+# FreeRTOS task stack can carry (see the same flag in main/CMakeLists.txt, which
+# must stay in sync -- the generated C compiles against these same headers).
 set(SPINEL_PORT_FLAGS "")
 if(NOT CONFIG_IDF_TARGET_LINUX)
-    set(SPINEL_PORT_FLAGS -DSP_NO_MMAN)
+    set(SPINEL_PORT_FLAGS -DSP_NO_MMAN -DSP_STACK_SCRATCH_MAX=512)
     list(REMOVE_ITEM COMPILE_SRCS
         "${CMAKE_CURRENT_LIST_DIR}/spinel_rt/sp_fiber.c"
         "${CMAKE_CURRENT_LIST_DIR}/spinel_rt/sp_sched.c")
