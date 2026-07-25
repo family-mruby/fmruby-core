@@ -38,7 +38,18 @@
 #else
 #include "esp_heap_caps.h"
 #include "esp_system.h"
+#include "esp_attr.h"
 #include "hw_proxy.h"
+#endif
+
+// Placement for this file's one large snapshot buffer (see fmrb_spx_app_config).
+// On ESP32 it goes to PSRAM: it is written once and read once per call, so the
+// slower memory costs nothing, and internal DRAM is the scarce resource here.
+// On the Linux build it is plain BSS. Same shape as FMRB_DBG_BSS_ATTR.
+#ifdef CONFIG_IDF_TARGET_LINUX
+#define FMRB_SPX_BSS_ATTR
+#else
+#define FMRB_SPX_BSS_ATTR EXT_RAM_BSS_ATTR
 #endif
 
 #if defined(FMRB_HW_MODERN)
@@ -405,8 +416,11 @@ const char *fmrb_spx_app_last_error(void)
 const char *fmrb_spx_app_config(const char *section, int len)
 {
     /* Worst-case packed size: count byte + per table (count byte +
-       per kv (1 + key + 2 + val)). Bounded by table/entry/field maxima. */
-    static uint8_t buf[1 + SPX_CONFIG_MAX_TABLES *
+       per kv (1 + key + 2 + val)). Bounded by table/entry/field maxima.
+       That worst case is ~41 KB while real sections pack to a few hundred bytes,
+       so it lives in PSRAM rather than holding down internal DRAM for a reserve
+       that is never reached. */
+    FMRB_SPX_BSS_ATTR static uint8_t buf[1 + SPX_CONFIG_MAX_TABLES *
                        (1 + FMRB_CONFIG_MAX_ENTRIES *
                         (1 + FMRB_CONFIG_KEY_MAX + 2 + FMRB_CONFIG_VAL_MAX))];
     sp_net_bin_len = 0;

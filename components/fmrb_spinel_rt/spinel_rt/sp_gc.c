@@ -56,7 +56,17 @@ sp_marshal_vt sp_marshal_v = {0};   /* filled by the generated TU (sp_re_init); 
 /* ---- Collector-private globals ----
  * Under SP_MULTI_CTX these are sp_ctx fields (macros in sp_ctx.h); the static
  * definitions are dropped so the state is per-instance. */
+/* Work-list capacity for the mark phase, allocated lazily as one block of
+   SP_GC_MARK_STACK_MAX pointers -- 512KB on LP64, 256KB on ILP32. Overflow is
+   not an error: sp_gc_mark falls back to recursing through the scan hook, so
+   this only trades C stack for heap. Ports whose heap is a fixed pool of a few
+   hundred KB must shrink it with -DSP_GC_MARK_STACK_MAX=<n>; at the default a
+   single instance asks its allocator for a contiguous block bigger than the
+   whole pool it was given. Keep it comfortably above the object count the pool
+   can hold, so the recursive path stays rare. */
+#ifndef SP_GC_MARK_STACK_MAX
 #define SP_GC_MARK_STACK_MAX (1024*64)
+#endif
 #ifndef SP_MULTI_CTX
 static int sp_gc_verify = 0;
 static sp_gc_hdr *sp_gc_old_heap = NULL;

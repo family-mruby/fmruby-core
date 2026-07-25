@@ -663,7 +663,12 @@ static inline int sp_str_eq(const char*a,const char*b){
    moved to sp_gc.h (shared so lib/sp_marshal.c can root its in-flight objects).
    sp_re_mark_globals is defined below (with the regex globals it marks) and
    carries external linkage so the collector body can reach it. */
+/* Must agree with the definition in lib/sp_gc.c: the collector allocates the
+   work list, the generated TU's sp_gc_mark decides against this bound whether
+   to push or recurse. See sp_gc.c for why a port shrinks it. */
+#ifndef SP_GC_MARK_STACK_MAX
 #define SP_GC_MARK_STACK_MAX (1024*64)
+#endif
 #define SP_GC_NBUCKETS 32
 static sp_gc_hdr*sp_gc_buckets[SP_GC_NBUCKETS];
 static inline int sp_gc_bucket(size_t sz){int b=(int)(sz/16);return b<SP_GC_NBUCKETS?b:SP_GC_NBUCKETS-1;}
@@ -5748,7 +5753,16 @@ static void sp_tu_ctx_init(void) {
 #endif
 
 #include <setjmp.h>
+/* Depth of the begin/rescue/ensure handler stack. Every entry costs a jmp_buf,
+   which dominates: 304 bytes each on RV32, so the default reserves ~20 KB of
+   static storage per generated program -- material on an MCU where the whole
+   internal SRAM is a few hundred KB, and where the Ruby call stack is far too
+   shallow to reach this depth anyway. Ports can shrink it with
+   -DSP_EXC_STACK_MAX=<n>; size it from the deepest *simultaneously active*
+   begin frame nesting, not from the number of begin blocks in the source. */
+#ifndef SP_EXC_STACK_MAX
 #define SP_EXC_STACK_MAX 64
+#endif
 /* Per-worker (SP_TLS) in the threaded build: this is the active exception/ensure
    handler stack of the thread currently executing. It is swapped per fiber by
    sp_exc_ctx_save/load, which assumes a single active stack -- true at N=1, but
@@ -6379,7 +6393,11 @@ SP_TU_STATIC void sp_bigint_raise_zerodiv(const char *msg) { sp_raise_cls("ZeroD
    The SP_UNWIND_* enum and sp_unwind_* state are declared earlier (before
    sp_raise_cls, which clears them when a real exception supersedes an unwind). */
 
+/* Depth of the catch/throw stack -- same jmp_buf cost and the same reasoning as
+   SP_EXC_STACK_MAX above; override with -DSP_CATCH_STACK_MAX=<n>. */
+#ifndef SP_CATCH_STACK_MAX
 #define SP_CATCH_STACK_MAX 64
+#endif
 static SP_TLS jmp_buf sp_catch_stack[SP_CATCH_STACK_MAX];   /* per-worker (see sp_exc_stack) */
 static SP_TLS const char *sp_catch_tag[SP_CATCH_STACK_MAX];
 /* 0 = name tag (symbol/string, matched by content); 1 = object tag (matched
