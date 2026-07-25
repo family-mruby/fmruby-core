@@ -75,7 +75,14 @@ FMRB_KERNEL_ENGINE = ENV["FMRB_KERNEL_ENGINE"] || "mruby"
 FMRB_APP_ENGINE_DESKTOP = ENV["FMRB_APP_ENGINE_DESKTOP"] || "mruby"
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
-IMAGE           = ENV.fetch("DOCKER_IMAGE", "ghcr.io/family-mruby/fmruby-esp32-build:latest")
+# Pin the build container to the IDF version tag above -- never :latest. Two
+# machines building this same commit ended up with different images (v5.5.1 with
+# riscv toolchain esp-14.2.0_20241119 vs v5.5.4 with esp-14.2.0_20260121), and
+# the newer IDF defaults ESP32-P4 to chip revision >= v3.1, so its bootloader was
+# rejected by esptool on a v1.0 Tab5. To move: bump ESP_IDF_VERSION.
+# DOCKER_IMAGE still overrides for a one-off.
+IMAGE           = ENV.fetch("DOCKER_IMAGE",
+                            "ghcr.io/family-mruby/fmruby-esp32-build:#{ESP_IDF_VERSION}")
 DEVICE_ARGS     = ENV["DEVICE_ARGS"].to_s
 
 # All targets (Retro esp32s3, Modern esp32p4, Linux) build in the single IDF

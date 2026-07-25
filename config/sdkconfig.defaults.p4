@@ -18,6 +18,17 @@ CONFIG_OPTIMIZATION_LEVEL_RELEASE=y
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_LOG_MAXIMUM_LEVEL_DEBUG=y
 
+# Chip revision. ESP32-P4 silicon below v3.0 and from v3.0 up differ enough that
+# IDF makes supporting them mutually exclusive, and it defaults to the >=v3.0
+# side (minimum v3.1). The Tab5 boards we build for are rev v1.0, so a default
+# build produces a bootloader esptool refuses to flash:
+#   bootloader.bin requires chip revision in range [v3.1 - v3.99]
+#   (this chip is revision v1.0)
+# Select the <3.0 side with the lowest minimum, which covers every revision up to
+# the v1.99 ceiling that choice implies. Revisit if boards ship with v3.x parts.
+CONFIG_ESP32P4_SELECTS_REV_LESS_V3=y
+CONFIG_ESP32P4_REV_MIN_1=y
+
 # ESP32-P4 HP core frequency
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_360=y
 CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=360
