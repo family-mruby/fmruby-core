@@ -27,7 +27,7 @@ if File.exist?(".env")
     value = value.split("#", 2).first.strip  # Remove inline comments
     # Shell/command-line env takes precedence over .env (standard dotenv
     # semantics): only apply the .env value when the var is not already set.
-    # Without this a command-line override (e.g. FMRB_HW_TARGET=NARYAv4) is
+    # Without this a command-line override (e.g. FMRB_HW_TARGET=TAB5) is
     # silently clobbered by .env and the wrong chip is built.
     ENV[key.strip] = value unless value.empty? || ENV.key?(key.strip)
   end
@@ -87,9 +87,9 @@ DEVICE_ARGS     = ENV["DEVICE_ARGS"].to_s
 
 # All targets (Retro esp32s3, Modern esp32p4, Linux) build in the single IDF
 # v5.5.4 container above. The HW target only selects the ESP32 chip:
-#   Modern (Family mruby Modern / Tab5) -> esp32p4
-#   everything else (Retro)             -> esp32s3
-MODERN_HW_TARGETS = %w[NARYAv4]
+#   Modern (TAB5 = M5Stack Tab5, NARYAv4 = future board) -> esp32p4
+#   everything else (Retro)                              -> esp32s3
+MODERN_HW_TARGETS = %w[TAB5 NARYAv4]
 HW_TARGET = ENV.fetch("FMRB_HW_TARGET", "").strip
 ESP_CHIP  = MODERN_HW_TARGETS.include?(HW_TARGET) ? "esp32p4" : "esp32s3"
 # Chip name as reported by esptool (used by check-port to match the device).
@@ -430,7 +430,11 @@ namespace :build do
     hw_config = {
       'ATOM_DISPLAY' => { chip: 'n8r8', sdkconfig: 'config/sdkconfig.defaults.n8r8',
                           system_conf: 'config/system_conf_n8r8.toml' },
-      # Family mruby Modern: ESP32-P4 (M5Stack Tab5 equivalent)
+      # Family mruby Modern (ESP32-P4). TAB5 = M5Stack Tab5 (current dev
+      # board); NARYAv4 = future dedicated P4 board, which shares the Tab5
+      # config as a placeholder until its hardware is finalized.
+      'TAB5'         => { chip: 'esp32p4', sdkconfig: 'config/sdkconfig.defaults.p4',
+                          system_conf: 'config/system_conf_p4.toml' },
       'NARYAv4'      => { chip: 'esp32p4', sdkconfig: 'config/sdkconfig.defaults.p4',
                           system_conf: 'config/system_conf_p4.toml' },
     }

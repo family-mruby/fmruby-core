@@ -221,14 +221,20 @@ if(ENABLE_SD_TEST)
     message(STATUS "SD card connection test enabled")
 endif()
 
-if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_ATOM_DISPLAY)
-    message(STATUS "HW target: ATOM_DISPLAY")
-endif()
-
+# FMRB_HW_* board / chip-generation macros (FMRB_HW_MODERN + FMRB_HW_TAB5 /
+# FMRB_HW_NARYAV4 / FMRB_HW_ATOM_DISPLAY). Defined via the shared helper so
+# every fmrb_pin_assign.h consumer (main, fmrb_hal, picoruby-esp32) selects
+# the same board section.
+include(${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_common/fmrb_hw_defines.cmake)
+fmrb_add_hw_defines()
 if(IDF_TARGET STREQUAL "esp32p4")
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_MODERN)
-    message(STATUS "HW target: Modern (ESP32-P4 / Tab5)")
+    if(FMRB_HW_TARGET STREQUAL "NARYAv4")
+        message(WARNING "HW target NARYAv4: board is not finalized; building with the Tab5 pin assignment as a placeholder")
+    else()
+        message(STATUS "HW target: TAB5 (Modern, ESP32-P4 / M5Stack Tab5)")
+    endif()
+elseif(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
+    message(STATUS "HW target: ATOM_DISPLAY")
 endif()
 
 # Suppress warnings-as-errors in M5Unified (upstream code we cannot modify)

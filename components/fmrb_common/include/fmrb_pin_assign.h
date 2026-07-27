@@ -4,12 +4,15 @@
 #include "driver/gpio.h"
 
 // ============================================================
-// Pin assignments for Modern (ESP32-P4 / M5Stack Tab5)
+// Pin assignments for Modern boards (ESP32-P4): TAB5 / NARYAv4
+// NARYAv4 (future dedicated P4 board) is not designed yet and shares the
+// Tab5 assignment as a placeholder; give it its own #elif block once the
+// schematic lands.
 // NOTE: only the Tab5 Keyboard / touch / backlight pins are confirmed.
 // Pins marked TODO are GPIO_NUM_NC placeholders until verified against the
 // Tab5 schematic; register_system_pin / HAL gpio calls skip NC safely.
 // ============================================================
-#if defined(FMRB_HW_MODERN)
+#if defined(FMRB_HW_TAB5) || defined(FMRB_HW_NARYAV4)
 
 // Tab5 Keyboard accessory (STM32F030 @ I2C 0x6D)
 #define FMRB_PIN_KBD_I2C_SDA   GPIO_NUM_0

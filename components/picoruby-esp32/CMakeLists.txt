@@ -222,13 +222,13 @@ else()
   )
 endif()
 
-# Select the Modern (Tab5) section of fmrb_pin_assign.h for gem port sources
-# compiled by this component (e.g. picoruby-fmrb-const const.c, which exposes
-# FmrbHw::PIN_* to Ruby). The main component defines this PRIVATE-ly, so it
-# must be repeated here or the constants silently fall back to Retro pins.
-if(IDF_TARGET STREQUAL "esp32p4")
-  target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_MODERN)
-endif()
+# Select the board section of fmrb_pin_assign.h for gem port sources compiled
+# by this component (e.g. picoruby-fmrb-const const.c, which exposes
+# FmrbHw::PIN_* to Ruby). The macros are PRIVATE per component, so the shared
+# helper must be called here too or the constants silently fall back to Retro
+# pins.
+include(${CMAKE_CURRENT_LIST_DIR}/../fmrb_common/fmrb_hw_defines.cmake)
+fmrb_add_hw_defines()
 
 
 # Create build directories to avoid CMake validation errors

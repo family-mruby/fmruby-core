@@ -308,3 +308,18 @@ LovyanGFX の描画関数（drawPixel, fillRect, drawPng, pushSprite 等）は�
 4. Color-key: RGB332→RGB565(非スワップ)→R5G6B5 成分抽出→範囲指定で RGB888 閾値設定
 5. 透過色比較: `swap565_t` → `rgb565_t` に変更（PUSH_CANVAS, DRAW_TILE）
 6. キャッシュアラインメント: `esp_cache_get_alignment()` で動的取得（LGFX_PPA と同方式）
+
+## HWターゲットの分離: TAB5 / NARYAv4
+
+これまで `FMRB_HW_TARGET=NARYAv4` が M5Stack Tab5 実機を指していたが、
+NARYAv4 は本来将来製作する ESP32-P4 搭載専用基板の名前であるため、ターゲットを分離した。
+
+- `TAB5`: M5Stack Tab5（現行の Modern 開発機）
+- `NARYAv4`: 将来の専用基板。ハード未確定のため、当面は Tab5 と同じ
+  sdkconfig / system_conf / ピン割当（プレースホルダ）でビルドされ、CMake が警告を出す
+- チップ世代共通コードは従来どおり `FMRB_HW_MODERN` で分岐し、ボード差分
+  （映像/音声出力、GPIO 配置）は新設の `FMRB_HW_TAB5` / `FMRB_HW_NARYAV4` で分岐する
+- マクロ定義は `components/fmrb_common/fmrb_hw_defines.cmake` の `fmrb_add_hw_defines()` に
+  集約し、main / fmrb_hal / picoruby-esp32 の3コンポーネントが呼び出す
+  （従来は main と picoruby-esp32 のみの PRIVATE 定義で、fmrb_hal 内の pin manager が
+  Modern/ATOM ビルドでも Retro のピン表で compile される不整合があった。これも解消）

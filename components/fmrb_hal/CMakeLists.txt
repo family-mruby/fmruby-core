@@ -19,7 +19,7 @@ if(IDF_TARGET STREQUAL "linux")
     set(PLATFORM_REQUIRES pthread log fmrb_msg fmrb_log fmrb_mem fmrb_cobs fmrb_common)
     set(PLATFORM_PRIV_REQUIRES )
 else()
-    set(FMRB_HW_TARGET "WROVER" CACHE STRING "Hardware target variant: WROVER, ATOM_DISPLAY")
+    set(FMRB_HW_TARGET "WROVER" CACHE STRING "Hardware target variant: WROVER, ATOM_DISPLAY, TAB5, NARYAv4")
     list(APPEND COMMON_SRCS
         "platform/esp32/fmrb_hal_gpio_esp32.c"
         "platform/esp32/fmrb_hal_i2c_esp32.c"
@@ -34,8 +34,8 @@ else()
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_local.c")
         message(STATUS "HW target: ATOM_DISPLAY (local Message Buffer link)")
     elseif(IDF_TARGET STREQUAL "esp32p4")
-        # Modern (Tab5): monolithic, no WROVER. gfx commands are consumed
-        # in-process by the local display task, so use the local link.
+        # Modern (TAB5 / NARYAv4): monolithic, no WROVER. gfx commands are
+        # consumed in-process by the local display task, so use the local link.
         list(APPEND COMMON_SRCS "platform/esp32/fmrb_hal_link_local.c")
         message(STATUS "HW target: Modern P4 (local Message Buffer link)")
     elseif(FMRB_LINK_TRANSPORT STREQUAL "UART")
@@ -64,6 +64,12 @@ idf_component_register(
     REQUIRES ${PLATFORM_REQUIRES}
     PRIV_REQUIRES ${PLATFORM_PRIV_REQUIRES}
 )
+
+# FMRB_HW_* board / chip-generation macros: this component compiles
+# fmrb_pin_assign.h consumers (pin manager, link header), and the macros are
+# PRIVATE per component.
+include(${CMAKE_CURRENT_LIST_DIR}/../fmrb_common/fmrb_hw_defines.cmake)
+fmrb_add_hw_defines()
 
 # Add Linux-specific compiler definitions
 if(IDF_TARGET STREQUAL "linux")
