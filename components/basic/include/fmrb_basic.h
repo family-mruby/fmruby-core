@@ -172,6 +172,28 @@ typedef struct {
  */
 void fmrb_basic_set_gfx_ops(basic_state_t* state, const basic_gfx_ops_t* ops);
 
+/**
+ * @brief Text screen renderer hooks
+ *
+ * The interpreter owns the 28x24 shadow buffer and reports every changed cell
+ * here; the renderer (extension/fmrb_basic_gfx.c) mirrors it onto a canvas.
+ */
+typedef struct {
+    void (*cell)(void* user_data, uint8_t x, uint8_t y, uint8_t code, uint8_t attr);
+    void (*present)(void* user_data);
+    void (*palette)(void* user_data, uint8_t attr, uint8_t backdrop, uint8_t c1,
+                    uint8_t c2, uint8_t c3);
+    void* user_data;
+} basic_screen_ops_t;
+
+/**
+ * @brief Connect the text screen to a renderer
+ *
+ * @param state BASIC state
+ * @param ops Callback table, copied into the state
+ */
+void fmrb_basic_set_screen_ops(basic_state_t* state, const basic_screen_ops_t* ops);
+
 #ifdef __cplusplus
 }
 #endif

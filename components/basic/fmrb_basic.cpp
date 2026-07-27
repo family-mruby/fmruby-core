@@ -10,11 +10,15 @@
 #include "fmrb_basic.h"
 
 #include "basic_core.hpp"
+#include "basic_charset.hpp"
 
 // fmrb_app.h has no extern "C" guard of its own (it is a C only header).
 extern "C" {
 #include "fmrb_app.h"
+#include "fmrb_hid_msg.h"
 }
+
+#include "fmrb_msg.h"
 
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
@@ -39,6 +43,8 @@ struct basic_state {
     basic_input_cb_t input_cb;
     void* input_user_data;
     basic_gfx_ops_t gfx;
+    basic_screen_ops_t screen;
+    fmrb_basic::interpreter* core_for_keys;
 
     char out_line[FMRB_BASIC_OUT_LINE_MAX];
     size_t out_len;
@@ -56,6 +62,11 @@ void flush_output(basic_state* state, bool with_newline) {
     state->out_line[state->out_len] = '\0';
     if (state->output_cb) {
         state->output_cb(state->output_user_data, state->out_line);
+    } else if (state->out_len > 1) {
+        // No console attached (the screen renderer is the real output): keep
+        // the text in the log, which is what the headless harness reads.
+        state->out_line[state->out_len - 1] = '\0';
+        FMRB_LOGI(TAG, "PRINT: %s", state->out_line);
     }
     state->out_len = 0;
 }
@@ -104,9 +115,33 @@ void host_sleep_ms(void* user, uint32_t ms) {
 }
 
 bool host_on_tick(void* user) {
-    (void)user;
+    basic_state* state = static_cast<basic_state*>(user);
+
+    // Drain HID events so INKEY$ sees key presses while a program is running.
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (ctx && state->core_for_keys) {
+        fmrb_msg_t msg;
+        while (fmrb_msg_receive(static_cast<fmrb_proc_id_t>(ctx->app_id), &msg, 0) ==
+               FMRB_OK) {
+            if (msg.type != FMRB_MSG_TYPE_HID_EVENT) {
+                continue;
+            }
+            const fmrb_hid_key_event_t* key =
+                reinterpret_cast<const fmrb_hid_key_event_t*>(msg.data);
+            if (key->subtype == HID_MSG_KEY_DOWN && key->character != 0) {
+                state->core_for_keys->push_key(
+                    fmrb_basic::unicode_to_fbcode(static_cast<uint8_t>(key->character)));
+            }
+        }
+    }
+
+    // Screen updates are batched: present once per tick instead of per cell.
+    if (state->screen.present) {
+        state->screen.present(state->screen.user_data);
+    }
+
     // Cooperative exit: the kernel asks the app to stop by raising this flag.
-    return !fmrb_app_poll_exit_signal(fmrb_current());
+    return !fmrb_app_poll_exit_signal(ctx);
 }
 
 void host_on_error(void* user, fmrb_basic::error_code code, int32_t line) {
@@ -156,6 +191,35 @@ bool host_ext_statement(void* user, uint8_t tk, const fmrb_basic::basic_arg* arg
     return false;
 }
 
+void host_screen_cell(void* user, uint8_t x, uint8_t y, uint8_t code, uint8_t attr) {
+    basic_state* state = static_cast<basic_state*>(user);
+    if (state->screen.cell) {
+        state->screen.cell(state->screen.user_data, x, y, code, attr);
+    }
+}
+
+void host_screen_present(void* user) {
+    basic_state* state = static_cast<basic_state*>(user);
+    if (state->screen.present) {
+        state->screen.present(state->screen.user_data);
+    }
+}
+
+void host_screen_palette(void* user, uint8_t attr, uint8_t backdrop, uint8_t c1,
+                         uint8_t c2, uint8_t c3) {
+    basic_state* state = static_cast<basic_state*>(user);
+    if (state->screen.palette) {
+        state->screen.palette(state->screen.user_data, attr, backdrop, c1, c2, c3);
+    }
+}
+
+void host_debug_line(void* user, const char* text) {
+    // Screen dumps go to the log with their own prefix, so the headless
+    // harness can pull them out with a line filter (phase_b0_report sec 3.3).
+    (void)user;
+    FMRB_LOGI(TAG, "%s", text);
+}
+
 fmrb_basic::basic_host_t make_host(basic_state* state) {
     fmrb_basic::basic_host_t host = {};
     host.alloc = host_alloc;
@@ -167,6 +231,10 @@ fmrb_basic::basic_host_t make_host(basic_state* state) {
     host.on_tick = host_on_tick;
     host.on_error = host_on_error;
     host.ext_statement = host_ext_statement;
+    host.screen_cell = host_screen_cell;
+    host.screen_present = host_screen_present;
+    host.screen_palette = host_screen_palette;
+    host.debug_line = host_debug_line;
     host.user = state;
     return host;
 }
@@ -205,6 +273,7 @@ basic_state_t* fmrb_basic_newstate(fmrb_app_task_context_t* ctx) {
 
     const fmrb_basic::basic_host_t host = make_host(state);
     state->core = new (state->core_storage) fmrb_basic::interpreter(host);
+    state->core_for_keys = state->core;
     if (!state->core->init()) {
         FMRB_LOGE(TAG, "Failed to size BASIC storage for task %s", ctx->app_name);
         state->core->~interpreter();
@@ -322,6 +391,17 @@ void fmrb_basic_set_gfx_ops(basic_state_t* handle, const basic_gfx_ops_t* ops) {
     if (state && ops) {
         state->gfx = *ops;
     }
+}
+
+void fmrb_basic_set_screen_ops(basic_state_t* handle, const basic_screen_ops_t* ops) {
+    basic_state* state = reinterpret_cast<basic_state*>(handle);
+    if (!state || !ops) {
+        return;
+    }
+    state->screen = *ops;
+    // Push the current palette and repaint so the renderer starts in sync.
+    state->core->screen_send_palette();
+    state->core->screen_refresh();
 }
 
 }  // extern "C"

@@ -393,11 +393,10 @@ bool interpreter::call_builtin(token fn, basic_value* args, uint8_t argc,
             return true;
         }
         case token::pos:
-            set_number(out, static_cast<int16_t>(cursor_col_));
+            set_number(out, static_cast<int16_t>(cursor_x_));
             return true;
         case token::csrlin:
-            // Row tracking arrives with the text screen in B2.
-            set_number(out, 0);
+            set_number(out, static_cast<int16_t>(cursor_y_));
             return true;
         case token::erl:
             set_number(out, static_cast<int16_t>(error_line_ >= 0 ? error_line_ : 0));
@@ -407,11 +406,56 @@ bool interpreter::call_builtin(token fn, basic_value* args, uint8_t argc,
                                                      ? 0
                                                      : static_cast<int32_t>(error_)));
             return true;
-        case token::inkey_s:
-        case token::scr_s:
-            // Keyboard and screen readback arrive in B2: no character yet.
+        case token::inkey_s: {
+            uint8_t code = 0;
+            if (next_key(&code)) {
+                set_string(out, &code, 1);
+                return true;
+            }
+            // INKEY$(0) blocks until a key arrives (core_spec sec 11). A host
+            // without clock control (the test runner) cannot deliver one, so
+            // it returns empty instead of hanging.
+            const bool blocking = (argc >= 1 && !args[0].is_string && args[0].num == 0);
+            if (blocking && host_.sleep_ms) {
+                while (!next_key(&code)) {
+                    if (host_.on_tick && !host_.on_tick(host_.user)) {
+                        running_ = false;
+                        break;
+                    }
+                    host_.sleep_ms(host_.user, 10);
+                }
+                if (code != 0) {
+                    set_string(out, &code, 1);
+                    return true;
+                }
+            }
             set_string(out, nullptr, 0);
             return true;
+        }
+        case token::scr_s: {
+            int16_t x = 0;
+            int16_t y = 0;
+            if (!need_num(0, &x) || !need_num(1, &y)) {
+                return false;
+            }
+            if (x < 0 || x >= screen_columns || y < 0 || y >= screen_rows) {
+                return raise_here(error_code::illegal_function_call);
+            }
+            int16_t want_color = 0;
+            if (argc >= 3 && !need_num(2, &want_color)) {
+                return false;
+            }
+            // Sw=1 returns the colour attribute. The spec says SCR$ returns a
+            // string in both cases, so the attribute comes back as a one
+            // character string holding the value 0-3 (see the B2 report).
+            const uint8_t value = (want_color != 0)
+                                      ? screen_attr(static_cast<uint8_t>(x),
+                                                    static_cast<uint8_t>(y))
+                                      : screen_char(static_cast<uint8_t>(x),
+                                                    static_cast<uint8_t>(y));
+            set_string(out, &value, 1);
+            return true;
+        }
         case token::stick:
         case token::strig:
         case token::xpos:

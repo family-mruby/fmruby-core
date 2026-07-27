@@ -2,8 +2,10 @@
 app_handle_name = "sample_basic_app"
 app_screen_name = "BASIC app demo"
 app_screen_name_ja = "BASICデモ"
-#default_window_mode = "background" # or "fullwindow" or "window" or "background"
-default_window_mode = "window" # or "fullwindow" or "window" or "background"
+# A .bas app defaults to fullscreen: the Family BASIC screen is a fixed
+# 28x24 character plane (224x192 px). Set "window" here to run it inside a
+# desktop window instead.
+#default_window_mode = "window" # or "fullwindow" or "window" or "background"
 
 # if fullscreen/fullwindow, they will be ignored
 default_window_width = 200

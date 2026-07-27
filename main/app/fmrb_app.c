@@ -756,8 +756,15 @@ static int execute_basic_script(fmrb_app_task_context_t* ctx,
             if (console) {
                 memset(console, 0, sizeof(basic_console_ctx_t));
                 if (basic_console_init(console, ctx) == FMRB_OK) {
-                    fmrb_basic_set_output_cb(ctx->basic,
-                                             basic_console_output_cb, console);
+                    // The 28x24 text screen is the output device; PRINT text
+                    // still reaches the log through the adapter.
+                    basic_screen_ops_t screen_ops = {
+                        .cell = basic_console_draw_cell,
+                        .present = basic_console_present,
+                        .palette = basic_console_set_palette,
+                        .user_data = console
+                    };
+                    fmrb_basic_set_screen_ops(ctx->basic, &screen_ops);
                     basic_console_register_gfx_ops(ctx->basic, console);
                 } else {
                     fmrb_free(ctx->mem_handle, console);

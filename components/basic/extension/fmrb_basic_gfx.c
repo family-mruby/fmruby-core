@@ -1,18 +1,39 @@
 /**
  * @file fmrb_basic_gfx.c
- * @brief BASIC console window implementation
+ * @brief BASIC text screen renderer
  *
- * Provides GUI window output for BASIC PRINT statements,
- * with automatic scrolling when text exceeds the visible area.
+ * Mirrors the interpreter's 28x24 shadow buffer onto an fmrb_gfx canvas. A
+ * cell is drawn as one background rectangle plus the horizontal runs of the
+ * glyph, so no tile sheet has to be uploaded to the graphics side and the
+ * colour attribute can change per cell for free.
  */
 
 #include "fmrb_basic_gfx.h"
+#include "basic_font8.h"
 #include "fmrb_msg.h"
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
 #include <string.h>
 
 static const char *TAG = "basic_gfx";
+
+/**
+ * Colour code (0-60) to RGB332.
+ *
+ * core_spec sec 7 says the codes share the structure of the PPU palette, so
+ * the table is the widely used measured RGB set for that palette, reduced to
+ * RGB332. Codes 0x0D-0x0F, 0x1D-0x1F and 0x2D-0x2F are the black group.
+ */
+static const uint8_t COLOR_RGB332[64] = {
+    /* 0x00 */ 0x49, 0x01, 0x02, 0x22, 0x40, 0x60, 0x60, 0x40,
+    /* 0x08 */ 0x28, 0x08, 0x08, 0x08, 0x05, 0x00, 0x00, 0x00,
+    /* 0x10 */ 0x92, 0x0B, 0x2B, 0x4B, 0x83, 0xA2, 0x81, 0x64,
+    /* 0x18 */ 0x48, 0x2C, 0x0C, 0x0D, 0x0E, 0x00, 0x00, 0x00,
+    /* 0x20 */ 0xFF, 0x5F, 0x6F, 0xAF, 0xEB, 0xEE, 0xED, 0xD5,
+    /* 0x28 */ 0x94, 0x78, 0x5C, 0x3D, 0x3E, 0x00, 0x00, 0x00,
+    /* 0x30 */ 0xFF, 0xBF, 0xBF, 0xDF, 0xFF, 0xFE, 0xFE, 0xFA,
+    /* 0x38 */ 0xDA, 0xBA, 0xBA, 0xBE, 0xBF, 0x00, 0x00, 0x00,
+};
 
 // Send graphics command to Host Task (same pattern as fmrb_lua_gfx.c)
 static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
@@ -44,178 +65,107 @@ static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
     return ret;
 }
 
-// Draw window frame (matching FmrbApp draw_window_frame in fmrb-app.rb)
-// Title bar: rounded top corners, hamburger icon on left, name, round close button on right.
-static void draw_window_frame(basic_console_ctx_t* console) {
-    const int16_t CORNER_R = 4;
-    uint16_t w = console->window_width;
-    uint16_t h = console->window_height;
-    fmrb_canvas_handle_t cid = console->canvas_id;
-    const char* name = console->app_ctx->app_name;
-
-    // Title bar background: rounded rect on top, flatten the bottom edge with a plain rect
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_ROUND_RECT,
-        .canvas_id = cid,
-        .params.round_rect = {
-            .x = 0, .y = 0,
-            .w = (int16_t)w, .h = BASIC_CONSOLE_TITLEBAR_H,
-            .radius = CORNER_R,
-            .color = 0xC5,
-            .filled = true
-        }
-    };
-    send_gfx_command(&cmd);
-
-    cmd = (gfx_cmd_t){
-        .cmd_type = GFX_CMD_RECT,
-        .canvas_id = cid,
-        .params.rect = {
-            .rect = {.x = 0, .y = CORNER_R,
-                     .width = w, .height = (uint16_t)(BASIC_CONSOLE_TITLEBAR_H - CORNER_R)},
-            .color = 0xC5,
-            .filled = true
-        }
-    };
-    send_gfx_command(&cmd);
-
-    // Hamburger menu icon (three horizontal lines)
-    for (int16_t row = 0; row < 3; row++) {
-        int16_t hy = (int16_t)(3 + row * 2);
-        cmd = (gfx_cmd_t){
-            .cmd_type = GFX_CMD_RECT,
-            .canvas_id = cid,
-            .params.rect = {
-                .rect = {.x = 2, .y = hy, .width = 8, .height = 1},
-                .color = 0xFB,
-                .filled = true
-            }
-        };
-        send_gfx_command(&cmd);
-    }
-
-    // App name in title bar
-    cmd = (gfx_cmd_t){
-        .cmd_type = GFX_CMD_TEXT,
-        .canvas_id = cid,
-        .params.text = {
-            .x = 12, .y = 2,
-            .color = 0xFF,  // WHITE
-            .bg_color = 0,
-            .bg_transparent = true,
-            .font_size = FMRB_FONT_SIZE_SMALL
-        }
-    };
-    strncpy(cmd.params.text.text, name, sizeof(cmd.params.text.text) - 1);
-    cmd.params.text.text[sizeof(cmd.params.text.text) - 1] = '\0';
-    send_gfx_command(&cmd);
-
-    // Close button: filled white circle (click region is the 8x8 box at (w-10, 2))
-    cmd = (gfx_cmd_t){
-        .cmd_type = GFX_CMD_CIRCLE,
-        .canvas_id = cid,
-        .params.circle = {
-            .x = (int16_t)(w - 6),
-            .y = 5,
-            .radius = 3,
-            .color = 0xFF,
-            .filled = true
-        }
-    };
-    send_gfx_command(&cmd);
-
-    // Rounded window border
-    cmd = (gfx_cmd_t){
-        .cmd_type = GFX_CMD_ROUND_RECT,
-        .canvas_id = cid,
-        .params.round_rect = {
-            .x = 0, .y = 0,
-            .w = (int16_t)w, .h = (int16_t)h,
-            .radius = CORNER_R,
-            .color = 0x60,
-            .filled = false
-        }
-    };
-    send_gfx_command(&cmd);
-}
-
-// Clear user area to white
-static void clear_user_area(basic_console_ctx_t* console) {
+static void fill_rect(basic_console_ctx_t* console, int16_t x, int16_t y,
+                      uint16_t w, uint16_t h, uint8_t color) {
     gfx_cmd_t cmd = {
         .cmd_type = GFX_CMD_RECT,
         .canvas_id = console->canvas_id,
         .params.rect = {
-            .rect = {
-                .x = console->user_area_x0,
-                .y = console->user_area_y0,
-                .width = (uint16_t)console->user_area_width,
-                .height = (uint16_t)console->user_area_height
-            },
-            .color = 0xFF,  // WHITE
+            .rect = {.x = x, .y = y, .width = w, .height = h},
+            .color = (fmrb_color_t)color,
             .filled = true
         }
     };
     send_gfx_command(&cmd);
 }
 
-// Present canvas to screen
-static void present(basic_console_ctx_t* console) {
+static void mark_dirty(basic_console_ctx_t* console, uint8_t x, uint8_t y) {
+    if (!console->dirty) {
+        console->dirty = true;
+        console->dirty_x0 = x;
+        console->dirty_y0 = y;
+        console->dirty_x1 = x;
+        console->dirty_y1 = y;
+        return;
+    }
+    if (x < console->dirty_x0) console->dirty_x0 = x;
+    if (y < console->dirty_y0) console->dirty_y0 = y;
+    if (x > console->dirty_x1) console->dirty_x1 = x;
+    if (y > console->dirty_y1) console->dirty_y1 = y;
+}
+
+void basic_console_draw_cell(void* user_data, uint8_t x, uint8_t y, uint8_t code,
+                             uint8_t attr) {
+    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
+    if (!console || x >= BASIC_SCREEN_COLS || y >= BASIC_SCREEN_ROWS) {
+        return;
+    }
+
+    const int16_t px = (int16_t)(x * BASIC_SCREEN_CELL_W);
+    const int16_t py = (int16_t)(y * BASIC_SCREEN_CELL_H);
+    const uint8_t fg = console->attr_rgb[attr & 3];
+
+    fill_rect(console, px, py, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
+              console->backdrop_rgb);
+
+    // Glyph pixels as horizontal runs: a blank cell costs one command, a busy
+    // one about a dozen, and only changed cells are ever drawn.
+    const uint8_t* glyph = basic_font8[code];
+    for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
+        uint8_t bits = glyph[row];
+        if (bits == 0) {
+            continue;
+        }
+        uint8_t col = 0;
+        while (col < BASIC_SCREEN_CELL_W) {
+            if ((bits & (0x80 >> col)) == 0) {
+                col++;
+                continue;
+            }
+            uint8_t run = 1;
+            while (col + run < BASIC_SCREEN_CELL_W && (bits & (0x80 >> (col + run)))) {
+                run++;
+            }
+            fill_rect(console, (int16_t)(px + col), (int16_t)(py + row), run, 1, fg);
+            col = (uint8_t)(col + run);
+        }
+    }
+
+    mark_dirty(console, x, y);
+}
+
+void basic_console_present(void* user_data) {
+    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
+    if (!console || !console->dirty) {
+        return;
+    }
+    console->dirty = false;
+
     gfx_cmd_t cmd = {
         .cmd_type = GFX_CMD_PRESENT,
         .canvas_id = console->canvas_id,
         .params.present = {
-            .x = (int16_t)console->app_ctx->window_pos_x,
-            .y = (int16_t)console->app_ctx->window_pos_y,
+            .x = console->origin_x,
+            .y = console->origin_y,
             .transparent_color = 0xFF  // No transparency
         }
     };
     send_gfx_command(&cmd);
 }
 
-// Redraw all visible text lines
-static void redraw_text(basic_console_ctx_t* console) {
-    clear_user_area(console);
-
-    for (int i = 0; i < console->line_count; i++) {
-        int16_t x = (int16_t)(console->user_area_x0 + 2);
-        int16_t y = (int16_t)(console->user_area_y0 + 2 + i * BASIC_CONSOLE_CHAR_HEIGHT);
-
-        gfx_cmd_t cmd = {
-            .cmd_type = GFX_CMD_TEXT,
-            .canvas_id = console->canvas_id,
-            .params.text = {
-                .x = x, .y = y,
-                .color = 0x00,  // BLACK
-                .bg_color = 0,
-                .bg_transparent = true,
-                .font_size = FMRB_FONT_SIZE_SMALL
-            }
-        };
-        strncpy(cmd.params.text.text, console->lines[i],
-                sizeof(cmd.params.text.text) - 1);
-        cmd.params.text.text[sizeof(cmd.params.text.text) - 1] = '\0';
-        send_gfx_command(&cmd);
+void basic_console_set_palette(void* user_data, uint8_t attr, uint8_t backdrop,
+                               uint8_t c1, uint8_t c2, uint8_t c3) {
+    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
+    if (!console || attr > 3) {
+        return;
     }
-
-    present(console);
-}
-
-// Add a single line to the console buffer with scroll
-static void add_line(basic_console_ctx_t* console, const char* text, int len) {
-    if (len > console->max_chars_per_line) {
-        len = console->max_chars_per_line;
-    }
-
-    if (console->line_count >= console->max_visible_lines) {
-        // Scroll: shift lines up by 1
-        memmove(console->lines[0], console->lines[1],
-                (size_t)(console->max_visible_lines - 1) * BASIC_CONSOLE_MAX_LINE_LEN);
-        console->line_count = console->max_visible_lines - 1;
-    }
-
-    memcpy(console->lines[console->line_count], text, (size_t)len);
-    console->lines[console->line_count][len] = '\0';
-    console->line_count++;
+    (void)c1;
+    (void)c2;
+    // Text uses the third colour of the group as the glyph colour and the
+    // shared backdrop behind it; the other two belong to multi colour tiles
+    // (B3, when the BG pattern set arrives).
+    console->attr_rgb[attr] = COLOR_RGB332[c3 & 0x3F];
+    console->backdrop_rgb = COLOR_RGB332[backdrop & 0x3F];
 }
 
 fmrb_err_t basic_console_init(basic_console_ctx_t* console,
@@ -225,32 +175,17 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
     }
 
     if (ctx->headless) {
-        FMRB_LOGI(TAG, "Headless app, console output stays in log");
+        FMRB_LOGI(TAG, "Headless app, screen output stays in the log");
         return FMRB_ERR_INVALID_STATE;
     }
 
     console->app_ctx = ctx;
-    console->window_width = ctx->window_width;
-    console->window_height = ctx->window_height;
-
-    // User area geometry (matching FmrbApp layout)
-    console->user_area_x0 = 1;
-    console->user_area_y0 = (int16_t)(BASIC_CONSOLE_TITLEBAR_H + 1);
-    console->user_area_width = (int16_t)(console->window_width - 2);
-    console->user_area_height = (int16_t)(console->window_height - BASIC_CONSOLE_TITLEBAR_H - 2);
-
-    console->max_visible_lines = console->user_area_height / BASIC_CONSOLE_CHAR_HEIGHT;
-    if (console->max_visible_lines > BASIC_CONSOLE_MAX_LINES) {
-        console->max_visible_lines = BASIC_CONSOLE_MAX_LINES;
-    }
-    console->max_chars_per_line = (console->user_area_width - 4) / BASIC_CONSOLE_CHAR_WIDTH;
-    if (console->max_chars_per_line > BASIC_CONSOLE_MAX_LINE_LEN - 1) {
-        console->max_chars_per_line = BASIC_CONSOLE_MAX_LINE_LEN - 1;
+    // Default palette until the interpreter pushes its own: white on black.
+    console->backdrop_rgb = COLOR_RGB332[15];
+    for (int i = 0; i < 4; i++) {
+        console->attr_rgb[i] = COLOR_RGB332[0x30];
     }
 
-    console->line_count = 0;
-
-    // Create canvas
     fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
     if (!gfx_ctx) {
         FMRB_LOGE(TAG, "Graphics context not initialized");
@@ -259,8 +194,8 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
 
     fmrb_gfx_err_t gfx_ret = fmrb_gfx_create_canvas(
         gfx_ctx,
-        ctx->window_width,
-        ctx->window_height,
+        BASIC_SCREEN_W,
+        BASIC_SCREEN_H,
         ctx->z_order,
         false,
         0,
@@ -270,98 +205,62 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
         FMRB_LOGE(TAG, "Failed to create canvas: %d", gfx_ret);
         return FMRB_ERR_NO_MEMORY;
     }
-
     ctx->canvas_id = console->canvas_id;
 
-    FMRB_LOGI(TAG, "Console canvas %u created (%dx%d), max_lines=%d, max_chars=%d",
-              console->canvas_id, ctx->window_width, ctx->window_height,
-              console->max_visible_lines, console->max_chars_per_line);
+    // The 224x192 text plane sits in the middle of the frame buffer
+    // (compat_plan sec 5.1). A windowed .bas app keeps its window position.
+    if (ctx->fullscreen) {
+        const int32_t free_x = (int32_t)ctx->window_width - BASIC_SCREEN_W;
+        const int32_t free_y = (int32_t)ctx->window_height - BASIC_SCREEN_H;
+        console->origin_x = (int16_t)(free_x > 0 ? free_x / 2 : 0);
+        console->origin_y = (int16_t)(free_y > 0 ? free_y / 2 : 0);
+    } else {
+        console->origin_x = (int16_t)ctx->window_pos_x;
+        console->origin_y = (int16_t)ctx->window_pos_y;
+    }
 
-    // Draw window frame and clear user area
-    draw_window_frame(console);
-    clear_user_area(console);
-    present(console);
+    fill_rect(console, 0, 0, BASIC_SCREEN_W, BASIC_SCREEN_H, console->backdrop_rgb);
+    console->dirty = true;
+    console->dirty_x0 = 0;
+    console->dirty_y0 = 0;
+    console->dirty_x1 = BASIC_SCREEN_COLS - 1;
+    console->dirty_y1 = BASIC_SCREEN_ROWS - 1;
+    basic_console_present(console);
 
+    FMRB_LOGI(TAG, "BASIC screen canvas %u created (%dx%d) at (%d,%d)",
+              console->canvas_id, BASIC_SCREEN_W, BASIC_SCREEN_H,
+              console->origin_x, console->origin_y);
     return FMRB_OK;
 }
 
-void basic_console_output_cb(void* user_data, const char* text) {
-    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
-    if (!console || !text) {
-        return;
-    }
-
-    // Also log to console for debugging
-    FMRB_LOGI(TAG, "PRINT: %s", text);
-
-    // Process text, splitting by newlines
-    const char* p = text;
-    while (*p != '\0') {
-        // Find end of current line
-        const char* line_end = p;
-        while (*line_end != '\0' && *line_end != '\n') {
-            line_end++;
-        }
-
-        int len = (int)(line_end - p);
-        if (len > 0) {
-            add_line(console, p, len);
-        } else if (*line_end == '\n') {
-            // Empty line (just a newline)
-            add_line(console, "", 0);
-        }
-
-        if (*line_end == '\n') {
-            line_end++;
-        }
-        p = line_end;
-    }
-
-    redraw_text(console);
-}
-
-// GFX ops callback: CLS - clear user area and text buffer
-static void gfx_ops_cls(void* user_data) {
-    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
-    if (!console) return;
-
-    // Clear text buffer
-    console->line_count = 0;
-
-    // Clear user area on canvas
-    clear_user_area(console);
-}
-
-// GFX ops callback: CIRCLE - draw circle on canvas (coords relative to user area)
+// GFX ops callback: CIRCLE - draw circle on the text plane canvas
 static void gfx_ops_circle(void* user_data, int16_t x, int16_t y,
                            int16_t r, uint8_t color, bool filled) {
     basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
     if (!console) return;
 
-    // Offset to user area
-    int16_t abs_x = (int16_t)(console->user_area_x0 + x);
-    int16_t abs_y = (int16_t)(console->user_area_y0 + y);
-
     gfx_cmd_t cmd = {
         .cmd_type = GFX_CMD_CIRCLE,
         .canvas_id = console->canvas_id,
         .params.circle = {
-            .x = abs_x,
-            .y = abs_y,
+            .x = x,
+            .y = y,
             .radius = r,
             .color = (fmrb_color_t)color,
             .filled = filled
         }
     };
     send_gfx_command(&cmd);
+    mark_dirty(console, 0, 0);
+    mark_dirty(console, BASIC_SCREEN_COLS - 1, BASIC_SCREEN_ROWS - 1);
 }
 
 // GFX ops callback: PRESENT - flush canvas to screen
 static void gfx_ops_present(void* user_data) {
     basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
     if (!console) return;
-
-    present(console);
+    console->dirty = true;
+    basic_console_present(console);
 }
 
 void basic_console_register_gfx_ops(basic_state_t* state,
@@ -369,7 +268,6 @@ void basic_console_register_gfx_ops(basic_state_t* state,
     if (!state || !console) return;
 
     basic_gfx_ops_t ops = {
-        .cls = gfx_ops_cls,
         .circle = gfx_ops_circle,
         .present = gfx_ops_present,
         .user_data = console
@@ -391,14 +289,5 @@ void basic_console_destroy(basic_console_ctx_t* console) {
         }
     }
 
-    FMRB_LOGI(TAG, "Console destroyed");
-}
-
-fmrb_err_t basic_register_gfx_extension(basic_state_t* state) {
-    if (!state) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-
-    FMRB_LOGI(TAG, "Graphics extension placeholder registered");
-    return FMRB_OK;
+    FMRB_LOGI(TAG, "BASIC screen destroyed");
 }

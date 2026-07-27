@@ -71,8 +71,18 @@ inline constexpr uint8_t max_string_len = 31;
 
 /// Text screen width, which also fixes the PRINT comma zones (core_spec sec 6).
 inline constexpr uint8_t screen_columns = 28;
+/// Text screen height (core_spec sec 13).
+inline constexpr uint8_t screen_rows = 24;
 /// PRINT comma zone width: 4 zones of 8 columns starting at 0, 8, 16, 24.
 inline constexpr uint8_t print_zone_width = 8;
+/// Colour attributes cover 2x2 character areas (core_spec sec 7, COLOR).
+inline constexpr uint8_t color_area_size = 2;
+/// Character that toggles kana input (TAB). See interpreter::push_key().
+inline constexpr uint8_t kana_toggle_key = 0x09;
+/// Function keys held by KEY / KEYLIST (core_spec sec 5).
+inline constexpr uint8_t function_key_count = 8;
+/// Longest function key definition (core_spec sec 5: 15 characters).
+inline constexpr uint8_t function_key_len = 15;
 
 /**
  * @brief A BASIC value: 16 bit integer or a string of at most 31 characters.
@@ -140,6 +150,25 @@ struct basic_host_t {
      *         raises IL.
      */
     bool (*ext_statement)(void* user, uint8_t tk, const basic_arg* args, uint8_t argc);
+    /**
+     * One text screen cell changed. The shadow buffer inside the core is the
+     * truth; the embedder redraws just this cell (8x8 pixels).
+     * @param attr colour attribute of the cell, 0-3
+     */
+    void (*screen_cell)(void* user, uint8_t x, uint8_t y, uint8_t code, uint8_t attr);
+    /// The screen is consistent again: a good moment to present the canvas.
+    void (*screen_present)(void* user);
+    /// One line of debug output (_SCRDUMP). Never program output.
+    void (*debug_line)(void* user, const char* text);
+    /**
+     * Text palette changed (PALET B, and once at start up). Colour codes are
+     * the 0-60 values of core_spec sec 7; the renderer maps them to pixels.
+     * @param attr     colour attribute group 0-3
+     * @param backdrop backdrop colour code, shared by every group
+     * @param c1 c2 c3 the three colours of the group
+     */
+    void (*screen_palette)(void* user, uint8_t attr, uint8_t backdrop, uint8_t c1,
+                           uint8_t c2, uint8_t c3);
     /// Opaque pointer handed back to every callback.
     void* user;
 };
@@ -261,6 +290,37 @@ public:
 
     // --- output helpers, also used by the statement implementations ---
 
+    // --- text screen (B2) ---
+
+    /// Character code at (x, y), 0 when out of range.
+    uint8_t screen_char(uint8_t x, uint8_t y) const noexcept;
+    /// Colour attribute (0-3) at (x, y), 0 when out of range.
+    uint8_t screen_attr(uint8_t x, uint8_t y) const noexcept;
+    /// Cursor column (POS) and row (CSRLIN).
+    uint8_t cursor_x() const noexcept { return cursor_x_; }
+    uint8_t cursor_y() const noexcept { return cursor_y_; }
+    /// Clear the screen and home the cursor (CLS).
+    void screen_clear() noexcept;
+    /// Repaint every cell through basic_host_t::screen_cell (window restore).
+    void screen_refresh() noexcept;
+    /// Dump the screen through basic_host_t::debug_line (_SCRDUMP).
+    void screen_dump(uint16_t tag, bool with_colors) noexcept;
+    /// Push the whole text palette to the host (start up, window restore).
+    void screen_send_palette() noexcept;
+
+    /**
+     * @brief Queue one key press for INKEY$, called by the embedder.
+     *
+     * The kana toggle character (::fmrb_basic::kana_toggle_key) switches kana
+     * input on and off instead of being queued; while it is on, letters are
+     * combined into kana (see basic_screen.cpp).
+     */
+    void push_key(uint8_t code) noexcept;
+    /// True while kana input is active.
+    bool kana_mode() const noexcept { return kana_mode_; }
+    /// True while CLICK ON is in effect (key click sound, B3 wires the sound).
+    bool click_enabled() const noexcept { return click_on_; }
+
     /// Write one Family BASIC character code as UTF-8 through the host.
     void put_fb_char(uint8_t code) noexcept;
     /// Write a NUL terminated ASCII string (already Family BASIC compatible).
@@ -335,7 +395,22 @@ private:
     bool st_restore() noexcept;
     bool st_swap() noexcept;
     bool st_pause() noexcept;
+    bool st_locate() noexcept;
+    bool st_color() noexcept;
+    bool st_key() noexcept;
+    bool st_click() noexcept;
+    bool st_scrdump() noexcept;
+    bool st_palet() noexcept;
     bool st_ext(token tk) noexcept;
+
+    // --- text screen internals (basic_screen.cpp) ---
+    void screen_put(uint8_t code) noexcept;
+    void screen_newline() noexcept;
+    void screen_scroll() noexcept;
+    void screen_set_cell(uint8_t x, uint8_t y, uint8_t code, uint8_t attr) noexcept;
+    bool next_key(uint8_t* out) noexcept;
+    void push_key_raw(uint8_t code) noexcept;
+    uint8_t kana_translate(uint8_t code) noexcept;
     bool jump_to_line(uint16_t number) noexcept;
     bool skip_for_body(const uint8_t* name) noexcept;
     bool read_data_value(bool want_string, basic_value* out) noexcept;
@@ -388,7 +463,32 @@ private:
     uint8_t* work_src_ = nullptr;
     uint8_t* work_code_ = nullptr;
 
-    uint8_t cursor_col_ = 0;
+    // text screen: the shadow buffer is the truth, drawing only mirrors it
+    // (compat_plan sec 5.1). Both arrays are screen_columns * screen_rows.
+    uint8_t* screen_chars_ = nullptr;
+    uint8_t* screen_attrs_ = nullptr;
+    uint8_t cursor_x_ = 0;
+    uint8_t cursor_y_ = 0;
+
+    // Kana input: the pending consonant of a two key romaji sequence.
+    bool kana_mode_ = false;
+    uint8_t kana_pending_ = 0;
+
+    // INKEY$ queue, filled by the embedder from HID events.
+    static constexpr uint8_t key_queue_size = 16;
+    uint8_t key_queue_[key_queue_size] = {};
+    uint8_t key_head_ = 0;
+    uint8_t key_tail_ = 0;
+
+    // Text palette: 4 attribute groups of 3 colour codes plus the shared
+    // backdrop (core_spec sec 7). Sprite palettes arrive in B3.
+    uint8_t palette_[4][3] = {};
+    uint8_t backdrop_ = 0;
+
+    // KEY / KEYLIST definitions and the CLICK flag.
+    uint8_t* function_keys_ = nullptr;  // function_key_count * (1 + function_key_len)
+    bool click_on_ = false;
+
     uint32_t rng_state_ = 0;
     uint32_t statement_count_ = 0;
 

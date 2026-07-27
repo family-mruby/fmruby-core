@@ -6,11 +6,14 @@
 // comes from malloc. This file is host only, so malloc/stdio are allowed here
 // (the firmware side uses the fmrb_malloc pools instead).
 //
-// Usage: basic_runner program.bas [input.txt]
-// Output: the program output, then "OK" on success. Errors are printed by the
-// core itself ("?SN ERROR IN 10"), and the exit status is 1.
+// Usage: basic_runner program.bas [input.txt [keys.txt]]
+//   input.txt  lines handed to INPUT / LINPUT
+//   keys.txt   characters queued for INKEY$ (one key per character)
+// Output: the program output and any _SCRDUMP lines, then "OK" on success.
+// Errors are printed by the core itself ("?SN ERROR IN 10"), exit status 1.
 
 #include "basic_core.hpp"
+#include "basic_charset.hpp"
 
 #include <cstdio>
 #include <cstdlib>
@@ -61,12 +64,6 @@ uint32_t host_ticks_ms(void* user) {
     return ticks;
 }
 
-void host_sleep_ms(void* user, uint32_t ms) {
-    // Tests must not spend real time waiting.
-    (void)user;
-    (void)ms;
-}
-
 bool host_on_tick(void* user) {
     (void)user;
     return true;
@@ -76,6 +73,13 @@ void host_on_error(void* user, fmrb_basic::error_code code, int32_t line_number)
     host_state* state = static_cast<host_state*>(user);
     state->error = code;
     state->error_line = line_number;
+}
+
+void host_debug_line(void* user, const char* text) {
+    // Screen dumps go to stdout so they become part of the golden output; on
+    // the device the same lines go to the log (see the B2 report).
+    (void)user;
+    std::printf("%s\n", text);
 }
 
 // Read the whole file into a NUL terminated buffer owned by the caller.
@@ -109,7 +113,7 @@ char* read_file(const char* path) {
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: %s program.bas [input.txt]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s program.bas [input.txt [keys.txt]]\n", argv[0]);
         return 2;
     }
 
@@ -134,12 +138,20 @@ int main(int argc, char** argv) {
     host.put_char = host_put_char;
     host.read_line = host_read_line;
     host.ticks_ms = host_ticks_ms;
-    host.sleep_ms = host_sleep_ms;
+    // No sleep_ms on purpose: the core treats a host without clock control as
+    // "cannot wait", so PAUSE and the blocking INKEY$(0) return immediately
+    // instead of hanging a test run.
+    host.sleep_ms = nullptr;
     host.on_tick = host_on_tick;
     host.on_error = host_on_error;
     // No extension handler on the host: screen / sprite / sound statements
     // raise IL until the phase that implements them.
     host.ext_statement = nullptr;
+    host.debug_line = host_debug_line;
+    // No screen renderer here: the shadow buffer plus _SCRDUMP is what the
+    // tests inspect.
+    host.screen_cell = nullptr;
+    host.screen_present = nullptr;
     host.user = &state;
 
     int status = 0;
@@ -147,12 +159,34 @@ int main(int argc, char** argv) {
         fmrb_basic::interpreter basic(host);
         if (!basic.init()) {
             status = 1;
-        } else if (!basic.load(source)) {
-            status = 1;
-        } else if (!basic.run()) {
-            status = 1;
         } else {
-            std::printf("OK\n");
+            // Queue the key script (if any) after init(), which resets the
+            // queue: INKEY$ consumes one character per call.
+            if (argc >= 4) {
+                char* keys = read_file(argv[3]);
+                if (keys) {
+                    size_t i = 0;
+                    while (keys[i] != '\0') {
+                        if (keys[i] == '\n' || keys[i] == '\r') {
+                            ++i;
+                            continue;
+                        }
+                        size_t used = 0;
+                        const uint32_t ucs =
+                            fmrb_basic::utf8_decode(keys + i, std::strlen(keys + i), &used);
+                        basic.push_key(fmrb_basic::unicode_to_fbcode(ucs));
+                        i += used;
+                    }
+                    std::free(keys);
+                }
+            }
+            if (!basic.load(source)) {
+                status = 1;
+            } else if (!basic.run()) {
+                status = 1;
+            } else {
+                std::printf("OK\n");
+            }
         }
     }
 

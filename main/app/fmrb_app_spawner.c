@@ -288,7 +288,10 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     const char* toml_screen_name = NULL;
     const char* toml_window_mode = NULL;
     bool headless = false;
-    bool fullscreen = false;
+    // A .bas app is a Family BASIC screen (28x24 characters), so it runs full
+    // screen unless its .app.toml asks for something else (compat_plan
+    // sec 4.2, phase_b2.md T2-5).
+    bool fullscreen = (vm_type == FMRB_VM_TYPE_BASIC);
     int window_width = 100;
     int window_height = 100;
     int window_pos_x = 50;
@@ -318,6 +321,10 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
                 headless = true;
             } else if (strcmp(toml_window_mode, "fullscreen") == 0) {
                 fullscreen = true;
+            } else if (strcmp(toml_window_mode, "window") == 0 ||
+                       strcmp(toml_window_mode, "fullwindow") == 0) {
+                headless = false;
+                fullscreen = false;
             } else {
                 headless = false;
             }

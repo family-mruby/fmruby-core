@@ -169,6 +169,56 @@ bool interpreter::exec_statement() noexcept {
             return true;
         }
 
+        case token::cls:
+            read_byte();
+            // CLS [BG face] (v3_spec): the second face arrives with SCREEN in B4.
+            if (!at_statement_end()) {
+                int16_t face = 0;
+                if (!eval_number(&face)) {
+                    return false;
+                }
+            }
+            screen_clear();
+            return true;
+
+        case token::locate:
+            read_byte();
+            return st_locate();
+
+        case token::color:
+            read_byte();
+            return st_color();
+
+        case token::key:
+            read_byte();
+            return st_key();
+
+        case token::keylist: {
+            read_byte();
+            for (uint8_t i = 0; i < function_key_count; ++i) {
+                const uint8_t* entry = function_keys_ + i * (1u + function_key_len);
+                print_number(i + 1);
+                put_fb_char(' ');
+                for (uint8_t k = 0; k < entry[0]; ++k) {
+                    put_fb_char(entry[1 + k]);
+                }
+                print_newline();
+            }
+            return true;
+        }
+
+        case token::click:
+            read_byte();
+            return st_click();
+
+        case token::palet:
+            read_byte();
+            return st_palet();
+
+        case token::scrdump:
+            read_byte();
+            return st_scrdump();
+
         case token::cont:
             read_byte();
             return raise_here(error_code::cant_continue);
@@ -224,11 +274,11 @@ bool interpreter::st_print() noexcept {
             // Comma tabs to the next 8 column zone; past the last one it wraps
             // to the next line (core_spec sec 6).
             const uint8_t next_zone =
-                static_cast<uint8_t>((cursor_col_ / print_zone_width + 1) * print_zone_width);
+                static_cast<uint8_t>((cursor_x_ / print_zone_width + 1) * print_zone_width);
             if (next_zone >= screen_columns) {
                 print_newline();
             } else {
-                while (cursor_col_ < next_zone) {
+                while (cursor_x_ < next_zone) {
                     put_fb_char(' ');
                 }
             }
@@ -960,6 +1010,148 @@ bool interpreter::st_pause() noexcept {
             break;  // no clock control: do not spin
         }
     }
+    return true;
+}
+
+bool interpreter::st_locate() noexcept {
+    int16_t x = 0;
+    int16_t y = 0;
+    if (!eval_number(&x) || !expect(token::comma) || !eval_number(&y)) {
+        return false;
+    }
+    if (x < 0 || x >= screen_columns || y < 0 || y >= screen_rows) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    cursor_x_ = static_cast<uint8_t>(x);
+    cursor_y_ = static_cast<uint8_t>(y);
+    return true;
+}
+
+bool interpreter::st_color() noexcept {
+    // COLOR X,Y,n sets the colour of the 2x2 character area that contains
+    // (X, Y); the area origin is even in both axes (core_spec sec 7).
+    int16_t x = 0;
+    int16_t y = 0;
+    int16_t attr = 0;
+    if (!eval_number(&x) || !expect(token::comma) || !eval_number(&y) ||
+        !expect(token::comma) || !eval_number(&attr)) {
+        return false;
+    }
+    if (x < 0 || x >= screen_columns || y < 0 || y >= screen_rows || attr < 0 || attr > 3) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    const uint8_t x0 = static_cast<uint8_t>(x) & static_cast<uint8_t>(~(color_area_size - 1));
+    const uint8_t y0 = static_cast<uint8_t>(y) & static_cast<uint8_t>(~(color_area_size - 1));
+    for (uint8_t dy = 0; dy < color_area_size; ++dy) {
+        for (uint8_t dx = 0; dx < color_area_size; ++dx) {
+            const uint8_t cx = static_cast<uint8_t>(x0 + dx);
+            const uint8_t cy = static_cast<uint8_t>(y0 + dy);
+            if (cx < screen_columns && cy < screen_rows) {
+                screen_set_cell(cx, cy, screen_char(cx, cy), static_cast<uint8_t>(attr));
+            }
+        }
+    }
+    return true;
+}
+
+bool interpreter::st_key() noexcept {
+    int16_t index = 0;
+    if (!eval_number(&index) || !expect(token::comma)) {
+        return false;
+    }
+    if (index < 1 || index > function_key_count) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    basic_value text;
+    if (!eval_string(&text)) {
+        return false;
+    }
+    // Definitions longer than 15 characters are truncated (core_spec sec 5).
+    uint8_t* entry = function_keys_ + (index - 1) * (1u + function_key_len);
+    const uint8_t len = (text.len > function_key_len) ? function_key_len : text.len;
+    entry[0] = len;
+    for (uint8_t i = 0; i < len; ++i) {
+        entry[1 + i] = text.str[i];
+    }
+    return true;
+}
+
+bool interpreter::st_click() noexcept {
+    if (accept(token::on)) {
+        click_on_ = true;
+        return true;
+    }
+    if (accept(token::off)) {
+        click_on_ = false;
+        return true;
+    }
+    return raise_here(error_code::syntax);
+}
+
+bool interpreter::st_scrdump() noexcept {
+    int16_t tag = 0;
+    int16_t flags = 0;
+    if (!at_statement_end()) {
+        if (!eval_number(&tag)) {
+            return false;
+        }
+        if (accept(token::comma) && !eval_number(&flags)) {
+            return false;
+        }
+    }
+    screen_dump(static_cast<uint16_t>(tag), (flags & 1) != 0);
+    return true;
+}
+
+bool interpreter::st_palet() noexcept {
+    // PALET {B|S} n,C1,C2,C3,C4 (core_spec sec 7). The selector is a bare
+    // letter, so it arrives as a variable token.
+    bool sprite_palette = false;
+    if (peek_token() == token::var_num) {
+        const uint16_t save = pc_off_;
+        read_byte();
+        const uint8_t n0 = read_byte();
+        const uint8_t n1 = read_byte();
+        if (n1 == 0 && (n0 == 'B' || n0 == 'S')) {
+            sprite_palette = (n0 == 'S');
+        } else {
+            pc_off_ = save;  // no selector: treat it as the BG palette
+        }
+    }
+
+    int16_t group = 0;
+    int16_t colors[4] = {0, 0, 0, 0};
+    if (!eval_number(&group)) {
+        return false;
+    }
+    for (uint8_t i = 0; i < 4; ++i) {
+        if (!expect(token::comma) || !eval_number(&colors[i])) {
+            return false;
+        }
+    }
+    if (group < 0 || group > 3) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    for (uint8_t i = 0; i < 4; ++i) {
+        if (colors[i] < 0 || colors[i] > 60) {
+            return raise_here(error_code::illegal_function_call);
+        }
+    }
+
+    // Sprite palettes belong to B3; accepting the statement keeps programs
+    // running, and the colours are remembered there.
+    if (sprite_palette) {
+        return true;
+    }
+    // C1 is the backdrop and only takes effect for group 0 (core_spec sec 7).
+    if (group == 0) {
+        backdrop_ = static_cast<uint8_t>(colors[0]);
+    }
+    palette_[group][0] = static_cast<uint8_t>(colors[1]);
+    palette_[group][1] = static_cast<uint8_t>(colors[2]);
+    palette_[group][2] = static_cast<uint8_t>(colors[3]);
+    screen_send_palette();
+    screen_refresh();
     return true;
 }
 

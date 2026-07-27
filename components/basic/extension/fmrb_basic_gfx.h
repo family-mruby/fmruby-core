@@ -1,9 +1,11 @@
 /**
  * @file fmrb_basic_gfx.h
- * @brief BASIC console window for text output display
+ * @brief BASIC text screen renderer (28x24 characters of 8x8 pixels)
  *
- * Provides a GUI window that displays PRINT statement output
- * with automatic scrolling when text exceeds the visible area.
+ * The interpreter core owns the 28x24 shadow buffer; this module mirrors it
+ * onto an fmrb_gfx canvas one cell at a time and presents the result once per
+ * update batch. The fmruby specific graphics statements (CIRCLE, PRESENT)
+ * draw onto the same canvas.
  */
 
 #pragma once
@@ -17,84 +19,69 @@
 extern "C" {
 #endif
 
-#define BASIC_CONSOLE_MAX_LINES    64
-#define BASIC_CONSOLE_MAX_LINE_LEN 128
-
-#define BASIC_CONSOLE_CHAR_WIDTH   6
-#define BASIC_CONSOLE_CHAR_HEIGHT  8
-
-// Title bar height (matching FmrbApp window frame)
-#define BASIC_CONSOLE_TITLEBAR_H   11
+/// Character cell size in pixels (core_spec sec 13).
+#define BASIC_SCREEN_CELL_W 8
+#define BASIC_SCREEN_CELL_H 8
+/// Text plane size in characters.
+#define BASIC_SCREEN_COLS 28
+#define BASIC_SCREEN_ROWS 24
+/// Text plane size in pixels: 224x192.
+#define BASIC_SCREEN_W (BASIC_SCREEN_COLS * BASIC_SCREEN_CELL_W)
+#define BASIC_SCREEN_H (BASIC_SCREEN_ROWS * BASIC_SCREEN_CELL_H)
 
 typedef struct {
     fmrb_app_task_context_t* app_ctx;
     fmrb_canvas_handle_t canvas_id;
 
-    // Window geometry
-    uint16_t window_width;
-    uint16_t window_height;
+    /// Where the text plane is presented (centred on a 320x240 frame buffer).
+    int16_t origin_x;
+    int16_t origin_y;
 
-    // User area (inside window frame)
-    int16_t user_area_x0;
-    int16_t user_area_y0;
-    int16_t user_area_width;
-    int16_t user_area_height;
+    /// Palette: backdrop plus three colours per attribute group, as RGB332.
+    uint8_t backdrop_rgb;
+    uint8_t attr_rgb[4];
 
-    // Text line buffer
-    char lines[BASIC_CONSOLE_MAX_LINES][BASIC_CONSOLE_MAX_LINE_LEN];
-    int line_count;
-    int max_visible_lines;
-    int max_chars_per_line;
+    /// Cells changed since the last present, coalesced into one dirty rect.
+    bool dirty;
+    uint8_t dirty_x0, dirty_y0, dirty_x1, dirty_y1;
 } basic_console_ctx_t;
 
 /**
- * @brief Initialize BASIC console window
+ * @brief Create the text screen canvas and clear it
  *
- * Creates a canvas, draws window frame, and prepares for text output.
- *
- * @param console Console context (caller-allocated, zeroed)
+ * @param console Renderer context (caller-allocated, zeroed)
  * @param ctx Application task context
  * @return FMRB_OK on success, error code otherwise
  */
 fmrb_err_t basic_console_init(basic_console_ctx_t* console,
                               fmrb_app_task_context_t* ctx);
 
-/**
- * @brief Output callback for basic_output()
- *
- * Matches basic_output_cb_t signature. Adds text to the console
- * line buffer and redraws the window with scrolling as needed.
- *
- * @param user_data Pointer to basic_console_ctx_t
- * @param text Text to display
- */
-void basic_console_output_cb(void* user_data, const char* text);
+/// Draw one character cell. Matches the core's screen cell callback.
+void basic_console_draw_cell(void* user_data, uint8_t x, uint8_t y, uint8_t code,
+                             uint8_t attr);
+
+/// Present the canvas if anything changed since the last call.
+void basic_console_present(void* user_data);
+
+/// Apply one palette group (colour codes 0-60, core_spec sec 7).
+void basic_console_set_palette(void* user_data, uint8_t attr, uint8_t backdrop,
+                               uint8_t c1, uint8_t c2, uint8_t c3);
 
 /**
- * @brief Destroy console and release resources
+ * @brief Destroy the renderer and release its canvas
  *
- * @param console Console context
+ * @param console Renderer context
  */
 void basic_console_destroy(basic_console_ctx_t* console);
 
 /**
- * @brief Register graphics ops callbacks to BASIC state
- *
- * Connects CLS, CIRCLE, PRESENT commands to the console window.
+ * @brief Register the fmruby graphics statements (CIRCLE, PRESENT)
  *
  * @param state BASIC state
- * @param console Console context
+ * @param console Renderer context
  */
 void basic_console_register_gfx_ops(basic_state_t* state,
                                     basic_console_ctx_t* console);
-
-/**
- * @brief Register graphics extension commands (placeholder)
- *
- * @param state BASIC state
- * @return FMRB_OK on success, error code otherwise
- */
-fmrb_err_t basic_register_gfx_extension(basic_state_t* state);
 
 #ifdef __cplusplus
 }

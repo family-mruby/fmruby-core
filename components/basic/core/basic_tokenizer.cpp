@@ -150,6 +150,8 @@ int32_t interpreter::crunch_line(const uint8_t* src, size_t len, uint8_t* out,
         } else if (c == '\'') {
             tk = token::rem;
             consumed = 1;
+        } else if (c == '_' && match_keyword(src, len, pos, &tk, &consumed)) {
+            // Debug statements start with '_', which no BASIC name can.
         } else if (is_alpha(c) && !match_keyword(src, len, pos, &tk, &consumed)) {
             // Variable: first two characters are significant (core_spec sec 2).
             const size_t start = pos;

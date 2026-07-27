@@ -83,6 +83,12 @@ uint32_t utf8_decode(const char* src, size_t len, size_t* used) noexcept {
 }
 
 uint8_t unicode_to_fbcode(uint32_t ucs) noexcept {
+    if (ucs < 0x20) {
+        // Control characters pass through: the loader wants TAB as whitespace
+        // and key input uses TAB as the kana toggle. Table B's 0-31 group is
+        // never produced from text.
+        return static_cast<uint8_t>(ucs);
+    }
     if (ucs >= 0x20 && ucs <= 0x5A) {
         return static_cast<uint8_t>(ucs);  // space - Z, ASCII identical
     }

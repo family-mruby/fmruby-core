@@ -2,8 +2,9 @@
 # Run every golden case against the host BASIC runner and compare the output.
 #
 # A case is a pair test/golden/NNN_name.bas + NNN_name.expected; the runner
-# output (stdout) must match .expected byte for byte. An optional
-# NNN_name.input file is passed to the runner as the INPUT source.
+# output (stdout) must match .expected byte for byte. Optional companions:
+#   NNN_name.input  lines handed to INPUT / LINPUT
+#   NNN_name.keys   characters queued for INKEY$
 #
 # Usage: run_golden.sh [runner-binary] [case-filter]
 #   runner-binary  default: $BASIC_RUNNER or test/build/basic_runner
@@ -40,8 +41,13 @@ for bas in "$here"/golden/*.bas; do
   fi
 
   input="$here/golden/$name.input"
+  keys="$here/golden/$name.keys"
   actual="$(mktemp)"
-  if [ -f "$input" ]; then
+  if [ -f "$keys" ]; then
+    # INKEY$ key script; an absent .input still needs a placeholder argument.
+    [ -f "$input" ] || input=/dev/null
+    "$runner" "$bas" "$input" "$keys" >"$actual" 2>/dev/null </dev/null
+  elif [ -f "$input" ]; then
     "$runner" "$bas" "$input" >"$actual" 2>/dev/null
   else
     "$runner" "$bas" >"$actual" 2>/dev/null </dev/null

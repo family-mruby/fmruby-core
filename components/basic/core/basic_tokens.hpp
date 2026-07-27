@@ -104,6 +104,10 @@ namespace fmrb_basic {
     /* fmruby specific extensions (not Family BASIC) */ \
     X(circle,    "CIRCLE",   0, kw_kind::statement)   \
     X(present,   "PRESENT",  0, kw_kind::statement)   \
+    /* debug: dumps the text screen through basic_host_t::debug_line.       \
+       The leading '_' cannot start a Family BASIC name, so no program can  \
+       collide with it (phase_b0_report sec 3.3). */                        \
+    X(scrdump,   "_SCRDUMP", 0, kw_kind::statement)   \
     /* operators */                                   \
     X(mod,       "MOD",      0, kw_kind::operator_kw) \
     X(not_,      "NOT",      0, kw_kind::operator_kw) \

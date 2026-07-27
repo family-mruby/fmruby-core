@@ -84,6 +84,9 @@ interpreter::~interpreter() noexcept {
         host_.dealloc(host_.user, operand_stack_);
         host_.dealloc(host_.user, work_src_);
         host_.dealloc(host_.user, work_code_);
+        host_.dealloc(host_.user, screen_chars_);
+        host_.dealloc(host_.user, screen_attrs_);
+        host_.dealloc(host_.user, function_keys_);
     }
     lines_ = nullptr;
     code_ = nullptr;
@@ -94,6 +97,9 @@ interpreter::~interpreter() noexcept {
     operand_stack_ = nullptr;
     work_src_ = nullptr;
     work_code_ = nullptr;
+    screen_chars_ = nullptr;
+    screen_attrs_ = nullptr;
+    function_keys_ = nullptr;
 }
 
 bool interpreter::init(const basic_config& config) noexcept {
@@ -115,9 +121,15 @@ bool interpreter::init(const basic_config& config) noexcept {
         host_.alloc(host_.user, sizeof(basic_value) * config.expr_depth));
     work_src_ = static_cast<uint8_t*>(host_.alloc(host_.user, work_capacity));
     work_code_ = static_cast<uint8_t*>(host_.alloc(host_.user, work_capacity));
+    const size_t screen_size = static_cast<size_t>(screen_columns) * screen_rows;
+    screen_chars_ = static_cast<uint8_t*>(host_.alloc(host_.user, screen_size));
+    screen_attrs_ = static_cast<uint8_t*>(host_.alloc(host_.user, screen_size));
+    function_keys_ = static_cast<uint8_t*>(
+        host_.alloc(host_.user, function_key_count * (1u + function_key_len)));
 
     if (!lines_ || !code_ || !vars_ || !var_data_ || !for_stack_ || !gosub_stack_ ||
-        !operand_stack_ || !work_src_ || !work_code_) {
+        !operand_stack_ || !work_src_ || !work_code_ || !screen_chars_ || !screen_attrs_ ||
+        !function_keys_) {
         return raise(error_code::out_of_memory, -1);
     }
 
@@ -132,6 +144,34 @@ bool interpreter::init(const basic_config& config) noexcept {
     line_count_ = 0;
     code_used_ = 0;
     clear_variables();
+    for (uint8_t i = 0; i < function_key_count; ++i) {
+        function_keys_[i * (1u + function_key_len)] = 0;  // empty definition
+    }
+    // Power on defaults (core_spec sec 16): cleared screen, cursor home,
+    // colour attribute 0 everywhere.
+    for (size_t i = 0; i < screen_size; ++i) {
+        screen_chars_[i] = ' ';
+        screen_attrs_[i] = 0;
+    }
+    cursor_x_ = 0;
+    cursor_y_ = 0;
+    key_head_ = 0;
+    key_tail_ = 0;
+    click_on_ = false;
+
+    // Start up palette. core_spec sec 16 says the screen comes up with BG
+    // palette code 1, but does not list its colour codes, so these are a
+    // readable placeholder: white, red, green and blue text on black.
+    static constexpr uint8_t default_palette[4][3] = {
+        {2, 22, 48}, {6, 22, 54}, {10, 26, 58}, {1, 17, 49},
+    };
+    for (uint8_t attr = 0; attr < 4; ++attr) {
+        for (uint8_t i = 0; i < 3; ++i) {
+            palette_[attr][i] = default_palette[attr][i];
+        }
+    }
+    backdrop_ = 15;  // black
+    screen_send_palette();
     // Fixed seed: RND must produce the same sequence on every run so golden
     // tests stay reproducible (core_spec does not define the seed behaviour).
     rng_state_ = 0x1234ABCDu;
@@ -174,17 +214,16 @@ const uint8_t* interpreter::code_at(uint16_t line_index) const noexcept {
 // --- output ---------------------------------------------------------------
 
 void interpreter::put_fb_char(uint8_t code) noexcept {
-    if (!host_.put_char) {
-        return;
+    // The character stream mirror is what the golden test runner and the
+    // legacy console consume; the shadow buffer is what the screen shows.
+    if (host_.put_char) {
+        char buf[4];
+        const size_t n = fbcode_to_utf8(code, buf);
+        for (size_t i = 0; i < n; ++i) {
+            host_.put_char(host_.user, buf[i]);
+        }
     }
-    char buf[4];
-    const size_t n = fbcode_to_utf8(code, buf);
-    for (size_t i = 0; i < n; ++i) {
-        host_.put_char(host_.user, buf[i]);
-    }
-    if (cursor_col_ < screen_columns) {
-        ++cursor_col_;
-    }
+    screen_put(code);
 }
 
 void interpreter::print(const char* text) noexcept {
@@ -200,7 +239,7 @@ void interpreter::print_newline() noexcept {
     if (host_.put_char) {
         host_.put_char(host_.user, '\n');
     }
-    cursor_col_ = 0;
+    screen_newline();
 }
 
 void interpreter::print_line(const char* text) noexcept {
@@ -233,7 +272,7 @@ bool interpreter::raise(error_code code, int32_t line_number) noexcept {
 
     // Family BASIC screen format: "?SN ERROR IN 10", or "?SN ERROR" when the
     // error is not tied to a program line (load time / direct mode).
-    if (cursor_col_ != 0) {
+    if (cursor_x_ != 0) {
         print_newline();
     }
     print("?");
@@ -508,7 +547,6 @@ void interpreter::skip_to_statement_end() noexcept {
 bool interpreter::run() noexcept {
     clear_error();
     clear_variables();
-    cursor_col_ = 0;
     data_valid_ = false;
     pc_line_ = 0;
     pc_off_ = 0;
@@ -557,8 +595,11 @@ bool interpreter::run() noexcept {
     }
 
     running_ = false;
-    if (cursor_col_ != 0) {
+    if (cursor_x_ != 0) {
         print_newline();
+    }
+    if (host_.screen_present) {
+        host_.screen_present(host_.user);
     }
     return error_ == error_code::none;
 }
