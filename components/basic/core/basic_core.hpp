@@ -5,18 +5,21 @@
  * The core is pure C++ (C++20, no exceptions / no RTTI). It must not include
  * ESP-IDF, FreeRTOS or fmruby headers: everything platform specific (memory,
  * character output, line input, time, error reporting) is supplied by the
- * embedder through ::fmrb_basic::basic_host_t. The same translation unit
- * therefore builds both inside the firmware app task and in the host golden
+ * embedder through ::fmrb_basic::basic_host_t. The same translation units
+ * therefore build both inside the firmware app task and in the host golden
  * test runner (components/basic/test), where only a host g++ is needed.
  *
- * Phase B0 provides the skeleton: the host interface, the error model and a
- * program line table. Statement execution is added in Phase B1.
+ * Internally every character is a Family BASIC character code (core_spec
+ * sec 12 table B). UTF-8 conversion happens on the way in (load) and on the
+ * way out (put_char), see basic_charset.hpp.
  */
 
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
+
+#include "basic_tokens.hpp"
 
 namespace fmrb_basic {
 
@@ -63,6 +66,37 @@ const char* error_mnemonic(error_code code) noexcept;
 /// Full error message ("Syntax error"), for logs and the report path.
 const char* error_message(error_code code) noexcept;
 
+/// Longest string a Family BASIC value can hold (core_spec sec 1, ST error).
+inline constexpr uint8_t max_string_len = 31;
+
+/// Text screen width, which also fixes the PRINT comma zones (core_spec sec 6).
+inline constexpr uint8_t screen_columns = 28;
+/// PRINT comma zone width: 4 zones of 8 columns starting at 0, 8, 16, 24.
+inline constexpr uint8_t print_zone_width = 8;
+
+/**
+ * @brief A BASIC value: 16 bit integer or a string of at most 31 characters.
+ *
+ * Strings are held inline. Family BASIC caps every string at 31 characters, so
+ * a fixed cell removes the need for a string heap and its compaction, and
+ * makes memory use exactly predictable (compat_plan sec 4.1-3 asked for a
+ * fixed size pool; this is that pool, spread over the values themselves).
+ */
+struct basic_value {
+    bool is_string = false;
+    int16_t num = 0;
+    uint8_t len = 0;
+    uint8_t str[max_string_len] = {};
+};
+
+/// One argument handed to basic_host_t::ext_statement.
+struct basic_arg {
+    bool is_string;
+    int16_t num;
+    const uint8_t* str;  ///< Family BASIC character codes, not NUL terminated
+    uint8_t len;
+};
+
 /**
  * @brief Services the embedder must provide to the interpreter core.
  *
@@ -75,54 +109,95 @@ struct basic_host_t {
     void* (*alloc)(void* user, size_t size);
     /// Release a block previously returned by alloc(). NULL is a no-op.
     void (*dealloc)(void* user, void* ptr);
-    /// Emit one character of program output (PRINT, error messages).
+    /// Emit one byte of UTF-8 program output (PRINT, error messages).
     void (*put_char)(void* user, char c);
     /**
-     * Read one line of user input (INPUT / LINPUT) without the terminator.
-     * @return number of characters stored, or a negative value when no input
-     *         is available (end of input, aborted).
+     * Read one line of user input (INPUT / LINPUT) as UTF-8, without the
+     * terminator.
+     * @return number of bytes stored, or a negative value when no input is
+     *         available (end of input, aborted).
      */
     int (*read_line)(void* user, char* buf, size_t buf_size);
-    /// Monotonic milliseconds, used by WAIT / PAUSE and the PLAY tempo.
+    /// Monotonic milliseconds, used by PAUSE and (from B3) the PLAY tempo.
     uint32_t (*ticks_ms)(void* user);
+    /// Yield for @p ms milliseconds (PAUSE). May be a no-op in tests.
+    void (*sleep_ms)(void* user, uint32_t ms);
     /**
-     * Cooperative execution hook, called by the run loop. This is where the
-     * embedder drives its 1/60 s work (sprite auto move, sound, input polling)
-     * and where it can ask the program to stop.
+     * Cooperative execution hook, called every few statements. This is where
+     * the embedder drives its 1/60 s work (sprite auto move, sound, input
+     * polling) and where it can ask the program to stop.
      * @return false to abort the running program.
      */
     bool (*on_tick)(void* user);
     /// Notify the embedder about an error, after the core has printed it.
     void (*on_error)(void* user, error_code code, int32_t line_number);
+    /**
+     * Statement the core recognizes but does not implement itself: the fmruby
+     * specific graphics statements, and the screen / sprite / sound statements
+     * until the phase that implements them.
+     * @param tk   keyword token value (::fmrb_basic::token)
+     * @return false when the embedder does not handle @p tk; the core then
+     *         raises IL.
+     */
+    bool (*ext_statement)(void* user, uint8_t tk, const basic_arg* args, uint8_t argc);
     /// Opaque pointer handed back to every callback.
     void* user;
 };
 
-/// One stored program line: line number plus a slice of the text arena.
+/// One stored program line: line number plus a slice of the token arena.
 struct program_line {
     uint16_t number;  ///< BASIC line number (0 - 65535)
-    uint32_t offset;  ///< byte offset of the statement text in the arena
-    uint16_t length;  ///< statement text length in bytes (no terminator)
+    uint32_t offset;  ///< byte offset of the crunched tokens in the arena
+    uint16_t length;  ///< token byte count, including the trailing eol token
+};
+
+/// Storage limits, all taken from the host pool by interpreter::init().
+struct basic_config {
+    uint16_t line_capacity = 512;      ///< program lines
+    uint32_t code_capacity = 8192;     ///< crunched token bytes
+    uint16_t var_capacity = 96;        ///< distinct variable names
+    uint32_t var_data_capacity = 8192; ///< variable and array storage bytes
+    uint8_t for_depth = 16;            ///< nested FOR loops
+    uint8_t gosub_depth = 24;          ///< nested GOSUB calls
+    uint8_t expr_depth = 24;           ///< expression operand / operator stacks
+};
+
+/// Variable table entry. Storage lives in the variable data arena.
+struct basic_var {
+    uint8_t name[2];   ///< first two significant characters, 0 padded
+    bool is_string;    ///< value type
+    uint8_t dims;      ///< 0 = scalar, 1 or 2 = array rank
+    uint16_t dim[2];   ///< highest valid subscript per dimension (0 based)
+    uint32_t offset;   ///< byte offset into the variable data arena
+};
+
+/// FOR loop frame.
+struct basic_for_frame {
+    uint8_t name[2];
+    int16_t limit;
+    int16_t step;
+    uint16_t body_line;  ///< line index of the statement after FOR
+    uint16_t body_off;   ///< token offset of the statement after FOR
+};
+
+/// GOSUB frame.
+struct basic_gosub_frame {
+    uint16_t line;
+    uint16_t off;
 };
 
 /**
  * @brief Family BASIC interpreter instance.
  *
  * Construction never allocates, so the embedder can placement new the object
- * into pool memory and then call init(). The program is held as a line table
- * sorted by line number plus a text arena; Phase B1 replaces the raw text with
- * a crunched token stream, keeping this interface.
+ * into pool memory and then call init().
  */
 class interpreter {
 public:
-    /// Largest line number accepted by the loader (spec sec 1).
+    /// Largest line number accepted by the loader (core_spec sec 1).
     static constexpr uint32_t max_line_number = 65535;
-    /// Longest source line accepted by the loader (spec sec 1: 255 columns).
+    /// Longest source line accepted by the loader (core_spec sec 1).
     static constexpr size_t max_line_length = 255;
-    /// Default program capacity used by init() when the caller passes 0.
-    static constexpr uint16_t default_line_capacity = 512;
-    /// Default text arena size in bytes used by init() when the caller passes 0.
-    static constexpr size_t default_text_capacity = 8192;
 
     explicit interpreter(const basic_host_t& host) noexcept;
     ~interpreter() noexcept;
@@ -131,85 +206,194 @@ public:
     interpreter& operator=(const interpreter&) = delete;
 
     /**
-     * @brief Allocate program storage through the host.
-     * @param line_capacity maximum number of program lines (0 = default)
-     * @param text_capacity text arena size in bytes (0 = default)
+     * @brief Allocate program and variable storage through the host.
      * @return false and raises OM when the host cannot supply the memory.
      */
-    bool init(uint16_t line_capacity = 0, size_t text_capacity = 0) noexcept;
+    bool init(const basic_config& config = basic_config{}) noexcept;
 
     /**
-     * @brief Replace the stored program with @p program.
+     * @brief Crunch and store a whole program (UTF-8 source).
      *
-     * @p program is the whole source text, lines separated by LF or CRLF. Each
-     * line must start with a line number; a line number on its own deletes
-     * that line. Raises SN on a malformed line and OM when storage runs out.
+     * Lines are separated by LF or CRLF and must start with a line number; a
+     * line number on its own deletes that line. Raises SN on a malformed line
+     * and OM when storage runs out.
      */
     bool load(const char* program) noexcept;
 
-    /**
-     * @brief Run the loaded program from the lowest line number.
-     *
-     * Phase B0: walks the line table and drives basic_host_t::on_tick without
-     * executing statements. Statement execution arrives in Phase B1.
-     */
+    /// Run the loaded program from the lowest line number.
     bool run() noexcept;
 
     /// Drop every program line (NEW).
     void clear_program() noexcept;
+    /// Drop every variable and array (CLEAR, and the start of RUN).
+    void clear_variables() noexcept;
 
     /// Number of stored program lines.
     uint16_t line_count() const noexcept { return line_count_; }
     /// Line table entry, or NULL when @p index is out of range.
     const program_line* line_at(uint16_t index) const noexcept;
-    /// Statement text of a line (not NUL terminated), NULL when out of range.
-    const char* line_text(uint16_t index) const noexcept;
+
+    /**
+     * @brief Expand one stored line back to source text (LIST, tests).
+     * @return number of bytes written to @p out, excluding the NUL.
+     */
+    size_t decrunch_line(uint16_t index, char* out, size_t out_size) const noexcept;
 
     /// Error raised by the last load()/run(), error_code::none when clean.
     error_code last_error() const noexcept { return error_; }
     /// Line number the last error was raised on, -1 when not line related.
     int32_t last_error_line() const noexcept { return error_line_; }
-    /// Forget the pending error (CONT / next RUN).
+    /// Forget the pending error.
     void clear_error() noexcept;
 
-    /// Write a NUL terminated string through basic_host_t::put_char.
-    void print(const char* text) noexcept;
-    /// print() followed by a newline.
-    void print_line(const char* text) noexcept;
-    /// Write a signed decimal number through basic_host_t::put_char.
-    void print_number(int32_t value) noexcept;
+    /// Bytes still free in the variable data arena (FRE).
+    uint32_t free_bytes() const noexcept;
 
     /**
      * @brief Raise a BASIC error: print it, notify the host, remember it.
      * @param line_number line the error happened on, negative when unknown
-     *        (load time / direct mode), which suppresses the "IN nnn" part.
+     *        (load time), which suppresses the "IN nnn" part.
      * @return always false, so callers can `return raise(...)`.
      */
     bool raise(error_code code, int32_t line_number) noexcept;
+    /// raise() for the line currently being executed.
+    bool raise_here(error_code code) noexcept;
+
+    // --- output helpers, also used by the statement implementations ---
+
+    /// Write one Family BASIC character code as UTF-8 through the host.
+    void put_fb_char(uint8_t code) noexcept;
+    /// Write a NUL terminated ASCII string (already Family BASIC compatible).
+    void print(const char* text) noexcept;
+    /// print() followed by a newline.
+    void print_line(const char* text) noexcept;
+    /// Write a signed decimal number.
+    void print_number(int32_t value) noexcept;
+    /// End the current output line and reset the cursor column.
+    void print_newline() noexcept;
 
 private:
-    /// Insert or replace one line in the sorted line table.
-    bool store_line(uint16_t number, const char* text, size_t length) noexcept;
-    /// Remove the line with @p number if it exists.
+    // --- program storage (basic_core.cpp) ---
+    bool store_line(uint16_t number, const uint8_t* code, uint16_t length) noexcept;
     void delete_line(uint16_t number) noexcept;
-    /// Index of @p number in the line table, or line_count_ for the slot after.
     uint16_t lower_bound(uint16_t number) const noexcept;
-    /// Copy @p length bytes into the text arena, false when it is full.
-    bool arena_append(const char* text, size_t length, uint32_t* out_offset) noexcept;
+    bool code_append(const uint8_t* code, uint16_t length, uint32_t* out_offset) noexcept;
+    /// Line table index for @p number, or -1 when there is no such line.
+    int32_t find_line(uint16_t number) const noexcept;
+
+    // --- tokenizer (basic_tokenizer.cpp) ---
+    /**
+     * Crunch one source line (Family BASIC codes, no line number) into
+     * @p out. Returns the byte count, or -1 after raising an error.
+     */
+    int32_t crunch_line(const uint8_t* src, size_t len, uint8_t* out, size_t out_size) noexcept;
+
+    // --- token stream access (inline, basic_internal.hpp) ---
+    const uint8_t* code_at(uint16_t line_index) const noexcept;
+    uint8_t peek_byte() const noexcept;
+    uint8_t read_byte() noexcept;
+    token peek_token() const noexcept { return static_cast<token>(peek_byte()); }
+    void skip_token() noexcept;
+    bool accept(token tk) noexcept;
+    bool expect(token tk) noexcept;
+    bool at_statement_end() const noexcept;
+    void skip_to_eol() noexcept;
+    void skip_to_statement_end() noexcept;
+    uint16_t current_line_number() const noexcept;
+
+    // --- expressions (basic_expr.cpp) ---
+    bool eval(basic_value* out) noexcept;
+    bool eval_number(int16_t* out) noexcept;
+    bool eval_string(basic_value* out) noexcept;
+    bool apply_binary(token op, basic_value* lhs, const basic_value* rhs) noexcept;
+    bool apply_unary(token op, basic_value* v) noexcept;
+    bool call_builtin(token fn, basic_value* args, uint8_t argc, basic_value* out) noexcept;
+
+    // --- variables (basic_vars.cpp) ---
+    basic_var* find_var(uint8_t n0, uint8_t n1, bool is_string, bool array) noexcept;
+    basic_var* create_var(uint8_t n0, uint8_t n1, bool is_string, uint8_t dims,
+                          const uint16_t* sizes) noexcept;
+    /// Storage address of a scalar or array element, NULL after raising.
+    uint8_t* var_cell(basic_var* var, const uint16_t* subs, uint8_t nsubs) noexcept;
+    bool store_value(uint8_t* cell, bool is_string, const basic_value* value) noexcept;
+    void load_value(const uint8_t* cell, bool is_string, basic_value* out) noexcept;
+
+    // --- statements (basic_exec.cpp) ---
+    bool exec_statement() noexcept;
+    bool st_assign(token var_tk) noexcept;
+    bool st_print() noexcept;
+    bool st_input(bool line_input) noexcept;
+    bool st_if() noexcept;
+    bool st_for() noexcept;
+    bool st_next() noexcept;
+    bool st_goto() noexcept;
+    bool st_gosub() noexcept;
+    bool st_return() noexcept;
+    bool st_on() noexcept;
+    bool st_dim() noexcept;
+    bool st_read() noexcept;
+    bool st_restore() noexcept;
+    bool st_swap() noexcept;
+    bool st_pause() noexcept;
+    bool st_ext(token tk) noexcept;
+    bool jump_to_line(uint16_t number) noexcept;
+    bool skip_for_body(const uint8_t* name) noexcept;
+    bool read_data_value(bool want_string, basic_value* out) noexcept;
+    bool parse_var_target(token var_tk, basic_var** out_var, uint8_t** out_cell) noexcept;
 
     basic_host_t host_;
 
+    // program
     program_line* lines_ = nullptr;
     uint16_t line_capacity_ = 0;
     uint16_t line_count_ = 0;
+    uint8_t* code_ = nullptr;
+    uint32_t code_capacity_ = 0;
+    uint32_t code_used_ = 0;
 
-    char* text_ = nullptr;
-    size_t text_capacity_ = 0;
-    size_t text_used_ = 0;
+    // variables
+    basic_var* vars_ = nullptr;
+    uint16_t var_capacity_ = 0;
+    uint16_t var_count_ = 0;
+    uint8_t* var_data_ = nullptr;
+    uint32_t var_data_capacity_ = 0;
+    uint32_t var_data_used_ = 0;
+
+    // stacks
+    basic_for_frame* for_stack_ = nullptr;
+    uint8_t for_depth_ = 0;
+    uint8_t for_top_ = 0;
+    basic_gosub_frame* gosub_stack_ = nullptr;
+    uint8_t gosub_depth_ = 0;
+    uint8_t gosub_top_ = 0;
+    basic_value* operand_stack_ = nullptr;
+    uint8_t expr_depth_ = 0;
+
+    // execution position
+    uint16_t pc_line_ = 0;
+    uint16_t pc_off_ = 0;
+    bool running_ = false;
+    bool jumped_ = false;
+
+    // DATA pointer
+    uint16_t data_line_ = 0;
+    uint16_t data_off_ = 0;
+    uint8_t data_pos_ = 0;
+    bool data_valid_ = false;
+
+    // Scratch buffers, taken from the pool rather than the C stack (00_common
+    // memory design rule 2: only small hot locals may live on the stack).
+    // work_src_ holds one source / input line, work_code_ its crunched form.
+    static constexpr size_t work_capacity = 288;
+    uint8_t* work_src_ = nullptr;
+    uint8_t* work_code_ = nullptr;
+
+    uint8_t cursor_col_ = 0;
+    uint32_t rng_state_ = 0;
+    uint32_t statement_count_ = 0;
 
     error_code error_ = error_code::none;
     int32_t error_line_ = -1;
-    bool running_ = false;
 };
 
 }  // namespace fmrb_basic

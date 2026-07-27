@@ -411,7 +411,7 @@ namespace :basic do
   BASIC_TEST_DIR   = "#{BASIC_DIR}/test"
   BASIC_TEST_BUILD = "#{BASIC_TEST_DIR}/build"
   BASIC_RUNNER_BIN = "#{BASIC_TEST_BUILD}/basic_runner"
-  BASIC_TEST_SRCS  = ["#{BASIC_DIR}/core/basic_core.cpp", "#{BASIC_TEST_DIR}/runner/main.cpp"]
+  BASIC_TEST_SRCS  = Dir["#{BASIC_DIR}/core/*.cpp"].sort + ["#{BASIC_TEST_DIR}/runner/main.cpp"]
   BASIC_CXXFLAGS   = %w[
     -std=c++20 -O1 -g
     -fno-exceptions -fno-rtti

@@ -1,0 +1,6 @@
+10 A$="ABC"
+20 B$="DEF"
+30 C$=A$+B$
+40 PRINT C$
+50 PRINT LEN(C$)
+60 PRINT A$+"-"+B$

@@ -368,10 +368,13 @@ void basic_console_register_gfx_ops(basic_state_t* state,
                                     basic_console_ctx_t* console) {
     if (!state || !console) return;
 
-    state->gfx_ops.cls = gfx_ops_cls;
-    state->gfx_ops.circle = gfx_ops_circle;
-    state->gfx_ops.present = gfx_ops_present;
-    state->gfx_ops.user_data = console;
+    basic_gfx_ops_t ops = {
+        .cls = gfx_ops_cls,
+        .circle = gfx_ops_circle,
+        .present = gfx_ops_present,
+        .user_data = console
+    };
+    fmrb_basic_set_gfx_ops(state, &ops);
 
     FMRB_LOGI(TAG, "Graphics ops registered to BASIC state");
 }

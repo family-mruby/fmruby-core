@@ -53,10 +53,18 @@ int host_read_line(void* user, char* buf, size_t buf_size) {
 }
 
 uint32_t host_ticks_ms(void* user) {
-    // Deterministic clock: golden output must not depend on wall time.
+    // Deterministic clock: golden output must not depend on wall time. Every
+    // read advances it, so PAUSE finishes without ever sleeping.
     (void)user;
     static uint32_t ticks = 0;
-    return ticks++;
+    ticks += 1000;
+    return ticks;
+}
+
+void host_sleep_ms(void* user, uint32_t ms) {
+    // Tests must not spend real time waiting.
+    (void)user;
+    (void)ms;
 }
 
 bool host_on_tick(void* user) {
@@ -126,8 +134,12 @@ int main(int argc, char** argv) {
     host.put_char = host_put_char;
     host.read_line = host_read_line;
     host.ticks_ms = host_ticks_ms;
+    host.sleep_ms = host_sleep_ms;
     host.on_tick = host_on_tick;
     host.on_error = host_on_error;
+    // No extension handler on the host: screen / sprite / sound statements
+    // raise IL until the phase that implements them.
+    host.ext_statement = nullptr;
     host.user = &state;
 
     int status = 0;

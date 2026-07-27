@@ -1,0 +1,4 @@
+10 A=1
+20 A$="ONE"
+30 PRINT A;A$
+40 PRINT LEN(A$)

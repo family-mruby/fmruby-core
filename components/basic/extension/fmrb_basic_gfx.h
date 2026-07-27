@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "basic_internal.h"
+#include "fmrb_basic.h"
 #include "fmrb_gfx.h"
 #include "fmrb_gfx_msg.h"
 #include "fmrb_app.h"

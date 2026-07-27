@@ -11,6 +11,7 @@
 #include "fmrb_err.h"
 #include <stdint.h>
 #include <stddef.h>
+#include <stdbool.h>
 
 // Forward declaration to avoid circular dependency
 typedef struct fmrb_app_task_context_s fmrb_app_task_context_t;
@@ -148,6 +149,28 @@ void fmrb_basic_set_output_cb(basic_state_t* state, basic_output_cb_t callback, 
  * @param user_data User data passed to callback
  */
 void fmrb_basic_set_input_cb(basic_state_t* state, basic_input_cb_t callback, void* user_data);
+
+/**
+ * @brief Graphics operations for the fmruby specific BASIC statements
+ *
+ * CLS / CIRCLE / PRESENT are fmruby extensions, not Family BASIC statements.
+ * The console window (extension/fmrb_basic_gfx.c) fills this in.
+ */
+typedef struct {
+    void (*cls)(void* user_data);
+    void (*circle)(void* user_data, int16_t x, int16_t y, int16_t r, uint8_t color,
+                   bool filled);
+    void (*present)(void* user_data);
+    void* user_data;
+} basic_gfx_ops_t;
+
+/**
+ * @brief Connect the graphics extension statements to a drawing target
+ *
+ * @param state BASIC state
+ * @param ops Callback table, copied into the state
+ */
+void fmrb_basic_set_gfx_ops(basic_state_t* state, const basic_gfx_ops_t* ops);
 
 #ifdef __cplusplus
 }

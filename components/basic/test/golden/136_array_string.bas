@@ -1,0 +1,5 @@
+10 DIM N$(3)
+20 N$(0)="ZERO"
+30 N$(2)="TWO"
+40 PRINT N$(0);N$(1);N$(2)
+50 PRINT LEN(N$(1))

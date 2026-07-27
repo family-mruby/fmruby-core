@@ -1,12 +1,16 @@
-// Family BASIC compatible interpreter core (host independent).
-// See basic_core.hpp for the contract. No IDF / fmruby headers here.
+// Family BASIC interpreter core: lifecycle, program storage, loading,
+// output helpers and the run loop. Statement execution lives in
+// basic_exec.cpp, expressions in basic_expr.cpp, variables in basic_vars.cpp.
 
 #include "basic_core.hpp"
+
+#include "basic_charset.hpp"
+#include "basic_internal.hpp"
 
 namespace fmrb_basic {
 namespace {
 
-// Error table, indexed by the error number (spec: V3 error table, 22 entries).
+// Error table, indexed by the error number (v3_spec error table, 22 entries).
 // constexpr so it lands in .rodata and needs no dynamic initialization.
 struct error_entry {
     const char* mnemonic;
@@ -38,14 +42,6 @@ constexpr error_entry error_table[error_code_count] = {
     {"UP", "Unprintable error"},
 };
 
-bool is_space(char c) noexcept {
-    return c == ' ' || c == '\t';
-}
-
-bool is_digit(char c) noexcept {
-    return c >= '0' && c <= '9';
-}
-
 }  // namespace
 
 const char* error_mnemonic(error_code code) noexcept {
@@ -64,53 +60,104 @@ const char* error_message(error_code code) noexcept {
     return error_table[index].message;
 }
 
+const keyword_entry* keyword_info(token tk) noexcept {
+    for (size_t i = 0; i < keyword_count; ++i) {
+        if (keyword_table[i].tk == tk) {
+            return &keyword_table[i];
+        }
+    }
+    return nullptr;
+}
+
+// --- lifecycle ------------------------------------------------------------
+
 interpreter::interpreter(const basic_host_t& host) noexcept : host_(host) {}
 
 interpreter::~interpreter() noexcept {
     if (host_.dealloc) {
         host_.dealloc(host_.user, lines_);
-        host_.dealloc(host_.user, text_);
+        host_.dealloc(host_.user, code_);
+        host_.dealloc(host_.user, vars_);
+        host_.dealloc(host_.user, var_data_);
+        host_.dealloc(host_.user, for_stack_);
+        host_.dealloc(host_.user, gosub_stack_);
+        host_.dealloc(host_.user, operand_stack_);
+        host_.dealloc(host_.user, work_src_);
+        host_.dealloc(host_.user, work_code_);
     }
     lines_ = nullptr;
-    text_ = nullptr;
+    code_ = nullptr;
+    vars_ = nullptr;
+    var_data_ = nullptr;
+    for_stack_ = nullptr;
+    gosub_stack_ = nullptr;
+    operand_stack_ = nullptr;
+    work_src_ = nullptr;
+    work_code_ = nullptr;
 }
 
-bool interpreter::init(uint16_t line_capacity, size_t text_capacity) noexcept {
-    if (line_capacity == 0) {
-        line_capacity = default_line_capacity;
-    }
-    if (text_capacity == 0) {
-        text_capacity = default_text_capacity;
-    }
+bool interpreter::init(const basic_config& config) noexcept {
     if (!host_.alloc || !host_.dealloc) {
         return raise(error_code::out_of_memory, -1);
     }
 
-    void* line_mem = host_.alloc(host_.user, sizeof(program_line) * line_capacity);
-    void* text_mem = host_.alloc(host_.user, text_capacity);
-    if (!line_mem || !text_mem) {
-        host_.dealloc(host_.user, line_mem);
-        host_.dealloc(host_.user, text_mem);
+    lines_ = static_cast<program_line*>(
+        host_.alloc(host_.user, sizeof(program_line) * config.line_capacity));
+    code_ = static_cast<uint8_t*>(host_.alloc(host_.user, config.code_capacity));
+    vars_ = static_cast<basic_var*>(
+        host_.alloc(host_.user, sizeof(basic_var) * config.var_capacity));
+    var_data_ = static_cast<uint8_t*>(host_.alloc(host_.user, config.var_data_capacity));
+    for_stack_ = static_cast<basic_for_frame*>(
+        host_.alloc(host_.user, sizeof(basic_for_frame) * config.for_depth));
+    gosub_stack_ = static_cast<basic_gosub_frame*>(
+        host_.alloc(host_.user, sizeof(basic_gosub_frame) * config.gosub_depth));
+    operand_stack_ = static_cast<basic_value*>(
+        host_.alloc(host_.user, sizeof(basic_value) * config.expr_depth));
+    work_src_ = static_cast<uint8_t*>(host_.alloc(host_.user, work_capacity));
+    work_code_ = static_cast<uint8_t*>(host_.alloc(host_.user, work_capacity));
+
+    if (!lines_ || !code_ || !vars_ || !var_data_ || !for_stack_ || !gosub_stack_ ||
+        !operand_stack_ || !work_src_ || !work_code_) {
         return raise(error_code::out_of_memory, -1);
     }
 
-    lines_ = static_cast<program_line*>(line_mem);
-    line_capacity_ = line_capacity;
+    line_capacity_ = config.line_capacity;
+    code_capacity_ = config.code_capacity;
+    var_capacity_ = config.var_capacity;
+    var_data_capacity_ = config.var_data_capacity;
+    for_depth_ = config.for_depth;
+    gosub_depth_ = config.gosub_depth;
+    expr_depth_ = config.expr_depth;
+
     line_count_ = 0;
-    text_ = static_cast<char*>(text_mem);
-    text_capacity_ = text_capacity;
-    text_used_ = 0;
+    code_used_ = 0;
+    clear_variables();
+    // Fixed seed: RND must produce the same sequence on every run so golden
+    // tests stay reproducible (core_spec does not define the seed behaviour).
+    rng_state_ = 0x1234ABCDu;
     return true;
 }
 
 void interpreter::clear_program() noexcept {
     line_count_ = 0;
-    text_used_ = 0;
+    code_used_ = 0;
+    data_valid_ = false;
+}
+
+void interpreter::clear_variables() noexcept {
+    var_count_ = 0;
+    var_data_used_ = 0;
+    for_top_ = 0;
+    gosub_top_ = 0;
 }
 
 void interpreter::clear_error() noexcept {
     error_ = error_code::none;
     error_line_ = -1;
+}
+
+uint32_t interpreter::free_bytes() const noexcept {
+    return var_data_capacity_ - var_data_used_;
 }
 
 const program_line* interpreter::line_at(uint16_t index) const noexcept {
@@ -120,34 +167,48 @@ const program_line* interpreter::line_at(uint16_t index) const noexcept {
     return &lines_[index];
 }
 
-const char* interpreter::line_text(uint16_t index) const noexcept {
-    if (index >= line_count_) {
-        return nullptr;
+const uint8_t* interpreter::code_at(uint16_t line_index) const noexcept {
+    return code_ + lines_[line_index].offset;
+}
+
+// --- output ---------------------------------------------------------------
+
+void interpreter::put_fb_char(uint8_t code) noexcept {
+    if (!host_.put_char) {
+        return;
     }
-    return text_ + lines_[index].offset;
+    char buf[4];
+    const size_t n = fbcode_to_utf8(code, buf);
+    for (size_t i = 0; i < n; ++i) {
+        host_.put_char(host_.user, buf[i]);
+    }
+    if (cursor_col_ < screen_columns) {
+        ++cursor_col_;
+    }
 }
 
 void interpreter::print(const char* text) noexcept {
-    if (!text || !host_.put_char) {
+    if (!text) {
         return;
     }
     for (const char* p = text; *p != '\0'; ++p) {
-        host_.put_char(host_.user, *p);
+        put_fb_char(static_cast<uint8_t>(*p));
     }
+}
+
+void interpreter::print_newline() noexcept {
+    if (host_.put_char) {
+        host_.put_char(host_.user, '\n');
+    }
+    cursor_col_ = 0;
 }
 
 void interpreter::print_line(const char* text) noexcept {
     print(text);
-    if (host_.put_char) {
-        host_.put_char(host_.user, '\n');
-    }
+    print_newline();
 }
 
 void interpreter::print_number(int32_t value) noexcept {
-    if (!host_.put_char) {
-        return;
-    }
-    // int32_t worst case is 11 characters ("-2147483648").
     char digits[12];
     size_t count = 0;
     uint32_t magnitude = (value < 0) ? (0u - static_cast<uint32_t>(value))
@@ -158,10 +219,10 @@ void interpreter::print_number(int32_t value) noexcept {
     } while (magnitude != 0 && count < sizeof(digits));
 
     if (value < 0) {
-        host_.put_char(host_.user, '-');
+        put_fb_char('-');
     }
     while (count > 0) {
-        host_.put_char(host_.user, digits[--count]);
+        put_fb_char(static_cast<uint8_t>(digits[--count]));
     }
 }
 
@@ -172,6 +233,9 @@ bool interpreter::raise(error_code code, int32_t line_number) noexcept {
 
     // Family BASIC screen format: "?SN ERROR IN 10", or "?SN ERROR" when the
     // error is not tied to a program line (load time / direct mode).
+    if (cursor_col_ != 0) {
+        print_newline();
+    }
     print("?");
     print(error_mnemonic(code));
     print(" ERROR");
@@ -179,13 +243,26 @@ bool interpreter::raise(error_code code, int32_t line_number) noexcept {
         print(" IN ");
         print_number(line_number);
     }
-    print_line("");
+    print_newline();
 
     if (host_.on_error) {
         host_.on_error(host_.user, code, line_number);
     }
     return false;
 }
+
+bool interpreter::raise_here(error_code code) noexcept {
+    return raise(code, static_cast<int32_t>(current_line_number()));
+}
+
+uint16_t interpreter::current_line_number() const noexcept {
+    if (pc_line_ < line_count_) {
+        return lines_[pc_line_].number;
+    }
+    return 0;
+}
+
+// --- program storage ------------------------------------------------------
 
 uint16_t interpreter::lower_bound(uint16_t number) const noexcept {
     uint16_t low = 0;
@@ -201,15 +278,24 @@ uint16_t interpreter::lower_bound(uint16_t number) const noexcept {
     return low;
 }
 
-bool interpreter::arena_append(const char* text, size_t length, uint32_t* out_offset) noexcept {
-    if (text_used_ + length > text_capacity_) {
+int32_t interpreter::find_line(uint16_t number) const noexcept {
+    const uint16_t index = lower_bound(number);
+    if (index < line_count_ && lines_[index].number == number) {
+        return static_cast<int32_t>(index);
+    }
+    return -1;
+}
+
+bool interpreter::code_append(const uint8_t* code, uint16_t length,
+                              uint32_t* out_offset) noexcept {
+    if (code_used_ + length > code_capacity_) {
         return false;
     }
-    *out_offset = static_cast<uint32_t>(text_used_);
-    for (size_t i = 0; i < length; ++i) {
-        text_[text_used_ + i] = text[i];
+    *out_offset = code_used_;
+    for (uint16_t i = 0; i < length; ++i) {
+        code_[code_used_ + i] = code[i];
     }
-    text_used_ += length;
+    code_used_ += length;
     return true;
 }
 
@@ -224,30 +310,28 @@ void interpreter::delete_line(uint16_t number) noexcept {
     --line_count_;
 }
 
-bool interpreter::store_line(uint16_t number, const char* text, size_t length) noexcept {
+bool interpreter::store_line(uint16_t number, const uint8_t* code, uint16_t length) noexcept {
     const uint16_t index = lower_bound(number);
     const bool replacing = (index < line_count_ && lines_[index].number == number);
 
     if (replacing && length <= lines_[index].length) {
         // Reuse the slice in place so a reload does not waste arena space.
-        for (size_t i = 0; i < length; ++i) {
-            text_[lines_[index].offset + i] = text[i];
+        for (uint16_t i = 0; i < length; ++i) {
+            code_[lines_[index].offset + i] = code[i];
         }
-        lines_[index].length = static_cast<uint16_t>(length);
+        lines_[index].length = length;
         return true;
     }
 
     uint32_t offset = 0;
-    if (!arena_append(text, length, &offset)) {
+    if (!code_append(code, length, &offset)) {
         return raise(error_code::out_of_memory, -1);
     }
-
     if (replacing) {
         lines_[index].offset = offset;
-        lines_[index].length = static_cast<uint16_t>(length);
+        lines_[index].length = length;
         return true;
     }
-
     if (line_count_ >= line_capacity_) {
         return raise(error_code::out_of_memory, -1);
     }
@@ -256,16 +340,17 @@ bool interpreter::store_line(uint16_t number, const char* text, size_t length) n
     }
     lines_[index].number = number;
     lines_[index].offset = offset;
-    lines_[index].length = static_cast<uint16_t>(length);
+    lines_[index].length = length;
     ++line_count_;
     return true;
 }
 
 bool interpreter::load(const char* program) noexcept {
-    if (!lines_ || !text_) {
+    if (!lines_ || !code_) {
         return raise(error_code::out_of_memory, -1);
     }
     clear_program();
+    clear_variables();
     clear_error();
     if (!program) {
         return true;
@@ -273,6 +358,7 @@ bool interpreter::load(const char* program) noexcept {
 
     const char* cursor = program;
     while (*cursor != '\0') {
+        // Split off one source line.
         const char* line_start = cursor;
         while (*cursor != '\0' && *cursor != '\n') {
             ++cursor;
@@ -285,60 +371,195 @@ bool interpreter::load(const char* program) noexcept {
             --line_end;
         }
 
+        // UTF-8 to Family BASIC character codes.
+        size_t src_len = 0;
         const char* p = line_start;
-        while (p < line_end && is_space(*p)) {
-            ++p;
+        while (p < line_end && src_len < work_capacity - 1) {
+            size_t used = 0;
+            const uint32_t ucs = utf8_decode(p, static_cast<size_t>(line_end - p), &used);
+            work_src_[src_len++] = unicode_to_fbcode(ucs);
+            p += used;
         }
-        if (p == line_end) {
+        work_src_[src_len] = 0;
+
+        size_t at = 0;
+        while (at < src_len && (work_src_[at] == ' ' || work_src_[at] == '\t')) {
+            ++at;
+        }
+        if (at >= src_len) {
             continue;  // blank line
         }
-        if (!is_digit(*p)) {
-            // Direct mode statements are not accepted by the program loader.
+        if (!is_digit(work_src_[at])) {
+            // The program loader only accepts numbered lines.
             return raise(error_code::syntax, -1);
         }
 
         uint32_t number = 0;
-        while (p < line_end && is_digit(*p)) {
-            number = number * 10 + static_cast<uint32_t>(*p - '0');
+        while (at < src_len && is_digit(work_src_[at])) {
+            number = number * 10 + static_cast<uint32_t>(work_src_[at] - '0');
             if (number > max_line_number) {
                 return raise(error_code::syntax, -1);
             }
-            ++p;
+            ++at;
         }
-        while (p < line_end && is_space(*p)) {
-            ++p;
+        while (at < src_len && work_src_[at] == ' ') {
+            ++at;
         }
-
-        const size_t length = static_cast<size_t>(line_end - p);
-        if (length == 0) {
+        if (src_len - at > max_line_length) {
+            return raise(error_code::syntax, static_cast<int32_t>(number));
+        }
+        if (at >= src_len) {
             delete_line(static_cast<uint16_t>(number));
             continue;
         }
-        if (length > max_line_length) {
-            return raise(error_code::syntax, static_cast<int32_t>(number));
+
+        const int32_t crunched =
+            crunch_line(work_src_ + at, src_len - at, work_code_, work_capacity);
+        if (crunched < 0) {
+            // crunch_line has raised; attach the line number for the report.
+            error_line_ = static_cast<int32_t>(number);
+            return false;
         }
-        if (!store_line(static_cast<uint16_t>(number), p, length)) {
+        if (!store_line(static_cast<uint16_t>(number), work_code_,
+                        static_cast<uint16_t>(crunched))) {
             return false;
         }
     }
     return true;
 }
 
+// --- token stream access --------------------------------------------------
+
+uint8_t interpreter::peek_byte() const noexcept {
+    if (pc_line_ >= line_count_ || pc_off_ >= lines_[pc_line_].length) {
+        return static_cast<uint8_t>(token::eol);
+    }
+    return code_at(pc_line_)[pc_off_];
+}
+
+uint8_t interpreter::read_byte() noexcept {
+    const uint8_t b = peek_byte();
+    if (pc_line_ < line_count_ && pc_off_ < lines_[pc_line_].length) {
+        ++pc_off_;
+    }
+    return b;
+}
+
+void interpreter::skip_token() noexcept {
+    const token tk = peek_token();
+    read_byte();
+    switch (tk) {
+        case token::number:
+            read_byte();
+            read_byte();
+            break;
+        case token::var_num:
+        case token::var_str:
+            read_byte();
+            read_byte();
+            break;
+        case token::string:
+        case token::raw: {
+            const uint8_t len = read_byte();
+            for (uint8_t i = 0; i < len; ++i) {
+                read_byte();
+            }
+            break;
+        }
+        default:
+            break;
+    }
+}
+
+bool interpreter::accept(token tk) noexcept {
+    if (peek_token() == tk) {
+        read_byte();
+        return true;
+    }
+    return false;
+}
+
+bool interpreter::expect(token tk) noexcept {
+    if (accept(tk)) {
+        return true;
+    }
+    return raise_here(error_code::syntax);
+}
+
+bool interpreter::at_statement_end() const noexcept {
+    const token tk = peek_token();
+    return tk == token::eol || tk == token::colon;
+}
+
+void interpreter::skip_to_eol() noexcept {
+    while (peek_token() != token::eol) {
+        skip_token();
+    }
+}
+
+void interpreter::skip_to_statement_end() noexcept {
+    while (!at_statement_end()) {
+        skip_token();
+    }
+}
+
+// --- run loop -------------------------------------------------------------
+
 bool interpreter::run() noexcept {
     clear_error();
+    clear_variables();
+    cursor_col_ = 0;
+    data_valid_ = false;
+    pc_line_ = 0;
+    pc_off_ = 0;
+    statement_count_ = 0;
     running_ = true;
 
-    // Phase B0: no statement is implemented yet, so the run loop only walks the
-    // line table and gives the host its per line tick. Phase B1 replaces the
-    // body with token stream execution.
-    for (uint16_t index = 0; index < line_count_ && running_; ++index) {
-        if (host_.on_tick && !host_.on_tick(host_.user)) {
+    while (running_) {
+        if (pc_line_ >= line_count_) {
+            break;  // ran off the end of the program: normal END
+        }
+        if (pc_off_ >= lines_[pc_line_].length || peek_token() == token::eol) {
+            ++pc_line_;
+            pc_off_ = 0;
+            continue;
+        }
+        if (accept(token::colon)) {
+            continue;  // empty statement
+        }
+
+        // Cooperative hook: gives the embedder its per frame work and a way to
+        // stop the program (app close, break key).
+        if ((statement_count_ % tick_interval) == 0 && host_.on_tick) {
+            if (!host_.on_tick(host_.user)) {
+                running_ = false;
+                break;
+            }
+        }
+        ++statement_count_;
+
+        jumped_ = false;
+        if (!exec_statement()) {
             running_ = false;
-            return true;  // host asked to stop: not an error
+            return false;
+        }
+        if (!running_) {
+            break;
+        }
+        if (!jumped_) {
+            // Statements stop before their separator; step over it.
+            if (peek_token() == token::colon) {
+                read_byte();
+            } else if (peek_token() != token::eol) {
+                return raise_here(error_code::syntax);
+            }
         }
     }
 
     running_ = false;
+    if (cursor_col_ != 0) {
+        print_newline();
+    }
     return error_ == error_code::none;
 }
 

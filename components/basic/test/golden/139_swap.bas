@@ -1,0 +1,8 @@
+10 A=1
+20 B=2
+30 SWAP A,B
+40 PRINT A;B
+50 A$="X"
+60 B$="Y"
+70 SWAP A$,B$
+80 PRINT A$;B$
