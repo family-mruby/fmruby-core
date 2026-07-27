@@ -402,6 +402,49 @@ namespace :spinel do
   end
 end
 
+namespace :basic do
+  # Family BASIC golden tests. The interpreter core (components/basic/core) is
+  # host independent pure C++, so the tests build with the host g++ and need
+  # neither docker nor an IDF checkout. Flags mirror the firmware constraints
+  # (C++20, no exceptions, no RTTI) so a violation fails here first.
+  BASIC_DIR        = "components/basic"
+  BASIC_TEST_DIR   = "#{BASIC_DIR}/test"
+  BASIC_TEST_BUILD = "#{BASIC_TEST_DIR}/build"
+  BASIC_RUNNER_BIN = "#{BASIC_TEST_BUILD}/basic_runner"
+  BASIC_TEST_SRCS  = ["#{BASIC_DIR}/core/basic_core.cpp", "#{BASIC_TEST_DIR}/runner/main.cpp"]
+  BASIC_CXXFLAGS   = %w[
+    -std=c++20 -O1 -g
+    -fno-exceptions -fno-rtti
+    -Wall -Wextra -Werror
+  ].join(" ")
+
+  desc "Build the host BASIC golden test runner (g++, no docker)"
+  task :runner do
+    cxx = ENV["CXX"] || "g++"
+    abort "#{cxx} not found (install g++ or set CXX)" unless system("which #{cxx} > /dev/null 2>&1")
+    mkdir_p BASIC_TEST_BUILD
+    sh "#{cxx} #{BASIC_CXXFLAGS} -I #{BASIC_DIR}/core " \
+       "#{BASIC_TEST_SRCS.join(' ')} -o #{BASIC_RUNNER_BIN}"
+  end
+
+  desc "Run the BASIC golden tests (FILTER=name to run a subset)"
+  task :test => :runner do
+    filter = ENV["FILTER"].to_s
+    sh "#{BASIC_TEST_DIR}/run_golden.sh #{BASIC_RUNNER_BIN} #{filter}".strip
+  end
+
+  desc "Run one .bas through the host runner (BAS=path [IN=path])"
+  task :run => :runner do
+    bas = ENV["BAS"] or abort "usage: rake basic:run BAS=path/to/program.bas [IN=input.txt]"
+    sh "#{BASIC_RUNNER_BIN} #{bas} #{ENV['IN']}".strip
+  end
+
+  desc "Remove the host BASIC test build"
+  task :clean do
+    rm_rf BASIC_TEST_BUILD
+  end
+end
+
 namespace :build do
   desc "Linux target build (dev/test). FMRB_KERNEL_ENGINE=spinel swaps the kernel."
   task :linux => :setup do
