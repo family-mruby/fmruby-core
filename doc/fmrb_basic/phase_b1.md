@@ -65,6 +65,10 @@
 
 - 優先順位付き演算子 (core_spec sec 3): 算術、比較 (結果は -1/0)、
   論理 (AND/OR/NOT のビット演算意味)、単項。
+- **再帰下降で書かない** (00_common メモリ設計原則 1)。明示的な
+  オペランド/演算子スタックによる反復実装 (precedence climbing +
+  明示スタック or shunting-yard) とし、ネスト上限超過は所定のエラーに
+  する。
 - 数値関数: ABS / SGN / RND / FRE / PEEK (PEEK は B4 まで常に 0 +
   警告ログ相当のホスト通知)。RND の範囲・シード挙動は core_spec sec 11。
 - 文字列関数: ASC / CHR$ / VAL / STR$ / HEX$ / LEFT$ / RIGHT$ / MID$ /
@@ -88,9 +92,14 @@
   変更を最小にする)。メモリはこれまで通り per-task プール。
 - gfx 拡張 (CLS/CIRCLE/PRESENT 等、`extension/fmrb_basic_gfx.c`) は
   **拡張ステートメントフック** (コアが未知キーワードをホストへ委譲する
-  インタフェース) として接続し、`flash/app/demo/basic.app.bas` が
-  従来どおり動くことを維持する (B0 T0-6 の記録と比較)。
+  インタフェース) として接続する。
   注: これら gfx 拡張は Family BASIC 外の fmruby 独自命令として残す。
+- `flash/app/demo/basic.app.bas` は **Family BASIC 記法へ書き換える**
+  (2026-07-27 裁可、phase_b0_report sec 9.1-4。LET 削除、NEXT の変数名
+  削除、WAIT -> PAUSE 換算)。コアに LET / `NEXT <var>` / WAIT の互換
+  拡張は入れない。書き換え後のデモが B0 report sec 6.3 の挙動 (起動・
+  スクロール・自動終了。PRINT 出力は記法変更に伴う差分を新基準として
+  記録し直す) を満たすことを維持基準とする。
 
 ### T1-7: ゴールデンテスト拡充
 
@@ -109,7 +118,11 @@
 3. linux sim (headless ハーネス) で basic.app.bas デモが従来どおり動く
 4. コア (core/) に IDF / fmruby ヘッダの include が無いことを確認
    (grep で機械的に検証して report に記載)
-5. `reports/phase_b1_report.md` 完成 (仕様疑義リストを含む)
+5. メモリ設計原則の検証: コアに C 再帰 (式評価・実行エンジンの自己
+   再帰) と static 配列バッファが無いこと、全データがプール確保で
+   あることを確認し、linux sim で BASIC タスクのスタック high-water と
+   プール消費量を計測して report に記載
+6. `reports/phase_b1_report.md` 完成 (仕様疑義リストを含む)
 
 ## 報告
 
