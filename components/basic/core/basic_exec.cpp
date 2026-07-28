@@ -302,6 +302,21 @@ bool interpreter::exec_statement() noexcept {
             read_byte();
             return st_beep();
 
+        case token::speed: {
+            // _SPEED n: statements per frame, 0 = as fast as the host allows.
+            read_byte();
+            int16_t value = 0;
+            if (!eval_number(&value)) {
+                return false;
+            }
+            if (value < 0) {
+                return raise_here(error_code::illegal_function_call);
+            }
+            statements_per_frame_ = static_cast<uint16_t>(value);
+            frame_statements_ = 0;
+            return true;
+        }
+
         case token::scrdump:
             read_byte();
             return st_scrdump();

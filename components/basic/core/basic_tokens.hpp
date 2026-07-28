@@ -108,6 +108,10 @@ namespace fmrb_basic {
        The leading '_' cannot start a Family BASIC name, so no program can  \
        collide with it (phase_b0_report sec 3.3). */                        \
     X(scrdump,   "_SCRDUMP", 0, kw_kind::statement)   \
+    /* Sets how many statements a frame may run: the pacing knob that keeps  \
+       the interpreter near the original machine's speed. 0 lifts the limit, \
+       which is how a benchmark measures raw speed (phase_b5 T5-2). */       \
+    X(speed,     "_SPEED",   0, kw_kind::statement)   \
     /* operators */                                   \
     X(mod,       "MOD",      0, kw_kind::operator_kw) \
     X(not_,      "NOT",      0, kw_kind::operator_kw) \
