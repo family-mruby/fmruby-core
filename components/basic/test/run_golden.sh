@@ -43,6 +43,13 @@ for bas in "$here"/golden/*.bas; do
   input="$here/golden/$name.input"
   keys="$here/golden/$name.keys"
   actual="$(mktemp)"
+
+  # SAVE writes inside one directory, fresh for every case so a file from one
+  # case cannot leak into the next.
+  progdir="$here/build/programs"
+  rm -rf "$progdir"
+  mkdir -p "$progdir"
+  export BASIC_PROGRAM_DIR="$progdir"
   if [ -f "$keys" ]; then
     # INKEY$ key script; an absent .input still needs a placeholder argument.
     [ -f "$input" ] || input=/dev/null

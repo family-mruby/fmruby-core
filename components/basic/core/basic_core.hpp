@@ -224,6 +224,12 @@ struct basic_host_t {
     /// One line of debug output (_SCRDUMP). Never program output.
     void (*debug_line)(void* user, const char* text);
     /**
+     * Write a program (SAVE). The embedder decides where programs live and how
+     * @p name maps to a file; @p text is the listing, NUL terminated.
+     * @return false when the write failed (the core raises TP).
+     */
+    bool (*program_write)(void* user, const char* name, const char* text);
+    /**
      * Text palette changed (PALET B, and once at start up). Colour codes are
      * the 0-60 values of core_spec sec 7; the renderer maps them to pixels.
      * @param attr     colour attribute group 0-3
@@ -485,6 +491,30 @@ private:
     bool st_gosub() noexcept;
     bool st_return() noexcept;
     bool st_on() noexcept;
+    bool st_on_error() noexcept;
+    bool st_resume() noexcept;
+    bool st_error() noexcept;
+    /// POKE / PEEK backing store. Returns nullptr when the address is not mapped.
+    uint8_t* mem_cell(uint16_t address, bool for_write) noexcept;
+    void mem_warn_once(uint16_t address, bool write) noexcept;
+    bool st_screen() noexcept;
+    bool st_filter() noexcept;
+    bool st_bgget() noexcept;
+    bool st_bgput() noexcept;
+    bool st_load(bool verify) noexcept;
+    /**
+     * Announce that the program is (or is no longer) waiting for a key press.
+     *
+     * Emitted through basic_host_t::debug_line with its own prefix, so a test
+     * harness can wait for the program to be ready before injecting keys
+     * instead of racing its start up (B4 T4-9). Edge triggered.
+     */
+    void input_wait(bool waiting) noexcept;
+    bool st_save() noexcept;
+    /// Read the name operand of LOAD / SAVE into name_buf (max 16 chars + NUL).
+    bool read_program_name(char* out, size_t out_size, bool* present) noexcept;
+    /// Render the whole program as a listing into buf; false when it does not fit.
+    bool listing(char* buf, size_t buf_size, size_t* out_len) noexcept;
     bool st_dim() noexcept;
     bool st_read() noexcept;
     bool st_restore() noexcept;
@@ -644,6 +674,57 @@ private:
 
     error_code error_ = error_code::none;
     int32_t error_line_ = -1;
+
+    // ON ERROR GOTO (v3_spec). 0 = disarmed. When armed, raise() records the
+    // error and asks the run loop to branch instead of reporting, so the
+    // handler runs in the same task with the program state intact.
+    uint16_t error_handler_line_ = 0;
+    bool in_error_handler_ = false;
+    bool error_pending_handler_ = false;
+    // ERR / ERL survive RESUME, which clears the run state.
+    uint8_t err_number_ = 0;
+    uint16_t err_line_ = 0;
+    // Edge state for the input wait marker (see input_wait).
+    bool input_waiting_ = false;
+
+    // TRON / TROFF: print "*line" as each line starts.
+    bool trace_on_ = false;
+    uint16_t traced_line_ = 0;
+
+    // --- virtual memory map for POKE / PEEK (core_spec sec 14, v3_spec) ---
+    // Two plain RAM windows, allocated on first touch so a program that never
+    // pokes pays nothing: the machine RAM page group and the user / work RAM.
+    // The BG screen window is mapped onto the text shadow buffer instead, which
+    // is what makes POKE to the screen behave.
+    static constexpr uint16_t mem_low_base = 0x0000;
+    static constexpr uint16_t mem_low_size = 0x0800;   // 0x0000-0x07FF
+    static constexpr uint16_t mem_user_base = 0x6000;
+    static constexpr uint16_t mem_user_size = 0x2000;  // 0x6000-0x7FFF
+    static constexpr uint16_t mem_sys_first = 0x7000;  // 0x7000-0x703F: POKE forbidden
+    static constexpr uint16_t mem_sys_last = 0x703F;
+    static constexpr uint16_t mem_bg_base = 0xD000;    // nametable, 32 columns
+    static constexpr uint8_t mem_bg_stride = 32;
+    uint8_t* mem_low_ = nullptr;
+    uint8_t* mem_user_ = nullptr;
+    // One warning per 256 byte page keeps an unmapped POKE loop from flooding
+    // the log while still telling the user which area a program wanted.
+    uint8_t mem_warned_[32] = {};
+
+    // --- second BG plane and the BG snapshot (T4-5) ---
+    // SCREEN picks which plane is displayed and which one PRINT writes to. The
+    // shadow buffer pointers above always refer to the active plane; the other
+    // plane lives here and the two swap.
+    uint8_t* plane_b_chars_ = nullptr;
+    uint8_t* plane_b_attrs_ = nullptr;
+    uint8_t screen_display_ = 0;
+    uint8_t screen_active_ = 0;
+    // BGGET copies the active plane here (user RAM on the real machine), BGPUT
+    // copies it back. BACKUP is a no-op: /home is already persistent.
+    uint8_t* bg_snapshot_ = nullptr;
+    bool bg_snapshot_valid_ = false;
+    // FILTER tint (0-7). Kept so PEEK-like state and a later renderer can use
+    // it; the current renderer has no tint stage.
+    uint8_t filter_color_ = 0;
 };
 
 }  // namespace fmrb_basic

@@ -96,7 +96,44 @@ void host_debug_line(void* user, const char* text) {
     // Screen dumps go to stdout so they become part of the golden output; on
     // the device the same lines go to the log (see the B2 report).
     (void)user;
+    // The input wait marker exists for the simulation harness, which reads the
+    // device log. Here it would only add noise to every INPUT golden, and this
+    // runner never has to wait for input in the first place.
+    if (std::strncmp(text, "INWAIT|", 7) == 0) {
+        return;
+    }
     std::printf("%s\n", text);
+}
+
+// LOAD / SAVE work inside one directory, chosen with BASIC_PROGRAM_DIR so a
+// golden run keeps its files out of the source tree (run_golden.sh sets it).
+// The device maps the same names under /home (see fmrb_basic.cpp).
+bool program_path(const char* name, char* out, size_t out_size) {
+    if (!name || name[0] == '\0') {
+        return false;
+    }
+    const char* dir = std::getenv("BASIC_PROGRAM_DIR");
+    if (!dir || dir[0] == '\0') {
+        dir = ".";
+    }
+    const int n = std::snprintf(out, out_size, "%s/%s.bas", dir, name);
+    return n > 0 && static_cast<size_t>(n) < out_size;
+}
+
+bool host_program_write(void* user, const char* name, const char* text) {
+    (void)user;
+    char path[512];
+    if (!program_path(name, path, sizeof(path))) {
+        return false;
+    }
+    FILE* fp = std::fopen(path, "wb");
+    if (!fp) {
+        return false;
+    }
+    const size_t len = std::strlen(text);
+    const size_t put = std::fwrite(text, 1, len, fp);
+    std::fclose(fp);
+    return put == len;
 }
 
 // Read the whole file into a NUL terminated buffer owned by the caller.
@@ -165,6 +202,7 @@ int main(int argc, char** argv) {
     // raise IL until the phase that implements them.
     host.ext_statement = nullptr;
     host.debug_line = host_debug_line;
+    host.program_write = host_program_write;
     host.audio_play = host_audio_play;
     host.audio_beep = host_audio_beep;
     // No screen renderer here: the shadow buffer plus _SCRDUMP is what the

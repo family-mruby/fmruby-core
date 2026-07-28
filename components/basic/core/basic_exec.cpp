@@ -93,7 +93,20 @@ bool interpreter::exec_statement() noexcept {
 
         case token::on:
             read_byte();
+            // ON ERROR GOTO is a different statement that happens to start with
+            // the same keyword (v3_spec).
+            if (peek_token() == token::error) {
+                return st_on_error();
+            }
             return st_on();
+
+        case token::resume:
+            read_byte();
+            return st_resume();
+
+        case token::error:
+            read_byte();
+            return st_error();
 
         case token::dim:
             read_byte();
@@ -154,16 +167,54 @@ bool interpreter::exec_statement() noexcept {
         }
 
         case token::poke: {
-            // The virtual memory map arrives in B4; the operands are still
-            // evaluated so side effects and syntax errors behave the same.
+            // POKE address,data[,data...]: consecutive addresses, each byte
+            // 0-255 (core_spec sec 6). Unmapped addresses are ignored with one
+            // warning per page; see mem_cell for what is emulated.
             read_byte();
-            int16_t value = 0;
-            if (!eval_number(&value)) {
+            int16_t addr = 0;
+            if (!eval_number(&addr)) {
                 return false;
             }
-            while (accept(token::comma)) {
+            uint16_t at = static_cast<uint16_t>(addr);
+            bool wrote_any = false;
+            while (true) {
+                if (!expect(token::comma)) {
+                    return wrote_any ? true : false;
+                }
+                int16_t value = 0;
                 if (!eval_number(&value)) {
                     return false;
+                }
+                if (value < 0 || value > 255) {
+                    return raise_here(error_code::illegal_function_call);
+                }
+                if (at >= mem_bg_base) {
+                    // Screen writes go through the screen path, not the shadow
+                    // buffer directly, so the renderer sees the change.
+                    const uint16_t offset = static_cast<uint16_t>(at - mem_bg_base);
+                    const uint8_t row = static_cast<uint8_t>(offset / mem_bg_stride);
+                    const uint8_t col = static_cast<uint8_t>(offset % mem_bg_stride);
+                    if (row < screen_rows && col < screen_columns) {
+                        screen_set_cell(col, row, static_cast<uint8_t>(value),
+                                        screen_attr(col, row));
+                    } else {
+                        mem_warn_once(at, true);
+                    }
+                } else {
+                    uint8_t* cell = mem_cell(at, true);
+                    if (cell) {
+                        *cell = static_cast<uint8_t>(value);
+                    } else {
+                        mem_warn_once(at, true);
+                    }
+                }
+                wrote_any = true;
+                at = static_cast<uint16_t>(at + 1);
+                if (at == 0) {
+                    break;  // wrapped past $FFFF
+                }
+                if (peek_token() != token::comma) {
+                    break;
                 }
             }
             return true;
@@ -253,6 +304,77 @@ bool interpreter::exec_statement() noexcept {
         case token::scrdump:
             read_byte();
             return st_scrdump();
+
+        case token::load:
+            read_byte();
+            // LOAD? verifies instead of loading (core_spec sec 6). '?' crunches
+            // to the PRINT token (it is PRINT's shorthand), so that is what
+            // shows up here.
+            return st_load(accept(token::print));
+
+        case token::save:
+            read_byte();
+            return st_save();
+
+        case token::screen:
+            read_byte();
+            return st_screen();
+
+        case token::filter:
+            read_byte();
+            return st_filter();
+
+        case token::bgget:
+            read_byte();
+            return st_bgget();
+
+        case token::bgput:
+            read_byte();
+            return st_bgput();
+
+        case token::view:
+            // VIEW copies the BG GRAPHIC picture onto the BG plane (core_spec
+            // sec 6). BGTOOL is out of scope, so that plane never holds a
+            // picture and this is a no-op rather than an error: a program that
+            // uses VIEW instead of CLS to keep its picture still runs.
+            read_byte();
+            return true;
+
+        case token::backup:
+            // BACKUP keeps program and BG in battery backed RAM. Files under
+            // /home are already persistent here, so nothing to do.
+            read_byte();
+            return true;
+
+        case token::list:
+        case token::auto_:
+        case token::delete_:
+        case token::renum:
+        case token::find:
+        case token::game:
+            // Direct mode commands: the line editor family (LIST / AUTO /
+            // DELETE / RENUM / FIND) and GAME, which the spec says cannot be
+            // used inside a program. This build has no direct mode console
+            // (B4 T4-1 decision: the editor plus RUN covers it), so these can
+            // only ever appear in a program by mistake. IL is the closest code
+            // in the error table; the log line says why.
+            read_byte();
+            skip_to_statement_end();
+            if (host_.debug_line) {
+                host_.debug_line(host_.user, "DIRECT|command is direct mode only");
+            }
+            return raise_here(error_code::illegal_function_call);
+
+        case token::tron:
+            read_byte();
+            trace_on_ = true;
+            traced_line_ = 0;
+            return true;
+
+        case token::troff:
+            read_byte();
+            trace_on_ = false;
+            return true;
 
         case token::cont:
             read_byte();
@@ -389,6 +511,7 @@ bool interpreter::st_input(bool line_input) noexcept {
 
     // Read one line and convert it to Family BASIC character codes.
     size_t len = 0;
+    input_wait(true);
     if (host_.read_line) {
         char* raw = reinterpret_cast<char*>(work_code_);
         const int n = host_.read_line(host_.user, raw, work_capacity);
@@ -403,6 +526,7 @@ bool interpreter::st_input(bool line_input) noexcept {
         }
     }
     work_src_[len] = 0;
+    input_wait(false);
     print_newline();
 
     size_t pos = 0;
@@ -752,6 +876,392 @@ bool interpreter::st_on() noexcept {
         return true;
     }
     return jump_to_line(target);
+}
+
+void interpreter::input_wait(bool waiting) noexcept {
+    if (waiting == input_waiting_) {
+        return;
+    }
+    input_waiting_ = waiting;
+    if (host_.debug_line) {
+        host_.debug_line(host_.user, waiting ? "INWAIT|1" : "INWAIT|0");
+    }
+}
+
+// --- LOAD / SAVE / LOAD? (T4-4) -------------------------------------------
+
+bool interpreter::read_program_name(char* out, size_t out_size, bool* present) noexcept {
+    *present = false;
+    out[0] = '\0';
+    if (at_statement_end()) {
+        return true;  // name omitted: the embedder picks the default
+    }
+    basic_value value;
+    if (!eval(&value)) {
+        return false;
+    }
+    if (!value.is_string) {
+        return raise_here(error_code::type_mismatch);
+    }
+    // File names are 16 characters on the real machine (core_spec sec 6).
+    if (value.len == 0 || value.len > 16 || value.len >= out_size) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    for (uint8_t i = 0; i < value.len; ++i) {
+        const uint8_t c = value.str[i];
+        // No directories: a name is a name, the embedder owns the path.
+        if (c == '/' || c == '\\' || c < 0x20) {
+            return raise_here(error_code::illegal_function_call);
+        }
+        out[i] = static_cast<char>(c);
+    }
+    out[value.len] = '\0';
+    *present = true;
+    return true;
+}
+
+bool interpreter::listing(char* buf, size_t buf_size, size_t* out_len) noexcept {
+    size_t used = 0;
+    for (uint16_t i = 0; i < line_count_; ++i) {
+        if (used + 8 >= buf_size) {
+            return false;
+        }
+        const size_t n = decrunch_line(i, buf + used, buf_size - used - 2);
+        if (n == 0) {
+            return false;
+        }
+        used += n;
+        buf[used++] = '\n';
+    }
+    if (used >= buf_size) {
+        return false;
+    }
+    buf[used] = '\0';
+    *out_len = used;
+    return true;
+}
+
+bool interpreter::st_save() noexcept {
+    char name[20];
+    bool present = false;
+    if (!read_program_name(name, sizeof(name), &present)) {
+        return false;
+    }
+    if (!host_.program_write) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    // The listing goes through the work buffer, which is already sized for a
+    // program line; a whole program needs its own block from the pool.
+    const size_t cap = code_capacity_ + line_count_ * 8u + 16u;
+    char* text = static_cast<char*>(host_.alloc(host_.user, cap));
+    if (!text) {
+        return raise_here(error_code::out_of_memory);
+    }
+    size_t len = 0;
+    bool ok = listing(text, cap, &len);
+    if (ok) {
+        ok = host_.program_write(host_.user, present ? name : "", text);
+    }
+    host_.dealloc(host_.user, text);
+    if (!ok) {
+        return raise_here(error_code::tape_read);
+    }
+    return true;
+}
+
+bool interpreter::st_load(bool verify) noexcept {
+    // LOAD / LOAD? are direct mode commands: on the real machine you type them
+    // at the prompt to pull a program off tape, and the machine then waits for
+    // you to RUN it. Inside a program neither has anything sensible to do here
+    // (there is no direct mode to return to, B4 T4-1), so the operand is parsed
+    // -- a malformed line is still a syntax error -- and the statement is
+    // ignored. SAVE stays real: writing the program out is useful either way.
+    char name[20];
+    bool present = false;
+    if (!read_program_name(name, sizeof(name), &present)) {
+        return false;
+    }
+    if (host_.debug_line) {
+        host_.debug_line(host_.user,
+                         verify ? "DIRECT|LOAD? ignored (direct mode command)"
+                                : "DIRECT|LOAD ignored (direct mode command)");
+    }
+    return true;
+}
+
+// --- BG planes, snapshot and tint (T4-5) ----------------------------------
+
+bool interpreter::st_screen() noexcept {
+    // SCREEN display[,active] (v3_spec): two BG planes, one shown, one written
+    // to. Both default to the same plane, which is the single plane behaviour.
+    int16_t display = 0;
+    if (!eval_number(&display)) {
+        return false;
+    }
+    int16_t active = display;
+    if (accept(token::comma)) {
+        if (!eval_number(&active)) {
+            return false;
+        }
+    }
+    if (display < 0 || display > 1 || active < 0 || active > 1) {
+        return raise_here(error_code::illegal_function_call);
+    }
+
+    const uint8_t want_active = static_cast<uint8_t>(active);
+    if (want_active != screen_active_) {
+        if (!plane_b_chars_) {
+            const uint16_t cells = static_cast<uint16_t>(screen_columns) * screen_rows;
+            plane_b_chars_ = static_cast<uint8_t*>(host_.alloc(host_.user, cells));
+            plane_b_attrs_ = static_cast<uint8_t*>(host_.alloc(host_.user, cells));
+            if (!plane_b_chars_ || !plane_b_attrs_) {
+                return raise_here(error_code::out_of_memory);
+            }
+            for (uint16_t i = 0; i < cells; ++i) {
+                plane_b_chars_[i] = ' ';
+                plane_b_attrs_[i] = 0;
+            }
+        }
+        // Swap: screen_chars_ / screen_attrs_ always point at the active plane.
+        uint8_t* tc = screen_chars_;
+        uint8_t* ta = screen_attrs_;
+        screen_chars_ = plane_b_chars_;
+        screen_attrs_ = plane_b_attrs_;
+        plane_b_chars_ = tc;
+        plane_b_attrs_ = ta;
+        screen_active_ = want_active;
+    }
+
+    // The renderer only ever shows one plane, so switching what is displayed
+    // means repainting from whichever buffer that is now.
+    const uint8_t want_display = static_cast<uint8_t>(display);
+    if (want_display != screen_display_ || want_active != screen_display_) {
+        screen_display_ = want_display;
+        if (screen_display_ == screen_active_) {
+            screen_refresh();
+        } else if (plane_b_chars_ && host_.screen_cell) {
+            for (uint8_t y = 0; y < screen_rows; ++y) {
+                for (uint8_t x = 0; x < screen_columns; ++x) {
+                    const uint16_t i = static_cast<uint16_t>(y) * screen_columns + x;
+                    host_.screen_cell(host_.user, x, y, plane_b_chars_[i], plane_b_attrs_[i]);
+                }
+            }
+            if (host_.screen_present) {
+                host_.screen_present(host_.user);
+            }
+        }
+    }
+    return true;
+}
+
+bool interpreter::st_filter() noexcept {
+    // FILTER colour (0-7) tints the whole BG plane (v3_spec). The value is kept
+    // and reported; the renderer has no tint stage yet, so nothing changes on
+    // screen (recorded in the B4 report).
+    int16_t color = 0;
+    if (!eval_number(&color)) {
+        return false;
+    }
+    if (color < 0 || color > 7) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    filter_color_ = static_cast<uint8_t>(color);
+    return true;
+}
+
+bool interpreter::st_bgget() noexcept {
+    // BGGET copies the BG plane into user RAM so BACKUP can keep it (v3_spec).
+    // Here the snapshot is its own buffer: user RAM is emulated for POKE and
+    // handing 672 bytes of it to BGGET would collide with a program's own use.
+    const uint16_t cells = static_cast<uint16_t>(screen_columns) * screen_rows;
+    if (!bg_snapshot_) {
+        bg_snapshot_ = static_cast<uint8_t*>(host_.alloc(host_.user, cells * 2));
+        if (!bg_snapshot_) {
+            return raise_here(error_code::out_of_memory);
+        }
+    }
+    if (!screen_chars_) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    for (uint16_t i = 0; i < cells; ++i) {
+        bg_snapshot_[i] = screen_chars_[i];
+        bg_snapshot_[cells + i] = screen_attrs_[i];
+    }
+    bg_snapshot_valid_ = true;
+    return true;
+}
+
+bool interpreter::st_bgput() noexcept {
+    // BGPUT writes the BGGET snapshot back to the BG plane. Without a snapshot
+    // there is nothing to write: NB (no BG data).
+    if (!bg_snapshot_valid_ || !bg_snapshot_ || !screen_chars_) {
+        return raise_here(error_code::no_bg_data);
+    }
+    const uint16_t cells = static_cast<uint16_t>(screen_columns) * screen_rows;
+    for (uint16_t i = 0; i < cells; ++i) {
+        screen_chars_[i] = bg_snapshot_[i];
+        screen_attrs_[i] = bg_snapshot_[cells + i];
+    }
+    screen_refresh();
+    return true;
+}
+
+// --- virtual memory map (POKE / PEEK) -------------------------------------
+
+void interpreter::mem_warn_once(uint16_t address, bool write) noexcept {
+    if (!host_.debug_line) {
+        return;
+    }
+    const uint8_t page = static_cast<uint8_t>(address >> 8);
+    const uint8_t bit = static_cast<uint8_t>(1u << (page & 7));
+    if (mem_warned_[page >> 3] & bit) {
+        return;
+    }
+    mem_warned_[page >> 3] |= bit;
+
+    // Prefixed like the screen dump so a log filter can pick these out. It goes
+    // to the log, never to the BASIC screen: a program poking an address we do
+    // not emulate should not have its display disturbed.
+    char line[40];
+    size_t n = 0;
+    const char* tag = write ? "POKEW|unmapped $" : "PEEKW|unmapped $";
+    for (const char* t = tag; *t != '\0' && n < sizeof(line) - 6; ++t) {
+        line[n++] = *t;
+    }
+    static const char hex[] = "0123456789ABCDEF";
+    line[n++] = hex[(address >> 12) & 0xF];
+    line[n++] = hex[(address >> 8) & 0xF];
+    line[n++] = hex[(address >> 4) & 0xF];
+    line[n++] = hex[address & 0xF];
+    line[n] = '\0';
+    host_.debug_line(host_.user, line);
+}
+
+uint8_t* interpreter::mem_cell(uint16_t address, bool for_write) noexcept {
+    // BG screen: the text shadow buffer is the truth, so map the nametable
+    // window onto it. The plane is 28x24 inside a 32 column nametable; cells
+    // outside that are off screen here and stay unmapped.
+    if (address >= mem_bg_base) {
+        const uint16_t offset = static_cast<uint16_t>(address - mem_bg_base);
+        const uint16_t row = static_cast<uint16_t>(offset / mem_bg_stride);
+        const uint16_t col = static_cast<uint16_t>(offset % mem_bg_stride);
+        if (row < screen_rows && col < screen_columns && screen_chars_) {
+            return &screen_chars_[row * screen_columns + col];
+        }
+        return nullptr;
+    }
+
+    if (address < mem_low_size) {
+        if (!mem_low_) {
+            mem_low_ = static_cast<uint8_t*>(host_.alloc(host_.user, mem_low_size));
+            if (mem_low_) {
+                for (uint16_t i = 0; i < mem_low_size; ++i) {
+                    mem_low_[i] = 0;
+                }
+            }
+        }
+        return mem_low_ ? &mem_low_[address] : nullptr;
+    }
+
+    if (address >= mem_user_base &&
+        address < static_cast<uint16_t>(mem_user_base + mem_user_size - 1) + 1) {
+        // The system slice is readable but POKE must not touch it (core_spec
+        // sec 14 marks it forbidden).
+        if (for_write && address >= mem_sys_first && address <= mem_sys_last) {
+            return nullptr;
+        }
+        if (!mem_user_) {
+            mem_user_ = static_cast<uint8_t*>(host_.alloc(host_.user, mem_user_size));
+            if (mem_user_) {
+                for (uint16_t i = 0; i < mem_user_size; ++i) {
+                    mem_user_[i] = 0;
+                }
+            }
+        }
+        return mem_user_ ? &mem_user_[address - mem_user_base] : nullptr;
+    }
+
+    return nullptr;
+}
+
+bool interpreter::st_on_error() noexcept {
+    // ON ERROR GOTO line  (line 0 disarms the handler, MS BASIC convention the
+    // spec follows: "ON ERROR GOTO 0")
+    if (!expect(token::error) || !expect(token::goto_)) {
+        return false;
+    }
+    if (peek_token() != token::number) {
+        return raise_here(error_code::syntax);
+    }
+    read_byte();
+    const uint8_t lo = read_byte();
+    const uint8_t hi = read_byte();
+    const uint16_t line = static_cast<uint16_t>(lo | (hi << 8));
+    if (line != 0 && find_line(line) < 0) {
+        return raise_here(error_code::undefined_line);
+    }
+    error_handler_line_ = line;
+    return true;
+}
+
+bool interpreter::st_resume() noexcept {
+    // RESUME [line | NEXT]: alone re-runs the line that failed, NEXT continues
+    // at the following line, a number jumps there (v3_spec). Outside a handler
+    // this is the RE error.
+    if (!in_error_handler_) {
+        return raise_here(error_code::resume_without_error);
+    }
+
+    uint16_t target = 0;
+    bool to_next = false;
+    if (peek_token() == token::next) {
+        read_byte();
+        to_next = true;
+    } else if (peek_token() == token::number) {
+        read_byte();
+        const uint8_t lo = read_byte();
+        const uint8_t hi = read_byte();
+        target = static_cast<uint16_t>(lo | (hi << 8));
+    }
+
+    in_error_handler_ = false;
+
+    if (target != 0) {
+        return jump_to_line(target);
+    }
+    if (err_line_ == 0) {
+        // The error had no line (load time / direct mode): nothing to go back to.
+        return raise_here(error_code::resume_without_error);
+    }
+    const int32_t index = find_line(err_line_);
+    if (index < 0) {
+        return raise_here(error_code::undefined_line);
+    }
+    uint16_t next_index = static_cast<uint16_t>(index);
+    if (to_next) {
+        ++next_index;
+        if (next_index >= line_count_) {
+            running_ = false;  // fell off the end: normal END
+            return true;
+        }
+    }
+    pc_line_ = next_index;
+    pc_off_ = 0;
+    jumped_ = true;
+    return true;
+}
+
+bool interpreter::st_error() noexcept {
+    // ERROR n raises error number n as if it had happened here, so a handler
+    // can be exercised (v3_spec).
+    int16_t number = 0;
+    if (!eval_number(&number)) {
+        return false;
+    }
+    if (number < 0 || number >= static_cast<int16_t>(error_code_count)) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    return raise_here(static_cast<error_code>(number));
 }
 
 bool interpreter::st_dim() noexcept {

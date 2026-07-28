@@ -1,0 +1,3 @@
+10 PRINT "A"
+20 LIST
+30 PRINT "B"

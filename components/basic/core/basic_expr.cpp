@@ -225,8 +225,15 @@ bool interpreter::call_builtin(token fn, basic_value* args, uint8_t argc,
         case token::peek: {
             int16_t addr = 0;
             if (!need_num(0, &addr)) return false;
-            // Virtual memory map arrives in B4; until then every address reads 0.
-            set_number(out, 0);
+            // Mapped areas read their byte; anything else reads 0 and warns
+            // once per page (see mem_cell).
+            const uint8_t* cell = mem_cell(static_cast<uint16_t>(addr), false);
+            if (!cell) {
+                mem_warn_once(static_cast<uint16_t>(addr), false);
+                set_number(out, 0);
+                return true;
+            }
+            set_number(out, static_cast<int16_t>(*cell));
             return true;
         }
         case token::asc: {
@@ -399,12 +406,12 @@ bool interpreter::call_builtin(token fn, basic_value* args, uint8_t argc,
             set_number(out, static_cast<int16_t>(cursor_y_));
             return true;
         case token::erl:
-            set_number(out, static_cast<int16_t>(error_line_ >= 0 ? error_line_ : 0));
+            // ERL / ERR read the last error even after RESUME cleared the run
+            // state, which is where a handler uses them (v3_spec).
+            set_number(out, static_cast<int16_t>(err_line_));
             return true;
         case token::err:
-            set_number(out, static_cast<int16_t>(error_ == error_code::none
-                                                     ? 0
-                                                     : static_cast<int32_t>(error_)));
+            set_number(out, static_cast<int16_t>(err_number_));
             return true;
         case token::inkey_s: {
             uint8_t code = 0;
@@ -417,6 +424,7 @@ bool interpreter::call_builtin(token fn, basic_value* args, uint8_t argc,
             // it returns empty instead of hanging.
             const bool blocking = (argc >= 1 && !args[0].is_string && args[0].num == 0);
             if (blocking && host_.sleep_ms) {
+                input_wait(true);
                 while (!next_key(&code)) {
                     if (host_.on_tick && !host_.on_tick(host_.user)) {
                         running_ = false;
@@ -424,6 +432,7 @@ bool interpreter::call_builtin(token fn, basic_value* args, uint8_t argc,
                     }
                     host_.sleep_ms(host_.user, 10);
                 }
+                input_wait(false);
                 if (code != 0) {
                     set_string(out, &code, 1);
                     return true;

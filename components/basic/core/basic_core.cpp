@@ -275,6 +275,19 @@ void interpreter::print_number(int32_t value) noexcept {
 bool interpreter::raise(error_code code, int32_t line_number) noexcept {
     error_ = code;
     error_line_ = line_number;
+    err_number_ = static_cast<uint8_t>(code);
+    err_line_ = (line_number >= 0) ? static_cast<uint16_t>(line_number) : 0;
+
+    // ON ERROR GOTO is armed and this is not an error inside the handler
+    // itself: report nothing, keep running_, and let the run loop branch to the
+    // handler once this statement has unwound. Returning false here (rather
+    // than jumping on the spot) matters -- the callers are half way through
+    // evaluating an expression and must not carry on with a bogus value.
+    if (error_handler_line_ != 0 && !in_error_handler_ && running_) {
+        error_pending_handler_ = true;
+        return false;
+    }
+
     running_ = false;
 
     // Family BASIC screen format: "?SN ERROR IN 10", or "?SN ERROR" when the
@@ -574,6 +587,13 @@ bool interpreter::run() noexcept {
     frame_accum_us_ = 0;
     frame_count_ = 0;
     frame_statements_ = 0;
+    error_handler_line_ = 0;
+    in_error_handler_ = false;
+    error_pending_handler_ = false;
+    err_number_ = 0;
+    err_line_ = 0;
+    trace_on_ = false;
+    traced_line_ = 0;
 
     while (running_) {
         if (pc_line_ >= line_count_) {
@@ -600,13 +620,46 @@ bool interpreter::run() noexcept {
         ++statement_count_;
         ++frame_statements_;
 
+        if (trace_on_) {
+            const uint16_t line = current_line_number();
+            if (line != traced_line_) {
+                traced_line_ = line;
+                print("*");
+                print_number(line);
+                print(" ");
+            }
+        }
+
         jumped_ = false;
         if (!exec_statement()) {
+            if (error_pending_handler_) {
+                // ON ERROR GOTO: the failed statement has unwound, now enter
+                // the handler. ERR / ERL hold the error until RESUME or END.
+                error_pending_handler_ = false;
+                in_error_handler_ = true;
+                running_ = true;
+                // The error is now handled: clear the run state so END inside
+                // the handler ends the program cleanly. ERR / ERL still hold
+                // what happened (err_number_ / err_line_).
+                error_ = error_code::none;
+                error_line_ = -1;
+                if (jump_to_line(error_handler_line_)) {
+                    continue;
+                }
+                // The handler line is gone. Report that, not the original
+                // error: a missing handler is the bug to show.
+                in_error_handler_ = false;
+                error_handler_line_ = 0;
+            }
             running_ = false;
             return false;
         }
         if (!running_) {
             break;
+        }
+        if (jumped_ && trace_on_) {
+            // A jump can land back on the line just traced; let it print again.
+            traced_line_ = 0;
         }
         if (!jumped_) {
             // Statements stop before their separator; step over it.

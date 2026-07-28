@@ -15,6 +15,7 @@
 // fmrb_app.h has no extern "C" guard of its own (it is a C only header).
 extern "C" {
 #include "fmrb_app.h"
+#include "fmrb_hal_file.h"
 #include "fmrb_hid_msg.h"
 }
 
@@ -474,6 +475,74 @@ void host_debug_line(void* user, const char* text) {
     FMRB_LOGI(TAG, "%s", text);
 }
 
+// LOAD / SAVE map to /home: that is where user files live on this system, and
+// the BASIC name is a bare file name (no directories, enforced by the core).
+// ".bas" is appended unless the name already carries it.
+constexpr const char* program_dir = "/home/";
+
+bool build_program_path(const char* name, char* out, size_t out_size) {
+    if (!name || name[0] == '\0') {
+        return false;  // LOAD / SAVE without a name has nothing to pick here
+    }
+    size_t n = 0;
+    for (const char* p = program_dir; *p != '\0'; ++p) {
+        if (n + 1 >= out_size) {
+            return false;
+        }
+        out[n++] = *p;
+    }
+    size_t len = 0;
+    while (name[len] != '\0') {
+        ++len;
+    }
+    if (n + len + 5 >= out_size) {
+        return false;
+    }
+    for (size_t i = 0; i < len; ++i) {
+        out[n++] = name[i];
+    }
+    const bool has_ext = len >= 4 && name[len - 4] == '.' &&
+                         (name[len - 3] == 'b' || name[len - 3] == 'B') &&
+                         (name[len - 2] == 'a' || name[len - 2] == 'A') &&
+                         (name[len - 1] == 's' || name[len - 1] == 'S');
+    if (!has_ext) {
+        out[n++] = '.';
+        out[n++] = 'b';
+        out[n++] = 'a';
+        out[n++] = 's';
+    }
+    out[n] = '\0';
+    return true;
+}
+
+bool host_program_write(void* user, const char* name, const char* text) {
+    (void)user;
+    char path[80];
+    if (!build_program_path(name, path, sizeof(path))) {
+        return false;
+    }
+    fmrb_file_t file = nullptr;
+    if (fmrb_hal_file_open(path, FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC, &file) !=
+        FMRB_OK) {
+        FMRB_LOGW(TAG, "SAVE: cannot create %s", path);
+        return false;
+    }
+    size_t len = 0;
+    while (text[len] != '\0') {
+        ++len;
+    }
+    size_t written = 0;
+    const fmrb_err_t ret = fmrb_hal_file_write(file, text, len, &written);
+    fmrb_hal_file_close(file);
+    if (ret != FMRB_OK || written != len) {
+        FMRB_LOGE(TAG, "SAVE: write failed for %s (%u of %u)", path,
+                  static_cast<unsigned>(written), static_cast<unsigned>(len));
+        return false;
+    }
+    FMRB_LOGI(TAG, "SAVE: %s (%u bytes)", path, static_cast<unsigned>(len));
+    return true;
+}
+
 fmrb_basic::basic_host_t make_host(basic_state* state) {
     fmrb_basic::basic_host_t host = {};
     host.alloc = host_alloc;
@@ -491,6 +560,7 @@ fmrb_basic::basic_host_t make_host(basic_state* state) {
     host.screen_palette = host_screen_palette;
     host.screen_charset = host_screen_charset;
     host.debug_line = host_debug_line;
+    host.program_write = host_program_write;
     host.audio_play = host_audio_play;
     host.audio_beep = host_audio_beep;
     host.sprite_update = host_sprite_update;

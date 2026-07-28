@@ -1,0 +1,2 @@
+10 PRINT "GO"
+20 RESUME
