@@ -165,15 +165,20 @@ void interpreter::service_frames() noexcept {
 
 void interpreter::frame_tick() noexcept {
     ++frame_count_;
-    // Sprite auto move, animation and collision go here (T3-3). The screen is
-    // presented once per frame rather than per changed cell.
+    advance_moves();
+    // The screen is presented once per frame rather than per changed cell.
     if (host_.screen_present) {
         host_.screen_present(host_.user);
     }
 }
 
 bool interpreter::moves_active() const noexcept {
-    return false;  // DEF MOVE arrives in T3-3
+    for (uint8_t i = 0; i < move_count; ++i) {
+        if (moves_[i].defined && moves_[i].active) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void interpreter::screen_send_palette() noexcept {

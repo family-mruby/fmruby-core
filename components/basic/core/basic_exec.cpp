@@ -215,6 +215,25 @@ bool interpreter::exec_statement() noexcept {
             read_byte();
             return st_palet();
 
+        case token::def:
+            read_byte();
+            return st_def();
+
+        case token::sprite:
+            read_byte();
+            return st_sprite();
+
+        case token::move:
+        case token::cut:
+        case token::era:
+        case token::can:
+            read_byte();
+            return st_move_group(tk);
+
+        case token::position:
+            read_byte();
+            return st_position();
+
         case token::scrdump:
             read_byte();
             return st_scrdump();
@@ -993,23 +1012,24 @@ bool interpreter::st_pause() noexcept {
         return true;
     }
 
-    // The unit is one frame, 1/60 s (core_spec sec 5, provisional value).
-    const uint32_t total_ms = static_cast<uint32_t>(frames) * 1000u / 60u;
-    const uint32_t start = host_.ticks_ms ? host_.ticks_ms(host_.user) : 0;
-    while (host_.ticks_ms) {
-        if (host_.ticks_ms(host_.user) - start >= total_ms) {
-            break;
-        }
+    // The unit is one frame, 1/60 s (core_spec sec 5). Counting frames rather
+    // than milliseconds keeps sprite movement and PAUSE on the same clock, and
+    // lets a host without clock control (the test runner) step frames directly
+    // so golden tests can observe motion.
+    const uint32_t target = frame_count_ + static_cast<uint32_t>(frames);
+    while (frame_count_ < target && running_) {
         if (host_.on_tick && !host_.on_tick(host_.user)) {
             running_ = false;
             return true;
         }
         if (host_.sleep_ms) {
             host_.sleep_ms(host_.user, 1);
+            service_frames();
         } else {
-            break;  // no clock control: do not spin
+            frame_tick();
         }
     }
+    frame_statements_ = 0;
     return true;
 }
 

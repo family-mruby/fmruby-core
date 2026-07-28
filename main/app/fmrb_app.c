@@ -766,6 +766,12 @@ static int execute_basic_script(fmrb_app_task_context_t* ctx,
                         .user_data = console
                     };
                     fmrb_basic_set_screen_ops(ctx->basic, &screen_ops);
+                    basic_sprite_ops_t sprite_ops = {
+                        .update = basic_console_sprite_update,
+                        .plane = basic_console_sprite_plane,
+                        .user_data = console
+                    };
+                    fmrb_basic_set_sprite_ops(ctx->basic, &sprite_ops);
                     basic_console_register_gfx_ops(ctx->basic, console);
                 } else {
                     fmrb_free(ctx->mem_handle, console);

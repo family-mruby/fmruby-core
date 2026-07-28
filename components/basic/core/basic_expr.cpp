@@ -456,20 +456,46 @@ bool interpreter::call_builtin(token fn, basic_value* args, uint8_t argc,
             set_string(out, &value, 1);
             return true;
         }
-        case token::stick:
-        case token::strig:
         case token::xpos:
         case token::ypos:
         case token::vct:
-            // Input and sprites arrive in B3: neutral / stopped values.
-            set_number(out, 0);
-            return true;
-        case token::crash:
-            set_number(out, -2);  // sprite undefined (v3_spec)
-            return true;
         case token::move:
-            set_number(out, 0);  // MOVE(n): 0 = movement finished
+        case token::crash: {
+            int16_t slot = 0;
+            if (!need_num(0, &slot)) {
+                return false;
+            }
+            if (slot < 0 || slot >= move_count) {
+                return raise_here(error_code::illegal_function_call);
+            }
+            const basic_move_state& mv = moves_[slot];
+            switch (fn) {
+                case token::xpos: set_number(out, mv.x); break;
+                case token::ypos: set_number(out, mv.y); break;
+                // VCT reports the direction while moving, 0 when stopped (v3).
+                case token::vct:
+                    set_number(out, static_cast<int16_t>(mv.active ? mv.direction : 0));
+                    break;
+                // MOVE(n): -1 while travelling, 0 once it has arrived.
+                case token::move: set_number(out, mv.active ? -1 : 0); break;
+                default: set_number(out, move_crash(static_cast<uint8_t>(slot))); break;
+            }
             return true;
+        }
+        case token::stick:
+        case token::strig: {
+            int16_t player = 0;
+            if (!need_num(0, &player)) {
+                return false;
+            }
+            if (player < 0 || player > 1) {
+                return raise_here(error_code::illegal_function_call);
+            }
+            set_number(out, static_cast<int16_t>(fn == token::stick
+                                                     ? pad_stick_[player]
+                                                     : pad_trigger_[player]));
+            return true;
+        }
         default:
             return raise_here(error_code::undefined_function);
     }
@@ -597,7 +623,13 @@ bool interpreter::eval(basic_value* out) noexcept {
             }
             if (is_keyword(tk)) {
                 const keyword_entry* kw = keyword_info(tk);
-                if (kw && kw->kind == kw_kind::function) {
+                // MOVE is both a statement and a function: "MOVE(n)" inside an
+                // expression asks whether that character is still travelling
+                // (core_spec sec 9).
+                const bool as_function =
+                    kw && (kw->kind == kw_kind::function ||
+                           (kw->tk == token::move && peek_ahead_is_lparen()));
+                if (as_function) {
                     read_byte();
                     if (peek_token() == token::lparen) {
                         if (op_top >= max_expr_nesting) {

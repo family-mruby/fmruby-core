@@ -9,6 +9,7 @@ set(BASIC_CORE_SRCS
     "core/basic_expr.cpp"
     "core/basic_exec.cpp"
     "core/basic_screen.cpp"
+    "core/basic_sprite.cpp"
 )
 
 # Adapter between the app task and the core (memory pool, console, exit signal)
@@ -20,6 +21,7 @@ set(FMRB_BASIC_SRCS
 set(BASIC_EXT_SRCS
     "extension/fmrb_basic_gfx.c"
     "assets/basic_font8.c"
+    "assets/basic_tile_a.c"
 )
 
 idf_component_register(

@@ -123,6 +123,25 @@ struct basic_sprite_state {
     int16_t y;
 };
 
+/// One DEF MOVE slot: definition plus where the character currently is.
+struct basic_move_state {
+    bool defined;
+    bool active;         ///< still travelling (MOVE(n) reports -1)
+    bool visible;
+    bool behind;
+    uint8_t character;   ///< built in animation character 0-15
+    uint8_t direction;   ///< 0 = stopped, 1-8 clockwise from up
+    uint8_t speed;       ///< C: two dots every 2C frames
+    uint8_t distance;    ///< D: total travel is 2D dots
+    uint8_t attr;        ///< colour attribute 0-3
+    uint16_t remaining;  ///< dots of travel left
+    uint16_t step_counter;
+    uint8_t anim_counter;
+    uint8_t anim_phase;
+    int16_t x;
+    int16_t y;
+};
+
 /// One argument handed to basic_host_t::ext_statement.
 struct basic_arg {
     bool is_string;
@@ -371,6 +390,15 @@ public:
     void push_key(uint8_t code) noexcept;
     /// True while kana input is active.
     bool kana_mode() const noexcept { return kana_mode_; }
+    /**
+     * @brief Set the controller state the embedder sees.
+     *
+     * Bits follow core_spec sec 11 / compat_plan sec 3.3: stick 1 = right,
+     * 2 = left, 4 = down, 8 = up; trigger 1 = START, 2 = SELECT, 4 = B, 8 = A.
+     * @param player 0 = controller I, 1 = controller II
+     */
+    void set_pad(uint8_t player, uint8_t stick, uint8_t trigger) noexcept;
+
     /// True while CLICK ON is in effect (key click sound, B3 wires the sound).
     bool click_enabled() const noexcept { return click_on_; }
 
@@ -410,6 +438,8 @@ private:
     bool accept(token tk) noexcept;
     bool expect(token tk) noexcept;
     bool at_statement_end() const noexcept;
+    /// True when the token after the current one is '(' (MOVE statement vs function).
+    bool peek_ahead_is_lparen() const noexcept;
     void skip_to_eol() noexcept;
     void skip_to_statement_end() noexcept;
     uint16_t current_line_number() const noexcept;
@@ -460,6 +490,9 @@ private:
     bool st_position() noexcept;
     bool parse_slot_list(uint8_t* slots, uint8_t* count) noexcept;
     void notify_sprite(uint8_t index) noexcept;
+    void notify_move(uint8_t index) noexcept;
+    void advance_moves() noexcept;
+    int16_t move_crash(uint8_t index) const noexcept;
     bool st_ext(token tk) noexcept;
 
     // --- text screen internals (basic_screen.cpp) ---
@@ -535,7 +568,12 @@ private:
     // spec numbers them separately and a 16x16 animation character would need
     // several hardware sprites anyway (see the B3 report).
     basic_sprite_state sprites_[sprite_count] = {};
+    basic_move_state moves_[move_count] = {};
     bool sprite_plane_on_ = false;
+
+    // Controller state, refreshed by the embedder from HID events.
+    uint8_t pad_stick_[2] = {0, 0};
+    uint8_t pad_trigger_[2] = {0, 0};
 
     // Kana input: the pending consonant of a two key romaji sequence.
     bool kana_mode_ = false;

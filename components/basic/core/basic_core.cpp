@@ -526,6 +526,17 @@ bool interpreter::expect(token tk) noexcept {
     return raise_here(error_code::syntax);
 }
 
+bool interpreter::peek_ahead_is_lparen() const noexcept {
+    if (pc_line_ >= line_count_) {
+        return false;
+    }
+    const uint16_t next = static_cast<uint16_t>(pc_off_ + 1);
+    if (next >= lines_[pc_line_].length) {
+        return false;
+    }
+    return static_cast<token>(code_at(pc_line_)[next]) == token::lparen;
+}
+
 bool interpreter::at_statement_end() const noexcept {
     const token tk = peek_token();
     return tk == token::eol || tk == token::colon;

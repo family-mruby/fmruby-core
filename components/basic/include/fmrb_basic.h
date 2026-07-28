@@ -196,6 +196,39 @@ typedef struct {
  */
 void fmrb_basic_set_screen_ops(basic_state_t* state, const basic_screen_ops_t* ops);
 
+/// One sprite as the renderer needs to see it (DEF SPRITE and DEF MOVE).
+typedef struct {
+    uint8_t index;     ///< 0-7 DEF SPRITE slots, 8-15 DEF MOVE slots
+    bool defined;
+    bool visible;
+    bool size16;       ///< 16x16 (four tiles) instead of 8x8
+    bool behind;
+    bool flip_x;
+    bool flip_y;
+    bool table_a;      ///< tiles come from character table A
+    uint8_t attr;      ///< colour attribute 0-3
+    uint8_t tiles[4];
+    int16_t x;         ///< sprite plane coordinates
+    int16_t y;
+} basic_sprite_view;
+
+/**
+ * @brief Sprite plane renderer hooks
+ */
+typedef struct {
+    void (*update)(void* user_data, const basic_sprite_view* sprite);
+    void (*plane)(void* user_data, bool on);
+    void* user_data;
+} basic_sprite_ops_t;
+
+/**
+ * @brief Connect the sprite plane to a renderer
+ *
+ * @param state BASIC state
+ * @param ops Callback table, copied into the state
+ */
+void fmrb_basic_set_sprite_ops(basic_state_t* state, const basic_sprite_ops_t* ops);
+
 #ifdef __cplusplus
 }
 #endif

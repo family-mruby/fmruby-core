@@ -44,7 +44,13 @@ struct basic_state {
     void* input_user_data;
     basic_gfx_ops_t gfx;
     basic_screen_ops_t screen;
+    basic_sprite_ops_t sprite;
     fmrb_basic::interpreter* core_for_keys;
+
+    // Controller state assembled from HID events. The keyboard stands in for
+    // a pad so a game can be driven from the headless harness (phase_b3 T3-4).
+    uint8_t pad_stick[2];
+    uint8_t pad_trigger[2];
 
     char out_line[FMRB_BASIC_OUT_LINE_MAX];
     size_t out_len;
@@ -114,10 +120,95 @@ void host_sleep_ms(void* user, uint32_t ms) {
     fmrb_task_delay_ms(ms);
 }
 
+// Keyboard stand in for the controller (compat_plan sec 5.5): the arrow keys
+// are the D-pad, Z / X / Enter / Space are A / B / START / SELECT. Scancodes
+// are USB HID usage ids, which is what the HID event carries.
+#define SCAN_RIGHT  79
+#define SCAN_LEFT   80
+#define SCAN_DOWN   81
+#define SCAN_UP     82
+#define SCAN_Z      29
+#define SCAN_X      27
+#define SCAN_ENTER  40
+#define SCAN_SPACE  44
+
+// Bit layout of STICK / STRIG (core_spec sec 11).
+#define PAD_RIGHT   0x01
+#define PAD_LEFT    0x02
+#define PAD_DOWN    0x04
+#define PAD_UP      0x08
+#define PAD_START   0x01
+#define PAD_SELECT  0x02
+#define PAD_B       0x04
+#define PAD_A       0x08
+
+static void apply_key_to_pad(basic_state* state, uint8_t scancode, bool down) {
+    uint8_t stick_bit = 0;
+    uint8_t trigger_bit = 0;
+    switch (scancode) {
+        case SCAN_RIGHT: stick_bit = PAD_RIGHT; break;
+        case SCAN_LEFT: stick_bit = PAD_LEFT; break;
+        case SCAN_DOWN: stick_bit = PAD_DOWN; break;
+        case SCAN_UP: stick_bit = PAD_UP; break;
+        case SCAN_Z: trigger_bit = PAD_A; break;
+        case SCAN_X: trigger_bit = PAD_B; break;
+        case SCAN_ENTER: trigger_bit = PAD_START; break;
+        case SCAN_SPACE: trigger_bit = PAD_SELECT; break;
+        default: return;
+    }
+    if (down) {
+        state->pad_stick[0] = (uint8_t)(state->pad_stick[0] | stick_bit);
+        state->pad_trigger[0] = (uint8_t)(state->pad_trigger[0] | trigger_bit);
+    } else {
+        state->pad_stick[0] = (uint8_t)(state->pad_stick[0] & ~stick_bit);
+        state->pad_trigger[0] = (uint8_t)(state->pad_trigger[0] & ~trigger_bit);
+    }
+}
+
+// Gamepad buttons, using the common SDL layout (0 = A, 1 = B, 6 = SELECT,
+// 7 = START); axis 0/1 are the stick with a wide dead zone.
+static void apply_button_to_pad(basic_state* state, uint8_t pad, uint8_t button,
+                                bool down) {
+    if (pad > 1) {
+        return;
+    }
+    uint8_t bit = 0;
+    switch (button) {
+        case 0: bit = PAD_A; break;
+        case 1: bit = PAD_B; break;
+        case 6: bit = PAD_SELECT; break;
+        case 7: bit = PAD_START; break;
+        default: return;
+    }
+    if (down) {
+        state->pad_trigger[pad] = (uint8_t)(state->pad_trigger[pad] | bit);
+    } else {
+        state->pad_trigger[pad] = (uint8_t)(state->pad_trigger[pad] & ~bit);
+    }
+}
+
+static void apply_axis_to_pad(basic_state* state, uint8_t pad, uint8_t axis,
+                              int16_t value) {
+    if (pad > 1 || axis > 1) {
+        return;
+    }
+    const int16_t dead_zone = 8000;
+    const uint8_t low = (axis == 0) ? PAD_LEFT : PAD_UP;
+    const uint8_t high = (axis == 0) ? PAD_RIGHT : PAD_DOWN;
+    uint8_t bits = (uint8_t)(state->pad_stick[pad] & ~(low | high));
+    if (value < -dead_zone) {
+        bits = (uint8_t)(bits | low);
+    } else if (value > dead_zone) {
+        bits = (uint8_t)(bits | high);
+    }
+    state->pad_stick[pad] = bits;
+}
+
 bool host_on_tick(void* user) {
     basic_state* state = static_cast<basic_state*>(user);
 
-    // Drain HID events so INKEY$ sees key presses while a program is running.
+    // Drain HID events so INKEY$ and STICK/STRIG see input while a program is
+    // running.
     fmrb_app_task_context_t* ctx = fmrb_current();
     if (ctx && state->core_for_keys) {
         fmrb_msg_t msg;
@@ -126,12 +217,30 @@ bool host_on_tick(void* user) {
             if (msg.type != FMRB_MSG_TYPE_HID_EVENT) {
                 continue;
             }
-            const fmrb_hid_key_event_t* key =
-                reinterpret_cast<const fmrb_hid_key_event_t*>(msg.data);
-            if (key->subtype == HID_MSG_KEY_DOWN && key->character != 0) {
-                state->core_for_keys->push_key(
-                    fmrb_basic::unicode_to_fbcode(static_cast<uint8_t>(key->character)));
+            const uint8_t subtype = msg.data[0];
+            if (subtype == HID_MSG_KEY_DOWN || subtype == HID_MSG_KEY_UP) {
+                const fmrb_hid_key_event_t* key =
+                    reinterpret_cast<const fmrb_hid_key_event_t*>(msg.data);
+                apply_key_to_pad(state, key->scancode, subtype == HID_MSG_KEY_DOWN);
+                if (subtype == HID_MSG_KEY_DOWN && key->character != 0) {
+                    state->core_for_keys->push_key(fmrb_basic::unicode_to_fbcode(
+                        static_cast<uint8_t>(key->character)));
+                }
+            } else if (subtype == HID_MSG_GAMEPAD_BUTTON_DOWN ||
+                       subtype == HID_MSG_GAMEPAD_BUTTON_UP) {
+                const fmrb_hid_gamepad_button_event_t* pad =
+                    reinterpret_cast<const fmrb_hid_gamepad_button_event_t*>(msg.data);
+                apply_button_to_pad(state, pad->gamepad_id, pad->button_num,
+                                    subtype == HID_MSG_GAMEPAD_BUTTON_DOWN);
+            } else if (subtype == HID_MSG_GAMEPAD_AXIS) {
+                const fmrb_hid_gamepad_axis_event_t* pad =
+                    reinterpret_cast<const fmrb_hid_gamepad_axis_event_t*>(msg.data);
+                apply_axis_to_pad(state, pad->gamepad_id, pad->axis_num, pad->value);
             }
+        }
+        for (uint8_t player = 0; player < 2; ++player) {
+            state->core_for_keys->set_pad(player, state->pad_stick[player],
+                                          state->pad_trigger[player]);
         }
     }
 
@@ -222,6 +331,35 @@ void host_screen_palette(void* user, uint8_t attr, uint8_t backdrop, uint8_t c1,
     }
 }
 
+void host_sprite_update(void* user, const fmrb_basic::basic_sprite_state* sprite) {
+    basic_state* state = static_cast<basic_state*>(user);
+    if (!state->sprite.update) {
+        return;
+    }
+    basic_sprite_view view = {
+        .index = sprite->index,
+        .defined = sprite->defined,
+        .visible = sprite->visible,
+        .size16 = sprite->size16,
+        .behind = sprite->behind,
+        .flip_x = sprite->flip_x,
+        .flip_y = sprite->flip_y,
+        .table_a = sprite->table_a,
+        .attr = sprite->attr,
+        .tiles = {sprite->tiles[0], sprite->tiles[1], sprite->tiles[2], sprite->tiles[3]},
+        .x = sprite->x,
+        .y = sprite->y,
+    };
+    state->sprite.update(state->sprite.user_data, &view);
+}
+
+void host_sprite_plane(void* user, bool on) {
+    basic_state* state = static_cast<basic_state*>(user);
+    if (state->sprite.plane) {
+        state->sprite.plane(state->sprite.user_data, on);
+    }
+}
+
 void host_debug_line(void* user, const char* text) {
     // Screen dumps go to the log with their own prefix, so the headless
     // harness can pull them out with a line filter (phase_b0_report sec 3.3).
@@ -245,6 +383,8 @@ fmrb_basic::basic_host_t make_host(basic_state* state) {
     host.screen_fill = host_screen_fill;
     host.screen_palette = host_screen_palette;
     host.debug_line = host_debug_line;
+    host.sprite_update = host_sprite_update;
+    host.sprite_plane = host_sprite_plane;
     host.user = state;
     return host;
 }
@@ -407,6 +547,13 @@ void fmrb_basic_set_gfx_ops(basic_state_t* handle, const basic_gfx_ops_t* ops) {
     basic_state* state = reinterpret_cast<basic_state*>(handle);
     if (state && ops) {
         state->gfx = *ops;
+    }
+}
+
+void fmrb_basic_set_sprite_ops(basic_state_t* handle, const basic_sprite_ops_t* ops) {
+    basic_state* state = reinterpret_cast<basic_state*>(handle);
+    if (state && ops) {
+        state->sprite = *ops;
     }
 }
 

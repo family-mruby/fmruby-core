@@ -13,6 +13,23 @@ phase that makes it runnable, and disappears from this directory.
 | `sample_02_strings.bas` | string variables, concatenation, LEN/LEFT$/RIGHT$/MID$/ASC/CHR$/VAL/STR$ | B1 -> `golden/161_sample_strings` |
 | `sample_03_data_array.bas` | DIM, DATA/READ/RESTORE, GOSUB/RETURN, integer division | B1 -> `golden/162_sample_data_array` |
 | `sample_04_screen_kana.bas` | kana PRINT, COLOR, LOCATE, blocking INKEY$(0), kana input mode | stays here: it waits for key presses, so it is run by hand in the simulation |
+| `sample_10_dodge.bas` | DEF MOVE 8-direction control via STICK table, redefine-and-reposition idiom (XPOS/YPOS + POSITION + MOVE), CRASH, ERA | B3 bring-up corpus |
+| `sample_11_shoot.bas` | three concurrent MOVEs, STRIG fire, CRASH between two moving sprites, CAN, PLAY jingle, frame-count timer | B3 bring-up corpus |
+| `sample_12_maze.bas` | SCR$ collision on the text screen, COLOR, STICK or IJKM keys, kana messages, random layout | B2/B3 bring-up corpus |
+| `sample_13_music.bas` | PLAY 3 channels (T/M/Y/V/O/R) under the 31-char string limit, asynchronous playback while the screen animates, CLICK, BEEP | B3 bring-up corpus |
+| `sample_14_hit.bas` | reaction game: RND, PAUSE-based timeout, INKEY$ polling, kana, score ranking | B2/B3 bring-up corpus |
+
+The `sample_1x` games are the substitute target corpus for B3 T3-7 until the
+user supplies real-world listings. They intentionally lean on behaviors the
+spec leaves thin, so bring-up will surface questions early. Known probes:
+
+- `sample_10/11`: MOVE(n) on a defined-but-never-moved motion (expected 0),
+  position retention across DEF MOVE redefinition, CAN followed by
+  POSITION + MOVE without redefining.
+- `sample_13`: whether a second PLAY while the first is still sounding
+  queues, restarts, or waits (spec is silent; the sample paces phrases with
+  PAUSE so any of the three behaviors still sounds acceptable). Record the
+  implemented choice in the B3 report's question list.
 
 Style rules these samples follow (from `doc/fmrb_basic/spec/`):
 

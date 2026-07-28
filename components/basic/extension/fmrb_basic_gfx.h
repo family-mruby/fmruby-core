@@ -25,6 +25,9 @@ extern "C" {
 /// Text plane size in characters.
 #define BASIC_SCREEN_COLS 28
 #define BASIC_SCREEN_ROWS 24
+/// DEF SPRITE (0-7) plus DEF MOVE (8-15) slots the renderer tracks.
+#define BASIC_SPRITE_SLOTS 16
+
 /// Text plane size in pixels: 224x192.
 #define BASIC_SCREEN_W (BASIC_SCREEN_COLS * BASIC_SCREEN_CELL_W)
 #define BASIC_SCREEN_H (BASIC_SCREEN_ROWS * BASIC_SCREEN_CELL_H)
@@ -54,6 +57,18 @@ typedef struct {
     /// A cached cell costs a single draw_tile instead of a dozen rectangles.
     uint16_t sheet_id[4];
     uint8_t sheet_ready[4][32];  // one bit per character code
+
+    /// Sprite plane: DEF SPRITE slots 0-7 then DEF MOVE slots 8-15.
+    bool sprite_plane_on;
+    struct {
+        uint16_t instance_id;
+        uint16_t image_id;
+        uint8_t base_tile;
+        uint8_t attr;
+        bool size16;
+        bool table_a;
+        bool visible;
+    } sprites[BASIC_SPRITE_SLOTS];
 } basic_console_ctx_t;
 
 /**
@@ -75,6 +90,12 @@ void basic_console_present(void* user_data);
 
 /// Fill the whole screen with one character (CLS): one rectangle, not 672 cells.
 void basic_console_fill(void* user_data, uint8_t code, uint8_t attr);
+
+/// Create, move, show or hide one sprite. Matches the core's sprite callback.
+void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprite);
+
+/// SPRITE ON / OFF: show or hide the whole sprite plane.
+void basic_console_sprite_plane(void* user_data, bool on);
 
 /// Apply one palette group (colour codes 0-60, core_spec sec 7).
 void basic_console_set_palette(void* user_data, uint8_t attr, uint8_t backdrop,

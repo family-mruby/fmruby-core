@@ -10,6 +10,7 @@
 
 #include "fmrb_basic_gfx.h"
 #include "basic_font8.h"
+#include "basic_tile_a.h"
 #include "fmrb_msg.h"
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
@@ -287,6 +288,147 @@ void basic_console_set_palette(void* user_data, uint8_t attr, uint8_t backdrop,
     invalidate_glyphs(console);
 }
 
+// --- sprite plane ----------------------------------------------------------
+
+static void sprite_instance_visible(basic_console_ctx_t* console, uint16_t instance_id,
+                                    bool visible) {
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_SPRITE_INSTANCE_SET_VISIBLE,
+        .canvas_id = console->canvas_id,
+        .params.sprite_instance_set_visible = {
+            .instance_id = instance_id,
+            .visible = visible ? (uint8_t)1 : (uint8_t)0
+        }
+    };
+    send_gfx_command(&cmd);
+}
+
+/// Paint one sprite image from the tile bitmaps, honouring the flip flags.
+static void draw_sprite_image(basic_console_ctx_t* console, uint16_t image_id,
+                              const basic_sprite_view* sprite) {
+    const uint8_t (*tiles)[8] = sprite->table_a ? basic_tile_a : basic_font8;
+    const uint8_t size = sprite->size16 ? 2 : 1;  // tiles per side
+    const uint8_t fg = console->attr_rgb[sprite->attr & 3];
+
+    set_image_target(console, image_id);
+    // Transparent background: colour 0 is the image's transparent key.
+    fill_rect(console, 0, 0, (uint16_t)(size * BASIC_SCREEN_CELL_W),
+              (uint16_t)(size * BASIC_SCREEN_CELL_H), 0);
+
+    for (uint8_t t = 0; t < (uint8_t)(size * size); t++) {
+        // 16x16 characters are stored top left, top right, bottom left,
+        // bottom right (core_spec sec 8).
+        const uint8_t tile_col = (uint8_t)(t % size);
+        const uint8_t tile_row = (uint8_t)(t / size);
+        const uint8_t* glyph = tiles[sprite->tiles[t]];
+        for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
+            uint8_t bits = glyph[row];
+            for (uint8_t col = 0; col < BASIC_SCREEN_CELL_W; col++) {
+                if ((bits & (0x80 >> col)) == 0) {
+                    continue;
+                }
+                uint8_t px = (uint8_t)(tile_col * BASIC_SCREEN_CELL_W + col);
+                uint8_t py = (uint8_t)(tile_row * BASIC_SCREEN_CELL_H + row);
+                if (sprite->flip_x) {
+                    px = (uint8_t)(size * BASIC_SCREEN_CELL_W - 1 - px);
+                }
+                if (sprite->flip_y) {
+                    py = (uint8_t)(size * BASIC_SCREEN_CELL_H - 1 - py);
+                }
+                fill_rect(console, px, py, 1, 1, fg);
+            }
+        }
+    }
+    set_image_target(console, 0);
+}
+
+void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprite) {
+    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
+    if (!console || sprite->index >= BASIC_SPRITE_SLOTS) {
+        return;
+    }
+    typeof(console->sprites[0])* slot = &console->sprites[sprite->index];
+
+    if (!sprite->defined) {
+        if (slot->instance_id != 0) {
+            sprite_instance_visible(console, slot->instance_id, false);
+            slot->visible = false;
+        }
+        return;
+    }
+
+    fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+    if (!gfx_ctx) {
+        return;
+    }
+
+    // The image only has to be repainted when the artwork changes; a sprite
+    // that merely moves or changes direction keeps the one it has.
+    const bool need_image = (slot->image_id == 0) || slot->base_tile != sprite->tiles[0] ||
+                            slot->attr != (sprite->attr & 3) ||
+                            slot->size16 != sprite->size16 ||
+                            slot->table_a != sprite->table_a;
+    if (need_image) {
+        if (slot->image_id == 0) {
+            const uint16_t dim =
+                (uint16_t)((sprite->size16 ? 2 : 1) * BASIC_SCREEN_CELL_W);
+            slot->image_id = fmrb_gfx_create_sprite_image(gfx_ctx, console->canvas_id,
+                                                          dim, dim, 0, true);
+            if (slot->image_id == 0) {
+                return;
+            }
+            slot->size16 = sprite->size16;
+        }
+        draw_sprite_image(console, slot->image_id, sprite);
+        slot->base_tile = sprite->tiles[0];
+        slot->attr = (uint8_t)(sprite->attr & 3);
+        slot->table_a = sprite->table_a;
+    }
+
+    if (slot->instance_id == 0) {
+        const uint16_t images[1] = {slot->image_id};
+        slot->instance_id = fmrb_gfx_create_sprite_instance(
+            gfx_ctx, console->canvas_id, images, 1, 0, 0, 1);
+        if (slot->instance_id == 0) {
+            return;
+        }
+        slot->visible = true;  // instances start visible
+    }
+
+    // Sprite plane coordinates sit 16 / 24 dots outside the text plane
+    // (core_spec sec 8), and the canvas is the text plane.
+    gfx_cmd_t move = {
+        .cmd_type = GFX_CMD_SPRITE_INSTANCE_MOVE,
+        .canvas_id = console->canvas_id,
+        .params.sprite_instance_move = {
+            .instance_id = slot->instance_id,
+            .x = (int16_t)(sprite->x - 16),
+            .y = (int16_t)(sprite->y - 24)
+        }
+    };
+    send_gfx_command(&move);
+
+    const bool want_visible = sprite->visible && console->sprite_plane_on;
+    if (want_visible != slot->visible) {
+        sprite_instance_visible(console, slot->instance_id, want_visible);
+        slot->visible = want_visible;
+    }
+}
+
+void basic_console_sprite_plane(void* user_data, bool on) {
+    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
+    if (!console) {
+        return;
+    }
+    console->sprite_plane_on = on;
+    for (int i = 0; i < BASIC_SPRITE_SLOTS; i++) {
+        if (console->sprites[i].instance_id != 0 && !on && console->sprites[i].visible) {
+            sprite_instance_visible(console, console->sprites[i].instance_id, false);
+            console->sprites[i].visible = false;
+        }
+    }
+}
+
 fmrb_err_t basic_console_init(basic_console_ctx_t* console,
                               fmrb_app_task_context_t* ctx) {
     if (!console || !ctx) {
@@ -401,6 +543,28 @@ void basic_console_register_gfx_ops(basic_state_t* state,
 void basic_console_destroy(basic_console_ctx_t* console) {
     if (!console) {
         return;
+    }
+
+    for (int i = 0; i < BASIC_SPRITE_SLOTS; i++) {
+        if (console->sprites[i].instance_id != 0) {
+            gfx_cmd_t cmd = {
+                .cmd_type = GFX_CMD_DELETE_SPRITE_INSTANCE,
+                .canvas_id = console->canvas_id,
+                .params.delete_sprite_instance = {
+                    .instance_id = console->sprites[i].instance_id}
+            };
+            send_gfx_command(&cmd);
+            console->sprites[i].instance_id = 0;
+        }
+        if (console->sprites[i].image_id != 0) {
+            gfx_cmd_t cmd = {
+                .cmd_type = GFX_CMD_DELETE_SPRITE_IMAGE,
+                .canvas_id = console->canvas_id,
+                .params.delete_sprite_image = {.image_id = console->sprites[i].image_id}
+            };
+            send_gfx_command(&cmd);
+            console->sprites[i].image_id = 0;
+        }
     }
 
     for (int attr = 0; attr < 4; attr++) {
