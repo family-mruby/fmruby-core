@@ -185,8 +185,8 @@ void basic_console_draw_cell(void* user_data, uint8_t x, uint8_t y, uint8_t code
     console->drawn_code[index] = code;
     console->drawn_attr[index] = attr;
 
-    const int16_t px = (int16_t)(x * BASIC_SCREEN_CELL_W);
-    const int16_t py = (int16_t)(y * BASIC_SCREEN_CELL_H);
+    const int16_t px = (int16_t)(console->pad_x + x * BASIC_SCREEN_CELL_W);
+    const int16_t py = (int16_t)(console->pad_y + y * BASIC_SCREEN_CELL_H);
 
     if (ensure_glyph(console, code, attr)) {
         gfx_cmd_t cmd = {
@@ -239,7 +239,8 @@ void basic_console_fill(void* user_data, uint8_t code, uint8_t attr) {
     attr &= 3;
 
     if (code == ' ') {
-        fill_rect(console, 0, 0, BASIC_SCREEN_W, BASIC_SCREEN_H, console->backdrop_rgb);
+        fill_rect(console, console->pad_x, console->pad_y, BASIC_SCREEN_W, BASIC_SCREEN_H,
+                  console->backdrop_rgb);
         memset(console->drawn_code, code, sizeof(console->drawn_code));
         memset(console->drawn_attr, attr, sizeof(console->drawn_attr));
     } else {
@@ -404,8 +405,8 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
         .canvas_id = console->canvas_id,
         .params.sprite_instance_move = {
             .instance_id = slot->instance_id,
-            .x = (int16_t)(sprite->x - 16),
-            .y = (int16_t)(sprite->y - 24)
+            .x = (int16_t)(console->pad_x + sprite->x - 16),
+            .y = (int16_t)(console->pad_y + sprite->y - 24)
         }
     };
     send_gfx_command(&move);
@@ -469,10 +470,32 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
         return FMRB_ERR_INVALID_STATE;
     }
 
+    // A fullscreen .bas app takes the whole frame: its canvas covers the window
+    // and the 224x192 text plane is centred inside it, so the surround is black
+    // instead of showing the desktop wallpaper around the plane. A windowed app
+    // keeps a plane sized canvas at its window position.
+    if (ctx->fullscreen) {
+        const int32_t free_x = (int32_t)ctx->window_width - BASIC_SCREEN_W;
+        const int32_t free_y = (int32_t)ctx->window_height - BASIC_SCREEN_H;
+        console->canvas_w = ctx->window_width;
+        console->canvas_h = ctx->window_height;
+        console->pad_x = (int16_t)(free_x > 0 ? free_x / 2 : 0);
+        console->pad_y = (int16_t)(free_y > 0 ? free_y / 2 : 0);
+        console->origin_x = 0;
+        console->origin_y = 0;
+    } else {
+        console->canvas_w = BASIC_SCREEN_W;
+        console->canvas_h = BASIC_SCREEN_H;
+        console->pad_x = 0;
+        console->pad_y = 0;
+        console->origin_x = (int16_t)ctx->window_pos_x;
+        console->origin_y = (int16_t)ctx->window_pos_y;
+    }
+
     fmrb_gfx_err_t gfx_ret = fmrb_gfx_create_canvas(
         gfx_ctx,
-        BASIC_SCREEN_W,
-        BASIC_SCREEN_H,
+        console->canvas_w,
+        console->canvas_h,
         ctx->z_order,
         false,
         0,
@@ -484,21 +507,14 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
     }
     ctx->canvas_id = console->canvas_id;
 
-    // The 224x192 text plane sits in the middle of the frame buffer
-    // (compat_plan sec 5.1). A windowed .bas app keeps its window position.
-    if (ctx->fullscreen) {
-        const int32_t free_x = (int32_t)ctx->window_width - BASIC_SCREEN_W;
-        const int32_t free_y = (int32_t)ctx->window_height - BASIC_SCREEN_H;
-        console->origin_x = (int16_t)(free_x > 0 ? free_x / 2 : 0);
-        console->origin_y = (int16_t)(free_y > 0 ? free_y / 2 : 0);
-    } else {
-        console->origin_x = (int16_t)ctx->window_pos_x;
-        console->origin_y = (int16_t)ctx->window_pos_y;
-    }
-
     memset(console->drawn_code, ' ', sizeof(console->drawn_code));
     memset(console->drawn_attr, 0, sizeof(console->drawn_attr));
-    fill_rect(console, 0, 0, BASIC_SCREEN_W, BASIC_SCREEN_H, console->backdrop_rgb);
+    if (console->pad_x != 0 || console->pad_y != 0) {
+        // The surround is painted once and never touched again.
+        fill_rect(console, 0, 0, console->canvas_w, console->canvas_h, 0x00);
+    }
+    fill_rect(console, console->pad_x, console->pad_y, BASIC_SCREEN_W, BASIC_SCREEN_H,
+              console->backdrop_rgb);
     console->dirty = true;
     console->dirty_x0 = 0;
     console->dirty_y0 = 0;
@@ -522,8 +538,8 @@ static void gfx_ops_circle(void* user_data, int16_t x, int16_t y,
         .cmd_type = GFX_CMD_CIRCLE,
         .canvas_id = console->canvas_id,
         .params.circle = {
-            .x = x,
-            .y = y,
+            .x = (int16_t)(console->pad_x + x),
+            .y = (int16_t)(console->pad_y + y),
             .radius = r,
             .color = (fmrb_color_t)color,
             .filled = filled

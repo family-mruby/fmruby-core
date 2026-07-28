@@ -36,9 +36,19 @@ typedef struct {
     fmrb_app_task_context_t* app_ctx;
     fmrb_canvas_handle_t canvas_id;
 
-    /// Where the text plane is presented (centred on a 320x240 frame buffer).
+    /// Where the canvas is presented in the frame buffer.
     int16_t origin_x;
     int16_t origin_y;
+
+    /// Offset of the 224x192 text plane inside the canvas. A fullscreen .bas
+    /// app owns the whole frame and paints the surround black, so its canvas is
+    /// bigger than the plane and everything drawn in plane coordinates shifts
+    /// by this much. Zero for a windowed app, where the canvas is the plane.
+    int16_t pad_x;
+    int16_t pad_y;
+    /// Canvas size, which is the plane plus the surround.
+    uint16_t canvas_w;
+    uint16_t canvas_h;
 
     /// Palette: backdrop plus three colours per attribute group, as RGB332.
     uint8_t backdrop_rgb;

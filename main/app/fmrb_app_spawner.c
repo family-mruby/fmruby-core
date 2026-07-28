@@ -191,6 +191,8 @@ static const builtin_app_entry_t builtin_app_table[] = {
 
 #define BUILTIN_APP_COUNT (sizeof(builtin_app_table) / sizeof(builtin_app_table[0]))
 
+static void notify_kernel_app_spawned(int32_t pid);
+
 static fmrb_err_t spawn_builtin_app(const builtin_app_entry_t* entry, int32_t* out_pid)
 {
     FMRB_LOGI(TAG, "Spawning built-in app: %s", entry->lookup_name);
@@ -202,6 +204,14 @@ static fmrb_err_t spawn_builtin_app(const builtin_app_entry_t* entry, int32_t* o
         FMRB_LOGI(TAG, "Built-in app spawned: id=%d, name=%s", app_id, entry->lookup_name);
         if (out_pid) {
             *out_pid = app_id;
+        }
+        // Same reason as for file based apps: a spawn that did not come through
+        // the kernel's own handler still needs the post-spawn work, or the app
+        // starts without the keyboard. System apps are excluded -- the desktop
+        // and overlays are not what a user just asked to run, and the kernel
+        // assigns their focus itself at boot.
+        if (entry->attr.type != APP_TYPE_SYSTEM_APP) {
+            notify_kernel_app_spawned(app_id);
         }
     } else {
         FMRB_LOGE(TAG, "Failed to spawn built-in app: %s (error=%d)", entry->lookup_name, result);
@@ -396,14 +406,31 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         FMRB_LOGW(TAG, "No TOML config found or parse error: %s (%s)", toml_path, errbuf);
     }
 
-    // Apps launched from files require a .toml providing app_screen_name.
-    // Plain scripts without a TOML are meant to be run via the shell's
-    // "run" command (in-process Sandbox), not spawned as windowed apps.
+    // A .toml is how an app under /app gets its name and window; a file the
+    // user just wrote and wants to run has none. Fall back to the file name so
+    // "save, then run it" works (B4: the editor RUN and BASIC SAVE both produce
+    // such files). Everything else already has a default.
+    char derived_name[24];
     if (!app_screen_name) {
-        FMRB_LOGE(TAG, "Cannot launch %s: %s with app_screen_name is required",
-                  app_name, toml_path);
-        result = FMRB_ERR_INVALID_PARAM;
-        goto cleanup_toml;
+        const char* base = app_name;
+        for (const char* p = app_name; *p != '\0'; p++) {
+            if (*p == '/') {
+                base = p + 1;
+            }
+        }
+        size_t n = 0;
+        while (base[n] != '\0' && base[n] != '.' && n < sizeof(derived_name) - 1) {
+            derived_name[n] = base[n];
+            n++;
+        }
+        derived_name[n] = '\0';
+        if (n == 0) {
+            FMRB_LOGE(TAG, "Cannot launch %s: no name in the path", app_name);
+            result = FMRB_ERR_INVALID_PARAM;
+            goto cleanup_toml;
+        }
+        app_screen_name = derived_name;
+        FMRB_LOGI(TAG, "No %s: using '%s' as the app name", toml_path, app_screen_name);
     }
 
     FMRB_LOGI(TAG, "[spawn] 7 fmrb_app_spawn vm=%d", vm_type);

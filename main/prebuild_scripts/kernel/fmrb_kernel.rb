@@ -224,8 +224,23 @@ class FmrbKernelImpl < FmrbKernel
       }
       Log.info("Desktop overlay: active=#{@desktop_overlay_active}")
     when "system_interrupt"
+      # Reserved key (Ctrl-Q, intercepted in host_task before routing so the app
+      # never sees it): close the app that owns the keyboard. Without this a
+      # fullscreen .bas cannot be left at all -- every key goes to it and it
+      # covers the screen.
+      #
+      # Only apps started from /app or /home are stopped. Built-ins have no path
+      # and are left alone: the editor owns an unsaved-changes dialog and must
+      # not be stopped from under the user. For those, fall back to the older
+      # behaviour of just leaving fullscreen.
       Log.info("System interrupt (Ctrl+Q)")
-      if @fullscreen_pid
+      target = @hid_target_pid
+      info = target ? _get_app_info(target) : nil
+      if info && run_path_allowed?(info[:path].to_s)
+        Log.info("Ctrl-Q: stopping pid=#{target} (#{info[:path]})")
+        stop_data = MessagePack.pack({ "cmd" => "stop" })
+        _send_raw_message(target, FmrbConst::MSG_TYPE_APP_CONTROL, stop_data)
+      elsif @fullscreen_pid
         exit_fullscreen
       end
     when "reload_confirm"
