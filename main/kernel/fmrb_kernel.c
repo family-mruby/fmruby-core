@@ -666,7 +666,11 @@ void fmrb_kernel_stop(void)
 {
     FMRB_LOGI(TAG, "Stopping kernel task...");
 
-    // Use new kill API
+    // fmrb_app_kill() asks first and forces only after its grace period. The
+    // kernel does not handle a "stop" addressed to itself, so this call always
+    // waits out the grace (~1s) and then takes the forced path -- which still
+    // releases the resources. Shutdown is that much slower; if it ever matters,
+    // handle the self-stop in the kernel message loop.
     fmrb_app_kill(PROC_ID_KERNEL);
 
     FMRB_LOGI(TAG, "Kernel task stopped");

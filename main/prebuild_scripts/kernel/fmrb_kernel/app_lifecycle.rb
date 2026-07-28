@@ -2,6 +2,55 @@
 # Fullscreen mode, suspend/resume, app termination cleanup, periodic tasks
 
 module AppLifecycleMixin
+  # ---- Spawn follow-up ----
+
+  # Housekeeping every spawn needs, whoever asked for it: refresh the window
+  # list, honour a fullscreen app, and hand the keyboard to the new app.
+  #
+  # It used to live in the "spawn" message handler only, so an app started any
+  # other way came up without the keyboard and needed a click on its canvas
+  # first -- the debug daemon spawns through the C API, and the reload path
+  # skipped the fullscreen step as well.
+  def after_spawn(new_pid)
+    return false unless new_pid
+
+    mark_window_list_dirty
+
+    # Read fullscreen from the app context rather than the window list: the
+    # list is refreshed asynchronously and is not there yet at this point.
+    info = _get_app_info(new_pid)
+    enter_fullscreen(new_pid) if info && info[:fullscreen]
+
+    # NOTE: keep the collection-class name (S-e-t) out of kernel source even in
+    # comments -- Spinel splices `require "set"` on a bareword match and its
+    # bundled library fails to compile in this program.
+    _set_hid_target(new_pid)
+    @hid_target_pid = new_pid
+    Log.info("HID target set to new app pid=#{new_pid}")
+    true
+  end
+
+  # A Run request may only name a file the spawner can load: user apps live
+  # under /app, user files under /home. Built-in names ("default/editor") are
+  # deliberately not runnable this way -- the desktop spawns those.
+  def run_path_allowed?(path)
+    return false if path.nil?
+    return false if path.empty?
+    path.start_with?("/app/") || path.start_with?("/home/")
+  end
+
+  # Tell a Run requester (the editor) which pid its file is running as, and
+  # remember the parentage so the keyboard goes back there when the app ends.
+  def reply_run_result(requester, path, new_pid)
+    return unless requester
+    if new_pid
+      @run_parent = {} unless @run_parent
+      @run_parent[new_pid] = requester
+    end
+    reply = { "cmd" => "run_result", "path" => path, "pid" => new_pid }
+    _send_raw_message(requester, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(reply))
+  end
+
   # ---- Fullscreen mode management ----
 
   def is_fullscreen_app?(pid)
@@ -88,12 +137,25 @@ module AppLifecycleMixin
       @suspended_pids = []
     end
 
-    # Reset HID target if this was the target app
+    # Hand the keyboard back if this was the target app. An app started by Run
+    # returns it to whoever asked for the Run (the editor, so F5 works again
+    # without clicking); anything else falls back to the desktop. Leaving it
+    # unassigned means the next key press goes nowhere until the user clicks.
     if @hid_target_pid == pid
-      _set_hid_target(0xFF)
-      @hid_target_pid = nil
-      Log.info("Cleared HID target (app #{pid} terminated)")
+      back_to = @run_parent ? @run_parent[pid] : nil
+      back_to = nil unless back_to && _get_app_info(back_to)
+      back_to = @desktop_pid if back_to.nil?
+      if back_to
+        _set_hid_target(back_to)
+        @hid_target_pid = back_to
+        Log.info("HID target back to pid=#{back_to} (app #{pid} terminated)")
+      else
+        _set_hid_target(0xFF)
+        @hid_target_pid = nil
+        Log.info("Cleared HID target (app #{pid} terminated)")
+      end
     end
+    @run_parent.delete(pid) if @run_parent
 
     # Release mouse capture if this app had it
     if @capture_pid == pid
@@ -122,20 +184,22 @@ module AppLifecycleMixin
     end
     empty_topics.each { |topic| @subscriptions.delete(topic) }
 
-    # Handle pending reload (re-spawn after termination)
+    # Handle pending reload (re-spawn after termination). Editor RUN uses the
+    # same slot: stopping first means the old instance has released its memory
+    # pool before the new one asks for it.
     if @pending_reload
       path = @pending_reload[:path]
+      requester = @pending_reload[:requester]
       @pending_reload = nil
       Log.info("Reload: re-spawning #{path}")
       new_pid = _spawn_app_req(path)
       if new_pid
-        mark_window_list_dirty
-        _set_hid_target(new_pid)
-        @hid_target_pid = new_pid
+        after_spawn(new_pid)
         Log.info("Reload: spawned PID #{new_pid}")
       else
         Log.error("Reload: failed to spawn #{path}")
       end
+      reply_run_result(requester, path, new_pid) if requester
     end
 
     # Reap the parked task: deletes its FreeRTOS task and frees the slot.

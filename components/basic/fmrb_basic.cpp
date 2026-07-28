@@ -222,6 +222,11 @@ bool host_on_tick(void* user) {
         while (fmrb_msg_receive(static_cast<fmrb_proc_id_t>(ctx->app_id), &msg, 0) ==
                FMRB_OK) {
             if (msg.type != FMRB_MSG_TYPE_HID_EVENT) {
+                // This loop owns the queue, so a kernel stop request would be
+                // dropped here and only a forced kill could end the app. Hand
+                // every other message to the exit latch before discarding it.
+                fmrb_app_note_control_payload(ctx, static_cast<uint8_t>(msg.type),
+                                              msg.data, msg.size);
                 continue;
             }
             const uint8_t subtype = msg.data[0];

@@ -202,6 +202,25 @@ fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid);
  */
 bool fmrb_app_poll_exit_signal(fmrb_app_task_context_t* ctx);
 
+/**
+ * @brief Latch should_exit if this message is a stop/exit APP_CONTROL request
+ *
+ * For runtimes that read the app queue themselves: a loop that drains the queue
+ * looking for HID events must hand every other message here, or a kernel stop
+ * request is dropped and only a forced kill can end the app.
+ *
+ * Takes the message fields rather than fmrb_msg_t so this header keeps its
+ * current (message-free) dependencies.
+ *
+ * @param ctx Task context (usually fmrb_current())
+ * @param msg_type Message type as received (FMRB_MSG_TYPE_*)
+ * @param payload Message payload
+ * @param size Payload size in bytes
+ * @return true if this message was an exit request
+ */
+bool fmrb_app_note_control_payload(fmrb_app_task_context_t* ctx, uint8_t msg_type,
+                                   const uint8_t* payload, uint32_t size);
+
 void* fmrb_app_get_current_est(void);
 void fmrb_app_set_current_est(void* est);
 

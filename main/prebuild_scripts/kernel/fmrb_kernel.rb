@@ -132,23 +132,7 @@ class FmrbKernelImpl < FmrbKernel
       new_pid = _spawn_app_req(app_name)
       if new_pid
         Log.info("App #{app_name} spawned successfully with PID #{new_pid}")
-
-        # Mark window list as dirty (new window created)
-        mark_window_list_dirty
-
-        # Check if fullscreen app immediately using app context (no window list needed)
-        info = _get_app_info(new_pid)
-        if info && info[:fullscreen]
-          enter_fullscreen(new_pid)
-        end
-
-        # Route HID target to the newly spawned app.
-        # NOTE: keep the collection-class name (S-e-t) out of kernel source even
-        # in comments -- Spinel splices `require "set"` on a bareword match and
-        # its bundled library fails to compile in this program.
-        _set_hid_target(new_pid)
-        @hid_target_pid = new_pid  # Track HID target
-        Log.info("HID target set to new app pid=#{new_pid}")
+        after_spawn(new_pid)
       else
         Log.error("Failed to spawn app: #{app_name}")
         # Let the desktop show an error dialog to the user
@@ -156,6 +140,48 @@ class FmrbKernelImpl < FmrbKernel
           data = MessagePack.pack({"cmd" => "spawn_failed", "app" => app_name})
           _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
         end
+      end
+    when "spawned"
+      # A spawn that did not come through this handler: the debug daemon (and
+      # anything else on the C API) calls fmrb_app_spawn_app directly, and the
+      # app then came up without the keyboard. The C side reports the new pid
+      # here so it gets the same follow-up. Skipped when this handler already
+      # did it for that pid.
+      new_pid = data["pid"]
+      if new_pid && new_pid != @hid_target_pid
+        Log.info("Spawn notification for pid=#{new_pid} (spawned outside the kernel)")
+        after_spawn(new_pid)
+      end
+    when "run"
+      # Editor RUN (F5): run a file, replacing the instance the requester
+      # started last time.
+      run_path = (data["path"] || "").to_s
+      prev_pid = data["prev_pid"]
+      prev_info = prev_pid ? _get_app_info(prev_pid) : nil
+      # Only stop something that is still a user app: a pid the requester ran
+      # earlier may have exited and had its slot taken by an unrelated app, and
+      # a requester must never be able to stop the desktop or itself this way.
+      prev_stoppable = prev_info && prev_pid != pid && run_path_allowed?(prev_info[:path].to_s)
+
+      if !run_path_allowed?(run_path)
+        Log.warn("Run request from pid=#{pid} rejected: #{run_path}")
+        reply_run_result(pid, run_path, nil)
+      elsif prev_stoppable
+        # Stop the old instance and spawn from the exit notification, so its
+        # memory pool is released before the new instance asks for one.
+        Log.info("Run: stopping PID #{prev_pid} first, then #{run_path}")
+        @pending_reload = { path: run_path, requester: pid }
+        stop_data = MessagePack.pack({ "cmd" => "stop" })
+        _send_raw_message(prev_pid, FmrbConst::MSG_TYPE_APP_CONTROL, stop_data)
+      else
+        new_pid = _spawn_app_req(run_path)
+        if new_pid
+          Log.info("Run: spawned #{run_path} as PID #{new_pid}")
+          after_spawn(new_pid)
+        else
+          Log.error("Run: failed to spawn #{run_path}")
+        end
+        reply_run_result(pid, run_path, new_pid)
       end
     when "exit"
       Log.info("App exit notification from pid=#{pid}")

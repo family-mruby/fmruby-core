@@ -8,6 +8,7 @@
 #include "fmrb_log.h"
 #include "fmrb_app.h"
 #include "fmrb_mem.h"
+#include "fmrb_msg.h"
 #include "fmrb_task_config.h"
 #include "fmrb_kernel.h"
 #include "fmrb_toml.h"
@@ -206,6 +207,39 @@ static fmrb_err_t spawn_builtin_app(const builtin_app_entry_t* entry, int32_t* o
         FMRB_LOGE(TAG, "Failed to spawn built-in app: %s (error=%d)", entry->lookup_name, result);
     }
     return result;
+}
+
+/**
+ * Report a freshly spawned user app to the kernel.
+ *
+ * The kernel does the post-spawn work -- window list refresh, fullscreen entry,
+ * keyboard routing -- in its own spawn handler, but this function is also
+ * reached without going through it: the debug daemon calls the C API directly.
+ * Those apps used to start without the keyboard, so the user had to click the
+ * canvas first. The kernel ignores the notification when it already handled
+ * that pid, so sending it unconditionally is safe.
+ *
+ * Payload is msgpack {"cmd":"spawned","pid":N}; pid is a small slot index, so
+ * it always fits a positive fixint.
+ */
+static void notify_kernel_app_spawned(int32_t pid)
+{
+    if (pid < 0 || pid > 0x7F) {
+        return;
+    }
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = (fmrb_proc_id_t)pid,
+    };
+    uint8_t* d = msg.data;
+    size_t p = 0;
+    d[p++] = 0x82;  // fixmap 2
+    d[p++] = 0xA3; memcpy(&d[p], "cmd", 3); p += 3;
+    d[p++] = 0xA7; memcpy(&d[p], "spawned", 7); p += 7;
+    d[p++] = 0xA3; memcpy(&d[p], "pid", 3); p += 3;
+    d[p++] = (uint8_t)pid;
+    msg.size = p;
+    fmrb_msg_send(PROC_ID_KERNEL, &msg, 10);
 }
 
 static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
@@ -408,6 +442,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         if (out_pid) {
             *out_pid = app_id;
         }
+        notify_kernel_app_spawned(app_id);
     } else {
         FMRB_LOGE(TAG, "Failed to spawn user app: %s (error=%d)", app_name, result);
     }

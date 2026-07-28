@@ -47,23 +47,31 @@ static const char *TAG = "fmrb_app";
  *   {"cmd":"stop"} -> 0x81 0xA3 'cmd' 0xA4 'stop'  (10 bytes)
  *   {"cmd":"exit"} -> 0x81 0xA3 'cmd' 0xA4 'exit'  (10 bytes)
  */
+bool fmrb_app_note_control_payload(fmrb_app_task_context_t* ctx, uint8_t msg_type,
+                                   const uint8_t* payload, uint32_t size) {
+    if (!ctx || !payload) return false;
+    if (msg_type != (uint8_t)FMRB_MSG_TYPE_APP_CONTROL || size < 10) {
+        return false;
+    }
+    if (payload[0] != 0x81 || payload[1] != 0xA3 ||
+        memcmp(&payload[2], "cmd", 3) != 0 || payload[5] != 0xA4) {
+        return false;
+    }
+    const uint8_t* cmd = &payload[6];
+    if (memcmp(cmd, "stop", 4) == 0 || memcmp(cmd, "exit", 4) == 0) {
+        ctx->should_exit = true;
+        return true;
+    }
+    return false;
+}
+
 bool fmrb_app_poll_exit_signal(fmrb_app_task_context_t* ctx) {
     if (!ctx) return false;
     if (ctx->should_exit) return true;
 
     fmrb_msg_t msg;
     while (fmrb_msg_receive(ctx->app_id, &msg, 0) == FMRB_OK) {
-        if (msg.type != FMRB_MSG_TYPE_APP_CONTROL || msg.size < 10) {
-            continue;
-        }
-        if (msg.data[0] != 0x81 || msg.data[1] != 0xA3 ||
-            memcmp(&msg.data[2], "cmd", 3) != 0 || msg.data[5] != 0xA4) {
-            continue;
-        }
-        const uint8_t* cmd = &msg.data[6];
-        if (memcmp(cmd, "stop", 4) == 0 || memcmp(cmd, "exit", 4) == 0) {
-            ctx->should_exit = true;
-        }
+        fmrb_app_note_control_payload(ctx, (uint8_t)msg.type, msg.data, msg.size);
     }
     return ctx->should_exit;
 }
@@ -1449,7 +1457,128 @@ unwind:
 }
 
 /**
- * Kill app (forceful termination)
+ * Time an app gets to shut itself down after a kill request before the forced
+ * path takes over. One poll interval of a BASIC/Lua runtime is 10ms and an
+ * mruby app answers within an on_update turn, so a second is generous; going
+ * much higher only makes a hung app stall the caller for longer.
+ */
+#define KILL_GRACE_MS 1000
+#define KILL_POLL_MS  10
+
+/**
+ * Ask an app to terminate itself.
+ *
+ * "stop" is the same request the desktop close button sends: mruby apps handle
+ * it in their own event loop and call destroy(), BASIC and Lua latch it in
+ * fmrb_app_poll_exit_signal() and unwind. Either way the app reaches the
+ * app_task_main cleanup block, which is the only code that frees its memory
+ * handle, semaphore, canvases and message queue.
+ *
+ * should_exit is set as well: it is the signal that survives a full message
+ * queue, and the notify wakes an app blocked in a wait.
+ */
+static void request_app_exit(fmrb_app_task_context_t* ctx, fmrb_task_handle_t task) {
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = PROC_ID_KERNEL,
+    };
+    uint8_t* d = msg.data;
+    size_t p = 0;
+    d[p++] = 0x81;  // fixmap 1
+    d[p++] = 0xA3; memcpy(&d[p], "cmd", 3); p += 3;
+    d[p++] = 0xA4; memcpy(&d[p], "stop", 4); p += 4;
+    msg.size = p;
+    fmrb_msg_send(ctx->app_id, &msg, 10);
+
+    if (task) {
+        fmrb_task_notify_give(task);
+    }
+}
+
+/**
+ * Tell the kernel an app is gone, the way the app itself would have.
+ *
+ * Only needed on the forced path: the kernel drives the window list refresh
+ * and the desktop repaint off this notification, so without it the desktop
+ * keeps showing a window for an app that no longer exists.
+ */
+static void notify_kernel_app_exited(fmrb_proc_id_t app_id) {
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = app_id,
+    };
+    uint8_t* d = msg.data;
+    size_t p = 0;
+    d[p++] = 0x81;  // fixmap 1
+    d[p++] = 0xA3; memcpy(&d[p], "cmd", 3); p += 3;
+    d[p++] = 0xA4; memcpy(&d[p], "exit", 4); p += 4;
+    msg.size = p;
+    fmrb_msg_send(PROC_ID_KERNEL, &msg, 10);
+}
+
+/**
+ * Best effort resource release for the forced path.
+ *
+ * Mirrors the app_task_main cleanup block, minus the parts only the task
+ * itself can do (freeing its script buffer). The VM heap lives in the memory
+ * pool, so destroying the handle reclaims it; destroy_vm() still runs first
+ * because it unregisters the VM from the HAL tick manager and a dangling
+ * registration would outlive the task.
+ *
+ * The task must already be deleted when this runs: nothing here is safe
+ * against the app touching the same fields concurrently.
+ */
+static void force_release_resources(fmrb_app_task_context_t* ctx,
+                                    fmrb_task_handle_t task) {
+    destroy_vm(ctx);
+
+    fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+    if (gfx_ctx) {
+        if (ctx->canvas_id != 0) {
+            fmrb_gfx_delete_canvas(gfx_ctx, ctx->canvas_id);
+            ctx->canvas_id = 0;
+        }
+        if (ctx->has_background_canvas && ctx->bg_canvas_id != 0) {
+            fmrb_gfx_delete_canvas(gfx_ctx, ctx->bg_canvas_id);
+            ctx->bg_canvas_id = 0;
+        }
+        for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
+            if (ctx->extra_canvas_ids[i] != 0) {
+                fmrb_gfx_delete_canvas(gfx_ctx, ctx->extra_canvas_ids[i]);
+                ctx->extra_canvas_ids[i] = 0;
+            }
+        }
+    }
+
+    fmrb_msg_delete_queue(ctx->app_id);
+
+#ifndef CONFIG_IDF_TARGET_LINUX
+    // The handle is only a lookup key in the resource table, so releasing
+    // after the delete is fine and it is the only order available here.
+    hw_proxy_release_resources((hw_proxy_task_handle_t)task);
+#else
+    (void)task;
+#endif
+
+    if (ctx->mem_handle >= 0) {
+        fmrb_mem_destroy_handle(ctx->mem_handle);
+        ctx->mem_handle = -1;
+    }
+    if (ctx->semaphore) {
+        fmrb_semaphore_delete(ctx->semaphore);
+        ctx->semaphore = NULL;
+    }
+    if (ctx->mempool_id == POOL_ID_USER_APP_LARGE) {
+        g_large_pool_in_use = false;
+    }
+}
+
+/**
+ * Kill app: ask it to terminate itself, force only if it does not.
+ *
+ * Returns true once the slot is free. The cooperative path is not just
+ * politeness -- a forced delete skips the app's cleanup block, which leaks the
+ * memory pool handle, and a respawn of the same app then fails to allocate.
  */
 bool fmrb_app_kill(int32_t id) {
     if (id < 0 || id >= FMRB_MAX_APPS) return false;
@@ -1463,27 +1592,68 @@ bool fmrb_app_kill(int32_t id) {
         return false;
     }
 
-    transition_state(ctx, PROC_STATE_STOPPING);
+    // Leave the state alone: the app's own exit path moves it to STOPPING once
+    // its resources are gone, and that is what this function waits for.
+    ctx->should_exit = true;
     fmrb_task_handle_t task = ctx->task;
+    const uint32_t gen = ctx->gen;
+    fmrb_semaphore_give(g_ctx_lock);
+
+    request_app_exit(ctx, task);
+
+    for (uint32_t waited = 0; waited < KILL_GRACE_MS; waited += KILL_POLL_MS) {
+        fmrb_task_delay(FMRB_MS_TO_TICKS(KILL_POLL_MS));
+
+        fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+        const fmrb_proc_state_t state = ctx->state;
+        const bool reused = ctx->gen != gen;
+        fmrb_semaphore_give(g_ctx_lock);
+
+        if (reused || state == PROC_STATE_FREE) {
+            // The kernel reaper got there first (or the slot was respawned).
+            FMRB_LOGI(TAG, "[%s gen=%u] Exited on request", ctx->app_name, gen);
+            return true;
+        }
+        if (state == PROC_STATE_STOPPING || state == PROC_STATE_INIT) {
+            // Cleanup done and the task is parked. Reap it here instead of
+            // waiting for the kernel to process the exit notification, so the
+            // caller can respawn immediately. The kernel's later reap of the
+            // same pid is a no-op (fmrb_app_reap rejects a re-used slot).
+            FMRB_LOGI(TAG, "[%s gen=%u] Exited on request, reaping", ctx->app_name, gen);
+            return fmrb_app_reap(id);
+        }
+    }
+
+    // Forced path: the app never answered. Everything below is what the app
+    // would have done for itself; see force_release_resources for what cannot
+    // be recovered from here.
+    FMRB_LOGW(TAG, "[%s gen=%u] No response in %ums, forcing termination",
+              ctx->app_name, gen, KILL_GRACE_MS);
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    if (ctx->gen != gen) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return true;  // slot moved on under us
+    }
+    transition_state(ctx, PROC_STATE_STOPPING);
+    task = ctx->task;
     ctx->task = 0;  // prevent double-delete from a subsequent reap
     fmrb_semaphore_give(g_ctx_lock);
 
-    // Notify task to terminate
     if (task) {
-        fmrb_task_notify_give(task);  // Wake up task if waiting
-        fmrb_task_delete(task);       // Force delete
+        fmrb_task_delete(task);
     }
+    force_release_resources(ctx, task);
 
-    // Move slot to FREE so it can be reused. Note: this leaves resources
-    // (mem handle, semaphore, etc.) leaked since kill bypasses app_task_main
-    // cleanup. Kill is an emergency path; prefer graceful exit when possible.
     fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     if (ctx->state == PROC_STATE_STOPPING) {
         transition_state(ctx, PROC_STATE_FREE);
     }
     fmrb_semaphore_give(g_ctx_lock);
 
-    FMRB_LOGI(TAG, "[%s gen=%u] Killed", ctx->app_name, ctx->gen);
+    notify_kernel_app_exited(ctx->app_id);
+
+    FMRB_LOGW(TAG, "[%s gen=%u] Killed by force", ctx->app_name, gen);
     return true;
 }
 
@@ -1540,7 +1710,8 @@ bool fmrb_app_reap(int32_t id) {
  * Stop app (graceful shutdown)
  */
 bool fmrb_app_stop(int32_t id) {
-    // For now, same as kill (TODO: implement graceful shutdown signal)
+    // Same as kill: that path asks the app to terminate itself first and only
+    // forces the delete when the app does not answer.
     return fmrb_app_kill(id);
 }
 
