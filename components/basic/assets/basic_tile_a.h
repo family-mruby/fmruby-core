@@ -17,7 +17,7 @@ extern "C" {
 #endif
 
 /// Sprite tile bitmaps, indexed by table A character code.
-extern const uint8_t basic_tile_a[256][8];
+extern const uint16_t basic_tile_a[256][8];
 
 #ifdef __cplusplus
 }

@@ -160,6 +160,9 @@ enum class token : uint8_t {
     var_num = 0x03,  ///< + 2 name bytes
     var_str = 0x04,  ///< + 2 name bytes
     raw = 0x05,      ///< + length byte + bytes (REM / DATA payload)
+    /// Same payload as ::number; a separate token only so LIST and SAVE can
+    /// print the literal back in the base it was written in (&H1234).
+    number_hex = 0x06,
     le = 0x10,       ///< <=
     ge = 0x11,       ///< >=
     ne = 0x12,       ///< <>
@@ -184,6 +187,11 @@ enum class token : uint8_t {
 #undef FMRB_BASIC_TOKEN_ENUM
         keyword_last,
 };
+
+/// Both spellings of a numeric literal; they carry the same two value bytes.
+inline constexpr bool is_number(token tk) noexcept {
+    return tk == token::number || tk == token::number_hex;
+}
 
 /// One keyword table row.
 struct keyword_entry {

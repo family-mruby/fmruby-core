@@ -19,12 +19,13 @@ static const char *TAG = "basic_assets";
 
 #define SHEET_COLS   16
 #define CELL         8
-#define TABLE_BYTES  (256 * 8)
+/// One glyph is 8 rows of 16 bits (2 bits per pixel), so 4KB for 256 of them.
+#define TABLE_BYTES  (256 * 8 * (int)sizeof(uint16_t))
 /// 128 pixels at 8bpp is the widest row this loader accepts, plus BMP padding.
 #define MAX_ROW_BYTES 132
 
-static uint8_t (*s_font)[8];
-static uint8_t (*s_tile)[8];
+static uint16_t (*s_font)[8];
+static uint16_t (*s_tile)[8];
 
 static uint16_t rd16(const uint8_t *p) {
     return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
@@ -58,7 +59,7 @@ static uint8_t row_index(const uint8_t *row, uint16_t bpp, int32_t x) {
 }
 
 /// Read the pixel rows one at a time; a whole 8bpp sheet would be 16KB of heap.
-static bool load_rows(fmrb_file_t file, uint8_t dst[256][8], uint32_t bits_offset,
+static bool load_rows(fmrb_file_t file, uint16_t dst[256][8], uint32_t bits_offset,
                       uint32_t stride, uint16_t bpp, bool top_down) {
     uint8_t row[MAX_ROW_BYTES];
 
@@ -69,17 +70,28 @@ static bool load_rows(fmrb_file_t file, uint8_t dst[256][8], uint32_t bits_offse
             return false;
         }
         for (int32_t x = 0; x < BASIC_ASSET_SHEET_DIM; x++) {
-            if (row_index(row, bpp, x) == 0) {
+            uint8_t index = row_index(row, bpp, x);
+            if (index == 0) {
                 continue;  // palette index 0 = off / transparent
             }
+            // A 1bpp sheet has no second colour: its ink is index 3, the colour
+            // single colour artwork has always been drawn in.
+            if (bpp == 1) {
+                index = 3;
+            } else if (index > 3) {
+                // Indices past the four the renderer knows are ink as well; a
+                // sheet saved from an editor with a bigger palette still works.
+                index = 3;
+            }
             const uint8_t code = (uint8_t)((y / CELL) * SHEET_COLS + (x / CELL));
-            dst[code][y % CELL] |= (uint8_t)(0x80u >> (x % CELL));
+            const uint8_t shift = (uint8_t)(14 - 2 * (x % CELL));
+            dst[code][y % CELL] |= (uint16_t)((uint16_t)index << shift);
         }
     }
     return true;
 }
 
-static bool load_sheet(const char *path, uint8_t dst[256][8]) {
+static bool load_sheet(const char *path, uint16_t dst[256][8]) {
     fmrb_file_t file = NULL;
     if (fmrb_hal_file_open(path, FMRB_O_RDONLY, &file) != FMRB_OK) {
         return false;  // no sheet on this filesystem: keep the built-in table
@@ -122,12 +134,12 @@ static bool load_sheet(const char *path, uint8_t dst[256][8]) {
 }
 
 /// Load one sheet into its (lazily allocated) table, or drop back to built-in.
-static void reload_one(const char *path, uint8_t (**slot)[8]) {
-    uint8_t (*table)[8] = *slot;
+static void reload_one(const char *path, uint16_t (**slot)[8]) {
+    uint16_t (*table)[8] = *slot;
     const bool allocated = table != NULL;
 
     if (!allocated) {
-        table = (uint8_t (*)[8])fmrb_sys_malloc(TABLE_BYTES);
+        table = (uint16_t (*)[8])fmrb_sys_malloc(TABLE_BYTES);
         if (!table) {
             return;  // built-in table stays in use
         }
@@ -154,10 +166,31 @@ void basic_assets_reload(void) {
     reload_one(TILE_SHEET_PATH, &s_tile);
 }
 
-const uint8_t (*basic_assets_font(void))[8] {
-    return s_font ? (const uint8_t (*)[8])s_font : basic_font8;
+/// Expand one 1bpp row (bit 7 leftmost) into 2bpp, ink = index 3.
+static uint16_t promote_row(uint8_t bits) {
+    uint16_t out = 0;
+    for (uint8_t x = 0; x < CELL; x++) {
+        if (bits & (uint8_t)(0x80u >> x)) {
+            out |= (uint16_t)(3u << (14 - 2 * x));
+        }
+    }
+    return out;
 }
 
-const uint8_t (*basic_assets_tile_a(void))[8] {
-    return s_tile ? (const uint8_t (*)[8])s_tile : basic_tile_a;
+void basic_assets_glyph(bool table_a, uint8_t code, uint16_t out[8]) {
+    const uint16_t (*loaded)[8] = table_a ? s_tile : s_font;
+    if (loaded) {
+        memcpy(out, loaded[code], 8 * sizeof(uint16_t));
+        return;
+    }
+    if (table_a) {
+        // Table A is 2bpp in rodata: its placeholder art uses three colours.
+        memcpy(out, basic_tile_a[code], 8 * sizeof(uint16_t));
+        return;
+    }
+    // The text font stays 1bpp in rodata (glyphs need no second colour) and is
+    // promoted here, which keeps 2KB of flash that a 2bpp copy would spend.
+    for (uint8_t row = 0; row < 8; row++) {
+        out[row] = promote_row(basic_font8[code][row]);
+    }
 }

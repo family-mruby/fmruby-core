@@ -26,8 +26,14 @@ module BasicSheet
 
   module_function
 
-  # [256][8] row bitmaps -> [128][128] palette indices.
-  def glyphs_to_pixels(glyphs)
+  # [256][8] glyph rows -> [128][128] palette indices.
+  #
+  # Rows are either 1bpp (bit 7 = leftmost pixel, the text font) or 2bpp
+  # (leftmost pixel is the top pair, table A); which one is decided by whether
+  # any row needs more than 8 bits. 1bpp ink becomes index 3, the same
+  # promotion the firmware does when it reads a 1bpp source.
+  def glyphs_to_pixels(glyphs, two_bpp = nil)
+    two_bpp = glyphs.flatten.any? { |v| v > 0xFF } if two_bpp.nil?
     px = Array.new(DIM) { Array.new(DIM, 0) }
     256.times do |code|
       ox = (code % COLS) * CELL
@@ -35,21 +41,28 @@ module BasicSheet
       CELL.times do |row|
         bits = glyphs[code][row]
         CELL.times do |col|
-          px[oy + row][ox + col] = 1 if bits & (0x80 >> col) != 0
+          index = if two_bpp
+                    (bits >> (14 - 2 * col)) & 3
+                  else
+                    (bits & (0x80 >> col)) != 0 ? 3 : 0
+                  end
+          px[oy + row][ox + col] = index
         end
       end
     end
     px
   end
 
-  # [128][128] palette indices -> [256][8] row bitmaps (index != 0 = on).
+  # [128][128] palette indices -> [256][8] 2bpp glyph rows.
   def pixels_to_glyphs(px)
     glyphs = Array.new(256) { Array.new(CELL, 0) }
     DIM.times do |y|
       DIM.times do |x|
-        next if px[y][x] == 0
+        index = px[y][x]
+        next if index == 0
+        index = 3 if index > 3
         code = (y / CELL) * COLS + (x / CELL)
-        glyphs[code][y % CELL] |= 0x80 >> (x % CELL)
+        glyphs[code][y % CELL] |= index << (14 - 2 * (x % CELL))
       end
     end
     glyphs

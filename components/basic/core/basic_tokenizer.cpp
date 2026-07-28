@@ -105,6 +105,7 @@ int32_t interpreter::crunch_line(const uint8_t* src, size_t len, uint8_t* out,
         // Numeric literal, decimal or &H hex (core_spec sec 2).
         if (is_digit(c) || (c == '&' && pos + 1 < len && src[pos + 1] == 'H')) {
             uint32_t value = 0;
+            const bool hex = (c == '&');
             if (c == '&') {
                 pos += 2;
                 if (pos >= len || !is_hex_digit(src[pos])) {
@@ -132,7 +133,9 @@ int32_t interpreter::crunch_line(const uint8_t* src, size_t len, uint8_t* out,
                     ++pos;
                 }
             }
-            if (!emit(static_cast<uint8_t>(token::number)) ||
+            // The base is kept in the token so LIST and SAVE can write the
+            // literal the way it was typed; the value bytes are the same.
+            if (!emit(static_cast<uint8_t>(hex ? token::number_hex : token::number)) ||
                 !emit(static_cast<uint8_t>(value & 0xFF)) ||
                 !emit(static_cast<uint8_t>((value >> 8) & 0xFF))) {
                 raise(error_code::out_of_memory, -1);
@@ -269,6 +272,20 @@ size_t interpreter::decrunch_line(uint16_t index, char* out, size_t out_size) co
         }
     };
 
+    auto put_hex = [&](uint16_t value) noexcept {
+        // Upper case, no leading zeros, which is how the spec writes them.
+        char digits[4];
+        size_t n = 0;
+        do {
+            const uint8_t d = static_cast<uint8_t>(value & 0xF);
+            digits[n++] = static_cast<char>(d < 10 ? '0' + d : 'A' + (d - 10));
+            value = static_cast<uint16_t>(value >> 4);
+        } while (value != 0 && n < sizeof(digits));
+        while (n > 0) {
+            put(digits[--n]);
+        }
+    };
+
     put_num(lines_[index].number);
     put(' ');
 
@@ -281,6 +298,15 @@ size_t interpreter::decrunch_line(uint16_t index, char* out, size_t out_size) co
             break;
         }
         switch (tk) {
+            case token::number_hex: {
+                const uint16_t raw =
+                    static_cast<uint16_t>(code[at + 1] | (code[at + 2] << 8));
+                put('&');
+                put('H');
+                put_hex(raw);
+                at += 3;
+                break;
+            }
             case token::number: {
                 const uint16_t raw =
                     static_cast<uint16_t>(code[at + 1] | (code[at + 2] << 8));
@@ -341,6 +367,20 @@ size_t interpreter::decrunch_line(uint16_t index, char* out, size_t out_size) co
                 break;
             default: {
                 if (is_keyword(tk)) {
+                    // LOAD? is LOAD followed by PRINT: '?' is PRINT's shorthand
+                    // and crunches to that token. Printing "LOAD PRINT" back
+                    // would not reload, so put the '?' where it belongs.
+                    if (tk == token::print && at > 0 &&
+                        static_cast<token>(code[at - 1]) == token::load) {
+                        // The trailing space after LOAD is already out; step on
+                        // it so the '?' sits against the keyword.
+                        if (outp > 0 && out[outp - 1] == ' ') {
+                            --outp;
+                        }
+                        put('?');
+                        ++at;
+                        break;
+                    }
                     const keyword_entry* kw = keyword_info(tk);
                     if (kw) {
                         for (const char* p = kw->name; *p != '\0'; ++p) {

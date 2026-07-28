@@ -187,6 +187,11 @@ typedef struct {
                     uint8_t c2, uint8_t c3);
     /// CGEN: text plane character table (true = table A).
     void (*charset)(void* user_data, bool table_a);
+    /// FILTER: tint the BG plane (0 = none, 1-7 the filter colours).
+    void (*filter)(void* user_data, uint8_t color);
+    /// PALET S: the sprite plane's own palette group.
+    void (*sprite_palette)(void* user_data, uint8_t attr, uint8_t c1, uint8_t c2,
+                           uint8_t c3);
     void* user_data;
 } basic_screen_ops_t;
 

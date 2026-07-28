@@ -215,6 +215,8 @@ struct basic_host_t {
     bool (*audio_play)(void* user, const uint8_t* data, uint16_t len);
     /// Short fixed tone (BEEP).
     void (*audio_beep)(void* user);
+    /// FILTER: tint the whole BG plane, 0 = none, 1-7 the filter colours.
+    void (*screen_filter)(void* user, uint8_t color);
     /// The text plane switched character table (CGEN): true = table A.
     void (*screen_charset)(void* user, bool table_a);
     /// A sprite was defined, moved, shown or hidden.
@@ -238,6 +240,11 @@ struct basic_host_t {
      */
     void (*screen_palette)(void* user, uint8_t attr, uint8_t backdrop, uint8_t c1,
                            uint8_t c2, uint8_t c3);
+    /**
+     * Sprite plane palette (PALET S). Same colour codes, but its own bank: the
+     * sprite plane has its own palette and FILTER does not tint it.
+     */
+    void (*sprite_palette)(void* user, uint8_t attr, uint8_t c1, uint8_t c2, uint8_t c3);
     /// Opaque pointer handed back to every callback.
     void* user;
 };

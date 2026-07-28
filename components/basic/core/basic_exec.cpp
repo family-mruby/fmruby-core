@@ -16,6 +16,7 @@ constexpr uint8_t max_ext_args = 8;
 bool starts_expression(token tk) noexcept {
     switch (tk) {
         case token::number:
+        case token::number_hex:
         case token::string:
         case token::var_num:
         case token::var_str:
@@ -633,7 +634,7 @@ bool interpreter::st_if() noexcept {
         return true;
     }
 
-    if (peek_token() == token::number) {
+    if (is_number(peek_token())) {
         read_byte();
         const uint8_t lo = read_byte();
         const uint8_t hi = read_byte();
@@ -773,7 +774,7 @@ bool interpreter::st_next() noexcept {
 }
 
 bool interpreter::st_goto() noexcept {
-    if (peek_token() != token::number) {
+    if (!is_number(peek_token())) {
         return raise_here(error_code::syntax);
     }
     read_byte();
@@ -783,7 +784,7 @@ bool interpreter::st_goto() noexcept {
 }
 
 bool interpreter::st_gosub() noexcept {
-    if (peek_token() != token::number) {
+    if (!is_number(peek_token())) {
         return raise_here(error_code::syntax);
     }
     read_byte();
@@ -805,7 +806,7 @@ bool interpreter::st_return() noexcept {
     }
     const basic_gosub_frame frame = gosub_stack_[--gosub_top_];
 
-    if (peek_token() == token::number) {
+    if (is_number(peek_token())) {
         // RETURN <line> resumes somewhere else (v3_spec).
         read_byte();
         const uint8_t lo = read_byte();
@@ -835,7 +836,7 @@ bool interpreter::st_on() noexcept {
     uint16_t target = 0;
     bool found = false;
     while (true) {
-        if (peek_token() != token::number) {
+        if (!is_number(peek_token())) {
             return raise_here(error_code::syntax);
         }
         read_byte();
@@ -1065,7 +1066,16 @@ bool interpreter::st_filter() noexcept {
     if (color < 0 || color > 7) {
         return raise_here(error_code::illegal_function_call);
     }
+    if (filter_color_ == static_cast<uint8_t>(color)) {
+        return true;
+    }
     filter_color_ = static_cast<uint8_t>(color);
+    if (host_.screen_filter) {
+        host_.screen_filter(host_.user, filter_color_);
+        // The renderer holds the tinted palette; repaint what is on screen with
+        // it, the same way PALET does.
+        screen_refresh();
+    }
     return true;
 }
 
@@ -1190,7 +1200,7 @@ bool interpreter::st_on_error() noexcept {
     if (!expect(token::error) || !expect(token::goto_)) {
         return false;
     }
-    if (peek_token() != token::number) {
+    if (!is_number(peek_token())) {
         return raise_here(error_code::syntax);
     }
     read_byte();
@@ -1217,7 +1227,7 @@ bool interpreter::st_resume() noexcept {
     if (peek_token() == token::next) {
         read_byte();
         to_next = true;
-    } else if (peek_token() == token::number) {
+    } else if (is_number(peek_token())) {
         read_byte();
         const uint8_t lo = read_byte();
         const uint8_t hi = read_byte();
@@ -1332,7 +1342,7 @@ bool interpreter::read_data_value(bool want_string, basic_value* out) noexcept {
                         break;
                     }
                     // Step over this token, operands included.
-                    if (tk == token::number) {
+                    if (is_number(tk)) {
                         at += 3;
                     } else if (tk == token::var_num || tk == token::var_str) {
                         at += 3;
@@ -1469,7 +1479,7 @@ bool interpreter::st_read() noexcept {
 
 bool interpreter::st_restore() noexcept {
     uint16_t line_index = 0;
-    if (peek_token() == token::number) {
+    if (is_number(peek_token())) {
         read_byte();
         const uint8_t lo = read_byte();
         const uint8_t hi = read_byte();

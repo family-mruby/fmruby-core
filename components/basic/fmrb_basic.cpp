@@ -468,6 +468,20 @@ void host_screen_charset(void* user, bool table_a) {
     }
 }
 
+void host_sprite_palette(void* user, uint8_t attr, uint8_t c1, uint8_t c2, uint8_t c3) {
+    basic_state* state = static_cast<basic_state*>(user);
+    if (state->screen.sprite_palette) {
+        state->screen.sprite_palette(state->screen.user_data, attr, c1, c2, c3);
+    }
+}
+
+void host_screen_filter(void* user, uint8_t color) {
+    basic_state* state = static_cast<basic_state*>(user);
+    if (state->screen.filter) {
+        state->screen.filter(state->screen.user_data, color);
+    }
+}
+
 void host_debug_line(void* user, const char* text) {
     // Screen dumps go to the log with their own prefix, so the headless
     // harness can pull them out with a line filter (phase_b0_report sec 3.3).
@@ -559,6 +573,8 @@ fmrb_basic::basic_host_t make_host(basic_state* state) {
     host.screen_fill = host_screen_fill;
     host.screen_palette = host_screen_palette;
     host.screen_charset = host_screen_charset;
+    host.screen_filter = host_screen_filter;
+    host.sprite_palette = host_sprite_palette;
     host.debug_line = host_debug_line;
     host.program_write = host_program_write;
     host.audio_play = host_audio_play;

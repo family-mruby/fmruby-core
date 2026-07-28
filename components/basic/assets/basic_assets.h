@@ -8,14 +8,16 @@
  *
  * Sheet format: uncompressed indexed BMP, 128x128 pixels = 16 x 16 cells of
  * 8x8, character code = row * 16 + column. 1, 4 and 8 bits per pixel are
- * accepted. Palette index 0 is "off" (background / transparent); every other
- * index is "on". Four-colour sheets can therefore already be drawn and stored
- * for the eventual 2bpp colour attribute support -- today the renderer only
- * uses one colour per cell, so the indices collapse to a mask.
+ * accepted; the palette index of each pixel is the colour index 0-3 the
+ * renderer draws (0 = backdrop / transparent, 1-3 the colours of the cell's
+ * attribute group). A 1bpp sheet, and the compiled font table, are read as
+ * 0 -> 0 and 1 -> 3, so single colour artwork keeps drawing in the colour it
+ * always did.
  */
 
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -34,11 +36,21 @@ extern "C" {
  */
 void basic_assets_reload(void);
 
-/// Table B glyphs (text screen): 256 entries of 8 rows, bit 7 = leftmost pixel.
-const uint8_t (*basic_assets_font(void))[8];
-
-/// Table A tiles (sprite / animation characters), same layout as the glyphs.
-const uint8_t (*basic_assets_tile_a(void))[8];
+/**
+ * @brief Read one character as 2 bits per pixel.
+ *
+ * Rows are top first. Within a row the leftmost pixel is the most significant
+ * pair: index of pixel x = (row >> (14 - 2 * x)) & 3.
+ *
+ * Reading through a call rather than exposing the table keeps the font in
+ * rodata as 1bpp (it needs no second colour) while table A and any loaded sheet
+ * are 2bpp -- callers do not have to care which.
+ *
+ * @param table_a true for the sprite / animation tiles, false for text glyphs
+ * @param code    character code
+ * @param out     eight rows, filled by this call
+ */
+void basic_assets_glyph(bool table_a, uint8_t code, uint16_t out[8]);
 
 #ifdef __cplusplus
 }

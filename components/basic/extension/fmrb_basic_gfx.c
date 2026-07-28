@@ -98,6 +98,10 @@ static void set_image_target(basic_console_ctx_t* console, uint16_t image_id) {
     send_gfx_command(&cmd);
 }
 
+/// RGB332 for colour index 0-3 of an attribute group; 0 is the backdrop.
+static uint8_t index_rgb(const basic_console_ctx_t* console, const uint8_t table[4][3],
+                         uint8_t group, uint8_t index);
+
 /// Draw the glyph into its sheet slot if it is not cached yet.
 static bool ensure_glyph(basic_console_ctx_t* console, uint8_t code, uint8_t attr) {
     if (console->sheet_id[attr] == 0) {
@@ -122,22 +126,26 @@ static bool ensure_glyph(basic_console_ctx_t* console, uint8_t code, uint8_t att
     set_image_target(console, console->sheet_id[attr]);
     fill_rect(console, sx, sy, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
               console->backdrop_rgb);
-    const uint8_t* glyph = console->text_table_a ? basic_assets_tile_a()[code]
-                                                 : basic_assets_font()[code];
+    uint16_t glyph[BASIC_SCREEN_CELL_H];
+    basic_assets_glyph(console->text_table_a, code, glyph);
     for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
-        uint8_t bits = glyph[row];
+        const uint16_t bits = glyph[row];
         uint8_t col = 0;
         while (bits != 0 && col < BASIC_SCREEN_CELL_W) {
-            if ((bits & (0x80 >> col)) == 0) {
+            const uint8_t index = (uint8_t)((bits >> (14 - 2 * col)) & 3);
+            if (index == 0) {
                 col++;
-                continue;
+                continue;  // backdrop: already filled
             }
+            // Runs of one colour become one rectangle, which is what keeps a
+            // full screen repaint inside the link budget (B3 report).
             uint8_t run = 1;
-            while (col + run < BASIC_SCREEN_CELL_W && (bits & (0x80 >> (col + run)))) {
+            while (col + run < BASIC_SCREEN_CELL_W &&
+                   ((bits >> (14 - 2 * (col + run))) & 3) == index) {
                 run++;
             }
             fill_rect(console, (int16_t)(sx + col), (int16_t)(sy + row), run, 1,
-                      console->attr_rgb[attr]);
+                      index_rgb(console, console->attr_rgb, attr, index));
             col = (uint8_t)(col + run);
         }
     }
@@ -207,22 +215,24 @@ void basic_console_draw_cell(void* user_data, uint8_t x, uint8_t y, uint8_t code
         // No sheet (out of image memory): fall back to drawing the runs.
         fill_rect(console, px, py, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
                   console->backdrop_rgb);
-        const uint8_t* glyph = console->text_table_a ? basic_assets_tile_a()[code]
-                                                     : basic_assets_font()[code];
+        uint16_t glyph[BASIC_SCREEN_CELL_H];
+        basic_assets_glyph(console->text_table_a, code, glyph);
         for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
-            uint8_t bits = glyph[row];
+            const uint16_t bits = glyph[row];
             uint8_t col = 0;
             while (bits != 0 && col < BASIC_SCREEN_CELL_W) {
-                if ((bits & (0x80 >> col)) == 0) {
+                const uint8_t index = (uint8_t)((bits >> (14 - 2 * col)) & 3);
+                if (index == 0) {
                     col++;
                     continue;
                 }
                 uint8_t run = 1;
-                while (col + run < BASIC_SCREEN_CELL_W && (bits & (0x80 >> (col + run)))) {
+                while (col + run < BASIC_SCREEN_CELL_W &&
+                       ((bits >> (14 - 2 * (col + run))) & 3) == index) {
                     run++;
                 }
                 fill_rect(console, (int16_t)(px + col), (int16_t)(py + row), run, 1,
-                          console->attr_rgb[attr]);
+                          index_rgb(console, console->attr_rgb, attr, index));
                 col = (uint8_t)(col + run);
             }
         }
@@ -274,20 +284,116 @@ void basic_console_present(void* user_data) {
     send_gfx_command(&cmd);
 }
 
+/**
+ * FILTER tint colours, as RGB332 components (r 0-7, g 0-7, b 0-3).
+ *
+ * v3_spec numbers them 1=red 2=green 3=yellow 4=blue 5=magenta 6=cyan 7=white,
+ * index 0 being no filter. The mixing below (half way towards the tint) is a
+ * placeholder: the real machine tints through the PPU, and the values here are
+ * meant to be replaced once a recording of it is available. Both this table and
+ * apply_filter() are the only things to change then.
+ */
+static const uint8_t FILTER_TINT[8][3] = {
+    {0, 0, 0},  // 0: unused, no filter
+    {7, 0, 0},  // 1: red
+    {0, 7, 0},  // 2: green
+    {7, 7, 0},  // 3: yellow
+    {0, 0, 3},  // 4: blue
+    {7, 0, 3},  // 5: magenta
+    {0, 7, 3},  // 6: cyan
+    {7, 7, 3},  // 7: white
+};
+
+/// Mix a colour a quarter of the way towards the filter tint, in RGB332 space.
+/// The spec calls the effect "lightly coloured", so the weight is small; it is
+/// part of the placeholder and moves with the table above.
+static uint8_t apply_filter(uint8_t rgb, uint8_t filter) {
+    if (filter == 0 || filter > 7) {
+        return rgb;
+    }
+    const uint8_t r = (uint8_t)((rgb >> 5) & 0x07);
+    const uint8_t g = (uint8_t)((rgb >> 2) & 0x07);
+    const uint8_t b = (uint8_t)(rgb & 0x03);
+    const uint8_t tr = (uint8_t)((3 * r + FILTER_TINT[filter][0] + 2) / 4);
+    const uint8_t tg = (uint8_t)((3 * g + FILTER_TINT[filter][1] + 2) / 4);
+    const uint8_t tb = (uint8_t)((3 * b + FILTER_TINT[filter][2] + 2) / 4);
+    return (uint8_t)((tr << 5) | (tg << 2) | tb);
+}
+
+/// Forget what is on the canvas so the next cell updates all repaint.
+static void invalidate_cells(basic_console_ctx_t* console) {
+    // 0xFF is not a valid attribute (they are masked to 0-3), so every cell
+    // compares as changed.
+    memset(console->drawn_attr, 0xFF, sizeof(console->drawn_attr));
+}
+
+/// Turn the stored colour codes into RGB332 through the code table and FILTER.
+/// FILTER is a BG plane effect (v3_spec), so the sprite colours skip it.
+static void recompute_palette(basic_console_ctx_t* console) {
+    console->backdrop_rgb =
+        apply_filter(COLOR_RGB332[console->backdrop_code & 0x3F], console->filter_color);
+    for (uint8_t group = 0; group < 4; group++) {
+        for (uint8_t i = 0; i < 3; i++) {
+            console->attr_rgb[group][i] = apply_filter(
+                COLOR_RGB332[console->attr_code[group][i] & 0x3F], console->filter_color);
+            console->sprite_rgb[group][i] =
+                COLOR_RGB332[console->sprite_code[group][i] & 0x3F];
+        }
+    }
+    invalidate_glyphs(console);
+    invalidate_cells(console);
+}
+
+static uint8_t index_rgb(const basic_console_ctx_t* console, const uint8_t table[4][3],
+                         uint8_t group, uint8_t index) {
+    if (index == 0) {
+        return console->backdrop_rgb;
+    }
+    return table[group & 3][(index - 1) & 3];
+}
+
+void basic_console_set_filter(void* user_data, uint8_t color) {
+    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
+    if (!console || color > 7 || console->filter_color == color) {
+        return;
+    }
+    console->filter_color = color;
+    // The interpreter repaints every cell right after this (screen_refresh),
+    // which is what puts the new colours on the canvas.
+    recompute_palette(console);
+    FMRB_LOGI(TAG, "FILTER %u", color);
+}
+
 void basic_console_set_palette(void* user_data, uint8_t attr, uint8_t backdrop,
                                uint8_t c1, uint8_t c2, uint8_t c3) {
     basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
     if (!console || attr > 3) {
         return;
     }
-    (void)c1;
-    (void)c2;
-    // Text uses the third colour of the group as the glyph colour and the
-    // shared backdrop behind it; the other two belong to multi colour tiles
-    // (B3, when the BG pattern set arrives).
-    console->attr_rgb[attr] = COLOR_RGB332[c3 & 0x3F];
-    console->backdrop_rgb = COLOR_RGB332[backdrop & 0x3F];
-    invalidate_glyphs(console);
+    // The three colours of the group are the ink indices 1-3; index 0 is the
+    // shared backdrop. Single colour artwork draws in index 3, which is why
+    // that one is the "text colour" a program sets with COLOR.
+    console->attr_code[attr][0] = c1;
+    console->attr_code[attr][1] = c2;
+    console->attr_code[attr][2] = c3;
+    console->backdrop_code = backdrop;
+    recompute_palette(console);
+}
+
+void basic_console_set_sprite_palette(void* user_data, uint8_t attr, uint8_t c1,
+                                      uint8_t c2, uint8_t c3) {
+    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
+    if (!console || attr > 3) {
+        return;
+    }
+    console->sprite_code[attr][0] = c1;
+    console->sprite_code[attr][1] = c2;
+    console->sprite_code[attr][2] = c3;
+    recompute_palette(console);
+    // Sprite images hold their colours; redraw them with the new palette.
+    for (uint8_t i = 0; i < BASIC_SPRITE_SLOTS; i++) {
+        console->sprites[i].repaint = true;
+    }
 }
 
 // --- sprite plane ----------------------------------------------------------
@@ -308,10 +414,7 @@ static void sprite_instance_visible(basic_console_ctx_t* console, uint16_t insta
 /// Paint one sprite image from the tile bitmaps, honouring the flip flags.
 static void draw_sprite_image(basic_console_ctx_t* console, uint16_t image_id,
                               const basic_sprite_view* sprite) {
-    const uint8_t (*tiles)[8] =
-        sprite->table_a ? basic_assets_tile_a() : basic_assets_font();
     const uint8_t size = sprite->size16 ? 2 : 1;  // tiles per side
-    const uint8_t fg = console->attr_rgb[sprite->attr & 3];
 
     set_image_target(console, image_id);
     // Transparent background: colour 0 is the image's transparent key.
@@ -323,13 +426,19 @@ static void draw_sprite_image(basic_console_ctx_t* console, uint16_t image_id,
         // bottom right (core_spec sec 8).
         const uint8_t tile_col = (uint8_t)(t % size);
         const uint8_t tile_row = (uint8_t)(t / size);
-        const uint8_t* glyph = tiles[sprite->tiles[t]];
+        uint16_t glyph[BASIC_SCREEN_CELL_H];
+        basic_assets_glyph(sprite->table_a, sprite->tiles[t], glyph);
         for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
-            uint8_t bits = glyph[row];
+            const uint16_t bits = glyph[row];
             for (uint8_t col = 0; col < BASIC_SCREEN_CELL_W; col++) {
-                if ((bits & (0x80 >> col)) == 0) {
-                    continue;
+                const uint8_t index = (uint8_t)((bits >> (14 - 2 * col)) & 3);
+                if (index == 0) {
+                    continue;  // transparent
                 }
+                // Sprites are drawn from the sprite palette, and index 0 is
+                // transparency rather than the backdrop.
+                const uint8_t fg =
+                    console->sprite_rgb[sprite->attr & 3][(index - 1) & 3];
                 uint8_t px = (uint8_t)(tile_col * BASIC_SCREEN_CELL_W + col);
                 uint8_t py = (uint8_t)(tile_row * BASIC_SCREEN_CELL_H + row);
                 if (sprite->flip_x) {
@@ -367,7 +476,8 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
 
     // The image only has to be repainted when the artwork changes; a sprite
     // that merely moves or changes direction keeps the one it has.
-    const bool need_image = (slot->image_id == 0) || slot->base_tile != sprite->tiles[0] ||
+    const bool need_image = (slot->image_id == 0) || slot->repaint ||
+                            slot->base_tile != sprite->tiles[0] ||
                             slot->attr != (sprite->attr & 3) ||
                             slot->size16 != sprite->size16 ||
                             slot->table_a != sprite->table_a;
@@ -386,6 +496,7 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
         slot->base_tile = sprite->tiles[0];
         slot->attr = (uint8_t)(sprite->attr & 3);
         slot->table_a = sprite->table_a;
+        slot->repaint = false;
     }
 
     if (slot->instance_id == 0) {
@@ -459,10 +570,15 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
 
     console->app_ctx = ctx;
     // Default palette until the interpreter pushes its own: white on black.
-    console->backdrop_rgb = COLOR_RGB332[15];
-    for (int i = 0; i < 4; i++) {
-        console->attr_rgb[i] = COLOR_RGB332[0x30];
+    console->filter_color = 0;
+    console->backdrop_code = 15;
+    for (int group = 0; group < 4; group++) {
+        for (int i = 0; i < 3; i++) {
+            console->attr_code[group][i] = 0x30;
+            console->sprite_code[group][i] = 0x30;
+        }
     }
+    recompute_palette(console);
 
     fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
     if (!gfx_ctx) {

@@ -565,7 +565,7 @@ bool interpreter::eval(basic_value* out) noexcept {
                 ++markers;
                 continue;
             }
-            if (tk == token::number) {
+            if (is_number(tk)) {
                 read_byte();
                 const uint8_t lo = read_byte();
                 const uint8_t hi = read_byte();

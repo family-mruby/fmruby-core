@@ -108,6 +108,7 @@ S3 の内蔵 RAM は逼迫しており、タスクスタックは内蔵 RAM に�
 | B3 | `phase_b3.md` | ゲーム機能 (L3) |
 | B3.5 | `phase_b3_5.md` | 実行ループ基盤 (kill/フォーカス修正) + エディタ RUN |
 | B4 | `phase_b4.md` | 周辺・体験 (L4) |
+| B4.5 | `phase_b4_5.md` | 機能実装完了 (FILTER/2bpp 多色/LIST 忠実化 + 既知差異確定) |
 | B5 | `phase_b5.md` | 実機調整・品質確定 |
 
 - 各フェーズ完了時に `reports/phase_bN_report.md` を書く

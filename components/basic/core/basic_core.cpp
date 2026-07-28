@@ -509,6 +509,7 @@ void interpreter::skip_token() noexcept {
     read_byte();
     switch (tk) {
         case token::number:
+        case token::number_hex:
             read_byte();
             read_byte();
             break;

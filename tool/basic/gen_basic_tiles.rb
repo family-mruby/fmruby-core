@@ -24,6 +24,19 @@ require_relative "basic_sheet"
 
 CELL = 8
 
+# Colour indices the renderer draws (0 = backdrop / transparent, 1-3 are the
+# three colours of the cell's attribute group). The placeholders use all three
+# so a look at the screen shows whether the palette is being applied.
+INDEX_FRAME = 1
+INDEX_BODY = 2
+INDEX_MARK = 3
+
+# Set one pixel's 2bpp index in a row (leftmost pixel is the top pair).
+def put(rows, x, y, index)
+  shift = 14 - 2 * x
+  rows[y] = (rows[y] & ~(3 << shift)) | (index << shift)
+end
+
 # Draw the border segments this quadrant owns.
 #
 # part: 0 = top left, 1 = top right, 2 = bottom left, 3 = bottom right.
@@ -37,7 +50,7 @@ def quad_frame(rows, part)
     CELL.times do |x|
       edge = (top && y == 0) || (bottom && y == CELL - 1) ||
              (left && x == 0) || (right && x == CELL - 1)
-      rows[y] |= 0x80 >> x if edge
+      put(rows, x, y, INDEX_FRAME) if edge
     end
   end
 end
@@ -56,7 +69,7 @@ def body_pattern(rows, kind, part)
            when 6 then (x * y) % 5 == 0              # sparse dots
            else false                                 # hollow
            end
-      rows[y] |= 0x80 >> x if on
+      put(rows, x, y, INDEX_BODY) if on
     end
   end
 
@@ -64,7 +77,7 @@ def body_pattern(rows, kind, part)
   # character distinguishable when they are used on their own.
   corner_x = [0, 2].include?(part) ? 1 : CELL - 2
   corner_y = [0, 1].include?(part) ? 1 : CELL - 2
-  rows[corner_y] |= 0x80 >> corner_x
+  put(rows, corner_x, corner_y, INDEX_MARK)
 end
 
 def build
@@ -85,14 +98,14 @@ def emit_c(glyphs, path)
     "// Placeholder artwork for Family BASIC character table A (the built in",
     "// animation characters). Code positions follow core_spec sec 12; the shapes",
     "// are procedural stand ins for artwork this project cannot ship.",
-    "// Bit 7 of each byte is the leftmost pixel.",
+    "// Two bits per pixel: the leftmost pixel is the top pair of each row.",
     "",
     '#include "basic_tile_a.h"',
     "",
-    "const uint8_t basic_tile_a[256][8] = {",
+    "const uint16_t basic_tile_a[256][8] = {",
   ]
   256.times do |code|
-    rows = glyphs[code].map { |v| format("0x%02X", v) }.join(", ")
+    rows = glyphs[code].map { |v| format("0x%04X", v) }.join(", ")
     lines << "    {#{rows}},  // #{code}"
   end
   lines << "};"

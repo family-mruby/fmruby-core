@@ -50,6 +50,13 @@ for bas in "$here"/golden/*.bas; do
   rm -rf "$progdir"
   mkdir -p "$progdir"
   export BASIC_PROGRAM_DIR="$progdir"
+
+  # A case named *_roundtrip also has its listing re-crunched and compared
+  # (see roundtrip() in the runner).
+  case "$name" in
+    *roundtrip) export BASIC_ROUNDTRIP=1 ;;
+    *) unset BASIC_ROUNDTRIP ;;
+  esac
   if [ -f "$keys" ]; then
     # INKEY$ key script; an absent .input still needs a placeholder argument.
     [ -f "$input" ] || input=/dev/null

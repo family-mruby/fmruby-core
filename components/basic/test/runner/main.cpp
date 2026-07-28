@@ -136,6 +136,38 @@ bool host_program_write(void* user, const char* name, const char* text) {
     return put == len;
 }
 
+// Print the program as LIST would, then load that text into a second
+// interpreter and list it again: what SAVE writes has to crunch back to the
+// same program, or a saved listing is not a faithful copy (B4.5 T4.5-3).
+void roundtrip(fmrb_basic::interpreter& basic) {
+    char first[8192];
+    char again[8192];
+    size_t at = 0;
+    for (uint16_t i = 0; i < basic.line_count() && at + 2 < sizeof(first); ++i) {
+        at += basic.decrunch_line(i, first + at, sizeof(first) - at - 2);
+        first[at++] = '\n';
+    }
+    first[at] = '\0';
+    std::printf("LIST|%s", first);
+
+    fmrb_basic::basic_host_t bare = {};
+    bare.alloc = host_alloc;
+    bare.dealloc = host_dealloc;
+    bare.put_char = host_put_char;
+    fmrb_basic::interpreter second(bare);
+    if (!second.init() || !second.load(first)) {
+        std::printf("ROUNDTRIP|reload failed\n");
+        return;
+    }
+    at = 0;
+    for (uint16_t i = 0; i < second.line_count() && at + 2 < sizeof(again); ++i) {
+        at += second.decrunch_line(i, again + at, sizeof(again) - at - 2);
+        again[at++] = '\n';
+    }
+    again[at] = '\0';
+    std::printf("ROUNDTRIP|%s\n", std::strcmp(first, again) == 0 ? "identical" : "DIFFERS");
+}
+
 // Read the whole file into a NUL terminated buffer owned by the caller.
 char* read_file(const char* path) {
     FILE* fp = std::fopen(path, "rb");
@@ -243,6 +275,9 @@ int main(int argc, char** argv) {
                 status = 1;
             } else {
                 std::printf("OK\n");
+            }
+            if (std::getenv("BASIC_ROUNDTRIP")) {
+                roundtrip(basic);
             }
         }
     }

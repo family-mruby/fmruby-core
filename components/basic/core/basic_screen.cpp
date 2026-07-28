@@ -182,12 +182,17 @@ bool interpreter::moves_active() const noexcept {
 }
 
 void interpreter::screen_send_palette() noexcept {
-    if (!host_.screen_palette) {
-        return;
+    if (host_.screen_palette) {
+        for (uint8_t attr = 0; attr < 4; ++attr) {
+            host_.screen_palette(host_.user, attr, backdrop_, palette_[attr][0],
+                                 palette_[attr][1], palette_[attr][2]);
+        }
     }
-    for (uint8_t attr = 0; attr < 4; ++attr) {
-        host_.screen_palette(host_.user, attr, backdrop_, palette_[attr][0],
-                             palette_[attr][1], palette_[attr][2]);
+    if (host_.sprite_palette) {
+        for (uint8_t attr = 0; attr < 4; ++attr) {
+            host_.sprite_palette(host_.user, attr, sprite_palette_[attr][0],
+                                 sprite_palette_[attr][1], sprite_palette_[attr][2]);
+        }
     }
 }
 

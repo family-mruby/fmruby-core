@@ -50,9 +50,21 @@ typedef struct {
     uint16_t canvas_w;
     uint16_t canvas_h;
 
-    /// Palette: backdrop plus three colours per attribute group, as RGB332.
+    /// Palette as the interpreter sets it: colour codes 0-60 (core_spec sec 7).
+    /// Kept so FILTER can re-tint without another round trip to the core.
+    uint8_t backdrop_code;
+    uint8_t attr_code[4][3];
+    uint8_t sprite_code[4][3];
+    /// FILTER colour 0-7 (0 = no tint), applied to the BG plane only.
+    uint8_t filter_color;
+    /// The same palette after the code table and FILTER, as RGB332.
+    /// attr_rgb[group][index] is colour index 1-3 of that attribute group;
+    /// index 0 is the shared backdrop.
     uint8_t backdrop_rgb;
-    uint8_t attr_rgb[4];
+    uint8_t attr_rgb[4][3];
+    /// Sprite palette, same shape. DEF SPRITE picks a group with its colour
+    /// argument, and CGSET selects which bank both planes read.
+    uint8_t sprite_rgb[4][3];
 
     /// Cells changed since the last present, coalesced into one dirty rect.
     bool dirty;
@@ -81,6 +93,10 @@ typedef struct {
         bool size16;
         bool table_a;
         bool visible;
+        /// Set when the sprite palette changed: the artwork holds its colours,
+        /// so the image has to be painted again even though the tiles did not
+        /// change.
+        bool repaint;
     } sprites[BASIC_SPRITE_SLOTS];
 } basic_console_ctx_t;
 
@@ -114,6 +130,21 @@ void basic_console_sprite_plane(void* user_data, bool on);
 void basic_console_set_charset(void* user_data, bool table_a);
 
 /// Apply one palette group (colour codes 0-60, core_spec sec 7).
+/**
+ * @brief FILTER: tint the whole BG plane (v3_spec).
+ * @param color 0 = no tint, 1-7 = the filter colours
+ */
+void basic_console_set_filter(void* user_data, uint8_t color);
+
+/**
+ * @brief Sprite plane palette: three colours for attribute group @p attr.
+ *
+ * Separate from the BG palette because CGSET selects the banks independently
+ * and FILTER only tints the BG plane (core_spec sec 7, v3_spec).
+ */
+void basic_console_set_sprite_palette(void* user_data, uint8_t attr, uint8_t c1,
+                                      uint8_t c2, uint8_t c3);
+
 void basic_console_set_palette(void* user_data, uint8_t attr, uint8_t backdrop,
                                uint8_t c1, uint8_t c2, uint8_t c3);
 
