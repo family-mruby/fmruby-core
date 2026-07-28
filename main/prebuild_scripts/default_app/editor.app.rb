@@ -118,8 +118,16 @@ class EditorApp < FmrbApp
     # Key repeat state
     @held_keycode = nil
     @hold_frames = 0
-    # Transient "Saved" indicator: counts down per on_update tick.
+    # Transient status badge: counts down per on_update tick. @status_label
+    # picks the text so Run can share the indicator with Save.
     @save_ok_frames = 0
+    @status_label = nil
+    # ---- Run (F5) ----
+    # pid of the app the last RUN started, so the next RUN replaces it. The
+    # kernel reports it back in "run_result"; nil when nothing is running.
+    @run_pid = nil
+    # Set when RUN had to ask for a file name first: run once the save lands.
+    @run_after_save = false
     # Modal "save before quit?" dialog raised by Ctrl-X when @modified.
     @quit_dialog_open = false
     # Modal Find dialog (Alt-S / Search menu / F3 for find next).
@@ -217,7 +225,10 @@ class EditorApp < FmrbApp
     x += 6 * CHAR_W
     @menu_search_x = x
     draw_menu_item(x, y, "S", "earch")
-    x += 8 * CHAR_W  # "Search" is 6 chars, leave 2-char gap
+    x += 7 * CHAR_W  # "Search" is 6 chars, leave 1-char gap
+    @menu_run_x = x
+    draw_menu_item(x, y, "R", "un")
+    x += 4 * CHAR_W  # "Run" is 3 chars + 1-char gap
     @menu_hilight_x = x
     # Trailing "*" marks enabled state, space marks disabled
     draw_menu_item(x, y, "H", @hl_enabled ? "ilight*" : "ilight ")
@@ -252,7 +263,7 @@ class EditorApp < FmrbApp
 
     # Right-aligned green "Saved" badge that fades after SAVE_OK_FRAMES ticks.
     if @save_ok_frames > 0
-      label = " Saved "
+      label = @status_label || " Saved "
       bw = label.length * CHAR_W
       bx = @user_area_x0 + @user_area_width - bw - 2
       @gfx.fill_rect(bx, y, bw, CHAR_H, STATUS_OK_BG)
@@ -1229,7 +1240,7 @@ class EditorApp < FmrbApp
         Log.error("Save mismatch for #{@current_file}: expected=#{expected}, written=#{written}, on_disk=#{actual}")
       else
         @modified = false
-        @save_ok_frames = SAVE_OK_FRAMES
+        flash_status("Saved")
         @need_redraw = true
         Log.info("Saved file: #{@current_file} (#{expected} bytes)")
       end
@@ -1571,11 +1582,63 @@ class EditorApp < FmrbApp
     if msg["cmd"] == "file_selected" && msg["path"]
       if msg["mode"] == "save" || @pending_file_op == :save
         save_file_as(msg["path"])
+        if @run_after_save
+          @run_after_save = false
+          run_current_file
+        end
       else
         load_file(msg["path"])
       end
       @pending_file_op = nil
+    elsif msg["cmd"] == "run_result"
+      @run_pid = msg["pid"]
+      if @run_pid
+        flash_status("Run pid #{@run_pid}")
+        Log.info("Run started: #{msg["path"]} pid=#{@run_pid}")
+      else
+        flash_status("Run failed")
+        Log.error("Run failed: #{msg["path"]}")
+      end
     end
+  end
+
+  # ---- Run (F5) ----
+
+  # Run the file in the buffer, replacing what the last RUN started.
+  #
+  # The kernel does the work: an app cannot spawn another app, so this sends a
+  # run request (see FmrbApp#request_run). The kernel stops @run_pid first, and
+  # spawning is what hands the keyboard to the new app -- coming back here is
+  # then a matter of closing it, or Alt-Tab style window switching for a
+  # windowed app. A fullscreen .bas app covers the editor until it ends.
+  def run_current_file
+    if @current_file.nil?
+      # Nothing on disk yet: name it first and run once the save lands.
+      @run_after_save = true
+      @pending_file_op = :save
+      request_file_select("save")
+      return
+    end
+    unless runnable_path?(@current_file)
+      flash_status("Run: /app or /home")
+      return
+    end
+    save_file if @modified
+    request_run(@current_file, @run_pid)
+    flash_status("Running")
+  end
+
+  # What the spawner can load: user apps under /app, user files under /home.
+  # The kernel enforces this too; checking here just gives a better message.
+  def runnable_path?(path)
+    path.start_with?("/app/") || path.start_with?("/home/")
+  end
+
+  # Show a short right-aligned badge on the status line for ~2s.
+  def flash_status(text)
+    @status_label = " #{text} "
+    @save_ok_frames = SAVE_OK_FRAMES
+    @need_redraw = true
   end
 
   def save_file_as(path)
@@ -1605,6 +1668,10 @@ class EditorApp < FmrbApp
         end
         if @menu_search_x && ev[:x] >= @menu_search_x && ev[:x] < @menu_search_x + 6 * CHAR_W
           open_search_dialog
+          return
+        end
+        if @menu_run_x && ev[:x] >= @menu_run_x && ev[:x] < @menu_run_x + 3 * CHAR_W
+          run_current_file
           return
         end
         if @menu_hilight_x && ev[:x] >= @menu_hilight_x && ev[:x] < @menu_hilight_x + 7 * CHAR_W
@@ -1657,6 +1724,12 @@ class EditorApp < FmrbApp
       scancode = ev[:scancode] || 0
       if scancode == SC_F9
         toggle_breakpoint
+        return
+      end
+      # F5 runs the file. During a debug session it means Continue instead,
+      # which is the usual meaning of that key on both sides.
+      if scancode == SC_F5 && !@dbg_active
+        run_current_file
         return
       end
       if @dbg_active
@@ -1714,6 +1787,9 @@ class EditorApp < FmrbApp
           return
         when 0x16  # Alt-S -> open Search (Find) dialog
           open_search_dialog
+          return
+        when 0x15  # Alt-R -> Run
+          run_current_file
           return
         when 0x0B  # Alt-H -> toggle Highlight
           toggle_highlight

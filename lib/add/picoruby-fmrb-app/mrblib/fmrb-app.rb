@@ -434,6 +434,18 @@ class FmrbApp
       { "cmd" => "file_select", "mode" => mode })
   end
 
+  # Ask the kernel to run a file (.rb / .bas) as an app.
+  #
+  # An app cannot spawn another app, so this is a request: the kernel stops the
+  # instance a previous request started (prev_pid, may be nil), spawns the file,
+  # and gives it the keyboard. The new pid comes back as an APP_CONTROL message
+  # {"cmd" => "run_result", "path" => ..., "pid" => ... (nil on failure)}.
+  # Paths are limited to /app and /home by the kernel.
+  def request_run(path, prev_pid = nil)
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      { "cmd" => "run", "path" => path, "prev_pid" => prev_pid })
+  end
+
   def send_message(dest_pid, msg_type, data)
     # Auto-serialize all data to msgpack binary
     binary_data = MessagePack.pack(data)
