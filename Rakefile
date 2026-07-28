@@ -465,8 +465,8 @@ namespace :basic do
   # artwork can be edited in a graphics editor without a rebuild.
   BASIC_SHEET_DIR = "flash/usr/share/basic"
   BASIC_SHEETS = {
-    "font_b" => "gen_basic_font.py",   # table B: text glyphs
-    "tile_a" => "gen_basic_tiles.py",  # table A: sprite tiles
+    "font_b" => "gen_basic_font.rb",   # table B: text glyphs
+    "tile_a" => "gen_basic_tiles.rb",  # table A: sprite tiles
   }
 
   desc "Export the built-in art to the editable BMP sheets (FORCE=1 to overwrite)"
@@ -478,7 +478,7 @@ namespace :basic do
         puts "keeping #{bmp} (hand edits are the source now; FORCE=1 to overwrite)"
         next
       end
-      sh "python3 tools/#{gen} --bmp #{bmp}"
+      sh "ruby tool/basic/#{gen} --bmp #{bmp}"
     end
   end
 
@@ -486,7 +486,7 @@ namespace :basic do
   task :sheet_convert do
     src = ENV["IN"] or abort "usage: rake basic:sheet_convert IN=sheet.png OUT=sheet.bmp"
     dst = ENV["OUT"] or abort "usage: rake basic:sheet_convert IN=sheet.png OUT=sheet.bmp"
-    sh "python3 tools/basic_sheet_convert.py #{src} #{dst}"
+    sh "python3 tool/basic/basic_sheet_convert.py #{src} #{dst}"
   end
 
   desc "Copy the BASIC samples into flash/app/basic so the launcher lists them"
