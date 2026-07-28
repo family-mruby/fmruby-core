@@ -763,6 +763,7 @@ static int execute_basic_script(fmrb_app_task_context_t* ctx,
                         .present = basic_console_present,
                         .fill = basic_console_fill,
                         .palette = basic_console_set_palette,
+                        .charset = basic_console_set_charset,
                         .user_data = console
                     };
                     fmrb_basic_set_screen_ops(ctx->basic, &screen_ops);

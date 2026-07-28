@@ -77,7 +77,42 @@ void interpreter::set_pad(uint8_t player, uint8_t stick, uint8_t trigger) noexce
 
 void interpreter::notify_sprite(uint8_t index) noexcept {
     if (host_.sprite_update && index < sprite_count) {
+        sprites_[index].table_a = sprites_use_table_a();
         host_.sprite_update(host_.user, &sprites_[index]);
+    }
+}
+
+void interpreter::refresh_sprites() noexcept {
+    for (uint8_t i = 0; i < sprite_count; ++i) {
+        notify_sprite(i);
+    }
+    for (uint8_t i = 0; i < move_count; ++i) {
+        notify_move(i);
+    }
+}
+
+/**
+ * Palette banks selected by CGSET.
+ *
+ * core_spec sec 7 says there are two BG banks and three sprite banks of four
+ * colour groups each, but does not list their colour codes; these are readable
+ * placeholders (see the B3 report), with bank 1 matching the start up palette.
+ */
+void interpreter::load_palette_bank() noexcept {
+    static constexpr uint8_t bg_banks[2][4][3] = {
+        {{1, 17, 33}, {5, 21, 37}, {9, 25, 41}, {13, 29, 45}},
+        {{2, 22, 48}, {6, 22, 54}, {10, 26, 58}, {1, 17, 49}},
+    };
+    static constexpr uint8_t sprite_banks[3][4][3] = {
+        {{2, 22, 54}, {6, 26, 58}, {10, 30, 48}, {1, 21, 49}},
+        {{2, 22, 48}, {6, 22, 54}, {10, 26, 58}, {1, 17, 49}},
+        {{5, 23, 53}, {9, 27, 57}, {1, 19, 51}, {13, 32, 48}},
+    };
+    for (uint8_t attr = 0; attr < 4; ++attr) {
+        for (uint8_t i = 0; i < 3; ++i) {
+            palette_[attr][i] = bg_banks[cgset_bg_ & 1][attr][i];
+            sprite_palette_[attr][i] = sprite_banks[cgset_sprite_ % 3][attr][i];
+        }
     }
 }
 

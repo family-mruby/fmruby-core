@@ -58,6 +58,9 @@ typedef struct {
     uint16_t sheet_id[4];
     uint8_t sheet_ready[4][32];  // one bit per character code
 
+    /// Text plane character table (CGEN): false = table B (text), true = A.
+    bool text_table_a;
+
     /// Sprite plane: DEF SPRITE slots 0-7 then DEF MOVE slots 8-15.
     bool sprite_plane_on;
     struct {
@@ -96,6 +99,9 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
 
 /// SPRITE ON / OFF: show or hide the whole sprite plane.
 void basic_console_sprite_plane(void* user_data, bool on);
+
+/// CGEN: switch the text plane between character tables B and A.
+void basic_console_set_charset(void* user_data, bool table_a);
 
 /// Apply one palette group (colour codes 0-60, core_spec sec 7).
 void basic_console_set_palette(void* user_data, uint8_t attr, uint8_t backdrop,

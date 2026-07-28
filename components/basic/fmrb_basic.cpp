@@ -455,6 +455,13 @@ void host_sprite_plane(void* user, bool on) {
     }
 }
 
+void host_screen_charset(void* user, bool table_a) {
+    basic_state* state = static_cast<basic_state*>(user);
+    if (state->screen.charset) {
+        state->screen.charset(state->screen.user_data, table_a);
+    }
+}
+
 void host_debug_line(void* user, const char* text) {
     // Screen dumps go to the log with their own prefix, so the headless
     // harness can pull them out with a line filter (phase_b0_report sec 3.3).
@@ -477,6 +484,7 @@ fmrb_basic::basic_host_t make_host(basic_state* state) {
     host.screen_present = host_screen_present;
     host.screen_fill = host_screen_fill;
     host.screen_palette = host_screen_palette;
+    host.screen_charset = host_screen_charset;
     host.debug_line = host_debug_line;
     host.audio_play = host_audio_play;
     host.audio_beep = host_audio_beep;

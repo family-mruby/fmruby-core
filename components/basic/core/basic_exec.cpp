@@ -215,6 +215,14 @@ bool interpreter::exec_statement() noexcept {
             read_byte();
             return st_palet();
 
+        case token::cgen:
+            read_byte();
+            return st_cgen();
+
+        case token::cgset:
+            read_byte();
+            return st_cgset();
+
         case token::def:
             read_byte();
             return st_def();
@@ -1166,9 +1174,16 @@ bool interpreter::st_palet() noexcept {
         }
     }
 
-    // Sprite palettes belong to B3; accepting the statement keeps programs
-    // running, and the colours are remembered there.
     if (sprite_palette) {
+        // The backdrop is shared between the planes (core_spec sec 7).
+        if (group == 0) {
+            backdrop_ = static_cast<uint8_t>(colors[0]);
+        }
+        for (uint8_t i = 0; i < 3; ++i) {
+            sprite_palette_[group][i] = static_cast<uint8_t>(colors[i + 1]);
+        }
+        screen_send_palette();
+        refresh_sprites();
         return true;
     }
     // C1 is the backdrop and only takes effect for group 0 (core_spec sec 7).
@@ -1180,6 +1195,52 @@ bool interpreter::st_palet() noexcept {
     palette_[group][2] = static_cast<uint8_t>(colors[3]);
     screen_send_palette();
     screen_refresh();
+    return true;
+}
+
+bool interpreter::st_cgen() noexcept {
+    // CGEN n: which character table each plane uses (core_spec sec 7).
+    // 0 = both table A, 1 = BG A / sprites B, 2 = BG B / sprites A (default),
+    // 3 = both table B.
+    int16_t mode = 0;
+    if (!eval_number(&mode)) {
+        return false;
+    }
+    if (mode < 0 || mode > 3) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    cgen_ = static_cast<uint8_t>(mode);
+    if (host_.screen_charset) {
+        host_.screen_charset(host_.user, bg_uses_table_a());
+    }
+    screen_refresh();
+    refresh_sprites();
+    return true;
+}
+
+bool interpreter::st_cgset() noexcept {
+    // CGSET [m][,n]: palette bank for the BG plane (0-1) and the sprite plane
+    // (0-2). The banks themselves are placeholder colour sets until real
+    // hardware footage is available (see the B3 report).
+    int16_t bg = cgset_bg_;
+    int16_t sprite = cgset_sprite_;
+    if (!at_statement_end() && peek_token() != token::comma) {
+        if (!eval_number(&bg)) {
+            return false;
+        }
+    }
+    if (accept(token::comma) && !eval_number(&sprite)) {
+        return false;
+    }
+    if (bg < 0 || bg > 1 || sprite < 0 || sprite > 2) {
+        return raise_here(error_code::illegal_function_call);
+    }
+    cgset_bg_ = static_cast<uint8_t>(bg);
+    cgset_sprite_ = static_cast<uint8_t>(sprite);
+    load_palette_bank();
+    screen_send_palette();
+    screen_refresh();
+    refresh_sprites();
     return true;
 }
 

@@ -123,7 +123,8 @@ static bool ensure_glyph(basic_console_ctx_t* console, uint8_t code, uint8_t att
     set_image_target(console, console->sheet_id[attr]);
     fill_rect(console, sx, sy, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
               console->backdrop_rgb);
-    const uint8_t* glyph = basic_font8[code];
+    const uint8_t* glyph =
+        console->text_table_a ? basic_tile_a[code] : basic_font8[code];
     for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
         uint8_t bits = glyph[row];
         uint8_t col = 0;
@@ -207,7 +208,8 @@ void basic_console_draw_cell(void* user_data, uint8_t x, uint8_t y, uint8_t code
         // No sheet (out of image memory): fall back to drawing the runs.
         fill_rect(console, px, py, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
                   console->backdrop_rgb);
-        const uint8_t* glyph = basic_font8[code];
+        const uint8_t* glyph =
+            console->text_table_a ? basic_tile_a[code] : basic_font8[code];
         for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
             uint8_t bits = glyph[row];
             uint8_t col = 0;
@@ -413,6 +415,17 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
         sprite_instance_visible(console, slot->instance_id, want_visible);
         slot->visible = want_visible;
     }
+}
+
+void basic_console_set_charset(void* user_data, bool table_a) {
+    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
+    if (!console || console->text_table_a == table_a) {
+        return;
+    }
+    console->text_table_a = table_a;
+    // The cached glyphs belong to the old table.
+    invalidate_glyphs(console);
+    memset(console->drawn_code, 0xFF, sizeof(console->drawn_code));
 }
 
 void basic_console_sprite_plane(void* user_data, bool on) {

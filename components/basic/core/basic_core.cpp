@@ -174,6 +174,10 @@ bool interpreter::init(const basic_config& config) noexcept {
         }
     }
     backdrop_ = 15;  // black
+    cgen_ = 2;         // BG = table B, sprites = table A (core_spec sec 16)
+    cgset_bg_ = 1;
+    cgset_sprite_ = 1;
+    load_palette_bank();
     screen_send_palette();
     // Fixed seed: RND must produce the same sequence on every run so golden
     // tests stay reproducible (core_spec does not define the seed behaviour).

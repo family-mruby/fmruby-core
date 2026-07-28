@@ -185,6 +185,8 @@ typedef struct {
     void (*fill)(void* user_data, uint8_t code, uint8_t attr);
     void (*palette)(void* user_data, uint8_t attr, uint8_t backdrop, uint8_t c1,
                     uint8_t c2, uint8_t c3);
+    /// CGEN: text plane character table (true = table A).
+    void (*charset)(void* user_data, bool table_a);
     void* user_data;
 } basic_screen_ops_t;
 

@@ -191,6 +191,12 @@ void interpreter::screen_send_palette() noexcept {
     }
 }
 
+void interpreter::notify_charset() noexcept {
+    if (host_.screen_charset) {
+        host_.screen_charset(host_.user, bg_uses_table_a());
+    }
+}
+
 namespace {
 
 /// First character code of each kana row (core_spec sec 12): A I U E O.

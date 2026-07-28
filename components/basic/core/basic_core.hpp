@@ -215,6 +215,8 @@ struct basic_host_t {
     bool (*audio_play)(void* user, const uint8_t* data, uint16_t len);
     /// Short fixed tone (BEEP).
     void (*audio_beep)(void* user);
+    /// The text plane switched character table (CGEN): true = table A.
+    void (*screen_charset)(void* user, bool table_a);
     /// A sprite was defined, moved, shown or hidden.
     void (*sprite_update)(void* user, const basic_sprite_state* sprite);
     /// SPRITE ON / SPRITE OFF: show or hide the whole sprite plane.
@@ -380,6 +382,8 @@ public:
     void screen_dump(uint16_t tag, bool with_colors) noexcept;
     /// Push the whole text palette to the host (start up, window restore).
     void screen_send_palette() noexcept;
+    /// Tell the host which character table the text plane uses (CGEN).
+    void notify_charset() noexcept;
 
     /// One 1/60 s frame of work: sprite auto move, collision, present.
     void frame_tick() noexcept;
@@ -497,6 +501,16 @@ private:
     bool st_move_group(token tk) noexcept;
     bool st_position() noexcept;
     bool st_play() noexcept;
+    bool st_cgen() noexcept;
+    bool st_cgset() noexcept;
+    /// True when the BG plane draws from character table A (CGEN 0 / 1).
+    bool bg_uses_table_a() const noexcept { return cgen_ == 0 || cgen_ == 1; }
+    /// True when the sprite plane draws from character table A (CGEN 0 / 2).
+    bool sprites_use_table_a() const noexcept { return cgen_ == 0 || cgen_ == 2; }
+    /// Re-send every sprite (palette or character table changed).
+    void refresh_sprites() noexcept;
+    /// Load the colour set CGSET selected into the working palettes.
+    void load_palette_bank() noexcept;
     bool st_beep() noexcept;
     /// Convert an MML string to an FMSQ sequence; returns the byte count.
     uint16_t mml_to_fmsq(const uint8_t* mml, uint8_t mml_len, uint8_t* out,
@@ -602,10 +616,16 @@ private:
     uint8_t key_head_ = 0;
     uint8_t key_tail_ = 0;
 
-    // Text palette: 4 attribute groups of 3 colour codes plus the shared
-    // backdrop (core_spec sec 7). Sprite palettes arrive in B3.
+    // Palettes: 4 attribute groups of 3 colour codes each for the BG plane and
+    // for the sprite plane, plus the shared backdrop (core_spec sec 7).
     uint8_t palette_[4][3] = {};
+    uint8_t sprite_palette_[4][3] = {};
     uint8_t backdrop_ = 0;
+    // CGEN selects which character table each plane draws from; CGSET selects
+    // the palette bank (core_spec sec 7, defaults from sec 16).
+    uint8_t cgen_ = 2;
+    uint8_t cgset_bg_ = 1;
+    uint8_t cgset_sprite_ = 1;
 
     // KEY / KEYLIST definitions and the CLICK flag.
     uint8_t* function_keys_ = nullptr;  // function_key_count * (1 + function_key_len)
