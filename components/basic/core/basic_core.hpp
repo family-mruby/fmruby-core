@@ -207,6 +207,14 @@ struct basic_host_t {
      * @return false when the embedder wants the cells reported one by one.
      */
     bool (*screen_fill)(void* user, uint8_t code, uint8_t attr);
+    /**
+     * Play a converted FMSQ sequence (PLAY). The data stays valid only for the
+     * duration of the call, so the embedder must copy or forward it.
+     * @return false when the backend refused it.
+     */
+    bool (*audio_play)(void* user, const uint8_t* data, uint16_t len);
+    /// Short fixed tone (BEEP).
+    void (*audio_beep)(void* user);
     /// A sprite was defined, moved, shown or hidden.
     void (*sprite_update)(void* user, const basic_sprite_state* sprite);
     /// SPRITE ON / SPRITE OFF: show or hide the whole sprite plane.
@@ -488,6 +496,11 @@ private:
     bool st_sprite() noexcept;
     bool st_move_group(token tk) noexcept;
     bool st_position() noexcept;
+    bool st_play() noexcept;
+    bool st_beep() noexcept;
+    /// Convert an MML string to an FMSQ sequence; returns the byte count.
+    uint16_t mml_to_fmsq(const uint8_t* mml, uint8_t mml_len, uint8_t* out,
+                         uint16_t out_capacity) noexcept;
     bool parse_slot_list(uint8_t* slots, uint8_t* count) noexcept;
     void notify_sprite(uint8_t index) noexcept;
     void notify_move(uint8_t index) noexcept;
@@ -570,6 +583,10 @@ private:
     basic_sprite_state sprites_[sprite_count] = {};
     basic_move_state moves_[move_count] = {};
     bool sprite_plane_on_ = false;
+
+    // PLAY converts into this buffer, allocated on first use.
+    static constexpr uint16_t audio_buffer_size = 2048;
+    uint8_t* audio_buffer_ = nullptr;
 
     // Controller state, refreshed by the embedder from HID events.
     uint8_t pad_stick_[2] = {0, 0};

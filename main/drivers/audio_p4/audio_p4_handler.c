@@ -91,6 +91,75 @@ static int process_play_command(const fmrb_audio_play_cmd_t *cmd, size_t total_s
 }
 
 // Read an FMSQ file from the local filesystem into a track slot
+/* Chunked slot load (FMRB_AUDIO_CMD_LOAD_BINARY_CHUNK).
+ *
+ * One assembly at a time: BASIC's PLAY streams a sequence that does not fit
+ * the inline payload, then plays it. Chunks must arrive in order; anything
+ * else discards the assembly so a lost chunk cannot corrupt a slot. */
+static uint8_t *s_chunk_buf = NULL;
+static uint32_t s_chunk_id = 0;
+static uint16_t s_chunk_total = 0;
+static uint16_t s_chunk_have = 0;
+
+static void chunk_reset(void) {
+    if (s_chunk_buf) {
+        free(s_chunk_buf);
+        s_chunk_buf = NULL;
+    }
+    s_chunk_total = 0;
+    s_chunk_have = 0;
+}
+
+static int process_load_chunk(const fmrb_audio_load_chunk_cmd_t *cmd, size_t total_size) {
+    if (total_size < sizeof(*cmd) + cmd->chunk_len) {
+        FMRB_LOGE(TAG, "load_chunk: payload too short");
+        chunk_reset();
+        return -1;
+    }
+    if (cmd->total_size == 0 || cmd->total_size > FMRB_AUDIO_CHUNK_MAX_TOTAL ||
+        cmd->chunk_len > FMRB_AUDIO_CHUNK_MAX_DATA) {
+        FMRB_LOGE(TAG, "load_chunk: bad sizes (total=%u chunk=%u)",
+                  (unsigned)cmd->total_size, (unsigned)cmd->chunk_len);
+        chunk_reset();
+        return -1;
+    }
+
+    if (cmd->offset == 0) {
+        chunk_reset();
+        s_chunk_buf = (uint8_t *)malloc(cmd->total_size);
+        if (!s_chunk_buf) {
+            FMRB_LOGE(TAG, "load_chunk: malloc %u failed", (unsigned)cmd->total_size);
+            return -1;
+        }
+        s_chunk_id = cmd->music_id;
+        s_chunk_total = cmd->total_size;
+        s_chunk_have = 0;
+    } else if (!s_chunk_buf || cmd->music_id != s_chunk_id ||
+               cmd->total_size != s_chunk_total || cmd->offset != s_chunk_have) {
+        FMRB_LOGE(TAG, "load_chunk: out of sequence (offset=%u have=%u)",
+                  (unsigned)cmd->offset, (unsigned)s_chunk_have);
+        chunk_reset();
+        return -1;
+    }
+
+    if ((uint32_t)cmd->offset + cmd->chunk_len > s_chunk_total) {
+        chunk_reset();
+        return -1;
+    }
+    memcpy(s_chunk_buf + cmd->offset, (const uint8_t *)cmd + sizeof(*cmd), cmd->chunk_len);
+    s_chunk_have = (uint16_t)(cmd->offset + cmd->chunk_len);
+
+    if (s_chunk_have < s_chunk_total) {
+        return 0;  /* more to come */
+    }
+
+    const int ret = audio_p4_store_track(s_chunk_id, s_chunk_buf, s_chunk_total);
+    FMRB_LOGI(TAG, "load_chunk: slot %lu complete (%u bytes)",
+              (unsigned long)s_chunk_id, (unsigned)s_chunk_total);
+    chunk_reset();
+    return ret;
+}
+
 static int process_load_fmsq_file(const fmrb_audio_load_fmsq_file_cmd_t *cmd, size_t total_size) {
     if (total_size < sizeof(fmrb_audio_load_fmsq_file_cmd_t) + cmd->path_len) {
         FMRB_LOGE(TAG, "load_fmsq_file command too short");
@@ -154,6 +223,12 @@ int audio_p4_process_command(const uint8_t *data, size_t size) {
                                                 data + sizeof(fmrb_audio_load_cmd_t),
                                                 cmd->data_size);
                 }
+            }
+            break;
+
+        case FMRB_AUDIO_CMD_LOAD_BINARY_CHUNK:
+            if (size >= sizeof(fmrb_audio_load_chunk_cmd_t)) {
+                return process_load_chunk((const fmrb_audio_load_chunk_cmd_t *)data, size);
             }
             break;
 

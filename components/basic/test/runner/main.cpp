@@ -75,6 +75,23 @@ void host_on_error(void* user, fmrb_basic::error_code code, int32_t line_number)
     state->error_line = line_number;
 }
 
+bool host_audio_play(void* user, const uint8_t* data, uint16_t len) {
+    // Print the converted sequence so the golden files pin the MML to FMSQ
+    // conversion down byte for byte (the sound itself cannot be checked here).
+    (void)user;
+    std::printf("FMSQ|%u|", static_cast<unsigned>(len));
+    for (uint16_t i = 0; i < len; ++i) {
+        std::printf("%02X", data[i]);
+    }
+    std::printf("\n");
+    return true;
+}
+
+void host_audio_beep(void* user) {
+    (void)user;
+    std::printf("BEEP\n");
+}
+
 void host_debug_line(void* user, const char* text) {
     // Screen dumps go to stdout so they become part of the golden output; on
     // the device the same lines go to the log (see the B2 report).
@@ -148,6 +165,8 @@ int main(int argc, char** argv) {
     // raise IL until the phase that implements them.
     host.ext_statement = nullptr;
     host.debug_line = host_debug_line;
+    host.audio_play = host_audio_play;
+    host.audio_beep = host_audio_beep;
     // No screen renderer here: the shadow buffer plus _SCRDUMP is what the
     // tests inspect.
     host.screen_cell = nullptr;

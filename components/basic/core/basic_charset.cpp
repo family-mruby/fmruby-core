@@ -102,6 +102,16 @@ uint8_t unicode_to_fbcode(uint32_t ucs) noexcept {
     if (ucs == 0x5C) {
         return 92;  // backslash reads as the yen sign in this code table
     }
+    // Hiragana folds to katakana: table B has no hiragana at all, and a
+    // listing written with it clearly means the same sounds.
+    if (ucs >= 0x3041 && ucs <= 0x3096) {
+        ucs += 0x60;
+    }
+    // The long vowel mark is missing from the code table (see the B2 report
+    // question list); the hyphen is the closest shape it does have.
+    if (ucs == 0x30FC) {
+        return 0x2D;
+    }
     for (size_t i = 0; i < charset_table_size; ++i) {
         if (charset_table[i].ucs == ucs) {
             return charset_table[i].code;

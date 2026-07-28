@@ -20,6 +20,10 @@ extern "C" {
 
 #include "fmrb_msg.h"
 
+extern "C" {
+#include "audio_commands.h"
+}
+
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
 #include "fmrb_rtos.h"
@@ -51,6 +55,7 @@ struct basic_state {
     // a pad so a game can be driven from the headless harness (phase_b3 T3-4).
     uint8_t pad_stick[2];
     uint8_t pad_trigger[2];
+    uint8_t beep_frames;
 
     char out_line[FMRB_BASIC_OUT_LINE_MAX];
     size_t out_len;
@@ -204,6 +209,8 @@ static void apply_axis_to_pad(basic_state* state, uint8_t pad, uint8_t axis,
     state->pad_stick[pad] = bits;
 }
 
+static void service_beep(basic_state* state);
+
 bool host_on_tick(void* user) {
     basic_state* state = static_cast<basic_state*>(user);
 
@@ -243,6 +250,8 @@ bool host_on_tick(void* user) {
                                           state->pad_trigger[player]);
         }
     }
+
+    service_beep(state);
 
     // Screen updates are batched: present once per tick instead of per cell.
     if (state->screen.present) {
@@ -331,6 +340,92 @@ void host_screen_palette(void* user, uint8_t attr, uint8_t backdrop, uint8_t c1,
     }
 }
 
+// --- audio -----------------------------------------------------------------
+//
+// PLAY hands over a whole FMSQ sequence. The app -> host message payload is
+// only 176 bytes, so the sequence is streamed with LOAD_BINARY_CHUNK (see
+// phase_b3.md T3-5) and then started with PLAY_SLOT. Sending the chunks and
+// the play command through the same queue keeps them in order, so no
+// acknowledgement is needed.
+#define FMRB_BASIC_MUSIC_SLOT 15
+#define FMRB_BASIC_BEEP_FRAMES 6
+
+static fmrb_err_t send_audio(const void* payload, size_t size) {
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx || size > FMRB_MAX_MSG_PAYLOAD_SIZE) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    fmrb_msg_t msg = {};
+    msg.type = FMRB_MSG_TYPE_APP_AUDIO;
+    msg.src_pid = static_cast<fmrb_proc_id_t>(ctx->app_id);
+    msg.size = static_cast<uint32_t>(size);
+    memcpy(msg.data, payload, size);
+    return fmrb_msg_send(PROC_ID_HOST, &msg, 1000);
+}
+
+bool host_audio_play(void* user, const uint8_t* data, uint16_t len) {
+    (void)user;
+    if (len == 0 || len > FMRB_AUDIO_CHUNK_MAX_TOTAL) {
+        return false;
+    }
+
+    uint8_t packet[FMRB_MAX_MSG_PAYLOAD_SIZE];
+    fmrb_audio_load_chunk_cmd_t header = {};
+    header.cmd_type = FMRB_AUDIO_CMD_LOAD_BINARY_CHUNK;
+    header.music_id = FMRB_BASIC_MUSIC_SLOT;
+    header.total_size = len;
+
+    uint16_t offset = 0;
+    while (offset < len) {
+        uint16_t chunk = static_cast<uint16_t>(len - offset);
+        if (chunk > FMRB_AUDIO_CHUNK_MAX_DATA) {
+            chunk = FMRB_AUDIO_CHUNK_MAX_DATA;
+        }
+        header.offset = offset;
+        header.chunk_len = static_cast<uint8_t>(chunk);
+        memcpy(packet, &header, sizeof(header));
+        memcpy(packet + sizeof(header), data + offset, chunk);
+        if (send_audio(packet, sizeof(header) + chunk) != FMRB_OK) {
+            FMRB_LOGE(TAG, "PLAY: audio chunk at %u dropped", (unsigned)offset);
+            return false;
+        }
+        offset = static_cast<uint16_t>(offset + chunk);
+    }
+
+    fmrb_audio_play_slot_cmd_t play = {};
+    play.cmd_type = FMRB_AUDIO_CMD_PLAY_SLOT;
+    play.music_id = FMRB_BASIC_MUSIC_SLOT;
+    play.instance = 0;  // MAIN: BGM. Sound effects use note_on (BEEP).
+    return send_audio(&play, sizeof(play)) == FMRB_OK;
+}
+
+void host_audio_beep(void* user) {
+    basic_state* state = static_cast<basic_state*>(user);
+    fmrb_audio_note_on_cmd_t note = {};
+    note.cmd_type = FMRB_AUDIO_CMD_NOTE_ON;
+    note.channel = FMRB_APU_CH_PULSE1;
+    note.freq = 1000;
+    note.volume = 10;
+    note.duty = 2;
+    note.sweep = 0;
+    if (send_audio(&note, sizeof(note)) == FMRB_OK) {
+        // The note is switched off a few frames later from the tick.
+        state->beep_frames = FMRB_BASIC_BEEP_FRAMES;
+    }
+}
+
+static void service_beep(basic_state* state) {
+    if (state->beep_frames == 0) {
+        return;
+    }
+    if (--state->beep_frames == 0) {
+        fmrb_audio_note_off_cmd_t off = {};
+        off.cmd_type = FMRB_AUDIO_CMD_NOTE_OFF;
+        off.channel = FMRB_APU_CH_PULSE1;
+        send_audio(&off, sizeof(off));
+    }
+}
+
 void host_sprite_update(void* user, const fmrb_basic::basic_sprite_state* sprite) {
     basic_state* state = static_cast<basic_state*>(user);
     if (!state->sprite.update) {
@@ -383,6 +478,8 @@ fmrb_basic::basic_host_t make_host(basic_state* state) {
     host.screen_fill = host_screen_fill;
     host.screen_palette = host_screen_palette;
     host.debug_line = host_debug_line;
+    host.audio_play = host_audio_play;
+    host.audio_beep = host_audio_beep;
     host.sprite_update = host_sprite_update;
     host.sprite_plane = host_sprite_plane;
     host.user = state;

@@ -234,6 +234,14 @@ bool interpreter::exec_statement() noexcept {
             read_byte();
             return st_position();
 
+        case token::play:
+            read_byte();
+            return st_play();
+
+        case token::beep:
+            read_byte();
+            return st_beep();
+
         case token::scrdump:
             read_byte();
             return st_scrdump();

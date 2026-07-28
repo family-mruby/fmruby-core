@@ -87,6 +87,7 @@ interpreter::~interpreter() noexcept {
         host_.dealloc(host_.user, screen_chars_);
         host_.dealloc(host_.user, screen_attrs_);
         host_.dealloc(host_.user, function_keys_);
+        host_.dealloc(host_.user, audio_buffer_);
     }
     lines_ = nullptr;
     code_ = nullptr;
@@ -100,6 +101,7 @@ interpreter::~interpreter() noexcept {
     screen_chars_ = nullptr;
     screen_attrs_ = nullptr;
     function_keys_ = nullptr;
+    audio_buffer_ = nullptr;
 }
 
 bool interpreter::init(const basic_config& config) noexcept {
