@@ -59,6 +59,37 @@ def docker_logs(since=None):
     return out.stdout + out.stderr
 
 
+def inject_keys(data):
+    """Type a case's .keys bytes into the app that just started.
+
+    Cases that read keys poll INKEY$ and stop at the first empty read, so the
+    keys have to be in the queue before the program gets there. Those cases open
+    with a PAUSE, which is what this window is (B4 T4-9); the app already owns
+    the keyboard because spawning hands it over (B3.5).
+
+    Only what the .keys files use is translated: TAB (the kana toggle) and
+    printable ASCII. Punctuation is deliberately not mapped here -- the injector
+    assumes a US layout while the device follows keyboard_layout (see the B4
+    report), so a case needing symbols must spell them out itself.
+    """
+    injector = os.path.normpath(os.path.join(CORE, "..", "tools", "fmrb_input.py"))
+    argv = ["python3", injector]
+    text = ""
+    for byte in data:
+        ch = chr(byte)
+        if ch == "\t":
+            if text:
+                argv += ["text", text]
+                text = ""
+            argv += ["key", "tab"]
+        elif 0x20 <= byte <= 0x7E:
+            text += ch
+    if text:
+        argv += ["text", text]
+    if len(argv) > 2:
+        subprocess.run(argv, capture_output=True)
+
+
 def run_case(client, case, timeout=60.0):
     src = os.path.join(GOLDEN, case + ".bas")
     if not os.path.exists(src):
@@ -79,6 +110,10 @@ def run_case(client, case, timeout=60.0):
         client.spawn("/app/demo/" + APP_NAME + ".app.bas")
     except Exception as exc:  # noqa: BLE001 - report and continue with the next case
         return False, "spawn failed: %s" % exc
+
+    keys = os.path.join(GOLDEN, case + ".keys")
+    if os.path.exists(keys):
+        inject_keys(open(keys, "rb").read())
 
     # The dump ends with an END line carrying the body line count.
     deadline = time.time() + timeout
@@ -122,15 +157,13 @@ def main():
         cases = sorted(
             os.path.splitext(f)[0]
             for f in os.listdir(GOLDEN)
-            if f.endswith(".bas") and f.startswith("2")
+            # 2xx are the screen cases, 4xx the B4 additions that dump.
+            if f.endswith(".bas") and (f.startswith("2") or f.startswith("4"))
         )
-        # Only cases that dump the screen and need no key script: the
-        # simulation cannot feed INKEY$ deterministically, so those stay with
-        # the host runner.
-        cases = [
-            c for c in cases
-            if expected_lines(c) and not os.path.exists(os.path.join(GOLDEN, c + ".keys"))
-        ]
+        # Only cases that dump the screen: the harness compares SCRD lines.
+        # Key script cases are included now that they can be fed deterministically
+        # (inject_keys, B4 T4-9).
+        cases = [c for c in cases if expected_lines(c)]
     if args.list:
         for case in cases:
             print(case)
