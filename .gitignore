@@ -38,3 +38,6 @@ __pycache__/
 
 # Pinned Spinel compiler checkout (rake spinel:setup)
 vendor/spinel/
+
+# Local reference material for comparing the character sheets (never committed)
+tool/basic/ref/
