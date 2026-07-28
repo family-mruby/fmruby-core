@@ -22,7 +22,13 @@ sec 8 (スプライト) / sec 9 (MOVE) / sec 10 (サウンド) / sec 12
   (実行速度は実機並みで十分 = 過度に速くしない) の方針もここで決めて
   report に記録する。
 - linux sim と S3 実機での tick 供給源の違い (SDL ループ / FreeRTOS
-  タイマ) を fmrb_basic.c 側で吸収する。
+  タイマ) を fmrb_basic.cpp 側で吸収する。
+- **描画コストの判断 (B2 report sec 2.3 の持ち越し) をここで行う**:
+  スクロールを毎 tick 行うベンチ .bas で現方式 (セル直描き 672 セル) を
+  計測し、律速になるなら (a) canvas viewport の ring 方式 か
+  (b) グリフシート化 + DRAW_TILE のどちらかを選んで実装する。
+  計測値と判断根拠を report に残すこと。律速でなければ現方式のまま
+  進んでよい (その場合も計測値は残す)。
 
 ### T3-2: SPRITE / DEF SPRITE
 
@@ -57,12 +63,68 @@ sec 8 (スプライト) / sec 9 (MOVE) / sec 10 (サウンド) / sec 12
 
 ### T3-5: PLAY / BEEP
 
-- B0 T0-4 の決定 (ユーザ承認済みの方式) に従って実装する。
-  a 案の場合: MML パーサ (core_spec sec 10 の文法: 音階・音長・O/T/V、
-  3 チャンネル同時) -> FMSQ 変換を extension 側に実装し、既存の
-  load_fmsq / play_slot 経路で再生。PLAY 文字列の演奏継続・終了検知は
-  tick と連動。
-- BEEP は固定シーケンスで実装。
+- 裁可済みの a-2 方式 (B0 report sec 9.1-2): MML パーサ (core_spec sec 10
+  の文法: 音階・音長・O/T/V、3 チャンネル同時) -> FMSQ 変換を実装し、
+  下記のチャンク分割ロードで転送して `PLAY_SLOT` で再生する。
+  PLAY 文字列の演奏継続・終了検知は tick と連動。
+- BEEP は既存の NOTE_ON/NOTE_OFF で実装 (プロトコル変更なし、
+  FMSQ スロットを消費しない)。
+
+#### チャンク分割ロードコマンドの設計 (レビュー担当による事前調査済み)
+
+新コマンド (両リポジトリの `audio_commands.h` に同一定義で追加):
+
+```c
+FMRB_AUDIO_CMD_LOAD_BINARY_CHUNK = 0x0C
+
+typedef struct {
+    uint8_t  cmd_type;    // 0x0C
+    uint32_t music_id;    // slot id (LOAD_BINARY と同じ空間)
+    uint16_t total_size;  // FMSQ 全体のバイト数 (全チャンクで同値)
+    uint16_t offset;      // このチャンクの先頭オフセット
+    uint8_t  chunk_len;   // 続くデータのバイト数 (最大 160)
+    // chunk_len バイトのデータが続く
+} __attribute__((packed)) fmrb_audio_load_chunk_cmd_t;  // ヘッダ 10 B
+```
+
+受信側の組み立てセマンティクス (3 バックエンド共通):
+
+- 組み立てバッファは 1 本 (同時に組み立てるのは 1 スロットのみ)。
+  `offset == 0` で total_size 分を確保して開始。進行中と異なる music_id
+  や不連続 offset が来たら破棄してエラーログ (`offset == 0` なら
+  新規開始として受け直す)。
+- `offset + chunk_len == total_size` の受信で完成。既存の
+  LOAD_BINARY の格納処理 (music_tracks への保存) と同じ経路へ渡し、
+  組み立てバッファは解放する。
+- total_size の上限は 16KB とする (保護。PLAY 1 回分の FMSQ は数 KB 想定)。
+- ACK は不要: 同一メッセージキューを FIFO で処理するため、チャンク列の
+  直後に送った PLAY_SLOT が追い越されることはない。
+
+変更ファイル (すべて既存 LOAD_BINARY の case の隣に追加):
+
+| リポジトリ | ファイル | 内容 |
+|---|---|---|
+| fmruby-graphics-audio | `main/common/audio_commands.h` | enum + 構造体 |
+| fmruby-graphics-audio | `main/audio/audio_handler_shm.c` | case + 組み立て (linux) |
+| fmruby-graphics-audio | `main/audio/audio_handler_esp32.c` | case + 組み立て (WROVER) |
+| fmruby-core | `main/drivers/audio_p4/audio_commands.h` | enum + 構造体 (P4/共通ヘッダ) |
+| fmruby-core | `main/drivers/audio_p4/audio_p4_handler.c` | case + 組み立て (P4) |
+
+組み立てロジックは 3 箇所に重複実装せず、可能ならバックエンド内の
+静的ヘルパとして同型のコードを保つ (リポジトリをまたぐ共通化は
+しない。ヘッダの流用関係が既にこの形)。
+
+**注意 (事前調査で判明)**: 両リポジトリの `audio_commands.h` は現在
+**同一ではない**。graphics-audio 側には `fmrb_audio_play_slot_cmd_t` の
+`instance` フィールド (+ legacy サイズ互換)、STOP/PAUSE/RESUME/STATUS の
+構造体、コメント拡充が入っており、fmruby-core 側が古い。B3 でチャンク
+コマンドを足す際に **fmruby-core 側ヘッダを graphics-audio 側の内容へ
+同期**させること (BASIC からの PLAY_SLOT は instance を明示指定できた方が
+よい: BGM=MAIN、効果音は NOTE_ON 経路なので通常 MAIN のみで足りる)。
+
+fmruby-graphics-audio 側の変更はそのリポジトリで独立コミットとする
+(そのリポジトリの CLAUDE.md に従う。ビルド確認は同リポジトリの
+`rake build:linux`。ブランチはユーザ指示に従う)。
 - 音の検証は headless では不能。linux sim の音声はユーザ確認に回し、
   MML -> FMSQ 変換自体はホストテスト (変換結果のバイト列比較) で
   ゴールデン化する。
