@@ -66,6 +66,9 @@ typedef struct {
     /// argument, and CGSET selects which bank both planes read.
     uint8_t sprite_rgb[4][3];
 
+    /// A sprite moved, was shown or hidden since the last present. Compositing
+    /// happens at present time, so this needs one just like a changed cell.
+    bool sprites_moved;
     /// Cells changed since the last present, coalesced into one dirty rect.
     bool dirty;
     uint8_t dirty_x0, dirty_y0, dirty_x1, dirty_y1;

@@ -267,10 +267,11 @@ void basic_console_fill(void* user_data, uint8_t code, uint8_t attr) {
 
 void basic_console_present(void* user_data) {
     basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
-    if (!console || !console->dirty) {
+    if (!console || (!console->dirty && !console->sprites_moved)) {
         return;
     }
     console->dirty = false;
+    console->sprites_moved = false;
 
     gfx_cmd_t cmd = {
         .cmd_type = GFX_CMD_PRESENT,
@@ -527,6 +528,12 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
         sprite_instance_visible(console, slot->instance_id, want_visible);
         slot->visible = want_visible;
     }
+
+    // Sprites are composited when the canvas is presented, so a sprite that
+    // moved needs a present as much as a changed cell does. Without this the
+    // screen only refreshed when the text happened to change: a game whose
+    // score sits still looked frozen, and its controls looked dead.
+    console->sprites_moved = true;
 }
 
 void basic_console_set_charset(void* user_data, bool table_a) {
@@ -552,6 +559,7 @@ void basic_console_sprite_plane(void* user_data, bool on) {
             console->sprites[i].visible = false;
         }
     }
+    console->sprites_moved = true;
 }
 
 fmrb_err_t basic_console_init(basic_console_ctx_t* console,
