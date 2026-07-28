@@ -68,12 +68,11 @@ def inject_keys(data):
     the keyboard because spawning hands it over (B3.5).
 
     Only what the .keys files use is translated: TAB (the kana toggle) and
-    printable ASCII. Punctuation is deliberately not mapped here -- the injector
-    assumes a US layout while the device follows keyboard_layout (see the B4
-    report), so a case needing symbols must spell them out itself.
+    printable ASCII. Symbols are fine to add: the injector follows the device's
+    keyboard_layout (B4 T4-8).
     """
-    injector = os.path.normpath(os.path.join(CORE, "..", "tools", "fmrb_input.py"))
-    argv = ["python3", injector]
+    injector = os.path.normpath(os.path.join(CORE, "..", "tools", "fmrb_input.rb"))
+    argv = ["ruby", injector]
     text = ""
     for byte in data:
         ch = chr(byte)
