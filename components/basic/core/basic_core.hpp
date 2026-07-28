@@ -79,6 +79,14 @@ inline constexpr uint8_t print_zone_width = 8;
 inline constexpr uint8_t color_area_size = 2;
 /// Character that toggles kana input (TAB). See interpreter::push_key().
 inline constexpr uint8_t kana_toggle_key = 0x09;
+/// Sprites the hardware exposes to BASIC (core_spec sec 8).
+inline constexpr uint8_t sprite_count = 8;
+/// DEF MOVE animation slots (core_spec sec 9).
+inline constexpr uint8_t move_count = 8;
+/// Sprite plane origin measured in text plane pixels (core_spec sec 8,
+/// provisional: sprite x = 8*X + 16, y = 8*Y + 24).
+inline constexpr int16_t sprite_origin_x = 16;
+inline constexpr int16_t sprite_origin_y = 24;
 /// Function keys held by KEY / KEYLIST (core_spec sec 5).
 inline constexpr uint8_t function_key_count = 8;
 /// Longest function key definition (core_spec sec 5: 15 characters).
@@ -97,6 +105,22 @@ struct basic_value {
     int16_t num = 0;
     uint8_t len = 0;
     uint8_t str[max_string_len] = {};
+};
+
+/// What the renderer needs to show one sprite (DEF SPRITE or DEF MOVE).
+struct basic_sprite_state {
+    uint8_t index;    ///< slot 0-7
+    bool defined;     ///< a definition exists
+    bool visible;     ///< currently on screen
+    bool size16;      ///< 16x16 (four tiles) instead of 8x8
+    bool behind;      ///< drawn behind the BG plane
+    bool flip_x;
+    bool flip_y;
+    bool table_a;     ///< tiles come from character table A (animation set)
+    uint8_t attr;     ///< colour attribute 0-3
+    uint8_t tiles[4]; ///< character codes: [0] for 8x8, all four for 16x16
+    int16_t x;        ///< sprite plane coordinates (core_spec sec 8)
+    int16_t y;
 };
 
 /// One argument handed to basic_host_t::ext_statement.
@@ -158,6 +182,16 @@ struct basic_host_t {
     void (*screen_cell)(void* user, uint8_t x, uint8_t y, uint8_t code, uint8_t attr);
     /// The screen is consistent again: a good moment to present the canvas.
     void (*screen_present)(void* user);
+    /**
+     * Every cell became @p code with attribute @p attr (CLS). Renderers can
+     * do this with one fill instead of 672 cell updates.
+     * @return false when the embedder wants the cells reported one by one.
+     */
+    bool (*screen_fill)(void* user, uint8_t code, uint8_t attr);
+    /// A sprite was defined, moved, shown or hidden.
+    void (*sprite_update)(void* user, const basic_sprite_state* sprite);
+    /// SPRITE ON / SPRITE OFF: show or hide the whole sprite plane.
+    void (*sprite_plane)(void* user, bool on);
     /// One line of debug output (_SCRDUMP). Never program output.
     void (*debug_line)(void* user, const char* text);
     /**
@@ -189,6 +223,18 @@ struct basic_config {
     uint8_t for_depth = 16;            ///< nested FOR loops
     uint8_t gosub_depth = 24;          ///< nested GOSUB calls
     uint8_t expr_depth = 24;           ///< expression operand / operator stacks
+    /**
+     * Statements the program may execute per 1/60 s frame.
+     *
+     * Family BASIC runs on a 1.79 MHz 6502 interpreting its own tokens, which
+     * lands somewhere around 60 statements per frame. A modern build is orders
+     * of magnitude faster, and a game written for the original pacing would be
+     * unplayable at that speed, so the interpreter spends at most this many
+     * statements per frame and then waits for the next one (compat_plan
+     * sec 4.1-6). The value is a calibration knob: B5 compares it against real
+     * hardware footage. 0 disables the throttle.
+     */
+    uint16_t statements_per_frame = 60;
 };
 
 /// Variable table entry. Storage lives in the variable data arena.
@@ -308,6 +354,13 @@ public:
     /// Push the whole text palette to the host (start up, window restore).
     void screen_send_palette() noexcept;
 
+    /// One 1/60 s frame of work: sprite auto move, collision, present.
+    void frame_tick() noexcept;
+    /// True while a DEF MOVE animation still has movement left.
+    bool moves_active() const noexcept;
+    /// Frames elapsed since run() started (diagnostics, benchmarks).
+    uint32_t frame_count() const noexcept { return frame_count_; }
+
     /**
      * @brief Queue one key press for INKEY$, called by the embedder.
      *
@@ -401,6 +454,12 @@ private:
     bool st_click() noexcept;
     bool st_scrdump() noexcept;
     bool st_palet() noexcept;
+    bool st_def() noexcept;
+    bool st_sprite() noexcept;
+    bool st_move_group(token tk) noexcept;
+    bool st_position() noexcept;
+    bool parse_slot_list(uint8_t* slots, uint8_t* count) noexcept;
+    void notify_sprite(uint8_t index) noexcept;
     bool st_ext(token tk) noexcept;
 
     // --- text screen internals (basic_screen.cpp) ---
@@ -410,6 +469,8 @@ private:
     void screen_set_cell(uint8_t x, uint8_t y, uint8_t code, uint8_t attr) noexcept;
     bool next_key(uint8_t* out) noexcept;
     void push_key_raw(uint8_t code) noexcept;
+    /// Run the frames that have come due, and throttle to real machine pacing.
+    void service_frames() noexcept;
     uint8_t kana_translate(uint8_t code) noexcept;
     bool jump_to_line(uint16_t number) noexcept;
     bool skip_for_body(const uint8_t* name) noexcept;
@@ -470,6 +531,12 @@ private:
     uint8_t cursor_x_ = 0;
     uint8_t cursor_y_ = 0;
 
+    // Sprite plane. DEF SPRITE slots and DEF MOVE slots are kept apart: the
+    // spec numbers them separately and a 16x16 animation character would need
+    // several hardware sprites anyway (see the B3 report).
+    basic_sprite_state sprites_[sprite_count] = {};
+    bool sprite_plane_on_ = false;
+
     // Kana input: the pending consonant of a two key romaji sequence.
     bool kana_mode_ = false;
     uint8_t kana_pending_ = 0;
@@ -491,6 +558,14 @@ private:
 
     uint32_t rng_state_ = 0;
     uint32_t statement_count_ = 0;
+
+    // Frame pacing. The interpreter drives 1/60 s frames from the host clock
+    // and limits how much program runs inside one frame.
+    uint32_t last_clock_ms_ = 0;
+    uint32_t frame_accum_us_ = 0;
+    uint32_t frame_count_ = 0;
+    uint16_t frame_statements_ = 0;
+    uint16_t statements_per_frame_ = 60;
 
     error_code error_ = error_code::none;
     int32_t error_line_ = -1;

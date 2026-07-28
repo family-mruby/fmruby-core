@@ -140,6 +140,7 @@ bool interpreter::init(const basic_config& config) noexcept {
     for_depth_ = config.for_depth;
     gosub_depth_ = config.gosub_depth;
     expr_depth_ = config.expr_depth;
+    statements_per_frame_ = config.statements_per_frame;
 
     line_count_ = 0;
     code_used_ = 0;
@@ -552,6 +553,10 @@ bool interpreter::run() noexcept {
     pc_off_ = 0;
     statement_count_ = 0;
     running_ = true;
+    last_clock_ms_ = host_.ticks_ms ? host_.ticks_ms(host_.user) : 0;
+    frame_accum_us_ = 0;
+    frame_count_ = 0;
+    frame_statements_ = 0;
 
     while (running_) {
         if (pc_line_ >= line_count_) {
@@ -566,15 +571,17 @@ bool interpreter::run() noexcept {
             continue;  // empty statement
         }
 
-        // Cooperative hook: gives the embedder its per frame work and a way to
-        // stop the program (app close, break key).
-        if ((statement_count_ % tick_interval) == 0 && host_.on_tick) {
-            if (!host_.on_tick(host_.user)) {
+        // Cooperative hook: lets the embedder drain input and stop the program
+        // (app close, break key), then run whatever frames have come due.
+        if ((statement_count_ % tick_interval) == 0) {
+            if (host_.on_tick && !host_.on_tick(host_.user)) {
                 running_ = false;
                 break;
             }
+            service_frames();
         }
         ++statement_count_;
+        ++frame_statements_;
 
         jumped_ = false;
         if (!exec_statement()) {

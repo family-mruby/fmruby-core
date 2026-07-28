@@ -761,6 +761,7 @@ static int execute_basic_script(fmrb_app_task_context_t* ctx,
                     basic_screen_ops_t screen_ops = {
                         .cell = basic_console_draw_cell,
                         .present = basic_console_present,
+                        .fill = basic_console_fill,
                         .palette = basic_console_set_palette,
                         .user_data = console
                     };

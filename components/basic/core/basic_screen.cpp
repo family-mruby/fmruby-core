@@ -52,6 +52,12 @@ void interpreter::screen_clear() noexcept {
     }
     cursor_x_ = 0;
     cursor_y_ = 0;
+    if (host_.screen_fill && host_.screen_fill(host_.user, ' ', 0)) {
+        if (host_.screen_present) {
+            host_.screen_present(host_.user);
+        }
+        return;
+    }
     screen_refresh();
 }
 
@@ -108,6 +114,66 @@ void interpreter::screen_put(uint8_t code) noexcept {
     const uint16_t index = static_cast<uint16_t>(cursor_y_) * screen_columns + cursor_x_;
     screen_set_cell(cursor_x_, cursor_y_, code, screen_attrs_[index]);
     ++cursor_x_;
+}
+
+void interpreter::service_frames() noexcept {
+    if (!host_.ticks_ms) {
+        return;  // no clock: the host drives frames itself (tests)
+    }
+
+    const uint32_t now = host_.ticks_ms(host_.user);
+    const uint32_t elapsed_ms = now - last_clock_ms_;
+    last_clock_ms_ = now;
+    frame_accum_us_ += elapsed_ms * 1000u;
+
+    // Run the frames that are due. A long stall (breakpoint, heavy statement)
+    // must not turn into a burst of catch up frames, so the backlog is capped.
+    uint8_t ran = 0;
+    while (frame_accum_us_ >= frame_period_us) {
+        frame_accum_us_ -= frame_period_us;
+        frame_tick();
+        if (++ran >= max_catchup_frames) {
+            frame_accum_us_ = 0;
+            break;
+        }
+    }
+    if (ran > 0) {
+        frame_statements_ = 0;
+    }
+
+    // Real machine pacing: once the frame's statement budget is spent, wait
+    // for the next frame instead of running ahead of the original hardware.
+    if (statements_per_frame_ == 0 || frame_statements_ < statements_per_frame_ ||
+        !host_.sleep_ms) {
+        return;
+    }
+    while (frame_statements_ >= statements_per_frame_ && running_) {
+        host_.sleep_ms(host_.user, 1);
+        const uint32_t after = host_.ticks_ms(host_.user);
+        frame_accum_us_ += (after - last_clock_ms_) * 1000u;
+        last_clock_ms_ = after;
+        if (frame_accum_us_ >= frame_period_us) {
+            frame_accum_us_ -= frame_period_us;
+            frame_tick();
+            frame_statements_ = 0;
+        }
+        if (host_.on_tick && !host_.on_tick(host_.user)) {
+            running_ = false;
+        }
+    }
+}
+
+void interpreter::frame_tick() noexcept {
+    ++frame_count_;
+    // Sprite auto move, animation and collision go here (T3-3). The screen is
+    // presented once per frame rather than per changed cell.
+    if (host_.screen_present) {
+        host_.screen_present(host_.user);
+    }
+}
+
+bool interpreter::moves_active() const noexcept {
+    return false;  // DEF MOVE arrives in T3-3
 }
 
 void interpreter::screen_send_palette() noexcept {

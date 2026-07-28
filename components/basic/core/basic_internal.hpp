@@ -17,6 +17,12 @@ namespace fmrb_basic {
 /// Statements executed between two basic_host_t::on_tick calls.
 inline constexpr uint32_t tick_interval = 32;
 
+/// One video frame in microseconds (60 Hz, core_spec sec 5 PAUSE unit).
+inline constexpr uint32_t frame_period_us = 16667;
+
+/// Frames the interpreter may run back to back after a stall.
+inline constexpr uint8_t max_catchup_frames = 4;
+
 /// Highest nesting the expression evaluator accepts before raising FT.
 inline constexpr uint8_t max_expr_nesting = 16;
 

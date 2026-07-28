@@ -79,6 +79,78 @@ static void fill_rect(basic_console_ctx_t* console, int16_t x, int16_t y,
     send_gfx_command(&cmd);
 }
 
+// --- glyph sheet cache -----------------------------------------------------
+//
+// The link carries roughly a thousand graphics commands per second, so drawing
+// a cell as a dozen rectangles caps a full screen repaint at several seconds
+// (measured, see the B3 report). Each glyph is therefore rendered once into a
+// per attribute sheet on the graphics side, and cells become one draw_tile.
+
+#define GLYPH_SHEET_COLS 16
+#define GLYPH_SHEET_DIM  (GLYPH_SHEET_COLS * BASIC_SCREEN_CELL_W)
+
+static void set_image_target(basic_console_ctx_t* console, uint16_t image_id) {
+    gfx_cmd_t cmd = {
+        .cmd_type = GFX_CMD_SET_SPRITE_IMAGE_TARGET,
+        .canvas_id = console->canvas_id,
+        .params.set_sprite_image_target = {.image_id = image_id}
+    };
+    send_gfx_command(&cmd);
+}
+
+/// Draw the glyph into its sheet slot if it is not cached yet.
+static bool ensure_glyph(basic_console_ctx_t* console, uint8_t code, uint8_t attr) {
+    if (console->sheet_id[attr] == 0) {
+        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
+        if (!gfx_ctx) {
+            return false;
+        }
+        console->sheet_id[attr] = fmrb_gfx_create_sprite_image(
+            gfx_ctx, console->canvas_id, GLYPH_SHEET_DIM, GLYPH_SHEET_DIM, 0, false);
+        if (console->sheet_id[attr] == 0) {
+            return false;
+        }
+        memset(console->sheet_ready[attr], 0, sizeof(console->sheet_ready[attr]));
+    }
+    if (console->sheet_ready[attr][code >> 3] & (uint8_t)(1u << (code & 7))) {
+        return true;
+    }
+
+    const int16_t sx = (int16_t)((code % GLYPH_SHEET_COLS) * BASIC_SCREEN_CELL_W);
+    const int16_t sy = (int16_t)((code / GLYPH_SHEET_COLS) * BASIC_SCREEN_CELL_H);
+
+    set_image_target(console, console->sheet_id[attr]);
+    fill_rect(console, sx, sy, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
+              console->backdrop_rgb);
+    const uint8_t* glyph = basic_font8[code];
+    for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
+        uint8_t bits = glyph[row];
+        uint8_t col = 0;
+        while (bits != 0 && col < BASIC_SCREEN_CELL_W) {
+            if ((bits & (0x80 >> col)) == 0) {
+                col++;
+                continue;
+            }
+            uint8_t run = 1;
+            while (col + run < BASIC_SCREEN_CELL_W && (bits & (0x80 >> (col + run)))) {
+                run++;
+            }
+            fill_rect(console, (int16_t)(sx + col), (int16_t)(sy + row), run, 1,
+                      console->attr_rgb[attr]);
+            col = (uint8_t)(col + run);
+        }
+    }
+    set_image_target(console, 0);
+
+    console->sheet_ready[attr][code >> 3] |= (uint8_t)(1u << (code & 7));
+    return true;
+}
+
+/// Forget every cached glyph (the colours behind them changed).
+static void invalidate_glyphs(basic_console_ctx_t* console) {
+    memset(console->sheet_ready, 0, sizeof(console->sheet_ready));
+}
+
 static void mark_dirty(basic_console_ctx_t* console, uint8_t x, uint8_t y) {
     if (!console->dirty) {
         console->dirty = true;
@@ -101,37 +173,83 @@ void basic_console_draw_cell(void* user_data, uint8_t x, uint8_t y, uint8_t code
         return;
     }
 
+    // Redrawing a cell costs about a dozen link commands, so skip the ones
+    // that did not actually change (a scroll moves text but leaves most of
+    // the screen blank).
+    const uint16_t index = (uint16_t)y * BASIC_SCREEN_COLS + x;
+    attr &= 3;
+    if (console->drawn_code[index] == code && console->drawn_attr[index] == attr) {
+        return;
+    }
+    console->drawn_code[index] = code;
+    console->drawn_attr[index] = attr;
+
     const int16_t px = (int16_t)(x * BASIC_SCREEN_CELL_W);
     const int16_t py = (int16_t)(y * BASIC_SCREEN_CELL_H);
-    const uint8_t fg = console->attr_rgb[attr & 3];
 
-    fill_rect(console, px, py, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
-              console->backdrop_rgb);
-
-    // Glyph pixels as horizontal runs: a blank cell costs one command, a busy
-    // one about a dozen, and only changed cells are ever drawn.
-    const uint8_t* glyph = basic_font8[code];
-    for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
-        uint8_t bits = glyph[row];
-        if (bits == 0) {
-            continue;
-        }
-        uint8_t col = 0;
-        while (col < BASIC_SCREEN_CELL_W) {
-            if ((bits & (0x80 >> col)) == 0) {
-                col++;
-                continue;
+    if (ensure_glyph(console, code, attr)) {
+        gfx_cmd_t cmd = {
+            .cmd_type = GFX_CMD_DRAW_TILE,
+            .canvas_id = console->canvas_id,
+            .params.draw_tile = {
+                .image_id = console->sheet_id[attr],
+                .src_x = (int16_t)((code % GLYPH_SHEET_COLS) * BASIC_SCREEN_CELL_W),
+                .src_y = (int16_t)((code / GLYPH_SHEET_COLS) * BASIC_SCREEN_CELL_H),
+                .w = BASIC_SCREEN_CELL_W,
+                .h = BASIC_SCREEN_CELL_H,
+                .dst_x = px,
+                .dst_y = py
             }
-            uint8_t run = 1;
-            while (col + run < BASIC_SCREEN_CELL_W && (bits & (0x80 >> (col + run)))) {
-                run++;
+        };
+        send_gfx_command(&cmd);
+    } else {
+        // No sheet (out of image memory): fall back to drawing the runs.
+        fill_rect(console, px, py, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
+                  console->backdrop_rgb);
+        const uint8_t* glyph = basic_font8[code];
+        for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
+            uint8_t bits = glyph[row];
+            uint8_t col = 0;
+            while (bits != 0 && col < BASIC_SCREEN_CELL_W) {
+                if ((bits & (0x80 >> col)) == 0) {
+                    col++;
+                    continue;
+                }
+                uint8_t run = 1;
+                while (col + run < BASIC_SCREEN_CELL_W && (bits & (0x80 >> (col + run)))) {
+                    run++;
+                }
+                fill_rect(console, (int16_t)(px + col), (int16_t)(py + row), run, 1,
+                          console->attr_rgb[attr]);
+                col = (uint8_t)(col + run);
             }
-            fill_rect(console, (int16_t)(px + col), (int16_t)(py + row), run, 1, fg);
-            col = (uint8_t)(col + run);
         }
     }
 
     mark_dirty(console, x, y);
+}
+
+void basic_console_fill(void* user_data, uint8_t code, uint8_t attr) {
+    basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
+    if (!console) {
+        return;
+    }
+    attr &= 3;
+
+    if (code == ' ') {
+        fill_rect(console, 0, 0, BASIC_SCREEN_W, BASIC_SCREEN_H, console->backdrop_rgb);
+        memset(console->drawn_code, code, sizeof(console->drawn_code));
+        memset(console->drawn_attr, attr, sizeof(console->drawn_attr));
+    } else {
+        // Any other character still has to be stamped cell by cell.
+        for (uint8_t y = 0; y < BASIC_SCREEN_ROWS; y++) {
+            for (uint8_t x = 0; x < BASIC_SCREEN_COLS; x++) {
+                basic_console_draw_cell(console, x, y, code, attr);
+            }
+        }
+    }
+    mark_dirty(console, 0, 0);
+    mark_dirty(console, BASIC_SCREEN_COLS - 1, BASIC_SCREEN_ROWS - 1);
 }
 
 void basic_console_present(void* user_data) {
@@ -166,6 +284,7 @@ void basic_console_set_palette(void* user_data, uint8_t attr, uint8_t backdrop,
     // (B3, when the BG pattern set arrives).
     console->attr_rgb[attr] = COLOR_RGB332[c3 & 0x3F];
     console->backdrop_rgb = COLOR_RGB332[backdrop & 0x3F];
+    invalidate_glyphs(console);
 }
 
 fmrb_err_t basic_console_init(basic_console_ctx_t* console,
@@ -219,6 +338,8 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
         console->origin_y = (int16_t)ctx->window_pos_y;
     }
 
+    memset(console->drawn_code, ' ', sizeof(console->drawn_code));
+    memset(console->drawn_attr, 0, sizeof(console->drawn_attr));
     fill_rect(console, 0, 0, BASIC_SCREEN_W, BASIC_SCREEN_H, console->backdrop_rgb);
     console->dirty = true;
     console->dirty_x0 = 0;
@@ -280,6 +401,18 @@ void basic_console_register_gfx_ops(basic_state_t* state,
 void basic_console_destroy(basic_console_ctx_t* console) {
     if (!console) {
         return;
+    }
+
+    for (int attr = 0; attr < 4; attr++) {
+        if (console->sheet_id[attr] != 0) {
+            gfx_cmd_t cmd = {
+                .cmd_type = GFX_CMD_DELETE_SPRITE_IMAGE,
+                .canvas_id = console->canvas_id,
+                .params.delete_sprite_image = {.image_id = console->sheet_id[attr]}
+            };
+            send_gfx_command(&cmd);
+            console->sheet_id[attr] = 0;
+        }
     }
 
     if (console->canvas_id != FMRB_CANVAS_SCREEN) {

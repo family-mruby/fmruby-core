@@ -44,6 +44,16 @@ typedef struct {
     /// Cells changed since the last present, coalesced into one dirty rect.
     bool dirty;
     uint8_t dirty_x0, dirty_y0, dirty_x1, dirty_y1;
+
+    /// What is currently on the canvas. Cells that do not change are not
+    /// redrawn, which is what keeps scrolling a mostly blank screen cheap.
+    uint8_t drawn_code[BASIC_SCREEN_COLS * BASIC_SCREEN_ROWS];
+    uint8_t drawn_attr[BASIC_SCREEN_COLS * BASIC_SCREEN_ROWS];
+
+    /// Glyph cache: one 128x128 sheet per colour attribute, filled lazily.
+    /// A cached cell costs a single draw_tile instead of a dozen rectangles.
+    uint16_t sheet_id[4];
+    uint8_t sheet_ready[4][32];  // one bit per character code
 } basic_console_ctx_t;
 
 /**
@@ -62,6 +72,9 @@ void basic_console_draw_cell(void* user_data, uint8_t x, uint8_t y, uint8_t code
 
 /// Present the canvas if anything changed since the last call.
 void basic_console_present(void* user_data);
+
+/// Fill the whole screen with one character (CLS): one rectangle, not 672 cells.
+void basic_console_fill(void* user_data, uint8_t code, uint8_t attr);
 
 /// Apply one palette group (colour codes 0-60, core_spec sec 7).
 void basic_console_set_palette(void* user_data, uint8_t attr, uint8_t backdrop,

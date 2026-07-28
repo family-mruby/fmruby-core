@@ -198,6 +198,15 @@ void host_screen_cell(void* user, uint8_t x, uint8_t y, uint8_t code, uint8_t at
     }
 }
 
+bool host_screen_fill(void* user, uint8_t code, uint8_t attr) {
+    basic_state* state = static_cast<basic_state*>(user);
+    if (state->screen.fill) {
+        state->screen.fill(state->screen.user_data, code, attr);
+        return true;
+    }
+    return false;
+}
+
 void host_screen_present(void* user) {
     basic_state* state = static_cast<basic_state*>(user);
     if (state->screen.present) {
@@ -233,6 +242,7 @@ fmrb_basic::basic_host_t make_host(basic_state* state) {
     host.ext_statement = host_ext_statement;
     host.screen_cell = host_screen_cell;
     host.screen_present = host_screen_present;
+    host.screen_fill = host_screen_fill;
     host.screen_palette = host_screen_palette;
     host.debug_line = host_debug_line;
     host.user = state;
@@ -321,6 +331,13 @@ fmrb_err_t fmrb_basic_run(basic_state_t* handle) {
         return FMRB_ERR_INVALID_PARAM;
     }
     const bool ok = state->core->run();
+
+    // Family BASIC keeps auto moving sprites after the program ends, until
+    // their movement budget is used up (core_spec sec 9, MOVE).
+    while (state->core->moves_active() && !fmrb_app_poll_exit_signal(fmrb_current())) {
+        state->core->frame_tick();
+        fmrb_task_delay_ms(16);
+    }
     flush_output(state, false);
 
     // 00_common memory design rule 4: every phase records what the interpreter

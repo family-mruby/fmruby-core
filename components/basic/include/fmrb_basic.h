@@ -181,6 +181,8 @@ void fmrb_basic_set_gfx_ops(basic_state_t* state, const basic_gfx_ops_t* ops);
 typedef struct {
     void (*cell)(void* user_data, uint8_t x, uint8_t y, uint8_t code, uint8_t attr);
     void (*present)(void* user_data);
+    /// Whole screen set to one character (CLS): one fill instead of 672 cells.
+    void (*fill)(void* user_data, uint8_t code, uint8_t attr);
     void (*palette)(void* user_data, uint8_t attr, uint8_t backdrop, uint8_t c1,
                     uint8_t c2, uint8_t c3);
     void* user_data;
