@@ -21,6 +21,7 @@ set(FMRB_BASIC_SRCS
 # BASIC extensions (graphics console, etc.)
 set(BASIC_EXT_SRCS
     "extension/fmrb_basic_gfx.c"
+    "assets/basic_assets.c"
     "assets/basic_font8.c"
     "assets/basic_tile_a.c"
 )
@@ -28,5 +29,5 @@ set(BASIC_EXT_SRCS
 idf_component_register(
     SRCS ${BASIC_CORE_SRCS} ${FMRB_BASIC_SRCS} ${BASIC_EXT_SRCS}
     INCLUDE_DIRS "include" "core" "extension" "assets"
-    REQUIRES fmrb_mem fmrb_common fmrb_msg fmrb_gfx fmrb_audio log
+    REQUIRES fmrb_mem fmrb_common fmrb_msg fmrb_gfx fmrb_audio fmrb_hal log
 )

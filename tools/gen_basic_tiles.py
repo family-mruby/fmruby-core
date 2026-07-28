@@ -114,9 +114,24 @@ def emit_c(glyphs, path):
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
+    args = sys.argv[1:]
+    bmp = None
+    if "--bmp" in args:
+        i = args.index("--bmp")
+        bmp = args[i + 1]
+        del args[i:i + 2]
+    glyphs = build()
+    if bmp:
+        # Export the art as an editable sheet instead of the C table. This
+        # overwrites hand edits, so it is never part of the default run.
+        sys.path.insert(0, here)
+        import basic_sheet
+        basic_sheet.write_bmp(basic_sheet.glyphs_to_pixels(glyphs), bmp)
+        print("wrote %s" % bmp)
+        return
     default = os.path.join(here, "..", "components", "basic", "assets", "basic_tile_a.c")
-    out = sys.argv[1] if len(sys.argv) > 1 else os.path.normpath(default)
-    emit_c(build(), out)
+    out = args[0] if args else os.path.normpath(default)
+    emit_c(glyphs, out)
     print("wrote %s" % out)
 
 

@@ -4,8 +4,12 @@
 The font is original artwork for this project: Family BASIC's own character
 generator is copyrighted, so only the *code positions* follow the spec
 (doc/fmrb_basic/spec/family_basic_core_spec.md sec 12, table B) while the
-shapes are ours. Quality is deliberately plain; redrawing them is a separate
-job (00_common, open question 2).
+shapes are ours. ASCII is drawn with 2px strokes; kana are 1px, because a kana
+with three or more strokes does not survive 8x8 at 2px.
+
+This file writes the fallback table that is compiled into the firmware. The
+artwork that actually shows up can be edited as an image instead -- see
+components/basic/assets/basic_assets.h and `rake basic:sheets`.
 
 Art format: one glyph per entry, eight groups of eight characters separated by
 spaces, '#' = pixel on, '.' = pixel off, top row first.
@@ -272,9 +276,23 @@ def emit_c(glyphs, path):
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
-    default = os.path.join(here, "..", "components", "basic", "assets", "basic_font8.c")
-    out = sys.argv[1] if len(sys.argv) > 1 else os.path.normpath(default)
+    args = sys.argv[1:]
+    bmp = None
+    if "--bmp" in args:
+        i = args.index("--bmp")
+        bmp = args[i + 1]
+        del args[i:i + 2]
     glyphs = build()
+    if bmp:
+        # Export the art as an editable sheet instead of the C table. This
+        # overwrites hand edits, so it is never part of the default run.
+        sys.path.insert(0, here)
+        import basic_sheet
+        basic_sheet.write_bmp(basic_sheet.glyphs_to_pixels(glyphs), bmp)
+        print("wrote %s" % bmp)
+        return
+    default = os.path.join(here, "..", "components", "basic", "assets", "basic_font8.c")
+    out = args[0] if args else os.path.normpath(default)
     emit_c(glyphs, out)
     print("wrote %s" % out)
 

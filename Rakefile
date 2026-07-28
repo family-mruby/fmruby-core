@@ -460,6 +460,35 @@ namespace :basic do
   }
   BASIC_SAMPLE_APP_DIR = "flash/app/basic"
 
+  # Character sheets. The firmware loads flash/usr/share/basic/*.bmp at app
+  # start and falls back to the compiled tables when a sheet is missing, so the
+  # artwork can be edited in a graphics editor without a rebuild.
+  BASIC_SHEET_DIR = "flash/usr/share/basic"
+  BASIC_SHEETS = {
+    "font_b" => "gen_basic_font.py",   # table B: text glyphs
+    "tile_a" => "gen_basic_tiles.py",  # table A: sprite tiles
+  }
+
+  desc "Export the built-in art to the editable BMP sheets (FORCE=1 to overwrite)"
+  task :sheets do
+    mkdir_p BASIC_SHEET_DIR
+    BASIC_SHEETS.each do |name, gen|
+      bmp = "#{BASIC_SHEET_DIR}/#{name}.bmp"
+      if File.exist?(bmp) && ENV["FORCE"] != "1"
+        puts "keeping #{bmp} (hand edits are the source now; FORCE=1 to overwrite)"
+        next
+      end
+      sh "python3 tools/#{gen} --bmp #{bmp}"
+    end
+  end
+
+  desc "Convert a character sheet between PNG and BMP (IN=a.png OUT=b.bmp)"
+  task :sheet_convert do
+    src = ENV["IN"] or abort "usage: rake basic:sheet_convert IN=sheet.png OUT=sheet.bmp"
+    dst = ENV["OUT"] or abort "usage: rake basic:sheet_convert IN=sheet.png OUT=sheet.bmp"
+    sh "python3 tools/basic_sheet_convert.py #{src} #{dst}"
+  end
+
   desc "Copy the BASIC samples into flash/app/basic so the launcher lists them"
   task :samples do
     mkdir_p BASIC_SAMPLE_APP_DIR

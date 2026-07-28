@@ -9,8 +9,7 @@
  */
 
 #include "fmrb_basic_gfx.h"
-#include "basic_font8.h"
-#include "basic_tile_a.h"
+#include "basic_assets.h"
 #include "fmrb_msg.h"
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
@@ -123,8 +122,8 @@ static bool ensure_glyph(basic_console_ctx_t* console, uint8_t code, uint8_t att
     set_image_target(console, console->sheet_id[attr]);
     fill_rect(console, sx, sy, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
               console->backdrop_rgb);
-    const uint8_t* glyph =
-        console->text_table_a ? basic_tile_a[code] : basic_font8[code];
+    const uint8_t* glyph = console->text_table_a ? basic_assets_tile_a()[code]
+                                                 : basic_assets_font()[code];
     for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
         uint8_t bits = glyph[row];
         uint8_t col = 0;
@@ -208,8 +207,8 @@ void basic_console_draw_cell(void* user_data, uint8_t x, uint8_t y, uint8_t code
         // No sheet (out of image memory): fall back to drawing the runs.
         fill_rect(console, px, py, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
                   console->backdrop_rgb);
-        const uint8_t* glyph =
-            console->text_table_a ? basic_tile_a[code] : basic_font8[code];
+        const uint8_t* glyph = console->text_table_a ? basic_assets_tile_a()[code]
+                                                     : basic_assets_font()[code];
         for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
             uint8_t bits = glyph[row];
             uint8_t col = 0;
@@ -308,7 +307,8 @@ static void sprite_instance_visible(basic_console_ctx_t* console, uint16_t insta
 /// Paint one sprite image from the tile bitmaps, honouring the flip flags.
 static void draw_sprite_image(basic_console_ctx_t* console, uint16_t image_id,
                               const basic_sprite_view* sprite) {
-    const uint8_t (*tiles)[8] = sprite->table_a ? basic_tile_a : basic_font8;
+    const uint8_t (*tiles)[8] =
+        sprite->table_a ? basic_assets_tile_a() : basic_assets_font();
     const uint8_t size = sprite->size16 ? 2 : 1;  // tiles per side
     const uint8_t fg = console->attr_rgb[sprite->attr & 3];
 
@@ -452,6 +452,9 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
         FMRB_LOGI(TAG, "Headless app, screen output stays in the log");
         return FMRB_ERR_INVALID_STATE;
     }
+
+    // Pick up edited character sheets on every app start (basic_assets.h).
+    basic_assets_reload();
 
     console->app_ctx = ctx;
     // Default palette until the interpreter pushes its own: white on black.
