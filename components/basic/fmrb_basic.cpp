@@ -74,9 +74,13 @@ void flush_output(basic_state* state, bool with_newline) {
     state->out_line[state->out_len] = '\0';
     if (state->output_cb) {
         state->output_cb(state->output_user_data, state->out_line);
-    } else if (state->out_len > 1) {
-        // No console attached (the screen renderer is the real output): keep
-        // the text in the log, which is what the headless harness reads.
+    } else if (!state->screen.cell && state->out_len > 1) {
+        // Headless: no console and no screen, so the log is the only output
+        // there is. A program with a screen keeps its text there -- mirroring
+        // every PRINT into the log floods it (a game loop printing its score
+        // with a trailing ';' never sends a newline, so this arrived as an
+        // unbroken run of "SCORE 0 SCORE 0 ..." several times a second) and
+        // _SCRDUMP already gives the harness the screen contents.
         state->out_line[state->out_len - 1] = '\0';
         FMRB_LOGI(TAG, "PRINT: %s", state->out_line);
     }
