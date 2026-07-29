@@ -1,5 +1,5 @@
 // Remote debugger daemon task. See fmrb_debugd.h and
-// doc/vm_remote_debug_protocol.md.
+// doc/remote_debug/vm_remote_debug_protocol.md.
 //
 // Phase 1 scope in THIS file: the task loop, the transport wiring, and the
 // non-hook commands (version / ps / log_read / kill / stop / suspend / resume /

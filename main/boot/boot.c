@@ -469,7 +469,7 @@ void fmrb_os_init(void)
     }
     FMRB_LOGI(TAG, "Family mruby OS initialization complete");
 
-    // Remote debugger daemon (doc/vm_remote_debug_*). Linux talks TCP on
+    // Remote debugger daemon (doc/remote_debug/). Linux talks TCP on
     // FMRB_DEBUG_TCP_PORT, ESP32 targets talk the BLE debug GATT service.
     // Started after the kernel/app subsystems are up. The BLE transport does
     // not depend on BLE being initialized yet, so the order is free here.

@@ -1,4 +1,4 @@
-// Remote debugger daemon (doc/vm_remote_debug_*). Owns the debug session:
+// Remote debugger daemon (doc/remote_debug/). Owns the debug session:
 // a single FreeRTOS task that runs the transport, decodes requests, and
 // dispatches them. Linux/Phase 1 only for now.
 #pragma once

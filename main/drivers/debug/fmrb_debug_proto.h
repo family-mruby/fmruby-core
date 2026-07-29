@@ -1,5 +1,5 @@
 // Wire protocol (msgpack) for the PicoRuby remote debugger.
-// See doc/vm_remote_debug_protocol.md for the on-wire format.
+// See doc/remote_debug/vm_remote_debug_protocol.md for the on-wire format.
 //
 // This layer owns: request decoding (debugd never touches raw msgpack for
 // parsing) and the command-name -> enum table, plus small helpers for building
