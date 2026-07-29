@@ -534,6 +534,13 @@ namespace :basic do
     abort "no benchmarks in #{BASIC_TEST_DIR}/samples" if installed.zero?
     puts "#{installed} benchmarks installed in #{BASIC_BENCH_DIR}"
     puts "run 'rake build:esp32 && rake flash' to put them on the device"
+    puts "remove them again with 'rake basic:bench_clean'"
+  end
+
+  desc "Remove the benchmarks from flash/home/bench"
+  task :bench_clean do
+    rm_rf BASIC_BENCH_DIR
+    puts "removed #{BASIC_BENCH_DIR}"
   end
 end
 
