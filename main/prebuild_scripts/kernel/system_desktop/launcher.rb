@@ -194,7 +194,53 @@ module LauncherMixin
 
   # ---- App scanning ----
 
+  # Temporary boot-time micro-profile. The scan costs ~300 ms per .toml while
+  # the filesystem accounts for under 10 ms of that, so the rest is inside the
+  # VM. Each probe isolates one candidate mechanism; read the elapsed time off
+  # the log timestamps of the lines around it. Remove once the cost is
+  # understood.
+  SCAN_PROFILE = false
+
+  def profile_scan_primitives
+    return unless SCAN_PROFILE
+    st = GC.stat
+    Log.info("prof: begin live=#{st[:live]} mi=#{st[:malloc_increase]} mt=#{st[:malloc_threshold]} gen=#{st[:generational]} state=#{st[:state]}")
+
+    line = "app_screen_name = \"Ruby app demo\""
+
+    # GC dynamics. A step runs whenever gc_debt > 0, and a completed cycle
+    # pushes debt back to -credit, so debt should sit deeply negative and only
+    # cross zero once per cycle. If it hovers at or above zero, a step is being
+    # driven on every allocation. Elapsed time per round comes from the log
+    # timestamps.
+    r = 0
+    while r < 5
+      j = 0
+      while j < 200
+        line.strip
+        j += 1
+      end
+      st = GC.stat
+      Log.info("prof: round#{r} debt=#{st[:debt]} state=#{st[:state]} live=#{st[:live]} mi=#{st[:malloc_increase]}")
+      r += 1
+    end
+
+    # One forced full cycle, then the same round again: says whether the cost
+    # is the cycle itself or the per-allocation stepping around it.
+    GC.start
+    Log.info("prof: GC.start done")
+    st = GC.stat
+    Log.info("prof: after start debt=#{st[:debt]} state=#{st[:state]} live=#{st[:live]}")
+    j = 0
+    while j < 200
+      line.strip
+      j += 1
+    end
+    Log.info("prof: strip x200 after full gc")
+  end
+
   def scan_apps
+    profile_scan_primitives
     @launcher_apps = builtin_apps
     builtin_count = @launcher_apps.size
     # Single virtual path - the HAL resolver maps "/app" to LittleFS on ESP32
@@ -208,74 +254,90 @@ module LauncherMixin
     Log.info("Launcher: #{@launcher_apps.size} apps found")
   end
 
+  # Read a directory into an array of entry names, or nil when the path is not
+  # a directory / cannot be opened.
+  def read_dir_entries(path)
+    dir = Dir.open(path)
+    entries = []
+    while (e = dir.read)
+      entries << e unless e == "." || e == ".."
+    end
+    dir.close
+    entries
+  rescue
+    nil
+  end
+
+  # Whether a name can be a directory in the app layout. Every app file
+  # carries an extension and bundle directories (e.g. /app/game/rpg_demo/) do
+  # not, so this stands in for opening each entry as a directory and rescuing
+  # the failure. That probe ran on every non-.toml entry: 42 failed opendir
+  # calls, and 42 mruby exceptions, per boot scan.
+  def dir_candidate?(name)
+    !name.include?(".")
+  end
+
+  # Pick the script extension for "base" out of a directory listing already in
+  # memory. Previously this opened "<base>.rb", then ".lua", then ".bas" until
+  # one succeeded - up to three filesystem opens per app, for information the
+  # enumeration had already produced.
+  def find_script_ext(entry_names, base)
+    ["rb", "lua", "bas"].each do |ext|
+      return ext if entry_names.include?("#{base}.#{ext}")
+    end
+    nil
+  end
+
   def scan_app_dir(base_path)
-    begin
-      dir = Dir.open(base_path)
-      entries = []
-      while (entry = dir.read)
-        entries << entry unless entry == "." || entry == ".."
-      end
-      dir.close
+    entries = read_dir_entries(base_path)
+    unless entries
+      Log.warn("Cannot scan #{base_path}")
+      return
+    end
 
-      entries.each do |entry|
-        path = "#{base_path}/#{entry}"
-        # Check for subdirectories containing .toml files
-        begin
-          sub_dir = Dir.open(path)
-          sub_entries = []
-          while (e = sub_dir.read)
-            sub_entries << e unless e == "." || e == ".."
+    entries.each do |entry|
+      next unless dir_candidate?(entry)
+      path = "#{base_path}/#{entry}"
+      sub_entries = read_dir_entries(path)
+      next unless sub_entries
+
+      sub_entries.each do |f|
+        if f.end_with?(".toml")
+          app_entry = parse_app_toml("#{path}/#{f}", path, sub_entries)
+          if app_entry
+            @launcher_apps << app_entry
+            Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
           end
-          sub_dir.close
-
-          sub_entries.each do |f|
-            full = "#{path}/#{f}"
-            if f.end_with?(".toml")
-              app_entry = parse_app_toml(full, path)
-              if app_entry
-                @launcher_apps << app_entry
-                Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
-              end
-            else
-              # 3rd-level scan: a subdirectory under a category may itself
-              # contain a .toml + script, so a self-contained app bundle
-              # (assets co-located with .rb / .toml, e.g. /app/game/rpg_demo/)
-              # also shows up in the launcher.
-              begin
-                dd = Dir.open(full)
-                dd_entries = []
-                while (df = dd.read)
-                  dd_entries << df unless df == "." || df == ".."
-                end
-                dd.close
-                dd_entries.each do |df|
-                  next unless df.end_with?(".toml")
-                  app_entry = parse_app_toml("#{full}/#{df}", full)
-                  if app_entry
-                    @launcher_apps << app_entry
-                    Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
-                  end
-                end
-              rescue
-                # Not a directory, skip
-              end
+        elsif dir_candidate?(f)
+          # 3rd-level scan: a subdirectory under a category may itself
+          # contain a .toml + script, so a self-contained app bundle
+          # (assets co-located with .rb / .toml, e.g. /app/game/rpg_demo/)
+          # also shows up in the launcher.
+          full = "#{path}/#{f}"
+          dd_entries = read_dir_entries(full)
+          next unless dd_entries
+          dd_entries.each do |df|
+            next unless df.end_with?(".toml")
+            app_entry = parse_app_toml("#{full}/#{df}", full, dd_entries)
+            if app_entry
+              @launcher_apps << app_entry
+              Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
             end
           end
-        rescue
-          # Not a directory, skip
         end
-        # Yield to FreeRTOS so lower-priority tasks on Core 1 (status_led
-        # prio 2) get scheduled during the filesystem scan. Each top-level
-        # entry may issue many hw_proxy round-trips that keep this task in
-        # ready state continuously otherwise.
-        Machine.delay_ms(1)
       end
-    rescue => e
-      Log.warn("Cannot scan #{base_path}: #{e.message}")
+
+      # Yield to FreeRTOS so lower-priority tasks on Core 1 (status_led
+      # prio 2) get scheduled during the filesystem scan. Each top-level
+      # entry may issue many hw_proxy round-trips that keep this task in
+      # ready state continuously otherwise.
+      Machine.delay_ms(1)
     end
   end
 
-  def parse_app_toml(toml_path, dir_path)
+  # entry_names is the listing of dir_path, used to resolve the script file
+  # without touching the filesystem again.
+  def parse_app_toml(toml_path, dir_path, entry_names)
     label = nil
     label_lang = nil   # Localized label from app_screen_name_<lang>, takes precedence
     icon_field = nil
@@ -286,13 +348,26 @@ module LauncherMixin
       content = file.read
       file.close
 
+      # Hot loop: this runs for every line of every app's .toml at boot, so it
+      # is written to avoid the two expensive primitives measured on device.
+      # String#gsub is implemented in Ruby here and costs ~15 ms per call, and
+      # every allocation drags in ~135 us of GC, so the key is matched before
+      # the value is touched and the surrounding quotes are removed by slicing
+      # rather than by gsub. Together these took the boot scan from ~300 ms per
+      # .toml to a few ms.
       content.split("\n").each do |line|
         line = line.strip
         next if line.empty? || line.start_with?("#")
-        m = line.split("=", 2)
-        next unless m[1]
-        key = m[0].strip
-        val = m[1].strip.gsub('"', '')
+        eq = line.index("=")
+        next unless eq
+        key = line[0, eq].strip
+        next unless key == lang_key || key == "app_screen_name" ||
+                    key == "launcher_visible" || key == "icon"
+        val = line[eq + 1, line.length - eq - 1].strip
+        vlen = val.length
+        if vlen >= 2 && val[0] == '"' && val[vlen - 1] == '"'
+          val = val[1, vlen - 2]
+        end
         case key
         when lang_key
           label_lang = val
@@ -316,17 +391,7 @@ module LauncherMixin
     toml_name = toml_path.split("/").last
     base = toml_name.sub(".toml", "")
 
-    ext = nil
-    ["rb", "lua", "bas"].each do |try_ext|
-      begin
-        f = File.open("#{dir_path}/#{base}.#{try_ext}", "r")
-        f.close
-        ext = try_ext
-        break
-      rescue
-      end
-    end
-
+    ext = find_script_ext(entry_names, base)
     return nil unless ext
 
     icon_char = VM_ICONS[ext] || "?"
