@@ -63,10 +63,19 @@ x86 のネイティブビルドなので**実機の予測値ではない**。ハ
 
 ### 実機計測の手順 (ユーザ依頼)
 
-1. `rake build:esp32` して書き込み、リセット
-2. シリアルログを取りながら `flash/app/basic/` のベンチを 5 本起動
-   (ランチャーには出ない。エディタで開いて F5、またはシェルから)
-3. ログをファイルに保存して `ruby tool/basic/basic_bench.rb --log そのファイル`
+ベンチはソースツリー (`components/basic/test/samples/`) にしか無いので、
+そのままではデバイス上のエディタから開けない。**`rake basic:bench` で
+`flash/home/bench/` へ入れてから焼く**。
+
+1. `rake basic:bench` (ベンチ 5 本 + .toml を flash へ配置)
+2. `rake build:esp32` して書き込み、リセット
+3. シリアルログを取りながら、エディタで `/home/bench/bench_01_loop.bas` を
+   開いて **F5**。5 本繰り返す
+4. ログをファイルに保存して `ruby tool/basic/basic_bench.rb --log そのファイル`
+
+`.toml` は **背景アプリ (画面なし)** として起動するよう書かれている。
+画面を持つアプリの PRINT はログに出さない仕様なので (B5 のログ整理)、
+マーカーをログで拾うにはこれが必要になる。
 
 ## 3. T5-3 / T5-4: 音と入力
 
