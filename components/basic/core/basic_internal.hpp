@@ -23,6 +23,14 @@ inline constexpr uint32_t frame_period_us = 16667;
 /// Frames the interpreter may run back to back after a stall.
 inline constexpr uint8_t max_catchup_frames = 4;
 
+/// Frames between screen presents. Frame timing stays at 60 Hz - PAUSE and MML
+/// WAIT count frames, so changing that would change how fast every program
+/// runs - but pushing a frame to the graphics side every 16.7 ms is more than
+/// it can use: it renders at 30 fps, so half were discarded, and the traffic
+/// filled the host task's queue and delayed HID events (keys arrived in bursts
+/// after the app exited). 3 frames = 20 fps of presents.
+inline constexpr uint8_t frames_per_present = 3;
+
 /// Highest nesting the expression evaluator accepts before raising FT.
 inline constexpr uint8_t max_expr_nesting = 16;
 

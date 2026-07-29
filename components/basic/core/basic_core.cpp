@@ -587,6 +587,7 @@ bool interpreter::run() noexcept {
     last_clock_ms_ = host_.ticks_ms ? host_.ticks_ms(host_.user) : 0;
     frame_accum_us_ = 0;
     frame_count_ = 0;
+    present_countdown_ = 0;
     frame_statements_ = 0;
     error_handler_line_ = 0;
     in_error_handler_ = false;

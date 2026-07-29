@@ -214,7 +214,12 @@ typedef struct {
     bool flip_y;
     bool table_a;      ///< tiles come from character table A
     uint8_t attr;      ///< colour attribute 0-3
-    uint8_t tiles[4];
+    /// Animation frames the sprite alternates between: 1 for DEF SPRITE, 2 for
+    /// the DEF MOVE walk cycle. Building one image per frame lets the renderer
+    /// switch frames instead of repainting the artwork every animation step.
+    uint8_t frame_count;
+    uint8_t frame_index;       ///< frame showing now, indexes frame_tiles
+    uint8_t frame_tiles[2][4]; ///< character codes per frame
     int16_t x;         ///< sprite plane coordinates
     int16_t y;
 } basic_sprite_view;

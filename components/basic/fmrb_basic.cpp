@@ -9,6 +9,8 @@
 
 #include "fmrb_basic.h"
 
+#include <cstring>
+
 #include "basic_core.hpp"
 #include "basic_charset.hpp"
 
@@ -263,10 +265,10 @@ bool host_on_tick(void* user) {
 
     service_beep(state);
 
-    // Screen updates are batched: present once per tick instead of per cell.
-    if (state->screen.present) {
-        state->screen.present(state->screen.user_data);
-    }
+    // Presenting is left to the frame clock (interpreter::frame_tick). This
+    // used to present once per tick, which runs far more often than a frame
+    // and so undid the frame pacing: the screen went out at whatever rate the
+    // statement loop happened to tick at.
 
     // Cooperative exit: the kernel asks the app to stop by raising this flag.
     return !fmrb_app_poll_exit_signal(ctx);
@@ -451,10 +453,14 @@ void host_sprite_update(void* user, const fmrb_basic::basic_sprite_state* sprite
         .flip_y = sprite->flip_y,
         .table_a = sprite->table_a,
         .attr = sprite->attr,
-        .tiles = {sprite->tiles[0], sprite->tiles[1], sprite->tiles[2], sprite->tiles[3]},
+        .frame_count = sprite->frame_count,
+        .frame_index = sprite->frame_index,
         .x = sprite->x,
         .y = sprite->y,
     };
+    static_assert(sizeof(view.frame_tiles) == sizeof(sprite->frame_tiles),
+                  "sprite view and state must agree on the frame table");
+    memcpy(view.frame_tiles, sprite->frame_tiles, sizeof(view.frame_tiles));
     state->sprite.update(state->sprite.user_data, &view);
 }
 

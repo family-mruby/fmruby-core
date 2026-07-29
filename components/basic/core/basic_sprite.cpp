@@ -78,6 +78,9 @@ void interpreter::set_pad(uint8_t player, uint8_t stick, uint8_t trigger) noexce
 void interpreter::notify_sprite(uint8_t index) noexcept {
     if (host_.sprite_update && index < sprite_count) {
         sprites_[index].table_a = sprites_use_table_a();
+        // DEF SPRITE artwork does not animate on its own; MOVE characters do.
+        sprites_[index].frame_count = 1;
+        sprites_[index].frame_index = 0;
         host_.sprite_update(host_.user, &sprites_[index]);
     }
 }
@@ -131,9 +134,15 @@ void interpreter::notify_move(uint8_t index) noexcept {
     view.behind = mv.behind;
     view.table_a = true;
     view.attr = mv.attr;
-    const uint8_t base = anim_characters[mv.character & 15].frame[mv.anim_phase & 1];
-    for (uint8_t i = 0; i < 4; ++i) {
-        view.tiles[i] = static_cast<uint8_t>(base + i);
+    // Both walk poses travel together so the renderer can hold an image for
+    // each and switch between them; anim_phase only selects which one shows.
+    view.frame_count = 2;
+    view.frame_index = static_cast<uint8_t>(mv.anim_phase & 1);
+    for (uint8_t f = 0; f < 2; ++f) {
+        const uint8_t base = anim_characters[mv.character & 15].frame[f];
+        for (uint8_t i = 0; i < 4; ++i) {
+            view.frame_tiles[f][i] = static_cast<uint8_t>(base + i);
+        }
     }
     view.x = mv.x;
     view.y = mv.y;
@@ -178,7 +187,7 @@ bool interpreter::st_def() noexcept {
         sp.flip_y = (param[4] != 0);
         sp.table_a = true;
         for (uint8_t i = 0; i < 4; ++i) {
-            sp.tiles[i] = (i < tiles.len) ? tiles.str[i] : 0;
+            sp.frame_tiles[0][i] = (i < tiles.len) ? tiles.str[i] : 0;
         }
         notify_sprite(static_cast<uint8_t>(slot));
         return true;

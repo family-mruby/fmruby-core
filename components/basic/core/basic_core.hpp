@@ -118,7 +118,13 @@ struct basic_sprite_state {
     bool flip_y;
     bool table_a;     ///< tiles come from character table A (animation set)
     uint8_t attr;     ///< colour attribute 0-3
-    uint8_t tiles[4]; ///< character codes: [0] for 8x8, all four for 16x16
+    /// Animation frames the sprite alternates between: 1 for DEF SPRITE, 2 for
+    /// the DEF MOVE walk cycle. The renderer builds one image per frame so a
+    /// walking character costs a frame switch rather than a repaint.
+    uint8_t frame_count;
+    uint8_t frame_index;       ///< frame showing now, indexes frame_tiles
+    /// Character codes per frame: [f][0] for 8x8, all four for 16x16.
+    uint8_t frame_tiles[2][4];
     int16_t x;        ///< sprite plane coordinates (core_spec sec 8)
     int16_t y;
 };
@@ -676,6 +682,7 @@ private:
     uint32_t last_clock_ms_ = 0;
     uint32_t frame_accum_us_ = 0;
     uint32_t frame_count_ = 0;
+    uint8_t present_countdown_ = 0;
     uint16_t frame_statements_ = 0;
     uint16_t statements_per_frame_ = 60;
 

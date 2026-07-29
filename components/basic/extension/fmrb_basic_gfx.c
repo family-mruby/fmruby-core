@@ -328,21 +328,35 @@ static void invalidate_cells(basic_console_ctx_t* console) {
     memset(console->drawn_attr, 0xFF, sizeof(console->drawn_attr));
 }
 
-/// Turn the stored colour codes into RGB332 through the code table and FILTER.
-/// FILTER is a BG plane effect (v3_spec), so the sprite colours skip it.
-static void recompute_palette(basic_console_ctx_t* console) {
+/// Turn the stored text colour codes into RGB332 through the code table and
+/// FILTER. FILTER is a BG plane effect (v3_spec), so the sprite colours skip it.
+///
+/// This drops both text caches, which is expensive: the glyph sheet has to be
+/// re-rendered a cell at a time (a dozen link commands each) and every cell on
+/// screen redraws. Only call it when the text palette actually changed - a
+/// sprite palette write must not land here.
+static void recompute_text_palette(basic_console_ctx_t* console) {
     console->backdrop_rgb =
         apply_filter(COLOR_RGB332[console->backdrop_code & 0x3F], console->filter_color);
     for (uint8_t group = 0; group < 4; group++) {
         for (uint8_t i = 0; i < 3; i++) {
             console->attr_rgb[group][i] = apply_filter(
                 COLOR_RGB332[console->attr_code[group][i] & 0x3F], console->filter_color);
-            console->sprite_rgb[group][i] =
-                COLOR_RGB332[console->sprite_code[group][i] & 0x3F];
         }
     }
     invalidate_glyphs(console);
     invalidate_cells(console);
+}
+
+/// Sprite colours only. Sprites carry their own images, so nothing about the
+/// text planes is affected.
+static void recompute_sprite_palette(basic_console_ctx_t* console) {
+    for (uint8_t group = 0; group < 4; group++) {
+        for (uint8_t i = 0; i < 3; i++) {
+            console->sprite_rgb[group][i] =
+                COLOR_RGB332[console->sprite_code[group][i] & 0x3F];
+        }
+    }
 }
 
 static uint8_t index_rgb(const basic_console_ctx_t* console, const uint8_t table[4][3],
@@ -360,8 +374,9 @@ void basic_console_set_filter(void* user_data, uint8_t color) {
     }
     console->filter_color = color;
     // The interpreter repaints every cell right after this (screen_refresh),
-    // which is what puts the new colours on the canvas.
-    recompute_palette(console);
+    // which is what puts the new colours on the canvas. FILTER is a BG plane
+    // effect, so the sprite colours are untouched.
+    recompute_text_palette(console);
     FMRB_LOGI(TAG, "FILTER %u", color);
 }
 
@@ -374,11 +389,18 @@ void basic_console_set_palette(void* user_data, uint8_t attr, uint8_t backdrop,
     // The three colours of the group are the ink indices 1-3; index 0 is the
     // shared backdrop. Single colour artwork draws in index 3, which is why
     // that one is the "text colour" a program sets with COLOR.
+    // Programs re-issue the same palette every frame (a sprite redefinition in
+    // the main loop is enough), so bail out when nothing moved rather than
+    // throwing away the glyph sheet and repainting the screen.
+    if (console->attr_code[attr][0] == c1 && console->attr_code[attr][1] == c2 &&
+        console->attr_code[attr][2] == c3 && console->backdrop_code == backdrop) {
+        return;
+    }
     console->attr_code[attr][0] = c1;
     console->attr_code[attr][1] = c2;
     console->attr_code[attr][2] = c3;
     console->backdrop_code = backdrop;
-    recompute_palette(console);
+    recompute_text_palette(console);
 }
 
 void basic_console_set_sprite_palette(void* user_data, uint8_t attr, uint8_t c1,
@@ -387,10 +409,14 @@ void basic_console_set_sprite_palette(void* user_data, uint8_t attr, uint8_t c1,
     if (!console || attr > 3) {
         return;
     }
+    if (console->sprite_code[attr][0] == c1 && console->sprite_code[attr][1] == c2 &&
+        console->sprite_code[attr][2] == c3) {
+        return;
+    }
     console->sprite_code[attr][0] = c1;
     console->sprite_code[attr][1] = c2;
     console->sprite_code[attr][2] = c3;
-    recompute_palette(console);
+    recompute_sprite_palette(console);
     // Sprite images hold their colours; redraw them with the new palette.
     for (uint8_t i = 0; i < BASIC_SPRITE_SLOTS; i++) {
         console->sprites[i].repaint = true;
@@ -412,10 +438,40 @@ static void sprite_instance_visible(basic_console_ctx_t* console, uint16_t insta
     send_gfx_command(&cmd);
 }
 
-/// Paint one sprite image from the tile bitmaps, honouring the flip flags.
+/// Drop a slot's instance and artwork, so it can be rebuilt from scratch.
+static void release_sprite_slot(basic_console_ctx_t* console,
+                                typeof(console->sprites[0])* slot) {
+    if (slot->instance_id != 0) {
+        gfx_cmd_t cmd = {
+            .cmd_type = GFX_CMD_DELETE_SPRITE_INSTANCE,
+            .canvas_id = console->canvas_id,
+            .params.delete_sprite_instance = {.instance_id = slot->instance_id}
+        };
+        send_gfx_command(&cmd);
+        slot->instance_id = 0;
+    }
+    for (uint8_t f = 0; f < 2; f++) {
+        if (slot->image_id[f] == 0) {
+            continue;
+        }
+        gfx_cmd_t cmd = {
+            .cmd_type = GFX_CMD_DELETE_SPRITE_IMAGE,
+            .canvas_id = console->canvas_id,
+            .params.delete_sprite_image = {.image_id = slot->image_id[f]}
+        };
+        send_gfx_command(&cmd);
+        slot->image_id[f] = 0;
+    }
+    slot->visible = false;
+    slot->frame_index = 0;
+    slot->pos_valid = false;
+}
+
+/// Paint one animation frame's image from the tile bitmaps, honouring flips.
 static void draw_sprite_image(basic_console_ctx_t* console, uint16_t image_id,
-                              const basic_sprite_view* sprite) {
+                              const basic_sprite_view* sprite, uint8_t frame) {
     const uint8_t size = sprite->size16 ? 2 : 1;  // tiles per side
+    const uint8_t* tiles = sprite->frame_tiles[frame];
 
     set_image_target(console, image_id);
     // Transparent background: colour 0 is the image's transparent key.
@@ -428,13 +484,26 @@ static void draw_sprite_image(basic_console_ctx_t* console, uint16_t image_id,
         const uint8_t tile_col = (uint8_t)(t % size);
         const uint8_t tile_row = (uint8_t)(t / size);
         uint16_t glyph[BASIC_SCREEN_CELL_H];
-        basic_assets_glyph(sprite->table_a, sprite->tiles[t], glyph);
+        basic_assets_glyph(sprite->table_a, tiles[t], glyph);
         for (uint8_t row = 0; row < BASIC_SCREEN_CELL_H; row++) {
             const uint16_t bits = glyph[row];
-            for (uint8_t col = 0; col < BASIC_SCREEN_CELL_W; col++) {
+            uint8_t col = 0;
+            while (col < BASIC_SCREEN_CELL_W) {
                 const uint8_t index = (uint8_t)((bits >> (14 - 2 * col)) & 3);
                 if (index == 0) {
+                    col++;
                     continue;  // transparent
+                }
+                // Runs of one colour become one rectangle, the same way the
+                // glyph sheet is built. Emitting a command per pixel put a
+                // 16x16 sprite at over a hundred link commands per repaint,
+                // and a program that redefines its sprite every frame (the
+                // Dodge sample does) then filled the host queue and delayed
+                // HID events.
+                uint8_t run = 1;
+                while (col + run < BASIC_SCREEN_CELL_W &&
+                       ((bits >> (14 - 2 * (col + run))) & 3) == index) {
+                    run++;
                 }
                 // Sprites are drawn from the sprite palette, and index 0 is
                 // transparency rather than the backdrop.
@@ -442,13 +511,16 @@ static void draw_sprite_image(basic_console_ctx_t* console, uint16_t image_id,
                     console->sprite_rgb[sprite->attr & 3][(index - 1) & 3];
                 uint8_t px = (uint8_t)(tile_col * BASIC_SCREEN_CELL_W + col);
                 uint8_t py = (uint8_t)(tile_row * BASIC_SCREEN_CELL_H + row);
-                if (sprite->flip_x) {
-                    px = (uint8_t)(size * BASIC_SCREEN_CELL_W - 1 - px);
-                }
                 if (sprite->flip_y) {
                     py = (uint8_t)(size * BASIC_SCREEN_CELL_H - 1 - py);
                 }
-                fill_rect(console, px, py, 1, 1, fg);
+                if (sprite->flip_x) {
+                    // The run mirrors as a block: its rightmost pixel becomes
+                    // the leftmost, so shift the origin by the run length.
+                    px = (uint8_t)(size * BASIC_SCREEN_CELL_W - px - run);
+                }
+                fill_rect(console, px, py, run, 1, fg);
+                col = (uint8_t)(col + run);
             }
         }
     }
@@ -475,65 +547,121 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
         return;
     }
 
-    // The image only has to be repainted when the artwork changes; a sprite
-    // that merely moves or changes direction keeps the one it has.
-    const bool need_image = (slot->image_id == 0) || slot->repaint ||
-                            slot->base_tile != sprite->tiles[0] ||
-                            slot->attr != (sprite->attr & 3) ||
-                            slot->size16 != sprite->size16 ||
-                            slot->table_a != sprite->table_a;
+    const uint8_t frames = sprite->frame_count ? sprite->frame_count : 1;
+
+    // An instance fixes its frame set when it is created and an image its
+    // dimensions when it is allocated, so either change means starting over.
+    if (slot->frame_count != frames || slot->size16 != sprite->size16) {
+        release_sprite_slot(console, slot);
+        slot->frame_count = frames;
+        slot->size16 = sprite->size16;
+    }
+
+    // The artwork only has to be repainted when it actually changes; a sprite
+    // that merely moves, or steps its walk cycle, keeps what it has.
+    bool need_image = slot->repaint || slot->attr != (sprite->attr & 3) ||
+                      slot->table_a != sprite->table_a ||
+                      slot->flip_x != sprite->flip_x ||
+                      slot->flip_y != sprite->flip_y;
+    for (uint8_t f = 0; f < frames && !need_image; f++) {
+        need_image = (slot->image_id[f] == 0) ||
+                     (slot->base_tile[f] != sprite->frame_tiles[f][0]);
+    }
+
     if (need_image) {
-        if (slot->image_id == 0) {
-            const uint16_t dim =
-                (uint16_t)((sprite->size16 ? 2 : 1) * BASIC_SCREEN_CELL_W);
-            slot->image_id = fmrb_gfx_create_sprite_image(gfx_ctx, console->canvas_id,
-                                                          dim, dim, 0, true);
-            if (slot->image_id == 0) {
-                return;
+        const uint16_t dim =
+            (uint16_t)((sprite->size16 ? 2 : 1) * BASIC_SCREEN_CELL_W);
+        for (uint8_t f = 0; f < frames; f++) {
+            if (slot->image_id[f] == 0) {
+                slot->image_id[f] = fmrb_gfx_create_sprite_image(
+                    gfx_ctx, console->canvas_id, dim, dim, 0, true);
+                if (slot->image_id[f] == 0) {
+                    return;
+                }
             }
-            slot->size16 = sprite->size16;
+            draw_sprite_image(console, slot->image_id[f], sprite, f);
+            slot->base_tile[f] = sprite->frame_tiles[f][0];
         }
-        draw_sprite_image(console, slot->image_id, sprite);
-        slot->base_tile = sprite->tiles[0];
         slot->attr = (uint8_t)(sprite->attr & 3);
         slot->table_a = sprite->table_a;
+        slot->flip_x = sprite->flip_x;
+        slot->flip_y = sprite->flip_y;
         slot->repaint = false;
     }
 
     if (slot->instance_id == 0) {
-        const uint16_t images[1] = {slot->image_id};
         slot->instance_id = fmrb_gfx_create_sprite_instance(
-            gfx_ctx, console->canvas_id, images, 1, 0, 0, 1);
+            gfx_ctx, console->canvas_id, slot->image_id, frames, 0, 0, 1);
         if (slot->instance_id == 0) {
             return;
         }
-        slot->visible = true;  // instances start visible
+        slot->visible = true;    // instances start visible
+        slot->frame_index = 0;   // and on their first frame
+        slot->pos_valid = false; // and at wherever it was created
+    }
+
+    // Anything that actually reached the graphics side needs the canvas
+    // presented again; a sprite that was notified but did not change does not.
+    bool changed = need_image;
+
+    // Stepping the walk cycle is a frame switch, not a repaint. Painting the
+    // pose again cost one command per run of pixels, several hundred per
+    // second once a MOVE character was walking, which filled the host queue
+    // and left HID events waiting behind it.
+    const uint8_t frame =
+        (uint8_t)(sprite->frame_index < frames ? sprite->frame_index : 0);
+    if (frame != slot->frame_index) {
+        gfx_cmd_t cmd = {
+            .cmd_type = GFX_CMD_SPRITE_INSTANCE_SET_FRAME,
+            .canvas_id = console->canvas_id,
+            .params.sprite_instance_set_frame = {
+                .instance_id = slot->instance_id,
+                .frame_index = frame
+            }
+        };
+        send_gfx_command(&cmd);
+        slot->frame_index = frame;
+        changed = true;
     }
 
     // Sprite plane coordinates sit 16 / 24 dots outside the text plane
     // (core_spec sec 8), and the canvas is the text plane.
-    gfx_cmd_t move = {
-        .cmd_type = GFX_CMD_SPRITE_INSTANCE_MOVE,
-        .canvas_id = console->canvas_id,
-        .params.sprite_instance_move = {
-            .instance_id = slot->instance_id,
-            .x = (int16_t)(console->pad_x + sprite->x - 16),
-            .y = (int16_t)(console->pad_y + sprite->y - 24)
-        }
-    };
-    send_gfx_command(&move);
+    const int16_t px = (int16_t)(console->pad_x + sprite->x - 16);
+    const int16_t py = (int16_t)(console->pad_y + sprite->y - 24);
+    // A DEF MOVE character is notified once per frame whether or not it
+    // travelled, so resending a position it already has is pure traffic: on
+    // hardware this was the largest command type by a wide margin.
+    if (!slot->pos_valid || px != slot->x || py != slot->y) {
+        gfx_cmd_t move = {
+            .cmd_type = GFX_CMD_SPRITE_INSTANCE_MOVE,
+            .canvas_id = console->canvas_id,
+            .params.sprite_instance_move = {
+                .instance_id = slot->instance_id,
+                .x = px,
+                .y = py
+            }
+        };
+        send_gfx_command(&move);
+        slot->x = px;
+        slot->y = py;
+        slot->pos_valid = true;
+        changed = true;
+    }
 
     const bool want_visible = sprite->visible && console->sprite_plane_on;
     if (want_visible != slot->visible) {
         sprite_instance_visible(console, slot->instance_id, want_visible);
         slot->visible = want_visible;
+        changed = true;
     }
 
     // Sprites are composited when the canvas is presented, so a sprite that
     // moved needs a present as much as a changed cell does. Without this the
     // screen only refreshed when the text happened to change: a game whose
     // score sits still looked frozen, and its controls looked dead.
-    console->sprites_moved = true;
+    if (changed) {
+        console->sprites_moved = true;
+    }
 }
 
 void basic_console_set_charset(void* user_data, bool table_a) {
@@ -586,7 +714,8 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
             console->sprite_code[group][i] = 0x30;
         }
     }
-    recompute_palette(console);
+    recompute_text_palette(console);
+    recompute_sprite_palette(console);
 
     fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
     if (!gfx_ctx) {
@@ -702,25 +831,8 @@ void basic_console_destroy(basic_console_ctx_t* console) {
     }
 
     for (int i = 0; i < BASIC_SPRITE_SLOTS; i++) {
-        if (console->sprites[i].instance_id != 0) {
-            gfx_cmd_t cmd = {
-                .cmd_type = GFX_CMD_DELETE_SPRITE_INSTANCE,
-                .canvas_id = console->canvas_id,
-                .params.delete_sprite_instance = {
-                    .instance_id = console->sprites[i].instance_id}
-            };
-            send_gfx_command(&cmd);
-            console->sprites[i].instance_id = 0;
-        }
-        if (console->sprites[i].image_id != 0) {
-            gfx_cmd_t cmd = {
-                .cmd_type = GFX_CMD_DELETE_SPRITE_IMAGE,
-                .canvas_id = console->canvas_id,
-                .params.delete_sprite_image = {.image_id = console->sprites[i].image_id}
-            };
-            send_gfx_command(&cmd);
-            console->sprites[i].image_id = 0;
-        }
+        release_sprite_slot(console, &console->sprites[i]);
+        console->sprites[i].frame_count = 0;
     }
 
     for (int attr = 0; attr < 4; attr++) {

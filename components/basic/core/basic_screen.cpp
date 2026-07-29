@@ -166,7 +166,13 @@ void interpreter::service_frames() noexcept {
 void interpreter::frame_tick() noexcept {
     ++frame_count_;
     advance_moves();
-    // The screen is presented once per frame rather than per changed cell.
+    // The screen is presented on a frame boundary rather than per changed
+    // cell, and only every frames_per_present frames - see that constant.
+    if (present_countdown_ > 0) {
+        --present_countdown_;
+        return;
+    }
+    present_countdown_ = frames_per_present - 1;
     if (host_.screen_present) {
         host_.screen_present(host_.user);
     }

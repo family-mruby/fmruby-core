@@ -90,11 +90,24 @@ typedef struct {
     bool sprite_plane_on;
     struct {
         uint16_t instance_id;
-        uint16_t image_id;
-        uint8_t base_tile;
+        /// One image per animation frame. A walking MOVE character alternates
+        /// between two poses, so holding both and switching frames costs one
+        /// command where repainting the artwork cost one per run of pixels.
+        uint16_t image_id[2];
+        uint8_t frame_count;
+        uint8_t frame_index;
+        uint8_t base_tile[2];
+        /// Where the instance already is, so an unchanged position is not
+        /// resent. Not valid until the first move after the instance is made.
+        int16_t x;
+        int16_t y;
+        bool pos_valid;
         uint8_t attr;
         bool size16;
         bool table_a;
+        /// Flips are baked into the artwork, so a change repaints it.
+        bool flip_x;
+        bool flip_y;
         bool visible;
         /// Set when the sprite palette changed: the artwork holds its colours,
         /// so the image has to be painted again even though the tiles did not
