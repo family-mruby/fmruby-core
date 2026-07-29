@@ -170,6 +170,29 @@ Xtensa の `__thread` と `SP_NO_MMAN` 周りのヘッダ検出は
   (mruby VM で 123% を観測)。estalloc の統計計算側の疑い。
   この列は現状信用できない
 
+### T6-8: kernel-only Spinel 構成 (2026-07-29 実施、Linux)
+
+desktop の Spinel 化は工数の割に高速化への寄与が薄い可能性が高いため、
+**カーネルだけ Spinel** (`FMRB_KERNEL_ENGINE=spinel`、desktop は mruby) で
+先に動きを見る、という方針で通した構成。Linux headless で
+**デスクトップ起動・壁紙描画・アプリ起動/終了とも正常、カーネルログにエラーゼロ**。
+
+この構成を初めて通したことで、mruby 構成では出ない不具合が 2 件出た。両方修正済み。
+
+1. **生成 C が構文エラー** — 条件式の単項 `!` の下の呼び出しで前置き文が
+   式の中に落ちる fork の codegen バグ。`ruby_writing_constraints.md` B と
+   `reports/fork_pr_candidates.md` B-1 に登録。カーネル Ruby 側は
+   ローカルへホイストして回避 (1 箇所)。
+2. **パスが 32 バイト以上のアプリを起動できない** — `fmrb_spx_spawn_app_req`
+   が、パスを表示名用の `FMRB_MAX_APP_NAME` (32) で値域チェックしていた。
+   受け側の `fmrb_app_spawn_app` はパスとして扱い下流は `FMRB_MAX_PATH_LEN` (128)。
+   mruby バインディングは長さ制限を持たないため**この構成でしか出ない**。
+   `FMRB_MAX_PATH_LEN` へ修正し、拒否時のログを追加 (無言で失敗していたので
+   ログ上は「spawn 要求 → 失敗」の 2 行だけで原因が見えなかった)。
+
+**未実施**: 計測。カーネル単体で速くなるかは T6-3 の手順 (`input_router.rb` の
+`hid_lat` ログを同一コミットの mruby カーネルビルドと比較) で確かめる。
+
 ## 受け入れ基準
 
 1. 壁紙と起動ロゴが実機で表示される (T6-1)。
@@ -190,6 +213,14 @@ Xtensa の `__thread` と `SP_NO_MMAN` 周りのヘッダ検出は
   パースエラーではなく NOMEM で、症状名から推定すると誤診する。
 - **OOM は「総量不足」と「連続領域が取れない」を区別する**。
   Phase 5 の GC クラッシュはプール使用率 20% で起きていた。
+- **`fmrb_spx_*` シムと mruby バインディングの契約差は、その構成を通すまで出ない**。
+  同じ `fmrb_*` 関数を呼んでいても、シム側が独自に付けた値域チェックや
+  バッファ幅が mruby 側と食い違いうる (T6-8 の 2 件目)。エンジンを
+  切り替えたら、そのエンジンでしか通らない経路を必ず一度動かす。
+- **`spinel:doctor` は生成 C をコンパイルしない**。source-level leg
+  (unsupported/unresolved) だけなので、**codegen が壊れた C を吐く類は
+  doctor を通っても実ビルドで初めて出る** (T6-8 の 1 件目、T4-3 の sprintf も同様)。
+  doctor clean をビルド可能性の保証と読み違えない。
 - **headless で再現しない負荷がある**。実マウスのドラッグが流す
   イベントレートは入力注入では出ない。実機でしか出ない不具合を
   headless の結果で否定しない。
