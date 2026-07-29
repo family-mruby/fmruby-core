@@ -5,10 +5,10 @@
 対象読者: 本フェーズを実装する AI / 開発者。本書のみで作業着手できる粒度で書くが、
 背景が必要な場合は以下を参照する。
 
-- 全体設計: doc/vm_remote_debug_design.md
-- 前計画 (Phase 3 全体の位置づけ): doc/vm_remote_debug_impl_plan2.md sec 4 (本書はその詳細化・確定版)
-- プロトコル仕様 (正): doc/vm_remote_debug_protocol.md
-- 進捗ログ: doc/vm_remote_debug_progress.md
+- 全体設計: doc/remote_debug/vm_remote_debug_design.md
+- 前計画 (Phase 3 全体の位置づけ): doc/remote_debug/vm_remote_debug_impl_plan2.md sec 4 (本書はその詳細化・確定版)
+- プロトコル仕様 (正): doc/remote_debug/vm_remote_debug_protocol.md
+- 進捗ログ: doc/remote_debug/vm_remote_debug_progress.md
 
 ## 1. ゴールと完了条件
 
@@ -116,7 +116,7 @@ ESP32 実機 (S3 / P4) で、リモートデバッガ debugd が BLE GATT 経由
 ## 5. ワイヤフォーマット仕様 (BLE debug サービス)
 
 ホスト側 (Phase 3c) との契約になるため、この仕様どおりに実装し、
-完了時に doc/vm_remote_debug_protocol.md へ転記する。
+完了時に doc/remote_debug/vm_remote_debug_protocol.md へ転記する。
 
 ```
 plain   = [len_hi][len_lo][msgpack body]          // len = body バイト長 (u16 BE)
@@ -310,11 +310,11 @@ ESP32 系専用 TU。`fmrb_debug_transport_ops_t` を実装し
 
 ## 9. ドキュメント更新とコミット
 
-1. `doc/vm_remote_debug_protocol.md`: BLE フレーミング節を追加 (sec 5 の内容、
+1. `doc/remote_debug/vm_remote_debug_protocol.md`: BLE フレーミング節を追加 (sec 5 の内容、
    UUID 表、登録前フレーム喪失とホストリトライの約束)。
-2. `doc/vm_remote_debug_progress.md`: Phase 3b 実施記録 (日付、サイズ実測、
+2. `doc/remote_debug/vm_remote_debug_progress.md`: Phase 3b 実施記録 (日付、サイズ実測、
    設計判断で本書から逸脱した点があればその理由)。
-3. `doc/vm_remote_debug_impl_plan2.md`: sec 4 の冒頭にステータス行を追記
+3. `doc/remote_debug/vm_remote_debug_impl_plan2.md`: sec 4 の冒頭にステータス行を追記
    (「実装済み、詳細は impl_plan_phase3b.md」)。
 4. コミット: 論理単位で分割 (目安: 6.1 framing 切り出し / 6.2-6.3 GATT サービス /
    6.4-6.5 トランスポート+配線+ドキュメント)。コミットログは数行の英文。

@@ -2,7 +2,7 @@
 
 作成日: 2026-07-16
 ステータス: 実装計画 (着手前)
-前提ドキュメント: doc/vm_remote_debug_design.md (検討ドラフト)
+前提ドキュメント: doc/remote_debug/vm_remote_debug_design.md (検討ドラフト)
 
 本書は設計ドキュメントの Phase 0〜2 (Linux sim + TCP) を、コード調査で確定した
 事実に基づいて実装可能な粒度まで詳細化したもの。BLE (Phase 3) は対象外。
@@ -141,7 +141,7 @@ fmruby-core/
   tool/debug/                             [新規] ホスト側
     fmrb_dbg_client.py                     Phase 1: CLI テストクライアント兼ライブラリ
     fmrb_dap_adapter.py                    Phase 2: DAP アダプタ
-  doc/vm_remote_debug_protocol.md          [新規] プロトコル仕様 (実装と同時に確定)
+  doc/remote_debug/vm_remote_debug_protocol.md          [新規] プロトコル仕様 (実装と同時に確定)
 
 family-mruby/ (ルートリポジトリ)
   docker-compose.yml (または override)     [変更] core サービスに 5555/tcp 公開
@@ -264,7 +264,7 @@ seq はホストが採番し、response が同じ seq を返す。event は非�
 制約 (Phase 1): 同時デバッグセッションは 1 クライアント、attach できる VM は
 最大 `FMRB_DEBUG_MAX_ATTACH` (=4) 個。
 
-仕様は実装と並行して `doc/vm_remote_debug_protocol.md` に清書し、以後そちらを正とする。
+仕様は実装と並行して `doc/remote_debug/vm_remote_debug_protocol.md` に清書し、以後そちらを正とする。
 
 ### 5.2 per-VM デバッグコンテキスト (fmrb_debug_ctx)
 

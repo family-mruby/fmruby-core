@@ -5,9 +5,9 @@
 対象読者: 本フェーズを実装する AI / 開発者。本書のみで着手できる粒度で書く。
 背景が必要な場合は以下を参照する。
 
-- 全体設計: doc/vm_remote_debug_design.md
-- 全体計画: doc/vm_remote_debug_impl_plan2.md sec 5 (本書はその詳細化・確定版)
-- ワイヤ仕様 (正、Phase 3b で確定): doc/vm_remote_debug_protocol.md sec 1 "BLE GATT"
+- 全体設計: doc/remote_debug/vm_remote_debug_design.md
+- 全体計画: doc/remote_debug/vm_remote_debug_impl_plan2.md sec 5 (本書はその詳細化・確定版)
+- ワイヤ仕様 (正、Phase 3b で確定): doc/remote_debug/vm_remote_debug_protocol.md sec 1 "BLE GATT"
 - デバイス側実装: main/drivers/ble/ble_task.c (debug service)、
   main/drivers/debug/fmrb_debug_transport_ble.c、main/drivers/ble/ble_framing.c
 
@@ -289,10 +289,10 @@ S3 実機 (Retro) で:
 
 ## 9. ドキュメント更新とコミット
 
-1. `doc/vm_remote_debug_protocol.md`: ホスト側の注意 (チャンクサイズ、
+1. `doc/remote_debug/vm_remote_debug_protocol.md`: ホスト側の注意 (チャンクサイズ、
    version リトライによる接続確立) を BLE 節に 1 段落追記。
-2. `doc/vm_remote_debug_progress.md`: Phase 3c 実施記録。
-3. `doc/vm_remote_debug_impl_plan2.md`: sec 5 冒頭にステータス行を追記。
+2. `doc/remote_debug/vm_remote_debug_progress.md`: Phase 3c 実施記録。
+3. `doc/remote_debug/vm_remote_debug_impl_plan2.md`: sec 5 冒頭にステータス行を追記。
 4. コミット (ユーザの指示を得てから):
    - fmruby-core: tool/debug の変更 + doc 更新
    - family-mruby ルート: vscode-fmrb-debug の変更 (VSIX 生成物はコミット対象に

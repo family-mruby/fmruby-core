@@ -3,10 +3,10 @@
 作成: 2026-07-22。`feature/vm-remote-debug` ブランチの区切りにあたり、
 未実施の課題を一つに集約したもの。正となる設計/計画は従来どおり:
 
-- 設計: `doc/vm_remote_debug_design.md`
-- 実装計画: `doc/vm_remote_debug_impl_plan.md` / `doc/vm_remote_debug_impl_plan2.md`
-- プロトコル: `doc/vm_remote_debug_protocol.md`
-- 経緯: `doc/vm_remote_debug_progress.md`
+- 設計: `doc/remote_debug/vm_remote_debug_design.md`
+- 実装計画: `doc/remote_debug/vm_remote_debug_impl_plan.md` / `doc/remote_debug/vm_remote_debug_impl_plan2.md`
+- プロトコル: `doc/remote_debug/vm_remote_debug_protocol.md`
+- 経緯: `doc/remote_debug/vm_remote_debug_progress.md`
 
 ## 到達点 (2026-07-22)
 

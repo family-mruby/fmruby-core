@@ -3,9 +3,9 @@
 このファイルは実装作業の進捗を随時記録し、セッションが切れても再開しやすくするための
 作業ログである。正となる設計/計画は以下:
 
-- 設計: `doc/vm_remote_debug_design.md`
-- 実装計画: `doc/vm_remote_debug_impl_plan.md` (これに従って実装中)
-- プロトコル仕様: `doc/vm_remote_debug_protocol.md` (Phase 1 で作成予定)
+- 設計: `doc/remote_debug/vm_remote_debug_design.md`
+- 実装計画: `doc/remote_debug/vm_remote_debug_impl_plan.md` (これに従って実装中)
+- プロトコル仕様: `doc/remote_debug/vm_remote_debug_protocol.md` (Phase 1 で作成予定)
 
 最終更新: 2026-07-22
 
@@ -14,7 +14,7 @@
 **Phase 0 + 1 + 2 + 3a + 3b + 3c 完了。2026-07-22 に S3 実機 (Retro) の BLE E2E を
 確認 (attach / BP / step / vars / 切断復帰、拡張 v0.0.7)。実機デバッガとしての
 基本機能はここで完成し、feature/vm-remote-debug を develop へマージして区切り。
-残課題は `doc/vm_remote_debug_remaining.md` に集約 (次は Phase 3d: P4 vHCI)。**
+残課題は `doc/remote_debug/vm_remote_debug_remaining.md` に集約 (次は Phase 3d: P4 vHCI)。**
 
 ### 実機 E2E で判明した拡張側の修正 (v0.0.4-v0.0.7、ルートリポジトリ 8cccace)
 
@@ -27,7 +27,7 @@
 
 ### Phase 3c 完了 — ホスト側 BLE バックエンド + VSCode 接続 (2026-07-21)
 
-計画書: `doc/vm_remote_debug_impl_plan_phase3c.md` (逸脱なし)。デバイス側は無変更。
+計画書: `doc/remote_debug/vm_remote_debug_impl_plan_phase3c.md` (逸脱なし)。デバイス側は無変更。
 
 fmruby-core/tool/debug:
 - `fmrb_ble_framing.py` (新規): COBS + CRC32 の純関数 (`cobs_encode/decode`,
@@ -79,7 +79,7 @@ family-mruby/vscode-fmrb-debug:
 
 ### Phase 3b 完了 — BLE debug GATT サービス (デバイス側, 2026-07-21)
 
-計画書: `doc/vm_remote_debug_impl_plan_phase3b.md` (逸脱なし)。
+計画書: `doc/remote_debug/vm_remote_debug_impl_plan_phase3b.md` (逸脱なし)。
 
 追加/変更ファイル:
 - `main/drivers/ble/ble_framing.{h,c}` (新規): `ble_task.c` にあった
@@ -250,7 +250,7 @@ FILE モード) に対し:
   (WSL2->Windows localhost フォワードで Phase 2 からも届く)。
 - `tool/debug/fmrb_dbg_client.py`: Python テストクライアント兼ライブラリ
   (`FmrbDebugClient` クラス + CLI/REPL)。要 `msgpack` パッケージ (pip)。
-- `doc/vm_remote_debug_protocol.md`: プロトコル仕様書 (正)。
+- `doc/remote_debug/vm_remote_debug_protocol.md`: プロトコル仕様書 (正)。
 
 疎通確認 (ヘッドレス起動 + `fmrb_dbg_client.py localhost:5555 <cmd>`):
 - `version` -> `{'proto':1,'fw':'1.0.0'}`

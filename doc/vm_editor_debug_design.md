@@ -7,7 +7,7 @@
 
 ## 1. 目的
 
-VSCode リモートデバッグ (doc/vm_remote_debug_design.md, Phase 0-2 実装済み) の
+VSCode リモートデバッグ (doc/remote_debug/vm_remote_debug_design.md, Phase 0-2 実装済み) の
 デバッグコアを流用し、**FM-EDITOR を拡張して実機上で完結するデバッガ**を実装する。
 ホスト PC なしで、デバイス単体で「エディタでソースを開く → ブレークポイントを
 置く → アプリを起動して止める → 変数を見る」までを可能にする。
@@ -23,7 +23,7 @@ VSCode リモートデバッグ (doc/vm_remote_debug_design.md, Phase 0-2 実装
 - 重い処理 (BP 判定・step・パーク・stack_trace・frame_vars) は既に
   デバイス側 C 実装 (`main/drivers/debug/`) にある。ホスト側は表示と
   DAP 変換のみ。オンデバイス化で新規に必要なのは「接続経路」と「UI」だけ。
-- パーク方式 (doc/vm_remote_debug_design.md sec 5.3) は「対象 VM タスク
+- パーク方式 (doc/remote_debug/vm_remote_debug_design.md sec 5.3) は「対象 VM タスク
   だけが hook 内で停止し、他アプリは動き続ける」設計。FM-EDITOR は別 VM・
   別 FreeRTOS タスクなので、**ターゲット停止中もエディタ UI は普通に動く**。
   デバッガ UI として成立する前提が最初から満たされている。
@@ -66,7 +66,7 @@ VSCode リモートデバッグ (doc/vm_remote_debug_design.md, Phase 0-2 実装
   ウィンドウ管理が止まる。カーネル側 (system_desktop, 組み込みアプリ) の
   デバッグは従来どおり VSCode 連携で行う。
 - **BLE (Phase 3) は引き続き必要**: 実機上のカーネル側デバッグ・実機検証は
-  VSCode 連携で行うため、doc/vm_remote_debug_design.md の Phase 3 (BLE
+  VSCode 連携で行うため、doc/remote_debug/vm_remote_debug_design.md の Phase 3 (BLE
   トランスポート) の計画は本機能によって置き換えられない。両方実装する。
 
 ## 4. アーキテクチャ方針
@@ -226,7 +226,7 @@ irep の debug_info はデバイス上のファイルパス・行番号と一致
   片方の都合で API を壊さないこと。
 - パーク中アプリの reaper / 監視系誤検知対策 (DEBUGGING 状態の扱い) は
   リモート版と共通の課題。先に入っていなければ本実装で対応する
-  (doc/vm_remote_debug_design.md sec 8 参照)。
+  (doc/remote_debug/vm_remote_debug_design.md sec 8 参照)。
 - エディタ VM 側でのブロッキング呼び出し禁止 (poll ベースで UI ループを回す)。
 - inspect 応答の内部バッファは「次の inspect まで有効」。gem 内で即座に
   Ruby オブジェクトへコピーし、バッファ参照を Ruby 側へ渡さないこと。
@@ -236,9 +236,9 @@ irep の debug_info はデバイス上のファイルパス・行番号と一致
 
 | 資料 | 内容 |
 |---|---|
-| doc/vm_remote_debug_design.md | リモートデバッグ全体設計 (パーク方式の詳細は sec 5) |
-| doc/vm_remote_debug_protocol.md | デバッグプロトコル仕様 (正) |
-| doc/vm_remote_debug_impl_plan.md / _impl_plan2.md / _progress.md | 実装計画と進捗 |
+| doc/remote_debug/vm_remote_debug_design.md | リモートデバッグ全体設計 (パーク方式の詳細は sec 5) |
+| doc/remote_debug/vm_remote_debug_protocol.md | デバッグプロトコル仕様 (正) |
+| doc/remote_debug/vm_remote_debug_impl_plan.md / _impl_plan2.md / _progress.md | 実装計画と進捗 |
 | main/drivers/debug/fmrb_debug_ctx.h/.c | per-VM デバッグコンテキスト (本機能が直結する層) |
 | main/drivers/debug/fmrb_debugd.c/.h | debugd タスク (オーナー排他を追加する場所) |
 | main/drivers/debug/fmrb_debug_proto.c/.h | msgpack プロトコル処理 (案A の場合のみ関係) |

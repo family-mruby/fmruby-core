@@ -3,9 +3,9 @@
 作成日: 2026-07-15 (追加調査反映: 同日)
 ステータス: 実装反映済み。Phase 0-2 (Linux sim + TCP + DAP) 完了、Phase 3a
   (ESP32 ビルド共通化 + メモリオーダリング + PSRAM 配置) 完了。Phase 3b (BLE) 未着手。
-  実装計画は doc/vm_remote_debug_impl_plan.md / impl_plan2.md、
-  進捗は doc/vm_remote_debug_progress.md、
-  プロトコル仕様 (正) は doc/vm_remote_debug_protocol.md を参照。本書は初期検討ドラフト。
+  実装計画は doc/remote_debug/vm_remote_debug_impl_plan.md / impl_plan2.md、
+  進捗は doc/remote_debug/vm_remote_debug_progress.md、
+  プロトコル仕様 (正) は doc/remote_debug/vm_remote_debug_protocol.md を参照。本書は初期検討ドラフト。
 
 実装との差異 (本書の記述を実装が上書きしている点):
 

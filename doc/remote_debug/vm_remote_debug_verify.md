@@ -10,10 +10,10 @@ VM リモートデバッグ機能 (Phase 1/2) の動作検証手順をまとめ�
 
 関連ドキュメント:
 
-- 設計: `doc/vm_remote_debug_design.md`
-- 実装計画: `doc/vm_remote_debug_impl_plan.md`
-- プロトコル仕様: `doc/vm_remote_debug_protocol.md`
-- 進捗ログ: `doc/vm_remote_debug_progress.md`
+- 設計: `doc/remote_debug/vm_remote_debug_design.md`
+- 実装計画: `doc/remote_debug/vm_remote_debug_impl_plan.md`
+- プロトコル仕様: `doc/remote_debug/vm_remote_debug_protocol.md`
+- 進捗ログ: `doc/remote_debug/vm_remote_debug_progress.md`
 
 ---
 
@@ -181,5 +181,5 @@ combined 行へ変換され、デバイス側でヒットすることを確認�
 
 ## 検証結果の記録
 
-GUI 手動検証を実施したら、結果 (PASS/課題) を `doc/vm_remote_debug_progress.md` の
+GUI 手動検証を実施したら、結果 (PASS/課題) を `doc/remote_debug/vm_remote_debug_progress.md` の
 Phase 2 セクションに追記し、「ユーザ確認待ち」を解消する。

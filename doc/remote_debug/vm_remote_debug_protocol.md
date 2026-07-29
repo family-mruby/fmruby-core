@@ -2,7 +2,7 @@
 
 作成日: 2026-07-16
 ステータス: Phase 1 実装と並行して確定中 (これが正)
-関連: `doc/vm_remote_debug_design.md`, `doc/vm_remote_debug_impl_plan.md`
+関連: `doc/remote_debug/vm_remote_debug_design.md`, `doc/remote_debug/vm_remote_debug_impl_plan.md`
 
 デバイス (fmrb_debugd) とホスト (Python クライアント / DAP アダプタ) 間の
 デバッグプロトコル。トランスポートは Linux シミュレーションが TCP、

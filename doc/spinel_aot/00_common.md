@@ -3,7 +3,7 @@
 この doc/spinel_aot/ 以下は、Spinel (Ruby AOT コンパイラ) を使って
 fmruby-core の PreBuild Ruby (カーネル / system_desktop / shell) を
 C 化するプロジェクトの、実装担当 AI 向け指示書である。
-全体の背景・実現性検討は `doc/spinel_aot_feasibility_plan.md` を必ず先に読むこと。
+全体の背景・実現性検討は `doc/spinel_aot/spinel_aot_feasibility_plan.md` を必ず先に読むこと。
 
 ## プロジェクト概要 (最小限の背景)
 

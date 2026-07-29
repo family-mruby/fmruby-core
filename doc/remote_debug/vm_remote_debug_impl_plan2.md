@@ -5,10 +5,10 @@
 ステータス: Phase 2 クローズ完了、Phase 3a 完了 (実機起動確認・性能計測はユーザ作業)。
   次の実装対象は Phase 3b (sec 4)。
 前提ドキュメント:
-- 設計: doc/vm_remote_debug_design.md
-- 前計画 (Phase 0-2, 完了): doc/vm_remote_debug_impl_plan.md
-- 進捗ログ: doc/vm_remote_debug_progress.md
-- プロトコル仕様: doc/vm_remote_debug_protocol.md
+- 設計: doc/remote_debug/vm_remote_debug_design.md
+- 前計画 (Phase 0-2, 完了): doc/remote_debug/vm_remote_debug_impl_plan.md
+- 進捗ログ: doc/remote_debug/vm_remote_debug_progress.md
+- プロトコル仕様: doc/remote_debug/vm_remote_debug_protocol.md
 
 本書は Phase 0-2 (Linux sim + TCP + DAP/VSCode) 完了を受けて、残作業と
 Phase 3 (ESP32 実機 + BLE トランスポート)、Phase 4 (仕上げ) を実装可能な
@@ -176,8 +176,8 @@ Linux (x86 TSO) では問題にならなかった store 順序を、Xtensa/RISC-
 ## 4. Phase 3b: BLE debug GATT サービス (デバイス側)
 
 **ステータス: 実装済み (2026-07-21)。確定した詳細仕様は
-`doc/vm_remote_debug_impl_plan_phase3b.md`、ワイヤ形式は
-`doc/vm_remote_debug_protocol.md` sec 1 を参照。以下は着手時の調査メモ。**
+`doc/remote_debug/vm_remote_debug_impl_plan_phase3b.md`、ワイヤ形式は
+`doc/remote_debug/vm_remote_debug_protocol.md` sec 1 を参照。以下は着手時の調査メモ。**
 
 既存 BLE ファイル転送サービス (main/drivers/ble/ble_task.c) と同型で追加する。
 調査で確定した構造 (根拠行番号は 2026-07-17 時点):
@@ -260,8 +260,8 @@ debugd 側の変更は `s_tp` の選択だけ:
 ## 5. Phase 3c: ホスト側 BLE バックエンド
 
 **ステータス: 実装済み (2026-07-21)。確定した詳細仕様は
-`doc/vm_remote_debug_impl_plan_phase3c.md`、ホスト側の約束は
-`doc/vm_remote_debug_protocol.md` sec 1 "BLE GATT" を参照。以下は着手時の調査メモ。**
+`doc/remote_debug/vm_remote_debug_impl_plan_phase3c.md`、ホスト側の約束は
+`doc/remote_debug/vm_remote_debug_protocol.md` sec 1 "BLE GATT" を参照。以下は着手時の調査メモ。**
 
 ### 5.1 fmrb_dbg_client.py の transport 抽象化
 

@@ -17,7 +17,7 @@ headless 検証で PASS していることがゴール。
 | doc/vm_editor_debug_design.md | 全体方針。特に sec 4.1 (案B), 4.2 (API), 6 (制約) |
 | main/drivers/debug/fmrb_debug_ctx.h | 直結する C API とスレッドモデルのコメント |
 | main/drivers/debug/fmrb_debugd.c | E0 の変更対象 (約 360 行、全読み推奨) |
-| doc/vm_remote_debug_protocol.md | inspect 応答の msgpack 形式 (frames/vars/複合型) |
+| doc/remote_debug/vm_remote_debug_protocol.md | inspect 応答の msgpack 形式 (frames/vars/複合型) |
 | lib/add/picoruby-fmrb-app/ | 新 gem の構造モデル (mrbgem.rake / ports/esp32 / mrblib) |
 | lib/add/picoruby-fmrb-msgpack/ | MessagePack.pack/unpack (E1 で応答デコードに利用) |
 | CLAUDE.md (fmruby-core) | mrbgem 管理・ログ・メモリ関数などの必須ルール |
@@ -274,7 +274,7 @@ S3 実機でのテストアプリ実行はユーザに依頼する (手順を進
 1. E0: fmrb_debugd owner 排他 (+ 回帰 PASS 記録)
 2. E1: picoruby-fmrb-debug gem + gembox/CMake 組み込み
 3. テスト: dbg_e1_test.app.rb + (可能なら) test_e0_owner.py + 進捗ログ更新
-   (doc/vm_remote_debug_progress.md ではなく新設の
+   (doc/remote_debug/vm_remote_debug_progress.md ではなく新設の
    doc/vm_editor_debug_progress.md に E0/E1 の実施記録を書く)
 
 各コミットは独立ビルド可能な単位とし、英文数行のログ案を添える。
