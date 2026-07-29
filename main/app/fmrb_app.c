@@ -83,6 +83,15 @@ bool fmrb_app_poll_exit_signal(fmrb_app_task_context_t* ctx) {
 // Fixed-size context pool (PSRAM - no DMA dependency)
 EXT_RAM_BSS_ATTR static fmrb_app_task_context_t g_ctx_pool[FMRB_MAX_APPS];
 
+// Every slot index this file computes has to land inside the pool above, so the
+// process id range and the pool size are required to agree. They drifted apart
+// once (the enum named six user apps, the pool held three) and a spawn wrote
+// past the end of the pool.
+_Static_assert(PROC_ID_USER_APP_END == FMRB_MAX_APPS,
+               "user app slots must fill g_ctx_pool exactly");
+_Static_assert(PROC_ID_MAX == FMRB_MAX_APPS,
+               "every process id must have a context slot");
+
 // Mutex for protecting context pool access
 static fmrb_semaphore_t g_ctx_lock = NULL;
 static bool g_large_pool_in_use = false;
@@ -247,7 +256,7 @@ static int32_t alloc_ctx_index(fmrb_proc_id_t requested_id, enum FMRB_APP_TYPE a
 
     if (app_type == APP_TYPE_USER_APP) {
         start_idx = PROC_ID_USER_APP0;
-        end_idx = PROC_ID_MAX;
+        end_idx = PROC_ID_USER_APP_END;  // NOT PROC_ID_MAX: see fmrb_task_config.h
     }
 
     // Find first free slot in the appropriate range
@@ -1261,7 +1270,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
             }
             break;
         case APP_TYPE_USER_APP:
-            if (idx >= PROC_ID_USER_APP0 && idx < PROC_ID_MAX) {
+            if (idx >= PROC_ID_USER_APP0 && idx < PROC_ID_USER_APP_END) {
                 if (attr->large_memory) {
                     if (g_large_pool_in_use) {
                         FMRB_LOGE(TAG, "[%s] LARGE memory pool already in use", attr->name);

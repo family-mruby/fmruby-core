@@ -201,11 +201,22 @@ typedef enum FMRB_PROC_ID{
     PROC_ID_HOST,
     PROC_ID_SYSTEM_APP,
     PROC_ID_SYSTEM_OVERLAY,
+    // Three user apps, which is what the hardware allows: there is one memory
+    // pool per slot (POOL_ID_USER_APP0..2) and one context slot per id
+    // (FMRB_MAX_APPS). Naming ids beyond that is what let a spawn hand out a
+    // slot index past the end of the context pool. Adding a fourth means adding
+    // a pool and raising FMRB_MAX_APPS, so the assert below has to stay true.
     PROC_ID_USER_APP0,
     PROC_ID_USER_APP1,
     PROC_ID_USER_APP2,
-    PROC_ID_USER_APP3,
-    PROC_ID_USER_APP4,
-    PROC_ID_USER_APP5,
     PROC_ID_MAX
 } fmrb_proc_id_t;
+
+/**
+ * @brief One past the last usable user app process id.
+ *
+ * Equals PROC_ID_MAX and FMRB_MAX_APPS while the three agree, which is the
+ * point: a scan over user app slots says what it means and cannot outrun the
+ * context pool. main/app/fmrb_app.c asserts the identity at the pool itself.
+ */
+#define PROC_ID_USER_APP_END (PROC_ID_USER_APP0 + FMRB_MAX_USER_APPS)
