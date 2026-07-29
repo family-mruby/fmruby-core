@@ -218,15 +218,101 @@ module LauncherMixin
   S_TOML    = ".toml"
   S_FALSE   = "false"
   S_ZERO    = "0"
+  S_TAB     = "\t"
+  S_EMPTY   = ""
   SCRIPT_EXTS = ["rb", "lua", "bas"]
+
+  # ---- App index cache ----
+  #
+  # Scanning /app costs seconds: 43 .toml files to open, read and parse plus
+  # the directory walk. The result almost never changes between boots, so it is
+  # written to a flat file and replayed instead. Boot trusts the cache without
+  # revalidating it - checking would mean walking the directories again, which
+  # is most of what the cache exists to avoid. The launcher already has an
+  # explicit rescan on right-click, and that is what picks up added or removed
+  # apps; it rewrites the cache afterwards.
+  #
+  # Format: a version+language header line, then one app per line, tab
+  # separated: label, app path, icon char, icon file. No quoting - the scan
+  # drops any entry whose fields contain a tab (see save_launcher_cache), which
+  # in practice never happens. The language is part of the header because app
+  # labels are resolved per language at scan time, so a language change must
+  # invalidate the cache.
+  CACHE_PATH    = "/data/launcher_index"
+  CACHE_VERSION = "1"
+  CACHE_MAX_BYTES = 16384
   S_SPACE   = " "
   S_COLOR   = "color="
   S_HEX     = "0x"
   S_ONE     = "1"
 
-  def scan_apps
+  # Load the cached app list, or nil when there is nothing usable. Built-ins
+  # are not cached: their labels are translated at scan time, so they are
+  # rebuilt every boot and only the scanned entries come from here.
+  def load_launcher_cache
+    file = File.open(CACHE_PATH, "r")
+    content = file.read(CACHE_MAX_BYTES)
+    file.close
+    return nil unless content
+
+    lines = content.split(S_NEWLINE)
+    header = lines[0]
+    return nil unless header
+    h = header.split(S_TAB)
+    return nil unless h[1] && h[0] == CACHE_VERSION && h[1] == FmrbI18n.lang
+
+    apps = []
+    i = 1
+    n = lines.size
+    while i < n
+      f = lines[i].split(S_TAB)
+      i += 1
+      next unless f[3]
+      icon = f[3]
+      icon = nil if icon == S_EMPTY
+      apps << { label: f[0], app: f[1], icon_char: f[2], icon_file: icon }
+    end
+    apps.empty? ? nil : apps
+  rescue
+    nil
+  end
+
+  def save_launcher_cache(apps)
+    buf = "#{CACHE_VERSION}#{S_TAB}#{FmrbI18n.lang}\n"
+    apps.each do |a|
+      label = a[:label]
+      path  = a[:app]
+      icon  = a[:icon_file] || S_EMPTY
+      # A tab in any field would corrupt the record on read-back. Skip the
+      # entry rather than write something that cannot be parsed; the app is
+      # still reachable, it just misses the cache until the fields change.
+      next if label.include?(S_TAB) || path.include?(S_TAB) || icon.include?(S_TAB)
+      buf += "#{label}#{S_TAB}#{path}#{S_TAB}#{a[:icon_char]}#{S_TAB}#{icon}\n"
+    end
+    file = File.open(CACHE_PATH, "w")
+    file.write(buf)
+    file.close
+    true
+  rescue => e
+    Log.warn("Launcher cache write failed: #{e.message}")
+    false
+  end
+
+  # force: skip the cache and walk /app. Used by the right-click rescan, which
+  # is the only thing that picks up added or removed apps.
+  def scan_apps(force = false)
     @launcher_apps = builtin_apps
     builtin_count = @launcher_apps.size
+
+    unless force
+      cached = load_launcher_cache
+      if cached
+        @launcher_apps = @launcher_apps + cached
+        Log.info("Launcher: #{@launcher_apps.size} apps from cache")
+        return
+      end
+    end
+
     # Single virtual path - the HAL resolver maps "/app" to LittleFS on ESP32
     # and to the local "flash/app" directory on Linux.
     scan_app_dir("/app")
@@ -235,6 +321,7 @@ module LauncherMixin
     scanned = @launcher_apps[builtin_count..-1] || []
     scanned.sort! { |a, b| a[:label] <=> b[:label] }
     @launcher_apps = @launcher_apps[0, builtin_count] + scanned
+    save_launcher_cache(scanned)
     Log.info("Launcher: #{@launcher_apps.size} apps found")
   end
 
@@ -577,13 +664,16 @@ module LauncherMixin
   end
 
   # Re-scan /app/ for apps and rebuild icon sprites if the app list
-  # changed. Called from handle_launcher_right_click.
+  # changed. Called from handle_launcher_right_click. This is the only path
+  # that walks the filesystem after the first boot: scan_apps replays the
+  # index cache otherwise, so adding or removing an app needs a rescan here.
+  # It rewrites the cache on the way out.
   def rescan_launcher
     # Immediate feedback: change the title bar before the slow work starts.
     draw_launcher_status("Rescanning...")
 
     prev_handles = @launcher_apps.map { |a| a[:app] }
-    scan_apps
+    scan_apps(true)
     new_handles = @launcher_apps.map { |a| a[:app] }
 
     if prev_handles != new_handles
