@@ -97,7 +97,7 @@ module LauncherMixin
             ix = 0
             rl = row.length
             while ix < rl
-              if row[ix] == '1'
+              if row[ix] == S_ONE
                 if scale > 1
                   g.fill_rect(ix * scale, iy * scale, scale, scale, color)
                 else
@@ -166,15 +166,15 @@ module LauncherMixin
       content = file.read
       file.close
 
-      content.split("\n").each do |line|
+      content.split(S_NEWLINE).each do |line|
         line = line.strip
-        if line.start_with?("#")
+        if line.start_with?(S_HASH)
           # Parse color from comment: "# ... color=0xFF"
-          if line.include?("color=")
-            c = line.split("color=")[1]
+          if line.include?(S_COLOR)
+            c = line.split(S_COLOR)[1]
             if c
-              c = c.strip.split(" ")[0]
-              color = c.start_with?("0x") ? c[2..-1].to_i(16) : c.to_i
+              c = c.strip.split(S_SPACE)[0]
+              color = c.start_with?(S_HEX) ? c[2..-1].to_i(16) : c.to_i
             end
           end
         elsif line.length > 0
@@ -194,53 +194,37 @@ module LauncherMixin
 
   # ---- App scanning ----
 
-  # Temporary boot-time micro-profile. The scan costs ~300 ms per .toml while
-  # the filesystem accounts for under 10 ms of that, so the rest is inside the
-  # VM. Each probe isolates one candidate mechanism; read the elapsed time off
-  # the log timestamps of the lines around it. Remove once the cost is
-  # understood.
-  SCAN_PROFILE = false
-
-  def profile_scan_primitives
-    return unless SCAN_PROFILE
-    st = GC.stat
-    Log.info("prof: begin live=#{st[:live]} mi=#{st[:malloc_increase]} mt=#{st[:malloc_threshold]} gen=#{st[:generational]} state=#{st[:state]}")
-
-    line = "app_screen_name = \"Ruby app demo\""
-
-    # GC dynamics. A step runs whenever gc_debt > 0, and a completed cycle
-    # pushes debt back to -credit, so debt should sit deeply negative and only
-    # cross zero once per cycle. If it hovers at or above zero, a step is being
-    # driven on every allocation. Elapsed time per round comes from the log
-    # timestamps.
-    r = 0
-    while r < 5
-      j = 0
-      while j < 200
-        line.strip
-        j += 1
-      end
-      st = GC.stat
-      Log.info("prof: round#{r} debt=#{st[:debt]} state=#{st[:state]} live=#{st[:live]} mi=#{st[:malloc_increase]}")
-      r += 1
-    end
-
-    # One forced full cycle, then the same round again: says whether the cost
-    # is the cycle itself or the per-allocation stepping around it.
-    GC.start
-    Log.info("prof: GC.start done")
-    st = GC.stat
-    Log.info("prof: after start debt=#{st[:debt]} state=#{st[:state]} live=#{st[:live]}")
-    j = 0
-    while j < 200
-      line.strip
-      j += 1
-    end
-    Log.info("prof: strip x200 after full gc")
-  end
+  # String literals used by the boot-scan hot paths, hoisted out of the loops.
+  #
+  # Passing a literal to a method is far more expensive than passing a constant
+  # on this build: `key == "literal"` measured ~40x the cost of
+  # `key == CONSTANT`, reproduced across boots. Hoisting every literal out of
+  # the per-line and per-entry loops took the parse phase from 5.0 s to 3.0 s
+  # over the same 43 files, which is the number to trust - short micro-loops
+  # are not reproducible here (a GC cycle landing inside one swings it by 100x),
+  # so treat any single per-call figure with suspicion and measure aggregates.
+  #
+  # See doc/boot_performance.md.
+  KEY_APP_SCREEN_NAME  = "app_screen_name"
+  KEY_LAUNCHER_VISIBLE = "launcher_visible"
+  KEY_ICON             = "icon"
+  S_DOT     = "."
+  S_DOTDOT  = ".."
+  S_SLASH   = "/"
+  S_HASH    = "#"
+  S_EQ      = "="
+  S_QUOTE   = '"'
+  S_NEWLINE = "\n"
+  S_TOML    = ".toml"
+  S_FALSE   = "false"
+  S_ZERO    = "0"
+  SCRIPT_EXTS = ["rb", "lua", "bas"]
+  S_SPACE   = " "
+  S_COLOR   = "color="
+  S_HEX     = "0x"
+  S_ONE     = "1"
 
   def scan_apps
-    profile_scan_primitives
     @launcher_apps = builtin_apps
     builtin_count = @launcher_apps.size
     # Single virtual path - the HAL resolver maps "/app" to LittleFS on ESP32
@@ -260,7 +244,7 @@ module LauncherMixin
     dir = Dir.open(path)
     entries = []
     while (e = dir.read)
-      entries << e unless e == "." || e == ".."
+      entries << e unless e == S_DOT || e == S_DOTDOT
     end
     dir.close
     entries
@@ -274,7 +258,7 @@ module LauncherMixin
   # the failure. That probe ran on every non-.toml entry: 42 failed opendir
   # calls, and 42 mruby exceptions, per boot scan.
   def dir_candidate?(name)
-    !name.include?(".")
+    !name.include?(S_DOT)
   end
 
   # Pick the script extension for "base" out of a directory listing already in
@@ -282,7 +266,7 @@ module LauncherMixin
   # one succeeded - up to three filesystem opens per app, for information the
   # enumeration had already produced.
   def find_script_ext(entry_names, base)
-    ["rb", "lua", "bas"].each do |ext|
+    SCRIPT_EXTS.each do |ext|
       return ext if entry_names.include?("#{base}.#{ext}")
     end
     nil
@@ -302,7 +286,7 @@ module LauncherMixin
       next unless sub_entries
 
       sub_entries.each do |f|
-        if f.end_with?(".toml")
+        if f.end_with?(S_TOML)
           app_entry = parse_app_toml("#{path}/#{f}", path, sub_entries)
           if app_entry
             @launcher_apps << app_entry
@@ -317,7 +301,7 @@ module LauncherMixin
           dd_entries = read_dir_entries(full)
           next unless dd_entries
           dd_entries.each do |df|
-            next unless df.end_with?(".toml")
+            next unless df.end_with?(S_TOML)
             app_entry = parse_app_toml("#{full}/#{df}", full, dd_entries)
             if app_entry
               @launcher_apps << app_entry
@@ -348,35 +332,37 @@ module LauncherMixin
       content = file.read
       file.close
 
-      # Hot loop: this runs for every line of every app's .toml at boot, so it
-      # is written to avoid the two expensive primitives measured on device.
-      # String#gsub is implemented in Ruby here and costs ~15 ms per call, and
-      # every allocation drags in ~135 us of GC, so the key is matched before
-      # the value is touched and the surrounding quotes are removed by slicing
-      # rather than by gsub. Together these took the boot scan from ~300 ms per
-      # .toml to a few ms.
-      content.split("\n").each do |line|
+      # Hot loop: runs for every line of every app's .toml at boot, so it is
+      # written around what was measured on device.
+      #
+      # String#gsub is implemented in Ruby in picoruby and dominated this loop
+      # until it was removed (scan 13.0 s -> 7.8 s); the surrounding quotes are
+      # stripped by slicing instead. Allocating calls are expensive in general,
+      # so the key is compared against constants before the value is touched at
+      # all: a line that is not one of the four keys we care about does no work
+      # beyond its own strip.
+      content.split(S_NEWLINE).each do |line|
         line = line.strip
-        next if line.empty? || line.start_with?("#")
-        eq = line.index("=")
+        next if line.empty? || line.start_with?(S_HASH)
+        eq = line.index(S_EQ)
         next unless eq
         key = line[0, eq].strip
-        next unless key == lang_key || key == "app_screen_name" ||
-                    key == "launcher_visible" || key == "icon"
+        next unless key == lang_key || key == KEY_APP_SCREEN_NAME ||
+                    key == KEY_LAUNCHER_VISIBLE || key == KEY_ICON
         val = line[eq + 1, line.length - eq - 1].strip
         vlen = val.length
-        if vlen >= 2 && val[0] == '"' && val[vlen - 1] == '"'
+        if vlen >= 2 && val[0] == S_QUOTE && val[vlen - 1] == S_QUOTE
           val = val[1, vlen - 2]
         end
         case key
         when lang_key
           label_lang = val
-        when "app_screen_name"
+        when KEY_APP_SCREEN_NAME
           label = val
-        when "launcher_visible"
+        when KEY_LAUNCHER_VISIBLE
           v = val.downcase
-          launcher_visible = !(v == "false" || v == "0")
-        when "icon"
+          launcher_visible = !(v == S_FALSE || v == S_ZERO)
+        when KEY_ICON
           icon_field = val
         end
       end
@@ -388,8 +374,8 @@ module LauncherMixin
     return nil unless launcher_visible
 
     # Derive script filename from toml filename
-    toml_name = toml_path.split("/").last
-    base = toml_name.sub(".toml", "")
+    toml_name = toml_path.split(S_SLASH).last
+    base = toml_name.sub(S_TOML, "")
 
     ext = find_script_ext(entry_names, base)
     return nil unless ext

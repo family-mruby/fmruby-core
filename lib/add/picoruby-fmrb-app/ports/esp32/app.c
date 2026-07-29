@@ -947,6 +947,16 @@ static mrb_value mrb_fmrb_app_s_config(mrb_state *mrb, mrb_value self)
     return result;
 }
 
+// FmrbApp.uptime_us() -> Integer
+// Microseconds since boot, for profiling from Ruby. Log timestamps only have
+// millisecond resolution and each log line blocks the console UART for several
+// milliseconds, which is too coarse and too intrusive to time short sections.
+static mrb_value mrb_fmrb_app_s_uptime_us(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    return mrb_int_value(mrb, (mrb_int)fmrb_hal_time_get_us());
+}
+
 // FmrbApp.wallclock() -> Hash {year:, month:, day:, hour:, minute:, second:} or nil
 static mrb_value mrb_fmrb_app_s_wallclock(mrb_state *mrb, mrb_value self)
 {
@@ -1413,6 +1423,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "sys_pool_info", mrb_fmrb_app_s_sys_pool_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "uptime_us", mrb_fmrb_app_s_uptime_us, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wallclock", mrb_fmrb_app_s_wallclock, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_wallclock", mrb_fmrb_app_s_set_wallclock, MRB_ARGS_REQ(6));
     mrb_define_class_method(mrb, app_class, "gfx_stats", mrb_fmrb_app_s_gfx_stats, MRB_ARGS_NONE());
