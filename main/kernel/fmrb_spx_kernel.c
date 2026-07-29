@@ -186,14 +186,18 @@ int fmrb_spx_spawn_app_req(const char *name, int len)
     if (!name || len < 0 || len >= FMRB_MAX_PATH_LEN) {
         FMRB_LOGE(TAG, "Spawn path rejected (len=%d, max=%d)", len,
                   FMRB_MAX_PATH_LEN - 1);
-        return FMRB_SPX_ERR_RANGE;
+        return FMRB_ERR_INVALID_PARAM;
     }
     char namebuf[FMRB_MAX_PATH_LEN];
     memcpy(namebuf, name, (size_t)len);
     namebuf[len] = 0;
     int32_t new_pid = -1;
     fmrb_err_t ret = fmrb_app_spawn_app(namebuf, &new_pid);
-    return ret == FMRB_OK ? (int)new_pid : FMRB_SPX_ERR;
+    /* The fmrb_err.h code, not a flattened failure: the kernel turns it into the
+       sentence the desktop shows, so "no free slot" does not read as some other
+       problem. Every failure here is negative, which is what the Ruby side keys
+       on to return nil. */
+    return ret == FMRB_OK ? (int)new_pid : (int)ret;
 }
 
 /* Copy a NUL-terminated C string into a fixed-width, NUL-padded field. */

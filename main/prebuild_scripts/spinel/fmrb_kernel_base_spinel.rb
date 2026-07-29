@@ -140,9 +140,13 @@ class FmrbKernel
   def _resume_app(pid);  FmrbSpx.fmrb_spx_resume_app(pid) == 0; end
   def _reap_app(pid);    FmrbSpx.fmrb_spx_reap_app(pid) == 0; end
 
+  # nil on failure, with why in @last_spawn_err (an fmrb_err.h code, 0 when the
+  # spawn worked). The mruby binding sets the same ivar, so the kernel reads it
+  # the same way on both engines.
   def _spawn_app_req(name)
     s = name.to_s   # concrete String for the :str FFI boundary
     pid = FmrbSpx.fmrb_spx_spawn_app_req(s, s.bytesize)
+    @last_spawn_err = pid < 0 ? pid : 0
     pid < 0 ? nil : pid
   end
 

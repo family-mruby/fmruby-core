@@ -85,7 +85,10 @@ static mrb_value mrb_kernel_handler_poll_message(mrb_state *mrb, mrb_value self)
 }
 
 // Kernel#_spawn_app_req(app_name) -> Integer (PID) or nil
-// Spawn application by name, returns PID on success or nil on failure
+// Spawn application by name, returns PID on success or nil on failure.
+// On failure @last_spawn_err carries the fmrb_err.h code (0 on success) so the
+// kernel can tell the user why instead of guessing; the Spinel port sets the
+// same ivar from Ruby.
 static mrb_value mrb_kernel_handler_spawn_app_req(mrb_state *mrb, mrb_value self)
 {
     const char *app_name;
@@ -95,6 +98,8 @@ static mrb_value mrb_kernel_handler_spawn_app_req(mrb_state *mrb, mrb_value self
 
     int32_t new_pid = -1;
     fmrb_err_t result = fmrb_app_spawn_app(app_name, &new_pid);
+    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@last_spawn_err"),
+               mrb_fixnum_value(result == FMRB_OK ? 0 : (mrb_int)result));
 
     if (result == FMRB_OK) {
         FMRB_LOGI(TAG, "App %s spawned successfully with PID %d", app_name, new_pid);

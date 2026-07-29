@@ -737,8 +737,10 @@ class SystemDesktopApp < FmrbApp
         open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error")
       end
     elsif msg["cmd"] == "spawn_failed"
-      open_error_dialog(msg["app"] || "Unknown",
-                        "Failed to launch.\nApps launched from files need a .toml config with app_screen_name.")
+      # The kernel says why (it has the spawner's error code); this used to
+      # blame a missing .toml whatever the cause.
+      reason = (msg["reason"] || "See the log for the reason.").to_s
+      open_error_dialog(msg["app"] || "Unknown", "Failed to launch.\n" + reason)
     elsif msg["cmd"] == "confirm_dialog"
       # Build callback data hash from message fields
       cb_data = {}

@@ -103,6 +103,26 @@ class FmrbKernelImpl < FmrbKernel
     end
   end
 
+  # Why the last _spawn_app_req failed, as a sentence for the user. The code is
+  # the fmrb_err.h value the C spawner returned (@last_spawn_err, set by both
+  # engines' bindings). An unmapped code keeps its number rather than having a
+  # cause invented for it -- the dialog used to blame a missing .toml for every
+  # failure, which sent us looking in the wrong place twice.
+  def spawn_error_reason
+    case @last_spawn_err
+    when -9  # FMRB_ERR_NO_RESOURCE
+      "No free app slot. Close a running app and try again."
+    when -7  # FMRB_ERR_NOT_FOUND
+      "The file is missing, or it is a name no built-in app has."
+    when -2  # FMRB_ERR_NO_MEMORY
+      "Not enough memory to start it."
+    when -1  # FMRB_ERR_INVALID_PARAM
+      "The path is not usable (too long, or empty)."
+    else
+      "Spawn failed (error=#{@last_spawn_err})."
+    end
+  end
+
   def handle_app_control(msg)
     data_binary = msg[:data]
     pid = msg[:src_pid]
@@ -137,7 +157,9 @@ class FmrbKernelImpl < FmrbKernel
         Log.error("Failed to spawn app: #{app_name}")
         # Let the desktop show an error dialog to the user
         if @desktop_pid
-          data = MessagePack.pack({"cmd" => "spawn_failed", "app" => app_name})
+          reason = spawn_error_reason
+          data = MessagePack.pack({"cmd" => "spawn_failed", "app" => app_name,
+                                   "reason" => reason})
           _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
         end
       end
@@ -183,7 +205,7 @@ class FmrbKernelImpl < FmrbKernel
           Log.info("Run: spawned #{run_path} as PID #{new_pid}")
           after_spawn(new_pid)
         else
-          Log.error("Run: failed to spawn #{run_path}")
+          Log.error("Run: failed to spawn #{run_path}: #{spawn_error_reason}")
         end
         reply_run_result(pid, run_path, new_pid)
       end
