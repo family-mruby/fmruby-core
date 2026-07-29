@@ -179,10 +179,16 @@ int fmrb_spx_reap_app(int pid)
 
 int fmrb_spx_spawn_app_req(const char *name, int len)
 {
-    if (!name || len < 0 || len >= FMRB_MAX_APP_NAME) {
+    /* What arrives here is a path ("/app/basic/sample_10_dodge.app.bas"), not a
+       display name, so it is bounded by FMRB_MAX_PATH_LEN like the rest of the
+       spawner. Bounding it by FMRB_MAX_APP_NAME (32) silently refused every app
+       whose path was longer, which the mruby binding happily spawns. */
+    if (!name || len < 0 || len >= FMRB_MAX_PATH_LEN) {
+        FMRB_LOGE(TAG, "Spawn path rejected (len=%d, max=%d)", len,
+                  FMRB_MAX_PATH_LEN - 1);
         return FMRB_SPX_ERR_RANGE;
     }
-    char namebuf[FMRB_MAX_APP_NAME];
+    char namebuf[FMRB_MAX_PATH_LEN];
     memcpy(namebuf, name, (size_t)len);
     namebuf[len] = 0;
     int32_t new_pid = -1;

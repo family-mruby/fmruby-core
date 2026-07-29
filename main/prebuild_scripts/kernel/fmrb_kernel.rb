@@ -163,7 +163,11 @@ class FmrbKernelImpl < FmrbKernel
       # a requester must never be able to stop the desktop or itself this way.
       prev_stoppable = prev_info && prev_pid != pid && run_path_allowed?(prev_info[:path].to_s)
 
-      if !run_path_allowed?(run_path)
+      # Kept in a local rather than negated in place: Spinel's codegen emits the
+      # call's hoisted temporaries inside the if condition when a call sits
+      # under a unary "!", which does not compile (ruby_writing_constraints B).
+      run_allowed = run_path_allowed?(run_path)
+      if !run_allowed
         Log.warn("Run request from pid=#{pid} rejected: #{run_path}")
         reply_run_result(pid, run_path, nil)
       elsif prev_stoppable
