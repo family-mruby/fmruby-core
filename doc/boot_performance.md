@@ -12,18 +12,18 @@
 
 `system_desktop` の `on_create` からブート完了まで、着手時点で約 20 秒。
 
-| 区間 | 着手時 | gsub 除去後 | リテラル定数化後 | インデックスキャッシュ後 |
-|---|---:|---:|---:|---:|
-| `scan_apps` | 12.9 s | 7.8 s | - | **0.29 s** |
-| `ensure_icon_sprites` | 4.0 s | 4.0 s | **2.1 s** | 2.1 s |
-| 壁紙 `create_image_from_file` ×2 | 3.3 s | 3.3 s | 3.0 s | 3.0 s |
-| **`on_create` → Boot complete** | **20.4 s** | **14.9 s** | | **7.24 s** |
+| 区間 | 着手時 | 現在 | 効いた変更 |
+|---|---:|---:|---|
+| `scan_apps` | 12.9 s | **0.29 s** | gsub 除去 -> リテラル定数化 -> インデックスキャッシュ |
+| `ensure_icon_sprites` | 4.0 s | **1.33 s** | リテラル定数化 -> BMP + load_bmp |
+| ブートロゴ + アニメ + 壁紙 | 3.3 s | 4.4 s | 未着手 (GA 側のデコード) |
+| **`on_create` → Boot complete** | **20.4 s** | **6.03 s** | |
 
-リテラル定数化だけを入れた素の wall clock は取っていない (計測用の仕込みを
-外した直後にキャッシュを入れたため)。効果はフェーズ別集計の parse 5.0 s →
-3.0 s と、アイコン構築 4.0 s → 2.1 s で確認している。
+file sync も毎ブート 240 ms の転送をしていたが、GA 側が status 応答の CRC を
+常に 0 で返していたため core 側の一致判定が必ず外れていた。GA 側で CRC32 を
+計算するようにして `up-to-date` になった (fmruby-graphics-audio 43fb541)。
 
-キャッシュ導入前の時点でのフェーズ別集計 (43 ファイル、計測用の仕込みあり):
+途中経過の内訳 (キャッシュ導入前、計測用の仕込みあり、43 ファイル):
 
 | | |
 |---|---:|
@@ -31,7 +31,6 @@
 | read (File open+read+close) | 1004 ms |
 | dirlist (Dir 列挙) | 685 ms |
 | 上記いずれにも属さない | 2372 ms |
-
 
 ## 計測方法
 
@@ -192,6 +191,13 @@ GC を切っても速くならない。
 - `FmrbApp.uptime_us` を追加 (`lib/add/picoruby-fmrb-app/ports/esp32/app.c`)。
   Ruby から us 単位で計測するための API。Spinel 側には対応する FFI が無いので、
   共有 Ruby から使うときは注意。
+- **アイコンを BMP 化して `SpriteImage#load_bmp` に** (`tool/gen_icon_bmp.rb`,
+  `rake icons`)。`.icon` の per-pixel GFX コマンド送信をやめ、graphics-audio に
+  デコードさせる。BMP は GA 側に 1 度転送してキャッシュ。**4.0 秒 → 1.33 秒**。
+  `load_icon` / `@icon_cache` / `_force_gc` は役目を終えたので削除
+  (`_force_gc` は per-pixel の churn 対策だったので、churn ごと消えた)。
+- **GA 側の file STATUS が CRC32 を返すように** (fmruby-graphics-audio 43fb541)。
+  毎ブートの再転送 240 ms が消えた。
 - **アプリ一覧のインデックスキャッシュ** (`/data/launcher_index`)。起動時は
   キャッシュを無条件に信じ、増減の反映は右クリック rescan のみ。検証しないのは、
   検証にはディレクトリを歩く必要があり (dirlist だけで 685 ms)、キャッシュの
@@ -201,10 +207,13 @@ GC を切っても速くならない。
 
 未着手:
 
-- **壁紙 3.0 秒**。残った最大項目。パスを送って GA 側でデコードしているので、
-  fmruby-graphics-audio 側の課題。
-- **アイコン構築 2.1 秒**。まだ 1 ピクセルずつ GFX コマンドを送っている。
-  `SpriteImage#load_bmp` (GA 側デコード) に寄せるのが筋。
+- **画像デコード 4.4 秒**。残った最大項目で、いま全体の 7 割。318x224 を 2 枚
+  (ブートロゴと壁紙) デコードしている。うち約 1 秒は意図的なブートアニメーション
+  なので削る対象ではない。core からはパスを送っているだけなので、調査は
+  fmruby-graphics-audio 側。
+- アイコン 1.33 秒。スプライト 1 枚あたり約 160 ms で、`file_status` /
+  `_create_sprite_image` / `_load_sprite_image_bmp` の 3 往復。詰めるなら
+  往復を減らす。
 - TOML パースを C 側 (`components/fmrb_toml`) に寄せる案。キャッシュが効いた
   ので急がないが、初回起動と rescan は今もフルスキャン (約 6 秒) である。
 - 「リテラルをメソッドに渡すと 40 倍」の機構特定。対策は効いているので急がない
