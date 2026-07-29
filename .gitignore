@@ -15,6 +15,8 @@ managed_components/
 .serial_port
 flash/etc/system_conf.toml
 flash/home/music/
+# Launcher app index, rebuilt on demand by the desktop
+flash/data/launcher_index
 
 # Generated documentation
 doc/local/
