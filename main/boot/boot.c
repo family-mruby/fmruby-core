@@ -16,6 +16,7 @@
 #include "fmrb_task_config.h"
 #include "usb_task.h"
 #include "hid_device_config.h"
+#include "fs_bench.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "hw_proxy.h"
 #include "fmrb_hal_pin_manager.h"
@@ -246,6 +247,10 @@ static bool init_hardware(void)
         return false;
     }
 
+    // Per-operation filesystem cost, measured before any VM exists so the
+    // figures can be compared against the ESP32 build.
+    fs_bench_run(FMRB_FS_BENCH_DIR);
+
     ret = usb_task_init();
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "Failed to init usb_task");
@@ -306,6 +311,11 @@ static bool init_hardware(void)
         FMRB_LOGE(TAG, "Failed to init filesystem");
         return false;
     }
+
+    // Per-operation filesystem cost. Runs here, right after the mount and
+    // before any VM is created, so the numbers carry no interpreter or GC
+    // component and stay comparable across engines and storage settings.
+    fs_bench_run(FMRB_FS_BENCH_DIR);
 
 #ifndef FMRB_HW_ATOM_DISPLAY
     hid_device_config_init();

@@ -459,12 +459,22 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
         return FMRB_ERR_FAILED;
     }
 
-    // Disable libc stdio buffering. The newlib FILE buffer can be allocated in
-    // PSRAM by the default heap, and SPI flash writes from a PSRAM source
-    // silently fail. With _IONBF every write goes straight to the VFS layer,
-    // so the source buffer we pass in (bounced to internal RAM in
-    // fmrb_hal_file_write) is what reaches the flash driver.
-    setvbuf(slot->fp, NULL, _IONBF, 0);
+    // Disable libc stdio buffering, but only when the file can be written.
+    // The newlib FILE buffer can be allocated in PSRAM by the default heap,
+    // and SPI flash writes from a PSRAM source silently fail. With _IONBF
+    // every write goes straight to the VFS layer, so the source buffer we pass
+    // in (bounced to internal RAM in fmrb_hal_file_write) is what reaches the
+    // flash driver.
+    //
+    // Reads carry no such constraint, and _IONBF is ruinous for them: newlib
+    // refills an unbuffered stream one byte at a time, so a single fread costs
+    // one VFS round trip per byte. Measured on LittleFS at 20.4 us/byte, i.e.
+    // 290 ms to read a 14 KB app script. Read-only opens therefore keep
+    // newlib's default buffering.
+    if (flags & (FMRB_O_WRONLY | FMRB_O_RDWR | FMRB_O_CREAT |
+                 FMRB_O_TRUNC | FMRB_O_APPEND)) {
+        setvbuf(slot->fp, NULL, _IONBF, 0);
+    }
 
     slot->in_use = true;
     *out_handle = (fmrb_file_t)slot;

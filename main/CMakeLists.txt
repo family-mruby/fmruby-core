@@ -12,6 +12,9 @@ set(COMPONENT_SRCS
     "drivers/debug/fmrb_debug_proto.c"
     "drivers/debug/fmrb_debug_ctx.c"
     "drivers/debug/fmrb_debugd.c"
+    # Filesystem cost measurement (target independent on purpose: the Linux
+    # build is the fast-storage control for the ESP32 numbers).
+    "conn_check/fs_bench.c"
 )
 set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
