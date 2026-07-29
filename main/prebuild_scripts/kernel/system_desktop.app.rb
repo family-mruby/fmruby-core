@@ -84,7 +84,6 @@ class SystemDesktopApp < FmrbApp
     @last_click_time = 0
     @last_click_idx = -1
     @launcher_apps = []
-    @icon_cache = {}
 
     # File selector state
     @file_selector_open = false

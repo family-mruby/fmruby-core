@@ -42,16 +42,44 @@ module LauncherMixin
 
   # ---- Icon sprite lifecycle ----
 
-  # Force a full GC on this task's heap. On the Spinel engine the icon-load loop
-  # below (per-pixel sprite draw = tight FFI churn) generates transient garbage
-  # faster than the allocator's GC threshold reclaims it; the true live set is
-  # ~678KB (flat across all 29 icons, measured), well inside the 800KB pool, but
-  # a churn burst momentarily exceeds the ~120KB headroom and OOMs. A periodic
-  # explicit GC keeps the churn collected. On mruby FmrbApp.gc is absent
-  # (NoMethodError -> no-op); mruby's automatic GC already keeps churn low.
-  def _force_gc
-    FmrbApp.gc
-  rescue
+  # Icon artwork is shipped as a BMP next to its .icon source (see
+  # tool/gen_icon_bmp.rb, "rake icons"). The launcher used to parse the .icon
+  # text here and push the bitmap to the graphics side one GFX command per
+  # pixel, which cost about 2 s of boot for five icons. graphics-audio decodes
+  # a BMP itself, so the file is transferred there once and loaded with
+  # SpriteImage#load_bmp instead - the same route flappy.rb and rpg_demo use
+  # for their sprites.
+  #
+  # The generator bakes in the 2x scale the old code applied, so a 12x12 source
+  # still lands as a 24x24 sprite and the launcher layout is unchanged.
+  ICON_SPRITE_W = 24
+  ICON_SPRITE_H = 24
+  ICON_CACHE_DIR = "sprites/launcher"
+  S_ICON_EXT = ".icon"
+  S_BMP_EXT  = ".bmp"
+
+  # App entries still carry the .icon path (that is what the .toml files and
+  # VM_ICON_FILES name); the BMP beside it is what actually gets loaded.
+  def icon_bmp_source(icon_file)
+    return icon_file unless icon_file.end_with?(S_ICON_EXT)
+    "#{icon_file[0, icon_file.length - S_ICON_EXT.length]}#{S_BMP_EXT}"
+  end
+
+  # Push the BMP to graphics-audio once and build the sprite image from it.
+  # Returns nil when the artwork is missing so the caller just skips the icon.
+  def build_icon_sprite_image(icon_file)
+    src = icon_bmp_source(icon_file)
+    dest = "#{ICON_CACHE_DIR}/#{src.split(S_SLASH).last}"
+    status = @gfx.file_status(dest)
+    unless status && status[:exists]
+      @gfx.transfer_file(src, dest: dest)
+    end
+    img = SpriteImage.new(@gfx, width: ICON_SPRITE_W, height: ICON_SPRITE_H,
+                          transparent_color: 0, use_transparent: true)
+    img.load_bmp(dest)
+    img
+  rescue => e
+    Log.warn("Icon load failed for #{icon_file}: #{e.message}")
     nil
   end
 
@@ -65,58 +93,21 @@ module LauncherMixin
 
     @launcher_apps.each_with_index do |app, idx|
       next if @icon_sprite_instances[idx]
-      # Reclaim the previous icon's parse/draw churn before building the next.
-      # The Spinel live baseline here is ~678KB in an 800KB pool (~120KB
-      # headroom); one icon's churn fits, several do not, so GC every icon
-      # rather than every N (measured: churn-bound, not live-bound). See
-      # _force_gc. No-op on mruby (ample headroom, automatic GC).
-      _force_gc
       icon_file = app[:icon_file]
       next unless icon_file
-      icon_data = load_icon(icon_file)
-      next unless icon_data
-
-      rows = icon_data[:rows]
-      ih = rows.size
-      iw = rows[0] ? rows[0].length : 0
-      next if iw == 0 || ih == 0
-
-      scale = [(LAUNCHER_ICON_W - 4) / iw, (LAUNCHER_ICON_H - 22) / ih].min
-      scale = 1 if scale < 1
-      spr_w = iw * scale
-      spr_h = ih * scale
 
       img = @icon_sprite_images[icon_file]
       unless img
-        color = icon_data[:color]
-        img = SpriteImage.new(@gfx, width: spr_w, height: spr_h,
-                              transparent_color: 0, use_transparent: true)
-        img.draw do |g|
-          g.fill_rect(0, 0, spr_w, spr_h, 0)
-          rows.each_with_index do |row, iy|
-            ix = 0
-            rl = row.length
-            while ix < rl
-              if row[ix] == S_ONE
-                if scale > 1
-                  g.fill_rect(ix * scale, iy * scale, scale, scale, color)
-                else
-                  g.set_pixel(ix, iy, color)
-                end
-              end
-              ix += 1
-            end
-          end
-        end
+        img = build_icon_sprite_image(icon_file)
+        next unless img
         @icon_sprite_images[icon_file] = img
       end
 
       inst = SpriteInstance.new(@gfx, img, x: 0, y: 0, z: 1)
       inst.visible = false
       @icon_sprite_instances[idx] = inst
-      @icon_sprite_metrics[idx] = { bmp_w: spr_w, bmp_h: spr_h }
-      # Each SpriteImage upload to WROVER is ~100-300ms; yield so status_led
-      # gets to toggle while sprites are being uploaded.
+      @icon_sprite_metrics[idx] = { bmp_w: ICON_SPRITE_W, bmp_h: ICON_SPRITE_H }
+      # Yield so status_led gets to toggle while sprites are being built.
       Machine.delay_ms(1)
     end
   end
@@ -152,44 +143,6 @@ module LauncherMixin
     @icon_sprite_instances = []
     @icon_sprite_metrics = []
     # @icon_sprite_images is kept (cached by icon_file path).
-  end
-
-  # ---- Icon loading ----
-
-  def load_icon(icon_file)
-    return @icon_cache[icon_file] if @icon_cache.key?(icon_file)
-
-    rows = []
-    color = 0xFF  # default white
-    begin
-      file = File.open(icon_file, "r")
-      content = file.read
-      file.close
-
-      content.split(S_NEWLINE).each do |line|
-        line = line.strip
-        if line.start_with?(S_HASH)
-          # Parse color from comment: "# ... color=0xFF"
-          if line.include?(S_COLOR)
-            c = line.split(S_COLOR)[1]
-            if c
-              c = c.strip.split(S_SPACE)[0]
-              color = c.start_with?(S_HEX) ? c[2..-1].to_i(16) : c.to_i
-            end
-          end
-        elsif line.length > 0
-          rows << line
-        end
-      end
-    rescue => e
-      Log.warn("Cannot load icon #{icon_file}: #{e.message}")
-      @icon_cache[icon_file] = nil
-      return nil
-    end
-
-    icon_data = { rows: rows, color: color }
-    @icon_cache[icon_file] = icon_data
-    icon_data
   end
 
   # ---- App scanning ----
@@ -241,10 +194,6 @@ module LauncherMixin
   CACHE_PATH    = "/data/launcher_index"
   CACHE_VERSION = "1"
   CACHE_MAX_BYTES = 16384
-  S_SPACE   = " "
-  S_COLOR   = "color="
-  S_HEX     = "0x"
-  S_ONE     = "1"
 
   # Load the cached app list, or nil when there is nothing usable. Built-ins
   # are not cached: their labels are translated at scan time, so they are

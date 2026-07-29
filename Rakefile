@@ -143,6 +143,15 @@ DOCKER_CMD_INTERACTIVE = [
   IMAGE
 ].join(" ")
 
+desc "Regenerate the launcher icon BMPs from their .icon sources"
+task :icons do
+  # The .icon text files are the editable source; the BMPs beside them are what
+  # the device actually loads (graphics-audio decodes them, instead of the
+  # launcher pushing pixels one GFX command at a time). Re-run after editing an
+  # .icon and commit both.
+  sh "ruby tool/gen_icon_bmp.rb"
+end
+
 desc "Build Setup (Patch files)"
 task :setup do
   mrbgem_path = "components/picoruby-esp32/picoruby/mrbgems"
