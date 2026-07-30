@@ -46,6 +46,10 @@ module FmrbSpx
   # absent -> Ruby nil), for the same getbyte reason as windows_snapshot.
   ffi_func :fmrb_spx_app_info_snapshot, [:int], :binstr
   ffi_func :fmrb_spx_last_error, [], :binstr
+  # file sync: count, then one packed entry (src 128 + dest 128) per index
+  ffi_func :fmrb_spx_sync_file_count, [], :int
+  ffi_func :fmrb_spx_sync_file_entry, [:int], :binstr
+  ffi_func :fmrb_spx_sync_file, [:str, :int, :str, :int], :int
   ffi_func :fmrb_spx_set_error_led, [:int], :int
   ffi_func :fmrb_spx_set_ready, [], :int
   ffi_func :fmrb_spx_check_protocol_version, [:int], :int  # 1 ok / 0 fail / neg err

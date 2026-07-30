@@ -425,44 +425,23 @@ class FmrbKernelImpl < FmrbKernel
     Log.info("File sync complete")
   end
 
+  # The clock itself is set in C during boot (main/kernel/fmrb_rtc.c), so all
+  # that is left here is telling the graphics side what time it is.
+  #
+  # It used to read the RTC through picoruby's I2C and RX8900 / RX8130 classes,
+  # which the Spinel build has no way to resolve, so the whole block sat behind
+  # a spinel-strip marker on the assumption that the platform check above always
+  # returns first. On the device it does not: PLATFORM is "esp32", the check
+  # passes, and what followed had been stripped -- so the Spinel kernel silently
+  # left the clock at the epoch. Reading it in C removes the engine from the
+  # question entirely.
   def sync_rtc
     unless FmrbConst::PLATFORM == "esp32"
       Log.info("RTC sync: skipped (not ESP32)")
       return
     end
-    # The RTC hardware access below is ESP32-only and uses picoruby C classes
-    # (I2C / RX8900 / RX8130) that do not exist in the Spinel build. The Spinel
-    # kernel targets Linux (Phase 2), where the platform check above returns
-    # first, so this block is unreachable there -- the combined-source generator
-    # (tool/spinel/gen_kernel_combined.rb) strips it between these markers so
-    # Spinel never has to resolve those classes. mruby keeps it verbatim.
-    #:spinel-strip-begin
-    i2c = nil
-    begin
-      i2c = I2C.new(unit: :ESP32_I2C1,
-                    sda_pin: FmrbHw::PIN_I2C1_SDA,
-                    scl_pin: FmrbHw::PIN_I2C1_SCL)
-      # Retro carries an RX8900; Modern (Tab5 / ESP32-P4) an RX8130
-      rtc = (FmrbConst::CHIP_MODEL == "ESP32-P4") ? RX8130.new(i2c) : RX8900.new(i2c)
-      rtc.init
-      if rtc.sync_system_clock
-        t = rtc.read_time
-        Log.info("RTC sync: #{t[:year]}/#{t[:month]}/#{t[:day]} #{t[:hour]}:#{t[:minute]}:#{t[:second]}")
-        # Dump system clock to cross-check TZ handling
-        # (ESP-IDF log prefix uses localtime; Time.now here reflects the same)
-        Log.info("System time after sync: #{Time.now} (epoch=#{Time.now.to_i})")
-        # Send time to graphics-audio side
-        _sync_time_to_host
-        Log.info("RTC sync: time sent to host")
-      else
-        Log.warn("RTC sync: failed to read time")
-      end
-    rescue => e
-      Log.error("RTC sync error: #{e.message}")
-    ensure
-      i2c.close if i2c
-    end
-    #:spinel-strip-end
+    _sync_time_to_host
+    Log.info("RTC sync: time sent to host")
   end
 
   def initial_sequence

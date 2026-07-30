@@ -194,13 +194,33 @@ class FmrbKernel
     FmrbSpx.fmrb_spx_check_ga_version(timeout_ms) == 1
   end
 
-  # ---- file / time sync (Linux: mostly no-ops on the C side) ----
+  # ---- file / time sync ----
+  # Reads the same system_conf.toml entries the mruby binding reads. This used to
+  # answer with an empty list, which meant a Spinel kernel silently synced
+  # nothing on the device. Entries come over one at a time (src 128, dest 128,
+  # both NUL-padded) so the C side needs one 256 byte buffer rather than one for
+  # every entry at once.
+  SYNC_PATH_WIDTH = 128
+
   def _get_sync_files
-    []  # Linux Spinel build: no configured file sync (handled by C on ESP32)
+    out = []
+    count = FmrbSpx.fmrb_spx_sync_file_count
+    i = 0
+    while i < count
+      buf = FmrbSpx.fmrb_spx_sync_file_entry(i)
+      if buf.bytesize > 0
+        out << { src: SpxBytes.read_name(buf, 0, SYNC_PATH_WIDTH),
+                 dest: SpxBytes.read_name(buf, SYNC_PATH_WIDTH, SYNC_PATH_WIDTH) }
+      end
+      i += 1
+    end
+    out
   end
 
   def _sync_file(src, dest)
-    false
+    s = src.to_s   # concrete String for the :str FFI boundary
+    d = dest.to_s
+    FmrbSpx.fmrb_spx_sync_file(s, s.bytesize, d, d.bytesize) == 1
   end
 
   def _sync_time_to_host

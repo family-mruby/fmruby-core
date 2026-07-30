@@ -14,6 +14,7 @@
 #include "fmrb_task_config.h"
 #include "fmrb_app.h"
 #include "fmrb_kernel.h"
+#include "fmrb_rtc.h"
 #include "boot.h"
 #include "fmrb_transport.h"
 #include "host/host_task.h"
@@ -602,6 +603,15 @@ fmrb_err_t fmrb_kernel_start(void)
     }
     if(!fmrb_app_init()){
         return FMRB_ERR_FAILED;
+    }
+
+    // Set the clock before anything can report a time. A missing or flat RTC is
+    // not fatal -- the system runs with whatever the clock says, as it did
+    // before -- so the return value only decides whether to log.
+    fmrb_err_t rtc_ret = fmrb_rtc_sync_system_clock();
+    if (rtc_ret != FMRB_OK && rtc_ret != FMRB_ERR_NOT_SUPPORTED) {
+        FMRB_LOGW(TAG, "Clock not set from RTC (err=%d); times will be wrong",
+                  rtc_ret);
     }
 
     // Create host task

@@ -5,6 +5,10 @@ set(COMPONENT_SRCS
     "app/fmrb_app.c"
     "app/fmrb_app_spawner.c"
     "kernel/fmrb_kernel.c"
+    # Battery-backed clock. Target independent on purpose: the whole file is a
+    # no-op off ESP32, and keeping it in one list means the kernel Ruby never
+    # has to know which engine or platform it is running on.
+    "kernel/fmrb_rtc.c"
     "kernel/host/host_task.c"
     "drivers/usb/fmrb_keymap.c"
     "drivers/led_status/status_led.c"

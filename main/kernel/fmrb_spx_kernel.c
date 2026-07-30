@@ -308,3 +308,52 @@ int fmrb_spx_sync_time_to_host(void)
         FMRB_TRANSPORT_TIMEOUT_DEFAULT);
     return ret == FMRB_OK ? 1 : 0;
 }
+
+/* File sync. The Spinel port used to answer "nothing configured" here on the
+   grounds that C would handle it on the device, and nothing did: the entries in
+   system_conf.toml were simply never synced under a Spinel kernel. These wrap
+   the same fmrb_kernel_* calls the mruby binding uses, so both engines run the
+   one implementation and the shared Ruby keeps its logging. Entries are handed
+   over one at a time rather than as one array: internal RAM is the scarce
+   resource here, and a per-entry buffer costs 256 bytes instead of 2 KB. */
+#define FMRB_SPX_SYNC_MAX_ENTRIES 8
+
+int fmrb_spx_sync_file_count(void)
+{
+    fmrb_sync_file_entry_t entries[FMRB_SPX_SYNC_MAX_ENTRIES];
+    return fmrb_kernel_get_sync_files(entries, FMRB_SPX_SYNC_MAX_ENTRIES);
+}
+
+const char *fmrb_spx_sync_file_entry(int index)
+{
+    static uint8_t buf[2 * FMRB_SYNC_FILE_PATH_MAX];
+    sp_net_bin_len = 0;
+
+    fmrb_sync_file_entry_t entries[FMRB_SPX_SYNC_MAX_ENTRIES];
+    const int count = fmrb_kernel_get_sync_files(entries, FMRB_SPX_SYNC_MAX_ENTRIES);
+    if (index < 0 || index >= count) {
+        return "";
+    }
+    spx_pack_name(buf, FMRB_SYNC_FILE_PATH_MAX, entries[index].src);
+    spx_pack_name(buf + FMRB_SYNC_FILE_PATH_MAX, FMRB_SYNC_FILE_PATH_MAX,
+                  entries[index].dest);
+    sp_net_bin_len = (int)sizeof(buf);
+    return (const char *)buf;
+}
+
+int fmrb_spx_sync_file(const char *src, int src_len, const char *dest, int dest_len)
+{
+    if (!src || !dest || src_len < 0 || dest_len < 0 ||
+        src_len >= FMRB_SYNC_FILE_PATH_MAX || dest_len >= FMRB_SYNC_FILE_PATH_MAX) {
+        FMRB_LOGE(TAG, "Sync path rejected (src=%d, dest=%d, max=%d)", src_len,
+                  dest_len, FMRB_SYNC_FILE_PATH_MAX - 1);
+        return 0;
+    }
+    char srcbuf[FMRB_SYNC_FILE_PATH_MAX];
+    char destbuf[FMRB_SYNC_FILE_PATH_MAX];
+    memcpy(srcbuf, src, (size_t)src_len);
+    srcbuf[src_len] = 0;
+    memcpy(destbuf, dest, (size_t)dest_len);
+    destbuf[dest_len] = 0;
+    return fmrb_kernel_sync_file(srcbuf, destbuf) == FMRB_OK ? 1 : 0;
+}

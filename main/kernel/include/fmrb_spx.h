@@ -165,6 +165,18 @@ int fmrb_spx_check_ga_version(int timeout_ms);
  */
 int fmrb_spx_sync_time_to_host(void);
 
+/** @brief How many files system_conf.toml asks to sync. */
+int fmrb_spx_sync_file_count(void);
+
+/**
+ * @brief One sync entry as a :binstr record: src (128, NUL-pad) then dest (128).
+ * @return Empty string when the index has no entry.
+ */
+const char *fmrb_spx_sync_file_entry(int index);
+
+/** @brief Sync one file to the host. 1 on success (or already current), else 0. */
+int fmrb_spx_sync_file(const char *src, int src_len, const char *dest, int dest_len);
+
 #ifdef __cplusplus
 }
 #endif
