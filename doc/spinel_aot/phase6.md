@@ -119,9 +119,30 @@ Linux では計測済み (Spinel 2.0ms/draw vs mruby 4.8ms、max 3ms vs 14ms)。
 (17.17 s → 5.73 s)。**内部 RAM は実質同等** (Spinel の静的 .bss 43 KB は
 mruby VM の実行時内部 RAM 消費で相殺され、むしろ 2.5 KB 有利)。
 
+**イベントレイテンシは Spinel カーネル側だけ実測済み** (2026-07-30、S3 実機、
+kernel-only Spinel = desktop は mruby)。`input_router.rb` の `hid_lat` ログ、
+アプリ 3 本の起動を含む操作区間:
+
+```
+spx: hid_lat: n=1000 sum_ms=414 max_ms=14 ge1=362 ge5=4 ge10=3 gt25=0
+```
+
+1 イベント平均 0.414 ms、max 14 ms、**25 ms 超えはゼロ** — Phase 5 が「実機での
+本命確認」に挙げた基準は満たす。`ge10=3` はアプリ起動処理と競合した瞬間と見られる。
+**ただし比較の相方 (同一コミットの mruby カーネル) が未取得なので、mruby 比で
+速いかはまだ言えない**。同じ操作を `FMRB_KERNEL_ENGINE` 未設定でビルドして並べれば
+この項目は埋まる。
+
+同時に読めた実機の数値 (kernel-only Spinel、desktop + ユーザアプリ 3 本):
+
+- Spinel カーネルの VM プール used 96〜136 KB / 512 KB、frag 3〜13% で安定
+- 内部 RAM は desktop のみ 82.8 KB → アプリ 3 本で 18.0 KB。**アプリ 1 本あたり
+  約 23 KB** 減るので、ユーザアプリ 3 本という上限はスロット数だけでなく
+  内部 RAM 側からも妥当
+
 **残りの未計測項目**:
 
-- イベントレイテンシ (入力 → 描画反映)
+- イベントレイテンシの mruby カーネルとの比較 (上記の相方)
 - GC 停止時間の分布 (特に max)。Linux では AOT が有利だったが実機は未確認
 - フラッシュ使用量
 - **live set の公平な比較**。VM プールの used は GC トリガ条件が違うため
@@ -170,14 +191,15 @@ Xtensa の `__thread` と `SP_NO_MMAN` 周りのヘッダ検出は
   (mruby VM で 123% を観測)。estalloc の統計計算側の疑い。
   この列は現状信用できない
 
-### T6-8: kernel-only Spinel 構成 (2026-07-29 実施、Linux)
+### T6-8: kernel-only Spinel 構成 (2026-07-29 Linux / 2026-07-30 S3 実機)
 
 desktop の Spinel 化は工数の割に高速化への寄与が薄い可能性が高いため、
 **カーネルだけ Spinel** (`FMRB_KERNEL_ENGINE=spinel`、desktop は mruby) で
 先に動きを見る、という方針で通した構成。Linux headless で
 **デスクトップ起動・壁紙描画・アプリ起動/終了とも正常、カーネルログにエラーゼロ**。
 
-この構成を初めて通したことで、mruby 構成では出ない不具合が 2 件出た。両方修正済み。
+この構成を初めて通したことで不具合が 3 件出た。いずれも修正済み。
+1 と 2 は mruby 構成では出ないもの、3 は共有 C 側で**エンジンに依らない**もの。
 
 1. **生成 C が構文エラー** — 条件式の単項 `!` の下の呼び出しで前置き文が
    式の中に落ちる fork の codegen バグ。`ruby_writing_constraints.md` B と
@@ -189,9 +211,29 @@ desktop の Spinel 化は工数の割に高速化への寄与が薄い可能性�
    mruby バインディングは長さ制限を持たないため**この構成でしか出ない**。
    `FMRB_MAX_PATH_LEN` へ修正し、拒否時のログを追加 (無言で失敗していたので
    ログ上は「spawn 要求 → 失敗」の 2 行だけで原因が見えなかった)。
+3. **ユーザアプリ 4 本目がコンテキストプールの外へ書く** (`main/app/fmrb_app.c`)。
+   スロット探索が `PROC_ID_MAX` まで走るのに配列は `FMRB_MAX_APPS` 個で、
+   3 枠埋まると配列外のゼロ領域を空きスロットと誤認していた。**Spinel 固有では
+   なく**、エディタの RUN で踏んだ。修正は上限の一致 (`PROC_ID_USER_APP_END`) と
+   static assert 2 本、および余っていた `PROC_ID_USER_APP3..5` の削除。
+   併せて起動失敗の理由をカーネル経由でダイアログまで通した (以前は原因を問わず
+   「.toml が要る」と表示しており、1 と 3 の切り分けを二度誤らせた)。
 
-**未実施**: 計測。カーネル単体で速くなるかは T6-3 の手順 (`input_router.rb` の
-`hid_lat` ログを同一コミットの mruby カーネルビルドと比較) で確かめる。
+**S3 実機でも確認済み** (2026-07-30、ユーザ実施)。Spinel カーネル + mruby desktop で
+ブートし、ユーザアプリ 3 本 (ファイル起動と built-in の両方) を起動・操作。
+3 件目の修正が効いていることも実機で確認できた: 3 枠埋めた状態で 4 本目
+(built-in の editor) を要求すると
+
+```
+E fmrb_app: No free context slots available for app_type=2
+E fmrb_default_apps: Failed to spawn built-in app: default/editor (error=-9)
+```
+
+で拒否され、その後もタスク一覧・VM プール・z-order 変更が続いて**死なない**。
+ESP32 には fortify が無いので、修正前はここで PSRAM の .bss を黙って壊していた。
+計測値は T6-3 に記載。
+
+**未実施**: mruby カーネルとの比較計測 (T6-3)。
 
 ## 受け入れ基準
 
