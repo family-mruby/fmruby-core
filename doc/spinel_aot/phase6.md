@@ -204,7 +204,7 @@ desktop の Spinel 化は工数の割に高速化への寄与が薄い可能性�
 1. **生成 C が構文エラー** — 条件式の単項 `!` の下の呼び出しで前置き文が
    式の中に落ちる fork の codegen バグ。`ruby_writing_constraints.md` B と
    `reports/fork_pr_candidates.md` B-1 に登録。カーネル Ruby 側は
-   ローカルへホイストして回避 (1 箇所)。
+   いったんローカル変数に受けてから否定する形に書き換えて回避 (1 箇所)。
 2. **パスが 32 バイト以上のアプリを起動できない** — `fmrb_spx_spawn_app_req`
    が、パスを表示名用の `FMRB_MAX_APP_NAME` (32) で値域チェックしていた。
    受け側の `fmrb_app_spawn_app` はパスとして扱い下流は `FMRB_MAX_PATH_LEN` (128)。
