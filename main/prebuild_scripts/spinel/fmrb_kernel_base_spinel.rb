@@ -154,16 +154,15 @@ class FmrbKernel
   # Packed record (fmrb_spx_app_info_snapshot):
   #   0: valid(1)  1: fullscreen(1)  2: vm_type(1)  3: load_mode(1)
   #   4: name (32, NUL-pad)  36: path (128, NUL-pad)
-  # Reference for the byte 2 values below. The lookup itself is the ternary
-  # chain in _get_app_info, so this list is documentation only -- keep the two
-  # in step when a VM type is added.
-  APP_INFO_VM_TYPES = ["unknown", "mruby", "lua", "basic", "native", "micropython"]
+  # Byte 2 -> vm_type symbol, indexed by the value fmrb_spx_kernel.c writes.
+  # Keep in step with fmrb_vm_type_t when a VM type is added.
+  APP_INFO_VM_TYPES = [:unknown, :mruby, :lua, :basic, :native, :micropython]
 
   def _get_app_info(pid)
     buf = FmrbSpx.fmrb_spx_app_info_snapshot(pid)   # :binstr, 164 bytes or ""
     return nil if buf.bytesize == 0 || buf.getbyte(0) == 0
     vm_idx = buf.getbyte(2)
-    vm_sym = vm_idx == 1 ? :mruby : (vm_idx == 2 ? :lua : (vm_idx == 3 ? :basic : (vm_idx == 4 ? :native : (vm_idx == 5 ? :micropython : :unknown))))
+    vm_sym = vm_idx < APP_INFO_VM_TYPES.size ? APP_INFO_VM_TYPES[vm_idx] : :unknown
     {
       fullscreen: buf.getbyte(1) != 0,
       vm_type: vm_sym,
