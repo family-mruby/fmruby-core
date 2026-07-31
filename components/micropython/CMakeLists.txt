@@ -9,12 +9,22 @@ include(${CMAKE_CURRENT_LIST_DIR}/mp_embed_srcs.cmake)
 set(FMRB_MP_SRCS
     "fmrb_mp.c"
     "port/mpport.c"
+    # The _fmrb module: modules/fmrb_module.c is the MicroPython side (and the
+    # only file "rake micropython:gen" preprocesses), fmrb_bridge.c the
+    # firmware side.
+    "modules/fmrb_module.c"
+    "modules/fmrb_bridge.c"
 )
 
 idf_component_register(
     SRCS ${MP_EMBED_SRCS} ${FMRB_MP_SRCS}
-    INCLUDE_DIRS "include" "mp_embed" "port"
-    REQUIRES fmrb_mem fmrb_common fmrb_log log
+    INCLUDE_DIRS "include" "mp_embed" "port" "modules" "prelude"
+    REQUIRES fmrb_mem fmrb_common fmrb_log fmrb_msg fmrb_gfx log
+    # host_task.h, for the semaphore that meters graphics commands into the
+    # host queue. Same private dependency picoruby-esp32 takes for the same
+    # reason; main REQUIRES this component in turn, which IDF allows because a
+    # private requirement does not propagate.
+    PRIV_REQUIRES main
 )
 
 # embed_util.c defines __assert_func when NDEBUG is absent, as an infinite
