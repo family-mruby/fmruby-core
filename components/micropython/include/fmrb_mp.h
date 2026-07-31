@@ -100,16 +100,6 @@ fmrb_err_t fmrb_mp_exec(fmrb_app_task_context_t* ctx, const char* src, size_t le
  */
 void fmrb_mp_close(fmrb_app_task_context_t* ctx);
 
-#ifdef FMRB_MP_SELFTEST
-/**
- * @brief Boot-time check that the runtime starts, prints and shuts down
- *
- * Temporary scaffolding for phase 1, enabled with -DFMRB_MP_SELFTEST=ON.
- * Removed once .py apps start through the normal app path.
- */
-void fmrb_mp_selftest(void);
-#endif
-
 #ifdef __cplusplus
 }
 #endif

@@ -78,7 +78,7 @@ fmruby-core のような「OS 側がタスクとメモリを管理し、VM は 1
 | [phase0](phase0.md) | submodule 追加と embed port 生成の道具立て | rake micropython:gen が再現可能に動き、生成物がコミットされ、ホスト単体で hello が動く |
 | [phase1](phase1.md) | ESP-IDF コンポーネント化と fmrb_mp ラッパ | rake build:linux で未定義参照ゼロ、自己診断で print 動作をログ確認 |
 | [phase2](phase2.md) | fmrb_app 統合 (.py 起動・停止・排他) | headless で .py が起動・実行・終了し、2 本目が拒否される |
-| [phase3](phase3.md) | gfx/app バインディングとデモアプリ、ランチャー対応 | ランチャーから Python デモが起動し描画がスクリーンショットで確認できる |
+| [phase3](phase3.md) | FmrbApp / FmrbGfx バインディング (Ruby 版準拠) とデモアプリ、ランチャー対応 | Ruby アプリ同等のウィンドウ・文字・図形が描画され、閉じるボタンで終了できる |
 | [phase4](phase4.md) | ESP32 ビルド・資源実測・制限事項文書 | 両 esp32 ターゲットでビルド成功、サイズ実測値を記録、実機確認 (ユーザ) |
 
 各フェーズの実装レポート (気づき・実測値・申し送り) は

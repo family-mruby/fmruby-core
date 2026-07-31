@@ -225,12 +225,14 @@ const char *fmrb_spx_app_info_snapshot(int pid)
     memset(buf, 0, FMRB_SPX_APP_INFO_RECORD_SIZE);
     buf[0] = 1;                                   /* valid */
     buf[1] = ctx->fullscreen ? 1 : 0;             /* fullscreen */
-    /* vm_type: mruby=1 lua=2 basic=3 native=4 (matches base_spinel mapping). */
+    /* vm_type: mruby=1 lua=2 basic=3 native=4 micropython=5
+       (matches the base_spinel APP_INFO_VM_TYPES mapping). */
     switch (ctx->vm_type) {
-        case FMRB_VM_TYPE_MRUBY: buf[2] = 1; break;
-        case FMRB_VM_TYPE_LUA:   buf[2] = 2; break;
-        case FMRB_VM_TYPE_BASIC: buf[2] = 3; break;
-        default:                 buf[2] = 4; break;  /* native */
+        case FMRB_VM_TYPE_MRUBY:       buf[2] = 1; break;
+        case FMRB_VM_TYPE_LUA:         buf[2] = 2; break;
+        case FMRB_VM_TYPE_BASIC:       buf[2] = 3; break;
+        case FMRB_VM_TYPE_MICROPYTHON: buf[2] = 5; break;
+        default:                       buf[2] = 4; break;  /* native */
     }
     buf[3] = (uint8_t)ctx->load_mode;             /* load_mode */
     spx_pack_name(buf + 4, 32, ctx->app_name);    /* name */

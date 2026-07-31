@@ -412,9 +412,10 @@ static mrb_value mrb_kernel_get_app_info(mrb_state *mrb, mrb_value self)
     // Expose VM type as a symbol so the kernel can route behavior per runtime
     const char *vm_sym = "native";
     switch (ctx->vm_type) {
-        case FMRB_VM_TYPE_MRUBY: vm_sym = "mruby"; break;
-        case FMRB_VM_TYPE_LUA:   vm_sym = "lua";   break;
-        case FMRB_VM_TYPE_BASIC: vm_sym = "basic"; break;
+        case FMRB_VM_TYPE_MRUBY:       vm_sym = "mruby"; break;
+        case FMRB_VM_TYPE_LUA:         vm_sym = "lua";   break;
+        case FMRB_VM_TYPE_BASIC:       vm_sym = "basic"; break;
+        case FMRB_VM_TYPE_MICROPYTHON: vm_sym = "micropython"; break;
         default: break;
     }
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "vm_type")),

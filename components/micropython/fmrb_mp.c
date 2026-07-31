@@ -26,6 +26,38 @@ static void *s_heap = NULL;
 static bool s_running = false;
 
 /**
+ * MICROPY_VM_HOOK_LOOP fires after every jump the bytecode loop takes, which is
+ * far too often to drain the message queue each time. Poll every N hooks
+ * instead -- the same trade-off Lua makes with its count hook, and the same
+ * order of magnitude, so a stop request is answered just as quickly.
+ */
+#define FMRB_MP_HOOK_POLL_INTERVAL (100)
+static uint32_t s_hook_ticks = 0;
+
+/**
+ * Called from the VM loop (see MICROPY_VM_HOOK_LOOP in mpconfigport.h).
+ *
+ * Requests an abort rather than raising: mp_sched_vm_abort() unwinds straight
+ * to fmrb_mp_exec's nlr buffer, so guest code cannot swallow the stop with a
+ * bare "except:", and nothing has to be allocated at a moment when the heap
+ * may well be what the app is stuck on.
+ */
+void fmrb_mp_vm_hook(void) {
+    if (++s_hook_ticks < FMRB_MP_HOOK_POLL_INTERVAL) {
+        return;
+    }
+    s_hook_ticks = 0;
+
+    fmrb_app_task_context_t *ctx = s_owner;
+    if (!ctx) {
+        return;
+    }
+    if (fmrb_app_poll_exit_signal(ctx)) {
+        mp_sched_vm_abort();
+    }
+}
+
+/**
  * Sink that turns MicroPython's print output into log lines. Used for
  * tracebacks, which arrive as several writes and span several lines, so the
  * text is buffered and flushed per newline.
@@ -171,16 +203,34 @@ fmrb_err_t fmrb_mp_exec(fmrb_app_task_context_t *ctx, const char *src, size_t le
         return FMRB_ERR_INVALID_STATE;
     }
 
+    s_hook_ticks = 0;
+
     nlr_buf_t nlr;
     if (nlr_push(&nlr) == 0) {
+        // Target for mp_sched_vm_abort(), which the VM hook triggers when the
+        // kernel asks this app to stop.
+        nlr_set_abort(&nlr);
+
         qstr source_name = qstr_from_str(path ? path : "<script>");
         mp_lexer_t *lex = mp_lexer_new_from_str_len(source_name, src, len, 0);
         mp_parse_tree_t parse_tree = mp_parse(lex, MP_PARSE_FILE_INPUT);
         mp_obj_t module_fun = mp_compile(&parse_tree, source_name, false);
         mp_call_function_0(module_fun);
+
         nlr_pop();
+        nlr_set_abort(NULL);
         return FMRB_OK;
     } else {
+        // Clear first: this frame is about to go away, and an abort landing
+        // here afterwards would jump into a dead stack.
+        nlr_set_abort(NULL);
+
+        if (nlr.ret_val == NULL) {
+            // Not an exception -- a VM abort, i.e. the stop we asked for.
+            FMRB_LOGI(TAG, "[%s] Python script stopped on request", ctx->app_name);
+            return FMRB_OK;
+        }
+
         // Uncaught exception. Report it where the rest of the system reports
         // errors rather than on stdout, then return normally so the task
         // wrapper can clean up.
@@ -218,51 +268,17 @@ void fmrb_mp_close(fmrb_app_task_context_t *ctx) {
         s_owner = NULL;
     }
 
-    FMRB_LOGI(TAG, "[%s] MicroPython runtime closed", ctx->app_name);
+    // Parse and compile recurse on the C stack, so how close the app came to
+    // its task stack limit is worth having on the record -- especially on the
+    // ESP32 targets, where the budget is a fraction of the simulation's.
+    // The forced-kill path runs this from the killer's task instead, where the
+    // number would describe the wrong stack, so it is only reported when the
+    // app is closing itself.
+    if (ctx->task && ctx->task == fmrb_task_get_current()) {
+        FMRB_LOGI(TAG, "[%s] MicroPython runtime closed (task stack low water=%u bytes)",
+                  ctx->app_name,
+                  (unsigned)(fmrb_task_get_stack_high_water_mark(NULL) * sizeof(StackType_t)));
+    } else {
+        FMRB_LOGI(TAG, "[%s] MicroPython runtime closed", ctx->app_name);
+    }
 }
-
-#ifdef FMRB_MP_SELFTEST
-
-// Context stands in for an app task's. Kept at file scope rather than on the
-// caller's stack because the boot task's budget is not ours to spend.
-static fmrb_app_task_context_t s_selftest_ctx;
-
-void fmrb_mp_selftest(void) {
-    static const char script[] = "print('mp:', 1 + 1)\n";
-
-    // Borrow the first user app pool: nothing has spawned yet at this point in
-    // boot, and the handle is destroyed again below so the spawner sees the
-    // state it expects.
-    void *pool = fmrb_get_mempool_ptr(POOL_ID_USER_APP0);
-    size_t pool_size = fmrb_get_mempool_size(POOL_ID_USER_APP0);
-    if (!pool || pool_size == 0 || fmrb_mem_handle_exist(POOL_ID_USER_APP0)) {
-        FMRB_LOGE(TAG, "selftest: user app pool 0 is not available");
-        return;
-    }
-
-    fmrb_mem_handle_t handle = fmrb_mem_create_handle(pool, pool_size, POOL_ID_USER_APP0);
-    if (handle < 0) {
-        FMRB_LOGE(TAG, "selftest: failed to create a pool handle");
-        return;
-    }
-
-    memset(&s_selftest_ctx, 0, sizeof(s_selftest_ctx));
-    strncpy(s_selftest_ctx.app_name, "mp_selftest", sizeof(s_selftest_ctx.app_name) - 1);
-    s_selftest_ctx.mempool_id = POOL_ID_USER_APP0;
-    s_selftest_ctx.mem_handle = handle;
-
-    FMRB_LOGI(TAG, "selftest: starting");
-    if (fmrb_mp_acquire(&s_selftest_ctx) == FMRB_OK) {
-        if (fmrb_mp_start(&s_selftest_ctx) == FMRB_OK) {
-            fmrb_err_t ret = fmrb_mp_exec(&s_selftest_ctx, script, sizeof(script) - 1,
-                                          "<selftest>");
-            FMRB_LOGI(TAG, "selftest: exec returned %d", (int)ret);
-        }
-        fmrb_mp_close(&s_selftest_ctx);
-    }
-
-    fmrb_mem_destroy_handle(handle);
-    FMRB_LOGI(TAG, "selftest: done");
-}
-
-#endif // FMRB_MP_SELFTEST

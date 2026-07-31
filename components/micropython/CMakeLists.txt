@@ -17,15 +17,6 @@ idf_component_register(
     REQUIRES fmrb_mem fmrb_common fmrb_log log
 )
 
-# Toggle for the phase 1 self-check (-DFMRB_MP_SELFTEST=ON). PUBLIC so the
-# call site in main/ sees the same definition as the implementation.
-# Temporary: removed once .py apps start through the normal app path.
-option(FMRB_MP_SELFTEST "Run a MicroPython print/exec check during boot" OFF)
-if(FMRB_MP_SELFTEST)
-    target_compile_definitions(${COMPONENT_LIB} PUBLIC FMRB_MP_SELFTEST)
-    message(STATUS "MicroPython boot self-check enabled")
-endif()
-
 # embed_util.c defines __assert_func when NDEBUG is absent, as an infinite
 # loop. newlib declares the same symbol, so on ESP32 that definition wins for
 # the whole firmware and every failed assert() anywhere would hang silently

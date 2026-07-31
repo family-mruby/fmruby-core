@@ -302,6 +302,9 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         } else if (strcmp(ext, ".bas") == 0) {
             vm_type = FMRB_VM_TYPE_BASIC;
             FMRB_LOGI(TAG, "Detected BASIC script: %s", app_name);
+        } else if (strcmp(ext, ".py") == 0) {
+            vm_type = FMRB_VM_TYPE_MICROPYTHON;
+            FMRB_LOGI(TAG, "Detected Python script: %s", app_name);
         }
     }
 

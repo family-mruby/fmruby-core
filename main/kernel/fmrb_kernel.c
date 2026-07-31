@@ -611,9 +611,6 @@ fmrb_err_t fmrb_kernel_start(void)
     if (fmrb_mp_init() != FMRB_OK) {
         return FMRB_ERR_FAILED;
     }
-#ifdef FMRB_MP_SELFTEST
-    fmrb_mp_selftest();
-#endif
 
     // Set the clock before anything can report a time. A missing or flat RTC is
     // not fatal -- the system runs with whatever the clock says, as it did

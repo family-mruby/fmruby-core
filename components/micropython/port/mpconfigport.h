@@ -36,8 +36,15 @@
 #define MICROPY_PY_THREAD                       (0)
 
 // Asynchronous abort, used to unwind the VM when the kernel asks the app to
-// stop. Paired with a VM loop hook that polls the stop flag.
+// stop. The hook below polls for the request; mp_sched_vm_abort() then unwinds
+// to the nlr buffer fmrb_mp_exec registered with nlr_set_abort().
+//
+// The hook body must stay free of fmruby headers: this file is preprocessed
+// during qstr extraction too, where those include paths do not exist. Hence a
+// bare declaration, with the implementation in fmrb_mp.c.
 #define MICROPY_ENABLE_VM_ABORT                 (1)
+extern void fmrb_mp_vm_hook(void);
+#define MICROPY_VM_HOOK_LOOP                    fmrb_mp_vm_hook();
 
 // Guard the C stack: parse and compile recurse, and an app task stack is far
 // smaller than a desktop one. Overflow must raise RuntimeError, not corrupt

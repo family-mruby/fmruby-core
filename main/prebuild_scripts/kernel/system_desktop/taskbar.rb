@@ -13,6 +13,7 @@ module TaskbarMixin
     0x27,  # 1: lua      - blue
     0x2C,  # 2: basic    - green
     0x92,  # 3: native   - gray
+    0xF4,  # 4: micropython - yellow
   ]
   TASKBAR_FOCUSED_BORDER = 0xFF  # white border for focused app
 

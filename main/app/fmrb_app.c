@@ -20,6 +20,7 @@
 #include "esp_heap_caps.h"
 #endif
 #include "fmrb_lua.h"
+#include "fmrb_mp.h"
 #include "fmrb_basic.h"
 #include "fmrb_basic_gfx.h"
 #include "fmrb_transport.h"
@@ -500,6 +501,44 @@ static void notify_error_to_kernel(fmrb_app_task_context_t *ctx)
 }
 
 /**
+ * Create MicroPython VM instance
+ *
+ * Unlike the other runtimes this one can be refused: MicroPython keeps its VM
+ * state in globals, so a second Python app has nowhere to run. That refusal is
+ * routed to the error dialog rather than only the log, because from the
+ * launcher it would otherwise look like the double-click did nothing.
+ *
+ * @return 0 on success, -1 on error
+ */
+static int create_vm_micropython(fmrb_app_task_context_t* ctx) {
+    fmrb_err_t ret = fmrb_mp_acquire(ctx);
+    if (ret == FMRB_ERR_BUSY) {
+        FMRB_LOGE(TAG, "[%s] Another Python app is already running", ctx->app_name);
+        set_last_error(ctx,
+                       "Another Python app is already running.\n"
+                       "Only one Python app can run at a time.", NULL);
+        notify_error_to_kernel(ctx);
+        return -1;
+    }
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "[%s] Failed to acquire MicroPython: %d", ctx->app_name, (int)ret);
+        return -1;
+    }
+
+    ret = fmrb_mp_start(ctx);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "[%s] Failed to start MicroPython: %d", ctx->app_name, (int)ret);
+        fmrb_mp_close(ctx);
+        return -1;
+    }
+
+    ctx->mp_active = true;
+    FMRB_LOGI(TAG, "[%s] MicroPython VM created with mempool=%d",
+              ctx->app_name, ctx->mempool_id);
+    return 0;
+}
+
+/**
  * Execute mruby script
  * @param ctx Task context
  * @param load_mode Load mode (bytecode or file)
@@ -726,6 +765,47 @@ static int execute_lua_script(fmrb_app_task_context_t* ctx,
 }
 
 /**
+ * Execute MicroPython script
+ *
+ * The stop path is a VM hook rather than a debug hook (see fmrb_mp.c); by the
+ * time this returns, a requested stop has already unwound the VM.
+ *
+ * @return 0 on success, -1 on error
+ */
+static int execute_micropython_script(fmrb_app_task_context_t* ctx,
+                                      fmrb_load_mode_t load_mode,
+                                      void* load_data) {
+    if (load_mode != FMRB_LOAD_MODE_FILE) {
+        // .mpy loading would need MICROPY_PERSISTENT_CODE_LOAD and a compiler
+        // on the host side; apps ship as source for now.
+        FMRB_LOGW(TAG, "[%s] MicroPython bytecode loading not supported", ctx->app_name);
+        return -1;
+    }
+
+    const char* filepath = (const char*)load_data;
+    size_t script_size = 0;
+
+    FMRB_LOGI(TAG, "[%s] Loading Python script from file: %s", ctx->app_name, filepath);
+
+    char* script_buffer = load_script_file(filepath, &script_size);
+    if (!script_buffer) {
+        FMRB_LOGE(TAG, "[%s] Failed to load script file: %s", ctx->app_name, filepath);
+        return -1;
+    }
+
+    fmrb_err_t ret = fmrb_mp_exec(ctx, script_buffer, script_size, filepath);
+    fmrb_sys_free(script_buffer);
+
+    if (ret != FMRB_OK) {
+        // fmrb_mp_exec has already logged the traceback.
+        return -1;
+    }
+
+    FMRB_LOGI(TAG, "[%s] Python script executed successfully", ctx->app_name);
+    return 0;
+}
+
+/**
  * Execute BASIC script
  * @return 0 on success, -1 on error
  */
@@ -873,6 +953,13 @@ static void destroy_vm(fmrb_app_task_context_t* ctx) {
                 ctx->basic = NULL;
             }
             break;
+        case FMRB_VM_TYPE_MICROPYTHON:
+            if (ctx->mp_active) {
+                FMRB_LOGI(TAG, "[%s] Closing MicroPython VM", ctx->app_name);
+                fmrb_mp_close(ctx);
+                ctx->mp_active = false;
+            }
+            break;
         case FMRB_VM_TYPE_NATIVE:
             // No VM to close for native functions
             break;
@@ -916,6 +1003,11 @@ static void app_task_main(void* arg) {
             ctx->basic = fmrb_basic_newstate(ctx);
             if (!ctx->basic) {
                 FMRB_LOGE(TAG, "[%s] Failed to create BASIC state", ctx->app_name);
+                goto cleanup;
+            }
+            break;
+        case FMRB_VM_TYPE_MICROPYTHON:
+            if (create_vm_micropython(ctx) != 0) {
                 goto cleanup;
             }
             break;
@@ -977,6 +1069,12 @@ static void app_task_main(void* arg) {
         case FMRB_VM_TYPE_BASIC:
             if (execute_basic_script(ctx, load_mode, load_data) != 0) {
                 // Error already logged in execute_basic_script
+            }
+            break;
+
+        case FMRB_VM_TYPE_MICROPYTHON:
+            if (execute_micropython_script(ctx, load_mode, load_data) != 0) {
+                // Error already logged in execute_micropython_script
             }
             break;
 
@@ -1289,7 +1387,8 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
                 goto unwind;
             }
             // Note: MRUBY uses estalloc which manages pool memory directly, so no TLSF handle needed
-            if(ctx->vm_type == FMRB_VM_TYPE_LUA || ctx->vm_type == FMRB_VM_TYPE_BASIC){
+            if(ctx->vm_type == FMRB_VM_TYPE_LUA || ctx->vm_type == FMRB_VM_TYPE_BASIC ||
+               ctx->vm_type == FMRB_VM_TYPE_MICROPYTHON){
                 if (fmrb_mem_handle_exist(ctx->mempool_id) == 0) {
                     void* pool_ptr = fmrb_get_mempool_ptr(ctx->mempool_id);
                     size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
@@ -1450,6 +1549,12 @@ unwind:
             if (ctx->basic) {
                 fmrb_basic_close(ctx->basic);
                 ctx->basic = NULL;
+            }
+            break;
+        case FMRB_VM_TYPE_MICROPYTHON:
+            if (ctx->mp_active) {
+                fmrb_mp_close(ctx);
+                ctx->mp_active = false;
             }
             break;
         case FMRB_VM_TYPE_NATIVE:
@@ -1938,7 +2043,8 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {
                 }
                 break;
             }
-            case FMRB_VM_TYPE_BASIC: {
+            case FMRB_VM_TYPE_BASIC:
+            case FMRB_VM_TYPE_MICROPYTHON: {
                 if (ctx->mem_handle >= 0) {
                     fmrb_pool_stats_t stats;
                     if (fmrb_mem_get_stats(ctx->mem_handle, &stats) == 0) {

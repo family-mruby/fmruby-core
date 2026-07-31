@@ -1,0 +1,14 @@
+# script name must be "app_handle_name.app.py"
+app_handle_name = "pytest"
+app_screen_name = "Python test"
+app_screen_name_ja = "Pythonテスト"
+
+# A window rather than background mode, so the close button gives the stop
+# path something to hit. Nothing is drawn into it until phase 3.
+default_window_mode = "window"
+
+default_window_width = 150
+default_window_height = 150
+
+default_window_pos_x = 10
+default_window_pos_y = 15

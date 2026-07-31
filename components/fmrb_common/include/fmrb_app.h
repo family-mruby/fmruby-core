@@ -37,12 +37,16 @@ enum FMRB_APP_TYPE{
     APP_TYPE_MAX
 };
 
-// VM Type for multi-VM support
+// VM Type for multi-VM support.
+// Append only: the numbers are mirrored by the kernel's app-info snapshot
+// (fmrb_spx_kernel.c / picoruby-fmrb-kernel kernel.c) and by the taskbar's
+// colour table, so renumbering silently mislabels running apps.
 typedef enum {
     FMRB_VM_TYPE_MRUBY = 0,      // PicoRuby/mruby
     FMRB_VM_TYPE_LUA,            // Lua
     FMRB_VM_TYPE_BASIC,          // BASIC
     FMRB_VM_TYPE_NATIVE,         // Native C function
+    FMRB_VM_TYPE_MICROPYTHON,    // MicroPython
     FMRB_VM_TYPE_MAX
 } fmrb_vm_type_t;
 
@@ -63,6 +67,10 @@ typedef struct fmrb_app_task_context_s {
         mrb_state*        mrb;               // mruby VM pointer
         lua_State*        lua;               // Lua VM pointer
         basic_state_t*    basic;             // BASIC VM pointer
+        // MicroPython has no per-app VM handle: its state is global and only
+        // one app may hold it (see fmrb_mp.h). This flag stands in for the
+        // pointer so the create/destroy paths keep the same shape.
+        bool              mp_active;
         void*             vm_generic;        // Generic VM pointer
     };
 
