@@ -10,6 +10,13 @@
 #     500ms later when the next turn happens to come round
 #   - a busy loop on demand, for the other stop path (the VM hook aborting
 #     bytecode execution)
+#   - a collection under churn, which is what exercises the GC's root scan.
+#     That scan reads the callee-saved registers out of a setjmp buffer
+#     (MICROPY_GCREGS_SETJMP), so getting it wrong frees objects that are only
+#     referenced from a register -- a failure that shows up as corruption much
+#     later, not at the collection itself.
+
+import gc
 
 print("pytest: start")
 print("pytest: squares", sum(x * x for x in range(100)))
@@ -34,8 +41,23 @@ class PyTestApp(FmrbApp):
     def on_update(self):
         self.turns += 1
         Log.info("pytest: turn " + str(self.turns))
+        self.gc_check()
         self.redraw()
         return self.IDLE_MS
+
+    def gc_check(self):
+        # Build a graph deep enough that most of it is only reachable through
+        # locals, collect, then read it back. A root scan that missed the
+        # registers would have freed part of it and this comparison would
+        # fail or crash.
+        before = gc.mem_free()
+        items = [[i, str(i), (i, i * 2)] for i in range(200)]
+        keep = items[7]
+        del items
+        gc.collect()
+        ok = keep[0] == 7 and keep[1] == "7" and keep[2] == (7, 14)
+        Log.info("pytest: gc ok=" + str(ok) +
+                 " free " + str(before) + " -> " + str(gc.mem_free()))
 
     def on_event(self, ev):
         super().on_event(ev)

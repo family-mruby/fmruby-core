@@ -63,13 +63,38 @@ fmruby-core のような「OS 側がタスクとメモリを管理し、VM は 1
   extmod/ の .c が含まれないため (phase0 で確認)。py/ に実装のあるもの
   (array, collections, math, struct, io, gc, sys, micropython) は使える。
 
-## リスク・実測で確定する項目
+## 実測で確定した資源コスト (phase4)
 
-- フラッシュ増加は 200-300KB 程度の見込み。phase4 で実測して本書に記録する。
-- 静的 RAM (bss/data) の増加も phase4 で実測する。内蔵 RAM が逼迫している
-  ため、増加が大きい場合は ROM レベルを落とすか置き場所を調整する。
-- パーサ/コンパイラが C スタック再帰を使うため、タスクスタック量の見直しが
-  要る可能性がある (phase2 で確認)。
+| 項目 | S3 (Retro) | P4 (Modern) |
+|---|---|---|
+| フラッシュ増加 | 127,912 B | 149,992 B |
+| 内蔵 RAM (静的) | 445 B | 445 B |
+| アプリパーティション残量 | 22% | 36% |
+
+見込み (フラッシュ +200-300KB) を下回り、Lua とほぼ同じ規模に収まった。
+GC ヒープ 256KB はアプリ用プール (PSRAM) から取るので内蔵 RAM に効かない。
+詳細と測り方は [phase4.md](phase4.md)。
+
+残る計測は実機でのタスクスタック消費 (パーサ/コンパイラが C スタックを
+再帰するため。Linux シミュレーションはスタックが 120KB 超になって参考に
+ならない)。
+
+## 将来課題
+
+第一段階では実装しないと決めたもの。仕様上の制限は
+[known_limitations.md](known_limitations.md) にまとめてある。
+
+- **日本語表示** (`set_font`)。Ruby 版との一番大きな差分。
+- スプライト / 画像 / タイルマップ、`GfxBlock`、composite region、viewport。
+- ライフサイクルの残り: `on_suspend` / `on_resume` の呼び出し、`on_resize`、
+  reload、タイマ、pub-sub、file_select、request_run。
+- ファイルシステムからの import (アプリを複数ファイルに分けられるようにする)。
+- ランチャー用のアイコン画像 (現状は文字 "P" のフォールバック)。
+- REPL。
+- 描画コマンド組み立ての共通化 — 現在 mruby / Spinel / Lua / Python の
+  4 箇所に同じコードがある (report/phase3.md 参照)。
+- frozen bytecode (mpy-cross) によるアプリ基盤の事前コンパイル。
+  Linux では 12.7KB / 0-3ms で見合わないと判断したが、実機で再判断する。
 
 ## フェーズ一覧
 

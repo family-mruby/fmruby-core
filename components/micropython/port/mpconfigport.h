@@ -22,6 +22,13 @@
 // the same way.
 #define MICROPY_NLR_SETJMP                      (1)
 
+// Same reasoning for the GC's register capture: setjmp spills the callee-saved
+// registers to the jmp_buf, which the collector then scans as roots. Xtensa has
+// no hand-written variant of that helper at all -- the generic one stops at an
+// #error naming this setting -- so the choice is between setjmp everywhere and
+// setjmp on some targets only.
+#define MICROPY_GCREGS_SETJMP                   (1)
+
 // Apps are shipped as .py source, so the compiler is mandatory.
 #define MICROPY_ENABLE_COMPILER                 (1)
 #define MICROPY_ENABLE_GC                       (1)

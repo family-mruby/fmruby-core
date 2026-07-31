@@ -13,3 +13,4 @@ phase0..phase4 の実装中に得た気づき・実測値・次フェーズへ�
 | [phase1.md](phase1.md) | ESP-IDF コンポーネント化と fmrb_mp ラッパ |
 | [phase2.md](phase2.md) | fmrb_app 統合 (.py の起動・停止・排他) |
 | [phase3.md](phase3.md) | FmrbApp / FmrbGfx バインディングとデモアプリ |
+| [phase4.md](phase4.md) | ESP32 ビルド・資源実測・制限事項文書 |
