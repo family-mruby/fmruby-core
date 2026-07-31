@@ -84,47 +84,12 @@ components/micropython) を指定済み。phase3 では
 include パスが通っていないと生成が失敗する)。phase0 時点ではモジュールが
 無いため走査結果は空で、生成に影響しない。
 
-### 生成物の内容と再現性
+### 生成物の内容
 
-`rake micropython:gen` の出力 (components/micropython/mp_embed/) は 209 ファイル /
-3.0MB、うち .c が 135 本。内訳は py/ 197、genhdr/ 4、port/ 5、extmod/ 1
-(modplatform.h のみ)、shared/runtime/ 2。**extmod/ の実装 (.c) は一切
-含まれない**ので、extmod にある標準モジュール (time, json, os, re, random 等) は
-そのままでは使えない。
+`rake micropython:gen` の出力 (components/micropython/mp_embed/) には
+**extmod/ の実装 (.c) が一切含まれない**。extmod にある標準モジュール
+(time, json, os, re, random 等) はそのままでは使えない。この制約は README の
+「受け入れる制約」にも記載した。
 
-clean からの再生成 2 回でツリーの内容ハッシュが完全一致することを確認済み
-(生成は再現可能)。mpversion.h は submodule の git describe から作られるが、
-タグ固定なので変動しない。
-
-### 実装中に判明した移植上の要点 (phase1 以降への申し送り)
-
-1. **コンパイルは GNU C 方言が必須**。`shared/runtime/gchelper_generic.c` が
-   `register long rbx asm ("rbx")` を使うため `-std=c99` では通らない。
-   ホストスモークは `-std=gnu99`。ESP-IDF は既定が gnu17 なので問題にならない
-   見込み。
-2. **`mp_builtin_open_obj` はポートが提供する義務がある**。`MICROPY_PY_IO` が
-   有効だと builtins と io モジュールの両方から無条件に参照されるが、実装は
-   コアに無い。`components/micropython/port/mpport.c` に、常に OSError を
-   投げる実装を置いた (ゲストアプリにファイルシステムを渡さない方針どおり)。
-3. **`mp_stack_set_limit()` の呼び出しが必須**。`MICROPY_STACK_CHECK` を
-   有効にすると stack_limit の初期値 0 に対して毎回チェックが失敗する。
-   `mp_embed_init()` は `mp_stack_set_top()` しか呼ばないので、直後に
-   自前で limit を設定しないと、mp_init/compile 中の raise が nlr ハンドラの
-   外に出て `nlr_jump_fail()` の無限ループ (ハング) になる。
-   phase1 の `fmrb_mp_start` で必ず設定すること。
-4. **ROM レベル CORE のままでは `MICROPY_PY_TIME` が有効になり未定義参照になる**
-   (extmod/modtime.c が生成物に無いため)。mpconfigport.h で明示的に 0 にした。
-   待機は phase3 の app.sleep で提供する。
-5. mp_embed/port/mphalport.c の stdout 実装は `printf` そのものなので、
-   phase1 の「print をプロセス標準出力へ」は追加実装なしで満たせる見込み。
-
-### 参考: ホストでのサイズ実測 (x86_64, -Os, 全生成ソース + スモーク main)
-
-| 区分 | サイズ |
-|---|---|
-| text | 244,709 B |
-| data | 18,768 B |
-| bss | 888 B |
-
-未使用シンボルを落とさない素のリンクなので上限側の目安。phase4 の
-Xtensa/RISC-V 実測とは直接比較しないこと。
+実装中の気づき・実測値・phase1 以降への申し送りは
+[report/phase0.md](report/phase0.md) を参照。
