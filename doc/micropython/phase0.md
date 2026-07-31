@@ -48,14 +48,6 @@ MicroPython 本体を取得し、組み込み用ソース一式 (micropython_emb
    (IDF 統合前に生成物の完全性を確かめるのが目的)。確認用のコンパイル手順は
    rake タスク (例: micropython:smoke) にする。
 
-## 未確定事項 (実装時に確定して追記)
-
-- embed port の生成に自作 C モジュール (phase3 で書く gfx/app モジュール) の
-  qstr を含める正確な手順。USER_C_MODULES 相当の仕組みが embed port にあるか、
-  なければソースを生成対象リストに足す形か。phase3 で必要になるので、
-  ここで仕組みだけ見極めておく。
-- 選定した MicroPython のタグ。
-
 ## 完了条件
 
 - `rake micropython:gen` がクリーンな checkout から再現可能に走る。
@@ -63,3 +55,76 @@ MicroPython 本体を取得し、組み込み用ソース一式 (micropython_emb
   `rake micropython:smoke` (ホスト単体) が hello を出力する。
 - fmruby-core のビルド (rake build:linux) がこの時点では従来と変わらず通る
   (コンポーネント未登録なので影響ゼロのはず)。
+
+## 確定事項 (実装で確定した内容)
+
+### 選定タグ
+
+MicroPython **v1.28.0** (commit e0e9fbb17ed6fd06bb76e266ae554784c9c80804)。
+実装時点の最新安定リリース。v1.29.0-preview は開発版なので採らない。
+submodule は `components/micropython/micropython`、URL は HTTPS。
+MicroPython 自体の submodule (lib/ 以下) は embed port の生成に不要なので
+初期化しない。
+
+### 自作 C モジュールの qstr を生成に含める手順
+
+`ports/embed/embed.mk` は `py/py.mk` を include しており、そこに
+**USER_C_MODULES の仕組みがそのまま生きている**。`$(USER_C_MODULES)/*/micropython.mk`
+を走査して `SRC_USERMOD_C` を集め、それを `SRC_QSTR` に足すので、qstr と
+`MP_REGISTER_MODULE` の登録は生成ヘッダ (qstrdefs.generated.h / moduledefs.h) に
+入る。生成物パッケージ側にはモジュールの .c はコピーされない (コピー対象は
+`$(TOP)/py/*.[ch]` 等に固定) が、モジュールの .c は components/micropython/modules/
+に置いたまま CMakeLists.txt の SRCS で普通にコンパイルすればよいので問題ない。
+
+これに合わせて port/Makefile では `USER_C_MODULES = $(abspath ..)` (=
+components/micropython) を指定済み。phase3 では
+`components/micropython/modules/micropython.mk` を作り、そこで
+`SRC_USERMOD_C += $(USERMOD_DIR)/fmrb_mod_*.c` と、fmrb 側ヘッダの include パスを
+`CFLAGS_USERMOD` に足す形になる (qstr 抽出は各ソースを cpp に通すので、
+include パスが通っていないと生成が失敗する)。phase0 時点ではモジュールが
+無いため走査結果は空で、生成に影響しない。
+
+### 生成物の内容と再現性
+
+`rake micropython:gen` の出力 (components/micropython/mp_embed/) は 209 ファイル /
+3.0MB、うち .c が 135 本。内訳は py/ 197、genhdr/ 4、port/ 5、extmod/ 1
+(modplatform.h のみ)、shared/runtime/ 2。**extmod/ の実装 (.c) は一切
+含まれない**ので、extmod にある標準モジュール (time, json, os, re, random 等) は
+そのままでは使えない。
+
+clean からの再生成 2 回でツリーの内容ハッシュが完全一致することを確認済み
+(生成は再現可能)。mpversion.h は submodule の git describe から作られるが、
+タグ固定なので変動しない。
+
+### 実装中に判明した移植上の要点 (phase1 以降への申し送り)
+
+1. **コンパイルは GNU C 方言が必須**。`shared/runtime/gchelper_generic.c` が
+   `register long rbx asm ("rbx")` を使うため `-std=c99` では通らない。
+   ホストスモークは `-std=gnu99`。ESP-IDF は既定が gnu17 なので問題にならない
+   見込み。
+2. **`mp_builtin_open_obj` はポートが提供する義務がある**。`MICROPY_PY_IO` が
+   有効だと builtins と io モジュールの両方から無条件に参照されるが、実装は
+   コアに無い。`components/micropython/port/mpport.c` に、常に OSError を
+   投げる実装を置いた (ゲストアプリにファイルシステムを渡さない方針どおり)。
+3. **`mp_stack_set_limit()` の呼び出しが必須**。`MICROPY_STACK_CHECK` を
+   有効にすると stack_limit の初期値 0 に対して毎回チェックが失敗する。
+   `mp_embed_init()` は `mp_stack_set_top()` しか呼ばないので、直後に
+   自前で limit を設定しないと、mp_init/compile 中の raise が nlr ハンドラの
+   外に出て `nlr_jump_fail()` の無限ループ (ハング) になる。
+   phase1 の `fmrb_mp_start` で必ず設定すること。
+4. **ROM レベル CORE のままでは `MICROPY_PY_TIME` が有効になり未定義参照になる**
+   (extmod/modtime.c が生成物に無いため)。mpconfigport.h で明示的に 0 にした。
+   待機は phase3 の app.sleep で提供する。
+5. mp_embed/port/mphalport.c の stdout 実装は `printf` そのものなので、
+   phase1 の「print をプロセス標準出力へ」は追加実装なしで満たせる見込み。
+
+### 参考: ホストでのサイズ実測 (x86_64, -Os, 全生成ソース + スモーク main)
+
+| 区分 | サイズ |
+|---|---|
+| text | 244,709 B |
+| data | 18,768 B |
+| bss | 888 B |
+
+未使用シンボルを落とさない素のリンクなので上限側の目安。phase4 の
+Xtensa/RISC-V 実測とは直接比較しないこと。

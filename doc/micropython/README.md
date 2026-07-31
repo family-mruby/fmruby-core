@@ -58,6 +58,10 @@ fmruby-core のような「OS 側がタスクとメモリを管理し、VM は 1
 - REPL なし。スレッド (\_thread) なし。
 - 標準ライブラリの範囲は mpconfigport.h の ROM レベル設定に従う
   (初期値 CORE 相当。不足があればフェーズ 4 までに調整)。
+- ただし ROM レベルによらず、**extmod/ に実装のあるモジュールは使えない**
+  (time, json, os, re, random, binascii 等)。embed port の生成物には
+  extmod/ の .c が含まれないため (phase0 で確認)。py/ に実装のあるもの
+  (array, collections, math, struct, io, gc, sys, micropython) は使える。
 
 ## リスク・実測で確定する項目
 

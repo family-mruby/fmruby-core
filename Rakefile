@@ -553,6 +553,55 @@ namespace :basic do
   end
 end
 
+namespace :micropython do
+  # MicroPython is taken in through its "embed" port: one make run turns the
+  # submodule plus port/mpconfigport.h into a self-contained C tree (qstr and
+  # module tables already generated) under components/micropython/mp_embed.
+  # That tree is committed, so rake build:linux / build:esp32 compile plain C
+  # and need neither make nor python3 -- only :gen does. Re-run :gen after
+  # editing mpconfigport.h or anything under modules/, and commit the result.
+  MP_DIR         = "components/micropython"
+  MP_SUBMODULE   = "#{MP_DIR}/micropython"
+  MP_PORT_DIR    = "#{MP_DIR}/port"
+  MP_EMBED_DIR   = "#{MP_DIR}/mp_embed"
+  MP_GEN_BUILD   = "#{MP_PORT_DIR}/build-embed"
+  MP_SMOKE_DIR   = "#{MP_PORT_DIR}/test"
+  MP_SMOKE_BUILD = "#{MP_SMOKE_DIR}/build"
+  MP_SMOKE_BIN   = "#{MP_SMOKE_BUILD}/mp_smoke"
+  # The generated tree uses GNU C extensions (the GC helper pins registers with
+  # "register ... asm"), so a strict -std=c99 compile of it does not work.
+  MP_SMOKE_CFLAGS = "-std=gnu99 -Os -Wall -fno-common"
+
+  desc "Regenerate #{MP_EMBED_DIR} from the submodule (needs make + python3)"
+  task :gen do
+    unless File.exist?("#{MP_SUBMODULE}/ports/embed/embed.mk")
+      abort "#{MP_SUBMODULE} is empty. Run 'git submodule update --init #{MP_SUBMODULE}'"
+    end
+    sh "make -C #{MP_PORT_DIR}"
+    puts "regenerated #{MP_EMBED_DIR} -- commit it along with the change that caused it"
+  end
+
+  desc "Compile and run the host smoke test against #{MP_EMBED_DIR} (no docker)"
+  task :smoke do
+    unless File.exist?("#{MP_EMBED_DIR}/port/micropython_embed.h")
+      abort "#{MP_EMBED_DIR} is missing. Run 'rake micropython:gen' first"
+    end
+    cc = ENV["CC"] || "cc"
+    abort "#{cc} not found (install gcc or set CC)" unless system("which #{cc} > /dev/null 2>&1")
+    srcs = Dir["#{MP_EMBED_DIR}/**/*.c"].sort + ["#{MP_PORT_DIR}/mpport.c", "#{MP_SMOKE_DIR}/main.c"]
+    mkdir_p MP_SMOKE_BUILD
+    sh "#{cc} #{MP_SMOKE_CFLAGS} -I #{MP_PORT_DIR} -I #{MP_EMBED_DIR} -I #{MP_EMBED_DIR}/port " \
+       "#{srcs.join(' ')} -o #{MP_SMOKE_BIN} -lm"
+    sh MP_SMOKE_BIN
+  end
+
+  desc "Remove the embed generation and smoke test intermediates"
+  task :clean do
+    rm_rf MP_GEN_BUILD
+    rm_rf MP_SMOKE_BUILD
+  end
+end
+
 namespace :build do
   desc "Linux target build (dev/test). FMRB_KERNEL_ENGINE=spinel swaps the kernel."
   task :linux => :setup do

@@ -19,3 +19,6 @@
 [submodule "components/lua/lua"]
 	path = components/lua/lua
 	url = https://github.com/lua/lua.git
+[submodule "components/micropython/micropython"]
+	path = components/micropython/micropython
+	url = https://github.com/micropython/micropython.git

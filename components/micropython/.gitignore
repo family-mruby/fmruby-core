@@ -1,0 +1,6 @@
+# Intermediate output of "rake micropython:gen" (the package it produces,
+# mp_embed/, is committed).
+port/build-embed/
+
+# Output of "rake micropython:smoke"
+port/test/build/
