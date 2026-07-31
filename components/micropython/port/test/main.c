@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "py/runtime.h"
 #include "py/stackctrl.h"
 #include "port/micropython_embed.h"
 
@@ -27,6 +28,27 @@ static const char *script =
     "import gc\n"
     "gc.collect()\n"
     "print('free', gc.mem_free() > 0)\n";
+
+// The VM hook (MICROPY_VM_HOOK_LOOP) is implemented by fmrb_mp.c in the
+// firmware, which this host-only link does not include. The smoke test has
+// no stop requests to poll, so an empty hook is the correct stand-in.
+void fmrb_mp_vm_hook(void) {
+}
+
+// _fmrb is registered by modules/fmrb_module.c with MP_REGISTER_MODULE, so the
+// generated module table names it whether or not that file is in the link --
+// and it is not here, because its bridge half needs the firmware. An empty
+// module satisfies the table. The smoke test checks the generated tree and the
+// configuration, not the bindings; those are covered on the device.
+static const mp_rom_map_elem_t stub_fmrb_globals_table[] = {
+    { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR__fmrb) },
+};
+static MP_DEFINE_CONST_DICT(stub_fmrb_globals, stub_fmrb_globals_table);
+
+const mp_obj_module_t fmrb_user_cmodule = {
+    .base = { &mp_type_module },
+    .globals = (mp_obj_dict_t *)&stub_fmrb_globals,
+};
 
 #define HEAP_SIZE (64 * 1024)
 #define STACK_LIMIT (256 * 1024)

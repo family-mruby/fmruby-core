@@ -190,7 +190,23 @@ phase2/phase3 のデスクトップ変更 (taskbar の色表、launcher の SCRI
 (ログの `HW target: TAB5 (esp32p4)` で確認)。Rakefile の .env 読み込みが
 `ENV.key?` を見るようになっており、コマンドラインが勝つ。
 
-### 4. 内蔵 RAM への影響がほぼ無いのは PSRAM 配置のおかげ
+### 4. mpconfigport.h に extern 呼び出しを足すとホスト単体スモークが壊れる
+
+phase2 で `MICROPY_VM_HOOK_LOOP` を入れたとき、vm.c から `fmrb_mp_vm_hook()`
+が呼ばれるようになった。実体は fmrb_mp.c にあるが、ホスト単体スモークの
+リンク対象には入らない (fmrb_mem 等に依存するため)。phase3 の
+`MP_REGISTER_MODULE` も同じ理由で `fmrb_user_cmodule` を未定義にした。
+どちらも `rake micropython:smoke` がリンクできなくなるだけで、
+ファームウェアには影響しない。
+
+**mpconfigport.h や生成物側から fmruby-core の関数・オブジェクトを参照する
+ものを足したら、port/test/main.c にスタブが要る**。スタブは main.c に置く
+(mpport.c はファームウェアビルドにも入るので、実体と定義が衝突する)。
+
+そして**スモークは各フェーズの完了確認で毎回回す**。phase2 以降回していな
+かったので、レビューで指摘されるまで壊れたままだった。
+
+### 5. 内蔵 RAM への影響がほぼ無いのは PSRAM 配置のおかげ
 
 MicroPython 自体の内蔵 RAM は 445 B。GC ヒープが PSRAM のプールから
 出ているので、内蔵 RAM 逼迫 (doc/internal_ram_budget.md) の話には
