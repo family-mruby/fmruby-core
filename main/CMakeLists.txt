@@ -102,7 +102,7 @@ endif()
 
 # Set up component dependencies based on target
 set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_transport fmrb_toml fmrb_mem
-    fmrb_gfx fmrb_audio lua basic
+    fmrb_gfx fmrb_audio lua basic micropython
     picoruby-esp32 mem_allocator log tar_lib
     # Remote debugger wire protocol (all targets since Phase 3a).
     msgpack-esp32)

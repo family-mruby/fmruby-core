@@ -24,6 +24,7 @@
 #include "picoruby_fmrb_const.h"
 #include "fmrb_keymap.h"
 #include "fmrb_debug.h"
+#include "fmrb_mp.h"
 
 // Generated from kernel.rb (will be compiled by picorbc)
 extern const uint8_t fmrb_kernel_irep[];
@@ -604,6 +605,15 @@ fmrb_err_t fmrb_kernel_start(void)
     if(!fmrb_app_init()){
         return FMRB_ERR_FAILED;
     }
+
+    // MicroPython guest VM. Only the single-instance lock is set up here; the
+    // runtime itself comes up per app.
+    if (fmrb_mp_init() != FMRB_OK) {
+        return FMRB_ERR_FAILED;
+    }
+#ifdef FMRB_MP_SELFTEST
+    fmrb_mp_selftest();
+#endif
 
     // Set the clock before anything can report a time. A missing or flat RTC is
     // not fatal -- the system runs with whatever the clock says, as it did

@@ -46,7 +46,14 @@
      mp_embed_exec_str から戻す。中断手段は次の 2 案を試して確定する:
      a. MICROPY_ENABLE_VM_ABORT の mp_sched_vm_abort() を フック内から呼ぶ
      b. フックから SystemExit 相当の例外を raise する
-     確定した方式と理由をこのファイルに追記する。
+     確定した方式と理由をこのファイル (または report/phase2.md) に追記する。
+   - **フック導入は mp_embed の再生成を伴う**: MICROPY_VM_HOOK_LOOP は
+     mpconfigport.h で define するマクロで、VM ループ (vm.c) に展開される。
+     mpconfigport.h は qstr 抽出時にも cpp に通されるため、フック本体に
+     fmrb のヘッダを include してはならない。
+     `extern void fmrb_mp_vm_hook(void);` の宣言と呼び出しだけを書き、
+     実体は fmrb_mp.c に置く。mpconfigport.h 変更後は
+     rake micropython:gen -> mp_embed/ の差分をコミット、の手順を踏む。
    - `time.sleep` 相当をまだ提供しないので、このフェーズの検証スクリプトは
      ビジーループでよい (フックはバイトコード実行中なら必ず回る)。
 

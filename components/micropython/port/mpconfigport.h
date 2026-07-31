@@ -45,7 +45,8 @@
 #define MICROPY_STACK_CHECK                     (1)
 
 // import only resolves to built-in modules. There is no filesystem importer
-// wired up (mp_import_stat / mp_builtin_open are not provided).
+// wired up: mp_import_stat is not provided, and mp_builtin_open (mpport.c)
+// always raises OSError.
 #define MICROPY_ENABLE_EXTERNAL_IMPORT          (0)
 #define MICROPY_READER_POSIX                    (0)
 #define MICROPY_READER_VFS                      (0)

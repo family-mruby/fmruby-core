@@ -15,6 +15,10 @@ fmrb_app への統合はまだ行わない。
    - REQUIRES: fmrb_mem fmrb_common log
    で idf_component_register する。コンパイルフラグの追加が要る場合
    (警告抑制など) は target_compile_options で該当ソースに限定して付ける。
+   生成ソースは GNU C 方言前提 (gchelper_generic.c が `register ... asm` で
+   レジスタを固定する。report/phase0.md 気づき 4)。IDF 既定の gnu17 で通る
+   見込みだが、通らない場合も -std を厳密 C に寄せる方向ではなく、該当
+   ソース限定のオプションで解決する。
 
 2. **fmrb_mp ラッパ**: components/micropython/include/fmrb_mp.h と
    components/micropython/fmrb_mp.c を作成。components/lua/fmrb_lua.c と
@@ -26,7 +30,11 @@ fmrb_app への統合はまだ行わない。
    - `fmrb_err_t fmrb_mp_start(fmrb_app_task_context_t* ctx)` —
      ctx->mem_handle から GC ヒープ (FMRB_MP_HEAP_SIZE, 初期値 256KB) を
      fmrb_malloc し、mp_embed_init 相当でランタイムを立ち上げる。
-     スタック上限 (現在のタスクスタック残量から余裕を引いた値) も設定する。
+     直後に mp_stack_set_limit で C スタック上限 (現在のタスクスタック残量
+     から余裕を引いた値) を**必ず**設定する。省略するとすべてのスタック
+     チェックが失敗し、最初の raise が nlr_jump_fail の無限ループに落ちて
+     無反応ハングになる (report/phase0.md 気づき 1。スモークテスト
+     port/test/main.c に再現コメントあり)。
    - `fmrb_err_t fmrb_mp_exec(fmrb_app_task_context_t* ctx, const char* src, size_t len, const char* path)` —
      ソース文字列を実行。未捕捉例外は traceback をログ (FMRB_LOGE) に出して
      エラー戻り値。正常終了は FMRB_OK。
@@ -36,9 +44,11 @@ fmrb_app への統合はまだ行わない。
    - 実際の embed port API 名 (mp_embed_init / mp_embed_exec_str /
      mp_embed_deinit 等) と引数は生成物のヘッダを読んで合わせる。
 
-3. **標準出力の経路**: port 層の mp_hal_stdout 実装 (embed port が要求する
-   フック) を書き、print の出力先を Lua の print と同じ挙動 (プロセスの
-   標準出力 = docker ログ / UART) にする。
+3. **標準出力の経路 (確認のみ)**: 生成物 mp_embed/port/mphalport.c の
+   mp_hal_stdout_tx_strn_cooked は printf そのものなので、print の出力先は
+   追加実装なしで Lua の print と同じ挙動 (プロセスの標準出力 = docker ログ /
+   UART) になる見込み (report/phase0.md 気づき 5)。自己診断のログで実際に
+   出力先を確認するだけでよい。期待どおりでない場合のみ port 層で対処する。
 
 4. **自己診断 (暫定)**: FMRB_MP_SELFTEST を define したときだけ、起動
    シーケンスの一箇所から `fmrb_mp_acquire → start → exec("print('mp:', 1+1)")
@@ -61,4 +71,6 @@ fmrb_app への統合はまだ行わない。
   ログに `mp: 2` が出る (docker compose logs で確認)。
 - SELFTEST を無効に戻した通常ビルドでも従来どおり起動する
   (dev_run_check.sh のスクリーンショットにデスクトップが出る)。
-- 実測した GC ヒープ初期消費量 (start 直後の gc 空き) をこのファイルに追記。
+- 実測した GC ヒープ初期消費量 (start 直後の gc 空き) を記録。
+
+判定結果・実測値・実装中の気づきは [report/phase1.md](report/phase1.md)。
