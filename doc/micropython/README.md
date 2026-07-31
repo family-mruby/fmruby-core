@@ -84,6 +84,22 @@ fmruby-core のような「OS 側がタスクとメモリを管理し、VM は 1
 各フェーズの実装レポート (気づき・実測値・申し送り) は
 [report/](report/README.md) に置く。
 
+## 生成物を作り直すタイミング
+
+components/micropython/ には日常のビルドが触らない生成物が 2 つある。
+どちらも `rake micropython:gen` が両方まとめて作り直すので、下記を編集したら
+gen -> ビルド -> 生成物も一緒にコミット、の順で進める。
+
+| 編集したもの | 作り直る生成物 | 理由 |
+|---|---|---|
+| port/mpconfigport.h | mp_embed/ (+ mp_embed_srcs.cmake) | 機能の有無が qstr 表と生成ヘッダに影響する |
+| modules/fmrb_module.c | mp_embed/genhdr/ | 新しい qstr とモジュール登録を取り込む |
+| prelude/*.py | prelude/fmrb_prelude.h | Python 層をファームに焼き込むため |
+
+prelude だけなら `rake micropython:prelude` で足りる (gen は make と python3 を
+要求するが、prelude は Ruby だけで済む)。
+modules/fmrb_bridge.c は生成に関係しないので、編集してもビルドし直すだけでよい。
+
 ## 実装時の全般ルール (実装担当への申し送り)
 
 - fmruby-core/CLAUDE.md を厳守する。特に:

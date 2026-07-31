@@ -1,0 +1,9 @@
+# Kept under /home so the launcher does not index it; run it from the shell.
+app_handle_name = "pytest"
+app_screen_name = "Python test"
+app_screen_name_ja = "Pythonテスト"
+default_window_mode = "window"
+default_window_width = 150
+default_window_height = 90
+default_window_pos_x = 150
+default_window_pos_y = 130

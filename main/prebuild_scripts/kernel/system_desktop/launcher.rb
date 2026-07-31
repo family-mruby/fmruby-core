@@ -38,6 +38,7 @@ module LauncherMixin
     "rb" => "R",
     "lua" => "L",
     "bas" => "B",
+    "py" => "P",
   }
 
   # ---- Icon sprite lifecycle ----
@@ -173,7 +174,7 @@ module LauncherMixin
   S_ZERO    = "0"
   S_TAB     = "\t"
   S_EMPTY   = ""
-  SCRIPT_EXTS = ["rb", "lua", "bas"]
+  SCRIPT_EXTS = ["rb", "lua", "bas", "py"]
 
   # ---- App index cache ----
   #

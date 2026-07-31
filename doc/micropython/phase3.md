@@ -152,3 +152,5 @@ Ruby 版 C 実体と同じものを使う。
   生成タスク) -> ビルド」の運用が README に追記済み。
 - prelude のコンパイル時間 (アプリ起動への上乗せ) と GC 消費、および
   後続に回した API の一覧が report/phase3.md に記録済み。
+
+判定結果・実測値・実装中の気づきは [report/phase3.md](report/phase3.md)。

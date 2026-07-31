@@ -12,8 +12,16 @@
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
 #include "fmrb_rtos.h"
+#include "fmrb_prelude.h"
 
 static const char *TAG = "fmrb_mp";
+
+static fmrb_err_t exec_source(fmrb_app_task_context_t *ctx, const char *src, size_t len,
+                              const char *path);
+
+static uint32_t uptime_ms(void) {
+    return (uint32_t)(fmrb_task_get_tick_count() * portTICK_PERIOD_MS);
+}
 
 /**
  * The runtime lives in MicroPython's globals, so there is exactly one of it.
@@ -190,19 +198,36 @@ fmrb_err_t fmrb_mp_start(fmrb_app_task_context_t *ctx) {
     FMRB_LOGI(TAG, "[%s] MicroPython started: gc total=%u used=%u free=%u, stack limit=%u",
               ctx->app_name, (unsigned)info.total, (unsigned)info.used,
               (unsigned)info.free, (unsigned)stack_limit);
+
+    // The app framework (FmrbApp / FmrbGfx) is Python source compiled into the
+    // firmware. Running it here rather than from the app leaves the guest
+    // script with the classes already in its own globals, the way a .rb app
+    // finds the Ruby framework's classes.
+    uint32_t prelude_start = uptime_ms();
+    fmrb_err_t pret = exec_source(ctx, fmrb_mp_prelude_src,
+                                  sizeof(fmrb_mp_prelude_src) - 1, "<prelude>");
+    if (pret != FMRB_OK) {
+        // A broken prelude is a firmware defect, not a user script error, and
+        // nothing the app does afterwards would make sense.
+        FMRB_LOGE(TAG, "[%s] Python app framework failed to load", ctx->app_name);
+        return FMRB_ERR_FAILED;
+    }
+    gc_info(&info);
+    FMRB_LOGI(TAG, "[%s] app framework loaded in %ums (gc used=%u free=%u)",
+              ctx->app_name, (unsigned)(uptime_ms() - prelude_start),
+              (unsigned)info.used, (unsigned)info.free);
+
     return FMRB_OK;
 }
 
-fmrb_err_t fmrb_mp_exec(fmrb_app_task_context_t *ctx, const char *src, size_t len,
-                        const char *path) {
-    if (!ctx || !src) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
-    if (s_owner != ctx || !s_running) {
-        FMRB_LOGE(TAG, "[%s] Exec without a running runtime", ctx->app_name);
-        return FMRB_ERR_INVALID_STATE;
-    }
-
+/**
+ * Compile and run one source string in the app's global namespace.
+ *
+ * Used for both the prelude and the guest script, so they share globals: the
+ * classes the prelude defines are what the script then subclasses.
+ */
+static fmrb_err_t exec_source(fmrb_app_task_context_t *ctx, const char *src, size_t len,
+                              const char *path) {
     s_hook_ticks = 0;
 
     nlr_buf_t nlr;
@@ -236,11 +261,23 @@ fmrb_err_t fmrb_mp_exec(fmrb_app_task_context_t *ctx, const char *src, size_t le
         // wrapper can clean up.
         log_sink_t sink = { .len = 0 };
         const mp_print_t print = { &sink, log_sink_print_strn };
-        FMRB_LOGE(TAG, "[%s] Uncaught exception:", ctx->app_name);
+        FMRB_LOGE(TAG, "[%s] Uncaught exception in %s:", ctx->app_name, path);
         mp_obj_print_exception(&print, MP_OBJ_FROM_PTR(nlr.ret_val));
         log_sink_flush(&sink);
         return FMRB_ERR_FAILED;
     }
+}
+
+fmrb_err_t fmrb_mp_exec(fmrb_app_task_context_t *ctx, const char *src, size_t len,
+                        const char *path) {
+    if (!ctx || !src) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    if (s_owner != ctx || !s_running) {
+        FMRB_LOGE(TAG, "[%s] Exec without a running runtime", ctx->app_name);
+        return FMRB_ERR_INVALID_STATE;
+    }
+    return exec_source(ctx, src, len, path);
 }
 
 void fmrb_mp_close(fmrb_app_task_context_t *ctx) {
