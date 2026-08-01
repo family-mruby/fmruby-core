@@ -1,5 +1,6 @@
 set(COMMON_SRCS
     "fmrb_msg.c"
+    "fmrb_hid_event.c"
 )
 
 idf_component_register(

@@ -18,7 +18,7 @@
 #include "py/objstr.h"
 #include "py/runtime.h"
 
-#include "fmrb_hid_msg.h"
+#include "fmrb_hid_event.h"
 #include "fmrb_mp_bridge.h"
 
 // How long a single receive waits before the spin loop re-checks the stop
@@ -312,61 +312,66 @@ static MP_DEFINE_CONST_FUN_OBJ_3(fmrb_send_message_obj, fmrb_send_message);
  * ------------------------------------------------------------------------ */
 
 static mp_obj_t hid_event_to_dict(const uint8_t *data, size_t size) {
-    if (size < 1) {
+    fmrb_hid_event_t ev;
+    if (!fmrb_hid_event_decode(data, (uint32_t)size, &ev)) {
         return mp_const_none;
     }
-    mp_obj_t d = mp_obj_new_dict(6);
-    uint8_t subtype = data[0];
 
-    switch (subtype) {
-        case HID_MSG_KEY_DOWN:
-        case HID_MSG_KEY_UP: {
-            if (size < sizeof(fmrb_hid_key_event_t)) {
-                return mp_const_none;
-            }
-            const fmrb_hid_key_event_t *e = (const fmrb_hid_key_event_t *)data;
-            dict_store_str(d, MP_QSTR_type,
-                           MP_OBJ_NEW_QSTR(subtype == HID_MSG_KEY_DOWN
-                                           ? MP_QSTR_key_down : MP_QSTR_key_up));
-            dict_store_str(d, MP_QSTR_keycode, MP_OBJ_NEW_SMALL_INT(e->keycode));
-            dict_store_str(d, MP_QSTR_scancode, MP_OBJ_NEW_SMALL_INT(e->scancode));
-            dict_store_str(d, MP_QSTR_modifier, MP_OBJ_NEW_SMALL_INT(e->modifier));
-            dict_store_str(d, MP_QSTR_character,
-                           MP_OBJ_NEW_SMALL_INT((uint8_t)e->character));
+    mp_obj_t d = mp_obj_new_dict(6);
+#define HID_PUT(key, value) dict_store_str(d, key, (value))
+#define HID_PUT_INT(key, value) HID_PUT(key, MP_OBJ_NEW_SMALL_INT(value))
+#define HID_PUT_TYPE(name) HID_PUT(MP_QSTR_type, MP_OBJ_NEW_QSTR(name))
+
+    switch (ev.type) {
+        case FMRB_HID_EVENT_KEY_DOWN:
+        case FMRB_HID_EVENT_KEY_UP:
+            HID_PUT_TYPE(ev.type == FMRB_HID_EVENT_KEY_DOWN ? MP_QSTR_key_down
+                                                            : MP_QSTR_key_up);
+            HID_PUT_INT(MP_QSTR_keycode, ev.keycode);
+            HID_PUT_INT(MP_QSTR_scancode, ev.scancode);
+            HID_PUT_INT(MP_QSTR_modifier, ev.modifier);
+            HID_PUT_INT(MP_QSTR_character, (uint8_t)ev.character);
             return d;
-        }
-        case HID_MSG_MOUSE_BUTTON_DOWN:
-        case HID_MSG_MOUSE_BUTTON_UP: {
-            if (size < sizeof(fmrb_hid_mouse_button_event_t)) {
-                return mp_const_none;
-            }
-            const fmrb_hid_mouse_button_event_t *e =
-                (const fmrb_hid_mouse_button_event_t *)data;
-            dict_store_str(d, MP_QSTR_type,
-                           MP_OBJ_NEW_QSTR(subtype == HID_MSG_MOUSE_BUTTON_DOWN
-                                           ? MP_QSTR_mouse_down : MP_QSTR_mouse_up));
-            dict_store_str(d, MP_QSTR_button, MP_OBJ_NEW_SMALL_INT(e->button));
-            dict_store_str(d, MP_QSTR_x, MP_OBJ_NEW_SMALL_INT(e->x));
-            dict_store_str(d, MP_QSTR_y, MP_OBJ_NEW_SMALL_INT(e->y));
+
+        case FMRB_HID_EVENT_MOUSE_DOWN:
+        case FMRB_HID_EVENT_MOUSE_UP:
+            HID_PUT_TYPE(ev.type == FMRB_HID_EVENT_MOUSE_DOWN ? MP_QSTR_mouse_down
+                                                              : MP_QSTR_mouse_up);
+            HID_PUT_INT(MP_QSTR_button, ev.button);
+            HID_PUT_INT(MP_QSTR_x, ev.x);
+            HID_PUT_INT(MP_QSTR_y, ev.y);
             return d;
-        }
-        case HID_MSG_MOUSE_MOVE: {
-            // The kernel sends 6 bytes [subtype, button, x_lo, x_hi, y_lo, y_hi],
-            // which is one byte wider than fmrb_hid_mouse_motion_event_t. Read
-            // the wire format, not the struct.
-            if (size < 6) {
-                return mp_const_none;
-            }
-            dict_store_str(d, MP_QSTR_type, MP_OBJ_NEW_QSTR(MP_QSTR_mouse_move));
-            dict_store_str(d, MP_QSTR_x,
-                           MP_OBJ_NEW_SMALL_INT(data[2] | ((uint16_t)data[3] << 8)));
-            dict_store_str(d, MP_QSTR_y,
-                           MP_OBJ_NEW_SMALL_INT(data[4] | ((uint16_t)data[5] << 8)));
+
+        case FMRB_HID_EVENT_MOUSE_MOVE:
+            HID_PUT_TYPE(MP_QSTR_mouse_move);
+            HID_PUT_INT(MP_QSTR_x, ev.x);
+            HID_PUT_INT(MP_QSTR_y, ev.y);
             return d;
-        }
+
+        // Gamepad events reach Ruby apps but had no Python mapping; the shared
+        // decoder hands them over, so they are dicts now too.
+        case FMRB_HID_EVENT_GAMEPAD_DOWN:
+        case FMRB_HID_EVENT_GAMEPAD_UP:
+            HID_PUT_TYPE(ev.type == FMRB_HID_EVENT_GAMEPAD_DOWN ? MP_QSTR_gamepad_down
+                                                                : MP_QSTR_gamepad_up);
+            HID_PUT_INT(MP_QSTR_gamepad_id, ev.gamepad_id);
+            HID_PUT_INT(MP_QSTR_button, ev.button);
+            return d;
+
+        case FMRB_HID_EVENT_GAMEPAD_AXIS:
+            HID_PUT_TYPE(MP_QSTR_gamepad_axis);
+            HID_PUT_INT(MP_QSTR_gamepad_id, ev.gamepad_id);
+            HID_PUT_INT(MP_QSTR_axis, ev.axis);
+            HID_PUT_INT(MP_QSTR_value, ev.value);
+            return d;
+
         default:
             return mp_const_none;
     }
+
+#undef HID_PUT_TYPE
+#undef HID_PUT_INT
+#undef HID_PUT
 }
 
 static void call_if_present(mp_obj_t app, qstr method, size_t n_args, const mp_obj_t *args) {

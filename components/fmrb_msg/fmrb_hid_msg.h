@@ -39,12 +39,11 @@ typedef struct {
     uint16_t y;
 } __attribute__((packed)) fmrb_hid_mouse_button_event_t;
 
-// Mouse motion event payload
-typedef struct {
-    uint8_t subtype;       // HID_MSG_MOUSE_MOVE
-    uint16_t x;
-    uint16_t y;
-} __attribute__((packed)) fmrb_hid_mouse_motion_event_t;
+// Mouse motion has no payload struct of its own: the sender in host_task.c
+// writes the button event layout with button left at 0, so
+// fmrb_hid_mouse_button_event_t is what a HID_MSG_MOUSE_MOVE payload is.
+// (There used to be a 5-byte fmrb_hid_mouse_motion_event_t here that did not
+// match the wire, and every decoder carried a comment warning about it.)
 
 // Gamepad button event payload
 typedef struct {
