@@ -92,13 +92,72 @@ Lua/BASIC のリトライ方式はこれを迂回しており、**重い描画�
   比較する (python.app の Shapes ページ、shapes.app.rb など)。
 - rake build:esp32 が S3 / P4 両方で成功する (サイズの増減も一言記録)。
 
-## Phase C: App サービス層 (A+B 完了後に詳細化)
+## Phase C: App サービス層の共通化 (2026-08-01 詳細化)
 
-対象候補: canvas の生成/削除の共通サービス化 (所有権登録込み)、
-HID イベントのメッセージ解読の正規化 (現状 mruby app.c と python
-fmrb_module.c が fmrb_hid_msg.h の構造体を各自パースしている)。
-gfx ほどの重複密度ではないため、A+B の結果を見てから範囲を決め、
-本書に詳細を追記してから着手する。**A+B の作業中に先回りしない。**
+A+B 完了後の調査で確認した App 側の重複は次の 4 つ。
+
+1. **ウィンドウ canvas の初期化**: mruby (lib/add/.../ports/esp32/app.c の
+   _init) と Python (fmrb_bridge.c の app_init) が同一手順の複製
+   (透過キー 0x01、z_order、bg canvas の条件生成、ctx への登録)。
+2. **追加 canvas の枠管理**: ctx->extra_canvas_ids のスロット確保 + 登録は
+   現状 mruby のみだが、Python の API 拡充 (create_canvas_gfx 相当) で
+   再複製が確定している。
+3. **canvas の後始末が 4 箇所**: mruby _cleanup / python bridge cleanup /
+   fmrb_app.c の通常・強制 kill の 2 経路。python bridge は bg canvas を
+   消していない (C 側 cleanup が拾うので漏れはないが非対称)。
+4. **HID イベント解読**: mruby app.c と python fmrb_module.c が
+   fmrb_hid_msg.h の構造体をそれぞれサイズ検証・展開している。
+
+### C1: canvas サービス
+
+fmrb_gfx コンポーネント (fmrb_common に依存でき、main/ に依存しない) に
+app canvas service を置く。ヘッダは fmrb_gfx_cmd.h と並べて新設でよい。
+
+- `fmrb_app_canvas_init(ctx, ...)` — main + (条件付き) bg canvas を生成して
+  ctx に登録。mruby _init / python app_init の複製部を置換する。
+- `fmrb_app_canvas_create_extra(ctx, w, h, z_offset, transparent, color, *out)`
+  — extra_canvas_ids のスロット管理込み。mruby _create_canvas の実体を移す。
+- `fmrb_app_canvas_release_all(ctx)` — main / bg / extra を削除して 0 クリア。
+  再入安全 (二重呼び出しで二重削除しない) にし、**fmrb_app.c の通常・強制の
+  2 経路とバインディングの cleanup をすべてこれに畳む**。
+- Lua の FmrbApp.create_canvas はスクリプト主導で main canvas を作る別形。
+  実装時に登録先 (ctx->canvas_id か extra か) を確認し、同サービスに乗せる。
+
+### C2: HID イベント解読の共通化
+
+- fmrb_common に正規化構造体 (type / x / y / button / scancode / keycode /
+  modifier / gamepad 系) と
+  `fmrb_err_t fmrb_hid_event_decode(const fmrb_msg_t*, ...)` を追加。
+  メッセージサイズの検証もここに一本化する。
+- mruby app.c は「正規化構造体 -> mrb hash」、Python は「-> dict」だけになる。
+- **Python 側の qstr 制約に注意**: fmrb_module.c から fmrb のヘッダは
+  引けないので、正規化構造体は fmrb_mp_bridge.h に固定幅で写し、
+  fmrb_bridge.c の `_Static_assert` で本体とずれたらビルドが落ちる形にする
+  (phase3 の定数複製と同じ流儀)。
+- Spinel はイベントを Ruby 側 (SpxBytes) で解読するので対象外。
+
+### C3 (判断制): 受信ループ骨格の共通化
+
+C1+C2 を終えた時点で mruby と python の _spin を並べ、差分が「言語への
+呼び出しだけ」になっているかを見る。なっていれば
+`fmrb_app_pump(ctx, timeout, ops)` (コールバック表) に畳む。差分が残る
+(mruby は suspend/resume を Ruby 側で処理する等) なら**見送ってよい** —
+その場合は理由を report に書く。C3 ありきで先に器を作らない。
+
+### Phase C の完了条件
+
+- fmrb_gfx_create_canvas / fmrb_gfx_delete_canvas の直接呼び出しが
+  バインディングと fmrb_app.c から消え、サービス経由のみになる (grep 確認)。
+- fmrb_hid_*_event_t のフィールド展開が mruby app.c / python fmrb_module.c
+  から消える (grep 確認)。
+- headless 検証: 4 言語の起動・描画・入力 (マウス/キー)・終了 + Spinel
+  デスクトップ構成。
+- **kill 経路の canvas 回収**: アプリ起動 -> タスクモニタから kill ->
+  再起動、を 5 回繰り返し、canvas のリークが無いことをログで確認する
+  (release_all の再入安全の確認を兼ねる)。
+- mruby の suspend / resume (フルスクリーンアプリの切替) に退行が無い。
+- rake build:esp32 が S3 / P4 両方で成功する。
+- 結果・気づきは report.md に Phase C として追記。
 
 ## 実装ルール (この作業に固有の注意)
 
