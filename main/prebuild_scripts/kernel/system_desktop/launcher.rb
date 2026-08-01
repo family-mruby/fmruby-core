@@ -31,6 +31,7 @@ module LauncherMixin
     "rb"  => "usr/share/icon/ruby.icon",
     "lua" => "usr/share/icon/lua.icon",
     "bas" => "usr/share/icon/basic.icon",
+    "py"  => "usr/share/icon/python.icon",
   }
 
   # Fallback icon characters (when icon file is not available)
