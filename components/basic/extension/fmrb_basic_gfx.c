@@ -36,15 +36,9 @@ static const uint8_t COLOR_RGB332[64] = {
 
 static void fill_rect(basic_console_ctx_t* console, int16_t x, int16_t y,
                       uint16_t w, uint16_t h, uint8_t color) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_RECT,
-        .canvas_id = console->canvas_id,
-        .params.rect = {
-            .rect = {.x = x, .y = y, .width = w, .height = h},
-            .color = (fmrb_color_t)color,
-            .filled = true
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_rect(&cmd, console->canvas_id, x, y, w, h,
+                      (fmrb_color_t)color, true);
     fmrb_gfx_submit(&cmd);
 }
 
@@ -59,11 +53,8 @@ static void fill_rect(basic_console_ctx_t* console, int16_t x, int16_t y,
 #define GLYPH_SHEET_DIM  (GLYPH_SHEET_COLS * BASIC_SCREEN_CELL_W)
 
 static void set_image_target(basic_console_ctx_t* console, uint16_t image_id) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_SET_SPRITE_IMAGE_TARGET,
-        .canvas_id = console->canvas_id,
-        .params.set_sprite_image_target = {.image_id = image_id}
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_set_sprite_image_target(&cmd, console->canvas_id, image_id);
     fmrb_gfx_submit(&cmd);
 }
 
@@ -166,19 +157,12 @@ void basic_console_draw_cell(void* user_data, uint8_t x, uint8_t y, uint8_t code
     const int16_t py = (int16_t)(console->pad_y + y * BASIC_SCREEN_CELL_H);
 
     if (ensure_glyph(console, code, attr)) {
-        gfx_cmd_t cmd = {
-            .cmd_type = GFX_CMD_DRAW_TILE,
-            .canvas_id = console->canvas_id,
-            .params.draw_tile = {
-                .image_id = console->sheet_id[attr],
-                .src_x = (int16_t)((code % GLYPH_SHEET_COLS) * BASIC_SCREEN_CELL_W),
-                .src_y = (int16_t)((code / GLYPH_SHEET_COLS) * BASIC_SCREEN_CELL_H),
-                .w = BASIC_SCREEN_CELL_W,
-                .h = BASIC_SCREEN_CELL_H,
-                .dst_x = px,
-                .dst_y = py
-            }
-        };
+        gfx_cmd_t cmd;
+        fmrb_gfx_cmd_draw_tile(
+            &cmd, console->canvas_id, console->sheet_id[attr],
+            (int16_t)((code % GLYPH_SHEET_COLS) * BASIC_SCREEN_CELL_W),
+            (int16_t)((code / GLYPH_SHEET_COLS) * BASIC_SCREEN_CELL_H),
+            BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H, px, py);
         fmrb_gfx_submit(&cmd);
     } else {
         // No sheet (out of image memory): fall back to drawing the runs.
@@ -242,15 +226,9 @@ void basic_console_present(void* user_data) {
     console->dirty = false;
     console->sprites_moved = false;
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_PRESENT,
-        .canvas_id = console->canvas_id,
-        .params.present = {
-            .x = console->origin_x,
-            .y = console->origin_y,
-            .transparent_color = 0xFF  // No transparency
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_present(&cmd, console->canvas_id, console->origin_x,
+                         console->origin_y, 0xFF);  // 0xFF = no transparency
     fmrb_gfx_submit(&cmd);
 }
 
@@ -396,14 +374,9 @@ void basic_console_set_sprite_palette(void* user_data, uint8_t attr, uint8_t c1,
 
 static void sprite_instance_visible(basic_console_ctx_t* console, uint16_t instance_id,
                                     bool visible) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_SPRITE_INSTANCE_SET_VISIBLE,
-        .canvas_id = console->canvas_id,
-        .params.sprite_instance_set_visible = {
-            .instance_id = instance_id,
-            .visible = visible ? (uint8_t)1 : (uint8_t)0
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_sprite_instance_set_visible(&cmd, console->canvas_id,
+                                             instance_id, visible);
     fmrb_gfx_submit(&cmd);
 }
 
@@ -411,11 +384,9 @@ static void sprite_instance_visible(basic_console_ctx_t* console, uint16_t insta
 static void release_sprite_slot(basic_console_ctx_t* console,
                                 typeof(console->sprites[0])* slot) {
     if (slot->instance_id != 0) {
-        gfx_cmd_t cmd = {
-            .cmd_type = GFX_CMD_DELETE_SPRITE_INSTANCE,
-            .canvas_id = console->canvas_id,
-            .params.delete_sprite_instance = {.instance_id = slot->instance_id}
-        };
+        gfx_cmd_t cmd;
+        fmrb_gfx_cmd_delete_sprite_instance(&cmd, console->canvas_id,
+                                            slot->instance_id);
         fmrb_gfx_submit(&cmd);
         slot->instance_id = 0;
     }
@@ -423,11 +394,9 @@ static void release_sprite_slot(basic_console_ctx_t* console,
         if (slot->image_id[f] == 0) {
             continue;
         }
-        gfx_cmd_t cmd = {
-            .cmd_type = GFX_CMD_DELETE_SPRITE_IMAGE,
-            .canvas_id = console->canvas_id,
-            .params.delete_sprite_image = {.image_id = slot->image_id[f]}
-        };
+        gfx_cmd_t cmd;
+        fmrb_gfx_cmd_delete_sprite_image(&cmd, console->canvas_id,
+                                         slot->image_id[f]);
         fmrb_gfx_submit(&cmd);
         slot->image_id[f] = 0;
     }
@@ -580,14 +549,9 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
     const uint8_t frame =
         (uint8_t)(sprite->frame_index < frames ? sprite->frame_index : 0);
     if (frame != slot->frame_index) {
-        gfx_cmd_t cmd = {
-            .cmd_type = GFX_CMD_SPRITE_INSTANCE_SET_FRAME,
-            .canvas_id = console->canvas_id,
-            .params.sprite_instance_set_frame = {
-                .instance_id = slot->instance_id,
-                .frame_index = frame
-            }
-        };
+        gfx_cmd_t cmd;
+        fmrb_gfx_cmd_sprite_instance_set_frame(&cmd, console->canvas_id,
+                                               slot->instance_id, frame);
         fmrb_gfx_submit(&cmd);
         slot->frame_index = frame;
         changed = true;
@@ -601,15 +565,9 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
     // travelled, so resending a position it already has is pure traffic: on
     // hardware this was the largest command type by a wide margin.
     if (!slot->pos_valid || px != slot->x || py != slot->y) {
-        gfx_cmd_t move = {
-            .cmd_type = GFX_CMD_SPRITE_INSTANCE_MOVE,
-            .canvas_id = console->canvas_id,
-            .params.sprite_instance_move = {
-                .instance_id = slot->instance_id,
-                .x = px,
-                .y = py
-            }
-        };
+        gfx_cmd_t move;
+        fmrb_gfx_cmd_sprite_instance_move(&move, console->canvas_id,
+                                          slot->instance_id, px, py);
         fmrb_gfx_submit(&move);
         slot->x = px;
         slot->y = py;
@@ -756,17 +714,11 @@ static void gfx_ops_circle(void* user_data, int16_t x, int16_t y,
     basic_console_ctx_t* console = (basic_console_ctx_t*)user_data;
     if (!console) return;
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_CIRCLE,
-        .canvas_id = console->canvas_id,
-        .params.circle = {
-            .x = (int16_t)(console->pad_x + x),
-            .y = (int16_t)(console->pad_y + y),
-            .radius = r,
-            .color = (fmrb_color_t)color,
-            .filled = filled
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_circle(&cmd, console->canvas_id,
+                        (int16_t)(console->pad_x + x),
+                        (int16_t)(console->pad_y + y), r,
+                        (fmrb_color_t)color, filled);
     fmrb_gfx_submit(&cmd);
     mark_dirty(console, 0, 0);
     mark_dirty(console, BASIC_SCREEN_COLS - 1, BASIC_SCREEN_ROWS - 1);
@@ -806,11 +758,9 @@ void basic_console_destroy(basic_console_ctx_t* console) {
 
     for (int attr = 0; attr < 4; attr++) {
         if (console->sheet_id[attr] != 0) {
-            gfx_cmd_t cmd = {
-                .cmd_type = GFX_CMD_DELETE_SPRITE_IMAGE,
-                .canvas_id = console->canvas_id,
-                .params.delete_sprite_image = {.image_id = console->sheet_id[attr]}
-            };
+            gfx_cmd_t cmd;
+            fmrb_gfx_cmd_delete_sprite_image(&cmd, console->canvas_id,
+                                             console->sheet_id[attr]);
             fmrb_gfx_submit(&cmd);
             console->sheet_id[attr] = 0;
         }

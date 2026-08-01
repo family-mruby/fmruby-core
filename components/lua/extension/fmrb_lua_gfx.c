@@ -58,16 +58,9 @@ static int lua_gfx_fill_rect(lua_State* L) {
         return luaL_error(L, "Graphics not initialized");
     }
 
-    // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_RECT,
-        .canvas_id = data->canvas_id,
-        .params.rect = {
-            .rect = {.x = (int16_t)x, .y = (int16_t)y, .width = (uint16_t)w, .height = (uint16_t)h},
-            .color = (fmrb_color_t)color,
-            .filled = true
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_rect(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                      (uint16_t)w, (uint16_t)h, (fmrb_color_t)color, true);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -91,16 +84,9 @@ static int lua_gfx_draw_rect(lua_State* L) {
         return luaL_error(L, "Graphics not initialized");
     }
 
-    // Send GFX command to Host Task (outline only)
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_RECT,
-        .canvas_id = data->canvas_id,
-        .params.rect = {
-            .rect = {.x = (int16_t)x, .y = (int16_t)y, .width = (uint16_t)w, .height = (uint16_t)h},
-            .color = (fmrb_color_t)color,
-            .filled = false
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_rect(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                      (uint16_t)w, (uint16_t)h, (fmrb_color_t)color, false);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -131,23 +117,10 @@ static int lua_gfx_draw_string(lua_State* L) {
         return luaL_error(L, "Graphics not initialized");
     }
 
-    // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_TEXT,
-        .canvas_id = data->canvas_id,
-        .params.text = {
-            .x = (int16_t)x,
-            .y = (int16_t)y,
-            .color = (fmrb_color_t)color,
-            .bg_color = (fmrb_color_t)bg_color,
-            .bg_transparent = bg_transparent,
-            .font_size = FMRB_FONT_SIZE_MEDIUM
-        }
-    };
-
-    // Copy text (truncate if too long)
-    strncpy(cmd.params.text.text, text, sizeof(cmd.params.text.text) - 1);
-    cmd.params.text.text[sizeof(cmd.params.text.text) - 1] = '\0';
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_text(&cmd, data->canvas_id, (int16_t)x, (int16_t)y, text,
+                      (fmrb_color_t)color, (fmrb_color_t)bg_color,
+                      bg_transparent, FMRB_FONT_SIZE_MEDIUM, 0);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -172,16 +145,10 @@ static int lua_gfx_present(lua_State* L) {
         return luaL_error(L, "No app context available");
     }
 
-    // Send PRESENT command to Host Task with window position from TOML config
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_PRESENT,
-        .canvas_id = data->canvas_id,
-        .params.present = {
-            .x = (int16_t)ctx->window_pos_x,
-            .y = (int16_t)ctx->window_pos_y,
-            .transparent_color = 0xFF  // No transparency
-        }
-    };
+    // Window position comes from the TOML config; 0xFF = no transparency.
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_present(&cmd, data->canvas_id, (int16_t)ctx->window_pos_x,
+                         (int16_t)ctx->window_pos_y, 0xFF);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -201,12 +168,8 @@ static int lua_gfx_clear(lua_State* L) {
         return luaL_error(L, "Graphics not initialized");
     }
 
-    // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_CLEAR,
-        .canvas_id = data->canvas_id,
-        .params.clear.color = (fmrb_color_t)color
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_clear(&cmd, data->canvas_id, (fmrb_color_t)color);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -230,15 +193,9 @@ static int lua_gfx_draw_line(lua_State* L) {
         return luaL_error(L, "Graphics not initialized");
     }
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_LINE,
-        .canvas_id = data->canvas_id,
-        .params.line = {
-            .x1 = (int16_t)x1, .y1 = (int16_t)y1,
-            .x2 = (int16_t)x2, .y2 = (int16_t)y2,
-            .color = (fmrb_color_t)color
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_line(&cmd, data->canvas_id, (int16_t)x1, (int16_t)y1,
+                      (int16_t)x2, (int16_t)y2, (fmrb_color_t)color);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -263,17 +220,10 @@ static int lua_gfx_fill_round_rect(lua_State* L) {
         return luaL_error(L, "Graphics not initialized");
     }
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_ROUND_RECT,
-        .canvas_id = data->canvas_id,
-        .params.round_rect = {
-            .x = (int16_t)x, .y = (int16_t)y,
-            .w = (int16_t)w, .h = (int16_t)h,
-            .radius = (int16_t)r,
-            .color = (fmrb_color_t)color,
-            .filled = true
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_round_rect(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                            (int16_t)w, (int16_t)h, (int16_t)r,
+                            (fmrb_color_t)color, true);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -298,17 +248,10 @@ static int lua_gfx_draw_round_rect(lua_State* L) {
         return luaL_error(L, "Graphics not initialized");
     }
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_ROUND_RECT,
-        .canvas_id = data->canvas_id,
-        .params.round_rect = {
-            .x = (int16_t)x, .y = (int16_t)y,
-            .w = (int16_t)w, .h = (int16_t)h,
-            .radius = (int16_t)r,
-            .color = (fmrb_color_t)color,
-            .filled = false
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_round_rect(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                            (int16_t)w, (int16_t)h, (int16_t)r,
+                            (fmrb_color_t)color, false);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -331,16 +274,9 @@ static int lua_gfx_fill_circle(lua_State* L) {
         return luaL_error(L, "Graphics not initialized");
     }
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_CIRCLE,
-        .canvas_id = data->canvas_id,
-        .params.circle = {
-            .x = (int16_t)x, .y = (int16_t)y,
-            .radius = (int16_t)r,
-            .color = (fmrb_color_t)color,
-            .filled = true
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_circle(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                        (int16_t)r, (fmrb_color_t)color, true);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {

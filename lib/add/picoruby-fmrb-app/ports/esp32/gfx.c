@@ -90,11 +90,8 @@ static mrb_value mrb_gfx_clear(mrb_state *mrb, mrb_value self)
     }
 
     // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_CLEAR,
-        .canvas_id = data->canvas_id,
-        .params.clear.color = (fmrb_color_t)color
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_clear(&cmd, data->canvas_id, (fmrb_color_t)color);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -118,11 +115,9 @@ static mrb_value mrb_gfx_set_pixel(mrb_state *mrb, mrb_value self)
     }
 
     // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_PIXEL,
-        .canvas_id = data->canvas_id,
-        .params.pixel = {.x = (int16_t)x, .y = (int16_t)y, .color = (fmrb_color_t)color}
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_pixel(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                       (fmrb_color_t)color);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -158,12 +153,8 @@ static mrb_value mrb_gfx_get_pixel(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "get_pixel: failed to create semaphore");
     }
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_GET_PIXEL,
-        .canvas_id = data->canvas_id,
-        .params.get_pixel = { .x = (int16_t)x, .y = (int16_t)y },
-        .sync = &sync,
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_get_pixel(&cmd, data->canvas_id, (int16_t)x, (int16_t)y, &sync);
 
     fmrb_err_t send_ret = fmrb_gfx_submit(&cmd);
     if (send_ret != FMRB_OK) {
@@ -198,15 +189,9 @@ static mrb_value mrb_gfx_draw_line(mrb_state *mrb, mrb_value self)
     }
 
     // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_LINE,
-        .canvas_id = data->canvas_id,
-        .params.line = {
-            .x1 = (int16_t)x1, .y1 = (int16_t)y1,
-            .x2 = (int16_t)x2, .y2 = (int16_t)y2,
-            .color = (fmrb_color_t)color
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_line(&cmd, data->canvas_id, (int16_t)x1, (int16_t)y1,
+                      (int16_t)x2, (int16_t)y2, (fmrb_color_t)color);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -228,15 +213,9 @@ static mrb_value mrb_gfx_draw_rect(mrb_state *mrb, mrb_value self)
     }
 
     // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_RECT,
-        .canvas_id = data->canvas_id,
-        .params.rect = {
-            .rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h},
-            .color = (fmrb_color_t)color,
-            .filled = false
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_rect(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                      (uint16_t)w, (uint16_t)h, (fmrb_color_t)color, false);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -261,15 +240,9 @@ static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
               (int)x, (int)y, (int)w, (int)h, (int)color, data->canvas_id);
 
     // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_RECT,
-        .canvas_id = data->canvas_id,
-        .params.rect = {
-            .rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h},
-            .color = (fmrb_color_t)color,
-            .filled = true
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_rect(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                      (uint16_t)w, (uint16_t)h, (fmrb_color_t)color, true);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -294,15 +267,10 @@ static mrb_value mrb_gfx_blend_rect(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_BLEND_RECT,
-        .canvas_id = data->canvas_id,
-        .params.blend_rect = {
-            .rect = {(int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h},
-            .color = (fmrb_color_t)color,
-            .mode = (uint8_t)mode
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_blend_rect(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                            (uint16_t)w, (uint16_t)h, (fmrb_color_t)color,
+                            (uint8_t)mode);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -324,17 +292,9 @@ static mrb_value mrb_gfx_draw_circle(mrb_state *mrb, mrb_value self)
     }
 
     // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_CIRCLE,
-        .canvas_id = data->canvas_id,
-        .params.circle = {
-            .x = (int16_t)x,
-            .y = (int16_t)y,
-            .radius = (int16_t)r,
-            .color = (fmrb_color_t)color,
-            .filled = false
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_circle(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                        (int16_t)r, (fmrb_color_t)color, false);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -359,17 +319,9 @@ static mrb_value mrb_gfx_fill_circle(mrb_state *mrb, mrb_value self)
               (int)x, (int)y, (int)r, (int)color, data->canvas_id);
 
     // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_CIRCLE,
-        .canvas_id = data->canvas_id,
-        .params.circle = {
-            .x = (int16_t)x,
-            .y = (int16_t)y,
-            .radius = (int16_t)r,
-            .color = (fmrb_color_t)color,
-            .filled = true
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_circle(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                        (int16_t)r, (fmrb_color_t)color, true);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -387,9 +339,10 @@ static mrb_value mrb_gfx_draw_round_rect(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iiiiii", &x, &y, &w, &h, &r, &color);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ROUND_RECT, .canvas_id = data->canvas_id,
-        .params.round_rect = { .x=(int16_t)x, .y=(int16_t)y, .w=(int16_t)w, .h=(int16_t)h,
-                               .radius=(int16_t)r, .color=(fmrb_color_t)color, .filled=false }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_round_rect(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                            (int16_t)w, (int16_t)h, (int16_t)r,
+                            (fmrb_color_t)color, false);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw round rect failed: %d", ret);
     return self;
@@ -402,9 +355,10 @@ static mrb_value mrb_gfx_fill_round_rect(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iiiiii", &x, &y, &w, &h, &r, &color);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ROUND_RECT, .canvas_id = data->canvas_id,
-        .params.round_rect = { .x=(int16_t)x, .y=(int16_t)y, .w=(int16_t)w, .h=(int16_t)h,
-                               .radius=(int16_t)r, .color=(fmrb_color_t)color, .filled=true }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_round_rect(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                            (int16_t)w, (int16_t)h, (int16_t)r,
+                            (fmrb_color_t)color, true);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill round rect failed: %d", ret);
     return self;
@@ -417,9 +371,9 @@ static mrb_value mrb_gfx_draw_ellipse(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iiiii", &x, &y, &rx, &ry, &color);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ELLIPSE, .canvas_id = data->canvas_id,
-        .params.ellipse = { .x=(int16_t)x, .y=(int16_t)y, .rx=(int16_t)rx, .ry=(int16_t)ry,
-                            .color=(fmrb_color_t)color, .filled=false }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_ellipse(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                         (int16_t)rx, (int16_t)ry, (fmrb_color_t)color, false);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw ellipse failed: %d", ret);
     return self;
@@ -432,9 +386,9 @@ static mrb_value mrb_gfx_fill_ellipse(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iiiii", &x, &y, &rx, &ry, &color);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ELLIPSE, .canvas_id = data->canvas_id,
-        .params.ellipse = { .x=(int16_t)x, .y=(int16_t)y, .rx=(int16_t)rx, .ry=(int16_t)ry,
-                            .color=(fmrb_color_t)color, .filled=true }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_ellipse(&cmd, data->canvas_id, (int16_t)x, (int16_t)y,
+                         (int16_t)rx, (int16_t)ry, (fmrb_color_t)color, true);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill ellipse failed: %d", ret);
     return self;
@@ -447,9 +401,10 @@ static mrb_value mrb_gfx_draw_triangle(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iiiiiii", &x0, &y0, &x1, &y1, &x2, &y2, &color);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_TRIANGLE, .canvas_id = data->canvas_id,
-        .params.triangle = { .x0=(int16_t)x0, .y0=(int16_t)y0, .x1=(int16_t)x1, .y1=(int16_t)y1,
-                             .x2=(int16_t)x2, .y2=(int16_t)y2, .color=(fmrb_color_t)color, .filled=false }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_triangle(&cmd, data->canvas_id, (int16_t)x0, (int16_t)y0,
+                          (int16_t)x1, (int16_t)y1, (int16_t)x2, (int16_t)y2,
+                          (fmrb_color_t)color, false);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw triangle failed: %d", ret);
     return self;
@@ -462,9 +417,10 @@ static mrb_value mrb_gfx_fill_triangle(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iiiiiii", &x0, &y0, &x1, &y1, &x2, &y2, &color);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_TRIANGLE, .canvas_id = data->canvas_id,
-        .params.triangle = { .x0=(int16_t)x0, .y0=(int16_t)y0, .x1=(int16_t)x1, .y1=(int16_t)y1,
-                             .x2=(int16_t)x2, .y2=(int16_t)y2, .color=(fmrb_color_t)color, .filled=true }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_triangle(&cmd, data->canvas_id, (int16_t)x0, (int16_t)y0,
+                          (int16_t)x1, (int16_t)y1, (int16_t)x2, (int16_t)y2,
+                          (fmrb_color_t)color, true);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill triangle failed: %d", ret);
     return self;
@@ -477,10 +433,10 @@ static mrb_value mrb_gfx_draw_arc(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iiiiiii", &x, &y, &r0, &r1, &angle0, &angle1, &color);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ARC, .canvas_id = data->canvas_id,
-        .params.arc = { .x=(int16_t)x, .y=(int16_t)y, .r0=(int16_t)r0, .r1=(int16_t)r1,
-                        .angle0=(int16_t)angle0, .angle1=(int16_t)angle1,
-                        .color=(fmrb_color_t)color, .filled=false }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_arc(&cmd, data->canvas_id, (int16_t)x, (int16_t)y, (int16_t)r0,
+                     (int16_t)r1, (int16_t)angle0, (int16_t)angle1,
+                     (fmrb_color_t)color, false);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Draw arc failed: %d", ret);
     return self;
@@ -493,10 +449,10 @@ static mrb_value mrb_gfx_fill_arc(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "iiiiiii", &x, &y, &r0, &r1, &angle0, &angle1, &color);
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_ARC, .canvas_id = data->canvas_id,
-        .params.arc = { .x=(int16_t)x, .y=(int16_t)y, .r0=(int16_t)r0, .r1=(int16_t)r1,
-                        .angle0=(int16_t)angle0, .angle1=(int16_t)angle1,
-                        .color=(fmrb_color_t)color, .filled=true }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_arc(&cmd, data->canvas_id, (int16_t)x, (int16_t)y, (int16_t)r0,
+                     (int16_t)r1, (int16_t)angle0, (int16_t)angle1,
+                     (fmrb_color_t)color, true);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill arc failed: %d", ret);
     return self;
@@ -511,8 +467,8 @@ static mrb_value mrb_gfx_set_text_size(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     if (size < 1) size = 1;
     if (size > 4) size = 4;
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_TEXT_SIZE, .canvas_id = data->canvas_id,
-        .params.text_size = { .size = (uint8_t)size }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_text_size(&cmd, data->canvas_id, (uint8_t)size);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Set text size failed: %d", ret);
     return self;
@@ -549,11 +505,8 @@ static mrb_value mrb_gfx_set_font(mrb_state *mrb, mrb_value self)
         mrb_raisef(mrb, E_ARGUMENT_ERROR, "set_font: unknown family :%s (expected :default or :ja)", family_name);
     }
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_SET_FONT,
-        .canvas_id = data->canvas_id,
-        .params.set_font = { .family = family, .size = (uint8_t)size }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_set_font(&cmd, data->canvas_id, family, (uint8_t)size);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Set font failed: %d", ret);
     return self;
@@ -586,21 +539,10 @@ static mrb_value draw_text_impl(mrb_state *mrb, mrb_value self, uint8_t hybrid_m
               (int)x, (int)y, text, (int)color, (int)bg_color, !bg_given, hybrid_mode, data->canvas_id);
 
     // Send GFX command to Host Task
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_TEXT,
-        .canvas_id = data->canvas_id,
-        .params.text = {
-            .x = (int16_t)x,
-            .y = (int16_t)y,
-            .color = (fmrb_color_t)color,
-            .bg_color = (fmrb_color_t)bg_color,
-            .bg_transparent = !bg_given,
-            .font_size = FMRB_FONT_SIZE_MEDIUM,
-            .hybrid_mode = hybrid_mode
-        }
-    };
-    strncpy(cmd.params.text.text, text, sizeof(cmd.params.text.text) - 1);
-    cmd.params.text.text[sizeof(cmd.params.text.text) - 1] = '\0';
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_text(&cmd, data->canvas_id, (int16_t)x, (int16_t)y, text,
+                      (fmrb_color_t)color, (fmrb_color_t)bg_color, !bg_given,
+                      FMRB_FONT_SIZE_MEDIUM, hybrid_mode);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -650,15 +592,12 @@ static mrb_value mrb_gfx_present(mrb_state *mrb, mrb_value self)
     bool explicit_pos = (px != INT32_MIN && py != INT32_MIN);
 
     // Send PRESENT command to Host Task with the target position
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_PRESENT,
-        .canvas_id = data->canvas_id,
-        .params.present = {
-            .x = explicit_pos ? (int16_t)px : (int16_t)ctx->window_pos_x,
-            .y = explicit_pos ? (int16_t)py : (int16_t)ctx->window_pos_y,
-            .transparent_color = 0xFF  // No transparency by default
-        }
-    };
+    // 0xFF = no transparency by default.
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_present(&cmd, data->canvas_id,
+                         explicit_pos ? (int16_t)px : (int16_t)ctx->window_pos_x,
+                         explicit_pos ? (int16_t)py : (int16_t)ctx->window_pos_y,
+                         0xFF);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -896,18 +835,11 @@ static mrb_value mrb_gfx_draw_image(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_DRAW_IMAGE,
-        .canvas_id = data->canvas_id,
-        .params.draw_image = {
-            .image_id = (uint16_t)image_id,
-            .x = (int16_t)x,
-            .y = (int16_t)y,
-            .flags = 0,
-            .scale_x_fp8 = (int16_t)(scale_x * 256.0f),
-            .scale_y_fp8 = (int16_t)(scale_y * 256.0f)
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_draw_image(&cmd, data->canvas_id, (uint16_t)image_id,
+                            (int16_t)x, (int16_t)y, 0,
+                            (int16_t)(scale_x * 256.0f),
+                            (int16_t)(scale_y * 256.0f));
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -928,13 +860,8 @@ static mrb_value mrb_gfx_delete_image(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_DELETE_IMAGE,
-        .canvas_id = data->canvas_id,
-        .params.delete_image = {
-            .image_id = (uint16_t)image_id
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_delete_image(&cmd, data->canvas_id, (uint16_t)image_id);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -1115,11 +1042,8 @@ static mrb_value mrb_gfx_delete_mask(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_DELETE_MASK,
-        .canvas_id = data->canvas_id,
-        .params.delete_mask = { .mask_id = (uint16_t)mask_id }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_delete_mask(&cmd, data->canvas_id, (uint16_t)mask_id);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "delete_mask failed: %d", ret);
@@ -1141,16 +1065,9 @@ static mrb_value mrb_gfx_draw_image_masked(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_DRAW_IMAGE_MASKED,
-        .canvas_id = data->canvas_id,
-        .params.draw_image_masked = {
-            .image_id = (uint16_t)image_id,
-            .mask_id = (uint16_t)mask_id,
-            .x = (int16_t)x,
-            .y = (int16_t)y,
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_draw_image_masked(&cmd, data->canvas_id, (uint16_t)image_id,
+                                   (uint16_t)mask_id, (int16_t)x, (int16_t)y);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "draw_image_masked failed: %d", ret);
@@ -1171,19 +1088,10 @@ static mrb_value mrb_gfx_draw_tile(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_DRAW_TILE,
-        .canvas_id = data->canvas_id,
-        .params.draw_tile = {
-            .image_id = (uint16_t)image_id,
-            .src_x = (int16_t)src_x,
-            .src_y = (int16_t)src_y,
-            .w = (uint16_t)w,
-            .h = (uint16_t)h,
-            .dst_x = (int16_t)dst_x,
-            .dst_y = (int16_t)dst_y,
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_draw_tile(&cmd, data->canvas_id, (uint16_t)image_id,
+                           (int16_t)src_x, (int16_t)src_y, (uint16_t)w,
+                           (uint16_t)h, (int16_t)dst_x, (int16_t)dst_y);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "draw_tile failed: %d", ret);
@@ -1257,8 +1165,8 @@ static mrb_value mrb_gfx_set_output_level(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     if (level < 0) level = 0;
     if (level > 255) level = 255;
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_SET_OUTPUT_LEVEL, .canvas_id = data->canvas_id,
-        .params.set_output_level = { .level = (uint8_t)level }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_set_output_level(&cmd, data->canvas_id, (uint8_t)level);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Set output level failed: %d", ret);
     return self;
@@ -1272,8 +1180,8 @@ static mrb_value mrb_gfx_set_chroma_level(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     if (level < 0) level = 0;
     if (level > 255) level = 255;
-    gfx_cmd_t cmd = { .cmd_type = GFX_CMD_SET_CHROMA_LEVEL, .canvas_id = data->canvas_id,
-        .params.set_chroma_level = { .level = (uint8_t)level }};
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_set_chroma_level(&cmd, data->canvas_id, (uint8_t)level);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) mrb_raisef(mrb, E_RUNTIME_ERROR, "Set chroma level failed: %d", ret);
     return self;
@@ -1344,13 +1252,8 @@ static mrb_value mrb_gfx_load_sprite_image_bmp(mrb_state *mrb, mrb_value self)
     if (!data || !data->ctx) return self;
 
     gfx_cmd_t cmd;
-    memset(&cmd, 0, sizeof(cmd));
-    cmd.cmd_type = GFX_CMD_LOAD_SPRITE_IMAGE_BMP;
-    cmd.canvas_id = data->canvas_id;
-    cmd.params.load_sprite_image_bmp.image_id = (uint16_t)image_id;
-    size_t path_len = strnlen(path, sizeof(cmd.params.load_sprite_image_bmp.path) - 1);
-    memcpy(cmd.params.load_sprite_image_bmp.path, path, path_len);
-    cmd.params.load_sprite_image_bmp.path[path_len] = '\0';
+    fmrb_gfx_cmd_load_sprite_image_bmp(&cmd, data->canvas_id, (uint16_t)image_id,
+                                       path);
 
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
@@ -1366,11 +1269,8 @@ static mrb_value mrb_gfx_delete_sprite_image(mrb_state *mrb, mrb_value self)
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_DELETE_SPRITE_IMAGE,
-        .canvas_id = data->canvas_id,
-        .params.delete_sprite_image = { .image_id = (uint16_t)image_id }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_delete_sprite_image(&cmd, data->canvas_id, (uint16_t)image_id);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "delete_sprite_image fmrb_gfx_submit failed: %d", ret);
@@ -1389,11 +1289,9 @@ static mrb_value mrb_gfx_set_sprite_image_target(mrb_state *mrb, mrb_value self)
     // order with the surrounding pixel commands. Bypassing the queue (calling
     // fmrb_gfx_set_sprite_image_target directly) lets target=0 race past the
     // tail of a sprite draw and clips the bottom-right pixels.
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_SET_SPRITE_IMAGE_TARGET,
-        .canvas_id = data->canvas_id,
-        .params.set_sprite_image_target = { .image_id = (uint16_t)image_id }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_set_sprite_image_target(&cmd, data->canvas_id,
+                                         (uint16_t)image_id);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "set_sprite_image_target fmrb_gfx_submit failed: %d", ret);
@@ -1427,11 +1325,9 @@ static mrb_value mrb_gfx_delete_sprite_instance(mrb_state *mrb, mrb_value self)
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_DELETE_SPRITE_INSTANCE,
-        .canvas_id = data->canvas_id,
-        .params.delete_sprite_instance = { .instance_id = (uint16_t)instance_id }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_delete_sprite_instance(&cmd, data->canvas_id,
+                                        (uint16_t)instance_id);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "delete_sprite_instance fmrb_gfx_submit failed: %d", ret);
@@ -1466,15 +1362,10 @@ static mrb_value mrb_gfx_sprite_move(mrb_state *mrb, mrb_value self)
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_SPRITE_INSTANCE_MOVE,
-        .canvas_id = data->canvas_id,
-        .params.sprite_instance_move = {
-            .instance_id = (uint16_t)instance_id,
-            .x = (int16_t)x,
-            .y = (int16_t)y
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_sprite_instance_move(&cmd, data->canvas_id,
+                                      (uint16_t)instance_id, (int16_t)x,
+                                      (int16_t)y);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "sprite_move fmrb_gfx_submit failed: %d", ret);
@@ -1490,14 +1381,9 @@ static mrb_value mrb_gfx_sprite_visible(mrb_state *mrb, mrb_value self)
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_SPRITE_INSTANCE_SET_VISIBLE,
-        .canvas_id = data->canvas_id,
-        .params.sprite_instance_set_visible = {
-            .instance_id = (uint16_t)instance_id,
-            .visible = visible ? 1 : 0
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_sprite_instance_set_visible(&cmd, data->canvas_id,
+                                             (uint16_t)instance_id, visible);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "sprite_visible fmrb_gfx_submit failed: %d", ret);
@@ -1512,14 +1398,10 @@ static mrb_value mrb_gfx_sprite_frame(mrb_state *mrb, mrb_value self)
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_SPRITE_INSTANCE_SET_FRAME,
-        .canvas_id = data->canvas_id,
-        .params.sprite_instance_set_frame = {
-            .instance_id = (uint16_t)instance_id,
-            .frame_index = (uint8_t)frame_index
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_sprite_instance_set_frame(&cmd, data->canvas_id,
+                                           (uint16_t)instance_id,
+                                           (uint8_t)frame_index);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "sprite_frame fmrb_gfx_submit failed: %d", ret);
@@ -1532,10 +1414,8 @@ static mrb_value mrb_gfx_delete_all_sprites(mrb_state *mrb, mrb_value self)
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) return self;
 
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_DELETE_ALL_SPRITES,
-        .canvas_id = data->canvas_id,
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_delete_all_sprites(&cmd, data->canvas_id);
     fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "delete_all_sprites fmrb_gfx_submit failed: %d", ret);

@@ -82,3 +82,65 @@ Lua/BASIC がセマフォ方式に変わったことによる入力の詰まり�
   末尾の空要素を落とすため f[3] が nil になり、行ごとスキップされる。
   今回の検証では Shell の `run /app/demo/python.app.py` で起動した。
   Phase A の範囲外なので触っていない。
+
+## Phase B: コマンド組み立ての共通化 (2026-08-01)
+
+### 実装
+
+- `fmrb_gfx_cmd.h` に `fmrb_gfx_cmd_*` コンストラクタを 30 個定義した。
+  対象は 5 バインディングが組んでいた gfx_cmd_t の和集合 (mruby 版が全集)。
+  すべて `void fmrb_gfx_cmd_XXX(gfx_cmd_t *cmd, fmrb_canvas_handle_t
+  canvas_id, ...)` の形で、引数は対応する FmrbGfx メソッドの並び、型は
+  格納先フィールドの幅に合わせた (キャストは呼び出し側 1 回で済む)。
+- 文字列を持つ 2 つ (draw_text / load_sprite_image_bmp) は長さ指定版
+  `fmrb_gfx_cmd_text_n` / `fmrb_gfx_cmd_load_sprite_image_bmp_n` を本体に
+  し、NUL 終端版はその薄い皮にした。境界チェックは `cmd_copy_bytes` 1 箇所。
+- 全コンストラクタは `cmd_begin` で `memset(cmd, 0, sizeof(*cmd))` してから
+  埋める。
+- 5 バインディング + `main/app/fmrb_app.c` の gfx_cmd_t 組み立てを置換。
+
+### 気づき
+
+1. **Spinel の draw_text だけ NUL 終端でない**。FFI は Ruby 文字列を
+   (ptr, len) で渡すので、コンストラクタを NUL 終端前提にすると
+   Spinel だけ独自に組み立てが残る。長さ指定版を本体にして解決した。
+   BMP パスも同じ理由で `_n` 版が要る。
+2. **`main/app/fmrb_app.c` に 6 番目の組み立て箇所があった** (README の
+   5 実装に入っていない)。ウィンドウ移動時に PRESENT を送るカーネル側の
+   処理で、`g_ctx_lock` を保持したままカーネルタスクから他アプリの
+   canvas に送るため、**fmrb_gfx_submit は使えない** (アプリ用フロー
+   セマフォで待つとロックを持ったままブロックする、src_pid も
+   PROC_ID_KERNEL)。組み立てだけコンストラクタに置き換え、送出は
+   その場に残してコメントで理由を書いた。
+3. コンストラクタが全体を memset するので、`get_pixel` 以外で `sync` に
+   ゴミが載る事故が構造的に起きなくなった。以前は指定初期化子に頼っていた。
+
+### 検証 (headless, Linux ターゲット)
+
+変更前 (Phase A 時点) と変更後で同じデモを撮って比較した。
+
+| 対象 | 差分 |
+|---|---|
+| mruby Shapes | アプリ描画領域は完全一致 (差分はカーソル位置・時計・背後の別ウィンドウのみ) |
+| BASIC basic.app.bas | 画面全体が 1 ピクセルも違わない |
+| Lua lua.app.lua | 枠・文字とも一致 (経過秒表示のみ変化) |
+| Python Shapes ページ | 完全一致 |
+| Python Lines ページ | 完全一致 |
+| Spinel デスクトップ + Shapes | 一致 (差分はカーソル位置のみ) |
+
+Python は閉じるボタンで終了 (Reaped ログ確認)、Spinel 構成の Shapes も
+同様。`grep -rn "GFX_CMD_\|\.params\."` の残りは host_task / fmrb_gfx 側の
+実装と file_cmd_t (対象外) のみで、バインディングには 0 件。
+
+### ビルド
+
+| 構成 | 結果 | サイズ |
+|---|---|---|
+| linux (mruby デスクトップ) | OK | - |
+| linux (spinel デスクトップ) | OK | - |
+| esp32s3 (`rake build:esp32`) | OK | 0x255EC0 (2,449,088 B) |
+| esp32p4 (`FMRB_HW_TARGET=TAB5 rake build:esp32`) | OK | 0x3DBCD0 (4,046,032 B) |
+
+S3 は Phase A 時点 (0x256160) から **672 バイト減**った。5 バインディングに
+散っていた組み立てコードがコンストラクタ 1 本に集約されたぶんが、関数呼び出しの
+増加を上回っている。P4 は Phase A では測っていないので比較値は無い。

@@ -26,6 +26,7 @@
 #include "fmrb_transport.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_gfx.h"
+#include "fmrb_gfx_cmd.h"
 #include "fmrb_gfx_msg.h"
 #include "fmrb_msg.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
@@ -2344,16 +2345,13 @@ fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y) 
     ctx->window_pos_x = x;
     ctx->window_pos_y = y;
 
-    // Send PRESENT command to Host to reflect new position immediately
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_PRESENT,
-        .canvas_id = ctx->canvas_id,
-        .params.present = {
-            .x = (int16_t)x,
-            .y = (int16_t)y,
-            .transparent_color = 0xFF  // No transparency
-        }
-    };
+    // Send PRESENT command to Host to reflect new position immediately.
+    // Not fmrb_gfx_submit(): this runs on the kernel task on behalf of another
+    // app and holds g_ctx_lock, so it must not block on the app flow-control
+    // semaphore, and the message comes from the kernel rather than the app.
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_present(&cmd, ctx->canvas_id, (int16_t)x, (int16_t)y,
+                         0xFF);  // 0xFF = no transparency
 
     fmrb_msg_t msg = {
         .type = FMRB_MSG_TYPE_APP_GFX,

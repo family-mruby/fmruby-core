@@ -190,121 +190,70 @@ bool fmrb_mp_bridge_is_file_app(void) {
 }
 
 int fmrb_mp_gfx_clear(int canvas_id, int color) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_CLEAR,
-        .canvas_id = (fmrb_canvas_handle_t)canvas_id,
-        .params.clear = { .color = (fmrb_color_t)color }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_clear(&cmd, (fmrb_canvas_handle_t)canvas_id, (fmrb_color_t)color);
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_set_pixel(int canvas_id, int x, int y, int color) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_PIXEL,
-        .canvas_id = (fmrb_canvas_handle_t)canvas_id,
-        .params.pixel = { .x = (int16_t)x, .y = (int16_t)y, .color = (fmrb_color_t)color }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_pixel(&cmd, (fmrb_canvas_handle_t)canvas_id, (int16_t)x, (int16_t)y,
+                       (fmrb_color_t)color);
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_draw_line(int canvas_id, int x0, int y0, int x1, int y1, int color) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_LINE,
-        .canvas_id = (fmrb_canvas_handle_t)canvas_id,
-        .params.line = {
-            .x1 = (int16_t)x0, .y1 = (int16_t)y0,
-            .x2 = (int16_t)x1, .y2 = (int16_t)y1,
-            .color = (fmrb_color_t)color
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_line(&cmd, (fmrb_canvas_handle_t)canvas_id, (int16_t)x0, (int16_t)y0,
+                      (int16_t)x1, (int16_t)y1, (fmrb_color_t)color);
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_rect(int canvas_id, int x, int y, int w, int h, int color, bool filled) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_RECT,
-        .canvas_id = (fmrb_canvas_handle_t)canvas_id,
-        .params.rect = {
-            .rect = { (int16_t)x, (int16_t)y, (uint16_t)w, (uint16_t)h },
-            .color = (fmrb_color_t)color,
-            .filled = filled
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_rect(&cmd, (fmrb_canvas_handle_t)canvas_id, (int16_t)x, (int16_t)y,
+                      (uint16_t)w, (uint16_t)h, (fmrb_color_t)color, filled);
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_circle(int canvas_id, int x, int y, int r, int color, bool filled) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_CIRCLE,
-        .canvas_id = (fmrb_canvas_handle_t)canvas_id,
-        .params.circle = {
-            .x = (int16_t)x, .y = (int16_t)y, .radius = (int16_t)r,
-            .color = (fmrb_color_t)color, .filled = filled
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_circle(&cmd, (fmrb_canvas_handle_t)canvas_id, (int16_t)x, (int16_t)y,
+                        (int16_t)r, (fmrb_color_t)color, filled);
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_round_rect(int canvas_id, int x, int y, int w, int h, int r, int color,
                            bool filled) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_ROUND_RECT,
-        .canvas_id = (fmrb_canvas_handle_t)canvas_id,
-        .params.round_rect = {
-            .x = (int16_t)x, .y = (int16_t)y,
-            .w = (int16_t)w, .h = (int16_t)h,
-            .radius = (int16_t)r,
-            .color = (fmrb_color_t)color, .filled = filled
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_round_rect(&cmd, (fmrb_canvas_handle_t)canvas_id, (int16_t)x, (int16_t)y,
+                            (int16_t)w, (int16_t)h, (int16_t)r, (fmrb_color_t)color,
+                            filled);
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_ellipse(int canvas_id, int x, int y, int rx, int ry, int color, bool filled) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_ELLIPSE,
-        .canvas_id = (fmrb_canvas_handle_t)canvas_id,
-        .params.ellipse = {
-            .x = (int16_t)x, .y = (int16_t)y,
-            .rx = (int16_t)rx, .ry = (int16_t)ry,
-            .color = (fmrb_color_t)color, .filled = filled
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_ellipse(&cmd, (fmrb_canvas_handle_t)canvas_id, (int16_t)x, (int16_t)y,
+                         (int16_t)rx, (int16_t)ry, (fmrb_color_t)color, filled);
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_triangle(int canvas_id, int x0, int y0, int x1, int y1, int x2, int y2,
                          int color, bool filled) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_TRIANGLE,
-        .canvas_id = (fmrb_canvas_handle_t)canvas_id,
-        .params.triangle = {
-            .x0 = (int16_t)x0, .y0 = (int16_t)y0,
-            .x1 = (int16_t)x1, .y1 = (int16_t)y1,
-            .x2 = (int16_t)x2, .y2 = (int16_t)y2,
-            .color = (fmrb_color_t)color, .filled = filled
-        }
-    };
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_triangle(&cmd, (fmrb_canvas_handle_t)canvas_id, (int16_t)x0, (int16_t)y0,
+                          (int16_t)x1, (int16_t)y1, (int16_t)x2, (int16_t)y2,
+                          (fmrb_color_t)color, filled);
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_draw_text(int canvas_id, int x, int y, const char *text, int color,
                           int bg_color, bool has_bg) {
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_TEXT,
-        .canvas_id = (fmrb_canvas_handle_t)canvas_id,
-        .params.text = {
-            .x = (int16_t)x,
-            .y = (int16_t)y,
-            .color = (fmrb_color_t)color,
-            .bg_color = (fmrb_color_t)bg_color,
-            .bg_transparent = !has_bg,
-            .font_size = FMRB_FONT_SIZE_MEDIUM,
-            .hybrid_mode = 0
-        }
-    };
-    strncpy(cmd.params.text.text, text ? text : "", sizeof(cmd.params.text.text) - 1);
-    cmd.params.text.text[sizeof(cmd.params.text.text) - 1] = '\0';
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_text(&cmd, (fmrb_canvas_handle_t)canvas_id, (int16_t)x, (int16_t)y, text,
+                      (fmrb_color_t)color, (fmrb_color_t)bg_color, !has_bg,
+                      FMRB_FONT_SIZE_MEDIUM, 0);
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
@@ -313,16 +262,11 @@ int fmrb_mp_gfx_present(int canvas_id, int x, int y, bool explicit_pos) {
     if (!ctx) {
         return -1;
     }
-    gfx_cmd_t cmd = {
-        .cmd_type = GFX_CMD_PRESENT,
-        .canvas_id = (fmrb_canvas_handle_t)canvas_id,
-        .params.present = {
-            .x = explicit_pos ? (int16_t)x : (int16_t)ctx->window_pos_x,
-            .y = explicit_pos ? (int16_t)y : (int16_t)ctx->window_pos_y,
-            .transparent_color = 0xFF  // no transparency; the canvas colour key
-                                       // handles the rounded corners
-        }
-    };
+    // 0xFF = no transparency; the canvas colour key handles rounded corners.
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_present(&cmd, (fmrb_canvas_handle_t)canvas_id,
+                         explicit_pos ? (int16_t)x : (int16_t)ctx->window_pos_x,
+                         explicit_pos ? (int16_t)y : (int16_t)ctx->window_pos_y, 0xFF);
     return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
