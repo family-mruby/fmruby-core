@@ -9,6 +9,7 @@
 #include "fmrb_hid_msg.h"
 #include "host_task.h"
 #include "fmrb_gfx.h"
+#include "fmrb_gfx_cmd.h"
 #include "fmrb_audio.h"
 #include "fmrb_kernel.h"
 #include "boot.h"
@@ -1744,6 +1745,12 @@ int fmrb_host_task_init(void)
         return -1;
     }
 
+    // Everything the queue needs is up, so hand the semaphore to the shared
+    // submit path: from here on every language binding meters its drawing
+    // through this one semaphore. The error paths above bail out before this,
+    // leaving fmrb_gfx with no semaphore rather than a deleted one.
+    fmrb_gfx_set_flow_semaphore(g_host_gfx_queue_semaphore);
+
     return 0;
 }
 
@@ -1764,6 +1771,7 @@ void fmrb_host_task_deinit(void)
 
     // Delete GFX queue semaphore
     if (g_host_gfx_queue_semaphore) {
+        fmrb_gfx_set_flow_semaphore(NULL);
         fmrb_semaphore_delete(g_host_gfx_queue_semaphore);
         g_host_gfx_queue_semaphore = NULL;
     }
@@ -1933,11 +1941,6 @@ int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value)
         .data.gamepad_axis.value = value
     };
     return fmrb_host_send_message(&msg);
-}
-
-fmrb_semaphore_t fmrb_host_get_gfx_queue_semaphore(void)
-{
-    return g_host_gfx_queue_semaphore;
 }
 
 void fmrb_host_get_gfx_counters(uint32_t *out_cmds, uint32_t *out_presents)

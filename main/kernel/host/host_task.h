@@ -73,19 +73,6 @@ int fmrb_host_send_gamepad_button(int gamepad_id, int button_num, int state);
 int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value);
 
 /**
- * @brief Get HOST task GFX queue semaphore for flow control
- * @return Semaphore handle, or NULL if not initialized
- *
- * This semaphore is used to prevent graphics commands from overflowing
- * the HOST message queue. App tasks should acquire this semaphore before
- * sending GFX messages to HOST task, and HOST task releases it after
- * processing each GFX command.
- *
- * HID events do NOT use this semaphore - they always have reserved space.
- */
-fmrb_semaphore_t fmrb_host_get_gfx_queue_semaphore(void);
-
-/**
  * @brief Allow the on-screen cursor to appear on the next mouse event.
  *
  * The cursor stays hidden after boot until this is called, so the boot

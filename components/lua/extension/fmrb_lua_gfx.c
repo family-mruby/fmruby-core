@@ -2,8 +2,8 @@
 #include "lauxlib.h"
 #include "fmrb_app.h"
 #include "fmrb_gfx.h"
+#include "fmrb_gfx_cmd.h"
 #include "fmrb_gfx_msg.h"
-#include "fmrb_msg.h"
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
 #include <string.h>
@@ -15,37 +15,6 @@ typedef struct {
     fmrb_gfx_context_t ctx;
     fmrb_canvas_handle_t canvas_id;
 } lua_gfx_data;
-
-// Helper function to send GFX command message to Host Task
-static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx) {
-        FMRB_LOGE(TAG, "Failed to get current task context");
-        return FMRB_ERR_INVALID_STATE;
-    }
-
-    fmrb_msg_t msg = {
-        .type = FMRB_MSG_TYPE_APP_GFX,
-        .src_pid = ctx->app_id,
-        .size = sizeof(gfx_cmd_t)
-    };
-    memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
-
-    // Retry up to 3 times with longer timeout for graphics commands
-    fmrb_err_t ret = FMRB_ERR_TIMEOUT;
-    for (int retry = 0; retry < 3; retry++) {
-        ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
-        if (ret == FMRB_OK) {
-            break;
-        }
-        FMRB_LOGW(TAG, "Failed to send graphics command, retry %d/3", retry + 1);
-        fmrb_task_delay(FMRB_MS_TO_TICKS(100));  // Wait 100ms before retry
-    }
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Graphics command dropped after 3 retries");
-    }
-    return ret;
-}
 
 // Create new graphics object: gfx = FmrbGfx.new(canvas_id)
 static int lua_gfx_new(lua_State* L) {
@@ -100,7 +69,7 @@ static int lua_gfx_fill_rect(lua_State* L) {
         }
     };
 
-    fmrb_err_t ret = send_gfx_command(&cmd);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         return luaL_error(L, "fillRect failed: %d", ret);
     }
@@ -133,7 +102,7 @@ static int lua_gfx_draw_rect(lua_State* L) {
         }
     };
 
-    fmrb_err_t ret = send_gfx_command(&cmd);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         return luaL_error(L, "drawRect failed: %d", ret);
     }
@@ -180,7 +149,7 @@ static int lua_gfx_draw_string(lua_State* L) {
     strncpy(cmd.params.text.text, text, sizeof(cmd.params.text.text) - 1);
     cmd.params.text.text[sizeof(cmd.params.text.text) - 1] = '\0';
 
-    fmrb_err_t ret = send_gfx_command(&cmd);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         return luaL_error(L, "drawString failed: %d", ret);
     }
@@ -214,7 +183,7 @@ static int lua_gfx_present(lua_State* L) {
         }
     };
 
-    fmrb_err_t ret = send_gfx_command(&cmd);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         return luaL_error(L, "present failed: %d", ret);
     }
@@ -239,7 +208,7 @@ static int lua_gfx_clear(lua_State* L) {
         .params.clear.color = (fmrb_color_t)color
     };
 
-    fmrb_err_t ret = send_gfx_command(&cmd);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         return luaL_error(L, "clear failed: %d", ret);
     }
@@ -271,7 +240,7 @@ static int lua_gfx_draw_line(lua_State* L) {
         }
     };
 
-    fmrb_err_t ret = send_gfx_command(&cmd);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         return luaL_error(L, "draw_line failed: %d", ret);
     }
@@ -306,7 +275,7 @@ static int lua_gfx_fill_round_rect(lua_State* L) {
         }
     };
 
-    fmrb_err_t ret = send_gfx_command(&cmd);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         return luaL_error(L, "fill_round_rect failed: %d", ret);
     }
@@ -341,7 +310,7 @@ static int lua_gfx_draw_round_rect(lua_State* L) {
         }
     };
 
-    fmrb_err_t ret = send_gfx_command(&cmd);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         return luaL_error(L, "draw_round_rect failed: %d", ret);
     }
@@ -373,7 +342,7 @@ static int lua_gfx_fill_circle(lua_State* L) {
         }
     };
 
-    fmrb_err_t ret = send_gfx_command(&cmd);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     if (ret != FMRB_OK) {
         return luaL_error(L, "fill_circle failed: %d", ret);
     }

@@ -10,9 +10,8 @@
 
 #include "fmrb_basic_gfx.h"
 #include "basic_assets.h"
-#include "fmrb_msg.h"
+#include "fmrb_gfx_cmd.h"
 #include "fmrb_log.h"
-#include "fmrb_rtos.h"
 #include <string.h>
 
 static const char *TAG = "basic_gfx";
@@ -35,36 +34,6 @@ static const uint8_t COLOR_RGB332[64] = {
     /* 0x38 */ 0xDA, 0xBA, 0xBA, 0xBE, 0xBF, 0x00, 0x00, 0x00,
 };
 
-// Send graphics command to Host Task (same pattern as fmrb_lua_gfx.c)
-static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx) {
-        FMRB_LOGE(TAG, "Failed to get current task context");
-        return FMRB_ERR_INVALID_STATE;
-    }
-
-    fmrb_msg_t msg = {
-        .type = FMRB_MSG_TYPE_APP_GFX,
-        .src_pid = ctx->app_id,
-        .size = sizeof(gfx_cmd_t)
-    };
-    memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
-
-    fmrb_err_t ret = FMRB_ERR_TIMEOUT;
-    for (int retry = 0; retry < 3; retry++) {
-        ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
-        if (ret == FMRB_OK) {
-            break;
-        }
-        FMRB_LOGW(TAG, "Failed to send graphics command, retry %d/3", retry + 1);
-        fmrb_task_delay_ms(100);
-    }
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Graphics command dropped after 3 retries");
-    }
-    return ret;
-}
-
 static void fill_rect(basic_console_ctx_t* console, int16_t x, int16_t y,
                       uint16_t w, uint16_t h, uint8_t color) {
     gfx_cmd_t cmd = {
@@ -76,7 +45,7 @@ static void fill_rect(basic_console_ctx_t* console, int16_t x, int16_t y,
             .filled = true
         }
     };
-    send_gfx_command(&cmd);
+    fmrb_gfx_submit(&cmd);
 }
 
 // --- glyph sheet cache -----------------------------------------------------
@@ -95,7 +64,7 @@ static void set_image_target(basic_console_ctx_t* console, uint16_t image_id) {
         .canvas_id = console->canvas_id,
         .params.set_sprite_image_target = {.image_id = image_id}
     };
-    send_gfx_command(&cmd);
+    fmrb_gfx_submit(&cmd);
 }
 
 /// RGB332 for colour index 0-3 of an attribute group; 0 is the backdrop.
@@ -210,7 +179,7 @@ void basic_console_draw_cell(void* user_data, uint8_t x, uint8_t y, uint8_t code
                 .dst_y = py
             }
         };
-        send_gfx_command(&cmd);
+        fmrb_gfx_submit(&cmd);
     } else {
         // No sheet (out of image memory): fall back to drawing the runs.
         fill_rect(console, px, py, BASIC_SCREEN_CELL_W, BASIC_SCREEN_CELL_H,
@@ -282,7 +251,7 @@ void basic_console_present(void* user_data) {
             .transparent_color = 0xFF  // No transparency
         }
     };
-    send_gfx_command(&cmd);
+    fmrb_gfx_submit(&cmd);
 }
 
 /**
@@ -435,7 +404,7 @@ static void sprite_instance_visible(basic_console_ctx_t* console, uint16_t insta
             .visible = visible ? (uint8_t)1 : (uint8_t)0
         }
     };
-    send_gfx_command(&cmd);
+    fmrb_gfx_submit(&cmd);
 }
 
 /// Drop a slot's instance and artwork, so it can be rebuilt from scratch.
@@ -447,7 +416,7 @@ static void release_sprite_slot(basic_console_ctx_t* console,
             .canvas_id = console->canvas_id,
             .params.delete_sprite_instance = {.instance_id = slot->instance_id}
         };
-        send_gfx_command(&cmd);
+        fmrb_gfx_submit(&cmd);
         slot->instance_id = 0;
     }
     for (uint8_t f = 0; f < 2; f++) {
@@ -459,7 +428,7 @@ static void release_sprite_slot(basic_console_ctx_t* console,
             .canvas_id = console->canvas_id,
             .params.delete_sprite_image = {.image_id = slot->image_id[f]}
         };
-        send_gfx_command(&cmd);
+        fmrb_gfx_submit(&cmd);
         slot->image_id[f] = 0;
     }
     slot->visible = false;
@@ -619,7 +588,7 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
                 .frame_index = frame
             }
         };
-        send_gfx_command(&cmd);
+        fmrb_gfx_submit(&cmd);
         slot->frame_index = frame;
         changed = true;
     }
@@ -641,7 +610,7 @@ void basic_console_sprite_update(void* user_data, const basic_sprite_view* sprit
                 .y = py
             }
         };
-        send_gfx_command(&move);
+        fmrb_gfx_submit(&move);
         slot->x = px;
         slot->y = py;
         slot->pos_valid = true;
@@ -798,7 +767,7 @@ static void gfx_ops_circle(void* user_data, int16_t x, int16_t y,
             .filled = filled
         }
     };
-    send_gfx_command(&cmd);
+    fmrb_gfx_submit(&cmd);
     mark_dirty(console, 0, 0);
     mark_dirty(console, BASIC_SCREEN_COLS - 1, BASIC_SCREEN_ROWS - 1);
 }
@@ -842,7 +811,7 @@ void basic_console_destroy(basic_console_ctx_t* console) {
                 .canvas_id = console->canvas_id,
                 .params.delete_sprite_image = {.image_id = console->sheet_id[attr]}
             };
-            send_gfx_command(&cmd);
+            fmrb_gfx_submit(&cmd);
             console->sheet_id[attr] = 0;
         }
     }

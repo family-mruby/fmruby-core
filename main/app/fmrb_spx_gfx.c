@@ -15,9 +15,9 @@
 #include <stdint.h>
 #include "fmrb_app.h"
 #include "fmrb_gfx.h"
+#include "fmrb_gfx_cmd.h"
 #include "fmrb_gfx_msg.h"
 #include "fmrb_err.h"
-#include "fmrb_log.h"
 #include "fmrb_msg.h"
 #include "fmrb_mem.h"
 #include "fmrb_rtos.h"
@@ -26,55 +26,15 @@
 #include "fmrb_link_protocol.h"
 #include "fmrb_transport.h"
 #include "fmrb_file_transfer_msg.h"
-#include "host_task.h"
-
-static const char *TAG = "spxgfx";
 
 /* Byte length for :binstr FFI returns. Defined in fmrb_spx_kernel.c, which is
    compiled alongside this shim in every Spinel build. */
 extern int sp_net_bin_len;
 
-/* ---- shared submit helper (mirrors gfx.c send_gfx_command) --------------- */
-
-static fmrb_err_t spx_gfx_send(const gfx_cmd_t *cmd)
-{
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx) {
-        FMRB_LOGE(TAG, "no task context");
-        return FMRB_ERR_INVALID_STATE;
-    }
-
-    /* Reserve a HOST GFX queue slot (HID slots stay reserved separately). */
-    fmrb_semaphore_t sem = fmrb_host_get_gfx_queue_semaphore();
-    if (sem) {
-        fmrb_base_type_t sem_ret = fmrb_semaphore_take(sem, UINT32_MAX);
-        if (sem_ret != FMRB_PASS) {
-            FMRB_LOGE(TAG, "gfx queue semaphore take failed: %d", sem_ret);
-            return FMRB_ERR_TIMEOUT;
-        }
-    }
-
-    fmrb_msg_t msg = {
-        .type = FMRB_MSG_TYPE_APP_GFX,
-        .src_pid = ctx->app_id,
-        .size = sizeof(gfx_cmd_t),
-    };
-    memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
-
-    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "gfx send failed: %d", ret);
-        if (sem) {
-            fmrb_semaphore_give(sem);  /* release the slot we reserved */
-        }
-    }
-    return ret;
-}
-
 /* Submit a gfx_cmd_t and collapse the result to the shim convention. */
 static int spx_gfx_submit(const gfx_cmd_t *cmd)
 {
-    return spx_gfx_send(cmd) == FMRB_OK ? 0 : FMRB_SPX_ERR;
+    return fmrb_gfx_submit(cmd) == FMRB_OK ? 0 : FMRB_SPX_ERR;
 }
 
 /* ---- basic drawing primitives ------------------------------------------- */
@@ -119,7 +79,7 @@ int fmrb_spx_gfx_get_pixel(int canvas_id, int x, int y)
         .sync = &sync,
     };
 
-    if (spx_gfx_send(&cmd) != FMRB_OK) {
+    if (fmrb_gfx_submit(&cmd) != FMRB_OK) {
         fmrb_semaphore_delete(sync.done);
         return FMRB_SPX_ERR;
     }

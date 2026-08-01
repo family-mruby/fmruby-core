@@ -5,8 +5,8 @@
  * side of fmrb_mp_bridge.h, so fmrb_module.c stays preprocessable by the qstr
  * extractor (see modules/micropython.mk).
  *
- * The drawing calls build the same gfx_cmd_t the mruby binding builds and put
- * it on the same host task queue, semaphore and all, so a Python app competes
+ * The drawing calls build the same gfx_cmd_t the mruby binding builds and hand
+ * it to the same fmrb_gfx_submit(), semaphore and all, so a Python app competes
  * for graphics bandwidth on the same terms as every other app.
  */
 
@@ -15,11 +15,11 @@
 #include "fmrb_app.h"
 #include "fmrb_err.h"
 #include "fmrb_gfx.h"
+#include "fmrb_gfx_cmd.h"
 #include "fmrb_gfx_msg.h"
 #include "fmrb_log.h"
 #include "fmrb_msg.h"
 #include "fmrb_rtos.h"
-#include "host_task.h"
 
 #include "fmrb_mp_bridge.h"
 
@@ -34,47 +34,6 @@ _Static_assert(FMRB_MP_MSG_TYPE_APP_CONTROL == FMRB_MSG_TYPE_APP_CONTROL,
                "fmrb_module.c APP_CONTROL type no longer matches fmrb_msg.h");
 _Static_assert(FMRB_MP_MSG_TYPE_HID_EVENT == FMRB_MSG_TYPE_HID_EVENT,
                "fmrb_module.c HID_EVENT type no longer matches fmrb_msg.h");
-
-/**
- * Hand one command to the host task.
- *
- * The semaphore is the queue's back pressure: it keeps app drawing inside its
- * share of the host queue so HID events always have room. Blocking here is the
- * intended behaviour when an app draws faster than the graphics board can
- * consume.
- */
-static fmrb_err_t send_gfx_command(const gfx_cmd_t *cmd) {
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx) {
-        FMRB_LOGE(TAG, "No app context for graphics command");
-        return FMRB_ERR_INVALID_STATE;
-    }
-
-    fmrb_semaphore_t sem = fmrb_host_get_gfx_queue_semaphore();
-    if (sem) {
-        if (fmrb_semaphore_take(sem, UINT32_MAX) != FMRB_PASS) {
-            FMRB_LOGE(TAG, "Failed to acquire the graphics queue semaphore");
-            return FMRB_ERR_TIMEOUT;
-        }
-    }
-
-    fmrb_msg_t msg = {
-        .type = FMRB_MSG_TYPE_APP_GFX,
-        .src_pid = ctx->app_id,
-        .size = sizeof(gfx_cmd_t)
-    };
-    memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
-
-    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to send graphics command: %d", ret);
-        if (sem) {
-            fmrb_semaphore_give(sem);
-        }
-    }
-    // On success the host task releases the semaphore once it has the command.
-    return ret;
-}
 
 int fmrb_mp_bridge_app_init(fmrb_mp_app_info_t *out) {
     fmrb_app_task_context_t *ctx = fmrb_current();
@@ -236,7 +195,7 @@ int fmrb_mp_gfx_clear(int canvas_id, int color) {
         .canvas_id = (fmrb_canvas_handle_t)canvas_id,
         .params.clear = { .color = (fmrb_color_t)color }
     };
-    return send_gfx_command(&cmd) == FMRB_OK ? 0 : -1;
+    return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_set_pixel(int canvas_id, int x, int y, int color) {
@@ -245,7 +204,7 @@ int fmrb_mp_gfx_set_pixel(int canvas_id, int x, int y, int color) {
         .canvas_id = (fmrb_canvas_handle_t)canvas_id,
         .params.pixel = { .x = (int16_t)x, .y = (int16_t)y, .color = (fmrb_color_t)color }
     };
-    return send_gfx_command(&cmd) == FMRB_OK ? 0 : -1;
+    return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_draw_line(int canvas_id, int x0, int y0, int x1, int y1, int color) {
@@ -258,7 +217,7 @@ int fmrb_mp_gfx_draw_line(int canvas_id, int x0, int y0, int x1, int y1, int col
             .color = (fmrb_color_t)color
         }
     };
-    return send_gfx_command(&cmd) == FMRB_OK ? 0 : -1;
+    return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_rect(int canvas_id, int x, int y, int w, int h, int color, bool filled) {
@@ -271,7 +230,7 @@ int fmrb_mp_gfx_rect(int canvas_id, int x, int y, int w, int h, int color, bool 
             .filled = filled
         }
     };
-    return send_gfx_command(&cmd) == FMRB_OK ? 0 : -1;
+    return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_circle(int canvas_id, int x, int y, int r, int color, bool filled) {
@@ -283,7 +242,7 @@ int fmrb_mp_gfx_circle(int canvas_id, int x, int y, int r, int color, bool fille
             .color = (fmrb_color_t)color, .filled = filled
         }
     };
-    return send_gfx_command(&cmd) == FMRB_OK ? 0 : -1;
+    return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_round_rect(int canvas_id, int x, int y, int w, int h, int r, int color,
@@ -298,7 +257,7 @@ int fmrb_mp_gfx_round_rect(int canvas_id, int x, int y, int w, int h, int r, int
             .color = (fmrb_color_t)color, .filled = filled
         }
     };
-    return send_gfx_command(&cmd) == FMRB_OK ? 0 : -1;
+    return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_ellipse(int canvas_id, int x, int y, int rx, int ry, int color, bool filled) {
@@ -311,7 +270,7 @@ int fmrb_mp_gfx_ellipse(int canvas_id, int x, int y, int rx, int ry, int color, 
             .color = (fmrb_color_t)color, .filled = filled
         }
     };
-    return send_gfx_command(&cmd) == FMRB_OK ? 0 : -1;
+    return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_triangle(int canvas_id, int x0, int y0, int x1, int y1, int x2, int y2,
@@ -326,7 +285,7 @@ int fmrb_mp_gfx_triangle(int canvas_id, int x0, int y0, int x1, int y1, int x2, 
             .color = (fmrb_color_t)color, .filled = filled
         }
     };
-    return send_gfx_command(&cmd) == FMRB_OK ? 0 : -1;
+    return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_draw_text(int canvas_id, int x, int y, const char *text, int color,
@@ -346,7 +305,7 @@ int fmrb_mp_gfx_draw_text(int canvas_id, int x, int y, const char *text, int col
     };
     strncpy(cmd.params.text.text, text ? text : "", sizeof(cmd.params.text.text) - 1);
     cmd.params.text.text[sizeof(cmd.params.text.text) - 1] = '\0';
-    return send_gfx_command(&cmd) == FMRB_OK ? 0 : -1;
+    return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 int fmrb_mp_gfx_present(int canvas_id, int x, int y, bool explicit_pos) {
@@ -364,7 +323,7 @@ int fmrb_mp_gfx_present(int canvas_id, int x, int y, bool explicit_pos) {
                                        // handles the rounded corners
         }
     };
-    return send_gfx_command(&cmd) == FMRB_OK ? 0 : -1;
+    return fmrb_gfx_submit(&cmd) == FMRB_OK ? 0 : -1;
 }
 
 void fmrb_mp_bridge_log(char level, const char *msg) {
