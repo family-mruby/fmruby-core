@@ -12,6 +12,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
+#include "fmrb_task_config.h"
 
 #define SOCKET_PATH "/var/run/fmrb/fmrb_socket"
 
@@ -372,9 +373,9 @@ fmrb_err_t fmrb_hal_link_register_callback(fmrb_link_channel_t channel,
     fmrb_base_type_t ret = fmrb_task_create(
         linux_link_thread,
         task_name,
-        4096,  // stack size
+        FMRB_LINK_RX_TASK_STACK_SIZE,
         (void*)(uintptr_t)channel,
-        5,     // priority
+        FMRB_LINK_RX_TASK_PRIORITY,
         &ch->thread
     );
 

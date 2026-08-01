@@ -18,6 +18,7 @@
 #include "usb_task.h"
 #include "host_task.h"
 #include "fmrb_keymap.h"
+#include "fmrb_task_config.h"
 
 #define INPUT_SOCKET_PATH "/var/run/fmrb/fmrb_input_socket"
 #define MAX_PACKET_SIZE 512
@@ -227,9 +228,9 @@ void usb_task_start(void)
     fmrb_base_type_t ret = fmrb_task_create(
         usb_task_thread,
         "usb_rx",
-        4096,  // stack size
+        FMRB_USB_RX_TASK_STACK_SIZE,
         NULL,
-        5,     // priority
+        FMRB_USB_RX_TASK_PRIORITY,
         &g_task_handle
     );
 

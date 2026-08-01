@@ -13,6 +13,7 @@
 #include "freertos/task.h"
 
 #include <string.h>
+#include "fmrb_task_config.h"
 
 static const char *TAG = "tab5_kbd";
 
@@ -202,7 +203,8 @@ fmrb_err_t tab5_keyboard_init(void) {
 
     // Start polling task
     BaseType_t ok = xTaskCreatePinnedToCore(
-        tab5_keyboard_task, "tab5_kbd", 4096, NULL, 5, NULL, 0);
+        tab5_keyboard_task, "tab5_kbd", FMRB_TAB5_KBD_TASK_STACK_SIZE, NULL,
+        FMRB_TAB5_KBD_TASK_PRIORITY, NULL, FMRB_TAB5_KBD_TASK_CORE);
     if (ok != pdPASS) {
         FMRB_LOGE(TAG, "Failed to create keyboard task");
         return FMRB_ERR_FAILED;

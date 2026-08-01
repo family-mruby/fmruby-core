@@ -31,6 +31,7 @@
 
 #include <string.h>
 #include <stdatomic.h>
+#include "fmrb_task_config.h"
 
 static const char *TAG = "rd_http";
 
@@ -190,8 +191,10 @@ static esp_err_t stream_handler(httpd_req_t *req)
         httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, NULL);
         return ESP_FAIL;
     }
-    if (xTaskCreatePinnedToCore(mjpeg_stream_task, "rd_mjpeg", 8192,
-                                async_req, 4, NULL, 0) != pdPASS) {
+    if (xTaskCreatePinnedToCore(mjpeg_stream_task, "rd_mjpeg",
+                                FMRB_RD_MJPEG_TASK_STACK_SIZE, async_req,
+                                FMRB_RD_MJPEG_TASK_PRIORITY, NULL,
+                                FMRB_RD_MJPEG_TASK_CORE) != pdPASS) {
         FMRB_LOGE(TAG, "failed to create mjpeg task");
         httpd_req_async_handler_complete(async_req);
         atomic_store(&s_stream_busy, false);

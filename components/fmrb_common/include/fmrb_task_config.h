@@ -136,6 +136,9 @@
 #define FMRB_HW_PROXY_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_0
 
 // BLE task (managed by NimBLE, config referenced in sdkconfig)
+// NOTE: the "nimble_host" task itself is created by the NimBLE port at its
+// default priority 4, pinned to core 1 by sdkconfig. This header cannot
+// change it; treat 4 as an anchor when assigning tiers (doc/task_priority.md).
 #define FMRB_BLE_TASK_STACK_SIZE        (4096)
 #define FMRB_BLE_TASK_PRIORITY          (4)
 
@@ -163,6 +166,45 @@
 #define FMRB_I2C_KBD_TASK_STACK_SIZE    (4096)
 #define FMRB_I2C_KBD_TASK_PRIORITY      (5)
 #define FMRB_I2C_KBD_TASK_FLAGS         FMRB_TASK_FLAG_PINNED_0
+
+// --- Driver tasks created with raw xTaskCreatePinnedToCore ---
+// These use explicit _CORE macros instead of FMRB_TASK_FLAG_* because their
+// creation sites do not go through fmrb_task_create_ex.
+
+// Audio task (ESP32-P4 Modern: NTSC-timed APU emulation feed)
+#define FMRB_AUDIO_P4_TASK_STACK_SIZE   (8192)
+#define FMRB_AUDIO_P4_TASK_PRIORITY     (6)
+#define FMRB_AUDIO_P4_TASK_CORE         (0)
+
+// Touch input polling task (Tab5)
+#define FMRB_TOUCH_TASK_STACK_SIZE      (4096)
+#define FMRB_TOUCH_TASK_PRIORITY        (5)
+#define FMRB_TOUCH_TASK_CORE            (1)
+
+// Tab5 I2C keyboard polling task
+#define FMRB_TAB5_KBD_TASK_STACK_SIZE   (4096)
+#define FMRB_TAB5_KBD_TASK_PRIORITY     (5)
+#define FMRB_TAB5_KBD_TASK_CORE         (0)
+
+// Remote desktop (H.264 / MJPEG streaming and its bootstrap)
+#define FMRB_RD_STREAM_TASK_STACK_SIZE  (8192)
+#define FMRB_RD_STREAM_TASK_PRIORITY    (4)
+#define FMRB_RD_STREAM_TASK_CORE        (1)
+#define FMRB_RD_MJPEG_TASK_STACK_SIZE   (8192)
+#define FMRB_RD_MJPEG_TASK_PRIORITY     (4)
+#define FMRB_RD_MJPEG_TASK_CORE         (0)
+#define FMRB_RD_START_TASK_STACK_SIZE   (4096)
+#define FMRB_RD_START_TASK_PRIORITY     (4)
+
+// --- Linux simulation driver tasks ---
+
+// USB HID injection receiver (reads the fmrb_inject socket)
+#define FMRB_USB_RX_TASK_STACK_SIZE     (4096)
+#define FMRB_USB_RX_TASK_PRIORITY       (5)
+
+// Socket link receiver (one per channel, graphics/audio transport)
+#define FMRB_LINK_RX_TASK_STACK_SIZE    (4096)
+#define FMRB_LINK_RX_TASK_PRIORITY      (5)
 
 // ============================================================
 // Maximum number of concurrent apps

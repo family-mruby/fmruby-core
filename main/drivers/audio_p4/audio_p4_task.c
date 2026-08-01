@@ -22,14 +22,11 @@
 
 #include <stdio.h>
 #include <string.h>
+#include "fmrb_task_config.h"
 
 static const char *TAG = "audio_p4";
 
 #define NTSC_SAMPLE 262
-#define AUDIO_P4_TASK_STACK  8192
-#define AUDIO_P4_TASK_PRIO   6
-#define AUDIO_P4_TASK_CORE   0
-
 #define NSF_DEFAULT_FILE "/flash/data/test.nsf"
 
 static nsf_player_t  *g_nsf_player  = NULL;
@@ -284,8 +281,8 @@ fmrb_err_t audio_p4_task_init(void) {
     }
 
     BaseType_t ok = xTaskCreatePinnedToCore(
-        audio_p4_task, "audio_p4", AUDIO_P4_TASK_STACK, NULL,
-        AUDIO_P4_TASK_PRIO, NULL, AUDIO_P4_TASK_CORE);
+        audio_p4_task, "audio_p4", FMRB_AUDIO_P4_TASK_STACK_SIZE, NULL,
+        FMRB_AUDIO_P4_TASK_PRIORITY, NULL, FMRB_AUDIO_P4_TASK_CORE);
     if (ok != pdPASS) {
         FMRB_LOGE(TAG, "Failed to create audio_p4 task");
         return FMRB_ERR_FAILED;

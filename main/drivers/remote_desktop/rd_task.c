@@ -13,6 +13,7 @@
 #include "wifi_task.h"
 
 #include <string.h>
+#include "fmrb_task_config.h"
 
 static const char *TAG = "rd_task";
 
@@ -73,7 +74,8 @@ fmrb_err_t rd_task_init(void)
         toml_free(root);
     }
 
-    if (fmrb_task_create(rd_start_task, "rd_start", 4096, NULL, 4, NULL)
+    if (fmrb_task_create(rd_start_task, "rd_start", FMRB_RD_START_TASK_STACK_SIZE,
+                         NULL, FMRB_RD_START_TASK_PRIORITY, NULL)
         != FMRB_PASS) {
         FMRB_LOGE(TAG, "failed to spawn rd_start task");
         return FMRB_ERR_FAILED;

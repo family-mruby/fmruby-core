@@ -26,13 +26,12 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "fmrb_task_config.h"
 
 static const char *TAG = "touch";
 
 #define TOUCH_POLL_MS        33   // ~30 Hz
 #define TOUCH_READY_POLL_MS  200  // Poll for display ready at startup
-#define TOUCH_TASK_STACK     4096
-#define TOUCH_TASK_PRIORITY  5
 
 // Virtual display bounds for cursor clamping
 #define TOUCH_VIRTUAL_W   426
@@ -169,8 +168,8 @@ static void touch_task(void *arg) {
 
 fmrb_err_t touch_task_init(void) {
     BaseType_t ok = xTaskCreatePinnedToCore(
-        touch_task, "touch", TOUCH_TASK_STACK, NULL,
-        TOUCH_TASK_PRIORITY, NULL, 1);
+        touch_task, "touch", FMRB_TOUCH_TASK_STACK_SIZE, NULL,
+        FMRB_TOUCH_TASK_PRIORITY, NULL, FMRB_TOUCH_TASK_CORE);
     if (ok != pdPASS) {
         FMRB_LOGE(TAG, "Failed to create touch task");
         return FMRB_ERR_FAILED;

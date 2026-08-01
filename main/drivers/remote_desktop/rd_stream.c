@@ -24,6 +24,7 @@
 #include "freertos/task.h"
 
 #include <string.h>
+#include "fmrb_task_config.h"
 
 static const char *TAG = "rd_stream";
 
@@ -176,8 +177,10 @@ static bool ensure_task_running(void)
         }
     }
     s_task_running = true;
-    if (xTaskCreatePinnedToCore(stream_task, "rd_stream", 8192, NULL, 4,
-                                NULL, 1) != pdPASS) {
+    if (xTaskCreatePinnedToCore(stream_task, "rd_stream",
+                                FMRB_RD_STREAM_TASK_STACK_SIZE, NULL,
+                                FMRB_RD_STREAM_TASK_PRIORITY, NULL,
+                                FMRB_RD_STREAM_TASK_CORE) != pdPASS) {
         FMRB_LOGE(TAG, "failed to create stream task");
         s_task_running = false;
         rd_encoder_h264_deinit();
