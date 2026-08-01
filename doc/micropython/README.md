@@ -116,6 +116,10 @@ GC のルート走査まで実機で確認済み。
 各フェーズの実装レポート (気づき・実測値・申し送り) は
 [report/](report/README.md) に置く。
 
+PicoRuby の移植と何がどう違うか (改変の深さ、インスタンス数、GC 方式、
+言語層の焼き込み方など) は [porting_comparison.md](porting_comparison.md) に
+まとめてある。次の言語を足すときの判断材料もそちら。
+
 ## 生成物を作り直すタイミング
 
 components/micropython/ には日常のビルドが触らない生成物が 2 つある。

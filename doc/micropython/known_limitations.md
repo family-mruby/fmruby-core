@@ -34,10 +34,47 @@ mruby の `mrb_state` や Lua の `lua_State` のように複数インスタン�
 組み込み用ソース一式にこれらの実装が含まれないため。待機は `FmrbApp` の
 更新間隔 (`on_update` の戻り値) で行う。
 
+### 資産を活用したくなったときの道筋 (現状は未実装)
+
+MicroPython 圏の資産は、種類によって取り込みやすさがまったく違う。
+
+1. **extmod の標準モジュール** — 仕組み上の壁は無い。port/Makefile に
+   追加コピーを足して mpconfigport.h で有効化し `rake micropython:gen`、
+   という既存の手順で 1 モジュールずつ入れられる (submodule 無改変のまま)。
+   `json` / `random` / `binascii` あたりは自己完結で軽い。`asyncio` は
+   tick 系 HAL (mp_hal_ticks_ms 等) の実装が要るのでもう一段の作業。
+   コストはフラッシュ増と qstr 再生成のみで、必要になったものから足せばよい。
+2. **純 Python ライブラリ (micropython-lib 等)** — 今はアプリ 1 ファイルに
+   貼り込むしかない。ファイルシステム import (mp_import_stat + reader を
+   fmrb_hal_file に繋ぐ) を実装すれば `import` できるようになるが、
+   多くのライブラリが上記 extmod に依存する点に注意。
+3. **ESP32 ハードウェア制御 (`machine.Pin` / I2C / SPI / `network` 等)** —
+   **そのままは持ち込まない**。これらは ports/esp32 のモジュールで、
+   「MicroPython がチップを専有する」前提で ESP-IDF ドライバを直接叩く。
+   fmruby-core では周辺資源 (ピン割当、I2C、通信リンク) を OS が所有して
+   いるので、直輸入はゲストによる資源管理の迂回になる。やるなら Ruby アプリと
+   同じ fmrb サービス経由で `_fmrb` ブリッジに関数を足し、その上に
+   machine 風の薄い Python クラスを被せる (ドライバ実体はどうせ共通の
+   ESP-IDF なので、流用する価値があるのは API の形だけ)。
+
 ### REPL なし / スレッドなし
 
 対話実行 (REPL) は無効。`_thread` も無効 — タスクの生成は OS 側の仕事で、
 ゲスト VM には渡さない。
+
+`_thread` を将来入れない方針の理由も書いておく。MicroPython のスレッドは
+VM 内の擬似スレッドではなく**ネイティブスレッドに 1:1** で、FreeRTOS 環境では
+`_thread.start_new_thread()` のたびに本物の RTOS タスクが生える
+(実装はポート層。py/modthread.c 自体は生成物に入っており、port 側の
+スレッド層を書けば有効化はできる)。しかし (1) ゲストが fmrb_app の管理外の
+タスクを生やすことになりタスクモニタ・reaper・kill の統率から見えない、
+(2) 停止時に「全ゲストスレッドを終わらせてから deinit」の面倒を見ないと
+解放済みヒープを触るタスクが残る、(3) GIL が既定で有効なので並列実行には
+ならずインターリーブしか得られないのに、スレッドごとに内蔵 RAM から
+タスクスタックを食う。アプリ内の並行処理はジェネレータ (yield) による
+協調的な形が今の構成のまま動くので、そちらを使う。
+方式の対比 (mruby-task = VM 内スケジューラとの違い) は
+porting_comparison.md 参照。
 
 ### `open()` は必ず失敗する
 
