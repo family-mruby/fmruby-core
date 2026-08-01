@@ -14,6 +14,7 @@
 
 #include "fmrb_app.h"
 #include "fmrb_err.h"
+#include "fmrb_app_canvas.h"
 #include "fmrb_gfx.h"
 #include "fmrb_gfx_cmd.h"
 #include "fmrb_gfx_msg.h"
@@ -68,37 +69,14 @@ int fmrb_mp_bridge_app_init(fmrb_mp_app_info_t *out) {
         return 0;
     }
 
-    fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-    if (!gfx_ctx) {
-        FMRB_LOGE(TAG, "Graphics context not initialized");
-        return -1;
-    }
-
-    // Colour-key transparency only for non-fullscreen windows that kept
-    // rounded corners; 0x01 is the key, matching the other bindings.
     fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
-    fmrb_gfx_err_t ret = fmrb_gfx_create_canvas(
-        gfx_ctx, ctx->window_width, ctx->window_height, ctx->z_order,
-        out->rounded_corners, 0x01, &canvas_id);
-    if (ret != FMRB_GFX_OK) {
-        FMRB_LOGE(TAG, "Failed to create canvas: %d", ret);
+    fmrb_canvas_handle_t bg_id = FMRB_CANVAS_SCREEN;
+    if (fmrb_app_canvas_init(ctx, &canvas_id, &bg_id) != FMRB_OK) {
         return -1;
     }
-    ctx->canvas_id = canvas_id;
     out->canvas_id = (int32_t)canvas_id;
-    FMRB_LOGI(TAG, "Created canvas %u (%dx%d) for app %s",
-              canvas_id, ctx->window_width, ctx->window_height, ctx->app_name);
-
-    if (ctx->has_background_canvas) {
-        fmrb_canvas_handle_t bg_id = FMRB_CANVAS_SCREEN;
-        fmrb_gfx_err_t bg_ret = fmrb_gfx_create_canvas(
-            gfx_ctx, ctx->window_width, ctx->window_height, 0, false, 0, &bg_id);
-        if (bg_ret == FMRB_GFX_OK) {
-            ctx->bg_canvas_id = bg_id;
-            out->bg_canvas_id = (int32_t)bg_id;
-        } else {
-            FMRB_LOGE(TAG, "Failed to create background canvas: %d", bg_ret);
-        }
+    if (bg_id != FMRB_CANVAS_SCREEN) {
+        out->bg_canvas_id = (int32_t)bg_id;
     }
     return 0;
 }
@@ -110,12 +88,7 @@ void fmrb_mp_bridge_app_cleanup(void) {
     }
     FMRB_LOGI(TAG, "_cleanup: app_id=%d, name=%s", (int)ctx->app_id, ctx->app_name);
 
-    if (ctx->canvas_id != FMRB_CANVAS_SCREEN) {
-        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-        if (gfx_ctx && fmrb_gfx_delete_canvas(gfx_ctx, ctx->canvas_id) == FMRB_GFX_OK) {
-            ctx->canvas_id = 0;
-        }
-    }
+    fmrb_app_canvas_release_all(ctx);
     fmrb_msg_delete_queue(ctx->app_id);
 }
 

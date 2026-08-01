@@ -10,6 +10,7 @@
 
 #include "fmrb_basic_gfx.h"
 #include "basic_assets.h"
+#include "fmrb_app_canvas.h"
 #include "fmrb_gfx_cmd.h"
 #include "fmrb_log.h"
 #include <string.h>
@@ -672,20 +673,12 @@ fmrb_err_t basic_console_init(basic_console_ctx_t* console,
         console->origin_y = (int16_t)ctx->window_pos_y;
     }
 
-    fmrb_gfx_err_t gfx_ret = fmrb_gfx_create_canvas(
-        gfx_ctx,
-        console->canvas_w,
-        console->canvas_h,
-        ctx->z_order,
-        false,
-        0,
-        &console->canvas_id
-    );
-    if (gfx_ret != FMRB_GFX_OK) {
-        FMRB_LOGE(TAG, "Failed to create canvas: %d", gfx_ret);
+    fmrb_err_t gfx_ret = fmrb_app_canvas_create_main(
+        ctx, console->canvas_w, console->canvas_h, ctx->z_order, false, 0,
+        &console->canvas_id);
+    if (gfx_ret != FMRB_OK) {
         return FMRB_ERR_NO_MEMORY;
     }
-    ctx->canvas_id = console->canvas_id;
 
     memset(console->drawn_code, ' ', sizeof(console->drawn_code));
     memset(console->drawn_attr, 0, sizeof(console->drawn_attr));
@@ -766,12 +759,11 @@ void basic_console_destroy(basic_console_ctx_t* console) {
         }
     }
 
-    if (console->canvas_id != FMRB_CANVAS_SCREEN) {
-        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-        if (gfx_ctx) {
-            fmrb_gfx_delete_canvas(gfx_ctx, console->canvas_id);
-        }
-    }
+    // Releases through the context, which also clears ctx->canvas_id - the
+    // old direct delete left it set and the kernel deleted the id a second
+    // time on reap.
+    fmrb_app_canvas_release_all(fmrb_current());
+    console->canvas_id = FMRB_CANVAS_SCREEN;
 
     FMRB_LOGI(TAG, "BASIC screen destroyed");
 }

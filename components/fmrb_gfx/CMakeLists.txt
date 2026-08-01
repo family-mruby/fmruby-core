@@ -2,6 +2,7 @@ idf_component_register(
     SRCS
         "fmrb_gfx.c"
         "fmrb_gfx_cmd.c"
+        "fmrb_app_canvas.c"
     INCLUDE_DIRS "."
     REQUIRES fmrb_hal fmrb_transport fmrb_common fmrb_msg log
 )

@@ -2,6 +2,7 @@
 #include "lauxlib.h"
 #include "fmrb_app.h"
 #include "fmrb_gfx.h"
+#include "fmrb_app_canvas.h"
 #include "fmrb_gfx_cmd.h"
 #include "fmrb_gfx_msg.h"
 #include "fmrb_log.h"
@@ -329,34 +330,15 @@ static int lua_app_create_canvas(lua_State* L) {
         return luaL_error(L, "Cannot create canvas for headless app");
     }
 
+    // The script picks the size here, so this is create_main rather than
+    // fmrb_app_canvas_init; registration on the context is the same.
     fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
-
-    // Get global graphics context
-    fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-    if (!gfx_ctx) {
-        return luaL_error(L, "Graphics context not initialized");
-    }
-
-    // Create canvas for app window
-    fmrb_gfx_err_t ret = fmrb_gfx_create_canvas(
-        gfx_ctx,
-        (uint16_t)width,
-        (uint16_t)height,
-        ctx->z_order,
-        false,
-        0,
-        &canvas_id
-    );
-
-    if (ret != FMRB_GFX_OK) {
+    fmrb_err_t ret = fmrb_app_canvas_create_main(
+        ctx, (uint16_t)width, (uint16_t)height, ctx->z_order, false, 0,
+        &canvas_id);
+    if (ret != FMRB_OK) {
         return luaL_error(L, "Failed to create canvas: %d", ret);
     }
-
-    // Store canvas_id in app context for Z-order updates
-    ctx->canvas_id = canvas_id;
-
-    FMRB_LOGI(TAG, "Created canvas %u (%dx%d) for app %s",
-             canvas_id, width, height, ctx->app_name);
 
     lua_pushinteger(L, canvas_id);
     return 1;

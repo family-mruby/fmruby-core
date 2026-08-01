@@ -26,6 +26,7 @@
 #include "fmrb_transport.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_gfx.h"
+#include "fmrb_app_canvas.h"
 #include "fmrb_gfx_cmd.h"
 #include "fmrb_gfx_msg.h"
 #include "fmrb_msg.h"
@@ -1106,34 +1107,9 @@ cleanup:
     // Close VM based on type (BEFORE destroying memory handle!)
     destroy_vm(ctx);
 
-    // Delete canvas if not already cleaned up by Ruby _cleanup()
-    // (e.g. uncaught exception skips destroy() -> _cleanup())
-    if (ctx->canvas_id != 0) {
-        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-        if (gfx_ctx) {
-            FMRB_LOGI(TAG, "[%s] C cleanup: deleting canvas %u", ctx->app_name, ctx->canvas_id);
-            fmrb_gfx_delete_canvas(gfx_ctx, ctx->canvas_id);
-        }
-        ctx->canvas_id = 0;
-    }
-    if (ctx->has_background_canvas && ctx->bg_canvas_id != 0) {
-        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-        if (gfx_ctx) {
-            fmrb_gfx_delete_canvas(gfx_ctx, ctx->bg_canvas_id);
-        }
-        ctx->bg_canvas_id = 0;
-    }
-    for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
-        if (ctx->extra_canvas_ids[i] != 0) {
-            fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-            if (gfx_ctx) {
-                FMRB_LOGI(TAG, "[%s] C cleanup: deleting extra canvas %u",
-                          ctx->app_name, ctx->extra_canvas_ids[i]);
-                fmrb_gfx_delete_canvas(gfx_ctx, ctx->extra_canvas_ids[i]);
-            }
-            ctx->extra_canvas_ids[i] = 0;
-        }
-    }
+    // Anything the binding's cleanup already released is a no-op here; this is
+    // the net for the paths that skip it, such as an uncaught exception.
+    fmrb_app_canvas_release_all(ctx);
 
     // Delete message queue
     fmrb_msg_delete_queue(ctx->app_id);
@@ -1649,23 +1625,7 @@ static void force_release_resources(fmrb_app_task_context_t* ctx,
                                     fmrb_task_handle_t task) {
     destroy_vm(ctx);
 
-    fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-    if (gfx_ctx) {
-        if (ctx->canvas_id != 0) {
-            fmrb_gfx_delete_canvas(gfx_ctx, ctx->canvas_id);
-            ctx->canvas_id = 0;
-        }
-        if (ctx->has_background_canvas && ctx->bg_canvas_id != 0) {
-            fmrb_gfx_delete_canvas(gfx_ctx, ctx->bg_canvas_id);
-            ctx->bg_canvas_id = 0;
-        }
-        for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
-            if (ctx->extra_canvas_ids[i] != 0) {
-                fmrb_gfx_delete_canvas(gfx_ctx, ctx->extra_canvas_ids[i]);
-                ctx->extra_canvas_ids[i] = 0;
-            }
-        }
-    }
+    fmrb_app_canvas_release_all(ctx);
 
     fmrb_msg_delete_queue(ctx->app_id);
 

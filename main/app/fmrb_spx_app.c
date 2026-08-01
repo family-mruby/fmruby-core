@@ -14,6 +14,7 @@
 #include <sys/time.h>
 #include "fmrb_app.h"
 #include "fmrb_gfx.h"
+#include "fmrb_app_canvas.h"
 #include "fmrb_err.h"
 #include "fmrb_log.h"
 #include "fmrb_msg.h"
@@ -113,41 +114,18 @@ const char *fmrb_spx_app_init(void)
     put_u16(buf + 40, ctx->window_pos_x);
     put_u16(buf + 42, ctx->window_pos_y);
 
-    uint8_t has_canvas = 0, has_bg = 0;
-    if (!ctx->headless) {
-        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-        if (!gfx_ctx) {
-            return "";
-        }
-        /* Main window canvas: color-key transparency only for non-fullscreen
-           windows that kept rounded_corners (transparent color 0x01). */
-        fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
-        fmrb_gfx_err_t ret = fmrb_gfx_create_canvas(
-            gfx_ctx, ctx->window_width, ctx->window_height, ctx->z_order,
-            !ctx->fullscreen && ctx->rounded_corners, 0x01, &canvas_id);
-        if (ret != FMRB_GFX_OK) {
-            FMRB_LOGE(TAG, "create main canvas failed: %d", ret);
-            return "";
-        }
-        ctx->canvas_id = canvas_id;
-        has_canvas = 1;
+    fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
+    fmrb_canvas_handle_t bg_id = FMRB_CANVAS_SCREEN;
+    if (fmrb_app_canvas_init(ctx, &canvas_id, &bg_id) != FMRB_OK) {
+        return "";
+    }
+    uint8_t has_canvas = (canvas_id != FMRB_CANVAS_SCREEN) ? 1 : 0;
+    uint8_t has_bg = (bg_id != FMRB_CANVAS_SCREEN) ? 1 : 0;
+    if (has_canvas) {
         put_u16(buf + 46, (uint16_t)canvas_id);
-        FMRB_LOGI(TAG, "created canvas %u (%dx%d) for %s",
-                  canvas_id, ctx->window_width, ctx->window_height, ctx->app_name);
-
-        /* Background canvas (desktop wallpaper layer, z=0). */
-        if (ctx->has_background_canvas) {
-            fmrb_canvas_handle_t bg_id = FMRB_CANVAS_SCREEN;
-            fmrb_gfx_err_t bg_ret = fmrb_gfx_create_canvas(
-                gfx_ctx, ctx->window_width, ctx->window_height, 0, false, 0, &bg_id);
-            if (bg_ret == FMRB_GFX_OK) {
-                ctx->bg_canvas_id = bg_id;
-                has_bg = 1;
-                put_u16(buf + 48, (uint16_t)bg_id);
-            } else {
-                FMRB_LOGE(TAG, "create bg canvas failed: %d", bg_ret);
-            }
-        }
+    }
+    if (has_bg) {
+        put_u16(buf + 48, (uint16_t)bg_id);
     }
     buf[44] = has_canvas;
     buf[45] = has_bg;
@@ -190,14 +168,7 @@ int fmrb_spx_app_cleanup(void)
     }
     FMRB_LOGI(TAG, "_cleanup: app_id=%d, name=%s", ctx->app_id, ctx->app_name);
 
-    if (ctx->canvas_id != FMRB_CANVAS_SCREEN) {
-        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-        if (gfx_ctx) {
-            if (fmrb_gfx_delete_canvas(gfx_ctx, ctx->canvas_id) == FMRB_GFX_OK) {
-                ctx->canvas_id = 0;
-            }
-        }
-    }
+    fmrb_app_canvas_release_all(ctx);
     fmrb_msg_delete_queue(ctx->app_id);
 
 #ifndef CONFIG_IDF_TARGET_LINUX
@@ -261,25 +232,13 @@ int fmrb_spx_app_create_canvas(int w, int h, int z_offset, int use_transparent, 
     if (w <= 0 || h <= 0 || w > 4096 || h > 4096) {
         return FMRB_SPX_ERR_RANGE;
     }
-    int slot = -1;
-    for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
-        if (ctx->extra_canvas_ids[i] == 0) { slot = i; break; }
-    }
-    if (slot < 0) {
-        return FMRB_SPX_ERR;
-    }
-    fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-    if (!gfx_ctx) {
-        return FMRB_SPX_ERR;
-    }
     fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
-    fmrb_gfx_err_t ret = fmrb_gfx_create_canvas(
-        gfx_ctx, (uint16_t)w, (uint16_t)h, (int16_t)(ctx->z_order + z_offset),
-        use_transparent != 0, (uint8_t)transparent_color, &canvas_id);
-    if (ret != FMRB_GFX_OK) {
+    if (fmrb_app_canvas_create_extra(ctx, (uint16_t)w, (uint16_t)h,
+                                     (int16_t)z_offset, use_transparent != 0,
+                                     (uint8_t)transparent_color,
+                                     &canvas_id) != FMRB_OK) {
         return FMRB_SPX_ERR;
     }
-    ctx->extra_canvas_ids[slot] = canvas_id;
     return (int)canvas_id;
 }
 
@@ -289,17 +248,10 @@ int fmrb_spx_app_delete_canvas(int canvas_id)
     if (!ctx) {
         return FMRB_SPX_ERR;
     }
-    for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
-        if (ctx->extra_canvas_ids[i] == (uint16_t)canvas_id) {
-            fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-            if (gfx_ctx) {
-                fmrb_gfx_delete_canvas(gfx_ctx, (fmrb_canvas_handle_t)canvas_id);
-            }
-            ctx->extra_canvas_ids[i] = 0;
-            return 0;
-        }
+    if (fmrb_app_canvas_delete_extra(ctx, (fmrb_canvas_handle_t)canvas_id) != FMRB_OK) {
+        return FMRB_SPX_ERR_RANGE;  /* not an extra canvas of this app */
     }
-    return FMRB_SPX_ERR_RANGE;  /* not an extra canvas of this app */
+    return 0;
 }
 
 /* ---- class: process / memory info --------------------------------------- */

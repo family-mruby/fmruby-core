@@ -21,6 +21,7 @@
 #include "fmrb_hid_msg.h"
 #include "fmrb_task_config.h"
 #include "fmrb_gfx.h"
+#include "fmrb_app_canvas.h"
 #include "fmrb_kernel.h"
 #include "fmrb_hal_time.h"
 #include "../../include/picoruby_fmrb_app.h"
@@ -189,71 +190,21 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@pos_y"),
                mrb_fixnum_value(ctx->window_pos_y));
 
-    // Allocate Canvas for non-headless apps
-    if (!ctx->headless) {
-        fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
-
-        // Get global graphics context
-        fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-        if (!gfx_ctx) {
-            mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics context not initialized");
-        }
-
-        // Create canvas for app window
-        // Enable color-key transparency only for non-fullscreen windows that
-        // declared rounded_corners=true (default). Opting out (rounded_corners=false)
-        // skips the per-pixel transparent compare in the compositor. Transparent
-        // color is 0x01 (very dark blue in RGB332).
-        fmrb_gfx_err_t ret = fmrb_gfx_create_canvas(
-            gfx_ctx,
-            ctx->window_width,
-            ctx->window_height,
-            ctx->z_order,
-            !ctx->fullscreen && ctx->rounded_corners,
-            0x01,
-            &canvas_id
-        );
-
-        if (ret != FMRB_GFX_OK) {
-            mrb_raisef(mrb, E_RUNTIME_ERROR,
-                       "Failed to create canvas: %d", ret);
-        }
-
-        // Set @canvas instance variable
+    // Canvases (window + optional wallpaper layer) and their registration on
+    // the context; a headless app gets none and leaves @canvas nil.
+    fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
+    fmrb_canvas_handle_t bg_canvas_id = FMRB_CANVAS_SCREEN;
+    fmrb_err_t canvas_ret = fmrb_app_canvas_init(ctx, &canvas_id, &bg_canvas_id);
+    if (canvas_ret != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to create canvas: %d", canvas_ret);
+    }
+    if (canvas_id != FMRB_CANVAS_SCREEN) {
         mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@canvas"),
                    mrb_fixnum_value(canvas_id));
-
-        // Store canvas_id in app context for Z-order updates
-        ctx->canvas_id = canvas_id;
-
-        FMRB_LOGI(TAG, "Created canvas %u (%dx%d) for app %s",
-                 canvas_id, ctx->window_width, ctx->window_height, ctx->app_name);
-
-        // Create background canvas for desktop (z=0, wallpaper layer)
-        if (ctx->has_background_canvas) {
-            fmrb_canvas_handle_t bg_canvas_id = FMRB_CANVAS_SCREEN;
-            fmrb_gfx_err_t bg_ret = fmrb_gfx_create_canvas(
-                gfx_ctx,
-                ctx->window_width,
-                ctx->window_height,
-                0,  // z=0: background
-                false,
-                0,
-                &bg_canvas_id
-            );
-            if (bg_ret == FMRB_GFX_OK) {
-                ctx->bg_canvas_id = bg_canvas_id;
-                mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@bg_canvas"),
-                           mrb_fixnum_value(bg_canvas_id));
-                FMRB_LOGI(TAG, "Created background canvas %u for app %s",
-                         bg_canvas_id, ctx->app_name);
-            } else {
-                FMRB_LOGE(TAG, "Failed to create background canvas: %d", bg_ret);
-            }
-        }
-    } else {
-        // Headless app: no canvas, @canvas remains unset (nil)
-        FMRB_LOGI(TAG, "Headless app %s: no canvas allocated", ctx->app_name);
+    }
+    if (bg_canvas_id != FMRB_CANVAS_SCREEN) {
+        mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@bg_canvas"),
+                   mrb_fixnum_value(bg_canvas_id));
     }
 
     // Message queue is created at task spawn time in fmrb_app.c (before the
@@ -620,30 +571,9 @@ static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
 
     FMRB_LOGI(TAG, "_cleanup: app_id=%d, name=%s", ctx->app_id, ctx->app_name);
 
-    // Get @canvas instance variable
-    mrb_value canvas_val = mrb_iv_get(mrb, self, mrb_intern_cstr(mrb, "@canvas"));
-
-    // Delete canvas if allocated (not screen)
-    if (mrb_fixnum_p(canvas_val)) {
-        fmrb_canvas_handle_t canvas_id = (fmrb_canvas_handle_t)mrb_fixnum(canvas_val);
-
-        // Only delete user-allocated canvases (not screen)
-        if (canvas_id != FMRB_CANVAS_SCREEN) {
-            fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-            if (gfx_ctx) {
-                fmrb_gfx_err_t ret = fmrb_gfx_delete_canvas(gfx_ctx, canvas_id);
-                if (ret == FMRB_GFX_OK) {
-                    FMRB_LOGI(TAG, "Deleted canvas %u for app %s",
-                             canvas_id, ctx->app_name);
-                    // Mark as deleted so C-level fallback won't try again
-                    ctx->canvas_id = 0;
-                } else {
-                    FMRB_LOGW(TAG, "Failed to delete canvas %u: %d",
-                             canvas_id, ret);
-                }
-            }
-        }
-    }
+    // Releases the window, wallpaper and extra canvases and clears the context
+    // fields, so the kernel's reap finds nothing left to delete.
+    fmrb_app_canvas_release_all(ctx);
 
     // Delete message queue
     fmrb_err_t ret = fmrb_msg_delete_queue(ctx->app_id);
@@ -729,37 +659,17 @@ static mrb_value mrb_fmrb_app_create_canvas(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid canvas size");
     }
 
-    int slot = -1;
-    for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
-        if (ctx->extra_canvas_ids[i] == 0) { slot = i; break; }
-    }
-    if (slot < 0) {
+    fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
+    fmrb_err_t ret = fmrb_app_canvas_create_extra(
+        ctx, (uint16_t)w, (uint16_t)h, (int16_t)z_offset, use_transparent != 0,
+        (uint8_t)transparent_color, &canvas_id);
+    if (ret == FMRB_ERR_NO_RESOURCE) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Extra canvas limit reached (%d)",
                    FMRB_APP_MAX_EXTRA_CANVAS);
     }
-
-    fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-    if (!gfx_ctx) {
-        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics context not initialized");
-    }
-
-    fmrb_canvas_handle_t canvas_id = FMRB_CANVAS_SCREEN;
-    fmrb_gfx_err_t ret = fmrb_gfx_create_canvas(
-        gfx_ctx,
-        (uint16_t)w,
-        (uint16_t)h,
-        (int16_t)(ctx->z_order + z_offset),
-        use_transparent != 0,
-        (uint8_t)transparent_color,
-        &canvas_id
-    );
-    if (ret != FMRB_GFX_OK) {
+    if (ret != FMRB_OK) {
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to create canvas: %d", ret);
     }
-
-    ctx->extra_canvas_ids[slot] = canvas_id;
-    FMRB_LOGI(TAG, "Created extra canvas %u (%dx%d) for app %s",
-              canvas_id, (int)w, (int)h, ctx->app_name);
     return mrb_fixnum_value(canvas_id);
 }
 
@@ -775,17 +685,10 @@ static mrb_value mrb_fmrb_app_delete_canvas(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
     }
 
-    for (int i = 0; i < FMRB_APP_MAX_EXTRA_CANVAS; i++) {
-        if (ctx->extra_canvas_ids[i] == (uint16_t)canvas_id) {
-            fmrb_gfx_context_t gfx_ctx = fmrb_gfx_get_global_context();
-            if (gfx_ctx) {
-                fmrb_gfx_delete_canvas(gfx_ctx, (fmrb_canvas_handle_t)canvas_id);
-            }
-            ctx->extra_canvas_ids[i] = 0;
-            return mrb_nil_value();
-        }
+    if (fmrb_app_canvas_delete_extra(ctx, (fmrb_canvas_handle_t)canvas_id) != FMRB_OK) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Not an extra canvas of this app");
     }
-    mrb_raise(mrb, E_ARGUMENT_ERROR, "Not an extra canvas of this app");
+    return mrb_nil_value();
 }
 
 // FmrbApp#_is_file_app -> true/false
