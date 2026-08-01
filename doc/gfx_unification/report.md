@@ -72,16 +72,10 @@ Lua/BASIC がセマフォ方式に変わったことによる入力の詰まり�
 確認した。`rake build:esp32` (esp32s3) 成功、`fmruby-core.bin` は
 0x256160 バイト (パーティション 0x300000 の 78%)。
 
-### Phase A 以外で見つかった問題 (未修正、申し送り)
+### Phase A 以外で見つかった問題
 
-- **ランチャーに Python アプリが出ない**。
-  `main/prebuild_scripts/kernel/system_desktop/launcher.rb` の
-  `load_launcher_cache` が `next unless f[3]` でアイコン列の無い行を捨てて
-  いる。`flash/data/launcher_index` の Python 行は末尾のアイコン欄が空
-  (`Python\t/app/demo/python.app.py\tP\t`) で、Ruby の `split("\t")` は
-  末尾の空要素を落とすため f[3] が nil になり、行ごとスキップされる。
-  今回の検証では Shell の `run /app/demo/python.app.py` で起動した。
-  Phase A の範囲外なので触っていない。
+- **ランチャーに Python アプリが出ない** (別途修正済み。下記参照)。
+  Phase A の検証では Shell の `run /app/demo/python.app.py` で起動した。
 
 ## Phase B: コマンド組み立ての共通化 (2026-08-01)
 
@@ -144,3 +138,38 @@ Python は閉じるボタンで終了 (Reaped ログ確認)、Spinel 構成の S
 S3 は Phase A 時点 (0x256160) から **672 バイト減**った。5 バインディングに
 散っていた組み立てコードがコンストラクタ 1 本に集約されたぶんが、関数呼び出しの
 増加を上回っている。P4 は Phase A では測っていないので比較値は無い。
+
+## 付随修正: ランチャーがアイコン無しアプリを落とす (2026-08-01)
+
+GFX の一本化とは独立した不具合。Phase A の検証中に見つけたもの。
+
+### 症状
+
+`/app/demo/python.app.py` があり `flash/data/launcher_index` にも載って
+いるのに、ランチャーに Python アプリが出ない。ファイルマネージャや Shell の
+`run` からは起動できる。
+
+### 原因
+
+`main/prebuild_scripts/kernel/system_desktop/launcher.rb` の
+`load_launcher_cache` がキャッシュ行を `next unless f[3]` で捨てていた。
+キャッシュ 1 行は `label\tpath\ticon_char\ticon_file` で、`save_launcher_cache`
+はアイコンファイルが無いアプリに空文字を書く (行がタブで終わる)。Ruby の
+`String#split` は末尾の空要素を落とすので、この行は 3 要素にしかならず
+f[3] が nil になって行ごとスキップされていた。
+
+アイコンファイルを持つのは `VM_ICON_FILES` にある rb / lua / bas だけなので、
+**アイコンを持たない VM (現状 py) のアプリが必ず全部消える**性質の不具合で、
+Python 固有ではない。
+
+### 修正
+
+必ず在る 2 つのフィールドだけを要求し、アイコン欄は「無い = 空」と同じ扱いに
+した。書き出し側の形式は変えていないので、既存の `/data/launcher_index` は
+そのまま読める (再スキャン不要)。
+
+### 確認
+
+headless でランチャーに "Python" が P の文字アイコンで並び、ダブルクリックで
+起動して Shapes ページを描画、閉じるボタンで終了することを確認した。
+アイコンを持つ既存アプリの表示に変化は無い。

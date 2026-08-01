@@ -217,7 +217,10 @@ module LauncherMixin
     while i < n
       f = lines[i].split(S_TAB)
       i += 1
-      next unless f[3]
+      # split drops trailing empty fields, so an app with no icon file (the
+      # record ends in a tab) arrives with only three. Require the two fields
+      # that must be there; a missing icon is the same as an empty one.
+      next unless f[0] && f[1]
       icon = f[3]
       icon = nil if icon == S_EMPTY
       apps << { label: f[0], app: f[1], icon_char: f[2], icon_file: icon }
