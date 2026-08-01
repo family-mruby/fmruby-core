@@ -72,10 +72,9 @@ module LauncherMixin
   def build_icon_sprite_image(icon_file)
     src = icon_bmp_source(icon_file)
     dest = "#{ICON_CACHE_DIR}/#{src.split(S_SLASH).last}"
-    status = @gfx.file_status(dest)
-    unless status && status[:exists]
-      @gfx.transfer_file(src, dest: dest)
-    end
+    # sync_file, not an exists check: an edited icon has to replace the copy
+    # already cached on the graphics side.
+    @gfx.sync_file(src, dest: dest)
     img = SpriteImage.new(@gfx, width: ICON_SPRITE_W, height: ICON_SPRITE_H,
                           transparent_color: 0, use_transparent: true)
     img.load_bmp(dest)

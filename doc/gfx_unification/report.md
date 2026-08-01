@@ -173,3 +173,63 @@ Python 固有ではない。
 headless でランチャーに "Python" が P の文字アイコンで並び、ダブルクリックで
 起動して Shapes ページを描画、閉じるボタンで終了することを確認した。
 アイコンを持つ既存アプリの表示に変化は無い。
+
+## 付随修正2: グラフィックス側のアセットが更新されない (2026-08-01)
+
+上の付随修正でランチャーに Python が出るようになったあと、アイコンを描き
+直しても古い絵が出続けることが分かった。原因は別で、影響範囲も広い。
+
+### 原因
+
+「グラフィックス側にファイルを置く」処理が 2 通りあった。
+
+- **正しい方**: `fmrb_kernel_sync_file()` (main/kernel/fmrb_kernel.c)。
+  ローカルの size と CRC32 を計算し、FILE_STATUS の応答と **exists・size・
+  checksum が 3 つとも一致したときだけ**転送を省略する。graphics-audio 側の
+  `handle_status` が `file_crc32()` を返すのはこのため。起動時の
+  `[[sync_files]]` はこれを使っている。
+- **各所に手書きされていた方**: `@gfx.file_status(dest)[:exists]` で存在確認
+  して、無ければ `transfer_file`。**中身が変わっても差し替わらない。**
+  launcher.rb / fmrb-gfx.rb#load_image / flappy / tile_map_test /
+  draw_tile_test / nsf_player / sprite_editor の 7 箇所。rpg_demo だけは
+  この欠陥に気づいていて、無条件転送で回避していた。
+
+checksum は host_task の `file_status_response_cb` まで来ていたが、Ruby に
+出す Hash が `{exists:, size:}` だけを組んでいたため、アプリ側からは CRC を
+比較しようがなかった。
+
+### 修正
+
+操作を 1 つに寄せた。
+
+- `fmrb_kernel_sync_file()` を唯一の実体として残し、`FmrbGfx#sync_file(src,
+  dest:)` として mruby (gfx.c の `_sync_file`) と Spinel (FFI
+  `fmrb_spx_gfx_sync_file`) の両方に出した。`FmrbKernel` 経由の起動時同期も
+  同じ関数のまま。
+- 手書きの 7 箇所と rpg_demo の回避策を `sync_file` に置換。
+- `file_status` は残した。fmrb-tilemap.rb がサイズからタイル行数を出すのに
+  正当に使っている。
+
+### 途中で直した 2 つの問題
+
+1. **`fmrb_kernel_sync_file` が非リエントラントだった**。結果構造体が関数内
+   `static` (遅延応答で死んだスタックを踏まないための意図的な設計) で、
+   カーネルタスク専用の前提だった。アプリからも呼ぶので mutex で直列化した
+   (`init_file_sync`)。static のままなので元の安全性は保たれる。
+2. **P4 では CRC が常に 0 だった**。host_task.c の Modern 経路が
+   `checksum = 0` を返しており (コメントは "parity with WROVER (no CRC)"
+   だが WROVER は現在 CRC を返す)、比較が必ず外れて **P4 だけ毎回全再転送**に
+   なる。アセット系を全部 sync に寄せた今回で実害が出るところだった。
+   `host_file_local_status` に CRC32 を計算させて解消した。
+
+### 確認
+
+graphics 側のキャッシュを**同じサイズの別画像** (ruby.bmp / lua.bmp /
+basic.bmp、いずれも 1654 バイト) で汚してから起動し、CRC 不一致で再転送されて
+正しい絵に戻ることを mruby 構成と Spinel 構成の両方で確認した。他のアイコンは
+`up-to-date` でスキップされる。サイズが同じなので、効いているのが CRC だと
+確定できる。
+
+ビルド: linux (mruby / spinel デスクトップ)、esp32s3 (2,449,456 B)、
+esp32p4 (4,046,608 B) すべて成功。P4 は今回直した Modern 経路が実際に
+コンパイルされる唯一の構成なので必ず通した。

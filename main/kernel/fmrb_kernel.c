@@ -276,13 +276,26 @@ static uint32_t calc_file_crc32(const char *path, uint32_t *out_size)
     return crc;
 }
 
-// Public API: Sync a single file from local to host
-fmrb_err_t fmrb_kernel_sync_file(const char *src, const char *dest)
-{
-    if (!src || !dest) {
-        return FMRB_ERR_INVALID_PARAM;
-    }
+// Serializes fmrb_kernel_sync_file. The boot-time [[sync_files]] pass runs on
+// the kernel task and apps reach the same function through FmrbGfx#sync_file,
+// so the shared result below needs one caller at a time. Syncing is rare and
+// slow, so a plain mutex is enough - and it keeps the large read buffer from
+// being allocated by several tasks at once.
+static fmrb_semaphore_t g_sync_file_mutex = NULL;
 
+static bool init_file_sync(void)
+{
+    g_sync_file_mutex = fmrb_semaphore_create_mutex();
+    if (!g_sync_file_mutex) {
+        FMRB_LOGE(TAG, "Failed to create file sync mutex");
+        return false;
+    }
+    return true;
+}
+
+// Body of fmrb_kernel_sync_file, called with g_sync_file_mutex held.
+static fmrb_err_t sync_file_locked(const char *src, const char *dest)
+{
     // Calculate local file CRC32 and size
     // fmrb_hal_file_open's build_path handles platform-specific prefix
     uint32_t local_size = 0;
@@ -300,7 +313,8 @@ fmrb_err_t fmrb_kernel_sync_file(const char *src, const char *dest)
         rel_dest += 1;
     }
 
-    // Static result to avoid dangling pointer if host_task responds after timeout
+    // Static result so a late host_task response cannot write through a
+    // pointer into a dead stack frame. The mutex above keeps it to one user.
     static file_cmd_result_t s_sync_result;
 
     // Query remote file status
@@ -359,6 +373,31 @@ fmrb_err_t fmrb_kernel_sync_file(const char *src, const char *dest)
     } else {
         FMRB_LOGE(TAG, "File sync: transfer failed: %d", ret);
     }
+    return ret;
+}
+
+/**
+ * Public API: bring one file on the graphics side up to date.
+ *
+ * Skips the transfer when the remote copy already has the same size and
+ * CRC32, which is what makes it safe to call on every boot and every app
+ * start. Callers should use this rather than checking existence themselves:
+ * an existence check leaves an edited asset stale forever.
+ */
+fmrb_err_t fmrb_kernel_sync_file(const char *src, const char *dest)
+{
+    if (!src || !dest) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    if (!g_sync_file_mutex) {
+        return FMRB_ERR_INVALID_STATE;
+    }
+
+    if (fmrb_semaphore_take(g_sync_file_mutex, FMRB_TICK_MAX) != FMRB_PASS) {
+        return FMRB_ERR_TIMEOUT;
+    }
+    fmrb_err_t ret = sync_file_locked(src, dest);
+    fmrb_semaphore_give(g_sync_file_mutex);
     return ret;
 }
 
@@ -600,6 +639,9 @@ fmrb_err_t fmrb_kernel_start(void)
         return FMRB_ERR_FAILED;
     }
     if(!init_hid_routing()){
+        return FMRB_ERR_FAILED;
+    }
+    if(!init_file_sync()){
         return FMRB_ERR_FAILED;
     }
     if(!fmrb_app_init()){

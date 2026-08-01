@@ -121,6 +121,9 @@ int fmrb_spx_gfx_draw_tile(int canvas_id, int image_id, int src_x, int src_y,
                            int w, int h, int dst_x, int dst_y);
 
 /* --- file transfer --- */
+/** Bring a graphics-board file up to date, transferring only when it differs
+ *  (size + CRC32). Returns 1 on success, 0 on failure. */
+int fmrb_spx_gfx_sync_file(const char *src, int slen, const char *dst, int dlen);
 /** Copy a local file to the graphics board FS. Returns 1 on success, negative
  *  on error (the mruby version raises; here the Ruby base decides). */
 int fmrb_spx_gfx_transfer_file(const char *src, int slen, const char *dst, int dlen);

@@ -171,13 +171,13 @@ class RpgDemoApp < FmrbApp
   private
 
   def transfer_assets
-    # Transfer unconditionally: regenerating assets locally can change their
-    # size, and skipping on @gfx.file_status[:exists] would leave the WROVER
-    # cache stale. BGM_SRC is included so the audio task can load it via
-    # load_fmsq_file (which bypasses the inline IPC payload cap).
+    # sync_file compares size and CRC32, so regenerated assets are picked up
+    # and unchanged ones cost one round trip instead of a full transfer.
+    # BGM_SRC is included so the audio task can load it via load_fmsq_file
+    # (which bypasses the inline IPC payload cap).
     srcs = [SHEET_SRC, BGM_SRC] + PLAYER_FRAME_NAMES.map { |n| "#{APP_DIR}/#{n}" }
     srcs.each do |src|
-      @gfx.transfer_file(src, dest: cache_path_for(src))
+      @gfx.sync_file(src, dest: cache_path_for(src))
     end
   end
 

@@ -5,6 +5,7 @@
 #include "host_file_local.h"
 
 #include "fmrb_log.h"
+#include "fmrb_link_cobs.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -87,11 +88,33 @@ fmrb_err_t host_file_local_write(const char *path, uint16_t path_len,
     return FMRB_OK;
 }
 
+// CRC32 of a stored file. Mirrors file_crc32 in the WROVER's
+// file_transfer_handler.c so both targets report a comparable value.
+static uint32_t local_file_crc32(const char *full_path)
+{
+    FILE *fp = fopen(full_path, "rb");
+    if (!fp) {
+        return 0;
+    }
+    uint32_t crc = 0;
+    uint8_t buf[256];
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) {
+        crc = fmrb_link_crc32_update(crc, buf, n);
+    }
+    fclose(fp);
+    return crc;
+}
+
 fmrb_err_t host_file_local_status(const char *path, uint16_t path_len,
-                                  uint8_t *out_exists, uint32_t *out_size)
+                                  uint8_t *out_exists, uint32_t *out_size,
+                                  uint32_t *out_checksum)
 {
     *out_exists = 0;
     *out_size = 0;
+    if (out_checksum) {
+        *out_checksum = 0;
+    }
 
     char full_path[LOCAL_MAX_PATH];
     if (build_full_path(full_path, sizeof(full_path), path, path_len) != 0) {
@@ -102,6 +125,9 @@ fmrb_err_t host_file_local_status(const char *path, uint16_t path_len,
     if (stat(full_path, &st) == 0) {
         *out_exists = 1;
         *out_size = (uint32_t)st.st_size;
+        if (out_checksum) {
+            *out_checksum = local_file_crc32(full_path);
+        }
     }
     return FMRB_OK;
 }

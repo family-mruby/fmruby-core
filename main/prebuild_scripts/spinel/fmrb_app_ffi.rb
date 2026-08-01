@@ -70,6 +70,7 @@ module FmrbSpxGfx
   ffi_func :fmrb_spx_gfx_draw_tile,    [:int, :int, :int, :int, :int, :int, :int, :int], :int
 
   # --- file transfer ---
+  ffi_func :fmrb_spx_gfx_sync_file,     [:str, :int, :str, :int], :int   # 1=ok
   ffi_func :fmrb_spx_gfx_transfer_file, [:str, :int, :str, :int], :int
   ffi_func :fmrb_spx_gfx_file_status,   [:str, :int], :int   # size>=0 / neg=absent
 

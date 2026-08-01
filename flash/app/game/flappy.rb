@@ -33,10 +33,7 @@ class SpriteTestApp < FmrbApp
       draw_window_frame
       @gfx.present
       cache_path = "#{cache_dir}/#{name}"
-      status = @gfx.file_status(cache_path)
-      unless status[:exists]
-        @gfx.transfer_file("#{src_dir}/#{name}", dest: cache_path)
-      end
+      @gfx.sync_file("#{src_dir}/#{name}", dest: cache_path)
     end
     Log.info("FlappySprite: files transferred")
 

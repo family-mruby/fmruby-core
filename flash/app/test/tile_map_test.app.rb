@@ -22,8 +22,7 @@ class TileMapTestApp < FmrbApp
     Log.info("TileMap loaded: #{@map.width}x#{@map.height}, sheet=#{@map.tilesheet_path}")
 
     sheet_dst = "#{CACHE_DIR}/sheet.bmp"
-    status = @gfx.file_status(sheet_dst)
-    @gfx.transfer_file(@map.tilesheet_path, dest: sheet_dst) unless status[:exists]
+    @gfx.sync_file(@map.tilesheet_path, dest: sheet_dst)
     @sheet = TileSheet.new(@gfx, sheet_dst,
                            cols: @map.tilesheet_cols,
                            tile_size: @map.tile_size)

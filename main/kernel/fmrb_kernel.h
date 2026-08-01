@@ -109,7 +109,13 @@ typedef struct {
 int fmrb_kernel_get_sync_files(fmrb_sync_file_entry_t *entries, int max_entries);
 
 /**
- * @brief Sync a single file from local storage to host
+ * @brief Bring one file on the graphics side up to date
+ *
+ * Compares the local size and CRC32 against the remote copy and transfers
+ * only when they differ, so this is the call to use rather than checking
+ * existence: an existence check leaves an edited asset stale forever.
+ * Safe to call from any task; syncs are serialized.
+ *
  * @param src Source path (local, e.g. "/usr/share/sounds/test.nsf")
  * @param dest Destination path (remote, e.g. "/flash/data/test.nsf")
  * @return FMRB_OK on success or if already up-to-date

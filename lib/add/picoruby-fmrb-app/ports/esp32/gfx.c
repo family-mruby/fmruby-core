@@ -24,6 +24,7 @@
 #include "fmrb_transport.h"
 #include "../../include/picoruby_fmrb_app.h"
 #include "app_local.h"
+#include "fmrb_kernel.h"
 
 static const char* TAG = "gfx";
 
@@ -665,6 +666,18 @@ static fmrb_err_t send_file_cmd_sync(file_cmd_t *cmd,
     }
 
     return FMRB_OK;
+}
+
+// FmrbGfx#_sync_file(src_path, dest_path) -> true/false
+// Transfers only when the remote copy differs (size + CRC32), so an edited
+// asset is picked up and an unchanged one costs one round trip.
+static mrb_value mrb_gfx_sync_file(mrb_state *mrb, mrb_value self)
+{
+    const char *src;
+    const char *dest;
+    mrb_get_args(mrb, "zz", &src, &dest);
+
+    return mrb_bool_value(fmrb_kernel_sync_file(src, dest) == FMRB_OK);
 }
 
 // FmrbGfx#_transfer_file(src_path, dest_path) -> true/false
@@ -1459,6 +1472,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());
 
     // File transfer API
+    mrb_define_method(mrb, gfx_class, "_sync_file", mrb_gfx_sync_file, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, gfx_class, "_transfer_file", mrb_gfx_transfer_file, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, gfx_class, "_file_status", mrb_gfx_file_status, MRB_ARGS_REQ(1));
 

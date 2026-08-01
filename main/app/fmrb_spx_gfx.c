@@ -26,6 +26,7 @@
 #include "fmrb_link_protocol.h"
 #include "fmrb_transport.h"
 #include "fmrb_file_transfer_msg.h"
+#include "fmrb_kernel.h"
 
 /* Byte length for :binstr FFI returns. Defined in fmrb_spx_kernel.c, which is
    compiled alongside this shim in every Spinel build. */
@@ -470,6 +471,22 @@ static fmrb_err_t spx_file_cmd_sync(file_cmd_t *cmd, file_cmd_result_t *result, 
     fmrb_base_type_t sem_ret = fmrb_semaphore_take(result->done_sem, FMRB_MS_TO_TICKS(timeout_ms));
     fmrb_semaphore_delete(result->done_sem);
     return (sem_ret == FMRB_PASS) ? FMRB_OK : FMRB_ERR_TIMEOUT;
+}
+
+int fmrb_spx_gfx_sync_file(const char *src, int slen, const char *dst, int dlen)
+{
+    /* The Ruby strings are not NUL terminated, and fmrb_kernel_sync_file takes
+       C strings, so both are copied out first. */
+    char path[256];
+    char dest[120];
+    if (!src || !dst || slen <= 0 || (size_t)slen >= sizeof(path) ||
+        dlen <= 0 || (size_t)dlen >= sizeof(dest)) {
+        return 0;
+    }
+    memcpy(path, src, (size_t)slen); path[slen] = '\0';
+    memcpy(dest, dst, (size_t)dlen); dest[dlen] = '\0';
+
+    return fmrb_kernel_sync_file(path, dest) == FMRB_OK ? 1 : 0;
 }
 
 int fmrb_spx_gfx_transfer_file(const char *src, int slen, const char *dst, int dlen)

@@ -156,12 +156,9 @@ class NsfPlayerApp < FmrbApp
     src_path = "#{MUSIC_DIR}/#{@files[@selected]}"
     cache_path = "#{CACHE_DIR}/#{@files[@selected]}"
 
-    # Transfer file to cache directory on graphics-audio side
-    status = @gfx.file_status(cache_path)
-    unless status && status[:exists]
-      Log.info("Transferring #{src_path} -> #{cache_path}")
-      @gfx.transfer_file(src_path, dest: cache_path)
-    end
+    # Bring the cached copy on the graphics-audio side up to date
+    Log.info("Syncing #{src_path} -> #{cache_path}")
+    @gfx.sync_file(src_path, dest: cache_path)
 
     @audio.play(cache_path, track: @track)
     @playing = true

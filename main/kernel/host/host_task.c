@@ -1046,11 +1046,12 @@ static void file_transfer_handle_status(const file_cmd_t *cmd)
 #if defined(FMRB_HW_MODERN)
     uint8_t exists = 0;
     uint32_t size = 0;
-    host_file_local_status(cmd->path, cmd->path_len, &exists, &size);
+    uint32_t checksum = 0;
+    host_file_local_status(cmd->path, cmd->path_len, &exists, &size, &checksum);
     if (cmd->result) {
         cmd->result->data.status.exists = exists;
         cmd->result->data.status.file_size = size;
-        cmd->result->data.status.checksum = 0;  // parity with WROVER (no CRC)
+        cmd->result->data.status.checksum = checksum;  // same CRC the WROVER reports
         cmd->result->result = 0;
         fmrb_semaphore_give(cmd->result->done_sem);
     }

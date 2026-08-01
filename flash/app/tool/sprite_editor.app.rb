@@ -87,10 +87,7 @@ class SpriteEditorApp < FmrbApp
     # Transfer to graphics-audio cache
     name = File.basename(path)
     cache_path = "/cache/app/sprite_editor/#{name}"
-    status = @gfx.file_status(cache_path)
-    unless status[:exists]
-      @gfx.transfer_file(path, dest: cache_path)
-    end
+    @gfx.sync_file(path, dest: cache_path)
 
     # Load BMP
     bmp = BMP332.load(path)

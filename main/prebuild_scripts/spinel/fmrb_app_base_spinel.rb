@@ -299,6 +299,15 @@ class FmrbGfx
   end
 
   # ---- files / images ----
+  # Transfers only when the graphics-side copy differs (size + CRC32). Use
+  # this for assets; checking file_status[:exists] leaves an edited asset
+  # stale forever.
+  def sync_file(path, dest: nil)
+    s = path.to_s
+    d = (dest || path).to_s
+    FmrbSpxGfx.fmrb_spx_gfx_sync_file(s, s.bytesize, d, d.bytesize) == 1
+  end
+
   def transfer_file(path, dest: nil)
     s = path.to_s
     d = (dest || path).to_s

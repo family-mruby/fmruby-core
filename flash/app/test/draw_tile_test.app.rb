@@ -25,8 +25,7 @@ class DrawTileTestApp < FmrbApp
     # pixels in each tile clearly punch through.
     @gfx.fill_rect(@ox, @oy, @user_area_width, @user_area_height, FmrbGfx::CYAN)
 
-    status = @gfx.file_status(SHEET_DST)
-    @gfx.transfer_file(SHEET_SRC, dest: SHEET_DST) unless status[:exists]
+    @gfx.sync_file(SHEET_SRC, dest: SHEET_DST)
 
     @sheet = SpriteImage.new(@gfx,
                              width: SHEET_W, height: SHEET_H,

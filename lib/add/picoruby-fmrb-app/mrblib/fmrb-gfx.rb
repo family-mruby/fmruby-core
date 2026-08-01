@@ -218,7 +218,16 @@ class FmrbGfx
     self
   end
 
-  # Transfer a file from core to graphics-audio LittleFS
+  # Make sure a file on graphics-audio matches the local one, transferring it
+  # only when it differs (size + CRC32). Use this for assets: checking
+  # file_status[:exists] instead leaves an edited asset stale forever.
+  # dest: destination path on graphics-audio (defaults to same as source path)
+  def sync_file(path, dest: nil)
+    _sync_file(path, dest || path)
+  end
+
+  # Transfer a file from core to graphics-audio LittleFS unconditionally.
+  # Prefer sync_file unless you know the destination has to be rewritten.
   # dest: destination path on graphics-audio (defaults to same as source path)
   def transfer_file(path, dest: nil)
     _transfer_file(path, dest || path)
@@ -252,11 +261,7 @@ class FmrbGfx
   # coord: [x, y] array, :center symbol, or nil (defaults to [0,0])
   # mode: :fade_in (reserved for future use)
   def load_image(path, coord: nil, mode: nil)
-    # Transfer file if not already on graphics-audio
-    status = file_status(path)
-    unless status[:exists]
-      transfer_file(path)
-    end
+    sync_file(path)
 
     # Create image from local file
     img = create_image(path)
