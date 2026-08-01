@@ -233,3 +233,110 @@ basic.bmp、いずれも 1654 バイト) で汚してから起動し、CRC 不�
 ビルド: linux (mruby / spinel デスクトップ)、esp32s3 (2,449,456 B)、
 esp32p4 (4,046,608 B) すべて成功。P4 は今回直した Modern 経路が実際に
 コンパイルされる唯一の構成なので必ず通した。
+
+## Phase C: App サービス層の共通化 (2026-08-01)
+
+### C1: canvas サービス
+
+`components/fmrb_gfx/fmrb_app_canvas.{h,c}` を新設した。
+
+- `fmrb_app_canvas_init(ctx, *canvas, *bg)` — window canvas と (条件付き)
+  背景 canvas を作って ctx に登録。headless は何も作らず FMRB_OK を返すので、
+  呼び出し側に headless 分岐が要らない。背景 canvas の生成失敗はログのみで
+  致命にしない (壁紙が無くてもアプリは動く)。
+- `fmrb_app_canvas_create_main(ctx, w, h, z, ...)` — スクリプトが寸法を
+  決める形 (Lua の FmrbApp.create_canvas、BASIC コンソール) 用。
+- `fmrb_app_canvas_create_extra` / `delete_extra` — extra_canvas_ids の
+  スロット管理込み。
+- `fmrb_app_canvas_release_all(ctx)` — main / bg / extra を解放。**フィールド
+  を消してから削除する**ので再入安全。バインディングの cleanup、カーネルの
+  通常 reap、強制 kill の 3 経路すべてがこれを呼び、最初の 1 回だけが働く。
+
+置換したのは 5 バインディング (mruby / Spinel / Python / Lua / BASIC) と
+`fmrb_app.c` の 2 経路。`fmrb_gfx_create_canvas` / `fmrb_gfx_delete_canvas` の
+直接呼び出しはサービス外に 0 件。
+
+**置換で消えたバグ**: BASIC は `console->canvas_id` を直接削除しながら
+`ctx->canvas_id` を残していたため、カーネルの reap が同じ id を 2 度削除して
+いた。グラフィックス側が既に別アプリへ配り直した id を消しうる。release_all
+はフィールドを先に消すので構造的に起きない。
+
+### C2: HID イベント解読
+
+`components/fmrb_msg/fmrb_hid_event.{h,c}` に正規化構造体
+`fmrb_hid_event_t` と `fmrb_hid_event_decode(data, size, *out)` を置き、
+mruby app.c と Python fmrb_module.c は「正規化構造体 -> hash / dict」だけに
+なった。サイズ検証もデコーダ 1 箇所。
+
+**計画からの逸脱 (1)**: 計画では「Python は qstr 制約で fmrb のヘッダを
+引けないので構造体を fmrb_mp_bridge.h へ写し `_Static_assert` で守る」と
+していたが、fmrb_module.c は既に `fmrb_hid_msg.h` を include していた。
+制約はファームウェアのヘッダを引くヘッダに対するもので、stdint だけの
+plain なヘッダには当てはまらない。デコーダの引数を `fmrb_msg_t*` ではなく
+`(data, size)` にして plain さを保ち、写しは作らなかった。
+
+**計画からの逸脱 (2)**: 置き場所は fmrb_common ではなく fmrb_msg にした。
+デコード対象のワイヤ形式 (fmrb_hid_msg.h) がそこにあり、両バインディングとも
+既に fmrb_msg を REQUIRES している。
+
+**副産物 2 つ**:
+- Python に gamepad イベントが届くようになった。mruby は 5 種類すべて
+  扱っていたが Python は key / mouse だけで、デコーダ共通化で自動的に揃った。
+- `fmrb_hid_mouse_motion_event_t` を削除した。HID_MSG_MOUSE_MOVE の実際の
+  ワイヤ形式は host_task.c が書く 6 バイト
+  `[subtype, button=0, x(2), y(2)]` で、button イベントと同一。この構造体は
+  5 バイトで一致しておらず、mruby と Python の両方が「この構造体を信じるな」
+  というコメント付きで手動パースしていた。デコーダは button イベントの
+  レイアウトで move も読む。
+
+### C3: 見送り
+
+計画の「差分が残るなら見送ってよい」に従って見送った。2 つの `_spin` の差は
+言語への呼び出しだけではない。
+
+1. **待ち方**: mruby は残り時間ぶん `fmrb_msg_receive` を 1 回ブロックする。
+   Python は 100ms (FMRB_MP_SPIN_SLICE_MS) に刻んで毎回 `should_exit` を
+   見る。stop メッセージはアプリのキューが満杯だと落ちるので、Python には
+   このポーリングが要る。
+2. **stop のラッチ**: Python は dispatch 前に
+   `fmrb_mp_bridge_note_control` で stop を latch する (ハンドラが例外を
+   投げても残るように)。mruby の `_spin` は `should_exit` を一切見ない。
+3. **resize**: mruby は C から Ruby の @window_width / @user_area_* を
+   直接書く。Python は `_handle_resize` に委譲し、更新はアプリ側。
+
+共通化すると mruby の待ち方を変える (デスクトップを含む全 Ruby アプリの
+挙動変更) か、待ち方自体をコールバック表に持たせることになり、共通部分は
+receive を囲む while だけになる。器を作る価値が無いと判断した。
+
+### 検証 (headless)
+
+- 4 言語: mruby (Shapes の描画 + ページ切替クリック、Shell のキーボード)、
+  Lua、BASIC、Python (Shapes/Lines ページ切替) の起動・描画・入力・終了。
+- Spinel デスクトップ構成: 起動、ランチャー、Shapes の起動・描画・終了。
+  `fmrb_spx_app_cleanup` が release_all で canvas を 1 回だけ解放。
+- suspend / resume: フルスクリーンの BASIC アプリで desktop が
+  SUSPENDED -> RUNNING と往復し、壁紙ごと正しく再描画される。
+- canvas の対応: 上記すべてで作成と削除が 1 対 1。バインディングの cleanup が
+  解放した後、カーネルの reap は何もしない (2 回目の削除ログが出ない)。
+
+**kill 経路**: debugd (DBG_CMD_SPAWN / DBG_CMD_KILL) 経由で spawn -> kill を
+5 回繰り返し、canvas のリークが無いことを確認した。
+
+ただし**強制終了経路 (force_release_resources) は実行できていない**。
+出荷されている 4 ランタイムはすべて 1 秒の猶予内に協調終了する
+(`Exited on request`)。意図的にビジーループする Lua アプリを一時的に作って
+試したところ、`fmrb_app_kill` が猶予ループを抜ける前に固まり、
+`No response in 1000ms, forcing termination` のログにすら到達しなかった。
+Phase C の変更とは無関係 (fmrb_app.c の差分は canvas 解放ブロック 2 箇所
+だけで、固まる箇所より下流)。ただし**現状このコードは事実上到達不能**という
+別の問題なので申し送る。再現手順は「canvas を作ってから
+`while true do end` する Lua アプリを spawn して kill」。
+
+### ビルド
+
+| 構成 | 結果 | サイズ |
+|---|---|---|
+| linux (mruby デスクトップ) | OK | - |
+| linux (spinel デスクトップ) | OK | - |
+| esp32s3 | OK | 2,448,128 B (前コミットから -1,328) |
+| esp32p4 | OK | 4,045,440 B (前コミットから -1,168) |
