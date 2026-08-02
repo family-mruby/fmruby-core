@@ -306,3 +306,208 @@ kill PyBlock -> 1.08s, "No response in 1000ms, forcing termination" / "Killed by
 | Web コンソール既存機能 (ファイル/ログ) の回帰 | OK。デバッグサービス相乗りの影響なし |
 
 これで Phase 2 は実機まで完了。残るは Phase 3 (強制経路の安全化) のみ。
+
+## Phase 3a: 危険ウィンドウの全数調査 (2026-08-02、実装なし)
+
+### 調査範囲と方法
+
+ゲストタスクが実行し得る C を対象にした: 5 バインディング
+(mruby `ports/esp32/*.c` / Spinel `fmrb_spx_*.c` / Python
+`fmrb_bridge.c` + `fmrb_mp.c` / Lua `fmrb_lua_gfx.c` / BASIC
+`fmrb_basic_gfx.c`) と、その先の `fmrb_gfx` / `fmrb_msg` /
+`fmrb_transport` / `fmrb_hal`。`fmrb_semaphore_take|give|create`、
+`fmrb_malloc|fmrb_sys_malloc`、`fmrb_hal_file_open`、
+`fmrb_transport_send_sync` の全出現を追い、取得から返却までの区間を
+数えた。
+
+### 分類の判断基準
+
+- **分類 1 (削除安全)**: 資源を持たずにブロックしているだけ。または
+  持っている資源が**自動で回収される**もの。補償不要。
+- **分類 2 (枯渇・恒久ロック)**: 削除されると資源が**永久に 1 個減る**か、
+  ロックが**永久に握られたまま**になる。繰り返すと系が停止する。**補償必須**。
+- **分類 3 (有界リーク)**: 1 回の kill につき有限量が漏れるだけで、
+  枯渇に向かわない。頻度と量を見て補償するか文書化するかを選ぶ。
+
+### 全数表
+
+| # | ウィンドウ | 場所 | 分類 | 削除された場合 | 頻度 |
+|---|---|---|---|---|---|
+| 1 | GFX フローセマフォのスロット (take -> msg_send 完了) | `fmrb_gfx_cmd.c:36-53` | **2** | スロットが 1 個永久に減る。繰り返すと 96 枠が枯渇し、全アプリの描画が止まる | 描画 1 回ごと。系で最も熱い経路 |
+| 2 | MicroPython 排他 mutex `s_lock` | `fmrb_mp.c:127-140`, `299-301` | **2** | mutex が永久ロック。以後 Python アプリは `fmrb_mp_acquire` で無限待ち (FMRB_MAX_DELAY) | Python アプリの起動時と終了時の各 1 回 |
+| 3 | メッセージ登録簿 mutex `g_registry_lock` | `fmrb_msg.c:105/149/189/209/240/259` | **2** | mutex が永久ロック。**全タスクの send/receive が停止** = 系の停止 | メッセージ送受信ごと。極めて熱い |
+| 4 | transport の同期リクエストスロット (`req->active`) | `fmrb_transport.c:510-541` | **1** | タイムアウト掃除 (`:872`) が `active=false` に戻すので**自己回復**する | create_mask / create_image_from_file |
+| 5 | 同期コンテキストのセマフォ (`create_binary` -> `take` -> `delete`) | `fmrb_gfx.c:40/67`, `gfx.c:148/631/786`, `fmrb_spx_gfx.c:61/448/558`, `fmrb_spx_app.c:564`, `app.c:1097`, `fmrb_transport.c:585` | **3** | セマフォ 1 個 (約 80 B) が漏れる。**加えて下記の危険あり** | 同期 API 1 回ごと |
+| 6 | ファイル転送バッファ (`fmrb_sys_malloc` -> host へ所有権移転) | `gfx.c:717`, `fmrb_spx_gfx.c:515` | **3** | ファイルサイズぶん漏れる (アイコン 1.6KB〜シート数十 KB) | transfer_file / sync_file。アプリ起動時のアセット同期 |
+| 7 | ファイルハンドル (`file_open` -> `file_close`) | `gfx.c:723`, `fmrb_spx_gfx.c:520` | **3** | FD 1 個が漏れる | 同上。区間は read 1 回ぶんと短い |
+
+### 分類 2 の 3 件が 3b の対象
+
+README は分類 2 として GFX スロットを挙げていたが、調査で**あと 2 件**見つかった
+(#2 Python 排他、#3 メッセージ登録簿)。いずれも「短い非ブロック区間」で、
+`g_registry_lock` は設計上ブロック呼び出しの前に必ず解放されている
+(`fmrb_msg.c:202` のコメントどおり) ため窓は数命令ぶんしかない。それでも
+**当たれば系が止まる**ので、分類 2 として同じ形 (ctx の保持カウンタ +
+kill 側での補填) を当てる対象になる。
+
+窓の広さは #1 が桁違いに広い (msg_send がキュー満杯で最大 5 秒ブロックし得る
+区間をまるごと含む)。#2/#3 は数命令。**実際に踏む確率は #1 が圧倒的**。
+
+### 分類 3 の扱い (ユーザ判断をお願いしたい)
+
+量と頻度は上表のとおりで、**1 回の強制 kill につき最大でも
+「セマフォ 1 個 + ファイル 1 本ぶんのバッファ + FD 1 個」**。枯渇には
+向かわない。ただし見落とせない点が 2 つある。
+
+1. **ハングしたアプリはこの窓に居る確率が高い**。強制 kill は 1 秒の猶予後に
+   撃たれるので、対象は「応答しないまま何かを待っている」状態であることが
+   多い。#5 の同期待ち (get_pixel / file_status / transfer / define_prog) は
+   まさにその「待っている場所」なので、レアな競合ではない。
+2. **漏れよりも危険な副作用がある**。#5 で削除すると、host_task や transport の
+   コールバックが後から**死んだスタック上の同期コンテキストに書き込む**
+   (`sc->result` 代入や `fmrb_semaphore_give(sc->done)`)。削除済みタスクの
+   スタックは別用途に再利用され得るので、これはリークではなく**メモリ破壊**の
+   可能性がある。#6 も同様に、host_task が転送バッファを読む前後で
+   アプリのメモリプールが破棄されると解放済み領域を読む。
+
+このため私の推奨は **「分類 3 のうち #5 は補償ではなく無効化で対処、#6/#7 は
+制限事項として文書化」** です。具体的には:
+
+- #5: `gfx_cmd_sync_ctx_t` / `file_cmd_result_t` を**アプリのスタックではなく
+  ctx 側 (または host が所有する固定枠) に置き**、kill 側で「もう誰も
+  書き込まない」印を立てる。これは 3b のカウンタ方式と同じ「消してから
+  帳尻を合わせる」で扱えるが、**3b より作業量が大きい**ため、Phase 3 の
+  範囲に入れるかは判断をいただきたい。
+- #6/#7: 1 回あたり数 KB と FD 1 個。強制 kill 自体が異常系で頻発しない
+  前提なら、**制限事項として文書化**で足りると考える。
+
+### 調査中に見つかった別件 (Phase 3 の対象外だが要記録)
+
+**GFX フローセマフォの計上が既に非対称**。`host_task.c:1311` は処理した
+GFX コマンド 1 件につき 1 回 give するが、`fmrb_gfx.c` は 6 箇所
+(`:59` の同期送出、`:210`, `:256`, `:294`, `:460`, `:483`) で
+`fmrb_gfx_submit` を通さず `fmrb_msg_send` を直接呼んでおり、**take せずに
+give される**。カウンティングセマフォは最大値で頭打ちになるので上限は
+超えないが、描画が走っていて残数が最大未満のときは**幻のスロットが 1 個
+増える**。HID 予約枠 (Phase A) の保護がそのぶん緩む。
+
+これは分類 2 の #1 を補償する際、**補償が正しいかを残数で検証できなくする**
+ので、3b に着手する前に整理したほうがよい。修正案は「同期送出も
+`fmrb_gfx_submit` を通す」か「host 側で sync フラグ付きコマンドを give の
+数から除く」のどちらか。**これも判断をいただきたい。**
+
+なお `fmrb_gfx_msg.h:227` の「bytecode_buf/strtable_buf は fmrb_malloc され、
+Host Task が free する。所有権は Host Task に移る」というコメントは**現状と
+一致していない**。実際の `fmrb_gfx_define_prog` は呼び出し側のバッファを
+memcpy させるだけで所有権を渡さず、free もしていない (`fmrb_gfx.c:402` の
+コメントが正)。リークではないがコメントが誤り。
+
+## Phase 3b-0 / 3b / 3c / 3d: 実装 (2026-08-02)
+
+### 3b-0: GFX セマフォ計上の非対称
+
+`fmrb_gfx.c` の直接送出 6 箇所のうち **5 箇所をメーター経由
+(`fmrb_gfx_submit`) に**、`delete_canvas` の 1 箇所だけを新設の
+`fmrb_gfx_submit_unmetered()` にした。前者はすべてアプリタスク上でしか
+呼ばれない (呼び出し元を全数確認)。後者はカーネルの reap と強制 kill 経路
+からも呼ばれるため、アプリの描画が補充するセマフォで待たせるわけにいかない。
+
+`gfx_cmd_t` に `unmetered` を足し、host 側は take されたぶんだけ give する。
+
+**実装中に自分で作った不具合を計測で捕まえた**。最初は give 側で
+`cmds[i].unmetered` を見たが、同期コマンドは `cmds[]` に格納されないまま
+`count++` だけされる (host_task.c の `handle_sync`) ので、未初期化の索引を
+読んでいた。結果 3 スロットが失われた。到着時に `metered` を数える形に直した。
+
+**検証手法** (README の宿題): take と give に一時カウンタを仕込み、gdb で
+読む。`docker compose` に `cap_add: SYS_PTRACE` の一時 override を足し
+(コミットしない)、`docker exec -u 0 ... gdb -p <pid> -batch -ex 'p ...'`。
+セマフォ残数は `((Queue_t*)g_host_gfx_queue_semaphore)->uxMessagesWaiting`
+で読める。
+
+| 状態 | takes | gives | 差 | 残数 |
+|---|---|---|---|---|
+| 修正前 (最初の実装、不具合あり) | 5195 | 5192 | 3 | 93 |
+| 修正後 アイドル | 5338 | 5338 | **0** | **96** |
+| 修正後 BASIC デモ後 | 10063 | 10063 | **0** | **96** |
+| 修正後 Shapes 後 | 10181 | 10181 | **0** | **96** |
+| 修正後 再アイドル | 10246 | 10246 | **0** | **96** |
+
+10,246 コマンド (同期コマンドを含む) を通して take と give が完全一致し、
+残数は常に満枠の 96。**幻スロットは消えた**。
+
+なお元の非対称 (fmrb_gfx.c の 6 箇所が take せず give される) 自体は
+コード読解で確定したもので、修正前バイナリを同じ計測器にかけてはいない。
+アイドル時の残数はカウンティングセマフォが最大値で頭打ちになるため
+修正前も 96 を示し、残数だけでは区別できない (だからカウンタを入れた)。
+
+### 3b: mutex ガード
+
+`fmrb_msg_registry_lock_barrier()` と `fmrb_mp_lock_barrier()` を追加し、
+強制経路が `fmrb_task_delete` の**直前**に両方を呼ぶ。取れた = 対象は
+保持窓の外、が保証になる。ホットパス (毎メッセージのレジストリ操作) には
+何も足していない。
+
+### 3c: INIT 状態の kill
+
+- `fmrb_app_kill` の受け付け状態に INIT を追加。
+- `is_valid_transition` に **INIT -> STOPPING** を追加 (強制経路が使う)。
+- 猶予ループの早期 reap 条件から INIT を**外した**。この分岐は
+  RUNNING/SUSPENDED しか kill できなかった間は到達不能で、INIT kill を
+  許した今は「create_vm の中でまだ動いている」を意味するため、
+  mutex ガードのある強制経路へ回す必要がある。
+- **検証中に見つけて直した実バグ**: `ctx->mp_active` は `fmrb_mp_start`
+  成功後に立っていたため、`fmrb_mp_start` 内で固まったアプリを強制 kill
+  しても `destroy_vm` が `fmrb_mp_close` を呼ばず、**Python 排他が解放
+  されなかった** (最初の検証で実際に再現)。ロックを取った直後に
+  `mp_active` を立てる形に変更 (`fmrb_mp_close` は早期呼び出しを明示的に
+  許容している)。
+
+**判定**: INIT で固めた Python アプリを kill -> `INIT -> STOPPING` ->
+`Killed by force` -> `MicroPython runtime closed` -> 直後に
+`Python demo started on linux`。排他が解放されている。
+
+### 3d: 同期 I/O 中は消さずに待つ
+
+`ctx->sync_io_depth` を追加し、同期待ち 10 箇所を
+`fmrb_app_sync_io_begin/end` で囲んだ (GFX 同期送出、mruby/Spinel の
+ファイルコマンド、transport の send_sync、get_pixel)。強制経路は旗が
+立っていれば最大 `KILL_SYNC_WAIT_MS` = 30 秒待つ。
+
+**判定** (大きめのファイルを繰り返し転送する一時アプリで再現):
+
+- **(a) 応答が来る場合**: 転送の合間に隙のあるアプリを kill ->
+  `In a sync round trip; waiting up to 30000ms` の後、アプリが目を覚まし
+  `Task exiting normally` -> `Reaped`。**協調終了に化けた** (`Killed by
+  force` は出ない)。
+- **(b) 窓から出てこない場合**: 転送を連続で回すアプリを kill ->
+  30 秒待って `Sync round trip did not end in 30000ms; deleting anyway`
+  -> canvas 回収 -> `Killed by force`。系は生存。
+
+### スロット枯渇の実証
+
+GFX を流し続ける一時 Lua アプリの spawn -> kill を **10 回**繰り返し、
+前後でセマフォ残数を gdb で読んだ: **96 -> 96 (減少なし)**。直後に
+BASIC デモを動かして 470 cmds/s 出ており、描画は従来どおり。
+
+ただし**この 10 回はすべて協調終了で決着した** (`Exited on request` x10、
+`Killed by force` は 0 件)。Lua の VM フックが `fill_rect` の合間に必ず
+効くためで、**「スロットを保持したまま強制削除される」窓は今回踏んでいない**。
+契約上その劣化は許容 (最大 1/96) なので完了条件は満たすが、実証したのは
+「3b-0 の計上が正しく、10 回の kill で残数が減らないこと」であって
+「窓を踏んでも減らないこと」ではない。
+
+### 回帰
+
+4 言語デモ (mruby / Lua / BASIC / Python) の起動・終了、Spinel デスクトップ
+構成での Shapes の起動・描画・終了、いずれも正常。canvas は作成と削除が
+1 対 1。
+
+### 副産物の記録
+
+- `Killed by force` のログに degraded 警告を追加 (契約どおり 1 行)。
+- **debugd の bind が EINTR で失敗することがある**。検証中に
+  `bind(:5555) failed: Interrupted system call` -> `debugd not running` を
+  1 回踏んだ。FreeRTOS シミュレータはスケジューリングに signal を使うため
+  syscall が中断される。`bind` を EINTR で再試行していないのが原因で、
+  Phase 3 とは無関係の既存の脆さ。再起動で復帰する。
