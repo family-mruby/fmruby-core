@@ -281,17 +281,20 @@ static void modern_radio_init_task(void *arg)
     if (ble_task_init() != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init BLE via C6, continuing without it");
     }
+    fmrb_mem_log_boot_snapshot("ble");
     if (wifi_task_init() != FMRB_OK) {
         FMRB_LOGW(TAG, "WiFi not started (disabled or failed)");
     } else if (rd_task_init() != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init remote desktop, continuing without it");
     }
+    fmrb_mem_log_boot_snapshot("wifi_rd");
     fmrb_task_delete_ex(NULL);
 }
 #endif
 
 static bool init_hardware(void)
 {
+    fmrb_mem_log_boot_snapshot("hw_init_start");
     fmrb_pin_manager_init();
     hw_proxy_init();
 
@@ -301,6 +304,7 @@ static bool init_hardware(void)
 #ifndef FMRB_HW_ATOM_DISPLAY
     status_led_start();
 #endif
+    fmrb_mem_log_boot_snapshot("gpio_led_proxy");
 
 #ifdef ENABLE_HW_WIRING_TEST
     hw_check();
@@ -311,11 +315,13 @@ static bool init_hardware(void)
         FMRB_LOGE(TAG, "Failed to init filesystem");
         return false;
     }
+    fmrb_mem_log_boot_snapshot("littlefs_mount");
 
     // Per-operation filesystem cost. Runs here, right after the mount and
     // before any VM is created, so the numbers carry no interpreter or GC
     // component and stay comparable across engines and storage settings.
     fs_bench_run(FMRB_FS_BENCH_DIR);
+    fmrb_mem_log_boot_snapshot("fs_bench");
 
 #ifndef FMRB_HW_ATOM_DISPLAY
     hid_device_config_init();
@@ -338,6 +344,7 @@ static bool init_hardware(void)
     if (usb_task_power_on_root_port() != FMRB_OK) {
         FMRB_LOGW(TAG, "USB root port power-on failed; enumeration may not start");
     }
+    fmrb_mem_log_boot_snapshot("usb_host");
 #endif
 
 #ifndef CONFIG_IDF_TARGET_ESP32P4
@@ -345,6 +352,7 @@ static bool init_hardware(void)
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init BLE, continuing without it");
     }
+    fmrb_mem_log_boot_snapshot("ble");
 #endif
 
 #if defined(FMRB_HW_ATOM_DISPLAY)
@@ -437,8 +445,10 @@ void fmrb_os_init(void)
 #endif
 
     FMRB_LOGI(TAG, "Initializing Family mruby OS...");
+    fmrb_mem_log_boot_snapshot("boot_start");
     // Init memory
     init_mem();
+    fmrb_mem_log_boot_snapshot("mem_init");
 
     // Init HW
     init_hardware();
@@ -474,6 +484,7 @@ void fmrb_os_init(void)
     // Started after the kernel/app subsystems are up. The BLE transport does
     // not depend on BLE being initialized yet, so the order is free here.
     fmrb_debugd_init();
+    fmrb_mem_log_boot_snapshot("debugd");
 }
 
 void fmrb_os_close(void)

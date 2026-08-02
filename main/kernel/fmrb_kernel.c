@@ -635,24 +635,29 @@ fmrb_err_t fmrb_kernel_start(void)
     if(!read_system_config()){
         return FMRB_ERR_FAILED;
     }
+    fmrb_mem_log_boot_snapshot("system_config");
     if(!init_hal()){
         return FMRB_ERR_FAILED;
     }
+    fmrb_mem_log_boot_snapshot("hal");
     if(!init_hid_routing()){
         return FMRB_ERR_FAILED;
     }
     if(!init_file_sync()){
         return FMRB_ERR_FAILED;
     }
+    fmrb_mem_log_boot_snapshot("file_sync");
     if(!fmrb_app_init()){
         return FMRB_ERR_FAILED;
     }
+    fmrb_mem_log_boot_snapshot("app_init");
 
     // MicroPython guest VM. Only the single-instance lock is set up here; the
     // runtime itself comes up per app.
     if (fmrb_mp_init() != FMRB_OK) {
         return FMRB_ERR_FAILED;
     }
+    fmrb_mem_log_boot_snapshot("mp_init");
 
     // Set the clock before anything can report a time. A missing or flat RTC is
     // not fatal -- the system runs with whatever the clock says, as it did
@@ -677,10 +682,11 @@ fmrb_err_t fmrb_kernel_start(void)
         fmrb_task_delay_ms(100);
         if(cnt >= 30){
             FMRB_LOGE(TAG, "waiting host timeout!");
-            return FMRB_ERR_FAILED;        
+            return FMRB_ERR_FAILED;
         }
         cnt++;
     }
+    fmrb_mem_log_boot_snapshot("host_ready");
 
     // Create kernel task using spawn API. The Spinel engine runs the same
     // PROC_ID_KERNEL slot as a NATIVE task (fmrb_kernel_entry); the mruby engine

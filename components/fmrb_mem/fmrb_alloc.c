@@ -363,6 +363,22 @@ int fmrb_sys_mem_get_stats(fmrb_pool_stats_t* stats)
     return fmrb_mem_get_stats(system_handle, stats);
 }
 
+// One-line internal-RAM snapshot for the boot-time budget table
+// (doc/internal_ram_budget.md M-1). Grep the boot log for "M1|" and diff
+// consecutive lines to see what each init step costs.
+void fmrb_mem_log_boot_snapshot(const char *label)
+{
+#ifndef CONFIG_IDF_TARGET_LINUX
+    FMRB_LOGI(TAG, "M1|%s|internal=%u|largest=%u|psram=%u",
+              label,
+              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+              (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+              (unsigned)heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+#else
+    (void)label;
+#endif
+}
+
 // Print PSRAM information (ESP32 only)
 void fmrb_mem_print_psram_info(void)
 {

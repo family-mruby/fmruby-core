@@ -53,6 +53,10 @@ int fmrb_sys_mem_get_stats(fmrb_pool_stats_t* stats);
 // Platform PSRAM information (ESP32 only)
 void fmrb_mem_print_psram_info(void);
 
+// One-line internal-RAM snapshot for the boot-time budget table
+// (doc/internal_ram_budget.md M-1). No-op on Linux.
+void fmrb_mem_log_boot_snapshot(const char *label);
+
 #ifdef __cplusplus
 }
 #endif

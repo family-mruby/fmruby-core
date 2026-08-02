@@ -1503,6 +1503,13 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     *out_id = idx;
     FMRB_LOGI(TAG, "[%s gen=%u] Task spawned (id=%d, prio=%u)",
              ctx->app_name, ctx->gen, idx, attr->priority);
+    {
+        // Per-app internal-RAM cost lands in the same M-1 table as the boot
+        // steps; diff against the previous line to price one app.
+        char label[48];
+        snprintf(label, sizeof(label), "spawn:%s", ctx->app_name);
+        fmrb_mem_log_boot_snapshot(label);
+    }
     return FMRB_OK;
 
 unwind:

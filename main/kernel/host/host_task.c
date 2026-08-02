@@ -1641,6 +1641,7 @@ static void host_task_process_host_message(const host_message_t *msg)
 static void fmrb_host_task(void *pvParameters)
 {
     FMRB_LOGI(TAG, "Host task started");
+    fmrb_mem_log_boot_snapshot("host_task_entry");
 
     // Initialize Gfx Audio subsystems
     int result = init_gfx_audio();
@@ -1651,6 +1652,7 @@ static void fmrb_host_task(void *pvParameters)
     }
     // Signal that host task initialization is complete
     FMRB_LOGI(TAG, "Host task initialized");
+    fmrb_mem_log_boot_snapshot("gfx_audio_init");
     fmrb_host_set_ready();
 
     fmrb_msg_t msg;
