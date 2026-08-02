@@ -16,6 +16,18 @@ extern "C" {
 fmrb_err_t ble_task_init(void);
 
 /**
+ * @brief Start the BLE service asynchronously (idempotent)
+ *
+ * Spawns a one-shot task that runs ble_task_init(), so the caller (boot when
+ * ble_auto_start is set, or the desktop menu for a manual start) never carries
+ * the init frames. Safe to call repeatedly; a second call while BLE is up or
+ * starting is a logged no-op.
+ *
+ * @return FMRB_OK when BLE is running/starting, FMRB_ERR_FAILED otherwise
+ */
+fmrb_err_t ble_service_start(void);
+
+/**
  * @brief Deinitialize BLE stack and stop advertising
  *
  * @return FMRB_OK on success

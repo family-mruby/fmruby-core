@@ -33,6 +33,7 @@ typedef struct {
     uint16_t default_user_app_height;       // Default user app window height
     fmrb_display_mode_t display_mode;       // Display output mode
     bool debug_mode;                        // Debug mode enabled/disabled
+    bool ble_auto_start;                    // Start BLE at boot (false = manual via menu)
     double mouse_scale_x;                   // Mouse X sensitivity multiplier
     double mouse_scale_y;                   // Mouse Y sensitivity multiplier
     char language[8];                       // UI language code, e.g. "ja" or "en"

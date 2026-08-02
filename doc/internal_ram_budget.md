@@ -573,6 +573,27 @@ fmrb_msg の全キュー (host 24 KB + kernel/desktop/app 各 6 KB) の格納域
 InstructionFetchError (9bce545 で修正。ダンプの無ロック走査も同時に修正)。
 ダンプ実装当初からの潜在バグで、読むゴミの内容次第で発火する型。
 
+### 2026-08-02: D 軸実装 — BLE 遅延起動 (config + メニュー手動起動)
+
+`ble_auto_start` (system_conf.toml、既定 true = 従来動作) を追加し、
+false のときは boot で BLE を立てず、desktop メニューの「Start BLE /
+BLE起動」から `ble_service_start()` (冪等・ワンショットタスク) で
+起動する。Retro (内蔵 BLE) のみ。P4 は C6/SDIO の初期化順序が WiFi と
+絡むため対象外のまま。`esp_bt_controller_mem_release` は手動起動と
+両立しないため使わない (呼ぶとリブートまで再起動不可になる)。
+
+S3 実機での 3 段階検証:
+
+| 状態 | 定常 IRAM free |
+|---|---:|
+| auto=true (既定) | 142,460 B (従来同等) |
+| auto=false、BLE 未起動 | **216,956 B (+74,496 B)** |
+| メニューから手動起動後 | 142,240 B (Web コンソール接続・subscribe・切断まで動作確認) |
+
+M-1 の内訳計測点を ble_task_init 内に常設した: controller + NimBLE host
+(`ble_nimble_port`) ≈ 60 KB、GATT + ble_fs タスク (`ble_ready` まで)
+≈ 14.7 KB。
+
 ### 改善案の優先順位 (2026-07-31 版)
 
 「進め方」の原則 (安全に取れる順) は維持したまま、今回の実測で

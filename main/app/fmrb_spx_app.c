@@ -497,6 +497,22 @@ int fmrb_spx_app_reboot(void)
     return 0;  /* unreachable */
 }
 
+#if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(CONFIG_IDF_TARGET_ESP32P4)
+extern int ble_service_start(void);   /* main/drivers/ble/ble_task.h (fmrb_err_t; 0 == OK) */
+#endif
+
+int fmrb_spx_app_ble_start(void)
+{
+    /* Manual BLE start (ble_auto_start=false). Retro built-in radio only:
+       Modern's C6 path manages itself, Linux has no BLE. */
+#if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(CONFIG_IDF_TARGET_ESP32P4)
+    return ble_service_start() == 0 ? 1 : 0;
+#else
+    FMRB_LOGI(TAG, "ble_start: not supported on this target");
+    return 0;
+#endif
+}
+
 /* ---- class: network / usb ----------------------------------------------- */
 
 const char *fmrb_spx_app_wifi_info(void)

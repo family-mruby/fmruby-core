@@ -1,6 +1,7 @@
 #include <string.h>
 #include "esp_attr.h"
 #include "fmrb_rtos.h"
+#include "fmrb_mem.h"
 #include "fmrb_log.h"
 #include "fmrb_log_buffer.h"
 #include "fmrb_task_config.h"
@@ -40,6 +41,7 @@ static const char *TAG = "ble_task";
 // BLE state
 // ============================================================
 static bool g_ble_initialized = false;
+static volatile bool g_ble_start_pending = false;  // admission gate for ble_service_start
 static bool g_ble_advertising = false;
 static uint8_t g_own_addr_type;
 static uint16_t g_conn_handle;
@@ -1347,6 +1349,9 @@ fmrb_err_t ble_task_init(void)
         FMRB_LOGE(TAG, "nimble_port_init failed: %d", rc);
         return FMRB_ERR_FAILED;
     }
+    // M-1 breakdown: nimble_port_init covers the BT controller + NimBLE host
+    // bring-up, the dominant share of BLE's internal-RAM cost.
+    fmrb_mem_log_boot_snapshot("ble_nimble_port");
 
 #if defined(CONFIG_ESP_HOSTED_ENABLE_BT_NIMBLE)
     // Transport is up now (nimble_port_init blocked on the slave
@@ -1450,7 +1455,41 @@ fmrb_err_t ble_task_init(void)
 
     g_ble_initialized = true;
     FMRB_LOGI(TAG, "BLE initialized (with file service)");
+    fmrb_mem_log_boot_snapshot("ble_ready");
 
+    return FMRB_OK;
+}
+
+// One-shot init runner for ble_service_start: neither the boot task nor the
+// desktop task should carry the NimBLE init frames on its own stack.
+static void ble_start_task_func(void *arg)
+{
+    (void)arg;
+    if (ble_task_init() != FMRB_OK) {
+        FMRB_LOGW(TAG, "BLE start failed");
+    }
+    g_ble_start_pending = false;
+    fmrb_task_delete_ex(NULL);
+}
+
+fmrb_err_t ble_service_start(void)
+{
+    if (g_ble_initialized) {
+        FMRB_LOGI(TAG, "BLE already running");
+        return FMRB_OK;
+    }
+    // Single admission gate: boot (ble_auto_start) and the desktop menu can
+    // both call this; only one init task may ever run.
+    if (__atomic_test_and_set(&g_ble_start_pending, __ATOMIC_SEQ_CST)) {
+        FMRB_LOGI(TAG, "BLE start already in progress");
+        return FMRB_OK;
+    }
+    if (fmrb_task_create(ble_start_task_func, "ble_start", 6144, NULL,
+                         4, NULL) != FMRB_PASS) {
+        g_ble_start_pending = false;
+        FMRB_LOGE(TAG, "Failed to spawn BLE start task");
+        return FMRB_ERR_FAILED;
+    }
     return FMRB_OK;
 }
 

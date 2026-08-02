@@ -45,6 +45,7 @@ static fmrb_system_config_t g_system_config = {
     .default_user_app_height = 180,
     .display_mode = FMRB_DISPLAY_MODE_NTSC_IPC,
     .debug_mode = true,
+    .ble_auto_start = true,
     .mouse_scale_x = 1.0,
     .mouse_scale_y = 1.0,
     .language = "en"
@@ -143,6 +144,11 @@ static bool read_system_config(void)
     // Read debug mode
     g_system_config.debug_mode = fmrb_toml_get_bool(conf, "debug_mode", g_system_config.debug_mode);
     fmrb_debug_mode_set(g_system_config.debug_mode);
+
+    // BLE boot policy: true (default) keeps today's behavior; false leaves the
+    // ~75 KB of internal RAM unclaimed until the desktop menu starts BLE by
+    // hand (doc/internal_ram_budget.md, D axis).
+    g_system_config.ble_auto_start = fmrb_toml_get_bool(conf, "ble_auto_start", g_system_config.ble_auto_start);
 
     // Read mouse sensitivity
     g_system_config.mouse_scale_x = fmrb_toml_get_double(conf, "mouse_scale_x", g_system_config.mouse_scale_x);

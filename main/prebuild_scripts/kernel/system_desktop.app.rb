@@ -51,7 +51,11 @@ class SystemDesktopApp < FmrbApp
     { key: :set_clock },
     { key: :config },
     { key: :storage },
-  ] + (FmrbConst::CHIP_MODEL == "ESP32-P4" ? [{ key: :network }] : []) + [
+  ] + (FmrbConst::CHIP_MODEL == "ESP32-P4" ? [{ key: :network }] : []) +
+    # Retro only: manual BLE start for the ble_auto_start=false configuration
+    # (on Modern the C6 radio path manages itself). Harmless when BLE is
+    # already up -- the C side is idempotent.
+    (FmrbConst::PLATFORM == "esp32" && FmrbConst::CHIP_MODEL != "ESP32-P4" ? [{ key: :ble_start }] : []) + [
     { key: :about },
   ] + (FmrbConst::PLATFORM == "esp32" ? [{ key: :reset }] : [])
 
@@ -1038,6 +1042,9 @@ class SystemDesktopApp < FmrbApp
       open_storage_dialog
     when :network
       open_network_dialog
+    when :ble_start
+      Log.info("Desktop: manual BLE start requested")
+      FmrbApp.ble_start
     when :reset
       open_confirm_dialog(FmrbI18n.t(:reboot_confirm), "reboot", {})
     else

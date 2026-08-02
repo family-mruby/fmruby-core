@@ -116,6 +116,7 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_enable_cursor, [], :int
   ffi_func :fmrb_spx_app_set_cursor_visible, [:int], :int
   ffi_func :fmrb_spx_app_reboot, [], :int
+  ffi_func :fmrb_spx_app_ble_start, [], :int
 
   # --- class: network / usb ---
   ffi_func :fmrb_spx_app_wifi_info, [], :binstr

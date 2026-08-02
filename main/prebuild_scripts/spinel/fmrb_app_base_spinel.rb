@@ -1237,6 +1237,10 @@ class FmrbApp
     nil
   end
 
+  def self.ble_start
+    FmrbSpxApp.fmrb_spx_app_ble_start != 0
+  end
+
   def self.wifi_info
     buf = FmrbSpxApp.fmrb_spx_app_wifi_info
     return nil if buf.bytesize == 0

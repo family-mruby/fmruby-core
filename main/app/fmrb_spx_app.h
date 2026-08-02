@@ -158,6 +158,7 @@ const char *fmrb_spx_app_set_wallclock(int year, int month, int day,
 int fmrb_spx_app_enable_cursor(void);            /**< returns 0 */
 int fmrb_spx_app_set_cursor_visible(int visible);/**< returns 0 */
 int fmrb_spx_app_reboot(void);                   /**< does not return */
+int fmrb_spx_app_ble_start(void);                /**< manual BLE start; 1 on success */
 
 /* ---- class: network / usb ----------------------------------------------- */
 

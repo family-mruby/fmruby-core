@@ -347,13 +347,10 @@ static bool init_hardware(void)
     fmrb_mem_log_boot_snapshot("usb_host");
 #endif
 
-#ifndef CONFIG_IDF_TARGET_ESP32P4
-    ret = ble_task_init();
-    if (ret != FMRB_OK) {
-        FMRB_LOGW(TAG, "Failed to init BLE, continuing without it");
-    }
-    fmrb_mem_log_boot_snapshot("ble");
-#endif
+    // Retro BLE (built-in radio) is no longer started here: the decision needs
+    // system_conf.toml (ble_auto_start), which the kernel reads. See
+    // fmrb_os_init below. Modern (P4) keeps its own path: BLE via the C6
+    // coprocessor is tied to the SDIO transport bring-up order.
 
 #if defined(FMRB_HW_ATOM_DISPLAY)
     ret = m5gfx_task_init();
@@ -478,6 +475,21 @@ void fmrb_os_init(void)
         return;
     }
     FMRB_LOGI(TAG, "Family mruby OS initialization complete");
+
+#if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(CONFIG_IDF_TARGET_ESP32P4)
+    // Retro BLE boot policy, decided by system_conf.toml (readable only now
+    // that the kernel loaded it). Auto-start preserves the old behavior;
+    // opting out leaves BLE's ~75 KB of internal RAM free until the desktop
+    // menu calls ble_service_start() (doc/internal_ram_budget.md, D axis).
+    if (fmrb_kernel_get_config()->ble_auto_start) {
+        if (ble_service_start() != FMRB_OK) {
+            FMRB_LOGW(TAG, "Failed to start BLE, continuing without it");
+        }
+    } else {
+        FMRB_LOGI(TAG, "BLE auto-start disabled (ble_auto_start=false); "
+                       "start it from the desktop menu when needed");
+    }
+#endif
 
     // Remote debugger daemon (doc/remote_debug/). Linux talks TCP on
     // FMRB_DEBUG_TCP_PORT, ESP32 targets talk the BLE debug GATT service.
