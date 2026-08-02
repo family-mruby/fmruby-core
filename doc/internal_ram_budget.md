@@ -594,6 +594,18 @@ M-1 の内訳計測点を ble_task_init 内に常設した: controller + NimBLE 
 (`ble_nimble_port`) ≈ 60 KB、GATT + ble_fs タスク (`ble_ready` まで)
 ≈ 14.7 KB。
 
+### 2026-08-03: S3 WiFi 有効化のコスト (62b7456)
+
+WiFi をビルドに含めた常時コスト (起動しなくても払う分) は、
+`ESP_WIFI_*_IRAM_OPT` を切った状態で **約 10.5 KB** (静的バッファ)。
+IRAM opt を有効のままだと +17.6 KB (WiFi コードが IRAM = DRAM アドレス
+空間を専有) なので切ってある。定常 IRAM free は BLE 稼働で 131,852 B、
+WiFi 稼働 (BLE off) で 140,168 B。WiFi のバッファ類は
+`CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` で PSRAM に逃げている (−65 KB)。
+
+**新たな制約は flash**: app パーティション残が 22% → **6% (約 200 KB)**。
+Spinel インスタンス追加や大きな機能はここが先に詰まる (T7-6 の懸念が現実化)。
+
 ### 改善案の優先順位 (2026-07-31 版)
 
 「進め方」の原則 (安全に取れる順) は維持したまま、今回の実測で
