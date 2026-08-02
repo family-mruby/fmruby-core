@@ -2,6 +2,9 @@
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include <string.h>
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "esp_heap_caps.h"
+#endif
 
 static const char *TAG = "fmrb_msg";
 
@@ -11,7 +14,57 @@ typedef struct {
     bool registered;                   // Whether this entry is in use
     uint32_t message_size;             // Size of messages in this queue
     fmrb_msg_queue_stats_t stats;     // Statistics
+#ifndef CONFIG_IDF_TARGET_LINUX
+    uint8_t *storage;                  // PSRAM item storage (NULL = dynamic queue)
+    StaticQueue_t *qbuf;               // internal-RAM control block for the static queue
+#endif
 } msg_queue_entry_t;
+
+/* Message-queue storage lives in PSRAM: every fmrb_msg send/receive in the
+ * codebase runs in task context (no *FromISR sender exists -- verified
+ * 2026-08-02), so the item area is only ever touched by the queue's own
+ * memcpy, which PSRAM handles fine at our rates (a GFX flood is a few
+ * hundred 188 B messages per second). The 128-slot host queue alone is
+ * 24 KB of internal RAM otherwise, plus ~6 KB per app queue
+ * (doc/internal_ram_budget.md). The control block stays in internal RAM
+ * (touched on every op, and small). Falls back to a plain dynamic queue
+ * when PSRAM is absent. If a FromISR sender is ever introduced, it will
+ * still work (the queue API allows it) but revisit the placement note. */
+static fmrb_queue_t msg_queue_alloc(msg_queue_entry_t *e, uint32_t len, uint32_t item_size)
+{
+#ifndef CONFIG_IDF_TARGET_LINUX
+    uint8_t *storage = heap_caps_malloc((size_t)len * item_size, MALLOC_CAP_SPIRAM);
+    StaticQueue_t *qbuf = heap_caps_malloc(sizeof(StaticQueue_t),
+                                           MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
+    if (storage && qbuf) {
+        fmrb_queue_t q = xQueueCreateStatic(len, item_size, storage, qbuf);
+        if (q) {
+            e->storage = storage;
+            e->qbuf = qbuf;
+            return q;
+        }
+    }
+    heap_caps_free(storage);
+    heap_caps_free(qbuf);
+    e->storage = NULL;
+    e->qbuf = NULL;
+#endif
+    return fmrb_queue_create(len, item_size);
+}
+
+static void msg_queue_free(msg_queue_entry_t *e)
+{
+    if (e->queue != NULL) {
+        fmrb_queue_delete(e->queue);
+        e->queue = NULL;
+    }
+#ifndef CONFIG_IDF_TARGET_LINUX
+    heap_caps_free(e->storage);
+    heap_caps_free(e->qbuf);
+    e->storage = NULL;
+    e->qbuf = NULL;
+#endif
+}
 
 // Global registry
 static msg_queue_entry_t g_msg_queues[FMRB_MAX_APPS];
@@ -114,8 +167,9 @@ fmrb_err_t fmrb_msg_create_queue(fmrb_proc_id_t task_id,
         goto cleanup;
     }
 
-    // Create queue
-    fmrb_queue_t queue = fmrb_queue_create(config->queue_length, config->message_size);
+    // Create queue (item storage in PSRAM, see msg_queue_alloc)
+    fmrb_queue_t queue = msg_queue_alloc(&g_msg_queues[task_id],
+                                         config->queue_length, config->message_size);
     if (queue == NULL) {
         result = FMRB_ERR_NO_MEMORY;
         goto cleanup;
@@ -157,11 +211,8 @@ fmrb_err_t fmrb_msg_delete_queue(fmrb_proc_id_t task_id)
         goto cleanup;
     }
 
-    // Delete queue
-    if (g_msg_queues[task_id].queue != NULL) {
-        fmrb_queue_delete(g_msg_queues[task_id].queue);
-        g_msg_queues[task_id].queue = NULL;
-    }
+    // Delete queue (also releases the static storage, if any)
+    msg_queue_free(&g_msg_queues[task_id]);
 
     g_msg_queues[task_id].registered = false;
 
