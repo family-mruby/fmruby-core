@@ -428,6 +428,10 @@ void fmrb_app_dump_vm_pools(void)
 {
     FMRB_LOGI(TAG, "--- VM Pools ---");
     FMRB_LOGI(TAG, "%-16s %4s %8s %8s %8s %5s %6s", "Name", "VM", "Used", "Free", "Total", "Frag", "ExcHW");
+    // Same locking as fmrb_app_ps: est must not be read while an exiting app
+    // clears it or a spawn reassigns the slot. Held across the logging of a
+    // debug dump that runs every 10 s -- cheap enough.
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     for (int i = 0; i < FMRB_MAX_APPS; i++) {
         fmrb_app_task_context_t *ctx = &g_ctx_pool[i];
         if (ctx->state == PROC_STATE_FREE || !ctx->est) {
@@ -457,6 +461,7 @@ void fmrb_app_dump_vm_pools(void)
                   (unsigned)used, (unsigned)free_bytes, (unsigned)total, (int)frag,
                   exc_hw_str);
     }
+    fmrb_semaphore_give(g_ctx_lock);
     FMRB_LOGI(TAG, "----------------");
 }
 
@@ -995,6 +1000,17 @@ static void destroy_vm(fmrb_app_task_context_t* ctx) {
             FMRB_LOGW(TAG, "[%s] Unknown VM type: %d", ctx->app_name, ctx->vm_type);
             break;
     }
+    // The est handle points INTO this app's mempool and dies with the VM. It
+    // was never cleared here, so after a slot was reused by a non-estalloc VM
+    // (BASIC/Lua/MicroPython re-initialize the same pool region as TLSF), the
+    // periodic stats dump followed the stale pointer into actively-churned
+    // memory and eventually jumped through corrupted bytes (S3 crash,
+    // 2026-08-02: InstructionFetchError with the est argument pointing at a
+    // BASIC app's pool). A plain aligned store, deliberately not locked here:
+    // the normal exit path calls destroy_vm with g_ctx_lock already held, the
+    // forced path runs single-writer after the task is deleted, and the stats
+    // readers take g_ctx_lock, so they observe NULL or a still-valid handle.
+    ctx->est = NULL;
 }
 
 /**
@@ -1359,6 +1375,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
 
     // Assign memory pool based on task type to avoid conflicts
     ctx->mem_handle = -1; //invalid
+    ctx->est = NULL;      // never inherit a previous occupant's est handle
     switch (attr->type) {
         case APP_TYPE_KERNEL:
             ctx->mempool_id = POOL_ID_KERNEL;
