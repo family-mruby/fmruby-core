@@ -399,6 +399,10 @@ working tree の S3 ビルド (`build/fmruby-core.map`) から。上記ログと
 
 ### 2026-07-31: 新規判明 — Spinel GC マークスタック 32 KB が内蔵 RAM に載る
 
+**[2026-08-02 訂正: この節の結論は誤り。sp_mem_override.h の差し替えを
+見落としていた。マークスタックは est pool (PSRAM) から取られており
+対応不要。2026-08-02 節を参照。]**
+
 `components/fmrb_spinel_rt/spinel_rt/sp_gc.c` の `sp_gc_mark_all()` が
 初回 GC で `malloc(sizeof(void*) * SP_GC_MARK_STACK_MAX)` を行う。
 現在 `SPINEL_RT_GC_MARK_STACK_MAX = 8192` なので ILP32 で **32,768 B**。
@@ -417,6 +421,103 @@ working tree の S3 ビルド (`build/fmruby-core.map`) から。上記ログと
 2. サイズ削減。溢れても即時の再帰 scan に退化するだけでクラッシュは
    しないが、**その再帰はタスクスタック上で起きる**ので、深いオブジェクト
    グラフで A 軸のスタックサイズ決定と結合してしまう。単独では採らない。
+
+### 2026-08-02: M-1 実施 — ブートステップごとの内蔵 RAM 差分表 (S3 実機)
+
+計装を常設した: `fmrb_mem_log_boot_snapshot()` (fmrb_mem) が
+`M1|ラベル|internal=..|largest=..|psram=..` の 1 行を出す。呼び出し点は
+boot.c / fmrb_kernel_start / host task / fmrb_app_spawn 成功時。
+ブートログを `grep "M1|"` して隣接行を差分すると下表になる。
+アプリ起動ごとにも `spawn:<name>` 行が出るので、1 アプリの内蔵 RAM
+コストも同じ仕組みで採れる。
+
+構成: NARYAv3 (S3)、Spinel kernel + mruby desktop、develop 3f41f4e +
+本計装。ユーザアプリ 0 個。
+
+| ステップ | 直後の internal free | 消費 |
+|---|---:|---:|
+| boot_start | 303,908 | — |
+| mem_init | 303,644 | 264 |
+| gpio_led_proxy (pin mgr + hw_proxy + status_led) | 290,460 | 13,184 |
+| littlefs_mount | 288,240 | 2,220 |
+| fs_bench | 288,240 | 0 |
+| usb_host | 277,376 | 10,864 |
+| **ble (BT コントローラ + NimBLE + ble_fs)** | 202,416 | **74,960** |
+| system_config (TOML 読込) | 197,684 | 4,732 |
+| hal (UART link) | 196,584 | 1,100 |
+| file_sync / app_init / mp_init | 196,232 | 352 |
+| **host task 生成 (host_task_entry 時点)** | 138,196 | **58,036** |
+| gfx_audio_init | 138,196 | 0 |
+| spawn:fmrb_kernel (16 KB スタック) | 121,364 | 16,832 |
+| debugd | 107,748 | 13,616 |
+| spawn:system_desktop | 90,916 | 16,832 |
+| (VM ブート完了後の定常) | 82,040 | 8,876 |
+
+読み取り:
+
+- **単独最大は BLE の 74,960 B**。優先順位表 3 の「数十 KB 級の見込み」が
+  確定した。遅延起動 (D 軸) が成立すれば、GC マークスタック (32.8 KB) を
+  大きく上回る回収になる。
+- **host task 生成の 58,036 B の内訳は算術で閉じた**: スタック 32,768 +
+  host メッセージキュー 24,064 (FMRB_HOST_MSG_QUEUE_LEN 128 ×
+  sizeof(fmrb_msg_t) ≈ 188 B) + TCB・セマフォ・キュー管理 ≈ 1.2 KB。
+  **キュー 24 KB は新顔の削減候補**: 長さ 128 の根拠確認 (flow 制御は
+  セマフォ側にあるので長さは詰められる可能性) と、キュー格納域の
+  PSRAM 化 (`xQueueCreateWithCaps`、ISR から触らないことの確認が前提)
+  の 2 方向がある。
+- gfx_audio_init の内蔵 RAM 消費は 0 (転送バッファは PSRAM / UART ドライバは
+  hal 時点で確保済み)。
+- タスク生成 1 本の固定費はスタック + 約 450 B (TCB 等)。kernel/desktop の
+  16,832 B = 16,384 + 448 が丁度それ。
+- debugd の 13,616 B はスタック 6 KB + linebuf 2 KB を 5.6 KB 上回る。
+  BLE GATT 側の確保が乗っている可能性。D 軸 (遅延起動) の候補のまま。
+- **Spinel GC マークスタック 32 KB はこの表に出ていない**。初回 GC で
+  malloc されるが、アイドルではまだ走っていない。使用中に突然 32 KB
+  消えるので、定常値を読むときは注意。
+- 注意: spawn 以降は kernel VM のブートが並行して走るため、
+  debugd / spawn:system_desktop 行の差分には並行確保が混ざる。
+  ステップ単位の厳密な帰属は直列区間 (ble まで) に比べて粗い。
+
+優先順位への反映 (7/31 の表に対して):
+
+- **1 (GC マークスタックの PSRAM 退避) は誤分析だったので取り下げ**。
+  7/31 の「素の malloc で内蔵 RAM に載る」は誤り。SP_MULTI_CTX ビルドは
+  `-include sp_mem_override.h` で runtime 内の malloc を `sp_mem_malloc` に
+  差し替えており (components/fmrb_spinel_rt/CMakeLists.txt の
+  SPINEL_MC_FLAGS、sp_gc.c にも PRIVATE で効いている)、マークスタックは
+  現インスタンスの est pool = PSRAM 上の mempool から取られる。
+  実測でも裏が取れた: kernel の GC はブート中から何度も走っている
+  (spx pool 使用量が周期ダンプで増減) のに、M-1 の差分表のどこにも
+  32 KB の内蔵 RAM 低下が無い。**この項目は対応不要**。
+- 3 (BLE 遅延起動) の回収量が **74,960 B で確定**。単独最大。
+  安全順の原則は変えないが、D 軸の設計検討を前倒しする価値がある。
+- **2 (T7-1) は 2026-08-02 に完了** (詳細は phase7.md の T7-1 実施記録)。
+  begin/catch push の fail-loud 化 + high-water 計測 (ps の exc_hw /
+  catch_hw、VM Pools の ExcHW 列) を実装し、観測最大 4 に対して
+  `SPINEL_RT_EXC_STACK_MAX` 64 → 16 に決定。効果は S3 実機で
+  **定常 IRAM free 82,040 → 90,492 B (+8,452 B/インスタンス)**。
+- 新規候補: **host メッセージキュー 24 KB** (上記)。長さ適正化なら
+  A 軸並みに安全、PSRAM 化なら ISR 経路の確認が要る。
+- usb_host は 10.9 KB、debugd は 13.6 KB。D 軸 (遅延起動) の回収量として記録。
+
+### 2026-08-02: T7-1 と E (一部) の効果 — 定常 IRAM free 82.0 → 96.9 KB
+
+同日の S3 実機ビルド (Spinel kernel + mruby desktop、アイドル定常) の系列:
+
+| 施策 | 定常 IRAM free | 差分 |
+|---|---:|---:|
+| ベースライン (M-1 計装のみ) | 82,040 | — |
+| T7-1: 例外/catch スタック深さ 64 → 16 | 90,492 | +8,452 |
+| E: g_fs_ctx (4,384) + debugd linebuf (2,048) を PSRAM 退避 | 96,924 | +6,432 |
+
+- 合計 **+14,884 B (+18%)**。最大連続ブロックも 49,152 → 81,920 B。
+- g_fs_ctx / linebuf はどちらも CPU コピーのみ (GATT コールバックの
+  os_mbuf_copydata、ログリングからの memcpy)。ファイル書込は HAL の
+  内蔵 RAM bounce バッファ (s_file_write_bounce) 経由なので PSRAM 源で
+  問題ない。**BLE ファイル同期の実機疎通確認は未** (機能は placement
+  非依存のはずだが、ユーザの通常運用で一度確認する)。
+- E の残り: pm_binding_powers 1,980 B (.data、mruby prism submodule。
+  const 化で .rodata へ落とせる見込みだが lib/patch 経由が要る)。
 
 ### 改善案の優先順位 (2026-07-31 版)
 
