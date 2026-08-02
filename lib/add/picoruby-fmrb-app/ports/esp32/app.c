@@ -1119,8 +1119,11 @@ static mrb_value mrb_fmrb_app_s_clear_cache(mrb_state *mrb, mrb_value klass)
     }
 
     // Wait long enough for the WROVER walk to finish on a large cache.
+        // The reply context is on this stack; hold off a forced delete.
+    fmrb_app_sync_io_begin();
     fmrb_base_type_t wait_ret = fmrb_semaphore_take(result.done_sem,
                                                     FMRB_MS_TO_TICKS(20000));
+    fmrb_app_sync_io_end();
     fmrb_semaphore_delete(result.done_sem);
 
     mrb_value hash = mrb_hash_new(mrb);

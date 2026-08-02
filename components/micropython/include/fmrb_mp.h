@@ -100,6 +100,18 @@ fmrb_err_t fmrb_mp_exec(fmrb_app_task_context_t* ctx, const char* src, size_t le
  */
 void fmrb_mp_close(fmrb_app_task_context_t* ctx);
 
+/**
+ * @brief Take and release the instance lock, so a caller can be sure no task
+ *        is inside an instance-lock critical section right now.
+ *
+ * For the forced-kill path only, and for the same reason as
+ * fmrb_msg_registry_lock_barrier(): a task deleted while holding this mutex
+ * would hold it forever, and every later Python app would block in
+ * fmrb_mp_acquire() until the next reboot. The windows are a few
+ * non-blocking instructions, so the barrier returns immediately in practice.
+ */
+void fmrb_mp_lock_barrier(void);
+
 #ifdef __cplusplus
 }
 #endif

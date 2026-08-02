@@ -309,6 +309,16 @@ int fmrb_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms)
     return success_count;
 }
 
+void fmrb_msg_registry_lock_barrier(void)
+{
+    if (!g_initialized || !g_registry_lock) {
+        return;
+    }
+    if (fmrb_semaphore_take(g_registry_lock, FMRB_TICK_MAX) == FMRB_TRUE) {
+        fmrb_semaphore_give(g_registry_lock);
+    }
+}
+
 /**
  * @brief Check if a task has a registered queue
  */

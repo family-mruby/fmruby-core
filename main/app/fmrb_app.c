@@ -126,7 +126,10 @@ static bool is_valid_transition(fmrb_proc_state_t from, fmrb_proc_state_t to) {
         case PROC_STATE_FREE:
             return (to == PROC_STATE_INIT);
         case PROC_STATE_INIT:
-            return (to == PROC_STATE_RUNNING || to == PROC_STATE_FREE);  // Allow rollback
+            // FREE is the rollback for a setup that failed; STOPPING is the
+            // forced kill of an app that wedged inside create_vm.
+            return (to == PROC_STATE_RUNNING || to == PROC_STATE_FREE ||
+                    to == PROC_STATE_STOPPING);
         case PROC_STATE_RUNNING:
             return (to == PROC_STATE_SUSPENDED || to == PROC_STATE_STOPPING);
         case PROC_STATE_SUSPENDED:
@@ -527,14 +530,20 @@ static int create_vm_micropython(fmrb_app_task_context_t* ctx) {
         return -1;
     }
 
+    // Mark ownership as soon as the lock is held, not once the runtime is up:
+    // destroy_vm() keys off this flag, and a forced kill of an app that wedged
+    // inside fmrb_mp_start() has to release the instance lock too. Closing
+    // early is explicitly supported (see fmrb_mp_close).
+    ctx->mp_active = true;
+
     ret = fmrb_mp_start(ctx);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "[%s] Failed to start MicroPython: %d", ctx->app_name, (int)ret);
         fmrb_mp_close(ctx);
+        ctx->mp_active = false;
         return -1;
     }
 
-    ctx->mp_active = true;
     FMRB_LOGI(TAG, "[%s] MicroPython VM created with mempool=%d",
               ctx->app_name, ctx->mempool_id);
     return 0;
@@ -1556,6 +1565,10 @@ unwind:
  * much higher only makes a hung app stall the caller for longer.
  */
 #define KILL_GRACE_MS 1000
+// Upper bound for waiting out a synchronous round trip before deleting anyway.
+// Matches the longest timeout an app can be blocked in (the 30s file transfer),
+// so a live-but-slow host always gets to finish and write its reply.
+#define KILL_SYNC_WAIT_MS 30000
 #define KILL_POLL_MS  10
 
 /**
@@ -1663,7 +1676,11 @@ bool fmrb_app_kill(int32_t id) {
     fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
     fmrb_app_task_context_t* ctx = &g_ctx_pool[id];
 
-    if (ctx->state != PROC_STATE_RUNNING && ctx->state != PROC_STATE_SUSPENDED) {
+    // INIT counts: an app can wedge inside create_vm, and for MicroPython that
+    // means it holds the single-instance lock, so refusing to kill it locks
+    // out every later Python app until the next reboot.
+    if (ctx->state != PROC_STATE_RUNNING && ctx->state != PROC_STATE_SUSPENDED &&
+        ctx->state != PROC_STATE_INIT) {
         FMRB_LOGW(TAG, "[%s] Cannot kill app in state %s", ctx->app_name, state_str(ctx->state));
         fmrb_semaphore_give(g_ctx_lock);
         return false;
@@ -1691,11 +1708,17 @@ bool fmrb_app_kill(int32_t id) {
             FMRB_LOGI(TAG, "[%s gen=%u] Exited on request", ctx->app_name, gen);
             return true;
         }
-        if (state == PROC_STATE_STOPPING || state == PROC_STATE_INIT) {
+        if (state == PROC_STATE_STOPPING) {
             // Cleanup done and the task is parked. Reap it here instead of
             // waiting for the kernel to process the exit notification, so the
             // caller can respawn immediately. The kernel's later reap of the
             // same pid is a no-op (fmrb_app_reap rejects a re-used slot).
+            //
+            // INIT is deliberately not accepted here. It was unreachable while
+            // only RUNNING/SUSPENDED could be killed, and now that a kill may
+            // start in INIT it means "still inside create_vm", not "parked" -
+            // that app has to go through the forced path below, which is where
+            // the mutex barriers are.
             FMRB_LOGI(TAG, "[%s gen=%u] Exited on request, reaping", ctx->app_name, gen);
             return fmrb_app_reap(id);
         }
@@ -1717,7 +1740,49 @@ bool fmrb_app_kill(int32_t id) {
     ctx->task = 0;  // prevent double-delete from a subsequent reap
     fmrb_semaphore_give(g_ctx_lock);
 
+    // The app may be parked in a synchronous round trip whose reply context is
+    // on its own stack (graphics sync commands, file transfer). Deleting it
+    // there leaves host_task or the transport about to write into a stack that
+    // will be reused, so wait for the round trip to end instead. Two ways out:
+    // the reply arrives and the app wakes up - and since should_exit is
+    // already set, its VM hook turns this into a cooperative exit before we
+    // get here - or the link is dead, the reply never comes, and the callback
+    // that would have corrupted memory never runs either, so deleting after
+    // the bound is safe.
+    if (ctx->sync_io_depth) {
+        FMRB_LOGW(TAG, "[%s gen=%u] In a sync round trip; waiting up to %ums",
+                  ctx->app_name, gen, KILL_SYNC_WAIT_MS);
+        for (uint32_t waited = 0;
+             waited < KILL_SYNC_WAIT_MS && ctx->sync_io_depth && ctx->gen == gen;
+             waited += KILL_POLL_MS) {
+            fmrb_task_delay(FMRB_MS_TO_TICKS(KILL_POLL_MS));
+        }
+        fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+        const bool gone = (ctx->gen != gen) || (ctx->state == PROC_STATE_FREE);
+        fmrb_semaphore_give(g_ctx_lock);
+        if (gone) {
+            // Woke up and exited cooperatively while we waited.
+            FMRB_LOGI(TAG, "[%s gen=%u] Sync round trip ended in a clean exit",
+                      ctx->app_name, gen);
+            return true;
+        }
+        if (ctx->sync_io_depth) {
+            FMRB_LOGW(TAG, "[%s gen=%u] Sync round trip did not end in %ums; "
+                      "deleting anyway", ctx->app_name, gen, KILL_SYNC_WAIT_MS);
+        }
+    }
+
     if (task) {
+        // Barriers, not compensation: a FreeRTOS mutex can only be released by
+        // its owner, so a task deleted inside one of these windows would hold
+        // it for good - registry lock lost means every task's next send or
+        // receive blocks, MicroPython lock lost means no Python app ever
+        // starts again. Taking each lock here proves the target is outside the
+        // window; deleting a task that is merely *waiting* for one is safe,
+        // FreeRTOS takes it off the event list. The windows hold no blocking
+        // call, so these return at once.
+        fmrb_msg_registry_lock_barrier();
+        fmrb_mp_lock_barrier();
         fmrb_task_delete(task);
     }
     force_release_resources(ctx, task);
@@ -1730,7 +1795,10 @@ bool fmrb_app_kill(int32_t id) {
 
     notify_kernel_app_exited(ctx->app_id);
 
-    FMRB_LOGW(TAG, "[%s gen=%u] Killed by force", ctx->app_name, gen);
+    FMRB_LOGW(TAG, "[%s gen=%u] Killed by force; system may be degraded "
+              "(a GFX queue slot and a transfer buffer can be lost per forced "
+              "kill) - collect logs and reboot when convenient",
+              ctx->app_name, gen);
     return true;
 }
 

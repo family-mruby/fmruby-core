@@ -7,6 +7,7 @@
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
 #include "fmrb_debug.h"
+#include "fmrb_app.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -602,7 +603,10 @@ fmrb_err_t fmrb_transport_send_sync(uint8_t link_type,
     // Block calling task until callback signals or timeout
     fmrb_tick_t ticks = (timeout_ms == UINT32_MAX) ? FMRB_TICK_MAX : FMRB_MS_TO_TICKS(timeout_ms);
     FMRB_LOGD(TAG, "send_sync: waiting for response (timeout_ms=%u)", (unsigned)timeout_ms);
+        // The reply context is on this stack; hold off a forced delete.
+    fmrb_app_sync_io_begin();
     fmrb_base_type_t wait_result = fmrb_semaphore_take(wrapper.done, ticks);
+    fmrb_app_sync_io_end();
     fmrb_semaphore_delete(wrapper.done);
 
     if (wait_result != FMRB_TRUE) {

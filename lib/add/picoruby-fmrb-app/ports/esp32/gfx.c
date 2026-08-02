@@ -165,7 +165,10 @@ static mrb_value mrb_gfx_get_pixel(mrb_state *mrb, mrb_value self)
 
     // Wait for host_task to forward the response (5s ceiling, well above
     // a normal single SPI round trip).
+        // The reply context is on this stack; hold off a forced delete.
+    fmrb_app_sync_io_begin();
     fmrb_base_type_t took = fmrb_semaphore_take(sync.done, FMRB_MS_TO_TICKS(5000));
+    fmrb_app_sync_io_end();
     fmrb_semaphore_delete(sync.done);
     if (took != FMRB_TRUE) {
         mrb_raise(mrb, E_RUNTIME_ERROR, "get_pixel: response timeout");
@@ -656,9 +659,12 @@ static fmrb_err_t send_file_cmd_sync(file_cmd_t *cmd,
         return ret;
     }
 
-    // Wait for host_task to complete the operation
+    // Wait for host_task to complete the operation. *result is the caller's
+    // stack and host_task writes through it, so block the forced kill here.
+    fmrb_app_sync_io_begin();
     fmrb_base_type_t sem_ret = fmrb_semaphore_take(result->done_sem,
         FMRB_MS_TO_TICKS(timeout_ms));
+    fmrb_app_sync_io_end();
     fmrb_semaphore_delete(result->done_sem);
 
     if (sem_ret != FMRB_PASS) {
@@ -809,7 +815,10 @@ static mrb_value mrb_gfx_file_status(mrb_state *mrb, mrb_value self)
     }
 
     // Block until Host Task signals completion
+        // The reply context is on this stack; hold off a forced delete.
+    fmrb_app_sync_io_begin();
     fmrb_base_type_t wait_ret = fmrb_semaphore_take(result.done_sem, FMRB_MS_TO_TICKS(5000));
+    fmrb_app_sync_io_end();
     fmrb_semaphore_delete(result.done_sem);
 
     mrb_value hash = mrb_hash_new(mrb);

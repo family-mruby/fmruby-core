@@ -140,6 +140,22 @@ bool fmrb_msg_queue_exists(fmrb_proc_id_t task_id);
 fmrb_err_t fmrb_msg_get_stats(fmrb_proc_id_t task_id,
                                    fmrb_msg_queue_stats_t *stats);
 
+/**
+ * @brief Take and release the registry lock, so a caller can be sure no task
+ *        is inside a registry critical section right now.
+ *
+ * For the forced-kill path only. The registry lock is held for a few
+ * non-blocking instructions inside every send and receive; a task deleted in
+ * that window would hold a FreeRTOS mutex forever, and since only the owner
+ * may release one there is no way to repair it afterwards - every task in the
+ * system would then block on its next message. Taking the lock before the
+ * delete makes the mutual exclusion itself the proof: if the killer got it,
+ * the target is not inside the window.
+ *
+ * Cheap by construction: the windows it waits on contain no blocking call.
+ */
+void fmrb_msg_registry_lock_barrier(void);
+
 #ifdef __cplusplus
 }
 #endif

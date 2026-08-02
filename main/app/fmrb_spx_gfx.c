@@ -75,7 +75,10 @@ int fmrb_spx_gfx_get_pixel(int canvas_id, int x, int y)
         return FMRB_SPX_ERR;
     }
 
+        // The reply context is on this stack; hold off a forced delete.
+    fmrb_app_sync_io_begin();
     fmrb_base_type_t took = fmrb_semaphore_take(sync.done, FMRB_MS_TO_TICKS(5000));
+    fmrb_app_sync_io_end();
     fmrb_semaphore_delete(sync.done);
     if (took != FMRB_TRUE) {
         return FMRB_SPX_ERR;
@@ -468,7 +471,10 @@ static fmrb_err_t spx_file_cmd_sync(file_cmd_t *cmd, file_cmd_result_t *result, 
         fmrb_semaphore_delete(result->done_sem);
         return ret;
     }
+    // *result is on the caller's stack and host_task writes through it.
+    fmrb_app_sync_io_begin();
     fmrb_base_type_t sem_ret = fmrb_semaphore_take(result->done_sem, FMRB_MS_TO_TICKS(timeout_ms));
+    fmrb_app_sync_io_end();
     fmrb_semaphore_delete(result->done_sem);
     return (sem_ret == FMRB_PASS) ? FMRB_OK : FMRB_ERR_TIMEOUT;
 }
@@ -576,7 +582,10 @@ int fmrb_spx_gfx_file_status(const char *path, int len)
         fmrb_semaphore_delete(result.done_sem);
         return FMRB_SPX_ERR;
     }
+        // The reply context is on this stack; hold off a forced delete.
+    fmrb_app_sync_io_begin();
     fmrb_base_type_t wait_ret = fmrb_semaphore_take(result.done_sem, FMRB_MS_TO_TICKS(5000));
+    fmrb_app_sync_io_end();
     fmrb_semaphore_delete(result.done_sem);
     if (wait_ret != FMRB_TRUE || result.result != 0) {
         return FMRB_SPX_ERR;

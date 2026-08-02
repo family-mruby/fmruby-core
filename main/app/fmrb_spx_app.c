@@ -584,7 +584,10 @@ const char *fmrb_spx_app_clear_cache(const char *path, int len)
         sp_net_bin_len = FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE;
         return (const char *)buf;
     }
+        // The reply context is on this stack; hold off a forced delete.
+    fmrb_app_sync_io_begin();
     fmrb_base_type_t wait_ret = fmrb_semaphore_take(result.done_sem, FMRB_MS_TO_TICKS(20000));
+    fmrb_app_sync_io_end();
     fmrb_semaphore_delete(result.done_sem);
 
     if (wait_ret == FMRB_PASS) {

@@ -116,6 +116,15 @@ fmrb_err_t fmrb_mp_init(void) {
     return FMRB_OK;
 }
 
+void fmrb_mp_lock_barrier(void) {
+    if (!s_lock) {
+        return;
+    }
+    if (fmrb_semaphore_take(s_lock, FMRB_MAX_DELAY) == FMRB_TRUE) {
+        fmrb_semaphore_give(s_lock);
+    }
+}
+
 fmrb_err_t fmrb_mp_acquire(fmrb_app_task_context_t *ctx) {
     if (!ctx) {
         return FMRB_ERR_INVALID_PARAM;

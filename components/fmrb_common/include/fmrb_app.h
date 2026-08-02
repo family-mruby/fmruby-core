@@ -110,6 +110,15 @@ typedef struct fmrb_app_task_context_s {
     // via {"cmd": "stop"}. The VM unwinds and the task exits normally so
     // canvas/queue cleanup in the task wrapper runs.
     volatile bool         should_exit;
+
+    // Non-zero while the task is blocked in a synchronous round trip whose
+    // reply context lives on its own stack (graphics sync commands, file
+    // transfer). Deleting the task there would leave the host task or the
+    // transport about to write into a stack that is being reused, so the
+    // forced kill waits for this to clear instead. Incremented and
+    // decremented by the waiting task itself, so no lock is needed; it is a
+    // counter rather than a flag only to stay correct if a wait ever nests.
+    volatile uint8_t      sync_io_depth;
 } fmrb_app_task_context_t;
 
 // Spawn attributes for creating new app task
@@ -197,6 +206,25 @@ static inline fmrb_app_task_context_t* fmrb_current(void) {
 fmrb_app_task_context_t* fmrb_app_get_context_by_id(int32_t id);
 
 fmrb_err_t fmrb_app_spawn_app(const char* app_name, int32_t* out_pid);
+
+/**
+ * @brief Mark the calling task as being inside a synchronous round trip.
+ *
+ * Pairs with fmrb_app_sync_io_end(). Safe to call with no app context (the
+ * kernel and host tasks use the same helpers), in which case it does nothing.
+ */
+static inline void fmrb_app_sync_io_begin(void) {
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (ctx) ctx->sync_io_depth++;
+}
+
+/**
+ * @brief End the region opened by fmrb_app_sync_io_begin().
+ */
+static inline void fmrb_app_sync_io_end(void) {
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (ctx && ctx->sync_io_depth) ctx->sync_io_depth--;
+}
 
 /**
  * @brief Drain APP_CONTROL messages and set should_exit when a stop/exit is seen
