@@ -55,6 +55,23 @@ void fmrb_gfx_set_flow_semaphore(fmrb_semaphore_t sem);
  */
 fmrb_err_t fmrb_gfx_submit(const gfx_cmd_t *cmd);
 
+/**
+ * @brief Queue a command without taking a flow-control slot.
+ *
+ * For the callers that are not the app whose canvas they touch: the kernel's
+ * reap and the forced-kill path both release a dying app's canvases, and
+ * neither may block on a semaphore whose refill is paced by app drawing. The
+ * command carries a marker so the host task does not give a slot back for it,
+ * which is what keeps take and give balanced.
+ *
+ * Everything an app itself issues must go through fmrb_gfx_submit() instead,
+ * so that it stays inside the app's share of the host queue.
+ *
+ * @param cmd Command to send. Copied into the message payload.
+ * @return FMRB_OK, or FMRB_ERR_TIMEOUT when the host queue stays full.
+ */
+fmrb_err_t fmrb_gfx_submit_unmetered(const gfx_cmd_t *cmd);
+
 /* ---- command constructors ----------------------------------------------
  *
  * All of them take the command to fill and the target canvas, and the

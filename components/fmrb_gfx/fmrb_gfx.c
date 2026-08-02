@@ -5,6 +5,7 @@
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
 #include "fmrb_msg.h"
+#include "fmrb_gfx_cmd.h"
 #include "fmrb_gfx_msg.h"
 #include <stdlib.h>
 #include <string.h>
@@ -47,24 +48,21 @@ static fmrb_gfx_err_t send_gfx_sync_via_host(
 
     cmd->sync = &sc;
 
-    // Send to Host Task queue
-    fmrb_msg_t msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.type = FMRB_MSG_TYPE_APP_GFX;
-    msg.size = sizeof(gfx_cmd_t);
-    memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
-    // Restore sync pointer in the copy (points to our stack)
-    ((gfx_cmd_t *)msg.data)->sync = &sc;
-
-    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, timeout_ms);
+    // Metered like any other app command: these run on the app's task, so they
+    // belong inside its share of the host queue.
+    fmrb_err_t ret = fmrb_gfx_submit(cmd);
     if (ret != FMRB_OK) {
         fmrb_semaphore_delete(sc.done);
         return FMRB_GFX_ERR_FAILED;
     }
 
-    // Block calling task until Host Task signals completion
+    // Block calling task until Host Task signals completion. sc lives on this
+    // stack and the host task writes through it, so the forced kill must not
+    // delete us while we are in here.
     fmrb_tick_t ticks = (timeout_ms == UINT32_MAX) ? FMRB_TICK_MAX : FMRB_MS_TO_TICKS(timeout_ms);
+    fmrb_app_sync_io_begin();
     fmrb_base_type_t wait_result = fmrb_semaphore_take(sc.done, ticks);
+    fmrb_app_sync_io_end();
     fmrb_semaphore_delete(sc.done);
 
     if (wait_result != FMRB_TRUE) {
@@ -201,13 +199,10 @@ fmrb_gfx_err_t fmrb_gfx_delete_canvas(
     cmd.cmd_type = GFX_CMD_DELETE_CANVAS;
     cmd.canvas_id = canvas_handle;
 
-    fmrb_msg_t msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.type = FMRB_MSG_TYPE_APP_GFX;
-    msg.size = sizeof(gfx_cmd_t);
-    memcpy(msg.data, &cmd, sizeof(gfx_cmd_t));
-
-    fmrb_err_t send_ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    // Unmetered on purpose: this also runs from the kernel's reap and from the
+    // forced-kill path, where blocking on a semaphore that app drawing refills
+    // is not acceptable. The marker keeps the host's give side balanced.
+    fmrb_err_t send_ret = fmrb_gfx_submit_unmetered(&cmd);
     if (send_ret != FMRB_OK) {
         ESP_LOGE(TAG, "Failed to queue delete_canvas: %d", send_ret);
         return FMRB_GFX_ERR_FAILED;
@@ -247,13 +242,7 @@ fmrb_gfx_err_t fmrb_gfx_set_composite_regions(
                (size_t)count * sizeof(fmrb_gfx_composite_region_t));
     }
 
-    fmrb_msg_t msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.type = FMRB_MSG_TYPE_APP_GFX;
-    msg.size = sizeof(gfx_cmd_t);
-    memcpy(msg.data, &cmd, sizeof(gfx_cmd_t));
-
-    fmrb_err_t send_ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    fmrb_err_t send_ret = fmrb_gfx_submit(&cmd);
     if (send_ret != FMRB_OK) {
         ESP_LOGE(TAG, "Failed to queue set_composite_regions: %d", send_ret);
         return FMRB_GFX_ERR_FAILED;
@@ -285,13 +274,7 @@ fmrb_gfx_err_t fmrb_gfx_set_canvas_viewport(
     cmd.params.set_canvas_viewport.view_w = view_w;
     cmd.params.set_canvas_viewport.view_h = view_h;
 
-    fmrb_msg_t msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.type = FMRB_MSG_TYPE_APP_GFX;
-    msg.size = sizeof(gfx_cmd_t);
-    memcpy(msg.data, &cmd, sizeof(gfx_cmd_t));
-
-    fmrb_err_t send_ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    fmrb_err_t send_ret = fmrb_gfx_submit(&cmd);
     if (send_ret != FMRB_OK) {
         ESP_LOGE(TAG, "Failed to queue set_canvas_viewport: %d", send_ret);
         return FMRB_GFX_ERR_FAILED;
@@ -451,13 +434,7 @@ fmrb_gfx_err_t fmrb_gfx_exec_prog(
         memcpy(cmd.params.exec_prog.reg_updates, reg_updates, (size_t)reg_count * 3);
     }
 
-    fmrb_msg_t msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.type = FMRB_MSG_TYPE_APP_GFX;
-    msg.size = sizeof(gfx_cmd_t);
-    memcpy(msg.data, &cmd, sizeof(gfx_cmd_t));
-
-    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     return (ret == FMRB_OK) ? FMRB_GFX_OK : FMRB_GFX_ERR_FAILED;
 }
 
@@ -474,12 +451,6 @@ fmrb_gfx_err_t fmrb_gfx_delete_prog(
     cmd.cmd_type = GFX_CMD_DELETE_PROG;
     cmd.params.delete_prog.prog_id = prog_id;
 
-    fmrb_msg_t msg;
-    memset(&msg, 0, sizeof(msg));
-    msg.type = FMRB_MSG_TYPE_APP_GFX;
-    msg.size = sizeof(gfx_cmd_t);
-    memcpy(msg.data, &cmd, sizeof(gfx_cmd_t));
-
-    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
     return (ret == FMRB_OK) ? FMRB_GFX_OK : FMRB_GFX_ERR_FAILED;
 }

@@ -1203,6 +1203,9 @@ static void host_task_process_gfx_batch(const fmrb_msg_t *first_msg)
     // Collect GFX commands into batch
     gfx_cmd_t cmds[GFX_BATCH_MAX];
     int count = 0;
+    // Slots to give back. Counted as commands arrive because the sync command
+    // below is accounted for without ever being stored in cmds[].
+    int metered = 0;
     gfx_cmd_t *pending_sync_cmd = NULL;  // Sync command found during batching
 
     // First message is already received
@@ -1212,6 +1215,7 @@ static void host_task_process_gfx_batch(const fmrb_msg_t *first_msg)
         pending_sync_cmd = first_cmd;
         goto handle_sync;
     }
+    if (!first_cmd->unmetered) metered++;
     cmds[count++] = *first_cmd;
 
     // Drain additional GFX messages (non-blocking)
@@ -1229,6 +1233,7 @@ static void host_task_process_gfx_batch(const fmrb_msg_t *first_msg)
                 pending_sync_cmd = &s_sync_cmd_buf;
                 break;
             }
+            if (!queued->unmetered) metered++;
             cmds[count++] = *queued;
         } else {
             // Non-GFX message: process it immediately, stop batching
@@ -1305,11 +1310,15 @@ handle_sync:
         }
         // Count sync command for semaphore release
         count++;
+        if (!pending_sync_cmd->unmetered) metered++;
     }
 
-    // Release semaphore slots for all processed commands
+    // Give back one slot per command that took one. Commands marked unmetered
+    // were queued by a task that never took a slot (see
+    // fmrb_gfx_submit_unmetered), so giving for them would mint a slot that
+    // was never reserved and loosen the HID reservation.
     if (g_host_gfx_queue_semaphore) {
-        for (int i = 0; i < count; i++) {
+        for (int i = 0; i < metered; i++) {
             fmrb_semaphore_give(g_host_gfx_queue_semaphore);
         }
     }

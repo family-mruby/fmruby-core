@@ -16,6 +16,48 @@ void fmrb_gfx_set_flow_semaphore(fmrb_semaphore_t sem)
     g_flow_semaphore = sem;
 }
 
+// Queue one command. The caller has already settled the flow-control
+// accounting; this only moves the bytes.
+static fmrb_err_t submit_queued(const gfx_cmd_t *cmd, fmrb_semaphore_t sem)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_GFX,
+        .src_pid = ctx ? ctx->app_id : PROC_ID_KERNEL,
+        .size = sizeof(gfx_cmd_t)
+    };
+    memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to send graphics command: %d", ret);
+        if (sem) {
+            fmrb_semaphore_give(sem);  // give back the slot we never used
+        }
+    }
+    // On success the host task releases the semaphore once it has the command.
+    return ret;
+}
+
+/**
+ * Queue a command without taking a flow-control slot.
+ *
+ * For callers that must not block on the flow semaphore because they are not
+ * the app: the kernel's reap and the forced-kill path both release a dying
+ * app's canvases, and neither may wait on a semaphore whose refill is paced by
+ * app drawing. The command is marked so the host task does not give a slot
+ * back for it, which is what keeps take and give balanced.
+ */
+fmrb_err_t fmrb_gfx_submit_unmetered(const gfx_cmd_t *cmd)
+{
+    if (!cmd) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    gfx_cmd_t copy = *cmd;
+    copy.unmetered = 1;
+    return submit_queued(&copy, NULL);
+}
+
 fmrb_err_t fmrb_gfx_submit(const gfx_cmd_t *cmd)
 {
     if (!cmd) {
@@ -39,22 +81,7 @@ fmrb_err_t fmrb_gfx_submit(const gfx_cmd_t *cmd)
         }
     }
 
-    fmrb_msg_t msg = {
-        .type = FMRB_MSG_TYPE_APP_GFX,
-        .src_pid = ctx->app_id,
-        .size = sizeof(gfx_cmd_t)
-    };
-    memcpy(msg.data, cmd, sizeof(gfx_cmd_t));
-
-    fmrb_err_t ret = fmrb_msg_send(PROC_ID_HOST, &msg, 5000);
-    if (ret != FMRB_OK) {
-        FMRB_LOGE(TAG, "Failed to send graphics command: %d", ret);
-        if (sem) {
-            fmrb_semaphore_give(sem);  // give back the slot we never used
-        }
-    }
-    // On success the host task releases the semaphore once it has the command.
-    return ret;
+    return submit_queued(cmd, sem);
 }
 
 /* ---- command constructors ---------------------------------------------- */

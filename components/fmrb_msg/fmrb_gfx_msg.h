@@ -280,6 +280,13 @@ typedef struct {
     // Sync context pointer (NULL = fire-and-forget, non-NULL = response expected)
     // Points to caller's stack. Caller blocks on sync->done until Host Task signals.
     struct gfx_cmd_sync_ctx *sync;
+
+    // Set when the sender did NOT take a flow-control slot, so the host task
+    // knows not to give one back for this command. Everything an app draws is
+    // metered (fmrb_gfx_submit); this is for the few commands issued from a
+    // task that must not block on a semaphore an app paces - see
+    // fmrb_gfx_submit_unmetered.
+    uint8_t unmetered;
 } gfx_cmd_t;
 
 // Sync context for response-awaiting GFX commands (allocated on caller's stack)
