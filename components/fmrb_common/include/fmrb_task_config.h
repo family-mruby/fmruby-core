@@ -67,11 +67,14 @@
 
 // Host task (graphics/audio transport, SPI slave comm, heap alloc)
 // Must be internal RAM (uses realloc via msgpack)
-// Bumped 16KB -> 32KB: heavy GFX flood (~80 cmds/s + msgpack encode + UART)
-// was leaving only ~1KB free, which corrupted NimBLE BSS via stack overflow
-// (ble_hs_state_ctx pointer overwritten with ASCII "app." path bytes, causing
-// "Host not enabled. Dropping the packet!" and Web Bluetooth disconnect).
-#define FMRB_HOST_TASK_STACK_SIZE       (32 * 1024)
+// History: 16KB was NOT enough -- heavy GFX flood (~80 cmds/s + msgpack encode
+// + UART) left ~1KB free and corrupted NimBLE BSS via stack overflow
+// (ble_hs_state_ctx overwritten, "Host not enabled. Dropping the packet!").
+// It was bumped to 32KB then re-measured: the M-2 session (S3, 2026-08-02,
+// games running + window drags + BLE transfer concurrently) peaked at 15.4KB,
+// matching two earlier independent measurements (15.2KB, 15.4KB) -- the peak
+// is a fixed chain, not load-proportional. 24KB keeps a 8.6KB (~56%) margin.
+#define FMRB_HOST_TASK_STACK_SIZE       (24 * 1024)
 #define FMRB_HOST_TASK_PRIORITY         (10)
 #define FMRB_HOST_TASK_FLAGS            FMRB_TASK_FLAG_PINNED_0
 
@@ -99,6 +102,10 @@
 #define FMRB_SHELL_APP_TASK_FLAGS       FMRB_TASK_FLAG_PINNED_1
 
 // User App task (mruby/lua/basic VM for user apps)
+// 16KB is a FLOOR, not a candidate: PicoRabbit peaked at 15.3KB in the M-2
+// session (S3, 2026-08-02), and MicroPython derives its C recursion limit
+// from the remaining stack at startup (mp_stack_set_limit), so shrinking this
+// silently lowers what Python scripts can recurse to.
 #define FMRB_USER_APP_TASK_STACK_SIZE   (16 * 1024)
 #define FMRB_USER_APP_PRIORITY          (2)
 #define FMRB_USER_APP_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_1
@@ -123,7 +130,11 @@
 #define FMRB_USB_HOST_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_0
 
 // USB HID host task
-#define FMRB_USB_HID_TASK_STACK_SIZE    (4096)
+// Increased 4KB -> 5KB: the M-2 session (S3, 2026-08-02) peaked at 2.9KB
+// (device replug included), leaving only 1.1KB -- the thinnest margin of any
+// task, on a path (enumeration) with third-party driver frames. Never shrink
+// this below the measured peak + ~2KB.
+#define FMRB_USB_HID_TASK_STACK_SIZE    (5 * 1024)
 #define FMRB_USB_HID_TASK_PRIORITY      (5)
 #define FMRB_USB_HID_TASK_FLAGS         FMRB_TASK_FLAG_PINNED_0
 
@@ -133,7 +144,10 @@
 #define FMRB_SPI_CONN_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_1
 
 // HW proxy task (internal RAM, handles file I/O for PSRAM tasks)
-#define FMRB_HW_PROXY_TASK_STACK_SIZE   (8 * 1024)
+// M-2 session (S3, 2026-08-02) peaked at 2.0KB with file traffic flowing;
+// 6KB keeps a 2x margin over that. Note the proxied-file-I/O role is dormant
+// while PSRAM task stacks stay banned -- re-measure if that ever returns.
+#define FMRB_HW_PROXY_TASK_STACK_SIZE   (6 * 1024)
 #define FMRB_HW_PROXY_TASK_PRIORITY     (6)
 #define FMRB_HW_PROXY_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_0
 
@@ -145,6 +159,10 @@
 #define FMRB_BLE_TASK_PRIORITY          (4)
 
 // BLE file service processing task (file I/O needs internal RAM for flash DMA)
+// Stays at 8KB: a real BLE file transfer in the M-2 session (S3, 2026-08-02)
+// peaked at 5.3KB -- the idle figure (~2KB) that once suggested 6KB is off by
+// more than the margin 6KB would leave. Do not shrink without re-measuring a
+// transfer.
 #define FMRB_BLE_FS_TASK_STACK_SIZE     (8 * 1024)
 #define FMRB_BLE_FS_TASK_PRIORITY       (4)
 #define FMRB_BLE_FS_TASK_FLAGS          FMRB_TASK_FLAG_PINNED_0
@@ -152,9 +170,11 @@
 // Remote debugger daemon task (msgpack over BLE GATT / TCP on Linux)
 // Not pinned: it is latency-tolerant and runs at a low priority, so either core
 // may take it. The frame and log line buffers are static (see fmrb_debugd.c),
-// so only the command dispatch chain lives here: measured high-water on P4 is
-// 2.7KB while idle, and the attached-session path has not been measured yet --
-// hence 6KB rather than 4KB.
+// so only the command dispatch chain lives here. The attached path is now
+// measured (M-2 session, S3, 2026-08-02): an attach + web-console session
+// dipped to 2,580 B free at the spawn-from-file call (handle_spawn ->
+// fmrb_default_apps), i.e. a >=3.6KB peak. 6KB stands; 4-5KB would leave
+// almost nothing on that path.
 #define FMRB_DEBUGD_TASK_STACK_SIZE     (6 * 1024)
 #define FMRB_DEBUGD_TASK_PRIORITY       (3)
 #define FMRB_DEBUGD_TASK_FLAGS          FMRB_TASK_FLAG_NONE
