@@ -14,6 +14,12 @@
 #include "fmrb_log.h"
 #include "fmrb_app.h"
 #include "fmrb_mem.h"
+/* Spinel exc-stack high-water for the stats dump. The component (and its
+   include dir) is only present when some VM runs on Spinel. */
+#if defined(FMRB_KERNEL_ENGINE_SPINEL) || defined(FMRB_APP_ENGINE_DESKTOP_SPINEL)
+#include "fmrb_spinel_host.h"
+#define FMRB_HAVE_SPINEL_HOST 1
+#endif
 #include "fmrb_task_config.h"
 #include "fmrb_kernel.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
@@ -421,7 +427,7 @@ const char* fmrb_app_get_last_error_msg(void) { return s_last_error_msg; }
 void fmrb_app_dump_vm_pools(void)
 {
     FMRB_LOGI(TAG, "--- VM Pools ---");
-    FMRB_LOGI(TAG, "%-16s %4s %8s %8s %8s %5s", "Name", "VM", "Used", "Free", "Total", "Frag");
+    FMRB_LOGI(TAG, "%-16s %4s %8s %8s %8s %5s %6s", "Name", "VM", "Used", "Free", "Total", "Frag", "ExcHW");
     for (int i = 0; i < FMRB_MAX_APPS; i++) {
         fmrb_app_task_context_t *ctx = &g_ctx_pool[i];
         if (ctx->state == PROC_STATE_FREE || !ctx->est) {
@@ -434,11 +440,22 @@ void fmrb_app_dump_vm_pools(void)
         }
         /* NATIVE = a Spinel instance: it aborts the whole firmware through
            sp_oom_die when its pool cannot satisfy an allocation, so its headroom
-           is the number to watch. */
-        FMRB_LOGI(TAG, "%-16s %4s %8u %8u %8u %4d%%",
+           is the number to watch. ExcHW = begin/catch stack depth high-waters
+           (Spinel only), the observations SP_EXC_STACK_MAX is sized from. */
+        char exc_hw_str[12] = "-";
+#ifdef FMRB_HAVE_SPINEL_HOST
+        if (ctx->vm_type == FMRB_VM_TYPE_NATIVE) {
+            int exc_hw = 0, catch_hw = 0;
+            if (fmrb_spinel_instance_exc_hw(ctx->est, &exc_hw, &catch_hw) == 0) {
+                snprintf(exc_hw_str, sizeof(exc_hw_str), "%d/%d", exc_hw, catch_hw);
+            }
+        }
+#endif
+        FMRB_LOGI(TAG, "%-16s %4s %8u %8u %8u %4d%% %6s",
                   ctx->app_name,
                   ctx->vm_type == FMRB_VM_TYPE_NATIVE ? "spx" : "mrb",
-                  (unsigned)used, (unsigned)free_bytes, (unsigned)total, (int)frag);
+                  (unsigned)used, (unsigned)free_bytes, (unsigned)total, (int)frag,
+                  exc_hw_str);
     }
     FMRB_LOGI(TAG, "----------------");
 }
@@ -2102,15 +2119,45 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {
                 }
                 break;
             }
-            case FMRB_VM_TYPE_NATIVE:
+            case FMRB_VM_TYPE_NATIVE: {
+                // Spinel instance: pool stats come from its estalloc backend,
+                // same as mruby.
+                size_t total, used, free;
+                int32_t frag;
+                if (ctx->est &&
+                    mrb_get_estalloc_stats(ctx->est, &total, &used, &free, &frag) == 0) {
+                    list[count].mem_total = total;
+                    list[count].mem_used = used;
+                    list[count].mem_free = free;
+                    list[count].mem_frag = frag;
+                } else {
+                    list[count].mem_total = 0;
+                    list[count].mem_used = 0;
+                    list[count].mem_free = 0;
+                    list[count].mem_frag = 0;
+                }
+                break;
+            }
             default:
-                // Native or unknown - no memory stats available
+                // Unknown - no memory stats available
                 list[count].mem_total = 0;
                 list[count].mem_used = 0;
                 list[count].mem_free = 0;
                 list[count].mem_frag = 0;
                 break;
         }
+
+        list[count].exc_hw = 0;
+        list[count].catch_hw = 0;
+#ifdef FMRB_HAVE_SPINEL_HOST
+        if (ctx->vm_type == FMRB_VM_TYPE_NATIVE && ctx->est) {
+            int exc_hw = 0, catch_hw = 0;
+            if (fmrb_spinel_instance_exc_hw(ctx->est, &exc_hw, &catch_hw) == 0) {
+                list[count].exc_hw = exc_hw;
+                list[count].catch_hw = catch_hw;
+            }
+        }
+#endif
 
         count++;
     }

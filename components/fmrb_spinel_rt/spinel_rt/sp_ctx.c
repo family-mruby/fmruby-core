@@ -172,4 +172,10 @@ void sp_instance_destroy(sp_ctx *c) {
   de(ud, c);
 }
 
+void sp_instance_exc_hw(sp_ctx *c, int *exc_hw, int *catch_hw) {
+  if (c && c->fn_exc_hw) { c->fn_exc_hw(exc_hw, catch_hw); return; }
+  if (exc_hw)   *exc_hw = 0;
+  if (catch_hw) *catch_hw = 0;
+}
+
 #endif /* SP_MULTI_CTX */

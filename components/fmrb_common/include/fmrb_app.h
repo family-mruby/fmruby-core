@@ -170,6 +170,12 @@ typedef struct {
     size_t                mem_used;         // Used memory
     size_t                mem_free;         // Free memory
     int32_t               mem_frag;         // Fragmentation count or block count
+
+    // Spinel (NATIVE) only: begin/catch stack depth high-waters, the
+    // observations SP_EXC_STACK_MAX / SP_CATCH_STACK_MAX are sized from.
+    // 0 for other VM types.
+    int32_t               exc_hw;
+    int32_t               catch_hw;
 } fmrb_app_info_t;
 
 // Window info for hit testing

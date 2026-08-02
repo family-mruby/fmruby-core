@@ -137,6 +137,7 @@ SP_TU_STATIC void sp_exc_ctx_load(void *);
 SP_TU_STATIC void sp_exc_ctx_mark(void *);
 SP_TU_STATIC void sp_exc_arm(jmp_buf);
 SP_TU_STATIC void sp_exc_disarm(void);
+SP_TU_STATIC void sp_exc_hw_read(int *, int *);
 SP_TU_STATIC const char *sp_exc_cur_cls(void);
 SP_TU_STATIC const char *sp_exc_cur_msg(void);
 SP_TU_STATIC void *sp_exc_cur_obj(void);
@@ -5740,6 +5741,7 @@ static void sp_tu_ctx_init(void) {
   _c->fn_exc_ctx_mark         = sp_exc_ctx_mark;
   _c->fn_exc_arm              = sp_exc_arm;
   _c->fn_exc_disarm           = sp_exc_disarm;
+  _c->fn_exc_hw               = sp_exc_hw_read;
   _c->fn_exc_cur_cls          = sp_exc_cur_cls;
   _c->fn_exc_cur_msg          = sp_exc_cur_msg;
   _c->fn_exc_cur_obj          = sp_exc_cur_obj;
@@ -5817,6 +5819,22 @@ static void sp_rescue_push(void *e) {
     exit(1);
   }
   sp_exc_handling[sp_rescue_sp++] = e;
+}
+/* High-water of sp_exc_top since program start. Ports size SP_EXC_STACK_MAX
+   from the deepest *observed* nesting plus margin; this is that observation
+   (read via fn_exc_hw under SP_MULTI_CTX). */
+static SP_TLS int sp_exc_hw = 0;
+/* Bounds guard emitted immediately BEFORE a begin-frame push writes its slot
+   (the [sp_exc_top] side arrays, then sp_exc_top++). The slot arrays are .bss
+   neighbours, so an overflowing write corrupts sp_exc_rootmark's GC
+   bookkeeping without any immediate symptom -- it surfaces much later as a
+   bogus OOM. Die loudly instead, like sp_rescue_push above. */
+static void sp_exc_push_check(void) {
+  if (sp_exc_top >= SP_EXC_STACK_MAX) {
+    fprintf(stderr, "begin frames too deep (> %d)\n", SP_EXC_STACK_MAX);
+    exit(1);
+  }
+  if (sp_exc_top + 1 > sp_exc_hw) sp_exc_hw = sp_exc_top + 1;
 }
 /* ---- Native backtrace formatting (spinel --debug) ---------------------- */
 /* True for sp_<name> symbols that are runtime helpers, not user Ruby methods.
@@ -6411,6 +6429,23 @@ static SP_TLS volatile int sp_catch_top = 0;
 /* shared counter (not SP_TLS) so `catch { |tag| }` autotags are globally
    unique; see sp_brk_seq for the same shape */
 static mrb_int sp_catch_seq = 0;
+/* High-water + pre-write bounds guard for the catch stack -- same shape and
+   same reasoning as sp_exc_push_check (the tag/kind/val writes at
+   [sp_catch_top] precede the increment). */
+static SP_TLS int sp_catch_hw = 0;
+static void sp_catch_push_check(void) {
+  if (sp_catch_top >= SP_CATCH_STACK_MAX) {
+    fprintf(stderr, "catch frames too deep (> %d)\n", SP_CATCH_STACK_MAX);
+    exit(1);
+  }
+  if (sp_catch_top + 1 > sp_catch_hw) sp_catch_hw = sp_catch_top + 1;
+}
+/* Report both high-waters to the host (fn_exc_hw; SP_MULTI_CTX ports read it
+   through sp_instance_exc_hw for stack-depth sizing). */
+SP_TU_STATIC void sp_exc_hw_read(int *exc_hw, int *catch_hw) {
+  if (exc_hw)   *exc_hw = sp_exc_hw;
+  if (catch_hw) *catch_hw = sp_catch_hw;
+}
 static void sp_throw(const char *tag, int kind, sp_RbVal val) {
   int i = sp_catch_top - 1;
   while (i >= 0) {
@@ -6735,7 +6770,7 @@ SP_TU_STATIC void sp_exc_ctx_mark(void *p) {            /* GC: mark a suspended 
    setjmp buffer as the fiber's lowest handler, so an otherwise-unhandled raise
    in the fiber body unwinds back to the trampoline (on the fiber's own stack)
    instead of exiting or long-jumping across to the resumer. */
-SP_TU_STATIC void sp_exc_arm(jmp_buf b)     { memcpy(sp_exc_stack[sp_exc_top], b, sizeof(jmp_buf)); sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++; }
+SP_TU_STATIC void sp_exc_arm(jmp_buf b)     { sp_exc_push_check(); memcpy(sp_exc_stack[sp_exc_top], b, sizeof(jmp_buf)); sp_exc_msg[sp_exc_top] = 0; sp_exc_obj[sp_exc_top] = 0; sp_exc_top++; }
 SP_TU_STATIC void sp_exc_disarm(void)       { if (sp_exc_top > 0) sp_exc_top--; }
 SP_TU_STATIC const char *sp_exc_cur_cls(void) { return sp_exc_top > 0 ? sp_exc_cls[sp_exc_top-1] : sp_str_empty; }
 SP_TU_STATIC const char *sp_exc_cur_msg(void) { return sp_exc_top > 0 ? sp_exc_msg[sp_exc_top-1] : sp_str_empty; }

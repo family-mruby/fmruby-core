@@ -29,26 +29,29 @@ set(SPINEL_RT_DYN_SYMS_MAX 256 CACHE STRING "SP_DYN_SYMS_MAX for the Spinel runt
 
 # Depth of the begin/rescue and catch/throw handler stacks, another pair of fixed
 # BSS arrays in the generated TU. Each entry holds a jmp_buf -- 304 bytes on RV32 --
-# so this reserves ~42 KB per generated program for the two together, and dropping
-# it to 32 would hand back ~42 KB of internal DRAM across the kernel and desktop.
+# so the depth dominates the ~13 KB the exception machinery reserves per
+# generated program (sp_exc_stack + sp_catch_stack + eight side arrays).
 #
-# It stays at the upstream default anyway, because 32 was tried and is NOT safe:
-# opening and closing the desktop's config dialog died with a bogus
-# "unhandled exception: out of memory". The desktop really does nest more than 32
-# begin frames, and a begin-frame push is not bounds-checked (sp_rescue_push exits
-# on overflow, the begin push does not), so the overflow wrote past sp_exc_stack
-# into the neighbouring arrays -- sp_exc_rootmark among them, which is how the GC
-# tracks live roots -- and surfaced as a fake allocation failure.
+# 16 is sized from measurement (T7-1, 2026-08-02), not inference. Every begin
+# frame push is now bounds-checked (sp_exc_push_check / sp_catch_push_check in
+# the fork) and records a high-water readable at runtime (`ps` exc_hw/catch_hw,
+# the ExcHW column of the VM-pool dump). Observed maxima with both instances on
+# Spinel (Linux sim): kernel 3/0, desktop 4/0 -- across boot, the config and
+# set_clock dialogs, launcher, app spawn x4, kill x3, window drags and a
+# compile-error app; S3 idle agrees (kernel 3/0). 16 is 4x the observed max.
 #
-# To reclaim that memory, first make the push fail loudly (seven codegen emit sites
-# in the fork, plus regenerating), then measure the real high-water mark and size
-# this from the measurement. Guessing from the task stack does not work: a Ruby
-# frame costs 2-6 KB, which suggested only a handful of frames could be live, and
-# the measurement contradicted that.
+# History: 32 was tried in Phase 5 and died with a bogus OOM in the desktop's
+# config dialog, which was then read as "the desktop nests more than 32 begin
+# frames". The high-water measurement contradicts that reading (the same dialog
+# peaks at 4), so the Phase 5 corruption was something else -- most likely a
+# push-pop imbalance in codegen of that era creeping sp_exc_top upward. Either
+# way the failure mode has changed: an unchecked push used to corrupt
+# sp_exc_rootmark silently, while today an overflow aborts with
+# "begin frames too deep". If that message ever fires, raise this and record
+# the new high-water here.
 #
-# Kept identical on Linux so the dual build cannot diverge. That is what caught
-# this -- the bad value failed in headless testing instead of on a device.
-set(SPINEL_RT_EXC_STACK_MAX 64 CACHE STRING "SP_EXC_STACK_MAX / SP_CATCH_STACK_MAX for the generated C")
+# Kept identical on Linux so the dual build cannot diverge.
+set(SPINEL_RT_EXC_STACK_MAX 16 CACHE STRING "SP_EXC_STACK_MAX / SP_CATCH_STACK_MAX for the generated C")
 
 # Capacity of the GC's mark work list, allocated lazily as ONE contiguous block
 # of this many pointers on the instance's own pool. Upstream's 64K entries is

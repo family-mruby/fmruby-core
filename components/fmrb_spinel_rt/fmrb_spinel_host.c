@@ -87,6 +87,11 @@ static int hal_readdir(void *ud, void *dh, char *namebuf, int cap) {
 }
 static int hal_closedir(void *ud, void *dh) { (void)ud; return fmrb_hal_file_closedir(dh); }
 
+/* est -> sp_ctx map so a foreign task (the stats dump) can reach an instance
+ * it did not create. Slots are few (kernel + desktop + spare); linear scan. */
+#define FMRB_SPINEL_MAX_INSTANCES 4
+static struct { void *est; sp_ctx *ctx; } s_instances[FMRB_SPINEL_MAX_INSTANCES];
+
 void *fmrb_spinel_instance_begin(void *pool, size_t pool_size,
                                  size_t gc_threshold, size_t str_threshold) {
     void *est = est_init(pool, (unsigned int)pool_size);
@@ -114,6 +119,9 @@ void *fmrb_spinel_instance_begin(void *pool, size_t pool_size,
     sp_ctx *c = sp_instance_create(&cfg);
     if (!c) { est_cleanup(est); return NULL; }
     sp_ctx_set_current(c);
+    for (int i = 0; i < FMRB_SPINEL_MAX_INSTANCES; i++) {
+        if (!s_instances[i].est) { s_instances[i].est = est; s_instances[i].ctx = c; break; }
+    }
     return est;
 }
 
@@ -121,7 +129,22 @@ void fmrb_spinel_instance_end(void *est) {
     sp_ctx *c = sp_ctx_current();
     if (c) sp_instance_destroy(c);
     sp_ctx_set_current(NULL);
+    for (int i = 0; i < FMRB_SPINEL_MAX_INSTANCES; i++) {
+        if (est && s_instances[i].est == est) { s_instances[i].est = NULL; s_instances[i].ctx = NULL; }
+    }
     if (est) est_cleanup(est);
+}
+
+int fmrb_spinel_instance_exc_hw(void *est, int *exc_hw, int *catch_hw) {
+    for (int i = 0; i < FMRB_SPINEL_MAX_INSTANCES; i++) {
+        if (est && s_instances[i].est == est) {
+            sp_instance_exc_hw(s_instances[i].ctx, exc_hw, catch_hw);
+            return 0;
+        }
+    }
+    if (exc_hw)   *exc_hw = 0;
+    if (catch_hw) *catch_hw = 0;
+    return -1;
 }
 
 #else  /* !SP_MULTI_CTX: single-context build has no per-instance API. */
@@ -132,5 +155,11 @@ void *fmrb_spinel_instance_begin(void *pool, size_t pool_size,
     return NULL;
 }
 void fmrb_spinel_instance_end(void *est) { (void)est; }
+int fmrb_spinel_instance_exc_hw(void *est, int *exc_hw, int *catch_hw) {
+    (void)est;
+    if (exc_hw)   *exc_hw = 0;
+    if (catch_hw) *catch_hw = 0;
+    return -1;
+}
 
 #endif /* SP_MULTI_CTX */

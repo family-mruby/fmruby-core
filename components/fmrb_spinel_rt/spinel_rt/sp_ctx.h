@@ -135,6 +135,7 @@ typedef struct sp_ctx {
   void        (*fn_exc_ctx_mark)(void *);
   void        (*fn_exc_arm)(jmp_buf);
   void        (*fn_exc_disarm)(void);
+  void        (*fn_exc_hw)(int *exc_hw, int *catch_hw); /* stack-depth high-waters (sizing aid) */
   const char *(*fn_exc_cur_cls)(void);
   const char *(*fn_exc_cur_msg)(void);
   void       *(*fn_exc_cur_obj)(void);
@@ -215,6 +216,10 @@ typedef struct {
 
 sp_ctx *sp_instance_create(const sp_instance_config *cfg);
 void    sp_instance_destroy(sp_ctx *ctx);
+/* Depth high-waters of the instance's begin/rescue and catch stacks, for
+ * port-side sizing of SP_EXC_STACK_MAX / SP_CATCH_STACK_MAX. Zeroes until the
+ * TU has registered (sp_tu_ctx_init). */
+void    sp_instance_exc_hw(sp_ctx *ctx, int *exc_hw, int *catch_hw);
 
 /* A generated TU installs its per-program hooks (GC globals-mark, JSON/poly
  * vtable) via constructors in the default build. Those write per-instance ctx

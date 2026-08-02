@@ -94,13 +94,18 @@ static void handle_ps(const fmrb_dbg_req_t *req) {
         fmrb_dbg_pack_kv_int(&w.pk, "mem_used",  (int64_t)list[i].mem_used);
         fmrb_dbg_pack_kv_int(&w.pk, "mem_total", (int64_t)list[i].mem_total);
         fmrb_dbg_pack_kv_int(&w.pk, "stack_hw",  (int64_t)list[i].stack_high_water);
+        /* Spinel begin/catch depth high-waters (0 for non-NATIVE VMs) */
+        fmrb_dbg_pack_kv_int(&w.pk, "exc_hw",    list[i].exc_hw);
+        fmrb_dbg_pack_kv_int(&w.pk, "catch_hw",  list[i].catch_hw);
     }
     send_writer(&w);
     fmrb_dbg_writer_destroy(&w);
 }
 
 static void handle_log_read(const fmrb_dbg_req_t *req) {
-    static char linebuf[2048];
+    // PSRAM: filled by memcpy from the log ring and consumed by msgpack,
+    // both CPU-only (doc/internal_ram_budget.md E).
+    EXT_RAM_BSS_ATTR static char linebuf[2048];
     uint32_t pos = req->pos;
     uint32_t before = pos;
     int max_lines = req->max_lines > 0 ? req->max_lines : 50;

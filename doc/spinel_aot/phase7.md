@@ -57,6 +57,49 @@ fork = `origin/fmrb-dev = 94c2f89a` (`components/fmrb_spinel_rt/SPINEL_PIN`)。
 **併せて**: `SPINEL_RT_GC_MARK_STACK_MAX` は現在 8192 (32 KB/本)。
 プール使用率が 17〜40% と判明したのでさらに詰められる余地があるが、
 こちらは溢れても再帰に落ちるだけで安全なので優先度は低い。
+なおマークスタックの確保先は sp_mem_override 経由でインスタンスの
+est pool (PSRAM) であり、内蔵 RAM ではない (2026-08-02 に
+internal_ram_budget.md 側の誤分析を訂正済み)。
+
+#### 実施記録 (2026-08-02): 完了
+
+fail-loud 化と high-water 計測を実装し、深さ 64 → 16 に決定した。
+
+- **fork 側** (未コミット、tmp/spinel working tree): codegen の begin フレーム
+  push 7 箇所の直前に `sp_exc_push_check()` を挿入 (既存の書き込み内容は
+  不変、境界チェックと high-water 記録だけを前置する最小差分)。catch 側も
+  同型の `sp_catch_push_check()` を 1 箇所に前置。runtime 側の
+  `sp_exc_arm` (fiber trampoline) にも同じチェックを入れた。high-water は
+  `fn_exc_hw` として sp_ctx に登録され、`sp_instance_exc_hw()` で
+  ホストから読める。fork テスト: 1997 pass / 1 fail (既存の Complex
+  inspect 差異。ベースラインでも同様に fail することを確認済み)、
+  test-multi-ctx / test-lib-mode PASS。
+- **core 側**: `fmrb_spinel_instance_exc_hw(est)` (est→ctx の対応表を
+  fmrb_spinel_host.c に追加)、`fmrb_app_dump_vm_pools()` に ExcHW 列、
+  debugd の ps 応答に `exc_hw` / `catch_hw` フィールド追加
+  (Web コンソールからも読める)。ps は NATIVE の pool 統計も返すようにした。
+- **実測** (Linux sim、kernel + desktop 両方 Spinel 構成):
+  boot / config ダイアログ開閉 x3 (値の増減つき) / set_clock 操作 /
+  launcher / アプリ spawn x4 (shell, log_viewer, monitor, compile_err) /
+  shell へのキー入力 / ウィンドウドラッグ x2 / 前面化 / debugd 経由
+  kill x3 / コンパイルエラー処理 + エラー overlay を通して、
+  **kernel exc_hw=3, catch_hw=0 / desktop exc_hw=4, catch_hw=0**。
+  S3 実機 (Spinel kernel + mruby desktop) のブート+アイドルも kernel 3/0
+  で一致。
+- **決定**: `SPINEL_RT_EXC_STACK_MAX` 64 → **16** (観測最大 4 の 4 倍)。
+  溢れたら黙って壊れる従来と違い、今は "begin/catch frames too deep" で
+  即死するので、未踏経路が 16 を超えたときは明示的に分かる。
+  その場合はこの節に新しい high-water を追記して値を上げる。
+- **Phase 5 の「32 で偽 OOM」の読み直し**: 当時の「desktop は 32 以上
+  ネストする」は境界チェックが無い時代の症状からの逆算で、実測 (同じ
+  config ダイアログで最大 4) と矛盾する。当時の破壊は当時の codegen の
+  push-pop 不均衡などによる creep が疑わしい。いずれにせよ現在は
+  fail-loud なので同型の silent corruption は起こらない。
+- **効果 (実測)**: S3 実機 (Spinel kernel + mruby desktop) で、64 版と
+  16 版の同日ビルドを比較して定常 IRAM free **82,040 → 90,492 B
+  (+8,452 B / インスタンス)**。最大連続ブロックも 49,152 → 56,320 B に
+  改善。深さ 16 でのブート・アイドルは正常、ExcHW 3/0、fail-loud の
+  発火なし。
 
 ### T7-2: window order の異常 (新規)
 
