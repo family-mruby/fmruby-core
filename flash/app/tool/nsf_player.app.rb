@@ -146,6 +146,11 @@ class NsfPlayerApp < FmrbApp
       end
     elsif @files.length == 0
       @gfx.draw_text(x0 + 2, info_y + 10, "No NSF files in #{MUSIC_DIR}", TEXT_COLOR, BG_COLOR)
+    else
+      # Selected file failed NsfHeader.parse (bad magic / truncated header):
+      # say so instead of leaving the info area silently empty.
+      @gfx.draw_text(x0 + 2, info_y + 2, @files[@selected], TEXT_COLOR, BG_COLOR)
+      @gfx.draw_text(x0 + 2, info_y + 14, "Unsupported file", FmrbGfx::COLOR_RED, BG_COLOR)
     end
 
     @gfx.present
