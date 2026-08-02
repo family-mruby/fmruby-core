@@ -125,6 +125,9 @@ out << "# FmrbConst subset used by the Spinel kernel VM (values from C headers).
 out << "module FmrbConst\n"
 out << "  PLATFORM = #{platform.inspect}\n"
 out << "  CHIP_MODEL = #{chip_model.inspect}\n"
+# WiFi-capable: every Spinel target has it (Narya S3 native, P4 via C6, the
+# Linux sim reports host network state). ATOM (no WiFi) never runs Spinel.
+out << "  HAS_WIFI = true\n"
 out << "  MSG_TYPE_APP_CONTROL = #{msg_types['FMRB_MSG_TYPE_APP_CONTROL']}\n"
 out << "  MSG_TYPE_APP_GFX = #{msg_types['FMRB_MSG_TYPE_APP_GFX']}\n"
 out << "  MSG_TYPE_APP_AUDIO = #{msg_types['FMRB_MSG_TYPE_APP_AUDIO']}\n"

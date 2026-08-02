@@ -59,6 +59,7 @@ module ConfigDialogMixin
       options: ["JST-9", "UTC", "EST5", "PST8", "CET-1", "CST-8"] },
     { key: :debug_mode,       field: "debug_mode",       type: :bool },
     { key: :ble_auto_start,   field: "ble_auto_start",   type: :bool },
+    { key: :wifi_auto_start,  field: "wifi_auto_start",  type: :bool },
     { key: :display_margin_x, field: "display_margin_x", type: :int,   min: 0, max: 16, step: 1 },
     { key: :display_margin_y, field: "display_margin_y", type: :int,   min: 0, max: 16, step: 1 },
   ]

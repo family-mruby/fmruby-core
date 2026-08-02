@@ -42,9 +42,9 @@
 #include <stdlib.h>
 #endif
 
-#if defined(FMRB_HW_MODERN)
-// WiFi STA lives on the Modern (ESP32-P4) target only; on Retro
-// FmrbApp.wifi_info returns nil (see below).
+#if defined(FMRB_HAS_WIFI)
+// WiFi STA: Modern (radio on the C6) and Narya S3 (native radio). ATOM has
+// no WiFi and FmrbApp.wifi_info returns nil there (see below).
 #include "wifi_task.h"
 #endif
 
@@ -1038,7 +1038,7 @@ static mrb_value mrb_fmrb_app_s_ble_start(mrb_state *mrb, mrb_value klass)
 static mrb_value mrb_fmrb_app_s_wifi_info(mrb_state *mrb, mrb_value klass)
 {
     (void)klass;
-#if defined(FMRB_HW_MODERN)
+#if defined(FMRB_HAS_WIFI)
     char ip[16];
     char ssid[33];
     char host[32];

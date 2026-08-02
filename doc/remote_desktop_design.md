@@ -231,7 +231,7 @@ main/boot/boot.c             # modern_ble_init_task → modern_radio_init_task
                              # (BLE init → WiFi init を逐次実行)
 tool/web/remote/
   index.html / remote.js / keymap.js   # ビューア (EMBED_FILES 埋込)
-config/wifi_p4.toml.example  # テンプレート (実物 config/wifi_p4.toml は
+config/wifi.toml.example  # テンプレート (実物 config/wifi.toml は
                              # .gitignore + Rakefile 条件付きコピー)
 ```
 

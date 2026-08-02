@@ -30,8 +30,8 @@ tmp/
 lib/*.backup.*
 
 flash/home/rubykaigi/
-# WiFi credentials (remote desktop) - never commit; see config/wifi_p4.toml.example
-config/wifi_p4.toml
+# WiFi credentials - never commit; see config/wifi.toml.example
+config/wifi.toml
 flash/etc/wifi.toml
 
 # Python bytecode cache

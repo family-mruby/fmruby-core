@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include "fmrb_err.h"
 
 #ifdef __cplusplus
@@ -26,6 +27,13 @@ fmrb_err_t ble_task_init(void);
  * @return FMRB_OK when BLE is running/starting, FMRB_ERR_FAILED otherwise
  */
 fmrb_err_t ble_service_start(void);
+
+/**
+ * @brief True while BLE is running or its start task is in flight.
+ *
+ * Used by wifi_task_init for the retro one-radio-at-a-time policy.
+ */
+bool ble_service_is_started(void);
 
 /**
  * @brief Deinitialize BLE stack and stop advertising

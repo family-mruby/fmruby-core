@@ -46,6 +46,7 @@ static fmrb_system_config_t g_system_config = {
     .display_mode = FMRB_DISPLAY_MODE_NTSC_IPC,
     .debug_mode = true,
     .ble_auto_start = true,
+    .wifi_auto_start = false,
     .mouse_scale_x = 1.0,
     .mouse_scale_y = 1.0,
     .language = "en"
@@ -149,6 +150,11 @@ static bool read_system_config(void)
     // ~75 KB of internal RAM unclaimed until the desktop menu starts BLE by
     // hand (doc/internal_ram_budget.md, D axis).
     g_system_config.ble_auto_start = fmrb_toml_get_bool(conf, "ble_auto_start", g_system_config.ble_auto_start);
+
+    // WiFi boot policy: default OFF on every target. Turning it on also needs
+    // credentials in /etc/wifi.toml. On retro (S3) WiFi and BLE are mutually
+    // exclusive; boot resolves a both-on misconfiguration in favor of BLE.
+    g_system_config.wifi_auto_start = fmrb_toml_get_bool(conf, "wifi_auto_start", g_system_config.wifi_auto_start);
 
     // Read mouse sensitivity
     g_system_config.mouse_scale_x = fmrb_toml_get_double(conf, "mouse_scale_x", g_system_config.mouse_scale_x);

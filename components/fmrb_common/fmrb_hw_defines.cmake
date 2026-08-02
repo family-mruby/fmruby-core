@@ -26,7 +26,13 @@ function(fmrb_add_hw_defines)
         else()
             target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_TAB5)
         endif()
+        # WiFi STA: radio on the C6 coprocessor via esp_wifi_remote
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HAS_WIFI)
     elseif(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
         target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_ATOM_DISPLAY)
+    else()
+        # Narya v3 (Retro, ESP32-S3): native WiFi. Runtime policy keeps it
+        # mutually exclusive with BLE (no coexistence, see wifi_task.c).
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HAS_WIFI)
     endif()
 endfunction()

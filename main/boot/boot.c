@@ -30,6 +30,9 @@
 // BLE: built-in radio on retro targets; on Modern (ESP32-P4) the controller
 // is on the ESP32-C6 coprocessor via esp_hosted (host-only NimBLE).
 #include "ble_task.h"
+#ifdef FMRB_HAS_WIFI
+#include "wifi_task.h"
+#endif
 #ifdef FMRB_HW_ATOM_DISPLAY
 #include "m5gfx_task.h"
 #include "i2c_keyboard.h"
@@ -282,7 +285,15 @@ static void modern_radio_init_task(void *arg)
         FMRB_LOGW(TAG, "Failed to init BLE via C6, continuing without it");
     }
     fmrb_mem_log_boot_snapshot("ble");
-    if (wifi_task_init() != FMRB_OK) {
+    // WiFi is gated by system_conf.toml (wifi_auto_start, default off), which
+    // the kernel loads -- wait for it briefly. On the C6 both radios coexist,
+    // so unlike retro this is purely a policy switch, not an exclusivity one.
+    for (int i = 0; i < 100 && !fmrb_kernel_is_ready(); i++) {
+        fmrb_task_delay_ms(100);
+    }
+    if (!fmrb_kernel_is_ready() || !fmrb_kernel_get_config()->wifi_auto_start) {
+        FMRB_LOGI(TAG, "WiFi auto-start disabled (wifi_auto_start=false)");
+    } else if (wifi_task_init() != FMRB_OK) {
         FMRB_LOGW(TAG, "WiFi not started (disabled or failed)");
     } else if (rd_task_init() != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init remote desktop, continuing without it");
@@ -477,17 +488,35 @@ void fmrb_os_init(void)
     FMRB_LOGI(TAG, "Family mruby OS initialization complete");
 
 #if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(CONFIG_IDF_TARGET_ESP32P4)
-    // Retro BLE boot policy, decided by system_conf.toml (readable only now
-    // that the kernel loaded it). Auto-start preserves the old behavior;
+    // Retro radio boot policy, decided by system_conf.toml (readable only now
+    // that the kernel loaded it). BLE auto-start preserves the old behavior;
     // opting out leaves BLE's ~75 KB of internal RAM free until the desktop
     // menu calls ble_service_start() (doc/internal_ram_budget.md, D axis).
-    if (fmrb_kernel_get_config()->ble_auto_start) {
-        if (ble_service_start() != FMRB_OK) {
-            FMRB_LOGW(TAG, "Failed to start BLE, continuing without it");
+    // WiFi (native radio, Narya only) defaults off and is mutually exclusive
+    // with BLE (no coexistence); when both are configured on, BLE wins.
+    {
+        const fmrb_system_config_t *cfg = fmrb_kernel_get_config();
+        if (cfg->ble_auto_start) {
+            if (cfg->wifi_auto_start) {
+                FMRB_LOGW(TAG, "ble_auto_start and wifi_auto_start are both "
+                               "set; S3 runs one radio -- starting BLE only");
+            }
+            if (ble_service_start() != FMRB_OK) {
+                FMRB_LOGW(TAG, "Failed to start BLE, continuing without it");
+            }
+        } else if (cfg->wifi_auto_start) {
+#ifdef FMRB_HAS_WIFI
+            fmrb_err_t wret = wifi_task_init();
+            if (wret != FMRB_OK && wret != FMRB_ERR_NOT_FOUND) {
+                FMRB_LOGW(TAG, "Failed to start WiFi, continuing without it");
+            }
+#else
+            FMRB_LOGW(TAG, "wifi_auto_start set but this target has no WiFi");
+#endif
+        } else {
+            FMRB_LOGI(TAG, "BLE auto-start disabled (ble_auto_start=false); "
+                           "start it from the desktop menu when needed");
         }
-    } else {
-        FMRB_LOGI(TAG, "BLE auto-start disabled (ble_auto_start=false); "
-                       "start it from the desktop menu when needed");
     }
 #endif
 

@@ -51,7 +51,7 @@ class SystemDesktopApp < FmrbApp
     { key: :set_clock },
     { key: :config },
     { key: :storage },
-  ] + (FmrbConst::CHIP_MODEL == "ESP32-P4" ? [{ key: :network }] : []) +
+  ] + (FmrbConst::HAS_WIFI ? [{ key: :network }] : []) +
     # Retro only: manual BLE start for the ble_auto_start=false configuration
     # (on Modern the C6 radio path manages itself). Harmless when BLE is
     # already up -- the C side is idempotent.

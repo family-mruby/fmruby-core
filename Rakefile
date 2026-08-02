@@ -711,10 +711,13 @@ namespace :build do
     # Copy HW-specific system_conf.toml to flash directory
     cp system_conf_path, 'flash/etc/system_conf.toml', verbose: true
 
-    # WiFi credentials (Modern remote desktop): config/wifi_p4.toml is
-    # kept out of git (see config/wifi_p4.toml.example). Copied into the
-    # flash image only when present.
-    if File.exist?('config/wifi_p4.toml')
+    # WiFi credentials (P4 via the C6, S3 native): config/wifi.toml is kept
+    # out of git (see config/wifi.toml.example). Copied into the flash image
+    # only when present. wifi_p4.toml is the pre-rename fallback.
+    if File.exist?('config/wifi.toml')
+      cp 'config/wifi.toml', 'flash/etc/wifi.toml', verbose: true
+    elsif File.exist?('config/wifi_p4.toml')
+      warn 'config/wifi_p4.toml is deprecated; rename it to config/wifi.toml'
       cp 'config/wifi_p4.toml', 'flash/etc/wifi.toml', verbose: true
     end
 

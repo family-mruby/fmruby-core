@@ -1472,12 +1472,34 @@ static void ble_start_task_func(void *arg)
     fmrb_task_delete_ex(NULL);
 }
 
+bool ble_service_is_started(void)
+{
+    return g_ble_initialized || g_ble_start_pending;
+}
+
+#ifndef CONFIG_IDF_TARGET_ESP32P4
+// Weak default so targets without wifi_task.c (ATOM) still link; the strong
+// definition lives in wifi_task.c on WiFi-capable retro targets.
+bool __attribute__((weak)) wifi_task_is_started(void)
+{
+    return false;
+}
+#endif
+
 fmrb_err_t ble_service_start(void)
 {
     if (g_ble_initialized) {
         FMRB_LOGI(TAG, "BLE already running");
         return FMRB_OK;
     }
+#ifndef CONFIG_IDF_TARGET_ESP32P4
+    // Retro: one radio at a time (coex is off; see wifi_task.c).
+    if (wifi_task_is_started()) {
+        FMRB_LOGW(TAG, "WiFi is running: BLE not started (S3 runs one radio; "
+                       "set wifi_auto_start=false to use BLE)");
+        return FMRB_ERR_INVALID_STATE;
+    }
+#endif
     // Single admission gate: boot (ble_auto_start) and the desktop menu can
     // both call this; only one init task may ever run.
     if (__atomic_test_and_set(&g_ble_start_pending, __ATOMIC_SEQ_CST)) {

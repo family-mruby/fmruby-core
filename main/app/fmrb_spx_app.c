@@ -53,7 +53,7 @@
 #define FMRB_SPX_BSS_ATTR EXT_RAM_BSS_ATTR
 #endif
 
-#if defined(FMRB_HW_MODERN)
+#if defined(FMRB_HAS_WIFI)
 #include "wifi_task.h"
 #endif
 
@@ -521,7 +521,7 @@ const char *fmrb_spx_app_wifi_info(void)
     sp_net_bin_len = 0;
     memset(buf, 0, sizeof(buf));
 
-#if defined(FMRB_HW_MODERN)
+#if defined(FMRB_HAS_WIFI)
     char ip[16], ssid[33], host[32];
     wifi_get_ip_str(ip, sizeof(ip));
     wifi_get_ssid(ssid, sizeof(ssid));

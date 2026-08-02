@@ -21,12 +21,28 @@ CONFIG_PARTITION_TABLE_FILENAME="config/partitions_n16r8.csv"
 # for task info
 CONFIG_FREERTOS_THREAD_LOCAL_STORAGE_POINTERS=2
 
-# for DRAM overflow issue
-CONFIG_ESP_WIFI_ENABLED=n
+# WiFi STA (native radio). Runtime policy: WiFi and BLE never run at the
+# same time (wifi_auto_start vs ble_auto_start in system_conf.toml; the code
+# refuses to start the second radio), so software coexistence stays off --
+# see the coex note below. Buffer counts trimmed for the internal-RAM budget;
+# CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP below moves what can move to PSRAM.
+CONFIG_ESP_WIFI_ENABLED=y
+CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=6
+CONFIG_ESP_WIFI_DYNAMIC_RX_BUFFER_NUM=16
+CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=16
+# Constraint: must be <= 2 * STATIC_RX_BUFFER_NUM (compile-time check)
+CONFIG_ESP_WIFI_RX_BA_WIN=8
+# Keep WiFi code out of IRAM: IRAM shares the internal-RAM address space
+# (.dram0.dummy), so these speed options cost DRAM whether or not WiFi ever
+# starts. Our WiFi use (file sync, console) does not need the throughput.
+CONFIG_ESP_WIFI_IRAM_OPT=n
+CONFIG_ESP_WIFI_RX_IRAM_OPT=n
+CONFIG_ESP_WIFI_SLP_IRAM_OPT=n
 
-# Disable WiFi/BT software coexistence: WiFi is unused, but coex still
-# allocates time slots assuming WiFi is active, which causes NimBLE host to
-# lose sync ~10s after boot (Host not enabled. Dropping the packet!).
+# Disable WiFi/BT software coexistence: the two radios are never up at the
+# same time (see above), and coex allocates time slots assuming WiFi is
+# active, which causes NimBLE host to lose sync ~10s after boot
+# (Host not enabled. Dropping the packet!).
 CONFIG_ESP_COEX_SW_COEXIST_ENABLE=n
 
 # Bluetooth Configuration - BLE Peripheral (NimBLE)

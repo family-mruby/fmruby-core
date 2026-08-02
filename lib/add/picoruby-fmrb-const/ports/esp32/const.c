@@ -349,6 +349,16 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "GA_VERSION",   mrb_str_new_cstr(mrb, FMRB_GA_VERSION));
     mrb_define_const(mrb, const_module, "LINK_VERSION", mrb_fixnum_value(FMRB_LINK_VERSION));
 
+    // WiFi-capable target (Narya S3 / P4; the Linux sim reports host network
+    // state through FmrbApp.wifi_info, so it counts). Gates the desktop's
+    // network menu without guessing from CHIP_MODEL, which cannot tell
+    // Narya from ATOM (both ESP32-S3).
+#if defined(FMRB_HAS_WIFI) || defined(CONFIG_IDF_TARGET_LINUX)
+    mrb_define_const(mrb, const_module, "HAS_WIFI", mrb_true_value());
+#else
+    mrb_define_const(mrb, const_module, "HAS_WIFI", mrb_false_value());
+#endif
+
     // System info constants (frozen at init)
 #ifdef CONFIG_IDF_TARGET_LINUX
     mrb_define_const(mrb, const_module, "IDF_VERSION",   mrb_str_new_cstr(mrb, "-"));

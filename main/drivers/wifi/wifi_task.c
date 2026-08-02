@@ -1,22 +1,27 @@
-// WiFi STA bring-up for Modern (ESP32-P4 / Tab5).
+// WiFi STA bring-up.
 //
-// The radio is on the ESP32-C6 coprocessor: esp_wifi_* calls are RPC'd to
-// the slave by esp_wifi_remote (CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED),
-// while esp_netif + lwIP run locally on the P4, so sockets and the HTTP
-// server behave as on native WiFi.
-//
-// Ordering constraint: esp_hosted 1.4.0 corrupts the heap if an RPC is
-// issued before the SDIO transport is up (doc/ble_c6_web_console.md).
+// Modern (ESP32-P4 / Tab5): the radio is on the ESP32-C6 coprocessor;
+// esp_wifi_* calls are RPC'd to the slave by esp_wifi_remote
+// (CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED), while esp_netif + lwIP run
+// locally on the P4, so sockets and the HTTP server behave as on native
+// WiFi. Ordering constraint: esp_hosted 1.4.0 corrupts the heap if an RPC
+// is issued before the SDIO transport is up (doc/ble_c6_web_console.md).
 // ble_task_init normally brings the transport up first; when BLE is
-// disabled, esp_hosted_setup() below waits for the transport without
-// issuing any RPC.
+// disabled, the wait below polls the transport without issuing any RPC.
+//
+// Retro (Narya v3, ESP32-S3): native radio, same esp_wifi API without the
+// transport dance. WiFi and BLE are mutually exclusive here -- coexistence
+// is off in sdkconfig (it destabilizes NimBLE even when idle) and the two
+// share the internal-RAM budget -- so init refuses to start while BLE is up
+// (and ble_service_start refuses while WiFi is up).
 //
 // Credentials come from /etc/wifi.toml (kept out of git; see
-// config/wifi_p4.toml.example). Reconnection uses exponential backoff.
+// config/wifi.toml.example). Reconnection uses exponential backoff.
 
 #include "wifi_task.h"
 
 #include "fmrb_log.h"
+#include "fmrb_mem.h"
 #include "fmrb_toml.h"
 
 #include "freertos/FreeRTOS.h"
@@ -25,15 +30,22 @@
 #include "esp_netif.h"
 #include "esp_event.h"
 #include "esp_timer.h"
+#ifdef CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED
 #include "esp_hosted.h"
+#else
+#include "nvs_flash.h"
+#include "ble_task.h"   /* ble_service_is_started: radio exclusivity */
+#endif
 #include "mdns.h"
 
 #include <string.h>
 
+#ifdef CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED
 // esp_hosted 1.4.0 transport state probes (host/drivers/transport/
 // transport_drv.h; declared here to avoid the deep include path)
 extern uint8_t is_transport_rx_ready(void);
 extern uint8_t is_transport_tx_ready(void);
+#endif
 
 static const char *TAG = "wifi";
 
@@ -83,11 +95,15 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
             FMRB_LOGI(TAG, "Associated with AP");
             break;
         case WIFI_EVENT_STA_DISCONNECTED: {
+            wifi_event_sta_disconnected_t *ev = (wifi_event_sta_disconnected_t *)data;
             bool was_connected = s_connected;
             s_connected = false;
             xEventGroupClearBits(s_wifi_events, WIFI_EV_GOT_IP);
-            FMRB_LOGW(TAG, "Disconnected%s, retry in %u ms",
+            // reason codes: esp_wifi_types.h (2=AUTH_EXPIRE, 15=4WAY_TIMEOUT /
+            // wrong password, 201=NO_AP_FOUND / wrong SSID or 5GHz-only AP)
+            FMRB_LOGW(TAG, "Disconnected%s (reason=%d), retry in %u ms",
                       was_connected ? "" : " (connect failed)",
+                      ev ? (int)ev->reason : -1,
                       (unsigned)s_reconnect_delay_ms);
             schedule_reconnect();
             break;
@@ -118,8 +134,24 @@ static void mdns_start(void)
     FMRB_LOGI(TAG, "mDNS hostname: %s.local", s_hostname);
 }
 
+static bool s_started = false;
+
+bool wifi_task_is_started(void)
+{
+    return s_started;
+}
+
 fmrb_err_t wifi_task_init(void)
 {
+#ifndef CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED
+    // Retro: one radio at a time (see the header comment).
+    if (ble_service_is_started()) {
+        FMRB_LOGW(TAG, "BLE is running: WiFi not started (S3 runs one radio; "
+                       "set ble_auto_start=false to use WiFi)");
+        return FMRB_ERR_INVALID_STATE;
+    }
+#endif
+
     // --- Read /etc/wifi.toml ---
     char errbuf[128];
     toml_table_t *root = fmrb_toml_load_file(WIFI_TOML_PATH, errbuf, sizeof(errbuf));
@@ -149,6 +181,7 @@ fmrb_err_t wifi_task_init(void)
     strlcpy(s_ssid, ssid, sizeof(s_ssid));
     toml_free(root);
 
+#ifdef CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED
     // --- Make sure the esp_hosted transport is up before any WiFi RPC
     // (esp_hosted 1.4.0 corrupts the heap otherwise). BLE init normally
     // brings the SDIO link up first; poll the transport state without
@@ -170,6 +203,21 @@ fmrb_err_t wifi_task_init(void)
         FMRB_LOGE(TAG, "esp_hosted transport not up, aborting WiFi init");
         return FMRB_ERR_FAILED;
     }
+#else
+    // --- Native radio (S3): esp_wifi keeps calibration data in NVS. Same
+    // init-or-erase dance as ble_task_init (whichever radio starts first
+    // does it; nvs_flash_init is idempotent). ---
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        FMRB_LOGW(TAG, "NVS partition full or outdated, erasing...");
+        nvs_flash_erase();
+        err = nvs_flash_init();
+    }
+    if (err != ESP_OK) {
+        FMRB_LOGE(TAG, "nvs_flash_init failed: %d", (int)err);
+        return FMRB_ERR_FAILED;
+    }
+#endif
 
     // --- Standard STA bring-up; every esp_wifi_* call is RPC'd to the C6 ---
     s_wifi_events = xEventGroupCreate();
@@ -227,6 +275,8 @@ fmrb_err_t wifi_task_init(void)
     FMRB_LOGI(TAG, "STA starting, ssid=%s", sta_cfg.sta.ssid);
 
     mdns_start();
+    s_started = true;
+    fmrb_mem_log_boot_snapshot("wifi_ready");
     return FMRB_OK;
 }
 

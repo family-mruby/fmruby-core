@@ -156,6 +156,13 @@ if(NOT IDF_TARGET STREQUAL "linux")
              esp_http_server esp_driver_jpeg esp_h264)
     else()
         list(APPEND COMPONENT_REQUIRES bt)
+        if(NOT FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
+            # Narya v3: native WiFi STA + mDNS (no remote desktop -- the S3
+            # has no hardware video encoder). Mutually exclusive with BLE at
+            # runtime; see wifi_task.c.
+            list(APPEND COMPONENT_SRCS "drivers/wifi/wifi_task.c")
+            list(APPEND COMPONENT_REQUIRES esp_wifi esp_netif esp_event)
+        endif()
     endif()
     if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
         # ATOM_DISPLAY: no USB host, add M5GFX receiver
