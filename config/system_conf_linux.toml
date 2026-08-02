@@ -38,7 +38,7 @@ app = "default/editor"
 
 [[shortcuts]]
 key = "n"
-app = "app/demo/nsf_player.app.rb"
+app = "app/tool/nsf_player.app.rb"
 
 [[shortcuts]]
 key = "i"

@@ -18,11 +18,17 @@ class NsfHeader
     f = File.open(path, "r")
     buf = f.read(128)
     f.close
-    return nil unless buf && buf.length >= 128
+    # bytesize, NOT length: under UTF-8 strings, length counts characters, and
+    # a header whose binary fields happen to form a valid multi-byte sequence
+    # (e.g. the load/init/play addresses) counts as < 128 "characters" even
+    # though all 128 bytes are there -- which made valid NSFs show no Play
+    # button. Byte-index everything below for the same reason.
+    return nil unless buf && buf.bytesize >= 128
 
     # Validate magic: "NESM\x1A"
-    return nil unless buf[0] == 'N' && buf[1] == 'E' && buf[2] == 'S' &&
-                      buf[3] == 'M' && buf.getbyte(4) == 0x1A
+    return nil unless buf.getbyte(0) == 0x4E && buf.getbyte(1) == 0x45 &&
+                      buf.getbyte(2) == 0x53 && buf.getbyte(3) == 0x4D &&
+                      buf.getbyte(4) == 0x1A
 
     total_songs = buf.getbyte(6)
     starting_song = buf.getbyte(7)
