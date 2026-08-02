@@ -114,7 +114,12 @@ status LED で検知」という役割を壊す (重いアプリのたびにハ�
 ## 変更内容まとめ
 
 1. **FMRB_USER_APP_PRIORITY / FMRB_SHELL_APP_PRIORITY: 5 -> 2**
+   -> **実施済み (2026-08-02、app_kill_fix Phase 2)**。
 2. **FMRB_STATUS_LED_TASK_PRIORITY: 2 -> 3**
+   -> **実施済み (2026-08-02、同上)**。あわせて「CPU 余力の表示」を
+   点滅パターンで行う実装 (idle フックのカウンタを LED タスクが
+   サンプリング) も入れた。sdkconfig の変更は不要だった。
+   実測と実機確認の依頼は doc/app_kill_fix/report.md の Phase 2 節。
 3. **ハードコード 8 箇所を fmrb_task_config.h へ移す** (値は等値移動)。
    nimble_host は移せない (ポート既定) ので、ヘッダに参照コメントとして併記。
    -> **実施済み (2026-08-01、優先度変更とは独立の 1 コミット)**。

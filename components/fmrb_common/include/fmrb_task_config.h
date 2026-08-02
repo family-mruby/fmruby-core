@@ -95,12 +95,12 @@
 
 // Shell App task (mruby VM for shell)
 #define FMRB_SHELL_APP_TASK_STACK_SIZE  (12 * 1024)
-#define FMRB_SHELL_APP_PRIORITY         (5)
+#define FMRB_SHELL_APP_PRIORITY         (2)
 #define FMRB_SHELL_APP_TASK_FLAGS       FMRB_TASK_FLAG_PINNED_1
 
 // User App task (mruby/lua/basic VM for user apps)
 #define FMRB_USER_APP_TASK_STACK_SIZE   (16 * 1024)
-#define FMRB_USER_APP_PRIORITY          (5)
+#define FMRB_USER_APP_PRIORITY          (2)
 #define FMRB_USER_APP_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_1
 
 // --- Infrastructure tasks (Core 0, internal RAM) ---
@@ -110,9 +110,11 @@
 #define FMRB_RTC_TASK_PRIORITY          (3)
 #define FMRB_RTC_TASK_FLAGS             FMRB_TASK_FLAG_PINNED_1
 
-// Status LED task (GPIO, low priority)
+// Status LED task (GPIO). Sits in the control/liveness tier with the RTC and
+// the debugger so it keeps beating while a guest spins: "blinking" has to mean
+// "the OS is alive", which it cannot if a busy app can starve it.
 #define FMRB_STATUS_LED_TASK_STACK_SIZE (4096)
-#define FMRB_STATUS_LED_TASK_PRIORITY   (2)
+#define FMRB_STATUS_LED_TASK_PRIORITY   (3)
 #define FMRB_STATUS_LED_TASK_FLAGS      FMRB_TASK_FLAG_PINNED_1
 
 // USB host library task (USB DMA needs internal RAM)
