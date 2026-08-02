@@ -95,7 +95,10 @@ typedef struct {
     uint16_t log_max_lines;
 } ble_fs_context_t;
 
-static ble_fs_context_t g_fs_ctx;
+// PSRAM: only ever touched by CPU copies (os_mbuf_copydata in the GATT
+// callback, file writes go through the HAL's internal-RAM bounce buffer),
+// so it does not need to sit in internal DRAM (doc/internal_ram_budget.md E).
+EXT_RAM_BSS_ATTR static ble_fs_context_t g_fs_ctx;
 static fmrb_task_handle_t g_fs_task_handle;
 static uint16_t g_fs_tx_val_handle;
 

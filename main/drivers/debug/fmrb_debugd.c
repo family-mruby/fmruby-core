@@ -86,7 +86,7 @@ static void handle_ps(const fmrb_dbg_req_t *req) {
     fmrb_dbg_pack_key(&w.pk, "apps");
     msgpack_pack_array(&w.pk, n);
     for (int32_t i = 0; i < n; i++) {
-        msgpack_pack_map(&w.pk, 7);
+        msgpack_pack_map(&w.pk, 9);
         fmrb_dbg_pack_kv_int(&w.pk, "pid",       list[i].app_id);
         fmrb_dbg_pack_kv_str(&w.pk, "name",      list[i].app_name);
         fmrb_dbg_pack_kv_int(&w.pk, "state",     list[i].state);
