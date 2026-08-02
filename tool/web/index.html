@@ -26,6 +26,7 @@
     <button id="tabLogs" onclick="switchTab('logs')">Logs</button>
     <button id="tabSprite" onclick="switchTab('sprite')">Sprite</button>
     <button id="tabMap" onclick="switchTab('map')">Map</button>
+    <button id="tabDebug" onclick="switchTab('debug')">Debug</button>
   </div>
 
   <div id="filesPane" class="pane active">
@@ -44,6 +45,37 @@
       <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
       <div class="progress-text" id="progressText"></div>
     </div>
+  </div>
+
+  <div id="debugPane" class="pane">
+    <div class="devlog-toolbar">
+      <button id="btnDbgPs" class="primary" data-needs-debug disabled onclick="dbgPs()">ps</button>
+      <label>Spawn
+        <input type="text" id="dbgSpawnPath" placeholder="/app/test/busy.app.lua" size="30">
+      </label>
+      <button id="btnDbgSpawn" data-needs-debug disabled onclick="dbgSpawn()">Spawn</button>
+      <span class="info">Debug service: <span id="dbgStatus">disconnected</span></span>
+    </div>
+
+    <table class="dbg-table">
+      <thead>
+        <tr><th>pid</th><th>name</th><th>vm</th><th>state</th><th></th></tr>
+      </thead>
+      <tbody id="dbgPsBody"></tbody>
+    </table>
+
+    <div class="devlog-toolbar">
+      <label>Raw
+        <input type="text" id="dbgRawCmd" placeholder="version" size="14">
+      </label>
+      <label>Payload (JSON)
+        <input type="text" id="dbgRawPayload" placeholder='{"pid": 4}' size="24">
+      </label>
+      <button id="btnDbgRaw" data-needs-debug disabled onclick="dbgRaw()">Send</button>
+      <button onclick="dbgClear()">Clear</button>
+    </div>
+
+    <div class="dbg-output" id="dbgOutput"></div>
   </div>
 
   <div id="spritePane" class="pane">
@@ -204,7 +236,9 @@
 </div>
 
 <script src="vendor/prism.js"></script>
+<script src="js/msgpack.js"></script>
 <script src="js/app.js"></script>
+<script src="js/debug.js"></script>
 <script src="js/bmp332.js"></script>
 <script src="js/sprite-editor.js"></script>
 <script src="js/map-editor.js"></script>

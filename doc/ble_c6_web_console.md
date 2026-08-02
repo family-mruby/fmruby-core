@@ -149,3 +149,50 @@ esp_hosted 1.4.0 の実装確認済み (2026-07-05):
   FS TX notify 購読、ログストリーム notify 動作を確認
 - 起動シーケンスメモ: SDIO 接続 (約1.3秒) は nimble_port_init 内で行われ、
   ble_init タスク上でブロックするだけなので OS 起動には影響しない
+
+## Debug パネル (ps / kill / spawn) — 2026-08-02 追加
+
+Web コンソールの **Debug** タブから、実機の debugd を BLE 経由で叩ける。
+python + bleak + usbipd の道具立てなしに ps / kill / spawn ができるので、
+実機での kill 検証 (doc/app_kill_fix/) の手順が Chrome だけで完結する。
+
+### 仕組み
+
+- デバイス側は無変更。GATT のデバッグサービス (base UUID の末尾
+  `...0005`、RX `...0006` / TX `...0007`) にファイルサービスと同じ GATT
+  接続で相乗りする。別接続は張らない。
+- フレーム形式は `main/drivers/debug/fmrb_debug_transport_ble.c` と同じ
+  `COBS([u16 BE 本文長][msgpack 本文][CRC32 BE]) + 0x00`。CRC は長さ接頭辞を
+  含む。ファイルサービスは長さ接頭辞を持たないので、フレーム組み立ては
+  `js/debug.js` に別に置いてある (COBS と CRC32 は app.js のものを流用)。
+- メッセージ層は `tool/debug/fmrb_dbg_client.py` と同じ msgpack:
+  要求 `[0, seq, cmd, payload]` / 応答 `[1, seq, err, payload]`
+  (`err != 0` は失敗) / イベント `[2, _, name, payload]`。
+- msgpack は必要範囲だけの自前実装 (`js/msgpack.js`)。同じ要求について
+  `fmrb_dbg_client.py` が組むフレームと**バイト単位で一致**することを
+  確認済み (spawn 1 コマンドぶんを突き合わせ)。
+- 応答が 5 秒来なければエラー表示に落とす。切断時は待機中の要求をすべて
+  失敗させる。
+
+### 使い方
+
+1. 通常どおり **Connect**。デバッグサービスが見つかれば Debug タブの
+   `Debug service:` が `connected` になる (無いファームでも
+   ファイルコンソールは従来どおり動く)。
+2. **ps** でタスク一覧。pid / 名前 / VM 種別 / 状態が出る。
+3. 各行の **kill** ボタンで終了。カーネル (pid 0) とデスクトップ (pid 2) は
+   落とすと OS が止まるのでボタンを出していない。
+4. **Spawn** 欄にパス (例 `/app/test/busy.app.lua`) を入れて Spawn。
+5. **Raw** 欄は今後 debugd にコマンドが増えたとき、UI を待たずに叩くための
+   逃げ道。payload は JSON (空なら nil)。
+
+### 実機確認の手順 (app_kill_fix Phase 2)
+
+1. `while true do end` するだけの Lua アプリを一時的に置く
+   (例 `/app/test/busy.app.lua`。コミットしない)。
+2. Connect -> Debug タブ -> **ps** で一覧が出ることを確認。
+3. Spawn 欄にそのパスを入れて **Spawn**。
+4. ビジーループ中に **ps** を押し、**応答が返ること**を確認 (ここが本題。
+   優先度修正前はここで無応答になる)。
+5. その行の **kill** を押し、一覧から消えること、同じアプリを再度 Spawn
+   できることを確認。

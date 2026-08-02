@@ -9,6 +9,8 @@ const SERVICE_UUID      = '4652414d-4252-5942-4c45-000000000001';
 const DEVICE_INFO_UUID  = '4652414d-4252-5942-4c45-000000000002';
 const FS_RX_UUID        = '4652414d-4252-5942-4c45-000000000003';
 const FS_TX_UUID        = '4652414d-4252-5942-4c45-000000000004';
+// The debug service (0x05..0x07) lives in js/debug.js; it is listed here
+// because Web Bluetooth only grants services named at request time.
 
 // Protocol constants
 const CMD_CD     = 0x11;
@@ -271,7 +273,7 @@ async function connect() {
     log('Requesting BLE device...');
     bleDevice = await navigator.bluetooth.requestDevice({
       filters: [{ namePrefix: 'Family-mruby-' }],
-      optionalServices: [SERVICE_UUID]
+      optionalServices: [SERVICE_UUID, DBG_SERVICE_UUID]
     });
 
     bleDevice.addEventListener('gattserverdisconnected', onDisconnected);
@@ -288,6 +290,9 @@ async function connect() {
     await txChar.startNotifications();
     txChar.addEventListener('characteristicvaluechanged', onTxNotification);
     log('Notifications enabled', 'ok');
+
+    // Debug service rides the same connection. Its absence is not fatal.
+    await dbgAttach(server);
 
     setConnected(true);
     log('Connected', 'ok');
@@ -321,6 +326,7 @@ function onDisconnected() {
   // so reconnect can restore the stream.
   logSubscribed = false;
   logLastSeq = -1;
+  dbgDetach();
   setLogStatus(logWantSubscribe ? 'disconnected (will resubscribe)' : 'idle');
   updateLogSubscribeButton();
   document.getElementById('storageInfo').textContent = '';
@@ -924,7 +930,7 @@ uploadArea.addEventListener('drop', (e) => {
 // ============================================================
 // Device log streaming (BLE LOG_SUBSCRIBE/UNSUBSCRIBE/SET_LEVEL)
 // ============================================================
-const TAB_IDS = ['files', 'logs', 'sprite', 'map'];
+const TAB_IDS = ['files', 'logs', 'sprite', 'map', 'debug'];
 const tabChangeListeners = {};
 
 function registerTabChangeListener(name, cb) {
