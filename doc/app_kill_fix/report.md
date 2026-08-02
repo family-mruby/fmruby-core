@@ -157,3 +157,135 @@ STATUS_LED(2) より下 (例: 1) へ。
 - 「協調終了が効かないケースで強制経路が動く」は、C バインディング内で
   無限ブロックする一時テストコードが別途必要。VM フックのある言語では
   再現しないため。
+
+## Phase 2: タスク優先度の変更 (2026-08-02)
+
+### 変更
+
+`fmrb_task_config.h` の 3 行のみ (doc/task_priority.md の段割りに従う)。
+
+| 定数 | 変更 |
+|---|---|
+| FMRB_USER_APP_PRIORITY | 5 -> 2 |
+| FMRB_SHELL_APP_PRIORITY | 5 -> 2 |
+| FMRB_STATUS_LED_TASK_PRIORITY | 2 -> 3 |
+
+優先度 1 は予備段として空けたまま。
+
+### 暗黙依存の調査 (変更前)
+
+優先度の数値を前提にした比較・分岐は**無かった**。
+
+- コード中に優先度どうしの比較は 1 件も無い。値は生成時に渡すだけ。
+- 唯一の読み出し口 `fmrb_task_get_status_list()` (fmrb_task.c) は
+  `info->priority` を詰めるが、**呼び出し元が存在しない**。表示にも
+  判定にも使われていない。
+- `fmrb_app.c:989` は自タスクの優先度をログに出すだけ。
+- ドキュメントで数値に言及しているのは doc/boot_performance.md の
+  「カーネルタスク (prio 9)」のみで、今回変えない値。
+  (BASIC 仕様書の「優先度=0」はスプライトの話で無関係)
+
+### 判定
+
+| 条件 | 結果 |
+|---|---|
+| ビジーループ Lua が協調終了する | OK: kill が **0.09s** で完了、`Exited on request` |
+| ビジーループ中に debugd が応答する | OK: `ps` が即応 (変更前は 3 回試行して全滅) |
+| 強制経路の実走 | OK: **初めて到達**。下記 |
+| 強制後に資源回収と再起動 | OK: canvas 削除 -> 同アプリを再 spawn 成功 |
+| Python 排他の解放 | OK: 下記 |
+| 4 言語デモの回帰 | OK: 4 本とも起動・描画・終了、canvas は作成 27 / 削除 25 (差 2 = デスクトップの window + 背景) |
+| Spinel デスクトップ構成 | OK: 起動と Shapes の起動・終了 |
+
+**強制経路の初実走** (C 側で無限ブロックする一時 Lua アプリ):
+
+```
+W No response in 1000ms, forcing termination
+I State: RUNNING -> STOPPING / Closing Lua VM
+I app_canvas: [CBlock] Deleted window canvas 4
+W Killed by force
+-> 直後に同じアプリを re-spawn 成功 (gen=3)
+```
+
+kill の所要は 1.08s (猶予 1000ms + 後始末)。協調終了の 0.09s と明確に
+区別できる。
+
+**Python 排他の解放** (一時的な C ブロックを fmrb_mp_exec に仕込んで検証、
+コミットしない):
+
+```
+PyBlock spawn -> 2 本目の Python は "already running" で拒否 (排他が効いている)
+kill PyBlock -> 1.08s, "No response in 1000ms, forcing termination" / "Killed by force"
+-> 直後に python.app.py が起動 ("Python demo started on linux")
+```
+
+`force_release_resources` -> `destroy_vm` -> `fmrb_mp_close` の順で
+`s_owner` が NULL に戻るため、強制経路でも排他は解放される。
+
+### 性能の前後比較 (同一条件、Linux sim)
+
+| 指標 | 変更前 | 変更後 |
+|---|---|---|
+| bench_01_loop (中央値) | 0.061s (n=3) | **0.059s** (n=7) |
+| bench_04_tick (中央値) | 10.049s (n=3) | 10.06s (n=7) |
+| 重い描画中の入力追従 | 8/8 (350ms 以内) | **8/8** (350ms 以内) |
+
+- bench_01 (インタプリタ純度) は誤差内で不変。競合が無いときのゲスト性能は
+  優先度を下げても変わらない、という予想どおり。
+- bench_04 は**変更前後とも 10.05s と 11.87s の二峰**になる
+  (変更後 7 本: 低 4 / 高 3、変更前 3 本: 低 2 / 高 1)。両条件で同じ 2 値に
+  割れるので、この指標は優先度変更を区別しない。フレーム歩調の起動位相に
+  依存すると見られる。中央値の上下は標本の割れ方の差でしかない。
+- 入力追従は変更前後とも満点。もともと HOST(10) が上位で律速していないため。
+
+### LED 心拍パターン
+
+`status_led.c` に実装した。3 状態:
+
+| 状態 | 緑 LED |
+|---|---|
+| 生存 + CPU 余力あり | 1.9s 点灯 / 0.1s 消灯 (従来の心拍、不変) |
+| 生存 + CPU 飽和 | 0.5s 点灯 / 0.5s 消灯 を 2 回 (2s 周期は同じ) |
+| 真のハング | 変化なし (不変) |
+
+- idle フックのカウンタ (`esp_register_freertos_idle_hook`) を 2s 周期の
+  先頭で 1 回サンプリングし、前回と同値なら飽和と判定する。フックは
+  `return true` で tick ごとの呼び出しにしてある (2s のサンプルには十分)。
+- 周期は両パターンとも 20 tick = 2s に固定した。赤 LED のエラーパターンは
+  100ms tick ごとに進むので、緑のパターンが変わっても赤の歩調は変わらない。
+- **sdkconfig の変更は不要だった**。`CONFIG_FREERTOS_USE_IDLE_HOOK` は
+  古典的な `vApplicationIdleHook` 用で、IDF の
+  `esp_register_freertos_idle_hook()` はそれとは独立に使える。
+- **Linux シミュレーションでは動作を確認できない**。linux ターゲットの
+  esp_system は `freertos_hooks.c` をビルドしないため API 自体が無い
+  (IDF の esp_system/CMakeLists.txt が linux で早期 return する)。
+  `#ifndef CONFIG_IDF_TARGET_LINUX` で囲み、sim では従来どおり通常心拍に
+  固定してある。**飽和パターンの実挙動は実機確認が必要** (下記依頼)。
+- esp32s3 でビルドが通ることは確認済み (2,448,496 B)。
+
+### 実機 (ESP32-S3) でお願いしたい確認
+
+1. **kill 再現**: canvas を作ってから `while true do end` する Lua アプリを
+   一時的に置き、debugd (`python3 tool/debug/fmrb_dbg_client.py <host>:5555
+   kill pid=N`) から kill して協調終了すること。ビジーループ中に `ps` が
+   応答することも。
+2. **LED**: 上記ビジーループ中に緑 LED が **0.5s 点滅**に変わり、アプリ終了で
+   1.9s 点灯の通常心拍に戻ること。ハング時に消灯しないこと。
+3. **音の途切れ**: NSF プレイヤ等で、ゲスト優先度を下げたことによる
+   音の途切れ・詰まりが無いこと (sim では確認できない)。
+4. **双核の挙動差**: 変更前は debugd が core 0 に逃げられるぶん実機では
+   sim ほど酷くならない構図だった。変更後は core 1 固定の RTC / LED /
+   touch も飢えないはずなので、ゲストのビジーループ中に時計が進み続け、
+   LED が打ち続けることをログ・目視で。
+
+### 気づき
+
+1. **INIT 状態のアプリは kill できない**。`fmrb_app_kill` は
+   RUNNING / SUSPENDED しか受け付けないため、VM 生成中 (create_vm_*) に
+   固まったアプリは `Cannot kill app in state INIT` で拒否される。Python の
+   場合は排他を握ったまま INIT で固まると、**再起動まで Python 全体が
+   起動不能**になる。今回の検証で一時ブロックを `fmrb_mp_start` に入れた
+   ときに実際に踏んだ。Phase 3 の検討対象として申し送る。
+2. 強制経路の到達は「猶予 1000ms + 後始末」で kill 呼び出しが 1.08s。
+   協調終了の 0.09s と一桁違うので、ログを見なくても所要時間で
+   どちらの経路を通ったか判別できる。
