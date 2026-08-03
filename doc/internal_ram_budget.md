@@ -604,6 +604,9 @@ WiFi 稼働 (BLE off) で 140,168 B。WiFi のバッファ類は
 `CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP` で PSRAM に逃げている (−65 KB)。
 
 **新たな制約は flash**: app パーティション残が 22% → **6% (約 200 KB)**。
+(2026-08-03 追記: この 6% は **app パーティションが 3M だった時点**の値。
+この後 networking gem を入れる際に 4M へ拡大したので、**現在は約 24%
+(約 1MB)**。`config/partitions_n16r8.csv` を参照。)
 Spinel インスタンス追加や大きな機能はここが先に詰まる (T7-6 の懸念が現実化)。
 
 ### 改善案の優先順位 (2026-07-31 版)
