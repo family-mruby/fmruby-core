@@ -9,8 +9,13 @@ Family mruby に MIDI 機能を入れるための方向性をまとめる。実�
 実装は `feature/midi` ブランチで進める。段ごとの指示は
 [work_order_p0_p1.md](work_order_p0_p1.md) (完了) /
 [work_order_p2.md](work_order_p2.md) (完了) /
-[work_order_p4.md](work_order_p4.md) (着手中。P3 より先に P4 をやる)、
+[work_order_p4.md](work_order_p4.md) (完了) /
+[work_order_p5s.md](work_order_p5s.md) (着手中)、
 実装中に分かったことは [report/](report/) に置く。
+
+**実機を触れないタイミングがある**ため、外部 MIDI 出力も sim で作り切り、
+実機ではケーブルを挿して確かめるだけにする方針を採っている
+(旧 P3 と P5 を統合した P5-sim)。
 
 ## 0. 決定済みの前提
 
@@ -334,9 +339,9 @@ submodule 方式。共有するなら `repos.yaml` と Rakefile での扱いを�
 | ~~P0~~ | 計測と調査 (**Linux 分は完了**、実機分は残) | 実機/sim | APU 発音遅延**と和音連打のスループット**、FMSQ 再生中の note_on の挙動 (instance/声の奪い合い)、S3 の空き UART ユニット確認、gem 追加後の flash サイズ、MML 方言差分表 |
 | ~~P1~~ | SMF -> FMSQ 変換 (方向C-a) **完了** | 無し | 先に成果が出る。以降のテスト素材にもなる |
 | ~~P2~~ | MIDI 中核層 + APU transport (方向A/B) **完了** | 無し (sim) | 「内蔵音源を MIDI で鳴らす」が成立した |
-| P4 | 実時間 SMF プレーヤ (方向C-b) **着手中** | 無し | アプリから曲を操作できる |
-| P3 | sim の MIDI 経路 (方向F) | 無し | 外部機器へ流すための足場。P5 の直前でよい |
-| P5 | **UART MIDI 出力 / Unit MIDI (方向E-1)** | 実機 (GROVE ケーブルのみ、給電も端子から) | 外部音源を鳴らす第一手。S3 の GROVE 端子2 に Unit MIDI を挿す。まず送信のみ |
+| ~~P4~~ | 実時間 SMF プレーヤ (方向C-b) **完了** | 無し | アプリから曲を操作できるようになった |
+| P5-sim | **UART MIDI 出力を sim で作り切る (方向F + E-1) 着手中** | 無し | バイト列・タイミング・API を sim で確定させる |
+| P5 | Unit MIDI の実機確認 (方向E-1) | 実機 (GROVE ケーブルのみ) | 挿して鳴らす。P0-3 と P2/P4 の実機確認もここでまとめる |
 | P6 | USB-MIDI host 相乗り (方向E-2) | 実機 | 挿した機器を鳴らす。手数が多いので後 |
 | P7 | アプリ (シーケンサ、パッド、MML プレーヤ) | - | Midori のアプリを移植 |
 
