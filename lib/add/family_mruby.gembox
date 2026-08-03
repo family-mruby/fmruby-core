@@ -27,5 +27,8 @@ MRuby::GemBox.new do |conf|
   conf.gem core: "picoruby-fmrb-bmp332"
   conf.gem core: "picoruby-fmrb-app"
   conf.gem core: "picoruby-fmrb-debug"
+  # MIDI: protocol layer imported from Midori, then the APU transport
+  conf.gem core: "picoruby-midi"
+  conf.gem core: "picoruby-fmrb-midi"
   conf.gem core: "picoruby-fmrb-picorabbit"
 end

@@ -24,6 +24,19 @@ class AudioBenchApp < FmrbApp
     Log.info("AudioBench: start")
     draw
     @audio = FmrbAudio.new(self)
+    # Same traffic through the MIDI layer, to see what the Ruby transport
+    # adds on top of a raw FmrbAudio call (P2).
+    @device = FmrbMidi.device(self)
+
+    # MIDI::Device#pitch_bend uses Integer#clamp, which this build of mruby
+    # does not have (no mruby-comparable-ext). Record what actually happens
+    # so the report can state it rather than infer it.
+    begin
+      @device.pitch_bend(1000, channel: 0)
+      Log.info("AudioBench: pitch_bend ok")
+    rescue => e
+      Log.info("AudioBench: pitch_bend unsupported: #{e.class}: #{e.message}")
+    end
   end
 
   # Clicking runs the measurement again. Used to fire note_on traffic while an
@@ -47,6 +60,12 @@ class AudioBenchApp < FmrbApp
       note_on(0)
       note_on(1)
       note_on(2)
+    end
+    run_case("midi note_on") { |i| @device.note_on(60 + (i % 12), 100, channel: i % 2) }
+    run_case("midi on+off") do |i|
+      note = 60 + (i % 12)
+      @device.note_on(note, 100, channel: 0)
+      @device.note_off(note, 0, channel: 0)
     end
     silence
     @done = true

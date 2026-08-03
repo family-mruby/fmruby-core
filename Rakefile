@@ -195,6 +195,13 @@ task :setup do
   # bmp332
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-bmp332"
   sh "cp -rf lib/add/picoruby-fmrb-bmp332 #{mrbgem_path}/"
+  # midi (imported from Midori; Ruby protocol layer only, see the gem's
+  # FAMILY_MRUBY_PORT.md)
+  sh "rm -rf #{mrbgem_path}/picoruby-midi"
+  sh "cp -rf lib/add/picoruby-midi #{mrbgem_path}/"
+  # fmrb-midi (APU transport; depends on midi and app, copied above)
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-midi"
+  sh "cp -rf lib/add/picoruby-fmrb-midi #{mrbgem_path}/"
   # hal-task-freertos (name-only gem: makes mruby-task drop its own task_hal
   # port so the FreeRTOS case-D port is used via CMake instead; see the gem's
   # mrbgem.rake and doc/work_picoruby_merge/instruct_d7_b1_tick.md sec 3.5)
