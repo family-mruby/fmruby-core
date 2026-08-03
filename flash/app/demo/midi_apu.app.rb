@@ -11,6 +11,7 @@
 #   4 BGM     FMSQ music on the other APU instance, mixed with the MIDI notes
 #   5 SMF     play a .mid from /data/midi with FmrbMidi::SmfPlayer
 #   6 Fast    speed the .mid up while it plays (what real-time playback buys)
+#   7 Out     send to the APU or out of the serial MIDI port (Unit MIDI)
 
 class MidiApuApp < FmrbApp
   BGM_SRC   = "/app/game/rpg_demo/bgm.fmsq"
@@ -36,7 +37,8 @@ class MidiApuApp < FmrbApp
     ["3 Drums", :drums],
     ["4 BGM", :bgm],
     ["5 SMF", :smf],
-    ["6 Fast", :fast]
+    ["6 Fast", :fast],
+    ["7 Out", :out]
   ]
 
   COL_BG    = 0x00
@@ -53,6 +55,8 @@ class MidiApuApp < FmrbApp
     @next_at = 0
     @smf_playing = false
     @fast = false
+    @external = false
+    @serial = nil
     @status = "ready"
   end
 
@@ -113,6 +117,7 @@ class MidiApuApp < FmrbApp
       when 0x21 then toggle_bgm
       when 0x22 then toggle_smf
       when 0x23 then toggle_fast
+      when 0x24 then toggle_out
       end
     when :mouse_up
       index = button_at(ev[:x], ev[:y])
@@ -123,6 +128,7 @@ class MidiApuApp < FmrbApp
       when :bgm then toggle_bgm
       when :smf then toggle_smf
       when :fast then toggle_fast
+      when :out then toggle_out
       else play(action)
       end
     end
@@ -138,9 +144,16 @@ class MidiApuApp < FmrbApp
 
   private
 
+  # Whichever output "7 Out" currently points at. The demo buttons and the
+  # SMF player both use it, so the APU and an external instrument can be
+  # compared by ear on the same material.
+  def out
+    (@external && @serial) ? @serial : @device
+  end
+
   # Not named `start`: FmrbApp#start is the app entry point.
   def play(mode)
-    @device.transport.all_off
+    out.transport.all_off
     @mode = mode
     @step = 0
     @next_at = Machine.board_millis
@@ -159,11 +172,11 @@ class MidiApuApp < FmrbApp
     end
 
     if @step % 2 == 0
-      @device.note_on(SCALE[index], 100, channel: 0)
+      out.note_on(SCALE[index], 100, channel: 0)
       @step += 1
       SCALE_NOTE_MS
     else
-      @device.note_off(SCALE[index], 0, channel: 0)
+      out.note_off(SCALE[index], 0, channel: 0)
       @step += 1
       SCALE_GAP_MS
     end
@@ -174,7 +187,7 @@ class MidiApuApp < FmrbApp
       # One note per voice: the APU cannot stack a chord on one channel.
       i = 0
       while i < CHORD.size
-        @device.note_on(CHORD[i][1], 100, channel: CHORD[i][0])
+        out.note_on(CHORD[i][1], 100, channel: CHORD[i][0])
         i += 1
       end
       @step = 1
@@ -183,7 +196,7 @@ class MidiApuApp < FmrbApp
 
     i = 0
     while i < CHORD.size
-      @device.note_off(CHORD[i][1], 0, channel: CHORD[i][0])
+      out.note_off(CHORD[i][1], 0, channel: CHORD[i][0])
       i += 1
     end
     finish
@@ -197,7 +210,7 @@ class MidiApuApp < FmrbApp
     end
 
     # trigger sends the note off by itself once FmrbMidi.tick comes round.
-    @device.trigger(DRUMS[@step], 110, duration: 90, channel: 9)
+    out.trigger(DRUMS[@step], 110, duration: 90, channel: 9)
     @step += 1
     DRUM_STEP_MS
   end
@@ -256,6 +269,29 @@ class MidiApuApp < FmrbApp
     @smf_playing = true
     @status = "smf: #{path.split("/").last}"
     Log.info("MidiApu: playing #{path}")
+    draw
+  end
+
+  # Move the song between the built-in APU and an external MIDI instrument
+  # on the serial port. The player does not know the difference, which is
+  # the whole point of it talking to a MIDI::Device.
+  def toggle_out
+    if @external
+      @player.device = @device if @player
+      @external = false
+      @status = "out: APU"
+    else
+      @serial = FmrbMidi.sam2695_device if @serial.nil?
+      if @serial.nil?
+        @status = "no MIDI port"
+        Log.warn("MidiApu: serial MIDI port not available")
+        draw
+        return
+      end
+      @player.device = @serial if @player
+      @external = true
+      @status = "out: serial"
+    end
     draw
   end
 
@@ -335,6 +371,7 @@ class MidiApuApp < FmrbApp
            when :bgm then @bgm
            when :smf then @smf_playing
            when :fast then @fast
+           when :out then @external
            else @mode == BUTTONS[i][1]
            end
       @gfx.fill_rect(rect[0], rect[1], rect[2], rect[3], on ? COL_ON : COL_BTN)

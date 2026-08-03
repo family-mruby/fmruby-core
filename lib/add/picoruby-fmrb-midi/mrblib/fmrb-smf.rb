@@ -40,6 +40,14 @@ module FmrbMidi
 
     attr_reader :device, :path, :division, :format, :track_count
 
+    # Point the song at a different output while it plays. Whatever is
+    # sounding on the old device is released first, otherwise those notes
+    # would never see their note off.
+    def device=(new_device)
+      silence
+      @device = new_device
+    end
+
     def initialize(device)
       @device = device
       reset_state

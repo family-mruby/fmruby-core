@@ -36,6 +36,16 @@ fmrb_err_t fmrb_hal_uart_open(const fmrb_uart_config_t *config, fmrb_uart_handle
 
     ctx->timeout_ms = config->timeout_ms;
 
+    // A device path in the simulation is not necessarily a terminal: MIDI
+    // output is pointed at a FIFO so a tool outside the container can read
+    // the bytes. termios settings (baud, 8N1, flow control) mean nothing
+    // there, so configure them only for a real tty and treat anything else
+    // as an already-raw byte stream.
+    if (!isatty(ctx->fd)) {
+        *handle = (fmrb_uart_handle_t)ctx;
+        return FMRB_OK;
+    }
+
     // Configure terminal settings
     struct termios tty;
     if (tcgetattr(ctx->fd, &tty) != 0) {

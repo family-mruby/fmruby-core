@@ -155,7 +155,62 @@ module FmrbMidi
     end
   end
 
+  # The note-off half of MIDI::Device#trigger.
+  #
+  # picoruby-midi normally has a C timer send the note off; Family mruby has
+  # no such timer, so the app pumps instead (FmrbMidi.tick, or any further
+  # MIDI message). Both transports need exactly this, so it lives here.
+  #
+  # A transport that includes it must provide note_on(channel, note,
+  # velocity) and note_off(channel, note), and start @pending as an array.
+  module NoteScheduler
+    # Send a note now and its note off later.
+    def trigger(channel, note, velocity, duration_ms)
+      note_on(channel, note, velocity)
+      @pending << [Machine.board_millis + duration_ms, channel, note]
+      0
+    end
+
+    # Milliseconds until the next scheduled note off, or nil when nothing is
+    # pending. Something already overdue reports 0.
+    def next_due_in
+      return nil if @pending.nil? || @pending.empty?
+
+      now = Machine.board_millis
+      best = nil
+      i = 0
+      while i < @pending.size
+        wait = @pending[i][0] - now
+        wait = 0 if wait < 0
+        best = wait if best.nil? || wait < best
+        i += 1
+      end
+      best
+    end
+
+    # Fire whatever note offs have come due.
+    def tick
+      return if @pending.nil? || @pending.empty?
+
+      now = Machine.board_millis
+      keep = []
+      i = 0
+      while i < @pending.size
+        entry = @pending[i]
+        if entry[0] <= now
+          note_off(entry[1], entry[2])
+        else
+          keep << entry
+        end
+        i += 1
+      end
+      @pending = keep
+    end
+  end
+
   class ApuTransport
+    include NoteScheduler
+
     # MIDI channel (0-15, as MIDI::Device counts them) -> APU voice.
     # Channels 1/2/3/10 in the one-based numbering musicians use.
     DEFAULT_MAP = { 0 => CH_PULSE1, 1 => CH_PULSE2, 2 => CH_TRIANGLE, 9 => CH_NOISE }
@@ -295,52 +350,8 @@ module FmrbMidi
       @map
     end
 
-    # --- Scheduled note offs (MIDI::Device#trigger) -----------------------
-
-    # Send a note now and its note off later. The C layer does this from a
-    # timer; here the app has to pump, which #tick does (and every outgoing
-    # message does implicitly).
-    def trigger(channel, note, velocity, duration_ms)
-      note_on(channel, note, velocity)
-      @pending << [Machine.board_millis + duration_ms, channel, note]
-      0
-    end
-
-    # Milliseconds until the next scheduled note off, or nil when nothing is
-    # pending. Negative waits are reported as 0 (already overdue).
-    def next_due_in
-      return nil if @pending.empty?
-
-      now = Machine.board_millis
-      best = nil
-      i = 0
-      while i < @pending.size
-        wait = @pending[i][0] - now
-        wait = 0 if wait < 0
-        best = wait if best.nil? || wait < best
-        i += 1
-      end
-      best
-    end
-
-    # Fire whatever note offs have come due.
-    def tick
-      return if @pending.empty?
-
-      now = Machine.board_millis
-      keep = []
-      i = 0
-      while i < @pending.size
-        entry = @pending[i]
-        if entry[0] <= now
-          note_off(entry[1], entry[2])
-        else
-          keep << entry
-        end
-        i += 1
-      end
-      @pending = keep
-    end
+    # Scheduled note offs come from NoteScheduler, which every transport
+    # includes so MIDI::Device#trigger works whatever the output is.
 
     # --- Note handling ----------------------------------------------------
 
@@ -483,12 +494,18 @@ end
 # needs the app to pump (FmrbMidi.tick, or any further MIDI message).
 module MIDI
   class << self
-    def _trigger(_transport_mask, channel, note, velocity, duration_ms)
+    # The mask is the calling device's transport_id (MIDI::Device works it
+    # out from the transport). Only transports of that kind are triggered,
+    # so a note meant for the APU does not also go out of the serial port.
+    def _trigger(transport_mask, channel, note, velocity, duration_ms)
       list = ::FmrbMidi.transports
       i = 0
       while i < list.size
-        list[i].trigger(channel, note, velocity, duration_ms)
+        transport = list[i]
         i += 1
+        next unless transport.transport_id == transport_mask
+
+        transport.trigger(channel, note, velocity, duration_ms)
       end
       0
     end
