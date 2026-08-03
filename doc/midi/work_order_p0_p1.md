@@ -27,9 +27,24 @@ P1 が動けば「手持ちの .mid が Family mruby で鳴る」が成立する
 | APU レジスタ | 同上 + `components/apu_emu/` | REG_WRITE で叩くレジスタの意味 |
 | BASIC の MML | `components/basic/core/basic_mml.cpp` | 音高・テンポの既存の対応表 (P1 で流用) |
 | 音の検証 | `../fmrb-audio-tools/README.md` | `bin/fmsq_player <f.fmsq> -o out.wav` で WAV 化 |
+| **Midori 本体** | `../tmp/midori/` (clone 済み) | 下表のとおり |
 
-**Midori のソースはこのマシンに無い**。P0/P1 は Midori に依存しない範囲で
-完結するよう選んである。P2 で取り込むときに別途 clone する。
+### Midori のどこを見るか
+
+`family-mruby/tmp/midori/` に clone 済み (2026-08-03 時点で `673257d`)。
+
+| 見る場所 | 何が分かるか |
+|---|---|
+| `mrbgems/picoruby-midi/include/midi_transport.h` | transport 抽象の関数 5 つ。APU transport はこれを実装する |
+| `mrbgems/picoruby-midi/include/` の他 | `midi_parser.h` / `midi_scheduler.h` / `midi_clock_gen.h` |
+| `mrbgems/picoruby-uart_midi/` | UART transport 本体。ports は esp32 のみ |
+| `mrbgems/picoruby-sam2695/` | **uart_midi の薄いラッパ (Ruby 43 行)**。Unit MIDI 用 |
+| `mrbgems/picoruby-midi-mml/mrblib/` | MML 解析 (`midi_mml.rb`) と演奏 (`midi_mml_player.rb`)、各 345/347 行 |
+| `docs/MML_DESIGN.md` | **MML 方言の仕様書**。P0-5 の比較対象はこれ |
+| `docs/PICORUBY_MIDI_STANDARDIZATION.md` | upstream 標準化の状況 |
+| `docs/MIDI_DEVICES.md` | transport ごとのデバイス扱い |
+
+**tmp/ 以下は Family mruby のリポジトリではない**。参照専用で、変更しないこと。
 
 ## 2. P0: 計測と調査
 
@@ -91,12 +106,15 @@ BGM と実時間演奏の同居は設計から外す必要がある。
 共通化の実装は P6。
 
 - Family mruby BASIC の MML (`components/basic/core/basic_mml.cpp`) と、
-  `picoruby-midi-mml` の方言を比較する。Midori のソースが無いので、
-  **picoruby 側は upstream のドキュメント/README から分かる範囲でよい**。
-  分からない部分は「未確認」と明記する (推測で埋めない)。
-- 比較軸: テンポの基準 (BASIC は T4 = 4 分音符 0.5s、実測済み)、
-  オクターブの基準 (BASIC は O3 の C = 中央ハ = 261.4Hz 実測)、音長・付点・
-  タイ・休符・音色指定の記法。
+  Midori の MML を比較する。Midori 側は `docs/MML_DESIGN.md` に仕様が
+  書かれており、実装は `mrbgems/picoruby-midi-mml/mrblib/midi_mml.rb`。
+  **両方を突き合わせて表にする** (仕様書と実装がずれている場合は実装を正とし、
+  ずれ自体も記録する)。
+- 比較軸: テンポの基準 (BASIC は T4 = 4 分音符 0.5s、実測済み。Midori は BPM)、
+  オクターブの基準 (BASIC は O3 の C = 中央ハ = 261.4Hz 実測。Midori は o4 が既定)、
+  音長・付点・タイ・休符・音色指定の記法。
+- Midori 側にあって BASIC に無い記法 (ループ `[cdef]4` のネスト、複付点 `c4..`、
+  ベロシティ `v100`) をどう扱うかは P6 の論点。**表に載せるところまで**でよい。
 
 ## 3. P1: SMF -> FMSQ 変換ツール
 

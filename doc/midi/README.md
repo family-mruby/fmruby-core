@@ -213,7 +213,7 @@ MIDI transport の初期化時にここで確保し、I2C と取り合ったら�
 | 音源 | SAM2695 (GM 互換、16 ch、64 音ポリ / エフェクト有効時 38 音) |
 | 接続 | Grove HY2.0-4P、UART |
 | 結線 | 黒 GND / 赤 5V / **黄 = ユニットの UART_RX** / 白 = ユニットの UART_TX |
-| ボーレート | 31250 (MIDI 標準。M5 のページには 31520 とあるが標準値の誤記と見られる。**実機で確定させる**) |
+| ボーレート | **31250** (Midori の `picoruby-sam2695` README が「SAM2695 は実際には常に 31250」と明記。M5 のページの 31520 は誤記) |
 | 端子 | DIN-5 x2 (IN/OUT)、3.5mm ステレオジャック x3 (音声出力を含む) |
 | 動作モード | Bypass (IN と OUT を直結) / Separate (内蔵音源で処理) |
 
@@ -249,14 +249,15 @@ TX ピンから抵抗 2 本を介して DIN-5 (または TRS type A) に出す�
 絶縁も外部電源も要らない。MIDI IN は光結合が必要で、**当面は対象外**
 (transport 抽象は入力も持っているので後から足せる)。
 
-**gem の再利用**
+**gem の再利用 (調査済み)**
 
-Midori に **`picoruby-sam2695`** があり、これがまさに Unit MIDI 系の
-SAM2695 を UART で叩く transport である。UART MIDI transport
-(`picoruby-uart_midi`) との差分 (GM リセットや音色設定など SAM2695 固有の
-初期化がどれだけあるか) を見て、**どちらを取り込むか、あるいは
-uart_midi + SAM2695 初期化に分けるか**を決める。ここは Midori 側の実装を
-読んでから判断する。
+Midori の `picoruby-sam2695` は **`picoruby-uart_midi` の薄いラッパ (Ruby 43 行)**
+で、SAM2695 固有の既定値 (31250 baud) と、将来の GM/GS リセット等を置く場所を
+持つだけだった。したがって取り込む本体は **`picoruby-uart_midi`** で、
+sam2695 はその上の小さな層として一緒に持ってくればよい。
+
+`SAM2695.new(tx_pin, rx_pin = -1)` と **rx_pin 省略で送信専用**が既にサポート
+されている。GROVE 端子2 に TX だけ繋いで使う形がそのまま書ける。
 
 **Ruby からの見え方**
 
