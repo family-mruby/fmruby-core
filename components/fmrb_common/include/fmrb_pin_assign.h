@@ -126,6 +126,11 @@
 
 // ============================================================
 // Pin assignments for AtomS3 + Atom Display (N8R8)
+//
+// SUSPENDED (see CLAUDE.md): this section did not follow the P4-era
+// hardware-branch rework and the target no longer builds -- it is missing
+// FMRB_PIN_RESTRICTED_BOOT / _JTAG, which fmrb_hal_pin_manager_esp32.c
+// requires. Fix when ATOM support resumes; do not treat it as a live bug.
 // ============================================================
 #else // FMRB_HW_ATOM_DISPLAY
 

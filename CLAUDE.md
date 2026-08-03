@@ -58,6 +58,22 @@ S3とWROVERの間はSPI通信
 fmruby-coreは、WSL2で動くコンテナで実行する
 映像出力と音声出力は、WSL2側で動く別プロセスにソケット通信で通信して実現する。その別プロセスでは、SDL2を動かす
 
+### サポート中断中のターゲット
+
+**ATOM_DISPLAY (M5 AtomS3 + Atom Display, n8r8) はサポートを中断している**
+(2026-08-03 時点)。ESP32-P4 対応でハードウェア分岐を再編した際に追随して
+おらず、現在はビルドも通らない (`fmrb_pin_assign.h` の ATOM 分岐に
+`FMRB_PIN_RESTRICTED_BOOT` / `_JTAG` が無く、pin manager がコンパイル
+エラーになる)。
+
+- ATOM のビルドが通らないことを不具合として追わない。再開する時にまとめて
+  直す。
+- 一方で**ATOM を意図的に除外している箇所は壊さないこと**。WiFi 関連
+  (`lib/add/family_mruby_esp32.rb` の networking gem、`components/
+  picoruby-esp32/CMakeLists.txt` の socket ポート、`FMRB_HAS_WIFI`) は
+  ATOM を除外する条件で書いてある。ATOM は WiFi を無効にしたままなので、
+  再開時もこの区別は必要。
+
 ## 参考情報
 
 doc/ 以下参照
