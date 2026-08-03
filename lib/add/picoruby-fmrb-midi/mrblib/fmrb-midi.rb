@@ -258,6 +258,43 @@ module FmrbMidi
       @map[channel & 0x0F]
     end
 
+    # Assign the voices from what a song actually uses, given the usage hash
+    # {channel => [note count, pitch sum]} that SmfPlayer#channel_usage
+    # returns. Files in the wild rarely use channels 0/1/2/9, so without this
+    # a real song plays silently on the default map.
+    #
+    # Same rule as tool/midi/smf2fmsq.rb --auto: channel 9 is percussion by
+    # convention, then the three busiest channels take the melodic voices,
+    # highest average pitch first, so the lead lands on a pulse and the bass
+    # on the triangle.
+    def auto_map(usage)
+      i = 0
+      while i < 16
+        @map[i] = nil
+        i += 1
+      end
+      return @map if usage.nil? || usage.empty?
+
+      @map[9] = FmrbMidi::CH_NOISE if usage[9]
+
+      melodic = []
+      usage.each do |channel, stats|
+        melodic << [channel, stats[0], stats[1] / stats[0]] unless channel == 9
+      end
+      # Busiest first, then the top three by average pitch.
+      melodic = sort_by_desc(melodic, 1)
+      melodic = melodic[0, 3] if melodic.size > 3
+      melodic = sort_by_desc(melodic, 2)
+
+      voices = [FmrbMidi::CH_PULSE1, FmrbMidi::CH_PULSE2, FmrbMidi::CH_TRIANGLE]
+      i = 0
+      while i < melodic.size
+        @map[melodic[i][0]] = voices[i]
+        i += 1
+      end
+      @map
+    end
+
     # --- Scheduled note offs (MIDI::Device#trigger) -----------------------
 
     # Send a note now and its note off later. The C layer does this from a
@@ -360,6 +397,24 @@ module FmrbMidi
     end
 
     private
+
+    # Insertion sort on one column, descending. Written out because
+    # sort_by with a block is heavier than it looks on this VM and the
+    # lists here are at most sixteen entries.
+    def sort_by_desc(rows, column)
+      i = 1
+      while i < rows.size
+        row = rows[i]
+        j = i - 1
+        while j >= 0 && rows[j][column] < row[column]
+          rows[j + 1] = rows[j]
+          j -= 1
+        end
+        rows[j + 1] = row
+        i += 1
+      end
+      rows
+    end
 
     def remove_note(held, note)
       i = 0

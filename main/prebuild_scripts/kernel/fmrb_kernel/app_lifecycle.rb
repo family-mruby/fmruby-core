@@ -127,6 +127,11 @@ module AppLifecycleMixin
   def cleanup_terminated_app(pid)
     Log.info("Cleaning up terminated app: pid=#{pid}")
 
+    # Stop any APU voices the app was holding. An app that ends normally does
+    # this itself in on_destroy, but one that dies on an exception never gets
+    # there and the note would sound forever.
+    silence_notes_for(pid)
+
     # If fullscreen app terminated, resume all suspended apps
     if @fullscreen_pid == pid
       Log.info("Fullscreen app terminated, resuming suspended apps")

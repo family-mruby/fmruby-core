@@ -1,0 +1,8 @@
+app_handle_name = "crash_note"
+app_screen_name = "AA Crash Note"
+app_screen_name_ja = "AA クラッシュ試験"
+default_window_mode = "window"
+default_window_width = 140
+default_window_height = 60
+default_window_pos_x = 150
+default_window_pos_y = 60

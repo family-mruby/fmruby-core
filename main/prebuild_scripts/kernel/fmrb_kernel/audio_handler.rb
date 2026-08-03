@@ -20,6 +20,12 @@ module AudioHandlerMixin
 
     cmd = data["cmd"]
     if cmd == "note_on" || cmd == "note_off"
+      # Remember who is playing notes so the voices can be released if that
+      # app dies without cleaning up after itself (see silence_notes_for).
+      if cmd == "note_on"
+        @audio_note_pids = {} unless @audio_note_pids
+        @audio_note_pids[pid] = true
+      end
       Log.debug("Audio command '#{cmd}' from pid=#{pid}")
     else
       Log.info("Audio command '#{cmd}' from pid=#{pid}")
@@ -113,5 +119,29 @@ module AudioHandlerMixin
     else
       Log.warn("Unknown audio command: #{cmd}")
     end
+  end
+
+  # Release the note voices an app left sounding.
+  #
+  # note_on writes APU registers directly and holds the note until a matching
+  # note_off, so an app that dies mid-note (an exception skips on_destroy)
+  # leaves the sound on with nobody able to stop it. Called from
+  # cleanup_terminated_app for any app that ever played a note.
+  #
+  # Only that app's own kind of traffic is affected: apps that never sent a
+  # note_on are not tracked, so a well-behaved player is not cut off by an
+  # unrelated app exiting.
+  def silence_notes_for(pid)
+    return unless @audio_note_pids && @audio_note_pids[pid]
+
+    @audio_note_pids.delete(pid)
+    ch = 0
+    while ch < 4
+      bin = "\x0A\x00"
+      bin.setbyte(1, ch)
+      _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
+      ch += 1
+    end
+    Log.info("Silenced note voices left by pid=#{pid}")
   end
 end
