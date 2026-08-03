@@ -43,3 +43,9 @@ vendor/spinel/
 
 # Local reference material for comparing the character sheets (never committed)
 tool/basic/ref/
+
+# Stashed build trees when switching targets by hand (see doc/midi/report/p1.md).
+# rake clean_all is the normal way; these exist so a Linux sim build survives
+# an esp32 build without a 10-minute rebuild.
+build.*.saved/
+sdkconfig.*.saved

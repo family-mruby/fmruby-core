@@ -1,0 +1,8 @@
+app_handle_name = "audio_bench"
+app_screen_name = "Audio Bench"
+app_screen_name_ja = "音声計測"
+default_window_mode = "window"
+default_window_width = 240
+default_window_height = 110
+default_window_pos_x = 30
+default_window_pos_y = 60

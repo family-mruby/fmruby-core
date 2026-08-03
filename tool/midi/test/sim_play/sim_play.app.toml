@@ -1,0 +1,8 @@
+app_handle_name = "smf_play"
+app_screen_name = "SMF Play"
+app_screen_name_ja = "SMF再生"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 100
+default_window_pos_x = 40
+default_window_pos_y = 40
