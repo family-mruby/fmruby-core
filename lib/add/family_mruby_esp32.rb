@@ -73,6 +73,17 @@ MRuby::CrossBuild.new("esp32") do |conf|
 
   # RTC driver (pure Ruby, depends on picoruby-i2c)
   conf.gem core: "picoruby-rx8900"
+
+  # Ruby networking client API (see doc/ruby_network_api_design.md). Narya
+  # only: ATOM shares this build config but keeps WiFi disabled in its
+  # sdkconfig, and picoruby-socket would pull mbedTLS into an image that can
+  # never use it. picoruby-socket pulls picoruby-mbedtls; the ESP-IDF port
+  # sources are compiled by components/picoruby-esp32/CMakeLists.txt.
+  unless ENV['FMRB_HW_TARGET'].to_s == 'ATOM_DISPLAY'
+    conf.gem core: "picoruby-socket"
+    conf.gem core: "picoruby-net-http"
+    conf.gem core: "picoruby-net-websocket"
+  end
   # conf.gem gemdir: "#{hw}/picoruby-adc"
   # conf.gem gemdir: "#{hw}/picoruby-pwm"
   # conf.gem gemdir: "#{hw}/picoruby-spi"

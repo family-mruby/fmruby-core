@@ -139,11 +139,14 @@ else()
         ${CMAKE_CURRENT_SOURCE_DIR}/../../lib/add/hal-esp32-dir/dir_hal.c
     )
 
-    # Ruby networking (picoruby-socket) ESP-IDF port: Modern/P4 only.
-    # The gems are enabled in lib/add/family_mruby_esp32p4.rb; these sources
-    # use ESP-IDF LwIP (BSD sockets) and mbedTLS. tcp_socket.c is patched via
-    # lib/patch/picoruby-socket (default timeouts).
-    if(IDF_TARGET STREQUAL "esp32p4")
+    # Ruby networking (picoruby-socket) ESP-IDF port: every WiFi-capable
+    # target -- P4 (radio on the C6) and Narya S3 (native radio). ATOM keeps
+    # WiFi off, so its build config omits the gems and these sources too.
+    # The gems are enabled in lib/add/family_mruby_esp32{,p4}.rb; these
+    # sources use ESP-IDF LwIP (BSD sockets) and mbedTLS. tcp_socket.c is
+    # patched via lib/patch/picoruby-socket (default timeouts).
+    if(IDF_TARGET STREQUAL "esp32p4" OR
+       (IDF_TARGET STREQUAL "esp32s3" AND NOT FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY"))
         list(APPEND PICORUBY_SRCS
             ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-socket/ports/esp32/tcp_socket.c
             ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-socket/ports/esp32/udp_socket.c

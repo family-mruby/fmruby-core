@@ -1,10 +1,10 @@
 // FmrbNet: read-only network status API for Ruby.
 //
 // WiFi bring-up and reconnection are owned by the C-side wifi_task
-// (main/drivers/wifi, Modern/P4 only); Ruby can only observe the state.
-// On the Linux dev build the host network is always available, so the
-// module reports a connected loopback. On targets without WiFi (Retro)
-// every query reports "not connected".
+// (main/drivers/wifi); Ruby can only observe the state. On the Linux dev
+// build the host network is always available, so the module reports a
+// connected loopback. On targets without WiFi (ATOM) every query reports
+// "not connected".
 
 #include <mruby.h>
 #include <mruby/string.h>
@@ -12,7 +12,7 @@
 
 #include <sdkconfig.h>
 
-#if defined(FMRB_HW_MODERN) && !defined(CONFIG_IDF_TARGET_LINUX)
+#if defined(FMRB_HAS_WIFI) && !defined(CONFIG_IDF_TARGET_LINUX)
 #include "wifi_task.h"
 #define FMRB_NET_HAVE_WIFI 1
 #endif
