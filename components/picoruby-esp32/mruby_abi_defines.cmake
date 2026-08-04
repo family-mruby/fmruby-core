@@ -30,6 +30,14 @@ macro(fmrb_add_mruby_abi_defines)
     # Cost when no debugger is attached is one NULL test per instruction fetch.
     MRB_USE_DEBUG_HOOK
   )
+  # Measurement build only, opt in with FMRB_GC_PROFILE=1 rake build:<target>.
+  # Adds the GC pause histograms to GC.stat (doc/midi/report/p6.md). It grows
+  # mrb_gc and therefore mrb_state, so it must be set on both sides of the
+  # boundary; the rake side (lib/add/family_mruby_*.rb) reads the same
+  # environment variable, which the Rakefile passes into the container.
+  if("$ENV{FMRB_GC_PROFILE}" STREQUAL "1")
+    add_compile_definitions(MRB_GC_PROFILE MRB_GC_STATS)
+  endif()
   if(IDF_TARGET STREQUAL "linux")
     add_compile_definitions(MRB_BASELINE_PROFILE=1)
   else()

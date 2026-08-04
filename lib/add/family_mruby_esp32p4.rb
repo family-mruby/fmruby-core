@@ -42,6 +42,13 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   # Remote debugger VM hook (doc/vm_remote_debug_*). ABI-relevant: adds two
   # function pointers to mrb_state.
   conf.cc.defines << "MRB_USE_DEBUG_HOOK"
+  # Measurement build only (FMRB_GC_PROFILE=1 rake build:esp32): GC pause
+  # histograms in GC.stat. ABI-relevant (grows mrb_gc), so the CMake side reads
+  # the same environment variable -- see mruby_abi_defines.cmake.
+  if ENV['FMRB_GC_PROFILE'] == '1'
+    conf.cc.defines << "MRB_GC_PROFILE"
+    conf.cc.defines << "MRB_GC_STATS"
+  end
   # Select the Modern (Tab5) section of fmrb_pin_assign.h for any rake-built
   # source that includes it. NOTE: gem port sources that use ESP-IDF headers
   # (e.g. picoruby-fmrb-const ports/esp32/const.c, which exposes

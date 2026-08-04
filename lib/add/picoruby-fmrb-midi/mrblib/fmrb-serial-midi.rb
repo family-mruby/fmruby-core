@@ -72,6 +72,13 @@ module FmrbMidi
       @rx_pin = rx
       @baud = baud
       @pending = [] # scheduled note offs, see NoteScheduler
+      # One buffer per wire length, reused. Building "\x00" * length per
+      # message is one String per MIDI event, and playback has to leave the
+      # collector alone (doc/midi/report/p6.md). _write copies the bytes
+      # before returning, so the same buffer can serve the next message.
+      # Built with String#* rather than written as literals so they are
+      # certainly mutable strings of this VM's own making.
+      @wire = [nil, "\x00" * 1, "\x00" * 2, "\x00" * 3]
       @opened = ::FmrbMidi::SerialPort._open(path, uart || -1, tx || -1, rx, baud)
       FmrbMidi.register(self) if @opened
     end
@@ -91,7 +98,7 @@ module FmrbMidi
       return -1 if length == 0
 
       # picoruby has no Array#pack, so the buffer is built with setbyte.
-      buffer = "\x00" * length
+      buffer = @wire[length]
       buffer.setbyte(0, b1 & 0xFF)
       buffer.setbyte(1, b2 & 0xFF) if length > 1
       buffer.setbyte(2, b3 & 0xFF) if length > 2

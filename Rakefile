@@ -107,7 +107,15 @@ USER_OPT = "--user #{UID}:#{GID}"
 # forget them.
 ENGINE_ENV_OPTS = [
   "-e FMRB_KERNEL_ENGINE=#{FMRB_KERNEL_ENGINE}",
-  "-e FMRB_APP_ENGINE_DESKTOP=#{FMRB_APP_ENGINE_DESKTOP}"
+  "-e FMRB_APP_ENGINE_DESKTOP=#{FMRB_APP_ENGINE_DESKTOP}",
+  # Measurement build: MRB_GC_PROFILE adds the GC pause histograms to GC.stat
+  # (doc/midi/report/p6.md). It grows mrb_gc, hence mrb_state, so the rake side
+  # (lib/add/family_mruby_*.rb) and the CMake side
+  # (components/picoruby-esp32/mruby_abi_defines.cmake) must agree or the
+  # boot-time ABI guard aborts. Both read this one variable inside the
+  # container, so they cannot disagree. Off by default; build with
+  # FMRB_GC_PROFILE=1 rake build:linux to measure.
+  "-e FMRB_GC_PROFILE=#{ENV['FMRB_GC_PROFILE']}"
 ].join(" ")
 
 DOCKER_CMD = [

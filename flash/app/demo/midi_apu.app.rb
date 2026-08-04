@@ -102,7 +102,7 @@ class MidiApuApp < FmrbApp
       @stats_at ||= 0
       if now_ms - @stats_at > 5000
         @stats_at = now_ms
-        Log.info("MidiApu: #{@player.timing_stats}")
+        Log.info("MidiApu: #{@player.timing_stats} #{gc_line}")
       end
     elsif @smf_playing
       # The song ended by itself.
@@ -273,13 +273,14 @@ class MidiApuApp < FmrbApp
     after = pool_used
     Log.info("MidiApu: #{path} loaded in #{t1 - t0}ms, pool used #{before} -> " \
              "#{after} (+#{after - before} B for #{File.size(path)} B of file)")
+    Log.info("MidiApu: before scan #{gc_line}")
 
     # Songs in the wild use whatever channels they like, so let the transport
     # pick voices from what this file actually plays. This walks every event
     # in the file, which is the expensive part on a device.
     usage = @player.channel_usage
     t2 = Machine.board_millis
-    Log.info("MidiApu: channel_usage scan took #{t2 - t1}ms")
+    Log.info("MidiApu: channel_usage scan took #{t2 - t1}ms #{gc_line}")
     @device.transport.auto_map(usage)
     @player.tempo_scale = @fast ? 1.5 : 1.0
     @player.start
@@ -341,6 +342,17 @@ class MidiApuApp < FmrbApp
     @status = "BGM error"
     Log.error("MidiApu: BGM failed: #{e.message}")
     draw
+  end
+
+  # What the collector has been doing. :live and :total are always there;
+  # the pause figures need a measurement build (FMRB_GC_PROFILE=1, see
+  # doc/midi/report/p6.md) and read as 0 otherwise. This is the line that
+  # answers "was that pause GC?" without having to guess.
+  def gc_line
+    st = GC.stat
+    "[gc live=#{st[:live]} n=#{st[:total] || 0} major=#{st[:major] || 0} " \
+      "pause=#{st[:prof_sync_count] || 0}x tot=#{(st[:prof_sync_total_us] || 0) / 1000}ms " \
+      "max=#{(st[:prof_sync_max_us] || 0) / 1000}ms]"
   end
 
   # This app's slice of the VM pool, from the process table.

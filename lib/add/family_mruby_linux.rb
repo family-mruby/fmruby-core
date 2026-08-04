@@ -30,6 +30,14 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   # components/picoruby-esp32/mruby_abi_defines.cmake (common part) or the
   # boot-time ABI guard aborts. Enabled on every target since Phase 3a.
   conf.cc.defines << 'MRB_USE_DEBUG_HOOK'
+  # Measurement build only (FMRB_GC_PROFILE=1 rake build:linux): GC pause
+  # histograms in GC.stat. Also ABI-relevant (it grows mrb_gc), so the CMake
+  # side reads the same environment variable -- see mruby_abi_defines.cmake and
+  # doc/midi/report/p6.md.
+  if ENV['FMRB_GC_PROFILE'] == '1'
+    conf.cc.defines << 'MRB_GC_PROFILE'
+    conf.cc.defines << 'MRB_GC_STATS'
+  end
   conf.cc.defines << 'PICORB_PLATFORM_POSIX'
   conf.cc.defines << 'PICORB_ALLOC_ESTALLOC'
   conf.cc.defines << 'PICORB_ALLOC_ALIGN=8'

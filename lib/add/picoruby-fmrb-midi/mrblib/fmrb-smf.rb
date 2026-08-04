@@ -21,6 +21,16 @@
 # due, so a song costs about its file size (a few KB) instead of one Ruby
 # object per event, which would run to hundreds of KB on a busy piece and
 # would not fit the app's pool.
+#
+# Garbage: playing a song allocates nothing at all, and neither does
+# channel_usage. That is not tidiness, it is the difference between a song
+# that plays and one that stalls: the collector is the only thing that pauses
+# an app task for long enough to hear (doc/midi/report/p6.md). Anything added
+# here that allocates per event undoes it.
+#
+# The output is a MIDI::Device, which here means the one in picoruby-midi
+# plus the channel-argument senders that picoruby-fmrb-midi adds to it
+# (send_note_on and friends); the keyword-argument spellings allocate.
 
 module FmrbMidi
   class SmfPlayer
@@ -59,6 +69,14 @@ module FmrbMidi
     # be used (missing, not an SMF, or format 2).
     def load(path)
       stop
+      # Let go of the song already loaded before reading the next one.
+      # File#read allocates a buffer of the file's size and then copies it
+      # into a String, so loading over the top of a held song needs three
+      # copies at once; on a 500 KB app pool that is what makes browsing a
+      # directory of songs fail with NoMemoryError (doc/midi/report/p6.md).
+      @data = nil
+      @tracks = []
+      @loaded = false
       # picoruby has no File.binread.
       data = nil
       begin
@@ -92,14 +110,35 @@ module FmrbMidi
     # Which channels the file actually uses: {channel => [note count, pitch
     # sum]}. Real files rarely use channels 1/2/3/10, so this is what makes
     # an arbitrary song playable without the user editing the map by hand.
-    # Scans the file without building any per-event objects.
+    #
+    # This walks every event in the file, so it is written to allocate
+    # nothing at all: the totals go into two flat arrays and the Hash is
+    # built once at the end. The version that returned [value, position] from
+    # a varlen helper and accumulated into a Hash of Arrays took 7.9 seconds
+    # on the device for a 22 KB song, five sixths of it inside the collector
+    # (doc/midi/report/p6.md).
     def channel_usage
       usage = {}
       return usage unless @loaded
 
+      counts = []
+      pitches = []
+      i = 0
+      while i < 16
+        counts[i] = 0
+        pitches[i] = 0
+        i += 1
+      end
+
       i = 0
       while i < @tracks.size
-        scan_track_usage(@tracks[i][T_POS], @tracks[i][T_END], usage)
+        scan_track_usage(@tracks[i][T_POS], @tracks[i][T_END], counts, pitches)
+        i += 1
+      end
+
+      i = 0
+      while i < 16
+        usage[i] = [counts[i], pitches[i]] if counts[i] > 0
         i += 1
       end
       usage
@@ -268,6 +307,7 @@ module FmrbMidi
       @wall_base_ms = 0
       @cur_tick = 0
       @pause_ms = 0
+      @vl_pos = 0
       @sounding = []
     end
 
@@ -312,13 +352,28 @@ module FmrbMidi
       end
     end
 
-    # One pass over a track chunk, counting note ons per channel. Deltas and
-    # payloads are skipped without decoding them into anything.
-    def scan_track_usage(pos, finish_pos, usage)
+    # One pass over a track chunk, adding note ons to counts[channel] and
+    # their note numbers to pitches[channel].
+    #
+    # The variable-length decoding is written out here instead of calling
+    # varlen, and the delta time is walked over rather than decoded, because
+    # this loop runs once per event in the whole file: on the device a method
+    # call per event is the difference between a fifth of a second and
+    # several seconds. Everything it touches is an Integer, so a whole song
+    # can be scanned without allocating one object.
+    def scan_track_usage(pos, finish_pos, counts, pitches)
+      data = @data
       status = 0
       while pos < finish_pos
-        _delta, pos = varlen(pos)
-        b = byte(pos)
+        # Delta time: only its length matters here, so walk off the end of it.
+        b = data.getbyte(pos) || 0
+        pos += 1
+        while b >= 0x80
+          b = data.getbyte(pos) || 0
+          pos += 1
+        end
+
+        b = data.getbyte(pos) || 0
         if b >= 0x80
           status = b if b < 0xF0
           meta = b
@@ -327,37 +382,39 @@ module FmrbMidi
           meta = status
         end
 
-        case meta & 0xF0
-        when 0x90
-          note = byte(pos)
-          velocity = byte(pos + 1)
-          pos += 2
-          if velocity > 0
+        kind = meta & 0xF0
+        if kind == 0x90
+          if (data.getbyte(pos + 1) || 0) > 0
             channel = meta & 0x0F
-            entry = usage[channel]
-            if entry
-              entry[0] += 1
-              entry[1] += note
-            else
-              usage[channel] = [1, note]
-            end
+            counts[channel] += 1
+            pitches[channel] += (data.getbyte(pos) || 0)
           end
-        when 0x80, 0xA0, 0xB0, 0xE0
           pos += 2
-        when 0xC0, 0xD0
+        elsif kind == 0x80 || kind == 0xA0 || kind == 0xB0 || kind == 0xE0
+          pos += 2
+        elsif kind == 0xC0 || kind == 0xD0
           pos += 1
-        else
-          case meta
-          when 0xFF
-            pos += 1 # meta type
-            len, pos = varlen(pos)
-            pos += len
-          when 0xF0, 0xF7
-            len, pos = varlen(pos)
-            pos += len
-          else
-            return # cannot make sense of this track
+        elsif meta == 0xFF
+          pos += 1 # meta type
+          len = 0
+          while true
+            b = data.getbyte(pos) || 0
+            pos += 1
+            len = (len << 7) | (b & 0x7F)
+            break if b < 0x80
           end
+          pos += len
+        elsif meta == 0xF0 || meta == 0xF7
+          len = 0
+          while true
+            b = data.getbyte(pos) || 0
+            pos += 1
+            len = (len << 7) | (b & 0x7F)
+            break if b < 0x80
+          end
+          pos += len
+        else
+          return # cannot make sense of this track
         end
       end
     end
@@ -390,7 +447,13 @@ module FmrbMidi
       (byte(i) << 24) | (byte(i + 1) << 16) | (byte(i + 2) << 8) | byte(i + 3)
     end
 
-    # Variable length quantity; returns [value, next position].
+    # Variable length quantity. Returns the value and leaves the position
+    # after it in @vl_pos.
+    #
+    # Returning [value, position] would read better, but that Array is one
+    # object per event, and every event in a song passes through here: it is
+    # the single largest source of garbage in playback, and the collector is
+    # what makes a song stall on the device (doc/midi/report/p6.md).
     def varlen(pos)
       value = 0
       while true
@@ -401,7 +464,8 @@ module FmrbMidi
         # Malformed files must not spin forever.
         break if pos > @data.length
       end
-      [value, pos]
+      @vl_pos = pos
+      value
     end
 
     # Read the delta time in front of a track's next event and turn it into
@@ -412,8 +476,8 @@ module FmrbMidi
         return
       end
 
-      delta, pos = varlen(track[T_POS])
-      track[T_POS] = pos
+      delta = varlen(track[T_POS])
+      track[T_POS] = @vl_pos
       track[T_TICK] = track[T_TICK] + delta
     end
 
@@ -497,7 +561,8 @@ module FmrbMidi
         when 0xFF
           type = byte(pos)
           pos += 1
-          len, pos = varlen(pos)
+          len = varlen(pos)
+          pos = @vl_pos
           handle_meta(type, pos, len)
           if type == 0x2F
             track[T_DONE] = true
@@ -506,8 +571,8 @@ module FmrbMidi
           end
           pos += len
         when 0xF0, 0xF7
-          len, pos = varlen(pos)
-          pos += len
+          len = varlen(pos)
+          pos = @vl_pos + len
         else
           # Unknown status byte: stop this track instead of guessing.
           track[T_DONE] = true
@@ -533,9 +598,9 @@ module FmrbMidi
       when 0x80
         send_note_off(channel, d1)
       when 0xB0
-        @device.control_change(d1, d2, channel: channel)
+        @device.send_control_change(channel, d1, d2)
       when 0xC0
-        @device.program_change(d1, channel: channel)
+        @device.send_program_change(channel, d1)
       end
       # Aftertouch and pitch bend are dropped: the APU has neither, and
       # MIDI::Device#pitch_bend needs Integer#clamp, which this build of
@@ -562,19 +627,22 @@ module FmrbMidi
       n
     end
 
+    # What is sounding is kept as packed Integers, (channel << 7) | note,
+    # rather than [channel, note] pairs: an Array per note is an object per
+    # note, and playback has to leave the collector alone (see varlen).
     def send_note_on(channel, note, velocity)
       played = shift(channel, note)
-      @device.note_on(played, velocity, channel: channel)
-      @sounding << [channel, played]
+      @device.send_note_on(channel, played, velocity)
+      @sounding << ((channel << 7) | played)
     end
 
     def send_note_off(channel, note)
       played = shift(channel, note)
-      @device.note_off(played, 0, channel: channel)
+      @device.send_note_off(channel, played)
+      packed = (channel << 7) | played
       i = 0
       while i < @sounding.size
-        entry = @sounding[i]
-        if entry[0] == channel && entry[1] == played
+        if @sounding[i] == packed
           @sounding.delete_at(i)
           return
         end
@@ -592,7 +660,8 @@ module FmrbMidi
       @sounding = []
       i = 0
       while i < list.size
-        @device.note_off(list[i][1], 0, channel: list[i][0])
+        packed = list[i]
+        @device.send_note_off(packed >> 7, packed & 0x7F)
         i += 1
       end
     end

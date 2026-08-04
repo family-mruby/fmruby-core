@@ -1,0 +1,11 @@
+app_handle_name = "midi_bench"
+# Compiling this file leaves ~340 KB of the 500 KB pool in use before the
+# benchmark allocates anything, so it runs in the 1 MB pool.
+large_memory = 1
+app_screen_name = "MIDI Bench"
+app_screen_name_ja = "MIDI計測"
+default_window_mode = "window"
+default_window_width = 300
+default_window_height = 160
+default_window_pos_x = 10
+default_window_pos_y = 30

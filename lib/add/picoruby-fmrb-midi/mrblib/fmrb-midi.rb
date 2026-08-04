@@ -355,13 +355,22 @@ module FmrbMidi
 
     # --- Note handling ----------------------------------------------------
 
+    # Held notes are packed Integers, (channel << 14) | (velocity << 7) |
+    # note, not [note, velocity, channel] arrays: an array per note is an
+    # object per note, and a song's worth of them is what wakes the collector
+    # mid-phrase (doc/midi/report/p6.md).
     def note_on(channel, note, velocity)
       voice = @map[channel]
       return nil if voice.nil?
 
+      # A MIDI data byte is seven bits; narrowing both here and in note_off
+      # keeps what is stored, what is compared and what is packed the same
+      # value even if a malformed file sends something wider.
+      note &= 0x7F
+      velocity &= 0x7F
       held = @held[voice]
       remove_note(held, note)
-      held << [note, velocity, channel]
+      held << ((channel << 14) | (velocity << 7) | note)
       sound(voice, note, velocity, channel)
     end
 
@@ -369,6 +378,7 @@ module FmrbMidi
       voice = @map[channel]
       return nil if voice.nil?
 
+      note &= 0x7F
       held = @held[voice]
       was_current = @current[voice] == note
       remove_note(held, note)
@@ -380,7 +390,7 @@ module FmrbMidi
         # Fall back to the newest note still held, the way a monophonic
         # synthesizer does, so overlapping (legato) notes stay connected.
         last = held[held.size - 1]
-        sound(voice, last[0], last[1], last[2])
+        sound(voice, last & 0x7F, (last >> 7) & 0x7F, last >> 14)
       end
     end
 
@@ -430,7 +440,7 @@ module FmrbMidi
     def remove_note(held, note)
       i = 0
       while i < held.size
-        if held[i][0] == note
+        if (held[i] & 0x7F) == note
           held.delete_at(i)
           return true
         end
@@ -492,7 +502,44 @@ end
 # device.trigger / device.trigger_batch working, with one difference worth
 # knowing: the C version sends the note off from a timer, while this one
 # needs the app to pump (FmrbMidi.tick, or any further MIDI message).
+#
+# Added here rather than in lib/add/picoruby-midi, which is kept byte for
+# byte as it came from Midori so it can be diffed against upstream.
 module MIDI
+  class Device
+    # Channel messages with the channel as an ordinary argument.
+    #
+    # note_on(note, velocity, channel: ch) is the spelling an app should use.
+    # But mruby packs keyword arguments into a Hash at the call site, so that
+    # form costs one object per MIDI message, and a song sends one every few
+    # milliseconds. That was enough on its own to keep the collector busy
+    # through playback, which is what made a song stall on the device
+    # (doc/midi/report/p6.md). These do exactly what the keyword forms do,
+    # by way of the same send_packet, and allocate nothing.
+    #
+    # SmfPlayer uses them for every event; a hand-written app has no reason
+    # to and should prefer the readable spelling.
+    def send_note_on(channel, note, velocity)
+      @transport.send_packet(@cable, CIN_NOTE_ON, NOTE_ON | (channel & 0x0F),
+                             note, velocity)
+    end
+
+    def send_note_off(channel, note)
+      @transport.send_packet(@cable, CIN_NOTE_OFF, NOTE_OFF | (channel & 0x0F),
+                             note, 0)
+    end
+
+    def send_control_change(channel, cc, value)
+      @transport.send_packet(@cable, CIN_CONTROL_CHANGE,
+                             CONTROL_CHANGE | (channel & 0x0F), cc, value)
+    end
+
+    def send_program_change(channel, program)
+      @transport.send_packet(@cable, CIN_PROGRAM_CHANGE,
+                             PROGRAM_CHANGE | (channel & 0x0F), program, 0)
+    end
+  end
+
   class << self
     # The mask is the calling device's transport_id (MIDI::Device works it
     # out from the transport). Only transports of that kind are triggered,

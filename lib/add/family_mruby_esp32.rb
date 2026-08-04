@@ -33,6 +33,13 @@ MRuby::CrossBuild.new("esp32") do |conf|
   # Remote debugger VM hook (doc/vm_remote_debug_*). ABI-relevant: adds two
   # function pointers to mrb_state.
   conf.cc.defines << "MRB_USE_DEBUG_HOOK"
+  # Measurement build only (FMRB_GC_PROFILE=1 rake build:esp32): GC pause
+  # histograms in GC.stat. ABI-relevant (grows mrb_gc), so the CMake side reads
+  # the same environment variable -- see mruby_abi_defines.cmake.
+  if ENV['FMRB_GC_PROFILE'] == '1'
+    conf.cc.defines << "MRB_GC_PROFILE"
+    conf.cc.defines << "MRB_GC_STATS"
+  end
 
   if ENV['PICORB_DEBUG']
     conf.cc.defines << "ESTALLOC_DEBUG"
