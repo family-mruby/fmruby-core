@@ -1,4 +1,8 @@
 app_handle_name = "smf_player"
+# Compiling the app already takes ~300 KB of a 500 KB pool; browsing the file
+# list loads and scans a song per selection on top of that (doc/midi/report/
+# p6.md section 6), so give it the 1 MB pool.
+large_memory = 1
 app_screen_name = "SMF Player"
 app_screen_name_ja = "SMFプレーヤ"
 default_window_mode = "window"
