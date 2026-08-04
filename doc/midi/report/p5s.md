@@ -17,6 +17,7 @@ UART MIDI 出力を sim で最後まで作り、**バイト列・タイミング
 | `tools/fmrb_midi_monitor.rb` | sim の受け皿。FIFO を作り、届いたバイトを時刻つきで復号し、GM 音源にも流せる |
 | `tool/midi/test/serial_midi_test.rb` | ホストで走る単体テスト (26 項目) |
 | `flash/app/demo/midi_apu.app.rb` | 「7 Out」で出力先を APU / 外部 MIDI に切り替え |
+| `flash/app/tool/smf_player.app.rb` | ファイル一覧つきの SMF プレーヤ (NSF Player と同じ作り)。再生中にテンポと出力先を変えられる |
 
 アプリから見た形は Midori と揃えてある:
 

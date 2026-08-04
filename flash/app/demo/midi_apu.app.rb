@@ -28,8 +28,10 @@ class MidiApuApp < FmrbApp
   DRUM_STEP_MS = 180
 
   # First existing file wins, so dropping a song in as song.mid takes over
-  # from the built-in fixture without touching this list.
-  SONGS = ["/data/midi/song.mid", "/data/midi/scale.mid"]
+  # without touching this list. The SMF player app (tool/smf_player) shows
+  # everything in the directory instead.
+  SONGS = ["/data/midi/song.mid", "/data/midi/joplin_entertainer.mid",
+           "/data/midi/scale.mid"]
 
   BUTTONS = [
     ["1 Scale", :scale],
