@@ -185,6 +185,18 @@ module FmrbMidi
 
     # Send everything that is due and return the number of milliseconds until
     # the next event (0 when something is already due, nil when not playing).
+    # Diagnostics: how late events actually went out, and how often the
+    # schedule had to be shifted. Timing on a device is dominated by whatever
+    # else the app task is doing, so guessing is useless -- read these.
+    attr_reader :late_max_ms, :late_sum_ms, :late_count, :stall_count
+
+    def timing_stats
+      n = @late_count
+      return "no events yet" if n.nil? || n == 0
+      "events=#{n} avg_late=#{@late_sum_ms / n}ms max_late=#{@late_max_ms}ms " \
+        "stalls=#{@stall_count}"
+    end
+
     def tick
       return nil unless playing?
 
@@ -206,9 +218,14 @@ module FmrbMidi
         # instead of firing a burst of notes that should already be over.
         if now - due > STALL_MS
           @wall_base_ms += (now - due)
+          @stall_count += 1
           return 0
         end
 
+        late = now - due
+        @late_count += 1
+        @late_sum_ms += late
+        @late_max_ms = late if late > @late_max_ms
         step(index)
         guard += 1
         # Very dense passages can have hundreds of events on one tick; the
@@ -228,6 +245,10 @@ module FmrbMidi
     private
 
     def reset_state
+      @late_max_ms = 0
+      @late_sum_ms = 0
+      @late_count = 0
+      @stall_count = 0
       @data = nil
       @path = nil
       @tracks = []

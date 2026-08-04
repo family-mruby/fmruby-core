@@ -96,10 +96,19 @@ class MidiApuApp < FmrbApp
     # The SMF player keeps its own schedule; ask it how long we may sleep.
     if @player && @player.playing?
       wait = @player.next_delay(wait)
+      # Report how late events are actually going out (device timing is
+      # dominated by GC and by whatever else runs at a higher priority).
+      now_ms = Machine.board_millis
+      @stats_at ||= 0
+      if now_ms - @stats_at > 5000
+        @stats_at = now_ms
+        Log.info("MidiApu: #{@player.timing_stats}")
+      end
     elsif @smf_playing
       # The song ended by itself.
       @smf_playing = false
       @status = "smf done"
+      Log.info("MidiApu: final #{@player.timing_stats}")
       draw
     end
 
@@ -248,8 +257,10 @@ class MidiApuApp < FmrbApp
       return
     end
 
-    # Measure what holding the song costs in the app's pool (P4 report 5).
-    GC.start
+    # Time each phase: on a device the Ruby cost of loading and scanning is
+    # what makes the button feel unresponsive, and it is not obvious which
+    # part dominates.
+    t0 = Machine.board_millis
     before = pool_used
     unless @player.load(path)
       @status = "load failed"
@@ -258,14 +269,18 @@ class MidiApuApp < FmrbApp
       return
     end
 
-    GC.start
+    t1 = Machine.board_millis
     after = pool_used
-    Log.info("MidiApu: #{path} loaded, pool used #{before} -> #{after} " \
-             "(+#{after - before} B for #{File.size(path)} B of file)")
+    Log.info("MidiApu: #{path} loaded in #{t1 - t0}ms, pool used #{before} -> " \
+             "#{after} (+#{after - before} B for #{File.size(path)} B of file)")
 
     # Songs in the wild use whatever channels they like, so let the transport
-    # pick voices from what this file actually plays.
-    @device.transport.auto_map(@player.channel_usage)
+    # pick voices from what this file actually plays. This walks every event
+    # in the file, which is the expensive part on a device.
+    usage = @player.channel_usage
+    t2 = Machine.board_millis
+    Log.info("MidiApu: channel_usage scan took #{t2 - t1}ms")
+    @device.transport.auto_map(usage)
     @player.tempo_scale = @fast ? 1.5 : 1.0
     @player.start
     @smf_playing = true
