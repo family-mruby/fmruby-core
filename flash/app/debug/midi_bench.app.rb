@@ -541,6 +541,21 @@ class MidiBenchApp < FmrbApp
       apu.note_on(0, 60, 100)
       apu.note_off(0, 60)
     end
+    # The grouped path (P7.5) has its own bookkeeping; it must not allocate
+    # either. One iteration is a three-note chord struck and released.
+    measure_alloc("apu grouped chord (6 events)", 25) do
+      apu.defer_voices
+      apu.note_on(0, 60, 100)
+      apu.note_on(0, 64, 100)
+      apu.note_on(0, 67, 100)
+      apu.flush_voices
+      apu.defer_voices
+      apu.note_off(0, 67)
+      apu.note_off(0, 64)
+      apu.note_off(0, 60)
+      apu.flush_voices
+    end
+
     apu.all_off
     audio.note_off(0)
     FmrbMidi.unregister(apu)

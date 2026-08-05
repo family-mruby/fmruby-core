@@ -98,10 +98,16 @@ def runtime_timer(freq, divider)
   (CPU_CLOCK / (divider * freq)) - 1
 end
 
-# What tool/midi/smf2fmsq.rb writes for the same note.
-def offline_timer(note, divider)
+# What tool/midi/smf2fmsq.rb writes for the same note, including its octave
+# fold for notes below what the 11-bit timer can reach.
+def raw_timer(note, divider)
   ideal = 440.0 * (2.0**((note - 69) / 12.0))
-  (CPU_CLOCK / (divider.to_f * ideal) - 1).round.clamp(divider == 16 ? 8 : 2, 0x7FF)
+  (CPU_CLOCK / (divider.to_f * ideal) - 1).round
+end
+
+def offline_timer(note, divider)
+  note += 12 while raw_timer(note, divider) > 0x7FF
+  raw_timer(note, divider).clamp(divider == 16 ? 8 : 2, 0x7FF)
 end
 
 # --- tests ---------------------------------------------------------------
@@ -253,6 +259,122 @@ check("pumping after the duration releases it") do
   [audio.last && audio.last.kind == :off, audio.calls.map(&:kind).inspect]
 end
 
+puts "one instant at a time (defer_voices / flush_voices)"
+
+# A chord lands on one voice because a voice is monophonic. Sending each
+# message as it arrives makes the release of C-E-G play E and then C for an
+# instant each - notes that are not in the score, off the beat. Grouping the
+# messages of one musical instant fixes that without touching the fallback
+# that joins overlapping notes across instants (doc/midi/report/p7_5.md).
+def chord_on(device, notes, channel: 0)
+  notes.each { |n| device.note_on(n, 100, channel: channel) }
+end
+
+def chord_off(device, notes, channel: 0)
+  notes.each { |n| device.note_off(n, 0, channel: channel) }
+end
+
+device, audio = new_device
+transport = device.transport
+check("a chord struck in one instant sounds once, on the last note") do
+  transport.defer_voices
+  chord_on(device, [60, 64, 67])
+  transport.flush_voices
+  ons = audio.calls.select { |c| c.kind == :on }
+  [audio.calls.size == 1 && ons.first.freq == FmrbMidi::PULSE_FREQ[67],
+   "#{audio.calls.size} calls, #{ons.map(&:freq).inspect}"]
+end
+
+check("releasing it in one instant stops the voice without playing the rest") do
+  audio.clear
+  transport.defer_voices
+  chord_off(device, [67, 64, 60])
+  transport.flush_voices
+  # The bug: an :on for 64 and another for 60 before the :off.
+  [audio.calls.size == 1 && audio.calls.first.kind == :off,
+   audio.calls.map { |c| "#{c.kind}#{c.freq}" }.inspect]
+end
+
+check("releasing part of a chord hands the voice to what is still held") do
+  audio.clear
+  transport.defer_voices
+  chord_on(device, [60, 64, 67])
+  transport.flush_voices
+  audio.clear
+  transport.defer_voices
+  device.note_off(67, 0, channel: 0)
+  transport.flush_voices
+  [audio.calls.size == 1 && audio.calls.first.kind == :on &&
+     audio.calls.first.freq == FmrbMidi::PULSE_FREQ[64],
+   audio.calls.map { |c| "#{c.kind}#{c.freq}" }.inspect]
+end
+
+device, audio = new_device
+transport = device.transport
+check("legato across two instants still falls back to the held note") do
+  transport.defer_voices
+  device.note_on(60, 100, channel: 0)
+  transport.flush_voices
+  transport.defer_voices
+  device.note_on(64, 100, channel: 0)
+  transport.flush_voices
+  audio.clear
+  transport.defer_voices
+  device.note_off(64, 0, channel: 0)   # a later instant: 60 is still down
+  transport.flush_voices
+  [audio.calls.size == 1 && audio.calls.first.kind == :on &&
+     audio.calls.first.freq == FmrbMidi::PULSE_FREQ[60],
+   audio.calls.map { |c| "#{c.kind}#{c.freq}" }.inspect]
+end
+
+device, audio = new_device
+transport = device.transport
+check("a note struck and released inside one instant leaves a longer one alone") do
+  device.note_on(60, 100, channel: 0)  # sounding before the group
+  audio.clear
+  transport.defer_voices
+  device.note_on(64, 100, channel: 0)
+  device.note_off(64, 0, channel: 0)
+  transport.flush_voices
+  # 60 never stopped, so it must not be struck again.
+  [audio.calls.empty?, audio.calls.map { |c| "#{c.kind}#{c.freq}" }.inspect]
+end
+
+check("a note repeated inside one instant is struck again") do
+  audio.clear
+  transport.defer_voices
+  device.note_off(60, 0, channel: 0)
+  device.note_on(60, 100, channel: 0)
+  transport.flush_voices
+  [audio.calls.size == 1 && audio.calls.first.kind == :on &&
+     audio.calls.first.freq == FmrbMidi::PULSE_FREQ[60],
+   audio.calls.map { |c| "#{c.kind}#{c.freq}" }.inspect]
+end
+
+device, audio = new_device
+check("outside a group a note sounds immediately") do
+  # An app playing by hand (a key press, a drum pad) must not wait for a
+  # boundary that never comes.
+  device.note_on(60, 100, channel: 0)
+  sounded = audio.calls.size == 1 && audio.calls.first.kind == :on
+  device.note_off(60, 0, channel: 0)
+  [sounded && audio.calls.size == 2 && audio.calls.last.kind == :off,
+   audio.calls.map { |c| "#{c.kind}#{c.freq}" }.inspect]
+end
+
+check("chords on separate channels are untouched by grouping") do
+  device, audio = new_device
+  transport = device.transport
+  transport.defer_voices
+  device.note_on(60, 100, channel: 0)
+  device.note_on(64, 100, channel: 1)
+  device.note_on(48, 100, channel: 2)
+  transport.flush_voices
+  voices = audio.calls.map(&:channel).sort
+  [voices == [FmrbMidi::CH_PULSE1, FmrbMidi::CH_PULSE2, FmrbMidi::CH_TRIANGLE],
+   voices.inspect]
+end
+
 puts "pitch agreement with tool/midi/smf2fmsq.rb"
 
 # The APU's pulse timer is 11 bits, so the lowest note it can play is around
@@ -281,11 +403,68 @@ check("triangle pitch matches the offline converter (C2-C7)") do
   [gaps.max < 12.0, format("worst %.1f cents", gaps.max)]
 end
 
-check("notes below the APU's range clamp instead of wrapping") do
-  # The audio side masks the timer to 11 bits, so an out-of-range note must
-  # not be allowed to produce a timer that wraps into a high pitch.
-  timers = (0..35).map { |n| runtime_timer(FmrbMidi::PULSE_FREQ[n], 16) }
-  [timers.all? { |t| t.between?(0x700, 0x7FF) }, "timers #{timers.minmax.inspect}"]
+puts "notes below the APU's range"
+
+# The pulse timer is 11 bits, so the lowest note the channel can play is A1
+# (33); the triangle reaches A0 (21). Below that the note is raised by whole
+# octaves until it fits, which keeps its pitch class - a bass line still
+# spells out the harmony instead of collapsing onto one held pitch, which is
+# what clamping to the lowest timer used to do (doc/midi/report/p7_5.md).
+PULSE_LOWEST = 33
+TRIANGLE_LOWEST = 21
+
+def folded_note(note, lowest)
+  note += 12 while note < lowest
+  note
+end
+
+check("the pulse channel plays down to A1 unchanged") do
+  # 55 Hz is A1 itself; the note below it must not be given the same pitch.
+  [FmrbMidi::PULSE_FREQ[PULSE_LOWEST] == 55 &&
+     FmrbMidi::PULSE_FREQ[PULSE_LOWEST - 1] != FmrbMidi::PULSE_FREQ[PULSE_LOWEST],
+   "A1 #{FmrbMidi::PULSE_FREQ[PULSE_LOWEST]} Hz, G#1 #{FmrbMidi::PULSE_FREQ[PULSE_LOWEST - 1]} Hz"]
+end
+
+check("notes below A1 fold up by octaves on the pulse channels") do
+  bad = (0...PULSE_LOWEST).reject do |n|
+    FmrbMidi::PULSE_FREQ[n] == FmrbMidi::PULSE_FREQ[folded_note(n, PULSE_LOWEST)]
+  end
+  [bad.empty?, "notes #{bad.inspect}"]
+end
+
+check("notes below A0 fold up by octaves on the triangle") do
+  bad = (0...TRIANGLE_LOWEST).reject do |n|
+    FmrbMidi::TRIANGLE_FREQ[n] == FmrbMidi::TRIANGLE_FREQ[folded_note(n, TRIANGLE_LOWEST)]
+  end
+  [bad.empty?, "notes #{bad.inspect}"]
+end
+
+check("the fold keeps the pitch class") do
+  # Every folded note is a whole number of octaves from the note it plays,
+  # so its frequency ratio to that note is a power of two.
+  worst = 0.0
+  (0...PULSE_LOWEST).each do |n|
+    played = FmrbMidi::PULSE_FREQ[n]
+    ratio = played / (440.0 * (2.0**((n - 69) / 12.0)))
+    octaves = Math.log2(ratio)
+    worst = [worst, (octaves - octaves.round).abs].max
+  end
+  # 1/100 of an octave is 12 cents, the whole-Hz resolution of the low end.
+  [worst < 0.01, format("worst %.4f octave off a whole octave", worst)]
+end
+
+check("the offline converter folds the same way") do
+  # Same tune, either path, same pitch: this is the P5-sim cross-check
+  # extended to the notes that used to be clamped.
+  gaps = (0...PULSE_LOWEST).map { |n| pitch_gap(n, 16, FmrbMidi::PULSE_FREQ).abs }
+  [gaps.max < 12.0, format("worst %.1f cents", gaps.max)]
+end
+
+check("no note below the fold is left on the old clamped pitch") do
+  # The bug this replaced: notes 0..32 all played 55 Hz.
+  same = (0...PULSE_LOWEST).count { |n| FmrbMidi::PULSE_FREQ[n] == 55 }
+  # Only the A naturals fold onto A1 itself.
+  [same == (0...PULSE_LOWEST).count { |n| (n % 12) == 9 }, "#{same} notes still on 55 Hz"]
 end
 check("no pulse timer overflows 11 bits") do
   bad = (0..127).reject { |n| runtime_timer(FmrbMidi::PULSE_FREQ[n], 16).between?(0, 0x7FF) }

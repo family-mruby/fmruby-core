@@ -507,13 +507,24 @@ module Smf2Fmsq
     440.0 * (2.0**((note - 69) / 12.0))
   end
 
+  # Notes too low for the 11-bit timer, raised by whole octaves until they
+  # fit (pulse bottoms out at MIDI 33, triangle at MIDI 21). Clamping instead
+  # would play a whole bass line on one pitch. Keep this identical to
+  # playable_note in tool/midi/gen_apu_note_table.rb: the real-time path uses
+  # that table, and the same tune has to sound the same whichever path plays
+  # it (doc/midi/report/p7_5.md).
+  def playable_note(note, divider)
+    note += 12 while (CPU_CLOCK / (divider.to_f * note_frequency(note)) - 1).round > 0x7FF
+    note
+  end
+
   def pulse_timer(note)
-    timer = (CPU_CLOCK / (16.0 * note_frequency(note)) - 1).round
+    timer = (CPU_CLOCK / (16.0 * note_frequency(playable_note(note, 16))) - 1).round
     timer.clamp(8, 0x7FF) # below 8 the pulse channel is muted by hardware
   end
 
   def triangle_timer(note)
-    timer = (CPU_CLOCK / (32.0 * note_frequency(note)) - 1).round
+    timer = (CPU_CLOCK / (32.0 * note_frequency(playable_note(note, 32))) - 1).round
     timer.clamp(2, 0x7FF)
   end
 

@@ -42,9 +42,9 @@ module FmrbMidi
 
   # MIDI note -> Hz for the pulse channels (16x divider).
   PULSE_FREQ = [
-       55,    55,    55,    55,    55,    55,    55,    55,    55,    55,    55,    55,  # 0
-       55,    55,    55,    55,    55,    55,    55,    55,    55,    55,    55,    55,  # 12
-       55,    55,    55,    55,    55,    55,    55,    55,    55,    55,    58,    62,  # 24
+       65,    69,    73,    78,    82,    87,    92,    98,   104,    55,    58,    62,  # 0
+       65,    69,    73,    78,    82,    87,    92,    98,   104,    55,    58,    62,  # 12
+       65,    69,    73,    78,    82,    87,    92,    98,   104,    55,    58,    62,  # 24
        65,    69,    73,    78,    82,    87,    92,    98,   104,   110,   117,   123,  # 36
       131,   139,   147,   156,   165,   174,   185,   196,   207,   220,   233,   247,  # 48
       261,   277,   293,   310,   330,   349,   370,   392,   415,   440,   466,   494,  # 60
@@ -57,8 +57,8 @@ module FmrbMidi
 
   # MIDI note -> Hz for the triangle channel (32x divider).
   TRIANGLE_FREQ = [
-       28,    28,    28,    28,    28,    28,    28,    28,    28,    28,    28,    28,  # 0
-       28,    28,    28,    28,    28,    28,    28,    28,    28,    28,    29,    31,  # 12
+       33,    35,    37,    39,    41,    44,    46,    49,    52,    28,    29,    31,  # 0
+       33,    35,    37,    39,    41,    44,    46,    49,    52,    28,    29,    31,  # 12
        33,    35,    37,    39,    41,    44,    46,    49,    52,    55,    58,    62,  # 24
        65,    69,    73,    78,    82,    87,    92,    98,   104,   110,   117,   123,  # 36
       131,   138,   147,   155,   165,   175,   185,   196,   208,   220,   233,   247,  # 48
@@ -122,11 +122,19 @@ module FmrbMidi
     end
 
     # Run every registered transport's pending note offs.
+    #
+    # Also closes any voice group left open (see ApuTransport#defer_voices).
+    # Nothing should leave one open - the player opens and closes it inside
+    # one call - but an app that raised in the middle of dispatching would,
+    # and a group left open swallows every note after it. This runs once per
+    # app update, so it costs nothing to be sure.
     def tick
       list = transports
       i = 0
       while i < list.size
-        list[i].tick
+        transport = list[i]
+        transport.tick
+        transport.flush_voices if transport.respond_to?(:flush_voices)
         i += 1
       end
     end
@@ -236,6 +244,14 @@ module FmrbMidi
       # actually sounding.
       @held = [[], [], [], []]
       @current = [nil, nil, nil, nil]
+
+      # Voice bookkeeping for a deferred group (see defer_voices). Allocated
+      # once and reused, because a song must not create objects per event
+      # (doc/midi/report/p6.md). @touched marks a voice a group has changed,
+      # @grouped_on remembers the last note the group started on it.
+      @deferring = false
+      @touched = [false, false, false, false]
+      @grouped_on = [-1, -1, -1, -1]
 
       # Per MIDI channel controller state.
       @cc_volume = []
@@ -370,7 +386,14 @@ module FmrbMidi
       velocity &= 0x7F
       held = @held[voice]
       remove_note(held, note)
-      held << ((channel << 14) | (velocity << 7) | note)
+      packed = (channel << 14) | (velocity << 7) | note
+      held << packed
+      if @deferring
+        @touched[voice] = true
+        @grouped_on[voice] = packed
+        return 0
+      end
+
       sound(voice, note, velocity, channel)
     end
 
@@ -382,6 +405,15 @@ module FmrbMidi
       held = @held[voice]
       was_current = @current[voice] == note
       remove_note(held, note)
+
+      if @deferring
+        # What the voice should sound is decided once the group is complete;
+        # see flush_voices. Note that a release only matters if it took the
+        # sounding note away, exactly as in the immediate path below.
+        @touched[voice] = true if was_current
+        return 0
+      end
+
       return nil unless was_current
 
       if held.empty?
@@ -392,6 +424,52 @@ module FmrbMidi
         last = held[held.size - 1]
         sound(voice, last & 0x7F, (last >> 7) & 0x7F, last >> 14)
       end
+    end
+
+    # --- grouping ---------------------------------------------------------
+    #
+    # A chord arrives as several messages that land on the same voice, and
+    # sending each one as it comes makes the voice play the chord's inner
+    # notes in turn. Releasing C-E-G is the audible case: G's release falls
+    # back to E, E's release falls back to C, and a listener hears two short
+    # notes that are not in the score, off the beat (doc/midi/report/p7_5.md).
+    # The fallback itself is right - it is what joins overlapping notes - but
+    # only across time, not within one instant.
+    #
+    # So a caller that knows several messages belong to the same instant
+    # wraps them: defer_voices, the messages, flush_voices. Inside, the
+    # voices are updated but nothing is sent; flush_voices then sends each
+    # touched voice its final state, once. SmfPlayer#tick does this around
+    # the events it dispatches for one musical tick.
+    #
+    # Outside a group every message still takes effect immediately, so a note
+    # played from an app - a key press, a drum pad - sounds at once and is
+    # never held back waiting for a boundary.
+
+    def defer_voices
+      return 0 if @deferring
+
+      @deferring = true
+      i = 0
+      while i < 4
+        @touched[i] = false
+        @grouped_on[i] = -1
+        i += 1
+      end
+      0
+    end
+
+    def flush_voices
+      return 0 unless @deferring
+
+      @deferring = false
+      voice = 0
+      while voice < 4
+        resolve_voice(voice) if @touched[voice]
+        @touched[voice] = false
+        voice += 1
+      end
+      0
     end
 
     def control_change(channel, cc, value)
@@ -435,6 +513,29 @@ module FmrbMidi
         i += 1
       end
       rows
+    end
+
+    # What one voice should be doing now that a group is complete.
+    #
+    # Nothing held means silence. Otherwise the newest held note takes the
+    # voice, and it is sounded when either the group started it (so a note
+    # that was struck this instant is struck, including a note repeated
+    # after its own release) or it differs from what is already sounding (a
+    # legato hand-off). A note that came and went inside the group over a
+    # longer one leaves that longer one alone, where sending each message as
+    # it arrived would have re-struck it.
+    def resolve_voice(voice)
+      held = @held[voice]
+      if held.empty?
+        silence(voice) unless @current[voice].nil?
+        return 0
+      end
+
+      last = held[held.size - 1]
+      note = last & 0x7F
+      return 0 unless @grouped_on[voice] == last || @current[voice] != note
+
+      sound(voice, note, (last >> 7) & 0x7F, last >> 14)
     end
 
     def remove_note(held, note)

@@ -30,9 +30,38 @@ def ideal_frequency(note)
   440.0 * (2.0**((note - 69) / 12.0))
 end
 
+# The timer the note wants, before the register can hold it.
+def raw_timer(note, divider)
+  (CPU_CLOCK / (divider.to_f * ideal_frequency(note)) - 1).round
+end
+
+# Notes too low for the 11-bit timer, raised by whole octaves until they fit.
+#
+# The pulse channels bottom out at MIDI 33 (A1) and the triangle at MIDI 21
+# (A0). Clamping everything below that to the lowest timer, which is what
+# this table used to do, plays a bass line as a single held pitch: the notes
+# lose their tune but keep their rhythm, and the harmony under the melody
+# turns to mud. Folding by an octave keeps the pitch class, so the line still
+# spells out the chord an octave up - the usual answer in chiptune writing,
+# and the one a listener reads as "the bass is thin" rather than "the bass is
+# wrong".
+#
+# The top end needs nothing: no note up to 127 rounds below the smallest
+# timer either channel accepts (8 for pulse, 2 for triangle), so nothing is
+# clamped there. What is left above ~10 kHz is timer resolution - notes 126
+# and 127 share timer 8 - and folding those down an octave would trade a
+# semitone error for a deliberate octave one.
+#
+# tool/midi/smf2fmsq.rb folds identically; the two paths have to agree or the
+# same tune plays at different pitches depending on which one played it.
+def playable_note(note, divider)
+  note += 12 while raw_timer(note, divider) > 0x7FF
+  note
+end
+
 # What tool/midi/smf2fmsq.rb writes into the FMSQ stream.
 def offline_timer(note, divider)
-  timer = (CPU_CLOCK / (divider.to_f * ideal_frequency(note)) - 1).round
+  timer = raw_timer(playable_note(note, divider), divider)
   timer.clamp(divider == 16 ? 8 : 2, 0x7FF)
 end
 
@@ -57,7 +86,7 @@ end
 # note the APU can play, both paths therefore sit on the same clamped timer.
 def pick_frequency(note, divider)
   target = offline_timer(note, divider)
-  ideal = ideal_frequency(note)
+  ideal = ideal_frequency(playable_note(note, divider))
   base = (CPU_CLOCK / (divider.to_f * (target + 1))).round
 
   best = nil
@@ -98,15 +127,18 @@ def build(divider)
   [rows, mismatches]
 end
 
+# Emitted exactly as the tables appear in
+# lib/add/picoruby-fmrb-midi/mrblib/fmrb-midi.rb, so regenerating and pasting
+# leaves no incidental diff to read past.
 def format_table(name, rows, comment)
-  out = +"    # #{comment}\n"
-  out << "    #{name} = [\n"
+  out = +"  # #{comment}\n"
+  out << "  #{name} = [\n"
   rows.each_slice(12).with_index do |slice, i|
-    out << "      #{slice.map { |v| v.to_s.rjust(5) }.join(', ')},"
+    out << "    #{slice.map { |v| v.to_s.rjust(5) }.join(', ')},"
     out << "  # #{i * 12}\n"
   end
   out.sub!(/,(\s+# \d+\n)\z/, '\1')
-  out << "    ].freeze\n"
+  out << "  ]\n"
   out
 end
 

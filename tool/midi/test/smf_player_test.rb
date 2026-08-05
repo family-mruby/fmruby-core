@@ -312,6 +312,100 @@ check("the song continues after the stall") do
   [ons2.size == 8, "#{ons2.size} notes in total"]
 end
 
+puts "one instant at a time, on a real song"
+
+# The APU has one voice per pulse channel, so a chord written on one MIDI
+# channel lands on one voice. Before P7.5 the player sent every message as it
+# came, and the release of a chord walked back down its inner notes - each
+# one sounding for an instant, off the beat (doc/midi/report/p7_5.md). The
+# player now groups the messages of one instant so the voice is set once.
+#
+# This measures it on the song the problem was reported on, by playing it
+# twice: once as it is now, once through an output that does not offer the
+# grouping, which is what the old code did.
+SONG = File.join(ROOT, "flash/data/midi/joplin_entertainer.mid")
+
+# Forwards what the player sends, minus the grouping hook, so voice_group_of
+# finds nothing and every message takes effect as it arrives.
+class UngroupedDevice
+  def initialize(device)
+    @device = device
+  end
+
+  def send_note_on(channel, note, velocity)
+    @device.send_note_on(channel, note, velocity)
+  end
+
+  def send_note_off(channel, note)
+    @device.send_note_off(channel, note)
+  end
+
+  def send_control_change(channel, cc, value)
+    @device.send_control_change(channel, cc, value)
+  end
+
+  def send_program_change(channel, program)
+    @device.send_program_change(channel, program)
+  end
+end
+
+def play_entertainer(grouped)
+  Machine.set(0)
+  audio = FmrbAudio.new
+  transport = FmrbMidi::ApuTransport.new(audio)
+  device = MIDI::Device.new(transport)
+  player = FmrbMidi::SmfPlayer.new(grouped ? device : UngroupedDevice.new(device))
+  return nil unless player.load(SONG)
+
+  transport.auto_map(player.channel_usage)
+  player.start
+  play_song(player, limit_ms: 90_000)
+  audio.calls
+end
+
+if File.exist?(SONG)
+  grouped = play_entertainer(true)
+  ungrouped = play_entertainer(false)
+
+  # What each voice was left doing at each instant, which is what a listener
+  # hears; everything before it inside the same instant was a blip.
+  def final_state(calls)
+    state = {}
+    calls.each { |c| state[[c.at, c.channel]] = [c.kind, c.freq] }
+    state
+  end
+
+  check("every instant ends on the same note it used to") do
+    # The property that makes this safe: grouping drops writes, but never
+    # changes what the voice is left sounding.
+    g = final_state(grouped)
+    u = final_state(ungrouped)
+    differing = g.keys.count { |k| g[k] != u[k] }
+    [differing.zero?, "#{differing} of #{g.size} instants differ"]
+  end
+
+  check("the writes it drops are the ones nobody could hear") do
+    saved = ungrouped.size - grouped.size
+    [saved > 100,
+     "#{ungrouped.size} writes to the APU became #{grouped.size} (-#{saved})"]
+  end
+
+  check("almost every instant still writes something") do
+    # An instant with no write at all is one whose notes started and ended
+    # inside it over a longer note that never stopped - a click, not a note.
+    u = final_state(ungrouped)
+    silent = u.keys.size - final_state(grouped).keys.size
+    [silent * 20 < u.keys.size, "#{silent} of #{u.keys.size} instants write nothing"]
+  end
+
+  check("the same voices are used") do
+    [grouped.map(&:channel).uniq.sort == ungrouped.map(&:channel).uniq.sort,
+     grouped.map(&:channel).uniq.sort.inspect]
+  end
+else
+  puts "  skip  #{SONG} is missing"
+end
+
 puts "memory shape"
 check("the song is held as bytes, not as objects") do
   # One String for the file plus a handful of small cursors: this is what

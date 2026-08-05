@@ -56,11 +56,25 @@ module FmrbMidi
     def device=(new_device)
       silence
       @device = new_device
+      @voices = voice_group_of(new_device)
     end
 
     def initialize(device)
       @device = device
+      @voices = voice_group_of(device)
       reset_state
+    end
+
+    # An output that wants to be told where one musical instant ends, or nil.
+    # Only the APU transport does: it has four monophonic voices, so several
+    # notes of one chord land on the same voice and it must not play them in
+    # turn (see ApuTransport#defer_voices). An external instrument has a
+    # voice per note and needs none of this.
+    def voice_group_of(device)
+      return nil unless device.respond_to?(:transport)
+
+      transport = device.transport
+      transport.respond_to?(:flush_voices) ? transport : nil
     end
 
     # --- loading ---------------------------------------------------------
@@ -159,6 +173,10 @@ module FmrbMidi
 
     def stop
       silence
+      # Nothing is holding a group open in the normal course of things, but
+      # an app that stops the song from inside its own callback could be, and
+      # a group left open would swallow every later note.
+      @voices.flush_voices if @voices
       @playing = false
       @paused = false
       0
@@ -236,10 +254,21 @@ module FmrbMidi
         "stalls=#{@stall_count}"
     end
 
+    # One musical instant is dispatched as a group, so an output with fewer
+    # voices than the score can decide what each voice should sound once,
+    # instead of playing a chord's inner notes in turn (see
+    # ApuTransport#defer_voices). The dispatching itself is run_due; this
+    # closes the group whichever way it returned.
     def tick
       return nil unless playing?
 
-      now = Machine.board_millis
+      @voices.defer_voices if @voices
+      wait = run_due(Machine.board_millis)
+      @voices.flush_voices if @voices
+      wait
+    end
+
+    def run_due(now)
       guard = 0
       while true
         index = next_track
