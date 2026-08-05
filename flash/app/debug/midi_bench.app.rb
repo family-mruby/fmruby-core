@@ -154,7 +154,44 @@ class MidiBenchApp < FmrbApp
     bench_scan(data)
     bench_play
     bench_alloc
+    bench_mml
     start_gc_phase(0)
+  end
+
+  # --- MML playback ------------------------------------------------------
+  #
+  # The MML player parses into packed Integers at load and plays from those,
+  # so supplying events must cost nothing per event, the same as the .mid
+  # player (doc/midi/report/p7_7.md). Measured the same way: with the
+  # collector off, the rise in the live count is exactly what was allocated.
+  MML_TUNE = "o4 l8 [cdefgab>c<]4"
+
+  def bench_mml
+    player = FmrbMidi::MmlPlayer.new(MIDI::Device.new(CountingTransport.new))
+    unless player.load_string(MML_TUNE)
+      say("mml: #{player.error}")
+      return
+    end
+
+    say("mml: #{player.event_count} events parsed")
+    player.tempo_scale = 100.0
+    player.start
+    GC.start
+    GC.disable
+    live0 = GC.stat[:live] || 0
+    events0 = player.sent_count
+    t0 = Machine.uptime_us
+    while player.playing?
+      break if player.tick.nil?
+      break if Machine.uptime_us - t0 > 5_000_000
+    end
+    live1 = GC.stat[:live] || 0
+    n = player.sent_count - events0
+    GC.enable
+    player.stop
+    GC.start
+    say("mml: #{(live1 - live0) * 10 / (n > 0 ? n : 1)} objects/10 events " \
+        "(#{live1 - live0} over #{n})")
   end
 
   # --- idle-time GC (FmrbApp#idle_gc) ------------------------------------

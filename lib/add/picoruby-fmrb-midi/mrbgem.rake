@@ -5,5 +5,6 @@ MRuby::Gem::Specification.new('picoruby-fmrb-midi') do |spec|
 
   spec.add_dependency 'picoruby-machine'
   spec.add_dependency 'picoruby-midi'
+  spec.add_dependency 'picoruby-midi-mml'
   spec.add_dependency 'picoruby-fmrb-app'
 end

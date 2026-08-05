@@ -1,0 +1,8 @@
+app_handle_name = "mml"
+app_screen_name = "MML"
+app_screen_name_ja = "MML演奏"
+default_window_mode = "window"
+default_window_width = 170
+default_window_height = 190
+default_window_pos_x = 40
+default_window_pos_y = 12

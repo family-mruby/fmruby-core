@@ -207,6 +207,9 @@ task :setup do
   # FAMILY_MRUBY_PORT.md)
   sh "rm -rf #{mrbgem_path}/picoruby-midi"
   sh "cp -rf lib/add/picoruby-midi #{mrbgem_path}/"
+  # midi-mml (the MML parser only, same import rule; the player is ours)
+  sh "rm -rf #{mrbgem_path}/picoruby-midi-mml"
+  sh "cp -rf lib/add/picoruby-midi-mml #{mrbgem_path}/"
   # fmrb-midi (APU transport; depends on midi and app, copied above)
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-midi"
   sh "cp -rf lib/add/picoruby-fmrb-midi #{mrbgem_path}/"
