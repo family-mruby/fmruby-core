@@ -350,6 +350,7 @@ submodule 方式。共有するなら `repos.yaml` と Rakefile での扱いを�
 | ~~P6~~ | 実機での遅さを潰す **完了** (実機実測まで済、report/p6.md 10 章) | 無し (sim/host) | 犯人は GC (実機 major 100〜205ms/回) と確定 |
 | ~~P7~~ | 演奏を止めない (GC 停止の除去) **完了** (実機で stall ゼロ確認、idle_gc は opt-in が最終形) | - | idle_gc + 音声メッセージ C 化 + desktop idle_gc |
 | P7.5 | **APU の「外れた音」を直す 着手中** | 無し (sim。聴くのはユーザ) | 和音の戻り発音アルペジオ + 低音クランプの折り返し |
+| P7.6 | **演奏時刻の権威を C へ** (テンポ精度) | 実機で計測 | Ruby は先読み復号してキューに積み、esp_timer が C のまま発射。実測 avg_late 17〜20ms / max 71ms (知覚閾超え) を 1ms 級へ。Midori の midi_scheduler.c が土台候補 |
 | P8 | USB-MIDI host 相乗り (方向E-2) | 実機 | 挿した機器を鳴らす。手数が多いので後 |
 | P9 | アプリ (シーケンサ、パッド、MML プレーヤ) | - | Midori のアプリを移植 |
 
