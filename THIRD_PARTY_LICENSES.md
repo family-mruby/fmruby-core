@@ -20,6 +20,7 @@ Family mruby Core includes code from several open source projects. The following
 10. [harucom-os](#harucom-os)
 11. [StackChan](#stackchan)
 12. [Midori (picoruby-midi, picoruby-midi-mml)](#midori-picoruby-midi-picoruby-midi-mml)
+13. [Spinel](#spinel)
 
 ---
 
@@ -497,5 +498,77 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+================================================================================
+
+
+================================================================================
+## Spinel
+Repository: https://github.com/matz/spinel (upstream)
+Fork used by Family mruby: https://github.com/kishima/spinel (branch fmrb-dev)
+License: MIT License
+
+Note: Spinel is a Ruby AOT compiler by Yukihiro Matsumoto that compiles Ruby
+source into native code. Family mruby uses a fork of it to AOT-compile the
+kernel/desktop Ruby code. Spinel-derived material appears in this repository
+in two forms:
+
+- components/fmrb_spinel_rt/spinel_rt: a snapshot of the Spinel runtime
+  sources imported from the fork (the exact commit is recorded in
+  IMPORT_INFO). This snapshot is distributed with this repository.
+- vendor/spinel: the Spinel compiler itself, not committed to this
+  repository but cloned and built at a pinned commit by `rake spinel:setup`
+  (see components/fmrb_spinel_rt/SPINEL_PIN). It bundles the Prism parser
+  and RBS (both MIT License), which are used at compile time only.
+
+Some files in the runtime snapshot (sp_bigint.c and the regexp engine:
+re_compile.c, re_exec.c, re_utf8.c, re_internal.h) are derived from mruby
+and refer to the Copyright Notice in mruby.h; the mruby license is therefore
+reproduced below as well.
+--------------------------------------------------------------------------------
+
+Copyright (c) 2024- Yukihiro Matsumoto (matz@ruby.or.jp)
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+mruby (files derived from mruby, MIT License):
+
+Copyright (c) mruby developers 2010-
+
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
+the following conditions:
+
+The above copyright notice and this permission notice shall be
+included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ================================================================================
