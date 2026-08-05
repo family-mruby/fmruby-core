@@ -27,10 +27,11 @@ static const char *TAG = "midi_serial";
  * (tools/fmrb_midi_monitor.rb). */
 #define FMRB_MIDI_SERIAL_SIM_PATH "/project/midi_out.fifo"
 
-/* Retro (NARYAv3) brings GROVE port 2 out on the pins the pin assignment
- * header calls I2C2. The unit's yellow wire is its RX, so ours is TX. Which
- * GPIO carries which colour still has to be confirmed on the board; if it is
- * the other way round only these two lines change. */
+/* The MIDI TX line rides the I2C2 SDA pin of the pin assignment header:
+ * Retro (NARYAv3) brings GROVE port 2 out there (GPIO47), Modern (Tab5)
+ * its Grove port (GPIO53). The unit's yellow wire is its RX, so ours is
+ * TX. Which GPIO carries which colour still has to be confirmed on the
+ * board; if it is the other way round only these two lines change. */
 #ifndef CONFIG_IDF_TARGET_LINUX
 #define FMRB_MIDI_SERIAL_UART_NUM 2
 #define FMRB_MIDI_SERIAL_TX_PIN   FMRB_PIN_I2C2_SDA
@@ -133,6 +134,14 @@ fmrb_err_t fmrb_midi_serial_open(const fmrb_midi_serial_config_t *config)
     }
 
 #ifndef CONFIG_IDF_TARGET_LINUX
+    /* A board with no MIDI TX pin must fail here, not open UART2 on
+     * whatever IO_MUX default uart_set_pin(-1) would leave in place. */
+    if (cfg.tx_pin < 0) {
+        FMRB_LOGE(TAG, "no MIDI TX pin on this board (I2C2_SDA is NC)");
+        xSemaphoreGive(s_lock);
+        return FMRB_ERR_NOT_SUPPORTED;
+    }
+
     fmrb_err_t pin_err = claim_pins(&cfg);
     if (pin_err != FMRB_OK) {
         xSemaphoreGive(s_lock);

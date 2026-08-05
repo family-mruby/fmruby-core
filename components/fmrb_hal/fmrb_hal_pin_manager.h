@@ -4,11 +4,23 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+// sdkconfig.h must be pulled in explicitly: this header can be the first
+// include of a translation unit, and the target branch below must not
+// depend on include order (ESP_PLATFORM comes from the compiler command
+// line, so it is always visible).
+#ifdef ESP_PLATFORM
+#include "sdkconfig.h"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-#define FMRB_PIN_MAX 49  // ESP32-S3: GPIO 0-48
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+#define FMRB_PIN_MAX 55  // ESP32-P4: GPIO 0-54
+#else
+#define FMRB_PIN_MAX 49  // ESP32-S3: GPIO 0-48 (linux sim shares this table)
+#endif
 
 // Pin usage type
 typedef enum {

@@ -30,8 +30,11 @@
 // Generic I2C (reuse the body touch bus as I2C1 for now)
 #define FMRB_PIN_I2C1_SDA      GPIO_NUM_31
 #define FMRB_PIN_I2C1_SCL      GPIO_NUM_32
-#define FMRB_PIN_I2C2_SDA      GPIO_NUM_NC
-#define FMRB_PIN_I2C2_SCL      GPIO_NUM_NC
+// I2C2 = Tab5 Grove port (GPIO53/54). Same dual-role convention as Retro's
+// GROVE port 2: either an I2C bus or serial MIDI out (TX rides SDA); the
+// pin manager arbitrates at open time.
+#define FMRB_PIN_I2C2_SDA      GPIO_NUM_53
+#define FMRB_PIN_I2C2_SCL      GPIO_NUM_54
 
 // Restricted pins (TODO: set real ESP32-P4 flash/PSRAM/USB/strap pins)
 #define FMRB_PIN_RESTRICTED_BOOT    GPIO_NUM_NC
