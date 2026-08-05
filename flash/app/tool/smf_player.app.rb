@@ -250,10 +250,27 @@ class SmfPlayerApp < FmrbApp
 
   # --- main loop --------------------------------------------------------
 
+  # GC counters and (with FMRB_GC_PROFILE=1 builds) sync-pause times, appended
+  # to the periodic timing line. Same shape as the MIDI APU demo's.
+  def gc_line
+    st = GC.stat
+    "[gc live=#{st[:live]} n=#{st[:total] || 0} major=#{st[:major] || 0} " \
+      "pause=#{st[:prof_sync_count] || 0}x tot=#{(st[:prof_sync_total_us] || 0) / 1000}ms " \
+      "max=#{(st[:prof_sync_max_us] || 0) / 1000}ms]"
+  end
+
   def on_update
     if @playing
       # The player keeps its own schedule; ask it how long we may sleep.
       wait = @player.next_delay(300)
+      # Same periodic timing report as the MIDI APU demo: whether remaining
+      # tempo wobble is GC is decided from this line (report/p6.md 7.3).
+      now_ms = Machine.board_millis
+      @stats_at ||= 0
+      if now_ms - @stats_at > 5000
+        @stats_at = now_ms
+        Log.info("SmfPlayerApp: #{@player.timing_stats} #{gc_line}")
+      end
       unless @player.playing?
         @playing = false
         @playing_name = nil
