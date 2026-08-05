@@ -2,8 +2,9 @@
 
 対象: 実装セッション (Opus)
 ブランチ: `feature/midi`
-**前提: P7.6 (時刻の権威を C へ) が完了していること** — MML の発音は
-P7.6 のキューに乗せる設計であり、先行できない。
+**前提: P7.6 は完了済み** (report/p7_6.md — 必読。実機で定常 avg
+183〜931us を確認済み)。MML の発音は P7.6 のキュー
+(`fmrb_midi_sched`, SmfPlayer の補充パターンが実装見本) に乗せる。
 参照: Midori の `tmp/midori/mrbgems/picoruby-midi-mml/`。
 
 ## 0. この段の位置づけ
