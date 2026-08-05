@@ -168,6 +168,13 @@ class SystemDesktopApp < FmrbApp
   def on_create()
     Log.info("on_create called")
 
+    # The desktop allocates every second redrawing the clock, and its GC
+    # runs at priority 8 on the apps' core -- a synchronous collection here
+    # stalls every app below for 100-200ms (measured as the residual MIDI
+    # playback stalls after P7 removed the apps' own GC). Collect in this
+    # app's own idle time instead; the clock wait gives it wide windows.
+    self.idle_gc = true
+
     # Load keyboard shortcuts from config
     @shortcuts = load_shortcuts
 
@@ -693,8 +700,11 @@ class SystemDesktopApp < FmrbApp
     #draw_memory_stats
     @counter += 1
 
-    # Update clock and taskbar every ~1 second (330ms * 3 = ~1s)
-    if @counter % 3 == 0
+    # Update clock and taskbar every ~1 second (500ms * 2 = 1s). The spin
+    # timeout below is also the idle window idle_gc steps in; it must clear
+    # the largest observed GC step (336ms on device) or stepping stops after
+    # the first big step and collections fall back to the allocation path.
+    if @counter % 2 == 0
       update_taskbar_apps
       tick_config_dialog if @cfg_open
       tick_network_dialog if @net_open
@@ -727,7 +737,7 @@ class SystemDesktopApp < FmrbApp
       end
     end
 
-    330
+    500
   end
 
   # ---- Event handling ----
