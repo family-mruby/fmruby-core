@@ -9,7 +9,7 @@
 #   2 Chord   C-E-G at once on channels 0/1/2 (pulse 1, pulse 2, triangle)
 #   3 Drums   channel 9, using device.trigger (note off is scheduled)
 #   4 BGM     FMSQ music on the other APU instance, mixed with the MIDI notes
-#   5 SMF     play a .mid from /data/midi with FmrbMidi::SmfPlayer
+#   5 SMF     play a .mid from /usr/share/sounds/midi with FmrbMidi::SmfPlayer
 #   6 Fast    speed the .mid up while it plays (what real-time playback buys)
 #   7 Out     send to the APU or out of the serial MIDI port (Unit MIDI)
 
@@ -30,8 +30,8 @@ class MidiApuApp < FmrbApp
   # First existing file wins, so dropping a song in as song.mid takes over
   # without touching this list. The SMF player app (tool/smf_player) shows
   # everything in the directory instead.
-  SONGS = ["/data/midi/song.mid", "/data/midi/joplin_entertainer.mid",
-           "/data/midi/scale.mid"]
+  SONGS = ["/usr/share/sounds/midi/song.mid", "/usr/share/sounds/midi/joplin_entertainer.mid",
+           "/usr/share/sounds/midi/scale.mid"]
 
   BUTTONS = [
     ["1 Scale", :scale],

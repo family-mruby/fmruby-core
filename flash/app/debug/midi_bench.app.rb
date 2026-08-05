@@ -22,7 +22,7 @@
 # Results go to the log (docker compose logs fmruby-core).
 
 class MidiBenchApp < FmrbApp
-  SONG = "/data/midi/joplin_entertainer.mid"
+  SONG = "/usr/share/sounds/midi/joplin_entertainer.mid"
 
   # Cost ratio between this simulation and the S3, measured on this very
   # scan before P6 touched it: 7900 ms on the device

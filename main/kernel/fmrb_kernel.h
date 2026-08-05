@@ -118,7 +118,7 @@ int fmrb_kernel_get_sync_files(fmrb_sync_file_entry_t *entries, int max_entries)
  * existence: an existence check leaves an edited asset stale forever.
  * Safe to call from any task; syncs are serialized.
  *
- * @param src Source path (local, e.g. "/usr/share/sounds/test.nsf")
+ * @param src Source path (local, e.g. "/usr/share/sounds/nsf/test.nsf")
  * @param dest Destination path (remote, e.g. "/flash/data/test.nsf")
  * @return FMRB_OK on success or if already up-to-date
  */

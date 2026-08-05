@@ -10,7 +10,7 @@
 #       [ ] instrument, i file/own instrument (external output only).
 
 class SmfPlayerApp < FmrbApp
-  MUSIC_DIR = "/data/midi"
+  MUSIC_DIR = "/usr/share/sounds/midi"
   LIST_Y = 2
   LIST_ITEM_H = 10
   INFO_H = 48

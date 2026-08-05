@@ -17,16 +17,16 @@ License references (full text):
 
 | File | License | Author | Source |
 |---|---|---|---|
-| `flash/usr/share/sounds/lost_in_hyperspace.nsf` | `CC-BY-3.0` | shiru8bit | https://opengameart.org/content/8-bit-chiptune-lost-in-hyperspace |
-| `flash/data/midi/bach_polonaise_bwv117a.mid` | `Public Domain` | J. S. Bach (engraved by Steven McDougall) | https://www.mutopiaproject.org/ftp/BachJS/BWV117a/BWV-117a/ |
-| `flash/data/midi/bach_sheep_bwv208.mid` | `Public Domain` | J. S. Bach (engraved by Jeremy Visser) | https://www.mutopiaproject.org/ftp/BachJS/BWV208/Sheep/ |
-| `flash/data/midi/joplin_entertainer.mid` | `Public Domain` | Scott Joplin (engraved by Chris Sawer) | https://www.mutopiaproject.org/ftp/JoplinS/entertainer/ |
-| `flash/data/midi/joplin_bethena.mid` | `Public Domain` | Scott Joplin (engraved by Magnus Lewis-Smith) | https://www.mutopiaproject.org/ftp/JoplinS/bethena/ |
-| `flash/data/midi/old_100th.mid` | `Public Domain` | Anonymous (engraved by Peter Chubb) | https://www.mutopiaproject.org/ftp/Anonymous/Old100-orig/ |
+| `flash/usr/share/sounds/nsf/lost_in_hyperspace.nsf` | `CC-BY-3.0` | shiru8bit | https://opengameart.org/content/8-bit-chiptune-lost-in-hyperspace |
+| `flash/usr/share/sounds/midi/bach_polonaise_bwv117a.mid` | `Public Domain` | J. S. Bach (engraved by Steven McDougall) | https://www.mutopiaproject.org/ftp/BachJS/BWV117a/BWV-117a/ |
+| `flash/usr/share/sounds/midi/bach_sheep_bwv208.mid` | `Public Domain` | J. S. Bach (engraved by Jeremy Visser) | https://www.mutopiaproject.org/ftp/BachJS/BWV208/Sheep/ |
+| `flash/usr/share/sounds/midi/joplin_entertainer.mid` | `Public Domain` | Scott Joplin (engraved by Chris Sawer) | https://www.mutopiaproject.org/ftp/JoplinS/entertainer/ |
+| `flash/usr/share/sounds/midi/joplin_bethena.mid` | `Public Domain` | Scott Joplin (engraved by Magnus Lewis-Smith) | https://www.mutopiaproject.org/ftp/JoplinS/bethena/ |
+| `flash/usr/share/sounds/midi/old_100th.mid` | `Public Domain` | Anonymous (engraved by Peter Chubb) | https://www.mutopiaproject.org/ftp/Anonymous/Old100-orig/ |
 
 ## Per-asset details
 
-### `flash/usr/share/sounds/lost_in_hyperspace.nsf`
+### `flash/usr/share/sounds/nsf/lost_in_hyperspace.nsf`
 
 - **Title**: 8-bit Chiptune - Lost In Hyperspace
 - **Author**: shiru8bit
@@ -34,7 +34,7 @@ License references (full text):
 - **License**: CC BY 3.0 — https://creativecommons.org/licenses/by/3.0/
 - **Modifications**: none
 
-### `flash/data/midi/*.mid` (Mutopia Project)
+### `flash/usr/share/sounds/midi/*.mid` (Mutopia Project)
 
 Demo music for the SMF player (`flash/app/tool/smf_player.app.rb`). All five
 files come from the Mutopia Project, which states a licence per file; only

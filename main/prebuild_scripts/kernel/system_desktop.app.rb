@@ -30,7 +30,7 @@ class SystemDesktopApp < FmrbApp
   DROPDOWN_TEXT = FmrbConst::THEME_TEXT
   DROPDOWN_HIGHLIGHT = FmrbConst::THEME_HIGHLIGHT
   BG_COLOR = FmrbConst::THEME_DESKTOP_BG
-  BG_IMAGE_PATH = "/data/bg_426x240.png"
+  BG_IMAGE_PATH = "/usr/share/backgrounds/bg_426x240.png"
   BOOT_IMAGE_PATH = "/boot/boot.png"
   BOOT_TILE_W = 32
   BOOT_TILE_H = 24

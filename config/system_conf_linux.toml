@@ -45,11 +45,11 @@ key = "i"
 app = "default/inspector"
 
 [[sync_files]]
-src = "/usr/share/sounds/test.nsf"
+src = "/usr/share/sounds/nsf/test.nsf"
 dest = "/flash/data/test.nsf"
 
 # Desktop wallpaper: on Linux the GA process loads images from its own
 # flash/, so transfer it from the Core side at boot (Modern reads it locally).
 [[sync_files]]
-src = "/data/bg_426x240.png"
+src = "/usr/share/backgrounds/bg_426x240.png"
 dest = "/flash/data/bg_426x240.png"

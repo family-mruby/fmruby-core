@@ -3,7 +3,7 @@
 
 class NsfPlayerApp < FmrbApp
   #MUSIC_DIR = "/home/music"
-  MUSIC_DIR = "/usr/share/sounds"
+  MUSIC_DIR = "/usr/share/sounds/nsf"
   CACHE_DIR = "/cache/nsf_player"
   LIST_Y = 2
   LIST_ITEM_H = 10

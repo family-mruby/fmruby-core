@@ -324,7 +324,7 @@ puts "one instant at a time, on a real song"
 # This measures it on the song the problem was reported on, by playing it
 # twice: once as it is now, once through an output that does not offer the
 # grouping, which is what the old code did.
-SONG = File.join(ROOT, "flash/data/midi/joplin_entertainer.mid")
+SONG = File.join(ROOT, "flash/usr/share/sounds/midi/joplin_entertainer.mid")
 
 # Forwards what the player sends, minus the grouping hook, so voice_group_of
 # finds nothing and every message takes effect as it arrives.

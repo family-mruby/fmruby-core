@@ -5,7 +5,7 @@
 # without the player knowing the difference.
 #
 #   player = FmrbMidi::SmfPlayer.new(FmrbMidi.device(self))
-#   player.load("/data/midi/song.mid")
+#   player.load("/usr/share/sounds/midi/song.mid")
 #   player.start
 #
 #   def on_update          # in an FmrbApp

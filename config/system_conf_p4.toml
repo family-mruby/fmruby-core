@@ -48,7 +48,7 @@ key = "i"
 app = "default/inspector"
 
 [[sync_files]]
-src = "/usr/share/sounds/test.nsf"
+src = "/usr/share/sounds/nsf/test.nsf"
 dest = "/flash/data/test.nsf"
 
 # Remote desktop (browser viewer via WiFi). WiFi credentials live in

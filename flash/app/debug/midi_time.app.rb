@@ -19,7 +19,7 @@
 # The log lines here mark which run is which.
 
 class MidiTimeApp < FmrbApp
-  SONG = "/data/midi/scale.mid"
+  SONG = "/usr/share/sounds/midi/scale.mid"
   # Long enough for the eight notes plus the tail, short enough to sit
   # through twice.
   RUN_MS = 6000

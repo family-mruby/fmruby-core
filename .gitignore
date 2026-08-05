@@ -16,7 +16,7 @@ managed_components/
 flash/etc/system_conf.toml
 flash/home/music/
 # Launcher app index, rebuilt on demand by the desktop
-flash/data/launcher_index
+flash/var/cache/launcher_index
 
 # Generated documentation
 doc/local/

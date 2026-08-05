@@ -192,7 +192,7 @@ module LauncherMixin
   # in practice never happens. The language is part of the header because app
   # labels are resolved per language at scan time, so a language change must
   # invalidate the cache.
-  CACHE_PATH    = "/data/launcher_index"
+  CACHE_PATH    = "/var/cache/launcher_index"
   CACHE_VERSION = "1"
   CACHE_MAX_BYTES = 16384
 
