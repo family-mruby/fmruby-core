@@ -47,6 +47,22 @@ module FmrbMidi
     # elsewhere. Rather than firing the backlog in one burst, the schedule is
     # shifted so the song simply resumes from where it was.
     STALL_MS = 200
+    STALL_US = STALL_MS * 1000
+
+    # Free slots kept in hand before decoding one more instant, so a chord
+    # never half-fits. Four is one write per APU voice; the rest is headroom
+    # for an output that sends a message per note.
+    QUEUE_MARGIN = 16
+
+    # How often to look again while the tail of a song plays out of the
+    # queue. Nothing is decoded in that state, so this is only a heartbeat.
+    DRAIN_POLL_MS = 20
+
+    # How late a command has to be, with nothing left in the queue, before it
+    # counts as the music having gapped. The first instant of a song is due
+    # the moment it starts, so a threshold keeps that from reading as a
+    # failure.
+    UNDERRUN_US = 5_000
 
     attr_reader :device, :path, :division, :format, :track_count
 
@@ -54,15 +70,43 @@ module FmrbMidi
     # sounding on the old device is released first, otherwise those notes
     # would never see their note off.
     def device=(new_device)
+      # Whatever the old output had queued is for an output we are leaving.
+      drop_queued
       silence
       @device = new_device
       @voices = voice_group_of(new_device)
+      @lookahead_us = @voices && @sched ? LOOKAHEAD_US : 0
     end
 
     def initialize(device)
+      @sched = FmrbMidi.scheduler
       @device = device
       @voices = voice_group_of(device)
+      @lookahead_us = @voices && @sched ? LOOKAHEAD_US : 0
       reset_state
+    end
+
+    # How far ahead this player fills the queue, in microseconds. Zero puts
+    # the sending back on the app's own task, which is what the player did
+    # before P7.6 and how the before/after in the report was measured; any
+    # other value is capped by what the output can actually take (an output
+    # with no queue behind it always reads back 0).
+    attr_reader :lookahead_us
+
+    def lookahead_us=(us)
+      drop_queued
+      @lookahead_us = (us > 0 && @voices && @sched) ? us : 0
+    end
+
+    # Drop what is queued for this player and stop anything it left
+    # sounding. Used wherever the future stops being the future: stopping,
+    # pausing, changing songs or outputs.
+    def drop_queued
+      return 0 unless @sched
+
+      close_instant
+      @sched._clear
+      0
     end
 
     # An output that wants to be told where one musical instant ends, or nil.
@@ -164,14 +208,27 @@ module FmrbMidi
       return false unless @loaded
 
       rewind
+      # The scheduler's figures are per song: what matters is how well this
+      # one is being played, not the average since boot.
+      @sched._reset_stats if @sched
       @playing = true
       @paused = false
-      @wall_base_ms = Machine.board_millis
+      # Anchored again on the first tick: whatever the app does between
+      # asking for the song and getting round to feeding it - a redraw is
+      # 90 ms in the simulation - would otherwise come out of the first
+      # notes, which would then be late before the music had started
+      # (doc/midi/report/p7_6.md).
+      @clock_pending = true
+      @wall_base_us = FmrbMidi.now_us
       @song_base_us = 0
       true
     end
 
     def stop
+      # Order matters: drop the future first, then release what is sounding.
+      # The other way round, a queued note on would arrive after the note off
+      # and hang (doc/midi/report/p7_6.md).
+      drop_queued
       silence
       # Nothing is holding a group open in the normal course of things, but
       # an app that stops the song from inside its own callback could be, and
@@ -185,9 +242,10 @@ module FmrbMidi
     def pause
       return false unless @playing && !@paused
 
+      drop_queued
       silence
       @paused = true
-      @pause_ms = Machine.board_millis
+      @pause_us = FmrbMidi.now_us
       true
     end
 
@@ -195,8 +253,10 @@ module FmrbMidi
       return false unless @playing && @paused
 
       # Shift the schedule by however long the pause lasted so the song
-      # carries on from the same place.
-      @wall_base_ms += Machine.board_millis - @pause_ms
+      # carries on from the same place. The cursor is up to one lookahead
+      # past what was actually heard, because pausing dropped what was
+      # queued; the song resumes a fraction of a second further on.
+      @wall_base_us += FmrbMidi.now_us - @pause_us
       @paused = false
       true
     end
@@ -243,63 +303,162 @@ module FmrbMidi
     # Send everything that is due and return the number of milliseconds until
     # the next event (0 when something is already due, nil when not playing).
     # Diagnostics: how late events actually went out, and how often the
-    # schedule had to be shifted. Timing on a device is dominated by whatever
-    # else the app task is doing, so guessing is useless -- read these.
-    attr_reader :late_max_ms, :late_sum_ms, :late_count, :stall_count
+    # schedule had to be shifted. With a scheduler in the picture the numbers
+    # that matter come from it (how late the sends actually were), so
+    # timing_stats reports those and keeps the player's own counters for what
+    # only the player can see: how often it fell behind its own decoding.
+    attr_reader :late_max_ms, :late_sum_ms, :late_count, :stall_count,
+                :underrun_count
 
     def timing_stats
       n = @late_count
       return "no events yet" if n.nil? || n == 0
-      "events=#{n} avg_late=#{@late_sum_ms / n}ms max_late=#{@late_max_ms}ms " \
-        "stalls=#{@stall_count}"
+
+      sched = @sched
+      # With no queue in front of it - no scheduler, or a lookahead of zero -
+      # the player is doing the sending itself, and its own counters are the
+      # ones that mean anything.
+      unless sched && @lookahead_us > 0
+        return "events=#{n} avg_late=#{@late_sum_ms / n}ms " \
+               "max_late=#{@late_max_ms}ms stalls=#{@stall_count}"
+      end
+
+      st = sched._stats
+      fired = st[:fired]
+      avg = fired > 0 ? st[:late_sum_us] / fired : 0
+      "events=#{n} fired=#{fired} avg_late=#{avg}us max_late=#{st[:late_max_us]}us " \
+        "stalls=#{@stall_count} under=#{@underrun_count} " \
+        "q=#{sched._depth}/#{st[:depth_max]} drop=#{st[:dropped]}/#{st[:send_failed]}"
     end
 
-    # One musical instant is dispatched as a group, so an output with fewer
-    # voices than the score can decide what each voice should sound once,
-    # instead of playing a chord's inner notes in turn (see
-    # ApuTransport#defer_voices). The dispatching itself is run_due; this
-    # closes the group whichever way it returned.
+    # How far ahead of the music the queue is kept filled.
+    #
+    # Deep enough that the app can be late by an ordinary amount - a redraw,
+    # another task, a collection elsewhere in the system - without the music
+    # hearing it; shallow enough that stopping or changing songs is not a
+    # noticeable wait, since both are done by dropping what is queued. The
+    # device measured app-side lateness in the tens of milliseconds
+    # (doc/midi/report/p7.md 9), so 300 ms is roughly ten times the worst
+    # case seen.
+    LOOKAHEAD_US = 300_000
+
+    # Send whatever is due, or rather: hand the next few hundred milliseconds
+    # of music to whatever owns the clock.
+    #
+    # With a scheduler this decodes ahead and returns when the queue reaches
+    # the horizon; the notes go out later, from a timer. Without one (the
+    # host tests, and any output that cannot take a time) the horizon is zero
+    # and this behaves exactly as it did before: dispatch what is due now.
+    #
+    # Either way the events of one musical instant are bracketed, so an
+    # output with fewer voices than the score can resolve a chord once
+    # instead of playing its inner notes in turn (P7.5).
     def tick
       return nil unless playing?
 
-      @voices.defer_voices if @voices
-      wait = run_due(Machine.board_millis)
-      @voices.flush_voices if @voices
+      now = FmrbMidi.now_us
+      if @clock_pending
+        @clock_pending = false
+        @wall_base_us = now
+      end
+      wait = run_due(now)
+      close_instant
       wait
     end
 
     def run_due(now)
+      horizon = now + @lookahead_us
       guard = 0
       while true
         index = next_track
         if index.nil?
-          finish
-          return nil
+          return drain_or_finish
         end
 
-        due = due_ms_for(@tracks[index][T_TICK])
-        if due > now
-          return due - now
+        due = due_us_for(@tracks[index][T_TICK])
+        if due > horizon
+          close_instant
+          # Wake when the next event comes into range, not when it sounds.
+          return ms_until(due - @lookahead_us, now)
         end
 
         # Falling far behind (the app was busy) shifts the whole schedule
         # instead of firing a burst of notes that should already be over.
-        if now - due > STALL_MS
-          @wall_base_ms += (now - due)
+        if now - due > STALL_US
+          close_instant
+          @wall_base_us += (now - due)
           @stall_count += 1
           return 0
         end
 
+        # Leave room for what this instant will resolve to: up to one write
+        # per voice, or one per message on an output that has no voices.
+        if @sched && @sched._free < QUEUE_MARGIN
+          close_instant
+          return 1
+        end
+
         late = now - due
+        if late > UNDERRUN_US && @lookahead_us > 0 && @sched && @sched._depth == 0
+          # Nothing was left queued and this is already audibly overdue: the
+          # music gapped because the decoding did not keep up.
+          @underrun_count += 1
+        end
+        # Only lateness counts: with a lookahead these are normally decoded
+        # early, and a negative "lateness" would make the average meaningless.
+        late_ms = late > 0 ? late / 1000 : 0
         @late_count += 1
-        @late_sum_ms += late
-        @late_max_ms = late if late > @late_max_ms
+        @late_sum_ms += late_ms
+        @late_max_ms = late_ms if late_ms > @late_max_ms
+
+        open_instant(due)
         step(index)
         guard += 1
         # Very dense passages can have hundreds of events on one tick; the
         # guard keeps a pathological file from holding the app task forever.
-        return 0 if guard >= 256
+        if guard >= 256
+          close_instant
+          return 0
+        end
       end
+    end
+
+    # The song is decoded to the end; it is over once the queue has played
+    # out what is left, and not a moment before.
+    def drain_or_finish
+      close_instant
+      if @sched && @sched._depth > 0
+        return DRAIN_POLL_MS
+      end
+
+      finish
+      nil
+    end
+
+    def ms_until(target_us, now)
+      return 0 if target_us <= now
+
+      ms = (target_us - now) / 1000
+      ms < 1 ? 1 : ms
+    end
+
+    # Instants are bracketed per musical time, not per call: one tick can
+    # hand over several instants when the queue is being filled ahead.
+    def open_instant(due_us)
+      return 0 if @instant_us == due_us
+
+      close_instant
+      @instant_us = due_us
+      @voices.defer_voices(@lookahead_us > 0 ? due_us : nil) if @voices
+      0
+    end
+
+    def close_instant
+      return 0 if @instant_us.nil?
+
+      @instant_us = nil
+      @voices.flush_voices if @voices
+      0
     end
 
     # For an app's on_update: the smaller of its own delay and the time to
@@ -333,10 +492,13 @@ module FmrbMidi
       @channel_mask = nil
       @song_us = 0
       @song_base_us = 0
-      @wall_base_ms = 0
+      @wall_base_us = 0
       @cur_tick = 0
-      @pause_ms = 0
+      @pause_us = 0
       @vl_pos = 0
+      @instant_us = nil
+      @clock_pending = false
+      @underrun_count = 0
       @sounding = []
     end
 
@@ -536,10 +698,10 @@ module FmrbMidi
     end
 
     # Wall clock time at which a tick should sound.
-    def due_ms_for(tick)
+    def due_us_for(tick)
       song_us = @song_us + ticks_to_us(tick - @cur_tick)
       wall_us = ((song_us - @song_base_us) * 1000) / @scale_permille
-      @wall_base_ms + (wall_us / 1000)
+      @wall_base_us + wall_us
     end
 
     # Freeze the mapping at the current position, so a tempo change from here
@@ -547,7 +709,7 @@ module FmrbMidi
     def rebase_clock
       now_song_us = @song_us
       wall_us = ((now_song_us - @song_base_us) * 1000) / @scale_permille
-      @wall_base_ms += wall_us / 1000
+      @wall_base_us += wall_us
       @song_base_us = now_song_us
     end
 

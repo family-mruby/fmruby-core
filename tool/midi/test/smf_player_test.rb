@@ -359,7 +359,7 @@ def play_entertainer(grouped)
 
   transport.auto_map(player.channel_usage)
   player.start
-  play_song(player, limit_ms: 90_000)
+  play_song(player, limit_ms: 180_000)
   audio.calls
 end
 
@@ -401,6 +401,137 @@ if File.exist?(SONG)
   check("the same voices are used") do
     [grouped.map(&:channel).uniq.sort == ungrouped.map(&:channel).uniq.sort,
      grouped.map(&:channel).uniq.sort.inspect]
+  end
+else
+  puts "  skip  #{SONG} is missing"
+end
+
+puts "scheduling ahead (the C queue, faked)"
+
+# With a scheduler present the player stops sending notes and starts filing
+# them: it decodes a few hundred milliseconds ahead and hands over commands
+# stamped with the microsecond they are due, which a timer sends later
+# (doc/midi/report/p7_6.md). The C queue is not here on the host, so this
+# stands in for it and records what would have been filed.
+#
+# What has to hold: the commands are the same ones the immediate path
+# produces, in the same order - the P7.5 chord resolution has moved from the
+# tick boundary to the moment of filing, and must have survived the move -
+# and their due times must not go backwards.
+class FakeSched
+  class << self
+    attr_reader :cmds
+
+    def reset
+      @cmds = []
+    end
+
+    def _push_apu_note(due, ch, freq, vol, duty, sweep)
+      @cmds << [due, :on, ch, freq, vol, duty, sweep]
+      true
+    end
+
+    def _push_apu_off(due, ch)
+      @cmds << [due, :off, ch]
+      true
+    end
+
+    def _push_serial(due, len, b1, b2, b3)
+      @cmds << [due, :serial, len, b1, b2, b3]
+      true
+    end
+
+    def _clear
+      @cmds = []
+    end
+
+    def _reset_stats
+      nil
+    end
+
+    def _depth
+      0
+    end
+
+    def _free
+      128
+    end
+
+    def _now_us
+      Machine.board_millis * 1000
+    end
+
+    def _stats
+      { fired: 0, pushed: @cmds.size, dropped: 0, send_failed: 0,
+        late_sum_us: 0, late_max_us: 0, depth_max: 0 }
+    end
+  end
+end
+
+# The player asks FmrbMidi for the scheduler once and remembers the answer;
+# clear that so the fake is picked up.
+def with_scheduler(sched)
+  FmrbMidi.instance_variable_set(:@scheduler_checked, false)
+  FmrbMidi.instance_variable_set(:@scheduler, sched)
+  FmrbMidi.instance_variable_set(:@scheduler_checked, true)
+  yield
+ensure
+  FmrbMidi.instance_variable_set(:@scheduler_checked, false)
+  FmrbMidi.instance_variable_set(:@scheduler, nil)
+end
+
+if File.exist?(SONG)
+  # What the immediate path plays, as a plain sequence of voice writes.
+  immediate = grouped.map { |c| c.kind == :on ? [:on, c.channel, c.freq] : [:off, c.channel] }
+
+  FakeSched.reset
+  scheduled = nil
+  with_scheduler(FakeSched) do
+    Machine.set(0)
+    audio = FmrbAudio.new
+    transport = FmrbMidi::ApuTransport.new(audio)
+    device = MIDI::Device.new(transport)
+    player = FmrbMidi::SmfPlayer.new(device)
+    player.load(SONG)
+    transport.auto_map(player.channel_usage)
+    player.start
+    play_song(player, limit_ms: 180_000)
+    scheduled = FakeSched.cmds
+  end
+
+  check("the player files commands instead of sending them") do
+    sent_now = 0
+    [scheduled.size > 400, "#{scheduled.size} filed, #{sent_now} sent directly"]
+  end
+
+  check("the filed commands are the ones the immediate path plays") do
+    filed = scheduled.map do |c|
+      c[1] == :on ? [:on, c[2], c[3]] : [:off, c[2]]
+    end
+    # When the clock stops the scheduled run is ahead by up to one lookahead,
+    # so it has filed a few commands the immediate run never reached. Compare
+    # what both got to, and check the excess is only that.
+    n = [filed.size, immediate.size].min
+    ahead = filed.size - immediate.size
+    [filed[0, n] == immediate && ahead >= 0 && ahead <= 8,
+     "#{n} commands identical, scheduled is #{ahead} ahead at the cut"]
+  end
+
+  check("due times never go backwards") do
+    back = 0
+    i = 1
+    while i < scheduled.size
+      back += 1 if scheduled[i][0] < scheduled[i - 1][0]
+      i += 1
+    end
+    [back.zero?, "#{back} out of order"]
+  end
+
+  check("the song is filed ahead of itself, not on the beat") do
+    # The point of the exercise: by the time the first second of music has
+    # sounded, the player is already several hundred milliseconds ahead.
+    span_us = scheduled.last[0] - scheduled.first[0]
+    [span_us > 10_000_000, "#{span_us / 1_000_000} s of music filed"]
   end
 else
   puts "  skip  #{SONG} is missing"

@@ -121,6 +121,29 @@ module FmrbMidi
       ::MIDI::Device.new(ApuTransport.new(app))
     end
 
+    # The C command queue, or nil where there is none (the host tests run
+    # this gem as plain Ruby). Playing a song hands it commands stamped with
+    # the microsecond they are due, and a timer sends them at that
+    # microsecond without entering the VM - the beat then no longer depends
+    # on when the app's task happens to wake (doc/midi/report/p7_6.md).
+    def scheduler
+      return @scheduler if @scheduler_checked
+
+      @scheduler_checked = true
+      @scheduler = begin
+        ::FmrbMidi::Sched
+      rescue NameError
+        nil
+      end
+    end
+
+    # The clock the due times are on. Falls back to the millisecond clock
+    # where there is no scheduler, so the same player code runs on the host.
+    def now_us
+      sched = scheduler
+      sched ? sched._now_us : Machine.board_millis * 1000
+    end
+
     # Run every registered transport's pending note offs.
     #
     # Also closes any voice group left open (see ApuTransport#defer_voices).
@@ -252,6 +275,11 @@ module FmrbMidi
       @deferring = false
       @touched = [false, false, false, false]
       @grouped_on = [-1, -1, -1, -1]
+
+      # When an instant carries a due time, its writes go to the C queue to
+      # be sent at that microsecond instead of now (see FmrbMidi.scheduler).
+      @instant_us = nil
+      @sched = FmrbMidi.scheduler
 
       # Per MIDI channel controller state.
       @cc_volume = []
@@ -446,10 +474,12 @@ module FmrbMidi
     # played from an app - a key press, a drum pad - sounds at once and is
     # never held back waiting for a boundary.
 
-    def defer_voices
+    # due_us marks the instant on the scheduler's clock; nil means now.
+    def defer_voices(due_us = nil)
       return 0 if @deferring
 
       @deferring = true
+      @instant_us = @sched ? due_us : nil
       i = 0
       while i < 4
         @touched[i] = false
@@ -469,6 +499,7 @@ module FmrbMidi
         @touched[voice] = false
         voice += 1
       end
+      @instant_us = nil
       0
     end
 
@@ -558,28 +589,43 @@ module FmrbMidi
       silence(voice)
     end
 
+    # The one place a voice is given a note. Everything above decides what
+    # should sound; this decides whether it goes out now or at a time.
     def sound(voice, note, velocity, channel)
       @current[voice] = note
       case voice
       when FmrbMidi::CH_TRIANGLE
         # The triangle has no volume control, so velocity is dropped.
-        @audio.note_on(voice, FmrbMidi::TRIANGLE_FREQ[note & 0x7F], 0, 0, 0)
+        emit(voice, FmrbMidi::TRIANGLE_FREQ[note & 0x7F], 0, 0, 0)
       when FmrbMidi::CH_NOISE
         drum = FmrbMidi::DRUM_MAP[note] || FmrbMidi::DRUM_DEFAULT
         # The audio side reads the noise period from the low 4 bits of the
         # frequency argument and the short-mode flag from bit 7.
         arg = (drum[0] & 0x0F) | (drum[1] ? 0x80 : 0x00)
-        @audio.note_on(voice, arg, volume_for(channel, velocity), 0, 0)
+        emit(voice, arg, volume_for(channel, velocity), 0, 0)
       else
-        @audio.note_on(voice, FmrbMidi::PULSE_FREQ[note & 0x7F],
-                       volume_for(channel, velocity), @cc_duty[channel], 0)
+        emit(voice, FmrbMidi::PULSE_FREQ[note & 0x7F],
+             volume_for(channel, velocity), @cc_duty[channel], 0)
+      end
+      0
+    end
+
+    def emit(voice, freq, volume, duty, sweep)
+      if @instant_us
+        @sched._push_apu_note(@instant_us, voice, freq, volume, duty, sweep)
+      else
+        @audio.note_on(voice, freq, volume, duty, sweep)
       end
       0
     end
 
     def silence(voice)
       @current[voice] = nil
-      @audio.note_off(voice)
+      if @instant_us
+        @sched._push_apu_off(@instant_us, voice)
+      else
+        @audio.note_off(voice)
+      end
       0
     end
 

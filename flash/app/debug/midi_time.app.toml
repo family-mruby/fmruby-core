@@ -1,0 +1,8 @@
+app_handle_name = "midi_time"
+app_screen_name = "MIDI Timing"
+app_screen_name_ja = "MIDI時間計測"
+default_window_mode = "window"
+default_window_width = 300
+default_window_height = 120
+default_window_pos_x = 10
+default_window_pos_y = 30

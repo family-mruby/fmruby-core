@@ -873,6 +873,24 @@ static size_t build_audio_note_msg(uint8_t *buf, mrb_bool on, mrb_int ch,
     return n;
 }
 
+// Build and send one note message on behalf of src_pid. Declared in
+// include/picoruby_fmrb_app.h: the MIDI scheduler fires notes from a timer,
+// so this has to work outside the VM. Nothing here is mruby, and the send is
+// non-blocking, so it is safe from any task context.
+int fmrb_app_send_audio_note(int src_pid, bool on, int channel, int freq,
+                             int volume, int duty, int sweep,
+                             unsigned int timeout_ms)
+{
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_AUDIO,
+        .src_pid = (fmrb_proc_id_t)src_pid,
+        .size = 0,
+    };
+    msg.size = (uint32_t)build_audio_note_msg(msg.data, on, channel, freq,
+                                              volume, duty, sweep);
+    return (int)fmrb_msg_send(PROC_ID_KERNEL, &msg, timeout_ms);
+}
+
 // FmrbApp#_send_audio_note(on, ch, freq, vol, duty, sweep) -> bool
 // The note_on / note_off half of FmrbAudio, without the Hash.
 static mrb_value mrb_fmrb_app_send_audio_note(mrb_state *mrb, mrb_value self)
@@ -886,14 +904,8 @@ static mrb_value mrb_fmrb_app_send_audio_note(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
     }
 
-    fmrb_msg_t msg = {
-        .type = FMRB_MSG_TYPE_APP_AUDIO,
-        .src_pid = ctx->app_id,
-        .size = 0,
-    };
-    msg.size = (uint32_t)build_audio_note_msg(msg.data, on, ch, freq, vol, duty, sweep);
-
-    fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &msg, 1000);
+    int ret = fmrb_app_send_audio_note(ctx->app_id, on, ch, freq, vol,
+                                       duty, sweep, 1000);
     if (ret != FMRB_OK) {
         FMRB_LOGE(TAG, "App %s failed to send audio note: %d", ctx->app_name, ret);
         return mrb_false_value();

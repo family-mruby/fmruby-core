@@ -556,6 +556,29 @@ class MidiBenchApp < FmrbApp
       apu.flush_voices
     end
 
+    # The same chord filed for a time instead of sent now (P7.6): this is
+    # the path a song actually takes, so it is the one that has to allocate
+    # nothing. Due times far enough ahead that nothing fires during the
+    # measurement.
+    if FmrbMidi.scheduler
+      due = FmrbMidi.now_us + 60_000_000
+      measure_alloc("apu scheduled chord (6 events)", 25) do
+        due += 1000
+        apu.defer_voices(due)
+        apu.note_on(0, 60, 100)
+        apu.note_on(0, 64, 100)
+        apu.note_on(0, 67, 100)
+        apu.flush_voices
+        apu.defer_voices(due + 500)
+        apu.note_off(0, 67)
+        apu.note_off(0, 64)
+        apu.note_off(0, 60)
+        apu.flush_voices
+      end
+      FmrbMidi.scheduler._clear
+      say("sched stats after alloc: #{FmrbMidi.scheduler._stats}")
+    end
+
     apu.all_off
     audio.note_off(0)
     FmrbMidi.unregister(apu)

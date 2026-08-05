@@ -79,6 +79,11 @@ module FmrbMidi
       # Built with String#* rather than written as literals so they are
       # certainly mutable strings of this VM's own making.
       @wire = [nil, "\x00" * 1, "\x00" * 2, "\x00" * 3]
+      # An instant with a due time hands its bytes to the C queue instead of
+      # writing them now, so the beat comes from a timer rather than from
+      # whenever the app's task woke up (doc/midi/report/p7_6.md).
+      @instant_us = nil
+      @sched = FmrbMidi.scheduler
       @opened = ::FmrbMidi::SerialPort._open(path, uart || -1, tx || -1, rx, baud)
       FmrbMidi.register(self) if @opened
     end
@@ -96,6 +101,11 @@ module FmrbMidi
     def send_packet(_cable, cin, b1, b2, b3)
       length = ::FmrbMidi::WIRE_BYTES[cin & 0x0F]
       return -1 if length == 0
+
+      if @instant_us
+        return @sched._push_serial(@instant_us, length, b1 & 0xFF,
+                                   b2 & 0xFF, b3 & 0xFF) ? length : -1
+      end
 
       # picoruby has no Array#pack, so the buffer is built with setbyte.
       buffer = @wire[length]
@@ -128,6 +138,20 @@ module FmrbMidi
 
     def transport_id
       ::FmrbMidi::TRANSPORT_ID_SERIAL
+    end
+
+    # An instant, the same pair ApuTransport offers. There are no voices to
+    # resolve here - a real instrument plays every note it is given - so all
+    # this does is stamp the messages of one musical instant with the time
+    # they are due, which is what the player needs from any output.
+    def defer_voices(due_us = nil)
+      @instant_us = @sched ? due_us : nil
+      0
+    end
+
+    def flush_voices
+      @instant_us = nil
+      0
     end
 
     # Nothing of ours is sounding once every channel has been told to stop;
