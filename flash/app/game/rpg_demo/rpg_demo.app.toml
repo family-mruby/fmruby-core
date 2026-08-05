@@ -2,3 +2,4 @@ app_handle_name = "rpg_demo"
 app_screen_name = "RPG Demo"
 app_screen_name_ja = "RPGデモ"
 default_window_mode = "fullscreen"
+large_memory = 1
