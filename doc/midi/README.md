@@ -351,8 +351,8 @@ submodule 方式。共有するなら `repos.yaml` と Rakefile での扱いを�
 | ~~P7~~ | 演奏を止めない (GC 停止の除去) **完了** (実機で stall ゼロ確認、idle_gc は opt-in が最終形) | - | idle_gc + 音声メッセージ C 化 + desktop idle_gc |
 | P7.5 | **APU の「外れた音」を直す 着手中** | 無し (sim。聴くのはユーザ) | 和音の戻り発音アルペジオ + 低音クランプの折り返し |
 | P7.6 | **演奏時刻の権威を C へ** (テンポ精度) | 実機で計測 | Ruby は先読み復号してキューに積み、esp_timer が C のまま発射。実測 avg_late 17〜20ms / max 71ms (知覚閾超え) を 1ms 級へ。Midori の midi_scheduler.c が土台候補 |
-| P8 | USB-MIDI host 相乗り (方向E-2) | 実機 | 挿した機器を鳴らす。手数が多いので後 |
-| P9 | アプリ (シーケンサ、パッド、MML プレーヤ) | - | Midori のアプリを移植 |
+| ~~P8~~ | USB-MIDI host 相乗り (方向E-2) | - | **やらない (2026-08-06 決定)** |
+| ~~P9~~ | Midori のアプリ層 (タッチ UI / パッド / MML プレーヤ) の移植 | - | **やらない (同)**。Family mruby 側のアプリは必要になったら独自に書く |
 
 P0/P1 の結果は `report/p0.md` / `report/p1.md`。**P2 は Ruby 実装で足りる**
 見込みが立った (送出 1 回 115us、必要量とは 1 桁以上の開き)。また
