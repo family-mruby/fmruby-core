@@ -19,6 +19,7 @@ Family mruby Core includes code from several open source projects. The following
 9. [RX8900RTC](#rx8900rtc)
 10. [harucom-os](#harucom-os)
 11. [StackChan](#stackchan)
+12. [Midori (picoruby-midi, picoruby-midi-mml)](#midori-picoruby-midi-picoruby-midi-mml)
 
 ---
 
@@ -461,3 +462,40 @@ The following are ESP-IDF managed components, downloaded at build time:
 - **espressif/usb_host_hid** (Apache License 2.0) - https://components.espressif.com/components/espressif/usb_host_hid
 - **m5stack/m5gfx** (MIT License) - https://github.com/m5stack/M5GFX
 - **m5stack/m5unified** (MIT License) - https://github.com/m5stack/M5Unified
+
+================================================================================
+## Midori (picoruby-midi, picoruby-midi-mml)
+Repository: https://github.com/kirikak2/picoruby-midi
+License: MIT License (declared in each gem's mrbgem.rake; the upstream
+repositories ship no separate license text file)
+
+Note: The MIDI protocol layer (lib/add/picoruby-midi: midi_constants.rb,
+midi_device.rb) and the MML parser (lib/add/picoruby-midi-mml: midi_mml.rb)
+are partial, byte-identical imports from the Midori project by Toshio Maki
+(kirikak2). What was imported and what was deliberately left behind is
+documented in each gem's FAMILY_MRUBY_PORT.md. Family mruby's own transports,
+players and scheduler (lib/add/picoruby-fmrb-midi) are built on top of this
+protocol layer.
+--------------------------------------------------------------------------------
+
+Copyright (c) Toshio Maki
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
