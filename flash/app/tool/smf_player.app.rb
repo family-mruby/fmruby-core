@@ -7,6 +7,7 @@
 # the tempo and even the instrument can be changed while the song runs.
 #
 # Keys: up/down select, Enter play/stop, left/right tempo, o output, q stop.
+#       [ ] instrument, i file/own instrument (external output only).
 
 class SmfPlayerApp < FmrbApp
   MUSIC_DIR = "/data/midi"
@@ -34,10 +35,19 @@ class SmfPlayerApp < FmrbApp
     @tempo_index = DEFAULT_TEMPO_INDEX
     @external = false
     @status = nil
+    # Instrument for an external GM module. "own" means this app chooses it
+    # and the file's own Program Change events are dropped; otherwise the
+    # song plays with whatever instruments it asks for.
+    @program = 0
+    @own_instrument = false
+    @channels = nil
     @play_btn = nil
     @slower_btn = nil
     @faster_btn = nil
     @out_btn = nil
+    @inst_down_btn = nil
+    @inst_up_btn = nil
+    @inst_mode_btn = nil
   end
 
   def on_create
@@ -81,6 +91,7 @@ class SmfPlayerApp < FmrbApp
       usage = @player.channel_usage
       notes = 0
       usage.each { |_, stats| notes += stats[0] }
+      @channels = usage.keys
       @info = { tracks: @player.track_count, channels: usage.keys.length, notes: notes }
     else
       @status = @player.error
@@ -106,8 +117,14 @@ class SmfPlayerApp < FmrbApp
     # Songs use whatever channels they like; let the APU transport pick its
     # voices from what this file actually plays. An external instrument has
     # sixteen channels of its own and needs no mapping.
-    @device.transport.auto_map(@player.channel_usage)
+    usage = @player.channel_usage
+    @channels = usage.keys
+    @device.transport.auto_map(usage)
     @player.device = current_device
+    # Whatever instrument is showing is the one to play with, and the file
+    # must not take it back (see SmfPlayer#ignore_program_change).
+    @player.ignore_program_change = @own_instrument
+    apply_instrument
     @player.tempo_scale = TEMPO_STEPS[@tempo_index] / 100.0
     @player.start
     @playing = true
@@ -136,6 +153,58 @@ class SmfPlayerApp < FmrbApp
     draw_ui
   end
 
+  # --- instrument (external output only) --------------------------------
+  #
+  # An external GM module has 128 sounds; the APU has four fixed voices and
+  # ignores Program Change, so this only appears when the output is the MIDI
+  # port. Sent straight away rather than through the scheduler queue: the
+  # point of pressing the key is to hear the change now, and it belongs to
+  # the app rather than to a moment in the song.
+
+  def change_instrument(step)
+    program = @program + step
+    return if program < 0 || program > 127
+
+    @program = program
+    apply_instrument
+    draw_ui
+  end
+
+  # Switching back to "File" hands the choice to the song again, but the
+  # module keeps sounding what it was given until the song sets an instrument
+  # of its own - which many files never do. Pressing Play again is what puts
+  # a file's instruments back in charge.
+  def toggle_instrument_mode
+    @own_instrument = !@own_instrument
+    @player.ignore_program_change = @own_instrument
+    apply_instrument
+    draw_ui
+  end
+
+  # Send the chosen instrument to every channel the song plays on, leaving
+  # percussion alone: on channel 10 a program number picks a drum kit, not an
+  # instrument, and a piano there would silence the drums.
+  def apply_instrument
+    return unless @external && @serial && @own_instrument
+
+    channels = @channels
+    if channels.nil? || channels.empty?
+      channel = 0
+      while channel < 16
+        @serial.program_change(@program, channel: channel) unless channel == FmrbMidi::GM_DRUM_CHANNEL
+        channel += 1
+      end
+      return
+    end
+
+    i = 0
+    while i < channels.length
+      channel = channels[i]
+      @serial.program_change(@program, channel: channel) unless channel == FmrbMidi::GM_DRUM_CHANNEL
+      i += 1
+    end
+  end
+
   def toggle_output
     if @external
       @external = false
@@ -150,6 +219,7 @@ class SmfPlayerApp < FmrbApp
     end
     # Moving a playing song releases whatever the old output was sounding.
     @player.device = current_device
+    apply_instrument
     draw_ui
   end
 
@@ -248,8 +318,40 @@ class SmfPlayerApp < FmrbApp
       draw_button(@out_btn, "APU", BORDER_COLOR)
     end
 
-    @gfx.draw_text(x0 + 2, btn_y + 14, "Enter play  < > tempo  o output", TEXT_COLOR, BG_COLOR)
+    row_y = btn_y + 14
+    if @external
+      draw_instrument_row(x0, row_y, w)
+    else
+      @inst_down_btn = nil
+      @inst_up_btn = nil
+      @inst_mode_btn = nil
+      @gfx.draw_text(x0 + 2, row_y, "Enter play  < > tempo  o output", TEXT_COLOR, BG_COLOR)
+    end
     @gfx.present
+  end
+
+  # [-] [+] 042 Bassoon              [File|Own]
+  #
+  # The mode button is the one that matters: "File" plays the song with the
+  # instruments it was written with, "Own" plays it with the one shown here.
+  def draw_instrument_row(x0, y, w)
+    btn_h = 11
+    @inst_down_btn = { x: x0 + 2, y: y - 1, w: 12, h: btn_h }
+    @inst_up_btn = { x: x0 + 16, y: y - 1, w: 12, h: btn_h }
+    draw_button(@inst_down_btn, "-", BORDER_COLOR)
+    draw_button(@inst_up_btn, "+", BORDER_COLOR)
+
+    name = FmrbMidi.gm_name(@program) || ""
+    label = "#{@program} #{name}"
+    color = @own_instrument ? TEXT_COLOR : BORDER_COLOR
+    @gfx.draw_text(x0 + 32, y, label, color, BG_COLOR)
+
+    @inst_mode_btn = { x: x0 + w - 44, y: y - 1, w: 40, h: btn_h }
+    if @own_instrument
+      draw_button(@inst_mode_btn, "Own", FmrbGfx::COLOR_GREEN)
+    else
+      draw_button(@inst_mode_btn, "File", BORDER_COLOR)
+    end
   end
 
   # --- main loop --------------------------------------------------------
@@ -321,6 +423,12 @@ class SmfPlayerApp < FmrbApp
           @playing ? stop_current : play_current
         elsif ch == 111 # 'o'
           toggle_output
+        elsif ch == 91 # '['
+          change_instrument(-1)
+        elsif ch == 93 # ']'
+          change_instrument(1)
+        elsif ch == 105 # 'i'
+          toggle_instrument_mode
         elsif ch == 27 || ch == 113 # Escape or 'q'
           stop_current if @playing
         end
@@ -351,6 +459,12 @@ class SmfPlayerApp < FmrbApp
       change_tempo(1)
     elsif hit_btn?(@out_btn, x, y)
       toggle_output
+    elsif hit_btn?(@inst_down_btn, x, y)
+      change_instrument(-1)
+    elsif hit_btn?(@inst_up_btn, x, y)
+      change_instrument(1)
+    elsif hit_btn?(@inst_mode_btn, x, y)
+      toggle_instrument_mode
     end
   end
 

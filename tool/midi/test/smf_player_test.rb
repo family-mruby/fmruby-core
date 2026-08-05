@@ -58,6 +58,7 @@ end
 require File.join(ROOT, "lib/add/picoruby-midi/mrblib/midi_constants.rb")
 require File.join(ROOT, "lib/add/picoruby-midi/mrblib/midi_device.rb")
 require File.join(ROOT, "lib/add/picoruby-fmrb-midi/mrblib/fmrb-midi.rb")
+require File.join(ROOT, "lib/add/picoruby-fmrb-midi/mrblib/fmrb-gm.rb")
 require File.join(ROOT, "lib/add/picoruby-fmrb-midi/mrblib/fmrb-smf.rb")
 
 # --- harness -------------------------------------------------------------
@@ -535,6 +536,122 @@ if File.exist?(SONG)
   end
 else
   puts "  skip  #{SONG} is missing"
+end
+
+puts "instruments (what an external GM module gets)"
+
+# Records what reaches the wire, which the APU transport cannot do: it has
+# four fixed voices and drops Program Change entirely.
+class RecordingTransport
+  include FmrbMidi::NoteScheduler
+
+  attr_reader :packets
+
+  def initialize
+    @packets = []
+    @pending = []
+  end
+
+  def send_packet(_cable, cin, b1, b2, b3)
+    @packets << [cin, b1, b2, b3]
+    0
+  end
+
+  def read_available
+    ""
+  end
+
+  def bytes_available
+    0
+  end
+
+  def connected?
+    true
+  end
+
+  def device_info
+    { name: "recorder", direction: :out }
+  end
+
+  def transport_id
+    2
+  end
+
+  def note_on(channel, note, velocity)
+    send_packet(0, 0x9, 0x90 | channel, note, velocity)
+  end
+
+  def note_off(channel, note)
+    send_packet(0, 0x8, 0x80 | channel, note, 0)
+  end
+
+  def all_off
+    0
+  end
+
+  def programs
+    @packets.select { |p| p[0] == 0x0C }.map { |p| [p[1] & 0x0F, p[2]] }
+  end
+end
+
+# A song that sets an instrument and then plays one note, written out here
+# because none of the .mid fixtures carries a Program Change.
+def song_with_program_change(program)
+  track = [0x00, 0xC0, program,          # program change on channel 0
+           0x00, 0x90, 0x3C, 0x64,       # note on
+           0x60, 0x80, 0x3C, 0x00,       # note off a quarter later
+           0x00, 0xFF, 0x2F, 0x00].pack("C*")
+  ["MThd", 6, 0, 1, 96].pack("a4NnnN")[0, 8] +
+    [0, 1, 96].pack("nnn") + "MTrk" + [track.bytesize].pack("N") + track
+end
+
+def play_program_song(ignore)
+  Machine.set(0)
+  transport = RecordingTransport.new
+  player = FmrbMidi::SmfPlayer.new(MIDI::Device.new(transport))
+  player.load_string(song_with_program_change(42))
+  player.ignore_program_change = ignore
+  player.start
+  play_song(player, limit_ms: 5_000)
+  transport
+end
+
+check("by default the song's own instrument is sent") do
+  t = play_program_song(false)
+  [t.programs == [[0, 42]], t.programs.inspect]
+end
+
+check("ignore_program_change drops it, and nothing else") do
+  # The notes still play; only the instrument setting is withheld, so an
+  # instrument the app chose is not taken back by the file.
+  t = play_program_song(true)
+  notes = t.packets.count { |p| p[0] == 0x09 }
+  [t.programs.empty? && notes == 1,
+   "#{t.programs.size} program changes, #{notes} notes"]
+end
+
+puts "the GM name list"
+
+check("there are 128 instruments") do
+  [FmrbMidi::GM_NAMES.length == 128, "#{FmrbMidi::GM_NAMES.length} names"]
+end
+
+check("the ends of the list are what GM says") do
+  [FmrbMidi.gm_name(0) == "Ac Grand Piano" && FmrbMidi.gm_name(127) == "Gunshot",
+   "#{FmrbMidi.gm_name(0).inspect} .. #{FmrbMidi.gm_name(127).inspect}"]
+end
+
+check("every name fits the sixteen characters the screen has") do
+  long = FmrbMidi::GM_NAMES.select { |n| n.length > 16 }
+  [long.empty?, long.inspect]
+end
+
+check("out of range asks for nothing") do
+  [FmrbMidi.gm_name(-1).nil? && FmrbMidi.gm_name(128).nil?, "nil outside 0-127"]
+end
+
+check("percussion is on the channel GM reserves") do
+  [FmrbMidi::GM_DRUM_CHANNEL == 9, FmrbMidi::GM_DRUM_CHANNEL.to_s]
 end
 
 puts "memory shape"

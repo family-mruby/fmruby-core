@@ -298,6 +298,18 @@ module FmrbMidi
     # Which MIDI channels to play. nil plays everything.
     attr_accessor :channel_mask
 
+    # Drop the file's own Program Change events instead of sending them.
+    #
+    # A song sets its instruments as it goes, so an instrument chosen by the
+    # app is overwritten the moment the song reaches its own setting - often
+    # bar one, sometimes halfway through. An app that offers "play this with
+    # the instrument I picked" has to turn the file's choices off, and this
+    # is that switch. Everything else in the file still plays.
+    #
+    # Only the outputs that have instruments care (an external GM module);
+    # the APU has four fixed voices and drops Program Change either way.
+    attr_accessor :ignore_program_change
+
     # --- the clock -------------------------------------------------------
 
     # Send everything that is due and return the number of milliseconds until
@@ -490,6 +502,7 @@ module FmrbMidi
       @scale_permille = 1000
       @transpose = 0
       @channel_mask = nil
+      @ignore_program_change = false
       @song_us = 0
       @song_base_us = 0
       @wall_base_us = 0
@@ -791,7 +804,7 @@ module FmrbMidi
       when 0xB0
         @device.send_control_change(channel, d1, d2)
       when 0xC0
-        @device.send_program_change(channel, d1)
+        @device.send_program_change(channel, d1) unless @ignore_program_change
       end
       # Aftertouch and pitch bend are dropped: the APU has neither, and
       # MIDI::Device#pitch_bend needs Integer#clamp, which this build of
