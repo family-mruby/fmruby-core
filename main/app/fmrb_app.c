@@ -426,42 +426,75 @@ const char* fmrb_app_get_last_error_msg(void) { return s_last_error_msg; }
 
 void fmrb_app_dump_vm_pools(void)
 {
-    FMRB_LOGI(TAG, "--- VM Pools ---");
-    FMRB_LOGI(TAG, "%-16s %4s %8s %8s %8s %5s %6s", "Name", "VM", "Used", "Free", "Total", "Frag", "ExcHW");
     // Same locking as fmrb_app_ps: est must not be read while an exiting app
-    // clears it or a spawn reassigns the slot. Held across the logging of a
-    // debug dump that runs every 10 s -- cheap enough.
-    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    // clears it or a spawn reassigns the slot. The rows are snapshotted under
+    // the lock and printed after releasing it, because the printing yields
+    // between lines (a few ms of UART each) and a lock must not be held
+    // across deliberate delays -- spawn/exit and FmrbApp.ps block on it.
+    struct {
+        char name[24];
+        const char *vm;
+        unsigned used, free_bytes, total;
+        int frag;
+        char exc_hw[12];
+    } rows[FMRB_MAX_APPS];
+    int count = 0;
+
+    // One slot per lock hold: the stats call walks the pool's free list,
+    // which for a fragmented 1 MB pool is the expensive part of this dump.
+    // Locking per slot keeps each hold bounded and lets the yield below run
+    // without holding the lock.
     for (int i = 0; i < FMRB_MAX_APPS; i++) {
+        fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
         fmrb_app_task_context_t *ctx = &g_ctx_pool[i];
         if (ctx->state == PROC_STATE_FREE || !ctx->est) {
+            fmrb_semaphore_give(g_ctx_lock);
             continue;
         }
         size_t total = 0, used = 0, free_bytes = 0;
         int32_t frag = 0;
         if (mrb_get_estalloc_stats(ctx->est, &total, &used, &free_bytes, &frag) != 0) {
+            fmrb_semaphore_give(g_ctx_lock);
             continue;
         }
         /* NATIVE = a Spinel instance: it aborts the whole firmware through
            sp_oom_die when its pool cannot satisfy an allocation, so its headroom
            is the number to watch. ExcHW = begin/catch stack depth high-waters
            (Spinel only), the observations SP_EXC_STACK_MAX is sized from. */
-        char exc_hw_str[12] = "-";
+        snprintf(rows[count].name, sizeof(rows[count].name), "%s", ctx->app_name);
+        rows[count].vm = ctx->vm_type == FMRB_VM_TYPE_NATIVE ? "spx" : "mrb";
+        rows[count].used = (unsigned)used;
+        rows[count].free_bytes = (unsigned)free_bytes;
+        rows[count].total = (unsigned)total;
+        rows[count].frag = (int)frag;
+        rows[count].exc_hw[0] = '-';
+        rows[count].exc_hw[1] = '\0';
 #ifdef FMRB_HAVE_SPINEL_HOST
         if (ctx->vm_type == FMRB_VM_TYPE_NATIVE) {
             int exc_hw = 0, catch_hw = 0;
             if (fmrb_spinel_instance_exc_hw(ctx->est, &exc_hw, &catch_hw) == 0) {
-                snprintf(exc_hw_str, sizeof(exc_hw_str), "%d/%d", exc_hw, catch_hw);
+                snprintf(rows[count].exc_hw, sizeof(rows[count].exc_hw), "%d/%d", exc_hw, catch_hw);
             }
         }
 #endif
-        FMRB_LOGI(TAG, "%-16s %4s %8u %8u %8u %4d%% %6s",
-                  ctx->app_name,
-                  ctx->vm_type == FMRB_VM_TYPE_NATIVE ? "spx" : "mrb",
-                  (unsigned)used, (unsigned)free_bytes, (unsigned)total, (int)frag,
-                  exc_hw_str);
+        count++;
+        fmrb_semaphore_give(g_ctx_lock);
+        /* The walk above is CPU-bound at this task's priority; let the apps
+           run between slots. */
+        fmrb_task_delay_ms(1);
     }
-    fmrb_semaphore_give(g_ctx_lock);
+
+    FMRB_LOGI(TAG, "--- VM Pools ---");
+    FMRB_LOGI(TAG, "%-16s %4s %8s %8s %8s %5s %6s", "Name", "VM", "Used", "Free", "Total", "Frag", "ExcHW");
+    for (int i = 0; i < count; i++) {
+        FMRB_LOGI(TAG, "%-16s %4s %8u %8u %8u %4d%% %6s",
+                  rows[i].name, rows[i].vm,
+                  rows[i].used, rows[i].free_bytes, rows[i].total, rows[i].frag,
+                  rows[i].exc_hw);
+        /* See fmrb_task_dump_status: one line of synchronous UART is a few
+           ms above every app's priority; yield so they run between lines. */
+        fmrb_task_delay_ms(1);
+    }
     FMRB_LOGI(TAG, "----------------");
 }
 

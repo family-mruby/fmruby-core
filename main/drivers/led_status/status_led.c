@@ -146,11 +146,25 @@ static void status_led_task(void *pvParameters)
             // each task's stack via uxTaskGetStackHighWaterMark and the heap
             // free list twice, so the measurement itself is the dominant cost.
             if (fmrb_debug_mode_enabled()) {
+                /* Both dumps yield between output lines (see their loops):
+                   printed in one go at this priority they hold the core above
+                   every app for ~200ms, which MIDI playback measured as
+                   ~190ms late notes. Lowering our priority instead is not
+                   safe -- a busy app would then starve this task and the
+                   heartbeat (the hang detector) would never come back. */
+                /* Timed because a monolithic section in here already stalled
+                   apps for ~200ms once (P7, the "190ms stall"); the numbers
+                   say where the next one grows. */
+                uint32_t t0 = (uint32_t)(fmrb_hal_time_get_us() / 1000);
                 fmrb_task_dump_status();
+                uint32_t t1 = (uint32_t)(fmrb_hal_time_get_us() / 1000);
                 /* Task stacks and the system heap say nothing about the
                    per-VM mempools, which is where a Spinel instance actually
                    runs out (sp_oom_die aborts the firmware). */
                 fmrb_app_dump_vm_pools();
+                uint32_t t2 = (uint32_t)(fmrb_hal_time_get_us() / 1000);
+                FMRB_LOGI(TAG, "dump took: tasks=%ums pools=%ums",
+                          (unsigned)(t1 - t0), (unsigned)(t2 - t1));
             }
             dump_counter = 0;
         }

@@ -168,6 +168,10 @@ void fmrb_task_dump_status(void)
                  (unsigned)free_bytes,
                  mem_str,
                  pin_str);
+        /* One line is a few ms of synchronous UART write at this task's
+           priority; without a yield the whole table blocks every lower
+           priority task on this core for the duration. */
+        fmrb_task_delay_ms(1);
     }
     ESP_LOGI(TAG, "IRAM free: %u bytes, PSRAM free: %u bytes",
              (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
