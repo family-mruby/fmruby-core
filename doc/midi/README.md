@@ -13,7 +13,8 @@ Family mruby に MIDI 機能を入れるための方向性をまとめる。実�
 [work_order_p5s.md](work_order_p5s.md) (完了) /
 [work_order_p6.md](work_order_p6.md) (完了) /
 [work_order_p7.md](work_order_p7.md) (完了) /
-[work_order_p7_5.md](work_order_p7_5.md) (着手中)、
+[work_order_p7_5.md](work_order_p7_5.md) (完了) /
+[work_order_p7_6.md](work_order_p7_6.md) (着手中)、
 実装中に分かったことは [report/](report/) に置く。
 
 **実機を触れないタイミングがある**ため、外部 MIDI 出力も sim で作り切り、
@@ -349,8 +350,8 @@ submodule 方式。共有するなら `repos.yaml` と Rakefile での扱いを�
 | ~~P5~~ | Unit MIDI の実機確認 (方向E-1) **鳴った**。残るは排他と遅延計測 | 実機 | P0-3 と APU 経路の実機確認も済 |
 | ~~P6~~ | 実機での遅さを潰す **完了** (実機実測まで済、report/p6.md 10 章) | 無し (sim/host) | 犯人は GC (実機 major 100〜205ms/回) と確定 |
 | ~~P7~~ | 演奏を止めない (GC 停止の除去) **完了** (実機で stall ゼロ確認、idle_gc は opt-in が最終形) | - | idle_gc + 音声メッセージ C 化 + desktop idle_gc |
-| P7.5 | APU の「外れた音」を直す **実装完了 (cbb9c60)、実機の聴感確認待ち** | 実機で聴く | APU 書き込み -67%、最終状態は完全一致。低音は折り返しで音名保持 |
-| P7.6 | **演奏時刻の権威を C へ** (テンポ精度) | 実機で計測 | Ruby は先読み復号してキューに積み、esp_timer が C のまま発射。実測 avg_late 17〜20ms / max 71ms (知覚閾超え) を 1ms 級へ。Midori の midi_scheduler.c が土台候補 |
+| ~~P7.5~~ | APU の「外れた音」を直す **完了** (実機聴感で改善確認。残る違和感は 4 声圧縮の物理限界とみられ許容) | - | APU 書き込み -67%、最終状態は完全一致。低音は折り返し |
+| P7.6 | **演奏時刻の権威を C へ 着手中** | 実機で計測 | 下記 work_order_p7_6.md |
 | ~~P8~~ | USB-MIDI host 相乗り (方向E-2) | - | **やらない (2026-08-06 決定)** |
 | ~~P9~~ | Midori のアプリ層 (タッチ UI / パッド / MML プレーヤ) の移植 | - | **やらない (同)**。Family mruby 側のアプリは必要になったら独自に書く |
 
