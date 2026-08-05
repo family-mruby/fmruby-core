@@ -249,10 +249,14 @@
 #define FMRB_KERNEL_MSG_QUEUE_LEN (32)
 
 // SYSTEM_APP task: System-level application messages
-#define FMRB_SYSTEM_APP_MSG_QUEUE_LEN (32)
+#define FMRB_SYSTEM_APP_MSG_QUEUE_LEN (64)
 
-// USER_APP tasks: User application messages
-#define FMRB_USER_APP_MSG_QUEUE_LEN (32)
+// USER_APP tasks: User application messages.
+// 64 absorbs ~2s of the 30Hz mouse-move stream while an app is busy (a GC
+// step or a long redraw); at 32 the queue filled in ~1s and the kernel's
+// blocking HID forward stalled the whole input path (doc/midi/report/p7_6.md
+// 6.2). Item storage is PSRAM (fmrb_msg.c), so this costs no internal RAM.
+#define FMRB_USER_APP_MSG_QUEUE_LEN (64)
 
 // Default queue length for unconfigured tasks
 #define FMRB_DEFAULT_MSG_QUEUE_LEN (10)

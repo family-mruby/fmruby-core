@@ -1,0 +1,8 @@
+app_handle_name = "busy_input"
+app_screen_name = "Busy Input"
+app_screen_name_ja = "入力詰まり試験"
+default_window_mode = "window"
+default_window_width = 220
+default_window_height = 60
+default_window_pos_x = 40
+default_window_pos_y = 60

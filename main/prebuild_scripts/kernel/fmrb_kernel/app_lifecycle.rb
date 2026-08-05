@@ -256,6 +256,11 @@ module AppLifecycleMixin
     # Periodic kernel tasks
     @tick_count += 1
 
+    # A mouse move latched against a full app queue (input_router) is
+    # delivered here once the app drains, so the cursor's final position is
+    # never lost even when every move during the jam was dropped.
+    flush_pending_move
+
     # Periodic cleanup check for terminated apps
     if @tick_count - @last_cleanup_tick >= @cleanup_interval
       check_terminated_apps

@@ -137,6 +137,7 @@ module InputRouterMixin
         relative_data.setbyte(5, (relative_y >> 8) & 0xFF) # y high byte
 
         # Forward event with relative coordinates to the clicked window
+        order_pending_move_before(target_pid)
         _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
 
       when 3  # Mouse move
@@ -215,7 +216,17 @@ module InputRouterMixin
             relative_data.setbyte(4, relative_y & 0xFF)        # y low byte
             relative_data.setbyte(5, (relative_y >> 8) & 0xFF) # y high byte
 
-            _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
+            # Never block on a full queue for a move: positions are absolute,
+            # so only the newest one matters. Latch it and let the flush in
+            # tick_process deliver the final position once the app drains.
+            # Blocking here is what froze the whole input path for seconds
+            # when an app stalled (doc/midi/report/p7_6.md 6.2).
+            if _try_send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
+              @pending_move_pid = nil
+            else
+              @pending_move_pid = target_pid
+              @pending_move_data = relative_data
+            end
           end
         end
 
@@ -240,6 +251,7 @@ module InputRouterMixin
             relative_data.setbyte(4, relative_y & 0xFF)        # y low byte
             relative_data.setbyte(5, (relative_y >> 8) & 0xFF) # y high byte
 
+            order_pending_move_before(target_pid)
             _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
 
             # Close-button click: ask non-mruby apps to stop via APP_CONTROL so
@@ -340,6 +352,25 @@ module InputRouterMixin
   #      the router does not block — the update is simply dropped.
   # "resize_preview_start" / "resize_preview_end" bracket the gesture and
   # MUST be delivered, so they bypass both the rate limit and the drop.
+  # Deliver the latched mouse move once the target's queue has room again.
+  # Called from tick_process, so the final position of a gesture arrives at
+  # most one kernel loop period after the app starts draining.
+  def flush_pending_move
+    return unless @pending_move_pid
+    if _try_send_raw_message(@pending_move_pid, FmrbConst::MSG_TYPE_HID_EVENT, @pending_move_data)
+      @pending_move_pid = nil
+    end
+  end
+
+  # A button must not be overtaken by an older move. Deliver the latched move
+  # first if it fits; drop it otherwise -- the button carries its own
+  # coordinates, so a lost intermediate position is harmless.
+  def order_pending_move_before(pid)
+    return unless @pending_move_pid == pid
+    _try_send_raw_message(@pending_move_pid, FmrbConst::MSG_TYPE_HID_EVENT, @pending_move_data)
+    @pending_move_pid = nil
+  end
+
   def send_resize_preview(cmd, x, y, w, h)
     return unless @desktop_pid
     if cmd == "resize_preview_update"
