@@ -7,6 +7,10 @@
 #include <mruby/variable.h>
 #include <mruby/hash.h>
 #include <mruby/array.h>
+// mrb_gc_scheduler_pending / mrb_gc_step / mrb_gc_scheduler_jitter: the
+// embedder-generic primitives a custom scheduler uses to drive collection
+// from its own idle points (see the header's contract).
+#include <mruby/gc.h>
 
 #include "fmrb_app.h"
 #include "fmrb_hal.h"
@@ -58,6 +62,13 @@
 #endif
 
 static const char* TAG = "app";
+
+// What one GC step has been costing this app. Biased upward: it jumps to any
+// step that runs longer and decays by an eighth otherwise, so a slow step
+// stops the app from starting another it cannot afford, while a single
+// outlier fades after a few steps. Per app id, because the pause depends on
+// the size of that app's heap. See spin_idle_gc.
+static uint32_t s_gc_step_est_us[FMRB_MAX_APPS];
 
 // Helper function: Check mruby ci pointer validity
 // Static variables to track cibase/ciend changes across calls
@@ -156,6 +167,12 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     }
 
     FMRB_LOGI(TAG, "_init: app_id=%d, name=%s", ctx->app_id, ctx->app_name);
+
+    // A new occupant of this slot has its own heap; do not inherit what a
+    // step cost the previous one (see spin_idle_gc).
+    if (ctx->app_id >= 0 && ctx->app_id < FMRB_MAX_APPS) {
+        s_gc_step_est_us[ctx->app_id] = 0;
+    }
 
     // Set @name instance variable
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@name"),
@@ -361,6 +378,75 @@ cleanup:
     return true;
 }
 
+// Is something already queued for this app? Read without consuming it, so a
+// GC step can tell whether it made a message wait.
+static bool app_msg_waiting(fmrb_app_task_context_t* ctx)
+{
+    fmrb_msg_queue_stats_t stats;
+    if (fmrb_msg_get_stats(ctx->app_id, &stats) != FMRB_OK) {
+        return false;
+    }
+    return stats.current_waiting > 0;
+}
+
+// Spend the time an app is waiting in _spin on garbage collection.
+//
+// Only does anything when the app asked for it with GC.scheduler_driven =
+// true (FmrbApp#idle_gc=): mrb_gc_scheduler_pending() is FALSE otherwise, so
+// this costs one function call per spin for everyone else. In that mode the
+// allocation path no longer collects, so this is where collection happens.
+//
+// Why it matters: with the allocation path driving, one collection runs to
+// completion inside whatever call happened to allocate, which on the device
+// stops the app for 100-205 ms and is audible as a stall in a playing song
+// (doc/midi/report/p6.md 10). Stepping from here breaks the same work into
+// pieces taken while the app had nothing to do.
+//
+// Three bounds keep the app responsive:
+//  - a step is only started when the sleep left can absorb it, so the app is
+//    never made later than it would have been without collecting at all;
+//  - a margin of the sleep is left unspent;
+//  - stepping stops as soon as a message is queued (that message waited for
+//    the step, which is what mrb_gc_scheduler_jitter records).
+#define GC_IDLE_SLACK_US 2000
+
+static bool spin_idle_gc(mrb_state *mrb, fmrb_app_task_context_t* ctx,
+                         fmrb_time_t deadline_us)
+{
+    bool stepped = false;
+
+    if (ctx->app_id < 0 || ctx->app_id >= FMRB_MAX_APPS) {
+        return false;
+    }
+    uint32_t* est = &s_gc_step_est_us[ctx->app_id];
+
+    while (mrb_gc_scheduler_pending(mrb)) {
+        fmrb_time_t now = fmrb_hal_time_get_us();
+        if (now >= deadline_us) {
+            break;
+        }
+        if ((deadline_us - now) < (fmrb_time_t)(*est) + GC_IDLE_SLACK_US) {
+            break;
+        }
+
+        mrb_gc_step(mrb);
+        uint32_t took = (uint32_t)(fmrb_hal_time_get_us() - now);
+        if (took > *est) {
+            *est = took;
+        } else {
+            *est -= *est / 8;
+        }
+        stepped = true;
+
+        bool delayed = app_msg_waiting(ctx);
+        mrb_gc_scheduler_jitter(mrb, delayed);
+        if (delayed) {
+            break; // deliver it now; the rest of the cycle can wait
+        }
+    }
+    return stepped;
+}
+
 static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
 {
 
@@ -376,6 +462,9 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     // Record start time to ensure we wait for the full timeout period
     fmrb_tick_t start_tick = fmrb_task_get_tick_count();
     fmrb_tick_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
+    // The same deadline in microseconds, for the GC budget below: a tick is
+    // too coarse to decide whether a step fits in what is left.
+    fmrb_time_t deadline_us = fmrb_hal_time_get_us() + (fmrb_time_t)timeout_ms * 1000;
 
     // Spin Loop - process messages until timeout expires
     while(true){
@@ -387,6 +476,13 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
         }
 
         fmrb_tick_t remaining_ticks = target_tick - current_tick;
+
+        // Collect while there is nothing else to do (no-op unless the app
+        // turned on FmrbApp#idle_gc). Re-enter the loop afterwards: the clock
+        // has moved and a message may have arrived.
+        if (spin_idle_gc(mrb, ctx, deadline_us)) {
+            continue;
+        }
 
         // Try to receive message with remaining timeout
         fmrb_msg_t msg;
@@ -672,6 +768,151 @@ static mrb_value mrb_fmrb_app_send_message(mrb_state *mrb, mrb_value self)
                  ctx->app_name, (int)dest_pid, ret);
         return mrb_false_value();
     }
+}
+
+// --- audio note messages ------------------------------------------------
+//
+// note_on and note_off are the only audio messages that get sent in a stream:
+// a MIDI song sends one every few milliseconds. Going through a Ruby Hash and
+// MessagePack.pack costs three objects per note, and on the device one
+// collection stops the app for 100-205 ms, which is audible
+// (doc/midi/report/p6.md 10). Built here instead, a note allocates nothing.
+//
+// The bytes are exactly what MessagePack.pack writes for
+//   { cmd: :note_on, ch: c, freq: f, vol: v, duty: d, sweep: s }
+// -- same map, same key order, same integer widths -- because the kernel
+// unpacks them in audio_handler.rb and must not be able to tell the
+// difference. FmrbApp#_audio_note_bytes exists so that equality can be
+// checked from Ruby rather than by reading this code
+// (flash/app/debug/midi_bench.app.rb does it).
+
+// One integer, in the width msgpack-c's msgpack_pack_int64 would choose.
+// Choosing a wider encoding would still decode correctly but would no longer
+// be byte-identical, which is the property the check above relies on.
+static size_t audio_pack_int(uint8_t *buf, mrb_int v)
+{
+    if (v < -32) {
+        if (v < INT32_MIN) {
+            buf[0] = 0xd3;
+            for (int i = 0; i < 8; i++) buf[8 - i] = (uint8_t)((uint64_t)v >> (i * 8));
+            return 9;
+        }
+        if (v < INT16_MIN) {
+            buf[0] = 0xd2;
+            for (int i = 0; i < 4; i++) buf[4 - i] = (uint8_t)((uint32_t)v >> (i * 8));
+            return 5;
+        }
+        if (v < INT8_MIN) {
+            buf[0] = 0xd1;
+            buf[1] = (uint8_t)((uint16_t)v >> 8);
+            buf[2] = (uint8_t)v;
+            return 3;
+        }
+        buf[0] = 0xd0;
+        buf[1] = (uint8_t)v;
+        return 2;
+    }
+    if (v < 128) {         // positive fixint
+        buf[0] = (uint8_t)v;
+        return 1;
+    }
+    if (v < 256) {
+        buf[0] = 0xcc;
+        buf[1] = (uint8_t)v;
+        return 2;
+    }
+    if (v < 65536) {
+        buf[0] = 0xcd;
+        buf[1] = (uint8_t)(v >> 8);
+        buf[2] = (uint8_t)v;
+        return 3;
+    }
+    if (v <= UINT32_MAX) {
+        buf[0] = 0xce;
+        for (int i = 0; i < 4; i++) buf[4 - i] = (uint8_t)((uint32_t)v >> (i * 8));
+        return 5;
+    }
+    buf[0] = 0xcf;
+    for (int i = 0; i < 8; i++) buf[8 - i] = (uint8_t)((uint64_t)v >> (i * 8));
+    return 9;
+}
+
+// A string shorter than 32 bytes: fixstr, which is what every key here is.
+static size_t audio_pack_str(uint8_t *buf, const char *s)
+{
+    size_t len = strlen(s);
+    buf[0] = (uint8_t)(0xa0 | len);
+    memcpy(buf + 1, s, len);
+    return len + 1;
+}
+
+// Longest possible: six pairs of a five-byte key and a nine-byte integer.
+#define AUDIO_NOTE_MSG_MAX 96
+
+static size_t build_audio_note_msg(uint8_t *buf, mrb_bool on, mrb_int ch,
+                                   mrb_int freq, mrb_int vol, mrb_int duty,
+                                   mrb_int sweep)
+{
+    size_t n = 0;
+
+    buf[n++] = on ? 0x86 : 0x82; // fixmap with six or two pairs
+    n += audio_pack_str(buf + n, "cmd");
+    n += audio_pack_str(buf + n, on ? "note_on" : "note_off");
+    n += audio_pack_str(buf + n, "ch");
+    n += audio_pack_int(buf + n, ch);
+    if (on) {
+        n += audio_pack_str(buf + n, "freq");
+        n += audio_pack_int(buf + n, freq);
+        n += audio_pack_str(buf + n, "vol");
+        n += audio_pack_int(buf + n, vol);
+        n += audio_pack_str(buf + n, "duty");
+        n += audio_pack_int(buf + n, duty);
+        n += audio_pack_str(buf + n, "sweep");
+        n += audio_pack_int(buf + n, sweep);
+    }
+    return n;
+}
+
+// FmrbApp#_send_audio_note(on, ch, freq, vol, duty, sweep) -> bool
+// The note_on / note_off half of FmrbAudio, without the Hash.
+static mrb_value mrb_fmrb_app_send_audio_note(mrb_state *mrb, mrb_value self)
+{
+    mrb_bool on;
+    mrb_int ch, freq, vol, duty, sweep;
+    mrb_get_args(mrb, "biiiii", &on, &ch, &freq, &vol, &duty, &sweep);
+
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "No app context available");
+    }
+
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_AUDIO,
+        .src_pid = ctx->app_id,
+        .size = 0,
+    };
+    msg.size = (uint32_t)build_audio_note_msg(msg.data, on, ch, freq, vol, duty, sweep);
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &msg, 1000);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "App %s failed to send audio note: %d", ctx->app_name, ret);
+        return mrb_false_value();
+    }
+    return mrb_true_value();
+}
+
+// FmrbApp#_audio_note_bytes(on, ch, freq, vol, duty, sweep) -> String
+// The same message as a String, so a test can compare it against
+// MessagePack.pack of the equivalent Hash. Not used in normal operation.
+static mrb_value mrb_fmrb_app_audio_note_bytes(mrb_state *mrb, mrb_value self)
+{
+    mrb_bool on;
+    mrb_int ch, freq, vol, duty, sweep;
+    uint8_t buf[AUDIO_NOTE_MSG_MAX];
+    mrb_get_args(mrb, "biiiii", &on, &ch, &freq, &vol, &duty, &sweep);
+
+    size_t n = build_audio_note_msg(buf, on, ch, freq, vol, duty, sweep);
+    return mrb_str_new(mrb, (const char *)buf, n);
 }
 
 // FmrbApp.ps() -> Array[Hash]
@@ -1261,6 +1502,8 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_spin", mrb_fmrb_app_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, app_class, "_cleanup", mrb_fmrb_app_cleanup, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, app_class, "_send_audio_note", mrb_fmrb_app_send_audio_note, MRB_ARGS_REQ(6));
+    mrb_define_method(mrb, app_class, "_audio_note_bytes", mrb_fmrb_app_audio_note_bytes, MRB_ARGS_REQ(6));
     mrb_define_method(mrb, app_class, "_set_window_param", mrb_fmrb_app_set_window_param, MRB_ARGS_REQ(2));
 
     mrb_define_method(mrb, app_class, "_is_file_app", mrb_fmrb_app_is_file_app, MRB_ARGS_NONE());

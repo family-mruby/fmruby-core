@@ -452,6 +452,57 @@ class FmrbApp
     _send_message(dest_pid, msg_type, binary_data)
   end
 
+  # How far behind collection may fall before the allocation path forces a
+  # step anyway. It only comes into play when an app never gives _spin any
+  # slack; then this is what stops the heap from growing without bound, at
+  # the cost of the pause it would have had before idle_gc. Measured in
+  # objects allocated past due (the app's live set is 2000-3000).
+  IDLE_GC_DEBT_LIMIT = 4096
+
+  # How much work one collector step may do. It decides how long a single
+  # step runs, and a step is the one thing that can still make an app late:
+  # it cannot be interrupted once started. Measured in the simulation over
+  # the same 24,000 objects, the longest single step was 6-10 ms at mruby's
+  # own 2000 and 4.7-5.3 ms at 512, and dropping the limit further (128, 32)
+  # did not shorten it again - one phase per cycle is not divisible, and that
+  # is the floor. Below 512 only the step count multiplies (195 -> 598 ->
+  # 1885 for the same total collector time), so this is the knee
+  # (doc/midi/report/p7.md).
+  IDLE_GC_STEP_LIMIT = 512
+
+  # Collect while this app waits in _spin, instead of leaving it to whatever
+  # call happens to allocate.
+  #
+  # Worth turning on for an app that has to hold a rhythm - playing a song,
+  # animating - and cannot get its allocation down to nothing. Collection
+  # then runs in pieces, taken while the app has nothing to do, instead of
+  # stopping it for 100-205 ms in the middle of a phrase
+  # (doc/midi/report/p7.md).
+  #
+  # Costs: generational mode goes off (it cannot be split into steps) and
+  # does not come back by itself, and a step can delay a message by its own
+  # length. Both are measured in the report. An app that is always busy gets
+  # its old behaviour back through IDLE_GC_DEBT_LIMIT.
+  def idle_gc=(enable)
+    if enable
+      GC.debt_limit = IDLE_GC_DEBT_LIMIT
+      GC.step_limit = IDLE_GC_STEP_LIMIT
+      GC.scheduler_driven = true
+    else
+      GC.scheduler_driven = false
+      GC.step_limit = 0
+    end
+    @idle_gc = enable
+  rescue => e
+    # Not fatal: the app runs exactly as it did before.
+    Log.warn("idle_gc unavailable: #{e.message}")
+    @idle_gc = false
+  end
+
+  def idle_gc
+    @idle_gc ? true : false
+  end
+
   def set_window_position(x, y)
     _set_window_param(:pos_x, x)
     _set_window_param(:pos_y, y)

@@ -96,7 +96,21 @@ class MidiBenchApp < FmrbApp
   end
 
   def on_update
-    500
+    return 500 if @gc_phase.nil?
+
+    burn_memory
+    @gc_updates += 1
+    if @gc_updates >= GC_PHASE_UPDATES
+      report_gc_phase
+      if @gc_phase + 1 < GC_PHASE_MODES.size
+        start_gc_phase(@gc_phase + 1)
+      else
+        self.idle_gc = false
+        @gc_phase = nil
+        draw_screen
+      end
+    end
+    GC_PHASE_SLEEP
   end
 
   def on_event(ev)
@@ -140,6 +154,73 @@ class MidiBenchApp < FmrbApp
     bench_scan(data)
     bench_play
     bench_alloc
+    start_gc_phase(0)
+  end
+
+  # --- idle-time GC (FmrbApp#idle_gc) ------------------------------------
+  #
+  # The MIDI path allocates nothing per event now, so it cannot show what
+  # idle_gc does; this phase supplies the garbage instead. The same amount
+  # per update and the same slack left in each _spin, run once with the
+  # collector on the allocation path and once on the idle time. What to read
+  # is the two pause counters: work should move from pause to step, and the
+  # longest single pause should fall.
+  #
+  # This is also the shape of an app that cannot get its allocation down -
+  # a game building objects every frame - which is what idle_gc is for.
+  # [label, idle_gc, GC.step_limit]. The first row is the collector on the
+  # allocation path (what every app did before P7); the rest move it to the
+  # idle time and vary how much work one step may do. 0 means mruby's own
+  # 2000. FmrbApp#idle_gc= picks IDLE_GC_STEP_LIMIT by itself; these rows
+  # override it so the choice can be seen rather than assumed.
+  # nil in the third column leaves whatever FmrbApp#idle_gc= chose, so the
+  # shipped default gets measured and not just the overrides.
+  GC_PHASE_MODES = [
+    [:allocation_path, false, 0],
+    [:idle_default, true, nil],
+    [:idle_step_2000, true, 0],
+    [:idle_step_512, true, 512],
+    [:idle_step_128, true, 128],
+    [:idle_step_32, true, 32]
+  ]
+  GC_PHASE_UPDATES = 120
+  GC_PHASE_ALLOC = 200  # objects per update
+  GC_PHASE_SLEEP = 20   # ms of slack handed to _spin per update
+
+  def start_gc_phase(index)
+    row = GC_PHASE_MODES[index]
+    self.idle_gc = row[1]
+    GC.step_limit = row[2] if row[2]
+    GC.start
+    GC.reset_stat if GC.respond_to?(:reset_stat)
+    @gc_phase = index
+    @gc_updates = 0
+    @gc_total0 = GC.stat[:total] || 0
+    @gc_t0 = Machine.uptime_us
+    say("#{row[0]}: #{GC_PHASE_UPDATES} updates x #{GC_PHASE_ALLOC} objects")
+  end
+
+  def burn_memory
+    i = 0
+    while i < GC_PHASE_ALLOC
+      @garbage = [i, i]
+      i += 1
+    end
+  end
+
+  def report_gc_phase
+    st = GC.stat
+    elapsed = (Machine.uptime_us - @gc_t0) / 1000
+    say("#{GC_PHASE_MODES[@gc_phase][0]} #{elapsed}ms gc=#{(st[:total] || 0) - @gc_total0}: " \
+        "pause #{st[:prof_sync_count] || 0}x #{(st[:prof_sync_total_us] || 0) / 1000}ms " \
+        "max #{st[:prof_sync_max_us] || 0}us")
+    say("  step #{st[:prof_step_count] || 0}x #{(st[:prof_step_total_us] || 0) / 1000}ms " \
+        "max #{st[:prof_step_max_us] || 0}us | " \
+        "jitter #{st[:prof_step_jitter_count] || 0}x max #{st[:prof_step_jitter_max_us] || 0}us")
+    # final marking cannot be split, so it is the floor under any single
+    # pause however small the steps are made.
+    say("  final_mark max #{st[:prof_final_mark_max_us] || 0}us at live " \
+        "#{st[:prof_final_mark_max_live] || 0}, emergency #{st[:prof_emergency_count] || 0}")
   end
 
   # --- GC accounting -----------------------------------------------------
@@ -451,6 +532,8 @@ class MidiBenchApp < FmrbApp
     measure_alloc("hash store, String key") { strkey["ch"] = 1 }
     measure_alloc("hash store, Symbol key") { msg[:ch] = 1 }
 
+    check_audio_wire
+
     audio = FmrbAudio.new(self)
     apu = FmrbMidi::ApuTransport.new(audio)
     measure_alloc("audio.note_on", 50) { audio.note_on(0, 440, 8, 2, 0) }
@@ -461,6 +544,33 @@ class MidiBenchApp < FmrbApp
     apu.all_off
     audio.note_off(0)
     FmrbMidi.unregister(apu)
+  end
+
+  # The audio note messages are built in C now, which is only allowed because
+  # the bytes are identical to what the Hash went through MessagePack.pack as.
+  # This is that claim, checked rather than asserted: a value of each integer
+  # width (fixint, uint8, uint16) so the encoding choices are covered too.
+  def check_audio_wire
+    cases = [
+      [0, 440, 8, 2, 0],
+      [3, 127, 127, 3, 0],      # every field still a fixint
+      [9, 128, 200, 1, 0],      # crosses into uint8
+      [15, 12428, 15, 2, 300]   # crosses into uint16
+    ]
+    bad = 0
+    i = 0
+    while i < cases.size
+      c = cases[i]
+      want = MessagePack.pack({ cmd: :note_on, ch: c[0], freq: c[1], vol: c[2],
+                                duty: c[3], sweep: c[4] })
+      got = _audio_note_bytes(true, c[0], c[1], c[2], c[3], c[4])
+      bad += 1 unless got == want
+      want_off = MessagePack.pack({ cmd: :note_off, ch: c[0] })
+      got_off = _audio_note_bytes(false, c[0], 0, 0, 0, 0)
+      bad += 1 unless got_off == want_off
+      i += 1
+    end
+    say("audio wire matches MessagePack.pack: #{bad == 0} (#{cases.size * 2} cases)")
   end
 
   def measure_alloc(label, times = 200)

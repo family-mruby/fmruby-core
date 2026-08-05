@@ -4,6 +4,11 @@
 class FmrbAudio
   def initialize(app)
     @app = app
+    # note_on / note_off go through a C builder when the owner is a real
+    # FmrbApp (see below). Asked once here rather than per note, and there is
+    # a Ruby path for owners that only have send_message (the desktop builds
+    # an FmrbAudio on itself, and the host tests use a stub).
+    @native_note = app.respond_to?(:_send_audio_note)
   end
 
   def play(path, track: 0)
@@ -48,19 +53,30 @@ class FmrbAudio
   end
 
   # These two are the only ones called in a stream: a MIDI song sends one
-  # every few milliseconds. Their keys are Symbols, unlike every other
-  # message here, because a String key is a fresh object at every call - a
-  # six-key literal costs eight - and that garbage is what wakes the
-  # collector in the middle of a phrase (doc/midi/report/p6.md). Symbols are
-  # free to name, and the serializer writes a Symbol exactly as it writes a
-  # String, so the bytes on the wire and the kernel side are unchanged.
+  # every few milliseconds. That makes their garbage matter - on the device a
+  # collection stops the app for 100-205 ms, long enough to hear
+  # (doc/midi/report/p7.md) - so the message is built in C and this path
+  # allocates nothing at all.
+  #
+  # The Ruby fallback below is the same message written as a Hash. Its keys
+  # are Symbols rather than Strings because a String key is a fresh object at
+  # every call; the serializer writes a Symbol exactly as it writes a String,
+  # so both paths and the kernel side see the same bytes.
   def note_on(channel, freq, volume = 10, duty = 2, sweep = 0)
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      { cmd: :note_on, ch: channel, freq: freq, vol: volume, duty: duty, sweep: sweep })
+    if @native_note
+      @app._send_audio_note(true, channel, freq, volume, duty, sweep)
+    else
+      @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
+        { cmd: :note_on, ch: channel, freq: freq, vol: volume, duty: duty, sweep: sweep })
+    end
   end
 
   def note_off(channel)
-    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
-      { cmd: :note_off, ch: channel })
+    if @native_note
+      @app._send_audio_note(false, channel, 0, 0, 0, 0)
+    else
+      @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
+        { cmd: :note_off, ch: channel })
+    end
   end
 end

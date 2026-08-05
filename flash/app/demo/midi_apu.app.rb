@@ -63,6 +63,8 @@ class MidiApuApp < FmrbApp
   end
 
   def on_create
+    # Collect between updates instead of inside a note (doc/midi/report/p7.md).
+    self.idle_gc = true
     @device = FmrbMidi.device(self)
     @audio = FmrbAudio.new(self)
     @player = FmrbMidi::SmfPlayer.new(@device)
@@ -350,9 +352,16 @@ class MidiApuApp < FmrbApp
   # answers "was that pause GC?" without having to guess.
   def gc_line
     st = GC.stat
+    # pause* is what stopped the app (the allocation path collecting);
+    # step* is the same work taken while it was idle instead, and jit is how
+    # long a step made a waiting message wait. With idle_gc on, pause should
+    # be flat and step should be the one that climbs (report/p7.md).
     "[gc live=#{st[:live]} n=#{st[:total] || 0} major=#{st[:major] || 0} " \
       "pause=#{st[:prof_sync_count] || 0}x tot=#{(st[:prof_sync_total_us] || 0) / 1000}ms " \
-      "max=#{(st[:prof_sync_max_us] || 0) / 1000}ms]"
+      "max=#{(st[:prof_sync_max_us] || 0) / 1000}ms " \
+      "step=#{st[:prof_step_count] || 0}x tot=#{(st[:prof_step_total_us] || 0) / 1000}ms " \
+      "max=#{(st[:prof_step_max_us] || 0) / 1000}ms " \
+      "jit=#{st[:prof_step_jitter_count] || 0}x max=#{(st[:prof_step_jitter_max_us] || 0) / 1000}ms]"
   end
 
   # This app's slice of the VM pool, from the process table.
