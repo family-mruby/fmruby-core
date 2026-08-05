@@ -11,7 +11,8 @@ Family mruby に MIDI 機能を入れるための方向性をまとめる。実�
 [work_order_p2.md](work_order_p2.md) (完了) /
 [work_order_p4.md](work_order_p4.md) (完了) /
 [work_order_p5s.md](work_order_p5s.md) (完了) /
-[work_order_p6.md](work_order_p6.md) (着手中)、
+[work_order_p6.md](work_order_p6.md) (完了) /
+[work_order_p7.md](work_order_p7.md) (着手中)、
 実装中に分かったことは [report/](report/) に置く。
 
 **実機を触れないタイミングがある**ため、外部 MIDI 出力も sim で作り切り、
@@ -345,9 +346,10 @@ submodule 方式。共有するなら `repos.yaml` と Rakefile での扱いを�
 | ~~P4~~ | 実時間 SMF プレーヤ (方向C-b) **完了** | 無し | アプリから曲を操作できるようになった |
 | ~~P5-sim~~ | UART MIDI 出力を sim で作り切る (方向F + E-1) **完了** | 無し | バイト列・タイミング・API を sim で確定させた |
 | ~~P5~~ | Unit MIDI の実機確認 (方向E-1) **鳴った**。残るは排他と遅延計測 | 実機 | P0-3 と APU 経路の実機確認も済 |
-| P6 | **実機での遅さを潰す 着手中** | 無し (sim/host) | 読み込み 7.9 秒と演奏の詰まりを直す |
-| P6 | USB-MIDI host 相乗り (方向E-2) | 実機 | 挿した機器を鳴らす。手数が多いので後 |
-| P7 | アプリ (シーケンサ、パッド、MML プレーヤ) | - | Midori のアプリを移植 |
+| ~~P6~~ | 実機での遅さを潰す **完了** (実機実測まで済、report/p6.md 10 章) | 無し (sim/host) | 犯人は GC (実機 major 100〜205ms/回) と確定 |
+| P7 | **演奏を止めない (GC 停止の除去) 着手中** | 無し (sim 優先) | _spin 前 GC ステップ + 音声メッセージ C 化 |
+| P8 | USB-MIDI host 相乗り (方向E-2) | 実機 | 挿した機器を鳴らす。手数が多いので後 |
+| P9 | アプリ (シーケンサ、パッド、MML プレーヤ) | - | Midori のアプリを移植 |
 
 P0/P1 の結果は `report/p0.md` / `report/p1.md`。**P2 は Ruby 実装で足りる**
 見込みが立った (送出 1 回 115us、必要量とは 1 桁以上の開き)。また
