@@ -76,12 +76,25 @@ class FmrbKernel
   # ---- messaging (control inversion) ----
   # Returns { type:, src_pid:, data: } (symbol keys, matching the mruby C
   # binding) or nil on timeout.
+  #
+  # The Hash is ONE reused instance, not a fresh allocation: dispatch is
+  # strictly synchronous (msg_handler returns before the next poll), so a
+  # single message is ever live, and building a 3-key symbol Hash per
+  # message (~456B) was a top allocation on the kernel's hot path -- at
+  # MIDI rates it meaningfully raised the GC cadence
+  # (doc/spinel_aot/spinel_gc_notes.md). Consumers must not retain the
+  # Hash (or the msg itself) across messages.
   def _poll_message(timeout_ms)
     data = FmrbSpx.fmrb_spx_recv_message(timeout_ms, FmrbSpx.type_out, FmrbSpx.src_out)
     type = FmrbSpx.read_i32(FmrbSpx.type_out)
     return nil if type < 0
     src = FmrbSpx.read_i32(FmrbSpx.src_out)
-    { type: type, src_pid: src, data: data }
+    @poll_msg = { type: 0, src_pid: 0, data: nil } unless @poll_msg
+    msg = @poll_msg
+    msg[:type] = type
+    msg[:src_pid] = src
+    msg[:data] = data
+    msg
   end
 
   # data may be poly (e.g. msg[:data] from a symbol hash, or a msgpack result);

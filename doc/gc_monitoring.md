@@ -7,6 +7,7 @@
 
 対象は **mruby VM** である。Spinel エンジンで動く VM (`FMRB_KERNEL_ENGINE=spinel`
 の kernel など) は GC の実装自体が別物なので、この文書は当てはまらない。
+Spinel 側は [spinel_aot/spinel_gc_notes.md](spinel_aot/spinel_gc_notes.md)。
 
 ## 0. 先に知っておくこと
 

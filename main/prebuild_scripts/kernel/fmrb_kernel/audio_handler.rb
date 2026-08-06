@@ -26,7 +26,7 @@ module AudioHandlerMixin
         @audio_note_pids = {} unless @audio_note_pids
         @audio_note_pids[pid] = true
       end
-      Log.debug("Audio command '#{cmd}' from pid=#{pid}")
+      Log.debug("Audio command '#{cmd}' from pid=#{pid}") if KERNEL_TRACE
     else
       Log.info("Audio command '#{cmd}' from pid=#{pid}")
     end

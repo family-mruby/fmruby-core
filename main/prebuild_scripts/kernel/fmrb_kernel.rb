@@ -7,6 +7,14 @@
 #   AppLifecycleMixin   - Fullscreen, suspend/resume, app termination
 #   AudioHandlerMixin   - Audio message forwarding to host task
 
+# Per-message trace logging on the kernel's hot paths (message receive,
+# audio forward). Off by default: even when the C log level discards the
+# line, the Ruby-side string interpolation runs and allocates (~213B per
+# message -- at 300 MIDI msg/s that alone forced several GC collections per
+# second; see doc/spinel_aot/spinel_gc_notes.md). Flip to true only while
+# debugging message flow.
+KERNEL_TRACE = false
+
 # FmrbKernelImpl extends FmrbKernel with application-level kernel logic
 class FmrbKernelImpl < FmrbKernel
   include WindowManagerMixin
@@ -87,7 +95,7 @@ class FmrbKernelImpl < FmrbKernel
   MSG_DRAIN_BURST = 64
 
   def msg_handler(msg) # called from main_loop (control inversion)
-    Log.debug("Received message: type=#{msg[:type]}, src_pid=#{msg[:src_pid]}, data_size=#{msg[:data].length}")
+    Log.debug("Received message: type=#{msg[:type]}, src_pid=#{msg[:src_pid]}, data_size=#{msg[:data].length}") if KERNEL_TRACE
 
     case msg[:type]
     when FmrbConst::MSG_TYPE_APP_CONTROL
