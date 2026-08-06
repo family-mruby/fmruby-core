@@ -15,11 +15,21 @@
   }
   #bar .ok { color: #7c7; }
   #bar .ng { color: #e77; }
+  #bar button {
+    font-family: inherit; font-size: 12px; color: #ccc;
+    background: #3a3a48; border: 1px solid #555; border-radius: 3px;
+    padding: 1px 8px; cursor: pointer; margin-left: auto;
+  }
+  #bar button:hover { background: #4a4a5a; }
+  /* Outer box: centers the view and paints the letterbox in fullscreen */
   #wrap {
     position: relative; margin-top: 24px;
-    overflow: hidden; cursor: none; outline: none;
-    background: #000;
+    cursor: none; outline: none; background: #000;
+    display: flex; align-items: center; justify-content: center;
   }
+  #wrap:fullscreen { margin: 0; width: 100vw; height: 100vh; }
+  /* Inner box: exactly the visible 426x240 area, scaled */
+  #view { position: relative; overflow: hidden; }
   #screen, #canvas {
     display: block; image-rendering: pixelated;
     position: absolute; left: 0; top: 0;
@@ -28,7 +38,7 @@
     position: absolute; width: 10px; height: 16px;
     pointer-events: none; z-index: 10; display: none;
   }
-  #hint { font-size: 12px; color: #888; margin-top: 12px; }
+  #hint { font-size: 12px; color: #888; margin-top: 12px; text-align: center; }
 </style>
 </head>
 <body>
@@ -37,16 +47,23 @@
     <span id="conn" class="ng">disconnected</span>
     <span id="mode"></span>
     <span id="stats"></span>
+    <button id="fsbtn" type="button">Fullscreen</button>
   </div>
   <div id="wrap" tabindex="0">
-    <img id="screen" alt="">
-    <canvas id="canvas" style="display:none"></canvas>
-    <svg id="cursor" viewBox="0 0 10 16" xmlns="http://www.w3.org/2000/svg">
-      <path d="M0,0 L0,13 L3,10 L5,15 L7,14 L5,9 L9,9 Z"
-            fill="#fff" stroke="#000" stroke-width="1"/>
-    </svg>
+    <div id="view">
+      <img id="screen" alt="">
+      <canvas id="canvas" style="display:none"></canvas>
+      <svg id="cursor" viewBox="0 0 10 16" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0,0 L0,13 L3,10 L5,15 L7,14 L5,9 L9,9 Z"
+              fill="#fff" stroke="#000" stroke-width="1"/>
+      </svg>
+    </div>
   </div>
-  <div id="hint">Click the screen to send keyboard input. Mouse maps 1:1 to the device desktop.</div>
+  <div id="hint">
+    Click the screen to send keyboard input. Mouse maps to the device desktop.<br>
+    Ctrl+Alt+F toggles fullscreen. While the keyboard is locked, Esc goes to the
+    device and holding Esc leaves fullscreen.
+  </div>
   <script src="/keymap.js"></script>
   <script src="/remote.js"></script>
 </body>

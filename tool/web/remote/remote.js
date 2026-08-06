@@ -2,47 +2,135 @@
 // Phase 1: MJPEG <img src="/stream"> + binary input over WebSocket /ws.
 // The device encodes 432px-wide frames (16px alignment); only the left
 // 426px are shown. Cursor is drawn client-side from "cur" messages.
+// The view is 2x windowed and aspect-preserving fill in fullscreen; every
+// size below derives from `scale`, so both modes share one code path.
 'use strict';
 
 const VIRT_W = 426, VIRT_H = 240;
-const SCALE = 2;
+const WIN_SCALE = 2;          // scale of the normal (windowed) view
 
 const wrap = document.getElementById('wrap');
+const view = document.getElementById('view');
 const img = document.getElementById('screen');
 const canvas = document.getElementById('canvas');
 const cursorEl = document.getElementById('cursor');
 const connEl = document.getElementById('conn');
 const modeEl = document.getElementById('mode');
 const statsEl = document.getElementById('stats');
+const fsBtn = document.getElementById('fsbtn');
 
 let encW = 432;
+let scale = WIN_SCALE;
 let ws = null;
 let wsReady = false;
 let lastMoveSent = 0;
 let useH264 = false;
 let videoStarted = false;
+let lastCursor = { x: 0, y: 0, v: false };
+
+// --- Layout: one scale factor drives the view, the cursor and hit testing ---
+
+function isFullscreen() {
+  return document.fullscreenElement === wrap;
+}
+
+// Fullscreen fills as much of the screen as the 426x240 aspect ratio allows
+// (16:9 leaves only a hairline letterbox); windowed stays at the fixed 2x.
+function computeScale() {
+  if (!isFullscreen()) return WIN_SCALE;
+  const s = Math.min(window.innerWidth / VIRT_W, window.innerHeight / VIRT_H);
+  return s > 0 ? s : WIN_SCALE;
+}
+
+function layout() {
+  scale = computeScale();
+  const vw = Math.round(VIRT_W * scale);
+  const vh = Math.round(VIRT_H * scale);
+  if (isFullscreen()) {
+    wrap.style.width = '';
+    wrap.style.height = '';
+  } else {
+    wrap.style.width = vw + 'px';
+    wrap.style.height = vh + 'px';
+  }
+  view.style.width = vw + 'px';
+  view.style.height = vh + 'px';
+  // Nearest-neighbour only looks right at whole multiples; a fractional
+  // scale would give a pixel grid of uneven thickness, so smooth there.
+  const rendering =
+    Math.abs(scale - Math.round(scale)) < 0.001 ? 'pixelated' : 'auto';
+  const sw = Math.round(encW * scale) + 'px';
+  for (const el of [img, canvas]) {
+    el.style.width = sw;
+    el.style.height = vh + 'px';
+    el.style.imageRendering = rendering;
+  }
+  // The 10x16 CSS px arrow of the 2x view is 5x8 device pixels
+  cursorEl.style.width = (5 * scale) + 'px';
+  cursorEl.style.height = (8 * scale) + 'px';
+  drawCursor();
+}
+
+function drawCursor() {
+  if (!lastCursor.v) {
+    cursorEl.style.display = 'none';
+    return;
+  }
+  cursorEl.style.display = 'block';
+  cursorEl.style.left = (lastCursor.x * scale) + 'px';
+  cursorEl.style.top = (lastCursor.y * scale) + 'px';
+}
 
 function setupScreen() {
-  wrap.style.width = (VIRT_W * SCALE) + 'px';
-  wrap.style.height = (VIRT_H * SCALE) + 'px';
   if (useH264) {
     img.style.display = 'none';
     img.src = '';
     canvas.style.display = 'block';
     canvas.width = encW;
     canvas.height = VIRT_H;
-    canvas.style.width = (encW * SCALE) + 'px';
-    canvas.style.height = (VIRT_H * SCALE) + 'px';
     modeEl.textContent = 'mode: h264';
   } else {
     canvas.style.display = 'none';
     img.style.display = 'block';
-    img.style.width = (encW * SCALE) + 'px';
-    img.style.height = (VIRT_H * SCALE) + 'px';
     img.src = '/stream';
     modeEl.textContent = 'mode: mjpeg';
   }
+  layout();
 }
+
+// --- Fullscreen ---
+
+// Esc is the browser's fullscreen exit; the Keyboard Lock API hands it to
+// the device instead (holding Esc still exits). Secure context only - the
+// same requirement the H.264 path already has.
+function lockKeys() {
+  if (!navigator.keyboard || !navigator.keyboard.lock) return;
+  navigator.keyboard.lock(['Escape']).catch(() => {});
+}
+
+function unlockKeys() {
+  if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock();
+}
+
+function toggleFullscreen() {
+  if (isFullscreen()) {
+    document.exitFullscreen().catch(() => {});
+  } else {
+    wrap.requestFullscreen().then(lockKeys).catch((e) => {
+      console.warn('fullscreen refused', e);
+    });
+  }
+}
+
+document.addEventListener('fullscreenchange', () => {
+  if (!isFullscreen()) unlockKeys();
+  fsBtn.textContent = isFullscreen() ? 'Exit fullscreen' : 'Fullscreen';
+  layout();
+  wrap.focus();
+});
+
+window.addEventListener('resize', layout);
+fsBtn.addEventListener('click', toggleFullscreen);
 
 // --- H.264 path: /ws_video + WebCodecs VideoDecoder -> canvas ---
 
@@ -156,13 +244,8 @@ function wsConnect() {
       setupScreen();
       if (useH264) startVideo();
     } else if (msg.t === 'cur') {
-      if (msg.v) {
-        cursorEl.style.display = 'block';
-        cursorEl.style.left = (msg.x * SCALE) + 'px';
-        cursorEl.style.top = (msg.y * SCALE) + 'px';
-      } else {
-        cursorEl.style.display = 'none';
-      }
+      lastCursor = { x: msg.x, y: msg.y, v: !!msg.v };
+      drawCursor();
     } else if (msg.t === 'stat') {
       statsEl.textContent = msg.fps + ' fps / ' + msg.kbps + ' kbps';
     }
@@ -203,10 +286,12 @@ function sendKey(state, scancode, mod) {
   wsSend(b);
 }
 
+// Hit testing goes against #view, not #wrap: in fullscreen #wrap covers the
+// whole screen including the letterbox, so its origin is not the picture's.
 function eventCoords(e) {
-  const r = wrap.getBoundingClientRect();
-  let x = Math.floor((e.clientX - r.left) * VIRT_W / (VIRT_W * SCALE));
-  let y = Math.floor((e.clientY - r.top) * VIRT_H / (VIRT_H * SCALE));
+  const r = view.getBoundingClientRect();
+  let x = Math.floor((e.clientX - r.left) * VIRT_W / r.width);
+  let y = Math.floor((e.clientY - r.top) * VIRT_H / r.height);
   x = Math.max(0, Math.min(VIRT_W - 1, x));
   y = Math.max(0, Math.min(VIRT_H - 1, y));
   return [x, y];
@@ -240,7 +325,19 @@ wrap.addEventListener('mouseup', (e) => {
 
 wrap.addEventListener('contextmenu', (e) => e.preventDefault());
 
+// Keys swallowed by a local shortcut: their release must be swallowed too,
+// or the device gets a key up with no matching key down.
+const suppressedKeys = new Set();
+
 wrap.addEventListener('keydown', (e) => {
+  // Reserved locally: the browser keeps F11 for itself, so fullscreen needs
+  // a shortcut of our own. Everything else goes to the device.
+  if (e.code === 'KeyF' && e.ctrlKey && e.altKey) {
+    suppressedKeys.add(e.code);
+    if (!e.repeat) toggleFullscreen();
+    e.preventDefault();
+    return;
+  }
   if (e.repeat) return;   // firmware expects report-change semantics
   const sc = RD_HID_KEYMAP[e.code];
   if (!sc) return;
@@ -249,6 +346,10 @@ wrap.addEventListener('keydown', (e) => {
 });
 
 wrap.addEventListener('keyup', (e) => {
+  if (suppressedKeys.delete(e.code)) {
+    e.preventDefault();
+    return;
+  }
   const sc = RD_HID_KEYMAP[e.code];
   if (!sc) return;
   sendKey(0, sc, rdModMask(e));

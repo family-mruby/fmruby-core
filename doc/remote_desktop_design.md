@@ -359,12 +359,37 @@ IDR には SPS/PPS を前置 (エンコーダ出力に含まれなければサ�
 
 ## ビューア (tool/web/remote/)
 
-- index.html: `<img src="/stream">` (P1) / `<canvas>` (P2) を 852x480
-  (2x, image-rendering: pixelated) 表示 + ステータスバー
+- index.html: `<img src="/stream">` (P1) / `<canvas>` (P2) を窓表示 852x480
+  (2x, image-rendering: pixelated) + ステータスバー。全画面切替あり (下記)
 - remote.js: WS 接続/再接続、mousemove(~30msスロットル)/mousedown/up/keydown/up、
   座標変換、カーソルオーバレイ。
   Phase2: `VideoDecoder({codec:'avc1.42e01e', optimizeForLatency:true})`、
   description なし (Annex B モード)、WebCodecs 非対応なら MJPEG に自動フォールバック
+
+### 全画面表示 (配信側は無変更、ビューアのみ)
+
+- DOM は外枠 `#wrap` (全画面時は画面全体・黒の余白担当) と内枠 `#view`
+  (見せる 426x240 の領域そのもの) の二段。表示倍率 `scale` から view/映像/
+  カーソルの大きさを全て導出するので、窓表示 (2 倍固定) と全画面は同じ
+  コードを通る
+- 全画面の倍率は `min(innerW/426, innerH/240)`。**縦横比を保ったまま最大化**
+  する。426x240 = 1.775 は 16:9 (1.778) とほぼ同じなので 1920x1080 では
+  1917x1080 (左右 1.5px の余白) で実質全画面になる
+- 倍率が整数のときだけ `image-rendering: pixelated`、端数のときは補間
+  (`auto`)。端数倍で最近傍にすると画素の大きさが不揃いになるため。
+  1704x1200 の画面なら 4 倍ちょうどになり自動的に pixelated
+- 座標の逆変換は `#view` の実寸 (`getBoundingClientRect`) 基準。`#wrap` は
+  全画面時に余白まで含むので原点がずれる
+- 切替は状態バーのボタンと `Ctrl+Alt+F` (F11 はブラウザが横取りするため
+  独自に用意)。局所処理したキーは keyup も握り潰す (機器側に対応する
+  keydown の無い keyup を送らないため)
+- **Esc の扱い**: 全画面中の Esc はブラウザの解除に使われるので
+  `navigator.keyboard.lock(['Escape'])` で機器側へ回す。この場合の解除は
+  Esc 長押し。Keyboard Lock も**安全なオリジン限定**で、H.264 経路が既に
+  要求する条件と同じ (「WebCodecs と Secure Context」参照)。ロックに失敗
+  する環境では Esc は従来どおり解除に使われる
+- 配信解像度は 426x240 のままなので全画面は拡大表示。粗が気になる場合は
+  `h264_bitrate_kbps` を上げる (既定 1000)
 
 ## sdkconfig.defaults.p4 追記 (計画承認済みブロック、既存行は不変更)
 
