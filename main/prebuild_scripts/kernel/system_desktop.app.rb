@@ -917,16 +917,10 @@ class SystemDesktopApp < FmrbApp
       character = ev[:character] || 0
       keycode = ev[:keycode] || 0
 
-      # Launcher: arrow keys scroll the visible range while it is open.
+      # Launcher: arrows move the selection (scrolling as needed), Enter
+      # launches. See handle_launcher_key in launcher.rb.
       if @launcher_open
-        case keycode
-        when FmrbConst::KEY_UP
-          launcher_scroll_up
-          return
-        when FmrbConst::KEY_DOWN
-          launcher_scroll_down
-          return
-        end
+        return if handle_launcher_key(keycode, character)
       end
 
       # Key input for file selector filename (save mode)

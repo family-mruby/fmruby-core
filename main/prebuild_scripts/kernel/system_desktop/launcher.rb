@@ -599,7 +599,9 @@ module LauncherMixin
 
   def open_launcher
     @launcher_open = true
-    @launcher_selected = -1
+    # Start with the first icon selected so arrow keys + Enter work
+    # immediately; mouse clicks still toggle selection as before.
+    @launcher_selected = @launcher_apps.empty? ? -1 : 0
     @launcher_scroll = 0
     @last_click_time = 0
     @last_click_idx = -1
@@ -690,7 +692,8 @@ module LauncherMixin
     # Scroll bar hit test
     bar_y = @launcher_y + LAUNCHER_TITLE_H
     bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
-    sb = scrollbar_hit(x, y, @launcher_x, bar_y, LAUNCHER_W, bar_h)
+    sb = scrollbar_hit(x, y, @launcher_x, bar_y, LAUNCHER_W, bar_h,
+                       @launcher_scroll, launcher_total_rows, launcher_visible_rows)
     if sb
       sb == :up ? launcher_scroll_up : launcher_scroll_down
       return
@@ -755,6 +758,60 @@ module LauncherMixin
       vrow += 1
     end
     -1
+  end
+
+  # ---- Keyboard navigation ----
+  #
+  # Arrow keys move the selection through the grid (scrolling when it
+  # crosses the visible range), Enter launches. Faster than positioning
+  # the trackpad cursor and double-tapping, which is the reason it exists.
+
+  # Returns true when the key was consumed (desktop's on_event stops there).
+  def handle_launcher_key(keycode, character)
+    case keycode
+    when FmrbConst::KEY_UP    then launcher_move_selection(-LAUNCHER_ICON_COLS)
+    when FmrbConst::KEY_DOWN  then launcher_move_selection(LAUNCHER_ICON_COLS)
+    when FmrbConst::KEY_LEFT  then launcher_move_selection(-1)
+    when FmrbConst::KEY_RIGHT then launcher_move_selection(1)
+    else
+      if character == 10 || character == 13
+        launcher_launch_selected
+      else
+        return false
+      end
+    end
+    true
+  end
+
+  def launcher_move_selection(delta)
+    size = @launcher_apps.size
+    return if size == 0
+    idx = @launcher_selected < 0 ? 0 : @launcher_selected + delta
+    idx = 0 if idx < 0
+    idx = size - 1 if idx >= size
+    return if idx == @launcher_selected
+
+    prev = @launcher_selected
+    @launcher_selected = idx
+    row = idx / LAUNCHER_ICON_COLS
+    vis = launcher_visible_rows
+    if row < @launcher_scroll || row >= @launcher_scroll + vis
+      # Selection left the visible range: scroll to it and repaint the grid
+      @launcher_scroll = row < @launcher_scroll ? row : row - vis + 1
+      redraw_launcher_only
+    else
+      # In-range move: repaint just the two affected cells
+      redraw_launcher_icon(prev, LAUNCHER_ICON_BG) if prev >= 0
+      redraw_launcher_icon(idx, LAUNCHER_ICON_SEL)
+      @gfx.present
+    end
+  end
+
+  def launcher_launch_selected
+    return if @launcher_selected < 0 || @launcher_selected >= @launcher_apps.size
+    app_name = @launcher_apps[@launcher_selected][:app]
+    close_launcher
+    spawn_app(app_name)
   end
 
   def launcher_scroll_up

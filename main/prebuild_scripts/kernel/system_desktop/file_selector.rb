@@ -201,8 +201,9 @@ module FileSelectorMixin
     list_h = bottom_y - list_y - 2
     max_visible = list_h / FSEL_ITEM_H
 
-    # Scrollbar click
-    sb = scrollbar_hit(x, y, @fsel_x, list_y, FSEL_W, list_h)
+    # Scrollbar click (thumb-relative: pass the scroll state)
+    sb = scrollbar_hit(x, y, @fsel_x, list_y, FSEL_W, list_h,
+                       @file_selector_scroll, @file_selector_entries.size, max_visible)
     if sb
       if sb == :up
         @file_selector_scroll -= 1 if @file_selector_scroll > 0

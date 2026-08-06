@@ -325,8 +325,9 @@ module FileManagerMixin
     max_visible = m[:max_visible]
     total = @file_manager_entries.size
 
-    # Scroll bar hit test
-    sb = scrollbar_hit(x, y, fx, list_y, FMGR_W, m[:list_h])
+    # Scroll bar hit test (thumb-relative: pass the scroll state)
+    sb = scrollbar_hit(x, y, fx, list_y, FMGR_W, m[:list_h],
+                       @file_manager_scroll, @file_manager_entries.size, m[:max_visible])
     if sb
       handle_file_manager_scroll(sb == :up ? -1 : 1)
       return

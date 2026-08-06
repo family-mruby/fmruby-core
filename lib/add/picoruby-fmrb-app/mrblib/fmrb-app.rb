@@ -256,21 +256,35 @@ class FmrbApp
   end
 
   # Hit test for scroll bar click
-  # Returns :up, :down, or nil
-  def scrollbar_hit(click_x, click_y, x = @user_area_x0, y = @user_area_y0, w = @user_area_width, h = @user_area_height)
+  # Returns :up, :down, or nil.
+  #
+  # With the scroll state (scroll/total/visible, same values the matching
+  # draw_scrollbar call uses) the track splits at the THUMB: a click above
+  # it scrolls up, below it scrolls down, and the thumb itself is inert.
+  # This is what makes the whole track responsive wherever the thumb sits
+  # -- with the old fixed half-split, clicking just under a thumb parked
+  # near the top counted as "up" and appeared dead. Without the state the
+  # half-split fallback is kept for callers that only need "was the bar
+  # area hit at all".
+  def scrollbar_hit(click_x, click_y, x = @user_area_x0, y = @user_area_y0, w = @user_area_width, h = @user_area_height, scroll = nil, total = nil, visible = nil)
     bar_x = x + w - SCROLLBAR_W - 1
     return nil unless click_x >= bar_x && click_y >= y && click_y < y + h
     btn_h = SCROLLBAR_BTN_H
-    mid_y = y + h / 2
-    if click_y < y + btn_h
-      :up
-    elsif click_y >= y + h - btn_h
-      :down
-    elsif click_y < mid_y
-      :up
-    else
-      :down
+    return :up if click_y < y + btn_h
+    return :down if click_y >= y + h - btn_h
+    if scroll && total && visible && total > visible
+      track_y = y + btn_h
+      track_h = h - btn_h * 2
+      if track_h > 4
+        thumb_h = [track_h * visible / total, 6].max
+        max_scroll = total - visible
+        thumb_y = track_y + (max_scroll > 0 ? (track_h - thumb_h) * scroll / max_scroll : 0)
+        return :up if click_y < thumb_y
+        return :down if click_y >= thumb_y + thumb_h
+        return nil
+      end
     end
+    click_y < y + h / 2 ? :up : :down
   end
 
   # ---- Modifier key helpers (for use inside on_event) ----
