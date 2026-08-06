@@ -204,6 +204,14 @@ bool fmrb_app_suspend(int32_t id);
 bool fmrb_app_resume(int32_t id);
 int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count);
 
+/**
+ * @brief Process-set generation counter, bumped on every state transition.
+ *
+ * Cheap change detector for UI polls: call fmrb_app_ps() (which allocates)
+ * only when this value moved since the last poll.
+ */
+uint32_t fmrb_app_proc_generation(void);
+
 // Context access
 static inline fmrb_app_task_context_t* fmrb_current(void) {
     return (fmrb_app_task_context_t*)fmrb_task_get_tls(fmrb_task_get_current(), FMRB_APP_TLS_INDEX);

@@ -103,6 +103,10 @@ _Static_assert(PROC_ID_MAX == FMRB_MAX_APPS,
 
 // Mutex for protecting context pool access
 static fmrb_semaphore_t g_ctx_lock = NULL;
+
+// Bumped on every process state transition. UI polls (taskbar) read it via
+// FmrbApp.ps_gen to skip the allocating FmrbApp.ps call while nothing changed.
+static volatile uint32_t g_proc_generation = 0;
 static bool g_large_pool_in_use = false;
 
 // State transition strings for debugging
@@ -160,7 +164,13 @@ static bool transition_state(fmrb_app_task_context_t* ctx, fmrb_proc_state_t new
     FMRB_LOGI(TAG, "[%s gen=%u] State: %s -> %s",
              ctx->app_name, ctx->gen, state_str(ctx->state), state_str(new_state));
     ctx->state = new_state;
+    g_proc_generation++;
     return true;
+}
+
+uint32_t fmrb_app_proc_generation(void)
+{
+    return g_proc_generation;
 }
 
 /**

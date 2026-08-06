@@ -20,9 +20,17 @@ module TaskbarMixin
   def init_taskbar
     @taskbar_apps = []
     @taskbar_update_counter = 0
+    @taskbar_gen = -1
   end
 
   def update_taskbar_apps
+    # Generation gate: FmrbApp.ps allocates a large Hash per process, and
+    # for minutes at a time nothing spawns, exits or changes state. ps_gen
+    # is a bare counter read; only a change pays for the real rebuild.
+    gen = FmrbApp.ps_gen
+    return if gen == @taskbar_gen
+    @taskbar_gen = gen
+
     procs = FmrbApp.ps
     apps = []
     i = 0
@@ -30,7 +38,15 @@ module TaskbarMixin
       p = procs[i]
       # state 2 = RUNNING, type 0 = kernel, exclude self by name
       if p[:state] == 2 && p[:type] != 0 && p[:name] != @name
-        apps << { :pid => p[:id], :name => p[:name], :vm_type => p[:vm_type] || 0 }
+        # Icon letter precomputed here so the 1Hz draw_taskbar allocates
+        # nothing (rindex/slice/[0] all make fresh Strings).
+        label = p[:name]
+        if label
+          slash = label.rindex("/")
+          label = label[(slash + 1)..-1] if slash
+        end
+        apps << { :pid => p[:id], :name => p[:name], :vm_type => p[:vm_type] || 0,
+                  :ch => label ? label[0] : nil }
       end
       i += 1
     end
@@ -52,15 +68,9 @@ module TaskbarMixin
       # Draw icon square
       @gfx.fill_rect(x, TASKBAR_Y, TASKBAR_ICON_SIZE, TASKBAR_ICON_SIZE, color)
 
-      # Draw first letter of app name
-      label = app[:name]
-      if label
-        # Strip prefix (e.g. "default/" -> take part after /)
-        slash = label.rindex("/")
-        label = label[(slash + 1)..-1] if slash
-        ch = label[0]
-        @gfx.draw_text(x + 2, TASKBAR_Y + 1, ch, FmrbGfx::WHITE, color) if ch
-      end
+      # First letter of the app name, precomputed in update_taskbar_apps
+      ch = app[:ch]
+      @gfx.draw_text(x + 2, TASKBAR_Y + 1, ch, FmrbGfx::WHITE, color) if ch
 
       # Focused highlight: white border
       if app[:pid] == @taskbar_focused_pid

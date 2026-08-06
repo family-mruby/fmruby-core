@@ -251,7 +251,22 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
     //Save GC arena before creating objects
     int ai = mrb_gc_arena_save(mrb);
 
-    mrb_value event_hash = mrb_hash_new(mrb);
+    // Mouse moves arrive as a 30Hz stream and dominate event-path garbage
+    // (~160B per event). Reuse one per-VM Hash for them, rooted through a
+    // global variable so the GC keeps it alive. Handlers consume move
+    // events on the spot and must not retain them across events; every
+    // other event type still gets a fresh Hash.
+    mrb_value event_hash;
+    if (ev.type == FMRB_HID_EVENT_MOUSE_MOVE) {
+        mrb_sym gv_sym = mrb_intern_lit(mrb, "$fmrb_move_ev");
+        event_hash = mrb_gv_get(mrb, gv_sym);
+        if (!mrb_hash_p(event_hash)) {
+            event_hash = mrb_hash_new_capa(mrb, 4);
+            mrb_gv_set(mrb, gv_sym, event_hash);
+        }
+    } else {
+        event_hash = mrb_hash_new(mrb);
+    }
 
 #define HID_SET(key, value) \
     mrb_hash_set(mrb, event_hash, mrb_symbol_value(mrb_intern_cstr(mrb, key)), (value))
@@ -929,6 +944,15 @@ static mrb_value mrb_fmrb_app_audio_note_bytes(mrb_state *mrb, mrb_value self)
 
 // FmrbApp.ps() -> Array[Hash]
 // Get process list with memory statistics
+// FmrbApp.ps_gen -> Integer. Process-set generation: bumped by the kernel
+// on every state transition. A 1Hz UI poll compares it to its last value
+// and calls the allocating FmrbApp.ps only when something actually changed.
+static mrb_value mrb_fmrb_app_s_ps_gen(mrb_state *mrb, mrb_value self)
+{
+    (void)mrb; (void)self;
+    return mrb_fixnum_value((mrb_int)fmrb_app_proc_generation());
+}
+
 static mrb_value mrb_fmrb_app_s_ps(mrb_state *mrb, mrb_value self)
 {
     fmrb_app_info_t list[FMRB_MAX_APPS];
@@ -1180,6 +1204,28 @@ static mrb_value mrb_fmrb_app_s_sys_pool_info(mrb_state *mrb, mrb_value self)
 
 // FmrbApp.heap_info() -> Hash
 // Get system heap information (ESP32 heap)
+// Defined in picoruby-mruby's alloc.c (same extern pattern as fmrb_app.c).
+extern int mrb_get_estalloc_stats(void* est_ptr, size_t* total, size_t* used, size_t* free_out, int32_t* frag);
+
+// FmrbApp.pool_usage -> Integer 0-100 (percent of this VM's estalloc pool
+// in use), or -1 when unavailable. Allocation-free (a single fixnum), so
+// the desktop can poll it for its GC watermark without adding to the very
+// garbage it is trying to bound.
+static mrb_value mrb_fmrb_app_s_pool_usage(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (ctx == NULL || ctx->est == NULL) {
+        return mrb_fixnum_value(-1);
+    }
+    size_t total = 0, used = 0, free_bytes = 0;
+    int32_t frag = 0;
+    if (mrb_get_estalloc_stats(ctx->est, &total, &used, &free_bytes, &frag) != 0 || total == 0) {
+        return mrb_fixnum_value(-1);
+    }
+    return mrb_fixnum_value((mrb_int)((used * 100) / total));
+}
+
 static mrb_value mrb_fmrb_app_s_heap_info(mrb_state *mrb, mrb_value self)
 {
     mrb_value hash = mrb_hash_new_capa(mrb, 4);
@@ -1279,6 +1325,36 @@ static mrb_value mrb_fmrb_app_s_ble_start(mrb_state *mrb, mrb_value klass)
     return mrb_bool_value(ble_service_start() == 0);
 #else
     FMRB_LOGI(TAG, "FmrbApp.ble_start: not supported on this target");
+    return mrb_false_value();
+#endif
+}
+
+// FmrbApp.wifi_connected? -> bool. Allocation-free subset of wifi_info for
+// the 1Hz status-bar icon, which only needs the connection state.
+static mrb_value mrb_fmrb_app_s_wifi_connected_p(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+#if defined(FMRB_HAS_WIFI)
+    return mrb_bool_value(wifi_is_connected());
+#elif defined(CONFIG_IDF_TARGET_LINUX)
+    bool connected = false;
+    struct ifaddrs *ifaddr = NULL;
+    if (getifaddrs(&ifaddr) == 0) {
+        for (struct ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
+            if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) {
+                continue;
+            }
+            struct sockaddr_in *sin = (struct sockaddr_in *)ifa->ifa_addr;
+            if ((ntohl(sin->sin_addr.s_addr) >> 24) == 127) {
+                continue;  // skip loopback
+            }
+            connected = true;
+            break;
+        }
+        freeifaddrs(ifaddr);
+    }
+    return mrb_bool_value(connected);
+#else
     return mrb_false_value();
 #endif
 }
@@ -1524,7 +1600,9 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 
     // Class methods
     mrb_define_class_method(mrb, app_class, "ps", mrb_fmrb_app_s_ps, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "ps_gen", mrb_fmrb_app_s_ps_gen, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "heap_info", mrb_fmrb_app_s_heap_info, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "pool_usage", mrb_fmrb_app_s_pool_usage, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "sys_pool_info", mrb_fmrb_app_s_sys_pool_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));
@@ -1537,6 +1615,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_info", mrb_fmrb_app_s_wifi_info, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "wifi_connected?", mrb_fmrb_app_s_wifi_connected_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_clear_cache", mrb_fmrb_app_s_clear_cache, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "usb_devices", mrb_fmrb_app_s_usb_devices, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "hid_raw_subscribe", mrb_fmrb_app_s_hid_raw_subscribe, MRB_ARGS_REQ(1));

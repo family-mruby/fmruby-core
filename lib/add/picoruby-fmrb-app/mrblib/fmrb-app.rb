@@ -9,6 +9,10 @@ class FmrbApp
   SCROLLBAR_BTN_H = 10
 
   attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen, :rounded_corners
+  # Whether a click on the close-button area may stop the app. System apps
+  # that own the screen (the desktop) must set this to false: for them the
+  # top-right corner is ordinary UI, not a close button.
+  attr_accessor :closable
 
   # Close-button hit zone (used by both draw and event-handler paths).
   CLOSE_BTN_CX_OFFSET = 6   # distance from right edge to circle center
@@ -24,6 +28,7 @@ class FmrbApp
     Log.debug("initialize")
     @running = false
     @close_btn_pressed = false
+    @closable = true
     _init() # C function, variables are defined here
     Log.debug("name=#{@name}")
     Log.debug("After _init(), @canvas=#{@canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}")
@@ -324,7 +329,7 @@ class FmrbApp
   def on_event(ev)
     # Called from C
     # Handle close button press feedback + click
-    if ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
+    if @closable && ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
       cx = @window_width - CLOSE_BTN_CX_OFFSET
       cy = CLOSE_BTN_CY
       hit = (ev[:x] - cx).abs <= CLOSE_BTN_HIT_R &&
@@ -347,8 +352,13 @@ class FmrbApp
             @gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_NORMAL_COLOR)
             @gfx.present
           end
-        elsif hit
-          stop  # safety net: down event missed but click landed on button
+        elsif hit && !@fullscreen && @gfx
+          # Safety net: down event missed but click landed on button. Must
+          # carry the same guards as the down path -- without them a plain
+          # click on the top-right corner of a fullscreen app (which draws
+          # no close button at all) silently stopped it. That is how the
+          # desktop was once killed from the launcher.
+          stop
         end
       end
     end
@@ -470,6 +480,14 @@ class FmrbApp
   # (doc/midi/report/p7.md).
   IDLE_GC_STEP_LIMIT = 512
 
+  # Byte-pressure trigger for scheduler-driven GC. Without it the collector
+  # only reacts to object-count debt, which badly under-counts Hash/String
+  # heavy workloads (their payload lives in malloc'd buffers, not object
+  # slots): the desktop grew its 800KB pool to the brim, then paid with one
+  # multi-second full GC. 32KB of malloc growth per step keeps collection
+  # continuous instead.
+  IDLE_GC_MALLOC_THRESHOLD = 32 * 1024
+
   # Collect while this app waits in _spin, instead of leaving it to whatever
   # call happens to allocate.
   #
@@ -487,6 +505,7 @@ class FmrbApp
     if enable
       GC.debt_limit = IDLE_GC_DEBT_LIMIT
       GC.step_limit = IDLE_GC_STEP_LIMIT
+      GC.malloc_threshold = IDLE_GC_MALLOC_THRESHOLD
       GC.scheduler_driven = true
     else
       GC.scheduler_driven = false

@@ -175,6 +175,15 @@ class SystemDesktopApp < FmrbApp
     # app's own idle time instead; the clock wait gives it wide windows.
     self.idle_gc = true
 
+    # The desktop owns the screen: its top-right corner is the menu bar,
+    # never a close button. Without this a click there stops the desktop
+    # "normally" and the system loses its window manager.
+    self.closable = false
+    # The desktop's idle window is the 500ms clock wait, far wider than the
+    # rhythm-holding MIDI apps IDLE_GC_STEP_LIMIT was tuned for; let each
+    # step do more work so collection keeps pace with the UI churn.
+    GC.step_limit = 2000 if @idle_gc
+
     # Load keyboard shortcuts from config
     @shortcuts = load_shortcuts
 
@@ -513,10 +522,14 @@ class SystemDesktopApp < FmrbApp
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
   end
 
+  # Hoisted: an inline string literal allocates a fresh RString slot on
+  # every 1Hz redraw; a constant lookup does not.
+  CLOCK_FMT = "%02d/%02d %02d:%02d:%02d"
+
   def draw_clock
     wc = FmrbApp.wallclock
     return unless wc
-    text = sprintf("%02d/%02d %02d:%02d:%02d",
+    text = sprintf(CLOCK_FMT,
                    wc[:month], wc[:day], wc[:hour], wc[:minute], wc[:second])
     @gfx.draw_text(@window_width - 90, 2, text, FmrbGfx::WHITE, MENU_BG)
   end
@@ -528,14 +541,16 @@ class SystemDesktopApp < FmrbApp
   WIFI_ICON_W = 10
 
   def draw_wifi_icon
-    info = FmrbApp.wifi_info
-    unless info
+    # Capability probe once (wifi_info allocates a Hash + 3 Strings); the
+    # 1Hz redraw then only needs the allocation-free connected? bool.
+    @wifi_supported = FmrbApp.wifi_info ? true : false if @wifi_supported.nil?
+    unless @wifi_supported
       @wifi_icon_x = nil
       return
     end
     x = @window_width - 90 - WIFI_ICON_W - 4
     @wifi_icon_x = x
-    connected = info[:connected]
+    connected = FmrbApp.wifi_connected?
     color = connected ? FmrbGfx::WHITE : FmrbGfx::GRAY
     @gfx.fill_rect(x,     7, 2, 3, color)   # bars grow up from y=10
     @gfx.fill_rect(x + 3, 5, 2, 5, color)
@@ -709,6 +724,19 @@ class SystemDesktopApp < FmrbApp
       tick_config_dialog if @cfg_open
       tick_network_dialog if @net_open
       draw_foreground
+    end
+
+    # Watermark GC: launcher/dialog bursts allocate faster than idle
+    # stepping can collect, and a pool that reaches its ceiling pays with
+    # a multi-second GC storm (observed at 801KB of 819KB). Collect
+    # deliberately at a frame boundary once usage crosses 70% -- a full GC
+    # at ~570KB is a bounded hiccup instead of the storm it prevents.
+    if @counter % 10 == 0
+      usage = FmrbApp.pool_usage
+      if usage >= 70
+        Log.info("desktop: watermark GC at #{usage}% pool usage")
+        GC.start
+      end
     end
 
     # Deferred: send file path to editor after it has started
