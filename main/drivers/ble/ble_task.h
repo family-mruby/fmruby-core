@@ -36,6 +36,14 @@ fmrb_err_t ble_service_start(void);
 bool ble_service_is_started(void);
 
 /**
+ * @brief BLE state for the menu-bar indicator.
+ *
+ * @return 0 = BLE off, 1 = enabled and waiting for a central,
+ *         2 = a central is connected. Allocation- and lock-free.
+ */
+int ble_ui_state(void);
+
+/**
  * @brief Deinitialize BLE stack and stop advertising
  *
  * @return FMRB_OK on success

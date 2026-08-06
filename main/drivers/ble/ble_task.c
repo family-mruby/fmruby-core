@@ -1477,6 +1477,14 @@ bool ble_service_is_started(void)
     return g_ble_initialized || g_ble_start_pending;
 }
 
+int ble_ui_state(void)
+{
+    if (!ble_service_is_started()) {
+        return 0;
+    }
+    return g_connected ? 2 : 1;
+}
+
 #ifndef CONFIG_IDF_TARGET_ESP32P4
 // Weak default so targets without wifi_task.c (ATOM) still link; the strong
 // definition lives in wifi_task.c on WiFi-capable retro targets.

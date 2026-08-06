@@ -9,6 +9,7 @@
 #include <mruby/hash.h>
 #include <mruby/array.h>
 
+#include "esp_heap_caps.h"
 #include "fmrb_app.h"
 #include "fmrb_hal.h"
 #include "fmrb_rtos.h"
@@ -597,6 +598,42 @@ static mrb_value mrb_gfx_draw_wallclock(mrb_state *mrb, mrb_value self)
     char buf[24];
     snprintf(buf, sizeof(buf), "%02d/%02d %02d:%02d:%02d",
              (int)wc.month, (int)wc.day, (int)wc.hour, (int)wc.minute, (int)wc.second);
+
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_text(&cmd, data->canvas_id, (int16_t)x, (int16_t)y, buf,
+                      (fmrb_color_t)color, (fmrb_color_t)bg_color, 0,
+                      FMRB_FONT_SIZE_MEDIUM, 0);
+    if (fmrb_gfx_submit(&cmd) != FMRB_OK) {
+        return mrb_false_value();
+    }
+    return mrb_true_value();
+}
+
+// Graphics#draw_free_iram(x, y, color, bg_color) -> true/false
+// Draws the free internal RAM in KB (e.g. "187KB"), fetched and formatted
+// entirely in C so the desktop's 1Hz repaint stays allocation-free.
+// Internal RAM is this machine's scarce resource (one running app costs
+// ~25KB), hence a permanent menu-bar readout. Fixed 5-char width so the
+// cell self-overwrites cleanly. The Linux sim has no meaningful
+// internal-RAM figure and pins the cell to "---KB" so the layout still
+// shows where the number lives on hardware.
+static mrb_value mrb_gfx_draw_free_iram(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y, color, bg_color;
+    mrb_get_args(mrb, "iiii", &x, &y, &color, &bg_color);
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+
+    char buf[12];
+#ifdef CONFIG_IDF_TARGET_LINUX
+    snprintf(buf, sizeof(buf), "---KB");
+#else
+    unsigned kb = (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    snprintf(buf, sizeof(buf), "%3uKB", kb > 999 ? 999u : kb);
+#endif
 
     gfx_cmd_t cmd;
     fmrb_gfx_cmd_text(&cmd, data->canvas_id, (int16_t)x, (int16_t)y, buf,
@@ -1515,6 +1552,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     // `mixed:` keyword can route to the hybrid variant.
     mrb_define_method(mrb, gfx_class, "_draw_text",        mrb_gfx_draw_text,        MRB_ARGS_ARG(4, 1));
     mrb_define_method(mrb, gfx_class, "draw_wallclock",    mrb_gfx_draw_wallclock,   MRB_ARGS_REQ(4));
+    mrb_define_method(mrb, gfx_class, "draw_free_iram",    mrb_gfx_draw_free_iram,   MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "_draw_text_hybrid", mrb_gfx_draw_text_hybrid, MRB_ARGS_ARG(4, 1));
     mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_OPT(2));
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());

@@ -1318,6 +1318,23 @@ static mrb_value mrb_fmrb_app_s_reboot(mrb_state *mrb, mrb_value klass)
 #if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(CONFIG_IDF_TARGET_ESP32P4)
 extern int ble_service_start(void);   // main/drivers/ble/ble_task.h (fmrb_err_t; 0 == OK)
 #endif
+
+// FmrbApp.ble_state -> Integer: 0 = BLE off, 1 = enabled and waiting for a
+// central, 2 = connected. Allocation-free fixnum; feeds the menu-bar
+// indicator. The Linux sim has no BLE and always reports 0 (hidden).
+#if !defined(CONFIG_IDF_TARGET_LINUX)
+extern int ble_ui_state(void);        // main/drivers/ble/ble_task.h
+#endif
+static mrb_value mrb_fmrb_app_s_ble_state(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+#if !defined(CONFIG_IDF_TARGET_LINUX)
+    return mrb_fixnum_value(ble_ui_state());
+#else
+    return mrb_fixnum_value(0);
+#endif
+}
+
 static mrb_value mrb_fmrb_app_s_ble_start(mrb_state *mrb, mrb_value klass)
 {
     (void)mrb; (void)klass;
@@ -1614,6 +1631,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "set_cursor_visible", mrb_fmrb_app_s_set_cursor_visible, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_info", mrb_fmrb_app_s_wifi_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_connected?", mrb_fmrb_app_s_wifi_connected_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_clear_cache", mrb_fmrb_app_s_clear_cache, MRB_ARGS_REQ(1));

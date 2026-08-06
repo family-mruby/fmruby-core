@@ -519,6 +519,8 @@ class SystemDesktopApp < FmrbApp
     draw_taskbar
     draw_clock
     draw_wifi_icon
+    draw_meminfo
+    draw_ble_icon
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
   end
 
@@ -534,6 +536,33 @@ class SystemDesktopApp < FmrbApp
   # Signal-bars pictogram; gray bars with a red slash while disconnected.
   # Clicking the icon opens the network dialog (see handle_click).
   WIFI_ICON_W = 10
+
+  # Free internal RAM readout, left of the wifi icon, always shown --
+  # internal RAM is the scarce resource here (one running app costs ~25KB),
+  # so this answers "can I open another app" at a glance. Fetch, format and
+  # draw all happen in C (allocation-free); the Linux sim shows "---KB".
+  MEMINFO_W = 30  # 5 chars x 6px, fixed width
+
+  def draw_meminfo
+    x = @window_width - 90 - WIFI_ICON_W - 4 - MEMINFO_W - 4
+    @gfx.draw_free_iram(x, 2, FmrbGfx::WHITE, MENU_BG)
+  end
+
+  # BLE indicator, left of the free-RAM readout. Three states the user can
+  # tell apart: hidden = BLE off, gray B = enabled and waiting for a
+  # central, white B = client connected. The state read is a bare fixnum,
+  # the label a constant -- the 1Hz repaint stays allocation-free.
+  BLE_LABEL = "B"
+  BLE_CELL_W = 10
+
+  def draw_ble_icon
+    x = @window_width - 90 - WIFI_ICON_W - 4 - MEMINFO_W - 4 - BLE_CELL_W
+    @gfx.fill_rect(x, 2, BLE_CELL_W, 10, MENU_BG)
+    state = FmrbApp.ble_state
+    return if state == 0
+    color = (state == 2) ? FmrbGfx::WHITE : FmrbGfx::GRAY
+    @gfx.draw_text(x + 2, 2, BLE_LABEL, color, MENU_BG)
+  end
 
   def draw_wifi_icon
     # Capability probe once (wifi_info allocates a Hash + 3 Strings); the
@@ -734,6 +763,8 @@ class SystemDesktopApp < FmrbApp
         # redraw cost every second.
         draw_clock
         draw_wifi_icon
+        draw_meminfo
+        draw_ble_icon
         @gfx.present
       end
     end

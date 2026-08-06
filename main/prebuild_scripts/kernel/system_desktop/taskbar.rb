@@ -59,7 +59,7 @@ module TaskbarMixin
   def draw_taskbar
     return if @taskbar_apps.empty?
 
-    clock_area = 95  # reserved for clock
+    clock_area = 152  # reserved for clock + wifi + free-IRAM readout + BLE
     max_x = @window_width - clock_area
     x = TASKBAR_X_START
 
