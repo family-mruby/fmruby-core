@@ -11,6 +11,10 @@
 //   hold + move   finger stays put for TOUCH_HOLD_MS -> button down at
 //                 the cursor position; subsequent movement drags,
 //                 release sends button up
+//   two-finger tap  a second finger lands before any button action ->
+//                 right click (button 3 down + up) at the cursor position
+//                 on release. Long-press cannot mean right click here
+//                 because hold already starts a drag.
 //
 // Button down must not fire on plain touch: the cursor stays where a
 // drag ended (e.g. on a window title bar), so an immediate down would
@@ -53,6 +57,7 @@ typedef enum {
     TOUCH_STATE_PENDING,  // touched; tap / hold-drag / move not decided yet
     TOUCH_STATE_MOVE,     // cursor movement only, button not pressed
     TOUCH_STATE_DRAG,     // button held down (press-and-hold), dragging
+    TOUCH_STATE_TWO,      // two fingers down; right click on release
 } touch_state_t;
 
 static touch_state_t g_state = TOUCH_STATE_IDLE;
@@ -106,6 +111,16 @@ static void touch_task(void *arg) {
         uint32_t now = now_ms();
 
         if (count > 0) {
+            // Second finger before any button action promotes to a
+            // right-click-on-release. Deliberately NOT entered from MOVE
+            // or DRAG: a finger resting down mid-drag must not turn the
+            // drag into a right click. In TWO the cursor stays put and
+            // GT911 point-0 flapping between fingers is ignored.
+            if (count >= 2 &&
+                (g_state == TOUCH_STATE_IDLE || g_state == TOUCH_STATE_PENDING)) {
+                g_state = TOUCH_STATE_TWO;
+            }
+
             if (g_state == TOUCH_STATE_IDLE) {
                 // Touch down: record anchor and tap origin, decide later
                 g_anchor_tx = tx;
@@ -157,6 +172,12 @@ static void touch_task(void *arg) {
             case TOUCH_STATE_DRAG:
                 // Release the held button
                 fmrb_host_send_mouse_click(g_cursor_x, g_cursor_y, 1, 0);
+                break;
+            case TOUCH_STATE_TWO:
+                // Two-finger tap: right click at the cursor position
+                fmrb_host_send_mouse_move(g_cursor_x, g_cursor_y);
+                fmrb_host_send_mouse_click(g_cursor_x, g_cursor_y, 3, 1);
+                fmrb_host_send_mouse_click(g_cursor_x, g_cursor_y, 3, 0);
                 break;
             default:
                 break;

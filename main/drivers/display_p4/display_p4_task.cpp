@@ -2703,12 +2703,15 @@ extern "C" bool display_p4_is_ready(void) {
 
 extern "C" int display_p4_get_touch(int16_t *out_x, int16_t *out_y) {
     if (!i2c_service_lock()) return 0;
-    lgfx::touch_point_t tp;
-    int count = g_lcd.getTouch(&tp, 1);
+    // Ask for two points so the return value distinguishes one finger from
+    // two (the touch task maps a two-finger tap to a right click). Only the
+    // primary point's coordinates are reported.
+    lgfx::touch_point_t tp[2];
+    int count = g_lcd.getTouch(tp, 2);
     i2c_service_unlock();
     if (count > 0) {
-        *out_x = tp.x;
-        *out_y = tp.y;
+        *out_x = tp[0].x;
+        *out_y = tp[0].y;
     }
     return count;
 }
