@@ -23,12 +23,14 @@ module TaskbarMixin
     @taskbar_gen = -1
   end
 
+  # Returns true when the app list was rebuilt (callers use this to decide
+  # between a full foreground repaint and the cheap clock-only path).
   def update_taskbar_apps
     # Generation gate: FmrbApp.ps allocates a large Hash per process, and
     # for minutes at a time nothing spawns, exits or changes state. ps_gen
     # is a bare counter read; only a change pays for the real rebuild.
     gen = FmrbApp.ps_gen
-    return if gen == @taskbar_gen
+    return false if gen == @taskbar_gen
     @taskbar_gen = gen
 
     procs = FmrbApp.ps
@@ -51,6 +53,7 @@ module TaskbarMixin
       i += 1
     end
     @taskbar_apps = apps
+    true
   end
 
   def draw_taskbar

@@ -550,6 +550,10 @@ class SystemDesktopApp < FmrbApp
     end
     x = @window_width - 90 - WIFI_ICON_W - 4
     @wifi_icon_x = x
+    # Clear the icon cell first: this draw must be self-contained now that
+    # the 1Hz tick repaints it without a full menu-bar repaint underneath
+    # (stale disconnect slashes would linger otherwise).
+    @gfx.fill_rect(x - 1, 2, WIFI_ICON_W + 2, 10, MENU_BG)
     connected = FmrbApp.wifi_connected?
     color = connected ? FmrbGfx::WHITE : FmrbGfx::GRAY
     @gfx.fill_rect(x,     7, 2, 3, color)   # bars grow up from y=10
@@ -720,10 +724,23 @@ class SystemDesktopApp < FmrbApp
     # the largest observed GC step (336ms on device) or stepping stops after
     # the first big step and collections fall back to the allocation path.
     if @counter % 2 == 0
-      update_taskbar_apps
+      taskbar_changed = update_taskbar_apps
       tick_config_dialog if @cfg_open
       tick_network_dialog if @net_open
-      draw_foreground
+      if taskbar_changed || @net_open
+        # Process set changed (taskbar layout moved) or the network dialog
+        # is showing live info: repaint everything.
+        draw_foreground
+      else
+        # Nothing structural changed this second. The canvas is persistent,
+        # so repaint only the two menu-bar cells that follow the clock and
+        # leave the rest (launcher grid, dialogs, taskbar) as drawn. This
+        # keeps an open launcher from paying its full label layout and
+        # redraw cost every second.
+        draw_clock
+        draw_wifi_icon
+        @gfx.present
+      end
     end
 
     # Watermark GC: launcher/dialog bursts allocate faster than idle

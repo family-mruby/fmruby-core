@@ -534,23 +534,35 @@ module LauncherMixin
         # Label below icon. Uses mixed:true so Japanese (UTF-8) labels render
         # with misaki_8 (8px) while ASCII stays on Font0 (6px). Width helpers
         # in FmrbI18n keep centering and ellipsis correct for either case.
-        label = app[:label]
-        max_px = LAUNCHER_ICON_W
-        full_w = FmrbI18n.text_width(label)
-        if full_w <= max_px
-          label_x = icon_x + (LAUNCHER_ICON_W - full_w) / 2
-          @gfx.draw_text(label_x, icon_y + LAUNCHER_ICON_H - 8, label, LAUNCHER_TEXT, mixed: true)
+        #
+        # The wrap/centering layout is computed once per app and cached in
+        # the entry (truncate_to builds a String per character, and this
+        # loop used to run every second while the launcher sat open).
+        # @launcher_apps entries are rebuilt on rescan, which naturally
+        # invalidates the cache. Offsets are within-cell, so scrolling and
+        # column position do not affect them.
+        lay = app[:label_layout]
+        unless lay
+          label = app[:label]
+          max_px = LAUNCHER_ICON_W
+          full_w = FmrbI18n.text_width(label)
+          if full_w <= max_px
+            lay = [label, (LAUNCHER_ICON_W - full_w) / 2]
+          else
+            line1 = FmrbI18n.truncate_to(label, max_px, "")
+            consumed = line1.bytesize
+            line2 = (consumed < label.bytesize) ? label.byteslice(consumed, label.bytesize - consumed).to_s : ""
+            line2 = FmrbI18n.truncate_to(line2, max_px) if line2.length > 0
+            lay = [line1, (LAUNCHER_ICON_W - FmrbI18n.text_width(line1)) / 2,
+                   line2, (LAUNCHER_ICON_W - FmrbI18n.text_width(line2)) / 2]
+          end
+          app[:label_layout] = lay
+        end
+        if lay.size == 2
+          @gfx.draw_text(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 8, lay[0], LAUNCHER_TEXT, mixed: true)
         else
-          line1 = FmrbI18n.truncate_to(label, max_px, "")
-          consumed = line1.bytesize
-          line2 = (consumed < label.bytesize) ? label.byteslice(consumed, label.bytesize - consumed).to_s : ""
-          line2 = FmrbI18n.truncate_to(line2, max_px) if line2.length > 0
-          w1 = FmrbI18n.text_width(line1)
-          w2 = FmrbI18n.text_width(line2)
-          l1x = icon_x + (LAUNCHER_ICON_W - w1) / 2
-          l2x = icon_x + (LAUNCHER_ICON_W - w2) / 2
-          @gfx.draw_text(l1x, icon_y + LAUNCHER_ICON_H - 16, line1, LAUNCHER_TEXT, mixed: true)
-          @gfx.draw_text(l2x, icon_y + LAUNCHER_ICON_H - 8,  line2, LAUNCHER_TEXT, mixed: true)
+          @gfx.draw_text(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 16, lay[0], LAUNCHER_TEXT, mixed: true)
+          @gfx.draw_text(icon_x + lay[3], icon_y + LAUNCHER_ICON_H - 8,  lay[2], LAUNCHER_TEXT, mixed: true)
         end
       end
       vrow += 1
