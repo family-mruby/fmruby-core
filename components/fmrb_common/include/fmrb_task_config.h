@@ -245,8 +245,13 @@
 #define FMRB_HOST_HID_RESERVED_SLOTS (32)
 #define FMRB_HOST_GFX_AVAILABLE_SLOTS (FMRB_HOST_MSG_QUEUE_LEN - FMRB_HOST_HID_RESERVED_SLOTS)
 
-// KERNEL task: HID events, window management, app lifecycle
-#define FMRB_KERNEL_MSG_QUEUE_LEN (32)
+// KERNEL task: HID events, window management, app lifecycle.
+// 64 matches the app queues (P7.8): this queue also carries the MIDI note
+// stream (hundreds of msgs/s) plus every forwarded HID event, and at 32 it
+// was the first to jam when the desktop stalled in a GC storm -- HOST then
+// blocked on it and input/audio froze together. ~180B per slot, so the
+// extra 32 slots cost ~5.6KB of internal RAM.
+#define FMRB_KERNEL_MSG_QUEUE_LEN (64)
 
 // SYSTEM_APP task: System-level application messages
 #define FMRB_SYSTEM_APP_MSG_QUEUE_LEN (64)

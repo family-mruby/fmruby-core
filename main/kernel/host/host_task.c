@@ -1446,19 +1446,14 @@ static void host_task_process_host_message(const host_message_t *msg)
                 fmrb_keymap_get_layout()
             );
 
-            // Send directly to focused window (current HID target)
-            // Retry up to 3 times with longer timeout to handle busy Ruby execution
-            fmrb_err_t ret = FMRB_ERR_TIMEOUT;
-            for (int retry = 0; retry < 3; retry++) {
-                ret = fmrb_msg_send(routing.target_pid, &hid_msg, 5000);
-                if (ret == FMRB_OK) {
-                    break;
-                }
-                FMRB_LOGW(TAG, "Failed to send keyboard event to PID %d, retry %d/3", routing.target_pid, retry + 1);
-                fmrb_task_delay(FMRB_MS_TO_TICKS(100));  // Wait 100ms before retry
-            }
+            // Send directly to focused window (current HID target).
+            // Bounded wait only: this task is the single pump for input,
+            // gfx and audio, and the target queue is 64 deep -- if it is
+            // full the app has already been wedged for seconds, and
+            // waiting here freezes every other stream with it.
+            fmrb_err_t ret = fmrb_msg_send(routing.target_pid, &hid_msg, 200);
             if (ret != FMRB_OK) {
-                FMRB_LOGE(TAG, "Keyboard event dropped after 3 retries to PID %d", routing.target_pid);
+                FMRB_LOGW(TAG, "Keyboard event dropped: PID %d queue full", routing.target_pid);
             }
             break;
         }
@@ -1493,12 +1488,13 @@ static void host_task_process_host_message(const host_message_t *msg)
             hid_msg.data[4] = (uint8_t)(y & 0xFF);
             hid_msg.data[5] = (uint8_t)((y >> 8) & 0xFF);
 
-            // Mouse move events can be dropped if queue is full (already rate-limited to 33ms)
-            // Use single 5000ms timeout without retry to avoid blocking HOST task
+            // Mouse move events can be dropped if queue is full (already
+            // rate-limited to 33ms). 50ms bound keeps the pump responsive
+            // while the >30ms warn below stays useful as a backlog tripwire.
             uint32_t send_start_ms = (uint32_t)fmrb_hal_time_get_ms();
-            fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &hid_msg, 5000);
+            fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &hid_msg, 50);
             uint32_t send_ms = (uint32_t)fmrb_hal_time_get_ms() - send_start_ms;
-            if (send_ms > 50) {
+            if (send_ms > 30) {
                 // Kernel queue backlog indicator: send should be instant
                 FMRB_LOGW(TAG, "Mouse move send to Kernel blocked %lums",
                           (unsigned long)send_ms);
@@ -1531,19 +1527,13 @@ static void host_task_process_host_message(const host_message_t *msg)
             mouse_btn->x = x;
             mouse_btn->y = y;
 
-            // Send to Kernel for hit testing and routing
-            // Retry up to 3 times - mouse clicks are important user actions
-            fmrb_err_t ret = FMRB_ERR_TIMEOUT;
-            for (int retry = 0; retry < 3; retry++) {
-                ret = fmrb_msg_send(PROC_ID_KERNEL, &kernel_msg, 5000);
-                if (ret == FMRB_OK) {
-                    break;
-                }
-                FMRB_LOGW(TAG, "Failed to send mouse click to Kernel, retry %d/3", retry + 1);
-                fmrb_task_delay(FMRB_MS_TO_TICKS(100));  // Wait 100ms before retry
-            }
+            // Send to Kernel for hit testing and routing. Bounded wait
+            // only (see the keyboard case above): a full kernel queue
+            // means the pipeline is already jammed, and blocking the pump
+            // turns a stall into a system-wide freeze.
+            fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &kernel_msg, 200);
             if (ret != FMRB_OK) {
-                FMRB_LOGE(TAG, "Mouse click dropped after 3 retries");
+                FMRB_LOGW(TAG, "Mouse click dropped: Kernel queue full");
             }
             break;
         }
@@ -1585,14 +1575,10 @@ static void host_task_process_host_message(const host_message_t *msg)
             btn_event->gamepad_id = (uint8_t)msg->data.gamepad_button.gamepad_id;
             btn_event->button_num = (uint8_t)msg->data.gamepad_button.button_num;
 
-            fmrb_err_t ret = FMRB_ERR_TIMEOUT;
-            for (int retry = 0; retry < 3; retry++) {
-                ret = fmrb_msg_send(routing.target_pid, &hid_msg, 5000);
-                if (ret == FMRB_OK) break;
-                fmrb_task_delay(FMRB_MS_TO_TICKS(100));
-            }
+            // Bounded wait only (see the keyboard case above).
+            fmrb_err_t ret = fmrb_msg_send(routing.target_pid, &hid_msg, 200);
             if (ret != FMRB_OK) {
-                FMRB_LOGE(TAG, "Gamepad button event dropped after 3 retries to PID %d",
+                FMRB_LOGW(TAG, "Gamepad button event dropped: PID %d queue full",
                          routing.target_pid);
             }
             break;
@@ -1625,7 +1611,7 @@ static void host_task_process_host_message(const host_message_t *msg)
             axis_event->value = (int16_t)msg->data.gamepad_axis.value;
 
             // Axis events can be dropped if queue is full (high-frequency)
-            fmrb_msg_send(routing.target_pid, &hid_msg, 5000);
+            fmrb_msg_send(routing.target_pid, &hid_msg, 0);
             break;
         }
 

@@ -1,6 +1,7 @@
 #include "fmrb_msg.h"
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
+#include "fmrb_hal_time.h"
 #include <string.h>
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "esp_heap_caps.h"
@@ -262,11 +263,29 @@ fmrb_err_t fmrb_msg_send(fmrb_proc_id_t dest_task_id,
             g_msg_queues[dest_task_id].stats.messages_sent++;
         } else {
             g_msg_queues[dest_task_id].stats.send_failures++;
-            FMRB_LOGW(TAG, "msg_send TIMEOUT: dest=%d, type=%d, src=%d, waiting=%u",
-                     dest_task_id, msg->type, msg->src_pid,
-                     (unsigned)uxQueueMessagesWaiting(queue));
         }
         fmrb_semaphore_give(g_registry_lock);
+    }
+
+    if (send_result != FMRB_TRUE) {
+        // Log OUTSIDE the registry lock and rate-limited: every task on
+        // both cores serializes on that lock, and a synchronous ~6ms UART
+        // line per timeout inside it turned queue congestion into a
+        // system-wide logging convoy. One line per second is enough to
+        // see a jam and names the direction it started in.
+        static uint32_t s_last_timeout_log_ms = 0;
+        static uint32_t s_suppressed = 0;
+        uint32_t now_ms = (uint32_t)fmrb_hal_time_get_ms();
+        if (now_ms - s_last_timeout_log_ms >= 1000) {
+            FMRB_LOGW(TAG, "msg_send TIMEOUT: dest=%d, type=%d, src=%d, waiting=%u (+%u suppressed)",
+                     dest_task_id, msg->type, msg->src_pid,
+                     (unsigned)uxQueueMessagesWaiting(queue),
+                     (unsigned)s_suppressed);
+            s_last_timeout_log_ms = now_ms;
+            s_suppressed = 0;
+        } else {
+            s_suppressed++;
+        }
     }
 
     return (send_result == FMRB_TRUE) ? FMRB_OK : FMRB_ERR_TIMEOUT;
