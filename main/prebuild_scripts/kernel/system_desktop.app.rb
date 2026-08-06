@@ -522,16 +522,11 @@ class SystemDesktopApp < FmrbApp
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
   end
 
-  # Hoisted: an inline string literal allocates a fresh RString slot on
-  # every 1Hz redraw; a constant lookup does not.
-  CLOCK_FMT = "%02d/%02d %02d:%02d:%02d"
-
   def draw_clock
-    wc = FmrbApp.wallclock
-    return unless wc
-    text = sprintf(CLOCK_FMT,
-                   wc[:month], wc[:day], wc[:hour], wc[:minute], wc[:second])
-    @gfx.draw_text(@window_width - 90, 2, text, FmrbGfx::WHITE, MENU_BG)
+    # Entirely in C (one text command formatted on the C stack): the 1Hz
+    # tick is the desktop's steady state and must create no Ruby object.
+    # The Ruby route cost a wallclock Hash + a sprintf String per second.
+    @gfx.draw_wallclock(@window_width - 90, 2, FmrbGfx::WHITE, MENU_BG)
   end
 
   # Network status icon just left of the clock. Shown on Modern (WiFi) and

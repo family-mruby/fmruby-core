@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdio.h>
 #include <stdint.h>
 #include <mruby.h>
 #include <mruby/class.h>
@@ -568,6 +569,43 @@ static mrb_value mrb_gfx_draw_text(mrb_state *mrb, mrb_value self)
 static mrb_value mrb_gfx_draw_text_hybrid(mrb_state *mrb, mrb_value self)
 {
     return draw_text_impl(mrb, self, 1);
+}
+
+// Graphics#draw_wallclock(x, y, color, bg_color) -> true/false
+// Formats "MM/DD hh:mm:ss" from the wallclock into a stack buffer and sends
+// it as one text command. The desktop's 1Hz clock repaint uses this so its
+// steady state creates no Ruby object at all -- the Ruby route costs a
+// wallclock Hash plus a sprintf String every second. Returns false (drawing
+// nothing) while the wallclock is not set.
+static mrb_value mrb_gfx_draw_wallclock(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y, color, bg_color;
+    mrb_get_args(mrb, "iiii", &x, &y, &color, &bg_color);
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+
+    fmrb_wallclock_t wc;
+    if (fmrb_hal_time_get_wallclock(&wc) != FMRB_OK) {
+        return mrb_false_value();
+    }
+
+    // 24 covers the compiler's worst case (each %02d may print 3 digits
+    // for out-of-range field values); the normal output is 14 chars.
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%02d/%02d %02d:%02d:%02d",
+             (int)wc.month, (int)wc.day, (int)wc.hour, (int)wc.minute, (int)wc.second);
+
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_text(&cmd, data->canvas_id, (int16_t)x, (int16_t)y, buf,
+                      (fmrb_color_t)color, (fmrb_color_t)bg_color, 0,
+                      FMRB_FONT_SIZE_MEDIUM, 0);
+    if (fmrb_gfx_submit(&cmd) != FMRB_OK) {
+        return mrb_false_value();
+    }
+    return mrb_true_value();
 }
 
 // Graphics#present(x = nil, y = nil)
@@ -1476,6 +1514,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     // draw_text is exposed through a Ruby wrapper in fmrb-gfx.rb so the
     // `mixed:` keyword can route to the hybrid variant.
     mrb_define_method(mrb, gfx_class, "_draw_text",        mrb_gfx_draw_text,        MRB_ARGS_ARG(4, 1));
+    mrb_define_method(mrb, gfx_class, "draw_wallclock",    mrb_gfx_draw_wallclock,   MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "_draw_text_hybrid", mrb_gfx_draw_text_hybrid, MRB_ARGS_ARG(4, 1));
     mrb_define_method(mrb, gfx_class, "present", mrb_gfx_present, MRB_ARGS_OPT(2));
     mrb_define_method(mrb, gfx_class, "destroy", mrb_gfx_destroy, MRB_ARGS_NONE());
