@@ -30,7 +30,13 @@ class SystemDesktopApp < FmrbApp
   DROPDOWN_TEXT = FmrbConst::THEME_TEXT
   DROPDOWN_HIGHLIGHT = FmrbConst::THEME_HIGHLIGHT
   BG_COLOR = FmrbConst::THEME_DESKTOP_BG
-  BG_IMAGE_PATH = "/usr/share/backgrounds/bg_426x240.png"
+  # GRAPHICS-SIDE path, not a local file: create_image sends it verbatim to
+  # the graphics processor, which resolves it on its own filesystem. The
+  # kernel boot file-sync (system_conf.toml) copies the local asset
+  # /usr/share/backgrounds/bg_426x240.png to remote /flash/data/..., which
+  # the graphics side sees as this path. Changing the local asset layout
+  # must NOT change this constant (that mistake once blanked the wallpaper).
+  BG_IMAGE_PATH = "/data/bg_426x240.png"
   BOOT_IMAGE_PATH = "/boot/boot.png"
   BOOT_TILE_W = 32
   BOOT_TILE_H = 24
