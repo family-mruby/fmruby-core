@@ -20,6 +20,7 @@
 #include "fmrb_link_types.h"
 #include "fmrb_mem.h"
 #include "fmrb.h"
+#include "fmrb_task_config.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
@@ -2786,7 +2787,9 @@ extern "C" fmrb_err_t display_p4_task_init(void) {
         }
     }
     BaseType_t ok = xTaskCreatePinnedToCore(display_p4_task, "display_p4",
-                                            16384, NULL, 5, NULL, 1);
+                                            FMRB_DISPLAY_P4_TASK_STACK_SIZE,
+                                            NULL, FMRB_DISPLAY_P4_TASK_PRIORITY,
+                                            NULL, FMRB_DISPLAY_P4_TASK_CORE);
     if (ok != pdPASS) {
         FMRB_LOGE(TAG, "Failed to create display_p4 task");
         return FMRB_ERR_FAILED;

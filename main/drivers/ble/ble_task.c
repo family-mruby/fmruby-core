@@ -1514,8 +1514,9 @@ fmrb_err_t ble_service_start(void)
         FMRB_LOGI(TAG, "BLE start already in progress");
         return FMRB_OK;
     }
-    if (fmrb_task_create(ble_start_task_func, "ble_start", 6144, NULL,
-                         4, NULL) != FMRB_PASS) {
+    if (fmrb_task_create(ble_start_task_func, "ble_start",
+                         FMRB_BLE_START_TASK_STACK_SIZE, NULL,
+                         FMRB_BLE_START_TASK_PRIORITY, NULL) != FMRB_PASS) {
         g_ble_start_pending = false;
         FMRB_LOGE(TAG, "Failed to spawn BLE start task");
         return FMRB_ERR_FAILED;

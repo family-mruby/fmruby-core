@@ -404,9 +404,9 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
     if (ferr != FMRB_OK) return ferr;
 
     httpd_config_t hcfg = HTTPD_DEFAULT_CONFIG();
-    hcfg.core_id = 0;
-    hcfg.task_priority = 5;
-    hcfg.stack_size = 8192;
+    hcfg.core_id = FMRB_RD_HTTPD_TASK_CORE;
+    hcfg.task_priority = FMRB_RD_HTTPD_TASK_PRIORITY;
+    hcfg.stack_size = FMRB_RD_HTTPD_TASK_STACK_SIZE;
     hcfg.max_open_sockets = 7;
     hcfg.lru_purge_enable = true;
 

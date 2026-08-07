@@ -158,6 +158,10 @@
 #define FMRB_BLE_TASK_STACK_SIZE        (4096)
 #define FMRB_BLE_TASK_PRIORITY          (4)
 
+// BLE bootstrap task (runs the NimBLE start sequence once, then exits)
+#define FMRB_BLE_START_TASK_STACK_SIZE  (6144)
+#define FMRB_BLE_START_TASK_PRIORITY    (4)
+
 // BLE file service processing task (file I/O needs internal RAM for flash DMA)
 // Stays at 8KB: a real BLE file transfer in the M-2 session (S3, 2026-08-02)
 // peaked at 5.3KB -- the idle figure (~2KB) that once suggested 6KB is off by
@@ -193,6 +197,12 @@
 // These use explicit _CORE macros instead of FMRB_TASK_FLAG_* because their
 // creation sites do not go through fmrb_task_create_ex.
 
+// Tab5 display task (MIPI-DSI compositor, receives GFX commands via
+// hal_link_local; owns PPA blend/SRM and the boot screen)
+#define FMRB_DISPLAY_P4_TASK_STACK_SIZE (16 * 1024)
+#define FMRB_DISPLAY_P4_TASK_PRIORITY   (5)
+#define FMRB_DISPLAY_P4_TASK_CORE       (1)
+
 // Audio task (ESP32-P4 Modern: NTSC-timed APU emulation feed)
 #define FMRB_AUDIO_P4_TASK_STACK_SIZE   (8192)
 #define FMRB_AUDIO_P4_TASK_PRIORITY     (6)
@@ -217,6 +227,11 @@
 #define FMRB_RD_MJPEG_TASK_CORE         (0)
 #define FMRB_RD_START_TASK_STACK_SIZE   (4096)
 #define FMRB_RD_START_TASK_PRIORITY     (4)
+// HTTP server task is created by esp_http_server, not fmrb_task_create;
+// these values are handed to httpd_config_t in rd_http.c.
+#define FMRB_RD_HTTPD_TASK_STACK_SIZE   (8192)
+#define FMRB_RD_HTTPD_TASK_PRIORITY     (5)
+#define FMRB_RD_HTTPD_TASK_CORE         (0)
 
 // --- Linux simulation driver tasks ---
 
