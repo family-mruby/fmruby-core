@@ -803,6 +803,37 @@ task :attach do
   end
 end
 
+desc "Detach USB serial devices from WSL2 back to Windows (e.g. for the web " \
+     "installer's WebSerial). Same selection as attach: VID:PID default " \
+     "1a86:7523 = CH340; VIDPID=... to override, BUSID=x-y to force one."
+task :detach do
+  if ENV["BUSID"]
+    sh "powershell.exe -Command \"usbipd detach --busid #{ENV['BUSID']}\""
+    next
+  end
+
+  vidpids = (ENV["VIDPID"] || "1a86:7523").downcase.split(",").map(&:strip)
+  list = `powershell.exe -Command "usbipd list" 2>&1`
+  connected = list.split(/^Persisted:/).first || ""
+
+  targets = connected.lines.filter_map do |line|
+    m = line.match(/^(\d+-\d+)\s+(\h{4}:\h{4})\s+(.+?)\s+(Not shared|Shared.*|Attached.*)\s*$/i)
+    next nil unless m
+    busid, vidpid, device, state = m.captures
+    [busid, vidpid.downcase, device.strip, state.strip] if vidpids.include?(vidpid.downcase)
+  end
+  abort "No connected USB device matches VID:PID #{vidpids.join(', ')} (usbipd list)" if targets.empty?
+
+  targets.each do |busid, vidpid, device, state|
+    if state.start_with?("Attached")
+      puts "#{busid} #{vidpid} (#{device}): detaching..."
+      sh "powershell.exe -Command \"usbipd detach --busid #{busid}\""
+    else
+      puts "#{busid} #{vidpid} (#{device}): not attached, skipping"
+    end
+  end
+end
+
 desc "Detect and cache the correct serial port for #{EXPECTED_CHIP}"
 task :"check-port" do
   ports = PROBE_PORTS.select { |p| File.exist?(p) }
