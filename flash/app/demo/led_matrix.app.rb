@@ -32,8 +32,13 @@
 #      advances TextScroll column. Shrink the divisor to speed up, enlarge
 #      to slow down.
 
-# Change this to the GPIO pin connected to WS2812B data line
-LED_PIN = 48
+# GPIO pin connected to the WS2812B data line, per board:
+#   narya_v3 (S3):      GPIO48 = Grove port2
+#   tab5 (P4, Modern):  GPIO54 = Grove port on Tab5
+LED_PIN = case FmrbConst::BOARD
+          when "tab5", "naryav4" then 54
+          else 48
+          end
 
 LED_COLS = 8
 LED_ROWS = 8

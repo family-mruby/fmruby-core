@@ -314,6 +314,21 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "PLATFORM", mrb_str_new_cstr(mrb, "esp32"));
 #endif
 
+    // Board identity (from FMRB_HW_* macros, see fmrb_hw_defines.cmake).
+    // Finer-grained than PLATFORM/CHIP_MODEL: lets apps pick board-specific
+    // wiring (e.g. GPIO numbers) without guessing from the chip model.
+#if defined(CONFIG_IDF_TARGET_LINUX)
+    mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "linux"));
+#elif defined(FMRB_HW_TAB5)
+    mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "tab5"));
+#elif defined(FMRB_HW_NARYAV4)
+    mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "naryav4"));
+#elif defined(FMRB_HW_ATOM_DISPLAY)
+    mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "atom_display"));
+#else
+    mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "narya_v3"));
+#endif
+
     // Process ID constants
     mrb_define_const(mrb, const_module, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
     mrb_define_const(mrb, const_module, "PROC_ID_HOST", mrb_fixnum_value(PROC_ID_HOST));
