@@ -453,12 +453,50 @@ module LauncherMixin
     draw_launcher_cells
   end
 
-  # Repaint launcher only (skip menu bar / clock / taskbar). Used on scroll so
-  # we do not send redraw commands for UI that has not changed.
+  # Scroll-path repaint: everything a scroll does NOT change (window frame,
+  # title bar, scrollbar buttons/separator) is left as drawn on the
+  # persistent canvas. Only the icon content area and the scrollbar thumb
+  # are repainted, with direct positional gfx calls. The previous full
+  # draw_launcher_frame replayed the scrollbar GfxBlock, which re-records
+  # its command list on every draw -- one Array per command, 32 objects per
+  # scroll measured on device -- and that allocation was what kept pushing
+  # the desktop pool toward its GC watermark during launcher use.
   def redraw_launcher_only
-    draw_launcher_frame
+    x = @launcher_x
+    sb_w = FmrbApp::SCROLLBAR_W
+    content_y = @launcher_y + LAUNCHER_TITLE_H
+    # Clear the content area: cell labels draw transparently, so stale
+    # glyphs must be wiped before repainting over them.
+    @gfx.fill_rect(x + 1, content_y, LAUNCHER_W - sb_w - 2,
+                   LAUNCHER_H - LAUNCHER_TITLE_H - 1, LAUNCHER_BG)
     draw_launcher_cells
+    update_scrollbar_thumb
     @gfx.present
+  end
+
+  # Thumb-only scrollbar update for the scroll path. Mirrors the geometry
+  # of the framework's draw_scrollbar / _build_scrollbar_block (which own
+  # the full redraw on open); only the track is cleared and the thumb
+  # refilled, two direct fill_rects, allocation-free.
+  def update_scrollbar_thumb
+    total = launcher_total_rows
+    vis = launcher_visible_rows
+    return if total <= vis
+    bar_y = @launcher_y + LAUNCHER_TITLE_H
+    bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
+    w = LAUNCHER_W - 1
+    sb_w = FmrbApp::SCROLLBAR_W
+    btn_h = FmrbApp::SCROLLBAR_BTN_H
+    bar_x = @launcher_x + w - sb_w
+    track_y = bar_y + btn_h
+    track_h = bar_h - btn_h * 2
+    return if track_h <= 4
+    thumb_h = track_h * vis / total
+    thumb_h = 6 if thumb_h < 6
+    max_scroll = total - vis
+    thumb_y = track_y + (max_scroll > 0 ? (track_h - thumb_h) * @launcher_scroll / max_scroll : 0)
+    @gfx.fill_rect(bar_x + 1, track_y, sb_w - 1, track_h, FmrbConst::THEME_WINDOW_BG)
+    @gfx.fill_rect(bar_x + 2, thumb_y, sb_w - 3, thumb_h, FmrbConst::THEME_BORDER)
   end
 
   # Window frame, title bar, scrollbar. Also paints the full launcher rect with
@@ -558,11 +596,14 @@ module LauncherMixin
           end
           app[:label_layout] = lay
         end
+        # _draw_text_hybrid called positionally: the draw_text wrapper's
+        # mixed: keyword costs one object per call in mruby, and this loop
+        # runs per visible cell on every scroll repaint.
         if lay.size == 2
-          @gfx.draw_text(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 8, lay[0], LAUNCHER_TEXT, mixed: true)
+          @gfx._draw_text_hybrid(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 8, lay[0], LAUNCHER_TEXT)
         else
-          @gfx.draw_text(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 16, lay[0], LAUNCHER_TEXT, mixed: true)
-          @gfx.draw_text(icon_x + lay[3], icon_y + LAUNCHER_ICON_H - 8,  lay[2], LAUNCHER_TEXT, mixed: true)
+          @gfx._draw_text_hybrid(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 16, lay[0], LAUNCHER_TEXT)
+          @gfx._draw_text_hybrid(icon_x + lay[3], icon_y + LAUNCHER_ICON_H - 8,  lay[2], LAUNCHER_TEXT)
         end
       end
       vrow += 1

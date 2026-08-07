@@ -94,6 +94,21 @@ path.split(S_SLASH)   # 毎回 "/" と書かない
   bool/fixnum 返しの API を足す (`FmrbApp.wifi_connected?` /
   `pool_usage` / `ps_gen` 方式)。
 
+## 4.5 ラッパとキーワード引数 (実機で測った罠 2 つ)
+
+- **キーワード引数付きメソッドの呼び出しは 1 回 1 オブジェクト**
+  (gc_monitoring.md 7 章)。`@gfx.draw_text(..., mixed: true)` のような
+  便利ラッパをセルごと・フレームごとのループで呼ぶと、それだけで
+  セル数ぶんの割り当てになる。ホットパスでは `_draw_text_hybrid` の
+  ような **positional な C メソッドを直接呼ぶ** (launcher の実例)。
+- **GfxBlock#draw は「再生」のたびにブロックを再実行して記録し直す**
+  ので、記録コマンド 1 個につき Array 1 個を割り当てる (スクロール
+  バーの再描画だけで 32 個/回を実機で計測)。GfxBlock は帯域削減
+  (WROVER へ差分レジスタだけ送る) が目的であって割り当て削減では
+  ない。**スクロール等の高頻度パスでは使わず**、開いた時のフル描画に
+  限定し、高頻度の差分は直接 fill_rect 等で描く
+  (launcher の update_scrollbar_thumb の実例)。
+
 ## 5. 描画・UI
 
 - **変わったものだけ描く**。キャンバスは present 後も内容が保持される
