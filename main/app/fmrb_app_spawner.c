@@ -348,6 +348,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     int min_window_width = 0;
     int min_window_height = 0;
     bool rounded_corners = true;
+    int stack_size = FMRB_USER_APP_TASK_STACK_SIZE;
 
     FMRB_LOGI(TAG, "[spawn] 6 toml_load '%s'", toml_path);
     // Try loading TOML configuration
@@ -405,6 +406,24 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // When false, the window canvas is created opaque (no transparent compositing),
         // which is faster but disables the rounded corner / shaped window look.
         rounded_corners = (bool)fmrb_toml_get_int(config, "rounded_corners", 1);
+
+        // Parse task_stack_kb: per-app task C stack size in KB. Costs internal
+        // RAM only while the app runs; the default is a floor, not a knob to
+        // lower (see FMRB_USER_APP_TASK_STACK_SIZE in fmrb_task_config.h).
+        int stack_kb = (int)fmrb_toml_get_int(config, "task_stack_kb", 0);
+        if (stack_kb > 0) {
+            stack_size = stack_kb * 1024;
+            if (stack_size < FMRB_USER_APP_TASK_STACK_SIZE) {
+                FMRB_LOGW(TAG, "task_stack_kb=%d below the %d KB floor, clamped",
+                          stack_kb, FMRB_USER_APP_TASK_STACK_SIZE / 1024);
+                stack_size = FMRB_USER_APP_TASK_STACK_SIZE;
+            } else if (stack_size > FMRB_USER_APP_TASK_STACK_MAX) {
+                FMRB_LOGW(TAG, "task_stack_kb=%d above the %d KB cap, clamped",
+                          stack_kb, FMRB_USER_APP_TASK_STACK_MAX / 1024);
+                stack_size = FMRB_USER_APP_TASK_STACK_MAX;
+            }
+            FMRB_LOGI(TAG, "Per-app task stack: %d KB", stack_size / 1024);
+        }
     } else {
         FMRB_LOGW(TAG, "No TOML config found or parse error: %s (%s)", toml_path, errbuf);
     }
@@ -445,7 +464,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .vm_type = vm_type,
         .load_mode = FMRB_LOAD_MODE_FILE,
         .filepath = app_name,
-        .stack_words = FMRB_USER_APP_TASK_STACK_SIZE,
+        .stack_words = stack_size,
         .priority = FMRB_USER_APP_PRIORITY,
         .flags = FMRB_USER_APP_TASK_FLAGS,
         .core_affinity = -1,

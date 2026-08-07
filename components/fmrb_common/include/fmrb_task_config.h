@@ -107,6 +107,12 @@
 // from the remaining stack at startup (mp_stack_set_limit), so shrinking this
 // silently lowers what Python scripts can recurse to.
 #define FMRB_USER_APP_TASK_STACK_SIZE   (16 * 1024)
+// Per-app override via "task_stack_kb" in the app's .toml (fmrb_app_spawner).
+// Clamped to [FMRB_USER_APP_TASK_STACK_SIZE, FMRB_USER_APP_TASK_STACK_MAX].
+// Apps that eval Ruby at runtime need it: the mruby compiler (codegen.c)
+// recurses on the task's C stack, and PicoRabbit overflowed 16KB on P4
+// compiling a slide's fmrb block (stack protection fault, 2026-08-07).
+#define FMRB_USER_APP_TASK_STACK_MAX    (64 * 1024)
 #define FMRB_USER_APP_PRIORITY          (2)
 #define FMRB_USER_APP_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_1
 
