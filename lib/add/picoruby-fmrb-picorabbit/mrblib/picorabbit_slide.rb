@@ -5,12 +5,16 @@ module PicoRabbit
   class Element
     attr_reader :type, :text, :level
     attr_accessor :align
+    # Cached Proc for :fmrb_code elements (compiled once by the renderer;
+    # eval per render would rerun the mruby compiler on the task C stack).
+    attr_accessor :compiled_proc
 
     def initialize(type, text = nil, level = 0)
       @type = type
       @text = text
       @level = level
       @align = nil
+      @compiled_proc = nil
     end
   end
 

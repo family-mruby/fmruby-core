@@ -51,6 +51,7 @@ class SlideShowApp < FmrbApp
       @result = PicoRabbit::Parser.parse_file(path)
       @renderer = PicoRabbit::FmrbRenderer.new(
         @gfx, @window_width, @window_height, @result.metadata)
+      @renderer.precompile(@result.slides)
       @slide_index = 0
       update_step
       draw_current

@@ -157,7 +157,33 @@ module PicoRabbit
       end
     end
 
+    # Compile every fmrb_code block up front. Call this right after loading a
+    # presentation: eval runs the mruby compiler (deep C recursion) on the app
+    # task's stack, and the call depth here is far shallower than in the
+    # middle of a render. A block that fails to compile is left nil; the
+    # render path retries it and draws the error on the slide.
+    def precompile(slides)
+      slides.each do |slide|
+        slide.elements.each do |e|
+          next unless e.type == :fmrb_code && e.text.is_a?(Array)
+          next if e.compiled_proc
+          begin
+            e.compiled_proc = compile_fmrb_code(e)
+          rescue => err
+            ::Log.warn("fmrb_code precompile failed: #{err.message}")
+          end
+        end
+      end
+    end
+
     private
+
+    # Compile one fmrb_code block into a Proc. The code addresses the canvas
+    # through the $fmrb_* globals, so wrapping it in a Proc changes nothing
+    # about how it runs -- only when it is compiled.
+    def compile_fmrb_code(elem)
+      eval("::Proc.new do\n" + elem.text.join("\n") + "\nend")
+    end
 
     def render_title_slide(slide)
       lines = slide.title ? slide.title.split("\n") : [""]
@@ -260,14 +286,14 @@ module PicoRabbit
 
         when :fmrb_code
           if elem.text.is_a?(Array)
-            code_str = elem.text.join("\n")
             begin
               $fmrb_gfx = @gfx
               $fmrb_x = content_x
               $fmrb_y = y
               $fmrb_w = content_w
               $fmrb_theme = @theme
-              eval(code_str)
+              elem.compiled_proc ||= compile_fmrb_code(elem)
+              elem.compiled_proc.call
               y = $fmrb_y if $fmrb_y > y
             rescue => e
               @gfx.draw_text(content_x, y, "[fmrb_code error: #{e.message}]", 0xE0, @theme.bg)
