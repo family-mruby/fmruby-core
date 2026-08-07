@@ -45,9 +45,12 @@ class SystemDesktopApp < FmrbApp
                     "/data/bg_426x240.png"
                   end
   BOOT_IMAGE_PATH = "/boot/boot.png"
-  BOOT_TILE_W = 32
-  BOOT_TILE_H = 24
-  BOOT_TILES_PER_FRAME = 5
+  # Iris reveal: a diamond-shaped window opens from the center, one punched
+  # rect per horizontal band per frame. With the diamond's half-width scaled
+  # by width/height, the corners are reached exactly at radius = height, on
+  # any screen size.
+  BOOT_IRIS_BAND_H = 8
+  BOOT_IRIS_FRAMES = 28   # ~1.7s at BOOT_FRAME_MS (same length as the jingle)
   BOOT_FRAME_MS = 60
   BOOT_HOLD_MS = 1000  # Wait time after full reveal, before swapping to desktop
 
@@ -163,8 +166,7 @@ class SystemDesktopApp < FmrbApp
 
     # Boot animation state
     @boot_anim_state = :init  # :init -> :revealing -> :wait_to_finish -> :done
-    @boot_anim_idx = 0
-    @boot_tiles = nil
+    @boot_iris_t = 0
     @boot_img = nil
     @boot_audio = nil
     @boot_audio_tick = 0
@@ -280,32 +282,7 @@ class SystemDesktopApp < FmrbApp
       Log.warn("Boot logo not found: #{BOOT_IMAGE_PATH}")
     end
 
-    # Precompute tile positions covering the whole foreground.
-    cols = (@window_width + BOOT_TILE_W - 1) / BOOT_TILE_W
-    rows = (@window_height + BOOT_TILE_H - 1) / BOOT_TILE_H
-    tiles = []
-    r = 0
-    while r < rows
-      c = 0
-      while c < cols
-        tiles << [c * BOOT_TILE_W, r * BOOT_TILE_H]
-        c += 1
-      end
-      r += 1
-    end
-    # Fisher-Yates shuffle. Use a temporary; picoruby/mruby breaks on
-    # multi-assignment whose LHS targets are array element references
-    # (tiles[i], tiles[j] = tiles[j], tiles[i] raises TypeError).
-    i = tiles.size - 1
-    while i > 0
-      j = rand(i + 1)
-      tmp = tiles[i]
-      tiles[i] = tiles[j]
-      tiles[j] = tmp
-      i -= 1
-    end
-    @boot_tiles = tiles
-    @boot_anim_idx = 0
+    @boot_iris_t = 0
     @boot_anim_state = :revealing
 
     @boot_audio = FmrbAudio.new(self)
@@ -317,20 +294,33 @@ class SystemDesktopApp < FmrbApp
     case @boot_anim_state
     when :revealing
       tick_boot_jingle
-      bt = 0
-      while bt < BOOT_TILES_PER_FRAME
-        break if @boot_anim_idx >= @boot_tiles.size
-        tx, ty = @boot_tiles[@boot_anim_idx]
-        # 0x01 is the foreground canvas' color key -> pixel becomes transparent.
-        @gfx.fill_rect(tx, ty, BOOT_TILE_W, BOOT_TILE_H, 0x01)
-        @boot_anim_idx += 1
-        bt += 1
+      @boot_iris_t += 1
+      # Ease-in: radius grows with t^2, so the window opens slowly at first
+      # and accelerates, reaching the full screen at BOOT_IRIS_FRAMES.
+      r = @window_height * @boot_iris_t * @boot_iris_t /
+          (BOOT_IRIS_FRAMES * BOOT_IRIS_FRAMES)
+      cx = @window_width / 2
+      cy = @window_height / 2
+      y = 0
+      while y < @window_height
+        dy = y + BOOT_IRIS_BAND_H / 2 - cy
+        dy = -dy if dy < 0
+        # Diamond half-width at this band; integer math only (no Float).
+        hw = (r - dy) * @window_width / @window_height
+        if hw > 0
+          x0 = cx - hw
+          x0 = 0 if x0 < 0
+          x1 = cx + hw
+          x1 = @window_width if x1 > @window_width
+          # 0x01 is the foreground canvas' color key -> pixel becomes transparent.
+          @gfx.fill_rect(x0, y, x1 - x0, BOOT_IRIS_BAND_H, 0x01)
+        end
+        y += BOOT_IRIS_BAND_H
       end
       @gfx.present
-      if @boot_anim_idx >= @boot_tiles.size
+      if @boot_iris_t >= BOOT_IRIS_FRAMES
         @gfx.clear(0x01)  # Ensure full transparency
         @gfx.present
-        @boot_tiles = nil
         @boot_anim_state = :wait_to_finish
       end
     when :wait_to_finish
