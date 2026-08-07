@@ -260,6 +260,20 @@ module LauncherMixin
     unless force
       cached = load_launcher_cache
       if cached
+        # A cache written before the exclude list changed (or by an older
+        # firmware) may still carry hidden categories; filter on load so a
+        # stale cache cannot resurface them.
+        prefixes = launcher_exclude_dirs.map { |d| "/app/#{d}/" }
+        unless prefixes.empty?
+          kept = []
+          cached.each do |a|
+            path = a[:app]
+            hidden = false
+            prefixes.each { |p| hidden = true if path && path.start_with?(p) }
+            kept << a unless hidden
+          end
+          cached = kept
+        end
         @launcher_apps = @launcher_apps + cached
         Log.info("Launcher: #{@launcher_apps.size} apps from cache")
         return
@@ -312,6 +326,28 @@ module LauncherMixin
     nil
   end
 
+  # Category directories under /app hidden from the launcher, from
+  # [[launcher_exclude]] tables (dir = "...") in system_conf. The files stay
+  # on flash and remain runnable (editor Run, debugd spawn); only the
+  # launcher scan and its cache skip them. Directory-level exclusion instead
+  # of per-app flags: no extra file I/O, and the first-boot scan gets
+  # cheaper, not costlier.
+  def launcher_exclude_dirs
+    return @launcher_exclude_dirs if @launcher_exclude_dirs
+    list = []
+    entries = FmrbApp.config("launcher_exclude")
+    if entries
+      entries.each do |e|
+        d = e["dir"]
+        list << d if d && !d.empty?
+      end
+    end
+    @launcher_exclude_dirs = list
+  rescue => e
+    Log.error("launcher_exclude load failed: #{e.message}")
+    @launcher_exclude_dirs = []
+  end
+
   def scan_app_dir(base_path)
     entries = read_dir_entries(base_path)
     unless entries
@@ -319,8 +355,10 @@ module LauncherMixin
       return
     end
 
+    excluded = launcher_exclude_dirs
     entries.each do |entry|
       next unless dir_candidate?(entry)
+      next if excluded.include?(entry)
       path = "#{base_path}/#{entry}"
       sub_entries = read_dir_entries(path)
       next unless sub_entries

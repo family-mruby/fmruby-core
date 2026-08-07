@@ -56,3 +56,12 @@ dest = "/flash/data/test.nsf"
 [[sync_files]]
 src = "/usr/share/backgrounds/bg_426x240.png"
 dest = "/flash/data/bg_426x240.png"
+
+# App categories hidden from the launcher (files stay on flash and remain
+# runnable via the editor / debugd). The Linux sim config has no entries,
+# so the sim still shows everything.
+[[launcher_exclude]]
+dir = "debug"
+
+[[launcher_exclude]]
+dir = "test"

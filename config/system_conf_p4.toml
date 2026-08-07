@@ -51,6 +51,15 @@ app = "default/inspector"
 src = "/usr/share/sounds/nsf/test.nsf"
 dest = "/flash/data/test.nsf"
 
+# App categories hidden from the launcher (files stay on flash and remain
+# runnable via the editor / debugd). The Linux sim config has no entries,
+# so the sim still shows everything.
+[[launcher_exclude]]
+dir = "debug"
+
+[[launcher_exclude]]
+dir = "test"
+
 # Remote desktop (browser viewer via WiFi). WiFi credentials live in
 # /etc/wifi.toml (see config/wifi_p4.toml.example).
 [remote_desktop]
