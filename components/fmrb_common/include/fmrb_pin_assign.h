@@ -36,11 +36,17 @@
 #define FMRB_PIN_I2C2_SDA      GPIO_NUM_53
 #define FMRB_PIN_I2C2_SCL      GPIO_NUM_54
 
-// Restricted pins (TODO: set real ESP32-P4 flash/PSRAM/USB/strap pins)
+// Restricted pins (TODO: set real ESP32-P4 flash/PSRAM/strap pins)
 #define FMRB_PIN_RESTRICTED_BOOT    GPIO_NUM_NC
 #define FMRB_PIN_RESTRICTED_JTAG    GPIO_NUM_NC
-#define FMRB_PIN_RESTRICTED_USB_DN  GPIO_NUM_NC
-#define FMRB_PIN_RESTRICTED_USB_DP  GPIO_NUM_NC
+// USB-Serial-JTAG data pins (P4 default: D-=GPIO24, D+=GPIO25). This is
+// the USB-C flash/console link; reserving them keeps a user app from
+// acquiring the pins and killing the serial console. The USB-A host port
+// uses the HS OTG PHY's dedicated pads (not GPIO-muxed), so it needs no
+// entry here. Note the OTG-FS alternative pins GPIO26/27 are already
+// taken by I2S audio on this board -- USB must stay on the HS PHY.
+#define FMRB_PIN_RESTRICTED_USB_DN  GPIO_NUM_24
+#define FMRB_PIN_RESTRICTED_USB_DP  GPIO_NUM_25
 #define FMRB_PIN_RESTRICTED_PSRAM0  GPIO_NUM_NC
 #define FMRB_PIN_RESTRICTED_PSRAM1  GPIO_NUM_NC
 #define FMRB_PIN_RESTRICTED_PSRAM2  GPIO_NUM_NC
