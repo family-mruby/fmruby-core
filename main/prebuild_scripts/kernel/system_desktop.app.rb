@@ -31,12 +31,19 @@ class SystemDesktopApp < FmrbApp
   DROPDOWN_HIGHLIGHT = FmrbConst::THEME_HIGHLIGHT
   BG_COLOR = FmrbConst::THEME_DESKTOP_BG
   # GRAPHICS-SIDE path, not a local file: create_image sends it verbatim to
-  # the graphics processor, which resolves it on its own filesystem. The
-  # kernel boot file-sync (system_conf.toml) copies the local asset
-  # /usr/share/backgrounds/bg_426x240.png to remote /flash/data/..., which
-  # the graphics side sees as this path. Changing the local asset layout
-  # must NOT change this constant (that mistake once blanked the wallpaper).
-  BG_IMAGE_PATH = "/data/bg_426x240.png"
+  # the graphics processor, which resolves it on its own filesystem (with a
+  # /flash prefix on the device side).
+  # - Modern (ESP32-P4): the graphics side shares this chip's storage, so it
+  #   reads the shipped asset directly. No sync entry exists on P4 -- the
+  #   old /data path silently blanked when the asset moved out of /data.
+  # - Retro / Linux sim: the graphics side is a separate processor/process;
+  #   the kernel file-sync (system_conf.toml, Linux) pushes the asset to its
+  #   /flash/data, which that side sees as /data.
+  BG_IMAGE_PATH = if FmrbConst::PLATFORM == "esp32" && FmrbConst::CHIP_MODEL == "ESP32-P4"
+                    "/usr/share/backgrounds/bg_426x240.png"
+                  else
+                    "/data/bg_426x240.png"
+                  end
   BOOT_IMAGE_PATH = "/boot/boot.png"
   BOOT_TILE_W = 32
   BOOT_TILE_H = 24
@@ -185,10 +192,13 @@ class SystemDesktopApp < FmrbApp
     # never a close button. Without this a click there stops the desktop
     # "normally" and the system loses its window manager.
     self.closable = false
-    # The desktop's idle window is the 500ms clock wait, far wider than the
-    # rhythm-holding MIDI apps IDLE_GC_STEP_LIMIT was tuned for; let each
-    # step do more work so collection keeps pace with the UI churn.
-    GC.step_limit = 2000 if @idle_gc
+
+    # Keep idle_gc's step_limit (512). A larger limit was tried (2000) and
+    # backfired on the Tab5: big steps inflate the running max-step
+    # estimate, which stops idle stepping from fitting into the ~300ms
+    # gaps between clicks (spin_idle_gc only starts a step that fits), so
+    # collection starved exactly when the user was active. Small steps
+    # keep the between-click recovery alive.
 
     # Load keyboard shortcuts from config
     @shortcuts = load_shortcuts
@@ -775,11 +785,28 @@ class SystemDesktopApp < FmrbApp
       end
     end
 
-    # Watermark GC: launcher/dialog bursts allocate faster than idle
-    # stepping can collect, and a pool that reaches its ceiling pays with
-    # a multi-second GC storm (observed at 801KB of 819KB). Collect
-    # deliberately at a frame boundary once usage crosses 70% -- a full GC
-    # at ~570KB is a bounded hiccup instead of the storm it prevents.
+    # GC pacing under sustained activity. Idle stepping stops whenever a
+    # message is pending, so continuous UI use (launcher clicking) can
+    # outrun collection; on the Tab5 the resulting watermark full-GC was
+    # felt as a 1-2s freeze (PSRAM full-mark of the ~450KB live set).
+    # Above 64% usage (baseline sits near 56%, so this means real garbage
+    # accumulated), spend a TIME-boxed slice per update on collector
+    # steps. The budget, not a step count, is the bound: single steps on
+    # PSRAM can be large, and the box keeps the worst update under ~one
+    # frame of hiccup. The 70% watermark full-GC stays as the backstop.
+    if @counter % 2 == 1
+      usage = FmrbApp.pool_usage
+      if usage >= 64
+        t0 = Machine.uptime_us
+        while Machine.uptime_us - t0 < 40_000
+          GC.step
+        end
+      end
+    end
+
+    # Watermark GC: the backstop when even busy stepping cannot keep up.
+    # A full GC at ~570KB is a bounded hiccup instead of the storm that a
+    # pool ceiling (observed at 801KB of 819KB) used to pay.
     if @counter % 10 == 0
       usage = FmrbApp.pool_usage
       if usage >= 70
