@@ -560,24 +560,32 @@ class SystemDesktopApp < FmrbApp
   MEMINFO_W = 30  # 5 chars x 6px, fixed width
 
   def draw_meminfo
-    x = @window_width - 90 - WIFI_ICON_W - 4 - MEMINFO_W - 4
+    # Left of the BLE box (order right-to-left: clock, wifi, BLE, RAM)
+    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - MEMINFO_W
     @gfx.draw_free_iram(x, 2, FmrbGfx::WHITE, MENU_BG)
   end
 
-  # BLE indicator, left of the free-RAM readout. Three states the user can
-  # tell apart: hidden = BLE off, gray B = enabled and waiting for a
-  # central, white B = client connected. The state read is a bare fixnum,
-  # the label a constant -- the 1Hz repaint stays allocation-free.
+  # BLE indicator, left of the free-RAM readout, drawn as a filled box so
+  # it cannot be misread as part of the neighboring RAM digits. Three
+  # states: hidden = BLE off, gray box + white B = enabled and waiting
+  # for a central, white box + bar-colored B (inverted) = client
+  # connected. The state read is a bare fixnum, the label a constant --
+  # the 1Hz repaint stays allocation-free.
   BLE_LABEL = "B"
   BLE_CELL_W = 10
 
   def draw_ble_icon
-    x = @window_width - 90 - WIFI_ICON_W - 4 - MEMINFO_W - 4 - BLE_CELL_W
-    @gfx.fill_rect(x, 2, BLE_CELL_W, 10, MENU_BG)
+    # Right of the RAM readout, next to the wifi icon (7px gap to wifi)
+    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1
     state = FmrbApp.ble_state
-    return if state == 0
-    color = (state == 2) ? FmrbGfx::WHITE : FmrbGfx::GRAY
-    @gfx.draw_text(x + 2, 2, BLE_LABEL, color, MENU_BG)
+    if state == 0
+      @gfx.fill_rect(x, 1, BLE_CELL_W, 10, MENU_BG)
+      return
+    end
+    box = (state == 2) ? FmrbGfx::WHITE : FmrbGfx::GRAY
+    fg  = (state == 2) ? MENU_BG : FmrbGfx::WHITE
+    @gfx.fill_rect(x, 1, BLE_CELL_W, 10, box)
+    @gfx.draw_text(x + 2, 2, BLE_LABEL, fg, box)
   end
 
   def draw_wifi_icon
