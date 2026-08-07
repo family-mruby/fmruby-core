@@ -38,8 +38,10 @@ module TaskbarMixin
     i = 0
     while i < procs.size
       p = procs[i]
-      # state 2 = RUNNING, type 0 = kernel, exclude self by name
-      if p[:state] == 2 && p[:type] != 0 && p[:name] != @name
+      # state 2 = RUNNING, 3 = SUSPENDED (a fullscreen app parked by
+      # Ctrl+Tab is suspended but must stay clickable in the taskbar).
+      # type 0 = kernel, exclude self by name.
+      if (p[:state] == 2 || p[:state] == 3) && p[:type] != 0 && p[:name] != @name
         # Icon letter precomputed here so the 1Hz draw_taskbar allocates
         # nothing (rindex/slice/[0] all make fresh Strings).
         label = p[:name]

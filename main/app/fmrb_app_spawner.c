@@ -348,6 +348,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
     int min_window_width = 0;
     int min_window_height = 0;
     bool rounded_corners = true;
+    bool fullscreen_switchable = false;
     int stack_size = FMRB_USER_APP_TASK_STACK_SIZE;
 
     FMRB_LOGI(TAG, "[spawn] 6 toml_load '%s'", toml_path);
@@ -406,6 +407,11 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         // When false, the window canvas is created opaque (no transparent compositing),
         // which is faster but disables the rounded corner / shaped window look.
         rounded_corners = (bool)fmrb_toml_get_int(config, "rounded_corners", 1);
+
+        // Parse fullscreen_switchable: the app declares its on_suspend hides
+        // the canvas and on_resume redraws, so the kernel may park it on
+        // Ctrl+Tab and bring it back later instead of refusing to leave.
+        fullscreen_switchable = (bool)fmrb_toml_get_int(config, "fullscreen_switchable", 0);
 
         // Parse task_stack_kb: per-app task C stack size in KB. Costs internal
         // RAM only while the app runs; the default is a floor, not a knob to
@@ -470,6 +476,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
         .core_affinity = -1,
         .headless = headless,
         .fullscreen = fullscreen,
+        .fullscreen_switchable = fullscreen_switchable,
         .resizable = resizable,
         .large_memory = large_memory,
         .window_width = window_width,

@@ -96,6 +96,10 @@ typedef struct fmrb_app_task_context_s {
 #define FMRB_APP_MAX_EXTRA_CANVAS 2
     uint16_t              extra_canvas_ids[FMRB_APP_MAX_EXTRA_CANVAS];
     bool                  fullscreen;        // Fullscreen app flag
+    // App declares it survives park/unpark (Ctrl+Tab away from fullscreen and
+    // back): its on_suspend hides the canvas and on_resume redraws. Apps
+    // without this stay fullscreen until they exit (Ctrl+Tab is ignored).
+    bool                  fullscreen_switchable;
     bool                  resizable;         // Allow window resize (default: false)
     uint16_t              min_window_width;  // Per-app minimum width (0 = use global default)
     uint16_t              min_window_height; // Per-app minimum height (0 = use global default)
@@ -143,6 +147,7 @@ typedef struct {
     bool                  headless;         // Headless app flag (no graphics, no canvas)
     bool                  has_background_canvas; // Desktop only: create bg canvas (z=0)
     bool                  fullscreen;       // Fullscreen app (suspend others, no menu bar)
+    bool                  fullscreen_switchable; // App survives fullscreen park/unpark (see context struct)
     bool                  resizable;        // Allow window resize (default: false)
     bool                  large_memory;     // Use LARGE memory pool (1MB)
     uint16_t              window_width;     // Window Width (if headless, =0)

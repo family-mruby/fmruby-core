@@ -239,6 +239,7 @@ const char *fmrb_spx_app_info_snapshot(int pid)
     if (ctx->load_mode == FMRB_LOAD_MODE_FILE && ctx->load_data) {
         spx_pack_name(buf + 36, 128, (const char *)ctx->load_data);  /* path */
     }
+    buf[164] = ctx->fullscreen_switchable ? 1 : 0;
     sp_net_bin_len = FMRB_SPX_APP_INFO_RECORD_SIZE;
     return (const char *)buf;
 }

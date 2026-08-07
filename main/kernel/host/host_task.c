@@ -1397,6 +1397,24 @@ static void host_task_process_host_message(const host_message_t *msg)
                     fmrb_msg_send(0, &sys_msg, 1000);  // PID 0 = kernel
                     break;  // Don't forward to app
                 }
+                // Global hotkey: Ctrl+Tab cycles the focused front app, and
+                // parks/unparks a switchable fullscreen app. Ctrl (not Alt)
+                // because SDL's Alt modifier bit does not survive the Linux
+                // sim's 8-bit modifier field.
+                if (has_ctrl && sc == 0x2B) {  // Tab scancode
+                    FMRB_LOGI(TAG, "Ctrl+Tab detected - sending cycle_focus");
+                    fmrb_msg_t sys_msg = {
+                        .type = FMRB_MSG_TYPE_APP_CONTROL,
+                        .src_pid = PROC_ID_HOST,
+                        .size = 0
+                    };
+                    // Pack minimal msgpack: {"cmd": "cycle_focus"}
+                    const char *payload = "\x81\xa3""cmd\xab""cycle_focus";
+                    sys_msg.size = 17;
+                    memcpy(sys_msg.data, payload, sys_msg.size);
+                    fmrb_msg_send(0, &sys_msg, 1000);  // PID 0 = kernel
+                    break;  // Don't forward to app
+                }
             }
 
             // Get routing table

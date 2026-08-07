@@ -181,7 +181,8 @@ class FmrbKernel
       vm_type: vm_sym,
       load_mode: buf.getbyte(3),
       name: SpxBytes.read_name(buf, 4, 32),
-      path: SpxBytes.read_name(buf, 36, 128)
+      path: SpxBytes.read_name(buf, 36, 128),
+      fullscreen_switchable: buf.getbyte(164) != 0
     }
   end
 

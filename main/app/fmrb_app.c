@@ -1525,6 +1525,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     ctx->has_background_canvas = attr->has_background_canvas;
     ctx->bg_canvas_id = 0;
     ctx->fullscreen = attr->fullscreen;
+    ctx->fullscreen_switchable = attr->fullscreen_switchable;
     ctx->resizable = attr->resizable;
     ctx->min_window_width = attr->min_window_width;
     ctx->min_window_height = attr->min_window_height;

@@ -62,6 +62,7 @@ class FmrbKernelImpl < FmrbKernel
 
     # Fullscreen mode state
     @fullscreen_pid = nil
+    @parked_fullscreen_pid = nil  # Fullscreen app parked by Ctrl+Tab (suspended, canvas hidden)
     @suspended_pids = []
 
     # PUB/SUB topic subscriptions: {"topic" => [pid1, pid2, ...]}
@@ -319,12 +320,21 @@ class FmrbKernelImpl < FmrbKernel
     when "focus_app"
       target_pid = data["pid"]
       if target_pid
-        _bring_to_front(target_pid)
-        _set_hid_target(target_pid)
-        @hid_target_pid = target_pid
-        mark_window_list_dirty
-        Log.info("Focus switched to PID #{target_pid} (requested by pid=#{pid})")
+        if target_pid == @parked_fullscreen_pid
+          # A parked fullscreen app has a hidden canvas and a suspended task;
+          # plain focus would show nothing and eat the keyboard. Unpark it.
+          unpark_fullscreen
+        else
+          _bring_to_front(target_pid)
+          _set_hid_target(target_pid)
+          @hid_target_pid = target_pid
+          mark_window_list_dirty
+          Log.info("Focus switched to PID #{target_pid} (requested by pid=#{pid})")
+        end
       end
+    when "cycle_focus"
+      # Ctrl+Tab (intercepted in host_task, works even in fullscreen)
+      handle_cycle_focus
     when "kill"
       Log.info("Kill request from pid=#{pid} (not implemented)")
       # TODO: Implement kill command to forcefully terminate app

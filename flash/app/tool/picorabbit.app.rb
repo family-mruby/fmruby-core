@@ -163,6 +163,19 @@ class SlideShowApp < FmrbApp
     200
   end
 
+  # Ctrl+Tab park/unpark (fullscreen_switchable in the toml): hide the
+  # canvas so the desktop underneath shows, redraw the slide on return.
+  def on_suspend
+    if @gfx
+      @gfx.clear(0x01)  # color key -> fully transparent
+      @gfx.present
+    end
+  end
+
+  def on_resume
+    draw_current
+  end
+
   def on_destroy
     Log.info("SlideShow destroyed")
   end

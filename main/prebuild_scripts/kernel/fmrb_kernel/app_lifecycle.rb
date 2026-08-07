@@ -108,6 +108,99 @@ module AppLifecycleMixin
     mark_window_list_dirty
   end
 
+  # ---- Ctrl+Tab focus cycling / fullscreen park & unpark ----
+
+  # Ctrl+Tab. In fullscreen: park the app (if it declared itself switchable)
+  # and give the desktop back. Otherwise: cycle the focused front app through
+  # the open windows; the keyboard follows the window. Reaching the parked
+  # fullscreen app in the cycle brings it back to fullscreen.
+  def handle_cycle_focus
+    if @fullscreen_pid
+      info = _get_app_info(@fullscreen_pid)
+      unless info && info[:fullscreen_switchable]
+        Log.info("Ctrl+Tab ignored: fullscreen app is not switchable")
+        return
+      end
+      park_fullscreen
+    else
+      cycle_front_app
+    end
+  end
+
+  # Suspend the fullscreen app (its on_suspend hides the canvas), bring the
+  # desktop and the previously suspended apps back. The app keeps its state;
+  # unpark_fullscreen is the way back.
+  def park_fullscreen
+    fs_pid = @fullscreen_pid
+    Log.info("Parking fullscreen app PID #{fs_pid}")
+    @fullscreen_pid = nil
+    @parked_fullscreen_pid = fs_pid
+
+    suspend_app(fs_pid)
+    @suspended_pids.each { |spid| resume_app(spid) }
+    @suspended_pids = []
+
+    if @desktop_pid
+      _set_hid_target(@desktop_pid)
+      @hid_target_pid = @desktop_pid
+    end
+    mark_window_list_dirty
+  end
+
+  # Re-enter fullscreen for the parked app: suspend everything else again,
+  # then resume the app (its on_resume redraws the screen).
+  def unpark_fullscreen
+    pid = @parked_fullscreen_pid
+    return unless pid
+    Log.info("Unparking fullscreen app PID #{pid}")
+    @parked_fullscreen_pid = nil
+
+    enter_fullscreen(pid)
+    resume_app(pid)
+    _set_hid_target(pid)
+    @hid_target_pid = pid
+    mark_window_list_dirty
+  end
+
+  # Round-robin focus over open windows (desktop excluded), keyboard included,
+  # so the editor and a running app can be toggled without the mouse. The
+  # parked fullscreen app takes its turn in the cycle via unpark.
+  def cycle_front_app
+    update_window_list
+    candidates = []
+    @window_list.each do |win|
+      next if win[:pid] == 0
+      next if win[:app_name] == "system_desktop"
+      candidates << win[:pid]
+    end
+    candidates.sort!
+    return if candidates.empty?
+
+    idx = candidates.index(@hid_target_pid)
+    # From the desktop (focus not on any window), returning to the parked
+    # presentation is the most likely intent -- one press, not a lap around
+    # the window ring.
+    next_pid = if idx
+                 candidates[(idx + 1) % candidates.size]
+               elsif @parked_fullscreen_pid && candidates.include?(@parked_fullscreen_pid)
+                 @parked_fullscreen_pid
+               else
+                 candidates[0]
+               end
+    return if next_pid == @hid_target_pid && candidates.size == 1 &&
+              next_pid != @parked_fullscreen_pid
+
+    if next_pid == @parked_fullscreen_pid
+      unpark_fullscreen
+    else
+      _bring_to_front(next_pid)
+      _set_hid_target(next_pid)
+      @hid_target_pid = next_pid
+      mark_window_list_dirty
+      Log.info("Ctrl+Tab: focus -> PID #{next_pid}")
+    end
+  end
+
   def app_suspended?(pid)
     @suspended_pids && @suspended_pids.include?(pid)
   end
@@ -141,6 +234,9 @@ module AppLifecycleMixin
       end
       @suspended_pids = []
     end
+
+    # A parked fullscreen app that terminated must not be unparked later
+    @parked_fullscreen_pid = nil if @parked_fullscreen_pid == pid
 
     # Hand the keyboard back if this was the target app. An app started by Run
     # returns it to whoever asked for the Run (the editor, so F5 works again

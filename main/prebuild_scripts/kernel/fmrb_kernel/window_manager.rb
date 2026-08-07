@@ -67,6 +67,10 @@ module WindowManagerMixin
       next if win[:app_name] == "system_desktop"
       # Skip suspended apps
       next if app_suspended?(win[:pid])
+      # Skip the parked fullscreen app: its transparent full-screen canvas
+      # keeps the front z-order, and clicks routed there would queue up in
+      # the suspended app and all fire at once on unpark.
+      next if win[:pid] == @parked_fullscreen_pid
 
       if x >= win[:x] && x <= win[:x] + win[:width] - 1 &&
          y >= win[:y] && y <= win[:y] + win[:height] - 1
