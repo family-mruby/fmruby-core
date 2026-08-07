@@ -205,8 +205,11 @@ class SystemDesktopApp < FmrbApp
     # Load keyboard shortcuts from config
     @shortcuts = load_shortcuts
 
-    # Position launcher near top-left (below menu bar, with margin)
-    @launcher_x = 8
+    # Center the launcher horizontally (fixed size, below the menu bar).
+    # On Retro (320 wide) this lands at x=10, same as the old left margin;
+    # on Modern (426 wide) it no longer hugs the left edge.
+    lx = (@window_width - LauncherMixin::LAUNCHER_W) / 2
+    @launcher_x = lx > 0 ? lx : 0
     @launcher_y = MENU_BAR_HEIGHT + 8
 
     # Build app list and pre-create launcher icon sprites so the first
