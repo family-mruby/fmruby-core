@@ -146,8 +146,9 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/remote_desktop/rd_input.c"
         )
         # Local audio: APU emulator + ES8388 codec (esp_codec_dev) over I2S
+        # esp_app_format: esp_app_get_description() for the boot screen
         list(APPEND COMPONENT_REQUIRES m5gfx esp_driver_ppa apu_emu
-             esp_codec_dev esp_driver_i2s esp_driver_i2c)
+             esp_codec_dev esp_driver_i2s esp_driver_i2c esp_app_format)
         # BLE: NimBLE host on P4, controller on the C6 via esp_hosted
         list(APPEND COMPONENT_REQUIRES bt esp_hosted)
         # Remote desktop: WiFi STA over esp_hosted (esp_wifi_remote) +

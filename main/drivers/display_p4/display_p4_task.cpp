@@ -37,6 +37,10 @@ extern "C" {
 #include <cstdlib>  // qsort
 #include "esp_private/esp_cache_private.h"
 #include "esp_cache.h"
+#include "esp_app_desc.h"
+#include "esp_chip_info.h"
+#include "esp_flash.h"
+#include "esp_system.h"
 
 static const char *TAG = "display_p4";
 
@@ -2571,6 +2575,92 @@ extern "C" void display_p4_poll_headphone(void) {
 // Main task
 // ============================================================
 
+// ---- Boot screen (PC-98/DOS style, mirroring the WROVER GA boot screen) ----
+// Plain white-on-black text drawn straight to the panel while the kernel is
+// still booting. Cleared by the first render_frame (which also flushes the
+// cached CPU writes, see g_first_render).
+
+#define BOOT_TEXT_SIZE 3                    // 6x8 base font -> 18x24 on 720p
+#define BOOT_CHAR_W    (6 * BOOT_TEXT_SIZE)
+#define BOOT_CHAR_H    (8 * BOOT_TEXT_SIZE)
+#define BOOT_LINE_H    (BOOT_CHAR_H + 4)
+#define BOOT_MARGIN_X  8
+#define BOOT_MARGIN_Y  8
+
+static int s_boot_line_y = 0;
+static int s_boot_cursor_x = 0;   // blinking block after the last status line
+static int s_boot_cursor_y = 0;
+
+static void boot_print_line(const char *text) {
+    g_lcd.setCursor(BOOT_MARGIN_X, s_boot_line_y);
+    g_lcd.print(text);
+    s_boot_cursor_x = BOOT_MARGIN_X + (int)strlen(text) * BOOT_CHAR_W + BOOT_CHAR_W / 2;
+    s_boot_cursor_y = s_boot_line_y;
+    s_boot_line_y += BOOT_LINE_H;
+}
+
+static void boot_print_blank(void) {
+    s_boot_line_y += BOOT_LINE_H;
+}
+
+static void draw_boot_cursor(bool visible) {
+    g_lcd.fillRect(s_boot_cursor_x, s_boot_cursor_y, BOOT_CHAR_W, BOOT_CHAR_H,
+                   visible ? 0xFFFFFFu : 0x000000u);
+}
+
+static void draw_boot_screen(void) {
+    char buf[80];
+
+    g_lcd.fillScreen(0x000000u);
+    g_lcd.setTextSize(BOOT_TEXT_SIZE);
+    g_lcd.setTextColor(0xFFFFFFu, 0x000000u);
+    s_boot_line_y = BOOT_MARGIN_Y;
+
+    boot_print_line("Family mruby Modern System");
+    boot_print_line("==========================");
+    boot_print_blank();
+
+    // Which build is on screen. The app description is written at link time,
+    // so unlike __DATE__ / __TIME__ it cannot linger as a stale value through
+    // an incremental build. Its version is git describe, so it carries the
+    // commit and whether the tree was dirty.
+    const esp_app_desc_t *app = esp_app_get_description();
+    snprintf(buf, sizeof(buf), "Core: %.28s  link v%d", app->version, FMRB_LINK_VERSION);
+    boot_print_line(buf);
+    snprintf(buf, sizeof(buf), "Built: %s %s", app->date, app->time);
+    boot_print_line(buf);
+    // Whole idf_ver on a line of its own: cutting it at the first dash would
+    // make a master build read as the release tag.
+    snprintf(buf, sizeof(buf), "IDF: %.40s", app->idf_ver);
+    boot_print_line(buf);
+    boot_print_blank();
+
+    esp_chip_info_t chip;
+    esp_chip_info(&chip);
+    // chip.revision is encoded as major*100 + minor (IDF v5.x)
+    snprintf(buf, sizeof(buf), "CPU: ESP32-P4 rev v%d.%d %d cores",
+             chip.revision / 100, chip.revision % 100, chip.cores);
+    boot_print_line(buf);
+
+    uint32_t flash_size = 0;
+    esp_flash_get_size(NULL, &flash_size);
+    snprintf(buf, sizeof(buf), "Flash: %lu MB",
+             (unsigned long)(flash_size / (1024 * 1024)));
+    boot_print_line(buf);
+
+    snprintf(buf, sizeof(buf), "Free heap:  %lu bytes",
+             (unsigned long)esp_get_free_heap_size());
+    boot_print_line(buf);
+    snprintf(buf, sizeof(buf), "Free PSRAM: %zu bytes",
+             heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    boot_print_line(buf);
+    boot_print_blank();
+
+    snprintf(buf, sizeof(buf), "Display: %dx%d MIPI-DSI",
+             (int)g_lcd.width(), (int)g_lcd.height());
+    boot_print_line(buf);
+}
+
 static void display_p4_task(void *arg) {
     (void)arg;
     FMRB_LOGI(TAG, "Tab5 display: power on");
@@ -2586,23 +2676,19 @@ static void display_p4_task(void *arg) {
     } else {
         g_lcd.setRotation(3); // landscape: 1280x720 (native portrait 720x1280 rotated 90deg CCW)
         FMRB_LOGI(TAG, "LGFX init OK (%dx%d)", g_lcd.width(), g_lcd.height());
-        g_lcd.fillScreen(g_lcd.color888(0, 0, 64));
-        g_lcd.setTextColor(g_lcd.color888(255, 255, 255));
-        g_lcd.setTextSize(4);
-        g_lcd.setCursor(20, 20);
-        g_lcd.print("Family mruby");
-        g_lcd.setCursor(20, 80);
-        g_lcd.print("Modern (P4)");
-        g_lcd.setTextSize(2);
-        g_lcd.setCursor(20, 160);
-        g_lcd.print("Initializing...");
+        draw_boot_screen();
 
         // Bring up the Tab5 audio codec now: the ES8388 shares the I2C
         // bus with GT911, and the touch task only starts polling after
         // g_lcd_ready below, so this is the race-free window.
         if (audio_p4_hw_init() != FMRB_OK) {
             FMRB_LOGW(TAG, "Tab5 audio init failed (no sound)");
+            boot_print_line("Audio: codec init FAILED (no sound)");
+        } else {
+            boot_print_line("Audio: ES8388 codec ready");
         }
+        boot_print_blank();
+        boot_print_line("Waiting for kernel...");
 
         // Apply the initial headphone state so booting with headphones
         // plugged does not play the boot sound on the speaker. If lgfx's
@@ -2633,7 +2719,22 @@ static void display_p4_task(void *arg) {
     uint32_t stat_frames = 0, stat_render_ms_total = 0, stat_render_ms_max = 0;
     uint32_t stat_last_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
+    // Boot-screen cursor blink state
+    uint32_t boot_cursor_ms = 0;
+    bool boot_cursor_on = false;
+
     while (1) {
+        // Blink the boot-screen cursor until the first real frame replaces
+        // the boot screen. Same task as render_frame, so no draw race.
+        if (g_first_render && g_lcd_ready) {
+            uint32_t now = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+            if ((uint32_t)(now - boot_cursor_ms) >= 500) {
+                boot_cursor_ms = now;
+                boot_cursor_on = !boot_cursor_on;
+                draw_boot_cursor(boot_cursor_on);
+            }
+        }
+
         // Render when requested, paced to RENDER_MIN_INTERVAL_MS so bursts
         // of cursor moves / presents coalesce into a single frame.
         if (g_needs_render) {
