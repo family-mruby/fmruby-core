@@ -7,5 +7,6 @@ large_memory = 1
 # fmrb_code slide blocks are eval-compiled (mruby codegen recursion on the
 # task C stack); 16KB overflowed on P4. See fmrb_task_config.h.
 task_stack_kb = 24
-# Ctrl+Tab may park the presentation (on_suspend hides, on_resume redraws)
+# Ctrl+Tab may park the presentation (task frozen, canvases hidden by the
+# C-level suspend; state and pixels are preserved until unpark)
 fullscreen_switchable = 1

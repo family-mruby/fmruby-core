@@ -96,9 +96,11 @@ typedef struct fmrb_app_task_context_s {
 #define FMRB_APP_MAX_EXTRA_CANVAS 2
     uint16_t              extra_canvas_ids[FMRB_APP_MAX_EXTRA_CANVAS];
     bool                  fullscreen;        // Fullscreen app flag
-    // App declares it survives park/unpark (Ctrl+Tab away from fullscreen and
-    // back): its on_suspend hides the canvas and on_resume redraws. Apps
-    // without this stay fullscreen until they exit (Ctrl+Tab is ignored).
+    // App consents to being parked by Ctrl+Tab: suspended with canvases
+    // hidden (fmrb_app_suspend does both; pixels and state are preserved),
+    // and brought back to fullscreen later. Opt-in because a parked app is
+    // frozen mid-flight -- e.g. one holding APU voices would keep sounding.
+    // Without this, Ctrl+Tab in fullscreen is ignored.
     bool                  fullscreen_switchable;
     bool                  resizable;         // Allow window resize (default: false)
     uint16_t              min_window_width;  // Per-app minimum width (0 = use global default)
