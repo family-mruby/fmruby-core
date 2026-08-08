@@ -8,7 +8,16 @@ on:
 
 jobs:
   build-esp32:
+    # Both hardware generations, because they do not share a build: Retro is
+    # Xtensa (S3) and Modern is RISC-V (P4), and the two take different
+    # branches through the drivers. A change that only breaks one of them used
+    # to reach main unnoticed -- Modern was built only by the release workflow.
+    name: build-esp32 (${{ matrix.hw_target }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        hw_target: [NARYAv3, TAB5]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
@@ -47,6 +56,16 @@ jobs:
 
       - name: Tag image for Rakefile
         run: docker tag ghcr.io/${{ steps.repo_owner.outputs.owner }}/fmruby-esp32-build:${{ steps.version.outputs.ESP_IDF_VERSION }} esp32_build_container:${{ steps.version.outputs.ESP_IDF_VERSION }}
+
+      - name: Select HW target
+        # The target comes from .env, which overrides the environment (a CLI
+        # FMRB_HW_TARGET would be silently ignored), so edit the file itself
+        # and verify exactly one active target remains.
+        run: |
+          sed -i 's/^FMRB_HW_TARGET=/#FMRB_HW_TARGET=/' .env
+          sed -i 's/^#FMRB_HW_TARGET=${{ matrix.hw_target }}$/FMRB_HW_TARGET=${{ matrix.hw_target }}/' .env
+          test "$(grep -c '^FMRB_HW_TARGET=' .env)" = 1
+          grep '^FMRB_HW_TARGET=${{ matrix.hw_target }}$' .env
 
       - name: Build ESP32
         run: rake build:esp32
