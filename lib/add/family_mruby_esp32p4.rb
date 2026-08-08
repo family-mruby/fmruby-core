@@ -95,6 +95,10 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   conf.gem core: "picoruby-rx8900"
   conf.gem core: "picoruby-rx8130"
 
+  # Six-axis IMU driver (pure Ruby, depends on picoruby-i2c). Tab5 only:
+  # Retro has no IMU, so this is not in the esp32s3 build config.
+  conf.gem core: "picoruby-bmi270"
+
   # Ruby networking client API (Modern/P4 only, see doc/ruby_network_api_design.md).
   # picoruby-socket pulls picoruby-mbedtls; ESP-IDF port sources are compiled by
   # components/picoruby-esp32/CMakeLists.txt (PICORUBY_SRCS), lib/patch applies

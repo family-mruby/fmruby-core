@@ -1,0 +1,8 @@
+app_handle_name = "imu"
+app_screen_name = "IMU"
+app_screen_name_ja = "6軸センサ"
+default_window_mode = "window"
+default_window_width = 240
+default_window_height = 180
+default_window_pos_x = 20
+default_window_pos_y = 20

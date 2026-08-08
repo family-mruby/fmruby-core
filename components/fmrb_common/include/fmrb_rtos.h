@@ -41,6 +41,9 @@ typedef TickType_t fmrb_tick_t;
 #define FMRB_FAIL pdFAIL
 
 #define FMRB_MS_TO_TICKS pdMS_TO_TICKS
+// The other direction, for code that keeps a deadline in ticks but has to hand
+// a millisecond timeout to an API (fmrb_msg_receive, for one).
+#define FMRB_TICKS_TO_MS(ticks) ((uint32_t)(ticks) * portTICK_PERIOD_MS)
 
 // Critical section types and macros
 typedef portMUX_TYPE fmrb_spinlock_t;
