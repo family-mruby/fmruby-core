@@ -499,9 +499,12 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
             continue;
         }
 
-        // Try to receive message with remaining timeout
+        // Try to receive message with remaining timeout.
+        // fmrb_msg_receive takes milliseconds (it applies FMRB_MS_TO_TICKS
+        // internally), so the tick deadline has to be converted back.
         fmrb_msg_t msg;
-        fmrb_err_t ret = fmrb_msg_receive(ctx->app_id, &msg, remaining_ticks);
+        fmrb_err_t ret = fmrb_msg_receive(ctx->app_id, &msg,
+                                          FMRB_TICKS_TO_MS(remaining_ticks));
 
         if (ret == FMRB_OK) {
             // Dispatch message based on type

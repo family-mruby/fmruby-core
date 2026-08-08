@@ -108,8 +108,10 @@ int fmrb_mp_bridge_recv(uint8_t *buf, size_t buf_size, int *out_type,
         return -1;
     }
 
+    // fmrb_msg_receive takes milliseconds (it applies FMRB_MS_TO_TICKS
+    // internally); pass timeout_ms straight through.
     fmrb_msg_t msg;
-    if (fmrb_msg_receive(ctx->app_id, &msg, FMRB_MS_TO_TICKS(timeout_ms)) != FMRB_OK) {
+    if (fmrb_msg_receive(ctx->app_id, &msg, timeout_ms) != FMRB_OK) {
         return -1;
     }
 
