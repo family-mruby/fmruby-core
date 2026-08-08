@@ -84,6 +84,23 @@ rake clean_all   # full clean (forces target reconfigure)
 
 Run `rake clean` after editing anything under `lib/` (mrbgems/patches are re-copied on build), and `rake clean_all` whenever switching target between `linux` and `esp32`.
 
+## Security Note
+
+The networking features (WiFi / BLE) have **no access control**. They are meant for
+development on a trusted local network.
+
+- **Remote desktop (HTTP / WebSocket)** — unauthenticated. Any client on the same
+  network can view the screen and send keyboard / mouse input, i.e. fully operate
+  the device.
+- **BLE debug service** — no pairing, bonding or encryption (deliberately disabled
+  for Web Bluetooth compatibility). Any client in radio range can connect, inspect
+  running applications and their variables, and spawn or kill them.
+- **WiFi credentials** are stored in plain text on the device (`config/wifi.toml`,
+  deployed into the filesystem image).
+
+Use these features only on a network you trust, at your own risk, and never expose
+the device directly to the Internet.
+
 ## License
 
 See the [LICENSE](LICENSE) file for details.
