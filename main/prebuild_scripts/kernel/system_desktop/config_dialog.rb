@@ -13,6 +13,9 @@
 
 module ConfigDialogMixin
   CFG_PATH    = "/etc/system_conf.toml"
+  # Shipped with the firmware, never written at runtime. The kernel boots from
+  # it when CFG_PATH is unreadable.
+  CFG_FACTORY_PATH = "/etc/system_conf.factory.toml"
   CFG_W       = 280
   CFG_H       = 200
   CFG_TITLE_H = 14
@@ -116,6 +119,21 @@ module ConfigDialogMixin
       @cfg_file_lines = content.split("\n", -1)
     rescue => e
       Log.warn("Config: cannot read #{CFG_PATH}: #{e.message}")
+    end
+
+    # The kernel boots from the factory copy when the live file is damaged, so
+    # show the same thing here instead of an empty dialog that would save a
+    # near-empty file over what is left.
+    if @cfg_file_lines.empty? || (@cfg_file_lines.size == 1 && @cfg_file_lines[0].to_s.strip.empty?)
+      begin
+        f = File.open(CFG_FACTORY_PATH, "r")
+        content = f.read
+        f.close
+        @cfg_file_lines = content.split("\n", -1)
+        Log.warn("Config: #{CFG_PATH} unusable, showing factory settings")
+      rescue => e
+        Log.warn("Config: cannot read #{CFG_FACTORY_PATH}: #{e.message}")
+      end
     end
 
     theme = {}
@@ -473,14 +491,25 @@ module ConfigDialogMixin
       end
     end
 
+    # Write beside the file and swap it in, rather than opening the real path
+    # with "w". That truncates first, so a reset landing in the window between
+    # truncate and write loses the whole config -- and a machine that cannot
+    # read its config only comes back over USB.
+    tmp = path + ".tmp"
     begin
-      f = File.open(path, "w")
+      f = File.open(tmp, "w")
       f.write(out_lines.join("\n"))
       f.close
+      File.rename(tmp, path)
       Log.info("Config: saved #{CFG_PATH}")
       true
     rescue => e
       Log.error("Config: write failed: #{e.message}")
+      begin
+        File.unlink(tmp)
+      rescue => e2
+        Log.warn("Config: leftover #{tmp}: #{e2.message}")
+      end
       false
     end
   end

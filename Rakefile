@@ -686,6 +686,9 @@ namespace :build do
   task :linux => :setup do
     # Copy Linux-specific system config
     cp 'config/system_conf_linux.toml', 'flash/etc/system_conf.toml', verbose: true
+    # Factory copy, never written at runtime: the kernel boots from this when
+    # /etc/system_conf.toml is unreadable (e.g. power lost mid-save).
+    cp 'config/system_conf_linux.toml', 'flash/etc/system_conf.factory.toml', verbose: true
 
     # Spinel engine(s): pre-generate the C on the host (the compiler is not
     # available inside the docker build) and forward the engine(s) into the build.
@@ -729,8 +732,10 @@ namespace :build do
       puts "HW target: #{hw_target} (#{cfg[:chip]})"
     end
 
-    # Copy HW-specific system_conf.toml to flash directory
+    # Copy HW-specific system_conf.toml to flash directory, plus the factory
+    # copy the kernel falls back to when the live file is unreadable.
     cp system_conf_path, 'flash/etc/system_conf.toml', verbose: true
+    cp system_conf_path, 'flash/etc/system_conf.factory.toml', verbose: true
 
     # WiFi credentials (P4 via the C6, S3 native): config/wifi.toml is kept
     # out of git (see config/wifi.toml.example). Copied into the flash image

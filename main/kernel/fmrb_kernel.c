@@ -99,6 +99,7 @@ static const char *display_mode_name(fmrb_display_mode_t mode)
 static bool read_system_config(void)
 {
     const char *config_path = "/etc/system_conf.toml";
+    const char *factory_path = "/etc/system_conf.factory.toml";
 
     FMRB_LOGI(TAG, "Loading system configuration from %s", config_path);
 
@@ -107,8 +108,18 @@ static bool read_system_config(void)
     toml_table_t *conf = fmrb_toml_load_file(config_path, errbuf, sizeof(errbuf));
 
     if (!conf) {
+        // Booting without a config leaves the machine unusable -- no desktop,
+        // no radio, so no way in except USB. The live file can legitimately be
+        // damaged (the desktop rewrites it, and power can go at any moment), so
+        // fall back to the factory copy the firmware ships instead of refusing
+        // to start. It is written once at build time and never at runtime.
         FMRB_LOGE(TAG, "Config load failed: %s", errbuf);
-        return false;
+        FMRB_LOGW(TAG, "Falling back to factory settings (%s)", factory_path);
+        conf = fmrb_toml_load_file(factory_path, errbuf, sizeof(errbuf));
+        if (!conf) {
+            FMRB_LOGE(TAG, "Factory config load failed too: %s", errbuf);
+            return false;
+        }
     }
 
     // Read system_name

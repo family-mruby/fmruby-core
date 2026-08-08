@@ -53,3 +53,4 @@ sdkconfig.*.saved
 # Development FIFO for the simulator's MIDI out (tools/fmrb_midi_monitor.rb
 # creates it; see doc/midi/report/p5s.md).
 midi_out.fifo
+flash/etc/system_conf.factory.toml
