@@ -197,6 +197,9 @@ task :setup do
   # rx8130 (Tab5 RTC)
   sh "rm -rf #{mrbgem_path}/picoruby-rx8130"
   sh "cp -rf lib/add/picoruby-rx8130 #{mrbgem_path}/"
+  # bmi270 (Tab5 six-axis IMU)
+  sh "rm -rf #{mrbgem_path}/picoruby-bmi270"
+  sh "cp -rf lib/add/picoruby-bmi270 #{mrbgem_path}/"
   # picorabbit
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-picorabbit"
   sh "cp -rf lib/add/picoruby-fmrb-picorabbit #{mrbgem_path}/"
