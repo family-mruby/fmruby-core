@@ -63,8 +63,9 @@ class ImuApp < FmrbApp
         @status = sprintf("BMI270 at 0x%02X", imu.address)
         Log.info("Imu: #{@status}")
       elsif imu.address
-        @status = "BMI270 init failed (simulated)"
-        Log.warn("Imu: found the sensor but the config load failed")
+        @status = "BMI270 init: #{imu.error} (simulated)"
+        Log.warn("Imu: found the sensor at 0x#{sprintf('%02X', imu.address)} " \
+                 "but init stopped at: #{imu.error}")
       else
         @status = "no BMI270 on I2C1 (simulated)"
         Log.warn("Imu: nothing answered as a BMI270")
@@ -132,10 +133,16 @@ class ImuApp < FmrbApp
   end
 
   # Tilt in g mapped onto the face of the level, clamped to the rim.
+  #
+  # The sensor axes are not the screen axes: the panel is mounted portrait and
+  # turned 90 degrees for display. Measured on the machine, lowering the right
+  # edge reads y = -0.49 and lowering the near edge reads x = +0.78, so the
+  # sensor's +x runs down the screen and its +y runs to the left. The ball
+  # rolls to the low side, which makes the mapping below.
   def ball_offset
     limit = LEVEL_R - BALL_R
-    bx = (@accel[:x] * limit).to_i
-    by = (@accel[:y] * limit).to_i
+    bx = (-@accel[:y] * limit).to_i
+    by = (@accel[:x] * limit).to_i
     bx = limit if bx > limit
     bx = -limit if bx < -limit
     by = limit if by > limit

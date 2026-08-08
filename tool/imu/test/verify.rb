@@ -38,12 +38,16 @@ class FakeDevice
 
   attr_reader :log, :uploaded, :chunk_sizes, :closed
 
-  # chip_id: what CHIP_ID answers (0x24 is a BMI270)
-  # status:  what INTERNAL_STATUS answers after the load
-  def initialize(addr: 0x68, chip_id: 0x24, status: 0x01)
+  # chip_id:    what CHIP_ID answers (0x24 is a BMI270)
+  # status:     what INTERNAL_STATUS answers after the load
+  # nack_after_reset: how many reads to refuse once the soft reset lands, the
+  #                   way the real part does while it is coming back up
+  def initialize(addr: 0x68, chip_id: 0x24, status: 0x01, nack_after_reset: 0)
     @addr = addr
     @chip_id = chip_id
     @status = status
+    @nack_left = 0
+    @nack_after_reset = nack_after_reset
     @log = []            # [:write, reg, [bytes]] / [:read, reg, len]
     @uploaded = {}       # byte index -> byte value
     @chunk_sizes = []
@@ -58,6 +62,10 @@ class FakeDevice
 
   def read(addr, len, reg = nil)
     raise IOError, "no device at 0x#{addr.to_s(16)}" unless addr == @addr
+    if @nack_left > 0
+      @nack_left -= 1
+      raise IOError, "not ready"
+    end
     @log << [:read, reg, len]
     case reg
     when REG_CHIP_ID         then [@chip_id].pack("C")
@@ -75,6 +83,8 @@ class FakeDevice
     @log << [:write, reg, bytes]
 
     case reg
+    when REG_CMD
+      @nack_left = @nack_after_reset if bytes[0] == 0xB6
     when REG_INIT_ADDR_0
       # Load address counts 16-bit words: low nibble first, then the rest.
       words = (bytes[1] << 4) | (bytes[0] & 0x0F)
@@ -171,9 +181,32 @@ check("uses even-sized chunks (the load address counts words)") do
   odd = device.chunk_sizes.reject { |n| n.even? }
   [odd.empty?, "odd chunks: #{odd.inspect}"]
 end
+# Modern routes every I2C transaction through the display driver's service,
+# which takes the length in a byte and refuses anything past 255. The register
+# byte rides in the same transaction, so the payload has 254 to live in. A
+# chunk over that is rejected outright, which reads as an init that fails
+# without ever touching the bus in anger.
+check("keeps a whole transaction inside the 255-byte bus limit") do
+  worst = device.chunk_sizes.max + 1
+  [worst <= 255, "largest transaction is #{worst} bytes"]
+end
 check("splits the image into #{BMI270::CONFIG_SIZE / BMI270::CHUNK_SIZE} chunks") do
   [device.chunk_sizes.size == BMI270::CONFIG_SIZE / BMI270::CHUNK_SIZE,
    "got #{device.chunk_sizes.size}"]
+end
+
+puts "init on a part that is slow to come back"
+# The real sensor refuses reads for the first few milliseconds after a soft
+# reset. A single attempt there fails on hardware while passing every test
+# against a fake that always answers, which is exactly what happened.
+check("keeps asking until the sensor answers after the reset") do
+  slow_imu = BMI270.new(FakeDevice.new(nack_after_reset: 6))
+  [slow_imu.init(CONFIG) == true, "error: #{slow_imu.error.inspect}"]
+end
+check("gives up when it never answers after the reset") do
+  dead_imu = BMI270.new(FakeDevice.new(nack_after_reset: 10_000))
+  [dead_imu.init(CONFIG) == false && dead_imu.error == "no answer after reset",
+   "error: #{dead_imu.error.inspect}"]
 end
 
 puts "init failure cases"

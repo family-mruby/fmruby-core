@@ -20,9 +20,11 @@ class BMI270
   CONFIG_PATH   = "/usr/share/imu/bmi270_config.bin"
   CONFIG_SIZE   = 8192
   # The load address counts 16-bit words, so a chunk must be an even number of
-  # bytes. 256 keeps the number of transactions (32) and the temporary array
-  # both small.
-  CHUNK_SIZE    = 256
+  # bytes. The upper bound is the bus: on Modern every I2C transaction goes
+  # through the display driver's service, which takes the length in a byte and
+  # refuses anything past 255 -- and the register byte counts. 128 stays well
+  # inside that on any path, at 64 transactions for the whole image.
+  CHUNK_SIZE    = 128
 
   REG_CHIP_ID         = 0x00
   REG_ACC_X_LSB       = 0x0C
@@ -36,6 +38,7 @@ class BMI270
   REG_CMD             = 0x7E
 
   CMD_SOFT_RESET = 0xB6
+  RESET_TRIES    = 20   # 2 ms apart, so up to 40 ms for the reset to finish
   PWR_CTRL_ON    = 0x0E   # temperature + accelerometer + gyroscope enabled
   INIT_OK        = 0x01   # low nibble of INTERNAL_STATUS after a good load
 
@@ -49,12 +52,18 @@ class BMI270
 
   attr_reader :address
 
+  # Why the last init failed, as a short string, or nil. Every step that can
+  # fail leaves its name here: a sensor that answers but will not start is
+  # otherwise three indistinguishable failures behind one false.
+  attr_reader :error
+
   # i2c:  an open I2C instance
   # addr: skip the probe and use this address (0x68 or 0x69)
   def initialize(i2c, addr = nil)
     @i2c = i2c
     @address = addr
     @ready = false
+    @error = nil
   end
 
   def ready?
@@ -84,17 +93,42 @@ class BMI270
   # good load.
   def init(config_path = CONFIG_PATH)
     @ready = false
-    return false unless probe
+    @error = nil
+
+    unless probe
+      @error = "no sensor"
+      return false
+    end
 
     config = load_config(config_path)
-    return false unless config
+    unless config
+      @error = "config file"
+      return false
+    end
 
     write8(REG_CMD, CMD_SOFT_RESET)
     ::Machine.delay_ms(5)
-    # A read after reset puts the interface back into I2C mode.
-    begin
-      @i2c.read(@address, 1, REG_CHIP_ID)
-    rescue
+
+    # A read after the reset is what keeps the interface in I2C mode, but the
+    # part does not answer for the first few milliseconds and NACKs instead.
+    # Ask until it does: one attempt is enough to fail on real hardware.
+    awake = false
+    tries = 0
+    while tries < RESET_TRIES
+      begin
+        data = @i2c.read(@address, 1, REG_CHIP_ID)
+        if data && data.bytesize >= 1 && data.getbyte(0) == CHIP_ID
+          awake = true
+          break
+        end
+      rescue
+        # still in reset; try again below
+      end
+      ::Machine.delay_ms(2)
+      tries += 1
+    end
+    unless awake
+      @error = "no answer after reset"
       return false
     end
 
@@ -102,7 +136,10 @@ class BMI270
     ::Machine.delay_ms(1)
     write8(REG_INIT_CTRL, 0x00)  # start of the configuration load
 
-    return false unless upload(config)
+    unless upload(config)
+      @error = "config upload"
+      return false
+    end
 
     write8(REG_INIT_CTRL, 0x01)  # end of the configuration load
 
@@ -118,7 +155,10 @@ class BMI270
       end
       tries += 1
     end
-    return false unless ok
+    unless ok
+      @error = "load not accepted"
+      return false
+    end
 
     write8(REG_PWR_CTRL, PWR_CTRL_ON)
     ::Machine.delay_ms(2)
