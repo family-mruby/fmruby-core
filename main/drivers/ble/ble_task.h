@@ -16,6 +16,24 @@ extern "C" {
  */
 fmrb_err_t ble_task_init(void);
 
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+/**
+ * @brief Bring the C6 link up without offering any BLE service (Modern only).
+ *
+ * On esp_hosted 1.4.0 the SDIO link to the C6 is established by the transport
+ * init inside nimble_port_init(), and nothing else brings it up -- so WiFi
+ * cannot start unless that ran. This does exactly that much and stops: no GATT
+ * services, no host task, no advertising, so the device is not connectable and
+ * ble_ui_state() keeps reporting "off".
+ *
+ * Used when ble_auto_start is false but WiFi is wanted. Terminal until reboot:
+ * ble_task_init() must not run afterwards (nimble_port_init is not re-entrant).
+ *
+ * @return FMRB_OK when the link is up, FMRB_ERR_FAILED otherwise
+ */
+fmrb_err_t ble_link_only_init(void);
+#endif
+
 /**
  * @brief Start the BLE service asynchronously (idempotent)
  *

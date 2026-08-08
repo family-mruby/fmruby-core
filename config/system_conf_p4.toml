@@ -9,6 +9,19 @@ default_user_app_width = 386
 default_user_app_height = 180
 display_mode = "tab5_dsi" # Tab5 MIPI-DSI panel, driven locally (ntsc_ipc / spi_direct / headless / tab5_dsi / sdl2 / atom_display)
 debug_mode = true
+# ble_auto_start means something different here than it does on Retro, because
+# the radio is on the C6 rather than on this chip:
+#   Modern (here) false = no BLE service. Nothing is advertised and nothing can
+#                        connect, but the C6 SDIO link is still raised when
+#                        wifi_auto_start is on -- only NimBLE's transport init
+#                        can raise it, and WiFi aborts without it (measured).
+#                        Frees ~16KB of internal RAM, not the ~75KB Retro frees.
+#                        To take the radio down as well, set wifi_auto_start
+#                        false too: then the C6 is left down entirely.
+#   Retro          false = BLE never starts at all (one radio on the S3), and it
+#                        can be started later from the desktop menu.
+# Either way the change needs a reboot.
+ble_auto_start = true
 wifi_auto_start = true  # P4: C6 runs BLE + WiFi together; needs ssid/password in wifi.toml
 mouse_scale_x = 0.5
 mouse_scale_y = 0.5

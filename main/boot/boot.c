@@ -270,6 +270,8 @@ static bool init_hardware(void)
 // (its nimble_port_init brings the SDIO transport up, the proven path),
 // WiFi strictly after: esp_hosted 1.4.0 corrupts the heap when an RPC is
 // issued before the transport is up (see doc/ble_c6_web_console.md).
+// With ble_auto_start off nothing brings the transport up here, so
+// wifi_task_init() polls the transport state itself (see wifi_task.c).
 static void modern_radio_init_task(void *arg)
 {
     (void)arg;
@@ -281,17 +283,37 @@ static void modern_radio_init_task(void *arg)
         fmrb_task_delete_ex(NULL);
         return;
     }
-    if (ble_task_init() != FMRB_OK) {
-        FMRB_LOGW(TAG, "Failed to init BLE via C6, continuing without it");
-    }
-    fmrb_mem_log_boot_snapshot("ble");
-    // WiFi is gated by system_conf.toml (wifi_auto_start, default off), which
-    // the kernel loads -- wait for it briefly. On the C6 both radios coexist,
-    // so unlike retro this is purely a policy switch, not an exclusivity one.
+    // Both radios are gated by system_conf.toml, which only the kernel can
+    // read, so wait for it before either decision. Failing to become ready
+    // is not a reason to change the policy: fall back to the built-in
+    // defaults (BLE on, WiFi off), which is what the kernel would have used.
     for (int i = 0; i < 100 && !fmrb_kernel_is_ready(); i++) {
         fmrb_task_delay_ms(100);
     }
-    if (!fmrb_kernel_is_ready() || !fmrb_kernel_get_config()->wifi_auto_start) {
+    const fmrb_system_config_t *cfg =
+        fmrb_kernel_is_ready() ? fmrb_kernel_get_config() : NULL;
+
+    // BLE, same switch as Retro (ble_auto_start, default on). On the C6 the
+    // two radios coexist, so this is purely a policy switch here, not the
+    // exclusivity Retro has to enforce.
+    if (!cfg || cfg->ble_auto_start) {
+        if (ble_task_init() != FMRB_OK) {
+            FMRB_LOGW(TAG, "Failed to init BLE via C6, continuing without it");
+        }
+    } else if (cfg->wifi_auto_start) {
+        // BLE off, WiFi on: the SDIO link to the C6 still has to come up, and
+        // on esp_hosted 1.4.0 only NimBLE's transport init does that (measured
+        // -- WiFi aborts with "transport not up" otherwise). Bring the link up
+        // and stop before any service, so nothing is connectable over BLE.
+        FMRB_LOGI(TAG, "BLE auto-start disabled (ble_auto_start=false)");
+        if (ble_link_only_init() != FMRB_OK) {
+            FMRB_LOGW(TAG, "C6 link bring-up failed; WiFi will not start");
+        }
+    } else {
+        FMRB_LOGI(TAG, "BLE and WiFi auto-start both disabled; C6 left down");
+    }
+    fmrb_mem_log_boot_snapshot("ble");
+    if (!cfg || !cfg->wifi_auto_start) {
         FMRB_LOGI(TAG, "WiFi auto-start disabled (wifi_auto_start=false)");
     } else if (wifi_task_init() != FMRB_OK) {
         FMRB_LOGW(TAG, "WiFi not started (disabled or failed)");

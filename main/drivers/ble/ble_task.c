@@ -41,6 +41,10 @@ static const char *TAG = "ble_task";
 // BLE state
 // ============================================================
 static bool g_ble_initialized = false;
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+// Modern: the C6 link is up for WiFi's sake, but no BLE service is offered.
+static bool g_ble_link_only = false;
+#endif
 static volatile bool g_ble_start_pending = false;  // admission gate for ble_service_start
 static bool g_ble_advertising = false;
 static uint8_t g_own_addr_type;
@@ -1312,15 +1316,11 @@ static void ble_host_task(void *param)
 // Public API
 // ============================================================
 
-fmrb_err_t ble_task_init(void)
+// Controller + host port bring-up, shared by ble_task_init() and (on Modern)
+// ble_link_only_init(). Everything here is about getting the radio link up;
+// nothing here makes the device visible or connectable.
+static fmrb_err_t ble_port_bringup(void)
 {
-    if (g_ble_initialized) {
-        FMRB_LOGW(TAG, "BLE already initialized");
-        return FMRB_OK;
-    }
-
-    FMRB_LOGI(TAG, "Initializing BLE...");
-
     // NVS is required by NimBLE for storing bonding keys and RF calibration data
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -1367,6 +1367,59 @@ fmrb_err_t ble_task_init(void)
     }
 #endif
 
+    return FMRB_OK;
+}
+
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+// Modern: link up, service down. See ble_task.h for why WiFi needs this.
+fmrb_err_t ble_link_only_init(void)
+{
+    if (g_ble_initialized || g_ble_link_only) {
+        FMRB_LOGW(TAG, "BLE port already brought up");
+        return FMRB_OK;
+    }
+
+    FMRB_LOGI(TAG, "Bringing up the C6 link without BLE services...");
+
+    fmrb_err_t ret = ble_port_bringup();
+    if (ret != FMRB_OK) {
+        return ret;
+    }
+
+    // Stop here on purpose: no GATT services are registered, the NimBLE host
+    // task is never started and nothing ever advertises, so the device is not
+    // discoverable and ble_ui_state() keeps reporting off. g_ble_initialized
+    // stays false, which also keeps ble_service_is_started() honest.
+    g_ble_link_only = true;
+    FMRB_LOGI(TAG, "C6 link up, BLE services not offered (ble_auto_start=false)");
+    fmrb_mem_log_boot_snapshot("ble_link_only");
+    return FMRB_OK;
+}
+#endif
+
+fmrb_err_t ble_task_init(void)
+{
+    if (g_ble_initialized) {
+        FMRB_LOGW(TAG, "BLE already initialized");
+        return FMRB_OK;
+    }
+#ifdef CONFIG_IDF_TARGET_ESP32P4
+    if (g_ble_link_only) {
+        // nimble_port_init already ran for the link; it is not re-entrant, so
+        // offering the services now would need a deinit path esp_hosted 1.4.0
+        // does not have. Reboot with ble_auto_start=true instead.
+        FMRB_LOGW(TAG, "BLE port is in link-only mode; reboot to offer services");
+        return FMRB_ERR_INVALID_STATE;
+    }
+#endif
+
+    FMRB_LOGI(TAG, "Initializing BLE...");
+
+    fmrb_err_t bret = ble_port_bringup();
+    if (bret != FMRB_OK) {
+        return bret;
+    }
+
     ble_hs_cfg.reset_cb = ble_on_reset;
     ble_hs_cfg.sync_cb = ble_on_sync;
     // No pairing / bonding: characteristics carry no encryption flags, so the
@@ -1385,7 +1438,7 @@ fmrb_err_t ble_task_init(void)
     ble_svc_gap_init();
     ble_svc_gatt_init();
 
-    rc = ble_gatts_count_cfg(gatt_svr_svcs);
+    int rc = ble_gatts_count_cfg(gatt_svr_svcs);
     if (rc != 0) {
         FMRB_LOGE(TAG, "ble_gatts_count_cfg failed: %d", rc);
         nimble_port_deinit();
