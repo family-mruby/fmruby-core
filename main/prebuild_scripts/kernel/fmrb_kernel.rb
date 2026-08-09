@@ -65,6 +65,13 @@ class FmrbKernelImpl < FmrbKernel
     @parked_fullscreen_pid = nil  # Fullscreen app parked by Ctrl+Tab (suspended, canvas hidden)
     @suspended_pids = []
 
+    # Deferred "open this file in the app I just spawned" (spawn open_path).
+    # A freshly spawned app registers its message queue only once its task
+    # runs, so the first send is dropped; tick_process retries until it lands.
+    @open_path_pid = nil
+    @open_path = nil
+    @open_path_tries = 0
+
     # PUB/SUB topic subscriptions: {"topic" => [pid1, pid2, ...]}
     @subscriptions = {}
 
@@ -161,6 +168,17 @@ class FmrbKernelImpl < FmrbKernel
       new_pid = _spawn_app_req(app_name)
       if new_pid
         Log.info("App #{app_name} spawned successfully with PID #{new_pid}")
+        # Optional "open_path": hand a file to the new app as a file_selected
+        # control message. The requester cannot do this itself when the new app
+        # is fullscreen -- entering fullscreen suspends the requester, so its
+        # own deferred relay would never run. Delivery is deferred to
+        # tick_process because the new app has no message queue yet.
+        open_path = data["open_path"]
+        if open_path
+          @open_path_pid = new_pid
+          @open_path = open_path
+          @open_path_tries = 0
+        end
         after_spawn(new_pid)
       else
         Log.error("Failed to spawn app: #{app_name}")

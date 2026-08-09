@@ -133,6 +133,36 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .min_window_height = 80,
         .rounded_corners = true
     }},
+    // Fullscreen editor ("serious mode", doc/editor_serious_mode/plan.md).
+    // Same irep as default/editor: the editor derives its layout from the user
+    // area (recompute_layout), so the whole screen needs no editor-side change.
+    // Fullscreen also suspends the other apps, which is part of the point.
+    // Window size is filled in from the display config by spawn_builtin_app.
+    // No large_memory: the LARGE pool is a single exclusive 1MB block.
+    { "default/editor_fs", {
+        .app_id = -1,
+        .type = APP_TYPE_USER_APP,
+        // Same name as the windowed editor so the shell / desktop file-open
+        // relay (which looks the editor up by name) works for both.
+        .name = "FM-Editor",
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = editor_irep,
+        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
+        .priority = FMRB_SHELL_APP_PRIORITY,
+        .flags = FMRB_SHELL_APP_TASK_FLAGS,
+        .core_affinity = -1,
+        .headless = false,
+        .fullscreen = true,
+        // Ctrl+Tab may park it: the editor keeps its buffer while parked and
+        // repaints on resume (EditorApp#on_resume).
+        .fullscreen_switchable = true,
+        .window_width = 0,   // filled from display size (fullscreen)
+        .window_height = 0,
+        .window_pos_x = 0,
+        .window_pos_y = 0,
+        .rounded_corners = false  // fullscreen: no frame, no shaped window
+    }},
     { "default/logviewer", {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,
@@ -198,6 +228,16 @@ static fmrb_err_t spawn_builtin_app(const builtin_app_entry_t* entry, int32_t* o
     FMRB_LOGI(TAG, "Spawning built-in app: %s", entry->lookup_name);
 
     fmrb_spawn_attr_t attr = entry->attr;
+    // Fullscreen built-ins leave the window size at 0 and take the display
+    // size here, the same way the .app.toml path does for a fullscreen app
+    // (fmrb_app_init would otherwise fall back to default_user_app_*).
+    if (attr.fullscreen && attr.window_width == 0 && attr.window_height == 0) {
+        const fmrb_system_config_t* sys_config = fmrb_kernel_get_config();
+        attr.window_width  = (uint16_t)(sys_config->display_width  - sys_config->display_margin_x);
+        attr.window_height = (uint16_t)(sys_config->display_height - sys_config->display_margin_y);
+        attr.window_pos_x = 0;
+        attr.window_pos_y = 0;
+    }
     int32_t app_id;
     fmrb_err_t result = fmrb_app_spawn(&attr, &app_id);
     if (result == FMRB_OK) {

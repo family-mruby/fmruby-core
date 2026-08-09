@@ -346,6 +346,30 @@ module AppLifecycleMixin
     end
   end
 
+  # Retry the deferred "open this file" message for a just-spawned app. The
+  # app's queue is registered by its own task, so the send right after spawn
+  # is dropped; a handful of ticks later it lands. Give up after
+  # OPEN_PATH_MAX_TRIES so a crashed app cannot leave this armed forever.
+  OPEN_PATH_MAX_TRIES = 60
+
+  def flush_open_path
+    return unless @open_path_pid
+    @open_path_tries += 1
+    opened = { "cmd" => "file_selected", "path" => @open_path, "mode" => "open" }
+    sent = _try_send_raw_message(@open_path_pid, FmrbConst::MSG_TYPE_APP_CONTROL,
+                                 MessagePack.pack(opened))
+    if sent
+      Log.info("Spawn open_path #{@open_path} -> pid=#{@open_path_pid}")
+    elsif @open_path_tries < OPEN_PATH_MAX_TRIES
+      return
+    else
+      Log.warn("Spawn open_path #{@open_path} not delivered to pid=#{@open_path_pid}")
+    end
+    @open_path_pid = nil
+    @open_path = nil
+    @open_path_tries = 0
+  end
+
   # ---- Periodic tasks ----
 
   def tick_process
@@ -356,6 +380,9 @@ module AppLifecycleMixin
     # delivered here once the app drains, so the cursor's final position is
     # never lost even when every move during the jam was dropped.
     flush_pending_move
+
+    # Deliver a pending spawn open_path once the new app has its queue.
+    flush_open_path
 
     # Periodic cleanup check for terminated apps
     if @tick_count - @last_cleanup_tick >= @cleanup_interval

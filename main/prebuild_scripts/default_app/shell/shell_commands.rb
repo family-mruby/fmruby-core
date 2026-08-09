@@ -5,7 +5,10 @@ module ShellCommandsMixin
   TYPE_NAMES = ["kernel", "system", "user"]
   CP_CHUNK_SIZE = 4096  # cp/mv copy chunk size in bytes
 
-  def spawn_app(app_name)
+  # +open_path+ asks the kernel to hand that file to the new app as soon as it
+  # exists (as a file_selected control message). Needed for a fullscreen app:
+  # spawning it suspends this shell, so a deferred relay from here never runs.
+  def spawn_app(app_name, open_path = nil)
     app_name = "/app/tool/mruby.app.rb" if app_name == "mruby.app"
     app_name = "/app/tool/lua.app.lua" if app_name == "lua.app"
     app_name = "/app/tool/basic.app.bas" if app_name == "basic.app"
@@ -15,6 +18,7 @@ module ShellCommandsMixin
       "cmd" => "spawn",
       "app_name" => app_name
     }
+    data["open_path"] = open_path if open_path
     success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
     if success
       @history << "Spawned: #{app_name}"
@@ -78,7 +82,7 @@ module ShellCommandsMixin
       @history << "  rm <path...> - Remove files (or empty directories)"
       @history << "  cp <src> <dst> - Copy file"
       @history << "  mv <src> <dst> - Move/rename file"
-      @history << "  edit <file> - Open file in the editor"
+      @history << "  edit [-f] <file> - Open file in the editor (-f: fullscreen)"
       @history << "  create_app <name> - Generate /app/usr/<name>.app.{rb,toml} from template"
       @history << "  irb - Interactive Ruby"
       @history << "  run <script> [&] - Run script"
@@ -470,17 +474,28 @@ module ShellCommandsMixin
 
   # --- Edit command ---
   #
-  # `edit <file>` spawns the default editor and forwards the resolved file
+  # `edit [-f] <file>` spawns the default editor and forwards the resolved file
   # path to it. Mirrors system_desktop's file_manager edit flow: spawn first,
   # poll for the editor PID over a few on_update ticks, then send a
   # file_select_result via the kernel so the editor opens the file.
 
   def cmd_edit(args)
-    if args.empty?
-      @history << "Usage: edit <file>"
+    # -f opens the fullscreen editor ("serious mode"): same editor, whole
+    # screen, other apps suspended.
+    fullscreen = false
+    rest = []
+    args.each do |a|
+      if a == "-f"
+        fullscreen = true
+      else
+        rest << a
+      end
+    end
+    if rest.empty?
+      @history << "Usage: edit [-f] <file>"
       return
     end
-    virtual_path = resolve_script_path(args.join(' '))
+    virtual_path = resolve_script_path(rest.join(' '))
     file_path = virtual_path
 
     # Create an empty file when the target does not exist so the editor can
@@ -495,9 +510,15 @@ module ShellCommandsMixin
       end
     end
 
-    spawn_app("default/editor")
-    @pending_edit_path = file_path
-    @pending_edit_counter = 3
+    if fullscreen
+      # The kernel forwards the path: this shell is suspended the moment the
+      # fullscreen editor comes up, so tick_pending_edit would never fire.
+      spawn_app("default/editor_fs", file_path)
+    else
+      spawn_app("default/editor")
+      @pending_edit_path = file_path
+      @pending_edit_counter = 3
+    end
   end
 
   # Drives the deferred file-path forwarding to the just-spawned editor.

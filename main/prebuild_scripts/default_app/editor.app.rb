@@ -165,6 +165,12 @@ class EditorApp < FmrbApp
     end
   end
 
+  # Coming back from a fullscreen park (Ctrl+Tab) or from another app's
+  # fullscreen: the canvas was hidden, so repaint everything once.
+  def on_resume
+    @need_redraw = true
+  end
+
   def on_resize(new_width, new_height)
     Log.info("Editor resize: #{new_width}x#{new_height}")
     recompute_layout
