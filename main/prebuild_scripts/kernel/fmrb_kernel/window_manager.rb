@@ -37,7 +37,11 @@ module WindowManagerMixin
     # 1. Menu bar region: always hit-testable
     # 2. Dropdown open: dropdown rect is hit-testable, outside closes it
     # 3. Otherwise: transparent (skip to windows below)
-    if @desktop_pid
+    # While a fullscreen app is up the desktop is suspended and its menu bar is
+    # not on screen, so the top rows belong to that app -- the fullscreen editor
+    # has its own menu bar there. (A parked fullscreen app leaves
+    # @fullscreen_pid nil, so the desktop gets its menu bar back.)
+    if @desktop_pid && !@fullscreen_pid
       if y < $menu_bar_height
         # Menu bar click -> route to desktop
         return find_window_by_pid(@desktop_pid)

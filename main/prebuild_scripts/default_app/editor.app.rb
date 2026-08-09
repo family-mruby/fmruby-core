@@ -62,6 +62,16 @@ class EditorApp < FmrbApp
   # Auto-disable syntax highlight when loaded file exceeds this size
   HL_AUTO_LIMIT_BYTES = 1024
 
+  # ---- Input latency instrumentation (doc/editor_serious_mode/plan.md) ----
+  # Time from a key event to the present that shows its effect. Always on: one
+  # Machine.uptime_us per key and per redraw, integer accumulators, and a single
+  # log line every LAT_REPORT_N samples -- so the measurement itself neither
+  # allocates in the hot path nor changes what it measures.
+  LAT_REPORT_N = 100
+  LAT_SLOW_US = 25_000   # "over 25ms" bucket, the target says zero of these
+  LAT_BUCKET_US = 5_000  # histogram resolution
+  LAT_BUCKETS = 10       # last bucket is the >= 50ms overflow
+
   # Search dialog
   SEARCH_QUERY_MAX = 32
   SEARCH_NOT_FOUND = FmrbGfx.rgb_to_332(180, 0, 0)
@@ -153,6 +163,21 @@ class EditorApp < FmrbApp
     @target_picker_open = false
     @target_list = []
     @target_idx = 0
+    # ---- Latency instrumentation ----
+    @lat_t0 = nil     # uptime_us of the oldest key not yet shown on screen
+    @lat_n = 0
+    @lat_sum = 0
+    @lat_max = 0
+    @lat_slow = 0
+    @lat_hist = []
+    i = 0
+    while i <= LAT_BUCKETS
+      @lat_hist << 0
+      i += 1
+    end
+    @draw_n = 0
+    @draw_sum = 0
+    @draw_max = 0
   end
 
   def on_create
@@ -449,6 +474,78 @@ class EditorApp < FmrbApp
     if @cx < line.length
       @gfx.draw_text(x, y, line[@cx], BG_COLOR, CURSOR_COLOR)
     end
+  end
+
+  # ---- Latency instrumentation ----
+
+  # Stamp the arrival of a key. Only the first key of a burst is stamped, so a
+  # sample is "oldest key not yet on screen -> present": the number that says
+  # whether the editor kept up, not the flattering last-key-only one.
+  def lat_key_arrived
+    @lat_t0 = Machine.uptime_us if @lat_t0.nil?
+  end
+
+  # One sample, taken right after redraw_all. +t_start+ is the timestamp from
+  # just before it, so the draw cost is measured with the same two clock reads.
+  # A key that produces no redraw at all leaves its stamp armed and lands in the
+  # next sample; those are rare and always on the pessimistic side.
+  def lat_sample(t_start)
+    t_end = Machine.uptime_us
+    draw_us = t_end - t_start
+    @draw_n += 1
+    @draw_sum += draw_us
+    @draw_max = draw_us if draw_us > @draw_max
+
+    t0 = @lat_t0
+    return if t0.nil?
+    @lat_t0 = nil
+    lat_us = t_end - t0
+    @lat_n += 1
+    @lat_sum += lat_us
+    @lat_max = lat_us if lat_us > @lat_max
+    @lat_slow += 1 if lat_us > LAT_SLOW_US
+    b = lat_us / LAT_BUCKET_US
+    b = LAT_BUCKETS if b > LAT_BUCKETS
+    @lat_hist[b] += 1
+    return if @lat_n < LAT_REPORT_N
+    lat_report
+  end
+
+  # p99 estimate: the upper edge (in ms) of the bucket where the cumulative
+  # count reaches 99%. Coarse by design (5ms buckets, no per-sample storage).
+  def lat_p99_ms
+    need = (@lat_n * 99 + 99) / 100
+    acc = 0
+    b = 0
+    while b <= LAT_BUCKETS
+      acc += @lat_hist[b]
+      return (b + 1) * LAT_BUCKET_US / 1000 if acc >= need
+      b += 1
+    end
+    (LAT_BUCKETS + 1) * LAT_BUCKET_US / 1000
+  end
+
+  def lat_report
+    hist = ""
+    b = 0
+    while b <= LAT_BUCKETS
+      hist += "," if b > 0
+      hist += @lat_hist[b].to_s
+      @lat_hist[b] = 0
+      b += 1
+    end
+    msg = "edit_lat: n=#{@lat_n} mean=#{@lat_sum / @lat_n}us max=#{@lat_max}us"
+    msg += " p99<=#{lat_p99_ms}ms over25ms=#{@lat_slow}"
+    msg += " draw_mean=#{@draw_sum / @draw_n}us draw_max=#{@draw_max}us"
+    msg += " hist5ms=#{hist} rows=#{@edit_rows} hl=#{@hl_enabled ? 1 : 0}"
+    Log.info(msg)
+    @lat_n = 0
+    @lat_sum = 0
+    @lat_max = 0
+    @lat_slow = 0
+    @draw_n = 0
+    @draw_sum = 0
+    @draw_max = 0
   end
 
   def redraw_all
@@ -1695,6 +1792,10 @@ class EditorApp < FmrbApp
       keycode = ev[:keycode] || 0
       character = ev[:character] || 0
 
+      # Latency clock starts here, except for bare modifier presses (they draw
+      # nothing, so stamping them would charge their idle time to the next key).
+      lat_key_arrived unless keycode >= 224 && keycode <= 231
+
       # Modal quit-confirm dialog steals all keys until dismissed.
       if @quit_dialog_open
         handle_quit_dialog_key(character)
@@ -1869,8 +1970,10 @@ class EditorApp < FmrbApp
     end
 
     if @need_redraw
+      t_start = Machine.uptime_us
       redraw_all
       @need_redraw = false
+      lat_sample(t_start)
     end
     @frame_ms
   end

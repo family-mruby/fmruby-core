@@ -45,9 +45,11 @@ module InputRouterMixin
         mark_window_list_dirty
         update_window_list(false)
 
-        # In fullscreen mode, route directly to fullscreen app
-        # (except menu bar area which is handled by find_window_at)
-        if @fullscreen_pid && y >= $menu_bar_height
+        # In fullscreen mode, route directly to the fullscreen app -- the whole
+        # screen including the top rows, where the desktop menu bar would be.
+        # The desktop is suspended and its menu bar is not on screen there, and
+        # the fullscreen editor puts its own menu bar in exactly those rows.
+        if @fullscreen_pid
           target_window = find_window_by_pid(@fullscreen_pid)
         else
           target_window = find_window_at(x, y)
