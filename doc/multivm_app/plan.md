@@ -238,7 +238,118 @@ after_spawn の _set_hid_target を headless (background) アプリでは
 段階 1 は改修ゼロで始められる (HID は focus_app で取り返す回避策、結果は
 littlefs 経由で仮置き)。段階 2-4 が本命の基盤整備。
 
-## 5. 「どこまで巨大にできるか」の見積もり
+## 5. キャンバスと音声の所有モデルと受け渡し (2026-08-09 調査)
+
+「ハンドルをどう渡すか」への答えは**「渡さない」**。調査で判明した所有モデル
+がそれを許す構造になっている。
+
+### 5.1 所有モデルの実態
+
+pid に紐付くのは core 側 ctx に登録されたものだけ: canvas_id / bg_canvas_id /
+extra_canvas_ids[2] (fmrb_app.h)、メッセージキュー、メモリプール、タスク
+ハンドル経由の HW 資源 (I2C/RMT/GPIO)。これらは正常終了・例外死・強制 kill
+の 3 経路すべてで冪等に回収される (fmrb_app_canvas_release_all)。
+
+それ以外は全てグローバル:
+
+- canvas ID は graphics-audio 側の単調カウンタ採番 (graphics_handler.cpp、
+  クライアントの指定 ID は無視)。全体 16 枚上限。GFX プロトコルにも
+  host_task のバッチにも pid は乗らない。参照時の所有検証も無く、
+  **今日でも他アプリの canvas ID へ描ける** (慣習だけで成立)。
+- sprite image/instance/mask もグローバル採番。canvas_id タグは
+  DELETE_CANVAS 時の一括解放のためだけで、参照時の照合は無い。
+- APU は物理 4ch x 2 インスタンス (MAIN=NSF+FMSQ slot0 / SUB=note_on+FMSQ
+  instance1) を誰でも直接叩ける。FMSQ スロット 16 本もアプリが自分で番号を
+  決めるグローバルテーブル (衝突は後勝ち)。
+- **NSF/FMSQ プレイヤーは graphics-audio 側の 60Hz タスクが所有**しており、
+  core 側アプリの生死と無関係に走り続ける。
+
+### 5.2 キャンバス: 渡さず、作り直すか、ファイルで運ぶ
+
+- **形態 A (シーン移管)**: canvas は引き継がない。シーンアプリは spawn 時に
+  自分の全画面 canvas を貰い、終了時に確実に回収される。移譲 API は不要。
+- **形態 B (worker 描画)**: worker がメインの canvas ID へ直接描くことは
+  技術的に可能だが**推奨しない**。理由 3 点:
+  1. host_task のバッチは到着順で複数アプリのコマンドが混ざり、メインの
+     present と worker の描画が交錯する (フレーム境界の保証が無い)
+  2. sprite の所有は canvas タグに寄っており、回収が直感に反する
+  3. canvas から canvas への合成 (dest_canvas_id) は graphics-audio 側が
+     未実装
+- **推奨: worker は /tmp に BMP を書き、メインが transfer_file +
+  create_image で取り込んで描く。** 資源が全てメインの canvas 所有になり
+  worker の生死と独立、176B 制限も回避、既存の実績経路
+  (sync_file / create_image_from_file) をそのまま使う。3.1 の RAM FS と対。
+- 中間案 (軽量だが脆い): worker が main の canvas_id で SpriteImage だけを
+  作り image_id をメインへ返す。image は main canvas 所有なので worker 終了後
+  も残る。ID の pid 跨ぎ手渡しという慣習依存が増えるため第一候補にしない。
+- 本気で canvas 共有/移譲を作る場合の最小形は「所有テーブル + submit 時の
+  pid 照合 + ctx 間移譲関数」だが、A/B どちらにも必須でないため作らない。
+
+### 5.3 音声: BGM 継続は既に成立している。要るのは規約と stop
+
+- FMSQ/NSF は VM の外 (graphics-audio) で走るため、**シーンアプリが終了時に
+  止めなければ BGM はそのまま鳴り続ける** (destroy は音声を自動停止しない)。
+  シーン跨ぎの BGM 継続に改修は不要。
+- 整備すべきは 2 点:
+  1. **FMSQ スロット割り当て規約**: 16 本をシーン間で衝突させない取り決め
+     (例: BGM = slot 0-3、SE = slot 8-15)。現状は各アプリが自由に番号を
+     決めるため、同番号ロードで再生中の曲が差し替わる。
+  2. **FMSQ の stop/fade コマンド追加**: 現状 FmrbAudio#stop は NSF しか
+     止めず、FMSQ を止める手段が「別スロットを流す」しかない。
+     FMRB_AUDIO_CMD_STOP_SLOT(instance) 相当が要る。
+- 罠: note_on 直叩きを使ったアプリが終了すると、カーネルの後始末が SUB 側
+  4ch **全部**に note_off を送り、他アプリの発音も巻き添えで消える
+  (audio_handler.rb silence_notes_for)。多重 VM 構成では音は FMSQ に寄せ、
+  note_on 直叩きは避ける規約とする。
+- SmfPlayer / MML はアプリ VM 内で tick する設計のため、これらで鳴らした
+  音楽はアプリ終了で止まる。シーン跨ぎ BGM には使わない。
+- やってはいけない改修: 終了時に「そのアプリの音を全部止める」を
+  cleanup_terminated_app へ足すこと。継続性が壊れる。
+
+### 5.4 sprite の共有 (検討)
+
+共有したくなる場面は実在する。主はシーン移管での資産再利用 (主人公・
+タイルセット・UI アイコンは全シーン共通なのに、canvas 削除のたびに image が
+一括解放され、次シーンが BMP 転送からやり直す)。次いで worker 生成資産の
+メイン利用。**共有するのは image (ピクセルデータ) だけ**とし、instance
+(位置・表示状態) はシーン状態なので /tmp の状態ファイルで渡して作り直す。
+
+実現方式は ID 手渡しではなく **graphics-audio 側のパスをキーにした image
+キャッシュ**を本命とする:
+
+- create_image(パス) が同一パスなら既存 image_id を返す (参照カウント付き)
+- キャッシュ分は canvas 削除で解放されない持続タグを持つ (mask の
+  「canvas_id = 0 は unbound」に前例あり)。明示 evict か、参照 0 +
+  プール逼迫で追い出す
+- VM 間で ID を手渡す慣習が不要になり、「VM 間の接点は名前に限る」という
+  本計画の規律と一致する。worker 生成資産も /tmp のパスを渡すだけで乗る
+
+ID 手渡し方式を採らない理由: image の寿命がタグ付き canvas の寿命に縛られて
+おり、シーン移管ではその canvas 自体が消える。headless アプリは canvas を
+持てないため常駐コーディネータに持たせる逃げも打てない。
+
+留意点: sprite pool はグローバル 64 images / 128 instances で、常駐キャッシュ
+はこの枠を恒久的に消費する。追い出し方針とセットで設計する。着手時期は
+段階 5 (シーン分割試作) で遷移時間を実測してから判断する (現状の資産は
+数 KB で再読み込みコストはまだ小さい)。
+
+### 5.5 終了時に回収されない資源 (worker 使い捨て設計で効く)
+
+調査の副産物。mruby アプリは mrb_close を呼ばない (プール破棄で代替) ため、
+finalizer 頼みの後始末は走らない:
+
+- **開きっぱなしの fd**: hw_proxy_file は owner を記録せず、
+  hw_proxy_release_resources も file を解放しない。閉じ忘れた fd は
+  アプリ終了後も VFS 側に残る可能性が高い。ソケットも同様。
+- **MIDI sched の pid 別クリーンアップ**: fmrb_midi_sched_clear_pid は
+  gem finalizer からしか呼ばれず、mruby アプリの終了経路では実行されて
+  いないと思われる (要実機確認)。
+- **FmrbApp#set_timer は未実装のスタブ** (未定義変数を返す)。
+- worker を高頻度で使い捨てる前に、fd と MIDI sched の後始末をカーネルの
+  cleanup_terminated_app 系へ足すか、「worker は必ず自分で close してから
+  exit する」規約で運ぶかを決める。
+
+## 6. 「どこまで巨大にできるか」の見積もり
 
 この方式ではコード総量の上限が「シーン/ワーカー 1 枚あたりの制約」に
 変換される:
