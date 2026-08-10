@@ -301,3 +301,13 @@ Ruby 専用のため)。
   Linux 限定のユーザプール増量 (SYSTEM_APP に 64bit 換算で 2 倍にする
   前例あり、fmrb_mem_config.h:26-31) か事前バイトコード化。
 - 実機確認はユーザ確認待ち (P2 以降の全シナリオと合わせて)。
+
+**P5 発行 (2026-08-10、instruction_p5.md) = 段階 6 (エディタ全体の
+Spinel 化)**。前提確認で **B-3 (sp_io VFS) は実装済みと判明**
+(fmrb_spinel_host.c の hal_open 群。sweep doc の PENDING は更新漏れで訂正
+済み) のため、段階 6 に直行できる。ユーザ決定: **v1 の Spinel 版は
+on-device デバッガを省く** (デバッグ時は .env で mruby 版に切替。互換構成は
+全機能維持)。構成: T1 デバッガ部のソース分離 → T2 ビルド配線 (desktop の
+型) → T3 editor-core をスロット番号キーの純 C API に再編 + ffi_func →
+T4 基底 API 追随と書き方制約適合 → T5 両構成 x 3 ターゲット検証。
+段階 5 (640x360) は実機計測が前提のため実機確認とセットで後回し。

@@ -20,7 +20,7 @@ status: **DONE** (fork/MC で解決済) / **PENDING** (方針あり未着手) /
 
 | 依存 | 箇所 | ESP32 での問題 | 対処方針 | status |
 |---|---|---|---|---|
-| File/Dir 生 POSIX (`fopen`/`opendir`/`stat`/`fdopen`) | `sp_io.c` | ESP32 に POSIX FS 無し。FS 依存機能 (launcher scan / icon / file manager / editor 起動) が全滅 | `sp_io` に VFS バックエンドフック追加 (`sp_mem_*` と同型)→ fmruby が `fmrb_hal_file_*` に配線。default は POSIX 直で byte 同一 | PENDING (T4-5 で発見。fork 候補 B-3) |
+| File/Dir 生 POSIX (`fopen`/`opendir`/`stat`/`fdopen`) | `sp_io.c` | ESP32 に POSIX FS 無し。FS 依存機能 (launcher scan / icon / file manager / editor 起動) が全滅 | `sp_io` に VFS バックエンドフック追加 (`sp_mem_*` と同型)→ fmruby が `fmrb_hal_file_*` に配線。default は POSIX 直で byte 同一 | **DONE** (2026-08-10 確認: sp_io.h の backend スロット + fmrb_spinel_host.c の hal_open 群で両側実装済み。P4 Spinel desktop の実機 /app スキャン動作が実証。本行の PENDING は更新漏れだった) |
 | `isatty` / `ioctl(TIOCGWINSZ)` (`File#tty?` / `#winsize`) | `sp_io.c` `sp_io.h` | ESP32 に tty/ioctl 無し | VFS フックに含めるか、`winsize`→[0,0] / `tty?`→false 固定 | PENDING |
 | `__int128` | `sp_time.c` | 32bit (Xtensa) で不可 | `__SIZEOF_INT128__` ガード + double フォールバック | DONE `d9e363ed` |
 | `clock_gettime` | `sp_time.c` `sp_runtime.h` | ESP-IDF は提供するが CLOCK 種別/精度を要確認 | newlib/ESP-IDF の clock_gettime を使用、要動作確認 | SWEEP |
