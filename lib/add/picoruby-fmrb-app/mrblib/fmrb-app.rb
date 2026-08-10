@@ -79,6 +79,11 @@ class FmrbApp
   # re-apply the font after every frame call.
   def draw_window_frame
     return if @fullscreen
+    # An app spawned fullscreen never built the frame block (nothing to frame),
+    # so build it on the first draw after it becomes a window at runtime -- F11
+    # on an editor started with `edit -f` used to leave it with no title bar,
+    # no border and no close button.
+    _build_frame_block if @gfx && !@frame_block
     if @gfx
       saved_font = @gfx.current_font
       saved_size = @gfx.current_text_size

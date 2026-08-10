@@ -120,7 +120,11 @@ class EditorApp < FmrbApp
     @sel_anchor_y = nil
     # Clipboard for Cut/Copy/Paste. May contain newlines.
     @clipboard = ""
+    # Syntax highlight: default comes from the file type (Ruby only -- the
+    # tokenizer is a Ruby lexer), and a manual toggle wins until another file is
+    # opened. A new unnamed buffer starts on: this machine is a Ruby machine.
     @hl_enabled = true
+    @hl_manual = false
     # Key repeat state
     @held_keycode = nil
     @hold_frames = 0
@@ -357,10 +361,21 @@ class EditorApp < FmrbApp
     end
   end
 
+  # Highlight default for a path: Ruby on, anything else off. The tokenizer only
+  # knows Ruby, so a .bas or .toml file would otherwise get Ruby colours applied
+  # to it. A buffer with no name yet counts as Ruby.
+  def hl_default_for(path)
+    return true if path.nil?
+    path.end_with?(".rb")
+  end
+
   def toggle_highlight
     @hl_enabled = !@hl_enabled
+    # Remember that the user decided, so opening a file does not silently undo
+    # it -- until a *different* file is opened, which re-evaluates the default.
+    @hl_manual = true
     @need_redraw = true
-    Log.info("Highlight #{@hl_enabled ? 'ON' : 'OFF'}")
+    Log.info("Highlight #{@hl_enabled ? 'ON' : 'OFF'} (manual)")
   end
 
   # Mark buffer as edited (the status line shows the "*").
@@ -1407,11 +1422,11 @@ class EditorApp < FmrbApp
       @scroll_y = 0
       @scroll_x = 0
       @modified = false
-      # Syntax highlight stays on whatever the file size is: tokenizing is per
-      # line now, so its cost follows the visible rows, not the document. The
-      # old 1KB auto-off (HL_AUTO_LIMIT_BYTES) existed because every edit
-      # re-tokenized the whole file.
-      @hl_enabled = true
+      # Highlight default is per buffer: a manual toggle on the previous file is
+      # not carried over. Size plays no part any more (tokenizing is per line,
+      # so its cost follows the visible rows, not the document).
+      @hl_manual = false
+      @hl_enabled = hl_default_for(path)
       @current_file = path
       @need_redraw = true
       Log.info("Loaded file: #{path} (#{@lines.length} lines)")
@@ -1844,6 +1859,9 @@ class EditorApp < FmrbApp
   end
 
   def save_file_as(path)
+    # Naming a buffer (or renaming it) re-decides the highlight default, unless
+    # the user has already made that call for this buffer.
+    @hl_enabled = hl_default_for(path) unless @hl_manual
     @current_file = path
     save_file
   end

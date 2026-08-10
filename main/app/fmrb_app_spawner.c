@@ -157,6 +157,12 @@ static const builtin_app_entry_t builtin_app_table[] = {
         // Ctrl+Tab may park it: the editor keeps its buffer while parked and
         // repaints on resume (EditorApp#on_resume).
         .fullscreen_switchable = true,
+        // Same window behaviour as default/editor once F11 makes it a window:
+        // without these the corner drag is refused and the window is stuck at
+        // whatever size it fell back to.
+        .resizable = true,
+        .min_window_width = 220,
+        .min_window_height = 80,
         .window_width = 0,   // filled from display size (fullscreen)
         .window_height = 0,
         .window_pos_x = 0,
