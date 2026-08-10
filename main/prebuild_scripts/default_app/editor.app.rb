@@ -55,12 +55,7 @@ class EditorApp < FmrbApp
   KEY_REPEAT_DELAY = 12  # ~400ms before repeat starts
   KEY_REPEAT_RATE = 3    # ~100ms between repeats
 
-  # Re-tokenize for syntax highlight after this many idle frames (~1s)
-  HL_DEBOUNCE_FRAMES = 30
   SAVE_OK_FRAMES = 60     # ~2s flash of "Saved" on the status line
-
-  # Auto-disable syntax highlight when loaded file exceeds this size
-  HL_AUTO_LIMIT_BYTES = 1024
 
   # ---- Input latency instrumentation (doc/editor_serious_mode/plan.md) ----
   # Time from a key event to the present that shows its effect. Always on: one
@@ -107,8 +102,13 @@ class EditorApp < FmrbApp
     @cy = 0             # Cursor line index
     @scroll_y = 0       # First visible line index
     @scroll_x = 0       # Horizontal scroll offset (columns)
+    # Redraw bookkeeping. @need_redraw asks for the whole screen (menus,
+    # dialogs, scroll, layout); the finer flags below repaint only what an edit
+    # or a cursor move actually touched.
     @need_redraw = true
-    @input_buffer = []
+    @dirty_lines = []   # document line indices to repaint
+    @dirty_from = nil   # repaint this line and everything below (line shift)
+    @dirty_status = false
     @frame_ms = 33
     @modified = false
     @current_file = nil
@@ -120,11 +120,7 @@ class EditorApp < FmrbApp
     @sel_anchor_y = nil
     # Clipboard for Cut/Copy/Paste. May contain newlines.
     @clipboard = ""
-    @highlight_map = nil
-    @highlight_dirty = true
-    @hl_idle_frames = HL_DEBOUNCE_FRAMES  # Allow immediate tokenize on first draw
     @hl_enabled = true
-    @line_offsets = nil
     # Key repeat state
     @held_keycode = nil
     @hold_frames = 0
@@ -183,11 +179,6 @@ class EditorApp < FmrbApp
   def on_create
     recompute_layout
     @need_redraw = true
-
-    app_self = self
-    @editor_task = Task.new(name: "editor_task", priority: 100) do
-      app_self.editor_loop
-    end
   end
 
   # Coming back from a fullscreen park (Ctrl+Tab) or from another app's
@@ -224,20 +215,47 @@ class EditorApp < FmrbApp
     @edit_rows = @edit_height / CHAR_H
   end
 
-  def editor_loop
-    while @running
-      ch = getch
-      break if ch.nil?
-      handle_key(ch)
+  # ---- Dirty tracking ----
+  #
+  # Typing used to repaint the whole editor area (200-400 gfx commands at full
+  # screen). These mark what actually changed so a keystroke repaints one row.
+  # Anything that shifts rows around (line insert/delete) marks "from here
+  # down"; anything structural (scroll, menus, dialogs, layout) falls back to
+  # @need_redraw, i.e. the full repaint.
+
+  def mark_dirty_line(idx)
+    @dirty_lines << idx unless @dirty_lines.include?(idx)
+  end
+
+  # Inclusive range of document lines, in either order.
+  def mark_dirty_range(a, b)
+    lo = a < b ? a : b
+    hi = a < b ? b : a
+    i = lo
+    while i <= hi
+      mark_dirty_line(i)
+      i += 1
     end
   end
 
-  def getch
-    while @input_buffer.empty? && @running
-      sleep_ms @frame_ms
-    end
-    return nil unless @running
-    @input_buffer.shift
+  def mark_dirty_from(idx)
+    @dirty_from = idx if @dirty_from.nil? || idx < @dirty_from
+  end
+
+  def dirty_line?(idx)
+    return true if @dirty_from && idx >= @dirty_from
+    @dirty_lines.include?(idx)
+  end
+
+  def dirty?
+    @need_redraw || @dirty_from || @dirty_status || @dirty_lines.length > 0
+  end
+
+  def clear_dirty
+    @need_redraw = false
+    @dirty_from = nil
+    @dirty_status = false
+    @dirty_lines.clear
   end
 
   # ---- Drawing ----
@@ -284,11 +302,7 @@ class EditorApp < FmrbApp
     fname = @current_file ? @current_file.split("/").last : "[New]"
     status = " #{fname}  Ln #{line_num}, Col #{col_num}"
     status += " *" if @modified
-    if !@hl_enabled
-      status += "  [HL off]"
-    elsif @highlight_map.nil? && @lines.any? { |l| !l.empty? }
-      status += "  [No HL]"
-    end
+    status += "  [HL off]" unless @hl_enabled
 
     @gfx.draw_text(@user_area_x0 + 2, y, status, STATUS_TEXT, STATUS_BG)
 
@@ -302,54 +316,41 @@ class EditorApp < FmrbApp
     end
   end
 
-  def update_highlight
-    return unless @highlight_dirty
-    # Debounce: skip tokenize while user is actively editing
-    return if @hl_idle_frames < HL_DEBOUNCE_FRAMES
-    @highlight_dirty = false
-
-    unless @hl_enabled
-      @highlight_map = nil
-      @line_offsets = nil
-      return
-    end
-
-    source = @lines.join("\n")
+  # Category map for one line, or nil when there is nothing to colour.
+  #
+  # Per line, not per document: the old path rebuilt the whole file with
+  # @lines.join("\n") and tokenized it on every edit, which is where the old
+  # 1KB "highlight off above this size" cutoff came from. Now the cost follows
+  # the lines actually drawn, so a keystroke tokenizes one line.
+  #
+  # Known difference: syntax that spans lines (heredocs, multi-line strings,
+  # =begin blocks) is coloured line by line, so those can be coloured wrong.
+  def line_hl_map(line_idx)
+    line = @lines[line_idx]
+    return nil if line.nil? || line.length == 0
     begin
-      @highlight_map = SyntaxHighlight.tokenize(source)
+      SyntaxHighlight.tokenize(line)
     rescue => e
       Log.warn("SyntaxHighlight.tokenize failed: #{e.message}")
-      @highlight_map = nil
-    end
-
-    @line_offsets = []
-    offset = 0
-    li = 0
-    ln = @lines.length
-    while li < ln
-      @line_offsets << offset
-      offset += @lines[li].length + 1  # +1 for newline
-      li += 1
+      nil
     end
   end
 
   def toggle_highlight
     @hl_enabled = !@hl_enabled
-    @highlight_dirty = true
-    @hl_idle_frames = HL_DEBOUNCE_FRAMES  # Tokenize immediately
     @need_redraw = true
     Log.info("Highlight #{@hl_enabled ? 'ON' : 'OFF'}")
   end
 
-  # Mark buffer as edited; restarts the highlight debounce timer so we
-  # re-tokenize only after the user stops typing.
+  # Mark buffer as edited (the status line shows the "*").
   def mark_edited
     @modified = true
-    @highlight_dirty = true
-    @hl_idle_frames = 0
+    @dirty_status = true
   end
 
   def draw_edit_area
+    # One fill for the whole area: it also clears the leftover strip below the
+    # last full row (edit_height is not always a multiple of CHAR_H).
     @gfx.fill_rect(@user_area_x0, @edit_y,
                     @user_area_width, @edit_height, BG_COLOR)
 
@@ -358,93 +359,105 @@ class EditorApp < FmrbApp
       @gfx.fill_rect(@user_area_x0, @edit_y, @gutter_w, @edit_height, GUTTER_BG)
     end
 
-    update_highlight
-
     sel_range = selection_range  # [sx, sy, ex, ey] or nil
 
     row = -1
     while (row += 1) < @edit_rows
       line_idx = @scroll_y + row
       break if line_idx >= @lines.length
-
-      full_line = @lines[line_idx] || ""
-      # Apply horizontal scroll
-      text = @scroll_x > 0 ? (full_line[@scroll_x..-1] || "") : full_line
-      visible_len = text.length > @edit_cols ? @edit_cols : text.length
-
-      x = @user_area_x0 + 1 + @gutter_w
-      y = @edit_y + row * CHAR_H
-
-      # Current-stop line gets a full-row highlight (text area only, so the
-      # gutter dot stays visible). Breakpoints are shown as a gutter dot.
-      line_bg = line_background(line_idx)
-      if line_bg != BG_COLOR
-        @gfx.fill_rect(@user_area_x0 + @gutter_w, y,
-                       @user_area_width - @gutter_w, CHAR_H, line_bg)
-      end
-      draw_gutter_marker(line_idx, y) if @gutter_w > 0
-
-      # Selection background goes down before the text so we can overpaint
-      # the selected glyphs with SEL_BG as their background.
-      sel_vstart = nil
-      sel_vend = nil
-      if sel_range
-        sel = line_selection_cols(line_idx, full_line.length)
-        if sel
-          vstart = sel[0] - @scroll_x
-          vend   = sel[1] - @scroll_x
-          vstart = 0 if vstart < 0
-          vend = visible_len if vend > visible_len
-          if vstart < vend
-            @gfx.fill_rect(x + vstart * CHAR_W, y,
-                           (vend - vstart) * CHAR_W, CHAR_H, SEL_BG)
-            sel_vstart = vstart
-            sel_vend = vend
-          end
-        end
-        # Multi-line selection: fill from end of visible text to the right
-        # edit margin so the wrapped newline is visible.
-        if line_idx >= sel_range[1] && line_idx < sel_range[3]
-          fill_x0 = x + visible_len * CHAR_W
-          fill_x1 = x + @edit_cols * CHAR_W
-          if fill_x0 < fill_x1
-            @gfx.fill_rect(fill_x0, y, fill_x1 - fill_x0, CHAR_H, SEL_BG)
-          end
-        end
-      end
-
-      next if visible_len == 0
-
-      # Use plain render while highlight is stale (debouncing during edit)
-      # to avoid color misalignment against the changed source. Tinted
-      # (breakpoint/stop) lines always render plain over their background.
-      if line_bg == BG_COLOR && !@highlight_dirty && @highlight_map && @line_offsets
-        draw_highlighted_line(x, y, text, visible_len, @line_offsets[line_idx] + @scroll_x)
-      else
-        @gfx.draw_text(x, y, text[0, visible_len], TEXT_COLOR, line_bg)
-      end
-
-      # Overpaint the selected substring so its glyph background matches.
-      if sel_vstart
-        sel_text = text[sel_vstart, sel_vend - sel_vstart]
-        @gfx.draw_text(x + sel_vstart * CHAR_W, y, sel_text,
-                       TEXT_COLOR, SEL_BG)
-      end
+      draw_edit_row(row, line_idx, sel_range, false)
     end
 
     draw_cursor
   end
 
-  def draw_highlighted_line(x, y, text, visible_len, offset)
+  # Draw one screen row of the edit area. +blank_bg+ repaints the row
+  # background first; the full-area draw has already cleared it, the dirty-line
+  # path has not. A row past the last document line just gets cleared.
+  def draw_edit_row(row, line_idx, sel_range, blank_bg)
+    x = @user_area_x0 + 1 + @gutter_w
+    y = @edit_y + row * CHAR_H
+
+    if blank_bg
+      @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H, BG_COLOR)
+      @gfx.fill_rect(@user_area_x0, y, @gutter_w, CHAR_H, GUTTER_BG) if @gutter_w > 0
+    end
+    return if line_idx >= @lines.length
+
+    full_line = @lines[line_idx] || ""
+    # Apply horizontal scroll
+    text = @scroll_x > 0 ? (full_line[@scroll_x..-1] || "") : full_line
+    visible_len = text.length > @edit_cols ? @edit_cols : text.length
+
+    # Current-stop line gets a full-row highlight (text area only, so the
+    # gutter dot stays visible). Breakpoints are shown as a gutter dot.
+    line_bg = line_background(line_idx)
+    if line_bg != BG_COLOR
+      @gfx.fill_rect(@user_area_x0 + @gutter_w, y,
+                     @user_area_width - @gutter_w, CHAR_H, line_bg)
+    end
+    draw_gutter_marker(line_idx, y) if @gutter_w > 0
+
+    # Selection background goes down before the text so we can overpaint
+    # the selected glyphs with SEL_BG as their background.
+    sel_vstart = nil
+    sel_vend = nil
+    if sel_range
+      sel = line_selection_cols(line_idx, full_line.length)
+      if sel
+        vstart = sel[0] - @scroll_x
+        vend   = sel[1] - @scroll_x
+        vstart = 0 if vstart < 0
+        vend = visible_len if vend > visible_len
+        if vstart < vend
+          @gfx.fill_rect(x + vstart * CHAR_W, y,
+                         (vend - vstart) * CHAR_W, CHAR_H, SEL_BG)
+          sel_vstart = vstart
+          sel_vend = vend
+        end
+      end
+      # Multi-line selection: fill from end of visible text to the right
+      # edit margin so the wrapped newline is visible.
+      if line_idx >= sel_range[1] && line_idx < sel_range[3]
+        fill_x0 = x + visible_len * CHAR_W
+        fill_x1 = x + @edit_cols * CHAR_W
+        if fill_x0 < fill_x1
+          @gfx.fill_rect(fill_x0, y, fill_x1 - fill_x0, CHAR_H, SEL_BG)
+        end
+      end
+    end
+
+    return if visible_len == 0
+
+    # Tinted (breakpoint/stop) lines always render plain over their background.
+    hl = (line_bg == BG_COLOR && @hl_enabled) ? line_hl_map(line_idx) : nil
+    if hl
+      draw_highlighted_line(x, y, text, visible_len, hl)
+    else
+      @gfx.draw_text(x, y, text[0, visible_len], TEXT_COLOR, line_bg)
+    end
+
+    # Overpaint the selected substring so its glyph background matches.
+    if sel_vstart
+      sel_text = text[sel_vstart, sel_vend - sel_vstart]
+      @gfx.draw_text(x + sel_vstart * CHAR_W, y, sel_text,
+                     TEXT_COLOR, SEL_BG)
+    end
+  end
+
+  # +hl+ is the category map for the whole line, so the visible text at column
+  # i maps to hl byte (@scroll_x + i).
+  def draw_highlighted_line(x, y, text, visible_len, hl)
+    offset = @scroll_x
     i = 0
     while i < visible_len
-      cat = @highlight_map.getbyte(offset + i) || 0
+      cat = hl.getbyte(offset + i) || 0
       color = HL_COLORS[cat] || TEXT_COLOR
 
       # Gather consecutive characters with the same category
       j = i + 1
       while j < visible_len
-        next_cat = @highlight_map.getbyte(offset + j) || 0
+        next_cat = hl.getbyte(offset + j) || 0
         break if next_cat != cat
         j += 1
       end
@@ -526,6 +539,8 @@ class EditorApp < FmrbApp
   end
 
   def lat_report
+    # p99 first: it reads the histogram, which the string build below clears.
+    p99 = lat_p99_ms
     hist = ""
     b = 0
     while b <= LAT_BUCKETS
@@ -535,7 +550,7 @@ class EditorApp < FmrbApp
       b += 1
     end
     msg = "edit_lat: n=#{@lat_n} mean=#{@lat_sum / @lat_n}us max=#{@lat_max}us"
-    msg += " p99<=#{lat_p99_ms}ms over25ms=#{@lat_slow}"
+    msg += " p99<=#{p99}ms over25ms=#{@lat_slow}"
     msg += " draw_mean=#{@draw_sum / @draw_n}us draw_max=#{@draw_max}us"
     msg += " hist5ms=#{hist} rows=#{@edit_rows} hl=#{@hl_enabled ? 1 : 0}"
     Log.info(msg)
@@ -561,6 +576,41 @@ class EditorApp < FmrbApp
     # frame survives canvas resize (the block is bound to @window_width / @window_height kwargs).
     draw_window_frame
     @gfx.present
+  end
+
+  # Repaint only the rows an edit or a cursor move touched, plus the cursor and
+  # the status line (Ln/Col changes with every key, and it is two commands).
+  # The menu bar, the window frame and any open overlay are untouched by row
+  # drawing, so they are not re-issued -- that is most of the saving.
+  def redraw_dirty
+    sel_range = selection_range
+    row = 0
+    while row < @edit_rows
+      line_idx = @scroll_y + row
+      draw_edit_row(row, line_idx, sel_range, true) if dirty_line?(line_idx)
+      row += 1
+    end
+    draw_cursor
+    draw_status_line
+    @gfx.present
+  end
+
+  # Single entry point for "put what changed on screen". Called from on_event
+  # (right after the key that caused the change) and from on_update (for
+  # changes that come from timers, key repeat and debugger events).
+  def redraw_if_dirty
+    return unless dirty?
+    t_start = Machine.uptime_us
+    # Row drawing would paint over an open overlay, so anything modal forces the
+    # full path (which re-draws the overlay on top).
+    if @need_redraw || @active_menu || @search_open || @quit_dialog_open ||
+       @target_picker_open
+      redraw_all
+    else
+      redraw_dirty
+    end
+    clear_dirty
+    lat_sample(t_start)
   end
 
   # ---- Quit-confirm dialog ----
@@ -671,10 +721,13 @@ class EditorApp < FmrbApp
   end
 
   def handle_search_dialog_key(ev)
-    keycode = ev[:keycode] || 0
+    # Enter / ESC by scancode (HID Usage ID), like handle_menu_key: on the Linux
+    # sim ev[:keycode] carries the SDL keysym (13 / 27) instead of 40 / 41, so
+    # the keycode form never fired there.
+    scancode = ev[:scancode] || 0
     character = ev[:character] || 0
 
-    case keycode
+    case scancode
     when 40, 88  # Enter / Keypad-Enter
       if @search_query.length == 0
         close_search_dialog
@@ -765,6 +818,8 @@ class EditorApp < FmrbApp
   # ---- Scrolling ----
 
   def ensure_cursor_visible
+    old_scroll_y = @scroll_y
+    old_scroll_x = @scroll_x
     # Vertical
     if @cy < @scroll_y
       @scroll_y = @cy
@@ -777,6 +832,8 @@ class EditorApp < FmrbApp
     elsif @cx >= @scroll_x + @edit_cols
       @scroll_x = @cx - @edit_cols + 1
     end
+    # A scroll moves every row, so the fine-grained marks are useless here.
+    @need_redraw = true if @scroll_y != old_scroll_y || @scroll_x != old_scroll_x
   end
 
   # ---- Key handling ----
@@ -807,7 +864,7 @@ class EditorApp < FmrbApp
     @cx += 1
     mark_edited
     ensure_cursor_visible
-    @need_redraw = true
+    mark_dirty_line(@cy)
   end
 
   def handle_enter
@@ -818,11 +875,12 @@ class EditorApp < FmrbApp
     right = line[@cx..-1].to_s
     @lines[@cy] = left
     @lines.insert(@cy + 1, right)
+    # Everything below the split shifted down one row.
+    mark_dirty_from(@cy)
     @cy += 1
     @cx = 0
     mark_edited
     ensure_cursor_visible
-    @need_redraw = true
   end
 
   def handle_backspace
@@ -833,7 +891,7 @@ class EditorApp < FmrbApp
       @cx -= 1
       mark_edited
       ensure_cursor_visible
-      @need_redraw = true
+      mark_dirty_line(@cy)
     elsif @cy > 0
       # Merge with previous line
       prev_len = @lines[@cy - 1].length
@@ -843,7 +901,8 @@ class EditorApp < FmrbApp
       @cx = prev_len
       mark_edited
       ensure_cursor_visible
-      @need_redraw = true
+      # The merged line and everything that shifted up.
+      mark_dirty_from(@cy)
     end
   end
 
@@ -853,13 +912,13 @@ class EditorApp < FmrbApp
     if @cx < line.length
       @lines[@cy] = line[0, @cx].to_s + line[@cx + 1..-1].to_s
       mark_edited
-      @need_redraw = true
+      mark_dirty_line(@cy)
     elsif @cy < @lines.length - 1
       # Merge next line
       @lines[@cy] += @lines[@cy + 1]
       @lines.delete_at(@cy + 1)
       mark_edited
-      @need_redraw = true
+      mark_dirty_from(@cy)
     end
   end
 
@@ -879,12 +938,17 @@ class EditorApp < FmrbApp
     end
   end
 
+  # Cursor moves repaint the line the cursor left and the one it arrived on
+  # (a selection being extended covers the lines in between, hence the range).
+  # A move that scrolls is upgraded to a full repaint inside
+  # ensure_cursor_visible.
+
   def move_up
     if @cy > 0
       @cy -= 1
       clamp_cx
       ensure_cursor_visible
-      @need_redraw = true
+      mark_dirty_range(@cy, @cy + 1)
     end
   end
 
@@ -893,7 +957,7 @@ class EditorApp < FmrbApp
       @cy += 1
       clamp_cx
       ensure_cursor_visible
-      @need_redraw = true
+      mark_dirty_range(@cy - 1, @cy)
     end
   end
 
@@ -901,12 +965,12 @@ class EditorApp < FmrbApp
     if @cx > 0
       @cx -= 1
       ensure_cursor_visible
-      @need_redraw = true
+      mark_dirty_line(@cy)
     elsif @cy > 0
       @cy -= 1
       @cx = (@lines[@cy] || "").length
       ensure_cursor_visible
-      @need_redraw = true
+      mark_dirty_range(@cy, @cy + 1)
     end
   end
 
@@ -915,42 +979,44 @@ class EditorApp < FmrbApp
     if @cx < line.length
       @cx += 1
       ensure_cursor_visible
-      @need_redraw = true
+      mark_dirty_line(@cy)
     elsif @cy < @lines.length - 1
       @cy += 1
       @cx = 0
       ensure_cursor_visible
-      @need_redraw = true
+      mark_dirty_range(@cy - 1, @cy)
     end
   end
 
   def page_up
+    prev_cy = @cy
     @cy -= @edit_rows
     @cy = 0 if @cy < 0
     clamp_cx
     ensure_cursor_visible
-    @need_redraw = true
+    mark_dirty_range(prev_cy, @cy)
   end
 
   def page_down
+    prev_cy = @cy
     @cy += @edit_rows
     max = @lines.length - 1
     @cy = max if @cy > max
     clamp_cx
     ensure_cursor_visible
-    @need_redraw = true
+    mark_dirty_range(prev_cy, @cy)
   end
 
   def move_home
     @cx = 0
     ensure_cursor_visible
-    @need_redraw = true
+    mark_dirty_line(@cy)
   end
 
   def move_end
     @cx = (@lines[@cy] || "").length
     ensure_cursor_visible
-    @need_redraw = true
+    mark_dirty_line(@cy)
   end
 
   def clamp_cx
@@ -1035,11 +1101,10 @@ class EditorApp < FmrbApp
     render_with_dropdown
   end
 
-  # Re-render the screen with the dropdown overlay (used on open / nav move).
+  # Ask for a full repaint; redraw_all puts the open dropdown on top of it.
+  # (Used on menu open and on dropdown navigation.)
   def render_with_dropdown
-    redraw_all
-    draw_active_menu
-    @gfx.present
+    @need_redraw = true
   end
 
   def close_menu
@@ -1170,9 +1235,10 @@ class EditorApp < FmrbApp
 
   def clear_selection
     return unless has_selection?
+    # The whole highlighted span has to lose its background.
+    mark_dirty_range(@sel_anchor_y, @cy)
     @sel_anchor_x = nil
     @sel_anchor_y = nil
-    @need_redraw = true
   end
 
   def begin_selection_if_needed
@@ -1243,7 +1309,12 @@ class EditorApp < FmrbApp
     clear_selection
     mark_edited
     ensure_cursor_visible
-    @need_redraw = true
+    # Single-line deletions touch one row; a multi-line one shifts the rest up.
+    if sy == ey
+      mark_dirty_line(sy)
+    else
+      mark_dirty_from(sy)
+    end
     true
   end
 
@@ -1281,7 +1352,9 @@ class EditorApp < FmrbApp
     if parts.length == 1
       @lines[@cy] = line[0, @cx].to_s + parts[0] + line[@cx..-1].to_s
       @cx += parts[0].length
+      mark_dirty_line(@cy)
     else
+      mark_dirty_from(@cy)
       head = line[0, @cx].to_s
       tail = line[@cx..-1].to_s
       @lines[@cy] = head + parts[0]
@@ -1296,7 +1369,6 @@ class EditorApp < FmrbApp
     end
     mark_edited
     ensure_cursor_visible
-    @need_redraw = true
   end
 
   # ---- File operations ----
@@ -1314,9 +1386,11 @@ class EditorApp < FmrbApp
       @scroll_y = 0
       @scroll_x = 0
       @modified = false
-      @highlight_dirty = true
-      @hl_idle_frames = HL_DEBOUNCE_FRAMES  # Tokenize immediately on file open
-      @hl_enabled = content.bytesize <= HL_AUTO_LIMIT_BYTES
+      # Syntax highlight stays on whatever the file size is: tokenizing is per
+      # line now, so its cost follows the visible rows, not the document. The
+      # old 1KB auto-off (HL_AUTO_LIMIT_BYTES) existed because every edit
+      # re-tokenized the whole file.
+      @hl_enabled = true
       @current_file = path
       @need_redraw = true
       Log.info("Loaded file: #{path} (#{@lines.length} lines)")
@@ -1343,8 +1417,7 @@ class EditorApp < FmrbApp
         Log.error("Save mismatch for #{@current_file}: expected=#{expected}, written=#{written}, on_disk=#{actual}")
       else
         @modified = false
-        flash_status("Saved")
-        @need_redraw = true
+        flash_status("Saved")  # status line only
         Log.info("Saved file: #{@current_file} (#{expected} bytes)")
       end
     rescue => e
@@ -1741,7 +1814,7 @@ class EditorApp < FmrbApp
   def flash_status(text)
     @status_label = " #{text} "
     @save_ok_frames = SAVE_OK_FRAMES
-    @need_redraw = true
+    @dirty_status = true
   end
 
   def save_file_as(path)
@@ -1751,7 +1824,14 @@ class EditorApp < FmrbApp
 
   def on_event(ev)
     super(ev)
+    handle_editor_event(ev)
+    # Draw here rather than leaving it to the next on_update. Going through
+    # on_update cost up to a whole 33ms frame per key on top of the drawing
+    # itself, which was most of the measured key-to-present time.
+    redraw_if_dirty
+  end
 
+  def handle_editor_event(ev)
     if ev[:type] == :mouse_up
       # Open dropdown click handling
       if @active_menu
@@ -1927,10 +2007,10 @@ class EditorApp < FmrbApp
       # Modifier keys - ignore
       return if keycode >= 224 && keycode <= 231
 
-      # Printable / control characters
-      if character > 0
-        @input_buffer << character
-      end
+      # Printable / control characters. Handled inline: the old path queued the
+      # character for a separate editor Task that polled with sleep_ms, which
+      # added up to one 33ms sleep before the edit even happened.
+      handle_key(character) if character > 0
     end
 
     if ev[:type] == :key_up
@@ -1957,24 +2037,13 @@ class EditorApp < FmrbApp
       end
     end
 
-    # Tick down the "Saved" badge and trigger a final repaint when it expires.
+    # Tick down the "Saved" badge and repaint the status line when it expires.
     if @save_ok_frames > 0
       @save_ok_frames -= 1
-      @need_redraw = true if @save_ok_frames == 0
+      @dirty_status = true if @save_ok_frames == 0
     end
 
-    # Re-tokenize once the user has paused editing for HL_DEBOUNCE_FRAMES frames.
-    if @highlight_dirty && @hl_idle_frames < HL_DEBOUNCE_FRAMES
-      @hl_idle_frames += 1
-      @need_redraw = true if @hl_idle_frames >= HL_DEBOUNCE_FRAMES
-    end
-
-    if @need_redraw
-      t_start = Machine.uptime_us
-      redraw_all
-      @need_redraw = false
-      lat_sample(t_start)
-    end
+    redraw_if_dirty
     @frame_ms
   end
 
