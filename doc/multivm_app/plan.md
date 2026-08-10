@@ -246,6 +246,14 @@ after_spawn の _set_hid_target を headless (background) アプリでは
 段階 1 は改修ゼロで始められる (HID は focus_app で取り返す回避策、結果は
 littlefs 経由で仮置き)。段階 2-4 が本命の基盤整備。
 
+**M1 発行 (2026-08-10、instruction_m1.md)**: 使いやすさ優先のユーザ判断で
+**段階 3 (コメント toml) と段階 2 (/tmp RAM FS) を先行実装**する。
+併せてエディタのテンプレート挿入 (window / fullscreen / headless worker の
+3 種、/lib/templates/*.rb) を追加し、worker 雛形が「toml なし起動 + /tmp +
+publish 通知」の 3 点統合デモを兼ねる。/tmp の確保元は editor-core (P4) の
+前例に従い専用プール POOL_ID_TMPFS (512KB から)。順序は T1 (コメント toml)
+→ T3 (/tmp) → T2 (テンプレート)。
+
 ## 5. キャンバスと音声の所有モデルと受け渡し (2026-08-09 調査)
 
 「ハンドルをどう渡すか」への答えは**「渡さない」**。調査で判明した所有モデル
