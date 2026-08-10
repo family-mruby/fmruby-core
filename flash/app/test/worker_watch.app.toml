@@ -1,0 +1,8 @@
+app_handle_name = "worker_watch"
+app_screen_name = "WorkerWatch"
+default_window_mode = "window"
+default_window_width = 170
+default_window_height = 70
+default_window_pos_x = 240
+default_window_pos_y = 150
+launcher_visible = false

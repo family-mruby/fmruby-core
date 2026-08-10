@@ -49,9 +49,14 @@ class EditorApp < FmrbApp
 
   # Per-menu config: items + scancode hotkeys + dropdown pixel width.
   # Hotkey scancodes pick a distinguishing letter per item (DOS-Edit style).
-  MENU_FILE_ITEMS    = ["Open", "Save", "Save as", "Exit"]
-  MENU_FILE_HOTKEYS  = [0x12, 0x16, 0x04, 0x1B]  # O, S, A, X
-  MENU_FILE_W        = 54
+  MENU_FILE_ITEMS    = ["Open", "Save", "Save as", "Template", "Exit"]
+  MENU_FILE_HOTKEYS  = [0x12, 0x16, 0x04, 0x17, 0x1B]  # O, S, A, T, X
+  MENU_FILE_W        = 62
+
+  # App skeletons, as files so a user can add their own next to the shipped
+  # ones. File > Template lists this directory and inserts the chosen file at
+  # the cursor.
+  TEMPLATE_DIR = "/lib/templates"
 
   MENU_EDIT_ITEMS    = ["Cut", "Copy", "Paste", "Select All"]
   MENU_EDIT_HOTKEYS  = [0x17, 0x06, 0x13, 0x04]  # T (cuT), C, P, A
@@ -108,9 +113,13 @@ class EditorApp < FmrbApp
     @frame_ms = 33
     @modified = false
     @current_file = nil
-    @active_menu = nil   # :file, :edit, or nil when no dropdown is open
+    @active_menu = nil   # :file, :edit, :template, or nil when none is open
     @menu_idx = 0
     @pending_file_op = nil  # :open or :save
+    # File > Template: filled in from TEMPLATE_DIR each time the menu opens, so
+    # a template dropped in while the editor runs shows up without a restart.
+    @template_names = []
+    @template_labels = []
     # Selection (anchor side; cursor side is the moving end). nil = no selection.
     @sel_anchor_x = nil
     @sel_anchor_y = nil
@@ -1014,6 +1023,7 @@ class EditorApp < FmrbApp
     case @active_menu
     when :file then MENU_FILE_ITEMS
     when :edit then MENU_EDIT_ITEMS
+    when :template then @template_labels
     when :debug then dbg_menu_items
     end
   end
@@ -1029,6 +1039,7 @@ class EditorApp < FmrbApp
     case @active_menu
     when :file then MENU_FILE_W
     when :edit then MENU_EDIT_W
+    when :template then template_menu_width
     when :debug then dbg_menu_width
     end
   end
@@ -1039,6 +1050,7 @@ class EditorApp < FmrbApp
   def menu_origin
     case @active_menu
     when :file then [@menu_file_x, @menu_y + CHAR_H]
+    when :template then [@menu_file_x, @menu_y + CHAR_H]
     when :edit then [@menu_edit_x, @menu_y + CHAR_H]
     when :debug
       dx = @user_area_x0 + @user_area_width - menu_width - 2
@@ -1145,6 +1157,7 @@ class EditorApp < FmrbApp
     case kind
     when :file then activate_file_item(idx)
     when :edit then activate_edit_item(idx)
+    when :template then insert_template(idx)
     when :debug then dbg_activate_item(idx)
     end
   end
@@ -1159,7 +1172,9 @@ class EditorApp < FmrbApp
     when 2  # Save as
       @pending_file_op = :save
       request_file_select("save")
-    when 3  # Exit
+    when 3  # Template
+      open_template_menu
+    when 4  # Exit
       stop
     end
   end
@@ -1171,6 +1186,84 @@ class EditorApp < FmrbApp
     when 2 then paste_clipboard
     when 3 then select_all
     end
+  end
+
+  # ---- Templates (File > Template) ----
+  #
+  # Skeletons are files under TEMPLATE_DIR rather than text baked into this
+  # app, so a user can drop their own in and see it in the list. The list is
+  # the ordinary menu dropdown, which already has the keyboard and mouse
+  # handling; only the item text is different.
+
+  def open_template_menu
+    load_template_list
+    if @template_labels.empty?
+      flash_status("No templates")
+      return
+    end
+    open_menu(:template)
+  end
+
+  def load_template_list
+    names = []
+    labels = []
+    begin
+      dir = Dir.open(TEMPLATE_DIR)
+      while (e = dir.read)
+        name = e.to_s
+        names << name if name.end_with?(".rb")
+      end
+      dir.close
+    rescue => err
+      Log.error("Cannot list #{TEMPLATE_DIR}: #{err.message}")
+      names = []
+    end
+    names = names.sort
+    names.each do |n|
+      labels << n[0, n.length - 3]
+    end
+    @template_names = names
+    @template_labels = labels
+  end
+
+  def template_menu_width
+    widest = 0
+    @template_labels.each do |t|
+      len = t.length
+      widest = len if len > widest
+    end
+    widest * CHAR_W + 10
+  end
+
+  # Insert the chosen skeleton at the cursor. Same shape as a paste: the
+  # document model does the work and reports where the cursor ended up.
+  def insert_template(idx)
+    return if idx < 0 || idx >= @template_names.size
+    path = "#{TEMPLATE_DIR}/#{@template_names[idx]}"
+    text = nil
+    begin
+      f = File.open(path, "r")
+      text = f.read
+      f.close
+    rescue => err
+      flash_status("Load failed")
+      Log.error("Template read failed: #{path} (#{err.message})")
+      return
+    end
+    body = text.to_s
+    if body.bytesize == 0
+      flash_status("Empty")
+      return
+    end
+    delete_selection if has_selection?
+    start_y = @cy
+    rec = EditorCore.insert_multiline(@cy, @cx, body)
+    @cy = EditorCore.pos_y(rec)
+    @cx = EditorCore.pos_x(rec)
+    mark_dirty_from(start_y)
+    mark_edited
+    ensure_cursor_visible
+    flash_status("Inserted")
   end
 
   # ---- Selection ----
