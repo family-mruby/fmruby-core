@@ -1491,7 +1491,7 @@ class EditorApp < FmrbApp
       return
     end
     unless runnable_path?(@current_file)
-      flash_status("Run: /app or /home")
+      flash_status("Run: need a path")
       return
     end
     save_file if @modified
@@ -1499,10 +1499,11 @@ class EditorApp < FmrbApp
     flash_status("Running")
   end
 
-  # What the spawner can load: user apps under /app, user files under /home.
-  # The kernel enforces this too; checking here just gives a better message.
+  # What the spawner can load: any absolute path, wherever the buffer was
+  # saved. The kernel enforces the same rule (run_path_allowed?); checking here
+  # just gives a better message than a silent no-op.
   def runnable_path?(path)
-    path.start_with?("/app/") || path.start_with?("/home/")
+    path.start_with?("/")
   end
 
   # Show a short right-aligned badge on the status line for ~2s.

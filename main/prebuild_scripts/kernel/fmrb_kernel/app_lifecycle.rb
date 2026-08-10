@@ -44,13 +44,19 @@ module AppLifecycleMixin
     true
   end
 
-  # A Run request may only name a file the spawner can load: user apps live
-  # under /app, user files under /home. Built-in names ("default/editor") are
-  # deliberately not runnable this way -- the desktop spawns those.
+  # A Run request names a file for the spawner to load, and any absolute path
+  # will do: /app and /home are the usual homes, /tmp is where a scratch buffer
+  # from the editor lands, an SD card is just another mount. There was a /app +
+  # /home allowlist here, but the spawn command the shell and launcher use never
+  # had one, so the same file ran from the shell and was refused by the editor's
+  # F5. What this still rejects is a built-in name ("default/editor"): those are
+  # not files, and the desktop is what spawns them.
+  #
+  # The other two callers read this as "is this pid a file-backed app?". A
+  # built-in has no :path at all, so it answers false for them as it did before.
   def run_path_allowed?(path)
     return false if path.nil?
-    return false if path.empty?
-    path.start_with?("/app/") || path.start_with?("/home/")
+    path.start_with?("/")
   end
 
   # Tell a Run requester (the editor) which pid its file is running as, and
