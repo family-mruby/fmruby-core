@@ -264,3 +264,40 @@ Ruby 専用のため)。
   踏まなくなった。行単位トークンキャッシュは実機で効く見込みの改善案
   として report/p3.md に記録。
 - 次は P4 (editor-gem 分割)。指示書は着手時に発行する。
+
+**P4 発行 (2026-08-10、instruction_p4.md)**。事前調査で判明した事実と決定:
+
+- **SmfCore (Spinel オフロード PoC) は実装が存在しない** (selective_offload.md
+  は構想のみ)。mruby からの同期呼び出し経路 / sp_export / プール切り出しの
+  核心 3 点は未着手。
+- **ユーザ決定: editor-core は C 直書き** (syntax-highlight と同型の native
+  gem)。「Ruby で書いて Spinel 変換」の第 1 号は raycaster 等の別題材に譲る。
+  gem は段階 6 の Spinel 版エディタからも FFI で使う共通実装になる。
+- **文書 arena は専用プール POOL_ID_EDITOR_DOC (PSRAM 静的 1MB) を新設して
+  置く** (ユーザ指摘による修正: fmrb_sys_malloc は SYSTEM 500KB 共有プール
+  から出るため大物は置けない。mrb_malloc はアプリ 500KB プールから出るため
+  天井・GC 会計・断片化の 3 点が残る)。
+- 境界 API は実コード 60 箇所から 18 本に集約 (instruction_p4.md に一覧)。
+  undo は範囲外だが gem 内ジャーナルで将来実装できる形に閉じる。
+
+**P4 完了 (2026-08-10、コミット 14fa32b、report/p4.md)**:
+
+- picoruby-fmrb-editor-core (行配列 + 行バッファ、UTF-8 文字インデックス、
+  行単位 HL キャッシュ、mrb_state ごとの文書スロット)。syntax-highlight に
+  C レベル入口を追加し、描画ごとの mruby String 生成を全廃。
+  editor.app.rb から @lines / @clipboard を全廃。
+- 実測: **53.4KB / 200KB が開ける** (P1 は VM 消滅)。400KB は "Doc full"
+  表示のみでエディタ生存。**20KB 開いてもプール 61% のまま**
+  (旧モデルは 61%→77%)。打鍵→present は退行どころか改善
+  (mean 2.50→1.72ms、max 16.4→8.6ms)。機能退行なし。
+  Linux 両カーネル / S3 / P4 ビルド通過。gem 単体スモーク 40 項目付き。
+- arena は文書サイズの約 3.8 倍消費 (行ごとの確保が主因)。1MB プールで
+  200KB 要件は満足。詰めるなら「単一テキスト arena + 行オフセット表」
+  だが現状不要。
+- **「全画面 + 14KB 窓アプリで NoMemoryError」は p2.md の見立てが誤り**:
+  tetris 単体でも落ちる。実体は「14KB スクリプトの実行時コンパイルに
+  500KB アプリプールが足りない (64bit sim で顕著)」という editor-core と
+  無関係の別問題。実機 (32bit) では通る可能性が高い。対処候補は
+  Linux 限定のユーザプール増量 (SYSTEM_APP に 64bit 換算で 2 倍にする
+  前例あり、fmrb_mem_config.h:26-31) か事前バイトコード化。
+- 実機確認はユーザ確認待ち (P2 以降の全シナリオと合わせて)。
