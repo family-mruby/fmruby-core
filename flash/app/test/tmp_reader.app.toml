@@ -1,0 +1,8 @@
+app_handle_name = "tmp_reader"
+app_screen_name = "TmpReader"
+default_window_mode = "window"
+default_window_width = 150
+default_window_height = 80
+default_window_pos_x = 190
+default_window_pos_y = 30
+launcher_visible = false

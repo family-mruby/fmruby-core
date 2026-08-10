@@ -1,4 +1,5 @@
 #include "fmrb_hal_file.h"
+#include "fmrb_tmpfs.h"
 #include "fmrb_pin_assign.h"
 #include <string.h>
 #include <stdio.h>
@@ -92,9 +93,12 @@ typedef struct {
 } path_alias_t;
 
 static const path_alias_t s_path_aliases[] = {
-    { "/flash",  LITTLEFS_PATH },  // canonical flash mount
-    { "/sd",     SDCARD_PATH },    // canonical SD mount
-    { "/mnt/sd", SDCARD_PATH },    // Unix-style alias for SD
+    { "/flash",  LITTLEFS_PATH },     // canonical flash mount
+    { "/sd",     SDCARD_PATH },       // canonical SD mount
+    { "/mnt/sd", SDCARD_PATH },       // Unix-style alias for SD
+    // RAM filesystem, registered as its own VFS (fmrb_tmpfs_esp32.c). Listed
+    // here so it is left alone instead of being folded under the flash mount.
+    { FMRB_TMPFS_MOUNT, FMRB_TMPFS_MOUNT },
 };
 
 #define PATH_ALIAS_COUNT (sizeof(s_path_aliases) / sizeof(s_path_aliases[0]))
@@ -109,11 +113,11 @@ typedef struct {
     size_t count;
 } path_virtual_t;
 
-static const char *const s_root_extra[]    = { "mnt" };
+static const char *const s_root_extra[]    = { "mnt", "tmp" };
 static const char *const s_mnt_children[]  = { "sd" };
 
 static const path_virtual_t s_virtual_dirs[] = {
-    { "/",    s_root_extra,   1 },  // "mnt" appears in addition to flash entries
+    { "/",    s_root_extra,   2 },  // "mnt" and "tmp" appear in addition to flash entries
     { "/mnt", s_mnt_children, 1 },  // purely virtual: only contains "sd"
 };
 
@@ -383,6 +387,9 @@ fmrb_err_t fmrb_hal_file_init(void) {
         return FMRB_ERR_FAILED;
     }
     ESP_LOGI(TAG, "LittleFS mounted at %s", LITTLEFS_PATH);
+
+    // RAM filesystem at /tmp (non-fatal if it fails: only /tmp users notice)
+    fmrb_tmpfs_init();
 
     // Try to mount SD card (non-fatal if it fails)
     mount_sd_card();

@@ -14,11 +14,18 @@
 #include <utime.h>
 #include <errno.h>
 
+#include "fmrb_tmpfs_posix.h"
+
 const char* TAG = "file_posix";
 
 // Internal file handle structure
 typedef struct {
     FILE *fp;
+    // /tmp is capacity-limited on device, so the dev build accounts for it too.
+    // `counted` is how many of this file's bytes are already charged against
+    // the mount; a write past that mark has to buy the difference.
+    bool   in_tmp;
+    size_t counted;
 } fmrb_file_handle_t;
 
 // Internal directory handle structure
@@ -150,6 +157,9 @@ fmrb_err_t fmrb_hal_file_init(void) {
         s_file_mutex = NULL;
         return FMRB_ERR_FAILED;
     }
+
+    // /tmp: same mount the device keeps in RAM, emptied here to match.
+    fmrb_tmpfs_init();
     return FMRB_OK;
 }
 
@@ -169,7 +179,7 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
 
     LOCK();
 
-    fmrb_file_handle_t *handle = fmrb_sys_malloc(sizeof(fmrb_file_handle_t));
+    fmrb_file_handle_t *handle = fmrb_sys_calloc(1, sizeof(fmrb_file_handle_t));
     if (handle == NULL) {
         UNLOCK();
         return FMRB_ERR_NO_MEMORY;
@@ -177,6 +187,17 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
 
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));
+
+    // The device's /tmp is a flat store, so refuse a subdirectory here too
+    // rather than let the simulator accept what hardware cannot.
+    if (fmrb_tmpfs_path_too_deep(full_path)) {
+        fmrb_sys_free(handle);
+        UNLOCK();
+        FMRB_LOGW(TAG, "%s: /tmp holds files, not subdirectories", path);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    handle->in_tmp = fmrb_tmpfs_owns_path(full_path);
+    handle->counted = handle->in_tmp ? fmrb_tmpfs_file_size(full_path) : 0;
 
     // Create parent directory if needed
     if (flags & FMRB_O_CREAT) {
@@ -197,6 +218,12 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
         fmrb_sys_free(handle);
         UNLOCK();
         return FMRB_ERR_FAILED;
+    }
+
+    // Truncating hands the old contents back to the mount.
+    if (handle->in_tmp && (flags & FMRB_O_TRUNC) && handle->counted > 0) {
+        fmrb_tmpfs_release(handle->counted);
+        handle->counted = 0;
     }
 
     *out_handle = handle;
@@ -274,6 +301,27 @@ fmrb_err_t fmrb_hal_file_write(fmrb_file_t handle, const void *buffer, size_t si
 
     LOCK();
     fmrb_file_handle_t *fh = (fmrb_file_handle_t *)handle;
+
+    // /tmp is capped on device; refuse the write here at the same point rather
+    // than let it succeed in the simulator and fail on hardware.
+    if (fh->in_tmp && size > 0) {
+        long pos = ftell(fh->fp);
+        size_t end = (pos < 0 ? 0 : (size_t)pos) + size;
+        if (end > fh->counted) {
+            size_t delta = end - fh->counted;
+            if (!fmrb_tmpfs_charge(delta)) {
+                if (bytes_written != NULL) {
+                    *bytes_written = 0;
+                }
+                UNLOCK();
+                FMRB_LOGW(TAG, "%s is full: %zu more bytes refused",
+                          FMRB_TMPFS_MOUNT, delta);
+                return FMRB_ERR_NO_MEMORY;
+            }
+            fh->counted = end;
+        }
+    }
+
     size_t n = fwrite(buffer, 1, size, fh->fp);
     if (bytes_written != NULL) {
         *bytes_written = n;
@@ -332,7 +380,11 @@ fmrb_err_t fmrb_hal_file_remove(const char *path) {
     build_path(path, full_path, sizeof(full_path));
 
     LOCK();
+    size_t freed = fmrb_tmpfs_owns_path(full_path) ? fmrb_tmpfs_file_size(full_path) : 0;
     int ret = unlink(full_path);
+    if (ret == 0 && freed > 0) {
+        fmrb_tmpfs_release(freed);
+    }
     UNLOCK();
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
@@ -348,8 +400,33 @@ fmrb_err_t fmrb_hal_file_rename(const char *old_path, const char *new_path) {
     build_path(old_path, old_full_path, sizeof(old_full_path));
     build_path(new_path, new_full_path, sizeof(new_full_path));
 
+    if (fmrb_tmpfs_path_too_deep(new_full_path)) {
+        FMRB_LOGW(TAG, "%s: /tmp holds files, not subdirectories", new_path);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
     LOCK();
+    // Moving in or out of /tmp moves the bytes on and off the mount's books.
+    bool from_tmp = fmrb_tmpfs_owns_path(old_full_path);
+    bool to_tmp = fmrb_tmpfs_owns_path(new_full_path);
+    size_t bytes = (from_tmp || to_tmp) ? fmrb_tmpfs_file_size(old_full_path) : 0;
+    if (to_tmp && !from_tmp && !fmrb_tmpfs_charge(bytes)) {
+        UNLOCK();
+        FMRB_LOGW(TAG, "%s is full: cannot move %s in", FMRB_TMPFS_MOUNT, old_path);
+        return FMRB_ERR_NO_MEMORY;
+    }
+    size_t overwritten = to_tmp ? fmrb_tmpfs_file_size(new_full_path) : 0;
     int ret = rename(old_full_path, new_full_path);
+    if (ret == 0) {
+        if (overwritten > 0) {
+            fmrb_tmpfs_release(overwritten);
+        }
+        if (from_tmp && !to_tmp) {
+            fmrb_tmpfs_release(bytes);
+        }
+    } else if (to_tmp && !from_tmp) {
+        fmrb_tmpfs_release(bytes);
+    }
     UNLOCK();
     return (ret == 0) ? FMRB_OK : FMRB_ERR_FAILED;
 }
@@ -400,6 +477,12 @@ fmrb_err_t fmrb_hal_file_mkdir(const char *path) {
 
     char full_path[512];
     build_path(path, full_path, sizeof(full_path));
+
+    // The device's /tmp is flat, so nothing may be created inside it.
+    if (fmrb_tmpfs_owns_path(full_path) && strcmp(full_path, "flash" FMRB_TMPFS_MOUNT) != 0) {
+        FMRB_LOGW(TAG, "%s: /tmp holds files, not subdirectories", path);
+        return FMRB_ERR_NOT_SUPPORTED;
+    }
 
     LOCK();
     int ret = mkdir_recursive(full_path);

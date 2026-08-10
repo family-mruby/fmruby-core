@@ -54,3 +54,7 @@ sdkconfig.*.saved
 # creates it; see doc/midi/report/p5s.md).
 midi_out.fifo
 flash/etc/system_conf.factory.toml
+
+# /tmp RAM FS: the Linux dev build backs it with this directory and empties
+# it at boot (components/fmrb_hal/platform/posix/fmrb_tmpfs_posix.c).
+flash/tmp/
