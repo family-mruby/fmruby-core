@@ -12,23 +12,19 @@
  * Columns are UTF-8 CHARACTER indices, matching what the Ruby editor did with
  * String#[] -- not bytes. Every entry point that takes an x converts.
  *
- * One document per VM: the slot is keyed by mrb_state, so a second editor
- * instance gets its own document without the API carrying a handle. A VM beyond
- * ED_MAX_DOCS gets -ENOMEM from every call, which the Ruby side reports.
+ * Documents are addressed by an int slot (ec_open_slot), which is what lets the
+ * same code back both the mruby binding and the Spinel FFI. Each editor instance
+ * holds one slot; a fourth editor gets a negative slot and reports it.
  */
 
 #include <string.h>
 #include <stdint.h>
 
-#include <mruby.h>
-#include <mruby/string.h>
-#include <mruby/class.h>
-
 #include "fmrb_mem.h"
 #include "fmrb_hal_file.h"
 #include "fmrb_log.h"
 
-#include "../../include/picoruby_fmrb_editor_core.h"
+#include "../../include/editor_core_api.h"
 
 static const char *TAG = "editor_core";
 
@@ -38,9 +34,9 @@ static const char *TAG = "editor_core";
    to the mruby gem build is more machinery than one prototype deserves. */
 extern int fmrb_syntax_highlight_line(const char *src, size_t len, uint8_t *out_map);
 
-#define ED_ERR_RANGE  (-1)
-#define ED_ERR_NOMEM  (-2)
-#define ED_ERR_IO     (-3)
+#define ED_ERR_RANGE  EC_ERR_RANGE
+#define ED_ERR_NOMEM  EC_ERR_NOMEM
+#define ED_ERR_IO     EC_ERR_IO
 
 #define ED_MAX_DOCS      3      /* == FMRB_USER_APP_COUNT: only user apps edit */
 #define ED_LINE_CHUNK    32     /* line capacity granularity, bytes */
@@ -56,7 +52,7 @@ typedef struct {
 } ed_line_t;
 
 typedef struct {
-    mrb_state *owner;
+    int        used;
     ed_line_t *lines;
     int32_t    count;
     int32_t    cap;
@@ -121,33 +117,34 @@ static void doc_clear(ed_doc_t *d)
     d->cap = 0;
 }
 
-static ed_doc_t *doc_of(mrb_state *mrb)
+static ed_doc_t *doc_of(int slot)
 {
-    for (int i = 0; i < ED_MAX_DOCS; i++) {
-        if (g_docs[i].owner == mrb) return &g_docs[i];
-    }
-    for (int i = 0; i < ED_MAX_DOCS; i++) {
-        if (g_docs[i].owner == NULL) {
-            g_docs[i].owner = mrb;
-            g_docs[i].hl_on = 1;
-            return &g_docs[i];
-        }
-    }
-    return NULL;  /* more editors than slots: callers report -ENOMEM */
+    if (slot < 0 || slot >= ED_MAX_DOCS) return NULL;
+    if (!g_docs[slot].used) return NULL;
+    return &g_docs[slot];
 }
 
-static void doc_release(mrb_state *mrb)
+int ec_open_slot(void)
 {
     for (int i = 0; i < ED_MAX_DOCS; i++) {
-        if (g_docs[i].owner == mrb) {
-            doc_clear(&g_docs[i]);
-            ed_free(g_docs[i].clip);
-            g_docs[i].clip = NULL;
-            g_docs[i].clip_len = 0;
-            g_docs[i].owner = NULL;
-            return;
+        if (!g_docs[i].used) {
+            g_docs[i].used = 1;
+            g_docs[i].hl_on = 1;
+            return i;
         }
     }
+    return EC_ERR_NOMEM;  /* more editors than slots: the caller reports it */
+}
+
+void ec_close_slot(int slot)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return;
+    doc_clear(d);
+    ed_free(d->clip);
+    d->clip = NULL;
+    d->clip_len = 0;
+    d->used = 0;
 }
 
 /* ---- UTF-8 ------------------------------------------------------------- */
@@ -305,205 +302,6 @@ static const uint8_t *line_hl(ed_doc_t *d, int32_t y, int32_t *out_chars)
     return chmap;
 }
 
-/* ---- packed records ---------------------------------------------------- */
-
-static void put_u32(uint8_t *p, uint32_t v)
-{
-    p[0] = (uint8_t)(v & 0xFF);
-    p[1] = (uint8_t)((v >> 8) & 0xFF);
-    p[2] = (uint8_t)((v >> 16) & 0xFF);
-    p[3] = (uint8_t)((v >> 24) & 0xFF);
-}
-
-static mrb_value pos_record(mrb_state *mrb, int32_t y, int32_t x)
-{
-    uint8_t rec[8];
-    put_u32(&rec[0], (uint32_t)y);
-    put_u32(&rec[4], (uint32_t)x);
-    return mrb_str_new(mrb, (const char *)rec, sizeof(rec));
-}
-
-/* ---- guards ------------------------------------------------------------ */
-
-#define DOC_OR_RETURN(d, mrb, retval)          \
-    ed_doc_t *d = doc_of(mrb);                 \
-    if (!d || d->count == 0) return (retval);
-
-static int y_ok(ed_doc_t *d, mrb_int y) { return y >= 0 && y < d->count; }
-
-/* ---- API: reading ------------------------------------------------------ */
-
-static mrb_value ec_reset(mrb_state *mrb, mrb_value self)
-{
-    ed_doc_t *d = doc_of(mrb);
-    if (!d) return mrb_fixnum_value(ED_ERR_NOMEM);
-    int r = doc_reset(d);
-    return mrb_fixnum_value(r < 0 ? r : 0);
-}
-
-static mrb_value ec_line_count(mrb_state *mrb, mrb_value self)
-{
-    ed_doc_t *d = doc_of(mrb);
-    if (!d) return mrb_fixnum_value(0);
-    if (d->count == 0) doc_reset(d);
-    return mrb_fixnum_value(d->count);
-}
-
-static mrb_value ec_line_length(mrb_state *mrb, mrb_value self)
-{
-    mrb_int y;
-    mrb_get_args(mrb, "i", &y);
-    DOC_OR_RETURN(d, mrb, mrb_fixnum_value(0))
-    if (!y_ok(d, y)) return mrb_fixnum_value(0);
-    return mrb_fixnum_value(u8_chars(d->lines[y].buf, d->lines[y].len));
-}
-
-/* Visible slice of a line: characters [col0, col0+max_cols). */
-static mrb_value ec_render_text(mrb_state *mrb, mrb_value self)
-{
-    mrb_int y, col0, max_cols;
-    mrb_get_args(mrb, "iii", &y, &col0, &max_cols);
-    DOC_OR_RETURN(d, mrb, mrb_str_new(mrb, "", 0))
-    if (!y_ok(d, y) || max_cols <= 0) return mrb_str_new(mrb, "", 0);
-    ed_line_t *l = &d->lines[y];
-    int32_t b0 = u8_byte_of(l->buf, l->len, (int32_t)col0);
-    int32_t b1 = u8_byte_of(l->buf, l->len, (int32_t)(col0 + max_cols));
-    if (b1 <= b0) return mrb_str_new(mrb, "", 0);
-    return mrb_str_new(mrb, l->buf + b0, (size_t)(b1 - b0));
-}
-
-/* Highlight categories for the same slice, one byte per character. Empty when
-   highlighting is off for this buffer or the line has nothing to colour. */
-static mrb_value ec_render_hl(mrb_state *mrb, mrb_value self)
-{
-    mrb_int y, col0, max_cols;
-    mrb_get_args(mrb, "iii", &y, &col0, &max_cols);
-    DOC_OR_RETURN(d, mrb, mrb_str_new(mrb, "", 0))
-    if (!y_ok(d, y) || max_cols <= 0) return mrb_str_new(mrb, "", 0);
-    int32_t nchars = 0;
-    const uint8_t *map = line_hl(d, (int32_t)y, &nchars);
-    if (!map) return mrb_str_new(mrb, "", 0);
-    if (col0 >= nchars) return mrb_str_new(mrb, "", 0);
-    int32_t n = nchars - (int32_t)col0;
-    if (n > max_cols) n = (int32_t)max_cols;
-    return mrb_str_new(mrb, (const char *)(map + col0), (size_t)n);
-}
-
-/* The character under the cursor, as a 1-character String ("" past EOL). */
-static mrb_value ec_char_at(mrb_state *mrb, mrb_value self)
-{
-    mrb_int y, x;
-    mrb_get_args(mrb, "ii", &y, &x);
-    DOC_OR_RETURN(d, mrb, mrb_str_new(mrb, "", 0))
-    if (!y_ok(d, y)) return mrb_str_new(mrb, "", 0);
-    ed_line_t *l = &d->lines[y];
-    int32_t b0 = u8_byte_of(l->buf, l->len, (int32_t)x);
-    if (b0 >= l->len) return mrb_str_new(mrb, "", 0);
-    int32_t b1 = u8_byte_of(l->buf, l->len, (int32_t)x + 1);
-    return mrb_str_new(mrb, l->buf + b0, (size_t)(b1 - b0));
-}
-
-static mrb_value ec_hl_set(mrb_state *mrb, mrb_value self)
-{
-    mrb_bool on;
-    mrb_get_args(mrb, "b", &on);
-    ed_doc_t *d = doc_of(mrb);
-    if (!d) return mrb_nil_value();
-    if (d->hl_on != (on ? 1 : 0)) {
-        d->hl_on = on ? 1 : 0;
-        for (int32_t i = 0; i < d->count; i++) line_drop_hl(&d->lines[i]);
-    }
-    return mrb_nil_value();
-}
-
-static mrb_value ec_doc_bytesize(mrb_state *mrb, mrb_value self)
-{
-    DOC_OR_RETURN(d, mrb, mrb_fixnum_value(0))
-    int32_t total = 0;
-    for (int32_t i = 0; i < d->count; i++) total += d->lines[i].len;
-    total += d->count - 1;  /* newlines between lines */
-    return mrb_fixnum_value(total);
-}
-
-static mrb_value ec_mem_used(mrb_state *mrb, mrb_value self)
-{
-    fmrb_pool_stats_t st;
-    if (g_handle < 0) return mrb_fixnum_value(0);
-    if (fmrb_mem_get_stats(g_handle, &st) != 0) return mrb_fixnum_value(0);
-    return mrb_fixnum_value((mrb_int)st.used_size);
-}
-
-/* ---- API: editing ------------------------------------------------------ */
-
-static mrb_value ec_insert_text(mrb_state *mrb, mrb_value self)
-{
-    mrb_int y, x;
-    mrb_value str;
-    mrb_get_args(mrb, "iiS", &y, &x, &str);
-    DOC_OR_RETURN(d, mrb, mrb_fixnum_value(ED_ERR_NOMEM))
-    if (!y_ok(d, y)) return mrb_fixnum_value(ED_ERR_RANGE);
-    ed_line_t *l = &d->lines[y];
-    int32_t at = u8_byte_of(l->buf, l->len, (int32_t)x);
-    int32_t n  = (int32_t)RSTRING_LEN(str);
-    int r = line_insert_bytes(l, at, RSTRING_PTR(str), n);
-    if (r < 0) return mrb_fixnum_value(r);
-    return mrb_fixnum_value(x + u8_chars(RSTRING_PTR(str), n));
-}
-
-static mrb_value ec_split_line(mrb_state *mrb, mrb_value self)
-{
-    mrb_int y, x;
-    mrb_get_args(mrb, "ii", &y, &x);
-    DOC_OR_RETURN(d, mrb, mrb_fixnum_value(ED_ERR_NOMEM))
-    if (!y_ok(d, y)) return mrb_fixnum_value(ED_ERR_RANGE);
-    int32_t at = u8_byte_of(d->lines[y].buf, d->lines[y].len, (int32_t)x);
-    int32_t tail = d->lines[y].len - at;
-    int r = lines_insert(d, (int32_t)y + 1);
-    if (r < 0) return mrb_fixnum_value(r);
-    ed_line_t *src = &d->lines[y];        /* after insert: array may have moved */
-    ed_line_t *dst = &d->lines[y + 1];
-    if (tail > 0) {
-        r = line_insert_bytes(dst, 0, src->buf + at, tail);
-        if (r < 0) return mrb_fixnum_value(r);
-        src->len = at;
-        line_drop_hl(src);
-    }
-    return mrb_fixnum_value(0);
-}
-
-/* Append line y+1 to line y and drop it. Returns the character length line y
-   had before the join, which is where the cursor belongs. */
-static mrb_value ec_join_line(mrb_state *mrb, mrb_value self)
-{
-    mrb_int y;
-    mrb_get_args(mrb, "i", &y);
-    DOC_OR_RETURN(d, mrb, mrb_fixnum_value(ED_ERR_NOMEM))
-    if (!y_ok(d, y) || y + 1 >= d->count) return mrb_fixnum_value(ED_ERR_RANGE);
-    ed_line_t *a = &d->lines[y];
-    ed_line_t *b = &d->lines[y + 1];
-    int32_t prev_chars = u8_chars(a->buf, a->len);
-    if (b->len > 0) {
-        int r = line_insert_bytes(a, a->len, b->buf, b->len);
-        if (r < 0) return mrb_fixnum_value(r);
-    }
-    lines_remove(d, (int32_t)y + 1);
-    return mrb_fixnum_value(prev_chars);
-}
-
-static mrb_value ec_delete_char(mrb_state *mrb, mrb_value self)
-{
-    mrb_int y, x;
-    mrb_get_args(mrb, "ii", &y, &x);
-    DOC_OR_RETURN(d, mrb, mrb_fixnum_value(ED_ERR_NOMEM))
-    if (!y_ok(d, y)) return mrb_fixnum_value(ED_ERR_RANGE);
-    ed_line_t *l = &d->lines[y];
-    int32_t b0 = u8_byte_of(l->buf, l->len, (int32_t)x);
-    if (b0 >= l->len) return mrb_fixnum_value(0);
-    int32_t b1 = u8_byte_of(l->buf, l->len, (int32_t)x + 1);
-    line_delete_bytes(l, b0, b1 - b0);
-    return mrb_fixnum_value(0);
-}
-
 static int doc_delete_range(ed_doc_t *d, int32_t sy, int32_t sx, int32_t ey, int32_t ex)
 {
     if (sy < 0 || ey >= d->count || sy > ey) return ED_ERR_RANGE;
@@ -530,16 +328,6 @@ static int doc_delete_range(ed_doc_t *d, int32_t sy, int32_t sx, int32_t ey, int
     return 0;
 }
 
-static mrb_value ec_delete_range(mrb_state *mrb, mrb_value self)
-{
-    mrb_int sy, sx, ey, ex;
-    mrb_get_args(mrb, "iiii", &sy, &sx, &ey, &ex);
-    DOC_OR_RETURN(d, mrb, mrb_fixnum_value(ED_ERR_NOMEM))
-    int r = doc_delete_range(d, (int32_t)sy, (int32_t)sx, (int32_t)ey, (int32_t)ex);
-    return mrb_fixnum_value(r);
-}
-
-/* Insert text that may contain newlines. Returns packed [new_y, new_x]. */
 static int doc_insert_multiline(ed_doc_t *d, int32_t y, int32_t x,
                                 const char *s, int32_t n,
                                 int32_t *out_y, int32_t *out_x)
@@ -588,52 +376,235 @@ static int doc_insert_multiline(ed_doc_t *d, int32_t y, int32_t x,
     return 0;
 }
 
-static mrb_value ec_insert_multiline(mrb_state *mrb, mrb_value self)
+/* ---- packed records ---------------------------------------------------- */
+
+static uint8_t g_rec[16];   /* the only shared return buffer; one call at a time */
+
+static void put_u32(uint8_t *p, uint32_t v)
 {
-    mrb_int y, x;
-    mrb_value str;
-    mrb_get_args(mrb, "iiS", &y, &x, &str);
-    DOC_OR_RETURN(d, mrb, pos_record(mrb, 0, 0))
-    if (!y_ok(d, y)) return pos_record(mrb, 0, 0);
-    int32_t ny = (int32_t)y, nx = (int32_t)x;
-    int r = doc_insert_multiline(d, (int32_t)y, (int32_t)x,
-                                RSTRING_PTR(str), (int32_t)RSTRING_LEN(str),
-                                &ny, &nx);
-    if (r < 0) return pos_record(mrb, (uint32_t)y, (uint32_t)x);
-    return pos_record(mrb, ny, nx);
+    p[0] = (uint8_t)(v & 0xFF);
+    p[1] = (uint8_t)((v >> 8) & 0xFF);
+    p[2] = (uint8_t)((v >> 16) & 0xFF);
+    p[3] = (uint8_t)((v >> 24) & 0xFF);
+}
+
+static const char *pos_record(int32_t y, int32_t x, int *out_len)
+{
+    put_u32(&g_rec[0], (uint32_t)y);
+    put_u32(&g_rec[4], (uint32_t)x);
+    if (out_len) *out_len = 8;
+    return (const char *)g_rec;
+}
+
+static int y_ok(ed_doc_t *d, int y) { return y >= 0 && y < d->count; }
+
+/* ---- API: reading ------------------------------------------------------ */
+
+int ec_reset(int slot)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
+    int r = doc_reset(d);
+    return r < 0 ? r : 0;
+}
+
+int ec_line_count(int slot)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return 0;
+    if (d->count == 0) doc_reset(d);
+    return d->count;
+}
+
+int ec_line_length(int slot, int y)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d || !y_ok(d, y)) return 0;
+    return u8_chars(d->lines[y].buf, d->lines[y].len);
+}
+
+/* Visible slice of a line: characters [col0, col0+max_cols). Points straight
+   into the line buffer -- valid until that line changes. */
+const char *ec_render_text(int slot, int y, int col0, int max_cols, int *out_len)
+{
+    if (out_len) *out_len = 0;
+    ed_doc_t *d = doc_of(slot);
+    if (!d || !y_ok(d, y) || max_cols <= 0) return "";
+    ed_line_t *l = &d->lines[y];
+    int32_t b0 = u8_byte_of(l->buf, l->len, col0);
+    int32_t b1 = u8_byte_of(l->buf, l->len, col0 + max_cols);
+    if (b1 <= b0) return "";
+    if (out_len) *out_len = (int)(b1 - b0);
+    return l->buf + b0;
+}
+
+/* Highlight categories for the same slice, one byte per character. Empty when
+   highlighting is off for this buffer or the line has nothing to colour. */
+const char *ec_render_hl(int slot, int y, int col0, int max_cols, int *out_len)
+{
+    if (out_len) *out_len = 0;
+    ed_doc_t *d = doc_of(slot);
+    if (!d || !y_ok(d, y) || max_cols <= 0) return "";
+    int32_t nchars = 0;
+    const uint8_t *map = line_hl(d, y, &nchars);
+    if (!map || col0 >= nchars) return "";
+    int32_t n = nchars - col0;
+    if (n > max_cols) n = max_cols;
+    if (out_len) *out_len = (int)n;
+    return (const char *)(map + col0);
+}
+
+/* The character under the cursor ("" past end of line). */
+const char *ec_char_at(int slot, int y, int x, int *out_len)
+{
+    if (out_len) *out_len = 0;
+    ed_doc_t *d = doc_of(slot);
+    if (!d || !y_ok(d, y)) return "";
+    ed_line_t *l = &d->lines[y];
+    int32_t b0 = u8_byte_of(l->buf, l->len, x);
+    if (b0 >= l->len) return "";
+    int32_t b1 = u8_byte_of(l->buf, l->len, x + 1);
+    if (out_len) *out_len = (int)(b1 - b0);
+    return l->buf + b0;
+}
+
+void ec_set_hl(int slot, int on)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return;
+    on = on ? 1 : 0;
+    if (d->hl_on == on) return;
+    d->hl_on = on;
+    for (int32_t i = 0; i < d->count; i++) line_drop_hl(&d->lines[i]);
+}
+
+int ec_doc_bytesize(int slot)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return 0;
+    int32_t total = 0;
+    for (int32_t i = 0; i < d->count; i++) total += d->lines[i].len;
+    total += d->count - 1;  /* newlines between lines */
+    return total;
+}
+
+int ec_mem_used(void)
+{
+    fmrb_pool_stats_t st;
+    if (g_handle < 0) return 0;
+    if (fmrb_mem_get_stats(g_handle, &st) != 0) return 0;
+    return (int)st.used_size;
+}
+
+/* ---- API: editing ------------------------------------------------------ */
+
+int ec_insert_text(int slot, int y, int x, const char *s, int len)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
+    if (!y_ok(d, y)) return EC_ERR_RANGE;
+    ed_line_t *l = &d->lines[y];
+    int32_t at = u8_byte_of(l->buf, l->len, x);
+    int r = line_insert_bytes(l, at, s, len);
+    if (r < 0) return r;
+    return x + u8_chars(s, len);
+}
+
+int ec_split_line(int slot, int y, int x)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
+    if (!y_ok(d, y)) return EC_ERR_RANGE;
+    int32_t at = u8_byte_of(d->lines[y].buf, d->lines[y].len, x);
+    int32_t tail = d->lines[y].len - at;
+    int r = lines_insert(d, y + 1);
+    if (r < 0) return r;
+    ed_line_t *src = &d->lines[y];       /* the array may have moved */
+    ed_line_t *dst = &d->lines[y + 1];
+    if (tail > 0) {
+        r = line_insert_bytes(dst, 0, src->buf + at, tail);
+        if (r < 0) return r;
+        src->len = at;
+        line_drop_hl(src);
+    }
+    return 0;
+}
+
+/* Append line y+1 to line y and drop it. Returns the character length line y
+   had before the join, which is where the cursor belongs. */
+int ec_join_line(int slot, int y)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
+    if (!y_ok(d, y) || y + 1 >= d->count) return EC_ERR_RANGE;
+    ed_line_t *a = &d->lines[y];
+    ed_line_t *b = &d->lines[y + 1];
+    int32_t prev_chars = u8_chars(a->buf, a->len);
+    if (b->len > 0) {
+        int r = line_insert_bytes(a, a->len, b->buf, b->len);
+        if (r < 0) return r;
+    }
+    lines_remove(d, y + 1);
+    return prev_chars;
+}
+
+int ec_delete_char(int slot, int y, int x)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
+    if (!y_ok(d, y)) return EC_ERR_RANGE;
+    ed_line_t *l = &d->lines[y];
+    int32_t b0 = u8_byte_of(l->buf, l->len, x);
+    if (b0 >= l->len) return 0;
+    int32_t b1 = u8_byte_of(l->buf, l->len, x + 1);
+    line_delete_bytes(l, b0, b1 - b0);
+    return 0;
+}
+
+int ec_delete_range(int slot, int sy, int sx, int ey, int ex)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
+    return doc_delete_range(d, sy, sx, ey, ex);
+}
+
+const char *ec_insert_multiline(int slot, int y, int x, const char *s, int len,
+                                int *out_len)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d || !y_ok(d, y)) return pos_record(y, x, out_len);
+    int32_t ny = y, nx = x;
+    int r = doc_insert_multiline(d, y, x, s, len, &ny, &nx);
+    if (r < 0) return pos_record(y, x, out_len);
+    return pos_record(ny, nx, out_len);
 }
 
 /* ---- API: file I/O ----------------------------------------------------- */
 
-/* Read the file in chunks and append lines as they complete, so peak memory is
-   the document itself -- not the document plus a whole-file copy. */
-static mrb_value ec_load_file(mrb_state *mrb, mrb_value self)
+/* Read in chunks and append lines as they complete, so peak memory is the
+   document itself -- not the document plus a whole-file copy. */
+int ec_load_file(int slot, const char *path)
 {
-    mrb_value path;
-    mrb_get_args(mrb, "S", &path);
-    ed_doc_t *d = doc_of(mrb);
-    if (!d) return mrb_fixnum_value(ED_ERR_NOMEM);
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
 
     fmrb_file_t f = NULL;
-    if (fmrb_hal_file_open(RSTRING_CSTR(mrb, path), FMRB_O_RDONLY, &f) != FMRB_OK) {
-        return mrb_fixnum_value(ED_ERR_IO);
-    }
+    if (fmrb_hal_file_open(path, FMRB_O_RDONLY, &f) != FMRB_OK) return EC_ERR_IO;
     if (doc_reset(d) < 0) {
         fmrb_hal_file_close(f);
-        return mrb_fixnum_value(ED_ERR_NOMEM);
+        return EC_ERR_NOMEM;
     }
-
     char *chunk = (char *)ed_alloc(ED_IO_CHUNK);
     if (!chunk) {
         fmrb_hal_file_close(f);
-        return mrb_fixnum_value(ED_ERR_NOMEM);
+        return EC_ERR_NOMEM;
     }
 
-    int32_t cur = 0;           /* index of the line being filled */
+    int32_t cur = 0;
     int rc = 0;
     for (;;) {
         size_t got = 0;
-        if (fmrb_hal_file_read(f, chunk, ED_IO_CHUNK, &got) != FMRB_OK) { rc = ED_ERR_IO; break; }
+        if (fmrb_hal_file_read(f, chunk, ED_IO_CHUNK, &got) != FMRB_OK) { rc = EC_ERR_IO; break; }
         if (got == 0) break;
         int32_t start = 0;
         for (size_t i = 0; i < got; i++) {
@@ -660,28 +631,25 @@ static mrb_value ec_load_file(mrb_state *mrb, mrb_value self)
     fmrb_hal_file_close(f);
 
     if (rc < 0) {
-        /* Leave a usable empty buffer rather than a half-read one. */
-        doc_reset(d);
-        return mrb_fixnum_value(rc);
+        doc_reset(d);   /* leave a usable empty buffer, not a half-read one */
+        return rc;
     }
-    /* A trailing newline leaves an empty last line, which is what the Ruby
-       split("\n") did not produce -- drop it to keep line counts identical. */
+    /* A trailing newline leaves an empty last line, which the Ruby split("\n")
+       did not produce -- drop it so line counts match. */
     if (d->count > 1 && d->lines[d->count - 1].len == 0) {
         lines_remove(d, d->count - 1);
     }
-    return mrb_fixnum_value(d->count);
+    return d->count;
 }
 
-static mrb_value ec_save_file(mrb_state *mrb, mrb_value self)
+int ec_save_file(int slot, const char *path)
 {
-    mrb_value path;
-    mrb_get_args(mrb, "S", &path);
-    DOC_OR_RETURN(d, mrb, mrb_fixnum_value(ED_ERR_NOMEM))
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
 
     fmrb_file_t f = NULL;
-    if (fmrb_hal_file_open(RSTRING_CSTR(mrb, path),
-                           FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC, &f) != FMRB_OK) {
-        return mrb_fixnum_value(ED_ERR_IO);
+    if (fmrb_hal_file_open(path, FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC, &f) != FMRB_OK) {
+        return EC_ERR_IO;
     }
     int32_t written = 0;
     int rc = 0;
@@ -689,91 +657,81 @@ static mrb_value ec_save_file(mrb_state *mrb, mrb_value self)
         size_t w = 0;
         if (d->lines[i].len > 0) {
             if (fmrb_hal_file_write(f, d->lines[i].buf, (size_t)d->lines[i].len, &w) != FMRB_OK) {
-                rc = ED_ERR_IO; break;
+                rc = EC_ERR_IO; break;
             }
             written += (int32_t)w;
         }
         if (i + 1 < d->count) {
-            if (fmrb_hal_file_write(f, "\n", 1, &w) != FMRB_OK) { rc = ED_ERR_IO; break; }
+            if (fmrb_hal_file_write(f, "\n", 1, &w) != FMRB_OK) { rc = EC_ERR_IO; break; }
             written += (int32_t)w;
         }
     }
     fmrb_hal_file_close(f);
-    if (rc < 0) return mrb_fixnum_value(rc);
-    return mrb_fixnum_value(written);
+    return rc < 0 ? rc : written;
 }
 
 /* ---- API: search ------------------------------------------------------- */
 
 /* Forward search from (from_y, from_x), wrapping once. +after+ skips the
    character at the cursor (Find Next). Queries do not span lines: the search
-   dialog is a single-line field. Returns packed [found, y, x] (found in the
-   first byte of the y slot is avoided -- see below: separate 1-byte flag). */
-static mrb_value ec_find(mrb_state *mrb, mrb_value self)
+   dialog is a single-line field. */
+const char *ec_find(int slot, const char *q, int qlen, int from_y, int from_x,
+                    int after, int *out_len)
 {
-    mrb_value q;
-    mrb_int from_y, from_x;
-    mrb_bool after;
-    mrb_get_args(mrb, "Siib", &q, &from_y, &from_x, &after);
-    DOC_OR_RETURN(d, mrb, mrb_str_new(mrb, "\0\0\0\0\0\0\0\0\0", 9))
+    memset(g_rec, 0, 9);
+    if (out_len) *out_len = 9;
+    ed_doc_t *d = doc_of(slot);
+    if (!d || qlen <= 0) return (const char *)g_rec;
 
-    const char *qs = RSTRING_PTR(q);
-    int32_t ql = (int32_t)RSTRING_LEN(q);
-    uint8_t rec[9];
-    memset(rec, 0, sizeof(rec));
-    if (ql == 0) return mrb_str_new(mrb, (const char *)rec, sizeof(rec));
-
-    int32_t start_y = (int32_t)from_y;
+    int32_t start_y = from_y;
     if (start_y < 0) start_y = 0;
     if (start_y >= d->count) start_y = d->count - 1;
-    int32_t start_x = (int32_t)from_x + (after ? 1 : 0);
+    int32_t start_x = from_x + (after ? 1 : 0);
 
-    for (int32_t pass = 0; pass < 2; pass++) {
+    for (int pass = 0; pass < 2; pass++) {
         int32_t y0 = (pass == 0) ? start_y : 0;
         int32_t y1 = (pass == 0) ? d->count - 1 : start_y;
         for (int32_t y = y0; y <= y1 && y < d->count; y++) {
             ed_line_t *l = &d->lines[y];
             int32_t from_b = 0;
             if (pass == 0 && y == start_y) from_b = u8_byte_of(l->buf, l->len, start_x);
-            for (int32_t b = from_b; b + ql <= l->len; b++) {
-                if (memcmp(l->buf + b, qs, (size_t)ql) == 0) {
-                    rec[0] = 1;
-                    put_u32(&rec[1], (uint32_t)y);
-                    put_u32(&rec[5], (uint32_t)u8_chars(l->buf, b));
-                    return mrb_str_new(mrb, (const char *)rec, sizeof(rec));
+            for (int32_t b = from_b; b + qlen <= l->len; b++) {
+                if (memcmp(l->buf + b, q, (size_t)qlen) == 0) {
+                    g_rec[0] = 1;
+                    put_u32(&g_rec[1], (uint32_t)y);
+                    put_u32(&g_rec[5], (uint32_t)u8_chars(l->buf, b));
+                    return (const char *)g_rec;
                 }
             }
         }
     }
-    return mrb_str_new(mrb, (const char *)rec, sizeof(rec));
+    return (const char *)g_rec;
 }
 
 /* ---- API: clipboard ---------------------------------------------------- */
 
-static mrb_value ec_copy_range(mrb_state *mrb, mrb_value self)
+int ec_copy_range(int slot, int sy, int sx, int ey, int ex)
 {
-    mrb_int sy, sx, ey, ex;
-    mrb_get_args(mrb, "iiii", &sy, &sx, &ey, &ex);
-    DOC_OR_RETURN(d, mrb, mrb_fixnum_value(ED_ERR_NOMEM))
-    if (sy < 0 || ey >= d->count || sy > ey) return mrb_fixnum_value(ED_ERR_RANGE);
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return EC_ERR_NOMEM;
+    if (sy < 0 || ey >= d->count || sy > ey) return EC_ERR_RANGE;
 
-    /* size first, then one allocation */
     int32_t total = 0;
-    for (int32_t y = (int32_t)sy; y <= (int32_t)ey; y++) {
+    for (int32_t y = sy; y <= ey; y++) {
         ed_line_t *l = &d->lines[y];
-        int32_t b0 = (y == sy) ? u8_byte_of(l->buf, l->len, (int32_t)sx) : 0;
-        int32_t b1 = (y == ey) ? u8_byte_of(l->buf, l->len, (int32_t)ex) : l->len;
+        int32_t b0 = (y == sy) ? u8_byte_of(l->buf, l->len, sx) : 0;
+        int32_t b1 = (y == ey) ? u8_byte_of(l->buf, l->len, ex) : l->len;
         if (b1 > b0) total += b1 - b0;
-        if (y < ey) total += 1;  /* newline */
+        if (y < ey) total += 1;
     }
     char *buf = (total > 0) ? (char *)ed_alloc((size_t)total) : NULL;
-    if (total > 0 && !buf) return mrb_fixnum_value(ED_ERR_NOMEM);
+    if (total > 0 && !buf) return EC_ERR_NOMEM;
 
     int32_t at = 0;
-    for (int32_t y = (int32_t)sy; y <= (int32_t)ey; y++) {
+    for (int32_t y = sy; y <= ey; y++) {
         ed_line_t *l = &d->lines[y];
-        int32_t b0 = (y == sy) ? u8_byte_of(l->buf, l->len, (int32_t)sx) : 0;
-        int32_t b1 = (y == ey) ? u8_byte_of(l->buf, l->len, (int32_t)ex) : l->len;
+        int32_t b0 = (y == sy) ? u8_byte_of(l->buf, l->len, sx) : 0;
+        int32_t b1 = (y == ey) ? u8_byte_of(l->buf, l->len, ex) : l->len;
         if (b1 > b0) {
             memcpy(buf + at, l->buf + b0, (size_t)(b1 - b0));
             at += b1 - b0;
@@ -783,60 +741,22 @@ static mrb_value ec_copy_range(mrb_state *mrb, mrb_value self)
     ed_free(d->clip);
     d->clip = buf;
     d->clip_len = total;
-    return mrb_fixnum_value(total);
+    return total;
 }
 
-static mrb_value ec_paste_at(mrb_state *mrb, mrb_value self)
+const char *ec_paste_at(int slot, int y, int x, int *out_len)
 {
-    mrb_int y, x;
-    mrb_get_args(mrb, "ii", &y, &x);
-    DOC_OR_RETURN(d, mrb, pos_record(mrb, 0, 0))
-    if (!y_ok(d, y) || d->clip_len == 0) return pos_record(mrb, (int32_t)y, (int32_t)x);
-    int32_t ny = (int32_t)y, nx = (int32_t)x;
-    int r = doc_insert_multiline(d, (int32_t)y, (int32_t)x, d->clip, d->clip_len, &ny, &nx);
-    if (r < 0) return pos_record(mrb, (int32_t)y, (int32_t)x);
-    return pos_record(mrb, ny, nx);
+    ed_doc_t *d = doc_of(slot);
+    if (!d || !y_ok(d, y) || d->clip_len == 0) return pos_record(y, x, out_len);
+    int32_t ny = y, nx = x;
+    int r = doc_insert_multiline(d, y, x, d->clip, d->clip_len, &ny, &nx);
+    if (r < 0) return pos_record(y, x, out_len);
+    return pos_record(ny, nx, out_len);
 }
 
-static mrb_value ec_clipboard_length(mrb_state *mrb, mrb_value self)
+int ec_clipboard_length(int slot)
 {
-    DOC_OR_RETURN(d, mrb, mrb_fixnum_value(0))
-    return mrb_fixnum_value(d->clip_len);
-}
-
-/* ---- gem hooks --------------------------------------------------------- */
-
-void mrb_picoruby_fmrb_editor_core_init_impl(mrb_state *mrb)
-{
-    struct RClass *mod = mrb_define_module(mrb, "EditorCore");
-
-    mrb_define_module_function(mrb, mod, "reset",       ec_reset,       MRB_ARGS_NONE());
-    mrb_define_module_function(mrb, mod, "line_count",  ec_line_count,  MRB_ARGS_NONE());
-    mrb_define_module_function(mrb, mod, "line_length", ec_line_length, MRB_ARGS_REQ(1));
-    mrb_define_module_function(mrb, mod, "render_text", ec_render_text, MRB_ARGS_REQ(3));
-    mrb_define_module_function(mrb, mod, "render_hl",   ec_render_hl,   MRB_ARGS_REQ(3));
-    mrb_define_module_function(mrb, mod, "char_at",     ec_char_at,     MRB_ARGS_REQ(2));
-    mrb_define_module_function(mrb, mod, "hl_enabled=", ec_hl_set,      MRB_ARGS_REQ(1));
-    mrb_define_module_function(mrb, mod, "doc_bytesize", ec_doc_bytesize, MRB_ARGS_NONE());
-    mrb_define_module_function(mrb, mod, "mem_used",    ec_mem_used,    MRB_ARGS_NONE());
-
-    mrb_define_module_function(mrb, mod, "insert_text", ec_insert_text, MRB_ARGS_REQ(3));
-    mrb_define_module_function(mrb, mod, "split_line",  ec_split_line,  MRB_ARGS_REQ(2));
-    mrb_define_module_function(mrb, mod, "join_line",   ec_join_line,   MRB_ARGS_REQ(1));
-    mrb_define_module_function(mrb, mod, "delete_char", ec_delete_char, MRB_ARGS_REQ(2));
-    mrb_define_module_function(mrb, mod, "delete_range", ec_delete_range, MRB_ARGS_REQ(4));
-    mrb_define_module_function(mrb, mod, "insert_multiline", ec_insert_multiline, MRB_ARGS_REQ(3));
-
-    mrb_define_module_function(mrb, mod, "load_file",   ec_load_file,   MRB_ARGS_REQ(1));
-    mrb_define_module_function(mrb, mod, "save_file",   ec_save_file,   MRB_ARGS_REQ(1));
-    mrb_define_module_function(mrb, mod, "find",        ec_find,        MRB_ARGS_REQ(4));
-
-    mrb_define_module_function(mrb, mod, "copy_range",  ec_copy_range,  MRB_ARGS_REQ(4));
-    mrb_define_module_function(mrb, mod, "paste_at",    ec_paste_at,    MRB_ARGS_REQ(2));
-    mrb_define_module_function(mrb, mod, "clipboard_length", ec_clipboard_length, MRB_ARGS_NONE());
-}
-
-void mrb_picoruby_fmrb_editor_core_final_impl(mrb_state *mrb)
-{
-    doc_release(mrb);
+    ed_doc_t *d = doc_of(slot);
+    if (!d) return 0;
+    return d->clip_len;
 }
