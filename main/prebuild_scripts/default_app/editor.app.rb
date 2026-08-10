@@ -1422,7 +1422,12 @@ class EditorApp < FmrbApp
 
   def save_file
     unless @current_file
-      Log.warn("No file to save (use Save as)")
+      # A buffer with no name yet (the editor started empty): ask for one rather
+      # than failing silently. Ctrl-S used to do nothing at all here, so the only
+      # way to save a new file was to know about File > Save as.
+      Log.info("Save: no file name yet, asking for one")
+      @pending_file_op = :save
+      request_file_select("save")
       return
     end
 

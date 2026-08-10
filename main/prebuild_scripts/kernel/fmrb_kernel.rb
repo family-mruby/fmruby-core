@@ -66,6 +66,7 @@ class FmrbKernelImpl < FmrbKernel
     @fs_stack = []
     @fullscreen_pid = nil
     @parked_fullscreen_pid = nil  # Fullscreen app parked by Ctrl+Tab (suspended, canvas hidden)
+    @file_select_unpark = nil     # Fullscreen app parked to show the file dialog
     @pending_unpark = nil         # Parked app to bring back once ...
     @pending_unpark_after = nil   # ... this terminating app has released its slot
     @pending_unpark_tries = 0
@@ -250,6 +251,15 @@ class FmrbKernelImpl < FmrbKernel
       if @desktop_pid
         @file_select_requester = pid
         @file_select_prev_hid_target = @hid_target_pid
+        # The dialog is drawn by the desktop, which is suspended while a
+        # fullscreen app is up: the request would have been answered by an
+        # invisible dialog. Park the fullscreen app so the desktop can draw, and
+        # remember to bring it back when the selection comes in.
+        if @fullscreen_pid == pid && can_park_fullscreen?(pid)
+          Log.info("File select from fullscreen pid=#{pid}: parking for the dialog")
+          park_fullscreen
+          @file_select_unpark = pid
+        end
         # Redirect keyboard input to desktop for filename entry
         _set_hid_target(@desktop_pid)
         @hid_target_pid = @desktop_pid
@@ -274,6 +284,13 @@ class FmrbKernelImpl < FmrbKernel
         end
         @file_select_requester = nil
         @file_select_prev_hid_target = nil
+        # Back to fullscreen if the dialog interrupted it (unpark also takes the
+        # keyboard, so it has to run after the restore above).
+        if @file_select_unpark
+          back = @file_select_unpark
+          @file_select_unpark = nil
+          unpark_fullscreen if back == @parked_fullscreen_pid
+        end
       end
     when "enter_fullscreen"
       # A running app asking for the whole screen (editor F11). Same VM, so the

@@ -61,6 +61,10 @@ class SystemDesktopApp < FmrbApp
   # Reset is ESP32-only (esp_restart); on Linux the host process just exits.
   DROPDOWN_ITEMS = [
     { key: :launcher },
+    # The editor is a built-in, so it never appears in the launcher (that list is
+    # a scan of /app). Without an entry here it could only be started from the
+    # shell, which is no use with a mouse or a touch screen.
+    { key: :editor },
     { key: :file_manager },
     { key: :log_viewer },
     { key: :monitor },
@@ -1135,6 +1139,9 @@ class SystemDesktopApp < FmrbApp
     case item[:key]
     when :launcher
       open_launcher
+    when :editor
+      # Windowed: F11 (or the menu bar's Full) takes it fullscreen from there.
+      spawn_app("default/editor")
     when :file_manager
       open_file_manager
     when :log_viewer
