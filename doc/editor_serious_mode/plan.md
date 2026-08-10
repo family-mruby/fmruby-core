@@ -106,6 +106,32 @@ syntax-highlight と同じ「ただのネイティブ gem」であり、切り�
 editor=spinel) と**互換構成** (全部 mruby)。混成は「動くはずだが
 検証対象外」とする。
 
+**到達点 (2026-08-10 決定): エディタは最終的に全部 Spinel 化する**。
+それが最速のはずであり、P1 で Task.new が消えた時点で構造的な壁は無い。
+形は selective_offload の「単一ソース二重バックエンド」をアプリ丸ごとに
+適用する — エディタのソースは 1 本の Ruby のまま、.env で mruby ビルド
+(互換検証) と Spinel ビルド (標準) を切り替える。段階 4 の editor-gem は
+両ビルドから共通で使われるため、互換構成の 50KB 問題もそこで直る
+(全 Spinel 化だけで解くと mruby 版が 50KB で死んだままになる — これが
+段階 4 を飛ばさない理由)。
+
+道筋と残作業 (指示書は段階ごとに逐次発行する):
+
+```
+P3 (窓フレーム + HL 既定)          発行済み
+ -> P4: editor-gem 分割            依存なし。切り出し線は selective_offload.md
+                                   に設計済み。50KB / NoMemoryError の解決先
+ -> B-3: sp_io VFS フック          段階 6 の前提 (esp32_host_deps_sweep.md に
+                                   解法記載済み、実装未着手)。Spinel desktop の
+                                   FS 依存機能にも効く
+ -> 段階 6: エディタ全体を Spinel 化
+      - FMRB::Debug はデバッガ UI を分離して mruby 側に残す (FFI は作らない)
+      - syntax-highlight の Spinel FFI シム
+      - P1/P2 で増えた基底 API (quit_request, request_fullscreen 等) の
+        fmrb_app_base_spinel への追随
+      - エディタ全文の Spinel 書き方制約への適合掃除
+```
+
 成立する。ビルド機構 (gen_app_combined.rb の APPS 表、CMake、spawner の
 NATIVE 経路) は desktop 用が拡張前提で整備済み、gfx FFI はエディタの
 描画呼び出しを 100% カバー済み。機械的な配線は 5 箇所程度の小改修。
@@ -200,10 +226,41 @@ open_path を追加**し、kernel 自身が tick_process で再送する形に�
 
 実機の見た目・操作感・実機遅延計測はユーザ確認待ち (report/p1.md)。
 
-**P2 (instruction_p2.md) を発行済み**: GUI からの起動、窓 ⇔ 全画面の
-実行時トグル (再 spawn ではなく同一 VM。P4 の canvas を画面サイズ確保に
-変更 + カーネルに実行時 enter/exit fullscreen 経路)、および sim で
-見つかった**全画面入れ子の復帰バグ** (全画面エディタ → F5 で全画面 RPG →
-Ctrl+Q で戻るとタスクバーが出る。@fullscreen_pid 単一スロットで入れ子を
-知らないのが見立て) の修正。実行時 fullscreen 経路は多重 VM 計画の
-ギャップ 5 (窓モードの後から変更 API) への答えにもなる。
+**P2 完了 (2026-08-10、詳細は report/p2.md)**: コミット c93414a (全画面
+スタック化 + quit_request) / d89b8e4 (実行時トグル、C API
+fmrb_app_set_fullscreen を mruby/Spinel 両バインディング) / 2c06acd
+(P4 canvas を画面サイズ確保に) / 4a17e7b (デスクトップメニューに Editor +
+新規保存動線 + 全画面中のファイルダイアログ)。
+
+- 全画面 3 症状の共通根は見立てどおり単一スロット + 全画面中 spawn の
+  意味論未定義。ただし **Ctrl+Q の機序は見立てと違い**、P1 の on_event
+  変更は無関係だった (host_task 横取り → カーネルの分岐が組み込みアプリを
+  閉じられない構造)。組み込みアプリには quit_request を送りアプリが決める
+  形に (既定 stop、エディタは未保存確認)。
+- **全画面状態は @fs_stack が正** (@fullscreen_pid はミラー)。park は
+  単一スロットで、park 済みの Ctrl+Tab は cycle に落として詰みを回避。
+- 既存バグ 2 件も修正: spawn 直後 (INIT) の HID target が窓リスト判定で
+  剥奪される競合 / 終了処理中アプリの suspend でシステム停止
+  (unpark はスロット解放まで tick で待つ)。
+- Spinel / mruby 両カーネルで検証済み。**実機確認待ち: P2 全シナリオと
+  P4 canvas 変更 (sim では通らない経路。確認点 3 つは report/p2.md)**。
+- 段階 4 の宿題が積み増し: 50KB ファイルに加え
+  「全画面エディタ + 14KB 窓アプリ同時で NoMemoryError」も同根。
+
+**ハイライト方針 (ユーザ決定 2026-08-10、instruction_p3.md)**:
+サイズによる自動オフは撤廃のまま。ON/OFF 機能は維持し、**既定を
+ファイル種別で決める** (Ruby = ON、それ以外 = OFF。トークナイザが
+Ruby 専用のため)。
+
+**P3 完了 (2026-08-10、コミット 93f0ddd、report/p3.md)**:
+
+- 窓フレーム欠けの原因は見立て 2 候補のどちらでもなく **frame GfxBlock の
+  未生成** (全画面 spawn は initialize で _build_frame_block を通らない)。
+  draw_window_frame での遅延生成を基底クラスに入れ、全画面 spawn する
+  アプリ全般で解決。editor_fs に resizable / min_window_* も追加
+  (無いと窓化後の角ドラッグが弾かれていた)。
+- ハイライト既定のファイル種別化は仕様どおり実装・検証済み。副次効果:
+  Ruby 以外を開いている間は tokenize 負荷 (全面再描画時 12-16ms) を
+  踏まなくなった。行単位トークンキャッシュは実機で効く見込みの改善案
+  として report/p3.md に記録。
+- 次は P4 (editor-gem 分割)。指示書は着手時に発行する。
