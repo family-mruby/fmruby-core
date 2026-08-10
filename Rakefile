@@ -684,11 +684,18 @@ end
 namespace :build do
   desc "Linux target build (dev/test). FMRB_KERNEL_ENGINE=spinel swaps the kernel."
   task :linux => :setup do
-    # Copy Linux-specific system config
-    cp 'config/system_conf_linux.toml', 'flash/etc/system_conf.toml', verbose: true
+    # Copy Linux-specific system config. A Modern (P4) HW target gets the
+    # Modern-sized sim (426x240) so its UI can be checked here; Retro keeps
+    # 320x240. Note that graphics-audio applies a changed framebuffer size on
+    # the next boot, so the first sim run after switching targets still comes
+    # up at the previous size.
+    linux_conf = MODERN_HW_TARGETS.include?(HW_TARGET) ?
+                   'config/system_conf_linux_p4.toml' :
+                   'config/system_conf_linux.toml'
+    cp linux_conf, 'flash/etc/system_conf.toml', verbose: true
     # Factory copy, never written at runtime: the kernel boots from this when
     # /etc/system_conf.toml is unreadable (e.g. power lost mid-save).
-    cp 'config/system_conf_linux.toml', 'flash/etc/system_conf.factory.toml', verbose: true
+    cp linux_conf, 'flash/etc/system_conf.factory.toml', verbose: true
 
     # Spinel engine(s): pre-generate the C on the host (the compiler is not
     # available inside the docker build) and forward the engine(s) into the build.
