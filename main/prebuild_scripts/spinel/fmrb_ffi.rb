@@ -35,6 +35,7 @@ module FmrbSpx
   ffi_func :fmrb_spx_bring_to_front, [:int], :int
   ffi_func :fmrb_spx_update_window_pos, [:int, :int, :int], :int
   ffi_func :fmrb_spx_update_window_size, [:int, :int, :int], :int
+  ffi_func :fmrb_spx_set_app_fullscreen, [:int, :int, :int, :int], :int
   ffi_func :fmrb_spx_suspend_app, [:int], :int
   ffi_func :fmrb_spx_resume_app, [:int], :int
   ffi_func :fmrb_spx_reap_app, [:int], :int

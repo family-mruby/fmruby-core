@@ -384,6 +384,26 @@ static mrb_value mrb_kernel_update_window_size(mrb_state *mrb, mrb_value self)
     return mrb_bool_value(ret == FMRB_OK);
 }
 
+// FmrbKernel#_set_app_fullscreen(pid, on, width, height) -> bool
+// Switch a running app between windowed and fullscreen (no respawn).
+static mrb_value mrb_kernel_set_app_fullscreen(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid, width, height;
+    mrb_bool on;
+    mrb_get_args(mrb, "ibii", &pid, &on, &width, &height);
+
+    if (pid < 0 || pid > 255) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid PID");
+    }
+    if (width < 0 || width > 65535 || height < 0 || height > 65535) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid size");
+    }
+
+    fmrb_err_t ret = fmrb_app_set_fullscreen((uint8_t)pid, on ? true : false,
+                                            (uint16_t)width, (uint16_t)height);
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
 // FmrbKernel#_get_app_info(pid) -> Hash or nil
 // Returns { load_mode: Int, path: String, name: String }
 static mrb_value mrb_kernel_get_app_info(mrb_state *mrb, mrb_value self)
@@ -519,6 +539,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_bring_to_front", mrb_kernel_bring_to_front, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_update_window_position", mrb_kernel_update_window_position, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_update_window_size", mrb_kernel_update_window_size, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, handler_class, "_set_app_fullscreen", mrb_kernel_set_app_fullscreen, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, handler_class, "_get_sync_files", mrb_kernel_get_sync_files, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_sync_file", mrb_kernel_sync_file, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, handler_class, "_get_app_info", mrb_kernel_get_app_info, MRB_ARGS_REQ(1));

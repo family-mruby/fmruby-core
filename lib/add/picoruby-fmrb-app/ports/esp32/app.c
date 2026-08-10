@@ -538,16 +538,34 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                 mrb_int new_width = mrb_fixnum(width_val);
                                 mrb_int new_height = mrb_fixnum(height_val);
 
+                                // A runtime window <-> fullscreen switch carries
+                                // the new mode (fmrb_app_set_fullscreen). A plain
+                                // resize (corner drag) omits it and is windowed.
+                                mrb_value fs_val = mrb_hash_get(mrb, data_hash,
+                                                                mrb_str_new_cstr(mrb, "fullscreen"));
+                                int is_fullscreen = mrb_test(fs_val) ? 1 : 0;
+                                if (!mrb_nil_p(fs_val)) {
+                                    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@fullscreen"),
+                                               mrb_bool_value(is_fullscreen));
+                                }
+
                                 // Update Ruby instance variables
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_width"), mrb_fixnum_value(new_width));
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@window_height"), mrb_fixnum_value(new_height));
 
-                                // Update user area dimensions
-                                mrb_int user_area_width = new_width - 2;
-                                mrb_int user_area_height = new_height - 12;
-                                mrb_int user_area_x1 = new_width - 1;
-                                mrb_int user_area_y1 = new_height - 1;
+                                // Update user area dimensions. Fullscreen has no
+                                // title bar and no border, so it owns the lot --
+                                // same split as FmrbApp#_init.
+                                // 11 = FmrbApp::TITLE_BAR_H
+                                mrb_int user_area_x0 = is_fullscreen ? 0 : 1;
+                                mrb_int user_area_y0 = is_fullscreen ? 0 : 11;
+                                mrb_int user_area_width  = is_fullscreen ? new_width  : new_width - 2;
+                                mrb_int user_area_height = is_fullscreen ? new_height : new_height - 12;
+                                mrb_int user_area_x1 = is_fullscreen ? new_width  : new_width - 1;
+                                mrb_int user_area_y1 = is_fullscreen ? new_height : new_height - 1;
 
+                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_x0"), mrb_fixnum_value(user_area_x0));
+                                mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_y0"), mrb_fixnum_value(user_area_y0));
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_width"), mrb_fixnum_value(user_area_width));
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_height"), mrb_fixnum_value(user_area_height));
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_x1"), mrb_fixnum_value(user_area_x1));

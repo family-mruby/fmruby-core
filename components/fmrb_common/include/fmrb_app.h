@@ -286,6 +286,21 @@ fmrb_err_t fmrb_app_bring_to_front(uint8_t pid);
 fmrb_err_t fmrb_app_update_window_position(uint8_t pid, uint16_t x, uint16_t y);
 fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t height);
 
+/**
+ * @brief Switch a running app between windowed and fullscreen.
+ *
+ * Updates the context flags and window geometry, retargets the canvas's active
+ * area and tells the app (a "resize" control message carrying the new mode), all
+ * without respawning it. Does not require a resizable window.
+ *
+ * @param pid    App slot id
+ * @param on     true = fullscreen, false = windowed
+ * @param width  New window width (display size when going fullscreen)
+ * @param height New window height
+ * @return FMRB_OK, or an error when the slot is free/headless
+ */
+fmrb_err_t fmrb_app_set_fullscreen(uint8_t pid, bool on, uint16_t width, uint16_t height);
+
 // Last error info (stored in PSRAM static buffer)
 const char* fmrb_app_get_last_error_name(void);
 const char* fmrb_app_get_last_error_msg(void);

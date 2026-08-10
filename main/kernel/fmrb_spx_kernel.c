@@ -162,6 +162,15 @@ int fmrb_spx_update_window_size(int pid, int w, int h)
     return fmrb_app_update_window_size((uint8_t)pid, (uint16_t)w, (uint16_t)h) == FMRB_OK ? 1 : 0;
 }
 
+int fmrb_spx_set_app_fullscreen(int pid, int on, int w, int h)
+{
+    if (pid < 0 || pid > 255 || w < 0 || w > 65535 || h < 0 || h > 65535) {
+        return FMRB_SPX_ERR_RANGE;
+    }
+    return fmrb_app_set_fullscreen((uint8_t)pid, on != 0,
+                                   (uint16_t)w, (uint16_t)h) == FMRB_OK ? 1 : 0;
+}
+
 int fmrb_spx_suspend_app(int pid)
 {
     return fmrb_app_suspend((int32_t)pid) ? 0 : FMRB_SPX_ERR;

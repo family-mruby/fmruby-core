@@ -296,6 +296,16 @@ class EditorApp < FmrbApp
     @menu_debug_x = x
     # Trailing "*" marks an active debug session.
     draw_menu_item(x, y, "D", @dbg_active ? "ebug*" : "ebug ")
+    x += 7 * CHAR_W  # past "Debug*" (6 chars) + 1-char gap
+    # Window <-> fullscreen toggle (F11). No hotkey letter: "F" is taken by the
+    # File menu, and this one is a direct toggle rather than a dropdown.
+    # Dropped when the window is too narrow for it -- the key still works.
+    if x + 5 * CHAR_W <= @user_area_x0 + @user_area_width
+      @menu_full_x = x
+      @gfx.draw_text(x, y, @fullscreen ? "Full*" : "Full ", MENU_TEXT, MENU_BG)
+    else
+      @menu_full_x = nil
+    end
   end
 
   def draw_menu_item(x, y, key_char, rest)
@@ -1876,6 +1886,10 @@ class EditorApp < FmrbApp
           open_menu(:debug)
           return
         end
+        if @menu_full_x && ev[:x] >= @menu_full_x && ev[:x] < @menu_full_x + 4 * CHAR_W
+          toggle_fullscreen
+          return
+        end
       end
     end
 
@@ -1928,6 +1942,13 @@ class EditorApp < FmrbApp
       # which is the usual meaning of that key on both sides.
       if scancode == SC_F5 && !@dbg_active
         run_current_file
+        return
+      end
+      # F11 switches between window and fullscreen without restarting the app,
+      # so the buffer stays. During a debug session F11 keeps its step meaning
+      # (handled below).
+      if scancode == SC_F11 && !@dbg_active
+        toggle_fullscreen
         return
       end
       if @dbg_active

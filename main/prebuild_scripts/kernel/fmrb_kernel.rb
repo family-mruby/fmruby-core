@@ -275,6 +275,12 @@ class FmrbKernelImpl < FmrbKernel
         @file_select_requester = nil
         @file_select_prev_hid_target = nil
       end
+    when "enter_fullscreen"
+      # A running app asking for the whole screen (editor F11). Same VM, so the
+      # buffer survives; see request_enter_fullscreen.
+      request_enter_fullscreen(pid)
+    when "exit_fullscreen"
+      request_exit_fullscreen(pid)
     when "overlay_state"
       @desktop_overlay_active = data["active"] || false
       @desktop_overlay_rect = {

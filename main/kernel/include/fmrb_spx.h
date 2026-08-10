@@ -110,6 +110,8 @@ int fmrb_spx_set_focused_window(int win_id); /**< 0 ok, negative error */
 int fmrb_spx_bring_to_front(int pid);        /**< 1 ok, 0 no, negative error */
 int fmrb_spx_update_window_pos(int pid, int x, int y);   /**< 1/0/neg */
 int fmrb_spx_update_window_size(int pid, int w, int h);  /**< 1/0/neg */
+/** Switch a running app between windowed and fullscreen (no respawn). 1/0/neg */
+int fmrb_spx_set_app_fullscreen(int pid, int on, int w, int h);
 int fmrb_spx_suspend_app(int pid);           /**< 0 ok, negative error */
 int fmrb_spx_resume_app(int pid);            /**< 0 ok, negative error */
 int fmrb_spx_reap_app(int pid);              /**< 0 ok, negative error */

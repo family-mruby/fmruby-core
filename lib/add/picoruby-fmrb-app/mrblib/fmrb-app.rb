@@ -480,6 +480,19 @@ class FmrbApp
       { "cmd" => "run", "path" => path, "prev_pid" => prev_pid })
   end
 
+  # Ask the kernel to switch this app between windowed and fullscreen. The VM
+  # keeps running, so app state survives; the answer arrives as on_resize with
+  # @fullscreen and the user area already updated.
+  def request_fullscreen(on)
+    cmd = on ? "enter_fullscreen" : "exit_fullscreen"
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      { "cmd" => cmd })
+  end
+
+  def toggle_fullscreen
+    request_fullscreen(!@fullscreen)
+  end
+
   def send_message(dest_pid, msg_type, data)
     # Auto-serialize all data to msgpack binary
     binary_data = MessagePack.pack(data)

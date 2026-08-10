@@ -147,6 +147,11 @@ class FmrbKernel
   def _bring_to_front(pid);           FmrbSpx.fmrb_spx_bring_to_front(pid) == 1; end
   def _update_window_position(pid, x, y); FmrbSpx.fmrb_spx_update_window_pos(pid, x, y) == 1; end
   def _update_window_size(pid, w, h);     FmrbSpx.fmrb_spx_update_window_size(pid, w, h) == 1; end
+  # Runtime window <-> fullscreen switch. Spinel has no bool FFI arg, so the flag
+  # crosses as an int.
+  def _set_app_fullscreen(pid, on, w, h)
+    FmrbSpx.fmrb_spx_set_app_fullscreen(pid, on ? 1 : 0, w, h) == 1
+  end
 
   # ---- lifecycle ----
   def _suspend_app(pid); FmrbSpx.fmrb_spx_suspend_app(pid) == 0; end

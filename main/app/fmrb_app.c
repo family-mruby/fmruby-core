@@ -2636,3 +2636,109 @@ fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t hei
     return FMRB_OK;
 }
 
+/**
+ * Switch a running app between windowed and fullscreen.
+ *
+ * The window mode used to be fixed at spawn time, so "open the editor in a
+ * window and press F11" meant respawning it and losing the buffer. This keeps
+ * the same VM: only the context flags, the window geometry and the canvas's
+ * active area change, and the app is told so it can re-derive its layout.
+ *
+ * Unlike fmrb_app_update_window_size this does not require a resizable window --
+ * going fullscreen is not the user dragging a corner, and an app that is
+ * fullscreen-only in its window mode still has to be able to come back.
+ *
+ * fullscreen_switchable follows the flag: an app that asked for fullscreen at
+ * runtime can always be asked to leave it again (Ctrl+Tab park).
+ */
+fmrb_err_t fmrb_app_set_fullscreen(uint8_t pid, bool on, uint16_t width, uint16_t height)
+{
+    if (pid >= FMRB_MAX_APPS) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+
+    fmrb_app_task_context_t* ctx = &g_ctx_pool[pid];
+    if (ctx->state != PROC_STATE_RUNNING && ctx->state != PROC_STATE_SUSPENDED) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_STATE;
+    }
+    if (ctx->headless) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    ctx->fullscreen = on;
+    ctx->fullscreen_switchable = on;
+    ctx->window_width = width;
+    ctx->window_height = height;
+    if (on) {
+        ctx->window_pos_x = 0;
+        ctx->window_pos_y = 0;
+    }
+
+    fmrb_link_graphics_update_window_t update_cmd = {
+        .canvas_id = ctx->canvas_id,
+        .x = (int32_t)ctx->window_pos_x,
+        .y = (int32_t)ctx->window_pos_y,
+        .width = (int32_t)width,
+        .height = (int32_t)height
+    };
+    const char* name = ctx->app_name;
+
+    fmrb_err_t ret = fmrb_transport_send(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_UPDATE_WINDOW,
+        (const uint8_t*)&update_cmd,
+        sizeof(update_cmd),
+        FMRB_TRANSPORT_TIMEOUT_DEFAULT
+    );
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send UPDATE_WINDOW command to Host: %d", ret);
+    }
+
+    // msgpack {"cmd":"resize","width":w,"height":h,"fullscreen":bool}. The app's
+    // message loop keys the user-area geometry off that last field, so the frame
+    // and the title bar appear and disappear with the mode.
+    fmrb_msg_t resize_msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = PROC_ID_KERNEL,
+        .size = 0
+    };
+    uint8_t* data = resize_msg.data;
+    size_t pos = 0;
+    data[pos++] = 0x84;  // fixmap 4
+    data[pos++] = 0xA3; data[pos++] = 'c'; data[pos++] = 'm'; data[pos++] = 'd';
+    data[pos++] = 0xA6;
+    data[pos++] = 'r'; data[pos++] = 'e'; data[pos++] = 's';
+    data[pos++] = 'i'; data[pos++] = 'z'; data[pos++] = 'e';
+    data[pos++] = 0xA5;
+    data[pos++] = 'w'; data[pos++] = 'i'; data[pos++] = 'd';
+    data[pos++] = 't'; data[pos++] = 'h';
+    data[pos++] = 0xCD;
+    data[pos++] = (width >> 8) & 0xFF;
+    data[pos++] = width & 0xFF;
+    data[pos++] = 0xA6;
+    data[pos++] = 'h'; data[pos++] = 'e'; data[pos++] = 'i';
+    data[pos++] = 'g'; data[pos++] = 'h'; data[pos++] = 't';
+    data[pos++] = 0xCD;
+    data[pos++] = (height >> 8) & 0xFF;
+    data[pos++] = height & 0xFF;
+    data[pos++] = 0xAA;  // fixstr 10
+    memcpy(&data[pos], "fullscreen", 10); pos += 10;
+    data[pos++] = on ? 0xC3 : 0xC2;  // true / false
+    resize_msg.size = pos;
+
+    ret = fmrb_msg_send(pid, &resize_msg, 100);
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send fullscreen resize to app PID %d: %d", pid, ret);
+    }
+
+    FMRB_LOGI(TAG, "Window '%s' (PID %d) %s at %dx%d",
+              name, pid, on ? "fullscreen" : "windowed", width, height);
+
+    fmrb_semaphore_give(g_ctx_lock);
+    return FMRB_OK;
+}
+

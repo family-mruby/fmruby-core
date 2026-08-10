@@ -167,6 +167,66 @@ module AppLifecycleMixin
     @suspended_pids = kept
   end
 
+  # ---- Runtime window <-> fullscreen switch ----
+  #
+  # Requested by a running app ({"cmd":"enter_fullscreen"} / "exit_fullscreen"),
+  # so the editor can go fullscreen with F11 without being respawned -- the
+  # buffer, cursor and scroll position stay because the VM never restarts.
+  # The windowed geometry is remembered here so leaving fullscreen puts the
+  # window back where it was.
+
+  # Size a fullscreen window gets. The desktop's own window is created as
+  # display size minus margin (fmrb_app_init, APP_TYPE_SYSTEM_APP), so it is the
+  # display size the spawner would use -- no extra kernel API needed for it.
+  def fullscreen_size
+    update_window_list
+    @window_list.each do |win|
+      return [win[:width], win[:height]] if win[:app_name] == "system_desktop"
+    end
+    nil
+  end
+
+  def request_enter_fullscreen(pid)
+    return if @fullscreen_pid == pid
+    win = find_window_by_pid(pid)
+    unless win
+      update_window_list
+      win = find_window_by_pid(pid)
+    end
+    if win
+      @window_geometry = {} unless @window_geometry
+      @window_geometry[pid] = { x: win[:x], y: win[:y], w: win[:width], h: win[:height] }
+    end
+    size = fullscreen_size
+    unless size
+      Log.warn("Runtime fullscreen refused: display size unknown")
+      return
+    end
+    w = size[0]
+    h = size[1]
+    Log.info("Runtime fullscreen: PID #{pid} -> #{w}x#{h}")
+    return unless _set_app_fullscreen(pid, true, w, h)
+    enter_fullscreen(pid)
+    _set_hid_target(pid)
+    @hid_target_pid = pid
+  end
+
+  def request_exit_fullscreen(pid)
+    return unless @fullscreen_pid == pid
+    geom = @window_geometry ? @window_geometry[pid] : nil
+    w = geom ? geom[:w] : 240
+    h = geom ? geom[:h] : 200
+    Log.info("Runtime windowed: PID #{pid} -> #{w}x#{h}")
+    return unless _set_app_fullscreen(pid, false, w, h)
+    _update_window_position(pid, geom ? geom[:x] : 5, geom ? geom[:y] : 15)
+    # Give back whatever this app's frame had covered (desktop, or an outer
+    # fullscreen app) and hand it the keyboard as a normal window.
+    pop_fullscreen_frames(pid)
+    _bring_to_front(pid)
+    _set_hid_target(pid)
+    @hid_target_pid = pid
+  end
+
   # Ask the innermost fullscreen app to close. Restoring what was underneath is
   # left to cleanup_terminated_app, which runs on the app's exit notification --
   # doing it here as well used to declare "not fullscreen any more" while the app
