@@ -96,6 +96,8 @@ FreeRTOS タスク + 専用メモリプール) を最大限使い、以下の 2 
    (実行時の窓 ⇔ 全画面切替、mruby/Spinel 両バインディング) と
    カーネルの全画面スタック管理が入った (doc/editor_serious_mode/report/p2.md)
 6. spawn 実行属性が .toml サイドカー必須 (ヘルパー量産の足かせ)
+   → **解消 (2026-08-10, M1 T1)**: `.rb` 先頭のコメントフェンスで同じ属性を
+   書ける (3.2)。shell の `run` も追随済み。ランチャー表示は .toml 限定のまま
 7. Request/Response の仕組みが無い (応答の対応付けと待機)
 
 ## 3. 設計方針
@@ -108,13 +110,16 @@ FreeRTOS タスク + 専用メモリプール) を最大限使い、以下の 2 
 
 役割分担: /home = セーブデータ等の永続、/tmp = VM 間受け渡しと一時ファイル。
 
-実装案:
-- esp32: PSRAM を後ろ盾にした小さな esp_vfs ドライバ (数百行) を登録し、
-  fmrb_hal_file_esp32.c の s_path_aliases に /tmp を 1 行追加する。
-  Ruby 側は既存 File API がそのまま使え、新 API は不要。
-- posix (Linux sim): fmrb_hal_file_posix がホストの実ファイルに落ちるため
-  ほぼ無改修 (ホスト側の一時ディレクトリに割り当てる)。
-- サイズはターゲット別: P4 は数 MB、S3 は 256-512KB 程度から。
+**実装済み (2026-08-10, M1 T3。詳細は report/m1.md)**:
+- esp32: POOL_ID_TMPFS (512KB) を裏に持つ RAM FS を esp_vfs として /tmp に
+  登録。fmrb_hal_file_esp32.c は別名 1 行 + `/` の仮想 children に tmp +
+  init 呼び出しの 3 行のみ。Ruby 側は既存 File / Dir API のまま。
+- posix (Linux sim): flash/tmp に割り当て、起動時に空にする。同じ容量上限を
+  課すので sim でも満杯を再現できる。
+- 配る容量は 448KB (プール 512KB から確保ヘッダと伸長余白を引いた分)。
+  超過は書き込みエラーになり firmware は落ちない。
+- **v1 の /tmp は平ら** (サブディレクトリ不可)。posix 側も同じ拒否をするので
+  sim と実機で挙動が食い違わない。
 
 副産物: /tmp に生成した .rb / .mrb を置いて require できる
 (オンデバイス .mrb キャッシュや実行時コード生成の置き場)。
@@ -147,8 +152,16 @@ FreeRTOS タスク + 専用メモリプール) を最大限使い、以下の 2 
   起動時スキャンが全 .rb を開く事態を避け、起動時間 (7.24s) を守る。
   ヘルパーはランチャーに出さない前提なのでこの線引きで困らない。
 
-実装点: fmrb_app_spawner.c のサイドカー解析に「.toml 不在時は .rb 先頭の
-フェンスを読む」後段を足す。
+**実装済み (2026-08-10, M1 T1。詳細は report/m1.md)**: fmrb_app_spawner.c の
+`load_inline_toml()` が先頭 512 バイトからフェンスを抜き、行頭 `# ` を剥いで
+既存の `toml_parse()` に渡す。属性反映のコードは .toml と共用。壊れたフェンスは
+警告 + 既定属性で起動する。shell の `run` も、フェンスが開いていれば sandbox
+実行ではなく spawn する。
+
+**確定した事実**: `.toml` を持たない `.rb` はランチャーに出ない。起動時スキャンが
+`.toml` を列挙する作りだからで、上の「表示系は .toml 限定」方針と整合するため
+そのままにした。フェンスだけのアプリの入口は shell の `run` / ファイル管理 /
+エディタの F5。
 
 ### 3.3 アプリ間通信の拡張: Request/Response
 
@@ -237,14 +250,19 @@ after_spawn の _set_hid_target を headless (background) アプリでは
 | 段階 | 内容 | 依存 |
 |---|---|---|
 | 1 | オフロード最小デモ (Linux sim): メイン常駐 + headless ワーカー 1 本の往復。未踏経路 (background モード、HID の行方、終了検知) の穴出し | なし |
-| 2 | /tmp RAM FS (esp_vfs ドライバ + 別名 1 行 + posix 側) | なし |
-| 3 | コメント埋め込み toml (spawner の後段追加) | なし |
+| 2 | /tmp RAM FS (esp_vfs ドライバ + 別名 1 行 + posix 側) | **完了 (M1 T3)** |
+| 3 | コメント埋め込み toml (spawner の後段追加) | **完了 (M1 T1)** |
 | 4 | Request/Response ライブラリ (FmrbApp mrblib) + 終了通知の小改修 | 2 (大データはパス渡し) |
 | 5 | RPG のシーン分割試作 (形態 A の最小デモ) | 2, 4 |
 | 6 | .mrb オンデバイスキャッシュ (Sandbox に dump 口) / スロット増設 (P4) | 必要になってから |
 
 段階 1 は改修ゼロで始められる (HID は focus_app で取り返す回避策、結果は
 littlefs 経由で仮置き)。段階 2-4 が本命の基盤整備。
+
+**M1 完了 (2026-08-10、report/m1.md)**: 段階 3 (コメント toml) と段階 2
+(/tmp) が入り、エディタの File > Template で 3 種の雛形を挿入できる。
+worker 雛形が段階 1 の入口を兼ねており、そこで踏んだ穴 (spawn 時の HID 奪取、
+ユーザアプリ 3 枠の窮屈さ) は report/m1.md の引継ぎに書いた。
 
 **M1 発行 (2026-08-10、instruction_m1.md)**: 使いやすさ優先のユーザ判断で
 **段階 3 (コメント toml) と段階 2 (/tmp RAM FS) を先行実装**する。
