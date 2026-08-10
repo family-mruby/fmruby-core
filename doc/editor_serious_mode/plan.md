@@ -96,6 +96,16 @@ Modern の UI 確認を sim で行えるようにする。
 
 ## 6. Spinel 化 (selective_offload の既定路線に接続)
 
+**エンジン方針 (2026-08-10 決定)**: Spinel カーネルが今後の標準、mruby
+カーネルは互換性検証の位置づけ。どちらでも動く状態を維持する。
+エディタも段階 6 で FMRB_APP_ENGINE_EDITOR による .env 切り替えにする
+(A/B 計測・切り分け・退避のため)。ただし段階 4 の editor-gem は
+syntax-highlight と同じ「ただのネイティブ gem」であり、切り替えは
+作らない (純 Ruby 版文書モデルの並走維持はしない)。
+検証対象の構成は 2 点に絞る: **標準構成** (kernel=spinel, desktop=mruby,
+editor=spinel) と**互換構成** (全部 mruby)。混成は「動くはずだが
+検証対象外」とする。
+
 成立する。ビルド機構 (gen_app_combined.rb の APPS 表、CMake、spawner の
 NATIVE 経路) は desktop 用が拡張前提で整備済み、gfx FFI はエディタの
 描画呼び出しを 100% カバー済み。機械的な配線は 5 箇所程度の小改修。
@@ -147,14 +157,53 @@ NATIVE 経路) は desktop 用が拡張前提で整備済み、gfx FFI はエデ
 
 ## 8. 段階計画
 
-| 段階 | 内容 | 依存 |
-|---|---|---|
-| 1 | 全画面フラグ + large_memory (段階 A)。同時に render_frame 計測と hid_lat/GC 計測の整備 | なし |
-| 2 | Linux sim の .env 連動解像度 (5 章)。まず toml 手書き 426x240 で SDL 追随を実測してから Rakefile 分岐を入れる | なし |
-| 3 | 差分描画 + 全文 join 撤廃 (7 章の 1)。前後で計測 | 1 の計測 |
-| 4 | editor-gem 分割 (文書モデルを Spinel へ)。HL_AUTO_LIMIT 撤廃を判定 | 3 |
-| 5 | 640x360 全体切替 (段階 B)。sim 側 (2) を 640x360 に更新 | 1 の計測 |
-| 6 | エディタ本体の Spinel 化 (Task 再構成、sp_io VFS 解消後) | 4 |
+| 段階 | 内容 | 依存 | 状態 |
+|---|---|---|---|
+| 1 | 全画面フラグ + 計測整備 | なし | **完了** (9 章) |
+| 2 | Linux sim の .env 連動解像度 (5 章) | なし | **完了** |
+| 3 | 差分描画 + 全文 join 撤廃 + 入力経路の直結化 | 1 の計測 | **完了** |
+| 4 | editor-gem 分割 (文書モデルを Spinel へ) | 3 | 未着手。**50KB 級ファイルで VM 死 (9 章) の解決先** |
+| 5 | 640x360 全体切替 (段階 B)。sim 側 (2) を 640x360 に更新 | 1 の計測 | 未着手 |
+| 6 | エディタ本体の Spinel 化 (sp_io VFS 解消後。Task 再構成は P1 で解消済み)。**FMRB_APP_ENGINE_EDITOR で .env 切り替え可能にする** | 4 | 未着手 |
 
 段階 1-3 は Spinel 無関係に効く。4 以降は selective_offload.md の
 決定済み路線の実行にあたる。
+
+## 9. P1 実装結果 (2026-08-10、詳細は report/p1.md)
+
+段階 1-3 を実装済み (コミット 9ab9c80 / 06139e6 / 17f3eef / fe4336c)。
+目標 (p99 < 33ms、25ms 超ゼロ) は全条件達成:
+全画面/小ファイル 29.1ms → 2.50ms (mean)、10.9KB HL on は
+「エディタ停止」→ 2.29ms。**HL_AUTO_LIMIT_BYTES は撤廃済み**
+(20.7KB でも mean 1.8ms)。
+
+**計測が事前の想定を 2 つ覆した**:
+
+- 遅延の主因は描画でも GC でもなく**ポーリング 2 段**だった
+  (@input_buffer + Task の sleep 33ms と on_update 33ms の合計。
+  全面再描画自体は 2.0-2.7ms)。差分描画だけでは届かないため、
+  キーを on_event で直接処理する形に入力経路を変更した。
+  7 章の GC 懸念は現状のファイルサイズでは顕在化していない。
+- 全画面時の窓サイズを display から入れる分岐は SYSTEM_APP 限定で、
+  USER_APP は default_user_app_* に落ちる → spawn_builtin_app 側で対応。
+
+付随修正: 全画面アプリの上端 13px にクリックが届かない問題
+(kernel が無条件にデスクトップへ回していた) / 検索ダイアログの Enter が
+sim で効かない問題 (keycode → scancode)。
+shell → editor のファイル引き渡しは全画面では原理的に動かない
+(spawn 直後に要求元が suspend される) ため、**kernel の spawn 要求に
+open_path を追加**し、kernel 自身が tick_process で再送する形にした。
+
+**既知の未解決**: 50KB 級のファイルを開くとエディタ VM が例外ログ無しで
+消える (20.7KB は正常)。ハイライトではなく文書モデルが 512KB プールを
+使い切るためで、段階 4 (editor-gem 分割) で解く。
+
+実機の見た目・操作感・実機遅延計測はユーザ確認待ち (report/p1.md)。
+
+**P2 (instruction_p2.md) を発行済み**: GUI からの起動、窓 ⇔ 全画面の
+実行時トグル (再 spawn ではなく同一 VM。P4 の canvas を画面サイズ確保に
+変更 + カーネルに実行時 enter/exit fullscreen 経路)、および sim で
+見つかった**全画面入れ子の復帰バグ** (全画面エディタ → F5 で全画面 RPG →
+Ctrl+Q で戻るとタスクバーが出る。@fullscreen_pid 単一スロットで入れ子を
+知らないのが見立て) の修正。実行時 fullscreen 経路は多重 VM 計画の
+ギャップ 5 (窓モードの後から変更 API) への答えにもなる。
