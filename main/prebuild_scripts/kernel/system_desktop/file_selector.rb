@@ -22,6 +22,10 @@ module FileSelectorMixin
     @file_selector_scroll = 0
     @file_selector_selected = -1
     @file_selector_filename = ""
+    # Double-click state, same shape as the launcher's: one click selects, two
+    # activate. Measured in on_update ticks, not wall clock.
+    @fsel_click_idx = -1
+    @fsel_click_time = 0
     close_launcher
     close_dropdown
     scan_file_selector_dir
@@ -218,14 +222,34 @@ module FileSelectorMixin
     if y >= list_y && y < list_y + max_visible * FSEL_ITEM_H
       idx = @file_selector_scroll + (y - list_y) / FSEL_ITEM_H
       if idx >= 0 && idx < @file_selector_entries.size
+        # One click selects, two activate -- the launcher's rule. Navigating on
+        # a single click meant a double-click (the reflex, and what the launcher
+        # trains) entered a directory and then immediately acted on whatever row
+        # sat under the pointer in the new listing, usually "..".
+        now = @counter
+        double = (idx == @fsel_click_idx) && ((now - @fsel_click_time) < 5)
+        @fsel_click_idx = idx
+        @fsel_click_time = now
+
         entry = @file_selector_entries[idx]
+        if @file_selector_selected != idx
+          @file_selector_selected = idx
+          # In save mode the name field follows the selection, so a file can be
+          # overwritten without retyping its name.
+          @file_selector_filename = entry[:name] unless entry[:is_dir]
+          draw_foreground
+        end
+        return unless double
+
         if entry[:is_dir]
           # Navigate into directory
           if entry[:name] == ".."
-            # Go up
+            # Go up. join can come out empty at the first level ("/app" ->
+            # ["", "app"] -> [""]), which is not a path the resolver knows.
             parts = @file_selector_dir.split("/")
             parts.pop
-            @file_selector_dir = parts.empty? ? "/" : parts.join("/")
+            up = parts.join("/")
+            @file_selector_dir = up.empty? ? "/" : up
           else
             if @file_selector_dir == "/"
               @file_selector_dir = "/#{entry[:name]}"
@@ -234,21 +258,18 @@ module FileSelectorMixin
             end
           end
           scan_file_selector_dir
+          # A fresh listing means the remembered row is meaningless.
+          @fsel_click_idx = -1
           draw_foreground
-        else
-          if @file_selector_mode == "save"
-            # In save mode, clicking a file sets the filename
-            @file_selector_filename = entry[:name]
-            draw_foreground
-          else
-            # In open mode, select the file
-            path = if @file_selector_dir == "/"
-                     "/#{entry[:name]}"
-                   else
-                     "#{@file_selector_dir}/#{entry[:name]}"
-                   end
-            close_file_selector(path)
-          end
+        elsif @file_selector_mode != "save"
+          # In open mode a file is the answer; in save mode the click above
+          # already put its name in the field.
+          path = if @file_selector_dir == "/"
+                   "/#{entry[:name]}"
+                 else
+                   "#{@file_selector_dir}/#{entry[:name]}"
+                 end
+          close_file_selector(path)
         end
       end
     end

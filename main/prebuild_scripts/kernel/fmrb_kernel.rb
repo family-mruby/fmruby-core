@@ -223,6 +223,29 @@ class FmrbKernelImpl < FmrbKernel
       # call's hoisted temporaries inside the if condition when a call sits
       # under a unary "!", which does not compile (ruby_writing_constraints B).
       run_allowed = run_path_allowed?(run_path)
+
+      # A fullscreen requester has suspended everything else, the instance we
+      # are about to stop included -- and a suspended app never reads its queue,
+      # so the "stop" would sit there forever: no exit, no reload, the editor
+      # left saying "Running" from behind its own fullscreen. Park the requester
+      # first. That resumes what its frame covered (the desktop and the old
+      # instance, which can now process the stop) and is where a Run from
+      # fullscreen wants to end up anyway: desktop back, keyboard on the app
+      # that starts. The editor comes back to fullscreen when that app closes,
+      # the same way it does for a Run with nothing to stop.
+      if run_allowed && prev_stoppable && @fullscreen_pid == pid
+        parkable = can_park_fullscreen?(pid)
+        if parkable
+          Log.info("Run from fullscreen pid=#{pid}: parking so PID #{prev_pid} can stop")
+          park_fullscreen
+        else
+          # Nothing can wake the old instance, so stopping it would hang the
+          # Run. Leave it alone and let the spawn below report the real problem.
+          Log.warn("Run from fullscreen pid=#{pid}: cannot park, leaving PID #{prev_pid} running")
+          prev_stoppable = false
+        end
+      end
+
       if !run_allowed
         Log.warn("Run request from pid=#{pid} rejected: #{run_path}")
         reply_run_result(pid, run_path, nil)
