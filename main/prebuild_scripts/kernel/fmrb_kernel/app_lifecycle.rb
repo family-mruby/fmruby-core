@@ -139,6 +139,15 @@ module AppLifecycleMixin
 
     @fs_stack << { pid: pid, suspended: suspended }
     @fullscreen_pid = pid
+
+    # Taking the screen means taking the top of the stacking order too.
+    # Suspending the other apps does not hide their canvases, so an app that
+    # was in front stayed in front: coming back from a park (Ctrl+Tab after
+    # F5) drew the fullscreen editor *underneath* the window it had started.
+    # Everything that takes the screen -- spawn, unpark, a nested frame --
+    # comes through here, which is why the call belongs here and not at each
+    # of those call sites.
+    _bring_to_front(pid)
   end
 
   # Pop the frame belonging to +pid+ (and any frame above it, which can only be
@@ -365,6 +374,25 @@ module AppLifecycleMixin
       mark_window_list_dirty
       Log.info("Ctrl+Tab: focus -> PID #{next_pid}")
     end
+  end
+
+  # Tell the desktop who holds the keyboard, so the taskbar can mark it.
+  #
+  # Reported from the tick rather than from each place that moves focus: focus
+  # moves from a spawn, Ctrl+Tab, a park or unpark, a click on a window, and an
+  # app exiting -- a dozen call sites, and the marker was wrong whenever one of
+  # them was missed. It used to be set only by a click on the taskbar itself, so
+  # the white frame was absent most of the time. One comparison here cannot miss
+  # a case, and a focus change is a user action, so this sends nothing while the
+  # machine sits still.
+  def tick_focus_notify
+    return unless @desktop_pid
+    return if @hid_target_pid == @notified_focus_pid
+    data = MessagePack.pack({ "cmd" => "focus_changed", "pid" => @hid_target_pid })
+    sent = _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+    # Record only what actually went out: a full desktop queue would otherwise
+    # lose this move for good, and the next tick is a cheap place to retry.
+    @notified_focus_pid = @hid_target_pid if sent
   end
 
   def app_suspended?(pid)
@@ -603,6 +631,9 @@ module AppLifecycleMixin
 
     # Bring a parked fullscreen app back once the windowed app it ran is gone.
     flush_pending_unpark
+
+    # Keep the taskbar's focus marker honest.
+    tick_focus_notify
 
     # Periodic cleanup check for terminated apps
     if @tick_count - @last_cleanup_tick >= @cleanup_interval

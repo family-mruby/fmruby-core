@@ -34,6 +34,7 @@ class FmrbKernelImpl < FmrbKernel
 
     # HID (input) target tracking
     @hid_target_pid = nil  # Current HID target (focused window)
+    @notified_focus_pid = -1  # Last focus reported to the desktop (-1 = none yet)
 
     # Mouse button state (for click event routing)
     @mouse_down_pid = nil  # Window where mouse_down occurred

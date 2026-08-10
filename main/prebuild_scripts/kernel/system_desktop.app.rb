@@ -859,6 +859,16 @@ class SystemDesktopApp < FmrbApp
       if err
         open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error")
       end
+    elsif msg["cmd"] == "focus_changed"
+      # The kernel reports every focus move (spawn, Ctrl+Tab, a click on a
+      # window, an app exiting). Before this the taskbar only knew about its
+      # own clicks, so the white frame around the focused icon was usually
+      # missing or stuck on whatever was clicked last.
+      pid = msg["pid"]
+      if pid != @taskbar_focused_pid
+        @taskbar_focused_pid = pid
+        draw_foreground
+      end
     elsif msg["cmd"] == "spawn_failed"
       # The kernel says why (it has the spawner's error code); this used to
       # blame a missing .toml whatever the cause.
