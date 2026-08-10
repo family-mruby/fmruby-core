@@ -1,0 +1,6 @@
+app_handle_name = "doc_mem"
+app_screen_name = "Doc Mem"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 120
+launcher_visible = false

@@ -97,7 +97,9 @@ class EditorApp < FmrbApp
 
   def initialize
     super()
-    @lines = [""]       # Document lines
+    # The document lives in EditorCore (C, POOL_ID_EDITOR_DOC arena): the editor
+    # holds only cursor / selection / view state. Nothing here keeps line text.
+    EditorCore.reset
     @cx = 0             # Cursor column in current line
     @cy = 0             # Cursor line index
     @scroll_y = 0       # First visible line index
@@ -118,8 +120,8 @@ class EditorApp < FmrbApp
     # Selection (anchor side; cursor side is the moving end). nil = no selection.
     @sel_anchor_x = nil
     @sel_anchor_y = nil
-    # Clipboard for Cut/Copy/Paste. May contain newlines.
-    @clipboard = ""
+    # Clipboard lives in EditorCore too (copy_range / paste_at), so a copied
+    # block never becomes a String on this VM's heap.
     # Syntax highlight: default comes from the file type (Ruby only -- the
     # tokenizer is a Ruby lexer), and a manual toggle wins until another file is
     # opened. A new unnamed buffer starts on: this machine is a Ruby machine.
@@ -181,6 +183,7 @@ class EditorApp < FmrbApp
   end
 
   def on_create
+    apply_hl_enabled
     recompute_layout
     @need_redraw = true
   end
@@ -341,26 +344,6 @@ class EditorApp < FmrbApp
     end
   end
 
-  # Category map for one line, or nil when there is nothing to colour.
-  #
-  # Per line, not per document: the old path rebuilt the whole file with
-  # @lines.join("\n") and tokenized it on every edit, which is where the old
-  # 1KB "highlight off above this size" cutoff came from. Now the cost follows
-  # the lines actually drawn, so a keystroke tokenizes one line.
-  #
-  # Known difference: syntax that spans lines (heredocs, multi-line strings,
-  # =begin blocks) is coloured line by line, so those can be coloured wrong.
-  def line_hl_map(line_idx)
-    line = @lines[line_idx]
-    return nil if line.nil? || line.length == 0
-    begin
-      SyntaxHighlight.tokenize(line)
-    rescue => e
-      Log.warn("SyntaxHighlight.tokenize failed: #{e.message}")
-      nil
-    end
-  end
-
   # Highlight default for a path: Ruby on, anything else off. The tokenizer only
   # knows Ruby, so a .bas or .toml file would otherwise get Ruby colours applied
   # to it. A buffer with no name yet counts as Ruby.
@@ -369,8 +352,13 @@ class EditorApp < FmrbApp
     path.end_with?(".rb")
   end
 
+  def apply_hl_enabled
+    EditorCore.hl_enabled = @hl_enabled
+  end
+
   def toggle_highlight
     @hl_enabled = !@hl_enabled
+    apply_hl_enabled
     # Remember that the user decided, so opening a file does not silently undo
     # it -- until a *different* file is opened, which re-evaluates the default.
     @hl_manual = true
@@ -400,7 +388,7 @@ class EditorApp < FmrbApp
     row = -1
     while (row += 1) < @edit_rows
       line_idx = @scroll_y + row
-      break if line_idx >= @lines.length
+      break if line_idx >= EditorCore.line_count
       draw_edit_row(row, line_idx, sel_range, false)
     end
 
@@ -418,12 +406,13 @@ class EditorApp < FmrbApp
       @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H, BG_COLOR)
       @gfx.fill_rect(@user_area_x0, y, @gutter_w, CHAR_H, GUTTER_BG) if @gutter_w > 0
     end
-    return if line_idx >= @lines.length
+    return if line_idx >= EditorCore.line_count
 
-    full_line = @lines[line_idx] || ""
-    # Apply horizontal scroll
-    text = @scroll_x > 0 ? (full_line[@scroll_x..-1] || "") : full_line
-    visible_len = text.length > @edit_cols ? @edit_cols : text.length
+    line_len = EditorCore.line_length(line_idx)
+    # EditorCore slices by character, horizontal scroll included, so no String
+    # of the full line is ever built here.
+    text = EditorCore.render_text(line_idx, @scroll_x, @edit_cols)
+    visible_len = text.length
 
     # Current-stop line gets a full-row highlight (text area only, so the
     # gutter dot stays visible). Breakpoints are shown as a gutter dot.
@@ -439,7 +428,7 @@ class EditorApp < FmrbApp
     sel_vstart = nil
     sel_vend = nil
     if sel_range
-      sel = line_selection_cols(line_idx, full_line.length)
+      sel = line_selection_cols(line_idx, line_len)
       if sel
         vstart = sel[0] - @scroll_x
         vend   = sel[1] - @scroll_x
@@ -466,8 +455,11 @@ class EditorApp < FmrbApp
     return if visible_len == 0
 
     # Tinted (breakpoint/stop) lines always render plain over their background.
-    hl = (line_bg == BG_COLOR && @hl_enabled) ? line_hl_map(line_idx) : nil
-    if hl
+    # The category map is per visible character and comes from EditorCore's
+    # cache (recomputed only when the line changes).
+    hl = (line_bg == BG_COLOR && @hl_enabled) ?
+           EditorCore.render_hl(line_idx, @scroll_x, @edit_cols) : nil
+    if hl && hl.length > 0
       draw_highlighted_line(x, y, text, visible_len, hl)
     else
       @gfx.draw_text(x, y, text[0, visible_len], TEXT_COLOR, line_bg)
@@ -481,19 +473,19 @@ class EditorApp < FmrbApp
     end
   end
 
-  # +hl+ is the category map for the whole line, so the visible text at column
-  # i maps to hl byte (@scroll_x + i).
+  # +hl+ holds one category byte per VISIBLE character (EditorCore.render_hl
+  # applies the same scroll window as render_text), so index i lines up with
+  # text character i.
   def draw_highlighted_line(x, y, text, visible_len, hl)
-    offset = @scroll_x
     i = 0
     while i < visible_len
-      cat = hl.getbyte(offset + i) || 0
+      cat = hl.getbyte(i) || 0
       color = HL_COLORS[cat] || TEXT_COLOR
 
       # Gather consecutive characters with the same category
       j = i + 1
       while j < visible_len
-        next_cat = hl.getbyte(offset + j) || 0
+        next_cat = hl.getbyte(j) || 0
         break if next_cat != cat
         j += 1
       end
@@ -519,10 +511,8 @@ class EditorApp < FmrbApp
     @gfx.fill_rect(x, y, CHAR_W, CHAR_H, CURSOR_COLOR)
 
     # Draw character under cursor in contrasting color
-    line = @lines[@cy] || ""
-    if @cx < line.length
-      @gfx.draw_text(x, y, line[@cx], BG_COLOR, CURSOR_COLOR)
-    end
+    ch = EditorCore.char_at(@cy, @cx)
+    @gfx.draw_text(x, y, ch, BG_COLOR, CURSOR_COLOR) if ch.length > 0
   end
 
   # ---- Latency instrumentation ----
@@ -805,43 +795,18 @@ class EditorApp < FmrbApp
   # Find +query+ starting from the cursor, wrapping to the top once.
   # When +after_cursor+ is true (F3 / Find Next), skip the character at the
   # cursor so we advance past the previous hit. Returns true on match.
+  # EditorCore searches line by line inside the arena, so the document is never
+  # joined into one String here. A query cannot span a newline (the Find field is
+  # a single line), which the old whole-document search allowed in theory.
   def find_from_cursor(query, after_cursor)
     return false if query.nil? || query.length == 0
-
-    abs_cursor = 0
-    i = 0
-    while i < @cy
-      abs_cursor += (@lines[i] || "").length + 1  # +1 for '\n'
-      i += 1
-    end
-    abs_cursor += @cx
-
-    full = @lines.join("\n")
-    start_at = after_cursor ? abs_cursor + 1 : abs_cursor
-    start_at = full.length if start_at > full.length
-
-    idx = full.index(query, start_at)
-    if idx.nil?
-      # Wrap: only accept matches strictly before the cursor.
-      idx = full.index(query)
-      return false if idx.nil? || idx >= abs_cursor
-    end
-
-    pos = 0
-    ly = 0
-    while ly < @lines.length
-      line_len = (@lines[ly] || "").length
-      if idx <= pos + line_len
-        @cy = ly
-        @cx = idx - pos
-        ensure_cursor_visible
-        @need_redraw = true
-        return true
-      end
-      pos += line_len + 1
-      ly += 1
-    end
-    false
+    rec = EditorCore.find(query, @cy, @cx, after_cursor)
+    return false unless EditorCore.found?(rec)
+    @cy = EditorCore.find_y(rec)
+    @cx = EditorCore.find_x(rec)
+    ensure_cursor_visible
+    @need_redraw = true
+    true
   end
 
   def find_next
@@ -895,9 +860,12 @@ class EditorApp < FmrbApp
 
   def insert_char(c)
     delete_selection if has_selection?
-    line = @lines[@cy] || ""
-    @lines[@cy] = line[0, @cx].to_s + c + line[@cx..-1].to_s
-    @cx += 1
+    nx = EditorCore.insert_text(@cy, @cx, c)
+    if nx < 0
+      doc_full
+      return
+    end
+    @cx = nx
     mark_edited
     ensure_cursor_visible
     mark_dirty_line(@cy)
@@ -905,12 +873,10 @@ class EditorApp < FmrbApp
 
   def handle_enter
     delete_selection if has_selection?
-    line = @lines[@cy] || ""
-    # Split line at cursor
-    left = line[0, @cx].to_s
-    right = line[@cx..-1].to_s
-    @lines[@cy] = left
-    @lines.insert(@cy + 1, right)
+    if EditorCore.split_line(@cy, @cx) < 0
+      doc_full
+      return
+    end
     # Everything below the split shifted down one row.
     mark_dirty_from(@cy)
     @cy += 1
@@ -922,17 +888,15 @@ class EditorApp < FmrbApp
   def handle_backspace
     return if delete_selection
     if @cx > 0
-      line = @lines[@cy] || ""
-      @lines[@cy] = line[0, @cx - 1].to_s + line[@cx..-1].to_s
+      EditorCore.delete_char(@cy, @cx - 1)
       @cx -= 1
       mark_edited
       ensure_cursor_visible
       mark_dirty_line(@cy)
     elsif @cy > 0
-      # Merge with previous line
-      prev_len = @lines[@cy - 1].length
-      @lines[@cy - 1] += @lines[@cy]
-      @lines.delete_at(@cy)
+      # Merge with previous line; join_line returns where the cursor belongs.
+      prev_len = EditorCore.join_line(@cy - 1)
+      return if prev_len < 0
       @cy -= 1
       @cx = prev_len
       mark_edited
@@ -944,15 +908,13 @@ class EditorApp < FmrbApp
 
   def handle_delete
     return if delete_selection
-    line = @lines[@cy] || ""
-    if @cx < line.length
-      @lines[@cy] = line[0, @cx].to_s + line[@cx + 1..-1].to_s
+    if @cx < EditorCore.line_length(@cy)
+      EditorCore.delete_char(@cy, @cx)
       mark_edited
       mark_dirty_line(@cy)
-    elsif @cy < @lines.length - 1
+    elsif @cy < EditorCore.line_count - 1
       # Merge next line
-      @lines[@cy] += @lines[@cy + 1]
-      @lines.delete_at(@cy + 1)
+      EditorCore.join_line(@cy)
       mark_edited
       mark_dirty_from(@cy)
     end
@@ -989,7 +951,7 @@ class EditorApp < FmrbApp
   end
 
   def move_down
-    if @cy < @lines.length - 1
+    if @cy < EditorCore.line_count - 1
       @cy += 1
       clamp_cx
       ensure_cursor_visible
@@ -1004,19 +966,18 @@ class EditorApp < FmrbApp
       mark_dirty_line(@cy)
     elsif @cy > 0
       @cy -= 1
-      @cx = (@lines[@cy] || "").length
+      @cx = EditorCore.line_length(@cy)
       ensure_cursor_visible
       mark_dirty_range(@cy, @cy + 1)
     end
   end
 
   def move_right
-    line = @lines[@cy] || ""
-    if @cx < line.length
+    if @cx < EditorCore.line_length(@cy)
       @cx += 1
       ensure_cursor_visible
       mark_dirty_line(@cy)
-    elsif @cy < @lines.length - 1
+    elsif @cy < EditorCore.line_count - 1
       @cy += 1
       @cx = 0
       ensure_cursor_visible
@@ -1036,7 +997,7 @@ class EditorApp < FmrbApp
   def page_down
     prev_cy = @cy
     @cy += @edit_rows
-    max = @lines.length - 1
+    max = EditorCore.line_count - 1
     @cy = max if @cy > max
     clamp_cx
     ensure_cursor_visible
@@ -1050,14 +1011,14 @@ class EditorApp < FmrbApp
   end
 
   def move_end
-    @cx = (@lines[@cy] || "").length
+    @cx = EditorCore.line_length(@cy)
     ensure_cursor_visible
     mark_dirty_line(@cy)
   end
 
   def clamp_cx
-    line = @lines[@cy] || ""
-    @cx = line.length if @cx > line.length
+    len = EditorCore.line_length(@cy)
+    @cx = len if @cx > len
   end
 
   # ---- Menu dropdown (File / Edit) ----
@@ -1284,11 +1245,10 @@ class EditorApp < FmrbApp
   end
 
   def select_all
-    return if @lines.empty?
     @sel_anchor_x = 0
     @sel_anchor_y = 0
-    @cy = @lines.length - 1
-    @cx = (@lines[@cy] || "").length
+    @cy = EditorCore.line_count - 1
+    @cx = EditorCore.line_length(@cy)
     ensure_cursor_visible
     @need_redraw = true
   end
@@ -1307,39 +1267,11 @@ class EditorApp < FmrbApp
     [start_col, end_col]
   end
 
-  def selected_text
-    range = selection_range
-    return "" unless range
-    sx, sy, ex, ey = range
-    if sy == ey
-      (@lines[sy] || "")[sx, ex - sx].to_s
-    else
-      out = (@lines[sy] || "")[sx..-1].to_s
-      ly = sy + 1
-      while ly < ey
-        out += "\n" + (@lines[ly] || "")
-        ly += 1
-      end
-      out += "\n" + (@lines[ey] || "")[0, ex].to_s
-      out
-    end
-  end
-
   def delete_selection
     range = selection_range
     return false unless range
     sx, sy, ex, ey = range
-    if sy == ey
-      line = @lines[sy] || ""
-      @lines[sy] = line[0, sx].to_s + line[ex..-1].to_s
-    else
-      head = (@lines[sy] || "")[0, sx].to_s
-      tail = (@lines[ey] || "")[ex..-1].to_s
-      @lines[sy] = head + tail
-      # Drop intermediate + end lines (delete from sy+1 .. ey inclusive).
-      del_count = ey - sy
-      del_count.times { @lines.delete_at(sy + 1) }
-    end
+    EditorCore.delete_range(sy, sx, ey, ex)
     @cy = sy
     @cx = sx
     clear_selection
@@ -1358,8 +1290,13 @@ class EditorApp < FmrbApp
 
   def copy_selection
     return unless has_selection?
-    @clipboard = selected_text
-    Log.info("Copied #{@clipboard.length} bytes")
+    sx, sy, ex, ey = selection_range
+    n = EditorCore.copy_range(sy, sx, ey, ex)
+    if n < 0
+      doc_full
+      return
+    end
+    Log.info("Copied #{n} bytes")
   end
 
   def cut_selection
@@ -1369,70 +1306,67 @@ class EditorApp < FmrbApp
   end
 
   def paste_clipboard
-    return if @clipboard.nil? || @clipboard.length == 0
+    return if EditorCore.clipboard_length == 0
     delete_selection if has_selection?
-    text = @clipboard
-    parts = text.split("\n")
-    # mruby's String#split drops trailing empty fields. Restore them so each
-    # "\n" becomes its own line break.
-    trailing = 0
-    ti = text.length - 1
-    while ti >= 0 && text[ti] == "\n"
-      trailing += 1
-      ti -= 1
-    end
-    trailing.times { parts << "" }
-    return if parts.length == 0
-
-    line = @lines[@cy] || ""
-    if parts.length == 1
-      @lines[@cy] = line[0, @cx].to_s + parts[0] + line[@cx..-1].to_s
-      @cx += parts[0].length
-      mark_dirty_line(@cy)
+    start_y = @cy
+    rec = EditorCore.paste_at(@cy, @cx)
+    ny = EditorCore.pos_y(rec)
+    nx = EditorCore.pos_x(rec)
+    if ny == start_y
+      mark_dirty_line(start_y)
     else
-      mark_dirty_from(@cy)
-      head = line[0, @cx].to_s
-      tail = line[@cx..-1].to_s
-      @lines[@cy] = head + parts[0]
-      i = 1
-      while i < parts.length - 1
-        @lines.insert(@cy + i, parts[i])
-        i += 1
-      end
-      @lines.insert(@cy + parts.length - 1, parts[-1] + tail)
-      @cy += parts.length - 1
-      @cx = parts[-1].length
+      mark_dirty_from(start_y)
     end
+    @cy = ny
+    @cx = nx
     mark_edited
     ensure_cursor_visible
   end
 
   # ---- File operations ----
 
+  # EditorCore reads the file straight into its arena in chunks, so nothing here
+  # holds the contents: no whole-file String, no Array of lines. A negative
+  # return means the file could not be read or the arena is full -- the editor
+  # says so and keeps the buffer it had.
   def load_file(path)
-    begin
-      file = File.open(path, "r")
-      content = file.read
-      file.close
-
-      @lines = content.split("\n")
-      @lines = [""] if @lines.empty?
-      @cx = 0
-      @cy = 0
-      @scroll_y = 0
-      @scroll_x = 0
-      @modified = false
-      # Highlight default is per buffer: a manual toggle on the previous file is
-      # not carried over. Size plays no part any more (tokenizing is per line,
-      # so its cost follows the visible rows, not the document).
-      @hl_manual = false
-      @hl_enabled = hl_default_for(path)
-      @current_file = path
+    n = EditorCore.load_file(path)
+    if n < 0
+      if n == -2
+        flash_status("Too large")
+        Log.error("Load failed (document arena full): #{path}")
+      else
+        flash_status("Load failed")
+        Log.error("Failed to load file '#{path}' (err=#{n})")
+      end
       @need_redraw = true
-      Log.info("Loaded file: #{path} (#{@lines.length} lines)")
-    rescue => e
-      Log.error("Failed to load file '#{path}': #{e.class}: #{e.message}")
+      return
     end
+    @cx = 0
+    @cy = 0
+    @scroll_y = 0
+    @scroll_x = 0
+    @modified = false
+    # Highlight default is per buffer: a manual toggle on the previous file is
+    # not carried over. Size plays no part any more (the highlight cache in
+    # EditorCore is per line).
+    @hl_manual = false
+    @hl_enabled = hl_default_for(path)
+    apply_hl_enabled
+    @current_file = path
+    @need_redraw = true
+    # One line with both numbers, so the same measurement is available in the sim
+    # and on the device: how much of THIS VM's mruby pool the open file costs
+    # (percent) versus how much of the document arena it takes (bytes).
+    Log.info("edit_doc: lines=#{n} bytes=#{EditorCore.doc_bytesize} arena=#{EditorCore.mem_used} pool=#{FmrbApp.pool_usage}% file=#{path}")
+  end
+
+  # Shown when the arena cannot grow: the editor stays alive and editable, which
+  # is the whole point of returning an error code instead of aborting.
+  def doc_full
+    flash_status("Doc full")
+    Log.error("Editor document arena full (#{EditorCore.mem_used} bytes used)")
+    @need_redraw = true
   end
 
   def save_file
@@ -1446,23 +1380,18 @@ class EditorApp < FmrbApp
       return
     end
 
-    begin
-      content = @lines.join("\n")
-      expected = content.bytesize
-      file = File.open(@current_file, "w")
-      written = file.write(content)
-      file.flush
-      file.close
-      actual = File.size(@current_file) rescue -1
-      if written != expected || actual != expected
-        Log.error("Save mismatch for #{@current_file}: expected=#{expected}, written=#{written}, on_disk=#{actual}")
-      else
-        @modified = false
-        flash_status("Saved")  # status line only
-        Log.info("Saved file: #{@current_file} (#{expected} bytes)")
-      end
-    rescue => e
-      Log.error("Failed to save file: #{e.message}")
+    expected = EditorCore.doc_bytesize
+    written = EditorCore.save_file(@current_file)
+    if written < 0
+      flash_status("Save failed")
+      Log.error("Failed to save file: #{@current_file} (err=#{written})")
+    elsif written != expected
+      flash_status("Save failed")
+      Log.error("Save mismatch for #{@current_file}: expected=#{expected}, written=#{written}")
+    else
+      @modified = false
+      flash_status("Saved")  # status line only
+      Log.info("Saved file: #{@current_file} (#{written} bytes)")
     end
   end
 
@@ -1786,7 +1715,7 @@ class EditorApp < FmrbApp
     end
     if @dbg_stop_line && @dbg_stop_line >= 1
       @cy = @dbg_stop_line - 1
-      @cy = @lines.length - 1 if @cy >= @lines.length
+      @cy = EditorCore.line_count - 1 if @cy >= EditorCore.line_count
       @cy = 0 if @cy < 0
       clamp_cx
       ensure_cursor_visible
@@ -1861,7 +1790,10 @@ class EditorApp < FmrbApp
   def save_file_as(path)
     # Naming a buffer (or renaming it) re-decides the highlight default, unless
     # the user has already made that call for this buffer.
-    @hl_enabled = hl_default_for(path) unless @hl_manual
+    unless @hl_manual
+      @hl_enabled = hl_default_for(path)
+      apply_hl_enabled
+    end
     @current_file = path
     save_file
   end

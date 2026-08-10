@@ -26,6 +26,9 @@ MRuby::GemBox.new do |conf|
   conf.gem core: "picoruby-fmrb-kernel"
   conf.gem core: "picoruby-fmrb-bmp332"
   conf.gem core: "picoruby-fmrb-app"
+  # Editor document model in C (POOL_ID_EDITOR_DOC arena). After picoruby-fmrb-app
+  # so the loading order stays "framework, then the pieces that lean on it".
+  conf.gem core: "picoruby-fmrb-editor-core"
   conf.gem core: "picoruby-fmrb-debug"
   # MIDI: protocol layer and MML parser imported from Midori, then the
   # Family mruby transports and players

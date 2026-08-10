@@ -245,6 +245,46 @@ highlight_callback(void *data, pm_parser_t *parser, pm_token_t *token)
  * with its value indicating the highlight category (0-8).
  * Returns nil if source exceeds the maximum size.
  */
+/*
+ * Tokenize into a caller-supplied map, with no mruby involved.
+ *
+ * picoruby-fmrb-editor-core calls this per line for its highlight cache: going
+ * through the mruby binding meant a String on the app's heap for every line
+ * drawn. out_map must have room for len bytes.
+ *
+ * Returns 0 on success, -1 when the input is too large or the arguments are bad.
+ */
+int
+fmrb_syntax_highlight_line(const char *src, size_t len, uint8_t *out_map)
+{
+    if (!src || !out_map) return -1;
+    if (len == 0) return 0;
+    if (len > HIGHLIGHT_MAX_SOURCE_SIZE) return -1;
+
+    memset(out_map, 0, len);
+
+    highlight_data_t hd = {
+        .map = out_map,
+        .size = len,
+        .source = (const uint8_t *)src,
+    };
+
+    pm_parser_t parser;
+    pm_parser_init(&parser, (const uint8_t *)src, len, NULL);
+
+    pm_lex_callback_t lex_cb = {
+        .data = &hd,
+        .callback = highlight_callback,
+    };
+    parser.lex_callback = &lex_cb;
+
+    pm_node_t *root = pm_parse(&parser);
+    pm_visit_node(root, highlight_visit_node, &hd);
+    pm_node_destroy(&parser, root);
+    pm_parser_free(&parser);
+    return 0;
+}
+
 static mrb_value
 mrb_syntax_highlight_tokenize(mrb_state *mrb, mrb_value klass)
 {
@@ -259,37 +299,12 @@ mrb_syntax_highlight_tokenize(mrb_state *mrb, mrb_value klass)
         return mrb_nil_value();
     }
 
-    /* Allocate category map */
     uint8_t *map = (uint8_t *)mrb_malloc(mrb, (size_t)source_len);
-    memset(map, 0, (size_t)source_len);
+    if (fmrb_syntax_highlight_line(source, (size_t)source_len, map) != 0) {
+        mrb_free(mrb, map);
+        return mrb_nil_value();
+    }
 
-    highlight_data_t hd = {
-        .map = map,
-        .size = (size_t)source_len,
-        .source = (const uint8_t *)source,
-    };
-
-    /* Set up Prism parser with lex callback */
-    pm_parser_t parser;
-    pm_parser_init(&parser, (const uint8_t *)source, (size_t)source_len, NULL);
-
-    pm_lex_callback_t lex_cb = {
-        .data = &hd,
-        .callback = highlight_callback,
-    };
-    parser.lex_callback = &lex_cb;
-
-    /* Parse (tokens are collected via callback) */
-    pm_node_t *root = pm_parse(&parser);
-
-    /* Walk AST to highlight method call names */
-    pm_visit_node(root, highlight_visit_node, &hd);
-
-    /* Clean up parser and AST */
-    pm_node_destroy(&parser, root);
-    pm_parser_free(&parser);
-
-    /* Wrap map as mruby string */
     mrb_value result = mrb_str_new(mrb, (const char *)map, (size_t)source_len);
     mrb_free(mrb, map);
     return result;

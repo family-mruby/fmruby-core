@@ -9,6 +9,12 @@ enum FMRB_MEM_POOL_ID{
     POOL_ID_USER_APP1,
     POOL_ID_USER_APP2,
     POOL_ID_USER_APP_LARGE,
+    // Editor document arena (picoruby-fmrb-editor-core). Deliberately its own
+    // pool: the document must not sit in the app's 500KB mruby pool (it would
+    // cap the file size and feed the GC's malloc accounting) nor in the shared
+    // 500KB SYSTEM pool (that is the drivers' wallet, and a 1MB document does
+    // not fit in it at all).
+    POOL_ID_EDITOR_DOC,
     POOL_ID_LOG_BUFFER,
     POOL_ID_MAX
 };
@@ -33,6 +39,9 @@ typedef int8_t fmrb_mem_handle_t;
 #define FMRB_MEM_POOL_SIZE_SYSTEM_OVERLAY (500*1024)
 #define FMRB_MEM_POOL_SIZE_USER_APP (500*1024)
 #define FMRB_MEM_POOL_SIZE_USER_APP_LARGE (1024*1024)
+// Editor document arena. 1MB holds a ~700KB source file with the line index and
+// the per-line highlight cache; PSRAM headroom is 3.2MB on S3 and >20MB on P4.
+#define FMRB_MEM_POOL_SIZE_EDITOR_DOC (1024*1024)
 
 #define FMRB_MEM_POOL_SIZE_LOG_BUFFER (128*1024)
 

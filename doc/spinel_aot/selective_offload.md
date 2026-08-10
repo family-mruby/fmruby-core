@@ -313,6 +313,15 @@ CMake を触る瞬間が存在しないこと、エラーが rake の段階で
 C 変換する** — つまり本構想の `spinel/` 規約 + 単一ソース二重バックエンドの
 利用者第 1 号 (SmfCore が PoC、editor-gem が本命の応用)。
 
+> **方針変更 (ユーザ決定 2026-08-10)**: この「Ruby で書いて Spinel で C 変換」
+> 案は**採らなかった**。実装は **C 直書きの native mrbgem**
+> (`lib/add/picoruby-fmrb-editor-core`、doc/editor_serious_mode/report/p4.md)。
+> 理由は、mruby から同期呼び出しする Spinel オフロード基盤 (sp_export /
+> プール切り出し) が未構築で、その第 1 号は別題材 (raycaster 等) に譲ると
+> 決めたため。**単一ソース二重バックエンドの利用者第 1 号はエディタではない**。
+> editor-core は段階 6 の Spinel 版エディタからも FFI で呼ばれる共通実装として
+> 使う (境界 API はスカラーと binstr のみで閉じてある)。
+
 切り出し線の見立て (現状は EditorApp 1 クラスに全部入り):
 
 - **gem 側 (Spinel 対象)**: 文書モデル (@lines 相当) を gem の中に持たせ、

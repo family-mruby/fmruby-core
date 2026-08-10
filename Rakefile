@@ -179,6 +179,9 @@ task :setup do
   # app
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-app"
   sh "cp -rf lib/add/picoruby-fmrb-app #{mrbgem_path}/"
+  # editor-core (document model in C; depends on syntax-highlight, copied below)
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-editor-core"
+  sh "cp -rf lib/add/picoruby-fmrb-editor-core #{mrbgem_path}/"
   # debug (on-device debugger API; depends on msgpack, copied above)
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-debug"
   sh "cp -rf lib/add/picoruby-fmrb-debug #{mrbgem_path}/"
