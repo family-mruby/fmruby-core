@@ -2,6 +2,10 @@
 # MS-DOS style text editor with menu bar and status line
 
 class EditorApp < FmrbApp
+  # The on-device debugger lives in editor/debug_pane.rb (mruby build) or in a
+  # no-op stub of the same name (Spinel build). Everything below talks to it
+  # through the dbg_* hooks only.
+  include EditorDebugPane
   # Colors - Light pink theme
   BG_COLOR      = FmrbGfx.rgb_to_332(255, 230, 240)  # Nearly white pink
   TEXT_COLOR     = FmrbGfx.rgb_to_332(0, 0, 0)        # Black text
@@ -71,27 +75,12 @@ class EditorApp < FmrbApp
   SEARCH_QUERY_MAX = 32
   SEARCH_NOT_FOUND = FmrbGfx.rgb_to_332(180, 0, 0)
 
-  # ---- On-device debugger (Phase E2, design doc sec 4.5) ----
-  # Bottom split pane shown only during a debug session; edit area shrinks.
-  DBG_PANE_ROWS = 8
-  DBG_PANE_BG   = FmrbGfx.rgb_to_332(30, 30, 45)
-  DBG_HDR_BG    = FmrbGfx.rgb_to_332(60, 60, 90)
-  DBG_TEXT      = FmrbGfx.rgb_to_332(220, 220, 220)
-  DBG_HDR_TEXT  = FmrbGfx.rgb_to_332(255, 255, 120)
-  DBG_SEL_BG    = FmrbGfx.rgb_to_332(80, 80, 130)
-  # Breakpoint / current-stop indicators. In debug mode a left gutter column
-  # holds a red dot per breakpoint line (VSCode style); the current-stop line
-  # keeps a full-row highlight.
-  BP_MARK   = FmrbGfx.rgb_to_332(220, 0, 0)     # red breakpoint dot
-  STOP_BG   = FmrbGfx.rgb_to_332(250, 240, 140) # current-line row highlight
-  STOP_MARK = FmrbGfx.rgb_to_332(230, 160, 0)   # current-line gutter marker
+  # Layout bits the debugger's gutter needs; kept here because the edit area
+  # geometry uses them whether or not a debug session exists.
   GUTTER_W  = 8                                 # gutter width in px (debug mode)
   GUTTER_BG = FmrbGfx.rgb_to_332(210, 195, 205) # gutter column background
-  # ps filter values (fmrb_app.h): general mruby apps that are running.
-  APP_TYPE_USER  = 2   # APP_TYPE_USER_APP
-  VM_TYPE_MRUBY  = 0   # FMRB_VM_TYPE_MRUBY
-  PROC_RUNNING   = 2   # PROC_STATE_RUNNING
-  # Debug function-key scancodes (USB HID Usage IDs).
+  # Function-key scancodes (USB HID Usage IDs). F5 = Run and F11 = fullscreen
+  # belong to the editor; the rest are the debugger's, used from its mixin.
   SC_F4 = 0x3D; SC_F5 = 0x3E; SC_F6 = 0x3F; SC_F7 = 0x40
   SC_F8 = 0x41; SC_F9 = 0x42; SC_F10 = 0x43; SC_F11 = 0x44
 
@@ -147,24 +136,8 @@ class EditorApp < FmrbApp
     @search_query = ""
     @search_last = ""
     @search_status = ""
-    # ---- Debugger session state (Phase E2) ----
-    @dbg_active = false       # session held (acquired + attached)
-    @dbg_pid = nil            # attached target pid
-    @dbg_stopped = false      # target currently parked
-    @dbg_stop_file = nil      # file/line of the current stop
-    @dbg_stop_line = nil
-    @dbg_frames = []          # last stack_trace
-    @dbg_vars = []            # last frame_vars for @dbg_frame_idx
-    @dbg_frame_idx = 0
-    @dbg_pane = :stack        # :stack or :vars
-    @dbg_msg = ""             # transient status string
     @gutter_w = 0             # breakpoint gutter width (set by recompute_layout)
-    # Breakpoints: { path => { line(1-based) => bp_id_or_nil } }.
-    @bp = {}
-    # Modal attach-target picker.
-    @target_picker_open = false
-    @target_list = []
-    @target_idx = 0
+    dbg_init
     # ---- Latency instrumentation ----
     @lat_t0 = nil     # uptime_us of the oldest key not yet shown on screen
     @lat_n = 0
@@ -217,18 +190,17 @@ class EditorApp < FmrbApp
     @menu_y = @user_area_y0
     @edit_y = @menu_y + CHAR_H + 1
     @status_y = @user_area_y0 + @user_area_height - CHAR_H
-    if @dbg_active
-      @dbg_pane_h = DBG_PANE_ROWS * CHAR_H
+    @dbg_pane_h = dbg_pane_h
+    if @dbg_pane_h > 0
       @dbg_pane_y = @status_y - @dbg_pane_h - 1
       @edit_height = @dbg_pane_y - @edit_y
     else
-      @dbg_pane_h = 0
       @dbg_pane_y = @status_y
       @edit_height = @status_y - @edit_y
     end
     # Left gutter for breakpoint dots is only present during a debug session, so
     # normal editing keeps the full width.
-    @gutter_w = @dbg_active ? GUTTER_W : 0
+    @gutter_w = dbg_gutter_w
     @edit_cols = (@user_area_width - 2 - @gutter_w) / CHAR_W
     @edit_rows = @edit_height / CHAR_H
   end
@@ -300,10 +272,14 @@ class EditorApp < FmrbApp
     # Trailing "*" marks enabled state, space marks disabled
     draw_menu_item(x, y, "H", @hl_enabled ? "ilight*" : "ilight ")
     x += 9 * CHAR_W  # past "Hilight*" (8 chars) + 1-char gap
-    @menu_debug_x = x
-    # Trailing "*" marks an active debug session.
-    draw_menu_item(x, y, "D", @dbg_active ? "ebug*" : "ebug ")
-    x += 7 * CHAR_W  # past "Debug*" (6 chars) + 1-char gap
+    if dbg_menu_visible?
+      @menu_debug_x = x
+      # Trailing "*" marks an active debug session.
+      draw_menu_item(x, y, "D", dbg_menu_label)
+      x += 7 * CHAR_W  # past "Debug*" (6 chars) + 1-char gap
+    else
+      @menu_debug_x = nil
+    end
     # Window <-> fullscreen toggle (F11). No hotkey letter: "F" is taken by the
     # File menu, and this one is a direct toggle rather than a dropdown.
     # Dropped when the window is too narrow for it -- the key still works.
@@ -416,12 +392,12 @@ class EditorApp < FmrbApp
 
     # Current-stop line gets a full-row highlight (text area only, so the
     # gutter dot stays visible). Breakpoints are shown as a gutter dot.
-    line_bg = line_background(line_idx)
+    line_bg = dbg_line_background(line_idx)
     if line_bg != BG_COLOR
       @gfx.fill_rect(@user_area_x0 + @gutter_w, y,
                      @user_area_width - @gutter_w, CHAR_H, line_bg)
     end
-    draw_gutter_marker(line_idx, y) if @gutter_w > 0
+    dbg_draw_gutter(line_idx, y) if @gutter_w > 0
 
     # Selection background goes down before the text so we can overpaint
     # the selected glyphs with SEL_BG as their background.
@@ -592,10 +568,10 @@ class EditorApp < FmrbApp
   def redraw_all
     draw_menu_bar
     draw_edit_area
-    draw_debug_pane if @dbg_active
+    dbg_draw_pane(@dbg_pane_y, @dbg_pane_h) if @dbg_pane_h > 0
     draw_status_line
     draw_active_menu if @active_menu
-    draw_target_picker if @target_picker_open
+    dbg_draw_modal
     draw_search_dialog if @search_open
     draw_quit_dialog if @quit_dialog_open
     # Re-issue the title-bar / border GfxBlock with current window size so the
@@ -630,7 +606,7 @@ class EditorApp < FmrbApp
     # Row drawing would paint over an open overlay, so anything modal forces the
     # full path (which re-draws the overlay on top).
     if @need_redraw || @active_menu || @search_open || @quit_dialog_open ||
-       @target_picker_open
+       dbg_modal?
       redraw_all
     else
       redraw_dirty
@@ -1027,16 +1003,7 @@ class EditorApp < FmrbApp
     case @active_menu
     when :file then MENU_FILE_ITEMS
     when :edit then MENU_EDIT_ITEMS
-    when :debug then debug_menu_items
-    end
-  end
-
-  # Debug dropdown adapts to whether a session is active.
-  def debug_menu_items
-    if @dbg_active
-      ["Continue", "Step Over", "Step In", "Step Out", "Pause", "Toggle BP", "Detach"]
-    else
-      ["Attach...", "Toggle BP"]
+    when :debug then dbg_menu_items
     end
   end
 
@@ -1051,7 +1018,7 @@ class EditorApp < FmrbApp
     case @active_menu
     when :file then MENU_FILE_W
     when :edit then MENU_EDIT_W
-    when :debug then 66
+    when :debug then dbg_menu_width
     end
   end
 
@@ -1167,26 +1134,7 @@ class EditorApp < FmrbApp
     case kind
     when :file then activate_file_item(idx)
     when :edit then activate_edit_item(idx)
-    when :debug then activate_debug_item(idx)
-    end
-  end
-
-  def activate_debug_item(idx)
-    if @dbg_active
-      case idx
-      when 0 then dbg_continue
-      when 1 then dbg_step(:over)
-      when 2 then dbg_step(:in)
-      when 3 then dbg_step(:out)
-      when 4 then dbg_pause
-      when 5 then toggle_breakpoint
-      when 6 then dbg_detach
-      end
-    else
-      case idx
-      when 0 then open_target_picker
-      when 1 then toggle_breakpoint
-      end
+    when :debug then dbg_activate_item(idx)
     end
   end
 
@@ -1395,333 +1343,6 @@ class EditorApp < FmrbApp
     end
   end
 
-  # ---- Debugger (Phase E2, uses ::FMRB::Debug) ----
-
-  def base(p)
-    p ? p.split("/").last : ""
-  end
-
-  # Only the current-stop line gets a row highlight; breakpoints are shown by
-  # the red gutter dot (draw_gutter_marker), not a row tint.
-  def line_background(line_idx)
-    (@dbg_stopped && stop_on_line?(line_idx)) ? STOP_BG : BG_COLOR
-  end
-
-  def stop_on_line?(line_idx)
-    return false unless @dbg_stopped && @dbg_stop_file && @dbg_stop_line && @current_file
-    base(@dbg_stop_file) == base(@current_file) && @dbg_stop_line == line_idx + 1
-  end
-
-  def bp_on_line?(line_idx)
-    m = @current_file && @bp[@current_file]
-    m && m.has_key?(line_idx + 1)
-  end
-
-  # Gutter dot: red circle for a breakpoint line; a yellow ring/dot marks the
-  # current-stop line (ring over the red dot when a breakpoint sits there).
-  def draw_gutter_marker(line_idx, y)
-    cx = @user_area_x0 + @gutter_w / 2
-    cyc = y + CHAR_H / 2
-    bp = bp_on_line?(line_idx)
-    stop = @dbg_stopped && stop_on_line?(line_idx)
-    if bp
-      @gfx.fill_circle(cx, cyc, 3, BP_MARK)
-      @gfx.draw_circle(cx, cyc, 3, STOP_MARK) if stop
-    elsif stop
-      @gfx.fill_circle(cx, cyc, 2, STOP_MARK)
-    end
-  end
-
-  def draw_debug_pane
-    y0 = @dbg_pane_y
-    @gfx.fill_rect(@user_area_x0, y0, @user_area_width, @dbg_pane_h, DBG_PANE_BG)
-    # Header row.
-    @gfx.fill_rect(@user_area_x0, y0, @user_area_width, CHAR_H, DBG_HDR_BG)
-    state = @dbg_stopped ? "stop ln#{@dbg_stop_line}" : "run"
-    view = (@dbg_pane == :stack) ? "Stack" : "Vars f#{@dbg_frame_idx}"
-    hdr = " #{view} pid=#{@dbg_pid} #{state}"
-    hdr += " #{@dbg_msg}" if @dbg_msg.length > 0
-    @gfx.draw_text(@user_area_x0 + 2, y0, hdr[0, @edit_cols], DBG_HDR_TEXT, DBG_HDR_BG)
-
-    cy = y0 + CHAR_H
-    rows = DBG_PANE_ROWS - 1
-    if @dbg_pane == :stack
-      if @dbg_frames.empty?
-        note = @dbg_stopped ? "(no frames)" : "(running - F9 set BP / F5 continue)"
-        @gfx.draw_text(@user_area_x0 + 2, cy, note, DBG_TEXT, DBG_PANE_BG)
-      else
-        i = 0
-        while i < rows && i < @dbg_frames.size
-          f = @dbg_frames[i]
-          txt = "##{f['idx']} #{f['func']} #{base(f['file'])}:#{f['line']}"
-          bg = (i == @dbg_frame_idx) ? DBG_SEL_BG : DBG_PANE_BG
-          @gfx.fill_rect(@user_area_x0, cy, @user_area_width, CHAR_H, bg) if bg != DBG_PANE_BG
-          @gfx.draw_text(@user_area_x0 + 2, cy, txt[0, @edit_cols], DBG_TEXT, bg)
-          cy += CHAR_H
-          i += 1
-        end
-      end
-    else
-      if @dbg_vars.empty?
-        note = @dbg_stopped ? "(no vars)" : "(not stopped)"
-        @gfx.draw_text(@user_area_x0 + 2, cy, note, DBG_TEXT, DBG_PANE_BG)
-      else
-        i = 0
-        while i < rows && i < @dbg_vars.size
-          v = @dbg_vars[i]
-          txt = "#{v['name']} = #{v['value']}"
-          txt += " >" if v['ref'] && v['ref'] > 0
-          @gfx.draw_text(@user_area_x0 + 2, cy, txt[0, @edit_cols], DBG_TEXT, DBG_PANE_BG)
-          cy += CHAR_H
-          i += 1
-        end
-      end
-    end
-  end
-
-  # ---- Attach-target picker (modal) ----
-
-  def open_target_picker
-    # General mruby apps that are running (exclude kernel/system/self).
-    @target_list = []
-    FmrbApp.ps.each do |a|
-      if a[:type] == APP_TYPE_USER && a[:vm_type] == VM_TYPE_MRUBY &&
-         a[:state] == PROC_RUNNING && a[:name] != @name
-        @target_list << a
-      end
-    end
-    if @target_list.empty?
-      @dbg_msg = "no attachable app"
-      @need_redraw = true
-      return
-    end
-    @target_idx = 0
-    @target_picker_open = true
-    @need_redraw = true
-  end
-
-  def draw_target_picker
-    items = @target_list
-    n = items.size
-    w = 32 * CHAR_W
-    h = (n + 2) * CHAR_H + 8
-    x = @user_area_x0 + (@user_area_width - w) / 2
-    y = @user_area_y0 + (@user_area_height - h) / 2
-    @gfx.fill_rect(x, y, w, h, DROPDOWN_BG)
-    @gfx.draw_rect(x, y, w, h, 0x60)
-    @gfx.draw_text(x + 4, y + 3, "Attach to app:", DROPDOWN_TEXT, DROPDOWN_BG)
-    iy = y + 3 + CHAR_H + 2
-    items.each_with_index do |a, i|
-      label = " #{a[:name]} (pid #{a[:id]})"
-      if i == @target_idx
-        @gfx.fill_rect(x + 1, iy, w - 2, CHAR_H, DROPDOWN_SEL_BG)
-        @gfx.draw_text(x + 4, iy, label, DROPDOWN_SEL_TEXT, DROPDOWN_SEL_BG)
-      else
-        @gfx.draw_text(x + 4, iy, label, DROPDOWN_TEXT, DROPDOWN_BG)
-      end
-      iy += CHAR_H
-    end
-    @gfx.draw_text(x + 4, iy + 2, "[Enter]Attach [Esc]Cancel", DROPDOWN_TEXT, DROPDOWN_BG)
-  end
-
-  def handle_target_picker_key(ev)
-    n = @target_list.size
-    # Navigate by scancode (HID Usage ID); consistent on ESP32 and Linux sim.
-    case ev[:scancode] || 0
-    when 82  # Up
-      @target_idx = (@target_idx + n - 1) % n
-      @need_redraw = true
-    when 81  # Down
-      @target_idx = (@target_idx + 1) % n
-      @need_redraw = true
-    when 40, 88  # Enter
-      a = @target_list[@target_idx]
-      @target_picker_open = false
-      dbg_attach(a[:id]) if a
-    when 41  # ESC
-      @target_picker_open = false
-      @need_redraw = true
-    end
-  end
-
-  # ---- Breakpoints ----
-
-  def toggle_breakpoint
-    unless @current_file
-      @dbg_msg = "open a file first"
-      @need_redraw = true
-      return
-    end
-    line = @cy + 1
-    path = @current_file
-    @bp[path] ||= {}
-    if @bp[path].has_key?(line)
-      bp_id = @bp[path][line]
-      ::FMRB::Debug.bp_clear(@dbg_pid, bp_id) if @dbg_active && @dbg_pid && bp_id
-      @bp[path].delete(line)
-    else
-      bp_id = nil
-      bp_id = ::FMRB::Debug.bp_set(@dbg_pid, path, line) if @dbg_active && @dbg_pid
-      @bp[path][line] = bp_id
-    end
-    @need_redraw = true
-  end
-
-  # ---- Session control ----
-
-  def dbg_attach(pid)
-    unless ::FMRB::Debug.acquire
-      @dbg_msg = "busy (remote in use)"
-      @need_redraw = true
-      return
-    end
-    unless ::FMRB::Debug.attach(pid)
-      ::FMRB::Debug.release
-      @dbg_msg = "attach failed"
-      @need_redraw = true
-      return
-    end
-    @dbg_pid = pid
-    @dbg_active = true
-    @dbg_stopped = false
-    @dbg_frames = []
-    @dbg_vars = []
-    @dbg_msg = "attached #{pid}"
-    # Open the target's source so breakpoints can be placed before it stops.
-    # Skip if the buffer has unsaved edits (don't clobber the user's work).
-    src = ::FMRB::Debug.source_file(pid)
-    if src && !@modified && (@current_file.nil? || base(@current_file) != base(src))
-      load_file(src)
-    end
-    # Arm any breakpoints already placed on the open file.
-    if @current_file && @bp[@current_file]
-      @bp[@current_file].keys.each do |line|
-        @bp[@current_file][line] = ::FMRB::Debug.bp_set(pid, @current_file, line)
-      end
-    end
-    recompute_layout
-    ensure_cursor_visible
-    @need_redraw = true
-    Log.info("Editor debug: attached pid=#{pid}")
-  end
-
-  def dbg_detach
-    end_debug_session(true)
-    @dbg_msg = "detached"
-    @need_redraw = true
-  end
-
-  def end_debug_session(do_detach)
-    return unless @dbg_active
-    ::FMRB::Debug.detach(@dbg_pid) if do_detach && @dbg_pid
-    ::FMRB::Debug.release
-    @dbg_active = false
-    @dbg_stopped = false
-    @dbg_pid = nil
-    @dbg_frames = []
-    @dbg_vars = []
-    @dbg_frame_idx = 0
-    # Keep breakpoint lines for redisplay but drop the (now invalid) bp_ids.
-    @bp.keys.each { |path| @bp[path].keys.each { |line| @bp[path][line] = nil } }
-    recompute_layout
-    ensure_cursor_visible
-    @need_redraw = true
-  end
-
-  def dbg_continue
-    return unless @dbg_active
-    ::FMRB::Debug.continue(@dbg_pid)
-  end
-
-  def dbg_pause
-    return unless @dbg_active
-    ::FMRB::Debug.pause(@dbg_pid)
-  end
-
-  def dbg_step(mode)
-    return unless @dbg_active && @dbg_stopped
-    case mode
-    when :in   then ::FMRB::Debug.step_in(@dbg_pid)
-    when :over then ::FMRB::Debug.step_over(@dbg_pid)
-    when :out  then ::FMRB::Debug.step_out(@dbg_pid)
-    end
-  end
-
-  def dbg_select_frame(delta)
-    return unless @dbg_active && @dbg_stopped
-    n = @dbg_frames.size
-    return if n == 0
-    idx = @dbg_frame_idx + delta
-    idx = 0 if idx < 0
-    idx = n - 1 if idx >= n
-    return if idx == @dbg_frame_idx
-    @dbg_frame_idx = idx
-    @dbg_vars = ::FMRB::Debug.frame_vars(@dbg_pid, idx) || []
-    @need_redraw = true
-  end
-
-  def dbg_toggle_pane
-    @dbg_pane = (@dbg_pane == :stack) ? :vars : :stack
-    @need_redraw = true
-  end
-
-  # ---- Event polling (called from on_update, non-blocking) ----
-
-  def poll_debug_events
-    return unless @dbg_active
-    drained = 0
-    while drained < 8
-      ev = ::FMRB::Debug.poll_event(0)
-      break unless ev
-      handle_debug_event(ev)
-      drained += 1
-    end
-  end
-
-  def handle_debug_event(ev)
-    return unless ev[:pid] == @dbg_pid
-    case ev[:type]
-    when :stopped
-      @dbg_stopped = true
-      @dbg_stop_file = ev[:file]
-      @dbg_stop_line = ev[:line]
-      @dbg_frame_idx = 0
-      focus_stop_location
-      refresh_debug_data
-      @need_redraw = true
-    when :resumed
-      @dbg_stopped = false
-      @dbg_frames = []
-      @dbg_vars = []
-      @need_redraw = true
-    when :exited
-      @dbg_msg = "target exited"
-      end_debug_session(false)
-    end
-  end
-
-  # Fetch stack + vars while the target is parked (responds promptly).
-  def refresh_debug_data
-    return unless @dbg_active && @dbg_stopped
-    @dbg_frames = ::FMRB::Debug.stack_trace(@dbg_pid, 16) || []
-    @dbg_vars = ::FMRB::Debug.frame_vars(@dbg_pid, @dbg_frame_idx) || []
-  end
-
-  # Open the stopped file (if different) and move the cursor to the stop line.
-  def focus_stop_location
-    return unless @dbg_stop_file
-    if @current_file.nil? || base(@current_file) != base(@dbg_stop_file)
-      load_file(@dbg_stop_file)
-    end
-    if @dbg_stop_line && @dbg_stop_line >= 1
-      @cy = @dbg_stop_line - 1
-      @cy = EditorCore.line_count - 1 if @cy >= EditorCore.line_count
-      @cy = 0 if @cy < 0
-      clamp_cx
-      ensure_cursor_visible
-    end
-  end
-
   # ---- Events ----
 
   def on_control(msg)
@@ -1862,11 +1483,8 @@ class EditorApp < FmrbApp
         return
       end
 
-      # Modal attach-target picker.
-      if @target_picker_open
-        handle_target_picker_key(ev)
-        return
-      end
+      # Modal owned by the debugger (attach-target picker).
+      return if dbg_handle_modal_key(ev)
 
       # Open dropdown is modal: arrows / Enter / hotkey letters / ESC.
       if @active_menu
@@ -1886,37 +1504,22 @@ class EditorApp < FmrbApp
         return
       end
 
-      # Debugger function keys. F9 toggles a breakpoint at any time; the
-      # run-control keys act only during an active session (design doc 4.5).
       scancode = ev[:scancode] || 0
-      if scancode == SC_F9
-        toggle_breakpoint
-        return
-      end
-      # F5 runs the file. During a debug session it means Continue instead,
-      # which is the usual meaning of that key on both sides.
-      if scancode == SC_F5 && !@dbg_active
+      # F5 runs the file. During a debug session it means Continue instead
+      # (handled by the debugger below), which is the usual meaning of that key.
+      if scancode == SC_F5 && !dbg_active?
         run_current_file
         return
       end
       # F11 switches between window and fullscreen without restarting the app,
       # so the buffer stays. During a debug session F11 keeps its step meaning
       # (handled below).
-      if scancode == SC_F11 && !@dbg_active
+      if scancode == SC_F11 && !dbg_active?
         toggle_fullscreen
         return
       end
-      if @dbg_active
-        case scancode
-        when SC_F5  then dbg_continue; return
-        when SC_F6  then dbg_pause; return
-        when SC_F10 then dbg_step(:over); return
-        when SC_F11 then dbg_step(ev_shift?(ev) ? :out : :in); return
-        when SC_F7  then dbg_select_frame(-1); return
-        when SC_F8  then dbg_select_frame(1); return
-        when SC_F4  then dbg_toggle_pane; return
-        end
-      end
+      # F9 (breakpoint) and the run-control keys, when the debugger is present.
+      return if dbg_handle_key(ev)
 
       # Ctrl shortcuts. ev_ctrl? + scancode (USB HID Usage ID) is uniform
       # across ESP32 and Linux/SDL2; ev[:keycode] for letters differs by
@@ -1944,7 +1547,7 @@ class EditorApp < FmrbApp
           select_all
           return
         when 0x07  # Ctrl-D -> open Debug menu (Alt-D on real HW; the Linux sim
-          open_menu(:debug)  # input path cannot carry Alt, so Ctrl-D mirrors it)
+          open_menu(:debug) if dbg_menu_visible?  # cannot carry Alt, so Ctrl-D
           return
         end
       end
@@ -1969,7 +1572,7 @@ class EditorApp < FmrbApp
           toggle_highlight
           return
         when 0x07  # Alt-D -> open Debug menu
-          open_menu(:debug)
+          open_menu(:debug) if dbg_menu_visible?
           return
         end
       end
@@ -2012,7 +1615,7 @@ class EditorApp < FmrbApp
 
   def on_update
     # Poll the debugger for stopped/resumed/exited events (non-blocking).
-    poll_debug_events if @dbg_active
+    dbg_poll
 
     # Key repeat: if a navigation key is held down, repeat the action
     if @held_keycode
@@ -2036,7 +1639,7 @@ class EditorApp < FmrbApp
 
   def on_destroy
     # Release the debug session so a crash/exit never leaves a target parked.
-    end_debug_session(true) if @dbg_active
+    dbg_shutdown
     Log.info("Editor destroyed")
   end
 end
