@@ -859,6 +859,12 @@ class SystemDesktopApp < FmrbApp
       if err
         open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error")
       end
+    elsif msg["cmd"] == "apps_changed"
+      # A process started or ended. The taskbar used to pick this up on its own
+      # once-a-second poll, so an app's icon appeared up to a second after its
+      # window did. update_taskbar_apps still gates on ps_gen, so a redundant
+      # notification costs one counter read.
+      draw_foreground if update_taskbar_apps
     elsif msg["cmd"] == "focus_changed"
       # The kernel reports every focus move (spawn, Ctrl+Tab, a click on a
       # window, an app exiting). Before this the taskbar only knew about its

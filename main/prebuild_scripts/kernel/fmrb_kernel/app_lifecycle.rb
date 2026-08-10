@@ -41,7 +41,19 @@ module AppLifecycleMixin
     _set_hid_target(new_pid)
     @hid_target_pid = new_pid
     Log.info("HID target set to new app pid=#{new_pid}")
+    notify_apps_changed
     true
+  end
+
+  # Tell the desktop the set of running apps changed, so the taskbar rebuilds
+  # now instead of when its once-a-second poll next notices. Unlike focus, which
+  # moves from a dozen places and is reported from the tick, a process starting
+  # or ending has exactly two funnels -- this one and cleanup_terminated_app --
+  # so telling the desktop from them cannot miss a case either.
+  def notify_apps_changed
+    return unless @desktop_pid
+    data = MessagePack.pack({ "cmd" => "apps_changed" })
+    _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
   end
 
   # A Run request names a file for the spawner to load, and any absolute path
@@ -523,6 +535,10 @@ module AppLifecycleMixin
     # The app self-cleans its resources then parks; we delete it from this
     # kernel context to avoid SMP self-delete races (idempotent).
     _reap_app(pid)
+
+    # Sent after the reap, not before: the slot has to be free before the
+    # desktop reads the process table, or the app it just lost is still listed.
+    notify_apps_changed
 
     # Force immediate check (window list update after task deletion)
     mark_window_list_dirty
