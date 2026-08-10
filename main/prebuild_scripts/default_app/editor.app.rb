@@ -187,6 +187,17 @@ class EditorApp < FmrbApp
     @need_redraw = true
   end
 
+  # Ctrl+Q. Same question Ctrl-X asks, so an unsaved buffer is never dropped.
+  def on_quit_request
+    if @modified
+      @quit_dialog_open = true
+      @need_redraw = true
+      redraw_if_dirty
+    else
+      stop
+    end
+  end
+
   def on_resize(new_width, new_height)
     Log.info("Editor resize: #{new_width}x#{new_height}")
     recompute_layout

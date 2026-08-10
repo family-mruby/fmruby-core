@@ -60,9 +60,15 @@ class FmrbKernelImpl < FmrbKernel
     @desktop_overlay_rect = { x: 0, y: 0, w: 0, h: 0 }
     @desktop_pid = nil
 
-    # Fullscreen mode state
+    # Fullscreen mode state. @fs_stack is the real state (nesting: a fullscreen
+    # app can run another one); @fullscreen_pid mirrors its top and
+    # @suspended_pids the union of the frames. See app_lifecycle.rb.
+    @fs_stack = []
     @fullscreen_pid = nil
     @parked_fullscreen_pid = nil  # Fullscreen app parked by Ctrl+Tab (suspended, canvas hidden)
+    @pending_unpark = nil         # Parked app to bring back once ...
+    @pending_unpark_after = nil   # ... this terminating app has released its slot
+    @pending_unpark_tries = 0
     @suspended_pids = []
 
     # Deferred "open this file in the app I just spawned" (spawn open_path).
@@ -282,10 +288,13 @@ class FmrbKernelImpl < FmrbKernel
       # fullscreen .bas cannot be left at all -- every key goes to it and it
       # covers the screen.
       #
-      # Only apps started from /app or /home are stopped. Built-ins have no path
-      # and are left alone: the editor owns an unsaved-changes dialog and must
-      # not be stopped from under the user. For those, fall back to the older
-      # behaviour of just leaving fullscreen.
+      # An app started from /app or /home is stopped outright. A built-in has no
+      # path and must not be stopped from under the user -- the editor owns an
+      # unsaved-changes dialog -- so it gets "quit_request" instead and decides
+      # for itself (the default in FmrbApp is to stop, so built-ins that hold no
+      # state still close on Ctrl+Q). The desktop is never closed this way.
+      # Leaving fullscreen is the last-resort fallback when there is no app to
+      # ask, e.g. the target vanished.
       Log.info("System interrupt (Ctrl+Q)")
       target = @hid_target_pid
       info = target ? _get_app_info(target) : nil
@@ -293,6 +302,10 @@ class FmrbKernelImpl < FmrbKernel
         Log.info("Ctrl-Q: stopping pid=#{target} (#{info[:path]})")
         stop_data = MessagePack.pack({ "cmd" => "stop" })
         _send_raw_message(target, FmrbConst::MSG_TYPE_APP_CONTROL, stop_data)
+      elsif info && target != @desktop_pid
+        Log.info("Ctrl-Q: quit request to built-in pid=#{target}")
+        quit_data = MessagePack.pack({ "cmd" => "quit_request" })
+        _send_raw_message(target, FmrbConst::MSG_TYPE_APP_CONTROL, quit_data)
       elsif @fullscreen_pid
         exit_fullscreen
       end

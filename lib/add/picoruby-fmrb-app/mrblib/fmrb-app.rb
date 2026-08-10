@@ -428,7 +428,17 @@ class FmrbApp
         @gfx.present
       end
       stop
+    when "quit_request"
+      # Ctrl+Q on a built-in app: the kernel asks instead of stopping it, so an
+      # app holding unsaved state can put a question to the user first.
+      on_quit_request
     end
+  end
+
+  # Ctrl+Q. Override to confirm before closing; the default is to close.
+  def on_quit_request
+    Log.info("App #{@name} quit request")
+    stop
   end
 
   def set_timer(interval, &blk)

@@ -19,7 +19,21 @@ module AppLifecycleMixin
     # Read fullscreen from the app context rather than the window list: the
     # list is refreshed asynchronously and is not there yet at this point.
     info = _get_app_info(new_pid)
-    enter_fullscreen(new_pid) if info && info[:fullscreen]
+    if info && info[:fullscreen]
+      enter_fullscreen(new_pid)
+    elsif @fullscreen_pid
+      # A windowed app started from a fullscreen app -- the editor's F5 with a
+      # windowed target. The desktop is suspended and mouse input is pinned to
+      # the fullscreen app, so the new window came up invisible and unreachable
+      # (clicks went to the fullscreen app underneath it). Park the fullscreen
+      # app instead: the desktop comes back and the window behaves like any
+      # other. cleanup_terminated_app brings the parked app back when the window
+      # closes, which is what makes "F5, look, close, keep editing" work.
+      if can_park_fullscreen?(@fullscreen_pid)
+        Log.info("Windowed pid=#{new_pid} spawned from fullscreen pid=#{@fullscreen_pid}: parking")
+        park_fullscreen
+      end
+    end
 
     # NOTE: keep the collection-class name (S-e-t) out of kernel source even in
     # comments -- Spinel splices `require "set"` on a bareword match and its
@@ -52,60 +66,117 @@ module AppLifecycleMixin
   end
 
   # ---- Fullscreen mode management ----
+  #
+  # Fullscreen is a stack, not a flag. A fullscreen app can start another one --
+  # the fullscreen editor runs a fullscreen game with F5 -- and when the inner
+  # app ends the outer one has to come back to fullscreen. With a single
+  # @fullscreen_pid slot and one flat suspend list, the inner app's
+  # enter_fullscreen overwrote both, so its exit resumed *everything* including
+  # the desktop: the taskbar reappeared over the editor, @fullscreen_pid was
+  # left nil while a fullscreen app was still on screen (which also silently
+  # disabled Ctrl+Q), and mouse routing no longer matched what was visible.
+  #
+  # Each frame records the apps IT suspended, so popping a frame resumes exactly
+  # those: the inner frame resumes the outer fullscreen app and leaves the
+  # desktop suspended.
+  #
+  #   @fs_stack       [{ pid:, suspended: [pid, ...] }, ...] -- innermost last
+  #   @fullscreen_pid pid of the innermost frame, nil when the stack is empty
+  #   @suspended_pids union over the frames (app_suspended? reads it)
 
   def is_fullscreen_app?(pid)
     win = find_window_by_pid(pid)
     win && win[:fullscreen] == true
   end
 
-  def enter_fullscreen(pid)
-    Log.info("Entering fullscreen mode: PID #{pid}")
-    @fullscreen_pid = pid
-    @suspended_pids = []
+  def fs_top_pid
+    n = @fs_stack.length
+    n == 0 ? nil : @fs_stack[n - 1][:pid]
+  end
 
-    # Suspend all other user apps (not kernel, not the fullscreen app itself)
+  def fs_frame?(pid)
+    i = 0
+    while i < @fs_stack.length
+      return true if @fs_stack[i][:pid] == pid
+      i += 1
+    end
+    false
+  end
+
+  def enter_fullscreen(pid)
+    Log.info("Entering fullscreen mode: PID #{pid} (depth #{@fs_stack.length + 1})")
+    suspended = []
+
+    # Suspend all other user apps (not kernel, not the fullscreen app itself).
+    # Apps an outer frame already suspended are left to that frame, and a parked
+    # app must not be picked up here -- popping this frame would resume it and
+    # bring it back on screen behind the user's back.
     update_window_list
     @window_list.each do |win|
       next if win[:pid] == pid
       next if win[:app_name] == "system_desktop"  # Desktop suspends differently
       next if win[:pid] == 0  # kernel
+      next if app_suspended?(win[:pid])
+      next if win[:pid] == @parked_fullscreen_pid
 
       suspend_app(win[:pid])
+      suspended << win[:pid]
       @suspended_pids << win[:pid]
     end
 
     # Notify desktop to stop drawing
-    if @desktop_pid
+    if @desktop_pid && !app_suspended?(@desktop_pid)
       suspend_app(@desktop_pid)
+      suspended << @desktop_pid
       @suspended_pids << @desktop_pid
     end
+
+    @fs_stack << { pid: pid, suspended: suspended }
+    @fullscreen_pid = pid
   end
 
+  # Pop the frame belonging to +pid+ (and any frame above it, which can only be
+  # stale) and resume exactly the apps those frames suspended. Returns the pid
+  # of the fullscreen app that owns the screen afterwards, or nil.
+  def pop_fullscreen_frames(pid)
+    idx = nil
+    i = 0
+    while i < @fs_stack.length
+      idx = i if @fs_stack[i][:pid] == pid
+      i += 1
+    end
+    return fs_top_pid if idx.nil?
+
+    while @fs_stack.length > idx
+      frame = @fs_stack.pop
+      frame[:suspended].each do |spid|
+        resume_app(spid)
+        drop_suspended(spid)
+      end
+    end
+    @fullscreen_pid = fs_top_pid
+    mark_window_list_dirty
+    @fullscreen_pid
+  end
+
+  # Rebuild @suspended_pids without pid (Spinel mis-dispatches poly-receiver
+  # Array#delete, same reason as in cleanup_terminated_app).
+  def drop_suspended(pid)
+    kept = []
+    @suspended_pids.each { |sp| kept << sp unless sp == pid }
+    @suspended_pids = kept
+  end
+
+  # Ask the innermost fullscreen app to close. Restoring what was underneath is
+  # left to cleanup_terminated_app, which runs on the app's exit notification --
+  # doing it here as well used to declare "not fullscreen any more" while the app
+  # was still on screen.
   def exit_fullscreen
-    return unless @fullscreen_pid
-    Log.info("Exiting fullscreen mode: stopping PID #{@fullscreen_pid}")
-
-    # Stop the fullscreen app
     fs_pid = @fullscreen_pid
-    @fullscreen_pid = nil
-
-    # Send clear + stop to fullscreen app (clear canvas before stopping)
+    return unless fs_pid
+    Log.info("Exiting fullscreen mode: stopping PID #{fs_pid}")
     clear_data = MessagePack.pack({ "cmd" => "clear_and_stop" })
     _send_raw_message(fs_pid, FmrbConst::MSG_TYPE_APP_CONTROL, clear_data)
-
-    # Resume all suspended apps
-    @suspended_pids.each do |spid|
-      resume_app(spid)
-    end
-    @suspended_pids = []
-
-    # Restore HID target to desktop
-    if @desktop_pid
-      _set_hid_target(@desktop_pid)
-      @hid_target_pid = @desktop_pid
-    end
-
-    mark_window_list_dirty
   end
 
   # ---- Ctrl+Tab focus cycling / fullscreen park & unpark ----
@@ -121,26 +192,55 @@ module AppLifecycleMixin
         Log.info("Ctrl+Tab ignored: fullscreen app is not switchable")
         return
       end
+      if @parked_fullscreen_pid
+        # Only one app parks at a time (single slot), and the parked one has to
+        # stay reachable: cycle instead, which unparks it. The fullscreen stack
+        # then holds both -- the app that was on screen is suspended underneath.
+        Log.info("Ctrl+Tab: PID #{@parked_fullscreen_pid} is parked; cycling to it")
+        cycle_front_app
+        return
+      end
       park_fullscreen
     else
       cycle_front_app
     end
   end
 
-  # Suspend the fullscreen app (its on_suspend hides the canvas), bring the
-  # desktop and the previously suspended apps back. The app keeps its state;
-  # unpark_fullscreen is the way back.
+  # Can this fullscreen app be parked right now? Only one app can be parked at a
+  # time: @parked_fullscreen_pid is a single slot, and a second park would leave
+  # the first one suspended with no way back to it.
+  def can_park_fullscreen?(pid)
+    return false unless pid
+    if @parked_fullscreen_pid
+      Log.info("Park refused: PID #{@parked_fullscreen_pid} is already parked")
+      return false
+    end
+    info = _get_app_info(pid)
+    unless info && info[:fullscreen_switchable]
+      Log.info("Park refused: PID #{pid} is not fullscreen_switchable")
+      return false
+    end
+    true
+  end
+
+  # Suspend the fullscreen app (its on_suspend hides the canvas) and bring back
+  # whatever its frame had suspended -- the desktop, or an outer fullscreen app
+  # when this one was nested. The app keeps its state; unpark_fullscreen is the
+  # way back.
   def park_fullscreen
     fs_pid = @fullscreen_pid
+    return unless fs_pid
     Log.info("Parking fullscreen app PID #{fs_pid}")
-    @fullscreen_pid = nil
     @parked_fullscreen_pid = fs_pid
 
     suspend_app(fs_pid)
-    @suspended_pids.each { |spid| resume_app(spid) }
-    @suspended_pids = []
+    under = pop_fullscreen_frames(fs_pid)
 
-    if @desktop_pid
+    if under
+      # A nested fullscreen app was underneath: it owns the screen now.
+      _set_hid_target(under)
+      @hid_target_pid = under
+    elsif @desktop_pid
       _set_hid_target(@desktop_pid)
       @hid_target_pid = @desktop_pid
     end
@@ -225,14 +325,17 @@ module AppLifecycleMixin
     # there and the note would sound forever.
     silence_notes_for(pid)
 
-    # If fullscreen app terminated, resume all suspended apps
-    if @fullscreen_pid == pid
-      Log.info("Fullscreen app terminated, resuming suspended apps")
-      @fullscreen_pid = nil
-      @suspended_pids.each do |spid|
-        resume_app(spid)
+    # A fullscreen app terminated: pop its frame, which resumes exactly what that
+    # frame had suspended. Nested (editor -> fullscreen game) restores the outer
+    # fullscreen app and leaves the desktop suspended.
+    if fs_frame?(pid)
+      Log.info("Fullscreen app terminated, restoring what it covered")
+      restored = pop_fullscreen_frames(pid)
+      if restored
+        Log.info("Fullscreen restored to PID #{restored}")
+        _set_hid_target(restored)
+        @hid_target_pid = restored
       end
-      @suspended_pids = []
     end
 
     # A parked fullscreen app that terminated must not be unparked later
@@ -242,18 +345,37 @@ module AppLifecycleMixin
     # returns it to whoever asked for the Run (the editor, so F5 works again
     # without clicking); anything else falls back to the desktop. Leaving it
     # unassigned means the next key press goes nowhere until the user clicks.
-    if @hid_target_pid == pid
+    # cleanup_terminated_app can run twice for the same pid (exit notification
+    # and then the reaper). Once an unpark is armed, the keyboard belongs to the
+    # app that unpark will bring back -- a second pass must not hand it to the
+    # desktop in between.
+    if @hid_target_pid == pid && @pending_unpark.nil?
       back_to = @run_parent ? @run_parent[pid] : nil
       back_to = nil unless back_to && _get_app_info(back_to)
-      back_to = @desktop_pid if back_to.nil?
-      if back_to
-        _set_hid_target(back_to)
-        @hid_target_pid = back_to
-        Log.info("HID target back to pid=#{back_to} (app #{pid} terminated)")
+      if back_to && back_to == @parked_fullscreen_pid
+        # The app that ran this one is a parked fullscreen app (the editor ran a
+        # windowed app with F5): bring it back to fullscreen. Handing the
+        # keyboard to a suspended app would look like a dead editor.
+        #
+        # Deferred on purpose: this app is still exiting and still in the window
+        # list, so unparking here would have enter_fullscreen suspend a task in
+        # the middle of its own teardown -- it then never finishes and the whole
+        # desktop stalls. tick_process retries until the slot is actually free.
+        @pending_unpark = back_to
+        @pending_unpark_after = pid
+        @pending_unpark_tries = 0
+        Log.info("Unpark of PID #{back_to} deferred until pid=#{pid} is reaped")
       else
-        _set_hid_target(0xFF)
-        @hid_target_pid = nil
-        Log.info("Cleared HID target (app #{pid} terminated)")
+        back_to = @desktop_pid if back_to.nil?
+        if back_to
+          _set_hid_target(back_to)
+          @hid_target_pid = back_to
+          Log.info("HID target back to pid=#{back_to} (app #{pid} terminated)")
+        else
+          _set_hid_target(0xFF)
+          @hid_target_pid = nil
+          Log.info("Cleared HID target (app #{pid} terminated)")
+        end
       end
     end
     @run_parent.delete(pid) if @run_parent
@@ -325,8 +447,13 @@ module AppLifecycleMixin
       # Check if any tracked PIDs are no longer in the window list
       window_pids = @window_list.map { |w| w[:pid] }
 
-      # Clean up HID target if it's gone
-      if @hid_target_pid && !window_pids.include?(@hid_target_pid)
+      # Clean up HID target if it's gone. The window list only holds apps that
+      # already reached RUNNING, so an app that was just handed the keyboard can
+      # still be in INIT and absent from it -- checking the list alone used to
+      # clear the target of a perfectly good app, and every hotkey (Ctrl+Q
+      # included) then went nowhere. The context lookup knows about INIT.
+      if @hid_target_pid && !window_pids.include?(@hid_target_pid) &&
+         !_get_app_info(@hid_target_pid)
         Log.info("HID target app #{@hid_target_pid} no longer exists")
         @hid_target_pid = nil
         _set_hid_target(0xFF)
@@ -370,6 +497,30 @@ module AppLifecycleMixin
     @open_path_tries = 0
   end
 
+  # Deferred unpark (see cleanup_terminated_app). Waits for the windowed app's
+  # slot to be free, so enter_fullscreen cannot suspend a task that is still
+  # shutting down (that stalls it forever: the task never finishes exiting).
+  UNPARK_MAX_TRIES = 100
+
+  def flush_pending_unpark
+    pid = @pending_unpark
+    return unless pid
+    @pending_unpark_tries += 1
+    waiting = @pending_unpark_after
+    if waiting && _get_app_info(waiting) && @pending_unpark_tries < UNPARK_MAX_TRIES
+      return  # still terminating; try again next tick
+    end
+    @pending_unpark = nil
+    @pending_unpark_after = nil
+    return unless pid == @parked_fullscreen_pid
+    unless _get_app_info(pid)
+      Log.info("Deferred unpark dropped: PID #{pid} is gone")
+      @parked_fullscreen_pid = nil
+      return
+    end
+    unpark_fullscreen
+  end
+
   # ---- Periodic tasks ----
 
   def tick_process
@@ -383,6 +534,9 @@ module AppLifecycleMixin
 
     # Deliver a pending spawn open_path once the new app has its queue.
     flush_open_path
+
+    # Bring a parked fullscreen app back once the windowed app it ran is gone.
+    flush_pending_unpark
 
     # Periodic cleanup check for terminated apps
     if @tick_count - @last_cleanup_tick >= @cleanup_interval

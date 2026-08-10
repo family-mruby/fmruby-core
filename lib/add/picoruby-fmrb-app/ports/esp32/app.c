@@ -560,7 +560,8 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                 }
                             }
                         } else if (strcmp(cmd, "suspend") == 0 || strcmp(cmd, "resume") == 0 ||
-                                   strcmp(cmd, "stop") == 0 || strcmp(cmd, "clear_and_stop") == 0) {
+                                   strcmp(cmd, "stop") == 0 || strcmp(cmd, "clear_and_stop") == 0 ||
+                                   strcmp(cmd, "quit_request") == 0) {
                             // System suspend/resume: call _handle_system_control
                             mrb_sym sys_ctrl_sym = mrb_intern_lit(mrb, "_handle_system_control");
                             if (mrb_respond_to(mrb, self, sys_ctrl_sym)) {
