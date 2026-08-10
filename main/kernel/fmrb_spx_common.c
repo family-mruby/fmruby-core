@@ -37,6 +37,17 @@ uint32_t fmrb_spx_board_millis(void)
     return (uint32_t)((uint64_t)ts.tv_sec * 1000u + (uint64_t)ts.tv_nsec / 1000000u);
 }
 
+uint32_t fmrb_spx_board_micros(void)
+{
+    /* Same clock at microsecond resolution. The editor's key-to-present
+       instrumentation measures single-digit milliseconds, which milliseconds
+       cannot resolve; it wraps every ~71 minutes, and only differences are
+       used. */
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint32_t)((uint64_t)ts.tv_sec * 1000000u + (uint64_t)ts.tv_nsec / 1000u);
+}
+
 void fmrb_spx_log_write(int level, const char *msg, int len)
 {
     if (!msg || len < 0) {

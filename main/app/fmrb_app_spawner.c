@@ -23,6 +23,42 @@ extern const uint8_t logviewer_irep[];
 extern const uint8_t monitor_irep[];
 extern const uint8_t inspector_irep[];
 
+#ifdef FMRB_APP_ENGINE_EDITOR_SPINEL
+/* Spinel engine for the editor (P5): default/editor and default/editor_fs run
+   the Spinel-compiled program instead of editor_irep. Same shape as the desktop
+   below -- a NATIVE task backed by this app slot's estalloc pool, so `ps` still
+   reports its memory and the window attributes are unchanged. */
+extern int editor_entry(void);
+#include "fmrb_spinel_host.h"
+
+static void spinel_editor_native(void *arg)
+{
+    fmrb_app_task_context_t *ctx = (fmrb_app_task_context_t *)arg;
+    void  *pool = fmrb_get_mempool_ptr(ctx->mempool_id);
+    size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
+    if (!pool || pool_size == 0) {
+        FMRB_LOGE(TAG, "editor mempool %d unavailable (ptr=%p size=%zu)",
+                  ctx->mempool_id, pool, pool_size);
+        return;
+    }
+    /* The document lives in POOL_ID_EDITOR_DOC, not here, so this pool only
+       carries the UI state -- a small live set that collects cheaply. */
+    size_t threshold = pool_size / 32;
+    void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
+    if (!est) {
+        FMRB_LOGE(TAG, "failed to create Spinel editor instance (pool %d, %zu bytes)",
+                  ctx->mempool_id, pool_size);
+        return;
+    }
+    ctx->est = est;
+
+    editor_entry();  /* runs EditorApp.new.start -> main_loop */
+
+    fmrb_spinel_instance_end(est);
+    ctx->est = NULL;
+}
+#endif /* FMRB_APP_ENGINE_EDITOR_SPINEL */
+
 #ifdef FMRB_APP_ENGINE_DESKTOP_SPINEL
 /* Spinel engine (Phase 4 T4-3): system_desktop runs as the Spinel-compiled
    combined desktop program instead of mruby bytecode. It is spawned as a NATIVE
@@ -115,9 +151,14 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,
         .name = "FM-Editor",
+#ifdef FMRB_APP_ENGINE_EDITOR_SPINEL
+        .vm_type = FMRB_VM_TYPE_NATIVE,
+        .native_func = spinel_editor_native,
+#else
         .vm_type = FMRB_VM_TYPE_MRUBY,
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
         .bytecode = editor_irep,
+#endif
         .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
         .priority = FMRB_SHELL_APP_PRIORITY,
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
@@ -145,9 +186,14 @@ static const builtin_app_entry_t builtin_app_table[] = {
         // Same name as the windowed editor so the shell / desktop file-open
         // relay (which looks the editor up by name) works for both.
         .name = "FM-Editor",
+#ifdef FMRB_APP_ENGINE_EDITOR_SPINEL
+        .vm_type = FMRB_VM_TYPE_NATIVE,
+        .native_func = spinel_editor_native,
+#else
         .vm_type = FMRB_VM_TYPE_MRUBY,
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
         .bytecode = editor_irep,
+#endif
         .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
         .priority = FMRB_SHELL_APP_PRIORITY,
         .flags = FMRB_SHELL_APP_TASK_FLAGS,

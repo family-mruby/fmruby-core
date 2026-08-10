@@ -32,6 +32,13 @@ module Machine
     FmrbSpx.fmrb_spx_board_millis
   end
 
+  # Microseconds from the same monotonic clock. Named to match the picoruby
+  # machine gem so app code (the editor's edit_lat instrumentation) reads the
+  # same on both engines.
+  def self.uptime_us
+    FmrbSpx.fmrb_spx_board_micros
+  end
+
   # Coarse busy wait against board_millis (used by the desktop boot animation
   # for frame pacing). Each Spinel app is its own preemptive FreeRTOS task, so
   # this only spins the app's own task; a vTaskDelay FFI would be lighter and is
@@ -928,14 +935,32 @@ class FmrbApp
       w = h["width"]
       ht = h["height"]
       if w.is_a?(Integer) && ht.is_a?(Integer)
+        # A runtime window <-> fullscreen switch carries the new mode (P2's
+        # fmrb_app_set_fullscreen); a plain resize omits it and stays windowed.
+        # The user area follows: fullscreen has no title bar and no border.
+        fs = h["fullscreen"]
+        @fullscreen = (fs == true) unless fs.nil?
         @window_width = w
         @window_height = ht
-        @user_area_width = w - 2
-        @user_area_height = ht - 12
-        @user_area_x1 = w - 1
-        @user_area_y1 = ht - 1
+        if @fullscreen
+          @user_area_x0 = 0
+          @user_area_y0 = 0
+          @user_area_width = w
+          @user_area_height = ht
+          @user_area_x1 = w
+          @user_area_y1 = ht
+        else
+          @user_area_x0 = 1
+          @user_area_y0 = TITLE_BAR_H
+          @user_area_width = w - 2
+          @user_area_height = ht - TITLE_BAR_H - 1
+          @user_area_x1 = w - 1
+          @user_area_y1 = ht - 1
+        end
         on_resize(w, ht)
       end
+    elsif cmd == "quit_request"
+      _handle_system_control(h)
     elsif cmd == "suspend" || cmd == "resume" || cmd == "stop" || cmd == "clear_and_stop"
       _handle_system_control(h)
     else
@@ -963,7 +988,17 @@ class FmrbApp
         @gfx.present
       end
       stop
+    when "quit_request"
+      # Ctrl+Q on a built-in app: the kernel asks instead of stopping it, so an
+      # app holding unsaved state can put a question to the user first (P2).
+      on_quit_request
     end
+  end
+
+  # Ctrl+Q. Override to confirm before closing; the default is to close.
+  def on_quit_request
+    Log.info("App #{@name} quit request")
+    stop
   end
 
   # ---- timers (Ruby-side; C cannot call a Ruby block) ----
@@ -1021,6 +1056,25 @@ class FmrbApp
   def request_file_select(mode = "open")
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
       { "cmd" => "file_select", "mode" => mode })
+  end
+
+  # Run a file, replacing the instance this app started last time (editor F5).
+  def request_run(path, prev_pid = nil)
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      { "cmd" => "run", "path" => path, "prev_pid" => prev_pid })
+  end
+
+  # Ask the kernel to switch this app between windowed and fullscreen (P2). The
+  # VM keeps running; the answer arrives as on_resize with @fullscreen and the
+  # user area already updated.
+  def request_fullscreen(on)
+    cmd = on ? "enter_fullscreen" : "exit_fullscreen"
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+      { "cmd" => cmd })
+  end
+
+  def toggle_fullscreen
+    request_fullscreen(!@fullscreen)
   end
 
   def send_message(dest_pid, msg_type, data)
@@ -1143,6 +1197,12 @@ class FmrbApp
       iram_free: SpxBytes.u32(buf, 16),
       iram_total: SpxBytes.u32(buf, 20),
     }
+  end
+
+  # Percent of this VM's pool in use (-1 when unavailable), matching the mruby
+  # FmrbApp.pool_usage so app-side logging reads the same on both engines.
+  def self.pool_usage
+    FmrbSpxApp.fmrb_spx_app_pool_usage
   end
 
   def self.sys_pool_info

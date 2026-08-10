@@ -31,6 +31,11 @@ class EditorApp < FmrbApp
     FmrbGfx.rgb_to_332(0, 0, 180),      # 8: method     - dark blue
   ]
 
+  # Printable ASCII indexed by (code - 32). Used instead of Integer#chr, which
+  # the Spinel runtime does not provide -- and a table lookup is the same in both
+  # builds, so the source stays single-backend.
+  ASCII_PRINTABLE = " !\"\#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+
   CHAR_W = 6
   CHAR_H = 8
   TAB_SIZE = 2
@@ -760,7 +765,7 @@ class EditorApp < FmrbApp
       end
     when 32..126  # Printable
       if @search_query.length < SEARCH_QUERY_MAX
-        @search_query += character.chr
+        @search_query += printable_char(character)
         @search_query_dirty = true
         @search_status = ""
         @need_redraw = true
@@ -830,8 +835,14 @@ class EditorApp < FmrbApp
         ti += 1
       end
     when 32..126 # Printable
-      insert_char(ch.chr)
+      insert_char(printable_char(ch))
     end
+  end
+
+  # One-character String for a printable ASCII code ("" outside 32..126).
+  def printable_char(code)
+    return "" if code < 32 || code > 126
+    ASCII_PRINTABLE[code - 32, 1]
   end
 
   def insert_char(c)

@@ -69,11 +69,16 @@ set(FMRB_APP_ENGINE_DESKTOP "$ENV{FMRB_APP_ENGINE_DESKTOP}")
 if(NOT FMRB_APP_ENGINE_DESKTOP)
     set(FMRB_APP_ENGINE_DESKTOP "mruby")
 endif()
+set(FMRB_APP_ENGINE_EDITOR "$ENV{FMRB_APP_ENGINE_EDITOR}")
+if(NOT FMRB_APP_ENGINE_EDITOR)
+    set(FMRB_APP_ENGINE_EDITOR "mruby")
+endif()
 set(FMRB_SPINEL_GEN_DIR ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/gen)
 
 # Compile the Spinel machinery whenever ANY VM is Spinel.
 set(FMRB_ANY_SPINEL FALSE)
-if(FMRB_KERNEL_ENGINE STREQUAL "spinel" OR FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
+if(FMRB_KERNEL_ENGINE STREQUAL "spinel" OR FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel"
+   OR FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
     set(FMRB_ANY_SPINEL TRUE)
     include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_spinel.cmake)
     # sp_net_bin_len (:binstr length) -- referenced by whichever shim(s) below
@@ -98,6 +103,19 @@ if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
     list(APPEND COMPONENT_SRCS "app/fmrb_spx_gfx.c")
     list(APPEND COMPONENT_SRCS "app/fmrb_spx_app.c")
     message(STATUS "FMRB_APP_ENGINE_DESKTOP=spinel: system_desktop replaced by Spinel combined desktop")
+endif()
+
+if(FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
+    prepare_ruby_spinel_source(editor_combined ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
+    # The editor needs the same FmrbApp / FmrbGfx shims as the desktop, plus the
+    # EditorCore FFI. Guarded so a build with both Spinel apps does not add the
+    # shared two twice.
+    if(NOT FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
+        list(APPEND COMPONENT_SRCS "app/fmrb_spx_gfx.c")
+        list(APPEND COMPONENT_SRCS "app/fmrb_spx_app.c")
+    endif()
+    list(APPEND COMPONENT_SRCS "app/fmrb_spx_editor.c")
+    message(STATUS "FMRB_APP_ENGINE_EDITOR=spinel: default/editor replaced by Spinel combined editor")
 endif()
 
 # Set up component dependencies based on target
@@ -335,6 +353,19 @@ if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
     # Same both-sides MC flags as the kernel combined (a mismatch is a silent ABI
     # break). Only this generated TU gets them, never the fmrb_spx shims.
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/system_desktop_combined.c
+        PROPERTIES COMPILE_OPTIONS
+        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+endif()
+
+# Editor app engine: the same wiring again for the Spinel-compiled editor
+# (spawned NATIVE for both default/editor and default/editor_fs). Independent of
+# the kernel and desktop engines.
+if(FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_APP_ENGINE_EDITOR_SPINEL)
+    generate_ruby_spinel_command(
+        ${FMRB_SPINEL_GEN_DIR}/editor_combined.rb
+        editor_entry ${FMRB_SPINEL_GEN_DIR})
+    set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/editor_combined.c
         PROPERTIES COMPILE_OPTIONS
         "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
 endif()

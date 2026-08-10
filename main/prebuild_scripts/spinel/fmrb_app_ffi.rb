@@ -19,6 +19,7 @@
 # is not compiled. Log / Machine in fmrb_app_base_spinel.rb use these two.
 module FmrbSpx
   ffi_func :fmrb_spx_board_millis, [], :int
+  ffi_func :fmrb_spx_board_micros, [], :int
   ffi_func :fmrb_spx_log_write, [:int, :str, :int], :void
 end
 
@@ -104,6 +105,7 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_ps, [], :binstr
   ffi_func :fmrb_spx_app_heap_info, [], :binstr
   ffi_func :fmrb_spx_app_sys_pool_info, [], :binstr
+  ffi_func :fmrb_spx_app_pool_usage, [], :int
   ffi_func :fmrb_spx_app_gfx_stats, [], :binstr
   ffi_func :fmrb_spx_app_last_error, [], :binstr
 

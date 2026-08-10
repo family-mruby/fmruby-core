@@ -73,6 +73,7 @@ def spinel_pin
 end
 FMRB_KERNEL_ENGINE = ENV["FMRB_KERNEL_ENGINE"] || "mruby"
 FMRB_APP_ENGINE_DESKTOP = ENV["FMRB_APP_ENGINE_DESKTOP"] || "mruby"
+FMRB_APP_ENGINE_EDITOR = ENV["FMRB_APP_ENGINE_EDITOR"] || "mruby"
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
 # Pin the build container to the IDF version tag above -- never :latest. Two
@@ -108,6 +109,7 @@ USER_OPT = "--user #{UID}:#{GID}"
 ENGINE_ENV_OPTS = [
   "-e FMRB_KERNEL_ENGINE=#{FMRB_KERNEL_ENGINE}",
   "-e FMRB_APP_ENGINE_DESKTOP=#{FMRB_APP_ENGINE_DESKTOP}",
+  "-e FMRB_APP_ENGINE_EDITOR=#{FMRB_APP_ENGINE_EDITOR}",
   # Measurement build: MRB_GC_PROFILE adds the GC pause histograms to GC.stat
   # (doc/midi/report/p6.md). It grows mrb_gc, hence mrb_state, so the rake side
   # (lib/add/family_mruby_*.rb) and the CMake side
@@ -379,6 +381,14 @@ namespace :spinel do
       sh "#{bin} --no-main --entry fmrb_kernel_entry -I #{SPINEL_SRC_DIR} -c #{combined_rb} -o #{out_c}"
       puts "Spinel generated #{out_c}"
     end
+    # Editor: same, for the editor (entry editor_entry).
+    if FMRB_APP_ENGINE_EDITOR == "spinel"
+      e_rb = "#{SPINEL_GEN_DIR}/editor_combined.rb"
+      e_c  = "#{SPINEL_GEN_DIR}/editor_combined.c"
+      sh "#{RbConfig.ruby} tool/spinel/gen_app_combined.rb editor #{e_rb} #{platform}"
+      sh "#{bin} --no-main --entry editor_entry -I #{SPINEL_SRC_DIR} -c #{e_rb} -o #{e_c}"
+      puts "Spinel generated #{e_c}"
+    end
     # Desktop: same, for system_desktop (entry system_desktop_entry).
     if FMRB_APP_ENGINE_DESKTOP == "spinel"
       d_rb = "#{SPINEL_GEN_DIR}/system_desktop_combined.rb"
@@ -409,6 +419,7 @@ namespace :spinel do
     targets = [
       ["fmrb_kernel",    "tool/spinel/gen_kernel_combined.rb", nil],
       ["system_desktop", "tool/spinel/gen_app_combined.rb", "system_desktop"],
+      ["editor",         "tool/spinel/gen_app_combined.rb", "editor"],
     ]
     # Known-accepted findings: ESP32-only RTC hardware code that is dead on Linux
     # (PLATFORM guard) but still statically analyzed. Its driver classes
@@ -702,7 +713,8 @@ namespace :build do
 
     # Spinel engine(s): pre-generate the C on the host (the compiler is not
     # available inside the docker build) and forward the engine(s) into the build.
-    any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel'
+    any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel' ||
+                 FMRB_APP_ENGINE_EDITOR == 'spinel'
     ENV['SPINEL_GEN_PLATFORM'] = 'linux'
     Rake::Task['spinel:gen'].invoke if any_spinel
 
@@ -761,7 +773,8 @@ namespace :build do
     # docker build) with PLATFORM=esp32 so ESP32-only branches (RTC HW etc.) are
     # compiled. Mirrors build:linux; without this the esp32 build used a manually
     # gen'd (or stale linux) combined.
-    any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel'
+    any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel' ||
+                 FMRB_APP_ENGINE_EDITOR == 'spinel'
     ENV['SPINEL_GEN_PLATFORM'] = 'esp32'
     Rake::Task['spinel:gen'].invoke if any_spinel
 

@@ -9,7 +9,7 @@
 # same convention the kernel uses.
 #
 # Usage: ruby tool/spinel/gen_app_combined.rb <app> <out.rb> [platform]
-#   <app> currently supports: system_desktop
+#   <app> currently supports: system_desktop, editor
 #
 # Order matters: FFI + constants + base layer, then the shared app libraries
 # (FmrbI18n / sprite / audio), then the app's mixins (sorted like the picorbc
@@ -48,11 +48,23 @@ APPS = {
     mixin_dir: File.join(KERNEL_DIR, "system_desktop"),
     main: File.join(KERNEL_DIR, "system_desktop.app.rb"),
   },
+  # The editor. Its debugger UI (default_app/editor/debug_pane.rb) is replaced by
+  # the no-op editor_debug_stub.rb: FMRB::Debug has no Spinel binding, and v1 of
+  # the Spinel editor deliberately ships without the debugger (use the mruby
+  # build for that). Everything else is the same source as the mruby build.
+  "editor" => {
+    libs: [
+      File.join(SPINEL_DIR, "fmrb_editor_ffi.rb"),   # FmrbSpxEc + EditorCore
+      File.join(SPINEL_DIR, "editor_debug_stub.rb"), # module EditorDebugPane (no-op)
+    ],
+    mixin_dir: nil,
+    main: File.join(ROOT, "main/prebuild_scripts/default_app/editor.app.rb"),
+  },
 }
 
 spec = APPS[app] or abort "unknown app: #{app} (known: #{APPS.keys.join(', ')})"
 
-mixins = Dir.glob(File.join(spec[:mixin_dir], "*.rb")).sort
+mixins = spec[:mixin_dir] ? Dir.glob(File.join(spec[:mixin_dir], "*.rb")).sort : []
 
 parts = [
   # NB: fmrb_ffi.rb (the full kernel FmrbSpx) is intentionally NOT included --

@@ -23,6 +23,9 @@
 #include "fmrb_mem.h"
 #include "fmrb_rtos.h"
 #include "fmrb_hal.h"
+/* estalloc stats, as declared in main/app/fmrb_app.c. */
+extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
+                                  size_t *free, int32_t *frag);
 #include "fmrb_hal_time.h"
 #include "fmrb_task_config.h"
 #include "fmrb_kernel.h"
@@ -55,6 +58,7 @@
 
 #if defined(FMRB_HAS_WIFI)
 #include "wifi_task.h"
+
 #endif
 
 static const char *TAG = "spxapp";
@@ -312,6 +316,21 @@ const char *fmrb_spx_app_heap_info(void)
 #endif
     sp_net_bin_len = FMRB_SPX_APP_HEAP_RECORD_SIZE;
     return (const char *)buf;
+}
+
+/* Percent of this task's estalloc pool in use, or -1 when unavailable. Same
+   number FmrbApp.pool_usage gives the mruby side, so an app that logs it reads
+   the same on both engines. */
+int fmrb_spx_app_pool_usage(void)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (ctx == NULL || ctx->est == NULL) return -1;
+    size_t total = 0, used = 0, free_bytes = 0;
+    int32_t frag = 0;
+    if (mrb_get_estalloc_stats(ctx->est, &total, &used, &free_bytes, &frag) != 0 || total == 0) {
+        return -1;
+    }
+    return (int)((used * 100) / total);
 }
 
 const char *fmrb_spx_app_sys_pool_info(void)
