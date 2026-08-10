@@ -128,7 +128,11 @@ typedef struct {
     // Push-time transparency (used for canvas-to-canvas PUSH_CANVAS only)
     uint8_t      transparent_color;
     bool         use_transparency;
+    // Active drawing area: what the app currently draws and what gets
+    // composited. The buffer behind it is allocated at framebuffer size (see
+    // canvas_alloc), so this can grow at runtime without reallocating.
     uint16_t     width, height;
+    uint16_t     alloc_width, alloc_height;
     // Composite source viewport (SET_CANVAS_VIEWPORT). view_w == 0 means no
     // viewport: the full canvas is composited (default). When set, only the
     // (view_x, view_y, view_w, view_h) sub-rect is blended at push_x/push_y,
@@ -227,12 +231,19 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
         return nullptr;
     }
 
-    size_t buf_size = (size_t)width * height * 2;  // RGB565 = 2 bytes/pixel
+    // Allocate at framebuffer size, not at the requested window size, so a
+    // window can grow later (runtime fullscreen switch) without reallocating --
+    // the same policy graphics-audio uses on Retro. The active area starts at
+    // the requested size and UPDATE_WINDOW moves it within this buffer.
+    // Cost: 426x240x2 = ~200 KB of PSRAM per canvas.
+    uint16_t alloc_w = (g_display_width  > width)  ? (uint16_t)g_display_width  : width;
+    uint16_t alloc_h = (g_display_height > height) ? (uint16_t)g_display_height : height;
+    size_t buf_size = (size_t)alloc_w * alloc_h * 2;  // RGB565 = 2 bytes/pixel
     size_t aligned_size = 0;
     void *buf = ppa_alloc_buffer(buf_size, &aligned_size);
     if (!buf) {
         FMRB_LOGE(TAG, "Canvas buffer alloc failed: %dx%d (%u bytes)",
-                  (int)width, (int)height, (unsigned)buf_size);
+                  (int)alloc_w, (int)alloc_h, (unsigned)buf_size);
         return nullptr;
     }
 
@@ -267,14 +278,17 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     c->use_transparency             = use_transparency;
     c->width                    = width;
     c->height                   = height;
+    c->alloc_width              = alloc_w;
+    c->alloc_height             = alloc_h;
     c->view_x                   = 0;
     c->view_y                   = 0;
     c->view_w                   = 0;   // 0 = no viewport (full composite)
     c->view_h                   = 0;
     c->buf_aligned_size         = aligned_size;
 
-    FMRB_LOGI(TAG, "Canvas alloc: id=%u %dx%d z=%d transp=%u/%u",
-              canvas_id, width, height, z_order, transparent_color, (uint8_t)use_transparency);
+    FMRB_LOGI(TAG, "Canvas alloc: id=%u %dx%d (buffer %dx%d) z=%d transp=%u/%u",
+              canvas_id, width, height, alloc_w, alloc_h, z_order,
+              transparent_color, (uint8_t)use_transparency);
     return c;
 }
 
@@ -1259,10 +1273,23 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         const auto *cmd = (const fmrb_link_graphics_update_window_t *)data;
         p4_canvas_t *c = canvas_find(cmd->canvas_id);
         if (c) {
+            // Move the active area inside the already allocated buffer, the way
+            // Retro does with setBuffer. Clamped because the buffer is only
+            // framebuffer-sized: a larger request would draw out of bounds.
+            uint16_t nw = (uint16_t)cmd->width;
+            uint16_t nh = (uint16_t)cmd->height;
+            if (nw > c->alloc_width)  nw = c->alloc_width;
+            if (nh > c->alloc_height) nh = c->alloc_height;
             c->push_x = (int16_t)cmd->x;
             c->push_y = (int16_t)cmd->y;
-            c->width  = (uint16_t)cmd->width;
-            c->height = (uint16_t)cmd->height;
+            if ((nw != c->width || nh != c->height) && c->sprite) {
+                void *buf = c->sprite->getBuffer();
+                if (buf) c->sprite->setBuffer(buf, nw, nh);
+            }
+            c->width  = nw;
+            c->height = nh;
+            FMRB_LOGI(TAG, "UPDATE_WINDOW: id=%u %dx%d at (%d,%d)",
+                      cmd->canvas_id, nw, nh, c->push_x, c->push_y);
         }
         return 0;
     }
