@@ -4,6 +4,9 @@ module ShellCommandsMixin
   STATE_NAMES = ["free", "init", "run", "suspend", "stop"]
   TYPE_NAMES = ["kernel", "system", "user"]
   CP_CHUNK_SIZE = 4096  # cp/mv copy chunk size in bytes
+  # Comment-embedded toml fence. Same window the spawner reads.
+  COMMENT_TOML_FENCE = "#---fmrb"
+  COMMENT_TOML_SCAN_BYTES = 512
 
   # +open_path+ asks the kernel to hand that file to the new app as soon as it
   # exists (as a file_selected control message). Needed for a fullscreen app:
@@ -607,8 +610,34 @@ module ShellCommandsMixin
       f.close
       return :spawn
     rescue
-      return :sandbox
+      # No sidecar. A .rb may still declare its spawn attributes in a comment
+      # fence (doc/multivm_app/plan.md 3.2); that fence only means anything to
+      # the spawner, so such a file is an app rather than a sandbox script.
+      return comment_toml?(script_path) ? :spawn : :sandbox
     end
+  end
+
+  # True when the first lines of a .rb open the "#---fmrb" attribute fence.
+  # Mirrors the spawner's rule: comments and blank lines may precede it, the
+  # first line of real code ends the search.
+  def comment_toml?(path)
+    return false unless path.end_with?(".rb")
+    head = nil
+    begin
+      f = File.open(path, "r")
+      head = f.read(COMMENT_TOML_SCAN_BYTES)
+      f.close
+    rescue
+      return false
+    end
+    return false unless head
+    head.split("\n").each do |line|
+      return true if line.start_with?(COMMENT_TOML_FENCE)
+      stripped = line.strip
+      next if stripped.empty? || stripped.start_with?("#")
+      return false
+    end
+    false
   end
 
   def resolve_script_path(path)

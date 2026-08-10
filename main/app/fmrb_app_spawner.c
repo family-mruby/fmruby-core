@@ -344,6 +344,150 @@ static void notify_kernel_app_spawned(int32_t pid)
     fmrb_msg_send(PROC_ID_KERNEL, &msg, 10);
 }
 
+/*
+ * Comment-embedded toml (doc/multivm_app/plan.md 3.2).
+ *
+ * A .rb may carry its spawn attributes in a fenced comment block at the top of
+ * the file, so a one-file helper needs no .app.toml sidecar:
+ *
+ *     #---fmrb
+ *     # default_window_mode = "background"
+ *     # task_stack_kb = 32
+ *     #---
+ *
+ * The fenced body has its leading "# " stripped and is handed to the ordinary
+ * toml parser, so there is no second syntax to keep in step. Only the first
+ * 512 bytes are read and the fence must come before the first non-comment
+ * line, which keeps the cost to one short read at spawn time. A sidecar .toml
+ * always wins; this is only consulted when there is none.
+ */
+#define INLINE_TOML_SCAN_BYTES 512
+#define INLINE_TOML_FENCE_OPEN "#---fmrb"
+#define INLINE_TOML_FENCE_CLOSE "#---"
+
+// True when the rest of a line is nothing but whitespace.
+static bool inline_toml_rest_blank(const char* s, size_t len)
+{
+    for (size_t i = 0; i < len; i++) {
+        if (s[i] != ' ' && s[i] != '\t' && s[i] != '\r') {
+            return false;
+        }
+    }
+    return true;
+}
+
+static toml_table_t* load_inline_toml(const char* app_name, char* errbuf, int errbufsz)
+{
+    // v1 is Ruby only: .bas / .lua / .py comment with different characters.
+    const char* ext = strrchr(app_name, '.');
+    if (!ext || strcmp(ext, ".rb") != 0) {
+        return NULL;
+    }
+
+    fmrb_file_t file = NULL;
+    if (fmrb_hal_file_open(app_name, FMRB_O_RDONLY, &file) != FMRB_OK) {
+        return NULL;
+    }
+
+    char* head = (char*)fmrb_sys_malloc(INLINE_TOML_SCAN_BYTES + 1);
+    char* body = (char*)fmrb_sys_malloc(INLINE_TOML_SCAN_BYTES + 1);
+    if (!head || !body) {
+        if (head) fmrb_sys_free(head);
+        if (body) fmrb_sys_free(body);
+        fmrb_hal_file_close(file);
+        return NULL;
+    }
+
+    size_t n = 0;
+    fmrb_err_t ret = fmrb_hal_file_read(file, head, INLINE_TOML_SCAN_BYTES, &n);
+    fmrb_hal_file_close(file);
+    if (ret != FMRB_OK || n == 0) {
+        fmrb_sys_free(head);
+        fmrb_sys_free(body);
+        return NULL;
+    }
+    head[n] = '\0';
+
+    bool in_fence = false;
+    bool found = false;
+    bool closed = false;
+    bool malformed = false;
+    size_t out = 0;
+
+    const char* p = head;
+    const char* end = head + n;
+    while (p < end) {
+        const char* nl = (const char*)memchr(p, '\n', (size_t)(end - p));
+        size_t len = nl ? (size_t)(nl - p) : (size_t)(end - p);
+        if (!nl) {
+            // The 512-byte window cut this line in half; do not guess at it.
+            break;
+        }
+
+        if (!in_fence) {
+            if (len >= strlen(INLINE_TOML_FENCE_OPEN) &&
+                strncmp(p, INLINE_TOML_FENCE_OPEN, strlen(INLINE_TOML_FENCE_OPEN)) == 0 &&
+                inline_toml_rest_blank(p + strlen(INLINE_TOML_FENCE_OPEN),
+                                       len - strlen(INLINE_TOML_FENCE_OPEN))) {
+                in_fence = true;
+                found = true;
+            } else if (len > 0 && p[0] != '#' && !inline_toml_rest_blank(p, len)) {
+                // First real line of code: a fence below this point is not ours.
+                break;
+            }
+        } else if (len >= strlen(INLINE_TOML_FENCE_CLOSE) &&
+                   strncmp(p, INLINE_TOML_FENCE_CLOSE, strlen(INLINE_TOML_FENCE_CLOSE)) == 0 &&
+                   inline_toml_rest_blank(p + strlen(INLINE_TOML_FENCE_CLOSE),
+                                          len - strlen(INLINE_TOML_FENCE_CLOSE))) {
+            closed = true;
+            break;
+        } else if (len > 0 && p[0] == '#') {
+            // Strip the comment marker and one following space.
+            size_t skip = 1;
+            if (len > 1 && p[1] == ' ') {
+                skip = 2;
+            }
+            size_t copy = len - skip;
+            if (out + copy + 1 > INLINE_TOML_SCAN_BYTES) {
+                malformed = true;
+                break;
+            }
+            memcpy(body + out, p + skip, copy);
+            out += copy;
+            body[out++] = '\n';
+        } else {
+            // Anything that is not a comment inside the fence means the fence
+            // was never closed.
+            malformed = true;
+            break;
+        }
+
+        p = nl + 1;
+    }
+
+    fmrb_sys_free(head);
+
+    if (!found) {
+        fmrb_sys_free(body);
+        return NULL;
+    }
+    if (!closed || malformed) {
+        FMRB_LOGW(TAG, "Unterminated %s fence in %s: using default attributes",
+                  INLINE_TOML_FENCE_OPEN, app_name);
+        fmrb_sys_free(body);
+        return NULL;
+    }
+    body[out] = '\0';
+
+    toml_table_t* config = toml_parse(body, errbuf, errbufsz);
+    fmrb_sys_free(body);
+    if (!config) {
+        FMRB_LOGW(TAG, "Comment toml in %s failed to parse (%s): using default attributes",
+                  app_name, errbuf);
+    }
+    return config;
+}
+
 static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
 {
     if (!app_name) {
@@ -445,14 +589,38 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
 
     FMRB_LOGI(TAG, "[spawn] 6 toml_load '%s'", toml_path);
     // Try loading TOML configuration
+    bool config_from_comment = false;
     toml_table_t* config = fmrb_toml_load_file(toml_path, errbuf, 256);
+    if (!config) {
+        // No sidecar: fall back to a fenced comment block in the .rb itself.
+        // The sidecar always wins, so an app carrying both stays predictable.
+        config = load_inline_toml(app_name, errbuf, 256);
+        if (config) {
+            config_from_comment = true;
+            FMRB_LOGI(TAG, "Loaded comment toml from %s", app_name);
+        }
+    }
     if (config) {
-        FMRB_LOGI(TAG, "Loaded TOML config: %s", toml_path);
+        if (!config_from_comment) {
+            FMRB_LOGI(TAG, "Loaded TOML config: %s", toml_path);
+        }
 
-        // Parse app_screen_name
-        toml_screen_name = fmrb_toml_get_string(config, "app_screen_name", NULL);
-        if (toml_screen_name) {
-            app_screen_name = toml_screen_name;
+        // Parse app_screen_name.
+        // Launcher-facing metadata (name, icon, launcher_visible) stays
+        // sidecar-only on purpose: the boot scan must not have to open every
+        // .rb to build the launcher list (doc/multivm_app/plan.md 3.2).
+        if (config_from_comment) {
+            const char* ignored = fmrb_toml_get_string(config, "app_screen_name", NULL);
+            if (ignored) {
+                FMRB_LOGW(TAG, "app_screen_name in the comment toml of %s is ignored"
+                               " (launcher metadata needs a .toml sidecar)", app_name);
+                fmrb_sys_free((void*)ignored);
+            }
+        } else {
+            toml_screen_name = fmrb_toml_get_string(config, "app_screen_name", NULL);
+            if (toml_screen_name) {
+                app_screen_name = toml_screen_name;
+            }
         }
 
         // Parse default_window_mode
@@ -523,7 +691,7 @@ static fmrb_err_t spawn_user_app(const char* app_name, int32_t* out_pid)
             FMRB_LOGI(TAG, "Per-app task stack: %d KB", stack_size / 1024);
         }
     } else {
-        FMRB_LOGW(TAG, "No TOML config found or parse error: %s (%s)", toml_path, errbuf);
+        FMRB_LOGW(TAG, "No .toml sidecar and no comment toml for %s (%s)", app_name, errbuf);
     }
 
     // A .toml is how an app under /app gets its name and window; a file the
