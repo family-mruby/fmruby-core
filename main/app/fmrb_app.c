@@ -2257,6 +2257,24 @@ void fmrb_set_current_est(void* est)
     ctx->est = est;
 }
 
+/*
+ * The mruby VM of the calling task, or NULL when this task runs none.
+ *
+ * Called from the compiler's prism allocator (lib/patch/compiler/
+ * mruby-compiler2-ccontext.c), which used to allocate through one
+ * process-wide mrb_state -- whichever VM compiled last. One VM per app on its
+ * own task makes that the wrong VM as often as the right one, and a Spinel app
+ * (the editor) has no VM at all. Tasks with no app context (the host task) and
+ * apps running another runtime answer NULL, which is what the allocator wants:
+ * fall back to this task's own heap.
+ */
+void* fmrb_current_compile_mrb(void)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx || ctx->vm_type != FMRB_VM_TYPE_MRUBY) return NULL;
+    return ctx->mrb;
+}
+
 /**
  * Get window information list for all active apps
  * Returns array of window info (pid, x, y, width, height) for RUNNING/SUSPENDED apps

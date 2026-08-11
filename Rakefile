@@ -310,6 +310,11 @@ task :setup do
   # estalloc heap via global_mrb (owner decision "Option A"). Only the
   # compile.c NULL-guard remains.
   sh "cp -f lib/patch/compiler/mruby-compiler2-compile.c #{mrbgem_path}/mruby-compiler/src/compile.c"
+  # prism's allocator: per calling task instead of one process-wide mrb_state
+  # (doc/editor_ti/report/p2.md). The two files go together -- the header names
+  # the hooks, ccontext.c implements them.
+  sh "cp -f lib/patch/compiler/prism_xallocator.h #{mrbgem_path}/mruby-compiler/include/prism_xallocator.h"
+  sh "cp -f lib/patch/compiler/mruby-compiler2-ccontext.c #{mrbgem_path}/mruby-compiler/src/ccontext.c"
 
   # mrbgem.rake patches
   sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"
