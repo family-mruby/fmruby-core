@@ -113,6 +113,7 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_config, [:str, :int], :binstr
   ffi_func :fmrb_spx_app_language, [], :binstr
   ffi_func :fmrb_spx_app_set_kana_mode, [:int], :int
+  ffi_func :fmrb_spx_app_rd_stream_state, [], :int
   ffi_func :fmrb_spx_app_wallclock, [], :binstr
   ffi_func :fmrb_spx_app_set_wallclock, [:int, :int, :int, :int, :int, :int], :binstr
 

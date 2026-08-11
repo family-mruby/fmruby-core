@@ -1299,6 +1299,11 @@ class FmrbApp
     nil
   end
 
+  # Remote desktop video going out: 0 = none, 1 = MJPEG, 2 = H.264.
+  def self.rd_stream_state
+    FmrbSpxApp.fmrb_spx_app_rd_stream_state
+  end
+
   def self.wallclock
     buf = FmrbSpxApp.fmrb_spx_app_wallclock
     return nil if buf.bytesize == 0

@@ -29,6 +29,14 @@ void       rd_http_stop(void);
  */
 void rd_http_disable_h264(void);
 
+/**
+ * @brief What is being streamed right now, for the desktop status icon.
+ * @return 0 = nothing, 1 = MJPEG stream running, 2 = H.264 clients connected.
+ *
+ * Bare atomic reads; safe to poll from an app task at 1Hz.
+ */
+int rd_http_stream_state(void);
+
 #ifdef __cplusplus
 }
 #endif

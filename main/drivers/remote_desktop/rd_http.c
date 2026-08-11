@@ -175,6 +175,15 @@ static void mjpeg_stream_task(void *arg)
     fmrb_task_delete_ex(NULL);
 }
 
+int rd_http_stream_state(void)
+{
+    if (rd_stream_has_clients())
+        return 2;
+    if (atomic_load(&s_stream_busy))
+        return 1;
+    return 0;
+}
+
 static esp_err_t stream_handler(httpd_req_t *req)
 {
     bool expected = false;

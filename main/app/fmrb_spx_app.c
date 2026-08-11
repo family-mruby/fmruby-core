@@ -452,6 +452,20 @@ const char *fmrb_spx_app_language(void)
     return lang;
 }
 
+/* What remote desktop video is going out right now: 0 none / 1 MJPEG /
+ * 2 H.264. Polled at 1Hz by the desktop's wifi icon. */
+#if defined(FMRB_HAS_WIFI) && defined(CONFIG_IDF_TARGET_ESP32P4)
+extern int rd_http_stream_state(void);
+#endif
+int fmrb_spx_app_rd_stream_state(void)
+{
+#if defined(FMRB_HAS_WIFI) && defined(CONFIG_IDF_TARGET_ESP32P4)
+    return rd_http_stream_state();
+#else
+    return 0;
+#endif
+}
+
 /* Set the kana input mode (0 off / 1 hiragana / 2 katakana). Behind the
  * clickable mode indicators; see fmrb_host_set_kana_mode. */
 int fmrb_spx_app_set_kana_mode(int mode)

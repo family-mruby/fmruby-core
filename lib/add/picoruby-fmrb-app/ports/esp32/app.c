@@ -1388,6 +1388,22 @@ static mrb_value mrb_fmrb_app_s_ble_start(mrb_state *mrb, mrb_value klass)
 #endif
 }
 
+// FmrbApp.rd_stream_state -> 0 none / 1 MJPEG / 2 H.264. Allocation-free,
+// polled at 1Hz by the desktop so the wifi icon can switch to a
+// screen-transfer glyph while remote desktop video is going out.
+#if defined(FMRB_HAS_WIFI) && defined(CONFIG_IDF_TARGET_ESP32P4)
+extern int rd_http_stream_state(void);
+#endif
+static mrb_value mrb_fmrb_app_s_rd_stream_state(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+#if defined(FMRB_HAS_WIFI) && defined(CONFIG_IDF_TARGET_ESP32P4)
+    return mrb_fixnum_value(rd_http_stream_state());
+#else
+    return mrb_fixnum_value(0);
+#endif
+}
+
 // FmrbApp.wifi_connected? -> bool. Allocation-free subset of wifi_info for
 // the 1Hz status-bar icon, which only needs the connection state.
 static mrb_value mrb_fmrb_app_s_wifi_connected_p(mrb_state *mrb, mrb_value klass)
@@ -1675,6 +1691,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "set_kana_mode", mrb_fmrb_app_s_set_kana_mode, MRB_ARGS_REQ(1));
+    mrb_define_class_method(mrb, app_class, "rd_stream_state", mrb_fmrb_app_s_rd_stream_state, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_info", mrb_fmrb_app_s_wifi_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_connected?", mrb_fmrb_app_s_wifi_connected_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_clear_cache", mrb_fmrb_app_s_clear_cache, MRB_ARGS_REQ(1));
