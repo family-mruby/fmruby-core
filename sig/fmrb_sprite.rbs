@@ -40,7 +40,9 @@ class SpriteInstance
   def id: () -> Integer
 
   # 絵を画面に置く
-  def self.new: (FmrbGfx gfx, SpriteImage images) -> SpriteInstance
+  #
+  # images は untyped: 一枚でも、パラパラ漫画のように配列でも渡せる。
+  def self.new: (FmrbGfx gfx, untyped images) -> SpriteInstance
 
   # 置いた絵を動かす
   def move: (Integer x, Integer y) -> void

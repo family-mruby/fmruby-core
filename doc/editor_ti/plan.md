@@ -196,6 +196,11 @@ def 内 ivar のホバーには suggest と同じ処置が要る (P3 で fork �
   「API ドキュメントの正」を宣言。gfx. 表記は attr_reader 追加で解禁
   (T1)。定数対応は上流相談として温存。文字列プール (各 65535B) の
   残量を記録する。
+- P4.5: ヘルプ段。**指示書 = instruction_p4_5.md 発行済み (P4 完了後に
+  着手)**。signature help (引数位置追従、fork に呼び出し文脈 API) と
+  F1 ヘルプ (RBS コメント 2 行目以降 -> flash/help/ 生成、読み取り専用
+  バッファで表示)。db の doc は先頭行のみに (fork 改修。プール上限対策)。
+  書く場所は sig/ の 1 箇所という原則を守る。
 - P5: esp32 対応。Modern (Tab5) 先行。サイズ実測、arena の PSRAM 化。
   S3 はサイズ次第で判断。(fmrb_alloc の使い捨てヒープログは
   fmrb_mem_create_handle_quiet の追加で解消済み 2026-08-12。長寿命

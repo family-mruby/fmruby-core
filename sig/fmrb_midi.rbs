@@ -6,7 +6,11 @@
 
 module FmrbMidi
   # このアプリ用の音を出す口を作る
-  def self.device: (FmrbApp app) -> MIDI::Device
+  #
+  # app は untyped: アプリは FmrbApp を継承した自分のクラスなので、
+  # FmrbApp と書くと FmrbMidi.device(self) が型ちがい扱いになる
+  # (エンジンは引数の検査で親子関係を見ない)。
+  def self.device: (untyped app) -> MIDI::Device
 
   # 今の時刻 (百万分の一秒)
   def self.now_us: () -> Integer
