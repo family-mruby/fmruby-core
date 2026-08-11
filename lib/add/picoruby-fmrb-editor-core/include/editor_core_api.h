@@ -74,6 +74,31 @@ int  ec_copy_range(int slot, int sy, int sx, int ey, int ex);
 const char *ec_paste_at(int slot, int y, int x, int *out_len);
 int  ec_clipboard_length(int slot);
 
+/* The document arena's allocator handle (POOL_ID_EDITOR_DOC), created on first
+   use. For code that must allocate next to the document rather than in the
+   app's own heap -- the type inference bridge below. Negative if the pool is
+   unavailable. */
+int  ec_doc_mem_handle(void);
+
+/*
+ * EditorTi: completion from the type inference engine (editor_ti_bridge.c).
+ *
+ * et_suggest runs one request for the document in `slot` with the cursor at
+ * (y, x) -- y a line, x a CHARACTER index, as everywhere else here -- and
+ * answers how many candidates it found. The candidates are then read one field
+ * at a time with et_suggestion, and stay valid until the next et_suggest.
+ */
+#define ET_ERR_TOO_LARGE (-4)
+
+#define ET_FIELD_LABEL   0   /* the name to insert */
+#define ET_FIELD_DETAIL  1   /* its signature */
+#define ET_FIELD_DOC     2   /* its doc comment, empty when it has none */
+
+int  et_suggest(int slot, int y, int x);
+const char *et_suggestion(int i, int field, int *out_len);
+/* Documents above this many bytes are refused with ET_ERR_TOO_LARGE. */
+int  et_max_source_bytes(void);
+
 #ifdef __cplusplus
 }
 #endif

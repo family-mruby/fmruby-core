@@ -695,6 +695,15 @@ int ec_doc_bytesize(int slot)
     return total;
 }
 
+/* The arena handle itself, for the type inference bridge: a completion parse
+   is many times the size of the text it parses, so it has to happen in this
+   pool rather than in the editor app's own heap. */
+int ec_doc_mem_handle(void)
+{
+    if (!ed_arena_ready()) return -1;
+    return g_handle;
+}
+
 int ec_mem_used(void)
 {
     fmrb_pool_stats_t st;
