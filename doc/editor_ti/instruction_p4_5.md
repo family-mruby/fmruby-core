@@ -30,6 +30,21 @@ report は doc/editor_ti/report/p4_5.md へ。タスクごとにコミット。
 
 ## T1: fork 改修 (tmp/picoruby-ti、fmrb-dev へ)
 
+0. **前段の fork 修正 2 件が入っている** (2026-08-12 実施済み、fmrb-dev
+   **f59ccbc**)。T1 の PIN 更新と同時に次を行う:
+   - **引数検査が実クラスの継承チェーンをたどる**ようになった
+     (`FmrbAudio.new(self)` の誤検知が直った)。P4 で untyped に逃がした
+     引数 (FmrbAudio.new / FmrbMidi.device / SpriteInstance.new の images)
+     を本来の型に戻し、sim で赤くならないことを確認する。
+   - **RBS のクラス定数が db 化され `Klass::` で補完される**ようになった
+     (定数 -> 静的メソッドの順。`Klass.` は従来どおりメソッドのみ。
+     `Klass::CONST` の値型は診断にも流れる)。sig に定数を書く:
+     まず FmrbGfx の色 (BLACK..GRAY と COLOR_*) と BLEND_*、他は
+     実装から読んで実在するものだけ (doc は一文、色は「黒 (RGB332)」程度)。
+   - **エディタの Tab 文脈判定に `:` を追加する** (editor.app.rb。
+     カーソル直前が `:` のときも補完を開く。これが無いと `FmrbGfx::` の
+     直後で Tab がインデントになってしまう)。sim で `FmrbGfx::B` + Tab ->
+     BLACK が出ることを確認する。
 1. **db の document は先頭行のみ**: database_builder が
    `collected_method.comment` を document pool に入れる箇所で、最初の
    改行までに切る (ivar には doc が無いので対象はメソッドのみ)。
