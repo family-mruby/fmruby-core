@@ -139,6 +139,15 @@ const char *fmrb_spx_app_last_error(void);
 const char *fmrb_spx_app_config(const char *section, int len);
 
 /**
+ * @brief UI language code from system_conf ("en" / "ja"), as a :binstr.
+ *
+ * The generated FmrbConst is a compile-time table, so a Spinel program cannot
+ * read a setting the user can change; this is the run-time source. The mruby
+ * side gets the same value through FmrbConst::LANGUAGE.
+ */
+const char *fmrb_spx_app_language(void);
+
+/**
  * @brief Current wall clock (FmrbApp.wallclock). :binstr of six u16 LE:
  *        year, month, day, hour, minute, second. Empty String when unavailable.
  */

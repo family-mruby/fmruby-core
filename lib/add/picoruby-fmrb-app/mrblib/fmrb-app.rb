@@ -2,6 +2,16 @@
 # User app should inherit this class and override lifecycle methods.
 
 class FmrbApp
+  # UI language ("en" / "ja"). Here it is simply the constant const.c filled in
+  # from system_conf when this VM started; the Spinel build backs the same call
+  # with an FFI read, because its constants are baked at compile time. FmrbI18n
+  # asks through this so both engines see the setting the user chose.
+  def self.language
+    FmrbConst::LANGUAGE.to_s
+  rescue
+    "en"
+  end
+
   TITLE_BAR_H = 11
   CORNER_R = 4
   TRANSPARENT_COLOR = 0x01

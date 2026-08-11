@@ -47,20 +47,33 @@ class EditorApp < FmrbApp
   DROPDOWN_SEL_TEXT = FmrbGfx.rgb_to_332(255, 255, 255)
   DROPDOWN_ITEM_H = 10
 
-  # Per-menu config: items + scancode hotkeys + dropdown pixel width.
-  # Hotkey scancodes pick a distinguishing letter per item (DOS-Edit style).
-  MENU_FILE_ITEMS    = ["Open", "Save", "Save as", "Template", "Exit"]
+  # Per-menu config: scancode hotkeys (labels come from FmrbI18n).
+  # Hotkey scancodes pick a distinguishing letter per item (DOS-Edit style) and
+  # are the same in every language -- only the words next to them change.
   MENU_FILE_HOTKEYS  = [0x12, 0x16, 0x04, 0x17, 0x1B]  # O, S, A, T, X
-  MENU_FILE_W        = 62
 
   # App skeletons, as files so a user can add their own next to the shipped
   # ones. File > Template lists this directory and inserts the chosen file at
   # the cursor.
   TEMPLATE_DIR = "/lib/templates"
 
-  MENU_EDIT_ITEMS    = ["Cut", "Copy", "Paste", "Select All"]
   MENU_EDIT_HOTKEYS  = [0x17, 0x06, 0x13, 0x04]  # T (cuT), C, P, A
-  MENU_EDIT_W        = 72
+
+  # Menu bar items. Integer ids rather than symbols so the parallel position and
+  # width arrays built while drawing stay concretely typed in both engines.
+  MENU_ID_FILE    = 0
+  MENU_ID_EDIT    = 1
+  MENU_ID_SEARCH  = 2
+  MENU_ID_RUN     = 3
+  MENU_ID_HILIGHT = 4
+  MENU_ID_DEBUG   = 5
+  MENU_ID_FULL    = 6
+  MENU_BAR_IDS  = [MENU_ID_FILE, MENU_ID_EDIT, MENU_ID_SEARCH, MENU_ID_RUN,
+                   MENU_ID_HILIGHT, MENU_ID_DEBUG, MENU_ID_FULL]
+  # Accelerator letter shown in parentheses after each label. Empty means the
+  # item has no letter (Full is a direct toggle on F11).
+  MENU_BAR_KEYS = ["F", "E", "S", "R", "H", "D", ""]
+  MENU_BAR_GAP  = 6   # px between menu bar items
 
   # Selection / clipboard colors
   SEL_BG = FmrbGfx.rgb_to_332(180, 200, 255)  # Light blue selection
@@ -264,50 +277,153 @@ class EditorApp < FmrbApp
 
   # ---- Drawing ----
 
+  # Localized word for a menu bar item (no accelerator, no state mark).
+  def menu_bar_label(id)
+    case id
+    when MENU_ID_FILE    then FmrbI18n.t(:m_file).to_s
+    when MENU_ID_EDIT    then FmrbI18n.t(:m_edit).to_s
+    when MENU_ID_SEARCH  then FmrbI18n.t(:m_search).to_s
+    when MENU_ID_RUN     then FmrbI18n.t(:m_run).to_s
+    when MENU_ID_HILIGHT then FmrbI18n.t(:m_hilight).to_s
+    when MENU_ID_DEBUG   then dbg_menu_label.to_s
+    when MENU_ID_FULL    then FmrbI18n.t(:m_full).to_s
+    else ""
+    end
+  end
+
+  # Trailing state mark: "*" when the item's mode is on, a space when it is off
+  # (so the label does not jump sideways), "" when the item has no state.
+  def menu_bar_mark(id)
+    case id
+    when MENU_ID_HILIGHT then @hl_enabled ? "*" : " "
+    when MENU_ID_DEBUG   then dbg_menu_mark.to_s
+    when MENU_ID_FULL    then @fullscreen ? "*" : " "
+    else ""
+    end
+  end
+
+  # Which items the bar carries right now (Debug only during a debug build).
+  def menu_bar_ids
+    ids = []
+    debug_visible = dbg_menu_visible?
+    i = 0
+    while i < MENU_BAR_IDS.size
+      id = MENU_BAR_IDS[i]
+      i += 1
+      next if id == MENU_ID_DEBUG && debug_visible != true
+      ids << id
+    end
+    ids
+  end
+
+  # Pixel width of one item, with or without its "(K)" accelerator.
+  def menu_bar_item_width(id, show_keys)
+    key = MENU_BAR_KEYS[id].to_s
+    w = FmrbI18n.text_width(menu_bar_label(id)) + FmrbI18n.text_width(menu_bar_mark(id))
+    w += 3 * CHAR_W if show_keys && key != ""   # "(", the letter, ")"
+    w
+  end
+
+  # The menu bar is laid out from measured label widths rather than fixed
+  # character counts: a translated label is a different number of characters and
+  # a different number of pixels per character. Positions and widths are kept in
+  # parallel arrays for the click hit test, which therefore follows the layout
+  # for free.
+  #
+  # The accelerators are shown as "File(F)" / "ファイル(F)" -- the old trick of
+  # colouring the first letter cannot survive translation, since a Japanese
+  # label does not start with the letter it answers to. That costs three
+  # characters an item, which a 240px window does not have, so the whole bar
+  # drops the parentheses rather than lose its last two items; the keys
+  # themselves work either way.
   def draw_menu_bar
     y = @menu_y
     # +1 covers the 1px separator row between menu bar and edit area
     @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H + 1, MENU_BG)
 
-    x = @user_area_x0 + 2
-    @menu_file_x = x
-    draw_menu_item(x, y, "F", "ile")
-    x += 6 * CHAR_W
-    @menu_edit_x = x
-    draw_menu_item(x, y, "E", "dit")
-    x += 6 * CHAR_W
-    @menu_search_x = x
-    draw_menu_item(x, y, "S", "earch")
-    x += 7 * CHAR_W  # "Search" is 6 chars, leave 1-char gap
-    @menu_run_x = x
-    draw_menu_item(x, y, "R", "un")
-    x += 4 * CHAR_W  # "Run" is 3 chars + 1-char gap
-    @menu_hilight_x = x
-    # Trailing "*" marks enabled state, space marks disabled
-    draw_menu_item(x, y, "H", @hl_enabled ? "ilight*" : "ilight ")
-    x += 9 * CHAR_W  # past "Hilight*" (8 chars) + 1-char gap
-    if dbg_menu_visible?
-      @menu_debug_x = x
-      # Trailing "*" marks an active debug session.
-      draw_menu_item(x, y, "D", dbg_menu_label)
-      x += 7 * CHAR_W  # past "Debug*" (6 chars) + 1-char gap
-    else
-      @menu_debug_x = nil
+    @menu_ids = []
+    @menu_xs = []
+    @menu_ws = []
+    @menu_file_x = nil
+    @menu_edit_x = nil
+    @menu_debug_x = nil
+
+    ids = menu_bar_ids
+    avail = @user_area_width - 4
+    total = 0
+    i = 0
+    while i < ids.size
+      total += menu_bar_item_width(ids[i], true)
+      total += MENU_BAR_GAP if i > 0
+      i += 1
     end
-    # Window <-> fullscreen toggle (F11). No hotkey letter: "F" is taken by the
-    # File menu, and this one is a direct toggle rather than a dropdown.
-    # Dropped when the window is too narrow for it -- the key still works.
-    if x + 5 * CHAR_W <= @user_area_x0 + @user_area_width
-      @menu_full_x = x
-      @gfx.draw_text(x, y, @fullscreen ? "Full*" : "Full ", MENU_TEXT, MENU_BG)
-    else
-      @menu_full_x = nil
+    show_keys = total <= avail
+
+    x = @user_area_x0 + 2
+    right = @user_area_x0 + @user_area_width
+    i = 0
+    while i < ids.size
+      id = ids[i]
+      i += 1
+      w = draw_menu_bar_item(x, y, id, right, show_keys)
+      break if w <= 0   # ran out of room; the key still works
+
+      @menu_ids << id
+      @menu_xs << x
+      @menu_ws << w
+      @menu_file_x = x if id == MENU_ID_FILE
+      @menu_edit_x = x if id == MENU_ID_EDIT
+      @menu_debug_x = x if id == MENU_ID_DEBUG
+      x += w + MENU_BAR_GAP
     end
   end
 
-  def draw_menu_item(x, y, key_char, rest)
-    @gfx.draw_text(x, y, key_char, MENU_KEY, MENU_BG)
-    @gfx.draw_text(x + CHAR_W, y, rest, MENU_TEXT, MENU_BG)
+  # Draw one menu bar item and return its pixel width, or 0 when it would not
+  # fit before `right`.
+  def draw_menu_bar_item(x, y, id, right, show_keys)
+    label = menu_bar_label(id)
+    key = MENU_BAR_KEYS[id].to_s
+    mark = menu_bar_mark(id)
+    with_key = show_keys && key != ""
+
+    head = with_key ? label + "(" : label
+    tail = with_key ? ")" + mark : mark
+    head_w = FmrbI18n.text_width(head)
+    key_w = with_key ? CHAR_W : 0
+    total = head_w + key_w + FmrbI18n.text_width(tail)
+    return 0 if x + total > right
+
+    @gfx.draw_text(x, y, head, MENU_TEXT, MENU_BG, mixed: true)
+    if with_key
+      @gfx.draw_text(x + head_w, y, key, MENU_KEY, MENU_BG)
+    end
+    if tail != ""
+      @gfx.draw_text(x + head_w + key_w, y, tail, MENU_TEXT, MENU_BG, mixed: true)
+    end
+    total
+  end
+
+  # Index into the menu bar arrays for a click x, or -1.
+  def menu_bar_hit(mx)
+    return -1 unless @menu_xs
+    i = 0
+    while i < @menu_xs.size
+      return i if mx >= @menu_xs[i] && mx < @menu_xs[i] + @menu_ws[i]
+      i += 1
+    end
+    -1
+  end
+
+  def activate_menu_bar(id)
+    case id
+    when MENU_ID_FILE    then open_menu(:file)
+    when MENU_ID_EDIT    then open_menu(:edit)
+    when MENU_ID_SEARCH  then open_search_dialog
+    when MENU_ID_RUN     then run_current_file
+    when MENU_ID_HILIGHT then toggle_highlight
+    when MENU_ID_DEBUG   then open_menu(:debug)
+    when MENU_ID_FULL    then toggle_fullscreen
+    end
   end
 
   def draw_status_line
@@ -317,20 +433,21 @@ class EditorApp < FmrbApp
     line_num = @cy + 1
     col_num = @cx + 1
 
-    fname = @current_file ? @current_file.split("/").last : "[New]"
-    status = " #{fname}  Ln #{line_num}, Col #{col_num}"
+    fname = @current_file ? @current_file.split("/").last : FmrbI18n.t(:st_new).to_s
+    status = " #{fname}  #{FmrbI18n.t(:st_ln).to_s} #{line_num}, #{FmrbI18n.t(:st_col).to_s} #{col_num}"
     status += " *" if @modified
-    status += "  [HL off]" unless @hl_enabled
+    status += "  " + FmrbI18n.t(:st_hl_off).to_s unless @hl_enabled
 
-    @gfx.draw_text(@user_area_x0 + 2, y, status, STATUS_TEXT, STATUS_BG)
+    @gfx.draw_text(@user_area_x0 + 2, y, status, STATUS_TEXT, STATUS_BG,
+                   mixed: true)
 
     # Right-aligned green "Saved" badge that fades after SAVE_OK_FRAMES ticks.
     if @save_ok_frames > 0
-      label = @status_label || " Saved "
-      bw = label.length * CHAR_W
+      label = @status_label || " #{FmrbI18n.t(:b_saved).to_s} "
+      bw = FmrbI18n.text_width(label)
       bx = @user_area_x0 + @user_area_width - bw - 2
       @gfx.fill_rect(bx, y, bw, CHAR_H, STATUS_OK_BG)
-      @gfx.draw_text(bx, y, label, STATUS_OK_TEXT, STATUS_OK_BG)
+      @gfx.draw_text(bx, y, label, STATUS_OK_TEXT, STATUS_OK_BG, mixed: true)
     end
   end
 
@@ -652,19 +769,26 @@ class EditorApp < FmrbApp
 
     tx = x + 4
     ty = y + 4
-    @gfx.draw_text(tx, ty, "Unsaved changes",            QUIT_DLG_TEXT, QUIT_DLG_BG)
-    @gfx.draw_text(tx, ty + CHAR_H + 2, "Save before exit?", QUIT_DLG_TEXT, QUIT_DLG_BG)
+    @gfx.draw_text(tx, ty, FmrbI18n.t(:unsaved).to_s,
+                   QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
+    @gfx.draw_text(tx, ty + CHAR_H + 2, FmrbI18n.t(:save_before_exit).to_s,
+                   QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
 
+    # Laid out left to right from measured widths: the words differ per
+    # language, the bracketed keys do not.
     by = ty + (CHAR_H + 2) * 2 + 2
-    draw_quit_choice(tx,                  by, "Y", "es")
-    draw_quit_choice(tx + 8  * CHAR_W,    by, "N", "o")
-    draw_quit_choice(tx + 14 * CHAR_W,    by, "C", "ancel/Esc")
+    bx = tx
+    bx += draw_quit_choice(bx, by, "Y", FmrbI18n.t(:q_yes).to_s) + CHAR_W
+    bx += draw_quit_choice(bx, by, "N", FmrbI18n.t(:q_no).to_s) + CHAR_W
+    draw_quit_choice(bx, by, "C", FmrbI18n.t(:q_cancel).to_s)
   end
 
+  # Draws "[K]word" and returns its pixel width.
   def draw_quit_choice(x, y, key_char, rest)
     @gfx.draw_text(x,            y, "[",       QUIT_DLG_TEXT, QUIT_DLG_BG)
     @gfx.draw_text(x + CHAR_W,   y, key_char,  QUIT_DLG_KEY,  QUIT_DLG_BG)
-    @gfx.draw_text(x + 2*CHAR_W, y, "]" + rest, QUIT_DLG_TEXT, QUIT_DLG_BG)
+    @gfx.draw_text(x + 2*CHAR_W, y, "]" + rest, QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
+    2 * CHAR_W + FmrbI18n.text_width("]" + rest)
   end
 
   def handle_quit_dialog_key(character)
@@ -699,7 +823,8 @@ class EditorApp < FmrbApp
 
     tx = x + 4
     ty = y + 4
-    @gfx.draw_text(tx, ty, "Find:", QUIT_DLG_TEXT, QUIT_DLG_BG)
+    @gfx.draw_text(tx, ty, FmrbI18n.t(:find).to_s,
+                   QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
 
     iy = ty + CHAR_H + 4
     iw = SEARCH_QUERY_MAX * CHAR_W + 2
@@ -711,12 +836,13 @@ class EditorApp < FmrbApp
 
     sy = iy + CHAR_H + 4
     if @search_status && @search_status.length > 0
-      @gfx.draw_text(tx, sy, @search_status, SEARCH_NOT_FOUND, QUIT_DLG_BG)
+      @gfx.draw_text(tx, sy, @search_status, SEARCH_NOT_FOUND, QUIT_DLG_BG,
+                     mixed: true)
     end
 
     hy = sy + CHAR_H + 2
-    @gfx.draw_text(tx, hy, "[Enter]Find  [F3]Next  [Esc]Cancel",
-                   QUIT_DLG_TEXT, QUIT_DLG_BG)
+    @gfx.draw_text(tx, hy, FmrbI18n.t(:find_keys).to_s,
+                   QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
   end
 
   def open_search_dialog
@@ -754,7 +880,7 @@ class EditorApp < FmrbApp
         if find_from_cursor(@search_query, after_cursor)
           close_search_dialog
         else
-          @search_status = "Not found"
+          @search_status = FmrbI18n.t(:not_found).to_s
           @need_redraw = true
         end
       end
@@ -1019,10 +1145,23 @@ class EditorApp < FmrbApp
 
   # ---- Menu dropdown (File / Edit) ----
 
+  # Dropdown contents. Built per open rather than held in a constant: the words
+  # depend on the language, and a menu opens rarely enough for the allocation
+  # not to matter.
+  def menu_file_items
+    [FmrbI18n.t(:open).to_s, FmrbI18n.t(:save).to_s, FmrbI18n.t(:save_as).to_s,
+     FmrbI18n.t(:template).to_s, FmrbI18n.t(:exit).to_s]
+  end
+
+  def menu_edit_items
+    [FmrbI18n.t(:cut).to_s, FmrbI18n.t(:copy).to_s, FmrbI18n.t(:paste).to_s,
+     FmrbI18n.t(:select_all).to_s]
+  end
+
   def menu_items
     case @active_menu
-    when :file then MENU_FILE_ITEMS
-    when :edit then MENU_EDIT_ITEMS
+    when :file then menu_file_items
+    when :edit then menu_edit_items
     when :template then @template_labels
     when :debug then dbg_menu_items
     end
@@ -1035,12 +1174,22 @@ class EditorApp < FmrbApp
     end
   end
 
+  # Dropdown panel width: the widest item plus padding. Measured rather than
+  # fixed, for the same reason the menu bar is.
+  def dropdown_width(items)
+    widest = 0
+    items.each do |item|
+      w = FmrbI18n.text_width(item.to_s)
+      widest = w if w > widest
+    end
+    widest + 10
+  end
+
   def menu_width
     case @active_menu
-    when :file then MENU_FILE_W
-    when :edit then MENU_EDIT_W
-    when :template then template_menu_width
+    when :template then dropdown_width(@template_labels)
     when :debug then dbg_menu_width
+    else dropdown_width(menu_items)
     end
   end
 
@@ -1074,10 +1223,11 @@ class EditorApp < FmrbApp
       item_y = y + 1 + i * DROPDOWN_ITEM_H
       if i == @menu_idx
         @gfx.fill_rect(x + 1, item_y, w - 2, DROPDOWN_ITEM_H, DROPDOWN_SEL_BG)
-        @gfx.draw_text(x + 4, item_y + 1, item,
-                       DROPDOWN_SEL_TEXT, DROPDOWN_SEL_BG)
+        @gfx.draw_text(x + 4, item_y + 1, item.to_s,
+                       DROPDOWN_SEL_TEXT, DROPDOWN_SEL_BG, mixed: true)
       else
-        @gfx.draw_text(x + 4, item_y + 1, item, DROPDOWN_TEXT, DROPDOWN_BG)
+        @gfx.draw_text(x + 4, item_y + 1, item.to_s,
+                       DROPDOWN_TEXT, DROPDOWN_BG, mixed: true)
       end
     end
   end
@@ -1198,7 +1348,7 @@ class EditorApp < FmrbApp
   def open_template_menu
     load_template_list
     if @template_labels.empty?
-      flash_status("No templates")
+      flash_status(FmrbI18n.t(:b_no_templates).to_s)
       return
     end
     open_menu(:template)
@@ -1226,15 +1376,6 @@ class EditorApp < FmrbApp
     @template_labels = labels
   end
 
-  def template_menu_width
-    widest = 0
-    @template_labels.each do |t|
-      len = t.length
-      widest = len if len > widest
-    end
-    widest * CHAR_W + 10
-  end
-
   # Insert the chosen skeleton at the cursor. Same shape as a paste: the
   # document model does the work and reports where the cursor ended up.
   def insert_template(idx)
@@ -1246,13 +1387,13 @@ class EditorApp < FmrbApp
       text = f.read
       f.close
     rescue => err
-      flash_status("Load failed")
+      flash_status(FmrbI18n.t(:b_load_failed).to_s)
       Log.error("Template read failed: #{path} (#{err.message})")
       return
     end
     body = text.to_s
     if body.bytesize == 0
-      flash_status("Empty")
+      flash_status(FmrbI18n.t(:b_empty).to_s)
       return
     end
     delete_selection if has_selection?
@@ -1263,7 +1404,7 @@ class EditorApp < FmrbApp
     mark_dirty_from(start_y)
     mark_edited
     ensure_cursor_visible
-    flash_status("Inserted")
+    flash_status(FmrbI18n.t(:b_inserted).to_s)
   end
 
   # ---- Selection ----
@@ -1385,10 +1526,10 @@ class EditorApp < FmrbApp
     n = EditorCore.load_file(path)
     if n < 0
       if n == -2
-        flash_status("Too large")
+        flash_status(FmrbI18n.t(:b_too_large).to_s)
         Log.error("Load failed (document arena full): #{path}")
       else
-        flash_status("Load failed")
+        flash_status(FmrbI18n.t(:b_load_failed).to_s)
         Log.error("Failed to load file '#{path}' (err=#{n})")
       end
       @need_redraw = true
@@ -1416,7 +1557,7 @@ class EditorApp < FmrbApp
   # Shown when the arena cannot grow: the editor stays alive and editable, which
   # is the whole point of returning an error code instead of aborting.
   def doc_full
-    flash_status("Doc full")
+    flash_status(FmrbI18n.t(:b_doc_full).to_s)
     Log.error("Editor document arena full (#{EditorCore.mem_used} bytes used)")
     @need_redraw = true
   end
@@ -1435,14 +1576,14 @@ class EditorApp < FmrbApp
     expected = EditorCore.doc_bytesize
     written = EditorCore.save_file(@current_file)
     if written < 0
-      flash_status("Save failed")
+      flash_status(FmrbI18n.t(:b_save_failed).to_s)
       Log.error("Failed to save file: #{@current_file} (err=#{written})")
     elsif written != expected
-      flash_status("Save failed")
+      flash_status(FmrbI18n.t(:b_save_failed).to_s)
       Log.error("Save mismatch for #{@current_file}: expected=#{expected}, written=#{written}")
     else
       @modified = false
-      flash_status("Saved")  # status line only
+      flash_status(FmrbI18n.t(:b_saved).to_s)  # status line only
       Log.info("Saved file: #{@current_file} (#{written} bytes)")
     end
   end
@@ -1464,10 +1605,10 @@ class EditorApp < FmrbApp
     elsif msg["cmd"] == "run_result"
       @run_pid = msg["pid"]
       if @run_pid
-        flash_status("Run pid #{@run_pid}")
+        flash_status("#{FmrbI18n.t(:b_run_pid).to_s} #{@run_pid}")
         Log.info("Run started: #{msg["path"]} pid=#{@run_pid}")
       else
-        flash_status("Run failed")
+        flash_status(FmrbI18n.t(:b_run_failed).to_s)
         Log.error("Run failed: #{msg["path"]}")
       end
     end
@@ -1491,12 +1632,12 @@ class EditorApp < FmrbApp
       return
     end
     unless runnable_path?(@current_file)
-      flash_status("Run: need a path")
+      flash_status(FmrbI18n.t(:b_run_path).to_s)
       return
     end
     save_file if @modified
     request_run(@current_file, @run_pid)
-    flash_status("Running")
+    flash_status(FmrbI18n.t(:b_running).to_s)
   end
 
   # What the spawner can load: any absolute path, wherever the buffer was
@@ -1541,34 +1682,12 @@ class EditorApp < FmrbApp
         return
       end
 
-      # Menu bar click
+      # Menu bar click. Hit boxes come from the widths draw_menu_bar measured,
+      # so they follow the translated labels without a second layout rule.
       if ev[:y] >= @menu_y && ev[:y] < @menu_y + CHAR_H
-        if @menu_file_x && ev[:x] >= @menu_file_x && ev[:x] < @menu_file_x + 4 * CHAR_W
-          open_menu(:file)
-          return
-        end
-        if @menu_edit_x && ev[:x] >= @menu_edit_x && ev[:x] < @menu_edit_x + 4 * CHAR_W
-          open_menu(:edit)
-          return
-        end
-        if @menu_search_x && ev[:x] >= @menu_search_x && ev[:x] < @menu_search_x + 6 * CHAR_W
-          open_search_dialog
-          return
-        end
-        if @menu_run_x && ev[:x] >= @menu_run_x && ev[:x] < @menu_run_x + 3 * CHAR_W
-          run_current_file
-          return
-        end
-        if @menu_hilight_x && ev[:x] >= @menu_hilight_x && ev[:x] < @menu_hilight_x + 7 * CHAR_W
-          toggle_highlight
-          return
-        end
-        if @menu_debug_x && ev[:x] >= @menu_debug_x && ev[:x] < @menu_debug_x + 5 * CHAR_W
-          open_menu(:debug)
-          return
-        end
-        if @menu_full_x && ev[:x] >= @menu_full_x && ev[:x] < @menu_full_x + 4 * CHAR_W
-          toggle_fullscreen
+        hit = menu_bar_hit(ev[:x])
+        if hit >= 0
+          activate_menu_bar(@menu_ids[hit])
           return
         end
       end

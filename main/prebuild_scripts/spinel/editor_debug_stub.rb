@@ -51,6 +51,10 @@ module EditorDebugPane
     ""
   end
 
+  def dbg_menu_mark
+    ""
+  end
+
   def dbg_menu_width
     0
   end

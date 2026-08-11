@@ -94,8 +94,13 @@ module EditorDebugPane
     true
   end
 
+  # The menu bar draws "label(D)mark"; the word is translated, the mark is not.
   def dbg_menu_label
-    @dbg_active ? "ebug*" : "ebug "
+    FmrbI18n.t(:m_debug).to_s
+  end
+
+  def dbg_menu_mark
+    @dbg_active ? "*" : " "
   end
 
   def dbg_menu_width

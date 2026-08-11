@@ -22,9 +22,12 @@ module FmrbI18n
     end
   end
 
+  # Active language, resolved once per VM. Asked of FmrbApp rather than read
+  # from FmrbConst directly: a Spinel-compiled app has its constants baked in at
+  # compile time, so only FmrbApp.language sees what the user actually chose.
   def self.lang
     @lang ||= begin
-      l = FmrbConst::LANGUAGE.to_s
+      l = FmrbApp.language.to_s
       STRINGS.key?(l) ? l : DEFAULT_LANG
     rescue
       DEFAULT_LANG

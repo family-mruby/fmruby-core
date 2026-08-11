@@ -1259,6 +1259,13 @@ class FmrbApp
     tables
   end
 
+  # UI language ("en" / "ja"). Read at run time rather than from FmrbConst:
+  # that table is generated when the Spinel program is compiled, and the
+  # language is a setting the Config app changes.
+  def self.language
+    FmrbSpxApp.fmrb_spx_app_language.to_s
+  end
+
   def self.wallclock
     buf = FmrbSpxApp.fmrb_spx_app_wallclock
     return nil if buf.bytesize == 0

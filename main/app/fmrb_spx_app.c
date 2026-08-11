@@ -437,6 +437,21 @@ const char *fmrb_spx_app_config(const char *section, int len)
     return (const char *)buf;
 }
 
+/* The UI language from system_conf ("en" / "ja").
+ *
+ * FmrbConst is generated at Spinel compile time, so its LANGUAGE is a build
+ * constant -- but the language is a setting the user changes from the Config
+ * app and a reboot applies. A Spinel program has to ask for it at run time,
+ * which is what this is for. The mruby side reads the same field through
+ * FmrbConst::LANGUAGE, populated per VM at startup. */
+const char *fmrb_spx_app_language(void)
+{
+    const fmrb_system_config_t *cfg = fmrb_kernel_get_config();
+    const char *lang = (cfg && cfg->language[0]) ? cfg->language : "en";
+    sp_net_bin_len = (int)strlen(lang);
+    return lang;
+}
+
 const char *fmrb_spx_app_wallclock(void)
 {
     static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];

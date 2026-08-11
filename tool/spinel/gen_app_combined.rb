@@ -54,8 +54,12 @@ APPS = {
   # build for that). Everything else is the same source as the mruby build.
   "editor" => {
     libs: [
+      File.join(MRBLIB_DIR, "fmrb-i18n.rb"),         # FmrbI18n (module only)
       File.join(SPINEL_DIR, "fmrb_editor_ffi.rb"),   # FmrbSpxEc + EditorCore
       File.join(SPINEL_DIR, "editor_debug_stub.rb"), # module EditorDebugPane (no-op)
+      # The editor's own string table. The mruby build picks this up from the
+      # editor/ directory glob; here every part is listed by hand.
+      File.join(ROOT, "main/prebuild_scripts/default_app/editor/i18n.rb"),
     ],
     mixin_dir: nil,
     main: File.join(ROOT, "main/prebuild_scripts/default_app/editor.app.rb"),
