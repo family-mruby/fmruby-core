@@ -308,7 +308,9 @@ static int et_begin(et_run_t *r, int slot, int y, int x)
     if (!r->block) { et_end(r); return EC_ERR_NOMEM; }
     r->block_size = want;
 
-    g_scratch = fmrb_mem_create_handle(r->block, want, POOL_ID_EDITOR_DOC);
+    /* Quiet: one of these is born and dies per completion/hover/diagnose
+       request, and the lifecycle logs would drown the device log. */
+    g_scratch = fmrb_mem_create_handle_quiet(r->block, want, POOL_ID_EDITOR_DOC);
     if (g_scratch < 0) { et_end(r); return EC_ERR_NOMEM; }
 
     fmrb_prism_set_scratch_allocator(et_scratch_realloc);

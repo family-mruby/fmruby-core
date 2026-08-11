@@ -31,6 +31,9 @@ typedef struct fmrb_pool_node {
     pool_t pool;
     MUTEX_TYPE mutex;
     struct fmrb_pool_node *next;
+    // Lifecycle logs suppressed (throwaway per-request pools; see
+    // fmrb_mem_create_handle_quiet).
+    bool quiet;
 } fmrb_pool_node_t;
 
 // Global pool list
@@ -60,7 +63,7 @@ static fmrb_pool_node_t* find_pool_node(fmrb_mem_handle_t handle) {
 }
 
 // Create a new memory pool and return its handle
-fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size, enum FMRB_MEM_POOL_ID mem_pool_id) {
+static fmrb_mem_handle_t create_handle_impl(void* pool, size_t size, enum FMRB_MEM_POOL_ID mem_pool_id, bool quiet) {
     if (pool == NULL || size == 0) {
         FMRB_LOGE(TAG, "Invalid parameters");
         return -1;
@@ -75,11 +78,14 @@ fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size, enum FMRB_MEM_
 
     fmrb_pool_node_t *node = (fmrb_pool_node_t*)pool;
     node->mem_pool_id = mem_pool_id;
+    node->quiet = quiet;
     void *tlsf_pool_start = (void*)((char*)pool + sizeof(fmrb_pool_node_t));
     size_t tlsf_pool_size = size - sizeof(fmrb_pool_node_t);
 
-    FMRB_LOGI(TAG, "create_handle: pool_id=%d, pool=%p, size=%zu, node_size=%zu, tlsf_start=%p, tlsf_size=%zu",
-              mem_pool_id, pool, size, sizeof(fmrb_pool_node_t), tlsf_pool_start, tlsf_pool_size);
+    if (!quiet) {
+        FMRB_LOGI(TAG, "create_handle: pool_id=%d, pool=%p, size=%zu, node_size=%zu, tlsf_start=%p, tlsf_size=%zu",
+                  mem_pool_id, pool, size, sizeof(fmrb_pool_node_t), tlsf_pool_start, tlsf_pool_size);
+    }
 
     // Create TLSF instance with the memory pool
     node->tlsf = tlsf_create_with_pool(tlsf_pool_start, tlsf_pool_size);
@@ -87,7 +93,9 @@ fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size, enum FMRB_MEM_
         FMRB_LOGE(TAG, "tlsf_create_with_pool FAILED: pool_id=%d, ptr=%p, size=%zu", mem_pool_id, tlsf_pool_start, tlsf_pool_size);
         return -1;
     }
-    FMRB_LOGI(TAG, "create_handle: tlsf created OK, pool_id=%d", mem_pool_id);
+    if (!quiet) {
+        FMRB_LOGI(TAG, "create_handle: tlsf created OK, pool_id=%d", mem_pool_id);
+    }
 
     node->pool = tlsf_get_pool(node->tlsf);
 
@@ -102,8 +110,22 @@ fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size, enum FMRB_MEM_
     g_pool_list = node;
     MUTEX_UNLOCK(g_list_mutex);
 
-    FMRB_LOGI(TAG, "Created pool handle=%d, size=%zu", node->handle, tlsf_pool_size);
+    if (!quiet) {
+        FMRB_LOGI(TAG, "Created pool handle=%d, size=%zu", node->handle, tlsf_pool_size);
+    }
     return node->handle;
+}
+
+fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size, enum FMRB_MEM_POOL_ID mem_pool_id) {
+    return create_handle_impl(pool, size, mem_pool_id, false);
+}
+
+// Same as fmrb_mem_create_handle but without the lifecycle logs. For
+// throwaway per-request pools (the editor's type inference makes one per
+// completion/hover/diagnose); long-lived pools should stay on the loud
+// variant, their logs are what ties handles to apps in the boot log.
+fmrb_mem_handle_t fmrb_mem_create_handle_quiet(void* pool, size_t size, enum FMRB_MEM_POOL_ID mem_pool_id) {
+    return create_handle_impl(pool, size, mem_pool_id, true);
 }
 
 // Destroy a memory pool
@@ -129,7 +151,9 @@ int fmrb_mem_destroy_handle(fmrb_mem_handle_t handle) {
             MUTEX_DESTROY(node->mutex);
 
             // Note: We don't free the node itself as it's part of the original pool memory
-            FMRB_LOGI(TAG, "Destroyed pool handle=%d", handle);
+            if (!node->quiet) {
+                FMRB_LOGI(TAG, "Destroyed pool handle=%d", handle);
+            }
             return 0;
         }
         prev = node;

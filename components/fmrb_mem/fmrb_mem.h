@@ -30,6 +30,9 @@ void fmrb_mempool_check_pointer(const void* ptr);
 // Pool management (thread-safe)
 void fmrb_mem_init(void);
 fmrb_mem_handle_t fmrb_mem_create_handle(void* pool, size_t size, enum FMRB_MEM_POOL_ID mem_pool_id);
+/** Same, but without the create/destroy info logs. For throwaway
+ *  per-request pools; long-lived pools should use the loud variant. */
+fmrb_mem_handle_t fmrb_mem_create_handle_quiet(void* pool, size_t size, enum FMRB_MEM_POOL_ID mem_pool_id);
 int fmrb_mem_destroy_handle(fmrb_mem_handle_t handle);
 
 // Memory allocation functions
