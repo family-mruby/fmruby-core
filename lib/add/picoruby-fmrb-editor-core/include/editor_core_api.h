@@ -28,12 +28,19 @@ extern "C" {
 int  ec_open_slot(void);
 void ec_close_slot(int slot);
 
+/* Longest run ec_render_width answers in one call. A 640px display is 106
+   cells, so this covers a full row with room to spare. */
+#define EC_WIDTH_MAX_COLS 256
+
 /* Reading */
 int  ec_reset(int slot);
 int  ec_line_count(int slot);
 int  ec_line_length(int slot, int y);
 const char *ec_render_text(int slot, int y, int col0, int max_cols, int *out_len);
 const char *ec_render_hl(int slot, int y, int col0, int max_cols, int *out_len);
+/* Cell width (1 or 2) per character, same slice and shape as ec_render_hl.
+   Bounded by EC_WIDTH_MAX_COLS; ask for no more than that at a time. */
+const char *ec_render_width(int slot, int y, int col0, int max_cols, int *out_len);
 const char *ec_char_at(int slot, int y, int x, int *out_len);
 void ec_set_hl(int slot, int on);
 int  ec_doc_bytesize(int slot);

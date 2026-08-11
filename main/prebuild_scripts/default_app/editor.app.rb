@@ -37,6 +37,18 @@ class EditorApp < FmrbApp
   ASCII_PRINTABLE = " !\"\#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
 
   CHAR_W = 6
+  # The edit area is a fixed grid of cells in efontJA_12: a half-width glyph is
+  # exactly one 6px cell and a full-width one exactly two, so the classic
+  # terminal model holds with no fractional positions anywhere. The chrome
+  # (menu bar, status line, dialogs) stays on the 6x8 default font.
+  CELL_W = 6
+  LINE_H = 12
+  EDIT_FONT_SIZE = 12
+  # draw_text carries FMRB_GFX_MAX_TEXT_LEN (128) bytes per command and a
+  # Japanese character is three of them, so a row is emitted in several
+  # commands. Kept under the limit rather than at it: the split only ever
+  # happens on a character boundary.
+  DRAW_TEXT_MAX_BYTES = 120
   CHAR_H = 8
   TAB_SIZE = 2
 
@@ -228,8 +240,9 @@ class EditorApp < FmrbApp
     # Left gutter for breakpoint dots is only present during a debug session, so
     # normal editing keeps the full width.
     @gutter_w = dbg_gutter_w
-    @edit_cols = (@user_area_width - 2 - @gutter_w) / CHAR_W
-    @edit_rows = @edit_height / CHAR_H
+    # Columns are cells, not characters: a full-width character occupies two.
+    @edit_cols = (@user_area_width - 2 - @gutter_w) / CELL_W
+    @edit_rows = @edit_height / LINE_H
   end
 
   # ---- Dirty tracking ----
@@ -479,9 +492,20 @@ class EditorApp < FmrbApp
     @dirty_status = true
   end
 
+  # The edit area draws in efontJA_12 and everything else in the default 6x8
+  # font. set_font is a queued command like any other, so it is enough to
+  # bracket the drawing that needs it rather than track a mode.
+  def begin_edit_font
+    @gfx.set_font(:ja, EDIT_FONT_SIZE)
+  end
+
+  def end_edit_font
+    @gfx.set_font(:default)
+  end
+
   def draw_edit_area
     # One fill for the whole area: it also clears the leftover strip below the
-    # last full row (edit_height is not always a multiple of CHAR_H).
+    # last full row (edit_height is not always a multiple of LINE_H).
     @gfx.fill_rect(@user_area_x0, @edit_y,
                     @user_area_width, @edit_height, BG_COLOR)
 
@@ -492,6 +516,7 @@ class EditorApp < FmrbApp
 
     sel_range = selection_range  # [sx, sy, ex, ey] or nil
 
+    begin_edit_font
     row = -1
     while (row += 1) < @edit_rows
       line_idx = @scroll_y + row
@@ -500,6 +525,7 @@ class EditorApp < FmrbApp
     end
 
     draw_cursor
+    end_edit_font
   end
 
   # Draw one screen row of the edit area. +blank_bg+ repaints the row
@@ -507,99 +533,146 @@ class EditorApp < FmrbApp
   # path has not. A row past the last document line just gets cleared.
   def draw_edit_row(row, line_idx, sel_range, blank_bg)
     x = @user_area_x0 + 1 + @gutter_w
-    y = @edit_y + row * CHAR_H
+    y = @edit_y + row * LINE_H
 
     if blank_bg
-      @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H, BG_COLOR)
-      @gfx.fill_rect(@user_area_x0, y, @gutter_w, CHAR_H, GUTTER_BG) if @gutter_w > 0
+      @gfx.fill_rect(@user_area_x0, y, @user_area_width, LINE_H, BG_COLOR)
+      @gfx.fill_rect(@user_area_x0, y, @gutter_w, LINE_H, GUTTER_BG) if @gutter_w > 0
     end
     return if line_idx >= EditorCore.line_count
 
     line_len = EditorCore.line_length(line_idx)
     # EditorCore slices by character, horizontal scroll included, so no String
-    # of the full line is ever built here.
-    text = EditorCore.render_text(line_idx, @scroll_x, @edit_cols)
-    visible_len = text.length
+    # of the full line is ever built here. The width map is the same slice with
+    # one byte per character saying whether it takes one cell or two; asking for
+    # @edit_cols characters is an upper bound, since no character is narrower
+    # than a cell.
+    widths = EditorCore.render_width(line_idx, @scroll_x, @edit_cols)
+    nchars = visible_chars(widths, @edit_cols)
+    text = nchars > 0 ? EditorCore.render_text(line_idx, @scroll_x, nchars) : ""
+    used_cells = cell_offset(widths, nchars)
 
     # Current-stop line gets a full-row highlight (text area only, so the
     # gutter dot stays visible). Breakpoints are shown as a gutter dot.
     line_bg = dbg_line_background(line_idx)
     if line_bg != BG_COLOR
       @gfx.fill_rect(@user_area_x0 + @gutter_w, y,
-                     @user_area_width - @gutter_w, CHAR_H, line_bg)
+                     @user_area_width - @gutter_w, LINE_H, line_bg)
     end
     dbg_draw_gutter(line_idx, y) if @gutter_w > 0
 
-    # Selection background goes down before the text so we can overpaint
-    # the selected glyphs with SEL_BG as their background.
-    sel_vstart = nil
-    sel_vend = nil
+    # Selection background goes down before the text; the glyphs are then drawn
+    # over it with SEL_BG as their own background, so the row is one pass.
+    sel_from = -1
+    sel_to = -1
     if sel_range
       sel = line_selection_cols(line_idx, line_len)
       if sel
         vstart = sel[0] - @scroll_x
         vend   = sel[1] - @scroll_x
         vstart = 0 if vstart < 0
-        vend = visible_len if vend > visible_len
+        vend = nchars if vend > nchars
         if vstart < vend
-          @gfx.fill_rect(x + vstart * CHAR_W, y,
-                         (vend - vstart) * CHAR_W, CHAR_H, SEL_BG)
-          sel_vstart = vstart
-          sel_vend = vend
+          c0 = cell_offset(widths, vstart)
+          c1 = cell_offset(widths, vend)
+          @gfx.fill_rect(x + c0 * CELL_W, y, (c1 - c0) * CELL_W, LINE_H, SEL_BG)
+          sel_from = vstart
+          sel_to = vend
         end
       end
       # Multi-line selection: fill from end of visible text to the right
       # edit margin so the wrapped newline is visible.
       if line_idx >= sel_range[1] && line_idx < sel_range[3]
-        fill_x0 = x + visible_len * CHAR_W
-        fill_x1 = x + @edit_cols * CHAR_W
+        fill_x0 = x + used_cells * CELL_W
+        fill_x1 = x + @edit_cols * CELL_W
         if fill_x0 < fill_x1
-          @gfx.fill_rect(fill_x0, y, fill_x1 - fill_x0, CHAR_H, SEL_BG)
+          @gfx.fill_rect(fill_x0, y, fill_x1 - fill_x0, LINE_H, SEL_BG)
         end
       end
     end
 
-    return if visible_len == 0
+    return if nchars == 0
 
     # Tinted (breakpoint/stop) lines always render plain over their background.
     # The category map is per visible character and comes from EditorCore's
     # cache (recomputed only when the line changes).
     hl = (line_bg == BG_COLOR && @hl_enabled) ?
-           EditorCore.render_hl(line_idx, @scroll_x, @edit_cols) : nil
-    if hl && hl.length > 0
-      draw_highlighted_line(x, y, text, visible_len, hl)
-    else
-      @gfx.draw_text(x, y, text[0, visible_len], TEXT_COLOR, line_bg)
-    end
-
-    # Overpaint the selected substring so its glyph background matches.
-    if sel_vstart
-      sel_text = text[sel_vstart, sel_vend - sel_vstart]
-      @gfx.draw_text(x + sel_vstart * CHAR_W, y, sel_text,
-                     TEXT_COLOR, SEL_BG)
-    end
+           EditorCore.render_hl(line_idx, @scroll_x, nchars) : ""
+    draw_row_text(x, y, text, widths, nchars, hl, line_bg, sel_from, sel_to)
   end
 
-  # +hl+ holds one category byte per VISIBLE character (EditorCore.render_hl
-  # applies the same scroll window as render_text), so index i lines up with
-  # text character i.
-  def draw_highlighted_line(x, y, text, visible_len, hl)
+  # How many characters of the width map fit in +max_cells+. A full-width
+  # character at the right edge is left out rather than drawn half.
+  def visible_chars(widths, max_cells)
+    cells = 0
     i = 0
-    while i < visible_len
-      cat = hl.getbyte(i) || 0
-      color = HL_COLORS[cat] || TEXT_COLOR
+    n = widths.bytesize
+    while i < n
+      w = widths.getbyte(i)
+      break if cells + w > max_cells
+      cells += w
+      i += 1
+    end
+    i
+  end
 
-      # Gather consecutive characters with the same category
-      j = i + 1
-      while j < visible_len
-        next_cat = hl.getbyte(j) || 0
-        break if next_cat != cat
-        j += 1
+  # Cell offset of visible character +i+ (its column on screen).
+  def cell_offset(widths, i)
+    c = 0
+    k = 0
+    n = widths.bytesize
+    n = i if i < n
+    while k < n
+      c += widths.getbyte(k)
+      k += 1
+    end
+    c
+  end
+
+  # Byte length of the UTF-8 character whose first byte is +b0+.
+  def char_bytes(b0)
+    return 1 if b0 < 0x80
+    return 2 if b0 < 0xE0
+    return 3 if b0 < 0xF0
+    4
+  end
+
+  # Draw one visible row in as few draw_text commands as the colours and the
+  # gfx text buffer allow: the byte walk emits a command when the highlight
+  # category changes, when the selection starts or ends, or when the next
+  # character would push the command past DRAW_TEXT_MAX_BYTES.
+  #
+  # +widths+ places each character (one or two cells), +hl+ carries one category
+  # byte per character, and both are indexed by the same character number as
+  # +text+ -- which is why the walk tracks a byte offset and a character index
+  # separately.
+  def draw_row_text(x, y, text, widths, nchars, hl, plain_bg, sel_from, sel_to)
+    hl_len = hl.bytesize
+    i = 0
+    b = 0
+    cell = 0
+    while i < nchars
+      cat = i < hl_len ? hl.getbyte(i) : 0
+      sel = (i >= sel_from && i < sel_to)
+      color = sel ? TEXT_COLOR : (HL_COLORS[cat] || TEXT_COLOR)
+      bg = sel ? SEL_BG : plain_bg
+
+      b0 = b
+      c0 = cell
+      bytes = 0
+      while i < nchars
+        nb = char_bytes(text.getbyte(b))
+        break if bytes > 0 && bytes + nb > DRAW_TEXT_MAX_BYTES
+        ncat = i < hl_len ? hl.getbyte(i) : 0
+        break if ncat != cat
+        nsel = (i >= sel_from && i < sel_to)
+        break if nsel != sel
+        bytes += nb
+        b += nb
+        cell += widths.getbyte(i)
+        i += 1
       end
-
-      chunk = text[i, j - i]
-      @gfx.draw_text(x + i * CHAR_W, y, chunk, color, BG_COLOR)
-      i = j
+      @gfx.draw_text(x + c0 * CELL_W, y, text.byteslice(b0, bytes), color, bg)
     end
   end
 
@@ -607,19 +680,26 @@ class EditorApp < FmrbApp
     # Cursor position relative to scroll
     screen_row = @cy - @scroll_y
     return if screen_row < 0 || screen_row >= @edit_rows
+    return if @cx < @scroll_x
 
-    screen_col = @cx - @scroll_x
-    return if screen_col < 0 || screen_col >= @edit_cols
+    # The cursor sits on a character, so its column and its width both come from
+    # the width map: it covers two cells on a full-width character.
+    widths = EditorCore.render_width(@cy, @scroll_x, @edit_cols)
+    idx = @cx - @scroll_x
+    cell = cell_offset(widths, idx)
+    return if cell >= @edit_cols
+    w_cells = idx < widths.bytesize ? widths.getbyte(idx) : 1
+    w_cells = @edit_cols - cell if cell + w_cells > @edit_cols
 
-    x = @user_area_x0 + 1 + @gutter_w + screen_col * CHAR_W
-    y = @edit_y + screen_row * CHAR_H
+    x = @user_area_x0 + 1 + @gutter_w + cell * CELL_W
+    y = @edit_y + screen_row * LINE_H
 
     # Draw block cursor
-    @gfx.fill_rect(x, y, CHAR_W, CHAR_H, CURSOR_COLOR)
+    @gfx.fill_rect(x, y, w_cells * CELL_W, LINE_H, CURSOR_COLOR)
 
     # Draw character under cursor in contrasting color
     ch = EditorCore.char_at(@cy, @cx)
-    @gfx.draw_text(x, y, ch, BG_COLOR, CURSOR_COLOR) if ch.length > 0
+    @gfx.draw_text(x, y, ch, BG_COLOR, CURSOR_COLOR) if ch.bytesize > 0
   end
 
   # ---- Latency instrumentation ----
@@ -717,6 +797,7 @@ class EditorApp < FmrbApp
   # drawing, so they are not re-issued -- that is most of the saving.
   def redraw_dirty
     sel_range = selection_range
+    begin_edit_font
     row = 0
     while row < @edit_rows
       line_idx = @scroll_y + row
@@ -724,6 +805,7 @@ class EditorApp < FmrbApp
       row += 1
     end
     draw_cursor
+    end_edit_font
     draw_status_line
     @gfx.present
   end
@@ -934,6 +1016,20 @@ class EditorApp < FmrbApp
 
   # ---- Scrolling ----
 
+  # True when the cursor's cell column is past the right edge of the window.
+  # Its own cell counts: a full-width character has to fit whole.
+  def cursor_cell_overflow?
+    return false if @cx <= @scroll_x
+    # More characters than there are cells cannot fit, whatever their widths --
+    # and asking for that many would run past the width map's own limit.
+    return true if @cx - @scroll_x >= @edit_cols
+    widths = EditorCore.render_width(@cy, @scroll_x, @cx - @scroll_x + 1)
+    idx = @cx - @scroll_x
+    cell = cell_offset(widths, idx)
+    w = idx < widths.bytesize ? widths.getbyte(idx) : 1
+    cell + w > @edit_cols
+  end
+
   def ensure_cursor_visible
     old_scroll_y = @scroll_y
     old_scroll_x = @scroll_x
@@ -943,11 +1039,18 @@ class EditorApp < FmrbApp
     elsif @cy >= @scroll_y + @edit_rows
       @scroll_y = @cy - @edit_rows + 1
     end
-    # Horizontal
+    # Horizontal. @scroll_x stays a character index -- it is what EditorCore
+    # slices by -- but whether the cursor is inside the window is a question
+    # about cells, and a full-width character is two of them. Walk the width map
+    # forward until the cursor fits rather than guess a character count.
     if @cx < @scroll_x
       @scroll_x = @cx
-    elsif @cx >= @scroll_x + @edit_cols
-      @scroll_x = @cx - @edit_cols + 1
+    else
+      guard = 0
+      while cursor_cell_overflow? && guard < @edit_cols * 2
+        @scroll_x += 1
+        guard += 1
+      end
     end
     # A scroll moves every row, so the fine-grained marks are useless here.
     @need_redraw = true if @scroll_y != old_scroll_y || @scroll_x != old_scroll_x

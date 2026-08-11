@@ -454,6 +454,76 @@ const char *ec_render_hl(int slot, int y, int col0, int max_cols, int *out_len)
     return (const char *)(map + col0);
 }
 
+/* Display width of one Unicode code point, in terminal cells.
+ *
+ * East Asian Wide and Fullwidth take two cells; everything else takes one.
+ * This is not a complete Unicode width table and does not need to be -- it has
+ * to agree with what the fonts on this machine actually draw, and misaki and
+ * efontJA are exactly 1:2 across the ranges below. The one that catches people
+ * out is half-width katakana (U+FF61-U+FF9F): multi-byte, but one cell.
+ */
+static int cp_cells(uint32_t cp)
+{
+    if (cp < 0x1100) return 1;                          /* ASCII and Latin */
+    if (cp <= 0x115F) return 2;                         /* Hangul Jamo */
+    if (cp >= 0x2E80 && cp <= 0xA4CF) return 2;         /* CJK radicals..Yi */
+    if (cp >= 0xAC00 && cp <= 0xD7A3) return 2;         /* Hangul syllables */
+    if (cp >= 0xF900 && cp <= 0xFAFF) return 2;         /* CJK compatibility */
+    if (cp >= 0xFF00 && cp <= 0xFF60) return 2;         /* fullwidth forms */
+    /* Half-width katakana is one cell by name and in misaki, but efontJA_12 --
+       the font the edit area uses -- has no glyph for it and draws a
+       full-width box. Measured, not assumed: flash/app/test/ja_width.app.rb
+       renders "ｱｲｳｴｵ|" 66px wide in efont, exactly as five kanji. The grid has
+       to agree with what appears on screen or the cursor drifts. */
+    if (cp >= 0xFF61 && cp <= 0xFF9F) return 2;         /* half-width katakana */
+    if (cp >= 0xFFE0 && cp <= 0xFFE6) return 2;         /* fullwidth signs */
+    return 1;
+}
+
+/* Decode the UTF-8 sequence starting at s (len bytes available). */
+static uint32_t u8_decode(const char *s, int32_t len, int32_t *out_bytes)
+{
+    unsigned char b0 = (unsigned char)s[0];
+    int32_t need = 1;
+    uint32_t cp = b0;
+    if (b0 >= 0xF0)      { need = 4; cp = b0 & 0x07; }
+    else if (b0 >= 0xE0) { need = 3; cp = b0 & 0x0F; }
+    else if (b0 >= 0xC0) { need = 2; cp = b0 & 0x1F; }
+    if (need > len) need = 1;                 /* truncated: treat as one byte */
+    for (int32_t i = 1; i < need; i++) {
+        cp = (cp << 6) | ((unsigned char)s[i] & 0x3F);
+    }
+    if (out_bytes) *out_bytes = need;
+    return (need == 1 && b0 >= 0x80) ? 0xFFFD : cp;
+}
+
+/* Cell width per character for the same slice ec_render_text returns, one byte
+   per character, in the shape ec_render_hl uses. The editor turns this into the
+   prefix sums it needs to place a cursor, a selection box or a click.
+   Recomputed per call rather than cached: a screen row is at most a couple of
+   hundred characters and the walk is a byte scan. */
+const char *ec_render_width(int slot, int y, int col0, int max_cols, int *out_len)
+{
+    if (out_len) *out_len = 0;
+    ed_doc_t *d = doc_of(slot);
+    if (!d || !y_ok(d, y) || max_cols <= 0) return "";
+    ed_line_t *l = &d->lines[y];
+    int32_t b0 = u8_byte_of(l->buf, l->len, col0);
+    if (b0 >= l->len) return "";
+
+    static uint8_t widths[EC_WIDTH_MAX_COLS];
+    int32_t n = 0;
+    int32_t i = b0;
+    while (i < l->len && n < max_cols && n < EC_WIDTH_MAX_COLS) {
+        int32_t used = 1;
+        uint32_t cp = u8_decode(l->buf + i, l->len - i, &used);
+        widths[n++] = (uint8_t)cp_cells(cp);
+        i += used;
+    }
+    if (out_len) *out_len = (int)n;
+    return (const char *)widths;
+}
+
 /* The character under the cursor ("" past end of line). */
 const char *ec_char_at(int slot, int y, int x, int *out_len)
 {

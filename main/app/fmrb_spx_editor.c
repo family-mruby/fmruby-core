@@ -52,6 +52,14 @@ const char *fmrb_spx_ec_render_hl(int slot, int y, int col0, int max_cols)
     return p;
 }
 
+const char *fmrb_spx_ec_render_width(int slot, int y, int col0, int max_cols)
+{
+    int len = 0;
+    const char *p = ec_render_width(slot, y, col0, max_cols, &len);
+    sp_net_bin_len = len;
+    return p;
+}
+
 const char *fmrb_spx_ec_char_at(int slot, int y, int x)
 {
     int len = 0;

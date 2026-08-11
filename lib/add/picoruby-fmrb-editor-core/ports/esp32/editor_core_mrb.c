@@ -99,6 +99,15 @@ static mrb_value m_render_hl(mrb_state *mrb, mrb_value self)
     return str_of(mrb, p, len);
 }
 
+static mrb_value m_render_width(mrb_state *mrb, mrb_value self)
+{
+    mrb_int y, col0, max_cols;
+    mrb_get_args(mrb, "iii", &y, &col0, &max_cols);
+    int len = 0;
+    const char *p = ec_render_width(slot_of(mrb), (int)y, (int)col0, (int)max_cols, &len);
+    return str_of(mrb, p, len);
+}
+
 static mrb_value m_char_at(mrb_state *mrb, mrb_value self)
 {
     mrb_int y, x;
@@ -238,6 +247,7 @@ void mrb_picoruby_fmrb_editor_core_init_impl(mrb_state *mrb)
     mrb_define_module_function(mrb, mod, "line_length",  m_line_length,  MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, mod, "render_text",  m_render_text,  MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, mod, "render_hl",    m_render_hl,    MRB_ARGS_REQ(3));
+    mrb_define_module_function(mrb, mod, "render_width", m_render_width, MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, mod, "char_at",      m_char_at,      MRB_ARGS_REQ(2));
     mrb_define_module_function(mrb, mod, "hl_enabled=",  m_hl_set,       MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, mod, "doc_bytesize", m_doc_bytesize, MRB_ARGS_NONE());

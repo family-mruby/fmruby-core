@@ -35,15 +35,20 @@ class FmrbGfx
   #   :default      Font0 (6x8 ASCII)
   #   [:ja, 8]      misaki_8 (8x8, includes BMP CJK)
   #   [:ja, 12]     efontJA_12 (12x12)
-  # char_w is the full-width (CJK) cell; half_w is the ASCII / half-width-kana
-  # cell. Both :ja fonts are dual width -- misaki draws ASCII at 4px and kanji
-  # at 8, efont at 6 and 12 -- and treating ASCII as full width made every
-  # measurement of a mixed string too wide, which is what places a menu label or
-  # a truncation point.
+  # char_w is the full-width (CJK) cell, half_w the ASCII cell. Both :ja fonts
+  # are dual width -- misaki draws ASCII at 4px and kanji at 8, efont at 6 and
+  # 12 -- and treating ASCII as full width made every measurement of a mixed
+  # string too wide, which is what places a menu label or a truncation point.
+  #
+  # kana_w is half-width katakana (U+FF61-U+FF9F) and is NOT simply half_w:
+  # misaki has those glyphs and draws them in a half cell, efontJA_12 does not
+  # and falls back to a full-width box. Measured on the simulator with
+  # flash/app/test/ja_width.app.rb, "ｱｲｳｴｵ|": misaki 26px (5x4 + 6),
+  # efont 66px (5x12 + 6) -- the same as five kanji.
   FONT_METRICS = {
-    [:default] => { char_w: 6,  half_w: 6, line_h: 8  },
-    [:ja, 8]   => { char_w: 8,  half_w: 4, line_h: 8  },
-    [:ja, 12]  => { char_w: 12, half_w: 6, line_h: 12 },
+    [:default] => { char_w: 6,  half_w: 6, kana_w: 4,  line_h: 8  },
+    [:ja, 8]   => { char_w: 8,  half_w: 4, kana_w: 4,  line_h: 8  },
+    [:ja, 12]  => { char_w: 12, half_w: 6, kana_w: 12, line_h: 12 },
   }
 
   # Initialize graphics context
@@ -109,6 +114,7 @@ class FmrbGfx
     metrics = FONT_METRICS[key] || FONT_METRICS[[:default]]
     char_w = metrics[:char_w]
     half_w = metrics[:half_w] || char_w
+    kana_w = metrics[:kana_w] || char_w
     # Font0 has no CJK glyphs, so the default font renders a multi-byte run
     # hybrid with misaki_8; count that at 8px to match what is drawn.
     wide_w = (key == [:default]) ? 8 : char_w
@@ -135,7 +141,7 @@ class FmrbGfx
         b2 = (i + 2 < n) ? bytes[i + 2] : 0
         halfkana = (seq_len == 3 && b == 0xEF &&
                     ((b1 == 0xBD && b2 >= 0xA1) || (b1 == 0xBE && b2 <= 0x9F)))
-        width += halfkana ? half_w : wide_w
+        width += halfkana ? kana_w : wide_w
         i += seq_len
       end
     end
