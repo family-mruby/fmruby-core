@@ -261,8 +261,11 @@ int et_suggest(int slot, int y, int x)
         goto done;
     }
 
+    /* Fragmentation can refuse one big block while smaller ones are there.
+       Halve, but never past the floor -- below it the parse would fail so
+       often that asking is a waste. */
     block = fmrb_malloc(handle, want);
-    while (!block && want > ET_SCRATCH_MIN) {
+    while (!block && want / 2 >= ET_SCRATCH_MIN) {
         want /= 2;
         block = fmrb_malloc(handle, want);
     }

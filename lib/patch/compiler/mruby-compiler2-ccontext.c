@@ -54,7 +54,14 @@ extern void *fmrb_current_compile_mrb(void);
    (same reasoning as editor_core.c's syntax-highlight prototype). */
 typedef void *(*fmrb_prism_alloc_fn)(void *ptr, size_t size);
 
-static fmrb_prism_alloc_fn s_prism_scratch = NULL;
+/* Per task, not per process. The installer and the prism call it serves are
+   always the same task, while other tasks keep compiling apps meanwhile: a
+   plain global would send their allocations into the installer's scratch heap,
+   which is freed the moment that request ends -- a use-after-free in whichever
+   app happened to be compiling. That is the same family of bug this patch
+   exists to remove, and the caller's own lock does not help, since the compile
+   path never takes it. */
+static __thread fmrb_prism_alloc_fn s_prism_scratch = NULL;
 
 void
 fmrb_prism_set_scratch_allocator(fmrb_prism_alloc_fn fn)
