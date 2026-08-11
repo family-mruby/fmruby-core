@@ -1361,6 +1361,32 @@ static void host_send_kana_mode(uint8_t target_pid, uint8_t mode)
     fmrb_msg_send(target_pid, &msg, 200);
 }
 
+// Tell the focused app and the kernel (which passes it to the desktop) what
+// kana input is doing now. Both indicators are drawn from this.
+static void host_broadcast_kana_mode(void)
+{
+    uint8_t mode = (uint8_t)fmrb_kana_get_mode();
+    fmrb_hid_routing_t routing;
+    if (fmrb_kernel_get_hid_routing(&routing) == FMRB_OK &&
+        routing.routing_enabled && routing.target_pid != 0xFF) {
+        host_send_kana_mode(routing.target_pid, mode);
+    }
+    host_send_kana_mode(0, mode);
+}
+
+void fmrb_host_set_kana_mode(uint8_t mode)
+{
+    if (mode >= FMRB_KANA_MODE_COUNT) {
+        return;
+    }
+    // Called from an app task (the clickable mode indicators), not from
+    // host_task. Only a plain enum store, and the message sends below are the
+    // same ones every app already makes.
+    fmrb_kana_set_mode((fmrb_kana_mode_t)mode);
+    FMRB_LOGI(TAG, "kana mode=%d (set by app)", mode);
+    host_broadcast_kana_mode();
+}
+
 static void host_task_process_message(const fmrb_msg_t *hal_msg)
 {
     // Check if it's a GFX message first - use batch processing
@@ -1498,10 +1524,13 @@ static void host_task_process_host_message(const host_message_t *msg)
                 fmrb_keymap_get_layout()
             );
 
-            // Romaji to kana composition. Only the JP layout has kana input,
-            // and only this call site sees every input source, so the layer
-            // sits here rather than in each driver.
-            if (fmrb_keymap_get_layout() == FMRB_KEYMAP_LAYOUT_JP) {
+            // Romaji to kana composition. This call site is the one place
+            // every input source meets, so the layer sits here rather than in
+            // each driver. It runs on both layouts: which keys reach it is a
+            // keyboard question (half/full-width is JIS-only, Ctrl+Space
+            // works anywhere), while the layout setting picks the symbol
+            // table. With kana input off every key passes straight through.
+            {
                 fmrb_kana_result_t kana;
                 fmrb_kana_action_t action = fmrb_kana_feed(
                     msg->type == HOST_MSG_HID_KEY_DOWN,
@@ -1515,18 +1544,13 @@ static void host_task_process_host_message(const host_message_t *msg)
                     host_send_kana_byte(routing.target_pid, kana.out[i]);
                 }
                 if (kana.mode_changed) {
-                    uint8_t mode = (uint8_t)fmrb_kana_get_mode();
                     // Rare (a keypress), and the one line that answers "the
                     // toggle key did nothing": it shows what the composer
                     // actually saw, modifiers included.
                     FMRB_LOGI(TAG, "kana mode=%d (sc=0x%02x mod=0x%02x)",
-                              mode, key_event->scancode, key_event->modifier);
-                    host_send_kana_mode(routing.target_pid, mode);
-                    // The kernel gets a copy so it can hand the mode to the
-                    // desktop as well: kana input is a property of the
-                    // machine, not of the focused app, and the desktop is
-                    // the one place it can be seen from anywhere.
-                    host_send_kana_mode(0, mode);
+                              (int)fmrb_kana_get_mode(),
+                              key_event->scancode, key_event->modifier);
+                    host_broadcast_kana_mode();
                 }
                 if (action == FMRB_KANA_CONSUME) {
                     break;

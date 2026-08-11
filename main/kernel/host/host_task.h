@@ -73,6 +73,19 @@ int fmrb_host_send_gamepad_button(int gamepad_id, int button_num, int state);
 int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value);
 
 /**
+ * @brief Set the kana input mode and tell the apps about it.
+ *
+ * Kana input normally follows the keyboard (half/full-width, Ctrl+Space), but
+ * the mode indicators in the editor's status line and the desktop's menu bar
+ * are clickable, and a touch machine has no keyboard at all. Callable from an
+ * app task.
+ *
+ * @param mode 0 = off (ASCII), 1 = hiragana, 2 = katakana. Anything else is
+ *             ignored.
+ */
+void fmrb_host_set_kana_mode(uint8_t mode);
+
+/**
  * @brief Allow the on-screen cursor to appear on the next mouse event.
  *
  * The cursor stays hidden after boot until this is called, so the boot

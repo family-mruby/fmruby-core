@@ -30,6 +30,9 @@ typedef enum {
     FMRB_KANA_KATAKANA = 2,
 } fmrb_kana_mode_t;
 
+// Cycled by the on-screen indicators: off -> hiragana -> katakana -> off.
+#define FMRB_KANA_MODE_COUNT 3
+
 typedef enum {
     FMRB_KANA_PASS = 0,     // forward the event untouched
     FMRB_KANA_CONSUME,      // swallow it (mode toggle, or a backspace that
@@ -62,6 +65,16 @@ fmrb_kana_action_t fmrb_kana_feed(bool key_down, uint8_t scancode,
 
 /** @brief Current mode (FMRB_KANA_OFF when kana input is not active). */
 fmrb_kana_mode_t fmrb_kana_get_mode(void);
+
+/**
+ * @brief Set the mode outright.
+ *
+ * For the on-screen indicators, which are clickable: a keyboard is not the
+ * only way to reach kana input, and on a touch machine it is not even the
+ * usual one. Pending romaji is dropped. Callers that want the apps to hear
+ * about it should go through fmrb_host_set_kana_mode() instead.
+ */
+void fmrb_kana_set_mode(fmrb_kana_mode_t mode);
 
 /** @brief Drop the pending consonant. Mode is kept. */
 void fmrb_kana_clear_pending(void);
