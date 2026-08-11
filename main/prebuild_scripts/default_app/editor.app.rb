@@ -196,11 +196,11 @@ class EditorApp < FmrbApp
     # document, so a half character can never be inserted.
     @u8_buf = ""
     @u8_need = 0
-    # Kana input mode as last reported by the host. A Japanese system shows
-    # the badge from the start (at "A") because it is clickable and is the
-    # way in on a keyboard with no half/full-width key; an English one shows
-    # nothing until kana input is actually used.
-    @kana_mode = (FmrbApp.language == "ja") ? 0 : nil
+    # Kana input mode as last reported by the host. Shown from the start, at
+    # "A": the badge is clickable, so it is the way into kana input on a
+    # keyboard that has no half/full-width key. It also agrees with the
+    # desktop's menu bar, which shows the same state from boot.
+    @kana_mode = 0
     @kana_badge_x = nil
     @kana_badge_w = 0
     dbg_init

@@ -168,12 +168,12 @@ class SystemDesktopApp < FmrbApp
     @net_open = false
     @net_info = nil
 
-    # Kana input mode as last reported by the host. On a Japanese system it
-    # starts visible (at "A") so the indicator can be clicked to turn kana
-    # input on -- a US keyboard has no half/full-width key, and the Tab5 has
-    # no keyboard at all, so the click is their way in. An English system
-    # sees nothing until something actually turns kana input on.
-    @kana_mode = (FmrbApp.language == "ja") ? 0 : nil
+    # Kana input mode as last reported by the host. Shown from boot, at "A",
+    # rather than appearing once kana input is first used: the indicator is
+    # clickable, and on a keyboard with no half/full-width key (US) or no
+    # keyboard at all (Tab5) that click is the way in. An indicator that only
+    # appears after you have already found another way in is no use.
+    @kana_mode = 0
 
     # Boot animation state
     @boot_anim_state = :init  # :init -> :revealing -> :wait_to_finish -> :done
