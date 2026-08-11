@@ -126,3 +126,20 @@ const char *fmrb_spx_ec_paste_at(int slot, int y, int x)
 }
 
 int fmrb_spx_ec_clipboard_length(int slot) { return ec_clipboard_length(slot); }
+
+/* Completion (editor_ti_bridge.c). Same shape as the rest: counts and
+   positions as ints, strings as :binstr. */
+int fmrb_spx_et_suggest(int slot, int y, int x)
+{
+    return et_suggest(slot, y, x);
+}
+
+const char *fmrb_spx_et_suggestion(int i, int field)
+{
+    int len = 0;
+    const char *p = et_suggestion(i, field, &len);
+    sp_net_bin_len = len;
+    return p;
+}
+
+int fmrb_spx_et_max_source_bytes(void) { return et_max_source_bytes(); }

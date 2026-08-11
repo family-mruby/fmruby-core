@@ -37,6 +37,9 @@ module FmrbSpxEc
   ffi_func :fmrb_spx_ec_copy_range,  [:int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_ec_paste_at,    [:int, :int, :int], :binstr
   ffi_func :fmrb_spx_ec_clipboard_length, [:int], :int
+  ffi_func :fmrb_spx_et_suggest,     [:int, :int, :int], :int
+  ffi_func :fmrb_spx_et_suggestion,  [:int, :int], :binstr
+  ffi_func :fmrb_spx_et_max_source_bytes, [], :int
 end
 
 # EditorCore as the editor sees it. The mruby build gets this module from the C
@@ -91,6 +94,12 @@ module EditorCore
 
   def self.paste_at(y, x);      FmrbSpxEc.fmrb_spx_ec_paste_at(slot, y, x); end
   def self.clipboard_length;    FmrbSpxEc.fmrb_spx_ec_clipboard_length(slot); end
+
+  # Completion: suggest returns the number of candidates (negative on error),
+  # suggestion reads one field of one candidate until the next suggest.
+  def self.suggest(y, x);       FmrbSpxEc.fmrb_spx_et_suggest(slot, y, x); end
+  def self.suggestion(i, field); FmrbSpxEc.fmrb_spx_et_suggestion(i, field); end
+  def self.max_source_bytes;    FmrbSpxEc.fmrb_spx_et_max_source_bytes; end
 
   # Readers for the packed records (same layout as the mruby gem's mrblib).
   def self.rec_u32(rec, off)

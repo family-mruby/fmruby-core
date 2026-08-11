@@ -250,6 +250,29 @@ static mrb_value m_clipboard_length(mrb_state *mrb, mrb_value self)
     return mrb_fixnum_value(ec_clipboard_length(slot_of(mrb)));
 }
 
+/* ---- completion -------------------------------------------------------- */
+
+static mrb_value m_suggest(mrb_state *mrb, mrb_value self)
+{
+    mrb_int y, x;
+    mrb_get_args(mrb, "ii", &y, &x);
+    return mrb_fixnum_value(et_suggest(slot_of(mrb), (int)y, (int)x));
+}
+
+static mrb_value m_suggestion(mrb_state *mrb, mrb_value self)
+{
+    mrb_int i, field;
+    mrb_get_args(mrb, "ii", &i, &field);
+    int len = 0;
+    const char *p = et_suggestion((int)i, (int)field, &len);
+    return str_of(mrb, p, len);
+}
+
+static mrb_value m_max_source_bytes(mrb_state *mrb, mrb_value self)
+{
+    return mrb_fixnum_value(et_max_source_bytes());
+}
+
 /* ---- registration ------------------------------------------------------ */
 
 void mrb_picoruby_fmrb_editor_core_init_impl(mrb_state *mrb)
@@ -283,6 +306,12 @@ void mrb_picoruby_fmrb_editor_core_init_impl(mrb_state *mrb)
     mrb_define_module_function(mrb, mod, "copy_range",   m_copy_range,   MRB_ARGS_REQ(4));
     mrb_define_module_function(mrb, mod, "paste_at",     m_paste_at,     MRB_ARGS_REQ(2));
     mrb_define_module_function(mrb, mod, "clipboard_length", m_clipboard_length, MRB_ARGS_NONE());
+
+    /* Completion. suggest answers a count (negative on error), then each
+       candidate is read field by field until the next suggest. */
+    mrb_define_module_function(mrb, mod, "suggest",     m_suggest,     MRB_ARGS_REQ(2));
+    mrb_define_module_function(mrb, mod, "suggestion",  m_suggestion,  MRB_ARGS_REQ(2));
+    mrb_define_module_function(mrb, mod, "max_source_bytes", m_max_source_bytes, MRB_ARGS_NONE());
 }
 
 void mrb_picoruby_fmrb_editor_core_final_impl(mrb_state *mrb)
