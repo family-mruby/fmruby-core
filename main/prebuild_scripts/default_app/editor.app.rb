@@ -189,6 +189,16 @@ class EditorApp < FmrbApp
     @search_last = ""
     @search_status = ""
     @gutter_w = 0             # breakpoint gutter width (set by recompute_layout)
+    # ---- Kana input ----
+    # A composed kana arrives as its UTF-8 bytes, one key event per byte
+    # (host_task's composition layer; the HID payload has one byte of
+    # character). These collect a whole character before it reaches the
+    # document, so a half character can never be inserted.
+    @u8_buf = ""
+    @u8_need = 0
+    # nil until the host tells us the kana mode; the badge stays away on a
+    # keyboard that never toggles it.
+    @kana_mode = nil
     dbg_init
     # ---- Latency instrumentation ----
     @lat_t0 = nil     # uptime_us of the oldest key not yet shown on screen
@@ -561,13 +571,32 @@ class EditorApp < FmrbApp
     @gfx.draw_text(@user_area_x0 + 2, y, status, STATUS_TEXT, STATUS_BG,
                    mixed: true)
 
+    # Kana mode badge, right-aligned: the line's left half is already full on a
+    # narrow window, and this has to stay visible to be worth anything.
+    right = @user_area_x0 + @user_area_width
+    if @kana_mode
+      badge = kana_badge
+      right -= FmrbI18n.text_width(badge) + 2
+      @gfx.draw_text(right, y, badge, STATUS_TEXT, STATUS_BG, mixed: true)
+    end
+
     # Right-aligned green "Saved" badge that fades after SAVE_OK_FRAMES ticks.
     if @save_ok_frames > 0
       label = @status_label || " #{FmrbI18n.t(:b_saved).to_s} "
       bw = FmrbI18n.text_width(label)
-      bx = @user_area_x0 + @user_area_width - bw - 2
+      bx = right - bw - 2
       @gfx.fill_rect(bx, y, bw, CHAR_H, STATUS_OK_BG)
       @gfx.draw_text(bx, y, label, STATUS_OK_TEXT, STATUS_OK_BG, mixed: true)
+    end
+  end
+
+  # What the host says kana input is doing. Shown only once the host has told
+  # us (a US keyboard never sends it), so nothing changes for English users.
+  def kana_badge
+    case @kana_mode
+    when 1 then "[あ]"
+    when 2 then "[ア]"
+    else "[A]"
     end
   end
 
@@ -1071,8 +1100,11 @@ class EditorApp < FmrbApp
     iw = SEARCH_QUERY_MAX * CHAR_W + 2
     @gfx.fill_rect(tx, iy, iw, CHAR_H + 2, BG_COLOR)
     @gfx.draw_rect(tx, iy, iw, CHAR_H + 2, QUIT_DLG_BORDER)
-    @gfx.draw_text(tx + 1, iy + 1, @search_query, TEXT_COLOR, BG_COLOR)
-    cur_x = tx + 1 + @search_query.length * CHAR_W
+    # mixed: the query can hold kana now, and the caret follows the pixel
+    # width rather than the character count (a kana is two cells wide).
+    @gfx.draw_text(tx + 1, iy + 1, @search_query, TEXT_COLOR, BG_COLOR,
+                   mixed: true)
+    cur_x = tx + 1 + FmrbI18n.text_width(@search_query)
     @gfx.fill_rect(cur_x, iy + 1, CHAR_W, CHAR_H, CURSOR_COLOR)
 
     sy = iy + CHAR_H + 4
@@ -1130,6 +1162,21 @@ class EditorApp < FmrbApp
       close_search_dialog
       return
     end
+
+    # Kana reach the field the same way they reach the document: as the bytes
+    # of one UTF-8 character. This is what makes searching for a Japanese
+    # word possible at all.
+    if character >= 0x80
+      s = utf8_feed(character)
+      if s && FmrbI18n.text_width(@search_query) < SEARCH_QUERY_MAX * CHAR_W
+        @search_query += s
+        @search_query_dirty = true
+        @search_status = ""
+        @need_redraw = true
+      end
+      return
+    end
+    utf8_reset
 
     case character
     when 8, 127  # Backspace / Delete
@@ -1298,6 +1345,12 @@ class EditorApp < FmrbApp
   # ---- Key handling ----
 
   def handle_key(ch)
+    if ch >= 0x80
+      s = utf8_feed(ch)
+      insert_char(s) if s
+      return
+    end
+    utf8_reset
     case ch
     when 10, 13  # Enter
       handle_enter
@@ -1314,6 +1367,50 @@ class EditorApp < FmrbApp
     when 32..126 # Printable
       insert_char(printable_char(ch))
     end
+  end
+
+  # Feed one byte of a possibly multi-byte character. Returns the finished
+  # character as a String, or nil while more bytes are needed. Used by both
+  # the document and the Find field, so Japanese can be typed into either.
+  def utf8_feed(byte)
+    if @u8_need == 0
+      if byte >= 0xF0
+        need = 3
+      elsif byte >= 0xE0
+        need = 2
+      elsif byte >= 0xC0
+        need = 1
+      else
+        return nil  # continuation byte with nothing in front of it
+      end
+      @u8_buf = one_byte_string(byte)
+      @u8_need = need
+      return nil
+    end
+    # A byte that is not a continuation means the sequence was cut short.
+    # Drop what we had and start over with this byte.
+    if byte < 0x80 || byte >= 0xC0
+      utf8_reset
+      return utf8_feed(byte)
+    end
+    @u8_buf += one_byte_string(byte)
+    @u8_need -= 1
+    return nil if @u8_need > 0
+    s = @u8_buf
+    utf8_reset
+    s
+  end
+
+  def utf8_reset
+    @u8_buf = ""
+    @u8_need = 0
+  end
+
+  # One-character String holding +byte+ (no Array#pack in picoruby).
+  def one_byte_string(byte)
+    s = " ".dup
+    s.setbyte(0, byte)
+    s
   end
 
   # One-character String for a printable ASCII code ("" outside 32..126).
@@ -2124,6 +2221,18 @@ class EditorApp < FmrbApp
   end
 
   def handle_editor_event(ev)
+    # Kana input turned on/off or switched script. Only the status badge
+    # cares; the characters themselves arrive as ordinary key events.
+    if ev[:type] == :kana_mode
+      @kana_mode = ev[:mode]
+      utf8_reset
+      @dirty_status = true
+      return
+    end
+
+    # A half-typed character cannot survive a different kind of event.
+    utf8_reset if ev[:type] != :key_down && @u8_need > 0
+
     if ev[:type] == :mouse_up
       # Open dropdown click handling
       if @active_menu
