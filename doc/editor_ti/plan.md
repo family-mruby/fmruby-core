@@ -181,17 +181,27 @@ def 内 ivar のホバーには suggest と同じ処置が要る (P3 で fork �
   (arena は次呼び出しで無効)。prism アロケータ
   (PRISM_XALLOCATOR -> mrb_malloc(global_mrb)) の安全確認を T2 冒頭で行う。
   sim で自律検証 + ti_lat 常設計測。
-- P3: ホバーと診断の UI。**指示書 = instruction_p3.md 発行済み**。
-  fork 側の宿題 (hover.c の外側クラス解決 + 変数引きの
-  ti_handle_identifier 化) は**実施済み** (fmrb-dev d40a9e6。@gfx の
-  ホバーが Canvas を返すことをホスト確認、回帰テスト追加)。
-  キーは Ctrl+T (ホバー) / Ctrl+E (診断、保存時自動 + 連打でジャンプ)。
-  ステータス行は「右端バッジ常設 + 左は一時メッセージ (ヘルパ集約)」に
-  整理して P2 のかなバッジ衝突を解消する。
-- P4: RBS の充実。FmrbApp / GFX / Sprite / Sound / MIDI と進め、
-  RBS を API ドキュメントの正とする運用に乗せる。
-- P5: esp32 対応。Modern (Tab5) 先行。サイズ実測、arena の PSRAM 化、
-  prism アロケータの競合確認。S3 はサイズ次第で判断。
+- P3: ホバーと診断の UI。**実装完了 (2026-08-12, report/p3.md)**。
+  Ctrl+T ホバー / Ctrl+E 診断 (保存時自動、連打で次エラーへ、編集で
+  マーカー消去)。ステータス行は「右端 = 常設バッジ (かな + [!N])、
+  左 = 一時メッセージ、書き込みは flash_status に集約」。fork 側の
+  hover 対応 (ti_set_enclosing_class_at_cursor 共有) は fmrb-dev d40a9e6。
+  S3 サイズは P2 比 flash +10.3KB / .bss +432B (診断結果は文書プール)。
+  申し送り: 使い捨てヒープ生成のたびに fmrb_alloc が info 3 行出す
+  (実機ログが煩い。P5 で水準調整)。診断の桁範囲はブリッジ止まり
+  (UI は行単位、v1 仕様)。
+- P4: RBS の充実。**指示書 = instruction_p4.md 発行済み**。
+  FmrbApp / FmrbGfx / Sprite / Tile / Audio / MIDI を網羅、doc は
+  日本語一文 (子供向け)、sig/ をドメイン分割 + sig/README.md で
+  「API ドキュメントの正」を宣言。gfx. 表記は attr_reader 追加で解禁
+  (T1)。定数対応は上流相談として温存。文字列プール (各 65535B) の
+  残量を記録する。
+- P5: esp32 対応。Modern (Tab5) 先行。サイズ実測、arena の PSRAM 化。
+  S3 はサイズ次第で判断。(fmrb_alloc の使い捨てヒープログは
+  fmrb_mem_create_handle_quiet の追加で解消済み 2026-08-12。長寿命
+  プールのログは従来どおり)。
+  (P2 の補完は Tab5 実機で確認済み: ti_lat 17ms/8B 文書。P3 の
+  ホバー/診断の実機確認はここでまとめて)
 - P6 (任意): PC 側 LSP/MCP。同じ sig から picoruby-ti-lsp を建てて
   VSCode/Vim/Claude から FMRB アプリの型支援を使えるようにする。
 - P7 (任意): WebConsole (tool/web) の簡易エディタへの展開。2 経路:
