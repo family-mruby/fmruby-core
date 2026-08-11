@@ -1,0 +1,7 @@
+# Minimal GPIO for host_test (static method suggestion).
+
+class GPIO
+  def self.new: (Integer pin, Integer mode) -> GPIO
+  def write: (Integer value) -> nil
+  def read: () -> Integer
+end

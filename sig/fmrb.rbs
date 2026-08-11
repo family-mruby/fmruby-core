@@ -1,0 +1,257 @@
+# Family mruby application API, as the editor's type inference sees it.
+#
+# Only methods that really exist are declared here; the source of truth is
+# lib/add/picoruby-fmrb-app (mrblib/fmrb-app.rb, mrblib/fmrb-gfx.rb and the
+# C extension ports/esp32/gfx.c). P1 stops at the subset the completion demo
+# needs -- Sprite / Sound / MIDI / Tilemap follow in P4.
+#
+# Notes on what the engine can express today (doc/editor_ti/plan.md):
+# - optional and keyword arguments are not modelled, so methods that take
+#   them are declared with their required arguments only;
+# - block types are not modelled either;
+# - `self` returns are written as the class, which is what the engine
+#   propagates into a variable.
+#
+# Do not edit the files copied from the engine's example/rbs: its host tests
+# assert those signature strings verbatim. FMRB additions belong here.
+
+class FmrbApp
+  # UI language of this VM ("en" / "ja")
+  def self.language: () -> String
+
+  # ---- lifecycle (override these in your app) ----
+
+  # Called once after the app is created
+  def on_create: () -> void
+
+  # Called on every frame of the main loop
+  def on_update: () -> void
+
+  # Called once before the app goes away
+  def on_destroy: () -> void
+
+  # Called when the app loses the screen to another app
+  def on_suspend: () -> void
+
+  # Called when the app gets the screen back
+  def on_resume: () -> void
+
+  # Called for each input event (keyboard, mouse, timer, message)
+  def on_event: (Hash ev) -> void
+
+  # Called after the window size changed (also on fullscreen changes)
+  def on_resize: (Integer new_width, Integer new_height) -> void
+
+  # Called on Ctrl+Q; override to ask before closing
+  def on_quit_request: () -> void
+
+  # ---- running the app ----
+
+  # Run the app: on_create, then the main loop
+  def start: () -> void
+
+  # Stop the main loop
+  def stop: () -> void
+
+  # Release the app's resources
+  def destroy: () -> void
+
+  # Restart this app from its file
+  def request_reload: () -> void
+
+  # ---- window and drawing helpers ----
+
+  # Redraw the window frame and title bar
+  def draw_window_frame: () -> void
+
+  # Fill the user area with a color
+  def clear_user_area: (Integer color) -> void
+
+  # Draw the scrollbar of the user area
+  def draw_scrollbar: (Integer scroll, Integer total, Integer visible) -> void
+
+  # Which part of the scrollbar a click hit (:up / :down / nil)
+  def scrollbar_hit: (Integer click_x, Integer click_y) -> Symbol?
+
+  # Move the window
+  def set_window_position: (Integer x, Integer y) -> FmrbApp
+
+  # Ask the kernel to switch between windowed and fullscreen
+  def request_fullscreen: (bool on) -> void
+
+  # Fullscreen on <-> off
+  def toggle_fullscreen: () -> void
+
+  # ---- input event helpers (use inside on_event) ----
+
+  # Was Ctrl held down for this event?
+  def ev_ctrl?: (Hash ev) -> bool
+
+  # Was Shift held down for this event?
+  def ev_shift?: (Hash ev) -> bool
+
+  # Was Alt held down for this event?
+  def ev_alt?: (Hash ev) -> bool
+
+  # ---- timers, messaging, files ----
+
+  # Call the block every interval milliseconds; returns the timer id
+  def set_timer: (Integer interval) -> Integer
+
+  # Cancel a timer created by set_timer
+  def clear_time: (Integer timer_id) -> void
+
+  # Receive messages published on a topic
+  def subscribe: (String topic) -> void
+
+  # Stop receiving a topic
+  def unsubscribe: (String topic) -> void
+
+  # Publish a message to a topic
+  def publish: (String topic) -> void
+
+  # Open the file selector ("open" / "save")
+  def request_file_select: (String mode) -> void
+
+  # Ask the kernel to run a .rb / .bas file as an app
+  def request_run: (String path) -> void
+
+  # Send a message to another process
+  def send_message: (Integer dest_pid, Integer msg_type, untyped data) -> void
+
+  # Is incremental GC in idle time enabled?
+  def idle_gc: () -> bool
+
+  # ---- window attributes ----
+
+  # App name shown in the title bar
+  def name: () -> String
+
+  # Is the main loop running?
+  def running: () -> bool
+
+  # Window width in pixels
+  def window_width: () -> Integer
+
+  # Window height in pixels
+  def window_height: () -> Integer
+
+  # Window position
+  def pos_x: () -> Integer
+
+  # Window position
+  def pos_y: () -> Integer
+
+  # "esp32" or "linux"
+  def platform: () -> String
+
+  # Is the app fullscreen?
+  def fullscreen: () -> bool
+
+  # Extra drawing surface owned by this app
+  def delete_canvas_gfx: (FmrbGfx gfx) -> void
+end
+
+class FmrbGfx
+  # Canvas this instance draws on
+  def canvas_id: () -> Integer
+
+  # Canvas size in pixels
+  def canvas_width: () -> Integer
+
+  # Canvas size in pixels
+  def canvas_height: () -> Integer
+
+  # ---- drawing ----
+
+  # Fill the whole canvas with a color
+  def clear: (Integer color) -> FmrbGfx
+
+  # Set one pixel
+  def set_pixel: (Integer x, Integer y, Integer color) -> FmrbGfx
+
+  # Read one pixel back (synchronous round trip)
+  def get_pixel: (Integer x, Integer y) -> Integer
+
+  # Line from (x0,y0) to (x1,y1)
+  def draw_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer color) -> FmrbGfx
+
+  # Line with a pixel thickness
+  def draw_thick_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer thickness, Integer color) -> FmrbGfx
+
+  # Rectangle outline
+  def draw_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
+
+  # Filled rectangle
+  def fill_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
+
+  # Filled rectangle blended over what is already there
+  def blend_rect: (Integer x, Integer y, Integer w, Integer h, Integer color, Integer alpha) -> FmrbGfx
+
+  # Rounded rectangle outline
+  def draw_round_rect: (Integer x, Integer y, Integer w, Integer h, Integer r, Integer color) -> FmrbGfx
+
+  # Filled rounded rectangle
+  def fill_round_rect: (Integer x, Integer y, Integer w, Integer h, Integer r, Integer color) -> FmrbGfx
+
+  # Circle outline
+  def draw_circle: (Integer x, Integer y, Integer r, Integer color) -> FmrbGfx
+
+  # Filled circle
+  def fill_circle: (Integer x, Integer y, Integer r, Integer color) -> FmrbGfx
+
+  # Ellipse outline
+  def draw_ellipse: (Integer x, Integer y, Integer rx, Integer ry, Integer color) -> FmrbGfx
+
+  # Filled ellipse
+  def fill_ellipse: (Integer x, Integer y, Integer rx, Integer ry, Integer color) -> FmrbGfx
+
+  # Triangle outline
+  def draw_triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer color) -> FmrbGfx
+
+  # Filled triangle
+  def fill_triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer color) -> FmrbGfx
+
+  # ---- text ----
+
+  # Draw a string at (x,y) in color
+  def draw_text: (Integer x, Integer y, String str, Integer color) -> FmrbGfx
+
+  # Select the font family (:default / :misaki_8 ...)
+  def set_font: (Symbol family) -> FmrbGfx
+
+  # Scale factor for text (1, 2, ...)
+  def set_text_size: (Integer size) -> FmrbGfx
+
+  # Rendered width of a string in pixels
+  def text_width: (String str) -> Integer
+
+  # Line height of the current font in pixels
+  def font_height: () -> Integer
+
+  # Currently selected font family
+  def current_font: () -> Symbol
+
+  # Current text scale factor
+  def current_text_size: () -> Integer
+
+  # ---- images and screen ----
+
+  # Load an image file and return its image id
+  def create_image: (String path) -> Integer
+
+  # Free an image created by create_image
+  def delete_image: (Integer image_id) -> FmrbGfx
+
+  # Draw a loaded image
+  def draw_image: (Integer image_id) -> FmrbGfx
+
+  # Copy a rectangle out of a loaded image
+  def draw_tile: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h) -> FmrbGfx
+
+  # Push the drawn frame to the screen
+  def present: () -> FmrbGfx
+
+  # Release this canvas
+  def destroy: () -> FmrbGfx
+end

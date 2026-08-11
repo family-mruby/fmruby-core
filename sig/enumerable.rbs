@@ -1,0 +1,8 @@
+# Minimal Enumerable for host_test (TI_CLASS_ENUMERABLE).
+
+module Enumerable
+  def each: () { (untyped item) -> untyped } -> untyped
+  def each_with_index: () { (untyped item, Integer index) -> untyped } -> untyped
+  def map: () { (untyped item) -> untyped } -> Array
+  def to_a: () -> Array
+end
