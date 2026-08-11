@@ -528,6 +528,23 @@ def picoruby_ti_gen_db(engine_dir, out_dir)
   sh "#{RbConfig.ruby} #{main} --sig-dir #{PICORUBY_TI_SIG_DIR} --out #{out_dir}"
 end
 
+# Build libprism from OUR prism (the one the firmware parses with) into a
+# scratch copy, so host-side users of the engine link the same parser. The copy
+# exists because the picoruby submodule must stay clean -- we never make in it.
+def picoruby_ti_prism_work!
+  prism_src = File.expand_path(
+    "components/picoruby-esp32/picoruby/mrbgems/mruby-compiler/lib/prism", __dir__)
+  abort "prism not found at #{prism_src}" unless Dir.exist?(prism_src)
+  prism_work = File.expand_path("vendor/ti_prism", __dir__)
+  unless File.exist?(File.join(prism_work, "build/libprism.a"))
+    rm_rf prism_work
+    mkdir_p File.dirname(prism_work)
+    sh "cp -r #{prism_src} #{prism_work}"
+    sh "make -C #{prism_work} static"
+  end
+  prism_work
+end
+
 namespace :ti do
   desc "Fetch the pinned picoruby-ti engine into vendor/picoruby-ti"
   task :setup do
@@ -558,28 +575,33 @@ namespace :ti do
   desc "Run the picoruby-ti host regression tests against our sig/"
   task :test do
     dir = picoruby_ti_dir!
-    # The engine's host tests link a real libprism. Build it from OUR prism (the
-    # one the firmware parses with) so the tests cover the same parser, and do it
-    # in a scratch copy: the picoruby submodule must stay clean.
-    prism_src = File.expand_path(
-      "components/picoruby-esp32/picoruby/mrbgems/mruby-compiler/lib/prism", __dir__)
-    abort "prism not found at #{prism_src}" unless Dir.exist?(prism_src)
-    prism_work = File.expand_path("vendor/ti_prism", __dir__)
-    unless File.exist?(File.join(prism_work, "build/libprism.a"))
-      rm_rf prism_work
-      mkdir_p File.dirname(prism_work)
-      sh "cp -r #{prism_src} #{prism_work}"
-      sh "make -C #{prism_work} static"
-    end
+    prism_work = picoruby_ti_prism_work!
     # src/generated is gitignored inside the engine checkout, so generating the
     # database in place leaves the checkout clean.
     picoruby_ti_gen_db(dir, File.join(dir, "src/generated"))
     sh "make -C #{dir}/host_test PRISM_ROOT=#{prism_work} test"
   end
 
-  desc "Remove the scratch prism build used by ti:test"
+  desc "Measure one completion request on the host (memory peak and time)"
+  task :probe do
+    dir = picoruby_ti_dir!
+    prism_work = picoruby_ti_prism_work!
+    picoruby_ti_gen_db(dir, File.join(dir, "src/generated"))
+    out = File.expand_path("vendor/ti_probe", __dir__)
+    srcs = Dir["#{dir}/src/**/*.c"].sort
+    incs = %w[include src src/base src/builtin src/context src/diagnostic
+              src/eval src/eval/method_evaluator src/generated src/hover
+              src/suggest].map { |d| "-I#{dir}/#{d}" }
+    sh "#{ENV['CC'] || 'gcc'} -O2 -std=gnu11 #{incs.join(' ')} " \
+       "-I#{prism_work}/include tool/ti/ti_probe.c #{srcs.join(' ')} " \
+       "#{prism_work}/build/libprism.a -o #{out}"
+    sh "#{out} #{ENV['REPS'] || 5} #{ENV['SIZES']}".strip
+  end
+
+  desc "Remove the scratch prism build used by ti:test / ti:probe"
   task :clean do
     rm_rf File.expand_path("vendor/ti_prism", __dir__)
+    rm_f File.expand_path("vendor/ti_probe", __dir__)
   end
 end
 
