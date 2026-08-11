@@ -154,6 +154,11 @@ GC で stale 定数 static を mark して SEGV」を発見** (エディタ開�
 **ユーザ指示により根本修正を実施する**
 (doc/spinel_aot/instruction_stale_statics.md 発行済み。生成器側で
 インスタンス生成時に TU の定数 static を 0 クリア)。
+→ **根本修正 完了** (2026-08-11、fork c7de66c + fmruby-core 3cb850a、
+doc/spinel_aot/report/stale_statics.md)。調査で**定数より危険な
+オブジェクトプールの stale 再利用** (解放済みメモリの pop) も発見し
+併せてクリア対象に。アプリ側回避は撤去済み (エントリ登録に戻すことで
+修正の常時実証を兼ねる)。fork の push はユーザ作業待ち。
 
 **JA1 (J1+J2) 完了 (2026-08-11、report/ja1.md)**。計画からの修正点:
 
