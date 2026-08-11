@@ -20,6 +20,17 @@ module InputRouterMixin
     data_binary = msg[:data]
     src_pid = msg[:src_pid]
 
+    # Kana input mode changed (2-byte payload, so it has to be handled before
+    # the mouse-shaped size check below). The host already told the focused
+    # app; the desktop gets it too so the mode is visible from anywhere, since
+    # kana input belongs to the machine rather than to one app.
+    if data_binary.size >= 2 && data_binary.getbyte(0) == 9
+      if @desktop_pid && @desktop_pid != @hid_target_pid
+        _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_HID_EVENT, data_binary)
+      end
+      return
+    end
+
     # Parse HID event data (binary format)
     # Format: subtype(1 byte) + button(1 byte) + x(2 bytes) + y(2 bytes)
     return if data_binary.size < 6

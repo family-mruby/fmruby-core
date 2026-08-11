@@ -1515,8 +1515,13 @@ static void host_task_process_host_message(const host_message_t *msg)
                     host_send_kana_byte(routing.target_pid, kana.out[i]);
                 }
                 if (kana.mode_changed) {
-                    host_send_kana_mode(routing.target_pid,
-                                        (uint8_t)fmrb_kana_get_mode());
+                    uint8_t mode = (uint8_t)fmrb_kana_get_mode();
+                    host_send_kana_mode(routing.target_pid, mode);
+                    // The kernel gets a copy so it can hand the mode to the
+                    // desktop as well: kana input is a property of the
+                    // machine, not of the focused app, and the desktop is
+                    // the one place it can be seen from anywhere.
+                    host_send_kana_mode(0, mode);
                 }
                 if (action == FMRB_KANA_CONSUME) {
                     break;

@@ -168,6 +168,10 @@ class SystemDesktopApp < FmrbApp
     @net_open = false
     @net_info = nil
 
+    # Kana input mode as last reported by the host; nil until it says
+    # anything, which on a US layout is never.
+    @kana_mode = nil
+
     # Boot animation state
     @boot_anim_state = :init  # :init -> :revealing -> :wait_to_finish -> :done
     @boot_iris_t = 0
@@ -534,6 +538,7 @@ class SystemDesktopApp < FmrbApp
     draw_wifi_icon
     draw_meminfo
     draw_ble_icon
+    draw_kana_icon
     @gfx.draw_line(0, MENU_BAR_HEIGHT - 1, @window_width, MENU_BAR_HEIGHT - 1, FmrbConst::THEME_BORDER)
   end
 
@@ -583,6 +588,25 @@ class SystemDesktopApp < FmrbApp
     fg  = (state == 2) ? MENU_BG : FmrbGfx::WHITE
     @gfx.fill_rect(x, 1, BLE_CELL_W, 10, box)
     @gfx.draw_text(x + 2, 2, BLE_LABEL, fg, box)
+  end
+
+  # Kana input mode, left of the free-RAM readout. Drawn like the BLE cell so
+  # it reads as an indicator and not as a stray letter: gray box + white "A"
+  # for ASCII, white box + inverted kana while kana input is on.
+  #
+  # Nothing is drawn until the host reports a mode, which it only ever does on
+  # a JP layout -- a US keyboard never toggles kana input and never sees this.
+  KANA_CELL_W = 10
+  KANA_LABELS = ["A", "あ", "ア"]
+
+  def draw_kana_icon
+    return if @kana_mode.nil?
+    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - MEMINFO_W - 4 - KANA_CELL_W
+    on = @kana_mode > 0
+    box = on ? FmrbGfx::WHITE : FmrbGfx::GRAY
+    fg  = on ? MENU_BG : FmrbGfx::WHITE
+    @gfx.fill_rect(x, 1, KANA_CELL_W, 10, box)
+    @gfx.draw_text(x + 1, 2, KANA_LABELS[@kana_mode], fg, box, mixed: true)
   end
 
   def draw_wifi_icon
@@ -786,6 +810,7 @@ class SystemDesktopApp < FmrbApp
         draw_wifi_icon
         draw_meminfo
         draw_ble_icon
+        draw_kana_icon
         @gfx.present
       end
     end
@@ -918,6 +943,17 @@ class SystemDesktopApp < FmrbApp
   end
 
   def on_event(ev)
+    # Kana input mode. The host sends this to the focused app and, through the
+    # kernel, here as well -- the mode applies to whatever has focus, so the
+    # menu bar is the only place it can be seen from anywhere. Without it a
+    # child has no way to tell why the letter shortcuts stopped working.
+    if ev[:type] == :kana_mode
+      @kana_mode = ev[:mode]
+      draw_kana_icon
+      @gfx.present
+      return
+    end
+
     if ev[:type] == :mouse_move
       handle_mouse_move(ev[:x], ev[:y])
       return
