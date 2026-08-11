@@ -99,6 +99,35 @@ const char *et_suggestion(int i, int field, int *out_len);
 /* Documents above this many bytes are refused with ET_ERR_TOO_LARGE. */
 int  et_max_source_bytes(void);
 
+/*
+ * Hover: what is under the cursor. et_hover answers 1 when it recognised
+ * something, 0 when it did not. For a variable the interesting fields are the
+ * name and the type; for a method call, the signature and its doc comment --
+ * et_hover_is_method says which kind was found.
+ */
+#define ET_HOVER_NAME      0
+#define ET_HOVER_TYPE      1
+#define ET_HOVER_SIGNATURE 2
+#define ET_HOVER_DOC       3
+
+int  et_hover(int slot, int y, int x);
+const char *et_hover_field(int field, int *out_len);
+int  et_hover_is_method(void);
+
+/*
+ * Diagnostics: type errors in the whole document. et_diagnose answers how many
+ * were found; each one is then read by index. Positions are already converted
+ * to the editor's coordinates (line, and column in characters).
+ */
+#define ET_DIAG_START_Y 0
+#define ET_DIAG_START_X 1
+#define ET_DIAG_END_Y   2
+#define ET_DIAG_END_X   3
+
+int  et_diagnose(int slot);
+int  et_diagnostic_pos(int i, int field);
+const char *et_diagnostic_message(int i, int *out_len);
+
 #ifdef __cplusplus
 }
 #endif

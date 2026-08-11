@@ -40,6 +40,12 @@ module FmrbSpxEc
   ffi_func :fmrb_spx_et_suggest,     [:int, :int, :int], :int
   ffi_func :fmrb_spx_et_suggestion,  [:int, :int], :binstr
   ffi_func :fmrb_spx_et_max_source_bytes, [], :int
+  ffi_func :fmrb_spx_et_hover,           [:int, :int, :int], :int
+  ffi_func :fmrb_spx_et_hover_field,     [:int], :binstr
+  ffi_func :fmrb_spx_et_hover_is_method, [], :int
+  ffi_func :fmrb_spx_et_diagnose,        [:int], :int
+  ffi_func :fmrb_spx_et_diagnostic_pos,  [:int, :int], :int
+  ffi_func :fmrb_spx_et_diagnostic_message, [:int], :binstr
 end
 
 # EditorCore as the editor sees it. The mruby build gets this module from the C
@@ -100,6 +106,16 @@ module EditorCore
   def self.suggest(y, x);       FmrbSpxEc.fmrb_spx_et_suggest(slot, y, x); end
   def self.suggestion(i, field); FmrbSpxEc.fmrb_spx_et_suggestion(i, field); end
   def self.max_source_bytes;    FmrbSpxEc.fmrb_spx_et_max_source_bytes; end
+
+  # Hover: 1 when something was recognised under the cursor, 0 when not.
+  def self.hover(y, x);         FmrbSpxEc.fmrb_spx_et_hover(slot, y, x); end
+  def self.hover_field(field);  FmrbSpxEc.fmrb_spx_et_hover_field(field); end
+  def self.hover_method?;       FmrbSpxEc.fmrb_spx_et_hover_is_method != 0; end
+
+  # Diagnostics: how many problems, then each one by index.
+  def self.diagnose;            FmrbSpxEc.fmrb_spx_et_diagnose(slot); end
+  def self.diagnostic_pos(i, field); FmrbSpxEc.fmrb_spx_et_diagnostic_pos(i, field); end
+  def self.diagnostic_message(i); FmrbSpxEc.fmrb_spx_et_diagnostic_message(i); end
 
   # Readers for the packed records (same layout as the mruby gem's mrblib).
   def self.rec_u32(rec, off)

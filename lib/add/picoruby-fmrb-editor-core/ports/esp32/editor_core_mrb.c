@@ -273,6 +273,48 @@ static mrb_value m_max_source_bytes(mrb_state *mrb, mrb_value self)
     return mrb_fixnum_value(et_max_source_bytes());
 }
 
+static mrb_value m_hover(mrb_state *mrb, mrb_value self)
+{
+    mrb_int y, x;
+    mrb_get_args(mrb, "ii", &y, &x);
+    return mrb_fixnum_value(et_hover(slot_of(mrb), (int)y, (int)x));
+}
+
+static mrb_value m_hover_field(mrb_state *mrb, mrb_value self)
+{
+    mrb_int field;
+    mrb_get_args(mrb, "i", &field);
+    int len = 0;
+    const char *p = et_hover_field((int)field, &len);
+    return str_of(mrb, p, len);
+}
+
+static mrb_value m_hover_is_method(mrb_state *mrb, mrb_value self)
+{
+    return mrb_bool_value(et_hover_is_method() != 0);
+}
+
+static mrb_value m_diagnose(mrb_state *mrb, mrb_value self)
+{
+    return mrb_fixnum_value(et_diagnose(slot_of(mrb)));
+}
+
+static mrb_value m_diagnostic_pos(mrb_state *mrb, mrb_value self)
+{
+    mrb_int i, field;
+    mrb_get_args(mrb, "ii", &i, &field);
+    return mrb_fixnum_value(et_diagnostic_pos((int)i, (int)field));
+}
+
+static mrb_value m_diagnostic_message(mrb_state *mrb, mrb_value self)
+{
+    mrb_int i;
+    mrb_get_args(mrb, "i", &i);
+    int len = 0;
+    const char *p = et_diagnostic_message((int)i, &len);
+    return str_of(mrb, p, len);
+}
+
 /* ---- registration ------------------------------------------------------ */
 
 void mrb_picoruby_fmrb_editor_core_init_impl(mrb_state *mrb)
@@ -312,6 +354,14 @@ void mrb_picoruby_fmrb_editor_core_init_impl(mrb_state *mrb)
     mrb_define_module_function(mrb, mod, "suggest",     m_suggest,     MRB_ARGS_REQ(2));
     mrb_define_module_function(mrb, mod, "suggestion",  m_suggestion,  MRB_ARGS_REQ(2));
     mrb_define_module_function(mrb, mod, "max_source_bytes", m_max_source_bytes, MRB_ARGS_NONE());
+
+    /* Hover and diagnostics: same shape -- ask, then read the answer. */
+    mrb_define_module_function(mrb, mod, "hover",          m_hover,          MRB_ARGS_REQ(2));
+    mrb_define_module_function(mrb, mod, "hover_field",    m_hover_field,    MRB_ARGS_REQ(1));
+    mrb_define_module_function(mrb, mod, "hover_method?",  m_hover_is_method, MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, mod, "diagnose",       m_diagnose,       MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, mod, "diagnostic_pos", m_diagnostic_pos, MRB_ARGS_REQ(2));
+    mrb_define_module_function(mrb, mod, "diagnostic_message", m_diagnostic_message, MRB_ARGS_REQ(1));
 }
 
 void mrb_picoruby_fmrb_editor_core_final_impl(mrb_state *mrb)

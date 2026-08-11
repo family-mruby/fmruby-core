@@ -143,3 +143,33 @@ const char *fmrb_spx_et_suggestion(int i, int field)
 }
 
 int fmrb_spx_et_max_source_bytes(void) { return et_max_source_bytes(); }
+
+int fmrb_spx_et_hover(int slot, int y, int x)
+{
+    return et_hover(slot, y, x);
+}
+
+const char *fmrb_spx_et_hover_field(int field)
+{
+    int len = 0;
+    const char *p = et_hover_field(field, &len);
+    sp_net_bin_len = len;
+    return p;
+}
+
+int fmrb_spx_et_hover_is_method(void) { return et_hover_is_method(); }
+
+int fmrb_spx_et_diagnose(int slot) { return et_diagnose(slot); }
+
+int fmrb_spx_et_diagnostic_pos(int i, int field)
+{
+    return et_diagnostic_pos(i, field);
+}
+
+const char *fmrb_spx_et_diagnostic_message(int i)
+{
+    int len = 0;
+    const char *p = et_diagnostic_message(i, &len);
+    sp_net_bin_len = len;
+    return p;
+}

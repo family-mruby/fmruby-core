@@ -1,10 +1,11 @@
 /*
  * EditorTi: the editor's side of the type inference engine (picoruby-ti).
  *
- * The engine answers "what can follow the cursor" from a flat source string
- * and a byte offset, so this file turns the editor's document (lines, columns
- * in characters) into that shape, calls the engine, and copies the answer out
- * -- the engine hands back pointers into its own 16KB arena, which the next
+ * The engine answers three questions -- what can follow the cursor, what is
+ * under it, and what is wrong with the file -- from a flat source string and
+ * byte offsets. So this file turns the editor's document (lines, columns in
+ * characters) into that shape, calls the engine, and copies the answers out:
+ * the engine hands back pointers into its own 16KB arena, which the next
  * request resets.
  *
  * Slots and the (pointer, length) string convention are EditorCore's, so the
@@ -21,9 +22,13 @@
  *     the whole block back;
  *   - it must not run that block dry, because prism aborts the process when a
  *     node allocation fails (pm_node_alloc). So the allocator longjmps back
- *     here instead of returning NULL, and the block is released on the way
- *     out -- an over-large document costs a "no candidates" answer, not a
+ *     to the request instead of returning NULL, and the block is released on
+ *     the way out -- an over-large document costs an empty answer, not a
  *     crash.
+ *
+ * All three entry points share that scaffolding through et_begin / et_end;
+ * each one keeps its own setjmp, since that has to sit in the frame the
+ * allocator jumps back to.
  */
 
 #include <setjmp.h>
@@ -35,6 +40,8 @@
 #include "fmrb_log.h"
 
 #include "picoruby_ti_suggest.h"
+#include "picoruby_ti_hover.h"
+#include "picoruby_ti_diagnostic.h"
 
 #include "../../include/editor_core_api.h"
 
@@ -70,6 +77,9 @@ extern void fmrb_prism_set_scratch_allocator(fmrb_prism_alloc_fn fn);
 #define ET_DETAIL_MAX       112
 #define ET_DOC_MAX          112
 
+#define ET_MAX_DIAGNOSTICS  TI_DIAGNOSTIC_CAPACITY
+#define ET_MESSAGE_MAX      160
+
 typedef struct {
     char label[ET_LABEL_MAX];
     char detail[ET_DETAIL_MAX];
@@ -77,15 +87,33 @@ typedef struct {
     int  label_len;
 } et_item_t;
 
-/* Results outlive the call (the editor reads them field by field afterwards),
-   so they live in the document pool rather than in .bss -- 15KB of internal
-   RAM is not something the S3 has spare. */
+typedef struct {
+    int  start_y, start_x, end_y, end_x;
+    char message[ET_MESSAGE_MAX];
+} et_diag_t;
+
+typedef struct {
+    char name[TI_VARIABLE_NAME_CAPACITY];
+    char type[TI_TYPE_NAME_CAPACITY];
+    char signature[ET_DETAIL_MAX];
+    char doc[ET_DOC_MAX];
+    int  is_method;
+    int  found;
+} et_hover_t;
+
+/* Answers outlive the call (the editor reads them field by field afterwards),
+   so they live in the document pool rather than in .bss -- 15KB plus of
+   internal RAM is not something the S3 has spare. */
 static et_item_t *g_items;
 static int        g_count;
+static et_diag_t *g_diags;
+static int        g_diag_count;
+static et_hover_t g_hover;   /* one record, small enough to keep here */
 
 /* One request at a time: the engine keeps its working arena in globals, so two
    editors asking at once would tread on each other. The same lock covers the
-   scratch allocator, which is a global hook. */
+   scratch allocator, which is a per-task hook installed for the length of a
+   request. */
 static fmrb_semaphore_t g_lock;
 static int              g_lock_ready;
 
@@ -142,6 +170,53 @@ static int32_t et_byte_of(const char *s, int32_t len, int32_t ci)
     return len;
 }
 
+/* The other direction: where a byte offset in the flattened document lands,
+   as a line and a CHARACTER column -- the coordinates the editor uses. Walked
+   per call rather than kept as a table: a request has at most 64 answers to
+   place and the document is capped at 32KB. */
+static void et_pos_of_offset(const char *src, int len, int off, int *out_y, int *out_x)
+{
+    if (off < 0) off = 0;
+    if (off > len) off = len;
+    int y = 0, x = 0;
+    for (int i = 0; i < off; i++) {
+        if (src[i] == '\n') {
+            y++;
+            x = 0;
+        } else if (((unsigned char)src[i] & 0xC0) != 0x80) {
+            x++;
+        }
+    }
+    *out_y = y;
+    *out_x = x;
+}
+
+static void et_copy_field(char *dst, size_t cap, const char *src, int len)
+{
+    if (!src || len <= 0) { dst[0] = '\0'; return; }
+    size_t n = (size_t)len;
+    if (n > cap - 1) n = cap - 1;
+    memcpy(dst, src, n);
+    dst[n] = '\0';
+}
+
+static void et_copy_str(char *dst, size_t cap, const char *src)
+{
+    et_copy_field(dst, cap, src, src ? (int)strlen(src) : 0);
+}
+
+/* ---- request scaffolding ------------------------------------------------ */
+
+typedef struct {
+    int    handle;      /* document pool */
+    char  *src;         /* flattened document, NUL terminated */
+    int    src_len;
+    int    cursor;      /* byte offset of (y, x) in src */
+    void  *block;       /* scratch heap backing store */
+    size_t block_size;
+    int    locked;
+} et_run_t;
+
 /* Flatten the document into one NUL-terminated buffer, and report where the
    cursor lands in it. Lines come straight from the document model, so nothing
    is copied twice. */
@@ -173,14 +248,82 @@ static char *et_serialize(int slot, int y, int x, int total, int *out_cursor)
     return buf;
 }
 
-static void et_copy_field(char *dst, size_t cap, const char *src, int len)
+static void et_end(et_run_t *r)
 {
-    if (!src || len <= 0) { dst[0] = '\0'; return; }
-    size_t n = (size_t)len;
-    if (n > cap - 1) n = cap - 1;
-    memcpy(dst, src, n);
-    dst[n] = '\0';
+    fmrb_prism_set_scratch_allocator(NULL);
+    if (g_scratch >= 0) {
+        fmrb_mem_destroy_handle(g_scratch);
+        g_scratch = -1;
+    }
+    if (r->block) { fmrb_free(r->handle, r->block); r->block = NULL; }
+    if (r->src)   { fmrb_free(r->handle, r->src);   r->src = NULL; }
+    if (r->locked) { et_unlock(); r->locked = 0; }
 }
+
+/* Take the lock, flatten the document, borrow a scratch heap and point prism
+   at it. Returns 0 on success (the caller must call et_end), or a negative
+   error with everything already released. */
+static int et_begin(et_run_t *r, int slot, int y, int x)
+{
+    memset(r, 0, sizeof(*r));
+    r->handle = ec_doc_mem_handle();
+    if (r->handle < 0) return EC_ERR_NOMEM;
+
+    int total = ec_doc_bytesize(slot);
+    if (total < 0) return EC_ERR_RANGE;
+    if (total > ET_MAX_SOURCE_BYTES) return ET_ERR_TOO_LARGE;
+
+    if (!et_lock()) return EC_ERR_NOMEM;
+    r->locked = 1;
+    r->src_len = total;
+
+    r->src = et_serialize(slot, y, x, total, &r->cursor);
+    if (!r->src) { et_end(r); return EC_ERR_NOMEM; }
+
+    /* Ask for what the parse is likely to need, but never for so much that the
+       document itself has nowhere to grow. */
+    fmrb_pool_stats_t st;
+    if (fmrb_mem_get_stats(r->handle, &st) != 0) { et_end(r); return EC_ERR_NOMEM; }
+    size_t want = (size_t)total * ET_SCRATCH_PER_BYTE + ET_SCRATCH_SLACK;
+    if (want < ET_SCRATCH_MIN) want = ET_SCRATCH_MIN;
+    size_t room = st.free_size / 4 * 3;
+    if (want > room) want = room;
+    if (want < ET_SCRATCH_MIN) {
+        /* Only when the pool itself is nearly full -- a small document asks
+           for the floor, not for its own size. */
+        FMRB_LOGW(TAG, "no room for a parse: %zu bytes free in the document pool",
+                  st.free_size);
+        et_end(r);
+        return EC_ERR_NOMEM;
+    }
+
+    /* Fragmentation can refuse one big block while smaller ones are there.
+       Halve, but never past the floor -- below it the parse would fail so
+       often that asking is a waste. */
+    r->block = fmrb_malloc(r->handle, want);
+    while (!r->block && want / 2 >= ET_SCRATCH_MIN) {
+        want /= 2;
+        r->block = fmrb_malloc(r->handle, want);
+    }
+    if (!r->block) { et_end(r); return EC_ERR_NOMEM; }
+    r->block_size = want;
+
+    g_scratch = fmrb_mem_create_handle(r->block, want, POOL_ID_EDITOR_DOC);
+    if (g_scratch < 0) { et_end(r); return EC_ERR_NOMEM; }
+
+    fmrb_prism_set_scratch_allocator(et_scratch_realloc);
+    return 0;
+}
+
+static void et_sources(et_run_t *r, TiSource *item, TiSourceList *list)
+{
+    item->source = r->src;
+    item->source_byte_length = r->src_len;
+    list->items = item;
+    list->count = 1;
+}
+
+/* ---- completion --------------------------------------------------------- */
 
 /* Copy the engine's answer into our own storage: its strings point into the
    arena it resets at the start of the next request. Candidates that repeat a
@@ -207,101 +350,44 @@ static void et_take(const TiSuggestionList *out)
         et_item_t *it = &g_items[g_count];
         et_copy_field(it->label, ET_LABEL_MAX, s->contents, s->contents_length);
         it->label_len = (int)strlen(it->label);
-        et_copy_field(it->detail, ET_DETAIL_MAX, s->detail,
-                      s->detail ? (int)strlen(s->detail) : 0);
-        et_copy_field(it->doc, ET_DOC_MAX, s->document,
-                      s->document ? (int)strlen(s->document) : 0);
+        et_copy_str(it->detail, ET_DETAIL_MAX, s->detail);
+        et_copy_str(it->doc, ET_DOC_MAX, s->document);
         g_count++;
     }
 }
 
 int et_suggest(int slot, int y, int x)
 {
-    int handle = ec_doc_mem_handle();
-    if (handle < 0) return EC_ERR_NOMEM;
+    et_run_t r;
+    int rc = et_begin(&r, slot, y, x);
+    if (rc < 0) return rc;
 
-    int total = ec_doc_bytesize(slot);
-    if (total < 0) return EC_ERR_RANGE;
-    if (total > ET_MAX_SOURCE_BYTES) return ET_ERR_TOO_LARGE;
-
-    if (!et_lock()) return EC_ERR_NOMEM;
-
-    int    result = 0;
-    char  *src = NULL;
-    void  *block = NULL;
-    int    cursor = 0;
-    size_t want = 0;
-    fmrb_pool_stats_t st;
-    TiSource item;
-    TiSourceList list;
-    TiSuggestionList out;
-
+    int result;
     if (!g_items) {
-        g_items = (et_item_t *)fmrb_malloc(handle, sizeof(et_item_t) * ET_MAX_SUGGESTIONS);
-        if (!g_items) { result = EC_ERR_NOMEM; goto done; }
+        g_items = (et_item_t *)fmrb_malloc(r.handle, sizeof(et_item_t) * ET_MAX_SUGGESTIONS);
     }
     g_count = 0;
 
-    src = et_serialize(slot, y, x, total, &cursor);
-    if (!src) { result = EC_ERR_NOMEM; goto done; }
-
-    /* Ask for what the parse is likely to need, but never for so much that the
-       document itself has nowhere to grow. */
-    if (fmrb_mem_get_stats(handle, &st) != 0) { result = EC_ERR_NOMEM; goto done; }
-    want = (size_t)total * ET_SCRATCH_PER_BYTE + ET_SCRATCH_SLACK;
-    if (want < ET_SCRATCH_MIN) want = ET_SCRATCH_MIN;
-    size_t room = st.free_size / 4 * 3;
-    if (want > room) want = room;
-    if (want < ET_SCRATCH_MIN) {
-        /* Only when the pool itself is nearly full -- a small document asks
-           for the floor, not for its own size. */
-        FMRB_LOGW(TAG, "no room for a parse: %zu bytes free in the document pool",
-                  st.free_size);
+    if (!g_items) {
         result = EC_ERR_NOMEM;
-        goto done;
-    }
-
-    /* Fragmentation can refuse one big block while smaller ones are there.
-       Halve, but never past the floor -- below it the parse would fail so
-       often that asking is a waste. */
-    block = fmrb_malloc(handle, want);
-    while (!block && want / 2 >= ET_SCRATCH_MIN) {
-        want /= 2;
-        block = fmrb_malloc(handle, want);
-    }
-    if (!block) { result = EC_ERR_NOMEM; goto done; }
-
-    g_scratch = fmrb_mem_create_handle(block, want, POOL_ID_EDITOR_DOC);
-    if (g_scratch < 0) { result = EC_ERR_NOMEM; goto done; }
-
-    item.source = src;
-    item.source_byte_length = total;
-    list.items = &item;
-    list.count = 1;
-
-    fmrb_prism_set_scratch_allocator(et_scratch_realloc);
-    if (setjmp(g_oom) == 0) {
+    } else if (setjmp(g_oom) == 0) {
+        TiSource item;
+        TiSourceList list;
+        TiSuggestionList out;
+        et_sources(&r, &item, &list);
         g_oom_armed = 1;
-        ti_fill_suggestions_at_cursor(&list, cursor, &out);
+        ti_fill_suggestions_at_cursor(&list, r.cursor, &out);
         g_oom_armed = 0;
         et_take(&out);
         result = g_count;
     } else {
         FMRB_LOGW(TAG, "parse ran out of scratch memory (%d bytes of source, %zu of heap)",
-                  total, want);
+                  r.src_len, r.block_size);
         g_count = 0;
         result = 0;
     }
-    fmrb_prism_set_scratch_allocator(NULL);
 
-done:
-    if (g_scratch >= 0) {
-        fmrb_mem_destroy_handle(g_scratch);
-        g_scratch = -1;
-    }
-    if (block) fmrb_free(handle, block);
-    if (src) fmrb_free(handle, src);
-    et_unlock();
+    et_end(&r);
     return result;
 }
 
@@ -324,4 +410,134 @@ const char *et_suggestion(int i, int field, int *out_len)
 int et_max_source_bytes(void)
 {
     return ET_MAX_SOURCE_BYTES;
+}
+
+/* ---- hover -------------------------------------------------------------- */
+
+int et_hover(int slot, int y, int x)
+{
+    memset(&g_hover, 0, sizeof(g_hover));
+
+    et_run_t r;
+    int rc = et_begin(&r, slot, y, x);
+    if (rc < 0) return rc;
+
+    int result;
+    if (setjmp(g_oom) == 0) {
+        TiSource item;
+        TiSourceList list;
+        TiHoverInfo out;
+        et_sources(&r, &item, &list);
+        g_oom_armed = 1;
+        ti_find_hover_at_cursor(&list, r.cursor, &out);
+        g_oom_armed = 0;
+
+        if (out.found) {
+            et_copy_str(g_hover.name, sizeof(g_hover.name), out.variable_name);
+            et_copy_str(g_hover.type, sizeof(g_hover.type), out.type_name);
+            et_copy_str(g_hover.signature, sizeof(g_hover.signature), out.method_signature);
+            et_copy_str(g_hover.doc, sizeof(g_hover.doc), out.method_document);
+            g_hover.is_method = out.is_method;
+            g_hover.found = 1;
+        }
+        result = g_hover.found;
+    } else {
+        FMRB_LOGW(TAG, "hover ran out of scratch memory (%d bytes of source)", r.src_len);
+        result = 0;
+    }
+
+    et_end(&r);
+    return result;
+}
+
+const char *et_hover_field(int field, int *out_len)
+{
+    if (out_len) *out_len = 0;
+    if (!g_hover.found) return "";
+
+    const char *s;
+    switch (field) {
+        case ET_HOVER_NAME:      s = g_hover.name;      break;
+        case ET_HOVER_TYPE:      s = g_hover.type;      break;
+        case ET_HOVER_SIGNATURE: s = g_hover.signature; break;
+        case ET_HOVER_DOC:       s = g_hover.doc;       break;
+        default: return "";
+    }
+    if (out_len) *out_len = (int)strlen(s);
+    return s;
+}
+
+int et_hover_is_method(void)
+{
+    return g_hover.found ? g_hover.is_method : 0;
+}
+
+/* ---- diagnostics -------------------------------------------------------- */
+
+int et_diagnose(int slot)
+{
+    et_run_t r;
+    /* No cursor involved; the engine reads the whole document. */
+    int rc = et_begin(&r, slot, 0, 0);
+    if (rc < 0) return rc;
+
+    int result;
+    if (!g_diags) {
+        g_diags = (et_diag_t *)fmrb_malloc(r.handle, sizeof(et_diag_t) * ET_MAX_DIAGNOSTICS);
+    }
+    g_diag_count = 0;
+
+    if (!g_diags) {
+        result = EC_ERR_NOMEM;
+    } else if (setjmp(g_oom) == 0) {
+        TiSource item;
+        TiSourceList list;
+        TiDiagnosticList out;
+        et_sources(&r, &item, &list);
+        g_oom_armed = 1;
+        ti_fill_diagnostics(&list, &out);
+        g_oom_armed = 0;
+
+        for (int i = 0; i < out.count && g_diag_count < ET_MAX_DIAGNOSTICS; i++) {
+            const TiDiagnostic *d = &out.items[i];
+            et_diag_t *slot_out = &g_diags[g_diag_count];
+            /* Byte offsets are only meaningful against the buffer they were
+               produced from, so convert while it is still alive. */
+            et_pos_of_offset(r.src, r.src_len, d->start_byte_offset,
+                             &slot_out->start_y, &slot_out->start_x);
+            et_pos_of_offset(r.src, r.src_len, d->end_byte_offset,
+                             &slot_out->end_y, &slot_out->end_x);
+            et_copy_str(slot_out->message, ET_MESSAGE_MAX, d->message);
+            g_diag_count++;
+        }
+        result = g_diag_count;
+    } else {
+        FMRB_LOGW(TAG, "diagnostics ran out of scratch memory (%d bytes of source)",
+                  r.src_len);
+        g_diag_count = 0;
+        result = 0;
+    }
+
+    et_end(&r);
+    return result;
+}
+
+int et_diagnostic_pos(int i, int field)
+{
+    if (!g_diags || i < 0 || i >= g_diag_count) return -1;
+    switch (field) {
+        case ET_DIAG_START_Y: return g_diags[i].start_y;
+        case ET_DIAG_START_X: return g_diags[i].start_x;
+        case ET_DIAG_END_Y:   return g_diags[i].end_y;
+        case ET_DIAG_END_X:   return g_diags[i].end_x;
+        default: return -1;
+    }
+}
+
+const char *et_diagnostic_message(int i, int *out_len)
+{
+    if (out_len) *out_len = 0;
+    if (!g_diags || i < 0 || i >= g_diag_count) return "";
+    if (out_len) *out_len = (int)strlen(g_diags[i].message);
+    return g_diags[i].message;
 }
