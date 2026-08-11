@@ -29,6 +29,10 @@ MRuby::GemBox.new do |conf|
   # Editor document model in C (POOL_ID_EDITOR_DOC arena). After picoruby-fmrb-app
   # so the loading order stays "framework, then the pieces that lean on it".
   conf.gem core: "picoruby-fmrb-editor-core"
+  # Type inference engine behind the editor's completion/hover/diagnostics
+  # (pure C, no Ruby classes; parses with the prism inside mruby-compiler).
+  # Delivered from the pinned fork by rake ti:setup, see doc/editor_ti/plan.md.
+  conf.gem core: "picoruby-ti"
   conf.gem core: "picoruby-fmrb-debug"
   # MIDI: protocol layer and MML parser imported from Midori, then the
   # Family mruby transports and players

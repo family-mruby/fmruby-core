@@ -188,6 +188,11 @@ idf_component_register(
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-debug/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/include
     ${COMPONENT_DIR}/picoruby/mrbgems/mruby-compiler/lib/prism/include
+    # picoruby-ti: only the public API headers. The engine's own sources are
+    # compiled by the rake mruby build (it is an ordinary mrbgem, see
+    # lib/add/family_mruby.gembox), NOT here -- listing them in PICORUBY_SRCS
+    # too builds all 22 of them a second time into this component's archive.
+    ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-ti/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/include
     ${COMPONENT_DIR}/picoruby/mrbgems/picoruby-mruby/lib/mruby/mrbgems/mruby-task/include
