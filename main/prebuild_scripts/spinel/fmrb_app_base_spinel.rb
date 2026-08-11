@@ -1292,6 +1292,13 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_language.to_s
   end
 
+  # Kana input mode: 0 = off, 1 = hiragana, 2 = katakana. Behind the
+  # clickable mode indicators.
+  def self.set_kana_mode(mode)
+    FmrbSpxApp.fmrb_spx_app_set_kana_mode(mode)
+    nil
+  end
+
   def self.wallclock
     buf = FmrbSpxApp.fmrb_spx_app_wallclock
     return nil if buf.bytesize == 0

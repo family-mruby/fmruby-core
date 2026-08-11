@@ -1364,6 +1364,19 @@ static mrb_value mrb_fmrb_app_s_ble_state(mrb_state *mrb, mrb_value klass)
 #endif
 }
 
+// FmrbApp.set_kana_mode(n) -> nil. 0 = off, 1 = hiragana, 2 = katakana.
+// Behind the clickable mode indicators: the keyboard is not the only way to
+// reach kana input, and on a touch machine it is not even the usual one.
+static mrb_value mrb_fmrb_app_s_set_kana_mode(mrb_state *mrb, mrb_value klass)
+{
+    (void)klass;
+    mrb_int mode;
+    mrb_get_args(mrb, "i", &mode);
+    if (mode < 0) mode = 0;
+    fmrb_host_set_kana_mode((uint8_t)mode);
+    return mrb_nil_value();
+}
+
 static mrb_value mrb_fmrb_app_s_ble_start(mrb_state *mrb, mrb_value klass)
 {
     (void)mrb; (void)klass;
@@ -1661,6 +1674,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "reboot", mrb_fmrb_app_s_reboot, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_start", mrb_fmrb_app_s_ble_start, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ble_state", mrb_fmrb_app_s_ble_state, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "set_kana_mode", mrb_fmrb_app_s_set_kana_mode, MRB_ARGS_REQ(1));
     mrb_define_class_method(mrb, app_class, "wifi_info", mrb_fmrb_app_s_wifi_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "wifi_connected?", mrb_fmrb_app_s_wifi_connected_p, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_clear_cache", mrb_fmrb_app_s_clear_cache, MRB_ARGS_REQ(1));

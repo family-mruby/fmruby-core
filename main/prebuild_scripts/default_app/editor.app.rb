@@ -196,9 +196,13 @@ class EditorApp < FmrbApp
     # document, so a half character can never be inserted.
     @u8_buf = ""
     @u8_need = 0
-    # nil until the host tells us the kana mode; the badge stays away on a
-    # keyboard that never toggles it.
-    @kana_mode = nil
+    # Kana input mode as last reported by the host. A Japanese system shows
+    # the badge from the start (at "A") because it is clickable and is the
+    # way in on a keyboard with no half/full-width key; an English one shows
+    # nothing until kana input is actually used.
+    @kana_mode = (FmrbApp.language == "ja") ? 0 : nil
+    @kana_badge_x = nil
+    @kana_badge_w = 0
     dbg_init
     # ---- Latency instrumentation ----
     @lat_t0 = nil     # uptime_us of the oldest key not yet shown on screen
@@ -576,8 +580,12 @@ class EditorApp < FmrbApp
     right = @user_area_x0 + @user_area_width
     if @kana_mode
       badge = kana_badge
-      right -= FmrbI18n.text_width(badge) + 2
+      @kana_badge_w = FmrbI18n.text_width(badge) + 2
+      right -= @kana_badge_w
+      @kana_badge_x = right
       @gfx.draw_text(right, y, badge, STATUS_TEXT, STATUS_BG, mixed: true)
+    else
+      @kana_badge_x = nil
     end
 
     # Right-aligned green "Saved" badge that fades after SAVE_OK_FRAMES ticks.
@@ -598,6 +606,18 @@ class EditorApp < FmrbApp
     when 2 then "[ア]"
     else "[A]"
     end
+  end
+
+  # Clicking the badge steps off -> hiragana -> katakana -> off. The host owns
+  # the mode; this only asks, and the badge redraws when the answer arrives.
+  def cycle_kana_mode
+    FmrbApp.set_kana_mode(((@kana_mode || 0) + 1) % 3)
+  end
+
+  def hit_kana_badge?(mx, my)
+    return false unless @kana_badge_x
+    my >= @status_y && my < @status_y + CHAR_H &&
+      mx >= @kana_badge_x && mx < @kana_badge_x + @kana_badge_w
   end
 
   # Highlight default for a path: Ruby on, anything else off. The tokenizer only
@@ -2255,6 +2275,12 @@ class EditorApp < FmrbApp
           activate_menu_bar(@menu_ids[hit])
           return
         end
+        return
+      end
+
+      # Kana mode badge in the status line: click to change input mode.
+      if hit_kana_badge?(ev[:x], ev[:y])
+        cycle_kana_mode
         return
       end
 

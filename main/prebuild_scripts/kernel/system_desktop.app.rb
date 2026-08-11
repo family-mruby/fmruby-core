@@ -168,9 +168,12 @@ class SystemDesktopApp < FmrbApp
     @net_open = false
     @net_info = nil
 
-    # Kana input mode as last reported by the host; nil until it says
-    # anything, which on a US layout is never.
-    @kana_mode = nil
+    # Kana input mode as last reported by the host. On a Japanese system it
+    # starts visible (at "A") so the indicator can be clicked to turn kana
+    # input on -- a US keyboard has no half/full-width key, and the Tab5 has
+    # no keyboard at all, so the click is their way in. An English system
+    # sees nothing until something actually turns kana input on.
+    @kana_mode = (FmrbApp.language == "ja") ? 0 : nil
 
     # Boot animation state
     @boot_anim_state = :init  # :init -> :revealing -> :wait_to_finish -> :done
@@ -600,13 +603,24 @@ class SystemDesktopApp < FmrbApp
   KANA_LABELS = ["A", "あ", "ア"]
 
   def draw_kana_icon
-    return if @kana_mode.nil?
+    if @kana_mode.nil?
+      @kana_icon_x = nil
+      return
+    end
     x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - MEMINFO_W - 4 - KANA_CELL_W
+    @kana_icon_x = x
     on = @kana_mode > 0
     box = on ? FmrbGfx::WHITE : FmrbGfx::GRAY
     fg  = on ? MENU_BG : FmrbGfx::WHITE
     @gfx.fill_rect(x, 1, KANA_CELL_W, 10, box)
     @gfx.draw_text(x + 1, 2, KANA_LABELS[@kana_mode], fg, box, mixed: true)
+  end
+
+  # Click the indicator to step off -> hiragana -> katakana -> off. The host
+  # owns the mode, so this only asks; the indicator redraws when the answer
+  # comes back as a kana_mode event.
+  def cycle_kana_mode
+    FmrbApp.set_kana_mode(((@kana_mode || 0) + 1) % 3)
   end
 
   def draw_wifi_icon
@@ -1175,6 +1189,8 @@ class SystemDesktopApp < FmrbApp
         open_dropdown
       elsif @wifi_icon_x && x >= @wifi_icon_x - 2 && x < @wifi_icon_x + WIFI_ICON_W + 2
         open_network_dialog
+      elsif @kana_icon_x && x >= @kana_icon_x && x < @kana_icon_x + KANA_CELL_W
+        cycle_kana_mode
       else
         handle_taskbar_click(x, y)
       end

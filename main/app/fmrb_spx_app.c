@@ -452,6 +452,17 @@ const char *fmrb_spx_app_language(void)
     return lang;
 }
 
+/* Set the kana input mode (0 off / 1 hiragana / 2 katakana). Behind the
+ * clickable mode indicators; see fmrb_host_set_kana_mode. */
+int fmrb_spx_app_set_kana_mode(int mode)
+{
+    if (mode < 0) {
+        return 0;
+    }
+    fmrb_host_set_kana_mode((uint8_t)mode);
+    return 0;
+}
+
 const char *fmrb_spx_app_wallclock(void)
 {
     static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];
