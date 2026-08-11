@@ -67,6 +67,8 @@ Fundamental / By design を正とする。
 | poly 受信の `Array#index/find_index(x)` が raise (`opts = s[:options]; opts.index(cur)`)。config enum 変更で desktop クラッシュ | poly dispatch に index arm 無し (include?/rindex は有) | (回避不要になった) | **fork 修正済 `dea18671`** | T4-5 |
 | `ch = nil; if …; ch = "\x00"; ch.setbyte(…)` が poly `String#setbyte` で raise。**nil-init が ch を poly 化**している | poly-String setbyte 未 dispatch | **具体型ローカルを使う**: `c = "\x00"; c.setbyte(0, v); ch = c` (c は直接代入で concrete)。setbyte は mutation なので Ruby 側で固定するのが正 | (Ruby 修正が正。fork の poly-setbyte-mutation は不採用) | T4-5 |
 
+| **同じプログラムを 2 回目に起動する**と、エントリ実行中の GC で SEGV (エディタの再オープンで発覚)。エントリで大きな割り当てをすると必ず踏む | 生成 TU の定数・クラス ivar・オブジェクトプールがプロセスグローバルな static で、前インスタンスのポインタを保持したまま。エントリは定数をソース順に再代入するが、GC の globals-mark フックはその前に登録される | (回避不要になった。回避が必要だった間は「エントリで大きな割り当てをしない」= 表を on_create 等へ遅延) | **fork 修正済み `c7de66c`**: `sp_reset_tu_statics()` をエントリ冒頭 (SP_MULTI_CTX のみ) で呼び、mark 対象の全スロットとプールを 0 クリアする | doc/spinel_aot/report/stale_statics.md |
+
 **poly-dispatch gap の系統的洗い出し法** (再発防止): 生成 C を `grep -oE 'sp_nomethod_msg_args\("[a-z_?!]+"' <combined>.c | sort | uniq -c` で列挙すると、**そのアプリで実際に poly-dispatch に落ちるメソッド全部**が一覧化できる (理論上の全 String メソッドでなく実 gap)。concrete で動くのに poly で欠落しているものが判る。教訓: **レシーバの poly-dispatch gap は引数/結果の `.to_s` では治らない** (再掲)。silent 誤動作 (raise しない `[]=` no-op 等) は raise 一覧に出ないので、症状 (文字化け等) からも疑う。
 
 ## C. fmruby 固有の推奨記法 (dual-safe)

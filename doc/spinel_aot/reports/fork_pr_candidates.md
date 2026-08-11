@@ -127,6 +127,23 @@ Phase 2 までは Ruby 側の書き換えで回避済み。汎用のものは将
 8. **文字列返しメソッドを `sprintf`/文字列 API の実引数に直接渡さない**
    (const char* 初期化子で壊れた C)。ローカルに hoist してから渡す (B-1 codegen 参照)。
 
+## 修正済み: 再インスタンス化時の stale な TU static (2026-08-11)
+
+**起票なしで直接修正した** (`c7de66c`)。汎用の不具合なので upstream 適用の
+第一候補になる。
+
+- 症状: SP_MULTI_CTX で同じプログラムを 2 回目に起動すると、エントリ実行中の
+  GC が前インスタンスのポインタを mark して SEGV。
+- 原因: 生成 TU の定数 / グローバル / クラス ivar / `SP_POOL_DEFINE` の
+  フリーリストがプロセスグローバル static で、インスタンス跨ぎで残る。
+- 修正: エントリ冒頭 (`sp_tu_ctx_init()` の直後、SP_MULTI_CTX のみ) で
+  `sp_reset_tu_statics()` を呼び、globals-mark が walk する全スロットと
+  全プールを 0 クリアする。reset 一覧は mark 一覧と同じループで生成するので
+  乖離しない。
+- upstream 所見: **単独で提出できる**。SP_MULTI_CTX 限定の追加で既定ビルドの
+  出力は 1 バイトも変わらない (`#ifdef` の外に何も出ない)。詳細は
+  doc/spinel_aot/report/stale_statics.md。
+
 ---
 
 ## PR 化の進め方 (メモ)

@@ -176,7 +176,13 @@ memory` になった** (同じ値が文字列ヒープの閾値にもなるた�
 落ちなかった。つまりエントリの割り当ては 16〜32KB の間。i18n テーブルを
 外に出した後は、その 16KB 閾値のままで 5 回連続の開閉が通る。
 
-### 本来の直し方 (引継ぎ)
+### 本来の直し方 → **解決済み** (2026-08-11)
+
+生成器側で修正した。`doc/spinel_aot/report/stale_statics.md` を参照
+(fork `c7de66c`: エントリ冒頭で `sp_reset_tu_statics()` を呼び、mark 対象の
+全スロットと `SP_POOL_DEFINE` のフリーリストを 0 クリアする)。
+**アプリ側の回避 (`EditorStrings.install` を on_create から呼ぶ) は撤去し**、
+`FmrbI18n.add` はエントリに戻した。以下は当時の見立て:
 
 **生成器 (Spinel) 側で、インスタンス生成時に TU の定数 static を 0 クリア
 するべき**。`sp_tu_ctx_init()` が per-instance のフック登録をしている場所が

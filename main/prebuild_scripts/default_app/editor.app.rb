@@ -208,10 +208,6 @@ class EditorApp < FmrbApp
   end
 
   def on_create
-    # Before anything draws: nothing above this point asks FmrbI18n for a
-    # string. See editor/i18n.rb for why the table is built here and not at
-    # load time.
-    EditorStrings.install
     apply_hl_enabled
     recompute_layout
     @need_redraw = true
