@@ -11,6 +11,7 @@ set(COMPONENT_SRCS
     "kernel/fmrb_rtc.c"
     "kernel/host/host_task.c"
     "drivers/usb/fmrb_keymap.c"
+    "drivers/usb/fmrb_kana.c"
     "drivers/led_status/status_led.c"
     # Remote debugger core (target independent). Transports are per-target.
     "drivers/debug/fmrb_debug_proto.c"

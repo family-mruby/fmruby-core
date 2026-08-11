@@ -20,6 +20,7 @@ typedef enum {
     HID_MSG_GAMEPAD_BUTTON_DOWN = 6,
     HID_MSG_GAMEPAD_BUTTON_UP = 7,
     HID_MSG_GAMEPAD_AXIS = 8,
+    HID_MSG_KANA_MODE = 9,
 } hid_msg_subtype_t;
 
 // Keyboard event payload
@@ -51,6 +52,14 @@ typedef struct {
     uint8_t gamepad_id;    // Gamepad ID (0-1)
     uint8_t button_num;    // Button number (0-15)
 } __attribute__((packed)) fmrb_hid_gamepad_button_event_t;
+
+// Kana input mode change (JP layout only). Sent to the HID target when the
+// user toggles kana input so an app can show which mode it is in; apps that
+// do not know the subtype ignore it.
+typedef struct {
+    uint8_t subtype;       // HID_MSG_KANA_MODE
+    uint8_t mode;          // 0=off (ASCII), 1=hiragana, 2=katakana
+} __attribute__((packed)) fmrb_hid_kana_mode_event_t;
 
 // Gamepad axis event payload
 typedef struct {

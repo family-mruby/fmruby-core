@@ -79,6 +79,17 @@ bool fmrb_hid_event_decode(const uint8_t *data, uint32_t size,
             return true;
         }
 
+        case HID_MSG_KANA_MODE: {
+            if (size < sizeof(fmrb_hid_kana_mode_event_t)) {
+                return false;
+            }
+            const fmrb_hid_kana_mode_event_t *e =
+                (const fmrb_hid_kana_mode_event_t *)data;
+            out->type = FMRB_HID_EVENT_KANA_MODE;
+            out->kana_mode = e->mode;
+            return true;
+        }
+
         default:
             return false;
     }

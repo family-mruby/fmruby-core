@@ -365,6 +365,11 @@ static mp_obj_t hid_event_to_dict(const uint8_t *data, size_t size) {
             HID_PUT_INT(MP_QSTR_value, ev.value);
             return d;
 
+        case FMRB_HID_EVENT_KANA_MODE:
+            HID_PUT_TYPE(MP_QSTR_kana_mode);
+            HID_PUT_INT(MP_QSTR_mode, ev.kana_mode);
+            return d;
+
         default:
             return mp_const_none;
     }

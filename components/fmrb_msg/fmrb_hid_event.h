@@ -35,6 +35,7 @@ typedef enum {
     FMRB_HID_EVENT_GAMEPAD_DOWN,
     FMRB_HID_EVENT_GAMEPAD_UP,
     FMRB_HID_EVENT_GAMEPAD_AXIS,
+    FMRB_HID_EVENT_KANA_MODE,
 } fmrb_hid_event_type_t;
 
 /**
@@ -56,6 +57,7 @@ typedef struct {
     uint8_t  gamepad_id; // gamepad events
     uint8_t  axis;       // gamepad axis events
     int16_t  value;      // gamepad axis value
+    uint8_t  kana_mode;  // kana mode events (0=off, 1=hiragana, 2=katakana)
 } fmrb_hid_event_t;
 
 /**

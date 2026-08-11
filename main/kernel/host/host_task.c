@@ -16,6 +16,7 @@
 #include "fmrb_transport.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_keymap.h"
+#include "fmrb_kana.h"
 #include "status_led.h"
 #include "fmrb_file_transfer_msg.h"
 #if defined(FMRB_HW_MODERN)
@@ -1327,6 +1328,39 @@ handle_sync:
 /**
  * Process a host message
  */
+// Send one synthetic key press carrying a single byte of a composed kana.
+// Scancode and keycode are zero: a kana has no key of its own, and apps that
+// filter on 32..126 or on scancodes ignore these, which is what makes the
+// composition invisible to everything except text input.
+static void host_send_kana_byte(uint8_t target_pid, uint8_t byte)
+{
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_HID_EVENT,
+        .src_pid = PROC_ID_HOST,
+        .size = sizeof(fmrb_hid_key_event_t)
+    };
+    fmrb_hid_key_event_t *e = (fmrb_hid_key_event_t *)msg.data;
+    e->subtype = HID_MSG_KEY_DOWN;
+    e->keycode = 0;
+    e->scancode = 0;
+    e->modifier = 0;
+    e->character = (char)byte;
+    fmrb_msg_send(target_pid, &msg, 200);
+}
+
+static void host_send_kana_mode(uint8_t target_pid, uint8_t mode)
+{
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_HID_EVENT,
+        .src_pid = PROC_ID_HOST,
+        .size = sizeof(fmrb_hid_kana_mode_event_t)
+    };
+    fmrb_hid_kana_mode_event_t *e = (fmrb_hid_kana_mode_event_t *)msg.data;
+    e->subtype = HID_MSG_KANA_MODE;
+    e->mode = mode;
+    fmrb_msg_send(target_pid, &msg, 200);
+}
+
 static void host_task_process_message(const fmrb_msg_t *hal_msg)
 {
     // Check if it's a GFX message first - use batch processing
@@ -1463,6 +1497,37 @@ static void host_task_process_host_message(const host_message_t *msg)
                 key_event->modifier,
                 fmrb_keymap_get_layout()
             );
+
+            // Romaji to kana composition. Only the JP layout has kana input,
+            // and only this call site sees every input source, so the layer
+            // sits here rather than in each driver.
+            if (fmrb_keymap_get_layout() == FMRB_KEYMAP_LAYOUT_JP) {
+                fmrb_kana_result_t kana;
+                fmrb_kana_action_t action = fmrb_kana_feed(
+                    msg->type == HOST_MSG_HID_KEY_DOWN,
+                    key_event->scancode, key_event->modifier,
+                    key_event->character, &kana);
+
+                // Committed kana go out first: when a key both completes a
+                // pending "n" and means something itself (a space after
+                // "kanji"), the kana belongs before it.
+                for (uint8_t i = 0; i < kana.out_len; i++) {
+                    host_send_kana_byte(routing.target_pid, kana.out[i]);
+                }
+                if (kana.mode_changed) {
+                    host_send_kana_mode(routing.target_pid,
+                                        (uint8_t)fmrb_kana_get_mode());
+                }
+                if (action == FMRB_KANA_CONSUME) {
+                    break;
+                }
+                if (action == FMRB_KANA_COMPOSE) {
+                    // Scancode and keycode still go through - games read
+                    // those - but the romaji letter itself must not appear
+                    // as text.
+                    key_event->character = 0;
+                }
+            }
 
             // Send directly to focused window (current HID target).
             // Bounded wait only: this task is the single pump for input,

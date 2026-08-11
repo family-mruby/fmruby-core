@@ -938,6 +938,9 @@ class FmrbApp
       { type: (subtype == 6 ? :gamepad_down : :gamepad_up),
         gamepad_id: data.getbyte(1),
         button: data.getbyte(2) }
+    when 9  # KANA_MODE (JP layout: kana input turned on/off or switched)
+      return nil if data.bytesize < 2
+      { type: :kana_mode, mode: data.getbyte(1) }
     when 8  # GAMEPAD_AXIS
       return nil if data.bytesize < 5
       { type: :gamepad_axis,

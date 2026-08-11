@@ -311,6 +311,13 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
             HID_SET_INT("value", ev.value);
             break;
 
+        // Kana input mode changed (JP layout). Apps that show the mode read
+        // this; the rest never asked for it and drop through their case.
+        case FMRB_HID_EVENT_KANA_MODE:
+            HID_SET_TYPE("kana_mode");
+            HID_SET_INT("mode", ev.kana_mode);
+            break;
+
         default:
             goto cleanup;
     }
