@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <string.h>
+#include <stdbool.h>
 
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "hw_proxy.h"
@@ -30,16 +31,27 @@
 
 #define DIR_HAL_PATH_MAX 128
 
+// Largest synthetic child list we dedup against. The tables in fmrb_hal are
+// {"mnt","tmp"} for "/" and {"sd"} for "/mnt"; 8 is permanent headroom.
+#define DIR_HAL_VIRTUAL_MAX 8
+
 // A single handle can wrap a real DIR* (NULL for purely-virtual paths) plus a
 // tail of synthetic child names from fmrb_hal_file_virtual_children. readdir
 // drains the real handle first, then yields virtual names. close releases the
 // real handle if any. The virtual_names pointer references a static table in
 // fmrb_hal so it does not need freeing.
+//
+// virtual_suppress[i] is set when the real listing already yielded a name
+// equal to virtual_names[i]: the mount points are synthetic, but if a physical
+// directory of the same name also exists in the underlying filesystem (e.g. a
+// stray /flash/tmp left behind before the RAM /tmp was mounted) the name would
+// otherwise appear twice.
 struct mrb_dir_handle {
   DIR *real;
   const char *const *virtual_names;
   size_t virtual_count;
   size_t virtual_idx;
+  bool virtual_suppress[DIR_HAL_VIRTUAL_MAX];
 };
 
 // Open a real directory handle for `resolved` path. Returns NULL on failure.
@@ -79,6 +91,7 @@ mrb_hal_dir_open(mrb_state *mrb, const char *path)
   handle->virtual_names = vnames;
   handle->virtual_count = vcount;
   handle->virtual_idx = 0;
+  memset(handle->virtual_suppress, 0, sizeof(handle->virtual_suppress));
   return handle;
 }
 
@@ -122,11 +135,26 @@ mrb_hal_dir_read(mrb_state *mrb, mrb_dir_handle *handle)
     struct dirent *dp = readdir(handle->real);
     name = dp ? dp->d_name : NULL;
 #endif
-    if (name != NULL) return name;
+    if (name != NULL) {
+      // Note a physical entry that shadows a synthetic mount name so the
+      // virtual phase below does not repeat it.
+      size_t tracked = handle->virtual_count;
+      if (tracked > DIR_HAL_VIRTUAL_MAX) tracked = DIR_HAL_VIRTUAL_MAX;
+      for (size_t i = 0; i < tracked; i++) {
+        if (strcmp(name, handle->virtual_names[i]) == 0) {
+          handle->virtual_suppress[i] = true;
+          break;
+        }
+      }
+      return name;
+    }
   }
-  // Real entries exhausted (or none); deliver synthetic mount-point children.
+  // Real entries exhausted (or none); deliver synthetic mount-point children,
+  // skipping any that a physical entry already covered.
   while (handle->virtual_idx < handle->virtual_count) {
-    return handle->virtual_names[handle->virtual_idx++];
+    size_t i = handle->virtual_idx++;
+    if (i < DIR_HAL_VIRTUAL_MAX && handle->virtual_suppress[i]) continue;
+    return handle->virtual_names[i];
   }
   return NULL;
 }
@@ -139,6 +167,9 @@ mrb_hal_dir_rewind(mrb_state *mrb, mrb_dir_handle *handle)
     rewinddir(handle->real);
   }
   handle->virtual_idx = 0;
+  // The real listing is re-read from the top, so which names shadow a mount
+  // point is recomputed; clear the flags to avoid suppressing on a stale pass.
+  memset(handle->virtual_suppress, 0, sizeof(handle->virtual_suppress));
 }
 
 int
