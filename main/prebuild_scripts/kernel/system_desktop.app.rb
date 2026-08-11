@@ -864,7 +864,13 @@ class SystemDesktopApp < FmrbApp
       # once-a-second poll, so an app's icon appeared up to a second after its
       # window did. update_taskbar_apps still gates on ps_gen, so a redundant
       # notification costs one counter read.
-      draw_foreground if update_taskbar_apps
+      #
+      # The list is kept current either way, but nothing is painted until the
+      # boot animation is done: it owns the foreground canvas (black, revealed
+      # by the iris) and finish_boot_animation draws the real one. Painting
+      # here put the menu bar and taskbar on screen before the logo appeared.
+      rebuilt = update_taskbar_apps
+      draw_foreground if rebuilt && @boot_anim_state == :done
     elsif msg["cmd"] == "focus_changed"
       # The kernel reports every focus move (spawn, Ctrl+Tab, a click on a
       # window, an app exiting). Before this the taskbar only knew about its
@@ -873,7 +879,7 @@ class SystemDesktopApp < FmrbApp
       pid = msg["pid"]
       if pid != @taskbar_focused_pid
         @taskbar_focused_pid = pid
-        draw_foreground
+        draw_foreground if @boot_anim_state == :done
       end
     elsif msg["cmd"] == "spawn_failed"
       # The kernel says why (it has the spawner's error code); this used to
