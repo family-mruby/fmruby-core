@@ -119,6 +119,9 @@ class EditorApp < FmrbApp
   # belong to the editor; the rest are the debugger's, used from its mixin.
   SC_F4 = 0x3D; SC_F5 = 0x3E; SC_F6 = 0x3F; SC_F7 = 0x40
   SC_F8 = 0x41; SC_F9 = 0x42; SC_F10 = 0x43; SC_F11 = 0x44
+  # Tab, and the keys the completion list answers to (HID Usage IDs).
+  SC_TAB = 0x2B; SC_ENTER = 0x28; SC_KP_ENTER = 0x58; SC_ESC = 0x29
+  SC_UP = 0x52; SC_DOWN = 0x51
 
   def initialize
     super()
@@ -183,6 +186,16 @@ class EditorApp < FmrbApp
     @run_after_save = false
     # Modal "save before quit?" dialog raised by Ctrl-X when @modified.
     @quit_dialog_open = false
+    # ---- Completion (Tab) ----
+    # Candidates from the type inference engine, asked for only when Tab is
+    # pressed after an identifier or a dot. Modal while the list is up.
+    @comp_open = false
+    @comp_labels = []
+    @comp_details = []
+    @comp_docs = []
+    @comp_idx = 0      # selected candidate
+    @comp_top = 0      # first candidate on screen (the list scrolls)
+    @comp_prefix = 0   # characters before the cursor the choice replaces
     # Modal Find dialog (Alt-S / Search menu / F3 for find next).
     @search_open = false
     @search_query = ""
@@ -564,6 +577,17 @@ class EditorApp < FmrbApp
     y = @status_y
     @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H, STATUS_BG)
 
+    # While the completion list is up the line explains the selected candidate
+    # instead: its doc comment, or its signature when it has no comment. That
+    # is the part of an API a dropdown cannot show.
+    if @comp_open
+      about = @comp_docs[@comp_idx].to_s
+      about = @comp_details[@comp_idx].to_s if about.length == 0
+      @gfx.draw_text(@user_area_x0 + 2, y, " " + about, STATUS_TEXT, STATUS_BG,
+                     mixed: true)
+      return
+    end
+
     line_num = @cy + 1
     col_num = @cx + 1
 
@@ -872,25 +896,37 @@ class EditorApp < FmrbApp
     end
   end
 
-  def draw_cursor
+  # Where the cursor sits on screen: [x, y, cells] in pixels, or nil when it is
+  # not on a visible row. The completion popup anchors on this too, so both
+  # agree in every layout (wrapped or not, window or fullscreen).
+  def cursor_cell_box
     # Which screen row holds the cursor: its segment, counted from the anchor.
     seg = segment_of(@cy, @cx)
     screen_row = row_of(@cy, seg)
-    return if screen_row < 0
+    return nil if screen_row < 0
     col0 = segment_start(@cy, seg)
-    return if @cx < col0
+    return nil if @cx < col0
 
     # The cursor sits on a character, so its column and its width both come from
     # the width map: it covers two cells on a full-width character.
     widths = EditorCore.render_width(@cy, col0, @edit_cols)
     idx = @cx - col0
     cell = cell_offset(widths, idx)
-    return if cell >= @edit_cols
+    return nil if cell >= @edit_cols
     w_cells = idx < widths.bytesize ? widths.getbyte(idx) : 1
     w_cells = @edit_cols - cell if cell + w_cells > @edit_cols
 
-    x = @user_area_x0 + 1 + @gutter_w + cell * CELL_W
-    y = @edit_y + screen_row * LINE_H
+    [@user_area_x0 + 1 + @gutter_w + cell * CELL_W,
+     @edit_y + screen_row * LINE_H,
+     w_cells]
+  end
+
+  def draw_cursor
+    box = cursor_cell_box
+    return if box.nil?
+    x = box[0]
+    y = box[1]
+    w_cells = box[2]
 
     # Draw block cursor
     @gfx.fill_rect(x, y, w_cells * CELL_W, LINE_H, CURSOR_COLOR)
@@ -980,6 +1016,7 @@ class EditorApp < FmrbApp
     dbg_draw_pane(@dbg_pane_y, @dbg_pane_h) if @dbg_pane_h > 0
     draw_status_line
     draw_active_menu if @active_menu
+    draw_completion if @comp_open
     dbg_draw_modal
     draw_search_dialog if @search_open
     draw_quit_dialog if @quit_dialog_open
@@ -1027,7 +1064,7 @@ class EditorApp < FmrbApp
     # Row drawing would paint over an open overlay, so anything modal forces the
     # full path (which re-draws the overlay on top).
     if @need_redraw || @active_menu || @search_open || @quit_dialog_open ||
-       dbg_modal?
+       @comp_open || dbg_modal?
       redraw_all
     else
       redraw_dirty
@@ -1369,6 +1406,216 @@ class EditorApp < FmrbApp
     mark_dirty_range(prev_cy, @cy)
   end
 
+  # ---- Completion (type inference) ----
+  #
+  # Tab asks EditorCore.suggest what can follow the cursor and puts the answers
+  # in a list under it. The engine is only asked when Tab is pressed -- never on
+  # every keystroke -- because one request re-parses the whole document
+  # (doc/editor_ti/report/p2.md).
+
+  COMP_MAX_ROWS     = 8
+  COMP_ITEM_H       = DROPDOWN_ITEM_H
+  COMP_FIELD_LABEL  = 0
+  COMP_FIELD_DETAIL = 1
+  COMP_FIELD_DOC    = 2
+  COMP_TOO_LARGE    = -4    # ET_ERR_TOO_LARGE: document above the engine's cap
+  COMP_DETAIL_COLOR = FmrbGfx.rgb_to_332(110, 110, 110)
+
+  # Letters, digits and underscore: what a name being completed is made of.
+  def comp_name_byte?(b)
+    (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
+      b == 95
+  end
+
+  # Is the character before the cursor one a completion could follow? A name,
+  # its ? / ! ending, or the dot of a method call. Anywhere else -- line start,
+  # after a space -- Tab keeps its old meaning.
+  def comp_trigger?
+    return false if @cx <= 0
+    c = EditorCore.char_at(@cy, @cx - 1)
+    return false if c.bytesize != 1
+    b = c.getbyte(0)
+    return true if b == 46 || b == 63 || b == 33   # . ? !
+    comp_name_byte?(b)
+  end
+
+  # Characters before the cursor that the chosen candidate replaces. Zero right
+  # after a dot, which is the "show me everything" case.
+  def comp_prefix_len
+    n = 0
+    x = @cx
+    while x > 0
+      c = EditorCore.char_at(@cy, x - 1)
+      break if c.bytesize != 1
+      break unless comp_name_byte?(c.getbyte(0))
+      n += 1
+      x -= 1
+    end
+    n
+  end
+
+  def comp_rows
+    n = @comp_labels.size
+    n < COMP_MAX_ROWS ? n : COMP_MAX_ROWS
+  end
+
+  def open_completion
+    t0 = Machine.uptime_us
+    n = EditorCore.suggest(@cy, @cx)
+    ms = (Machine.uptime_us - t0) / 1000
+    bytes = EditorCore.doc_bytesize
+    # info, not debug: debug is filtered out of the build, and this number is
+    # the one that says whether completion still feels instant (same reason
+    # edit_lat reports at info).
+    Log.info("ti_lat: #{ms} ms (#{n} candidates, #{bytes} bytes)")
+
+    if n == COMP_TOO_LARGE
+      flash_status(FmrbI18n.t(:b_comp_too_large).to_s)
+      return
+    end
+    if n <= 0
+      flash_status(FmrbI18n.t(:b_comp_none).to_s)
+      return
+    end
+
+    @comp_labels = []
+    @comp_details = []
+    @comp_docs = []
+    i = 0
+    while i < n
+      @comp_labels << EditorCore.suggestion(i, COMP_FIELD_LABEL)
+      @comp_details << EditorCore.suggestion(i, COMP_FIELD_DETAIL)
+      @comp_docs << EditorCore.suggestion(i, COMP_FIELD_DOC)
+      i += 1
+    end
+    @comp_prefix = comp_prefix_len
+    @comp_idx = 0
+    @comp_top = 0
+    @comp_open = true
+    @need_redraw = true
+  end
+
+  def close_completion
+    return unless @comp_open
+    @comp_open = false
+    @comp_labels = []
+    @comp_details = []
+    @comp_docs = []
+    @need_redraw = true
+  end
+
+  # Replace the name being typed with the chosen candidate. After a dot there
+  # is nothing to replace, so it is a plain insert.
+  def accept_completion
+    label = @comp_labels[@comp_idx].to_s
+    prefix = @comp_prefix
+    close_completion
+    return if label.bytesize == 0
+
+    if prefix > 0
+      EditorCore.delete_range(@cy, @cx - prefix, @cy, @cx)
+      @cx -= prefix
+    end
+    nx = EditorCore.insert_text(@cy, @cx, label)
+    if nx < 0
+      doc_full
+      return
+    end
+    @cx = nx
+    mark_edited
+    ensure_cursor_visible
+    mark_dirty_line(@cy)
+  end
+
+  def comp_scroll_into_view
+    rows = comp_rows
+    @comp_top = @comp_idx if @comp_idx < @comp_top
+    @comp_top = @comp_idx - rows + 1 if @comp_idx >= @comp_top + rows
+    @comp_top = 0 if @comp_top < 0
+  end
+
+  # Modal while the list is up. Answers true when the key was the list's; any
+  # other key closes it and is then handled the way it normally would be.
+  def handle_completion_key(ev)
+    case ev[:scancode] || 0
+    when SC_UP
+      @comp_idx -= 1 if @comp_idx > 0
+      comp_scroll_into_view
+      @need_redraw = true
+      true
+    when SC_DOWN
+      @comp_idx += 1 if @comp_idx < @comp_labels.size - 1
+      comp_scroll_into_view
+      @need_redraw = true
+      true
+    when SC_ENTER, SC_KP_ENTER, SC_TAB
+      accept_completion
+      true
+    when SC_ESC
+      close_completion
+      true
+    else
+      close_completion
+      false
+    end
+  end
+
+  def comp_width
+    longest = 0
+    i = 0
+    while i < @comp_labels.size
+      n = @comp_labels[i].to_s.length
+      longest = n if n > longest
+      i += 1
+    end
+    w = (longest + 2) * CHAR_W + 8
+    room = @user_area_width - 4
+    w > room ? room : w
+  end
+
+  # Under the cursor, or above it when the bottom of the edit area is too
+  # close; pushed left when it would run off the right edge.
+  def comp_origin(w, h)
+    box = cursor_cell_box
+    cx = box.nil? ? @user_area_x0 + 1 : box[0]
+    cy = box.nil? ? @edit_y : box[1]
+
+    x = cx
+    right = @user_area_x0 + @user_area_width - 2
+    x = right - w if x + w > right
+    x = @user_area_x0 + 1 if x < @user_area_x0 + 1
+
+    y = cy + LINE_H
+    y = cy - h if y + h > @status_y
+    y = @edit_y if y < @edit_y
+    [x, y]
+  end
+
+  def draw_completion
+    rows = comp_rows
+    return if rows <= 0
+    w = comp_width
+    h = COMP_ITEM_H * rows + 2
+    x, y = comp_origin(w, h)
+
+    @gfx.fill_rect(x, y, w, h, DROPDOWN_BG)
+    @gfx.draw_rect(x, y, w, h, 0x60)
+
+    i = 0
+    while i < rows
+      idx = @comp_top + i
+      item_y = y + 1 + i * COMP_ITEM_H
+      label = @comp_labels[idx].to_s
+      if idx == @comp_idx
+        @gfx.fill_rect(x + 1, item_y, w - 2, COMP_ITEM_H, DROPDOWN_SEL_BG)
+        @gfx.draw_text(x + 4, item_y + 1, label, DROPDOWN_SEL_TEXT, DROPDOWN_SEL_BG)
+      else
+        @gfx.draw_text(x + 4, item_y + 1, label, DROPDOWN_TEXT, DROPDOWN_BG)
+      end
+      i += 1
+    end
+  end
+
   # ---- Key handling ----
 
   def handle_key(ch)
@@ -1386,11 +1633,7 @@ class EditorApp < FmrbApp
     when 127     # Delete (some terminals)
       handle_delete
     when 9       # Tab
-      ti = 0
-      while ti < TAB_SIZE
-        insert_char(' ')
-        ti += 1
-      end
+      insert_indent
     when 32..126 # Printable
       insert_char(printable_char(ch))
     end
@@ -1444,6 +1687,14 @@ class EditorApp < FmrbApp
   def printable_char(code)
     return "" if code < 32 || code > 126
     ASCII_PRINTABLE[code - 32, 1]
+  end
+
+  def insert_indent
+    ti = 0
+    while ti < TAB_SIZE
+      insert_char(' ')
+      ti += 1
+    end
   end
 
   def insert_char(c)
@@ -2321,6 +2572,24 @@ class EditorApp < FmrbApp
       # Find dialog is modal: typed chars build the query, Enter searches.
       if @search_open
         handle_search_dialog_key(ev)
+        return
+      end
+
+      # Completion list is modal for the keys it uses; anything else closes it
+      # and carries on below, so typing never gets stuck behind the popup.
+      if @comp_open
+        return if handle_completion_key(ev)
+      end
+
+      # Tab: completion when the cursor is just after a name or a dot, the
+      # indent it has always been anywhere else. Answered by scancode -- kana
+      # input withholds the character, and this has to work in every mode.
+      if (ev[:scancode] || 0) == SC_TAB
+        if comp_trigger?
+          open_completion
+        else
+          insert_indent
+        end
         return
       end
 

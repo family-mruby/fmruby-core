@@ -249,9 +249,17 @@ int et_suggest(int slot, int y, int x)
        document itself has nowhere to grow. */
     if (fmrb_mem_get_stats(handle, &st) != 0) { result = EC_ERR_NOMEM; goto done; }
     want = (size_t)total * ET_SCRATCH_PER_BYTE + ET_SCRATCH_SLACK;
+    if (want < ET_SCRATCH_MIN) want = ET_SCRATCH_MIN;
     size_t room = st.free_size / 4 * 3;
     if (want > room) want = room;
-    if (want < ET_SCRATCH_MIN) { result = EC_ERR_NOMEM; goto done; }
+    if (want < ET_SCRATCH_MIN) {
+        /* Only when the pool itself is nearly full -- a small document asks
+           for the floor, not for its own size. */
+        FMRB_LOGW(TAG, "no room for a parse: %zu bytes free in the document pool",
+                  st.free_size);
+        result = EC_ERR_NOMEM;
+        goto done;
+    }
 
     block = fmrb_malloc(handle, want);
     while (!block && want > ET_SCRATCH_MIN) {
