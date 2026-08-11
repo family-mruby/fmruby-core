@@ -16,6 +16,12 @@
 # assert those signature strings verbatim. FMRB additions belong here.
 
 class FmrbApp
+  # The drawing surface of this app. Declared as an instance variable because
+  # that is how apps reach it (@gfx); FmrbApp#initialize assigns it, and that
+  # assignment is not in the user's source, so the engine needs this line to
+  # know the type. Other instance variables follow in P4.
+  @gfx: FmrbGfx
+
   # UI language of this VM ("en" / "ja")
   def self.language: () -> String
 
