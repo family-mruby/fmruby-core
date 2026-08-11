@@ -5,7 +5,8 @@ module TaskbarMixin
   TASKBAR_ICON_SIZE = 9   # px, square icon on 13px menu bar
   TASKBAR_ICON_PAD = 3    # px between icons
   TASKBAR_X_START = 82    # after "Family mruby" text
-  TASKBAR_Y = 2           # top margin
+  TASKBAR_Y = 1           # top margin; keeps the focused app's white frame
+                          # clear of the menu bar's bottom border line
 
   # Colors for app icons by VM type (index matches vm_type from FmrbApp.ps)
   TASKBAR_COLORS = [
@@ -64,7 +65,9 @@ module TaskbarMixin
   def draw_taskbar
     return if @taskbar_apps.empty?
 
-    clock_area = 152  # reserved for clock + wifi + free-IRAM readout + BLE
+    # Reserved for the status cells: clock, wifi, BLE, kana and the free-IRAM
+    # readout (leftmost cell starts at width-166; keep a small margin).
+    clock_area = 170
     max_x = @window_width - clock_area
     x = TASKBAR_X_START
 
@@ -93,7 +96,9 @@ module TaskbarMixin
     return false if @taskbar_apps.empty?
     return false if my < TASKBAR_Y || my >= TASKBAR_Y + TASKBAR_ICON_SIZE
 
-    clock_area = 95
+    # Must match draw_taskbar: clicks past the drawn icons would otherwise
+    # focus an app whose icon was cut off by the status cells.
+    clock_area = 170
     max_x = @window_width - clock_area
     x = TASKBAR_X_START
 

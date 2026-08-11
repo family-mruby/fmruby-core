@@ -558,15 +558,16 @@ class SystemDesktopApp < FmrbApp
   # Clicking the icon opens the network dialog (see handle_click).
   WIFI_ICON_W = 10
 
-  # Free internal RAM readout, left of the wifi icon, always shown --
+  # Free internal RAM readout, leftmost of the status cells, always shown --
   # internal RAM is the scarce resource here (one running app costs ~25KB),
   # so this answers "can I open another app" at a glance. Fetch, format and
   # draw all happen in C (allocation-free); the Linux sim shows "---KB".
+  # Order left-to-right: RAM, kana, BLE, wifi, clock -- the readout sits
+  # apart so the three icon cells line up.
   MEMINFO_W = 30  # 5 chars x 6px, fixed width
 
   def draw_meminfo
-    # Left of the BLE box (order right-to-left: clock, wifi, BLE, RAM)
-    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - MEMINFO_W
+    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W
     @gfx.draw_free_iram(x, 2, FmrbGfx::WHITE, MENU_BG)
   end
 
@@ -593,12 +594,10 @@ class SystemDesktopApp < FmrbApp
     @gfx.draw_text(x + 2, 2, BLE_LABEL, fg, box)
   end
 
-  # Kana input mode, left of the free-RAM readout. Drawn like the BLE cell so
-  # it reads as an indicator and not as a stray letter: gray box + white "A"
-  # for ASCII, white box + inverted kana while kana input is on.
-  #
-  # Nothing is drawn until the host reports a mode, which it only ever does on
-  # a JP layout -- a US keyboard never toggles kana input and never sees this.
+  # Kana input mode, between the free-RAM readout and the BLE cell so the
+  # three icon cells (kana, BLE, wifi) sit together. Drawn like the BLE cell
+  # so it reads as an indicator and not as a stray letter: gray box + white
+  # "A" for ASCII, white box + inverted kana while kana input is on.
   KANA_CELL_W = 10
   KANA_LABELS = ["A", "あ", "ア"]
 
@@ -607,7 +606,7 @@ class SystemDesktopApp < FmrbApp
       @kana_icon_x = nil
       return
     end
-    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - MEMINFO_W - 4 - KANA_CELL_W
+    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W
     @kana_icon_x = x
     on = @kana_mode > 0
     box = on ? FmrbGfx::WHITE : FmrbGfx::GRAY
@@ -638,6 +637,15 @@ class SystemDesktopApp < FmrbApp
     # (stale disconnect slashes would linger otherwise).
     @gfx.fill_rect(x - 1, 2, WIFI_ICON_W + 2, 10, MENU_BG)
     connected = FmrbApp.wifi_connected?
+    if connected && FmrbApp.rd_stream_state > 0
+      # Remote desktop video (MJPEG or H.264) is going out: a small screen
+      # pictogram instead of the signal bars, so "someone is watching this
+      # display over the network" is visible at a glance.
+      @gfx.draw_rect(x, 2, 9, 6, FmrbGfx::WHITE)   # screen outline
+      @gfx.fill_rect(x + 2, 4, 5, 2, FmrbGfx::WHITE) # lit panel
+      @gfx.fill_rect(x + 2, 9, 5, 1, FmrbGfx::WHITE) # stand base
+      return
+    end
     color = connected ? FmrbGfx::WHITE : FmrbGfx::GRAY
     @gfx.fill_rect(x,     7, 2, 3, color)   # bars grow up from y=10
     @gfx.fill_rect(x + 3, 5, 2, 5, color)
