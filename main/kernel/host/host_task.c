@@ -1543,6 +1543,18 @@ static void host_task_process_host_message(const host_message_t *msg)
                 for (uint8_t i = 0; i < kana.out_len; i++) {
                     host_send_kana_byte(routing.target_pid, kana.out[i]);
                 }
+                // Every event on the two mode keys, whether or not it
+                // changed anything. A key that "half works" is either not
+                // arriving on every press or arriving as the wrong event
+                // type (X11 delivers some locking keys as one alternating
+                // event per press), and only the raw stream tells them
+                // apart. Two keys nobody presses in bulk, so it stays.
+                if (key_event->scancode == 0x35 || key_event->scancode == 0x88) {
+                    FMRB_LOGI(TAG, "kana key sc=0x%02x %s mod=0x%02x -> mode=%d",
+                              key_event->scancode,
+                              msg->type == HOST_MSG_HID_KEY_DOWN ? "down" : "up",
+                              key_event->modifier, (int)fmrb_kana_get_mode());
+                }
                 if (kana.mode_changed) {
                     // Rare (a keypress), and the one line that answers "the
                     // toggle key did nothing": it shows what the composer
