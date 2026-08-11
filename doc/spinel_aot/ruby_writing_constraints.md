@@ -119,3 +119,10 @@ fmruby での活用案:
   `fork_pr_candidates.md` B-1 推論 に起案登録済。
 - **B (fork codegen bug, repro pending)**: sprintf への文字列返し直渡し (hoist で回避)。
   `fork_pr_candidates.md` B-1 codegen に起案登録済。`str_run_clear` も同根因疑い。
+- **A (作者制約, JA1 で発見 2026-08-11)**: **文字列キー Hash を引数で渡すときは
+  波括弧を明示する**。`FmrbI18n.add("en" => {...}, "ja" => {...})` と波括弧無しで
+  書くと Spinel はキーワード引数と解釈し SymPolyHash を渡す (生成 C の
+  `sp_..._s_add(sp_SymPolyHash *)` で判別できる)。実害: STRINGS["en"] が引けず
+  全キーが key.to_s へフォールバックし、画面に `m_file` 等の生キーが出た。
+  `add({...})` で解決。**system_desktop/i18n.rb が同じ書き方**なので desktop
+  Spinel 化時に同じ手当てが必要 (doc/editor_ja/report/ja1.md)。
