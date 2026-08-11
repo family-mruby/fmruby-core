@@ -280,23 +280,23 @@ fmrb_kana_action_t fmrb_kana_feed(bool key_down, uint8_t scancode,
 {
     memset(result, 0, sizeof(*result));
 
-    const bool shift = (modifier & (FMRB_KEYMAP_MOD_LSHIFT | FMRB_KEYMAP_MOD_RSHIFT)) != 0;
     const bool ctrl_alt = (modifier & (FMRB_KEYMAP_MOD_LCTRL | FMRB_KEYMAP_MOD_RCTRL |
                                        FMRB_KEYMAP_MOD_LALT | FMRB_KEYMAP_MOD_RALT)) != 0;
 
     // Mode toggles. Half/full-width switches kana input on and off; the
-    // katakana/hiragana key switches the script while it is on. Keyboards
-    // without that key (or a sim without a scancode for it) get
-    // Shift + half/full-width as the documented alternative.
+    // katakana/hiragana key switches the script while it is on.
+    //
+    // Half/full-width ignores every modifier on purpose. It used to switch
+    // script when Shift was held, as a stand-in for keyboards with no
+    // katakana key, and that made "off" unreachable: the katakana legend on a
+    // JIS keyboard is the shifted one, so a user who reaches katakana with
+    // Shift and keeps it held finds this key flipping hiragana and katakana
+    // forever with no way out. The key that turns kana input off has to mean
+    // that in every state, whatever else is pressed.
     if (scancode == SC_ZENKAKU) {
         if (key_down) {
-            if (shift) {
-                s_mode = (s_mode == FMRB_KANA_KATAKANA) ? FMRB_KANA_HIRAGANA
-                                                        : FMRB_KANA_KATAKANA;
-            } else {
-                s_mode = (s_mode == FMRB_KANA_OFF) ? FMRB_KANA_HIRAGANA
-                                                   : FMRB_KANA_OFF;
-            }
+            s_mode = (s_mode == FMRB_KANA_OFF) ? FMRB_KANA_HIRAGANA
+                                               : FMRB_KANA_OFF;
             clear_pending();
             result->mode_changed = true;
         }

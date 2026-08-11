@@ -1516,6 +1516,11 @@ static void host_task_process_host_message(const host_message_t *msg)
                 }
                 if (kana.mode_changed) {
                     uint8_t mode = (uint8_t)fmrb_kana_get_mode();
+                    // Rare (a keypress), and the one line that answers "the
+                    // toggle key did nothing": it shows what the composer
+                    // actually saw, modifiers included.
+                    FMRB_LOGI(TAG, "kana mode=%d (sc=0x%02x mod=0x%02x)",
+                              mode, key_event->scancode, key_event->modifier);
                     host_send_kana_mode(routing.target_pid, mode);
                     // The kernel gets a copy so it can hand the mode to the
                     // desktop as well: kana input is a property of the
