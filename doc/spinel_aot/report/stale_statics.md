@@ -5,7 +5,7 @@
 
 | | |
 |---|---|
-| fork 修正 | `c7de66c` (kishima/spinel, fmrb-dev) **未 push (要確認)** |
+| fork 修正 | `c7de66c` (kishima/spinel, fmrb-dev。push 済み) |
 | SPINEL_PIN | `7b1feb75...` → `c7de66ca687b5029f51a614a5cbee5e66a42fd27` |
 | fmruby-core 側 | 本コミット (pin + IMPORT_INFO + アプリ側回避の撤去 + doc) |
 
@@ -151,9 +151,23 @@ int editor_entry(void){
   upstream にとっても素直なバグ修正のはず。
 - ただし PR 化の判断はユーザに委ねる (fork 運用方針どおり)。
 
+## fork チェックアウトの状態 (2026-08-11 時点)
+
+作業は **`fmruby-core/vendor/spinel`** で行った (Rakefile の `SPINEL_DIR` が
+vendor を優先するため、ビルドで実際に使われるのはこちら)。push 後に
+`tmp/spinel` (legacy の作業場所) も fast-forward で追随させてある。
+
+| 参照 | commit |
+|---|---|
+| `origin/fmrb-dev` | `c7de66ca` |
+| `vendor/spinel` | `c7de66c` |
+| `tmp/spinel` | `c7de66ca` |
+| `SPINEL_PIN` / `IMPORT_INFO` | `c7de66ca687b5029f51a614a5cbee5e66a42fd27` |
+
+`import_from_fork.rb` は既定の参照先が `tmp/spinel` なので、vendor を明示的に
+引数で渡している (`ruby components/fmrb_spinel_rt/import_from_fork.rb vendor/spinel`)。
+
 ## 未実施 (ユーザ確認待ち)
 
-- **fork の push**: `c7de66c` はローカルコミットのまま。SPINEL_PIN はこの
-  commit を指しているので、**push するまで他のマシンで `rake spinel:setup`
-  が失敗する**。push してよいか確認したい。
 - 実機 (S3 / P4) での再オープン確認。
+- upstream への PR 化 (所見は上記。判断はユーザ)。
