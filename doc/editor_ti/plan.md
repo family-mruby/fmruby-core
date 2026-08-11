@@ -63,7 +63,20 @@ hamachan 氏の型推論エンジン picoruby-ti を FM-EDITOR に統合し、
 
 ## fork での継承 + self 対応 (実装完了)
 
-branch fmrb-inheritance (commit deb9dae)。push 済み、上流 PR は未提出。
+branch fmrb-inheritance (deb9dae で継承+self、c1d2715 で RBS ivar 宣言)。
+push 済み、上流 PR は未提出。統合ブランチ fmrb-dev の HEAD は 333beb1。
+
+### RBS ivar 宣言対応 (2026-08-11 追加)
+
+`@gfx: FmrbGfx` のような RBS のインスタンス変数宣言を tidbgen が db に
+取り込み (親クラス/include を平坦化)、エンジンはソース中に代入が無い
+`@名前` の読みを、外側クラスの継承チェーン上の db クラスから解決する。
+これで `class MyApp < FmrbApp` の def 内の `@gfx.dr` が補完される
+(attr_reader も前置きソースも不要になった)。ソース中の代入は宣言より
+優先。クラス変数 (@@x) は対象外。上流 host_test の新テストは GPIO に
+`@pin: Integer` / `@label: String` の宣言が要る。
+既知の残り: hover.c はカーソルの外側クラスを context に設定しないので、
+def 内 ivar のホバーには suggest と同じ処置が要る (P3 で fork に入れる)。
 
 ### 変更内容
 
@@ -159,16 +172,33 @@ branch fmrb-inheritance (commit deb9dae)。push 済み、上流 PR は未提出�
   vendor/picoruby-ti (PIN + rake ti:setup) + gembox + Rakefile での db 生成、
   rake build:linux を通す。FMRB API の RBS 最小セット (FmrbAppBase / Canvas
   周辺) を書く。エンジン単体のホスト回帰 (host_test) を rake ti:test で回す。
-- P2: エディタ補完 UI。editor-core の全文/オフセット API + ti シム +
-  ドロップダウン。sim で自律検証 (fmrb_input で打鍵 -> スクリーンショットで
-  候補表示を確認)。所要時間の実測 (edit_lat と同様の常設計測を検討)。
-- P3: ホバーと診断の UI。
+- P2: エディタ補完 UI。**実装完了 (2026-08-11, report/p2.md)。レビュー指摘
+  1 件が修正待ち: s_prism_scratch の __thread 化** (補完中の他タスク
+  コンパイルが使い捨てヒープに迷い込む競合)。以下は発行時の記録。
+  @gfx は fork の RBS ivar 宣言対応で解決 (PIN を 333beb1 に更新 +
+  sig に @gfx: FmrbGfx。基底コード変更なし)。発火は Tab (文脈依存)。
+  ti ブリッジ (et_*) は editor-core 内、結果はブリッジ側にコピー
+  (arena は次呼び出しで無効)。prism アロケータ
+  (PRISM_XALLOCATOR -> mrb_malloc(global_mrb)) の安全確認を T2 冒頭で行う。
+  sim で自律検証 + ti_lat 常設計測。
+- P3: ホバーと診断の UI。**指示書 = instruction_p3.md 発行済み**。
+  fork 側の宿題 (hover.c の外側クラス解決 + 変数引きの
+  ti_handle_identifier 化) は**実施済み** (fmrb-dev d40a9e6。@gfx の
+  ホバーが Canvas を返すことをホスト確認、回帰テスト追加)。
+  キーは Ctrl+T (ホバー) / Ctrl+E (診断、保存時自動 + 連打でジャンプ)。
+  ステータス行は「右端バッジ常設 + 左は一時メッセージ (ヘルパ集約)」に
+  整理して P2 のかなバッジ衝突を解消する。
 - P4: RBS の充実。FmrbApp / GFX / Sprite / Sound / MIDI と進め、
   RBS を API ドキュメントの正とする運用に乗せる。
 - P5: esp32 対応。Modern (Tab5) 先行。サイズ実測、arena の PSRAM 化、
   prism アロケータの競合確認。S3 はサイズ次第で判断。
 - P6 (任意): PC 側 LSP/MCP。同じ sig から picoruby-ti-lsp を建てて
   VSCode/Vim/Claude から FMRB アプリの型支援を使えるようにする。
+- P7 (任意): WebConsole (tool/web) の簡易エディタへの展開。2 経路:
+  診断は debugd にコマンドを生やして保存時に相乗り (BLE は全文転送が
+  遅く打鍵補完には不向き、保存はどうせ全文送る)。補完はエンジン + db を
+  emscripten で WASM 化してブラウザ内で完結させる (エンジンは純 C 12KB +
+  db 37KB なので現実的。db は同じ sig/ から生成して実機とずらさない)。
 
 ## 未確定事項
 

@@ -1742,10 +1742,11 @@ class EditorApp < FmrbApp
     @diag_lines.include?(line_idx)
   end
 
-  # Run the engine over the whole document. +quiet+ is for the automatic run
-  # after a save, which should not talk over the "Saved" message when the file
-  # is clean.
-  def run_diagnostics(quiet = false)
+  # Run the engine over the whole document. The answer always reaches the
+  # status line, including after a save: "no problems" is the reassurance the
+  # save was worth waiting for, and the file name losing its "*" already says
+  # the save itself went through.
+  def run_diagnostics
     n = EditorCore.diagnose
     if n == COMP_TOO_LARGE
       # Distinct from "no problems": nothing was checked at all.
@@ -1772,9 +1773,10 @@ class EditorApp < FmrbApp
     @need_redraw = true
 
     if n == 0
-      flash_status(FmrbI18n.t(:b_no_problems).to_s) unless quiet
+      flash_status(FmrbI18n.t(:b_no_problems).to_s)
     else
-      flash_status("#{n} #{FmrbI18n.t(:b_problems).to_s}: #{@diag_msgs[0]}")
+      word = (n == 1) ? FmrbI18n.t(:b_problem) : FmrbI18n.t(:b_problems)
+      flash_status("#{n} #{word.to_s}: #{@diag_msgs[0]}")
     end
   end
 
@@ -1809,7 +1811,7 @@ class EditorApp < FmrbApp
   # engine is a Ruby type checker, and a .bas file would be nothing but noise.
   def diagnose_after_save
     return unless hl_default_for(@current_file)
-    run_diagnostics(true)
+    run_diagnostics
   end
 
   # ---- Key handling ----

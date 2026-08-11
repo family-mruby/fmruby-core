@@ -74,6 +74,7 @@ FmrbI18n.add({
     # Type information (Ctrl+T) and diagnostics (Ctrl+E)
     b_no_type:   "No type here",
     b_no_problems: "no problems",
+    b_problem:   "problem",
     b_problems:  "problems",
     b_diag_failed: "Could not check",
     b_run_failed: "Run failed",
@@ -123,6 +124,7 @@ FmrbI18n.add({
     b_comp_too_large: "大きすぎて候補を出せません",
     b_no_type:   "ここには型がありません",
     b_no_problems: "問題なし",
+    b_problem:   "件の問題",
     b_problems:  "件の問題",
     b_diag_failed: "調べられませんでした",
     b_run_failed: "実行できません",
