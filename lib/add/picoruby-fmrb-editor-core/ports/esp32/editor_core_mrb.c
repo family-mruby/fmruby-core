@@ -108,6 +108,20 @@ static mrb_value m_render_width(mrb_state *mrb, mrb_value self)
     return str_of(mrb, p, len);
 }
 
+static mrb_value m_wrap_count(mrb_state *mrb, mrb_value self)
+{
+    mrb_int y, cells;
+    mrb_get_args(mrb, "ii", &y, &cells);
+    return mrb_fixnum_value(ec_wrap_count(slot_of(mrb), (int)y, (int)cells));
+}
+
+static mrb_value m_wrap_start(mrb_state *mrb, mrb_value self)
+{
+    mrb_int y, cells, seg;
+    mrb_get_args(mrb, "iii", &y, &cells, &seg);
+    return mrb_fixnum_value(ec_wrap_start(slot_of(mrb), (int)y, (int)cells, (int)seg));
+}
+
 static mrb_value m_char_at(mrb_state *mrb, mrb_value self)
 {
     mrb_int y, x;
@@ -248,6 +262,8 @@ void mrb_picoruby_fmrb_editor_core_init_impl(mrb_state *mrb)
     mrb_define_module_function(mrb, mod, "render_text",  m_render_text,  MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, mod, "render_hl",    m_render_hl,    MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, mod, "render_width", m_render_width, MRB_ARGS_REQ(3));
+    mrb_define_module_function(mrb, mod, "wrap_count",  m_wrap_count,  MRB_ARGS_REQ(2));
+    mrb_define_module_function(mrb, mod, "wrap_start",  m_wrap_start,  MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, mod, "char_at",      m_char_at,      MRB_ARGS_REQ(2));
     mrb_define_module_function(mrb, mod, "hl_enabled=",  m_hl_set,       MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, mod, "doc_bytesize", m_doc_bytesize, MRB_ARGS_NONE());

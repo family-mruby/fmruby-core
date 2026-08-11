@@ -60,6 +60,16 @@ const char *fmrb_spx_ec_render_width(int slot, int y, int col0, int max_cols)
     return p;
 }
 
+int fmrb_spx_ec_wrap_count(int slot, int y, int view_cells)
+{
+    return ec_wrap_count(slot, y, view_cells);
+}
+
+int fmrb_spx_ec_wrap_start(int slot, int y, int view_cells, int seg)
+{
+    return ec_wrap_start(slot, y, view_cells, seg);
+}
+
 const char *fmrb_spx_ec_char_at(int slot, int y, int x)
 {
     int len = 0;

@@ -41,6 +41,11 @@ const char *ec_render_hl(int slot, int y, int col0, int max_cols, int *out_len);
 /* Cell width (1 or 2) per character, same slice and shape as ec_render_hl.
    Bounded by EC_WIDTH_MAX_COLS; ask for no more than that at a time. */
 const char *ec_render_width(int slot, int y, int col0, int max_cols, int *out_len);
+/* Line wrapping at a given window width, in cells. ec_wrap_start(seg) with
+   seg >= the count answers the line length, so segment [start(k), start(k+1))
+   is the slice for screen row k. */
+int  ec_wrap_count(int slot, int y, int view_cells);
+int  ec_wrap_start(int slot, int y, int view_cells, int seg);
 const char *ec_char_at(int slot, int y, int x, int *out_len);
 void ec_set_hl(int slot, int on);
 int  ec_doc_bytesize(int slot);

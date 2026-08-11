@@ -22,6 +22,8 @@ module FmrbSpxEc
   ffi_func :fmrb_spx_ec_render_text, [:int, :int, :int, :int], :binstr
   ffi_func :fmrb_spx_ec_render_hl,   [:int, :int, :int, :int], :binstr
   ffi_func :fmrb_spx_ec_render_width, [:int, :int, :int, :int], :binstr
+  ffi_func :fmrb_spx_ec_wrap_count,  [:int, :int, :int], :int
+  ffi_func :fmrb_spx_ec_wrap_start,  [:int, :int, :int, :int], :int
   ffi_func :fmrb_spx_ec_char_at,     [:int, :int, :int], :binstr
   ffi_func :fmrb_spx_ec_insert_text, [:int, :int, :int, :str, :int], :int
   ffi_func :fmrb_spx_ec_split_line,  [:int, :int, :int], :int
@@ -56,6 +58,8 @@ module EditorCore
   def self.render_text(y, col0, n); FmrbSpxEc.fmrb_spx_ec_render_text(slot, y, col0, n); end
   def self.render_hl(y, col0, n);   FmrbSpxEc.fmrb_spx_ec_render_hl(slot, y, col0, n); end
   def self.render_width(y, col0, n); FmrbSpxEc.fmrb_spx_ec_render_width(slot, y, col0, n); end
+  def self.wrap_count(y, cells);     FmrbSpxEc.fmrb_spx_ec_wrap_count(slot, y, cells); end
+  def self.wrap_start(y, cells, seg); FmrbSpxEc.fmrb_spx_ec_wrap_start(slot, y, cells, seg); end
   def self.char_at(y, x);           FmrbSpxEc.fmrb_spx_ec_char_at(slot, y, x); end
 
   def self.insert_text(y, x, str)

@@ -174,11 +174,18 @@ static int32_t u8_byte_of(const char *s, int32_t len, int32_t ci)
 
 /* ---- line primitives --------------------------------------------------- */
 
+/* Bumped by anything that changes a line's contents or moves lines around.
+   The wrap cache is keyed by it, so one counter invalidates every entry -- the
+   conservative choice, and an edit already forces a repaint of the lines it
+   touched. */
+static uint32_t g_wrap_stamp = 1;
+
 static void line_drop_hl(ed_line_t *l)
 {
     ed_free(l->hl);
     l->hl = NULL;
     l->hl_chars = 0;
+    g_wrap_stamp++;
 }
 
 static int line_reserve(ed_line_t *l, int32_t need)
@@ -207,6 +214,7 @@ static int lines_reserve(ed_doc_t *d, int32_t need)
 /* Insert an empty line at index y. */
 static int lines_insert(ed_doc_t *d, int32_t y)
 {
+    g_wrap_stamp++;
     int r = lines_reserve(d, d->count + 1);
     if (r < 0) return r;
     if (y < d->count) {
@@ -221,6 +229,7 @@ static int lines_insert(ed_doc_t *d, int32_t y)
 static void lines_remove(ed_doc_t *d, int32_t y)
 {
     if (y < 0 || y >= d->count) return;
+    g_wrap_stamp++;
     ed_free(d->lines[y].buf);
     ed_free(d->lines[y].hl);
     if (y < d->count - 1) {
@@ -522,6 +531,134 @@ const char *ec_render_width(int slot, int y, int col0, int max_cols, int *out_le
     }
     if (out_len) *out_len = (int)n;
     return (const char *)widths;
+}
+
+/* ---- line wrapping ----------------------------------------------------- */
+/*
+ * Where a line breaks when folded into a window +view_cells+ wide.
+ *
+ * Two entry points rather than one that returns a list: an int in and an int
+ * out needs no record format and no binary parsing on either binding, and the
+ * cache below makes the repeated calls a lookup. A screen row asks for the
+ * start of its own segment and of the next one.
+ *
+ * The whole document is never measured. Drawing walks forward from the anchor
+ * and only ever asks about the lines it is about to put on screen.
+ */
+#define EC_WRAP_CACHE_N    24     /* a screenful of rows, plus slack */
+#define EC_WRAP_CACHE_SEGS 32     /* starts kept per line; ~2000 ASCII chars */
+
+typedef struct {
+    int      used;
+    int      slot;
+    int32_t  y;
+    int32_t  cells;
+    uint32_t stamp;
+    int32_t  count;                        /* segments in the whole line */
+    int32_t  cached;                       /* entries valid in starts[] */
+    uint16_t starts[EC_WRAP_CACHE_SEGS];
+} ed_wrap_entry_t;
+
+static ed_wrap_entry_t g_wrap[EC_WRAP_CACHE_N];
+static int             g_wrap_next;        /* round-robin victim */
+
+/* Walk the line once, filling in the entry. A line longer than
+   EC_WRAP_CACHE_SEGS segments still gets a correct count; only the tail of its
+   starts[] is missing, and ec_wrap_start walks for those. */
+static void wrap_fill(ed_doc_t *d, int slot, int32_t y, int32_t cells,
+                      ed_wrap_entry_t *e)
+{
+    ed_line_t *l = &d->lines[y];
+    e->used = 1;
+    e->slot = slot;
+    e->y = y;
+    e->cells = cells;
+    e->stamp = g_wrap_stamp;
+    e->count = 1;
+    e->cached = 1;
+    e->starts[0] = 0;
+
+    int32_t used = 0;
+    int32_t ci = 0;
+    int32_t i = 0;
+    while (i < l->len) {
+        int32_t nb = 1;
+        uint32_t cp = u8_decode(l->buf + i, l->len - i, &nb);
+        int32_t w = cp_cells(cp);
+        /* Break before the character that does not fit, so a two-cell glyph is
+           never split. A character wider than the whole window still has to go
+           somewhere: it stays on an otherwise empty segment. */
+        if (used > 0 && used + w > cells) {
+            e->count++;
+            if (e->cached < EC_WRAP_CACHE_SEGS) {
+                e->starts[e->cached++] = (uint16_t)ci;
+            }
+            used = 0;
+        }
+        used += w;
+        i += nb;
+        ci++;
+    }
+}
+
+static ed_wrap_entry_t *wrap_entry(int slot, int y, int cells)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d || !y_ok(d, y)) return NULL;
+    if (cells < 1) cells = 1;
+
+    for (int i = 0; i < EC_WRAP_CACHE_N; i++) {
+        ed_wrap_entry_t *e = &g_wrap[i];
+        if (e->used && e->slot == slot && e->y == y &&
+            e->cells == cells && e->stamp == g_wrap_stamp) {
+            return e;
+        }
+    }
+    ed_wrap_entry_t *e = &g_wrap[g_wrap_next];
+    g_wrap_next = (g_wrap_next + 1) % EC_WRAP_CACHE_N;
+    wrap_fill(d, slot, y, cells, e);
+    return e;
+}
+
+/* Number of screen rows line y occupies at this width (at least 1). */
+int ec_wrap_count(int slot, int y, int view_cells)
+{
+    ed_wrap_entry_t *e = wrap_entry(slot, y, view_cells);
+    return e ? (int)e->count : 1;
+}
+
+/* Character index where segment +seg+ starts. seg >= count answers the line
+   length, so a caller can ask for "the start of the next one" to get an end. */
+int ec_wrap_start(int slot, int y, int view_cells, int seg)
+{
+    ed_doc_t *d = doc_of(slot);
+    if (!d || !y_ok(d, y)) return 0;
+    ed_line_t *l = &d->lines[y];
+    if (seg <= 0) return 0;
+
+    ed_wrap_entry_t *e = wrap_entry(slot, y, view_cells);
+    if (!e) return 0;
+    if (seg >= e->count) return (int)u8_chars(l->buf, l->len);
+    if (seg < e->cached) return (int)e->starts[seg];
+
+    /* Past what the entry kept: walk to it. Only pathologically long lines
+       reach this, and only for their tail. */
+    int32_t cells = e->cells;
+    int32_t used = 0, ci = 0, i = 0, s = 0;
+    while (i < l->len) {
+        int32_t nb = 1;
+        uint32_t cp = u8_decode(l->buf + i, l->len - i, &nb);
+        int32_t w = cp_cells(cp);
+        if (used > 0 && used + w > cells) {
+            s++;
+            if (s == seg) return (int)ci;
+            used = 0;
+        }
+        used += w;
+        i += nb;
+        ci++;
+    }
+    return (int)ci;
 }
 
 /* The character under the cursor ("" past end of line). */

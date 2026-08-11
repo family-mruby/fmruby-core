@@ -42,7 +42,11 @@ static void spinel_editor_native(void *arg)
         return;
     }
     /* The document lives in POOL_ID_EDITOR_DOC, not here, so this pool only
-       carries the UI state -- a small live set that collects cheaply. */
+       carries the UI state -- a small live set that collects cheaply. Raising
+       this to delay the first collection is not an option: the string heap gets
+       the same number, and a quarter of the pool for each ran the editor out of
+       memory while typing into a 200KB file. See editor/i18n.rb for what the
+       first collection has to be kept away from. */
     size_t threshold = pool_size / 32;
     void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
     if (!est) {

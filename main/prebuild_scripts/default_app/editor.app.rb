@@ -78,13 +78,14 @@ class EditorApp < FmrbApp
   MENU_ID_SEARCH  = 2
   MENU_ID_RUN     = 3
   MENU_ID_HILIGHT = 4
-  MENU_ID_DEBUG   = 5
-  MENU_ID_FULL    = 6
+  MENU_ID_WRAP    = 5
+  MENU_ID_DEBUG   = 6
+  MENU_ID_FULL    = 7
   MENU_BAR_IDS  = [MENU_ID_FILE, MENU_ID_EDIT, MENU_ID_SEARCH, MENU_ID_RUN,
-                   MENU_ID_HILIGHT, MENU_ID_DEBUG, MENU_ID_FULL]
+                   MENU_ID_HILIGHT, MENU_ID_WRAP, MENU_ID_DEBUG, MENU_ID_FULL]
   # Accelerator letter shown in parentheses after each label. Empty means the
   # item has no letter (Full is a direct toggle on F11).
-  MENU_BAR_KEYS = ["F", "E", "S", "R", "H", "D", ""]
+  MENU_BAR_KEYS = ["F", "E", "S", "R", "H", "W", "D", ""]
   MENU_BAR_GAP  = 6   # px between menu bar items
 
   # Selection / clipboard colors
@@ -126,7 +127,19 @@ class EditorApp < FmrbApp
     EditorCore.reset
     @cx = 0             # Cursor column in current line
     @cy = 0             # Cursor line index
-    @scroll_y = 0       # First visible line index
+    @scroll_y = 0       # Anchor: logical line of the first visible screen row
+    # Anchor: which wrapped segment of @scroll_y that row shows. Always 0 when
+    # wrapping is off, which is what makes the unwrapped paths below identical
+    # to what they were.
+    @anchor_seg = 0
+    # Long lines fold into the window instead of scrolling sideways. On by
+    # default: reading a whole line without moving is the point for a child.
+    # Per buffer, like the highlight toggle -- nothing is persisted.
+    @wrap_on = true
+    # Segments the cursor's line occupied when it was last drawn. An edit that
+    # changes that number reflows everything below, so it has to repaint from
+    # there; an edit that does not touches one screen row.
+    @cur_line_segs = 1
     @scroll_x = 0       # Horizontal scroll offset (columns)
     # Redraw bookkeeping. @need_redraw asks for the whole screen (menus,
     # dialogs, scroll, layout); the finer flags below repaint only what an edit
@@ -195,6 +208,10 @@ class EditorApp < FmrbApp
   end
 
   def on_create
+    # Before anything draws: nothing above this point asks FmrbI18n for a
+    # string. See editor/i18n.rb for why the table is built here and not at
+    # load time.
+    EditorStrings.install
     apply_hl_enabled
     recompute_layout
     @need_redraw = true
@@ -243,6 +260,97 @@ class EditorApp < FmrbApp
     # Columns are cells, not characters: a full-width character occupies two.
     @edit_cols = (@user_area_width - 2 - @gutter_w) / CELL_W
     @edit_rows = @edit_height / LINE_H
+  end
+
+  # ---- Wrapped layout ----
+  #
+  # A logical line occupies one screen row when wrapping is off, and
+  # wrap_count(y) of them when it is on. Nothing here ever measures the whole
+  # document: the walk starts at the anchor and stops at the bottom of the
+  # window, so a 200KB file costs the same as a short one.
+
+  def line_segments(y)
+    return 1 unless @wrap_on
+    EditorCore.wrap_count(y, @edit_cols)
+  end
+
+  # First character index of segment +seg+ of line +y+.
+  def segment_start(y, seg)
+    return @scroll_x unless @wrap_on
+    EditorCore.wrap_start(y, @edit_cols, seg)
+  end
+
+  # Characters in segment +seg+ (to the end of the line for the last one).
+  def segment_chars(y, seg)
+    unless @wrap_on
+      return EditorCore.line_length(y) - @scroll_x
+    end
+    EditorCore.wrap_start(y, @edit_cols, seg + 1) -
+      EditorCore.wrap_start(y, @edit_cols, seg)
+  end
+
+  # Which segment of line +y+ holds character +cx+.
+  def segment_of(y, cx)
+    return 0 unless @wrap_on
+    n = line_segments(y)
+    seg = 0
+    while seg + 1 < n
+      break if cx < EditorCore.wrap_start(y, @edit_cols, seg + 1)
+      seg += 1
+    end
+    seg
+  end
+
+  # Screen row of (line, seg) counting from the anchor, or -1 when it is off
+  # screen. Walks segments, so it costs the visible lines and no more.
+  def row_of(y, seg)
+    return -1 if y < @scroll_y
+    return -1 if y == @scroll_y && seg < @anchor_seg
+    row = 0
+    ly = @scroll_y
+    ls = @anchor_seg
+    while row < @edit_rows
+      return row if ly == y && ls == seg
+      ls += 1
+      if ls >= line_segments(ly)
+        ly += 1
+        ls = 0
+        return -1 if ly >= EditorCore.line_count
+      end
+      row += 1
+    end
+    -1
+  end
+
+  # Move the anchor +delta+ screen rows (either direction), clamped to the
+  # document. Returns the number of rows actually moved.
+  def move_anchor(delta)
+    moved = 0
+    if delta > 0
+      while moved < delta
+        segs = line_segments(@scroll_y)
+        if @anchor_seg + 1 < segs
+          @anchor_seg += 1
+        else
+          break if @scroll_y + 1 >= EditorCore.line_count
+          @scroll_y += 1
+          @anchor_seg = 0
+        end
+        moved += 1
+      end
+    else
+      while moved > delta
+        if @anchor_seg > 0
+          @anchor_seg -= 1
+        else
+          break if @scroll_y == 0
+          @scroll_y -= 1
+          @anchor_seg = line_segments(@scroll_y) - 1
+        end
+        moved -= 1
+      end
+    end
+    moved
   end
 
   # ---- Dirty tracking ----
@@ -298,6 +406,7 @@ class EditorApp < FmrbApp
     when MENU_ID_SEARCH  then FmrbI18n.t(:m_search).to_s
     when MENU_ID_RUN     then FmrbI18n.t(:m_run).to_s
     when MENU_ID_HILIGHT then FmrbI18n.t(:m_hilight).to_s
+    when MENU_ID_WRAP    then FmrbI18n.t(:m_wrap).to_s
     when MENU_ID_DEBUG   then dbg_menu_label.to_s
     when MENU_ID_FULL    then FmrbI18n.t(:m_full).to_s
     else ""
@@ -309,6 +418,7 @@ class EditorApp < FmrbApp
   def menu_bar_mark(id)
     case id
     when MENU_ID_HILIGHT then @hl_enabled ? "*" : " "
+    when MENU_ID_WRAP    then @wrap_on ? "*" : " "
     when MENU_ID_DEBUG   then dbg_menu_mark.to_s
     when MENU_ID_FULL    then @fullscreen ? "*" : " "
     else ""
@@ -434,6 +544,7 @@ class EditorApp < FmrbApp
     when MENU_ID_SEARCH  then open_search_dialog
     when MENU_ID_RUN     then run_current_file
     when MENU_ID_HILIGHT then toggle_highlight
+    when MENU_ID_WRAP    then toggle_wrap
     when MENU_ID_DEBUG   then open_menu(:debug)
     when MENU_ID_FULL    then toggle_fullscreen
     end
@@ -486,10 +597,36 @@ class EditorApp < FmrbApp
     Log.info("Highlight #{@hl_enabled ? 'ON' : 'OFF'} (manual)")
   end
 
+  # Fold long lines into the window, or go back to scrolling sideways. The
+  # anchor is rebuilt around the cursor so the view does not jump: whichever
+  # mode is being entered, the cursor's row becomes the top of the window and
+  # ensure_cursor_visible settles the rest.
+  def toggle_wrap
+    @wrap_on = !@wrap_on
+    @scroll_x = 0
+    @scroll_y = @cy
+    @anchor_seg = @wrap_on ? segment_of(@cy, @cx) : 0
+    @cur_line_segs = line_segments(@cy)
+    ensure_cursor_visible
+    @need_redraw = true
+    Log.info("Wrap #{@wrap_on ? 'ON' : 'OFF'}")
+  end
+
   # Mark buffer as edited (the status line shows the "*").
   def mark_edited
     @modified = true
     @dirty_status = true
+    # An edit that changes how many screen rows the line takes reflows every
+    # row below it; one that does not touches only its own. Comparing against
+    # the count from the last draw keeps that decision to one integer, rather
+    # than a repaint of the window on every keystroke.
+    if @wrap_on
+      segs = line_segments(@cy)
+      if segs != @cur_line_segs
+        @cur_line_segs = segs
+        mark_dirty_from(@cy)
+      end
+    end
   end
 
   # The edit area draws in efontJA_12 and everything else in the default 6x8
@@ -517,11 +654,18 @@ class EditorApp < FmrbApp
     sel_range = selection_range  # [sx, sy, ex, ey] or nil
 
     begin_edit_font
-    row = -1
-    while (row += 1) < @edit_rows
-      line_idx = @scroll_y + row
-      break if line_idx >= EditorCore.line_count
-      draw_edit_row(row, line_idx, sel_range, false)
+    row = 0
+    ly = @scroll_y
+    ls = @anchor_seg
+    while row < @edit_rows
+      break if ly >= EditorCore.line_count
+      draw_edit_row(row, ly, ls, sel_range, false)
+      ls += 1
+      if ls >= line_segments(ly)
+        ly += 1
+        ls = 0
+      end
+      row += 1
     end
 
     draw_cursor
@@ -531,7 +675,9 @@ class EditorApp < FmrbApp
   # Draw one screen row of the edit area. +blank_bg+ repaints the row
   # background first; the full-area draw has already cleared it, the dirty-line
   # path has not. A row past the last document line just gets cleared.
-  def draw_edit_row(row, line_idx, sel_range, blank_bg)
+  # +seg+ is which wrapped segment of the line this screen row shows (always 0
+  # when wrapping is off, where the row starts at the horizontal scroll).
+  def draw_edit_row(row, line_idx, seg, sel_range, blank_bg)
     x = @user_area_x0 + 1 + @gutter_w
     y = @edit_y + row * LINE_H
 
@@ -542,14 +688,18 @@ class EditorApp < FmrbApp
     return if line_idx >= EditorCore.line_count
 
     line_len = EditorCore.line_length(line_idx)
-    # EditorCore slices by character, horizontal scroll included, so no String
-    # of the full line is ever built here. The width map is the same slice with
-    # one byte per character saying whether it takes one cell or two; asking for
+    # EditorCore slices by character, so no String of the full line is ever
+    # built here. col0 is the horizontal scroll when wrapping is off and the
+    # segment start when it is on. The width map is the same slice with one byte
+    # per character saying whether it takes one cell or two; asking for
     # @edit_cols characters is an upper bound, since no character is narrower
     # than a cell.
-    widths = EditorCore.render_width(line_idx, @scroll_x, @edit_cols)
+    col0 = segment_start(line_idx, seg)
+    widths = EditorCore.render_width(line_idx, col0, @edit_cols)
     nchars = visible_chars(widths, @edit_cols)
-    text = nchars > 0 ? EditorCore.render_text(line_idx, @scroll_x, nchars) : ""
+    seg_chars = segment_chars(line_idx, seg)
+    nchars = seg_chars if @wrap_on && seg_chars < nchars
+    text = nchars > 0 ? EditorCore.render_text(line_idx, col0, nchars) : ""
     used_cells = cell_offset(widths, nchars)
 
     # Current-stop line gets a full-row highlight (text area only, so the
@@ -568,8 +718,8 @@ class EditorApp < FmrbApp
     if sel_range
       sel = line_selection_cols(line_idx, line_len)
       if sel
-        vstart = sel[0] - @scroll_x
-        vend   = sel[1] - @scroll_x
+        vstart = sel[0] - col0
+        vend   = sel[1] - col0
         vstart = 0 if vstart < 0
         vend = nchars if vend > nchars
         if vstart < vend
@@ -582,7 +732,8 @@ class EditorApp < FmrbApp
       end
       # Multi-line selection: fill from end of visible text to the right
       # edit margin so the wrapped newline is visible.
-      if line_idx >= sel_range[1] && line_idx < sel_range[3]
+      last_seg = (col0 + nchars >= line_len)
+      if last_seg && line_idx >= sel_range[1] && line_idx < sel_range[3]
         fill_x0 = x + used_cells * CELL_W
         fill_x1 = x + @edit_cols * CELL_W
         if fill_x0 < fill_x1
@@ -597,7 +748,7 @@ class EditorApp < FmrbApp
     # The category map is per visible character and comes from EditorCore's
     # cache (recomputed only when the line changes).
     hl = (line_bg == BG_COLOR && @hl_enabled) ?
-           EditorCore.render_hl(line_idx, @scroll_x, nchars) : ""
+           EditorCore.render_hl(line_idx, col0, nchars) : ""
     draw_row_text(x, y, text, widths, nchars, hl, line_bg, sel_from, sel_to)
   end
 
@@ -677,15 +828,17 @@ class EditorApp < FmrbApp
   end
 
   def draw_cursor
-    # Cursor position relative to scroll
-    screen_row = @cy - @scroll_y
-    return if screen_row < 0 || screen_row >= @edit_rows
-    return if @cx < @scroll_x
+    # Which screen row holds the cursor: its segment, counted from the anchor.
+    seg = segment_of(@cy, @cx)
+    screen_row = row_of(@cy, seg)
+    return if screen_row < 0
+    col0 = segment_start(@cy, seg)
+    return if @cx < col0
 
     # The cursor sits on a character, so its column and its width both come from
     # the width map: it covers two cells on a full-width character.
-    widths = EditorCore.render_width(@cy, @scroll_x, @edit_cols)
-    idx = @cx - @scroll_x
+    widths = EditorCore.render_width(@cy, col0, @edit_cols)
+    idx = @cx - col0
     cell = cell_offset(widths, idx)
     return if cell >= @edit_cols
     w_cells = idx < widths.bytesize ? widths.getbyte(idx) : 1
@@ -799,9 +952,19 @@ class EditorApp < FmrbApp
     sel_range = selection_range
     begin_edit_font
     row = 0
+    ly = @scroll_y
+    ls = @anchor_seg
     while row < @edit_rows
-      line_idx = @scroll_y + row
-      draw_edit_row(row, line_idx, sel_range, true) if dirty_line?(line_idx)
+      if ly >= EditorCore.line_count
+        row += 1
+        next
+      end
+      draw_edit_row(row, ly, ls, sel_range, true) if dirty_line?(ly)
+      ls += 1
+      if ls >= line_segments(ly)
+        ly += 1
+        ls = 0
+      end
       row += 1
     end
     draw_cursor
@@ -1033,17 +1196,35 @@ class EditorApp < FmrbApp
   def ensure_cursor_visible
     old_scroll_y = @scroll_y
     old_scroll_x = @scroll_x
-    # Vertical
-    if @cy < @scroll_y
+    old_anchor_seg = @anchor_seg
+    # Vertical. With wrapping on the unit is a segment, not a line, so the
+    # answer comes from walking the anchor rather than from arithmetic on line
+    # numbers -- and the walk is bounded by the window height either way.
+    if @wrap_on
+      seg = segment_of(@cy, @cx)
+      if @cy < @scroll_y || (@cy == @scroll_y && seg < @anchor_seg)
+        @scroll_y = @cy
+        @anchor_seg = seg
+      elsif row_of(@cy, seg) < 0
+        # Below the window: put the cursor on the last row.
+        @scroll_y = @cy
+        @anchor_seg = seg
+        move_anchor(-(@edit_rows - 1))
+      end
+    elsif @cy < @scroll_y
       @scroll_y = @cy
+      @anchor_seg = 0
     elsif @cy >= @scroll_y + @edit_rows
       @scroll_y = @cy - @edit_rows + 1
+      @anchor_seg = 0
     end
     # Horizontal. @scroll_x stays a character index -- it is what EditorCore
     # slices by -- but whether the cursor is inside the window is a question
     # about cells, and a full-width character is two of them. Walk the width map
     # forward until the cursor fits rather than guess a character count.
-    if @cx < @scroll_x
+    if @wrap_on
+      @scroll_x = 0    # nothing scrolls sideways when the line folds instead
+    elsif @cx < @scroll_x
       @scroll_x = @cx
     else
       guard = 0
@@ -1052,8 +1233,70 @@ class EditorApp < FmrbApp
         guard += 1
       end
     end
+    # The baseline mark_edited compares against is the cursor line's segment
+    # count as of the last time the cursor settled here.
+    @cur_line_segs = line_segments(@cy) if @wrap_on
     # A scroll moves every row, so the fine-grained marks are useless here.
-    @need_redraw = true if @scroll_y != old_scroll_y || @scroll_x != old_scroll_x
+    if @scroll_y != old_scroll_y || @scroll_x != old_scroll_x ||
+       @anchor_seg != old_anchor_seg
+      @need_redraw = true
+    end
+  end
+
+  # ---- Pointer ----
+
+  # Move the cursor to the character under (mx, my). The screen row gives the
+  # (line, segment) by walking down from the anchor -- the same walk the drawing
+  # does -- and the cell offset inside the row gives the character, by running
+  # the width map forward until the pointer is passed. Clicking either half of a
+  # full-width character lands on that character.
+  def place_cursor_at(mx, my)
+    row = (my - @edit_y) / LINE_H
+    return if row < 0 || row >= @edit_rows
+
+    ly = @scroll_y
+    ls = @anchor_seg
+    i = 0
+    while i < row
+      ls += 1
+      if ls >= line_segments(ly)
+        ly += 1
+        ls = 0
+      end
+      break if ly >= EditorCore.line_count
+      i += 1
+    end
+    if ly >= EditorCore.line_count
+      ly = EditorCore.line_count - 1
+      ls = line_segments(ly) - 1
+    end
+
+    col0 = segment_start(ly, ls)
+    limit = segment_chars(ly, ls)
+    want = (mx - (@user_area_x0 + 1 + @gutter_w)) / CELL_W
+    want = 0 if want < 0
+
+    widths = EditorCore.render_width(ly, col0, @edit_cols)
+    n = widths.bytesize
+    n = limit if limit < n
+    cells = 0
+    ci = 0
+    while ci < n
+      w = widths.getbyte(ci)
+      # Past the middle of a wide character counts as that character, not the
+      # next one, so its right half does not select its neighbour.
+      break if want < cells + w
+      cells += w
+      ci += 1
+    end
+
+    prev_cy = @cy
+    clear_selection if has_selection?
+    @cy = ly
+    @cx = col0 + ci
+    clamp_cx
+    ensure_cursor_visible
+    mark_dirty_range(prev_cy, @cy)
   end
 
   # ---- Key handling ----
@@ -1166,7 +1409,21 @@ class EditorApp < FmrbApp
   # A move that scrolls is upgraded to a full repaint inside
   # ensure_cursor_visible.
 
+  # Up and down move by screen row, not by logical line: inside a folded line
+  # that means the previous or next segment, and the column is kept as a cell
+  # position so the cursor tracks down the page the way it looks like it should.
   def move_up
+    if @wrap_on
+      seg = segment_of(@cy, @cx)
+      if seg > 0
+        move_cursor_to_segment(@cy, seg - 1)
+        return
+      end
+      if @cy > 0
+        move_cursor_to_segment(@cy - 1, line_segments(@cy - 1) - 1)
+      end
+      return
+    end
     if @cy > 0
       @cy -= 1
       clamp_cx
@@ -1176,6 +1433,17 @@ class EditorApp < FmrbApp
   end
 
   def move_down
+    if @wrap_on
+      seg = segment_of(@cy, @cx)
+      if seg + 1 < line_segments(@cy)
+        move_cursor_to_segment(@cy, seg + 1)
+        return
+      end
+      if @cy < EditorCore.line_count - 1
+        move_cursor_to_segment(@cy + 1, 0)
+      end
+      return
+    end
     if @cy < EditorCore.line_count - 1
       @cy += 1
       clamp_cx
@@ -1211,6 +1479,10 @@ class EditorApp < FmrbApp
   end
 
   def page_up
+    if @wrap_on
+      move_cursor_rows(-@edit_rows)
+      return
+    end
     prev_cy = @cy
     @cy -= @edit_rows
     @cy = 0 if @cy < 0
@@ -1220,6 +1492,10 @@ class EditorApp < FmrbApp
   end
 
   def page_down
+    if @wrap_on
+      move_cursor_rows(@edit_rows)
+      return
+    end
     prev_cy = @cy
     @cy += @edit_rows
     max = EditorCore.line_count - 1
@@ -1239,6 +1515,80 @@ class EditorApp < FmrbApp
     @cx = EditorCore.line_length(@cy)
     ensure_cursor_visible
     mark_dirty_line(@cy)
+  end
+
+  # Cell column of the cursor within its own segment. Vertical movement aims
+  # for the same one on the target segment, which is what makes the cursor look
+  # like it goes straight down.
+  def cursor_cell_column
+    seg = segment_of(@cy, @cx)
+    col0 = segment_start(@cy, seg)
+    widths = EditorCore.render_width(@cy, col0, @edit_cols)
+    cell_offset(widths, @cx - col0)
+  end
+
+  # Character index in (y, seg) nearest to cell column +want+.
+  def char_at_cell(y, seg, want)
+    col0 = segment_start(y, seg)
+    limit = segment_chars(y, seg)
+    widths = EditorCore.render_width(y, col0, @edit_cols)
+    n = widths.bytesize
+    n = limit if limit < n
+    cells = 0
+    i = 0
+    while i < n
+      w = widths.getbyte(i)
+      break if cells + w > want
+      cells += w
+      i += 1
+    end
+    col0 + i
+  end
+
+  def move_cursor_to_segment(y, seg)
+    want = cursor_cell_column
+    prev_cy = @cy
+    @cy = y
+    @cx = char_at_cell(y, seg, want)
+    clamp_cx
+    ensure_cursor_visible
+    mark_dirty_range(prev_cy, @cy)
+  end
+
+  # Move the cursor +rows+ screen rows, following segments across lines.
+  def move_cursor_rows(rows)
+    want = cursor_cell_column
+    prev_cy = @cy
+    y = @cy
+    seg = segment_of(@cy, @cx)
+    step = rows > 0 ? 1 : -1
+    n = rows > 0 ? rows : -rows
+    i = 0
+    while i < n
+      if step > 0
+        if seg + 1 < line_segments(y)
+          seg += 1
+        else
+          break if y + 1 >= EditorCore.line_count
+          y += 1
+          seg = 0
+        end
+      else
+        if seg > 0
+          seg -= 1
+        else
+          break if y == 0
+          y -= 1
+          seg = line_segments(y) - 1
+        end
+      end
+      i += 1
+    end
+    @cy = y
+    @cx = char_at_cell(y, seg, want)
+    clamp_cx
+    ensure_cursor_visible
+    mark_dirty_range(prev_cy, @cy)
   end
 
   def clamp_cx
@@ -1793,6 +2143,17 @@ class EditorApp < FmrbApp
           activate_menu_bar(@menu_ids[hit])
           return
         end
+        return
+      end
+
+      # Edit area click: put the cursor where the pointer is. The gutter (debug
+      # breakpoints) and the status line keep their own meaning, so the test is
+      # the text rectangle, not "not the menu bar".
+      text_x0 = @user_area_x0 + 1 + @gutter_w
+      if ev[:y] >= @edit_y && ev[:y] < @edit_y + @edit_rows * LINE_H &&
+         ev[:x] >= text_x0 && ev[:y] < @dbg_pane_y
+        place_cursor_at(ev[:x], ev[:y])
+        return
       end
     end
 
@@ -1897,6 +2258,9 @@ class EditorApp < FmrbApp
           return
         when 0x0B  # Alt-H -> toggle Highlight
           toggle_highlight
+          return
+        when 0x1A  # Alt-W -> toggle line wrapping
+          toggle_wrap
           return
         when 0x07  # Alt-D -> open Debug menu
           open_menu(:debug) if dbg_menu_visible?
