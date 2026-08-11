@@ -45,6 +45,7 @@ vendor/spinel/
 # static library its host tests link against (rake ti:test)
 vendor/picoruby-ti/
 vendor/ti_prism/
+vendor/ti_probe
 
 # Local reference material for comparing the character sheets (never committed)
 tool/basic/ref/
