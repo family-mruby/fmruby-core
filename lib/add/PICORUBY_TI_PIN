@@ -1,0 +1,14 @@
+# Pinned picoruby-ti (editor type inference engine) fork revision.
+# Same scheme as components/fmrb_spinel_rt/SPINEL_PIN:
+# - `rake ti:setup` clones this exact commit into vendor/picoruby-ti
+#   (gitignored), so a plain `git clone` of fmruby-core is enough to build
+#   the engine -- no external checkout required.
+# - The clone is NOT recursive on purpose: picoruby-ti carries its own
+#   lib/prism submodule, but the firmware parses with the prism bundled in
+#   mruby-compiler (both are prism 1.9.0).
+# - fmrb-dev is the integration branch of the fork (upstream-candidate work
+#   lives on fmrb-inheritance). To update: push the fork, bump the commit
+#   here, re-run `rake ti:setup`.
+repo: https://github.com/kishima/picoruby-ti.git
+branch: fmrb-dev
+commit: 0b95b8acd84e5a206abdf2a8e2496f87ecde2a24

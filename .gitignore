@@ -41,6 +41,11 @@ __pycache__/
 # Pinned Spinel compiler checkout (rake spinel:setup)
 vendor/spinel/
 
+# Pinned picoruby-ti engine checkout (rake ti:setup) and the scratch prism
+# static library its host tests link against (rake ti:test)
+vendor/picoruby-ti/
+vendor/ti_prism/
+
 # Local reference material for comparing the character sheets (never committed)
 tool/basic/ref/
 

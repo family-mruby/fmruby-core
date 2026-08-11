@@ -61,16 +61,56 @@ SPINEL_DIR =
 SPINEL_SRC_DIR = "main/prebuild_scripts/spinel"
 SPINEL_GEN_DIR = "#{SPINEL_SRC_DIR}/gen"
 
-def spinel_pin
+# picoruby-ti: the on-device type inference engine behind the editor's
+# completion/hover/diagnostics (doc/editor_ti/plan.md). Pinned exactly like
+# Spinel above -- a fork commit in a PIN file, cloned into vendor/ by
+# `rake ti:setup` -- instead of a submodule: the gem is delivered by copying
+# it into the picoruby submodule anyway, and picoruby-ti carries a lib/prism
+# submodule we deliberately do not use.
+#
+# Checkout resolution (same order as Spinel):
+#   1. PICORUBY_TI_DIR env override (developer working checkout)
+#   2. vendor/picoruby-ti -- version-pinned clone from `rake ti:setup`
+#   3. ../tmp/picoruby-ti -- dev location in the family-mruby workspace
+PICORUBY_TI_PIN_FILE = File.expand_path("lib/add/PICORUBY_TI_PIN", __dir__)
+PICORUBY_TI_VENDOR_DIR = File.expand_path("vendor/picoruby-ti", __dir__)
+PICORUBY_TI_DIR =
+  if ENV["PICORUBY_TI_DIR"] && !ENV["PICORUBY_TI_DIR"].empty?
+    File.expand_path(ENV["PICORUBY_TI_DIR"])
+  elsif Dir.exist?(PICORUBY_TI_VENDOR_DIR)
+    PICORUBY_TI_VENDOR_DIR
+  else
+    File.expand_path("../tmp/picoruby-ti", __dir__)
+  end
+# Where the gem is delivered inside the picoruby submodule (rake setup copies
+# it there, and the generated database is written into that copy only -- the
+# vendor checkout and sig/ stay untouched).
+PICORUBY_TI_GEM_DIR = "components/picoruby-esp32/picoruby/mrbgems/picoruby-ti"
+# The RBS signatures the type database is generated from. They live here (not
+# in the engine checkout) because they describe the FMRB API: this directory
+# is the source of truth for what the editor knows about our own classes.
+PICORUBY_TI_SIG_DIR = File.expand_path("sig", __dir__)
+
+# Pin files are plain `key: value` lines with # comments (see SPINEL_PIN).
+def read_pin_file(path)
   pin = {}
-  File.readlines(SPINEL_PIN_FILE).each do |line|
+  File.readlines(path).each do |line|
     next if line.strip.empty? || line.start_with?("#")
     k, v = line.split(":", 2)
     pin[k.strip] = v.strip if v
   end
-  abort "broken pin file #{SPINEL_PIN_FILE}" unless pin["repo"] && pin["commit"]
+  abort "broken pin file #{path}" unless pin["repo"] && pin["commit"]
   pin
 end
+
+def spinel_pin
+  read_pin_file(SPINEL_PIN_FILE)
+end
+
+def picoruby_ti_pin
+  read_pin_file(PICORUBY_TI_PIN_FILE)
+end
+
 FMRB_KERNEL_ENGINE = ENV["FMRB_KERNEL_ENGINE"] || "mruby"
 FMRB_APP_ENGINE_DESKTOP = ENV["FMRB_APP_ENGINE_DESKTOP"] || "mruby"
 FMRB_APP_ENGINE_EDITOR = ENV["FMRB_APP_ENGINE_EDITOR"] || "mruby"
@@ -184,6 +224,22 @@ task :setup do
   # editor-core (document model in C; depends on syntax-highlight, copied below)
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-editor-core"
   sh "cp -rf lib/add/picoruby-fmrb-editor-core #{mrbgem_path}/"
+  # ti (type inference engine for the editor). Unlike the gems above this one
+  # is not ours: it comes from the pinned fork checkout (rake ti:setup), so the
+  # copy source is PICORUBY_TI_DIR instead of lib/add. Everything the firmware
+  # does not need is dropped from the copy: .git, the unused lib/prism
+  # submodule, the Go LSP server, the host tests, docs and the generator.
+  ti_dir = picoruby_ti_dir!
+  sh "rm -rf #{mrbgem_path}/picoruby-ti"
+  sh "cp -rf #{ti_dir} #{mrbgem_path}/picoruby-ti"
+  # (rm_rf, not a brace expansion in sh: /bin/sh is dash here and would take
+  # the braces literally, silently leaving the directories in place)
+  %w[.git lib lsp host_test images example tidbgen].each do |unused|
+    rm_rf "#{mrbgem_path}/picoruby-ti/#{unused}"
+  end
+  # The type database is generated from OUR sig/*.rbs (the FMRB API), on the
+  # host, into the copy only -- the docker build has no ruby for this.
+  picoruby_ti_gen_db(ti_dir, "#{PICORUBY_TI_GEM_DIR}/src/generated")
   # debug (on-device debugger API; depends on msgpack, copied above)
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-debug"
   sh "cp -rf lib/add/picoruby-fmrb-debug #{mrbgem_path}/"
@@ -443,6 +499,87 @@ namespace :spinel do
     end
     abort "spinel-doctor UNEXPECTED findings in: #{failed.join(', ')}" unless failed.empty?
     puts "spinel-doctor: clean (modulo allowlisted ESP32-only findings)"
+  end
+end
+
+# Resolve the engine checkout, cloning the pinned copy into vendor/ when this
+# is a fresh tree. Returns the directory to use.
+def picoruby_ti_dir!
+  return PICORUBY_TI_DIR if Dir.exist?(File.join(PICORUBY_TI_DIR, "tidbgen"))
+  Rake::Task['ti:setup'].invoke
+  PICORUBY_TI_VENDOR_DIR
+end
+
+# Generate the type database C sources from sig/*.rbs. This runs with the HOST
+# ruby, like spinel:gen and for the same reason: the IDF build container has no
+# ruby set up for it. tidbgen parses the signatures with the `rbs` gem, so that
+# gem is a host build dependency (`gem install rbs`).
+def picoruby_ti_gen_db(engine_dir, out_dir)
+  main = File.join(engine_dir, "tidbgen/main.rb")
+  abort "tidbgen not found at #{main}. Run `rake ti:setup`." unless File.exist?(main)
+  unless Dir.exist?(PICORUBY_TI_SIG_DIR)
+    abort "signature directory #{PICORUBY_TI_SIG_DIR} is missing"
+  end
+  unless system(RbConfig.ruby, "-e", "require 'rbs'", out: File::NULL, err: File::NULL)
+    abort "the rbs gem is required to generate the picoruby-ti type database" \
+          " (gem install rbs)"
+  end
+  mkdir_p out_dir
+  sh "#{RbConfig.ruby} #{main} --sig-dir #{PICORUBY_TI_SIG_DIR} --out #{out_dir}"
+end
+
+namespace :ti do
+  desc "Fetch the pinned picoruby-ti engine into vendor/picoruby-ti"
+  task :setup do
+    pin = picoruby_ti_pin
+    if Dir.exist?(File.join(PICORUBY_TI_VENDOR_DIR, ".git"))
+      head = `git -C #{PICORUBY_TI_VENDOR_DIR} rev-parse HEAD 2>/dev/null`.strip
+      unless head == pin["commit"]
+        sh "git -C #{PICORUBY_TI_VENDOR_DIR} fetch --depth 100 origin #{pin["commit"]}"
+        sh "git -C #{PICORUBY_TI_VENDOR_DIR} checkout --detach #{pin["commit"]}"
+      end
+    else
+      mkdir_p File.dirname(PICORUBY_TI_VENDOR_DIR)
+      # No --recursive: picoruby-ti's own lib/prism submodule stays empty, the
+      # build uses the prism inside mruby-compiler (see PICORUBY_TI_PIN).
+      sh "git clone --branch #{pin["branch"] || "fmrb-dev"} --depth 100 #{pin["repo"]} #{PICORUBY_TI_VENDOR_DIR}"
+      sh "git -C #{PICORUBY_TI_VENDOR_DIR} checkout --detach #{pin["commit"]}"
+    end
+    head = `git -C #{PICORUBY_TI_VENDOR_DIR} rev-parse HEAD`.strip
+    puts "picoruby-ti ready: #{PICORUBY_TI_VENDOR_DIR} (#{head[0, 12]})"
+  end
+
+  desc "Generate the type database from sig/*.rbs into the copied gem (host, pre-docker)"
+  task :gen do
+    picoruby_ti_gen_db(picoruby_ti_dir!, "#{PICORUBY_TI_GEM_DIR}/src/generated")
+    puts "picoruby-ti database generated in #{PICORUBY_TI_GEM_DIR}/src/generated"
+  end
+
+  desc "Run the picoruby-ti host regression tests against our sig/"
+  task :test do
+    dir = picoruby_ti_dir!
+    # The engine's host tests link a real libprism. Build it from OUR prism (the
+    # one the firmware parses with) so the tests cover the same parser, and do it
+    # in a scratch copy: the picoruby submodule must stay clean.
+    prism_src = File.expand_path(
+      "components/picoruby-esp32/picoruby/mrbgems/mruby-compiler/lib/prism", __dir__)
+    abort "prism not found at #{prism_src}" unless Dir.exist?(prism_src)
+    prism_work = File.expand_path("vendor/ti_prism", __dir__)
+    unless File.exist?(File.join(prism_work, "build/libprism.a"))
+      rm_rf prism_work
+      mkdir_p File.dirname(prism_work)
+      sh "cp -r #{prism_src} #{prism_work}"
+      sh "make -C #{prism_work} static"
+    end
+    # src/generated is gitignored inside the engine checkout, so generating the
+    # database in place leaves the checkout clean.
+    picoruby_ti_gen_db(dir, File.join(dir, "src/generated"))
+    sh "make -C #{dir}/host_test PRISM_ROOT=#{prism_work} test"
+  end
+
+  desc "Remove the scratch prism build used by ti:test"
+  task :clean do
+    rm_rf File.expand_path("vendor/ti_prism", __dir__)
   end
 end
 
