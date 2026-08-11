@@ -1061,15 +1061,22 @@ class EditorApp < FmrbApp
     2 * CHAR_W + FmrbI18n.text_width("]" + rest)
   end
 
-  def handle_quit_dialog_key(character)
-    case character
-    when 121, 89  # 'y' / 'Y'
+  # Answered by scancode (HID Usage ID), not by character: kana input mode
+  # withholds the ASCII letter of every romaji key, and "n" is one of them, so
+  # the character form left this dialog unanswerable while kana was on. The
+  # scancode is passed through untouched in every mode. It also gets ESC
+  # working here for the first time -- the keymap gives it no character at all,
+  # so the old `when 27` never fired.
+  # 0x1C=Y, 0x11=N, 0x06=C, 0x29=Esc.
+  def handle_quit_dialog_key(ev)
+    case ev[:scancode] || 0
+    when 0x1C
       save_file
       stop unless @modified  # Save failed (e.g. no current_file) -> stay open
       @need_redraw = true
-    when 110, 78  # 'n' / 'N'
+    when 0x11
       stop
-    when 99, 67, 27  # 'c' / 'C' / Esc
+    when 0x06, 0x29
       @quit_dialog_open = false
       @need_redraw = true
     end
@@ -2272,7 +2279,7 @@ class EditorApp < FmrbApp
 
       # Modal quit-confirm dialog steals all keys until dismissed.
       if @quit_dialog_open
-        handle_quit_dialog_key(character)
+        handle_quit_dialog_key(ev)
         return
       end
 
