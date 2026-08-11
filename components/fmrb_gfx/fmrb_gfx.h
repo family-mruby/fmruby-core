@@ -30,8 +30,18 @@ typedef enum {
     FMRB_FONT_SIZE_XLARGE = 20
 } fmrb_font_size_t;
 
-// Text buffer size for draw_text commands
-// 128 chars is sufficient for max display width (480px / 6px font = 80 chars)
+// Text buffer size for draw_text commands.
+//
+// This cannot simply be raised. A gfx command travels to the host task inside
+// an fmrb_msg_t, whose payload (FMRB_MAX_MSG_PAYLOAD_SIZE, 176 bytes) was sized
+// around exactly this buffer -- growing the text grows every message slot in
+// every queue, and internal RAM is the scarce resource. fmrb_gfx_cmd.c asserts
+// the relationship so a change here fails the build rather than the display.
+//
+// A caller that needs a longer line splits it: one Japanese character is three
+// bytes, so 128 bytes is 42 characters, and the editor draws a row in several
+// commands (see draw_edit_row). Truncation, when it does happen, lands on a
+// UTF-8 boundary rather than mid-character.
 #define FMRB_GFX_MAX_TEXT_LEN 128
 
 // Graphics error codes

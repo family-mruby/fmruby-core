@@ -96,7 +96,20 @@ static void cmd_begin(gfx_cmd_t *cmd, gfx_cmd_type_t type,
     cmd->canvas_id = canvas_id;
 }
 
+/* A queued gfx command is carried whole in an fmrb_msg_t payload. Keep the
+   text buffer inside that budget: the failure mode otherwise is a silent
+   overflow of the message data array at every draw_text. */
+_Static_assert(sizeof(gfx_cmd_t) <= FMRB_MAX_MSG_PAYLOAD_SIZE,
+               "gfx_cmd_t must fit in an fmrb_msg_t payload "
+               "(lower FMRB_GFX_MAX_TEXT_LEN or raise FMRB_MAX_MSG_PAYLOAD_SIZE)");
+
 // Copy src_len bytes into a fixed command buffer, truncating to fit.
+//
+// A truncation lands on a UTF-8 character boundary: cutting mid-sequence used
+// to hand the renderer a partial character, which draws as garbage at the end
+// of the line. Walking back over continuation bytes (0b10xxxxxx) reaches the
+// start of the cut character; dropping it is the honest outcome when the buffer
+// is full.
 static void cmd_copy_bytes(char *dst, size_t dst_size, const char *src,
                            size_t src_len)
 {
@@ -105,6 +118,11 @@ static void cmd_copy_bytes(char *dst, size_t dst_size, const char *src,
     }
     size_t cap = dst_size - 1;
     size_t len = (!src) ? 0 : (src_len < cap ? src_len : cap);
+    if (len && len < src_len) {
+        while (len > 0 && ((unsigned char)src[len] & 0xC0) == 0x80) {
+            len--;
+        }
+    }
     if (len) {
         memcpy(dst, src, len);
     }

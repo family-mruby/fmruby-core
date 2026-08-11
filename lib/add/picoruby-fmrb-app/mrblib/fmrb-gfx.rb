@@ -35,10 +35,15 @@ class FmrbGfx
   #   :default      Font0 (6x8 ASCII)
   #   [:ja, 8]      misaki_8 (8x8, includes BMP CJK)
   #   [:ja, 12]     efontJA_12 (12x12)
+  # char_w is the full-width (CJK) cell; half_w is the ASCII / half-width-kana
+  # cell. Both :ja fonts are dual width -- misaki draws ASCII at 4px and kanji
+  # at 8, efont at 6 and 12 -- and treating ASCII as full width made every
+  # measurement of a mixed string too wide, which is what places a menu label or
+  # a truncation point.
   FONT_METRICS = {
-    [:default] => { char_w: 6,  line_h: 8  },
-    [:ja, 8]   => { char_w: 8,  line_h: 8  },
-    [:ja, 12]  => { char_w: 12, line_h: 12 },
+    [:default] => { char_w: 6,  half_w: 6, line_h: 8  },
+    [:ja, 8]   => { char_w: 8,  half_w: 4, line_h: 8  },
+    [:ja, 12]  => { char_w: 12, half_w: 6, line_h: 12 },
   }
 
   # Initialize graphics context
@@ -103,13 +108,18 @@ class FmrbGfx
     key = font_key(family, size)
     metrics = FONT_METRICS[key] || FONT_METRICS[[:default]]
     char_w = metrics[:char_w]
+    half_w = metrics[:half_w] || char_w
+    # Font0 has no CJK glyphs, so the default font renders a multi-byte run
+    # hybrid with misaki_8; count that at 8px to match what is drawn.
+    wide_w = (key == [:default]) ? 8 : char_w
     bytes = str.bytes
     width = 0
     i = 0
-    while i < bytes.length
+    n = bytes.length
+    while i < n
       b = bytes[i]
       if b < 0x80
-        width += char_w
+        width += half_w
         i += 1
       elsif b < 0xC0
         # Stray continuation byte: skip
@@ -119,11 +129,13 @@ class FmrbGfx
                   elsif b < 0xF0 then 3
                   else 4
                   end
-        # Default font has no CJK glyph data, so a UTF-8 run with the
-        # default font is rendered hybrid (misaki_8 at 8px). Use 8px
-        # for default to match that path. For :ja fonts the glyph is
-        # already char_w wide.
-        width += (key == [:default] ? 8 : char_w)
+        # Half-width katakana (U+FF61-U+FF9F) is EF BD A1..EF BE 9F and draws
+        # in a half cell like ASCII, not a full one.
+        b1 = (i + 1 < n) ? bytes[i + 1] : 0
+        b2 = (i + 2 < n) ? bytes[i + 2] : 0
+        halfkana = (seq_len == 3 && b == 0xEF &&
+                    ((b1 == 0xBD && b2 >= 0xA1) || (b1 == 0xBE && b2 <= 0x9F)))
+        width += halfkana ? half_w : wide_w
         i += seq_len
       end
     end

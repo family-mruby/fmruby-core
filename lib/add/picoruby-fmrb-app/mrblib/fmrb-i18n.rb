@@ -40,7 +40,8 @@ module FmrbI18n
   end
 
   # Pixel width of a UTF-8 string when rendered with draw_text(..., mixed: true).
-  # ASCII bytes use Font0 (6 px); UTF-8 multi-byte sequences use misaki_8 (8 px).
+  # ASCII bytes use Font0 (6 px); UTF-8 multi-byte sequences use misaki_8, whose
+  # cell is 8 px for full-width glyphs and 4 px for half-width katakana.
   # Walks bytes directly to avoid String#bytes allocation.
   def self.text_width(str)
     return 0 unless str
@@ -58,7 +59,7 @@ module FmrbI18n
         w += 8
         i += 2
       elsif b < 0xF0
-        w += 8
+        w += half_kana?(str, i, n) ? 4 : 8
         i += 3
       else
         w += 8
@@ -66,6 +67,16 @@ module FmrbI18n
       end
     end
     w
+  end
+
+  # True when the 3-byte sequence at i is half-width katakana (U+FF61-U+FF9F,
+  # encoded EF BD A1 .. EF BE 9F). misaki draws these in a half cell.
+  def self.half_kana?(str, i, n)
+    return false unless str.getbyte(i) == 0xEF
+    return false if i + 2 >= n
+    b1 = str.getbyte(i + 1)
+    b2 = str.getbyte(i + 2)
+    (b1 == 0xBD && b2 >= 0xA1) || (b1 == 0xBE && b2 <= 0x9F)
   end
 
   # Truncate so the mixed-mode pixel width is <= max_px. Appends ellipsis
@@ -91,7 +102,7 @@ module FmrbI18n
         cw = 8
         step = 2
       elsif b < 0xF0
-        cw = 8
+        cw = half_kana?(str, i, n) ? 4 : 8
         step = 3
       else
         cw = 8
