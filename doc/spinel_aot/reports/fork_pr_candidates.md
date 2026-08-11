@@ -75,7 +75,7 @@ Phase 2 までは Ruby 側の書き換えで回避済み。汎用のものは将
 | 内容 | 現状 | 詳細 |
 |---|---|---|
 | `:binstr` のバイト長 global `sp_net_bin_len` が `sp_net.c` 所有で recv 系専用。任意の `ffi_func` が binary 長を publish できない | fmruby 側 (`fmrb_spx_kernel.c`) で `sp_net_bin_len` を定義して流用。**汎用化 (`sp_ffi_bin_len` 等をコア runtime に) すれば任意 ffi_func が clean に :binstr 返却可** = PR 候補 | phase2_report |
-| `sp_io.c` の File/Dir が生 POSIX (`fopen`/`opendir`/`stat`/`fdopen`/`isatty`/`ioctl`) 直叩きで、I/O バックエンドの差し替えフックが無い (`sp_ctx` のフックはメモリ T3-2 のみ)。fmrb HAL の仮想パス解決を通らず、Linux は `/app` ENOENT、**ESP32 は POSIX FS 自体が無く FS 依存機能が全滅** | **汎用フック候補 (`sp_mem_*` と同型)**: `sp_ctx` config に I/O バックエンド関数ポインタ (open/read/write/close/seek/stat + opendir/readdir/closedir) を追加、`sp_io` の POSIX 呼びをフック経由に (default は POSIX 直で byte 同一)。fmruby 側は `fmrb_hal_file_*` を注入。desktop の launcher/icon/file manager が依存 | T4-5 / `esp32_host_deps_sweep.md` / `phase5.md`(8) |
+| `sp_io.c` の File/Dir が生 POSIX (`fopen`/`opendir`/`stat`/`fdopen`/`isatty`/`ioctl`) 直叩きで、I/O バックエンドの差し替えフックが無い (`sp_ctx` のフックはメモリ T3-2 のみ)。fmrb HAL の仮想パス解決を通らず、Linux は `/app` ENOENT、**ESP32 は POSIX FS 自体が無く FS 依存機能が全滅** | **実装済み (DONE、2026-08-10 確認)**: 提案どおりの形で fork に入っている — `sp_io.h` に backend スロット (`sp_io_posix_*` が default、instance config で差し替え)、fmruby 側は `fmrb_spinel_host.c` の hal_open 群が `fmrb_hal_file_*` を注入。P4 Spinel desktop の実機 /app スキャン動作が実証。console stream は VFS を迂回。汎用フックとして upstream PR 候補の資格あり | `esp32_host_deps_sweep.md` (同日訂正済み) / 段階6 エディタ Spinel 化 (P5) もこの上で動作 |
 
 ---
 
