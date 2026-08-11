@@ -42,6 +42,7 @@ class FmrbApp
     @running = false
     @close_btn_pressed = false
     @closable = true
+    @_timers = []
     _init() # C function, variables are defined here
     Log.debug("name=#{@name}")
     Log.debug("After _init(), @canvas=#{@canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}")
@@ -417,11 +418,13 @@ class FmrbApp
       return if !@running
       if @suspended
         _spin(500)  # Sleep longer while suspended, still process messages
+        _run_timers # Spinel runs timers inside _spin; keep the engines equal
         next
       end
       timeout_ms = on_update
       Task.pass  # Yield control to other tasks
       _spin(timeout_ms)
+      _run_timers
     end
   end
 
@@ -459,11 +462,39 @@ class FmrbApp
     stop
   end
 
+  # ---- timers (Ruby-side; C cannot call a Ruby block) ----
+  # Same shape and semantics as the Spinel base (fmrb_app_base_spinel.rb):
+  # one-shot, checked once per main_loop cycle, so the resolution is the
+  # app's own update interval.
   def set_timer(interval, &blk)
-    return timer_id
+    id = (@_timer_seq ||= 0) + 1
+    @_timer_seq = id
+    @_timers << { id: id, at: Machine.board_millis + interval, interval: interval, blk: blk }
+    id
   end
 
   def clear_time(timer_id)
+    @_timers.reject! { |t| t[:id] == timer_id } if @_timers
+    nil
+  end
+
+  def _run_timers
+    return if @_timers.nil? || @_timers.empty?
+    now = Machine.board_millis
+    due = []
+    keep = []
+    @_timers.each do |t|
+      if t[:at] <= now
+        due << t
+      else
+        keep << t
+      end
+    end
+    @_timers = keep
+    due.each do |t|
+      blk = t[:blk]
+      blk.call if blk
+    end
   end
 
   def subscribe(topic)

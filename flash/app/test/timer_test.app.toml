@@ -1,0 +1,6 @@
+app_handle_name = "timer_test"
+app_screen_name = "Timer Test"
+default_window_mode = "window"
+default_window_width = 160
+default_window_height = 80
+launcher_visible = false
