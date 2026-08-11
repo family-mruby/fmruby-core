@@ -21,6 +21,7 @@ Family mruby Core includes code from several open source projects. The following
 11. [StackChan](#stackchan)
 12. [Midori (picoruby-midi, picoruby-midi-mml)](#midori-picoruby-midi-picoruby-midi-mml)
 13. [Spinel](#spinel)
+14. [picoruby-ti](#picoruby-ti)
 
 ---
 
@@ -570,5 +571,60 @@ IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
 CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
 TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+================================================================================
+
+
+================================================================================
+## picoruby-ti
+Repository: https://github.com/engneer-hamachan/picoruby-ti (upstream)
+Fork used by Family mruby: https://github.com/kishima/picoruby-ti (branch fmrb-dev)
+License: MIT License
+
+Note: picoruby-ti is an on-device type inference engine for Ruby by hamachan.
+Family mruby uses a fork of it to give the editor completion, hover and
+diagnostics. It reaches this project in three forms:
+
+- vendor/picoruby-ti: the engine itself, not committed to this repository but
+  cloned at a pinned commit by `rake ti:setup` (see lib/add/PICORUBY_TI_PIN).
+  The build copies it into the PicoRuby tree, so its C sources are compiled
+  into the firmware and are present in the distributed binary. Only the engine
+  is taken: the LSP/MCP server it also ships (written in Go) and that server's
+  own dependencies are dropped by the copy step, and are neither built nor
+  distributed here.
+- sig/*.rbs: the type signatures the engine reads. Fifteen of them
+  (array, class, false_class, float, hash, integer, kernel, nil_class, object,
+  proc, range, string, symbol, true_class, untyped) are verbatim copies of the
+  engine's example/rbs and are covered by the licence below; the rest
+  (fmrb.rbs, enumerable.rbs, gpio.rbs) are Family mruby's own.
+- The type database compiled into the firmware is generated from those
+  signatures at build time by the engine's tidbgen (Ruby, host side only). It
+  uses the rbs gem, which is a host build dependency and is not distributed
+  with this software.
+
+The engine parses with Prism, which is already part of PicoRuby's
+mruby-compiler (MIT License, see the PicoRuby entry above); no second copy of
+Prism is built into the firmware.
+--------------------------------------------------------------------------------
+
+Copyright © 2026 hamachang
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
 
 ================================================================================
