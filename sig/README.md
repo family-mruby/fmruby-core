@@ -1,0 +1,51 @@
+# sig — FMRB API の型定義
+
+このディレクトリの `.rbs` は **FMRB の API がどんな形をしているかの正**です。
+ビルド時に tidbgen が読んで C の表に変換し、ファームウェアに入ります。
+使う人は 2 通り:
+
+- **エディタ**の補完 (Tab)、型の表示 (Ctrl+T)、まちがい探し (Ctrl+E)。
+  doc コメントはそのままステータス行に出るので、**子供が最初に読む説明文**に
+  なる。
+- **PC 側の道具**。同じ定義から picoruby-ti の LSP/MCP サーバが立つので、
+  VSCode や Vim からも同じ型支援が受けられる (P6 の予定)。
+
+## Ruby の API を足したり変えたりしたら、ここも直す
+
+実装だけ直して sig を放っておくと、**エディタが古い形を教え続ける**。
+レビューでは「Ruby 側の変更に対応する sig の変更があるか」を見る。
+
+## 書き方の約束
+
+- **実在するメソッドだけ**書く。実装 (mrblib の Ruby と C バインディング) を
+  読んで書き、推測で書かない。`_` で始まる内部用は書かない。
+- **必須引数だけの形**で書く。型推論エンジンは省略可能引数もキーワード引数も
+  持たないので、キーワードが本質の API は**いちばん多い呼び方**を必須引数に
+  直した形にする (例: `create_canvas_gfx(width, height)`)。
+  正確に書けなかったものは report に残す。
+- **doc コメントは日本語の一文**。全角 20 字が目安。何をするかだけを書き、
+  引数の説明はシグネチャに任せる。
+- 読み取り専用の属性も `def name: () -> String` の形で書く。RBS の
+  `attr_reader` 構文は tidbgen が読まない。
+- インスタンス変数は `@gfx: FmrbGfx` の形で宣言できる。アプリが直接触る
+  変数 (`@gfx` など) はこれを書いておくと補完が効く。
+- **ドメインごとにファイルを分ける** (`fmrb_app.rbs` / `fmrb_gfx.rbs` /
+  `fmrb_sprite.rbs` / `fmrb_tile.rbs` / `fmrb_audio.rbs` / `fmrb_midi.rbs` /
+  `fmrb_misc.rbs` / `fmrb_p5.rbs`)。
+- **上流由来の 15 ファイルは変更禁止**: `array` `class` `false_class`
+  `float` `hash` `integer` `kernel` `nil_class` `object` `proc` `range`
+  `string` `symbol` `true_class` `untyped`。picoruby-ti の example/rbs の
+  逐語コピーで、エンジンのテストが文字列一致で見ている
+  (`enumerable.rbs` と `gpio.rbs` はうちのもの。ただしエンジンのテストが
+  前提にしているので、宣言を減らさないこと)。
+
+## 直したら確かめる
+
+```
+rake ti:test     # エンジンのホストテスト (sig から db を作って回す)
+rake build:linux # ファームウェアに入る形で生成できるか
+```
+
+**別のファイルにあるクラスを参照していると、そのファイルが欠けたときに
+生成ごと止まる** (`class ID cannot be resolved: ::FmrbGfx` のように出る)。
+生成が止まればビルドも止まるので、黙って古い db が使われることはない。

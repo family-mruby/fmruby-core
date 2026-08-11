@@ -1,0 +1,189 @@
+# MIDI。実装は lib/add/picoruby-fmrb-midi/mrblib/ と
+# lib/add/picoruby-midi/mrblib/midi_device.rb。
+#
+# FmrbMidi.device(self) で音を出す口 (MIDI::Device) をもらい、
+# そこへ音符を送る。曲のファイルは SmfPlayer、MML は MmlPlayer が鳴らす。
+
+module FmrbMidi
+  # このアプリ用の音を出す口を作る
+  def self.device: (FmrbApp app) -> MIDI::Device
+
+  # 今の時刻 (百万分の一秒)
+  def self.now_us: () -> Integer
+
+  # 音の出し先を登録する
+  def self.register: (untyped transport) -> untyped
+
+  # 音の出し先の登録をやめる
+  def self.unregister: (untyped transport) -> void
+
+  # 登録してある音の出し先の一覧
+  def self.transports: () -> Array
+
+  # 楽器の番号から名前を引く
+  def self.gm_name: (Integer program) -> String
+
+  # 曲のファイル (SMF) を鳴らす係。tick を毎回呼んで進める。
+  class SmfPlayer
+    # 曲を鳴らす係を作る
+    def self.new: (MIDI::Device device) -> SmfPlayer
+
+    # 曲のファイルを読み込む
+    def load: (String path) -> bool
+
+    # 読み込んだかどうか
+    def loaded?: () -> bool
+
+    # 曲を鳴らし始める
+    def start: () -> void
+
+    # 曲を止める
+    def stop: () -> void
+
+    # 曲をいったん止める
+    def pause: () -> void
+
+    # 止めた曲の続きを鳴らす
+    def resume: () -> void
+
+    # 鳴っている最中かどうか
+    def playing?: () -> bool
+
+    # 最後まで鳴り終わったか
+    def finished?: () -> bool
+
+    # 曲を進める。毎回呼ぶ
+    def tick: () -> void
+
+    # 今どこまで鳴ったか (千分の一秒)
+    def position_ms: () -> Integer
+
+    # 使っているチャンネルの様子
+    def channel_usage: () -> Array
+
+    # 曲の速さの倍率
+    def tempo_scale: () -> Integer
+
+    # 読み込みに失敗した理由
+    def error: () -> String?
+
+    # 曲のファイルの場所
+    def path: () -> String?
+  end
+
+  # MML で書いた曲を鳴らす係。tick を毎回呼んで進める。
+  class MmlPlayer
+    # MML を鳴らす係を作る
+    def self.new: (MIDI::Device device) -> MmlPlayer
+
+    # MML の文を読み込む
+    def load_string: (String mml) -> bool
+
+    # 別のパートを足す
+    def add_string: (String mml) -> bool
+
+    # 読み込んだかどうか
+    def loaded?: () -> bool
+
+    # 入っている音符の数
+    def event_count: () -> Integer
+
+    # 鳴らし始める
+    def start: () -> void
+
+    # 止める
+    def stop: () -> void
+
+    # いったん止める
+    def pause: () -> void
+
+    # 続きを鳴らす
+    def resume: () -> void
+
+    # 鳴っている最中かどうか
+    def playing?: () -> bool
+
+    # 最後まで鳴り終わったか
+    def finished?: () -> bool
+
+    # 曲を進める。毎回呼ぶ
+    def tick: () -> void
+
+    # 曲の速さ (一分間の拍数)
+    def bpm: () -> Integer
+
+    # 読み込みに失敗した理由
+    def error: () -> String?
+  end
+end
+
+module MIDI
+  # 音を出す口。音符や音色をここへ送る。
+  class Device
+    # 音を鳴らす
+    def note_on: (Integer note) -> void
+
+    # 音を止める
+    def note_off: (Integer note) -> void
+
+    # 音の高さをずらす
+    def pitch_bend: (Integer value) -> void
+
+    # 楽器をえらぶ
+    def program_change: (Integer program) -> void
+
+    # つまみの値を送る
+    def control_change: (Integer cc, Integer value) -> void
+
+    # 音の大きさを決める
+    def volume: (Integer value) -> void
+
+    # 左右のどちらから出すか
+    def pan: (Integer value) -> void
+
+    # ゆれ (ビブラート) の深さ
+    def modulation: (Integer value) -> void
+
+    # 音の強さの変化
+    def expression: (Integer value) -> void
+
+    # ペダルを踏むか離すか
+    def sustain: (Integer on_off) -> void
+
+    # 決まった長さだけ音を鳴らす
+    def trigger: (Integer note) -> void
+
+    # まとめて音を鳴らす
+    def trigger_batch: (Array events) -> void
+
+    # 鳴っている音をぜんぶ止める
+    def all_notes_off: () -> void
+
+    # 音をすぐにぜんぶ止める
+    def all_sound_off: () -> void
+
+    # つまみをぜんぶ元に戻す
+    def reset_all_controllers: () -> void
+
+    # 拍を知らせる合図を送る
+    def send_clock: () -> void
+
+    # 始まりの合図を送る
+    def send_start: () -> void
+
+    # 終わりの合図を送る
+    def send_stop: () -> void
+
+    # 続きの合図を送る
+    def send_continue: () -> void
+
+    # 機器ごとの特別なデータを送る
+    def send_sysex: (String data) -> void
+
+    # つながっているかどうか
+    def connected?: () -> bool
+
+    # つないだ機器の名前など
+    def info: () -> Hash
+  end
+end

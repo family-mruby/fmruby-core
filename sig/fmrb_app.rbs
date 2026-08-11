@@ -1,0 +1,233 @@
+# アプリの土台。実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb と
+# ports/esp32/app.c、Spinel 版は main/prebuild_scripts/spinel/
+# fmrb_app_base_spinel.rb。
+#
+# 省略可能引数とキーワード引数は型推論エンジンが扱えないので、よく使う
+# 呼び方を必須引数だけの形にして書いてある (sig/README.md)。
+
+class FmrbApp
+  # 絵を描く画面
+  @gfx: FmrbGfx
+
+  # 絵を描く画面
+  def gfx: () -> FmrbGfx
+
+  # ---- 名前や大きさ ----
+
+  # アプリの名前
+  def name: () -> String
+
+  # 動いている最中かどうか
+  def running: () -> bool
+
+  # 窓の横幅 (ドット)
+  def window_width: () -> Integer
+
+  # 窓の高さ (ドット)
+  def window_height: () -> Integer
+
+  # 窓の左上の位置
+  def pos_x: () -> Integer
+
+  # 窓の左上の位置
+  def pos_y: () -> Integer
+
+  # 動いている機械の種類
+  def platform: () -> String
+
+  # 全画面かどうか
+  def fullscreen: () -> bool
+
+  # 窓の角が丸いかどうか
+  def rounded_corners: () -> bool
+
+  # 閉じるボタンで終われるか
+  def closable: () -> bool
+
+  # ---- 呼ばれるところ (書きかえて使う) ----
+
+  # 始まるときに一度だけ呼ばれる
+  def on_create: () -> void
+
+  # 毎回呼ばれる。絵を動かす場所
+  def on_update: () -> void
+
+  # 終わるときに一度だけ呼ばれる
+  def on_destroy: () -> void
+
+  # 他のアプリに画面を渡すとき
+  def on_suspend: () -> void
+
+  # 画面が戻ってきたとき
+  def on_resume: () -> void
+
+  # キーやマウスが動いたとき
+  def on_event: (Hash ev) -> void
+
+  # 窓の大きさが変わったとき
+  def on_resize: (Integer new_width, Integer new_height) -> void
+
+  # 閉じてよいか聞かれたとき
+  def on_quit_request: () -> void
+
+  # ---- 動かす ----
+
+  # アプリを動かし始める
+  def start: () -> void
+
+  # アプリを止める
+  def stop: () -> void
+
+  # 使った物を片づける
+  def destroy: () -> void
+
+  # 自分をもう一度読み込み直す
+  def request_reload: () -> void
+
+  # 呼ばれ続ける本体の繰り返し
+  def main_loop: () -> void
+
+  # ---- 窓と絵 ----
+
+  # 窓のふちと題名を描き直す
+  def draw_window_frame: () -> void
+
+  # 中身の場所を色でぬりつぶす
+  def clear_user_area: (Integer color) -> void
+
+  # 右はしに巻物のつまみを描く
+  def draw_scrollbar: (Integer scroll, Integer total, Integer visible) -> void
+
+  # つまみのどこを押したか調べる
+  def scrollbar_hit: (Integer click_x, Integer click_y) -> Symbol?
+
+  # 窓を動かす
+  def set_window_position: (Integer x, Integer y) -> FmrbApp
+
+  # 全画面にするか元に戻すか頼む
+  def request_fullscreen: (bool on) -> void
+
+  # 全画面と窓を切りかえる
+  def toggle_fullscreen: () -> void
+
+  # 自分用の画面をもう一枚作る
+  def create_canvas_gfx: (Integer width, Integer height) -> FmrbGfx
+
+  # 作った画面を片づける
+  def delete_canvas_gfx: (FmrbGfx gfx) -> void
+
+  # ---- キーの調べかた (on_event の中で使う) ----
+
+  # Ctrl を押していたかどうか
+  def ev_ctrl?: (Hash ev) -> bool
+
+  # Shift を押していたかどうか
+  def ev_shift?: (Hash ev) -> bool
+
+  # Alt を押していたかどうか
+  def ev_alt?: (Hash ev) -> bool
+
+  # ---- 時間と伝言 ----
+
+  # 決まった時間ごとに呼んでもらう
+  def set_timer: (Integer interval) -> Integer
+
+  # 時間の呼び出しをやめる
+  def clear_time: (Integer timer_id) -> void
+
+  # 知らせを受け取るようにする
+  def subscribe: (String topic) -> void
+
+  # 知らせを受け取るのをやめる
+  def unsubscribe: (String topic) -> void
+
+  # みんなに知らせを送る
+  def publish: (String topic) -> void
+
+  # 他のアプリに伝言を送る
+  def send_message: (Integer dest_pid, Integer msg_type, untyped data) -> void
+
+  # ---- ファイル ----
+
+  # ファイルを選ぶ窓を出してもらう
+  def request_file_select: (String mode) -> void
+
+  # ファイルをアプリとして動かす
+  def request_run: (String path) -> void
+
+  # ---- 後片づけの調子 ----
+
+  # ひまな時に片づけをするか
+  def idle_gc: () -> bool
+
+  # ---- クラスメソッド ----
+
+  # 今の言葉 ("ja" か "en")
+  def self.language: () -> String
+
+  # 動いているアプリの一覧
+  def self.ps: () -> Array
+
+  # アプリ一覧が変わった回数
+  def self.ps_gen: () -> Integer
+
+  # 空きメモリの様子
+  def self.heap_info: () -> Hash
+
+  # 自分のメモリの使用率 (百分率)
+  def self.pool_usage: () -> Integer
+
+  # 機械全体のメモリの様子
+  def self.sys_pool_info: () -> Hash
+
+  # 設定ファイルの中身を読む
+  def self.config: (String section_name) -> Array?
+
+  # 電源を入れてからの時間 (百万分の一秒)
+  def self.uptime_us: () -> Integer
+
+  # 今の日付と時刻
+  def self.wallclock: () -> Hash?
+
+  # 日付と時刻を合わせる
+  def self.set_wallclock: (Integer year, Integer month, Integer day, Integer hour, Integer minute, Integer second) -> Hash?
+
+  # 絵を送った回数の記録
+  def self.gfx_stats: () -> Hash
+
+  # マウスの矢印を出す
+  def self.enable_cursor: () -> void
+
+  # マウスの矢印を見せるか隠すか
+  def self.set_cursor_visible: (bool visible) -> void
+
+  # 機械を再起動する
+  def self.reboot: () -> void
+
+  # かな入力を切りかえる (0 切 1 ひら 2 カタ)
+  def self.set_kana_mode: (Integer mode) -> void
+
+  # Bluetooth をはじめる
+  def self.ble_start: () -> bool
+
+  # Bluetooth の様子
+  def self.ble_state: () -> Integer
+
+  # 画面を配信中かどうかの様子
+  def self.rd_stream_state: () -> Integer
+
+  # WiFi がつながっているか
+  def self.wifi_connected?: () -> bool
+
+  # WiFi のつながり具合
+  def self.wifi_info: () -> Hash?
+
+  # つないだ USB 機器の一覧
+  def self.usb_devices: () -> Array
+
+  # USB の生の入力を受け取る
+  def self.hid_raw_subscribe: (Integer slot) -> bool
+
+  # USB の生の入力をやめる
+  def self.hid_raw_unsubscribe: (Integer slot) -> bool
+end

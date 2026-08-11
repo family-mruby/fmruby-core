@@ -1,0 +1,171 @@
+# 絵を描くための道具。実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb と
+# ports/esp32/gfx.c。`_` で始まる内部用のメソッドは書いていない。
+#
+# 描くメソッドは自分自身を返すので、続けて書ける。
+# 色は RGB332 の数 (FmrbGfx.rgb_to_332 で作れる)。
+
+class FmrbGfx
+  # ---- この画面のこと ----
+
+  # 画面の番号
+  def canvas_id: () -> Integer
+
+  # 画面の横幅 (ドット)
+  def canvas_width: () -> Integer
+
+  # 画面の高さ (ドット)
+  def canvas_height: () -> Integer
+
+  # 今えらんでいる字の種類
+  def current_font: () -> Symbol
+
+  # 今の字の大きさの倍率
+  def current_text_size: () -> Integer
+
+  # ---- 形を描く ----
+
+  # 画面ぜんぶを一色でぬる
+  def clear: (Integer color) -> FmrbGfx
+
+  # 点を一つ打つ
+  def set_pixel: (Integer x, Integer y, Integer color) -> FmrbGfx
+
+  # 点の色を読む
+  def get_pixel: (Integer x, Integer y) -> Integer
+
+  # まっすぐな線を引く
+  def draw_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer color) -> FmrbGfx
+
+  # 太さのある線を引く
+  def draw_thick_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer thickness, Integer color) -> FmrbGfx
+
+  # 四角のふちを描く
+  def draw_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
+
+  # 四角をぬりつぶす
+  def fill_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
+
+  # 下の絵と混ぜて四角をぬる
+  def blend_rect: (Integer x, Integer y, Integer w, Integer h, Integer color, Integer alpha) -> FmrbGfx
+
+  # 角の丸い四角のふちを描く
+  def draw_round_rect: (Integer x, Integer y, Integer w, Integer h, Integer r, Integer color) -> FmrbGfx
+
+  # 角の丸い四角をぬりつぶす
+  def fill_round_rect: (Integer x, Integer y, Integer w, Integer h, Integer r, Integer color) -> FmrbGfx
+
+  # 円のふちを描く
+  def draw_circle: (Integer x, Integer y, Integer r, Integer color) -> FmrbGfx
+
+  # 円をぬりつぶす
+  def fill_circle: (Integer x, Integer y, Integer r, Integer color) -> FmrbGfx
+
+  # だ円のふちを描く
+  def draw_ellipse: (Integer x, Integer y, Integer rx, Integer ry, Integer color) -> FmrbGfx
+
+  # だ円をぬりつぶす
+  def fill_ellipse: (Integer x, Integer y, Integer rx, Integer ry, Integer color) -> FmrbGfx
+
+  # 三角のふちを描く
+  def draw_triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer color) -> FmrbGfx
+
+  # 三角をぬりつぶす
+  def fill_triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer color) -> FmrbGfx
+
+  # 円の一部の弧を描く
+  def draw_arc: (Integer x, Integer y, Integer r0, Integer r1, Integer angle0, Integer angle1, Integer color) -> FmrbGfx
+
+  # 円の一部をぬりつぶす
+  def fill_arc: (Integer x, Integer y, Integer r0, Integer r1, Integer angle0, Integer angle1, Integer color) -> FmrbGfx
+
+  # ---- 字を描く ----
+
+  # 字を描く
+  def draw_text: (Integer x, Integer y, String str, Integer color) -> FmrbGfx
+
+  # 字の種類をえらぶ
+  def set_font: (Symbol family) -> FmrbGfx
+
+  # 字の大きさの倍率を決める
+  def set_text_size: (Integer size) -> FmrbGfx
+
+  # 字を描いたときの横幅を測る
+  def text_width: (String str) -> Integer
+
+  # 一行分の高さを調べる
+  def font_height: () -> Integer
+
+  # 今の時刻を描く
+  def draw_wallclock: (Integer x, Integer y, Integer color, Integer bg_color) -> FmrbGfx
+
+  # 空きメモリの量を描く
+  def draw_free_iram: (Integer x, Integer y, Integer color, Integer bg_color) -> FmrbGfx
+
+  # ---- 絵の読み込みと表示 ----
+
+  # 絵のファイルを読み込んで置く
+  def load_image: (String path) -> void
+
+  # 絵のファイルから絵を作る
+  def create_image: (String path) -> Hash?
+
+  # 作った絵を描く
+  def draw_image: (Integer image_id) -> FmrbGfx
+
+  # 作った絵を片づける
+  def delete_image: (Integer image_id) -> FmrbGfx
+
+  # 絵の一部を切り取って描く
+  def draw_tile: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h) -> FmrbGfx
+
+  # 型ぬきの形を作る
+  def create_mask: (Integer width, Integer height, String data) -> Integer
+
+  # 型ぬきの形を片づける
+  def delete_mask: (Integer mask_id) -> void
+
+  # 型でぬいた形の絵を描く
+  def draw_image_masked: (Integer image_id, Integer mask_id) -> FmrbGfx
+
+  # ---- 画面に出す ----
+
+  # 描いたものを画面に出す
+  def present: () -> FmrbGfx
+
+  # この画面を片づける
+  def destroy: () -> FmrbGfx
+
+  # 画面の見せる場所をずらす
+  def set_viewport: (Integer src_x, Integer src_y, Integer w, Integer h) -> void
+
+  # ずらした場所を元に戻す
+  def clear_viewport: () -> void
+
+  # 重ねて見せる場所を決める
+  def set_composite_regions: (Array regions) -> void
+
+  # 映像の明るさを決める
+  def set_output_level: (Integer level) -> FmrbGfx
+
+  # 映像の色の濃さを決める
+  def set_chroma_level: (Integer level) -> FmrbGfx
+
+  # ---- ファイルの受けわたし ----
+
+  # 絵や音のファイルを送る
+  def sync_file: (String path) -> bool
+
+  # ファイルを必ず送り直す
+  def transfer_file: (String path) -> bool
+
+  # 送った先にファイルがあるか
+  def file_status: (String path) -> Hash
+
+  # ---- クラスメソッド ----
+
+  # 赤緑青の三つの数から色を作る
+  def self.rgb_to_332: (Integer r, Integer g, Integer b) -> Integer
+
+  # 色あいと濃さと明るさから色を作る
+  def self.hsv_to_rgb: (Integer h, Integer s, Integer v) -> Array
+end

@@ -1,0 +1,145 @@
+# P5 — p5.js に似た書き方で絵を描く層。実装は
+# lib/add/picoruby-fmrb-app/mrblib/p5.rb。
+#
+# P5.new(gfx) で作り、fill や stroke で色を決めてから形を描く。
+# private のメソッドは書いていない。
+
+class P5
+  # p5 の書き方の道具を作る
+  def self.new: (FmrbGfx gfx) -> P5
+
+  # ---- 画面 ----
+
+  # 画面の横幅 (ドット)
+  def width: () -> Integer
+
+  # 画面の高さ (ドット)
+  def height: () -> Integer
+
+  # 画面ぜんぶを色でぬる
+  def background: (Integer color) -> void
+
+  # 描いたものを画面に出す
+  def present: () -> void
+
+  # ---- 色と線 ----
+
+  # 中をぬる色を決める
+  def fill: (Integer color) -> void
+
+  # 中をぬらないようにする
+  def no_fill: () -> void
+
+  # ふちの色を決める
+  def stroke: (Integer color) -> void
+
+  # ふちを描かないようにする
+  def no_stroke: () -> void
+
+  # ふちの太さを決める
+  def stroke_weight: (Integer w) -> void
+
+  # 色の重ね方を決める
+  def blend_mode: (Integer mode) -> void
+
+  # 透け具合を決める (今は効かない)
+  def alpha: (Integer value) -> void
+
+  # 赤緑青の三つの数から色を作る
+  def color: (Integer r, Integer g, Integer b) -> Integer
+
+  # ---- 形 ----
+
+  # 点を一つ打つ
+  def point: (Integer x, Integer y) -> void
+
+  # 線を引く
+  def line: (Integer x0, Integer y0, Integer x1, Integer y1) -> void
+
+  # 四角を描く
+  def rect: (Integer x, Integer y, Integer w, Integer h) -> void
+
+  # 円を描く
+  def circle: (Integer cx, Integer cy, Integer r) -> void
+
+  # だ円を描く
+  def ellipse: (Integer cx, Integer cy, Integer rx, Integer ry) -> void
+
+  # 三角を描く
+  def triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2) -> void
+
+  # 四つの点で四角を描く
+  def quad: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer x3, Integer y3) -> void
+
+  # 円の一部の弧を描く
+  def arc: (Integer cx, Integer cy, Integer r, Integer start_angle, Integer stop_angle) -> void
+
+  # なめらかな曲線を描く
+  def bezier: (Integer x1, Integer y1, Integer x2, Integer y2, Integer x3, Integer y3, Integer x4, Integer y4) -> void
+
+  # 点をつないだ曲線を描く
+  def curve: (Integer x1, Integer y1, Integer x2, Integer y2, Integer x3, Integer y3, Integer x4, Integer y4) -> void
+
+  # 自由な形を描き始める
+  def begin_shape: () -> void
+
+  # 形の角の点を足す
+  def vertex: (Integer x, Integer y) -> void
+
+  # 自由な形を描き終える
+  def end_shape: () -> void
+
+  # ---- 字 ----
+
+  # 字を描く
+  def text: (String str, Integer x, Integer y) -> void
+
+  # 字の種類をえらぶ
+  def text_font: (Symbol font) -> void
+
+  # 字の色を決める
+  def text_color: (Integer color) -> void
+
+  # 字をそろえる場所を決める
+  def text_align: (Symbol horizontal) -> void
+
+  # 行と行の間を決める
+  def text_leading: (Integer pixels) -> void
+
+  # 字を描いたときの横幅を測る
+  def text_width: (String str) -> Integer
+
+  # ---- 位置をずらす ----
+
+  # 描く場所をずらす
+  def translate: (Integer tx, Integer ty) -> void
+
+  # 描くものを回す
+  def rotate: (Integer angle) -> void
+
+  # 描くものを大きくする
+  def scale: (Integer sx) -> void
+
+  # 今のずらし方を覚えておく
+  def push_matrix: () -> void
+
+  # 覚えたずらし方に戻す
+  def pop_matrix: () -> void
+
+  # ずらし方をぜんぶ元に戻す
+  def reset_matrix: () -> void
+
+  # ---- 点と絵 ----
+
+  # 点を一つ打つ
+  def set_pixel: (Integer x, Integer y, Integer color) -> void
+
+  # 点の色を読む
+  def get_pixel: (Integer x, Integer y) -> Integer
+
+  # 読み込んだ絵を描く
+  def image: (Integer image_id, Integer x, Integer y) -> void
+
+  # 型でぬいた形の絵を描く
+  def image_masked: (Integer image_id, String mask_data, Integer x, Integer y, Integer w, Integer h) -> void
+end

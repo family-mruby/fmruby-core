@@ -1,0 +1,94 @@
+# 地図とタイル。実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-tilemap.rb。
+#
+# TileSheet がタイルの絵の束、TileMap が地図のデータ、
+# TileRing は広い地図をなめらかに動かすための仕組み。
+
+# タイルの絵をならべた一枚の絵。番号でタイルを取り出して描く。
+class TileSheet
+  # タイルの絵を読み込む
+  def self.new: (FmrbGfx gfx, String path) -> TileSheet
+
+  # 中で使っているうごく絵
+  def image: () -> SpriteImage
+
+  # 横にならぶタイルの数
+  def cols: () -> Integer
+
+  # 縦にならぶタイルの数
+  def rows: () -> Integer
+
+  # タイル一つの大きさ (ドット)
+  def tile_size: () -> Integer
+
+  # 番号のタイルを画面に一つ描く
+  def stamp: (Integer index) -> void
+
+  # このタイルの絵を片づける
+  def destroy: () -> void
+end
+
+# 地図そのもの。web の地図エディタが書き出した JSON を読む。
+class TileMap
+  # 地図のファイルを読み込む
+  def self.new: (String json_path) -> TileMap
+
+  # 地図の横のマス数
+  def width: () -> Integer
+
+  # 地図の縦のマス数
+  def height: () -> Integer
+
+  # マス一つの大きさ (ドット)
+  def tile_size: () -> Integer
+
+  # 使うタイルの絵のファイル名
+  def tilesheet_path: () -> String
+
+  # タイルの絵の横のならび数
+  def tilesheet_cols: () -> Integer
+
+  # 重ねた地図のデータ
+  def layers: () -> Array
+
+  # 地図に置いた仕掛けの一覧
+  def events: () -> Array
+
+  # 歩いてよいタイルの番号
+  def walkable_tiles: () -> Array
+
+  # 始まりの場所
+  def spawn_x: () -> Integer
+
+  # 始まりの場所
+  def spawn_y: () -> Integer
+
+  # そのマスのタイル番号を調べる
+  def tile_at: (Integer x, Integer y) -> Integer?
+
+  # そのマスを歩けるかどうか
+  def walkable?: (Integer x, Integer y) -> bool
+
+  # そのマスの仕掛けを取り出す
+  def event_at: (Integer x, Integer y) -> Hash?
+
+  # 地図ぜんぶを画面に描く
+  def render: (TileSheet sheet) -> void
+
+  # 見えている場所だけを描く
+  def render_view: (TileSheet sheet) -> void
+end
+
+# 見えている周りだけを描き直して、広い地図を軽く動かす仕組み。
+class TileRing
+  # 動かすための入れ物を作る
+  def self.new: (TileMap map, TileSheet sheet) -> TileRing
+
+  # 入れ物の横幅 (ドット)
+  def buf_w: () -> Integer
+
+  # 入れ物の高さ (ドット)
+  def buf_h: () -> Integer
+
+  # 見えてきたところを描き足す
+  def ensure_view: (Integer view_x, Integer view_y, Integer view_w, Integer view_h) -> void
+end

@@ -609,7 +609,9 @@ class FmrbApp
   SCROLLBAR_W = 10
   SCROLLBAR_BTN_H = 10
 
-  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen, :rounded_corners
+  # :gfx matches the mruby base: apps may write gfx.draw_text as well as
+  # @gfx.draw_text, and the method form is what sig/ describes.
+  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen, :rounded_corners, :gfx
 
   CLOSE_BTN_CX_OFFSET = 6
   CLOSE_BTN_CY        = 5

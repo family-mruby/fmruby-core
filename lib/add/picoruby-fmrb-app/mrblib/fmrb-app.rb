@@ -18,7 +18,10 @@ class FmrbApp
   SCROLLBAR_W = 10
   SCROLLBAR_BTN_H = 10
 
-  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen, :rounded_corners
+  # :gfx is here so apps can write gfx.draw_text as well as @gfx.draw_text --
+  # the editor's completion answers both spellings, and the method form is the
+  # one the type signatures in sig/ describe.
+  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen, :rounded_corners, :gfx
   # Whether a click on the close-button area may stop the app. System apps
   # that own the screen (the desktop) must set this to false: for them the
   # top-right corner is ordinary UI, not a close button.

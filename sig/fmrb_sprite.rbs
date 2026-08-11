@@ -1,0 +1,65 @@
+# うごく絵 (スプライト) と、まとめ描き。実装は
+# lib/add/picoruby-fmrb-app/mrblib/fmrb-sprite.rb と gfx_block.rb。
+#
+# SpriteImage が絵そのもの、SpriteInstance が画面のどこに置くか。
+# 一枚の絵を何個も置ける。
+
+# うごく絵の中身。ここに描いた絵を SpriteInstance で画面に置く。
+class SpriteImage
+  # この絵の番号
+  def id: () -> Integer
+
+  # 絵の横幅 (ドット)
+  def width: () -> Integer
+
+  # 絵の高さ (ドット)
+  def height: () -> Integer
+
+  # 絵を作る (大きさはドット)
+  def self.new: (FmrbGfx gfx) -> SpriteImage
+
+  # これから描く先をこの絵にする
+  def set_target: () -> void
+
+  # 描く先を画面に戻す
+  def reset_target: () -> void
+
+  # この絵に描く (ブロックの中で描く)
+  def draw: () -> void
+
+  # BMP のファイルをこの絵に読み込む
+  def load_bmp: (String path) -> void
+
+  # この絵を片づける
+  def destroy: () -> void
+end
+
+# 画面に置いた一つのうごく絵。位置と、何枚目を見せるかを持つ。
+class SpriteInstance
+  # この置いた絵の番号
+  def id: () -> Integer
+
+  # 絵を画面に置く
+  def self.new: (FmrbGfx gfx, SpriteImage images) -> SpriteInstance
+
+  # 置いた絵を動かす
+  def move: (Integer x, Integer y) -> void
+
+  # この絵を片づける
+  def destroy: () -> void
+end
+
+# 同じ形をくり返し描くときの下書き。数だけ差しかえて何度も描ける。
+class GfxBlock
+  # 下書きを作る (ブロックに描き方を書く)
+  def self.new: (FmrbGfx gfx) -> GfxBlock
+
+  # 数を入れかえて描き直す
+  def draw: () -> void
+
+  # 下書きを片づける
+  def destroy: () -> void
+
+  # 片づけたあとかどうか
+  def destroyed?: () -> bool
+end

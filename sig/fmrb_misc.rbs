@@ -1,0 +1,41 @@
+# その他。言葉の切りかえと、ファイルの読み書き。
+# 実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-i18n.rb と picoruby の File。
+
+# 日本語と英語で表示を切りかえる。
+module FmrbI18n
+  # 言葉の表を足す
+  def self.add: (Hash table) -> void
+
+  # 今の言葉 ("ja" か "en")
+  def self.lang: () -> String
+
+  # 印から今の言葉の文を引く
+  def self.t: (Symbol key) -> String
+
+  # 字を描いたときの横幅を測る
+  def self.text_width: (String str) -> Integer
+
+  # 幅に入るところまで切りつめる
+  def self.truncate_to: (String str, Integer max_px) -> String
+end
+
+# ファイルの読み書き。最小限だけ (picoruby の File)。
+class File
+  # ファイルを開く
+  def self.open: (String path, String mode) -> File
+
+  # ファイルがあるかどうか
+  def self.exist?: (String path) -> bool
+
+  # 中身をぜんぶ読む
+  def read: () -> String
+
+  # 一行だけ読む
+  def gets: () -> String?
+
+  # 書き込む
+  def write: (String str) -> Integer
+
+  # 閉じる
+  def close: () -> void
+end

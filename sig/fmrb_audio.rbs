@@ -1,0 +1,58 @@
+# 音を鳴らす。実装は lib/add/picoruby-fmrb-app/mrblib/fmrb-audio.rb と
+# nsf-header.rb。
+#
+# FmrbAudio はアプリが持っている音の係。曲を鳴らすのと、
+# 音を一つずつ鳴らすのと、両方できる。
+
+class FmrbAudio
+  # 音の係を作る
+  def self.new: (FmrbApp app) -> FmrbAudio
+
+  # 曲のファイルを鳴らす
+  def play: (String path) -> void
+
+  # 曲を止める
+  def stop: () -> void
+
+  # 曲をいったん止める
+  def pause: () -> void
+
+  # 止めた曲の続きを鳴らす
+  def resume: () -> void
+
+  # 曲のデータを箱に入れる
+  def load_fmsq: (Integer slot_id, String binary_data) -> void
+
+  # 曲のファイルを箱に読み込む
+  def load_fmsq_file: (Integer slot_id, String path) -> void
+
+  # 箱に入れた曲を鳴らす
+  def play_slot: (Integer slot_id) -> void
+
+  # 音を一つ鳴らす
+  def note_on: (Integer channel, Integer freq) -> void
+
+  # 鳴っている音を止める
+  def note_off: (Integer channel) -> void
+end
+
+# NSF (ファミコンの曲) のファイルの題名などを読む。
+class NsfHeader
+  # 曲のファイルから題名などを読む
+  def self.parse: (String path) -> NsfHeader?
+
+  # 曲の題名
+  def song_name: () -> String
+
+  # 作った人
+  def artist: () -> String
+
+  # 権利の表示
+  def copyright: () -> String
+
+  # 入っている曲の数
+  def total_songs: () -> Integer
+
+  # 最初に鳴らす曲の番号
+  def starting_song: () -> Integer
+end
