@@ -16,6 +16,8 @@ class EditorApp < FmrbApp
   STATUS_TEXT   = FmrbGfx.rgb_to_332(255, 255, 255)   # White status text
   STATUS_OK_BG  = FmrbGfx.rgb_to_332(0, 160, 0)       # Green flash for save success
   STATUS_OK_TEXT = FmrbGfx.rgb_to_332(255, 255, 255)
+  PROBLEM_BADGE_TEXT = FmrbGfx.rgb_to_332(255, 120, 120)  # Problem count badge
+  PROBLEM_BG    = FmrbGfx.rgb_to_332(255, 190, 190)   # Row tint of a problem line
   CURSOR_COLOR  = FmrbGfx.rgb_to_332(0, 0, 200)       # Blue cursor
 
   # Syntax highlight colors (for light background)
@@ -95,7 +97,7 @@ class EditorApp < FmrbApp
   KEY_REPEAT_DELAY = 12  # ~400ms before repeat starts
   KEY_REPEAT_RATE = 3    # ~100ms between repeats
 
-  SAVE_OK_FRAMES = 60     # ~2s flash of "Saved" on the status line
+  STATUS_MSG_FRAMES = 150 # ~5s before a status message gives the line back
 
   # ---- Input latency instrumentation (doc/editor_serious_mode/plan.md) ----
   # Time from a key event to the present that shows its effect. Always on: one
@@ -122,6 +124,10 @@ class EditorApp < FmrbApp
   # Tab, and the keys the completion list answers to (HID Usage IDs).
   SC_TAB = 0x2B; SC_ENTER = 0x28; SC_KP_ENTER = 0x58; SC_ESC = 0x29
   SC_UP = 0x52; SC_DOWN = 0x51
+  # Ctrl+T shows the type under the cursor, Ctrl+E the type errors. Neither
+  # letter was taken: the editor uses Ctrl+S/X/C/V/A/D, and Ctrl+Q, Ctrl+Tab
+  # and Ctrl+Space belong to the system.
+  SC_T = 0x17; SC_E = 0x08
 
   def initialize
     super()
@@ -174,10 +180,12 @@ class EditorApp < FmrbApp
     # Key repeat state
     @held_keycode = nil
     @hold_frames = 0
-    # Transient status badge: counts down per on_update tick. @status_label
-    # picks the text so Run can share the indicator with Save.
-    @save_ok_frames = 0
-    @status_label = nil
+    # Transient message in the status line's left zone (see draw_status_line).
+    # Set only through flash_status; counts down per on_update tick.
+    @status_msg = nil
+    @status_msg_ok = false
+    @status_msg_frames = 0
+    @status_msg_fresh = false
     # ---- Run (F5) ----
     # pid of the app the last RUN started, so the next RUN replaces it. The
     # kernel reports it back in "run_result"; nil when nothing is running.
@@ -196,6 +204,13 @@ class EditorApp < FmrbApp
     @comp_idx = 0      # selected candidate
     @comp_top = 0      # first candidate on screen (the list scrolls)
     @comp_prefix = 0   # characters before the cursor the choice replaces
+    # ---- Diagnostics (Ctrl+E, and after a save) ----
+    # nil until a run has happened; the lines and messages are parallel arrays.
+    # Any edit drops them, since their positions age the moment the text moves.
+    @diag_count = nil
+    @diag_lines = []
+    @diag_msgs = []
+    @diag_idx = -1
     # Modal Find dialog (Alt-S / Search menu / F3 for find next).
     @search_open = false
     @search_query = ""
@@ -573,53 +588,90 @@ class EditorApp < FmrbApp
     end
   end
 
+  # The status line has two zones and one way in.
+  #
+  # The right edge belongs to the permanent badges -- kana mode, and the
+  # problem count once diagnostics have run. They are measured first and drawn
+  # last, so nothing can paint over them: P2 learned that the hard way by
+  # letting a completion's doc comment cover the kana badge.
+  #
+  # Everything left of them is either a transient message (hover results,
+  # diagnostic summaries, the doc of the selected candidate, "file too big",
+  # "Saved") or, when none is pending, the usual file / line / column. Every
+  # message goes through flash_status; this is the only method that draws here.
   def draw_status_line
     y = @status_y
     @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H, STATUS_BG)
 
-    # While the completion list is up the line explains the selected candidate
-    # instead: its doc comment, or its signature when it has no comment. That
-    # is the part of an API a dropdown cannot show.
-    if @comp_open
-      about = @comp_docs[@comp_idx].to_s
-      about = @comp_details[@comp_idx].to_s if about.length == 0
-      @gfx.draw_text(@user_area_x0 + 2, y, " " + about, STATUS_TEXT, STATUS_BG,
-                     mixed: true)
-      return
-    end
-
-    line_num = @cy + 1
-    col_num = @cx + 1
-
-    fname = @current_file ? @current_file.split("/").last : FmrbI18n.t(:st_new).to_s
-    status = " #{fname}  #{FmrbI18n.t(:st_ln).to_s} #{line_num}, #{FmrbI18n.t(:st_col).to_s} #{col_num}"
-    status += " *" if @modified
-    status += "  " + FmrbI18n.t(:st_hl_off).to_s unless @hl_enabled
-
-    @gfx.draw_text(@user_area_x0 + 2, y, status, STATUS_TEXT, STATUS_BG,
-                   mixed: true)
-
-    # Kana mode badge, right-aligned: the line's left half is already full on a
-    # narrow window, and this has to stay visible to be worth anything.
+    # ---- right zone: measure the badges, right to left ----
     right = @user_area_x0 + @user_area_width
     if @kana_mode
-      badge = kana_badge
-      @kana_badge_w = FmrbI18n.text_width(badge) + 2
+      @kana_badge_w = FmrbI18n.text_width(kana_badge) + 2
       right -= @kana_badge_w
       @kana_badge_x = right
-      @gfx.draw_text(right, y, badge, STATUS_TEXT, STATUS_BG, mixed: true)
     else
       @kana_badge_x = nil
     end
-
-    # Right-aligned green "Saved" badge that fades after SAVE_OK_FRAMES ticks.
-    if @save_ok_frames > 0
-      label = @status_label || " #{FmrbI18n.t(:b_saved).to_s} "
-      bw = FmrbI18n.text_width(label)
-      bx = right - bw - 2
-      @gfx.fill_rect(bx, y, bw, CHAR_H, STATUS_OK_BG)
-      @gfx.draw_text(bx, y, label, STATUS_OK_TEXT, STATUS_OK_BG, mixed: true)
+    problems = problem_badge
+    problems_x = nil
+    if problems.length > 0
+      right -= FmrbI18n.text_width(problems) + 2
+      problems_x = right
     end
+
+    # ---- left zone: the pending message, or the usual reading ----
+    x0 = @user_area_x0 + 2
+    room = right - x0 - 2
+    if @status_msg
+      text = fit_status_text(@status_msg, room)
+      if @status_msg_ok
+        bw = FmrbI18n.text_width(text)
+        @gfx.fill_rect(x0, y, bw, CHAR_H, STATUS_OK_BG)
+        @gfx.draw_text(x0, y, text, STATUS_OK_TEXT, STATUS_OK_BG, mixed: true)
+      else
+        @gfx.draw_text(x0, y, text, STATUS_TEXT, STATUS_BG, mixed: true)
+      end
+    else
+      @gfx.draw_text(x0, y, fit_status_text(status_reading, room),
+                     STATUS_TEXT, STATUS_BG, mixed: true)
+    end
+
+    # ---- badges last ----
+    if problems_x
+      @gfx.draw_text(problems_x, y, problems, PROBLEM_BADGE_TEXT, STATUS_BG,
+                     mixed: true)
+    end
+    if @kana_badge_x
+      @gfx.draw_text(@kana_badge_x, y, kana_badge, STATUS_TEXT, STATUS_BG,
+                     mixed: true)
+    end
+  end
+
+  # What the line says when nothing else is going on.
+  def status_reading
+    fname = @current_file ? @current_file.split("/").last : FmrbI18n.t(:st_new).to_s
+    s = " #{fname}  #{FmrbI18n.t(:st_ln).to_s} #{@cy + 1}, #{FmrbI18n.t(:st_col).to_s} #{@cx + 1}"
+    s += " *" if @modified
+    s += "  " + FmrbI18n.t(:st_hl_off).to_s unless @hl_enabled
+    s
+  end
+
+  # Problems found by the last diagnostic run, as a badge. Empty when none were
+  # found or none has been run -- a clean file says so once, in the message
+  # zone, and then leaves the line alone.
+  def problem_badge
+    return "" if @diag_count.nil? || @diag_count <= 0
+    "[!#{@diag_count}]"
+  end
+
+  # Trim a message to the pixels it may use, so it can never reach the badges.
+  def fit_status_text(text, room)
+    return "" if room <= 0
+    s = text
+    while s.length > 0 && FmrbI18n.text_width(s) > room
+      s = s[0, s.length - 1]
+    end
+    s
   end
 
   # What the host says kana input is doing. Shown only once the host has told
@@ -685,6 +737,9 @@ class EditorApp < FmrbApp
   def mark_edited
     @modified = true
     @dirty_status = true
+    # Problem markers name lines of the text as it was when they were found, so
+    # the first edit retires them. The next save (or Ctrl+E) brings them back.
+    clear_diagnostics
     # An edit that changes how many screen rows the line takes reflows every
     # row below it; one that does not touches only its own. Comparing against
     # the count from the last draw keeps that decision to one integer, rather
@@ -773,7 +828,10 @@ class EditorApp < FmrbApp
 
     # Current-stop line gets a full-row highlight (text area only, so the
     # gutter dot stays visible). Breakpoints are shown as a gutter dot.
+    # A line the last diagnostic run complained about is tinted red, unless the
+    # debugger is stopped on it -- where execution is now matters more.
     line_bg = dbg_line_background(line_idx)
+    line_bg = PROBLEM_BG if line_bg == BG_COLOR && problem_on_line?(line_idx)
     if line_bg != BG_COLOR
       @gfx.fill_rect(@user_area_x0 + @gutter_w, y,
                      @user_area_width - @gutter_w, LINE_H, line_bg)
@@ -1492,7 +1550,17 @@ class EditorApp < FmrbApp
     @comp_idx = 0
     @comp_top = 0
     @comp_open = true
+    comp_explain_selected
     @need_redraw = true
+  end
+
+  # The part of an API a list of names cannot show: the doc comment of the
+  # selected candidate, or its signature when it has none. Goes through the
+  # status line's message zone like everything else, so the badges stay put.
+  def comp_explain_selected
+    about = @comp_docs[@comp_idx].to_s
+    about = @comp_details[@comp_idx].to_s if about.length == 0
+    flash_status(about)
   end
 
   def close_completion
@@ -1501,6 +1569,7 @@ class EditorApp < FmrbApp
     @comp_labels = []
     @comp_details = []
     @comp_docs = []
+    clear_status_message
     @need_redraw = true
   end
 
@@ -1541,11 +1610,13 @@ class EditorApp < FmrbApp
     when SC_UP
       @comp_idx -= 1 if @comp_idx > 0
       comp_scroll_into_view
+      comp_explain_selected
       @need_redraw = true
       true
     when SC_DOWN
       @comp_idx += 1 if @comp_idx < @comp_labels.size - 1
       comp_scroll_into_view
+      comp_explain_selected
       @need_redraw = true
       true
     when SC_ENTER, SC_KP_ENTER, SC_TAB
@@ -1614,6 +1685,131 @@ class EditorApp < FmrbApp
       end
       i += 1
     end
+  end
+
+  # ---- Type information: hover (Ctrl+T) and diagnostics (Ctrl+E) ----
+  #
+  # Both ask the same engine as completion and answer in the status line's
+  # message zone. Neither is modal and neither runs on its own: hover is one
+  # key, diagnostics run on a successful save and on Ctrl+E.
+
+  ET_HOVER_NAME      = 0
+  ET_HOVER_TYPE      = 1
+  ET_HOVER_SIGNATURE = 2
+  ET_HOVER_DOC       = 3
+
+  ET_DIAG_START_Y = 0
+
+  def show_hover
+    found = EditorCore.hover(@cy, @cx)
+    if found == COMP_TOO_LARGE
+      flash_status(FmrbI18n.t(:b_comp_too_large).to_s)
+      return
+    end
+    if found <= 0
+      flash_status(FmrbI18n.t(:b_no_type).to_s)
+      return
+    end
+
+    if EditorCore.hover_method?
+      # The signature already begins with the method's name, so it reads as a
+      # sentence on its own; the doc comment follows when there is room.
+      text = EditorCore.hover_field(ET_HOVER_SIGNATURE)
+      doc = EditorCore.hover_field(ET_HOVER_DOC)
+      text += " -- " + doc if doc.length > 0
+    else
+      text = "#{EditorCore.hover_field(ET_HOVER_NAME)} : #{EditorCore.hover_field(ET_HOVER_TYPE)}"
+    end
+    flash_status(text)
+  end
+
+  # Diagnostics found by the last run. Kept as parallel arrays of line numbers
+  # and messages: the count is at most 64 and this avoids a Hash per problem.
+  def clear_diagnostics
+    return if @diag_count.nil?
+    had_marks = @diag_lines.length > 0
+    @diag_count = nil
+    @diag_lines = []
+    @diag_msgs = []
+    @diag_idx = -1
+    # The tint was part of the rows, so they have to be repainted.
+    @need_redraw = true if had_marks
+    @dirty_status = true
+  end
+
+  def problem_on_line?(line_idx)
+    return false if @diag_lines.nil?
+    @diag_lines.include?(line_idx)
+  end
+
+  # Run the engine over the whole document. +quiet+ is for the automatic run
+  # after a save, which should not talk over the "Saved" message when the file
+  # is clean.
+  def run_diagnostics(quiet = false)
+    n = EditorCore.diagnose
+    if n == COMP_TOO_LARGE
+      # Distinct from "no problems": nothing was checked at all.
+      clear_diagnostics
+      flash_status(FmrbI18n.t(:b_comp_too_large).to_s)
+      return
+    end
+    if n < 0
+      clear_diagnostics
+      flash_status(FmrbI18n.t(:b_diag_failed).to_s)
+      return
+    end
+
+    @diag_lines = []
+    @diag_msgs = []
+    i = 0
+    while i < n
+      @diag_lines << EditorCore.diagnostic_pos(i, ET_DIAG_START_Y)
+      @diag_msgs << EditorCore.diagnostic_message(i)
+      i += 1
+    end
+    @diag_count = n
+    @diag_idx = -1
+    @need_redraw = true
+
+    if n == 0
+      flash_status(FmrbI18n.t(:b_no_problems).to_s) unless quiet
+    else
+      flash_status("#{n} #{FmrbI18n.t(:b_problems).to_s}: #{@diag_msgs[0]}")
+    end
+  end
+
+  # Ctrl+E: run the diagnostics, and on every press after that walk to the next
+  # problem line, wrapping at the end.
+  def diagnostics_key
+    # Nothing to walk yet, or nothing found last time: check again. (An edit
+    # drops the previous answer, so this is also the path after typing.)
+    if @diag_count.nil? || @diag_lines.length == 0
+      run_diagnostics
+      return
+    end
+    @diag_idx += 1
+    @diag_idx = 0 if @diag_idx >= @diag_lines.length
+    goto_problem(@diag_idx)
+  end
+
+  def goto_problem(i)
+    line = @diag_lines[i]
+    return if line.nil?
+    line = EditorCore.line_count - 1 if line >= EditorCore.line_count
+    prev_cy = @cy
+    @cy = line
+    @cx = 0
+    clamp_cx
+    ensure_cursor_visible
+    mark_dirty_range(prev_cy, @cy)
+    flash_status("#{line + 1}: #{@diag_msgs[i]}")
+  end
+
+  # Only Ruby gets checked, by the same rule that decides highlighting: the
+  # engine is a Ruby type checker, and a .bas file would be nothing but noise.
+  def diagnose_after_save
+    return unless hl_default_for(@current_file)
+    run_diagnostics(true)
   end
 
   # ---- Key handling ----
@@ -2407,8 +2603,12 @@ class EditorApp < FmrbApp
       Log.error("Save mismatch for #{@current_file}: expected=#{expected}, written=#{written}")
     else
       @modified = false
-      flash_status(FmrbI18n.t(:b_saved).to_s)  # status line only
+      flash_status(FmrbI18n.t(:b_saved).to_s, true)  # green: a save that worked
       Log.info("Saved file: #{@current_file} (#{written} bytes)")
+      # A save is the natural moment to check the file: the text has just
+      # stopped moving, and the reply keeps the "Saved" message unless there is
+      # something to say.
+      diagnose_after_save
     end
   end
 
@@ -2471,10 +2671,24 @@ class EditorApp < FmrbApp
     path.start_with?("/")
   end
 
-  # Show a short right-aligned badge on the status line for ~2s.
-  def flash_status(text)
-    @status_label = " #{text} "
-    @save_ok_frames = SAVE_OK_FRAMES
+  # Put a message in the status line's message zone -- the only way anything
+  # writes there. It clears on the key after the one that raised it, or after
+  # STATUS_MSG_FRAMES ticks, whichever comes first. +ok+ marks the green
+  # success flavour (Save uses it).
+  def flash_status(text, ok = false)
+    @status_msg = " #{text} "
+    @status_msg_ok = ok
+    @status_msg_frames = STATUS_MSG_FRAMES
+    # The key that raised this message must not also clear it.
+    @status_msg_fresh = true
+    @dirty_status = true
+  end
+
+  def clear_status_message
+    return if @status_msg.nil?
+    @status_msg = nil
+    @status_msg_ok = false
+    @status_msg_frames = 0
     @dirty_status = true
   end
 
@@ -2492,6 +2706,10 @@ class EditorApp < FmrbApp
   def on_event(ev)
     super(ev)
     handle_editor_event(ev)
+    # A status message survives the key that raised it and goes on the next
+    # one (see flash_status). Ageing it here, after the key was handled, is
+    # what draws that line.
+    @status_msg_fresh = false if ev[:type] == :key_down
     # Draw here rather than leaving it to the next on_update. Going through
     # on_update cost up to a whole 33ms frame per key on top of the drawing
     # itself, which was most of the measured key-to-present time.
@@ -2553,6 +2771,13 @@ class EditorApp < FmrbApp
       # Latency clock starts here, except for bare modifier presses (they draw
       # nothing, so stamping them would charge their idle time to the next key).
       lat_key_arrived unless keycode >= 224 && keycode <= 231
+
+      # A message that has already survived one key gives the line back now.
+      # Modifiers alone do not count: Ctrl arrives as its own event, and it
+      # would take the message down before its own shortcut ran.
+      unless keycode >= 224 && keycode <= 231
+        clear_status_message if @status_msg && !@status_msg_fresh
+      end
 
       # Modal quit-confirm dialog steals all keys until dismissed.
       if @quit_dialog_open
@@ -2644,6 +2869,12 @@ class EditorApp < FmrbApp
         when 0x07  # Ctrl-D -> open Debug menu (Alt-D on real HW; the Linux sim
           open_menu(:debug) if dbg_menu_visible?  # cannot carry Alt, so Ctrl-D
           return
+        when SC_T  # Ctrl-T -> type under the cursor
+          show_hover
+          return
+        when SC_E  # Ctrl-E -> type errors, then walk them
+          diagnostics_key
+          return
         end
       end
 
@@ -2725,10 +2956,10 @@ class EditorApp < FmrbApp
       end
     end
 
-    # Tick down the "Saved" badge and repaint the status line when it expires.
-    if @save_ok_frames > 0
-      @save_ok_frames -= 1
-      @dirty_status = true if @save_ok_frames == 0
+    # Tick down the status message and give the line back when it expires.
+    if @status_msg_frames > 0
+      @status_msg_frames -= 1
+      clear_status_message if @status_msg_frames == 0
     end
 
     redraw_if_dirty
