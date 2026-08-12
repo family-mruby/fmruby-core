@@ -128,6 +128,9 @@ class EditorApp < FmrbApp
   # letter was taken: the editor uses Ctrl+S/X/C/V/A/D, and Ctrl+Q, Ctrl+Tab
   # and Ctrl+Space belong to the system.
   SC_T = 0x17; SC_E = 0x08
+  # F1 opens the help page for the method under the cursor (or the selected
+  # candidate). Nothing else used it: the debugger's keys start at F4.
+  SC_F1 = 0x3A
 
   def initialize
     super()
@@ -211,6 +214,17 @@ class EditorApp < FmrbApp
     @diag_lines = []
     @diag_msgs = []
     @diag_idx = -1
+    # ---- Help (F1) ----
+    # While a help page is open the buffer is read-only, and the one being
+    # edited waits in /tmp (see open_help).
+    @help_open = false
+    @help_stashed = false
+    @help_return_file = nil
+    @help_return_y = 0
+    @help_return_x = 0
+    @help_return_modified = false
+    @help_return_hl = true
+    @help_return_hl_manual = false
     # Modal Find dialog (Alt-S / Search menu / F3 for find next).
     @search_open = false
     @search_query = ""
@@ -650,6 +664,7 @@ class EditorApp < FmrbApp
   # What the line says when nothing else is going on.
   def status_reading
     fname = @current_file ? @current_file.split("/").last : FmrbI18n.t(:st_new).to_s
+    fname = "[Help] " + fname if @help_open
     s = " #{fname}  #{FmrbI18n.t(:st_ln).to_s} #{@cy + 1}, #{FmrbI18n.t(:st_col).to_s} #{@cx + 1}"
     s += " *" if @modified
     s += "  " + FmrbI18n.t(:st_hl_off).to_s unless @hl_enabled
@@ -1688,6 +1703,209 @@ class EditorApp < FmrbApp
     end
   end
 
+  # ---- Signature help (while the arguments are being typed) ----
+  #
+  # Asked for after a "(" or a "," -- the two moments where the answer changes
+  # -- and never on other keystrokes: a request re-parses the document.
+
+  ET_CALL_SIGNATURE = 0
+  ET_CALL_ARG_NAME  = 1
+  ET_CALL_ARG_TYPE  = 2
+
+  def show_signature_help
+    t0 = Machine.uptime_us
+    found = EditorCore.call_context(@cy, @cx)
+    ms = (Machine.uptime_us - t0) / 1000
+    return if found <= 0
+
+    sig = EditorCore.call_field(ET_CALL_SIGNATURE)
+    idx = EditorCore.call_argument_index
+    name = EditorCore.call_field(ET_CALL_ARG_NAME)
+    type = EditorCore.call_field(ET_CALL_ARG_TYPE)
+    Log.info("sig_lat: #{ms} ms (arg #{idx} of #{sig})")
+
+    flash_status(signature_hint(sig, idx, type))
+  end
+
+  # "draw_text: (Integer x, Integer y, ...) -> FmrbGfx" and argument 1 become
+  # "draw_text(x, >>y: Integer<<, str, color)": the names alone, with the one
+  # being typed marked and carrying its type. The marked argument sits early
+  # in the line on purpose -- a narrow window trims the tail.
+  def signature_hint(sig, idx, type = "")
+    open_at = sig.index("(")
+    close_at = open_at ? sig.index(")", open_at) : nil
+    return sig if open_at.nil? || close_at.nil?
+
+    head = sig[0, open_at].to_s.strip
+    head = head[0, head.length - 1] if head.end_with?(":")
+    body = sig[open_at + 1, close_at - open_at - 1].to_s
+
+    names = []
+    body.split(",").each do |part|
+      words = part.strip.split(" ")
+      names << (words.length > 0 ? words[words.length - 1] : "")
+    end
+
+    out = ""
+    i = 0
+    while i < names.length
+      out += ", " if i > 0
+      if i == idx
+        out += (type.length > 0) ? ">>#{names[i]}: #{type}<<" : ">>#{names[i]}<<"
+      else
+        out += names[i]
+      end
+      i += 1
+    end
+    "#{head}(#{out})"
+  end
+
+  # ---- Help (F1) ----
+  #
+  # The long half of the doc comments in sig/, generated into /help at build
+  # time. index.txt maps a method name to a file; the file is opened in the
+  # same buffer, read-only, and the buffer being edited is put aside in /tmp
+  # so nothing is lost -- including changes that were never saved.
+
+  HELP_INDEX = "/help/index.txt"
+  HELP_DIR   = "/help/"
+  HELP_STASH = "/tmp/editor_stash.txt"
+
+  def help_path_for(name)
+    return nil if name.nil? || name.length == 0
+    begin
+      f = File.open(HELP_INDEX, "r")
+      text = f.read
+      f.close
+    rescue => e
+      Log.info("help index unavailable: #{e.message}")
+      return nil
+    end
+    return nil if text.nil?
+
+    hits = 0
+    found = nil
+    text.split("\n").each do |line|
+      next if line.length == 0
+      parts = line.split("\t")
+      next unless parts.length >= 2
+      next unless parts[0] == name
+      hits += 1
+      found = parts[1] if found.nil?
+    end
+    Log.info("help: #{name} -> #{found} (#{hits} entr#{hits == 1 ? 'y' : 'ies'})") if found
+    found
+  end
+
+  # The word the help is asked for: the selected candidate when the list is
+  # open, otherwise the name under the cursor.
+  def help_topic
+    return @comp_labels[@comp_idx].to_s if @comp_open
+    x0 = @cx
+    x0 -= 1 while x0 > 0 && comp_name_byte_at?(@cy, x0 - 1)
+    x1 = @cx
+    len = EditorCore.line_length(@cy)
+    x1 += 1 while x1 < len && comp_name_byte_at?(@cy, x1)
+    return "" if x1 <= x0
+    word = ""
+    x = x0
+    while x < x1
+      word += EditorCore.char_at(@cy, x)
+      x += 1
+    end
+    word
+  end
+
+  def comp_name_byte_at?(y, x)
+    c = EditorCore.char_at(y, x)
+    return false if c.bytesize != 1
+    comp_name_byte?(c.getbyte(0))
+  end
+
+  def open_help
+    topic = help_topic
+    path = help_path_for(topic)
+    if path.nil?
+      flash_status(FmrbI18n.t(:b_no_help).to_s)
+      return
+    end
+    close_completion
+    return unless stash_buffer
+    @help_open = true
+    @help_return_file = @current_file
+    @help_return_y = @cy
+    @help_return_x = @cx
+    @help_return_modified = @modified
+    # Loading a .md turns highlighting off (it is not Ruby); the buffer that
+    # comes back should look the way it did.
+    @help_return_hl = @hl_enabled
+    @help_return_hl_manual = @hl_manual
+    load_file(HELP_DIR + path)
+    @modified = false
+    @need_redraw = true
+  end
+
+  def close_help
+    return unless @help_open
+    @help_open = false
+    # The stash is the truth whenever it exists: a named file that had unsaved
+    # edits is on disk in its old state, and reloading that would throw the
+    # edits away.
+    if @help_stashed
+      load_file(HELP_STASH)
+      @current_file = @help_return_file
+      @help_stashed = false
+    else
+      load_file(@help_return_file)
+    end
+    @modified = @help_return_modified
+    @hl_enabled = @help_return_hl
+    @hl_manual = @help_return_hl_manual
+    apply_hl_enabled
+    @cy = @help_return_y
+    @cx = @help_return_x
+    clamp_cy
+    clamp_cx
+    ensure_cursor_visible
+    @need_redraw = true
+  end
+
+  # Put the buffer aside before help takes the document over. A named file is
+  # already on disk unless it was edited, so only unsaved work has to be
+  # written out, and /tmp is RAM -- no flash wear for reading a help page.
+  def stash_buffer
+    return true if @current_file && !@modified
+    written = EditorCore.save_file(HELP_STASH)
+    if written < 0
+      flash_status(FmrbI18n.t(:b_save_failed).to_s)
+      return false
+    end
+    @help_stashed = true
+    true
+  end
+
+  def clamp_cy
+    last = EditorCore.line_count - 1
+    @cy = last if @cy > last
+    @cy = 0 if @cy < 0
+  end
+
+  # Would this key change the text? Typing, deleting, pasting and saving are
+  # the ones a help page has to refuse; moving around is fine.
+  def help_edit_key?(ev)
+    sc = ev[:scancode] || 0
+    return true if sc == SC_TAB || sc == SC_ENTER || sc == SC_KP_ENTER
+    return true if sc == 0x2A || sc == 0x4C   # Backspace / Delete
+    if ev_ctrl?(ev)
+      # Save, paste, cut and quit-with-save all write; copy and select-all
+      # are harmless.
+      return true if sc == 0x16 || sc == 0x19 || sc == 0x1B
+      return false
+    end
+    ch = ev[:character] || 0
+    ch >= 32 && ch <= 126 || ch >= 0x80
+  end
+
   # ---- Type information: hover (Ctrl+T) and diagnostics (Ctrl+E) ----
   #
   # Both ask the same engine as completion and answer in the status line's
@@ -1835,6 +2053,9 @@ class EditorApp < FmrbApp
       insert_indent
     when 32..126 # Printable
       insert_char(printable_char(ch))
+      # "(" and "," are where the answer to "what goes here" changes, so they
+      # are the only keys that ask for it.
+      show_signature_help if ch == 40 || ch == 44
     end
   end
 
@@ -2801,6 +3022,27 @@ class EditorApp < FmrbApp
       if @search_open
         handle_search_dialog_key(ev)
         return
+      end
+
+      # F1: the long help for the method under the cursor, or for the
+      # candidate being looked at. Checked before the completion list, which
+      # is where it is most useful.
+      if (ev[:scancode] || 0) == SC_F1
+        @help_open ? close_help : open_help
+        return
+      end
+
+      # A help page is read-only: navigation works, Esc closes it, and
+      # anything that would change the text says so instead of doing it.
+      if @help_open
+        if (ev[:scancode] || 0) == SC_ESC
+          close_help
+          return
+        end
+        if help_edit_key?(ev)
+          flash_status(FmrbI18n.t(:b_readonly).to_s)
+          return
+        end
       end
 
       # Completion list is modal for the keys it uses; anything else closes it

@@ -115,6 +115,21 @@ const char *et_hover_field(int field, int *out_len);
 int  et_hover_is_method(void);
 
 /*
+ * Signature help: which call the cursor is inside, and which argument it has
+ * reached. et_call_context answers 1 when the cursor is in a call whose method
+ * is known, 0 when it is not; the signature and the current argument's name
+ * and type are then read by field, and et_call_argument_index says which
+ * parameter it is (0-based, -1 when the cursor is not in the argument list).
+ */
+#define ET_CALL_SIGNATURE 0
+#define ET_CALL_ARG_NAME  1
+#define ET_CALL_ARG_TYPE  2
+
+int  et_call_context(int slot, int y, int x);
+const char *et_call_field(int field, int *out_len);
+int  et_call_argument_index(void);
+
+/*
  * Diagnostics: type errors in the whole document. et_diagnose answers how many
  * were found; each one is then read by index. Positions are already converted
  * to the editor's coordinates (line, and column in characters).

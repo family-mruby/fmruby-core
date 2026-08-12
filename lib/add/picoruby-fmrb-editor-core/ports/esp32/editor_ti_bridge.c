@@ -42,6 +42,7 @@
 #include "picoruby_ti_suggest.h"
 #include "picoruby_ti_hover.h"
 #include "picoruby_ti_diagnostic.h"
+#include "picoruby_ti_call_context.h"
 
 #include "../../include/editor_core_api.h"
 
@@ -101,6 +102,14 @@ typedef struct {
     int  found;
 } et_hover_t;
 
+typedef struct {
+    char signature[ET_DETAIL_MAX];
+    char name[TI_CALL_ARGUMENT_NAME_CAPACITY];
+    char type[TI_CALL_ARGUMENT_TYPE_CAPACITY];
+    int  index;
+    int  found;
+} et_call_t;
+
 /* Answers outlive the call (the editor reads them field by field afterwards),
    so they live in the document pool rather than in .bss -- 15KB plus of
    internal RAM is not something the S3 has spare. */
@@ -109,6 +118,7 @@ static int        g_count;
 static et_diag_t *g_diags;
 static int        g_diag_count;
 static et_hover_t g_hover;   /* one record, small enough to keep here */
+static et_call_t  g_call;    /* likewise */
 
 /* One request at a time: the engine keeps its working arena in globals, so two
    editors asking at once would tread on each other. The same lock covers the
@@ -472,6 +482,66 @@ const char *et_hover_field(int field, int *out_len)
 int et_hover_is_method(void)
 {
     return g_hover.found ? g_hover.is_method : 0;
+}
+
+/* ---- signature help ----------------------------------------------------- */
+
+int et_call_context(int slot, int y, int x)
+{
+    memset(&g_call, 0, sizeof(g_call));
+    g_call.index = -1;
+
+    et_run_t r;
+    int rc = et_begin(&r, slot, y, x);
+    if (rc < 0) return rc;
+
+    int result;
+    if (setjmp(g_oom) == 0) {
+        TiSource item;
+        TiSourceList list;
+        TiCallContext out;
+        et_sources(&r, &item, &list);
+        g_oom_armed = 1;
+        ti_find_call_context(&list, r.cursor, &out);
+        g_oom_armed = 0;
+
+        if (out.found) {
+            et_copy_str(g_call.signature, sizeof(g_call.signature), out.method_signature);
+            et_copy_str(g_call.name, sizeof(g_call.name), out.argument_name);
+            et_copy_str(g_call.type, sizeof(g_call.type), out.argument_type);
+            g_call.index = out.argument_index;
+            g_call.found = 1;
+        }
+        result = g_call.found;
+    } else {
+        FMRB_LOGW(TAG, "call context ran out of scratch memory (%d bytes of source)",
+                  r.src_len);
+        result = 0;
+    }
+
+    et_end(&r);
+    return result;
+}
+
+const char *et_call_field(int field, int *out_len)
+{
+    if (out_len) *out_len = 0;
+    if (!g_call.found) return "";
+
+    const char *s;
+    switch (field) {
+        case ET_CALL_SIGNATURE: s = g_call.signature; break;
+        case ET_CALL_ARG_NAME:  s = g_call.name;      break;
+        case ET_CALL_ARG_TYPE:  s = g_call.type;      break;
+        default: return "";
+    }
+    if (out_len) *out_len = (int)strlen(s);
+    return s;
+}
+
+int et_call_argument_index(void)
+{
+    return g_call.found ? g_call.index : -1;
 }
 
 /* ---- diagnostics -------------------------------------------------------- */

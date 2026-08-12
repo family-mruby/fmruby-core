@@ -190,12 +190,15 @@ def 内 ivar のホバーには suggest と同じ処置が要る (P3 で fork �
   申し送り: 使い捨てヒープ生成のたびに fmrb_alloc が info 3 行出す
   (実機ログが煩い。P5 で水準調整)。診断の桁範囲はブリッジ止まり
   (UI は行単位、v1 仕様)。
-- P4: RBS の充実。**指示書 = instruction_p4.md 発行済み**。
-  FmrbApp / FmrbGfx / Sprite / Tile / Audio / MIDI を網羅、doc は
-  日本語一文 (子供向け)、sig/ をドメイン分割 + sig/README.md で
-  「API ドキュメントの正」を宣言。gfx. 表記は attr_reader 追加で解禁
-  (T1)。定数対応は上流相談として温存。文字列プール (各 65535B) の
-  残量を記録する。
+- P4: RBS の充実。**実装完了 (2026-08-12, report/p4.md)**。sig を
+  8 ドメインに分割、1,344 メソッド、日本語一文 doc、gfx./@gfx. 両対応。
+  db.c 287KB / S3 flash +30.6KB (残 13%) / 内蔵 RAM 増なし /
+  文字列プール最大 26%。残件: **定数補完が最大** (上流相談)、候補 64 件
+  上限 (`gfx.` 素は切れる、1 文字で絞れるので許容)、mruby 版
+  FmrbApp#set_timer が未実装 (NameError。実装側の別件)。
+  P4 で見つかった「引数検査が継承を見ない」は **fork で修正済み
+  (fmrb-dev 1b4f272、subclass を親宣言の引数に渡せる)** — P4.5 T1 で
+  PIN 更新と同時に untyped 回避を本来の型へ戻す。
 - P4.5: ヘルプ段。**指示書 = instruction_p4_5.md 発行済み (P4 完了後に
   着手)**。signature help (引数位置追従、fork に呼び出し文脈 API) と
   F1 ヘルプ (RBS コメント 2 行目以降 -> flash/help/ 生成、読み取り専用

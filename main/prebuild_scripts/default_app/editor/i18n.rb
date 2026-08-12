@@ -73,6 +73,8 @@ FmrbI18n.add({
     b_comp_too_large: "File too big to suggest",
     # Type information (Ctrl+T) and diagnostics (Ctrl+E)
     b_no_type:   "No type here",
+    b_no_help:   "No help for that yet",
+    b_readonly:  "Help page: read only",
     b_no_problems: "no problems",
     b_problem:   "problem",
     b_problems:  "problems",
@@ -123,6 +125,8 @@ FmrbI18n.add({
     b_comp_none: "候補がありません",
     b_comp_too_large: "大きすぎて候補を出せません",
     b_no_type:   "ここには型がありません",
+    b_no_help:   "まだ説明がありません",
+    b_readonly:  "説明の画面です (書けません)",
     b_no_problems: "問題なし",
     b_problem:   "件の問題",
     b_problems:  "件の問題",

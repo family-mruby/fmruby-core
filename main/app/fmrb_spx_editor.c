@@ -159,6 +159,21 @@ const char *fmrb_spx_et_hover_field(int field)
 
 int fmrb_spx_et_hover_is_method(void) { return et_hover_is_method(); }
 
+int fmrb_spx_et_call_context(int slot, int y, int x)
+{
+    return et_call_context(slot, y, x);
+}
+
+const char *fmrb_spx_et_call_field(int field)
+{
+    int len = 0;
+    const char *p = et_call_field(field, &len);
+    sp_net_bin_len = len;
+    return p;
+}
+
+int fmrb_spx_et_call_argument_index(void) { return et_call_argument_index(); }
+
 int fmrb_spx_et_diagnose(int slot) { return et_diagnose(slot); }
 
 int fmrb_spx_et_diagnostic_pos(int i, int field)

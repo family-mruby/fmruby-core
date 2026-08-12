@@ -43,6 +43,9 @@ module FmrbSpxEc
   ffi_func :fmrb_spx_et_hover,           [:int, :int, :int], :int
   ffi_func :fmrb_spx_et_hover_field,     [:int], :binstr
   ffi_func :fmrb_spx_et_hover_is_method, [], :int
+  ffi_func :fmrb_spx_et_call_context,    [:int, :int, :int], :int
+  ffi_func :fmrb_spx_et_call_field,      [:int], :binstr
+  ffi_func :fmrb_spx_et_call_argument_index, [], :int
   ffi_func :fmrb_spx_et_diagnose,        [:int], :int
   ffi_func :fmrb_spx_et_diagnostic_pos,  [:int, :int], :int
   ffi_func :fmrb_spx_et_diagnostic_message, [:int], :binstr
@@ -111,6 +114,12 @@ module EditorCore
   def self.hover(y, x);         FmrbSpxEc.fmrb_spx_et_hover(slot, y, x); end
   def self.hover_field(field);  FmrbSpxEc.fmrb_spx_et_hover_field(field); end
   def self.hover_method?;       FmrbSpxEc.fmrb_spx_et_hover_is_method != 0; end
+
+  # Signature help: 1 when the cursor is inside a call we know, then the
+  # signature and the current argument by field.
+  def self.call_context(y, x);  FmrbSpxEc.fmrb_spx_et_call_context(slot, y, x); end
+  def self.call_field(field);   FmrbSpxEc.fmrb_spx_et_call_field(field); end
+  def self.call_argument_index; FmrbSpxEc.fmrb_spx_et_call_argument_index; end
 
   # Diagnostics: how many problems, then each one by index.
   def self.diagnose;            FmrbSpxEc.fmrb_spx_et_diagnose(slot); end
