@@ -67,7 +67,7 @@ module EditorDebugPane
   end
 
   def dbg_line_background(line_idx)
-    self.class::BG_COLOR
+    BG_COLOR
   end
 
   def dbg_draw_gutter(line_idx, y)
