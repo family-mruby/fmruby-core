@@ -13,6 +13,11 @@ project(fmruby-core)
 # directly baked a stale dev cache into every locally flashed board. The
 # var/cache directory itself must survive (with .keep): the desktop opens
 # the cache file for writing without creating directories.
+#
+# flash/tmp is likewise dev-only: the Linux sim backs the RAM /tmp with that
+# real directory, but on ESP32 /tmp is its own RAM-backed VFS. Baking a
+# physical /flash/tmp made the mount point appear twice in the root listing
+# (once real, once synthetic), so it is dropped from the image.
 if(NOT IDF_TARGET STREQUAL "linux")
     set(STORAGE_STAGING ${CMAKE_BINARY_DIR}/storage_root)
     add_custom_target(storage_staging
@@ -21,6 +26,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/var/cache
         COMMAND ${CMAKE_COMMAND} -E make_directory ${STORAGE_STAGING}/var/cache
         COMMAND ${CMAKE_COMMAND} -E touch ${STORAGE_STAGING}/var/cache/.keep
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/tmp
         COMMENT "Staging storage tree (runtime caches excluded)"
     )
     littlefs_create_partition_image(storage ${STORAGE_STAGING} FLASH_IN_PROJECT
