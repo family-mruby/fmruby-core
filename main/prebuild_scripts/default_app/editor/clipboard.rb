@@ -2,7 +2,7 @@
 #
 # Split out of editor.app.rb (doc/editor_refactor). Pure instance-variable
 # state (@sel_*, @clipboard) and EditorCore calls -- no constants to share, so
-# this mixin needs none of the self.class:: dance the other editor mixins do.
+# this mixin needs no shared constants, so it does not include EditorConst.
 module EditorClipboard
 
   # ---- Selection ----

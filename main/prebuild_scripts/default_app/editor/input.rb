@@ -1,8 +1,9 @@
 # Keyboard input for the editor: character entry / UTF-8 assembly / indent /
 # enter / backspace / delete, and the arrow/page/home/end navigation.
-# Split out of editor.app.rb (doc/editor_refactor). self.class::ASCII_PRINTABLE and
-# self.class::TAB_SIZE are the editor body's; reached as self.class::NAME.
+# Split out of editor.app.rb (doc/editor_refactor). ASCII_PRINTABLE and
+# TAB_SIZE come from EditorConst (included below).
 module EditorInput
+  include EditorConst
 
   # ---- Key handling ----
 
@@ -77,12 +78,12 @@ module EditorInput
   # One-character String for a printable ASCII code ("" outside 32..126).
   def printable_char(code)
     return "" if code < 32 || code > 126
-    self.class::ASCII_PRINTABLE[code - 32, 1]
+    ASCII_PRINTABLE[code - 32, 1]
   end
 
   def insert_indent
     ti = 0
-    while ti < self.class::TAB_SIZE
+    while ti < TAB_SIZE
       insert_char(' ')
       ti += 1
     end

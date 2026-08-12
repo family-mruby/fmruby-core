@@ -1,8 +1,9 @@
 # The File/Edit dropdown menus and the File > Template list for the editor.
 # Split out of editor.app.rb (doc/editor_refactor). Shared constants
-# (DROPDOWN_*, MENU_*_HOTKEYS, self.class::CHAR_H, self.class::TEMPLATE_DIR) belong to the editor body
-# and are reached as self.class::NAME.
+# (DROPDOWN_*, MENU_*_HOTKEYS, CHAR_H, TEMPLATE_DIR) come from EditorConst
+# (included below).
 module EditorMenu
+  include EditorConst
 
   # ---- Menu dropdown (File / Edit) ----
 
@@ -30,8 +31,8 @@ module EditorMenu
 
   def menu_hotkeys
     case @active_menu
-    when :file then self.class::MENU_FILE_HOTKEYS
-    when :edit then self.class::MENU_EDIT_HOTKEYS
+    when :file then MENU_FILE_HOTKEYS
+    when :edit then MENU_EDIT_HOTKEYS
     end
   end
 
@@ -59,13 +60,13 @@ module EditorMenu
   # right-anchored to stay inside the (narrow) editor window.
   def menu_origin
     case @active_menu
-    when :file then [@menu_file_x, @menu_y + self.class::CHAR_H]
-    when :template then [@menu_file_x, @menu_y + self.class::CHAR_H]
-    when :edit then [@menu_edit_x, @menu_y + self.class::CHAR_H]
+    when :file then [@menu_file_x, @menu_y + CHAR_H]
+    when :template then [@menu_file_x, @menu_y + CHAR_H]
+    when :edit then [@menu_edit_x, @menu_y + CHAR_H]
     when :debug
       dx = @user_area_x0 + @user_area_width - menu_width - 2
       dx = @menu_debug_x if dx > @menu_debug_x
-      [dx, @menu_y + self.class::CHAR_H]
+      [dx, @menu_y + CHAR_H]
     else            [0, 0]
     end
   end
@@ -75,20 +76,20 @@ module EditorMenu
     items = menu_items
     w = menu_width
     x, y = menu_origin
-    h = self.class::DROPDOWN_ITEM_H * items.size + 2
+    h = DROPDOWN_ITEM_H * items.size + 2
 
-    @gfx.fill_rect(x, y, w, h, self.class::DROPDOWN_BG)
+    @gfx.fill_rect(x, y, w, h, DROPDOWN_BG)
     @gfx.draw_rect(x, y, w, h, 0x60)
 
     items.each_with_index do |item, i|
-      item_y = y + 1 + i * self.class::DROPDOWN_ITEM_H
+      item_y = y + 1 + i * DROPDOWN_ITEM_H
       if i == @menu_idx
-        @gfx.fill_rect(x + 1, item_y, w - 2, self.class::DROPDOWN_ITEM_H, self.class::DROPDOWN_SEL_BG)
+        @gfx.fill_rect(x + 1, item_y, w - 2, DROPDOWN_ITEM_H, DROPDOWN_SEL_BG)
         @gfx.draw_text(x + 4, item_y + 1, item.to_s,
-                       self.class::DROPDOWN_SEL_TEXT, self.class::DROPDOWN_SEL_BG, mixed: true)
+                       DROPDOWN_SEL_TEXT, DROPDOWN_SEL_BG, mixed: true)
       else
         @gfx.draw_text(x + 4, item_y + 1, item.to_s,
-                       self.class::DROPDOWN_TEXT, self.class::DROPDOWN_BG, mixed: true)
+                       DROPDOWN_TEXT, DROPDOWN_BG, mixed: true)
       end
     end
   end
@@ -153,7 +154,7 @@ module EditorMenu
     w = menu_width
     items = menu_items
     if x >= dx && x < dx + w && y >= dy
-      idx = (y - dy - 1) / self.class::DROPDOWN_ITEM_H
+      idx = (y - dy - 1) / DROPDOWN_ITEM_H
       if idx >= 0 && idx < items.size
         activate_menu_item(idx)
         return
@@ -201,7 +202,7 @@ module EditorMenu
 
   # ---- Templates (File > Template) ----
   #
-  # Skeletons are files under self.class::TEMPLATE_DIR rather than text baked into this
+  # Skeletons are files under TEMPLATE_DIR rather than text baked into this
   # app, so a user can drop their own in and see it in the list. The list is
   # the ordinary menu dropdown, which already has the keyboard and mouse
   # handling; only the item text is different.
@@ -219,14 +220,14 @@ module EditorMenu
     names = []
     labels = []
     begin
-      dir = Dir.open(self.class::TEMPLATE_DIR)
+      dir = Dir.open(TEMPLATE_DIR)
       while (e = dir.read)
         name = e.to_s
         names << name if name.end_with?(".rb")
       end
       dir.close
     rescue => err
-      Log.error("Cannot list #{self.class::TEMPLATE_DIR}: #{err.message}")
+      Log.error("Cannot list #{TEMPLATE_DIR}: #{err.message}")
       names = []
     end
     names = names.sort
@@ -241,7 +242,7 @@ module EditorMenu
   # document model does the work and reports where the cursor ended up.
   def insert_template(idx)
     return if idx < 0 || idx >= @template_names.size
-    path = "#{self.class::TEMPLATE_DIR}/#{@template_names[idx]}"
+    path = "#{TEMPLATE_DIR}/#{@template_names[idx]}"
     text = nil
     begin
       f = File.open(path, "r")

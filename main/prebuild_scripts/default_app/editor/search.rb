@@ -1,10 +1,10 @@
 # Find / Find-next dialog for the editor.
 #
 # Split out of editor.app.rb (doc/editor_refactor). Owns its SEARCH_ constants;
-# the theme colors and the reused quit-dialog frame colors belong to the editor
-# body and are reached as self.class::NAME (picoruby will not resolve a bare
-# including-class constant from a mixin).
+# the theme colors and the reused quit-dialog frame colors come from
+# EditorConst, which it includes below.
 module EditorSearch
+  include EditorConst
 
   SEARCH_QUERY_MAX = 32
   SEARCH_NOT_FOUND = FmrbGfx.rgb_to_332(180, 0, 0)
@@ -12,8 +12,8 @@ module EditorSearch
   # ---- Search (Find / Find-next) dialog ----
 
   def search_dialog_rect
-    w = (SEARCH_QUERY_MAX + 2) * self.class::CHAR_W + 8
-    h = 5 * self.class::CHAR_H + 14
+    w = (SEARCH_QUERY_MAX + 2) * CHAR_W + 8
+    h = 5 * CHAR_H + 14
     x = @user_area_x0 + (@user_area_width  - w) / 2
     y = @user_area_y0 + (@user_area_height - h) / 2
     [x, y, w, h]
@@ -21,35 +21,35 @@ module EditorSearch
 
   def draw_search_dialog
     x, y, w, h = search_dialog_rect
-    @gfx.fill_rect(x, y, w, h, self.class::QUIT_DLG_BG)
-    @gfx.draw_rect(x, y, w, h, self.class::QUIT_DLG_BORDER)
-    @gfx.draw_rect(x + 1, y + 1, w - 2, h - 2, self.class::QUIT_DLG_BORDER)
+    @gfx.fill_rect(x, y, w, h, QUIT_DLG_BG)
+    @gfx.draw_rect(x, y, w, h, QUIT_DLG_BORDER)
+    @gfx.draw_rect(x + 1, y + 1, w - 2, h - 2, QUIT_DLG_BORDER)
 
     tx = x + 4
     ty = y + 4
     @gfx.draw_text(tx, ty, FmrbI18n.t(:find).to_s,
-                   self.class::QUIT_DLG_TEXT, self.class::QUIT_DLG_BG, mixed: true)
+                   QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
 
-    iy = ty + self.class::CHAR_H + 4
-    iw = SEARCH_QUERY_MAX * self.class::CHAR_W + 2
-    @gfx.fill_rect(tx, iy, iw, self.class::CHAR_H + 2, self.class::BG_COLOR)
-    @gfx.draw_rect(tx, iy, iw, self.class::CHAR_H + 2, self.class::QUIT_DLG_BORDER)
+    iy = ty + CHAR_H + 4
+    iw = SEARCH_QUERY_MAX * CHAR_W + 2
+    @gfx.fill_rect(tx, iy, iw, CHAR_H + 2, BG_COLOR)
+    @gfx.draw_rect(tx, iy, iw, CHAR_H + 2, QUIT_DLG_BORDER)
     # mixed: the query can hold kana now, and the caret follows the pixel
     # width rather than the character count (a kana is two cells wide).
-    @gfx.draw_text(tx + 1, iy + 1, @search_query, self.class::TEXT_COLOR, self.class::BG_COLOR,
+    @gfx.draw_text(tx + 1, iy + 1, @search_query, TEXT_COLOR, BG_COLOR,
                    mixed: true)
     cur_x = tx + 1 + FmrbI18n.text_width(@search_query)
-    @gfx.fill_rect(cur_x, iy + 1, self.class::CHAR_W, self.class::CHAR_H, self.class::CURSOR_COLOR)
+    @gfx.fill_rect(cur_x, iy + 1, CHAR_W, CHAR_H, CURSOR_COLOR)
 
-    sy = iy + self.class::CHAR_H + 4
+    sy = iy + CHAR_H + 4
     if @search_status && @search_status.length > 0
-      @gfx.draw_text(tx, sy, @search_status, SEARCH_NOT_FOUND, self.class::QUIT_DLG_BG,
+      @gfx.draw_text(tx, sy, @search_status, SEARCH_NOT_FOUND, QUIT_DLG_BG,
                      mixed: true)
     end
 
-    hy = sy + self.class::CHAR_H + 2
+    hy = sy + CHAR_H + 2
     @gfx.draw_text(tx, hy, FmrbI18n.t(:find_keys).to_s,
-                   self.class::QUIT_DLG_TEXT, self.class::QUIT_DLG_BG, mixed: true)
+                   QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
   end
 
   def open_search_dialog
@@ -102,7 +102,7 @@ module EditorSearch
     # word possible at all.
     if character >= 0x80
       s = utf8_feed(character)
-      if s && FmrbI18n.text_width(@search_query) < SEARCH_QUERY_MAX * self.class::CHAR_W
+      if s && FmrbI18n.text_width(@search_query) < SEARCH_QUERY_MAX * CHAR_W
         @search_query += s
         @search_query_dirty = true
         @search_status = ""

@@ -1,22 +1,23 @@
 # All the editor's drawing: menu bar, status line, edit rows, cursor,
 # plus the render-latency instrumentation and the quit-confirm dialog.
 # Split out of editor.app.rb (doc/editor_refactor). The many theme/layout/
-# menu constants belong to the editor body and are reached as self.class::NAME.
+# menu constants come from EditorConst (included below).
 module EditorRender
+  include EditorConst
 
   # ---- Drawing ----
 
   # Localized word for a menu bar item (no accelerator, no state mark).
   def menu_bar_label(id)
     case id
-    when self.class::MENU_ID_FILE    then FmrbI18n.t(:m_file).to_s
-    when self.class::MENU_ID_EDIT    then FmrbI18n.t(:m_edit).to_s
-    when self.class::MENU_ID_SEARCH  then FmrbI18n.t(:m_search).to_s
-    when self.class::MENU_ID_RUN     then FmrbI18n.t(:m_run).to_s
-    when self.class::MENU_ID_HILIGHT then FmrbI18n.t(:m_hilight).to_s
-    when self.class::MENU_ID_WRAP    then FmrbI18n.t(:m_wrap).to_s
-    when self.class::MENU_ID_DEBUG   then dbg_menu_label.to_s
-    when self.class::MENU_ID_FULL    then FmrbI18n.t(:m_full).to_s
+    when MENU_ID_FILE    then FmrbI18n.t(:m_file).to_s
+    when MENU_ID_EDIT    then FmrbI18n.t(:m_edit).to_s
+    when MENU_ID_SEARCH  then FmrbI18n.t(:m_search).to_s
+    when MENU_ID_RUN     then FmrbI18n.t(:m_run).to_s
+    when MENU_ID_HILIGHT then FmrbI18n.t(:m_hilight).to_s
+    when MENU_ID_WRAP    then FmrbI18n.t(:m_wrap).to_s
+    when MENU_ID_DEBUG   then dbg_menu_label.to_s
+    when MENU_ID_FULL    then FmrbI18n.t(:m_full).to_s
     else ""
     end
   end
@@ -25,10 +26,10 @@ module EditorRender
   # (so the label does not jump sideways), "" when the item has no state.
   def menu_bar_mark(id)
     case id
-    when self.class::MENU_ID_HILIGHT then @hl_enabled ? "*" : " "
-    when self.class::MENU_ID_WRAP    then @wrap_on ? "*" : " "
-    when self.class::MENU_ID_DEBUG   then dbg_menu_mark.to_s
-    when self.class::MENU_ID_FULL    then @fullscreen ? "*" : " "
+    when MENU_ID_HILIGHT then @hl_enabled ? "*" : " "
+    when MENU_ID_WRAP    then @wrap_on ? "*" : " "
+    when MENU_ID_DEBUG   then dbg_menu_mark.to_s
+    when MENU_ID_FULL    then @fullscreen ? "*" : " "
     else ""
     end
   end
@@ -38,10 +39,10 @@ module EditorRender
     ids = []
     debug_visible = dbg_menu_visible?
     i = 0
-    while i < self.class::MENU_BAR_IDS.size
-      id = self.class::MENU_BAR_IDS[i]
+    while i < MENU_BAR_IDS.size
+      id = MENU_BAR_IDS[i]
       i += 1
-      next if id == self.class::MENU_ID_DEBUG && debug_visible != true
+      next if id == MENU_ID_DEBUG && debug_visible != true
       ids << id
     end
     ids
@@ -49,9 +50,9 @@ module EditorRender
 
   # Pixel width of one item, with or without its "(K)" accelerator.
   def menu_bar_item_width(id, show_keys)
-    key = self.class::MENU_BAR_KEYS[id].to_s
+    key = MENU_BAR_KEYS[id].to_s
     w = FmrbI18n.text_width(menu_bar_label(id)) + FmrbI18n.text_width(menu_bar_mark(id))
-    w += 3 * self.class::CHAR_W if show_keys && key != ""   # "(", the letter, ")"
+    w += 3 * CHAR_W if show_keys && key != ""   # "(", the letter, ")"
     w
   end
 
@@ -70,7 +71,7 @@ module EditorRender
   def draw_menu_bar
     y = @menu_y
     # +1 covers the 1px separator row between menu bar and edit area
-    @gfx.fill_rect(@user_area_x0, y, @user_area_width, self.class::CHAR_H + 1, self.class::MENU_BG)
+    @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H + 1, MENU_BG)
 
     @menu_ids = []
     @menu_xs = []
@@ -85,7 +86,7 @@ module EditorRender
     i = 0
     while i < ids.size
       total += menu_bar_item_width(ids[i], true)
-      total += self.class::MENU_BAR_GAP if i > 0
+      total += MENU_BAR_GAP if i > 0
       i += 1
     end
     show_keys = total <= avail
@@ -102,10 +103,10 @@ module EditorRender
       @menu_ids << id
       @menu_xs << x
       @menu_ws << w
-      @menu_file_x = x if id == self.class::MENU_ID_FILE
-      @menu_edit_x = x if id == self.class::MENU_ID_EDIT
-      @menu_debug_x = x if id == self.class::MENU_ID_DEBUG
-      x += w + self.class::MENU_BAR_GAP
+      @menu_file_x = x if id == MENU_ID_FILE
+      @menu_edit_x = x if id == MENU_ID_EDIT
+      @menu_debug_x = x if id == MENU_ID_DEBUG
+      x += w + MENU_BAR_GAP
     end
   end
 
@@ -113,23 +114,23 @@ module EditorRender
   # fit before `right`.
   def draw_menu_bar_item(x, y, id, right, show_keys)
     label = menu_bar_label(id)
-    key = self.class::MENU_BAR_KEYS[id].to_s
+    key = MENU_BAR_KEYS[id].to_s
     mark = menu_bar_mark(id)
     with_key = show_keys && key != ""
 
     head = with_key ? label + "(" : label
     tail = with_key ? ")" + mark : mark
     head_w = FmrbI18n.text_width(head)
-    key_w = with_key ? self.class::CHAR_W : 0
+    key_w = with_key ? CHAR_W : 0
     total = head_w + key_w + FmrbI18n.text_width(tail)
     return 0 if x + total > right
 
-    @gfx.draw_text(x, y, head, self.class::MENU_TEXT, self.class::MENU_BG, mixed: true)
+    @gfx.draw_text(x, y, head, MENU_TEXT, MENU_BG, mixed: true)
     if with_key
-      @gfx.draw_text(x + head_w, y, key, self.class::MENU_KEY, self.class::MENU_BG)
+      @gfx.draw_text(x + head_w, y, key, MENU_KEY, MENU_BG)
     end
     if tail != ""
-      @gfx.draw_text(x + head_w + key_w, y, tail, self.class::MENU_TEXT, self.class::MENU_BG, mixed: true)
+      @gfx.draw_text(x + head_w + key_w, y, tail, MENU_TEXT, MENU_BG, mixed: true)
     end
     total
   end
@@ -147,14 +148,14 @@ module EditorRender
 
   def activate_menu_bar(id)
     case id
-    when self.class::MENU_ID_FILE    then open_menu(:file)
-    when self.class::MENU_ID_EDIT    then open_menu(:edit)
-    when self.class::MENU_ID_SEARCH  then open_search_dialog
-    when self.class::MENU_ID_RUN     then run_current_file
-    when self.class::MENU_ID_HILIGHT then toggle_highlight
-    when self.class::MENU_ID_WRAP    then toggle_wrap
-    when self.class::MENU_ID_DEBUG   then open_menu(:debug)
-    when self.class::MENU_ID_FULL    then toggle_fullscreen
+    when MENU_ID_FILE    then open_menu(:file)
+    when MENU_ID_EDIT    then open_menu(:edit)
+    when MENU_ID_SEARCH  then open_search_dialog
+    when MENU_ID_RUN     then run_current_file
+    when MENU_ID_HILIGHT then toggle_highlight
+    when MENU_ID_WRAP    then toggle_wrap
+    when MENU_ID_DEBUG   then open_menu(:debug)
+    when MENU_ID_FULL    then toggle_fullscreen
     end
   end
 
@@ -171,7 +172,7 @@ module EditorRender
   # message goes through flash_status; this is the only method that draws here.
   def draw_status_line
     y = @status_y
-    @gfx.fill_rect(@user_area_x0, y, @user_area_width, self.class::CHAR_H, self.class::STATUS_BG)
+    @gfx.fill_rect(@user_area_x0, y, @user_area_width, CHAR_H, STATUS_BG)
 
     # ---- right zone: measure the badges, right to left ----
     right = @user_area_x0 + @user_area_width
@@ -196,23 +197,23 @@ module EditorRender
       text = fit_status_text(@status_msg, room)
       if @status_msg_ok
         bw = FmrbI18n.text_width(text)
-        @gfx.fill_rect(x0, y, bw, self.class::CHAR_H, self.class::STATUS_OK_BG)
-        @gfx.draw_text(x0, y, text, self.class::STATUS_OK_TEXT, self.class::STATUS_OK_BG, mixed: true)
+        @gfx.fill_rect(x0, y, bw, CHAR_H, STATUS_OK_BG)
+        @gfx.draw_text(x0, y, text, STATUS_OK_TEXT, STATUS_OK_BG, mixed: true)
       else
-        @gfx.draw_text(x0, y, text, self.class::STATUS_TEXT, self.class::STATUS_BG, mixed: true)
+        @gfx.draw_text(x0, y, text, STATUS_TEXT, STATUS_BG, mixed: true)
       end
     else
       @gfx.draw_text(x0, y, fit_status_text(status_reading, room),
-                     self.class::STATUS_TEXT, self.class::STATUS_BG, mixed: true)
+                     STATUS_TEXT, STATUS_BG, mixed: true)
     end
 
     # ---- badges last ----
     if problems_x
-      @gfx.draw_text(problems_x, y, problems, self.class::PROBLEM_BADGE_TEXT, self.class::STATUS_BG,
+      @gfx.draw_text(problems_x, y, problems, PROBLEM_BADGE_TEXT, STATUS_BG,
                      mixed: true)
     end
     if @kana_badge_x
-      @gfx.draw_text(@kana_badge_x, y, kana_badge, self.class::STATUS_TEXT, self.class::STATUS_BG,
+      @gfx.draw_text(@kana_badge_x, y, kana_badge, STATUS_TEXT, STATUS_BG,
                      mixed: true)
     end
   end
@@ -263,7 +264,7 @@ module EditorRender
 
   def hit_kana_badge?(mx, my)
     return false unless @kana_badge_x
-    my >= @status_y && my < @status_y + self.class::CHAR_H &&
+    my >= @status_y && my < @status_y + CHAR_H &&
       mx >= @kana_badge_x && mx < @kana_badge_x + @kana_badge_w
   end
 
@@ -328,7 +329,7 @@ module EditorRender
   # font. set_font is a queued command like any other, so it is enough to
   # bracket the drawing that needs it rather than track a mode.
   def begin_edit_font
-    @gfx.set_font(:ja, self.class::EDIT_FONT_SIZE)
+    @gfx.set_font(:ja, EDIT_FONT_SIZE)
   end
 
   def end_edit_font
@@ -337,13 +338,13 @@ module EditorRender
 
   def draw_edit_area
     # One fill for the whole area: it also clears the leftover strip below the
-    # last full row (edit_height is not always a multiple of self.class::LINE_H).
+    # last full row (edit_height is not always a multiple of LINE_H).
     @gfx.fill_rect(@user_area_x0, @edit_y,
-                    @user_area_width, @edit_height, self.class::BG_COLOR)
+                    @user_area_width, @edit_height, BG_COLOR)
 
     # Breakpoint gutter column (debug mode only).
     if @gutter_w > 0
-      @gfx.fill_rect(@user_area_x0, @edit_y, @gutter_w, @edit_height, self.class::GUTTER_BG)
+      @gfx.fill_rect(@user_area_x0, @edit_y, @gutter_w, @edit_height, GUTTER_BG)
     end
 
     sel_range = selection_range  # [sx, sy, ex, ey] or nil
@@ -374,11 +375,11 @@ module EditorRender
   # when wrapping is off, where the row starts at the horizontal scroll).
   def draw_edit_row(row, line_idx, seg, sel_range, blank_bg)
     x = @user_area_x0 + 1 + @gutter_w
-    y = @edit_y + row * self.class::LINE_H
+    y = @edit_y + row * LINE_H
 
     if blank_bg
-      @gfx.fill_rect(@user_area_x0, y, @user_area_width, self.class::LINE_H, self.class::BG_COLOR)
-      @gfx.fill_rect(@user_area_x0, y, @gutter_w, self.class::LINE_H, self.class::GUTTER_BG) if @gutter_w > 0
+      @gfx.fill_rect(@user_area_x0, y, @user_area_width, LINE_H, BG_COLOR)
+      @gfx.fill_rect(@user_area_x0, y, @gutter_w, LINE_H, GUTTER_BG) if @gutter_w > 0
     end
     return if line_idx >= EditorCore.line_count
 
@@ -402,15 +403,15 @@ module EditorRender
     # A line the last diagnostic run complained about is tinted red, unless the
     # debugger is stopped on it -- where execution is now matters more.
     line_bg = dbg_line_background(line_idx)
-    line_bg = self.class::PROBLEM_BG if line_bg == self.class::BG_COLOR && problem_on_line?(line_idx)
-    if line_bg != self.class::BG_COLOR
+    line_bg = PROBLEM_BG if line_bg == BG_COLOR && problem_on_line?(line_idx)
+    if line_bg != BG_COLOR
       @gfx.fill_rect(@user_area_x0 + @gutter_w, y,
-                     @user_area_width - @gutter_w, self.class::LINE_H, line_bg)
+                     @user_area_width - @gutter_w, LINE_H, line_bg)
     end
     dbg_draw_gutter(line_idx, y) if @gutter_w > 0
 
     # Selection background goes down before the text; the glyphs are then drawn
-    # over it with self.class::SEL_BG as their own background, so the row is one pass.
+    # over it with SEL_BG as their own background, so the row is one pass.
     sel_from = -1
     sel_to = -1
     if sel_range
@@ -423,7 +424,7 @@ module EditorRender
         if vstart < vend
           c0 = cell_offset(widths, vstart)
           c1 = cell_offset(widths, vend)
-          @gfx.fill_rect(x + c0 * self.class::CELL_W, y, (c1 - c0) * self.class::CELL_W, self.class::LINE_H, self.class::SEL_BG)
+          @gfx.fill_rect(x + c0 * CELL_W, y, (c1 - c0) * CELL_W, LINE_H, SEL_BG)
           sel_from = vstart
           sel_to = vend
         end
@@ -432,10 +433,10 @@ module EditorRender
       # edit margin so the wrapped newline is visible.
       last_seg = (col0 + nchars >= line_len)
       if last_seg && line_idx >= sel_range[1] && line_idx < sel_range[3]
-        fill_x0 = x + used_cells * self.class::CELL_W
-        fill_x1 = x + @edit_cols * self.class::CELL_W
+        fill_x0 = x + used_cells * CELL_W
+        fill_x1 = x + @edit_cols * CELL_W
         if fill_x0 < fill_x1
-          @gfx.fill_rect(fill_x0, y, fill_x1 - fill_x0, self.class::LINE_H, self.class::SEL_BG)
+          @gfx.fill_rect(fill_x0, y, fill_x1 - fill_x0, LINE_H, SEL_BG)
         end
       end
     end
@@ -445,7 +446,7 @@ module EditorRender
     # Tinted (breakpoint/stop) lines always render plain over their background.
     # The category map is per visible character and comes from EditorCore's
     # cache (recomputed only when the line changes).
-    hl = (line_bg == self.class::BG_COLOR && @hl_enabled) ?
+    hl = (line_bg == BG_COLOR && @hl_enabled) ?
            EditorCore.render_hl(line_idx, col0, nchars) : ""
     draw_row_text(x, y, text, widths, nchars, hl, line_bg, sel_from, sel_to)
   end
@@ -489,7 +490,7 @@ module EditorRender
   # Draw one visible row in as few draw_text commands as the colours and the
   # gfx text buffer allow: the byte walk emits a command when the highlight
   # category changes, when the selection starts or ends, or when the next
-  # character would push the command past self.class::DRAW_TEXT_MAX_BYTES.
+  # character would push the command past DRAW_TEXT_MAX_BYTES.
   #
   # +widths+ places each character (one or two cells), +hl+ carries one category
   # byte per character, and both are indexed by the same character number as
@@ -503,15 +504,15 @@ module EditorRender
     while i < nchars
       cat = i < hl_len ? hl.getbyte(i) : 0
       sel = (i >= sel_from && i < sel_to)
-      color = sel ? self.class::TEXT_COLOR : (self.class::HL_COLORS[cat] || self.class::TEXT_COLOR)
-      bg = sel ? self.class::SEL_BG : plain_bg
+      color = sel ? TEXT_COLOR : (HL_COLORS[cat] || TEXT_COLOR)
+      bg = sel ? SEL_BG : plain_bg
 
       b0 = b
       c0 = cell
       bytes = 0
       while i < nchars
         nb = char_bytes(text.getbyte(b))
-        break if bytes > 0 && bytes + nb > self.class::DRAW_TEXT_MAX_BYTES
+        break if bytes > 0 && bytes + nb > DRAW_TEXT_MAX_BYTES
         ncat = i < hl_len ? hl.getbyte(i) : 0
         break if ncat != cat
         nsel = (i >= sel_from && i < sel_to)
@@ -521,7 +522,7 @@ module EditorRender
         cell += widths.getbyte(i)
         i += 1
       end
-      @gfx.draw_text(x + c0 * self.class::CELL_W, y, text.byteslice(b0, bytes), color, bg)
+      @gfx.draw_text(x + c0 * CELL_W, y, text.byteslice(b0, bytes), color, bg)
     end
   end
 
@@ -545,8 +546,8 @@ module EditorRender
     w_cells = idx < widths.bytesize ? widths.getbyte(idx) : 1
     w_cells = @edit_cols - cell if cell + w_cells > @edit_cols
 
-    [@user_area_x0 + 1 + @gutter_w + cell * self.class::CELL_W,
-     @edit_y + screen_row * self.class::LINE_H,
+    [@user_area_x0 + 1 + @gutter_w + cell * CELL_W,
+     @edit_y + screen_row * LINE_H,
      w_cells]
   end
 
@@ -558,11 +559,11 @@ module EditorRender
     w_cells = box[2]
 
     # Draw block cursor
-    @gfx.fill_rect(x, y, w_cells * self.class::CELL_W, self.class::LINE_H, self.class::CURSOR_COLOR)
+    @gfx.fill_rect(x, y, w_cells * CELL_W, LINE_H, CURSOR_COLOR)
 
     # Draw character under cursor in contrasting color
     ch = EditorCore.char_at(@cy, @cx)
-    @gfx.draw_text(x, y, ch, self.class::BG_COLOR, self.class::CURSOR_COLOR) if ch.bytesize > 0
+    @gfx.draw_text(x, y, ch, BG_COLOR, CURSOR_COLOR) if ch.bytesize > 0
   end
 
   # ---- Latency instrumentation ----
@@ -592,11 +593,11 @@ module EditorRender
     @lat_n += 1
     @lat_sum += lat_us
     @lat_max = lat_us if lat_us > @lat_max
-    @lat_slow += 1 if lat_us > self.class::LAT_SLOW_US
-    b = lat_us / self.class::LAT_BUCKET_US
-    b = self.class::LAT_BUCKETS if b > self.class::LAT_BUCKETS
+    @lat_slow += 1 if lat_us > LAT_SLOW_US
+    b = lat_us / LAT_BUCKET_US
+    b = LAT_BUCKETS if b > LAT_BUCKETS
     @lat_hist[b] += 1
-    return if @lat_n < self.class::LAT_REPORT_N
+    return if @lat_n < LAT_REPORT_N
     lat_report
   end
 
@@ -606,12 +607,12 @@ module EditorRender
     need = (@lat_n * 99 + 99) / 100
     acc = 0
     b = 0
-    while b <= self.class::LAT_BUCKETS
+    while b <= LAT_BUCKETS
       acc += @lat_hist[b]
-      return (b + 1) * self.class::LAT_BUCKET_US / 1000 if acc >= need
+      return (b + 1) * LAT_BUCKET_US / 1000 if acc >= need
       b += 1
     end
-    (self.class::LAT_BUCKETS + 1) * self.class::LAT_BUCKET_US / 1000
+    (LAT_BUCKETS + 1) * LAT_BUCKET_US / 1000
   end
 
   def lat_report
@@ -619,7 +620,7 @@ module EditorRender
     p99 = lat_p99_ms
     hist = ""
     b = 0
-    while b <= self.class::LAT_BUCKETS
+    while b <= LAT_BUCKETS
       hist += "," if b > 0
       hist += @lat_hist[b].to_s
       @lat_hist[b] = 0
@@ -706,8 +707,8 @@ module EditorRender
 
 
   def quit_dialog_rect
-    w = 26 * self.class::CHAR_W + 8
-    h = 4 * self.class::CHAR_H + 10
+    w = 26 * CHAR_W + 8
+    h = 4 * CHAR_H + 10
     x = @user_area_x0 + (@user_area_width  - w) / 2
     y = @user_area_y0 + (@user_area_height - h) / 2
     [x, y, w, h]
@@ -715,32 +716,32 @@ module EditorRender
 
   def draw_quit_dialog
     x, y, w, h = quit_dialog_rect
-    @gfx.fill_rect(x, y, w, h, self.class::QUIT_DLG_BG)
-    @gfx.draw_rect(x, y, w, h, self.class::QUIT_DLG_BORDER)
-    @gfx.draw_rect(x + 1, y + 1, w - 2, h - 2, self.class::QUIT_DLG_BORDER)
+    @gfx.fill_rect(x, y, w, h, QUIT_DLG_BG)
+    @gfx.draw_rect(x, y, w, h, QUIT_DLG_BORDER)
+    @gfx.draw_rect(x + 1, y + 1, w - 2, h - 2, QUIT_DLG_BORDER)
 
     tx = x + 4
     ty = y + 4
     @gfx.draw_text(tx, ty, FmrbI18n.t(:unsaved).to_s,
-                   self.class::QUIT_DLG_TEXT, self.class::QUIT_DLG_BG, mixed: true)
-    @gfx.draw_text(tx, ty + self.class::CHAR_H + 2, FmrbI18n.t(:save_before_exit).to_s,
-                   self.class::QUIT_DLG_TEXT, self.class::QUIT_DLG_BG, mixed: true)
+                   QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
+    @gfx.draw_text(tx, ty + CHAR_H + 2, FmrbI18n.t(:save_before_exit).to_s,
+                   QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
 
     # Laid out left to right from measured widths: the words differ per
     # language, the bracketed keys do not.
-    by = ty + (self.class::CHAR_H + 2) * 2 + 2
+    by = ty + (CHAR_H + 2) * 2 + 2
     bx = tx
-    bx += draw_quit_choice(bx, by, "Y", FmrbI18n.t(:q_yes).to_s) + self.class::CHAR_W
-    bx += draw_quit_choice(bx, by, "N", FmrbI18n.t(:q_no).to_s) + self.class::CHAR_W
+    bx += draw_quit_choice(bx, by, "Y", FmrbI18n.t(:q_yes).to_s) + CHAR_W
+    bx += draw_quit_choice(bx, by, "N", FmrbI18n.t(:q_no).to_s) + CHAR_W
     draw_quit_choice(bx, by, "C", FmrbI18n.t(:q_cancel).to_s)
   end
 
   # Draws "[K]word" and returns its pixel width.
   def draw_quit_choice(x, y, key_char, rest)
-    @gfx.draw_text(x,            y, "[",       self.class::QUIT_DLG_TEXT, self.class::QUIT_DLG_BG)
-    @gfx.draw_text(x + self.class::CHAR_W,   y, key_char,  self.class::QUIT_DLG_KEY,  self.class::QUIT_DLG_BG)
-    @gfx.draw_text(x + 2*self.class::CHAR_W, y, "]" + rest, self.class::QUIT_DLG_TEXT, self.class::QUIT_DLG_BG, mixed: true)
-    2 * self.class::CHAR_W + FmrbI18n.text_width("]" + rest)
+    @gfx.draw_text(x,            y, "[",       QUIT_DLG_TEXT, QUIT_DLG_BG)
+    @gfx.draw_text(x + CHAR_W,   y, key_char,  QUIT_DLG_KEY,  QUIT_DLG_BG)
+    @gfx.draw_text(x + 2*CHAR_W, y, "]" + rest, QUIT_DLG_TEXT, QUIT_DLG_BG, mixed: true)
+    2 * CHAR_W + FmrbI18n.text_width("]" + rest)
   end
 
   # Answered by scancode (HID Usage ID), not by character: kana input mode

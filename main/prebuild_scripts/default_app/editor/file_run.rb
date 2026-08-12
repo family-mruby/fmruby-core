@@ -1,7 +1,8 @@
 # File load/save and Run (F5) for the editor, plus the transient status-line
 # helpers they share. Split out of editor.app.rb (doc/editor_refactor).
-# self.class::STATUS_MSG_FRAMES is the editor body's; reached as self.class::NAME.
+# STATUS_MSG_FRAMES comes from EditorConst (included below).
 module EditorFileRun
+  include EditorConst
 
   # ---- File operations ----
 
@@ -115,12 +116,12 @@ module EditorFileRun
 
   # Put a message in the status line's message zone -- the only way anything
   # writes there. It clears on the key after the one that raised it, or after
-  # self.class::STATUS_MSG_FRAMES ticks, whichever comes first. +ok+ marks the green
+  # STATUS_MSG_FRAMES ticks, whichever comes first. +ok+ marks the green
   # success flavour (Save uses it).
   def flash_status(text, ok = false)
     @status_msg = " #{text} "
     @status_msg_ok = ok
-    @status_msg_frames = self.class::STATUS_MSG_FRAMES
+    @status_msg_frames = STATUS_MSG_FRAMES
     # The key that raised this message must not also clear it.
     @status_msg_fresh = true
     @dirty_status = true

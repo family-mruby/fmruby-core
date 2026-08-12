@@ -4,12 +4,11 @@
 # Split out of editor.app.rb (doc/editor_refactor). The editor body reaches
 # these through the method names below; the state is EditorApp instance
 # variables, shared as usual. This is the same mixin arrangement as
-# EditorDebugPane -- and, like it, a constant of EditorApp is reached as
-# self.class::NAME because picoruby does not resolve a bare constant of the
-# including class from inside a mixin. This module owns the COMP_/HELP_/ET_
-# constants (referenced bare); layout/keys it shares with the editor body
-# (SC_*, DROPDOWN_*, LINE_H, CHAR_W) go through self.class.
+# EditorDebugPane. This module owns the COMP_/HELP_/ET_ constants; the
+# layout/keys it shares with the rest of the editor (SC_*, DROPDOWN_*, LINE_H,
+# CHAR_W) come from EditorConst, which it includes below.
 module EditorTiUi
+  include EditorConst
 
   # ---- Completion (type inference) ----
   #
@@ -155,22 +154,22 @@ module EditorTiUi
   # other key closes it and is then handled the way it normally would be.
   def handle_completion_key(ev)
     case ev[:scancode] || 0
-    when self.class::SC_UP
+    when SC_UP
       @comp_idx -= 1 if @comp_idx > 0
       comp_scroll_into_view
       comp_explain_selected
       @need_redraw = true
       true
-    when self.class::SC_DOWN
+    when SC_DOWN
       @comp_idx += 1 if @comp_idx < @comp_labels.size - 1
       comp_scroll_into_view
       comp_explain_selected
       @need_redraw = true
       true
-    when self.class::SC_ENTER, self.class::SC_KP_ENTER, self.class::SC_TAB
+    when SC_ENTER, SC_KP_ENTER, SC_TAB
       accept_completion
       true
-    when self.class::SC_ESC
+    when SC_ESC
       close_completion
       true
     else
@@ -187,7 +186,7 @@ module EditorTiUi
       longest = n if n > longest
       i += 1
     end
-    w = (longest + 2) * self.class::CHAR_W + 8
+    w = (longest + 2) * CHAR_W + 8
     room = @user_area_width - 4
     w > room ? room : w
   end
@@ -204,7 +203,7 @@ module EditorTiUi
     x = right - w if x + w > right
     x = @user_area_x0 + 1 if x < @user_area_x0 + 1
 
-    y = cy + self.class::LINE_H
+    y = cy + LINE_H
     y = cy - h if y + h > @status_y
     y = @edit_y if y < @edit_y
     [x, y]
@@ -217,7 +216,7 @@ module EditorTiUi
     h = COMP_ITEM_H * rows + 2
     x, y = comp_origin(w, h)
 
-    @gfx.fill_rect(x, y, w, h, self.class::DROPDOWN_BG)
+    @gfx.fill_rect(x, y, w, h, DROPDOWN_BG)
     @gfx.draw_rect(x, y, w, h, 0x60)
 
     i = 0
@@ -226,10 +225,10 @@ module EditorTiUi
       item_y = y + 1 + i * COMP_ITEM_H
       label = @comp_labels[idx].to_s
       if idx == @comp_idx
-        @gfx.fill_rect(x + 1, item_y, w - 2, COMP_ITEM_H, self.class::DROPDOWN_SEL_BG)
-        @gfx.draw_text(x + 4, item_y + 1, label, self.class::DROPDOWN_SEL_TEXT, self.class::DROPDOWN_SEL_BG)
+        @gfx.fill_rect(x + 1, item_y, w - 2, COMP_ITEM_H, DROPDOWN_SEL_BG)
+        @gfx.draw_text(x + 4, item_y + 1, label, DROPDOWN_SEL_TEXT, DROPDOWN_SEL_BG)
       else
-        @gfx.draw_text(x + 4, item_y + 1, label, self.class::DROPDOWN_TEXT, self.class::DROPDOWN_BG)
+        @gfx.draw_text(x + 4, item_y + 1, label, DROPDOWN_TEXT, DROPDOWN_BG)
       end
       i += 1
     end
@@ -426,7 +425,7 @@ module EditorTiUi
   # the ones a help page has to refuse; moving around is fine.
   def help_edit_key?(ev)
     sc = ev[:scancode] || 0
-    return true if sc == self.class::SC_TAB || sc == self.class::SC_ENTER || sc == self.class::SC_KP_ENTER
+    return true if sc == SC_TAB || sc == SC_ENTER || sc == SC_KP_ENTER
     return true if sc == 0x2A || sc == 0x4C   # Backspace / Delete
     if ev_ctrl?(ev)
       # Save, paste, cut and quit-with-save all write; copy and select-all

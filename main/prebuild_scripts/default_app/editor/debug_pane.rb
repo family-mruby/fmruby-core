@@ -7,9 +7,11 @@
 # FMRB::Debug, its symbol-keyed Hash traffic and the pane drawing statically out
 # of that build. Debugging is done in the mruby build (see plan.md stage 6).
 #
-# Constants of EditorApp are reached as self.class::NAME: picoruby does not
-# resolve a bare constant of the including class from inside a mixin.
+# Shared editor constants (CHAR_H, BG_COLOR, SC_*, GUTTER_*, ...) come from
+# EditorConst, which this module includes below; its own DBG_* constants are
+# defined at the bottom.
 module EditorDebugPane
+  include EditorConst
 
   # ---- Hooks the editor body calls (the stub answers all of these too) ----
 
@@ -38,12 +40,12 @@ module EditorDebugPane
 
   # Height reserved at the bottom of the user area for the pane (0 = no pane).
   def dbg_pane_h
-    @dbg_active ? DBG_PANE_ROWS * self.class::CHAR_H : 0
+    @dbg_active ? DBG_PANE_ROWS * CHAR_H : 0
   end
 
   # Left gutter width for breakpoint dots (0 outside a session).
   def dbg_gutter_w
-    @dbg_active ? self.class::GUTTER_W : 0
+    @dbg_active ? GUTTER_W : 0
   end
 
   def dbg_draw_pane(y0, h)
@@ -70,19 +72,19 @@ module EditorDebugPane
   # run-control keys only during a session. Returns true when consumed.
   def dbg_handle_key(ev)
     scancode = ev[:scancode] || 0
-    if scancode == self.class::SC_F9
+    if scancode == SC_F9
       toggle_breakpoint
       return true
     end
     return false unless @dbg_active
     case scancode
-    when self.class::SC_F5  then dbg_continue
-    when self.class::SC_F6  then dbg_pause
-    when self.class::SC_F10 then dbg_step(:over)
-    when self.class::SC_F11 then dbg_step(ev_shift?(ev) ? :out : :in)
-    when self.class::SC_F7  then dbg_select_frame(-1)
-    when self.class::SC_F8  then dbg_select_frame(1)
-    when self.class::SC_F4  then dbg_toggle_pane
+    when SC_F5  then dbg_continue
+    when SC_F6  then dbg_pause
+    when SC_F10 then dbg_step(:over)
+    when SC_F11 then dbg_step(ev_shift?(ev) ? :out : :in)
+    when SC_F7  then dbg_select_frame(-1)
+    when SC_F8  then dbg_select_frame(1)
+    when SC_F4  then dbg_toggle_pane
     else
       return false
     end
@@ -137,7 +139,7 @@ module EditorDebugPane
 
   # Row tint for the current stop line (BG_COLOR = no tint).
   def dbg_line_background(line_idx)
-    (@dbg_stopped && stop_on_line?(line_idx)) ? STOP_BG : self.class::BG_COLOR
+    (@dbg_stopped && stop_on_line?(line_idx)) ? STOP_BG : BG_COLOR
   end
 
   def dbg_draw_gutter(line_idx, y)
@@ -192,7 +194,7 @@ module EditorDebugPane
   # current-stop line (ring over the red dot when a breakpoint sits there).
   def draw_gutter_marker(line_idx, y)
     cx = @user_area_x0 + @gutter_w / 2
-    cyc = y + self.class::CHAR_H / 2
+    cyc = y + CHAR_H / 2
     bp = bp_on_line?(line_idx)
     stop = @dbg_stopped && stop_on_line?(line_idx)
     if bp
@@ -206,14 +208,14 @@ module EditorDebugPane
   def draw_debug_pane(y0, pane_h)
     @gfx.fill_rect(@user_area_x0, y0, @user_area_width, pane_h, DBG_PANE_BG)
     # Header row.
-    @gfx.fill_rect(@user_area_x0, y0, @user_area_width, self.class::CHAR_H, DBG_HDR_BG)
+    @gfx.fill_rect(@user_area_x0, y0, @user_area_width, CHAR_H, DBG_HDR_BG)
     state = @dbg_stopped ? "stop ln#{@dbg_stop_line}" : "run"
     view = (@dbg_pane == :stack) ? "Stack" : "Vars f#{@dbg_frame_idx}"
     hdr = " #{view} pid=#{@dbg_pid} #{state}"
     hdr += " #{@dbg_msg}" if @dbg_msg.length > 0
     @gfx.draw_text(@user_area_x0 + 2, y0, hdr[0, @edit_cols], DBG_HDR_TEXT, DBG_HDR_BG)
 
-    cy = y0 + self.class::CHAR_H
+    cy = y0 + CHAR_H
     rows = DBG_PANE_ROWS - 1
     if @dbg_pane == :stack
       if @dbg_frames.empty?
@@ -225,9 +227,9 @@ module EditorDebugPane
           f = @dbg_frames[i]
           txt = "##{f['idx']} #{f['func']} #{base(f['file'])}:#{f['line']}"
           bg = (i == @dbg_frame_idx) ? DBG_SEL_BG : DBG_PANE_BG
-          @gfx.fill_rect(@user_area_x0, cy, @user_area_width, self.class::CHAR_H, bg) if bg != DBG_PANE_BG
+          @gfx.fill_rect(@user_area_x0, cy, @user_area_width, CHAR_H, bg) if bg != DBG_PANE_BG
           @gfx.draw_text(@user_area_x0 + 2, cy, txt[0, @edit_cols], DBG_TEXT, bg)
-          cy += self.class::CHAR_H
+          cy += CHAR_H
           i += 1
         end
       end
@@ -242,7 +244,7 @@ module EditorDebugPane
           txt = "#{v['name']} = #{v['value']}"
           txt += " >" if v['ref'] && v['ref'] > 0
           @gfx.draw_text(@user_area_x0 + 2, cy, txt[0, @edit_cols], DBG_TEXT, DBG_PANE_BG)
-          cy += self.class::CHAR_H
+          cy += CHAR_H
           i += 1
         end
       end
@@ -273,25 +275,25 @@ module EditorDebugPane
   def draw_target_picker
     items = @target_list
     n = items.size
-    w = 32 * self.class::CHAR_W
-    h = (n + 2) * self.class::CHAR_H + 8
+    w = 32 * CHAR_W
+    h = (n + 2) * CHAR_H + 8
     x = @user_area_x0 + (@user_area_width - w) / 2
     y = @user_area_y0 + (@user_area_height - h) / 2
-    @gfx.fill_rect(x, y, w, h, self.class::DROPDOWN_BG)
+    @gfx.fill_rect(x, y, w, h, DROPDOWN_BG)
     @gfx.draw_rect(x, y, w, h, 0x60)
-    @gfx.draw_text(x + 4, y + 3, "Attach to app:", self.class::DROPDOWN_TEXT, self.class::DROPDOWN_BG)
-    iy = y + 3 + self.class::CHAR_H + 2
+    @gfx.draw_text(x + 4, y + 3, "Attach to app:", DROPDOWN_TEXT, DROPDOWN_BG)
+    iy = y + 3 + CHAR_H + 2
     items.each_with_index do |a, i|
       label = " #{a[:name]} (pid #{a[:id]})"
       if i == @target_idx
-        @gfx.fill_rect(x + 1, iy, w - 2, self.class::CHAR_H, self.class::DROPDOWN_SEL_BG)
-        @gfx.draw_text(x + 4, iy, label, self.class::DROPDOWN_SEL_TEXT, self.class::DROPDOWN_SEL_BG)
+        @gfx.fill_rect(x + 1, iy, w - 2, CHAR_H, DROPDOWN_SEL_BG)
+        @gfx.draw_text(x + 4, iy, label, DROPDOWN_SEL_TEXT, DROPDOWN_SEL_BG)
       else
-        @gfx.draw_text(x + 4, iy, label, self.class::DROPDOWN_TEXT, self.class::DROPDOWN_BG)
+        @gfx.draw_text(x + 4, iy, label, DROPDOWN_TEXT, DROPDOWN_BG)
       end
-      iy += self.class::CHAR_H
+      iy += CHAR_H
     end
-    @gfx.draw_text(x + 4, iy + 2, "[Enter]Attach [Esc]Cancel", self.class::DROPDOWN_TEXT, self.class::DROPDOWN_BG)
+    @gfx.draw_text(x + 4, iy + 2, "[Enter]Attach [Esc]Cancel", DROPDOWN_TEXT, DROPDOWN_BG)
   end
 
   def handle_target_picker_key(ev)
