@@ -25,6 +25,31 @@ module EditorTiUi
   COMP_TOO_LARGE    = -4    # ET_ERR_TOO_LARGE: document above the engine's cap
   COMP_DETAIL_COLOR = FmrbGfx.rgb_to_332(110, 110, 110)
 
+  # ---- Two languages in one doc comment ----
+  #
+  # A doc comment in sig/ carries Japanese and English at once, split by a
+  # single "<<en>>" marker (sig/README.md): inline on the summary line, and on
+  # a line of its own between the two long forms. Nothing between here and the
+  # signature files knows about it -- the type database and the generated help
+  # pages carry the marker as ordinary text -- so this is the only place that
+  # decides which half a reader sees.
+  #
+  # A comment without the marker is shown as it is, in either language. That is
+  # what keeps the Japanese-only signatures working while they are translated.
+
+  TI_LANG_MARK = "<<en>>"
+
+  def ti_pick_lang(text)
+    s = text.to_s
+    i = s.index(TI_LANG_MARK)
+    return s if i.nil?
+    if FmrbI18n.lang == "en"
+      s[i + TI_LANG_MARK.length, s.length].to_s.strip
+    else
+      s[0, i].to_s.strip
+    end
+  end
+
   # Letters, digits and underscore: what a name being completed is made of.
   def comp_name_byte?(b)
     (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) ||
@@ -105,7 +130,8 @@ module EditorTiUi
   # selected candidate, or its signature when it has none. Goes through the
   # status line's message zone like everything else, so the badges stay put.
   def comp_explain_selected
-    about = @comp_docs[@comp_idx].to_s
+    about = ti_pick_lang(@comp_docs[@comp_idx])
+    # The signature is the same in every language, so it needs no picking.
     about = @comp_details[@comp_idx].to_s if about.length == 0
     flash_status(about)
   end
@@ -371,9 +397,100 @@ module EditorTiUi
     # comes back should look the way it did.
     @help_return_hl = @hl_enabled
     @help_return_hl_manual = @hl_manual
-    load_file(HELP_DIR + path)
+    full = HELP_DIR + path
+    load_file(full)
+    # Only touch the buffer when the page really was read: load_file leaves the
+    # previous document in place (and says so) when it fails.
+    help_filter_language(path) if @current_file == full
     @modified = false
     @need_redraw = true
+  end
+
+  # ---- Help pages: keeping one language ----
+  #
+  # A page holds both languages, the way the doc comment it came from does.
+  # gen_help writes a method page as
+  #
+  #   "# Class#method" / "" / signature / "" / summary / "" / long text
+  #
+  # and a class page as "# Class" / "" / long text. The summary line has the
+  # marker inline; the long text has a line that is nothing but the marker,
+  # between the Japanese half and the English one. Both are dealt with here,
+  # right after the read, so what is scrolled through is one language.
+  #
+  # A page without a marker line is left alone -- the one language it has is
+  # what both readers get.
+
+  HELP_BODY_LINE_METHOD = 6   # "# Class#method", "", signature, "", summary, ""
+  HELP_BODY_LINE_CLASS  = 2   # "# Class", ""
+
+  def help_filter_language(path)
+    body = path.to_s.end_with?("index.md") ? HELP_BODY_LINE_CLASS : HELP_BODY_LINE_METHOD
+    return if EditorCore.line_count <= body
+    help_pick_lang_in_head(body)
+
+    marker = help_marker_line(body)
+    return if marker.nil?
+    if FmrbI18n.lang == "en"
+      # The Japanese half is everything from the first line of the long text
+      # down to the marker.
+      help_delete_lines(body, marker)
+    else
+      help_delete_lines(marker, EditorCore.line_count - 1)
+    end
+  end
+
+  # The summary is a single line with both languages on it, so it is rewritten
+  # instead of removed. Only the lines above the long text are looked at: below
+  # them the marker stands on a line of its own.
+  def help_pick_lang_in_head(body)
+    y = 0
+    while y < body
+      text = help_line_text(y)
+      if text.index(TI_LANG_MARK)
+        picked = ti_pick_lang(text)
+        EditorCore.delete_range(y, 0, y, EditorCore.line_length(y))
+        EditorCore.insert_text(y, 0, picked) if picked.length > 0
+      end
+      y += 1
+    end
+  end
+
+  def help_line_text(y)
+    n = EditorCore.line_length(y)
+    return "" if n <= 0
+    EditorCore.render_text(y, 0, n).to_s
+  end
+
+  # The line that is nothing but the marker, or nil when the page has only one
+  # language. Lines of the wrong length are skipped without being read.
+  def help_marker_line(from)
+    y = from
+    n = EditorCore.line_count
+    while y < n
+      len = EditorCore.line_length(y)
+      if len >= TI_LANG_MARK.length && len <= TI_LANG_MARK.length + 2 &&
+         help_line_text(y).strip == TI_LANG_MARK
+        return y
+      end
+      y += 1
+    end
+    nil
+  end
+
+  # Remove lines a..b. Deleting as far as the start of the line after b leaves
+  # that line whole; at the end of the document there is no line after, so the
+  # deletion runs from the end of the line before a instead.
+  def help_delete_lines(a, b)
+    last = EditorCore.line_count - 1
+    return if a < 0 || a > b || b > last
+    if b < last
+      EditorCore.delete_range(a, 0, b + 1, 0)
+    elsif a > 0
+      EditorCore.delete_range(a - 1, EditorCore.line_length(a - 1), b, EditorCore.line_length(b))
+    else
+      EditorCore.delete_range(a, 0, b, EditorCore.line_length(b))
+    end
   end
 
   def close_help
@@ -465,7 +582,7 @@ module EditorTiUi
       # The signature already begins with the method's name, so it reads as a
       # sentence on its own; the doc comment follows when there is room.
       text = EditorCore.hover_field(ET_HOVER_SIGNATURE)
-      doc = EditorCore.hover_field(ET_HOVER_DOC)
+      doc = ti_pick_lang(EditorCore.hover_field(ET_HOVER_DOC))
       text += " -- " + doc if doc.length > 0
     else
       text = "#{EditorCore.hover_field(ET_HOVER_NAME)} : #{EditorCore.hover_field(ET_HOVER_TYPE)}"
