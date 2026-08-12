@@ -101,6 +101,17 @@
 #define FMRB_SHELL_APP_PRIORITY         (2)
 #define FMRB_SHELL_APP_TASK_FLAGS       FMRB_TASK_FLAG_PINNED_1
 
+// Editor task. The editor shared the shell's 12KB until the type support
+// (completion, hover, diagnostics, signature help) started parsing the
+// document on this task: prism's parser and the engine's tree walks are
+// recursive, and a Tab press with 2.9KB of stack left took the Tab5 down with
+// a stack protection fault (doc/editor_ti/report/p5.md). The Linux simulator
+// never showed it -- its tasks have far more room.
+//
+// Paid for by the same feature: moving the engine's 16KB arena to external
+// RAM freed more internal RAM than this spends.
+#define FMRB_EDITOR_APP_TASK_STACK_SIZE (24 * 1024)
+
 // User App task (mruby/lua/basic VM for user apps)
 // 16KB is a FLOOR, not a candidate: PicoRabbit peaked at 15.3KB in the M-2
 // session (S3, 2026-08-02), and MicroPython derives its C recursion limit

@@ -163,7 +163,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
         .bytecode = editor_irep,
 #endif
-        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
+        .stack_words = FMRB_EDITOR_APP_TASK_STACK_SIZE,
         .priority = FMRB_SHELL_APP_PRIORITY,
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
         .core_affinity = -1,
@@ -198,7 +198,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .load_mode = FMRB_LOAD_MODE_BYTECODE,
         .bytecode = editor_irep,
 #endif
-        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
+        .stack_words = FMRB_EDITOR_APP_TASK_STACK_SIZE,
         .priority = FMRB_SHELL_APP_PRIORITY,
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
         .core_affinity = -1,
