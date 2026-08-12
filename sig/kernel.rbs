@@ -1,21 +1,21 @@
 # Area512 built-in type declaration.
 
 module Kernel
-  # Inspect and output object
+  # 中身が分かる形で出力する <<en>> Inspect and output object
   def p: (*untyped objects) -> untyped
 
-  # Output object
+  # 出力する <<en>> Output object
   def print: (*untyped objects) -> nil
 
-  # Output object with newline
+  # 改行をつけて出力する <<en>> Output object with newline
   def puts: (*untyped objects) -> nil
 
   def yield: (*untyped arguments) -> untyped
 
-  # Create Proc object
+  # Proc を作る <<en>> Create Proc object
   def proc: () { (untyped argument) -> untyped } -> Proc
 
-  # Create lambda expression
+  # lambda を作る <<en>> Create lambda expression
   def lambda: () { (untyped argument) -> untyped } -> Proc
 
   def `->`: (untyped argument) { (untyped block_argument) -> untyped } -> Proc

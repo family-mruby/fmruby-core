@@ -2,69 +2,69 @@
 
 class Array
   include Enumerable
-  # Set element at specified position
+  # その位置に要素を入れる <<en>> Set element at specified position
   def []=: (Integer index, untyped value) -> untyped
            | (Integer start, Integer length, untyped value) -> untyped
 
-  # Get element at specified position
+  # その位置の要素を返す <<en>> Get element at specified position
   def []: (Integer index) -> untyped
 
   def &: (Array other) -> self
 
-  # Concatenate arrays
+  # 配列をつなげる <<en>> Concatenate arrays
   def +: (Array other) -> Array
 
-  # Return new array excluding specified elements
+  # 指定の要素を除いた配列を返す <<en>> Return new array excluding specified elements
   def -: (Array other) -> self
 
-  # Append element to end
+  # 末尾に要素を足す <<en>> Append element to end
   def push: (untyped object) -> Array
 
   def all?: (*untyped patterns) -> bool
             | (*untyped patterns) { (untyped element) -> untyped } -> bool
 
-  # Get element at specified position
+  # その位置の要素を返す <<en>> Get element at specified position
   def at: (Integer index) -> untyped
 
-  # Remove all elements from array
+  # 配列を空にする <<en>> Remove all elements from array
   def clear: () -> Array
 
-  # Execute block for each element and destructively replace
+  # 要素ごとの結果で自分を置き換える <<en>> Execute block for each element and destructively replace
   def collect!: () { (untyped element) -> untyped } -> Array[untyped]
 
   def count: () -> Integer
 
-  # Delete element at specified position
+  # その位置の要素を消す <<en>> Delete element at specified position
   def delete_at: (Integer index) -> untyped
 
-  # Delete elements for which block returns true
+  # ブロックが真になる要素を消す <<en>> Delete elements for which block returns true
   def delete_if: () { (untyped element) -> untyped } -> self
 
-  # Execute block for each element
+  # 要素ごとにブロックを実行する <<en>> Execute block for each element
   def each: () { (untyped element) -> untyped } -> self
 
-  # Execute block for each index
+  # 添字ごとにブロックを実行する <<en>> Execute block for each index
   def each_index: () { (Integer index) -> untyped } -> self
 
-  # Check if array is empty
+  # 配列が空かどうか <<en>> Check if array is empty
   def empty?: () -> bool
 
-  # Get first element
+  # 先頭の要素を返す <<en>> Get first element
   def first: () -> untyped
 
-  # Check if element is included
+  # その要素を含むかどうか <<en>> Check if element is included
   def include?: (untyped object) -> bool
 
-  # Return string representation for debugging
+  # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
   def inspect: () -> String
 
-  # Join elements and return string
+  # 要素をつないだ文字列を返す <<en>> Join elements and return string
   def join: (?String separator) -> String
 
-  # Get last element
+  # 末尾の要素を返す <<en>> Get last element
   def last: () -> untyped
 
-  # Return number of elements in array
+  # 要素の数を返す <<en>> Return number of elements in array
   def length: () -> Integer
 
   def max: () -> untyped
@@ -73,36 +73,36 @@ class Array
   def min: () -> untyped
            | () { (untyped left, untyped right) -> untyped } -> untyped
 
-  # Remove and return last element
+  # 末尾の要素を取り出す <<en>> Remove and return last element
   def pop: (?Integer count) -> (untyped | self)
 
-  # Return array excluding elements for which block returns true
+  # ブロックが真の要素を除いた配列を返す <<en>> Return array without elements the block matches
   def reject: () { (untyped element) -> untyped } -> self
 
-  # Destructively delete elements for which block returns true
+  # ブロックが真の要素を自分から消す <<en>> Delete the elements the block matches, in place
   def reject!: () { (untyped element) -> untyped } -> self
 
-  # Remove and return first element
+  # 先頭の要素を取り出す <<en>> Remove and return first element
   def shift: (?Integer count) -> (untyped | self)
 
-  # Return sorted array
+  # 並べ替えた配列を返す <<en>> Return sorted array
   def sort: () -> self
             | () { (untyped left, untyped right) -> untyped } -> self
 
-  # Sort destructively
+  # 自分自身を並べ替える <<en>> Sort destructively
   def sort!: () -> self
              | () { (untyped left, untyped right) -> untyped } -> self
 
-  # Get subarray
+  # 部分配列を返す <<en>> Get subarray
   def slice: (untyped index_or_range) -> untyped
 
-  # Return array with duplicates removed
+  # 重複を取り除いた配列を返す <<en>> Return array with duplicates removed
   def uniq: () -> self
 
-  # Remove duplicates destructively
+  # 重複を自分から取り除く <<en>> Remove duplicates destructively
   def uniq!: () -> self
 
-  # Prepend element to beginning
+  # 先頭に要素を足す <<en>> Prepend element to beginning
   def unshift: (untyped object) -> Array
 
   def |: (Array other) -> Array

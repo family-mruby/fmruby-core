@@ -3,33 +3,33 @@
 class NilClass
   def !: () -> bool
 
-  # Always returns false
+  # 常に false を返す <<en>> Always returns false
   def &: (untyped other) -> bool
 
   def ===: (untyped other) -> bool
 
-  # Returns logical value of argument
+  # 引数の真偽を返す <<en>> Returns logical value of argument
   def ^: (untyped other) -> bool
 
-  # Returns "nil"
+  # "nil" という文字列を返す <<en>> Returns "nil"
   def inspect: () -> String
 
-  # Returns true
+  # 常に true を返す <<en>> Returns true
   def nil?: () -> bool
 
-  # Returns 0.0
+  # 0.0 を返す <<en>> Returns 0.0
   def to_f: () -> Float
 
-  # Returns empty hash
+  # 空のハッシュを返す <<en>> Returns empty hash
   def to_h: () -> Hash
 
-  # Returns 0
+  # 0 を返す <<en>> Returns 0
   def to_i: () -> Integer
 
-  # Returns empty string
+  # 空の文字列を返す <<en>> Returns empty string
   def to_s: () -> String
 
-  # Returns logical value of argument
+  # 引数の真偽を返す <<en>> Returns logical value of argument
   def |: (untyped other) -> bool
 
 end

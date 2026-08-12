@@ -2,54 +2,54 @@
 
 class Hash
   include Enumerable
-  # Perform equality comparison
+  # 等しいかどうか <<en>> Perform equality comparison
   def ==: (untyped other) -> bool
 
-  # Get value for specified key
+  # そのキーの値を返す <<en>> Get value for specified key
   def []: (untyped key) -> untyped
 
-  # Set value for specified key
+  # そのキーに値を入れる <<en>> Set value for specified key
   def []=: (untyped key, untyped value) -> self
 
-  # Remove all elements from hash
+  # ハッシュを空にする <<en>> Remove all elements from hash
   def clear: () -> Hash
 
-  # Delete specified key
+  # そのキーを消す <<en>> Delete specified key
   def delete: (untyped key) -> (untyped | nil)
 
-  # Execute block for each key and value
+  # キーと値の組ごとにブロックを実行する <<en>> Execute block for each key and value
   def each: () { (untyped key, untyped value) -> untyped } -> self
 
-  # Check if hash is empty
+  # ハッシュが空かどうか <<en>> Check if hash is empty
   def empty?: () -> bool
 
-  # Check if specified key exists
+  # そのキーがあるかどうか <<en>> Check if specified key exists
   def has_key?: (untyped key) -> bool
 
-  # Check if specified value exists
+  # その値があるかどうか <<en>> Check if specified value exists
   def has_value?: (untyped value) -> bool
 
-  # Return string representation for debugging
+  # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
   def inspect: () -> String
 
   def key: (untyped value) -> (untyped | nil)
 
-  # Return all keys as array
+  # キーを全部配列で返す <<en>> Return all keys as array
   def keys: () -> Array[untyped]
 
-  # Return number of elements in hash
+  # 要素の数を返す <<en>> Return number of elements in hash
   def length: () -> Integer
 
-  # Return new hash merged with another hash
+  # 他のハッシュと合わせた新しいハッシュを返す <<en>> Return new hash merged with another hash
   def merge: (Hash other) -> self
 
-  # Merge hash destructively
+  # 自分に他のハッシュを取り込む <<en>> Merge hash destructively
   def merge!: (Hash other) -> self
 
-  # Return self as hash
+  # 自分自身をハッシュとして返す <<en>> Return self as hash
   def to_h: () -> self
 
-  # Return all values as array
+  # 値を全部配列で返す <<en>> Return all values as array
   def values: () -> Array[untyped]
 
   def self.new: () -> Hash

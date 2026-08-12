@@ -51,6 +51,10 @@ function labels(list) {
   const abs = items.find((item) => item.label === "abs");
   check("candidate carries its signature", !!abs && abs.detail.includes("Integer"),
         abs && abs.detail);
+  /* The standard classes are bilingual too, not only the FMRB API. */
+  check("Integer#abs has both languages",
+        !!abs && ti.pickLang(abs.doc, "ja") === "絶対値を返す" &&
+        ti.pickLang(abs.doc, "en") === "Get absolute value", abs && abs.doc);
 }
 
 /* 2. The FMRB API: @gfx inside an app class, declared in sig/fmrb_app.rbs. */

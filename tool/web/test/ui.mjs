@@ -142,6 +142,25 @@ const en = await docLineFor("en");
 check("the same doc line is English with Docs=English", en === "draw a string", en);
 await page.screenshot({ path: join(shots, "doc_en.png") });
 
+/* The standard classes carry both languages too, not only the FMRB API. */
+async function integerDocFor(lang) {
+  await page.selectOption("#tiLangSelect", lang);
+  await openWith("n = 42\nn.");
+  await page.evaluate(() => {
+    const ta = document.getElementById("editorTextarea");
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  });
+  await page.keyboard.press("Control+Space");
+  await page.waitForSelector(".ti-complete.open .ti-item", { timeout: 15000 });
+  const rows = await page.$$eval(".ti-complete .ti-item .ti-label", (nodes) => nodes.map((n) => n.textContent));
+  for (let i = 0; i < rows.indexOf("abs"); i++) await page.keyboard.press("ArrowDown");
+  return page.textContent("#tiCompleteDoc");
+}
+
+check("Integer#abs explains itself in Japanese", await integerDocFor("ja") === "絶対値を返す");
+await page.screenshot({ path: join(shots, "doc_std_ja.png") });
+check("and in English", await integerDocFor("en") === "Get absolute value");
+
 /* --- diagnostics ------------------------------------------------------- */
 
 await openWith([

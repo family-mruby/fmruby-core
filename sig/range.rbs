@@ -1,28 +1,28 @@
 # Area512 built-in type declaration.
 
 class Range < Enumerable
-  # Perform equality comparison
+  # 等しいかどうか <<en>> Perform equality comparison
   def ==: (untyped other) -> bool
 
-  # Check if value is included in range
+  # 範囲に含まれるかどうか <<en>> Check if value is included in range
   def ===: (untyped object) -> bool
 
-  # Check if end value is excluded
+  # 終わりの値を含まない範囲かどうか <<en>> Check if end value is excluded
   def exclude_end?: () -> bool
 
-  # Return start value of range
+  # 範囲の始まりの値を返す <<en>> Return start value of range
   def first: () -> untyped
 
-  # Return string representation for debugging
+  # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
   def inspect: () -> String
 
-  # Return end value of range
+  # 範囲の終わりの値を返す <<en>> Return end value of range
   def last: () -> untyped
 
-  # Return string representation
+  # 文字列にして返す <<en>> Return string representation
   def to_s: () -> String
 
-  # Execute block for each element in range
+  # 範囲の要素ごとにブロックを実行する <<en>> Execute block for each element in range
   def each: () { (untyped element) -> untyped } -> self
 
   def self.new: (untyped first, untyped last, ?bool exclude_end) -> Range

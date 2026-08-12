@@ -1,60 +1,60 @@
 # Area512 built-in type declaration.
 
 class Float
-  # Calculate modulo
+  # 割ったあまりを求める <<en>> Calculate modulo
   def %: ((Integer | Float) other) -> Float
 
-  # Perform multiplication
+  # かけ算をする <<en>> Perform multiplication
   def *: ((Integer | Float) other) -> Float
 
-  # Calculate power
+  # べき乗を求める <<en>> Calculate power
   def **: ((Integer | Float) other) -> Float
 
-  # Perform addition
+  # 足し算をする <<en>> Perform addition
   def +: ((Integer | Float) other) -> Float
 
-  # Unary plus operator. Returns self
+  # 自分自身を返す (単項プラス) <<en>> Unary plus operator. Returns self
   def +@: () -> Float
 
-  # Perform subtraction
+  # 引き算をする <<en>> Perform subtraction
   def -: ((Integer | Float) other) -> Float
 
-  # Unary minus operator. Inverts sign
+  # 符号を反転する (単項マイナス) <<en>> Unary minus operator. Inverts sign
   def -@: () -> Float
 
-  # Perform division
+  # 割り算をする <<en>> Perform division
   def /: ((Integer | Float) other) -> Float
 
-  # Perform less than comparison
+  # より小さいかどうか <<en>> Perform less than comparison
   def <: ((Integer | Float) other) -> bool
 
-  # Perform less than or equal comparison
+  # 以下かどうか <<en>> Perform less than or equal comparison
   def <=: ((Integer | Float) other) -> bool
 
-  # Comparison operator. Returns -1 if self < other, 0 if self == other, 1 if self > other
+  # 大小を比べて -1 / 0 / 1 を返す <<en>> Compare. Returns -1, 0 or 1
   def <=>: ((Integer | Float) other) -> (Integer | nil)
 
-  # Perform equality comparison
+  # 等しいかどうか <<en>> Perform equality comparison
   def ==: (untyped other) -> bool
 
   def ===: (untyped other) -> bool
 
-  # Perform greater than comparison
+  # より大きいかどうか <<en>> Perform greater than comparison
   def >: ((Integer | Float) other) -> bool
 
-  # Perform greater than or equal comparison
+  # 以上かどうか <<en>> Perform greater than or equal comparison
   def >=: ((Integer | Float) other) -> bool
 
-  # Get absolute value
+  # 絶対値を返す <<en>> Get absolute value
   def abs: () -> Float
 
-  # Return self as floating point number
+  # 自分自身を小数として返す <<en>> Return self as floating point number
   def to_f: () -> Float
 
-  # Convert to integer (truncate)
+  # 小数点以下を捨てて整数にする <<en>> Convert to integer (truncate)
   def to_i: () -> Integer
 
-  # Convert to string
+  # 文字列に変える <<en>> Convert to string
   def to_s: () -> String
 
 end
