@@ -240,6 +240,9 @@ task :setup do
   # The type database is generated from OUR sig/*.rbs (the FMRB API), on the
   # host, into the copy only -- the docker build has no ruby for this.
   picoruby_ti_gen_db(ti_dir, "#{PICORUBY_TI_GEM_DIR}/src/generated")
+  # The other half of those comments becomes the editor's F1 help, under
+  # flash/, so it is in place before the storage image is staged.
+  picoruby_ti_gen_help
   # debug (on-device debugger API; depends on msgpack, copied above)
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-debug"
   sh "cp -rf lib/add/picoruby-fmrb-debug #{mrbgem_path}/"
@@ -550,6 +553,16 @@ def picoruby_ti_prism_work!
   prism_work
 end
 
+# The editor's F1 help: the long half of the doc comments in sig/, written out
+# as files the editor opens. Host side and before the docker build, like the
+# database -- the storage image is staged from flash/ inside the container.
+def picoruby_ti_gen_help
+  unless Dir.exist?(PICORUBY_TI_SIG_DIR)
+    abort "signature directory #{PICORUBY_TI_SIG_DIR} is missing"
+  end
+  sh "#{RbConfig.ruby} tool/ti/gen_help.rb --sig-dir #{PICORUBY_TI_SIG_DIR} --out flash/help"
+end
+
 namespace :ti do
   desc "Fetch the pinned picoruby-ti engine into vendor/picoruby-ti"
   task :setup do
@@ -575,6 +588,11 @@ namespace :ti do
   task :gen do
     picoruby_ti_gen_db(picoruby_ti_dir!, "#{PICORUBY_TI_GEM_DIR}/src/generated")
     puts "picoruby-ti database generated in #{PICORUBY_TI_GEM_DIR}/src/generated"
+  end
+
+  desc "Generate flash/help from the long half of the sig/ doc comments"
+  task :help do
+    picoruby_ti_gen_help
   end
 
   desc "Run the picoruby-ti host regression tests against our sig/"

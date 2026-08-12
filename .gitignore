@@ -64,3 +64,7 @@ flash/etc/system_conf.factory.toml
 # /tmp RAM FS: the Linux dev build backs it with this directory and empties
 # it at boot (components/fmrb_hal/platform/posix/fmrb_tmpfs_posix.c).
 flash/tmp/
+
+# Editor help, generated from the doc comments in sig/ (rake ti:help, run by
+# rake setup). Same rule as the type database: the source is sig/.
+flash/help/

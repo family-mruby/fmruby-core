@@ -41,7 +41,16 @@ class SpriteInstance
 
   # 絵を画面に置く
   #
-  # images は untyped: 一枚でも、パラパラ漫画のように配列でも渡せる。
+  # images には SpriteImage を一枚渡すか、パラパラ漫画のように
+  # 配列で何枚も渡します。何枚も渡したときは `frame=` で何枚目を
+  # 見せるかを決められます。
+  #
+  # ```ruby
+  # img = SpriteImage.new(gfx, width: 16, height: 16)
+  # img.load_bmp("/app/img/player.bmp")
+  # sp = SpriteInstance.new(gfx, img, x: 40, y: 80)
+  # sp.move(48, 80)
+  # ```
   def self.new: (FmrbGfx gfx, untyped images) -> SpriteInstance
 
   # 置いた絵を動かす

@@ -88,9 +88,36 @@ class FmrbGfx
   def draw_thick_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer thickness, Integer color) -> FmrbGfx
 
   # 四角のふちを描く
+  #
+  # (x, y) は左上の角、w は横幅、h は高さです。線だけを描くので、
+  # 中は下にあるものが見えたままになります。中もぬりたいときは
+  # `fill_rect` を使います。
+  #
+  # ```ruby
+  # gfx.draw_rect(10, 10, 100, 50, FmrbGfx::WHITE)   # わく
+  # gfx.fill_rect(12, 12, 96, 46, FmrbGfx::BLUE)     # 中身
+  # gfx.present
+  # ```
   def draw_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
 
   # 四角をぬりつぶす
+  #
+  # (x, y) は左上の角、w は横幅、h は高さです。中まで色でうめます。
+  # 画面ぜんぶを消したいときは `clear` のほうが速いです。
+  #
+  # 動くものを描くときは、**前にいた場所を背景色でぬってから**新しい場所に
+  # 描くと、跡が残りません。
+  #
+  # ```ruby
+  # class MyApp < FmrbApp
+  #   def on_update
+  #     gfx.fill_rect(@x, 100, 16, 16, FmrbGfx::BLACK)  # 前の場所を消す
+  #     @x = @x + 2
+  #     gfx.fill_rect(@x, 100, 16, 16, FmrbGfx::RED)    # 新しい場所に描く
+  #     gfx.present
+  #   end
+  # end
+  # ```
   def fill_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
 
   # 下の絵と混ぜて四角をぬる
@@ -129,6 +156,23 @@ class FmrbGfx
   # ---- 字を描く ----
 
   # 字を描く
+  #
+  # (x, y) は字の**左上**の位置です。画面の左上が (0, 0) で、
+  # 右に行くほど x が大きく、下に行くほど y が大きくなります。
+  # color は RGB332 の数です。`FmrbGfx::WHITE` のような決まった色か、
+  # `FmrbGfx.rgb_to_332(255, 0, 0)` で好きな色を作れます。
+  #
+  # 描いたものは `present` を呼ぶまで画面に出ません。
+  #
+  # ```ruby
+  # class MyApp < FmrbApp
+  #   def on_update
+  #     gfx.clear(FmrbGfx::BLACK)
+  #     gfx.draw_text(10, 20, "こんにちは", FmrbGfx::WHITE)
+  #     gfx.present
+  #   end
+  # end
+  # ```
   def draw_text: (Integer x, Integer y, String str, Integer color) -> FmrbGfx
 
   # 字の種類をえらぶ

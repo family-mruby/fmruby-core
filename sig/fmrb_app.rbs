@@ -50,6 +50,28 @@ class FmrbApp
   def on_create: () -> void
 
   # 毎回呼ばれる。絵を動かす場所
+  #
+  # アプリが動いているあいだ、くり返し呼ばれます。ここに「一こま分の
+  # 絵を描く」処理を書きます。ゲームの動きは、ここで少しずつ位置を
+  # 変えていくと作れます。
+  #
+  # 中で止まってしまうと他のアプリまで止まるので、**ここで長い待ちを
+  # 作らない**でください。時間をおきたいときは `set_timer` を使います。
+  #
+  # ```ruby
+  # class MyApp < FmrbApp
+  #   def on_create
+  #     @x = 0
+  #   end
+  #
+  #   def on_update
+  #     @x = (@x + 1) % window_width
+  #     gfx.clear(FmrbGfx::BLACK)
+  #     gfx.fill_circle(@x, 60, 8, FmrbGfx::YELLOW)
+  #     gfx.present
+  #   end
+  # end
+  # ```
   def on_update: () -> void
 
   # 終わるときに一度だけ呼ばれる
@@ -62,6 +84,27 @@ class FmrbApp
   def on_resume: () -> void
 
   # キーやマウスが動いたとき
+  #
+  # ev はできごとの中身が入った Hash です。よく使うのは次の 4 つ:
+  #
+  # - `ev[:type]` … `:key_down` `:mouse_up` など、何が起きたか
+  # - `ev[:scancode]` … 押されたキーの番号。**文字ではなくこちらで見ます**
+  #   (かな入力のときも同じ番号が届くため)
+  # - `ev[:x]` `ev[:y]` … マウスの場所
+  #
+  # Ctrl や Shift が押されていたかは `ev_ctrl?(ev)` などで調べます。
+  #
+  # ```ruby
+  # class MyApp < FmrbApp
+  #   def on_event(ev)
+  #     return unless ev[:type] == :key_down
+  #     case ev[:scancode]
+  #     when 0x4F then @x = @x + 4   # 右矢印
+  #     when 0x50 then @x = @x - 4   # 左矢印
+  #     end
+  #   end
+  # end
+  # ```
   def on_event: (Hash ev) -> void
 
   # 窓の大きさが変わったとき
