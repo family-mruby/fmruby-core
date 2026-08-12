@@ -57,11 +57,14 @@ APPS = {
       File.join(MRBLIB_DIR, "fmrb-i18n.rb"),         # FmrbI18n (module only)
       File.join(SPINEL_DIR, "fmrb_editor_ffi.rb"),   # FmrbSpxEc + EditorCore
       File.join(SPINEL_DIR, "editor_debug_stub.rb"), # module EditorDebugPane (no-op)
-      # The editor's own string table. The mruby build picks this up from the
-      # editor/ directory glob; here every part is listed by hand.
-      File.join(ROOT, "main/prebuild_scripts/default_app/editor/i18n.rb"),
     ],
-    mixin_dir: nil,
+    # The editor's mixins (i18n string table, ti UI, ...) are globbed from the
+    # editor/ directory, exactly like the mruby build's CMake glob, so a new
+    # editor/*.rb file is picked up by both builds automatically. debug_pane.rb
+    # is the one exception: the Spinel build has no FMRB::Debug binding, so the
+    # no-op editor_debug_stub.rb (in libs above) stands in for it.
+    mixin_dir: File.join(ROOT, "main/prebuild_scripts/default_app/editor"),
+    mixin_exclude: ["debug_pane.rb"],
     main: File.join(ROOT, "main/prebuild_scripts/default_app/editor.app.rb"),
   },
 }
@@ -69,6 +72,9 @@ APPS = {
 spec = APPS[app] or abort "unknown app: #{app} (known: #{APPS.keys.join(', ')})"
 
 mixins = spec[:mixin_dir] ? Dir.glob(File.join(spec[:mixin_dir], "*.rb")).sort : []
+if spec[:mixin_exclude]
+  mixins = mixins.reject { |m| spec[:mixin_exclude].include?(File.basename(m)) }
+end
 
 parts = [
   # NB: fmrb_ffi.rb (the full kernel FmrbSpx) is intentionally NOT included --
