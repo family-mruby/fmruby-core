@@ -10,23 +10,23 @@ class FmrbGfx
   # 短い名前 (BLACK など) は C が、COLOR_ 付きは mrblib が決めている。
   # 中身は同じ RGB332 の数なので、どちらで書いてもよい。
 
-  # 黒 (RGB332)
+  # 黒 (RGB332) <<en>> black (RGB332)
   BLACK: Integer
-  # 白 (RGB332)
+  # 白 (RGB332) <<en>> white (RGB332)
   WHITE: Integer
-  # 赤 (RGB332)
+  # 赤 (RGB332) <<en>> red (RGB332)
   RED: Integer
-  # 緑 (RGB332)
+  # 緑 (RGB332) <<en>> green (RGB332)
   GREEN: Integer
-  # 青 (RGB332)
+  # 青 (RGB332) <<en>> blue (RGB332)
   BLUE: Integer
-  # 黄 (RGB332)
+  # 黄 (RGB332) <<en>> yellow (RGB332)
   YELLOW: Integer
-  # 水色 (RGB332)
+  # 水色 (RGB332) <<en>> cyan (RGB332)
   CYAN: Integer
-  # 紫 (RGB332)
+  # 紫 (RGB332) <<en>> magenta (RGB332)
   MAGENTA: Integer
-  # 灰色 (RGB332)
+  # 灰色 (RGB332) <<en>> gray (RGB332)
   GRAY: Integer
 
   # 黒 (RGB332)
@@ -48,9 +48,9 @@ class FmrbGfx
   # 灰色 (RGB332)
   COLOR_GRAY: Integer
 
-  # 色を足して混ぜる (blend_rect 用)
+  # 色を加算で混ぜる (blend_rect 用) <<en>> additive blend (for blend_rect)
   BLEND_ADD: Integer
-  # 色を反転させて混ぜる (blend_rect 用)
+  # 色を XOR で混ぜる (blend_rect 用) <<en>> XOR blend (for blend_rect)
   BLEND_XOR: Integer
 
   # ---- この画面のこと ----
@@ -155,12 +155,12 @@ class FmrbGfx
 
   # ---- 字を描く ----
 
-  # 字を描く
+  # 文字列を描く <<en>> draw a string
   #
-  # (x, y) は字の**左上**の位置です。画面の左上が (0, 0) で、
+  # (x, y) は文字列の**左上**の位置です。画面の左上が (0, 0) で、
   # 右に行くほど x が大きく、下に行くほど y が大きくなります。
   # color は RGB332 の数です。`FmrbGfx::WHITE` のような決まった色か、
-  # `FmrbGfx.rgb_to_332(255, 0, 0)` で好きな色を作れます。
+  # `FmrbGfx.rgb_to_332(255, 0, 0)` で好きな色を指定できます。
   #
   # 描いたものは `present` を呼ぶまで画面に出ません。
   #
@@ -169,6 +169,23 @@ class FmrbGfx
   #   def on_update
   #     gfx.clear(FmrbGfx::BLACK)
   #     gfx.draw_text(10, 20, "こんにちは", FmrbGfx::WHITE)
+  #     gfx.present
+  #   end
+  # end
+  # ```
+  # <<en>>
+  # (x, y) is the **top-left** corner of the string. The screen's top-left is
+  # (0, 0): x grows to the right and y grows downwards.
+  # color is an RGB332 value -- a named one such as `FmrbGfx::WHITE`, or any
+  # colour made with `FmrbGfx.rgb_to_332(255, 0, 0)`.
+  #
+  # Nothing appears on the screen until `present` is called.
+  #
+  # ```ruby
+  # class MyApp < FmrbApp
+  #   def on_update
+  #     gfx.clear(FmrbGfx::BLACK)
+  #     gfx.draw_text(10, 20, "hello", FmrbGfx::WHITE)
   #     gfx.present
   #   end
   # end
