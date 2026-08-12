@@ -238,7 +238,7 @@ class FmrbGfx
 
   # ---- 画面に出す ----
 
-  # 描いたものを画面に出す
+  # 描いたものを画面に出す <<en>> show what has been drawn
   def present: () -> FmrbGfx
 
   # この画面を片づける
