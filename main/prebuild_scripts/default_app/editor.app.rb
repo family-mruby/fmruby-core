@@ -1486,14 +1486,15 @@ class EditorApp < FmrbApp
   end
 
   # Is the character before the cursor one a completion could follow? A name,
-  # its ? / ! ending, or the dot of a method call. Anywhere else -- line start,
-  # after a space -- Tab keeps its old meaning.
+  # its ? / ! ending, the dot of a method call, or the colon of a constant
+  # path (FmrbGfx::B). Anywhere else -- line start, after a space -- Tab keeps
+  # its old meaning.
   def comp_trigger?
     return false if @cx <= 0
     c = EditorCore.char_at(@cy, @cx - 1)
     return false if c.bytesize != 1
     b = c.getbyte(0)
-    return true if b == 46 || b == 63 || b == 33   # . ? !
+    return true if b == 46 || b == 63 || b == 33 || b == 58   # . ? ! :
     comp_name_byte?(b)
   end
 

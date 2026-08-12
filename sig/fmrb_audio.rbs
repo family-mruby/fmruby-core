@@ -6,11 +6,7 @@
 
 class FmrbAudio
   # 音の係を作る
-  #
-  # app は untyped: アプリは FmrbApp を継承した自分のクラスなので、
-  # FmrbApp と書くと FmrbAudio.new(self) が型ちがい扱いになる
-  # (エンジンは引数の検査で親子関係を見ない)。
-  def self.new: (untyped app) -> FmrbAudio
+  def self.new: (FmrbApp app) -> FmrbAudio
 
   # 曲のファイルを鳴らす
   def play: (String path) -> void

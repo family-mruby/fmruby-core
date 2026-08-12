@@ -5,6 +5,54 @@
 # 色は RGB332 の数 (FmrbGfx.rgb_to_332 で作れる)。
 
 class FmrbGfx
+  # ---- 色 ----
+  #
+  # 短い名前 (BLACK など) は C が、COLOR_ 付きは mrblib が決めている。
+  # 中身は同じ RGB332 の数なので、どちらで書いてもよい。
+
+  # 黒 (RGB332)
+  BLACK: Integer
+  # 白 (RGB332)
+  WHITE: Integer
+  # 赤 (RGB332)
+  RED: Integer
+  # 緑 (RGB332)
+  GREEN: Integer
+  # 青 (RGB332)
+  BLUE: Integer
+  # 黄 (RGB332)
+  YELLOW: Integer
+  # 水色 (RGB332)
+  CYAN: Integer
+  # 紫 (RGB332)
+  MAGENTA: Integer
+  # 灰色 (RGB332)
+  GRAY: Integer
+
+  # 黒 (RGB332)
+  COLOR_BLACK: Integer
+  # 白 (RGB332)
+  COLOR_WHITE: Integer
+  # 赤 (RGB332)
+  COLOR_RED: Integer
+  # 緑 (RGB332)
+  COLOR_GREEN: Integer
+  # 青 (RGB332)
+  COLOR_BLUE: Integer
+  # 黄 (RGB332)
+  COLOR_YELLOW: Integer
+  # 水色 (RGB332)
+  COLOR_CYAN: Integer
+  # 紫 (RGB332)
+  COLOR_MAGENTA: Integer
+  # 灰色 (RGB332)
+  COLOR_GRAY: Integer
+
+  # 色を足して混ぜる (blend_rect 用)
+  BLEND_ADD: Integer
+  # 色を反転させて混ぜる (blend_rect 用)
+  BLEND_XOR: Integer
+
   # ---- この画面のこと ----
 
   # 画面の番号
