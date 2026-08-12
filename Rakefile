@@ -522,18 +522,34 @@ end
 # ruby, like spinel:gen and for the same reason: the IDF build container has no
 # ruby set up for it. tidbgen parses the signatures with the `rbs` gem, so that
 # gem is a host build dependency (`gem install rbs`).
-def picoruby_ti_gen_db(engine_dir, out_dir)
+# sig_dir defaults to the firmware API signatures (PICORUBY_TI_SIG_DIR). The
+# host tests pass a composed directory instead so their GPIO fixture never
+# reaches the firmware database (see the :test task).
+def picoruby_ti_gen_db(engine_dir, out_dir, sig_dir: PICORUBY_TI_SIG_DIR)
   main = File.join(engine_dir, "tidbgen/main.rb")
   abort "tidbgen not found at #{main}. Run `rake ti:setup`." unless File.exist?(main)
-  unless Dir.exist?(PICORUBY_TI_SIG_DIR)
-    abort "signature directory #{PICORUBY_TI_SIG_DIR} is missing"
+  unless Dir.exist?(sig_dir)
+    abort "signature directory #{sig_dir} is missing"
   end
   unless system(RbConfig.ruby, "-e", "require 'rbs'", out: File::NULL, err: File::NULL)
     abort "the rbs gem is required to generate the picoruby-ti type database" \
           " (gem install rbs)"
   end
   mkdir_p out_dir
-  sh "#{RbConfig.ruby} #{main} --sig-dir #{PICORUBY_TI_SIG_DIR} --out #{out_dir}"
+  sh "#{RbConfig.ruby} #{main} --sig-dir #{sig_dir} --out #{out_dir}"
+end
+
+# The signature directory the host tests generate from: the firmware API sig
+# plus the test-only fixtures in tool/ti/test_sig (GPIO, which is not an FMRB
+# API). Composed into a scratch dir so neither source is mutated.
+PICORUBY_TI_TEST_SIG_OVERLAY = File.expand_path("tool/ti/test_sig", __dir__)
+def picoruby_ti_test_sig_dir!
+  work = File.expand_path("vendor/ti_test_sig", __dir__)
+  rm_rf work
+  mkdir_p work
+  FileUtils.cp(Dir["#{PICORUBY_TI_SIG_DIR}/*.rbs"], work)
+  FileUtils.cp(Dir["#{PICORUBY_TI_TEST_SIG_OVERLAY}/*.rbs"], work)
+  work
 end
 
 # Build libprism from OUR prism (the one the firmware parses with) into a
@@ -595,13 +611,16 @@ namespace :ti do
     picoruby_ti_gen_help
   end
 
-  desc "Run the picoruby-ti host regression tests against our sig/"
+  desc "Run the picoruby-ti host regression tests against our sig/ + test fixtures"
   task :test do
     dir = picoruby_ti_dir!
     prism_work = picoruby_ti_prism_work!
     # src/generated is gitignored inside the engine checkout, so generating the
-    # database in place leaves the checkout clean.
-    picoruby_ti_gen_db(dir, File.join(dir, "src/generated"))
+    # database in place leaves the checkout clean. Generate from sig/ plus the
+    # test-only overlay so the GPIO fixture the tests need never lands in the
+    # firmware database (which ti:gen builds from sig/ alone).
+    picoruby_ti_gen_db(dir, File.join(dir, "src/generated"),
+                       sig_dir: picoruby_ti_test_sig_dir!)
     sh "make -C #{dir}/host_test PRISM_ROOT=#{prism_work} test"
   end
 

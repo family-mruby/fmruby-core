@@ -46,6 +46,7 @@ vendor/spinel/
 vendor/picoruby-ti/
 vendor/ti_prism/
 vendor/ti_probe
+vendor/ti_test_sig/
 
 # Local reference material for comparing the character sheets (never committed)
 tool/basic/ref/

@@ -1,0 +1,24 @@
+# GPIO fixture for the picoruby-ti host regression tests only. GPIO is not a
+# Family mruby API (no Ruby class is exposed), so this must NOT live in ../sig
+# where it would be baked into the firmware's completion database and offer
+# children a class that does not exist. `rake ti:test` overlays this directory
+# on top of ../sig; `rake ti:gen` (the firmware db) uses ../sig alone.
+#
+# The engine's tests use these declarations: the constants for constant
+# completion, attach for the subclass-argument check. Add, do not remove.
+
+class GPIO
+  @pin: Integer
+  @label: String
+
+  # low level (0V)
+  LOW: Integer
+  # high level (3.3V)
+  HIGH: Integer
+  PULL_UP: Integer
+
+  def self.new: (Integer pin, Integer mode) -> GPIO
+  def write: (Integer value) -> nil
+  def read: () -> Integer
+  def attach: (GPIO other) -> nil
+end
