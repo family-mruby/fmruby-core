@@ -573,10 +573,14 @@ class SystemDesktopApp < FmrbApp
 
   # BLE indicator, left of the free-RAM readout, drawn as a filled box so
   # it cannot be misread as part of the neighboring RAM digits. Three
-  # states: hidden = BLE off, gray box + white B = enabled and waiting
-  # for a central, white box + bar-colored B (inverted) = client
-  # connected. The state read is a bare fixnum, the label a constant --
-  # the 1Hz repaint stays allocation-free.
+  # states: off/unavailable = empty gray box (no letter, so it reads as an
+  # inactive slot and keeps the three icon cells from leaving a gap where
+  # BLE is off -- e.g. the Linux sim, or Retro before a manual start),
+  # gray box + white B = enabled and waiting for a central, white box +
+  # bar-colored B (inverted) = client connected. A letterless box is what
+  # tells "off" apart from "waiting", which also uses the gray box. The
+  # state read is a bare fixnum, the label a constant -- the 1Hz repaint
+  # stays allocation-free.
   BLE_LABEL = "B"
   BLE_CELL_W = 10
 
@@ -585,7 +589,7 @@ class SystemDesktopApp < FmrbApp
     x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1
     state = FmrbApp.ble_state
     if state == 0
-      @gfx.fill_rect(x, 1, BLE_CELL_W, 10, MENU_BG)
+      @gfx.fill_rect(x, 1, BLE_CELL_W, 10, FmrbGfx::GRAY)
       return
     end
     box = (state == 2) ? FmrbGfx::WHITE : FmrbGfx::GRAY
