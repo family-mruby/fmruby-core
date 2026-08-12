@@ -1,0 +1,27 @@
+{
+  "name": "fmruby-core",
+  "version": "1.0.0",
+  "description": "Family mruby OS core firmware — a lightweight embedded OS with multi-VM support running on ESP32-S3.",
+  "main": "index.js",
+  "directories": {
+    "doc": "doc",
+    "lib": "lib"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/family-mruby/fmruby-core.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/family-mruby/fmruby-core/issues"
+  },
+  "homepage": "https://github.com/family-mruby/fmruby-core#readme",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
