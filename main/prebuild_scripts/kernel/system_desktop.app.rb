@@ -631,7 +631,13 @@ class SystemDesktopApp < FmrbApp
     # 1Hz redraw then only needs the allocation-free connected? bool.
     @wifi_supported = FmrbApp.wifi_info ? true : false if @wifi_supported.nil?
     unless @wifi_supported
+      # No WiFi on this build: an empty gray box, like the BLE cell, so the
+      # three status icons keep a uniform row instead of leaving a gap.
+      # @wifi_icon_x stays nil -- with no radio there is no network dialog
+      # to open, so the placeholder is not clickable.
       @wifi_icon_x = nil
+      x = @window_width - 90 - WIFI_ICON_W - 4
+      @gfx.fill_rect(x, 1, WIFI_ICON_W, 10, FmrbGfx::GRAY)
       return
     end
     x = @window_width - 90 - WIFI_ICON_W - 4
