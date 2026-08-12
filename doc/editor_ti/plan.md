@@ -204,12 +204,17 @@ def 内 ivar のホバーには suggest と同じ処置が要る (P3 で fork �
   F1 ヘルプ (RBS コメント 2 行目以降 -> flash/help/ 生成、読み取り専用
   バッファで表示)。db の doc は先頭行のみに (fork 改修。プール上限対策)。
   書く場所は sig/ の 1 箇所という原則を守る。
-- P5: esp32 対応。Modern (Tab5) 先行。サイズ実測、arena の PSRAM 化。
-  S3 はサイズ次第で判断。(fmrb_alloc の使い捨てヒープログは
-  fmrb_mem_create_handle_quiet の追加で解消済み 2026-08-12。長寿命
-  プールのログは従来どおり)。
-  (P2 の補完は Tab5 実機で確認済み: ti_lat 17ms/8B 文書。P3 の
-  ホバー/診断の実機確認はここでまとめて)
+- P5: esp32 対応。**ほぼ完了 (2026-08-12, report/p5.md)。PIN = fmrb-dev
+  55e90a7**。arena 16KB を PSRAM (.ext_ram.bss) へ (S3/P4 とも内蔵 .bss
+  ちょうど -16,384)。**実機で潜在バグを発見・修正: エディタタスク 12KB
+  では型支援のパース (prism 再帰) でスタック溢れ → Tab5 が Stack
+  protection fault。専用 24KB に (ピーク 15KB、残 9.5KB)。sim では絶対
+  出ない**。Tab5 実機で P3/P4/P4.5 全機能動作確認済み。
+  **未決 1 件: 実機レイテンシ (21.9KB=417ms、sim の 10 倍)。受付上限
+  ET_MAX_SOURCE_BYTES 32KB は現状維持を推奨** (delay は明示操作時のみ、
+  小さい文書は数十 ms。真の対処は ti を編集タスクから外す将来案)。
+  **S3 実機は未接続で未 flash** (ビルド + 内蔵 RAM 実測のみ、再開手順は
+  report/p5.md)。Modern 限定ゲートは根拠が無いので未作成。
 - P6 (任意): PC 側 LSP/MCP。同じ sig から picoruby-ti-lsp を建てて
   VSCode/Vim/Claude から FMRB アプリの型支援を使えるようにする。
 - P7 (任意): WebConsole (tool/web) の簡易エディタへの展開。2 経路:
