@@ -1210,81 +1210,16 @@ task :monitor do
   sh "#{DOCKER_CMD_INTERACTIVE} idf.py -p #{get_serial_port} monitor"
 end
 
-namespace :host do
-  desc "Build SDL2 host process"
-  task :build do
-    sh "cd host/sdl2 && mkdir -p build && cd build && cmake .. && make"
-  end
 
-  desc "Run SDL2 host process in background"
-  task :run => :build do
-    puts "Starting SDL2 host process..."
-    sh "cd host/sdl2/build && ./fmrb_host_sdl2 &"
-    sleep 1
-    puts "SDL2 host running on /tmp/fmrb_socket"
-  end
-
-  desc "Clean SDL2 host build"
-  task :clean do
-    sh "rm -rf host/sdl2/build/*"
-  end
-end
-
-namespace :test do
-  desc "Integration test: Run both core and host processes"
-  task :integration => ['build:linux', 'host:build'] do
-    puts "Starting integration test..."
-
-    # SDL2ホストをバックグラウンドで起動
-    host_pid = Process.spawn("cd host/sdl2/build && ./fmrb_host_sdl2")
-    sleep 2  # 起動待ち
-
-    begin
-      puts "Starting Family mruby Core..."
-      sh "./build/fmruby-core.elf"
-    ensure
-      # 終了処理
-      Process.kill("TERM", host_pid) rescue nil
-      puts "Integration test completed"
-    end
-  end
-end
-
-desc "Run Linux build (depends on build:linux)"
-task :run_linux => 'build:linux' do
-  sh "./build/fmruby-core.elf"
-end
-
-namespace :doc do
-  desc "Generate C/C++ API documentation with Doxygen"
-  task :c do
-    unless system("which doxygen > /dev/null 2>&1")
-      puts "ERROR: Doxygen is not installed."
-      puts "Install with: sudo apt-get install doxygen  # or  brew install doxygen"
-      exit 1
-    end
-    sh "doxygen Doxyfile"
-    puts "C/C++ API documentation generated at: doc/api/html/index.html"
-  end
-
-  desc "Generate Ruby API documentation with YARD"
-  task :ruby do
-    unless system("which yard > /dev/null 2>&1")
-      puts "ERROR: YARD is not installed."
-      puts "Install with: gem install yard"
-      exit 1
-    end
-    mrbgem_path = "components/picoruby-esp32/picoruby/mrbgems"
-    sh "yard doc #{mrbgem_path}/picoruby-fmrb-app/mrblib/*.rb #{mrbgem_path}/picoruby-fmrb-kernel/mrblib/*.rb -o doc/ruby_api"
-    puts "Ruby API documentation generated at: doc/ruby_api/index.html"
-  end
-
-  desc "Generate all API documentation (C/C++ and Ruby)"
-  task :all => [:c, :ruby]
-
-  desc "Clean generated documentation"
-  task :clean do
-    sh "rm -rf doc/api doc/ruby_api"
-    puts "Documentation cleaned"
-  end
-end
+# ---- Tests -------------------------------------------------------------------
+# Two tiers, kept apart on purpose:
+#   * host tests (this `test` task) -- native g++/gcc/ruby/python, no docker,
+#     no device. Fast; this is what CI runs and what to run after a code change.
+#   * sim/integration -- the docker Linux build driven headless by
+#     tools/dev_run_check.sh (+ fmrb_screenshot / fmrb_input). Heavier; run it
+#     when a change could affect on-screen behaviour.
+#
+# Lints (spinel:doctor) are separate again: they need the Spinel compiler
+# checkout and report style/inference issues, not pass/fail like these suites.
+desc "Run all native host test suites (picoruby-ti + BASIC + MicroPython)"
+task :test => ["ti:test", "basic:test", "micropython:smoke"]

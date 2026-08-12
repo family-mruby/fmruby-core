@@ -34,7 +34,6 @@
 ```
 rake build:linux  # Linuxターゲットビルド
 rake build:esp32  # ESP32ターゲットビルド
-rake host:build  # Hostビルド
 rake -T # その他のコマンドの使い方
 ```
 
@@ -44,6 +43,22 @@ rake -T # その他のコマンドの使い方
 - ターゲットをlinux - ESP32で切り替えてビルドするときは、ビルド前に `rake clean_all` を実行すること
 - プログラムの実行確認は、リポジトリルート (family-mruby) の自律検証ツールで headless に行える
   (起動+画面キャプチャ+入力注入。使い方はルートの CLAUDE.md 参照)。音声・実機・操作感の最終確認はユーザが行う。
+
+## テスト
+
+テストは 2 層に分かれている。
+
+- **ネイティブ host テスト**: `rake test` で picoruby-ti / BASIC ゴールデン /
+  MicroPython smoke をまとめて実行する。docker も実機も不要で、ランナー
+  (ホスト) の gcc/g++/ruby/python で走る。**コード変更後はまずこれ**。
+  個別には `rake ti:test` / `rake basic:test` / `rake micropython:smoke`。
+  CI (.github/workflows/build.yml の test-host ジョブ) はこれを回す。
+  型データベース生成に rbs gem が要る (`gem install rbs`)。
+- **sim / 結合テスト**: docker の Linux ビルドを headless で駆動する
+  (`tools/dev_run_check.sh` + `fmrb_screenshot` / `fmrb_input`)。画面挙動に
+  関わる変更のときに回す。重いので CI では回していない。
+- lint (`rake spinel:doctor`) は上記とは別枠 (Spinel コンパイラ checkout が要り、
+  pass/fail ではなく指摘を出す)。
 
 ## ハードウェア構成
 

@@ -81,6 +81,41 @@ jobs:
       #       build/partition_table/partition-table.bin
       #     retention-days: 7
 
+  test-host:
+    # Native host test suites (rake test): picoruby-ti, BASIC golden, and the
+    # MicroPython smoke build. These run with the runner's own gcc/g++/python3
+    # -- no docker, no device -- so they are far cheaper than the builds above
+    # and gate every push. The sim/integration tier (tools/dev_run_check.sh)
+    # is not run here; it needs the docker Linux stack and a framebuffer.
+    name: test-host
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # Recursive: the picoruby-ti host tests link against the prism copy
+          # bundled in the picoruby submodule (rake ti:test).
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Fix file permissions
+        run: sudo chown -R $(id -u):$(id -g) .
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+
+      - name: Install Ruby dependencies
+        # rbs: tidbgen parses sig/*.rbs to build the picoruby-ti type database
+        # (rake ti:gen / ti:test). serialport keeps the Rakefile load clean.
+        run: gem install rbs serialport
+
+      - name: Run host test suites
+        # rake ti:test auto-clones the pinned engine into vendor/picoruby-ti
+        # (public HTTPS, see lib/add/PICORUBY_TI_PIN) on first use.
+        run: rake test
+
   build-linux:
     runs-on: ubuntu-latest
     steps:
