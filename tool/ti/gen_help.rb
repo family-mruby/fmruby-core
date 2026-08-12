@@ -17,10 +17,17 @@
 # Generated at build time (rake setup) and not committed, like the type
 # database itself.
 #
+# The WebConsole shows the same pages in the browser (P7), where a directory of
+# files is awkward to fetch one by one -- so --json writes the identical set as
+# a single object instead: {"pages": {path: markdown}, "index": [[name, path]]}.
+# Same input, same text, one request.
+#
 # usage: gen_help.rb --sig-dir sig --out flash/help
+#        gen_help.rb --sig-dir sig --json tool/web/wasm/help.json
 
 require "optparse"
 require "fileutils"
+require "json"
 require "rbs"
 
 module TiHelp
@@ -70,29 +77,26 @@ module TiHelp
     end
   end
 
-  def self.generate(sig_dir:, out_dir:)
+  # Read the signatures and render every page that has a long form. Returns
+  # the pages keyed by their relative path, and the index in the order they
+  # were read (name first, so a name in two classes lists both).
+  def self.build(sig_dir:)
     paths = Dir[File.join(sig_dir, "*.rbs")].sort
     raise "no signatures in #{sig_dir}" if paths.empty?
 
-    FileUtils.rm_rf(out_dir)
-    FileUtils.mkdir_p(out_dir)
-
+    pages = {}
     index = []
-    written = 0
 
     paths.each do |path|
       declarations = RBS::Parser.parse_signature(File.read(path)).last
 
       each_class(declarations) do |class_name, declaration|
-        dir = File.join(out_dir, class_name.tr(":", "_"))
+        dir = class_name.tr(":", "_")
 
         class_long = long_form(declaration.comment)
         if class_long
-          FileUtils.mkdir_p(dir)
-          File.write(File.join(dir, "index.md"),
-                     "# #{class_name}\n\n#{class_long}\n")
-          index << [class_name, "#{class_name.tr(":", "_")}/index.md"]
-          written += 1
+          pages["#{dir}/index.md"] = "# #{class_name}\n\n#{class_long}\n"
+          index << [class_name, "#{dir}/index.md"]
         end
 
         declaration.members.each do |member|
@@ -109,8 +113,7 @@ module TiHelp
           end
 
           receiver = member.singleton? ? "#{class_name}." : "#{class_name}#"
-          FileUtils.mkdir_p(dir)
-          File.write(File.join(dir, "#{file}.md"), <<~HELP)
+          pages["#{dir}/#{file}.md"] = <<~HELP
             # #{receiver}#{name}
 
             #{render_signature(name, member)}
@@ -120,10 +123,24 @@ module TiHelp
             #{long}
           HELP
 
-          index << [name, "#{class_name.tr(":", "_")}/#{file}.md"]
-          written += 1
+          index << [name, "#{dir}/#{file}.md"]
         end
       end
+    end
+
+    [pages, index]
+  end
+
+  def self.generate(sig_dir:, out_dir:)
+    pages, index = build(sig_dir: sig_dir)
+
+    FileUtils.rm_rf(out_dir)
+    FileUtils.mkdir_p(out_dir)
+
+    pages.each do |path, body|
+      full = File.join(out_dir, path)
+      FileUtils.mkdir_p(File.dirname(full))
+      File.write(full, body)
     end
 
     # One line per entry, name first: the editor reads it top to bottom and
@@ -132,19 +149,36 @@ module TiHelp
     File.write(File.join(out_dir, "index.txt"),
                index.map { |name, path| "#{name}\t#{path}\n" }.join)
 
-    [written, index.size]
+    [pages.size, index.size]
+  end
+
+  # The same pages as one file, for the browser (tool/web/js/ti.js fetches it).
+  def self.generate_json(sig_dir:, out_file:)
+    pages, index = build(sig_dir: sig_dir)
+    FileUtils.mkdir_p(File.dirname(out_file))
+    File.write(out_file, JSON.generate("pages" => pages, "index" => index))
+    [pages.size, index.size]
   end
 end
 
 if $PROGRAM_NAME == __FILE__
-  options = { sig_dir: "sig", out_dir: "flash/help" }
+  options = { sig_dir: "sig", out_dir: nil, json: nil }
 
   OptionParser.new do |parser|
     parser.on("--sig-dir DIRECTORY") { |v| options[:sig_dir] = v }
     parser.on("--out DIRECTORY") { |v| options[:out_dir] = v }
+    parser.on("--json FILE", "write one JSON file instead of a directory") do |v|
+      options[:json] = v
+    end
   end.parse!(ARGV)
 
-  written, entries = TiHelp.generate(sig_dir: options[:sig_dir],
-                                     out_dir: options[:out_dir])
-  puts "help: #{written} file(s), #{entries} index entries -> #{options[:out_dir]}"
+  if options[:json]
+    written, entries = TiHelp.generate_json(sig_dir: options[:sig_dir],
+                                            out_file: options[:json])
+    puts "help: #{written} page(s), #{entries} index entries -> #{options[:json]}"
+  else
+    out_dir = options[:out_dir] || "flash/help"
+    written, entries = TiHelp.generate(sig_dir: options[:sig_dir], out_dir: out_dir)
+    puts "help: #{written} file(s), #{entries} index entries -> #{out_dir}"
+  end
 end

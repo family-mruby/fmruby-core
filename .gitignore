@@ -69,3 +69,11 @@ flash/tmp/
 # Editor help, generated from the doc comments in sig/ (rake ti:help, run by
 # rake setup). Same rule as the type database: the source is sig/.
 flash/help/
+
+# The WebConsole's browser type engine (rake ti:wasm) and its help bundle.
+# Same rule as the firmware database: the source is sig/ plus the engine, so
+# only the wrapper and the export list are committed here.
+tool/web/wasm/ti.js
+tool/web/wasm/ti.wasm
+tool/web/wasm/help.json
+node_modules/

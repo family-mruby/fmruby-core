@@ -1,0 +1,15 @@
+[
+"_tw_source_buffer",
+"_tw_max_source_bytes",
+"_tw_suggest",
+"_tw_suggestion",
+"_tw_hover",
+"_tw_hover_field",
+"_tw_hover_is_method",
+"_tw_call_context",
+"_tw_call_field",
+"_tw_call_argument_index",
+"_tw_diagnose",
+"_tw_diagnostic_pos",
+"_tw_diagnostic_message"
+]
