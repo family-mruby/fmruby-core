@@ -204,6 +204,15 @@ def 内 ivar のホバーには suggest と同じ処置が要る (P3 で fork �
   F1 ヘルプ (RBS コメント 2 行目以降 -> flash/help/ 生成、読み取り専用
   バッファで表示)。db の doc は先頭行のみに (fork 改修。プール上限対策)。
   書く場所は sig/ の 1 箇所という原則を守る。
+- P4.6: ヘルプ/要約の二国語化 (ja/en)。**完了 (2026-08-12, report/p4_6.md)**。
+  sig の doc コメントに 1 マーカー `<<en>>` で両言語を同居 (要約は 1 行目
+  インライン、長文は `<<en>>` 行で区切り)。表示 3 点 (補完 doc・ホバー doc・
+  F1 ページ) が ti_pick_lang / help_filter_language で言語追従。**fork/
+  tidbgen/gen_help は無改修、変更は ti_ui.rb + sig のみ**。マーカー無しは
+  片言語フォールバック (既存日本語 doc 無改修)。db pool 13,271→13,851
+  (見本 15 件 +580、上限 21%)。日本語トーンは大人想定に規約更新。
+  実装で判明: 要約は行内なのでインライン書換、長文は行削除の 2 段。
+  load_file 失敗時はフィルタしない (編集中バッファ破壊防止)。
 - P5: esp32 対応。**ほぼ完了 (2026-08-12, report/p5.md)。PIN = fmrb-dev
   55e90a7**。arena 16KB を PSRAM (.ext_ram.bss) へ (S3/P4 とも内蔵 .bss
   ちょうど -16,384)。**実機で潜在バグを発見・修正: エディタタスク 12KB
@@ -217,11 +226,17 @@ def 内 ivar のホバーには suggest と同じ処置が要る (P3 で fork �
   report/p5.md)。Modern 限定ゲートは根拠が無いので未作成。
 - P6 (任意): PC 側 LSP/MCP。同じ sig から picoruby-ti-lsp を建てて
   VSCode/Vim/Claude から FMRB アプリの型支援を使えるようにする。
-- P7 (任意): WebConsole (tool/web) の簡易エディタへの展開。2 経路:
-  診断は debugd にコマンドを生やして保存時に相乗り (BLE は全文転送が
-  遅く打鍵補完には不向き、保存はどうせ全文送る)。補完はエンジン + db を
-  emscripten で WASM 化してブラウザ内で完結させる (エンジンは純 C 12KB +
-  db 37KB なので現実的。db は同じ sig/ から生成して実機とずらさない)。
+- P7 (任意): WebConsole (tool/web) のブラウザ内型支援。**完了
+  (2026-08-12, report/p7.md)**。WASM 経路一本で補完/ホバー/診断/F1/言語
+  トグルがブラウザ内完結 (`rake ti:wasm` -> tool/web/wasm/ti.js + ti.wasm
+  415KB + help.json)。**実機も BLE も不要**。前提どおり mruby は入らず
+  (PRISM_XALLOCATOR 未定義 = prism が malloc)、**fork 無改修**で通った。
+  速さは 22.7KB = 11.4 ms (Tab5 実機の 417 ms の約 1/37) なので、実機の
+  上限や明示操作の制約はブラウザには要らない。検証はユーザ操作ゼロの
+  3 段 (ti:test / Node 16 項目 / Playwright headless 11 項目 + スクショ)。
+  指示書と変えた点 3 つ: UI は js/ti-editor.js に分離、JS API は同期、
+  F1 の言語切りは ti_ui.rb と同じ「頭は残す」2 段 (素直に割ると英語側から
+  タイトルとシグネチャが消える)。任意の T5 (help.json) も実施。
 
 ## 未確定事項
 
