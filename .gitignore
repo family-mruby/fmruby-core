@@ -77,3 +77,4 @@ tool/web/wasm/ti.js
 tool/web/wasm/ti.wasm
 tool/web/wasm/help.json
 node_modules/
+tool/web/test/shots/

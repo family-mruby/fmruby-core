@@ -33,18 +33,33 @@ export function pickLang(text, lang) {
     : s.slice(0, i).trim();
 }
 
-/* Long help pages are split by a line holding nothing but the marker. */
-export function pickLangBlock(text, lang) {
-  const s = String(text ?? "");
-  const lines = s.split("\n");
-  const at = lines.findIndex((line) => line.trim() === TI_LANG_MARK);
+/* A help page holds both languages the way the doc comment it came from does,
+   and in two different shapes -- so it is filtered in two steps, exactly as
+   ti_ui.rb does it on the device. gen_help writes a method page as
+
+     "# Class#method" / "" / signature / "" / summary / "" / long text
+
+   and a class page as "# Class" / "" / long text. In the head the marker is
+   inline on the summary, so that line is rewritten; in the long text it stands
+   on a line of its own, so one half of that is dropped. The head is kept
+   either way -- the title and the signature are the same in both languages. */
+const HELP_HEAD_LINES_METHOD = 6;
+const HELP_HEAD_LINES_CLASS = 2;
+
+export function pickLangPage(text, path, lang) {
+  const lines = String(text ?? "").split("\n");
+  const head = String(path ?? "").endsWith("index.md")
+    ? HELP_HEAD_LINES_CLASS : HELP_HEAD_LINES_METHOD;
+
+  const kept = lines.slice(0, head)
+    .map((line) => (line.includes(TI_LANG_MARK) ? pickLang(line, lang) : line));
+  const body = lines.slice(head);
+  const at = body.findIndex((line) => line.trim() === TI_LANG_MARK);
   const half = at < 0
-    ? lines
-    : (lang === "en" ? lines.slice(at + 1) : lines.slice(0, at));
-  /* The summary line inside a page is inline, like every other summary. */
-  return half.map((line) => (line.includes(TI_LANG_MARK) ? pickLang(line, lang) : line))
-             .join("\n")
-             .trim();
+    ? body
+    : (lang === "en" ? body.slice(at + 1) : body.slice(0, at));
+
+  return kept.concat(half).join("\n").trim();
 }
 
 const FIELD_LABEL = 0;
@@ -105,7 +120,7 @@ export async function createTi(options = {}) {
 
     /* The doc half in the current language, unless one is named. */
     pickLang: (text, forced) => pickLang(text, forced ?? lang),
-    pickLangBlock: (text, forced) => pickLangBlock(text, forced ?? lang),
+    pickLangPage: (text, path, forced) => pickLangPage(text, path, forced ?? lang),
     byteOffsetOf,
 
     maxSourceBytes: () => wasm._tw_max_source_bytes(),
@@ -202,7 +217,7 @@ export async function createTi(options = {}) {
       const bundle = await api.loadHelp();
       const hit = bundle.index.find((entry) => entry[0] === name);
       if (!hit) return null;
-      return { path: hit[1], text: pickLangBlock(bundle.pages[hit[1]], lang) };
+      return { path: hit[1], text: pickLangPage(bundle.pages[hit[1]], hit[1], lang) };
     },
 
     async helpNames() {
@@ -218,6 +233,6 @@ export async function createTi(options = {}) {
    through the window. A page served from file:// cannot load modules at all,
    which is why app.js treats this as optional and says so in the editor. */
 if (typeof window !== "undefined") {
-  window.FmrbTi = { createTi, pickLang, pickLangBlock, byteOffsetOf, TI_LANG_MARK };
+  window.FmrbTi = { createTi, pickLang, pickLangPage, byteOffsetOf, TI_LANG_MARK };
   window.dispatchEvent(new Event("fmrb-ti-ready"));
 }

@@ -199,6 +199,12 @@
     <div class="editor-header">
       <span class="path" id="editorPath"></span>
       <span class="dirty" id="editorDirty"></span>
+      <label class="ti-lang">Docs
+        <select id="tiLangSelect">
+          <option value="ja">日本語</option>
+          <option value="en">English</option>
+        </select>
+      </label>
       <button class="primary" onclick="saveEditor()">Save</button>
       <button onclick="closeEditor()">Close</button>
     </div>
@@ -206,10 +212,21 @@
       <div class="editor-stack">
         <pre class="editor-highlight" aria-hidden="true"><code id="editorHighlight" class="language-none"></code></pre>
         <textarea id="editorTextarea" spellcheck="false" autocapitalize="off" autocorrect="off"></textarea>
+        <div class="ti-marks" id="tiMarks"></div>
+      </div>
+      <div class="ti-help" id="tiHelp">
+        <div class="ti-help-head">
+          <span id="tiHelpTitle"></span>
+          <button id="tiHelpClose">Close</button>
+        </div>
+        <div class="ti-help-body" id="tiHelpBody"></div>
       </div>
     </div>
     <div class="editor-footer">
       <span class="stats" id="editorStats"></span>
+      <span class="ti-signature" id="tiSignature"></span>
+      <span class="ti-problems" id="tiProblems"></span>
+      <span class="ti-status" id="tiStatus"></span>
       <span id="editorMessage"></span>
     </div>
   </div>
@@ -235,9 +252,20 @@
   </div>
 </div>
 
+<div class="ti-complete" id="tiComplete">
+  <div class="ti-list" id="tiCompleteList"></div>
+  <div class="ti-doc" id="tiCompleteDoc"></div>
+</div>
+<div class="ti-hover" id="tiHover"></div>
+
 <script src="vendor/prism.js"></script>
 <script src="js/msgpack.js"></script>
 <script src="js/app.js"></script>
+<!-- The type engine is an ES module (it loads WebAssembly); the console's own
+     scripts stay classic. js/ti.js hands itself to the page through
+     window.FmrbTi, and js/ti-editor.js is the UI around it. -->
+<script type="module" src="js/ti.js"></script>
+<script src="js/ti-editor.js"></script>
 <script src="js/debug.js"></script>
 <script src="js/bmp332.js"></script>
 <script src="js/sprite-editor.js"></script>

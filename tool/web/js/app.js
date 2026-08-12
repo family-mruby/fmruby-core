@@ -543,29 +543,37 @@ async function openEditor(name) {
       return;
     }
 
-    editorState = { name, original: text, dirty: false };
-    document.getElementById('editorPath').textContent = filePath;
-    document.getElementById('editorDirty').textContent = '';
-    document.getElementById('editorMessage').textContent = '';
-    const ta = document.getElementById('editorTextarea');
-    const code = document.getElementById('editorHighlight');
-    const lang = prismLangForName(name);
-    code.className = 'language-' + lang;
-    code.dataset.lang = lang;
-    ta.value = text;
-    highlightEditorContent();
-    syncEditorScroll();
-    updateEditorStats();
-    document.getElementById('editorModal').classList.add('open');
-    ta.scrollTop = 0;
-    ta.scrollLeft = 0;
-    ta.setSelectionRange(0, 0);
-    setTimeout(() => { ta.focus(); ta.setSelectionRange(0, 0); syncEditorScroll(); }, 0);
+    showEditor(name, filePath, text);
     log('Loaded: ' + name + ' (' + formatSize(totalSize) + ')', 'ok');
   } catch (e) {
     log('Open error: ' + e.message, 'err');
   }
   hideProgress();
+}
+
+// Put text in the editor and show it. Separate from openEditor because what
+// happens before it -- reading the file off the device -- is not the only way
+// text arrives: the browser test drives the editor with no device at all.
+function showEditor(name, filePath, text) {
+  editorState = { name, original: text, dirty: false };
+  document.getElementById('editorPath').textContent = filePath;
+  document.getElementById('editorDirty').textContent = '';
+  document.getElementById('editorMessage').textContent = '';
+  const ta = document.getElementById('editorTextarea');
+  const code = document.getElementById('editorHighlight');
+  const lang = prismLangForName(name);
+  code.className = 'language-' + lang;
+  code.dataset.lang = lang;
+  ta.value = text;
+  highlightEditorContent();
+  syncEditorScroll();
+  updateEditorStats();
+  document.getElementById('editorModal').classList.add('open');
+  ta.scrollTop = 0;
+  ta.scrollLeft = 0;
+  ta.setSelectionRange(0, 0);
+  setTimeout(() => { ta.focus(); ta.setSelectionRange(0, 0); syncEditorScroll(); }, 0);
+  if (window.tiEditorOpened) tiEditorOpened(name);
 }
 
 async function saveEditor() {
@@ -606,6 +614,7 @@ function closeEditor() {
   code.className = 'language-none';
   code.dataset.lang = 'none';
   editorState = { name: null, original: '', dirty: false };
+  if (window.tiEditorClosed) tiEditorClosed();
 }
 
 function updateEditorStats() {
@@ -640,6 +649,9 @@ document.addEventListener('DOMContentLoaded', () => {
       updateEditorStats();
       highlightEditorContent();
       syncEditorScroll();
+      // After the highlight, never before: the type support measures character
+      // positions on that overlay.
+      if (window.tiEditorTextChanged) tiEditorTextChanged();
     });
   });
 
