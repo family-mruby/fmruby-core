@@ -1,0 +1,6 @@
+{
+  "name": "fmrb-web-console",
+  "private": true,
+  "type": "module",
+  "//": "Only Node reads this. It says that the .js files here that use import/export (js/ti.js, and ti.js as built by rake ti:wasm) are ES modules, which Node otherwise decides from the package.json at the repository root -- and that one has no type field, so the Node checks would read them as CommonJS. Browsers never look at this file; the console's other scripts stay ordinary <script> files."
+}
