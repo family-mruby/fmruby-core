@@ -76,6 +76,12 @@ extern void fmrb_prism_set_scratch_allocator(fmrb_prism_alloc_fn fn);
 #define ET_MAX_SUGGESTIONS  TI_SUGGESTION_CAPACITY
 #define ET_LABEL_MAX        48
 #define ET_DETAIL_MAX       112
+/* How long a summary the editor keeps. Anything past it is dropped without a
+   word, and a summary carries two languages at once (the <<en>> marker), so
+   this is a rule for whoever writes sig/*.rbs as much as a buffer size here:
+   the two halves together must fit. It is written down in sig/README.md, where
+   the doc comments are. 64 candidates x (48 + 112 + 112) sits in the document
+   pool, so raising it costs the editor's memory, not flash. */
 #define ET_DOC_MAX          112
 
 #define ET_MAX_DIAGNOSTICS  TI_DIAGNOSTIC_CAPACITY
