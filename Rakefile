@@ -237,6 +237,10 @@ task :setup do
   %w[.git lib lsp host_test images example tidbgen].each do |unused|
     rm_rf "#{mrbgem_path}/picoruby-ti/#{unused}"
   end
+  # Where the engine's working arena lives on the ESP32 targets. The engine
+  # includes this by name (TI_ARENA_INCLUDE, set in the esp32 build configs)
+  # and finds it because the gem puts its own src/ on the include path.
+  sh "cp -f lib/add/ti_arena_esp32.h #{mrbgem_path}/picoruby-ti/src/"
   # The type database is generated from OUR sig/*.rbs (the FMRB API), on the
   # host, into the copy only -- the docker build has no ruby for this.
   picoruby_ti_gen_db(ti_dir, "#{PICORUBY_TI_GEM_DIR}/src/generated")

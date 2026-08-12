@@ -38,6 +38,11 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   conf.cc.defines << "USE_FAT_FLASH_DISK"
   conf.cc.defines << "NDEBUG"
   conf.cc.defines << "ESP32_PLATFORM"
+  # picoruby-ti keeps a 16KB working arena. Point the engine at the header
+  # that puts it in external RAM: internal RAM is the scarce one here, and the
+  # arena is CPU-only scratch (see lib/add/ti_arena_esp32.h). Not defined for
+  # the Linux build, where the section does not exist.
+  conf.cc.defines << 'TI_ARENA_INCLUDE=\"ti_arena_esp32.h\"'
   conf.cc.defines << "FMRB_NO_IO_CONSOLE"
   # Remote debugger VM hook (doc/vm_remote_debug_*). ABI-relevant: adds two
   # function pointers to mrb_state.
