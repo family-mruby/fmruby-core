@@ -242,8 +242,11 @@ fmrb_app_set_fullscreen を mruby/Spinel 両バインディング) / 2c06acd
 - 既存バグ 2 件も修正: spawn 直後 (INIT) の HID target が窓リスト判定で
   剥奪される競合 / 終了処理中アプリの suspend でシステム停止
   (unpark はスロット解放まで tick で待つ)。
-- Spinel / mruby 両カーネルで検証済み。**実機確認待ち: P2 全シナリオと
-  P4 canvas 変更 (sim では通らない経路。確認点 3 つは report/p2.md)**。
+- Spinel / mruby 両カーネルで検証済み。**P4 canvas 変更は Tab5 実機で確認済み
+  (2026-08-13、確認点 3 つ = report/p2.md)**: F11 全画面が 426x240 いっぱい、
+  エディタ窓 canvas は要求 240x200 でも buffer 426x240、往復で崩れ無し。
+  P2 のその他シナリオ (フォーカス剥奪/終了処理中 suspend の競合) は引き続き
+  実機確認の余地あり。
 - 段階 4 の宿題が積み増し: 50KB ファイルに加え
   「全画面エディタ + 14KB 窓アプリ同時で NoMemoryError」も同根。
 
