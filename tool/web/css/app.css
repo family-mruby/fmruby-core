@@ -175,18 +175,18 @@ button.danger:hover { background: #8c0000; }
                box-shadow: 0 8px 24px rgba(0,0,0,0.5); overflow: hidden; }
 .ti-complete.open { display: block; }
 .ti-list { max-height: 220px; overflow-y: auto; }
-.ti-item { display: flex; gap: 8px; padding: 3px 8px; cursor: pointer;
-           font-family: monospace; font-size: 0.85em; white-space: nowrap; }
+.ti-item { display: flex; gap: 8px; padding: 4px 8px; cursor: pointer;
+           font-family: monospace; font-size: 14px; white-space: nowrap; }
 .ti-item.selected { background: rgba(216,36,85,0.35); }
 .ti-item .ti-label { color: var(--text); }
 .ti-item .ti-detail { color: var(--text-mute); overflow: hidden;
                       text-overflow: ellipsis; }
 .ti-doc { border-top: 1px solid var(--border); padding: 6px 8px;
-          font-size: 0.8em; color: var(--text-mute); min-height: 1.6em; }
+          font-size: 13px; color: var(--text-mute); min-height: 1.6em; }
 
 .ti-hover { position: fixed; display: none; z-index: 210; max-width: 420px;
             background: var(--bg-surface); border: 1px solid var(--border);
-            border-radius: 6px; padding: 6px 8px; font-size: 0.8em;
+            border-radius: 6px; padding: 6px 8px; font-size: 13px;
             box-shadow: 0 8px 24px rgba(0,0,0,0.5); }
 .ti-hover.open { display: block; }
 .ti-hover-head { font-family: monospace; color: var(--text); }

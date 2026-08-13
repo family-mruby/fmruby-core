@@ -31,6 +31,7 @@ const tiState = {
   diagnostics: [],
   timers: { diagnose: null, hover: null, signature: null },
   helpOpen: false,
+  enabled: false,     // type support is Ruby-only; off for .bas/.lua/etc.
 };
 
 // ---------------------------------------------------------------- loading
@@ -194,7 +195,39 @@ function tiPrefixLength(text, caret) {
   return n;
 }
 
+// Object-common methods (every receiver has them, flattened in from Object and
+// Kernel) that the completion list sinks below the receiver's own methods, so
+// the specific, useful names lead. Operators are sunk too, by the shape of the
+// name. The device editor applies the same rule (editor/ti_ui.rb) -- keep the
+// two lists in step.
+const TI_COMMON_METHODS = new Set([
+  'attr_accessor', 'attr_reader', 'block_given?', 'class', 'dup', 'exit',
+  'extend', 'include', 'inspect', 'is_a?', 'lambda', 'loop', 'nil?', 'p',
+  'print', 'private', 'proc', 'public', 'puts', 'raise', 'relinquish', 'self',
+  'sleep', 'sleep_ms', 'sprintf', 'to_s', 'yield',
+]);
+
+function tiIsDemoted(label) {
+  if (TI_COMMON_METHODS.has(label)) return true;
+  return !/^[A-Za-z_]/.test(label);   // operator methods start otherwise
+}
+
+// Two tiers, alphabetical within each (the engine already returns them sorted,
+// and the index tie-break keeps that order): the receiver's own methods first,
+// then object-common methods and operators.
+function tiSortSuggestions(items) {
+  return items
+    .map((item, index) => [item, index])
+    .sort((a, b) => {
+      const demotedA = tiIsDemoted(a[0].label) ? 1 : 0;
+      const demotedB = tiIsDemoted(b[0].label) ? 1 : 0;
+      return demotedA - demotedB || a[1] - b[1];
+    })
+    .map((pair) => pair[0]);
+}
+
 async function tiOpenCompletion() {
+  if (!tiState.enabled) return;
   const api = await tiEnsureEngine();
   if (!api) return;
   const ta = tiTextarea();
@@ -215,7 +248,7 @@ async function tiOpenCompletion() {
     return;
   }
   tiSetStatus('type help: ' + items.length + ' candidates (' + ms + ' ms)');
-  tiState.items = items;
+  tiState.items = tiSortSuggestions(items);
   tiState.index = 0;
   tiState.prefix = tiPrefixLength(text, caret);
   tiState.open = true;
@@ -317,6 +350,7 @@ function tiAcceptCompletion() {
 // ------------------------------------------------------- signature help
 
 function tiScheduleSignature() {
+  if (!tiState.enabled) return;
   clearTimeout(tiState.timers.signature);
   tiState.timers.signature = setTimeout(tiShowSignature, TI_SIGNATURE_DELAY_MS);
 }
@@ -340,6 +374,7 @@ function tiShowSignature() {
 // ---------------------------------------------------------------- hover
 
 function tiScheduleHover(event) {
+  if (!tiState.enabled) return;
   clearTimeout(tiState.timers.hover);
   const x = event.clientX, y = event.clientY;
   tiState.timers.hover = setTimeout(() => tiShowHover(x, y), TI_HOVER_DELAY_MS);
@@ -393,6 +428,7 @@ function tiHideHover() {
 // ---------------------------------------------------------- diagnostics
 
 function tiScheduleDiagnose() {
+  if (!tiState.enabled) return;
   clearTimeout(tiState.timers.diagnose);
   tiState.timers.diagnose = setTimeout(tiDiagnose, TI_DIAGNOSE_DELAY_MS);
 }
@@ -457,6 +493,7 @@ function tiDrawDiagnostics() {
 // ------------------------------------------------------------- F1 help
 
 async function tiShowHelp() {
+  if (!tiState.enabled) return;
   const api = await tiEnsureEngine();
   if (!api) return;
   const panel = document.getElementById('tiHelp');
@@ -536,8 +573,11 @@ function tiRenderMarkdown(source) {
 // --------------------------------------------------------------- wiring
 
 // app.js calls these; everything else in this file hangs off them.
-function tiEditorOpened() {
-  tiSetStatus();
+function tiEditorOpened(name) {
+  // The engine infers Ruby, so type support is Ruby-only. Other editable files
+  // (.bas, .lua, .txt, ...) open in the editor but get no completion, hover,
+  // diagnostics or help -- the guards in the trigger functions key off this.
+  tiState.enabled = typeof name === 'string' && name.endsWith('.rb');
   tiCloseHelp();
   tiCloseCompletion();
   tiHideHover();
@@ -545,6 +585,11 @@ function tiEditorOpened() {
   tiDrawDiagnostics();
   const chip = document.getElementById('tiProblems');
   if (chip) { chip.textContent = ''; chip.className = 'ti-problems'; }
+  if (!tiState.enabled) {
+    tiSetStatus('type help: off (Ruby files only)');
+    return;
+  }
+  tiSetStatus();
   tiEnsureEngine().then((api) => {
     if (api) tiScheduleDiagnose();
   });

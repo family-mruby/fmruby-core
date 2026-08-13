@@ -89,6 +89,63 @@ module EditorTiUi
     n < COMP_MAX_ROWS ? n : COMP_MAX_ROWS
   end
 
+  # Object-common methods (every receiver has them, flattened in from Object and
+  # Kernel by the type database) that completion sinks below the receiver's own
+  # methods, so the specific names lead. Operators are sunk too, by the shape of
+  # the name. The console applies the same rule (tool/web/js/ti-editor.js) --
+  # keep the two lists in step.
+  COMP_COMMON_METHODS = {
+    "attr_accessor" => true, "attr_reader" => true, "block_given?" => true,
+    "class" => true, "dup" => true, "exit" => true, "extend" => true,
+    "include" => true, "inspect" => true, "is_a?" => true, "lambda" => true,
+    "loop" => true, "nil?" => true, "p" => true, "print" => true,
+    "private" => true, "proc" => true, "public" => true, "puts" => true,
+    "raise" => true, "relinquish" => true, "self" => true, "sleep" => true,
+    "sleep_ms" => true, "sprintf" => true, "to_s" => true, "yield" => true,
+  }
+
+  # A candidate goes to the bottom tier if it is object-common or an operator.
+  def comp_demoted?(label)
+    return true if COMP_COMMON_METHODS[label]
+    b = label.getbyte(0)
+    return true unless b
+    # Operator methods start with something other than a letter or underscore.
+    return true unless (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95
+    false
+  end
+
+  # Split the parallel candidate arrays into two tiers, keeping each tier in the
+  # order it arrived (EditorCore.suggest already returns them alphabetically):
+  # the receiver's own methods first, then object-common methods and operators.
+  # A stable partition rather than a sort -- no sort_by/Array-compare, so it
+  # compiles the same under Spinel and mruby.
+  def comp_sink_common_and_operators
+    n = @comp_labels.size
+    return if n < 2
+    keep_labels = []
+    keep_details = []
+    keep_docs = []
+    sink_labels = []
+    sink_details = []
+    sink_docs = []
+    i = 0
+    while i < n
+      if comp_demoted?(@comp_labels[i])
+        sink_labels << @comp_labels[i]
+        sink_details << @comp_details[i]
+        sink_docs << @comp_docs[i]
+      else
+        keep_labels << @comp_labels[i]
+        keep_details << @comp_details[i]
+        keep_docs << @comp_docs[i]
+      end
+      i += 1
+    end
+    @comp_labels = keep_labels + sink_labels
+    @comp_details = keep_details + sink_details
+    @comp_docs = keep_docs + sink_docs
+  end
+
   def open_completion
     t0 = Machine.uptime_us
     n = EditorCore.suggest(@cy, @cx)
@@ -118,6 +175,7 @@ module EditorTiUi
       @comp_docs << EditorCore.suggestion(i, COMP_FIELD_DOC)
       i += 1
     end
+    comp_sink_common_and_operators
     @comp_prefix = comp_prefix_len
     @comp_idx = 0
     @comp_top = 0

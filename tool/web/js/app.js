@@ -29,7 +29,7 @@ const WRITE_CHUNK_SIZE = 200; // Conservative BLE write chunk size
 const FILE_CHUNK_SIZE  = 2048;
 const EDITOR_MAX_SIZE  = 256 * 1024;
 const TEXT_EXTENSIONS = new Set([
-  'rb', 'txt', 'md', 'toml', 'json', 'yml', 'yaml',
+  'rb', 'bas', 'lua', 'txt', 'md', 'toml', 'json', 'yml', 'yaml',
   'csv', 'ini', 'conf', 'log', 'cfg', 'xml', 'html',
   'css', 'js', 'c', 'h', 'cpp', 'hpp', 'py', 'sh'
 ]);
