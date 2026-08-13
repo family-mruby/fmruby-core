@@ -87,16 +87,6 @@ module FileSelectorMixin
   end
 
 
-  # Repaint only the selector window, not the whole foreground. draw_foreground
-  # clears the entire foreground canvas (draw_menu_bar) before repainting, which
-  # the compositor can catch as a full-screen transparent frame -- a wallpaper
-  # flash on every click. The window is its own opaque composite region, so
-  # repainting just it composites cleanly over the unchanged background.
-  def fsel_repaint
-    draw_file_selector
-    @gfx.present
-  end
-
   def draw_file_selector
     return unless @file_selector_open
 
@@ -225,7 +215,7 @@ module FileSelectorMixin
         max_scroll = @file_selector_entries.size - max_visible
         @file_selector_scroll += 1 if @file_selector_scroll < max_scroll
       end
-      fsel_repaint
+      draw_foreground
       return
     end
 
@@ -247,7 +237,7 @@ module FileSelectorMixin
           # In save mode the name field follows the selection, so a file can be
           # overwritten without retyping its name.
           @file_selector_filename = entry[:name] unless entry[:is_dir]
-          fsel_repaint
+          draw_foreground
         end
         return unless double
 
@@ -270,7 +260,7 @@ module FileSelectorMixin
           scan_file_selector_dir
           # A fresh listing means the remembered row is meaningless.
           @fsel_click_idx = -1
-          fsel_repaint
+          draw_foreground
         elsif @file_selector_mode != "save"
           # In open mode a file is the answer; in save mode the click above
           # already put its name in the field.

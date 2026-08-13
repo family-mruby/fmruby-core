@@ -983,6 +983,23 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_FILL_SCREEN: {
         if (size < sizeof(fmrb_link_graphics_clear_t)) break;
         const auto *cmd = (const fmrb_link_graphics_clear_t *)data;
+        // A cleared canvas is fully transparent until it is redrawn, so it
+        // contributes nothing (the wallpaper shows through) while composited.
+        // render_frame is rate-limited, so a present can leave g_needs_render
+        // pending; if the next frame then starts by clearing the foreground,
+        // that still-pending render fires against the just-cleared canvas and
+        // paints one all-wallpaper frame -- the flicker seen on a quick tap,
+        // where the press/select redraws land within one render interval
+        // (doc/p4_display_flicker/). Flush the pending frame here, before the
+        // clear, so the last complete frame is shown and no render runs while
+        // the canvas is transparent. Only fires when a render is actually
+        // pending, so a steady 30fps app (present -> immediate render) pays
+        // nothing.
+        if (g_needs_render) {
+            render_frame();
+            g_needs_render = false;
+            g_last_render_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+        }
         auto *s = get_sprite(cmd->canvas_id);
         if (s) s->fillScreen(cmd->color);
         return 0;

@@ -283,7 +283,7 @@ module FileManagerMixin
     new_pressed = fmgr_entry_at(x, y)
     if new_pressed != @fmgr_pressed_idx
       @fmgr_pressed_idx = new_pressed
-      fmgr_repaint
+      draw_foreground
     end
   end
 
@@ -300,12 +300,17 @@ module FileManagerMixin
         handle_fmgr_context_click(x, y)
       else
         @fmgr_ctx_open = false
-        fmgr_repaint
+        draw_foreground
       end
       return
     end
 
-    fmgr_repaint if had_pressed
+    # Do NOT clear the press highlight with its own redraw here: selecting a row
+    # below sets @file_manager_selected to the same row, so it stays highlighted
+    # (pressed -> selected) with no intermediate un-highlighted frame. Drawing
+    # that intermediate frame made the selection highlight blink on a tap. The
+    # fall-through at the end of this method clears a stray press highlight when
+    # the click did not land on a row.
 
     fx = @fmgr_x
     fy = @fmgr_y
@@ -348,7 +353,7 @@ module FileManagerMixin
         @fmgr_last_click_time = now
         if @file_manager_selected != idx
           @file_manager_selected = idx
-          fmgr_repaint
+          draw_foreground
         end
         return unless double
 
@@ -362,6 +367,10 @@ module FileManagerMixin
         end
       end
     end
+    # The click did not select or activate a row (empty space, etc.). Clear a
+    # stray press highlight left from mouse-down. (Row selection above keeps the
+    # row highlighted and returns, so it never reaches here.)
+    draw_foreground if had_pressed
   end
 
   def handle_file_manager_right_click(x, y)
@@ -399,7 +408,7 @@ module FileManagerMixin
       @fmgr_ctx_y = @fmgr_y + FMGR_H - ctx_h
     end
     @fmgr_ctx_open = true
-    fmgr_repaint
+    draw_foreground
   end
 
   def hit_fmgr_context_menu?(x, y)
@@ -447,19 +456,7 @@ module FileManagerMixin
       end
     end
     scan_file_manager_dir
-    fmgr_repaint
-  end
-
-  # Repaint only the file-manager window, not the whole foreground. A full
-  # draw_foreground runs draw_menu_bar, which clears the entire foreground
-  # canvas to the transparent colour key before repainting; the compositor can
-  # sample that moment and show the wallpaper through the whole screen -- the
-  # flicker on every directory click. The window is its own opaque composite
-  # region, so repainting just it and presenting composites cleanly over the
-  # unchanged background (same idea as the once-a-second partial clock redraw).
-  def fmgr_repaint
-    draw_file_manager
-    @gfx.present
+    draw_foreground
   end
 
   def fmgr_run_file(idx)
@@ -576,10 +573,10 @@ module FileManagerMixin
 
     if direction > 0 && @file_manager_scroll + m[:max_visible] < total
       @file_manager_scroll += 1
-      fmgr_repaint
+      draw_foreground
     elsif direction < 0 && @file_manager_scroll > 0
       @file_manager_scroll -= 1
-      fmgr_repaint
+      draw_foreground
     end
   end
 
