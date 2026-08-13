@@ -255,6 +255,14 @@ def picoruby_ti_prism_work!
     rm_rf prism_work
     mkdir_p File.dirname(prism_work)
     sh "cp -r #{prism_src} #{prism_work}"
+    # prism's ast.h / diagnostic.h / src/*.c are generated and gitignored in the
+    # source tree, so a fresh checkout (CI especially) copies a prism without
+    # them and the compile fails on a missing prism/diagnostic.h. Generate them
+    # the same way the firmware build does (mruby-compiler's mrbgem.rake):
+    # template.rb is plain Ruby (erb/fileutils/yaml), no bundler needed.
+    unless File.exist?(File.join(prism_work, "include/prism/diagnostic.h"))
+      Dir.chdir(prism_work) { sh "#{RbConfig.ruby} templates/template.rb" }
+    end
     sh "make -C #{prism_work} static"
   end
   prism_work
