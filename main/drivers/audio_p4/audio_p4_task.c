@@ -211,6 +211,49 @@ int audio_p4_engine_note_off(uint8_t channel) {
     return ret;
 }
 
+// ------------------------------------------------------------------
+// Boot beep: the "piko" the Retro machine makes while the boot screen waits
+// for the kernel. On Retro the sound comes from the graphics-audio board,
+// which plays it on its own initiative (play_boot_beep in its graphics task);
+// Modern never inherited that, because here the APU lives in this firmware.
+// This is that beep, in its place: 880 Hz then 1760 Hz, short, on PULSE1.
+//
+// It is driven from the frame loop rather than written straight through with
+// delays, because the APU only emits while this loop feeds it -- sleeping
+// inside a note would produce silence. The whole thing is over about 200 ms
+// after the audio task starts, which is during "Waiting for kernel..." and
+// well before the desktop's boot jingle wants the same channel.
+// ------------------------------------------------------------------
+
+#define BOOT_BEEP_HI_FREQ   1760
+#define BOOT_BEEP_LO_FREQ   880
+
+static void boot_beep_tick(void) {
+    static int frame = 0;
+    static bool done = false;
+
+    if (done) return;
+    frame++;
+
+    switch (frame) {
+    case 1:
+        audio_p4_engine_note_on(FMRB_APU_CH_PULSE1, BOOT_BEEP_LO_FREQ, 8, 2, 0);
+        break;
+    case 6:     // ~83 ms
+        audio_p4_engine_note_off(FMRB_APU_CH_PULSE1);
+        break;
+    case 8:     // ~33 ms of silence between the two
+        audio_p4_engine_note_on(FMRB_APU_CH_PULSE1, BOOT_BEEP_HI_FREQ, 6, 2, 0);
+        break;
+    case 12:    // ~66 ms
+        audio_p4_engine_note_off(FMRB_APU_CH_PULSE1);
+        done = true;
+        break;
+    default:
+        break;
+    }
+}
+
 #if FMRB_MIC_SELFTEST
 // Play a note, listen, report what came back. Two frequencies, a few frames
 // apart, driven from the 60 Hz loop one step at a time (see the call site).
@@ -325,6 +368,9 @@ static void audio_p4_task(void *arg) {
             // Blocking write outside the lock: I2S DMA paces us
             apuif_audio_write(buffer, count, 1);
         }
+
+        // The boot "piko", once, in the first few frames of this task.
+        boot_beep_tick();
 
 #if FMRB_MIC_SELFTEST
         // Tone check: play a known note through the speaker and ask the
