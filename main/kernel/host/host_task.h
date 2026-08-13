@@ -37,6 +37,21 @@ int fmrb_host_send_key_down(int key_code, int scancode, int modifier);
 int fmrb_host_send_key_up(int key_code, int scancode, int modifier);
 
 /**
+ * @brief Send key down/up forcing US-layout character decoding.
+ *
+ * Identical to fmrb_host_send_key_down/up but decodes with the US table
+ * regardless of the keyboard_layout setting. For the Tab5 built-in keyboard,
+ * whose HID mode already resolves its legends to US HID codes; decoding those
+ * with the (default jp) table is what made its symbol keys mismatch.
+ * @param key_code The key code
+ * @param scancode The scancode
+ * @param modifier The modifier keys state
+ * @return 0 on success, -1 on failure
+ */
+int fmrb_host_send_key_down_us(int key_code, int scancode, int modifier);
+int fmrb_host_send_key_up_us(int key_code, int scancode, int modifier);
+
+/**
  * @brief Send mouse move event
  * @param x X coordinate
  * @param y Y coordinate

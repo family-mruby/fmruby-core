@@ -81,6 +81,11 @@ typedef struct {
             int key_code;
             int scancode;
             int modifier;
+            // Decode with the US table regardless of the keyboard_layout
+            // setting. Set for the Tab5 built-in keyboard, whose HID mode
+            // already resolves its legends (Sym layer included) to US HID
+            // codes; every other source leaves this 0 and follows the setting.
+            int force_us;
         } key;
         struct {
             int x;
@@ -1517,11 +1522,16 @@ static void host_task_process_host_message(const host_message_t *msg)
             key_event->scancode = (uint8_t)(msg->data.key.scancode & 0xFF);
             key_event->modifier = (uint8_t)(msg->data.key.modifier & 0xFF);
 
-            // Convert scancode to character
+            // Convert scancode to character. The Tab5 built-in keyboard sets
+            // force_us because its HID codes are already US-resolved; every
+            // other source follows the keyboard_layout setting.
+            fmrb_keymap_layout_t decode_layout = msg->data.key.force_us
+                ? FMRB_KEYMAP_LAYOUT_US
+                : fmrb_keymap_get_layout();
             key_event->character = fmrb_keymap_scancode_to_char(
                 key_event->scancode,
                 key_event->modifier,
-                fmrb_keymap_get_layout()
+                decode_layout
             );
 
             // Romaji to kana composition. This call site is the one place
@@ -1943,28 +1953,42 @@ static int fmrb_host_send_message(const host_message_t *msg)
  * Convenience functions for sending specific message types
  */
 
-int fmrb_host_send_key_down(int key_code, int scancode, int modifier)
+static int host_send_key(host_msg_type_t type, int key_code, int scancode,
+                         int modifier, int force_us)
 {
-    FMRB_LOGD(TAG, "KEY_DOWN: code=%d scan=%d mod=0x%x", key_code, scancode, modifier);
+    FMRB_LOGD(TAG, "%s: code=%d scan=%d mod=0x%x us=%d",
+              type == HOST_MSG_HID_KEY_DOWN ? "KEY_DOWN" : "KEY_UP",
+              key_code, scancode, modifier, force_us);
     host_message_t msg = {
-        .type = HOST_MSG_HID_KEY_DOWN,
+        .type = type,
         .data.key.key_code = key_code,
         .data.key.scancode = scancode,
-        .data.key.modifier = modifier
+        .data.key.modifier = modifier,
+        .data.key.force_us = force_us
     };
     return fmrb_host_send_message(&msg);
 }
 
+int fmrb_host_send_key_down(int key_code, int scancode, int modifier)
+{
+    return host_send_key(HOST_MSG_HID_KEY_DOWN, key_code, scancode, modifier, 0);
+}
+
 int fmrb_host_send_key_up(int key_code, int scancode, int modifier)
 {
-    FMRB_LOGD(TAG, "KEY_UP: code=%d scan=%d mod=0x%x", key_code, scancode, modifier);
-    host_message_t msg = {
-        .type = HOST_MSG_HID_KEY_UP,
-        .data.key.key_code = key_code,
-        .data.key.scancode = scancode,
-        .data.key.modifier = modifier
-    };
-    return fmrb_host_send_message(&msg);
+    return host_send_key(HOST_MSG_HID_KEY_UP, key_code, scancode, modifier, 0);
+}
+
+// Same, but force US-layout decoding (see host_message_t .key.force_us). For
+// the Tab5 built-in keyboard, whose HID codes are US-resolved by the device.
+int fmrb_host_send_key_down_us(int key_code, int scancode, int modifier)
+{
+    return host_send_key(HOST_MSG_HID_KEY_DOWN, key_code, scancode, modifier, 1);
+}
+
+int fmrb_host_send_key_up_us(int key_code, int scancode, int modifier)
+{
+    return host_send_key(HOST_MSG_HID_KEY_UP, key_code, scancode, modifier, 1);
 }
 
 int fmrb_host_send_mouse_move(int x, int y)

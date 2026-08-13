@@ -1,6 +1,9 @@
 // M5Stack Tab5 Keyboard accessory driver (I2C, STM32F030 @ 0x6D).
 // Uses HID mode: polls INT_STA register, reads HID_EVENT (modifier + keycode),
-// and sends key events to host_task via fmrb_host_send_key_down/up.
+// and sends key events to host_task via the _us variants of
+// fmrb_host_send_key_down/up: HID mode resolves the keyboard's legends (Sym
+// layer included) to US HID codes, so the host must decode them with the US
+// table, not the configured keyboard_layout (which is for external keyboards).
 
 #include "tab5_keyboard.h"
 #include "fmrb_log.h"
@@ -113,9 +116,9 @@ static void tab5_keyboard_task(void *arg) {
                 for (int j = 0; j < 8; j++) {
                     if (mod_changed & (1 << j)) {
                         if (modifier & (1 << j)) {
-                            fmrb_host_send_key_down(mod_scancodes[j], mod_scancodes[j], mod_fmrb);
+                            fmrb_host_send_key_down_us(mod_scancodes[j], mod_scancodes[j], mod_fmrb);
                         } else {
-                            fmrb_host_send_key_up(mod_scancodes[j], mod_scancodes[j], mod_fmrb);
+                            fmrb_host_send_key_up_us(mod_scancodes[j], mod_scancodes[j], mod_fmrb);
                         }
                     }
                 }
@@ -125,14 +128,14 @@ static void tab5_keyboard_task(void *arg) {
             if (keycode != 0 && keycode != g_prev_keycode) {
                 // New key or key changed
                 if (g_prev_keycode != 0) {
-                    fmrb_host_send_key_up(g_prev_keycode, g_prev_keycode, mod_fmrb);
+                    fmrb_host_send_key_up_us(g_prev_keycode, g_prev_keycode, mod_fmrb);
                 }
                 FMRB_LOGD(TAG, "Key DOWN: hid=0x%02X mod=0x%02X", keycode, modifier);
-                fmrb_host_send_key_down(keycode, keycode, mod_fmrb);
+                fmrb_host_send_key_down_us(keycode, keycode, mod_fmrb);
             } else if (keycode == 0 && g_prev_keycode != 0) {
                 // Key released
                 FMRB_LOGD(TAG, "Key UP: hid=0x%02X", g_prev_keycode);
-                fmrb_host_send_key_up(g_prev_keycode, g_prev_keycode, mod_fmrb);
+                fmrb_host_send_key_up_us(g_prev_keycode, g_prev_keycode, mod_fmrb);
             }
 
             g_prev_modifier = modifier;
