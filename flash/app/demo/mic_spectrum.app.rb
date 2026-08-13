@@ -22,9 +22,12 @@ class MicSpectrumApp < FmrbApp
   # makes this work at all.
   TEST_TONE_HZ = 1000
 
-  BAR_TOP    = 26
-  BAR_BOTTOM = 150
-  LABEL_Y    = 4
+  # Margins inside the window's user area: the header line at the top, the
+  # frequency ruler at the bottom, bars in between. Measured from the user
+  # area rather than the canvas, so the window frame stays intact and a
+  # resized window still lays out correctly.
+  HEADER_H = 14
+  RULER_H  = 12
 
   def initialize
     super()
@@ -132,8 +135,13 @@ class MicSpectrumApp < FmrbApp
   end
 
   # Magnitudes to bar heights, with the peak marks sinking a little each frame.
+  def bars_height
+    h = @user_area_height - HEADER_H - RULER_H
+    h < 8 ? 8 : h
+  end
+
   def scale_bars(mag)
-    height = BAR_BOTTOM - BAR_TOP
+    height = bars_height
     i = 0
     while i < SHOWN_BINS
       v = Fmrb::Fft.bin(mag, i + 1)   # skip bin 0: DC, always the loudest
@@ -150,30 +158,38 @@ class MicSpectrumApp < FmrbApp
   end
 
   def draw_screen
-    @gfx.clear(FmrbGfx::BLACK)
+    # Not @gfx.clear: that paints over the window frame and the title bar.
+    clear_user_area(FmrbGfx::BLACK)
 
     if @error
-      @gfx.draw_text(4, LABEL_Y, @error, FmrbGfx::RED)
+      @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 3, @error, FmrbGfx::RED)
+      draw_window_frame
       @gfx.present
       return
     end
 
+    # Fixed field widths: the engine name (dsp / c / spinel / ruby) and the
+    # millisecond count both change length every frame, and without this the
+    # key hints slide left and right while the app runs. Kept short as well --
+    # the user area is 56 characters wide, and the first version sat exactly on
+    # that edge and wrapped onto the bars.
     bin_hz = @rate / SIZE
-    @gfx.draw_text(4, LABEL_Y,
-                   "mic #{@rate} Hz  #{bin_hz} Hz/bin  #{backend} #{@ms} ms  " \
-                   "[E]ngine [T]one#{@tone ? "*" : ""}",
+    ms = @ms > 9999 ? 9999 : @ms
+    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 3,
+                   sprintf("%dHz %dHz/bin  %-6s %4dms  [E]ngine [T]one%s",
+                           @rate, bin_hz, backend.to_s, ms, @tone ? "*" : " "),
                    FmrbGfx::WHITE)
 
-    w = @user_area_width
-    bw = w / SHOWN_BINS
+    bar_bottom = @user_area_y0 + HEADER_H + bars_height
+    bw = @user_area_width / SHOWN_BINS
     bw = 1 if bw < 1
     i = 0
     while i < SHOWN_BINS
       x = @user_area_x0 + i * bw
       h = @bars[i]
-      @gfx.fill_rect(x, BAR_BOTTOM - h, bw - 1, h, bar_color(h)) if h > 0
+      @gfx.fill_rect(x, bar_bottom - h, bw - 1, h, bar_color(h)) if h > 0
       p = @peaks[i]
-      @gfx.fill_rect(x, BAR_BOTTOM - p - 1, bw - 1, 1, FmrbGfx::WHITE) if p > 0
+      @gfx.fill_rect(x, bar_bottom - p - 1, bw - 1, 1, FmrbGfx::WHITE) if p > 0
       i += 1
     end
 
@@ -182,18 +198,20 @@ class MicSpectrumApp < FmrbApp
     while i < SHOWN_BINS
       if i % 8 == 0
         hz = (i + 1) * bin_hz
-        @gfx.draw_text(@user_area_x0 + i * bw, BAR_BOTTOM + 3,
+        @gfx.draw_text(@user_area_x0 + i * bw, bar_bottom + 3,
                        "#{hz / 1000}k", FmrbGfx::GRAY)
       end
       i += 8
     end
 
+    # Last, so the border and title bar survive this frame's drawing.
+    draw_window_frame
     @gfx.present
   end
 
   # Taller bars run hotter, so the eye finds the peak without reading numbers.
   def bar_color(h)
-    third = (BAR_BOTTOM - BAR_TOP) / 3
+    third = bars_height / 3
     return FmrbGfx::CYAN if h < third
     return FmrbGfx::YELLOW if h < third * 2
     FmrbGfx::RED
