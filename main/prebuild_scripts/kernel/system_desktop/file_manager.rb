@@ -338,25 +338,27 @@ module FileManagerMixin
       idx = @file_manager_scroll + (y - list_y) / FMGR_ITEM_H
       if idx >= 0 && idx < total
         entry = @file_manager_entries[idx]
+        # One click selects, two activate -- the same rule as the file selector
+        # (file_selector.rb). Navigating a directory on a single click meant a
+        # reflex double-click entered the directory and then acted on whatever
+        # row happened to sit under the pointer in the fresh listing.
+        now = @counter
+        double = (idx == @fmgr_last_click_idx) && ((now - @fmgr_last_click_time) < 5)
+        @fmgr_last_click_idx = idx
+        @fmgr_last_click_time = now
+        if @file_manager_selected != idx
+          @file_manager_selected = idx
+          draw_foreground
+        end
+        return unless double
+
         if entry[:is_dir]
-          # Navigate into directory
+          # A fresh listing means the remembered row is meaningless.
+          @fmgr_last_click_idx = -1
           fmgr_navigate_dir(entry[:name])
-        else
-          # Double-click detection
-          now = @counter
-          if idx == @fmgr_last_click_idx && (now - @fmgr_last_click_time) < 5
-            # Double click - run if runnable
-            if fmgr_runnable?(entry[:name])
-              fmgr_run_file(idx)
-            end
-            @fmgr_last_click_idx = -1
-          else
-            # Single click - select
-            @file_manager_selected = idx
-            @fmgr_last_click_idx = idx
-            @fmgr_last_click_time = now
-            draw_foreground
-          end
+        elsif fmgr_runnable?(entry[:name])
+          @fmgr_last_click_idx = -1
+          fmgr_run_file(idx)
         end
       end
     end
