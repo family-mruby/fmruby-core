@@ -26,6 +26,20 @@
 
 static const char *TAG = "audio_p4";
 
+// Bring-up instrumentation for the microphone (doc/mic_spectrum/report/
+// track_b.md). Off: it has done its job, and it is not free -- the tone check
+// plays notes on APU channel 0, which is where the desktop's boot jingle plays
+// its melody, so leaving it on rewrites the start-up sound. Build with
+// -DFMRB_MIC_SELFTEST=1 when the microphone path needs proving again.
+#ifndef FMRB_MIC_SELFTEST
+#define FMRB_MIC_SELFTEST 0
+#endif
+
+// Frames to wait before the tone check starts, when it is on at all. The boot
+// jingle owns the APU channels for about half a second after the desktop
+// appears; 3 seconds is well clear of it.
+#define FMRB_MIC_TONE_DELAY_FRAMES 180
+
 #define NTSC_SAMPLE 262
 #define NSF_DEFAULT_FILE "/flash/data/test.nsf"
 
@@ -197,6 +211,48 @@ int audio_p4_engine_note_off(uint8_t channel) {
     return ret;
 }
 
+#if FMRB_MIC_SELFTEST
+// Play a note, listen, report what came back. Two frequencies, a few frames
+// apart, driven from the 60 Hz loop one step at a time (see the call site).
+// Ends by putting the microphone and the channel back the way it found them.
+static void mic_tone_check(void) {
+    static const uint16_t tones[] = { 1000, 2000 };
+    static int wait = FMRB_MIC_TONE_DELAY_FRAMES;
+    static int step = 0;
+    static int tone_idx = 0;
+    static bool done = false;
+
+    if (done) return;
+    if (wait > 0) { wait--; return; }   // let the boot jingle have the APU
+    step++;
+
+    switch (step) {
+    case 1:
+        if (audio_p4_mic_enable(true) != FMRB_OK) { done = true; return; }
+        audio_p4_engine_note_on(FMRB_APU_CH_PULSE1, tones[tone_idx], 12, 2, 0);
+        break;
+    case 20: {   // ~320 ms of tone: the codec has settled and the note is out
+        int hz = audio_p4_mic_peak_hz();
+        FMRB_LOGI(TAG, "mic tone check: played %u Hz, heard %d Hz",
+                  (unsigned)tones[tone_idx], hz);
+        break;
+    }
+    case 26:
+        audio_p4_engine_note_off(FMRB_APU_CH_PULSE1);
+        tone_idx++;
+        if (tone_idx < (int)(sizeof(tones) / sizeof(tones[0]))) {
+            step = 0;            // round two, from the top
+        } else {
+            audio_p4_mic_enable(false);
+            done = true;         // once per boot
+        }
+        break;
+    default:
+        break;
+    }
+}
+#endif
+
 // ------------------------------------------------------------------
 // 60 Hz frame task
 // ------------------------------------------------------------------
@@ -230,6 +286,15 @@ static void audio_p4_task(void *arg) {
 
     g_engine_ready = true;
 
+#if FMRB_MIC_SELFTEST
+    // Microphone bring-up (doc/mic_spectrum): listen for about a second and
+    // log what came in. Runs once, here, because this is the first moment the
+    // codec, the I2S port and the I2C service are all up -- and because a
+    // serial capture of the boot is the only way to settle "the microphone
+    // produces values" on hardware nothing has read from before.
+    audio_p4_mic_selftest();
+#endif
+
     // 60 Hz timing
     const uint64_t target_frame_time_us = 16667;
     uint64_t next_frame_time = esp_timer_get_time();
@@ -260,6 +325,15 @@ static void audio_p4_task(void *arg) {
             // Blocking write outside the lock: I2S DMA paces us
             apuif_audio_write(buffer, count, 1);
         }
+
+#if FMRB_MIC_SELFTEST
+        // Tone check: play a known note through the speaker and ask the
+        // microphone what it hears. Levels only prove that samples arrive;
+        // this proves they are the sound in the room. Spread across frames
+        // rather than done in one call, because the APU only produces the
+        // tone while this loop keeps feeding it.
+        mic_tone_check();
+#endif
 
         // Frame timing safety net (the codec write normally paces us)
         next_frame_time += target_frame_time_us;
