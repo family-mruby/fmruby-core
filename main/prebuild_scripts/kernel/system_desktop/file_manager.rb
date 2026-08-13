@@ -283,7 +283,7 @@ module FileManagerMixin
     new_pressed = fmgr_entry_at(x, y)
     if new_pressed != @fmgr_pressed_idx
       @fmgr_pressed_idx = new_pressed
-      draw_foreground
+      fmgr_repaint
     end
   end
 
@@ -300,12 +300,12 @@ module FileManagerMixin
         handle_fmgr_context_click(x, y)
       else
         @fmgr_ctx_open = false
-        draw_foreground
+        fmgr_repaint
       end
       return
     end
 
-    draw_foreground if had_pressed
+    fmgr_repaint if had_pressed
 
     fx = @fmgr_x
     fy = @fmgr_y
@@ -348,7 +348,7 @@ module FileManagerMixin
         @fmgr_last_click_time = now
         if @file_manager_selected != idx
           @file_manager_selected = idx
-          draw_foreground
+          fmgr_repaint
         end
         return unless double
 
@@ -399,7 +399,7 @@ module FileManagerMixin
       @fmgr_ctx_y = @fmgr_y + FMGR_H - ctx_h
     end
     @fmgr_ctx_open = true
-    draw_foreground
+    fmgr_repaint
   end
 
   def hit_fmgr_context_menu?(x, y)
@@ -447,7 +447,19 @@ module FileManagerMixin
       end
     end
     scan_file_manager_dir
-    draw_foreground
+    fmgr_repaint
+  end
+
+  # Repaint only the file-manager window, not the whole foreground. A full
+  # draw_foreground runs draw_menu_bar, which clears the entire foreground
+  # canvas to the transparent colour key before repainting; the compositor can
+  # sample that moment and show the wallpaper through the whole screen -- the
+  # flicker on every directory click. The window is its own opaque composite
+  # region, so repainting just it and presenting composites cleanly over the
+  # unchanged background (same idea as the once-a-second partial clock redraw).
+  def fmgr_repaint
+    draw_file_manager
+    @gfx.present
   end
 
   def fmgr_run_file(idx)
@@ -564,10 +576,10 @@ module FileManagerMixin
 
     if direction > 0 && @file_manager_scroll + m[:max_visible] < total
       @file_manager_scroll += 1
-      draw_foreground
+      fmgr_repaint
     elsif direction < 0 && @file_manager_scroll > 0
       @file_manager_scroll -= 1
-      draw_foreground
+      fmgr_repaint
     end
   end
 
