@@ -1038,6 +1038,11 @@ class SystemDesktopApp < FmrbApp
     if ev[:type] == :key_down
       character = ev[:character] || 0
       keycode = ev[:keycode] || 0
+      # The scancode is the HID usage ID on the device and the SDL scancode in
+      # the simulator, and those are the same numbers -- so FmrbConst::KEY_* can
+      # be compared against it on both. The keycode cannot: it is a character
+      # here and an SDL keysym there.
+      scancode = ev[:scancode] || 0
 
       # Launcher: arrows move the selection (scrolling as needed), Enter
       # launches. See handle_launcher_key in launcher.rb.
@@ -1045,28 +1050,32 @@ class SystemDesktopApp < FmrbApp
         return if handle_launcher_key(keycode, character)
       end
 
-      # Key input for file selector filename (save mode)
-      if @file_selector_open && @file_selector_mode == "save"
-        if character == 10 || character == 13  # Enter
-          if @file_selector_filename.length > 0
-            path = if @file_selector_dir == "/"
-                     "/#{@file_selector_filename}"
-                   else
-                     "#{@file_selector_dir}/#{@file_selector_filename}"
-                   end
-            close_file_selector(path)
-          end
-        elsif character == 8  # Backspace
-          if @file_selector_filename.length > 0
-            @file_selector_filename = @file_selector_filename[0...-1]
+      # File selector: arrows and Enter first, then -- in save mode -- whatever
+      # is left goes into the filename being typed (file_selector.rb).
+      if @file_selector_open
+        return if handle_file_selector_key(scancode)
+        if @file_selector_mode == "save"
+          if character == 8  # Backspace
+            if @file_selector_filename.length > 0
+              @file_selector_filename = @file_selector_filename[0...-1]
+              draw_foreground
+            end
+          elsif character >= 32 && character <= 126  # Printable
+            _c1 = "\x00"     # Integer#chr -> setbyte (no sp_str_chr in runtime)
+            _c1.setbyte(0, character)
+            @file_selector_filename += _c1
             draw_foreground
           end
-        elsif character >= 32 && character <= 126  # Printable
-          _c1 = "\x00"       # Integer#chr -> setbyte (no sp_str_chr in runtime)
-          _c1.setbyte(0, character)
-          @file_selector_filename += _c1
-          draw_foreground
         end
+        # A modal dialog swallows the rest: nothing behind it should act on a
+        # key the dialog did not want.
+        return
+      end
+
+      # File manager: the same list keys, plus the context menu's actions on
+      # their initials (file_manager.rb).
+      if @file_manager_open
+        handle_file_manager_key(scancode, character)
         return
       end
 

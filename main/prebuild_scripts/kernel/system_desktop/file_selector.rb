@@ -1,5 +1,12 @@
 # File Selector module for SystemDesktopApp
 # Provides file open/save dialog with directory navigation
+#
+# The dialog answers to the mouse and to the keyboard, and neither is a
+# second-class way in: arrows move the selection, Enter takes it (into a
+# directory, or out of the dialog with a file), Esc cancels. The kernel already
+# points the keyboard at the desktop while this is up (fmrb_kernel.rb,
+# "file_select"), which it did so a filename could be typed in save mode; the
+# same redirection is what makes the rest of the keys reachable.
 
 module FileSelectorMixin
   # File selector layout
@@ -86,6 +93,18 @@ module FileSelectorMixin
     @file_selector_selected = -1
   end
 
+  # ---- Layout ----
+
+  # Where the list sits and how many rows fit. Drawing, clicking and the
+  # keyboard all need the same three numbers, and a keyboard selection that
+  # scrolls needs max_visible in particular.
+  def fsel_list_metrics
+    bottom_y = @fsel_y + FSEL_H - 32
+    list_y = @fsel_y + FSEL_TITLE_H + 2
+    list_h = bottom_y - list_y - 2
+    { bottom_y: bottom_y, list_y: list_y, list_h: list_h,
+      max_visible: list_h / FSEL_ITEM_H }
+  end
 
   def draw_file_selector
     return unless @file_selector_open
@@ -104,7 +123,8 @@ module FileSelectorMixin
     @gfx.draw_text(x + 4, y + 3, title, FmrbGfx::WHITE, FSEL_TITLE_BG)
 
     # Bottom area: filename input (save mode) + buttons
-    bottom_y = y + FSEL_H - 32
+    metrics = fsel_list_metrics
+    bottom_y = metrics[:bottom_y]
 
     if @file_selector_mode == "save"
       # Filename label and input field
@@ -133,9 +153,9 @@ module FileSelectorMixin
     @gfx.draw_text(cancel_x + 6, cancel_y + 2, "Cancel", FmrbGfx::WHITE, FSEL_CANCEL_BG)
 
     # File list
-    list_y = y + FSEL_TITLE_H + 2
-    list_h = bottom_y - list_y - 2
-    max_visible = list_h / FSEL_ITEM_H
+    list_y = metrics[:list_y]
+    list_h = metrics[:list_h]
+    max_visible = metrics[:max_visible]
     has_scrollbar = @file_selector_entries.size > max_visible
     text_area_w = has_scrollbar ? FSEL_W - FmrbApp::SCROLLBAR_W - 4 : FSEL_W - 12
 
@@ -172,8 +192,69 @@ module FileSelectorMixin
     end
   end
 
+  # ---- What a selection is, and what taking it means ----
+  #
+  # The mouse and the keyboard reach the same four actions below, so a double
+  # click and Enter cannot drift apart.
+
+  def fsel_selected_entry
+    return nil if @file_selector_selected < 0 ||
+                  @file_selector_selected >= @file_selector_entries.size
+    @file_selector_entries[@file_selector_selected]
+  end
+
+  def fsel_path_of(name)
+    @file_selector_dir == "/" ? "/#{name}" : "#{@file_selector_dir}/#{name}"
+  end
+
+  def fsel_select(idx)
+    return if idx == @file_selector_selected
+    @file_selector_selected = idx
+    entry = fsel_selected_entry
+    # In save mode the name field follows the selection, so a file can be
+    # overwritten without retyping its name.
+    @file_selector_filename = entry[:name] if entry && !entry[:is_dir]
+    draw_foreground
+  end
+
+  def fsel_navigate(name)
+    if name == ".."
+      # Go up. join can come out empty at the first level ("/app" ->
+      # ["", "app"] -> [""]), which is not a path the resolver knows.
+      parts = @file_selector_dir.split("/")
+      parts.pop
+      up = parts.join("/")
+      @file_selector_dir = up.empty? ? "/" : up
+    else
+      @file_selector_dir = fsel_path_of(name)
+    end
+    scan_file_selector_dir
+    # A fresh listing means the remembered row is meaningless.
+    @fsel_click_idx = -1
+    draw_foreground
+  end
+
+  # Enter, or a double click: a directory opens, a file answers the dialog. In
+  # save mode a file is not the answer -- the name field is -- so Enter saves
+  # unless the row under it is a directory to descend into.
+  def fsel_activate
+    entry = fsel_selected_entry
+    if entry && entry[:is_dir]
+      fsel_navigate(entry[:name])
+    elsif @file_selector_mode == "save"
+      fsel_save_typed_name
+    elsif entry
+      close_file_selector(fsel_path_of(entry[:name]))
+    end
+  end
+
+  def fsel_save_typed_name
+    return if @file_selector_filename.length == 0
+    close_file_selector(fsel_path_of(@file_selector_filename))
+  end
+
   def handle_file_selector_click(x, y)
-    bottom_y = @fsel_y + FSEL_H - 32
+    bottom_y = fsel_list_metrics[:bottom_y]
 
     # Cancel button
     cancel_x = @fsel_x + FSEL_W - 50
@@ -188,22 +269,16 @@ module FileSelectorMixin
       save_x = @fsel_x + FSEL_W - 100
       save_y = bottom_y + 14
       if x >= save_x && x < save_x + 40 && y >= save_y && y < save_y + 12
-        if @file_selector_filename.length > 0
-          path = if @file_selector_dir == "/"
-                   "/#{@file_selector_filename}"
-                 else
-                   "#{@file_selector_dir}/#{@file_selector_filename}"
-                 end
-          close_file_selector(path)
-        end
+        fsel_save_typed_name
         return
       end
     end
 
     # File list
-    list_y = @fsel_y + FSEL_TITLE_H + 2
-    list_h = bottom_y - list_y - 2
-    max_visible = list_h / FSEL_ITEM_H
+    metrics = fsel_list_metrics
+    list_y = metrics[:list_y]
+    list_h = metrics[:list_h]
+    max_visible = metrics[:max_visible]
 
     # Scrollbar click (thumb-relative: pass the scroll state)
     sb = scrollbar_hit(x, y, @fsel_x, list_y, FSEL_W, list_h,
@@ -231,48 +306,89 @@ module FileSelectorMixin
         @fsel_click_idx = idx
         @fsel_click_time = now
 
-        entry = @file_selector_entries[idx]
-        if @file_selector_selected != idx
-          @file_selector_selected = idx
-          # In save mode the name field follows the selection, so a file can be
-          # overwritten without retyping its name.
-          @file_selector_filename = entry[:name] unless entry[:is_dir]
-          draw_foreground
-        end
+        fsel_select(idx)
         return unless double
 
-        if entry[:is_dir]
-          # Navigate into directory
-          if entry[:name] == ".."
-            # Go up. join can come out empty at the first level ("/app" ->
-            # ["", "app"] -> [""]), which is not a path the resolver knows.
-            parts = @file_selector_dir.split("/")
-            parts.pop
-            up = parts.join("/")
-            @file_selector_dir = up.empty? ? "/" : up
-          else
-            if @file_selector_dir == "/"
-              @file_selector_dir = "/#{entry[:name]}"
-            else
-              @file_selector_dir = "#{@file_selector_dir}/#{entry[:name]}"
-            end
-          end
-          scan_file_selector_dir
-          # A fresh listing means the remembered row is meaningless.
-          @fsel_click_idx = -1
-          draw_foreground
-        elsif @file_selector_mode != "save"
-          # In open mode a file is the answer; in save mode the click above
-          # already put its name in the field.
-          path = if @file_selector_dir == "/"
-                   "/#{entry[:name]}"
-                 else
-                   "#{@file_selector_dir}/#{entry[:name]}"
-                 end
-          close_file_selector(path)
-        end
+        # In save mode a double click on a file is not the answer -- the click
+        # above already put its name in the field -- so activation only
+        # descends into directories there. fsel_activate reads the mode.
+        entry = @file_selector_entries[idx]
+        fsel_activate if entry[:is_dir] || @file_selector_mode != "save"
       end
     end
+  end
+
+  # ---- Keyboard ----
+  #
+  # Scancodes, not keycodes: a scancode is the HID usage ID on the device and
+  # the SDL scancode in the simulator, and those are the same numbers. The
+  # keycode is a character on one and an SDL keysym on the other, so `R` and
+  # KEY_UP (0x52) would be the same key there.
+  #
+  # Returns true when the key was the dialog's, so the caller knows whether to
+  # pass it on to the filename field.
+  def handle_file_selector_key(scancode)
+    case scancode
+    when FmrbConst::KEY_UP    then fsel_move_selection(-1)
+    when FmrbConst::KEY_DOWN  then fsel_move_selection(1)
+    when FmrbConst::KEY_PGUP  then fsel_move_selection(-fsel_list_metrics[:max_visible])
+    when FmrbConst::KEY_PGDN  then fsel_move_selection(fsel_list_metrics[:max_visible])
+    when FmrbConst::KEY_HOME  then fsel_move_to(0)
+    when FmrbConst::KEY_END   then fsel_move_to(@file_selector_entries.size - 1)
+    when FmrbConst::KEY_ENTER then fsel_activate
+    when FmrbConst::KEY_ESC   then close_file_selector(nil)
+    when FmrbConst::KEY_RIGHT
+      entry = fsel_selected_entry
+      fsel_navigate(entry[:name]) if entry && entry[:is_dir]
+    when FmrbConst::KEY_LEFT then fsel_go_up
+    when FmrbConst::KEY_BACKSPACE
+      # In save mode backspace belongs to the name being typed.
+      return false if @file_selector_mode == "save"
+      fsel_go_up
+    else
+      return false
+    end
+    true
+  end
+
+  def fsel_go_up
+    fsel_navigate("..") unless @file_selector_dir == "/"
+  end
+
+  def fsel_move_selection(delta)
+    return if @file_selector_entries.size == 0
+    # Nothing selected yet (the dialog opens that way for the mouse): the first
+    # key press lands on the top row rather than moving from nowhere.
+    from = @file_selector_selected
+    if from < 0
+      from = delta > 0 ? -1 : 0
+    end
+    fsel_move_to(from + delta)
+  end
+
+  def fsel_move_to(idx)
+    size = @file_selector_entries.size
+    return if size == 0
+    idx = 0 if idx < 0
+    idx = size - 1 if idx >= size
+    fsel_reveal(idx)
+    fsel_select(idx)
+  end
+
+  # Scroll just enough to bring a row into view. Called before the selection
+  # changes so one redraw shows both.
+  def fsel_reveal(idx)
+    max_visible = fsel_list_metrics[:max_visible]
+    scroll = @file_selector_scroll
+    if idx < scroll
+      scroll = idx
+    elsif idx >= scroll + max_visible
+      scroll = idx - max_visible + 1
+    end
+    scroll = 0 if scroll < 0
+    return if scroll == @file_selector_scroll
+    @file_selector_scroll = scroll
+    draw_foreground
   end
 
   def hit_file_selector?(x, y)
