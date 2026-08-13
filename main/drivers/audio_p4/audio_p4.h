@@ -14,6 +14,7 @@
 //      task which waits until the hardware is ready.
 #pragma once
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "fmrb_err.h"
@@ -32,6 +33,30 @@ fmrb_err_t audio_p4_task_init(void);
 // Called from the display task on FMRB_LINK_TYPE_AUDIO messages.
 // Returns 0 on success, -1 on error.
 int audio_p4_process_command(const uint8_t *data, size_t size);
+
+// ---- Microphone (ES7210, doc/mic_spectrum) -------------------------------
+//
+// Public because Ruby reaches it directly: the samples are in this firmware,
+// not on another board, so an app task calls these rather than asking the
+// display task for them over the link.
+//
+// One reader at a time. The de-interleave buffer behind audio_p4_mic_read is
+// a single static, so two tasks reading at once would tear each other's
+// samples; one microphone with one listener is the shape this is built for.
+
+// Is there a microphone on this hardware, ready to be turned on?
+bool audio_p4_mic_available(void);
+
+// Samples per second. Not selectable: the microphone shares the speaker's
+// I2S clocks (see audio_p4_hw.c).
+int audio_p4_mic_sample_rate(void);
+
+// Power the codec up or down. FMRB_OK when it answered.
+fmrb_err_t audio_p4_mic_enable(bool on);
+
+// Read up to max_samples mono int16 samples (left channel of the pair).
+// Returns the count, 0 on timeout, negative when the microphone is not on.
+int audio_p4_mic_read(int16_t *dst, int max_samples, int timeout_ms);
 
 #ifdef __cplusplus
 }

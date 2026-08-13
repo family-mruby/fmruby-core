@@ -1,0 +1,8 @@
+app_handle_name = "mic_spectrum"
+app_screen_name = "Mic Spectrum"
+app_screen_name_ja = "マイクの音を見る"
+default_window_mode = "window"
+default_window_width = 340
+default_window_height = 180
+default_window_pos_x = 20
+default_window_pos_y = 20

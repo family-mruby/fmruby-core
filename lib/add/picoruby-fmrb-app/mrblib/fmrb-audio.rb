@@ -11,6 +11,36 @@ class FmrbAudio
     @native_note = app.respond_to?(:_send_audio_note)
   end
 
+  # ---- Microphone (Modern / Tab5 only) ----
+  #
+  # Unlike everything else here, these do not send a message: the microphone
+  # is in this firmware, so the samples come straight back from C (FmrbMic in
+  # ports/esp32/app.c). On a machine without one, available? is false and read
+  # returns nil -- an app can ask without knowing which machine it is on.
+  #
+  #   audio.mic_enable
+  #   bytes = audio.mic_read(512)          # int16 LE, ready for Fmrb::Fft
+  #   mag   = Fmrb::Fft.new(size: 512, backend: :dsp).forward(bytes)
+
+  def mic_available?
+    ::FmrbMic.available?
+  end
+
+  # Samples per second. Fixed by the hardware (the microphone shares the
+  # speaker's clocks), so a spectrum's bin width follows from it.
+  def mic_rate
+    ::FmrbMic.rate
+  end
+
+  def mic_enable(on = true)
+    ::FmrbMic.enable(on)
+  end
+
+  # `count` int16 samples as a byte String, or nil if they did not arrive.
+  def mic_read(count, timeout_ms = 200)
+    ::FmrbMic.read(count, timeout_ms)
+  end
+
   def play(path, track: 0)
     @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
       {"cmd" => "play", "path" => path, "track" => track})

@@ -1,4 +1,4 @@
-# 実装報告 トラック B: Tab5 マイク (Stage 4 段階 1: bring-up)
+# 実装報告 トラック B: Tab5 マイク (Stage 4 段階 1-3)
 
 対象: `impl_plan.md` Stage 4 の段階 1 / 実施: 2026-08-13 /
 ブランチ: `feature/mic-spectrum-fft` (コミット前) / 実機: M5Stack Tab5 (ESP32-P4)
@@ -160,11 +160,48 @@ delay で書き下せないのは、**APU はこのループが回らないと�
   (APU はループが回らないと音を出さないため、1 関数の中で鳴らして録るのは
   不可能)。
 
-## 残り (Stage 4 の段階 2 以降)
+## 段階 2-3: Ruby API とデモ (実機で動作、30fps 達成)
 
-- **Ruby API**: `FmrbAudio#mic_enable` / `#spectrum` (mruby binding + Spinel
-  FFI の両方)。C 側の関数は用意済みなので、あとは公開の仕方。
-- **デモアプリ** `flash/app/demo/mic_spectrum.app.rb`: 棒グラフ + ピーク
-  ホールド。FFT は C か esp-dsp (トラック A の実測から、Spinel/mruby は
-  実時間には遅い)。
-- **30fps 維持の実測** (remote desktop)。
+### Ruby API は「link 越し」ではなく直接呼びにした (指示書からの変更)
+
+指示書は `FMRB_LINK_AUDIO_GET_SPECTRUM` の link クエリ (`get_pixel` と同じ
+往復) を想定していたが、**採らなかった**。get_pixel が往復するのは
+**画素が別基板 (WROVER) にある**から。マイクは**このファームウェアの中**に
+あるので、アプリのタスクから C 関数を直接呼べばよく、往復のプロトコルを
+足す理由が無い (30fps で回すので遅延も惜しい)。
+
+- `FmrbMic` (C、`ports/esp32/app.c`): `available?` / `rate` / `enable` /
+  `read(count)`。P4 以外では `available?` が false で他は no-op なので、
+  **どの機種か知らなくてもアプリは同じコードで書ける**。
+- `FmrbAudio#mic_available?` / `#mic_rate` / `#mic_enable` / `#mic_read` は
+  その 1 行ラッパ (`mrblib/fmrb-audio.rb`)。
+- **返すのはスペクトラムではなく生サンプル** (int16 LE の byte String)。
+  `Fmrb::Fft` がそのまま食える形なので、**アプリ側でエンジンを選べる**
+  (指示書の「デモは gem 経由」を満たす)。
+
+### デモ `flash/app/demo/mic_spectrum.app.rb`
+
+マイク → `Fmrb::Fft` → 棒グラフ (ピークホールド付き)。実機で確認した:
+
+- ヘッダ: `mic 47160 Hz  92 Hz/bin  dsp 2 ms  [E]ngine [T]one`
+- **[E] で FFT エンジンを実行中に切り替えられる** (dsp -> c を実機で確認)。
+  トラック A の gem がそのまま生きている。
+- **[T] でテストトーン (1000 Hz) を自分で鳴らす**。スピーカーとマイクが
+  同じ基板にあるので、**静かな部屋でも「棒が動かない」と「音が無い」を
+  区別できる**。1 kHz を鳴らすと bin 11 付近 (= 1013 Hz) が立ち、
+  bring-up の tone check と同じ位置に出る。
+- **30fps 達成**: `GFX STATS` で 31.4 / 30.8 / 31.6 presents/s。
+  1 フレームはマイク読み (512 サンプル = 10.9ms) + FFT + 全画面描画。
+
+### 注意: 画面の "N ms" は変換時間ではない
+
+ヘッダの ms は `@fft.run` 全体 (入力 String の複製、振幅 String の生成、
+mruby の GC を含む) なので、**トラック A のベンチの数字とは別物**。
+実測でも同じ C エンジンで 2ms と 17ms が出る (GC を踏んだフレーム)。
+エンジンの純粋な変換時間はトラック A の表を見ること。
+
+## 残り
+
+- **Spinel FFI 側の mic API**。今回のデモは mruby アプリなので mruby binding
+  だけ足した。Spinel アプリからマイクを使う場面が来たら
+  `main/app/fmrb_spx_app.c` に同じ 4 つを足す (指示書のチェックリスト項目)。

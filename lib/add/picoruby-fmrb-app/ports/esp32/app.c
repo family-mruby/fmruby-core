@@ -52,6 +52,14 @@
 #include "wifi_task.h"
 #endif
 
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+// Microphone (doc/mic_spectrum). Modern only: the ES7210 is Tab5 hardware and
+// the driver is compiled for that target alone. Everywhere else FmrbMic still
+// answers -- available? is false and the rest are no-ops -- so an app can ask
+// without knowing which machine it is on.
+#include "audio_p4.h"
+#endif
+
 #if defined(CONFIG_IDF_TARGET_LINUX)
 // Linux dev build reports the host network state through FmrbApp.wifi_info
 // so the desktop status icon and network dialog work like on Modern.
@@ -1655,8 +1663,93 @@ static mrb_value mrb_fmrb_app_s_hid_raw_unsubscribe(mrb_state *mrb, mrb_value kl
     return (ret == FMRB_OK) ? mrb_true_value() : mrb_false_value();
 }
 
+/* ---- FmrbMic: the microphone, read straight from the app task -------------
+ *
+ * No message round trip: the samples are produced in this firmware (the
+ * ES7210 hangs off the speaker's I2S port), so an app reads them the way it
+ * would read from any C function. FmrbAudio#mic_* are one-line wrappers over
+ * these (mrblib/fmrb-audio.rb).
+ *
+ * Samples cross as a byte String of little-endian int16 -- the same shape
+ * Fmrb::Fft takes, so `fft.forward(mic.read(512))` needs no conversion.
+ */
+
+static mrb_value mrb_fmrb_mic_available(mrb_state *mrb, mrb_value self)
+{
+    (void)self; (void)mrb;
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+    return mrb_bool_value(audio_p4_mic_available());
+#else
+    return mrb_false_value();
+#endif
+}
+
+static mrb_value mrb_fmrb_mic_rate(mrb_state *mrb, mrb_value self)
+{
+    (void)self; (void)mrb;
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+    return mrb_fixnum_value(audio_p4_mic_sample_rate());
+#else
+    return mrb_fixnum_value(0);
+#endif
+}
+
+/* FmrbMic.enable(on) -> true / false */
+static mrb_value mrb_fmrb_mic_enable(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    mrb_bool on = TRUE;
+    mrb_get_args(mrb, "|b", &on);
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+    return mrb_bool_value(audio_p4_mic_enable(on ? true : false) == FMRB_OK);
+#else
+    (void)on;
+    return mrb_false_value();
+#endif
+}
+
+/* FmrbMic.read(count) -> String of count int16 samples, or nil.
+ *
+ * Blocks until the samples are there (the driver hands them over about 256 at
+ * a time) or the timeout runs out. nil rather than a short String: a spectrum
+ * of half a window is not something a caller can use by accident. */
+static mrb_value mrb_fmrb_mic_read(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    mrb_int count;
+    mrb_int timeout_ms = 200;
+    mrb_get_args(mrb, "i|i", &count, &timeout_ms);
+    if (count < 1 || count > 4096) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "mic read count must be 1..4096");
+    }
+#if defined(CONFIG_IDF_TARGET_ESP32P4)
+    int16_t *buf = (int16_t *)mrb_malloc(mrb, sizeof(int16_t) * (size_t)count);
+    int have = 0;
+    while (have < count) {
+        int n = audio_p4_mic_read(buf + have, (int)count - have, (int)timeout_ms);
+        if (n <= 0) {
+            mrb_free(mrb, buf);
+            return mrb_nil_value();
+        }
+        have += n;
+    }
+    mrb_value str = mrb_str_new(mrb, (const char *)buf, sizeof(int16_t) * (size_t)count);
+    mrb_free(mrb, buf);
+    return str;
+#else
+    (void)timeout_ms;
+    return mrb_nil_value();
+#endif
+}
+
 void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
 {
+    struct RClass *mic_module = mrb_define_module(mrb, "FmrbMic");
+    mrb_define_module_function(mrb, mic_module, "available?", mrb_fmrb_mic_available, MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, mic_module, "rate", mrb_fmrb_mic_rate, MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, mic_module, "enable", mrb_fmrb_mic_enable, MRB_ARGS_OPT(1));
+    mrb_define_module_function(mrb, mic_module, "read", mrb_fmrb_mic_read, MRB_ARGS_ARG(1, 1));
+
     // Define FmrbApp class
     struct RClass *app_class = mrb_define_class(mrb, "FmrbApp", mrb->object_class);
 
