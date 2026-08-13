@@ -20,6 +20,13 @@ set(COMPONENT_SRCS
     # Filesystem cost measurement (target independent on purpose: the Linux
     # build is the fast-storage control for the ESP32 numbers).
     "conn_check/fs_bench.c"
+    # The FFT every engine is compared against, and the shim that lets an mruby
+    # task call the Spinel-compiled one (doc/mic_spectrum). Both target
+    # independent: the Linux build is where correctness is settled, the device
+    # is where the numbers are taken. The shim compiles to stubs unless
+    # FMRB_FFT_SPINEL is defined below.
+    "kernel/fmrb_fft_bench.c"
+    "kernel/fmrb_fft_spinel.c"
 )
 set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
@@ -76,10 +83,20 @@ if(NOT FMRB_APP_ENGINE_EDITOR)
 endif()
 set(FMRB_SPINEL_GEN_DIR ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/gen)
 
-# Compile the Spinel machinery whenever ANY VM is Spinel.
+# The Spinel FFT backend (doc/mic_spectrum): a Spinel program that is not a VM
+# for anything -- an mruby task calls it as a library. On by default; set
+# FMRB_FFT_SPINEL=0 in the environment to build without it (the backend then
+# reports itself unavailable and the other three still run).
+set(FMRB_FFT_SPINEL "$ENV{FMRB_FFT_SPINEL}")
+if(NOT DEFINED ENV{FMRB_FFT_SPINEL})
+    set(FMRB_FFT_SPINEL "1")
+endif()
+
+# Compile the Spinel machinery whenever ANY VM is Spinel -- or when the FFT
+# backend above needs the runtime.
 set(FMRB_ANY_SPINEL FALSE)
 if(FMRB_KERNEL_ENGINE STREQUAL "spinel" OR FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel"
-   OR FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
+   OR FMRB_APP_ENGINE_EDITOR STREQUAL "spinel" OR FMRB_FFT_SPINEL STREQUAL "1")
     set(FMRB_ANY_SPINEL TRUE)
     include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_spinel.cmake)
     # sp_net_bin_len (:binstr length) -- referenced by whichever shim(s) below
@@ -104,6 +121,14 @@ if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
     list(APPEND COMPONENT_SRCS "app/fmrb_spx_gfx.c")
     list(APPEND COMPONENT_SRCS "app/fmrb_spx_app.c")
     message(STATUS "FMRB_APP_ENGINE_DESKTOP=spinel: system_desktop replaced by Spinel combined desktop")
+endif()
+
+if(FMRB_FFT_SPINEL STREQUAL "1")
+    # Not a VM: one Spinel-compiled function, called from an mruby task through
+    # kernel/fmrb_fft_spinel.c (which is in COMPONENT_SRCS unconditionally and
+    # compiles to stubs without this define).
+    prepare_ruby_spinel_source(fft_spinel ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
+    message(STATUS "FMRB_FFT_SPINEL=1: the Spinel FFT backend is in this build")
 endif()
 
 if(FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
@@ -340,6 +365,20 @@ if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     # / the fmrb_spx shims use libc / fmrb_mem and must not be rerouted through an
     # instance pool. Keep the two flags in sync with fmrb_spinel_rt SPINEL_MC_FLAGS.
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fmrb_kernel_combined.c
+        PROPERTIES COMPILE_OPTIONS
+        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+endif()
+
+# The Spinel FFT: the same generated-TU treatment as the VMs above. Its .rb is
+# not combined from parts -- it is one file with two require_relative lines,
+# spliced by the compiler -- so the generation command points straight at the
+# source instead of at gen/.
+if(FMRB_FFT_SPINEL STREQUAL "1")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_FFT_SPINEL)
+    generate_ruby_spinel_command(
+        ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/fft_spinel.rb
+        fmrb_fft_spinel_entry ${FMRB_SPINEL_GEN_DIR})
+    set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fft_spinel.c
         PROPERTIES COMPILE_OPTIONS
         "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
 endif()

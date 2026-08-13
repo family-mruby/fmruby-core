@@ -40,3 +40,13 @@ dependencies:
     version: "^1.1.0"
     rules:
       - if: "target == esp32p4"
+  # esp-dsp: the fourth engine of the FFT comparison (doc/mic_spectrum), and
+  # the transform the microphone visualiser will run. Espressif's hand-written
+  # assembler radix-2 is the ceiling the other three are measured against, so
+  # it is only on the targets where that measurement means something -- the
+  # Linux build compares C, Spinel and mruby alone (fmrb_fft_bench.c guards on
+  # __has_include, so it also builds if this dependency is ever absent).
+  espressif/esp-dsp:
+    version: "^1.6.0"
+    rules:
+      - if: "target in [esp32p4, esp32s3]"

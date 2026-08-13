@@ -117,6 +117,11 @@ end
 FMRB_KERNEL_ENGINE = ENV["FMRB_KERNEL_ENGINE"] || "mruby"
 FMRB_APP_ENGINE_DESKTOP = ENV["FMRB_APP_ENGINE_DESKTOP"] || "mruby"
 FMRB_APP_ENGINE_EDITOR = ENV["FMRB_APP_ENGINE_EDITOR"] || "mruby"
+# The Spinel FFT backend (doc/mic_spectrum): a Spinel-compiled library rather
+# than a VM, so it is on by default and independent of the engine choices
+# above. FMRB_FFT_SPINEL=0 builds without it (main/CMakeLists.txt reads the
+# same variable inside the container).
+FMRB_FFT_SPINEL = (ENV["FMRB_FFT_SPINEL"] || "1") != "0"
 
 ESP_IDF_VERSION = ENV.fetch("ESP_IDF_VERSION", "v5.5.4")
 # Pin the build container to the IDF version tag above -- never :latest. Two
@@ -153,6 +158,7 @@ ENGINE_ENV_OPTS = [
   "-e FMRB_KERNEL_ENGINE=#{FMRB_KERNEL_ENGINE}",
   "-e FMRB_APP_ENGINE_DESKTOP=#{FMRB_APP_ENGINE_DESKTOP}",
   "-e FMRB_APP_ENGINE_EDITOR=#{FMRB_APP_ENGINE_EDITOR}",
+  "-e FMRB_FFT_SPINEL=#{FMRB_FFT_SPINEL ? 1 : 0}",
   # Measurement build: MRB_GC_PROFILE adds the GC pause histograms to GC.stat
   # (doc/midi/report/p6.md). It grows mrb_gc, hence mrb_state, so the rake side
   # (lib/add/family_mruby_*.rb) and the CMake side

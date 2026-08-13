@@ -23,7 +23,7 @@ namespace :build do
     # Spinel engine(s): pre-generate the C on the host (the compiler is not
     # available inside the docker build) and forward the engine(s) into the build.
     any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel' ||
-                 FMRB_APP_ENGINE_EDITOR == 'spinel'
+                 FMRB_APP_ENGINE_EDITOR == 'spinel' || FMRB_FFT_SPINEL
     ENV['SPINEL_GEN_PLATFORM'] = 'linux'
     Rake::Task['spinel:gen'].invoke if any_spinel
 
@@ -83,7 +83,7 @@ namespace :build do
     # compiled. Mirrors build:linux; without this the esp32 build used a manually
     # gen'd (or stale linux) combined.
     any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel' ||
-                 FMRB_APP_ENGINE_EDITOR == 'spinel'
+                 FMRB_APP_ENGINE_EDITOR == 'spinel' || FMRB_FFT_SPINEL
     ENV['SPINEL_GEN_PLATFORM'] = 'esp32'
     Rake::Task['spinel:gen'].invoke if any_spinel
 

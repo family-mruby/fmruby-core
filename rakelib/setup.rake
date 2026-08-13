@@ -85,6 +85,11 @@ task :setup do
   # bmp332
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-bmp332"
   sh "cp -rf lib/add/picoruby-fmrb-bmp332 #{mrbgem_path}/"
+  # fft (the four-engine FFT: doc/mic_spectrum). Its mrblib/fft_core.rb is also
+  # what the Spinel backend compiles, copied into the Spinel source dir by
+  # rake spinel:gen -- one file, both engines.
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-fft"
+  sh "cp -rf lib/add/picoruby-fmrb-fft #{mrbgem_path}/"
   # midi (imported from Midori; Ruby protocol layer only, see the gem's
   # FAMILY_MRUBY_PORT.md)
   sh "rm -rf #{mrbgem_path}/picoruby-midi"

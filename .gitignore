@@ -78,3 +78,7 @@ tool/web/wasm/ti.wasm
 tool/web/wasm/help.json
 node_modules/
 tool/web/test/shots/
+
+# fft_core.rb is copied here from the gem by rake spinel:gen (one file, two
+# engines -- the original lives in lib/add/picoruby-fmrb-fft/mrblib/).
+main/prebuild_scripts/spinel/fft_core.rb
