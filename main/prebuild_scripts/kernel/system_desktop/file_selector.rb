@@ -118,7 +118,10 @@ module FileSelectorMixin
 
     # Title bar
     @gfx.fill_rect(x + 1, y + 1, FSEL_W - 2, FSEL_TITLE_H - 1, FSEL_TITLE_BG)
-    title = "Open: #{@file_selector_dir}"
+    # The dialog does two jobs and looked like one: the title said "Open" while
+    # the Save button and the name field sat below it.
+    verb = @file_selector_mode == "save" ? "Save" : "Open"
+    title = "#{verb}: #{@file_selector_dir}"
     title = title[0, FSEL_W / 6 - 2] if title.length > FSEL_W / 6 - 2
     @gfx.draw_text(x + 4, y + 3, title, FmrbGfx::WHITE, FSEL_TITLE_BG)
 
