@@ -1,5 +1,10 @@
 # File Manager module for SystemDesktopApp
 # Provides file browsing, delete, copy, execute, and open-in-editor
+#
+# Everything here is reachable from the keyboard as well as the mouse: arrows
+# move the selection, Enter opens what is selected, and the actions that hide
+# behind a right click have their own keys. The context menu prints those keys
+# next to its items, since that menu is where they are discovered.
 
 module FileManagerMixin
   # File manager layout
@@ -24,6 +29,14 @@ module FileManagerMixin
 
   FMGR_CTX_ITEMS_FILE = ["Run", "Edit", "Copy", "Delete"]
   FMGR_CTX_ITEMS_DIR = ["Copy", "Delete"]
+
+  # The key that does the same thing without the menu, printed beside each
+  # item. Enter runs (and opens a directory), so Run shows that instead of a
+  # letter, and Delete stays on the Delete key rather than a letter that could
+  # be hit while reaching for something else.
+  FMGR_CTX_KEYS = {
+    "Run" => "Ent", "Edit" => "E", "Copy" => "C", "Delete" => "Del", "Paste" => "V"
+  }
 
   def open_file_manager
     @file_manager_open = true
@@ -222,6 +235,10 @@ module FileManagerMixin
     items.each_with_index do |label, i|
       iy = cy + 1 + i * FMGR_CTX_ITEM_H
       @gfx.draw_text(cx + 6, iy + 3, label, FMGR_CTX_TEXT, FMGR_CTX_BG)
+      key = FMGR_CTX_KEYS[label]
+      # Right-aligned, at 6 pixels per character (the system font's advance).
+      @gfx.draw_text(cx + FMGR_CTX_W - 4 - key.length * 6, iy + 3, key,
+                     FMGR_SIZE_COLOR, FMGR_CTX_BG) if key
     end
   end
 
@@ -342,7 +359,6 @@ module FileManagerMixin
     if y >= list_y && y < list_y + max_visible * FMGR_ITEM_H
       idx = @file_manager_scroll + (y - list_y) / FMGR_ITEM_H
       if idx >= 0 && idx < total
-        entry = @file_manager_entries[idx]
         # One click selects, two activate -- the same rule as the file selector
         # (file_selector.rb). Navigating a directory on a single click meant a
         # reflex double-click entered the directory and then acted on whatever
@@ -351,20 +367,10 @@ module FileManagerMixin
         double = (idx == @fmgr_last_click_idx) && ((now - @fmgr_last_click_time) < 5)
         @fmgr_last_click_idx = idx
         @fmgr_last_click_time = now
-        if @file_manager_selected != idx
-          @file_manager_selected = idx
-          draw_foreground
-        end
+        fmgr_select(idx)
         return unless double
 
-        if entry[:is_dir]
-          # A fresh listing means the remembered row is meaningless.
-          @fmgr_last_click_idx = -1
-          fmgr_navigate_dir(entry[:name])
-        elsif fmgr_runnable?(entry[:name])
-          @fmgr_last_click_idx = -1
-          fmgr_run_file(idx)
-        end
+        fmgr_activate
       end
     end
     # The click did not select or activate a row (empty space, etc.). Clear a
@@ -441,13 +447,128 @@ module FileManagerMixin
     end
   end
 
+  # ---- Selection, and what taking it means ----
+  #
+  # The mouse and the keyboard both come through here, so a double click and
+  # Enter cannot drift apart.
+
+  def fmgr_selected_entry
+    return nil if @file_manager_selected < 0 ||
+                  @file_manager_selected >= @file_manager_entries.size
+    @file_manager_entries[@file_manager_selected]
+  end
+
+  def fmgr_select(idx)
+    return if idx == @file_manager_selected
+    @file_manager_selected = idx
+    draw_foreground
+  end
+
+  # A directory opens, a runnable file runs. Anything else has no obvious
+  # single meaning, so it stays selected and waits for a named action.
+  def fmgr_activate
+    entry = fmgr_selected_entry
+    return unless entry
+    # A fresh listing means the remembered row is meaningless.
+    @fmgr_last_click_idx = -1
+    if entry[:is_dir]
+      fmgr_navigate_dir(entry[:name])
+    elsif fmgr_runnable?(entry[:name])
+      fmgr_run_file(@file_manager_selected)
+    end
+  end
+
+  def fmgr_go_up
+    fmgr_navigate_dir("..") unless @file_manager_dir == "/"
+  end
+
+  def fmgr_move_selection(delta)
+    return if @file_manager_entries.size == 0
+    from = @file_manager_selected
+    if from < 0
+      from = delta > 0 ? -1 : 0
+    end
+    fmgr_move_to(from + delta)
+  end
+
+  def fmgr_move_to(idx)
+    size = @file_manager_entries.size
+    return if size == 0
+    idx = 0 if idx < 0
+    idx = size - 1 if idx >= size
+    fmgr_reveal(idx)
+    fmgr_select(idx)
+  end
+
+  # Scroll just enough to bring a row into view.
+  def fmgr_reveal(idx)
+    max_visible = fmgr_list_metrics[:max_visible]
+    scroll = @file_manager_scroll
+    if idx < scroll
+      scroll = idx
+    elsif idx >= scroll + max_visible
+      scroll = idx - max_visible + 1
+    end
+    scroll = 0 if scroll < 0
+    return if scroll == @file_manager_scroll
+    @file_manager_scroll = scroll
+    draw_foreground
+  end
+
+  # ---- Keyboard ----
+  #
+  # Scancodes, not keycodes: a scancode is the HID usage ID on the device and
+  # the SDL scancode in the simulator, and those are the same numbers, while a
+  # keycode is a character on one and an SDL keysym on the other. The letters
+  # below do come from the character, since that is what a letter is.
+  def handle_file_manager_key(scancode, character)
+    if @fmgr_ctx_open
+      # The menu is in the way of everything: the first key takes it down, and
+      # only Esc is spent doing that -- the rest act on the row underneath.
+      @fmgr_ctx_open = false
+      draw_foreground
+      return if scancode == FmrbConst::KEY_ESC
+    end
+
+    case scancode
+    when FmrbConst::KEY_UP    then fmgr_move_selection(-1)
+    when FmrbConst::KEY_DOWN  then fmgr_move_selection(1)
+    when FmrbConst::KEY_PGUP  then fmgr_move_selection(-fmgr_list_metrics[:max_visible])
+    when FmrbConst::KEY_PGDN  then fmgr_move_selection(fmgr_list_metrics[:max_visible])
+    when FmrbConst::KEY_HOME  then fmgr_move_to(0)
+    when FmrbConst::KEY_END   then fmgr_move_to(@file_manager_entries.size - 1)
+    when FmrbConst::KEY_ENTER then fmgr_activate
+    when FmrbConst::KEY_ESC   then close_file_manager
+    when FmrbConst::KEY_RIGHT
+      entry = fmgr_selected_entry
+      fmgr_activate if entry && entry[:is_dir]
+    when FmrbConst::KEY_LEFT, FmrbConst::KEY_BACKSPACE then fmgr_go_up
+    when FmrbConst::KEY_DELETE then fmgr_delete_file(@file_manager_selected)
+    else
+      # The context menu's actions, on the initials it prints beside them.
+      # Upper and lower case both, since Shift should not matter here.
+      if character == 101 || character == 69        # e / E
+        fmgr_edit_file(@file_manager_selected)
+      elsif character == 99 || character == 67      # c / C
+        fmgr_copy_file(@file_manager_selected)
+      elsif character == 118 || character == 86     # v / V
+        fmgr_paste_file
+      end
+    end
+  end
+
   # ---- File operations ----
 
   def fmgr_navigate_dir(name)
     if name == ".."
+      # join can come out empty at the first level ("/bin" -> ["", "bin"] ->
+      # [""]), and [""] is not empty -- so the test has to be on the joined
+      # string, not on the array. Getting that wrong left the directory as ""
+      # rather than "/", which listed the root with a "[..]" row above it.
       parts = @file_manager_dir.split("/")
       parts.pop
-      @file_manager_dir = parts.empty? ? "/" : parts.join("/")
+      up = parts.join("/")
+      @file_manager_dir = up.empty? ? "/" : up
     else
       if @file_manager_dir == "/"
         @file_manager_dir = "/#{name}"
