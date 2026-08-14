@@ -113,7 +113,14 @@ static uint8_t g_recv_buf[DISPLAY_P4_RECV_BUF_SIZE];
 
 typedef struct {
     uint16_t     canvas_id;
+    // Two buffers per canvas (commit-on-present, matching graphics-audio on
+    // Retro/sim): apps DRAW into `sprite` (working); PRESENT copies it into
+    // `render_sprite` (committed); render_frame composites ONLY render_sprite.
+    // So a render triggered by any app never composites another app's canvas
+    // while it is mid-draw -- the committed copy is always a complete frame
+    // (doc/p4_display_flicker/design_committed_canvas.md).
     LGFX_Sprite *sprite;
+    LGFX_Sprite *render_sprite;
     int16_t      z_order;
     int16_t      push_x, push_y;
     bool         is_visible;
@@ -254,9 +261,27 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     set_ppa_native_depth(sprite);
     sprite->setBuffer(buf, width, height);
 
+    // Committed buffer (render_sprite): same size/format as the working sprite;
+    // PRESENT copies working -> committed and render_frame composites this one.
+    // Same aligned size as `buf`, so buf_aligned_size covers both.
+    size_t raligned = 0;
+    void *rbuf = ppa_alloc_buffer(buf_size, &raligned);
+    if (!rbuf) {
+        FMRB_LOGE(TAG, "Canvas render buffer alloc failed: %dx%d", (int)alloc_w, (int)alloc_h);
+        sprite->deleteSprite();
+        delete sprite;
+        heap_caps_free(buf);
+        return nullptr;
+    }
+    auto *rsprite = new LGFX_Sprite(&g_lcd);
+    set_ppa_native_depth(rsprite);
+    rsprite->setBuffer(rbuf, width, height);
+    rsprite->clear(0);   // nothing committed until the first present
+
     p4_canvas_t *c              = &g_canvases[g_canvas_count++];
     c->canvas_id                = canvas_id;
     c->sprite                   = sprite;
+    c->render_sprite            = rsprite;
     c->z_order                  = z_order;
     c->push_x                   = 0;
     c->push_y                   = 0;
@@ -306,6 +331,13 @@ static void canvas_free(p4_canvas_t *c) {
         c->sprite = nullptr;
         if (buf) heap_caps_free(buf);
     }
+    if (c->render_sprite) {
+        void *rbuf = c->render_sprite->getBuffer();
+        c->render_sprite->deleteSprite();
+        delete c->render_sprite;
+        c->render_sprite = nullptr;
+        if (rbuf) heap_caps_free(rbuf);
+    }
 
     size_t idx = (size_t)(c - g_canvases);
     if (idx < g_canvas_count - 1) {
@@ -349,13 +381,23 @@ static int          g_cursor_drawn_x = 0;
 static int          g_cursor_drawn_y = 0;
 static bool         g_cursor_drawn   = false;
 
-// Deferred rendering: canvas-level commands only request a render; the
-// task main loop performs it, paced to at most one frame per
-// RENDER_MIN_INTERVAL_MS, coalescing bursts of requests into a single
-// frame. Cursor moves bypass this entirely via cursor_overlay_update().
+// Deferred rendering: PRESENT (and composition changes) set g_needs_render; the
+// task loop renders when it is set, paced to at most one frame per
+// RENDER_MIN_INTERVAL_MS (coalescing bursts, ~30fps cap). This is safe against
+// multiple concurrent apps because render_frame composites each canvas's
+// COMMITTED buffer (render_sprite), filled only at that canvas's own present --
+// a render can never catch another app's canvas mid-draw (that lives in the
+// working sprite). Cursor moves bypass this via cursor_overlay_update().
 #define RENDER_MIN_INTERVAL_MS 33
 static bool     g_needs_render   = false;
 static uint32_t g_last_render_ms = 0;
+
+// Render throughput stats (logged every 5 s). File-scope; the render happens in
+// one place (the task loop's paced render) and note_render() accounts it there.
+static uint32_t g_stat_frames = 0;
+static uint32_t g_stat_render_ms_total = 0;
+static uint32_t g_stat_render_ms_max = 0;
+static uint32_t g_stat_last_ms = 0;
 
 // ============================================================
 // Frame capture for the remote desktop stream.
@@ -525,6 +567,58 @@ static void cursor_overlay_update(void) {
     }
 }
 
+// Bake the cursor into the framebuffer so the scale-out (PPA / software push)
+// writes it to the DSI buffer atomically with the frame. Drawing the cursor as
+// a separate patch after the scale-out (the old render_frame tail) leaves a
+// window in which the live-scanned DSI buffer has no cursor; at high render
+// rates the scan catches it and the cursor flickers (doc/p4_display_flicker/).
+// The saved region is restored right after the push so the framebuffer stays
+// cursor-free for the capture, the fast-path cursor_patch on moves, and the
+// next composite. Clipping mirrors cursor_patch. Returns the clipped rect via
+// out-params (used by framebuffer_restore_cursor); false if nothing to bake.
+static bool framebuffer_bake_cursor(int fx, int fy, uint16_t *save,
+                                    int *ox0, int *oy0, int *ow, int *oh) {
+    if (!g_framebuffer || !g_cursor_sprite) return false;
+    const int fb_w = g_framebuffer->width();
+    const int fb_h = g_framebuffer->height();
+    int x0 = fx, y0 = fy, w = CURSOR_W, h = CURSOR_H, sx = 0, sy = 0;
+    if (x0 < 0) { sx = -x0; w += x0; x0 = 0; }
+    if (y0 < 0) { sy = -y0; h += y0; y0 = 0; }
+    if (x0 + w > fb_w) w = fb_w - x0;
+    if (y0 + h > fb_h) h = fb_h - y0;
+    if (w <= 0 || h <= 0) return false;
+
+    uint16_t *fb        = (uint16_t *)g_framebuffer->getBuffer();
+    const uint16_t *cur = (const uint16_t *)g_cursor_sprite->getBuffer();
+    if (!fb || !cur) return false;
+    const uint16_t key = 0xF81F;  // CURSOR_TRANSPARENT in RGB565 non-swapped
+
+    for (int y = 0; y < h; y++) {
+        uint16_t *fb_row        = fb   + (size_t)(y0 + y) * fb_w + x0;
+        const uint16_t *cur_row = cur  + (size_t)(sy + y) * CURSOR_W + sx;
+        uint16_t *sv_row        = save + (size_t)y * CURSOR_W;
+        for (int x = 0; x < w; x++) {
+            sv_row[x] = fb_row[x];                          // save original
+            if (cur_row[x] != key) fb_row[x] = cur_row[x];  // draw cursor pixel
+        }
+    }
+    *ox0 = x0; *oy0 = y0; *ow = w; *oh = h;
+    return true;
+}
+
+static void framebuffer_restore_cursor(const uint16_t *save,
+                                       int x0, int y0, int w, int h) {
+    if (!g_framebuffer) return;
+    uint16_t *fb = (uint16_t *)g_framebuffer->getBuffer();
+    if (!fb) return;
+    const int fb_w = g_framebuffer->width();
+    for (int y = 0; y < h; y++) {
+        uint16_t *fb_row       = fb   + (size_t)(y0 + y) * fb_w + x0;
+        const uint16_t *sv_row = save + (size_t)y * CURSOR_W;
+        for (int x = 0; x < w; x++) fb_row[x] = sv_row[x];
+    }
+}
+
 // ============================================================
 // Render frame: composite all visible canvases + sprite instances
 // into the shared framebuffer, then push to g_lcd with 3x scaling.
@@ -551,7 +645,7 @@ static void blend_canvas_block(p4_canvas_t *c, int sw, int sh,
     if (dy + ch > fb_h) ch = fb_h - dy;
     if (cw <= 0 || ch <= 0 || !g_ppa_blend) return;
 
-    void *fg_buf = c->sprite->getBuffer();
+    void *fg_buf = c->render_sprite->getBuffer();   // committed buffer (commit-on-present)
     void *bg_buf = g_framebuffer->getBuffer();
     // msync requires cache-line-aligned addresses and sizes; the aligned
     // allocation size is used for the framebuffer, a row range for the canvas
@@ -678,10 +772,11 @@ static void render_frame(void) {
 
     for (size_t i = 0; i < g_canvas_count; i++) {
         p4_canvas_t *c = &g_canvases[i];
-        if (!c->is_visible || !c->sprite) continue;
+        if (!c->is_visible || !c->render_sprite) continue;
 
-        int sw = c->sprite->width();
-        int sh = c->sprite->height();
+        // Composite the committed buffer, never the working one (commit-on-present).
+        int sw = c->render_sprite->width();
+        int sh = c->render_sprite->height();
 
         if (c->view_w == 0) {
             // Default path: composite the whole canvas at its push position
@@ -765,6 +860,18 @@ static void render_frame(void) {
         xSemaphoreGive(g_cap_sem);
     }
 
+    // Bake the cursor into the framebuffer so the scale-out below writes it to
+    // the DSI buffer atomically with the frame (no separate post-scale patch,
+    // which would flicker on the live-scanned buffer at high render rates).
+    // Restored right after the push so the framebuffer stays cursor-free.
+    static uint16_t s_cursor_save[CURSOR_W * CURSOR_H];
+    bool cur_baked = false;
+    int cur_x0 = 0, cur_y0 = 0, cur_w = 0, cur_h = 0;
+    if (g_cursor_visible) {
+        cur_baked = framebuffer_bake_cursor(g_cursor_x, g_cursor_y, s_cursor_save,
+                                            &cur_x0, &cur_y0, &cur_w, &cur_h);
+    }
+
     // Scale framebuffer 3x to LCD via PPA SRM hardware accelerator.
     if (g_ppa_srm && g_dsi_fb) {
         int fb_w = g_framebuffer->width();
@@ -829,10 +936,17 @@ static void render_frame(void) {
                                       (float)DISPLAY_P4_SCALE_FACTOR);
     }
 
-    // The full-screen push overwrote any previous cursor patch;
-    // redraw the cursor on top of the fresh frame.
-    g_cursor_drawn = false;
-    cursor_overlay_update();
+    // Restore the framebuffer region under the cursor (the cursor is now on the
+    // DSI buffer as part of the pushed frame). Record it as drawn so a later
+    // fast-path move erases it from the right place.
+    if (cur_baked) {
+        framebuffer_restore_cursor(s_cursor_save, cur_x0, cur_y0, cur_w, cur_h);
+        g_cursor_drawn   = true;
+        g_cursor_drawn_x = g_cursor_x;
+        g_cursor_drawn_y = g_cursor_y;
+    } else {
+        g_cursor_drawn = false;
+    }
 }
 
 // ============================================================
@@ -966,6 +1080,33 @@ static void send_ack(uint8_t msg_type, uint8_t seq, const uint8_t *data, size_t 
     fmrb_hal_link_local_send_response(FMRB_LINK_CHANNEL_DEFAULT, &resp, 1000);
 }
 
+// Render a frame that a prior PRESENT (or composition change) left pending,
+// before the command stream mutates any canvas. PRESENT sets g_needs_render
+// once the frame is complete; rendering here -- at the top of the next command,
+// in order -- guarantees the render never runs against a half-drawn next frame.
+// A timer-fired render (the old loop) could fire between a frame's clear and
+// its bars and composite the blank intermediate (doc/p4_display_flicker/).
+// g_needs_render is only set at a frame boundary, so this fires at most once
+// per frame (the first command after a present).
+// Account one render that started at start_ms and log throughput every 5 s.
+static void note_render(uint32_t start_ms) {
+    uint32_t render_ms =
+        (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS) - start_ms;
+    g_stat_frames++;
+    g_stat_render_ms_total += render_ms;
+    if (render_ms > g_stat_render_ms_max) g_stat_render_ms_max = render_ms;
+    if ((uint32_t)(start_ms - g_stat_last_ms) >= 5000) {
+        FMRB_LOGI(TAG, "render: %lu frames/5s avg=%lums max=%lums",
+                  (unsigned long)g_stat_frames,
+                  (unsigned long)(g_stat_render_ms_total / g_stat_frames),
+                  (unsigned long)g_stat_render_ms_max);
+        g_stat_frames = 0;
+        g_stat_render_ms_total = 0;
+        g_stat_render_ms_max = 0;
+        g_stat_last_ms = start_ms;
+    }
+}
+
 // ============================================================
 // GFX command dispatcher
 // Returns: 0 = success, no ACK sent
@@ -983,23 +1124,10 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_FILL_SCREEN: {
         if (size < sizeof(fmrb_link_graphics_clear_t)) break;
         const auto *cmd = (const fmrb_link_graphics_clear_t *)data;
-        // A cleared canvas is fully transparent until it is redrawn, so it
-        // contributes nothing (the wallpaper shows through) while composited.
-        // render_frame is rate-limited, so a present can leave g_needs_render
-        // pending; if the next frame then starts by clearing the foreground,
-        // that still-pending render fires against the just-cleared canvas and
-        // paints one all-wallpaper frame -- the flicker seen on a quick tap,
-        // where the press/select redraws land within one render interval
-        // (doc/p4_display_flicker/). Flush the pending frame here, before the
-        // clear, so the last complete frame is shown and no render runs while
-        // the canvas is transparent. Only fires when a render is actually
-        // pending, so a steady 30fps app (present -> immediate render) pays
-        // nothing.
-        if (g_needs_render) {
-            render_frame();
-            g_needs_render = false;
-            g_last_render_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
-        }
+        // Clears the WORKING sprite only; the compositor reads the committed
+        // buffer (filled at present), so a clear-then-redraw in progress is never
+        // composited half-done -- the quick-tap / mid-burst wallpaper flicker
+        // (doc/p4_display_flicker/) cannot recur.
         auto *s = get_sprite(cmd->canvas_id);
         if (s) s->fillScreen(cmd->color);
         return 0;
@@ -1302,6 +1430,12 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             if ((nw != c->width || nh != c->height) && c->sprite) {
                 void *buf = c->sprite->getBuffer();
                 if (buf) c->sprite->setBuffer(buf, nw, nh);
+                // Keep the committed buffer the same active size, so the commit
+                // copy and the composite agree on dimensions.
+                if (c->render_sprite) {
+                    void *rbuf = c->render_sprite->getBuffer();
+                    if (rbuf) c->render_sprite->setBuffer(rbuf, nw, nh);
+                }
             }
             c->width  = nw;
             c->height = nh;
@@ -1322,6 +1456,18 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
 
         if (cmd->dest_canvas_id == DISPLAY_P4_CANVAS_RENDER ||
             cmd->dest_canvas_id == DISPLAY_P4_CANVAS_SCREEN) {
+            // This is "present" for one canvas: commit the working sprite into
+            // the committed buffer the compositor reads. A raw copy of the
+            // active area (stride == width, so it is contiguous) preserves the
+            // color-key pixels the compositor needs. Only this canvas commits,
+            // so an app still mid-drawing another canvas is unaffected.
+            if (src->sprite && src->render_sprite) {
+                void *sb = src->sprite->getBuffer();
+                void *rb = src->render_sprite->getBuffer();
+                if (sb && rb) {
+                    memcpy(rb, sb, (size_t)src->width * src->height * 2);
+                }
+            }
             src->push_x           = (int16_t)cmd->x;
             src->push_y           = (int16_t)cmd->y;
             src->transparent_color = cmd->transparent_color;
@@ -2760,9 +2906,8 @@ static void display_p4_task(void *arg) {
 
     FMRB_LOGI(TAG, "Tab5 display: entering command receive loop");
 
-    // Render loop stats (logged every 5 s while frames are being rendered)
-    uint32_t stat_frames = 0, stat_render_ms_total = 0, stat_render_ms_max = 0;
-    uint32_t stat_last_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    // Render throughput stats live at file scope (g_stat_*); seed the window.
+    g_stat_last_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
 
     // Boot-screen cursor blink state
     uint32_t boot_cursor_ms = 0;
@@ -2780,30 +2925,17 @@ static void display_p4_task(void *arg) {
             }
         }
 
-        // Render when requested, paced to RENDER_MIN_INTERVAL_MS so bursts
-        // of cursor moves / presents coalesce into a single frame.
+        // Render when a present (or composition change) requested it, paced to
+        // RENDER_MIN_INTERVAL_MS so bursts coalesce into one frame (~30fps cap).
+        // Safe to run here regardless of what any app is doing: render_frame
+        // reads only committed buffers, so it never composites a canvas mid-draw.
         if (g_needs_render) {
             uint32_t now = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
             if ((uint32_t)(now - g_last_render_ms) >= RENDER_MIN_INTERVAL_MS) {
                 g_needs_render = false;
                 render_frame();
                 g_last_render_ms = now;
-
-                uint32_t render_ms =
-                    (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS) - now;
-                stat_frames++;
-                stat_render_ms_total += render_ms;
-                if (render_ms > stat_render_ms_max) stat_render_ms_max = render_ms;
-                if ((uint32_t)(now - stat_last_ms) >= 5000) {
-                    FMRB_LOGI(TAG, "render: %lu frames/5s avg=%lums max=%lums",
-                              (unsigned long)stat_frames,
-                              (unsigned long)(stat_render_ms_total / stat_frames),
-                              (unsigned long)stat_render_ms_max);
-                    stat_frames = 0;
-                    stat_render_ms_total = 0;
-                    stat_render_ms_max = 0;
-                    stat_last_ms = now;
-                }
+                note_render(now);
             }
         }
 
@@ -2811,9 +2943,9 @@ static void display_p4_task(void *arg) {
             .data = g_recv_buf,
             .size = sizeof(g_recv_buf),
         };
-        // Short receive timeout while a render is pending so the pacing
-        // deadline is honored even if no further commands arrive.
-        uint32_t timeout_ms = g_needs_render ? 10 : 100;
+        // Short receive timeout while a render is pending so the pacing deadline
+        // is honored even if no further commands arrive.
+        uint32_t timeout_ms = g_needs_render ? 5 : 100;
         fmrb_err_t err = fmrb_hal_link_local_receive_cmd(
             FMRB_LINK_CHANNEL_DEFAULT, &msg, timeout_ms);
         if (err == FMRB_OK && msg.size > 0) {
