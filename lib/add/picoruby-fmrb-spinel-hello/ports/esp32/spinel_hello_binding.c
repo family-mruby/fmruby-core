@@ -29,8 +29,10 @@ static mrb_value mrb_sh_begin(mrb_state *mrb, mrb_value self)
 static mrb_value mrb_sh_greet(mrb_state *mrb, mrb_value self)
 {
     (void)self;
+    mrb_value name;
+    mrb_get_args(mrb, "S", &name);
     int len = 0;
-    const char *s = spinel_hello_run(&len);
+    const char *s = spinel_hello_run(RSTRING_PTR(name), (int)RSTRING_LEN(name), &len);
     if (!s || len <= 0) {
         return mrb_str_new(mrb, "", 0);
     }
@@ -49,7 +51,7 @@ void mrb_fmrb_spinel_hello_init(mrb_state *mrb)
     struct RClass *m = mrb_define_module(mrb, "SpinelHelloNative");
     mrb_define_module_function(mrb, m, "available?", mrb_sh_available, MRB_ARGS_NONE());
     mrb_define_module_function(mrb, m, "begin_instance", mrb_sh_begin, MRB_ARGS_NONE());
-    mrb_define_module_function(mrb, m, "greet", mrb_sh_greet, MRB_ARGS_NONE());
+    mrb_define_module_function(mrb, m, "greet", mrb_sh_greet, MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, m, "end_instance", mrb_sh_end, MRB_ARGS_NONE());
 }
 

@@ -9,6 +9,7 @@
 require_relative "spinel_hello_core"
 require_relative "spinel_hello_ffi"
 
-s = SpinelHelloCore.new.greet
-SpinelHelloSpx.spinel_hello_spx_output(s, s.bytesize)
+name = SpinelHelloSpx.spinel_hello_spx_name          # value crossing IN
+s = SpinelHelloCore.new.greet(name)
+SpinelHelloSpx.spinel_hello_spx_output(s, s.bytesize) # value crossing OUT
 0

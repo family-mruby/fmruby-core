@@ -10,7 +10,7 @@ class SpinelHelloApp < FmrbApp
 
   def on_create
     hello = Fmrb::SpinelHello.new
-    @text = hello.greet
+    @text = hello.greet("world")
     hello.close
     draw_screen
   end

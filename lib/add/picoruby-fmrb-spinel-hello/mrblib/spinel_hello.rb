@@ -3,7 +3,7 @@
 # an mruby app. This gem is doc/spinel_aot/adding_a_spinel_gem.md made real.
 #
 #   h = Fmrb::SpinelHello.new
-#   h.greet   #=> "Hello Spinel"   (built by native code)
+#   h.greet("world")   #=> "Hello world!"   (built by native code)
 #   h.close
 #
 # The Spinel instance is created on the calling task and torn down on close;
@@ -14,8 +14,8 @@ module Fmrb
       Fmrb::SpinelHello.open
     end
 
-    def greet
-      ::SpinelHelloNative.greet
+    def greet(name)
+      ::SpinelHelloNative.greet(name.to_s)
     end
 
     def close

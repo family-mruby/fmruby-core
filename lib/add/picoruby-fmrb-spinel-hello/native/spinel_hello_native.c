@@ -32,12 +32,20 @@ extern int spinel_hello_entry(void);
    comfortable and still small next to the FFT gem's 192 KB. */
 #define SH_POOL_BYTES (64 * 1024)
 #define SH_OUT_MAX    64
+#define SH_NAME_MAX   48
+
+/* :binstr length publisher, defined in fmrb_spx_common.c. The entry reads the
+   name back as a byte String, so we set this to the stored name's length. */
+extern int sp_net_bin_len;
 
 static void *s_pool;
 static void *s_est;
 static int   s_open;
 
-/* What the entry writes back through the FFI, valid until the next run. */
+/* The name the entry reads IN, and the greeting it writes OUT. Both valid only
+   for the duration of one run(). */
+static char  s_name[SH_NAME_MAX];
+static int   s_name_len;
 static char  s_out[SH_OUT_MAX];
 static int   s_out_len;
 
@@ -69,12 +77,16 @@ int spinel_hello_begin(void)
     return 0;
 }
 
-const char *spinel_hello_run(int *len_out)
+const char *spinel_hello_run(const char *name, int name_len, int *len_out)
 {
     if (!s_open) {
         if (len_out) *len_out = 0;
         return NULL;
     }
+    if (name_len < 0) name_len = 0;
+    if (name_len > SH_NAME_MAX) name_len = SH_NAME_MAX;
+    if (name && name_len > 0) memcpy(s_name, name, (size_t)name_len);
+    s_name_len = name_len;
     s_out_len = 0;
     int rc = spinel_hello_entry();
     if (rc != 0) {
@@ -97,6 +109,13 @@ void spinel_hello_end(void)
 }
 
 /* ---- FFI surface seen by spinel_hello_entry.rb ------------------------- */
+
+/* The entry reads the name to greet here, as a byte String (:binstr). */
+const char *spinel_hello_spx_name(void)
+{
+    sp_net_bin_len = s_name_len;
+    return s_name;
+}
 
 /* The entry hands back its greeting here as a byte String plus length. */
 void spinel_hello_spx_output(const char *s, int len)

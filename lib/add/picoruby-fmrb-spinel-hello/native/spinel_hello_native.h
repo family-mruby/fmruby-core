@@ -24,9 +24,10 @@ int spinel_hello_available(void);
  *  failure (no memory, or the instance could not be created). */
 int spinel_hello_begin(void);
 
-/** Run the entry and return the greeting. *len_out gets its byte length. The
- *  returned pointer is valid until the next run() or end(); NULL if not open. */
-const char *spinel_hello_run(int *len_out);
+/** Run the entry for `name` (name_len bytes) and return the greeting. *len_out
+ *  gets its byte length. The returned pointer is valid until the next run() or
+ *  end(); NULL if not open. */
+const char *spinel_hello_run(const char *name, int name_len, int *len_out);
 
 /** Tear the instance down and release its pool. */
 void spinel_hello_end(void);

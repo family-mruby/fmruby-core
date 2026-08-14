@@ -11,8 +11,9 @@
   全体を Spinel 化できる場合です。
 
 ## 記号(SpinelHello を例に)
-最小の実物 `picoruby-fmrb-spinel-hello` を手本にします(`Fmrb::SpinelHello.new.greet`
-が Spinel-AOT した Ruby で "Hello Spinel" を返すだけの gem)。
+最小の実物 `picoruby-fmrb-spinel-hello` を手本にします(`Fmrb::SpinelHello.new.greet("world")`
+が Spinel-AOT した Ruby で "Hello world!" を返す gem)。名前(入力)と挨拶文(出力)の
+両方が FFI 境界を渡るので、入出力のつなぎ方が一度に分かります。
 - `<gem>` … gem 名です。例: `spinel-hello`(dir は `lib/add/picoruby-fmrb-spinel-hello/`、
   gembox 名は `picoruby-fmrb-spinel-hello`、init は `src/picoruby_fmrb_spinel_hello.c`)。
 - `<core>` … アルゴリズム本体のファイル/クラス名です。例: `spinel_hello_core.rb` /
@@ -85,7 +86,8 @@ picoruby-fmrb-spinel-hello がこの構成の最小の手本です。
 - entry `spinel/<x>_entry.rb` の書き方:
   - entry は引数を取れません(`int f(void)`)。入出力は FFI のグローバル経由にします。
     **Float を境界に渡さない**でください(byte / `:int` / `:binstr` を使います)。SpinelHello
-    は `SpinelHelloCore.new.greet` の結果を FFI で 1 本返すだけです。
+    は名前を `:binstr` で受け取り、`SpinelHelloCore.new.greet(name)` の結果を `:binstr` で
+    返します(入力・出力とも 1 本ずつの FFI)。
   - core は `require_relative` で読みます。
   - (応用)前処理が重い場合は `--persistent-statics` を付け、重いオブジェクトを永続
     グローバルにキャッシュします。**キャッシュキーはオブジェクト自身**にします(int 変数を
