@@ -24,18 +24,24 @@ endfunction()
 #   RB_FILE  - absolute path to the .rb entry program
 #   ENTRY    - entry function name (C sees `int <ENTRY>(void)`)
 #   GEN_DIR  - output directory for <name>.c
+#   ARGN     - extra spinel flags, which MUST match what rakelib/spinel.rake
+#              passes for the same program. This path only runs when SPINEL_BIN
+#              is set (a host build outside docker), so a flag added to one and
+#              not the other produces a different program from the same source
+#              depending on how you built -- silently.
 # If SPINEL_BIN is defined and exists, add a custom command to (re)generate on
 # change; otherwise require the file to already exist (host pre-generated).
 function(generate_ruby_spinel_command RB_FILE ENTRY GEN_DIR)
   get_filename_component(RB_NAME ${RB_FILE} NAME_WE)
   get_filename_component(RB_DIR ${RB_FILE} DIRECTORY)
   set(C_FILE ${GEN_DIR}/${RB_NAME}.c)
+  set(EXTRA_FLAGS ${ARGN})
 
   if(DEFINED SPINEL_BIN AND EXISTS ${SPINEL_BIN})
     file(MAKE_DIRECTORY ${GEN_DIR})
     add_custom_command(
       OUTPUT ${C_FILE}
-      COMMAND ${SPINEL_BIN} --no-main --entry ${ENTRY} -I ${RB_DIR} -c ${RB_FILE} -o ${C_FILE}
+      COMMAND ${SPINEL_BIN} --no-main --entry ${ENTRY} ${EXTRA_FLAGS} -I ${RB_DIR} -c ${RB_FILE} -o ${C_FILE}
       DEPENDS ${RB_FILE}
       COMMENT "Spinel compiling ${RB_NAME}.rb -> ${RB_NAME}.c (entry ${ENTRY})"
       VERBATIM

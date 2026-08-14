@@ -98,13 +98,19 @@ class FftBenchApp < FmrbApp
              "dev=#{dev} (tol #{tol}) size=#{SIZE} iters=#{ITERS} reps=#{REPS}")
 
     # For the Spinel backends, also what the last entry call cost as a whole.
-    # entry - avg*iters is the table rebuild the entry cannot avoid, which is
-    # invisible at iters=20 and dominant at iters=1 -- the number anyone timing
-    # one transform per frame actually needs.
+    # entry - min*iters is everything the entry does around the transform:
+    # decoding the samples, building the magnitudes, and -- unless the program
+    # was compiled with --persistent-statics -- rebuilding the window and
+    # twiddle tables, which is invisible at iters=20 and dominant at iters=1.
+    #
+    # Against min rather than avg on purpose. avg is the mean of all the reps
+    # including the first, and with persistent statics the first rep is the
+    # only one that builds the tables; subtracting that mean from the LAST
+    # entry (which built nothing) came out negative and read like nonsense.
     if backend == :spinel || backend == :spinel_q15
       entry = Fmrb::Fft.spinel_total_us
-      Log.info("FFT #{backend}: entry=#{entry}us setup=#{entry - (r[:us_avg] * ITERS).to_i}us " \
-               "(rebuilt per call; iters=#{ITERS})")
+      Log.info("FFT #{backend}: entry=#{entry}us around=#{entry - (r[:us_min] * ITERS).to_i}us " \
+               "(last call; iters=#{ITERS})")
     end
   rescue => e
     @results << { backend: backend, error: e.message }

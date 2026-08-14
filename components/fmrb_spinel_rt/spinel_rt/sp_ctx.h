@@ -120,6 +120,22 @@ typedef struct sp_ctx {
   const char     *trap_state[SP_SIG_MAX];/* was sp_trap_state */
   struct sp_Proc *trap_proc[SP_SIG_MAX]; /* was sp_trap_proc */
 
+  /* Has this instance already cleared its program's file-scope statics?
+   *
+   * Only read by a program compiled with --persistent-statics. Normally the
+   * entry clears the statics every time it runs, because one entry call is one
+   * run of the program and the previous run's pointers are stale. A program
+   * called repeatedly as a library wants the opposite: its objects should
+   * outlive the call the way an ordinary Ruby object outlives a method. The
+   * flag draws the line at the instance instead of the call -- cleared once
+   * for a fresh instance (memset by sp_instance_create), skipped after.
+   *
+   * One flag per instance, not per program, so --persistent-statics is only
+   * sound when a single generated TU owns the instance. That is the same
+   * restriction the file-scope statics themselves impose: two programs sharing
+   * an instance would already be sharing each other's civ_ slots. */
+  int             statics_inited;
+
   /* --- TU functions the runtime calls, routed per-instance (T4-0). The TU
    *     keeps its own static definitions (sp_runtime.h) and registers them via
    *     sp_tu_ctx_init; the runtime .c files reach them through the name macros
@@ -227,6 +243,10 @@ void    sp_instance_exc_hw(sp_ctx *ctx, int *exc_hw, int *catch_hw);
  * under SP_MULTI_CTX the installers are plain functions and the program entry
  * calls sp_tu_ctx_init() once the host has made an instance current. */
 #define SP_TU_CTOR /* not a constructor; called explicitly from the entry */
+
+/* The --persistent-statics gate, used only by an entry compiled with it. */
+#define SP_CTX_STATICS_INITED()      (SP_CTX()->statics_inited)
+#define SP_CTX_MARK_STATICS_INITED() (SP_CTX()->statics_inited = 1)
 
 /* --- name-compatibility macros: original global -> ctx field --- */
 #define sp_str_heap            (SP_CTX()->str_heap)

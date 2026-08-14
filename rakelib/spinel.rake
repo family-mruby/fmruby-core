@@ -92,7 +92,15 @@ namespace :spinel do
       end
       f_rb = "#{SPINEL_SRC_DIR}/fft_spinel.rb"
       f_c  = "#{SPINEL_GEN_DIR}/fft_spinel.c"
-      sh "#{bin} --no-main --entry fmrb_fft_spinel_entry -I #{SPINEL_SRC_DIR} -c #{f_rb} -o #{f_c}"
+      # --persistent-statics: this program is called over and over as a
+      # library, so its entry keeps the cores it built instead of clearing
+      # the TU's statics per call and rebuilding the twiddle tables every
+      # time (doc/spinel_aot/impl_plan_stateful_library_entry.md). Only sound
+      # because one instance owns this TU. NOT passed to the kernel/desktop/
+      # editor programs below: they call their entry once, so it would buy
+      # them nothing and their reset semantics stay exactly as they were.
+      sh "#{bin} --no-main --entry fmrb_fft_spinel_entry --persistent-statics " \
+         "-I #{SPINEL_SRC_DIR} -c #{f_rb} -o #{f_c}"
       puts "Spinel generated #{f_c}"
     end
     # Desktop: same, for system_desktop (entry system_desktop_entry).

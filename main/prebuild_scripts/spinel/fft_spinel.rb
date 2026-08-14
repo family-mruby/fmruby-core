@@ -14,9 +14,26 @@
 # holding either class widens to untyped and the generated code stops being
 # the direct native calls the whole comparison is about.
 #
+# THE CORES ARE CACHED IN GLOBALS, and that is the point of this file rather
+# than an implementation detail. A core's constructor builds the window, the
+# twiddle table and the bit-reversal permutation: a thousand Math.cos calls,
+# and measured at 13.7ms (double) / 16.4ms (Q15) on the P4 -- several times the
+# transform it prepares for. Rebuilding that per call is what made this backend
+# useless for anything that asks for one transform per frame
+# (doc/mic_spectrum/report/track_a.md, E5).
+#
+# Caching it here only works because the program is compiled with
+# --persistent-statics, which turns the entry's `sp_reset_tu_statics()` from a
+# per-call clear into a per-instance one. Without that flag these globals are
+# nil again on every call and this is merely harmless. With it, the cores live
+# as long as the Spinel instance does -- which is what an ordinary Ruby object
+# in a gem would do.
+#
 # fft_core.rb and fft_core_q15.rb are copied here by `rake spinel:gen` from the
 # gem (lib/add/picoruby-fmrb-fft/mrblib/) -- one file per core, two engines
-# each, so the comparison cannot drift apart through an edit to one copy.
+# each, so the comparison cannot drift apart through an edit to one copy. The
+# caching lives here, in the entry wrapper, and not in them: they stay the
+# plain Ruby that the :ruby backend also runs.
 require_relative "fft_core"
 require_relative "fft_core_q15"
 require_relative "fmrb_fft_ffi"
@@ -30,7 +47,20 @@ if n < 64 || iters < 1 || bytes.bytesize < n * 2
   msg = "bad request n=#{n} iters=#{iters} bytes=#{bytes.bytesize}"
   FftSpx.fmrb_fft_spx_log(msg, msg.bytesize)
 elsif mode == 1
-  q15 = FftCoreQ15.new(n)
+  # A global per core rather than one holding either: a single variable that
+  # can be two classes widens to untyped, and the generated code stops being
+  # the direct calls this whole comparison is about.
+  #
+  # The cached object is its own cache key. Asking it for its size rather than
+  # keeping the size in a second global is what makes this safe when the
+  # statics ARE cleared: the reset nulls object globals but leaves integer
+  # ones alone, so a remembered size would still match after the object it
+  # described had been swept, and the next call would read through a null.
+  q15 = $fft_q15
+  if q15.nil? || q15.size != n
+    q15 = FftCoreQ15.new(n)
+    $fft_q15 = q15
+  end
   q15.load(bytes)
 
   t0 = FftSpx.fmrb_fft_spx_micros
@@ -40,11 +70,11 @@ elsif mode == 1
   qmag = q15.magnitudes_bytes
   FftSpx.fmrb_fft_spx_output(qmag, qmag.bytesize, us)
 else
-  # The tables are rebuilt per call. That is outside the timed region, and a
-  # cached instance would have to survive across entry invocations -- state the
-  # entry does not keep. The cost is one table build per run() (not per
-  # transform), which the repetition count makes negligible.
-  core = FftCore.new(n)
+  core = $fft_core
+  if core.nil? || core.size != n
+    core = FftCore.new(n)
+    $fft_core = core
+  end
   core.load(bytes)
 
   t0 = FftSpx.fmrb_fft_spx_micros

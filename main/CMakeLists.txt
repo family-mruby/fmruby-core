@@ -375,9 +375,12 @@ endif()
 # source instead of at gen/.
 if(FMRB_FFT_SPINEL STREQUAL "1")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_FFT_SPINEL)
+    # --persistent-statics must match rakelib/spinel.rake's fft_spinel command:
+    # this entry caches its cores between calls and depends on the TU's statics
+    # surviving (doc/spinel_aot/impl_plan_stateful_library_entry.md).
     generate_ruby_spinel_command(
         ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/fft_spinel.rb
-        fmrb_fft_spinel_entry ${FMRB_SPINEL_GEN_DIR})
+        fmrb_fft_spinel_entry ${FMRB_SPINEL_GEN_DIR} --persistent-statics)
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fft_spinel.c
         PROPERTIES COMPILE_OPTIONS
         "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
