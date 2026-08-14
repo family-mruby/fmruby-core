@@ -10,16 +10,20 @@
 - 向いていないのは、軽い処理(`:ruby` のままで十分です)、I/O が主体の処理、アプリ
   全体を Spinel 化できる場合です。
 
-## 記号(FFT を例に)
-- `<gem>` … gem 名です。例: `fmrb-fft`(dir は `lib/add/picoruby-fmrb-fft/`、gembox 名は
-  `picoruby-fmrb-fft`、init は `src/picoruby_fmrb_fft.c`)。
-- `<core>` … アルゴリズム本体のファイル/クラス名です。例: `fft_core.rb` / `FftCore`。
-- `<x>` … gemを識別できる短い接頭辞です。binding・entry・受け皿の名前に使います。例: `fft` →
-  `fft_binding.c` / `fft_spinel.rb` / `fmrb_fft_ffi.rb` / `fmrb_fft_spinel.c`。
+## 記号(SpinelHello を例に)
+最小の実物 `picoruby-fmrb-spinel-hello` を手本にします(`Fmrb::SpinelHello.new.greet`
+が Spinel-AOT した Ruby で "Hello Spinel" を返すだけの gem)。
+- `<gem>` … gem 名です。例: `spinel-hello`(dir は `lib/add/picoruby-fmrb-spinel-hello/`、
+  gembox 名は `picoruby-fmrb-spinel-hello`、init は `src/picoruby_fmrb_spinel_hello.c`)。
+- `<core>` … アルゴリズム本体のファイル/クラス名です。例: `spinel_hello_core.rb` /
+  `SpinelHelloCore`。
+- `<x>` … gem を識別できる短い接頭辞です。binding・entry・受け皿の名前に使います。例:
+  `spinel_hello` → `spinel_hello_binding.c` / `spinel_hello_entry.rb` /
+  `spinel_hello_ffi.rb` / `spinel_hello_native.c`。
 
 ## 置き場所の方針
 gem のソースはすべて gem ディレクトリ(`lib/add/picoruby-<gem>/`)配下にまとめます。
-picoruby-fmrb-fft がこの構成の手本です。
+picoruby-fmrb-spinel-hello がこの構成の最小の手本です。
 - `mrblib/` には Ruby(アルゴリズム core と、それを呼ぶ gem の API)を置きます。`ports/esp32/` には
   mrbgem の binding を、`src/` には init を置きます。ここまでは picoruby-esp32(mrbgem)が
   コンパイルします。
@@ -38,12 +42,14 @@ picoruby-fmrb-fft がこの構成の手本です。
 すべて `lib/add/picoruby-<gem>/` 配下です。
 - `mrblib/<core>.rb` … アルゴリズム本体(I/O を持たない)。`:spinel` はこれを native 化します。
 - `mrblib/<gem>.rb` … gem の Ruby API(`Fmrb::X.new(...)` で Spinel の呼び出しを包む)。
-- `ports/esp32/<x>_binding.c` … mruby binding(`XNative.spinel_run` / `spinel_available?`)。
+- `ports/esp32/<x>_binding.c` … mruby binding(受け皿の available? / begin / run / end を
+  Ruby へ公開。SpinelHello では `SpinelHelloNative.available?` / `begin_instance` /
+  `greet` / `end_instance`)。
 - `src/picoruby_<gem>.c` … init。無いと init が登録されず `NameError` になります。
 - `mrbgem.rake`。
-- `native/<x>_spinel.c` / `.h` … Spinel の受け皿(インスタンスの生成/呼び出し/破棄と
+- `native/<x>_native.c` / `.h` … Spinel の受け皿(インスタンスの生成/呼び出し/破棄と
   FFI の実体)。
-- `spinel/<x>_spinel.rb` … entry(top-level が本体で、1 呼び出しで 1 回実行されます)。
+- `spinel/<x>_entry.rb` … entry(top-level が本体で、1 呼び出しで 1 回実行されます)。
 - `spinel/<x>_ffi.rb` … FFI 宣言。
 
 配線を足す既存ファイルは次のとおりです。
@@ -76,17 +82,21 @@ picoruby-fmrb-fft がこの構成の手本です。
 
 ### 3. Spinel の entry と受け皿を書く(ここが本体)
 - 何のために: entry(Ruby)を native 化し、mruby タスクから C 関数のように呼び出します。
-- entry `spinel/<x>_spinel.rb` の書き方:
+- entry `spinel/<x>_entry.rb` の書き方:
   - entry は引数を取れません(`int f(void)`)。入出力は FFI のグローバル経由にします。
-    **Float を境界に渡さない**でください(byte / `:int` / `:binstr` を使います)。
-  - 前処理が重い(テーブル生成など)場合は、`--persistent-statics` を付けたうえで、
-    重いオブジェクトを永続グローバルにキャッシュします。**キャッシュキーはオブジェクト
-    自身**にしてください(int 変数をキーにしない。理由は `stateful_library_entry.md`)。
-    core は `require_relative` で読みます。
-- 受け皿 `native/<x>_spinel.c` の書き方:
+    **Float を境界に渡さない**でください(byte / `:int` / `:binstr` を使います)。SpinelHello
+    は `SpinelHelloCore.new.greet` の結果を FFI で 1 本返すだけです。
+  - core は `require_relative` で読みます。
+  - (応用)前処理が重い場合は `--persistent-statics` を付け、重いオブジェクトを永続
+    グローバルにキャッシュします。**キャッシュキーはオブジェクト自身**にします(int 変数を
+    キーにしない。理由は `stateful_library_entry.md`)。SpinelHello は前処理が無いので不要、
+    重い例は FFT を参照。
+- 受け皿 `native/<x>_native.c` の書き方:
   - `fmrb_spinel_instance_begin` / `fmrb_spinel_instance_end`(`fmrb_spinel_host.h`)で、
     インスタンスを begin は 1 回、run は複数回、end は 1 回、という寿命で扱います。
-  - プールは `fmrb_sys_malloc` で確保し、**小さく**します(内蔵 RAM が逼迫しやすいため)。
+  - プールは `fmrb_sys_malloc`(= PSRAM。内蔵 RAM は消費しません)で確保します。小さめで
+    よいですが**下限があり、16KB では instance 生成に失敗します**。数十 KB(SpinelHello は
+    64KB)を取ってください。
   - この呼び方は**シングルトン(1 TU = 1 インスタンス = 1 タスク)**が前提です。複数の
     タスクから同じ entry を使わないでください。
   - 受け皿は常にコンパイルされるので、スタブと実体を分ける `#ifdef`(FFT の
@@ -131,8 +141,12 @@ picoruby-fmrb-fft がこの構成の手本です。
   合わせ、fork も push してください。
 
 ## 手本
-picoruby-fmrb-fft です。全ソースが `lib/add/picoruby-fmrb-fft/` 配下
-(`mrblib/` `ports/esp32/` `src/` `native/` `spinel/`)に集約されています。配線は
-`main/CMakeLists.txt`(`native/*.c` のパス参照と `native` を INCLUDE_DIRS)と
-`rakelib/spinel.rake`(`spinel/` と `mrblib/` の core を staging して生成)を参照して
-ください。
+- **最小の手本 = picoruby-fmrb-spinel-hello**。全ソースが
+  `lib/add/picoruby-fmrb-spinel-hello/` 配下(`mrblib/` `ports/esp32/` `src/` `native/`
+  `spinel/`)に集約され、このドキュメントの各手順とそのまま対応します。まずはこれを
+  真似てください。
+- **応用の手本 = picoruby-fmrb-fft**。`--persistent-statics` による状態保持、複数
+  バックエンド、C 実装との比較など、SpinelHello に無い要素はこちらを参照。
+- 配線はどちらも `main/CMakeLists.txt`(`native/*.c` のパス参照と `native` を
+  INCLUDE_DIRS)と `rakelib/spinel.rake`(`spinel/` と `mrblib/` の core を staging して
+  生成)を参照してください。
