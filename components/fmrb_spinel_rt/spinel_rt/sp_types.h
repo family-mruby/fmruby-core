@@ -77,6 +77,24 @@
 # define SP_TLS
 #endif
 
+/* Placement for the per-TU static arrays that are large and cold: the
+   exception and catch stacks, the dynamic symbol table. Empty by default, so
+   they land in ordinary .bss as before.
+
+   A generated program carries its own copy of these -- they are per-TU, not
+   shared through the runtime -- so on a target where every program adds
+   another set, they add up. On an ESP32-P4 with five generated programs that
+   is 57 KB of internal SRAM, which is the scarce memory there while external
+   PSRAM is not. Such a build defines this to its "put it in PSRAM" attribute
+   and gets the space back.
+
+   It changes where the array lives and nothing else: same type, same size,
+   same semantics. Not usable together with SP_THREADS, since a section
+   attribute and __thread cannot both apply. */
+#ifndef SP_TU_BSS
+# define SP_TU_BSS
+#endif
+
 /* Branch-hint / hot-cold attributes. Static approximation of PGO: marking
    rare paths (raise, dispatch fallbacks) cold lets the C compiler split
    them out of the hot path's i-cache footprint. No-op on non-GCC/clang. */

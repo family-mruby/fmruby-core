@@ -375,6 +375,19 @@ endif()
 # let this be dropped.
 set(SPINEL_GEN_RELAX_FLAGS ";-Wno-error=incompatible-pointer-types;-Wno-error=int-conversion")
 
+# The compile options every generated Spinel program gets. One variable rather
+# than the same long string repeated at each program below: they have to agree
+# (SP_MULTI_CTX is a both-sides ABI flag) and the -include list has grown, so
+# six copies is six chances to leave one behind.
+#
+# fmrb_sp_tu_bss.h comes first, putting the program's exception and catch
+# stacks in PSRAM; it must precede sp_types.h's empty default, which -include
+# guarantees. components/fmrb_spinel_rt/CMakeLists.txt passes the same header
+# to the runtime -- keep the two in step
+# (doc/spinel_aot/per_tu_psram_plan.md).
+set(SPINEL_GEN_TU_FLAGS
+    "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/fmrb_sp_tu_bss.h;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+
 if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_KERNEL_ENGINE_SPINEL)
     # The combined .rb is itself host-generated (gen_kernel_combined.rb) into the
@@ -396,7 +409,7 @@ if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     # instance pool. Keep the two flags in sync with fmrb_spinel_rt SPINEL_MC_FLAGS.
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fmrb_kernel_combined.c
         PROPERTIES COMPILE_OPTIONS
-        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+        "${SPINEL_GEN_TU_FLAGS}")
 endif()
 
 # The Spinel FFT: the same generated-TU treatment as the VMs above. Its .rb is
@@ -413,7 +426,7 @@ if(FMRB_FFT_SPINEL STREQUAL "1")
         fmrb_fft_spinel_entry ${FMRB_SPINEL_GEN_DIR} --persistent-statics)
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fft_spinel.c
         PROPERTIES COMPILE_OPTIONS
-        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+        "${SPINEL_GEN_TU_FLAGS}")
 endif()
 
 # SpinelHello sample gem: generate + compile its Spinel entry (always built).
@@ -422,7 +435,7 @@ generate_ruby_spinel_command(
     spinel_hello_entry ${FMRB_SPINEL_GEN_DIR})
 set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/spinel_hello_entry.c
     PROPERTIES COMPILE_OPTIONS
-    "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+    "${SPINEL_GEN_TU_FLAGS}")
 
 # Raycast gem: --persistent-statics must match rakelib/spinel.rake's raycast
 # command. The entry caches its core (map + trig tables) between frames and
@@ -432,7 +445,7 @@ generate_ruby_spinel_command(
     raycast_entry ${FMRB_SPINEL_GEN_DIR} --persistent-statics)
 set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/raycast_entry.c
     PROPERTIES COMPILE_OPTIONS
-    "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+    "${SPINEL_GEN_TU_FLAGS}")
 
 # Desktop app engine: same wiring for the Spinel-compiled system_desktop program
 # (spawned NATIVE via fmrb_app_spawner.c). Independent of the kernel engine.
@@ -445,7 +458,7 @@ if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
     # break). Only this generated TU gets them, never the fmrb_spx shims.
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/system_desktop_combined.c
         PROPERTIES COMPILE_OPTIONS
-        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+        "${SPINEL_GEN_TU_FLAGS}")
 endif()
 
 # Editor app engine: the same wiring again for the Spinel-compiled editor
@@ -458,5 +471,5 @@ if(FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
         editor_entry ${FMRB_SPINEL_GEN_DIR})
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/editor_combined.c
         PROPERTIES COMPILE_OPTIONS
-        "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+        "${SPINEL_GEN_TU_FLAGS}")
 endif()

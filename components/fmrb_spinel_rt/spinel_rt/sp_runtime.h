@@ -5770,23 +5770,23 @@ static void sp_tu_ctx_init(void) {
    sp_exc_ctx_save/load, which assumes a single active stack -- true at N=1, but
    with N>1 every OS worker runs a fiber concurrently, so each needs its own.
    Empty (plain static, byte-identical) in the single-threaded build. */
-static SP_TLS jmp_buf sp_exc_stack[SP_EXC_STACK_MAX];
-static SP_TLS const char *sp_exc_msg[SP_EXC_STACK_MAX];
+SP_TU_BSS static SP_TLS jmp_buf sp_exc_stack[SP_EXC_STACK_MAX];
+SP_TU_BSS static SP_TLS const char *sp_exc_msg[SP_EXC_STACK_MAX];
 /* GC-root watermark at each handler's entry: a raise longjmps past the
    __attribute__((cleanup)) pops of SP_GC_ROOT locals in the unwound frames,
    so the landing restores sp_gc_nroots from the popped slot. A side array
    (not a per-region C local) so protected regions add no stack locals --
    an extra local per region measurably shifts hot-function frames. */
-static SP_TLS int sp_exc_rootmark[SP_EXC_STACK_MAX];
+SP_TU_BSS static SP_TLS int sp_exc_rootmark[SP_EXC_STACK_MAX];
 static SP_TLS volatile int sp_exc_top = 0;
-static SP_TLS const char *sp_exc_cls[SP_EXC_STACK_MAX];
+SP_TU_BSS static SP_TLS const char *sp_exc_cls[SP_EXC_STACK_MAX];
 static SP_TLS volatile const char *sp_last_exc_cls = sp_str_empty;
 /* The raised exception OBJECT, carried alongside (cls,msg) so a user
    exception subclass keeps its ivars across raise -> rescue (#1415).
    NULL for a bare string/builtin raise, which reconstructs on catch.
    sp_pending_exc_obj is set by sp_raise_exc just before the longjmp and
    consumed into the per-frame slot by sp_raise_cls. */
-static SP_TLS void *sp_exc_obj[SP_EXC_STACK_MAX];
+SP_TU_BSS static SP_TLS void *sp_exc_obj[SP_EXC_STACK_MAX];
 static SP_TLS void *sp_pending_exc_obj = NULL;
 /* The exception currently being handled (set by a rescue body), and the cause
    captured for the next raised exception -- Exception#cause threads the former
@@ -5802,12 +5802,12 @@ static SP_TLS void *sp_explicit_cause = NULL;
    already popped, so nested rescue bodies share an sp_exc_top. Pushed on rescue
    entry; popped on every exit -- fall-through, return/break/next/retry (codegen
    pops sp_rescue_sp), and raise-out (the landing restores sp_rescue_mark). */
-static SP_TLS void *sp_exc_handling[SP_EXC_STACK_MAX];
+SP_TU_BSS static SP_TLS void *sp_exc_handling[SP_EXC_STACK_MAX];
 static SP_TLS int sp_rescue_sp = 0;
 /* sp_rescue_sp captured at each begin frame's arm, restored on that frame's
    exception landing so a rescue body that exits by raising doesn't leak its push
    (a side array beside the handler stack, mirroring sp_exc_rootmark). */
-static SP_TLS int sp_rescue_mark[SP_EXC_STACK_MAX];
+SP_TU_BSS static SP_TLS int sp_rescue_mark[SP_EXC_STACK_MAX];
 #define sp_cur_handled() (sp_rescue_sp > 0 ? sp_exc_handling[sp_rescue_sp-1] : NULL)
 /* Push a handled exception. sp_rescue_sp grows with recursion *through* rescue
    bodies (the handler stays pushed across the recursive call it makes, unlike a
@@ -6416,15 +6416,15 @@ SP_TU_STATIC void sp_bigint_raise_zerodiv(const char *msg) { sp_raise_cls("ZeroD
 #ifndef SP_CATCH_STACK_MAX
 #define SP_CATCH_STACK_MAX 64
 #endif
-static SP_TLS jmp_buf sp_catch_stack[SP_CATCH_STACK_MAX];   /* per-worker (see sp_exc_stack) */
-static SP_TLS const char *sp_catch_tag[SP_CATCH_STACK_MAX];
+SP_TU_BSS static SP_TLS jmp_buf sp_catch_stack[SP_CATCH_STACK_MAX];   /* per-worker (see sp_exc_stack) */
+SP_TU_BSS static SP_TLS const char *sp_catch_tag[SP_CATCH_STACK_MAX];
 /* 0 = name tag (symbol/string, matched by content); 1 = object tag (matched
    by pointer identity, CRuby's non-symbol tag semantics) */
-static SP_TLS unsigned char sp_catch_tag_kind[SP_CATCH_STACK_MAX];
+SP_TU_BSS static SP_TLS unsigned char sp_catch_tag_kind[SP_CATCH_STACK_MAX];
 /* boxed value channel, like sp_brk_val: any thrown value carries faithfully */
-static SP_TLS sp_RbVal sp_catch_val[SP_CATCH_STACK_MAX];
-static SP_TLS int sp_catch_exc_top[SP_CATCH_STACK_MAX];  /* exception depth at each catch's entry */
-static SP_TLS int sp_catch_rootmark[SP_CATCH_STACK_MAX]; /* GC-root watermark at entry (see sp_exc_rootmark) */
+SP_TU_BSS static SP_TLS sp_RbVal sp_catch_val[SP_CATCH_STACK_MAX];
+SP_TU_BSS static SP_TLS int sp_catch_exc_top[SP_CATCH_STACK_MAX];  /* exception depth at each catch's entry */
+SP_TU_BSS static SP_TLS int sp_catch_rootmark[SP_CATCH_STACK_MAX]; /* GC-root watermark at entry (see sp_exc_rootmark) */
 static SP_TLS volatile int sp_catch_top = 0;
 /* shared counter (not SP_TLS) so `catch { |tag| }` autotags are globally
    unique; see sp_brk_seq for the same shape */

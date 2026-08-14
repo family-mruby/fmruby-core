@@ -99,6 +99,13 @@ map ファイルから内蔵 RAM に載っているシンボルを大きい順�
 Phase 5 では `fmrb_spx_app_config` の返信バッファ 41,745 B が
 これで見つかり、`EXT_RAM_BSS_ATTR` で PSRAM へ退避して回収した。
 
+**実施済み (2026-08-15)**: `doc/spinel_aot/report/per_tu_internal_ram.md`。
+**生成 Spinel TU 1 本につき約 11.4KB**、5 本で 60,496 B = 内蔵 .bss/.data の
+**37%**。85% は例外/catch ハンドラスタック (`SP_EXC_STACK_MAX` = 16)。
+カーネルの実測 `ExcHW` は 3/0 なので **8 段に下げれば約 24KB 回収できる**見込み
+だが、ライブラリ呼び出しの gem 側 ExcHW が未計測なので、そこを採ってから。
+計測手順の落とし穴 (`.ext_ram.*` を除外する / `.sdata`・`.sbss` も拾う) も同報告に記載。
+
 ## 削減の軸
 
 ### A: タスクスタックの適正化

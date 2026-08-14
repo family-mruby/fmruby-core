@@ -75,10 +75,26 @@ set(SPINEL_RT_GC_MARK_STACK_MAX 8192 CACHE STRING "SP_GC_MARK_STACK_MAX for the 
 # break (like SP_GC_STACK_MAX). They are fed from this single variable: PRIVATE
 # to the runtime, INTERFACE to every dependent (the generated-C component).
 set(SPINEL_RT_MULTI_CTX ON CACHE BOOL "Build the Spinel runtime + generated C multi-instance (SP_MULTI_CTX)")
+#
+# The two -include options are written "SHELL:-include <path>" rather than as
+# separate list items. target_compile_options de-duplicates repeated flags, so
+# two bare `-include` entries collapse into one and the second path arrives as
+# a second input file -- gcc then refuses "-o with -c with multiple files".
+# SHELL: keeps each option and its argument together.
 set(SPINEL_MC_FLAGS "")
 if(SPINEL_RT_MULTI_CTX)
-    set(SPINEL_MC_FLAGS -DSP_MULTI_CTX -include ${CMAKE_CURRENT_LIST_DIR}/spinel_rt/sp_mem_override.h)
+    set(SPINEL_MC_FLAGS -DSP_MULTI_CTX
+        "SHELL:-include ${CMAKE_CURRENT_LIST_DIR}/spinel_rt/sp_mem_override.h")
 endif()
+
+# Send the large per-TU statics (exception / catch stacks, dynamic symbol
+# table) to PSRAM. Ahead of everything else so SP_TU_BSS is defined before
+# sp_types.h supplies its empty default; the header is a no-op off the device.
+# main/CMakeLists.txt passes the same -include to each generated program --
+# keep the two in step, or a program left out quietly keeps its copy in
+# internal RAM (doc/spinel_aot/per_tu_psram_plan.md).
+list(PREPEND SPINEL_MC_FLAGS
+     "SHELL:-include ${CMAKE_CURRENT_LIST_DIR}/fmrb_sp_tu_bss.h")
 
 # Compiled runtime = every .c in the snapshot (import_from_fork.rb decides the
 # set: the whole runtime minus sp_net.c / sp_crypto.c). Glob so CMake stays in
