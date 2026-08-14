@@ -96,6 +96,16 @@ class FftBenchApp < FmrbApp
     Log.info("FFT #{backend}: avg=#{fmt(r[:us_avg])}us min=#{fmt(r[:us_min])}us " \
              "peak=#{r[:peak_bin]} (expected #{CYCLES}) agrees=#{r[:agrees]} " \
              "dev=#{dev} (tol #{tol}) size=#{SIZE} iters=#{ITERS} reps=#{REPS}")
+
+    # For the Spinel backends, also what the last entry call cost as a whole.
+    # entry - avg*iters is the table rebuild the entry cannot avoid, which is
+    # invisible at iters=20 and dominant at iters=1 -- the number anyone timing
+    # one transform per frame actually needs.
+    if backend == :spinel || backend == :spinel_q15
+      entry = Fmrb::Fft.spinel_total_us
+      Log.info("FFT #{backend}: entry=#{entry}us setup=#{entry - (r[:us_avg] * ITERS).to_i}us " \
+               "(rebuilt per call; iters=#{ITERS})")
+    end
   rescue => e
     @results << { backend: backend, error: e.message }
     Log.error("FFT #{backend}: #{e.class}: #{e.message}")

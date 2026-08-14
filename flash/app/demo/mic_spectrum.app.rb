@@ -1,8 +1,16 @@
 # What the microphone hears, as a bar graph.
 #
 # The whole chain is on this machine: the ES7210 samples, Fmrb::Fft transforms
-# (any of its four engines -- press E to change), FmrbGfx draws. Nothing is
+# (any of its engines -- press E to change), FmrbGfx draws. Nothing is
 # recorded and nothing leaves the device.
+#
+# The engine list is arranged in pairs, each engine in double and then in Q15
+# fixed point, because pressing E and watching the millisecond count is the
+# clearest way to see what the benchmark found (doc/mic_spectrum/report/
+# track_a.md, E4): fixed point makes the AOT-compiled Ruby four times faster
+# and the interpreted Ruby slower. spinel_q15 is the one that matters here --
+# at a couple of milliseconds a transform it keeps up with the display, so
+# this whole visualiser can run on Ruby the user could have written.
 #
 # The bin width is decided by hardware, not by this app: the microphone shares
 # the speaker's I2S clocks, so it samples at 47160 Hz and a 512-point window is
@@ -14,7 +22,7 @@ class MicSpectrumApp < FmrbApp
   PEAK_FALL  = 2      # how fast the peak-hold marks sink, per frame
   WARMUP     = 8      # blocks thrown away after power-up (the codec settles)
 
-  BACKENDS = [:dsp, :c, :spinel, :ruby]
+  BACKENDS = [:dsp, :c, :c_q15, :spinel, :spinel_q15, :ruby, :ruby_q15]
 
   # A tone the app can play to itself, so the display can be checked in a quiet
   # room -- and so "the bars do not move" can be told apart from "there is no
@@ -147,6 +155,10 @@ class MicSpectrumApp < FmrbApp
       v = Fmrb::Fft.bin(mag, i + 1)   # skip bin 0: DC, always the loudest
       # Fixed scale rather than auto-gain: a quiet room should look quiet.
       # Divisor halved (3000 -> 1500) to roughly double the bar sensitivity.
+      # One divisor for every engine: the Q15 backends return magnitudes on
+      # the same scale as the float ones (their per-stage shift already
+      # divides by n, so the float version's 2/n becomes a doubling), which is
+      # what makes pressing E a comparison rather than a rescale.
       h = v * height / 1500
       h = height if h > height
       @bars[i] = h
@@ -169,15 +181,15 @@ class MicSpectrumApp < FmrbApp
       return
     end
 
-    # Fixed field widths: the engine name (dsp / c / spinel / ruby) and the
-    # millisecond count both change length every frame, and without this the
-    # key hints slide left and right while the app runs. Kept short as well --
-    # the user area is 56 characters wide, and the first version sat exactly on
-    # that edge and wrapped onto the bars.
+    # Fixed field widths: the engine name and the millisecond count both change
+    # length every frame, and without this the key hints slide left and right
+    # while the app runs. The field is 10 wide because spinel_q15 is, which
+    # puts the line at 53 characters -- the user area is 56, and the first
+    # version of this line sat exactly on that edge and wrapped onto the bars.
     bin_hz = @rate / SIZE
     ms = @ms > 9999 ? 9999 : @ms
     @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 3,
-                   sprintf("%dHz %dHz/bin  %-6s %4dms  [E]ngine [T]one%s",
+                   sprintf("%dHz %dHz/bin %-10s %4dms [E]ngine [T]one%s",
                            @rate, bin_hz, backend.to_s, ms, @tone ? "*" : " "),
                    FmrbGfx::WHITE)
 

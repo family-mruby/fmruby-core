@@ -147,6 +147,13 @@ static mrb_value mrb_fft_spinel_q15_run(mrb_state *mrb, mrb_value self)
     return fft_run_with(mrb, fmrb_fft_spinel_run_q15);
 }
 
+static mrb_value mrb_fft_spinel_total_us(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    (void)mrb;
+    return mrb_fixnum_value((mrb_int)fmrb_fft_spinel_last_total_us());
+}
+
 static mrb_value mrb_fft_spinel_end(mrb_state *mrb, mrb_value self)
 {
     (void)self;
@@ -171,6 +178,7 @@ void mrb_fmrb_fft_init(mrb_state *mrb)
     mrb_define_module_function(mrb, m, "spinel_begin", mrb_fft_spinel_begin, MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, m, "spinel_run", mrb_fft_spinel_run, MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, m, "spinel_q15_run", mrb_fft_spinel_q15_run, MRB_ARGS_REQ(3));
+    mrb_define_module_function(mrb, m, "spinel_total_us", mrb_fft_spinel_total_us, MRB_ARGS_NONE());
     mrb_define_module_function(mrb, m, "spinel_end", mrb_fft_spinel_end, MRB_ARGS_NONE());
 }
 

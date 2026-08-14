@@ -49,6 +49,19 @@ uint32_t fmrb_fft_spinel_run(const int16_t *in, int n, int iters, int16_t *mag_o
  */
 uint32_t fmrb_fft_spinel_run_q15(const int16_t *in, int n, int iters, int16_t *mag_out);
 
+/**
+ * Microseconds the last run() spent in the entry as a whole, as opposed to the
+ * transform the Ruby timed for itself.
+ *
+ * The gap between the two is not overhead in the usual sense: a Spinel entry
+ * resets its class-level statics on every invocation, so the program builds
+ * its window and twiddle tables again each call, while the C backend keeps
+ * its own across calls. A benchmark that puts the repetition inside the entry
+ * never sees this; a caller asking for one transform per frame pays it every
+ * frame. Worth reading before quoting a per-frame cost.
+ */
+uint32_t fmrb_fft_spinel_last_total_us(void);
+
 /** Tear the instance down and release its pool. */
 void fmrb_fft_spinel_end(void);
 

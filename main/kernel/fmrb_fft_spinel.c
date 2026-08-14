@@ -69,6 +69,7 @@ static int             s_mode;   /* 0 = the double core, 1 = the Q15 one */
 static int16_t        *s_mag;
 static int             s_mag_len;
 static uint32_t        s_us;
+static uint32_t        s_total_us;   /* the whole entry call, not just the transform */
 
 int fmrb_fft_spinel_available(void)
 {
@@ -119,7 +120,19 @@ static uint32_t fft_spinel_run_mode(const int16_t *in, int n, int iters,
     s_mag_len = 0;
     s_us = 0;
 
+    /* Timed from out here as well as from inside, because the two numbers are
+       not the same thing and the difference is the interesting part. The Ruby
+       times its own transform loop; this times the whole entry, which also
+       includes building the window and twiddle tables. A Spinel entry cannot
+       keep those between calls -- the generated program resets its class-level
+       statics on every invocation (sp_reset_tu_statics), so each call starts
+       from an empty program. The C backend, by contrast, caches its tables
+       across calls. For a benchmark with the repetition inside the entry that
+       difference disappears into the noise; for a caller that asks for one
+       transform per frame it is most of the cost. */
+    uint32_t e0 = fmrb_fft_micros();
     int rc = fmrb_fft_spinel_entry();
+    s_total_us = fmrb_fft_micros() - e0;
     if (rc != 0) {
         FMRB_LOGW(TAG, "Spinel FFT entry returned %d", rc);
     }
@@ -127,6 +140,11 @@ static uint32_t fft_spinel_run_mode(const int16_t *in, int n, int iters,
     s_in = NULL;
     s_mag = NULL;
     return s_us;
+}
+
+uint32_t fmrb_fft_spinel_last_total_us(void)
+{
+    return s_total_us;
 }
 
 uint32_t fmrb_fft_spinel_run(const int16_t *in, int n, int iters, int16_t *mag_out)
@@ -225,5 +243,7 @@ uint32_t fmrb_fft_spinel_run_q15(const int16_t *in, int n, int iters, int16_t *m
     (void)in; (void)n; (void)iters; (void)mag_out;
     return 0;
 }
+
+uint32_t fmrb_fft_spinel_last_total_us(void) { return 0; }
 
 #endif /* FMRB_FFT_SPINEL */
