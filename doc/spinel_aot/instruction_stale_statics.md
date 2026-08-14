@@ -5,6 +5,12 @@
 外へ) は入っているが、**ユーザ指示 (2026-08-11): 根本解決が必要**。
 report は doc/spinel_aot/report/stale_statics.md へ。
 
+> 後日談 (2026-08-14): この「entry 冒頭で毎回 reset」(`c7de66c`) は run-once の
+> プログラム向け。**繰り返し呼ぶライブラリ用途では reset が前処理を毎回払わせる**
+> ので、`cafe6595` で `--persistent-statics` (reset を初回だけにする opt-out) を
+> 追加した。詳細は `stateful_library_entry.md` / `impl_plan_stateful_library_entry.md`、
+> 書き方は `ruby_writing_constraints.md` (C 節)。
+
 ## バグの機序 (ja2.md で特定済み)
 
 生成された Spinel プログラムは定数を**プロセスグローバルな C の static** に

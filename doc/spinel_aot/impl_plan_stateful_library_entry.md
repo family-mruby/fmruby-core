@@ -135,8 +135,8 @@ kernel/desktop/editor の生成には付けない。
 
 ## 参考(コード位置)
 - entry/reset: `main/prebuild_scripts/spinel/gen/fft_spinel.c`(`sp_reset_tu_statics`、
-  entry プロローグ)、ソース `main/prebuild_scripts/spinel/fft_spinel.rb`
-- 受け皿(インスタンス lifecycle): `main/kernel/fmrb_fft_spinel.c`
+  entry プロローグ)、ソース `lib/add/picoruby-fmrb-fft/spinel/fft_spinel.rb`
+- 受け皿(インスタンス lifecycle): `lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c`
   (begin/run/end、`fmrb_fft_spinel_last_total_us`)
 - ctx: `components/fmrb_spinel_rt/spinel_rt/sp_ctx.h`、import
   `components/fmrb_spinel_rt/import_from_fork.rb` / `SPINEL_PIN`

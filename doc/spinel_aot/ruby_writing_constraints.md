@@ -67,7 +67,7 @@ Fundamental / By design を正とする。
 | poly 受信の `Array#index/find_index(x)` が raise (`opts = s[:options]; opts.index(cur)`)。config enum 変更で desktop クラッシュ | poly dispatch に index arm 無し (include?/rindex は有) | (回避不要になった) | **fork 修正済 `dea18671`** | T4-5 |
 | `ch = nil; if …; ch = "\x00"; ch.setbyte(…)` が poly `String#setbyte` で raise。**nil-init が ch を poly 化**している | poly-String setbyte 未 dispatch | **具体型ローカルを使う**: `c = "\x00"; c.setbyte(0, v); ch = c` (c は直接代入で concrete)。setbyte は mutation なので Ruby 側で固定するのが正 | (Ruby 修正が正。fork の poly-setbyte-mutation は不採用) | T4-5 |
 
-| **同じプログラムを 2 回目に起動する**と、エントリ実行中の GC で SEGV (エディタの再オープンで発覚)。エントリで大きな割り当てをすると必ず踏む | 生成 TU の定数・クラス ivar・オブジェクトプールがプロセスグローバルな static で、前インスタンスのポインタを保持したまま。エントリは定数をソース順に再代入するが、GC の globals-mark フックはその前に登録される | (回避不要になった。回避が必要だった間は「エントリで大きな割り当てをしない」= 表を on_create 等へ遅延) | **fork 修正済み `c7de66c`**: `sp_reset_tu_statics()` をエントリ冒頭 (SP_MULTI_CTX のみ) で呼び、mark 対象の全スロットとプールを 0 クリアする | doc/spinel_aot/report/stale_statics.md |
+| **同じプログラムを 2 回目に起動する**と、エントリ実行中の GC で SEGV (エディタの再オープンで発覚)。エントリで大きな割り当てをすると必ず踏む | 生成 TU の定数・クラス ivar・オブジェクトプールがプロセスグローバルな static で、前インスタンスのポインタを保持したまま。エントリは定数をソース順に再代入するが、GC の globals-mark フックはその前に登録される | (回避不要になった。回避が必要だった間は「エントリで大きな割り当てをしない」= 表を on_create 等へ遅延) | **fork 修正済み `c7de66c`**: `sp_reset_tu_statics()` をエントリ冒頭 (SP_MULTI_CTX のみ) で呼び、mark 対象の全スロットとプールを 0 クリアする。**後日 `cafe6595` (`--persistent-statics`) で、繰り返し呼ぶライブラリ用途向けにこの reset を初回だけにする opt-out を追加**(上の推奨記法・C 節を参照) | doc/spinel_aot/report/stale_statics.md |
 
 **poly-dispatch gap の系統的洗い出し法** (再発防止): 生成 C を `grep -oE 'sp_nomethod_msg_args\("[a-z_?!]+"' <combined>.c | sort | uniq -c` で列挙すると、**そのアプリで実際に poly-dispatch に落ちるメソッド全部**が一覧化できる (理論上の全 String メソッドでなく実 gap)。concrete で動くのに poly で欠落しているものが判る。教訓: **レシーバの poly-dispatch gap は引数/結果の `.to_s` では治らない** (再掲)。silent 誤動作 (raise しない `[]=` no-op 等) は raise 一覧に出ないので、症状 (文字化け等) からも疑う。
 
@@ -79,6 +79,7 @@ Fundamental / By design を正とする。
 | FFI 境界で `msg[:data]` 等を、シンボルキー Hash 経由でなく **型の確定した String** で渡す | シンボルをキーにした Hash の値は常に型が確定しない値になり、具体型を要求する箇所で詰まるため | phase0_findings |
 | `$stdout` 等のグローバル変数を単一クラス (例 ShellOut) に固定する | Spinel では静的型が付くため、複数の型が混ざって型が確定しない値になり推論が悪化するのを防ぐ | phase4.md 落とし穴 |
 | **ESP32 向けアプリでは `Enumerator.new { \|y\| ... }` / 外部反復 (`.next`/`.peek`) / `.lazy` を避ける** | これらは fiber-backed で、Spinel の fiber は POSIX (mmap/ucontext/asm) 前提。**ESP32 に fiber backend が無く動かない** (Linux では動くので気付きにくい)。内部反復 (`.each`/`.map`/`.select`) は fiber 不使用で可 | fork limitations.md (Partial) / `esp32_host_deps_sweep.md` |
+| **entry を繰り返し呼ぶ (ライブラリ用途) で前処理結果を持ち越したいときは `--persistent-statics` (生成配線) + 重いオブジェクトを永続グローバルにキャッシュ**する。キャッシュキーは**そのオブジェクト自身** (`$c.nil? \|\| $c.size != n`) にし、別の Integer グローバル (`$cached_n`) をキーにしない | `--persistent-statics` は entry 冒頭の `sp_reset_tu_statics()` を**インスタンス初回だけ**にする (既定は毎 entry = 状態が消える)。reset が消すのは**オブジェクト(ポインタ)グローバルだけ**で **Integer グローバルは消さない**(heap を指さないため)。→ 別 int をキーにすると、インスタンス再生成時に本体 `$c` は NULL に戻るのに int キーは前回値が居残り、「キー一致なのに本体 NULL」で再構築を skip → NULL 参照(状態遷移の詳細は `stateful_library_entry.md` の実例節)。**シングルトン (1 TU=1 インスタンス) 前提でのみ安全** | E6 (`cafe6595`) / `stateful_library_entry.md` / `impl_plan_stateful_library_entry.md` |
 | (随時追記) | | |
 
 ## メンテナンス
