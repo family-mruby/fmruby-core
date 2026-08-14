@@ -86,12 +86,19 @@ class MicSpectrumApp < FmrbApp
   end
 
   def on_event(ev)
+    # First, always: the close button and the title bar live in FmrbApp's
+    # on_event, so an override that returns before calling it leaves the
+    # window with no way to shut. Every other app starts the same way.
+    super(ev)
     return unless ev[:type] == :key_down
     ch = ev[:character] || 0
     if ch == 101 || ch == 69     # e / E: next engine
       @backend_idx = (@backend_idx + 1) % BACKENDS.size
       open_backend
     elsif ch == 116 || ch == 84  # t / T: the test tone, on and off
+      # Only when there is a microphone: without one @audio was never built,
+      # and the error screen still takes key events.
+      return if @audio.nil?
       @tone = !@tone
       if @tone
         @audio.note_on(0, TEST_TONE_HZ, 8, 2, 0)
