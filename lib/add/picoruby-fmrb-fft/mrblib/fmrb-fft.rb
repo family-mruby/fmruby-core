@@ -5,20 +5,44 @@
 #   r   = Fmrb::Fft.bench(size: 512, iters: 100, backend: :c)
 #   #=> { backend: :c, us_avg: 41.2, us_min: 40.0, iters: 100, reps: 5, mag: "..." }
 #
-# The four backends (doc/mic_spectrum/plan.md):
+# The backends (doc/mic_spectrum/plan.md):
 #
 #   :ruby    fft_core.rb on the mruby VM
 #   :spinel  the same fft_core.rb, compiled to native code by Spinel
 #   :c       main/kernel/fmrb_fft_bench.c -- the plain baseline
 #   :dsp     esp-dsp's assembler radix-2, the ceiling (device builds only)
+#   :c64     the plain baseline again, in double
 #
-# The interface is the same for all four: samples and magnitudes cross as
+# :c64 is not an engine, it is a control. The two Ruby engines compute in
+# mrb_float, which is a double, while :c and :dsp are float32; on a chip whose
+# FPU is single precision only, that gap is a software emulation of double
+# rather than a rounding difference. :c64 prices it, so :spinel against :c64 is
+# the engine overhead alone (doc/mic_spectrum/impl_plan_spinel_perf.md, E1).
+#
+# Then the same three again with no floating point at all, from
+# fft_core_q15.rb / fmrb_fft_c_q15():
+#
+#   :ruby_q15  :spinel_q15  :c_q15
+#
+# Fixed point is what an embedded person reaches for on a chip like this, and
+# it is where an AOT-compiled Ruby has the most to gain: integers are machine
+# integers on Spinel, so the soft-float tax simply is not levied (E4). Their
+# magnitudes agree with the float backends to within a few counts rather than
+# exactly -- the per-stage shift costs a bit each stage.
+#
+# The interface is the same for all of them: samples and magnitudes cross as
 # little-endian int16 byte Strings, and every backend runs its repetitions
 # inside its own engine, so what is timed is the transform rather than the
 # call.
 module Fmrb
   class Fft
-    BACKENDS = [:ruby, :c, :dsp, :spinel]
+    BACKENDS = [:ruby, :c, :dsp, :spinel, :c64,
+                :ruby_q15, :c_q15, :spinel_q15]
+
+    # The ones that compute in fixed point. Their magnitudes are a few counts
+    # off the float ones by construction, so a caller checking agreement has to
+    # know which family a result came from.
+    Q15_BACKENDS = [:ruby_q15, :c_q15, :spinel_q15]
 
     # Repetitions of the timed run. avg comes from all of them, min from the
     # best -- min is the engine at its cleanest, avg includes whatever the
@@ -37,17 +61,25 @@ module Fmrb
       @size = size
       @backend = backend
       @core = ::FftCore.new(size) if backend == :ruby
-      Fmrb::Fft.spinel_open(size) if backend == :spinel
+      @core = ::FftCoreQ15.new(size) if backend == :ruby_q15
+      if backend == :spinel || backend == :spinel_q15
+        Fmrb::Fft.spinel_open(size)
+      end
     end
 
     def self.available?(backend)
       case backend
-      when :ruby then true
-      when :c then true
+      when :ruby, :ruby_q15 then true
+      when :c, :c64, :c_q15 then true
       when :dsp then ::FftNative.dsp_available?
-      when :spinel then ::FftNative.spinel_available?
+      when :spinel, :spinel_q15 then ::FftNative.spinel_available?
       else false
       end
+    end
+
+    # Does this backend compute in fixed point?
+    def self.q15?(backend)
+      Q15_BACKENDS.include?(backend)
     end
 
     # Microseconds from the same monotonic clock every backend is timed with.
@@ -64,7 +96,7 @@ module Fmrb
     # Returns [microseconds, magnitude bytes].
     def run(samples, iters)
       case @backend
-      when :ruby
+      when :ruby, :ruby_q15
         @core.load(samples)
         t0 = ::FftNative.micros
         @core.run(iters)
@@ -72,10 +104,16 @@ module Fmrb
         [us, @core.magnitudes_bytes]
       when :c
         ::FftNative.c_run(samples, @size, iters)
+      when :c64
+        ::FftNative.c64_run(samples, @size, iters)
+      when :c_q15
+        ::FftNative.c_q15_run(samples, @size, iters)
       when :dsp
         ::FftNative.dsp_run(samples, @size, iters)
       when :spinel
         ::FftNative.spinel_run(samples, @size, iters)
+      when :spinel_q15
+        ::FftNative.spinel_q15_run(samples, @size, iters)
       else
         [0, ""]
       end
@@ -156,7 +194,9 @@ module Fmrb
     # The Spinel backend keeps a runtime instance alive between calls; hand it
     # back when the object is done with. Harmless for the other three.
     def close
-      Fmrb::Fft.spinel_close if @backend == :spinel
+      if @backend == :spinel || @backend == :spinel_q15
+        Fmrb::Fft.spinel_close
+      end
       nil
     end
 

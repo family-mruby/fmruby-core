@@ -1,10 +1,16 @@
-# One FFT, four engines, timed side by side (doc/mic_spectrum/plan.md).
+# One FFT, several engines, timed side by side (doc/mic_spectrum/plan.md).
 #
 # The same transform runs as:
 #   ruby    fft_core.rb on the mruby VM
 #   spinel  the same fft_core.rb, compiled to native code by Spinel
 #   c       main/kernel/fmrb_fft_bench.c, the plain baseline
+#   c64     that same C in double -- the precision control, not an engine
 #   dsp     esp-dsp's assembler radix-2 (device builds only)
+#
+# then the same three engines again over fft_core_q15.rb / fmrb_fft_c_q15(),
+# which do the transform in fixed point and never touch the FPU:
+#
+#   c_q15   ruby_q15   spinel_q15
 #
 # Correctness first: every engine is fed the same synthetic sine and has to
 # agree on the peak bin and on the magnitudes before its microseconds mean
@@ -22,7 +28,21 @@ class FftBenchApp < FmrbApp
   TOP    = 14
   COL_X  = 4
 
-  BACKENDS = [:c, :ruby, :spinel, :dsp]
+  # :c64 sits next to :c on purpose -- it is the same C in double, the control
+  # for the precision the two Ruby engines are stuck with. The _q15 three are
+  # the same transform with no float in it at all (E1 and E4 in
+  # doc/mic_spectrum/impl_plan_spinel_perf.md).
+  BACKENDS = [:c, :c64, :ruby, :spinel, :dsp,
+              :c_q15, :ruby_q15, :spinel_q15]
+
+  # How far a backend's magnitudes may sit from the first engine's before the
+  # run counts as a disagreement. int16 rounding can put a float backend one
+  # count either way where a bin lands on a .5; fixed point gives up a bit per
+  # butterfly stage, so its bins are a handful of counts low against a peak in
+  # the thousands. Both numbers are checks on the arithmetic, not on the
+  # engine -- a backend that is really wrong misses by far more than this.
+  TOL_FLOAT = 1
+  TOL_Q15   = 24
 
   def initialize
     super()
@@ -66,35 +86,37 @@ class FftBenchApp < FmrbApp
 
     r = Fmrb::Fft.bench(size: SIZE, iters: ITERS, backend: backend,
                         reps: REPS, samples: @samples)
-    r[:agrees] = agrees?(r[:mag])
+    tol = Fmrb::Fft.q15?(backend) ? TOL_Q15 : TOL_FLOAT
+    dev = deviation(r[:mag])
+    r[:dev] = dev
+    r[:agrees] = (r[:peak_bin] == CYCLES) && dev <= tol
     @reference ||= r[:mag]
     @results << r
 
     Log.info("FFT #{backend}: avg=#{fmt(r[:us_avg])}us min=#{fmt(r[:us_min])}us " \
              "peak=#{r[:peak_bin]} (expected #{CYCLES}) agrees=#{r[:agrees]} " \
-             "size=#{SIZE} iters=#{ITERS} reps=#{REPS}")
+             "dev=#{dev} (tol #{tol}) size=#{SIZE} iters=#{ITERS} reps=#{REPS}")
   rescue => e
     @results << { backend: backend, error: e.message }
     Log.error("FFT #{backend}: #{e.class}: #{e.message}")
   end
 
-  # Same input, same algorithm: the magnitudes have to match the first engine's
-  # bin for bin. int16 rounding can differ by one where a bin sits on a .5, so
-  # one count of slack -- anything larger is a real disagreement.
-  def agrees?(mag)
-    return true if @reference.nil?
-    return false if mag.bytesize != @reference.bytesize
+  # Same input, same algorithm: how far the worst bin sits from the first
+  # engine's. Reported rather than reduced to a yes/no so the tolerances above
+  # stay honest -- a number nobody can see is a number nobody can argue with.
+  def deviation(mag)
+    return 0 if @reference.nil?
+    return 99999 if mag.bytesize != @reference.bytesize
+    worst = 0
     i = 0
     count = mag.bytesize / 2
     while i < count
-      a = Fmrb::Fft.bin(mag, i)
-      b = Fmrb::Fft.bin(@reference, i)
-      d = a - b
+      d = Fmrb::Fft.bin(mag, i) - Fmrb::Fft.bin(@reference, i)
       d = -d if d < 0
-      return false if d > 1
+      worst = d if d > worst
       i += 1
     end
-    true
+    worst
   end
 
   def fmt(v)
@@ -106,20 +128,20 @@ class FftBenchApp < FmrbApp
     @gfx.draw_text(COL_X, 2, "FFT #{SIZE} pt x #{ITERS}, #{REPS} runs", FmrbGfx::WHITE)
 
     y = TOP
-    @gfx.draw_text(COL_X, y, "engine    avg us   min us  peak  ok", FmrbGfx::GRAY)
+    @gfx.draw_text(COL_X, y, "engine       avg us   min us  peak  dev  ok", FmrbGfx::GRAY)
     y += LINE_H
 
     @results.each do |r|
       name = r[:backend].to_s
       if r[:skipped]
-        @gfx.draw_text(COL_X, y, sprintf("%-8s  not in this build", name), FmrbGfx::GRAY)
+        @gfx.draw_text(COL_X, y, sprintf("%-10s  not in this build", name), FmrbGfx::GRAY)
       elsif r[:error]
-        @gfx.draw_text(COL_X, y, sprintf("%-8s  %s", name, r[:error]), FmrbGfx::RED)
+        @gfx.draw_text(COL_X, y, sprintf("%-10s  %s", name, r[:error]), FmrbGfx::RED)
       else
         color = r[:agrees] ? FmrbGfx::WHITE : FmrbGfx::RED
         @gfx.draw_text(COL_X, y,
-                       sprintf("%-8s %8.1f %8.1f %5d  %s",
-                               name, r[:us_avg], r[:us_min], r[:peak_bin],
+                       sprintf("%-10s %8.1f %8.1f %5d %4d  %s",
+                               name, r[:us_avg], r[:us_min], r[:peak_bin], r[:dev],
                                r[:agrees] ? "yes" : "NO"),
                        color)
       end

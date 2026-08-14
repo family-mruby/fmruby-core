@@ -79,6 +79,18 @@ static mrb_value mrb_fft_c_run(mrb_state *mrb, mrb_value self)
     return fft_run_with(mrb, fmrb_fft_c);
 }
 
+static mrb_value mrb_fft_c64_run(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    return fft_run_with(mrb, fmrb_fft_c_f64);
+}
+
+static mrb_value mrb_fft_c_q15_run(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    return fft_run_with(mrb, fmrb_fft_c_q15);
+}
+
 static mrb_value mrb_fft_dsp_run(mrb_state *mrb, mrb_value self)
 {
     (void)self;
@@ -129,6 +141,12 @@ static mrb_value mrb_fft_spinel_run(mrb_state *mrb, mrb_value self)
     return fft_run_with(mrb, fmrb_fft_spinel_run);
 }
 
+static mrb_value mrb_fft_spinel_q15_run(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    return fft_run_with(mrb, fmrb_fft_spinel_run_q15);
+}
+
 static mrb_value mrb_fft_spinel_end(mrb_state *mrb, mrb_value self)
 {
     (void)self;
@@ -143,6 +161,8 @@ void mrb_fmrb_fft_init(mrb_state *mrb)
 
     mrb_define_module_function(mrb, m, "micros", mrb_fft_micros, MRB_ARGS_NONE());
     mrb_define_module_function(mrb, m, "c_run", mrb_fft_c_run, MRB_ARGS_REQ(3));
+    mrb_define_module_function(mrb, m, "c64_run", mrb_fft_c64_run, MRB_ARGS_REQ(3));
+    mrb_define_module_function(mrb, m, "c_q15_run", mrb_fft_c_q15_run, MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, m, "dsp_run", mrb_fft_dsp_run, MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, m, "dsp_available?", mrb_fft_dsp_available, MRB_ARGS_NONE());
     mrb_define_module_function(mrb, m, "release", mrb_fft_release, MRB_ARGS_NONE());
@@ -150,6 +170,7 @@ void mrb_fmrb_fft_init(mrb_state *mrb)
     mrb_define_module_function(mrb, m, "spinel_available?", mrb_fft_spinel_available, MRB_ARGS_NONE());
     mrb_define_module_function(mrb, m, "spinel_begin", mrb_fft_spinel_begin, MRB_ARGS_REQ(1));
     mrb_define_module_function(mrb, m, "spinel_run", mrb_fft_spinel_run, MRB_ARGS_REQ(3));
+    mrb_define_module_function(mrb, m, "spinel_q15_run", mrb_fft_spinel_q15_run, MRB_ARGS_REQ(3));
     mrb_define_module_function(mrb, m, "spinel_end", mrb_fft_spinel_end, MRB_ARGS_NONE());
 }
 

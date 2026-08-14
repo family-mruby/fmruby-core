@@ -65,6 +65,7 @@ static int      s_open;
 static const int16_t *s_in;
 static int             s_n;
 static int             s_iters;
+static int             s_mode;   /* 0 = the double core, 1 = the Q15 one */
 static int16_t        *s_mag;
 static int             s_mag_len;
 static uint32_t        s_us;
@@ -104,7 +105,8 @@ int fmrb_fft_spinel_begin(int size)
     return 0;
 }
 
-uint32_t fmrb_fft_spinel_run(const int16_t *in, int n, int iters, int16_t *mag_out)
+static uint32_t fft_spinel_run_mode(const int16_t *in, int n, int iters,
+                                    int16_t *mag_out, int mode)
 {
     if (!s_open || !in || iters < 1) {
         return 0;
@@ -112,6 +114,7 @@ uint32_t fmrb_fft_spinel_run(const int16_t *in, int n, int iters, int16_t *mag_o
     s_in = in;
     s_n = n;
     s_iters = iters;
+    s_mode = mode;
     s_mag = mag_out;
     s_mag_len = 0;
     s_us = 0;
@@ -124,6 +127,16 @@ uint32_t fmrb_fft_spinel_run(const int16_t *in, int n, int iters, int16_t *mag_o
     s_in = NULL;
     s_mag = NULL;
     return s_us;
+}
+
+uint32_t fmrb_fft_spinel_run(const int16_t *in, int n, int iters, int16_t *mag_out)
+{
+    return fft_spinel_run_mode(in, n, iters, mag_out, 0);
+}
+
+uint32_t fmrb_fft_spinel_run_q15(const int16_t *in, int n, int iters, int16_t *mag_out)
+{
+    return fft_spinel_run_mode(in, n, iters, mag_out, 1);
 }
 
 void fmrb_fft_spinel_end(void)
@@ -162,6 +175,12 @@ int fmrb_fft_spx_iters(void)
     return s_iters;
 }
 
+/* Which of the two cores in the program to run: 0 = double, 1 = Q15. */
+int fmrb_fft_spx_mode(void)
+{
+    return s_mode;
+}
+
 /* The same clock the C backend uses, so the two numbers mean the same thing. */
 int fmrb_fft_spx_micros(void)
 {
@@ -196,6 +215,12 @@ int fmrb_fft_spinel_begin(int size) { (void)size; return -1; }
 void fmrb_fft_spinel_end(void) { }
 
 uint32_t fmrb_fft_spinel_run(const int16_t *in, int n, int iters, int16_t *mag_out)
+{
+    (void)in; (void)n; (void)iters; (void)mag_out;
+    return 0;
+}
+
+uint32_t fmrb_fft_spinel_run_q15(const int16_t *in, int n, int iters, int16_t *mag_out)
 {
     (void)in; (void)n; (void)iters; (void)mag_out;
     return 0;

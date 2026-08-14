@@ -80,13 +80,16 @@ namespace :spinel do
     end
     # FFT: not a VM but a library -- one Spinel-compiled function an mruby task
     # calls (doc/mic_spectrum). Its Ruby is not combined from parts; it is one
-    # file whose require_relative lines the compiler splices. fft_core.rb is
-    # copied in from the gem first, so the :ruby and :spinel backends can never
-    # run different code (the copy is gitignored; the gem holds the original).
+    # file whose require_relative lines the compiler splices. The two cores
+    # (double and Q15) are copied in from the gem first, so the :ruby* and
+    # :spinel* backends can never run different code (the copies are
+    # gitignored; the gem holds the originals).
     if FMRB_FFT_SPINEL
-      core_src = "lib/add/picoruby-fmrb-fft/mrblib/fft_core.rb"
-      abort "#{core_src} is missing" unless File.exist?(core_src)
-      cp core_src, "#{SPINEL_SRC_DIR}/fft_core.rb"
+      ["fft_core.rb", "fft_core_q15.rb"].each do |core|
+        core_src = "lib/add/picoruby-fmrb-fft/mrblib/#{core}"
+        abort "#{core_src} is missing" unless File.exist?(core_src)
+        cp core_src, "#{SPINEL_SRC_DIR}/#{core}"
+      end
       f_rb = "#{SPINEL_SRC_DIR}/fft_spinel.rb"
       f_c  = "#{SPINEL_GEN_DIR}/fft_spinel.c"
       sh "#{bin} --no-main --entry fmrb_fft_spinel_entry -I #{SPINEL_SRC_DIR} -c #{f_rb} -o #{f_c}"

@@ -49,6 +49,30 @@ uint32_t fmrb_fft_micros(void);
 uint32_t fmrb_fft_c(const int16_t *in, int n, int iters, int16_t *mag_out);
 
 /**
+ * The same transform, computed in double instead of float.
+ *
+ * Not an alternative for callers to choose between -- it exists to price one
+ * variable in the engine comparison. fft_core.rb computes in mrb_float, which
+ * is a double on both mruby and Spinel, so `c` against `c64` is the cost of
+ * that precision (on a single-precision FPU, a software emulation of double)
+ * and `spinel` against `c64` is the engine overhead at equal precision.
+ * Same arguments and same return as fmrb_fft_c.
+ */
+uint32_t fmrb_fft_c_f64(const int16_t *in, int n, int iters, int16_t *mag_out);
+
+/**
+ * The same transform in Q15 fixed point -- no floating point anywhere in the
+ * measured region.
+ *
+ * The counterpart of mrblib/fft_core_q15.rb, which is what the :ruby_q15 and
+ * :spinel_q15 backends run. Magnitudes come out within a few counts of the
+ * float version rather than bit-identical: the per-stage shift that keeps the
+ * arithmetic inside 32 bits also throws away the bottom bit each time. Same
+ * arguments and same return as fmrb_fft_c.
+ */
+uint32_t fmrb_fft_c_q15(const int16_t *in, int n, int iters, int16_t *mag_out);
+
+/**
  * The same, through esp-dsp's assembler-optimised radix-2 (the ceiling of the
  * four-way comparison). Returns 0 on builds without esp-dsp (the Linux
  * simulator), where the caller should report the backend as unavailable.

@@ -42,6 +42,13 @@ int fmrb_fft_spinel_begin(int size);
  */
 uint32_t fmrb_fft_spinel_run(const int16_t *in, int n, int iters, int16_t *mag_out);
 
+/**
+ * The same, running the Q15 fixed-point core (mrblib/fft_core_q15.rb) instead
+ * of the double one. Same instance, same pool -- both cores are compiled into
+ * the one Spinel program and selected per call.
+ */
+uint32_t fmrb_fft_spinel_run_q15(const int16_t *in, int n, int iters, int16_t *mag_out);
+
 /** Tear the instance down and release its pool. */
 void fmrb_fft_spinel_end(void);
 
