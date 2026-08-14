@@ -1,2 +1,16 @@
-# Spinel-generated C (produced by `rake spinel:gen`)
-gen/
+# This directory holds two kinds of file:
+#   - the real Spinel sources (checked in, whitelisted below)
+#   - build artifacts produced by `rake spinel:gen`: the generated C in gen/ and
+#     staged copies of each gem's entry/FFI/core (fft_*, spinel_hello_*, ...).
+# Ignore everything, then whitelist the real sources, so a new Spinel gem's
+# staged copies need no gitignore change.
+*
+!.gitignore
+!fmrb_ffi.rb
+!fmrb_app_ffi.rb
+!fmrb_editor_ffi.rb
+!fmrb_app_base_spinel.rb
+!fmrb_kernel_base_spinel.rb
+!hello_kernel.rb
+!msgpack_pure.rb
+!editor_debug_stub.rb

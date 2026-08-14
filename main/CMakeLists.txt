@@ -25,8 +25,13 @@ set(COMPONENT_SRCS
     # independent: the Linux build is where correctness is settled, the device
     # is where the numbers are taken. The shim compiles to stubs unless
     # FMRB_FFT_SPINEL is defined below.
-    "kernel/fmrb_fft_bench.c"
-    "kernel/fmrb_fft_spinel.c"
+    # gem-local firmware C (picoruby-fmrb-fft/native): kept with the rest of the
+    # gem, compiled into main by path. NOT under src/ or ports/ of the gem, so
+    # the mrbgem build does not also compile it (no duplicate symbols).
+    "${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-fft/native/fmrb_fft_bench.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c"
+    # SpinelHello sample gem (minimal "Spinel as a gem"): always built.
+    "${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c"
 )
 set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
@@ -94,16 +99,15 @@ endif()
 
 # Compile the Spinel machinery whenever ANY VM is Spinel -- or when the FFT
 # backend above needs the runtime.
-set(FMRB_ANY_SPINEL FALSE)
-if(FMRB_KERNEL_ENGINE STREQUAL "spinel" OR FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel"
-   OR FMRB_APP_ENGINE_EDITOR STREQUAL "spinel" OR FMRB_FFT_SPINEL STREQUAL "1")
-    set(FMRB_ANY_SPINEL TRUE)
-    include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_spinel.cmake)
-    # sp_net_bin_len (:binstr length) -- referenced by whichever shim(s) below
-    # compile. Defined here (not in a per-engine shim) so a mixed
-    # mruby-kernel + Spinel-desktop build still resolves it.
-    list(APPEND COMPONENT_SRCS "kernel/fmrb_spx_common.c")
-endif()
+# Always TRUE: the SpinelHello sample gem (picoruby-fmrb-spinel-hello) is always
+# built and always calls a Spinel library, so the runtime is always compiled.
+# Individual VMs (kernel/desktop/editor) and the FFT backend can still be mruby.
+set(FMRB_ANY_SPINEL TRUE)
+include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_spinel.cmake)
+# sp_net_bin_len (:binstr length) -- referenced by whichever shim(s) below
+# compile. Defined here (not in a per-engine shim) so a mixed
+# mruby-kernel + Spinel-desktop build still resolves it.
+list(APPEND COMPONENT_SRCS "kernel/fmrb_spx_common.c")
 
 if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     prepare_ruby_spinel_source(fmrb_kernel_combined ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
@@ -125,11 +129,15 @@ endif()
 
 if(FMRB_FFT_SPINEL STREQUAL "1")
     # Not a VM: one Spinel-compiled function, called from an mruby task through
-    # kernel/fmrb_fft_spinel.c (which is in COMPONENT_SRCS unconditionally and
-    # compiles to stubs without this define).
+    # picoruby-fmrb-fft/native/fmrb_fft_spinel.c (in COMPONENT_SRCS
+    # unconditionally, compiles to stubs without this define).
     prepare_ruby_spinel_source(fft_spinel ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
     message(STATUS "FMRB_FFT_SPINEL=1: the Spinel FFT backend is in this build")
 endif()
+
+# SpinelHello sample gem: a Spinel library entry, always built (no opt-out flag,
+# unlike FFT). Its receiver is in lib/add/picoruby-fmrb-spinel-hello/native/.
+prepare_ruby_spinel_source(spinel_hello_entry ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
 
 if(FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
     prepare_ruby_spinel_source(editor_combined ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
@@ -241,7 +249,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/debug" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/debug" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
     EMBED_FILES ${RD_EMBED_FILES}
 )
@@ -385,6 +393,14 @@ if(FMRB_FFT_SPINEL STREQUAL "1")
         PROPERTIES COMPILE_OPTIONS
         "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
 endif()
+
+# SpinelHello sample gem: generate + compile its Spinel entry (always built).
+generate_ruby_spinel_command(
+    ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/spinel_hello_entry.rb
+    spinel_hello_entry ${FMRB_SPINEL_GEN_DIR})
+set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/spinel_hello_entry.c
+    PROPERTIES COMPILE_OPTIONS
+    "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
 
 # Desktop app engine: same wiring for the Spinel-compiled system_desktop program
 # (spawned NATIVE via fmrb_app_spawner.c). Independent of the kernel engine.

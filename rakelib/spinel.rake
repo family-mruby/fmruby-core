@@ -79,16 +79,21 @@ namespace :spinel do
       puts "Spinel generated #{e_c}"
     end
     # FFT: not a VM but a library -- one Spinel-compiled function an mruby task
-    # calls (doc/mic_spectrum). Its Ruby is not combined from parts; it is one
-    # file whose require_relative lines the compiler splices. The two cores
-    # (double and Q15) are copied in from the gem first, so the :ruby* and
-    # :spinel* backends can never run different code (the copies are
-    # gitignored; the gem holds the originals).
+    # calls (doc/mic_spectrum). All of the gem's Ruby lives in the gem
+    # (lib/add/picoruby-fmrb-fft): the entry + its FFI under spinel/, the two
+    # cores under mrblib/. Stage them into SPINEL_SRC_DIR so the compiler's
+    # require_relative resolves them in one dir (the staged copies are
+    # gitignored; the gem holds the originals, so :ruby* and :spinel* can never
+    # run different code).
     if FMRB_FFT_SPINEL
-      ["fft_core.rb", "fft_core_q15.rb"].each do |core|
-        core_src = "lib/add/picoruby-fmrb-fft/mrblib/#{core}"
-        abort "#{core_src} is missing" unless File.exist?(core_src)
-        cp core_src, "#{SPINEL_SRC_DIR}/#{core}"
+      {
+        "lib/add/picoruby-fmrb-fft/spinel/fft_spinel.rb"   => "fft_spinel.rb",
+        "lib/add/picoruby-fmrb-fft/spinel/fmrb_fft_ffi.rb" => "fmrb_fft_ffi.rb",
+        "lib/add/picoruby-fmrb-fft/mrblib/fft_core.rb"     => "fft_core.rb",
+        "lib/add/picoruby-fmrb-fft/mrblib/fft_core_q15.rb" => "fft_core_q15.rb",
+      }.each do |src, dst|
+        abort "#{src} is missing" unless File.exist?(src)
+        cp src, "#{SPINEL_SRC_DIR}/#{dst}"
       end
       f_rb = "#{SPINEL_SRC_DIR}/fft_spinel.rb"
       f_c  = "#{SPINEL_GEN_DIR}/fft_spinel.c"
@@ -103,6 +108,21 @@ namespace :spinel do
          "-I #{SPINEL_SRC_DIR} -c #{f_rb} -o #{f_c}"
       puts "Spinel generated #{f_c}"
     end
+    # SpinelHello: the minimal sample gem. Always built (no flag). Its sources
+    # live in the gem (lib/add/picoruby-fmrb-spinel-hello); stage the entry, FFI
+    # and core into SPINEL_SRC_DIR so require_relative resolves in one dir.
+    {
+      "lib/add/picoruby-fmrb-spinel-hello/spinel/spinel_hello_entry.rb" => "spinel_hello_entry.rb",
+      "lib/add/picoruby-fmrb-spinel-hello/spinel/spinel_hello_ffi.rb"   => "spinel_hello_ffi.rb",
+      "lib/add/picoruby-fmrb-spinel-hello/mrblib/spinel_hello_core.rb"  => "spinel_hello_core.rb",
+    }.each do |src, dst|
+      abort "#{src} is missing" unless File.exist?(src)
+      cp src, "#{SPINEL_SRC_DIR}/#{dst}"
+    end
+    sh "#{bin} --no-main --entry spinel_hello_entry " \
+       "-I #{SPINEL_SRC_DIR} -c #{SPINEL_SRC_DIR}/spinel_hello_entry.rb " \
+       "-o #{SPINEL_GEN_DIR}/spinel_hello_entry.c"
+    puts "Spinel generated #{SPINEL_GEN_DIR}/spinel_hello_entry.c"
     # Desktop: same, for system_desktop (entry system_desktop_entry).
     if FMRB_APP_ENGINE_DESKTOP == "spinel"
       d_rb = "#{SPINEL_GEN_DIR}/system_desktop_combined.rb"

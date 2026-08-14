@@ -90,6 +90,11 @@ task :setup do
   # rake spinel:gen -- one file, both engines.
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-fft"
   sh "cp -rf lib/add/picoruby-fmrb-fft #{mrbgem_path}/"
+  # spinel-hello (minimal sample of "Spinel as a gem": doc/spinel_aot/
+  # adding_a_spinel_gem.md). native/ and spinel/ ride along in the copy but are
+  # not compiled from here (main compiles native/, rake spinel:gen the entry).
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-spinel-hello"
+  sh "cp -rf lib/add/picoruby-fmrb-spinel-hello #{mrbgem_path}/"
   # midi (imported from Midori; Ruby protocol layer only, see the gem's
   # FAMILY_MRUBY_PORT.md)
   sh "rm -rf #{mrbgem_path}/picoruby-midi"

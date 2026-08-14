@@ -65,6 +65,7 @@ if(IDF_TARGET STREQUAL "linux")
     file(GLOB FMRB_MSGPACK_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/ports/esp32/*.c")
     file(GLOB FMRB_BMP332_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/ports/esp32/*.c")
     file(GLOB FMRB_FFT_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-fft/ports/esp32/*.c")
+    file(GLOB FMRB_SPINEL_HELLO_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-spinel-hello/ports/esp32/*.c")
     file(GLOB FMRB_DEBUG_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-debug/ports/esp32/*.c")
     file(GLOB FMRB_EDITOR_CORE_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-editor-core/ports/esp32/*.c")
     file(GLOB FMRB_MIDI_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-midi/ports/esp32/*.c")
@@ -78,6 +79,7 @@ if(IDF_TARGET STREQUAL "linux")
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${FMRB_BMP332_PORTS_SRCS}
         ${FMRB_FFT_PORTS_SRCS}
+        ${FMRB_SPINEL_HELLO_PORTS_SRCS}
         ${FMRB_DEBUG_PORTS_SRCS}
         ${FMRB_EDITOR_CORE_PORTS_SRCS}
         ${FMRB_MIDI_PORTS_SRCS}
@@ -105,6 +107,7 @@ else()
     file(GLOB FMRB_MSGPACK_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-msgpack/ports/esp32/*.c")
     file(GLOB FMRB_BMP332_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-bmp332/ports/esp32/*.c")
     file(GLOB FMRB_FFT_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-fft/ports/esp32/*.c")
+    file(GLOB FMRB_SPINEL_HELLO_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-spinel-hello/ports/esp32/*.c")
     file(GLOB FMRB_DEBUG_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-debug/ports/esp32/*.c")
     file(GLOB FMRB_EDITOR_CORE_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-editor-core/ports/esp32/*.c")
     file(GLOB FMRB_MIDI_PORTS_SRCS "${COMPONENT_DIR}/picoruby/mrbgems/picoruby-fmrb-midi/ports/esp32/*.c")
@@ -119,6 +122,7 @@ else()
         ${FMRB_MSGPACK_PORTS_SRCS}
         ${FMRB_BMP332_PORTS_SRCS}
         ${FMRB_FFT_PORTS_SRCS}
+        ${FMRB_SPINEL_HELLO_PORTS_SRCS}
         ${FMRB_DEBUG_PORTS_SRCS}
         ${FMRB_EDITOR_CORE_PORTS_SRCS}
         ${FMRB_MIDI_PORTS_SRCS}

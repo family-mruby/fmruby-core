@@ -79,8 +79,6 @@ tool/web/wasm/help.json
 node_modules/
 tool/web/test/shots/
 
-# The FFT cores are copied here from the gem by rake spinel:gen (one file per
-# core, two engines each -- the originals live in
-# lib/add/picoruby-fmrb-fft/mrblib/).
-main/prebuild_scripts/spinel/fft_core.rb
-main/prebuild_scripts/spinel/fft_core_q15.rb
+# Spinel gem sources staged into main/prebuild_scripts/spinel/ by rake spinel:gen
+# are ignored by that directory's own .gitignore (ignore-all + whitelist the real
+# sources), so a new gem needs no entry here.

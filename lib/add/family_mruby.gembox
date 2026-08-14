@@ -28,6 +28,7 @@ MRuby::GemBox.new do |conf|
   # One FFT, four engines (doc/mic_spectrum). Before the app gem: the
   # microphone demo reaches for it through FmrbApp.
   conf.gem core: "picoruby-fmrb-fft"
+  conf.gem core: "picoruby-fmrb-spinel-hello"
   conf.gem core: "picoruby-fmrb-app"
   # Editor document model in C (POOL_ID_EDITOR_DOC arena). After picoruby-fmrb-app
   # so the loading order stays "framework, then the pieces that lean on it".
