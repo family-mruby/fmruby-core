@@ -123,6 +123,25 @@ namespace :spinel do
        "-I #{SPINEL_SRC_DIR} -c #{SPINEL_SRC_DIR}/spinel_hello_entry.rb " \
        "-o #{SPINEL_GEN_DIR}/spinel_hello_entry.c"
     puts "Spinel generated #{SPINEL_GEN_DIR}/spinel_hello_entry.c"
+    # Raycast: the raycaster's ray loop as a gem (doc/raycast_spinel). Always
+    # built. Its core is shared with the :ruby backend, so it is staged from
+    # mrblib -- one file, both engines.
+    {
+      "lib/add/picoruby-fmrb-raycast/spinel/raycast_entry.rb" => "raycast_entry.rb",
+      "lib/add/picoruby-fmrb-raycast/spinel/raycast_ffi.rb"   => "raycast_ffi.rb",
+      "lib/add/picoruby-fmrb-raycast/mrblib/raycast_core.rb"  => "raycast_core.rb",
+    }.each do |src, dst|
+      abort "#{src} is missing" unless File.exist?(src)
+      cp src, "#{SPINEL_SRC_DIR}/#{dst}"
+    end
+    # --persistent-statics: called once per frame, and the core it caches holds
+    # the map and two 360-entry trig tables. Rebuilding those per call would
+    # cost more than the rays (the mistake the FFT gem measured). Must match
+    # main/CMakeLists.txt's generate_ruby_spinel_command for this entry.
+    sh "#{bin} --no-main --entry raycast_entry --persistent-statics " \
+       "-I #{SPINEL_SRC_DIR} -c #{SPINEL_SRC_DIR}/raycast_entry.rb " \
+       "-o #{SPINEL_GEN_DIR}/raycast_entry.c"
+    puts "Spinel generated #{SPINEL_GEN_DIR}/raycast_entry.c"
     # Desktop: same, for system_desktop (entry system_desktop_entry).
     if FMRB_APP_ENGINE_DESKTOP == "spinel"
       d_rb = "#{SPINEL_GEN_DIR}/system_desktop_combined.rb"

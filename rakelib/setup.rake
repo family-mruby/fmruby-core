@@ -95,6 +95,11 @@ task :setup do
   # not compiled from here (main compiles native/, rake spinel:gen the entry).
   sh "rm -rf #{mrbgem_path}/picoruby-fmrb-spinel-hello"
   sh "cp -rf lib/add/picoruby-fmrb-spinel-hello #{mrbgem_path}/"
+  # raycast (the raycaster's inner loop on both engines: doc/raycast_spinel).
+  # Same shape as fft: mrblib/raycast_core.rb is what the Spinel backend
+  # compiles too, staged by rake spinel:gen -- one file, both engines.
+  sh "rm -rf #{mrbgem_path}/picoruby-fmrb-raycast"
+  sh "cp -rf lib/add/picoruby-fmrb-raycast #{mrbgem_path}/"
   # midi (imported from Midori; Ruby protocol layer only, see the gem's
   # FAMILY_MRUBY_PORT.md)
   sh "rm -rf #{mrbgem_path}/picoruby-midi"

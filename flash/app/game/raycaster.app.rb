@@ -1,7 +1,17 @@
 # Raycaster - Wolfenstein 3D style FPS demo
 # Controls:
-#   Keyboard: Left/Right = Turn, Up/Down = Move, Space = Shoot
+#   Keyboard: Left/Right = Turn, Up/Down = Move, Space = Shoot, B = engine
 #   Gamepad: Left stick/D-pad = Move+Turn
+#
+# The ray loop is not in this file. It lives in the picoruby-fmrb-raycast gem,
+# which runs the same Ruby on two engines: the mruby VM interpreting it, and
+# Spinel running it as compiled native code. B swaps between them mid-game and
+# the HUD shows how long the last frame's rays took, so the difference appears
+# under a picture that does not change (doc/raycast_spinel/plan.md).
+#
+# A raycaster suits that comparison better than the FFT did. Every value in the
+# cast is a fixed-point integer, so there is no double arithmetic being emulated
+# in software underneath -- what the two numbers differ by is the engine.
 
 class RaycasterApp < FmrbApp
   # Fixed-point scale (multiply by 256)
@@ -10,10 +20,13 @@ class RaycasterApp < FmrbApp
   FP_HALF = 128
 
   # Viewport
-  VP_W = 150
+  VP_W = 160
   VP_H = 150
-  STRIP_W = 6
-  NUM_RAYS = 25  # VP_W / STRIP_W
+  STRIP_W = 4
+  # VP_W / STRIP_W, and it must equal RaycastCore::NUM_RAYS -- the gem decides
+  # how many rays come back, this decides how they are drawn. Changing one
+  # without the other leaves strips undrawn or reads past the buffer.
+  NUM_RAYS = 40
 
   # Player
   MOVE_SPEED = 40   # fixed-point units per step
@@ -46,36 +59,81 @@ class RaycasterApp < FmrbApp
     [0xFC, 0x90],  # 4: yellow wall, dark yellow
   ]
 
-  # 12x12 map (0=empty, 1-4=wall types)
-  MAP_W = 12
-  MAP_H = 12
+  # 32x32 map (0=empty, 1-4=wall types). Small rooms off two long corridors,
+  # a hall at each end. Built and checked by a generator rather than by hand:
+  # every open cell is reachable from the player's start, and the long runs are
+  # deliberate -- a ray down the 30-cell corridor reaches MAX_STEPS, which is
+  # what makes the cast heavy enough to see the engine in the frame rate.
+  MAP_W = 32
+  MAP_H = 32
   WORLD_MAP = [
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
-    1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
-    1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1,
-    1, 0, 0, 2, 0, 0, 0, 0, 3, 0, 0, 1,
-    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    1, 1, 0, 0, 0, 2, 0, 0, 0, 0, 4, 1,
-    1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 1,
-    1, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1,
-    1, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 1,
-    1, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 1,
-    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
-    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+    1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 1,
+    1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 4, 4, 0, 0, 0, 0, 4, 4, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 0, 0, 0, 0, 4, 4, 0, 0, 1,
+    1, 2, 2, 2, 2, 2, 2, 2, 0, 0, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 4, 4, 0, 0, 0, 0, 4, 4, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 4, 4, 0, 0, 0, 0, 4, 4, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 0, 1, 1, 1, 3, 3, 3, 3, 3, 3, 3, 0, 3, 3, 3, 3, 3, 3, 1,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 4, 4, 4, 4, 4, 4, 4, 0, 0, 4, 4, 4, 4, 4, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1,
+    1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 4, 0, 2, 2, 2, 2, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1,
+    1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 4, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 4, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 4, 0, 2, 0, 0, 0, 3, 3, 0, 0, 0, 0, 3, 3, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 4, 0, 2, 0, 0, 0, 3, 3, 0, 0, 0, 0, 3, 3, 0, 0, 0, 1,
+    1, 4, 4, 4, 4, 4, 4, 4, 0, 0, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 4, 4, 4, 4, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 4, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 4, 0, 2, 0, 0, 0, 3, 3, 0, 0, 0, 0, 3, 3, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 0, 0, 2, 0, 0, 0, 3, 3, 0, 0, 0, 0, 3, 3, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 4, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 0, 0, 0, 0, 0, 0, 4, 0, 0, 4, 0, 0, 0, 4, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
   ]
 
   # FOV = 60 degrees
   FOV = 60
   HALF_FOV = 30
 
+  # The engines the B key rotates through. :ruby first so the demo opens on the
+  # interpreter and the improvement is what you press for.
+  BACKENDS = [:ruby, :spinel]
+
+  # How long on_update asks to sleep between frames. The old 100ms was three
+  # quarters of a frame on any machine, which hid everything else: the ray cast
+  # was 7% of a frame even on mruby, so making it 49x faster moved nothing you
+  # could see. At 33ms the frame is the work rather than the wait, and the
+  # engine shows up as a frame rate.
+  #
+  # Only on the boards with the headroom for it. FmrbConst::BOARD is the
+  # hardware identity an app gets ("tab5" / "naryav4" / "narya_v3" / "linux");
+  # add a name here to opt another machine in. Note the Linux simulator reports
+  # "linux" whatever it is simulating, so it keeps the slower frame.
+  FAST_BOARDS = ["tab5"]
+  FRAME_MS_FAST = 33
+  FRAME_MS_SLOW = 100
+
   def initialize
     super()
     @input = {}
 
-    # Build sin/cos lookup table (fixed-point, 360 entries)
-    # sin_table[deg] = (sin(deg) * 256).to_i
-    @sin_tbl = build_sin_table
-    @cos_tbl = build_cos_table
+    # The ray loop and its trig tables belong to the gem now.
+    @caster = nil
+    @backend_idx = 0
+    @last_us = 0
+    @draw_us = 0
+    @draw_count = 0
+    @last_log_us = 0
 
     # Player position in fixed-point (start at cell 1.5, 1.5)
     @px = FP_ONE + FP_HALF  # 1.5 cells
@@ -88,54 +146,65 @@ class RaycasterApp < FmrbApp
     @hit_flash = 0
     @score = 0
 
-    # Enemies: array of {x:, y:, alive:}  (fixed-point positions)
+    # Enemies: array of {x:, y:, alive:}  (fixed-point positions). One in each
+    # hall, one in each corridor -- all cells checked open against the map
+    # above, since a wall is a fine place to stand and a poor place to be shot.
     @enemies = [
-      { x: 6 * CELL_SIZE + FP_HALF, y: 3 * CELL_SIZE + FP_HALF, alive: true },
-      { x: 4 * CELL_SIZE + FP_HALF, y: 7 * CELL_SIZE + FP_HALF, alive: true },
-      { x: 9 * CELL_SIZE + FP_HALF, y: 8 * CELL_SIZE + FP_HALF, alive: true },
-      { x: 6 * CELL_SIZE + FP_HALF, y: 9 * CELL_SIZE + FP_HALF, alive: true },
-      { x: 10 * CELL_SIZE + FP_HALF, y: 2 * CELL_SIZE + FP_HALF, alive: true },
+      { x: 24 * CELL_SIZE + FP_HALF, y: 5 * CELL_SIZE + FP_HALF, alive: true },
+      { x: 25 * CELL_SIZE + FP_HALF, y: 11 * CELL_SIZE + FP_HALF, alive: true },
+      { x: 20 * CELL_SIZE + FP_HALF, y: 15 * CELL_SIZE + FP_HALF, alive: true },
+      { x: 8 * CELL_SIZE + FP_HALF, y: 20 * CELL_SIZE + FP_HALF, alive: true },
+      { x: 24 * CELL_SIZE + FP_HALF, y: 26 * CELL_SIZE + FP_HALF, alive: true },
     ]
   end
 
   def on_create
     Log.info("Raycaster on_create")
-    @depth_buf = cast_all_rays
+    @frame_ms = FAST_BOARDS.include?(FmrbConst::BOARD) ? FRAME_MS_FAST : FRAME_MS_SLOW
+    Log.info("Raycaster board=#{FmrbConst::BOARD} frame=#{@frame_ms}ms")
+    open_caster
+    cast_rays
     draw_frame
   end
 
-  # ---- Trig LUT ----
+  # ---- Ray engine ----
 
-  def build_sin_table
-    tbl = []
-    deg = 0
-    while deg < 360
-      rad = deg * Math::PI / 180.0
-      tbl << (Math.sin(rad) * FP_ONE).to_i
-      deg += 1
-    end
-    tbl
+  def backend
+    BACKENDS[@backend_idx]
   end
 
-  def build_cos_table
-    tbl = []
-    deg = 0
-    while deg < 360
-      rad = deg * Math::PI / 180.0
-      tbl << (Math.cos(rad) * FP_ONE).to_i
-      deg += 1
+  # Build the caster for the current backend and hand it the world. Falls
+  # through to the next engine if this build has not got the one asked for,
+  # rather than failing to start.
+  def open_caster
+    @caster.close if @caster
+    @caster = nil
+    tried = 0
+    while tried < BACKENDS.size
+      if Fmrb::Raycast.available?(backend)
+        @caster = Fmrb::Raycast.new(backend: backend)
+        @caster.set_map(WORLD_MAP, MAP_W, MAP_H)
+        Log.info("Raycaster engine: #{backend}")
+        return
+      end
+      @backend_idx = (@backend_idx + 1) % BACKENDS.size
+      tried += 1
     end
-    tbl
+    raise RuntimeError, "no raycast engine in this build"
+  end
+
+  def cast_rays
+    @last_us, @depth_buf = @caster.cast(@px, @py, @pa)
   end
 
   # ---- Helpers ----
 
   def fp_sin(deg)
-    @sin_tbl[deg % 360]
+    @caster.fp_sin(deg)
   end
 
   def fp_cos(deg)
-    @cos_tbl[deg % 360]
+    @caster.fp_cos(deg)
   end
 
   def map_at(mx, my)
@@ -185,6 +254,10 @@ class RaycasterApp < FmrbApp
         @shoot_pressed = true
       elsif ev[:character] == 113  # q = Quit
         stop
+      elsif ev[:character] == 98 || ev[:character] == 66  # b / B = next engine
+        @backend_idx = (@backend_idx + 1) % BACKENDS.size
+        open_caster
+        @needs_draw = true
       end
     when :key_up
       case ev[:keycode]
@@ -217,14 +290,28 @@ class RaycasterApp < FmrbApp
       @needs_draw = true
     end
     if moved || @needs_draw
-      @depth_buf = cast_all_rays
+      cast_rays
       if shot
         try_shoot
       end
+      t0 = Fmrb::Raycast.micros
       draw_frame
+      @draw_us = Fmrb::Raycast.micros - t0
       @needs_draw = false
+      # What a frame is actually made of, and what it adds up to. Counted in
+      # drawn frames, not update ticks: the update runs whether or not anything
+      # is redrawn, so keying the log off @frame_count almost never coincided
+      # with a frame that did the work being reported.
+      @draw_count += 1
+      if (@draw_count % 32) == 0
+        now = Fmrb::Raycast.micros
+        span = now - @last_log_us
+        @last_log_us = now
+        Log.info("Raycaster frame: engine=#{backend} cast=#{@last_us}us " \
+                 "draw=#{@draw_us}us avg_frame=#{span / 32}us over 32 frames")
+      end
     end
-    100
+    @frame_ms
   end
 
   def update_player
@@ -274,114 +361,6 @@ class RaycasterApp < FmrbApp
         @py = ny
       end
     end
-  end
-
-  # ---- Raycasting ----
-
-  def cast_ray(angle)
-    # DDA raycasting algorithm (integer-based)
-    angle = angle % 360
-    sin_a = fp_sin(angle)
-    cos_a = fp_cos(angle)
-
-    # Avoid division by zero
-    cos_a = 1 if cos_a == 0
-    sin_a = 1 if sin_a == 0
-
-    # Current map cell
-    map_x = @px / CELL_SIZE
-    map_y = @py / CELL_SIZE
-
-    # Ray direction signs
-    step_x = cos_a > 0 ? 1 : -1
-    step_y = sin_a > 0 ? 1 : -1
-
-    # Distance to next cell boundary (fixed-point)
-    if cos_a > 0
-      dx_to_edge = (map_x + 1) * CELL_SIZE - @px
-    else
-      dx_to_edge = @px - map_x * CELL_SIZE
-      dx_to_edge = 1 if dx_to_edge == 0
-    end
-
-    if sin_a > 0
-      dy_to_edge = (map_y + 1) * CELL_SIZE - @py
-    else
-      dy_to_edge = @py - map_y * CELL_SIZE
-      dy_to_edge = 1 if dy_to_edge == 0
-    end
-
-    # Step through grid
-    cos_abs = cos_a.abs
-    sin_abs = sin_a.abs
-
-    # t_x = distance along ray to next vertical grid line
-    # t_y = distance along ray to next horizontal grid line
-    # We track these as scaled values to avoid division
-
-    # t_max_x = dx_to_edge / cos_abs (in FP)
-    # t_max_y = dy_to_edge / sin_abs (in FP)
-    # Compare: t_max_x vs t_max_y
-    # Instead of division, cross-multiply:
-    # dx_to_edge / cos_abs < dy_to_edge / sin_abs
-    # dx_to_edge * sin_abs < dy_to_edge * cos_abs
-
-    t_x_num = dx_to_edge
-    t_x_den = cos_abs
-    t_y_num = dy_to_edge
-    t_y_den = sin_abs
-
-    side = 0  # 0=vertical wall hit, 1=horizontal wall hit
-    hit = 0
-    depth = 0
-
-    step_n = 0
-    while step_n < 24
-      # Compare t_x vs t_y using cross multiplication
-      if t_x_num * t_y_den < t_y_num * t_x_den
-        # Step in X
-        map_x += step_x
-        depth = t_x_num * FP_ONE / t_x_den
-        t_x_num += CELL_SIZE
-        side = 0
-      else
-        # Step in Y
-        map_y += step_y
-        depth = t_y_num * FP_ONE / t_y_den
-        t_y_num += CELL_SIZE
-        side = 1
-      end
-
-      hit = map_at(map_x, map_y)
-      break if hit > 0
-      step_n += 1
-    end
-
-    # Fix fisheye: multiply by cos of angle offset from player angle
-    angle_diff = (angle - @pa) % 360
-    angle_diff -= 360 if angle_diff > 180
-    cos_diff = fp_cos(angle_diff)
-    cos_diff = 1 if cos_diff == 0
-    depth = depth * cos_diff / FP_ONE
-
-    # Ensure positive
-    depth = depth.abs
-    depth = 1 if depth == 0
-
-    { dist: depth, wall: hit, side: side }
-  end
-
-  # ---- Ray buffer ----
-
-  def cast_all_rays
-    buf = []
-    i = 0
-    while i < NUM_RAYS
-      ray_angle = @pa - HALF_FOV + (i * FOV / NUM_RAYS)
-      buf << cast_ray(ray_angle)
-      i += 1
-    end
-    buf
   end
 
   # ---- Enemies ----
@@ -593,6 +572,11 @@ class RaycasterApp < FmrbApp
       ei += 1
     end
     @gfx.draw_text(ox + 4, hud_y + 2, "SCORE:#{@score} ENEMY:#{alive_count}", C_HUD_TXT, C_HUD_BG)
+    # The engine and what the last cast cost. This line is the demo: press B
+    # and only these two fields change.
+    @gfx.draw_text(ox + 4, hud_y + 11,
+                   "[B]#{backend} cast:#{@last_us}us draw:#{@draw_us}us",
+                   C_HUD_TXT, C_HUD_BG)
 
     # Mini-map (right side of viewport, every 4th frame to save draw calls)
     if (@frame_count % 4) == 0
@@ -603,48 +587,65 @@ class RaycasterApp < FmrbApp
     @gfx.present
   end
 
+  # A window on the map around the player, not the whole thing. The map is 32x32
+  # now: drawing all of it would be 1024 cells scanned and several hundred
+  # fill_rects every time, which would grow the frame by more than the faster
+  # ray engine takes out of it -- and at three pixels a cell it would not fit
+  # beside the viewport on a Retro screen either. Cost here is fixed whatever
+  # the map's size.
+  MINIMAP_CELLS = 16
+  MINIMAP_PX = 3
+
   def draw_minimap(mx0, my0)
-    cell_px = 3  # pixels per cell
-    map_w_px = MAP_W * cell_px
-    map_h_px = MAP_H * cell_px
+    span = MINIMAP_CELLS
+    cell_px = MINIMAP_PX
 
-    # Background (empty space)
-    @gfx.fill_rect(mx0, my0, map_w_px, map_h_px, C_BLACK)
+    # Centre on the player, then pull back inside the map so the window is
+    # always full rather than half off the edge.
+    cx0 = @px / CELL_SIZE - span / 2
+    cy0 = @py / CELL_SIZE - span / 2
+    cx0 = 0 if cx0 < 0
+    cy0 = 0 if cy0 < 0
+    cx0 = MAP_W - span if cx0 > MAP_W - span
+    cy0 = MAP_H - span if cy0 > MAP_H - span
 
-    # Draw wall cells
-    cy = 0
-    while cy < MAP_H
-      cx = 0
-      while cx < MAP_W
-        wall = WORLD_MAP[cy * MAP_W + cx]
+    @gfx.fill_rect(mx0, my0, span * cell_px, span * cell_px, C_BLACK)
+
+    ry = 0
+    while ry < span
+      rx = 0
+      while rx < span
+        wall = WORLD_MAP[(cy0 + ry) * MAP_W + (cx0 + rx)]
         if wall > 0
           colors = WALL_COLORS[wall]
           c = colors ? colors[0] : C_WHITE
-          @gfx.fill_rect(mx0 + cx * cell_px, my0 + cy * cell_px, cell_px, cell_px, c)
+          @gfx.fill_rect(mx0 + rx * cell_px, my0 + ry * cell_px, cell_px, cell_px, c)
         end
-        cx += 1
+        rx += 1
       end
-      cy += 1
+      ry += 1
     end
 
-    # Enemy dots (magenta)
+    # Enemy dots (magenta), only the ones inside the window
     ei = -1
     en = @enemies.length
     while (ei += 1) < en
       e = @enemies[ei]
       next unless e[:alive]
-      edx = e[:x] * cell_px / CELL_SIZE
-      edy = e[:y] * cell_px / CELL_SIZE
+      edx = e[:x] * cell_px / CELL_SIZE - cx0 * cell_px
+      edy = e[:y] * cell_px / CELL_SIZE - cy0 * cell_px
+      next if edx < 0 || edy < 0 || edx >= span * cell_px || edy >= span * cell_px
       @gfx.fill_rect(mx0 + edx, my0 + edy, 2, 2, C_ENEMY)
     end
 
     # Player dot (white)
-    pdx = @px * cell_px / CELL_SIZE
-    pdy = @py * cell_px / CELL_SIZE
+    pdx = @px * cell_px / CELL_SIZE - cx0 * cell_px
+    pdy = @py * cell_px / CELL_SIZE - cy0 * cell_px
     @gfx.fill_rect(mx0 + pdx - 1, my0 + pdy - 1, 3, 3, C_WHITE)
   end
 
   def on_destroy
+    @caster.close if @caster
     Log.info("Raycaster destroyed")
   end
 end

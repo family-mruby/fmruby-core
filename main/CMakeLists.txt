@@ -32,6 +32,9 @@ set(COMPONENT_SRCS
     "${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c"
     # SpinelHello sample gem (minimal "Spinel as a gem"): always built.
     "${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c"
+    # Raycast gem (doc/raycast_spinel): the receiver that lets the raycaster app
+    # run its ray loop on either engine. Always built, like SpinelHello.
+    "${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-raycast/native/raycast_native.c"
 )
 set(COMPONENT_LINUX_SRCS
     "drivers/usb/usb_task_linux.c"
@@ -138,6 +141,9 @@ endif()
 # SpinelHello sample gem: a Spinel library entry, always built (no opt-out flag,
 # unlike FFT). Its receiver is in lib/add/picoruby-fmrb-spinel-hello/native/.
 prepare_ruby_spinel_source(spinel_hello_entry ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
+
+# Raycast gem: same shape, receiver in lib/add/picoruby-fmrb-raycast/native/.
+prepare_ruby_spinel_source(raycast_entry ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
 
 if(FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
     prepare_ruby_spinel_source(editor_combined ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
@@ -249,7 +255,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/debug" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "../lib/add/picoruby-fmrb-raycast/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/debug" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
     EMBED_FILES ${RD_EMBED_FILES}
 )
@@ -399,6 +405,16 @@ generate_ruby_spinel_command(
     ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/spinel_hello_entry.rb
     spinel_hello_entry ${FMRB_SPINEL_GEN_DIR})
 set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/spinel_hello_entry.c
+    PROPERTIES COMPILE_OPTIONS
+    "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+
+# Raycast gem: --persistent-statics must match rakelib/spinel.rake's raycast
+# command. The entry caches its core (map + trig tables) between frames and
+# depends on the TU's statics surviving the call.
+generate_ruby_spinel_command(
+    ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/raycast_entry.rb
+    raycast_entry ${FMRB_SPINEL_GEN_DIR} --persistent-statics)
+set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/raycast_entry.c
     PROPERTIES COMPILE_OPTIONS
     "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
 

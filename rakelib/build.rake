@@ -22,8 +22,12 @@ namespace :build do
 
     # Spinel engine(s): pre-generate the C on the host (the compiler is not
     # available inside the docker build) and forward the engine(s) into the build.
+    # Always true, matching FMRB_ANY_SPINEL in main/CMakeLists.txt: the gems
+    # that are Spinel-only (SpinelHello, raycast) name their generated C in
+    # COMPONENT_SRCS unconditionally, so skipping generation here would fail
+    # the cmake configure rather than build something smaller.
     any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel' ||
-                 FMRB_APP_ENGINE_EDITOR == 'spinel' || FMRB_FFT_SPINEL
+                 FMRB_APP_ENGINE_EDITOR == 'spinel' || FMRB_FFT_SPINEL || true
     ENV['SPINEL_GEN_PLATFORM'] = 'linux'
     Rake::Task['spinel:gen'].invoke if any_spinel
 
@@ -82,8 +86,12 @@ namespace :build do
     # docker build) with PLATFORM=esp32 so ESP32-only branches (RTC HW etc.) are
     # compiled. Mirrors build:linux; without this the esp32 build used a manually
     # gen'd (or stale linux) combined.
+    # Always true, matching FMRB_ANY_SPINEL in main/CMakeLists.txt: the gems
+    # that are Spinel-only (SpinelHello, raycast) name their generated C in
+    # COMPONENT_SRCS unconditionally, so skipping generation here would fail
+    # the cmake configure rather than build something smaller.
     any_spinel = FMRB_KERNEL_ENGINE == 'spinel' || FMRB_APP_ENGINE_DESKTOP == 'spinel' ||
-                 FMRB_APP_ENGINE_EDITOR == 'spinel' || FMRB_FFT_SPINEL
+                 FMRB_APP_ENGINE_EDITOR == 'spinel' || FMRB_FFT_SPINEL || true
     ENV['SPINEL_GEN_PLATFORM'] = 'esp32'
     Rake::Task['spinel:gen'].invoke if any_spinel
 

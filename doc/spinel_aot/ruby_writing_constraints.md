@@ -80,6 +80,7 @@ Fundamental / By design を正とする。
 | `$stdout` 等のグローバル変数を単一クラス (例 ShellOut) に固定する | Spinel では静的型が付くため、複数の型が混ざって型が確定しない値になり推論が悪化するのを防ぐ | phase4.md 落とし穴 |
 | **ESP32 向けアプリでは `Enumerator.new { \|y\| ... }` / 外部反復 (`.next`/`.peek`) / `.lazy` を避ける** | これらは fiber-backed で、Spinel の fiber は POSIX (mmap/ucontext/asm) 前提。**ESP32 に fiber backend が無く動かない** (Linux では動くので気付きにくい)。内部反復 (`.each`/`.map`/`.select`) は fiber 不使用で可 | fork limitations.md (Partial) / `esp32_host_deps_sweep.md` |
 | **entry を繰り返し呼ぶ (ライブラリ用途) で前処理結果を持ち越したいときは `--persistent-statics` (生成配線) + 重いオブジェクトを永続グローバルにキャッシュ**する。キャッシュキーは**そのオブジェクト自身** (`$c.nil? \|\| $c.size != n`) にし、別の Integer グローバル (`$cached_n`) をキーにしない | `--persistent-statics` は entry 冒頭の `sp_reset_tu_statics()` を**インスタンス初回だけ**にする (既定は毎 entry = 状態が消える)。reset が消すのは**オブジェクト(ポインタ)グローバルだけ**で **Integer グローバルは消さない**(heap を指さないため)。→ 別 int をキーにすると、インスタンス再生成時に本体 `$c` は NULL に戻るのに int キーは前回値が居残り、「キー一致なのに本体 NULL」で再構築を skip → NULL 参照(状態遷移の詳細は `stateful_library_entry.md` の実例節)。**シングルトン (1 TU=1 インスタンス) 前提でのみ安全** | E6 (`cafe6595`) / `stateful_library_entry.md` / `impl_plan_stateful_library_entry.md` |
+| **組み込みモジュールは `::` を付けずに書く** (`Math.sin` であって `::Math.sin` ではない)。クラス定義の中でも裸で書く | `::Math.sin(x)` は**型が unknown になり、コンパイラは警告もエラーも出さずに、その結果を使う位置 (`.to_i` 等) に `NoMethodError` の raise を埋め込む**。生成 C を読むまで分からず、実機では entry 初回で firmware ごと落ちる (Spinel の raise を捕まえる人がいない)。`Math` は Spinel の組み込みなので裸で解決する | R1-R5 (`doc/raycast_spinel/report/r1.md`) |
 | (随時追記) | | |
 
 ## メンテナンス
