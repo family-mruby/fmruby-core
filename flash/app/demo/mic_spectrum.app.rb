@@ -22,7 +22,17 @@ class MicSpectrumApp < FmrbApp
   PEAK_FALL  = 2      # how fast the peak-hold marks sink, per frame
   WARMUP     = 8      # blocks thrown away after power-up (the codec settles)
 
-  BACKENDS = [:dsp, :c, :c_q15, :spinel, :spinel_q15, :ruby, :ruby_q15]
+  # The esp-dsp backend runs the ESP32-P4's optimized FFT assembly, which needs
+  # its data buffer in internal RAM; giving it one would spend memory the whole
+  # system shares, so DSP is disabled by default and the app starts on the C
+  # engine. Set ENABLE_DSP to true to include it in the rotation on builds where
+  # it is safe.
+  ENABLE_DSP = false
+  BACKENDS = if ENABLE_DSP
+               [:dsp, :c, :c_q15, :spinel, :spinel_q15, :ruby, :ruby_q15]
+             else
+               [:c, :c_q15, :spinel, :spinel_q15, :ruby, :ruby_q15]
+             end
 
   # A tone the app can play to itself, so the display can be checked in a quiet
   # room -- and so "the bars do not move" can be told apart from "there is no
