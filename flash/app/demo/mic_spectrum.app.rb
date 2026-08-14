@@ -146,7 +146,8 @@ class MicSpectrumApp < FmrbApp
     while i < SHOWN_BINS
       v = Fmrb::Fft.bin(mag, i + 1)   # skip bin 0: DC, always the loudest
       # Fixed scale rather than auto-gain: a quiet room should look quiet.
-      h = v * height / 3000
+      # Divisor halved (3000 -> 1500) to roughly double the bar sensitivity.
+      h = v * height / 1500
       h = height if h > height
       @bars[i] = h
       p = @peaks[i] - PEAK_FALL
