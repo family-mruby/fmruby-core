@@ -294,6 +294,22 @@ if(ENABLE_SD_TEST)
     message(STATUS "SD card connection test enabled")
 endif()
 
+# Development remote control: /app/launch, /app/kill and /app/list on the
+# remote desktop's HTTP server, so a development loop can start and stop apps
+# by path instead of driving the launcher through synthetic clicks
+# (doc/dev_remote_ctl/plan.md). ON by default because that loop is what the
+# firmware is developed with; turn it off for a release image with
+#   CMAKE_OPTS="-DFMRB_DEV_REMOTE_CTL=OFF" rake build:esp32
+# It adds no authentication and none exists to add: the remote desktop already
+# lets anyone on the network drive the launcher. What it does add is a
+# convenient, scriptable version of that, which is not something to ship.
+option(FMRB_DEV_REMOTE_CTL "Enable the development remote control endpoints" ON)
+
+if(FMRB_DEV_REMOTE_CTL)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_DEV_REMOTE_CTL)
+    message(STATUS "FMRB_DEV_REMOTE_CTL=ON: /app/launch, /app/kill, /app/list are in this build")
+endif()
+
 # FMRB_HW_* board / chip-generation macros (FMRB_HW_MODERN + FMRB_HW_TAB5 /
 # FMRB_HW_NARYAV4 / FMRB_HW_ATOM_DISPLAY). Defined via the shared helper so
 # every fmrb_pin_assign.h consumer (main, fmrb_hal, picoruby-esp32) selects

@@ -92,6 +92,12 @@ development on a trusted local network.
 - **Remote desktop (HTTP / WebSocket)** — unauthenticated. Any client on the same
   network can view the screen and send keyboard / mouse input, i.e. fully operate
   the device.
+- **Development remote control (`/app/launch`, `/app/kill`, `/app/list`)** —
+  unauthenticated, and for development only. Present when the firmware is built
+  with `FMRB_DEV_REMOTE_CTL` (the default; build a release image with
+  `CMAKE_OPTS="-DFMRB_DEV_REMOTE_CTL=OFF"`). It starts and stops apps by path,
+  which the remote desktop above already allows through the launcher — this is
+  the scriptable form of it. See `doc/dev_remote_ctl/plan.md`.
 - **BLE debug service** — no pairing, bonding or encryption (deliberately disabled
   for Web Bluetooth compatibility). Any client in radio range can connect, inspect
   running applications and their variables, and spawn or kill them.

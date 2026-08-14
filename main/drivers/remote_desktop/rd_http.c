@@ -11,6 +11,9 @@
 // - "/ws"         WebSocket: binary input messages (rd_input) from the
 //                 browser; JSON cursor/info messages to the browser.
 // - "/status"     small JSON status document.
+// - "/app/launch" "/app/kill" "/app/list"
+//                 development remote control, compiled in only with
+//                 FMRB_DEV_REMOTE_CTL (doc/dev_remote_ctl/plan.md).
 //
 // The httpd instance runs on core 0 next to the hosted/lwIP tasks.
 
@@ -19,6 +22,7 @@
 #include "rd_input.h"
 #include "rd_stream.h"
 
+#include "fmrb_app.h"
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
 #include "display_p4_task.h"
@@ -30,6 +34,7 @@
 #include "freertos/task.h"
 
 #include <string.h>
+#include <stdlib.h>
 #include <stdatomic.h>
 #include "fmrb_task_config.h"
 
@@ -397,9 +402,156 @@ static esp_err_t status_handler(httpd_req_t *req)
     return httpd_resp_send(req, body, n);
 }
 
+#ifdef FMRB_DEV_REMOTE_CTL
+// ---------------------------------------------------------------
+// Development remote control (doc/dev_remote_ctl/plan.md)
+//
+// Three endpoints so a development loop can start, stop and list apps by name
+// instead of driving the launcher through synthetic clicks -- menu, Launcher,
+// scroll, Enter -- which is slow and breaks whenever the list moves.
+//
+// Deliberately no log endpoint. A crash takes WiFi down with it, so the log
+// that matters would be the one that never arrives; boot and crash logs come
+// from a serial capture held open for the session instead.
+//
+// This is a control plane for development and is unauthenticated, like the
+// rest of the remote desktop. It opens no door that was not already open --
+// anyone who can reach the viewer can drive the launcher and start anything --
+// but it is compiled out unless FMRB_DEV_REMOTE_CTL is defined, so a release
+// build does not carry it.
+//
+// Called straight from the httpd task, the way debugd calls the same functions
+// from its own. That task has 8KB of stack against debugd's 6KB, so spawning
+// from here is no tighter than spawning from there.
+// ---------------------------------------------------------------
+
+#define RD_CTL_QUERY_MAX 192
+#define RD_CTL_PATH_MAX  128
+
+static esp_err_t ctl_json(httpd_req_t *req, const char *status, const char *body)
+{
+    httpd_resp_set_status(req, status);
+    httpd_resp_set_type(req, "application/json");
+    return httpd_resp_send(req, body, HTTPD_RESP_USE_STRLEN);
+}
+
+// One key out of the request's query string. Bad input answers with JSON
+// rather than dropping the connection: a development tool should be told what
+// it got wrong.
+static bool ctl_query_value(httpd_req_t *req, const char *key, char *out, size_t out_len)
+{
+    char q[RD_CTL_QUERY_MAX];
+    if (httpd_req_get_url_query_str(req, q, sizeof(q)) != ESP_OK) {
+        return false;
+    }
+    return httpd_query_key_value(q, key, out, out_len) == ESP_OK;
+}
+
+static esp_err_t launch_handler(httpd_req_t *req)
+{
+    char path[RD_CTL_PATH_MAX];
+    if (!ctl_query_value(req, "path", path, sizeof(path))) {
+        return ctl_json(req, "400 Bad Request",
+                        "{\"ok\":false,\"err\":\"path required\"}");
+    }
+    if (path[0] == '\0') {
+        return ctl_json(req, "400 Bad Request",
+                        "{\"ok\":false,\"err\":\"path empty\"}");
+    }
+
+    int32_t pid = -1;
+    fmrb_err_t err = fmrb_app_spawn_app(path, &pid);
+    if (err != FMRB_OK) {
+        char body[96];
+        snprintf(body, sizeof(body), "{\"ok\":false,\"err\":%d}", (int)err);
+        FMRB_LOGW(TAG, "dev ctl: launch %s failed (%d)", path, (int)err);
+        return ctl_json(req, "500 Internal Server Error", body);
+    }
+
+    char body[64];
+    snprintf(body, sizeof(body), "{\"ok\":true,\"pid\":%d}", (int)pid);
+    FMRB_LOGI(TAG, "dev ctl: launched %s as pid %d", path, (int)pid);
+    return ctl_json(req, "200 OK", body);
+}
+
+static esp_err_t kill_handler(httpd_req_t *req)
+{
+    char pidstr[16];
+    if (!ctl_query_value(req, "pid", pidstr, sizeof(pidstr))) {
+        return ctl_json(req, "400 Bad Request",
+                        "{\"ok\":false,\"err\":\"pid required\"}");
+    }
+    int pid = atoi(pidstr);
+
+    // User app slots only. The kernel, the host and the system app are not
+    // ours to stop from a development endpoint, and killing has a known way of
+    // hanging depending on which task asks (doc/app_kill_fix) -- keeping to the
+    // slots a development loop spawns into is the narrow, safe case.
+    if (pid < PROC_ID_USER_APP0 || pid >= PROC_ID_USER_APP_END) {
+        return ctl_json(req, "400 Bad Request",
+                        "{\"ok\":false,\"err\":\"user app pids only\"}");
+    }
+
+    bool ok = fmrb_app_kill(pid);
+    FMRB_LOGI(TAG, "dev ctl: kill pid %d -> %s", pid, ok ? "ok" : "failed");
+    return ctl_json(req, ok ? "200 OK" : "404 Not Found",
+                    ok ? "{\"ok\":true}" : "{\"ok\":false,\"err\":\"no such app\"}");
+}
+
+static const char *ctl_state_name(fmrb_proc_state_t s)
+{
+    switch (s) {
+    case PROC_STATE_FREE:      return "FREE";
+    case PROC_STATE_INIT:      return "INIT";
+    case PROC_STATE_RUNNING:   return "RUNNING";
+    case PROC_STATE_SUSPENDED: return "SUSPENDED";
+    case PROC_STATE_STOPPING:  return "STOPPING";
+    default:                   return "UNKNOWN";
+    }
+}
+
+static esp_err_t list_handler(httpd_req_t *req)
+{
+    fmrb_app_info_t list[FMRB_MAX_APPS];
+    int32_t n = fmrb_app_ps(list, FMRB_MAX_APPS);
+    if (n < 0) {
+        n = 0;
+    }
+
+    // Room for every slot; the write is bounded anyway so a longer name than
+    // expected truncates the document rather than the stack.
+    char body[768];
+    size_t off = 0;
+    off += (size_t)snprintf(body + off, sizeof(body) - off, "{\"apps\":[");
+    for (int32_t i = 0; i < n && off < sizeof(body); i++) {
+        off += (size_t)snprintf(body + off, sizeof(body) - off,
+                                "%s{\"pid\":%d,\"name\":\"%s\",\"state\":\"%s\"}",
+                                i ? "," : "", (int)list[i].app_id,
+                                list[i].app_name, ctl_state_name(list[i].state));
+    }
+    if (off < sizeof(body)) {
+        off += (size_t)snprintf(body + off, sizeof(body) - off, "]}");
+    }
+    body[sizeof(body) - 1] = '\0';
+    return ctl_json(req, "200 OK", body);
+}
+#endif /* FMRB_DEV_REMOTE_CTL */
+
 // ---------------------------------------------------------------
 // Server lifecycle
 // ---------------------------------------------------------------
+
+// Register and say so when it does not take. httpd_register_uri_handler
+// returns ESP_ERR_HTTPD_HANDLERS_FULL rather than asserting, so ignoring it
+// leaves a server that starts cleanly and 404s the route you just added.
+static void rd_register_uri(const httpd_uri_t *uri)
+{
+    esp_err_t err = httpd_register_uri_handler(s_server, uri);
+    if (err != ESP_OK) {
+        FMRB_LOGE(TAG, "could not register %s: %d (raise max_uri_handlers?)",
+                  uri->uri, err);
+    }
+}
 
 fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
 {
@@ -418,6 +570,12 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
     hcfg.stack_size = FMRB_RD_HTTPD_TASK_STACK_SIZE;
     hcfg.max_open_sockets = 7;
     hcfg.lru_purge_enable = true;
+    // The default is 8 and the fixed set already uses 7 (index, remote.js,
+    // keymap.js, stream, status, ws, ws_video). The dev control endpoints take
+    // it over, and httpd_register_uri_handler answers ESP_ERR_HTTPD_HANDLERS_FULL
+    // rather than complaining -- so the server came up looking healthy and every
+    // one of the new routes returned 404. Sized with room to add more.
+    hcfg.max_uri_handlers = 16;
 
     esp_err_t err = httpd_start(&s_server, &hcfg);
     if (err != ESP_OK) {
@@ -443,14 +601,26 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
         .uri = "/ws_video", .method = HTTP_GET, .handler = ws_video_handler,
         .is_websocket = true };
 
-    httpd_register_uri_handler(s_server, &uri_index);
-    httpd_register_uri_handler(s_server, &uri_js);
-    httpd_register_uri_handler(s_server, &uri_keymap);
-    httpd_register_uri_handler(s_server, &uri_stream);
-    httpd_register_uri_handler(s_server, &uri_status);
-    httpd_register_uri_handler(s_server, &uri_ws);
+    rd_register_uri(&uri_index);
+    rd_register_uri(&uri_js);
+    rd_register_uri(&uri_keymap);
+    rd_register_uri(&uri_stream);
+    rd_register_uri(&uri_status);
+    rd_register_uri(&uri_ws);
+#ifdef FMRB_DEV_REMOTE_CTL
+    static const httpd_uri_t uri_launch = {
+        .uri = "/app/launch", .method = HTTP_POST, .handler = launch_handler };
+    static const httpd_uri_t uri_kill = {
+        .uri = "/app/kill", .method = HTTP_POST, .handler = kill_handler };
+    static const httpd_uri_t uri_list = {
+        .uri = "/app/list", .method = HTTP_GET, .handler = list_handler };
+    rd_register_uri(&uri_launch);
+    rd_register_uri(&uri_kill);
+    rd_register_uri(&uri_list);
+    FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list)");
+#endif
     if (s_cfg.h264_enable) {
-        httpd_register_uri_handler(s_server, &uri_ws_video);
+        rd_register_uri(&uri_ws_video);
         rd_stream_config_t scfg = {
             .fps_cap = s_cfg.fps_cap,
             .gop = s_cfg.h264_gop,
