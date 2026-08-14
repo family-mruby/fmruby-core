@@ -97,6 +97,15 @@ module Fmrb
     # One frame of rays. Returns [microseconds, array of {dist:, wall:, side:}].
     # The microseconds cover the cast alone in both cases: inside the entry for
     # :spinel, around the core call for :ruby.
+    # One frame of rays. Returns the microseconds the cast took; the rays
+    # themselves stay in the packed buffer and are read with #dist / #wall /
+    # #side.
+    #
+    # It used to return an Array of Hashes, which read better and cost 40
+    # objects a frame -- measured at 7ms of unpacking plus the collector's
+    # share of a 15ms-per-frame wobble that only showed up once the frame was
+    # accounted for end to end. Reading the buffer in place does the same six
+    # getbytes per ray with nothing left behind.
     def cast(px, py, pa)
       raise RuntimeError, "set_map has not been called" if @map.nil?
       if @backend == :spinel
@@ -106,7 +115,36 @@ module Fmrb
         buf = @core.cast_packed(px, py, pa)
         us = ::RaycastNative.micros - t0
       end
-      [us, Fmrb::Raycast.unpack(buf)]
+      @buf = buf
+      us
+    end
+
+    # How many rays the last cast returned. 0 before the first one.
+    def rays
+      return 0 if @buf.nil?
+      @buf.bytesize / ::RaycastCore::RAY_BYTES
+    end
+
+    # Distance to the wall ray `i` hit, in the app's fixed-point units.
+    # int32 little-endian: it is the denominator of the wall height and runs to
+    # six figures down a long corridor.
+    def dist(i)
+      return 0 if @buf.nil?
+      o = i * ::RaycastCore::RAY_BYTES
+      @buf.getbyte(o) | (@buf.getbyte(o + 1) << 8) |
+        (@buf.getbyte(o + 2) << 16) | (@buf.getbyte(o + 3) << 24)
+    end
+
+    # The map value the ray hit (0 = ran out of steps without hitting one).
+    def wall(i)
+      return 0 if @buf.nil?
+      @buf.getbyte(i * ::RaycastCore::RAY_BYTES + 4)
+    end
+
+    # Which face was hit: 0 vertical, 1 horizontal. The app shades them apart.
+    def side(i)
+      return 0 if @buf.nil?
+      @buf.getbyte(i * ::RaycastCore::RAY_BYTES + 5)
     end
 
     def close
@@ -131,8 +169,10 @@ module Fmrb
       s
     end
 
-    # The packed depth buffer back into the Hashes the drawing code already
-    # reads, so nothing downstream had to change.
+    # The packed depth buffer as an Array of Hashes, for a caller that would
+    # rather have objects than accessors. NOT what the drawing path uses: it
+    # allocates one Hash per ray, which on a per-frame path is the largest
+    # source of garbage in the app (see #cast).
     def self.unpack(buf)
       stride = ::RaycastCore::RAY_BYTES
       out = []

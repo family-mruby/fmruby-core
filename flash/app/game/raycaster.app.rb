@@ -134,6 +134,12 @@ class RaycasterApp < FmrbApp
     @draw_us = 0
     @draw_count = 0
     @last_log_us = 0
+    @update_us = 0
+    @gap_us = 0
+    @last_exit_us = 0
+    @acc_update = 0
+    @acc_gap = 0
+    @tick_count = 0
 
     # Player position in fixed-point (start at cell 1.5, 1.5)
     @px = FP_ONE + FP_HALF  # 1.5 cells
@@ -194,7 +200,10 @@ class RaycasterApp < FmrbApp
   end
 
   def cast_rays
-    @last_us, @depth_buf = @caster.cast(@px, @py, @pa)
+    # The rays stay packed inside the caster; read them with dist/wall/side.
+    # Unpacking them into Hashes cost 40 objects a frame for nothing the
+    # drawing code needed.
+    @last_us = @caster.cast(@px, @py, @pa)
   end
 
   # ---- Helpers ----
@@ -272,6 +281,17 @@ class RaycasterApp < FmrbApp
   # ---- Update ----
 
   def on_update
+    # Split the frame into "what this method does" and "what happens between
+    # calls" (Task.pass + _spin + _run_timers in FmrbApp#main_loop). The cast
+    # and the draw together did not account for the measured frame time, and
+    # guessing which side the rest was on is what this settles.
+    t_enter = Fmrb::Raycast.micros
+    if @last_exit_us > 0
+      @gap_us = t_enter - @last_exit_us
+      @acc_gap += @gap_us
+    end
+    @tick_count += 1
+
     @frame_count += 1
     moved = update_player
     shot = false
@@ -307,10 +327,26 @@ class RaycasterApp < FmrbApp
         now = Fmrb::Raycast.micros
         span = now - @last_log_us
         @last_log_us = now
+        # Every figure from this same frame. Reading @update_us here when it
+        # was assigned on the way out printed the previous frame's total
+        # against this frame's cast and draw, and the three stopped adding up.
+        # Accumulated over the same 32 frames the span covers, so the parts
+        # have to add up to the whole. Single-frame samples did not, and with
+        # one sample each there was no telling whether the shortfall was a
+        # frame that skipped the draw, time spent outside this task, or a
+        # measurement that simply missed a stretch.
         Log.info("Raycaster frame: engine=#{backend} cast=#{@last_us}us " \
-                 "draw=#{@draw_us}us avg_frame=#{span / 32}us over 32 frames")
+                 "draw=#{@draw_us}us rest=#{now - t_enter - @last_us - @draw_us}us " \
+                 "gap=#{@gap_us}us avg_frame=#{span / 32}us | acc: " \
+                 "update=#{@acc_update / 32}us gap=#{@acc_gap / 32}us " \
+                 "ticks=#{@tick_count} draws=32")
+        @acc_update = 0
+        @acc_gap = 0
+        @tick_count = 0
       end
     end
+    @acc_update += Fmrb::Raycast.micros - t_enter
+    @last_exit_us = Fmrb::Raycast.micros
     @frame_ms
   end
 
@@ -390,12 +426,8 @@ class RaycasterApp < FmrbApp
       # Enemy must be within ~5 degrees of crosshair
       if angle_diff.abs < 5 && dist < best_dist
         # Check wall occlusion: is wall closer than enemy?
-        center_ray = @depth_buf[NUM_RAYS / 2]
-        if center_ray && dist < center_ray[:dist]
-          # Enemy is NOT occluded
-        elsif center_ray && dist >= center_ray[:dist]
-          next  # Wall is closer, skip
-        end
+        wall_dist = @caster.dist(NUM_RAYS / 2)
+        next if wall_dist > 0 && dist >= wall_dist   # wall is closer
         best_dist = dist
         best_enemy = e
       end
@@ -474,7 +506,7 @@ class RaycasterApp < FmrbApp
       # Check wall occlusion using depth buffer
       strip_idx = screen_x / STRIP_W
       if strip_idx >= 0 && strip_idx < NUM_RAYS
-        wall_dist = @depth_buf[strip_idx][:dist]
+        wall_dist = @caster.dist(strip_idx)
         next if perp_dist >= wall_dist
       end
 
@@ -519,10 +551,9 @@ class RaycasterApp < FmrbApp
     # Draw wall strips from ray buffer
     i = 0
     while i < NUM_RAYS
-      result = @depth_buf[i]
-      dist = result[:dist]
-      wall = result[:wall]
-      side = result[:side]
+      dist = @caster.dist(i)
+      wall = @caster.wall(i)
+      side = @caster.side(i)
 
       wall_h = VP_H * CELL_SIZE / dist
       wall_h = VP_H if wall_h > VP_H
