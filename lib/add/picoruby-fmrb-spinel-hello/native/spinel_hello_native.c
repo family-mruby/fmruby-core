@@ -20,6 +20,17 @@
 #include "fmrb_mem.h"
 #include "fmrb_spinel_host.h"
 
+/* Placement for this file's statics. None of them is on a hot path (they are
+   touched a few times per greet call), and internal DRAM is the scarce
+   resource, so on ESP32 they live in PSRAM; on the Linux build it is plain BSS.
+   Same shape as FMRB_DBG_BSS_ATTR / FMRB_SPX_BSS_ATTR. */
+#ifdef CONFIG_IDF_TARGET_LINUX
+#define SH_BSS_ATTR
+#else
+#include "esp_attr.h"
+#define SH_BSS_ATTR EXT_RAM_BSS_ATTR
+#endif
+
 static const char *TAG = "spinel_hello";
 
 /* Generated from spinel/spinel_hello_entry.rb by rake spinel:gen, compiled with
@@ -38,16 +49,16 @@ extern int spinel_hello_entry(void);
    name back as a byte String, so we set this to the stored name's length. */
 extern int sp_net_bin_len;
 
-static void *s_pool;
-static void *s_est;
-static int   s_open;
+SH_BSS_ATTR static void *s_pool;
+SH_BSS_ATTR static void *s_est;
+SH_BSS_ATTR static int   s_open;
 
 /* The name the entry reads IN, and the greeting it writes OUT. Both valid only
    for the duration of one run(). */
-static char  s_name[SH_NAME_MAX];
-static int   s_name_len;
-static char  s_out[SH_OUT_MAX];
-static int   s_out_len;
+SH_BSS_ATTR static char  s_name[SH_NAME_MAX];
+SH_BSS_ATTR static int   s_name_len;
+SH_BSS_ATTR static char  s_out[SH_OUT_MAX];
+SH_BSS_ATTR static int   s_out_len;
 
 int spinel_hello_available(void)
 {

@@ -36,6 +36,18 @@
 #include "fmrb_mem.h"
 #include "fmrb_spinel_host.h"
 
+/* Placement for this file's statics. They are the instance handles plus the
+   per-run I/O (pointers, lengths, timings) -- each read a few times per run(),
+   never per sample, so none is hot. Internal DRAM is the scarce resource, so on
+   ESP32 they go to PSRAM; on the Linux build it is plain BSS. Same shape as
+   FMRB_DBG_BSS_ATTR / FMRB_SPX_BSS_ATTR. */
+#ifdef CONFIG_IDF_TARGET_LINUX
+#define FFT_SPX_BSS_ATTR
+#else
+#include "esp_attr.h"
+#define FFT_SPX_BSS_ATTR EXT_RAM_BSS_ATTR
+#endif
+
 static const char *TAG = "fft_spx";
 
 /* Generated from main/prebuild_scripts/spinel/fft_spinel.rb by rake spinel:gen
@@ -57,19 +69,19 @@ extern int sp_net_bin_len;
    calling it concurrently from another task corrupts the run globals and uses
    an instance that is not current there. Fine for a single benchmark/visualizer
    app; a future concurrent user must serialize onto the owner task. */
-static void    *s_pool;
-static void    *s_est;
-static int      s_open;
+FFT_SPX_BSS_ATTR static void    *s_pool;
+FFT_SPX_BSS_ATTR static void    *s_est;
+FFT_SPX_BSS_ATTR static int      s_open;
 
 /* What the entry reads and writes. Valid only inside one run. */
-static const int16_t *s_in;
-static int             s_n;
-static int             s_iters;
-static int             s_mode;   /* 0 = the double core, 1 = the Q15 one */
-static int16_t        *s_mag;
-static int             s_mag_len;
-static uint32_t        s_us;
-static uint32_t        s_total_us;   /* the whole entry call, not just the transform */
+FFT_SPX_BSS_ATTR static const int16_t *s_in;
+FFT_SPX_BSS_ATTR static int             s_n;
+FFT_SPX_BSS_ATTR static int             s_iters;
+FFT_SPX_BSS_ATTR static int             s_mode;   /* 0 = the double core, 1 = the Q15 one */
+FFT_SPX_BSS_ATTR static int16_t        *s_mag;
+FFT_SPX_BSS_ATTR static int             s_mag_len;
+FFT_SPX_BSS_ATTR static uint32_t        s_us;
+FFT_SPX_BSS_ATTR static uint32_t        s_total_us;   /* the whole entry call, not just the transform */
 
 int fmrb_fft_spinel_available(void)
 {

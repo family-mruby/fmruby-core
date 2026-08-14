@@ -36,25 +36,38 @@
 #endif
 #endif
 
+/* Placement for the cached-table pointers and size scalars below. Each is read
+   once per transform call (to fetch a buffer base or check the cached size),
+   never per sample -- the hot memory is the buffers they point at, which
+   fmrb_sys_malloc already puts in PSRAM. So these too go to PSRAM on ESP32 to
+   spare internal DRAM; on the Linux build it is plain BSS. Same shape as
+   FMRB_DBG_BSS_ATTR / FMRB_SPX_BSS_ATTR. */
+#ifdef CONFIG_IDF_TARGET_LINUX
+#define FFT_BSS_ATTR
+#else
+#include "esp_attr.h"
+#define FFT_BSS_ATTR EXT_RAM_BSS_ATTR
+#endif
+
 /* Cached per size: the tables the transform reads and the scratch it works in.
    n_cached == 0 means nothing is allocated. */
-static int    s_n;
-static float *s_window;   /* n     Hann coefficients */
-static float *s_cos;      /* n/2   twiddle, cos(-2 pi k / n) */
-static float *s_sin;      /* n/2   twiddle, sin(-2 pi k / n) */
-static float *s_re;       /* n     working real part */
-static float *s_im;       /* n     working imaginary part */
-static int   *s_rev;      /* n     bit-reversal permutation */
+FFT_BSS_ATTR static int    s_n;
+FFT_BSS_ATTR static float *s_window;   /* n     Hann coefficients */
+FFT_BSS_ATTR static float *s_cos;      /* n/2   twiddle, cos(-2 pi k / n) */
+FFT_BSS_ATTR static float *s_sin;      /* n/2   twiddle, sin(-2 pi k / n) */
+FFT_BSS_ATTR static float *s_re;       /* n     working real part */
+FFT_BSS_ATTR static float *s_im;       /* n     working imaginary part */
+FFT_BSS_ATTR static int   *s_rev;      /* n     bit-reversal permutation */
 
 /* The same six, in double, for fmrb_fft_c_f64. Kept separate rather than
    templated so the float path a caller reads is the float path that runs. */
-static int     d_n;
-static double *d_window;
-static double *d_cos;
-static double *d_sin;
-static double *d_re;
-static double *d_im;
-static int    *d_rev;
+FFT_BSS_ATTR static int     d_n;
+FFT_BSS_ATTR static double *d_window;
+FFT_BSS_ATTR static double *d_cos;
+FFT_BSS_ATTR static double *d_sin;
+FFT_BSS_ATTR static double *d_re;
+FFT_BSS_ATTR static double *d_im;
+FFT_BSS_ATTR static int    *d_rev;
 
 uint32_t fmrb_fft_micros(void)
 {
@@ -356,13 +369,13 @@ uint32_t fmrb_fft_c_f64(const int16_t *in, int n, int iters, int16_t *mag_out)
  * would have reached for first (doc/mic_spectrum/impl_plan_spinel_perf.md, E4).
  */
 
-static int      q_n;
-static int32_t *q_window;
-static int32_t *q_cos;
-static int32_t *q_sin;
-static int32_t *q_re;
-static int32_t *q_im;
-static int     *q_rev;
+FFT_BSS_ATTR static int      q_n;
+FFT_BSS_ATTR static int32_t *q_window;
+FFT_BSS_ATTR static int32_t *q_cos;
+FFT_BSS_ATTR static int32_t *q_sin;
+FFT_BSS_ATTR static int32_t *q_re;
+FFT_BSS_ATTR static int32_t *q_im;
+FFT_BSS_ATTR static int     *q_rev;
 
 static void fft_free_tables_q15(void)
 {
@@ -524,8 +537,8 @@ int fmrb_fft_dsp_available(void)
 
 /* esp-dsp works on one interleaved re/im array and wants its own twiddle
    table, initialised once for the largest size we will ask for. */
-static int   s_dsp_n;
-static float *s_dsp_buf;   /* 2 * n interleaved */
+FFT_BSS_ATTR static int   s_dsp_n;
+FFT_BSS_ATTR static float *s_dsp_buf;   /* 2 * n interleaved */
 
 static int fft_dsp_prepare(int n)
 {
