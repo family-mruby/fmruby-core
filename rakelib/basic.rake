@@ -52,13 +52,13 @@ namespace :basic do
   # debugd spawn, a launcher start also gets the keyboard focus.
   # test/samples stays the single source: re-run this task after editing a
   # sample and commit the refreshed copies.
+  # Three of them, on purpose: one per plane (sprites, text, sound plus the
+  # graphics extension), each playable with the keyboard alone. The other
+  # samples stay in test/samples as bring-up material and are not installed.
   BASIC_SAMPLE_APPS = {
-    "sample_04_screen_kana" => ["Kana",  "カナ"],
-    "sample_10_dodge"       => ["Dodge", "ヨケロ"],
-    "sample_11_shoot"       => ["Shoot", "シュート"],
-    "sample_12_maze"        => ["Maze",  "メイロ"],
-    "sample_13_music"       => ["Music", "オンガク"],
-    "sample_14_hit"         => ["Hit",   "タタケ"],
+    "sample_11_shoot" => ["Shoot", "シュート"],
+    "sample_12_maze"  => ["Maze",  "メイロ"],
+    "sample_13_music" => ["Music", "オンガク"],
   }
   BASIC_SAMPLE_APP_DIR = "flash/app/basic"
 
