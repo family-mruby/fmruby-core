@@ -1,8 +1,0 @@
-app_handle_name = "ja_text"
-app_screen_name = "JA Text"
-app_screen_name_ja = "日本語表示デモ"
-default_window_mode = "window"
-default_window_width = 280
-default_window_height = 160
-default_window_pos_x = 20
-default_window_pos_y = 20

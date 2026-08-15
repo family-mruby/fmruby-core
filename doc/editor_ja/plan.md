@@ -22,7 +22,7 @@
   misaki 8x8 (半角 4px / 全角 8px) と efontJA_12 (半角 6px / 全角 12px)。
   どちらも半角・全角のデュアル幅。デスクトップのメニュー/ランチャー/
   設定ダイアログは既に日本語表示で動いている (mixed: true 描画 26 箇所、
-  表示デモ flash/app/demo/ja_text.app.rb あり)。
+  表示デモは flash/app/demo/graphics.app.rb の Fonts セクション)。
 - **i18n 機構は既存**: FmrbI18n.t(key) + en/ja テーブル
   (system_desktop/i18n.rb)、言語は system_conf の language (設定ダイアログ
   から変更、再起動で反映)。picoruby-fmrb-app 同梱なのでエディタ VM から
@@ -191,7 +191,7 @@ doc/spinel_aot/report/stale_statics.md)。調査で**定数より危険な
 - 全段階 Linux sim で完結 (実機不要)。エディタは単一ソース二重バックエンド
   なので、**各段階とも標準構成 (Spinel editor) と互換構成 (mruby) の両方で
   検証**する。
-- 検証素材: flash/app/demo/ja_text.app.rb (表示)、日本語コメント入りの
+- 検証素材: flash/app/demo/graphics.app.rb の Fonts セクション (表示)、日本語コメント入りの
   サンプル .rb、かな入力は sim のキー注入 (fmrb_input.rb) で自動化できる。
 
 ## 5. 範囲外
