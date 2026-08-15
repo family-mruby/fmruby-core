@@ -20,12 +20,13 @@ class FlappyApp < FmrbApp
   BIRD_X       = 30
   SCORE_H      = 10
 
-  # RGB332 (RRRGGGBB). The sky runs deep blue at the top to hazy at the
-  # horizon, so the scenery reads as depth rather than flat colour.
+  # RGB332 (RRRGGGBB). Cyan at the top washing out towards the horizon, so
+  # the scenery reads as depth. Cyan rather than blue because the pipe and the
+  # bird are blue (0x03 with a 0x17 highlight): a blue sky would swallow them.
   SKY_BANDS    = 4
-  SKY_COLORS   = [0x2F, 0x53, 0x77, 0x9B]
+  SKY_COLORS   = [0x1F, 0x5F, 0x9F, 0xDF]
   MOUNT_FAR    = 0x6A       # hazy purple-blue, distant range
-  MOUNT_NEAR   = 0x4E       # blue-grey, nearer range
+  MOUNT_NEAR   = 0x0C       # dark green hills, carrying into the grass below
   SNOW_COLOR   = 0xFF
   CLOUD_COLOR  = 0xFF
   BAND_COLOR   = 0x00       # score band background
@@ -129,9 +130,12 @@ class FlappyApp < FmrbApp
         # The same key starts the run, flaps, and retries after a crash: the
         # retry press counts as the first flap so play resumes immediately.
         reset_game if @game_over
-        # Wipe the title panel on the first flap. The background is only
-        # redrawn on transitions like this one, never per frame.
-        draw_background unless @ready
+        # Wipe the title panel on the first flap and bring back the sprites it
+        # hid. The background is only redrawn on transitions like this one.
+        unless @ready
+          draw_background
+          show_sprites
+        end
         @ready = true
         @bird_vy = FLAP_POWER
         play_flap
@@ -444,13 +448,32 @@ class FlappyApp < FmrbApp
     end
   end
 
-  # Message backdrop. The scenery behind it is busy, and sprites always land
-  # on top, so the text needs its own solid ground to stay readable.
+  # Message backdrop. The scenery behind it is busy, so the text needs solid
+  # ground - and the sprites have to go, because they are composited above
+  # everything the canvas draws and would otherwise sit on top of the panel.
+  # show_sprites brings them back when play resumes.
   def panel(h)
+    hide_sprites
     py = @field_y + (@sky_h - h) / 2
     @gfx.fill_round_rect(@ox + 6, py - 4, @w - 12, h + 8, 4, PANEL_BORDER)
     @gfx.fill_round_rect(@ox + 7, py - 3, @w - 14, h + 6, 4, PANEL_COLOR)
     yield py
+  end
+
+  def hide_sprites
+    set_sprites_visible(false)
+  end
+
+  def show_sprites
+    set_sprites_visible(true)
+  end
+
+  def set_sprites_visible(on)
+    @bird.visible = on if @bird
+    return unless @pipes
+    @pipes.each do |pipe|
+      pipe[:segments].each { |s| s.visible = on }
+    end
   end
 
   # Centred, and bold by overdrawing one pixel to the right - the font has no
