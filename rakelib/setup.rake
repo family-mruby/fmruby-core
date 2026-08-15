@@ -13,6 +13,18 @@ task :icons do
   sh "ruby tool/gen_icon_bmp.rb"
 end
 
+desc "Regenerate the game BGM .fmsq files from their .mml scores"
+task :music do
+  # The .mml is the score (the same file format FmrbMidi::MmlPlayer reads);
+  # the .fmsq beside it is what a game hands to the audio task, which then
+  # loops it without the app's help. Listed rather than globbed so a score
+  # meant only for the MML player does not get a sequence it has no use for.
+  # Re-run after editing a score and commit both.
+  ["korobeiniki"].each do |name|
+    sh "ruby tool/mml2fmsq.rb flash/usr/share/music/#{name}.mml"
+  end
+end
+
 desc "Regenerate the shooter's sprite BMPs from their pixel art source"
 task :sprites do
   # Same arrangement as :icons - the art lives in the generator, the BMPs it

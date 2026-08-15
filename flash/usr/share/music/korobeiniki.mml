@@ -1,0 +1,25 @@
+# Korobeiniki - Russian folk song (traditional; the lyric is Nekrasov, 1861).
+# The tune is in the public domain. This is our own transcription and our own
+# accompaniment, written for the APU: melody on pulse1, a root-and-fifth
+# harmony on pulse2, and the bass on the triangle.
+#
+# 16 bars in 4/4, E minor, looping: eight bars of the running melody, then
+# eight of the slower second half.
+#
+# Played by the tetris demo. tool/mml2fmsq.rb turns this into the .fmsq the
+# audio task loops on its own; FmrbMidi::MmlPlayer reads the same file.
+bpm 144
+loop on
+
+# melody (pulse1)
+o5e o4b8 o5c8 d c8 o4b8 a a8 o5c8 e d8 c8 o4b4. o5c8 d e c o4a a r o5d4. f8 a g8 f8 e4. c8 e d8 c8 o4b b8 o5c8 d e c o4a a r o5e2 c2 d2 o4b2 o5c2 o4a2 g+2 b2 o5e2 c2 d2 o4b2 o5c2 e a2 g+2 r2
+
+velocity 70
+
+# harmony, root and fifth of the chord under the melody (pulse2)
+o4e2 b2 a2 e2 e2 b2 a2 e2 d2 a2 a2 e2 e2 b2 a2 e2 a2 e2 e2 b2 a2 e2 e2 b2 a2 e2 e2 b2 a2 e2 e2 b2
+
+velocity 90
+
+# bass, one root per bar (triangle)
+o2e1 a1 e1 a1 o3d1 o2a1 e1 a1 a1 e1 a1 e1 a1 e1 a1 e1

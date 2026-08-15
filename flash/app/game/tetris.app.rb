@@ -8,7 +8,13 @@ class TetrisApp < FmrbApp
   CELL = 8  # Cell size in pixels
 
   # Colors (RGB332)
-  BG_COLOR     = 0x00  # Playfield interior (kept black for piece contrast)
+  # The playfield is light rather than black. Cells are drawn one pixel
+  # smaller than CELL, so the field colour also shows through as the grid
+  # between blocks -- on a light field that reads as a board rather than as a
+  # hole. The piece colours below are the darker halves of their hues,
+  # because RGB332's bright cyan and yellow have almost the same luminance as
+  # the field and would disappear into it.
+  BG_COLOR     = 0xB6  # Playfield interior (light warm gray)
   PANEL_COLOR  = 0x29  # Area outside the playfield (dark blue-gray)
   BORDER_OUTER = 0x92  # Bright outer border line
   BORDER_INNER = 0x49  # Dark inner border line
@@ -18,13 +24,13 @@ class TetrisApp < FmrbApp
 
   # Piece colors
   PIECE_COLORS = [
-    0x1F,  # I - cyan
-    0x03,  # J - blue
-    0xFC,  # L - orange (yellow-ish in RGB332)
-    0xED,  # O - yellow
-    0x1C,  # S - green
-    0xE3,  # T - magenta
-    0xE0,  # Z - red
+    0x0F,  # I - teal
+    0x02,  # J - blue
+    0xE8,  # L - orange
+    0xA8,  # O - gold
+    0x0C,  # S - green
+    0x82,  # T - purple
+    0xC0,  # Z - red
   ]
 
   # Piece shapes (each is array of 4 rotations, each rotation is [row, col] offsets)
@@ -52,6 +58,21 @@ class TetrisApp < FmrbApp
      [[0,0],[0,1],[1,1],[1,2]], [[0,1],[1,0],[1,1],[2,0]]],
   ]
 
+  # ---- Sound ----
+  # BGM is Korobeiniki (Russian folk song, public domain; our own
+  # transcription and accompaniment). The score is
+  # flash/usr/share/music/korobeiniki.mml and tool/mml2fmsq.rb turns it into
+  # the .fmsq below, which the audio task loops on its own -- the game starts
+  # it and never touches it again.
+  BGM_SRC   = "/usr/share/music/korobeiniki.fmsq"
+  BGM_CACHE = "/cache/app/tetris/bgm.fmsq"
+  BGM_SLOT  = 0
+  # Effects go through note_on, which lands on the SUB APU, so they do not
+  # fight the BGM playing on MAIN.
+  CH_PULSE1 = 0
+  CH_PULSE2 = 1
+  CH_TRI    = 2
+
   def initialize
     super()
     @board = []
@@ -71,6 +92,7 @@ class TetrisApp < FmrbApp
 
   def on_create
     Log.info("Tetris on_create")
+    setup_audio
     build_blocks
     reset_board
     spawn_piece
@@ -100,6 +122,8 @@ class TetrisApp < FmrbApp
 
     if collides?(@piece_x, @piece_y, @piece_rot)
       @game_over = true
+      stop_bgm
+      queue_sfx(:over)
     end
   end
 
@@ -135,6 +159,7 @@ class TetrisApp < FmrbApp
       end
       ci += 1
     end
+    queue_sfx(:land)
     clear_lines
     spawn_piece
   end
@@ -157,7 +182,10 @@ class TetrisApp < FmrbApp
       # Scoring: 1=100, 2=300, 3=500, 4=800
       points = [0, 100, 300, 500, 800]
       @score += (points[cleared] || 800) * @level
+      old_level = @level
       @level = @lines / 10 + 1
+      queue_sfx(:clear, cleared)
+      queue_sfx(:level) if @level > old_level
     end
   end
 
@@ -281,7 +309,7 @@ class TetrisApp < FmrbApp
     draw_piece
     draw_next
     draw_info
-    @gfx.present
+    present!
   end
 
   def draw_board
@@ -402,13 +430,31 @@ class TetrisApp < FmrbApp
     @gfx.draw_text(ix, iy + 56, @level.to_s, TEXT_COLOR, PANEL_COLOR)
   end
 
+  # The panel is sized from the longest line rather than fixed at 60 px, which
+  # was narrower than "Enter:Retry" (11 characters, 66 px) and let that line
+  # run out of the red box. Keep the lines within the board width (80 px), the
+  # widest the panel can be without spilling onto the side panel.
+  GAMEOVER_LINES = ["GAME OVER", "Enter:Retry"]
+  CHAR_W = 6
+  CHAR_H = 8
+
   def draw_game_over
     cx = board_x0 + (COLS * CELL) / 2
     cy = board_y0 + (ROWS * CELL) / 2
-    @gfx.fill_rect(cx - 30, cy - 14, 60, 30, GAMEOVER_BG)
-    @gfx.draw_text(cx - 27, cy - 10, "GAME OVER", TEXT_COLOR, GAMEOVER_BG)
-    @gfx.draw_text(cx - 27, cy + 2, "Enter:Retry", TEXT_COLOR, GAMEOVER_BG)
-    @gfx.present
+    text_w = 0
+    GAMEOVER_LINES.each do |line|
+      w = line.length * CHAR_W
+      text_w = w if w > text_w
+    end
+    box_w = text_w + 8
+    box_h = GAMEOVER_LINES.size * (CHAR_H + 6) + 6
+    @gfx.fill_rect(cx - box_w / 2, cy - box_h / 2, box_w, box_h, GAMEOVER_BG)
+    y = cy - box_h / 2 + 5
+    GAMEOVER_LINES.each do |line|
+      @gfx.draw_text(cx - (line.length * CHAR_W) / 2, y, line, TEXT_COLOR, GAMEOVER_BG)
+      y += CHAR_H + 6
+    end
+    present!
   end
 
   # ---- Input ----
@@ -457,6 +503,7 @@ class TetrisApp < FmrbApp
       when :drop
         hard_drop
       when :restart
+        start_bgm
         reset_board
         spawn_piece
         draw_all
@@ -474,7 +521,7 @@ class TetrisApp < FmrbApp
     end
     draw_ghost
     draw_piece
-    @gfx.present
+    present!
   end
 
   def try_rotate
@@ -484,10 +531,11 @@ class TetrisApp < FmrbApp
     new_rot = (@piece_rot + 1) % 4
     if !collides?(@piece_x, @piece_y, new_rot)
       @piece_rot = new_rot
+      queue_sfx(:rotate)
     end
     draw_ghost
     draw_piece
-    @gfx.present
+    present!
   end
 
   def move_down
@@ -506,7 +554,7 @@ class TetrisApp < FmrbApp
       @piece_y += 1
       draw_ghost
       draw_piece
-      @gfx.present
+      present!
     end
   end
 
@@ -530,6 +578,7 @@ class TetrisApp < FmrbApp
 
   def on_update
     process_input
+    tick_sfx
 
     if @game_over
       return 100
@@ -544,6 +593,188 @@ class TetrisApp < FmrbApp
     @frame_ms
   end
 
+  # ---- Sound ------------------------------------------------------------
+
+  def setup_audio
+    @sfx_seq = [0, 0, 0, 0]
+    @sfx_pending = []
+    # picoruby has no defined?, so just try it: the rescue covers a missing
+    # FmrbAudio, a missing file and an audio side that will not start. The
+    # game is fully playable without any of it.
+    @audio = FmrbAudio.new(self)
+    @gfx.sync_file(BGM_SRC, dest: BGM_CACHE)
+    @audio.load_fmsq_file(BGM_SLOT, BGM_CACHE)
+    @audio.play_slot(BGM_SLOT)
+    Log.info("Tetris: BGM started")
+  rescue => e
+    Log.warn("Tetris: no audio (#{e.message})")
+    @audio = nil
+  end
+
+  def start_bgm
+    return unless @audio
+    @audio.play_slot(BGM_SLOT)
+  rescue => e
+    Log.warn("Tetris: BGM restart failed (#{e.message})")
+  end
+
+  def stop_bgm
+    return unless @audio
+    @audio.stop
+  rescue => e
+    Log.warn("Tetris: BGM stop failed (#{e.message})")
+  end
+
+  def stop_audio
+    return unless @audio
+    stop_bgm
+    ch = 0
+    while ch < 4
+      @audio.note_off(ch)
+      ch += 1
+    end
+    @sfx_pending = []
+  end
+
+  # Each effect claims its channel with a new sequence number, so the
+  # note_off queued by the one before cannot cut this one short.
+  # Effects are raised while the board is being rebuilt, and a repaint costs
+  # far more than a frame (it ends in a present). Starting a note there means
+  # its envelope is stretched across the paint, so effects are queued and
+  # fired by present! once the screen is up to date -- which is also the
+  # moment the player sees what the sound is for.
+  def queue_sfx(name, arg = 0)
+    @sfx_queue = [] if @sfx_queue.nil?
+    @sfx_queue << [name, arg]
+  end
+
+  def flush_sfx
+    return if @sfx_queue.nil? || @sfx_queue.empty?
+    q = @sfx_queue
+    @sfx_queue = []
+    i = 0
+    while i < q.length
+      case q[i][0]
+      when :rotate then sfx_rotate
+      when :land   then sfx_land
+      when :clear  then sfx_clear(q[i][1])
+      when :level  then sfx_level_up
+      when :over   then sfx_game_over
+      end
+      i += 1
+    end
+  end
+
+  # Every drawing path ends here: put the picture up, start whatever sound it
+  # earned, then run the effect deadlines.
+  def present!
+    @gfx.present
+    flush_sfx
+    tick_sfx
+  end
+
+  def sfx_begin(ch)
+    @sfx_seq[ch] = @sfx_seq[ch] + 1
+    @sfx_seq[ch]
+  end
+
+  # Deadlines are wall clock, not frames. A frame is 33 ms while the game is
+  # just falling, but locking a piece repaints the whole board, and counting
+  # frames made every effect that many times longer -- a hard drop held its
+  # note for as long as the redraw took, times the number of steps.
+  def sfx_step(ch, gen, ms, freq, vol = 0, duty = 2)
+    @sfx_pending << { ch: ch, gen: gen, at: Machine.board_millis + ms,
+                      freq: freq, vol: vol, duty: duty }
+  end
+
+  # A tick is one on_update, so 33 ms. These are all square waves: the APU's
+  # noise is the loudest thing it has and drowns the pulses, so it is kept
+  # out of the effects that fire while the BGM is playing.
+  #
+  # Channels: the frequent short ones share pulse2, the ones worth hearing
+  # over everything take pulse1. Volume is 15 at most, and the BGM melody
+  # sits at 11, so an effect has to be above that to carry.
+  def sfx_rotate
+    return unless @audio
+    g = sfx_begin(CH_PULSE2)
+    @audio.note_on(CH_PULSE2, 988, 10, 2, 0)
+    sfx_step(CH_PULSE2, g, 60, nil)
+  end
+
+  # Two notes falling: reads as something coming to rest.
+  def sfx_land
+    return unless @audio
+    g = sfx_begin(CH_PULSE2)
+    @audio.note_on(CH_PULSE2, 587, 12, 2, 0)
+    sfx_step(CH_PULSE2, g, 70, 392, 12)
+    sfx_step(CH_PULSE2, g, 150, nil)
+  end
+
+  # A rising arpeggio, longer and higher for four rows at once.
+  def sfx_clear(rows)
+    return unless @audio
+    g = sfx_begin(CH_PULSE1)
+    if rows >= 4
+      @audio.note_on(CH_PULSE1, 523, 14, 2, 0)
+      sfx_step(CH_PULSE1, g, 70, 659, 14)
+      sfx_step(CH_PULSE1, g, 140, 784, 14)
+      sfx_step(CH_PULSE1, g, 210, 1047, 14)
+      sfx_step(CH_PULSE1, g, 280, 1319, 14)
+      sfx_step(CH_PULSE1, g, 420, nil)
+    else
+      @audio.note_on(CH_PULSE1, 659, 13, 2, 0)
+      sfx_step(CH_PULSE1, g, 70, 784, 13)
+      sfx_step(CH_PULSE1, g, 140, 1047, 13)
+      sfx_step(CH_PULSE1, g, 240, nil)
+    end
+  end
+
+  # On pulse2 so it does not cut the line-clear arpeggio it follows.
+  def sfx_level_up
+    return unless @audio
+    g = sfx_begin(CH_PULSE2)
+    @audio.note_on(CH_PULSE2, 784, 13, 2, 0)
+    sfx_step(CH_PULSE2, g, 100, 1047, 13)
+    sfx_step(CH_PULSE2, g, 200, 1568, 13)
+    sfx_step(CH_PULSE2, g, 340, nil)
+  end
+
+  def sfx_game_over
+    return unless @audio
+    g = sfx_begin(CH_PULSE1)
+    @audio.note_on(CH_PULSE1, 440, 13, 2, 0)
+    sfx_step(CH_PULSE1, g, 170, 349, 13)
+    sfx_step(CH_PULSE1, g, 340, 262, 13)
+    sfx_step(CH_PULSE1, g, 750, nil)
+    t = sfx_begin(CH_TRI)
+    @audio.note_on(CH_TRI, 98, 0, 0, 0)
+    sfx_step(CH_TRI, t, 750, nil)
+  end
+
+  # Oldest first. Walking the list backwards applied a note_off before the
+  # note_on it was supposed to follow whenever a slow frame made both fall due
+  # in the same pass, which left the channel sounding for ever.
+  def tick_sfx
+    return unless @audio
+    now = Machine.board_millis
+    i = 0
+    while i < @sfx_pending.length
+      e = @sfx_pending[i]
+      if e[:at] <= now
+        if @sfx_seq[e[:ch]] == e[:gen]
+          if e[:freq]
+            @audio.note_on(e[:ch], e[:freq], e[:vol], e[:duty], 0)
+          else
+            @audio.note_off(e[:ch])
+          end
+        end
+        @sfx_pending.delete_at(i)
+      else
+        i += 1
+      end
+    end
+  end
+
   def on_destroy
     @bg_block&.destroy
     @piece_block&.destroy
@@ -551,6 +782,7 @@ class TetrisApp < FmrbApp
     @bg_block = nil
     @piece_block = nil
     @next_block = nil
+    stop_audio
     Log.info("Tetris destroyed")
   end
 end
