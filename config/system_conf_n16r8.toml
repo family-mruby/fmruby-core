@@ -69,3 +69,11 @@ dir = "debug"
 
 [[launcher_exclude]]
 dir = "test"
+
+# Apps that need hardware only a Modern (ESP32-P4 / Tab5) machine has -- the
+# microphone and the six-axis sensor. They run anywhere (each one checks for
+# its device and falls back), but there is nothing for them to read on this
+# board, so keep them out of the launcher. The Modern config excludes
+# "retro" in the same way; that directory does not exist yet.
+[[launcher_exclude]]
+dir = "modern"

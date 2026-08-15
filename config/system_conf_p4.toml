@@ -73,6 +73,14 @@ dir = "debug"
 [[launcher_exclude]]
 dir = "test"
 
+# The counterpart of the Retro configs' "modern" exclusion: apps that need
+# hardware only a Retro machine has (NTSC output, the WROVER side) go under
+# /app/retro and are hidden here. The directory does not exist yet -- an
+# exclusion for a missing directory simply never matches. /app/modern stays
+# visible on this board; that is what it is for.
+[[launcher_exclude]]
+dir = "retro"
+
 # Remote desktop (browser viewer via WiFi). WiFi credentials live in
 # /etc/wifi.toml (see config/wifi_p4.toml.example).
 [remote_desktop]
