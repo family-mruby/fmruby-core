@@ -13,6 +13,15 @@ task :icons do
   sh "ruby tool/gen_icon_bmp.rb"
 end
 
+desc "Regenerate the shooter's sprite BMPs from their pixel art source"
+task :sprites do
+  # Same arrangement as :icons - the art lives in the generator, the BMPs it
+  # writes are what the device loads (flash/usr/share/sprites/shooter, sent to
+  # the graphics side by the app). Re-run after editing the art and commit the
+  # regenerated files.
+  sh "ruby tool/gen_shooter_sprites.rb"
+end
+
 desc "Build Setup (Patch files)"
 task :setup do
   mrbgem_path = "components/picoruby-esp32/picoruby/mrbgems"
