@@ -425,6 +425,110 @@ check("the tune is filed ahead of the clock, not on the beat") do
    "first #{filed.first[0]}us, last #{filed.last[0]}us"]
 end
 
+# --- tunes read from a file ----------------------------------------------
+#
+# A song can be an asset rather than a string inside the program that plays
+# it (tools/fm_asset_editor edits these). What is pinned here is that the
+# settings reach the player and that each part lands on its own channel.
+
+TUNE_FILE = <<~MML
+  # Round - two parts
+  bpm 90
+  loop on
+  o5 l4 cegegegc
+  velocity 80
+  o3 l2 c   g   c
+MML
+
+file_player, = new_player
+check("a tune reads from text") do
+  [file_player.load_text(TUNE_FILE) && file_player.loaded?, "#{file_player.event_count} events"]
+end
+
+check("the settings in the file reach the player") do
+  [file_player.bpm == 90 && file_player.loop == true, "bpm #{file_player.bpm}, loop #{file_player.loop}"]
+end
+
+check("each part is on its own channel") do
+  channels = file_player.instance_variable_get(:@events).map do |packed|
+    (packed >> FmrbMidi::MmlPlayer::EV_CHANNEL_SHIFT) & 0x0F
+  end.uniq.sort
+  [channels == [0, 1], "channels #{channels.inspect}"]
+end
+
+check("the file and the same parts loaded by hand agree") do
+  by_hand, = new_player
+  by_hand.load_string("o5 l4 cegegegc", channel: 0, velocity: 100)
+  by_hand.add_string("o3 l2 c   g   c", channel: 1, velocity: 80)
+  a = file_player.instance_variable_get(:@events)
+  b = by_hand.instance_variable_get(:@events)
+  [a == b, "#{a.size} vs #{b.size} events"]
+end
+
+check("comments and blank lines are not parts") do
+  quiet, = new_player
+  quiet.load_text("# only a comment\n\n")
+  [quiet.loaded? == false && quiet.error.to_s.length > 0, quiet.error.to_s]
+end
+
+check("a missing file is refused, not raised") do
+  missing, = new_player
+  [missing.load_file("/nowhere/at/all.mml") == false && missing.error.to_s.length > 0,
+   missing.error.to_s]
+end
+
+# The four sound settings say what plays a part. They are sent as the file is
+# loaded, so what is checked is the state they leave the transport in.
+VOICED_TUNE = <<~MML
+  bpm 120
+  voice triangle
+  duty 1
+  volume 100
+  o3 l4 cde
+  voice noise
+  program 118
+  o3 l4 fga
+MML
+
+voiced, = new_player
+voiced.load_text(VOICED_TUNE)
+transport = voiced.device.transport
+
+check("voice puts the part on the APU voice it names") do
+  [transport.voice_for(0) == FmrbMidi::CH_TRIANGLE && transport.voice_for(1) == FmrbMidi::CH_NOISE,
+   "ch0 #{transport.voice_for(0)}, ch1 #{transport.voice_for(1)}"]
+end
+
+check("duty reaches the transport as 0-3") do
+  duties = transport.instance_variable_get(:@cc_duty)
+  [duties[0] == 1 && duties[1] == 1, "ch0 #{duties[0]}, ch1 #{duties[1]}"]
+end
+
+check("volume reaches the transport") do
+  volumes = transport.instance_variable_get(:@cc_volume)
+  [volumes[0] == 100, "ch0 #{volumes[0]}"]
+end
+
+check("a program change is harmless where there is no instrument to change") do
+  # The APU has no programs: the transport is supposed to take the message
+  # and ignore it, which is what a MIDI receiver does with what it cannot use.
+  [voiced.loaded? && voiced.event_count > 0, "#{voiced.event_count} events"]
+end
+
+check("a tune with no sound settings leaves the mapping alone") do
+  plain, = new_player
+  plain.load_text("bpm 120\no4 l4 cde\n")
+  [plain.device.transport.voice_for(0) == FmrbMidi::CH_PULSE1,
+   "ch0 #{plain.device.transport.voice_for(0)}"]
+end
+
+check("the shipped example plays") do
+  example = File.join(ROOT, "flash/usr/share/music/round.mml")
+  shipped, = new_player
+  [File.exist?(example) && shipped.load_file(example) && shipped.loaded?,
+   "#{shipped.event_count} events, bpm #{shipped.bpm}"]
+end
+
 puts
 puts "#{$checks} checks, #{$failures.size} failed"
 exit($failures.empty? ? 0 : 1)

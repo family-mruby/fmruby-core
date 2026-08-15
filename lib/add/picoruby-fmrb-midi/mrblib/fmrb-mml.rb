@@ -40,6 +40,14 @@ module FmrbMidi
     # so the tempo belongs to the player.
     DEFAULT_BPM = 120
 
+    # What a "voice" line in a tune file may name, as map_channel numbers them.
+    VOICE_CHANNELS = {
+      "pulse1" => FmrbMidi::CH_PULSE1, "pulse2" => FmrbMidi::CH_PULSE2,
+      "triangle" => FmrbMidi::CH_TRIANGLE, "noise" => FmrbMidi::CH_NOISE,
+      "0" => FmrbMidi::CH_PULSE1, "1" => FmrbMidi::CH_PULSE2,
+      "2" => FmrbMidi::CH_TRIANGLE, "3" => FmrbMidi::CH_NOISE
+    }
+
     # Packed event layout. Everything a note needs fits in one Integer, so a
     # tune costs one Array of Integers and playing it costs nothing.
     #
@@ -104,6 +112,74 @@ module FmrbMidi
       stop
       reset_state
       add_string(mml, channel: channel, velocity: velocity)
+    end
+
+    # Load a tune written as a file, so a song can be edited and shipped like
+    # any other asset instead of living inside the program that plays it
+    # (tools/fm_asset_editor writes these). The format is line based:
+    #
+    #   # a comment, at the start of a line only ('#' is a sharp in a part)
+    #   bpm 120          the tempo, which the MML dialect has no command for
+    #   loop on          repeat at the end (default off)
+    #   velocity 80      applies to the parts below it (default 100)
+    #   voice triangle   which APU voice plays it (pulse1/pulse2/triangle/noise)
+    #   duty 1           pulse width 0-3 (12.5, 25, 50, 75 per cent)
+    #   volume 100       channel volume 0-127
+    #   program 24       instrument for an external MIDI sound source (GM)
+    #   o5 l4 cegegegc   a part; each one goes on its own channel, in order
+    #
+    # The four sound settings say what plays a part, which the dialect has no
+    # way to express: they are sent to the device as it is loaded (the voice as
+    # a channel mapping, the rest as control and program changes), and a device
+    # that has no use for one ignores it. Leaving them out leaves the machine's
+    # defaults alone.
+    #
+    # Returns true, or false with #error saying what was wrong.
+    def load_file(path)
+      text = nil
+      begin
+        File.open(path, "r") { |f| text = f.read }
+      rescue => e
+        stop
+        reset_state
+        @error = "#{path}: #{e.message}"
+        return false
+      end
+      load_text(text)
+    end
+
+    # The body of load_file, split out so a tune held in memory (one already
+    # read, or one built by a program) goes through the same rules.
+    def load_text(text)
+      stop
+      reset_state
+      velocity = 100
+      voice = nil
+      duty = nil
+      volume = nil
+      program = nil
+      channel = 0
+      text.to_s.split("\n").each do |raw|
+        line = raw.strip
+        next if line.empty? || line.start_with?("#")
+
+        key, argument = split_setting(line)
+        case key
+        when "bpm"      then self.bpm = argument.to_i
+        when "velocity" then velocity = argument.to_i
+        when "loop"     then @loop = %w[on yes true 1].include?(argument)
+        when "voice"    then voice = VOICE_CHANNELS[argument]
+        when "duty"     then duty = argument.to_i
+        when "volume"   then volume = argument.to_i
+        when "program"  then program = argument.to_i
+        else
+          add_string(line, channel: channel, velocity: velocity)
+          apply_sound(channel, voice, duty, volume, program)
+          channel += 1
+        end
+      end
+      @error = "no parts in the file" if channel == 0
+      @loaded
     end
 
     # Add another part to the tune, on its own channel. Two parts written
@@ -257,6 +333,34 @@ module FmrbMidi
     end
 
     private
+
+    # Tell the device what should play this channel. The voice is the
+    # transport's business (only the APU has voices to hand out); the rest are
+    # ordinary MIDI messages, which a transport with no use for them ignores,
+    # as a MIDI receiver is supposed to.
+    def apply_sound(channel, voice, duty, volume, program)
+      return unless @device
+
+      transport = @device.transport
+      if voice && transport && transport.respond_to?(:map_channel)
+        transport.map_channel(channel, voice)
+      end
+      # The duty control carries 0-127 and the transport keeps the top two
+      # bits, so a duty of 0-3 goes out as 0, 32, 64 or 96.
+      @device.control_change(FmrbMidi::CC_DUTY, duty * 32, channel: channel) if duty
+      @device.control_change(FmrbMidi::CC_VOLUME, volume, channel: channel) if volume
+      @device.program_change(program, channel: channel) if program
+    end
+
+    # "bpm 120" -> ["bpm", "120"], and a part line -> its first word, which is
+    # no setting and so falls through to being played. Written out rather than
+    # with a regexp split to keep it to what picoruby has.
+    def split_setting(line)
+      space = line.index(" ")
+      return [line.downcase, ""] if space.nil?
+
+      [line[0, space].downcase, line[(space + 1)..-1].to_s.strip.downcase]
+    end
 
     def reset_state
       @events = []

@@ -1,0 +1,8 @@
+# Round - the same tune the MML demo plays, as a file.
+# Parts go one per line and each gets its own channel, in order.
+bpm 120
+loop off
+
+o5 l4 cegegegc
+velocity 80
+o3 l2 c   g   c
