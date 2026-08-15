@@ -8,6 +8,7 @@
 FmrbI18n.add(
   "en" => {
     shell:           "Shell",
+    starting:        "starting...",
     editor:          "Editor",
     launcher:        "Launcher",
     file_manager:    "File Manager",
@@ -59,6 +60,7 @@ FmrbI18n.add(
   },
   "ja" => {
     shell:           "シェル",
+    starting:        "起動中...",
     editor:          "エディタ",
     launcher:        "ランチャー",
     file_manager:    "ファイル",

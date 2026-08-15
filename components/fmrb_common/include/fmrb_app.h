@@ -125,7 +125,22 @@ typedef struct fmrb_app_task_context_s {
     // decremented by the waiting task itself, so no lock is needed; it is a
     // counter rather than a flag only to stay correct if a wait ever nests.
     volatile uint8_t      sync_io_depth;
+
+    // Set once the app has its main canvas, which is the first moment it can
+    // be said to have started: every runtime gets there only after loading
+    // and compiling its script. fmrb_app_notify_started reports that to the
+    // kernel, and this keeps it to one report per app.
+    bool                  started_notified;
 } fmrb_app_task_context_t;
+
+/**
+ * @brief Tell the kernel the app is up (main canvas created)
+ *
+ * The counterpart of the error notification: the kernel shows a "starting"
+ * indicator from the spawn request until one of the two arrives. Safe to call
+ * more than once; only the first call reports.
+ */
+void fmrb_app_notify_started(fmrb_app_task_context_t* ctx);
 
 // Spawn attributes for creating new app task
 typedef struct {

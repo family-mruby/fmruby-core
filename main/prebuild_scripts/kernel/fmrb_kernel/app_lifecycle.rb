@@ -19,9 +19,14 @@ module AppLifecycleMixin
     # Read fullscreen from the app context rather than the window list: the
     # list is refreshed asynchronously and is not there yet at this point.
     info = _get_app_info(new_pid)
-    if info && info[:fullscreen]
-      enter_fullscreen(new_pid)
-    elsif @fullscreen_pid
+    # A fullscreen app is not given the screen here. Spawn returns as soon as
+    # the task exists and the script is loaded and compiled inside it, which
+    # on the device takes seconds; entering fullscreen now would suspend the
+    # desktop and hide its canvas (fmrb_app_suspend does both), leaving the
+    # screen blank for the whole load with nothing able to report progress.
+    # on_app_started hands the screen over when there is something to show.
+    fullscreen_app = info && info[:fullscreen]
+    if !fullscreen_app && @fullscreen_pid
       # A windowed app started from a fullscreen app -- the editor's F5 with a
       # windowed target. The desktop is suspended and mouse input is pinned to
       # the fullscreen app, so the new window came up invisible and unreachable
@@ -35,6 +40,8 @@ module AppLifecycleMixin
       end
     end
 
+    announce_starting(new_pid, info)
+
     # NOTE: keep the collection-class name (S-e-t) out of kernel source even in
     # comments -- Spinel splices `require "set"` on a bareword match and its
     # bundled library fails to compile in this program.
@@ -43,6 +50,77 @@ module AppLifecycleMixin
     Log.info("HID target set to new app pid=#{new_pid}")
     notify_apps_changed
     true
+  end
+
+  # ---- Start indicator ----
+  #
+  # From the spawn request until the app has its main canvas, the desktop shows
+  # "<name> starting". Compiling a script takes seconds on the device and the
+  # screen said nothing about it.
+  #
+  # Started is reported by fmrb_app_notify_started, which the shared canvas
+  # helper calls -- one place every runtime (mruby, Spinel, MicroPython, Lua,
+  # BASIC) reaches only after its script is loaded. A headless app never gets
+  # there, which is why it is not announced at all.
+  #
+  # Taking it down again does not rely on that one message: a compile error
+  # (app_error), the app dying (cleanup_terminated_app) and a timeout on the
+  # desktop side each clear it.
+  STARTING_TIMEOUT_MS = 20000
+
+  def announce_starting(pid, info)
+    return if info.nil? || info[:headless]
+    return unless @desktop_pid
+    name = info[:name] || ""
+    @starting_pid = pid
+    @starting_at = Machine.board_millis
+    data = MessagePack.pack({ "cmd" => "app_starting", "pid" => pid, "name" => name })
+    _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+  end
+
+  def clear_starting(pid)
+    return unless @starting_pid
+    return unless pid.nil? || pid == @starting_pid
+    @starting_pid = nil
+    @starting_at = nil
+    return unless @desktop_pid
+    data = MessagePack.pack({ "cmd" => "app_started" })
+    _send_raw_message(@desktop_pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+  end
+
+  # The app has its canvas: it is up. Hand it the screen if it asked for
+  # fullscreen, and take the indicator down.
+  def on_app_started(pid)
+    return unless pid
+    Log.info("App started: pid=#{pid}")
+    # Clear before handing over the screen, not after: enter_fullscreen
+    # suspends the desktop, and a message sent to a suspended app waits in its
+    # queue. Done the other way round, an app that starts quickly (a Spinel
+    # app is native code and has nothing to compile) left both the raise and
+    # the clear queued, and the desktop played them back when something else
+    # resumed it -- the indicator appeared minutes later, over an app that had
+    # long since started.
+    clear_starting(pid)
+    # Whether it wants the screen is written on the app itself, so ask the
+    # context rather than remembering. A remembered pid was a single slot:
+    # two fullscreen apps starting close together (F5 from the editor while
+    # one is still loading) overwrote it, and the first one never got the
+    # screen.
+    info = _get_app_info(pid)
+    enter_fullscreen(pid) if info && info[:fullscreen] && @fullscreen_pid != pid
+  end
+
+  # Backstop for a start that never reports: a runtime that draws nothing but
+  # keeps running would otherwise leave the indicator up for ever. Called from
+  # the periodic tick.
+  def tick_starting
+    return unless @starting_at
+    return if Machine.board_millis - @starting_at < STARTING_TIMEOUT_MS
+    Log.warn("Start indicator timed out for pid=#{@starting_pid}")
+    pid = @starting_pid
+    info = pid ? _get_app_info(pid) : nil
+    enter_fullscreen(pid) if info && info[:fullscreen] && @fullscreen_pid != pid
+    clear_starting(nil)
   end
 
   # Tell the desktop the set of running apps changed, so the taskbar rebuilds
@@ -426,6 +504,10 @@ module AppLifecycleMixin
   def cleanup_terminated_app(pid)
     Log.info("Cleaning up terminated app: pid=#{pid}")
 
+    # It never came up (a compile error is the usual reason): take the
+    # indicator down.
+    clear_starting(pid)
+
     # Stop any APU voices the app was holding. An app that ends normally does
     # this itself in on_destroy, but one that dies on an exception never gets
     # there and the note would sound forever.
@@ -644,6 +726,9 @@ module AppLifecycleMixin
 
     # Deliver a pending spawn open_path once the new app has its queue.
     flush_open_path
+
+    # Take down a start indicator whose app never reported itself started.
+    tick_starting
 
     # Bring a parked fullscreen app back once the windowed app it ran is gone.
     flush_pending_unpark

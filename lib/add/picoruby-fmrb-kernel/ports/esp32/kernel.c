@@ -425,6 +425,11 @@ static mrb_value mrb_kernel_get_app_info(mrb_state *mrb, mrb_value self)
                  mrb_bool_value(ctx->fullscreen));
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "fullscreen_switchable")),
                  mrb_bool_value(ctx->fullscreen_switchable));
+    // headless is default_window_mode = "background": no canvas is ever
+    // created, so such an app neither reports itself started nor deserves a
+    // starting indicator.
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "headless")),
+                 mrb_bool_value(ctx->headless));
 
     if (ctx->load_mode == FMRB_LOAD_MODE_FILE && ctx->load_data) {
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "path")),

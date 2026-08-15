@@ -508,6 +508,7 @@ class SystemDesktopApp < FmrbApp
     draw_network_dialog if @net_open
     draw_error_dialog if @error_dlg_open
     draw_about_dialog if @about_open
+    draw_starting if @starting_name
     draw_tbd_dialog if @tbd_open
     draw_resize_preview if @resize_preview_active
     @gfx.present
@@ -565,6 +566,50 @@ class SystemDesktopApp < FmrbApp
   # Order left-to-right: RAM, kana, BLE, wifi, clock -- the readout sits
   # apart so the three icon cells line up.
   MEMINFO_W = 30  # 5 chars x 6px, fixed width
+
+  # ---- Start indicator ----
+  #
+  # Raised by the kernel when a spawn begins and taken down when the app has
+  # its canvas ("app_started"), when it fails ("show_error") or when it dies
+  # (the kernel clears it). This timeout is the backstop for a clear that
+  # never arrives: it must never be possible to leave the plate on screen.
+  STARTING_TIMEOUT_MS = 25000
+  STARTING_H = 20
+  STARTING_PAD = 8
+  STARTING_Y = MENU_BAR_HEIGHT + 6
+
+  def clear_starting
+    return unless @starting_name
+    @starting_name = nil
+    @starting_at = nil
+    update_composite_regions
+    draw_foreground if @boot_anim_state == :done
+  end
+
+  def tick_starting
+    return unless @starting_at
+    return if Machine.board_millis - @starting_at < STARTING_TIMEOUT_MS
+    Log.warn("Start indicator timed out: #{@starting_name}")
+    clear_starting
+  end
+
+  # A plate under the menu bar rather than a dialog: it is information, it
+  # must not take the focus, and the foreground canvas is cleared and redrawn
+  # whole, so taking it away is just not drawing it.
+  def draw_starting
+    label = "#{@starting_name} #{FmrbI18n.t(:starting)}"
+    # Measured and drawn the way every localized label here is: mixed: true
+    # puts ASCII on Font0 and the Japanese on misaki_8, and FmrbI18n.text_width
+    # is the matching measurement.
+    w = FmrbI18n.text_width(label) + STARTING_PAD * 2
+    w = @window_width - 8 if w > @window_width - 8
+    x = (@window_width - w) / 2
+    y = STARTING_Y
+    @gfx.fill_rect(x, y, w, STARTING_H, FmrbConst::THEME_WINDOW_BG)
+    @gfx.draw_rect(x, y, w, STARTING_H, FmrbConst::THEME_BORDER)
+    @gfx.draw_text(x + STARTING_PAD, y + 6, label,
+                   FmrbConst::THEME_TEXT, FmrbConst::THEME_WINDOW_BG, mixed: true)
+  end
 
   def draw_meminfo
     x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W
@@ -754,6 +799,15 @@ class SystemDesktopApp < FmrbApp
     regions = [
       { dst_x: 0, dst_y: 0, w: @window_width, h: MENU_BAR_HEIGHT, transparent: false }
     ]
+    if @starting_name
+      # The plate sits below the menu bar, which is outside every other
+      # region: without this it is drawn on the canvas and never composited,
+      # which is exactly what "the indicator never appeared" turned out to be.
+      # transparent: true so the band around the plate stays the wallpaper
+      # rather than a full width bar.
+      regions << { dst_x: 0, dst_y: STARTING_Y, w: @window_width, h: STARTING_H,
+                   transparent: true }
+    end
     if @dropdown_open
       dropdown_h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
       regions << { dst_x: DROPDOWN_X, dst_y: DROPDOWN_Y, w: DROPDOWN_W, h: dropdown_h, transparent: false }
@@ -825,6 +879,7 @@ class SystemDesktopApp < FmrbApp
     # the largest observed GC step (336ms on device) or stepping stops after
     # the first big step and collections fall back to the allocation path.
     if @counter % 2 == 0
+      tick_starting
       taskbar_changed = update_taskbar_apps
       tick_config_dialog if @cfg_open
       tick_network_dialog if @net_open
@@ -912,10 +967,23 @@ class SystemDesktopApp < FmrbApp
     if msg["cmd"] == "file_select"
       open_file_selector(msg["requester_pid"], msg["mode"] || "open")
     elsif msg["cmd"] == "show_error"
+      clear_starting
       err = FmrbApp._get_last_error
       if err
         open_error_dialog(err[:name] || "Unknown", err[:error] || "Unknown error")
       end
+    elsif msg["cmd"] == "app_starting"
+      # An app is being spawned. Loading and compiling its script takes
+      # seconds on the device, and until now the screen said nothing about it.
+      # The kernel decides who gets one (never a headless app) and clears it
+      # again through "app_started"; @starting_at is only the backstop for a
+      # clear that never arrives.
+      @starting_name = msg["name"] || ""
+      @starting_at = Machine.board_millis
+      update_composite_regions
+      draw_foreground if @boot_anim_state == :done
+    elsif msg["cmd"] == "app_started"
+      clear_starting
     elsif msg["cmd"] == "apps_changed"
       # A process started or ended. The taskbar used to pick this up on its own
       # once-a-second poll, so an app's icon appeared up to a second after its
@@ -1277,6 +1345,13 @@ class SystemDesktopApp < FmrbApp
   end
 
   def on_resume
+    # Anything still marked "starting" is stale: the desktop is only suspended
+    # while another app owns the screen, so an indicator raised before that is
+    # for an app which has long since started (or died), and its clear was
+    # queued behind the suspend. Drop it rather than painting it now.
+    @starting_name = nil
+    @starting_at = nil
+    update_composite_regions
     draw_foreground
     draw_background
     Log.info("Desktop resumed")

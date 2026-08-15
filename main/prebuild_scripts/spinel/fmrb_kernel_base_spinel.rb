@@ -172,6 +172,7 @@ class FmrbKernel
   # Packed record (fmrb_spx_app_info_snapshot):
   #   0: valid(1)  1: fullscreen(1)  2: vm_type(1)  3: load_mode(1)
   #   4: name (32, NUL-pad)  36: path (128, NUL-pad)
+  #   164: fullscreen_switchable(1)  165: headless(1)
   # Byte 2 -> vm_type symbol, indexed by the value fmrb_spx_kernel.c writes.
   # Keep in step with fmrb_vm_type_t when a VM type is added.
   APP_INFO_VM_TYPES = [:unknown, :mruby, :lua, :basic, :native, :micropython]
@@ -187,7 +188,8 @@ class FmrbKernel
       load_mode: buf.getbyte(3),
       name: SpxBytes.read_name(buf, 4, 32),
       path: SpxBytes.read_name(buf, 36, 128),
-      fullscreen_switchable: buf.getbyte(164) != 0
+      fullscreen_switchable: buf.getbyte(164) != 0,
+      headless: buf.getbyte(165) != 0
     }
   end
 

@@ -249,6 +249,9 @@ const char *fmrb_spx_app_info_snapshot(int pid)
         spx_pack_name(buf + 36, 128, (const char *)ctx->load_data);  /* path */
     }
     buf[164] = ctx->fullscreen_switchable ? 1 : 0;
+    /* headless (default_window_mode = "background"): no canvas, so no
+       start indicator and no fullscreen hand-over. */
+    buf[165] = ctx->headless ? 1 : 0;
     sp_net_bin_len = FMRB_SPX_APP_INFO_RECORD_SIZE;
     return (const char *)buf;
 }

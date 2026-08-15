@@ -135,11 +135,12 @@ int fmrb_spx_spawn_app_req(const char *name, int len);
  *   4    32    name       (NUL-padded)
  *   36   128   path       (NUL-padded; only for FILE load mode, else zeroed)
  *   164  1     fullscreen_switchable (bool; app survives Ctrl+Tab park/unpark)
+ *   165  1     headless   (bool; default_window_mode = "background", no canvas)
  *
- * Total 165 bytes, returned as :binstr (length in sp_net_bin_len). When the pid
+ * Total 166 bytes, returned as :binstr (length in sp_net_bin_len). When the pid
  * has no context the return is an empty string and the Ruby side returns nil.
  */
-#define FMRB_SPX_APP_INFO_RECORD_SIZE 165
+#define FMRB_SPX_APP_INFO_RECORD_SIZE 166
 const char *fmrb_spx_app_info_snapshot(int pid);
 
 /**

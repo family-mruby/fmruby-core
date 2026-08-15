@@ -74,6 +74,11 @@ fmrb_err_t fmrb_app_canvas_create_main(fmrb_app_task_context_t *ctx,
     }
     FMRB_LOGI(TAG, "[%s] Created canvas %u (%ux%u)", ctx->app_name, canvas_id,
               width, height);
+    // Every runtime -- mruby, Spinel, MicroPython, Lua, BASIC -- reaches here
+    // only once its script is loaded and compiled, so this is where the app
+    // counts as started. Headless and background apps never arrive, which is
+    // exactly why they get no "starting" indicator.
+    fmrb_app_notify_started(ctx);
     return FMRB_OK;
 }
 

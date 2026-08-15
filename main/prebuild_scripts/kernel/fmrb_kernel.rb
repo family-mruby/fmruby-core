@@ -385,10 +385,19 @@ class FmrbKernelImpl < FmrbKernel
         stop_data = MessagePack.pack({ "cmd" => "clear_and_stop" })
         _send_raw_message(reload_pid, FmrbConst::MSG_TYPE_APP_CONTROL, stop_data)
       end
+    when "app_started"
+      # Sent by fmrb_app_notify_started when the app has its main canvas: the
+      # first moment any runtime can be said to have started.
+      on_app_started(data["pid"] || pid)
+
     when "app_error"
       err = _get_last_error
       if err
         Log.error("App '#{err[:name]}': #{err[:error]}")
+        # The error dialog replaces the indicator; the app may keep running
+        # (a runtime exception) or be about to die (a compile error), and
+        # either way it is no longer "starting".
+        clear_starting(pid)
         if @desktop_pid
           fwd = { "cmd" => "show_error" }
           binary = MessagePack.pack(fwd)

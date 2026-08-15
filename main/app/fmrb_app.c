@@ -260,11 +260,21 @@ static void tls_destructor(int idx, void* pv) {
 /**
  * Allocate context slot (must hold g_ctx_lock)
  */
+/* Per-run state that must not survive into the next app in this slot. The
+   slot is zeroed when it is freed, but not every exit path gets there, so a
+   run has to start from a known state as well: started_notified surviving a
+   reuse silently suppressed the "app started" report for the second and every
+   later app in that slot. */
+static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
+    ctx->started_notified = false;
+}
+
 static int32_t alloc_ctx_index(fmrb_proc_id_t requested_id, enum FMRB_APP_TYPE app_type) {
     // For fixed IDs, use that slot directly
     if (requested_id >= 0 && requested_id < FMRB_MAX_APPS) {
         if (g_ctx_pool[requested_id].state == PROC_STATE_FREE) {
             g_ctx_pool[requested_id].gen++;  // Increment generation
+            reset_ctx_run_state(&g_ctx_pool[requested_id]);
             return requested_id;
         }
         FMRB_LOGW(TAG, "Requested slot %d already in use (state=%s)",
@@ -285,6 +295,7 @@ static int32_t alloc_ctx_index(fmrb_proc_id_t requested_id, enum FMRB_APP_TYPE a
     for (int32_t i = start_idx; i < end_idx; i++) {
         if (g_ctx_pool[i].state == PROC_STATE_FREE) {
             g_ctx_pool[i].gen++;
+            reset_ctx_run_state(&g_ctx_pool[i]);
             return i;
         }
     }
@@ -567,6 +578,46 @@ static void notify_error_to_kernel(fmrb_app_task_context_t *ctx)
     fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &msg, 100);
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to send error notification to kernel: %d", ret);
+    }
+}
+
+// Tell the kernel the app is up. Sent from fmrb_app_canvas_create_main, the
+// one point every runtime reaches only after its script is loaded and
+// compiled, so the kernel can take down the "starting" indicator (and hand a
+// fullscreen app the screen) at the moment there is something to show.
+void fmrb_app_notify_started(fmrb_app_task_context_t *ctx)
+{
+    if (!ctx || ctx->started_notified) {
+        return;
+    }
+    ctx->started_notified = true;
+
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_CONTROL,
+        .src_pid = ctx->app_id,
+    };
+
+    uint8_t *data = msg.data;
+    size_t pos = 0;
+
+    // Map with 2 entries: {"cmd": "app_started", "pid": app_id}
+    data[pos++] = 0x82;
+
+    data[pos++] = 0xA3;
+    memcpy(&data[pos], "cmd", 3); pos += 3;
+    data[pos++] = 0xAB;
+    memcpy(&data[pos], "app_started", 11); pos += 11;
+
+    data[pos++] = 0xA3;
+    memcpy(&data[pos], "pid", 3); pos += 3;
+    // app_id is a slot index, well inside the 0-127 positive fixint range.
+    data[pos++] = (uint8_t)(ctx->app_id & 0x7F);
+
+    msg.size = pos;
+
+    fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &msg, 100);
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send started notification to kernel: %d", ret);
     }
 }
 
