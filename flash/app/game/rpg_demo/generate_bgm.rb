@@ -33,6 +33,14 @@ def freq_to_timer(freq)
   (CPU_FREQ / (16.0 * freq) - 1).round
 end
 
+# The triangle's timer counts at half the pulse rate, so it needs its own
+# divider: apu_helper.c uses 16 for the pulses and 32 here. This used to
+# reuse freq_to_timer, which sounded the whole bass line an octave below
+# the score.
+def freq_to_tri_timer(freq)
+  (CPU_FREQ / (32.0 * freq) - 1).round
+end
+
 def reg_write(offset, value)
   [0xC0 | (offset & 0x1F), value & 0xFF].pack("CC")
 end
@@ -59,7 +67,7 @@ def note_pulse(ch, freq, volume: 8, duty: 2)
 end
 
 def note_tri(freq)
-  timer = freq_to_timer(freq)
+  timer = freq_to_tri_timer(freq)
   reg_write(REG_TRI_LINEAR, 0xFF) +
     reg_write(REG_TRI_LO, timer & 0xFF) +
     reg_write(REG_TRI_HI, 0x08 | ((timer >> 8) & 0x07))
