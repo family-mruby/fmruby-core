@@ -21,6 +21,16 @@ project(fmruby-core)
 if(NOT IDF_TARGET STREQUAL "linux")
     set(STORAGE_STAGING ${CMAKE_BINARY_DIR}/storage_root)
     add_custom_target(storage_staging
+        # Settings first: flash/etc/system_conf.toml and its factory copy are
+        # not in git and are staged by rake build:esp32. Building without them
+        # (or with another board's) used to succeed silently and produce an
+        # image that boots with no settings -- and, with no factory copy, one
+        # bad save away from needing a reflash. See the script for the detail.
+        COMMAND ${CMAKE_COMMAND}
+                -DSRC_DIR=${CMAKE_SOURCE_DIR}
+                -DIDF_TARGET=${IDF_TARGET}
+                -DFMRB_HW_TARGET=${FMRB_HW_TARGET}
+                -P ${CMAKE_SOURCE_DIR}/cmake/check_storage_inputs.cmake
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/flash ${STORAGE_STAGING}
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/var/cache
