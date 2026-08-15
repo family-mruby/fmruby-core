@@ -56,7 +56,12 @@ module LauncherMixin
   # still lands as a 24x24 sprite and the launcher layout is unchanged.
   ICON_SPRITE_W = 24
   ICON_SPRITE_H = 24
-  ICON_CACHE_DIR = "sprites/launcher"
+  # Under /cache, which is where everything transferred to the graphics side
+  # belongs: it is that side's scratch area for copies of Core assets (the
+  # apps use /cache/app/<name>), and it is the directory its .gitignore
+  # excludes. Sending these to /sprites instead left the copies sitting in a
+  # tracked directory, showing up as untracked files in every checkout.
+  ICON_CACHE_DIR = "/cache/launcher"
   S_ICON_EXT = ".icon"
   S_BMP_EXT  = ".bmp"
 
