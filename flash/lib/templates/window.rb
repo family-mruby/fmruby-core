@@ -2,10 +2,8 @@
 # default_window_mode = "window"
 # default_window_width = 200
 # default_window_height = 140
+# resizable = 1
 #---
-# A windowed app. Save this somewhere under /app or /home and run it with F5
-# (or `run <path>` from the shell). The fenced comment above is the whole
-# configuration -- no .app.toml sidecar needed.
 class MyApp < FmrbApp
   def on_create
     @clicks = 0
@@ -13,13 +11,9 @@ class MyApp < FmrbApp
   end
 
   def draw_screen
-    clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
-                   "clicks: #{@clicks}", FmrbGfx::WHITE)
-    @gfx.fill_rect(@user_area_x0 + 4, @user_area_y0 + 20, 60, 20, FmrbGfx::BLUE)
-    @gfx.draw_text(@user_area_x0 + 12, @user_area_y0 + 26,
-                   "click", FmrbGfx::WHITE, FmrbGfx::BLUE)
-    # Redraw the frame every time: a resize repaints over it otherwise.
+    clear_user_area(FmrbGfx::WHITE)
+    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "clicks: #{@clicks}", FmrbGfx::BLACK)
+    @gfx.draw_text(@user_area_x0 + 12, @user_area_y0 + 26, "Hello", FmrbGfx::WHITE, FmrbGfx::BLUE)
     draw_window_frame
     @gfx.present
   end
