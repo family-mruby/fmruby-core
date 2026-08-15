@@ -20,9 +20,19 @@ class FlappyApp < FmrbApp
   BIRD_X       = 30
   SCORE_H      = 10
 
-  SKY_COLOR   = FmrbGfx::CYAN
-  BAND_COLOR  = 0x00        # score band background
-  DIRT_COLOR  = 0xA8        # under the grass row
+  # RGB332 (RRRGGGBB). The sky runs deep blue at the top to hazy at the
+  # horizon, so the scenery reads as depth rather than flat colour.
+  SKY_BANDS    = 4
+  SKY_COLORS   = [0x2F, 0x53, 0x77, 0x9B]
+  MOUNT_FAR    = 0x6A       # hazy purple-blue, distant range
+  MOUNT_NEAR   = 0x4E       # blue-grey, nearer range
+  SNOW_COLOR   = 0xFF
+  CLOUD_COLOR  = 0xFF
+  BAND_COLOR   = 0x00       # score band background
+  DIRT_COLOR   = 0xA8       # under the grass row
+  PANEL_COLOR  = 0x00       # message backdrop
+  PANEL_BORDER = 0x92
+  TEXT_SHADOW  = 0x49
 
   def on_create
     @bird_vy = 0
@@ -39,14 +49,25 @@ class FlappyApp < FmrbApp
                                x: @ox + BIRD_X, y: @field_y, z: 2)
     build_pipes
     reset_game
-    draw_screen
+    draw_ready_panel
+    draw_score
+    @gfx.present
 
     Log.info("Flappy: setup complete")
   end
 
   def on_update
     tick_audio
-    return 50 if @game_over
+    if @game_over
+      # Drawn once on the transition, then the frame is left as composited:
+      # nothing moves any more, so there is nothing to present.
+      unless @over_drawn
+        draw_game_over
+        @over_drawn = true
+        @gfx.present
+      end
+      return 50
+    end
     return 50 unless @ready
 
     @bird_vy += GRAVITY
@@ -94,7 +115,8 @@ class FlappyApp < FmrbApp
       pi += 1
     end
 
-    draw_screen
+    draw_score
+    @gfx.present
     50
   end
 
@@ -107,6 +129,9 @@ class FlappyApp < FmrbApp
         # The same key starts the run, flaps, and retries after a crash: the
         # retry press counts as the first flap so play resumes immediately.
         reset_game if @game_over
+        # Wipe the title panel on the first flap. The background is only
+        # redrawn on transitions like this one, never per frame.
+        draw_background unless @ready
         @ready = true
         @bird_vy = FLAP_POWER
         play_flap
@@ -120,7 +145,9 @@ class FlappyApp < FmrbApp
     setup_layout
     build_pipes
     reset_game
-    draw_screen
+    draw_ready_panel
+    draw_score
+    @gfx.present
   end
 
   def on_destroy
@@ -291,6 +318,7 @@ class FlappyApp < FmrbApp
     @bird_vy = 0
     @score = 0
     @game_over = false
+    @over_drawn = false
     @ready = false
     @frame = 0
     @bird.move(@ox + BIRD_X, @field_y + @bird_y)
@@ -303,14 +331,84 @@ class FlappyApp < FmrbApp
       place_pipe(pipe)
     end
 
-    draw_static
+    draw_background
   end
 
   # ---- drawing ----
 
-  # Ground and window frame are drawn once per layout: the canvas keeps them
-  # between frames because on_update only repaints the band and the sky.
-  def draw_static
+  # Sky, mountains, clouds, ground and window frame. Drawn on a layout change
+  # and on the state transitions that have to wipe a panel - never per frame.
+  # Sprites are composited onto the render buffer, so they never damage what
+  # the canvas holds, and the scenery survives untouched underneath them.
+  def draw_background
+    draw_sky
+    draw_mountains
+    draw_clouds
+    draw_ground
+    draw_window_frame
+  end
+
+  # Four horizontal bands, deepest at the top. A per-scanline gradient would
+  # cost one RPC per line; at this size the banding reads as a stylised sky.
+  def draw_sky
+    band = @sky_h / SKY_BANDS
+    i = 0
+    while i < SKY_BANDS
+      y = @field_y + i * band
+      h = (i == SKY_BANDS - 1) ? (@field_y + @sky_h - y) : band
+      @gfx.fill_rect(@ox, y, @w, h, SKY_COLORS[i])
+      i += 1
+    end
+  end
+
+  # Two ranges sitting on the horizon: a hazy far one with snow caps, then a
+  # nearer darker one overlapping it. Peaks are spaced off the playfield width
+  # so they follow a window resize.
+  def draw_mountains
+    base = @ground_y
+    far_h = @sky_h / 3
+    far_h = 20 if far_h < 20
+    near_h = far_h * 2 / 3
+
+    i = 0
+    while i < 3
+      cx = @ox + @w * (2 * i + 1) / 6
+      half = far_h * 3 / 4
+      @gfx.fill_triangle(cx, base - far_h, cx - half, base, cx + half, base,
+                         MOUNT_FAR)
+      # Snow cap: the top fifth of the same triangle.
+      cap = far_h / 5
+      cap_half = half / 5
+      @gfx.fill_triangle(cx, base - far_h, cx - cap_half, base - far_h + cap,
+                         cx + cap_half, base - far_h + cap, SNOW_COLOR)
+      i += 1
+    end
+
+    i = 0
+    while i < 2
+      cx = @ox + @w * (2 * i + 1) / 4
+      half = near_h
+      @gfx.fill_triangle(cx, base - near_h, cx - half, base, cx + half, base,
+                         MOUNT_NEAR)
+      i += 1
+    end
+  end
+
+  # Three lumps per cloud, in the upper half where the pipes leave room.
+  def draw_clouds
+    draw_cloud(@ox + @w / 5, @field_y + @sky_h / 5, 9)
+    draw_cloud(@ox + @w * 7 / 10, @field_y + @sky_h / 3, 7)
+    draw_cloud(@ox + @w * 9 / 10, @field_y + @sky_h / 8, 6)
+  end
+
+  def draw_cloud(cx, cy, r)
+    @gfx.fill_circle(cx, cy, r, CLOUD_COLOR)
+    @gfx.fill_circle(cx - r, cy + r / 3, r * 2 / 3, CLOUD_COLOR)
+    @gfx.fill_circle(cx + r, cy + r / 3, r * 3 / 4, CLOUD_COLOR)
+    @gfx.fill_rect(cx - r, cy, r * 2, r, CLOUD_COLOR)
+  end
+
+  def draw_ground
     return if @ground_h <= 0
     @gfx.fill_rect(@ox, @ground_y, @w, @ground_h, DIRT_COLOR)
     # Partial tiles at the right edge and a short ground strip are cut by the
@@ -325,27 +423,49 @@ class FlappyApp < FmrbApp
                      dst_x: @ox + x, dst_y: @ground_y)
       x += TILE
     end
-    draw_window_frame
   end
 
-  def draw_screen
+  def draw_score
     @gfx.fill_rect(@ox, @oy, @w, SCORE_H, BAND_COLOR)
     @gfx.draw_text(@ox + 2, @oy + 1, "SCORE #{@score}", FmrbGfx::WHITE)
-    @gfx.fill_rect(@ox, @field_y, @w, @sky_h, SKY_COLOR)
-
-    if !@ready
-      draw_center_text("Press Up to start", @sky_h / 2 - 4, FmrbGfx::BLACK)
-    elsif @game_over
-      draw_center_text("GAME OVER", @sky_h / 2 - 10, FmrbGfx::RED)
-      draw_center_text("Up to retry", @sky_h / 2 + 2, FmrbGfx::BLACK)
-    end
-
-    @gfx.present
   end
 
-  def draw_center_text(text, dy, color)
+  def draw_ready_panel
+    panel(28) do |py|
+      draw_center_text("FLAPPY", py + 2, FmrbGfx::WHITE, 2)
+      draw_center_text("Press Up to start", py + 20, FmrbGfx::WHITE, 1)
+    end
+  end
+
+  def draw_game_over
+    panel(30) do |py|
+      draw_center_text("GAME OVER", py + 2, FmrbGfx::RED, 2)
+      draw_center_text("Up to retry", py + 21, FmrbGfx::WHITE, 1)
+    end
+  end
+
+  # Message backdrop. The scenery behind it is busy, and sprites always land
+  # on top, so the text needs its own solid ground to stay readable.
+  def panel(h)
+    py = @field_y + (@sky_h - h) / 2
+    @gfx.fill_round_rect(@ox + 6, py - 4, @w - 12, h + 8, 4, PANEL_BORDER)
+    @gfx.fill_round_rect(@ox + 7, py - 3, @w - 14, h + 6, 4, PANEL_COLOR)
+    yield py
+  end
+
+  # Centred, and bold by overdrawing one pixel to the right - the font has no
+  # bold face - over a dark shadow that lifts it off the panel.
+  def draw_center_text(text, y, color, size = 1)
+    @gfx.set_text_size(size) unless size == 1
     x = @ox + (@w - @gfx.text_width(text)) / 2
-    @gfx.draw_text(x, @field_y + dy, text, color)
+    if size > 1
+      @gfx.draw_text(x + 1, y + 1, text, TEXT_SHADOW)
+      @gfx.draw_text(x, y, text, color)
+      @gfx.draw_text(x + 1, y, text, color)
+    else
+      @gfx.draw_text(x, y, text, color)
+    end
+    @gfx.set_text_size(1) unless size == 1
   end
 
   # ---- audio ----
