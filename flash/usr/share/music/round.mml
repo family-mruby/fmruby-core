@@ -5,4 +5,6 @@ loop off
 
 o5 l4 cegegegc
 velocity 80
-o3 l2 c   g   c
+# The rest at the end is what makes this part as long as the one above it:
+# parts that do not end together leave the shorter one waiting for the repeat.
+o3 l2 c   g   c   r

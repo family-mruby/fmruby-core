@@ -4,7 +4,10 @@
 # harmony on pulse2, and the bass on the triangle.
 #
 # 16 bars in 4/4, E minor, looping: eight bars of the running melody, then
-# eight of the slower second half.
+# eight of the slower second half. The last phrase of the melody carries a
+# passing e that the first one has not, which makes the melody a beat longer
+# than sixteen bars; the accompaniment ends with a quarter rest so that every
+# part is the same length and the loop turns over with all three together.
 #
 # Played by the tetris demo. tool/mml2fmsq.rb turns this into the .fmsq the
 # audio task loops on its own; FmrbMidi::MmlPlayer reads the same file.
@@ -17,9 +20,9 @@ o5e o4b8 o5c8 d c8 o4b8 a a8 o5c8 e d8 c8 o4b4. o5c8 d e c o4a a r o5d4. f8 a g8
 velocity 70
 
 # harmony, root and fifth of the chord under the melody (pulse2)
-o4e2 b2 a2 e2 e2 b2 a2 e2 d2 a2 a2 e2 e2 b2 a2 e2 a2 e2 e2 b2 a2 e2 e2 b2 a2 e2 e2 b2 a2 e2 e2 b2
+o4e2 b2 a2 e2 e2 b2 a2 e2 d2 a2 a2 e2 e2 b2 a2 e2 a2 e2 e2 b2 a2 e2 e2 b2 a2 e2 e2 b2 a2 e2 e2 b2 r4
 
 velocity 90
 
 # bass, one root per bar (triangle)
-o2e1 a1 e1 a1 o3d1 o2a1 e1 a1 a1 e1 a1 e1 a1 e1 a1 e1
+o2e1 a1 e1 a1 o3d1 o2a1 e1 a1 a1 e1 a1 e1 a1 e1 a1 e1 r4
