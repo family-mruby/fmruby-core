@@ -29,9 +29,10 @@ Family mruby Core is an embedded operating system designed for ESP32-S3 (default
 
 ## Build Requirements
 
-- **Docker** — the ESP-IDF v5.5.1 toolchain image (`ghcr.io/family-mruby/fmruby-esp32-build:latest`) is pulled on first build. A local build of the image is also available via [docker/](docker/).
-- **Ruby** — the build orchestrator is a `Rakefile`. For flashing, install `serialport`:
+- **Docker** — the ESP-IDF toolchain image is pulled on first build. The tag is pinned in the `Rakefile` (`ESP_IDF_VERSION`, currently `v5.5.4`) rather than floating on `:latest`, so that two machines building the same commit get the same toolchain. A local build of the image is also available via [docker/](docker/).
+- **Ruby** — the build orchestrator is a `Rakefile`, and two build steps run on the host rather than in the container: the Spinel AOT compiler (see [below](#spinel-aot-compiler)) and the editor's type database, which needs the `rbs` gem. For flashing, install `serialport` as well:
   ```bash
+  gem install rbs
   gem install serialport
   ```
 
@@ -63,6 +64,20 @@ rake build:linux
 rake -T
 ```
 
+### Spinel AOT compiler
+
+Part of the firmware is Ruby compiled ahead of time to C by [Spinel](https://github.com/kishima/spinel). The compiler runs on the **host** (the IDF container has no Ruby set up for it), so the build needs a working copy of it — always, not only when an engine is set to `spinel`.
+
+`rake build:*` provisions it automatically on a fresh clone: it clones the commit pinned in `components/fmrb_spinel_rt/SPINEL_PIN` into `vendor/spinel` and builds it. After that the binary is **never rebuilt on its own** — the build only checks that `vendor/spinel/bin/spinel` exists, and neither `rake clean` nor `rake clean_all` touches `vendor/`. Run the setup task explicitly when the pin moves, or as the first step of a clean build:
+
+```bash
+rake spinel:setup   # fetch + build the pinned compiler (no-op when up to date)
+rake clean_all
+rake build:esp32
+```
+
+`spinel:setup` compares `vendor/spinel/.built_commit` with the checkout's HEAD and rebuilds only on a mismatch. Set `SPINEL_DIR=/path/to/checkout` to build against your own working copy instead of the pinned one.
+
 ### Flashing and running on ESP32
 
 ```bash
@@ -83,6 +98,8 @@ rake clean_all   # full clean (forces target reconfigure)
 ```
 
 Run `rake clean` after editing anything under `lib/` (mrbgems/patches are re-copied on build), and `rake clean_all` whenever switching target between `linux` and `esp32`.
+
+Neither task touches `vendor/`, so the Spinel compiler survives a full clean — add `rake spinel:setup` in front when you want the host tooling rebuilt as well (see [Spinel AOT compiler](#spinel-aot-compiler)).
 
 ## Security Note
 
