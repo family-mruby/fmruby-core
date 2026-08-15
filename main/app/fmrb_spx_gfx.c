@@ -313,6 +313,22 @@ int fmrb_spx_gfx_set_canvas_viewport(int canvas_id, int src_x, int src_y, int vi
     return 0;
 }
 
+int fmrb_spx_gfx_set_sprite_clip(int canvas_id, int x, int y, int w, int h)
+{
+    fmrb_gfx_context_t gctx = fmrb_gfx_get_global_context();
+    if (!gctx) {
+        return FMRB_SPX_ERR;
+    }
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (w < 0) w = 0;
+    if (h < 0) h = 0;
+    fmrb_gfx_set_sprite_clip(gctx, (fmrb_canvas_handle_t)canvas_id,
+                             (uint16_t)x, (uint16_t)y,
+                             (uint16_t)w, (uint16_t)h);
+    return 0;
+}
+
 /* ---- image API ---------------------------------------------------------- */
 
 int fmrb_spx_gfx_draw_image(int canvas_id, int image_id, int x, int y,

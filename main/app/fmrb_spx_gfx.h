@@ -97,6 +97,12 @@ int fmrb_spx_gfx_set_composite_regions(int canvas_id, const char *packed, int co
  */
 int fmrb_spx_gfx_set_canvas_viewport(int canvas_id, int src_x, int src_y, int view_w, int view_h);
 
+/**
+ * @brief Confine sprite compositing of a canvas to a sub-rect, so sprites stay
+ *        off the window frame the app drew into the same canvas. w == 0 clears.
+ */
+int fmrb_spx_gfx_set_sprite_clip(int canvas_id, int x, int y, int w, int h);
+
 /* --- image API --- */
 /** scale_x_fp8 / scale_y_fp8 are 8.8 fixed point (Ruby passes (scale*256)),
  *  keeping floats off the FFI boundary. */

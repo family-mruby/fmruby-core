@@ -702,6 +702,18 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             memcpy(payload_buf, &c, sizeof(c));
             return sizeof(c);
         }
+        case GFX_CMD_SET_SPRITE_CLIP: {
+            fmrb_link_graphics_set_sprite_clip_t c = {
+                .canvas_id = cmd->canvas_id,
+                .x = cmd->params.set_sprite_clip.x,
+                .y = cmd->params.set_sprite_clip.y,
+                .w = cmd->params.set_sprite_clip.w,
+                .h = cmd->params.set_sprite_clip.h,
+            };
+            *sub_cmd_out = FMRB_LINK_GFX_SET_SPRITE_CLIP;
+            memcpy(payload_buf, &c, sizeof(c));
+            return sizeof(c);
+        }
         case GFX_CMD_CREATE_SPRITE_INSTANCE: {
             fmrb_link_graphics_create_sprite_instance_t c;
             memset(&c, 0, sizeof(c));

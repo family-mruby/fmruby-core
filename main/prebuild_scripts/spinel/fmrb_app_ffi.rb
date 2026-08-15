@@ -55,10 +55,11 @@ module FmrbSpxGfx
   ffi_func :fmrb_spx_gfx_set_output_level, [:int, :int], :int
   ffi_func :fmrb_spx_gfx_set_chroma_level, [:int, :int], :int
 
-  # --- composite regions / viewport ---
+  # --- composite regions / viewport / sprite clip ---
   # packed: :str of count records, 14 bytes each (7 int16 LE)
   ffi_func :fmrb_spx_gfx_set_composite_regions, [:int, :str, :int], :int
   ffi_func :fmrb_spx_gfx_set_canvas_viewport,   [:int, :int, :int, :int, :int], :int
+  ffi_func :fmrb_spx_gfx_set_sprite_clip,       [:int, :int, :int, :int, :int], :int
 
   # --- image API ---
   ffi_func :fmrb_spx_gfx_draw_image,   [:int, :int, :int, :int, :int, :int], :int

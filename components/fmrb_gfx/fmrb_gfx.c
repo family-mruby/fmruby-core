@@ -282,6 +282,38 @@ fmrb_gfx_err_t fmrb_gfx_set_canvas_viewport(
     return FMRB_GFX_OK;
 }
 
+fmrb_gfx_err_t fmrb_gfx_set_sprite_clip(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_handle,
+    uint16_t x, uint16_t y,
+    uint16_t w, uint16_t h)
+{
+    if (!context) return FMRB_GFX_ERR_INVALID_PARAM;
+    fmrb_gfx_context_impl_t *ctx = context;
+    if (!ctx->initialized) return FMRB_GFX_ERR_NOT_INITIALIZED;
+    if (canvas_handle == FMRB_CANVAS_SCREEN || canvas_handle == FMRB_CANVAS_INVALID) {
+        return FMRB_GFX_ERR_INVALID_PARAM;
+    }
+
+    // Route through host_task batch queue so the clip update stays in order
+    // with surrounding draws / present commands on the same canvas.
+    gfx_cmd_t cmd;
+    memset(&cmd, 0, sizeof(cmd));
+    cmd.cmd_type = GFX_CMD_SET_SPRITE_CLIP;
+    cmd.canvas_id = canvas_handle;
+    cmd.params.set_sprite_clip.x = x;
+    cmd.params.set_sprite_clip.y = y;
+    cmd.params.set_sprite_clip.w = w;
+    cmd.params.set_sprite_clip.h = h;
+
+    fmrb_err_t send_ret = fmrb_gfx_submit(&cmd);
+    if (send_ret != FMRB_OK) {
+        ESP_LOGE(TAG, "Failed to queue set_sprite_clip: %d", send_ret);
+        return FMRB_GFX_ERR_FAILED;
+    }
+    return FMRB_GFX_OK;
+}
+
 // Sprite API implementations
 
 uint16_t fmrb_gfx_create_sprite_image(

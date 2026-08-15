@@ -253,6 +253,37 @@ class FmrbGfx
   # 重ねて見せる場所を決める
   def set_composite_regions: (Array regions) -> void
 
+  # スプライトが出られる範囲を決める <<en>> limit where sprites may appear
+  #
+  # スプライトは canvas に描いた絵の上に重ねて合成されるので、何も
+  # しないと窓のわくやタイトルバーの上にもはみ出す。この四角の中だけに
+  # 出るようにする。x, y, w, h は SpriteInstance#move と同じ座標。
+  #
+  # 窓のアプリは起動時に窓の中身の範囲が入っているので、ふつうは呼ぶ
+  # 必要はない。点数を出す帯など、さらに狭い範囲に閉じ込めたいときに使う。
+  # ```ruby
+  # # 上 10px を点数の帯にして、スプライトはその下だけに出す
+  # @gfx.set_sprite_clip(@user_area_x0, @user_area_y0 + 10,
+  #                      @user_area_width, @user_area_height - 10)
+  # ```
+  # <<en>>
+  # Sprites are composited on top of everything drawn into the canvas, so
+  # without a clip they paint over the window frame and title bar. This
+  # confines them to the given rect, in the same coordinates as
+  # SpriteInstance#move.
+  #
+  # Windowed apps start with their user area set, so calling this is only
+  # needed to narrow it further - e.g. to keep sprites out of a score bar.
+  # ```ruby
+  # # reserve the top 10px for the score; sprites stay below it
+  # @gfx.set_sprite_clip(@user_area_x0, @user_area_y0 + 10,
+  #                      @user_area_width, @user_area_height - 10)
+  # ```
+  def set_sprite_clip: (Integer x, Integer y, Integer w, Integer h) -> FmrbGfx
+
+  # スプライトの範囲の決まりをなくす <<en>> let sprites use the whole canvas
+  def clear_sprite_clip: () -> FmrbGfx
+
   # 映像の明るさを決める
   def set_output_level: (Integer level) -> FmrbGfx
 

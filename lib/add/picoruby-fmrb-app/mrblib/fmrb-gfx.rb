@@ -359,9 +359,21 @@ class FmrbGfx
     self
   end
 
-  # Restore full-canvas compositing (clears the viewport).
-  def clear_viewport
-    _set_canvas_viewport(0, 0, 0, 0)
+  # Confine this canvas's sprites to the (x, y, w, h) sub-rect. Sprites are
+  # composited on top of everything the canvas drew, so by default they paint
+  # over the window frame and title bar the app drew into the same canvas.
+  # The rect uses sprite coordinates (the same space passed to
+  # SpriteInstance#move) and is clamped to the canvas. FmrbApp already sets
+  # this to the user area for windowed apps; call it to narrow the area
+  # further, e.g. to keep a game's sprites out of its own score bar.
+  def set_sprite_clip(x, y, w, h)
+    _set_sprite_clip(x, y, w, h)
+    self
+  end
+
+  # Let sprites use the whole canvas again (clears the clip).
+  def clear_sprite_clip
+    _set_sprite_clip(0, 0, 0, 0)
     self
   end
 

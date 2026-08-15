@@ -54,6 +54,7 @@ typedef enum {
     GFX_CMD_DELETE_CANVAS,
     GFX_CMD_SET_COMPOSITE_REGIONS,  // Async; updates per-canvas sub-rect compositing list
     GFX_CMD_SET_CANVAS_VIEWPORT,    // Async; source-rect scroll register (P4 backend only)
+    GFX_CMD_SET_SPRITE_CLIP,        // Async; confines sprite compositing to a canvas sub-rect
     // Sync commands (require response from WROVER)
     GFX_CMD_CREATE_CANVAS,
     GFX_CMD_CREATE_SPRITE_IMAGE,
@@ -260,6 +261,11 @@ typedef struct {
             uint16_t src_x, src_y;
             uint16_t view_w, view_h;
         } set_canvas_viewport;
+        // Sprite compositing clip rect. w == 0 or h == 0 clears.
+        struct {
+            uint16_t x, y;
+            uint16_t w, h;
+        } set_sprite_clip;
         // Mask lifetime / masked image blit (both async).
         struct {
             uint16_t mask_id;

@@ -1452,6 +1452,29 @@ static mrb_value mrb_gfx_set_canvas_viewport(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// Graphics#_set_sprite_clip(x, y, w, h)
+// Confine sprite compositing of this canvas to a sub-rect. w == 0 clears.
+static mrb_value mrb_gfx_set_sprite_clip(mrb_state *mrb, mrb_value self)
+{
+    mrb_int x, y, w, h;
+    mrb_get_args(mrb, "iiii", &x, &y, &w, &h);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (w < 0) w = 0;
+    if (h < 0) h = 0;
+
+    fmrb_gfx_err_t ret = fmrb_gfx_set_sprite_clip(
+        data->ctx, data->canvas_id,
+        (uint16_t)x, (uint16_t)y, (uint16_t)w, (uint16_t)h);
+    if (ret != FMRB_GFX_OK) {
+        FMRB_LOGE(TAG, "set_sprite_clip failed: %d", ret);
+    }
+    return self;
+}
+
 static mrb_value mrb_gfx_sprite_move(mrb_state *mrb, mrb_value self)
 {
     mrb_int instance_id, x, y;
@@ -1582,6 +1605,10 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     // Canvas viewport (hardware scroll register; P4/PPA backend only).
     // Pair with the Ruby wrappers `set_viewport` / `clear_viewport`.
     mrb_define_method(mrb, gfx_class, "_set_canvas_viewport", mrb_gfx_set_canvas_viewport, MRB_ARGS_REQ(4));
+
+    // Sprite clip rect. Pair with the Ruby wrappers `set_sprite_clip` /
+    // `clear_sprite_clip`.
+    mrb_define_method(mrb, gfx_class, "_set_sprite_clip", mrb_gfx_set_sprite_clip, MRB_ARGS_REQ(4));
 
     // Sprite API
     mrb_define_method(mrb, gfx_class, "_create_sprite_image", mrb_gfx_create_sprite_image, MRB_ARGS_REQ(4));

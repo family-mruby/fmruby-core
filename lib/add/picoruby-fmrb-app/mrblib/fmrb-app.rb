@@ -75,6 +75,8 @@ class FmrbApp
         @bg_gfx = nil
       end
 
+      _apply_user_area_sprite_clip
+
       unless @fullscreen
         _build_frame_block
         _apply_rounded_corner_regions
@@ -131,6 +133,27 @@ class FmrbApp
     return unless @gfx
     @gfx.fill_rect(@user_area_x0, @user_area_y0,
                    @user_area_width, @user_area_height, color)
+  end
+
+  # Sprites are composited above everything the canvas drew, frame included,
+  # so a windowed app's sprites would paint over its own title bar and border.
+  # Bound them to the user area by default; apps wanting a narrower area (e.g.
+  # keeping a playfield out of their own score bar) call set_sprite_clip after
+  # startup. Public because app.c calls it from the resize path, which drops
+  # the clip on the backend.
+  def _apply_user_area_sprite_clip
+    return unless @gfx
+    # system_desktop (the only app with a bg_canvas) draws no window frame and
+    # places its own sprites - menu bar indicators, launcher icons - across the
+    # whole canvas, so there is nothing to protect and a user-area rect would
+    # only cut them.
+    return if @bg_canvas
+    if @fullscreen
+      @gfx.clear_sprite_clip
+    else
+      @gfx.set_sprite_clip(@user_area_x0, @user_area_y0,
+                           @user_area_width, @user_area_height)
+    end
   end
 
   private

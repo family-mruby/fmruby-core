@@ -241,6 +241,30 @@ fmrb_gfx_err_t fmrb_gfx_set_canvas_viewport(
     uint16_t src_x, uint16_t src_y,
     uint16_t view_w, uint16_t view_h);
 
+/**
+ * @brief Confine sprite compositing of a canvas to a sub-rect (asynchronous).
+ *
+ * Sprites are composited on top of everything the canvas itself drew, so
+ * without a clip they paint over the window frame and title bar the app drew
+ * into the same canvas. The rect uses the same coordinate space as sprite
+ * instance positions (canvas-local; viewport-relative when a viewport is set)
+ * and is clamped to the canvas. w == 0 or h == 0 clears the clip, leaving
+ * sprites bounded by the canvas only (the default).
+ *
+ * @param context Graphics context
+ * @param canvas_handle Canvas to update
+ * @param x Left edge of the sprite clip rect
+ * @param y Top edge of the sprite clip rect
+ * @param w Clip width (0 = clear clip)
+ * @param h Clip height (0 = clear clip)
+ * @return FMRB_GFX_OK on success
+ */
+fmrb_gfx_err_t fmrb_gfx_set_sprite_clip(
+    fmrb_gfx_context_t context,
+    fmrb_canvas_handle_t canvas_handle,
+    uint16_t x, uint16_t y,
+    uint16_t w, uint16_t h);
+
 // Cursor control API (global resource)
 
 // Sprite API

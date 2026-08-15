@@ -437,6 +437,21 @@ class FmrbGfx
     self
   end
 
+  # Confine this canvas's sprites to the (x, y, w, h) sub-rect. Sprites are
+  # composited above everything the canvas drew, so without this they paint
+  # over the window frame the app drew into the same canvas. Coordinates match
+  # SpriteInstance#move. FmrbApp sets the user area by default; narrow it
+  # further to keep sprites out of an app-drawn status bar.
+  def set_sprite_clip(x, y, w, h)
+    FmrbSpxGfx.fmrb_spx_gfx_set_sprite_clip(@canvas_id, x, y, w, h)
+    self
+  end
+
+  def clear_sprite_clip
+    FmrbSpxGfx.fmrb_spx_gfx_set_sprite_clip(@canvas_id, 0, 0, 0, 0)
+    self
+  end
+
   # ---- sprite low-level (used by SpriteImage / SpriteInstance) ----
   def _create_sprite_image(width, height, trans_color, use_trans)
     FmrbSpxGfx.fmrb_spx_gfx_create_sprite_image(@canvas_id, width, height, trans_color, use_trans)
@@ -663,6 +678,8 @@ class FmrbApp
         @bg_gfx = nil
       end
 
+      _apply_user_area_sprite_clip
+
       unless @fullscreen
         draw_window_frame
       end
@@ -752,6 +769,26 @@ class FmrbApp
     ])
     @composite_region_w = w
     @composite_region_h = h
+  end
+
+  # Sprites are composited above everything the canvas drew, frame included,
+  # so a windowed app's sprites would paint over its own title bar and border.
+  # Bound them to the user area by default; apps wanting a narrower area (e.g.
+  # keeping a playfield out of their own score bar) call set_sprite_clip after
+  # startup. Re-applied on resize, which drops the clip on the backend.
+  def _apply_user_area_sprite_clip
+    return unless @gfx
+    # system_desktop (the only app with a bg_canvas) draws no window frame and
+    # places its own sprites - menu bar indicators, launcher icons - across the
+    # whole canvas, so there is nothing to protect and a user-area rect would
+    # only cut them.
+    return if @bg_canvas
+    if @fullscreen
+      @gfx.clear_sprite_clip
+    else
+      @gfx.set_sprite_clip(@user_area_x0, @user_area_y0,
+                           @user_area_width, @user_area_height)
+    end
   end
 
   public
@@ -985,6 +1022,9 @@ class FmrbApp
           @user_area_x1 = w - 1
           @user_area_y1 = ht - 1
         end
+        # The backend drops the sprite clip on resize (it was sized for the old
+        # active area), so re-issue one for the new user area.
+        _apply_user_area_sprite_clip
         on_resize(w, ht)
       end
     elsif cmd == "quit_request"

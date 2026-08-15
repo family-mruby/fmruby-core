@@ -146,6 +146,14 @@ typedef struct {
     // turning a large canvas into a hardware-scrolled surface.
     uint16_t     view_x, view_y;
     uint16_t     view_w, view_h;
+    // Sprite compositing clip (SET_SPRITE_CLIP). clip_w == 0 means no clip:
+    // sprites are bounded by the canvas footprint only (default). Sprites are
+    // composited above everything the canvas drew, so a windowed app sets this
+    // to its user area to keep them off the frame it drew itself. The rect is
+    // in sprite coordinate space (canvas-local, viewport-relative when a
+    // viewport is set) and is intersected with the footprint at render time.
+    uint16_t     clip_x, clip_y;
+    uint16_t     clip_w, clip_h;
     // Cache-line-aligned size of the sprite buffer (esp_cache_msync requires
     // both address and size aligned to the cache line, or it fails silently)
     size_t       buf_aligned_size;
@@ -309,6 +317,10 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     c->view_y                   = 0;
     c->view_w                   = 0;   // 0 = no viewport (full composite)
     c->view_h                   = 0;
+    c->clip_x                   = 0;
+    c->clip_y                   = 0;
+    c->clip_w                   = 0;   // 0 = no sprite clip (canvas footprint)
+    c->clip_h                   = 0;
     c->buf_aligned_size         = aligned_size;
 
     FMRB_LOGI(TAG, "Canvas alloc: id=%u %dx%d (buffer %dx%d) z=%d transp=%u/%u",
@@ -821,6 +833,19 @@ static void render_frame(void) {
         if (c->view_w > 0) {
             cw = (c->view_w < sw) ? c->view_w : sw;
             ch = (c->view_h < sh) ? c->view_h : sh;
+        }
+        // SET_SPRITE_CLIP narrows that footprint further: the app confines its
+        // sprites to a sub-rect (typically the user area, so they stay off the
+        // window frame it drew into the same canvas). The clip shares the
+        // sprite coordinate space, i.e. it is relative to the canvas origin on
+        // screen, exactly like the composite offset below.
+        if (c->clip_w > 0) {
+            int sx = c->push_x + c->clip_x;
+            int sy = c->push_y + c->clip_y;
+            if (sx > dx) { cw -= (sx - dx); dx = sx; }
+            if (sy > dy) { ch -= (sy - dy); dy = sy; }
+            if (dx + cw > sx + c->clip_w) cw = sx + c->clip_w - dx;
+            if (dy + ch > sy + c->clip_h) ch = sy + c->clip_h - dy;
         }
         if (dx < 0) { cw += dx; dx = 0; }
         if (dy < 0) { ch += dy; dy = 0; }
@@ -1437,6 +1462,12 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                     if (rbuf) c->render_sprite->setBuffer(rbuf, nw, nh);
                 }
             }
+            if (nw != c->width || nh != c->height) {
+                // The sprite clip was sized for the old active area and may now
+                // reach past the canvas. Drop it; the app resends one for the
+                // new user area from its resize handler.
+                c->clip_x = c->clip_y = c->clip_w = c->clip_h = 0;
+            }
             c->width  = nw;
             c->height = nh;
             FMRB_LOGI(TAG, "UPDATE_WINDOW: id=%u %dx%d at (%d,%d)",
@@ -1546,6 +1577,28 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             c->view_y = cmd->src_y % c->height;
             c->view_w = (cmd->view_w < c->width)  ? cmd->view_w : c->width;
             c->view_h = (cmd->view_h < c->height) ? cmd->view_h : c->height;
+        }
+        g_needs_render = true;
+        return 0;
+    }
+
+    case FMRB_LINK_GFX_SET_SPRITE_CLIP: {
+        if (size < sizeof(fmrb_link_graphics_set_sprite_clip_t)) break;
+        const auto *cmd = (const fmrb_link_graphics_set_sprite_clip_t *)data;
+        p4_canvas_t *c = canvas_find(cmd->canvas_id);
+        if (!c) {
+            FMRB_LOGW(TAG, "SET_SPRITE_CLIP: canvas %u not found", cmd->canvas_id);
+            return 0;
+        }
+        if (cmd->w == 0 || cmd->h == 0 || cmd->x >= c->width || cmd->y >= c->height) {
+            c->clip_x = c->clip_y = c->clip_w = c->clip_h = 0;
+        } else {
+            c->clip_x = cmd->x;
+            c->clip_y = cmd->y;
+            uint16_t max_w = c->width - cmd->x;
+            uint16_t max_h = c->height - cmd->y;
+            c->clip_w = (cmd->w < max_w) ? cmd->w : max_w;
+            c->clip_h = (cmd->h < max_h) ? cmd->h : max_h;
         }
         g_needs_render = true;
         return 0;

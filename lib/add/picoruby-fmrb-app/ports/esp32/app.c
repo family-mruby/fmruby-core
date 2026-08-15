@@ -586,6 +586,14 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_x1"), mrb_fixnum_value(user_area_x1));
                                 mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@user_area_y1"), mrb_fixnum_value(user_area_y1));
 
+                                // The backend drops the sprite clip on resize
+                                // (it was sized for the old active area), so
+                                // re-issue one for the new user area.
+                                mrb_sym clip_sym = mrb_intern_lit(mrb, "_apply_user_area_sprite_clip");
+                                if (mrb_respond_to(mrb, self, clip_sym)) {
+                                    mrb_funcall(mrb, self, "_apply_user_area_sprite_clip", 0);
+                                }
+
                                 // Call on_resize callback if it exists
                                 mrb_sym on_resize_sym = mrb_intern_lit(mrb, "on_resize");
                                 if (mrb_respond_to(mrb, self, on_resize_sym)) {
