@@ -151,7 +151,11 @@ int audio_p4_engine_fmsq_play_slot(uint32_t music_id) {
 int audio_p4_engine_note_on(uint8_t channel, uint16_t freq, uint8_t volume,
                             uint8_t duty, uint8_t sweep) {
     if (!g_engine_ready) return -1;
-    if (freq == 0) return -1;
+    // freq is a pitch in Hz for the tone channels, where 0 is meaningless, but
+    // on noise it is a period index (0..15, plus the mode bit) where 0 is the
+    // shortest period - a legal note. Rejecting 0 for every channel silently
+    // dropped every noise hit at period 0.
+    if (freq == 0 && channel != FMRB_APU_CH_NOISE) return -1;
 
     engine_lock();
 

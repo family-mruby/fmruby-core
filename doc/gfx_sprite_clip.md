@@ -108,15 +108,19 @@ flappy はプレイフィールド (スコア帯より下、地面より上) を
   の DMA 入力で、viewport (トーラススクロール) は canvas 内容が安定して
   いることを前提にしている。
 
-### バージョンを上げなかった理由
+### バージョンを上げた
 
-GA バージョン (`FMRB_GA_VERSION`) の不一致は起動時に fatal
-(`fmrb_kernel.rb`、3 回リトライ後にエラー LED + raise)。このコマンドは
-非同期 fire-and-forget なので、**古い GA ファームに当たっても
-`ESP_LOGE` + `ESP_LOGW` が出てコマンドが捨てられるだけ** (= 従来の
-見た目に戻るだけ) で済む。バージョンを上げると WROVER を焼き直すまで
-Core が起動しなくなるため、据え置きにした。Retro 実機でクリップを
-効かせたい場合は graphics-audio を焼き直す。
+プロトコルにコマンドが増えたので `FMRB_LINK_VERSION` を 4 -> 5、
+GA ファームウェア版数を 2.0.0 -> 2.1.0 に上げた (core `fmrb.h` と GA
+`main/include/fmrb_ga_version.h` の両方。**手動同期**)。
+
+どちらの照合も起動時に厳密で、失敗すると fatal
+(`fmrb_kernel.rb`、3 回リトライ後にエラー LED + raise) になる。つまり
+**組み合わせが古いと起動しない**。これは意図した挙動で、据え置きにすると
+古い GA ファームのまま「クリップだけ黙って効かない」状態が見分けにくい形で
+残る (このコマンドは非同期 fire-and-forget なので、受信側は
+`ESP_LOGE` + `ESP_LOGW` を出して捨てるだけ)。**Retro では core と
+graphics-audio を必ず一緒に焼く**こと。
 
 ## 確認方法
 
