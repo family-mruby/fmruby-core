@@ -197,7 +197,7 @@ class FlappyApp < FmrbApp
   # ---- sprites ----
 
   def load_sprites
-    src_dir = "/usr/share/sprites"
+    src_dir = "/usr/share/sprites/flappy"
     cache_dir = "/cache/app/flappy"
     files = ["bird_up.bmp", "bird_down.bmp", "pipe.bmp", "grass.bmp"]
     files.each_with_index do |name, i|
