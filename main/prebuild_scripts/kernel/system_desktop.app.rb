@@ -1091,6 +1091,23 @@ class SystemDesktopApp < FmrbApp
     end
 
     if ev[:type] == :mouse_up
+      # (0,0) is not a release the user made: it is the kernel reporting that a
+      # click landed outside the overlay this desktop said it had
+      # (build_hid_close_overlay). It must not go through the drag filter
+      # below. That filter measures against the last press the desktop itself
+      # saw, and the press behind this signal went to another window, so a
+      # stale position read as a drag and the signal was dropped -- while the
+      # kernel had already stopped routing clicks into the overlay rect. That
+      # left an error dialog on screen that no click on it could close; only
+      # the menu bar, which routes to the desktop unconditionally, got rid of
+      # it.
+      if ev[:x] == 0 && ev[:y] == 0
+        @mouse_down_x = nil
+        @mouse_down_y = nil
+        handle_click(0, 0)
+        return
+      end
+
       # A press that traveled since mouse_down is a drag, not a click.
       dx = (ev[:x] - (@mouse_down_x || ev[:x])).abs
       dy = (ev[:y] - (@mouse_down_y || ev[:y])).abs
