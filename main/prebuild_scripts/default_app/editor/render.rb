@@ -14,10 +14,9 @@ module EditorRender
     when MENU_ID_EDIT    then FmrbI18n.t(:m_edit).to_s
     when MENU_ID_SEARCH  then FmrbI18n.t(:m_search).to_s
     when MENU_ID_RUN     then FmrbI18n.t(:m_run).to_s
-    when MENU_ID_HILIGHT then FmrbI18n.t(:m_hilight).to_s
-    when MENU_ID_WRAP    then FmrbI18n.t(:m_wrap).to_s
+    when MENU_ID_VIEW    then FmrbI18n.t(:m_view).to_s
     when MENU_ID_DEBUG   then dbg_menu_label.to_s
-    when MENU_ID_FULL    then FmrbI18n.t(:m_full).to_s
+    when MENU_ID_KEYS    then FmrbI18n.t(:m_keys).to_s
     else ""
     end
   end
@@ -26,10 +25,7 @@ module EditorRender
   # (so the label does not jump sideways), "" when the item has no state.
   def menu_bar_mark(id)
     case id
-    when MENU_ID_HILIGHT then @hl_enabled ? "*" : " "
-    when MENU_ID_WRAP    then @wrap_on ? "*" : " "
-    when MENU_ID_DEBUG   then dbg_menu_mark.to_s
-    when MENU_ID_FULL    then @fullscreen ? "*" : " "
+    when MENU_ID_DEBUG then dbg_menu_mark.to_s
     else ""
     end
   end
@@ -78,6 +74,7 @@ module EditorRender
     @menu_ws = []
     @menu_file_x = nil
     @menu_edit_x = nil
+    @menu_view_x = nil
     @menu_debug_x = nil
 
     ids = menu_bar_ids
@@ -105,6 +102,7 @@ module EditorRender
       @menu_ws << w
       @menu_file_x = x if id == MENU_ID_FILE
       @menu_edit_x = x if id == MENU_ID_EDIT
+      @menu_view_x = x if id == MENU_ID_VIEW
       @menu_debug_x = x if id == MENU_ID_DEBUG
       x += w + MENU_BAR_GAP
     end
@@ -152,10 +150,9 @@ module EditorRender
     when MENU_ID_EDIT    then open_menu(:edit)
     when MENU_ID_SEARCH  then open_search_dialog
     when MENU_ID_RUN     then run_current_file
-    when MENU_ID_HILIGHT then toggle_highlight
-    when MENU_ID_WRAP    then toggle_wrap
+    when MENU_ID_VIEW    then open_menu(:view)
     when MENU_ID_DEBUG   then open_menu(:debug)
-    when MENU_ID_FULL    then toggle_fullscreen
+    when MENU_ID_KEYS    then open_keys_list
     end
   end
 
@@ -650,6 +647,7 @@ module EditorRender
     dbg_draw_modal
     draw_search_dialog if @search_open
     draw_quit_dialog if @quit_dialog_open
+    draw_keys_list if @keys_open
     # Re-issue the title-bar / border GfxBlock with current window size so the
     # frame survives canvas resize (the block is bound to @window_width / @window_height kwargs).
     draw_window_frame
@@ -694,7 +692,7 @@ module EditorRender
     # Row drawing would paint over an open overlay, so anything modal forces the
     # full path (which re-draws the overlay on top).
     if @need_redraw || @active_menu || @search_open || @quit_dialog_open ||
-       @comp_open || dbg_modal?
+       @comp_open || @keys_open || dbg_modal?
       redraw_all
     else
       redraw_dirty

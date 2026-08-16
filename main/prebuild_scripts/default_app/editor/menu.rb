@@ -20,10 +20,24 @@ module EditorMenu
      FmrbI18n.t(:select_all).to_s]
   end
 
+  # The display toggles, with their state in the label. "[x] Wrap" says what is
+  # on without the reader having to know that a trailing "*" meant anything,
+  # which is what the menu bar used to show.
+  def menu_view_items
+    [view_toggle_label(@hl_enabled, :m_hilight),
+     view_toggle_label(@wrap_on, :m_wrap),
+     view_toggle_label(@fullscreen, :m_full)]
+  end
+
+  def view_toggle_label(on, key)
+    (on ? "[x] " : "[ ] ") + FmrbI18n.t(key).to_s
+  end
+
   def menu_items
     case @active_menu
     when :file then menu_file_items
     when :edit then menu_edit_items
+    when :view then menu_view_items
     when :template then @template_labels
     when :debug then dbg_menu_items
     end
@@ -33,6 +47,7 @@ module EditorMenu
     case @active_menu
     when :file then MENU_FILE_HOTKEYS
     when :edit then MENU_EDIT_HOTKEYS
+    when :view then MENU_VIEW_HOTKEYS
     end
   end
 
@@ -50,6 +65,7 @@ module EditorMenu
   def menu_width
     case @active_menu
     when :template then dropdown_width(@template_labels)
+    when :view then dropdown_width(menu_view_items)
     when :debug then dbg_menu_width
     else dropdown_width(menu_items)
     end
@@ -63,6 +79,13 @@ module EditorMenu
     when :file then [@menu_file_x, @menu_y + CHAR_H]
     when :template then [@menu_file_x, @menu_y + CHAR_H]
     when :edit then [@menu_edit_x, @menu_y + CHAR_H]
+    when :view
+      # Right-anchored like Debug: View sits well along the bar, and its items
+      # ("[x] Highlight") are wider than the label above them.
+      vx = @user_area_x0 + @user_area_width - menu_width - 2
+      vx = @menu_view_x if @menu_view_x && vx > @menu_view_x
+      vx = @user_area_x0 if vx < @user_area_x0
+      [vx, @menu_y + CHAR_H]
     when :debug
       dx = @user_area_x0 + @user_area_width - menu_width - 2
       dx = @menu_debug_x if dx > @menu_debug_x
@@ -169,8 +192,17 @@ module EditorMenu
     case kind
     when :file then activate_file_item(idx)
     when :edit then activate_edit_item(idx)
+    when :view then activate_view_item(idx)
     when :template then insert_template(idx)
     when :debug then dbg_activate_item(idx)
+    end
+  end
+
+  def activate_view_item(idx)
+    case idx
+    when 0 then toggle_highlight
+    when 1 then toggle_wrap
+    when 2 then toggle_fullscreen
     end
   end
 

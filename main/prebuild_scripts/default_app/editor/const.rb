@@ -14,6 +14,8 @@ module EditorConst
   MENU_BG       = FmrbGfx.rgb_to_332(100, 60, 100)    # Dark purple menu bar
   MENU_TEXT     = FmrbGfx.rgb_to_332(255, 255, 255)   # White menu text
   MENU_KEY      = FmrbGfx.rgb_to_332(255, 255, 0)     # Yellow hotkey
+  # The same role on a light panel (the key list): yellow on white is unreadable.
+  MENU_KEY_DARK = FmrbGfx.rgb_to_332(120, 60, 0)
   STATUS_BG     = FmrbGfx.rgb_to_332(40, 40, 60)      # Dark gray status line
   STATUS_TEXT   = FmrbGfx.rgb_to_332(255, 255, 255)   # White status text
   STATUS_OK_BG  = FmrbGfx.rgb_to_332(0, 160, 0)       # Green flash for save success
@@ -81,15 +83,22 @@ module EditorConst
   MENU_ID_EDIT    = 1
   MENU_ID_SEARCH  = 2
   MENU_ID_RUN     = 3
-  MENU_ID_HILIGHT = 4
-  MENU_ID_WRAP    = 5
-  MENU_ID_DEBUG   = 6
-  MENU_ID_FULL    = 7
+  MENU_ID_VIEW    = 4
+  MENU_ID_DEBUG   = 5
+  MENU_ID_KEYS    = 6
+  # Highlight, wrap and fullscreen used to sit on the bar as three toggles of
+  # their own, which is what made the row too long to fit a 240px window. They
+  # are inside View now, where their state reads as [x] rather than a trailing
+  # "*", and their direct keys (Alt-H, Alt-W, F11) are unchanged.
   MENU_BAR_IDS  = [MENU_ID_FILE, MENU_ID_EDIT, MENU_ID_SEARCH, MENU_ID_RUN,
-                   MENU_ID_HILIGHT, MENU_ID_WRAP, MENU_ID_DEBUG, MENU_ID_FULL]
-  # Accelerator letter shown in parentheses after each label. Empty means the
-  # item has no letter (Full is a direct toggle on F11).
-  MENU_BAR_KEYS = ["F", "E", "S", "R", "H", "W", "D", ""]
+                   MENU_ID_VIEW, MENU_ID_DEBUG, MENU_ID_KEYS]
+  # Accelerator letter shown in parentheses after each label. Keys is K: F1 is
+  # already the API help for the symbol under the cursor, and H and W still
+  # toggle highlight and wrap.
+  MENU_BAR_KEYS = ["F", "E", "S", "R", "V", "D", "K"]
+
+  # View dropdown: the three display toggles, in the order they were on the bar.
+  MENU_VIEW_HOTKEYS = [0x0B, 0x1A, 0x09]  # H, W, F
   MENU_BAR_GAP  = 6   # px between menu bar items
 
   # Selection / clipboard colors

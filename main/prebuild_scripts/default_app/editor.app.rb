@@ -23,6 +23,8 @@ class EditorApp < FmrbApp
   include EditorRender
   # Key entry / UTF-8 / navigation live in editor/input.rb.
   include EditorInput
+  # The key list (menu bar Keys, Alt-K) lives in editor/keys.rb.
+  include EditorKeys
   # File/Edit dropdowns and the template list live in editor/menu.rb.
   include EditorMenu
   # File load/save, Run (F5) and the status-line helpers live in
@@ -94,6 +96,7 @@ class EditorApp < FmrbApp
     @run_after_save = false
     # Modal "save before quit?" dialog raised by Ctrl-X when @modified.
     @quit_dialog_open = false
+    @keys_open = false
     # ---- Completion (Tab) ----
     # Candidates from the type inference engine, asked for only when Tab is
     # pressed after an identifier or a dot. Modal while the list is up.
@@ -520,6 +523,11 @@ class EditorApp < FmrbApp
     utf8_reset if ev[:type] != :key_down && @u8_need > 0
 
     if ev[:type] == :mouse_up
+      if @keys_open
+        keys_advance
+        return
+      end
+
       # Open dropdown click handling
       if @active_menu
         handle_menu_click(ev[:x], ev[:y])
@@ -567,6 +575,13 @@ class EditorApp < FmrbApp
       # would take the message down before its own shortcut ran.
       unless keycode >= 224 && keycode <= 231
         clear_status_message if @status_msg && !@status_msg_fresh
+      end
+
+      # The key list is there to be read: a key turns the page, and takes the
+      # panel down after the last one. A click does the same.
+      if @keys_open
+        keys_advance
+        return
       end
 
       # Modal quit-confirm dialog steals all keys until dismissed.
@@ -713,6 +728,12 @@ class EditorApp < FmrbApp
           return
         when 0x07  # Alt-D -> open Debug menu
           open_menu(:debug) if dbg_menu_visible?
+          return
+        when 0x19  # Alt-V -> open View menu (the display toggles)
+          open_menu(:view)
+          return
+        when 0x0E  # Alt-K -> the key list
+          @keys_open ? close_keys_list : open_keys_list
           return
         end
       end
