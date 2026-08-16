@@ -19,6 +19,7 @@ class SystemDesktopApp < FmrbApp
   include ClockSettingMixin
   include TaskbarMixin
   include AboutDialogMixin
+  include ShortcutsDialogMixin
   include TbdDialogMixin
 
   MENU_BAR_HEIGHT = 13
@@ -76,6 +77,7 @@ class SystemDesktopApp < FmrbApp
     # (on Modern the C6 radio path manages itself). Harmless when BLE is
     # already up -- the C side is idempotent.
     (FmrbConst::PLATFORM == "esp32" && FmrbConst::CHIP_MODEL != "ESP32-P4" ? [{ key: :ble_start }] : []) + [
+    { key: :shortcuts },
     { key: :about },
   ] + (FmrbConst::PLATFORM == "esp32" ? [{ key: :reset }] : [])
 
@@ -98,6 +100,7 @@ class SystemDesktopApp < FmrbApp
     @dropdown_open = false
     @dropdown_hover_idx = -1
     @about_open = false
+    @skey_open = false
     @tbd_open = false
     @tbd_title = "TBD"
     @about_x = 0
@@ -417,7 +420,7 @@ class SystemDesktopApp < FmrbApp
   def desktop_overlay_open?
     @dropdown_open || @launcher_open || @file_selector_open || @file_manager_open ||
       @cdlg_open || @error_dlg_open || @clk_open || @cfg_open || @str_open ||
-      @net_open || @about_open || @tbd_open
+      @net_open || @about_open || @tbd_open || @skey_open
   end
 
   def handle_shortcut(character)
@@ -535,6 +538,7 @@ class SystemDesktopApp < FmrbApp
     draw_network_dialog if @net_open
     draw_error_dialog if @error_dlg_open
     draw_about_dialog if @about_open
+    draw_shortcuts_dialog if @skey_open
     draw_starting if @starting_name
     draw_tbd_dialog if @tbd_open
     draw_resize_preview if @resize_preview_active
@@ -920,6 +924,10 @@ class SystemDesktopApp < FmrbApp
       regions << { dst_x: @about_x, dst_y: @about_y,
                    w: AboutDialogMixin::ABOUT_W, h: @about_h, transparent: false }
     end
+    if @skey_open
+      regions << { dst_x: @skey_x, dst_y: @skey_y,
+                   w: ShortcutsDialogMixin::SKEY_W, h: @skey_h, transparent: false }
+    end
     if @error_dlg_open
       regions << { dst_x: @error_dlg_x, dst_y: @error_dlg_y,
                    w: ErrorDialogMixin::EDLG_W, h: @error_dlg_h, transparent: false }
@@ -1201,6 +1209,19 @@ class SystemDesktopApp < FmrbApp
       # here and an SDL keysym there.
       scancode = ev[:scancode] || 0
 
+      # The two dialogs that are only there to be read close on any key, the
+      # same as they close on any click. Reached from the menu bar, which is
+      # now reachable from the keyboard, so leaving them mouse-only to dismiss
+      # would be a dead end.
+      if @skey_open
+        close_shortcuts_dialog
+        return
+      end
+      if @about_open
+        close_about_dialog
+        return
+      end
+
       # Menu bar first: while it is open it owns the arrows and Enter.
       if @dropdown_open
         return if handle_dropdown_key(scancode)
@@ -1271,6 +1292,12 @@ class SystemDesktopApp < FmrbApp
     # About dialog has highest priority — any click closes it
     if @about_open
       close_about_dialog
+      return
+    end
+
+    # Shortcuts list — any click closes it
+    if @skey_open
+      close_shortcuts_dialog
       return
     end
 
@@ -1428,6 +1455,8 @@ class SystemDesktopApp < FmrbApp
       open_clock_setting
     when :about
       open_about_dialog
+    when :shortcuts
+      open_shortcuts_dialog
     when :config
       open_config_dialog
     when :storage
