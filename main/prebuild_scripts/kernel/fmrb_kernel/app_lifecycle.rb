@@ -449,15 +449,30 @@ module AppLifecycleMixin
       candidates << win[:pid]
     end
     candidates.sort!
+
+    # The desktop is a stop on the ring, not something outside it. Its menu bar
+    # and letter shortcuts only answer while it holds the keyboard, so with it
+    # left out there was no way back to them once an app was running: Ctrl+Tab
+    # went round the apps for ever and the menu could only be reached with the
+    # mouse. It sorts first (pid 2 against 4 and up), so the ring reads
+    # desktop, then the apps in the order they were started.
+    #
+    # Not while a fullscreen app is up, though: the desktop is suspended then
+    # and its menu bar is not on screen, so handing it the keyboard would send
+    # every key into a task that is not running.
+    desktop_selectable = @desktop_pid && !@fullscreen_pid && !app_suspended?(@desktop_pid)
+    candidates.unshift(@desktop_pid) if desktop_selectable
     return if candidates.empty?
 
     idx = candidates.index(@hid_target_pid)
-    # From the desktop (focus not on any window), returning to the parked
-    # presentation is the most likely intent -- one press, not a lap around
-    # the window ring.
-    next_pid = if idx
+    # From the desktop, returning to the parked presentation is the most likely
+    # intent -- one press, not a lap around the window ring.
+    parked_ready = @parked_fullscreen_pid && candidates.index(@parked_fullscreen_pid)
+    next_pid = if @hid_target_pid == @desktop_pid && parked_ready
+                 @parked_fullscreen_pid
+               elsif idx
                  candidates[(idx + 1) % candidates.size]
-               elsif @parked_fullscreen_pid && candidates.include?(@parked_fullscreen_pid)
+               elsif parked_ready
                  @parked_fullscreen_pid
                else
                  candidates[0]
@@ -495,8 +510,12 @@ module AppLifecycleMixin
     @notified_focus_pid = @hid_target_pid if sent
   end
 
+  # Array#index, not include?: include? is Enumerable's Ruby one (a block call
+  # per element, ~1.7 ms), and this is asked for every window on every mouse
+  # event from find_window_at.
   def app_suspended?(pid)
-    @suspended_pids && @suspended_pids.include?(pid)
+    return false unless @suspended_pids
+    @suspended_pids.index(pid) ? true : false
   end
 
   def suspend_app(pid)
