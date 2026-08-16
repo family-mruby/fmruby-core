@@ -112,7 +112,7 @@
       <button id="mapBtnLoadDev" data-needs-device disabled onclick="mapLoadDevice()">Load Map from Device...</button>
       <button id="mapBtnSaveDev" data-needs-device disabled onclick="mapSaveDevice()">Save Map to Device...</button>
       <button onclick="document.getElementById('mapJsonInput').click()">Open Local Map...</button>
-      <input type="file" id="mapJsonInput" accept=".json" style="display:none" onchange="mapOnLocalJson(this.files)">
+      <input type="file" id="mapJsonInput" accept=".json,.bin" style="display:none" onchange="mapOnLocalJson(this.files)">
       <button onclick="mapSaveLocal()">Download Map JSON</button>
     </div>
     <div class="map-toolbar">

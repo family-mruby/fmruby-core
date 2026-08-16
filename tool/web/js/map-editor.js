@@ -1,6 +1,15 @@
 // ============================================================
 // Map editor — 2D tile map referencing a sprite BMP, with per-tile events.
-// Output is JSON consumed by picoruby on device.
+//
+// Two forms of the same document:
+//   .map.bin   packed, what the device loads (TileMap reads the tiles straight
+//              out of the file with getbyte)
+//   .map.json  the readable form, for diffing and for tools
+//
+// Save packed when the map is for an app: parsing the JSON on device turns
+// 4096 tiles into 4096 Ruby objects and took 39 s on a Tab5, while the packed
+// file loads in the time it takes to read it. Both forms are recognised on
+// load, so an existing JSON map still opens.
 // ============================================================
 
 const MAP_DEFAULT_DIR  = '/maps';
@@ -9,6 +18,9 @@ const MAP_FORMAT_VER   = 1;
 const MAP_PAL_ZOOM     = 2;     // tile palette pixel scale
 const MAP_CANVAS_ZOOM  = 1.5;   // map canvas pixel scale
 const MAP_EMPTY        = -1;    // empty cell sentinel in layer data
+const MAP_BIN_MAGIC    = 'FMAP';
+const MAP_BIN_EMPTY    = 0xFF;  // empty cell as written in the packed file
+const MAP_BIN_HEADER   = 20;
 
 const mapEd = {
   width: 32, height: 24,
@@ -20,6 +32,12 @@ const mapEd = {
   tilesheetCanvas: null,
   layers: [{ name: 'ground', data: [] }],
   events: [],
+  // Carried through load -> save even though the editor has no UI for them,
+  // so opening a game's map and saving it back does not silently drop the
+  // spawn point or which tiles can be walked on.
+  walkableTiles: [],
+  spawnX: 0,
+  spawnY: 0,
   path: null,
   dirty: false,
   selectedTile: 0,
@@ -475,9 +493,170 @@ function mapSerialize() {
     tile_size: mapEd.tileSize,
     width:  mapEd.width,
     height: mapEd.height,
+    walkable_tiles: mapEd.walkableTiles.slice(),
+    spawn: { x: mapEd.spawnX, y: mapEd.spawnY },
     layers,
     events: mapEd.events.map(ev => ({ x: ev.x, y: ev.y, id: ev.id, data: ev.data || {} })),
   };
+}
+
+// -------- packed form (.map.bin) --------
+//
+// Layout, little-endian. Keep in step with TileMap
+// (lib/add/picoruby-fmrb-app/mrblib/fmrb-tilemap.rb) and tool/map_json2bin.rb.
+//
+//   0  4  magic "FMAP"      12 2  spawn_x
+//   4  1  version           14 2  spawn_y
+//   5  1  tile_size         16 1  walkable count
+//   6  2  width             17 1  tilesheet path length
+//   8  2  height            18 1  event count
+//   10 1  layer count       19 1  reserved
+//   11 1  tilesheet cols    20 .. path, walkable ids, layers, events
+//
+// Events are x u16, y u16, id u16, name length u8, name.
+
+function mapIsPacked(bytes) {
+  return bytes && bytes.length >= MAP_BIN_HEADER &&
+         bytes[0] === 0x46 && bytes[1] === 0x4D &&   // "FM"
+         bytes[2] === 0x41 && bytes[3] === 0x50;     // "AP"
+}
+
+function mapPack(obj) {
+  const enc = new TextEncoder();
+  const w = obj.width | 0, h = obj.height | 0;
+  const layers = Array.isArray(obj.layers) ? obj.layers : [];
+  const events = Array.isArray(obj.events) ? obj.events : [];
+  const walkable = Array.isArray(obj.walkable_tiles) ? obj.walkable_tiles : [];
+  const sheet = enc.encode(obj.tilesheet || '');
+  const spawn = obj.spawn || { x: 0, y: 0 };
+
+  if (w <= 0 || h <= 0 || w > 65535 || h > 65535) throw new Error('Invalid map size');
+  if (layers.length > 255) throw new Error('Too many layers: ' + layers.length);
+  if (events.length > 255) throw new Error('Too many events: ' + events.length);
+  if (walkable.length > 255) throw new Error('Too many walkable ids');
+  if (sheet.length > 255) throw new Error('Tilesheet path too long');
+
+  const names = events.map(ev => enc.encode(((ev.data || {}).name || '') + ''));
+  names.forEach(n => { if (n.length > 255) throw new Error('Event name too long'); });
+
+  let size = MAP_BIN_HEADER + sheet.length + walkable.length + layers.length * w * h;
+  names.forEach(n => { size += 7 + n.length; });
+
+  const out = new Uint8Array(size);
+  const dv = new DataView(out.buffer);
+  out[0] = 0x46; out[1] = 0x4D; out[2] = 0x41; out[3] = 0x50;
+  out[4] = MAP_FORMAT_VER;
+  out[5] = (obj.tile_size | 0) || 16;
+  dv.setUint16(6, w, true);
+  dv.setUint16(8, h, true);
+  out[10] = layers.length;
+  out[11] = obj.tilesheet_cols | 0;
+  dv.setUint16(12, spawn.x | 0, true);
+  dv.setUint16(14, spawn.y | 0, true);
+  out[16] = walkable.length;
+  out[17] = sheet.length;
+  out[18] = events.length;
+  out[19] = 0;
+
+  let off = MAP_BIN_HEADER;
+  out.set(sheet, off); off += sheet.length;
+  walkable.forEach(t => {
+    if (!(t >= 0 && t < MAP_BIN_EMPTY)) throw new Error('Walkable id out of range: ' + t);
+    out[off++] = t | 0;
+  });
+
+  layers.forEach(layer => {
+    const data = layer.data || [];
+    for (let y = 0; y < h; y++) {
+      const row = data[y] || [];
+      for (let x = 0; x < w; x++) {
+        const v = row[x];
+        if (v === null || v === undefined || v === MAP_EMPTY || v < 0) {
+          out[off++] = MAP_BIN_EMPTY;
+        } else {
+          if (v >= MAP_BIN_EMPTY) throw new Error('Tile id out of byte range: ' + v);
+          out[off++] = v | 0;
+        }
+      }
+    }
+  });
+
+  events.forEach((ev, i) => {
+    dv.setUint16(off, ev.x | 0, true);
+    dv.setUint16(off + 2, ev.y | 0, true);
+    dv.setUint16(off + 4, ev.id | 0, true);
+    out[off + 6] = names[i].length;
+    out.set(names[i], off + 7);
+    off += 7 + names[i].length;
+  });
+
+  return out;
+}
+
+function mapUnpack(bytes) {
+  const dec = new TextDecoder();
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const version = bytes[4];
+  if (version !== MAP_FORMAT_VER) throw new Error('Unsupported packed version: ' + version);
+
+  const tileSize = bytes[5];
+  const w = dv.getUint16(6, true), h = dv.getUint16(8, true);
+  const layerCount = bytes[10];
+  const cols = bytes[11];
+  const spawnX = dv.getUint16(12, true), spawnY = dv.getUint16(14, true);
+  const walkCount = bytes[16], pathLen = bytes[17], eventCount = bytes[18];
+
+  let off = MAP_BIN_HEADER;
+  const tilesheet = dec.decode(bytes.subarray(off, off + pathLen)); off += pathLen;
+  const walkable = [];
+  for (let i = 0; i < walkCount; i++) walkable.push(bytes[off + i]);
+  off += walkCount;
+
+  const layers = [];
+  for (let li = 0; li < layerCount; li++) {
+    const rows = new Array(h);
+    for (let y = 0; y < h; y++) {
+      const row = new Array(w);
+      for (let x = 0; x < w; x++) {
+        const v = bytes[off + y * w + x];
+        row[x] = (v === MAP_BIN_EMPTY) ? null : v;
+      }
+      rows[y] = row;
+    }
+    layers.push({ name: li === 0 ? 'ground' : ('layer' + li), data: rows });
+    off += w * h;
+  }
+
+  const events = [];
+  for (let i = 0; i < eventCount; i++) {
+    const x = dv.getUint16(off, true);
+    const y = dv.getUint16(off + 2, true);
+    const id = dv.getUint16(off + 4, true);
+    const nameLen = bytes[off + 6];
+    const name = dec.decode(bytes.subarray(off + 7, off + 7 + nameLen));
+    events.push({ x, y, id, data: { name } });
+    off += 7 + nameLen;
+  }
+
+  return {
+    format: MAP_FORMAT_NAME,
+    version: MAP_FORMAT_VER,
+    tilesheet,
+    tilesheet_cols: cols,
+    tile_size: tileSize,
+    width: w,
+    height: h,
+    walkable_tiles: walkable,
+    spawn: { x: spawnX, y: spawnY },
+    layers,
+    events,
+  };
+}
+
+// Decode either form from the bytes of a file.
+function mapDecodeFile(bytes) {
+  if (mapIsPacked(bytes)) return mapUnpack(bytes);
+  return JSON.parse(new TextDecoder().decode(bytes));
 }
 
 function mapDeserialize(obj, originPath) {
@@ -516,6 +695,12 @@ function mapDeserialize(obj, originPath) {
     data: (ev.data && typeof ev.data === 'object' && !Array.isArray(ev.data)) ? ev.data : {},
   })) : [];
 
+  mapEd.walkableTiles = Array.isArray(obj.walkable_tiles)
+    ? obj.walkable_tiles.map(t => t | 0) : [];
+  const spawn = obj.spawn || {};
+  mapEd.spawnX = spawn.x | 0;
+  mapEd.spawnY = spawn.y | 0;
+
   mapEd.path = originPath || null;
   mapEd.dirty = false;
   mapEd.selectedEvent = null;
@@ -535,13 +720,12 @@ function mapDeserialize(obj, originPath) {
 
 async function mapLoadDevice() {
   const def = mapEd.path || (MAP_DEFAULT_DIR + '/');
-  const path = prompt('Load map JSON from device path:', def);
+  const path = prompt('Load map (.map.bin or .map.json) from device path:', def);
   if (!path) return;
   try {
     showProgress(-1, 'Loading ' + path + '...');
     const data = await deviceReadFile(path);
-    const text = new TextDecoder().decode(data);
-    const obj  = JSON.parse(text);
+    const obj  = mapDecodeFile(data);
     mapDeserialize(obj, path);
     log('Map: loaded ' + path + ' (' + formatSize(data.length) + ')', 'ok');
     toast('Loaded ' + path + ' (' + formatSize(data.length) + ')', 'ok');
@@ -576,12 +760,16 @@ async function mapLoadDevice() {
 }
 
 async function mapSaveDevice() {
-  const def = mapEd.path || (MAP_DEFAULT_DIR + '/map.json');
-  const path = prompt('Save map JSON to device path:', def);
+  const def = mapEd.path || (MAP_DEFAULT_DIR + '/map.map.bin');
+  const path = prompt('Save map to device path (.map.bin loads fast on device, ' +
+                      '.json stays readable):', def);
   if (!path) return;
   try {
-    const text = JSON.stringify(mapSerialize());
-    const data = new TextEncoder().encode(text);
+    const obj = mapSerialize();
+    const asJson = /\.json$/i.test(path);
+    const data = asJson
+      ? new TextEncoder().encode(JSON.stringify(obj))
+      : mapPack(obj);
     showProgress(0, 'Saving ' + path + '...');
     await deviceWriteFile(path, data, (sent, total) => {
       showProgress(Math.min(100, Math.round(sent / total * 100)),
@@ -605,9 +793,9 @@ async function mapSaveDevice() {
 function mapOnLocalJson(fileList) {
   if (!fileList || !fileList.length) return;
   const file = fileList[0];
-  file.text().then(text => {
+  file.arrayBuffer().then(buf => {
     try {
-      const obj = JSON.parse(text);
+      const obj = mapDecodeFile(new Uint8Array(buf));
       mapDeserialize(obj, null);
       log('Map: loaded local ' + file.name, 'ok');
       toast('Map loaded: ' + file.name, 'ok');
@@ -626,11 +814,15 @@ function mapOnLocalJson(fileList) {
 }
 
 function mapSaveLocal() {
+  // Downloads the readable form on purpose: a file kept next to the source is
+  // there to be diffed and edited, and tool/map_json2bin.rb packs it when it
+  // is time to put it on a device.
   const text = JSON.stringify(mapSerialize());
   const blob = new Blob([text], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const baseName = mapEd.path ? mapEd.path.split('/').pop() : 'map.json';
+  let baseName = mapEd.path ? mapEd.path.split('/').pop() : 'map.json';
+  baseName = baseName.replace(/\.bin$/i, '.json');
   a.href = url; a.download = baseName.endsWith('.json') ? baseName : baseName + '.json';
   a.click();
   URL.revokeObjectURL(url);
