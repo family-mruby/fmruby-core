@@ -208,7 +208,10 @@ module AppLifecycleMixin
     # app must not be picked up here -- popping this frame would resume it and
     # bring it back on screen behind the user's back.
     update_window_list
-    @window_list.each do |win|
+    i = 0
+    while i < @window_list.size
+      win = @window_list[i]
+      i += 1
       next if win[:pid] == pid
       next if win[:app_name] == "system_desktop"  # Desktop suspends differently
       next if win[:pid] == 0  # kernel
@@ -285,8 +288,11 @@ module AppLifecycleMixin
   # display size the spawner would use -- no extra kernel API needed for it.
   def fullscreen_size
     update_window_list
-    @window_list.each do |win|
+    i = 0
+    while i < @window_list.size
+      win = @window_list[i]
       return [win[:width], win[:height]] if win[:app_name] == "system_desktop"
+      i += 1
     end
     nil
   end
@@ -433,7 +439,11 @@ module AppLifecycleMixin
   def cycle_front_app
     update_window_list
     candidates = []
-    @window_list.each do |win|
+    # while, not each: Ctrl+Tab is an input path.
+    i = 0
+    while i < @window_list.size
+      win = @window_list[i]
+      i += 1
       next if win[:pid] == 0
       next if win[:app_name] == "system_desktop"
       candidates << win[:pid]
@@ -641,15 +651,17 @@ module AppLifecycleMixin
     if old_count != new_count
       Log.debug("Periodic cleanup: window list changed (#{old_count} -> #{new_count})")
 
-      # Check if any tracked PIDs are no longer in the window list
-      window_pids = @window_list.map { |w| w[:pid] }
+      # Check if any tracked PIDs are no longer in the window list.
+      # Asked directly of the window list rather than through a mapped Array
+      # and include?: the map allocates a fresh Array on every change and
+      # include? is Enumerable's Ruby one (~1.7 ms per call at four entries).
 
       # Clean up HID target if it's gone. The window list only holds apps that
       # already reached RUNNING, so an app that was just handed the keyboard can
       # still be in INIT and absent from it -- checking the list alone used to
       # clear the target of a perfectly good app, and every hotkey (Ctrl+Q
       # included) then went nowhere. The context lookup knows about INIT.
-      if @hid_target_pid && !window_pids.include?(@hid_target_pid) &&
+      if @hid_target_pid && !window_has_pid?(@hid_target_pid) &&
          !_get_app_info(@hid_target_pid)
         Log.info("HID target app #{@hid_target_pid} no longer exists")
         @hid_target_pid = nil
@@ -657,14 +669,14 @@ module AppLifecycleMixin
       end
 
       # Clean up capture if it's gone
-      if @capture_pid && !window_pids.include?(@capture_pid)
+      if @capture_pid && !window_has_pid?(@capture_pid)
         Log.info("Captured app #{@capture_pid} no longer exists")
         @capture_pid = nil
         @capture_mode = nil
       end
 
       # Clean up mouse_down if it's gone
-      if @mouse_down_pid && !window_pids.include?(@mouse_down_pid)
+      if @mouse_down_pid && !window_has_pid?(@mouse_down_pid)
         @mouse_down_pid = nil
       end
     end

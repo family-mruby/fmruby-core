@@ -455,7 +455,12 @@ class FmrbKernelImpl < FmrbKernel
       if subscribers && subscribers.length > 0
         fwd = {"cmd" => "topic_data", "topic" => topic, "data" => payload, "src_pid" => pid}
         binary = MessagePack.pack(fwd)
-        subscribers.each do |sub_pid|
+        # while, not each: a publisher can send at any rate it likes (a MIDI or
+        # sensor topic streams), and passing a block costs ~0.4 ms per call.
+        si = 0
+        while si < subscribers.size
+          sub_pid = subscribers[si]
+          si += 1
           next if sub_pid == pid
           _send_raw_message(sub_pid, FmrbConst::MSG_TYPE_APP_CONTROL, binary)
         end

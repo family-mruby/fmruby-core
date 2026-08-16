@@ -391,10 +391,20 @@ class SystemDesktopApp < FmrbApp
     update_composite_regions
   end
 
+  # The key is folded to lower case here, once, rather than on every key press:
+  # handle_shortcut runs on the input path and String#downcase allocates.
   def load_shortcuts
     entries = FmrbApp.config("shortcuts")
     return [] unless entries
-    entries.map { |e| { key: e["key"], app: e["app"] } }
+    list = []
+    i = 0
+    while i < entries.size
+      e = entries[i]
+      key = e["key"]
+      list << { key: key ? key.downcase : nil, app: e["app"] }
+      i += 1
+    end
+    list
   rescue => e
     Log.error("Failed to load shortcuts: #{e.message}")
     []
@@ -414,15 +424,22 @@ class SystemDesktopApp < FmrbApp
       ch = c
     end
     return false unless ch
-    @shortcuts.each do |sc|
-      next unless sc[:key] && sc[:key].downcase == ch.downcase
-      case sc[:app]
-      when "launcher" then open_launcher
-      when "file_manager" then open_file_manager
-      when "log_viewer" then spawn_app("default/logviewer")
-      else spawn_app(sc[:app])
+    # while rather than each: this is the key press path, and passing a block
+    # costs about 0.4 ms per call here whether or not a shortcut matches.
+    lower = ch.downcase
+    i = 0
+    while i < @shortcuts.size
+      sc = @shortcuts[i]
+      if sc[:key] && sc[:key] == lower
+        case sc[:app]
+        when "launcher" then open_launcher
+        when "file_manager" then open_file_manager
+        when "log_viewer" then spawn_app("default/logviewer")
+        else spawn_app(sc[:app])
+        end
+        return true
       end
-      return true
+      i += 1
     end
     false
   end
@@ -472,16 +489,17 @@ class SystemDesktopApp < FmrbApp
           y_offset -= line_height
         end
 
-        active_procs = processes.select { |p|
-          p[:state] == FmrbConst::PROC_STATE_RUNNING ||
-          p[:state] == FmrbConst::PROC_STATE_SUSPENDED
-        }
-
-        active_procs.each do |proc|
-          name = proc[:name]
-          mem_used_kb = proc[:mem_used] / 1024
-          mem_total_kb = proc[:mem_total] / 1024
-          text = "#{name}: #{mem_used_kb}KB/#{mem_total_kb}KB"
+        # One pass, no intermediate array: select + each would be two blocks
+        # (~0.4 ms each) and a throwaway Array every time this redraws.
+        pi = 0
+        while pi < processes.size
+          p = processes[pi]
+          pi += 1
+          next unless p[:state] == FmrbConst::PROC_STATE_RUNNING ||
+                      p[:state] == FmrbConst::PROC_STATE_SUSPENDED
+          mem_used_kb = p[:mem_used] / 1024
+          mem_total_kb = p[:mem_total] / 1024
+          text = "#{p[:name]}: #{mem_used_kb}KB/#{mem_total_kb}KB"
           @bg_gfx.draw_text(x_offset, y_offset, text, FmrbGfx::BLUE)
           y_offset -= line_height
         end

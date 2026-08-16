@@ -501,22 +501,45 @@ class FmrbApp
     nil
   end
 
+  # Runs on every turn of the app loop, so it is written to cost nothing when
+  # nothing is due: no blocks (passing one costs ~0.4 ms here) and no arrays
+  # until there is actually a timer to fire.
   def _run_timers
-    return if @_timers.nil? || @_timers.empty?
+    timers = @_timers
+    return if timers.nil?
+    count = timers.size
+    return if count == 0
+
     now = Machine.board_millis
+    i = 0
+    due_count = 0
+    while i < count
+      due_count += 1 if timers[i][:at] <= now
+      i += 1
+    end
+    return if due_count == 0
+
     due = []
     keep = []
-    @_timers.each do |t|
+    i = 0
+    while i < count
+      t = timers[i]
       if t[:at] <= now
         due << t
       else
         keep << t
       end
+      i += 1
     end
+    # Swap the list in before running anything: a callback that arms a new
+    # timer has to land in the list that survives, not in the one being
+    # replaced.
     @_timers = keep
-    due.each do |t|
-      blk = t[:blk]
+    i = 0
+    while i < due.size
+      blk = due[i][:blk]
       blk.call if blk
+      i += 1
     end
   end
 

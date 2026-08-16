@@ -307,8 +307,16 @@ class FlappyApp < FmrbApp
   end
 
   def recycle_pipe(pipe)
+    # while over a four-element Array: the loop body is nothing, but passing a
+    # block costs about 0.4 ms here, and a pipe is recycled several times a
+    # second.
     max_x = @pipes[0][:x]
-    @pipes.each { |p| max_x = p[:x] if p[:x] > max_x }
+    i = 1
+    while i < @pipes.size
+      x = @pipes[i][:x]
+      max_x = x if x > max_x
+      i += 1
+    end
     pipe[:x] = max_x + PIPE_SPACING
     pipe[:gap_y] = random_gap_y
     pipe[:scored] = false

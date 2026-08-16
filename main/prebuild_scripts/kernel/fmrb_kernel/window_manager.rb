@@ -24,10 +24,25 @@ module WindowManagerMixin
     @window_list_dirty = true
   end
 
+  # Is this pid in the window list? Kept next to the list itself so callers do
+  # not build an Array of pids just to ask.
+  def window_has_pid?(pid)
+    i = 0
+    while i < @window_list.size
+      return true if @window_list[i][:pid] == pid
+      i += 1
+    end
+    false
+  end
+
   def find_window_by_pid(pid)
-    # Find window by PID
-    @window_list.each do |win|
+    # while, not each: this is asked on every routing and lifecycle step, and
+    # passing a block costs ~0.4 ms per call here.
+    i = 0
+    while i < @window_list.size
+      win = @window_list[i]
       return win if win[:pid] == pid
+      i += 1
     end
     nil
   end
@@ -66,7 +81,11 @@ module WindowManagerMixin
     target_window = nil
     max_z_order = -1
 
-    @window_list.each do |win|
+    # while, not each: every mouse event lands here.
+    i = 0
+    while i < @window_list.size
+      win = @window_list[i]
+      i += 1
       # Skip desktop (handled above with special logic)
       next if win[:app_name] == "system_desktop"
       # Skip suspended apps
