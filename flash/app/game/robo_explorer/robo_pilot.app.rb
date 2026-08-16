@@ -347,8 +347,11 @@ class RoboPilotApp < FmrbApp
   def draw_view_face(bx, by, f, kind)
     fx = bx + f[0]
     fy = by + f[1]
-    fw = f[2] - f[0]
-    fh = f[3] - f[1]
+    # Frames are inclusive corner coordinates (that is what the lines are
+    # drawn between); a rect of x1-x0 pixels stops one short, which left the
+    # face's floor line one pixel above where the side walls meet it.
+    fw = f[2] - f[0] + 1
+    fh = f[3] - f[1] + 1
     @gfx.draw_rect(fx, fy, fw, fh, COL_WIRE)
     if kind == "door"
       dw = fw * 2 / 5
