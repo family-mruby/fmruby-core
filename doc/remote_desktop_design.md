@@ -4,14 +4,14 @@
 
 ## 実装状況
 
-- **Phase 1: 実装済み・ビルドOK (2026-07-06)、実機検証待ち**
+- **Phase 1: 実装済み (2026-07-06)、実機検証済み (2026-07-08、下記 A〜D)**
   - 実装で判明した事実:
     - esp_hosted 1.4.0 では `esp_hosted_setup()` が `#if 0` で無効化されて
       いる → 代わりに `is_transport_rx_ready()/is_transport_tx_ready()`
       (transport_drv.h) をポーリングして transport-up を待つ (RPC無し)
     - sdkconfig.defaults 変更時は `rake clean_all` が必要 (ビルド規約)
     - EMBED_FILES のシンボル名は `_binary_<basename>_start` (パス除去)
-- **Phase 2: 実装済み・ビルドOK (2026-07-07)、実機検証待ち**
+- **Phase 2: 実装済み (2026-07-07)、実機検証済み (2026-07-08、下記 A〜D)**
   - 実装で判明した事実 (設計からの変更点):
     - ~~esp_h264 の HWエンコーダは RGB565_LE を直接サポート~~ →
       **実機で否定 (2026-07-08)**。RGB565_LE 直接入力は chip rev v3.0
@@ -37,10 +37,10 @@
     2. Secure Context 解決後、`esp_h264_enc_hw_new` が RGB565_LE を拒否
        (`Un-supported h264 picture type parameter, pic_type: 4c424752`="RGBL")
        → 下記「H.264 HW 入力フォーマットとチップリビジョン」。PPA 変換で修正済
-       (ビルドOK・実機確認待ち)
+       (検証D の完了で実機確認済み)
     3. MJPEG 配信中にカーソルオーバレイが表示されない (WS入力も同時に
        飢餓) → 下記「MJPEG ハンドラによる httpd タスク占有」。async 化で
-       修正済 (ビルドOK・実機確認待ち)
+       修正済 (検証B のカーソル/入力確認で実機確認済み)
     4. H.264 映像の体感遅延 ~3秒 (カーソル/入力はリアルタイム)。
        原因: 描画がイベント駆動でアイドル時 1-2fps しか流れず、
        ブラウザの H.264 デコーダ (特にHW) は数フレームをパイプラインに
