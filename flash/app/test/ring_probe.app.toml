@@ -1,0 +1,5 @@
+app_handle_name = "ring_probe"
+app_screen_name = "Ring Probe"
+app_screen_name_ja = "リング確認"
+default_window_mode = "fullscreen"
+launcher_visible = false

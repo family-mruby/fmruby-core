@@ -283,8 +283,14 @@ class RpgDemoApp < FmrbApp
     @view_y = clamp(@player_py + TILE / 2 - VIEWPORT_H / 2, 0, @map_h - VIEWPORT_H)
     if @hw_scroll
       # PPA scroll: stamp only newly exposed tiles (usually none), then
-      # move the composite source window over the torus canvas
-      @ring.ensure_view(@view_x, @view_y, VIEWPORT_W, VIEWPORT_H)
+      # move the composite source window over the torus canvas.
+      # The stamps go into the canvas being drawn into; only a present copies
+      # them into the buffer the compositor reads, so a frame that stamped
+      # has to present the map canvas as well (once per tile crossing, not
+      # per frame).
+      if @ring.ensure_view(@view_x, @view_y, VIEWPORT_W, VIEWPORT_H)
+        @map_gfx.present(MAP_ORIGIN_X, MAP_ORIGIN_Y)
+      end
       @map_gfx.set_viewport(@view_x % @ring.buf_w, @view_y % @ring.buf_h,
                             VIEWPORT_W, VIEWPORT_H)
       @player.move(@player_px - @view_x, @player_py - @view_y)

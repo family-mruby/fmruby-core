@@ -237,7 +237,8 @@ end
 # Usage:
 #   ring = TileRing.new(map, sheet, tiles_w: 12, tiles_h: 12)
 #   # per frame:
-#   ring.ensure_view(view_x, view_y, view_w, view_h)
+#   stamped = ring.ensure_view(view_x, view_y, view_w, view_h)
+#   map_gfx.present(origin_x, origin_y) if stamped   # commit what was stamped
 #   map_gfx.set_viewport(view_x % ring.buf_w, view_y % ring.buf_h, view_w, view_h)
 class TileRing
   attr_reader :buf_w, :buf_h
@@ -261,14 +262,21 @@ class TileRing
   # Stamp any missing tiles for the world-pixel rect (view_x, view_y, w, h).
   # Cheap when nothing changed: skips entirely while the visible tile range
   # stays the same as the previous call.
+  #
+  # Returns true when it drew something. The caller MUST present the ring
+  # canvas in that case: the canvas is committed on present (the compositor
+  # reads the committed buffer, never the one being drawn into), so tiles
+  # stamped without a following present never reach the screen -- the
+  # viewport then scrolls over whatever the last present left there, which
+  # looks like the same patch of world repeating forever.
   def ensure_view(view_x, view_y, view_w, view_h)
     ts = @ts
     tx0 = view_x / ts
     ty0 = view_y / ts
     tx1 = (view_x + view_w - 1) / ts
     ty1 = (view_y + view_h - 1) / ts
-    return if tx0 == @last_tx0 && ty0 == @last_ty0 &&
-              tx1 == @last_tx1 && ty1 == @last_ty1
+    return false if tx0 == @last_tx0 && ty0 == @last_ty0 &&
+                    tx1 == @last_tx1 && ty1 == @last_ty1
     @last_tx0 = tx0
     @last_ty0 = ty0
     @last_tx1 = tx1
@@ -276,6 +284,7 @@ class TileRing
 
     map_w = @map.width
     layer_count = @map.layers.size
+    drew = false
     ty = ty0
     while ty <= ty1
       row = @stamped[ty % @th]
@@ -295,10 +304,12 @@ class TileRing
             li += 1
           end
           row[sx] = key
+          drew = true
         end
         tx += 1
       end
       ty += 1
     end
+    drew
   end
 end
