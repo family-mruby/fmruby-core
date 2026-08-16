@@ -6,10 +6,10 @@
 ## 0. 何を作るか (2 ファイル + sidecar)
 
 ```
-flash/app/robo_explorer/robo_explorer.app.rb    世界側 (アプリ 1)
-flash/app/robo_explorer/robo_explorer.app.toml
-flash/app/robo_explorer/robo_pilot.app.rb       操縦サンプル (段階 0+1)
-flash/app/robo_explorer/robo_pilot.app.toml
+flash/app/game/robo_explorer/robo_explorer.app.rb    世界側 (アプリ 1)
+flash/app/game/robo_explorer/robo_explorer.app.toml
+flash/app/game/robo_explorer/robo_pilot.app.rb       操縦サンプル (段階 0+1)
+flash/app/game/robo_explorer/robo_pilot.app.toml
 ```
 
 プロトコルと題材は plan.md 4 章が正。この指示書と食い違ったら plan.md に

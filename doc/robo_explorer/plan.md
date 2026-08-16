@@ -160,7 +160,7 @@ robo/result  アプリ1 -> 全員。cmd 1 つごとに必ず 1 つ。
 | 3 | 自動: 壁伝いでゴールまで | 数十行 |
 | 4 | 記憶: 通った場所を覚えて自前の地図を作る | 発展 |
 
-段階 0 と 1 のサンプルは flash/app/robo_explorer/ に同梱する
+段階 0 と 1 のサンプルは flash/app/game/robo_explorer/ に同梱する
 (`robo_explorer.app.rb` と `robo_pilot.app.rb`)。段階 2 以降は書かせる。
 
 ## 7. 決定済み (2026-08-16)
@@ -170,7 +170,7 @@ robo/result  アプリ1 -> 全員。cmd 1 つごとに必ず 1 つ。
 - **操縦者**: 一人想定。排他制御は作らない (カーネルの素の挙動のまま)。
 - **表示**: 日本語専用 (漢字あり)。i18n 表は持たない。フォントは
   efontJA_12 基本 (5 章)。
-- **名前**: ロボットエクスプローラー。置き場所は flash/app/robo_explorer/
+- **名前**: ロボットエクスプローラー。置き場所は flash/app/game/robo_explorer/
   (世界側 robo_explorer.app.rb、操縦サンプル robo_pilot.app.rb)。
   トピック接頭辞は robo/ のまま。
 - **Retro のレイアウト**: 2 窓が重なってよい。専用の縮小レイアウトは
