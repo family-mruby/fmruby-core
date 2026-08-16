@@ -33,7 +33,10 @@ class ShooterApp < FmrbApp
   COL_STAR_LO  = 0x49
   COL_PLANET   = 0x21
   COL_PLANET_R = 0x4A
-  COL_HORIZON  = 0x11
+  # The glow along the horizon. The same blue-violet as the planet's lit rim,
+  # so the line reads as that light reaching the horizon -- as pure green it
+  # read as a stray bar across the bottom of the screen.
+  COL_HORIZON  = 0x4A
   COL_OVER_BG  = 0x40
 
   # ---- Artwork ----
