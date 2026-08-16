@@ -84,7 +84,6 @@ static mrb_value mrb_gfx_clear(mrb_state *mrb, mrb_value self)
     mrb_int color;
     mrb_get_args(mrb, "i", &color);
 
-    FMRB_LOGD(TAG, "clear() called with color=0x%08x", (unsigned int)color);
 
     mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
     if (!data || !data->ctx) {
@@ -102,7 +101,6 @@ static mrb_value mrb_gfx_clear(mrb_state *mrb, mrb_value self)
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Graphics clear failed: %d", ret);
     }
 
-    FMRB_LOGD(TAG, "clear() succeeded");
     return self;
 }
 
@@ -256,7 +254,6 @@ static mrb_value mrb_gfx_fill_rect(mrb_state *mrb, mrb_value self)
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Fill rect failed: %d", ret);
     }
 
-    FMRB_LOGD("gfx", "fill_rect command sent successfully");
     return self;
 }
 
@@ -321,8 +318,6 @@ static mrb_value mrb_gfx_fill_circle(mrb_state *mrb, mrb_value self)
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    FMRB_LOGD("gfx", "fill_circle called: x=%d, y=%d, r=%d, color=0x%02X, canvas_id=%d",
-              (int)x, (int)y, (int)r, (int)color, data->canvas_id);
 
     // Send GFX command to Host Task
     gfx_cmd_t cmd;
@@ -541,8 +536,6 @@ static mrb_value draw_text_impl(mrb_state *mrb, mrb_value self, uint8_t hybrid_m
         mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
     }
 
-    FMRB_LOGD("gfx", "draw_text called: x=%d, y=%d, text='%s', color=0x%02X, bg_color=0x%02X, bg_transparent=%d, hybrid=%u, canvas_id=%d",
-              (int)x, (int)y, text, (int)color, (int)bg_color, !bg_given, hybrid_mode, data->canvas_id);
 
     // Send GFX command to Host Task
     gfx_cmd_t cmd;

@@ -215,9 +215,12 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
         do {
             sent = send(global_socket_fd, encoded, encoded_len, 0);
         } while (sent < 0 && errno == EINTR);
-
-        ESP_LOGD(TAG, "Sent %zu bytes (encoded: %zu) to channel %d [%zu/%zu]",
-                 msg->size, encoded_len, channel, i + 1, msg_count);
+        // No per-message debug log here (and none on the receive path): even a
+        // filtered ESP_LOGD takes the log lock to check the level, and that
+        // lock is a raw pthread mutex the FreeRTOS scheduler cannot see. At
+        // hundreds of messages a second the running task ends up blocked on it
+        // while the preempted holder never gets the CPU back -- the whole sim
+        // freezes (doc/sim_log_deadlock.md, caught with gdb 2026-08-16).
 
         fmrb_sys_free(encoded);
 
@@ -281,10 +284,8 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
             return FMRB_ERR_FAILED;
         }
 
-        ESP_LOGD(TAG, "Received %zd bytes from socket", received);
         recv_pos += received;
     } else {
-        ESP_LOGD(TAG, "Processing buffered data (recv_pos=%zu)", recv_pos);
     }
 
     // Skip leading null bytes (leftover frame terminators)
@@ -305,11 +306,9 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
 
     if (frame_end >= recv_pos) {
         // No complete frame yet
-        ESP_LOGD(TAG, "No complete frame yet (recv_pos=%zu)", recv_pos);
         return FMRB_ERR_NOT_FOUND;
     }
 
-    ESP_LOGD(TAG, "Found COBS frame: frame_end=%zu, recv_pos=%zu", frame_end, recv_pos);
 
     // Decode COBS frame
     static uint8_t decoded_buffer[4096];
@@ -325,7 +324,6 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
         return FMRB_ERR_FAILED;
     }
 
-    ESP_LOGD(TAG, "COBS decoded %zd bytes", decoded_len);
 
     // Debug: print header info
     if (decoded_len >= 14) {  // Minimum header size
@@ -335,8 +333,6 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
         uint16_t sequence = *(uint16_t*)(decoded_buffer + 6);
         uint32_t payload_len = *(uint32_t*)(decoded_buffer + 8);
         uint32_t checksum = *(uint32_t*)(decoded_buffer + 12);
-        ESP_LOGD(TAG, "Header: magic=0x%08x ver=%u type=0x%02x seq=%u plen=%u csum=0x%08x",
-                 magic, version, msg_type, sequence, payload_len, checksum);
     }
 
     // Remove processed frame from buffer
@@ -350,7 +346,6 @@ fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
     msg->data = decoded_buffer;
     msg->size = decoded_len;
 
-    ESP_LOGD(TAG, "Received %zd bytes from channel %d", decoded_len, channel);
     return FMRB_OK;
 }
 

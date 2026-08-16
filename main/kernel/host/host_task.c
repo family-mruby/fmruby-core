@@ -1297,7 +1297,6 @@ static void host_task_process_gfx_batch(const fmrb_msg_t *first_msg)
         gfx_stats_update(batch_count, present_count);
 
         if (batch_count > 1) {
-            FMRB_LOGD(TAG, "GFX batch: %d commands sent", batch_count);
         }
     }
 
@@ -1623,7 +1622,6 @@ static void host_task_process_host_message(const host_message_t *msg)
             }
             host_send_cursor_position(x, y);
 
-            FMRB_LOGD(TAG, "Mouse move: (%d, %d) - forwarding to Kernel", x, y);
 
             // Forward mouse move to Kernel for drag and drop handling
             // Kernel will forward to target app if not dragging
@@ -1690,8 +1688,6 @@ static void host_task_process_host_message(const host_message_t *msg)
         }
 
         case HOST_MSG_DRAW_COMMAND:
-            FMRB_LOGD(TAG, "Draw command: cmd_type=%d, canvas_id=%d",
-                     msg->data.gfx.cmd_type, msg->data.gfx.canvas_id);
             // TODO: Implement command buffering and execution
             break;
 

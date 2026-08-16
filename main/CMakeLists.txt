@@ -241,6 +241,11 @@ if(NOT IDF_TARGET STREQUAL "linux")
     list(APPEND COMPONENT_SRCS ${COMPONENT_ESP32_SRCS})
 else()
     list(APPEND COMPONENT_SRCS ${COMPONENT_LINUX_SRCS})
+    # Simulator-only guard for the log locks (see boot/sim_log_guard.c): the
+    # lock-holding regions of the IDF log path are wrapped in the port's
+    # critical section so the tick signal cannot park a holder. The wrap has
+    # to happen at link time to cover IDF-internal callers too.
+    list(APPEND COMPONENT_SRCS "boot/sim_log_guard.c")
 endif()
 
 # Remote desktop viewer page (Modern only): embedded into the binary and
@@ -267,6 +272,15 @@ idf_component_register(
 # commands like add_compile_definitions do not exist.
 include(${CMAKE_CURRENT_LIST_DIR}/../components/picoruby-esp32/mruby_abi_defines.cmake)
 fmrb_add_mruby_abi_defines()
+
+# Linux sim: route every caller of the log locks through the guards above.
+if(IDF_TARGET STREQUAL "linux")
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        "-Wl,--wrap=esp_log_impl_lock"
+        "-Wl,--wrap=esp_log_impl_lock_timeout"
+        "-Wl,--wrap=esp_log_impl_unlock"
+        "-Wl,--wrap=esp_log_system_timestamp")
+endif()
 
 # Test mode flags
 option(ENABLE_SPI_TEST "Enable SPI connection test" OFF)

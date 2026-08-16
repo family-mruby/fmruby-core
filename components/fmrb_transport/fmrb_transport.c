@@ -481,7 +481,6 @@ fmrb_err_t fmrb_transport_send_batch(const fmrb_transport_batch_entry_t *entries
             ctx->stats_tx_bytes += hal_msgs[i].size;
         }
         ctx->stats_tx_msgs += valid_count;
-        FMRB_LOGD(TAG, "Batch sent: %zu messages", valid_count);
     }
 
     // Free all compact buffers
