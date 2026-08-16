@@ -89,9 +89,15 @@ class RoboPilotApp < FmrbApp
     data = msg["data"]
     return unless data
     if topic == TOPIC_STATE
-      # Turn 0 means the world was reset; the answer to the last command
-      # belongs to the run that just ended, so drop it.
-      @result_text = "" if data["turn"] == 0
+      # Turn 0 means the world was reset. The answer to the last command
+      # belongs to the run that just ended, so drop it -- and so does the
+      # brain's memory: a wall-follower's phase carried across a reset made
+      # it hug a different wall than a fresh start would, and it circled an
+      # island for hundreds of moves. A new world gets a new brain.
+      if data["turn"] == 0
+        @result_text = ""
+        @brain = MyPilot.new
+      end
       @state = data
       @dirty = true
     elsif topic == TOPIC_RESULT
@@ -273,29 +279,47 @@ class RoboPilotApp < FmrbApp
       return
     end
 
+    # Cleared: the view has nothing left to say, so it becomes the banner --
+    # drawing the goal face's letter under クリア! just overlapped the two.
+    if st["done"]
+      f = VB_FRAMES[0]
+      @gfx.draw_rect(bx + f[0], by + f[1], f[2] - f[0] + 1, f[3] - f[1] + 1,
+                     COL_GOAL)
+      @gfx.draw_text(bx + VB_W / 2 - 21, by + VB_H / 2 - 6, "クリア!", COL_GOAL)
+      return
+    end
+
     ended = nil
     n = view.size
     n = VB_FRAMES.size - 1 if n > VB_FRAMES.size - 1
     i = 0
     while i < n
       cell = view[i]
+      kind = cell[2]
       nf = VB_FRAMES[i]
       ff = VB_FRAMES[i + 1]
-      draw_view_side(bx, by, nf, ff, cell[0], true)
-      draw_view_side(bx, by, nf, ff, cell[1], false)
-      # The corner: where a side flips between wall and opening, the edge
-      # between the two cells is a vertical line at the boundary frame.
-      if i + 1 < n
-        nxt = view[i + 1]
-        draw_view_corner(bx, by, ff, true)  if cell[0] != nxt[0]
-        draw_view_corner(bx, by, ff, false) if cell[1] != nxt[1]
-      end
-      kind = cell[2]
+      # A door or the goal fills the near plane of its cell: sight stops
+      # right there, so nothing of that cell is drawn -- its side walls
+      # included, which otherwise showed through the wireframe as lines
+      # running on behind the door.
       if kind == "door" || kind == "goal"
         ended = kind
         draw_view_face(bx, by, nf, kind)
         break
-      elsif kind == "key"
+      end
+      draw_view_side(bx, by, nf, ff, cell[0], true)
+      draw_view_side(bx, by, nf, ff, cell[1], false)
+      # The corner: where a side flips between wall and opening, the edge
+      # between the two cells is a vertical line at the boundary frame.
+      # Not against a terminal cell -- its face draws that frame itself.
+      if i + 1 < n
+        nxt = view[i + 1]
+        unless nxt[2] == "door" || nxt[2] == "goal"
+          draw_view_corner(bx, by, ff, true)  if cell[0] != nxt[0]
+          draw_view_corner(bx, by, ff, false) if cell[1] != nxt[1]
+        end
+      end
+      if kind == "key"
         # The key lies on the floor of this cell: a small marker at its depth.
         mx = bx + (nf[0] + nf[2]) / 2 - 3
         my = by + (nf[3] + ff[3]) / 2 - 1
@@ -306,10 +330,6 @@ class RoboPilotApp < FmrbApp
     # Ran out of corridor without a door or the goal: a wall (or the sight
     # limit) faces the robot at the last frame.
     draw_view_face(bx, by, VB_FRAMES[i], "wall") if ended.nil?
-
-    if st["done"]
-      @gfx.draw_text(bx + VB_W / 2 - 21, by + VB_H / 2 - 6, "クリア!", COL_GOAL)
-    end
   end
 
   def draw_view_corner(bx, by, f, left)
