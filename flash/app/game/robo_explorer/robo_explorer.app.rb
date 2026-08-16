@@ -72,9 +72,9 @@ class RoboExplorerApp < FmrbApp
   PANEL_Y = 14
   LINE_H  = 15
 
-  # The state-panel toggle. Hiding the panel makes this window show only the
-  # maze: whoever watches it cannot read the robot's state off the screen and
-  # relay it, so the pilot really does know only what is published.
+  # The map toggle. Hiding the maze is the harder game: the level has to be
+  # solved from what the robot senses, because nobody can see the layout --
+  # not the player writing the brain, and not anyone watching this window.
   BTN_Y_OFF = 34   # from the bottom of the user area
   BTN_W     = 76
   BTN_H     = 15
@@ -83,7 +83,7 @@ class RoboExplorerApp < FmrbApp
 
   def on_create
     @gfx.set_font(:ja, 12)
-    @show_state = true
+    @show_map = true
     subscribe(TOPIC_CMD)
     load_map
     reset_world
@@ -328,7 +328,8 @@ class RoboExplorerApp < FmrbApp
     if ev[:type] == :mouse_up && ev[:button] == 1
       if ev[:x] >= PANEL_X && ev[:x] < PANEL_X + BTN_W &&
          ev[:y] >= btn_y && ev[:y] < btn_y + BTN_H
-        @show_state = !@show_state
+        @show_map = !@show_map
+        draw_board
         draw_status
         @gfx.present
       end
@@ -356,6 +357,15 @@ class RoboExplorerApp < FmrbApp
   def draw_board
     @gfx.fill_rect(BOARD_X - 1, BOARD_Y - 1,
                    BOARD_W * TILE + 2, BOARD_H * TILE + 2, COL_GRID)
+    unless @show_map
+      # The covered maze. Nothing of the layout may leak, so the tiles and
+      # the robot are simply not drawn.
+      @gfx.fill_rect(BOARD_X, BOARD_Y, BOARD_W * TILE - 1, BOARD_H * TILE - 1,
+                     COL_FLOOR)
+      @gfx.draw_text(BOARD_X + 48, BOARD_Y + BOARD_H * TILE / 2 - 6,
+                     "地図は非表示", COL_DIM)
+      return
+    end
     y = 0
     while y < BOARD_H
       x = 0
@@ -407,6 +417,7 @@ class RoboExplorerApp < FmrbApp
   # Only the two cells the robot left and entered need repainting -- a full
   # 144-tile redraw per turn would put 144 draw calls on the wire for nothing.
   def redraw_robot_area
+    return unless @show_map
     if @board_dirty
       draw_board
       return
@@ -427,28 +438,25 @@ class RoboExplorerApp < FmrbApp
     @gfx.fill_rect(PANEL_X, PANEL_Y - 2, @user_area_x1 - PANEL_X - 1,
                    @user_area_y1 - PANEL_Y - 1, COL_FLOOR)
     y = PANEL_Y
-    if @show_state
-      @gfx.draw_text(PANEL_X, y, "場所 #{@x},#{@y}", COL_TEXT)
-      y += LINE_H
-      @gfx.draw_text(PANEL_X, y, "向き #{DIR_JA[@dir]}", COL_TEXT)
-      y += LINE_H
-      @gfx.draw_text(PANEL_X, y, "前 #{cell_ja(front_cell)}", COL_TEXT)
-      y += LINE_H
-      @gfx.draw_text(PANEL_X, y, "鍵 #{@keys}", COL_KEY)
-      y += LINE_H
-      @gfx.draw_text(PANEL_X, y, "ゴール #{goal_dir_ja(goal_dir)}",
-                     COL_GOAL)
-      y += LINE_H
-      @gfx.draw_text(PANEL_X, y, "手数 #{@steps}", COL_TEXT)
-      y += LINE_H + 4
-    end
-    # done is the outcome, not telemetry: it stays visible either way.
+    @gfx.draw_text(PANEL_X, y, "場所 #{@x},#{@y}", COL_TEXT)
+    y += LINE_H
+    @gfx.draw_text(PANEL_X, y, "向き #{DIR_JA[@dir]}", COL_TEXT)
+    y += LINE_H
+    @gfx.draw_text(PANEL_X, y, "前 #{cell_ja(front_cell)}", COL_TEXT)
+    y += LINE_H
+    @gfx.draw_text(PANEL_X, y, "鍵 #{@keys}", COL_KEY)
+    y += LINE_H
+    @gfx.draw_text(PANEL_X, y, "ゴール #{goal_dir_ja(goal_dir)}",
+                   COL_GOAL)
+    y += LINE_H
+    @gfx.draw_text(PANEL_X, y, "手数 #{@steps}", COL_TEXT)
+    y += LINE_H + 4
     if @done
       @gfx.draw_text(PANEL_X, y, "クリア!", COL_OK)
     end
     @gfx.fill_rect(PANEL_X, btn_y, BTN_W, BTN_H, COL_GRID)
     @gfx.draw_text(PANEL_X + 4, btn_y + 2,
-                   @show_state ? "状態を隠す" : "状態を出す", COL_TEXT)
+                   @show_map ? "地図を隠す" : "地図を出す", COL_TEXT)
     @gfx.draw_text(PANEL_X, @user_area_y1 - 16, "R:リセット",
                    COL_DIM)
   end

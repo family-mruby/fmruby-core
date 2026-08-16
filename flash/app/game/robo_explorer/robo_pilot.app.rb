@@ -28,7 +28,7 @@ class RoboPilotApp < FmrbApp
   # How often think() is asked. Also the floor between any two sends: the
   # round trip is 0-1 ms, so an unthrottled brain would run hundreds of turns
   # a second and nobody would see the robot solve anything.
-  THINK_MS = 500
+  THINK_MS = 200
 
   def on_create
     @gfx.set_font(:ja, 12)
@@ -38,6 +38,10 @@ class RoboPilotApp < FmrbApp
     @sent_at = nil
     @rtt_n = 0
     @last_send = 0
+    # The autopilot is armed, not running: S starts it (and stops it again).
+    # A brain that drives the moment the app opens leaves no room to watch,
+    # to drive by hand first, or to start the run deliberately.
+    @auto = false
     @brain = MyPilot.new
     subscribe(TOPIC_STATE)
     subscribe(TOPIC_RESULT)
@@ -120,6 +124,13 @@ class RoboPilotApp < FmrbApp
   def on_event(ev)
     super(ev)
     return unless ev[:type] == :key_down
+    # S belongs to the frame, not the brain: every brain gets the same
+    # start/stop control without having to implement it.
+    if ev[:scancode] == FmrbConst::KEY_S
+      @auto = !@auto
+      draw_screen
+      return
+    end
     return if @state.nil?
     cmd = call_brain { @brain.on_key(ev[:scancode], @state) }
     send_cmd(cmd)
@@ -130,7 +141,7 @@ class RoboPilotApp < FmrbApp
   # drive a turn per round trip, hundreds per second).
   def on_update
     now = Machine.board_millis
-    if @state && !@state["done"] && now - @last_send >= THINK_MS
+    if @auto && @state && !@state["done"] && now - @last_send >= THINK_MS
       cmd = call_brain { @brain.think(@state) }
       send_cmd(cmd)
     end
@@ -192,9 +203,10 @@ class RoboPilotApp < FmrbApp
       @gfx.draw_text(x, y, @result_text, @result_ok ? COL_GOAL : COL_NG)
     end
     y += LINE_H
-    @gfx.draw_text(x, y, "上:進む", COL_DIM)
+    @gfx.draw_text(x, y, @auto ? "自動:ON" : "自動:OFF",
+                   @auto ? COL_GOAL : COL_DIM)
     y += LINE_H
-    @gfx.draw_text(x, y, "左/右:回る", COL_DIM)
+    @gfx.draw_text(x, y, "S:自動 矢印:手動", COL_DIM)
     draw_window_frame
     @gfx.present
   end
