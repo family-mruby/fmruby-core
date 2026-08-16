@@ -525,9 +525,10 @@ module FileManagerMixin
     if @fmgr_ctx_open
       # The menu is in the way of everything: the first key takes it down, and
       # only Esc is spent doing that -- the rest act on the row underneath.
+      # Tab is spent too, so the key that opens the menu also closes it.
       @fmgr_ctx_open = false
       draw_foreground
-      return if scancode == FmrbConst::KEY_ESC
+      return if scancode == FmrbConst::KEY_ESC || scancode == FmrbConst::KEY_TAB
     end
 
     case scancode
@@ -538,6 +539,7 @@ module FileManagerMixin
     when FmrbConst::KEY_HOME  then fmgr_move_to(0)
     when FmrbConst::KEY_END   then fmgr_move_to(@file_manager_entries.size - 1)
     when FmrbConst::KEY_ENTER then fmgr_activate
+    when FmrbConst::KEY_TAB   then fmgr_open_context_for_selection
     when FmrbConst::KEY_ESC   then close_file_manager
     when FmrbConst::KEY_RIGHT
       entry = fmgr_selected_entry
@@ -555,6 +557,36 @@ module FileManagerMixin
         fmgr_paste_file
       end
     end
+  end
+
+  # Open the actions menu on the selected row, the one a right click reaches.
+  # Keyboard only has to get here: the menu prints the key that does each
+  # action beside it, so it is read and then acted on with those keys. A touch
+  # screen has no right button at all, which makes this the only way to Copy
+  # and Paste on a Tab5.
+  def fmgr_open_context_for_selection
+    idx = @file_manager_selected
+    return if idx < 0 || idx >= @file_manager_entries.size
+    entry = @file_manager_entries[idx]
+    return if entry[:name] == ".."
+
+    @fmgr_ctx_idx = idx
+    items = fmgr_ctx_items
+    return if items.empty?
+
+    # Anchored under the selected row rather than at the pointer, which is
+    # wherever the mouse was last left.
+    m = fmgr_list_metrics
+    row = idx - @file_manager_scroll
+    row = 0 if row < 0
+    @fmgr_ctx_x = @fmgr_x + FMGR_W / 3
+    @fmgr_ctx_y = m[:list_y] + (row + 1) * FMGR_ITEM_H
+    ctx_h = FMGR_CTX_ITEM_H * items.size + 2
+    if @fmgr_ctx_y + ctx_h > @fmgr_y + FMGR_H
+      @fmgr_ctx_y = @fmgr_y + FMGR_H - ctx_h
+    end
+    @fmgr_ctx_open = true
+    draw_foreground
   end
 
   # ---- File operations ----

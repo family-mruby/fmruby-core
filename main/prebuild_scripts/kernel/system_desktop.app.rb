@@ -410,9 +410,18 @@ class SystemDesktopApp < FmrbApp
     []
   end
 
+  # Is something on top that owns the screen? The menu bar key and the letter
+  # shortcuts both stay out of the way of one. (The list used to be written out
+  # in handle_shortcut and stopped at the dialogs that read the keyboard, so a
+  # letter typed over the About or Config dialog started an app behind it.)
+  def desktop_overlay_open?
+    @dropdown_open || @launcher_open || @file_selector_open || @file_manager_open ||
+      @cdlg_open || @error_dlg_open || @clk_open || @cfg_open || @str_open ||
+      @net_open || @about_open || @tbd_open
+  end
+
   def handle_shortcut(character)
-    return false if @dropdown_open || @launcher_open || @file_selector_open ||
-                    @file_manager_open || @cdlg_open || @error_dlg_open || @clk_open
+    return false if desktop_overlay_open?
     # Integer#chr has no Spinel runtime backing (sp_str_chr); build the 1-byte
     # String with setbyte instead (dual-build safe).
     ch = nil
@@ -765,6 +774,51 @@ class SystemDesktopApp < FmrbApp
     dropdown_h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
     notify_overlay_state(true, DROPDOWN_X, DROPDOWN_Y, DROPDOWN_W, dropdown_h)
     update_composite_regions
+    draw_foreground
+  end
+
+  # The menu bar from the keyboard: F10 opens it with the first entry picked,
+  # arrows move, Enter runs, Esc or F10 again closes. The highlight is the same
+  # @dropdown_hover_idx the mouse moves, so the two ways of driving the menu
+  # cannot disagree about what is selected.
+  def open_dropdown_from_key
+    open_dropdown
+    @dropdown_hover_idx = 0
+    draw_foreground
+  end
+
+  # Returns true when the key was spent on the menu.
+  def handle_dropdown_key(scancode)
+    case scancode
+    when FmrbConst::KEY_UP    then dropdown_move(-1)
+    when FmrbConst::KEY_DOWN  then dropdown_move(1)
+    when FmrbConst::KEY_HOME  then dropdown_move_to(0)
+    when FmrbConst::KEY_END   then dropdown_move_to(DROPDOWN_ITEMS.size - 1)
+    when FmrbConst::KEY_ENTER
+      idx = @dropdown_hover_idx
+      close_dropdown
+      run_dropdown_item(idx)
+    when FmrbConst::KEY_ESC, FmrbConst::KEY_F10
+      close_dropdown
+    else
+      return false
+    end
+    true
+  end
+
+  # Wraps at both ends: the menu is short, and a list that stops dead at the
+  # bottom makes the last entries the awkward ones to reach.
+  def dropdown_move(delta)
+    n = DROPDOWN_ITEMS.size
+    return if n == 0
+    idx = @dropdown_hover_idx
+    idx = (delta > 0 ? -1 : 0) if idx < 0
+    dropdown_move_to((idx + delta + n) % n)
+  end
+
+  def dropdown_move_to(idx)
+    return if idx == @dropdown_hover_idx
+    @dropdown_hover_idx = idx
     draw_foreground
   end
 
@@ -1147,6 +1201,11 @@ class SystemDesktopApp < FmrbApp
       # here and an SDL keysym there.
       scancode = ev[:scancode] || 0
 
+      # Menu bar first: while it is open it owns the arrows and Enter.
+      if @dropdown_open
+        return if handle_dropdown_key(scancode)
+      end
+
       # Launcher: arrows move the selection (scrolling as needed), Enter
       # launches. See handle_launcher_key in launcher.rb.
       if @launcher_open
@@ -1179,6 +1238,14 @@ class SystemDesktopApp < FmrbApp
       # their initials (file_manager.rb).
       if @file_manager_open
         handle_file_manager_key(scancode, character)
+        return
+      end
+
+      # F10 opens the menu bar. Nothing above consumed the key, so no list or
+      # dialog that reads the keyboard is up; the rest are click-only dialogs,
+      # and desktop_overlay_open? keeps the menu from opening behind one.
+      if scancode == FmrbConst::KEY_F10
+        open_dropdown_from_key unless desktop_overlay_open?
         return
       end
 
@@ -1336,9 +1403,14 @@ class SystemDesktopApp < FmrbApp
   def handle_dropdown_click(x, y)
     item_idx = (y - DROPDOWN_Y - 1) / DROPDOWN_ITEM_H
     return if item_idx < 0 || item_idx >= DROPDOWN_ITEMS.size
-
-    item = DROPDOWN_ITEMS[item_idx]
     close_dropdown
+    run_dropdown_item(item_idx)
+  end
+
+  # What a menu entry does, whether it was clicked or chosen with the keyboard.
+  def run_dropdown_item(item_idx)
+    return if item_idx < 0 || item_idx >= DROPDOWN_ITEMS.size
+    item = DROPDOWN_ITEMS[item_idx]
 
     case item[:key]
     when :launcher
