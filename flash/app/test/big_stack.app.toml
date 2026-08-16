@@ -1,0 +1,12 @@
+app_handle_name = "big_stack"
+app_screen_name = "Big Stack"
+app_screen_name_ja = "大スタック"
+default_window_mode = "window"
+default_window_width = 180
+default_window_height = 60
+default_window_pos_x = 30
+default_window_pos_y = 60
+launcher_visible = false
+# The cap (FMRB_USER_APP_TASK_STACK_MAX). Deliberately large: this app exists
+# to exercise the spawn-time internal RAM check.
+task_stack_kb = 64

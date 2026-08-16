@@ -8,7 +8,7 @@
 
 #define FMRB_MAX_SYSTEM_MRUBY_TASKS (4)  // Kernel, Host, System Desktop, System Overlay
 
-#define FMRB_MAX_APPS (7)  // Max number of apps (including system, mruby, lua and basic apps)
+#define FMRB_MAX_APPS (9)  // Max number of apps (including system, mruby, lua and basic apps)
 
 // Maximum number of mruby VMs registered for tick delivery
 #define FMRB_MRB_MAX_VMS (FMRB_MAX_SYSTEM_MRUBY_TASKS + FMRB_MAX_APPS)
@@ -124,6 +124,18 @@
 // recurses on the task's C stack, and PicoRabbit overflowed 16KB on P4
 // compiling a slide's fmrb block (stack protection fault, 2026-08-07).
 #define FMRB_USER_APP_TASK_STACK_MAX    (64 * 1024)
+
+// What a spawn is charged beyond its task stack: the message queue, the task
+// control block and the semaphores. Measured on a Tab5, an app costs its stack
+// plus 2-6 KB of internal RAM.
+#define FMRB_APP_SPAWN_OVERHEAD         (8 * 1024)
+
+// Internal RAM left for the rest of the machine after an app is started. A
+// spawn that would eat into this is refused (app_internal_ram_available).
+// 30 KB is a floor to keep drivers and the network stack able to allocate, not
+// a comfort margin -- WiFi and the remote desktop alone move internal RAM by
+// tens of KB while apps run.
+#define FMRB_APP_SPAWN_MARGIN           (30 * 1024)
 #define FMRB_USER_APP_PRIORITY          (2)
 #define FMRB_USER_APP_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_1
 
@@ -306,14 +318,19 @@ typedef enum FMRB_PROC_ID{
     PROC_ID_HOST,
     PROC_ID_SYSTEM_APP,
     PROC_ID_SYSTEM_OVERLAY,
-    // Three user apps, which is what the hardware allows: there is one memory
-    // pool per slot (POOL_ID_USER_APP0..2) and one context slot per id
-    // (FMRB_MAX_APPS). Naming ids beyond that is what let a spawn hand out a
-    // slot index past the end of the context pool. Adding a fourth means adding
-    // a pool and raising FMRB_MAX_APPS, so the assert below has to stay true.
+    // Five user apps. There is one memory pool per slot (POOL_ID_USER_APP0..4)
+    // and one context slot per id (FMRB_MAX_APPS); naming ids beyond that is
+    // what let a spawn hand out a slot index past the end of the context pool,
+    // so the assert in main/app/fmrb_app.c has to stay true.
+    //
+    // Five is a ceiling, not a promise: what actually limits concurrent apps is
+    // memory, and a spawn is refused when there is not enough (the internal RAM
+    // check in fmrb_app_spawn_app, and the PSRAM the slot's pool needs).
     PROC_ID_USER_APP0,
     PROC_ID_USER_APP1,
     PROC_ID_USER_APP2,
+    PROC_ID_USER_APP3,
+    PROC_ID_USER_APP4,
     PROC_ID_MAX
 } fmrb_proc_id_t;
 

@@ -336,6 +336,8 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "PROC_ID_USER_APP0", mrb_fixnum_value(PROC_ID_USER_APP0));
     mrb_define_const(mrb, const_module, "PROC_ID_USER_APP1", mrb_fixnum_value(PROC_ID_USER_APP1));
     mrb_define_const(mrb, const_module, "PROC_ID_USER_APP2", mrb_fixnum_value(PROC_ID_USER_APP2));
+    mrb_define_const(mrb, const_module, "PROC_ID_USER_APP3", mrb_fixnum_value(PROC_ID_USER_APP3));
+    mrb_define_const(mrb, const_module, "PROC_ID_USER_APP4", mrb_fixnum_value(PROC_ID_USER_APP4));
 
     // Process state constants
     mrb_define_const(mrb, const_module, "PROC_STATE_FREE", mrb_fixnum_value(PROC_STATE_FREE));

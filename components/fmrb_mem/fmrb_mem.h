@@ -23,6 +23,17 @@ void* fmrb_get_mempool_ptr(int32_t id);
 size_t fmrb_get_mempool_size(int32_t id);
 void* fmrb_get_mempool_app_ptr(int32_t no);
 
+/**
+ * @brief Make sure a pool has memory behind it.
+ *
+ * Statically reserved pools are always ready and this only reports so. The
+ * user app slots past FMRB_USER_APP_STATIC_POOL_COUNT take their memory from
+ * PSRAM here, on first use, and keep it. Returns false when PSRAM cannot spare
+ * the pool, which is how a machine with less memory allows fewer concurrent
+ * apps than there are slots.
+ */
+bool fmrb_mempool_reserve(int32_t id);
+
 // Memory pool debugging functions
 void fmrb_mempool_print_ranges(void);
 void fmrb_mempool_check_pointer(const void* ptr);

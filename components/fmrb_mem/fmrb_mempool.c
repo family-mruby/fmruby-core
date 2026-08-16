@@ -1,5 +1,9 @@
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "esp_heap_caps.h"
+#endif
 #include "fmrb_hal.h"
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
@@ -18,6 +22,8 @@ EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_edit
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_tmpfs[FMRB_MEM_POOL_SIZE_TMPFS];
 EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_log_buffer[FMRB_MEM_POOL_SIZE_LOG_BUFFER];
 
+// POOL_ID_USER_APP3/4 are absent on purpose: they are filled in by
+// fmrb_mempool_reserve the first time an app is given that slot.
 static unsigned char* g_mempool_list[POOL_ID_MAX] = {
     [POOL_ID_SYSTEM]     = g_mempool_system,
     [POOL_ID_KERNEL]     = g_mempool_kernel,
@@ -38,6 +44,42 @@ void* fmrb_get_mempool_ptr(int32_t id){
         return NULL;
     }
     return g_mempool_list[id];
+}
+
+// Make sure a pool has memory behind it, allocating it from PSRAM if this is a
+// slot that is not reserved statically. Returns false when PSRAM cannot spare
+// it, which is how a machine with less memory ends up allowing fewer apps than
+// the slot count would suggest.
+//
+// Once taken, the block is kept: an app slot is reused as apps come and go, and
+// handing 500 KB back to the PSRAM heap only to ask for it again is how that
+// heap gets fragmented over a long session.
+bool fmrb_mempool_reserve(int32_t id)
+{
+    if (id < 0 || id >= POOL_ID_MAX) {
+        return false;
+    }
+    if (g_mempool_list[id]) {
+        return true;
+    }
+
+    size_t size = fmrb_get_mempool_size(id);
+    if (size == 0) {
+        return false;
+    }
+
+#ifdef CONFIG_IDF_TARGET_LINUX
+    unsigned char *p = (unsigned char *)malloc(size);
+#else
+    unsigned char *p = (unsigned char *)heap_caps_aligned_alloc(8, size, MALLOC_CAP_SPIRAM);
+#endif
+    if (!p) {
+        FMRB_LOGE(TAG, "Pool %d: no PSRAM for %zu bytes", (int)id, size);
+        return false;
+    }
+    g_mempool_list[id] = p;
+    FMRB_LOGI(TAG, "Pool %d reserved from PSRAM: %zu KB at %p", (int)id, size / 1024, p);
+    return true;
 }
 
 void* fmrb_get_mempool_app_ptr(int32_t no){
@@ -61,6 +103,8 @@ size_t fmrb_get_mempool_size(int32_t id){
         case POOL_ID_USER_APP0:
         case POOL_ID_USER_APP1:
         case POOL_ID_USER_APP2:
+        case POOL_ID_USER_APP3:
+        case POOL_ID_USER_APP4:
             return FMRB_MEM_POOL_SIZE_USER_APP;
         case POOL_ID_USER_APP_LARGE:
             return FMRB_MEM_POOL_SIZE_USER_APP_LARGE;

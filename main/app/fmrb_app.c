@@ -269,6 +269,52 @@ static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
     ctx->started_notified = false;
 }
 
+/* Is there internal RAM to start this app with?
+ *
+ * The slot count is a ceiling; what actually decides how many apps fit is
+ * memory, and internal RAM is what runs out first -- an app's task stack lives
+ * there (16 KB by default, up to 64 KB via task_stack_kb) while its VM heap and
+ * canvases are in PSRAM. Measured on a Tab5, a running app holds its stack plus
+ * about 4 KB of queue, TCB and semaphores.
+ *
+ * Two questions, because the answers differ: the stack is one contiguous
+ * allocation, so the largest free block has to hold it (with two apps up the
+ * largest block was already down to 63 KB against 118 KB free), and the system
+ * has to keep working afterwards, so a margin is left on top of the total.
+ *
+ * The margin is a floor for the rest of the machine, not a guarantee: WiFi and
+ * the remote desktop alone move internal RAM by tens of KB while an app runs.
+ */
+#ifndef CONFIG_IDF_TARGET_LINUX
+static bool app_internal_ram_available(const fmrb_spawn_attr_t* attr)
+{
+    size_t need = (size_t)attr->stack_words + FMRB_APP_SPAWN_OVERHEAD;
+    size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+    size_t freed = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+
+    if (largest < need) {
+        FMRB_LOGW(TAG, "[%s] refused: largest internal block %zu < %zu needed",
+                  attr->name ? attr->name : "?", largest, need);
+        return false;
+    }
+    if (freed < need + FMRB_APP_SPAWN_MARGIN) {
+        FMRB_LOGW(TAG, "[%s] refused: internal free %zu < %zu (need %zu + margin %d)",
+                  attr->name ? attr->name : "?", freed,
+                  need + (size_t)FMRB_APP_SPAWN_MARGIN, need, FMRB_APP_SPAWN_MARGIN);
+        return false;
+    }
+    FMRB_LOGI(TAG, "[%s] internal RAM ok: free=%zu largest=%zu need=%zu",
+              attr->name ? attr->name : "?", freed, largest, need);
+    return true;
+}
+#else
+static bool app_internal_ram_available(const fmrb_spawn_attr_t* attr)
+{
+    (void)attr;   // The simulation runs on a host heap; nothing to ration.
+    return true;
+}
+#endif
+
 static int32_t alloc_ctx_index(fmrb_proc_id_t requested_id, enum FMRB_APP_TYPE app_type) {
     // For fixed IDs, use that slot directly
     if (requested_id >= 0 && requested_id < FMRB_MAX_APPS) {
@@ -1410,6 +1456,11 @@ fmrb_err_t fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id)
  * Spawn new app task
  */
 fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
+    // What the unwind path reports. Most failures there are "something went
+    // wrong late in the spawn"; running out of memory is worth saying as such,
+    // because the kernel turns it into what the user is told.
+    fmrb_err_t unwind_err = FMRB_ERR_FAILED;
+
     if (!attr || !attr->name) {
         FMRB_LOGE(TAG, "Invalid spawn attributes");
         return FMRB_ERR_INVALID_PARAM;
@@ -1445,6 +1496,10 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     if (!out_id) {
         FMRB_LOGE(TAG, "out_id is NULL");
         return FMRB_ERR_INVALID_PARAM;
+    }
+
+    if (attr->type == APP_TYPE_USER_APP && !app_internal_ram_available(attr)) {
+        return FMRB_ERR_NO_MEMORY;
     }
 
     int32_t idx = -1;
@@ -1493,6 +1548,16 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
                     FMRB_LOGI(TAG, "USER_APP using LARGE pool (1MB): idx=%d", idx);
                 } else {
                     ctx->mempool_id = POOL_ID_USER_APP0 + (idx - PROC_ID_USER_APP0);
+                }
+                // The later slots take their pool from PSRAM on first use, so
+                // this is where a machine without the PSRAM to spare says no.
+                if (!fmrb_mempool_reserve(ctx->mempool_id)) {
+                    FMRB_LOGE(TAG, "[%s] No PSRAM for pool %d", attr->name, ctx->mempool_id);
+                    if (ctx->mempool_id == POOL_ID_USER_APP_LARGE) {
+                        g_large_pool_in_use = false;
+                    }
+                    unwind_err = FMRB_ERR_NO_MEMORY;
+                    goto unwind;
                 }
                 FMRB_LOGI(TAG, "USER_APP mempool_id: idx=%d, PROC_ID_USER_APP0=%d, POOL_ID_USER_APP0=%d, calculated mempool_id=%d",
                           idx, PROC_ID_USER_APP0, POOL_ID_USER_APP0, ctx->mempool_id);
@@ -1691,7 +1756,7 @@ unwind:
     free_ctx_index(idx);
     fmrb_semaphore_give(g_ctx_lock);
 
-    return FMRB_ERR_FAILED;
+    return unwind_err;
 }
 
 /**

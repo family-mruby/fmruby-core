@@ -38,7 +38,9 @@ extern int fmrb_syntax_highlight_line(const char *src, size_t len, uint8_t *out_
 #define ED_ERR_NOMEM  EC_ERR_NOMEM
 #define ED_ERR_IO     EC_ERR_IO
 
-#define ED_MAX_DOCS      3      /* == FMRB_USER_APP_COUNT: only user apps edit */
+/* One document per user app slot: only user apps edit. Follows the
+ * constant rather than repeating it -- the slot count moved from 3 to 5. */
+#define ED_MAX_DOCS      FMRB_USER_APP_COUNT
 #define ED_LINE_CHUNK    32     /* line capacity granularity, bytes */
 #define ED_LINES_CHUNK   64     /* line-array growth, entries */
 #define ED_IO_CHUNK      2048   /* file read/write staging buffer */

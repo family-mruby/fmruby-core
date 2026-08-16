@@ -5,9 +5,17 @@ enum FMRB_MEM_POOL_ID{
     POOL_ID_KERNEL,
     POOL_ID_SYSTEM_APP,
     POOL_ID_SYSTEM_OVERLAY,
+    // One pool per user app slot. The first three are reserved statically; the
+    // last two are taken from PSRAM the first time an app lands in them (see
+    // fmrb_mempool_reserve). Reserving all five statically would put 7.3 MB of
+    // the Retro machine's 8 MB PSRAM into .bss whether or not anyone ever runs
+    // five apps, which is most of what is left after the editor document and
+    // /tmp arenas.
     POOL_ID_USER_APP0,
     POOL_ID_USER_APP1,
     POOL_ID_USER_APP2,
+    POOL_ID_USER_APP3,
+    POOL_ID_USER_APP4,
     POOL_ID_USER_APP_LARGE,
     // Editor document arena (picoruby-fmrb-editor-core). Deliberately its own
     // pool: the document must not sit in the app's 500KB mruby pool (it would
@@ -61,4 +69,8 @@ typedef int8_t fmrb_mem_handle_t;
 
 #define FMRB_MEM_POOL_SIZE_LOG_BUFFER (128*1024)
 
-#define FMRB_USER_APP_COUNT 3
+#define FMRB_USER_APP_COUNT 5
+// How many of those pools exist before anyone asks. The rest are allocated on
+// first use and then kept (see fmrb_mempool_reserve): allocating and freeing
+// 500 KB blocks over a long session is how a PSRAM heap gets fragmented.
+#define FMRB_USER_APP_STATIC_POOL_COUNT 3
