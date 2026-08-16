@@ -33,8 +33,11 @@ class RoboPilotApp < FmrbApp
   VB_Y = 3
   VB_W = 160
   VB_H = 80
+  # Inset one pixel from the box on every side: the outer frame IS the first
+  # cell's near edge, and drawing it at the box size put lines on top of --
+  # and one pixel past -- the border.
   VB_FRAMES = [
-    [0,   0,   160, 80],
+    [1,   1,   158, 78],
     [28,  14,  132, 66],
     [46,  23,  114, 57],
     [58,  29,  102, 51],
@@ -48,7 +51,9 @@ class RoboPilotApp < FmrbApp
 
   # How often think() is asked. Also the floor between any two sends: the
   # round trip is 0-1 ms, so an unthrottled brain would run hundreds of turns
-  # a second and nobody would see the robot solve anything.
+  # a second and nobody would see the robot solve anything. 1/2/3 pick a
+  # preset at runtime; 200 ms is the default.
+  THINK_PRESETS = [500, 200, 100]
   THINK_MS = 200
 
   def on_create
@@ -63,6 +68,7 @@ class RoboPilotApp < FmrbApp
     # A brain that drives the moment the app opens leaves no room to watch,
     # to drive by hand first, or to start the run deliberately.
     @auto = false
+    @think_ms = THINK_MS
     @brain = MyPilot.new
     subscribe(TOPIC_STATE)
     subscribe(TOPIC_RESULT)
@@ -152,6 +158,13 @@ class RoboPilotApp < FmrbApp
       @dirty = true
       return
     end
+    # 1/2/3 set the pace (slow / normal / fast); the frame's key, like S,
+    # so every brain drives at the speed the player chose.
+    if ev[:scancode] >= FmrbConst::KEY_1 && ev[:scancode] <= FmrbConst::KEY_3
+      @think_ms = THINK_PRESETS[ev[:scancode] - FmrbConst::KEY_1]
+      @dirty = true
+      return
+    end
     return if @state.nil?
     cmd = call_brain { @brain.on_key(ev[:scancode], @state) }
     send_cmd(cmd)
@@ -169,7 +182,7 @@ class RoboPilotApp < FmrbApp
   # batched, and the brain always reads the freshest state.
   def on_update
     now = Machine.board_millis
-    if @auto && @state && !@state["done"] && now - @last_send >= THINK_MS
+    if @auto && @state && !@state["done"] && now - @last_send >= @think_ms
       cmd = call_brain { @brain.think(@state) }
       send_cmd(cmd)
     end
@@ -177,7 +190,7 @@ class RoboPilotApp < FmrbApp
       @dirty = false
       draw_screen
     end
-    THINK_MS
+    @think_ms
   end
 
   # ---- drawing ----
@@ -232,10 +245,11 @@ class RoboPilotApp < FmrbApp
       @gfx.draw_text(x, y, @result_text, @result_ok ? COL_GOAL : COL_NG)
     end
     y = @user_area_y1 - LINE_H * 2 - 4
-    @gfx.draw_text(x, y, @auto ? "自動:ON" : "自動:OFF",
+    @gfx.draw_text(x, y, (@auto ? "自動:ON" : "自動:OFF") +
+                   "  速度:#{@think_ms}ms",
                    @auto ? COL_GOAL : COL_DIM)
     y += LINE_H
-    @gfx.draw_text(x, y, "S:自動 矢印:手動", COL_DIM)
+    @gfx.draw_text(x, y, "S:自動 1-3:速度 矢印:手動", COL_DIM)
     draw_window_frame
     @gfx.present
   end
@@ -269,6 +283,13 @@ class RoboPilotApp < FmrbApp
       ff = VB_FRAMES[i + 1]
       draw_view_side(bx, by, nf, ff, cell[0], true)
       draw_view_side(bx, by, nf, ff, cell[1], false)
+      # The corner: where a side flips between wall and opening, the edge
+      # between the two cells is a vertical line at the boundary frame.
+      if i + 1 < n
+        nxt = view[i + 1]
+        draw_view_corner(bx, by, ff, true)  if cell[0] != nxt[0]
+        draw_view_corner(bx, by, ff, false) if cell[1] != nxt[1]
+      end
       kind = cell[2]
       if kind == "door" || kind == "goal"
         ended = kind
@@ -289,6 +310,11 @@ class RoboPilotApp < FmrbApp
     if st["done"]
       @gfx.draw_text(bx + VB_W / 2 - 21, by + VB_H / 2 - 6, "クリア!", COL_GOAL)
     end
+  end
+
+  def draw_view_corner(bx, by, f, left)
+    x = bx + (left ? f[0] : f[2])
+    @gfx.draw_line(x, by + f[1], x, by + f[3], COL_WIRE)
   end
 
   # One side of one corridor cell. wall==1 draws the slanted wall (top and
