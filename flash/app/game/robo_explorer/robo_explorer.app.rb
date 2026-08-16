@@ -72,10 +72,18 @@ class RoboExplorerApp < FmrbApp
   PANEL_Y = 14
   LINE_H  = 15
 
+  # The state-panel toggle. Hiding the panel makes this window show only the
+  # maze: whoever watches it cannot read the robot's state off the screen and
+  # relay it, so the pilot really does know only what is published.
+  BTN_Y_OFF = 34   # from the bottom of the user area
+  BTN_W     = 76
+  BTN_H     = 15
+
   STATE_PERIOD_MS = 1000
 
   def on_create
     @gfx.set_font(:ja, 12)
+    @show_state = true
     subscribe(TOPIC_CMD)
     load_map
     reset_world
@@ -214,7 +222,7 @@ class RoboExplorerApp < FmrbApp
     op = data["op"]
     @turn += 1
     @last_op = op
-    if @done
+    if @done && op != "reset"
       @last_ok = false
       @last_reason = "done"
     else
@@ -244,6 +252,12 @@ class RoboExplorerApp < FmrbApp
         @last_reason = "bad_cmd"
       end
     elsif op == "wait"
+      @last_ok = true
+    elsif op == "reset"
+      # The pilot's way out of a corner it steered itself into. Works after a
+      # clear too, so an autopilot can run the level again.
+      reset_world
+      @board_dirty = true
       @last_ok = true
     else
       @last_reason = "bad_cmd"
@@ -311,6 +325,15 @@ class RoboExplorerApp < FmrbApp
 
   def on_event(ev)
     super(ev)
+    if ev[:type] == :mouse_up && ev[:button] == 1
+      if ev[:x] >= PANEL_X && ev[:x] < PANEL_X + BTN_W &&
+         ev[:y] >= btn_y && ev[:y] < btn_y + BTN_H
+        @show_state = !@show_state
+        draw_status
+        @gfx.present
+      end
+      return
+    end
     return unless ev[:type] == :key_down
     if ev[:scancode] == FmrbConst::KEY_R
       reset_world
@@ -396,26 +419,36 @@ class RoboExplorerApp < FmrbApp
     draw_robot
   end
 
+  def btn_y
+    @user_area_y1 - BTN_Y_OFF
+  end
+
   def draw_status
     @gfx.fill_rect(PANEL_X, PANEL_Y - 2, @user_area_x1 - PANEL_X - 1,
                    @user_area_y1 - PANEL_Y - 1, COL_FLOOR)
     y = PANEL_Y
-    @gfx.draw_text(PANEL_X, y, "場所 #{@x},#{@y}", COL_TEXT)
-    y += LINE_H
-    @gfx.draw_text(PANEL_X, y, "向き #{DIR_JA[@dir]}", COL_TEXT)
-    y += LINE_H
-    @gfx.draw_text(PANEL_X, y, "前 #{cell_ja(front_cell)}", COL_TEXT)
-    y += LINE_H
-    @gfx.draw_text(PANEL_X, y, "鍵 #{@keys}", COL_KEY)
-    y += LINE_H
-    @gfx.draw_text(PANEL_X, y, "ゴール #{goal_dir_ja(goal_dir)}",
-                   COL_GOAL)
-    y += LINE_H
-    @gfx.draw_text(PANEL_X, y, "手数 #{@steps}", COL_TEXT)
-    y += LINE_H + 4
+    if @show_state
+      @gfx.draw_text(PANEL_X, y, "場所 #{@x},#{@y}", COL_TEXT)
+      y += LINE_H
+      @gfx.draw_text(PANEL_X, y, "向き #{DIR_JA[@dir]}", COL_TEXT)
+      y += LINE_H
+      @gfx.draw_text(PANEL_X, y, "前 #{cell_ja(front_cell)}", COL_TEXT)
+      y += LINE_H
+      @gfx.draw_text(PANEL_X, y, "鍵 #{@keys}", COL_KEY)
+      y += LINE_H
+      @gfx.draw_text(PANEL_X, y, "ゴール #{goal_dir_ja(goal_dir)}",
+                     COL_GOAL)
+      y += LINE_H
+      @gfx.draw_text(PANEL_X, y, "手数 #{@steps}", COL_TEXT)
+      y += LINE_H + 4
+    end
+    # done is the outcome, not telemetry: it stays visible either way.
     if @done
       @gfx.draw_text(PANEL_X, y, "クリア!", COL_OK)
     end
+    @gfx.fill_rect(PANEL_X, btn_y, BTN_W, BTN_H, COL_GRID)
+    @gfx.draw_text(PANEL_X + 4, btn_y + 2,
+                   @show_state ? "状態を隠す" : "状態を出す", COL_TEXT)
     @gfx.draw_text(PANEL_X, @user_area_y1 - 16, "R:リセット",
                    COL_DIM)
   end

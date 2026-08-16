@@ -28,7 +28,7 @@ class RoboPilotApp < FmrbApp
   # How often think() is asked. Also the floor between any two sends: the
   # round trip is 0-1 ms, so an unthrottled brain would run hundreds of turns
   # a second and nobody would see the robot solve anything.
-  THINK_MS = 200
+  THINK_MS = 500
 
   def on_create
     @gfx.set_font(:ja, 12)
@@ -82,8 +82,9 @@ class RoboPilotApp < FmrbApp
 
   def result_ja(op, ok, reason)
     if ok
-      return "進んだ" if op == "move"
-      return "回った" if op == "turn"
+      return "進んだ"     if op == "move"
+      return "回った"     if op == "turn"
+      return "リセットした" if op == "reset"
       return "待った"
     end
     case reason
