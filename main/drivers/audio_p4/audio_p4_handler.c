@@ -239,7 +239,7 @@ int audio_p4_process_command(const uint8_t *data, size_t size) {
             break;
 
         case FMRB_AUDIO_CMD_STOP:
-            audio_p4_engine_nsf_stop();
+            audio_p4_engine_stop_all();
             return 0;
 
         case FMRB_AUDIO_CMD_PAUSE:
@@ -256,9 +256,13 @@ int audio_p4_process_command(const uint8_t *data, size_t size) {
             break;
 
         case FMRB_AUDIO_CMD_PLAY_SLOT:
-            if (size >= sizeof(fmrb_audio_play_slot_cmd_t)) {
+            // The trailing instance byte is optional on the wire: a payload
+            // that stops after music_id is an older sender and means MAIN.
+            if (size >= FMRB_AUDIO_PLAY_SLOT_CMD_LEGACY_SIZE) {
                 const fmrb_audio_play_slot_cmd_t *cmd = (const fmrb_audio_play_slot_cmd_t *)data;
-                return audio_p4_engine_fmsq_play_slot(cmd->music_id);
+                uint8_t instance =
+                    (size >= sizeof(fmrb_audio_play_slot_cmd_t)) ? cmd->instance : 0;
+                return audio_p4_engine_fmsq_play_slot(cmd->music_id, instance);
             }
             break;
 

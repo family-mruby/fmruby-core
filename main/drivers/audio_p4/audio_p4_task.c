@@ -1,6 +1,7 @@
 // APU engine task for the Modern (P4) target: dual-instance NES APU at
-// 60 Hz, NSF playback on the MAIN instance, FMSQ + note SFX on the SUB
-// instance. Ported from fmruby-graphics-audio main/tasks/audio_task.c.
+// 60 Hz. NSF plays on the MAIN instance and the note SFX on SUB; an FMSQ
+// picks its instance per play_slot, so a BGM on MAIN and effects on SUB do
+// not fight. Ported from fmruby-graphics-audio main/tasks/audio_task.c.
 //
 // Unlike the WROVER original (which relied on commands touching only
 // flags), a mutex serializes the command path (display task context)
@@ -44,7 +45,13 @@ static const char *TAG = "audio_p4";
 #define NSF_DEFAULT_FILE "/flash/data/test.nsf"
 
 static nsf_player_t  *g_nsf_player  = NULL;
-static fmsq_player_t *g_fmsq_player = NULL;
+// One FMSQ player per APU instance: [0]=MAIN (shares the instance with NSF),
+// [1]=SUB (shares it with the note_on/off effects). The two run
+// independently, so a BGM on MAIN keeps playing while effects hit SUB.
+// Each is allocated the first time its instance is asked for, and the
+// allocation is PSRAM (apuemu_malloc), so the internal RAM this costs is the
+// pointer itself.
+static fmsq_player_t *g_fmsq_players[2] = { NULL, NULL };
 static SemaphoreHandle_t g_engine_lock = NULL;
 static volatile bool g_engine_ready = false;
 
@@ -70,6 +77,12 @@ int audio_p4_engine_nsf_play(const char *path, int track) {
 
     if (g_nsf_player && g_nsf_player->playing) {
         g_nsf_player->playing = 0;
+    }
+    // NSF takes MAIN, so whatever FMSQ was on MAIN has to give way -- the
+    // mirror of play_slot(MAIN) stopping NSF. Two players writing the same
+    // instance is not a mix, it is one set of registers fought over.
+    if (g_fmsq_players[0] && g_fmsq_players[0]->playing) {
+        g_fmsq_players[0]->playing = 0;
     }
     if (g_nsf_player) {
         nsf_player_free(g_nsf_player);
@@ -97,21 +110,42 @@ int audio_p4_engine_nsf_play(const char *path, int track) {
     return 0;
 }
 
-void audio_p4_engine_nsf_stop(void) {
+// "stop" means the caller wants the sound to end, whichever player is making
+// it. Stopping only the NSF used to be enough because an FMSQ could only be
+// on SUB and an effect killed it; now a BGM can hold MAIN, and one left
+// running outlives the app that started it and fights the next NSF for the
+// same registers.
+void audio_p4_engine_stop_all(void) {
     if (!g_engine_ready) return;
     engine_lock();
+
     if (g_nsf_player) {
-        FMRB_LOGI(TAG, "NSF stop");
         g_nsf_player->playing = 0;
-        // Silence all APU channels
-        apuif_select(APUIF_INSTANCE_MAIN);
-        apuif_write_reg(0x4015, 0x00);
     }
+    if (g_fmsq_players[0]) {
+        g_fmsq_players[0]->playing = 0;
+    }
+    if (g_fmsq_players[1]) {
+        g_fmsq_players[1]->playing = 0;
+    }
+
+    // Silence the channels of both instances
+    apuif_select(APUIF_INSTANCE_MAIN);
+    apuif_write_reg(0x4015, 0x00);
+    apuif_select(APUIF_INSTANCE_SUB);
+    apuif_write_reg(0x4015, 0x00);
+
+    FMRB_LOGI(TAG, "audio stop");
     engine_unlock();
 }
 
-int audio_p4_engine_fmsq_play_slot(uint32_t music_id) {
+int audio_p4_engine_fmsq_play_slot(uint32_t music_id, uint8_t instance) {
     if (!g_engine_ready) return -1;
+
+    if (instance > 1) {
+        FMRB_LOGE(TAG, "FMSQ play_slot: invalid instance %u", (unsigned)instance);
+        return -1;
+    }
 
     const uint8_t *data = NULL;
     uint32_t size = 0;
@@ -122,29 +156,41 @@ int audio_p4_engine_fmsq_play_slot(uint32_t music_id) {
 
     engine_lock();
 
-    if (!g_fmsq_player) {
-        g_fmsq_player = (fmsq_player_t *)apuemu_malloc(sizeof(fmsq_player_t));
-        if (!g_fmsq_player) {
+    fmsq_player_t *player = g_fmsq_players[instance];
+    if (!player) {
+        player = (fmsq_player_t *)apuemu_malloc(sizeof(fmsq_player_t));
+        if (!player) {
             engine_unlock();
             FMRB_LOGE(TAG, "FMSQ play_slot: malloc failed");
             return -1;
         }
-        memset(g_fmsq_player, 0, sizeof(fmsq_player_t));
+        memset(player, 0, sizeof(fmsq_player_t));
+        g_fmsq_players[instance] = player;
     }
 
-    g_fmsq_player->playing = 0;
-    apuif_select(APUIF_INSTANCE_SUB);
+    // Stop what this instance was playing before loading over it.
+    player->playing = 0;
 
-    if (fmsq_player_load_from_memory(g_fmsq_player, data, size) != 0) {
+    // NSF lives on MAIN too, so it has to give way when MAIN is taken. SUB
+    // has no other standing user (note_on/off only writes when called), so
+    // nothing has to be stopped there.
+    if (instance == 0 && g_nsf_player && g_nsf_player->playing) {
+        g_nsf_player->playing = 0;
+    }
+
+    apuif_select(instance == 0 ? APUIF_INSTANCE_MAIN : APUIF_INSTANCE_SUB);
+
+    if (fmsq_player_load_from_memory(player, data, size) != 0) {
         engine_unlock();
         FMRB_LOGE(TAG, "FMSQ play_slot: load failed for track %lu", (unsigned long)music_id);
         return -1;
     }
 
-    fmsq_player_reset(g_fmsq_player);
+    fmsq_player_reset(player);
     engine_unlock();
 
-    FMRB_LOGI(TAG, "FMSQ play_slot: playing track %lu", (unsigned long)music_id);
+    FMRB_LOGI(TAG, "FMSQ play_slot: playing track %lu on %s",
+              (unsigned long)music_id, instance == 0 ? "MAIN" : "SUB");
     return 0;
 }
 
@@ -159,12 +205,9 @@ int audio_p4_engine_note_on(uint8_t channel, uint16_t freq, uint8_t volume,
 
     engine_lock();
 
+    // Effects take SUB; a BGM asked for MAIN keeps its own instance, and both
+    // are mixed by apuif_process_mix, so an effect no longer silences it.
     apuif_select(APUIF_INSTANCE_SUB);
-
-    // Stop FMSQ playback if running (avoid conflicts on the SUB instance)
-    if (g_fmsq_player && g_fmsq_player->playing) {
-        g_fmsq_player->playing = 0;
-    }
 
     int ret = 0;
     switch (channel) {
@@ -355,10 +398,14 @@ static void audio_p4_task(void *arg) {
             nsf_player_tick(g_nsf_player);
         }
 
-        // Tick FMSQ player on the sub APU instance
-        if (g_fmsq_player && g_fmsq_player->playing) {
+        // Tick each FMSQ player on the instance it was started on
+        if (g_fmsq_players[0] && g_fmsq_players[0]->playing) {
+            apuif_select(APUIF_INSTANCE_MAIN);
+            fmsq_player_tick(g_fmsq_players[0]);
+        }
+        if (g_fmsq_players[1] && g_fmsq_players[1]->playing) {
             apuif_select(APUIF_INSTANCE_SUB);
-            fmsq_player_tick(g_fmsq_player);
+            fmsq_player_tick(g_fmsq_players[1]);
         }
 
         // Process both APU instances and mix output
