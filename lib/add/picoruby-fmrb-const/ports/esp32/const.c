@@ -20,6 +20,7 @@
 #include "fmrb.h"
 #include "fmrb_app.h"
 #include "fmrb_task_config.h"
+#include "fmrb_sysinfo.h"
 #include "fmrb_msg.h"
 #include "fmrb_msg_payload.h"
 #include "fmrb_hal_pin_manager.h"
@@ -302,10 +303,33 @@ static void define_gamepad_constants(mrb_state *mrb, struct RClass *m)
     define_int_const(mrb, m, "GP_AXIS_RY", 3);
 }
 
+// FmrbConst.bt_mac -> "AA:BB:CC:DD:EE:FF", or "-" when it is not known yet.
+//
+// The address a machine advertises with is not always in its own efuse: the
+// Modern board's radio is a separate chip reached over SDIO, so the BT MAC
+// belongs to that chip and only the BLE host can say what it is, once it has
+// synced. Hence a method rather than the frozen MAC_ADDRESS constant, which
+// still reports what efuse had at start-up.
+static mrb_value mrb_fmrb_const_bt_mac(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+    char buf[18] = {0};
+#ifdef CONFIG_IDF_TARGET_LINUX
+    snprintf(buf, sizeof(buf), "-");
+#else
+    fmrb_sysinfo_bt_mac_str(buf, sizeof(buf));
+#endif
+    return mrb_str_new_cstr(mrb, buf);
+}
+
 void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
 {
     // Define FmrbConst module
     struct RClass *const_module = mrb_define_module(mrb, "FmrbConst");
+    // Asked, not frozen: on a machine whose radio is a separate chip the
+    // Bluetooth address is not known until BLE syncs, which is well after this
+    // runs. MAC_ADDRESS below is what efuse could tell at start-up.
+    mrb_define_module_function(mrb, const_module, "bt_mac", mrb_fmrb_const_bt_mac, MRB_ARGS_NONE());
 
     // Platform constants
 #ifdef CONFIG_IDF_TARGET_LINUX

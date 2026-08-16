@@ -5,6 +5,7 @@
 #include "fmrb_log.h"
 #include "fmrb_log_buffer.h"
 #include "fmrb_task_config.h"
+#include "fmrb_sysinfo.h"
 #include "fmrb_err.h"
 #include "fmrb_hal.h"
 #include "ble_task.h"
@@ -1281,6 +1282,11 @@ static void ble_on_sync(void)
     ble_hs_id_copy_addr(g_own_addr_type, addr, NULL);
     FMRB_LOGI(TAG, "BLE address: %02x:%02x:%02x:%02x:%02x:%02x",
               addr[5], addr[4], addr[3], addr[2], addr[1], addr[0]);
+    // Hand it to the system info, which is where anything wanting to display
+    // the Bluetooth address asks. On a machine whose radio is a separate chip
+    // this is the only place the address exists -- the efuse of the chip
+    // running this firmware has no BT MAC.
+    fmrb_sysinfo_set_bt_mac(addr);
 
     // Override the static device name with one that includes the last 3
     // bytes of the MAC, so multiple devices can be distinguished from a

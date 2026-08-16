@@ -57,7 +57,10 @@ module AboutDialogMixin
     draw_about_row(x, ty + line_h * 2, "Protocol", FmrbConst::LINK_VERSION.to_s)
     draw_about_row(x, ty + line_h * 3, "Platform", FmrbConst::PLATFORM)
     draw_about_row(x, ty + line_h * 4, "IDF Ver",  FmrbConst::IDF_VERSION)
-    draw_about_row(x, ty + line_h * 5, "BT-MAC",   FmrbConst::MAC_ADDRESS)
+    # Asked each time the dialog opens: on a machine whose radio is a separate
+    # chip the address only becomes known once BLE has synced, long after the
+    # constants were frozen.
+    draw_about_row(x, ty + line_h * 5, "BT-MAC",   FmrbConst.bt_mac)
     draw_about_row(x, ty + line_h * 6, "Chip",     chip)
     draw_about_row(x, ty + line_h * 7, "Flash",    "#{FmrbConst::FLASH_SIZE_MB}MB")
     draw_about_row(x, ty + line_h * 8, "PSRAM",    "#{FmrbConst::PSRAM_SIZE_MB}MB")
