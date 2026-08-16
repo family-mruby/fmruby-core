@@ -5,6 +5,7 @@
 
 #include <picoruby.h>
 #include <mruby/internal.h>
+#include <mruby/throw.h>
 #include <mruby/string.h>
 #include <mruby/array.h>
 #include "hal.h"
@@ -776,14 +777,39 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
         FMRB_LOGI(TAG, "[%s] script_buffer range: %p - %p",
                   ctx->app_name, (void*)script_buffer, (void*)((uint8_t*)script_buffer + script_size));
 
-        irep_obj = mrc_load_string_cxt(cc, &script_ptr, script_size);
+        // The compiler allocates from this app's pool and raises NoMemoryError
+        // when it runs out (a script in the 500 KB pool hits that around
+        // 12-25 KB of source, compile peak being many times the text). With no
+        // jump buffer armed, that raise was an abort() -- the whole OS died,
+        // and on the device that is a reboot, for the crime of opening one
+        // app. Catch it here and fail the spawn like any other compile error.
+        {
+            struct mrb_jmpbuf compile_jmp;
+            struct mrb_jmpbuf *prev_jmp = ctx->mrb->jmp;
+            MRB_TRY(&compile_jmp) {
+                ctx->mrb->jmp = &compile_jmp;
+                irep_obj = mrc_load_string_cxt(cc, &script_ptr, script_size);
+                ctx->mrb->jmp = prev_jmp;
+            } MRB_CATCH(&compile_jmp) {
+                ctx->mrb->jmp = prev_jmp;
+                irep_obj = NULL;
+            } MRB_END_EXC(&compile_jmp);
+        }
 
         FMRB_LOGI(TAG, "[%s] After mrc_load_string_cxt, irep_obj=%p, mrb->exc=%p",
                   ctx->app_name, irep_obj, ctx->mrb->exc);
 
         if (!irep_obj) {
             FMRB_LOGE(TAG, "[%s] Failed to compile Ruby script", ctx->app_name);
-            if (ctx->mrb->exc) {
+            if (ctx->mrb->exc == (struct RObject *)ctx->mrb->nomem_err) {
+                // Out of pool while compiling: say what to do about it, not
+                // just what happened.
+                set_last_error(ctx,
+                    "Out of memory while compiling.\n"
+                    "Set large_memory = 1 in the app's .toml.", NULL);
+                FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, s_last_error_msg);
+                notify_error_to_kernel(ctx);
+            } else if (ctx->mrb->exc) {
                 mrb_value exc_str = mrb_exc_get_output(ctx->mrb, (struct RObject *)ctx->mrb->exc);
                 set_last_error(ctx, RSTRING_PTR(exc_str), ctx->mrb);
                 FMRB_LOGE(TAG, "[%s] %s", ctx->app_name, s_last_error_msg);
@@ -793,7 +819,13 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
                 set_last_error(ctx, "Compile error (unknown)", NULL);
                 notify_error_to_kernel(ctx);
             }
-            mrc_ccontext_free(cc);
+            // After a longjmp out of a half-finished compile, cc's innards are
+            // in an unknown state; freeing it could be a second crash. Its
+            // memory came from this app's pool, which is torn down with the
+            // failed spawn anyway, so it is left to that.
+            if (ctx->mrb->exc != (struct RObject *)ctx->mrb->nomem_err) {
+                mrc_ccontext_free(cc);
+            }
             fmrb_sys_free(script_buffer);
             return -1;
         }
