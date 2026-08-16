@@ -52,6 +52,9 @@ class RoboExplorerApp < FmrbApp
 
   CELL_CODE = ["floor", "wall", "key", "door", "goal"]
 
+  # How far the first-person view reaches (cells ahead of the robot).
+  VIEW_DEPTH = 4
+
   # RGB332 colors. Literals rather than FmrbGfx constants so the table can
   # live in the class body.
   COL_FLOOR  = 0x00  # black
@@ -309,7 +312,42 @@ class RoboExplorerApp < FmrbApp
             { "turn" => @turn, "x" => @x, "y" => @y, "dir" => DIR_CODE[@dir],
               "front" => CELL_CODE[front_cell], "goal" => goal_dir,
               "keys" => @keys, "keys_left" => @keys_left,
+              "view" => view_scan,
               "done" => @done, "steps" => @steps, "level" => LEVEL })
+  end
+
+  # What the robot sees down the corridor: one [left_wall, right_wall, kind]
+  # per cell, starting from the cell it stands on. The scan walks forward
+  # while the way ahead is open and stops after a door or the goal (a door
+  # blocks sight, the goal ends the trip); a wall ahead simply ends the list,
+  # which is how the pilot knows to draw a facing wall. This is a line of
+  # sight, not the map -- the pilot still learns nothing beyond the corridor.
+  def view_scan
+    ldir = (@dir + 3) % 4
+    rdir = (@dir + 1) % 4
+    out = []
+    cx = @x
+    cy = @y
+    i = 0
+    while i <= VIEW_DEPTH
+      kind = cell_at(cx, cy)
+      out << [wallish(cx + DIR_DX[ldir], cy + DIR_DY[ldir]),
+              wallish(cx + DIR_DX[rdir], cy + DIR_DY[rdir]),
+              CELL_CODE[kind]]
+      break if i > 0 && (kind == DOOR || kind == GOAL)
+      nx = cx + DIR_DX[@dir]
+      ny = cy + DIR_DY[@dir]
+      break if wallish(nx, ny) == 1
+      cx = nx
+      cy = ny
+      i += 1
+    end
+    out
+  end
+
+  def wallish(x, y)
+    return 1 if x < 0 || y < 0 || x >= BOARD_W || y >= BOARD_H
+    cell_at(x, y) == WALL ? 1 : 0
   end
 
   def on_update

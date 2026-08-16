@@ -7,3 +7,6 @@ default_window_height = 190
 default_window_pos_x = 4
 default_window_pos_y = 16
 launcher_visible = true
+# Compiling a ~12KB script peaks past what the 512KB pool can give
+# (the RPG demo moved for the same reason); the world app gets the 1MB pool.
+large_memory = 1
