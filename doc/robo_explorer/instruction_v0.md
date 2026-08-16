@@ -23,7 +23,7 @@ flash/app/game/robo_explorer/robo_pilot.app.toml
   扉はゴールの手前を塞ぐ配置にする (鍵なしではクリア不能な面にする)。
 - v0 プロトコル (robo/state, robo/cmd, robo/result) の完全実装。
 - 表示は日本語専用 (漢字あり)。`@gfx.set_font(:ja, 12)` (efontJA_12)。
-  i18n 表は作らず日本語リテラル直書き。文言は小学生が読める語彙。
+  i18n 表は作らず日本語リテラル直書き。文言は普通の日本語 (漢字を使う)。
 - robo_pilot は段階 0+1 を 1 本で: state を日本語で表示し、矢印キーを
   cmd に転送する。↑= move、←/→ = turn L/R。
 - クリア判定 (`done: true`) と手数 (steps) の表示。R キーでリセット
@@ -172,10 +172,10 @@ docker compose down
 
 確認項目 (スクリーンショットで判定できるものはそれで):
 
-1. 両アプリが起動し、pilot に「まち」ではなく state の中身 (座標・向き・
+1. 両アプリが起動し、pilot に「待機中」ではなく state の中身 (座標・向き・
    前方) が日本語で出る (= state の周期 publish が効いている)。
 2. ↑ で 1 マス進み、両窓の表示が一致して更新される。
-3. 壁に向かって ↑ → pilot に「まえは かべ」等の失敗表示 (= result 経路)。
+3. 壁に向かって ↑ → pilot に「前は壁」等の失敗表示 (= result 経路)。
 4. 鍵を拾う → 所持数が増える。鍵なしで扉 → locked。鍵ありで扉 → 開く。
 5. ゴール到達で done + 手数表示。以後の cmd は done で断られる。R で再開。
 6. ログ確認: `docker logs fmruby_core | grep -i "robo\|error"` に例外が

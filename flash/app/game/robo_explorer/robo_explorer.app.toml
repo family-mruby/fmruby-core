@@ -1,0 +1,9 @@
+app_handle_name = "robo_explorer"
+app_screen_name = "RoboExplorer"
+app_screen_name_ja = "ロボットエクスプローラー"
+default_window_mode = "window"
+default_window_width = 260
+default_window_height = 190
+default_window_pos_x = 4
+default_window_pos_y = 16
+launcher_visible = true
