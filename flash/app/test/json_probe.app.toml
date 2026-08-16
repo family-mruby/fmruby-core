@@ -1,0 +1,11 @@
+app_handle_name = "json_probe"
+app_screen_name = "JSON Probe"
+app_screen_name_ja = "JSON計測"
+default_window_mode = "window"
+default_window_width = 260
+default_window_height = 80
+default_window_pos_x = 20
+default_window_pos_y = 40
+launcher_visible = false
+# Same pool as the RPG demo, so the numbers describe that app's situation.
+large_memory = 1

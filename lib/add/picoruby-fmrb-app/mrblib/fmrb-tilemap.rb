@@ -89,54 +89,89 @@ class TileSheet
   end
 end
 
-# Wraps an fmrb_map JSON document.
+# Wraps a map document: the packed .map.bin form (preferred) or the fmrb_map
+# JSON it is generated from.
+#
+# Prefer the packed form on the device. A 64x64 map is 4096 tile ids; as JSON
+# those become 4096 Integer objects inside 64 Arrays, and on the device that
+# costs seconds before the parser's own overhead is counted -- the RPG demo
+# spent 39 s in TileMap.new. Packed, the tiles stay in the String that was
+# read from the file and a tile is one getbyte, so loading is the read itself.
+#
+# Layout (little-endian; tool/map_json2bin.rb writes it):
+#
+#   0  4  magic "FMAP"
+#   4  1  version (1)
+#   5  1  tile_size
+#   6  2  width
+#   8  2  height
+#   10 1  layer_count
+#   11 1  tilesheet_cols
+#   12 2  spawn_x
+#   14 2  spawn_y
+#   16 1  walkable_count
+#   17 1  tilesheet path length
+#   18 1  event_count
+#   19 1  reserved (0)
+#   20 .. tilesheet path
+#      .. walkable tile ids (one byte each)
+#      .. layers, bottom first: layer_count * width * height bytes, row major
+#      .. events: x u16, y u16, id u16, name length u8, name
+#
+# An empty cell is 0xFF, which tile_at reports as nil the way a JSON null does.
 class TileMap
   FORMAT  = "fmrb_map"
   VERSION = 1
+  EMPTY   = 0xFF
 
   attr_reader :width, :height, :tile_size, :tilesheet_path,
-              :tilesheet_cols, :layers, :events, :walkable_tiles, :spawn_x, :spawn_y
+              :tilesheet_cols, :layers, :events, :walkable_tiles, :spawn_x, :spawn_y,
+              :layer_count
 
-  # @param json_path [String] core-side JSON path readable by File.open
-  def initialize(json_path)
-    text = File.open(json_path, "r") { |f| f.read }
-    # NOTE: bare `JSON` is looked up as TileMap::JSON first under picoruby's
-    # constant resolution (same trap as feedback_picoruby_mixin_const_lookup).
-    obj = ::JSON.parse(text)
-    raise "TileMap: unexpected format: #{obj["format"]}" if obj["format"] != FORMAT
-    raise "TileMap: unsupported version: #{obj["version"]}" if obj["version"] != VERSION
-
-    @width          = obj["width"].to_i
-    @height         = obj["height"].to_i
-    @tile_size      = obj["tile_size"].to_i
-    @tile_size      = 16 if @tile_size <= 0
-    @tilesheet_path = obj["tilesheet"]
-    @tilesheet_cols = obj["tilesheet_cols"].to_i
-    @layers         = obj["layers"] || []
-    @events         = obj["events"] || []
-    @walkable_tiles = obj["walkable_tiles"] || []
-    sp = obj["spawn"] || {}
-    @spawn_x = (sp["x"] || 0).to_i
-    @spawn_y = (sp["y"] || 0).to_i
+  # @param path [String] core-side path readable by File.open, either the
+  #                      packed .map.bin or the .map.json it came from
+  def initialize(path)
+    data = File.open(path, "r") { |f| f.read }
+    if packed?(data)
+      load_packed(data)
+    else
+      load_json(data)
+    end
   end
 
-  # Return the tile id at (x, y) on the given layer, or nil if out of range.
+  # Return the tile id at (x, y) on the given layer, or nil if out of range
+  # or empty.
   def tile_at(x, y, layer: 0)
     return nil if x < 0 || y < 0 || x >= @width || y >= @height
-    lyr = @layers[layer]
-    return nil unless lyr
-    data = lyr["data"]
-    return nil unless data.is_a?(Array)
-    row = data[y]
-    return nil unless row.is_a?(Array)
-    row[x]
+    if @packed
+      off = @layer_offsets[layer]
+      return nil unless off
+      v = @packed.getbyte(off + y * @width + x)
+      return nil if v.nil? || v == EMPTY
+      v
+    else
+      lyr = @layers[layer]
+      return nil unless lyr
+      data = lyr["data"]
+      return nil unless data.is_a?(Array)
+      row = data[y]
+      return nil unless row.is_a?(Array)
+      row[x]
+    end
   end
 
   # True if the tile at (x, y) is in walkable_tiles. Out-of-range = false.
   def walkable?(x, y)
     t = tile_at(x, y)
     return false if t.nil?
-    @walkable_tiles.include?(t)
+    # A bit per tile id rather than walkable_tiles.include?: include? is
+    # Enumerable's Ruby version here (a block call per element, ~0.4 ms each),
+    # and this is asked on every attempted step.
+    if @walkable_mask
+      ((@walkable_mask >> t) & 1) == 1
+    else
+      @walkable_tiles.index(t) ? true : false
+    end
   end
 
   # Render all layers onto the current canvas via repeated draw_tile stamps.
@@ -148,23 +183,17 @@ class TileMap
     rows = max_rows ? (@height < max_rows ? @height : max_rows) : @height
 
     li = 0
-    while li < @layers.size
-      data = @layers[li]["data"]
-      if data.is_a?(Array)
-        y = 0
-        while y < rows
-          row = data[y]
-          if row.is_a?(Array)
-            x = 0
-            while x < cols
-              sheet.stamp(row[x],
-                          dst_x: origin_x + x * @tile_size,
-                          dst_y: origin_y + y * @tile_size)
-              x += 1
-            end
-          end
-          y += 1
+    while li < @layer_count
+      y = 0
+      while y < rows
+        x = 0
+        while x < cols
+          sheet.stamp(tile_at(x, y, layer: li),
+                      dst_x: origin_x + x * @tile_size,
+                      dst_y: origin_y + y * @tile_size)
+          x += 1
         end
+        y += 1
       end
       li += 1
     end
@@ -187,25 +216,19 @@ class TileMap
     return if col0 > col1 || row0 > row1
 
     li = 0
-    while li < @layers.size
-      data = @layers[li]["data"]
-      if data.is_a?(Array)
-        y = row0
-        while y <= row1
-          row = data[y]
-          if row.is_a?(Array)
-            x = col0
-            while x <= col1
-              sheet.stamp(row[x],
-                          dst_x: origin_x + x * ts - view_x,
-                          dst_y: origin_y + y * ts - view_y,
-                          clip_x: origin_x, clip_y: origin_y,
-                          clip_w: view_w,   clip_h: view_h)
-              x += 1
-            end
-          end
-          y += 1
+    while li < @layer_count
+      y = row0
+      while y <= row1
+        x = col0
+        while x <= col1
+          sheet.stamp(tile_at(x, y, layer: li),
+                      dst_x: origin_x + x * ts - view_x,
+                      dst_y: origin_y + y * ts - view_y,
+                      clip_x: origin_x, clip_y: origin_y,
+                      clip_w: view_w,   clip_h: view_h)
+          x += 1
         end
+        y += 1
       end
       li += 1
     end
@@ -221,6 +244,130 @@ class TileMap
       i += 1
     end
     nil
+  end
+
+  private
+
+  def packed?(data)
+    data.bytesize >= 20 &&
+      data.getbyte(0) == 70 && data.getbyte(1) == 77 &&   # "FM"
+      data.getbyte(2) == 65 && data.getbyte(3) == 80      # "AP"
+  end
+
+  def u16(data, off)
+    data.getbyte(off) | (data.getbyte(off + 1) << 8)
+  end
+
+  # Pull `len` bytes out as a String. Built byte by byte on purpose: String#[]
+  # counts characters, and this buffer is binary, so a byte >= 0x80 anywhere
+  # earlier would shift every character index after it.
+  def sub_bytes(data, off, len)
+    s = " " * len
+    i = 0
+    while i < len
+      s.setbyte(i, data.getbyte(off + i))
+      i += 1
+    end
+    s
+  end
+
+  def load_packed(data)
+    version = data.getbyte(4)
+    raise "TileMap: unsupported packed version: #{version}" if version != VERSION
+
+    @packed         = data
+    @tile_size      = data.getbyte(5)
+    @tile_size      = 16 if @tile_size <= 0
+    @width          = u16(data, 6)
+    @height         = u16(data, 8)
+    @layer_count    = data.getbyte(10)
+    @tilesheet_cols = data.getbyte(11)
+    @spawn_x        = u16(data, 12)
+    @spawn_y        = u16(data, 14)
+    walkable_count  = data.getbyte(16)
+    path_len        = data.getbyte(17)
+    event_count     = data.getbyte(18)
+
+    off = 20
+    @tilesheet_path = sub_bytes(data, off, path_len)
+    off += path_len
+
+    @walkable_tiles = []
+    i = 0
+    while i < walkable_count
+      @walkable_tiles << data.getbyte(off + i)
+      i += 1
+    end
+    off += walkable_count
+    build_walkable_mask
+
+    # The tiles are left in the String: a layer is just an offset into it.
+    plane = @width * @height
+    @layer_offsets = []
+    i = 0
+    while i < @layer_count
+      @layer_offsets << off + i * plane
+      i += 1
+    end
+    off += @layer_count * plane
+
+    # Events are few, so they become the same Hashes the JSON form produces
+    # and every caller already expects.
+    @events = []
+    i = 0
+    while i < event_count
+      ex = u16(data, off)
+      ey = u16(data, off + 2)
+      id = u16(data, off + 4)
+      name_len = data.getbyte(off + 6)
+      name = sub_bytes(data, off + 7, name_len)
+      @events << { "x" => ex, "y" => ey, "id" => id, "data" => { "name" => name } }
+      off += 7 + name_len
+      i += 1
+    end
+
+    @layers = nil
+  end
+
+  def load_json(text)
+    # NOTE: bare `JSON` is looked up as TileMap::JSON first under picoruby's
+    # constant resolution (same trap as feedback_picoruby_mixin_const_lookup).
+    obj = ::JSON.parse(text)
+    raise "TileMap: unexpected format: #{obj["format"]}" if obj["format"] != FORMAT
+    raise "TileMap: unsupported version: #{obj["version"]}" if obj["version"] != VERSION
+
+    @packed         = nil
+    @width          = obj["width"].to_i
+    @height         = obj["height"].to_i
+    @tile_size      = obj["tile_size"].to_i
+    @tile_size      = 16 if @tile_size <= 0
+    @tilesheet_path = obj["tilesheet"]
+    @tilesheet_cols = obj["tilesheet_cols"].to_i
+    @layers         = obj["layers"] || []
+    @layer_count    = @layers.size
+    @events         = obj["events"] || []
+    @walkable_tiles = obj["walkable_tiles"] || []
+    build_walkable_mask
+    sp = obj["spawn"] || {}
+    @spawn_x = (sp["x"] || 0).to_i
+    @spawn_y = (sp["y"] || 0).to_i
+  end
+
+  # One bit per walkable tile id, so walkable? is a shift and a mask. Ids that
+  # do not fit leave the mask unset and walkable? falls back to a scan.
+  def build_walkable_mask
+    mask = 0
+    i = 0
+    while i < @walkable_tiles.size
+      t = @walkable_tiles[i]
+      unless t.is_a?(Integer) && t >= 0 && t < 30
+        @walkable_mask = nil
+        return
+      end
+      mask |= (1 << t)
+      i += 1
+    end
+    @walkable_mask = mask
   end
 end
 
@@ -283,7 +430,7 @@ class TileRing
     @last_ty1 = ty1
 
     map_w = @map.width
-    layer_count = @map.layers.size
+    layer_count = @map.layer_count
     drew = false
     ty = ty0
     while ty <= ty1

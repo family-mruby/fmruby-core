@@ -48,7 +48,10 @@ class RpgDemoApp < FmrbApp
   ]
 
   APP_DIR    = "/app/game/rpg_demo"
-  MAP_PATH   = "#{APP_DIR}/world.map.json"
+  # The packed map, not the JSON it is generated from: parsing the JSON on the
+  # device took 39 s (tool/map_json2bin.rb rebuilds this after any edit to
+  # world.map.json).
+  MAP_PATH   = "#{APP_DIR}/world.map.bin"
   SHEET_SRC  = "#{APP_DIR}/world.bmp"
   BGM_SRC    = "#{APP_DIR}/bgm.fmsq"
   CACHE_DIR  = "/cache/app/rpg_demo"
