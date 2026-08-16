@@ -43,8 +43,11 @@ module AudioHandlerMixin
       bin.setbyte(1, path_len & 0xFF)
       bin.setbyte(2, (path_len >> 8) & 0xFF)
       bin.setbyte(3 + path_len, track & 0xFF)
+      remember_music_pid(pid)
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
     when "stop"
+      # It cleaned up after itself, so there is nothing to stop on its behalf.
+      @audio_music_pids.delete(pid) if @audio_music_pids
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x03")
     when "pause"
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x04")
@@ -77,6 +80,7 @@ module AudioHandlerMixin
       bin.setbyte(3, (slot >> 16) & 0xFF)
       bin.setbyte(4, (slot >> 24) & 0xFF)
       bin.setbyte(5, instance & 0xFF)
+      remember_music_pid(pid)
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
     when "load_fmsq_file"
       # Tell the audio task to read an FMSQ from its own LittleFS path
@@ -143,5 +147,39 @@ module AudioHandlerMixin
       ch += 1
     end
     Log.info("Silenced note voices left by pid=#{pid}")
+  end
+
+  # Remember who started a song, for stop_music_for.
+  def remember_music_pid(pid)
+    @audio_music_pids = {} unless @audio_music_pids
+    @audio_music_pids[pid] = true
+  end
+
+  # Stop the music an app left playing.
+  #
+  # play and play_slot hand a file to a player on the audio side that then
+  # runs on its own until something stops it. An app that dies without
+  # stopping it -- an exception skips on_destroy, or it was killed outright --
+  # leaves the song going with nobody able to stop it, and the next app to
+  # play music lands on the same APU instance, where two players write the
+  # same registers and neither tune survives.
+  #
+  # Only apps that actually started a song are tracked, and the stop goes out
+  # only once the last of them is gone: stop is machine-wide, so it must not
+  # cut off a song another app is still playing.
+  def stop_music_for(pid)
+    return unless @audio_music_pids && @audio_music_pids[pid]
+
+    @audio_music_pids.delete(pid)
+
+    # Anyone else still playing? (Counted with each rather than size: this
+    # runs on the Spinel kernel, and each over a Hash is an idiom already
+    # proven there.)
+    others = false
+    @audio_music_pids.each { |other_pid, playing| others = true }
+    return if others
+
+    _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x03")
+    Log.info("Stopped music left by pid=#{pid}")
   end
 end

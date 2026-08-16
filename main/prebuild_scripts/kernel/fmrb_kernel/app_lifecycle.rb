@@ -513,6 +513,11 @@ module AppLifecycleMixin
     # there and the note would sound forever.
     silence_notes_for(pid)
 
+    # Same for a song it started: the player on the audio side keeps going on
+    # its own, and the next app to play music would have to share the APU
+    # instance with it.
+    stop_music_for(pid)
+
     # A fullscreen app terminated: pop its frame, which resumes exactly what that
     # frame had suspended. Nested (editor -> fullscreen game) restores the outer
     # fullscreen app and leaves the desktop suspended.
