@@ -688,15 +688,12 @@ class SystemDesktopApp < FmrbApp
     end
     x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W
     @kana_icon_x = x
-    on = @kana_mode > 0
-    # White box in every state: gray-on-gray next to a disconnected BLE icon
-    # read as "this feature is off/unavailable", when A is a live mode of a
-    # working control. The label and its color carry the state instead --
-    # black A for direct input, menu-colored kana while kana input is on.
-    box = FmrbGfx::WHITE
-    fg  = on ? MENU_BG : FmrbGfx::BLACK
-    @gfx.fill_rect(x, 1, KANA_CELL_W, 10, box)
-    @gfx.draw_text(x + 1, 2, KANA_LABELS[@kana_mode], fg, box, mixed: true)
+    # One fixed style for every mode: white box, menu-colored glyph. The old
+    # gray direct-input cell sat next to the BLE icon's disconnected gray and
+    # read as "this feature is off/unavailable", when the indicator is a live
+    # clickable control in either mode. The glyph alone carries the mode.
+    @gfx.fill_rect(x, 1, KANA_CELL_W, 10, FmrbGfx::WHITE)
+    @gfx.draw_text(x + 1, 2, KANA_LABELS[@kana_mode], MENU_BG, FmrbGfx::WHITE, mixed: true)
   end
 
   # Click the indicator to step off -> hiragana -> katakana -> off. The host
