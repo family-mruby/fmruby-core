@@ -50,8 +50,17 @@ typedef int8_t fmrb_mem_handle_t;
 #define FMRB_MEM_POOL_SIZE_SYSTEM_APP (800*1024)
 #endif
 #define FMRB_MEM_POOL_SIZE_SYSTEM_OVERLAY (500*1024)
+// Same 64-bit rule as SYSTEM_APP above: the identical script costs about
+// twice the pool on Linux (doubled headers and pointers, and the compile
+// peak doubles with them -- a 23 KB source that fits the device's 500 KB
+// aborted the sim). 2x plus headroom; host RAM is not scarce.
+#ifdef CONFIG_IDF_TARGET_LINUX
+#define FMRB_MEM_POOL_SIZE_USER_APP (1536*1024)
+#define FMRB_MEM_POOL_SIZE_USER_APP_LARGE (3072*1024)
+#else
 #define FMRB_MEM_POOL_SIZE_USER_APP (500*1024)
 #define FMRB_MEM_POOL_SIZE_USER_APP_LARGE (1024*1024)
+#endif
 // Editor document arena. 1MB holds a ~700KB source file with the line index and
 // the per-line highlight cache; PSRAM headroom is 3.2MB on S3 and >20MB on P4.
 #define FMRB_MEM_POOL_SIZE_EDITOR_DOC (1024*1024)
