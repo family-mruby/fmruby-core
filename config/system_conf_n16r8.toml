@@ -50,10 +50,6 @@ app = "app/tool/nsf_player.app.rb"
 key = "i"
 app = "default/inspector"
 
-[[sync_files]]
-src = "/usr/share/sounds/nsf/test.nsf"
-dest = "/flash/data/test.nsf"
-
 # Desktop wallpaper: the WROVER draws it from its /data, so the kernel must
 # push it across. Linux sim has the same entry; this one was missing when the
 # asset moved out of /data, which blanked the wallpaper on the real board.

@@ -60,10 +60,6 @@ app = "app/tool/nsf_player.app.rb"
 key = "i"
 app = "default/inspector"
 
-[[sync_files]]
-src = "/usr/share/sounds/nsf/test.nsf"
-dest = "/flash/data/test.nsf"
-
 # App categories hidden from the launcher (files stay on flash and remain
 # runnable via the editor / debugd). The Linux sim config has no entries,
 # so the sim still shows everything.

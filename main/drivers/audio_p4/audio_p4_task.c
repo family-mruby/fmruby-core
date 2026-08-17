@@ -42,7 +42,6 @@ static const char *TAG = "audio_p4";
 #define FMRB_MIC_TONE_DELAY_FRAMES 180
 
 #define NTSC_SAMPLE 262
-#define NSF_DEFAULT_FILE "/flash/data/test.nsf"
 
 static nsf_player_t  *g_nsf_player  = NULL;
 // One FMSQ player per APU instance: [0]=MAIN (shares the instance with NSF),
@@ -361,18 +360,9 @@ static void audio_p4_task(void *arg) {
     apuif_init();       // instance 0: NSF
     apuif_init_sub();   // instance 1: FMSQ + note SFX
 
-    // Load default NSF file (playback starts on command from the kernel)
-    g_nsf_player = (nsf_player_t *)apuemu_malloc(sizeof(nsf_player_t));
-    if (g_nsf_player) {
-        if (nsf_player_load(g_nsf_player, NSF_DEFAULT_FILE) == 0) {
-            FMRB_LOGI(TAG, "NSF loaded: %d songs (waiting for play command)",
-                      g_nsf_player->header.total_songs);
-        } else {
-            FMRB_LOGW(TAG, "No NSF file at %s", NSF_DEFAULT_FILE);
-            apuemu_free(g_nsf_player);
-            g_nsf_player = NULL;
-        }
-    }
+    // No NSF is loaded here. A play command always names the file it wants and
+    // the play path allocates the player itself, so loading one at boot only
+    // held a song in memory that nothing could ask for.
 
     g_engine_ready = true;
 
