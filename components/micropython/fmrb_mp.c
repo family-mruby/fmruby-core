@@ -3,6 +3,7 @@
 #include "py/compile.h"
 #include "py/gc.h"
 #include "py/mpprint.h"
+#include "py/objlist.h"
 #include "py/runtime.h"
 #include "py/stackctrl.h"
 #include "port/micropython_embed.h"
@@ -11,10 +12,18 @@
 #include "fmrb_app.h"
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
+#include "fmrb_mp_bridge.h"
 #include "fmrb_rtos.h"
 #include "fmrb_prelude.h"
 
 static const char *TAG = "fmrb_mp";
+
+/**
+ * Where an app may import from, besides its own directory. Modules shipped for
+ * every Python app go here; the guest cannot reach anywhere else, because the
+ * importer only ever looks along sys.path and this is all of it.
+ */
+#define FMRB_MP_LIB_DIR "/usr/lib/python"
 
 static fmrb_err_t exec_source(fmrb_app_task_context_t *ctx, const char *src, size_t len,
                               const char *path);
@@ -100,6 +109,40 @@ static void log_sink_print_strn(void *data, const char *str, size_t len) {
         }
         sink->buf[sink->len++] = c;
     }
+}
+
+/**
+ * Narrow sys.path to what this app may import from.
+ *
+ * The runtime starts it as ["", ".frozen"]: the empty entry means "relative to
+ * the working directory", which a guest has no business resolving, and there
+ * are no frozen modules. Replacing both with the app's own directory keeps an
+ * import from reaching outside the app, without a path check anywhere else.
+ */
+static void set_import_path(fmrb_app_task_context_t *ctx) {
+    mp_obj_list_init(MP_OBJ_TO_PTR(mp_sys_path), 0);
+
+    char dir[FMRB_MAX_PATH_LEN];
+    if (fmrb_mp_bridge_app_dir(dir, sizeof(dir))) {
+        mp_obj_list_append(mp_sys_path, mp_obj_new_str(dir, strlen(dir)));
+    }
+    mp_obj_list_append(mp_sys_path,
+                       mp_obj_new_str(FMRB_MP_LIB_DIR, strlen(FMRB_MP_LIB_DIR)));
+
+    FMRB_LOGD(TAG, "[%s] import path: %s%s%s", ctx->app_name,
+              ctx->load_mode == FMRB_LOAD_MODE_FILE ? ctx->filepath : "(built-in)",
+              ctx->load_mode == FMRB_LOAD_MODE_FILE ? ", " : "", FMRB_MP_LIB_DIR);
+}
+
+/**
+ * Seed for the random module, taken when a guest imports it.
+ *
+ * The clock is the only thing that differs between two runs of the same app,
+ * so it is what makes a game play differently each time. An app that wants a
+ * repeatable run calls random.seed(n) itself.
+ */
+unsigned long fmrb_mp_random_seed(void) {
+    return (unsigned long)uptime_ms();
 }
 
 fmrb_err_t fmrb_mp_init(void) {
@@ -221,6 +264,8 @@ fmrb_err_t fmrb_mp_start(fmrb_app_task_context_t *ctx) {
         FMRB_LOGE(TAG, "[%s] Python app framework failed to load", ctx->app_name);
         return FMRB_ERR_FAILED;
     }
+    set_import_path(ctx);
+
     gc_info(&info);
     FMRB_LOGI(TAG, "[%s] app framework loaded in %ums (gc used=%u free=%u)",
               ctx->app_name, (unsigned)(uptime_ms() - prelude_start),

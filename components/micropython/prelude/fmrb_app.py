@@ -5,10 +5,8 @@
 # lifecycle methods, call start(). Attribute names match the Ruby instance
 # variables (self.gfx, self.window_width, self.user_area_x0, ...).
 #
-# First stage only. Deliberately absent rather than stubbed, so calling one
-# raises AttributeError instead of quietly doing nothing: suspend/resume
-# callbacks beyond the flag, reload, timers, pub/sub, file select, request_run,
-# resize handling, extra canvases and scrollbars.
+# Deliberately absent rather than stubbed, so calling one raises AttributeError
+# instead of quietly doing nothing: extra canvases, scrollbars and GfxBlock.
 
 # fmrb_gfx.py is concatenated ahead of this file (see the order in the
 # micropython:prelude rake task) and both run in the app's global namespace, so
@@ -16,6 +14,19 @@
 # from, which is also why the two files are not modules.
 
 import _fmrb
+
+
+# Milliseconds since boot. The guest has no time module (it lives in extmod/,
+# which the embed package does not carry), so this is the only clock an app
+# has: timers, animation and "how long ago" all measure with it.
+def ticks_ms():
+    return _fmrb.ticks_ms()
+
+
+# UI language the user chose, "ja" or "en". There is no shared string table:
+# an app that wants both keeps its own dict and picks with this.
+def language():
+    return _fmrb.language()
 
 
 class Log:
@@ -39,7 +50,69 @@ class Log:
 class FmrbConst:
     PROC_ID_KERNEL = 0
     MSG_TYPE_APP_CONTROL = 0
+    MSG_TYPE_APP_AUDIO = 2
     MSG_TYPE_HID_EVENT = 3
+
+
+# Audio, transcribed from the Ruby version (picoruby-fmrb-app
+# mrblib/fmrb-audio.rb). Everything here except the notes is one message to the
+# kernel, which is why this class needs nothing but an app to send through.
+#
+# Two APU instances play at once: MAIN (0) carries a tune, SUB (1) carries the
+# effects that note_on/note_off make. Keeping a long piece of music on MAIN and
+# the short noises on SUB is what stops an effect from cutting the music.
+class FmrbAudio:
+    MAIN = 0
+    SUB = 1
+
+    # Channels, as the APU numbers them.
+    CH_PULSE1 = 0
+    CH_PULSE2 = 1
+    CH_TRIANGLE = 2
+    CH_NOISE = 3
+
+    def __init__(self, app):
+        self.app = app
+
+    def _send(self, data):
+        return self.app.send_message(FmrbConst.PROC_ID_KERNEL,
+                                     FmrbConst.MSG_TYPE_APP_AUDIO, data)
+
+    # ---- music ----
+
+    def play(self, path, track=0):
+        return self._send({"cmd": "play", "path": path, "track": track})
+
+    def stop(self):
+        return self._send({"cmd": "stop"})
+
+    def pause(self):
+        return self._send({"cmd": "pause"})
+
+    def resume(self):
+        return self._send({"cmd": "resume"})
+
+    # Load a tune into a slot from a file the graphics-audio side can read
+    # (push it there with FmrbGfx#sync_file first). The inline form of this
+    # would have to fit in one message, so a real tune goes by path.
+    def load_fmsq_file(self, slot_id, path):
+        return self._send({"cmd": "load_fmsq_file", "slot": slot_id, "path": path})
+
+    def play_slot(self, slot_id, instance=MAIN):
+        return self._send({"cmd": "play_slot", "slot": slot_id, "instance": instance})
+
+    # ---- notes ----
+    #
+    # These two are the only audio calls made in a stream, so they skip the
+    # dict and go straight to C: a note allocates nothing at all. The Ruby
+    # version does the same thing for the same reason -- a collection in the
+    # middle of a tune stops the app long enough to hear.
+
+    def note_on(self, channel, freq, volume=10, duty=2, sweep=0):
+        return _fmrb.audio_note(True, channel, freq, volume, duty, sweep)
+
+    def note_off(self, channel):
+        return _fmrb.audio_note(False, channel, 0, 0, 0, 0)
 
 
 class FmrbApp:
@@ -63,6 +136,10 @@ class FmrbApp:
         self.running = False
         self._suspended = False
         self._close_btn_pressed = False
+        # Timers stay None until the app arms one, so an app that never uses
+        # them pays nothing per turn (see _run_timers).
+        self._timers = None
+        self._timer_seq = 0
 
         info = _fmrb.init()
         self.name = info["name"]
@@ -87,20 +164,7 @@ class FmrbApp:
         self.bg_gfx = (FmrbGfx(self.bg_canvas, self.window_width, self.window_height)
                        if self.bg_canvas is not None else None)
 
-        if self.fullscreen:
-            self.user_area_x0 = 0
-            self.user_area_y0 = 0
-            self.user_area_x1 = self.window_width
-            self.user_area_y1 = self.window_height
-            self.user_area_width = self.window_width
-            self.user_area_height = self.window_height
-        else:
-            self.user_area_x0 = 1
-            self.user_area_y0 = self.TITLE_BAR_H
-            self.user_area_x1 = self.window_width - 1
-            self.user_area_y1 = self.window_height - 1
-            self.user_area_width = self.window_width - 2
-            self.user_area_height = self.window_height - self.TITLE_BAR_H - 1
+        self._recalc_user_area()
 
     # ---- window frame ----
 
@@ -113,6 +177,13 @@ class FmrbApp:
         g = self.gfx
         w = self.window_width
         h = self.window_height
+
+        # The title is drawn in the built-in font whatever the app selected:
+        # the bar is 11 pixels tall, and a 12-pixel Japanese font would hang
+        # out of it and into the app's own area.
+        saved_font = g.current_font
+        if saved_font[0] != FmrbGfx.FONT_DEFAULT:
+            g.set_font(FmrbGfx.FONT_DEFAULT)
 
         # Title bar: rounded rect on top, then square off its bottom edge.
         g.fill_round_rect(0, 0, w, self.TITLE_BAR_H, self.CORNER_R, self.TITLE_BAR_COLOR)
@@ -129,6 +200,9 @@ class FmrbApp:
         # Rounded border.
         g.draw_round_rect(0, 0, w, h, self.CORNER_R, self.BORDER_COLOR)
         self._clear_corners()
+
+        if saved_font[0] != FmrbGfx.FONT_DEFAULT:
+            g.set_font(saved_font[0], saved_font[1])
 
     def _clear_corners(self):
         # Repaint the three pixels outside each corner arc with the canvas
@@ -184,6 +258,24 @@ class FmrbApp:
     def on_destroy(self):
         pass
 
+    def on_suspend(self):
+        # Another app went fullscreen. This one keeps running but must not draw.
+        Log.debug("on_suspend")
+
+    def on_resume(self):
+        Log.debug("on_resume")
+
+    def on_resize(self, width, height):
+        # The window changed size, most often because fullscreen was toggled.
+        # The frame and the contents both have to be drawn again; the user area
+        # has already been recalculated when this is called.
+        pass
+
+    def on_quit_request(self):
+        # Ctrl+Q. Override to ask before closing; the default is to close.
+        Log.info("App " + self.name + " quit request")
+        self.stop()
+
     def on_event(self, ev):
         # Close button: press gives feedback, release on the button stops.
         if ev.get("button") != 1:
@@ -223,10 +315,14 @@ class FmrbApp:
         cmd = msg.get("cmd")
         if cmd == "suspend":
             self._suspended = True
+            self.on_suspend()
             Log.info("App " + self.name + " suspended")
         elif cmd == "resume":
             self._suspended = False
+            self.on_resume()
             Log.info("App " + self.name + " resumed")
+        elif cmd == "quit_request":
+            self.on_quit_request()
         elif cmd == "stop":
             Log.info("App " + self.name + " received stop command")
             self.stop()
@@ -236,6 +332,133 @@ class FmrbApp:
                 self.gfx.clear(0x00)
                 self.gfx.present()
             self.stop()
+
+    # Called from C when the kernel resizes this app's window. Fullscreen is
+    # inferred from the new size rather than sent: the kernel gives an app the
+    # whole screen and nothing else that big.
+    def _handle_resize(self, width, height, fullscreen):
+        self.window_width = width
+        self.window_height = height
+        # A fullscreen switch says which mode it is; a plain resize (corner
+        # drag) says nothing and is windowed either way.
+        self.fullscreen = bool(fullscreen)
+        self._recalc_user_area()
+        if self.gfx:
+            self.gfx.canvas_width = width
+            self.gfx.canvas_height = height
+        if self.bg_gfx:
+            self.bg_gfx.canvas_width = width
+            self.bg_gfx.canvas_height = height
+        Log.info("App " + self.name + " resized to " + str(width) + "x" + str(height))
+        self.on_resize(width, height)
+
+    def _recalc_user_area(self):
+        if self.fullscreen:
+            self.user_area_x0 = 0
+            self.user_area_y0 = 0
+            self.user_area_x1 = self.window_width
+            self.user_area_y1 = self.window_height
+            self.user_area_width = self.window_width
+            self.user_area_height = self.window_height
+        else:
+            self.user_area_x0 = 1
+            self.user_area_y0 = self.TITLE_BAR_H
+            self.user_area_x1 = self.window_width - 1
+            self.user_area_y1 = self.window_height - 1
+            self.user_area_width = self.window_width - 2
+            self.user_area_height = self.window_height - self.TITLE_BAR_H - 1
+
+    # ---- timers ----
+    #
+    # One-shot, same as the Ruby version: a callback that wants to repeat arms
+    # the next one itself. They are checked once per turn of the app loop and
+    # again inside each wait (C calls _run_timers from _fmrb.spin), so a timer
+    # still fires while the app is parked waiting for a message.
+
+    def set_timer(self, interval_ms, callback):
+        self._timer_seq += 1
+        timer = (self._timer_seq, ticks_ms() + interval_ms, callback)
+        if self._timers is None:
+            self._timers = [timer]
+        else:
+            self._timers.append(timer)
+        return self._timer_seq
+
+    def clear_time(self, timer_id):
+        timers = self._timers
+        if timers is None:
+            return
+        for i in range(len(timers)):
+            if timers[i][0] == timer_id:
+                del timers[i]
+                return
+
+    # Runs on every turn and inside every wait, so the case of "nothing armed"
+    # and "nothing due" must both be cheap: no allocation until a timer
+    # actually fires.
+    def _run_timers(self):
+        timers = self._timers
+        if not timers:
+            return
+
+        now = ticks_ms()
+        due = None
+        for t in timers:
+            if t[1] <= now:
+                if due is None:
+                    due = [t]
+                else:
+                    due.append(t)
+        if due is None:
+            return
+
+        # Swap the surviving list in before running anything: a callback that
+        # arms a new timer has to land in the list that stays.
+        self._timers = [t for t in timers if t[1] > now]
+        for t in due:
+            t[2]()
+
+    # ---- asking the kernel for things ----
+
+    def subscribe(self, topic):
+        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
+                                 {"cmd": "subscribe", "topic": topic})
+
+    def unsubscribe(self, topic):
+        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
+                                 {"cmd": "unsubscribe", "topic": topic})
+
+    # Subscribers receive it through on_control as
+    # {"cmd": "topic_data", "topic": ..., "data": ...}.
+    def publish(self, topic, data=None):
+        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
+                                 {"cmd": "publish", "topic": topic, "data": data})
+
+    # An app cannot spawn another app, so this is a request: the kernel stops
+    # the instance a previous request started (prev_pid, may be None), runs the
+    # file and gives it the keyboard. The new pid comes back through on_control
+    # as {"cmd": "run_result", "path": ..., "pid": ...}, with pid None when it
+    # failed. The kernel limits paths to /app and /home.
+    def request_run(self, path, prev_pid=None):
+        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
+                                 {"cmd": "run", "path": path, "prev_pid": prev_pid})
+
+    # The VM keeps running, so app state survives; the answer arrives as
+    # on_resize with the user area already updated.
+    def request_fullscreen(self, on):
+        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
+                                 {"cmd": "enter_fullscreen" if on else "exit_fullscreen"})
+
+    def toggle_fullscreen(self):
+        return self.request_fullscreen(not self.fullscreen)
+
+    def request_file_select(self, mode="open"):
+        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
+                                 {"cmd": "file_select", "mode": mode})
+
+    def request_reload(self):
+        return self.send_message(FmrbConst.PROC_ID_KERNEL, FmrbConst.MSG_TYPE_APP_CONTROL,
+                                 {"cmd": "reload_confirm"})
 
     def send_message(self, dest_pid, msg_type, data):
         return _fmrb.send_message(dest_pid, msg_type, data)
@@ -253,8 +476,11 @@ class FmrbApp:
         self._suspended = False
         while self.running:
             if self._suspended:
+                # Sleep longer while suspended, but keep taking messages: the
+                # resume is one of them.
                 _fmrb.spin(self, 500)
                 continue
+            self._run_timers()
             timeout_ms = self.on_update()
             _fmrb.spin(self, timeout_ms)
 

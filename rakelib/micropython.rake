@@ -50,11 +50,12 @@ namespace :micropython do
     puts "commit both along with the change that caused the regeneration"
   end
 
-  # The Python half of the app framework. There is no filesystem importer in
-  # the guest, so these files are not modules: they are concatenated in this
-  # order and executed in the app's own global namespace just before the user
-  # script, which is what makes FmrbApp and FmrbGfx visible to it the way the
-  # Ruby framework's classes are visible to a .rb app.
+  # The Python half of the app framework. These are not modules even though
+  # the guest can import now: they are concatenated in this order and executed
+  # in the app's own global namespace just before the user script, which is
+  # what makes FmrbApp and FmrbGfx visible to it the way the Ruby framework's
+  # classes are visible to a .rb app. (The flip side is that a module the app
+  # imports does not see them -- see doc/micropython/known_limitations.md.)
   MP_PRELUDE_DIR = "#{MP_DIR}/prelude"
   MP_PRELUDE_FILES = ["fmrb_gfx.py", "fmrb_app.py"]
   MP_PRELUDE_HEADER = "#{MP_PRELUDE_DIR}/fmrb_prelude.h"

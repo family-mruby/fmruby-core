@@ -105,11 +105,118 @@ int fmrb_mp_gfx_ellipse(int canvas_id, int x, int y, int rx, int ry, int color, 
 int fmrb_mp_gfx_triangle(int canvas_id, int x0, int y0, int x1, int y1, int x2, int y2,
                          int color, bool filled);
 int fmrb_mp_gfx_draw_text(int canvas_id, int x, int y, const char *text, int color,
-                          int bg_color, bool has_bg);
+                          int bg_color, bool has_bg, bool mixed);
 int fmrb_mp_gfx_present(int canvas_id, int x, int y, bool explicit_pos);
+
+/** Font family: 0 = the built-in 6x8 one, 1 = the Japanese one. */
+int fmrb_mp_gfx_set_font(int canvas_id, int family, int size);
+/** Scale factor applied on top of the font, 1 to 4. */
+int fmrb_mp_gfx_set_text_size(int canvas_id, int size);
+
+/**
+ * Images living on the graphics side.
+ *
+ * The pixels never pass through Python: an app names a file, the firmware
+ * copies it across if the copy there differs, and the graphics side decodes it.
+ */
+
+/** Copy src to dest on the graphics side, unless the copy there matches. */
+bool fmrb_mp_gfx_sync_file(const char *src, const char *dest);
+
+/**
+ * @brief Decode a file on the graphics side into an image
+ * @return 0 on success, negative on failure (missing file, bad format)
+ */
+int fmrb_mp_gfx_create_image(int canvas_id, const char *path, uint16_t *out_id,
+                             uint16_t *out_width, uint16_t *out_height);
+
+/** Scale is fixed point: 256 = 1.0. scale_y_fp8 of 0 means "same as x". */
+int fmrb_mp_gfx_draw_image(int canvas_id, int image_id, int x, int y,
+                           int scale_x_fp8, int scale_y_fp8);
+int fmrb_mp_gfx_delete_image(int canvas_id, int image_id);
+
+/** Stamp a rectangle of a sprite image onto the canvas, without an instance. */
+int fmrb_mp_gfx_draw_tile(int canvas_id, int image_id, int src_x, int src_y, int w,
+                          int h, int dst_x, int dst_y);
+
+/**
+ * Sprites. An image holds pixels, an instance places one or more images on the
+ * canvas; moving an instance costs one command and the compositing happens on
+ * the graphics side.
+ */
+
+/** Copy of FMRB_SPRITE_MAX_FRAMES (fmrb_link_protocol.h), static-asserted. */
+#define FMRB_MP_SPRITE_MAX_FRAMES (8)
+
+/** @return image id (> 0), or 0 on failure */
+int fmrb_mp_gfx_create_sprite_image(int canvas_id, int width, int height,
+                                    int transparent_color, bool use_transparent);
+int fmrb_mp_gfx_load_sprite_image_bmp(int canvas_id, int image_id, const char *path);
+int fmrb_mp_gfx_delete_sprite_image(int canvas_id, int image_id);
+/** Redirect drawing into a sprite image; 0 puts it back on the canvas. */
+int fmrb_mp_gfx_set_sprite_target(int canvas_id, int image_id);
+
+/** @return instance id (> 0), or 0 on failure */
+int fmrb_mp_gfx_create_sprite_instance(int canvas_id, const uint16_t *image_ids,
+                                       int frame_count, int x, int y, int z_order);
+int fmrb_mp_gfx_sprite_move(int canvas_id, int instance_id, int x, int y);
+int fmrb_mp_gfx_sprite_visible(int canvas_id, int instance_id, bool visible);
+int fmrb_mp_gfx_sprite_frame(int canvas_id, int instance_id, int frame_index);
+int fmrb_mp_gfx_delete_sprite_instance(int canvas_id, int instance_id);
+int fmrb_mp_gfx_delete_all_sprites(int canvas_id);
+
+/** UI language from system_conf.toml ("ja" / "en"). Never NULL. */
+const char *fmrb_mp_bridge_language(void);
+
+/**
+ * @brief Send one APU note on / off
+ *
+ * Notes are the only audio message sent in a stream, so this takes the values
+ * rather than a message: nothing is allocated on either side of the call, in
+ * any language. Everything else about audio is an ordinary send_message.
+ *
+ * @return true when the message was queued
+ */
+bool fmrb_mp_bridge_audio_note(bool on, int channel, int freq, int volume,
+                               int duty, int sweep);
 
 /** Log one line at the given level ('D', 'I', 'W', 'E'). */
 void fmrb_mp_bridge_log(char level, const char *msg);
+
+/**
+ * Files. Guests get no open()/write(): they read whole files, either as data
+ * (_fmrb.read_file) or as a module the importer compiles.
+ */
+
+/** What lives at this path. Matches mp_import_stat_t's three cases. */
+typedef enum {
+    FMRB_MP_PATH_NONE = 0,
+    FMRB_MP_PATH_FILE = 1,
+    FMRB_MP_PATH_DIR = 2,
+} fmrb_mp_path_kind_t;
+
+fmrb_mp_path_kind_t fmrb_mp_bridge_path_kind(const char *path);
+
+/**
+ * @brief Size of a file in bytes
+ * @return 0 on success, negative when the path is missing or is a directory
+ */
+int fmrb_mp_bridge_file_size(const char *path, uint32_t *out_size);
+
+/**
+ * @brief Read a whole file into a caller-provided buffer
+ * @param size Bytes to read; the caller sizes the buffer from file_size
+ * @return 0 when exactly size bytes were read, negative otherwise
+ */
+int fmrb_mp_bridge_file_read(const char *path, uint8_t *buf, uint32_t size);
+
+/**
+ * @brief Directory this app was started from, for sys.path
+ * @param out Destination buffer
+ * @param cap Size of out
+ * @return true when out holds a directory path ("/app/game" and the like)
+ */
+bool fmrb_mp_bridge_app_dir(char *out, size_t cap);
 
 #ifdef __cplusplus
 }

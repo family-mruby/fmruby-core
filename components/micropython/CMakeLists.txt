@@ -19,7 +19,10 @@ set(FMRB_MP_SRCS
 idf_component_register(
     SRCS ${MP_EMBED_SRCS} ${FMRB_MP_SRCS}
     INCLUDE_DIRS "include" "mp_embed" "port" "modules" "prelude"
-    REQUIRES fmrb_mem fmrb_common fmrb_log fmrb_msg fmrb_gfx log
+    REQUIRES fmrb_mem fmrb_common fmrb_log fmrb_msg fmrb_gfx fmrb_hal fmrb_transport log
+    # main, for fmrb_kernel_sync_file / fmrb_kernel_get_config: the same
+    # private dependency picoruby-esp32 takes for the same two calls.
+    PRIV_REQUIRES main
 )
 
 # embed_util.c defines __assert_func when NDEBUG is absent, as an infinite

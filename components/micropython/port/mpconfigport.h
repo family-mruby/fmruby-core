@@ -58,16 +58,37 @@ extern void fmrb_mp_vm_hook(void);
 // the neighbouring task.
 #define MICROPY_STACK_CHECK                     (1)
 
-// import only resolves to built-in modules. There is no filesystem importer
-// wired up: mp_import_stat is not provided, and mp_builtin_open (mpport.c)
-// always raises OSError.
-#define MICROPY_ENABLE_EXTERNAL_IMPORT          (0)
+// import resolves built-in modules first, then .py files on sys.path. The two
+// hooks that needs -- mp_import_stat and mp_reader_new_file -- are provided by
+// modules/fmrb_module.c on top of the firmware's file layer, which is why
+// neither of the stock readers is enabled: the POSIX one reads 20 bytes per
+// call, and over flash that turns one import into hundreds of reads.
+//
+// sys.path is narrowed at app start (fmrb_mp.c) to the app's own directory and
+// the shared library directory, so a guest cannot import from anywhere else.
+// mp_builtin_open (mpport.c) still raises: reading a file as data goes through
+// _fmrb.read_file, which has a size limit.
+#define MICROPY_ENABLE_EXTERNAL_IMPORT          (1)
 #define MICROPY_READER_POSIX                    (0)
 #define MICROPY_READER_VFS                      (0)
+#define MICROPY_HAS_FILE_READER                 (1)
 #define MICROPY_PY_BUILTINS_INPUT               (0)
 
 // Modules whose implementation lives in extmod/ are not part of the embed
-// package, so they stay off. Waiting is provided by the fmrb app module.
+// package by default, so they stay off unless they are pulled in on purpose
+// (extmods/micropython.mk + the copy step in port/Makefile). Waiting is
+// provided by the fmrb app module, so time stays out.
 #define MICROPY_PY_TIME                         (0)
+
+// random: pulled in because a game without it has to invent one. It depends on
+// nothing but py/, and the extra functions (randint, randrange, choice,
+// uniform) are what an app actually reaches for.
+#define MICROPY_PY_RANDOM                       (1)
+#define MICROPY_PY_RANDOM_EXTRA_FUNCS           (1)
+// Seeded on import from the millisecond clock, so two runs of the same app
+// differ. The guest can still call random.seed(n) for a repeatable run.
+#define MICROPY_MODULE_BUILTIN_INIT             (1)
+extern unsigned long fmrb_mp_random_seed(void);
+#define MICROPY_PY_RANDOM_SEED_INIT_FUNC        (fmrb_mp_random_seed())
 
 #define MICROPY_PY_SYS_PLATFORM                 "fmruby"

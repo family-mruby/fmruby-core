@@ -2,6 +2,7 @@
 # Source list of the MicroPython embed package. Regenerated together with
 # mp_embed/ itself, so the two can never drift apart.
 set(MP_EMBED_SRCS
+    "mp_embed/extmod/modrandom.c"
     "mp_embed/port/embed_util.c"
     "mp_embed/port/mphalport.c"
     "mp_embed/py/argcheck.c"
