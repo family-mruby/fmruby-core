@@ -326,3 +326,35 @@ const char* fmrb_app_get_last_error_msg(void);
 // only visible if it is printed: pair this with fmrb_task_dump_status(), whose
 // IRAM/PSRAM totals say nothing about the per-pool budgets.
 void fmrb_app_dump_vm_pools(void);
+
+/**
+ * @brief Build one note_on / note_off message for the kernel's audio handler
+ *
+ * The bytes are exactly what MessagePack.pack writes for the equivalent Hash,
+ * so the kernel cannot tell which language sent them. Every guest binding uses
+ * this rather than building the map itself; a note in a stream (a MIDI song
+ * sends one every few milliseconds) then allocates nothing at all.
+ *
+ * @param buf Destination, at least FMRB_APP_AUDIO_NOTE_MSG_MAX bytes
+ * @return Number of bytes written
+ */
+size_t fmrb_app_build_audio_note_msg(uint8_t *buf, bool on, int32_t ch,
+                                     int32_t freq, int32_t vol, int32_t duty,
+                                     int32_t sweep);
+
+/** Longest message fmrb_app_build_audio_note_msg writes. */
+#define FMRB_APP_AUDIO_NOTE_MSG_MAX 96
+
+/**
+ * @brief Build and send one note message on behalf of src_pid
+ *
+ * Safe from any task context: it touches nothing but a stack buffer and the
+ * kernel's message queue, so the MIDI scheduler can call it from a timer where
+ * entering a VM is not allowed. Pass timeout_ms 0 where blocking is not
+ * allowed.
+ *
+ * @return fmrb_err_t as int (0 on success)
+ */
+int fmrb_app_send_audio_note(int src_pid, bool on, int channel, int freq,
+                             int volume, int duty, int sweep,
+                             unsigned int timeout_ms);

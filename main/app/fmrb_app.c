@@ -2908,3 +2908,130 @@ fmrb_err_t fmrb_app_set_fullscreen(uint8_t pid, bool on, uint16_t width, uint16_
     return FMRB_OK;
 }
 
+/* ---------------------------------------------------------------------------
+ * Audio note messages
+ *
+ * Lives here rather than in a language binding because every guest VM needs
+ * it: the Ruby binding, the MIDI scheduler and the Python binding all send
+ * notes, and they must send the same bytes.
+ * ------------------------------------------------------------------------ */
+
+//
+// note_on and note_off are the only audio messages that get sent in a stream:
+// a MIDI song sends one every few milliseconds. Going through a Ruby Hash and
+// MessagePack.pack costs three objects per note, and on the device one
+// collection stops the app for 100-205 ms, which is audible
+// (doc/midi/report/p6.md 10). Built here instead, a note allocates nothing.
+//
+// The bytes are exactly what MessagePack.pack writes for
+//   { cmd: :note_on, ch: c, freq: f, vol: v, duty: d, sweep: s }
+// -- same map, same key order, same integer widths -- because the kernel
+// unpacks them in audio_handler.rb and must not be able to tell the
+// difference. FmrbApp#_audio_note_bytes exists so that equality can be
+// checked from Ruby rather than by reading this code
+// (flash/app/debug/midi_bench.app.rb does it).
+
+// One integer, in the width msgpack-c's msgpack_pack_int64 would choose.
+// Choosing a wider encoding would still decode correctly but would no longer
+// be byte-identical, which is the property the check above relies on.
+static size_t audio_pack_int(uint8_t *buf, int32_t v)
+{
+    if (v < -32) {
+        if (v < INT32_MIN) {
+            buf[0] = 0xd3;
+            for (int i = 0; i < 8; i++) buf[8 - i] = (uint8_t)((uint64_t)v >> (i * 8));
+            return 9;
+        }
+        if (v < INT16_MIN) {
+            buf[0] = 0xd2;
+            for (int i = 0; i < 4; i++) buf[4 - i] = (uint8_t)((uint32_t)v >> (i * 8));
+            return 5;
+        }
+        if (v < INT8_MIN) {
+            buf[0] = 0xd1;
+            buf[1] = (uint8_t)((uint16_t)v >> 8);
+            buf[2] = (uint8_t)v;
+            return 3;
+        }
+        buf[0] = 0xd0;
+        buf[1] = (uint8_t)v;
+        return 2;
+    }
+    if (v < 128) {         // positive fixint
+        buf[0] = (uint8_t)v;
+        return 1;
+    }
+    if (v < 256) {
+        buf[0] = 0xcc;
+        buf[1] = (uint8_t)v;
+        return 2;
+    }
+    if (v < 65536) {
+        buf[0] = 0xcd;
+        buf[1] = (uint8_t)(v >> 8);
+        buf[2] = (uint8_t)v;
+        return 3;
+    }
+    if (v <= UINT32_MAX) {
+        buf[0] = 0xce;
+        for (int i = 0; i < 4; i++) buf[4 - i] = (uint8_t)((uint32_t)v >> (i * 8));
+        return 5;
+    }
+    buf[0] = 0xcf;
+    for (int i = 0; i < 8; i++) buf[8 - i] = (uint8_t)((uint64_t)v >> (i * 8));
+    return 9;
+}
+
+// A string shorter than 32 bytes: fixstr, which is what every key here is.
+static size_t audio_pack_str(uint8_t *buf, const char *s)
+{
+    size_t len = strlen(s);
+    buf[0] = (uint8_t)(0xa0 | len);
+    memcpy(buf + 1, s, len);
+    return len + 1;
+}
+
+// Longest possible: six pairs of a five-byte key and a nine-byte integer.
+
+
+size_t fmrb_app_build_audio_note_msg(uint8_t *buf, bool on, int32_t ch,
+                                     int32_t freq, int32_t vol, int32_t duty,
+                                     int32_t sweep)
+{
+    size_t n = 0;
+
+    buf[n++] = on ? 0x86 : 0x82; // fixmap with six or two pairs
+    n += audio_pack_str(buf + n, "cmd");
+    n += audio_pack_str(buf + n, on ? "note_on" : "note_off");
+    n += audio_pack_str(buf + n, "ch");
+    n += audio_pack_int(buf + n, ch);
+    if (on) {
+        n += audio_pack_str(buf + n, "freq");
+        n += audio_pack_int(buf + n, freq);
+        n += audio_pack_str(buf + n, "vol");
+        n += audio_pack_int(buf + n, vol);
+        n += audio_pack_str(buf + n, "duty");
+        n += audio_pack_int(buf + n, duty);
+        n += audio_pack_str(buf + n, "sweep");
+        n += audio_pack_int(buf + n, sweep);
+    }
+    return n;
+}
+
+// Build and send one note message on behalf of src_pid. Declared in
+// include/picoruby_fmrb_app.h: the MIDI scheduler fires notes from a timer,
+// so this has to work outside the VM. Nothing here is mruby, and the send is
+// non-blocking, so it is safe from any task context.
+int fmrb_app_send_audio_note(int src_pid, bool on, int channel, int freq,
+                             int volume, int duty, int sweep,
+                             unsigned int timeout_ms)
+{
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_AUDIO,
+        .src_pid = (fmrb_proc_id_t)src_pid,
+        .size = 0,
+    };
+    msg.size = (uint32_t)fmrb_app_build_audio_note_msg(msg.data, on, channel, freq,
+                                              volume, duty, sweep);
+    return (int)fmrb_msg_send(PROC_ID_KERNEL, &msg, timeout_ms);
+}
