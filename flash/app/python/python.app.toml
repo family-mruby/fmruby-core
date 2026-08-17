@@ -1,5 +1,5 @@
 app_handle_name = "python"
-app_screen_name = "Python"
+app_screen_name = "Python demo"
 app_screen_name_ja = "Pythonデモ"
 default_window_mode = "window"
 default_window_width = 230

@@ -1,5 +1,5 @@
 app_handle_name = "picoruby"
-app_screen_name = "PicoRuby"
+app_screen_name = "PicoRuby demo"
 app_screen_name_ja = "PicoRubyデモ"
 
 default_window_mode = "window"
