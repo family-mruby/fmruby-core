@@ -5,6 +5,46 @@ Ruby アプリ (picoruby-fmrb-app) との差分という形で書く。
 
 対象: MicroPython v1.28.0 を `ports/embed` 経由で取り込んだ構成。
 
+## Python アプリの書き方 (Ruby との差分)
+
+```python
+# 共通層 (FmrbApp / FmrbGfx / FmrbAudio / SpriteImage / SpriteInstance /
+# Log / ticks_ms / language) はアプリの名前空間に用意済み。import は要らない。
+import _fmrb          # 低水準の口。read_file などはここから
+
+class MyApp(FmrbApp):
+    def on_create(self):
+        self.gfx.set_font(FmrbGfx.FONT_JA, 12)
+        self.audio = FmrbAudio(self)
+        self.subscribe("mytopic")
+        self.set_timer(500, self.blink)      # 一回限り。続けるなら自分で張り直す
+
+    def on_update(self):
+        return 33                            # 次に呼ぶまでのミリ秒
+
+    def on_event(self, ev):
+        super().on_event(ev)                 # 閉じるボタンの処理
+        if ev.get("type") == "key_down" and ev.get("scancode") == 0x2C:
+            ...
+
+    def on_control(self, msg):               # 他のアプリからの配信など
+        ...
+
+app = MyApp()
+app.start()
+```
+
+Ruby 版と違うところ:
+
+| | Ruby | Python |
+|---|---|---|
+| 終わりの起動コード | `app = MyApp.new` / `app.start` | 同じ形 (`MyApp()` / `.start()`) |
+| 時刻 | `Machine.board_millis` | `ticks_ms()` |
+| 文字列の長さ | `String#length` は文字数 | `len()` は**バイト数** |
+| 別ファイル | `require "/app/..."` | `import mymodule` (同じディレクトリのみ) |
+| 別ファイルからの共通層 | 見える | **見えない** (引数で渡す) |
+| タイマの callback | ブロック | 関数 (`self.blink` のように渡す) |
+
 ## 実行環境
 
 ### Python アプリは同時に 1 本だけ
@@ -19,29 +59,54 @@ mruby の `mrb_state` や Lua の `lua_State` のように複数インスタン�
 
 **Ruby / Lua / BASIC アプリとの同時実行は制限なし。**
 
-### import はビルトインモジュールのみ
+### import できるのは自分の隣のファイルとビルトインモジュール
 
-ファイルシステムからの import は用意していない。`import mymodule` は失敗する。
-アプリは 1 ファイルで完結させる。
+アプリは複数のファイルに分けて書ける。`import mymodule` は
+**そのアプリと同じディレクトリ**か `/usr/lib/python` の `mymodule.py` を
+読む。探すのはこの 2 か所だけで、他の場所は見に行かない。1 つのファイルの
+大きさは 64KB まで。
 
-使えるモジュールは MicroPython 本体の `py/` にあるものだけ:
+**import した側からアプリ基盤は見えない**。`FmrbApp` / `FmrbGfx` / `Log` は
+アプリ自身の名前空間で用意されるもので、module の名前空間には入らない。
+分けたファイルが必要とするものは、引数で渡す:
+
+```python
+# app 側
+import mypanel
+mypanel.draw(self, state)      # 描画に要るものは app 経由で渡る
+
+# mypanel.py 側
+def draw(app, state):
+    app.gfx.draw_text(...)     # FmrbGfx を直接名指ししない
+```
+
+組み込みモジュールとして使えるのは MicroPython 本体の `py/` にあるものと、
+意図して取り込んだ `extmod/` のものだけ:
 
 `array` / `builtins` / `collections` / `gc` / `io` / `math` / `micropython` /
-`struct` / `sys`
+`struct` / `sys` / **`random`**
 
-**`extmod/` にあるモジュールは使えない**: `time` / `json` / `os` / `re` /
-`random` / `binascii` / `hashlib` / `heapq` / `deflate` など。
-組み込み用ソース一式にこれらの実装が含まれないため。待機は `FmrbApp` の
-更新間隔 (`on_update` の戻り値) で行う。
+`random` は取り込み時に時計から種を与えているので、起動のたびに違う目が出る。
+同じ展開を繰り返したいときは `random.seed(n)` を呼ぶ。
+
+**それ以外の `extmod/` のモジュールは使えない**: `time` / `json` / `os` /
+`re` / `binascii` / `hashlib` / `heapq` / `deflate` など。組み込み用ソース
+一式にこれらの実装が含まれないため。待機は `FmrbApp` の更新間隔
+(`on_update` の戻り値) で行う。
+
+要るものが出てきたら 1 つずつ足せる: `components/micropython/extmods/
+micropython.mk` に .c を並べ、`port/Makefile` の複写一覧に足し、
+`mpconfigport.h` で有効にして `rake micropython:gen`。自己完結した
+モジュール (json / binascii など) はこれだけで入る。HAL が要るもの
+(asyncio の時刻源など) はもう一段の移植が必要。
 
 ### 資産を活用したくなったときの道筋 (現状は未実装)
 
 MicroPython 圏の資産は、種類によって取り込みやすさがまったく違う。
 
-1. **extmod の標準モジュール** — 仕組み上の壁は無い。port/Makefile に
-   追加コピーを足して mpconfigport.h で有効化し `rake micropython:gen`、
-   という既存の手順で 1 モジュールずつ入れられる (submodule 無改変のまま)。
-   `json` / `random` / `binascii` あたりは自己完結で軽い。`asyncio` は
+1. **extmod の標準モジュール** — 仕組み上の壁は無い。`random` は既に
+   この手順で入れてある (extmods/micropython.mk + port/Makefile の複写 +
+   mpconfigport.h)。`json` / `binascii` あたりも自己完結で軽い。`asyncio` は
    tick 系 HAL (mp_hal_ticks_ms 等) の実装が要るのでもう一段の作業。
    コストはフラッシュ増と qstr 再生成のみで、必要になったものから足せばよい。
 2. **純 Python ライブラリ (micropython-lib 等)** — 今はアプリ 1 ファイルに
@@ -76,12 +141,72 @@ VM 内の擬似スレッドではなく**ネイティブスレッドに 1:1** �
 方式の対比 (mruby-task = VM 内スケジューラとの違い) は
 porting_comparison.md 参照。
 
-### `open()` は必ず失敗する
+### ファイルは読めるが書けない
 
 `open` は builtins と `io` に存在するが、呼ぶと `OSError` を投げる。
-ゲストアプリにファイルシステムを渡さない方針のため、
-「黙って存在しない」より「呼ぶと明示的に失敗する」形にしてある。
-`io.StringIO` などメモリ上のものは使える。
+「黙って存在しない」より「呼ぶと明示的に失敗する」ほうが分かるため、
+この形にしてある。`io.StringIO` などメモリ上のものは使える。
+
+読むほうは `_fmrb.read_file(path)` がある (丸ごと読んで `bytes` を返す。
+1 ファイル 64KB まで)。大きさだけなら `_fmrb.file_size(path)`。
+**書き込む手段は無い**。
+
+## 絵
+
+### 素材の種類で経路が違う
+
+| 用意したいもの | 使うもの |
+|---|---|
+| スプライトやタイルの素材 (BMP) | `SpriteImage` + `load_bmp` |
+| 一枚絵 (PNG) | `create_image` + `draw_image` |
+
+**取り違えても例外にはならない**。BMP を `create_image` に渡すと、画面と
+同じ大きさの空の画像ができて、描いても何も出ない。これは Ruby でも同じで、
+Python 固有の話ではない。
+
+素材はどちらの経路でも、まず `sync_file` で描画側へ送る必要がある
+(描画側は自分のファイルシステムしか読めない)。
+
+### 文字列はバイト列
+
+この構成では Unicode 文字列が入っていないので、`len("日本語")` は 9
+(バイト数) を返し、添字もバイト単位になる。表示幅が要るときは
+`FmrbGfx#text_width` を使う (UTF-8 を走査して画素数を返す)。
+
+日本語を出すには、`set_font(FmrbGfx.FONT_JA)` でフォントを切り替えるか、
+`draw_text(..., mixed=True)` で ASCII と日本語を混ぜて描く。
+
+### 用意していない描画
+
+マスク、円弧、半透明の矩形、`get_pixel`、描画のまとめ送り (GfxBlock)、
+合成領域、表示範囲。地図クラスも無い (`draw_tile` はあるので、並べるのは
+アプリ側で書く)。
+
+## 音
+
+内蔵音源は `FmrbAudio` から使う。曲 (FMSQ の譜面) は主系 (MAIN)、
+`note_on` / `note_off` で作る効果音は副系 (SUB) で鳴る。長い曲を主系に置き、
+短い音を副系に置けば、効果音が曲を止めない。
+
+```python
+audio = FmrbAudio(self)
+audio.load_fmsq_file(1, "/cache/app/mygame/bgm.fmsq")   # まず sync_file で送る
+audio.play_slot(1, FmrbAudio.MAIN)
+audio.note_on(FmrbAudio.CH_PULSE2, 988, 12, 2, 0)       # 効果音は副系
+```
+
+用意していないもの:
+
+- **譜面をメッセージに直接詰める形** (`load_fmsq`)。1 メッセージの上限に
+  実用的な譜面が入らない。ファイルを送って `load_fmsq_file` で読む。
+- マイク入力、外部への MIDI 送出。
+
+注意:
+
+- 音を出す口は機械に 1 つで、アプリごとではない。**自分が鳴らした音は
+  自分で止める** (終了時の `note_off` / `stop` を書く)。
+- 効果音を止める時刻は `ticks_ms()` の実時間で管理する。フレーム数で
+  数えると、重い描画のフレームで音が伸びる。
 
 ## メモリ
 
@@ -151,7 +276,7 @@ VM フックはバイトコードを実行しているときだけ回る (ジャ
 
 ## 提供している API
 
-Ruby 版 (`picoruby-fmrb-app`) の第一段階サブセット。クラス名・メソッド名・
+Ruby 版 (`picoruby-fmrb-app`) のサブセット。クラス名・メソッド名・
 引数順・色定数は Ruby 版と同じ。
 
 ### FmrbApp
@@ -160,16 +285,31 @@ Ruby 版 (`picoruby-fmrb-app`) の第一段階サブセット。クラス名・�
 |---|---|
 | 属性 | `name` `platform` `window_width` `window_height` `pos_x` `pos_y` `fullscreen` `rounded_corners` `headless` `canvas` `bg_canvas` `gfx` `bg_gfx` `running` `user_area_x0/y0/x1/y1` `user_area_width/height` |
 | ライフサイクル | `start` `stop` `main_loop` `destroy` / `on_create` `on_update` `on_event` `on_destroy` |
+| ライフサイクル (続き) | `on_suspend` `on_resume` `on_resize` `on_quit_request` |
 | 描画 | `draw_window_frame` `clear_user_area` |
 | 入力補助 | `ev_ctrl` `ev_shift` `ev_alt` |
+| タイマ | `set_timer` `clear_time` |
+| 連携 | `subscribe` `unsubscribe` `publish` `request_run` `request_fullscreen` `toggle_fullscreen` `request_file_select` `request_reload` |
 | その他 | `send_message` `set_window_position` |
+
+`on_control(msg)` は基底クラスにはない。アプリが定義すると、カーネルからの
+未知の通知 (`topic_data` / `run_result` / file_select の応答など) がそこに届く
+(Ruby 版と同じ扱い)。
+
+共通層のトップレベルには `ticks_ms()` (起動からのミリ秒) と `language()`
+("ja" / "en") もある。
 
 ### FmrbGfx
 
 `clear` `present` `set_pixel` `draw_line` `draw_rect` `fill_rect`
 `draw_circle` `fill_circle` `draw_round_rect` `fill_round_rect`
 `draw_ellipse` `fill_ellipse` `draw_triangle` `fill_triangle`
-`draw_text` `text_width` `font_height`
+`draw_text` `text_width` `font_height` `set_font` `set_text_size`
+`sync_file` `create_image` `draw_image` `delete_image` `draw_tile`
+`delete_all_sprites`
+
+スプライトは `SpriteImage` (`set_target` `reset_target` `load_bmp` `destroy`)
+と `SpriteInstance` (`move` `set_visible` `set_frame` `destroy`)。
 
 色定数: `BLACK` `WHITE` `RED` `GREEN` `BLUE` `YELLOW` `CYAN` `MAGENTA` `GRAY`
 (RGB332、Ruby 版と同値)
@@ -183,6 +323,9 @@ Ruby 版 (`picoruby-fmrb-app`) の第一段階サブセット。クラス名・�
 | `mouse_down` / `mouse_up` | `type` `button` `x` `y` |
 | `mouse_move` | `type` `x` `y` |
 | `key_down` / `key_up` | `type` `keycode` `scancode` `modifier` `character` |
+| `gamepad_down` / `gamepad_up` | `type` `gamepad_id` `button` |
+| `gamepad_axis` | `type` `gamepad_id` `axis` `value` |
+| `kana_mode` | `type` `mode` |
 
 文字キーの判定には `scancode` (HID Usage ID) を使う。`keycode` は
 シミュレーションと実機で違う値になる。
@@ -193,15 +336,12 @@ Ruby 版 (`picoruby-fmrb-app`) の第一段階サブセット。クラス名・�
 
 | 分類 | 内容 |
 |---|---|
-| スプライト | `SpriteImage` / `SpriteInstance` / タイルマップ / `TileRing` |
-| 画像 | `create_image` `load_image` `draw_image` `draw_tile` / BMP / マスク |
-| 文字 | `set_font` (日本語含む) `set_text_size` / 混在描画 / 多バイト文字幅 |
+| 地図 | タイルマップのクラス / `TileRing` (`draw_tile` はあるので自分で並べる) |
+| 画像 | マスク (`draw_image_masked`) / `load_image` (`sync_file` + `create_image` + `draw_image` で書く) |
 | 描画最適化 | `GfxBlock` / composite region / `set_viewport` (ハードウェアスクロール) |
-| ライフサイクル | `on_suspend` `on_resume` の呼び出し / `on_resize` / `request_reload` |
-| 連携 | `subscribe` `publish` / `request_file_select` / `request_run` |
-| その他 | 音声 / `draw_arc` `fill_arc` `blend_rect` `get_pixel` / 追加キャンバス / スクロールバー / タイマ / p5 互換層 |
+| その他 | 音声 / `draw_arc` `fill_arc` `blend_rect` `get_pixel` / 追加キャンバス / スクロールバー / p5 互換層 |
 
-日本語の表示ができないのは `set_font` が無いためで、当面の一番大きな差分。
+音声はこれから (doc/micropython/phase8.md)。
 
 ## 見た目の差
 
