@@ -39,6 +39,7 @@ Ruby 側の `audio note_on/off: 0 objects/200 calls` も変わらなかった。
   `load_fmsq_file` / `play_slot` / `note_on` / `note_off`。
   定数 `MAIN` / `SUB`、`CH_PULSE1` / `CH_PULSE2` / `CH_TRIANGLE` / `CH_NOISE`。
 - 検証用アプリ `flash/app/python/pysound.app.py` + toml。
+  **(後日) `python.app.py` の Sound ページに畳んだ。**
 
 ## 実測
 

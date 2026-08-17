@@ -62,7 +62,8 @@ Python で書けることを、このフェーズで確かめる。
 
 ### 4. 検証用アプリ
 
-`flash/app/python/pysound.app.py` (仮) を作る。
+`flash/app/python/pysound.app.py` (仮) を作る。確認が済んだら
+`python.app.py` のページに畳む。
 
 - 音階を順に鳴らす / 副系で効果音、主系で譜面を同時に鳴らす /
   全部止める、をボタンで選べるだけのもの。

@@ -44,6 +44,9 @@
   受信アプリ、E で Ruby のロボット世界を起動し、P で発信、F で全画面。
 - `flash/app/python/pybench.app.py` + toml。P5-0 の計測。
 
+**(後日) pysub は `python.app.py` の System ページに畳んだ**
+(pub/sub・タイマ・read_file・import・乱数)。pybench は計測の道具なので残す。
+
 ## 分かったこと
 
 ### 1. import は移植側の関数 3 つで入る (2 つではなかった)

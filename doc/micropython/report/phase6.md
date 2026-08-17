@@ -40,6 +40,8 @@ graphics-audio 側には一切手を入れていない。**計画どおり「繋
 `flash/app/python/pygfx.app.py` + toml。Ruby の RPG デモの素材をそのまま
 借りている (同じファイルがどちらの言語からでも使える、という確認も兼ねる)。
 
+**(後日) pygfx は `python.app.py` の Text ページと Sprites ページに畳んだ。**
+
 ## 分かったこと
 
 ### 1. 文字列はバイト列だった
@@ -95,7 +97,7 @@ Python 固有の話ではなく Ruby でも同じだが、**間違えても黙�
 
 - Ruby の RPG デモ (スプライト・タイル・BGM を全部使う) が従来どおり動く。
 - ホストのテスト一式 (`rake test`) 通過。
-- 既存の Python アプリ (python.app.py / pysub / pybench) も動作。
+- 既存の Python アプリ (python.app.py / pybench) も動作。
 
 ## 次への申し送り
 
