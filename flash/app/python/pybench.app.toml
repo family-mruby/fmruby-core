@@ -1,0 +1,8 @@
+app_handle_name = "pybench"
+app_screen_name = "PyBench"
+app_screen_name_ja = "Python計測"
+default_window_mode = "window"
+default_window_width = 180
+default_window_height = 130
+default_window_pos_x = 70
+default_window_pos_y = 60

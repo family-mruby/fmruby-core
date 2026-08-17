@@ -1,0 +1,8 @@
+app_handle_name = "pygfx"
+app_screen_name = "PyGfx"
+app_screen_name_ja = "Python描画"
+default_window_mode = "window"
+default_window_width = 230
+default_window_height = 170
+default_window_pos_x = 45
+default_window_pos_y = 40

@@ -1,0 +1,9 @@
+app_handle_name = "breakout"
+app_screen_name = "Breakout.py"
+app_screen_name_ja = "ブロック崩し"
+default_window_mode = "window"
+default_window_width = 250
+default_window_height = 210
+default_window_pos_x = 35
+default_window_pos_y = 15
+launcher_visible = true

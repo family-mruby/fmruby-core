@@ -1,0 +1,9 @@
+app_handle_name = "robo_pilot_py"
+app_screen_name = "RoboPilot.py"
+app_screen_name_ja = "ロボ操縦(Py)"
+default_window_mode = "window"
+default_window_width = 160
+default_window_height = 210
+default_window_pos_x = 156
+default_window_pos_y = 16
+launcher_visible = true
