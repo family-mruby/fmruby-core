@@ -1,6 +1,6 @@
-app_handle_name = "graphics"
-app_screen_name = "Graphics"
-app_screen_name_ja = "描画デモ"
+app_handle_name = "picoruby"
+app_screen_name = "PicoRuby"
+app_screen_name_ja = "PicoRubyデモ"
 
 default_window_mode = "window"
 

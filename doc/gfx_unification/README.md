@@ -89,7 +89,7 @@ Lua/BASIC のリトライ方式はこれを迂回しており、**重い描画�
   (grep で確認。コンストラクタ呼び出しのみ)。
 - Phase A と同じ 4 言語 + Spinel 構成の headless 検証が通る。
 - 見た目の回帰が無いこと: 変更前後で同じデモのスクリーンショットを撮り
-  比較する (python.app の Shapes ページ、graphics.app.rb の Shapes
+  比較する (python.app の Shapes ページ、picoruby.app.rb の Shapes
   セクションなど)。
 - rake build:esp32 が S3 / P4 両方で成功する (サイズの増減も一言記録)。
 

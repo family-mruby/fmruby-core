@@ -2,6 +2,19 @@
 # Provides audio control for apps via kernel message routing.
 
 class FmrbAudio
+  # The two APU instances. A long piece of music belongs on MAIN and the short
+  # noises on SUB, so an effect never cuts the music.
+  MAIN = 0
+  SUB = 1
+
+  # Channels, as the APU numbers them. Named here rather than in each app: the
+  # Python binding has had them from the start, and an app that spells them 0
+  # and 1 reads worse for no reason.
+  CH_PULSE1 = 0
+  CH_PULSE2 = 1
+  CH_TRIANGLE = 2
+  CH_NOISE = 3
+
   def initialize(app)
     @app = app
     # note_on / note_off go through a C builder when the owner is a real

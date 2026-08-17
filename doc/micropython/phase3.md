@@ -117,7 +117,7 @@ Ruby 版 C 実体と同じものを使う。
    追加。fmrb_mp 側で prelude -> ユーザスクリプトの順に実行する。
 3. **デモアプリ**: flash/app/demo/python.app.py + python.app.toml。
    形は Ruby アプリと同じ (class MyApp(FmrbApp): ... 末尾に MyApp().start())。
-   内容は graphics.app.rb の Shapes セクションの縮小版 (第一段階 API の
+   内容は picoruby.app.rb (当時は graphics.app.rb) の Shapes セクションの縮小版 (第一段階 API の
    図形と文字、クリックでページ切替) が良い手本。phase2 の pytest.app.py はテスト用と分かる場所へ
    整理するか削除する。
 4. **デスクトップ側の拡張子対応**: 分割ソース
