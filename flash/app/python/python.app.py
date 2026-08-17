@@ -24,6 +24,21 @@ PUBLISHER = "/app/demo/pub_demo.app.rb"
 SAMPLE_JA = "こんにちは ABC 日本語"
 SCALE = (262, 294, 330, 349, 392, 440, 494, 523)
 
+# The page is white and the palette is picked for contrast against it, the
+# same one flash/app/demo/picoruby.app.rb uses: RGB332 is RRRGGGBB, and the
+# saturated constants in FmrbGfx (YELLOW 0xFC, CYAN 0x1F, GREEN 0x1C) are near
+# white in luminance, so mid and dark tones stand in for them.
+PAPER = 0xFF        # page background (white)
+INK = 0x00          # body text and outlines (black)
+INK_SUB = 0x49      # captions (dark gray)
+C_RED = 0xC0
+C_GREEN = 0x0C
+C_BLUE = 0x02
+C_ORANGE = 0xE8     # stands in for yellow
+C_TEAL = 0x0F       # stands in for cyan
+C_PURPLE = 0x82     # stands in for magenta
+C_PANEL = 0xB6      # light gray fill, for panels under dark shapes
+
 PAGES = ("Shapes", "Text", "Sprites", "Sound", "System")
 KEYS = ("click or 1-5 for pages",
         "T: font",
@@ -70,13 +85,13 @@ class PythonDemoApp(FmrbApp):
 
     def draw_page(self):
         g = self.gfx
-        self.clear_user_area(FmrbGfx.BLACK)
+        self.clear_user_area(PAPER)
         x0 = self.user_area_x0
         y0 = self.user_area_y0
 
         g.draw_text(x0 + 4, y0 + 2,
                     str(self.page + 1) + "/" + str(len(PAGES)) + " " + PAGES[self.page],
-                    FmrbGfx.YELLOW)
+                    INK, PAPER)
 
         if self.page == 0:
             self.draw_shapes(x0, y0 + 14)
@@ -89,7 +104,7 @@ class PythonDemoApp(FmrbApp):
         else:
             self.draw_system_page(x0, y0 + 14)
 
-        g.draw_text(x0 + 4, self.user_area_y1 - 10, KEYS[self.page], FmrbGfx.GRAY)
+        g.draw_text(x0 + 4, self.user_area_y1 - 10, KEYS[self.page], INK_SUB, PAPER)
         self.draw_window_frame()
         g.present()
 
@@ -104,24 +119,24 @@ class PythonDemoApp(FmrbApp):
 
     def draw_shapes(self, x0, y0):
         g = self.gfx
-        g.draw_round_rect(x0 + 6, y0 + 4, 56, 26, 6, FmrbGfx.CYAN)
-        g.fill_round_rect(x0 + 70, y0 + 4, 56, 26, 6, FmrbGfx.GREEN)
-        g.draw_ellipse(x0 + 34, y0 + 52, 26, 14, FmrbGfx.MAGENTA)
-        g.fill_ellipse(x0 + 98, y0 + 52, 26, 14, FmrbGfx.RED)
+        g.draw_round_rect(x0 + 6, y0 + 4, 56, 26, 6, C_TEAL)
+        g.fill_round_rect(x0 + 70, y0 + 4, 56, 26, 6, C_GREEN)
+        g.draw_ellipse(x0 + 34, y0 + 52, 26, 14, C_PURPLE)
+        g.fill_ellipse(x0 + 98, y0 + 52, 26, 14, C_RED)
         g.draw_triangle(x0 + 8, y0 + 104, x0 + 60, y0 + 104, x0 + 34, y0 + 74,
-                        FmrbGfx.YELLOW)
+                        C_ORANGE)
         g.fill_triangle(x0 + 72, y0 + 104, x0 + 124, y0 + 104, x0 + 98, y0 + 74,
-                        FmrbGfx.BLUE)
+                        C_BLUE)
 
         # A fan of lines, stepped with a list comprehension: the language is
         # part of what this demo shows.
-        colours = [FmrbGfx.RED, FmrbGfx.YELLOW, FmrbGfx.GREEN, FmrbGfx.CYAN]
+        colours = [C_RED, C_ORANGE, C_GREEN, C_TEAL]
         cx = x0 + 160
         for i, dx in enumerate([-30, -10, 10, 30]):
             g.draw_line(cx, y0 + 104, cx + dx, y0 + 8, colours[i])
         for i in range(3):
-            g.draw_circle(x0 + 140 + i * 22, y0 + 40, 9, FmrbGfx.WHITE)
-            g.fill_circle(x0 + 140 + i * 22, y0 + 40, 4, FmrbGfx.GRAY)
+            g.draw_circle(x0 + 140 + i * 22, y0 + 40, 9, INK)
+            g.fill_circle(x0 + 140 + i * 22, y0 + 40, 4, C_PANEL)
 
     # ---- page 2: text ----
 
@@ -138,17 +153,17 @@ class PythonDemoApp(FmrbApp):
                 g.set_font(FmrbGfx.FONT_JA, 12)
 
         mixed = self.font_mode == 2
-        g.draw_text(x0 + 6, y0 + 6, modes[self.font_mode], FmrbGfx.GRAY)
-        g.draw_text(x0 + 6, y0 + 20, sample, FmrbGfx.CYAN, None, mixed)
+        g.draw_text(x0 + 6, y0 + 6, modes[self.font_mode], INK_SUB, PAPER)
+        g.draw_text(x0 + 6, y0 + 20, sample, C_BLUE, PAPER, mixed)
 
         # text_width walks UTF-8, so the rule under the line ends exactly where
         # the text does -- which is the point of drawing it.
         width = g.text_width(sample)
-        g.draw_line(x0 + 6, y0 + 34, x0 + 6 + width - 1, y0 + 34, FmrbGfx.RED)
+        g.draw_line(x0 + 6, y0 + 34, x0 + 6 + width - 1, y0 + 34, C_RED)
         g.set_font(FmrbGfx.FONT_DEFAULT)
         g.draw_text(x0 + 6, y0 + 40,
                     "width " + str(width) + " px, len " + str(len(sample)) + " bytes",
-                    FmrbGfx.GRAY)
+                    INK_SUB, PAPER)
 
         rows = (
             "language() = " + language(),
@@ -158,7 +173,7 @@ class PythonDemoApp(FmrbApp):
             "canvas " + str(self.window_width) + "x" + str(self.window_height),
         )
         for i, row in enumerate(rows):
-            g.draw_text(x0 + 6, y0 + 58 + i * 10, row, FmrbGfx.WHITE)
+            g.draw_text(x0 + 6, y0 + 58 + i * 10, row, INK, PAPER)
 
     # ---- page 3: sprites, images, tiles ----
 
@@ -185,9 +200,9 @@ class PythonDemoApp(FmrbApp):
         # An image drawn from Python rather than loaded.
         self.badge = SpriteImage(self.gfx, 20, 12)
         self.badge.set_target()
-        self.gfx.fill_rect(0, 0, 20, 12, FmrbGfx.BLUE)
-        self.gfx.draw_rect(0, 0, 20, 12, FmrbGfx.WHITE)
-        self.gfx.draw_text(3, 2, "PY", FmrbGfx.WHITE)
+        self.gfx.fill_rect(0, 0, 20, 12, C_BLUE)
+        self.gfx.draw_rect(0, 0, 20, 12, PAPER)
+        self.gfx.draw_text(3, 2, "PY", PAPER)
         self.badge.reset_target()
 
         self.sprites_ready = True
@@ -199,8 +214,8 @@ class PythonDemoApp(FmrbApp):
             g.draw_tile(self.sheet.id, (i % 4) * 16, 0, 16, 16, x0 + 6 + i * 16, y0 + 4)
         g.draw_tile(self.badge.id, 0, 0, 20, 12, self.user_area_x1 - 26, y0 + 6)
 
-        g.draw_text(x0 + 6, y0 + 26, "sprite: move and frame", FmrbGfx.GRAY)
-        g.draw_text(x0 + 6, y0 + 74, "I: a decoded picture ->", FmrbGfx.GRAY)
+        g.draw_text(x0 + 6, y0 + 26, "sprite: move and frame", INK, PAPER)
+        g.draw_text(x0 + 6, y0 + 74, "I: a decoded picture ->", INK_SUB, PAPER)
 
         if self.sprite_x == 0:
             self.sprite_x = x0 + 20
@@ -230,18 +245,18 @@ class PythonDemoApp(FmrbApp):
     def draw_sound_page(self, x0, y0):
         g = self.gfx
         rows = (
-            ("1: scale on pulse1", FmrbGfx.WHITE),
-            ("2: tune on MAIN " + ("(playing)" if self.tune_on else ""), FmrbGfx.WHITE),
-            ("3: effect on SUB", FmrbGfx.WHITE),
-            ("0: stop everything", FmrbGfx.WHITE),
-            ("", FmrbGfx.GRAY),
-            ("a note allocates nothing:", FmrbGfx.GRAY),
-            ("it goes straight to C", FmrbGfx.GRAY),
+            ("1: scale on pulse1", INK),
+            ("2: tune on MAIN " + ("(playing)" if self.tune_on else ""), INK),
+            ("3: effect on SUB", INK),
+            ("0: stop everything", INK),
+            ("", INK_SUB),
+            ("a note allocates nothing:", INK_SUB),
+            ("it goes straight to C", INK_SUB),
         )
         for i, entry in enumerate(rows):
             text, colour = entry
             if text:
-                g.draw_text(x0 + 6, y0 + 6 + i * 12, text, colour)
+                g.draw_text(x0 + 6, y0 + 6 + i * 12, text, colour, PAPER)
 
     def play_scale(self):
         self.note_i = 0
@@ -305,10 +320,10 @@ class PythonDemoApp(FmrbApp):
         # itself -- and returns text for the app to draw.
         for i, entry in enumerate(python_status.rows(self)):
             label, value = entry
-            g.draw_text(x0 + 6, y0 + 6 + i * 11, label, FmrbGfx.GRAY)
-            g.draw_text(x0 + 86, y0 + 6 + i * 11, value, FmrbGfx.WHITE)
+            g.draw_text(x0 + 6, y0 + 6 + i * 11, label, INK_SUB, PAPER)
+            g.draw_text(x0 + 86, y0 + 6 + i * 11, value, INK, PAPER)
         if self.blink:
-            g.fill_circle(self.user_area_x1 - 10, y0 + 8, 3, FmrbGfx.GREEN)
+            g.fill_circle(self.user_area_x1 - 10, y0 + 8, 3, C_GREEN)
 
     # One-shot timers: the callback arms the next one. They also run inside a
     # wait, which is why the dot keeps flashing while nothing else happens.
