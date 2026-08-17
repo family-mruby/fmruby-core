@@ -39,9 +39,12 @@ extern int spinel_hello_entry(void);
 
 /* The greeting itself is tiny, but a Spinel instance needs a baseline heap for
    its own bootstrap (class table, interned symbols, string heap) before any
-   Ruby runs; 16 KB is not enough (instance creation returns NULL). 64 KB is
-   comfortable and still small next to the FFT gem's 192 KB. */
-#define SH_POOL_BYTES (64 * 1024)
+   Ruby runs, and that baseline grows with the runtime. 16 KB was never enough;
+   64 KB was comfortable when this sample was written and is not any more --
+   instance creation started returning NULL, which the app could only report as
+   "could not start the Spinel Hello instance (-3)". 128 KB is what the raycast
+   gem uses, and that one has kept working. */
+#define SH_POOL_BYTES (128 * 1024)
 #define SH_OUT_MAX    64
 #define SH_NAME_MAX   48
 
@@ -78,7 +81,8 @@ int spinel_hello_begin(void)
     size_t threshold = SH_POOL_BYTES / 32;
     s_est = fmrb_spinel_instance_begin(s_pool, SH_POOL_BYTES, threshold, threshold);
     if (!s_est) {
-        FMRB_LOGE(TAG, "could not create the Spinel Hello instance");
+        FMRB_LOGE(TAG, "could not create the Spinel Hello instance (pool %d bytes: "
+                       "too small for the runtime's own bootstrap?)", SH_POOL_BYTES);
         fmrb_sys_free(s_pool);
         s_pool = NULL;
         return -3;
