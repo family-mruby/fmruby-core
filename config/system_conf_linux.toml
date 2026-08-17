@@ -53,3 +53,20 @@ dest = "/flash/data/test.nsf"
 [[sync_files]]
 src = "/usr/share/backgrounds/bg_426x240.png"
 dest = "/flash/data/bg_426x240.png"
+
+# App categories hidden from the launcher (files stay on flash and remain
+# runnable from the editor, the file selector and debugd). Same list as the
+# device configs, so the simulation shows what a machine shows -- a demo or a
+# screenshot taken here is then the real thing.
+[[launcher_exclude]]
+dir = "debug"
+
+[[launcher_exclude]]
+dir = "test"
+
+# Apps that need hardware only a Modern (ESP32-P4 / Tab5) machine has -- the
+# microphone and the six-axis sensor. They run anywhere (each one checks for
+# its device first), but there is nothing for them to read on a Retro
+# machine, so the Retro configs keep them out of the launcher.
+[[launcher_exclude]]
+dir = "modern"
