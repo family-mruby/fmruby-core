@@ -66,6 +66,8 @@ static bool g_tx_subscribed = false;
 #define BLE_FS_MAX_CHUNK_SIZE 2048
 // A write slower than this is worth a line in the log: it is the shape of a
 // transfer that is about to time out on the client.
+// "mnt" and "tmp" at the root, "sd" under /mnt -- two is the most any level has.
+#define BLE_FS_MAX_VIRTUAL_CHILDREN 4
 #define BLE_FS_PUT_SLOW_MS    300
 // Drop a held-open upload after this long without a chunk.
 #define BLE_FS_PUT_IDLE_US    (5 * 1000 * 1000)
@@ -731,13 +733,17 @@ static void ble_fs_cmd_cd(const char *json_params, char *response, size_t respon
         return;
     }
 
+    // "/mnt" has no directory behind it -- it exists so the mounts have a
+    // Unix-shaped place to live. Ruby's Dir knows that; this path has to know
+    // it too, or the console cannot walk to the SD card.
     fmrb_dir_t dir;
     fmrb_err_t err = fmrb_hal_file_opendir(path, &dir);
-    if (err != FMRB_OK) {
+    if (err == FMRB_OK) {
+        fmrb_hal_file_closedir(dir);
+    } else if (fmrb_hal_file_virtual_children(path, NULL) == NULL) {
         snprintf(response, response_size, "{\"ok\":false,\"err\":\"Directory not found\"}");
         return;
     }
-    fmrb_hal_file_closedir(dir);
 
     strncpy(g_fs_ctx.current_dir, path, sizeof(g_fs_ctx.current_dir) - 1);
     g_fs_ctx.current_dir[sizeof(g_fs_ctx.current_dir) - 1] = '\0';
@@ -753,9 +759,18 @@ static void ble_fs_cmd_ls(const char *json_params, char *response, size_t respon
         strncpy(path, g_fs_ctx.current_dir, sizeof(path));
     }
 
+    // Mount points the underlying filesystem does not own ("mnt" and "tmp" at
+    // the root, "sd" under /mnt). They are listed alongside the real entries,
+    // the same way Ruby's Dir presents them, so the console sees the same tree
+    // the device does.
+    size_t vcount = 0;
+    const char *const *vnames = fmrb_hal_file_virtual_children(path, &vcount);
+    bool vshown[BLE_FS_MAX_VIRTUAL_CHILDREN] = {0};
+    if (vcount > BLE_FS_MAX_VIRTUAL_CHILDREN) vcount = BLE_FS_MAX_VIRTUAL_CHILDREN;
+
     fmrb_dir_t dir;
-    fmrb_err_t err = fmrb_hal_file_opendir(path, &dir);
-    if (err != FMRB_OK) {
+    bool have_real = (fmrb_hal_file_opendir(path, &dir) == FMRB_OK);
+    if (!have_real && vcount == 0) {
         snprintf(response, response_size, "{\"ok\":false,\"err\":\"Cannot open directory\"}");
         return;
     }
@@ -772,8 +787,13 @@ static void ble_fs_cmd_ls(const char *json_params, char *response, size_t respon
     bool truncated = false;
 
     fmrb_file_info_t info;
-    while (fmrb_hal_file_readdir(dir, &info) == FMRB_OK) {
+    while (have_real && fmrb_hal_file_readdir(dir, &info) == FMRB_OK) {
         if (info.name[0] == '\0') break;
+
+        // A real entry of the same name wins; the synthetic one is dropped.
+        for (size_t v = 0; v < vcount; v++) {
+            if (strcmp(vnames[v], info.name) == 0) vshown[v] = true;
+        }
 
         // Leave room for the separator, this entry and the closing "]}".
         if (pos + strlen(info.name) + 64 >= response_size) { truncated = true; break; }
@@ -791,7 +811,20 @@ static void ble_fs_cmd_ls(const char *json_params, char *response, size_t respon
         if (pos > response_size) pos = response_size;
     }
 
-    fmrb_hal_file_closedir(dir);
+    if (have_real) fmrb_hal_file_closedir(dir);
+
+    for (size_t v = 0; v < vcount && !truncated; v++) {
+        if (vshown[v]) continue;
+        if (pos + strlen(vnames[v]) + 64 >= response_size) { truncated = true; break; }
+        if (!first) {
+            pos += (size_t)snprintf(response + pos, response_size - pos, ",");
+            if (pos > response_size) pos = response_size;
+        }
+        first = false;
+        pos += (size_t)snprintf(response + pos, response_size - pos,
+                                "{\"n\":\"%s\",\"t\":\"d\",\"s\":0}", vnames[v]);
+        if (pos > response_size) pos = response_size;
+    }
     if (pos < response_size) {
         snprintf(response + pos, response_size - pos,
                  truncated ? "],\"trunc\":true}" : "]}");
