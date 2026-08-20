@@ -29,6 +29,7 @@
 #include "driver/gpio.h"
 #include "driver/ppa.h"
 #include "esp_heap_caps.h"
+#include "esp_timer.h"
 
 extern "C" {
 #include "fmrb_bmp332.h"
@@ -3159,6 +3160,7 @@ static bool video_service(void) {
         return false;
     }
 
+    int64_t copy_t0 = esp_timer_get_time();
     p4_canvas_t *c = canvas_find(canvas_id);
     if (c && c->sprite && pixels) {
         uint16_t *dst = (uint16_t *)c->sprite->getBuffer();
@@ -3189,6 +3191,8 @@ static bool video_service(void) {
                     if (rb) memcpy(rb, dst, (size_t)c->width * c->height * 2);
                 }
                 g_needs_render = true;
+                display_p4_video_note_copy_us(
+                    (uint32_t)(esp_timer_get_time() - copy_t0));
             }
         }
     }

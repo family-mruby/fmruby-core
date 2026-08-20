@@ -95,6 +95,16 @@ bool display_p4_video_take_frame(const uint8_t **pixels, uint16_t *w,
 /** @brief Return the buffer taken by display_p4_video_take_frame(). */
 void display_p4_video_release_frame(void);
 
+/**
+ * @brief Report how long the display task took to copy one frame into the
+ *        canvas (microseconds).
+ *
+ * Feeds the periodic "profile" log line, which reports read / decode / copy
+ * side by side -- the three stages live in two tasks, so the copy time has to
+ * be handed back here to be logged with the others.
+ */
+void display_p4_video_note_copy_us(uint32_t us);
+
 /** @brief Stop playback if it owns this canvas (called when it is deleted). */
 void display_p4_video_canvas_gone(uint16_t canvas_id);
 

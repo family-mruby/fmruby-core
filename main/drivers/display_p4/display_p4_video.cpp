@@ -241,6 +241,46 @@ typedef struct {
 
 static video_player_t s_p = {};
 
+// ---- stage profiling --------------------------------------------------------
+// Read / decode run on the player task, the copy on the display task. Summed
+// here and logged together every PROF_WINDOW frames. Cost is one timer read
+// per stage, and the numbers are what tells a size limit from a decoder limit.
+#define PROF_WINDOW 60
+
+static struct {
+    uint32_t frames;
+    uint32_t read_us,  read_max;
+    uint32_t dec_us,   dec_max;
+    uint32_t copy_n, copy_us, copy_max;
+} s_prof = {};
+
+static inline void prof_add(uint32_t *sum, uint32_t *max, int64_t us)
+{
+    *sum += (uint32_t)us;
+    if ((uint32_t)us > *max) *max = (uint32_t)us;
+}
+
+extern "C" void display_p4_video_note_copy_us(uint32_t us)
+{
+    s_prof.copy_n++;
+    prof_add(&s_prof.copy_us, &s_prof.copy_max, us);
+}
+
+static void prof_report(uint16_t w, uint16_t h)
+{
+    uint32_t n = s_prof.frames ? s_prof.frames : 1;
+    uint32_t cn = s_prof.copy_n ? s_prof.copy_n : 1;
+    FMRB_LOGI(TAG,
+              "profile %ux%u over %u frames: read avg=%uus max=%uus, "
+              "decode avg=%uus max=%uus, copy avg=%uus max=%uus (%u copies)",
+              (unsigned)w, (unsigned)h, (unsigned)s_prof.frames,
+              (unsigned)(s_prof.read_us / n), (unsigned)s_prof.read_max,
+              (unsigned)(s_prof.dec_us / n),  (unsigned)s_prof.dec_max,
+              (unsigned)(s_prof.copy_us / cn), (unsigned)s_prof.copy_max,
+              (unsigned)s_prof.copy_n);
+    s_prof = {};
+}
+
 static inline void player_lock(void)   { if (s_p.lock) xSemaphoreTake(s_p.lock, portMAX_DELAY); }
 static inline void player_unlock(void) { if (s_p.lock) xSemaphoreGive(s_p.lock); }
 
@@ -431,7 +471,10 @@ static void player_close_file(void)
 //   1 = a frame was published, 0 = end of file, -1 = fatal
 static int player_step(bool decode)
 {
+    int64_t t0 = esp_timer_get_time();
     size_t len = read_next_frame(s_p.read_buf, s_p.read_buf_size);
+    int64_t t1 = esp_timer_get_time();
+    prof_add(&s_prof.read_us, &s_prof.read_max, t1 - t0);
     if (len == 0) return 0;
     if (!decode) return 1;
 
@@ -444,6 +487,8 @@ static int player_step(bool decode)
         slot_abandon(slot);
         return -1;
     }
+    prof_add(&s_prof.dec_us, &s_prof.dec_max, esp_timer_get_time() - t1);
+    if (++s_prof.frames >= PROF_WINDOW) prof_report(w, h);
     slot->w = w;
     slot->h = h;
     slot->stride_px = stride;
