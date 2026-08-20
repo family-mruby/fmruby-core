@@ -1,0 +1,9 @@
+app_handle_name = "video_play"
+app_screen_name = "VideoPlay"
+app_screen_name_ja = "動画再生"
+default_window_mode = "window"
+default_window_width = 332
+default_window_height = 218
+default_window_pos_x = 40
+default_window_pos_y = 16
+launcher_visible = true

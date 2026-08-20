@@ -124,3 +124,12 @@ CONFIG_LITTLEFS_MALLOC_STRATEGY_INTERNAL=y
 # BLE
 
 CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
+
+# FATFS: long file names on the SD card.
+# Same reason as the P4 board: the IDF default (LFN_NONE) only sees 8.3 names,
+# so a file copied from a PC as "demo.mjpg" is reachable only as "DEMO~1.MJP".
+# HEAP keeps the 255-char work buffer off the stack, which suits tasks with
+# small stacks. Names stay in the OEM codepage (437): long ASCII names work,
+# Japanese ones need UTF-8 API encoding and a dynamic codepage (separate call).
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255

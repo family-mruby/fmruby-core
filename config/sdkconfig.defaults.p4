@@ -140,3 +140,16 @@ CONFIG_LWIP_IRAM_OPTIMIZATION=n
 
 # A few extra sockets for httpd (viewer page + MJPEG stream + WS + mDNS)
 CONFIG_LWIP_MAX_SOCKETS=16
+
+# FATFS: long file names on the SD card.
+# The IDF default (LFN_NONE) only sees 8.3 names, so a file copied from a PC
+# as "demo.mjpg" is reachable only as "DEMO~1.MJP" -- the SD card is where the
+# user puts their own files, so that surprise is not acceptable here.
+# HEAP keeps the 255-char work buffer off the stack; it is allocated per call
+# and freed again, which suits tasks with small stacks.
+# Names stay in the OEM codepage (437): long ASCII names work, Japanese ones
+# still do not. Those need UTF-8 API encoding and a dynamic codepage, which is
+# a separate decision.
+# The Retro boards carry the same setting (their defaults files).
+CONFIG_FATFS_LFN_HEAP=y
+CONFIG_FATFS_MAX_LFN=255

@@ -383,6 +383,108 @@ const char *fmrb_spx_gfx_create_image_from_file(int canvas_id, const char *path,
     return (const char *)buf;
 }
 
+/* ---- motion-JPEG playback ------------------------------------------------ */
+
+static const char *spx_video_status_record(uint8_t cmd, const uint8_t *payload,
+                                           size_t payload_len)
+{
+    static uint8_t buf[FMRB_SPX_GFX_VIDEO_STATUS_RECORD_SIZE];
+    sp_net_bin_len = 0;
+
+#ifndef FMRB_HW_MODERN
+    /* Retro cannot play video; answer now rather than after a sync timeout. */
+    (void)cmd; (void)payload; (void)payload_len;
+    return "";
+#else
+
+    uint8_t resp_buf[sizeof(fmrb_link_graphics_video_status_t)];
+    uint32_t resp_len = sizeof(resp_buf);
+    fmrb_err_t ret = fmrb_transport_send_sync(
+        FMRB_LINK_TYPE_GRAPHICS, cmd,
+        payload, payload_len,
+        resp_buf, &resp_len, 5000);
+    if (ret != FMRB_OK || resp_len < sizeof(fmrb_link_graphics_video_status_t)) {
+        return "";
+    }
+
+    fmrb_link_graphics_video_status_t *st =
+        (fmrb_link_graphics_video_status_t *)resp_buf;
+    buf[0] = st->state;
+    buf[1] = (uint8_t)(st->frames_shown & 0xFF);
+    buf[2] = (uint8_t)((st->frames_shown >> 8) & 0xFF);
+    buf[3] = (uint8_t)((st->frames_shown >> 16) & 0xFF);
+    buf[4] = (uint8_t)((st->frames_shown >> 24) & 0xFF);
+    buf[5] = (uint8_t)(st->frames_dropped & 0xFF);
+    buf[6] = (uint8_t)((st->frames_dropped >> 8) & 0xFF);
+    buf[7] = (uint8_t)((st->frames_dropped >> 16) & 0xFF);
+    buf[8] = (uint8_t)((st->frames_dropped >> 24) & 0xFF);
+    sp_net_bin_len = FMRB_SPX_GFX_VIDEO_STATUS_RECORD_SIZE;
+    return (const char *)buf;
+#endif  /* FMRB_HW_MODERN */
+}
+
+const char *fmrb_spx_gfx_video_open(int canvas_id, const char *path, int len,
+                                    int x, int y, int fps, int loop)
+{
+    static uint8_t buf[FMRB_SPX_GFX_VIDEO_INFO_RECORD_SIZE];
+    sp_net_bin_len = 0;
+    if (!path || len < 0 || len >= 120) {
+        return "";
+    }
+
+#ifndef FMRB_HW_MODERN
+    (void)canvas_id; (void)x; (void)y; (void)fps; (void)loop;
+    return "";
+#else
+
+    uint8_t payload_buf[sizeof(fmrb_link_graphics_video_open_t) + 120];
+    size_t payload_len = sizeof(fmrb_link_graphics_video_open_t) + (size_t)len;
+    fmrb_link_graphics_video_open_t *hdr =
+        (fmrb_link_graphics_video_open_t *)payload_buf;
+    hdr->canvas_id = (uint16_t)canvas_id;
+    hdr->x         = (int16_t)x;
+    hdr->y         = (int16_t)y;
+    hdr->fps       = (uint16_t)fps;
+    hdr->flags     = loop ? FMRB_LINK_GFX_VIDEO_FLAG_LOOP : 0;
+    hdr->path_len  = (uint16_t)len;
+    memcpy(payload_buf + sizeof(fmrb_link_graphics_video_open_t), path, (size_t)len);
+
+    uint8_t resp_buf[sizeof(fmrb_link_graphics_video_opened_t)];
+    uint32_t resp_len = sizeof(resp_buf);
+    fmrb_err_t ret = fmrb_transport_send_sync(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_VIDEO_OPEN,
+        payload_buf, payload_len,
+        resp_buf, &resp_len, 10000);
+    if (ret != FMRB_OK || resp_len < sizeof(fmrb_link_graphics_video_opened_t)) {
+        return "";
+    }
+
+    fmrb_link_graphics_video_opened_t *resp =
+        (fmrb_link_graphics_video_opened_t *)resp_buf;
+    if (resp->result != 0) {
+        return "";  /* Ruby returns nil: the app can fall back */
+    }
+    buf[0] = (uint8_t)(resp->width & 0xFF);  buf[1] = (uint8_t)(resp->width >> 8);
+    buf[2] = (uint8_t)(resp->height & 0xFF); buf[3] = (uint8_t)(resp->height >> 8);
+    sp_net_bin_len = FMRB_SPX_GFX_VIDEO_INFO_RECORD_SIZE;
+    return (const char *)buf;
+#endif  /* FMRB_HW_MODERN */
+}
+
+const char *fmrb_spx_gfx_video_control(int action)
+{
+    fmrb_link_graphics_video_control_t payload;
+    payload.action = (uint8_t)action;
+    return spx_video_status_record(FMRB_LINK_GFX_VIDEO_CONTROL,
+                                   (const uint8_t *)&payload, sizeof(payload));
+}
+
+const char *fmrb_spx_gfx_video_status(void)
+{
+    return spx_video_status_record(FMRB_LINK_GFX_VIDEO_STATUS, NULL, 0);
+}
+
 /* Mask upload chunking (identical to gfx.c). */
 #define SPX_MASK_CHUNK_OVERHEAD 18
 #define SPX_MASK_CHUNK_SIZE \

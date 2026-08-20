@@ -53,6 +53,18 @@
 #define FMRB_PIN_RESTRICTED_STRAP1  GPIO_NUM_NC
 #define FMRB_PIN_RESTRICTED_STRAP2  GPIO_NUM_NC
 
+// microSD. Modern wires the slot to the P4's SDMMC host (slot 0), not to a
+// SPI bus, so the SPI pins stay NC and FMRB_SD_HOST_SDMMC selects the other
+// bring-up path in fmrb_hal_file_esp32.c. There is no card-detect line to
+// the P4: the mount code treats "no detect pin" as "assume a card is in".
+#define FMRB_SD_HOST_SDMMC     1
+#define FMRB_PIN_SD_CLK        GPIO_NUM_43
+#define FMRB_PIN_SD_CMD        GPIO_NUM_44
+#define FMRB_PIN_SD_D0         GPIO_NUM_39
+#define FMRB_PIN_SD_D1         GPIO_NUM_40
+#define FMRB_PIN_SD_D2         GPIO_NUM_41
+#define FMRB_PIN_SD_D3         GPIO_NUM_42
+
 // Not applicable / not yet mapped on Tab5 (no WROVER child chip). NC = unused.
 #define FMRB_PIN_SD_CS         GPIO_NUM_NC
 #define FMRB_PIN_SD_MOSI       GPIO_NUM_NC

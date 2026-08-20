@@ -232,6 +232,14 @@
 #define FMRB_DISPLAY_P4_TASK_PRIORITY   (5)
 #define FMRB_DISPLAY_P4_TASK_CORE       (1)
 
+// Motion-JPEG player (Tab5: reads the file, drives the JPEG decoder, hands
+// finished frames to the display task). Below the display task on purpose --
+// a late frame must never delay compositing. Core 0 keeps the file reads and
+// the decoder wait off the core the compositor runs on.
+#define FMRB_VIDEO_P4_TASK_STACK_SIZE   (4096)
+#define FMRB_VIDEO_P4_TASK_PRIORITY     (4)
+#define FMRB_VIDEO_P4_TASK_CORE         (0)
+
 // Audio task (ESP32-P4 Modern: NTSC-timed APU emulation feed)
 #define FMRB_AUDIO_P4_TASK_STACK_SIZE   (8192)
 #define FMRB_AUDIO_P4_TASK_PRIORITY     (6)

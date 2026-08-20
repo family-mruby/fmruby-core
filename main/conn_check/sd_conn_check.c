@@ -14,7 +14,11 @@
 
 static const char *TAG = "sd_conn_check";
 
-#ifndef CONFIG_IDF_TARGET_LINUX
+// The boot-time connection check only knows the SPI wiring (Retro). On a
+// board whose slot is on the SoC's SDMMC host the real mount in
+// fmrb_hal_file_esp32.c is the only bring-up, and running this check would
+// drive a SPI bus onto pins that are NC. Compile it out there.
+#if !defined(CONFIG_IDF_TARGET_LINUX) && !FMRB_SD_HOST_SDMMC
 
 // SD card SPI configuration
 #define SD_SPI_HOST    SPI3_HOST
@@ -122,11 +126,12 @@ void sd_conn_check_deinit(void)
 }
 
 #else
-// Linux stubs
+// Stubs: Linux, or a board whose slot is on the SDMMC host (mounted for real
+// by fmrb_hal_file_init instead).
 
 int sd_conn_check_init(void)
 {
-    FMRB_LOGI(TAG, "SD card not available on Linux target");
+    FMRB_LOGI(TAG, "SD connection check not applicable on this target");
     return 0;
 }
 

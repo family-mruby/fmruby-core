@@ -357,6 +357,30 @@ class FmrbGfx
     { id: SpxBytes.u16(buf, 0), width: SpxBytes.u16(buf, 2), height: SpxBytes.u16(buf, 4) }
   end
 
+  # Play a file of concatenated JPEG frames into this canvas (Modern only).
+  # Returns FmrbVideo or nil; nil means this backend cannot play it.
+  def video_open(path, x: 0, y: 0, fps: 15, loop: false)
+    s = path.to_s
+    buf = FmrbSpxGfx.fmrb_spx_gfx_video_open(@canvas_id, s, s.bytesize, x, y,
+                                             fps, loop ? 1 : 0)
+    return nil if buf.bytesize == 0
+    FmrbVideo.new(self, SpxBytes.u16(buf, 0), SpxBytes.u16(buf, 2))
+  end
+
+  # Raw hooks FmrbVideo talks through, so the handle class is identical in
+  # both engines.
+  def _video_control(action)
+    buf = FmrbSpxGfx.fmrb_spx_gfx_video_control(action)
+    return nil if buf.bytesize == 0
+    { state: buf.getbyte(0), shown: SpxBytes.u32(buf, 1), dropped: SpxBytes.u32(buf, 5) }
+  end
+
+  def _video_status
+    buf = FmrbSpxGfx.fmrb_spx_gfx_video_status
+    return nil if buf.bytesize == 0
+    { state: buf.getbyte(0), shown: SpxBytes.u32(buf, 1), dropped: SpxBytes.u32(buf, 5) }
+  end
+
   def draw_image(image_id, x: 0, y: 0, scale_x: 1.0, scale_y: 0.0)
     # scale_y_fp8 == 0 is interpreted by the backend as "use scale_x"
     # (uniform), matching gfx.c which just multiplies.
@@ -573,6 +597,60 @@ end
 # replays the block against the real gfx on every draw. Functionally identical
 # (same pixels), without the define-program shim. Slower (re-sends all ops), but
 # correct; batching can be added later if profiling shows it matters.
+# Handle for a motion-JPEG file being played into a canvas (FmrbGfx#video_open).
+# Mirrors the mruby class in picoruby-fmrb-app/mrblib/fmrb-gfx.rb: the numbers
+# are the raw protocol values (action 0 play / 1 pause / 2 stop / 3 rewind,
+# state 0 idle / 1 playing / 2 paused / 3 finished).
+class FmrbVideo
+  def initialize(gfx, width, height)
+    @gfx = gfx
+    @width = width
+    @height = height
+  end
+
+  def width
+    @width
+  end
+
+  def height
+    @height
+  end
+
+  def play
+    @gfx._video_control(0)
+    self
+  end
+
+  def pause
+    @gfx._video_control(1)
+    self
+  end
+
+  def stop
+    @gfx._video_control(2)
+    self
+  end
+
+  def rewind
+    @gfx._video_control(3)
+    self
+  end
+
+  def status
+    @gfx._video_status
+  end
+
+  def playing?
+    st = @gfx._video_status
+    st ? st[:state] == 1 : false
+  end
+
+  def finished?
+    st = @gfx._video_status
+    st ? st[:state] == 3 : false
+  end
+end
+
 class GfxBlock
   # Recorder that forwards the block's DSL calls straight to the gfx instance.
   # Provides the same method names + aliases the mruby Recorder exposes.

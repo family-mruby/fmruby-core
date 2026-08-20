@@ -1029,6 +1029,147 @@ static mrb_value mrb_gfx_create_image_from_file(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// FmrbGfx#_video_open(path, x, y, fps, loop) -> Hash {width:, height:} or nil
+// Starts (paused) a motion-JPEG file playing into this canvas at (x, y).
+// Modern/P4 only; any other backend answers with an error and this returns nil.
+static mrb_value mrb_gfx_video_open(mrb_state *mrb, mrb_value self)
+{
+    char *path;
+    mrb_int x, y, fps;
+    mrb_bool loop;
+    mrb_get_args(mrb, "ziiib", &path, &x, &y, &fps, &loop);
+
+#ifndef FMRB_HW_MODERN
+    // Retro has no hardware JPEG decoder and its display backend cannot read
+    // this board's filesystem. Answer immediately instead of letting the app
+    // wait out a sync timeout on a command the backend will never know.
+    (void)self; (void)path; (void)x; (void)y; (void)fps; (void)loop;
+    return mrb_nil_value();
+#else
+
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) {
+        mrb_raise(mrb, E_RUNTIME_ERROR, "Graphics not initialized");
+    }
+
+    size_t path_len = strlen(path);
+    if (path_len >= 120) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Path too long");
+    }
+
+    uint8_t payload_buf[sizeof(fmrb_link_graphics_video_open_t) + 120];
+    size_t payload_len = sizeof(fmrb_link_graphics_video_open_t) + path_len;
+    fmrb_link_graphics_video_open_t *hdr =
+        (fmrb_link_graphics_video_open_t *)payload_buf;
+    hdr->canvas_id = data->canvas_id;
+    hdr->x         = (int16_t)x;
+    hdr->y         = (int16_t)y;
+    hdr->fps       = (uint16_t)fps;
+    hdr->flags     = loop ? FMRB_LINK_GFX_VIDEO_FLAG_LOOP : 0;
+    hdr->path_len  = (uint16_t)path_len;
+    memcpy(payload_buf + sizeof(fmrb_link_graphics_video_open_t), path, path_len);
+
+    uint8_t resp_buf[sizeof(fmrb_link_graphics_video_opened_t)];
+    uint32_t resp_len = sizeof(resp_buf);
+    fmrb_err_t ret = fmrb_transport_send_sync(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_VIDEO_OPEN,
+        payload_buf, payload_len,
+        resp_buf, &resp_len,
+        10000);
+    if (ret != FMRB_OK || resp_len < sizeof(fmrb_link_graphics_video_opened_t)) {
+        FMRB_LOGE(TAG, "video_open failed: %d (path=%s)", ret, path);
+        return mrb_nil_value();
+    }
+
+    fmrb_link_graphics_video_opened_t *resp =
+        (fmrb_link_graphics_video_opened_t *)resp_buf;
+    if (resp->result != 0) {
+        FMRB_LOGE(TAG, "video_open rejected: %u (path=%s)", resp->result, path);
+        return mrb_nil_value();
+    }
+
+    mrb_value hash = mrb_hash_new(mrb);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_lit(mrb, "width")),
+                 mrb_fixnum_value(resp->width));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_lit(mrb, "height")),
+                 mrb_fixnum_value(resp->height));
+    return hash;
+#endif  /* FMRB_HW_MODERN */
+}
+
+// Shared tail for _video_control / _video_status: unpack the status record.
+static mrb_value video_status_hash(mrb_state *mrb, const uint8_t *buf, uint32_t len)
+{
+    if (len < sizeof(fmrb_link_graphics_video_status_t)) {
+        FMRB_LOGW(TAG, "video status: %u bytes, need %u",
+                  (unsigned)len, (unsigned)sizeof(fmrb_link_graphics_video_status_t));
+        return mrb_nil_value();
+    }
+    const fmrb_link_graphics_video_status_t *st =
+        (const fmrb_link_graphics_video_status_t *)buf;
+    mrb_value hash = mrb_hash_new(mrb);
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_lit(mrb, "state")),
+                 mrb_fixnum_value(st->state));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_lit(mrb, "shown")),
+                 mrb_fixnum_value((mrb_int)st->frames_shown));
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_lit(mrb, "dropped")),
+                 mrb_fixnum_value((mrb_int)st->frames_dropped));
+    return hash;
+}
+
+// FmrbGfx#_video_control(action) -> Hash status or nil
+static mrb_value mrb_gfx_video_control(mrb_state *mrb, mrb_value self)
+{
+    mrb_int action;
+    mrb_get_args(mrb, "i", &action);
+    (void)self;
+
+#ifndef FMRB_HW_MODERN
+    (void)action;
+    return mrb_nil_value();
+#else
+
+    fmrb_link_graphics_video_control_t payload;
+    payload.action = (uint8_t)action;
+
+    uint8_t resp_buf[sizeof(fmrb_link_graphics_video_status_t)];
+    uint32_t resp_len = sizeof(resp_buf);
+    fmrb_err_t ret = fmrb_transport_send_sync(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_VIDEO_CONTROL,
+        (uint8_t *)&payload, sizeof(payload),
+        resp_buf, &resp_len, 5000);
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "video control: send failed (%d)", (int)ret);
+        return mrb_nil_value();
+    }
+    return video_status_hash(mrb, resp_buf, resp_len);
+#endif  /* FMRB_HW_MODERN */
+}
+
+// FmrbGfx#_video_status -> Hash status or nil
+static mrb_value mrb_gfx_video_status(mrb_state *mrb, mrb_value self)
+{
+    (void)self;
+#ifndef FMRB_HW_MODERN
+    return mrb_nil_value();
+#else
+    uint8_t resp_buf[sizeof(fmrb_link_graphics_video_status_t)];
+    uint32_t resp_len = sizeof(resp_buf);
+    fmrb_err_t ret = fmrb_transport_send_sync(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_VIDEO_STATUS,
+        NULL, 0,
+        resp_buf, &resp_len, 5000);
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "video status: send failed (%d)", (int)ret);
+        return mrb_nil_value();
+    }
+    return video_status_hash(mrb, resp_buf, resp_len);
+#endif  /* FMRB_HW_MODERN */
+}
+
 // FmrbGfx#_create_mask(width, height, data) -> Integer
 //
 // Uploads a 1bpp mask to the graphics backend in two phases (modeled on
@@ -1586,6 +1727,11 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_draw_tile",         mrb_gfx_draw_tile,         MRB_ARGS_REQ(7));
     mrb_define_method(mrb, gfx_class, "_draw_image", mrb_gfx_draw_image, MRB_ARGS_REQ(5));
     mrb_define_method(mrb, gfx_class, "_delete_image", mrb_gfx_delete_image, MRB_ARGS_REQ(1));
+
+    // Motion-JPEG playback (Modern/P4 only; nil elsewhere)
+    mrb_define_method(mrb, gfx_class, "_video_open", mrb_gfx_video_open, MRB_ARGS_REQ(5));
+    mrb_define_method(mrb, gfx_class, "_video_control", mrb_gfx_video_control, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, gfx_class, "_video_status", mrb_gfx_video_status, MRB_ARGS_NONE());
 
     // CVBS/NTSC output control
     mrb_define_method(mrb, gfx_class, "set_output_level", mrb_gfx_set_output_level, MRB_ARGS_REQ(1));

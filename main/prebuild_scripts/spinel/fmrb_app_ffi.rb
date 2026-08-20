@@ -66,6 +66,9 @@ module FmrbSpxGfx
   ffi_func :fmrb_spx_gfx_delete_image, [:int, :int], :int
   # returns :binstr 6B (id,w,h u16 LE) or "" (nil)
   ffi_func :fmrb_spx_gfx_create_image_from_file, [:int, :str, :int], :binstr
+  ffi_func :fmrb_spx_gfx_video_open,    [:int, :str, :int, :int, :int, :int, :int], :binstr
+  ffi_func :fmrb_spx_gfx_video_control, [:int], :binstr
+  ffi_func :fmrb_spx_gfx_video_status,  [], :binstr
   ffi_func :fmrb_spx_gfx_create_mask,  [:int, :int, :int, :str, :int], :int
   ffi_func :fmrb_spx_gfx_delete_mask,  [:int, :int], :int
   ffi_func :fmrb_spx_gfx_draw_image_masked, [:int, :int, :int, :int, :int], :int

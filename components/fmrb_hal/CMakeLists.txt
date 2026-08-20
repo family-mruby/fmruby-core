@@ -49,7 +49,7 @@ else()
     endif()
     set(PLATFORM_REQUIRES esp_system esp_timer freertos log spi_flash driver fmrb_msg
         fmrb_log fmrb_mem fmrb_cobs fmrb_common esp_littlefs fatfs sdmmc vfs
-        esp_driver_i2c esp_driver_rmt)
+        esp_driver_i2c esp_driver_rmt esp_driver_sdmmc esp_driver_sdspi)
     set(PLATFORM_PRIV_REQUIRES )
 endif()
 

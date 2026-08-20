@@ -120,6 +120,23 @@ const char *fmrb_spx_gfx_create_image_from_file(int canvas_id, const char *path,
  * @brief Upload a 1bpp mask. `data`/`len` are the packed rows
  *        (((w+7)/8)*h bytes). Returns the mask id (> 0) or a negative code.
  */
+/* --- motion-JPEG playback (Modern/P4 only) --- */
+/**
+ * @brief Play a file of concatenated JPEG frames into a canvas. Returns a
+ *        4-byte :binstr record (width u16, height u16, LE) or an empty String
+ *        (Ruby returns nil) when this backend cannot play it.
+ */
+#define FMRB_SPX_GFX_VIDEO_INFO_RECORD_SIZE 4
+const char *fmrb_spx_gfx_video_open(int canvas_id, const char *path, int len,
+                                    int x, int y, int fps, int loop);
+/**
+ * @brief Player state as a 9-byte :binstr record: state u8, frames shown u32,
+ *        frames dropped u32 (LE). Empty String when the backend did not answer.
+ */
+#define FMRB_SPX_GFX_VIDEO_STATUS_RECORD_SIZE 9
+const char *fmrb_spx_gfx_video_control(int action);
+const char *fmrb_spx_gfx_video_status(void);
+
 int fmrb_spx_gfx_create_mask(int canvas_id, int width, int height, const char *data, int len);
 int fmrb_spx_gfx_delete_mask(int canvas_id, int mask_id);
 int fmrb_spx_gfx_draw_image_masked(int canvas_id, int image_id, int mask_id, int x, int y);

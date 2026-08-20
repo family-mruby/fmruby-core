@@ -13,6 +13,10 @@
 #include "sdmmc_cmd.h"
 #include "driver/sdspi_host.h"
 #include "driver/spi_common.h"
+#if FMRB_SD_HOST_SDMMC
+#include "driver/sdmmc_host.h"
+#include "sd_pwr_ctrl_by_on_chip_ldo.h"
+#endif
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
@@ -69,7 +73,11 @@ static SemaphoreHandle_t s_file_mutex = NULL;
 #define LITTLEFS_PATH "/flash"
 #define SDCARD_PATH "/sd"
 
-// SD card SPI configuration
+// SD card wiring. Two shapes exist:
+//   - Retro: the slot hangs off a SPI bus (SDSPI), with a card-detect line.
+//   - Modern: the slot is on the SoC's own SDMMC host, no card-detect line.
+// FMRB_SD_HOST_SDMMC (fmrb_pin_assign.h) picks which bring-up runs; the rest
+// of the file only sees mount_sd_card() / unmount_sd_card().
 #define SD_SPI_HOST    SPI3_HOST
 #define SD_CS_GPIO     FMRB_PIN_SD_CS
 #define SD_MOSI_GPIO   FMRB_PIN_SD_MOSI
@@ -77,10 +85,18 @@ static SemaphoreHandle_t s_file_mutex = NULL;
 #define SD_MISO_GPIO   FMRB_PIN_SD_MISO
 #define SD_DETECT_GPIO FMRB_PIN_SD_DETECT
 
+#ifndef FMRB_SD_HOST_SDMMC
+#define FMRB_SD_HOST_SDMMC 0
+#endif
+
 // SD card state
 static sdmmc_card_t *s_sd_card = NULL;
 static bool s_sd_mounted = false;
+#if FMRB_SD_HOST_SDMMC
+static sd_pwr_ctrl_handle_t s_sd_pwr_ctrl = NULL;
+#else
 static bool s_spi_initialized = false;
+#endif
 
 // Path-prefix alias table. Each entry maps a user-visible prefix to the
 // underlying VFS mount point. An entry whose `mount` equals its `prefix` is
@@ -267,8 +283,13 @@ static bool is_valid_dir_handle(fmrb_dir_t handle) {
     return slot->in_use;
 }
 
-// Check if SD card is present
+// Check if SD card is present. Boards without a card-detect line report
+// "present" and let the mount itself decide -- an empty slot just fails to
+// mount, which is already a non-fatal path.
 static bool is_sd_card_present(void) {
+    if (SD_DETECT_GPIO == GPIO_NUM_NC) {
+        return true;
+    }
     return (gpio_get_level(SD_DETECT_GPIO) == 0);  // Active low
 }
 
@@ -285,6 +306,67 @@ static esp_err_t mount_sd_card(void) {
 
     esp_err_t ret;
 
+    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
+        .format_if_mount_failed = false,
+        .max_files = 5,
+        .allocation_unit_size = 16 * 1024
+    };
+
+#if FMRB_SD_HOST_SDMMC
+    // SDMMC host (Modern). Two board facts drive this:
+    //   - the slot's IO voltage comes from the on-chip LDO, channel 4. Without
+    //     powering it the card never answers.
+    //   - slot 0 has no card-detect / write-protect line.
+    // Try 4-bit first; a card that will not train all four lines still works
+    // at 1-bit, which is far more bandwidth than the filesystem asks for.
+    if (!s_sd_pwr_ctrl) {
+        sd_pwr_ctrl_ldo_config_t ldo_config = {
+            .ldo_chan_id = 4,
+        };
+        ret = sd_pwr_ctrl_new_on_chip_ldo(&ldo_config, &s_sd_pwr_ctrl);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "SD LDO power control failed: %s", esp_err_to_name(ret));
+            return ret;
+        }
+    }
+
+    sdmmc_host_t host = SDMMC_HOST_DEFAULT();
+    host.slot = SDMMC_HOST_SLOT_0;
+    host.max_freq_khz = SDMMC_FREQ_HIGHSPEED;
+    host.pwr_ctrl_handle = s_sd_pwr_ctrl;
+
+    sdmmc_slot_config_t slot_config = {0};
+    slot_config.cd  = SDMMC_SLOT_NO_CD;
+    slot_config.wp  = SDMMC_SLOT_NO_WP;
+    slot_config.clk = FMRB_PIN_SD_CLK;
+    slot_config.cmd = FMRB_PIN_SD_CMD;
+    slot_config.d0  = FMRB_PIN_SD_D0;
+    slot_config.d1  = FMRB_PIN_SD_D1;
+    slot_config.d2  = FMRB_PIN_SD_D2;
+    slot_config.d3  = FMRB_PIN_SD_D3;
+    slot_config.width = 4;
+    slot_config.flags = 0;
+
+    ret = esp_vfs_fat_sdmmc_mount(SDCARD_PATH, &host, &slot_config,
+                                  &mount_config, &s_sd_card);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "SD 4-bit mount failed (%s), retrying at 1-bit",
+                 esp_err_to_name(ret));
+        slot_config.width = 1;
+        ret = esp_vfs_fat_sdmmc_mount(SDCARD_PATH, &host, &slot_config,
+                                      &mount_config, &s_sd_card);
+    }
+
+    if (ret == ESP_OK) {
+        s_sd_mounted = true;
+        ESP_LOGI(TAG, "SD card mounted at %s (SDMMC %d-bit)",
+                 SDCARD_PATH, slot_config.width);
+        sdmmc_card_print_info(stdout, s_sd_card);
+    } else {
+        ESP_LOGW(TAG, "Failed to mount SD card: %s", esp_err_to_name(ret));
+    }
+    return ret;
+#else
     // Initialize SPI bus if not already done
     if (!s_spi_initialized) {
         spi_bus_config_t bus_cfg = {
@@ -310,13 +392,6 @@ static esp_err_t mount_sd_card(void) {
     slot_config.gpio_cs = SD_CS_GPIO;
     slot_config.host_id = SD_SPI_HOST;
 
-    // Mount configuration
-    esp_vfs_fat_sdmmc_mount_config_t mount_config = {
-        .format_if_mount_failed = false,
-        .max_files = 5,
-        .allocation_unit_size = 16 * 1024
-    };
-
     // Use SDSPI host
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
 
@@ -331,6 +406,7 @@ static esp_err_t mount_sd_card(void) {
     }
 
     return ret;
+#endif  // FMRB_SD_HOST_SDMMC
 }
 
 // Unmount SD card
@@ -342,11 +418,18 @@ static void unmount_sd_card(void) {
         ESP_LOGI(TAG, "SD card unmounted");
     }
 
+#if FMRB_SD_HOST_SDMMC
+    if (s_sd_pwr_ctrl) {
+        sd_pwr_ctrl_del_on_chip_ldo(s_sd_pwr_ctrl);
+        s_sd_pwr_ctrl = NULL;
+    }
+#else
     if (s_spi_initialized) {
         spi_bus_free(SD_SPI_HOST);
         s_spi_initialized = false;
         ESP_LOGI(TAG, "SPI bus freed");
     }
+#endif
 }
 
 // Initialize file system
@@ -361,15 +444,20 @@ fmrb_err_t fmrb_hal_file_init(void) {
         return FMRB_ERR_NO_MEMORY;
     }
 
-    // Configure SD card detect GPIO
-    gpio_config_t io_conf = {
-        .pin_bit_mask = (1ULL << SD_DETECT_GPIO),
-        .mode = GPIO_MODE_INPUT,
-        .pull_up_en = GPIO_PULLUP_ENABLE,
-        .pull_down_en = GPIO_PULLDOWN_DISABLE,
-        .intr_type = GPIO_INTR_DISABLE,
-    };
-    gpio_config(&io_conf);
+    // Configure SD card detect GPIO. Boards without the line skip it; the
+    // & 63 keeps the shift well-defined for the compiler on those boards,
+    // where SD_DETECT_GPIO is the negative "not connected" value.
+    const int detect_pin = SD_DETECT_GPIO;
+    if (detect_pin != GPIO_NUM_NC) {
+        gpio_config_t io_conf = {
+            .pin_bit_mask = (1ULL << (detect_pin & 63)),
+            .mode = GPIO_MODE_INPUT,
+            .pull_up_en = GPIO_PULLUP_ENABLE,
+            .pull_down_en = GPIO_PULLDOWN_DISABLE,
+            .intr_type = GPIO_INTR_DISABLE,
+        };
+        gpio_config(&io_conf);
+    }
 
     // Mount LittleFS
     esp_vfs_littlefs_conf_t lfs_conf = {

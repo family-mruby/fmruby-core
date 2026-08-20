@@ -377,6 +377,16 @@ class FmrbGfx
     self
   end
 
+  # Play a file of concatenated JPEG frames into this canvas at (x, y).
+  # Modern (Tab5) only; returns nil anywhere else, so callers can fall back.
+  # Whatever the app drew elsewhere on the canvas stays; do not draw inside
+  # the picture rect while it plays.
+  def video_open(path, x: 0, y: 0, fps: 15, loop: false)
+    info = _video_open(path, x, y, fps, loop)
+    return nil if info.nil?
+    FmrbVideo.new(self, info[:width], info[:height])
+  end
+
   private
 
   # Normalize a (family, size) pair against the current selection so the
@@ -384,5 +394,63 @@ class FmrbGfx
   def font_key(family, size)
     return @current_font if family.nil?
     family == :default ? [:default] : [family, (size || 8)]
+  end
+end
+
+# Handle for a motion-JPEG file being played into a canvas (FmrbGfx#video_open).
+# One player exists at a time, so every instance talks to the same one.
+class FmrbVideo
+  # Actions and states are the raw protocol numbers:
+  #   action 0 play / 1 pause / 2 stop / 3 rewind
+  #   state  0 idle / 1 playing / 2 paused / 3 finished
+
+  def initialize(gfx, width, height)
+    @gfx = gfx
+    @width = width
+    @height = height
+  end
+
+  def width
+    @width
+  end
+
+  def height
+    @height
+  end
+
+  def play
+    @gfx._video_control(0)
+    self
+  end
+
+  def pause
+    @gfx._video_control(1)
+    self
+  end
+
+  # Stops and releases the file. The canvas keeps the last frame drawn.
+  def stop
+    @gfx._video_control(2)
+    self
+  end
+
+  def rewind
+    @gfx._video_control(3)
+    self
+  end
+
+  # {state:, shown:, dropped:} or nil
+  def status
+    @gfx._video_status
+  end
+
+  def playing?
+    st = @gfx._video_status
+    st ? st[:state] == 1 : false
+  end
+
+  def finished?
+    st = @gfx._video_status
+    st ? st[:state] == 3 : false
   end
 end

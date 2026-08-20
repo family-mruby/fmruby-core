@@ -184,7 +184,14 @@ typedef enum {
     // GfxBlock VM (draw-batch programs)
     FMRB_LINK_GFX_DEFINE_PROG = 0x90,
     FMRB_LINK_GFX_EXEC_PROG = 0x91,
-    FMRB_LINK_GFX_DELETE_PROG = 0x92
+    FMRB_LINK_GFX_DELETE_PROG = 0x92,
+
+    // Motion-JPEG playback into a canvas. Modern/P4 only: it needs the SoC's
+    // JPEG decoder and a filesystem the display side can read. The Retro
+    // backend answers these with an error, it never grows an implementation.
+    FMRB_LINK_GFX_VIDEO_OPEN = 0xA0,      // sync; returns video_opened
+    FMRB_LINK_GFX_VIDEO_CONTROL = 0xA1,   // sync; returns video_status
+    FMRB_LINK_GFX_VIDEO_STATUS = 0xA2     // sync; returns video_status
 } fmrb_link_graphics_cmd_t;
 
 // Audio sub-commands
@@ -407,6 +414,55 @@ typedef struct __attribute__((packed)) {
     uint8_t _pad;
     fmrb_link_graphics_composite_region_t regions[FMRB_LINK_MAX_COMPOSITE_REGIONS];
 } fmrb_link_graphics_set_composite_regions_t;
+
+// ---- Motion-JPEG playback (Modern/P4 only) ----------------------------------
+// VIDEO_OPEN hands the display side a file of concatenated JPEG frames, the
+// canvas to play it into, and where inside that canvas the picture goes. Each
+// decoded frame is written into that rect and the canvas is committed, so
+// whatever the app drew elsewhere on the canvas (its window frame, controls)
+// survives. The app must not draw *inside* the rect while playback runs.
+// One player exists at a time; opening again replaces it.
+
+typedef struct __attribute__((packed)) {
+    uint16_t canvas_id;
+    int16_t  x, y;        // top-left of the picture, canvas coordinates
+    uint16_t fps;         // frames per second (1..60)
+    uint8_t  flags;       // bit 0: loop back to the first frame at the end
+    uint16_t path_len;
+    // Followed by path string (path_len bytes, no null terminator required)
+} fmrb_link_graphics_video_open_t;
+
+#define FMRB_LINK_GFX_VIDEO_FLAG_LOOP 0x01
+
+typedef struct __attribute__((packed)) {
+    uint8_t  result;      // 0 = opened, non-zero = fmrb_err_t-like failure
+    uint16_t width, height;
+} fmrb_link_graphics_video_opened_t;
+
+typedef enum {
+    FMRB_LINK_GFX_VIDEO_ACTION_PLAY = 0,
+    FMRB_LINK_GFX_VIDEO_ACTION_PAUSE = 1,
+    FMRB_LINK_GFX_VIDEO_ACTION_STOP = 2,   // stops and releases the file
+    FMRB_LINK_GFX_VIDEO_ACTION_REWIND = 3  // back to the first frame
+} fmrb_link_graphics_video_action_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t action;       // fmrb_link_graphics_video_action_t
+} fmrb_link_graphics_video_control_t;
+
+typedef enum {
+    FMRB_LINK_GFX_VIDEO_STATE_IDLE = 0,
+    FMRB_LINK_GFX_VIDEO_STATE_PLAYING = 1,
+    FMRB_LINK_GFX_VIDEO_STATE_PAUSED = 2,
+    FMRB_LINK_GFX_VIDEO_STATE_FINISHED = 3
+} fmrb_link_graphics_video_state_t;
+
+typedef struct __attribute__((packed)) {
+    uint8_t  state;           // fmrb_link_graphics_video_state_t
+    uint16_t canvas_id;
+    uint32_t frames_shown;
+    uint32_t frames_dropped;  // decoded late and skipped to keep the clock
+} fmrb_link_graphics_video_status_t;
 
 // SET_CANVAS_VIEWPORT: composite only the (src_x, src_y, view_w, view_h)
 // sub-rect of the canvas at its push position instead of the full buffer.

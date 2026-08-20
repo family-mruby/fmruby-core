@@ -10,6 +10,7 @@
 #include "display_p4_task.h"
 #include "display_p4_vm.h"
 #include "display_p4_sprite.h"
+#include "display_p4_video.h"
 #include "lgfx_tab5.hpp"
 #include "fonts/misaki/lgfx_misaki_fonts.hpp"
 #include "../audio_p4/audio_p4.h"
@@ -183,6 +184,18 @@ typedef struct {
 
 static p4_image_t g_images_store[DISPLAY_P4_MAX_IMAGES];
 static uint16_t   g_next_image_store_id = 1;
+
+// True when the path already names a mount point the VFS knows, so it must
+// not be folded under /flash. Kept in one place: both the still loader and
+// VIDEO_OPEN resolve paths this way.
+static bool path_is_absolute_mount(const char *p, int len) {
+    static const char *const mounts[] = { "/sd/", "/flash/", "/tmp/", "/mnt/" };
+    for (size_t i = 0; i < sizeof(mounts) / sizeof(mounts[0]); i++) {
+        int mlen = (int)strlen(mounts[i]);
+        if (len >= mlen && strncmp(p, mounts[i], (size_t)mlen) == 0) return true;
+    }
+    return false;
+}
 
 static p4_image_t* image_store_find(uint16_t id) {
     for (int i = 0; i < DISPLAY_P4_MAX_IMAGES; i++) {
@@ -1425,6 +1438,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
     case FMRB_LINK_GFX_DELETE_CANVAS: {
         if (size < sizeof(fmrb_link_graphics_delete_canvas_t)) break;
         const auto *cmd = (const fmrb_link_graphics_delete_canvas_t *)data;
+        display_p4_video_canvas_gone(cmd->canvas_id);
         p4_canvas_t *c = canvas_find(cmd->canvas_id);
         if (c) canvas_free(c);
         return 0;
@@ -1726,11 +1740,18 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (size < sizeof(*cmd) + cmd->path_len) break;
 
         // Build VFS path (strip leading '/', prepend /flash/)
+        // Paths are relative to the flash mount unless they name another
+        // one. The player and the still loader share this rule, so an app can
+        // say "/sd/movie/demo.mjpg" and "logo.png" in the same breath.
         const char *p  = (const char *)(data + sizeof(*cmd));
         int         pl = (int)cmd->path_len;
-        if (pl > 0 && p[0] == '/') { p++; pl--; }
         char full_path[256];
-        snprintf(full_path, sizeof(full_path), "/flash/%.*s", pl, p);
+        if (path_is_absolute_mount(p, pl)) {
+            snprintf(full_path, sizeof(full_path), "%.*s", pl, p);
+        } else {
+            if (pl > 0 && p[0] == '/') { p++; pl--; }
+            snprintf(full_path, sizeof(full_path), "/flash/%.*s", pl, p);
+        }
 
         LGFX_Sprite *spr = display_p4_sprite_image_get(cmd->image_id);
         if (!spr) {
@@ -1886,6 +1907,64 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         fread(buf, 1, (size_t)fsz, fp);
         fclose(fp);
 
+        // JPEG goes through the SoC decoder; PNG stays on LovyanGFX.
+        if (display_p4_jpeg_is_jpeg(buf, (size_t)fsz)) {
+            uint16_t jw = 0, jh = 0, jstride = 0;
+            // The decoder needs its own input buffer alignment, so hand it a
+            // copy rather than the plain heap block the file landed in.
+            size_t in_alloc = 0;
+            uint8_t *in = display_p4_jpeg_alloc_input((size_t)fsz, &in_alloc);
+            uint8_t *pix = nullptr;
+            if (in) {
+                memcpy(in, buf, (size_t)fsz);
+                pix = display_p4_jpeg_decode(in, (size_t)fsz, &jw, &jh, &jstride);
+                display_p4_jpeg_free_input(in);
+            }
+            fmrb_sys_free(buf);
+            if (!pix) {
+                FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: JPEG decode failed: %s",
+                          full_path);
+                send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+                return 1;
+            }
+
+            auto *jspr = new LGFX_Sprite();
+            jspr->setColorDepth(lgfx::rgb565_nonswapped);
+            jspr->setPsram(true);
+            if (!jspr->createSprite(jw, jh)) {
+                FMRB_LOGE(TAG, "CREATE_IMAGE_FROM_FILE: sprite alloc failed %ux%u",
+                          jw, jh);
+                display_p4_jpeg_free_output(pix);
+                delete jspr;
+                send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+                return 1;
+            }
+            uint16_t *dstpx = (uint16_t *)jspr->getBuffer();
+            const uint16_t *srcpx = (const uint16_t *)pix;
+            for (uint16_t y = 0; y < jh; y++) {
+                memcpy(dstpx + (size_t)y * jw,
+                       srcpx + (size_t)y * jstride,
+                       (size_t)jw * 2);
+            }
+            display_p4_jpeg_free_output(pix);
+
+            uint16_t jid = g_next_image_store_id++;
+            if (jid == 0) jid = g_next_image_store_id++;
+            slot->in_use   = true;
+            slot->image_id = jid;
+            slot->sprite   = jspr;
+            slot->width    = jw;
+            slot->height   = jh;
+
+            resp.image_id = jid;
+            resp.width    = jw;
+            resp.height   = jh;
+            FMRB_LOGI(TAG, "CREATE_IMAGE_FROM_FILE: %s -> id=%u %ux%u (JPEG)",
+                      full_path, jid, jw, jh);
+            send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+            return 1;
+        }
+
         // Extract image dimensions from PNG IHDR chunk (bytes 16..23)
         int img_w = 0, img_h = 0;
         if (fsz >= 24 && buf[0] == 0x89 && buf[1] == 'P' &&
@@ -1941,6 +2020,70 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         uint16_t image_id = *(const uint16_t *)data;
         image_store_destroy(image_store_find(image_id));
         return 0;
+    }
+
+    // --- Motion-JPEG playback ---
+    // The player runs on its own task and only publishes decoded frames;
+    // video_service() below copies them into the canvas from this task, so
+    // canvas memory keeps a single writer.
+
+    case FMRB_LINK_GFX_VIDEO_OPEN: {
+        if (size < sizeof(fmrb_link_graphics_video_open_t)) break;
+        const auto *cmd = (const fmrb_link_graphics_video_open_t *)data;
+        if (size < sizeof(*cmd) + cmd->path_len) break;
+
+        const char *p  = (const char *)(data + sizeof(*cmd));
+        int         pl = (int)cmd->path_len;
+        char full_path[256];
+        if (path_is_absolute_mount(p, pl)) {
+            snprintf(full_path, sizeof(full_path), "%.*s", pl, p);
+        } else {
+            if (pl > 0 && p[0] == '/') { p++; pl--; }
+            snprintf(full_path, sizeof(full_path), "/flash/%.*s", pl, p);
+        }
+
+        fmrb_link_graphics_video_opened_t resp = {};
+        uint16_t vw = 0, vh = 0;
+        fmrb_err_t verr = FMRB_ERR_NOT_FOUND;
+        if (!canvas_find(cmd->canvas_id)) {
+            FMRB_LOGE(TAG, "VIDEO_OPEN: canvas %u not found", cmd->canvas_id);
+        } else {
+            verr = display_p4_video_open(cmd->canvas_id, cmd->x, cmd->y,
+                                         full_path, cmd->fps, cmd->flags,
+                                         &vw, &vh);
+        }
+        resp.result = (uint8_t)(verr == FMRB_OK ? 0 : (uint8_t)(-verr));
+        resp.width  = vw;
+        resp.height = vh;
+        send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+        return 1;
+    }
+
+    case FMRB_LINK_GFX_VIDEO_CONTROL: {
+        if (size < sizeof(fmrb_link_graphics_video_control_t)) break;
+        const auto *cmd = (const fmrb_link_graphics_video_control_t *)data;
+        display_p4_video_control(cmd->action);
+        display_p4_video_status_t st = {};
+        display_p4_video_get_status(&st);
+        fmrb_link_graphics_video_status_t resp = {};
+        resp.state          = st.state;
+        resp.canvas_id      = st.canvas_id;
+        resp.frames_shown   = st.frames_shown;
+        resp.frames_dropped = st.frames_dropped;
+        send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+        return 1;
+    }
+
+    case FMRB_LINK_GFX_VIDEO_STATUS: {
+        display_p4_video_status_t st = {};
+        display_p4_video_get_status(&st);
+        fmrb_link_graphics_video_status_t resp = {};
+        resp.state          = st.state;
+        resp.canvas_id      = st.canvas_id;
+        resp.frames_shown   = st.frames_shown;
+        resp.frames_dropped = st.frames_dropped;
+        send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
+        return 1;
     }
 
     // --- Draw image (PNG image store → canvas) ---
@@ -2182,17 +2325,19 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
         }
         break;
 
-    case FMRB_LINK_TYPE_GRAPHICS:
-        if (payload && payload_len > 0) {
-            int result = process_gfx_command(type, sub_cmd, seq, payload, payload_len);
-            // 0 = success, no ACK yet; 1 = ACK already sent; -1 = error
-            if (result == 0 && ack_required) {
-                send_ack(type, seq, nullptr, 0);
-            }
-        } else if (ack_required) {
+    case FMRB_LINK_TYPE_GRAPHICS: {
+        // An empty payload is a real command, not a malformed one: VIDEO_STATUS
+        // asks a question and carries nothing. Skipping the handler for those
+        // answered every such command with an empty ACK, which the caller reads
+        // as "no data". Every case that dereferences the payload checks its
+        // size first, so handing it a zero-length one is safe.
+        int result = process_gfx_command(type, sub_cmd, seq, payload, payload_len);
+        // 0 = success, no ACK yet; 1 = ACK already sent; -1 = error
+        if (result == 0 && ack_required) {
             send_ack(type, seq, nullptr, 0);
         }
         break;
+    }
 
     case FMRB_LINK_TYPE_AUDIO:
         // Packed audio command bytes (see audio_commands.h); on Modern
@@ -2905,6 +3050,57 @@ static void draw_boot_screen(void) {
     boot_print_line(buf);
 }
 
+// Copy a frame the player finished into the canvas it owns, then commit it
+// the same way a present would. Runs on the display task: the player never
+// writes canvas memory itself, so the compositor's single-writer assumption
+// holds. Returns true when a frame was taken.
+static bool video_service(void) {
+    const uint8_t *pixels = nullptr;
+    uint16_t vw = 0, vh = 0, stride_px = 0, canvas_id = 0;
+    int16_t dx = 0, dy = 0;
+    if (!display_p4_video_take_frame(&pixels, &vw, &vh, &stride_px,
+                                     &canvas_id, &dx, &dy)) {
+        return false;
+    }
+
+    p4_canvas_t *c = canvas_find(canvas_id);
+    if (c && c->sprite && pixels) {
+        uint16_t *dst = (uint16_t *)c->sprite->getBuffer();
+        const uint16_t *src = (const uint16_t *)pixels;
+        if (dst) {
+            // Clip the picture to the canvas, top-left first so a negative
+            // origin skips source rows/columns instead of writing behind the
+            // buffer.
+            int sx = 0, sy = 0;
+            int px = dx, py = dy;
+            if (px < 0) { sx = -px; px = 0; }
+            if (py < 0) { sy = -py; py = 0; }
+            int cols = (int)vw - sx;
+            int rows = (int)vh - sy;
+            if (cols > (int)c->width  - px) cols = (int)c->width  - px;
+            if (rows > (int)c->height - py) rows = (int)c->height - py;
+            if (cols > 0 && rows > 0) {
+                for (int y = 0; y < rows; y++) {
+                    memcpy(dst + (size_t)(py + y) * c->width + px,
+                           src + (size_t)(sy + y) * stride_px + sx,
+                           (size_t)cols * 2);
+                }
+                // Commit: the compositor only ever reads the committed buffer.
+                // Visibility is left alone on purpose -- a parked window must
+                // stay parked even while its player keeps running.
+                if (c->render_sprite) {
+                    void *rb = c->render_sprite->getBuffer();
+                    if (rb) memcpy(rb, dst, (size_t)c->width * c->height * 2);
+                }
+                g_needs_render = true;
+            }
+        }
+    }
+
+    display_p4_video_release_frame();
+    return true;
+}
+
 static void display_p4_task(void *arg) {
     (void)arg;
     FMRB_LOGI(TAG, "Tab5 display: power on");
@@ -2978,6 +3174,10 @@ static void display_p4_task(void *arg) {
             }
         }
 
+        // Hand any finished video frame to its canvas before deciding whether
+        // to render, so a new frame joins this render instead of the next one.
+        video_service();
+
         // Render when a present (or composition change) requested it, paced to
         // RENDER_MIN_INTERVAL_MS so bursts coalesce into one frame (~30fps cap).
         // Safe to run here regardless of what any app is doing: render_frame
@@ -2997,8 +3197,9 @@ static void display_p4_task(void *arg) {
             .size = sizeof(g_recv_buf),
         };
         // Short receive timeout while a render is pending so the pacing deadline
-        // is honored even if no further commands arrive.
-        uint32_t timeout_ms = g_needs_render ? 5 : 100;
+        // is honored even if no further commands arrive. Video playback needs
+        // the same short loop: its frames arrive without any command traffic.
+        uint32_t timeout_ms = (g_needs_render || display_p4_video_is_active()) ? 5 : 100;
         fmrb_err_t err = fmrb_hal_link_local_receive_cmd(
             FMRB_LINK_CHANNEL_DEFAULT, &msg, timeout_ms);
         if (err == FMRB_OK && msg.size > 0) {
