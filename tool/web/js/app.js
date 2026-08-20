@@ -27,6 +27,15 @@ const CMD_LOG_SET_LEVEL   = 0x33;
 
 const WRITE_CHUNK_SIZE = 200; // Conservative BLE write chunk size
 const FILE_CHUNK_SIZE  = 2048;
+const CONSOLE_BUILD    = '2026-08-21b';  // shown on connect: says which app.js the browser has
+const CMD_RETRIES      = 4;    // one try plus three more before giving up
+const RETRY_BACKOFF_MS = 120;  // grows with the attempt number
+const RESYNC_QUIET_MS  = 250;  // link counts as settled after this much silence
+const RESYNC_MAX_MS    = 3000; // ...but never wait longer than this
+// Generous on purpose: a write into flash can stall for seconds when the
+// filesystem decides to do housekeeping, and giving up early turns a slow
+// transfer into a broken one.
+const RESPONSE_TIMEOUT_MS = 30000;
 const EDITOR_MAX_SIZE  = 256 * 1024;
 const TEXT_EXTENSIONS = new Set([
   'rb', 'bas', 'lua', 'txt', 'md', 'toml', 'json', 'yml', 'yaml',
@@ -50,6 +59,11 @@ let txChar = null;
 let currentPath = '/';
 let rxBuffer = new Uint8Array(0);
 let pendingResolve = null;
+// While a resync is in flight, responses are answers to a frame we gave up on.
+// Drop them instead of handing them to whatever asks next.
+let discardResponses = false;
+let lastNotifyAt = 0;
+let pendingTimer = null;
 let pendingReject = null;
 
 // Log streaming state
@@ -191,6 +205,7 @@ function parseResponse(data) {
 // BLE communication
 // ============================================================
 function onTxNotification(event) {
+  lastNotifyAt = Date.now();
   const value = new Uint8Array(event.target.value.buffer);
 
   // Append to rxBuffer
@@ -210,9 +225,9 @@ function onTxNotification(event) {
       result = parseResponse(frameData);
     } catch (e) {
       if (pendingReject) {
-        pendingReject(e);
-        pendingResolve = null;
-        pendingReject = null;
+        const fail = pendingReject;
+        clearPending();
+        fail(e);
       }
       return;
     }
@@ -224,12 +239,41 @@ function onTxNotification(event) {
       return;
     }
 
+    if (discardResponses) return;
+
+    // "Frame too short" is what the device says to the lone delimiter we send
+    // to flush it. No real command can produce it (every frame we build is
+    // longer than that), so it is always a stray answer to a flush -- never
+    // the answer somebody is waiting for.
+    if (result.meta && result.meta.ok === false &&
+        result.meta.err === 'Frame too short') {
+      return;
+    }
+
     if (pendingResolve) {
-      pendingResolve(result);
-      pendingResolve = null;
-      pendingReject = null;
+      const done = pendingResolve;
+      clearPending();
+      done(result);
     }
   }
+}
+
+// Forget the request in flight, timer included.
+//
+// The timer MUST die with the request it belongs to. It used to be left
+// running: every command armed one, and a command that answered normally left
+// its timer ticking. One response-timeout later that stale timer would fire and
+// reject whatever request happened to be in flight then -- so any transfer that
+// ran longer than the timeout was killed by its own first chunk, and the
+// retries died to the next stale timers in the queue. That is why uploads
+// failed after about the timeout and small files were fine.
+function clearPending() {
+  if (pendingTimer !== null) {
+    clearTimeout(pendingTimer);
+    pendingTimer = null;
+  }
+  pendingResolve = null;
+  pendingReject = null;
 }
 
 async function sendCommand(cmd, params, binaryData) {
@@ -247,14 +291,76 @@ async function sendCommand(cmd, params, binaryData) {
   return new Promise((resolve, reject) => {
     pendingResolve = resolve;
     pendingReject = reject;
-    setTimeout(() => {
-      if (pendingReject) {
-        pendingReject(new Error('Response timeout'));
-        pendingResolve = null;
-        pendingReject = null;
-      }
-    }, 10000);
+    pendingTimer = setTimeout(() => {
+      const fail = pendingReject;
+      clearPending();
+      if (fail) fail(new Error('Response timeout'));
+    }, RESPONSE_TIMEOUT_MS);
   });
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Terminate whatever half-written frame the device is still holding.
+//
+// A lost write leaves the device waiting for a delimiter that will never come,
+// and the next frame would be appended to that wreck. A lone delimiter closes
+// it: the device sees a frame too short to be valid, answers an error, and
+// starts clean. That answer belongs to nobody, so it is dropped.
+async function resyncDevice() {
+  if (!rxChar) return;
+  discardResponses = true;
+  try {
+    await rxChar.writeValueWithoutResponse(new Uint8Array([0x00]));
+    // Wait for the link to go quiet rather than for a fixed time. The answer
+    // to the flush is worthless, but if it arrives after we stop dropping
+    // responses it becomes the answer to the next command -- and then every
+    // command is one answer behind for the rest of the transfer.
+    const deadline = Date.now() + RESYNC_MAX_MS;
+    lastNotifyAt = Date.now();
+    while (Date.now() < deadline && Date.now() - lastNotifyAt < RESYNC_QUIET_MS) {
+      await sleep(20);
+    }
+  } catch (e) {
+    // Nothing to do: the retry that follows will fail too, and report.
+  }
+  discardResponses = false;
+  rxBuffer = new Uint8Array(0);
+}
+
+// Send a command, retrying the whole frame if the device says no or says
+// nothing. Writes go out without response, so a busy device can lose part of a
+// frame; that shows up as a CRC error or as silence, and both are worth another
+// go. Retrying is safe because every command that changes anything (PUT) names
+// the offset it writes at, so sending it twice writes the same bytes twice.
+async function sendCommandRetry(cmd, params, binaryData, attempts = CMD_RETRIES) {
+  let lastErr = null;
+  let needResync = false;
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) {
+      // Only flush when the device said nothing. A refusal means it read a
+      // whole frame and answered, so its receive buffer is already clean --
+      // flushing then just adds an answer nobody wants.
+      if (needResync) await resyncDevice();
+      await sleep(RETRY_BACKOFF_MS * i);
+    }
+    try {
+      const res = await sendCommand(cmd, params, binaryData);
+      if (res.meta && res.meta.ok === false) {
+        lastErr = new Error(res.meta.err || 'device refused');
+        needResync = false;
+        continue;
+      }
+      if (i > 0) log('  recovered after ' + (i + 1) + ' tries', 'warn');
+      return res;
+    } catch (e) {
+      // No answer, or an answer we could not parse: the device may still be
+      // holding half a frame.
+      lastErr = e;
+      needResync = true;
+    }
+  }
+  throw lastErr || new Error('command failed');
 }
 
 // ============================================================
@@ -295,7 +401,7 @@ async function connect() {
     await dbgAttach(server);
 
     setConnected(true);
-    log('Connected', 'ok');
+    log('Connected (console ' + CONSOLE_BUILD + ')', 'ok');
 
     await refreshDir();
     await refreshStatfs();
@@ -320,8 +426,7 @@ function onDisconnected() {
   rxChar = null;
   txChar = null;
   rxBuffer = new Uint8Array(0);
-  pendingResolve = null;
-  pendingReject = null;
+  clearPending();
   // Server clears its subscription on disconnect; we keep `logWantSubscribe`
   // so reconnect can restore the stream.
   logSubscribed = false;
@@ -378,7 +483,7 @@ async function downloadFile(name) {
     let totalRead = 0;
 
     while (true) {
-      const { meta, binData } = await sendCommand(CMD_GET, { path: filePath, off: offset });
+      const { meta, binData } = await sendCommandRetry(CMD_GET, { path: filePath, off: offset });
       if (!meta.ok) {
         log('Download failed: ' + (meta.err || 'unknown'), 'err');
         hideProgress();
@@ -433,10 +538,13 @@ async function uploadFiles(fileList) {
 
       while (offset <= data.length) {
         const chunk = data.slice(offset, offset + FILE_CHUNK_SIZE);
-        const { meta } = await sendCommand(CMD_PUT, { path: remotePath, off: offset }, chunk);
-        if (!meta.ok) {
-          log('Upload failed: ' + (meta.err || 'unknown'), 'err');
-          break;
+        const { meta } = await sendCommandRetry(CMD_PUT, { path: remotePath, off: offset }, chunk);
+        // Newer firmware reports what it wrote. A short write means the file
+        // on the device is not the file here, so stop rather than carry on
+        // and leave a hole.
+        if (typeof meta.n === 'number' && meta.n !== chunk.length) {
+          throw new Error('device wrote ' + meta.n + ' of ' + chunk.length +
+                          ' bytes at offset ' + offset);
         }
         offset += chunk.length;
         if (file.size > 0) {
@@ -448,7 +556,9 @@ async function uploadFiles(fileList) {
 
       log('Uploaded: ' + file.name, 'ok');
     } catch (e) {
-      log('Upload error: ' + e.message, 'err');
+      // Only reached when the retries are used up: say so, and do not claim
+      // the file arrived.
+      log('Upload FAILED at ' + file.name + ': ' + e.message, 'err');
     }
   }
 
@@ -467,7 +577,7 @@ async function deviceReadFile(path, progressCb) {
   let offset = 0;
   let totalRead = 0;
   while (true) {
-    const { meta, binData } = await sendCommand(CMD_GET, { path, off: offset });
+    const { meta, binData } = await sendCommandRetry(CMD_GET, { path, off: offset });
     if (!meta.ok) throw new Error(meta.err || 'read failed');
     if (binData && binData.length > 0) {
       chunks.push(binData);
@@ -489,8 +599,11 @@ async function deviceWriteFile(path, data, progressCb) {
   let offset = 0;
   while (offset <= arr.length) {
     const chunk = arr.slice(offset, offset + FILE_CHUNK_SIZE);
-    const { meta } = await sendCommand(CMD_PUT, { path, off: offset }, chunk);
+    const { meta } = await sendCommandRetry(CMD_PUT, { path, off: offset }, chunk);
     if (!meta.ok) throw new Error(meta.err || 'write failed');
+    if (typeof meta.n === 'number' && meta.n !== chunk.length) {
+      throw new Error('short write at offset ' + offset);
+    }
     offset += chunk.length;
     if (progressCb) progressCb(offset, arr.length);
     if (chunk.length === 0) break;
