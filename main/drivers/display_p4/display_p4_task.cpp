@@ -78,6 +78,8 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
 #define TAB5_I2C_SDA    GPIO_NUM_31
 #define TAB5_I2C_SCL    GPIO_NUM_32
 #define TAB5_TP_INT     GPIO_NUM_23
+#define ST_TOUCH_ADDR   0x55   // ST7121/ST7123 integrated touch controller
+#define GT911_TOUCH_ADDR 0x14  // GT911 touch (ILI9881C units), TP INT high at reset
 #define PI4IO1_ADDR     0x43   // PI4IO GPIO expander #1 (LCD/touch reset)
 #define PI4IO2_ADDR     0x44   // PI4IO GPIO expander #2 (power rails)
 
@@ -1000,8 +1002,97 @@ static inline void pi4io_write(i2c_master_dev_handle_t dev, uint8_t reg, uint8_t
 // Power/reset sequence for the Tab5 panel + touch.
 // ============================================================
 
-static void tab5_power_on(void) {
-    // TP INT high during reset selects GT911 touch I2C address 0x14.
+// Determine which panel/touch combination this Tab5 carries, following
+// M5GFX's Tab5 detection (managed_components/m5stack__m5gfx/src/M5GFX.cpp).
+// The touch controller answers before the DSI link is up, so the variant is
+// decided over I2C: the ST7123 touch block (0x55) reports a firmware version
+// that tells ST7121 (1) from ST7123 (3), and a GT911 at 0x14 means this is an
+// ILI9881C unit. ST7121 and ST7123 differ in DSI lane rate, so the DSI ID
+// cannot safely tell them apart -- the touch probe has to come first. The
+// model number on the rear label does not decide this either: a unit labelled
+// ST7123 was measured reporting touch firmware version 1, i.e. ST7121.
+//
+// The ST touch block needs a few tens of ms after reset before it answers
+// (~50 ms measured by M5GFX), so keep polling until one of the two chips
+// responds rather than probing once.
+//
+// Called with the IDF i2c_master bus still owned by tab5_power_on(), after
+// the LCD/touch resets have been released.
+static Tab5PanelVariant tab5_probe_panel(i2c_master_bus_handle_t bus) {
+    i2c_device_config_t dev_cfg = {};
+    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    dev_cfg.scl_speed_hz = 100000;
+    dev_cfg.device_address = ST_TOUCH_ADDR;
+    i2c_master_dev_handle_t st = NULL;
+    if (i2c_master_bus_add_device(bus, &dev_cfg, &st) != ESP_OK) {
+        FMRB_LOGW(TAG, "panel probe: i2c device add failed, assuming ILI9881C");
+        return Tab5PanelVariant::ILI9881C;
+    }
+
+    // A NACK is the normal answer here (only one of the two chips exists),
+    // and the IDF driver logs every one of them at error level. Quiet it for
+    // the duration of the probe.
+    fmrb_log_level_set("i2c.master", FMRB_LOG_NONE);
+
+    Tab5PanelVariant variant = Tab5PanelVariant::ILI9881C;
+    bool decided = false;
+    bool st_answered = false;
+    int last_logged_fw = -1;
+
+    for (int i = 0; i < 60 && !decided; ++i) {
+        // ST7123 touch firmware version register (0x0000), 16-bit register
+        // address, one byte back.
+        const uint8_t fw_reg[2] = { 0x00, 0x00 };
+        uint8_t fw = 0;
+        if (i2c_master_transmit_receive(st, fw_reg, sizeof(fw_reg), &fw, 1, 100) == ESP_OK) {
+            st_answered = true;
+            if (fw != last_logged_fw) {  // do not repeat the log while retrying
+                last_logged_fw = fw;
+                FMRB_LOGI(TAG, "panel probe: ST touch FW version %02x", fw);
+            }
+            if (fw == 1) {
+                variant = Tab5PanelVariant::ST7121;
+                decided = true;
+            } else if (fw == 3) {
+                variant = Tab5PanelVariant::ST7123;
+                decided = true;
+            }
+        } else if (i2c_master_probe(bus, GT911_TOUCH_ADDR, 50) == ESP_OK) {
+            // Address ACK only: reading a GT911 here would advance its
+            // internal pointer.
+            variant = Tab5PanelVariant::ILI9881C;
+            decided = true;
+        }
+        if (!decided) vTaskDelay(pdMS_TO_TICKS(10));
+    }
+
+    i2c_master_bus_rm_device(st);
+    fmrb_log_level_set("i2c.master", FMRB_LOG_ERROR);
+
+    if (!decided) {
+        if (st_answered) {
+            // An ST touch block with a firmware version we do not know about.
+            // ST7123 is the current production part, so prefer it.
+            FMRB_LOGW(TAG, "panel probe: unknown ST touch FW %02x, assuming ST7123",
+                      last_logged_fw);
+            variant = Tab5PanelVariant::ST7123;
+        } else {
+            // Neither chip answered. ILI9881C is the configuration this
+            // firmware has always shipped with, so fall back to it.
+            FMRB_LOGW(TAG, "panel probe: no touch controller answered, assuming ILI9881C");
+        }
+    }
+
+    FMRB_LOGI(TAG, "panel probe: %s",
+              variant == Tab5PanelVariant::ST7123 ? "ST7123 (display+touch)"
+            : variant == Tab5PanelVariant::ST7121 ? "ST7121 + ST7123 touch"
+                                                  : "ILI9881C + GT911 touch");
+    return variant;
+}
+
+static Tab5PanelVariant tab5_power_on(void) {
+    // TP INT high during reset selects GT911 touch I2C address 0x14 (the
+    // ST7123 touch block ignores it and always answers at 0x55).
     gpio_config_t int_cfg = {};
     int_cfg.pin_bit_mask = 1ULL << TAB5_TP_INT;
     int_cfg.mode = GPIO_MODE_OUTPUT;
@@ -1019,7 +1110,7 @@ static void tab5_power_on(void) {
     i2c_master_bus_handle_t bus = NULL;
     if (i2c_new_master_bus(&bus_cfg, &bus) != ESP_OK) {
         FMRB_LOGE(TAG, "PI4IO i2c bus init failed");
-        return;
+        return Tab5PanelVariant::ILI9881C;
     }
 
     i2c_device_config_t dev_cfg = {};
@@ -1052,10 +1143,15 @@ static void tab5_power_on(void) {
     gpio_set_direction(TAB5_TP_INT, GPIO_MODE_INPUT);
     vTaskDelay(pdMS_TO_TICKS(100));
 
+    // Identify the panel while this bus is still ours; lgfx takes the port
+    // over once the devices below are removed.
+    Tab5PanelVariant variant = tab5_probe_panel(bus);
+
     i2c_master_bus_rm_device(io1);
     i2c_master_bus_rm_device(io2);
     i2c_del_master_bus(bus);
     // Backlight: LEDC PWM via Light_PWM in LGFX_Tab5 (GPIO22, ch7, 44100Hz).
+    return variant;
 }
 
 // ============================================================
@@ -3104,7 +3200,7 @@ static bool video_service(void) {
 static void display_p4_task(void *arg) {
     (void)arg;
     FMRB_LOGI(TAG, "Tab5 display: power on");
-    tab5_power_on();
+    g_lcd.configure(tab5_power_on());
 
     FMRB_LOGI(TAG, "Tab5 display: VM + cursor init");
     display_p4_vm_init();
