@@ -15,12 +15,14 @@
 # line above the picture, so 320x176 is what still fits.
 #
 # The file says nothing about its own frame rate, so the rate is this app's to
-# choose: "15fps" cycles through the two rates the hardware keeps up with at
-# this size. Playing a 30fps file at 15 is slow motion, not an error.
+# choose: the "15fps" button steps through 1, 5, 10, 15, 20 and 30, and the
+# right button steps back. Playing a 30fps file at 15 is slow motion, not an
+# error; 1fps is a way to look at a file frame by frame.
 
 class VideoPlayApp < FmrbApp
   MOVIE_PATH = "/sd/movie/demo.mjpg"
-  RATES = [15, 30]
+  RATES = [1, 5, 10, 15, 20, 30]
+  DEFAULT_RATE_INDEX = 3   # 15fps, what the demo file is made at
 
   BTN_Y = 4
   BTN_W = 44
@@ -43,7 +45,7 @@ class VideoPlayApp < FmrbApp
     @message = nil
     @last_status_ms = 0
     @path = MOVIE_PATH
-    @rate_index = 0
+    @rate_index = DEFAULT_RATE_INDEX
 
     draw_screen
     open_video(@path)
@@ -153,19 +155,29 @@ class VideoPlayApp < FmrbApp
 
   def on_event(ev)
     super(ev)
-    return unless ev[:type] == :mouse_up && ev[:button] == 1
+    return unless ev[:type] == :mouse_up
+    return unless ev[:button] == 1 || ev[:button] == 3
 
-    # Open and the rate work with no file loaded; the transport buttons do not.
+    # Six rates is a long way round with one button, so the right button walks
+    # back. Everything else answers to the left button only.
+    if hit_button?(ev, BTN_RATE)
+      step = (ev[:button] == 3) ? -1 : 1
+      # + length first: a negative left operand of % is not somewhere to rely
+      # on picoruby matching Ruby.
+      @rate_index = (@rate_index + step + RATES.length) % RATES.length
+      draw_button(BTN_RATE, "#{fps}fps")
+      # The rate is fixed when the file is opened, so reopen to apply it.
+      open_video(@path) if @video
+      return
+    end
+
+    return unless ev[:button] == 1
+
+    # Open works with no file loaded; the transport buttons do not.
     if hit_button?(ev, BTN_OPEN)
       @message = "pick a file (SD is under /mnt/sd)"
       draw_status
       request_file_select("open")
-      return
-    elsif hit_button?(ev, BTN_RATE)
-      @rate_index = (@rate_index + 1) % RATES.length
-      draw_button(BTN_RATE, "#{fps}fps")
-      # The rate is fixed when the file is opened, so reopen to apply it.
-      open_video(@path) if @video
       return
     end
 

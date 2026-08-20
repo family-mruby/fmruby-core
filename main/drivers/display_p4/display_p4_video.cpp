@@ -24,6 +24,9 @@ static const char *TAG = "p4_video";
 // Block size for reading the file. A whole frame is a few KB, so this turns
 // one frame into a couple of reads instead of thousands.
 #define VIDEO_IO_BUF_BYTES    (16 * 1024)
+// Longest the player sleeps in one go while waiting for the next frame. Also
+// the worst case for noticing a stop or a pause.
+#define VIDEO_WAIT_SLICE_MS 20
 // Largest picture we will play: the whole framebuffer, rounded up to the
 // decoder's 16-pixel grid.
 #define VIDEO_MAX_W 448
@@ -521,7 +524,13 @@ static void player_task(void *arg)
 
         int64_t now = esp_timer_get_time();
         if (now < next_due) {
+            // Sleep in short hops rather than for the whole interval. Stop,
+            // pause and rewind are only noticed at the top of this loop, and
+            // display_p4_video_open() blocks the display task until this one
+            // exits -- at 1 fps a single long delay would hold up compositing
+            // for most of a second.
             int64_t wait_ms = (next_due - now) / 1000;
+            if (wait_ms > VIDEO_WAIT_SLICE_MS) wait_ms = VIDEO_WAIT_SLICE_MS;
             vTaskDelay(wait_ms > 0 ? pdMS_TO_TICKS(wait_ms) : 1);
             continue;
         }
