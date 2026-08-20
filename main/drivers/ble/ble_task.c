@@ -2,6 +2,7 @@
 #include "esp_attr.h"
 #include "fmrb_rtos.h"
 #include "fmrb_mem.h"
+#include "esp_timer.h"
 #include "fmrb_log.h"
 #include "fmrb_log_buffer.h"
 #include "fmrb_task_config.h"
@@ -63,6 +64,11 @@ static bool g_tx_subscribed = false;
 #define BLE_FS_MAX_PATH_LEN   256
 #define BLE_FS_MAX_JSON_LEN   2048
 #define BLE_FS_MAX_CHUNK_SIZE 2048
+// A write slower than this is worth a line in the log: it is the shape of a
+// transfer that is about to time out on the client.
+#define BLE_FS_PUT_SLOW_MS    300
+// Drop a held-open upload after this long without a chunk.
+#define BLE_FS_PUT_IDLE_US    (5 * 1000 * 1000)
 
 // Command codes
 #define BLE_FS_CMD_CD     0x11
@@ -247,6 +253,11 @@ static int gatt_chr_device_info_cb(uint16_t conn_handle, uint16_t attr_handle,
     }
     return BLE_ATT_ERR_UNLIKELY;
 }
+
+// Held-open upload handle (see ble_fs_cmd_put). Declared here because the
+// disconnect handler and the task loop both have to let it go.
+static void ble_fs_put_cache_close(void);
+static void ble_fs_put_cache_idle_check(void);
 
 // RX: browser writes COBS-encoded frame data here (may span multiple writes)
 static int gatt_chr_fs_rx_cb(uint16_t conn_handle, uint16_t attr_handle,
@@ -488,6 +499,8 @@ static int ble_gap_event_handler(struct ble_gap_event *event, void *arg)
         // Reset FS receive state
         g_fs_ctx.rx_len = 0;
         g_fs_ctx.frame_ready = false;
+        // An upload that was in flight is over; do not hold its file open.
+        ble_fs_put_cache_close();
         // Stop log streaming so we don't try to notify a gone peer
         g_fs_ctx.log_subscribed = false;
         // Reset debug receive state, returning any half-filled buffer.
@@ -747,28 +760,42 @@ static void ble_fs_cmd_ls(const char *json_params, char *response, size_t respon
         return;
     }
 
-    int pos = snprintf(response, response_size, "{\"ok\":true,\"entries\":[");
+    // snprintf returns what it WOULD have written, so pos has to be clamped
+    // after every call: one long name (the SD card has long names now) can
+    // push it past the buffer, and then "response + pos" points outside it and
+    // "response_size - pos" underflows into a huge size_t. Clamping keeps the
+    // closing bracket inside the buffer; the caller sees "trunc" and knows the
+    // listing is short.
+    size_t pos = (size_t)snprintf(response, response_size, "{\"ok\":true,\"entries\":[");
+    if (pos > response_size) pos = response_size;
     bool first = true;
+    bool truncated = false;
 
     fmrb_file_info_t info;
     while (fmrb_hal_file_readdir(dir, &info) == FMRB_OK) {
         if (info.name[0] == '\0') break;
 
+        // Leave room for the separator, this entry and the closing "]}".
+        if (pos + strlen(info.name) + 64 >= response_size) { truncated = true; break; }
+
         if (!first) {
-            pos += snprintf(response + pos, response_size - pos, ",");
+            pos += (size_t)snprintf(response + pos, response_size - pos, ",");
+            if (pos > response_size) pos = response_size;
         }
         first = false;
 
         const char *type = (info.is_dir) ? "d" : "f";
-        pos += snprintf(response + pos, response_size - pos,
+        pos += (size_t)snprintf(response + pos, response_size - pos,
                        "{\"n\":\"%s\",\"t\":\"%s\",\"s\":%lu}",
                        info.name, type, (unsigned long)info.size);
-
-        if (pos >= (int)response_size - 100) break;
+        if (pos > response_size) pos = response_size;
     }
 
     fmrb_hal_file_closedir(dir);
-    snprintf(response + pos, response_size - pos, "]}");
+    if (pos < response_size) {
+        snprintf(response + pos, response_size - pos,
+                 truncated ? "],\"trunc\":true}" : "]}");
+    }
 }
 
 static void ble_fs_cmd_rm(const char *json_params, char *response, size_t response_size)
@@ -1025,6 +1052,47 @@ static void ble_fs_cmd_get(const char *json_params, char *response, size_t respo
               path, offset, bytes_read, eof ? "true" : "false");
 }
 
+// An upload arrives as a run of PUTs at rising offsets, so hold the file open
+// between them.
+//
+// Opening and seeking per chunk is what made big files fail: LittleFS walks the
+// file to reach an offset, so the cost grows with what has already been sent,
+// and past a few hundred KB one chunk takes longer than the client is willing
+// to wait for its answer. Held open and written sequentially, there is nothing
+// to walk.
+//
+// The handle is dropped whenever the next PUT is not the continuation this one
+// expects, when any other file command runs (so nobody reads a file this still
+// has buffered), when the client goes away, and after a few idle seconds.
+typedef struct {
+    fmrb_file_t file;
+    bool        open;
+    char        path[BLE_FS_MAX_PATH_LEN];
+    size_t      pos;          // where the next sequential chunk lands
+    int64_t     last_use_us;
+} ble_fs_put_cache_t;
+
+static ble_fs_put_cache_t g_put_cache = {0};
+
+static void ble_fs_put_cache_close(void)
+{
+    if (!g_put_cache.open) return;
+    fmrb_hal_file_close(g_put_cache.file);
+    g_put_cache.open = false;
+    g_put_cache.path[0] = '\0';
+    g_put_cache.pos = 0;
+}
+
+// Close a handle left behind by a client that stopped mid-upload.
+static void ble_fs_put_cache_idle_check(void)
+{
+    if (!g_put_cache.open) return;
+    if (esp_timer_get_time() - g_put_cache.last_use_us > BLE_FS_PUT_IDLE_US) {
+        FMRB_LOGI(TAG, "closing idle upload of %s", g_put_cache.path);
+        ble_fs_put_cache_close();
+    }
+}
+
 static void ble_fs_cmd_put(const char *json_params,
                            const uint8_t *binary_data, size_t binary_size,
                            char *response, size_t response_size)
@@ -1038,40 +1106,84 @@ static void ble_fs_cmd_put(const char *json_params,
     }
 
     json_get_int(json_params, "off", &offset);
-
-    fmrb_file_t file;
-    fmrb_err_t err;
-
-    if (offset == 0) {
-        err = fmrb_hal_file_open(path, FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC, &file);
-    } else {
-        err = fmrb_hal_file_open(path, FMRB_O_WRONLY, &file);
-    }
-
-    if (err != FMRB_OK) {
-        snprintf(response, response_size, "{\"ok\":false,\"err\":\"Cannot open file\"}");
+    if (offset < 0) {
+        snprintf(response, response_size, "{\"ok\":false,\"err\":\"Bad offset\"}");
         return;
     }
 
-    if (offset > 0) {
-        err = fmrb_hal_file_seek(file, offset, FMRB_SEEK_SET);
+    int64_t t0 = esp_timer_get_time();
+    fmrb_file_t file;
+    fmrb_err_t err;
+    bool reuse = g_put_cache.open &&
+                 strcmp(g_put_cache.path, path) == 0 &&
+                 (size_t)offset == g_put_cache.pos;
+
+    if (reuse) {
+        file = g_put_cache.file;
+    } else {
+        // A retried chunk lands here (same offset as the last one, so not the
+        // continuation): reopen and seek once, which is the old behaviour and
+        // is fine as an exception.
+        ble_fs_put_cache_close();
+
+        if (offset == 0) {
+            err = fmrb_hal_file_open(path, FMRB_O_WRONLY | FMRB_O_CREAT | FMRB_O_TRUNC, &file);
+        } else {
+            err = fmrb_hal_file_open(path, FMRB_O_WRONLY, &file);
+        }
+
         if (err != FMRB_OK) {
-            fmrb_hal_file_close(file);
-            snprintf(response, response_size, "{\"ok\":false,\"err\":\"Seek failed\"}");
+            snprintf(response, response_size, "{\"ok\":false,\"err\":\"Cannot open file\"}");
             return;
+        }
+
+        if (offset > 0) {
+            err = fmrb_hal_file_seek(file, offset, FMRB_SEEK_SET);
+            if (err != FMRB_OK) {
+                fmrb_hal_file_close(file);
+                snprintf(response, response_size, "{\"ok\":false,\"err\":\"Seek failed\"}");
+                return;
+            }
         }
     }
 
     size_t bytes_written = 0;
     err = fmrb_hal_file_write(file, binary_data, binary_size, &bytes_written);
-    fmrb_hal_file_close(file);
+
+    // An empty chunk is how the client says "that was the last one".
+    bool finished = (binary_size == 0) || (err != FMRB_OK);
+    if (finished) {
+        if (reuse) {
+            ble_fs_put_cache_close();
+        } else {
+            fmrb_hal_file_close(file);
+        }
+    } else {
+        g_put_cache.file = file;
+        g_put_cache.open = true;
+        strncpy(g_put_cache.path, path, sizeof(g_put_cache.path) - 1);
+        g_put_cache.path[sizeof(g_put_cache.path) - 1] = '\0';
+        g_put_cache.pos = (size_t)offset + bytes_written;
+        g_put_cache.last_use_us = esp_timer_get_time();
+    }
+
+    int64_t took_ms = (esp_timer_get_time() - t0) / 1000;
+    if (took_ms >= BLE_FS_PUT_SLOW_MS) {
+        FMRB_LOGW(TAG, "slow PUT: %zu bytes at %ld took %lld ms%s",
+                  binary_size, (long)offset, (long long)took_ms,
+                  reuse ? "" : " (reopened)");
+    }
 
     if (err != FMRB_OK || bytes_written != binary_size) {
-        snprintf(response, response_size, "{\"ok\":false,\"err\":\"Write failed\"}");
+        snprintf(response, response_size,
+                 "{\"ok\":false,\"err\":\"Write failed\",\"n\":%zu}", bytes_written);
         return;
     }
 
-    snprintf(response, response_size, "{\"ok\":true}");
+    // Report what was written: the client compares it with what it sent, so a
+    // short write is caught at the chunk that caused it instead of turning
+    // into a hole in the file.
+    snprintf(response, response_size, "{\"ok\":true,\"n\":%zu}", bytes_written);
 }
 
 // ============================================================
@@ -1127,6 +1239,12 @@ static void ble_fs_process_frame(const uint8_t *frame, size_t frame_len)
               cmd, json_len, binary_size);
 
     fmrb_semaphore_take(g_fs_ctx.mutex, FMRB_TICK_MAX);
+
+    // Anything other than the next chunk of an upload has to see the file as
+    // it stands, so let go of the held-open handle first.
+    if (cmd != BLE_FS_CMD_PUT) {
+        ble_fs_put_cache_close();
+    }
 
     size_t response_binary_size = 0;
 
@@ -1253,6 +1371,7 @@ static void ble_fs_task_func(void *arg)
         // Always poll the log ring after a wait (or after a frame). The
         // helper is a no-op when no subscription / no client is attached.
         ble_fs_poll_logs();
+        ble_fs_put_cache_idle_check();
     }
 }
 
