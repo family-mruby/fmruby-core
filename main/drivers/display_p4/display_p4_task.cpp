@@ -17,6 +17,7 @@
 
 #include "fmrb_log.h"
 #include "fmrb_hal_link.h"
+#include "fmrb_hal_file.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_link_types.h"
 #include "fmrb_mem.h"
@@ -188,16 +189,16 @@ typedef struct {
 static p4_image_t g_images_store[DISPLAY_P4_MAX_IMAGES];
 static uint16_t   g_next_image_store_id = 1;
 
-// True when the path already names a mount point the VFS knows, so it must
-// not be folded under /flash. Kept in one place: both the still loader and
-// VIDEO_OPEN resolve paths this way.
-static bool path_is_absolute_mount(const char *p, int len) {
-    static const char *const mounts[] = { "/sd/", "/flash/", "/tmp/", "/mnt/" };
-    for (size_t i = 0; i < sizeof(mounts) / sizeof(mounts[0]); i++) {
-        int mlen = (int)strlen(mounts[i]);
-        if (len >= mlen && strncmp(p, mounts[i], (size_t)mlen) == 0) return true;
-    }
-    return false;
+// Turn a path as an app wrote it into one the VFS answers to. The commands
+// carry a length-counted path, so copy it out and hand it to the HAL resolver
+// -- the same one File uses, which is what makes "/mnt/sd/movie/demo.mjpg"
+// (what the desktop file selector hands back) reach the card, and a bare
+// "logo.png" still land under the flash mount. Resolving it here by hand used
+// to miss the aliases the HAL knows about.
+static void resolve_vfs_path(const char *p, int pl, char *out, size_t out_len) {
+    char vpath[256];
+    snprintf(vpath, sizeof(vpath), "%.*s", pl > 0 ? pl : 0, p);
+    fmrb_hal_file_resolve_path(vpath, out, out_len);
 }
 
 static p4_image_t* image_store_find(uint16_t id) {
@@ -1836,19 +1837,13 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         const auto *cmd = (const fmrb_link_graphics_load_sprite_image_bmp_t *)data;
         if (size < sizeof(*cmd) + cmd->path_len) break;
 
-        // Build VFS path (strip leading '/', prepend /flash/)
         // Paths are relative to the flash mount unless they name another
         // one. The player and the still loader share this rule, so an app can
         // say "/sd/movie/demo.mjpg" and "logo.png" in the same breath.
         const char *p  = (const char *)(data + sizeof(*cmd));
         int         pl = (int)cmd->path_len;
         char full_path[256];
-        if (path_is_absolute_mount(p, pl)) {
-            snprintf(full_path, sizeof(full_path), "%.*s", pl, p);
-        } else {
-            if (pl > 0 && p[0] == '/') { p++; pl--; }
-            snprintf(full_path, sizeof(full_path), "/flash/%.*s", pl, p);
-        }
+        resolve_vfs_path(p, pl, full_path, sizeof(full_path));
 
         LGFX_Sprite *spr = display_p4_sprite_image_get(cmd->image_id);
         if (!spr) {
@@ -1961,9 +1956,8 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
 
         const char *p  = (const char *)(data + sizeof(*cmd));
         int         pl = (int)cmd->path_len;
-        if (pl > 0 && p[0] == '/') { p++; pl--; }
         char full_path[256];
-        snprintf(full_path, sizeof(full_path), "/flash/%.*s", pl, p);
+        resolve_vfs_path(p, pl, full_path, sizeof(full_path));
 
         fmrb_link_graphics_image_created_t resp = {};
 
@@ -2132,12 +2126,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         const char *p  = (const char *)(data + sizeof(*cmd));
         int         pl = (int)cmd->path_len;
         char full_path[256];
-        if (path_is_absolute_mount(p, pl)) {
-            snprintf(full_path, sizeof(full_path), "%.*s", pl, p);
-        } else {
-            if (pl > 0 && p[0] == '/') { p++; pl--; }
-            snprintf(full_path, sizeof(full_path), "/flash/%.*s", pl, p);
-        }
+        resolve_vfs_path(p, pl, full_path, sizeof(full_path));
 
         fmrb_link_graphics_video_opened_t resp = {};
         uint16_t vw = 0, vh = 0;

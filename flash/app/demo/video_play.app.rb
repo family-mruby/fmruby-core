@@ -1,8 +1,10 @@
 # Motion-JPEG player demo (Modern / Tab5 only).
 #
-# Plays /sd/movie/demo.mjpg -- a file of JPEG frames written back to back --
-# inside this window. The picture is drawn by the display side; this app only
-# lays out the window, starts the player, and offers the buttons.
+# Plays a file of JPEG frames written back to back inside this window. The
+# picture is drawn by the display side; this app only lays out the window,
+# starts the player, and offers the buttons. It opens /sd/movie/demo.mjpg on
+# startup if that file is there, and "Open" picks any other file with the
+# system file selector (the SD card is under /mnt/sd there).
 #
 # Make a file with:
 #   ffmpeg -i source.mp4 -vf "scale=320:176,fps=15" -q:v 4 -f mjpeg demo.mjpg
@@ -11,14 +13,23 @@
 # on, and it is what lets the frame land in the canvas without a reshuffle.
 # The screen is 426x240, and this window keeps a row of buttons and a status
 # line above the picture, so 320x176 is what still fits.
+#
+# The file says nothing about its own frame rate, so the rate is this app's to
+# choose: "15fps" cycles through the two rates the hardware keeps up with at
+# this size. Playing a 30fps file at 15 is slow motion, not an error.
 
 class VideoPlayApp < FmrbApp
   MOVIE_PATH = "/sd/movie/demo.mjpg"
-  FPS = 15
+  RATES = [15, 30]
 
   BTN_Y = 4
   BTN_W = 44
   BTN_H = 10
+  BTN_PLAY = 0
+  BTN_PAUSE = 1
+  BTN_REWIND = 2
+  BTN_OPEN = 3
+  BTN_RATE = 4
 
   # The picture goes under the buttons and the status line. Those are drawn in
   # canvas coordinates from the user area, so the picture has to start from the
@@ -31,31 +42,73 @@ class VideoPlayApp < FmrbApp
     @video = nil
     @message = nil
     @last_status_ms = 0
+    @path = MOVIE_PATH
+    @rate_index = 0
 
     draw_screen
-    open_video
+    open_video(@path)
   end
 
-  def open_video
-    @video = @gfx.video_open(MOVIE_PATH,
+  def fps
+    RATES[@rate_index]
+  end
+
+  # Drop the player and wipe the rectangle it was drawing into. Without the
+  # wipe the last frame of the previous file stays on the canvas, and a
+  # smaller new picture would leave a frame of it around the edges.
+  def close_video
+    if @video
+      @video.stop
+      @video = nil
+    end
+    @gfx.fill_rect(@user_area_x0 + VIDEO_DX, @user_area_y0 + VIDEO_DY,
+                   @user_area_width - VIDEO_DX * 2,
+                   @user_area_height - VIDEO_DY - 2, FmrbGfx::BLACK)
+  end
+
+  def open_video(path)
+    close_video
+    @path = path
+    @video = @gfx.video_open(path,
                              x: @user_area_x0 + VIDEO_DX,
                              y: @user_area_y0 + VIDEO_DY,
-                             fps: FPS, loop: true)
+                             fps: fps, loop: true)
     if @video.nil?
-      @message = "no video: #{MOVIE_PATH}"
+      # Modern-only, and the file has to be a readable JPEG sequence.
+      @message = "cannot play #{basename(path)}"
       draw_screen
       return
     end
     @video.play
-    @message = "#{@video.width}x#{@video.height} @#{FPS}"
-    draw_status
+    @message = "#{basename(path)} #{@video.width}x#{@video.height}"
+    draw_screen
+  end
+
+  def basename(path)
+    path.split("/").last || path
+  end
+
+  # The file selector belongs to the desktop, so the answer comes back as a
+  # message rather than as a return value.
+  def on_control(msg)
+    return unless msg["cmd"] == "file_selected"
+
+    path = msg["path"]
+    if path.nil?
+      @message = "no file picked"
+      draw_status
+      return
+    end
+    open_video(path)
   end
 
   def draw_screen
     clear_user_area
-    draw_button(0, "Play")
-    draw_button(1, "Pause")
-    draw_button(2, "Rewind")
+    draw_button(BTN_PLAY, "Play")
+    draw_button(BTN_PAUSE, "Pause")
+    draw_button(BTN_REWIND, "Rewind")
+    draw_button(BTN_OPEN, "Open")
+    draw_button(BTN_RATE, "#{fps}fps")
     draw_status
     draw_window_frame
     @gfx.present
@@ -101,13 +154,28 @@ class VideoPlayApp < FmrbApp
   def on_event(ev)
     super(ev)
     return unless ev[:type] == :mouse_up && ev[:button] == 1
+
+    # Open and the rate work with no file loaded; the transport buttons do not.
+    if hit_button?(ev, BTN_OPEN)
+      @message = "pick a file (SD is under /mnt/sd)"
+      draw_status
+      request_file_select("open")
+      return
+    elsif hit_button?(ev, BTN_RATE)
+      @rate_index = (@rate_index + 1) % RATES.length
+      draw_button(BTN_RATE, "#{fps}fps")
+      # The rate is fixed when the file is opened, so reopen to apply it.
+      open_video(@path) if @video
+      return
+    end
+
     return if @video.nil?
 
-    if hit_button?(ev, 0)
+    if hit_button?(ev, BTN_PLAY)
       @video.play
-    elsif hit_button?(ev, 1)
+    elsif hit_button?(ev, BTN_PAUSE)
       @video.pause
-    elsif hit_button?(ev, 2)
+    elsif hit_button?(ev, BTN_REWIND)
       @video.rewind
     else
       return
