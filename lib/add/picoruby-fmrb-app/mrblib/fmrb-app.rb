@@ -22,6 +22,10 @@ class FmrbApp
   # the editor's completion answers both spellings, and the method form is the
   # one the type signatures in sig/ describe.
   attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen, :rounded_corners, :gfx
+  # User area (inside the window frame, below the title bar). Exposed so
+  # helper libraries such as FmrbUI can place widgets in window-local
+  # coordinates without reaching into the app's instance variables.
+  attr_reader :user_area_x0, :user_area_y0, :user_area_width, :user_area_height
   # Whether a click on the close-button area may stop the app. System apps
   # that own the screen (the desktop) must set this to false: for them the
   # top-right corner is ordinary UI, not a close button.

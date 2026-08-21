@@ -103,6 +103,21 @@ class FmrbGfx
     self
   end
 
+  # Positional-argument form of draw_text(..., mixed: true).
+  #
+  # Keyword arguments build a Hash on every call in mruby, which is not
+  # acceptable on a redraw path that must not allocate (FmrbUI#flush). This
+  # form renders ASCII with Font0 (6x8) and multi-byte UTF-8 runs with
+  # misaki_8 (8x8) without touching the current font selection.
+  def draw_text_mixed(x, y, str, color, bg_color = nil)
+    if bg_color
+      _draw_text_hybrid(x, y, str, color, bg_color)
+    else
+      _draw_text_hybrid(x, y, str, color)
+    end
+    self
+  end
+
   # Compute the rendered pixel width of a string with the given font.
   # When family/size are omitted, the currently selected font is used.
   # Multi-byte UTF-8 glyphs are counted as full-width (char_w * 2) for

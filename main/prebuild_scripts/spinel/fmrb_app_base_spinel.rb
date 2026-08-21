@@ -214,6 +214,18 @@ class FmrbGfx
     self
   end
 
+  # Positional-argument form of draw_text(..., mixed: true). Keyword arguments
+  # allocate a Hash per call, so the no-allocation redraw path (FmrbUI#flush)
+  # uses this instead.
+  def draw_text_mixed(x, y, str, color, bg_color = nil)
+    s = str.to_s
+    flags = 2
+    flags |= 1 if bg_color
+    bg = bg_color || 0
+    FmrbSpxGfx.fmrb_spx_gfx_draw_text(@canvas_id, x, y, s, s.bytesize, color, bg, flags)
+    self
+  end
+
   # Rendered pixel width of a string with the given (or current) font.
   def text_width(str, family = nil, size = nil)
     key = font_key(family, size)
@@ -705,6 +717,8 @@ class FmrbApp
   # :gfx matches the mruby base: apps may write gfx.draw_text as well as
   # @gfx.draw_text, and the method form is what sig/ describes.
   attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen, :rounded_corners, :gfx
+  # User area readers, same as the mruby base (FmrbUI needs them).
+  attr_reader :user_area_x0, :user_area_y0, :user_area_width, :user_area_height
 
   CLOSE_BTN_CX_OFFSET = 6
   CLOSE_BTN_CY        = 5
