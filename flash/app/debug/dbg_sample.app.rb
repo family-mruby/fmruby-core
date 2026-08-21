@@ -68,21 +68,21 @@ class DbgSampleApp < FmrbApp
 
   def draw_screen
     return unless @gfx
-    clear_user_area(FmrbGfx::BLACK)
+    clear_user_area
 
     x = @user_area_x0 + 4
     y = @user_area_y0 + 4
-    @gfx.draw_text(x, y, "Debugger sample", FmrbGfx::WHITE)
+    @gfx.draw_text(x, y, "Debugger sample", theme_fg)
     y += 14
-    @gfx.draw_text(x, y, "tick : #{@tick}", FmrbGfx::CYAN)
+    @gfx.draw_text(x, y, "tick : #{@tick}", theme_accent)
     y += 12
-    @gfx.draw_text(x, y, "total: #{@total}", FmrbGfx::CYAN)
+    @gfx.draw_text(x, y, "total: #{@total}", theme_accent)
     y += 12
-    @gfx.draw_text(x, y, "phase: #{@phase}", FmrbGfx::GRAY)
+    @gfx.draw_text(x, y, "phase: #{@phase}", theme_border)
     y += 12
-    @gfx.draw_text(x, y, "click: #{@last_click}", FmrbGfx::YELLOW)
+    @gfx.draw_text(x, y, "click: #{@last_click}", theme_fg)
     y += 16
-    @gfx.draw_text(x, y, "Set BPs in dbg_sample.app.rb", FmrbGfx::GRAY)
+    @gfx.draw_text(x, y, "Set BPs in dbg_sample.app.rb", theme_border)
 
     draw_window_frame
     @gfx.present

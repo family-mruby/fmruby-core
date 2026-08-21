@@ -29,7 +29,7 @@ class MyApp < FmrbApp
   def draw_screen
     clear_user_area
     @gfx.fill_rect(@x, @y, 16, 16, FmrbGfx::YELLOW)
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "Ctrl+Q to quit", FmrbGfx::WHITE)
+    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "Ctrl+Q to quit", theme_fg)
     @gfx.present
   end
 

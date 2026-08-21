@@ -125,7 +125,7 @@ class VideoPlayApp < FmrbApp
     x = button_x(index)
     y = @user_area_y0 + BTN_Y
     @gfx.fill_rect(x, y, BTN_W, BTN_H, FmrbGfx::BLUE)
-    @gfx.draw_rect(x, y, BTN_W, BTN_H, FmrbGfx::WHITE)
+    @gfx.draw_rect(x, y, BTN_W, BTN_H, theme_border)
     lx = x + (BTN_W - label.length * 6) / 2
     @gfx.draw_text(lx, y + 1, label, FmrbGfx::WHITE, FmrbGfx::BLUE)
   end
@@ -141,7 +141,7 @@ class VideoPlayApp < FmrbApp
   def draw_status
     y = @user_area_y0 + BTN_Y + BTN_H + 1
     w = @user_area_width - 8
-    @gfx.fill_rect(@user_area_x0 + 4, y, w, 8, FmrbGfx::BLACK)
+    @gfx.fill_rect(@user_area_x0 + 4, y, w, 8, theme_bg)
     text = @message || ""
     if @video
       st = @video.status
@@ -149,7 +149,7 @@ class VideoPlayApp < FmrbApp
         text = "#{@message}  shown:#{st[:shown]} drop:#{st[:dropped]}"
       end
     end
-    @gfx.draw_text(@user_area_x0 + 4, y, text, FmrbGfx::WHITE)
+    @gfx.draw_text(@user_area_x0 + 4, y, text, theme_fg)
     @gfx.present
   end
 

@@ -14,7 +14,7 @@ class SubDemoApp < FmrbApp
   def draw_screen
     clear_user_area
     @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
-                   "Waiting...", FmrbGfx::GRAY) if @count == 0
+                   "Waiting...", theme_border) if @count == 0
     if @count > 0
       @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
                      "Received: #{@count}", FmrbGfx::GREEN)

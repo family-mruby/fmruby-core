@@ -834,7 +834,21 @@ class FmrbApp
     _apply_rounded_corner_regions
   end
 
-  def clear_user_area(color = FmrbGfx::BLACK)
+  # ---- System colours ----
+  #
+  # The [theme] section of system_conf.toml, as FmrbConst::THEME_*. Apps that
+  # show text and controls take their background and ink from here, so one
+  # edit to the file restyles the desktop and every app together, and a white
+  # page on a Retro NTSC screen can be toned down in one place. A game or a
+  # visual piece that owns its whole picture passes explicit colours instead.
+  def theme_bg;     FmrbConst::THEME_WINDOW_BG; end   # page background
+  def theme_fg;     FmrbConst::THEME_TEXT; end        # ink on theme_bg
+  def theme_accent; FmrbConst::THEME_HIGHLIGHT; end   # selection, emphasis
+  def theme_border; FmrbConst::THEME_BORDER; end      # rules, boxes, muted text
+  def theme_fg_light; FmrbConst::THEME_TEXT_LIGHT; end # ink on accent / button
+
+  # Same default as the mruby base: the theme's window background.
+  def clear_user_area(color = FmrbConst::THEME_WINDOW_BG)
     return unless @gfx
     @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height, color)
   end

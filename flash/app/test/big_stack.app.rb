@@ -7,7 +7,7 @@
 class BigStackApp < FmrbApp
   def on_create
     clear_user_area
-    @gfx.draw_text(8, 8, "Big stack app running", FmrbGfx::WHITE)
+    @gfx.draw_text(8, 8, "Big stack app running", theme_fg)
     @gfx.present
     Log.info("BigStack: started")
   end

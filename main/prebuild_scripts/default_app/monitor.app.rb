@@ -28,19 +28,22 @@ class MonitorApp < FmrbApp
   KILL_IDS = [:kill0, :kill1, :kill2, :kill3, :kill4,
               :kill5, :kill6, :kill7, :kill8].freeze
 
-  # Bar colors (page 1)
+  # Page colours from the system theme ([theme] in system_conf.toml): the
+  # monitor is a tool window, so it reads like the rest of the desktop.
+  COLOR_BG     = FmrbConst::THEME_WINDOW_BG
+  COLOR_TEXT   = FmrbConst::THEME_TEXT
+  COLOR_DIM    = FmrbConst::THEME_BORDER
+  COLOR_BORDER = FmrbConst::THEME_BORDER
+  COLOR_NAV_HI = FmrbConst::THEME_TEXT
+
+  # Bar colors (page 1): saturated blocks, white figures on top.
   COLOR_FREE = FmrbGfx.rgb_to_332(60, 180, 60)
   COLOR_USED = FmrbGfx.rgb_to_332(220, 60, 60)
-  COLOR_BG   = FmrbGfx.rgb_to_332(30, 30, 40)
-  COLOR_TEXT = FmrbGfx.rgb_to_332(220, 220, 220)
-  COLOR_DIM  = FmrbGfx.rgb_to_332(120, 120, 120)
-  COLOR_BORDER = FmrbGfx.rgb_to_332(80, 80, 100)
 
-  # Graph colors (page 2)
-  COLOR_GRAPH_CMDS = FmrbGfx.rgb_to_332(80, 200, 255)
-  COLOR_GRAPH_PRES = FmrbGfx.rgb_to_332(255, 180, 60)
-  COLOR_AXIS       = FmrbGfx.rgb_to_332(100, 100, 120)
-  COLOR_NAV_HI     = FmrbGfx.rgb_to_332(255, 255, 255)
+  # Graph colors (page 2): dark enough to read as lines on a pale page.
+  COLOR_GRAPH_CMDS = FmrbGfx.rgb_to_332(0, 90, 200)
+  COLOR_GRAPH_PRES = FmrbGfx.rgb_to_332(200, 100, 0)
+  COLOR_AXIS       = FmrbConst::THEME_BORDER
 
   def initialize
     super()

@@ -10,13 +10,13 @@ class SdTestApp < FmrbApp
   def on_create
     @run = 0
     @result = "(idle)"
-    @result_color = FmrbGfx::WHITE
+    @result_color = theme_fg
     @details = []
     if FmrbConst::PLATFORM == "esp32"
       run_test
     else
       @result = "ESP32 only"
-      @result_color = FmrbGfx::YELLOW
+      @result_color = 0xE8  # orange: reads on the pale page
       @details << "Run on ESP32 target."
     end
     draw_screen
@@ -82,26 +82,26 @@ class SdTestApp < FmrbApp
 
   def draw_screen
     return unless @gfx
-    clear_user_area(FmrbGfx::BLACK)
+    clear_user_area
 
     x = @user_area_x0 + 4
     y = @user_area_y0 + 4
-    @gfx.draw_text(x, y, "SD Card Test  run##{@run}", FmrbGfx::WHITE)
+    @gfx.draw_text(x, y, "SD Card Test  run##{@run}", theme_fg)
     y += 12
-    @gfx.draw_text(x, y, "Path: #{TEST_PATH}", FmrbGfx::GRAY)
+    @gfx.draw_text(x, y, "Path: #{TEST_PATH}", theme_border)
     y += 12
     @gfx.draw_text(x, y, "Result: #{@result}", @result_color)
     y += 14
 
     i = 0
     while i < @details.size
-      @gfx.draw_text(x, y, @details[i], FmrbGfx::WHITE)
+      @gfx.draw_text(x, y, @details[i], theme_fg)
       y += 10
       i += 1
     end
 
     y += 4
-    @gfx.draw_text(x, y, "[Space] re-run", FmrbGfx::CYAN)
+    @gfx.draw_text(x, y, "[Space] re-run", theme_accent)
 
     draw_window_frame
     @gfx.present

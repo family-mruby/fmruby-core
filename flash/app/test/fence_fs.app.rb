@@ -20,7 +20,7 @@ class FenceFsApp < FmrbApp
                    FmrbGfx::WHITE, FmrbGfx::BLUE)
     @gfx.draw_text(@user_area_x0 + 8, @user_area_y0 + 24,
                    "area #{@user_area_width}x#{@user_area_height}",
-                   FmrbGfx::YELLOW, FmrbGfx::BLUE)
+                   FmrbGfx::WHITE, FmrbGfx::BLUE)
     @gfx.present
   end
 

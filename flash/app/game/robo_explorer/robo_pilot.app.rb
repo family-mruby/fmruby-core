@@ -226,7 +226,10 @@ class RoboPilotApp < FmrbApp
   end
 
   def draw_screen
-    clear_user_area
+    # Black on purpose: this window is a picture with its own palette, not a
+    # page of text, so it does not follow the theme (clear_user_area defaults
+    # to the theme background).
+    clear_user_area(FmrbGfx::BLACK)
     x = @user_area_x0 + 3
     st = @state
     if st.nil?

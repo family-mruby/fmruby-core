@@ -7,7 +7,7 @@ PIN_COUNT = 49  # GPIO 0-48
 
 # Usage type -> color (RGB332)
 USAGE_COLORS = {
-  0 => 0x00,  # UNUSED:    black
+  0 => 0x00,  # UNUSED:    (drawn in the page colour, see draw_all)
   1 => 0x6D,  # SYSTEM:    gray
   2 => 0x1C,  # USER_GPIO: green
   3 => 0x03,  # USER_I2C:  blue
@@ -66,7 +66,7 @@ class GpioViewerApp < FmrbApp
 
   def draw_all
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 2, "GPIO Status", FmrbGfx::WHITE)
+    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 2, "GPIO Status", theme_fg)
 
     status = @prev_status || FmrbHw.pin_status_all
 
@@ -76,7 +76,7 @@ class GpioViewerApp < FmrbApp
       row = pin / GRID_COLS
 
       usage = status[pin] || 0
-      bg = USAGE_COLORS[usage] || 0x00
+      bg = usage == 0 ? theme_bg : (USAGE_COLORS[usage] || theme_bg)
       label = USAGE_LABELS[usage] || ""
 
       cx = @grid_x + col * @cell_w
@@ -85,7 +85,9 @@ class GpioViewerApp < FmrbApp
       @gfx.fill_rect(cx, cy, @cell_w - 1, @cell_h - 1, bg)
 
       # Pin number
-      text_color = (usage == 0) ? FmrbGfx::GRAY : FmrbGfx::WHITE
+      # Unused cells sit on the page colour, so their number is page ink;
+      # a used cell is a saturated block, so white reads on it.
+      text_color = (usage == 0) ? theme_border : FmrbGfx::WHITE
       @gfx.draw_text(cx + 1, cy + 1, pin.to_s, text_color)
 
       # Usage label (if not empty and cell is tall enough)
@@ -110,7 +112,7 @@ class GpioViewerApp < FmrbApp
         ly = ly2
       end
       @gfx.fill_rect(x, ly + 1, 6, 6, item[0])
-      @gfx.draw_text(x + 8, ly, item[1], FmrbGfx::GRAY)
+      @gfx.draw_text(x + 8, ly, item[1], theme_fg)
       x += item[1].length * 6 + 16
     end
 

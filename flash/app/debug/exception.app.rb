@@ -4,7 +4,7 @@ class ExceptionApp < FmrbApp
   def on_create
     @tick = 0
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "Exception in 3s...", FmrbGfx::YELLOW)
+    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "Exception in 3s...", theme_fg)
     draw_window_frame
     @gfx.present
   end

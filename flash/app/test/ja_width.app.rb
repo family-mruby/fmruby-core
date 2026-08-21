@@ -17,20 +17,20 @@ class JaWidthApp < FmrbApp
     x0 = @user_area_x0 + 4
     y = @user_area_y0 + 4
 
-    @gfx.draw_text(x0, y, "mixed (Font0 + misaki_8)", FmrbGfx::WHITE)
+    @gfx.draw_text(x0, y, "mixed (Font0 + misaki_8)", theme_fg)
     y += 10
     ROWS.each do |s|
-      @gfx.draw_text(x0, y, s, FmrbGfx::WHITE, nil, mixed: true)
+      @gfx.draw_text(x0, y, s, theme_fg, nil, mixed: true)
       Log.info("JAW: mixed #{s.inspect} i18n=#{FmrbI18n.text_width(s)}")
       y += 10
     end
 
     y += 6
-    @gfx.draw_text(x0, y, "ja 12 (efontJA_12)", FmrbGfx::WHITE)
+    @gfx.draw_text(x0, y, "ja 12 (efontJA_12)", theme_fg)
     y += 12
     @gfx.set_font(:ja, 12)
     ROWS.each do |s|
-      @gfx.draw_text(x0, y, s, FmrbGfx::WHITE)
+      @gfx.draw_text(x0, y, s, theme_fg)
       Log.info("JAW: ja12 #{s.inspect} gfx=#{@gfx.text_width(s)}")
       y += 12
     end

@@ -125,16 +125,16 @@ class DbgE1TestApp < FmrbApp
 
   def draw_screen
     return unless @gfx
-    clear_user_area(FmrbGfx::BLACK)
+    clear_user_area
     x = @user_area_x0 + 4
     y = @user_area_y0 + 4
     @lines.each do |ln|
       color = if ln.start_with?("PASS")
-                FmrbGfx::GREEN
+                0x14  # dark green, reads on the pale page
               elsif ln.start_with?("FAIL")
                 FmrbGfx::RED
               else
-                FmrbGfx::WHITE
+                theme_fg
               end
       @gfx.draw_text(x, y, ln, color)
       y += 12

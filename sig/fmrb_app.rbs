@@ -176,8 +176,25 @@ class FmrbApp
   # 窓のふちと題名を描き直す
   def draw_window_frame: () -> void
 
-  # 中身の場所を色でぬりつぶす
-  def clear_user_area: (Integer color) -> void
+  # 中身の場所をぬりつぶす。色を省くとテーマの紙の色 <<en>> theme page colour by default
+  def clear_user_area: () -> void
+
+  # ---- テーマの色 (system_conf.toml の [theme]) ----
+
+  # 紙の色 <<en>> page background from the system theme
+  def theme_bg: () -> Integer
+
+  # 紙に書く字の色 <<en>> ink for text on theme_bg
+  def theme_fg: () -> Integer
+
+  # 目立たせる色 <<en>> selection / emphasis colour
+  def theme_accent: () -> Integer
+
+  # 線や枠、うすい字の色 <<en>> rules, boxes, muted text
+  def theme_border: () -> Integer
+
+  # 濃い地の上に書く字の色 <<en>> ink on accent or button backgrounds
+  def theme_fg_light: () -> Integer
 
   # 右はしに巻物のつまみを描く
   def draw_scrollbar: (Integer scroll, Integer total, Integer visible) -> void

@@ -312,7 +312,10 @@ class LedMatrixApp < FmrbApp
   end
 
   def draw_frame
-    clear_user_area
+    # Black on purpose: this window is a picture with its own palette, not a
+    # page of text, so it does not follow the theme (clear_user_area defaults
+    # to the theme background).
+    clear_user_area(FmrbGfx::BLACK)
     draw_header
     draw_window_frame
     @gfx.present

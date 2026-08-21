@@ -2,15 +2,22 @@
 # Shows log messages from all tasks with color-coded levels
 
 class LogViewerApp < FmrbApp
-  LOG_BG = 0x00
+  # Page colours come from the system theme ([theme] in system_conf.toml), so
+  # the log reads the same as every other window and can be toned down for an
+  # NTSC screen in one place.
+  LOG_BG = FmrbConst::THEME_WINDOW_BG
+  TOOLBAR_BG = FmrbConst::THEME_MENU_BG
+  BUTTON_BG = FmrbConst::THEME_BUTTON
+  BUTTON_TEXT = FmrbConst::THEME_TEXT_LIGHT
   LOG_LINES_MAX = 50
   TOOLBAR_H = 14
 
-  # Level colors (RGB332)
+  # Level colors (RGB332), chosen to read on the pale page: the old yellow
+  # for warnings vanished against white, so it is orange now.
   COLOR_ERROR = 0xE0  # Red
-  COLOR_WARN  = 0xFC  # Yellow
-  COLOR_INFO  = 0xB6  # Light gray
-  COLOR_DEBUG = 0x49  # Dark gray
+  COLOR_WARN  = 0xE8  # Orange
+  COLOR_INFO  = FmrbConst::THEME_TEXT
+  COLOR_DEBUG = FmrbConst::THEME_BORDER
 
   # Buffer level options
   LEVELS = ["I", "D"]
@@ -138,19 +145,19 @@ class LogViewerApp < FmrbApp
   end
 
   def draw_toolbar(x0, y0, w)
-    @gfx.fill_rect(x0, y0, w, TOOLBAR_H, 0x24)
+    @gfx.fill_rect(x0, y0, w, TOOLBAR_H, TOOLBAR_BG)
 
     # Level button
     btn_x = x0 + 2
     btn_y = y0 + 1
     label = "Lv:" + LEVEL_LABELS[@level_idx]
-    @gfx.fill_rect(btn_x, btn_y, label.length * 6 + 8, 12, 0x49)
-    @gfx.draw_text(btn_x + 4, btn_y + 2, label, 0xFF, 0x49)
+    @gfx.fill_rect(btn_x, btn_y, label.length * 6 + 8, 12, BUTTON_BG)
+    @gfx.draw_text(btn_x + 4, btn_y + 2, label, BUTTON_TEXT, BUTTON_BG)
 
     # Auto-scroll indicator
     as_label = @auto_scroll ? "[AUTO]" : "[HOLD]"
     as_x = x0 + w - as_label.length * 6 - 6
-    @gfx.draw_text(as_x, btn_y + 2, as_label, @auto_scroll ? 0x1C : 0xE0, 0x24)
+    @gfx.draw_text(as_x, btn_y + 2, as_label, @auto_scroll ? 0x1C : 0xE0, TOOLBAR_BG)
   end
 
   def on_event(ev)

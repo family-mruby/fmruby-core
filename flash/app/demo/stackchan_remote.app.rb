@@ -72,8 +72,8 @@ class StackChanRemoteApp < FmrbApp
 
   def draw_screen
     clear_user_area
-    @gfx.draw_text(@user_area_x0 + 4, @emos_label_y, "Emotion:", FmrbGfx::GRAY)
-    @gfx.draw_text(@user_area_x0 + 4, @emotes_label_y, "Emote:", FmrbGfx::GRAY)
+    @gfx.draw_text(@user_area_x0 + 4, @emos_label_y, "Emotion:", theme_border)
+    @gfx.draw_text(@user_area_x0 + 4, @emotes_label_y, "Emote:", theme_border)
     @buttons.each { |b| draw_button(b) }
     draw_window_frame
     @gfx.present
@@ -82,7 +82,7 @@ class StackChanRemoteApp < FmrbApp
   def draw_button(b)
     bg = button_color(b)
     @gfx.fill_rect(b[:x], b[:y], b[:w], b[:h], bg)
-    @gfx.draw_rect(b[:x], b[:y], b[:w], b[:h], FmrbGfx::WHITE)
+    @gfx.draw_rect(b[:x], b[:y], b[:w], b[:h], theme_border)
     label = button_label(b)
     lx = b[:x] + (b[:w] - label.length * 6) / 2
     ly = b[:y] + (b[:h] - 8) / 2

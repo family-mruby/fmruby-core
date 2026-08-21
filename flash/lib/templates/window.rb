@@ -11,8 +11,8 @@ class MyApp < FmrbApp
   end
 
   def draw_screen
-    clear_user_area(FmrbGfx::WHITE)
-    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "clicks: #{@clicks}", FmrbGfx::BLACK)
+    clear_user_area   # the theme page colour; theme_fg is its ink
+    @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4, "clicks: #{@clicks}", theme_fg)
     @gfx.draw_text(@user_area_x0 + 12, @user_area_y0 + 26, "Hello", FmrbGfx::WHITE, FmrbGfx::BLUE)
     draw_window_frame
     @gfx.present

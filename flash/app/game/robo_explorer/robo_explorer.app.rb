@@ -385,7 +385,10 @@ class RoboExplorerApp < FmrbApp
   # ---- drawing ----
 
   def draw_all
-    clear_user_area
+    # Black on purpose: this window is a picture with its own palette, not a
+    # page of text, so it does not follow the theme (clear_user_area defaults
+    # to the theme background).
+    clear_user_area(FmrbGfx::BLACK)
     draw_board
     draw_status
     draw_window_frame

@@ -10,7 +10,7 @@ class FenceBad2App < FmrbApp
     Log.info("FENCE: bad-toml app up, area=#{@user_area_width}x#{@user_area_height}")
     clear_user_area
     @gfx.draw_text(@user_area_x0 + 4, @user_area_y0 + 4,
-                   "default attrs", FmrbGfx::WHITE)
+                   "default attrs", theme_fg)
     draw_window_frame
     @gfx.present
   end
