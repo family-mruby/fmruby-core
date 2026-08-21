@@ -202,6 +202,22 @@ int fmrb_spx_app_send_message(int dest_pid, int msg_type, const char *data, int 
     return fmrb_msg_send((fmrb_proc_id_t)dest_pid, &msg, 1000) == FMRB_OK ? 1 : 0;
 }
 
+int fmrb_spx_app_send_audio_note(int on, int ch, int freq, int vol, int duty,
+                                 int sweep)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (!ctx) {
+        return FMRB_SPX_ERR;
+    }
+    int ret = fmrb_app_send_audio_note(ctx->app_id, on != 0, ch, freq, vol,
+                                       duty, sweep, 1000);
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "App %s failed to send audio note: %d", ctx->app_name, ret);
+        return 0;
+    }
+    return 1;
+}
+
 int fmrb_spx_app_set_window_param(int which, int value)
 {
     fmrb_app_task_context_t *ctx = fmrb_current();

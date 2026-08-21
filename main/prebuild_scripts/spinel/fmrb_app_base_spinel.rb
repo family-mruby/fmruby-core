@@ -719,6 +719,11 @@ class FmrbApp
   attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen, :rounded_corners, :gfx
   # User area readers, same as the mruby base (FmrbUI needs them).
   attr_reader :user_area_x0, :user_area_y0, :user_area_width, :user_area_height
+  # Whether a click on the close-button area may stop the app. System apps
+  # that own the screen (the desktop) set this to false: for them the
+  # top-right corner is ordinary UI, not a close button. Same as the mruby
+  # base.
+  attr_accessor :closable
 
   CLOSE_BTN_CX_OFFSET = 6
   CLOSE_BTN_CY        = 5
@@ -731,6 +736,7 @@ class FmrbApp
     Log.debug("initialize")
     @running = false
     @close_btn_pressed = false
+    @closable = true
     @_timers = []
 
     buf = FmrbSpxApp.fmrb_spx_app_init   # 50-byte snapshot; creates canvas(es)
@@ -955,7 +961,7 @@ class FmrbApp
   def on_control(msg); nil; end
 
   def on_event(ev)
-    if ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
+    if @closable && ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
       cx = @window_width - CLOSE_BTN_CX_OFFSET
       cy = CLOSE_BTN_CY
       hit = (ev[:x] - cx).abs <= CLOSE_BTN_HIT_R && (ev[:y] - cy).abs <= CLOSE_BTN_HIT_R
@@ -975,7 +981,11 @@ class FmrbApp
             @gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_NORMAL_COLOR)
             @gfx.present
           end
-        elsif hit
+        elsif hit && !@fullscreen && @gfx
+          # Safety net for a missed down event. It needs the same guards as
+          # the down path: without them a plain click on the top-right corner
+          # of a fullscreen app (which draws no close button at all) silently
+          # stopped it.
           stop
         end
       end
@@ -1316,6 +1326,17 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_send_message(dest_pid, msg_type, s, s.bytesize) == 1
   end
 
+  # FmrbAudio#note_on / note_off go through this. It exists here because the
+  # mruby build resolves the respond_to? check in FmrbAudio at run time and
+  # Spinel resolves it statically: without the method the compiled call is
+  # still emitted and the app dies with NoMethodError the first time it plays
+  # a note.
+  def _send_audio_note(on, ch, freq, vol, duty, sweep)
+    flag = on ? 1 : 0
+    FmrbSpxApp.fmrb_spx_app_send_audio_note(flag, ch.to_i, freq.to_i, vol.to_i,
+                                            duty.to_i, sweep.to_i) == 1
+  end
+
   def _set_window_param(param, value)
     which = param == :pos_y ? 1 : 0
     FmrbSpxApp.fmrb_spx_app_set_window_param(which, value)
@@ -1338,6 +1359,22 @@ class FmrbApp
   def _cleanup
     FmrbSpxApp.fmrb_spx_app_cleanup
     nil
+  end
+
+  # Collect while this app waits in _spin (FmrbApp#idle_gc= in the mruby base).
+  #
+  # There is nothing to turn on here: Spinel's collector is not incremental
+  # and has no scheduler-driven mode or step limit, so it never runs inside
+  # _spin. The setter is kept so an app that asks for it (system_desktop does)
+  # compiles and behaves the same on both engines, and #idle_gc answers
+  # honestly with false. Apps that need to reclaim a burst call FmrbApp.gc.
+  def idle_gc=(enable)
+    @idle_gc = false
+    nil
+  end
+
+  def idle_gc
+    false
   end
 
   # Force a full GC on this task's Spinel heap.

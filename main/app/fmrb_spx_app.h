@@ -71,6 +71,15 @@ int fmrb_spx_app_cleanup(void);
 /** Send a message to another task. 1 on success, 0 if undelivered, neg on err. */
 int fmrb_spx_app_send_message(int dest_pid, int msg_type, const char *data, int len);
 
+/**
+ * @brief Send one APU note on behalf of this app (FmrbApp#_send_audio_note).
+ *
+ * Same message as the mruby method: builds the msgpack note_on / note_off
+ * payload in C and posts it to the kernel. 1 on success, 0 on failure.
+ */
+int fmrb_spx_app_send_audio_note(int on, int ch, int freq, int vol, int duty,
+                                 int sweep);
+
 /** which: 0 = pos_x, 1 = pos_y. Updates the context and returns 0 / neg. */
 int fmrb_spx_app_set_window_param(int which, int value);
 
