@@ -58,7 +58,10 @@ extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
 
 #if defined(FMRB_HAS_WIFI)
 #include "wifi_task.h"
-
+#endif
+#if !defined(CONFIG_IDF_TARGET_LINUX)
+#include "ble_task.h"
+#include "fmrb_sysinfo.h"
 #endif
 
 static const char *TAG = "spxapp";
@@ -588,7 +591,68 @@ int fmrb_spx_app_ble_start(void)
 #endif
 }
 
+int fmrb_spx_app_ble_state(void)
+{
+    /* Same source as FmrbApp.ble_state in the mruby binding: the BLE host's
+       UI state (0 = off). The Linux sim has no radio. */
+#if !defined(CONFIG_IDF_TARGET_LINUX)
+    return ble_ui_state();
+#else
+    return 0;
+#endif
+}
+
+int fmrb_spx_app_proc_generation(void)
+{
+    return (int)fmrb_app_proc_generation();
+}
+
+const char *fmrb_spx_app_bt_mac(void)
+{
+    /* FmrbConst.bt_mac: asked at call time, not frozen at boot, because on the
+       Modern board the radio is a separate chip and its address is known only
+       once the BLE host has synced. "-" until then, and always on Linux. */
+    static char buf[18];
+    memset(buf, 0, sizeof(buf));
+#ifdef CONFIG_IDF_TARGET_LINUX
+    snprintf(buf, sizeof(buf), "-");
+#else
+    fmrb_sysinfo_bt_mac_str(buf, sizeof(buf));
+#endif
+    sp_net_bin_len = (int)strlen(buf);
+    return buf;
+}
+
 /* ---- class: network / usb ----------------------------------------------- */
+
+int fmrb_spx_app_wifi_connected(void)
+{
+    /* FmrbApp.wifi_connected?: the same test fmrb_spx_app_wifi_info makes
+       for its first byte, without building the record. */
+#if defined(FMRB_HAS_WIFI)
+    return wifi_is_connected() ? 1 : 0;
+#elif defined(CONFIG_IDF_TARGET_LINUX)
+    int connected = 0;
+    struct ifaddrs *ifaddr = NULL;
+    if (getifaddrs(&ifaddr) == 0) {
+        for (struct ifaddrs *ifa = ifaddr; ifa; ifa = ifa->ifa_next) {
+            if (!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET) {
+                continue;
+            }
+            struct sockaddr_in *sin = (struct sockaddr_in *)ifa->ifa_addr;
+            if ((ntohl(sin->sin_addr.s_addr) >> 24) == 127) {
+                continue;
+            }
+            connected = 1;
+            break;
+        }
+        freeifaddrs(ifaddr);
+    }
+    return connected;
+#else
+    return 0;
+#endif
+}
 
 const char *fmrb_spx_app_wifi_info(void)
 {

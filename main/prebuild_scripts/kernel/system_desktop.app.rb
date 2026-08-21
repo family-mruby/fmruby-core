@@ -400,12 +400,13 @@ class SystemDesktopApp < FmrbApp
     entries = FmrbApp.config("shortcuts")
     return [] unless entries
     list = []
-    i = 0
-    while i < entries.size
-      e = entries[i]
+    # each, not while + [i]: an element taken out of this array by index does
+    # not carry its type under Spinel, so e["key"] does not compile that way,
+    # while a block parameter does. This runs once at boot, so the block call
+    # costs nothing that matters (launcher_exclude_dirs reads config the same way).
+    entries.each do |e|
       key = e["key"]
       list << { key: key ? key.downcase : nil, app: e["app"] }
-      i += 1
     end
     list
   rescue => e

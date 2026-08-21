@@ -76,8 +76,12 @@ module FileManagerMixin
     begin
       dir = Dir.open(@file_manager_dir)
       names = []
-      while (e = dir.read)
-        names << e unless e == "." || e == ".."
+      # "ent", not "e": this method also has "rescue => e", and Spinel types a
+      # local by name across the whole method -- the loop variable became an
+      # Exception, the names array a poly array of exceptions, and sort
+      # crashed on the first open (ruby_writing_constraints B).
+      while (ent = dir.read)
+        names << ent unless ent == "." || ent == ".."
       end
       dir.close
 
@@ -476,6 +480,9 @@ module FileManagerMixin
     elsif fmgr_runnable?(entry[:name])
       fmgr_run_file(@file_manager_selected)
     end
+    # Explicit: the branches end in a FmrbGfx (present) and a void leaf, which
+    # Spinel cannot give one return type (ruby_writing_constraints B).
+    nil
   end
 
   def fmgr_go_up
@@ -557,6 +564,7 @@ module FileManagerMixin
         fmgr_paste_file
       end
     end
+    nil  # same reason as fmgr_activate
   end
 
   # Open the actions menu on the selected row, the one a right click reaches.

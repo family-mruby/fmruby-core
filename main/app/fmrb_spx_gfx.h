@@ -71,6 +71,11 @@ int fmrb_spx_gfx_set_font(int canvas_id, int family, int size);
 int fmrb_spx_gfx_draw_text(int canvas_id, int x, int y, const char *text, int len,
                            int color, int bg_color, int flags);
 
+/** @brief Graphics#draw_wallclock / #draw_free_iram: the text is formatted in C
+ *  so the caller's periodic repaint allocates nothing. 1 drawn / 0 not. */
+int fmrb_spx_gfx_draw_wallclock(int canvas_id, int x, int y, int color, int bg_color);
+int fmrb_spx_gfx_draw_free_iram(int canvas_id, int x, int y, int color, int bg_color);
+
 /**
  * @brief Present the canvas. When @p explicit is 0 the canvas is presented at
  *        the current app window position (like FmrbGfx#present with no args);

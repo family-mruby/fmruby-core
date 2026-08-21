@@ -69,8 +69,12 @@ module FileSelectorMixin
     begin
       dir = Dir.open(@file_selector_dir)
       names = []
-      while (e = dir.read)
-        names << e unless e == "." || e == ".."
+      # "ent", not "e": this method also has "rescue => e", and Spinel types a
+      # local by name across the whole method -- the loop variable became an
+      # Exception, the names array a poly array of exceptions, and sort
+      # crashed on the first open (ruby_writing_constraints B).
+      while (ent = dir.read)
+        names << ent unless ent == "." || ent == ".."
       end
       dir.close
 

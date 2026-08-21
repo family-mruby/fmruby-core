@@ -116,6 +116,43 @@ jobs:
         # (public HTTPS, see lib/add/PICORUBY_TI_PIN) on first use.
         run: rake test
 
+  spinel-gen:
+    # Spinel code generation for every Ruby program that can be built on that
+    # engine (kernel, desktop, editor), on the runner's own gcc -- no docker.
+    # Generation alone catches the class of breakage that kept the Spinel
+    # desktop unbuildable for two weeks: a C API added to the mruby bindings
+    # and not to the Spinel base (doc/spinel_aot/report/desktop_spinel_gap.md).
+    # The C compile is left to build-linux; the generator stops at the first
+    # missing method or inference gap, which is what this job is for.
+    name: spinel-gen
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Fix file permissions
+        run: sudo chown -R $(id -u):$(id -g) .
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.4'
+
+      - name: Install Ruby dependencies
+        run: gem install serialport
+
+      - name: Generate Spinel C for kernel, desktop and editor
+        # rake spinel:gen self-provisions the pinned compiler into vendor/spinel
+        # (components/fmrb_spinel_rt/SPINEL_PIN) on a fresh checkout.
+        env:
+          FMRB_KERNEL_ENGINE: spinel
+          FMRB_APP_ENGINE_DESKTOP: spinel
+          FMRB_APP_ENGINE_EDITOR: spinel
+        run: rake spinel:gen
+
   build-linux:
     runs-on: ubuntu-latest
     steps:

@@ -177,6 +177,11 @@ int fmrb_spx_app_enable_cursor(void);            /**< returns 0 */
 int fmrb_spx_app_set_cursor_visible(int visible);/**< returns 0 */
 int fmrb_spx_app_reboot(void);                   /**< does not return */
 int fmrb_spx_app_ble_start(void);                /**< manual BLE start; 1 on success */
+int fmrb_spx_app_ble_state(void);                /**< FmrbApp.ble_state (0 = off) */
+int fmrb_spx_app_wifi_connected(void);           /**< FmrbApp.wifi_connected? (1/0) */
+int fmrb_spx_app_proc_generation(void);          /**< FmrbApp.ps_gen */
+/** @brief FmrbConst.bt_mac: "AA:BB:CC:DD:EE:FF" :binstr, or "-" until known. */
+const char *fmrb_spx_app_bt_mac(void);
 
 /* ---- class: network / usb ----------------------------------------------- */
 

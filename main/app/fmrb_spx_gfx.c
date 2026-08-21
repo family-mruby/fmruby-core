@@ -27,6 +27,10 @@
 #include "fmrb_transport.h"
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_kernel.h"
+#include "fmrb_hal_time.h"
+#ifndef CONFIG_IDF_TARGET_LINUX
+#include "esp_heap_caps.h"
+#endif
 
 /* Byte length for :binstr FFI returns. Defined in fmrb_spx_kernel.c, which is
    compiled alongside this shim in every Spinel build. */
@@ -230,6 +234,43 @@ int fmrb_spx_gfx_draw_text(int canvas_id, int x, int y, const char *text, int le
                         (fmrb_color_t)color, (fmrb_color_t)bg_color, !bg_given,
                         FMRB_FONT_SIZE_MEDIUM, hybrid);
     return spx_gfx_submit(&cmd);
+}
+
+int fmrb_spx_gfx_draw_wallclock(int canvas_id, int x, int y, int color, int bg_color)
+{
+    /* Twin of Graphics#draw_wallclock: "MM/DD hh:mm:ss" formatted on the C
+       stack and sent as one text command, so the desktop's 1Hz clock repaint
+       allocates nothing. 0 (and nothing drawn) while the clock is not set. */
+    fmrb_wallclock_t wc;
+    if (fmrb_hal_time_get_wallclock(&wc) != FMRB_OK) {
+        return 0;
+    }
+    char buf[24];
+    snprintf(buf, sizeof(buf), "%02d/%02d %02d:%02d:%02d",
+             (int)wc.month, (int)wc.day, (int)wc.hour, (int)wc.minute, (int)wc.second);
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_text(&cmd, (fmrb_canvas_handle_t)canvas_id, (int16_t)x, (int16_t)y, buf,
+                      (fmrb_color_t)color, (fmrb_color_t)bg_color, 0,
+                      FMRB_FONT_SIZE_MEDIUM, 0);
+    return spx_gfx_submit(&cmd) == 0 ? 1 : 0;
+}
+
+int fmrb_spx_gfx_draw_free_iram(int canvas_id, int x, int y, int color, int bg_color)
+{
+    /* Twin of Graphics#draw_free_iram: the free internal RAM as a fixed
+       5-char cell ("187KB"), "---KB" on the Linux sim. */
+    char buf[12];
+#ifdef CONFIG_IDF_TARGET_LINUX
+    snprintf(buf, sizeof(buf), "---KB");
+#else
+    unsigned kb = (unsigned)(heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024);
+    snprintf(buf, sizeof(buf), "%3uKB", kb > 999 ? 999u : kb);
+#endif
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_text(&cmd, (fmrb_canvas_handle_t)canvas_id, (int16_t)x, (int16_t)y, buf,
+                      (fmrb_color_t)color, (fmrb_color_t)bg_color, 0,
+                      FMRB_FONT_SIZE_MEDIUM, 0);
+    return spx_gfx_submit(&cmd) == 0 ? 1 : 0;
 }
 
 /* ---- present ------------------------------------------------------------ */

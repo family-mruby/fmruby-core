@@ -120,6 +120,23 @@ end
 
 # Graphics API: FFI reimplementation of gfx.c (C methods) + fmrb-gfx.rb (Ruby
 # wrapper). The canvas id is a plain instance variable (no boxed mrb_gfx_data).
+# GC.start is a Spinel built-in (a full collection). GC.step is the mruby
+# incremental collector's single step; Spinel's collector has no such phase,
+# so the desktop's time-boxed stepping loop is a no-op here, the same call the
+# mruby build makes and nothing more.
+class GC
+  def self.step; nil; end
+end
+
+# Asked at call time rather than frozen into the generated constants: on the
+# Modern board the Bluetooth address belongs to a separate radio chip and is
+# known only once the BLE host has synced. "-" until then, and on Linux.
+module FmrbConst
+  def self.bt_mac
+    FmrbSpxApp.fmrb_spx_app_bt_mac
+  end
+end
+
 class FmrbGfx
   # Color constants (RGB332). Both the gfx.c names (WHITE...) and the
   # fmrb-gfx.rb names (COLOR_WHITE...) are provided so callers of either work.
@@ -212,6 +229,16 @@ class FmrbGfx
     bg = bg_color || 0
     FmrbSpxGfx.fmrb_spx_gfx_draw_text(@canvas_id, x, y, s, s.bytesize, color, bg, flags)
     self
+  end
+
+  # Periodic read-outs formatted in C (twins of the mruby Graphics methods), so
+  # the desktop's 1Hz repaint allocates nothing. Return true when drawn.
+  def draw_wallclock(x, y, color, bg_color)
+    FmrbSpxGfx.fmrb_spx_gfx_draw_wallclock(@canvas_id, x, y, color, bg_color) == 1
+  end
+
+  def draw_free_iram(x, y, color, bg_color)
+    FmrbSpxGfx.fmrb_spx_gfx_draw_free_iram(@canvas_id, x, y, color, bg_color) == 1
   end
 
   # Positional-argument form of draw_text(..., mixed: true). Keyword arguments
@@ -1539,6 +1566,21 @@ class FmrbApp
 
   def self.ble_start
     FmrbSpxApp.fmrb_spx_app_ble_start != 0
+  end
+
+  # BLE host UI state, 0 = off (same source as the mruby binding).
+  def self.ble_state
+    FmrbSpxApp.fmrb_spx_app_ble_state
+  end
+
+  def self.wifi_connected?
+    FmrbSpxApp.fmrb_spx_app_wifi_connected == 1
+  end
+
+  # Process-set generation: bumped by the kernel on every state transition, so
+  # a 1Hz poll can skip the allocating ps call while nothing changed.
+  def self.ps_gen
+    FmrbSpxApp.fmrb_spx_app_proc_generation
   end
 
   def self.wifi_info

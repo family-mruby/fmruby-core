@@ -48,6 +48,8 @@ module FmrbSpxGfx
   ffi_func :fmrb_spx_gfx_set_font,      [:int, :int, :int], :int
   # text passed as :str + explicit length; flags bit0=bg given, bit1=hybrid
   ffi_func :fmrb_spx_gfx_draw_text, [:int, :int, :int, :str, :int, :int, :int, :int], :int
+  ffi_func :fmrb_spx_gfx_draw_wallclock, [:int, :int, :int, :int, :int], :int   # 1 drawn / 0 clock unset
+  ffi_func :fmrb_spx_gfx_draw_free_iram, [:int, :int, :int, :int, :int], :int
 
   ffi_func :fmrb_spx_gfx_present, [:int, :int, :int, :int], :int
 
@@ -127,6 +129,10 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_set_cursor_visible, [:int], :int
   ffi_func :fmrb_spx_app_reboot, [], :int
   ffi_func :fmrb_spx_app_ble_start, [], :int
+  ffi_func :fmrb_spx_app_ble_state, [], :int
+  ffi_func :fmrb_spx_app_wifi_connected, [], :int
+  ffi_func :fmrb_spx_app_proc_generation, [], :int
+  ffi_func :fmrb_spx_app_bt_mac, [], :binstr
 
   # --- class: network / usb ---
   ffi_func :fmrb_spx_app_wifi_info, [], :binstr

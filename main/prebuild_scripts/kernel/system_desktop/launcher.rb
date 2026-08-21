@@ -639,14 +639,15 @@ module LauncherMixin
           end
           app[:label_layout] = lay
         end
-        # _draw_text_hybrid called positionally: the draw_text wrapper's
-        # mixed: keyword costs one object per call in mruby, and this loop
-        # runs per visible cell on every scroll repaint.
+        # draw_text_mixed, not draw_text(mixed: true): the keyword costs one
+        # object per call in mruby, and this loop runs per visible cell on
+        # every scroll repaint. (The public positional form exists on both
+        # engines; the private _draw_text_hybrid it used to call does not.)
         if lay.size == 2
-          @gfx._draw_text_hybrid(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 8, lay[0], LAUNCHER_TEXT)
+          @gfx.draw_text_mixed(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 8, lay[0], LAUNCHER_TEXT)
         else
-          @gfx._draw_text_hybrid(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 16, lay[0], LAUNCHER_TEXT)
-          @gfx._draw_text_hybrid(icon_x + lay[3], icon_y + LAUNCHER_ICON_H - 8,  lay[2], LAUNCHER_TEXT)
+          @gfx.draw_text_mixed(icon_x + lay[1], icon_y + LAUNCHER_ICON_H - 16, lay[0], LAUNCHER_TEXT)
+          @gfx.draw_text_mixed(icon_x + lay[3], icon_y + LAUNCHER_ICON_H - 8,  lay[2], LAUNCHER_TEXT)
         end
       end
       vrow += 1
