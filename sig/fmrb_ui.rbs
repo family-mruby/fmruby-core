@@ -1,0 +1,285 @@
+# 画面のある道具のための部品箱。実装は
+# lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb。
+#
+# ボタンや切替の当たり判定・押した見た目・描き直しをまとめて持ちます。
+# 部品は on_create で作り、あとは handle にイベントを渡して、返ってきた
+# id を case で受けるだけです。
+#
+# ```ruby
+# def on_create
+#   @ui = FmrbUI.new(self)
+#   @ui.toggle(:red, 4, 4, 50, 16, "赤", group: :color, on: true)
+#   @ui.toggle(:blue, 60, 4, 50, 16, "青", group: :color)
+#   @st = @ui.stepper(:size, 4, 26, 108, 14, 5, 1, 9)
+#   @ui.flush
+# end
+#
+# def on_event(ev)
+#   super(ev)
+#   case @ui.handle(ev)
+#   when :red  then @color = FmrbGfx::RED
+#   when :blue then @color = FmrbGfx::BLUE
+#   when :size then @size = @st.value
+#   when nil   then return @ui.flush
+#   end
+#   draw_picture
+#   @ui.flush
+# end
+# ```
+#
+# 座標は user area (窓の枠とタイトルバーの内側) の左上が原点です。
+# <<en>>
+# Widget box for apps that draw their own window. Implemented in
+# lib/add/picoruby-fmrb-app/mrblib/fmrb-ui.rb.
+#
+# It owns the hit test, the pressed look and the redraw. Create the widgets
+# in on_create, feed events to handle, and dispatch on the id it returns.
+#
+# Coordinates are relative to the top-left of the user area (inside the
+# window frame, below the title bar).
+
+# 部品の入れ物 <<en>> Widget container
+class FmrbUI
+  # 部品箱を作る <<en>> Create the widget box
+  #
+  # app には自分自身 (FmrbApp) を渡します。描画先と user area の位置を
+  # そこから読みます。
+  # <<en>>
+  # Pass the app itself (FmrbApp). The canvas and the user-area origin are
+  # read from it.
+  def self.new: (FmrbApp app) -> FmrbUI
+
+  # 文字を置く <<en>> Place a text label
+  #
+  # align: で寄せ方を選べます (:left / :center / :right、既定は :left)。
+  # <<en>>
+  # align: chooses the alignment (:left / :center / :right, default :left).
+  def label: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Label
+
+  # 押しボタンを置く <<en>> Place a push button
+  #
+  # 押している間だけ反転し、離したときに handle が id を返します。
+  # 部品の外で離したときは何も起きません。
+  # <<en>>
+  # Inverted while held; handle returns the id when the button is released
+  # on top of it. Releasing outside does nothing.
+  def button: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Button
+
+  # 入切の切替を置く <<en>> Place an on/off toggle
+  #
+  # group: に同じ名前を付けた切替どうしは、一つだけが入になります
+  # (ラジオボタン)。on: true で最初から入、on_text: を渡すと入のときの
+  # 文字を変えられます。
+  #
+  # ```ruby
+  # @ui.toggle(:maru, 0, 0, 50, 16, "円", group: :motif, on: true)
+  # @ui.toggle(:hishi, 58, 0, 50, 16, "菱", group: :motif)
+  # @ui.toggle(:invert, 0, 20, 108, 12, "反転 切", on_text: "反転 入")
+  # ```
+  # <<en>>
+  # Toggles sharing a group: name behave as radio buttons - only one is on.
+  # on: true starts it on; on_text: gives it a different label when on.
+  def toggle: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Toggle
+
+  # 数を増減する部品を置く <<en>> Place a value stepper
+  #
+  # 「< 値 >」の形で、左右どちらを押しても handle が id を返します。
+  # min / max で止まり、端で押したときは id を返しません。
+  # 最後に step (増減の幅、既定は 1) を渡せます。
+  #
+  # ```ruby
+  # @size = @ui.stepper(:size, 0, 0, 108, 14, 70, 30, 100, 10)
+  # @size.suffix = "%"   # 表示を "70%" にする
+  # ```
+  # <<en>>
+  # A "< value >" control. handle returns the id for either side, the value
+  # stops at min / max, and pressing at the end returns nothing. An optional
+  # last argument sets the step (default 1).
+  def stepper: (Symbol id, Integer x, Integer y, Integer w, Integer h, Integer value, Integer min, Integer max) -> FmrbUI::Stepper
+
+  # イベントを渡す <<en>> Feed one event
+  #
+  # 操作が決まった部品の id を返します。決まっていなければ nil です。
+  # 押し下げでは押した見た目にするだけで nil を返し、同じ部品の上で
+  # 離したときに id を返します。mouse_move は何もせず nil です。
+  # <<en>>
+  # Returns the id of the widget whose operation completed, or nil. A press
+  # only updates the pressed look and returns nil; the id comes when the
+  # button is released over the same widget. mouse_move does nothing.
+  def handle: (Hash[Symbol, untyped] ev) -> Symbol?
+
+  # 変わった部品だけ描く <<en>> Draw the changed widgets
+  #
+  # 描くものがあれば最後に present を 1 回呼んで true、何も変わって
+  # いなければ何もせず false を返します。自分の絵を描いたあとに呼べば
+  # present は 1 回で済みます。
+  # <<en>>
+  # Calls present once when anything was drawn and returns true; returns
+  # false without drawing when nothing changed. Call it after drawing your
+  # own picture so present happens only once.
+  def flush: () -> bool
+
+  # 全部を描き直しの印にする <<en>> Mark every widget for redraw
+  #
+  # clear_user_area や大きさ変更のあとに呼びます。
+  # <<en>>
+  # Call it after clear_user_area or a resize.
+  def invalidate_all: () -> void
+
+  # id から部品を探す <<en>> Find a widget by id
+  def find: (Symbol id) -> FmrbUI::Widget?
+
+  # 部品を置き直す <<en>> Move and resize a widget
+  #
+  # 座標は作ったときと同じく user area の左上が原点です。
+  # <<en>>
+  # Coordinates are user-area relative, as at creation time.
+  def move: (Symbol id, Integer x, Integer y, Integer w, Integer h) -> void
+
+  # 切替が入かどうか <<en>> Whether the toggle is on
+  def on?: (Symbol id) -> bool
+
+  # 切替を外から入切する <<en>> Set a toggle from the app
+  #
+  # group を付けた切替なら、入にしたときに同じ group の他は切になります。
+  # <<en>>
+  # For a grouped toggle, switching it on switches the rest of the group off.
+  def set_on: (Symbol id, bool on) -> void
+
+  # 部品の文字を変える <<en>> Change a widget's text
+  #
+  # 同じ文字なら何もしません。変わったときだけ幅を測り直して描き直します。
+  # <<en>>
+  # Does nothing when the text is unchanged; it re-measures and redraws only
+  # when it actually changed.
+  def set_text: (Symbol id, String text) -> void
+
+  # 数を外から入れる <<en>> Set a stepper value from the app
+  #
+  # min / max で止まります。値が変わったときだけ true を返します。
+  # <<en>>
+  # Clamped to min / max. Returns true only when the value actually changed.
+  def set_value: (Symbol id, Integer value) -> bool
+
+  # 今の数を読む <<en>> Read the current stepper value
+  def value: (Symbol id) -> Integer
+
+  # 部品を使える/使えないにする <<en>> Enable or disable a widget
+  #
+  # 使えない部品は押しても反応せず、文字が薄く出ます。
+  # <<en>>
+  # A disabled widget ignores clicks and draws its text dimmed.
+  def set_enabled: (Symbol id, bool flag) -> void
+
+  # 部品を出す/隠す <<en>> Show or hide a widget
+  #
+  # 隠した部品のあった場所は背景色で塗り直されます。
+  # <<en>>
+  # The area of a hidden widget is repainted with the background color.
+  def set_visible: (Symbol id, bool flag) -> void
+
+  # 原点をずらす <<en>> Change the user-area origin
+  #
+  # 大きさ変更で user area の左上が動いたときに、move の前に呼びます。
+  # <<en>>
+  # Call it before move when a resize moved the top-left of the user area.
+  def set_origin: (Integer x0, Integer y0) -> void
+
+  # 置いてある部品の一覧 <<en>> The widgets placed so far
+  def widgets: () -> Array[FmrbUI::Widget]
+end
+
+# 部品に共通のところ <<en>> What every widget has
+class FmrbUI::Widget
+  # この部品の名前 <<en>> This widget's id
+  def id: () -> Symbol
+
+  # 左端の位置 (画面の座標) <<en>> Left edge (canvas coordinates)
+  def x: () -> Integer
+
+  # 上端の位置 (画面の座標) <<en>> Top edge (canvas coordinates)
+  def y: () -> Integer
+
+  # 横幅 (ドット) <<en>> Width in pixels
+  def w: () -> Integer
+
+  # 高さ (ドット) <<en>> Height in pixels
+  def h: () -> Integer
+
+  # 次の flush で描き直すか <<en>> Whether the next flush redraws it
+  def dirty: () -> bool
+
+  # 使えるかどうか <<en>> Whether it accepts clicks
+  def enabled: () -> bool
+
+  # 出ているかどうか <<en>> Whether it is shown
+  def visible: () -> bool
+
+  # その点がこの部品の上か <<en>> Whether the point is inside
+  def hit?: (Integer px, Integer py) -> bool
+
+  # 置き直す (画面の座標) <<en>> Move and resize (canvas coordinates)
+  def place: (Integer x, Integer y, Integer w, Integer h) -> void
+end
+
+# 文字だけの部品 <<en>> A text-only widget
+class FmrbUI::Label < FmrbUI::Widget
+  # 出ている文字 <<en>> The text shown
+  def text: () -> String
+end
+
+# 押しボタン <<en>> A push button
+class FmrbUI::Button < FmrbUI::Widget
+  # ボタンの文字 <<en>> The button's text
+  def text: () -> String
+end
+
+# 入切の切替 <<en>> An on/off toggle
+class FmrbUI::Toggle < FmrbUI::Widget
+  # 切のときの文字 <<en>> The text shown when off
+  def text: () -> String
+
+  # 入のときの文字 <<en>> The text shown when on
+  def on_text: () -> String
+
+  # 入かどうか <<en>> Whether it is on
+  def on?: () -> bool
+
+  # 入切を変える <<en>> Switch it on or off
+  def set_on: (bool flag) -> void
+
+  # 同じ一つだけ入にする仲間の名前 <<en>> The radio group name
+  def group: () -> Symbol
+end
+
+# 数を増減する部品 <<en>> A value stepper
+class FmrbUI::Stepper < FmrbUI::Widget
+  # 今の数 <<en>> The current value
+  def value: () -> Integer
+
+  # 下限 <<en>> The lowest value
+  def min: () -> Integer
+
+  # 上限 <<en>> The highest value
+  def max: () -> Integer
+
+  # 一度に増減する幅 <<en>> How much one press moves the value
+  def step: () -> Integer
+
+  # 出ている文字 <<en>> The text shown
+  def text: () -> String
+
+  # 数を入れる <<en>> Set the value
+  #
+  # min / max で止まります。値が変わったときだけ true を返します。
+  # <<en>>
+  # Clamped to min / max. Returns true only when the value actually changed.
+  def set_value: (Integer v) -> bool
+
+  # 数のうしろに付ける単位 <<en>> Unit appended after the number
+  #
+  # 作ったあとに 1 回だけ渡します ("%" など)。
+  # <<en>>
+  # Set it once, right after creating the stepper (e.g. "%").
+  def suffix=: (String s) -> void
+end

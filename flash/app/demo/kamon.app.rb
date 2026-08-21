@@ -3,20 +3,22 @@
 # Port of tmp/sketch/public/events/kamon.html (a p5.rb sketch) to Family
 # mruby. 5 motifs (maru / hishi / hana / ougi / uroko) rendered with
 # rotational symmetry, optional center decoration, count / size / invert
-# parameters. UI is a column of virtual buttons on the right, picked with
-# mouse_up events.
+# parameters.
 #
-# Layout (window 300x200, title bar ~11px):
-#   x=  4..184  (180x180)  preview area, center origin at (94, user_y+94)
+# The control panel is built with FmrbUI: toggles in two exclusive groups
+# for motif and center, two steppers for count and size, one plain toggle
+# for invert. FmrbUI owns the hit test, the pressed look and the redraw, so
+# this app only answers "which widget did the user operate" and repaints its
+# own picture. Drawing is event driven; on_update never draws.
+#
+# Layout (window 300x200, coordinates below are user-area relative):
+#   x=  4..184  (180x180)  preview area
 #   x=188..296  (108 wide) control panel
 
 class KamonApp < FmrbApp
   TWO_PI  = Math::PI * 2
   HALF_PI = Math::PI / 2
   PI      = Math::PI
-
-  MOTIFS  = ["maru", "hishi", "hana", "ougi", "uroko"].freeze
-  CENTERS = ["none", "white", "black", "ring"].freeze
 
   COUNT_MIN = 3
   COUNT_MAX = 12
@@ -37,19 +39,18 @@ class KamonApp < FmrbApp
     @count    = 5
     @size     = 0.7
     @inverted = false
-    @needs_redraw = true
   end
 
   def on_create
     @p5 = P5.new(@gfx)
-    @buttons = build_buttons
+    build_panel
+    clear_user_area(FmrbGfx::WHITE)
+    draw_window_frame
+    draw_preview
+    @ui.flush
   end
 
   def on_update
-    if @needs_redraw
-      draw_all
-      @needs_redraw = false
-    end
     100
   end
 
@@ -62,126 +63,77 @@ class KamonApp < FmrbApp
   def on_event(ev)
     super(ev)
     return unless @running
-    return unless ev[:type] == :mouse_up
-    # Close button (top-right of title bar) is consumed by super.
-    close_btn_x = @window_width - 10
-    return if ev[:x] >= close_btn_x && ev[:y] >= 2 && ev[:y] < 10
+    # The close button is handled by super; FmrbUI widgets live inside the
+    # user area, so there is nothing to steer around here.
+    id = @ui.handle(ev)
+    if id.nil?
+      @ui.flush
+      return
+    end
 
-    b = hit_test(ev[:x], ev[:y])
-    return unless b
-    handle_button(b)
-    @needs_redraw = true
+    case id
+    when :m_maru  then @motif = "maru"
+    when :m_hishi then @motif = "hishi"
+    when :m_hana  then @motif = "hana"
+    when :m_ougi  then @motif = "ougi"
+    when :m_uroko then @motif = "uroko"
+    when :c_none  then @center = "none"
+    when :c_white then @center = "white"
+    when :c_black then @center = "black"
+    when :c_ring  then @center = "ring"
+    when :count   then @count = @count_st.value
+    when :size    then @size = @size_st.value / 100.0
+    when :invert  then @inverted = @ui.on?(:invert)
+    end
+    draw_preview
+    @ui.flush
   end
 
   private
 
-  def clamp(v, lo, hi)
-    return lo if v < lo
-    return hi if v > hi
-    v
-  end
-
   # -----------------------------------------------------------------------
-  # Button table
+  # Control panel
   # -----------------------------------------------------------------------
 
-  def build_buttons
-    base_y = @user_area_y0
-    px = PANEL_X
-    list = []
+  # Single-kanji labels for at-a-glance recognition. Kanji and ASCII are both
+  # drawn by FmrbUI's mixed renderer, so no font switching happens here.
+  def build_panel
+    @ui = FmrbUI.new(self)
+    x = PANEL_X
 
-    # 5 motif buttons (2 cols x 3 rows; the 5th sits alone on the bottom row).
-    # Japanese single-kanji labels for at-a-glance recognition.
-    motif_labels = ["円", "菱", "花", "扇", "鱗"]
-    motif_labels.each_with_index do |lab, i|
-      col = i % 2
-      row = i / 2
-      list << {
-        id: :motif, value: MOTIFS[i], label: lab, group: :motif,
-        x: px + col * 58, y: base_y + 14 + row * 18, w: 50, h: 16,
-      }
-    end
+    @ui.label(:l_motif, x, 4, PANEL_W, 10, "紋様")
+    @ui.toggle(:m_maru,  x,      14, 50, 16, "円", group: :motif, on: true)
+    @ui.toggle(:m_hishi, x + 58, 14, 50, 16, "菱", group: :motif)
+    @ui.toggle(:m_hana,  x,      32, 50, 16, "花", group: :motif)
+    @ui.toggle(:m_ougi,  x + 58, 32, 50, 16, "扇", group: :motif)
+    @ui.toggle(:m_uroko, x,      50, 50, 16, "鱗", group: :motif)
 
-    # 4 center buttons (2x2).
-    center_labels = ["無", "白", "黒", "輪"]
-    center_labels.each_with_index do |lab, i|
-      col = i % 2
-      row = i / 2
-      list << {
-        id: :center, value: CENTERS[i], label: lab, group: :center,
-        x: px + col * 58, y: base_y + 82 + row * 18, w: 50, h: 16,
-      }
-    end
+    @ui.label(:l_center, x, 72, PANEL_W, 10, "中央")
+    @ui.toggle(:c_none,  x,      82, 50, 16, "無", group: :center)
+    @ui.toggle(:c_white, x + 58, 82, 50, 16, "白", group: :center, on: true)
+    @ui.toggle(:c_black, x,     100, 50, 16, "黒", group: :center)
+    @ui.toggle(:c_ring,  x + 58, 100, 50, 16, "輪", group: :center)
 
-    # Count stepper: [<] (value display) [>]
-    list << {
-      id: :count_dec, value: -1, label: "<", group: :count_step,
-      x: px,         y: base_y + 130, w: 22, h: 14,
-    }
-    list << {
-      id: :count_inc, value: 1, label: ">", group: :count_step,
-      x: px + 86,    y: base_y + 130, w: 22, h: 14,
-    }
+    @ui.label(:l_count, x, 120, PANEL_W, 10, "数")
+    @count_st = @ui.stepper(:count, x, 130, PANEL_W, 14,
+                            @count, COUNT_MIN, COUNT_MAX)
 
-    # Size stepper.
-    list << {
-      id: :size_dec, value: -1, label: "<", group: :size_step,
-      x: px,         y: base_y + 160, w: 22, h: 14,
-    }
-    list << {
-      id: :size_inc, value: 1, label: ">", group: :size_step,
-      x: px + 86,    y: base_y + 160, w: 22, h: 14,
-    }
+    @ui.label(:l_size, x, 148, PANEL_W, 10, "大きさ")
+    @size_st = @ui.stepper(:size, x, 160, PANEL_W, 14,
+                           (@size * 100).round, SIZE_MIN, SIZE_MAX, SIZE_STEP)
+    @size_st.suffix = "%"
 
-    # Full-width invert toggle.
-    list << {
-      id: :invert, value: nil, label: "INVERT", group: :invert,
-      x: px, y: base_y + 176, w: PANEL_W, h: 12,
-    }
-
-    list
-  end
-
-  def hit_test(mx, my)
-    @buttons.each do |b|
-      if mx >= b[:x] && mx < b[:x] + b[:w] &&
-         my >= b[:y] && my < b[:y] + b[:h]
-        return b
-      end
-    end
+    @ui.toggle(:invert, x, 178, PANEL_W, 12, "反転 切", on_text: "反転 入")
     nil
-  end
-
-  def handle_button(b)
-    case b[:group]
-    when :motif
-      @motif = b[:value]
-    when :center
-      @center = b[:value]
-    when :count_step
-      @count = clamp(@count + b[:value], COUNT_MIN, COUNT_MAX)
-    when :size_step
-      pct = (@size * 100).round + b[:value] * SIZE_STEP
-      @size = clamp(pct, SIZE_MIN, SIZE_MAX) / 100.0
-    when :invert
-      @inverted = !@inverted
-    end
   end
 
   # -----------------------------------------------------------------------
   # Drawing
   # -----------------------------------------------------------------------
 
-  def draw_all
-    @gfx.fill_rect(@user_area_x0, @user_area_y0,
-                   @user_area_width, @user_area_height, FmrbGfx::WHITE)
-    draw_preview
-    draw_panel
-    draw_window_frame
-    @p5.present
-  end
-
   def draw_preview
+    @gfx.fill_rect(@user_area_x0 + PREVIEW_X, @user_area_y0 + PREVIEW_Y,
+                   PREVIEW_SIZE, PREVIEW_SIZE, FmrbGfx::WHITE)
     cx = @user_area_x0 + PREVIEW_X + PREVIEW_SIZE / 2
     cy = @user_area_y0 + PREVIEW_Y + PREVIEW_SIZE / 2
 
@@ -317,70 +269,6 @@ class KamonApp < FmrbApp
         ca * base_d + px * base_w,   sa * base_d + py * base_w,
         ca * base_d - px * base_w,   sa * base_d - py * base_w,
       )
-    end
-  end
-
-  # -----------------------------------------------------------------------
-  # Control panel
-  # -----------------------------------------------------------------------
-
-  # Panel draws everything with the misaki 8px Japanese font so that kanji
-  # labels render. ASCII glyphs (used by the < / > stepper buttons and the
-  # numeric readouts) are passed through the same font via mixed: true so
-  # they stay legible. The window frame title still uses the default font
-  # because draw_window_frame sets it itself.
-  def draw_panel
-    base_y = @user_area_y0
-    @gfx.set_font(:ja, 8)
-
-    @gfx.draw_text(PANEL_X, base_y + 4,   "紋様",   FmrbGfx::BLACK)
-    @gfx.draw_text(PANEL_X, base_y + 72,  "中央",   FmrbGfx::BLACK)
-    @gfx.draw_text(PANEL_X, base_y + 120, "数",     FmrbGfx::BLACK)
-    @gfx.draw_text(PANEL_X, base_y + 148, "大きさ", FmrbGfx::BLACK)
-
-    @buttons.each { |b| draw_button(b) }
-
-    draw_value_label(PANEL_X + 24, base_y + 130, 60, 14, "#{@count}")
-    draw_value_label(PANEL_X + 24, base_y + 160, 60, 14, "#{(@size * 100).round}%")
-
-    @gfx.set_font(:default)
-  end
-
-  def draw_button(b)
-    selected = button_selected?(b)
-    if selected
-      @gfx.fill_rect(b[:x], b[:y], b[:w], b[:h], FmrbGfx::BLACK)
-      text_color = FmrbGfx::WHITE
-    else
-      @gfx.fill_rect(b[:x], b[:y], b[:w], b[:h], FmrbGfx::WHITE)
-      @gfx.draw_rect(b[:x], b[:y], b[:w], b[:h], FmrbGfx::BLACK)
-      text_color = FmrbGfx::BLACK
-    end
-
-    label = b[:label]
-    label = "反転 #{@inverted ? '入' : '切'}" if b[:group] == :invert
-
-    tw = @gfx.text_width(label, :ja, 8)
-    tx = b[:x] + (b[:w] - tw) / 2
-    ty = b[:y] + (b[:h] - 8) / 2
-    @gfx.draw_text(tx, ty, label, text_color)
-  end
-
-  def draw_value_label(x, y, w, h, label)
-    @gfx.fill_rect(x, y, w, h, FmrbGfx::WHITE)
-    @gfx.draw_rect(x, y, w, h, FmrbGfx::GRAY)
-    tw = @gfx.text_width(label, :ja, 8)
-    tx = x + (w - tw) / 2
-    ty = y + (h - 8) / 2
-    @gfx.draw_text(tx, ty, label, FmrbGfx::BLACK)
-  end
-
-  def button_selected?(b)
-    case b[:group]
-    when :motif  then @motif  == b[:value]
-    when :center then @center == b[:value]
-    when :invert then @inverted
-    else false
     end
   end
 end
