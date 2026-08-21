@@ -14,6 +14,9 @@
 #
 # Click the picture for the next page (it walks every page in order), or use
 # the nav bar at the bottom: < > step a page, the tabs jump to a section.
+# The nav bar is FmrbUI (two buttons, a label and six toggles in one group);
+# it is repainted only when it changes, so an animating page does not redraw
+# it fifteen times a second.
 # Tab does the same from the keyboard, and so do the arrow keys except on the
 # Sprite page, where they move the sprite. Each page names its own keys.
 #
@@ -74,6 +77,11 @@ class PicoRubyDemoApp < FmrbApp
   PUBLISHER = "/app/demo/pub_demo.app.rb"
   SCALE     = [262, 294, 330, 349, 392, 440, 494, 523]
 
+  # One id per section tab, in SECTION_NAMES order. A fixed table rather than
+  # symbols built from the names: nothing is allocated, and the case in
+  # on_event reads as a list of the things that can happen.
+  SECTION_IDS = [:sec0, :sec1, :sec2, :sec3, :sec4, :sec5].freeze
+
   NAV_H = 12
   CHAR_W = 6
   CHAR_H = 8
@@ -98,10 +106,9 @@ class PicoRubyDemoApp < FmrbApp
   BAND1     = 0xAF          # mask page backdrop bands: light, but distinct
   BAND2     = 0xEB
   BAND3     = 0xBE
-  COLOR_NAV_BG = 0xB6       # nav bar, a shade darker than the page
-  COLOR_NAV_FG = 0x00
-  COLOR_TAB_ON = 0x00       # active tab: inverted
-  COLOR_TAB_ON_FG = 0xB6
+  COLOR_NAV_BG = 0xB6       # nav bar, a shade darker than the page. The
+                            # widgets on it take their own colours from the
+                            # theme; this is what shows between them.
 
   def initialize
     super()
@@ -134,6 +141,7 @@ class PicoRubyDemoApp < FmrbApp
     @lang = FmrbApp.language
     @toml_bytes = read_own_toml
 
+    build_nav
     subscribe(TOPIC)
     tick_blink
     Log.info("PicoRuby demo started on #{FmrbConst::PLATFORM}")
@@ -157,17 +165,29 @@ class PicoRubyDemoApp < FmrbApp
 
   def on_event(ev)
     super(ev)
-    case ev[:type]
-    when :mouse_up
+    t = ev[:type]
+    if t == :mouse_down || t == :mouse_up
       return unless ev[:button] == 1
+      id = @ui.handle(ev)
+      if id
+        case id
+        when :prev then _step_page(-1)
+        when :next then _step_page(1)
+        else _select_section(SECTION_IDS.index(id))
+        end
+        return
+      end
+      # Pressing shows the pressed look; releasing on nothing restores it.
+      @ui.flush
+      return if t == :mouse_down
       # The close button is handled by super; do not treat it as a page turn.
       close_btn_x = @window_width - 10
       return if ev[:x] >= close_btn_x && ev[:y] >= 2 && ev[:y] < 10
-      if ev[:y] >= nav_y
-        _nav_click(ev[:x])
-      else
-        _step_page(1)
-      end
+      return if ev[:y] >= nav_y
+      _step_page(1)
+      return
+    end
+    case t
     when :key_down
       # Arrow keys carry no character, so they are read as scancodes
       # (HID usage ids, the same numbers FmrbConst::KEY_* holds).
@@ -224,28 +244,51 @@ class PicoRubyDemoApp < FmrbApp
       @page = np
     end
     @needs_redraw = true
+    @nav_dirty = true
+    nil
   end
 
   def _select_section(idx)
-    return if idx == @section
+    return if idx.nil? || idx == @section
     @section = idx
     @page = 0
     @needs_redraw = true
+    @nav_dirty = true
   end
 
-  def _nav_click(x)
-    bx = @user_area_x0
-    return _step_page(-1) if x < bx + ARROW_W
-    return _step_page(1) if x >= bx + ARROW_W + 4 * CHAR_W && x < bx + 2 * ARROW_W + 4 * CHAR_W
+  # The arrows are Buttons, not a Stepper: stepping past the last page of a
+  # section moves to the next section, and a Stepper stops at its end instead
+  # (and says nothing when it does), which would cost the full tour.
+  def build_nav
+    @ui = FmrbUI.new(self, bg: COLOR_NAV_BG)
+    ny = nav_y - @user_area_y0
+    @ui.button(:prev, 0, ny, ARROW_W, NAV_H, "<")
+    @ui.label(:pageno, ARROW_W, ny, 4 * CHAR_W, NAV_H, "1/1", align: :center)
+    @ui.button(:next, ARROW_W + 4 * CHAR_W, ny, ARROW_W, NAV_H, ">")
 
-    tx = _tabs_x0
+    tx = _tabs_x0 - @user_area_x0
     i = 0
     while i < SECTION_NAMES.size
       w = _tab_w(i)
-      return _select_section(i) if x >= tx && x < tx + w
+      @ui.toggle(SECTION_IDS[i], tx, ny, w, NAV_H, SECTION_NAMES[i],
+                 group: :section, on: i == @section)
       tx += w + 2
       i += 1
     end
+    @nav_dirty = true
+    nil
+  end
+
+  # Repaint the strip the widgets sit on and put them back in step. Only
+  # called when the page or the section moved -- an animating page redraws
+  # its picture at 15 Hz and must not drag the nav bar along with it.
+  def refresh_nav
+    @gfx.fill_rect(@user_area_x0, nav_y, uw, NAV_H, COLOR_NAV_BG)
+    @ui.set_text(:pageno, "#{@page + 1}/#{pages.size}")
+    @ui.set_on(SECTION_IDS[@section], true)
+    @ui.invalidate_all
+    @nav_dirty = false
+    nil
   end
 
   # --- Layout ------------------------------------------------------------
@@ -284,35 +327,11 @@ class PicoRubyDemoApp < FmrbApp
     draw_page
     @gfx.set_font(:default)
     @gfx.set_text_size(1)
-    draw_nav
+    refresh_nav if @nav_dirty
     draw_window_frame
-    @gfx.present
-  end
-
-  def draw_nav
-    ny = nav_y
-    @gfx.fill_rect(@user_area_x0, ny, uw, NAV_H, COLOR_NAV_BG)
-    ty = ny + (NAV_H - CHAR_H) / 2
-    bx = @user_area_x0
-
-    @gfx.draw_text(bx + 3, ty, "<", COLOR_NAV_FG, COLOR_NAV_BG)
-    @gfx.draw_text(bx + ARROW_W, ty, "#{@page + 1}/#{pages.size}",
-                   COLOR_NAV_FG, COLOR_NAV_BG)
-    @gfx.draw_text(bx + ARROW_W + 4 * CHAR_W + 3, ty, ">", COLOR_NAV_FG, COLOR_NAV_BG)
-
-    tx = _tabs_x0
-    i = 0
-    while i < SECTION_NAMES.size
-      w = _tab_w(i)
-      if i == @section
-        @gfx.fill_rect(tx, ny + 1, w, NAV_H - 2, COLOR_TAB_ON)
-        @gfx.draw_text(tx + TAB_PAD, ty, SECTION_NAMES[i], COLOR_TAB_ON_FG, COLOR_TAB_ON)
-      else
-        @gfx.draw_text(tx + TAB_PAD, ty, SECTION_NAMES[i], COLOR_NAV_FG, COLOR_NAV_BG)
-      end
-      tx += w + 2
-      i += 1
-    end
+    # flush presents when it drew a widget; on an animating page nothing in
+    # the nav is dirty and the present is ours to make.
+    @gfx.present unless @ui.flush
   end
 
   def draw_page
