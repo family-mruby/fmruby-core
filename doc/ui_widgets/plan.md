@@ -163,6 +163,17 @@ FmrbUI                 部品の入れ物。hit test、押下の追跡、dirty �
 - 文字幅は `set_text` の時点で `@gfx.text_width(str, :default)` を呼んで
   部品に覚える。描画のたびに測らない。**family を省略しない**: 省略すると
   アプリが直前に選んだフォントで測ってしまう。
+- **文字の大きさは部品を作ったときに固定する** (`text_size:`、既定 1)。
+  アプリは 2 回の flush の間に自分の絵のために size を変えるので (PicoRuby
+  デモはページごとに 1〜4 を使う)、その時々の size に従うと、測ったときと
+  描くときで倍率が変わって崩れる。
+  - 測るときは `text_width(...) / current_text_size * 自分のサイズ` で
+    アプリの倍率を割り落とす (生成時にアプリが size 3 でも影響しない)。
+  - `flush` は入口で `current_text_size` を控え、部品ごとに必要なときだけ
+    `set_text_size` を出し、**最後にアプリの size へ戻す**。全部が同じ
+    サイズなら発行されるコマンドは 0。
+  - Stepper の `< >` の幅もサイズに比例する。size 2 の Stepper は幅を
+    倍くらい取らないと値の欄が潰れる。
 - 日本語を含むラベルもフォントを切り替えずに描く。位置引数版の
   `draw_text_mixed` (ASCII=Font0 6px / 多バイト=misaki_8 8px) を使うので、
   `set_font(:ja, 8)` と `set_font(:default)` の往復も、ja の部品をまとめて

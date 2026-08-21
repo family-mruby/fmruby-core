@@ -33,9 +33,10 @@ class FmrbUI
   C_BORDER     = FmrbConst::THEME_BORDER
   C_BUTTON     = FmrbConst::THEME_BUTTON
 
-  # Glyph cell height of the mixed renderer (Font0 and misaki_8 are both 8px).
+  # Glyph cell height of the mixed renderer at text size 1 (Font0 and
+  # misaki_8 are both 8px). A widget multiplies it by its own text size.
   TEXT_H = 8
-  # Width of the < and > halves of a Stepper.
+  # Width of the < and > halves of a Stepper at text size 1.
   STEP_W = 14
 
   # Common state and geometry. Subclasses add their own contents and drawing.
@@ -47,17 +48,32 @@ class FmrbUI
     # FmrbUI sets it from its own bg when the widget is added, so an app on a
     # dark background does not get white patches.
     attr_accessor :bg
+    # Text scale this widget draws at, fixed when it was created. FmrbUI does
+    # not follow whatever size the app happens to be in: a widget measured at
+    # one size and drawn at another comes out wrong, and the app changes the
+    # size for its own drawing between two flushes (the PicoRuby demo runs
+    # pages at sizes 1 to 4). flush sets it per widget and puts the app's
+    # size back before it returns.
+    def text_size
+      @ts
+    end
 
-    def initialize(id, x, y, w, h)
+    def initialize(id, x, y, w, h, text_size)
       @id = id
       @x = x
       @y = y
       @w = w
       @h = h
+      @ts = text_size
       @dirty = true
       @enabled = true
       @visible = true
       @bg = C_BG
+    end
+
+    # Glyph height at this widget's size.
+    def text_h
+      TEXT_H * @ts
     end
 
     def place(x, y, w, h)
@@ -95,13 +111,23 @@ class FmrbUI
     def set_on(flag); nil; end
     def value; 0; end
     def set_value(v); false; end
+    def set_range(min, max); nil; end
 
     private
+
+    # Width of str at this widget's own text size, whatever size the app is
+    # in at the moment. FmrbGfx#text_width multiplies by the current size, so
+    # divide that back out first; the division is exact, the raw value being
+    # base * size. Measuring with :default (not the current family) is on
+    # purpose - FmrbUI always draws with the mixed renderer.
+    def measure(gfx, str)
+      gfx.text_width(str, :default) / gfx.current_text_size * @ts
+    end
 
     # Text position for a horizontally centered single line.
     def center_text(tw)
       @tx = @x + (@w - tw) / 2
-      @ty = @y + (@h - TEXT_H) / 2
+      @ty = @y + (@h - text_h) / 2
       nil
     end
   end
@@ -110,18 +136,18 @@ class FmrbUI
   class Label < Widget
     attr_reader :text
 
-    def initialize(id, x, y, w, h, text, align, gfx)
-      super(id, x, y, w, h)
+    def initialize(id, x, y, w, h, text, align, gfx, text_size)
+      super(id, x, y, w, h, text_size)
       @align = align
       @text = text
-      @tw = gfx.text_width(text, :default)
+      @tw = measure(gfx, text)
       relayout
     end
 
     def set_text(text, gfx)
       return nil if @text == text
       @text = text
-      @tw = gfx.text_width(text, :default)
+      @tw = measure(gfx, text)
       relayout
       @dirty = true
       nil
@@ -135,7 +161,7 @@ class FmrbUI
       else
         @tx = @x
       end
-      @ty = @y + (@h - TEXT_H) / 2
+      @ty = @y + (@h - text_h) / 2
       nil
     end
 
@@ -151,10 +177,10 @@ class FmrbUI
   class Button < Widget
     attr_reader :text
 
-    def initialize(id, x, y, w, h, text, gfx)
-      super(id, x, y, w, h)
+    def initialize(id, x, y, w, h, text, gfx, text_size)
+      super(id, x, y, w, h, text_size)
       @text = text
-      @tw = gfx.text_width(text, :default)
+      @tw = measure(gfx, text)
       @pressed = false
       relayout
     end
@@ -162,7 +188,7 @@ class FmrbUI
     def set_text(text, gfx)
       return nil if @text == text
       @text = text
-      @tw = gfx.text_width(text, :default)
+      @tw = measure(gfx, text)
       relayout
       @dirty = true
       nil
@@ -208,15 +234,15 @@ class FmrbUI
   class Toggle < Widget
     attr_reader :text, :on_text
 
-    def initialize(id, x, y, w, h, text, group, on, on_text, gfx)
-      super(id, x, y, w, h)
+    def initialize(id, x, y, w, h, text, group, on, on_text, gfx, text_size)
+      super(id, x, y, w, h, text_size)
       @text = text
       @on_text = on_text
       @group = group
       @on = on
       @pressed = false
-      @tw = gfx.text_width(text, :default)
-      @on_tw = on_text ? gfx.text_width(on_text, :default) : @tw
+      @tw = measure(gfx, text)
+      @on_tw = on_text ? measure(gfx, on_text) : @tw
       relayout
     end
 
@@ -234,7 +260,7 @@ class FmrbUI
     def set_text(text, gfx)
       return nil if @text == text
       @text = text
-      @tw = gfx.text_width(text, :default)
+      @tw = measure(gfx, text)
       relayout
       @dirty = true
       nil
@@ -300,8 +326,8 @@ class FmrbUI
   class Stepper < Widget
     attr_reader :value, :min, :max, :step, :text
 
-    def initialize(id, x, y, w, h, value, min, max, step, gfx)
-      super(id, x, y, w, h)
+    def initialize(id, x, y, w, h, value, min, max, step, gfx, text_size)
+      super(id, x, y, w, h, text_size)
       @min = min
       @max = max
       @step = step
@@ -309,18 +335,32 @@ class FmrbUI
       @gfx = gfx
       @suffix = nil
       @text = build_text
-      @tw = gfx.text_width(@text, :default)
+      @tw = measure(gfx, @text)
       @pressed = 0
       relayout
     end
 
-    # Unit shown after the number ("%" etc). Set once, at creation time.
+    # Unit shown after the number ("%" etc). Usually set once after creation,
+    # but it may also carry something that changes with what is loaded (the
+    # NSF player puts "/5" there). Unchanged text costs one String compare.
     def suffix=(s)
+      return nil if @suffix == s
       @suffix = s
       @text = build_text
-      @tw = @gfx.text_width(@text, :default)
+      @tw = measure(@gfx, @text)
       relayout
       @dirty = true
+      nil
+    end
+
+    # Move the ends. The value is pulled inside the new range, and the text is
+    # rebuilt only if that actually moved it. For a stepper whose range comes
+    # from the data (tracks in the loaded file, pages in the open document).
+    def set_range(min, max)
+      return nil if @min == min && @max == max
+      @min = min
+      @max = max
+      set_value(@value)
       nil
     end
 
@@ -329,22 +369,30 @@ class FmrbUI
       return false if nv == @value
       @value = nv
       @text = build_text
-      @tw = @gfx.text_width(@text, :default)
+      @tw = measure(@gfx, @text)
       relayout
       @dirty = true
       true
     end
 
+    # The < and > halves widen with the text, so a stepper asked for text
+    # size 2 needs roughly twice the width to keep a value field.
+    def arrow_w
+      STEP_W * @ts
+    end
+
     def relayout
-      @tx = @x + STEP_W + (@w - STEP_W * 2 - @tw) / 2
-      @ty = @y + (@h - TEXT_H) / 2
+      aw = arrow_w
+      @tx = @x + aw + (@w - aw * 2 - @tw) / 2
+      @ty = @y + (@h - text_h) / 2
       nil
     end
 
     def press(px)
-      if px < @x + STEP_W
+      aw = arrow_w
+      if px < @x + aw
         @pressed = -1
-      elsif px >= @x + @w - STEP_W
+      elsif px >= @x + @w - aw
         @pressed = 1
       else
         @pressed = 0
@@ -366,13 +414,14 @@ class FmrbUI
 
     def draw_widget(gfx)
       # Value box.
-      mid_x = @x + STEP_W
-      mid_w = @w - STEP_W * 2
+      aw = arrow_w
+      mid_x = @x + aw
+      mid_w = @w - aw * 2
       gfx.fill_rect(mid_x, @y, mid_w, @h, @bg)
       gfx.draw_rect(mid_x, @y, mid_w, @h, C_BORDER)
       gfx.draw_text_mixed(@tx, @ty, @text, C_TEXT)
       draw_arrow(gfx, @x, "<", @pressed == -1)
-      draw_arrow(gfx, @x + @w - STEP_W, ">", @pressed == 1)
+      draw_arrow(gfx, @x + @w - aw, ">", @pressed == 1)
       nil
     end
 
@@ -386,9 +435,10 @@ class FmrbUI
         bg = C_BUTTON
         fg = @enabled ? C_TEXT_LIGHT : C_BORDER
       end
-      gfx.fill_rect(ax, @y, STEP_W, @h, bg)
-      gfx.draw_rect(ax, @y, STEP_W, @h, C_BORDER)
-      gfx.draw_text_mixed(ax + (STEP_W - 6) / 2, @y + (@h - TEXT_H) / 2, glyph, fg)
+      aw = arrow_w
+      gfx.fill_rect(ax, @y, aw, @h, bg)
+      gfx.draw_rect(ax, @y, aw, @h, C_BORDER)
+      gfx.draw_text_mixed(ax + (aw - 6 * @ts) / 2, @y + (@h - text_h) / 2, glyph, fg)
       nil
     end
 
@@ -411,11 +461,16 @@ class FmrbUI
   # bg is what the widgets paint behind themselves and over a hidden one.
   # It defaults to the theme's window background; an app that clears its user
   # area to something else (the monitor's dark panel) passes that instead.
-  def initialize(app, bg: C_BG)
+  #
+  # text_size is the default scale for widgets made from here on; a single
+  # widget can override it. It is 1 unless said otherwise, and it is never
+  # taken from whatever size the app is in at the time - see Widget#text_size.
+  def initialize(app, bg: C_BG, text_size: 1)
     @gfx = app.gfx
     @ox = app.user_area_x0
     @oy = app.user_area_y0
     @bg = bg
+    @ts = text_size
     @widgets = []
     @pressed = nil
   end
@@ -424,20 +479,24 @@ class FmrbUI
 
   # ---- creation (on_create only; keyword arguments are fine here) ----
 
-  def label(id, x, y, w, h, text, align: :left)
-    add(Label.new(id, @ox + x, @oy + y, w, h, text, align, @gfx))
+  def label(id, x, y, w, h, text, align: :left, text_size: nil)
+    add(Label.new(id, @ox + x, @oy + y, w, h, text, align, @gfx,
+                  text_size || @ts))
   end
 
-  def button(id, x, y, w, h, text)
-    add(Button.new(id, @ox + x, @oy + y, w, h, text, @gfx))
+  def button(id, x, y, w, h, text, text_size: nil)
+    add(Button.new(id, @ox + x, @oy + y, w, h, text, @gfx, text_size || @ts))
   end
 
-  def toggle(id, x, y, w, h, text, group: nil, on: false, on_text: nil)
-    add(Toggle.new(id, @ox + x, @oy + y, w, h, text, group, on, on_text, @gfx))
+  def toggle(id, x, y, w, h, text, group: nil, on: false, on_text: nil,
+             text_size: nil)
+    add(Toggle.new(id, @ox + x, @oy + y, w, h, text, group, on, on_text, @gfx,
+                   text_size || @ts))
   end
 
-  def stepper(id, x, y, w, h, value, min, max, step = 1)
-    add(Stepper.new(id, @ox + x, @oy + y, w, h, value, min, max, step, @gfx))
+  def stepper(id, x, y, w, h, value, min, max, step = 1, text_size: nil)
+    add(Stepper.new(id, @ox + x, @oy + y, w, h, value, min, max, step, @gfx,
+                    text_size || @ts))
   end
 
   # ---- run time (allocates nothing) ----
@@ -487,10 +546,21 @@ class FmrbUI
     n = @widgets.size
     i = 0
     drawn = 0
+    # The app draws its own picture between two flushes and may leave the
+    # text size anywhere. Note what it was, draw each widget at its own size,
+    # and hand the app's size back. current_text_size is tracked in Ruby, so
+    # reading it is free and set_text_size only goes out when it differs.
+    saved = @gfx.current_text_size
+    size = saved
     while i < n
       w = @widgets[i]
       if w.dirty
         if w.visible
+          ts = w.text_size
+          if ts != size
+            @gfx.set_text_size(ts)
+            size = ts
+          end
           w.draw_widget(@gfx)
         else
           @gfx.fill_rect(w.x, w.y, w.w, w.h, @bg)
@@ -500,6 +570,7 @@ class FmrbUI
       end
       i += 1
     end
+    @gfx.set_text_size(saved) if size != saved
     return false if drawn == 0
     @gfx.present
     true
@@ -567,6 +638,13 @@ class FmrbUI
   def value(id)
     t = find(id)
     t.nil? ? 0 : t.value
+  end
+
+  def set_range(id, min, max)
+    t = find(id)
+    return nil if t.nil?
+    t.set_range(min, max)
+    nil
   end
 
   def set_enabled(id, flag)

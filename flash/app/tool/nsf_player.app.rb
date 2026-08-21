@@ -1,5 +1,9 @@
 # NSF Player Application
 # Browse and play NSF music files with track selection.
+#
+# The file list is drawn by hand (FmrbUI has no list widget); the transport
+# below it -- the track stepper and Play/Stop -- is FmrbUI, so this file no
+# longer computes button rectangles or hit-tests them.
 
 class NsfPlayerApp < FmrbApp
   #MUSIC_DIR = "/home/music"
@@ -12,6 +16,7 @@ class NsfPlayerApp < FmrbApp
   BG_COLOR = FmrbConst::THEME_WINDOW_BG
   HL_COLOR = FmrbConst::THEME_HIGHLIGHT
   BORDER_COLOR = FmrbConst::THEME_BORDER
+  BTN_H = 11
 
   def initialize
     super()
@@ -22,16 +27,24 @@ class NsfPlayerApp < FmrbApp
     @playing = false
     @nsf_info = nil
     @audio = nil
-    @prev_btn = nil
-    @next_btn = nil
-    @play_btn = nil
   end
 
   def on_create
     @audio = FmrbAudio.new(self)
+    build_transport
     scan_files
     select_file(0) if @files.length > 0
     draw_ui
+  end
+
+  # Track stepper and Play/Stop, along the bottom of the info area. The track
+  # count differs per file, so the stepper's range and its "/n" suffix are set
+  # in select_file rather than here.
+  def build_transport
+    @ui = FmrbUI.new(self)
+    y = @user_area_height - INFO_H + 23
+    @track_st = @ui.stepper(:track, 2, y, 66, BTN_H, 1, 1, 1)
+    @ui.toggle(:play, @user_area_width - 80, y, 35, BTN_H, "Play", on_text: "Stop")
   end
 
   def scan_files
@@ -49,11 +62,6 @@ class NsfPlayerApp < FmrbApp
     @files.sort!
   end
 
-  def hit_btn?(btn, x, y)
-    x >= btn[:x] && x < btn[:x] + btn[:w] &&
-      y >= btn[:y] && y < btn[:y] + btn[:h]
-  end
-
   def visible_count
     (@user_area_height - INFO_H - LIST_Y) / LIST_ITEM_H
   end
@@ -66,6 +74,9 @@ class NsfPlayerApp < FmrbApp
     @nsf_info = NsfHeader.parse(path)
     if @nsf_info
       @track = @nsf_info.starting_song > 0 ? @nsf_info.starting_song - 1 : 0
+      total = @nsf_info.total_songs
+      @ui.set_range(:track, 1, total)
+      @track_st.suffix = "/#{total}"
     end
   end
 
@@ -119,31 +130,6 @@ class NsfPlayerApp < FmrbApp
       @gfx.draw_text(x0 + 2, info_y + 2, name, TEXT_COLOR, BG_COLOR)
       @gfx.draw_text(x0 + 2, info_y + 12, @nsf_info.artist, TEXT_COLOR, BG_COLOR)
 
-      # Track selector with < > buttons
-      track_y = info_y + 24
-      btn_h = 11
-      # [<] button
-      @prev_btn = { x: x0 + 2, y: track_y - 1, w: 14, h: btn_h }
-      @gfx.fill_rect(@prev_btn[:x], @prev_btn[:y], @prev_btn[:w], btn_h, BORDER_COLOR)
-      @gfx.draw_text(@prev_btn[:x] + 3, track_y, "<", FmrbGfx::WHITE, BORDER_COLOR)
-      # Track number
-      track_text = " #{@track + 1}/#{@nsf_info.total_songs} "
-      @gfx.draw_text(x0 + 18, track_y, track_text, TEXT_COLOR, BG_COLOR)
-      # [>] button
-      @next_btn = { x: x0 + 54, y: track_y - 1, w: 14, h: btn_h }
-      @gfx.fill_rect(@next_btn[:x], @next_btn[:y], @next_btn[:w], btn_h, BORDER_COLOR)
-      @gfx.draw_text(@next_btn[:x] + 3, track_y, ">", FmrbGfx::WHITE, BORDER_COLOR)
-
-      # Play/Stop button
-      btn_x = x0 + w - 80
-      @play_btn = { x: btn_x, y: track_y - 1, w: 35, h: btn_h }
-      if @playing
-        @gfx.fill_rect(btn_x, track_y - 1, 35, btn_h, FmrbGfx::COLOR_RED)
-        @gfx.draw_text(btn_x + 4, track_y, "Stop", FmrbGfx::WHITE, FmrbGfx::COLOR_RED)
-      else
-        @gfx.fill_rect(btn_x, track_y - 1, 35, btn_h, FmrbGfx::COLOR_GREEN)
-        @gfx.draw_text(btn_x + 4, track_y, "Play", FmrbGfx::WHITE, FmrbGfx::COLOR_GREEN)
-      end
     elsif @files.length == 0
       @gfx.draw_text(x0 + 2, info_y + 10, "No NSF files in #{MUSIC_DIR}", TEXT_COLOR, BG_COLOR)
     else
@@ -153,7 +139,23 @@ class NsfPlayerApp < FmrbApp
       @gfx.draw_text(x0 + 2, info_y + 14, "Unsupported file", FmrbGfx::COLOR_RED, BG_COLOR)
     end
 
-    @gfx.present
+    # Everything above repainted the whole user area, so the widgets have to
+    # be told their pixels are gone. flush issues the one present.
+    sync_transport
+    @ui.invalidate_all
+    @ui.flush
+  end
+
+  # Put the transport in step with the app. The widgets only exist while
+  # there is a playable file.
+  def sync_transport
+    live = @nsf_info && @files.length > 0
+    @ui.set_visible(:track, live)
+    @ui.set_visible(:play, live)
+    return unless live
+    @ui.set_value(:track, @track + 1)
+    @ui.set_on(:play, @playing)
+    nil
   end
 
   def play_current
@@ -231,52 +233,25 @@ class NsfPlayerApp < FmrbApp
       end
     end
 
-    if ev[:type] == :mouse_up
-      handle_click(ev[:x], ev[:y])
+    case @ui.handle(ev)
+    when :track then change_track(@ui.value(:track) - 1)
+    when :play  then @playing ? stop_current : play_current
+    else
+      @ui.flush
+      handle_click(ev[:x], ev[:y]) if ev[:type] == :mouse_up
     end
   end
 
+  # Only the file list is left here; the transport is FmrbUI's.
   def handle_click(x, y)
-    x0 = @user_area_x0
     y0 = @user_area_y0
-    w = @user_area_width
-    h = @user_area_height
-    info_y = y0 + h - INFO_H
-
-    # Click in file list area
-    if y >= y0 + LIST_Y && y < info_y
-      idx = @scroll + (y - y0 - LIST_Y) / LIST_ITEM_H
-      if idx >= 0 && idx < @files.length
-        select_file(idx)
-        draw_ui
-      end
-      return
-    end
-
-    # Click in info area
-    if y >= info_y && @nsf_info
-      # [<] button
-      if @prev_btn && hit_btn?(@prev_btn, x, y)
-        change_track(@track - 1)
-        return
-      end
-
-      # [>] button
-      if @next_btn && hit_btn?(@next_btn, x, y)
-        change_track(@track + 1)
-        return
-      end
-
-      # Play/Stop button
-      if @play_btn && hit_btn?(@play_btn, x, y)
-        if @playing
-          stop_current
-        else
-          play_current
-        end
-        return
-      end
-    end
+    info_y = y0 + @user_area_height - INFO_H
+    return if y < y0 + LIST_Y || y >= info_y
+    idx = @scroll + (y - y0 - LIST_Y) / LIST_ITEM_H
+    return if idx < 0 || idx >= @files.length
+    select_file(idx)
+    draw_ui
+    nil
   end
 
   def on_destroy

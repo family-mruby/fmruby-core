@@ -61,13 +61,20 @@ class FmrbUI
   # Stepper's value field, and the hole a hidden widget leaves. It defaults
   # to the window background; an app that clears its user area to something
   # darker passes that color instead.
+  #
+  # text_size: is the default scale for the widgets made from here on (1
+  # unless given). A single widget can override it with its own text_size:.
+  # The size is fixed when the widget is made and never follows the size the
+  # app happens to be in, and flush hands the app's size back afterwards.
   def self.new: (FmrbApp app) -> FmrbUI
 
   # 文字を置く <<en>> Place a text label
   #
   # align: で寄せ方を選べます (:left / :center / :right、既定は :left)。
+  # text_size: でこの部品だけ文字を大きくできます (1-4)。見出しに使います。
   # <<en>>
   # align: chooses the alignment (:left / :center / :right, default :left).
+  # text_size: enlarges this one widget's text (1-4); useful for a heading.
   def label: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Label
 
   # 押しボタンを置く <<en>> Place a push button
@@ -76,7 +83,8 @@ class FmrbUI
   # 部品の外で離したときは何も起きません。
   # <<en>>
   # Inverted while held; handle returns the id when the button is released
-  # on top of it. Releasing outside does nothing.
+  # on top of it. Releasing outside does nothing. text_size: enlarges the
+  # label (1-4), as on every widget.
   def button: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Button
 
   # 入切の切替を置く <<en>> Place an on/off toggle
@@ -228,6 +236,9 @@ class FmrbUI::Widget
 
   # 出ているかどうか <<en>> Whether it is shown
   def visible: () -> bool
+
+  # 文字の大きさ (作ったときに決まる) <<en>> Text scale, fixed at creation
+  def text_size: () -> Integer
 
   # その点がこの部品の上か <<en>> Whether the point is inside
   def hit?: (Integer px, Integer py) -> bool
