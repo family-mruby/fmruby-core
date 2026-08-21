@@ -3,6 +3,8 @@
 module ShellCommandsMixin
   STATE_NAMES = ["free", "init", "run", "suspend", "stop"]
   TYPE_NAMES = ["kernel", "system", "user"]
+  # Index into TYPE_NAMES. Only user tasks can be ended with "kill".
+  PROC_TYPE_USER = 2
   CP_CHUNK_SIZE = 4096  # cp/mv copy chunk size in bytes
   # Comment-embedded toml fence. Same window the spawner reads.
   COMMENT_TOML_FENCE = "#---fmrb"
@@ -68,6 +70,8 @@ module ShellCommandsMixin
       cmd_run(args)
     when "ps"
       cmd_ps
+    when "kill"
+      cmd_kill(args)
     when "kill_job"
       cmd_kill_job(args)
     when "edit"
@@ -91,6 +95,7 @@ module ShellCommandsMixin
       @history << "  run <script> [&] - Run script"
       @history << "  run <script> > <file> - Redirect output"
       @history << "  ps - List tasks and jobs"
+      @history << "  kill <pid> - Ask a user task to end (PID from ps)"
       @history << "  kill_job <id> - Stop a background job (JOB id from ps)"
       @history << "  help - Show this help message"
     else
@@ -834,17 +839,19 @@ module ShellCommandsMixin
   # --- Process / Job management ---
 
   def cmd_ps
-    # Kernel-managed tasks (FmrbApp.ps). PID is a kernel handle and cannot be
-    # killed from the shell.
-    @history << "Tasks (kernel-managed, not killable):"
+    # Kernel-managed tasks (FmrbApp.ps). Type "user" ones can be ended with
+    # `kill <pid>`; kernel and system tasks hold the machine up and cannot.
+    @history << "Tasks (kernel-managed, 'user' can be killed):"
     @history << " PID TYPE    STATE   NAME"
     procs = FmrbApp.ps
+    my_pid = FmrbApp.pid
     i = 0
     while i < procs.size
       p = procs[i]
       state = STATE_NAMES[p[:state]] || "?"
       type = TYPE_NAMES[p[:type]] || "?"
-      @history << "  #{p[:id]}  #{type.ljust(7)} #{state.ljust(7)} #{p[:name]}"
+      mark = p[:id] == my_pid ? " (this shell)" : ""
+      @history << "  #{p[:id]}  #{type.ljust(7)} #{state.ljust(7)} #{p[:name]}#{mark}"
       i += 1
     end
 
@@ -860,6 +867,52 @@ module ShellCommandsMixin
         @history << "  #{j}  #{job[:state].to_s.ljust(7)} #{job[:name]}"
         j += 1
       end
+    end
+  end
+
+  # Ask a running app to end. The kernel does the asking (it is the one that
+  # knows who requested it, and it refuses anything but a user task and the
+  # requester itself); the checks here are only so a mistake is answered at
+  # once instead of a tick later. The answer to the request arrives as a
+  # "kill_result" control message (on_control in shell.app.rb).
+  def cmd_kill(args)
+    if args.empty?
+      @history << "Usage: kill <pid>   (PID from ps, type user)"
+      return
+    end
+    pid = args[0].to_i
+    procs = FmrbApp.ps
+    target = nil
+    i = 0
+    while i < procs.size
+      target = procs[i] if procs[i][:id] == pid
+      i += 1
+    end
+    if target.nil?
+      @history << "kill: no such task: #{args[0]}"
+      return
+    end
+    if target[:type] != PROC_TYPE_USER
+      @history << "kill: #{TYPE_NAMES[target[:type]] || "?"} tasks cannot be killed: #{target[:name]}"
+      return
+    end
+    if pid == FmrbApp.pid
+      @history << "kill: this is the shell itself; close its window instead"
+      return
+    end
+    data = { "cmd" => "kill", "pid" => pid }
+    sent = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+    @history << "kill: could not reach the kernel" unless sent
+  end
+
+  # Kernel answer to cmd_kill. "ok" means the app was asked; it ends itself
+  # when it next reads its queue, so `ps` is what confirms it is gone.
+  def handle_kill_result(msg)
+    pid = msg["pid"]
+    if msg["ok"]
+      append_output("kill: asked PID #{pid} (#{msg["info"]}) to end")
+    else
+      append_output("kill: PID #{pid} refused (#{msg["info"]})")
     end
   end
 

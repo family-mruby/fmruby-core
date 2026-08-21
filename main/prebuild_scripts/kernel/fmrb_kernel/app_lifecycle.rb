@@ -161,6 +161,70 @@ module AppLifecycleMixin
     _send_raw_message(requester, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(reply))
   end
 
+  # ---- Kill on request (shell "kill <pid>", monitor task page) ----
+  #
+  # Cooperative only: the target is *asked* to end itself, the same way Ctrl+Q
+  # asks. Nothing here deletes a task, so an app wedged in its own loop stays
+  # -- forcing it is a separate job that must not run on the kernel task, which
+  # would have to block for a second or more (doc/app_kill_fix).
+  #
+  # The policy lives here because every requester comes through this message
+  # and only the kernel knows who asked: a target must be a user app, and never
+  # the requester itself.
+  def handle_kill_request(requester, target)
+    pid = (target || -1).to_i
+
+    if pid < FmrbConst::PROC_ID_USER_APP0
+      # The kernel, the host, the desktop and the overlays sit below that id.
+      reply_kill_result(requester, pid, false, "not a user task")
+      return
+    end
+    if pid == requester
+      reply_kill_result(requester, pid, false, "cannot end itself")
+      return
+    end
+
+    info = _get_app_info(pid)
+    if info.nil?
+      reply_kill_result(requester, pid, false, "no such task")
+      return
+    end
+    if app_suspended?(pid)
+      # A suspended app never reads its queue, so the request would sit there
+      # for good. Say so instead of leaving the requester waiting; with no
+      # forced path in this stage there is nothing to fall back on.
+      reply_kill_result(requester, pid, false, "suspended")
+      return
+    end
+
+    name = info[:name].to_s
+    path = info[:path].to_s
+    if run_path_allowed?(path)
+      Log.info("Kill: stopping pid=#{pid} (#{path}) for pid=#{requester}")
+      data = MessagePack.pack({ "cmd" => "stop" })
+    else
+      # A built-in gets the Ctrl+Q courtesy: it may hold unsaved work and
+      # decides for itself (FmrbApp#on_quit_request defaults to stopping).
+      Log.info("Kill: quit request to built-in pid=#{pid} for pid=#{requester}")
+      data = MessagePack.pack({ "cmd" => "quit_request" })
+    end
+    sent = _send_raw_message(pid, FmrbConst::MSG_TYPE_APP_CONTROL, data)
+    if sent
+      reply_kill_result(requester, pid, true, name)
+    else
+      reply_kill_result(requester, pid, false, "queue full")
+    end
+  end
+
+  # Answer a kill request. "ok" means the ask went out, not that the app is
+  # gone: it ends itself when it next reads its queue, and the requester sees
+  # that in the process list.
+  def reply_kill_result(requester, pid, ok, info)
+    return unless requester
+    reply = { "cmd" => "kill_result", "pid" => pid, "ok" => ok, "info" => info }
+    _send_raw_message(requester, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(reply))
+  end
+
   # ---- Fullscreen mode management ----
   #
   # Fullscreen is a stack, not a flag. A fullscreen app can start another one --

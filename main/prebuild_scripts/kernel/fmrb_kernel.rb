@@ -423,8 +423,9 @@ class FmrbKernelImpl < FmrbKernel
       # Ctrl+Tab (intercepted in host_task, works even in fullscreen)
       handle_cycle_focus
     when "kill"
-      Log.info("Kill request from pid=#{pid} (not implemented)")
-      # TODO: Implement kill command to forcefully terminate app
+      # Asked for by the shell ("kill <pid>") and the monitor's task page.
+      # Cooperative only -- see handle_kill_request.
+      handle_kill_request(pid, data["pid"])
     when "subscribe"
       topic = data["topic"]
       if topic

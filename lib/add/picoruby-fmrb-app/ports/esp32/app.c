@@ -869,6 +869,20 @@ static mrb_value mrb_fmrb_app_audio_note_bytes(mrb_state *mrb, mrb_value self)
     return mrb_str_new(mrb, (const char *)buf, n);
 }
 
+// FmrbApp.pid -> Integer (nil outside an app context)
+// The caller's own process id, the same number ps reports as :id. An app that
+// acts on the process list needs it to leave itself out (the shell's and the
+// monitor's kill).
+static mrb_value mrb_fmrb_app_s_pid(mrb_state *mrb, mrb_value self)
+{
+    (void)mrb; (void)self;
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (!ctx) {
+        return mrb_nil_value();
+    }
+    return mrb_fixnum_value((mrb_int)ctx->app_id);
+}
+
 // FmrbApp.ps() -> Array[Hash]
 // Get process list with memory statistics
 // FmrbApp.ps_gen -> Integer. Process-set generation: bumped by the kernel
@@ -1657,6 +1671,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_delete_canvas", mrb_fmrb_app_delete_canvas, MRB_ARGS_REQ(1));
 
     // Class methods
+    mrb_define_class_method(mrb, app_class, "pid", mrb_fmrb_app_s_pid, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ps", mrb_fmrb_app_s_ps, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "ps_gen", mrb_fmrb_app_s_ps_gen, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "heap_info", mrb_fmrb_app_s_heap_info, MRB_ARGS_NONE());

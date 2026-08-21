@@ -1,6 +1,8 @@
 # System Monitor
 #   Page 1: heap usage color bars (memory)
 #   Page 2: GFX stats time-series graphs (cmds/s, presents/s) over last 30s
+#   Page 3: task list, with [X] to end a user task (two clicks; the kernel
+#           asks the app to end itself -- nothing is forced)
 #
 # Click the "<" / ">" arrows in the bottom nav bar to switch pages.
 # Polls FmrbApp.gfx_stats once per second; caller computes rate from deltas.
@@ -14,7 +16,10 @@ class MonitorApp < FmrbApp
   NAV_H = 10          # bottom nav bar height (incl. padding)
   ARROW_HIT_W = 16    # click area width for < and >
   HIST_LEN = 30       # 30 samples = 30 seconds at 1 Hz
-  NUM_PAGES = 2
+  NUM_PAGES = 3
+  TYPE_USER = 2       # FmrbApp.ps :type of a user task (the only killable one)
+  ROW_H = 9           # task row pitch on page 3
+  KILL_BTN_W = 3 * CHAR_W + 2
 
   # Bar colors (page 1)
   COLOR_FREE = FmrbGfx.rgb_to_332(60, 180, 60)
@@ -55,6 +60,13 @@ class MonitorApp < FmrbApp
     @cur_cmds_per_sec = 0
     @cur_presents_per_sec = 0
 
+    # Task page state: the rows currently drawn (for hit testing), the row a
+    # first click armed, and the last word from the kernel.
+    @kill_rows = []
+    @kill_btn_x = @content_x + @content_w - KILL_BTN_W
+    @kill_armed_pid = nil
+    @kill_msg = nil
+
     draw_all
   end
 
@@ -69,14 +81,23 @@ class MonitorApp < FmrbApp
     return unless ev[:type] == :mouse_up && ev[:button] == 1
     x = ev[:x]
     y = ev[:y]
-    return unless y >= @nav_y && y < @nav_y + NAV_H
-    if x >= @content_x && x < @content_x + ARROW_HIT_W
-      @page = (@page - 1 + NUM_PAGES) % NUM_PAGES
-      draw_all
-    elsif x >= @content_x + @content_w - ARROW_HIT_W && x < @content_x + @content_w
-      @page = (@page + 1) % NUM_PAGES
-      draw_all
+    if y >= @nav_y && y < @nav_y + NAV_H
+      handle_nav_click(x)
+    elsif @page == 2
+      handle_task_click(x, y)
     end
+  end
+
+  # The kernel's answer to a kill request (see request_kill).
+  def on_control(msg)
+    return unless msg["cmd"] == "kill_result"
+    pid = msg["pid"]
+    if msg["ok"]
+      @kill_msg = "asked #{msg["info"]} (PID #{pid})"
+    else
+      @kill_msg = "PID #{pid}: #{msg["info"]}"
+    end
+    draw_all if @page == 2
   end
 
   def on_destroy
@@ -84,6 +105,51 @@ class MonitorApp < FmrbApp
   end
 
   private
+
+  def handle_nav_click(x)
+    if x >= @content_x && x < @content_x + ARROW_HIT_W
+      @page = (@page - 1 + NUM_PAGES) % NUM_PAGES
+      @kill_armed_pid = nil
+      draw_all
+    elsif x >= @content_x + @content_w - ARROW_HIT_W && x < @content_x + @content_w
+      @page = (@page + 1) % NUM_PAGES
+      @kill_armed_pid = nil
+      draw_all
+    end
+  end
+
+  # Two clicks on [X], not one: this window shows memory bars on page 1 and a
+  # stray click a second after a page turn must not end an app. The first click
+  # arms the row ([?]), the second sends the request.
+  def handle_task_click(x, y)
+    return if x < @kill_btn_x
+    return if x >= @kill_btn_x + KILL_BTN_W
+    i = 0
+    while i < @kill_rows.size
+      row = @kill_rows[i]
+      if y >= row[:y] && y < row[:y] + ROW_H
+        if @kill_armed_pid == row[:pid]
+          request_kill(row[:pid])
+          @kill_armed_pid = nil
+        else
+          @kill_armed_pid = row[:pid]
+          @kill_msg = "click again to end PID #{row[:pid]}"
+        end
+        draw_all
+        return
+      end
+      i += 1
+    end
+  end
+
+  # The kernel does the asking: it knows who requested it, and it refuses
+  # anything that is not a user task, plus the requester itself. Nothing here
+  # forces a task away -- an app stuck in its own loop stays.
+  def request_kill(pid)
+    @kill_msg = "asking PID #{pid} ..."
+    send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
+                 { "cmd" => "kill", "pid" => pid })
+  end
 
   def sample_gfx_stats
     stats = FmrbApp.gfx_stats
@@ -109,8 +175,10 @@ class MonitorApp < FmrbApp
     clear_user_area(COLOR_BG)
     if @page == 0
       draw_page_memory
-    else
+    elsif @page == 1
       draw_page_gfx_stats
+    else
+      draw_page_tasks
     end
     draw_nav
     draw_window_frame
@@ -231,6 +299,52 @@ class MonitorApp < FmrbApp
       prev_x = px
       prev_y = py
       i += 1
+    end
+  end
+
+  # Page 3: who is running, and [X] to ask a user task to end.
+  def draw_page_tasks
+    y = @user_area_y0 + 2
+    @gfx.draw_text(@content_x, y, "Tasks", COLOR_TEXT, COLOR_BG)
+    y += CHAR_H + 3
+
+    @kill_rows = []
+    @kill_btn_x = @content_x + @content_w - KILL_BTN_W
+    procs = FmrbApp.ps
+    my_pid = FmrbApp.pid
+    msg_y = @nav_y - CHAR_H - 1
+    label_chars = (@content_w - KILL_BTN_W - 4) / CHAR_W
+
+    if procs
+      i = 0
+      while i < procs.size
+        break if y + ROW_H > msg_y - 1
+        p = procs[i]
+        pid = p[:id]
+        name = (p[:name] || "?").to_s
+        label = "#{pid} #{name}"
+        label = label[0, label_chars] if label.length > label_chars
+        @gfx.draw_text(@content_x, y, label,
+                       p[:state] == 2 ? COLOR_TEXT : COLOR_DIM, COLOR_BG)
+
+        # The shell and the monitor are user tasks too; the kernel refuses to
+        # end the one that asked, so the monitor's own row gets no button.
+        if p[:type] == TYPE_USER && pid != my_pid
+          armed = @kill_armed_pid == pid
+          @gfx.draw_text(@kill_btn_x, y, armed ? "[?]" : "[X]",
+                         armed ? COLOR_USED : COLOR_DIM, COLOR_BG)
+          @kill_rows << { pid: pid, y: y }
+        end
+        y += ROW_H
+        i += 1
+      end
+    end
+
+    if @kill_msg
+      text = @kill_msg
+      max_chars = @content_w / CHAR_W
+      text = text[0, max_chars] if text.length > max_chars
+      @gfx.draw_text(@content_x, msg_y, text, COLOR_TEXT, COLOR_BG)
     end
   end
 

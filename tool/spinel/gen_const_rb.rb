@@ -104,7 +104,12 @@ const_c = slurp("lib/add/picoruby-fmrb-const/ports/esp32/const.c")
 msg_types = enum_values(msg, "FMRB_MSG_TYPE_APP_CONTROL",
                         %w[FMRB_MSG_TYPE_APP_CONTROL FMRB_MSG_TYPE_APP_GFX
                            FMRB_MSG_TYPE_APP_AUDIO FMRB_MSG_TYPE_HID_EVENT])
-proc_ids = enum_values(task, "PROC_ID_KERNEL", %w[PROC_ID_KERNEL PROC_ID_HOST])
+# PROC_ID_USER_APP0 is the lower bound of the user app id range: the kernel
+# tests a kill target against it, so a target can never be the kernel, the
+# host, the desktop or an overlay.
+proc_ids = enum_values(task, "PROC_ID_KERNEL",
+                       %w[PROC_ID_KERNEL PROC_ID_HOST PROC_ID_SYSTEM_APP
+                          PROC_ID_USER_APP0])
 led_vals = define_values(led, %w[FMRB_LED_STATUS_VERSION_MISMATCH])
 
 # Phase 4 (desktop): the app-facing constant subset the desktop / mixins use.
@@ -138,6 +143,8 @@ out << "  MSG_TYPE_APP_AUDIO = #{msg_types['FMRB_MSG_TYPE_APP_AUDIO']}\n"
 out << "  MSG_TYPE_HID_EVENT = #{msg_types['FMRB_MSG_TYPE_HID_EVENT']}\n"
 out << "  PROC_ID_KERNEL = #{proc_ids['PROC_ID_KERNEL']}\n"
 out << "  PROC_ID_HOST = #{proc_ids['PROC_ID_HOST']}\n"
+out << "  PROC_ID_SYSTEM_APP = #{proc_ids['PROC_ID_SYSTEM_APP']}\n"
+out << "  PROC_ID_USER_APP0 = #{proc_ids['PROC_ID_USER_APP0']}\n"
 out << "  LED_ERR_VERSION_MISMATCH = #{led_vals['FMRB_LED_STATUS_VERSION_MISMATCH']}\n"
 # ---- Phase 4 desktop subset ----
 # HID event keycodes (USB HID Usage IDs) used by desktop key handling.

@@ -635,6 +635,12 @@ class ShellApp < FmrbApp
     draw_less_view
   end
 
+  # Control messages the app base does not handle itself. Today that is the
+  # kernel's answer to `kill` (see cmd_kill in shell/shell_commands.rb).
+  def on_control(msg)
+    handle_kill_result(msg) if msg["cmd"] == "kill_result"
+  end
+
   def on_destroy
     Log.info("Destroyed")
   end
