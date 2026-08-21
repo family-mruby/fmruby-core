@@ -44,9 +44,23 @@ class FmrbUI
   #
   # app には自分自身 (FmrbApp) を渡します。描画先と user area の位置を
   # そこから読みます。
+  #
+  # `bg:` で背景色を変えられます。部品が自分の後ろを塗る色 (Label の箱、
+  # Stepper の値の欄、隠した部品のあと) で、既定は窓の背景色です。
+  # 暗い色で塗ったアプリはその色を渡します。
+  #
+  # ```ruby
+  # @ui = FmrbUI.new(self)                    # 窓の背景色
+  # @ui = FmrbUI.new(self, bg: COLOR_BG)      # 自前の背景色
+  # ```
   # <<en>>
   # Pass the app itself (FmrbApp). The canvas and the user-area origin are
   # read from it.
+  #
+  # bg: sets what the widgets paint behind themselves - a Label's box, a
+  # Stepper's value field, and the hole a hidden widget leaves. It defaults
+  # to the window background; an app that clears its user area to something
+  # darker passes that color instead.
   def self.new: (FmrbApp app) -> FmrbUI
 
   # 文字を置く <<en>> Place a text label

@@ -81,6 +81,32 @@ end
   ときだけ部品の中で起こる。
 - 座標は **user area の左上が原点**。基底の `@user_area_x0/y0` の足し算は
   `FmrbUI` が部品を置くときに 1 回だけ行う。
+- 暗い背景のアプリは `FmrbUI.new(self, bg: COLOR_BG)` を渡す。部品が自分の
+  後ろを塗る色 (Label の箱、Stepper の値の欄、`set_visible(false)` にした
+  部品のあと) がこれになる。既定は `THEME_WINDOW_BG`。
+
+### 大きさ変更に追従する
+
+resizable なアプリは `on_resize` でこの 4 手を踏む。**部品は作り直さない**。
+
+```ruby
+def on_resize(new_width, new_height)
+  return unless @ui
+  @ui.set_origin(@user_area_x0, @user_area_y0)   # user area の原点が動いた
+  x = @user_area_width - PANEL_W - 4             # 右端に貼り付く列
+  @ui.move(:m_maru, x, 14, 50, 16)
+  # ... 追従させる部品の分だけ move
+  clear_user_area(FmrbGfx::WHITE)
+  draw_window_frame                              # resizable は毎 redraw 必要
+  @ui.invalidate_all                             # 全部 dirty に
+  draw_kamon                                     # 自分の絵
+  @ui.flush
+end
+```
+
+`set_origin` を忘れると、`move` に渡した user area 相対の座標が古い原点で
+足される。`invalidate_all` を忘れると `clear_user_area` で消えた部品が
+戻ってこない。
 
 ## 設計
 
@@ -101,7 +127,7 @@ end
 
 ```
 FmrbUI                 部品の入れ物。hit test、押下の追跡、dirty の一括描画
-  Widget               共通: id, x, y, w, h, dirty, enabled, visible
+  Widget               共通: id, x, y, w, h, dirty, enabled, visible, bg
     Label              文字だけ。set_text で変わったときだけ dirty
     Button             押している間だけ反転。離すと id を返す
     Toggle             on/off。group があれば排他。on_text で表示を変える
@@ -118,20 +144,29 @@ FmrbUI                 部品の入れ物。hit test、押下の追跡、dirty �
 - `flush` は `while` で dirty を描き、1 つでも描いたら `@gfx.present`。
   戻り値は描いたかどうか。アプリが自分の絵も描いた後に呼べば present は 1 回。
 - `invalidate_all` は `clear_user_area` や `on_resize` の後に使う。
-- `move(id, x, y, w, h)` で再配置。`on_resize` で呼ぶ。レイアウト機構は段 1
-  では入れない。midi_apu のように添字から座標を出すアプリは、`on_resize` で
-  `move` を回せば足りる。
+- `move(id, x, y, w, h)` で再配置。`on_resize` で `set_origin` -> `move` の
+  順に呼ぶ (上の「大きさ変更に追従する」)。レイアウト機構は段 1 では
+  入れない。添字から座標を出すアプリは `move` を回せば足りる。
+- **部品の描画メソッドは `draw` ではなく `draw_widget`**。`flush` は基底型の
+  受信に対して呼ぶので、Spinel が候補を**メソッド名で**引く際に
+  `GfxBlock#draw` (`**kwargs`。コンパイル不能) まで巻き込んでビルドが落ちた。
+  poly 受信で呼ぶ名前は一意にする (doc/spinel_aot/ruby_writing_constraints.md)。
 
 ### 描画
 
 - 色は `FmrbConst::THEME_*` をモジュール定数に引いて使う。部品ごとに色を
   持たせない (持たせると `on_create` の Hash が増えるだけで、統一感も落ちる)。
-- 文字幅は `set_text` の時点で `@gfx.text_width` を呼んで部品に覚える。
-  描画のたびに測らない。
-- 日本語を含むラベルは `:ja` フォントで測り、描く前に `set_font(:ja, 8)`、
-  描いた後に `set_font(:default)` に戻す。部品ごとにフォントを切り替えると
-  コマンド数が倍になるので、**flush の中で ja の部品をまとめて描く**
-  (2 回の while: default → ja)。
+  例外は背景色で、これは `FmrbUI.new(app, bg:)` から全部品に配る (アプリの
+  地の色に合わせないと、隠した部品のあとが白く残る)。
+  既定テーマは `THEME_BORDER == THEME_BUTTON` なので、**枠色で押下を
+  表さない** (見えない)。押下中の内枠はラベル色で描く。
+- 文字幅は `set_text` の時点で `@gfx.text_width(str, :default)` を呼んで
+  部品に覚える。描画のたびに測らない。**family を省略しない**: 省略すると
+  アプリが直前に選んだフォントで測ってしまう。
+- 日本語を含むラベルもフォントを切り替えずに描く。位置引数版の
+  `draw_text_mixed` (ASCII=Font0 6px / 多バイト=misaki_8 8px) を使うので、
+  `set_font(:ja, 8)` と `set_font(:default)` の往復も、ja の部品をまとめて
+  描くための 2 周目の while も要らなくなった。
 - GfxBlock 化 (押下/通常の切替をレジスタ値だけ送る) は段 1 ではやらない。
   flush の 1 部品は fill_rect + draw_rect + draw_text の 3 コマンドで、
   コマンド数が問題になってから測って決める。
@@ -147,13 +182,23 @@ FmrbUI                 部品の入れ物。hit test、押下の追跡、dirty �
 | `flush` | `dirty.select`、`present` の無条件呼び出し | while + 描いた数の整数 |
 | 生成 | キーワード引数 | 生成は `on_create` の 1 回なので許す。描画・イベント経路では使わない |
 
-### やらないこと (段 1 の境界)
+### 段 2 の候補 (段 1 では入れなかったもの)
 
-- Slider (ドラッグ = mouse_move の処理が要る)、テキスト入力、リスト。
-  shell / editor が独自に持っているものを一般化しない。
-- キーボード焦点と Tab 移動。段 2。
-- 自動レイアウト (縦積み・格子)。`move` で足りる間は入れない。
-- デスクトップのダイアログ群の移植。Spinel 側の実証が済んでから判断する。
+段 1 は kamon / midi_apu / monitor を載せて終わった。次に足すならこの順で、
+いずれも**実際に要るアプリが出てきてから**着手する。
+
+- **Slider**。ドラッグ = `mouse_move` を処理するので、`handle` の先頭で
+  mouse_move を捨てている今の形を変える必要がある。押している部品だけに
+  move を配る形にすれば、他の部品の代償は無い。
+- **キーボード焦点と Tab 移動**。ダイアログを移植するなら要る。
+- **自動レイアウト (縦積み・格子)**。`move` で足りている間は入れない。
+  monitor の行と midi_apu の列は添字計算で足りた。
+- **デスクトップのダイアログ群の移植** (config / network / storage /
+  file_selector / confirm / clock)。6 か所で最も重複が大きい。ただし
+  `FMRB_APP_ENGINE_DESKTOP=spinel` が通っていないので、先にそれを
+  片付けてから (report/u2.md の残件)。
+- **テキスト入力とリスト**。shell / editor が独自に持っているものを
+  一般化しない — 移植先が 2 つ以上になってから考える。
 
 ## 段階
 

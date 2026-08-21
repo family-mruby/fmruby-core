@@ -20,6 +20,13 @@ class MonitorApp < FmrbApp
   TYPE_USER = 2       # FmrbApp.ps :type of a user task (the only killable one)
   ROW_H = 9           # task row pitch on page 3
   KILL_BTN_W = 3 * CHAR_W + 2
+  # One kill button per possible task, built once in on_create and shown or
+  # hidden as the list changes -- rows must never build widgets, or the page
+  # would allocate every second. FMRB_MAX_APPS (9) is not exported to Ruby;
+  # it is also more rows than fit in this window, so the visible count is
+  # bounded by the height as well.
+  KILL_IDS = [:kill0, :kill1, :kill2, :kill3, :kill4,
+              :kill5, :kill6, :kill7, :kill8].freeze
 
   # Bar colors (page 1)
   COLOR_FREE = FmrbGfx.rgb_to_332(60, 180, 60)
@@ -60,32 +67,69 @@ class MonitorApp < FmrbApp
     @cur_cmds_per_sec = 0
     @cur_presents_per_sec = 0
 
-    # Task page state: the rows currently drawn (for hit testing), the row a
-    # first click armed, and the last word from the kernel.
-    @kill_rows = []
+    # Task page state: the pid each button row currently stands for, the row
+    # a first click armed, and the last word from the kernel. @task_sig is
+    # what the page looked like when it was last drawn; while it is unchanged
+    # the page paints nothing at all.
     @kill_btn_x = @content_x + @content_w - KILL_BTN_W
     @kill_armed_pid = nil
     @kill_msg = nil
+    @task_sig = nil
+    @row_pids = []
 
+    build_kill_buttons
     draw_all
+  end
+
+  # Rows start below the "Tasks" heading and stop above the message line.
+  # Coordinates handed to FmrbUI are user-area relative; everything else in
+  # this file is absolute, hence the subtraction.
+  def build_kill_buttons
+    @ui = FmrbUI.new(self, bg: COLOR_BG)
+    @rows_y0 = @user_area_y0 + 2 + CHAR_H + 3
+    msg_y = @nav_y - CHAR_H - 1
+    fit = (msg_y - 1 - @rows_y0) / ROW_H
+    fit = KILL_IDS.size if fit > KILL_IDS.size
+    fit = 0 if fit < 0
+    @max_rows = fit
+    rel_x = @kill_btn_x - @user_area_x0
+    i = 0
+    while i < @max_rows
+      rel_y = @rows_y0 + i * ROW_H - @user_area_y0
+      b = @ui.button(KILL_IDS[i], rel_x, rel_y, KILL_BTN_W, ROW_H, "[X]")
+      b.visible = false
+      b.dirty = false
+      @row_pids << nil
+      i += 1
+    end
+    nil
   end
 
   def on_update
     sample_gfx_stats
-    draw_all
+    # Pages 1 and 2 are live graphs and redraw every tick by definition. The
+    # task list normally does not change, so it only repaints when it did.
+    if @page == 2
+      refresh_tasks
+    else
+      draw_all
+    end
     @frame_ms
   end
 
   def on_event(ev)
     super(ev)
-    return unless ev[:type] == :mouse_up && ev[:button] == 1
-    x = ev[:x]
-    y = ev[:y]
-    if y >= @nav_y && y < @nav_y + NAV_H
-      handle_nav_click(x)
-    elsif @page == 2
-      handle_task_click(x, y)
+    if @page == 2
+      id = @ui.handle(ev)
+      if id
+        handle_kill_click(id)
+        return
+      end
+      @ui.flush
     end
+    return unless ev[:type] == :mouse_up && ev[:button] == 1
+    y = ev[:y]
+    handle_nav_click(ev[:x]) if y >= @nav_y && y < @nav_y + NAV_H
   end
 
   # The kernel's answer to a kill request (see request_kill).
@@ -97,7 +141,7 @@ class MonitorApp < FmrbApp
     else
       @kill_msg = "PID #{pid}: #{msg["info"]}"
     end
-    draw_all if @page == 2
+    refresh_tasks if @page == 2
   end
 
   def on_destroy
@@ -108,38 +152,54 @@ class MonitorApp < FmrbApp
 
   def handle_nav_click(x)
     if x >= @content_x && x < @content_x + ARROW_HIT_W
-      @page = (@page - 1 + NUM_PAGES) % NUM_PAGES
-      @kill_armed_pid = nil
-      draw_all
+      turn_page((@page - 1 + NUM_PAGES) % NUM_PAGES)
     elsif x >= @content_x + @content_w - ARROW_HIT_W && x < @content_x + @content_w
-      @page = (@page + 1) % NUM_PAGES
-      @kill_armed_pid = nil
-      draw_all
+      turn_page((@page + 1) % NUM_PAGES)
     end
+    nil
+  end
+
+  # Hide the kill buttons before the new page is painted, not after: a hidden
+  # widget is repainted with the background on the next flush, which would
+  # otherwise punch holes in whatever page 1 or 2 just drew.
+  def turn_page(page)
+    hide_kill_buttons
+    @ui.flush
+    @page = page
+    @kill_armed_pid = nil
+    @task_sig = nil
+    draw_all
+    refresh_tasks if @page == 2
+    nil
+  end
+
+  def hide_kill_buttons
+    i = 0
+    while i < @max_rows
+      @ui.set_visible(KILL_IDS[i], false)
+      @row_pids[i] = nil
+      i += 1
+    end
+    nil
   end
 
   # Two clicks on [X], not one: this window shows memory bars on page 1 and a
   # stray click a second after a page turn must not end an app. The first click
-  # arms the row ([?]), the second sends the request.
-  def handle_task_click(x, y)
-    return if x < @kill_btn_x
-    return if x >= @kill_btn_x + KILL_BTN_W
-    i = 0
-    while i < @kill_rows.size
-      row = @kill_rows[i]
-      if y >= row[:y] && y < row[:y] + ROW_H
-        if @kill_armed_pid == row[:pid]
-          request_kill(row[:pid])
-          @kill_armed_pid = nil
-        else
-          @kill_armed_pid = row[:pid]
-          @kill_msg = "click again to end PID #{row[:pid]}"
-        end
-        draw_all
-        return
-      end
-      i += 1
+  # arms the row (the button reads [?]), the second sends the request.
+  def handle_kill_click(id)
+    i = KILL_IDS.index(id)
+    return if i.nil?
+    pid = @row_pids[i]
+    return if pid.nil?
+    if @kill_armed_pid == pid
+      request_kill(pid)
+      @kill_armed_pid = nil
+    else
+      @kill_armed_pid = pid
+      @kill_msg = "click again to end PID #{pid}"
     end
+    refresh_tasks
+    nil
   end
 
   # The kernel does the asking: it knows who requested it, and it refuses
@@ -178,7 +238,7 @@ class MonitorApp < FmrbApp
     elsif @page == 1
       draw_page_gfx_stats
     else
-      draw_page_tasks
+      draw_tasks_heading
     end
     draw_nav
     draw_window_frame
@@ -302,23 +362,39 @@ class MonitorApp < FmrbApp
     end
   end
 
-  # Page 3: who is running, and [X] to ask a user task to end.
-  def draw_page_tasks
-    y = @user_area_y0 + 2
-    @gfx.draw_text(@content_x, y, "Tasks", COLOR_TEXT, COLOR_BG)
-    y += CHAR_H + 3
+  # Page 3 furniture. The rows themselves are refresh_tasks' business.
+  def draw_tasks_heading
+    @gfx.draw_text(@content_x, @user_area_y0 + 2, "Tasks", COLOR_TEXT, COLOR_BG)
+    nil
+  end
 
-    @kill_rows = []
-    @kill_btn_x = @content_x + @content_w - KILL_BTN_W
+  # Page 3: who is running, and [X] to ask a user task to end.
+  #
+  # Called once a second, and the answer is almost always "nothing moved". So
+  # the list is boiled down to one string and compared with the last one: if
+  # it matches, not a single pixel is drawn and flush does not present. The
+  # armed row and the kernel's last message are part of the signature because
+  # they change what is on screen too.
+  def refresh_tasks
     procs = FmrbApp.ps
     my_pid = FmrbApp.pid
+    sig = task_signature(procs, my_pid)
+    if sig == @task_sig
+      @ui.flush
+      return
+    end
+    @task_sig = sig
+
     msg_y = @nav_y - CHAR_H - 1
     label_chars = (@content_w - KILL_BTN_W - 4) / CHAR_W
+    # One wipe for the whole row block, so rows that disappeared leave nothing.
+    @gfx.fill_rect(@content_x, @rows_y0, @content_w, msg_y - @rows_y0, COLOR_BG)
 
+    y = @rows_y0
+    row = 0
     if procs
       i = 0
-      while i < procs.size
-        break if y + ROW_H > msg_y - 1
+      while i < procs.size && row < @max_rows
         p = procs[i]
         pid = p[:id]
         name = (p[:name] || "?").to_s
@@ -330,22 +406,53 @@ class MonitorApp < FmrbApp
         # The shell and the monitor are user tasks too; the kernel refuses to
         # end the one that asked, so the monitor's own row gets no button.
         if p[:type] == TYPE_USER && pid != my_pid
-          armed = @kill_armed_pid == pid
-          @gfx.draw_text(@kill_btn_x, y, armed ? "[?]" : "[X]",
-                         armed ? COLOR_USED : COLOR_DIM, COLOR_BG)
-          @kill_rows << { pid: pid, y: y }
+          id = KILL_IDS[row]
+          @row_pids[row] = pid
+          @ui.set_text(id, @kill_armed_pid == pid ? "[?]" : "[X]")
+          @ui.move(id, @kill_btn_x - @user_area_x0, y - @user_area_y0,
+                   KILL_BTN_W, ROW_H)
+          @ui.set_visible(id, true)
+          row += 1
         end
         y += ROW_H
         i += 1
       end
     end
 
+    # Buttons past the end of the list go away; their holes are painted with
+    # COLOR_BG because that is the bg FmrbUI was built with.
+    while row < @max_rows
+      @row_pids[row] = nil
+      @ui.set_visible(KILL_IDS[row], false)
+      row += 1
+    end
+
     if @kill_msg
       text = @kill_msg
       max_chars = @content_w / CHAR_W
       text = text[0, max_chars] if text.length > max_chars
+      @gfx.fill_rect(@content_x, msg_y, @content_w, CHAR_H, COLOR_BG)
       @gfx.draw_text(@content_x, msg_y, text, COLOR_TEXT, COLOR_BG)
     end
+    # flush presents when it drew a widget; if only the text rows moved it
+    # returns false and the present is ours to make.
+    @gfx.present unless @ui.flush
+    nil
+  end
+
+  # What the page would look like, as one string. Rebuilt every second and
+  # thrown away; the rows themselves cost more.
+  def task_signature(procs, my_pid)
+    sig = +"#{@kill_armed_pid}|#{@kill_msg}|"
+    return sig if procs.nil?
+    i = 0
+    while i < procs.size
+      p = procs[i]
+      sig << "#{p[:id]},#{p[:state]},#{p[:type]},#{p[:name]};"
+      i += 1
+    end
+    sig << my_pid.to_s
+    sig
   end
 
   def draw_nav

@@ -42,6 +42,11 @@ class FmrbUI
   class Widget
     attr_reader :id, :x, :y, :w, :h
     attr_accessor :dirty, :enabled, :visible
+    # What a widget paints where it is not itself: a Label's whole box, a
+    # Stepper's value field, and the hole left behind when it is hidden.
+    # FmrbUI sets it from its own bg when the widget is added, so an app on a
+    # dark background does not get white patches.
+    attr_accessor :bg
 
     def initialize(id, x, y, w, h)
       @id = id
@@ -52,6 +57,7 @@ class FmrbUI
       @dirty = true
       @enabled = true
       @visible = true
+      @bg = C_BG
     end
 
     def place(x, y, w, h)
@@ -134,7 +140,7 @@ class FmrbUI
     end
 
     def draw_widget(gfx)
-      gfx.fill_rect(@x, @y, @w, @h, C_BG)
+      gfx.fill_rect(@x, @y, @w, @h, @bg)
       color = @enabled ? C_TEXT : C_BORDER
       gfx.draw_text_mixed(@tx, @ty, @text, color)
       nil
@@ -362,7 +368,7 @@ class FmrbUI
       # Value box.
       mid_x = @x + STEP_W
       mid_w = @w - STEP_W * 2
-      gfx.fill_rect(mid_x, @y, mid_w, @h, C_BG)
+      gfx.fill_rect(mid_x, @y, mid_w, @h, @bg)
       gfx.draw_rect(mid_x, @y, mid_w, @h, C_BORDER)
       gfx.draw_text_mixed(@tx, @ty, @text, C_TEXT)
       draw_arrow(gfx, @x, "<", @pressed == -1)
@@ -402,10 +408,14 @@ class FmrbUI
   # Container
   # ----------------------------------------------------------------------
 
-  def initialize(app)
+  # bg is what the widgets paint behind themselves and over a hidden one.
+  # It defaults to the theme's window background; an app that clears its user
+  # area to something else (the monitor's dark panel) passes that instead.
+  def initialize(app, bg: C_BG)
     @gfx = app.gfx
     @ox = app.user_area_x0
     @oy = app.user_area_y0
+    @bg = bg
     @widgets = []
     @pressed = nil
   end
@@ -483,7 +493,7 @@ class FmrbUI
         if w.visible
           w.draw_widget(@gfx)
         else
-          @gfx.fill_rect(w.x, w.y, w.w, w.h, C_BG)
+          @gfx.fill_rect(w.x, w.y, w.w, w.h, @bg)
         end
         w.dirty = false
         drawn += 1
@@ -590,6 +600,7 @@ class FmrbUI
   private
 
   def add(w)
+    w.bg = @bg
     @widgets << w
     w
   end
