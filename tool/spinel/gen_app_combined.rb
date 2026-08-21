@@ -43,6 +43,7 @@ APPS = {
       File.join(MRBLIB_DIR, "fmrb-i18n.rb"),
       File.join(MRBLIB_DIR, "fmrb-sprite.rb"),
       File.join(MRBLIB_DIR, "fmrb-audio.rb"),
+      File.join(MRBLIB_DIR, "fmrb-ui.rb"),
     ],
     # Mixin directory (globbed + sorted, like compile_ruby_to_bytecode.cmake).
     mixin_dir: File.join(KERNEL_DIR, "system_desktop"),
@@ -55,6 +56,7 @@ APPS = {
   "editor" => {
     libs: [
       File.join(MRBLIB_DIR, "fmrb-i18n.rb"),         # FmrbI18n (module only)
+      File.join(MRBLIB_DIR, "fmrb-ui.rb"),           # FmrbUI widget set
       File.join(SPINEL_DIR, "fmrb_editor_ffi.rb"),   # FmrbSpxEc + EditorCore
       File.join(SPINEL_DIR, "editor_debug_stub.rb"), # module EditorDebugPane (no-op)
     ],

@@ -70,8 +70,14 @@ class FmrbUI
 
     # Hooks. The base implementations exist so a call on a mixed widget array
     # always resolves, and so subclasses only override what they use.
+    #
+    # draw_widget is not called draw on purpose. FmrbUI#flush calls it on a
+    # base-typed receiver, and Spinel answers such a call by compiling every
+    # method of that name in the whole program -- including GfxBlock#draw,
+    # which takes **kwargs and does not compile at all. A widely used method
+    # name is a liability under a poly receiver; this one is unique.
     def relayout; nil; end
-    def draw(gfx); nil; end
+    def draw_widget(gfx); nil; end
     def press(px); @dirty = true; nil; end
     def release; @dirty = true; nil; end
     # Confirm the operation (mouse released on top of the widget). Returns
@@ -127,7 +133,7 @@ class FmrbUI
       nil
     end
 
-    def draw(gfx)
+    def draw_widget(gfx)
       gfx.fill_rect(@x, @y, @w, @h, C_BG)
       color = @enabled ? C_TEXT : C_BORDER
       gfx.draw_text_mixed(@tx, @ty, @text, color)
@@ -176,7 +182,7 @@ class FmrbUI
       true
     end
 
-    def draw(gfx)
+    def draw_widget(gfx)
       if @pressed
         gfx.fill_rect(@x, @y, @w, @h, C_TEXT_LIGHT)
         gfx.draw_rect(@x, @y, @w, @h, C_BORDER)
@@ -260,7 +266,7 @@ class FmrbUI
       true
     end
 
-    def draw(gfx)
+    def draw_widget(gfx)
       label = (@on && @on_text) ? @on_text : @text
       if @on
         gfx.fill_rect(@x, @y, @w, @h, C_HIGHLIGHT)
@@ -352,7 +358,7 @@ class FmrbUI
       set_value(@value + @step * @pressed)
     end
 
-    def draw(gfx)
+    def draw_widget(gfx)
       # Value box.
       mid_x = @x + STEP_W
       mid_w = @w - STEP_W * 2
@@ -475,7 +481,7 @@ class FmrbUI
       w = @widgets[i]
       if w.dirty
         if w.visible
-          w.draw(@gfx)
+          w.draw_widget(@gfx)
         else
           @gfx.fill_rect(w.x, w.y, w.w, w.h, C_BG)
         end

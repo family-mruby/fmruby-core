@@ -12,6 +12,11 @@
 #   5 SMF     play a .mid from /usr/share/sounds/midi with FmrbMidi::SmfPlayer
 #   6 Fast    speed the .mid up while it plays (what real-time playback buys)
 #   7 Out     send to the APU or out of the serial MIDI port (Unit MIDI)
+#
+# The panel is an FmrbUI widget list: the three sequence buttons share one
+# exclusive group so the running one shows, the four switches are plain
+# toggles, and the status line is a Label. Keys 1-7 run the same handlers and
+# then let refresh put the widgets back in step with the app's state.
 
 class MidiApuApp < FmrbApp
   BGM_SRC   = "/app/game/rpg_demo/bgm.fmsq"
@@ -33,22 +38,6 @@ class MidiApuApp < FmrbApp
   SONGS = ["/usr/share/sounds/midi/song.mid", "/usr/share/sounds/midi/joplin_entertainer.mid",
            "/usr/share/sounds/midi/scale.mid"]
 
-  BUTTONS = [
-    ["1 Scale", :scale],
-    ["2 Chord", :chord],
-    ["3 Drums", :drums],
-    ["4 BGM", :bgm],
-    ["5 SMF", :smf],
-    ["6 Fast", :fast],
-    ["7 Out", :out]
-  ]
-
-  COL_BG    = 0x00
-  COL_TEXT  = 0xFF
-  COL_LABEL = 0x92
-  COL_BTN   = 0x25
-  COL_ON    = 0x1C
-
   def initialize
     super()
     @mode = nil
@@ -69,7 +58,10 @@ class MidiApuApp < FmrbApp
     @audio = FmrbAudio.new(self)
     @player = FmrbMidi::SmfPlayer.new(@device)
     Log.info("MidiApu: device=#{@device.info}")
-    draw
+    build_panel
+    clear_user_area(FmrbConst::THEME_WINDOW_BG)
+    draw_window_frame
+    refresh
   end
 
   # Two clocks share this loop: the sequence (when the next note starts) and
@@ -111,7 +103,7 @@ class MidiApuApp < FmrbApp
       @smf_playing = false
       @status = "smf done"
       Log.info("MidiApu: final #{@player.timing_stats}")
-      draw
+      refresh
     end
 
     # Come back sooner if a triggered note is due to be released before the
@@ -121,8 +113,7 @@ class MidiApuApp < FmrbApp
 
   def on_event(ev)
     super(ev)
-    case ev[:type]
-    when :key_down
+    if ev[:type] == :key_down
       case ev[:scancode]
       when 0x1E then play(:scale)
       when 0x1F then play(:chord)
@@ -132,18 +123,22 @@ class MidiApuApp < FmrbApp
       when 0x23 then toggle_fast
       when 0x24 then toggle_out
       end
-    when :mouse_up
-      index = button_at(ev[:x], ev[:y])
-      return if index.nil?
+      return
+    end
 
-      action = BUTTONS[index][1]
-      case action
-      when :bgm then toggle_bgm
-      when :smf then toggle_smf
-      when :fast then toggle_fast
-      when :out then toggle_out
-      else play(action)
-      end
+    id = @ui.handle(ev)
+    if id.nil?
+      @ui.flush
+      return
+    end
+    case id
+    when :scale then play(:scale)
+    when :chord then play(:chord)
+    when :drums then play(:drums)
+    when :bgm  then toggle_bgm
+    when :smf  then toggle_smf
+    when :fast then toggle_fast
+    when :out  then toggle_out
     end
   end
 
@@ -171,7 +166,7 @@ class MidiApuApp < FmrbApp
     @step = 0
     @next_at = Machine.board_millis
     @status = "#{mode} playing"
-    draw
+    refresh
   end
 
   # Even steps start a note, odd steps release it. The gap keeps the notes
@@ -233,7 +228,7 @@ class MidiApuApp < FmrbApp
     @step = 0
     @next_at = 0
     @status = "ready"
-    draw
+    refresh
   end
 
   # Load and play a .mid straight from the filesystem. Stopping releases
@@ -243,7 +238,7 @@ class MidiApuApp < FmrbApp
       @player.stop
       @smf_playing = false
       @status = "smf stopped"
-      draw
+      refresh
       return
     end
 
@@ -255,7 +250,7 @@ class MidiApuApp < FmrbApp
     end
     if path.nil?
       @status = "no .mid found"
-      draw
+      refresh
       return
     end
 
@@ -267,7 +262,7 @@ class MidiApuApp < FmrbApp
     unless @player.load(path)
       @status = "load failed"
       Log.error("MidiApu: #{@player.error}")
-      draw
+      refresh
       return
     end
 
@@ -289,7 +284,7 @@ class MidiApuApp < FmrbApp
     @smf_playing = true
     @status = "smf: #{path.split("/").last}"
     Log.info("MidiApu: playing #{path}")
-    draw
+    refresh
   end
 
   # Move the song between the built-in APU and an external MIDI instrument
@@ -305,14 +300,14 @@ class MidiApuApp < FmrbApp
       if @serial.nil?
         @status = "no MIDI port"
         Log.warn("MidiApu: serial MIDI port not available")
-        draw
+        refresh
         return
       end
       @player.device = @serial if @player
       @external = true
       @status = "out: serial"
     end
-    draw
+    refresh
   end
 
   # Tempo can be changed while the song plays - the thing the pre-converted
@@ -321,7 +316,7 @@ class MidiApuApp < FmrbApp
     @fast = !@fast
     @player.tempo_scale = @fast ? 1.5 : 1.0 if @player
     @status = @fast ? "tempo x1.5" : "tempo x1.0"
-    draw
+    refresh
   end
 
   def toggle_bgm
@@ -339,11 +334,11 @@ class MidiApuApp < FmrbApp
       @bgm = true
       @status = "BGM on"
     end
-    draw
+    refresh
   rescue => e
     @status = "BGM error"
     Log.error("MidiApu: BGM failed: #{e.message}")
-    draw
+    refresh
   end
 
   # What the collector has been doing. :live and :total are always there;
@@ -378,47 +373,44 @@ class MidiApuApp < FmrbApp
     0
   end
 
-  # --- drawing ---
+  # --- panel ---
 
-  def button_rect(index)
-    [@user_area_x0 + 8, @user_area_y0 + 34 + (index * 22), @user_area_width - 16, 18]
-  end
-
-  def button_at(x, y)
-    i = 0
-    while i < BUTTONS.size
-      rect = button_rect(i)
-      if x >= rect[0] && x < rect[0] + rect[2] && y >= rect[1] && y < rect[1] + rect[3]
-        return i
-      end
-
-      i += 1
-    end
+  # Rows are 22px apart starting below the two text lines, the same layout the
+  # hand-drawn version had. The three sequence buttons are toggles in one
+  # group rather than plain buttons so the running one stays lit, which is
+  # what the old draw did with @mode.
+  def build_panel
+    @ui = FmrbUI.new(self)
+    w = @user_area_width - 16
+    @ui.label(:title, 8, 6, w, 10, "MIDI -> APU")
+    @ui.label(:status, 8, 18, w, 10, @status)
+    @ui.toggle(:scale, 8, 34, w, 18, "1 Scale", group: :mode)
+    @ui.toggle(:chord, 8, 56, w, 18, "2 Chord", group: :mode)
+    @ui.toggle(:drums, 8, 78, w, 18, "3 Drums", group: :mode)
+    @ui.toggle(:bgm, 8, 100, w, 18, "4 BGM")
+    @ui.toggle(:smf, 8, 122, w, 18, "5 SMF")
+    @ui.toggle(:fast, 8, 144, w, 18, "6 Fast")
+    @ui.toggle(:out, 8, 166, w, 18, "7 Out", on_text: "7 Out: serial")
     nil
   end
 
-  def draw
-    @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height, COL_BG)
-    @gfx.draw_text(@user_area_x0 + 8, @user_area_y0 + 6, "MIDI -> APU", COL_TEXT)
-    @gfx.draw_text(@user_area_x0 + 8, @user_area_y0 + 18, @status, COL_LABEL)
-
-    i = 0
-    while i < BUTTONS.size
-      rect = button_rect(i)
-      on = case BUTTONS[i][1]
-           when :bgm then @bgm
-           when :smf then @smf_playing
-           when :fast then @fast
-           when :out then @external
-           else @mode == BUTTONS[i][1]
-           end
-      @gfx.fill_rect(rect[0], rect[1], rect[2], rect[3], on ? COL_ON : COL_BTN)
-      @gfx.draw_text(rect[0] + 6, rect[1] + 5, BUTTONS[i][0], COL_TEXT)
-      i += 1
-    end
-
-    draw_window_frame
-    @gfx.present
+  # Put the widgets back in step with the app and draw whatever changed. It
+  # runs after every action, from the keys as well as the mouse, and it is
+  # also what corrects a toggle the user flipped for something that then
+  # failed (no .mid on disk, no serial port). Nothing is drawn when nothing
+  # moved.
+  def refresh
+    @ui.set_text(:status, @status)
+    m = @mode
+    @ui.set_on(:scale, m == :scale)
+    @ui.set_on(:chord, m == :chord)
+    @ui.set_on(:drums, m == :drums)
+    @ui.set_on(:bgm, @bgm)
+    @ui.set_on(:smf, @smf_playing)
+    @ui.set_on(:fast, @fast)
+    @ui.set_on(:out, @external)
+    @ui.flush
+    nil
   end
 end
 
