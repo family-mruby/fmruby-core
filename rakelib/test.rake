@@ -14,8 +14,18 @@
 #
 # Lints (spinel:doctor) are separate again: they need the Spinel compiler
 # checkout and report style/inference issues, not pass/fail like these suites.
-desc "Run all native host test suites (picoruby-ti + BASIC + MicroPython)"
-task :test => ["ti:test", "basic:test", "micropython:smoke"]
+desc "Run all native host test suites (FmrbUI + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "ti:test", "basic:test", "micropython:smoke"]
+
+namespace :ui do
+  # FmrbUI is pure Ruby over a few FmrbGfx calls, so the real mrblib file runs
+  # under host Ruby against a recording stand-in. Cheapest tier there is: no
+  # docker, no firmware, no device. Run it after touching fmrb-ui.rb.
+  desc "FmrbUI widget tests (host Ruby, no docker)"
+  task :test do
+    sh "ruby test/fmrb_ui/run.rb"
+  end
+end
 
 namespace :test do
   # Opt-in sim/integration smoke: boot the headless Linux stack through the

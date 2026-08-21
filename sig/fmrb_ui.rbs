@@ -119,6 +119,31 @@ class FmrbUI
   # last argument sets the step (default 1).
   def stepper: (Symbol id, Integer x, Integer y, Integer w, Integer h, Integer value, Integer min, Integer max) -> FmrbUI::Stepper
 
+  # 選択肢を左右で選ぶ部品を置く <<en>> Place a choice picker
+  #
+  # 「< 選択肢 >」の形で、options の中身を左右で送ります。value は選ばれた
+  # 添字、option_text はその文字列です。端では止まり、巡回しません。
+  # 文字を作り直さないので Stepper より軽い部品です。
+  #
+  # ```ruby
+  # THEMES = ["light", "dark", "classic"]
+  # @ui.enum(:theme, 0, 0, 90, 14, THEMES, index: 1)
+  # # ...
+  # when :theme then apply_theme(@ui.option_text(:theme))
+  # ```
+  # <<en>>
+  # A "< choice >" control over options. value is the chosen index and
+  # option_text the string. It stops at the ends rather than wrapping, and
+  # builds no string when moved, which makes it lighter than a Stepper.
+  def enum: (Symbol id, Integer x, Integer y, Integer w, Integer h, Array[String] options) -> FmrbUI::Enum
+
+  # 選ばれている文字 <<en>> The chosen string
+  #
+  # Enum が今見せている文字列です。添字は value で読みます。
+  # <<en>>
+  # What the Enum is showing. Its index is read with value.
+  def option_text: (Symbol id) -> String?
+
   # イベントを渡す <<en>> Feed one event
   #
   # 操作が決まった部品の id を返します。決まっていなければ nil です。
@@ -275,6 +300,12 @@ class FmrbUI::Toggle < FmrbUI::Widget
 
   # 同じ一つだけ入にする仲間の名前 <<en>> The radio group name
   def group: () -> Symbol
+end
+
+# 選択肢を選ぶ部品 <<en>> A choice picker
+class FmrbUI::Enum < FmrbUI::Stepper
+  # 選ばれている文字 <<en>> The chosen string
+  def option_text: () -> String?
 end
 
 # 数を増減する部品 <<en>> A value stepper

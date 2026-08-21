@@ -112,6 +112,10 @@ class FmrbUI
     def value; 0; end
     def set_value(v); false; end
     def set_range(min, max); nil; end
+    # Deliberately not called "text": GfxBlock::Recorder has a four-argument
+    # #text (an alias of draw_text), and a call on a base-typed receiver picks
+    # its candidates by name. Same reason draw is draw_widget.
+    def option_text; nil; end
 
     private
 
@@ -454,6 +458,35 @@ class FmrbUI
     end
   end
 
+  # "< choice >" over a fixed table of strings. A Stepper whose value is an
+  # index and whose text comes from the table, so nothing is built when the
+  # user moves it -- the strings all exist before the app starts. That makes
+  # it lighter than Stepper, which has a number to render.
+  #
+  # The ends do not wrap. A language or a theme that rolls over from the last
+  # entry back to the first is easy to overshoot, and there is no undo.
+  class Enum < Stepper
+    def initialize(id, x, y, w, h, options, index, gfx, text_size)
+      @options = options
+      last = options.size - 1
+      last = 0 if last < 0
+      super(id, x, y, w, h, index, 0, last, 1, gfx, text_size)
+    end
+
+    # The string on show. #value is its index.
+    def option_text
+      @options[@value]
+    end
+
+    private
+
+    # Called by Stepper#initialize and by every set_value that moved.
+    def build_text
+      t = @options[@value]
+      t.nil? ? "" : t
+    end
+  end
+
   # ----------------------------------------------------------------------
   # Container
   # ----------------------------------------------------------------------
@@ -497,6 +530,12 @@ class FmrbUI
   def stepper(id, x, y, w, h, value, min, max, step = 1, text_size: nil)
     add(Stepper.new(id, @ox + x, @oy + y, w, h, value, min, max, step, @gfx,
                     text_size || @ts))
+  end
+
+  # options is an Array of String, read but never written by the widget.
+  def enum(id, x, y, w, h, options, index: 0, text_size: nil)
+    add(Enum.new(id, @ox + x, @oy + y, w, h, options, index, @gfx,
+                 text_size || @ts))
   end
 
   # ---- run time (allocates nothing) ----
@@ -638,6 +677,12 @@ class FmrbUI
   def value(id)
     t = find(id)
     t.nil? ? 0 : t.value
+  end
+
+  # The string an Enum is showing (its index is #value).
+  def option_text(id)
+    t = find(id)
+    t.nil? ? nil : t.option_text
   end
 
   def set_range(id, min, max)
