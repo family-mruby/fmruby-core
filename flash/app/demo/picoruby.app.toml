@@ -4,6 +4,10 @@ app_screen_name_ja = "PicoRubyデモ"
 
 default_window_mode = "window"
 
+# The tour is a big single file; the compiler needs the roomier arena on the
+# device (it runs out on ESP32-P4 without this).
+large_memory = 1
+
 default_window_width = 300
 default_window_height = 214
 
