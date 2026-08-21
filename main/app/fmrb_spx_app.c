@@ -575,16 +575,14 @@ int fmrb_spx_app_reboot(void)
     return 0;  /* unreachable */
 }
 
-#if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(CONFIG_IDF_TARGET_ESP32P4)
-extern int ble_service_start(void);   /* main/drivers/ble/ble_task.h (fmrb_err_t; 0 == OK) */
-#endif
-
 int fmrb_spx_app_ble_start(void)
 {
     /* Manual BLE start (ble_auto_start=false). Retro built-in radio only:
-       Modern's C6 path manages itself, Linux has no BLE. */
+       Modern's C6 path manages itself, Linux has no BLE. ble_task.h is
+       included above, so no stand-in extern here: an int one clashed with the
+       header's fmrb_err_t under -Werror=enum-int-mismatch on the S3 build. */
 #if !defined(CONFIG_IDF_TARGET_LINUX) && !defined(CONFIG_IDF_TARGET_ESP32P4)
-    return ble_service_start() == 0 ? 1 : 0;
+    return ble_service_start() == FMRB_OK ? 1 : 0;
 #else
     FMRB_LOGI(TAG, "ble_start: not supported on this target");
     return 0;
