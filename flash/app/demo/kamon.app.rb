@@ -1,9 +1,12 @@
 # Kamon (Japanese family crest) generator
 #
-# Port of tmp/sketch/public/events/kamon.html (a p5.rb sketch) to Family
-# mruby. 5 motifs (maru / hishi / hana / ougi / uroko) rendered with
-# rotational symmetry, optional center decoration, count / size / invert
-# parameters.
+# Port of a p5.js sketch by ksbmyk, at
+# https://ksbmyk.github.io/sketch/events/kamon.html. The credit line at the
+# bottom of the window carries the full URL, so a reader can go and look at
+# the original.
+#
+# 5 motifs (maru / hishi / hana / ougi / uroko) rendered with rotational
+# symmetry, optional center decoration, count / size / invert parameters.
 #
 # The control panel is built with FmrbUI: toggles in two exclusive groups
 # for motif and center, two steppers for count and size, one plain toggle
@@ -31,6 +34,11 @@ class KamonApp < FmrbApp
   PREVIEW_SIZE = 180
   PANEL_X      = PREVIEW_X + PREVIEW_SIZE + 4   # 188
   PANEL_W      = 300 - PANEL_X - 4              # 108
+
+  # Where this sketch comes from. 49 ASCII characters at 6px is 294 of the
+  # 298px user area, so it only fits as a full-width line under everything
+  # else - which is why the invert toggle sits at 174 rather than the bottom.
+  SOURCE_URL = "https://ksbmyk.github.io/sketch/events/kamon.html"
 
   def initialize
     super()
@@ -123,7 +131,10 @@ class KamonApp < FmrbApp
                            (@size * 100).round, SIZE_MIN, SIZE_MAX, SIZE_STEP)
     @size_st.suffix = "%"
 
-    @ui.toggle(:invert, x, 178, PANEL_W, 12, "反転 切", on_text: "反転 入")
+    @ui.toggle(:invert, x, 174, PANEL_W, 12, "反転 切", on_text: "反転 入")
+
+    # Credit line, full width under both columns.
+    @ui.label(:source, 2, 188, @user_area_width - 4, 9, SOURCE_URL)
     nil
   end
 
