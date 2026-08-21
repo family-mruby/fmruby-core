@@ -122,8 +122,9 @@ jobs:
     # Generation alone catches the class of breakage that kept the Spinel
     # desktop unbuildable for two weeks: a C API added to the mruby bindings
     # and not to the Spinel base (doc/spinel_aot/report/desktop_spinel_gap.md).
-    # The C compile is left to build-linux; the generator stops at the first
-    # missing method or inference gap, which is what this job is for.
+    # The C compile is build-linux (spinel)'s job; this one exists because it
+    # answers in about a minute without docker, and the generator stops at
+    # the first missing method or inference gap.
     name: spinel-gen
     runs-on: ubuntu-latest
     steps:
@@ -154,7 +155,21 @@ jobs:
         run: rake spinel:gen
 
   build-linux:
+    # Once per engine configuration. "mruby" is the default build; "spinel"
+    # puts the kernel, the desktop and the editor on Spinel. The second leg is
+    # what spinel-gen cannot do: compile the generated C. A branch whose
+    # arms end in a void leaf and a FmrbGfx, say, passes the generator and
+    # fails only here (doc/spinel_aot/report/desktop_spinel_gap.md).
+    name: build-linux (${{ matrix.engine }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [mruby, spinel]
+    env:
+      FMRB_KERNEL_ENGINE: ${{ matrix.engine }}
+      FMRB_APP_ENGINE_DESKTOP: ${{ matrix.engine }}
+      FMRB_APP_ENGINE_EDITOR: ${{ matrix.engine }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
