@@ -52,5 +52,16 @@ parts.each do |p|
 end
 
 FileUtils.mkdir_p(File.dirname(out_path))
+# A constant the program names but the generated module lacks is not a
+# generation error under Spinel: the reference compiles into a NameError that
+# fires at the first use (KEY_F10 took the desktop down on its first keystroke,
+# a month after the constant was added to const.c). Refuse to write a program
+# that would do that.
+defined_consts = File.read(const_rb).scan(/^  ([A-Z][A-Z0-9_]*) =/).flatten
+code_lines = combined.lines.reject { |l| l.lstrip.start_with?("#") }
+missing = code_lines.join.scan(/FmrbConst::([A-Z][A-Z0-9_]*)/).flatten.uniq - defined_consts
+unless missing.empty?
+  abort "FmrbConst constants used but not generated (tool/spinel/gen_const_rb.rb): #{missing.join(', ')}"
+end
 File.write(out_path, combined)
 warn "Wrote #{out_path} (#{parts.size} parts, #{combined.lines.size} lines)"

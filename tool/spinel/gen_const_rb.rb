@@ -118,7 +118,13 @@ proc_states = enum_values(app_h, "PROC_STATE_FREE",
                              PROC_STATE_SUSPENDED PROC_STATE_STOPPING])
 theme = theme_values(const_c, %w[desktop_bg menu_bg window_bg text text_light
                                  highlight border button dir_color])
-keys = int_const_values(const_c, %w[KEY_UP KEY_DOWN])
+# Every KEY_* the mruby module defines, not a hand-picked pair: a key the
+# desktop starts testing for (KEY_F10 for the menu bar, KEY_TAB in the file
+# manager) is a NameError at the first keystroke on Spinel, and generation
+# does not catch it. Pulling the whole table keeps the two engines equal by
+# construction.
+key_names = const_c.scan(/define_int_const\([^,]+,[^,]+,\s*"(KEY_\w+)"/).flatten.uniq
+keys = int_const_values(const_c, key_names)
 os_version = str_define(fmrb_h, "FMRB_OS_VERSION")
 ga_version = str_define(fmrb_h, "FMRB_GA_VERSION")
 link_version = define_values(fmrb_h, %w[FMRB_LINK_VERSION])["FMRB_LINK_VERSION"]
@@ -148,8 +154,7 @@ out << "  PROC_ID_USER_APP0 = #{proc_ids['PROC_ID_USER_APP0']}\n"
 out << "  LED_ERR_VERSION_MISMATCH = #{led_vals['FMRB_LED_STATUS_VERSION_MISMATCH']}\n"
 # ---- Phase 4 desktop subset ----
 # HID event keycodes (USB HID Usage IDs) used by desktop key handling.
-out << "  KEY_UP = #{keys['KEY_UP']}\n"
-out << "  KEY_DOWN = #{keys['KEY_DOWN']}\n"
+key_names.each { |k| out << "  #{k} = #{keys[k]}\n" }
 # Process states (ps / taskbar).
 out << "  PROC_STATE_FREE = #{proc_states['PROC_STATE_FREE']}\n"
 out << "  PROC_STATE_INIT = #{proc_states['PROC_STATE_INIT']}\n"
