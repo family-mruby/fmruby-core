@@ -197,7 +197,7 @@ Modern 以外では `video_open` は失敗を返す (アプリ側で分岐でき
 やること:
 
 - mruby と Spinel の両方の結び付け、`fmrb-gfx.rb` の包み
-- 作例 `flash/app/demo/video_play.app.rb` (SD の一覧から選んで再生、
+- 作例 `flash/app/modern/video_play.app.rb` (SD の一覧から選んで再生、
   再生/一時停止/停止のボタン、Ctrl+Q で終了)
 - 変換手順の覚え書き (ffmpeg の一行) を doc に置く
 
