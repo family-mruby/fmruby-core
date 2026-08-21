@@ -21,6 +21,7 @@ module FmrbSpx
   ffi_func :fmrb_spx_board_millis, [], :int
   ffi_func :fmrb_spx_board_micros, [], :int
   ffi_func :fmrb_spx_log_write, [:int, :str, :int], :void
+  ffi_func :fmrb_spx_theme_color, [:int], :int   # theme colour by fmrb_theme_t field index
 end
 
 module FmrbSpxGfx

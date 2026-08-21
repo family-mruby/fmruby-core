@@ -161,17 +161,17 @@ out << "  PROC_STATE_INIT = #{proc_states['PROC_STATE_INIT']}\n"
 out << "  PROC_STATE_RUNNING = #{proc_states['PROC_STATE_RUNNING']}\n"
 out << "  PROC_STATE_SUSPENDED = #{proc_states['PROC_STATE_SUSPENDED']}\n"
 out << "  PROC_STATE_STOPPING = #{proc_states['PROC_STATE_STOPPING']}\n"
-# Theme colors (default g_theme; runtime system_conf override is not applied in
-# the Spinel build -- the desktop uses the compiled-in defaults).
-out << "  THEME_DESKTOP_BG = #{theme['desktop_bg']}\n"
-out << "  THEME_MENU_BG = #{theme['menu_bg']}\n"
-out << "  THEME_WINDOW_BG = #{theme['window_bg']}\n"
-out << "  THEME_TEXT = #{theme['text']}\n"
-out << "  THEME_TEXT_LIGHT = #{theme['text_light']}\n"
-out << "  THEME_HIGHLIGHT = #{theme['highlight']}\n"
-out << "  THEME_BORDER = #{theme['border']}\n"
-out << "  THEME_BUTTON = #{theme['button']}\n"
-out << "  THEME_DIR_COLOR = #{theme['dir_color']}\n"
+# Theme colors: read from fmrb_theme_get() when the program starts (the kernel
+# and app shims both export fmrb_spx_theme_color), so [theme] in
+# system_conf.toml reaches Spinel programs the way it reaches mruby VMs. They
+# used to be baked in here from const.c's defaults, which is why a theme edit
+# changed the mruby desktop and not the Spinel one. The index is the field
+# order of fmrb_theme_t (picoruby_fmrb_const.h); the parse of g_theme above is
+# kept only to fail loudly if a field is renamed.
+%w[desktop_bg menu_bg window_bg text text_light highlight border button dir_color].each_with_index do |f, i|
+  abort "theme field #{f} vanished from const.c" unless theme.key?(f)
+  out << "  THEME_#{f.upcase} = FmrbSpx.fmrb_spx_theme_color(#{i})\n"
+end
 # Versions + platform/system placeholders (about dialog / config dialog). The
 # Linux mruby build reports the same placeholders; ESP32 fills real values at
 # runtime (not available at Spinel compile time -- acceptable for the port).

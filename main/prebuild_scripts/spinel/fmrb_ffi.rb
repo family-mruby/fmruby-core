@@ -13,6 +13,7 @@ module FmrbSpx
   # --- scalar / logging ---
   ffi_func :fmrb_spx_board_millis, [], :int
   ffi_func :fmrb_spx_log_write, [:int, :str, :int], :void
+  ffi_func :fmrb_spx_theme_color, [:int], :int   # theme colour by fmrb_theme_t field index
 
   # --- messaging ---
   # recv returns the payload as a binary-safe String (:binstr; byte-exact via

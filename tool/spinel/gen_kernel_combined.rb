@@ -58,7 +58,10 @@ FileUtils.mkdir_p(File.dirname(out_path))
 # a month after the constant was added to const.c). Refuse to write a program
 # that would do that.
 defined_consts = File.read(const_rb).scan(/^  ([A-Z][A-Z0-9_]*) =/).flatten
-code_lines = combined.lines.reject { |l| l.lstrip.start_with?("#") }
+# Comments are skipped, trailing ones included: "FmrbConst::THEME_*" in prose
+# is not a reference. (A "#" inside a string literal would also cut the line,
+# which is harmless here: a constant reference never follows one.)
+code_lines = combined.lines.map { |l| l.sub(/#.*$/, "") }
 missing = code_lines.join.scan(/FmrbConst::([A-Z][A-Z0-9_]*)/).flatten.uniq - defined_consts
 unless missing.empty?
   abort "FmrbConst constants used but not generated (tool/spinel/gen_const_rb.rb): #{missing.join(', ')}"

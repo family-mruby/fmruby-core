@@ -21,6 +21,7 @@
 #include <stdint.h>
 #include <time.h>
 #include "fmrb_log.h"
+#include "picoruby_fmrb_const.h"
 
 static const char *TAG = "spx";
 
@@ -58,5 +59,29 @@ void fmrb_spx_log_write(int level, const char *msg, int len)
         case 2:  FMRB_LOGW(TAG, "%.*s", len, msg); break;
         case 3:  FMRB_LOGE(TAG, "%.*s", len, msg); break;
         default: FMRB_LOGI(TAG, "%.*s", len, msg); break;
+    }
+}
+
+int fmrb_spx_theme_color(int index)
+{
+    /* FmrbConst::THEME_* for the Spinel programs. The mruby module reads
+       fmrb_theme_get() when a VM starts, so [theme] in system_conf.toml
+       reaches every mruby app; the Spinel constants used to be baked in at
+       generation time from const.c's defaults and never saw the file. Both
+       engines now read the same struct at start-up. The index follows the
+       field order of fmrb_theme_t; an unknown index is the window
+       background, the colour nothing is invisible against. */
+    const fmrb_theme_t *t = fmrb_theme_get();
+    switch (index) {
+        case 0: return t->desktop_bg;
+        case 1: return t->menu_bg;
+        case 2: return t->window_bg;
+        case 3: return t->text;
+        case 4: return t->text_light;
+        case 5: return t->highlight;
+        case 6: return t->border;
+        case 7: return t->button;
+        case 8: return t->dir_color;
+        default: return t->window_bg;
     }
 }
