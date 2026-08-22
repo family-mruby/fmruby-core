@@ -87,7 +87,8 @@ module NetworkDialogMixin
       # Status pill so the connected/disconnected state reads at a glance.
       sw = FmrbI18n.text_width(status) + 10
       @gfx.fill_rect(x + 8, body_y - 1, sw, 12, status_bg)
-      @gfx.draw_text(x + 13, body_y + 1, status, FmrbGfx::WHITE, status_bg, mixed: true)
+      # Black on the green pill: white vanished into the light green.
+      @gfx.draw_text(x + 13, body_y + 1, status, FmrbGfx::BLACK, status_bg, mixed: true)
 
       ssid = @net_info[:ssid]
       ssid = "-" if ssid.nil? || ssid.empty?
