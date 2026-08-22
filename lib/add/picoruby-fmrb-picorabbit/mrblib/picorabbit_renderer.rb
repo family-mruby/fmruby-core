@@ -13,8 +13,37 @@ module PicoRabbit
       @name = name
     end
 
+    # The default theme follows the system theme for every colour that is
+    # defined against the background: the ground itself, the body text, and
+    # the quiet text that sits on it (footer, blockquote). The rest are
+    # presentation accents and are fixed. A deck that wants the old black
+    # ground asks for `theme: dark` in its frontmatter.
     def self.default
       t = Theme.new("default")
+      t.bg = ::FmrbConst::THEME_WINDOW_BG
+      t.text = ::FmrbConst::THEME_TEXT
+      t.title = 0xFC           # Yellow
+      t.title_bg = 0x03        # Dark blue
+      t.bullet = 0x1C          # Green
+      t.code_bg = 0x24         # Dark gray
+      t.code_text = 0xFF       # White
+      t.quote_bar = 0x60       # Gray
+      t.quote_text = ::FmrbConst::THEME_BORDER
+      t.footer_text = ::FmrbConst::THEME_BORDER
+      t.footer_bg = ::FmrbConst::THEME_WINDOW_BG
+      t.inline_code_bg = 0x24  # Dark gray
+      t.inline_code_text = 0xFC # Yellow
+      t.timer_track = 0x24     # Dark gray
+      t.timer_turtle = 0x1C    # Green
+      t.timer_rabbit = 0xE0    # Red
+      t
+    end
+
+    # The palette PicoRabbit shipped with before the default followed the
+    # system theme. Kept so a talk on a projector can go back to a black
+    # ground with one frontmatter line.
+    def self.dark
+      t = Theme.new("dark")
       t.bg = 0x00              # Black
       t.text = 0xFF            # White
       t.title = 0xFC           # Yellow
@@ -58,6 +87,7 @@ module PicoRabbit
     def self.for_name(name)
       case name
       when "light" then light
+      when "dark" then dark
       else default
       end
     end
@@ -80,7 +110,6 @@ module PicoRabbit
     CHAR_W = 6     # Font size 1 character width
     CHAR_H = 8     # Font size 1 character height
     LINE_H = 10    # Line height with spacing
-    TITLE_CHAR_W = 12  # Font size 2 character width
     TITLE_CHAR_H = 16  # Font size 2 character height
     MARGIN_X = 4
     MARGIN_Y = 2
@@ -93,11 +122,7 @@ module PicoRabbit
       @w = width
       @h = height
       @theme = Theme.for_name(metadata["theme"])
-      @allotted_ms = nil
-      if metadata["allotted_time"]
-        mins = metadata["allotted_time"].to_i
-        @allotted_ms = mins * 60 * 1000 if mins > 0
-      end
+      @allotted_ms = parse_allotted_ms(metadata["allotted_time"])
       @start_ms = Machine.board_millis
       @usagi_jump_y = 0
       @usagi_vy = 0
@@ -144,6 +169,11 @@ module PicoRabbit
 
     def jump_rabbit
       @usagi_vy = -5 if @usagi_jump_y == 0
+    end
+
+    # Put the turtle back on the start line (Alt+t upstream, plain "t" here).
+    def reset_timer
+      @start_ms = Machine.board_millis
     end
 
     def update_rabbit
@@ -197,18 +227,24 @@ module PicoRabbit
       y = (@h - total_h) / 2
 
       @gfx.set_text_size(2)
-      lines.each do |line|
-        x = (@w - line.length * TITLE_CHAR_W) / 2
-        @gfx.draw_text(x, y, line, @theme.title, @theme.bg)
+      i = 0
+      while i < lines.length
+        line = lines[i]
+        x = (@w - @gfx.text_width(line, :default)) / 2
+        @gfx.draw_text_mixed(x, y, line, @theme.title, @theme.bg)
         y += TITLE_CHAR_H + 4
+        i += 1
       end
 
       @gfx.set_text_size(1)
       y += 8
-      sub_lines.each do |line|
-        x = (@w - line.length * CHAR_W) / 2
-        @gfx.draw_text(x, y, line, @theme.text, @theme.bg)
+      i = 0
+      while i < sub_lines.length
+        line = sub_lines[i]
+        x = (@w - @gfx.text_width(line, :default)) / 2
+        @gfx.draw_text_mixed(x, y, line, @theme.text, @theme.bg)
         y += LINE_H
+        i += 1
       end
     end
 
@@ -216,10 +252,8 @@ module PicoRabbit
       # Title bar
       @gfx.fill_rect(0, 0, @w, TITLE_BAR_H, @theme.title_bg)
       @gfx.set_text_size(2)
-      title = slide.title || ""
-      max_chars = (@w - MARGIN_X * 2) / TITLE_CHAR_W
-      title = title[0, max_chars] if title.length > max_chars
-      @gfx.draw_text(MARGIN_X, 2, title, @theme.title, @theme.title_bg)
+      title = truncate_to_width(slide.title || "", @w - MARGIN_X * 2)
+      @gfx.draw_text_mixed(MARGIN_X, 2, title, @theme.title, @theme.title_bg)
       @gfx.set_text_size(1)
 
       y = TITLE_BAR_H + 4
@@ -245,15 +279,18 @@ module PicoRabbit
           indent = content_x + elem.level * CHAR_W * 2
           marker = elem.level == 0 ? "- " : "  - "
           @gfx.draw_text(indent, y, marker, @theme.bullet, @theme.bg)
-          draw_rich_text_at(indent + marker.length * CHAR_W, y, elem.text || "", @theme.text)
-          y += LINE_H
+          mw = marker.length * CHAR_W
+          tx = indent + mw
+          y = draw_rich_text(tx, y, elem.text || "",
+                             content_x + content_w - tx, nil, @theme.text)
 
         when :numbered
           indent = content_x + elem.level * CHAR_W * 2
           # Simple numbered prefix
           @gfx.draw_text(indent, y, "  ", @theme.text, @theme.bg)
-          draw_rich_text_at(indent + CHAR_W * 2, y, elem.text || "", @theme.text)
-          y += LINE_H
+          tx = indent + CHAR_W * 2
+          y = draw_rich_text(tx, y, elem.text || "",
+                             content_x + content_w - tx, nil, @theme.text)
 
         when :code_block
           if elem.text.is_a?(Array)
@@ -302,9 +339,10 @@ module PicoRabbit
           end
 
         when :blockquote
-          @gfx.fill_rect(content_x, y, 2, CHAR_H, @theme.quote_bar)
-          @gfx.draw_text(content_x + 6, y, elem.text || "", @theme.quote_text, @theme.bg)
-          y += LINE_H
+          qy = y
+          y = draw_rich_text(content_x + 6, y, elem.text || "",
+                             content_w - 6, nil, @theme.quote_text)
+          @gfx.fill_rect(content_x, qy, 2, y - qy - (LINE_H - CHAR_H), @theme.quote_bar)
 
         when :image
           begin
@@ -328,65 +366,168 @@ module PicoRabbit
       end
     end
 
-    # Draw text with inline formatting (**bold** and `code`)
-    def draw_rich_text(x, y, text, content_w, align)
+    # Draw text with inline formatting (**bold** and `code`), wrapping to
+    # max_w. The fit is measured in pixels with text_width, not in character
+    # cells, so a line of CJK (8px per glyph, drawn with misaki_8) breaks
+    # where it actually runs off the slide.
+    #
+    # ASCII breaks between words. CJK has no spaces to break at, so it breaks
+    # between glyphs; no kinsoku (see plan.md P2).
+    #
+    # Returns the y of the line after the last one drawn.
+    def draw_rich_text(x, y, text, max_w, align, color = nil)
       return y + LINE_H unless text
-      segments = parse_inline(text)
-
-      if align == :center || align == :right
-        total_w = 0
-        segments.each { |seg| total_w += seg[1].length * CHAR_W }
+      color = @theme.text unless color
+      lines = layout_rich_text(parse_inline(text), max_w)
+      n = lines.length
+      return y + LINE_H if n == 0
+      i = 0
+      while i < n
+        line = lines[i]
+        lx = x
         if align == :center
-          x = x + (content_w - total_w) / 2
-        else
-          x = x + content_w - total_w
+          lx = x + (max_w - line[1]) / 2
+        elsif align == :right
+          lx = x + max_w - line[1]
         end
+        draw_rich_line(lx, y, line[0], color)
+        y += LINE_H
+        i += 1
       end
-
-      segments.each do |seg|
-        type = seg[0]
-        str = seg[1]
-        case type
-        when :bold
-          # Bold: draw twice with 1px offset
-          @gfx.draw_text(x, y, str, @theme.text, @theme.bg)
-          @gfx.draw_text(x + 1, y, str, @theme.text)
-          x += str.length * CHAR_W
-        when :code
-          # Inline code: background highlight
-          cw = str.length * CHAR_W + 2
-          @gfx.fill_rect(x, y, cw, CHAR_H, @theme.inline_code_bg)
-          @gfx.draw_text(x + 1, y, str, @theme.inline_code_text, @theme.inline_code_bg)
-          x += cw
-        else
-          @gfx.draw_text(x, y, str, @theme.text, @theme.bg)
-          x += str.length * CHAR_W
-        end
-      end
-      y + LINE_H
+      y
     end
 
-    # Draw rich text at fixed position (for bullets etc)
-    def draw_rich_text_at(x, y, text, default_color)
-      segments = parse_inline(text)
-      segments.each do |seg|
-        type = seg[0]
-        str = seg[1]
-        case type
-        when :bold
-          @gfx.draw_text(x, y, str, default_color, @theme.bg)
-          @gfx.draw_text(x + 1, y, str, default_color)
-          x += str.length * CHAR_W
-        when :code
-          cw = str.length * CHAR_W + 2
-          @gfx.fill_rect(x, y, cw, CHAR_H, @theme.inline_code_bg)
-          @gfx.draw_text(x + 1, y, str, @theme.inline_code_text, @theme.inline_code_bg)
-          x += cw
-        else
-          @gfx.draw_text(x, y, str, default_color, @theme.bg)
-          x += str.length * CHAR_W
+    # Flow inline segments into lines that fit max_w.
+    # A line is [pieces, width]; a piece is [type, str, width].
+    def layout_rich_text(segments, max_w)
+      lines = []
+      pieces = []
+      line_w = 0
+      si = 0
+      ns = segments.length
+      while si < ns
+        type = segments[si][0]
+        str = segments[si][1]
+        pad = (type == :code) ? 2 : 0
+        i = 0
+        len = str.length
+        while i < len
+          j = token_end(str, i)
+          token = str[i, j - i]
+          tw = @gfx.text_width(token, :default)
+          if tw > max_w && j - i > 1
+            # A word wider than the whole line (a URL, an identifier): break
+            # it hard rather than run off the edge, taking as much as still
+            # fits on the line in hand.
+            avail = max_w - line_w
+            k = 1
+            while i + k < j
+              break if @gfx.text_width(str[i, k + 1], :default) > avail
+              k += 1
+            end
+            j = i + k
+            token = str[i, k]
+            tw = @gfx.text_width(token, :default)
+          end
+          i = j
+          if line_w > 0 && line_w + tw > max_w
+            push_line(lines, pieces, line_w)
+            pieces = []
+            line_w = 0
+            # A space that only exists to separate words is dropped at the
+            # break; a CJK glyph or a word is carried to the new line.
+            next if token[0] == " "
+          end
+          last = pieces.length > 0 ? pieces[pieces.length - 1] : nil
+          if last && last[0] == type
+            last[1] = last[1] + token
+            last[2] = last[2] + tw
+            line_w += tw
+          else
+            pieces << [type, token, tw + pad]
+            line_w += tw + pad
+          end
         end
+        si += 1
       end
+      push_line(lines, pieces, line_w) if pieces.length > 0
+      lines
+    end
+
+    # Push one finished line, dropping the trailing spaces so a centred or
+    # right-aligned line measures the same width as it draws.
+    def push_line(lines, pieces, line_w)
+      last = pieces[pieces.length - 1]
+      str = last[1]
+      n = str.length
+      while n > 0 && str[n - 1] == " "
+        n -= 1
+      end
+      if n < str.length
+        cut = @gfx.text_width(str[n, str.length - n], :default)
+        last[1] = str[0, n]
+        last[2] = last[2] - cut
+        line_w -= cut
+      end
+      lines << [pieces, line_w]
+    end
+
+    # End index of the wrap token that starts at i: a run of spaces, a single
+    # multi-byte glyph, or an ASCII word.
+    def token_end(str, i)
+      len = str.length
+      c = str[i]
+      return i + 1 if c.bytesize > 1
+      j = i + 1
+      if c == " "
+        while j < len && str[j] == " "
+          j += 1
+        end
+        return j
+      end
+      while j < len
+        cj = str[j]
+        break if cj == " " || cj.bytesize > 1
+        j += 1
+      end
+      j
+    end
+
+    def draw_rich_line(x, y, pieces, color)
+      i = 0
+      n = pieces.length
+      while i < n
+        piece = pieces[i]
+        type = piece[0]
+        str = piece[1]
+        w = piece[2]
+        if type == :bold
+          # Bold: draw twice with 1px offset
+          @gfx.draw_text_mixed(x, y, str, color, @theme.bg)
+          @gfx.draw_text_mixed(x + 1, y, str, color)
+        elsif type == :code
+          # Inline code: background highlight. ASCII only, so Font0 is enough.
+          @gfx.fill_rect(x, y, w, CHAR_H, @theme.inline_code_bg)
+          @gfx.draw_text(x + 1, y, str, @theme.inline_code_text, @theme.inline_code_bg)
+        else
+          @gfx.draw_text_mixed(x, y, str, color, @theme.bg)
+        end
+        x += w
+        i += 1
+      end
+    end
+
+    # Drop trailing characters until the string fits w at the current text
+    # size. Titles are short, so the repeated measuring costs nothing.
+    def truncate_to_width(str, w)
+      return str if @gfx.text_width(str, :default) <= w
+      n = str.length
+      while n > 0
+        cut = str[0, n]
+        return cut if @gfx.text_width(cut, :default) <= w
+        n -= 1
+      end
+      ""
     end
 
     # Parse inline formatting: **bold** and `code`
@@ -470,10 +611,8 @@ module PicoRabbit
 
       # Slide title on left
       if slide && slide.title && !slide.title_slide
-        ft = slide.title
-        max_c = (@w / 2) / CHAR_W
-        ft = ft[0, max_c] if ft.length > max_c
-        @gfx.draw_text(MARGIN_X, fy + 1, ft, @theme.footer_text, @theme.footer_bg)
+        ft = truncate_to_width(slide.title, @w / 2)
+        @gfx.draw_text_mixed(MARGIN_X, fy + 1, ft, @theme.footer_text, @theme.footer_bg)
       end
 
       # Page number on right
@@ -492,22 +631,75 @@ module PicoRabbit
       # Track line
       @gfx.fill_rect(track_left, ty + 1, track_w, 2, @theme.timer_track)
 
-      # Turtle position (slide progress)
-      turtle_progress = total_slides > 1 ? slide_idx.to_f / (total_slides - 1) : 0
+      # The rabbit carries the talk, the turtle carries the clock (Rabbit
+      # upstream; see doc/picorabbit/rabbit_behavior.md).
+      rabbit_x = track_left + (rabbit_progress(slide_idx, total_slides) * track_w).to_i
       turtle_x = track_left + (turtle_progress * track_w).to_i
-
-      # Rabbit position (time progress)
-      elapsed = Machine.board_millis - @start_ms
-      rabbit_progress = elapsed.to_f / @allotted_ms
-      rabbit_progress = 1.0 if rabbit_progress > 1.0
-      rabbit_x = track_left + (rabbit_progress * track_w).to_i
 
       update_rabbit
 
-      # Draw turtle as solid circle (green)
-      @gfx.draw_text(turtle_x - 2, ty - 2 + @usagi_jump_y, "*", @theme.timer_turtle, @theme.bg)
-      # Draw rabbit as solid square (red)
-      @gfx.fill_rect(rabbit_x - 2, ty - 1, 4, 4, @theme.timer_rabbit)
+      # Turtle: a solid square (green)
+      @gfx.fill_rect(turtle_x - 2, ty - 1, 4, 4, @theme.timer_turtle)
+      # Rabbit: a "*" that hops when it jumps (red)
+      @gfx.draw_text(rabbit_x - 2, ty - 2 + @usagi_jump_y, "*", @theme.timer_rabbit, @theme.bg)
+    end
+
+    # How far the talk has come, 0..1. The title slide is not part of the
+    # race: the first content slide is the start line and the last slide is
+    # the goal. A deck with fewer than three slides is always at the goal.
+    def rabbit_progress(slide_idx, total_slides)
+      return 1.0 if total_slides < 3
+      p = (slide_idx - 1).to_f / (total_slides - 2)
+      return 0.0 if p < 0.0
+      return 1.0 if p > 1.0
+      p
+    end
+
+    # How much of the allotted time is gone, 0..1. Upstream keeps walking
+    # past the goal; we stop there, because P1 has the turtle cheer instead.
+    def turtle_progress
+      elapsed = Machine.board_millis - @start_ms
+      p = elapsed.to_f / @allotted_ms
+      p > 1.0 ? 1.0 : p
+    end
+
+    # Read the allotted time out of the frontmatter.
+    #
+    # A bare integer is minutes (the Harucom form, as in demo.md). A value
+    # with units follows Rabbit upstream: "90s", "5m", "1h30m". Anything that
+    # does not add up to a time at all means "no timer".
+    def parse_allotted_ms(str)
+      return nil unless str
+      s = str.strip
+      total = 0
+      num = 0
+      digits = 0
+      units = 0
+      i = 0
+      len = s.length
+      while i < len
+        c = s[i]
+        if c >= "0" && c <= "9"
+          num = num * 10 + (c.ord - 48)
+          digits += 1
+        elsif c == "h" || c == "m" || c == "s"
+          return nil if digits == 0
+          total += num * (c == "h" ? 3600 : (c == "m" ? 60 : 1))
+          num = 0
+          digits = 0
+          units += 1
+        else
+          return nil
+        end
+        i += 1
+      end
+      if units == 0
+        return nil if digits == 0
+        total = num * 60
+      elsif digits > 0
+        return nil
+      end
+      total > 0 ? total * 1000 : nil
     end
 
     def calc_align_x_px(elem, px_w, content_x, content_w)

@@ -1,8 +1,17 @@
 # SlideShow - Fullscreen presentation tool
 # Supports PicoRabbit-compatible markdown format
-# Navigation: Click/Enter/Space/Right = advance, Left = back
-#             Home = first slide, End = last slide
-#             Up = rabbit jump, Escape = exit
+#
+# Keys follow Rabbit upstream (doc/picorabbit/rabbit_behavior.md), which
+# separates "next" (walk one wait step) from "next slide" (skip the rest of
+# the steps):
+#   next        Space / Enter / PgDn / Tab / n f j l
+#   next slide  Right / Down
+#   previous    PgUp / BackSpace / p b h k
+#   prev slide  Left / Up
+#   first/last  Home, a / End, e
+#   quit        Esc / q
+#   rabbit jump u      (not in upstream; Up is "previous slide" there)
+#   reset timer t      (upstream Alt+t; Alt does not reach us in the sim)
 
 class SlideShowApp < FmrbApp
   SLIDES_DIR = "/home/slides"
@@ -105,6 +114,24 @@ class SlideShowApp < FmrbApp
     end
   end
 
+  # Skip the remaining wait steps of this slide and show the next one from
+  # its own first step ("next slide" upstream).
+  def next_slide
+    return unless @result
+    return if @slide_index >= @result.slides.length - 1
+    @slide_index += 1
+    update_step
+    draw_current
+  end
+
+  def prev_slide
+    return unless @result
+    return if @slide_index <= 0
+    @slide_index -= 1
+    update_step
+    draw_current
+  end
+
   def go_first
     return unless @result
     @slide_index = 0
@@ -123,34 +150,35 @@ class SlideShowApp < FmrbApp
   def on_event(ev)
     if ev[:type] == :mouse_up
       advance
+      return
     end
+    return unless ev[:type] == :key_down
 
-    if ev[:type] == :key_down
-      kc = ev[:keycode] || 0
-      ch = ev[:character] || 0
-
-      case kc
-      when FmrbConst::KEY_RIGHT
-        advance
-      when FmrbConst::KEY_LEFT
-        go_back
-      when FmrbConst::KEY_UP  # rabbit jump
-        @renderer.jump_rabbit if @renderer
-      when FmrbConst::KEY_HOME
-        go_first
-      when FmrbConst::KEY_END
-        go_last
-      when FmrbConst::KEY_PGUP
-        go_back
-      when FmrbConst::KEY_PGDN
-        advance
-      else
-        if ch == 10 || ch == 13 || ch == 32  # Enter or Space
-          advance
-        elsif ch == 27  # Escape
-          stop
-        end
-      end
+    # Scancodes are USB HID Usage IDs on the device and in the simulator
+    # alike; ev[:keycode] is an SDL keysym on Linux and would not match.
+    # Letters are read as scancodes too, so kana mode cannot shift them.
+    case ev[:scancode] || 0
+    when FmrbConst::KEY_SPACE, FmrbConst::KEY_ENTER, FmrbConst::KEY_PGDN,
+         FmrbConst::KEY_TAB, FmrbConst::KEY_N, FmrbConst::KEY_F,
+         FmrbConst::KEY_J, FmrbConst::KEY_L
+      advance
+    when FmrbConst::KEY_RIGHT, FmrbConst::KEY_DOWN
+      next_slide
+    when FmrbConst::KEY_PGUP, FmrbConst::KEY_BACKSPACE, FmrbConst::KEY_P,
+         FmrbConst::KEY_B, FmrbConst::KEY_H, FmrbConst::KEY_K
+      go_back
+    when FmrbConst::KEY_LEFT, FmrbConst::KEY_UP
+      prev_slide
+    when FmrbConst::KEY_HOME, FmrbConst::KEY_A
+      go_first
+    when FmrbConst::KEY_END, FmrbConst::KEY_E
+      go_last
+    when FmrbConst::KEY_ESC, FmrbConst::KEY_Q
+      stop
+    when FmrbConst::KEY_U
+      @renderer.jump_rabbit if @renderer
+    when FmrbConst::KEY_T
+      @renderer.reset_timer if @renderer
     end
   end
 

@@ -87,13 +87,17 @@ module PicoRabbit
           next
         end
 
-        # Alignment directive
+        # Alignment directive. It belongs to the last element that draws
+        # something, so a blank line between the text and the directive does
+        # not swallow it. With nothing to align, the directive is dropped.
         s = line.strip
         if s == "{:.center}" || s == "{:.right}"
-          if current_elements.length > 0
-            align = s == "{:.center}" ? :center : :right
-            current_elements[current_elements.length - 1].align = align
+          align = s == "{:.center}" ? :center : :right
+          ai = current_elements.length - 1
+          while ai >= 0 && current_elements[ai].type == :blank
+            ai -= 1
           end
+          current_elements[ai].align = align if ai >= 0
           next
         end
 
