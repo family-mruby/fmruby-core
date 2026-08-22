@@ -6,7 +6,7 @@
 
 道具はリポジトリルート (family-mruby) の `tools/` に揃っている
 (`fmrb_screenshot.py` / `fmrb_input.rb` に加えて、下で使う
-`fmrb_pngdiff.py` / `fmrb_pngscan.py`。後者 2 本は Pillow だけで動く)。
+`fmrb_pngdiff.rb` / `fmrb_pngscan.rb`。後者 2 本は Ruby 標準ライブラリだけで動き、実機の JPEG を渡したときだけ python3 + Pillow に変換を委譲する)。
 
 ## 1. 撮る前に、カーソルを毎回同じ場所へ戻す
 
@@ -26,7 +26,7 @@ python3 tools/fmrb_screenshot.py base.png
 窓やダイアログを開いて閉じたあと、地が元どおりかを数える。
 
 ```
-python3 tools/fmrb_pngdiff.py base.png after.png 0 13 426 227
+ruby tools/fmrb_pngdiff.rb base.png after.png 0 13 426 227
 rect (0,13,426,227) of 426x240: 0 differing pixels
 ```
 
@@ -43,7 +43,7 @@ rect (0,13,426,227) of 426x240: 0 differing pixels
 「枠が消えた」「白い矩形が出た」は、その行を左から読んで色の並びを見る。
 
 ```
-python3 tools/fmrb_pngscan.py after.png row 155 100 320   # col X [Y0 Y1] もある
+ruby tools/fmrb_pngscan.rb after.png row 155 100 320   # col X [Y0 Y1] もある
 after.png row 155 [100,320): 27 runs
    100- 102 (  3px) #b66d55     <- パネルの外 (壁紙)
    103- 103 (  1px) #6d0000     <- 枠線
@@ -62,8 +62,8 @@ after.png row 155 [100,320): 27 runs
 差分にかける。
 
 ```
-python3 tools/fmrb_pngdiff.py before.png after.png 0 205 20 20      # 左下
-python3 tools/fmrb_pngdiff.py before.png after.png 285 205 25 20    # 右下
+ruby tools/fmrb_pngdiff.rb before.png after.png 0 205 20 20      # 左下
+ruby tools/fmrb_pngdiff.rb before.png after.png 285 205 25 20    # 右下
 ```
 
 nsf_player の起動 -> Play がこれで `0 differing pixels`。
