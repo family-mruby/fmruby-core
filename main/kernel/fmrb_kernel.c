@@ -682,15 +682,6 @@ fmrb_err_t fmrb_kernel_start(void)
     }
     fmrb_mem_log_boot_snapshot("mp_init");
 
-    // Set the clock before anything can report a time. A missing or flat RTC is
-    // not fatal -- the system runs with whatever the clock says, as it did
-    // before -- so the return value only decides whether to log.
-    fmrb_err_t rtc_ret = fmrb_rtc_sync_system_clock();
-    if (rtc_ret != FMRB_OK && rtc_ret != FMRB_ERR_NOT_SUPPORTED) {
-        FMRB_LOGW(TAG, "Clock not set from RTC (err=%d); times will be wrong",
-                  rtc_ret);
-    }
-
     // Create host task
     int32_t result = fmrb_host_task_init();
     if (result < 0) {
@@ -710,6 +701,19 @@ fmrb_err_t fmrb_kernel_start(void)
         cnt++;
     }
     fmrb_mem_log_boot_snapshot("host_ready");
+
+    // Set the clock before anything can report a time, i.e. before the kernel
+    // task exists, but only once the host has answered: on Modern the RTC sits
+    // on the display's I2C bus and is reached through the display task's I2C
+    // service, which is not up until the display has initialized (calling
+    // earlier failed every boot with "mediation unavailable"). A missing or
+    // flat RTC is not fatal -- the system runs with whatever the clock says --
+    // so the return value only decides whether to log.
+    fmrb_err_t rtc_ret = fmrb_rtc_sync_system_clock();
+    if (rtc_ret != FMRB_OK && rtc_ret != FMRB_ERR_NOT_SUPPORTED) {
+        FMRB_LOGW(TAG, "Clock not set from RTC (err=%d); times will be wrong",
+                  rtc_ret);
+    }
 
     // Create kernel task using spawn API. The Spinel engine runs the same
     // PROC_ID_KERNEL slot as a NATIVE task (fmrb_kernel_entry); the mruby engine

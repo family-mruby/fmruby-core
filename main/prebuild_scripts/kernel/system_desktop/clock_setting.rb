@@ -82,7 +82,12 @@ module ClockSettingMixin
         # resolve `write_time` on it (NoMethodError). Concrete per-branch keeps
         # static dispatch; identical behavior on mruby (dual-safe).
         if FmrbConst::CHIP_MODEL == "ESP32-P4"
-          RX8130.new(i2c).write_time(utc)
+          rtc = RX8130.new(i2c)
+          # Enable backup charging and make sure the oscillator runs (what
+          # the Tab5 factory firmware does). Nothing else calls init, and
+          # without it the time is lost at every power-off.
+          rtc.init
+          rtc.write_time(utc)
         else
           RX8900.new(i2c).write_time(utc)
         end
