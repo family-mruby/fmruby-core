@@ -185,7 +185,10 @@ module FileSelectorMixin
 
     # The bar hides itself when everything fits, so has_scrollbar only
     # decides how wide a row may be, not whether to draw one.
-    @ui.move(:fsel_sb, x + FSEL_W - FSEL_SB_W, list_y, FSEL_SB_W, list_h)
+    # One pixel inside: the panel's border is the last column, and the bar
+    # paints its whole rect -- with the background when it is not needed --
+    # so sitting on the border erases it.
+    @ui.move(:fsel_sb, x + FSEL_W - 1 - FSEL_SB_W, list_y, FSEL_SB_W, list_h)
     @ui.set_range(:fsel_sb, @file_selector_entries.size, max_visible)
     @ui.set_value(:fsel_sb, @file_selector_scroll)
     @ui.set_visible(:fsel_sb, true)

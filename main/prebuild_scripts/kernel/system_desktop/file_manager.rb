@@ -218,7 +218,8 @@ module FileManagerMixin
       i += 1
     end
 
-    @ui.move(:fmgr_sb, x + FMGR_W - FMGR_SB_W, list_y, FMGR_SB_W, m[:list_h])
+    # One pixel inside, clear of the panel's border (see file_selector).
+    @ui.move(:fmgr_sb, x + FMGR_W - 1 - FMGR_SB_W, list_y, FMGR_SB_W, m[:list_h])
     @ui.set_range(:fmgr_sb, @file_manager_entries.size, max_visible)
     @ui.set_value(:fmgr_sb, @file_manager_scroll)
     @ui.set_visible(:fmgr_sb, true)
