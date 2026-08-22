@@ -261,92 +261,10 @@ class FmrbApp
     end
   end
 
-  # Build a scrollbar GfxBlock for a fixed geometry. Static parts (separator,
-  # up/down buttons, arrows) are baked into bytecode; only the thumb rectangle
-  # is driven by kwargs (thumb_y, thumb_h) and updated per draw.
-  def _build_scrollbar_block(x, y, w, h)
-    bar_x = x + w - SCROLLBAR_W
-    btn_h = SCROLLBAR_BTN_H
-    border = FmrbConst::THEME_BORDER
-    bg = FmrbConst::THEME_WINDOW_BG
-    cx = bar_x + SCROLLBAR_W / 2
-    dy = y + h - btn_h
-
-    GfxBlock.new(@gfx, thumb_y: y + btn_h, thumb_h: 6) do |r, thumb_y:, thumb_h:|
-      # Separator column between content and scrollbar
-      r.draw_line(bar_x , y, bar_x , y + h - 1, border)
-      # Up button + arrow
-      r.fill_rect(bar_x, y, SCROLLBAR_W, btn_h, bg)
-      r.draw_rect(bar_x, y, SCROLLBAR_W, btn_h, border)
-      r.draw_line(cx, y + 2, cx - 3, y + 7, border)
-      r.draw_line(cx, y + 2, cx + 3, y + 7, border)
-      r.draw_line(cx - 3, y + 7, cx + 3, y + 7, border)
-      # Down button + arrow
-      r.fill_rect(bar_x, dy, SCROLLBAR_W, btn_h, bg)
-      r.draw_rect(bar_x, dy, SCROLLBAR_W, btn_h, border)
-      r.draw_line(cx, dy + 7, cx - 3, dy + 2, border)
-      r.draw_line(cx, dy + 7, cx + 3, dy + 2, border)
-      r.draw_line(cx - 3, dy + 2, cx + 3, dy + 2, border)
-      # Thumb (dynamic)
-      r.fill_rect(bar_x + 2, thumb_y, SCROLLBAR_W - 3, thumb_h, border)
-    end
-  end
 
   public
 
-  # Draw a vertical scroll bar with up/down arrow buttons
-  # scroll: current scroll position (0-based)
-  # total: total item count
-  # visible: number of visible items
-  # x, y, w, h: scroll area (defaults to user area)
-  def draw_scrollbar(scroll, total, visible, x = @user_area_x0, y = @user_area_y0, w = @user_area_width, h = @user_area_height)
-    return if total <= visible
-    btn_h = SCROLLBAR_BTN_H
-    track_y = y + btn_h
-    track_h = h - btn_h * 2
-    return if track_h <= 4
 
-    thumb_h = [track_h * visible / total, 6].max
-    max_scroll = total - visible
-    thumb_y = track_y + (max_scroll > 0 ? (track_h - thumb_h) * scroll / max_scroll : 0)
-
-    @scrollbar_blocks ||= {}
-    key = [x, y, w, h]
-    block = (@scrollbar_blocks[key] ||= _build_scrollbar_block(x, y, w, h))
-    block.draw(thumb_y: thumb_y, thumb_h: thumb_h)
-  end
-
-  # Hit test for scroll bar click
-  # Returns :up, :down, or nil.
-  #
-  # With the scroll state (scroll/total/visible, same values the matching
-  # draw_scrollbar call uses) the track splits at the THUMB: a click above
-  # it scrolls up, below it scrolls down, and the thumb itself is inert.
-  # This is what makes the whole track responsive wherever the thumb sits
-  # -- with the old fixed half-split, clicking just under a thumb parked
-  # near the top counted as "up" and appeared dead. Without the state the
-  # half-split fallback is kept for callers that only need "was the bar
-  # area hit at all".
-  def scrollbar_hit(click_x, click_y, x = @user_area_x0, y = @user_area_y0, w = @user_area_width, h = @user_area_height, scroll = nil, total = nil, visible = nil)
-    bar_x = x + w - SCROLLBAR_W - 1
-    return nil unless click_x >= bar_x && click_y >= y && click_y < y + h
-    btn_h = SCROLLBAR_BTN_H
-    return :up if click_y < y + btn_h
-    return :down if click_y >= y + h - btn_h
-    if scroll && total && visible && total > visible
-      track_y = y + btn_h
-      track_h = h - btn_h * 2
-      if track_h > 4
-        thumb_h = [track_h * visible / total, 6].max
-        max_scroll = total - visible
-        thumb_y = track_y + (max_scroll > 0 ? (track_h - thumb_h) * scroll / max_scroll : 0)
-        return :up if click_y < thumb_y
-        return :down if click_y >= thumb_y + thumb_h
-        return nil
-      end
-    end
-    click_y < y + h / 2 ? :up : :down
-  end
 
   # ---- Modifier key helpers (for use inside on_event) ----
   #
@@ -714,10 +632,6 @@ class FmrbApp
     if @corner_clear_block
       @corner_clear_block.destroy
       @corner_clear_block = nil
-    end
-    if @scrollbar_blocks
-      @scrollbar_blocks.each_value { |b| b.destroy }
-      @scrollbar_blocks = nil
     end
     if @gfx
       @gfx.destroy  # Cleanup graphics resources

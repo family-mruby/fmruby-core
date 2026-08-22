@@ -553,8 +553,27 @@ module LauncherMixin
     @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:launcher), FmrbGfx::WHITE, LAUNCHER_TITLE_BG, mixed: true)
     bar_y = y + LAUNCHER_TITLE_H
     bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
-    draw_scrollbar(@launcher_scroll, launcher_total_rows, launcher_visible_rows,
-                   x, bar_y, LAUNCHER_W-1, bar_h)
+    # The launcher is a grid, but it scrolls by row, so the bar sees the same
+    # three integers everything else does.
+    @ui.move(:lnc_sb, x + LAUNCHER_W - 1 - LNC_SB_W, bar_y, LNC_SB_W, bar_h)
+    @ui.set_range(:lnc_sb, launcher_total_rows, launcher_visible_rows)
+    @ui.set_value(:lnc_sb, @launcher_scroll)
+    @ui.set_visible(:lnc_sb, true)
+    @ui.invalidate_all
+  end
+
+  LNC_SB_W = 10
+
+  def build_launcher_widgets
+    @ui.scrollbar(:lnc_sb, 0, 0, LNC_SB_W, 40, 0, 1)
+    @ui.set_visible(:lnc_sb, false)
+    nil
+  end
+
+  def handle_launcher_widget(id)
+    return nil unless id == :lnc_sb
+    @ui.value(:lnc_sb) > @launcher_scroll ? launcher_scroll_down : launcher_scroll_up
+    nil
   end
 
   # Icon cell backgrounds, labels, and sprite placement/visibility.
@@ -774,16 +793,6 @@ module LauncherMixin
   end
 
   def handle_launcher_click(x, y)
-    # Scroll bar hit test
-    bar_y = @launcher_y + LAUNCHER_TITLE_H
-    bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
-    sb = scrollbar_hit(x, y, @launcher_x, bar_y, LAUNCHER_W, bar_h,
-                       @launcher_scroll, launcher_total_rows, launcher_visible_rows)
-    if sb
-      sb == :up ? launcher_scroll_up : launcher_scroll_down
-      return
-    end
-
     # Icon hit test
     content_y = @launcher_y + LAUNCHER_TITLE_H + LAUNCHER_ICON_PAD_Y
     icon_idx = find_icon_at(x, y, content_y)

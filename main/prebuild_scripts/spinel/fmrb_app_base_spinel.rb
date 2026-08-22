@@ -932,56 +932,7 @@ class FmrbApp
 
   public
 
-  def draw_scrollbar(scroll, total, visible, x = @user_area_x0, y = @user_area_y0, w = @user_area_width, h = @user_area_height)
-    return if total <= visible
-    return unless @gfx
-    btn_h = SCROLLBAR_BTN_H
-    track_y = y + btn_h
-    track_h = h - btn_h * 2
-    return if track_h <= 4
 
-    thumb_h = [track_h * visible / total, 6].max
-    max_scroll = total - visible
-    thumb_y = track_y + (max_scroll > 0 ? (track_h - thumb_h) * scroll / max_scroll : 0)
-
-    # Immediate draw (see _paint_frame note on why the base class avoids
-    # stored GfxBlock programs under Spinel).
-    g = @gfx
-    bar_x = x + w - SCROLLBAR_W
-    border = FmrbConst::THEME_BORDER
-    bg = FmrbConst::THEME_WINDOW_BG
-    cx = bar_x + SCROLLBAR_W / 2
-    dy = y + h - btn_h
-    g.draw_line(bar_x, y, bar_x, y + h - 1, border)
-    g.fill_rect(bar_x, y, SCROLLBAR_W, btn_h, bg)
-    g.draw_rect(bar_x, y, SCROLLBAR_W, btn_h, border)
-    g.draw_line(cx, y + 2, cx - 3, y + 7, border)
-    g.draw_line(cx, y + 2, cx + 3, y + 7, border)
-    g.draw_line(cx - 3, y + 7, cx + 3, y + 7, border)
-    g.fill_rect(bar_x, dy, SCROLLBAR_W, btn_h, bg)
-    g.draw_rect(bar_x, dy, SCROLLBAR_W, btn_h, border)
-    g.draw_line(cx, dy + 7, cx - 3, dy + 2, border)
-    g.draw_line(cx, dy + 7, cx + 3, dy + 2, border)
-    g.draw_line(cx - 3, dy + 2, cx + 3, dy + 2, border)
-    g.fill_rect(bar_x + 2, thumb_y, SCROLLBAR_W - 3, thumb_h, border)
-    self
-  end
-
-  def scrollbar_hit(click_x, click_y, x = @user_area_x0, y = @user_area_y0, w = @user_area_width, h = @user_area_height)
-    bar_x = x + w - SCROLLBAR_W - 1
-    return nil unless click_x >= bar_x && click_y >= y && click_y < y + h
-    btn_h = SCROLLBAR_BTN_H
-    mid_y = y + h / 2
-    if click_y < y + btn_h
-      :up
-    elsif click_y >= y + h - btn_h
-      :down
-    elsif click_y < mid_y
-      :up
-    else
-      :down
-    end
-  end
 
   # ---- modifier key helpers ----
   def ev_ctrl?(ev);  ((ev[:modifier] || 0) & 0x0C) != 0; end

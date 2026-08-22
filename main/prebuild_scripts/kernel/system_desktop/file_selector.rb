@@ -192,11 +192,28 @@ module FileSelectorMixin
       i += 1
     end
 
-    # Draw scrollbar if needed
-    if has_scrollbar
-      draw_scrollbar(@file_selector_scroll, @file_selector_entries.size,
-                     max_visible, x, list_y, FSEL_W, list_h)
-    end
+    # The bar hides itself when everything fits, so has_scrollbar only
+    # decides how wide a row may be, not whether to draw one.
+    @ui.move(:fsel_sb, x + FSEL_W - FSEL_SB_W, list_y, FSEL_SB_W, list_h)
+    @ui.set_range(:fsel_sb, @file_selector_entries.size, max_visible)
+    @ui.set_value(:fsel_sb, @file_selector_scroll)
+    @ui.set_visible(:fsel_sb, true)
+    @ui.invalidate_all
+  end
+
+  FSEL_SB_W = 10
+
+  def build_file_selector_widgets
+    @ui.scrollbar(:fsel_sb, 0, 0, FSEL_SB_W, 40, 0, 1)
+    @ui.set_visible(:fsel_sb, false)
+    nil
+  end
+
+  def handle_file_selector_widget(id)
+    return nil unless id == :fsel_sb
+    @file_selector_scroll = @ui.value(:fsel_sb)
+    draw_foreground
+    nil
   end
 
   # ---- What a selection is, and what taking it means ----
@@ -287,20 +304,8 @@ module FileSelectorMixin
     list_h = metrics[:list_h]
     max_visible = metrics[:max_visible]
 
-    # Scrollbar click (thumb-relative: pass the scroll state)
-    sb = scrollbar_hit(x, y, @fsel_x, list_y, FSEL_W, list_h,
-                       @file_selector_scroll, @file_selector_entries.size, max_visible)
-    if sb
-      if sb == :up
-        @file_selector_scroll -= 1 if @file_selector_scroll > 0
-      else
-        max_scroll = @file_selector_entries.size - max_visible
-        @file_selector_scroll += 1 if @file_selector_scroll < max_scroll
-      end
-      draw_foreground
-      return
-    end
-
+    # The bar is a widget and was handled before this; a click that reaches
+    # here is on the list itself.
     if y >= list_y && y < list_y + max_visible * FSEL_ITEM_H
       idx = @file_selector_scroll + (y - list_y) / FSEL_ITEM_H
       if idx >= 0 && idx < @file_selector_entries.size

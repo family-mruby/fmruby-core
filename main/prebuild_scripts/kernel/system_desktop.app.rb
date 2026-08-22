@@ -228,6 +228,9 @@ class SystemDesktopApp < FmrbApp
     build_storage_widgets
     build_network_widgets
     build_clock_widgets
+    build_file_selector_widgets
+    build_file_manager_widgets
+    build_launcher_widgets
 
     # Load keyboard shortcuts from config
     @shortcuts = load_shortcuts
@@ -1146,6 +1149,9 @@ class SystemDesktopApp < FmrbApp
     handle_storage_dialog_widget(id) if @str_open
     handle_network_dialog_widget(id) if @net_open
     handle_clock_setting_widget(id) if @clk_open
+    handle_file_selector_widget(id) if @file_selector_open
+    handle_file_manager_widget(id) if @file_manager_open
+    handle_launcher_widget(id) if @launcher_open
     nil
   end
 

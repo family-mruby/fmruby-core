@@ -216,12 +216,30 @@ module FileManagerMixin
       i += 1
     end
 
-    # Scroll bar
-    draw_scrollbar(@file_manager_scroll, @file_manager_entries.size, max_visible,
-                   x, list_y, FMGR_W, m[:list_h])
+    @ui.move(:fmgr_sb, x + FMGR_W - FMGR_SB_W, list_y, FMGR_SB_W, m[:list_h])
+    @ui.set_range(:fmgr_sb, @file_manager_entries.size, max_visible)
+    @ui.set_value(:fmgr_sb, @file_manager_scroll)
+    @ui.set_visible(:fmgr_sb, true)
+    @ui.invalidate_all
 
     # Context menu (drawn on top)
     draw_fmgr_context_menu if @fmgr_ctx_open
+  end
+
+  FMGR_SB_W = 10
+
+  def build_file_manager_widgets
+    @ui.scrollbar(:fmgr_sb, 0, 0, FMGR_SB_W, 40, 0, 1)
+    @ui.set_visible(:fmgr_sb, false)
+    nil
+  end
+
+  # The file manager moves one entry per press, which is what the bar does
+  # too, so its own value can be taken straight.
+  def handle_file_manager_widget(id)
+    return nil unless id == :fmgr_sb
+    handle_file_manager_scroll(@ui.value(:fmgr_sb) - @file_manager_scroll)
+    nil
   end
 
   def draw_fmgr_context_menu
@@ -286,7 +304,7 @@ module FileManagerMixin
     list_y = m[:list_y]
     list_h = m[:list_h]
     max_visible = m[:max_visible]
-    return -1 if scrollbar_hit(x, y, @fmgr_x, list_y, FMGR_W, list_h)
+    return -1 if @ui.find(:fmgr_sb).hit?(x, y)
     return -1 unless y >= list_y && y < list_y + max_visible * FMGR_ITEM_H
     idx = @file_manager_scroll + (y - list_y) / FMGR_ITEM_H
     return -1 if idx < 0 || idx >= @file_manager_entries.size
@@ -350,14 +368,6 @@ module FileManagerMixin
     list_y = m[:list_y]
     max_visible = m[:max_visible]
     total = @file_manager_entries.size
-
-    # Scroll bar hit test (thumb-relative: pass the scroll state)
-    sb = scrollbar_hit(x, y, fx, list_y, FMGR_W, m[:list_h],
-                       @file_manager_scroll, @file_manager_entries.size, m[:max_visible])
-    if sb
-      handle_file_manager_scroll(sb == :up ? -1 : 1)
-      return
-    end
 
     # File list area
     if y >= list_y && y < list_y + max_visible * FMGR_ITEM_H
