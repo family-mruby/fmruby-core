@@ -218,11 +218,16 @@ class SystemDesktopApp < FmrbApp
 
     # One FmrbUI for the whole desktop. The dialogs are never open two at a
     # time, so their widgets can share a container and take turns being
-    # visible; hit testing skips the invisible ones. The desktop is
-    # fullscreen, so the user area origin is (0, 0) and widget coordinates
-    # are canvas coordinates -- but the dialogs move, so each one places its
-    # widgets with move() when it opens.
+    # visible; hit testing skips the invisible ones. The dialogs move, so
+    # each one places its widgets with move() when it opens.
+    #
+    # set_origin(0, 0) because every dialog here computes canvas-absolute
+    # coordinates (@cdlg_x, @str_y ...) and hands them straight to move().
+    # The desktop is NOT fullscreen -- it is a window with the frame
+    # suppressed -- so its user area starts at (1, TITLE_BAR_H), and letting
+    # FmrbUI add that put every dialog button eleven pixels below its panel.
     @ui = FmrbUI.new(self)
+    @ui.set_origin(0, 0)
     build_confirm_widgets
     build_config_widgets
     build_storage_widgets
