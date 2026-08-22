@@ -42,13 +42,6 @@ class SmfPlayerApp < FmrbApp
     @program = 0
     @own_instrument = false
     @channels = nil
-    @play_btn = nil
-    @slower_btn = nil
-    @faster_btn = nil
-    @out_btn = nil
-    @inst_down_btn = nil
-    @inst_up_btn = nil
-    @inst_mode_btn = nil
   end
 
   def on_create
@@ -64,6 +57,7 @@ class SmfPlayerApp < FmrbApp
     @ui = FmrbUI.new(self)
     @ui.scrollbar(:sb, @user_area_width - SB_W, LIST_Y, SB_W,
                   visible_count * LIST_ITEM_H, 0, 1)
+    build_transport
     select_file(0) if @files.length > 0
     draw_ui
   end
@@ -150,8 +144,14 @@ class SmfPlayerApp < FmrbApp
   end
 
   def change_tempo(step)
-    index = @tempo_index + step
+    set_tempo_index(@tempo_index + step)
+  end
+
+  # The Enum has already clamped when it calls this; the keyboard path has
+  # not, so the guard stays.
+  def set_tempo_index(index)
     return if index < 0 || index >= TEMPO_STEPS.length
+    return if index == @tempo_index
 
     @tempo_index = index
     # Takes effect at once, without moving the part already played.
@@ -229,20 +229,64 @@ class SmfPlayerApp < FmrbApp
     draw_ui
   end
 
+  # The transport under the list. Tempo is an Enum over TEMPO_LABELS rather
+  # than a Stepper: the steps are a table (x0.5 .. x2.0), so nothing has to
+  # be rendered when it moves.
+  TEMPO_LABELS = ["x0.5", "x0.75", "x1.0", "x1.25", "x1.5", "x2.0"].freeze
+  BTN_H = 11
+
+  def build_transport
+    y = @user_area_height - INFO_H + 24
+    w = @user_area_width
+    # Stop is red because it is the one that interrupts; Own means this app
+    # overrides what the file asked for, which is worth seeing at a glance.
+    @ui.toggle(:play, 2, y - 1, 35, BTN_H, "Play", on_text: "Stop",
+               accent: FmrbGfx::COLOR_RED)
+    @ui.enum(:tempo, 42, y - 1, 62, BTN_H, TEMPO_LABELS, index: @tempo_index)
+    @ui.toggle(:out, w - 60, y - 1, 56, BTN_H, "APU", on_text: "MIDI out",
+               accent: FmrbGfx::COLOR_GREEN)
+    ry = y + 14
+    @ui.button(:inst_down, 2, ry - 1, 12, BTN_H, "-")
+    @ui.button(:inst_up, 16, ry - 1, 12, BTN_H, "+")
+    @ui.toggle(:inst_mode, w - 44, ry - 1, 40, BTN_H, "File", on_text: "Own",
+               accent: FmrbGfx::COLOR_GREEN)
+    nil
+  end
+
+  # Put the transport in step with the app after any action, whichever way
+  # it arrived (mouse, key, or the song ending by itself).
+  def sync_transport
+    @ui.set_on(:play, @playing)
+    @ui.set_value(:tempo, @tempo_index)
+    @ui.set_on(:out, @external)
+    @ui.set_on(:inst_mode, @own_instrument)
+    show_instrument_row(@external)
+    nil
+  end
+
+  def show_instrument_row(on)
+    @ui.set_visible(:inst_down, on)
+    @ui.set_visible(:inst_up, on)
+    @ui.set_visible(:inst_mode, on)
+    nil
+  end
+
+  def handle_transport(id)
+    case id
+    when :play then @playing ? stop_current : play_current
+    when :tempo then set_tempo_index(@ui.value(:tempo))
+    when :out then toggle_output
+    when :inst_down then change_instrument(-1)
+    when :inst_up then change_instrument(1)
+    when :inst_mode then toggle_instrument_mode
+    end
+    nil
+  end
+
   # --- drawing ----------------------------------------------------------
 
   def visible_count
     (@user_area_height - INFO_H - LIST_Y) / LIST_ITEM_H
-  end
-
-  def hit_btn?(btn, x, y)
-    btn && x >= btn[:x] && x < btn[:x] + btn[:w] &&
-      y >= btn[:y] && y < btn[:y] + btn[:h]
-  end
-
-  def draw_button(rect, label, color)
-    @gfx.fill_rect(rect[:x], rect[:y], rect[:w], rect[:h], color)
-    @gfx.draw_text(rect[:x] + 3, rect[:y] + 1, label, FmrbGfx::WHITE, color)
   end
 
   def draw_ui
@@ -302,63 +346,28 @@ class SmfPlayerApp < FmrbApp
     btn_y = info_y + 24
     btn_h = 11
 
-    @play_btn = { x: x0 + 2, y: btn_y, w: 35, h: btn_h }
-    if @playing
-      draw_button(@play_btn, "Stop", FmrbGfx::COLOR_RED)
-    else
-      draw_button(@play_btn, "Play", FmrbGfx::COLOR_GREEN)
-    end
-
-    # Tempo, changeable while the song plays - the reason to play a .mid
-    # live instead of converting it beforehand.
-    @slower_btn = { x: x0 + 44, y: btn_y, w: 12, h: btn_h }
-    draw_button(@slower_btn, "<", BORDER_COLOR)
-    tempo = TEMPO_STEPS[@tempo_index]
-    @gfx.draw_text(x0 + 58, btn_y + 1, "x#{tempo / 100}.#{(tempo % 100) / 10}", TEXT_COLOR, BG_COLOR)
-    @faster_btn = { x: x0 + 88, y: btn_y, w: 12, h: btn_h }
-    draw_button(@faster_btn, ">", BORDER_COLOR)
-
-    @out_btn = { x: x0 + w - 60, y: btn_y, w: 56, h: btn_h }
-    if @external
-      draw_button(@out_btn, "MIDI out", FmrbGfx::COLOR_GREEN)
-    else
-      draw_button(@out_btn, "APU", BORDER_COLOR)
-    end
-
     row_y = btn_y + 14
     if @external
-      draw_instrument_row(x0, row_y, w)
+      draw_instrument_label(x0, row_y)
     else
-      @inst_down_btn = nil
-      @inst_up_btn = nil
-      @inst_mode_btn = nil
       @gfx.draw_text(x0 + 2, row_y, "Enter play  < > tempo  o output", TEXT_COLOR, BG_COLOR)
     end
-    @gfx.present
+    sync_transport
+    @ui.invalidate_all
+    @gfx.present unless @ui.flush
   end
 
   # [-] [+] 042 Bassoon              [File|Own]
   #
   # The mode button is the one that matters: "File" plays the song with the
   # instruments it was written with, "Own" plays it with the one shown here.
-  def draw_instrument_row(x0, y, w)
-    btn_h = 11
-    @inst_down_btn = { x: x0 + 2, y: y - 1, w: 12, h: btn_h }
-    @inst_up_btn = { x: x0 + 16, y: y - 1, w: 12, h: btn_h }
-    draw_button(@inst_down_btn, "-", BORDER_COLOR)
-    draw_button(@inst_up_btn, "+", BORDER_COLOR)
-
+  # Only the text between the buttons; the buttons are widgets.
+  def draw_instrument_label(x0, y)
     name = FmrbMidi.gm_name(@program) || ""
     label = "#{@program} #{name}"
     color = @own_instrument ? TEXT_COLOR : BORDER_COLOR
     @gfx.draw_text(x0 + 32, y, label, color, BG_COLOR)
-
-    @inst_mode_btn = { x: x0 + w - 44, y: y - 1, w: 40, h: btn_h }
-    if @own_instrument
-      draw_button(@inst_mode_btn, "Own", FmrbGfx::COLOR_GREEN)
-    else
-      draw_button(@inst_mode_btn, "File", BORDER_COLOR)
-    end
+    nil
   end
 
   # --- main loop --------------------------------------------------------
@@ -405,9 +414,14 @@ class SmfPlayerApp < FmrbApp
   def on_event(ev)
     super(ev)
 
-    if @ui.handle(ev) == :sb
-      @scroll = @ui.value(:sb)
-      draw_ui
+    wid = @ui.handle(ev)
+    if wid
+      if wid == :sb
+        @scroll = @ui.value(:sb)
+        draw_ui
+      else
+        handle_transport(wid)
+      end
       return
     end
 
@@ -464,21 +478,6 @@ class SmfPlayerApp < FmrbApp
       return
     end
 
-    if hit_btn?(@play_btn, x, y)
-      @playing ? stop_current : play_current
-    elsif hit_btn?(@slower_btn, x, y)
-      change_tempo(-1)
-    elsif hit_btn?(@faster_btn, x, y)
-      change_tempo(1)
-    elsif hit_btn?(@out_btn, x, y)
-      toggle_output
-    elsif hit_btn?(@inst_down_btn, x, y)
-      change_instrument(-1)
-    elsif hit_btn?(@inst_up_btn, x, y)
-      change_instrument(1)
-    elsif hit_btn?(@inst_mode_btn, x, y)
-      toggle_instrument_mode
-    end
   end
 
   def on_destroy
