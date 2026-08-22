@@ -57,6 +57,22 @@ class FakeGfx
   def count(kind); @log.count { |e| e[0] == kind }; end
 end
 
+# Stands in for an app that paints its own ground. It records the rectangles
+# it was asked for and draws nothing, so a test can tell "FmrbUI asked the app"
+# from "FmrbUI painted a bg rectangle itself".
+class FakeBgPainter
+  attr_reader :calls
+
+  def initialize
+    @calls = []
+  end
+
+  def paint_bg_rect(gfx, x, y, w, h)
+    @calls << [x, y, w, h]
+    nil
+  end
+end
+
 # The three readers FmrbUI takes from the app. The user area origin is the
 # windowed one (1, 11), so the tests see the same offsetting real apps do.
 class FakeApp

@@ -31,6 +31,10 @@ class SystemDesktopApp < FmrbApp
   DROPDOWN_TEXT = FmrbConst::THEME_TEXT
   DROPDOWN_HIGHLIGHT = FmrbConst::THEME_HIGHLIGHT
   BG_COLOR = FmrbConst::THEME_DESKTOP_BG
+  # What every panel on this canvas is filled with (LAUNCHER_BG, CDLG_BG,
+  # FSEL_BG ... all resolve to it). paint_bg_rect needs it to fill a hole
+  # left inside a panel that is still open.
+  PANEL_BG = FmrbConst::THEME_WINDOW_BG
   # GRAPHICS-SIDE path, not a local file: create_image sends it verbatim to
   # the graphics processor, which resolves it on its own filesystem (with a
   # /flash prefix on the device side).
@@ -226,7 +230,11 @@ class SystemDesktopApp < FmrbApp
     # The desktop is NOT fullscreen -- it is a window with the frame
     # suppressed -- so its user area starts at (1, TITLE_BAR_H), and letting
     # FmrbUI add that put every dialog button eleven pixels below its panel.
-    @ui = FmrbUI.new(self)
+    #
+    # bg_painter: self because the ground here is not one colour -- see
+    # paint_bg_rect. Without it, hiding a widget painted a window-coloured
+    # rectangle over the wallpaper.
+    @ui = FmrbUI.new(self, bg_painter: self)
     @ui.set_origin(0, 0)
     build_confirm_widgets
     build_config_widgets
@@ -962,6 +970,78 @@ class SystemDesktopApp < FmrbApp
     end
 
     @gfx.set_composite_regions(regions)
+  end
+
+  # FmrbUI's bg_painter: paint the ground where a widget used to be.
+  #
+  # This canvas is the foreground one. What is "behind" a widget is almost
+  # always nothing at all: the pixel is left as the colour key and the
+  # compositor shows the wallpaper from the canvas below. Filling such a hole
+  # with the window background is what put white rectangles on the wallpaper.
+  #
+  # The exception is a widget that goes away while its panel stays open -- a
+  # scrollbar that stopped being needed, the file selector's Save field in
+  # open mode, the storage dialog swapping Yes/No for Close. There the ground
+  # is the panel, and the key would punch a hole through it.
+  #
+  # Called from FmrbUI#flush, so: no allocation, no present, integer
+  # comparisons only. The static dialogs (about, shortcuts, error, tbd) are
+  # not listed because none of their widgets is ever hidden while they are
+  # open; add one here if that changes.
+  def paint_bg_rect(gfx, x, y, w, h)
+    c = FmrbApp::TRANSPARENT_COLOR
+    c = PANEL_BG if hole_inside_open_panel?(x, y, w, h)
+    gfx.fill_rect(x, y, w, h, c)
+    nil
+  end
+
+  def hole_inside_open_panel?(x, y, w, h)
+    if @launcher_open
+      return true if rect_covers?(@launcher_x, @launcher_y,
+                                  LauncherMixin::LAUNCHER_W,
+                                  LauncherMixin::LAUNCHER_H, x, y, w, h)
+    end
+    if @file_selector_open
+      return true if rect_covers?(@fsel_x, @fsel_y,
+                                  FileSelectorMixin::FSEL_W,
+                                  FileSelectorMixin::FSEL_H, x, y, w, h)
+    end
+    if @file_manager_open
+      return true if rect_covers?(@fmgr_x, @fmgr_y,
+                                  FileManagerMixin::FMGR_W,
+                                  FileManagerMixin::FMGR_H, x, y, w, h)
+    end
+    if @cdlg_open
+      return true if rect_covers?(@cdlg_x, @cdlg_y,
+                                  ConfirmDialogMixin::CDLG_W,
+                                  ConfirmDialogMixin::CDLG_H, x, y, w, h)
+    end
+    if @clk_open
+      return true if rect_covers?(@clk_x, @clk_y,
+                                  ClockSettingMixin::CLK_W,
+                                  ClockSettingMixin::CLK_H, x, y, w, h)
+    end
+    if @cfg_open
+      return true if rect_covers?(@cfg_x, @cfg_y,
+                                  ConfigDialogMixin::CFG_W,
+                                  ConfigDialogMixin::CFG_H, x, y, w, h)
+    end
+    if @str_open
+      return true if rect_covers?(@str_x, @str_y,
+                                  StorageDialogMixin::STR_W,
+                                  StorageDialogMixin::STR_H, x, y, w, h)
+    end
+    if @net_open
+      return true if rect_covers?(@net_x, @net_y,
+                                  NetworkDialogMixin::NET_W,
+                                  NetworkDialogMixin::NET_H, x, y, w, h)
+    end
+    false
+  end
+
+  # Is the second rectangle wholly inside the first?
+  def rect_covers?(px, py, pw, ph, x, y, w, h)
+    x >= px && y >= py && x + w <= px + pw && y + h <= py + ph
   end
 
   # ---- Update loop ----

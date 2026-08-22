@@ -242,6 +242,42 @@ ui9.set_visible(:l, true)
 ui9.set_text(:l, "y")
 check("a different text is", ui9.flush, true)
 
+# --- bg_painter: whose ground is it ---------------------------------------
+#
+# Painting the hole of a hidden widget with one colour is a lie wherever the
+# ground is a picture: on the desktop it left white boxes over the wallpaper
+# (doc/ui_widgets/issues_s3.md, symptom 2). With a painter the app is asked
+# for that rectangle instead.
+
+gp = FakeGfx.new(1)
+painter = FakeBgPainter.new
+uip = FmrbUI.new(FakeApp.new(gp), bg_painter: painter)
+uip.button(:a, 0, 0, 40, 16, "A")
+uip.flush
+gp.log.clear
+uip.set_visible(:a, false)
+check("the flush drew something", uip.flush, true)
+check("the app was asked for the hole", painter.calls, [[1, 11, 40, 16]])
+check("and no bg rectangle went out", gp.count(:fill), 0)
+check("still one present", gp.count(:present), 1)
+# Only holes go to the painter; a visible widget paints itself as before.
+painter.calls.clear
+gp.log.clear
+uip.set_visible(:a, true)
+uip.flush
+check("a shown widget is not the painter's business", painter.calls, [])
+check("it painted itself", gp.count(:fill) > 0, true)
+
+# Without a painter nothing changes: the hole is the bg colour, as it was.
+gq = FakeGfx.new(1)
+uiq = FmrbUI.new(FakeApp.new(gq), bg: 0x12)
+uiq.button(:a, 0, 0, 40, 16, "A")
+uiq.flush
+gq.log.clear
+uiq.set_visible(:a, false)
+uiq.flush
+check("no painter, the old fill", gq.log[0], [:fill, 1, 11, 40, 16, 0x12])
+
 # --- accent ----------------------------------------------------------------
 
 g14 = FakeGfx.new(1)

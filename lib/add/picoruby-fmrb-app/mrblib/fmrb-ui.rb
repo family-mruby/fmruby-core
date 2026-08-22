@@ -23,6 +23,12 @@
 #
 # Coordinates passed to the factory methods are relative to the app's user
 # area; FmrbUI adds the user-area origin once, when the widget is created.
+#
+# The ground behind the widgets belongs to the app. A widget paints only
+# inside itself, in its own bg colour; the hole left by a hidden one is filled
+# with that colour too, which is right until the ground is a picture. An app
+# whose ground is a wallpaper, a border or a rounded corner passes a
+# bg_painter and gets asked to paint the rectangle itself (see #initialize).
 class FmrbUI
   # Theme colors, resolved once into class constants so no widget carries its
   # own palette.
@@ -43,10 +49,14 @@ class FmrbUI
   class Widget
     attr_reader :id, :x, :y, :w, :h
     attr_accessor :dirty, :enabled, :visible
-    # What a widget paints where it is not itself: a Label's whole box, a
-    # Stepper's value field, and the hole left behind when it is hidden.
-    # FmrbUI sets it from its own bg when the widget is added, so an app on a
-    # dark background does not get white patches.
+    # The colour a widget paints inside itself where it is not glyphs: a
+    # Label's box, a Stepper's value field, a Scrollbar's track. FmrbUI sets
+    # it from its own bg when the widget is added, so an app on a dark panel
+    # does not get white patches.
+    #
+    # It is not "the colour of what is behind me". Filling the hole left by a
+    # hidden widget is the container's job and goes through bg_painter when
+    # the app gave one (see FmrbUI#flush).
     attr_accessor :bg
     # Text scale this widget draws at, fixed when it was created. FmrbUI does
     # not follow whatever size the app happens to be in: a widget measured at
@@ -744,19 +754,35 @@ class FmrbUI
   # Container
   # ----------------------------------------------------------------------
 
-  # bg is what the widgets paint behind themselves and over a hidden one.
-  # It defaults to the theme's window background; an app that clears its user
-  # area to something else (the monitor's dark panel) passes that instead.
+  # bg is the colour widgets paint inside themselves (Widget#bg). It defaults
+  # to the theme's window background; an app that clears its user area to
+  # something else (the monitor's dark panel) passes that instead.
+  #
+  # bg_painter is who repaints the ground where a widget used to be. Left out,
+  # the hole is filled with bg, which is right whenever the ground really is
+  # one colour. An app whose ground is a picture -- the desktop's wallpaper,
+  # a dialog's border column, the rounded corners of a window -- passes an
+  # object answering paint_bg_rect(gfx, x, y, w, h) instead, usually itself.
+  # The receiver is variable on purpose: the desktop paints one ground behind
+  # its dialogs and another behind the menu bar, and only it can tell them
+  # apart.
+  #
+  # What paint_bg_rect must do: draw that rectangle's ground and nothing more.
+  # It must not present (flush does that once), must not allocate (it is
+  # called from the steady redraw path), and must put back any text size or
+  # font it changed. The name is fixed because the call is made on a variable
+  # receiver -- see the note on draw_widget.
   #
   # text_size is the default scale for widgets made from here on; a single
   # widget can override it. It is 1 unless said otherwise, and it is never
   # taken from whatever size the app is in at the time - see Widget#text_size.
-  def initialize(app, bg: C_BG, text_size: 1)
+  def initialize(app, bg: C_BG, text_size: 1, bg_painter: nil)
     @gfx = app.gfx
     @ox = app.user_area_x0
     @oy = app.user_area_y0
     @bg = bg
     @ts = text_size
+    @bg_painter = bg_painter
     @widgets = []
     @pressed = nil
     @focus = nil
@@ -889,7 +915,13 @@ class FmrbUI
           end
           w.draw_widget(@gfx)
         else
-          @gfx.fill_rect(w.x, w.y, w.w, w.h, @bg)
+          # The widget is gone; what shows through is the app's business.
+          p = @bg_painter
+          if p
+            p.paint_bg_rect(@gfx, w.x, w.y, w.w, w.h)
+          else
+            @gfx.fill_rect(w.x, w.y, w.w, w.h, @bg)
+          end
         end
         w.dirty = false
         drawn += 1
