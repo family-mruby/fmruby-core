@@ -851,8 +851,13 @@ class FmrbUI
     @pressed = nil
     fired = false
     if w.hit?(px, py)
-      fired = w.activate
       set_focus(w)
+      # A widget that already acted on the press must not act again here.
+      # Without this a single click on a scrollbar arrow scrolled twice --
+      # once going down, once coming up -- which is what "too responsive"
+      # feels like from the other side of the screen.
+      on_press = w.fires_on_press?
+      fired = w.activate if on_press == false
     end
     w.release
     return nil if fired == false

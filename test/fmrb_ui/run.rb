@@ -264,6 +264,14 @@ check("and only the background when it fits", g10.count(:fill), 1)
 check("with no arrows", g10.count(:line), 0)
 sb.set_range(50, 10)
 
+# One click is one step. The release must not act again: the press already
+# did, and doing both scrolled twice per click.
+sb.set_value(10)
+ui10.handle(ev(:mouse_down, 5, 105))          # bottom arrow
+check("the press moved it once", sb.value, 11)
+check("the release adds nothing", ui10.handle(ev(:mouse_up, 5, 105)), nil)
+check("and the value is still one on", sb.value, 11)
+
 # The other widgets still report on release, not on press.
 g11 = FakeGfx.new(1)
 ui11 = FmrbUI.new(FakeApp.new(g11))

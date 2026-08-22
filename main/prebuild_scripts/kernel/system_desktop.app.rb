@@ -1190,6 +1190,10 @@ class SystemDesktopApp < FmrbApp
         handle_widget(wid)
         return
       end
+      # Releasing takes the pressed look off whatever was held; nothing else
+      # here would repaint it, and a scrollbar arrow that stays lit after the
+      # click reads as a control that stopped working.
+      @ui.flush
     end
 
     if ev[:type] == :mouse_down
