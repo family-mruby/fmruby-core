@@ -224,6 +224,10 @@ class SystemDesktopApp < FmrbApp
     # widgets with move() when it opens.
     @ui = FmrbUI.new(self)
     build_confirm_widgets
+    build_config_widgets
+    build_storage_widgets
+    build_network_widgets
+    build_clock_widgets
 
     # Load keyboard shortcuts from config
     @shortcuts = load_shortcuts
@@ -1138,6 +1142,10 @@ class SystemDesktopApp < FmrbApp
   # dispatch flat; the dialogs themselves decide what their ids mean.
   def handle_widget(id)
     handle_confirm_dialog_widget(id) if @cdlg_open
+    handle_config_dialog_widget(id) if @cfg_open
+    handle_storage_dialog_widget(id) if @str_open
+    handle_network_dialog_widget(id) if @net_open
+    handle_clock_setting_widget(id) if @clk_open
     nil
   end
 
@@ -1378,7 +1386,7 @@ class SystemDesktopApp < FmrbApp
     # Storage dialog
     if @str_open
       if hit_storage_dialog?(x, y)
-        handle_storage_dialog_click(x, y)
+        # buttons are widgets; a click elsewhere inside the dialog is ignored
         return
       end
       close_storage_dialog
@@ -1388,7 +1396,7 @@ class SystemDesktopApp < FmrbApp
     # Network dialog
     if @net_open
       if hit_network_dialog?(x, y)
-        handle_network_dialog_click(x, y)
+        # buttons are widgets
         return
       end
       close_network_dialog

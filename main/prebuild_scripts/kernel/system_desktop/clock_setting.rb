@@ -22,6 +22,7 @@ module ClockSettingMixin
     @clk_x = (@window_width - CLK_W) / 2
     @clk_y = (@window_height - CLK_H) / 2
     @clk_selected = 0  # Selected field index
+    show_clock_widgets(true)
 
     # Initialize from current wallclock
     wc = FmrbApp.wallclock
@@ -40,6 +41,8 @@ module ClockSettingMixin
   def close_clock_setting
     return unless @clk_open
     @clk_open = false
+    show_clock_widgets(false)
+    @ui.flush
     notify_overlay_state(false, 0, 0, 0, 0)
     update_composite_regions
     draw_foreground
@@ -158,12 +161,35 @@ module ClockSettingMixin
 
     # OK / Cancel buttons
     fy += CLK_FIELD_H + 4
-    ok_x = x0 + CLK_W / 2 - 50
-    cancel_x = x0 + CLK_W / 2 + 10
-    @gfx.fill_rect(ok_x, fy, 40, CLK_FIELD_H, 0x1C)  # Green
-    @gfx.draw_text(ok_x + 10, fy + 1, "OK", FmrbGfx::WHITE, 0x1C)
-    @gfx.fill_rect(cancel_x, fy, 50, CLK_FIELD_H, CLK_BTN_BG)
-    @gfx.draw_text(cancel_x + 4, fy + 1, "Cancel", FmrbGfx::WHITE, CLK_BTN_BG)
+    @ui.move(:clk_ok, x0 + CLK_W / 2 - 50, fy, 40, CLK_FIELD_H)
+    @ui.move(:clk_cancel, x0 + CLK_W / 2 + 10, fy, 50, CLK_FIELD_H)
+    @ui.invalidate_all
+  end
+
+  # OK and Cancel only. The six date fields keep their own up/value/down
+  # columns: they are stacked vertically, they clamp and wrap per field
+  # (months against days, hours against 24) and the value row doubles as the
+  # selector. A Stepper is a horizontal "< n >" and means none of that.
+  def build_clock_widgets
+    # OK stays green: it is the one that sets the clock.
+    @ui.button(:clk_ok, 0, 0, 40, CLK_FIELD_H, "OK", accent: 0x1C)
+    @ui.button(:clk_cancel, 0, 0, 50, CLK_FIELD_H, "Cancel")
+    show_clock_widgets(false)
+    nil
+  end
+
+  def show_clock_widgets(on)
+    @ui.set_visible(:clk_ok, on)
+    @ui.set_visible(:clk_cancel, on)
+    nil
+  end
+
+  def handle_clock_setting_widget(id)
+    case id
+    when :clk_ok then apply_clock_setting
+    when :clk_cancel then close_clock_setting
+    end
+    nil
   end
 
   def hit_clock_setting?(x, y)
@@ -224,19 +250,7 @@ module ClockSettingMixin
       end
     end
 
-    # OK / Cancel
-    if y >= fy_btns && y < fy_btns + CLK_FIELD_H
-      ok_x = @clk_x + CLK_W / 2 - 50
-      cancel_x = @clk_x + CLK_W / 2 + 10
-      if x >= ok_x && x < ok_x + 40
-        apply_clock_setting
-        return
-      end
-      if x >= cancel_x && x < cancel_x + 50
-        close_clock_setting
-        return
-      end
-    end
+    # OK / Cancel are widgets and never reach here.
   end
 
   def clk_increment(field_idx, delta)

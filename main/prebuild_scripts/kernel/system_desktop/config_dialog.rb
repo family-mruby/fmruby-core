@@ -67,18 +67,73 @@ module ConfigDialogMixin
     { key: :display_margin_y, field: "display_margin_y", type: :int,   min: 0, max: 16, step: 1 },
   ]
 
+  CFG_BTN_H = CFG_FOOTER_H - 8
+
+  # ---- Widgets ----
+  #
+  # Only the footer buttons. The eleven setting rows stay hand-drawn: a row
+  # is a label, a derived value and two arrows, where the value is typed
+  # (enum / bool / int / float), its text is computed and sometimes
+  # localized, and the row carries a selection highlight. Nothing in the
+  # widget set means that, and making Enum mean it would need an app-side
+  # table mapping shown text back to stored value -- the same "belongs to
+  # the app" argument that kept List out.
+
+  def build_config_widgets
+    lc = FmrbI18n.t(:cancel)
+    ls = FmrbI18n.t(:save)
+    lr = FmrbI18n.t(:save_and_reboot)
+    @ui.button(:cfg_cancel, 0, 0, FmrbI18n.text_width(lc) + 12, CFG_BTN_H, lc)
+    @ui.button(:cfg_save, 0, 0, FmrbI18n.text_width(ls) + 12, CFG_BTN_H, ls)
+    @ui.button(:cfg_reboot, 0, 0, FmrbI18n.text_width(lr) + 12, CFG_BTN_H, lr)
+    show_config_widgets(false)
+    nil
+  end
+
+  def show_config_widgets(on)
+    @ui.set_visible(:cfg_cancel, on)
+    @ui.set_visible(:cfg_save, on)
+    # Rebooting is an ESP32 thing; on Linux the button is never shown.
+    @ui.set_visible(:cfg_reboot, on && FmrbConst::PLATFORM == "esp32")
+    nil
+  end
+
+  # Widths were fixed when the buttons were made; only where they sit
+  # depends on the dialog, which moves.
+  def place_config_widgets(btn_y)
+    cancel = @ui.find(:cfg_cancel)
+    save = @ui.find(:cfg_save)
+    reboot = @ui.find(:cfg_reboot)
+    esp32 = (FmrbConst::PLATFORM == "esp32")
+    total = cancel.w + save.w + (esp32 ? reboot.w + 12 : 6)
+    bx = @cfg_x + (CFG_W - total) / 2
+    @ui.move(:cfg_cancel, bx, btn_y, cancel.w, CFG_BTN_H)
+    bx += cancel.w + 6
+    @ui.move(:cfg_save, bx, btn_y, save.w, CFG_BTN_H)
+    bx += save.w + 6
+    @ui.move(:cfg_reboot, bx, btn_y, reboot.w, CFG_BTN_H) if esp32
+    nil
+  end
+
+  def handle_config_dialog_widget(id)
+    case id
+    when :cfg_cancel then close_config_dialog
+    when :cfg_save   then cfg_do_save(false)
+    when :cfg_reboot then cfg_do_save(true)
+    end
+    nil
+  end
+
   # ---- Lifecycle ----
 
   def open_config_dialog
     @cfg_open = true
+    show_config_widgets(true)
     @cfg_values = {}
     @cfg_file_lines = []
     @cfg_selected = -1
     @cfg_status = nil
     @cfg_status_until = 0
-    @cfg_save_btn_rect = nil
-    @cfg_cancel_btn_rect = nil
-    @cfg_reboot_btn_rect = nil
     @cfg_x = (@window_width - CFG_W) / 2
     @cfg_y = (@window_height - CFG_H) / 2
     # Keep below the menu bar. picoruby resolves bare constants in the mixin's
@@ -96,6 +151,10 @@ module ConfigDialogMixin
   def close_config_dialog
     return unless @cfg_open
     @cfg_open = false
+    # Hidden and flushed before the repaint, or their holes land on whatever
+    # was behind the dialog.
+    show_config_widgets(false)
+    @ui.flush
     notify_overlay_state(false, 0, 0, 0, 0)
     update_composite_regions
     draw_foreground
@@ -291,34 +350,8 @@ module ConfigDialogMixin
 
     btn_y = y + 4
     btn_h = CFG_FOOTER_H - 8
-    label_cancel = FmrbI18n.t(:cancel)
-    label_save   = FmrbI18n.t(:save)
-    label_reboot = FmrbI18n.t(:save_and_reboot)
-    bw_cancel = FmrbI18n.text_width(label_cancel) + 12
-    bw_save   = FmrbI18n.text_width(label_save)   + 12
-    bw_reboot = FmrbI18n.text_width(label_reboot) + 12
-
-    esp32 = (FmrbConst::PLATFORM == "esp32")
-    total = bw_cancel + bw_save + (esp32 ? bw_reboot + 12 : 6)
-    bx = x + (w - total) / 2
-
-    @cfg_cancel_btn_rect = [bx, btn_y, bw_cancel, btn_h]
-    @gfx.fill_rect(bx, btn_y, bw_cancel, btn_h, CFG_BTN)
-    @gfx.draw_text(bx + 6, btn_y + 3, label_cancel, FmrbGfx::WHITE, CFG_BTN, mixed: true)
-    bx += bw_cancel + 6
-
-    @cfg_save_btn_rect = [bx, btn_y, bw_save, btn_h]
-    @gfx.fill_rect(bx, btn_y, bw_save, btn_h, CFG_BTN)
-    @gfx.draw_text(bx + 6, btn_y + 3, label_save, FmrbGfx::WHITE, CFG_BTN, mixed: true)
-    bx += bw_save + 6
-
-    if esp32
-      @cfg_reboot_btn_rect = [bx, btn_y, bw_reboot, btn_h]
-      @gfx.fill_rect(bx, btn_y, bw_reboot, btn_h, CFG_BTN)
-      @gfx.draw_text(bx + 6, btn_y + 3, label_reboot, FmrbGfx::WHITE, CFG_BTN, mixed: true)
-    else
-      @cfg_reboot_btn_rect = nil
-    end
+    place_config_widgets(btn_y)
+    @ui.invalidate_all
 
     if @cfg_status
       @gfx.draw_text(x + 4, btn_y + 3, @cfg_status, CFG_TEXT, CFG_BG, mixed: true)
@@ -328,19 +361,6 @@ module ConfigDialogMixin
   # ---- Interaction ----
 
   def handle_config_dialog_click(x, y)
-    if cfg_hit_rect?(x, y, @cfg_cancel_btn_rect)
-      close_config_dialog
-      return
-    end
-    if cfg_hit_rect?(x, y, @cfg_save_btn_rect)
-      cfg_do_save(false)
-      return
-    end
-    if cfg_hit_rect?(x, y, @cfg_reboot_btn_rect)
-      cfg_do_save(true)
-      return
-    end
-
     CFG_SETTINGS.each_with_index do |s, i|
       ry = cfg_row_y(i)
       next unless y >= ry - 1 && y < ry + CFG_ROW_H - 1

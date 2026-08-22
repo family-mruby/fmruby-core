@@ -30,7 +30,7 @@ module NetworkDialogMixin
   def open_network_dialog
     @net_open = true
     @net_info = nil
-    @net_close_btn_rect = nil
+    show_network_widgets(true)
     @net_x = (@window_width - NET_W) / 2
     @net_y = (@window_height - NET_H) / 2
     menu_h = self.class::MENU_BAR_HEIGHT
@@ -46,6 +46,8 @@ module NetworkDialogMixin
   def close_network_dialog
     return unless @net_open
     @net_open = false
+    show_network_widgets(false)
+    @ui.flush
     notify_overlay_state(false, 0, 0, 0, 0)
     update_composite_regions
     draw_foreground
@@ -109,45 +111,43 @@ module NetworkDialogMixin
     @gfx.draw_text(x + 62, y, value, NET_TEXT, NET_BG, mixed: true)
   end
 
+  NET_BTN_H = 16
+
+  def build_network_widgets
+    lr = FmrbI18n.t(:refresh)
+    lc = FmrbI18n.t(:close)
+    @ui.button(:net_refresh, 0, 0, FmrbI18n.text_width(lr) + 12, NET_BTN_H, lr)
+    @ui.button(:net_close, 0, 0, FmrbI18n.text_width(lc) + 12, NET_BTN_H, lc)
+    show_network_widgets(false)
+    nil
+  end
+
+  def show_network_widgets(on)
+    @ui.set_visible(:net_refresh, on)
+    @ui.set_visible(:net_close, on)
+    nil
+  end
+
   def net_draw_buttons
     btn_y = @net_y + NET_H - 22
-    btn_h = 16
-
-    label_refresh = FmrbI18n.t(:refresh)
-    label_close   = FmrbI18n.t(:close)
-    bw_refresh = FmrbI18n.text_width(label_refresh) + 12
-    bw_close   = FmrbI18n.text_width(label_close) + 12
-
-    total = bw_refresh + 8 + bw_close
-    bx = @net_x + (NET_W - total) / 2
-
-    @net_refresh_btn_rect = [bx, btn_y, bw_refresh, btn_h]
-    @gfx.fill_rect(bx, btn_y, bw_refresh, btn_h, NET_BTN)
-    @gfx.draw_text(bx + 6, btn_y + 4, label_refresh, FmrbGfx::WHITE, NET_BTN, mixed: true)
-    bx += bw_refresh + 8
-
-    @net_close_btn_rect = [bx, btn_y, bw_close, btn_h]
-    @gfx.fill_rect(bx, btn_y, bw_close, btn_h, NET_BTN)
-    @gfx.draw_text(bx + 6, btn_y + 4, label_close, FmrbGfx::WHITE, NET_BTN, mixed: true)
+    rw = @ui.find(:net_refresh).w
+    cw = @ui.find(:net_close).w
+    bx = @net_x + (NET_W - (rw + 8 + cw)) / 2
+    @ui.move(:net_refresh, bx, btn_y, rw, NET_BTN_H)
+    @ui.move(:net_close, bx + rw + 8, btn_y, cw, NET_BTN_H)
+    @ui.invalidate_all
   end
 
   # ---- Interaction ----
 
-  def handle_network_dialog_click(x, y)
-    if net_hit_rect?(x, y, @net_refresh_btn_rect)
+  def handle_network_dialog_widget(id)
+    case id
+    when :net_refresh
       net_refresh
       draw_foreground
-      return
+    when :net_close then close_network_dialog
     end
-    if net_hit_rect?(x, y, @net_close_btn_rect)
-      close_network_dialog
-      return
-    end
-  end
-
-  def net_hit_rect?(x, y, r)
-    return false unless r
-    x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3]
+    nil
   end
 
   # Periodic tick from on_update: refresh so a late DHCP lease shows up while

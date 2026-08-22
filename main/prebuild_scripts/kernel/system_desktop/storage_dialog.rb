@@ -18,6 +18,7 @@ module StorageDialogMixin
   STR_TEXT    = FmrbConst::THEME_TEXT
   STR_HEADER  = FmrbConst::THEME_MENU_BG
   STR_BTN     = FmrbConst::THEME_BUTTON
+  STR_BTN_H   = 16
   STR_BTN_WARN= 0xE0
   STR_BORDER  = FmrbConst::THEME_BORDER
 
@@ -29,10 +30,6 @@ module StorageDialogMixin
     @str_open = true
     @str_phase = :idle          # :idle, :confirm, :running, :done
     @str_status = nil
-    @str_clear_btn_rect = nil
-    @str_close_btn_rect = nil
-    @str_yes_btn_rect = nil
-    @str_no_btn_rect = nil
     @str_x = (@window_width - STR_W) / 2
     @str_y = (@window_height - STR_H) / 2
     menu_h = self.class::MENU_BAR_HEIGHT
@@ -48,6 +45,8 @@ module StorageDialogMixin
     return unless @str_open
     @str_open = false
     @str_phase = :idle
+    hide_storage_widgets
+    @ui.flush
     notify_overlay_state(false, 0, 0, 0, 0)
     update_composite_regions
     draw_foreground
@@ -97,27 +96,24 @@ module StorageDialogMixin
     # After a clear has run, the cache is already empty: drop the Clear
     # button so the user doesn't think a second click does something
     # different. Re-opening the dialog from the menu starts fresh in :idle.
+    clear_w = @ui.find(:str_clear).w
     if @str_phase == :done
+      # After a clear has run the cache is already empty, so the Clear button
+      # goes away rather than inviting a second, different-looking click.
       bx = @str_x + (STR_W - bw_close) / 2
-      @str_clear_btn_rect = nil
+      @ui.set_visible(:str_clear, false)
     else
-      label_clear = FmrbI18n.t(:clear_cache)
-      bw_clear = FmrbI18n.text_width(label_clear) + 12
-      total = bw_clear + 8 + bw_close
+      total = clear_w + 8 + bw_close
       bx = @str_x + (STR_W - total) / 2
-
-      @str_clear_btn_rect = [bx, btn_y, bw_clear, btn_h]
-      @gfx.fill_rect(bx, btn_y, bw_clear, btn_h, STR_BTN_WARN)
-      @gfx.draw_text(bx + 6, btn_y + 4, label_clear, FmrbGfx::WHITE, STR_BTN_WARN, mixed: true)
-      bx += bw_clear + 8
+      @ui.move(:str_clear, bx, btn_y, clear_w, STR_BTN_H)
+      @ui.set_visible(:str_clear, true)
+      bx += clear_w + 8
     end
-
-    @str_close_btn_rect = [bx, btn_y, bw_close, btn_h]
-    @gfx.fill_rect(bx, btn_y, bw_close, btn_h, STR_BTN)
-    @gfx.draw_text(bx + 6, btn_y + 4, label_close, FmrbGfx::WHITE, STR_BTN, mixed: true)
-
-    @str_yes_btn_rect = nil
-    @str_no_btn_rect = nil
+    @ui.move(:str_close, bx, btn_y, bw_close, STR_BTN_H)
+    @ui.set_visible(:str_close, true)
+    @ui.set_visible(:str_yes, false)
+    @ui.set_visible(:str_no, false)
+    @ui.invalidate_all
   end
 
   def draw_storage_confirm_overlay
@@ -138,58 +134,58 @@ module StorageDialogMixin
     end
 
     btn_y = @str_y + STR_H - 22
-    btn_h = 16
-    label_yes = "Yes"
-    label_no  = "No"
-    bw_yes = FmrbI18n.text_width(label_yes) + 16
-    bw_no  = FmrbI18n.text_width(label_no)  + 16
-
-    total = bw_yes + 8 + bw_no
+    yes_w = @ui.find(:str_yes).w
+    no_w = @ui.find(:str_no).w
+    total = yes_w + 8 + no_w
     bxx = @str_x + (STR_W - total) / 2
-
-    @str_yes_btn_rect = [bxx, btn_y, bw_yes, btn_h]
-    @gfx.fill_rect(bxx, btn_y, bw_yes, btn_h, STR_BTN_WARN)
-    @gfx.draw_text(bxx + 8, btn_y + 4, label_yes, FmrbGfx::WHITE, STR_BTN_WARN)
-    bxx += bw_yes + 8
-
-    @str_no_btn_rect = [bxx, btn_y, bw_no, btn_h]
-    @gfx.fill_rect(bxx, btn_y, bw_no, btn_h, STR_BTN)
-    @gfx.draw_text(bxx + 8, btn_y + 4, label_no, FmrbGfx::WHITE, STR_BTN)
-
-    @str_clear_btn_rect = nil
-    @str_close_btn_rect = nil
+    @ui.move(:str_yes, bxx, btn_y, yes_w, STR_BTN_H)
+    @ui.move(:str_no, bxx + yes_w + 8, btn_y, no_w, STR_BTN_H)
+    @ui.set_visible(:str_yes, true)
+    @ui.set_visible(:str_no, true)
+    @ui.set_visible(:str_clear, false)
+    @ui.set_visible(:str_close, false)
+    @ui.invalidate_all
   end
 
   # ---- Interaction ----
 
-  def handle_storage_dialog_click(x, y)
-    if @str_phase == :confirm
-      if str_hit_rect?(x, y, @str_yes_btn_rect)
-        str_run_clear
-        return
-      end
-      if str_hit_rect?(x, y, @str_no_btn_rect)
-        @str_phase = :idle
-        draw_foreground
-        return
-      end
-      return
-    end
-
-    if str_hit_rect?(x, y, @str_clear_btn_rect)
-      @str_phase = :confirm
-      draw_foreground
-      return
-    end
-    if str_hit_rect?(x, y, @str_close_btn_rect)
-      close_storage_dialog
-      return
-    end
+  # Clear and Yes are warning-coloured: they throw away the cache and there
+  # is no undo. The colour is the only thing separating them from Close and
+  # No at a glance, which is what accent: exists for.
+  def build_storage_widgets
+    lclear = FmrbI18n.t(:clear_cache)
+    lclose = FmrbI18n.t(:close)
+    @ui.button(:str_clear, 0, 0, FmrbI18n.text_width(lclear) + 12, STR_BTN_H,
+               lclear, accent: STR_BTN_WARN)
+    @ui.button(:str_close, 0, 0, FmrbI18n.text_width(lclose) + 12, STR_BTN_H,
+               lclose)
+    @ui.button(:str_yes, 0, 0, FmrbI18n.text_width("Yes") + 16, STR_BTN_H,
+               "Yes", accent: STR_BTN_WARN)
+    @ui.button(:str_no, 0, 0, FmrbI18n.text_width("No") + 16, STR_BTN_H, "No")
+    hide_storage_widgets
+    nil
   end
 
-  def str_hit_rect?(x, y, r)
-    return false unless r
-    x >= r[0] && x < r[0] + r[2] && y >= r[1] && y < r[1] + r[3]
+  def hide_storage_widgets
+    @ui.set_visible(:str_clear, false)
+    @ui.set_visible(:str_close, false)
+    @ui.set_visible(:str_yes, false)
+    @ui.set_visible(:str_no, false)
+    nil
+  end
+
+  def handle_storage_dialog_widget(id)
+    case id
+    when :str_yes then str_run_clear
+    when :str_no
+      @str_phase = :idle
+      draw_foreground
+    when :str_clear
+      @str_phase = :confirm
+      draw_foreground
+    when :str_close then close_storage_dialog
+    end
+    nil
   end
 
   def str_run_clear
