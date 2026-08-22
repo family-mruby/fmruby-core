@@ -29,6 +29,27 @@
 # with that colour too, which is right until the ground is a picture. An app
 # whose ground is a wallpaper, a border or a rounded corner passes a
 # bg_painter and gets asked to paint the rectangle itself (see #initialize).
+#
+# What an author has to know (doc/ui_widgets/issues_s3.md keeps the history of
+# this list; stage 3 shortened it):
+#
+#   1. Do not draw every frame -- nothing is drawn from on_update.
+#   2. No blocks: dispatch on the id #handle returns.
+#   3. Coordinates are user-area relative. Getting this wrong is no longer
+#      silent: a widget outside the window is reported when it is created.
+#   4. Hide a widget before the flush that is meant to take it off screen.
+#      What replaces it is bg, or the bg_painter if one was given.
+#   5. bg: is the colour a widget paints INSIDE itself, not the colour of
+#      what is behind it.
+#   6. A method called on a base-typed receiver must have a name unique in
+#      the whole program (Spinel) -- draw_widget, option_text, paint_bg_rect.
+#   7. text_width takes the family explicitly.
+#   8. Only if you pass a bg_painter: paint_bg_rect draws that rectangle and
+#      nothing else -- no present, no allocation, and it restores any text
+#      size or font it changed.
+#
+# Wiping the user area is NOT on the list any more: clear_user_area redraws
+# the window frame and marks the widgets itself.
 class FmrbUI
   # Theme colors, resolved once into class constants so no widget carries its
   # own palette.
