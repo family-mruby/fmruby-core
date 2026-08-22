@@ -345,8 +345,13 @@ module ConfigDialogMixin
     x = @cfg_x
     y = @cfg_y + CFG_H - CFG_FOOTER_H
     w = CFG_W
-    @gfx.fill_rect(x, y, w, CFG_FOOTER_H, CFG_BG)
-    @gfx.draw_line(x, y, x + w, y, CFG_BORDER)
+    # Inside the frame, not over it. Filling the full width from @cfg_x
+    # painted out the dialog's left and right border columns and its bottom
+    # row, which left the buttons looking as though they sat outside the
+    # window: the last frame line anyone could see was the separator above
+    # them.
+    @gfx.fill_rect(x + 1, y + 1, w - 2, CFG_FOOTER_H - 2, CFG_BG)
+    @gfx.draw_line(x + 1, y, x + w - 2, y, CFG_BORDER)
 
     btn_y = y + 4
     btn_h = CFG_FOOTER_H - 8
