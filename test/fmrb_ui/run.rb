@@ -325,6 +325,44 @@ g15.log.clear
 ui15.invalidate_all
 check("and not again afterwards", ui15.flush, false)
 
+# --- holes are painted before widgets --------------------------------------
+#
+# The storage dialog swaps Clear/Close for Yes/No over the same strip. Filling
+# a hole in widget order put the later pair's holes on top of the earlier
+# pair's freshly drawn buttons, cutting letters out of them ("Clea_e"). No app
+# can avoid it by ordering its widgets: reversing them only moves the damage
+# to the other direction of the swap. So flush paints every hole first.
+
+def swap_log(g, ui, hide, show)
+  g.log.clear
+  ui.set_visible(hide, false)
+  ui.set_visible(show, true)
+  ui.flush
+  g.log
+end
+
+g16 = FakeGfx.new(1)
+ui16 = FmrbUI.new(FakeApp.new(g16))
+ui16.button(:first, 0, 0, 60, 16, "First")     # created earlier
+ui16.button(:second, 20, 0, 60, 16, "Second")  # created later, overlapping
+ui16.set_visible(:second, false)
+ui16.flush                                      # settle: first shown
+
+# Later widget in, earlier one out: the hole was always after in this order.
+log = swap_log(g16, ui16, :first, :second)
+hole = log.index([:fill, 1, 11, 60, 16, FmrbConst::THEME_WINDOW_BG])
+drawn = log.index { |e| e[0] == :text }
+check("the hole of the one going away is painted", hole.nil?, false)
+check("and before the one coming in is drawn", hole < drawn, true)
+
+# The other direction, which reordering the widgets would have broken instead.
+log = swap_log(g16, ui16, :second, :first)
+hole = log.index([:fill, 21, 11, 60, 16, FmrbConst::THEME_WINDOW_BG])
+drawn = log.index { |e| e[0] == :text }
+check("the same the other way round", hole.nil?, false)
+check("still hole first", hole < drawn, true)
+check("one present for the pair", g16.count(:present), 1)
+
 # --- scrollbar ------------------------------------------------------------
 
 g10 = FakeGfx.new(1)

@@ -894,35 +894,51 @@ class FmrbUI
 
   # Draw every dirty widget and present once. Returns true when anything was
   # drawn. This is the only place that calls present.
+  #
+  # Two passes, holes first. A hole is the ground coming back, and the ground
+  # belongs underneath: filled in widget order it landed on top of an earlier
+  # widget that overlaps it. Swapping the storage dialog's Yes/No back for
+  # Clear/Close did exactly that and cut letters out of the buttons -- and no
+  # app could work around it, since reordering the widgets only moves the
+  # damage to the other direction of the swap. The second pass costs one more
+  # walk of the array and allocates nothing.
   def flush
     n = @widgets.size
-    i = 0
     drawn = 0
+    i = 0
+    while i < n
+      w = @widgets[i]
+      if w.dirty && w.visible == false
+        # The widget is gone; what shows through is the app's business.
+        p = @bg_painter
+        if p
+          p.paint_bg_rect(@gfx, w.x, w.y, w.w, w.h)
+        else
+          @gfx.fill_rect(w.x, w.y, w.w, w.h, @bg)
+        end
+        w.dirty = false
+        drawn += 1
+      end
+      i += 1
+    end
     # The app draws its own picture between two flushes and may leave the
     # text size anywhere. Note what it was, draw each widget at its own size,
     # and hand the app's size back. current_text_size is tracked in Ruby, so
     # reading it is free and set_text_size only goes out when it differs.
     saved = @gfx.current_text_size
     size = saved
+    i = 0
     while i < n
       w = @widgets[i]
+      # Whatever is still dirty here is visible: the pass above took the
+      # hidden ones.
       if w.dirty
-        if w.visible
-          ts = w.text_size
-          if ts != size
-            @gfx.set_text_size(ts)
-            size = ts
-          end
-          w.draw_widget(@gfx)
-        else
-          # The widget is gone; what shows through is the app's business.
-          p = @bg_painter
-          if p
-            p.paint_bg_rect(@gfx, w.x, w.y, w.w, w.h)
-          else
-            @gfx.fill_rect(w.x, w.y, w.w, w.h, @bg)
-          end
+        ts = w.text_size
+        if ts != size
+          @gfx.set_text_size(ts)
+          size = ts
         end
+        w.draw_widget(@gfx)
         w.dirty = false
         drawn += 1
       end
