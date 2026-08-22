@@ -156,6 +156,27 @@ ui9.set_visible(:l, true)
 ui9.set_text(:l, "y")
 check("a different text is", ui9.flush, true)
 
+# --- accent ----------------------------------------------------------------
+
+g14 = FakeGfx.new(1)
+ui14 = FmrbUI.new(FakeApp.new(g14))
+ui14.button(:plain, 0, 0, 40, 16, "P")
+ui14.button(:green, 0, 20, 40, 16, "G", accent: 0x34)
+ui14.toggle(:tog, 0, 40, 40, 16, "T", on: true, accent: 0xC0)
+g14.log.clear
+ui14.flush
+fills = g14.log.select { |e| e[0] == :fill }
+check("a plain button uses the theme", fills[0][5], FmrbConst::THEME_BUTTON)
+check("an accented one uses its colour", fills[1][5], 0x34)
+check("an accented toggle replaces the highlight", fills[2][5], 0xC0)
+# On an accent the text goes light; on the pale theme highlight it stays dark,
+# which is the whole reason the colour is worth having.
+check("text on an accented toggle is light", g14.texts[2][5], FmrbConst::THEME_TEXT_LIGHT)
+g14.log.clear
+ui14.toggle(:tog2, 0, 60, 40, 16, "T2", on: true)
+ui14.flush
+check("text on the plain highlight stays dark", g14.texts[0][5], FmrbConst::THEME_TEXT)
+
 # --- scrollbar ------------------------------------------------------------
 
 g10 = FakeGfx.new(1)

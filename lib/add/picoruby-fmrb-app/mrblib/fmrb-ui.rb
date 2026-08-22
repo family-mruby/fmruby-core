@@ -193,8 +193,9 @@ class FmrbUI
   class Button < Widget
     attr_reader :text
 
-    def initialize(id, x, y, w, h, text, gfx, text_size)
+    def initialize(id, x, y, w, h, text, gfx, text_size, accent)
       super(id, x, y, w, h, text_size)
+      @accent = accent
       @text = text
       @tw = measure(gfx, text)
       @pressed = false
@@ -231,12 +232,13 @@ class FmrbUI
     end
 
     def draw_widget(gfx)
+      fill = @accent || C_BUTTON
       if @pressed
         gfx.fill_rect(@x, @y, @w, @h, C_TEXT_LIGHT)
         gfx.draw_rect(@x, @y, @w, @h, C_BORDER)
-        gfx.draw_text_mixed(@tx, @ty, @text, C_BUTTON)
+        gfx.draw_text_mixed(@tx, @ty, @text, fill)
       else
-        gfx.fill_rect(@x, @y, @w, @h, C_BUTTON)
+        gfx.fill_rect(@x, @y, @w, @h, fill)
         gfx.draw_rect(@x, @y, @w, @h, C_BORDER)
         color = @enabled ? C_TEXT_LIGHT : C_BORDER
         gfx.draw_text_mixed(@tx, @ty, @text, color)
@@ -250,8 +252,10 @@ class FmrbUI
   class Toggle < Widget
     attr_reader :text, :on_text
 
-    def initialize(id, x, y, w, h, text, group, on, on_text, gfx, text_size)
+    def initialize(id, x, y, w, h, text, group, on, on_text, gfx, text_size,
+                   accent)
       super(id, x, y, w, h, text_size)
+      @accent = accent
       @text = text
       @on_text = on_text
       @group = group
@@ -317,8 +321,10 @@ class FmrbUI
     def draw_widget(gfx)
       label = (@on && @on_text) ? @on_text : @text
       if @on
-        gfx.fill_rect(@x, @y, @w, @h, C_HIGHLIGHT)
-        color = C_TEXT
+        # An accent is a saturated colour chosen to mean something, so its
+        # text is light; the theme highlight is pale and takes dark text.
+        gfx.fill_rect(@x, @y, @w, @h, @accent || C_HIGHLIGHT)
+        color = @accent ? C_TEXT_LIGHT : C_TEXT
       else
         gfx.fill_rect(@x, @y, @w, @h, C_BUTTON)
         color = @enabled ? C_TEXT_LIGHT : C_BORDER
@@ -765,14 +771,21 @@ class FmrbUI
                   text_size || @ts))
   end
 
-  def button(id, x, y, w, h, text, text_size: nil)
-    add(Button.new(id, @ox + x, @oy + y, w, h, text, @gfx, text_size || @ts))
+  # accent: an RGB332 fill that replaces the theme's button colour, for the
+  # rare control whose colour carries meaning (the Yes of a confirm dialog,
+  # a transport's Stop). Creation-time only, so nothing is allocated later.
+  # Use it sparingly: widgets carrying their own palette is what this set
+  # exists to stop.
+  def button(id, x, y, w, h, text, text_size: nil, accent: nil)
+    add(Button.new(id, @ox + x, @oy + y, w, h, text, @gfx, text_size || @ts,
+                   accent))
   end
 
+  # accent: replaces the highlight used while the toggle is on.
   def toggle(id, x, y, w, h, text, group: nil, on: false, on_text: nil,
-             text_size: nil)
+             text_size: nil, accent: nil)
     add(Toggle.new(id, @ox + x, @oy + y, w, h, text, group, on, on_text, @gfx,
-                   text_size || @ts))
+                   text_size || @ts, accent))
   end
 
   def stepper(id, x, y, w, h, value, min, max, step = 1, text_size: nil)

@@ -85,6 +85,14 @@ class FmrbUI
   # Inverted while held; handle returns the id when the button is released
   # on top of it. Releasing outside does nothing. text_size: enlarges the
   # label (1-4), as on every widget.
+  #
+  # `accent:` に色 (RGB332) を渡すと、テーマのボタン色の代わりにその色で
+  # 塗ります。**色そのものが意味を持つ数少ない場合だけ**に使います
+  # (確認ダイアログの Yes、再生/停止など)。Toggle では入のときの色です。
+  # <<en>>
+  # accent: paints the button in that RGB332 colour instead of the theme's.
+  # Reserve it for the few controls whose colour carries meaning - a confirm
+  # dialog's Yes, a transport's Stop. On a Toggle it is the on colour.
   def button: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::Button
 
   # 入切の切替を置く <<en>> Place an on/off toggle

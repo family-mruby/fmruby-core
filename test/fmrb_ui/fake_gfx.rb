@@ -47,8 +47,8 @@ class FakeGfx
   def draw_line(*a); @log << [:line, *a]; self; end
   def fill_rect(*a); @log << [:fill, *a]; self; end
   def draw_rect(*a); @log << [:rect, *a]; self; end
-  def draw_text_mixed(x, y, s, _color, _bg = nil)
-    @log << [:text, x, y, s, @current_text_size]
+  def draw_text_mixed(x, y, s, color, _bg = nil)
+    @log << [:text, x, y, s, @current_text_size, color]
     self
   end
   def present; @log << [:present]; self; end

@@ -15,7 +15,10 @@ module ConfirmDialogMixin
 
   # Built once at startup and moved into place each time the dialog opens.
   def build_confirm_widgets
-    @ui.button(:cdlg_yes, 0, 0, BTN_W, BTN_H, "Yes")
+    # Yes keeps its green. On a confirm dialog the colour is doing real work:
+    # it separates the answer that acts from the answer that does not, and
+    # position and label alone make a mis-click cheaper to make.
+    @ui.button(:cdlg_yes, 0, 0, BTN_W, BTN_H, "Yes", accent: CDLG_BTN_YES)
     @ui.button(:cdlg_no, 0, 0, BTN_W, BTN_H, "No")
     @ui.set_visible(:cdlg_yes, false)
     @ui.set_visible(:cdlg_no, false)
