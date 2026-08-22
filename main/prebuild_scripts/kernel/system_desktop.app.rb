@@ -216,6 +216,15 @@ class SystemDesktopApp < FmrbApp
     # collection starved exactly when the user was active. Small steps
     # keep the between-click recovery alive.
 
+    # One FmrbUI for the whole desktop. The dialogs are never open two at a
+    # time, so their widgets can share a container and take turns being
+    # visible; hit testing skips the invisible ones. The desktop is
+    # fullscreen, so the user area origin is (0, 0) and widget coordinates
+    # are canvas coordinates -- but the dialogs move, so each one places its
+    # widgets with move() when it opens.
+    @ui = FmrbUI.new(self)
+    build_confirm_widgets
+
     # Load keyboard shortcuts from config
     @shortcuts = load_shortcuts
 
@@ -543,7 +552,8 @@ class SystemDesktopApp < FmrbApp
     draw_starting if @starting_name
     draw_tbd_dialog if @tbd_open
     draw_resize_preview if @resize_preview_active
-    @gfx.present
+    # flush presents when a widget was drawn; otherwise the present is ours.
+    @gfx.present unless @ui.flush
   end
 
   # Outline overlay drawn while the user is dragging the resize handle of a
@@ -1124,6 +1134,13 @@ class SystemDesktopApp < FmrbApp
          # would otherwise make the if/elsif value void (Spinel)
   end
 
+  # Everything FmrbUI reports lands here. One case per dialog keeps the
+  # dispatch flat; the dialogs themselves decide what their ids mean.
+  def handle_widget(id)
+    handle_confirm_dialog_widget(id) if @cdlg_open
+    nil
+  end
+
   def on_event(ev)
     # Kana input mode. The host sends this to the focused app and, through the
     # kernel, here as well -- the mode applies to whatever has focus, so the
@@ -1138,6 +1155,16 @@ class SystemDesktopApp < FmrbApp
 
     if ev[:type] == :mouse_move
       handle_mouse_move(ev[:x], ev[:y])
+      return
+    end
+
+    # FmrbUI first: the widgets know their own rects, so an event that lands
+    # on one never reaches the coordinate dispatch below. It answers nil for
+    # everything else, including the mouse_move above, which is why it sits
+    # after that check rather than before it.
+    wid = @ui.handle(ev)
+    if wid
+      handle_widget(wid)
       return
     end
 
@@ -1319,12 +1346,11 @@ class SystemDesktopApp < FmrbApp
       return
     end
 
-    # Confirm dialog has highest priority
+    # Confirm dialog has highest priority. Its buttons are widgets and were
+    # handled before this; a click anywhere else inside it is ignored, and
+    # outside it closes the dialog.
     if @cdlg_open
-      if hit_confirm_dialog?(x, y)
-        handle_confirm_dialog_click(x, y)
-        return
-      end
+      return if hit_confirm_dialog?(x, y)
       close_confirm_dialog
       return
     end

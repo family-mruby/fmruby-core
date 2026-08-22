@@ -10,6 +10,25 @@ module ConfirmDialogMixin
   CDLG_BTN_YES = 0x34  # Green
   CDLG_BTN_NO = FmrbConst::THEME_BUTTON
 
+  BTN_W = 40
+  BTN_H = 16
+
+  # Built once at startup and moved into place each time the dialog opens.
+  def build_confirm_widgets
+    @ui.button(:cdlg_yes, 0, 0, BTN_W, BTN_H, "Yes")
+    @ui.button(:cdlg_no, 0, 0, BTN_W, BTN_H, "No")
+    @ui.set_visible(:cdlg_yes, false)
+    @ui.set_visible(:cdlg_no, false)
+    nil
+  end
+
+  def place_confirm_widgets
+    by = @cdlg_y + CDLG_H - 24
+    @ui.move(:cdlg_yes, @cdlg_x + CDLG_W / 2 - 50, by, BTN_W, BTN_H)
+    @ui.move(:cdlg_no, @cdlg_x + CDLG_W / 2 + 10, by, BTN_W, BTN_H)
+    nil
+  end
+
   def open_confirm_dialog(message, on_yes_cmd, on_yes_data = nil)
     @cdlg_open = true
     @cdlg_message = message
@@ -17,6 +36,9 @@ module ConfirmDialogMixin
     @cdlg_on_yes_data = on_yes_data
     @cdlg_x = (@window_width - CDLG_W) / 2
     @cdlg_y = (@window_height - CDLG_H) / 2
+    place_confirm_widgets
+    @ui.set_visible(:cdlg_yes, true)
+    @ui.set_visible(:cdlg_no, true)
     notify_overlay_state(true, @cdlg_x, @cdlg_y, CDLG_W, CDLG_H)
     update_composite_regions
     draw_foreground
@@ -25,6 +47,11 @@ module ConfirmDialogMixin
   def close_confirm_dialog
     return unless @cdlg_open
     @cdlg_open = false
+    # Hidden before the repaint, or their holes would be punched into
+    # whatever is behind the dialog on the next flush.
+    @ui.set_visible(:cdlg_yes, false)
+    @ui.set_visible(:cdlg_no, false)
+    @ui.flush
     notify_overlay_state(false, 0, 0, 0, 0)
     update_composite_regions
     draw_foreground
@@ -49,27 +76,14 @@ module ConfirmDialogMixin
     msg = FmrbI18n.truncate_to(msg, CDLG_W - 16)
     @gfx.draw_text(x + 8, y + 24, msg, CDLG_TEXT, CDLG_BG, mixed: true)
 
-    # Yes button
-    yes_x = x + CDLG_W / 2 - 50
-    yes_y = y + CDLG_H - 24
-    @gfx.fill_rect(yes_x, yes_y, 40, 16, CDLG_BTN_YES)
-    @gfx.draw_text(yes_x + 10, yes_y + 4, "Yes", FmrbGfx::WHITE, CDLG_BTN_YES)
-
-    # No button
-    no_x = x + CDLG_W / 2 + 10
-    no_y = y + CDLG_H - 24
-    @gfx.fill_rect(no_x, no_y, 40, 16, CDLG_BTN_NO)
-    @gfx.draw_text(no_x + 12, no_y + 4, "No", FmrbGfx::WHITE, CDLG_BTN_NO)
+    # The two buttons are FmrbUI's; they are repainted by the flush at the
+    # end of draw_foreground, on top of the panel this just drew.
+    @ui.invalidate_all
   end
 
-  def handle_confirm_dialog_click(x, y)
-    yes_x = @cdlg_x + CDLG_W / 2 - 50
-    yes_y = @cdlg_y + CDLG_H - 24
-    no_x = @cdlg_x + CDLG_W / 2 + 10
-    no_y = @cdlg_y + CDLG_H - 24
-
-    if x >= yes_x && x < yes_x + 40 && y >= yes_y && y < yes_y + 16
-      # Yes clicked - send callback to kernel
+  # id comes from FmrbUI; the coordinates are its business now.
+  def handle_confirm_dialog_widget(id)
+    if id == :cdlg_yes
       cmd = @cdlg_on_yes_cmd
       data = @cdlg_on_yes_data
       close_confirm_dialog
@@ -80,10 +94,10 @@ module ConfirmDialogMixin
         end
         send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, msg)
       end
-    elsif x >= no_x && x < no_x + 40 && y >= no_y && y < no_y + 16
-      # No clicked
+    elsif id == :cdlg_no
       close_confirm_dialog
     end
+    nil
   end
 
   def hit_confirm_dialog?(x, y)
