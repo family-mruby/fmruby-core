@@ -94,6 +94,10 @@ class NsfPlayerApp < FmrbApp
     vc = visible_count
 
     @gfx.fill_rect(x0, y0, w, h, BG_COLOR)
+    # The frame is drawn once at startup, and the clear above paints over
+    # the rounded corners' outline where they reach into the user area. Any
+    # app that wipes its whole user area has to put the frame back.
+    draw_window_frame
 
     # File list
     i = 0

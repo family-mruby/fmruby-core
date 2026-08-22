@@ -297,6 +297,8 @@ class SmfPlayerApp < FmrbApp
     vc = visible_count
 
     @gfx.fill_rect(x0, y0, w, h, BG_COLOR)
+    # Puts back the rounded corners' outline, which the clear above reaches.
+    draw_window_frame
 
     i = 0
     while i < vc
