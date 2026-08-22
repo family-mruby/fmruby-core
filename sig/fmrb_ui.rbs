@@ -144,6 +144,41 @@ class FmrbUI
   # What the Enum is showing. Its index is read with value.
   def option_text: (Symbol id) -> String?
 
+  # 1 行の文字入力欄を置く <<en>> Place a one-line text field
+  #
+  # クリックで焦点が移り、焦点のある欄にキーが入ります。Enter で handle が
+  # id を返し (確定)、Esc で焦点が外れます。文字数は max まで。
+  # カーソルは点滅しません (点滅は毎フレーム描くことになるため)。
+  # 矢印キーによる欄内の移動はありません。追加と後退だけです。
+  #
+  # ```ruby
+  # @ui.text_field(:name, 40, 100, 120, 10, "song", max: 24)
+  # # ...
+  # when :name then save_as(@ui.field_text(:name))
+  # ```
+  # <<en>>
+  # Click to focus; keys go to whichever field has the focus. Enter makes
+  # handle report the id, Escape drops the focus. The caret does not blink
+  # (blinking would mean drawing every frame) and there are no arrow keys:
+  # characters go on the end and backspace takes from the end.
+  def text_field: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::TextField
+
+  # 打たれている文字 <<en>> What has been typed
+  def field_text: (Symbol id) -> String?
+
+  # 文字を入れ直す <<en>> Replace what is in the field
+  def set_field_text: (Symbol id, String text) -> void
+
+  # 焦点を当てる <<en>> Give a widget the focus
+  #
+  # nil を渡すと焦点を外します。文字入力欄以外を渡した場合も外れます。
+  # <<en>>
+  # nil takes the focus away, and so does anything that is not a text field.
+  def focus: (Symbol id) -> void
+
+  # 焦点のある部品の名前 <<en>> Which widget has the focus
+  def focused: () -> Symbol?
+
   # イベントを渡す <<en>> Feed one event
   #
   # 操作が決まった部品の id を返します。決まっていなければ nil です。
@@ -300,6 +335,15 @@ class FmrbUI::Toggle < FmrbUI::Widget
 
   # 同じ一つだけ入にする仲間の名前 <<en>> The radio group name
   def group: () -> Symbol
+end
+
+# 1 行の文字入力欄 <<en>> A one-line text field
+class FmrbUI::TextField < FmrbUI::Widget
+  # 打たれている文字 <<en>> What has been typed
+  def field_text: () -> String
+
+  # 焦点があるか <<en>> Whether it has the focus
+  def focused?: () -> bool
 end
 
 # 選択肢を選ぶ部品 <<en>> A choice picker

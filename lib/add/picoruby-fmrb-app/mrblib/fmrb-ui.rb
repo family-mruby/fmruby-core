@@ -122,6 +122,12 @@ class FmrbUI
     # #text (an alias of draw_text), and a call on a base-typed receiver picks
     # its candidates by name. Same reason draw is draw_widget.
     def option_text; nil; end
+    # TextField only. Named field_text for the same reason option_text is not
+    # text: a poly call picks candidates by name and Recorder#text exists.
+    def field_text; nil; end
+    def set_field_text(t); nil; end
+    def focus(on); nil; end
+    def type_key(code, keycode); false; end
 
     private
 
@@ -645,6 +651,89 @@ class FmrbUI
     end
   end
 
+  # One line of typed text. Clicking it takes the focus; typing goes to
+  # whichever field has it; Enter reports the id.
+  #
+  # No blinking caret. A blink would mean drawing every frame, which is the
+  # one thing this widget set refuses to do, so the line is simply there
+  # while the field has the focus.
+  #
+  # No arrow keys and no insertion point either. Everything goes on the end
+  # and backspace takes from the end, which is what the two places that
+  # wanted a field (a filename, a search term) actually do. An editing
+  # caret can come when something needs it.
+  class TextField < Widget
+    BACKSPACE = 8
+    ENTER_LF = 10
+    ENTER_CR = 13
+    ESCAPE = 27
+
+    def initialize(id, x, y, w, h, text, max, gfx, text_size)
+      super(id, x, y, w, h, text_size)
+      @gfx = gfx
+      @max = max
+      @focused = false
+      set_field_text(text)
+    end
+
+    def field_text; @text; end
+
+    def set_field_text(t)
+      # dup so the field owns a string it may extend; a literal is frozen.
+      @text = t.nil? ? "".dup : t.dup
+      @dirty = true
+      nil
+    end
+
+    def focus(on)
+      return nil if @focused == on
+      @focused = on
+      @dirty = true
+      nil
+    end
+
+    def focused?; @focused; end
+
+    # Clicking the box takes the focus and says nothing: focusing a field is
+    # not the same as confirming what is in it, and an app that treats the
+    # two alike will act on a half-typed value. Only Enter reports.
+    # (The container moves the focus on any hit, so answering false here
+    # still focuses.)
+    def activate
+      false
+    end
+
+    # Returns true when the app should be told (Enter). The container turns
+    # that into the widget's id.
+    def type_key(code, keycode)
+      if code == BACKSPACE
+        n = @text.length
+        @text = @text[0, n - 1] if n > 0
+        @dirty = true
+        return false
+      end
+      return true if code == ENTER_LF || code == ENTER_CR
+      return false if code < 32 || code > 126
+      return false if @text.length >= @max
+      @text = @text + code.chr
+      @dirty = true
+      false
+    end
+
+    def draw_widget(gfx)
+      gfx.fill_rect(@x, @y, @w, @h, C_TEXT_LIGHT)
+      gfx.draw_rect(@x, @y, @w, @h, @focused ? C_HIGHLIGHT : C_BORDER)
+      ty = @y + (@h - text_h) / 2
+      gfx.draw_text_mixed(@x + 2, ty, @text, C_TEXT)
+      if @focused
+        cx = @x + 2 + measure(gfx, @text)
+        cx = @x + @w - 2 if cx > @x + @w - 2
+        gfx.draw_line(cx, ty, cx, ty + text_h - 1, C_TEXT)
+      end
+      nil
+    end
+  end
+
   # ----------------------------------------------------------------------
   # Container
   # ----------------------------------------------------------------------
@@ -664,6 +753,7 @@ class FmrbUI
     @ts = text_size
     @widgets = []
     @pressed = nil
+    @focus = nil
   end
 
   attr_reader :widgets
@@ -690,6 +780,12 @@ class FmrbUI
                     text_size || @ts))
   end
 
+  # One line of typed text. max is how many characters it will take.
+  def text_field(id, x, y, w, h, text = "", max: 32, text_size: nil)
+    add(TextField.new(id, @ox + x, @oy + y, w, h, text, max, @gfx,
+                      text_size || @ts))
+  end
+
   # x, y, w, h are the bar itself. Ten pixels wide is what the rest of the
   # system uses.
   def scrollbar(id, x, y, w, h, total, visible, scroll = 0)
@@ -711,7 +807,13 @@ class FmrbUI
   def handle(ev)
     t = ev[:type]
     # mouse_move arrives at 30 Hz, so leave before touching anything else.
-    return nil if t != :mouse_down && t != :mouse_up
+    # A key costs one more comparison than it did before text fields
+    # existed, and only reaches a widget while one has the focus.
+    if t != :mouse_down && t != :mouse_up
+      return nil if @focus.nil?
+      return nil if t != :key_down
+      return type_into_focus(ev)
+    end
     return nil if ev[:button].to_i != 1
     px = ev[:x].to_i
     py = ev[:y].to_i
@@ -737,6 +839,7 @@ class FmrbUI
     fired = false
     if w.hit?(px, py)
       fired = w.activate
+      set_focus(w)
     end
     w.release
     return nil if fired == false
@@ -858,6 +961,32 @@ class FmrbUI
     t.nil? ? 0 : t.direction
   end
 
+  # Give the focus to a widget by id, or take it away with nil. Only a text
+  # field can hold it; anything else clears it, which is what clicking a
+  # button next to a field should do.
+  def focus(id)
+    w = id.nil? ? nil : find(id)
+    set_focus(w)
+    nil
+  end
+
+  # id of the widget holding the focus, or nil.
+  def focused
+    @focus.nil? ? nil : @focus.id
+  end
+
+  def field_text(id)
+    t = find(id)
+    t.nil? ? nil : t.field_text
+  end
+
+  def set_field_text(id, text)
+    t = find(id)
+    return nil if t.nil?
+    t.set_field_text(text)
+    nil
+  end
+
   def set_range(id, min, max)
     t = find(id)
     return nil if t.nil?
@@ -894,6 +1023,28 @@ class FmrbUI
   end
 
   private
+
+  # Escape gives the focus back to nobody; Enter reports the field.
+  def type_into_focus(ev)
+    code = ev[:character].to_i
+    if code == TextField::ESCAPE
+      set_focus(nil)
+      return nil
+    end
+    w = @focus
+    return nil unless w.type_key(code, ev[:keycode].to_i)
+    w.id
+  end
+
+  # A widget that cannot hold the focus takes it away from whoever had it.
+  def set_focus(w)
+    nw = (w && w.field_text) ? w : nil
+    return nil if nw == @focus
+    @focus.focus(false) if @focus
+    nw.focus(true) if nw
+    @focus = nw
+    nil
+  end
 
   def add(w)
     w.bg = @bg

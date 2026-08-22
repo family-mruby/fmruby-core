@@ -201,11 +201,89 @@ sb.set_range(50, 10)
 check("needed again", sb.active?, true)
 check("range change pulls the value in", (sb.set_value(45); sb.set_range(20, 10); sb.value), 10)
 
+# Drawing: the bar paints its arrows and thumb, and paints nothing but the
+# background when it is not needed. (draw_line was missing from FakeGfx until
+# a text field's caret hit it -- the bar's drawing had never been exercised.)
+sb.set_range(50, 10)
+g10.log.clear
+sb.dirty = true
+ui10.flush
+check("the bar draws arrows and a thumb", g10.count(:fill) >= 3 && g10.count(:line) >= 7, true)
+sb.set_range(5, 10)
+g10.log.clear
+sb.dirty = true
+ui10.flush
+check("and only the background when it fits", g10.count(:fill), 1)
+check("with no arrows", g10.count(:line), 0)
+sb.set_range(50, 10)
+
 # The other widgets still report on release, not on press.
 g11 = FakeGfx.new(1)
 ui11 = FmrbUI.new(FakeApp.new(g11))
 ui11.button(:b, 0, 0, 40, 16, "B")
 check("a button still says nothing on press", ui11.handle(ev(:mouse_down, 10, 15)), nil)
+
+# --- text field ------------------------------------------------------------
+
+def key(ch, keycode = 0) = { type: :key_down, character: ch, keycode: keycode, x: 0, y: 0, button: 0 }
+
+g12 = FakeGfx.new(1)
+ui12 = FmrbUI.new(FakeApp.new(g12))
+tf = ui12.text_field(:name, 0, 0, 100, 12, "song", max: 8)
+ui12.button(:save, 0, 20, 40, 12, "Save")
+check("starts with the text given", ui12.field_text(:name), "song")
+check("nobody has the focus yet", ui12.focused, nil)
+# A key with nothing focused is ignored, exactly as before text fields existed.
+check("a key goes nowhere unfocused", ui12.handle(key(65)), nil)
+check("and changed nothing", ui12.field_text(:name), "song")
+
+ui12.handle(ev(:mouse_down, 10, 15))
+# Focusing is not confirming: the click must not look like Enter, or an app
+# acts on a half-typed value.
+check("clicking a field reports nothing", ui12.handle(ev(:mouse_up, 10, 15)), nil)
+check("but it does focus it", ui12.focused, :name)
+check("typing appends", (ui12.handle(key(115)); ui12.field_text(:name)), "songs")
+check("a printable key reports nothing", ui12.handle(key(116)), nil)
+check("backspace takes from the end", (ui12.handle(key(8)); ui12.field_text(:name)), "songs")
+check("Enter reports the field", ui12.handle(key(13)), :name)
+check("the text survives Enter", ui12.field_text(:name), "songs")
+check("control codes are ignored", (ui12.handle(key(7)); ui12.field_text(:name)), "songs")
+# max is a limit, not a suggestion.
+ui12.handle(key(122)); ui12.handle(key(122)); ui12.handle(key(122)); ui12.handle(key(122))
+check("stops at max", ui12.field_text(:name), "songszzz")
+check("escape drops the focus", (ui12.handle(key(27)); ui12.focused), nil)
+check("and the keys stop landing", (ui12.handle(key(97)); ui12.field_text(:name)), "songszzz")
+
+# Clicking something that cannot hold the focus takes it away.
+ui12.focus(:name)
+check("focus by id works", ui12.focused, :name)
+ui12.handle(ev(:mouse_down, 10, 35))
+ui12.handle(ev(:mouse_up, 10, 35))
+check("clicking a button clears the focus", ui12.focused, nil)
+
+# Two fields: the focus moves, it does not spread.
+g13 = FakeGfx.new(1)
+ui13 = FmrbUI.new(FakeApp.new(g13))
+a = ui13.text_field(:a, 0, 0, 60, 12, "")
+b = ui13.text_field(:b, 0, 20, 60, 12, "")
+ui13.focus(:a)
+ui13.handle(key(120))
+ui13.handle(ev(:mouse_down, 10, 35))
+ui13.handle(ev(:mouse_up, 10, 35))
+check("the second field has it", ui13.focused, :b)
+check("the first gave it up", a.focused?, false)
+ui13.handle(key(121))
+check("typing lands in the focused one", [a.field_text, b.field_text], ["x", "y"])
+
+# The caret is drawn only while focused, and never blinks: one draw per change.
+g13.log.clear
+ui13.flush
+check("the focused field draws one caret", g13.count(:line), 1)
+check("a settled field redraws nothing", ui13.flush, false)
+ui13.focus(nil)
+g13.log.clear
+ui13.flush
+check("no caret once the focus is gone", g13.count(:line), 0)
 
 puts(Check.failed.zero? ? "fmrb_ui: all checks passed" : "fmrb_ui: #{Check.failed} FAILED")
 exit(Check.failed.zero? ? 0 : 1)
