@@ -71,6 +71,92 @@ check("mouse_move is ignored", ui5.handle({ type: :mouse_move, x: 10, y: 15, but
 check("and draws nothing", g5.log.length, 0)
 check("button 3 is ignored", ui5.handle(ev(:mouse_down, 10, 15, 3)), nil)
 
+# --- event sequences ------------------------------------------------------
+#
+# Everything above feeds single events. A mouse sends pairs, and a widget can
+# be right about each half and still wrong about the click: the scrollbar
+# acted on the press and again on the release, so one click on an arrow
+# scrolled two lines (doc/ui_widgets/issues_s3.md, symptom 4). Only counting
+# how often a widget acts over a whole sequence catches that, so these checks
+# count instead of looking at one return value.
+
+# Feeds a sequence and keeps every answer, nils included. How often an id
+# appears is how often that widget acted.
+def feed(ui, seq)
+  seq.map { |e| ui.handle(e) }
+end
+
+def fires(ui, seq, id) = feed(ui, seq).count(id)
+def click_seq(x, y) = [ev(:mouse_down, x, y), ev(:mouse_up, x, y)]
+# Pressed on the widget, released off it: the classic "changed my mind".
+def cancel_seq(x, y) = [ev(:mouse_down, x, y), ev(:mouse_up, x + 300, y + 300)]
+
+SEQ_OPTS = ["a", "b", "c", "d", "e", "f"].freeze
+
+gs = FakeGfx.new(1)
+uis = FmrbUI.new(FakeApp.new(gs))
+uis.button(:btn, 0, 0, 40, 16, "B")
+uis.toggle(:tog, 0, 20, 40, 16, "T")
+uis.stepper(:stp, 0, 40, 66, 14, 3, 1, 99)
+uis.text_field(:fld, 0, 60, 60, 12, "")
+uis.label(:lbl, 0, 80, 40, 10, "L")
+uis.enum(:enm, 0, 100, 90, 14, SEQ_OPTS)
+uis.scrollbar(:sb, 100, 0, 10, 100, 50, 10)
+
+BTN_XY  = [10, 15]      # button
+TOG_XY  = [10, 35]      # toggle
+STP_XY  = [60, 55]      # stepper, right arrow
+FLD_XY  = [10, 75]      # text field
+LBL_XY  = [10, 95]      # label
+ENM_XY  = [85, 115]     # enum, right arrow
+SBU_XY  = [105, 15]     # scrollbar, up arrow
+SBD_XY  = [105, 105]    # scrollbar, down arrow
+
+check("one click on a button acts once", fires(uis, click_seq(*BTN_XY), :btn), 1)
+check("one click on a toggle acts once", fires(uis, click_seq(*TOG_XY), :tog), 1)
+check("one click on a stepper acts once", fires(uis, click_seq(*STP_XY), :stp), 1)
+check("one click on an enum acts once", fires(uis, click_seq(*ENM_XY), :enm), 1)
+# A field is not a control that fires: the click only takes the focus, and
+# the value is reported when Enter says so.
+check("clicking a field acts not at all", fires(uis, click_seq(*FLD_XY), :fld), 0)
+enter = { type: :key_down, character: 13, keycode: 0, x: 0, y: 0, button: 0 }
+check("and Enter acts once", fires(uis, [enter], :fld), 1)
+check("a label never acts", feed(uis, click_seq(*LBL_XY)).compact, [])
+
+# Released away from the widget: nothing happened at all.
+check("a cancelled button click acts none", fires(uis, cancel_seq(*BTN_XY), :btn), 0)
+check("a cancelled toggle click acts none", fires(uis, cancel_seq(*TOG_XY), :tog), 0)
+check("a cancelled stepper click acts none", fires(uis, cancel_seq(*STP_XY), :stp), 0)
+check("a cancelled enum click acts none", fires(uis, cancel_seq(*ENM_XY), :enm), 0)
+check("the toggle kept its state", uis.on?(:tog), true)
+
+# Nothing is left behind between clicks: two clicks act twice.
+check("two clicks on a button", fires(uis, click_seq(*BTN_XY) + click_seq(*BTN_XY), :btn), 2)
+check("two clicks on a toggle", fires(uis, click_seq(*TOG_XY) + click_seq(*TOG_XY), :tog), 2)
+check("and it is back where it was", uis.on?(:tog), true)
+check("two clicks on a stepper", fires(uis, click_seq(*STP_XY) + click_seq(*STP_XY), :stp), 2)
+check("two clicks on an enum", fires(uis, click_seq(*ENM_XY) + click_seq(*ENM_XY), :enm), 2)
+
+# A scrollbar fires on the press and must stay quiet on the release. Before
+# the fix both halves acted, so this said 2 and the list jumped two lines.
+sbw = uis.find(:sb)
+sbw.set_value(5)
+seq = click_seq(*SBD_XY)
+answers = feed(uis, seq)
+check("the press acts", answers[0], :sb)
+check("the release does not", answers[1], nil)
+check("one arrow click acts once", answers.count(:sb), 1)
+check("and moved exactly one line", sbw.value, 6)
+check("two arrow clicks act twice", fires(uis, click_seq(*SBD_XY) + click_seq(*SBD_XY), :sb), 2)
+check("and moved two lines", sbw.value, 8)
+check("the up arrow too", fires(uis, click_seq(*SBU_XY), :sb), 1)
+check("upwards", sbw.value, 7)
+# Held at the end of the range it moves nothing, so it says nothing either --
+# on both halves of the click.
+sbw.set_value(0)
+check("no answer with nowhere to go", feed(uis, click_seq(*SBU_XY)).compact, [])
+check("and it stayed", sbw.value, 0)
+
 # --- toggles and groups ---------------------------------------------------
 
 g6 = FakeGfx.new(1)
