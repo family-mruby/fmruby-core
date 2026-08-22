@@ -897,12 +897,21 @@ class FmrbUI
     true
   end
 
-  # Mark everything for redraw (after clear_user_area or a resize).
+  # Mark everything on screen for redraw (after clear_user_area or a resize).
+  #
+  # Hidden widgets are deliberately left alone. A hidden one is repainted
+  # with the background so its hole matches what is behind it, which is only
+  # wanted for the widget that has just been taken away -- and set_visible
+  # already marks that one. Dirtying them all here instead painted a
+  # background-coloured rectangle wherever every hidden widget happened to
+  # sit: at (0, 0) for anything not yet moved, and over the middle of the
+  # screen for a dialog that had been open earlier.
   def invalidate_all
     n = @widgets.size
     i = 0
     while i < n
-      @widgets[i].dirty = true
+      w = @widgets[i]
+      w.dirty = true if w.visible
       i += 1
     end
     nil

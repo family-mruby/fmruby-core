@@ -177,6 +177,32 @@ ui14.toggle(:tog2, 0, 60, 40, 16, "T2", on: true)
 ui14.flush
 check("text on the plain highlight stays dark", g14.texts[0][5], FmrbConst::THEME_TEXT)
 
+# --- invalidate_all leaves hidden widgets alone ----------------------------
+#
+# It used to dirty every widget, so the next flush painted a background
+# rectangle wherever each hidden one sat -- at (0, 0) for anything not yet
+# moved. That is the white box that showed up on the desktop.
+g15 = FakeGfx.new(1)
+ui15 = FmrbUI.new(FakeApp.new(g15))
+ui15.button(:shown, 0, 40, 40, 16, "S")
+ui15.button(:never, 0, 0, 40, 16, "N")
+ui15.set_visible(:never, false)
+ui15.flush                                # settle both
+g15.log.clear
+ui15.invalidate_all
+ui15.flush
+fills = g15.log.select { |e| e[0] == :fill }
+check("only the visible one is repainted", fills.length, 1)
+check("and not at the origin", fills[0][2], 11 + 40)
+# Taking one away still paints its hole exactly once.
+ui15.set_visible(:shown, false)
+g15.log.clear
+ui15.flush
+check("hiding paints the hole", g15.log[0], [:fill, 1, 51, 40, 16, FmrbConst::THEME_WINDOW_BG])
+g15.log.clear
+ui15.invalidate_all
+check("and not again afterwards", ui15.flush, false)
+
 # --- scrollbar ------------------------------------------------------------
 
 g10 = FakeGfx.new(1)

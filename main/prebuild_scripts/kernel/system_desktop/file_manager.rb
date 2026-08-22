@@ -64,6 +64,8 @@ module FileManagerMixin
     return unless @file_manager_open
     @file_manager_open = false
     @fmgr_ctx_open = false
+    @ui.set_visible(:fmgr_sb, false)
+    @ui.flush
     notify_overlay_state(false, 0, 0, 0, 0)
     update_composite_regions
     draw_foreground

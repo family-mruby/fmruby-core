@@ -768,6 +768,9 @@ module LauncherMixin
     return unless @launcher_open
     @launcher_open = false
     @launcher_selected = -1
+    # Hidden before the repaint, like every other overlay's widgets.
+    @ui.set_visible(:lnc_sb, false)
+    @ui.flush
     hide_all_icon_sprites
     notify_overlay_state(false, 0, 0, 0, 0)
     update_composite_regions
