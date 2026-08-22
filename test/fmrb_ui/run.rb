@@ -278,6 +278,20 @@ uiq.set_visible(:a, false)
 uiq.flush
 check("no painter, the old fill", gq.log[0], [:fill, 1, 11, 40, 16, 0x12])
 
+# --- the container tells the app it exists ---------------------------------
+#
+# clear_user_area wipes the widgets off the screen along with everything else,
+# so the base class marks them for redraw afterwards. It can only do that if
+# it knows about them, and the app should not have to wire that up (forgetting
+# invalidate_all after a wipe was one of the contracts stage 3 removes).
+
+ga = FakeGfx.new(1)
+appa = FakeApp.new(ga)
+uia = FmrbUI.new(appa)
+check("the app was told", appa.attached_uis, [uia])
+uib = FmrbUI.new(appa)
+check("a second page is told too", appa.attached_uis.length, 2)
+
 # --- accent ----------------------------------------------------------------
 
 g14 = FakeGfx.new(1)

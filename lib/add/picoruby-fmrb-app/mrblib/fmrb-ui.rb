@@ -786,6 +786,9 @@ class FmrbUI
     @widgets = []
     @pressed = nil
     @focus = nil
+    # Tell the app we exist, so clear_user_area can mark the widgets for
+    # redraw without the app remembering to call invalidate_all.
+    app.attach_ui(self)
   end
 
   attr_reader :widgets

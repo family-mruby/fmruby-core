@@ -76,11 +76,23 @@ end
 # The three readers FmrbUI takes from the app. The user area origin is the
 # windowed one (1, 11), so the tests see the same offsetting real apps do.
 class FakeApp
-  attr_reader :gfx, :user_area_x0, :user_area_y0
-  def initialize(gfx, x0 = 1, y0 = 11)
+  attr_reader :gfx, :user_area_x0, :user_area_y0, :window_width, :window_height
+  attr_reader :attached_uis
+
+  def initialize(gfx, x0 = 1, y0 = 11, w = 320, h = 240)
     @gfx = gfx
     @user_area_x0 = x0
     @user_area_y0 = y0
+    @window_width = w
+    @window_height = h
+    @attached_uis = []
+  end
+
+  # The real base keeps these so clear_user_area can redraw them; here it is
+  # only proof that FmrbUI announced itself.
+  def attach_ui(ui)
+    @attached_uis << ui
+    nil
   end
 end
 

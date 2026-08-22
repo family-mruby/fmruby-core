@@ -540,8 +540,9 @@ class ShellApp < FmrbApp
 
   def draw_less_view
     clamp_less_offset
+    # No draw_window_frame here: clear_user_area draws it. This runs on every
+    # key press, and the frame is the expensive half of the wipe.
     clear_user_area(@bg_col)
-    draw_window_frame
 
     content_x = @user_area_x0 + 2
     rows = less_page_rows

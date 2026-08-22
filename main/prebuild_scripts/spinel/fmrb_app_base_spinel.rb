@@ -765,6 +765,7 @@ class FmrbApp
     @close_btn_pressed = false
     @closable = true
     @_timers = []
+    @attached_uis = []
 
     buf = FmrbSpxApp.fmrb_spx_app_init   # 50-byte snapshot; creates canvas(es)
     @name = SpxBytes.read_name(buf, 0, 32)
@@ -848,9 +849,36 @@ class FmrbApp
   def theme_fg_light; FmrbConst::THEME_TEXT_LIGHT; end # ink on accent / button
 
   # Same default as the mruby base: the theme's window background.
+  # Same as the mruby base: wiping the user area includes putting the frame
+  # and the attached widgets back. The wipe reaches the rounded corners'
+  # outline and the transparent key pixels, and any widget in the wiped area
+  # is gone from the screen while FmrbUI still believes it is drawn.
   def clear_user_area(color = FmrbConst::THEME_WINDOW_BG)
     return unless @gfx
     @gfx.fill_rect(@user_area_x0, @user_area_y0, @user_area_width, @user_area_height, color)
+    # @bg_canvas is the desktop, which has no frame -- letting it through
+    # draws a title bar across the wallpaper. @fullscreen is refused inside
+    # draw_window_frame too; it is named here so the reason is visible.
+    draw_window_frame unless @bg_canvas || @fullscreen
+    _invalidate_attached_uis
+    nil
+  end
+
+  # FmrbUI calls this on itself when it is created, so clear_user_area can put
+  # the widgets back without the app wiring anything up.
+  def attach_ui(ui)
+    @attached_uis << ui
+    nil
+  end
+
+  def _invalidate_attached_uis
+    n = @attached_uis.size
+    i = 0
+    while i < n
+      @attached_uis[i].invalidate_all
+      i += 1
+    end
+    nil
   end
 
   private
