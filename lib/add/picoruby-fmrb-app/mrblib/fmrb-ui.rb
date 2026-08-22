@@ -783,6 +783,12 @@ class FmrbUI
     @bg = bg
     @ts = text_size
     @bg_painter = bg_painter
+    # Kept for the bounds check in #add. A widget placed outside the window
+    # used to just draw somewhere wrong and say nothing: the confirm dialog's
+    # buttons sat eleven pixels below their panel because the coordinates were
+    # canvas-absolute and FmrbUI added the user-area origin on top.
+    @win_w = app.window_width
+    @win_h = app.window_height
     @widgets = []
     @pressed = nil
     @focus = nil
@@ -1126,6 +1132,13 @@ class FmrbUI
 
   def add(w)
     w.bg = @bg
+    # Creation only, and creation happens in on_create, so the interpolated
+    # string here is not in anybody's steady state. #move deliberately does
+    # not check: the monitor calls it while running, and a check there would
+    # put a string into the event path.
+    if w.x < 0 || w.y < 0 || w.x + w.w > @win_w || w.y + w.h > @win_h
+      Log.warn("FmrbUI: widget #{w.id} outside window (#{w.x},#{w.y},#{w.w},#{w.h})")
+    end
     @widgets << w
     w
   end

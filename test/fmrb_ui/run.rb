@@ -292,6 +292,31 @@ check("the app was told", appa.attached_uis, [uia])
 uib = FmrbUI.new(appa)
 check("a second page is told too", appa.attached_uis.length, 2)
 
+# --- widgets outside the window say so --------------------------------------
+#
+# Getting the coordinate system wrong is silent: the widget is simply drawn
+# somewhere else, or half off the screen. A dialog's buttons sat eleven pixels
+# below their panel that way. Creation is the one place a check is free, so
+# that is where it is.
+
+gw = FakeGfx.new(1)
+uiw = FmrbUI.new(FakeApp.new(gw, 1, 11, 100, 60))
+Log.warnings.clear
+uiw.button(:inside, 0, 0, 40, 16, "A")
+check("a widget that fits is quiet", Log.warnings, [])
+uiw.button(:below, 0, 40, 40, 16, "B")     # 11 + 40 + 16 = 67 > 60
+check("one hanging off the bottom warns", Log.warnings.length, 1)
+check("and names it", Log.warnings[0].include?("below"), true)
+check("with its rectangle", Log.warnings[0].include?("(1,51,40,16)"), true)
+Log.warnings.clear
+uiw.label(:right, 70, 0, 40, 10, "R")      # 1 + 70 + 40 = 111 > 100
+check("off the right edge warns too", Log.warnings.length, 1)
+Log.warnings.clear
+# move is the runtime path (the monitor repositions rows as tasks come and
+# go), so it stays silent rather than building a string there.
+uiw.move(:inside, 0, 300, 40, 16)
+check("move does not warn", Log.warnings, [])
+
 # --- accent ----------------------------------------------------------------
 
 g14 = FakeGfx.new(1)

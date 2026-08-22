@@ -57,6 +57,19 @@ class FakeGfx
   def count(kind); @log.count { |e| e[0] == kind }; end
 end
 
+# The framework's logger, reduced to a recorder so the warnings FmrbUI emits
+# can be read back.
+module Log
+  @warnings = []
+  class << self
+    attr_reader :warnings
+    def warn(msg); @warnings << msg; nil; end
+    def info(msg); nil; end
+    def debug(msg); nil; end
+    def error(msg); nil; end
+  end
+end
+
 # Stands in for an app that paints its own ground. It records the rectangles
 # it was asked for and draws nothing, so a test can tell "FmrbUI asked the app"
 # from "FmrbUI painted a bg rectangle itself".
