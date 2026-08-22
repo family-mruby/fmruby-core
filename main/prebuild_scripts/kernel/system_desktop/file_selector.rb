@@ -29,6 +29,10 @@ module FileSelectorMixin
     @file_selector_scroll = 0
     @file_selector_selected = -1
     @file_selector_filename = ""
+    @ui.set_field_text(:fsel_name, "")
+    # The name field takes the keyboard as soon as a save dialog opens; that
+    # is the only thing in here anyone types into.
+    @ui.focus(mode == "save" ? :fsel_name : nil)
     # Double-click state, same shape as the launcher's: one click selects, two
     # activate. Measured in on_update ticks, not wall clock.
     @fsel_click_idx = -1
@@ -45,6 +49,8 @@ module FileSelectorMixin
     return unless @file_selector_open
     mode = @file_selector_mode
     @file_selector_open = false
+    hide_file_selector_widgets
+    @ui.flush
 
     # Send result back to kernel
     data = {
@@ -133,31 +139,16 @@ module FileSelectorMixin
     metrics = fsel_list_metrics
     bottom_y = metrics[:bottom_y]
 
-    if @file_selector_mode == "save"
-      # Filename label and input field
+    save_mode = (@file_selector_mode == "save")
+    if save_mode
       @gfx.draw_text(x + 4, bottom_y, "Name:", FSEL_TEXT, FSEL_BG)
-      # Input field
-      field_x = x + 40
-      field_w = FSEL_W - 100
-      @gfx.fill_rect(field_x, bottom_y - 1, field_w, 10, FmrbGfx::WHITE)
-      @gfx.draw_rect(field_x, bottom_y - 1, field_w, 10, FmrbConst::THEME_BORDER)
-      @gfx.draw_text(field_x + 2, bottom_y, @file_selector_filename, FSEL_TEXT, FmrbGfx::WHITE)
-      # Cursor
-      cursor_x = field_x + 2 + @file_selector_filename.length * 6
-      @gfx.draw_line(cursor_x, bottom_y, cursor_x, bottom_y + 7, FSEL_TEXT)
-
-      # Save button
-      save_x = x + FSEL_W - 100
-      save_y = bottom_y + 14
-      @gfx.fill_rect(save_x, save_y, 40, 12, FSEL_TITLE_BG)
-      @gfx.draw_text(save_x + 6, save_y + 2, "Save", FmrbGfx::WHITE, FSEL_TITLE_BG)
+      @ui.move(:fsel_name, x + 40, bottom_y - 1, FSEL_W - 100, 10)
+      @ui.move(:fsel_save, x + FSEL_W - 100, bottom_y + 14, 40, 12)
     end
-
-    # Cancel button
-    cancel_x = x + FSEL_W - 50
-    cancel_y = bottom_y + 14
-    @gfx.fill_rect(cancel_x, cancel_y, 44, 12, FSEL_CANCEL_BG)
-    @gfx.draw_text(cancel_x + 6, cancel_y + 2, "Cancel", FmrbGfx::WHITE, FSEL_CANCEL_BG)
+    @ui.set_visible(:fsel_name, save_mode)
+    @ui.set_visible(:fsel_save, save_mode)
+    @ui.move(:fsel_cancel, x + FSEL_W - 50, bottom_y + 14, 44, 12)
+    @ui.set_visible(:fsel_cancel, true)
 
     # File list
     list_y = metrics[:list_y]
@@ -205,14 +196,34 @@ module FileSelectorMixin
 
   def build_file_selector_widgets
     @ui.scrollbar(:fsel_sb, 0, 0, FSEL_SB_W, 40, 0, 1)
+    # The typed name in save mode. Its Enter is the same as pressing Save.
+    @ui.text_field(:fsel_name, 0, 0, 40, 10, "", max: 48)
+    @ui.button(:fsel_save, 0, 0, 40, 12, "Save", accent: FSEL_TITLE_BG)
+    @ui.button(:fsel_cancel, 0, 0, 44, 12, "Cancel")
+    hide_file_selector_widgets
+    nil
+  end
+
+  def hide_file_selector_widgets
     @ui.set_visible(:fsel_sb, false)
+    @ui.set_visible(:fsel_name, false)
+    @ui.set_visible(:fsel_save, false)
+    @ui.set_visible(:fsel_cancel, false)
+    @ui.focus(nil)
     nil
   end
 
   def handle_file_selector_widget(id)
-    return nil unless id == :fsel_sb
-    @file_selector_scroll = @ui.value(:fsel_sb)
-    draw_foreground
+    case id
+    when :fsel_sb
+      @file_selector_scroll = @ui.value(:fsel_sb)
+      draw_foreground
+    when :fsel_name, :fsel_save
+      @file_selector_filename = @ui.field_text(:fsel_name).to_s
+      fsel_save_typed_name
+    when :fsel_cancel
+      close_file_selector(nil)
+    end
     nil
   end
 
@@ -237,7 +248,10 @@ module FileSelectorMixin
     entry = fsel_selected_entry
     # In save mode the name field follows the selection, so a file can be
     # overwritten without retyping its name.
-    @file_selector_filename = entry[:name] if entry && !entry[:is_dir]
+    if entry && !entry[:is_dir]
+      @file_selector_filename = entry[:name]
+      @ui.set_field_text(:fsel_name, @file_selector_filename)
+    end
     draw_foreground
   end
 
@@ -273,31 +287,12 @@ module FileSelectorMixin
   end
 
   def fsel_save_typed_name
+    @file_selector_filename = @ui.field_text(:fsel_name).to_s
     return if @file_selector_filename.length == 0
     close_file_selector(fsel_path_of(@file_selector_filename))
   end
 
   def handle_file_selector_click(x, y)
-    bottom_y = fsel_list_metrics[:bottom_y]
-
-    # Cancel button
-    cancel_x = @fsel_x + FSEL_W - 50
-    cancel_y = bottom_y + 14
-    if x >= cancel_x && x < cancel_x + 44 && y >= cancel_y && y < cancel_y + 12
-      close_file_selector(nil)
-      return
-    end
-
-    # Save button (save mode only)
-    if @file_selector_mode == "save"
-      save_x = @fsel_x + FSEL_W - 100
-      save_y = bottom_y + 14
-      if x >= save_x && x < save_x + 40 && y >= save_y && y < save_y + 12
-        fsel_save_typed_name
-        return
-      end
-    end
-
     # File list
     metrics = fsel_list_metrics
     list_y = metrics[:list_y]

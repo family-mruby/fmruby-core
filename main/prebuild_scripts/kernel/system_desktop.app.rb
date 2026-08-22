@@ -1172,14 +1172,19 @@ class SystemDesktopApp < FmrbApp
       return
     end
 
-    # FmrbUI first: the widgets know their own rects, so an event that lands
-    # on one never reaches the coordinate dispatch below. It answers nil for
-    # everything else, including the mouse_move above, which is why it sits
-    # after that check rather than before it.
-    wid = @ui.handle(ev)
-    if wid
-      handle_widget(wid)
-      return
+    # FmrbUI first, for the mouse only: the widgets know their own rects, so
+    # an event that lands on one never reaches the coordinate dispatch below.
+    #
+    # Keys are deliberately NOT fed here. The file selector's name field is
+    # the only widget that wants them, and it has to take its turn after the
+    # arrows and Enter that drive the list; feeding keys here as well made
+    # every character arrive twice.
+    if ev[:type] == :mouse_down || ev[:type] == :mouse_up
+      wid = @ui.handle(ev)
+      if wid
+        handle_widget(wid)
+        return
+      end
     end
 
     if ev[:type] == :mouse_down
@@ -1276,20 +1281,16 @@ class SystemDesktopApp < FmrbApp
         return if handle_launcher_key(keycode, character)
       end
 
-      # File selector: arrows and Enter first, then -- in save mode -- whatever
-      # is left goes into the filename being typed (file_selector.rb).
+      # File selector: arrows and Enter first. In save mode whatever is left
+      # goes into the name field, which FmrbUI owns -- the widget takes the
+      # key only because the dialog gave it the focus when it opened.
       if @file_selector_open
         return if handle_file_selector_key(scancode)
         if @file_selector_mode == "save"
-          if character == 8  # Backspace
-            if @file_selector_filename.length > 0
-              @file_selector_filename = @file_selector_filename[0...-1]
-              draw_foreground
-            end
-          elsif character >= 32 && character <= 126  # Printable
-            _c1 = "\x00"     # Integer#chr -> setbyte (no sp_str_chr in runtime)
-            _c1.setbyte(0, character)
-            @file_selector_filename += _c1
+          wid = @ui.handle(ev)
+          if wid
+            handle_widget(wid)
+          else
             draw_foreground
           end
         end
