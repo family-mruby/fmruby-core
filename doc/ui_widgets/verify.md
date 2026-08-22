@@ -4,8 +4,9 @@
 (issues_s3.md 課題 E)。目で見て「直ったように見える」で止めない。ここは
 段 3 の T2/T3 で実際に使った手つきをそのまま書いたもの。
 
-道具はリポジトリルート (family-mruby) の `tools/` と、下の 2 本の小さな
-スクリプト (どちらも Pillow だけ。作業用に置いて使い、コミットしない)。
+道具はリポジトリルート (family-mruby) の `tools/` に揃っている
+(`fmrb_screenshot.py` / `fmrb_input.rb` に加えて、下で使う
+`fmrb_pngdiff.py` / `fmrb_pngscan.py`。後者 2 本は Pillow だけで動く)。
 
 ## 1. 撮る前に、カーソルを毎回同じ場所へ戻す
 
@@ -24,19 +25,14 @@ python3 tools/fmrb_screenshot.py base.png
 
 窓やダイアログを開いて閉じたあと、地が元どおりかを数える。
 
-```python
-# pngdiff.py a.png b.png [x y w h]  -> 矩形内で色の違う画素を数えて並べる
-from PIL import Image
-a = Image.open(sys.argv[1]).convert("RGB"); b = Image.open(sys.argv[2]).convert("RGB")
-pa, pb = a.load(), b.load()
-diff = [(x, y, pa[x, y], pb[x, y])
-        for y in range(y0, y0 + h) for x in range(x0, x0 + w) if pa[x, y] != pb[x, y]]
 ```
-
-```
-python3 pngdiff.py base.png after.png 0 13 426 227
+python3 tools/fmrb_pngdiff.py base.png after.png 0 13 426 227
 rect (0,13,426,227) of 426x240: 0 differing pixels
 ```
+
+矩形 (X Y W H) は省くと画面全体。違った画素は座標と前後の色が並ぶ
+(先頭 20 件まで)。**終了コードは一致で 0、違えば 1** なので、そのまま
+スクリプトの合否にも使える。
 
 **0 であること**が合格。1 画素でも残るなら跡が残っている。段 3 では
 デスクトップの Set Clock / Config / Network / Launcher の開閉と、Storage の
@@ -46,12 +42,12 @@ rect (0,13,426,227) of 426x240: 0 differing pixels
 
 「枠が消えた」「白い矩形が出た」は、その行を左から読んで色の並びを見る。
 
-```python
-# pngscan.py img.png row Y [X0 X1]  /  pngscan.py img.png col X [Y0 Y1]
-# 同じ色が続く区間をまとめて出す
-  100- 102 (  3px) #b66d55     <- パネルの外 (壁紙)
-  103- 103 (  1px) #6d0000     <- 枠線
-  104- 177 ( 74px) #ffffff     <- パネルの地
+```
+python3 tools/fmrb_pngscan.py after.png row 155 100 320   # col X [Y0 Y1] もある
+after.png row 155 [100,320): 27 runs
+   100- 102 (  3px) #b66d55     <- パネルの外 (壁紙)
+   103- 103 (  1px) #6d0000     <- 枠線
+   104- 177 ( 74px) #ffffff     <- パネルの地 (ボタンがあった跡)
 ```
 
 読み方の型:
@@ -66,8 +62,8 @@ rect (0,13,426,227) of 426x240: 0 differing pixels
 差分にかける。
 
 ```
-python3 pngdiff.py before.png after.png 0 205 20 20      # 左下
-python3 pngdiff.py before.png after.png 285 205 25 20    # 右下
+python3 tools/fmrb_pngdiff.py before.png after.png 0 205 20 20      # 左下
+python3 tools/fmrb_pngdiff.py before.png after.png 285 205 25 20    # 右下
 ```
 
 nsf_player の起動 -> Play がこれで `0 differing pixels`。
