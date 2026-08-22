@@ -100,11 +100,17 @@ class FmrbUI
     # name is a liability under a poly receiver; this one is unique.
     def relayout; nil; end
     def draw_widget(gfx); nil; end
-    def press(px); @dirty = true; nil; end
+    def press(px, py); @dirty = true; nil; end
     def release; @dirty = true; nil; end
     # Confirm the operation (mouse released on top of the widget). Returns
     # true when the app should be told about it.
     def activate; false; end
+    # A scrollbar acts when you press it and keeps acting while you hold,
+    # unlike a button, which acts when you let go over it. Everything else
+    # answers false and is reported on release as before.
+    def fires_on_press?; false; end
+    # Which way a held scrollbar is going: -1 up, 0 not held, 1 down.
+    def direction; 0; end
     def set_text(text, gfx); nil; end
     def group; nil; end
     def on?; false; end
@@ -202,7 +208,7 @@ class FmrbUI
       center_text(@tw)
     end
 
-    def press(px)
+    def press(px, py)
       @pressed = true
       @dirty = true
       nil
@@ -278,7 +284,7 @@ class FmrbUI
       end
     end
 
-    def press(px)
+    def press(px, py)
       @pressed = true
       @dirty = true
       nil
@@ -392,7 +398,7 @@ class FmrbUI
       nil
     end
 
-    def press(px)
+    def press(px, py)
       aw = arrow_w
       if px < @x + aw
         @pressed = -1
@@ -487,6 +493,158 @@ class FmrbUI
     end
   end
 
+  # A vertical scrollbar: two arrow buttons with a track and a thumb between
+  # them. Unlike the rest of the set the rect given is the BAR, not the thing
+  # being scrolled -- a widget is placed where it is drawn.
+  #
+  # It knows nothing about the list. Three integers describe the whole job:
+  # how many there are, how many fit, and where we are. That is why the seven
+  # places in the tree that scrolled something could move onto it without any
+  # of them agreeing on what a row is.
+  #
+  # The app owns the scroll position (its keyboard moves it too); the widget
+  # is a view of it. Push it in with set_value, read it back after handle
+  # reports.
+  class Scrollbar < Widget
+    BTN_H = 10       # arrow button height, top and bottom
+    MIN_THUMB = 6
+
+    attr_reader :value, :total, :visible_count
+
+    def initialize(id, x, y, w, h, total, visible, scroll, gfx, text_size)
+      super(id, x, y, w, h, text_size)
+      @total = total
+      @visible_count = visible
+      @value = clamp(scroll)
+      @dir = 0
+    end
+
+    # Nothing to show while everything fits, and nothing to click either --
+    # the list underneath should get the event.
+    def active?
+      @total > @visible_count && @h > BTN_H * 2 + 4
+    end
+
+    def hit?(px, py)
+      return false unless active?
+      super(px, py)
+    end
+
+    def fires_on_press?; true; end
+    def direction; @dir; end
+
+    def set_range(total, visible)
+      return nil if @total == total && @visible_count == visible
+      @total = total
+      @visible_count = visible
+      set_value(@value)
+      @dirty = true
+      nil
+    end
+
+    def set_value(v)
+      nv = clamp(v)
+      return false if nv == @value
+      @value = nv
+      @dirty = true
+      true
+    end
+
+    def press(px, py)
+      @dir = press_dir(py)
+      @dirty = true
+      nil
+    end
+
+    def release
+      @dir = 0
+      @dirty = true
+      nil
+    end
+
+    # One unit per press, the same step the hand-written version took for both
+    # the arrows and the track. The app repeats it while direction is not 0.
+    def activate
+      return false if @dir == 0
+      set_value(@value + @dir)
+    end
+
+    def draw_widget(gfx)
+      unless active?
+        gfx.fill_rect(@x, @y, @w, @h, @bg)
+        return nil
+      end
+      gfx.draw_line(@x, @y, @x, @y + @h - 1, C_BORDER)
+      draw_arrow(gfx, @y, true, @dir < 0)
+      draw_arrow(gfx, @y + @h - BTN_H, false, @dir > 0)
+      ty = track_y
+      th = track_h
+      gfx.fill_rect(@x + 1, ty, @w - 1, th, @bg)
+      hh = thumb_h
+      gfx.fill_rect(@x + 2, thumb_y, @w - 4, hh, C_BUTTON)
+      gfx.draw_rect(@x + 2, thumb_y, @w - 4, hh, C_BORDER)
+      nil
+    end
+
+    private
+
+    def max_scroll
+      m = @total - @visible_count
+      m < 0 ? 0 : m
+    end
+
+    def clamp(v)
+      return 0 if v < 0
+      m = max_scroll
+      v > m ? m : v
+    end
+
+    def track_y; @y + BTN_H; end
+    def track_h; @h - BTN_H * 2; end
+
+    def thumb_h
+      t = track_h * @visible_count / @total
+      t < MIN_THUMB ? MIN_THUMB : t
+    end
+
+    def thumb_y
+      m = max_scroll
+      return track_y if m == 0
+      track_y + (track_h - thumb_h) * @value / m
+    end
+
+    # Above the thumb scrolls up, below it scrolls down, same as the arrows.
+    def press_dir(py)
+      return -1 if py < track_y
+      return 1 if py >= @y + @h - BTN_H
+      ty = thumb_y
+      return -1 if py < ty
+      return 1 if py >= ty + thumb_h
+      0
+    end
+
+    # Held arrows fill with the highlight, not with C_TEXT_LIGHT: the app's
+    # background is usually the theme's window colour, which IS C_TEXT_LIGHT,
+    # and an arrow that goes from white to white says nothing. The highlight
+    # reads against a light background and a dark one both.
+    def draw_arrow(gfx, ay, up, pressed)
+      bg = pressed ? C_HIGHLIGHT : @bg
+      gfx.fill_rect(@x, ay, @w, BTN_H, bg)
+      gfx.draw_rect(@x, ay, @w, BTN_H, C_BORDER)
+      cx = @x + @w / 2
+      if up
+        gfx.draw_line(cx, ay + 2, cx - 3, ay + 7, C_BORDER)
+        gfx.draw_line(cx, ay + 2, cx + 3, ay + 7, C_BORDER)
+        gfx.draw_line(cx - 3, ay + 7, cx + 3, ay + 7, C_BORDER)
+      else
+        gfx.draw_line(cx, ay + 7, cx - 3, ay + 2, C_BORDER)
+        gfx.draw_line(cx, ay + 7, cx + 3, ay + 2, C_BORDER)
+        gfx.draw_line(cx - 3, ay + 2, cx + 3, ay + 2, C_BORDER)
+      end
+      nil
+    end
+  end
+
   # ----------------------------------------------------------------------
   # Container
   # ----------------------------------------------------------------------
@@ -532,6 +690,13 @@ class FmrbUI
                     text_size || @ts))
   end
 
+  # x, y, w, h are the bar itself. Ten pixels wide is what the rest of the
+  # system uses.
+  def scrollbar(id, x, y, w, h, total, visible, scroll = 0)
+    add(Scrollbar.new(id, @ox + x, @oy + y, w, h, total, visible, scroll,
+                      @gfx, @ts))
+  end
+
   # options is an Array of String, read but never written by the widget.
   def enum(id, x, y, w, h, options, index: 0, text_size: nil)
     add(Enum.new(id, @ox + x, @oy + y, w, h, options, index, @gfx,
@@ -556,8 +721,9 @@ class FmrbUI
       while i >= 0
         w = @widgets[i]
         if w.visible && w.enabled && w.hit?(px, py)
-          w.press(px)
+          w.press(px, py)
           @pressed = w
+          return w.id if w.fires_on_press? && w.activate
           return nil
         end
         i -= 1
@@ -683,6 +849,13 @@ class FmrbUI
   def option_text(id)
     t = find(id)
     t.nil? ? nil : t.option_text
+  end
+
+  # Which way a held scrollbar is going (-1 / 0 / 1), for an app that repeats
+  # the scroll while the button is down.
+  def direction(id)
+    t = find(id)
+    t.nil? ? 0 : t.direction
   end
 
   def set_range(id, min, max)

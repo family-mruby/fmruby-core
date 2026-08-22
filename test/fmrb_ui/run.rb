@@ -156,5 +156,56 @@ ui9.set_visible(:l, true)
 ui9.set_text(:l, "y")
 check("a different text is", ui9.flush, true)
 
+# --- scrollbar ------------------------------------------------------------
+
+g10 = FakeGfx.new(1)
+ui10 = FmrbUI.new(FakeApp.new(g10))
+# The rect is the bar: 10 wide, 100 tall, at user-area (0, 0) -> (1, 11).
+sb = ui10.scrollbar(:sb, 0, 0, 10, 100, 50, 10)
+check("starts where told", sb.value, 0)
+check("knows the list size", [sb.total, sb.visible_count], [50, 10])
+check("it is needed", sb.active?, true)
+# At the top there is nowhere to go, so pressing up moves nothing and, like
+# every other widget, says nothing. It is still held, which is what an app
+# repeating the scroll watches.
+check("pressing up at the top reports nothing", ui10.handle(ev(:mouse_down, 5, 15)), nil)
+check("and moves nothing", sb.value, 0)
+check("direction is up while held", ui10.direction(:sb), -1)
+ui10.handle(ev(:mouse_up, 5, 15))
+# Away from the top it reports on the press, unlike a button.
+sb.set_value(5)
+check("pressing up reports at once", ui10.handle(ev(:mouse_down, 5, 15)), :sb)
+check("and has already moved", sb.value, 4)
+ui10.handle(ev(:mouse_up, 5, 15))
+sb.set_value(0)
+check("released, no direction", ui10.direction(:sb), 0)
+check("the bottom arrow scrolls down", (ui10.handle(ev(:mouse_down, 5, 105)); sb.value), 1)
+check("direction is down while held", ui10.direction(:sb), 1)
+ui10.handle(ev(:mouse_up, 5, 105))
+check("release reports nothing", ui10.handle(ev(:mouse_up, 5, 105)), nil)
+# Below the thumb pages down, above it pages up.
+sb.set_value(25)
+check("clicking below the thumb goes down", (ui10.handle(ev(:mouse_down, 5, 100)); sb.value), 26)
+ui10.handle(ev(:mouse_up, 5, 100))
+sb.set_value(25)
+check("clicking above it goes up", (ui10.handle(ev(:mouse_down, 5, 25)); sb.value), 24)
+ui10.handle(ev(:mouse_up, 5, 25))
+check("cannot go past the end", (sb.set_value(999); sb.value), 40)
+check("nor before the start", (sb.set_value(-5); sb.value), 0)
+# Everything fits: no bar, and clicks fall through to whatever is underneath.
+sb.set_range(8, 10)
+check("not needed when it all fits", sb.active?, false)
+check("and it stops taking clicks", sb.hit?(5, 15), false)
+check("a click passes through", ui10.handle(ev(:mouse_down, 5, 15)), nil)
+sb.set_range(50, 10)
+check("needed again", sb.active?, true)
+check("range change pulls the value in", (sb.set_value(45); sb.set_range(20, 10); sb.value), 10)
+
+# The other widgets still report on release, not on press.
+g11 = FakeGfx.new(1)
+ui11 = FmrbUI.new(FakeApp.new(g11))
+ui11.button(:b, 0, 0, 40, 16, "B")
+check("a button still says nothing on press", ui11.handle(ev(:mouse_down, 10, 15)), nil)
+
 puts(Check.failed.zero? ? "fmrb_ui: all checks passed" : "fmrb_ui: #{Check.failed} FAILED")
 exit(Check.failed.zero? ? 0 : 1)

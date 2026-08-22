@@ -77,10 +77,18 @@ class ShellApp < FmrbApp
     "  ?            toggle help"
   ]
 
+  SB_W = 10          # scrollbar width, reserved from the text area
+
   def on_create()
     # Layout: reserve scrollbar width for consistent text wrapping
-    @max_chars = (@user_area_width - 4 - FmrbApp::SCROLLBAR_W) / @char_width
+    @max_chars = (@user_area_width - 4 - SB_W) / @char_width
     @visible_rows = (@user_area_height - 2) / @char_height
+
+    # The history scrollbar. Its height follows the visible rows, so it is
+    # placed again in draw_history once those are known.
+    @ui = FmrbUI.new(self, bg: @bg_col)
+    @ui.scrollbar(:sb, @user_area_width - SB_W, 0, SB_W,
+                  @user_area_height, 0, 1)
 
     clear_user_area(@bg_col)
     draw_window_frame
@@ -295,13 +303,13 @@ class ShellApp < FmrbApp
     if ev[:type] == :mouse_down
       # Scrollbar hold start (suppressed while less mode owns the viewport)
       unless @less_mode
-        avail = history_avail_rows
-        sb_h = avail * @char_height + 2
-        sb = scrollbar_hit(ev[:x], ev[:y], @user_area_x0, @user_area_y0,
-                           @user_area_width, sb_h)
-        if sb
-          @scroll_hold = (sb == :up) ? -1 : 1
-          sb == :up ? scroll_up : scroll_down
+        # The widget says which way; how far is the shell's business
+        # (a row at a time, and reaching the bottom turns auto-scroll back
+        # on). Its own value is overwritten from @scroll on the next redraw.
+        if @ui.handle(ev) == :sb
+          d = @ui.direction(:sb)
+          d < 0 ? scroll_up : scroll_down
+          @scroll_hold = d
         end
       end
     elsif ev[:type] == :mouse_up

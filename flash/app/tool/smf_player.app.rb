@@ -13,6 +13,7 @@ class SmfPlayerApp < FmrbApp
   MUSIC_DIR = "/usr/share/sounds/midi"
   LIST_Y = 2
   LIST_ITEM_H = 10
+  SB_W = 10          # scrollbar width
   INFO_H = 48
   TEXT_COLOR = FmrbConst::THEME_TEXT
   BG_COLOR = FmrbConst::THEME_WINDOW_BG
@@ -58,6 +59,11 @@ class SmfPlayerApp < FmrbApp
     @device = FmrbMidi.device(self)
     @player = FmrbMidi::SmfPlayer.new(@device)
     scan_files
+    # Only the list's scrollbar is a widget so far; the buttons below are
+    # still drawn by hand (see doc/ui_widgets/report/s2.md).
+    @ui = FmrbUI.new(self)
+    @ui.scrollbar(:sb, @user_area_width - SB_W, LIST_Y, SB_W,
+                  visible_count * LIST_ITEM_H, 0, 1)
     select_file(0) if @files.length > 0
     draw_ui
   end
@@ -263,9 +269,10 @@ class SmfPlayerApp < FmrbApp
       i += 1
     end
 
-    if @files.length > vc
-      draw_scrollbar(@scroll, @files.length, vc, x0 + w - 6, y0 + LIST_Y, 5, vc * LIST_ITEM_H)
-    end
+    @ui.set_range(:sb, @files.length, vc)
+    @ui.set_value(:sb, @scroll)
+    @ui.invalidate_all
+    @ui.flush
 
     info_y = y0 + h - INFO_H
     @gfx.draw_line(x0, info_y, x0 + w, info_y, BORDER_COLOR)
@@ -397,6 +404,12 @@ class SmfPlayerApp < FmrbApp
 
   def on_event(ev)
     super(ev)
+
+    if @ui.handle(ev) == :sb
+      @scroll = @ui.value(:sb)
+      draw_ui
+      return
+    end
 
     if ev[:type] == :key_down
       ch = ev[:character] || 0

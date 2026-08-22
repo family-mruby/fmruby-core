@@ -217,11 +217,14 @@ module ShellScrollMixin
     # Draw scrollbar if history exceeds visible area
     total = total_display_rows
     avail = history_avail_rows
-    if total > avail
-      sb_h = avail * @char_height + 2
-      draw_scrollbar(@scroll, total, avail,
-                     @user_area_x0, @user_area_y0, @user_area_width, sb_h)
-    end
+    # ShellApp:: is required: a bare constant inside a mixin is looked up in
+    # the module, not in the class that included it.
+    sb_w = ShellApp::SB_W
+    @ui.move(:sb, @user_area_width - sb_w, 0, sb_w, avail * @char_height + 2)
+    @ui.set_range(:sb, total, avail)
+    @ui.set_value(:sb, @scroll)
+    @ui.invalidate_all
+    @ui.flush
 
     @gfx.present
   end

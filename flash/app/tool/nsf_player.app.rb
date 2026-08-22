@@ -17,6 +17,7 @@ class NsfPlayerApp < FmrbApp
   HL_COLOR = FmrbConst::THEME_HIGHLIGHT
   BORDER_COLOR = FmrbConst::THEME_BORDER
   BTN_H = 11
+  SB_W = 10          # scrollbar width
 
   def initialize
     super()
@@ -45,6 +46,11 @@ class NsfPlayerApp < FmrbApp
     y = @user_area_height - INFO_H + 23
     @track_st = @ui.stepper(:track, 2, y, 66, BTN_H, 1, 1, 1)
     @ui.toggle(:play, @user_area_width - 80, y, 35, BTN_H, "Play", on_text: "Stop")
+    # The bar sits in the right edge of the list. It hides itself while
+    # everything fits, and clicks pass through to the list when it does.
+    @ui.scrollbar(:sb, @user_area_width - SB_W, LIST_Y, SB_W,
+                  visible_count * LIST_ITEM_H, 0, 1)
+    nil
   end
 
   def scan_files
@@ -90,7 +96,6 @@ class NsfPlayerApp < FmrbApp
     @gfx.fill_rect(x0, y0, w, h, BG_COLOR)
 
     # File list
-    list_h = vc * LIST_ITEM_H
     i = 0
     while i < vc
       fi = @scroll + i
@@ -111,12 +116,6 @@ class NsfPlayerApp < FmrbApp
                         fi == @selected ? HL_COLOR : BG_COLOR)
       end
       i += 1
-    end
-
-    # Scrollbar
-    if @files.length > vc
-      draw_scrollbar(@scroll, @files.length, vc,
-                     x0 + w - 6, y0 + LIST_Y, 5, list_h)
     end
 
     # Separator
@@ -149,6 +148,8 @@ class NsfPlayerApp < FmrbApp
   # Put the transport in step with the app. The widgets only exist while
   # there is a playable file.
   def sync_transport
+    @ui.set_range(:sb, @files.length, visible_count)
+    @ui.set_value(:sb, @scroll)
     live = @nsf_info && @files.length > 0
     @ui.set_visible(:track, live)
     @ui.set_visible(:play, live)
@@ -236,6 +237,7 @@ class NsfPlayerApp < FmrbApp
     case @ui.handle(ev)
     when :track then change_track(@ui.value(:track) - 1)
     when :play  then @playing ? stop_current : play_current
+    when :sb    then @scroll = @ui.value(:sb); draw_ui
     else
       @ui.flush
       handle_click(ev[:x], ev[:y]) if ev[:type] == :mouse_up

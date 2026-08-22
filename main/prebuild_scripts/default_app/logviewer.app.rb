@@ -11,6 +11,7 @@ class LogViewerApp < FmrbApp
   BUTTON_TEXT = FmrbConst::THEME_TEXT_LIGHT
   LOG_LINES_MAX = 50
   TOOLBAR_H = 14
+  SB_W = 10          # scrollbar width
 
   # Level colors (RGB332), chosen to read on the pale page: the old yellow
   # for warnings vanished against white, so it is orange now.
@@ -35,6 +36,10 @@ class LogViewerApp < FmrbApp
 
   def on_create
     Log.info("LogViewer started")
+    # The bar is the only widget here; the toolbar is still drawn by hand.
+    @ui = FmrbUI.new(self, bg: LOG_BG)
+    @ui.scrollbar(:sb, @user_area_width - SB_W, TOOLBAR_H, SB_W,
+                  @user_area_height - TOOLBAR_H, 0, 1)
     # Initial read of existing logs
     fetch_logs
     draw_view
@@ -137,11 +142,12 @@ class LogViewerApp < FmrbApp
       i += 1
     end
 
-    # Scroll bar
-    draw_scrollbar(@scroll, @lines.size, vis, x0, log_y0, w, log_h)
+    @ui.set_range(:sb, @lines.size, vis)
+    @ui.set_value(:sb, @scroll)
+    @ui.invalidate_all
 
     draw_window_frame
-    @gfx.present
+    @gfx.present unless @ui.flush
   end
 
   def draw_toolbar(x0, y0, w)
@@ -165,16 +171,18 @@ class LogViewerApp < FmrbApp
     x = ev[:x]
     y = ev[:y]
 
-    if ev[:type] == :mouse_down
-      # Scroll bar hold start
-      log_y0 = @user_area_y0 + TOOLBAR_H
-      log_h = @user_area_height - TOOLBAR_H
-      sb = scrollbar_hit(x, y, @user_area_x0, log_y0, @user_area_width, log_h)
-      if sb
-        @scroll_hold = (sb == :up) ? -1 : 1
-        sb == :up ? scroll_up : scroll_down
-      end
-    elsif ev[:type] == :mouse_up
+    # The bar acts on the press and keeps going while held, so it is fed
+    # before anything else and its direction drives the repeat in on_update.
+    # The widget says which way; the log viewer moves half a page, which is
+    # its own step. Its value is overwritten from @scroll on the next redraw.
+    if @ui.handle(ev) == :sb
+      d = @ui.direction(:sb)
+      @scroll_hold = d
+      d < 0 ? scroll_up : scroll_down
+      return
+    end
+
+    if ev[:type] == :mouse_up
       # Stop scroll hold
       @scroll_hold = 0
 
@@ -190,9 +198,10 @@ class LogViewerApp < FmrbApp
 
       # Click on log area (not scroll bar) = toggle auto-scroll
       log_y0 = @user_area_y0 + TOOLBAR_H
-      log_h = @user_area_height - TOOLBAR_H
-      sb_check = scrollbar_hit(x, y, @user_area_x0, log_y0, @user_area_width, log_h)
-      if y >= log_y0 && sb_check.nil?
+      # Hoisted rather than written as !bar.hit?(...): Spinel emits broken C
+      # for a call negated inside a condition (ruby_writing_constraints.md).
+      on_bar = @ui.find(:sb).hit?(x, y)
+      if y >= log_y0 && !on_bar
         @auto_scroll = !@auto_scroll
         if @auto_scroll
           # Resuming AUTO: catch up on missed logs
