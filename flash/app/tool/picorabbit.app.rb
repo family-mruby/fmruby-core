@@ -36,6 +36,8 @@ class SlideShowApp < FmrbApp
     end
 
     load_presentation(@md_files[0])
+    @renderer.load_sprites if @renderer
+    draw_current
   end
 
   def scan_md_files
@@ -63,7 +65,6 @@ class SlideShowApp < FmrbApp
       @renderer.precompile(@result.slides)
       @slide_index = 0
       update_step
-      draw_current
       Log.info("Loaded #{filename}: #{@result.slides.length} slides")
     rescue => e
       Log.error("Failed to load #{filename}: #{e.message}")
@@ -182,16 +183,34 @@ class SlideShowApp < FmrbApp
     end
   end
 
+  # The race is two sprites composited over the slide, so a tick that changes
+  # nothing costs nothing: once a second is enough to walk the turtle. A jump
+  # is the exception -- at one frame a second it would not read as a hop, so
+  # the physics runs at ten while the rabbit is off the ground.
   def on_update
-    if @renderer && @result
-      @renderer.update_rabbit
-      # Only redraw timer/footer area, not full slide
-      @renderer.redraw_timer_area(@slide_index, @result.slides.length)
-    end
-    200
+    return 1000 unless @renderer && @result
+    was_jumping = @renderer.rabbit_jumping?
+    @renderer.update_rabbit if was_jumping
+    @gfx.present if @renderer.update_sprites(@slide_index, @result.slides.length)
+    was_jumping ? 100 : 1000
+  end
+
+  # Ctrl+Tab. The suspend hides the canvas, but a sprite lives in its own
+  # layer and would otherwise stay on top of the desktop.
+  def on_suspend
+    return unless @renderer
+    @renderer.sprites_visible = false
+    @gfx.present
+  end
+
+  def on_resume
+    return unless @renderer
+    @renderer.sprites_visible = true
+    draw_current
   end
 
   def on_destroy
+    @renderer.destroy_sprites if @renderer
     Log.info("SlideShow destroyed")
   end
 end

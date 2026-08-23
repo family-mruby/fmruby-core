@@ -7,7 +7,7 @@ module PicoRabbit
     attr_reader :name
     attr_accessor :bg, :text, :title, :title_bg, :bullet, :code_bg, :code_text,
                   :quote_bar, :quote_text, :footer_text, :footer_bg,
-                  :inline_code_bg, :inline_code_text, :timer_track, :timer_turtle, :timer_rabbit
+                  :inline_code_bg, :inline_code_text, :timer_track
 
     def initialize(name)
       @name = name
@@ -34,8 +34,6 @@ module PicoRabbit
       t.inline_code_bg = 0x24  # Dark gray
       t.inline_code_text = 0xFC # Yellow
       t.timer_track = 0x24     # Dark gray
-      t.timer_turtle = 0x1C    # Green
-      t.timer_rabbit = 0xE0    # Red
       t
     end
 
@@ -58,8 +56,6 @@ module PicoRabbit
       t.inline_code_bg = 0x24  # Dark gray
       t.inline_code_text = 0xFC # Yellow
       t.timer_track = 0x24     # Dark gray
-      t.timer_turtle = 0x1C    # Green
-      t.timer_rabbit = 0xE0    # Red
       t
     end
 
@@ -79,8 +75,6 @@ module PicoRabbit
       t.inline_code_bg = 0xDB
       t.inline_code_text = 0xE0
       t.timer_track = 0xDB
-      t.timer_turtle = 0x1C
-      t.timer_rabbit = 0xE0
       t
     end
 
@@ -114,8 +108,28 @@ module PicoRabbit
     MARGIN_X = 4
     MARGIN_Y = 2
     FOOTER_H = 10
-    TIMER_H = 4
+    TIMER_H = 16   # one sprite tall: the runners stand in this strip
     TITLE_BAR_H = 20
+
+    SPRITE_SIZE = 16
+    SPRITE_DIR = "/usr/share/picorabbit"
+    SPRITE_CACHE = "/cache/app/picorabbit"
+
+    # Frame order inside each SpriteInstance's image list.
+    USAGI_FILES = ["usagi_run1.bmp", "usagi_run2.bmp", "usagi_jump.bmp",
+                   "usagi_sleep.bmp", "usagi_hurry.bmp"]
+    KAME_FILES = ["kame_walk1.bmp", "kame_walk2.bmp", "kame_banzai.bmp"]
+    U_RUN1 = 0
+    U_RUN2 = 1
+    U_JUMP = 2
+    U_SLEEP = 3
+    U_HURRY = 4
+    K_WALK1 = 0
+    K_WALK2 = 1
+    K_BANZAI = 2
+
+    RUN_MS = 3000     # the rabbit keeps running this long after a page turn
+    LEAD = 0.10       # how far ahead/behind before it dozes or hurries
 
     def initialize(gfx, width, height, metadata = {})
       @gfx = gfx
@@ -126,6 +140,21 @@ module PicoRabbit
       @start_ms = Machine.board_millis
       @usagi_jump_y = 0
       @usagi_vy = 0
+      @last_turn_ms = @start_ms
+      # The track and the strip the runners stand in. A sprite's own ground
+      # row is 14 (tool/gen_picorabbit_sprites.rb), so a sprite drawn at
+      # @sprite_y puts its feet on the track line.
+      @track_left = MARGIN_X + 8
+      @track_w = @w - MARGIN_X - 8 - @track_left
+      @track_y = @h - 2
+      @sprite_y = @track_y - 14
+      @usagi = nil
+      @kame = nil
+      @usagi_x = nil
+      @usagi_y = nil
+      @usagi_frame = nil
+      @kame_x = nil
+      @kame_frame = nil
     end
 
     def has_timer?
@@ -136,20 +165,10 @@ module PicoRabbit
       @usagi_jump_y != 0 || @usagi_vy != 0
     end
 
-    # Partial redraw: only footer + timer area (no clear, no content re-render)
-    def redraw_timer_area(slide_idx, total_slides)
-      # Clear footer + timer + jump headroom area
-      jump_margin = 10
-      fy = @h - FOOTER_H - TIMER_H - jump_margin
-      @gfx.fill_rect(0, fy, @w, FOOTER_H + TIMER_H + jump_margin, @theme.bg)
-      render_footer(@last_slide, slide_idx, total_slides)
-      render_timer(slide_idx, total_slides)
-      @gfx.present
-    end
-
     def render_slide(slide, step, slide_idx, total_slides)
       @current_slide_idx = slide_idx
       @last_slide = slide
+      @last_turn_ms = Machine.board_millis
       @gfx.clear(@theme.bg)
 
       if slide.title_slide
@@ -161,10 +180,89 @@ module PicoRabbit
       # Footer
       render_footer(slide, slide_idx, total_slides)
 
-      # Timer (rabbit/turtle race)
-      render_timer(slide_idx, total_slides)
+      # The race track. The runners on it are sprites, composited on top, so
+      # this is the only part of the race the canvas carries.
+      render_track
+
+      # Place the runners before presenting: the page turn keeps its single
+      # present rather than growing a second one for the sprites.
+      update_sprites(slide_idx, total_slides)
 
       @gfx.present
+    end
+
+    # Load the eight frames and put the two runners on the start line. Called
+    # once, after the presentation is parsed. A deck with no allotted time has
+    # no race, so it loads nothing.
+    def load_sprites
+      return false unless has_timer?
+      @usagi_imgs = load_sprite_images(USAGI_FILES)
+      @kame_imgs = load_sprite_images(KAME_FILES)
+      @kame = ::SpriteInstance.new(@gfx, @kame_imgs,
+                                   x: sprite_x(0.0), y: @sprite_y, z: 2)
+      @usagi = ::SpriteInstance.new(@gfx, @usagi_imgs,
+                                    x: sprite_x(0.0), y: @sprite_y, z: 3)
+      ::Log.info("PicoRabbit: #{USAGI_FILES.length + KAME_FILES.length} sprite frames loaded")
+      true
+    end
+
+    def destroy_sprites
+      @usagi.destroy if @usagi
+      @kame.destroy if @kame
+      @usagi = nil
+      @kame = nil
+      destroy_sprite_images(@usagi_imgs)
+      destroy_sprite_images(@kame_imgs)
+      @usagi_imgs = nil
+      @kame_imgs = nil
+    end
+
+    # Ctrl+Tab parks the presentation. The canvas is hidden by the suspend,
+    # but a sprite is composited in its own layer, so it has to be told.
+    def sprites_visible=(flag)
+      @usagi.visible = flag if @usagi
+      @kame.visible = flag if @kame
+    end
+
+    # Move the runners to where the page and the clock say they are, and pick
+    # the frame each of them should be showing. Returns true only when
+    # something actually changed, which is the only time the caller presents.
+    def update_sprites(slide_idx, total_slides)
+      return false unless @usagi && @kame
+      now = Machine.board_millis
+
+      turtle_p = turtle_progress
+      kame_x = sprite_x(turtle_p)
+      kame_frame = turtle_frame(now, turtle_p)
+
+      rabbit_p = rabbit_progress(slide_idx, total_slides)
+      usagi_x = sprite_x(rabbit_p)
+      usagi_y = @sprite_y + @usagi_jump_y
+      usagi_frame = rabbit_frame(now, rabbit_p, turtle_p)
+
+      changed = false
+      if kame_x != @kame_x
+        @kame.move(kame_x, @sprite_y)
+        @kame_x = kame_x
+        changed = true
+      end
+      if kame_frame != @kame_frame
+        @kame.frame = kame_frame
+        @kame_frame = kame_frame
+        changed = true
+      end
+      if usagi_x != @usagi_x || usagi_y != @usagi_y
+        @usagi.move(usagi_x, usagi_y)
+        @usagi_x = usagi_x
+        @usagi_y = usagi_y
+        changed = true
+      end
+      if usagi_frame != @usagi_frame
+        @usagi.frame = usagi_frame
+        @usagi_frame = usagi_frame
+        changed = true
+      end
+      changed
     end
 
     def jump_rabbit
@@ -621,27 +719,64 @@ module PicoRabbit
       @gfx.draw_text(nx, fy + 1, num, @theme.footer_text, @theme.footer_bg)
     end
 
-    def render_timer(slide_idx, total_slides)
+    def render_track
       return unless @allotted_ms
-      ty = @h - TIMER_H
-      track_left = MARGIN_X + 8
-      track_right = @w - MARGIN_X - 8
-      track_w = track_right - track_left
+      @gfx.fill_rect(@track_left, @track_y, @track_w, 2, @theme.timer_track)
+    end
 
-      # Track line
-      @gfx.fill_rect(track_left, ty + 1, track_w, 2, @theme.timer_track)
+    def load_sprite_images(files)
+      list = []
+      i = 0
+      while i < files.length
+        name = files[i]
+        @gfx.sync_file("#{SPRITE_DIR}/#{name}", dest: "#{SPRITE_CACHE}/#{name}")
+        img = ::SpriteImage.new(@gfx, width: SPRITE_SIZE, height: SPRITE_SIZE,
+                                transparent_color: 0, use_transparent: true)
+        img.load_bmp("#{SPRITE_CACHE}/#{name}")
+        list << img
+        i += 1
+      end
+      list
+    end
 
-      # The rabbit carries the talk, the turtle carries the clock (Rabbit
-      # upstream; see doc/picorabbit/rabbit_behavior.md).
-      rabbit_x = track_left + (rabbit_progress(slide_idx, total_slides) * track_w).to_i
-      turtle_x = track_left + (turtle_progress * track_w).to_i
+    def destroy_sprite_images(list)
+      return unless list
+      i = 0
+      while i < list.length
+        list[i].destroy
+        i += 1
+      end
+      nil
+    end
 
-      update_rabbit
+    # Left edge of a 16px sprite whose middle sits at the given point on the
+    # track, kept inside the canvas at both ends.
+    def sprite_x(progress)
+      x = @track_left + (progress * @track_w).to_i - SPRITE_SIZE / 2
+      return 0 if x < 0
+      limit = @w - SPRITE_SIZE
+      x > limit ? limit : x
+    end
 
-      # Turtle: a solid square (green)
-      @gfx.fill_rect(turtle_x - 2, ty - 1, 4, 4, @theme.timer_turtle)
-      # Rabbit: a "*" that hops when it jumps (red)
-      @gfx.draw_text(rabbit_x - 2, ty - 2 + @usagi_jump_y, "*", @theme.timer_rabbit, @theme.bg)
+    # The turtle walks while there is time left and cheers when there is not.
+    def turtle_frame(now, turtle_p)
+      return K_BANZAI if turtle_p >= 1.0
+      (((now - @start_ms) / 1000) % 2) == 0 ? K_WALK1 : K_WALK2
+    end
+
+    # The rabbit runs for a few seconds after a page turn. After that its pose
+    # says how the talk is doing against the clock: dozing when it is well
+    # ahead, hurrying when it is well behind.
+    def rabbit_frame(now, rabbit_p, turtle_p)
+      return U_JUMP if rabbit_jumping?
+      since = now - @last_turn_ms
+      if since < RUN_MS
+        return ((since / 500) % 2) == 0 ? U_RUN1 : U_RUN2
+      end
+      lead = rabbit_p - turtle_p
+      return U_SLEEP if lead >= LEAD
+      return U_HURRY if lead <= -LEAD
+      U_RUN1
     end
 
     # How far the talk has come, 0..1. The title slide is not part of the
