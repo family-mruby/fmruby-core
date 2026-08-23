@@ -46,10 +46,54 @@ class FmrbGfx
   # flash/app/test/ja_width.app.rb, "ｱｲｳｴｵ|": misaki 26px (5x4 + 6),
   # efont 66px (5x12 + 6) -- the same as five kanji.
   FONT_METRICS = {
-    [:default] => { char_w: 6,  half_w: 6, kana_w: 4,  line_h: 8  },
-    [:ja, 8]   => { char_w: 8,  half_w: 4, kana_w: 4,  line_h: 8  },
-    [:ja, 12]  => { char_w: 12, half_w: 6, kana_w: 12, line_h: 12 },
+    [:default]     => { char_w: 6,  half_w: 6, kana_w: 4,  line_h: 8  },
+    [:ja, 8]       => { char_w: 8,  half_w: 4, kana_w: 4,  line_h: 8  },
+    [:ja, 12]      => { char_w: 12, half_w: 6, kana_w: 12, line_h: 12 },
+    [:ja, 16]      => { char_w: 16, half_w: 8, kana_w: 16, line_h: 16 },
+    # The bold cut is the same metal-width as the regular one: efont is
+    # fixed-pitch and the bold is drawn in the same cell.
+    [:ja_bold, 12] => { char_w: 12, half_w: 6, kana_w: 12, line_h: 12 },
   }
+
+  # What each machine carries. Fonts live in the display's flash, so what can
+  # be drawn is a property of the machine, not of the app. Both families
+  # carry the same set today -- the two extra efont cuts cost 758KB on the
+  # WROVER and its 2000K app partition still has 437KB free with them in --
+  # but Retro is the one with no room to spare, so the two rows stay apart
+  # and this is where a cut gets dropped if that changes. Dropping one here
+  # means dropping it in the display too (FMRB_FONT_JA_EXTRA in
+  # graphics_handler.cpp).
+  #
+  # An app names the font it wants and gets the nearest one this machine has;
+  # set_font answers with what it actually selected, so a caller that cares --
+  # one drawing its own bold, say -- can tell.
+  #
+  # The simulator follows the table of the family it stands in for, not what
+  # LovyanGFX happens to have compiled in, so a deck checked in a Retro sim
+  # looks like Retro.
+  FONT_AVAILABLE = {
+    "modern" => [[:default], [:ja, 8], [:ja, 12], [:ja, 16], [:ja_bold, 12]],
+    "retro"  => [[:default], [:ja, 8], [:ja, 12], [:ja, 16], [:ja_bold, 12]],
+  }
+
+  # Nearest thing this machine has to the font asked for: a size it does not
+  # carry falls back to 12, and a bold it does not carry to the regular cut.
+  def self.resolve_font(key)
+    have = FONT_AVAILABLE[FmrbConst::HW_FAMILY] || FONT_AVAILABLE["retro"]
+    return key if have.include?(key)
+    family = key[0]
+    if family == :ja_bold
+      plain = [:ja, key[1]]
+      return plain if have.include?(plain)
+      return [:ja, 12] if have.include?([:ja, 12])
+      return [:default]
+    end
+    if family == :ja
+      return [:ja, 12] if have.include?([:ja, 12])
+      return [:default]
+    end
+    [:default]
+  end
 
   # Initialize graphics context
   # @param canvas_id [Integer] Canvas ID for this graphics instance
@@ -66,13 +110,22 @@ class FmrbGfx
   end
 
   # Select the font family for subsequent draw_text calls on this canvas.
-  # @param family [Symbol] :default (Font0 6x8 ASCII) or :ja (Japanese)
-  # @param size [Integer, nil] Pixel height. :ja supports 8 (misaki) and
-  #   12 (efontJA_12). Ignored for :default.
+  #
+  # The font asked for may not be on this machine (see FONT_AVAILABLE), in
+  # which case the nearest one is selected instead. Returns what was actually
+  # selected as [family, size] (or [:default]), which is also what
+  # text_width and font_height then measure.
+  #
+  # @param family [Symbol] :default (Font0 6x8 ASCII), :ja (Japanese) or
+  #   :ja_bold (the bold cut of :ja)
+  # @param size [Integer, nil] Pixel height. :ja has 8 (misaki), 12 and 16
+  #   (efontJA); :ja_bold has 12. Ignored for :default.
   def set_font(family, size = nil)
-    @current_font = size ? [family, size] : [family]
-    size ? _set_font(family, size) : _set_font(family)
-    self
+    key = FmrbGfx.resolve_font(family == :default ? [:default]
+                                                  : [family, (size || 8)])
+    @current_font = key
+    key.length > 1 ? _set_font(key[0], key[1]) : _set_font(key[0])
+    key
   end
 
   # Set the text scale multiplier (1..4). Applies on top of the active font.

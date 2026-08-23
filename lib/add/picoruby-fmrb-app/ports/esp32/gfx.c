@@ -475,10 +475,15 @@ static mrb_value mrb_gfx_set_text_size(mrb_state *mrb, mrb_value self)
     return self;
 }
 
-// Graphics#set_font(family[, size])
-//   family: :default or :ja
-//   size:   pixel height. Supported JA sizes: 8 (misaki, matches system UI),
-//           12 (efontJA_12, readability). Ignored for :default.
+// Graphics#_set_font(family[, size])
+//   family: :default, :ja or :ja_bold
+//   size:   pixel height. JA: 8 (misaki, matches system UI), 12 and 16
+//           (efontJA); bold: 12. Ignored for :default.
+//
+// The Ruby wrapper has already put the request through the machine's font
+// table, so what arrives here is a font this machine carries. The display
+// side falls back once more (to 12, or to the regular cut) rather than draw
+// nothing, and logs when it does.
 static mrb_value mrb_gfx_set_font(mrb_state *mrb, mrb_value self)
 {
     mrb_sym family_sym;
@@ -499,11 +504,16 @@ static mrb_value mrb_gfx_set_font(mrb_state *mrb, mrb_value self)
         family = FMRB_LINK_GFX_FONT_FAMILY_DEFAULT;
     } else if (strcmp(family_name, "ja") == 0) {
         family = FMRB_LINK_GFX_FONT_FAMILY_JA;
-        if (size != 8 && size != 12) {
-            mrb_raisef(mrb, E_ARGUMENT_ERROR, "set_font(:ja, size): only size=8 or 12 is supported (got %d)", (int)size);
+        if (size != 8 && size != 12 && size != 16) {
+            mrb_raisef(mrb, E_ARGUMENT_ERROR, "set_font(:ja, size): only size=8, 12 or 16 is supported (got %d)", (int)size);
+        }
+    } else if (strcmp(family_name, "ja_bold") == 0) {
+        family = FMRB_LINK_GFX_FONT_FAMILY_JA_BOLD;
+        if (size != 12) {
+            mrb_raisef(mrb, E_ARGUMENT_ERROR, "set_font(:ja_bold, size): only size=12 is supported (got %d)", (int)size);
         }
     } else {
-        mrb_raisef(mrb, E_ARGUMENT_ERROR, "set_font: unknown family :%s (expected :default or :ja)", family_name);
+        mrb_raisef(mrb, E_ARGUMENT_ERROR, "set_font: unknown family :%s (expected :default, :ja or :ja_bold)", family_name);
     }
 
     gfx_cmd_t cmd;

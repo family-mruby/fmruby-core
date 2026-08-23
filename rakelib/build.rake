@@ -34,7 +34,12 @@ namespace :build do
     unless Dir.exist?('build')
       Rake::Task['set_target:linux'].invoke
     end
-    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" -DCMAKE_BUILD_TYPE=Debug build'"
+    # Which machine the sim stands in for. Reaches the C as
+    # FMRB_HW_FAMILY_MODERN (fmrb_hw_defines.cmake) and Ruby as
+    # FmrbConst::HW_FAMILY, so a Modern sim has Modern's fonts and a Retro
+    # sim has Retro's.
+    hw_family = MODERN_HW_TARGETS.include?(HW_TARGET) ? 'modern' : 'retro'
+    sh "#{DOCKER_CMD} bash -c 'export IDF_TARGET=linux && idf.py --preview -DSDKCONFIG_DEFAULTS=\"config/sdkconfig.defaults.linux\" -DFMRB_HW_FAMILY=#{hw_family} -DCMAKE_BUILD_TYPE=Debug build'"
     puts 'Linux build complete. Run with: ./build/fmruby-core.elf'
   end
 

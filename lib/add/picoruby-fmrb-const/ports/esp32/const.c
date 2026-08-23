@@ -353,6 +353,17 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "narya_v3"));
 #endif
 
+    // Which machine family this build is, or -- in the simulator -- stands
+    // in for: "modern" (ESP32-P4) or "retro" (ESP32-S3 + WROVER). BOARD says
+    // which board; this says which habits, for the things the two families
+    // differ on regardless of board. Fonts are the first: the display's flash
+    // decides what can be drawn (FmrbGfx::FONT_AVAILABLE).
+#if defined(FMRB_HW_FAMILY_MODERN)
+    mrb_define_const(mrb, const_module, "HW_FAMILY", mrb_str_new_cstr(mrb, "modern"));
+#else
+    mrb_define_const(mrb, const_module, "HW_FAMILY", mrb_str_new_cstr(mrb, "retro"));
+#endif
+
     // Process ID constants
     mrb_define_const(mrb, const_module, "PROC_ID_KERNEL", mrb_fixnum_value(PROC_ID_KERNEL));
     mrb_define_const(mrb, const_module, "PROC_ID_HOST", mrb_fixnum_value(PROC_ID_HOST));

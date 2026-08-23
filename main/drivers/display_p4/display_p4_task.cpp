@@ -1568,13 +1568,30 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 break;
             case FMRB_LINK_GFX_FONT_FAMILY_JA:
                 // size=8 -> misaki (matches the system 8px UI height),
-                // size=12 -> efontJA_12 (bundled with M5GFX), same
-                // mapping as the WROVER graphics_handler.
+                // 12 and 16 -> efontJA (bundled with M5GFX). Anything else
+                // lands on 12: a caller that cares which it got asks
+                // FmrbGfx#set_font, which answers from the same table.
                 if (cmd->size == 8) {
                     s->setFont(&fonts::misaki_8);
+                } else if (cmd->size == 16) {
+                    s->setFont(&fonts::efontJA_16);
                 } else {
+                    if (cmd->size != 12) {
+                        FMRB_LOGW(TAG, "SET_FONT: no JA %upx, using 12",
+                                  cmd->size);
+                    }
                     s->setFont(&fonts::efontJA_12);
                 }
+                break;
+            case FMRB_LINK_GFX_FONT_FAMILY_JA_BOLD:
+                // Only the 12px cut is carried. A heading is 16px and stands
+                // out by its size and its band, so its bold is not worth the
+                // flash.
+                if (cmd->size != 12) {
+                    FMRB_LOGW(TAG, "SET_FONT: no JA bold %upx, using 12",
+                              cmd->size);
+                }
+                s->setFont(&fonts::efontJA_12_b);
                 break;
             default:
                 FMRB_LOGW(TAG, "SET_FONT: unknown family=%u", cmd->family);

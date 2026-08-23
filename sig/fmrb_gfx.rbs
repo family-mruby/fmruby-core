@@ -192,8 +192,14 @@ class FmrbGfx
   # ```
   def draw_text: (Integer x, Integer y, String str, Integer color) -> FmrbGfx
 
-  # 字の種類をえらぶ
-  def set_font: (Symbol family) -> FmrbGfx
+  # 字の種類と大きさをえらぶ (無い字は近いものに変わる。選ばれた組を返す)
+  #
+  # family は :default (6x8 の英数)、:ja (日本語)、:ja_bold (:ja の太字)。
+  # size は画素の高さで、:ja は 8 と 12 と 16、:ja_bold は 12。持っている字は
+  # 機種で違う (Retro は 12 まで) ので、無い大きさや太字を頼むと近いものが
+  # 選ばれる。戻り値は実際に選ばれた [family, size] で、太字が無かったことも
+  # これで分かる (自分で太く描くときの判断に使う)。
+  def set_font: (Symbol family, ?Integer size) -> Array[untyped]
 
   # 字の大きさの倍率を決める
   def set_text_size: (Integer size) -> FmrbGfx

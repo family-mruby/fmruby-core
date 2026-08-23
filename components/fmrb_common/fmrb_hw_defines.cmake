@@ -4,6 +4,14 @@
 # Two independent axes:
 #   Chip generation (from IDF_TARGET):
 #     FMRB_HW_MODERN       ESP32-P4 (board-independent Modern code)
+#     FMRB_HW_FAMILY_MODERN  This build is a Modern machine, or a simulator
+#                          standing in for one. Unlike FMRB_HW_MODERN it is
+#                          also set for the Linux build (from FMRB_HW_FAMILY,
+#                          which rake passes from FMRB_HW_TARGET), so code
+#                          that only asks "which machine's habits?" -- what
+#                          fonts exist, say -- gets the same answer in the
+#                          simulator as on the device. Code that touches P4
+#                          hardware must keep using FMRB_HW_MODERN.
 #   Board (from FMRB_HW_TARGET):
 #     FMRB_HW_TAB5         M5Stack Tab5 (current Modern dev board)
 #     FMRB_HW_NARYAV4      Future dedicated Narya v4 P4 board (not designed
@@ -17,10 +25,16 @@
 # register call), where target_compile_definitions does not exist.
 function(fmrb_add_hw_defines)
     if(IDF_TARGET STREQUAL "linux")
+        # The simulator has no hardware to speak of, but it does stand in for
+        # one machine or the other, and rake says which.
+        if(FMRB_HW_FAMILY STREQUAL "modern")
+            target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_FAMILY_MODERN)
+        endif()
         return()
     endif()
     if(IDF_TARGET STREQUAL "esp32p4")
         target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_MODERN)
+        target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_FAMILY_MODERN)
         if(FMRB_HW_TARGET STREQUAL "NARYAv4")
             target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_HW_NARYAV4)
         else()

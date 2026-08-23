@@ -348,11 +348,15 @@ typedef struct __attribute__((packed)) {
 // Font family identifiers for fmrb_link_graphics_set_font_t
 #define FMRB_LINK_GFX_FONT_FAMILY_DEFAULT 0  // LovyanGFX Font0 (6x8 ASCII)
 #define FMRB_LINK_GFX_FONT_FAMILY_JA      1  // efontJA_* (UTF-8, Japanese)
+// Bold cut of the same family. A machine that does not carry it falls back to
+// the regular cut and says so; the caller learns which it got from what
+// FmrbGfx#set_font returns, and can draw its own bold instead.
+#define FMRB_LINK_GFX_FONT_FAMILY_JA_BOLD 2
 
 typedef struct __attribute__((packed)) {
     uint16_t canvas_id;
     uint8_t family;  // FMRB_LINK_GFX_FONT_FAMILY_*
-    uint8_t size;    // Pixel height (used for JA: 12 currently supported)
+    uint8_t size;    // Pixel height (JA: 8 misaki, 12 and 16 efont; bold: 12)
 } fmrb_link_graphics_set_font_t;
 
 // Canvas management structures
