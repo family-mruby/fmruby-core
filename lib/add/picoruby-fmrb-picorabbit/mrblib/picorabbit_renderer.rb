@@ -112,6 +112,8 @@ module PicoRabbit
     TIMER_H = 16   # one sprite tall: the runners stand in this strip
     RUBY_H = 8     # a ruby line is one size 1 cell above its base
     MAX_TEXT_SIZE = 3
+    CLOCK_CHARS = 7    # "||-MM:SS" at its longest, right-aligned in its box
+    INDEX_ROWS = 20    # rows per column in the index; past that it goes to two
 
     SPRITE_SIZE = 16
     SPRITE_DIR = "/usr/share/picorabbit"
@@ -172,6 +174,150 @@ module PicoRabbit
       @usagi_frame = nil
       @kame_x = nil
       @kame_frame = nil
+      @paused_ms = nil
+      @clock_shown = false
+      @clock_hidden = false
+      @clock_text = nil
+      @clock_negative = false
+      @clock_x = @w
+      @time_up_fired = false
+      @goal_idx = nil
+    end
+
+    # Which slide is the finish line. nil means the last one.
+    def goal_index=(idx)
+      @goal_idx = idx
+    end
+
+    # ---- the clock -------------------------------------------------------
+
+    def timer_paused?
+      @paused_ms != nil
+    end
+
+    def pause_timer
+      @paused_ms = Machine.board_millis unless @paused_ms
+    end
+
+    # Give back the time that stood still, so the turtle carries on from
+    # where it stopped rather than jumping forward.
+    def resume_timer
+      return unless @paused_ms
+      @start_ms += Machine.board_millis - @paused_ms
+      @paused_ms = nil
+    end
+
+    def clock_visible=(flag)
+      @clock_shown = flag
+    end
+
+    # Keep the clock off the slide whatever the presenter set, for the one
+    # case where the slide is not being presented but photographed: an
+    # exported picture should not carry the time left in somebody's talk.
+    def clock_hidden=(flag)
+      @clock_hidden = flag
+    end
+
+    # A paused clock always shows itself: a presenter has to be able to see
+    # that it is stopped.
+    def clock_visible?
+      return false if @clock_hidden
+      @clock_shown || timer_paused?
+    end
+
+    # True exactly once each time the clock runs out. reset_timer re-arms it.
+    def take_time_up
+      return false unless @allotted_ms
+      unless turtle_progress >= 1.0
+        @time_up_fired = false
+        return false
+      end
+      return false if @time_up_fired
+      @time_up_fired = true
+      true
+    end
+
+    # ---- index ----------------------------------------------------------
+
+    # The whole deck as a list of headings, one line each, at size 1. The
+    # selected row is a bar; the slide the talk is actually on is marked with
+    # a caret, so the two are told apart while the selection moves.
+    def render_index(slides, current, selected)
+      @gfx.clear(@theme.bg)
+      @gfx.fill_rect(0, 0, @w, CHAR_H + 4, @theme.title_bg)
+      set_ts(1)
+      @gfx.draw_text(MARGIN_X, 2, "Index", @theme.title, @theme.title_bg)
+
+      # Where the talk is and how much time is left, in the header: the index
+      # is opened to decide where to jump given the time remaining, and that
+      # decision should not need a second screen. Same reading as the footer
+      # clock, red once it is over.
+      pos = "#{current + 1}/#{slides.length}"
+      px = @w - MARGIN_X - pos.length * CHAR_W
+      @gfx.draw_text(px, 2, pos, @theme.title, @theme.title_bg)
+      if has_timer?
+        left = clock_text
+        colour = @clock_negative ? 0xE0 : @theme.title
+        @gfx.draw_text(px - 4 - left.length * CHAR_W, 2, left, colour,
+                       @theme.title_bg)
+      end
+
+      n = slides.length
+      n = INDEX_ROWS * 2 if n > INDEX_ROWS * 2
+      cols = n > INDEX_ROWS ? 2 : 1
+      col_w = (@w - MARGIN_X * 2) / cols
+      i = 0
+      while i < n
+        x = MARGIN_X + (i / INDEX_ROWS) * col_w
+        y = index_row_y(i)
+        if i == selected
+          @gfx.fill_rect(x - 1, y - 1, col_w - 2, CHAR_H + 2, @theme.title_bg)
+        end
+        fg = i == selected ? @theme.title : @theme.text
+        bg = i == selected ? @theme.title_bg : @theme.bg
+        mark = i == current ? ">" : " "
+        @gfx.draw_text_mixed(x, y, mark + index_label(i, slides[i], col_w - 14),
+                             fg, bg)
+        i += 1
+      end
+      @gfx.present
+    end
+
+    # Top of row i, so a tap can be turned back into a row.
+    def index_row_y(i)
+      CHAR_H + 8 + (i % INDEX_ROWS) * LINE_H
+    end
+
+    # Which row a tap at (x, y) landed on, or nil.
+    def index_hit(x, y, count)
+      n = count > INDEX_ROWS * 2 ? INDEX_ROWS * 2 : count
+      cols = n > INDEX_ROWS ? 2 : 1
+      col_w = (@w - MARGIN_X * 2) / cols
+      col = (x - MARGIN_X) / col_w
+      col = 0 if col < 0
+      return nil if col >= cols
+      row = (y - (CHAR_H + 8) + 1) / LINE_H
+      return nil if row < 0 || row >= INDEX_ROWS
+      i = col * INDEX_ROWS + row
+      i < n ? i : nil
+    end
+
+    # Repaint just the box the remaining time sits in, and only when the text
+    # changed. Returns true when it drew, so the caller can fold it into the
+    # present the runners already asked for.
+    def draw_clock
+      text = clock_visible? ? clock_text : ""
+      return false if text == @clock_text
+      @clock_text = text
+      fy = @h - FOOTER_H - TIMER_H
+      @gfx.fill_rect(@clock_x, fy + 1, CLOCK_CHARS * CHAR_W, CHAR_H,
+                     @theme.footer_bg)
+      return true if text.length == 0
+      set_ts(1)
+      colour = @clock_negative ? 0xE0 : @theme.footer_text
+      x = @clock_x + (CLOCK_CHARS - text.length) * CHAR_W
+      @gfx.draw_text(x, fy + 1, text, colour, @theme.footer_bg)
+      true
     end
 
     def has_timer?
@@ -250,7 +396,7 @@ module PicoRabbit
 
       turtle_p = turtle_progress
       kame_x = sprite_x(turtle_p)
-      kame_frame = turtle_frame(now, turtle_p)
+      kame_frame = turtle_frame(turtle_p)
 
       rabbit_p = rabbit_progress(slide_idx, total_slides)
       usagi_x = sprite_x(rabbit_p)
@@ -287,8 +433,11 @@ module PicoRabbit
     end
 
     # Put the turtle back on the start line (Alt+t upstream, plain "t" here).
+    # A stopped clock starts again: the presenter asked for a fresh run.
     def reset_timer
       @start_ms = Machine.board_millis
+      @paused_ms = nil
+      @time_up_fired = false
     end
 
     def update_rabbit
@@ -392,18 +541,16 @@ module PicoRabbit
         when :bullet
           indent = content_x + elem.level * @char_w * 2
           marker = elem.level == 0 ? "- " : "  - "
-          set_ts(@ts)
-          @gfx.draw_text(indent, y, marker, @theme.bullet, @theme.bg)
-          mw = marker.length * @char_w
-          tx = indent + mw
-          y = draw_rich_text(tx, y, elem.text || "",
-                             content_x + content_w - tx, nil, @theme.text)
+          y = draw_list_item(indent, y, marker, elem.text,
+                             content_x + content_w)
 
         when :numbered
           indent = content_x + elem.level * @char_w * 2
-          tx = indent + @char_w * 2
-          y = draw_rich_text(tx, y, elem.text || "",
-                             content_x + content_w - tx, nil, @theme.text)
+          # The author's own number, so a list that restarts or repeats one
+          # reads as written.
+          marker = "#{elem.number || 1}. "
+          y = draw_list_item(indent, y, marker, elem.text,
+                             content_x + content_w)
 
         when :code_block
           if elem.text.is_a?(Array)
@@ -488,6 +635,20 @@ module PicoRabbit
       end
     end
 
+    # One list item: its marker, then its text wrapped to what is left of the
+    # line. The text is laid out before the marker is drawn because the marker
+    # follows the base line, which ruby on the first line moves.
+    def draw_list_item(indent, y, marker, text, right_x)
+      tx = indent + marker.length * @char_w
+      # Laying out measures at size 1, so the body size goes on after it and
+      # not before, or the marker comes out one size too small.
+      lines = layout_rich_text(parse_inline(text || ""), right_x - tx)
+      set_ts(@ts)
+      @gfx.draw_text(indent, base_line_y(y, lines), marker,
+                     @theme.bullet, @theme.bg)
+      draw_rich_lines(tx, y, lines, right_x - tx, nil, @theme.text)
+    end
+
     # Draw text with inline formatting (**bold** and `code`), wrapping to
     # max_w. The fit is measured in pixels with text_width, not in character
     # cells, so a line of CJK (8px per glyph, drawn with misaki_8) breaks
@@ -499,8 +660,16 @@ module PicoRabbit
     # Returns the y of the line after the last one drawn.
     def draw_rich_text(x, y, text, max_w, align, color = nil)
       return y + @line_h unless text
+      draw_rich_lines(x, y, layout_rich_text(parse_inline(text), max_w),
+                      max_w, align, color)
+    end
+
+    # Draw lines that are already laid out. Split from draw_rich_text for the
+    # callers that have to know about the first line before they draw beside
+    # it -- a list marker sits on the base line, and ruby on that line pushes
+    # the base down -- so they can lay the text out once and still draw here.
+    def draw_rich_lines(x, y, lines, max_w, align, color = nil)
       color = @theme.text unless color
-      lines = layout_rich_text(parse_inline(text), max_w)
       n = lines.length
       return y + @line_h if n == 0
       i = 0
@@ -519,6 +688,14 @@ module PicoRabbit
         i += 1
       end
       y
+    end
+
+    # Where the base of the first line sits. A line carrying ruby draws its
+    # body one size 1 cell lower to leave room for the reading, and anything
+    # drawn alongside it (a bullet, a list number) has to drop with it.
+    def base_line_y(y, lines)
+      first = lines[0]
+      (first && first[2]) ? y + RUBY_H : y
     end
 
     # Flow inline segments into lines that fit max_w.
@@ -709,6 +886,15 @@ module PicoRabbit
 
     # Drop trailing characters until the string fits w at the current text
     # size. Titles are short, so the repeated measuring costs nothing.
+    # "N. heading", cut to fit. A title slide's heading can carry a <br>, so
+    # only its first line goes in the list.
+    def index_label(i, slide, max_w)
+      title = slide.title || ""
+      nl = title.index("\n")
+      title = title[0, nl] if nl
+      truncate_to_width("#{i + 1}. #{title}", max_w, 1)
+    end
+
     def truncate_to_width(str, w, size)
       return str if w1(str) * size <= w
       n = str.length
@@ -834,11 +1020,17 @@ module PicoRabbit
         @gfx.draw_text_mixed(MARGIN_X, fy + 1, ft, @theme.footer_text, @theme.footer_bg)
       end
 
-      # Page number on right
+      # Page number on right. The clock's box is measured against the widest
+      # the number can get, so it never moves as the pages go by.
       num = "#{slide_idx + 1}/#{total_slides}"
       nx = @w - num.length * CHAR_W - MARGIN_X
       set_ts(1)
       @gfx.draw_text(nx, fy + 1, num, @theme.footer_text, @theme.footer_bg)
+
+      widest = "#{total_slides}/#{total_slides}".length * CHAR_W
+      @clock_x = @w - MARGIN_X - widest - 4 - CLOCK_CHARS * CHAR_W
+      @clock_text = nil
+      draw_clock
     end
 
     def render_track
@@ -881,9 +1073,11 @@ module PicoRabbit
     end
 
     # The turtle walks while there is time left and cheers when there is not.
-    def turtle_frame(now, turtle_p)
+    # Its stride is counted off the clock it carries, not off the wall, so a
+    # paused clock stops its legs as well as its position.
+    def turtle_frame(turtle_p)
       return K_BANZAI if turtle_p >= 1.0
-      (((now - @start_ms) / 1000) % 2) == 0 ? K_WALK1 : K_WALK2
+      ((elapsed_ms / 1000) % 2) == 0 ? K_WALK1 : K_WALK2
     end
 
     # The rabbit runs for a few seconds after a page turn. After that its pose
@@ -902,11 +1096,14 @@ module PicoRabbit
     end
 
     # How far the talk has come, 0..1. The title slide is not part of the
-    # race: the first content slide is the start line and the last slide is
-    # the goal. A deck with fewer than three slides is always at the goal.
+    # race: the first content slide is the start line, and the finish line is
+    # the last slide unless a {::goal/} named an earlier one -- anything past
+    # it (questions, an appendix) leaves the rabbit sitting at the goal.
+    # A deck with fewer than three slides is always at the goal.
     def rabbit_progress(slide_idx, total_slides)
-      return 1.0 if total_slides < 3
-      p = (slide_idx - 1).to_f / (total_slides - 2)
+      goal = @goal_idx ? @goal_idx : total_slides - 1
+      return 1.0 if goal < 2
+      p = (slide_idx - 1).to_f / (goal - 1)
       return 0.0 if p < 0.0
       return 1.0 if p > 1.0
       p
@@ -915,9 +1112,33 @@ module PicoRabbit
     # How much of the allotted time is gone, 0..1. Upstream keeps walking
     # past the goal; we stop there, because P1 has the turtle cheer instead.
     def turtle_progress
-      elapsed = Machine.board_millis - @start_ms
-      p = elapsed.to_f / @allotted_ms
+      p = elapsed_ms.to_f / @allotted_ms
       p > 1.0 ? 1.0 : p
+    end
+
+    # Time the talk has taken. A paused clock reads the moment it stopped.
+    def elapsed_ms
+      (@paused_ms || Machine.board_millis) - @start_ms
+    end
+
+    # "MM:SS" left, "-MM:SS" once it is over, "||" in front while stopped.
+    def clock_text
+      return "" unless @allotted_ms
+      left = @allotted_ms - elapsed_ms
+      @clock_negative = left < 0
+      left = -left if @clock_negative
+      secs = left / 1000
+      mm = secs / 60
+      ss = secs % 60
+      out = +""
+      out << "||" if timer_paused?
+      out << "-" if @clock_negative
+      out << "0" if mm < 10
+      out << mm.to_s
+      out << ":"
+      out << "0" if ss < 10
+      out << ss.to_s
+      out
     end
 
     # Read the allotted time out of the frontmatter.

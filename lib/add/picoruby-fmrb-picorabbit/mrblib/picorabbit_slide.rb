@@ -5,6 +5,9 @@ module PicoRabbit
   class Element
     attr_reader :type, :text, :level
     attr_accessor :align
+    # The number a :numbered item was written with, so the list reads the way
+    # its author numbered it (1. 1. 1. included) rather than by its position.
+    attr_accessor :number
     # Cached Proc for :fmrb_code elements (compiled once by the renderer;
     # eval per render would rerun the mruby compiler on the task C stack).
     attr_accessor :compiled_proc
@@ -14,6 +17,7 @@ module PicoRabbit
       @text = text
       @level = level
       @align = nil
+      @number = nil
       @compiled_proc = nil
     end
   end
@@ -21,11 +25,16 @@ module PicoRabbit
   class Slide
     attr_reader :title, :elements
     attr_accessor :title_slide
+    # Marked with {::goal/}: the finish line of the rabbit's race, so a Q&A
+    # or an appendix can sit past it without counting towards the talk's
+    # progress (upstream's image-slide-number-last-slide).
+    attr_accessor :goal
 
     def initialize(title, elements)
       @title = title
       @elements = elements
       @title_slide = false
+      @goal = false
     end
 
     # Count wait markers to determine number of steps

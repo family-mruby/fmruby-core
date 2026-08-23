@@ -18,6 +18,8 @@ module PicoRabbit
       code_lines = []
       metadata = {}
 
+      current_goal = false
+
       lines = split_lines(content)
 
       # Parse YAML frontmatter (--- delimited block at the start)
@@ -74,7 +76,10 @@ module PicoRabbit
         # Heading: start a new slide
         if line.start_with?("# ")
           if current_title
-            slides << Slide.new(current_title, current_elements)
+            sl = Slide.new(current_title, current_elements)
+            sl.goal = current_goal
+            slides << sl
+            current_goal = false
           end
           current_title = line[2, line.length - 2].strip.gsub("<br>", "\n")
           current_elements = []
@@ -84,6 +89,12 @@ module PicoRabbit
         # Wait marker
         if line.strip == "{::wait/}"
           current_elements << Element.new(:wait)
+          next
+        end
+
+        # Goal marker: draws nothing, marks the slide it sits on.
+        if line.strip == "{::goal/}"
+          current_goal = true
           next
         end
 
@@ -156,7 +167,9 @@ module PicoRabbit
             indent = line.length - stripped.length
             level = indent / 2
             text = stripped[dot_pos + 2, stripped.length - dot_pos - 2]
-            current_elements << Element.new(:numbered, text, level)
+            item = Element.new(:numbered, text, level)
+            item.number = num_str.to_i
+            current_elements << item
             next
           end
         end
@@ -172,7 +185,9 @@ module PicoRabbit
 
       # Save last slide
       if current_title
-        slides << Slide.new(current_title, current_elements)
+        sl = Slide.new(current_title, current_elements)
+        sl.goal = current_goal
+        slides << sl
       end
 
       ParseResult.new(slides, metadata)
