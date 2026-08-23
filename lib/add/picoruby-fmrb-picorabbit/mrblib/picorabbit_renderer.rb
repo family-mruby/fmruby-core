@@ -490,12 +490,19 @@ module PicoRabbit
 
       y = (@h - total_h) / 2
 
+      # The title sits on a band of title_bg, as the heading of a content
+      # slide does: the default theme's title colour is meant for that band
+      # and is unreadable straight on the page background (yellow on white
+      # on a Tab5). The band spans the width and the title lines' height.
+      band_h = lines.length * (@head_h + 4)
+      @gfx.fill_rect(0, y - 2, @w, band_h + 4, @theme.title_bg)
+
       i = 0
       while i < lines.length
         line = lines[i]
         x = (@w - w1(line) * @hs) / 2
         set_ts(@hs)
-        @gfx.draw_text_mixed(x, y, line, @theme.title, @theme.bg)
+        @gfx.draw_text_mixed(x, y, line, @theme.title, @theme.title_bg)
         y += @head_h + 4
         i += 1
       end

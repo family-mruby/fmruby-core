@@ -30,9 +30,11 @@
 # In the menu: Up/Down/PgUp/PgDn/Home/End move the selection and a tap picks a
 # row; Enter starts, e exports, q or Esc quits.
 #
-# A tap goes forward on the right half of the screen and back on the left;
-# the middle and right buttons go back. Like upstream's click, a tap skips
-# the wait steps rather than walking them.
+# A one-finger tap (left button) goes forward; a two-finger tap (right
+# button) or the middle button goes back. Where the tap lands is not looked
+# at -- the Tab5 touch is a trackpad, so a tap clicks at the cursor, not at
+# the finger. Like upstream's click, a tap skips the wait steps rather than
+# walking them.
 
 class SlideShowApp < FmrbApp
   # Where decks live. The second is the card, and is simply absent on a
@@ -687,8 +689,11 @@ class SlideShowApp < FmrbApp
     if ev[:type] == :mouse_up
       return clear_overlay if @overlay
       # Upstream's click is "next slide", not a wait step, so a tap skips
-      # the steps too. Right half forward, left half back.
-      if (ev[:button] || 1) == 1 && (ev[:x] || 0) >= @window_width / 2
+      # the steps too. The position is deliberately not looked at: the Tab5
+      # touch is a trackpad (a tap clicks wherever the cursor already is),
+      # so a left/right split reads the cursor, not the finger. One finger
+      # forward; two fingers (a right click) or a middle button back.
+      if (ev[:button] || 1) == 1
         next_slide
       else
         prev_slide
