@@ -95,6 +95,8 @@ $fmrb_y = y + 12 + rows.length * 10 + 4
 - 320x240 `RGB332`
 - PNG image support
 
+![the desktop](images/desktop.png)
+
 {::wait/}
 
 > Canvas layering with z-order

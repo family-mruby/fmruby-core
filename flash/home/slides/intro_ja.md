@@ -75,6 +75,10 @@ end
 
 {:.center}
 
+![60%](images/desktop.png)
+
+{:.center}
+
 # これから
 
 - 日本語の入力と表示を、もっと当たり前に
