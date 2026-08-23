@@ -7,7 +7,7 @@ module PicoRabbit
     attr_reader :name
     attr_accessor :bg, :text, :title, :title_bg, :bullet, :code_bg, :code_text,
                   :quote_bar, :quote_text, :footer_text, :footer_bg,
-                  :inline_code_bg, :inline_code_text, :timer_track
+                  :inline_code_bg, :inline_code_text
 
     def initialize(name)
       @name = name
@@ -33,7 +33,6 @@ module PicoRabbit
       t.footer_bg = ::FmrbConst::THEME_WINDOW_BG
       t.inline_code_bg = 0x24  # Dark gray
       t.inline_code_text = 0xFC # Yellow
-      t.timer_track = 0x24     # Dark gray
       t
     end
 
@@ -55,7 +54,6 @@ module PicoRabbit
       t.footer_bg = 0x00       # Black
       t.inline_code_bg = 0x24  # Dark gray
       t.inline_code_text = 0xFC # Yellow
-      t.timer_track = 0x24     # Dark gray
       t
     end
 
@@ -74,7 +72,6 @@ module PicoRabbit
       t.footer_bg = 0xFF
       t.inline_code_bg = 0xDB
       t.inline_code_text = 0xE0
-      t.timer_track = 0xDB
       t
     end
 
@@ -108,8 +105,15 @@ module PicoRabbit
     CHAR_H = 8     # Font size 1 character height
     LINE_H = 10    # Line height with spacing
     MARGIN_X = 4
-    FOOTER_H = 10
-    TIMER_H = 16   # one sprite tall: the runners stand in this strip
+    # The bottom strip: one sprite tall. The runners stand in it with the
+    # start and goal flags, and the page number and clock sit at its right
+    # end. No rule above it and no track line under the runners -- the strip
+    # is told apart from the body by the runners alone.
+    FOOTER_H = 16
+    FLAG_H = 12        # pole height; the cloth hangs from its top
+    FLAG_W = 6
+    FLAG_START = 0xE0  # red, as upstream's start flag
+    FLAG_GOAL = 0x03   # blue, as upstream's goal flag
     RUBY_H = 8     # a ruby line is one size 1 cell above its base
     MAX_TEXT_SIZE = 3
     CLOCK_CHARS = 7    # "||-MM:SS" at its longest, right-aligned in its box
@@ -160,13 +164,17 @@ module PicoRabbit
       @usagi_jump_y = 0
       @usagi_vy = 0
       @last_turn_ms = @start_ms
-      # The track and the strip the runners stand in. A sprite's own ground
-      # row is 14 (tool/gen_picorabbit_sprites.rb), so a sprite drawn at
-      # @sprite_y puts its feet on the track line.
-      @track_left = MARGIN_X + 8
-      @track_w = @w - MARGIN_X - 8 - @track_left
-      @track_y = @h - 2
-      @sprite_y = @track_y - 14
+      # The runners' strip. A sprite's own ground row is 14
+      # (tool/gen_picorabbit_sprites.rb), so drawn at @sprite_y = @h - 16 its
+      # feet land one row above the bottom edge, level with the flag poles.
+      # The track runs pole to pole: from the start flag at the left margin
+      # to the goal flag just short of the clock and page number, whose
+      # x is fixed in render_footer from the widest the number can get.
+      @sprite_y = @h - FOOTER_H
+      @track_left = MARGIN_X + 2
+      widest = CHAR_W * 2  # placeholder until render_footer measures
+      @clock_x = @w - MARGIN_X - widest - 4 - CLOCK_CHARS * CHAR_W
+      @track_w = @clock_x - 6 - @track_left
       @usagi = nil
       @kame = nil
       @usagi_x = nil
@@ -309,14 +317,14 @@ module PicoRabbit
       text = clock_visible? ? clock_text : ""
       return false if text == @clock_text
       @clock_text = text
-      fy = @h - FOOTER_H - TIMER_H
-      @gfx.fill_rect(@clock_x, fy + 1, CLOCK_CHARS * CHAR_W, CHAR_H,
+      ty = @h - FOOTER_H + 4
+      @gfx.fill_rect(@clock_x, ty, CLOCK_CHARS * CHAR_W, CHAR_H,
                      @theme.footer_bg)
       return true if text.length == 0
       set_ts(1)
       colour = @clock_negative ? 0xE0 : @theme.footer_text
       x = @clock_x + (CLOCK_CHARS - text.length) * CHAR_W
-      @gfx.draw_text(x, fy + 1, text, colour, @theme.footer_bg)
+      @gfx.draw_text(x, ty, text, colour, @theme.footer_bg)
       true
     end
 
@@ -340,11 +348,10 @@ module PicoRabbit
         render_content_slide(slide, step)
       end
 
-      # Footer
+      # Footer: page number, clock box, and the two flags. The runners are
+      # sprites composited on top, so the flags are the only part of the
+      # race the canvas carries.
       render_footer(slide, slide_idx, total_slides)
-
-      # The race track. The runners on it are sprites, composited on top, so
-      # this is the only part of the race the canvas carries.
       render_track
 
       # Place the runners before presenting: the page turn keeps its single
@@ -529,7 +536,7 @@ module PicoRabbit
       y = @title_bar_h + 4
       content_x = MARGIN_X
       content_w = @w - MARGIN_X * 2
-      max_y = @h - FOOTER_H - TIMER_H - 4
+      max_y = @h - FOOTER_H - 4
       wait_seen = 0
 
       slide.elements.each do |elem|
@@ -1015,34 +1022,40 @@ module PicoRabbit
       end
     end
 
+    # The strip carries no slide title: the heading is already at the top of
+    # the same slide, and upstream's footer shows the number alone.
     def render_footer(slide, slide_idx, total_slides)
-      fy = @h - FOOTER_H - TIMER_H
+      fy = @h - FOOTER_H
       @gfx.fill_rect(0, fy, @w, FOOTER_H, @theme.footer_bg)
-      @gfx.draw_line(0, fy, @w, fy, @theme.footer_text)
 
-      # Slide title on left
-      if slide && slide.title && !slide.title_slide
-        ft = truncate_to_width(slide.title, @w / 2, 1)
-        set_ts(1)
-        @gfx.draw_text_mixed(MARGIN_X, fy + 1, ft, @theme.footer_text, @theme.footer_bg)
-      end
-
-      # Page number on right. The clock's box is measured against the widest
-      # the number can get, so it never moves as the pages go by.
+      # Page number at the right, centred in the strip. The clock's box is
+      # measured against the widest the number can get, so neither it nor
+      # the goal flag moves as the pages go by.
       num = "#{slide_idx + 1}/#{total_slides}"
       nx = @w - num.length * CHAR_W - MARGIN_X
       set_ts(1)
-      @gfx.draw_text(nx, fy + 1, num, @theme.footer_text, @theme.footer_bg)
+      @gfx.draw_text(nx, fy + 4, num, @theme.footer_text, @theme.footer_bg)
 
       widest = "#{total_slides}/#{total_slides}".length * CHAR_W
       @clock_x = @w - MARGIN_X - widest - 4 - CLOCK_CHARS * CHAR_W
+      @track_w = @clock_x - 6 - @track_left
       @clock_text = nil
       draw_clock
     end
 
+    # The start and goal flags, one at each end of the track. A runner at
+    # progress 0 or 1 stands on the pole.
     def render_track
       return unless @allotted_ms
-      @gfx.fill_rect(@track_left, @track_y, @track_w, 2, @theme.timer_track)
+      draw_flag(@track_left, FLAG_START)
+      draw_flag(@track_left + @track_w, FLAG_GOAL)
+    end
+
+    # A pole with the cloth to its right, feet on the same row as the runners.
+    def draw_flag(x, colour)
+      top = @h - 2 - FLAG_H
+      @gfx.fill_rect(x, top, 1, FLAG_H, @theme.footer_text)
+      @gfx.fill_rect(x + 1, top, FLAG_W, 4, colour)
     end
 
     def load_sprite_images(files)
