@@ -74,7 +74,12 @@ typedef enum {
     // Stateless sub-rect stamp from a SpriteImage onto a canvas. No
     // SpriteInstance allocated. Source pixels equal to the SpriteImage's
     // transparent_color (when use_transparent is set) are skipped.
-    GFX_CMD_DRAW_TILE            // Async
+    GFX_CMD_DRAW_TILE,           // Async
+    // Write the last presented frame to a file on the display side. Async on
+    // this side (it rides the queue so it stays behind the PRESENT it belongs
+    // to); the display side does the encode and the write before it takes the
+    // next command.
+    GFX_CMD_EXPORT_FRAME         // Async
 } gfx_cmd_type_t;
 
 // Graphics command structure
@@ -203,6 +208,11 @@ typedef struct {
             uint16_t image_id;
             char path[120];
         } load_sprite_image_bmp;
+        // Destination path on the display side's filesystem, NUL-terminated
+        // and truncated into this buffer by the builder.
+        struct {
+            char path[120];
+        } export_frame;
         struct {
             uint16_t instance_id;
         } delete_sprite_instance;

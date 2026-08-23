@@ -13,6 +13,8 @@
 
 #include "fmrb_log.h"
 #include "driver/jpeg_encode.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/semphr.h"
 
 #include <string.h>
 
@@ -26,6 +28,36 @@ static size_t   s_out_size = 0;
 static uint16_t s_src_w = 0, s_src_h = 0;
 static uint16_t s_pad_w = 0;
 static uint8_t  s_quality = 80;
+// Guards the two shared buffers for the whole of an encode-and-use; see the
+// header. Created on the first lock so a caller that arrives before init
+// still serialises.
+static SemaphoreHandle_t s_mutex = NULL;
+static portMUX_TYPE s_mutex_lock = portMUX_INITIALIZER_UNLOCKED;
+
+fmrb_err_t rd_encoder_jpeg_lock(uint32_t timeout_ms)
+{
+    if (!s_mutex) {
+        SemaphoreHandle_t m = xSemaphoreCreateMutex();
+        if (!m) return FMRB_ERR_NO_MEMORY;
+        portENTER_CRITICAL(&s_mutex_lock);
+        if (s_mutex) {
+            portEXIT_CRITICAL(&s_mutex_lock);
+            vSemaphoreDelete(m);
+        } else {
+            s_mutex = m;
+            portEXIT_CRITICAL(&s_mutex_lock);
+        }
+    }
+    if (xSemaphoreTake(s_mutex, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
+        return FMRB_ERR_TIMEOUT;
+    }
+    return FMRB_OK;
+}
+
+void rd_encoder_jpeg_unlock(void)
+{
+    if (s_mutex) xSemaphoreGive(s_mutex);
+}
 
 fmrb_err_t rd_encoder_jpeg_init(uint16_t src_w, uint16_t src_h, uint8_t quality)
 {
@@ -92,6 +124,12 @@ uint16_t rd_encoder_jpeg_width(void)
 fmrb_err_t rd_encoder_jpeg_encode(const uint16_t *pixels,
                                   const uint8_t **out_buf, size_t *out_len)
 {
+    return rd_encoder_jpeg_encode_q(pixels, s_quality, out_buf, out_len);
+}
+
+fmrb_err_t rd_encoder_jpeg_encode_q(const uint16_t *pixels, uint8_t quality,
+                                    const uint8_t **out_buf, size_t *out_len)
+{
     if (!s_encoder || !pixels || !out_buf || !out_len) {
         return FMRB_ERR_INVALID_PARAM;
     }
@@ -107,7 +145,7 @@ fmrb_err_t rd_encoder_jpeg_encode(const uint16_t *pixels,
     jpeg_encode_cfg_t enc_cfg = {
         .src_type = JPEG_ENCODE_IN_FORMAT_RGB565,
         .sub_sample = JPEG_DOWN_SAMPLING_YUV420,
-        .image_quality = s_quality,
+        .image_quality = quality,
         .width = s_pad_w,
         .height = s_src_h,
     };

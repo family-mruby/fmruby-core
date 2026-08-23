@@ -233,6 +233,22 @@ void fmrb_gfx_cmd_load_sprite_image_bmp_n(gfx_cmd_t *cmd,
                                           uint16_t image_id, const char *path,
                                           size_t path_len);
 
+/**
+ * @brief Write the result of the last present to a file on the display side.
+ *
+ * The path names the display side's filesystem, which is the core's own on
+ * Tab5 and a separate one in the simulator. Queued like a drawing command, so
+ * placing it after a present saves that picture; the display side finishes the
+ * write before it takes the next command. The path is copied into the
+ * command's fixed buffer and truncated to fit.
+ */
+void fmrb_gfx_cmd_export_frame(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
+                               const char *path);
+
+/** @brief Same, for a path given as a pointer and a length. */
+void fmrb_gfx_cmd_export_frame_n(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
+                                 const char *path, size_t path_len);
+
 /** @brief Free a sprite image. */
 void fmrb_gfx_cmd_delete_sprite_image(gfx_cmd_t *cmd,
                                       fmrb_canvas_handle_t canvas_id,

@@ -408,6 +408,20 @@ void fmrb_gfx_cmd_load_sprite_image_bmp(gfx_cmd_t *cmd,
                                          path ? strlen(path) : 0);
 }
 
+void fmrb_gfx_cmd_export_frame_n(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
+                                 const char *path, size_t path_len)
+{
+    cmd_begin(cmd, GFX_CMD_EXPORT_FRAME, canvas_id);
+    cmd_copy_bytes(cmd->params.export_frame.path,
+                   sizeof(cmd->params.export_frame.path), path, path_len);
+}
+
+void fmrb_gfx_cmd_export_frame(gfx_cmd_t *cmd, fmrb_canvas_handle_t canvas_id,
+                               const char *path)
+{
+    fmrb_gfx_cmd_export_frame_n(cmd, canvas_id, path, path ? strlen(path) : 0);
+}
+
 void fmrb_gfx_cmd_delete_sprite_image(gfx_cmd_t *cmd,
                                       fmrb_canvas_handle_t canvas_id,
                                       uint16_t image_id)

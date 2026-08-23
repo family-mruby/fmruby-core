@@ -611,6 +611,26 @@ static int gfx_cmd_to_batch_entry(const gfx_cmd_t *cmd,
             *sub_cmd_out = FMRB_LINK_GFX_LOAD_SPRITE_IMAGE_BMP;
             return (int)total;
         }
+        case GFX_CMD_EXPORT_FRAME: {
+            size_t path_len = strnlen(cmd->params.export_frame.path,
+                                      sizeof(cmd->params.export_frame.path));
+            size_t total = sizeof(fmrb_link_graphics_export_frame_t) + path_len;
+            if (total > GFX_BATCH_PAYLOAD_BUF_SIZE) {
+                FMRB_LOGE(TAG, "EXPORT_FRAME: payload %zu exceeds buf %d",
+                          total, GFX_BATCH_PAYLOAD_BUF_SIZE);
+                return -1;
+            }
+            fmrb_link_graphics_export_frame_t hdr = {
+                .path_len = (uint16_t)path_len,
+            };
+            memcpy(payload_buf, &hdr, sizeof(hdr));
+            if (path_len > 0) {
+                memcpy(payload_buf + sizeof(hdr),
+                       cmd->params.export_frame.path, path_len);
+            }
+            *sub_cmd_out = FMRB_LINK_GFX_EXPORT_FRAME;
+            return (int)total;
+        }
         case GFX_CMD_DELETE_SPRITE_INSTANCE: {
             fmrb_link_graphics_delete_sprite_instance_t c = {
                 .instance_id = cmd->params.delete_sprite_instance.instance_id

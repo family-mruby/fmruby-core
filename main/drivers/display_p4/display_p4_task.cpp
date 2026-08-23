@@ -34,6 +34,7 @@
 
 extern "C" {
 #include "fmrb_bmp332.h"
+#include "rd_encoder_jpeg.h"   // EXPORT_FRAME writes a JPEG with it
 }
 
 #include <msgpack.h>
@@ -1250,6 +1251,81 @@ static void note_render(uint32_t start_ms) {
 //         -1 = error / unimplemented
 // ============================================================
 
+// EXPORT_FRAME: write what the last present composited to a JPEG file.
+//
+// Commands are handled in the task that renders, and a render is deferred and
+// paced -- so when this command arrives, right behind the present it belongs
+// to, that present has not reached the framebuffer yet. Render it here, out
+// of the pacing, and take the pixels from the framebuffer directly: that is
+// the same RGB565 the remote-desktop capture copies, before the cursor is
+// baked in, so an exported slide carries no mouse pointer.
+//
+// Synchronous on purpose. The whole encode and write finish before the next
+// command is read, so an app can queue present/export per slide and know the
+// pictures come out in that order; it learns the last one landed by finding
+// the file (core and display share this filesystem).
+#define EXPORT_FRAME_QUALITY 90
+
+static bool export_frame_jpeg(const char *path)
+{
+    if (!g_framebuffer) {
+        FMRB_LOGE(TAG, "EXPORT_FRAME: no framebuffer");
+        return false;
+    }
+
+    if (g_needs_render) {
+        g_needs_render = false;
+        render_frame();
+        g_last_render_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+    }
+
+    // The encoder owns one staging and one output buffer, shared with the
+    // MJPEG stream. Wait for it rather than corrupt a frame someone is
+    // sending; two seconds is many frames at the stream's pace.
+    fmrb_err_t err = rd_encoder_jpeg_lock(3000);
+    if (err != FMRB_OK) {
+        FMRB_LOGE(TAG, "EXPORT_FRAME: encoder busy");
+        return false;
+    }
+
+    bool ok = false;
+    err = rd_encoder_jpeg_init((uint16_t)g_framebuffer->width(),
+                               (uint16_t)g_framebuffer->height(),
+                               EXPORT_FRAME_QUALITY);
+    if (err != FMRB_OK) {
+        FMRB_LOGE(TAG, "EXPORT_FRAME: encoder init failed: %d", err);
+    } else {
+        const uint8_t *jpeg = NULL;
+        size_t jpeg_len = 0;
+        err = rd_encoder_jpeg_encode_q(
+            (const uint16_t *)g_framebuffer->getBuffer(),
+            EXPORT_FRAME_QUALITY, &jpeg, &jpeg_len);
+        if (err != FMRB_OK) {
+            FMRB_LOGE(TAG, "EXPORT_FRAME: encode failed: %d", err);
+        } else {
+            FILE *fp = fopen(path, "wb");
+            if (!fp) {
+                FMRB_LOGE(TAG, "EXPORT_FRAME: cannot open %s", path);
+            } else {
+                size_t wrote = fwrite(jpeg, 1, jpeg_len, fp);
+                // A short card write leaves a truncated picture behind, which
+                // reads as a corrupt file later; say so now and delete it.
+                if (fclose(fp) != 0 || wrote != jpeg_len) {
+                    FMRB_LOGE(TAG, "EXPORT_FRAME: short write %u/%u to %s",
+                              (unsigned)wrote, (unsigned)jpeg_len, path);
+                    remove(path);
+                } else {
+                    FMRB_LOGI(TAG, "EXPORT_FRAME: wrote %s (%u bytes)",
+                              path, (unsigned)jpeg_len);
+                    ok = true;
+                }
+            }
+        }
+    }
+    rd_encoder_jpeg_unlock();
+    return ok;
+}
+
 static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                                 const uint8_t *data, size_t size) {
     switch (sub_cmd) {
@@ -1830,6 +1906,16 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         g_sprite_target_id = cmd->image_id;  // 0 = reset to canvas target
         FMRB_LOGD(TAG, "SET_SPRITE_IMAGE_TARGET: image_id=%u", cmd->image_id);
         return 0;
+    }
+
+    case FMRB_LINK_GFX_EXPORT_FRAME: {
+        if (size < sizeof(fmrb_link_graphics_export_frame_t)) break;
+        const auto *cmd = (const fmrb_link_graphics_export_frame_t *)data;
+        if (size < sizeof(*cmd) + cmd->path_len) break;
+        char full_path[256];
+        resolve_vfs_path((const char *)(data + sizeof(*cmd)),
+                         (int)cmd->path_len, full_path, sizeof(full_path));
+        return export_frame_jpeg(full_path) ? 0 : -1;
     }
 
     case FMRB_LINK_GFX_LOAD_SPRITE_IMAGE_BMP: {

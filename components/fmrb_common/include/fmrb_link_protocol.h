@@ -129,6 +129,11 @@ typedef enum {
     FMRB_LINK_GFX_CLEAR = 0x30,
     FMRB_LINK_GFX_FILL_SCREEN = 0x31,
     FMRB_LINK_GFX_PRESENT = 0x32,
+    // Write the result of the last present to a file on the display
+    // side's own filesystem. Handled synchronously there (encode and
+    // write finish before the next command), so a command stream of
+    // present + EXPORT_FRAME per slide saves exactly those pictures.
+    FMRB_LINK_GFX_EXPORT_FRAME = 0x33,
 
     // Image/bitmap drawing
     FMRB_LINK_GFX_DRAW_IMAGE = 0x40,
@@ -570,6 +575,14 @@ typedef struct __attribute__((packed)) {
     uint16_t path_len;
     // Followed by path string (path_len bytes)
 } fmrb_link_graphics_load_sprite_image_bmp_t;
+
+// EXPORT_FRAME: same payload shape as LOAD_SPRITE_IMAGE_BMP, minus the image.
+// The path is the display side's, not the core's: on Tab5 the two share one
+// VFS, in the simulator they do not.
+typedef struct __attribute__((packed)) {
+    uint16_t path_len;
+    // Followed by path string (path_len bytes)
+} fmrb_link_graphics_export_frame_t;
 
 // CREATE_MASK: reserve a 1bpp mask slot on the backend. Bit-packed,
 // MSB-first per byte. Row stride = ceil(width / 8) bytes. The backend

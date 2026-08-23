@@ -132,11 +132,19 @@ static void mjpeg_stream_task(void *arg)
         }
         last_seq = frame.seq;
 
+        // Hold the encoder from the encode until the last byte of it has
+        // gone out: the output buffer is the encoder's one and only, and
+        // EXPORT_FRAME wants it too.
         const uint8_t *jpeg = NULL;
         size_t jpeg_len = 0;
+        if (rd_encoder_jpeg_lock(2000) != FMRB_OK) {
+            display_p4_capture_release();
+            continue;
+        }
         err = rd_encoder_jpeg_encode(frame.pixels, &jpeg, &jpeg_len);
         display_p4_capture_release();
         if (err != FMRB_OK) {
+            rd_encoder_jpeg_unlock();
             break;
         }
 
@@ -147,9 +155,11 @@ static void mjpeg_stream_task(void *arg)
                                "Content-Length: %u\r\n"
                                "X-Seq: %u\r\n\r\n",
                                (unsigned)jpeg_len, (unsigned)frame.seq);
-        if (httpd_resp_send_chunk(req, part_hdr, hdr_len) != ESP_OK ||
-            httpd_resp_send_chunk(req, (const char *)jpeg, jpeg_len) != ESP_OK ||
-            httpd_resp_send_chunk(req, "\r\n", 2) != ESP_OK) {
+        bool sent = (httpd_resp_send_chunk(req, part_hdr, hdr_len) == ESP_OK &&
+                     httpd_resp_send_chunk(req, (const char *)jpeg, jpeg_len) == ESP_OK &&
+                     httpd_resp_send_chunk(req, "\r\n", 2) == ESP_OK);
+        rd_encoder_jpeg_unlock();
+        if (!sent) {
             break;  // client disconnected
         }
 
@@ -561,7 +571,13 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
     atomic_store(&s_stop, false);
     for (int i = 0; i < RD_WS_MAX_CLIENTS; i++) s_ws_fds[i] = -1;
 
-    fmrb_err_t ferr = rd_encoder_jpeg_init(426, 240, s_cfg.jpeg_quality);
+    // Bracketed like every other use of the encoder: EXPORT_FRAME brings it
+    // up on demand when the remote desktop was never started, so start and
+    // stop are no longer the only ones touching it.
+    fmrb_err_t ferr = rd_encoder_jpeg_lock(2000);
+    if (ferr != FMRB_OK) return ferr;
+    ferr = rd_encoder_jpeg_init(426, 240, s_cfg.jpeg_quality);
+    rd_encoder_jpeg_unlock();
     if (ferr != FMRB_OK) return ferr;
 
     httpd_config_t hcfg = HTTPD_DEFAULT_CONFIG();
@@ -580,7 +596,10 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
     esp_err_t err = httpd_start(&s_server, &hcfg);
     if (err != ESP_OK) {
         FMRB_LOGE(TAG, "httpd_start failed: %d", err);
-        rd_encoder_jpeg_deinit();
+        if (rd_encoder_jpeg_lock(2000) == FMRB_OK) {
+            rd_encoder_jpeg_deinit();
+            rd_encoder_jpeg_unlock();
+        }
         return FMRB_ERR_FAILED;
     }
 
@@ -668,5 +687,8 @@ void rd_http_stop(void)
         httpd_stop(s_server);
         s_server = NULL;
     }
-    rd_encoder_jpeg_deinit();
+    if (rd_encoder_jpeg_lock(2000) == FMRB_OK) {
+        rd_encoder_jpeg_deinit();
+        rd_encoder_jpeg_unlock();
+    }
 }

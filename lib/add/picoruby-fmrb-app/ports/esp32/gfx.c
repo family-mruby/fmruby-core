@@ -1493,6 +1493,30 @@ static mrb_value mrb_gfx_load_sprite_image_bmp(mrb_state *mrb, mrb_value self)
     return self;
 }
 
+// FmrbGfx#_export_frame(path)
+//
+// Queued behind whatever has already been sent, so the picture written is the
+// one the last present composited. Nothing is returned and nothing waits: the
+// caller learns the write finished by finding the file (Tab5, where core and
+// display share a filesystem) or by waiting a fixed time (the simulator,
+// where they do not).
+static mrb_value mrb_gfx_export_frame(mrb_state *mrb, mrb_value self)
+{
+    char *path;
+    mrb_get_args(mrb, "z", &path);
+    mrb_gfx_data *data = (mrb_gfx_data *)mrb_data_get_ptr(mrb, self, &mrb_gfx_data_type);
+    if (!data || !data->ctx) return self;
+
+    gfx_cmd_t cmd;
+    fmrb_gfx_cmd_export_frame(&cmd, data->canvas_id, path);
+
+    fmrb_err_t ret = fmrb_gfx_submit(&cmd);
+    if (ret != FMRB_OK) {
+        mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to export frame: %d", ret);
+    }
+    return self;
+}
+
 static mrb_value mrb_gfx_delete_sprite_image(mrb_state *mrb, mrb_value self)
 {
     mrb_int image_id;
@@ -1753,6 +1777,7 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_create_sprite_image", mrb_gfx_create_sprite_image, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "_delete_sprite_image", mrb_gfx_delete_sprite_image, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "_load_sprite_image_bmp", mrb_gfx_load_sprite_image_bmp, MRB_ARGS_REQ(2));
+    mrb_define_method(mrb, gfx_class, "_export_frame", mrb_gfx_export_frame, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "_set_sprite_image_target", mrb_gfx_set_sprite_image_target, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "_create_sprite_instance", mrb_gfx_create_sprite_instance, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "_delete_sprite_instance", mrb_gfx_delete_sprite_instance, MRB_ARGS_REQ(1));

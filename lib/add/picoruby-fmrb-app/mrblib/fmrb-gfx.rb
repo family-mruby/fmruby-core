@@ -272,6 +272,18 @@ class FmrbGfx
     _file_status(path)
   end
 
+  # Write the picture the last present put on screen to a file, on the display
+  # side's filesystem. This does not present: send present first, then this,
+  # and the two keep their order.
+  #
+  # Tab5 writes a JPEG through the SoC's encoder, into the filesystem the core
+  # shares with it (so File.exist? can tell when it is done). The simulator
+  # writes a BMP into the graphics side's own storage, which the core cannot
+  # see. Retro (WROVER) does not support it and says so in its log.
+  def export_frame(path)
+    _export_frame(path)
+  end
+
   # Create an image from a file on graphics-audio side
   # Returns Hash {id: image_id, width: w, height: h} or nil
   def create_image(path)
