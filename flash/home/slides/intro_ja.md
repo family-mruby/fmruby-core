@@ -4,7 +4,6 @@ subtitle: 日本語での発表サンプル
 author: きしま
 theme: default
 allotted_time: 10m
-text_size: 2
 chime: true
 ---
 

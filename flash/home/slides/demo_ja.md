@@ -4,7 +4,6 @@ subtitle: 日本語の発表サンプル
 author: きしま
 theme: default
 allotted_time: 5m
-text_size: 2
 ---
 
 # はじめに

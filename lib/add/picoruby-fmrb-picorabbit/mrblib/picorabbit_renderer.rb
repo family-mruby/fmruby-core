@@ -145,21 +145,62 @@ module PicoRabbit
       @h = height
       @theme = Theme.for_name(metadata["theme"])
       @allotted_ms = parse_allotted_ms(metadata["allotted_time"])
-      # Body size from the frontmatter (1 or 2; anything else is 1). Headings
-      # go one step above the body, capped, so a size 2 body still has a
-      # heading that stands out.
-      @ts = metadata["text_size"] == "2" ? 2 : 1
-      @hs = @ts + 1
-      @hs = MAX_TEXT_SIZE if @hs > MAX_TEXT_SIZE
-      @char_w = CHAR_W * @ts
-      @char_h = CHAR_H * @ts
-      @line_h = LINE_H * @ts
-      @head_h = CHAR_H * @hs
-      @title_bar_h = @head_h + 4
-      # What the canvas is currently scaled to. A layout pass measures at 1
-      # and scales by hand, because one line can carry base text at the body
-      # size and ruby at size 1.
+      # Which pair of fonts this deck is drawn with. `font: misaki` keeps
+      # what P2 did -- the 8px pair (Font0 for ASCII, misaki for the rest)
+      # blown up by a whole number -- and `text_size` still means something
+      # there. Everything else gets efont, cut at the size it is drawn at.
+      #
+      # efont is the default because of Modern: its panel draws each of our
+      # pixels as a 3x3 block, so an 8px font doubled shows every step of
+      # its own staircase. A font cut for 12px has no staircase to show.
+      @font_kind = (metadata["font"] == "misaki") ? :misaki : :efont
       @cur_ts = nil
+      @cur_font = nil
+      @cur_font_got = nil
+      if @font_kind == :efont
+        px = metadata["font_size"] ? metadata["font_size"].to_i : 12
+        unless px == 12 || px == 16
+          Log.info("PicoRabbit: font_size #{px} is not cut; using 12")
+          px = 12
+        end
+        if metadata["text_size"]
+          Log.info("PicoRabbit: text_size is ignored with font: efont")
+        end
+        # What this machine actually has. Retro carries the 12px cut only, so
+        # a deck asking for 16 gets 12 here and the same .md still opens.
+        body = @gfx.set_font(:ja, px)
+        @body_px = body[1]
+        # The heading is the next cut up, and stays at the body size when the
+        # body is already there -- its band and its place carry it.
+        head = @gfx.set_font(:ja, @body_px < 16 ? 16 : @body_px)
+        @head_px = head[1]
+        bold = @gfx.set_font(:ja_bold, @body_px)
+        @has_bold = bold[0] == :ja_bold
+        @ts = 1
+        @hs = 1
+        @ascii_w = @body_px / 2   # efont draws ASCII in a half cell
+        @char_w = @body_px
+        @char_h = @body_px
+        # The 8:10 of the misaki path, kept: a line is a quarter taller than
+        # the glyphs on it.
+        @line_h = @body_px + @body_px / 4
+        @head_h = @head_px
+        @cur_font = nil           # the probing above left its own font set
+      else
+        # Body size from the frontmatter (1 or 2; anything else is 1).
+        # Headings go one step above the body, capped, so a size 2 body still
+        # has a heading that stands out.
+        @ts = metadata["text_size"] == "2" ? 2 : 1
+        @hs = @ts + 1
+        @hs = MAX_TEXT_SIZE if @hs > MAX_TEXT_SIZE
+        @has_bold = false
+        @ascii_w = CHAR_W * @ts
+        @char_w = CHAR_W * @ts
+        @char_h = CHAR_H * @ts
+        @line_h = LINE_H * @ts
+        @head_h = CHAR_H * @hs
+      end
+      @title_bar_h = @head_h + 4
       @start_ms = Machine.board_millis
       @usagi_jump_y = 0
       @usagi_vy = 0
@@ -253,7 +294,7 @@ module PicoRabbit
     def render_index(slides, current, selected)
       @gfx.clear(@theme.bg)
       @gfx.fill_rect(0, 0, @w, CHAR_H + 4, @theme.title_bg)
-      set_ts(1)
+      use_ui
       @gfx.draw_text(MARGIN_X, 2, "Index", @theme.title, @theme.title_bg)
 
       # Where the talk is and how much time is left, in the header: the index
@@ -321,7 +362,7 @@ module PicoRabbit
       @gfx.fill_rect(@clock_x, ty, CLOCK_CHARS * CHAR_W, CHAR_H,
                      @theme.footer_bg)
       return true if text.length == 0
-      set_ts(1)
+      use_ui
       colour = @clock_negative ? 0xE0 : @theme.footer_text
       x = @clock_x + (CLOCK_CHARS - text.length) * CHAR_W
       @gfx.draw_text(x, ty, text, colour, @theme.footer_bg)
@@ -358,6 +399,9 @@ module PicoRabbit
       # present rather than growing a second one for the sprites.
       update_sprites(slide_idx, total_slides)
 
+      # The app draws its own screens (the menu, the export count) with the
+      # 6x8 pair and never asks for a font, so leave that selected.
+      use_ui
       @gfx.present
     end
 
@@ -507,9 +551,9 @@ module PicoRabbit
       i = 0
       while i < lines.length
         line = lines[i]
-        x = (@w - w1(line) * @hs) / 2
-        set_ts(@hs)
-        @gfx.draw_text_mixed(x, y, line, @theme.title, @theme.title_bg)
+        x = (@w - wh(line)) / 2
+        use_head
+        draw_str(x, y, line, @theme.title, @theme.title_bg)
         y += @head_h + 4
         i += 1
       end
@@ -518,9 +562,9 @@ module PicoRabbit
       i = 0
       while i < sub_lines.length
         line = sub_lines[i]
-        x = (@w - w1(line) * @ts) / 2
-        set_ts(@ts)
-        @gfx.draw_text_mixed(x, y, line, @theme.text, @theme.bg)
+        x = (@w - wb(line)) / 2
+        use_body
+        draw_str(x, y, line, @theme.text, @theme.bg)
         y += @line_h
         i += 1
       end
@@ -529,9 +573,9 @@ module PicoRabbit
     def render_content_slide(slide, step)
       # Title bar
       @gfx.fill_rect(0, 0, @w, @title_bar_h, @theme.title_bg)
-      title = truncate_to_width(slide.title || "", @w - MARGIN_X * 2, @hs)
-      set_ts(@hs)
-      @gfx.draw_text_mixed(MARGIN_X, 2, title, @theme.title, @theme.title_bg)
+      title = truncate_to_width(slide.title || "", @w - MARGIN_X * 2, :head)
+      use_head
+      draw_str(MARGIN_X, 2, title, @theme.title, @theme.title_bg)
 
       y = @title_bar_h + 4
       content_x = MARGIN_X
@@ -553,13 +597,13 @@ module PicoRabbit
           y = draw_rich_text(content_x, y, elem.text, content_w, elem.align)
 
         when :bullet
-          indent = content_x + elem.level * @char_w * 2
+          indent = content_x + elem.level * @ascii_w * 2
           marker = elem.level == 0 ? "- " : "  - "
           y = draw_list_item(indent, y, marker, elem.text,
                              content_x + content_w)
 
         when :numbered
-          indent = content_x + elem.level * @char_w * 2
+          indent = content_x + elem.level * @ascii_w * 2
           # The author's own number, so a list that restarts or repeats one
           # reads as written.
           marker = "#{elem.number || 1}. "
@@ -571,7 +615,7 @@ module PicoRabbit
             code_str = elem.text.join("\n")
             block_h = elem.text.length * @line_h + 4
             @gfx.fill_rect(content_x, y, content_w, block_h, @theme.code_bg)
-            set_ts(@ts)
+            use_body
 
             # Try syntax highlighting
             begin
@@ -587,9 +631,9 @@ module PicoRabbit
               # Fallback: plain text
               cy = y + 2
               elem.text.each do |line|
-                max_c = (content_w - 4) / @char_w
+                max_c = (content_w - 4) / @ascii_w
                 code_line = line.length > max_c ? line[0, max_c] : line
-                @gfx.draw_text(content_x + 2, cy, code_line, @theme.code_text, @theme.code_bg)
+                draw_str(content_x + 2, cy, code_line, @theme.code_text, @theme.code_bg)
                 cy += @line_h
               end
             end
@@ -605,10 +649,10 @@ module PicoRabbit
               $fmrb_w = content_w
               $fmrb_theme = @theme
               elem.compiled_proc ||= compile_fmrb_code(elem)
-              # Blocks are written against the size 1 cell (they place text by
-              # multiplying out 6px columns), so they get the canvas at 1
-              # whatever the deck's body size is.
-              set_ts(1)
+              # Blocks are written against the size 1 cell (they place text
+              # by multiplying out 6px columns), so they get the 6x8 pair at
+              # size 1 whatever the deck is drawn with.
+              use_ui
               elem.compiled_proc.call
               y = $fmrb_y if $fmrb_y > y
             rescue => e
@@ -616,8 +660,9 @@ module PicoRabbit
               y += @line_h
             end
             # The block draws with the raw canvas and may have changed the
-            # text size behind our back.
+            # font or the text size behind our back.
             @cur_ts = nil
+            @cur_font = nil
           end
 
         when :blockquote
@@ -638,8 +683,8 @@ module PicoRabbit
               @gfx.delete_image(img[:id])
             end
           rescue
-            set_ts(@ts)
-            @gfx.draw_text(content_x, y, "[img: #{elem.text}]", @theme.footer_text, @theme.bg)
+            use_body
+            draw_str(content_x, y, "[img: #{elem.text}]", @theme.footer_text, @theme.bg)
             y += @line_h
           end
 
@@ -653,13 +698,14 @@ module PicoRabbit
     # line. The text is laid out before the marker is drawn because the marker
     # follows the base line, which ruby on the first line moves.
     def draw_list_item(indent, y, marker, text, right_x)
-      tx = indent + marker.length * @char_w
-      # Laying out measures at size 1, so the body size goes on after it and
-      # not before, or the marker comes out one size too small.
+      tx = indent + marker.length * @ascii_w
+      # Laying out measures at size 1 (and with its own font), so the body
+      # font goes on after it and not before, or the marker comes out in
+      # whatever the measuring left selected.
       lines = layout_rich_text(parse_inline(text || ""), right_x - tx)
-      set_ts(@ts)
-      @gfx.draw_text(indent, base_line_y(y, lines), marker,
-                     @theme.bullet, @theme.bg)
+      use_body
+      draw_str(indent, base_line_y(y, lines), marker,
+               @theme.bullet, @theme.bg)
       draw_rich_lines(tx, y, lines, right_x - tx, nil, @theme.text)
     end
 
@@ -729,8 +775,8 @@ module PicoRabbit
         # always at size 1.
         if type == :ruby
           rb = segments[si][2]
-          base_w = w1(str) * @ts
-          ruby_w = w1(rb)
+          base_w = wb(str)
+          ruby_w = wr(rb)
           piece_w = base_w > ruby_w ? base_w : ruby_w
           if line_w > 0 && line_w + piece_w > max_w
             push_line(lines, pieces, line_w)
@@ -749,7 +795,7 @@ module PicoRabbit
         while i < len
           j = token_end(str, i)
           token = str[i, j - i]
-          tw = w1(token) * @ts
+          tw = wb(token)
           if tw > max_w && j - i > 1
             # A word wider than the whole line (a URL, an identifier): break
             # it hard rather than run off the edge, taking as much as still
@@ -757,12 +803,12 @@ module PicoRabbit
             avail = max_w - line_w
             k = 1
             while i + k < j
-              break if w1(str[i, k + 1]) * @ts > avail
+              break if wb(str[i, k + 1]) > avail
               k += 1
             end
             j = i + k
             token = str[i, k]
-            tw = w1(token) * @ts
+            tw = wb(token)
           end
           i = j
           if line_w > 0 && line_w + tw > max_w
@@ -801,7 +847,7 @@ module PicoRabbit
           n -= 1
         end
         if n < str.length
-          cut = w1(str[n, str.length - n]) * @ts
+          cut = wb(str[n, str.length - n])
           last[1] = str[0, n]
           last[2] = last[2] - cut
           line_w -= cut
@@ -842,7 +888,7 @@ module PicoRabbit
     # switches per piece.
     def draw_rich_line(x, y, pieces, color, has_ruby)
       base_y = has_ruby ? y + RUBY_H : y
-      set_ts(@ts)
+      use_body
       bx = x
       i = 0
       n = pieces.length
@@ -853,31 +899,39 @@ module PicoRabbit
         w = piece[2]
         if type == :ruby
           # The narrower of base and reading is centred under the wider.
-          @gfx.draw_text_mixed(bx + (w - piece[4]) / 2, base_y, str, color, @theme.bg)
+          draw_str(bx + (w - piece[4]) / 2, base_y, str, color, @theme.bg)
         elsif type == :bold
-          # Bold: draw twice with 1px offset
-          @gfx.draw_text_mixed(bx, base_y, str, color, @theme.bg)
-          @gfx.draw_text_mixed(bx + 1, base_y, str, color)
+          # A machine with a bold cut draws it once; one without draws the
+          # regular cut twice, a pixel apart, which is what P2 did.
+          if use_bold
+            draw_str(bx, base_y, str, color, @theme.bg)
+            use_body
+          else
+            draw_str(bx, base_y, str, color, @theme.bg)
+            draw_str(bx + 1, base_y, str, color)
+          end
         elsif type == :code
-          # Inline code: background highlight. ASCII only, so Font0 is enough.
+          # Inline code sits on its own background. With efont it is the body
+          # font; on the misaki path it is Font0, which is ASCII-only -- and
+          # inline code is ASCII by then anyway.
           @gfx.fill_rect(bx, base_y, w, @char_h, @theme.inline_code_bg)
-          @gfx.draw_text(bx + 1, base_y, str, @theme.inline_code_text, @theme.inline_code_bg)
+          draw_str(bx + 1, base_y, str, @theme.inline_code_text, @theme.inline_code_bg)
         else
-          @gfx.draw_text_mixed(bx, base_y, str, color, @theme.bg)
+          draw_str(bx, base_y, str, color, @theme.bg)
         end
         bx += w
         i += 1
       end
       return unless has_ruby
 
-      set_ts(1)
+      use_ruby
       bx = x
       i = 0
       while i < n
         piece = pieces[i]
         if piece[0] == :ruby
-          @gfx.draw_text_mixed(bx + (piece[2] - piece[5]) / 2, y, piece[3],
-                               color, @theme.bg)
+          draw_str(bx + (piece[2] - piece[5]) / 2, y, piece[3],
+                   color, @theme.bg)
         end
         bx += piece[2]
         i += 1
@@ -898,6 +952,121 @@ module PicoRabbit
       @cur_ts = size
     end
 
+    # ---- fonts ----------------------------------------------------------
+    #
+    # Every draw picks a role rather than a font: body, heading, ruby, bold,
+    # or the 6x8 pair the strip and the index are drawn with. What each role
+    # resolves to depends on the deck (efont or misaki) and on the machine --
+    # Retro's display carries fewer cuts than Modern's, and set_font answers
+    # with the one it actually selected.
+
+    def use_font(family, size = nil)
+      key = size ? [family, size] : [family]
+      return @cur_font_got if @cur_font == key
+      @cur_font = key
+      @cur_font_got = @gfx.set_font(family, size)
+    end
+
+    def use_body
+      if @font_kind == :efont
+        use_font(:ja, @body_px)
+      else
+        use_font(:default)
+        set_ts(@ts)
+      end
+    end
+
+    def use_head
+      if @font_kind == :efont
+        use_font(:ja, @head_px)
+      else
+        use_font(:default)
+        set_ts(@hs)
+      end
+    end
+
+    # Ruby readings are misaki 8 whichever body font is in use: they have to
+    # be small, and efont's smallest cut is 10.
+    def use_ruby
+      if @font_kind == :efont
+        use_font(:ja, 8)
+      else
+        use_font(:default)
+        set_ts(1)
+      end
+    end
+
+    # Bold for the run that follows. False means this machine has no bold cut
+    # and the caller draws its own -- twice, a pixel apart -- as P2 did.
+    def use_bold
+      if @font_kind == :efont && @has_bold
+        use_font(:ja_bold, @body_px)
+        return true
+      end
+      use_body
+      false
+    end
+
+    # The 6x8 pair. The strip, the clock and the index are drawn with it, and
+    # a finished slide leaves it selected so the app's own screens (the menu,
+    # the export count) are not drawn in the deck's font.
+    def use_ui
+      use_font(:default)
+      set_ts(1)
+    end
+
+    # Widths in the pixels the string will really take, by role.
+    def wb(str)
+      if @font_kind == :efont
+        set_ts(1)
+        @gfx.text_width(str, :ja, @body_px)
+      else
+        w1(str) * @ts
+      end
+    end
+
+    def wh(str)
+      if @font_kind == :efont
+        set_ts(1)
+        @gfx.text_width(str, :ja, @head_px)
+      else
+        w1(str) * @hs
+      end
+    end
+
+    def wr(str)
+      if @font_kind == :efont
+        set_ts(1)
+        @gfx.text_width(str, :ja, 8)
+      else
+        w1(str)
+      end
+    end
+
+    def text_w(str, role)
+      return wh(str) if role == :head
+      return wb(str) if role == :body
+      w1(str)
+    end
+
+    # Draw one run with the selected font. The hybrid draw (Font0 and misaki
+    # per glyph) belongs to the misaki path alone: efont has ASCII of its own.
+    def draw_str(x, y, str, color, bg = nil)
+      if @font_kind == :efont
+        if bg
+          @gfx.draw_text(x, y, str, color, bg)
+        else
+          @gfx.draw_text(x, y, str, color)
+        end
+      else
+        if bg
+          @gfx.draw_text_mixed(x, y, str, color, bg)
+        else
+          @gfx.draw_text_mixed(x, y, str, color)
+        end
+      end
+    end
+
     # Drop trailing characters until the string fits w at the current text
     # size. Titles are short, so the repeated measuring costs nothing.
     # "N. heading", cut to fit. A title slide's heading can carry a <br>, so
@@ -906,15 +1075,15 @@ module PicoRabbit
       title = slide.title || ""
       nl = title.index("\n")
       title = title[0, nl] if nl
-      truncate_to_width("#{i + 1}. #{title}", max_w, 1)
+      truncate_to_width("#{i + 1}. #{title}", max_w, :ui)
     end
 
-    def truncate_to_width(str, w, size)
-      return str if w1(str) * size <= w
+    def truncate_to_width(str, w, role = :ui)
+      return str if text_w(str, role) <= w
       n = str.length
       while n > 0
         cut = str[0, n]
-        return cut if w1(cut) * size <= w
+        return cut if text_w(cut, role) <= w
         n -= 1
       end
       ""
@@ -1002,7 +1171,7 @@ module PicoRabbit
 
     # Draw syntax-highlighted code line
     def draw_highlighted_line(x, y, text, hl_map, offset)
-      max_c = (@w - MARGIN_X * 2 - 4) / @char_w
+      max_c = (@w - MARGIN_X * 2 - 4) / @ascii_w
       visible_len = text.length > max_c ? max_c : text.length
       i = 0
       while i < visible_len
@@ -1017,7 +1186,7 @@ module PicoRabbit
         end
 
         chunk = text[i, j - i]
-        @gfx.draw_text(x + i * @char_w, y, chunk, color, @theme.code_bg)
+        draw_str(x + i * @ascii_w, y, chunk, color, @theme.code_bg)
         i = j
       end
     end
@@ -1033,7 +1202,7 @@ module PicoRabbit
       # the goal flag moves as the pages go by.
       num = "#{slide_idx + 1}/#{total_slides}"
       nx = @w - num.length * CHAR_W - MARGIN_X
-      set_ts(1)
+      use_ui
       @gfx.draw_text(nx, fy + 4, num, @theme.footer_text, @theme.footer_bg)
 
       widest = "#{total_slides}/#{total_slides}".length * CHAR_W
