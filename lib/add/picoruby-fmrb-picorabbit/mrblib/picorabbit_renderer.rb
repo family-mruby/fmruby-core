@@ -122,6 +122,9 @@ module PicoRabbit
     SPRITE_SIZE = 16
     SPRITE_DIR = "/usr/share/picorabbit"
     SPRITE_CACHE = "/cache/app/picorabbit"
+    # Pictures are copied here for the display side to read, named after the
+    # deck they came from.
+    IMAGE_CACHE = "/cache/app/picorabbit"
 
     # Frame order inside each SpriteInstance's image list.
     USAGI_FILES = ["usagi_run1.bmp", "usagi_run2.bmp", "usagi_jump.bmp",
@@ -231,11 +234,30 @@ module PicoRabbit
       @clock_x = @w
       @time_up_fired = false
       @goal_idx = nil
+      @deck_dir = nil
+      @deck_tag = "deck"
     end
 
     # Which slide is the finish line. nil means the last one.
     def goal_index=(idx)
       @goal_idx = idx
+    end
+
+    # Where the deck was read from. An image path in a deck is relative to
+    # the .md that names it, and the copies handed to the display side are
+    # named after the deck, so both need this.
+    def deck_path=(path)
+      @deck_dir = nil
+      @deck_tag = "deck"
+      return unless path
+      i = path.length - 1
+      while i >= 0 && path[i] != "/"
+        i -= 1
+      end
+      @deck_dir = i >= 0 ? path[0, i] : ""
+      base = path[i + 1, path.length - i - 1]
+      base = base[0, base.length - 3] if base.end_with?(".md")
+      @deck_tag = base if base.length > 0
     end
 
     # ---- the clock -------------------------------------------------------
@@ -672,21 +694,7 @@ module PicoRabbit
           @gfx.fill_rect(content_x, qy, 2, y - qy - (@line_h - @char_h), @theme.quote_bar)
 
         when :image
-          begin
-            path = elem.text
-            path = path.sub(".bmp", ".png") if path && path.end_with?(".bmp")
-            img = @gfx.create_image(path)
-            if img
-              ix = calc_align_x_px(elem, img[:width], content_x, content_w)
-              @gfx.draw_image(img[:id], x: ix, y: y)
-              y += img[:height] + 2
-              @gfx.delete_image(img[:id])
-            end
-          rescue
-            use_body
-            draw_str(content_x, y, "[img: #{elem.text}]", @theme.footer_text, @theme.bg)
-            y += @line_h
-          end
+          y = draw_image_element(elem, content_x, content_w, y, max_y)
 
         when :blank
           y += @line_h / 2
@@ -697,6 +705,98 @@ module PicoRabbit
     # One list item: its marker, then its text wrapped to what is left of the
     # line. The text is laid out before the marker is drawn because the marker
     # follows the base line, which ruby on the first line moves.
+    # ---- images ---------------------------------------------------------
+    #
+    # A picture has to reach the display side before it can be drawn: Retro
+    # keeps its own storage behind a UART, and in the simulator the two sides
+    # are separate processes with separate trees. Only Tab5 shares one. So
+    # every draw goes sync_file -> create_image -> draw_image -> delete_image,
+    # and sync_file is what makes that cheap the second time -- it compares
+    # what is already there and transfers nothing when it matches.
+    #
+    # Only PNG. The display decodes those (drawPng); BMP belongs to sprites
+    # and JPEG is not decoded anywhere.
+    def draw_image_element(elem, content_x, content_w, y, max_y)
+      src = image_source(elem.text)
+      return image_fallback(elem, content_x, y) unless src && src.end_with?(".png")
+
+      t0 = Machine.board_millis
+      img = nil
+      dest = "#{IMAGE_CACHE}/#{@deck_tag}_#{image_basename(src)}"
+      begin
+        @gfx.sync_file(src, dest: dest)
+        t1 = Machine.board_millis
+        img = @gfx.create_image(dest)
+      rescue => e
+        ::Log.info("PicoRabbit: image #{src}: #{e.message}")
+        return image_fallback(elem, content_x, y)
+      end
+      return image_fallback(elem, content_x, y) unless img
+
+      w = img[:width]
+      h = img[:height]
+      return image_fallback(elem, content_x, y) if w < 1 || h < 1
+
+      scale = image_scale(elem, w, h, content_w, max_y - y)
+      if scale <= 0.0
+        @gfx.delete_image(img[:id])
+        return image_fallback(elem, content_x, y)
+      end
+      dw = (w * scale).to_i
+      dh = (h * scale).to_i
+      ix = calc_align_x_px(elem, dw, content_x, content_w)
+      @gfx.draw_image(img[:id], x: ix, y: y, scale_x: scale, scale_y: 0.0)
+      @gfx.delete_image(img[:id])
+
+      t2 = Machine.board_millis
+      ::Log.info("PicoRabbit: image #{image_basename(src)} #{w}x#{h} -> #{dw}x#{dh}, sync #{t1 - t0}ms, draw #{t2 - t1}ms")
+      y + dh + @line_h / 2
+    end
+
+    # How much to shrink (or, when the deck asks for a width, stretch) the
+    # picture. Left alone it comes out at its own size, or the body width if
+    # it is wider than that -- never blown up. Either way it is cut down again
+    # if it would not fit in the room left on the slide.
+    def image_scale(elem, w, h, content_w, room)
+      target = w < content_w ? w : content_w
+      if elem.img_w
+        target = elem.img_w
+      elsif elem.img_pct
+        target = content_w * elem.img_pct / 100
+      end
+      target = content_w if target > content_w
+      return 0.0 if target < 1 || room < 1
+      scale = target.to_f / w.to_f
+      fit = room.to_f / h.to_f
+      scale = fit if h * scale > room
+      scale
+    end
+
+    # A path in a deck is relative to the deck, the way a reader would expect;
+    # one that starts at the root is taken as written (a card, say).
+    def image_source(path)
+      return nil unless path && path.length > 0
+      return path if path[0] == "/"
+      return path unless @deck_dir
+      "#{@deck_dir}/#{path}"
+    end
+
+    def image_basename(path)
+      i = path.length - 1
+      while i >= 0 && path[i] != "/"
+        i -= 1
+      end
+      path[i + 1, path.length - i - 1]
+    end
+
+    # Nothing to draw: say which file, in the quiet colour, and take one line.
+    # A deck with a missing picture still presents.
+    def image_fallback(elem, content_x, y)
+      use_body
+      draw_str(content_x, y, "[img: #{elem.text}]", @theme.footer_text, @theme.bg)
+      y + @line_h
+    end
+
     def draw_list_item(indent, y, marker, text, right_x)
       tx = indent + marker.length * @ascii_w
       # Laying out measures at size 1 (and with its own font), so the body

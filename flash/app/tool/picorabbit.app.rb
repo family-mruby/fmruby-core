@@ -212,6 +212,8 @@ class SlideShowApp < FmrbApp
         @gfx, @window_width, @window_height, @result.metadata)
       @renderer.precompile(@result.slides)
       @renderer.goal_index = find_goal_index
+      # Images in a deck are named relative to the deck itself.
+      @renderer.deck_path = path
       @chime = @result.metadata["chime"] == "true"
       @slide_index = 0
       update_step

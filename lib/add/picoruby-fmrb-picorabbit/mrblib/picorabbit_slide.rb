@@ -8,6 +8,10 @@ module PicoRabbit
     # The number a :numbered item was written with, so the list reads the way
     # its author numbered it (1. 1. 1. included) rather than by its position.
     attr_accessor :number
+    # How wide an :image was asked to be: a width in pixels (![w=200](..))
+    # or a percentage of the body width (![60%](..)). Both nil means "as
+    # large as it comes, shrunk to fit".
+    attr_accessor :img_w, :img_pct
     # Cached Proc for :fmrb_code elements (compiled once by the renderer;
     # eval per render would rerun the mruby compiler on the task C stack).
     attr_accessor :compiled_proc
@@ -18,6 +22,8 @@ module PicoRabbit
       @level = level
       @align = nil
       @number = nil
+      @img_w = nil
+      @img_pct = nil
       @compiled_proc = nil
     end
   end

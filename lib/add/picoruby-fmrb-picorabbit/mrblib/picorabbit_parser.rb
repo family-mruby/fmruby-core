@@ -120,7 +120,9 @@ module PicoRabbit
             close = stripped_line.index(")", paren + 2)
             if close
               path = stripped_line[paren + 2, close - paren - 2]
-              current_elements << Element.new(:image, path)
+              img = Element.new(:image, path)
+              apply_image_size(img, stripped_line[2, paren - 2])
+              current_elements << img
               next
             end
           end
@@ -209,6 +211,21 @@ module PicoRabbit
       end
       result << str[start, len - start] if start < len
       result
+    end
+
+    # The alt text of an image doubles as its size: "w=200" is a width in
+    # pixels and "60%" a share of the body width. Anything else is a caption
+    # nobody shows, and is dropped.
+    def self.apply_image_size(elem, alt)
+      return unless alt && alt.length > 0
+      if alt.end_with?("%")
+        pct = alt[0, alt.length - 1].to_i
+        elem.img_pct = pct if pct > 0
+        return
+      end
+      return unless alt.start_with?("w=")
+      px = alt[2, alt.length - 2].to_i
+      elem.img_w = px if px > 0
     end
   end
 end
