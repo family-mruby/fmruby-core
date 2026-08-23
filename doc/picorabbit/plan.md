@@ -46,6 +46,10 @@ PicoRabbit は Harucom 向けの Markdown 発表ツールで、Family mruby に�
 
 ## P2: 日本語対応 (発表の前提条件)
 
+**完了 (report/p2.md)**。予定と変わった点は 2 つ: `text_size` は theme では
+なく frontmatter を renderer が直接読む形にし、ルビは parser ではなく
+renderer の `parse_inline` の担当にした (inline 書式なので置き場所が揃う)。
+
 - 本文・箇条書き・見出しを `draw_text_mixed` 化、折り返しを全角 2 桁換算に。
 - 見出しは `set_text_size(2)` (16px = 画面上 48px)。本文 8px は画面上 24px で
   手元では読めるが、**プロジェクタでは本文も 2 倍が要る**可能性が高い。

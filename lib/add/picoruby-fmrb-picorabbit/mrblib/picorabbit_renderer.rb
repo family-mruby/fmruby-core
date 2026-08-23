@@ -101,15 +101,17 @@ module PicoRabbit
   ]
 
   class FmrbRenderer
+    # Metrics of the size 1 cell. Everything the body draws is a multiple of
+    # these, scaled by the deck's text_size; the footer and the runners stay
+    # at size 1 whatever the body does.
     CHAR_W = 6     # Font size 1 character width
     CHAR_H = 8     # Font size 1 character height
     LINE_H = 10    # Line height with spacing
-    TITLE_CHAR_H = 16  # Font size 2 character height
     MARGIN_X = 4
-    MARGIN_Y = 2
     FOOTER_H = 10
     TIMER_H = 16   # one sprite tall: the runners stand in this strip
-    TITLE_BAR_H = 20
+    RUBY_H = 8     # a ruby line is one size 1 cell above its base
+    MAX_TEXT_SIZE = 3
 
     SPRITE_SIZE = 16
     SPRITE_DIR = "/usr/share/picorabbit"
@@ -137,6 +139,21 @@ module PicoRabbit
       @h = height
       @theme = Theme.for_name(metadata["theme"])
       @allotted_ms = parse_allotted_ms(metadata["allotted_time"])
+      # Body size from the frontmatter (1 or 2; anything else is 1). Headings
+      # go one step above the body, capped, so a size 2 body still has a
+      # heading that stands out.
+      @ts = metadata["text_size"] == "2" ? 2 : 1
+      @hs = @ts + 1
+      @hs = MAX_TEXT_SIZE if @hs > MAX_TEXT_SIZE
+      @char_w = CHAR_W * @ts
+      @char_h = CHAR_H * @ts
+      @line_h = LINE_H * @ts
+      @head_h = CHAR_H * @hs
+      @title_bar_h = @head_h + 4
+      # What the canvas is currently scaled to. A layout pass measures at 1
+      # and scales by hand, because one line can carry base text at the body
+      # size and ruby at size 1.
+      @cur_ts = nil
       @start_ms = Machine.board_millis
       @usagi_jump_y = 0
       @usagi_vy = 0
@@ -320,41 +337,40 @@ module PicoRabbit
         sub_lines << e.text if e.type == :text && e.text
       end
 
-      total_h = lines.length * (TITLE_CHAR_H + 4) + sub_lines.length * LINE_H + 8
+      total_h = lines.length * (@head_h + 4) + sub_lines.length * @line_h + 8
 
       y = (@h - total_h) / 2
 
-      @gfx.set_text_size(2)
       i = 0
       while i < lines.length
         line = lines[i]
-        x = (@w - @gfx.text_width(line, :default)) / 2
+        x = (@w - w1(line) * @hs) / 2
+        set_ts(@hs)
         @gfx.draw_text_mixed(x, y, line, @theme.title, @theme.bg)
-        y += TITLE_CHAR_H + 4
+        y += @head_h + 4
         i += 1
       end
 
-      @gfx.set_text_size(1)
       y += 8
       i = 0
       while i < sub_lines.length
         line = sub_lines[i]
-        x = (@w - @gfx.text_width(line, :default)) / 2
+        x = (@w - w1(line) * @ts) / 2
+        set_ts(@ts)
         @gfx.draw_text_mixed(x, y, line, @theme.text, @theme.bg)
-        y += LINE_H
+        y += @line_h
         i += 1
       end
     end
 
     def render_content_slide(slide, step)
       # Title bar
-      @gfx.fill_rect(0, 0, @w, TITLE_BAR_H, @theme.title_bg)
-      @gfx.set_text_size(2)
-      title = truncate_to_width(slide.title || "", @w - MARGIN_X * 2)
+      @gfx.fill_rect(0, 0, @w, @title_bar_h, @theme.title_bg)
+      title = truncate_to_width(slide.title || "", @w - MARGIN_X * 2, @hs)
+      set_ts(@hs)
       @gfx.draw_text_mixed(MARGIN_X, 2, title, @theme.title, @theme.title_bg)
-      @gfx.set_text_size(1)
 
-      y = TITLE_BAR_H + 4
+      y = @title_bar_h + 4
       content_x = MARGIN_X
       content_w = @w - MARGIN_X * 2
       max_y = @h - FOOTER_H - TIMER_H - 4
@@ -367,34 +383,34 @@ module PicoRabbit
           next
         end
 
-        break if y + LINE_H > max_y
+        break if y + @line_h > max_y
 
         case elem.type
         when :text
           y = draw_rich_text(content_x, y, elem.text, content_w, elem.align)
 
         when :bullet
-          indent = content_x + elem.level * CHAR_W * 2
+          indent = content_x + elem.level * @char_w * 2
           marker = elem.level == 0 ? "- " : "  - "
+          set_ts(@ts)
           @gfx.draw_text(indent, y, marker, @theme.bullet, @theme.bg)
-          mw = marker.length * CHAR_W
+          mw = marker.length * @char_w
           tx = indent + mw
           y = draw_rich_text(tx, y, elem.text || "",
                              content_x + content_w - tx, nil, @theme.text)
 
         when :numbered
-          indent = content_x + elem.level * CHAR_W * 2
-          # Simple numbered prefix
-          @gfx.draw_text(indent, y, "  ", @theme.text, @theme.bg)
-          tx = indent + CHAR_W * 2
+          indent = content_x + elem.level * @char_w * 2
+          tx = indent + @char_w * 2
           y = draw_rich_text(tx, y, elem.text || "",
                              content_x + content_w - tx, nil, @theme.text)
 
         when :code_block
           if elem.text.is_a?(Array)
             code_str = elem.text.join("\n")
-            block_h = elem.text.length * LINE_H + 4
+            block_h = elem.text.length * @line_h + 4
             @gfx.fill_rect(content_x, y, content_w, block_h, @theme.code_bg)
+            set_ts(@ts)
 
             # Try syntax highlighting
             begin
@@ -404,16 +420,16 @@ module PicoRabbit
               elem.text.each do |line|
                 draw_highlighted_line(content_x + 2, cy, line, hl_map, offset)
                 offset += line.length + 1  # +1 for newline
-                cy += LINE_H
+                cy += @line_h
               end
             rescue
               # Fallback: plain text
               cy = y + 2
               elem.text.each do |line|
-                max_c = (content_w - 4) / CHAR_W
+                max_c = (content_w - 4) / @char_w
                 code_line = line.length > max_c ? line[0, max_c] : line
                 @gfx.draw_text(content_x + 2, cy, code_line, @theme.code_text, @theme.code_bg)
-                cy += LINE_H
+                cy += @line_h
               end
             end
             y += block_h
@@ -428,19 +444,26 @@ module PicoRabbit
               $fmrb_w = content_w
               $fmrb_theme = @theme
               elem.compiled_proc ||= compile_fmrb_code(elem)
+              # Blocks are written against the size 1 cell (they place text by
+              # multiplying out 6px columns), so they get the canvas at 1
+              # whatever the deck's body size is.
+              set_ts(1)
               elem.compiled_proc.call
               y = $fmrb_y if $fmrb_y > y
             rescue => e
               @gfx.draw_text(content_x, y, "[fmrb_code error: #{e.message}]", 0xE0, @theme.bg)
-              y += LINE_H
+              y += @line_h
             end
+            # The block draws with the raw canvas and may have changed the
+            # text size behind our back.
+            @cur_ts = nil
           end
 
         when :blockquote
           qy = y
           y = draw_rich_text(content_x + 6, y, elem.text || "",
                              content_w - 6, nil, @theme.quote_text)
-          @gfx.fill_rect(content_x, qy, 2, y - qy - (LINE_H - CHAR_H), @theme.quote_bar)
+          @gfx.fill_rect(content_x, qy, 2, y - qy - (@line_h - @char_h), @theme.quote_bar)
 
         when :image
           begin
@@ -454,12 +477,13 @@ module PicoRabbit
               @gfx.delete_image(img[:id])
             end
           rescue
+            set_ts(@ts)
             @gfx.draw_text(content_x, y, "[img: #{elem.text}]", @theme.footer_text, @theme.bg)
-            y += LINE_H
+            y += @line_h
           end
 
         when :blank
-          y += LINE_H / 2
+          y += @line_h / 2
         end
       end
     end
@@ -474,11 +498,11 @@ module PicoRabbit
     #
     # Returns the y of the line after the last one drawn.
     def draw_rich_text(x, y, text, max_w, align, color = nil)
-      return y + LINE_H unless text
+      return y + @line_h unless text
       color = @theme.text unless color
       lines = layout_rich_text(parse_inline(text), max_w)
       n = lines.length
-      return y + LINE_H if n == 0
+      return y + @line_h if n == 0
       i = 0
       while i < n
         line = lines[i]
@@ -488,8 +512,10 @@ module PicoRabbit
         elsif align == :right
           lx = x + max_w - line[1]
         end
-        draw_rich_line(lx, y, line[0], color)
-        y += LINE_H
+        # A line carrying ruby takes one size 1 cell of headroom above it.
+        extra = line[2] ? RUBY_H : 0
+        draw_rich_line(lx, y, line[0], color, line[2])
+        y += @line_h + extra
         i += 1
       end
       y
@@ -506,13 +532,33 @@ module PicoRabbit
       while si < ns
         type = segments[si][0]
         str = segments[si][1]
+
+        # A ruby run never breaks: it is one word as wide as the wider of the
+        # base and the reading. The base draws at the body size, the reading
+        # always at size 1.
+        if type == :ruby
+          rb = segments[si][2]
+          base_w = w1(str) * @ts
+          ruby_w = w1(rb)
+          piece_w = base_w > ruby_w ? base_w : ruby_w
+          if line_w > 0 && line_w + piece_w > max_w
+            push_line(lines, pieces, line_w)
+            pieces = []
+            line_w = 0
+          end
+          pieces << [:ruby, str, piece_w, rb, base_w, ruby_w]
+          line_w += piece_w
+          si += 1
+          next
+        end
+
         pad = (type == :code) ? 2 : 0
         i = 0
         len = str.length
         while i < len
           j = token_end(str, i)
           token = str[i, j - i]
-          tw = @gfx.text_width(token, :default)
+          tw = w1(token) * @ts
           if tw > max_w && j - i > 1
             # A word wider than the whole line (a URL, an identifier): break
             # it hard rather than run off the edge, taking as much as still
@@ -520,12 +566,12 @@ module PicoRabbit
             avail = max_w - line_w
             k = 1
             while i + k < j
-              break if @gfx.text_width(str[i, k + 1], :default) > avail
+              break if w1(str[i, k + 1]) * @ts > avail
               k += 1
             end
             j = i + k
             token = str[i, k]
-            tw = @gfx.text_width(token, :default)
+            tw = w1(token) * @ts
           end
           i = j
           if line_w > 0 && line_w + tw > max_w
@@ -553,21 +599,30 @@ module PicoRabbit
     end
 
     # Push one finished line, dropping the trailing spaces so a centred or
-    # right-aligned line measures the same width as it draws.
+    # right-aligned line measures the same width as it draws. A line is
+    # [pieces, width, has_ruby]; the flag decides the line's headroom.
     def push_line(lines, pieces, line_w)
       last = pieces[pieces.length - 1]
-      str = last[1]
-      n = str.length
-      while n > 0 && str[n - 1] == " "
-        n -= 1
+      if last[0] != :ruby
+        str = last[1]
+        n = str.length
+        while n > 0 && str[n - 1] == " "
+          n -= 1
+        end
+        if n < str.length
+          cut = w1(str[n, str.length - n]) * @ts
+          last[1] = str[0, n]
+          last[2] = last[2] - cut
+          line_w -= cut
+        end
       end
-      if n < str.length
-        cut = @gfx.text_width(str[n, str.length - n], :default)
-        last[1] = str[0, n]
-        last[2] = last[2] - cut
-        line_w -= cut
+      has_ruby = false
+      i = 0
+      while i < pieces.length
+        has_ruby = true if pieces[i][0] == :ruby
+        i += 1
       end
-      lines << [pieces, line_w]
+      lines << [pieces, line_w, has_ruby]
     end
 
     # End index of the wrap token that starts at i: a run of spaces, a single
@@ -591,7 +646,13 @@ module PicoRabbit
       j
     end
 
-    def draw_rich_line(x, y, pieces, color)
+    # Two passes over the line: the base at the body size, then the readings
+    # at size 1 in the headroom above. Two passes rather than two size
+    # switches per piece.
+    def draw_rich_line(x, y, pieces, color, has_ruby)
+      base_y = has_ruby ? y + RUBY_H : y
+      set_ts(@ts)
+      bx = x
       i = 0
       n = pieces.length
       while i < n
@@ -599,36 +660,67 @@ module PicoRabbit
         type = piece[0]
         str = piece[1]
         w = piece[2]
-        if type == :bold
+        if type == :ruby
+          # The narrower of base and reading is centred under the wider.
+          @gfx.draw_text_mixed(bx + (w - piece[4]) / 2, base_y, str, color, @theme.bg)
+        elsif type == :bold
           # Bold: draw twice with 1px offset
-          @gfx.draw_text_mixed(x, y, str, color, @theme.bg)
-          @gfx.draw_text_mixed(x + 1, y, str, color)
+          @gfx.draw_text_mixed(bx, base_y, str, color, @theme.bg)
+          @gfx.draw_text_mixed(bx + 1, base_y, str, color)
         elsif type == :code
           # Inline code: background highlight. ASCII only, so Font0 is enough.
-          @gfx.fill_rect(x, y, w, CHAR_H, @theme.inline_code_bg)
-          @gfx.draw_text(x + 1, y, str, @theme.inline_code_text, @theme.inline_code_bg)
+          @gfx.fill_rect(bx, base_y, w, @char_h, @theme.inline_code_bg)
+          @gfx.draw_text(bx + 1, base_y, str, @theme.inline_code_text, @theme.inline_code_bg)
         else
-          @gfx.draw_text_mixed(x, y, str, color, @theme.bg)
+          @gfx.draw_text_mixed(bx, base_y, str, color, @theme.bg)
         end
-        x += w
+        bx += w
+        i += 1
+      end
+      return unless has_ruby
+
+      set_ts(1)
+      bx = x
+      i = 0
+      while i < n
+        piece = pieces[i]
+        if piece[0] == :ruby
+          @gfx.draw_text_mixed(bx + (piece[2] - piece[5]) / 2, y, piece[3],
+                               color, @theme.bg)
+        end
+        bx += piece[2]
         i += 1
       end
     end
 
+    # Pixel width of str in a size 1 cell. text_width multiplies by whatever
+    # the canvas is scaled to, so the canvas is held at 1 while measuring and
+    # the caller scales by hand -- a line can carry two sizes at once.
+    def w1(str)
+      set_ts(1)
+      @gfx.text_width(str, :default)
+    end
+
+    def set_ts(size)
+      return if @cur_ts == size
+      @gfx.set_text_size(size)
+      @cur_ts = size
+    end
+
     # Drop trailing characters until the string fits w at the current text
     # size. Titles are short, so the repeated measuring costs nothing.
-    def truncate_to_width(str, w)
-      return str if @gfx.text_width(str, :default) <= w
+    def truncate_to_width(str, w, size)
+      return str if w1(str) * size <= w
       n = str.length
       while n > 0
         cut = str[0, n]
-        return cut if @gfx.text_width(cut, :default) <= w
+        return cut if w1(cut) * size <= w
         n -= 1
       end
       ""
     end
 
-    # Parse inline formatting: **bold** and `code`
+    # Parse inline formatting: **bold**, `code` and {base|reading} ruby.
     def parse_inline(text)
       result = []
       buf = ""
@@ -636,6 +728,34 @@ module PicoRabbit
       len = text.length
 
       while i < len
+        # Check for {base|reading}. A brace followed by a colon belongs to a
+        # block directive ({::wait/}, {:.center}), which the parser has
+        # already taken out of the line; anything else that does not close
+        # with both a bar and a brace is ordinary text.
+        if text[i] == '{' && !(i + 1 < len && text[i + 1] == ':')
+          bar = nil
+          close = nil
+          j = i + 1
+          while j < len
+            c = text[j]
+            if c == '|' && bar.nil?
+              bar = j
+            elsif c == '}'
+              close = j
+              break
+            end
+            j += 1
+          end
+          if bar && close && bar > i + 1 && close > bar + 1
+            result << [:normal, buf] if buf.length > 0
+            buf = ""
+            result << [:ruby, text[i + 1, bar - i - 1],
+                       text[bar + 1, close - bar - 1]]
+            i = close + 1
+            next
+          end
+        end
+
         # Check for **bold**
         if i + 1 < len && text[i] == '*' && text[i + 1] == '*'
           result << [:normal, buf] if buf.length > 0
@@ -682,7 +802,7 @@ module PicoRabbit
 
     # Draw syntax-highlighted code line
     def draw_highlighted_line(x, y, text, hl_map, offset)
-      max_c = (@w - MARGIN_X * 2 - 4) / CHAR_W
+      max_c = (@w - MARGIN_X * 2 - 4) / @char_w
       visible_len = text.length > max_c ? max_c : text.length
       i = 0
       while i < visible_len
@@ -697,7 +817,7 @@ module PicoRabbit
         end
 
         chunk = text[i, j - i]
-        @gfx.draw_text(x + i * CHAR_W, y, chunk, color, @theme.code_bg)
+        @gfx.draw_text(x + i * @char_w, y, chunk, color, @theme.code_bg)
         i = j
       end
     end
@@ -709,13 +829,15 @@ module PicoRabbit
 
       # Slide title on left
       if slide && slide.title && !slide.title_slide
-        ft = truncate_to_width(slide.title, @w / 2)
+        ft = truncate_to_width(slide.title, @w / 2, 1)
+        set_ts(1)
         @gfx.draw_text_mixed(MARGIN_X, fy + 1, ft, @theme.footer_text, @theme.footer_bg)
       end
 
       # Page number on right
       num = "#{slide_idx + 1}/#{total_slides}"
       nx = @w - num.length * CHAR_W - MARGIN_X
+      set_ts(1)
       @gfx.draw_text(nx, fy + 1, num, @theme.footer_text, @theme.footer_bg)
     end
 
