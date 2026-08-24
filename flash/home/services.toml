@@ -21,6 +21,7 @@
 #   app = "/app/game/robo_explorer/robo_explorer.app.rb"
 #   fullscreen = true      # overrides the app's own window mode
 #   delay_ms = 2000        # let the desktop settle first
+#   restart = true         # start it again if it CRASHES (a kill stays killed)
 #
 # The system list is /etc/services.toml, read first; anything written here
 # with the same name wins, so "[clock] enable = false" switches off the
@@ -29,8 +30,14 @@
 # Watch what you ask for: the services run one after another, so a handler
 # that takes its time makes the others wait (the host logs a warning past
 # 50 ms), and anything that allocates on every tick shows up in the host's
-# heap. ps lists them, `kill <name>` stops one, `svc start <name>` brings it
-# back.
+# heap. ps lists them.
+#
+# Two ways to switch one off, and they are not the same:
+#   kill <name> / svc stop <name>   this session only; a reboot undoes it
+#   svc disable <name>              remembered, so it stays off after a reboot
+# The remembered ones are kept in /home/services_state.toml, which the host
+# writes; this file is yours and is never rewritten. svc start / svc enable
+# are the other halves.
 
 [heartbeat]
 file = "heartbeat.rb"

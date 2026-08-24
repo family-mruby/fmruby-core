@@ -21,10 +21,15 @@ module ShellCommandsMixin
   # The host's app name in the task list. Used to tell "no services on this
   # machine" (say nothing) from "the host is not answering" (say so).
   SVC_HOST_NAME = "Services"
-  # How many on_update calls to wait for an answer before giving up. The
-  # answer normally arrives within a frame; this only has to be long enough
-  # not to fire on a busy machine.
-  SVC_REPLY_TIMEOUT_TICKS = 10
+  # How long to wait for an answer before giving up, in milliseconds of wall
+  # clock (on_update calls are not a clock: the shell's own frame time moves).
+  # A list, a stop or a start is answered within a frame.
+  SVC_REPLY_TIMEOUT_MS = 1000
+  # An enable may have to load the service first, and loading means running
+  # the compiler over its file: on a Tab5 that is around a second, and the
+  # shorter budget reported "services host not running" and then, a moment
+  # later, the answer.
+  SVC_ENABLE_TIMEOUT_MS = 5000
 
   # +open_path+ asks the kernel to hand that file to the new app as soon as it
   # exists (as a file_selected control message). Needed for a fullscreen app:
@@ -115,7 +120,9 @@ module ShellCommandsMixin
       @history << "  ps - List tasks and jobs"
       @history << "  kill <pid|service> - End a user task (PID from ps), or stop a service by name"
       @history << "  kill_job <id> - Stop a background job (JOB id from ps)"
-      @history << "  svc list | svc start <name> - Background services (see ps)"
+      @history << "  svc list - Background services (also shown by ps)"
+      @history << "  svc start|stop <name> - Run/stop a service for this session"
+      @history << "  svc enable|disable <name> - ...and remember it across boots"
       @history << "  help - Show this help message"
     else
       @history << "Unknown command: #{cmd}"
@@ -963,24 +970,29 @@ module ShellCommandsMixin
     svc_request("stop", name, true)
   end
 
-  # `svc list` / `svc start <name>`. The pair to `kill <service>`: one stops a
-  # service, the other brings it back (including one the host switched off
-  # after three errors -- start puts its error count back to zero).
+  # `svc list` / `svc start` / `svc enable` / `svc disable`.
+  #
+  # Two pairs, and the difference between them is the point:
+  #   start / stop (= kill <name>) act on THIS session. A reboot undoes them.
+  #   enable / disable are remembered in /home/services_state.toml and so
+  #     survive a reboot. disable also stops it now; enable also starts it now.
   def cmd_svc(args)
     sub = args.empty? ? "" : args[0]
     case sub
     when "list"
       svc_request("list", nil, true)
-    when "start"
+    when "start", "stop", "enable", "disable"
       if args.size < 2
-        @history << "Usage: svc start <name>   (name from ps or svc list)"
+        @history << "Usage: svc #{sub} <name>   (name from ps or svc list)"
         return
       end
-      svc_request("start", args[1], true)
+      svc_request(sub, args[1], true)
     else
       @history << "Usage: svc list"
-      @history << "       svc start <name>"
-      @history << "  (kill <name> stops one; ps lists them under the host)"
+      @history << "       svc start <name>      - run it again, this session"
+      @history << "       svc enable <name>     - and at every boot from now"
+      @history << "       svc disable <name>    - stop it, this boot and after"
+      @history << "  (kill <name> stops one for this session only)"
     end
   end
 
@@ -1022,7 +1034,8 @@ module ShellCommandsMixin
       @history << "svc: could not reach the kernel"
       return
     end
-    @svc_wait_ticks = SVC_REPLY_TIMEOUT_TICKS
+    budget = cmd == "enable" ? SVC_ENABLE_TIMEOUT_MS : SVC_REPLY_TIMEOUT_MS
+    @svc_wait_until = Machine.board_millis + budget
     @svc_wait_loud = loud
     @svc_wait_cmd = cmd
   end
@@ -1032,11 +1045,10 @@ module ShellCommandsMixin
   # process list and the request, would otherwise leave the user waiting for
   # an answer that is never coming.
   def tick_svc_wait
-    return unless @svc_wait_ticks
-    @svc_wait_ticks -= 1
-    return if @svc_wait_ticks > 0
+    return unless @svc_wait_until
+    return if Machine.board_millis < @svc_wait_until
     loud = @svc_wait_loud
-    @svc_wait_ticks = nil
+    @svc_wait_until = nil
     @svc_wait_loud = nil
     @svc_wait_cmd = nil
     append_output("svc: services host not running") if loud
@@ -1046,7 +1058,7 @@ module ShellCommandsMixin
   # payload is 176 bytes, which the whole list does not fit in), and "svc_end"
   # closes the list.
   def handle_svc_reply(msg)
-    @svc_wait_ticks = nil
+    @svc_wait_until = nil
     @svc_wait_loud = nil
     case msg["cmd"]
     when "svc"
@@ -1058,7 +1070,7 @@ module ShellCommandsMixin
       counts = "t=#{s["ticks"]} ev=#{s["events"]} err=#{s["errors"]}"
       counts = "#{counts} wk=#{s["wakes"]}" if s["wakes"] && s["wakes"] != 0
       line = "  +- #{s["name"].to_s.ljust(12)} #{s["origin"]} " \
-             "#{s["state"].to_s.ljust(7)} #{counts}"
+             "#{s["state"].to_s.ljust(8)} #{counts}"
       append_output(line)
     when "svc_end"
       append_output("  (no services)") if msg["count"] == 0

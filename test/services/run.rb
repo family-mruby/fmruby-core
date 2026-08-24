@@ -127,7 +127,7 @@ check("nor is a field of it", sys["clock"].key?("origin"), false)
 
 e = SvcEntry.new("clock", m["clock"])
 check("enable = false is respected", e.enabled?, false)
-check("and shows as stopped", e.state, "stopped")
+check("and shows as disabled, not stopped", e.state, "disabled")
 
 e = SvcEntry.new("hb", { "file" => "hb.rb", "class" => "H", "interval_ms" => 100,
                          "origin" => "usr" })
@@ -270,6 +270,110 @@ sub.wake_in(0, 700)
 check("even a subscribe-only service can have one",
       SvcConf.next_sleep([sub], 0), 700)
 sub.take_wake
+
+# --- restart = true (S2 T1) -----------------------------------------------
+#
+# The rule the whole feature turns on: a death that was asked for is never
+# undone. Everything else here is the runaway guard around it.
+
+WINDOW = 300_000
+LIMIT = 3
+
+r = SvcEntry.new("game", { "app" => "/app/g.rb", "restart" => true })
+check("restart is a boolean", r.restart, true)
+check("no pid until one is started", r.started_pid, 0)
+check("an asked-for death is not undone", r.note_app_death(1000, true, WINDOW, LIMIT), false)
+check("and does not count against the budget", r.death_count, 0)
+check("a crash is", r.note_app_death(1000, false, WINDOW, LIMIT), true)
+check("counted", r.death_count, 1)
+check("restarts are counted for the log", r.restarts, 1)
+r.arm_restart(1000, 2000)
+check("armed 2 s out", r.next_at, 3000)
+check("and back in the deadline list", r.due?(3000), true)
+
+check("second crash still restarts", r.note_app_death(2000, false, WINDOW, LIMIT), true)
+check("third does not", r.note_app_death(3000, false, WINDOW, LIMIT), false)
+check("all three are still counted", r.death_count, 3)
+check("and it stays given up", r.note_app_death(4000, false, WINDOW, LIMIT), false)
+
+# Deaths age out of the window, so a machine left running for days is not
+# permanently poisoned by three crashes in its first minute.
+old_r = SvcEntry.new("g2", { "app" => "/app/g.rb", "restart" => true })
+old_r.note_app_death(0, false, WINDOW, LIMIT)
+old_r.note_app_death(1000, false, WINDOW, LIMIT)
+check("a death outside the window is forgotten",
+      old_r.note_app_death(WINDOW + 2000, false, WINDOW, LIMIT), true)
+check("leaving just the fresh one", old_r.death_count, 1)
+
+# Without restart = true nothing comes back, and a service entry is not an app.
+plain = SvcEntry.new("game2", { "app" => "/app/g.rb" })
+check("restart defaults to false", plain.restart, false)
+check("and nothing is restarted", plain.note_app_death(0, false, WINDOW, LIMIT), false)
+svc = SvcEntry.new("s", { "file" => "s.rb", "class" => "S", "restart" => true })
+check("a service entry is not restarted this way",
+      svc.note_app_death(0, false, WINDOW, LIMIT), false)
+
+# --- the state file, and the third layer (S2 T2) ---------------------------
+
+st = SvcConf.parse_state(<<~TXT)
+  # a comment
+  chime = false
+  clock = true
+
+  junk without an equals
+  bad = maybe
+  = true
+TXT
+check("only true/false lines count", st, { "chime" => false, "clock" => true })
+check("nothing is not an empty switch", SvcConf.parse_state(nil), {})
+
+# It has to survive a round trip, or "disable" would stop meaning anything
+# after the file is read back at the next boot.
+check("round trip", SvcConf.parse_state(SvcConf.render_state(st)), st)
+
+three = SvcConf.merge(
+  SvcConf.parse("[clock]\nfile = \"c.rb\"\nenable = true\n"),
+  SvcConf.parse("[chime]\nfile = \"ch.rb\"\nenable = true\n"))
+unknown = SvcConf.apply_state(three, { "clock" => false, "gone" => true })
+check("the state file beats both lists", three["clock"]["enable"], false)
+check("and leaves the rest alone", three["chime"]["enable"], true)
+check("an unknown name is reported, not raised over", unknown, ["gone"])
+check("nothing else is invented", three.keys, ["clock", "chime"])
+
+# A user list that switches something off is itself overridden by the file,
+# which is what makes "svc enable" work on a service the list disables.
+back_on = SvcConf.merge(
+  SvcConf.parse("[clock]\nfile = \"c.rb\"\n"),
+  SvcConf.parse("[clock]\nenable = false\n"))
+SvcConf.apply_state(back_on, { "clock" => true })
+check("enable overrides a list that says false", back_on["clock"]["enable"], true)
+
+# --- disabled is not stopped ----------------------------------------------
+
+d = SvcEntry.new("d", { "file" => "d.rb", "class" => "D", "interval_ms" => 100 })
+d.obj = Object.new
+d.arm(0)
+check("running to begin with", d.state, "running")
+check("disable takes it out", d.disable, true)
+check("with its own word", d.state, "disabled")
+check("no deadline", d.next_at, nil)
+check("nothing is delivered to it", d.deliverable?, false)
+check("disabling twice is refused", d.disable, false)
+check("and stop has nothing to do", d.stop, false)
+check("enable brings it back to stopped, not running", d.enable, true)
+check("state", d.state, "stopped")
+check("enabling twice is refused", d.enable, false)
+check("start is what runs it", d.start(500), true)
+check("now running", d.state, "running")
+
+# A service that failed three times can be disabled outright, and enabling it
+# again clears the count -- otherwise it would come back already exhausted.
+f = SvcEntry.new("f", { "file" => "f.rb", "class" => "F" })
+f.note_error; f.note_error; f.note_error
+check("failed", f.state, "failed")
+check("disable works from failed too", f.disable, true)
+f.enable
+check("and the error budget is fresh", f.errors, 0)
 
 puts(Check.failed.zero? ? "services: all checks passed" : "services: #{Check.failed} FAILED")
 exit(Check.failed.zero? ? 0 : 1)

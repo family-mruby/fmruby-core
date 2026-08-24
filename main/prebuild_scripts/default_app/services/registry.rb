@@ -151,6 +151,72 @@ module SvcConf
     true
   end
 
+  # The state file (/home/services_state.toml): one "name = true/false" per
+  # line and nothing else. It is the host's own file -- the third layer, and
+  # the only one the host writes.
+  #
+  # It exists so that "svc disable chime" can outlive a reboot without the
+  # host editing a file a person wrote. A user's list carries their comments,
+  # their order and their spelling; rewriting it to flip one flag would lose
+  # some of that sooner or later.
+  def self.parse_state(text)
+    out = {}
+    return out unless text
+    lines = text.split("\n")
+    i = 0
+    while i < lines.size
+      line = lines[i].strip
+      i += 1
+      next if line.empty?
+      next if line.start_with?("#")
+      eq = line.index("=")
+      next unless eq
+      next if eq == 0
+      name = line[0, eq].strip
+      next if name.empty?
+      val = line[eq + 1, line.length - eq - 1].strip
+      next unless val == "true" || val == "false"
+      out[name] = val == "true"
+    end
+    out
+  end
+
+  # What to write back. Kept to the one thing this file is for, so it stays
+  # readable to a person who opens it wondering why a service is off.
+  def self.render_state(state)
+    out = +"# Written by the service host: which services you have switched on\n"
+    out << "# and off (svc enable / svc disable). Edit the lists themselves in\n"
+    out << "# /home/services.toml -- this file only overrides their enable flag.\n"
+    keys = state.keys
+    i = 0
+    while i < keys.size
+      k = keys[i]
+      out << "#{k} = #{state[k] ? 'true' : 'false'}\n"
+      i += 1
+    end
+    out
+  end
+
+  # Third layer: the state file wins over both lists. Returns the names it did
+  # not recognise, so the caller can say so once -- a name left behind after
+  # its service was deleted must cost a log line, not an error.
+  def self.apply_state(conf, state)
+    unknown = []
+    keys = state.keys
+    i = 0
+    while i < keys.size
+      k = keys[i]
+      i += 1
+      entry = conf[k]
+      if entry
+        entry["enable"] = state[k]
+      else
+        unknown << k
+      end
+    end
+    unknown
+  end
+
   # System list first, user list on top. A user may change any field of a
   # system service -- "enable = false" is what switches one off -- and the
   # origin stays with the layer that introduced it, so ps can say where a
@@ -272,12 +338,18 @@ class SvcEntry
   RUNNING = "running"
   STOPPED = "stopped"
   FAILED  = "failed"
+  # Switched off in a way that survives a reboot (svc disable / the state
+  # file). Distinct from "stopped" on purpose: stopped is for this session
+  # only, and a listing that spelled both the same way would leave a user
+  # guessing which of the two they had done.
+  DISABLED = "disabled"
 
   attr_reader :name, :origin, :file, :class_name, :interval_ms, :config,
-              :app_path, :fullscreen, :delay_ms, :oneshot, :state,
-              :ticks, :events, :errors, :wakes, :wake_at
+              :app_path, :fullscreen, :delay_ms, :oneshot, :state, :restart,
+              :ticks, :events, :errors, :wakes, :wake_at, :restarts
   attr_accessor :obj, :ctx, :next_at, :topics, :slow_count,
-                :has_tick, :has_event, :has_stop, :has_wake, :warned_wake
+                :has_tick, :has_event, :has_stop, :has_wake, :warned_wake,
+                :started_pid
 
   def initialize(name, conf)
     @name = name
@@ -289,6 +361,14 @@ class SvcEntry
     @delay_ms = (conf["delay_ms"] || 0).to_i
     @interval_ms = (conf["interval_ms"] || 0).to_i
     @oneshot = conf["oneshot"] ? true : false
+    # "app =" only: start it again if it dies unasked-for. A kill is never
+    # undone (see SvcEntry#note_app_death).
+    @restart = conf["restart"] ? true : false
+    @restarts = 0
+    @deaths = []
+    # pid of the app this entry started, 0 when none is running. One type for
+    # the slot, the same reason the kernel keeps 0 rather than nil.
+    @started_pid = 0
     # enable defaults to true: a list is written to run what it names.
     @enabled = conf.key?("enable") ? (conf["enable"] ? true : false) : true
     @config = conf["config"] || {}
@@ -307,7 +387,7 @@ class SvcEntry
     @errors = 0
     @wakes = 0
     @slow_count = 0
-    @state = @enabled ? RUNNING : STOPPED
+    @state = @enabled ? RUNNING : DISABLED
   end
 
   def enabled?
@@ -322,6 +402,33 @@ class SvcEntry
 
   def running?
     @state == RUNNING
+  end
+
+  def disabled?
+    @state == DISABLED
+  end
+
+  # svc disable: out of the delivery list AND out of the next boot. The caller
+  # records the choice in the state file and calls on_stop; this is only the
+  # entry's side of it.
+  def disable
+    return false if @state == DISABLED
+    @state = DISABLED
+    @enabled = false
+    @next_at = nil
+    @wake_at = nil
+    true
+  end
+
+  # svc enable. The instance may not exist yet (a service disabled at boot is
+  # never loaded), which is why this does not arm anything: the caller loads
+  # it if needed and then calls start.
+  def enable
+    return false unless @state == DISABLED
+    @state = STOPPED
+    @enabled = true
+    @errors = 0
+    true
   end
 
   def failed?
@@ -389,6 +496,44 @@ class SvcEntry
   # when the desktop should be allowed to settle before the screen is taken.
   def arm_app(now)
     @next_at = now + @delay_ms
+    nil
+  end
+
+  # An "app =" entry whose app has just died. Answers whether to start it
+  # again, and remembers the death for the runaway guard.
+  #
+  # The rule is the kernel's rule for its own host, kept the same on purpose:
+  # only an unasked-for death counts, and three inside the window means stop
+  # trying. +now+ and the two bounds come from the caller so this stays free
+  # of the clock.
+  def note_app_death(now, expected, window_ms, limit)
+    return false unless app?
+    return false unless @restart
+    return false if expected
+    kept = []
+    i = 0
+    while i < @deaths.size
+      t = @deaths[i]
+      kept << t if now - t < window_ms
+      i += 1
+    end
+    kept << now
+    @deaths = kept
+    return false if kept.size >= limit
+    @restarts += 1
+    true
+  end
+
+  # How many unasked-for deaths are still inside the window (for the log).
+  def death_count
+    @deaths.size
+  end
+
+  # Put this entry back in the deadline list so start_due_apps starts its app
+  # again. Uses the app slot's own deadline; the periodic side is untouched.
+  def arm_restart(now, delay_ms)
+    @state = RUNNING
+    @next_at = now + delay_ms
     nil
   end
 

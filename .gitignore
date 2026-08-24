@@ -16,6 +16,8 @@ managed_components/
 flash/etc/system_conf.toml
 # System service list, generated from config/services.toml by the build
 flash/etc/services.toml
+# Written by the service host at runtime (svc enable / svc disable)
+flash/home/services_state.toml
 flash/home/music/
 # Launcher app index, rebuilt on demand by the desktop
 flash/var/cache/launcher_index
