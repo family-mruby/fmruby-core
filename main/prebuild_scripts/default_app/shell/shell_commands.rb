@@ -10,6 +10,19 @@ module ShellCommandsMixin
   COMMENT_TOML_FENCE = "#---fmrb"
   COMMENT_TOML_SCAN_BYTES = 512
 
+  # Talking to the service host (doc/user_extension/services/plan.md).
+  # Services live inside one app and have no pid of their own, so they are
+  # addressed by name over Pub/Sub: requests go to one well-known topic and
+  # the answers come back on a topic named after this shell's pid.
+  SVC_CTL_TOPIC = "svc/ctl"
+  # The host's app name in the task list. Used to tell "no services on this
+  # machine" (say nothing) from "the host is not answering" (say so).
+  SVC_HOST_NAME = "Services"
+  # How many on_update calls to wait for an answer before giving up. The
+  # answer normally arrives within a frame; this only has to be long enough
+  # not to fire on a busy machine.
+  SVC_REPLY_TIMEOUT_TICKS = 10
+
   # +open_path+ asks the kernel to hand that file to the new app as soon as it
   # exists (as a file_selected control message). Needed for a fullscreen app:
   # spawning it suspends this shell, so a deferred relay from here never runs.
@@ -74,6 +87,8 @@ module ShellCommandsMixin
       cmd_kill(args)
     when "kill_job"
       cmd_kill_job(args)
+    when "svc"
+      cmd_svc(args)
     when "edit"
       cmd_edit(args)
     when "create_app"
@@ -95,8 +110,9 @@ module ShellCommandsMixin
       @history << "  run <script> [&] - Run script"
       @history << "  run <script> > <file> - Redirect output"
       @history << "  ps - List tasks and jobs"
-      @history << "  kill <pid> - Ask a user task to end (PID from ps)"
+      @history << "  kill <pid|service> - End a user task (PID from ps), or stop a service by name"
       @history << "  kill_job <id> - Stop a background job (JOB id from ps)"
+      @history << "  svc list | svc start <name> - Background services (see ps)"
       @history << "  help - Show this help message"
     else
       @history << "Unknown command: #{cmd}"
@@ -868,6 +884,21 @@ module ShellCommandsMixin
         j += 1
       end
     end
+
+    # The services living inside the host task, as child rows.
+    #
+    # Asked for here and printed from on_control when the answers arrive --
+    # the same shape as `kill`, and for the same reason: this runs on the
+    # app's own callback, so waiting here would stop the very loop the answer
+    # has to come back through. Last in the output for that reason too: the
+    # rows land a frame or two after everything above them. Nothing is asked
+    # on a machine with no host, so a plain `ps` there says nothing new.
+    if svc_host_running?
+      # Kept inside the shell's 47-column default window: a longer line wraps
+      # and the child rows below it stop reading as a list.
+      @history << "Services (kill <name> stops one):"
+      svc_request("list", nil, false)
+    end
   end
 
   # Ask a running app to end. The kernel does the asking (it is the one that
@@ -877,7 +908,16 @@ module ShellCommandsMixin
   # "kill_result" control message (on_control in shell.app.rb).
   def cmd_kill(args)
     if args.empty?
-      @history << "Usage: kill <pid>   (PID from ps, type user)"
+      @history << "Usage: kill <pid>      (PID from ps, type user)"
+      @history << "       kill <service>  (name from ps, stops it in the host)"
+      return
+    end
+    # A pid is a number; anything else is a service name. Services have no pid
+    # of their own, so this is the only way to address one -- and killing the
+    # host itself is still `kill <pid>`, which is the difference the two forms
+    # are meant to keep.
+    unless numeric?(args[0])
+      cmd_kill_service(args[0])
       return
     end
     pid = args[0].to_i
@@ -903,6 +943,129 @@ module ShellCommandsMixin
     data = { "cmd" => "kill", "pid" => pid }
     sent = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
     @history << "kill: could not reach the kernel" unless sent
+  end
+
+  def numeric?(str)
+    return false if str.nil? || str.empty?
+    i = 0
+    while i < str.length
+      b = str.getbyte(i)
+      return false if b < 48 || b > 57
+      i += 1
+    end
+    true
+  end
+
+  def cmd_kill_service(name)
+    svc_request("stop", name, true)
+  end
+
+  # `svc list` / `svc start <name>`. The pair to `kill <service>`: one stops a
+  # service, the other brings it back (including one the host switched off
+  # after three errors -- start puts its error count back to zero).
+  def cmd_svc(args)
+    sub = args.empty? ? "" : args[0]
+    case sub
+    when "list"
+      svc_request("list", nil, true)
+    when "start"
+      if args.size < 2
+        @history << "Usage: svc start <name>   (name from ps or svc list)"
+        return
+      end
+      svc_request("start", args[1], true)
+    else
+      @history << "Usage: svc list"
+      @history << "       svc start <name>"
+      @history << "  (kill <name> stops one; ps lists them under the host)"
+    end
+  end
+
+  # ---- Service host: requests and the answers they come back as ----
+  #
+  # The host answers on a topic named after this pid, so several tools can ask
+  # at once and nobody has to be told who asked.
+
+  def svc_reply_topic
+    @svc_reply_topic = "svc/re/#{FmrbApp.pid}" unless @svc_reply_topic
+    @svc_reply_topic
+  end
+
+  # Is the host up at all? Asked before `ps` sends anything, so a machine with
+  # no services stays quiet instead of reporting a timeout every time.
+  def svc_host_running?
+    procs = FmrbApp.ps
+    return false unless procs
+    i = 0
+    while i < procs.size
+      p = procs[i]
+      return true if p[:name] == SVC_HOST_NAME && p[:state] != FmrbConst::PROC_STATE_FREE
+      i += 1
+    end
+    false
+  end
+
+  # +loud+ decides what happens when nothing answers: a command the user typed
+  # about services should say so, a `ps` that threw in a list request should
+  # not turn into an error report.
+  def svc_request(cmd, name, loud)
+    unless @svc_subscribed
+      subscribe(svc_reply_topic)
+      @svc_subscribed = true
+    end
+    req = { "cmd" => cmd, "reply_to" => svc_reply_topic }
+    req["name"] = name if name
+    unless publish(SVC_CTL_TOPIC, req)
+      @history << "svc: could not reach the kernel"
+      return
+    end
+    @svc_wait_ticks = SVC_REPLY_TIMEOUT_TICKS
+    @svc_wait_loud = loud
+    @svc_wait_cmd = cmd
+  end
+
+  # Called once per on_update from shell.app.rb, like tick_pending_edit.
+  # A subscribe that has not taken effect yet, or a host that died between the
+  # process list and the request, would otherwise leave the user waiting for
+  # an answer that is never coming.
+  def tick_svc_wait
+    return unless @svc_wait_ticks
+    @svc_wait_ticks -= 1
+    return if @svc_wait_ticks > 0
+    loud = @svc_wait_loud
+    @svc_wait_ticks = nil
+    @svc_wait_loud = nil
+    @svc_wait_cmd = nil
+    append_output("svc: services host not running") if loud
+  end
+
+  # One answer from the host. "svc" rows arrive one per message (a message
+  # payload is 176 bytes, which the whole list does not fit in), and "svc_end"
+  # closes the list.
+  def handle_svc_reply(msg)
+    @svc_wait_ticks = nil
+    @svc_wait_loud = nil
+    case msg["cmd"]
+    when "svc"
+      s = msg["svc"]
+      return unless s
+      # ASCII only: the shell measures its columns in 6px cells, and a
+      # box-drawing character would be drawn 8px wide by the fallback font,
+      # putting the rest of the row out of step with the ones above it.
+      counts = "t=#{s["ticks"]} ev=#{s["events"]} err=#{s["errors"]}"
+      counts = "#{counts} wk=#{s["wakes"]}" if s["wakes"] && s["wakes"] != 0
+      line = "  +- #{s["name"].to_s.ljust(12)} #{s["origin"]} " \
+             "#{s["state"].to_s.ljust(7)} #{counts}"
+      append_output(line)
+    when "svc_end"
+      append_output("  (no services)") if msg["count"] == 0
+    when "svc_result"
+      if msg["ok"]
+        append_output("svc: #{msg["name"]} ok")
+      else
+        append_output("svc: #{msg["name"]} refused (#{msg["err"]})")
+      end
+    end
   end
 
   # Kernel answer to cmd_kill. "ok" means the app was asked; it ends itself

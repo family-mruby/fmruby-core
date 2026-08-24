@@ -274,6 +274,7 @@ class ShellApp < FmrbApp
 
   def on_update()
     tick_pending_edit
+    tick_svc_wait
 
     # Continuous scroll while holding scrollbar
     if @scroll_hold != 0
@@ -644,13 +645,21 @@ class ShellApp < FmrbApp
     draw_less_view
   end
 
-  # Control messages the app base does not handle itself. Today that is the
-  # kernel's answer to `kill` (see cmd_kill in shell/shell_commands.rb).
+  # Control messages the app base does not handle itself: the kernel's answer
+  # to `kill`, and the service host's answers to ps / kill <name> / svc, which
+  # arrive as Pub/Sub deliveries on this shell's own reply topic (see
+  # shell/shell_commands.rb).
   def on_control(msg)
     handle_kill_result(msg) if msg["cmd"] == "kill_result"
+    if msg["cmd"] == "topic_data" && msg["topic"] == svc_reply_topic
+      handle_svc_reply(msg["data"] || {})
+    end
   end
 
   def on_destroy
+    # Pids are slot indices and get handed out again, so leaving the reply
+    # topic subscribed would send the next shell in this slot these answers.
+    unsubscribe(svc_reply_topic) if @svc_subscribed
     Log.info("Destroyed")
   end
 
