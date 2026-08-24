@@ -157,7 +157,13 @@
 // stack (a 16 KB app has been taken down by compiling a file, see
 // FMRB_USER_APP_TASK_STACK_MAX above). Tune this down from the measured
 // high-water in the periodic fmrb_task: dump, not by guessing.
-#define FMRB_SERVICE_APP_TASK_STACK_SIZE (24 * 1024)
+//
+// Measured on a Tab5 with the three bundled services: high-water 10,128 B
+// of 24 KB (doc/user_extension/services/report/s1.md), so 20 KB keeps
+// ~10 KB of headroom for a user's deeper require. Internal RAM is the
+// scarcest resource; raise this again only on a measured overflow
+// (a Stack protection fault in the boot log names the task).
+#define FMRB_SERVICE_APP_TASK_STACK_SIZE (20 * 1024)
 #define FMRB_SERVICE_APP_PRIORITY       (1)
 #define FMRB_SERVICE_APP_TASK_FLAGS     FMRB_TASK_FLAG_PINNED_1
 
