@@ -1,0 +1,85 @@
+# 声の通知: WAV 再生の口、ネットワーク TTS、カレンダーの読み上げ
+
+doc/user_extension/ideas.md の系譜 (サービスの上に乗る応用)。アラーム等の
+通知を日本語の音声で読ませる。段は 3 つで、下の段だけでも独立に価値がある。
+
+## 前提の確認 (調べてある事実)
+
+- 音の出口は APU (合成音) のみで、**任意波形 (PCM/WAV) を鳴らす口が無い**。
+  マイク入力 (Tab5) はあるが出力はシンセだけ。これが全段共通の前提工事。
+- ネットワーク: picoruby-socket + picoruby-mbedtls がビルドに入っている
+  (S3 は native WiFi、Tab5 は C6 経由)。TLS はヒープ ~50KB / 接続。
+  **証明書検証には正しい時刻が要る** — RTC 修正済み + timesync (SNTP、
+  services/plan.md の候補) がそのまま前提を満たす。
+- 端末に MP3/OGG デコーダは無い。**WAV / LINEAR16 / 生 PCM で受け取れる
+  経路に限る**。16kHz 16bit mono で 1 文 3 秒 ≈ 100KB、WiFi で 1-2 秒。
+- 検証は headless でも `tools/fmrb_audio_probe.rb` で「鳴った・何 Hz か」
+  まで取れる。
+
+## V1: WAV 再生の口 (唯一の C 工事)
+
+- `FmrbAudio#play_wav(path)` を追加。audio 側 (Modern = main/drivers/
+  audio_p4) の**ミキサに PCM 1 ストリームを足し**、WAV (8/16kHz, 16bit,
+  mono) をファイルから流す。APU と混ざって鳴る。停止 `stop_wav`。
+- 効果音の差し替え (ideas.md 案 8 のテーマパック) にもそのまま効く汎用投資。
+- **Retro (WROVER) は後段**: リンク (UART 921600 ≈ 実効 90KB/s) に PCM を
+  流す設計が要る。8kHz mono なら帯域は足りるが、v1 は Modern のみで
+  進めてよい (play_wav は Retro では NOT_SUPPORTED を返す)。
+- 最初の使い道: **PC で生成した定型文 WAV** (Style-Bert-VITS2 等) を
+  `/home/voice/` に置き、アラームサービスが `ctx.audio.play_wav` で鳴らす。
+  これだけで「しゃべるアラーム」(定型) が完全オフラインで成立する。
+
+## V2: tts サービス (文字列 → WAV の解決役)
+
+サービスホスト (services/plan.md) の上のシステムサービス。
+
+- 契約: topic `tts/say` に `{"text"=>...}` が来たら WAV を用意して鳴らす。
+  他のサービス/アプリは publish するだけ。
+- 解決の順: **(1) キャッシュ** `/home/voice/cache/<文面のハッシュ>.wav` に
+  あればそれ、**(2) ローカル VOICEVOX** (PC の HTTP サーバ。TLS も鍵も
+  不要で最短)、**(3) クラウド TTS** (WAV/LINEAR16/PCM で返せるもの:
+  OpenAI TTS / Google Cloud TTS / Amazon Polly。MP3 のみのサービスは不可)。
+  取得したら必ずキャッシュへ → 定型文は 2 回目から**オフラインで即時**。
+- 設定は services.toml の `[tts.config]` (server の URL、クラウドの鍵、
+  音声名)。鍵は /home に平文で置くことになる — 個人機として許容し、
+  rd_http の /fs で読める点も文書に書く (どちらも開発ビルド限定の口)。
+- TLS の証明書検証: v1 は**検証省略を許す** (中間者耐性より実装の速さ。
+  文書に明記)。CA 焼き込みは欲しくなったら。
+- 取得中の待ち: tts サービスは wake_in で自分を刻み、ホストを塞がない
+  (ソケット読みのブロックが長いと他サービスが待つ — 読みを分割するか、
+  実測して 50ms 警告が出るなら `own_vm = true` へ逃がす。report で判断)。
+
+## V3: カレンダーの読み上げ
+
+- **v1 は Google カレンダーの「iCal 形式の非公開 URL」(ICS) を使う**。
+  素の HTTPS GET 1 本で全予定のテキストが取れ、OAuth が要らない。
+  URL 自体が秘密 = 鍵は [calendar.config] に URL を置くだけ。
+- ICS の読解は部分集合に限定: `VEVENT` の `DTSTART` (日付/日時) と
+  `SUMMARY` だけ拾う。**繰り返し予定 (RRULE) の展開はやらない** (v1 の
+  明記された制限。Google の ICS は繰り返しを展開せず RRULE で書くため、
+  定例会議は読まれない。必要になったら v2 で RRULE の日次展開だけ足す)。
+- calendar サービス: 朝の指定時刻 (config) に ICS を取得 → 今日の予定を
+  組み立てて `tts/say` に流す (「きょうの予定は 3 件。10 じ、定例…」)。
+  取得失敗は 1 行ログして黙る (読み上げの空振りはしない)。
+- 文面は かな混じりでよい (TTS 側が読む)。日時の読み (10:30 → 「10 じ
+  30 ぷん」) は calendar 側で文字列にする。
+- OAuth2 device flow (Calendar API 正攻法) は**やらない** (v2 以降。
+  トークン保存・更新まで含めて一段大きい)。
+
+## 段の切り方と検収の勘所
+
+- V1 だけで独立に完結 (定型 WAV アラーム)。検収: play_wav で
+  audio_probe に波形が出る、APU と同時に鳴る、無い/壊れた WAV で落ちない。
+- V2 の検収: キャッシュ命中 (2 回目はネットワークなしで鳴る)、VOICEVOX
+  経由、クラウド 1 社 (鍵はユーザ提供)、50ms 警告の有無。
+- V3 の検収: 実カレンダーの ICS で今日の予定が読まれる、RRULE の予定が
+  読まれないことが文書どおり、URL 不通で黙って 1 行ログ。
+- 実装順は V1 → V2 → V3 だが、**V3 は V2 の (1) キャッシュ + 定型文だけ
+  でも動かせる** (予定の文面を毎回 TTS する代わりに、件数と時刻だけ
+  定型パーツで読む妥協形) — ネットワーク TTS を持たない構成への退避。
+
+## やらないこと
+
+- MP3/OGG デコード、ストリーミング再生 (ファイル経由のみ)
+- OAuth (v1)、RRULE 展開 (v1)、Retro の PCM リンク (後段)
+- 常時の音声対話 (読み上げ専用。マイク側との結合は別の話)
