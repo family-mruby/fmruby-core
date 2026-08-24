@@ -103,7 +103,7 @@ int fmrb_spx_app_delete_canvas(int canvas_id);
  *   3  1   vm_type
  * (u32 fields are little-endian.)
  */
-#define FMRB_SPX_APP_PS_RECORD_SIZE 60
+#define FMRB_SPX_APP_PS_RECORD_SIZE 64
 const char *fmrb_spx_app_ps(void);
 
 /**

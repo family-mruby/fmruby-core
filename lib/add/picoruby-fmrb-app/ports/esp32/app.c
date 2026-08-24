@@ -934,6 +934,10 @@ static mrb_value mrb_fmrb_app_s_ps(mrb_state *mrb, mrb_value self)
                      mrb_fixnum_value(list[i].gen));
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "stack_water")),
                      mrb_fixnum_value(list[i].stack_high_water));
+        // No window and no canvas: the taskbar is a list of windows and skips
+        // these, ps and the monitor list processes and keep them.
+        mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "headless")),
+                     mrb_bool_value(list[i].headless));
 
         // Memory statistics
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "mem_total")),

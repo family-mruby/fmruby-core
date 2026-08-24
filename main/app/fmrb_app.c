@@ -2255,6 +2255,7 @@ int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count) {
         list[count].stack_high_water = (ctx->task && ctx->state != PROC_STATE_STOPPING)
                                         ? fmrb_task_get_stack_high_water_mark(ctx->task)
                                         : 0;
+        list[count].headless = ctx->headless;
 
         // Get memory statistics based on VM type
         list[count].vm_type = ctx->vm_type;

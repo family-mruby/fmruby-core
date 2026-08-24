@@ -11,6 +11,26 @@ module AppLifecycleMixin
   # other way came up without the keyboard and needed a click on its canvas
   # first -- the debug daemon spawns through the C API, and the reload path
   # skipped the fullscreen step as well.
+  # Whether an app may hold the keyboard.
+  #
+  # It has to have something on screen to type into. A headless app
+  # (default_window_mode = "background" -- the service host is one) has no
+  # window and no canvas, so giving it the keyboard takes input away from
+  # whatever the user was using and hands it to something that cannot show a
+  # cursor, a prompt or an error.
+  #
+  # One predicate, and every path that moves focus asks it: the hand-over
+  # after a spawn, a click on a window, a click on a taskbar icon, and
+  # Ctrl+Tab. They used to each decide for themselves, which is how a
+  # background app came up owning the keyboard.
+  def focusable?(pid)
+    return false unless pid
+    info = _get_app_info(pid.to_i)
+    return false unless info
+    return false if info[:headless]
+    true
+  end
+
   def after_spawn(new_pid)
     return false unless new_pid
 
@@ -42,11 +62,10 @@ module AppLifecycleMixin
 
     announce_starting(new_pid, info)
 
-    # A headless app has no window and no canvas, so there is nothing for the
-    # keyboard to go to. Handing it over anyway would take input away from
-    # whatever the user was using -- the service host is started right after
-    # the desktop at boot, and used to arrive as the keyboard's new owner.
-    if info && info[:headless]
+    # Nothing on screen to type into: report the new process and stop short of
+    # the hand-over below (focusable?).
+    can_focus = focusable?(new_pid)
+    unless can_focus
       notify_apps_changed
       return true
     end
@@ -547,6 +566,10 @@ module AppLifecycleMixin
       i += 1
       next if win[:pid] == 0
       next if win[:app_name] == "system_desktop"
+      # A window in the list belongs to an app with a canvas, but the ring is
+      # a focus path and asks the same question the others do.
+      win_focusable = focusable?(win[:pid])
+      next unless win_focusable
       candidates << win[:pid]
     end
     candidates.sort!

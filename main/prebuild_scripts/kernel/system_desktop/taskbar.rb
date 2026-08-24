@@ -1,5 +1,12 @@
 # Taskbar mixin for SystemDesktopApp
 # Shows running app icons on the menu bar. Clicking an icon switches focus.
+#
+# It is a list of WINDOWS, not of processes: an icon here is something you can
+# click to bring to the front and type into. An app with no canvas
+# (default_window_mode = "background", the service host) has neither, so it is
+# not listed -- clicking it could only take the keyboard away from whatever was
+# in front. What is running as a process is the business of `ps` and the
+# monitor's task page, and both keep listing them.
 
 module TaskbarMixin
   TASKBAR_ICON_SIZE = 9   # px, square icon on 13px menu bar
@@ -45,7 +52,9 @@ module TaskbarMixin
       # starting, so leaving it out meant the icon waited for the next poll
       # even though the app's window was already on screen.
       # type 0 = kernel, exclude self by name.
-      if (p[:state] >= 1 && p[:state] <= 3) && p[:type] != 0 && p[:name] != @name
+      # headless = no canvas and no window: nothing to raise, nothing to focus.
+      if (p[:state] >= 1 && p[:state] <= 3) && p[:type] != 0 && p[:name] != @name &&
+         !p[:headless]
         # Icon letter precomputed here so the 1Hz draw_taskbar allocates
         # nothing (rindex/slice/[0] all make fresh Strings).
         label = p[:name]

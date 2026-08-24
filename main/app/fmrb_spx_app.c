@@ -303,6 +303,7 @@ const char *fmrb_spx_app_ps(void)
         put_u32(r + 20, (uint32_t)list[i].mem_free);
         put_u32(r + 24, (uint32_t)list[i].mem_frag);
         pack_name(r + 28, 32, list[i].app_name);
+        r[60] = list[i].headless ? 1 : 0;
     }
     sp_net_bin_len = (int)(count * FMRB_SPX_APP_PS_RECORD_SIZE);
     return (const char *)buf;

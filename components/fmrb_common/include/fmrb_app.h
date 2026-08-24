@@ -185,6 +185,10 @@ typedef struct {
     uint32_t              gen;
     fmrb_task_handle_t    task;
     fmrb_task_priority_t  stack_high_water; // Remaining stack (words)
+    // No window and no canvas (default_window_mode = "background"). Listings
+    // that are about windows -- the taskbar -- leave these out; listings that
+    // are about processes (ps, the monitor) keep them.
+    bool                  headless;
 
     // Memory statistics
     fmrb_vm_type_t        vm_type;          // VM type (mruby, lua, native)

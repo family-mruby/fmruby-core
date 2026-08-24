@@ -1417,11 +1417,12 @@ class FmrbApp
   # ---- class methods (were C class methods; parse packed :binstr records) ----
   def self.ps
     buf = FmrbSpxApp.fmrb_spx_app_ps
-    count = buf.bytesize / 60
+    # FMRB_SPX_APP_PS_RECORD_SIZE (fmrb_spx_app.h)
+    count = buf.bytesize / 64
     list = []
     i = 0
     while i < count
-      b = i * 60
+      b = i * 64
       list << {
         id: buf.getbyte(b + 0),
         state: buf.getbyte(b + 1),
@@ -1434,6 +1435,7 @@ class FmrbApp
         mem_free: SpxBytes.u32(buf, b + 20),
         mem_frag: SpxBytes.i32(buf, b + 24),
         name: SpxBytes.read_name(buf, b + 28, 32),
+        headless: buf.getbyte(b + 60) != 0,
       }
       i += 1
     end

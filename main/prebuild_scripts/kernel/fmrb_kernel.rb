@@ -420,16 +420,22 @@ class FmrbKernelImpl < FmrbKernel
     when "focus_app"
       target_pid = data["pid"]
       if target_pid
+        # Kept in a local rather than called in the elsif: Spinel emits the
+        # call's hoisted temporaries inside the condition's parens, which does
+        # not compile (ruby_writing_constraints B).
+        can_focus = focusable?(target_pid)
         if target_pid == @parked_fullscreen_pid
           # A parked fullscreen app has a hidden canvas and a suspended task;
           # plain focus would show nothing and eat the keyboard. Unpark it.
           unpark_fullscreen
-        else
+        elsif can_focus
           _bring_to_front(target_pid)
           _set_hid_target(target_pid)
           @hid_target_pid = target_pid
           mark_window_list_dirty
           Log.info("Focus switched to PID #{target_pid} (requested by pid=#{pid})")
+        else
+          Log.info("Focus refused for PID #{target_pid}: nothing on screen")
         end
       end
     when "cycle_focus"

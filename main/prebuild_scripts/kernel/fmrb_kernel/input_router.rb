@@ -87,11 +87,16 @@ module InputRouterMixin
 
         #Log.debug("Click at (#{x},#{y}) -> '#{target_name}' (PID #{target_pid}, Z=#{target_z})")
 
-        # Bring clicked window to front
-        _bring_to_front(target_pid)
-        _set_hid_target(target_pid)
-        @hid_target_pid = target_pid  # Track HID target
-        mark_window_list_dirty  # Z-order changed
+        # Bring clicked window to front. The window is on screen, so the
+        # answer is normally yes; it goes through the predicate so that every
+        # focus path in the kernel decides this in one place (focusable?).
+        can_focus = focusable?(target_pid)
+        if can_focus
+          _bring_to_front(target_pid)
+          _set_hid_target(target_pid)
+          @hid_target_pid = target_pid  # Track HID target
+          mark_window_list_dirty  # Z-order changed
+        end
 
         # Calculate relative position within window
         relative_x = x - win_x
