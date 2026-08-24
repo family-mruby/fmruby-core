@@ -139,6 +139,28 @@
 #define FMRB_USER_APP_PRIORITY          (2)
 #define FMRB_USER_APP_TASK_FLAGS        FMRB_TASK_FLAG_PINNED_1
 
+// Service host task (doc/user_extension/services/plan.md). One VM holding
+// every resident user service, so a machine with three of them pays for one
+// task instead of three.
+//
+// One step BELOW a user app on purpose. Services are background work and must
+// never make the app in front stutter: at the same priority the scheduler
+// hands them slices round-robin, and a service handler would take them out of
+// a game's frame. At 1 they run in the gaps an app leaves, and an app leaves
+// one on every on_update (it sleeps in _spin). The other half of that bargain
+// is that a foreground app spinning at 100% delays the services, which is the
+// stated order of priorities; anything that cannot tolerate the delay (a MIDI
+// router) belongs in an app of its own, not here.
+//
+// The stack is the user-app floor plus room for the compiler: the host reads
+// its services with require at boot, and mruby's codegen recurses on the C
+// stack (a 16 KB app has been taken down by compiling a file, see
+// FMRB_USER_APP_TASK_STACK_MAX above). Tune this down from the measured
+// high-water in the periodic fmrb_task: dump, not by guessing.
+#define FMRB_SERVICE_APP_TASK_STACK_SIZE (24 * 1024)
+#define FMRB_SERVICE_APP_PRIORITY       (1)
+#define FMRB_SERVICE_APP_TASK_FLAGS     FMRB_TASK_FLAG_PINNED_1
+
 // --- Infrastructure tasks (Core 0, internal RAM) ---
 
 // RTC task (I2C, low priority)

@@ -42,6 +42,15 @@ module AppLifecycleMixin
 
     announce_starting(new_pid, info)
 
+    # A headless app has no window and no canvas, so there is nothing for the
+    # keyboard to go to. Handing it over anyway would take input away from
+    # whatever the user was using -- the service host is started right after
+    # the desktop at boot, and used to arrive as the keyboard's new owner.
+    if info && info[:headless]
+      notify_apps_changed
+      return true
+    end
+
     # NOTE: keep the collection-class name (S-e-t) out of kernel source even in
     # comments -- Spinel splices `require "set"` on a bareword match and its
     # bundled library fails to compile in this program.
@@ -106,8 +115,36 @@ module AppLifecycleMixin
     # two fullscreen apps starting close together (F5 from the editor while
     # one is still loading) overwrote it, and the first one never got the
     # screen.
+    if take_spawn_fullscreen(pid)
+      # The requester asked for this app to run full screen, overriding its
+      # own window mode (kernel "spawn" with "fullscreen"). It has a canvas
+      # now, so this is the runtime switch -- flag, geometry, screen and
+      # keyboard in one -- and not the flag alone, which is refused while the
+      # task is still starting.
+      Log.info("Spawn fullscreen: PID #{pid}")
+      request_enter_fullscreen(pid)
+      return nil
+    end
     info = _get_app_info(pid)
     enter_fullscreen(pid) if info && info[:fullscreen] && @fullscreen_pid != pid
+    nil
+  end
+
+  # True once, for an app whose spawn asked for fullscreen. Taking the pid out
+  # here is also what keeps a pid that never started (a compile error) from
+  # applying to whatever app is given that slot next.
+  def take_spawn_fullscreen(pid)
+    list = @spawn_fullscreen_pids
+    idx = list.index(pid)
+    return false unless idx
+    kept = []
+    i = 0
+    while i < list.size
+      kept << list[i] unless i == idx
+      i += 1
+    end
+    @spawn_fullscreen_pids = kept
+    true
   end
 
   # Backstop for a start that never reports: a runtime that draws nothing but
@@ -598,8 +635,10 @@ module AppLifecycleMixin
     Log.info("Cleaning up terminated app: pid=#{pid}")
 
     # It never came up (a compile error is the usual reason): take the
-    # indicator down.
+    # indicator down, and drop any fullscreen request made for it -- pids are
+    # slot indices and are handed out again.
     clear_starting(pid)
+    take_spawn_fullscreen(pid)
 
     # Stop any APU voices the app was holding. An app that ends normally does
     # this itself in on_destroy, but one that dies on an exception never gets

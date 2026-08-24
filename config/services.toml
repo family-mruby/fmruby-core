@@ -1,0 +1,25 @@
+# System services (/etc/services.toml).
+#
+# Shipped with the firmware and copied into the flash image by the build, so
+# this file -- not flash/etc/services.toml -- is the one to edit. Bodies live
+# in /usr/share/services/.
+#
+# The user's own list is /home/services.toml. It is read after this one and
+# wins field by field, so a user can retune a system service or switch one off
+# with "enable = false" without touching the firmware.
+#
+# Fields:
+#   file         source under /usr/share/services/
+#   class        the class inside it
+#   enable       false keeps the entry but does not run it (default true)
+#   interval_ms  how often on_tick is called; omit for a service that only
+#                reacts to topics (a one-off callback is ctx.wake_in ->
+#                on_wake, which does not need one either)
+#   oneshot      true = on_start once at boot, then out of the list
+#   [<name>.config]  handed to the service as ctx.config
+
+[clock]
+file = "clock.rb"
+class = "ClockService"
+enable = true
+interval_ms = 60000

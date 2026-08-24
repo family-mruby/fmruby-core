@@ -1,0 +1,55 @@
+# Your services: what this machine keeps running in the background.
+#
+# Everything listed here runs inside one app (the service host), so a dozen
+# small resident jobs cost one task and one VM instead of a dozen. Bodies go
+# in /home/services/; the contract is four optional methods and is written out
+# in /home/services/heartbeat.rb.
+#
+# Fields:
+#   file         source under /home/services/
+#   class        the class inside it
+#   enable       false keeps the entry but does not run it (default true)
+#   interval_ms  how often on_tick is called; omit for a service that only
+#                reacts to topics (a one-off callback is ctx.wake_in ->
+#                on_wake, which does not need one either)
+#   oneshot      true = on_start once at boot, then out of the list
+#   [<name>.config]  handed to the service as ctx.config
+#
+# An entry can start an ordinary app at boot instead of a service:
+#
+#   [my_game]
+#   app = "/app/game/robo_explorer/robo_explorer.app.rb"
+#   fullscreen = true      # overrides the app's own window mode
+#   delay_ms = 2000        # let the desktop settle first
+#
+# The system list is /etc/services.toml, read first; anything written here
+# with the same name wins, so "[clock] enable = false" switches off the
+# system clock service.
+#
+# Watch what you ask for: the services run one after another, so a handler
+# that takes its time makes the others wait (the host logs a warning past
+# 50 ms), and anything that allocates on every tick shows up in the host's
+# heap. ps lists them, `kill <name>` stops one, `svc start <name>` brings it
+# back.
+
+[heartbeat]
+file = "heartbeat.rb"
+class = "HeartbeatService"
+enable = true
+interval_ms = 10000
+
+# No interval_ms: it does its work on a topic, and the 200 ms it needs to end
+# the note comes from ctx.wake_in, not from a tick that would otherwise run
+# all hour for nothing.
+[hourly_chime]
+file = "hourly_chime.rb"
+class = "HourlyChimeService"
+enable = true
+
+# Raises on purpose. Turn it on to see that one bad service does not take the
+# others with it: three errors, then the host switches it off alone.
+[broken]
+file = "broken.rb"
+class = "BrokenService"
+enable = false
+interval_ms = 2000

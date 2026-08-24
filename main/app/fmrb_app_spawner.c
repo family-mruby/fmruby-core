@@ -22,6 +22,7 @@ extern const uint8_t editor_irep[];
 extern const uint8_t logviewer_irep[];
 extern const uint8_t monitor_irep[];
 extern const uint8_t inspector_irep[];
+extern const uint8_t services_irep[];
 
 #ifdef FMRB_APP_ENGINE_EDITOR_SPINEL
 /* Spinel engine for the editor (P5): default/editor and default/editor_fs run
@@ -254,6 +255,30 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_pos_x = 5,
         .window_pos_y = 15,
         .rounded_corners = true
+    }},
+    // The service host (doc/user_extension/services/plan.md). Headless: it has
+    // no window and never draws, so it is not announced, gets no canvas and is
+    // not given the keyboard. Spawned by the kernel at boot when there is a
+    // service list to run, and endable like any user app with kill <pid>.
+    { "default/services", {
+        .app_id = -1,
+        .type = APP_TYPE_USER_APP,
+        .name = "Services",
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = services_irep,
+        .stack_words = FMRB_SERVICE_APP_TASK_STACK_SIZE,
+        // One below a user app: services must not take slices from the app in
+        // front (see FMRB_SERVICE_APP_PRIORITY).
+        .priority = FMRB_SERVICE_APP_PRIORITY,
+        .flags = FMRB_SERVICE_APP_TASK_FLAGS,
+        .core_affinity = -1,
+        .headless = true,
+        .window_width = 0,
+        .window_height = 0,
+        .window_pos_x = 0,
+        .window_pos_y = 0,
+        .rounded_corners = false
     }},
     { "default/inspector", {
         .app_id = -1,

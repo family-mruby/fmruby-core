@@ -14,6 +14,8 @@ log/
 managed_components/
 .serial_port
 flash/etc/system_conf.toml
+# System service list, generated from config/services.toml by the build
+flash/etc/services.toml
 flash/home/music/
 # Launcher app index, rebuilt on demand by the desktop
 flash/var/cache/launcher_index

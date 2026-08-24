@@ -20,6 +20,10 @@ namespace :build do
     # /etc/system_conf.toml is unreadable (e.g. power lost mid-save).
     cp linux_conf, 'flash/etc/system_conf.factory.toml', verbose: true
 
+    # System service list (doc/user_extension/services). Same shape as
+    # system_conf: config/ is the source, flash/etc/ is generated.
+    cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
+
     # Spinel engine(s): pre-generate the C on the host (the compiler is not
     # available inside the docker build) and forward the engine(s) into the build.
     # Always true, matching FMRB_ANY_SPINEL in main/CMakeLists.txt: the gems
@@ -76,6 +80,10 @@ namespace :build do
     # copy the kernel falls back to when the live file is unreadable.
     cp system_conf_path, 'flash/etc/system_conf.toml', verbose: true
     cp system_conf_path, 'flash/etc/system_conf.factory.toml', verbose: true
+
+    # System service list (doc/user_extension/services), generated the same
+    # way as system_conf above.
+    cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
 
     # WiFi credentials (P4 via the C6, S3 native): config/wifi.toml is kept
     # out of git (see config/wifi.toml.example). Copied into the flash image

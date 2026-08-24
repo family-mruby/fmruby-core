@@ -14,8 +14,8 @@
 #
 # Lints (spinel:doctor) are separate again: they need the Spinel compiler
 # checkout and report style/inference issues, not pass/fail like these suites.
-desc "Run all native host test suites (FmrbUI + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "ti:test", "basic:test", "micropython:smoke"]
+desc "Run all native host test suites (FmrbUI + services + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "services:test", "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :ui do
   # FmrbUI is pure Ruby over a few FmrbGfx calls, so the real mrblib file runs
@@ -24,6 +24,17 @@ namespace :ui do
   desc "FmrbUI widget tests (host Ruby, no docker)"
   task :test do
     sh "ruby test/fmrb_ui/run.rb"
+  end
+end
+
+namespace :services do
+  # The service host's rules -- the toml subset, the system/user merge, the
+  # error budget, the sleep calculation -- are plain Ruby with no files,
+  # messages or clock in them, so registry.rb runs here as it ships. Run it
+  # after touching main/prebuild_scripts/default_app/services/.
+  desc "Service host rule tests (host Ruby, no docker)"
+  task :test do
+    sh "ruby test/services/run.rb"
   end
 end
 

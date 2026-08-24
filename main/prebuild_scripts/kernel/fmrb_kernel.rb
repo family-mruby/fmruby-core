@@ -26,11 +26,20 @@ class FmrbKernelImpl < FmrbKernel
   MIN_WINDOW_WIDTH = 50
   MIN_WINDOW_HEIGHT = 50
 
+  # The two service lists. Either one is reason enough to start the service
+  # host; neither means the machine has no services and none is started.
+  SERVICES_SYS_TOML = "/etc/services.toml"
+  SERVICES_USR_TOML = "/home/services.toml"
+
   def initialize()
     Log.info("initialize")
     @app_list = []
     @window_order = []
     @window_list = []
+
+    # Apps whose spawn asked for fullscreen even though their own .app.toml
+    # does not (kernel "spawn" with "fullscreen"). Emptied in on_app_started.
+    @spawn_fullscreen_pids = []
 
     # HID (input) target tracking
     @hid_target_pid = nil  # Current HID target (focused window)
@@ -187,6 +196,10 @@ class FmrbKernelImpl < FmrbKernel
           @open_path = open_path
           @open_path_tries = 0
         end
+        # Optional "fullscreen": run this app full screen whatever its own
+        # .app.toml asks for. The service host uses it to boot straight into
+        # one app.
+        remember_spawn_fullscreen(new_pid) if data["fullscreen"]
         after_spawn(new_pid)
       else
         Log.error("Failed to spawn app: #{app_name}")
@@ -611,6 +624,51 @@ class FmrbKernelImpl < FmrbKernel
     else
       Log.error("Failed to spawn system desktop app")
     end
+
+    spawn_service_host
+    nil
+  end
+
+  # Note that this app is to run full screen even though its own .app.toml
+  # does not ask for it, and act on it in on_app_started.
+  #
+  # Not here: at this point the task exists but is still INIT, and
+  # fmrb_app_set_fullscreen refuses a context that is not running yet -- the
+  # request was accepted, silently did nothing, and the app came up in the
+  # window its toml describes. Once the app has its canvas it is the ordinary
+  # runtime switch (the same one F11 uses), which resizes the canvas it
+  # already made.
+  #
+  # A list rather than one slot: two apps can be starting at once (a service
+  # list with two entries), and a single slot loses the first.
+  def remember_spawn_fullscreen(pid)
+    info = _get_app_info(pid)
+    if info && info[:headless]
+      Log.warn("Spawn fullscreen ignored: pid=#{pid} is headless")
+      return nil
+    end
+    @spawn_fullscreen_pids << pid unless @spawn_fullscreen_pids.index(pid)
+    nil
+  end
+
+  # The user-service host (doc/user_extension/services/plan.md): one VM for
+  # every resident service the machine has been asked to run. It is started
+  # only when there is a list to read -- a machine with neither file behaves
+  # exactly as it did before this existed, and pays nothing.
+  #
+  # After the desktop, not before: an entry may ask for an app to be started
+  # at boot, and that app needs a desktop to come back to.
+  def spawn_service_host
+    sys_list = File.exist?(SERVICES_SYS_TOML)
+    usr_list = File.exist?(SERVICES_USR_TOML)
+    return nil unless sys_list || usr_list
+    svc_pid = _spawn_app_req("default/services")
+    if svc_pid
+      Log.info("Service host started (pid=#{svc_pid})")
+    else
+      Log.error("Failed to spawn the service host")
+    end
+    nil
   end
 
   def start
