@@ -404,6 +404,16 @@ static mrb_value mrb_kernel_set_app_fullscreen(mrb_state *mrb, mrb_value self)
     return mrb_bool_value(ret == FMRB_OK);
 }
 
+// FmrbKernel#_mark_expected_stop(pid) -> true/false
+// Note that this app is ending because it was asked to, before the kernel
+// asks it. See fmrb_app.h expected_stop.
+static mrb_value mrb_kernel_mark_expected_stop(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid;
+    mrb_get_args(mrb, "i", &pid);
+    return mrb_bool_value(fmrb_app_mark_expected_stop((int32_t)pid));
+}
+
 // FmrbKernel#_get_app_info(pid) -> Hash or nil
 // Returns { load_mode: Int, path: String, name: String }
 static mrb_value mrb_kernel_get_app_info(mrb_state *mrb, mrb_value self)
@@ -430,6 +440,10 @@ static mrb_value mrb_kernel_get_app_info(mrb_state *mrb, mrb_value self)
     // starting indicator.
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "headless")),
                  mrb_bool_value(ctx->headless));
+    // Whether this app is ending (or ended) because it was asked to. Read at
+    // exit, before the slot is reaped, to tell a kill from a crash.
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "expected_stop")),
+                 mrb_bool_value(ctx->expected_stop));
 
     if (ctx->load_mode == FMRB_LOAD_MODE_FILE && ctx->load_data) {
         mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "path")),
@@ -548,6 +562,7 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_get_sync_files", mrb_kernel_get_sync_files, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_sync_file", mrb_kernel_sync_file, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, handler_class, "_get_app_info", mrb_kernel_get_app_info, MRB_ARGS_REQ(1));
+    mrb_define_method(mrb, handler_class, "_mark_expected_stop", mrb_kernel_mark_expected_stop, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_get_last_error", mrb_kernel_get_last_error, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_suspend_app", mrb_kernel_suspend_app, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, handler_class, "_resume_app", mrb_kernel_resume_app, MRB_ARGS_REQ(1));

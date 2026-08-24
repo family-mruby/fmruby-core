@@ -39,6 +39,20 @@ if(NOT IDF_TARGET STREQUAL "linux")
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/tmp
         COMMENT "Staging storage tree (runtime caches excluded)"
     )
+    # Services are Modern-only (doc/user_extension/services/plan.md). The
+    # sample services and both lists are in the tree because the simulator and
+    # the Modern image want them; a Retro image must not carry them, so they
+    # come back out of the staged copy here. The files themselves stay in git.
+    include(${CMAKE_SOURCE_DIR}/components/fmrb_common/fmrb_hw_defines.cmake)
+    fmrb_hw_family_is_modern(FMRB_IMAGE_IS_MODERN)
+    if(NOT FMRB_IMAGE_IS_MODERN)
+        add_custom_command(TARGET storage_staging POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/home/services
+            COMMAND ${CMAKE_COMMAND} -E rm -f  ${STORAGE_STAGING}/home/services.toml
+            COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/usr/share/services
+            COMMAND ${CMAKE_COMMAND} -E rm -f  ${STORAGE_STAGING}/etc/services.toml
+            COMMENT "Retro image: leaving the service host's files out")
+    endif()
     littlefs_create_partition_image(storage ${STORAGE_STAGING} FLASH_IN_PROJECT
                                     DEPENDS storage_staging)
 endif()

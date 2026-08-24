@@ -67,6 +67,9 @@ const char *fmrb_spx_app_recv_message(int timeout_ms, int *type, int *src_pid);
 
 /** Release this app's canvas and message queue (FmrbApp#_cleanup). Returns 0. */
 int fmrb_spx_app_cleanup(void);
+/** Note that this app is ending because it meant to (fmrb_app.h
+    expected_stop). Called from the Spinel base's FmrbApp#stop. Returns 0. */
+int fmrb_spx_app_mark_expected_stop(void);
 
 /** Send a message to another task. 1 on success, 0 if undelivered, neg on err. */
 int fmrb_spx_app_send_message(int dest_pid, int msg_type, const char *data, int len);

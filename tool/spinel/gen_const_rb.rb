@@ -129,6 +129,9 @@ os_version = str_define(fmrb_h, "FMRB_OS_VERSION")
 ga_version = str_define(fmrb_h, "FMRB_GA_VERSION")
 link_version = define_values(fmrb_h, %w[FMRB_LINK_VERSION])["FMRB_LINK_VERSION"]
 
+# Keep in step with MODERN_HW_TARGETS in the Rakefile.
+hw_family = %w[TAB5 NARYAv4].include?(ENV["FMRB_HW_TARGET"].to_s) ? "modern" : "retro"
+
 chip_model = platform == "linux" ? "linux" : "ESP32-S3"
 # Board identity, mirroring const.c's BOARD. Spinel currently targets only
 # the Linux sim and Narya (S3); revisit when a P4 Spinel build exists.
@@ -140,6 +143,11 @@ out << "module FmrbConst\n"
 out << "  PLATFORM = #{platform.inspect}\n"
 out << "  BOARD = #{board.inspect}\n"
 out << "  CHIP_MODEL = #{chip_model.inspect}\n"
+# Which machine's habits this build has, the same answer const.c gives the
+# mruby build from FMRB_HW_FAMILY_MODERN. Read from the environment because
+# that is where rake keeps the target (Rakefile loads .env into ENV before any
+# task runs), and the simulator follows the target it stands in for.
+out << "  HW_FAMILY = #{hw_family.inspect}\n"
 # WiFi-capable: every Spinel target has it (Narya S3 native, P4 via C6, the
 # Linux sim reports host network state). ATOM (no WiFi) never runs Spinel.
 out << "  HAS_WIFI = true\n"

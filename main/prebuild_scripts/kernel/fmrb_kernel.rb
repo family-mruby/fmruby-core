@@ -41,6 +41,15 @@ class FmrbKernelImpl < FmrbKernel
     # does not (kernel "spawn" with "fullscreen"). Emptied in on_app_started.
     @spawn_fullscreen_pids = []
 
+    # Service host restart bookkeeping (note_service_host_death). The deadline
+    # is 0 rather than nil for "nothing pending", so the ivar holds one type.
+    @service_crashes = []
+    @service_respawn_at = 0
+    # pid of the running service host, 0 when there is none. Recognised by pid
+    # rather than by name: at exit the slot may already be free, and the name
+    # lives in the slot.
+    @service_host_pid = 0
+
     # HID (input) target tracking
     @hid_target_pid = nil  # Current HID target (focused window)
     @notified_focus_pid = -1  # Last focus reported to the desktop (-1 = none yet)
@@ -200,6 +209,11 @@ class FmrbKernelImpl < FmrbKernel
         # .app.toml asks for. The service host uses it to boot straight into
         # one app.
         remember_spawn_fullscreen(new_pid) if data["fullscreen"]
+        # Tell the requester which pid it got. The service host needs it to
+        # recognise its own app in app/died; the launcher and the shell ignore
+        # the reply. Symmetric with run_result on the "run" path.
+        spawned = { "cmd" => "spawn_result", "app" => app_name, "pid" => new_pid }
+        _send_raw_message(pid, FmrbConst::MSG_TYPE_APP_CONTROL, MessagePack.pack(spawned))
         after_spawn(new_pid)
       else
         Log.error("Failed to spawn app: #{app_name}")
@@ -282,7 +296,9 @@ class FmrbKernelImpl < FmrbKernel
       end
     when "exit"
       Log.info("App exit notification from pid=#{pid}")
-      cleanup_terminated_app(pid)
+      # The app says whether it was asked to end. Carried in the message
+      # because a kill can free the slot before this is handled.
+      cleanup_terminated_app(pid, data["expected"] ? true : false)
     when "file_select"
       # Forward file select request to desktop
       if @desktop_pid
@@ -665,11 +681,19 @@ class FmrbKernelImpl < FmrbKernel
   # After the desktop, not before: an entry may ask for an app to be started
   # at boot, and that app needs a desktop to come back to.
   def spawn_service_host
+    # Modern only (plan.md, 対象機種). Retro is the machine with 6% of its
+    # flash left, and its firmware does not carry the host or the samples at
+    # all -- this gate is what makes the Retro simulator, which shares this
+    # kernel and can see the files in the working tree, behave like the
+    # machine it stands in for. One gate: turning services on for Retro later
+    # is this line plus the build lists.
+    return nil unless FmrbConst::HW_FAMILY == "modern"
     sys_list = File.exist?(SERVICES_SYS_TOML)
     usr_list = File.exist?(SERVICES_USR_TOML)
     return nil unless sys_list || usr_list
     svc_pid = _spawn_app_req("default/services")
     if svc_pid
+      @service_host_pid = svc_pid
       Log.info("Service host started (pid=#{svc_pid})")
     else
       Log.error("Failed to spawn the service host")

@@ -168,17 +168,22 @@ class FmrbKernel
     pid < 0 ? nil : pid
   end
 
+  def _mark_expected_stop(pid)
+    FmrbSpx.fmrb_spx_mark_expected_stop(pid)
+    nil
+  end
+
   # ---- app info ----
   # Packed record (fmrb_spx_app_info_snapshot):
   #   0: valid(1)  1: fullscreen(1)  2: vm_type(1)  3: load_mode(1)
   #   4: name (32, NUL-pad)  36: path (128, NUL-pad)
-  #   164: fullscreen_switchable(1)  165: headless(1)
+  #   164: fullscreen_switchable(1)  165: headless(1)  166: expected_stop(1)
   # Byte 2 -> vm_type symbol, indexed by the value fmrb_spx_kernel.c writes.
   # Keep in step with fmrb_vm_type_t when a VM type is added.
   APP_INFO_VM_TYPES = [:unknown, :mruby, :lua, :basic, :native, :micropython]
 
   def _get_app_info(pid)
-    buf = FmrbSpx.fmrb_spx_app_info_snapshot(pid)   # :binstr, 164 bytes or ""
+    buf = FmrbSpx.fmrb_spx_app_info_snapshot(pid)   # :binstr, 167 bytes or ""
     return nil if buf.bytesize == 0 || buf.getbyte(0) == 0
     vm_idx = buf.getbyte(2)
     vm_sym = vm_idx < APP_INFO_VM_TYPES.size ? APP_INFO_VM_TYPES[vm_idx] : :unknown
@@ -189,7 +194,8 @@ class FmrbKernel
       name: SpxBytes.read_name(buf, 4, 32),
       path: SpxBytes.read_name(buf, 36, 128),
       fullscreen_switchable: buf.getbyte(164) != 0,
-      headless: buf.getbyte(165) != 0
+      headless: buf.getbyte(165) != 0,
+      expected_stop: buf.getbyte(166) != 0
     }
   end
 

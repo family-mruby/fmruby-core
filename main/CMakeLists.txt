@@ -67,6 +67,19 @@ file(GLOB KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/*.
 # Find all Ruby files in prebuild_scripts/default_app/
 file(GLOB DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/*.rb)
 
+# The service host is Modern-only (doc/user_extension/services/plan.md): Retro
+# is the machine with 6% of its flash left and no internal RAM to spare, so its
+# firmware does not carry the host at all -- not the bytecode here, not the
+# entry in the spawner table (FMRB_HW_FAMILY_MODERN), and not the sample
+# services in the storage image (the top-level CMakeLists). The kernel's boot
+# gate is what stops the simulator from starting it.
+include(${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_common/fmrb_hw_defines.cmake)
+fmrb_hw_family_is_modern(FMRB_BUILD_IS_MODERN)
+if(NOT FMRB_BUILD_IS_MODERN)
+    list(REMOVE_ITEM DEFAULT_APP_RUBY_FILES
+         ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/services.app.rb)
+endif()
+
 # Step 1: Prepare Ruby bytecode sources (add C files to COMPONENT_SRCS)
 prepare_ruby_bytecode_sources(KERNEL_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/kernel/mrb COMPONENT_SRCS)
 prepare_ruby_bytecode_sources(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/default_app/mrb COMPONENT_SRCS)

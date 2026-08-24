@@ -20,6 +20,21 @@
 #     FMRB_HW_ATOM_DISPLAY AtomS3 + Atom Display (Retro)
 #     (no macro)           Narya v3 (Retro default)
 #
+# fmrb_hw_family_is_modern(<out_var>) answers the same question at configure
+# time, for build lists rather than compile macros: whether this build is a
+# Modern machine or a simulator standing in for one. Callable before
+# idf_component_register (it only reads variables), so a CMakeLists can drop
+# Modern-only sources from a glob.
+function(fmrb_hw_family_is_modern out_var)
+    if(IDF_TARGET STREQUAL "esp32p4")
+        set(${out_var} TRUE PARENT_SCOPE)
+    elseif(IDF_TARGET STREQUAL "linux" AND FMRB_HW_FAMILY STREQUAL "modern")
+        set(${out_var} TRUE PARENT_SCOPE)
+    else()
+        set(${out_var} FALSE PARENT_SCOPE)
+    endif()
+endfunction()
+
 # Call fmrb_add_hw_defines() AFTER idf_component_register: IDF's early
 # requirement scan runs component CMakeLists in script mode (stopping at the
 # register call), where target_compile_definitions does not exist.

@@ -40,6 +40,7 @@ module FmrbSpx
   ffi_func :fmrb_spx_suspend_app, [:int], :int
   ffi_func :fmrb_spx_resume_app, [:int], :int
   ffi_func :fmrb_spx_reap_app, [:int], :int
+  ffi_func :fmrb_spx_mark_expected_stop, [:int], :int
   # spawn by name (:str + explicit length); returns new PID or negative.
   ffi_func :fmrb_spx_spawn_app_req, [:str, :int], :int
 

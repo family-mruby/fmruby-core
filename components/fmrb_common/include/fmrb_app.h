@@ -126,6 +126,18 @@ typedef struct fmrb_app_task_context_s {
     // counter rather than a flag only to stay correct if a wait ever nests.
     volatile uint8_t      sync_io_depth;
 
+    // Set when this app was ASKED to end: the kernel's kill, an app calling
+    // FmrbApp#stop (the close button, Ctrl+Q, a script that finished), or a
+    // Lua/BASIC runtime latching a "stop" control message. It is the only way
+    // to tell an intended exit from a crash -- an mruby app that dies on an
+    // exception is caught by the rescue at the foot of its own script, so its
+    // task ends as normally as any other and C cannot see the difference.
+    //
+    // Read by the kernel when the app exits, to decide whether something that
+    // asked to be restarted should be started again. Without it, "kill" would
+    // be undone a second later, which is worse than not restarting at all.
+    volatile bool         expected_stop;
+
     // Set once the app has its main canvas, which is the first moment it can
     // be said to have started: every runtime gets there only after loading
     // and compiling its script. fmrb_app_notify_started reports that to the
@@ -226,6 +238,25 @@ fmrb_err_t fmrb_app_spawn_simple(const fmrb_spawn_attr_t* attr, int32_t* out_id)
 bool fmrb_app_kill(int32_t id);
 bool fmrb_app_stop(int32_t id);
 bool fmrb_app_reap(int32_t id);  // External delete after self-cleanup (called from kernel)
+
+/**
+ * @brief Note that this app is ending because it was asked to.
+ *
+ * Sets the context's expected_stop (see the struct). Called from the kernel
+ * before it asks an app to end, and by an app about to end itself
+ * (FmrbApp#stop). Idempotent, and a no-op for a pid with no context.
+ *
+ * @return false when the pid has no live context.
+ */
+bool fmrb_app_mark_expected_stop(int32_t id);
+
+/**
+ * @brief Whether this app's exit was asked for (expected_stop).
+ *
+ * Meaningful only while the context is still there, which for the kernel means
+ * before it reaps the slot.
+ */
+bool fmrb_app_was_expected_stop(int32_t id);
 bool fmrb_app_suspend(int32_t id);
 bool fmrb_app_resume(int32_t id);
 int32_t fmrb_app_ps(fmrb_app_info_t* list, int32_t max_count);

@@ -21,8 +21,14 @@ namespace :build do
     cp linux_conf, 'flash/etc/system_conf.factory.toml', verbose: true
 
     # System service list (doc/user_extension/services). Same shape as
-    # system_conf: config/ is the source, flash/etc/ is generated.
-    cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
+    # system_conf: config/ is the source, flash/etc/ is generated. Modern only,
+    # and a stale copy is removed so a simulator switched back to Retro stands
+    # in for a machine that has no services.
+    if MODERN_HW_TARGETS.include?(HW_TARGET)
+      cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
+    else
+      rm_f 'flash/etc/services.toml'
+    end
 
     # Spinel engine(s): pre-generate the C on the host (the compiler is not
     # available inside the docker build) and forward the engine(s) into the build.
@@ -82,8 +88,13 @@ namespace :build do
     cp system_conf_path, 'flash/etc/system_conf.factory.toml', verbose: true
 
     # System service list (doc/user_extension/services), generated the same
-    # way as system_conf above.
-    cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
+    # way as system_conf above. Modern only; the storage image drops the rest
+    # of the service files for Retro (top-level CMakeLists).
+    if MODERN_HW_TARGETS.include?(hw_target)
+      cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
+    else
+      rm_f 'flash/etc/services.toml'
+    end
 
     # WiFi credentials (P4 via the C6, S3 native): config/wifi.toml is kept
     # out of git (see config/wifi.toml.example). Copied into the flash image

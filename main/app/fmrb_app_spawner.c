@@ -22,7 +22,11 @@ extern const uint8_t editor_irep[];
 extern const uint8_t logviewer_irep[];
 extern const uint8_t monitor_irep[];
 extern const uint8_t inspector_irep[];
+#ifdef FMRB_HW_FAMILY_MODERN
+// Service host: Modern only, so Retro does not compile its bytecode
+// (main/CMakeLists.txt drops it from the glob) and has no symbol to link.
 extern const uint8_t services_irep[];
+#endif
 
 #ifdef FMRB_APP_ENGINE_EDITOR_SPINEL
 /* Spinel engine for the editor (P5): default/editor and default/editor_fs run
@@ -256,6 +260,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_pos_y = 15,
         .rounded_corners = true
     }},
+#ifdef FMRB_HW_FAMILY_MODERN
     // The service host (doc/user_extension/services/plan.md). Headless: it has
     // no window and never draws, so it is not announced, gets no canvas and is
     // not given the keyboard. Spawned by the kernel at boot when there is a
@@ -280,6 +285,7 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_pos_y = 0,
         .rounded_corners = false
     }},
+#endif  /* FMRB_HW_FAMILY_MODERN */
     { "default/inspector", {
         .app_id = -1,
         .type = APP_TYPE_USER_APP,

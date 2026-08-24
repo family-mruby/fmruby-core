@@ -277,6 +277,15 @@ int fmrb_spx_app_delete_canvas(int canvas_id)
     return 0;
 }
 
+int fmrb_spx_app_mark_expected_stop(void)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (ctx) {
+        ctx->expected_stop = true;
+    }
+    return 0;
+}
+
 /* ---- class: process / memory info --------------------------------------- */
 
 const char *fmrb_spx_app_ps(void)

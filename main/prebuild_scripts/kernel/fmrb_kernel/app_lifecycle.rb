@@ -255,6 +255,10 @@ module AppLifecycleMixin
 
     name = info[:name].to_s
     path = info[:path].to_s
+    # Asked for, so whatever comes of it is not a crash. Marked before the ask
+    # rather than after: the app may be gone by the time the reply is written,
+    # and the mark has to be on the context the reaper will read.
+    _mark_expected_stop(pid)
     if run_path_allowed?(path)
       Log.info("Kill: stopping pid=#{pid} (#{path}) for pid=#{requester}")
       data = MessagePack.pack({ "cmd" => "stop" })
@@ -654,8 +658,33 @@ module AppLifecycleMixin
 
   # ---- App termination cleanup ----
 
-  def cleanup_terminated_app(pid)
+  # The service host is the one app the kernel restarts itself. Everything else
+  # that wants to come back is the host's business (an "app =" entry with
+  # restart = true), but nothing can bring the host back except the kernel: it
+  # is where a user's resident code lives, and an app may not spawn another.
+  #
+  # Long enough that a host crashing on something at start-up cannot spin the
+  # machine, short enough that a service is back before a person looks.
+  SERVICE_RESPAWN_DELAY_MS = 2000
+  # Three deaths inside five minutes means it is not going to work this boot.
+  SERVICE_CRASH_WINDOW_MS = 300000
+  SERVICE_CRASH_LIMIT = 3
+
+  # System topic: an app is gone (doc/user_extension/services/plan.md).
+  DIED_TOPIC = "app/died"
+
+  # +expected+ comes from the app's own exit notification (whether it was
+  # asked to end), not from its context: a kill can free the slot before this
+  # runs, and then there is nothing left to ask. The periodic sweep, which has
+  # no notification to read, passes true -- an app that vanished without one is
+  # not something to restart on a guess.
+  def cleanup_terminated_app(pid, expected = true)
     Log.info("Cleaning up terminated app: pid=#{pid}")
+
+    # The name is only for the app/died payload, so an already-freed slot just
+    # means an empty one.
+    dead = _get_app_info(pid)
+    dead_name = dead ? dead[:name].to_s : ""
 
     # It never came up (a compile error is the usual reason): take the
     # indicator down, and drop any fullscreen request made for it -- pids are
@@ -782,9 +811,84 @@ module AppLifecycleMixin
     # desktop reads the process table, or the app it just lost is still listed.
     notify_apps_changed
 
+    # Same reason for both of these: a subscriber that reacts by spawning
+    # something needs the slot already free.
+    announce_app_died(pid, dead_name, expected)
+    note_service_host_death(pid, expected)
+
     # Force immediate check (window list update after task deletion)
     mark_window_list_dirty
     check_terminated_apps
+  end
+
+  # Tell whoever is listening that an app ended, and whether it was asked to.
+  # The first system topic (ideas.md 6): the kernel publishes, and the service
+  # host subscribes so an "app =" entry with restart = true can come back.
+  # Published straight rather than through the publish handler, because the
+  # kernel is the publisher here and has no pid to send from.
+  def announce_app_died(pid, name, expected)
+    subs = @subscriptions[DIED_TOPIC]
+    return nil unless subs
+    return nil if subs.size == 0
+    fwd = { "cmd" => "topic_data", "topic" => DIED_TOPIC, "src_pid" => 0,
+            "data" => { "pid" => pid, "name" => name,
+                        "expected" => expected ? true : false } }
+    binary = MessagePack.pack(fwd)
+    i = 0
+    while i < subs.size
+      _send_raw_message(subs[i], FmrbConst::MSG_TYPE_APP_CONTROL, binary)
+      i += 1
+    end
+    nil
+  end
+
+  # Decide whether the service host should be started again.
+  #
+  # Only an unasked-for death counts. A kill, a stop, or the host ending
+  # itself is what the user wanted, and bringing it back a second later would
+  # make kill meaningless -- which is worse than not restarting at all.
+  def note_service_host_death(pid, expected)
+    return nil unless pid == @service_host_pid
+    @service_host_pid = 0
+    if expected
+      Log.info("Service host stopped on request; not restarting")
+      @service_crashes = []
+      @service_respawn_at = 0
+      return nil
+    end
+
+    now = Machine.board_millis
+    kept = []
+    i = 0
+    while i < @service_crashes.size
+      t = @service_crashes[i]
+      kept << t if now - t < SERVICE_CRASH_WINDOW_MS
+      i += 1
+    end
+    kept << now
+    @service_crashes = kept
+    if kept.size >= SERVICE_CRASH_LIMIT
+      # Said once and then silence: a host that cannot stay up is a bug to
+      # read about in the log, not something to keep respawning.
+      Log.error("services host crashed #{SERVICE_CRASH_LIMIT} times, giving up")
+      @service_respawn_at = 0
+      return nil
+    end
+    @service_respawn_at = now + SERVICE_RESPAWN_DELAY_MS
+    Log.warn("Service host died unexpectedly (#{kept.size}); restarting in #{SERVICE_RESPAWN_DELAY_MS} ms")
+    nil
+  end
+
+  # Called from the tick. 0 means nothing pending (rather than nil, so the
+  # ivar has one type for Spinel).
+  def tick_service_respawn
+    at = @service_respawn_at
+    return nil if at == 0
+    return nil if Machine.board_millis < at
+    @service_respawn_at = 0
+    Log.info("Restarting the service host")
+    spawn_service_host
+    nil
   end
 
   def check_terminated_apps
@@ -897,6 +1001,9 @@ module AppLifecycleMixin
 
     # Keep the taskbar's focus marker honest.
     tick_focus_notify
+
+    # Bring the service host back after an unasked-for death.
+    tick_service_respawn
 
     # Periodic cleanup check for terminated apps
     if @tick_count - @last_cleanup_tick >= @cleanup_interval

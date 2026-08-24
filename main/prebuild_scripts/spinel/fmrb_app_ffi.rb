@@ -102,6 +102,7 @@ module FmrbSpxApp
   # poll one message; payload as :binstr, type/src via out-params
   ffi_func :fmrb_spx_app_recv_message, [:int, :ptr, :ptr], :binstr
   ffi_func :fmrb_spx_app_cleanup, [], :int
+  ffi_func :fmrb_spx_app_mark_expected_stop, [], :int
   ffi_func :fmrb_spx_app_send_message, [:int, :int, :str, :int], :int
   ffi_func :fmrb_spx_app_send_audio_note, [:int, :int, :int, :int, :int, :int], :int
   ffi_func :fmrb_spx_app_set_window_param, [:int, :int], :int  # 0=pos_x 1=pos_y

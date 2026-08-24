@@ -1327,7 +1327,8 @@ class FmrbApp
   def destroy
     Log.debug("destroy() called")
     begin
-      exit_data = MessagePack.pack({ "cmd" => "exit" })
+      # Same as the mruby base: reaching destroy means stop was called.
+      exit_data = MessagePack.pack({ "cmd" => "exit", "expected" => true })
       _send_message(0, FmrbConst::MSG_TYPE_APP_CONTROL, exit_data)
     rescue => e
       Log.error("Failed to send exit notification: #{e}")
@@ -1348,8 +1349,13 @@ class FmrbApp
     destroy
   end
 
+  # Same contract as FmrbApp#stop in the mruby base: every intended end goes
+  # through here, and marking it is what lets the kernel tell an app that was
+  # asked to stop from one that died.
   def stop
     @running = false
+    FmrbSpxApp.fmrb_spx_app_mark_expected_stop
+    nil
   end
 
   # ---- instance FFI wrappers (were C methods in app.c) ----

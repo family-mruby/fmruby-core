@@ -671,9 +671,15 @@ class FmrbApp
   def destroy
     Log.debug("destroy() called")
 
-    # Send exit notification to kernel BEFORE cleanup
+    # Send exit notification to kernel BEFORE cleanup.
+    #
+    # "expected" is true because this method is only reached when main_loop
+    # returned, and main_loop only returns when stop was called -- an app that
+    # dies on an exception never gets here. The C task wrapper sends its own
+    # notification afterwards carrying the context's mark; both say the same
+    # thing, and the kernel ignores the second (the slot is already gone).
     begin
-      exit_data = MessagePack.pack({"cmd" => "exit"})
+      exit_data = MessagePack.pack({"cmd" => "exit", "expected" => true})
       _send_message(0, FmrbConst::MSG_TYPE_APP_CONTROL, exit_data)
       Log.debug("Exit notification sent to kernel")
     rescue => e
@@ -708,8 +714,15 @@ class FmrbApp
     destroy
   end
 
+  # Every intended end goes through here: the close button, Ctrl+Q, the
+  # kernel's kill, and a script that has simply finished. Marking it is what
+  # lets the kernel tell this from a crash -- an app that dies on an exception
+  # never reaches this method, and to C the two look identical (the rescue at
+  # the foot of the script means the task ends normally either way).
   def stop
     @running = false
+    _mark_expected_stop
+    nil
   end
 
 end

@@ -70,6 +70,10 @@ bool fmrb_app_note_control_payload(fmrb_app_task_context_t* ctx, uint8_t msg_typ
     const uint8_t* cmd = &payload[6];
     if (memcmp(cmd, "stop", 4) == 0 || memcmp(cmd, "exit", 4) == 0) {
         ctx->should_exit = true;
+        // Asked to end, so this is not a crash. The mruby apps mark themselves
+        // from FmrbApp#stop; this is the same mark for the runtimes that only
+        // poll (Lua, BASIC).
+        ctx->expected_stop = true;
         return true;
     }
     return false;
@@ -1373,9 +1377,14 @@ cleanup:
         };
         uint8_t *d = exit_msg.data;
         size_t p = 0;
-        d[p++] = 0x81;  // fixmap 1
+        // "expected" travels in the message rather than being read off the
+        // context afterwards: a kill can reap the slot before the kernel gets
+        // to this notification, and then there is nothing left to ask.
+        d[p++] = 0x82;  // fixmap 2
         d[p++] = 0xA3; memcpy(&d[p], "cmd", 3); p += 3;
         d[p++] = 0xA4; memcpy(&d[p], "exit", 4); p += 4;
+        d[p++] = 0xA8; memcpy(&d[p], "expected", 8); p += 8;
+        d[p++] = ctx->expected_stop ? 0xC3 : 0xC2;
         exit_msg.size = p;
         fmrb_msg_send(PROC_ID_KERNEL, &exit_msg, 100);
     }
@@ -1848,9 +1857,13 @@ static void notify_kernel_app_exited(fmrb_proc_id_t app_id) {
     };
     uint8_t* d = msg.data;
     size_t p = 0;
-    d[p++] = 0x81;  // fixmap 1
+    d[p++] = 0x82;  // fixmap 2
     d[p++] = 0xA3; memcpy(&d[p], "cmd", 3); p += 3;
     d[p++] = 0xA4; memcpy(&d[p], "exit", 4); p += 4;
+    // Always true here: this is the forced path, which only runs for an app
+    // that was told to end and would not.
+    d[p++] = 0xA8; memcpy(&d[p], "expected", 8); p += 8;
+    d[p++] = 0xC3;
     msg.size = p;
     fmrb_msg_send(PROC_ID_KERNEL, &msg, 10);
 }
@@ -1903,6 +1916,26 @@ static void force_release_resources(fmrb_app_task_context_t* ctx,
  * politeness -- a forced delete skips the app's cleanup block, which leaks the
  * memory pool handle, and a respawn of the same app then fails to allocate.
  */
+bool fmrb_app_mark_expected_stop(int32_t id) {
+    if (id < 0 || id >= FMRB_MAX_APPS) return false;
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    fmrb_app_task_context_t* ctx = &g_ctx_pool[id];
+    const bool live = ctx->state != PROC_STATE_FREE;
+    if (live) {
+        ctx->expected_stop = true;
+    }
+    fmrb_semaphore_give(g_ctx_lock);
+    return live;
+}
+
+bool fmrb_app_was_expected_stop(int32_t id) {
+    if (id < 0 || id >= FMRB_MAX_APPS) return false;
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    const bool expected = g_ctx_pool[id].expected_stop;
+    fmrb_semaphore_give(g_ctx_lock);
+    return expected;
+}
+
 bool fmrb_app_kill(int32_t id) {
     if (id < 0 || id >= FMRB_MAX_APPS) return false;
 
@@ -1922,6 +1955,9 @@ bool fmrb_app_kill(int32_t id) {
     // Leave the state alone: the app's own exit path moves it to STOPPING once
     // its resources are gone, and that is what this function waits for.
     ctx->should_exit = true;
+    // Whatever happens from here -- the app answers, or the forced path below
+    // deletes its task -- it ended because it was told to.
+    ctx->expected_stop = true;
     fmrb_task_handle_t task = ctx->task;
     const uint32_t gen = ctx->gen;
     fmrb_semaphore_give(g_ctx_lock);

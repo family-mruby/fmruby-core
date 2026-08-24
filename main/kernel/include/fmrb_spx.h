@@ -115,6 +115,9 @@ int fmrb_spx_set_app_fullscreen(int pid, int on, int w, int h);
 int fmrb_spx_suspend_app(int pid);           /**< 0 ok, negative error */
 int fmrb_spx_resume_app(int pid);            /**< 0 ok, negative error */
 int fmrb_spx_reap_app(int pid);              /**< 0 ok, negative error */
+/** Note that this app is ending because the kernel asked it to
+    (fmrb_app.h expected_stop). 0 ok, negative when the pid has no context. */
+int fmrb_spx_mark_expected_stop(int pid);
 
 /**
  * @brief Request spawning an app by name.
@@ -140,7 +143,7 @@ int fmrb_spx_spawn_app_req(const char *name, int len);
  * Total 166 bytes, returned as :binstr (length in sp_net_bin_len). When the pid
  * has no context the return is an empty string and the Ruby side returns nil.
  */
-#define FMRB_SPX_APP_INFO_RECORD_SIZE 166
+#define FMRB_SPX_APP_INFO_RECORD_SIZE 167
 const char *fmrb_spx_app_info_snapshot(int pid);
 
 /**

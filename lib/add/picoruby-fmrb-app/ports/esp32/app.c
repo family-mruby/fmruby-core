@@ -657,6 +657,20 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     return mrb_nil_value();
 }
 
+// FmrbApp#_mark_expected_stop() -> nil
+// "I am ending because I meant to." Called from FmrbApp#stop, which is where
+// every intended end goes through: the close button, Ctrl+Q, and a script that
+// simply finished. An app that dies on an exception never reaches it, and that
+// is the whole difference the kernel reads (fmrb_app.h expected_stop).
+static mrb_value mrb_fmrb_app_mark_expected_stop(mrb_state *mrb, mrb_value self)
+{
+    fmrb_app_task_context_t* ctx = fmrb_current();
+    if (ctx) {
+        ctx->expected_stop = true;
+    }
+    return mrb_nil_value();
+}
+
 // FmrbApp#_cleanup() - Cleanup app resources (canvas, message queue)
 // Called from Ruby destroy() method when app terminates
 static mrb_value mrb_fmrb_app_cleanup(mrb_state *mrb, mrb_value self)
@@ -1681,6 +1695,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_init", mrb_fmrb_app_init, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_spin", mrb_fmrb_app_spin, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, app_class, "_cleanup", mrb_fmrb_app_cleanup, MRB_ARGS_NONE());
+    mrb_define_method(mrb, app_class, "_mark_expected_stop", mrb_fmrb_app_mark_expected_stop, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, app_class, "_send_audio_note", mrb_fmrb_app_send_audio_note, MRB_ARGS_REQ(6));
     mrb_define_method(mrb, app_class, "_audio_note_bytes", mrb_fmrb_app_audio_note_bytes, MRB_ARGS_REQ(6));

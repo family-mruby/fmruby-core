@@ -186,6 +186,11 @@ int fmrb_spx_reap_app(int pid)
     return fmrb_app_reap((int32_t)pid) ? 0 : FMRB_SPX_ERR;
 }
 
+int fmrb_spx_mark_expected_stop(int pid)
+{
+    return fmrb_app_mark_expected_stop((int32_t)pid) ? 0 : FMRB_SPX_ERR;
+}
+
 int fmrb_spx_spawn_app_req(const char *name, int len)
 {
     /* What arrives here is a path ("/app/basic/sample_10_dodge.app.bas"), not a
@@ -252,6 +257,9 @@ const char *fmrb_spx_app_info_snapshot(int pid)
     /* headless (default_window_mode = "background"): no canvas, so no
        start indicator and no fullscreen hand-over. */
     buf[165] = ctx->headless ? 1 : 0;
+    /* expected_stop: this app was asked to end (a kill, or its own stop), as
+       opposed to dying. Read at exit, before the slot is reaped. */
+    buf[166] = ctx->expected_stop ? 1 : 0;
     sp_net_bin_len = FMRB_SPX_APP_INFO_RECORD_SIZE;
     return (const char *)buf;
 }
