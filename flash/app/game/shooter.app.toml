@@ -2,3 +2,9 @@ app_handle_name = "shooter"
 app_screen_name = "Shooter"
 app_screen_name_ja = "シューター"
 default_window_mode = "fullscreen"
+# The boss brought the script to ~35KB, which the mruby compiler cannot fit in
+# a normal 512KB app pool (the device says so outright: "Out of memory while
+# compiling"). Same escape hatch raycaster and rpg_demo take. It costs
+# exclusivity -- the LARGE pool is a single 1MB block, so only one such app
+# runs at a time -- which is fine for a fullscreen game.
+large_memory = 1
