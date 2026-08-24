@@ -28,6 +28,18 @@ class MonitorApp < FmrbApp
   KILL_IDS = [:kill0, :kill1, :kill2, :kill3, :kill4,
               :kill5, :kill6, :kill7, :kill8].freeze
 
+  # Services live inside the host task and have no pid, so they appear as
+  # child rows under its row with a button of their own. Built once like the
+  # kill buttons, and for the same reason.
+  SVC_IDS = [:svc0, :svc1, :svc2, :svc3, :svc4, :svc5].freeze
+  # The host's task name, and where requests and answers go.
+  SVC_HOST_NAME = "Services"
+  SVC_CTL_TOPIC = "svc/ctl"
+  # "[start]" is the widest label, and it fixes the column: with the monitor's
+  # 180px window that leaves 21 characters for the row text, which is why the
+  # child rows are indented by one character and not three.
+  SVC_BTN_W = 7 * CHAR_W + 2
+
   # Page colours from the system theme ([theme] in system_conf.toml): the
   # monitor is a tool window, so it reads like the rest of the desktop.
   COLOR_BG     = FmrbConst::THEME_WINDOW_BG
@@ -80,6 +92,14 @@ class MonitorApp < FmrbApp
     @task_sig = nil
     @row_pids = []
 
+    # Services, as the host last described them. @svc_pending collects the
+    # rows of an answer in flight; they replace @svcs when its end arrives, so
+    # a half-delivered list is never drawn.
+    @svcs = []
+    @svc_pending = []
+    @svc_names = []
+    @svc_subscribed = false
+
     build_kill_buttons
     draw_all
   end
@@ -105,6 +125,16 @@ class MonitorApp < FmrbApp
       @row_pids << nil
       i += 1
     end
+    svc_x = @content_x + @content_w - SVC_BTN_W - @user_area_x0
+    i = 0
+    while i < SVC_IDS.size
+      b = @ui.button(SVC_IDS[i], svc_x, @rows_y0 - @user_area_y0, SVC_BTN_W,
+                     ROW_H, "[stop]")
+      b.visible = false
+      b.dirty = false
+      @svc_names << nil
+      i += 1
+    end
     nil
   end
 
@@ -125,7 +155,11 @@ class MonitorApp < FmrbApp
     if @page == 2
       id = @ui.handle(ev)
       if id
-        handle_kill_click(id)
+        if KILL_IDS.index(id)
+          handle_kill_click(id)
+        else
+          handle_svc_click(id)
+        end
         return
       end
       @ui.flush
@@ -135,9 +169,16 @@ class MonitorApp < FmrbApp
     handle_nav_click(ev[:x]) if y >= @nav_y && y < @nav_y + NAV_H
   end
 
-  # The kernel's answer to a kill request (see request_kill).
+  # The kernel's answer to a kill request (see request_kill), and the service
+  # host's answers, which arrive as Pub/Sub deliveries on this app's own reply
+  # topic.
   def on_control(msg)
-    return unless msg["cmd"] == "kill_result"
+    cmd = msg["cmd"]
+    if cmd == "topic_data" && msg["topic"] == svc_reply_topic
+      handle_svc_reply(msg["data"] || {})
+      return
+    end
+    return unless cmd == "kill_result"
     pid = msg["pid"]
     if msg["ok"]
       @kill_msg = "asked #{msg["info"]} (PID #{pid})"
@@ -147,7 +188,93 @@ class MonitorApp < FmrbApp
     refresh_tasks if @page == 2
   end
 
+  # ---- services ----------------------------------------------------------
+  #
+  # The list is asked for when the page is opened and after a button, not on
+  # the once-a-second tick: the page is a task list first, and a request per
+  # second would put traffic through the kernel for a window nobody is
+  # looking at most of the time.
+
+  def svc_reply_topic
+    @svc_reply_topic = "svc/re/#{FmrbApp.pid}" unless @svc_reply_topic
+    @svc_reply_topic
+  end
+
+  def svc_host_running?
+    procs = FmrbApp.ps
+    return false unless procs
+    i = 0
+    while i < procs.size
+      p = procs[i]
+      return true if p[:name] == SVC_HOST_NAME && p[:state] != 0
+      i += 1
+    end
+    false
+  end
+
+  # No host means no child rows and no complaint: a machine without services
+  # gets the task page exactly as it was before they existed.
+  def request_svc(cmd, name)
+    unless svc_host_running?
+      @svcs = []
+      @svc_pending = []
+      return nil
+    end
+    unless @svc_subscribed
+      subscribe(svc_reply_topic)
+      @svc_subscribed = true
+    end
+    req = { "cmd" => cmd, "reply_to" => svc_reply_topic }
+    req["name"] = name if name
+    publish(SVC_CTL_TOPIC, req)
+    nil
+  end
+
+  def handle_svc_reply(data)
+    case data["cmd"]
+    when "svc"
+      row = data["svc"]
+      @svc_pending << row if row
+    when "svc_end"
+      @svcs = @svc_pending
+      @svc_pending = []
+      @task_sig = nil          # the rows changed; let the page repaint
+      refresh_tasks if @page == 2
+    when "svc_result"
+      @kill_msg = data["ok"] ? "#{data["name"]}: ok" : "#{data["name"]}: #{data["err"]}"
+      # Ask again rather than guessing the new state from the answer.
+      request_svc("list", nil)
+    end
+    nil
+  end
+
+  # One button per row, and which one it is depends on the state: a running
+  # service can be stopped, anything else can be started. enable / disable
+  # are deliberately not here -- they change what happens at the next boot,
+  # which is a decision for the shell, not for a click in a monitor window.
+  def handle_svc_click(id)
+    i = SVC_IDS.index(id)
+    return if i.nil?
+    name = @svc_names[i]
+    return if name.nil?
+    state = svc_state_of(name)
+    return if state == "disabled"
+    request_svc(state == "running" ? "stop" : "start", name)
+    nil
+  end
+
+  def svc_state_of(name)
+    i = 0
+    while i < @svcs.size
+      row = @svcs[i]
+      return row["state"].to_s if row["name"].to_s == name
+      i += 1
+    end
+    ""
+  end
+
   def on_destroy
+    unsubscribe(svc_reply_topic) if @svc_subscribed
     Log.info("Monitor destroyed")
   end
 
@@ -172,7 +299,10 @@ class MonitorApp < FmrbApp
     @kill_armed_pid = nil
     @task_sig = nil
     draw_all
-    refresh_tasks if @page == 2
+    if @page == 2
+      request_svc("list", nil)
+      refresh_tasks
+    end
     nil
   end
 
@@ -181,6 +311,12 @@ class MonitorApp < FmrbApp
     while i < @max_rows
       @ui.set_visible(KILL_IDS[i], false)
       @row_pids[i] = nil
+      i += 1
+    end
+    i = 0
+    while i < SVC_IDS.size
+      @ui.set_visible(SVC_IDS[i], false)
+      @svc_names[i] = nil
       i += 1
     end
     nil
@@ -395,9 +531,11 @@ class MonitorApp < FmrbApp
 
     y = @rows_y0
     row = 0
+    svc_row = 0
+    y_limit = msg_y - 1
     if procs
       i = 0
-      while i < procs.size && row < @max_rows
+      while i < procs.size && y < y_limit
         p = procs[i]
         pid = p[:id]
         name = (p[:name] || "?").to_s
@@ -408,7 +546,7 @@ class MonitorApp < FmrbApp
 
         # The shell and the monitor are user tasks too; the kernel refuses to
         # end the one that asked, so the monitor's own row gets no button.
-        if p[:type] == TYPE_USER && pid != my_pid
+        if p[:type] == TYPE_USER && pid != my_pid && row < @max_rows
           id = KILL_IDS[row]
           @row_pids[row] = pid
           @ui.set_text(id, @kill_armed_pid == pid ? "[?]" : "[X]")
@@ -419,6 +557,15 @@ class MonitorApp < FmrbApp
         end
         y += ROW_H
         i += 1
+
+        # The services inside the host, as child rows directly under it.
+        next unless name == SVC_HOST_NAME
+        j = 0
+        while j < @svcs.size && svc_row < SVC_IDS.size && y < y_limit
+          svc_row = draw_svc_row(@svcs[j], y, svc_row)
+          y += ROW_H
+          j += 1
+        end
       end
     end
 
@@ -428,6 +575,11 @@ class MonitorApp < FmrbApp
       @row_pids[row] = nil
       @ui.set_visible(KILL_IDS[row], false)
       row += 1
+    end
+    while svc_row < SVC_IDS.size
+      @svc_names[svc_row] = nil
+      @ui.set_visible(SVC_IDS[svc_row], false)
+      svc_row += 1
     end
 
     if @kill_msg
@@ -443,6 +595,34 @@ class MonitorApp < FmrbApp
     nil
   end
 
+  # One service, indented under the host. The text is built to fit the column
+  # the button leaves (see SVC_BTN_W): the error count is only shown when
+  # there is one, because the common row is already at the limit.
+  def draw_svc_row(svc, y, svc_row)
+    name = svc["name"].to_s
+    state = svc["state"].to_s
+    errors = svc["errors"].to_i
+    text = "+#{name} #{state}"
+    text = "#{text} e#{errors}" if errors > 0
+    chars = (@content_w - SVC_BTN_W - 4) / CHAR_W
+    text = text[0, chars] if text.length > chars
+    @gfx.draw_text(@content_x, y, text,
+                   state == "running" ? COLOR_TEXT : COLOR_DIM, COLOR_BG)
+    id = SVC_IDS[svc_row]
+    @svc_names[svc_row] = name
+    # A disabled service is not started from here: switching it back on is a
+    # decision that outlives this boot, and that lives in the shell.
+    if state == "disabled"
+      @ui.set_visible(id, false)
+    else
+      @ui.set_text(id, state == "running" ? "[stop]" : "[start]")
+      @ui.move(id, @content_x + @content_w - SVC_BTN_W - @user_area_x0,
+               y - @user_area_y0, SVC_BTN_W, ROW_H)
+      @ui.set_visible(id, true)
+    end
+    svc_row + 1
+  end
+
   # What the page would look like, as one string. Rebuilt every second and
   # thrown away; the rows themselves cost more.
   def task_signature(procs, my_pid)
@@ -455,6 +635,14 @@ class MonitorApp < FmrbApp
       i += 1
     end
     sig << my_pid.to_s
+    # The service rows are part of the picture, so a state or error count that
+    # moved has to repaint the page like anything else.
+    i = 0
+    while i < @svcs.size
+      row = @svcs[i]
+      sig << "|#{row["name"]},#{row["state"]},#{row["errors"]}"
+      i += 1
+    end
     sig
   end
 

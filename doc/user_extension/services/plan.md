@@ -35,13 +35,14 @@ RAM 逼迫の機械であり、常駐の装備は「作る機械 = Modern」に�
 - これは削除ではなく既定の話: 門が 1 か所なので、必要になれば Retro でも
   安く有効化できる。
 
-## 置き場所と設定 (システムとユーザの二層)
+## 置き場所と設定 (システム / ユーザ / 状態の三層)
 
 ```
 /etc/services.toml         システムサービスの一覧 (config/ から生成、firmware 同梱)
 /usr/share/services/*.rb   システムサービス本体 (firmware 同梱)
 /home/services.toml        ユーザサービスの一覧 (ユーザが編集)
 /home/services/*.rb        ユーザサービス本体 (ユーザの Ruby)
+/home/services_state.toml  on/off の記録 (ホストが書く。ユーザは普段触らない)
 services.app.rb            ホスト (headless、prebuild。main/prebuild_scripts/default_app/)
 ```
 
@@ -50,10 +51,26 @@ services.app.rb            ホスト (headless、prebuild。main/prebuild_script
   (= config/ から生成されるシステム側)、本体は /usr/share に置く。
 - **ユーザサービス**は /home。ユーザが手で書き換える物は /home、という
   既存の区分に従う。
-- ホストは**システム → ユーザの順に読む**。同名の項目はユーザ側が
-  システム側の設定を上書きする (少なくとも `enable = false` でシステム
-  サービスを止められること)。ps の一覧には出どころ (sys/usr) を出す。
+- ホストは**システム → ユーザ → 状態ファイルの順に読む**。同名の項目は
+  後の層が前を上書きし、**状態ファイルが最優先**。ユーザ側は少なくとも
+  `enable = false` でシステムサービスを止められること。ps の一覧には
+  出どころ (sys/usr) を出す。
+- **状態ファイルはホストの持ち物**で、書くのは `svc enable` / `svc disable`
+  のときだけ。中身は `名前 = true/false` の行のみ。**ユーザの toml は
+  ホストが書き換えない** — 手書きのコメント・並び・書き方を、フラグ 1 つの
+  ために失わせないため。知らない名前が残っていても無害 (ログ 1 行で無視)。
 - どちらの toml も無ければホストは spawn されない (現状と同一)。
+
+### stop/start と enable/disable の違い
+
+| | 効き目 | 記録 |
+|---|---|---|
+| `svc stop` / `kill <名前>` / `svc start` | **今のセッションだけ**。再起動で元に戻る | 無し |
+| `svc disable` / `svc enable` | 今すぐ効き、**再起動をまたぐ** | 状態ファイル |
+
+`disable` は「配送から外して `on_stop`」+ 記録、`enable` は「(未ロードなら
+読み込んで) 開始」+ 記録。ps / `svc list` の状態語も分けてある:
+**`stopped` は今回だけ、`disabled` は次回以降も**。
 
 ```toml
 # /home/services.toml
@@ -82,7 +99,10 @@ fullscreen = true          # app.toml の window_mode を上書き (省略時は
 delay_ms = 0               # 任意。desktop が落ち着くまで待つ用
 ```
 
-- 起動はホストが行う (launcher と同じ spawn 要求)。kernel の変更を増やさない。
+- 起動はホストが行う (launcher と同じ spawn 要求)。kernel は要求の答えとして
+  `{"cmd"=>"spawn_result", "app"=>要求したパス, "pid"=>新 pid}` を要求元へ返す
+  (`run_result` と同じ形)。ホストはこれで自分が起こしたアプリの pid を覚え、
+  `app/died` の pid と突き合わせる。
 - fullscreen の上書きは、spawn 属性に `fullscreen` フラグが既にあるので
   **spawn 要求で渡せるならそれが第一** (fmrb_app_spawner.c が app.toml から
   立てているのと同じ場所)。要求経路に載せられない場合は、spawn 後に
@@ -90,7 +110,28 @@ delay_ms = 0               # 任意。desktop が落ち着くまで待つ用
 - 用途: 起動したら即ゲーム機/発表機として使う、いわゆるキオスク的な運用。
   desktop を出さずに直接立ち上げる「真のキオスク」はカーネルの起動順の
   話になるので**本計画の外** (欲しくなったら別途)。
-- 死んだら再起動 (`restart = true`) は S2 (reaper 連携) と同じ回で。
+- **`restart = true`**: そのアプリが**異常死したときだけ**起こし直す。
+  kill / stop / 正常終了は「意図した停止」なので生き返らせない (生き返ると
+  kill が無意味になる)。2 秒待ってから、300 秒の窓で 3 回死んだら諦めて
+  エラーログ 1 行。ホストの仕事で、判断材料は下の `app/died`。
+
+### システム topic `app/died` (第 1 号)
+
+kernel は**どのアプリが終わっても** publish する (ideas.md 案 6 の最初の実例)。
+
+```ruby
+topic "app/died"
+{ "pid" => 5, "name" => "SubDemo", "expected" => true }
+```
+
+- `expected` が真 = **頼まれて止まった** (shell/monitor の kill、Ctrl+Q、
+  閉じるボタン、スクリプトの完走)。偽 = **異常死** (例外で落ちた等)。
+- 見分けは app context の `expected_stop` 1 bit。**「止めてくれ」と言われた
+  ところ全部**で立てる: kernel の kill 要求、`FmrbApp#stop` (両エンジンの
+  土台)、Lua/BASIC が "stop" を latch する C の口。mruby のアプリは例外で
+  死んでも**スクリプト末尾の rescue が拾うのでタスクは正常終了に見える**
+  — C から区別が付かないので、この印が唯一の手掛かりになる。
+- 購読は任意。ホストは `restart = true` の項目があるときだけ購読する。
 
 ## サービスの契約
 
@@ -195,10 +236,10 @@ headless アプリ。既存の枠組みだけで書ける:
 ### 要求/応答の約束 (Pub/Sub)
 
 - 要求: topic `svc/ctl` へ `{"cmd"=>..., "name"=>..., "reply_to"=>...}`。
-  `cmd` は `list` / `stop` / `start`。`reply_to` は呼び手が購読している
+  `cmd` は `list` / `stop` / `start` / `enable` / `disable`。`reply_to` は呼び手が購読している
   応答用 topic (例 `svc/re/<自分の pid>`)。
 - 応答: **1 サービス 1 通**。`{"cmd"=>"svc", "svc"=>{"name"=>..., "origin"=>
-  "sys|usr", "state"=>"running|stopped|failed", "ticks"=>n, "events"=>n,
+  "sys|usr", "state"=>"running|stopped|failed|disabled", "ticks"=>n, "events"=>n,
   "wakes"=>n, "errors"=>n}}` を並べ、`{"cmd"=>"svc_end", "count"=>n}` で
   締める。`stop` / `start` は `{"cmd"=>"svc_result", "ok"=>true/false,
   "name"=>..., "err"=>...}`。
@@ -222,6 +263,8 @@ headless アプリ。既存の枠組みだけで書ける:
 - `kill <引数>`: 数字なら従来どおり pid。**数字でなければサービス名**として
   `svc/ctl stop` を送る。ホストごと殺したいときは従来どおり pid で。
 - `svc start <名前>` / `svc list` も置く (kill と対にする)。
+- `svc enable <名前>` / `svc disable <名前>` は永続する方の対
+  (上の表)。help で 2 対の違いを書く。
 - サービス名とアプリ名の衝突は気にしない (kill の数字/非数字で経路が
   分かれるため。アプリを名前で kill する機能は無い)。
 
