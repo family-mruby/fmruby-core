@@ -764,6 +764,7 @@ class FmrbApp
     @running = false
     @close_btn_pressed = false
     @closable = true
+    @_spin_break = false
     @_timers = []
     @attached_uis = []
 
@@ -1039,6 +1040,9 @@ class FmrbApp
   # Replaces FmrbApp#_spin (which dispatched via mrb_funcall in C).
   def _spin(timeout_ms)
     target = Machine.board_millis + timeout_ms
+    # Cleared on entry so only a request made from inside this wait counts;
+    # one made from on_update is about to be answered by the next sleep.
+    @_spin_break = false
     loop do
       now = Machine.board_millis
       break if now >= target
@@ -1046,8 +1050,16 @@ class FmrbApp
       msg = _poll_message(remaining)
       break if msg.nil?
       _dispatch_message(msg)
+      break if @_spin_break
     end
     _run_timers
+    nil
+  end
+
+  # Same contract as FmrbApp#request_early_update in the mruby base: end this
+  # wait now so on_update runs and can act on a deadline the callback set.
+  def request_early_update
+    @_spin_break = true
     nil
   end
 

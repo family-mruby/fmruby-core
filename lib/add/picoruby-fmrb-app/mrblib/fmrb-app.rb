@@ -46,6 +46,7 @@ class FmrbApp
     @running = false
     @close_btn_pressed = false
     @closable = true
+    @_spin_break = false
     @_timers = []
     @attached_uis = []
     _init() # C function, variables are defined here
@@ -452,6 +453,29 @@ class FmrbApp
   def on_quit_request
     Log.info("App #{@name} quit request")
     stop
+  end
+
+  # End the current _spin now, so main_loop reaches on_update without waiting
+  # out the timeout the app asked for.
+  #
+  # _spin keeps delivering messages for its whole wait but never returns early
+  # on its own, so an app that learns from a message that it must act sooner
+  # than it planned cannot act on it: the service host is told, from inside
+  # on_control, to call a service back in 200 ms while it is part-way through
+  # a 30 second sleep, and without this the callback waits out the sleep.
+  #
+  # Only meaningful from inside a callback _spin dispatched (on_control,
+  # on_event) -- the flag is cleared when _spin starts, so asking from
+  # on_update, where the next sleep is about to be recomputed anyway, does
+  # nothing. Apps that never call it pay one ivar read per message.
+  #
+  # It is also what lets an idle app sleep for a long time at all: without a
+  # way out, "sleep until the next deadline" has to be capped at whatever the
+  # app might later be asked to do in a hurry, which is a poll by another
+  # name (doc/user_extension/services/plan.md, the idle-sleep paragraph).
+  def request_early_update
+    @_spin_break = true
+    nil
   end
 
   # ---- timers (Ruby-side; C cannot call a Ruby block) ----

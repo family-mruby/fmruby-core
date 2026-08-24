@@ -489,6 +489,13 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
     mrb_int timeout_ms;
     mrb_get_args(mrb, "i", &timeout_ms);
 
+    // A callback dispatched below may ask to leave the wait early
+    // (FmrbApp#request_early_update). Cleared here so only a request made
+    // from inside THIS wait counts: one made from on_update is about to be
+    // answered by the timeout this call was given.
+    mrb_sym spin_break_sym = mrb_intern_lit(mrb, "@_spin_break");
+    mrb_iv_set(mrb, self, spin_break_sym, mrb_false_value());
+
     // Record start time to ensure we wait for the full timeout period
     fmrb_tick_t start_tick = fmrb_task_get_tick_count();
     fmrb_tick_t target_tick = start_tick + FMRB_MS_TO_TICKS(timeout_ms);
@@ -619,6 +626,15 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                 }
             } else {
                 FMRB_LOGI(TAG, "App %s message type %d not handled", ctx->app_name, msg.type);
+            }
+
+            // The callback learned the app has to act sooner than the timeout
+            // it asked for, so stop waiting and let main_loop reach on_update.
+            // Without it a deadline set from on_control (the service host's
+            // wake_in) is not looked at until the current sleep runs out.
+            if (mrb_test(mrb_iv_get(mrb, self, spin_break_sym))) {
+                mrb_iv_set(mrb, self, spin_break_sym, mrb_false_value());
+                break;
             }
 
             // Continue loop to process more messages or wait for remaining time
