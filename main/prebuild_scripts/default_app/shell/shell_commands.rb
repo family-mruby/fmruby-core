@@ -1,7 +1,10 @@
 # Shell commands mixin - filesystem, run, process management, tab completion
 
 module ShellCommandsMixin
-  STATE_NAMES = ["free", "init", "run", "suspend", "stop"]
+  # Full words, matching the service rows the same `ps` prints under the host
+  # (running / stopped / failed). The abbreviations read as a different
+  # vocabulary in the same listing.
+  STATE_NAMES = ["free", "init", "running", "suspended", "stopping"]
   TYPE_NAMES = ["kernel", "system", "user"]
   # Index into TYPE_NAMES. Only user tasks can be ended with "kill".
   PROC_TYPE_USER = 2
@@ -858,7 +861,7 @@ module ShellCommandsMixin
     # Kernel-managed tasks (FmrbApp.ps). Type "user" ones can be ended with
     # `kill <pid>`; kernel and system tasks hold the machine up and cannot.
     @history << "Tasks (kernel-managed, 'user' can be killed):"
-    @history << " PID TYPE    STATE   NAME"
+    @history << " PID TYPE    STATE     NAME"
     procs = FmrbApp.ps
     my_pid = FmrbApp.pid
     i = 0
@@ -867,7 +870,7 @@ module ShellCommandsMixin
       state = STATE_NAMES[p[:state]] || "?"
       type = TYPE_NAMES[p[:type]] || "?"
       mark = p[:id] == my_pid ? " (this shell)" : ""
-      @history << "  #{p[:id]}  #{type.ljust(7)} #{state.ljust(7)} #{p[:name]}#{mark}"
+      @history << "  #{p[:id]}  #{type.ljust(7)} #{state.ljust(9)} #{p[:name]}#{mark}"
       i += 1
     end
 
