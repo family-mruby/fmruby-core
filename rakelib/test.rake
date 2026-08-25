@@ -14,9 +14,9 @@
 #
 # Lints (spinel:doctor) are separate again: they need the Spinel compiler
 # checkout and report style/inference issues, not pass/fail like these suites.
-desc "Run all native host test suites (FmrbUI + services + assoc + WAV + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "services:test", "assoc:test", "wav:test", "ti:test",
-               "basic:test", "micropython:smoke"]
+desc "Run all native host test suites (FmrbUI + services + assoc + WAV + tts + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "services:test", "assoc:test", "wav:test", "tts:test",
+               "ti:test", "basic:test", "micropython:smoke"]
 
 namespace :ui do
   # FmrbUI is pure Ruby over a few FmrbGfx calls, so the real mrblib file runs
@@ -81,6 +81,17 @@ namespace :wav do
   desc "Remove the host WAV test build"
   task :clean do
     rm_rf WAV_TEST_BUILD
+  end
+end
+
+namespace :tts do
+  # The tts service's cache key, URL encoder, server-string split and HTTP
+  # response reader. All of them are plain Ruby over Strings, so the shipped
+  # service file runs here with a fake socket in place of the network. Run it
+  # after touching flash/usr/share/services/tts.rb.
+  desc "tts service tests (host Ruby, no docker, no network)"
+  task :test do
+    sh "ruby test/tts/run.rb"
   end
 end
 

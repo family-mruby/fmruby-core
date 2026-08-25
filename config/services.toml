@@ -44,3 +44,23 @@ interval_ms = 86400000
 [timesync.config]
 server = "pool.ntp.org"
 interval_hours = 24
+
+# Says things out loud. Anything (a service, an app) that publishes to
+# "tts/say" gets read aloud; a sentence said once is cached as a WAV in
+# /home/voice/cache and plays from there afterwards, network or no network.
+#
+# The cache key is server + speaker + text, so the same sentence in another
+# voice is a different file. That has one consequence worth knowing: to run
+# offline, LEAVE the server line where it is and simply let it be unreachable
+# -- a miss then costs one refused connection and a log line, and everything
+# already said still plays. Deleting the line instead changes the key, and the
+# machine stops finding its own cache.
+#
+#   [tts.config]
+#   server = "http://192.168.10.5:50021"
+#   speaker = 1
+#   timeout_ms = 3000
+[tts]
+file = "tts.rb"
+class = "TtsService"
+enable = true

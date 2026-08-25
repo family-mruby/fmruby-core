@@ -20,6 +20,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <errno.h>
+#include <time.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>   /* fcntl / F_GETFL / F_SETFL / O_NONBLOCK for nonblock recv */
 
@@ -35,12 +36,48 @@
 #define FMRB_SOCKET_CONNECT_TIMEOUT_MS 10000
 #endif
 
+/* The defaults above are a backstop against a dead peer; a caller that has a
+ * deadline of its own wants a shorter one. TCPSocket.timeout_ms= sets both,
+ * for sockets opened after it -- there is no per-socket handle to hang it on
+ * before connect() has happened, and connect is exactly what needs bounding.
+ * Only TCP is affected; UDP (SNTP) keeps its own behaviour. */
+static int s_io_timeout_ms      = FMRB_SOCKET_IO_TIMEOUT_MS;
+static int s_connect_timeout_ms = FMRB_SOCKET_CONNECT_TIMEOUT_MS;
+
+void
+TCPSocket_set_timeout_ms(int ms)
+{
+  if (ms <= 0) {
+    s_io_timeout_ms = FMRB_SOCKET_IO_TIMEOUT_MS;
+    s_connect_timeout_ms = FMRB_SOCKET_CONNECT_TIMEOUT_MS;
+    return;
+  }
+  s_io_timeout_ms = ms;
+  s_connect_timeout_ms = ms;
+}
+
+int
+TCPSocket_get_timeout_ms(void)
+{
+  return s_io_timeout_ms;
+}
+
+/* Milliseconds from a clock that does not jump; used to bound the EINTR
+ * retry loop below. */
+static int64_t
+monotonic_ms(void)
+{
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
 static void
 socket_set_default_timeouts(int fd)
 {
   struct timeval tv;
-  tv.tv_sec = FMRB_SOCKET_IO_TIMEOUT_MS / 1000;
-  tv.tv_usec = (FMRB_SOCKET_IO_TIMEOUT_MS % 1000) * 1000;
+  tv.tv_sec = s_io_timeout_ms / 1000;
+  tv.tv_usec = (s_io_timeout_ms % 1000) * 1000;
   setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
   setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
 }
@@ -162,7 +199,7 @@ TCPSocket_connect(picorb_state *vm, picorb_socket_t *sock, const char *host, int
 
   /* Connect */
   if (socket_connect_timeout(sock->fd, (struct sockaddr *)&addr, sizeof(addr),
-                             FMRB_SOCKET_CONNECT_TIMEOUT_MS) < 0) {
+                             s_connect_timeout_ms) < 0) {
     snprintf(sock->errmsg, sizeof(sock->errmsg),
              "connect(\"%s\":%d): %s", host, port, strerror(errno));
     close(sock->fd);
@@ -224,11 +261,36 @@ TCPSocket_recv(picorb_state *vm, picorb_socket_t *sock, void *buf, size_t len, b
     return received;
   }
 
-  /* Return as soon as any data is available (readpartial semantics). */
-  ssize_t received = recv(sock->fd, buf, len, 0);
-
-  if (received < 0) {
-    return -1;
+  /* Return as soon as any data is available (readpartial semantics).
+   *
+   * Family mruby patch: retry on EINTR and report the timeout as a timeout.
+   *
+   * EINTR is not an edge case here. The FreeRTOS Linux port drives its tick
+   * from a signal, so a blocking recv() on the simulator is interrupted
+   * constantly; without the retry, any read that has to wait for the peer
+   * fails outright, and the caller sees "read failed" a millisecond after
+   * asking. (An HTTP client reading a response the server takes a few ms to
+   * produce hits it every time.)
+   *
+   * And SO_RCVTIMEO expiring shows up as EAGAIN/EWOULDBLOCK on a blocking
+   * socket. Mapping it to PICORB_RECV_TIMEOUT is what makes readpartial raise
+   * "read timeout" rather than the generic "read failed" -- the distinction
+   * the mruby layer already had a branch for, but that nothing could produce. */
+  ssize_t received;
+  const int64_t started_ms = monotonic_ms();
+  while (1) {
+    received = recv(sock->fd, buf, len, 0);
+    if (received >= 0) break;
+    if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      return PICORB_RECV_TIMEOUT;   /* SO_RCVTIMEO expired */
+    }
+    if (errno != EINTR) return -1;
+    /* Retrying restarts SO_RCVTIMEO, so the socket's own timer can never
+     * expire under a steady signal load -- the caller's timeout would mean
+     * nothing. Keep our own clock across the retries. */
+    if (monotonic_ms() - started_ms >= s_io_timeout_ms) {
+      return PICORB_RECV_TIMEOUT;
+    }
   }
   if (received == 0) {
     sock->connected = false;
