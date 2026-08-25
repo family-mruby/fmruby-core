@@ -375,5 +375,132 @@ check("disable works from failed too", f.disable, true)
 f.enable
 check("and the error budget is fresh", f.errors, 0)
 
+# --- SNTP, and the network watch (SYS1) -----------------------------------
+#
+# The two system services have parts with no machine in them -- building and
+# reading a 48-byte packet, converting the era, deciding what is believable --
+# and those are the parts that are wrong in a way a simulator run would not
+# show. The real files are loaded, like everything else here; their class
+# methods are written to be reachable without a ctx.
+
+load File.expand_path("../../flash/usr/share/services/timesync.rb", __dir__)
+
+req = TimeSync.build_request
+check("a request is 48 bytes", req.bytesize, 48)
+check("LI 0, VN 3, Mode 3", req.getbyte(0), 0x1B)
+rest_zero = true
+(1...48).each { |i| rest_zero = false unless req.getbyte(i) == 0 }
+check("and nothing else is set", rest_zero, true)
+
+# Build a reply the way a server would: seconds since 1900, big-endian, at
+# bytes 40..43.
+def ntp_reply(epoch_1900, size = 48)
+  pkt = +"\x00" * size
+  return pkt if size < 44
+  pkt.setbyte(40, (epoch_1900 >> 24) & 0xFF)
+  pkt.setbyte(41, (epoch_1900 >> 16) & 0xFF)
+  pkt.setbyte(42, (epoch_1900 >> 8) & 0xFF)
+  pkt.setbyte(43, epoch_1900 & 0xFF)
+  pkt
+end
+
+# 2026-08-25 00:00:00 UTC
+KNOWN_EPOCH = 1787616000
+check("the era is converted", TimeSync.parse_reply(ntp_reply(KNOWN_EPOCH + 2208988800)),
+      KNOWN_EPOCH)
+# The high bit set is the normal case after 2036 wraps... but before then it is
+# simply a large 32-bit value, and it must not come back negative.
+big = TimeSync.parse_reply(ntp_reply(0xF0000000))
+check("a high-bit value is unsigned", big.nil? || big > 0, true)
+
+check("a short reply is refused", TimeSync.parse_reply(ntp_reply(0, 20)), nil)
+check("nothing is refused", TimeSync.parse_reply(nil), nil)
+check("an all-zero reply is refused", TimeSync.parse_reply(ntp_reply(0)), nil)
+# A server that answers with something implausible is worse than no answer:
+# taking it would move the clock somewhere wrong and stop the retries.
+check("1970 is refused", TimeSync.parse_reply(ntp_reply(2208988800 + 100)), nil)
+check("2199 is refused", TimeSync.parse_reply(ntp_reply(2208988800 + 7258118400)), nil)
+
+# The RTC stores UTC, and the fields it is given come from the epoch alone.
+# The first version read them back with FmrbApp.wallclock, which returns LOCAL
+# time -- so a JST machine wrote an RTC nine hours ahead and booted into the
+# future until the next sync. Only hardware showed it, so the arithmetic that
+# replaced it is pinned here.
+def utc_str(epoch)
+  f = TimeSync.utc_fields(epoch)
+  format("%04d-%02d-%02d %02d:%02d:%02d",
+         f[:year], f[:month], f[:day], f[:hour], f[:minute], f[:second])
+end
+
+check("a known instant", utc_str(1787616860), "2026-08-25 00:14:20")
+check("the epoch itself", utc_str(0), "1970-01-01 00:00:00")
+check("a leap day", utc_str(1582934400), "2020-02-29 00:00:00")
+check("the day after it", utc_str(1583020800), "2020-03-01 00:00:00")
+check("a year end", utc_str(4102444799), "2099-12-31 23:59:59")
+check("midnight is hour 0, not 24", TimeSync.utc_fields(1787616000)[:hour], 0)
+check("and the day is right there", TimeSync.utc_fields(1787616000)[:day], 25)
+
+check("the low edge is in", TimeSync.valid_epoch?(1577836800), true)
+check("just below is out", TimeSync.valid_epoch?(1577836799), false)
+check("the high edge is out", TimeSync.valid_epoch?(4102444800), false)
+check("and a non-integer is out", TimeSync.valid_epoch?("2026"), false)
+
+# The network watch publishes on change, not on every tick: the state it holds
+# is the whole of that decision, so it is checked directly.
+load File.expand_path("../../flash/usr/share/services/net.rb", __dir__)
+
+class FakeCtx
+  attr_reader :published, :logged
+  def initialize; @published = []; @logged = []; end
+  def publish(topic, data); @published << [topic, data]; nil; end
+  def log(msg); @logged << msg; nil; end
+  def config; {}; end
+  def now_ms; 0; end
+end
+
+# FmrbApp is the machine here, so it is the one thing faked.
+module FmrbApp
+  class << self
+    attr_accessor :fake_connected
+    def wifi_connected?; @fake_connected; end
+    def wifi_info
+      @fake_connected ? { ip: "192.168.1.5", ssid: "home" } : nil
+    end
+  end
+end
+
+FmrbApp.fake_connected = true
+ctx = FakeCtx.new
+w = NetWatch.new
+w.on_start(ctx)
+check("the state is published at start", ctx.published.size, 1)
+check("on net/state", ctx.published[0][0], "net/state")
+check("with the address", ctx.published[0][1]["ip"], "192.168.1.5")
+check("and the address is logged", ctx.logged[0], "up: 192.168.1.5 (home)")
+
+w.on_tick(1000)
+w.on_tick(2000)
+check("an unchanged tick publishes nothing", ctx.published.size, 1)
+
+FmrbApp.fake_connected = false
+w.on_tick(3000)
+check("a change publishes", ctx.published.size, 2)
+check("saying so", ctx.published[1][1]["connected"], false)
+check("and logs it once", ctx.logged.size, 2)
+w.on_tick(4000)
+check("and then goes quiet again", ctx.published.size, 2)
+
+FmrbApp.fake_connected = true
+w.on_tick(5000)
+check("coming back publishes too", ctx.published.size, 3)
+check("with the address again", ctx.published[2][1]["ip"], "192.168.1.5")
+
+# A subscriber that started late asks, and gets the same message.
+w.on_event("net/get", nil)
+check("net/get answers", ctx.published.size, 4)
+check("on the same topic", ctx.published[3][0], "net/state")
+check("with the same content", ctx.published[3][1], ctx.published[2][1])
+check("and does not log again", ctx.logged.size, 3)
+
 puts(Check.failed.zero? ? "services: all checks passed" : "services: #{Check.failed} FAILED")
 exit(Check.failed.zero? ? 0 : 1)
