@@ -111,8 +111,8 @@ check("texts of the same length that differ still differ") do
   svc.cache_key("abcd", 1) != svc.cache_key("abce", 1)
 end
 
-check("the path lands in the cache directory") do
-  svc.cache_path("x", 1).start_with?("/home/voice/cache/") &&
+check("the path lands in /tmp with the cache prefix") do
+  svc.cache_path("x", 1).start_with?("/tmp/tts_") &&
     svc.cache_path("x", 1).end_with?(".wav")
 end
 
@@ -236,6 +236,26 @@ check("neither service file is big enough to kill the on-device compile") do
   end
 end
 
+# ---- byte offsets, not character offsets ------------------------------------
+
+# The reason this exists at all: mruby counts String#index in characters, so a
+# response body with any byte over 0x7F in it (a WAV, for one) shifts every
+# offset built on it. CRuby indexes a BINARY string by bytes, which is why the
+# rest of these tests could pass while the device could not decode a chunk.
+eq("byte_index finds an ASCII needle", http.byte_index("hello\r\nworld", "\r\n"), 5)
+eq("byte_index counts bytes, not characters",
+   http.byte_index("あいう\r\nx", "\r\n"), 9)
+eq("byte_index honours the start offset",
+   http.byte_index("a\r\nb\r\nc", "\r\n", 3), 4)
+check("byte_index returns nil when the needle is absent") do
+  http.byte_index("abc", "\r\n").nil?
+end
+check("byte_index handles a needle running off the end") do
+  http.byte_index("ab\r", "\r\n").nil?
+end
+eq("byte_index works on a string of raw bytes",
+   http.byte_index("\xff\xfe\r\n\xfd".b, "\r\n"), 2)
+
 # ---- chunked bodies --------------------------------------------------------
 
 check("a chunked body is unwrapped") do
@@ -265,6 +285,24 @@ check("binary chunk data survives") do
   payload = (0..255).map(&:chr).join
   raw = "#{payload.bytesize.to_s(16)}\r\n#{payload}\r\n0\r\n\r\n"
   http.dechunk(raw) == payload
+end
+
+check("a chunked WAV decodes the way the real thing arrives") do
+  # The shape OpenAI's TTS actually sends: several kilobyte chunks of PCM
+  # whose bytes are anything at all, ending with a zero chunk.
+  wav = "RIFF" + [0xFFFFFFFF].pack("V") + "WAVEfmt " +
+        [16, 1, 1, 24000, 48000, 2, 16].pack("Vv2V2v2") +
+        "data" + [0xFFFFFFFF].pack("V") +
+        (0...4000).map { |i| [(Math.sin(i / 8.0) * 20000).to_i].pack("s<") }.join
+  raw = +""
+  off = 0
+  while off < wav.bytesize
+    piece = wav.byteslice(off, 1500)
+    raw << "#{piece.bytesize.to_s(16)}\r\n" << piece << "\r\n"
+    off += 1500
+  end
+  raw << "0\r\n\r\n"
+  http.dechunk(raw) == wav
 end
 
 check("a chunked response reads end to end") do
@@ -312,7 +350,7 @@ check("the cloud cache path is keyed by model and voice") do
   a = cloud.cloud_cache_path("おはよう")
   cloud.instance_variable_set(:@cloud_voice, "nova")
   b = cloud.cloud_cache_path("おはよう")
-  a != b && a.start_with?("/home/voice/cache/") && a.end_with?(".wav")
+  a != b && a.start_with?("/tmp/tts_") && a.end_with?(".wav")
 end
 
 check("a cloud key differs from a VOICEVOX key for the same text") do

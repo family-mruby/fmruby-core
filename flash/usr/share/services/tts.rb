@@ -5,7 +5,7 @@
 #   ctx.publish("tts/say", {"text" => "あさ 7 じです"})
 #
 # Turning that into sound has two halves. The cache is the important one: a
-# sentence that has been said before is a file on disk, so it plays with no
+# sentence that has been said before is a file in RAM, so it plays with no
 # network at all, immediately, and works with the machine offline. The
 # synthesiser is only how a sentence gets into the cache the first time.
 #
@@ -39,8 +39,8 @@
 # The cache key is server + speaker + text, so the same sentence in another
 # voice is a different file. To run a machine offline, leave the server line
 # in the config and let it be unreachable: a miss costs one refused connection
-# and a log line, and everything already said still plays. Removing the line
-# changes the key and the machine stops finding its own cache.
+# and a log line, and everything said this session still plays. Removing the
+# line changes the key and the machine stops finding its own cache.
 #
 # What it deliberately does NOT do: retry, queue, or wait. A reading is only
 # useful while it is timely, so a failure is one log line and silence, and a
@@ -53,7 +53,19 @@ require "/usr/share/services/tts_http"
 class TtsService
   SUBSCRIBE = ["tts/say"]
 
-  CACHE_DIR = "/home/voice/cache"
+  # In RAM, not on the flash. A couple of seconds of speech is 200KB, and a
+  # machine that talks would rewrite its filesystem all day for no good reason
+  # -- the internal flash is small and its write cycles are finite. /tmp is a
+  # PSRAM filesystem, so the cost of a cached phrase is memory the Modern
+  # machine has in abundance (4MB of /tmp, about twenty phrases).
+  #
+  # The trade is that the cache does not survive a reboot: a phrase is
+  # synthesised once per session rather than once ever. That is the right way
+  # round for a device whose flash holds the programs.
+  #
+  # A prefix rather than a directory: /tmp is flat (the device store cannot
+  # represent a subdirectory), so every cached phrase is a direct child.
+  CACHE_PREFIX = "/tmp/tts_"
   DEFAULT_SPEAKER = 1
   DEFAULT_TIMEOUT_MS = 3000
   # Cloud synthesis takes seconds, not milliseconds, so it gets its own
@@ -64,8 +76,8 @@ class TtsService
   CLOUD_PATH = "/v1/audio/speech"
   DEFAULT_CLOUD_MODEL = "gpt-4o-mini-tts"
   DEFAULT_CLOUD_VOICE = "alloy"
-  # Not enforced, just reported once: whoever filled the cache is the one who
-  # knows which entries still matter. "rmr /home/voice/cache" empties it.
+  # Not enforced, just reported once. A reboot empties it anyway, and /tmp
+  # refuses a write before it overflows rather than failing mid-file.
   CACHE_WARN_COUNT = 100
 
   def on_start(ctx)
@@ -84,7 +96,6 @@ class TtsService
     # Only a simulator without a trust store has any business turning this
     # off; the device has esp_crt_bundle compiled in.
     @tls_verify = (cfg && cfg.key?("tls_verify")) ? cfg["tls_verify"] : true
-    ensure_cache_dir
     warn_if_cache_large
     where = []
     where << "#{@host}:#{@port}" if @host
@@ -116,61 +127,72 @@ class TtsService
       return nil
     end
 
-    wav = nil
+    ok = false
     if @host
-      wav = synthesize(text, speaker)
       # VOICEVOX is the preferred voice when it is there; falling through to
       # the cloud on every hiccup would spend money quietly. It answers or the
       # sentence is not said.
+      ok = synthesize(text, speaker, path)
     elsif @api_key
-      wav = synthesize_cloud(text)
+      ok = synthesize_cloud(text, path)
     else
       @ctx.log("tts: not cached and nothing configured (#{text})")
       return nil
     end
-    return nil unless wav
+    return nil unless ok
 
-    # Written whole, then renamed. A half-file in the cache would be played
-    # forever after -- the next request would find it and never ask again.
-    return nil unless store(path, wav)
     @ctx.audio.play_wav(path)
     nil
   end
 
   # ---- synthesis ----------------------------------------------------------
 
-  def synthesize(text, speaker)
+  # Writes the WAV straight into the cache (through a .part that is renamed
+  # only on a complete response) and answers whether it got there. The audio
+  # never passes through a Ruby string -- see the note in tts_http.rb.
+  def synthesize(text, speaker, path)
     http = TtsHttp.new(@timeout_ms)
     q = "/audio_query?text=#{url_encode(text)}&speaker=#{speaker}"
     res = http.post(@host, @port, q, "", "application/json")
     unless res && res[0] == 200
       @ctx.log("tts: audio_query failed (#{res ? res[0] : http.error})")
-      return nil
+      return false
     end
     query_json = res[1]
 
     res = http.post(@host, @port, "/synthesis?speaker=#{speaker}",
-                    query_json, "application/json")
+                    query_json, "application/json", false, nil, path)
     unless res && res[0] == 200
       @ctx.log("tts: synthesis failed (#{res ? res[0] : http.error})")
-      return nil
+      return false
     end
-    wav = res[1]
-    # Refuse here rather than let play_wav refuse later: a body that is not a
-    # WAV must not reach the cache, or every later request replays the
-    # mistake.
-    unless wav.bytesize > 44 && wav.byteslice(0, 4) == "RIFF"
-      @ctx.log("tts: server did not return a WAV (#{wav.bytesize} bytes)")
-      return nil
+    keep_if_wav(path, "server")
+  end
+
+  # A body that is not a WAV must not stay in the cache: the next request
+  # would find it and replay the mistake forever.
+  def keep_if_wav(path, who)
+    head = nil
+    begin
+      ::File.open(path, "r") { |f| head = f.read(4) }
+    rescue => e
+      @ctx.log("tts: cannot read back #{path}: #{e.message}")
+      return false
     end
-    wav
+    return true if head == "RIFF"
+    @ctx.log("tts: #{who} did not return a WAV")
+    begin
+      ::File.unlink(path)
+    rescue
+    end
+    false
   end
 
   # OpenAI's /v1/audio/speech: one POST, JSON in, the audio itself back.
   # response_format "wav" gives PCM 16-bit that play_wav takes as it is --
   # which is the whole reason this vendor was picked over the ones that wrap
   # their audio in base64 or want a request signature.
-  def synthesize_cloud(text)
+  def synthesize_cloud(text, path)
     http = TtsHttp.new(@cloud_timeout_ms)
     http.tls_verify = @tls_verify
     body = "{\"model\":\"#{@cloud_model}\",\"voice\":\"#{@cloud_voice}\"," \
@@ -179,34 +201,30 @@ class TtsService
 
     t0 = ::Machine.board_millis
     res = http.post(CLOUD_HOST, CLOUD_PORT, CLOUD_PATH, body,
-                    "application/json", true, headers)
+                    "application/json", true, headers, path)
     spent = ::Machine.board_millis - t0
 
     unless res
       @ctx.log("tts: cloud failed (#{http.error})")
-      return nil
+      return false
     end
     if res[0] == 401
       # Worth its own line: a wrong key looks exactly like a network problem
       # from the outside, and this is the difference between the two.
       @ctx.log("tts: cloud rejected the api_key (401)")
-      return nil
+      return false
     end
     unless res[0] == 200
       # The status alone does not say why. 429 is "rate limited" and "you have
       # no credits left" equally, and those want different actions, so the
       # start of the body goes in the line too.
       @ctx.log("tts: cloud returned #{res[0]}: #{trim(res[1])}")
-      return nil
+      return false
     end
 
-    wav = res[1]
-    unless wav.bytesize > 44 && wav.byteslice(0, 4) == "RIFF"
-      @ctx.log("tts: cloud did not return a WAV (#{wav.bytesize} bytes)")
-      return nil
-    end
-    @ctx.log("tts: cloud synthesised #{wav.bytesize} bytes in #{spent} ms")
-    wav
+    return false unless keep_if_wav(path, "cloud")
+    @ctx.log("tts: cloud synthesised in #{spent} ms")
+    true
   end
 
   # One log line's worth of a response body, on one line.
@@ -254,13 +272,13 @@ class TtsService
   # server + speaker + text, so the same sentence in another voice, or from
   # another synthesiser, is a different file.
   def cache_path(text, speaker)
-    "#{CACHE_DIR}/#{cache_key(text, speaker)}.wav"
+    "#{CACHE_PREFIX}#{cache_key(text, speaker)}.wav"
   end
 
   # Cloud audio is keyed by vendor+model+voice instead of a server address, so
   # the same sentence in a VOICEVOX voice and an OpenAI one are two files.
   def cloud_cache_path(text)
-    "#{CACHE_DIR}/#{cache_key_for("openai:#{@cloud_model}:#{@cloud_voice}", text)}.wav"
+    "#{CACHE_PREFIX}#{cache_key_for("openai:#{@cloud_model}:#{@cloud_voice}", text)}.wav"
   end
 
   def cache_key(text, speaker)
@@ -295,44 +313,15 @@ class TtsService
     out
   end
 
-  def store(path, wav)
-    tmp = "#{path}.part"
-    f = nil
-    begin
-      f = ::File.open(tmp, "w")
-      f.write(wav)
-      f.close
-      f = nil
-      ::File.rename(tmp, path)
-      true
-    rescue => e
-      @ctx.log("tts: cannot write cache: #{e.message}")
-      begin
-        f.close if f
-        ::File.unlink(tmp)
-      rescue
-      end
-      false
-    end
-  end
-
-  def ensure_cache_dir
-    ::Dir.mkdir("/home/voice") unless ::Dir.exist?("/home/voice")
-    ::Dir.mkdir(CACHE_DIR) unless ::Dir.exist?(CACHE_DIR)
-  rescue => e
-    @ctx.log("tts: cannot make #{CACHE_DIR}: #{e.message}")
-  end
-
   def warn_if_cache_large
     n = 0
-    d = ::Dir.open(CACHE_DIR)
+    d = ::Dir.open("/tmp")
     while (name = d.read)
-      next if name == "." || name == ".."
-      n += 1
+      n += 1 if name.start_with?("tts_")
     end
     d.close
     if n > CACHE_WARN_COUNT
-      @ctx.log("tts: #{n} files in #{CACHE_DIR} (rmr it if that is too many)")
+      @ctx.log("tts: #{n} phrases cached in /tmp")
     end
   rescue
     nil
