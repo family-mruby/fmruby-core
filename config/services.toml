@@ -60,6 +60,17 @@ interval_hours = 24
 #   server = "http://192.168.10.5:50021"
 #   speaker = 1
 #   timeout_ms = 3000
+#
+# Without a PC to run VOICEVOX on, give it an OpenAI key instead and it
+# synthesises straight from the cloud (cache first, as always). The key sits
+# here in plain text -- this is a personal machine, and the development build
+# serves /home over HTTP anyway.
+#
+#   [tts.config]
+#   api_key = "sk-..."
+#   cloud_model = "gpt-4o-mini-tts"   # default
+#   cloud_voice = "alloy"             # default
+#   cloud_timeout_ms = 10000          # default; synthesis takes seconds
 [tts]
 file = "tts.rb"
 class = "TtsService"

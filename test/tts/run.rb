@@ -36,6 +36,19 @@ module Machine
     @t += 1
     @t
   end
+
+  def self.posix?
+    true
+  end
+end
+
+class SSLContext
+  VERIFY_NONE = 0
+  attr_accessor :verify_mode, :ca_file
+end
+
+class SSLSocket
+  def self.open(host, port, ctx); raise "not used in these tests"; end
 end
 
 class TCPSocket
@@ -58,6 +71,12 @@ class FakeSocket
 end
 
 SERVICE = File.expand_path("../../flash/usr/share/services/tts.rb", __dir__)
+HTTP_PART = File.expand_path("../../flash/usr/share/services/tts_http.rb", __dir__)
+
+# The service requires its HTTP half by absolute device path; here the two
+# files are simply loaded in order.
+load HTTP_PART
+def require(_path); true; end
 load SERVICE
 
 # ---- cache key -------------------------------------------------------------
@@ -197,11 +216,120 @@ eq("HTTP/1.0 is read too", http.status_of("HTTP/1.0 200 OK"), 200)
 eq("a line that is not a status line reads as 0", http.status_of("GARBAGE"), 0)
 eq("a non-numeric code reads as 0", http.status_of("HTTP/1.1 2x0 Huh"), 0)
 
-check("the service file uses no regexp literals (picoruby has no Regexp)") do
-  # A regexp literal in the shipped file compiles fine here and raises
-  # NameError on the device, which is how this was found the first time.
-  body = File.read(SERVICE)
-  !body.include?("[/") && !body.match?(/=~/)
+check("the service files use no regexp literals (picoruby has no Regexp)") do
+  # A regexp literal in a shipped file compiles fine here and raises NameError
+  # on the device, which is how this was found the first time.
+  [SERVICE, HTTP_PART].all? do |f|
+    body = File.read(f)
+    !body.include?("[/") && !body.match?(/=~/)
+  end
+end
+
+check("neither service file is big enough to kill the on-device compile") do
+  # One file with all of this in it took the service host down during require,
+  # with no exception to show for it, and the limit is the amount of code
+  # rather than the size of the file (stripping the comments did not help).
+  # 10 KB of code each is comfortably inside what loads.
+  [SERVICE, HTTP_PART].all? do |f|
+    code = File.readlines(f).reject { |l| l.strip.empty? || l.strip.start_with?("#") }.join
+    code.bytesize < 10_240
+  end
+end
+
+# ---- chunked bodies --------------------------------------------------------
+
+check("a chunked body is unwrapped") do
+  raw = "4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\n"
+  http.dechunk(raw) == "Wikipedia"
+end
+
+check("a chunk length may carry an extension") do
+  raw = "4;foo=bar\r\nWiki\r\n0\r\n\r\n"
+  http.dechunk(raw) == "Wiki"
+end
+
+check("upper-case hex lengths are read") do
+  raw = "A\r\n0123456789\r\n0\r\n\r\n"
+  http.dechunk(raw) == "0123456789"
+end
+
+check("a chunk that promises more than it sends is refused") do
+  http.dechunk("10\r\nshort\r\n0\r\n\r\n").nil?
+end
+
+check("a stream with no zero chunk is refused") do
+  http.dechunk("4\r\nWiki\r\n").nil?
+end
+
+check("binary chunk data survives") do
+  payload = (0..255).map(&:chr).join
+  raw = "#{payload.bytesize.to_s(16)}\r\n#{payload}\r\n0\r\n\r\n"
+  http.dechunk(raw) == payload
+end
+
+check("a chunked response reads end to end") do
+  head = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+  raw = head + "4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\n"
+  http.read_response(FakeSocket.new([raw]), far) == [200, "Wikipedia"]
+end
+
+check("a chunked response split across reads reads end to end") do
+  head = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+  raw = head + "4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\n"
+  pieces = raw.chars.each_slice(9).map(&:join)
+  http.read_response(FakeSocket.new(pieces), far) == [200, "Wikipedia"]
+end
+
+check("Content-Length wins over a chunked header if both are present") do
+  raw = "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 3\r\n\r\nabc"
+  http.read_response(FakeSocket.new([raw]), far) == [200, "abc"]
+end
+
+check("chunked? is matched case-insensitively on its own line") do
+  http.chunked?("HTTP/1.1 200 OK\r\ntransfer-encoding: Chunked\r\nX: y") &&
+    !http.chunked?("HTTP/1.1 200 OK\r\nX-Note: chunked is not used here\r\nY: z")
+end
+
+# ---- the cloud request -----------------------------------------------------
+
+cloud = TtsService.new
+cloud.instance_variable_set(:@server, nil)
+cloud.instance_variable_set(:@cloud_model, "gpt-4o-mini-tts")
+cloud.instance_variable_set(:@cloud_voice, "alloy")
+
+eq("plain text needs no escaping", cloud.json_escape("hello"), "hello")
+eq("a quote is escaped", cloud.json_escape('say "hi"'), 'say \\"hi\\"')
+eq("a backslash is escaped", cloud.json_escape("a\\b"), "a\\\\b")
+eq("a newline becomes \\n", cloud.json_escape("a\nb"), "a\\nb")
+check("UTF-8 passes through unescaped (JSON allows it)") do
+  cloud.json_escape("こんにちは") == "こんにちは"
+end
+check("other control characters become spaces") do
+  cloud.json_escape("a\u0007b") == "a b"
+end
+
+check("the cloud cache path is keyed by model and voice") do
+  a = cloud.cloud_cache_path("おはよう")
+  cloud.instance_variable_set(:@cloud_voice, "nova")
+  b = cloud.cloud_cache_path("おはよう")
+  a != b && a.start_with?("/home/voice/cache/") && a.end_with?(".wav")
+end
+
+check("a cloud key differs from a VOICEVOX key for the same text") do
+  vv = TtsService.new
+  vv.instance_variable_set(:@server, "http://10.0.0.1:50021")
+  cloud.cloud_cache_path("おはよう") != vv.cache_path("おはよう", 1)
+end
+
+check("the VOICEVOX key did not change when the cloud one was added") do
+  # Guards the existing caches on real machines: this is the exact seed the
+  # first version hashed.
+  vv = TtsService.new
+  vv.instance_variable_set(:@server, "http://10.0.0.1:50021")
+  seed = "http://10.0.0.1:50021|1|あさです"
+  h = 5381
+  seed.bytes.each { |b| h = ((h * 33) + b) & 0xFFFFFFFF }
+  vv.cache_key("あさです", 1) == ("%08x%08x" % [h, seed.bytesize])
 end
 
 if $failures > 0

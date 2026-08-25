@@ -20,6 +20,7 @@
 #include "picoruby.h"
 
 #include <fcntl.h>
+#include <netdb.h>
 
 /* mbedtls includes */
 #include "mbedtls/net_sockets.h"
@@ -29,9 +30,14 @@
 #include "mbedtls/error.h"
 
 #include "esp_crt_bundle.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 
 #include <sys/select.h>
+
+/* Set by TCPSocket.timeout_ms= (ports/esp32/tcp_socket.c); the TLS path
+ * honours the same value so a caller's deadline covers both. */
+extern int TCPSocket_get_timeout_ms(void);
 #include <sys/time.h>
 
 static const char *TAG = "ssl_socket";
@@ -122,8 +128,12 @@ SSLContext_create(picorb_state *vm)
   }
 
   /* Give up on a silent peer instead of blocking the VM task forever.
-   * Requires the recv_timeout BIO installed in SSLSocket_connect. */
-  mbedtls_ssl_conf_read_timeout(&ctx->ssl_config, FMRB_SOCKET_IO_TIMEOUT_MS);
+   * Requires the recv_timeout BIO installed in SSLSocket_connect.
+   *
+   * Follows TCPSocket.timeout_ms rather than the compiled-in default, so a
+   * caller with a deadline gets it here too. Read at context-creation time,
+   * which is when the caller has just set it. */
+  mbedtls_ssl_conf_read_timeout(&ctx->ssl_config, (uint32_t)TCPSocket_get_timeout_ms());
 
   return ctx;
 }
@@ -285,6 +295,72 @@ SSLSocket_set_hostname(picorb_state *vm, picorb_ssl_socket_t *ssl_sock, const ch
   return true;
 }
 
+/* mbedtls_net_connect blocks for as long as the stack takes to give up -- a
+ * minute or more on a host that is routable but silent, with the VM task held
+ * the whole time. This is the same connect TCPSocket does (non-blocking +
+ * select with the caller's timeout), writing the result into the mbedtls
+ * context so everything after it is unchanged.
+ *
+ * Returns 0, or MBEDTLS_ERR_NET_CONNECT_FAILED so the caller's existing error
+ * path reports it the way it always has. */
+static int
+ssl_net_connect_timeout(mbedtls_net_context *net_ctx, const char *host,
+                        const char *port, int timeout_ms)
+{
+  struct addrinfo hints;
+  struct addrinfo *list = NULL;
+  memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_protocol = IPPROTO_TCP;
+
+  if (getaddrinfo(host, port, &hints, &list) != 0 || !list) {
+    return MBEDTLS_ERR_NET_UNKNOWN_HOST;
+  }
+
+  int rc = MBEDTLS_ERR_NET_CONNECT_FAILED;
+  for (struct addrinfo *cur = list; cur != NULL; cur = cur->ai_next) {
+    int fd = socket(cur->ai_family, cur->ai_socktype, cur->ai_protocol);
+    if (fd < 0) continue;
+
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) flags = 0;
+    fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+
+    int cr = connect(fd, cur->ai_addr, cur->ai_addrlen);
+    if (cr < 0 && errno == EINPROGRESS) {
+      fd_set wfds;
+      FD_ZERO(&wfds);
+      FD_SET(fd, &wfds);
+      struct timeval tv;
+      tv.tv_sec = timeout_ms / 1000;
+      tv.tv_usec = (timeout_ms % 1000) * 1000;
+      int sel = select(fd + 1, NULL, &wfds, NULL, &tv);
+      if (sel > 0) {
+        int so_error = 0;
+        socklen_t elen = sizeof(so_error);
+        getsockopt(fd, SOL_SOCKET, SO_ERROR, &so_error, &elen);
+        cr = (so_error == 0) ? 0 : -1;
+      }
+      else {
+        cr = -1;   /* timed out, or select failed */
+      }
+    }
+
+    if (cr == 0) {
+      fcntl(fd, F_SETFL, flags);   /* mbedtls expects it blocking */
+      net_ctx->fd = fd;
+      rc = 0;
+      break;
+    }
+    close(fd);
+  }
+
+  freeaddrinfo(list);
+  return rc;
+}
+
+
 bool
 SSLSocket_set_port(picorb_state *vm, picorb_ssl_socket_t *ssl_sock, int port)
 {
@@ -305,8 +381,14 @@ SSLSocket_connect(picorb_state *vm, picorb_ssl_socket_t *ssl_sock)
   char port_str[6];
   snprintf(port_str, sizeof(port_str), "%d", ssl_sock->port);
 
-  /* 1. TCP Connect */
-  ret = mbedtls_net_connect(&ssl_sock->net_ctx, ssl_sock->hostname, port_str, MBEDTLS_NET_PROTO_TCP);
+  /* 1. TCP Connect.
+   *
+   * mbedtls_net_connect blocks for however long the stack's own connect takes
+   * to give up -- over a minute on an unreachable host, with the VM task held
+   * the whole time. Bound it the same way TCPSocket does: connect on a
+   * non-blocking socket, then wait for writability with the caller's timeout. */
+  ret = ssl_net_connect_timeout(&ssl_sock->net_ctx, ssl_sock->hostname, port_str,
+                                TCPSocket_get_timeout_ms());
   if (ret != 0) {
     ESP_LOGW(TAG, "net_connect(%s:%s) failed: -0x%04x", ssl_sock->hostname, port_str, -ret);
     ssl_sock->state = SSL_STATE_ERROR;
@@ -333,6 +415,19 @@ SSLSocket_connect(picorb_state *vm, picorb_ssl_socket_t *ssl_sock)
   mbedtls_ssl_set_bio(&ssl_sock->ssl, &ssl_sock->net_ctx,
                       mbedtls_net_send, NULL, mbedtls_net_recv_timeout);
 
+  /* What a TLS session costs, said once per boot.
+   *
+   * mbedtls holds its buffers for the life of the connection, and on this
+   * machine the caller is the service host -- one VM shared by everything
+   * resident. "Can this machine afford an HTTPS request" is a question with a
+   * number behind it, and the number was never written down. INFO because it
+   * happens once; every later connection is silent. */
+  static bool s_heap_reported = false;
+  size_t heap_before = 0;
+  if (!s_heap_reported) {
+    heap_before = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+  }
+
   /* 3. Handshake */
   while ((ret = mbedtls_ssl_handshake(&ssl_sock->ssl)) != 0) {
     if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
@@ -343,6 +438,14 @@ SSLSocket_connect(picorb_state *vm, picorb_ssl_socket_t *ssl_sock)
       ssl_sock->state = SSL_STATE_ERROR;
       return false;
     }
+  }
+
+  if (!s_heap_reported) {
+    size_t heap_after = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    ESP_LOGI(TAG, "TLS session to %s costs %d bytes internal (free %u -> %u)",
+             ssl_sock->hostname, (int)(heap_before - heap_after),
+             (unsigned)heap_before, (unsigned)heap_after);
+    s_heap_reported = true;
   }
 
   ssl_sock->state = SSL_STATE_CONNECTED;
