@@ -6,6 +6,15 @@ module ShellIrbMixin
     @need_full_redraw = true
     @irb_mode = true
     @prompt = "irb> "  # Change prompt for IRB mode
+    # The sandbox shares this VM: classes, modules and globals are visible,
+    # but its top-level self is not the shell app, so the app's instance
+    # methods (publish, spawn_app, gfx...) are not reachable bare. Handing
+    # the instance over through one global makes the whole app API usable,
+    # with no per-method forwarding -- irb is a development door, so
+    # offering the app object is the point, not a leak.
+    #   irb> $shell.publish("tts/say", {"text" => "hello"})
+    #   irb> $shell.spawn_app("/app/tool/picorabbit.app.rb")
+    $shell = self
     @irb_sandbox = Sandbox.new
     @irb_sandbox.compile("_ = nil")
     @irb_sandbox.execute

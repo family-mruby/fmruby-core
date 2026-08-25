@@ -116,7 +116,7 @@ module ShellCommandsMixin
       @history << "  mv <src> <dst> - Move/rename file"
       @history << "  edit [-f] <file> - Open file in the editor (-f: fullscreen)"
       @history << "  create_app <name> - Generate /app/usr/<name>.app.{rb,toml} from template"
-      @history << "  irb - Interactive Ruby"
+      @history << "  irb - Interactive Ruby ($shell = this shell app)"
       @history << "  open <file> - Open a file with the app it is associated with"
       @history << "  run <script> [&] - Run script"
       @history << "  run <script> > <file> - Redirect output"
