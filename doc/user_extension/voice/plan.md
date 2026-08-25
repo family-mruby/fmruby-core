@@ -16,18 +16,29 @@ doc/user_extension/ideas.md の系譜 (サービスの上に乗る応用)。ア�
 - 検証は headless でも `tools/fmrb_audio_probe.rb` で「鳴った・何 Hz か」
   まで取れる。
 
-## V1: WAV 再生の口 (唯一の C 工事)
+## V1: WAV 再生の口 (唯一の C 工事) — 完了 (2026-08-25)
 
-- `FmrbAudio#play_wav(path)` を追加。audio 側 (Modern = main/drivers/
-  audio_p4) の**ミキサに PCM 1 ストリームを足し**、WAV (8/16kHz, 16bit,
-  mono) をファイルから流す。APU と混ざって鳴る。停止 `stop_wav`。
+実装と検収の記録は `report/v1.md`。確定した形は次のとおり。
+
+- `FmrbAudio#play_wav(path)` / `#stop_wav`。**PCM 16bit・モノラル・
+  8000〜48000Hz・2MB まで**。APU の合成後の mono 15720Hz に、固定小数点の
+  線形補間で変換しながら飽和加算する。同時に鳴らせるのは 1 本で、鳴って
+  いる最中に呼ぶと入れ替わる。完了通知と状態問い合わせは持たない。
+- 変換ロジックは 1 ファイル (`fmrb_wav.c`) にまとめ、両リポジトリに同じ
+  中身で置いた。ファイルを開くことと確保だけは各々が持つ (パスの接頭辞と
+  確保先が違うため)。
+- **Retro は呼び手側で false**。WROVER の handler にも 1 行ログで拒む
+  ケースを置いた。リンクに PCM を流す設計は後段のまま。
+- ついでに要ったもの 2 つ: アプリが落ちたときに鳴りっぱなしにしない
+  カーネル側の後始末 (`stop_wav_for`) と、**キャンバスを持たない
+  headless のアプリから使える `FmrbApp#sync_file`** (これが無いと
+  サービスから鳴らせない = 下の使い道が成立しない)。
 - 効果音の差し替え (ideas.md 案 8 のテーマパック) にもそのまま効く汎用投資。
-- **Retro (WROVER) は後段**: リンク (UART 921600 ≈ 実効 90KB/s) に PCM を
-  流す設計が要る。8kHz mono なら帯域は足りるが、v1 は Modern のみで
-  進めてよい (play_wav は Retro では NOT_SUPPORTED を返す)。
 - 最初の使い道: **PC で生成した定型文 WAV** (Style-Bert-VITS2 等) を
   `/home/voice/` に置き、アラームサービスが `ctx.audio.play_wav` で鳴らす。
   これだけで「しゃべるアラーム」(定型) が完全オフラインで成立する。
+  同梱の `hourly_chime` が `[hourly_chime.config] wav = "..."` でそれを
+  実演する (無ければ従来の note に落ちる)。
 
 ## V2: tts サービス (文字列 → WAV の解決役)
 
@@ -68,8 +79,10 @@ doc/user_extension/ideas.md の系譜 (サービスの上に乗る応用)。ア�
 
 ## 段の切り方と検収の勘所
 
-- V1 だけで独立に完結 (定型 WAV アラーム)。検収: play_wav で
-  audio_probe に波形が出る、APU と同時に鳴る、無い/壊れた WAV で落ちない。
+- V1 だけで独立に完結 (定型 WAV アラーム)。**済** — 数字は
+  `report/v1.md`。sim の採取は数 % 速く出ることがあるので、音高を
+  確かめるときは同じ採取に APU の既知の音を一緒に鳴らすこと
+  (理由と実測は report に)。
 - V2 の検収: キャッシュ命中 (2 回目はネットワークなしで鳴る)、VOICEVOX
   経由、クラウド 1 社 (鍵はユーザ提供)、50ms 警告の有無。
 - V3 の検収: 実カレンダーの ICS で今日の予定が読まれる、RRULE の予定が
