@@ -18,8 +18,26 @@ class MonitorApp < FmrbApp
   HIST_LEN = 30       # 30 samples = 30 seconds at 1 Hz
   NUM_PAGES = 3
   TYPE_USER = 2       # FmrbApp.ps :type of a user task (the only killable one)
+  # The same words the shell's ps prints, so a state means one thing across
+  # both tools -- and the same set the services answer svc/ctl list with.
+  STATE_WORDS = ["free", "init", "running", "suspended", "stopping"].freeze
   ROW_H = 9           # task row pitch on page 3
-  KILL_BTN_W = 3 * CHAR_W + 2
+
+  # One button size and one vocabulary for both kinds of row. A task and a
+  # service are different things, but on this page they are both "something
+  # running that I might want to stop", and giving them [X] and [stop] in two
+  # different columns made the page read as two lists that happened to be
+  # stacked. [sure?] is the widest label and fixes the width.
+  BTN_W = 7 * CHAR_W + 2
+
+  # The row, in character columns:
+  #   id(2) name(14) state(9) err(3)
+  # A task puts its pid in the id column, a service puts a "+-" there, so the
+  # names line up under each other and the states form one column.
+  COL_ID_CHARS = 2
+  COL_NAME_CHARS = 14
+  COL_STATE_CHARS = 9
+  COL_ERR_CHARS = 3
   # One kill button per possible task, built once in on_create and shown or
   # hidden as the list changes -- rows must never build widgets, or the page
   # would allocate every second. FMRB_MAX_APPS (9) is not exported to Ruby;
@@ -35,10 +53,7 @@ class MonitorApp < FmrbApp
   # The host's task name, and where requests and answers go.
   SVC_HOST_NAME = "Services"
   SVC_CTL_TOPIC = "svc/ctl"
-  # "[start]" is the widest label, and it fixes the column: with the monitor's
-  # 180px window that leaves 21 characters for the row text, which is why the
-  # child rows are indented by one character and not three.
-  SVC_BTN_W = 7 * CHAR_W + 2
+
 
   # Page colours from the system theme ([theme] in system_conf.toml): the
   # monitor is a tool window, so it reads like the rest of the desktop.
@@ -86,7 +101,7 @@ class MonitorApp < FmrbApp
     # a first click armed, and the last word from the kernel. @task_sig is
     # what the page looked like when it was last drawn; while it is unchanged
     # the page paints nothing at all.
-    @kill_btn_x = @content_x + @content_w - KILL_BTN_W
+    @btn_x = @content_x + @content_w - BTN_W
     @kill_armed_pid = nil
     @kill_msg = nil
     @task_sig = nil
@@ -115,20 +130,19 @@ class MonitorApp < FmrbApp
     fit = KILL_IDS.size if fit > KILL_IDS.size
     fit = 0 if fit < 0
     @max_rows = fit
-    rel_x = @kill_btn_x - @user_area_x0
+    rel_x = @btn_x - @user_area_x0
     i = 0
     while i < @max_rows
       rel_y = @rows_y0 + i * ROW_H - @user_area_y0
-      b = @ui.button(KILL_IDS[i], rel_x, rel_y, KILL_BTN_W, ROW_H, "[X]")
+      b = @ui.button(KILL_IDS[i], rel_x, rel_y, BTN_W, ROW_H, "[stop]")
       b.visible = false
       b.dirty = false
       @row_pids << nil
       i += 1
     end
-    svc_x = @content_x + @content_w - SVC_BTN_W - @user_area_x0
     i = 0
     while i < SVC_IDS.size
-      b = @ui.button(SVC_IDS[i], svc_x, @rows_y0 - @user_area_y0, SVC_BTN_W,
+      b = @ui.button(SVC_IDS[i], rel_x, @rows_y0 - @user_area_y0, BTN_W,
                      ROW_H, "[stop]")
       b.visible = false
       b.dirty = false
@@ -136,6 +150,26 @@ class MonitorApp < FmrbApp
       i += 1
     end
     nil
+  end
+
+  # One row, both kinds. +id+ is the pid for a task and "+-" for a service, so
+  # the names and the states each line up in one column whichever kind the row
+  # is. +err+ is blank unless a service has errors to report.
+  def draw_row(id, name, state, err, y, dim)
+    text = "#{pad(id, COL_ID_CHARS)} #{pad(name, COL_NAME_CHARS)} " \
+           "#{pad(state, COL_STATE_CHARS)} #{pad(err, COL_ERR_CHARS)}"
+    @gfx.draw_text(@content_x, y, text, dim ? COLOR_DIM : COLOR_TEXT, COLOR_BG)
+    nil
+  end
+
+  # Left-align in a fixed width, cutting anything that will not fit. Written
+  # out because picoruby's ljust is Ruby-side and this runs per row.
+  def pad(str, chars)
+    s = str.to_s
+    n = s.length
+    return s[0, chars] if n > chars
+    return s if n == chars
+    s + " " * (chars - n)
   end
 
   def on_update
@@ -503,7 +537,9 @@ class MonitorApp < FmrbApp
 
   # Page 3 furniture. The rows themselves are refresh_tasks' business.
   def draw_tasks_heading
-    @gfx.draw_text(@content_x, @user_area_y0 + 2, "Tasks", COLOR_TEXT, COLOR_BG)
+    head = "#{pad("ID", COL_ID_CHARS)} #{pad("NAME", COL_NAME_CHARS)} " \
+           "#{pad("STATE", COL_STATE_CHARS)}"
+    @gfx.draw_text(@content_x, @user_area_y0 + 2, head, COLOR_DIM, COLOR_BG)
     nil
   end
 
@@ -525,33 +561,46 @@ class MonitorApp < FmrbApp
     @task_sig = sig
 
     msg_y = @nav_y - CHAR_H - 1
-    label_chars = (@content_w - KILL_BTN_W - 4) / CHAR_W
     # One wipe for the whole row block, so rows that disappeared leave nothing.
     @gfx.fill_rect(@content_x, @rows_y0, @content_w, msg_y - @rows_y0, COLOR_BG)
 
     y = @rows_y0
     row = 0
     svc_row = 0
+    # The last line is kept back for the "more" note, so a list that does not
+    # fit says so instead of being silently cut at the bottom edge.
     y_limit = msg_y - 1
+    last_y = y_limit - ROW_H
+    dropped = 0
     if procs
       i = 0
-      while i < procs.size && y < y_limit
+      while i < procs.size
         p = procs[i]
         pid = p[:id]
         name = (p[:name] || "?").to_s
-        label = "#{pid} #{name}"
-        label = label[0, label_chars] if label.length > label_chars
-        @gfx.draw_text(@content_x, y, label,
-                       p[:state] == 2 ? COLOR_TEXT : COLOR_DIM, COLOR_BG)
+        is_host = name == SVC_HOST_NAME
+        svc_here = is_host ? @svcs.size : 0
+
+        if y > last_y
+          # No room for this row or anything under it.
+          dropped += 1 + svc_here
+          i += 1
+          next
+        end
+
+        draw_row(pid, name, STATE_WORDS[p[:state]] || "?", "", y,
+                 p[:state] != 2)
 
         # The shell and the monitor are user tasks too; the kernel refuses to
         # end the one that asked, so the monitor's own row gets no button.
         if p[:type] == TYPE_USER && pid != my_pid && row < @max_rows
           id = KILL_IDS[row]
           @row_pids[row] = pid
-          @ui.set_text(id, @kill_armed_pid == pid ? "[?]" : "[X]")
-          @ui.move(id, @kill_btn_x - @user_area_x0, y - @user_area_y0,
-                   KILL_BTN_W, ROW_H)
+          # Two clicks, not one -- ending an app can lose unsaved work, and a
+          # stray click a second after a page turn must not do it. The armed
+          # state says so in words now; it used to be a bare [?].
+          @ui.set_text(id, @kill_armed_pid == pid ? "[sure?]" : "[stop]")
+          @ui.move(id, @btn_x - @user_area_x0, y - @user_area_y0, BTN_W, ROW_H)
           @ui.set_visible(id, true)
           row += 1
         end
@@ -559,14 +608,22 @@ class MonitorApp < FmrbApp
         i += 1
 
         # The services inside the host, as child rows directly under it.
-        next unless name == SVC_HOST_NAME
+        next unless is_host
         j = 0
-        while j < @svcs.size && svc_row < SVC_IDS.size && y < y_limit
+        while j < @svcs.size
+          if svc_row >= SVC_IDS.size || y > last_y
+            dropped += @svcs.size - j
+            break
+          end
           svc_row = draw_svc_row(@svcs[j], y, svc_row)
           y += ROW_H
           j += 1
         end
       end
+    end
+
+    if dropped > 0
+      @gfx.draw_text(@content_x, y, "... #{dropped} more", COLOR_DIM, COLOR_BG)
     end
 
     # Buttons past the end of the list go away; their holes are painted with
@@ -595,19 +652,15 @@ class MonitorApp < FmrbApp
     nil
   end
 
-  # One service, indented under the host. The text is built to fit the column
-  # the button leaves (see SVC_BTN_W): the error count is only shown when
-  # there is one, because the common row is already at the limit.
+  # One service, in the same columns as a task: "+-" where a task shows its
+  # pid, so the names sit under each other and the tree reads at a glance.
+  # The error count only appears when there is one.
   def draw_svc_row(svc, y, svc_row)
     name = svc["name"].to_s
     state = svc["state"].to_s
     errors = svc["errors"].to_i
-    text = "+#{name} #{state}"
-    text = "#{text} e#{errors}" if errors > 0
-    chars = (@content_w - SVC_BTN_W - 4) / CHAR_W
-    text = text[0, chars] if text.length > chars
-    @gfx.draw_text(@content_x, y, text,
-                   state == "running" ? COLOR_TEXT : COLOR_DIM, COLOR_BG)
+    draw_row("+-", name, state, errors > 0 ? "e#{errors}" : "", y,
+             state != "running")
     id = SVC_IDS[svc_row]
     @svc_names[svc_row] = name
     # A disabled service is not started from here: switching it back on is a
@@ -616,8 +669,7 @@ class MonitorApp < FmrbApp
       @ui.set_visible(id, false)
     else
       @ui.set_text(id, state == "running" ? "[stop]" : "[start]")
-      @ui.move(id, @content_x + @content_w - SVC_BTN_W - @user_area_x0,
-               y - @user_area_y0, SVC_BTN_W, ROW_H)
+      @ui.move(id, @btn_x - @user_area_x0, y - @user_area_y0, BTN_W, ROW_H)
       @ui.set_visible(id, true)
     end
     svc_row + 1

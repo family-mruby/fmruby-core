@@ -254,8 +254,13 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
-        .window_width = 180,
-        .window_height = 120,
+        // 180x120 fitted eight rows, and the task page now lists the services
+        // inside the host as well as the tasks -- nine tasks and six services
+        // is more than that, and the surplus fell off the bottom. This fits
+        // the whole of both lists, and the width squares the columns off
+        // (id / name / state / button).
+        .window_width = 240,
+        .window_height = 200,
         .window_pos_x = 5,
         .window_pos_y = 15,
         .rounded_corners = true
