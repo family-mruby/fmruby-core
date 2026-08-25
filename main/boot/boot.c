@@ -451,6 +451,11 @@ static void init_mem(void)
 // Family mruby OS initialization
 void fmrb_os_init(void)
 {
+#ifdef CONFIG_IDF_TARGET_LINUX
+    // Before the first log line: the simulator's log path has to be made safe
+    // against the tick signal (boot/sim_log_guard.c).
+    fmrb_sim_log_guard_init();
+#endif
     //set log level
     fmrb_set_log_level_info();
     //fmrb_set_log_level_debug();

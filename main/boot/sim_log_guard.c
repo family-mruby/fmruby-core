@@ -18,8 +18,20 @@
 //
 // This file is only compiled for IDF_TARGET=linux. On the device the log lock
 // is a FreeRTOS mutex and none of this applies.
+//
+// 2026-08-25: a third lock of the same family was caught, and it was the one
+// the original note had written off as "covered by the wraps above" -- glibc's
+// stdio FILE lock. It is not covered: esp_log_va takes the tag lock, releases
+// it, and only then calls the output function, so the vprintf that locks
+// stdout runs outside every wrapped region. gdb caught a task parked inside
+// write() with the lock held while two higher-priority loggers waited on it,
+// which is the same inversion as before with a different mutex. The output
+// call is now wrapped too, through esp_log_set_vprintf.
 
 #include <stdbool.h>
+#include <stdarg.h>
+#include <stdio.h>
+#include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -56,4 +68,33 @@ char *__wrap_esp_log_system_timestamp(void)
     char *ts = __real_esp_log_system_timestamp();
     vPortExitCritical();
     return ts;
+}
+
+// The output itself. vprintf takes stdout's FILE lock and then writes, and
+// both halves are windows: a task parked between them holds a lock every
+// other logger needs.
+//
+// Installed with esp_log_set_vprintf rather than a linker wrap, because only
+// the log path needs this -- an app's own printf is not part of the
+// cross-priority traffic that forms the inversion, and putting every printf
+// in the machine inside a critical section would be a much larger promise.
+//
+// The write happens with signals masked, so a slow reader on the other end of
+// stdout delays the tick for that long. In this simulator stdout is a pipe
+// docker drains continuously; against a hang, that is the better risk.
+static int sim_log_guarded_vprintf(const char *format, va_list args)
+{
+    vPortEnterCritical();
+    int n = vprintf(format, args);
+    // Flushed inside the guard as well: leaving a partial line in the buffer
+    // means the next logger completes someone else's write while holding the
+    // same lock, which is the window this is closing.
+    fflush(stdout);
+    vPortExitCritical();
+    return n;
+}
+
+void fmrb_sim_log_guard_init(void)
+{
+    esp_log_set_vprintf(sim_log_guarded_vprintf);
 }

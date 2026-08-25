@@ -33,9 +33,15 @@ class SvcCtx
     @config = entry.config
   end
 
-  # Straight to Pub/Sub, from the host's pid.
+  # To Pub/Sub, and to the services alongside this one.
+  #
+  # Both, because the kernel does not deliver a message back to the pid that
+  # sent it -- and every service in this host shares that one pid. Without the
+  # local half, a service could be heard by every app on the machine except
+  # the ones sitting next to it, which is exactly the pairing the samples are
+  # built on (clock -> hourly_chime, net -> timesync).
   def publish(topic, data = nil)
-    @host.publish(topic, data)
+    @host.svc_publish(topic, data)
     nil
   end
 
@@ -115,6 +121,9 @@ class ServicesApp < FmrbApp
     # the control message that asked for it (see handle_enable).
     @pending_enable = nil
     @pending_enable_reply = nil
+    # Topics published by one service and destined for another in this host,
+    # as a flat [topic, data, topic, data, ...] queue.
+    @local = []
     @services = []      # SvcEntry, in list order
     @apps = []          # SvcEntry with "app =", waiting for their delay
     @topics = []        # what this host is subscribed to on behalf of services
@@ -148,6 +157,44 @@ class ServicesApp < FmrbApp
     # would not be looked at until the current sleep ran out. With the idle
     # sleep at 30 s that turned a 200 ms chime into a 30 second one.
     request_early_update
+    nil
+  end
+
+  # SvcCtx#publish. Out to the rest of the machine, and queued for the
+  # services in this host.
+  #
+  # Queued rather than delivered on the spot: publish is normally called from
+  # inside a handler, and calling on_event from there would run one service
+  # inside another -- nesting that a service publishing from its own on_event
+  # could carry to any depth. The queue keeps the promise that services run
+  # one after another, and drain_local is what enforces the bound.
+  def svc_publish(topic, data)
+    publish(topic, data)
+    t = topic.to_s
+    return nil unless @topics.index(t)
+    @local << t
+    @local << data
+    request_early_update
+    nil
+  end
+
+  # How many local deliveries one turn of the loop will do. Services that
+  # answer each other's topics are the point of the mechanism, so a few rounds
+  # are normal; a service that republishes what it hears is a loop, and this
+  # is what stops it from taking the host with it.
+  LOCAL_MAX_PER_TURN = 32
+
+  def drain_local(now)
+    n = 0
+    while @local.size > 0 && n < LOCAL_MAX_PER_TURN
+      topic = @local.shift
+      data = @local.shift
+      deliver(topic, data)
+      n += 1
+    end
+    return nil if @local.size == 0
+    Log.warn("services: #{@local.size} queued deliveries left after #{LOCAL_MAX_PER_TURN}; a service may be answering itself")
+    @local = []
     nil
   end
 
@@ -436,9 +483,15 @@ class ServicesApp < FmrbApp
       # Before the ticks: an enable that is waiting to load should be running
       # by the time anything else this turn looks at the list.
       finish_enable(now)
+      # Before the ticks, so a service that published during the last turn is
+      # heard before anything new happens.
+      drain_local(now)
       start_due_apps(now)
       run_due_ticks(now)
       run_due_wakes(now)
+      # And again after, so a publish made during this turn's ticks does not
+      # wait for the next one.
+      drain_local(now)
     rescue => e
       # Not the services -- call_service already keeps their exceptions --
       # but the host's own work around them. It must outlive that too: an
