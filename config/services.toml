@@ -23,3 +23,24 @@ file = "clock.rb"
 class = "ClockService"
 enable = true
 interval_ms = 60000
+
+# Watches the network and publishes net/state. The IP goes in the log the
+# moment there is one, which is the answer to having to look it up.
+[net]
+file = "net.rb"
+class = "NetWatch"
+enable = true
+interval_ms = 5000
+
+# Sets the clock from an NTP server once the machine is on the network, so
+# Set Clock stops being a chore after every power cut. The tick is the coarse
+# re-sync timer; the first sync happens on the net/state event.
+[timesync]
+file = "timesync.rb"
+class = "TimeSync"
+enable = true
+interval_ms = 86400000
+
+[timesync.config]
+server = "pool.ntp.org"
+interval_hours = 24
