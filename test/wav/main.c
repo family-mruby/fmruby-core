@@ -118,6 +118,33 @@ static void test_parse_skips_unknown_chunks(void) {
     CHECK(p[0] == 1 && p[7] == 8, "samples came out as %d..%d", p[0], p[7]);
 }
 
+// A file written as it was generated could not know its length, so it says
+// 0xFFFFFFFF and the reader has to take what is there. OpenAI's TTS answers
+// exactly like this, and rejecting it would mean the cloud voice never plays.
+static void test_parse_streamed_length(void) {
+    static uint8_t buf[4096];
+    int16_t pcm[64];
+    for (int i = 0; i < 64; i++) pcm[i] = (int16_t)(i * 100);
+
+    size_t len = build_wav(buf, sizeof(buf), 1, 1, 24000, 16, pcm, 64, NULL, 0);
+    // Overwrite the data chunk's size with the streaming sentinel.
+    put_u32(buf + len - 64 * 2 - 4, 0xFFFFFFFFu);
+
+    fmrb_wav_info_t info;
+    fmrb_wav_err_t err = fmrb_wav_parse(buf, len, &info);
+    CHECK(err == FMRB_WAV_OK, "streamed length rejected: %s", fmrb_wav_strerror(err));
+    CHECK(info.sample_rate == 24000, "rate=%u", info.sample_rate);
+    CHECK(info.frames == 64, "frames=%u, expected the 64 that are there", info.frames);
+    const int16_t *p = (const int16_t *)(buf + info.data_offset);
+    CHECK(p[0] == 0 && p[63] == 6300, "samples came out as %d..%d", p[0], p[63]);
+
+    // The same clamp covers a download that stopped early: play what arrived.
+    len = build_wav(buf, sizeof(buf), 1, 1, 16000, 16, pcm, 64, NULL, 0);
+    err = fmrb_wav_parse(buf, len - 40, &info);
+    CHECK(err == FMRB_WAV_OK, "short file rejected: %s", fmrb_wav_strerror(err));
+    CHECK(info.frames == 44, "frames=%u, expected the 44 that survived", info.frames);
+}
+
 static void test_parse_rejections(void) {
     static uint8_t buf[4096];
     int16_t pcm[8] = {0};
@@ -144,8 +171,10 @@ static void test_parse_rejections(void) {
     // Not a WAV at all, and a WAV cut off mid-header.
     memcpy(buf, "NOPE", 4);
     CHECK(fmrb_wav_parse(buf, 64, &info) == FMRB_WAV_ERR_FORMAT, "junk accepted");
-    len = build_wav(buf, sizeof(buf), 1, 1, 16000, 16, pcm, 8, NULL, 0);
-    CHECK(fmrb_wav_parse(buf, len - 4, &info) == FMRB_WAV_ERR_FORMAT, "truncated accepted");
+    // A file cut inside its header is still refused; one cut inside the data
+    // is not (see test_parse_streamed_length).
+    len = build_wav(buf, sizeof(buf), 1, 1, 16000, 16, pcm, 8, "LIST", 40);
+    CHECK(fmrb_wav_parse(buf, len - 60, &info) == FMRB_WAV_ERR_FORMAT, "truncated accepted");
     CHECK(fmrb_wav_parse(buf, 8, &info) == FMRB_WAV_ERR_FORMAT, "8-byte file accepted");
 }
 
@@ -307,6 +336,7 @@ static void test_shipped_tones(const char *dir) {
 int main(int argc, char **argv) {
     test_parse_canonical();
     test_parse_skips_unknown_chunks();
+    test_parse_streamed_length();
     test_parse_rejections();
     test_resample_keeps_pitch();
     test_mix_saturates();

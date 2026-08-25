@@ -108,9 +108,13 @@ class FmrbAudio
   # an FMSQ. On Modern that is a copy inside the one filesystem, so it is
   # cheap and only happens when the bytes actually differ.
   #
-  # Retro has no path for PCM (the link to the WROVER is nowhere near wide
-  # enough), so there it returns false without sending anything. An app can
-  # call it unconditionally and fall back on the answer.
+  # Retro does not do this, and is not going to. The audio there lives on the
+  # WROVER at the far end of a serial link, so every clip would have to be
+  # shipped across it and written to that machine's flash before a note of it
+  # could sound -- too slow to be worth it, and hard on a filesystem that is
+  # not big. play_wav returns false on Retro without sending anything, so an
+  # app can call it unconditionally and fall back on the answer (which is what
+  # the hourly chime does: a recording if it can, its note if it cannot).
   WAV_CACHE_DIR = "/cache/audio"
 
   def play_wav(path)
@@ -118,14 +122,29 @@ class FmrbAudio
       ::Log.info("play_wav: not supported on this machine (#{path})")
       return false
     end
-    dest = wav_cache_path(path)
-    unless @app.sync_file(path, dest: dest)
-      ::Log.warn("play_wav: cannot put #{path} where the audio side can read it")
-      return false
+    dest = path
+    if sync_needed?
+      dest = wav_cache_path(path)
+      unless @app.sync_file(path, dest: dest)
+        ::Log.warn("play_wav: cannot put #{path} where the audio side can read it")
+        return false
+      end
     end
     @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
       {"cmd" => "play_wav", "path" => dest})
     true
+  end
+
+  # Whether the file has to be copied before the audio side can see it.
+  #
+  # On Modern hardware it does not: the audio driver is this firmware and
+  # reads the same filesystem, so the copy was pure cost -- 1.9 s and a
+  # rewrite of the flash for every fresh file, both of which show up
+  # immediately with anything as big as speech. The simulator looks like a
+  # Modern machine but its audio lives in another process with its own
+  # storage, so there the transfer is still the only way across.
+  def sync_needed?
+    ::FmrbConst::PLATFORM != "esp32"
   end
 
   def stop_wav

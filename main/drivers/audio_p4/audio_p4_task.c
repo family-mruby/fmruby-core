@@ -92,8 +92,18 @@ int audio_p4_engine_play_wav(const char *path) {
         return -1;
     }
 
+    // App paths live under /flash, except the ones that name another mount.
+    // /tmp is a filesystem of its own (PSRAM, registered with the VFS), and
+    // that is where anything big and short-lived belongs -- the tts service
+    // caches its speech there rather than writing 200 KB of WAV to the flash
+    // for every sentence. Prefixing those with /flash would look for a
+    // directory that does not exist.
     char full_path[256];
-    snprintf(full_path, sizeof(full_path), "/flash%s", path);
+    if (strncmp(path, "/tmp/", 5) == 0) {
+        snprintf(full_path, sizeof(full_path), "%s", path);
+    } else {
+        snprintf(full_path, sizeof(full_path), "/flash%s", path);
+    }
 
     FILE *fp = fopen(full_path, "rb");
     if (!fp) {

@@ -57,6 +57,13 @@ typedef int8_t fmrb_mem_handle_t;
 #ifdef CONFIG_IDF_TARGET_LINUX
 #define FMRB_MEM_POOL_SIZE_USER_APP (1536*1024)
 #define FMRB_MEM_POOL_SIZE_USER_APP_LARGE (3072*1024)
+#elif defined(FMRB_HW_FAMILY_MODERN)
+// Modern has 32MB of PSRAM and was using two of them. 500KB was an S3 number,
+// and the service host has outgrown it: every resident service shares one VM,
+// and compiling one more of them (the tts service) ran the pool dry at 90%
+// full -- the host died during require with no exception to show for it.
+#define FMRB_MEM_POOL_SIZE_USER_APP (1024*1024)
+#define FMRB_MEM_POOL_SIZE_USER_APP_LARGE (2048*1024)
 #else
 #define FMRB_MEM_POOL_SIZE_USER_APP (500*1024)
 #define FMRB_MEM_POOL_SIZE_USER_APP_LARGE (1024*1024)
@@ -66,15 +73,26 @@ typedef int8_t fmrb_mem_handle_t;
 #define FMRB_MEM_POOL_SIZE_EDITOR_DOC (1024*1024)
 
 // /tmp RAM filesystem. 512KB is what the S3 can spare: PSRAM headroom there is
-// 3.2MB and the editor document arena already claims 1MB of it. P4 has room for
-// far more, so keep the constant separate from the usable capacity below and
-// raise it per target when a real workload asks for it.
+// 3.2MB and the editor document arena already claims 1MB of it.
+//
+// Modern gets 8MB. The workload that asked for it is spoken audio: the tts
+// service caches what it has said, and a couple of seconds of speech is
+// 200KB. That belongs in RAM rather than on the flash -- a machine that talks
+// would otherwise rewrite its filesystem all day, and the internal flash is
+// both small and finite. Of the P4's 32MB this is still a small share, and it
+// holds about forty phrases.
+#ifdef FMRB_HW_FAMILY_MODERN
+#define FMRB_MEM_POOL_SIZE_TMPFS (8192*1024)
+#define FMRB_TMPFS_CAPACITY_BYTES (8064*1024)
+#else
 #define FMRB_MEM_POOL_SIZE_TMPFS (512*1024)
-// Bytes of file content /tmp will hand out. The gap to the pool size covers
-// allocator headers and the per-file growth slack, so a write is refused with
-// ENOSPC while the arena still has room -- failing mid-write is much harder for
-// an app to survive than being told "full" before anything moved.
 #define FMRB_TMPFS_CAPACITY_BYTES (448*1024)
+#endif
+// The capacity is the bytes of file content /tmp will hand out. The gap to the
+// pool size covers allocator headers and the per-file growth slack, so a write
+// is refused with ENOSPC while the arena still has room -- failing mid-write is
+// much harder for an app to survive than being told "full" before anything
+// moved.
 
 #define FMRB_MEM_POOL_SIZE_LOG_BUFFER (128*1024)
 

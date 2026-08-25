@@ -35,7 +35,13 @@
 
 static const char *TAG = "fmrb_tmpfs";
 
+// Modern's /tmp is sixteen times the size and holds cached speech, one file
+// per phrase; 24 slots would run out long before the bytes did.
+#ifdef FMRB_HW_FAMILY_MODERN
+#define TMPFS_MAX_FILES   64
+#else
 #define TMPFS_MAX_FILES   24
+#endif
 #define TMPFS_MAX_OPEN    8
 #define TMPFS_MAX_NAME    63
 /* Files grow a block at a time so an append loop does not realloc per byte. */

@@ -32,7 +32,25 @@ fmrb_wav_err_t fmrb_wav_parse(const uint8_t *buf, size_t len, fmrb_wav_info_t *o
         const uint8_t *hdr = buf + pos;
         uint32_t csize = rd_u32(hdr + 4);
         size_t body = pos + 8;
-        if (csize > len - body) return FMRB_WAV_ERR_FORMAT;
+        uint32_t avail = (uint32_t)(len - body);
+
+        if (tag_is(hdr, "data")) {
+            if (!have_fmt) return FMRB_WAV_ERR_FORMAT;
+            if (out->channels != 1 || out->bits != 16) return FMRB_WAV_ERR_UNSUPPORTED;
+            if (out->sample_rate < FMRB_WAV_MIN_RATE ||
+                out->sample_rate > FMRB_WAV_MAX_RATE) return FMRB_WAV_ERR_UNSUPPORTED;
+            /* A file that was streamed out could not know its length when the
+             * header went, and writes 0xFFFFFFFF in the data chunk (OpenAI's
+             * TTS does exactly this). A download that stopped early likewise
+             * has less than it promised. Either way, play what arrived. */
+            if (csize > avail) csize = avail;
+            out->data_offset = (uint32_t)body;
+            out->frames = csize / 2u;
+            return out->frames ? FMRB_WAV_OK : FMRB_WAV_ERR_EMPTY;
+        }
+
+        /* Every other chunk has to fit, or the walk is following garbage. */
+        if (csize > avail) return FMRB_WAV_ERR_FORMAT;
 
         if (tag_is(hdr, "fmt ")) {
             if (csize < 16) return FMRB_WAV_ERR_FORMAT;
@@ -45,14 +63,6 @@ fmrb_wav_err_t fmrb_wav_parse(const uint8_t *buf, size_t len, fmrb_wav_info_t *o
              * than guess, since guessing wrong plays noise at full volume. */
             if (format != 1) return FMRB_WAV_ERR_UNSUPPORTED;
             have_fmt = 1;
-        } else if (tag_is(hdr, "data")) {
-            if (!have_fmt) return FMRB_WAV_ERR_FORMAT;
-            if (out->channels != 1 || out->bits != 16) return FMRB_WAV_ERR_UNSUPPORTED;
-            if (out->sample_rate < FMRB_WAV_MIN_RATE ||
-                out->sample_rate > FMRB_WAV_MAX_RATE) return FMRB_WAV_ERR_UNSUPPORTED;
-            out->data_offset = (uint32_t)body;
-            out->frames = csize / 2u;
-            return out->frames ? FMRB_WAV_OK : FMRB_WAV_ERR_EMPTY;
         }
 
         /* Chunks are padded to an even length; the pad byte is not counted. */

@@ -46,8 +46,10 @@ server = "pool.ntp.org"
 interval_hours = 24
 
 # Says things out loud. Anything (a service, an app) that publishes to
-# "tts/say" gets read aloud; a sentence said once is cached as a WAV in
-# /home/voice/cache and plays from there afterwards, network or no network.
+# "tts/say" gets read aloud; a sentence said once is cached as a WAV under
+# /tmp -- in PSRAM, not on the flash, because speech is 200KB a go and the
+# flash is small and wears out. It plays from there afterwards with no
+# network at all, until the next reboot empties it.
 #
 # The cache key is server + speaker + text, so the same sentence in another
 # voice is a different file. That has one consequence worth knowing: to run
