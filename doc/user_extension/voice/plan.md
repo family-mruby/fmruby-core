@@ -52,6 +52,13 @@ doc/user_extension/ideas.md の系譜 (サービスの上に乗る応用)。ア�
   (素の HTTP)。**(3) クラウド TTS は調査のみで実装せず** (下記)。
   取得したら**キャッシュへ書いてから**鳴らす (一時名 → rename なので、
   途中で切れても半端なファイルを鳴らさない)。
+- **V2b で 3 段目 (OpenAI TTS) を実装した** — `[tts.config] api_key` を
+  書けば `server` 無しで動き、**PC が要らなくなる**。採用理由は
+  `POST /v1/audio/speech` が `response_format: "wav"` で**生の WAV** を
+  返し、認証が `Authorization: Bearer` の 1 行で済むこと。
+  除外: **Google Cloud TTS** は音声を JSON 内の base64 で返すため復号が
+  要り転送量も 4/3 になる、**Amazon Polly** は SigV4 署名の実装が端末側で
+  重い。TLS 1 接続の内蔵 RAM は**実測 6200 バイト** (見積もりより一桁小)。
 - **オフライン運用の注意**: 鍵に server が入るので、**設定から server の行を
   消すとキャッシュを引けなくなる**。行は残したまま届かないままにするのが
   正解 (1 回の接続拒否とログ 1 行で済み、既に言ったことは全部鳴る)。
@@ -61,6 +68,12 @@ doc/user_extension/ideas.md の系譜 (サービスの上に乗る応用)。ア�
 - **TLS の証明書検証は、実は最初から通る**: esp32 の SSL ポートが
   `esp_crt_bundle` を既定で付けているので、公開サイトへの HTTPS に CA の
   焼き込みは要らない。時刻の前提も SYS1 の timesync が満たしている。
+  実機で api.openai.com への handshake まで確認済み (`tls_verify` は
+  既定 true のまま)。
+- **サービス 1 ファイルには実機だけの上限がある**: コード量が多いと
+  `require` の compile でサービスホストが**例外も出さずに終了**する
+  (sim では通る)。目安はコメントを除いて 10KB 程度。tts は
+  `tts.rb` + `tts_http.rb` に分けてある。詳細は `report/v2b.md`。
 - 取得中の待ち: **塞ぐことを許容した** (実測でキャッシュヒット 10ms /
   ミス 1.9 秒、うち HTTP は 30ms で残りは play_wav のファイル転送)。
   タイムアウトがあるので無限には塞がない。`own_vm` へは逃がしていない。
