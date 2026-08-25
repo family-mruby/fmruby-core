@@ -1,6 +1,6 @@
 app_handle_name = "picorabbit"
-app_screen_name = "PicoRabbit"
-app_screen_name_ja = "ピコラビット"
+app_screen_name = "PicoRabbit+"
+app_screen_name_ja = "ピコラビット＋"
 default_window_mode = "fullscreen"
 icon = "usr/share/icon/ruby.icon"
 large_memory = 1
