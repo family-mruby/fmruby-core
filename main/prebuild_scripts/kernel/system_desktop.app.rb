@@ -851,10 +851,32 @@ class SystemDesktopApp < FmrbApp
     dropdown_move_to((idx + delta + n) % n)
   end
 
+  # Hover moved: repaint only the two rows that changed, not the whole
+  # foreground. A full draw_foreground here (clear + menu bar + every status
+  # cell + all rows) cost more than the 33ms between mouse moves, so the
+  # event queue backed up and the highlight froze, then jumped. The dropdown
+  # is an opaque box, so repainting single rows is safe.
   def dropdown_move_to(idx)
-    return if idx == @dropdown_hover_idx
+    old = @dropdown_hover_idx
+    return if idx == old
     @dropdown_hover_idx = idx
-    draw_foreground
+    draw_dropdown_row(old) if old >= 0
+    draw_dropdown_row(idx) if idx >= 0
+    @gfx.present
+  end
+
+  # One dropdown row, highlighted or not according to @dropdown_hover_idx.
+  def draw_dropdown_row(i)
+    return if i < 0 || i >= DROPDOWN_ITEMS.size
+    item_y = DROPDOWN_Y + 1 + i * DROPDOWN_ITEM_H
+    label = FmrbI18n.t(DROPDOWN_ITEMS[i][:key])
+    if i == @dropdown_hover_idx
+      @gfx.fill_rect(DROPDOWN_X + 1, item_y, DROPDOWN_W - 2, DROPDOWN_ITEM_H, DROPDOWN_HIGHLIGHT)
+      @gfx.draw_text(DROPDOWN_X + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_HIGHLIGHT, mixed: true)
+    else
+      @gfx.fill_rect(DROPDOWN_X + 1, item_y, DROPDOWN_W - 2, DROPDOWN_ITEM_H, DROPDOWN_BG)
+      @gfx.draw_text(DROPDOWN_X + 6, item_y + 2, label, DROPDOWN_TEXT, DROPDOWN_BG, mixed: true)
+    end
   end
 
   def close_dropdown
@@ -1386,11 +1408,7 @@ class SystemDesktopApp < FmrbApp
   def handle_mouse_move(x, y)
     # Update dropdown hover highlight; redraw only when the hovered item changes
     if @dropdown_open
-      idx = dropdown_item_at(x, y)
-      if idx != @dropdown_hover_idx
-        @dropdown_hover_idx = idx
-        draw_foreground
-      end
+      dropdown_move_to(dropdown_item_at(x, y))
     end
   end
 
