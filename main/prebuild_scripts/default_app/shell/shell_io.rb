@@ -130,9 +130,13 @@ class ShellStdin
   end
 
   def getch
-    ch = @shell.getch
-    return nil if ch.nil?
-    ch.chr
+    while true
+      ch = @shell.getch
+      return nil if ch.nil?
+      # Skip the shell's negative-encoded special keys (arrows, Home/End,
+      # Delete): .chr would raise on them and a script asked for a character.
+      return ch.chr if ch >= 0
+    end
   end
 
   def read_nonblock(maxlen)
@@ -140,7 +144,7 @@ class ShellStdin
     while !@shell.input_buffer_empty? && result.length < maxlen
       ch = @shell.getch_nonblock
       break if ch.nil?
-      result += ch.chr
+      result += ch.chr if ch >= 0
     end
     result.empty? ? nil : result
   end

@@ -17,7 +17,11 @@ class ShellApp < FmrbApp
     @cursor_x = 0
     @cursor_y = 0
     @char_width = 6
-    @char_height = 8
+    # Cell metrics of efontJA_12, the font all shell text draws in (the
+    # editor's terminal-cell model: half-width 6px = one cell, full-width
+    # 12px = two). 12px rows, not 8: the default 6x8 font has no Japanese
+    # glyphs, and kana typed at the prompt has to be visible.
+    @char_height = 12
     @current_dir = "/home"  # Virtual working directory (user-visible)
 
     # User-facing filesystem root. The HAL resolver maps "/" to LittleFS on
@@ -28,6 +32,11 @@ class ShellApp < FmrbApp
     @need_line_redraw = false   # Only current input line redraw
     @max_line_length = 100  # Maximum input line length
     @input_buffer = []  # Character buffer for getch
+    @cursor_pos = 0     # Insertion point in @current_line, in characters
+    # UTF-8 assembly for composed kana: the host's composition layer delivers
+    # one byte of character per key event (same contract as the editor).
+    @u8_buf = ""
+    @u8_need = 0
     @frame_ms = 33
     @irb_mode = false  # IRB mode flag
     @irb_sandbox = nil  # Sandbox for IRB
@@ -124,6 +133,15 @@ class ShellApp < FmrbApp
         @need_full_redraw = true
       end
 
+      # A composed kana arrives as its UTF-8 bytes, one getch per byte;
+      # anything else interrupts a half-built character.
+      if ch >= 0x80
+        s = utf8_feed(ch)
+        insert_input_char(s) if s
+        next
+      end
+      utf8_reset
+
       # Handle special keys
       case ch
       when 10, 13  # Enter (LF or CR)
@@ -132,18 +150,95 @@ class ShellApp < FmrbApp
         handle_backspace
       when 9  # Tab
         handle_tab
+        @cursor_pos = @current_line.length
       when -1  # Arrow UP
         handle_history_up
       when -2  # Arrow DOWN
         handle_history_down
-      when 32..126  # Printable characters
-        if @current_line.length < @max_line_length
-          @current_line += ch.chr
-          @cmd_history_index = -1  # Reset history browsing on new input
+      when -3  # Arrow LEFT
+        if @cursor_pos > 0
+          @cursor_pos -= 1
           @need_line_redraw = true
         end
+      when -4  # Arrow RIGHT
+        if @cursor_pos < @current_line.length
+          @cursor_pos += 1
+          @need_line_redraw = true
+        end
+      when -5  # Home
+        if @cursor_pos != 0
+          @cursor_pos = 0
+          @need_line_redraw = true
+        end
+      when -6  # End
+        if @cursor_pos != @current_line.length
+          @cursor_pos = @current_line.length
+          @need_line_redraw = true
+        end
+      when -7  # Delete
+        handle_delete
+      when 32..126  # Printable characters
+        insert_input_char(ch.chr)
       end
     end
+  end
+
+  # ---- Line editing at the cursor ----
+
+  # Insert one character (String, possibly multi-byte) at the cursor.
+  def insert_input_char(s)
+    return if s.empty?
+    if @current_line.length >= @max_line_length
+      Log.warn("Warning: max line length (#{@max_line_length}) reached")
+      return
+    end
+    head = @cursor_pos > 0 ? @current_line[0, @cursor_pos].to_s : ""
+    tail = @current_line[@cursor_pos, @current_line.length - @cursor_pos].to_s
+    @current_line = head + s + tail
+    @cursor_pos += 1
+    @cmd_history_index = -1  # Reset history browsing on new input
+    @need_line_redraw = true
+  end
+
+  # Feed one byte of a possibly multi-byte character; returns the finished
+  # character or nil while more bytes are needed. Same shape as the editor's.
+  def utf8_feed(byte)
+    if @u8_need == 0
+      if byte >= 0xF0
+        need = 3
+      elsif byte >= 0xE0
+        need = 2
+      elsif byte >= 0xC0
+        need = 1
+      else
+        return nil  # continuation byte with nothing in front of it
+      end
+      @u8_buf = one_byte_string(byte)
+      @u8_need = need
+      return nil
+    end
+    if byte < 0x80 || byte >= 0xC0
+      utf8_reset
+      return utf8_feed(byte)
+    end
+    @u8_buf += one_byte_string(byte)
+    @u8_need -= 1
+    return nil if @u8_need > 0
+    s = @u8_buf
+    utf8_reset
+    s
+  end
+
+  def utf8_reset
+    @u8_buf = ""
+    @u8_need = 0
+  end
+
+  # One-character String holding +byte+ (no Array#pack in picoruby).
+  def one_byte_string(byte)
+    s = " ".dup
+    s.setbyte(0, byte)
+    s
   end
 
   # Show MicroRuby logo as ASCII art in history
@@ -243,6 +338,7 @@ class ShellApp < FmrbApp
 
   def redraw_script_input(partial_line)
     @script_input_line = partial_line
+    begin_text_font
     content_x = @user_area_x0 + 2
     input_rows = partial_line.empty? ? 1 : (partial_line.length + @max_chars - 1) / @max_chars
     avail = @visible_rows - input_rows
@@ -267,6 +363,7 @@ class ShellApp < FmrbApp
     cursor_x = content_x + (last_chars * @char_width)
     cursor_y = input_y + (input_rows - 1) * @char_height + @char_height - 1
     @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
+    end_text_font
     @gfx.present
   end
 
@@ -344,22 +441,24 @@ class ShellApp < FmrbApp
       end
       @ctrl_pressed = false
 
-      # PageUp / PageDown for scrollback
-      if keycode == 75  # PageUp
+      # Special keys, by scancode (HID Usage ID -- uniform across the device
+      # and the Linux sim, where ev[:keycode] is the SDL keysym instead).
+      # Encoded as negative values so they travel the same @input_buffer as
+      # characters and stay in order with them.
+      case ev[:scancode] || 0
+      when 0x4B  # PageUp: scrollback, handled here, not queued
         scroll_page_up
         return
-      elsif keycode == 78  # PageDown
+      when 0x4E  # PageDown
         scroll_page_down
         return
-      end
-
-      # Arrow keys: encode as negative values (character=0 for these)
-      if keycode == 82  # UP
-        @input_buffer << -1
-        return
-      elsif keycode == 81  # DOWN
-        @input_buffer << -2
-        return
+      when 0x52 then @input_buffer << -1; return  # Up
+      when 0x51 then @input_buffer << -2; return  # Down
+      when 0x50 then @input_buffer << -3; return  # Left
+      when 0x4F then @input_buffer << -4; return  # Right
+      when 0x4A then @input_buffer << -5; return  # Home
+      when 0x4D then @input_buffer << -6; return  # End
+      when 0x4C then @input_buffer << -7; return  # Delete
       end
       if character > 0
         @input_buffer << character
@@ -381,52 +480,6 @@ class ShellApp < FmrbApp
     @need_full_redraw = true
   end
 
-  def handle_key_input(ev)
-    keycode = ev[:keycode]
-    character = ev[:character] || 0
-
-    # Enter key
-    if character == 10 || character == 13  # LF or CR
-      handle_enter
-      return
-    end
-
-    # Backspace key
-    if character == 8  # BS
-      handle_backspace
-      return
-    end
-
-    # Tab key
-    if character == 9  # TAB
-      # TODO: tab completion
-      return
-    end
-
-    # Ignore arrow keys and other control keys (keycode-based check)
-    if keycode >= 79 && keycode <= 82
-      return
-    end
-
-    # Ignore standalone modifier keys (keycode 225-229)
-    if keycode >= 225 && keycode <= 229
-      return
-    end
-
-    # If we have a printable character, add it (with length limit)
-    if character >= 32 && character <= 126
-      if @current_line.length < @max_line_length
-        char_str = character.chr
-        @current_line += char_str
-        @need_line_redraw = true
-      else
-        Log.warn("Warning: max line length (#{@max_line_length}) reached")
-      end
-    else
-      Log.debug("Character #{character} not in printable range (32-126)")
-    end
-  end
-
   # ---- Command input handling ----
 
   def handle_enter
@@ -442,6 +495,7 @@ class ShellApp < FmrbApp
     # Add current line to display history and clear input before executing
     @history << (@prompt + entered_line)
     @current_line = ""
+    @cursor_pos = 0
 
     # Execute command or IRB eval
     begin
@@ -474,10 +528,20 @@ class ShellApp < FmrbApp
   end
 
   def handle_backspace
-    if @current_line.length > 0
-      @current_line = @current_line[0...-1]
-      @need_line_redraw = true
-    end
+    return if @cursor_pos <= 0
+    head = @cursor_pos > 1 ? @current_line[0, @cursor_pos - 1].to_s : ""
+    tail = @current_line[@cursor_pos, @current_line.length - @cursor_pos].to_s
+    @current_line = head + tail
+    @cursor_pos -= 1
+    @need_line_redraw = true
+  end
+
+  def handle_delete
+    return if @cursor_pos >= @current_line.length
+    head = @cursor_pos > 0 ? @current_line[0, @cursor_pos].to_s : ""
+    tail = @current_line[@cursor_pos + 1, @current_line.length - @cursor_pos - 1].to_s
+    @current_line = head + tail
+    @need_line_redraw = true
   end
 
   def handle_history_up
@@ -492,6 +556,7 @@ class ShellApp < FmrbApp
       return  # Already at oldest
     end
     @current_line = @cmd_history[@cmd_history_index]
+    @cursor_pos = @current_line.length
     @need_line_redraw = true
   end
 
@@ -505,6 +570,7 @@ class ShellApp < FmrbApp
       @cmd_history_index = -1
       @current_line = @cmd_saved_line
     end
+    @cursor_pos = @current_line.length
     @need_line_redraw = true
   end
 

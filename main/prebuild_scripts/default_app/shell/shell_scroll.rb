@@ -8,13 +8,105 @@ module ShellScrollMixin
 
   # ---- Wrapping & scroll helpers ----
 
+  # Display columns of a text: ASCII is one cell (6px), kana/kanji are two
+  # (12px glyphs). The input line wraps and places its cursor by columns;
+  # history keeps the old character count (its entries are output, and a
+  # miscounted width there costs a ragged wrap, not a lost cursor).
+  def text_cols(text)
+    n = text.length
+    return n if text.bytesize == n  # pure ASCII: one column per byte
+    cols = 0
+    i = 0
+    while i < n
+      cols += text[i].bytesize > 1 ? 2 : 1
+      i += 1
+    end
+    cols
+  end
+
+  # Split into rows of at most @max_chars display columns; a double-width
+  # character never straddles the fold, it moves whole to the next row.
+  # Always returns at least one (possibly empty) row.
+  def wrap_chunks(text)
+    # Pure ASCII: slice by count, at C speed.
+    if text.bytesize == text.length
+      return [text] if text.length <= @max_chars
+      rows = []
+      i = 0
+      while i < text.length
+        rows << text[i, @max_chars].to_s
+        i += @max_chars
+      end
+      return rows
+    end
+    rows = []
+    row = ""
+    cols = 0
+    i = 0
+    n = text.length
+    while i < n
+      ch = text[i]
+      w = ch.bytesize > 1 ? 2 : 1
+      if cols + w > @max_chars && cols > 0
+        rows << row
+        row = ""
+        cols = 0
+      end
+      row += ch
+      cols += w
+      i += 1
+    end
+    rows << row
+    rows
+  end
+
+  def input_rows_for(text)
+    rows = (text_cols(text) + @max_chars - 1) / @max_chars
+    rows < 1 ? 1 : rows
+  end
+
+  # Cursor cell (row, column) in the input line, folded exactly the way
+  # wrap_chunks folds the text. During foreground script input the cursor
+  # simply follows the end of the text.
+  def input_cursor_rc(input_text)
+    upto = @fg_sandbox ? input_text.length : @prompt.length + @cursor_pos
+    row = 0
+    cols = 0
+    i = 0
+    while i < upto
+      ch = input_text[i]
+      break if ch.nil?
+      w = ch.bytesize > 1 ? 2 : 1
+      if cols + w > @max_chars && cols > 0
+        row += 1
+        cols = 0
+      end
+      cols += w
+      i += 1
+    end
+    [row, cols]
+  end
+
+  def draw_input_cursor(content_x, input_y, input_text)
+    r, c = input_cursor_rc(input_text)
+    cursor_x = content_x + c * @char_width
+    cursor_y = input_y + r * @char_height + @char_height - 1
+    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
+  end
+
   def display_rows_for(entry)
     if entry.is_a?(Hash) && entry[:type] == :logo_line
       1
     else
       text = entry.to_s
       return 1 if text.empty?
-      (text.length + @max_chars - 1) / @max_chars
+      if text.bytesize == text.length
+        (text.length + @max_chars - 1) / @max_chars
+      else
+        # Must agree with wrap_chunks: an early fold before a double-width
+        # character can use a row that ceil(cols/max) does not count.
+        wrap_chunks(text).size
+      end
     end
   end
 
@@ -40,8 +132,7 @@ module ShellScrollMixin
   end
 
   def history_avail_rows
-    input_text = current_input_text
-    input_rows = input_text.empty? ? 1 : (input_text.length + @max_chars - 1) / @max_chars
+    input_rows = input_rows_for(current_input_text)
     avail = @visible_rows - input_rows
     avail < 1 ? 1 : avail
   end
@@ -94,16 +185,27 @@ module ShellScrollMixin
 
   # ---- Drawing ----
 
+  # All shell text draws in efontJA_12 (same terminal-cell model as the
+  # editor: half-width one 6px cell, full-width two). The window chrome
+  # outside these brackets stays on the default font.
+  def begin_text_font
+    @gfx.set_font(:ja, 12)
+  end
+
+  def end_text_font
+    @gfx.set_font(:default)
+  end
+
   def draw_wrapped_text_at(content_x, base_y, text, max_rows)
-    rows = text.empty? ? 1 : (text.length + @max_chars - 1) / @max_chars
+    chunks = wrap_chunks(text)
     r = 0
-    while r < rows && r < max_rows
-      chunk_start = r * @max_chars
-      chunk = text[chunk_start, @max_chars] || ""
+    n = chunks.size
+    while r < n && r < max_rows
+      chunk = chunks[r]
       @gfx.draw_text(content_x, base_y + r * @char_height, chunk, @ch_col) unless chunk.empty?
       r += 1
     end
-    rows
+    n
   end
 
   # Draw a single logo line with gradient background colors
@@ -147,6 +249,7 @@ module ShellScrollMixin
   end
 
   def draw_prompt
+    begin_text_font
     content_x = @user_area_x0 + 2
     avail = history_avail_rows
     total = total_display_rows
@@ -173,11 +276,10 @@ module ShellScrollMixin
             screen_row += 1
           end
         else
-          text = entry.to_s
+          chunks = wrap_chunks(entry.to_s)
           r = vis_start
           while r < entry_rows && screen_row < avail
-            chunk_start = r * @max_chars
-            chunk = text[chunk_start, @max_chars] || ""
+            chunk = chunks[r] || ""
             y = @user_area_y0 + 2 + screen_row * @char_height
             @gfx.draw_text(content_x, y, chunk, @ch_col) unless chunk.empty?
             screen_row += 1
@@ -193,19 +295,15 @@ module ShellScrollMixin
 
     # Draw input line (after history, or at bottom if history fills screen)
     input_text = current_input_text
-    input_rows = input_text.empty? ? 1 : (input_text.length + @max_chars - 1) / @max_chars
+    input_rows = input_rows_for(input_text)
     # Place input right after history, but no lower than the fixed bottom position
     input_y_after_history = @user_area_y0 + 2 + screen_row * @char_height
     input_y_bottom = @user_area_y0 + 2 + avail * @char_height
     input_y = input_y_after_history < input_y_bottom ? input_y_after_history : input_y_bottom
     draw_wrapped_text_at(content_x, input_y, input_text, input_rows)
 
-    # Draw cursor (underline at end of input)
-    last_chars = input_text.length % @max_chars
-    last_chars = @max_chars if last_chars == 0 && !input_text.empty?
-    cursor_x = content_x + (last_chars * @char_width)
-    cursor_y = input_y + (input_rows - 1) * @char_height + @char_height - 1
-    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
+    draw_input_cursor(content_x, input_y, input_text)
+    end_text_font
   end
 
   def redraw_screen
@@ -230,13 +328,15 @@ module ShellScrollMixin
   end
 
   def redraw_input_line
+    begin_text_font
     input_text = current_input_text
-    input_rows = input_text.empty? ? 1 : (input_text.length + @max_chars - 1) / @max_chars
+    input_rows = input_rows_for(input_text)
 
     # If input row count changed (wrap boundary crossed), do full redraw
     if input_rows != @prev_input_rows
       @prev_input_rows = input_rows
       @need_full_redraw = true
+      end_text_font
       return
     end
 
@@ -259,12 +359,8 @@ module ShellScrollMixin
     # Draw wrapped input
     draw_wrapped_text_at(content_x, input_y, input_text, input_rows)
 
-    # Draw cursor
-    last_chars = input_text.length % @max_chars
-    last_chars = @max_chars if last_chars == 0 && !input_text.empty?
-    cursor_x = content_x + (last_chars * @char_width)
-    cursor_y = input_y + (input_rows - 1) * @char_height + @char_height - 1
-    @gfx.draw_line(cursor_x, cursor_y, cursor_x + @char_width - 1, cursor_y, @ch_col)
+    draw_input_cursor(content_x, input_y, input_text)
+    end_text_font
 
     @gfx.present
   end
