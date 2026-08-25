@@ -30,13 +30,31 @@ shortcuts。本書はこのパターンを広げる案の一覧。優先順は�
 - 併せて cron 風の予定表 (`/home/schedule.toml` → 時刻でアプリ起動)。
   RTC が動くようになったので成立する。
 
-## 3. ファイルの関連付け (open の一般化)
+## 3. ファイルの関連付け (open の一般化) — 実装済み (assoc/report/a1.md)
 
 - `/etc/associations.toml` に拡張子 → アプリの対応表を持ち、file manager
-  のダブルクリックがそれを spawn する。
-- 前提として**アプリへの引数渡し** (spawn に path を 1 つ添える) が要る。
-  これは PicoRabbit のデッキ指定にもそのまま効く汎用投資で、
-  多くの案 (1, 9) の土台になる。
+  のダブルクリックと shell の `open` がそれに従う。ユーザは
+  `/home/associations.toml` で拡張子ごとに上書きできる。解決は
+  **`FmrbAssoc.resolve(path)`** (gem。`"run"` / `"edit"` / アプリのパスを返す)。
+- 前提の**アプリへの引数渡し**は既にあった (kernel の spawn 要求の
+  `open_path`)。本件はそれを契約として公式化した仕事で、新しい配管は
+  足していない。
+
+### 契約: 関連付けで起動されたアプリ
+
+**関連付けで起動されたアプリには、起動直後に `file_selected` が届く。**
+
+```ruby
+def on_control(msg)
+  return unless msg["cmd"] == "file_selected"
+  open_it(msg["path"])
+end
+```
+
+- 受けたければ `on_control` で拾う。**受けなければ何も起きない** —
+  アプリはただ起動するだけで、それで良い (対応は任意)。
+- 届くのはアプリが受け取れるようになってから (kernel が繰り延べる)。
+- 実例は PicoRabbit (メニューを飛ばして渡されたデッキを開く)。
 
 ## 4. ユーザライブラリ (`require` の載る場所)
 

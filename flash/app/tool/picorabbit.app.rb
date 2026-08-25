@@ -375,11 +375,31 @@ class SlideShowApp < FmrbApp
 
   # ---- presenting -------------------------------------------------------
 
+  # Opened from somewhere else -- the file manager's double click on a .md,
+  # or `open` in the shell. The kernel sends this once the app can receive it
+  # (doc/user_extension/assoc).
+  #
+  # It goes straight into the deck rather than to the menu: someone who
+  # double-clicked a deck has already chosen which one, and making them pick
+  # it again from a list would be asking twice. Esc still comes back to the
+  # menu, so nothing is lost.
+  def on_control(msg)
+    return nil unless msg["cmd"] == "file_selected"
+    path = msg["path"].to_s
+    return nil if path.empty?
+    Log.info("PicoRabbit: opening #{path}")
+    start_show(path)
+    nil
+  end
+
   # Every start is a fresh run: the deck opens at its first slide with the
   # clock back at the top, whether or not it is the deck just presented.
-  def start_show
-    return if @deck_labels.length == 0
-    path = @deck_paths[@menu_sel]
+  #
+  # +path+ names the deck when something else chose it (on_control above);
+  # without it the menu selection is used.
+  def start_show(path = nil)
+    path = @deck_paths[@menu_sel] if path.nil?
+    return if path.nil?
     unless ensure_deck(path)
       @status = "cannot read #{path}"
       draw_menu
