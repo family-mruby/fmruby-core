@@ -115,7 +115,7 @@ C 側から Spinel 内部 (static メソッド) を呼ぶ必要が出た場合�
      system / crypto / pack / time / random は**入れない**。
      ただし生成 C が time/random を要求したら追加してよい)。
    - `import_from_fork.rb` (または rake タスク `spinel:import`):
-     fork のパスを引数に取り、上記ファイル一覧をコピーするスクリプト。
+     fork のパスを引数に取り (必須)、上記ファイル一覧をコピーするスクリプト。
      コピー元コミット hash を `spinel_rt/IMPORT_INFO` に記録する。
      スナップショットはリポジトリにチェックインする (再現性優先)。
 2. CMakeLists.txt: 既存コンポーネント (例: `components/fmrb_msg/`) を

@@ -59,7 +59,8 @@ mark フックが 0 を skip すれば、未代入の定数は単に「まだ無
 - 作業リポジトリは **Spinel フォーク (vendor/spinel、kishima/spinel の
   fmrb-dev)**。反映手順は SPINEL_PIN のヘッダ記載どおり:
   fork へ push → SPINEL_PIN の commit 更新 →
-  components/fmrb_spinel_rt/import_from_fork.rb 実行 → **両方を同時に
+  `ruby components/fmrb_spinel_rt/import_from_fork.rb vendor/spinel` 実行
+  → **両方を同時に
   コミット** (rake spinel:gen が IMPORT_INFO との食い違いを警告するので
   clean を確認)。
 

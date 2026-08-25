@@ -115,7 +115,8 @@
 ## import と反映の手順
 
 1. fork(kishima/spinel fmrb-dev)で上記 1/2 を実装・コミット。
-2. `components/fmrb_spinel_rt/import_from_fork.rb` で re-import → `spinel_rt/` 更新 +
+2. `ruby components/fmrb_spinel_rt/import_from_fork.rb vendor/spinel` で re-import
+   → `spinel_rt/` 更新 +
    `IMPORT_INFO`(fork_commit)更新。必要なら `SPINEL_PIN` も。
 3. fmrb 側 3/4/5 を実装。
 4. `rake clean_all`(sdkconfig/フラグ系の再生成を確実に)→ `rake build:esp32`。

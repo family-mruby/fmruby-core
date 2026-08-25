@@ -63,7 +63,10 @@ C 化するプロジェクトの、実装担当 AI 向け指示書である。
   `SPINEL_DIR` 環境変数 > `vendor/spinel` > `tmp/spinel`。fork の
   ランタイム snapshot (`spinel_rt/IMPORT_INFO`) と pin の commit は
   一致させること (`rake spinel:gen` が不一致を警告する)。fork を進めたら
-  「push -> SPINEL_PIN 更新 -> import_from_fork.rb 再実行」をセットで行う。
+  「push -> SPINEL_PIN 更新 ->
+  `ruby components/fmrb_spinel_rt/import_from_fork.rb vendor/spinel` 再実行」を
+  セットで行う。取り込み元は引数で必ず明示する (pin と対になる checkout は
+  vendor/spinel だけ)。
 
 ## 実装 AI が厳守するルール
 

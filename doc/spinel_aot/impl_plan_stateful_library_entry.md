@@ -91,7 +91,8 @@ report に残し、B-full かコンパイラ側の別手を検討。
      `sp_ctx.h` のマクロ(既存の ctx-field パターン)で公開。インスタンス生成
      (`sp_instance_create`)で 0 初期化。
    - `sp_tu_ctx_init()` は従来どおり毎 entry 呼ぶ(現インスタンスの ctx を TU に束ねる)。
-2. runtime を fmrb_fft へ取り込む: `components/fmrb_spinel_rt/import_from_fork.rb` で
+2. runtime を fmrb_fft へ取り込む:
+   `ruby components/fmrb_spinel_rt/import_from_fork.rb vendor/spinel` で
    再スナップショット、`SPINEL_PIN`(repo/branch/commit)と `spinel_rt/IMPORT_INFO` を
    更新(両者一致必須、`rake spinel:gen` が乖離を警告)。
 3. **run-once プログラム(kernel/desktop/editor)には付けない** → 従来どおり毎 entry

@@ -139,7 +139,8 @@ picoruby-fmrb-spinel-hello がこの構成の最小の手本です。
 - キャッシュは entry 側にだけ書き、`core.rb` には書かないでください。
 - linux と esp32 を切り替えるときは `rake clean_all` を実行し、`file build/*.elf` で
   ターゲットを確認します。
-- vendor/spinel(コンパイラ)を変えたときは `import_from_fork.rb` と `SPINEL_PIN` を
+- vendor/spinel(コンパイラ)を変えたときは
+  `ruby components/fmrb_spinel_rt/import_from_fork.rb vendor/spinel` と `SPINEL_PIN` を
   合わせ、fork も push してください。
 
 ## 手本

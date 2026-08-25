@@ -1,12 +1,14 @@
 #!/usr/bin/env ruby
 # Import a snapshot of the Spinel runtime from the fork checkout into
 # components/fmrb_spinel_rt/spinel_rt/. The snapshot is checked in for
-# reproducibility (the firmware does not build from tmp/spinel directly).
+# reproducibility (the firmware does not build from a fork checkout directly).
 #
 # Usage:
-#   ruby components/fmrb_spinel_rt/import_from_fork.rb [FORK_DIR]
-# FORK_DIR defaults to ../../../tmp/spinel relative to this script
-# (i.e. family-mruby/tmp/spinel).
+#   ruby components/fmrb_spinel_rt/import_from_fork.rb FORK_DIR
+# FORK_DIR is required. Normally vendor/spinel: that is the checkout SPINEL_PIN
+# pins, so it is the only one whose commit the snapshot may claim. Any other
+# checkout (a scratch tmp/spinel, say) still works when named explicitly -- the
+# argument is mandatory only so it is never picked silently.
 #
 # Design (see doc/spinel_aot/phase1.md T1-4 and the phase1 report):
 # - ALL runtime headers are copied: sp_runtime.h includes sp_re.h / sp_time.h /
@@ -22,7 +24,18 @@ require "digest"
 
 SCRIPT_DIR = File.expand_path(File.dirname(__FILE__))
 DEST = File.join(SCRIPT_DIR, "spinel_rt")
-fork_dir = ARGV[0] || File.expand_path("../../../tmp/spinel", SCRIPT_DIR)
+# No default: this used to fall back to family-mruby/tmp/spinel, and a run
+# meant for vendor/spinel silently imported an unrelated commit from there.
+if ARGV.empty?
+  abort <<~USAGE
+    usage: ruby components/fmrb_spinel_rt/import_from_fork.rb FORK_DIR
+
+    FORK_DIR is the Spinel fork checkout to snapshot, normally vendor/spinel
+    (the checkout SPINEL_PIN pins). Another checkout works too, but it has to
+    be named -- the snapshot records the commit it came from.
+  USAGE
+end
+fork_dir = ARGV[0]
 LIB = File.join(fork_dir, "lib")
 
 abort "fork lib not found: #{LIB}" unless Dir.exist?(LIB)

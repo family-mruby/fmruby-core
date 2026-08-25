@@ -50,7 +50,9 @@ namespace :spinel do
       head = `git -C #{dir} rev-parse HEAD 2>/dev/null`.strip
       if snap && !head.empty? && snap != head
         warn "WARNING: spinel compiler at #{head[0, 12]} but runtime snapshot is #{snap[0, 12]};" \
-             " regenerate the snapshot (import_from_fork.rb) or align the checkouts."
+             " re-snapshot it with" \
+             " `ruby components/fmrb_spinel_rt/import_from_fork.rb #{dir}`" \
+             " (and bump SPINEL_PIN to match), or align the checkouts."
       end
     end
     mkdir_p SPINEL_GEN_DIR

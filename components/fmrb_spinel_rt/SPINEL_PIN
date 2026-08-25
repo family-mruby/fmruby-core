@@ -4,7 +4,9 @@
 # - Must match spinel_rt/IMPORT_INFO fork_commit (the runtime snapshot);
 #   `rake spinel:gen` warns on divergence.
 # - To update: push the fork, bump commit here, re-run
-#   components/fmrb_spinel_rt/import_from_fork.rb, commit both together.
+#   `ruby components/fmrb_spinel_rt/import_from_fork.rb vendor/spinel`, commit
+#   both together. Name the checkout: the script takes no default, so a snapshot
+#   can never quietly come from somewhere other than the one pinned here.
 repo: https://github.com/kishima/spinel.git
 branch: fmrb-dev
 commit: 622750cf7093d84c30ab212e50bb2547f04bcc4e
