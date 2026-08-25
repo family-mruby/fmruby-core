@@ -62,6 +62,11 @@ rake -T # その他のコマンドの使い方
 - **sim / 結合テスト**: docker の Linux ビルドを headless で駆動する
   (`tools/dev_run_check.sh` + `fmrb_screenshot` / `fmrb_input`)。画面挙動に
   関わる変更のときに回す。重いので CI では回していない。
+  **標準構成 (Spinel カーネル + Spinel エディタ) の sim 検証には、エディタを
+  1 回起動して 1 打鍵するところまでを必ず含める**。デスクトップが上がっても
+  エディタだけが死ぬ壊れ方が実在する (基底クラスに ivar を 1 個足しただけで
+  Spinel の ivar レイアウトが親子で食い違った例:
+  doc/spinel_aot/reports/editor_ivar_layout_bug.md)。
 - lint (`rake spinel:doctor`) は上記とは別枠 (Spinel コンパイラ checkout が要り、
   pass/fail ではなく指摘を出す)。
 

@@ -26,12 +26,17 @@ cherry-pick すれば PR 化可能。
 | `d9c6dbf9` | バグ | `String#ljust/rjust/center` が poly レシーバで dispatch されない (U-1) | analyze/codegen |
 | `5129af95` | バグ | 値が消費される poly return を void 化してしまう + value-type block local の reset 漏れ (U-3)。値消費構文スキャンを追加 | analyze/codegen |
 | `9aa7cdd6` | 機能 | library mode `--no-main` / `--entry <fn>` / `--inject`。カーネルを C 関数として組込むために必須 (汎用機能) | `main`/codegen |
+| `ca0709c` | バグ | 解析終盤で子の ivar が広がっても親へ返らず、親子の構造体が先頭一致でなくなる。基底メソッドが `(sp_Base *)self` 経由で別の位置へ書き、黙って壊す。上方伝播を最終ループでも回す | `src/analyze.c` |
+| `622750c` | 保険 | 上の不変条件 (基底が派生の先頭一致) を codegen 直前に検査し、崩れていたらビルドを止める | `src/codegen.c` |
 
 共通根本テーマ:
 - **NUL 一貫性** (`56394f2d` / `a8c3c201`): poly/concrete/各 String 関数で埋め込み
   NUL の扱いが strlen ベースと格納長ベースで食い違う。他の String 関数も要点検。
 - **poly ディスパッチ**の穴 (`318f4a7b` / `d9c6dbf9` / `5129af95`): poly 値を
   builtin/メソッドに渡す経路で型特殊化が非対称に漏れる。
+- **不変条件を検査していない** (`ca0709c` / `622750c`): 生成 C が前提にしている
+  レイアウトの約束を誰も確かめておらず、破れても黙って動く。詳細は
+  `editor_ivar_layout_bug.md`。
 - **32bit 移植** (`d9e363ed`): ESP32 (Phase 5) 必須。
 
 ---
