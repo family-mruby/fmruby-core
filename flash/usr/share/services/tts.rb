@@ -42,6 +42,13 @@
 # and a log line, and everything said this session still plays. Removing the
 # line changes the key and the machine stops finding its own cache.
 #
+# "This session" is the important word. The cache is in RAM and a power cut
+# empties it, so a sentence is synthesised once per boot rather than once
+# ever. A phrase that has to sound whether or not there is a network -- the
+# hour, an alarm, a greeting at startup -- does not belong here at all: put a
+# WAV in /home/voice/ and play it with FmrbAudio#play_wav. This cache is a
+# shortcut for saying the same thing twice, not a place to keep audio.
+#
 # What it deliberately does NOT do: retry, queue, or wait. A reading is only
 # useful while it is timely, so a failure is one log line and silence, and a
 # second request while one is in flight replaces the first.

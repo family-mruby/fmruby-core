@@ -51,6 +51,9 @@ interval_hours = 24
 # flash is small and wears out. It plays from there afterwards with no
 # network at all, until the next reboot empties it.
 #
+# So: a phrase that must sound with no network AND after a power cut belongs
+# in /home/voice/ as a WAV you play with play_wav, not in this cache.
+#
 # The cache key is server + speaker + text, so the same sentence in another
 # voice is a different file. That has one consequence worth knowing: to run
 # offline, LEAVE the server line where it is and simply let it be unreachable
