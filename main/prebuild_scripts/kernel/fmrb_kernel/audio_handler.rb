@@ -99,6 +99,21 @@ module AudioHandlerMixin
       bin.setbyte(5, path_len & 0xFF)
       bin.setbyte(6, (path_len >> 8) & 0xFF)
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
+    when "play_wav"
+      # Play a WAV file the audio side can already see (the caller syncs it
+      # first, the same way an FMSQ or a sprite sheet gets there).
+      # Binary: cmd_type=0x0D (PLAY_WAV) + path_len(2 LE) + path
+      path = data["path"] || ""
+      path_len = path.length
+      bin = "\x0D\x00\x00" + path
+      bin.setbyte(1, path_len & 0xFF)
+      bin.setbyte(2, (path_len >> 8) & 0xFF)
+      remember_wav_pid(pid)
+      _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
+    when "stop_wav"
+      # It cleaned up after itself, so there is nothing to stop on its behalf.
+      @audio_wav_pids.delete(pid) if @audio_wav_pids
+      _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x0E")
     when "note_on"
       ch = data["ch"] || 0
       freq = data["freq"] || 440
@@ -153,6 +168,29 @@ module AudioHandlerMixin
   def remember_music_pid(pid)
     @audio_music_pids = {} unless @audio_music_pids
     @audio_music_pids[pid] = true
+  end
+
+  # Same, for play_wav. Kept apart from the music set because the two stop
+  # differently: STOP silences the APU players, STOP_WAV the PCM stream, and
+  # an app that only played a WAV must not silence someone else's song.
+  def remember_wav_pid(pid)
+    @audio_wav_pids = {} unless @audio_wav_pids
+    @audio_wav_pids[pid] = true
+  end
+
+  # Stop the WAV an app left playing. There is one PCM stream for the whole
+  # machine, so as with music the stop only goes out once the last app that
+  # started one is gone.
+  def stop_wav_for(pid)
+    return unless @audio_wav_pids && @audio_wav_pids[pid]
+
+    @audio_wav_pids.delete(pid)
+    others = false
+    @audio_wav_pids.each { |other_pid, playing| others = true }
+    return if others
+
+    _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, "\x0E")
+    Log.info("Stopped WAV left by pid=#{pid}")
   end
 
   # Stop the music an app left playing.

@@ -14,7 +14,7 @@
 #define FMRB_MRB_MAX_VMS (FMRB_MAX_SYSTEM_MRUBY_TASKS + FMRB_MAX_APPS)
 
 // Maximum number of tasks tracked by fmrb_task monitor
-#define FMRB_TASK_MONITOR_MAX (FMRB_MRB_MAX_VMS + 6) // +6 for infrastructure tasks (RTC, status LED, USB host, USB HID, SPI conn check, BLE FS)
+#define FMRB_TASK_MONITOR_MAX (FMRB_MRB_MAX_VMS + 7) // +7 for infrastructure tasks (RTC, status LED, USB host, USB HID, SPI conn check, BLE FS, Modern audio)
 
 #include "fmrb_rtos.h"
 

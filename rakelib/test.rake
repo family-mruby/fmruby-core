@@ -14,9 +14,9 @@
 #
 # Lints (spinel:doctor) are separate again: they need the Spinel compiler
 # checkout and report style/inference issues, not pass/fail like these suites.
-desc "Run all native host test suites (FmrbUI + services + assoc + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "services:test", "assoc:test", "ti:test", "basic:test",
-               "micropython:smoke"]
+desc "Run all native host test suites (FmrbUI + services + assoc + WAV + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "services:test", "assoc:test", "wav:test", "ti:test",
+               "basic:test", "micropython:smoke"]
 
 namespace :ui do
   # FmrbUI is pure Ruby over a few FmrbGfx calls, so the real mrblib file runs
@@ -46,6 +46,41 @@ namespace :assoc do
   desc "File association tests (host Ruby, no docker)"
   task :test do
     sh "ruby test/assoc/run.rb"
+  end
+end
+
+namespace :wav do
+  # play_wav's header reader and resampler (components/fmrb_audio/fmrb_wav.c).
+  # Both are pure functions over buffers, so they build with the host cc and
+  # run without docker or a device -- which is what makes "the pitch survives
+  # the rate conversion" checkable before anything is flashed. The file is
+  # duplicated in fmruby-graphics-audio byte for byte, so this covers both
+  # backends. Run it after touching fmrb_wav.c or tool/gen_sine_wav.rb.
+  WAV_TEST_DIR   = "test/wav"
+  WAV_TEST_BUILD = "#{WAV_TEST_DIR}/build"
+  WAV_RUNNER_BIN = "#{WAV_TEST_BUILD}/wav_test"
+  WAV_SRC_DIR    = "components/fmrb_audio"
+  WAV_CFLAGS     = "-std=c11 -O1 -g -Wall -Wextra -Werror"
+
+  desc "Build the host WAV test runner (cc, no docker)"
+  task :runner do
+    cc = ENV["CC"] || "cc"
+    abort "#{cc} not found (install a C compiler or set CC)" unless system("which #{cc} > /dev/null 2>&1")
+    mkdir_p WAV_TEST_BUILD
+    sh "#{cc} #{WAV_CFLAGS} -I #{WAV_SRC_DIR} " \
+       "#{WAV_SRC_DIR}/fmrb_wav.c #{WAV_TEST_DIR}/main.c -lm -o #{WAV_RUNNER_BIN}"
+  end
+
+  desc "WAV parse/resample tests (host cc, no docker)"
+  task :test => :runner do
+    # The shipped tones are checked too, so a regenerated pair that stopped
+    # being PCM 16-bit mono fails here rather than on the device.
+    sh "#{WAV_RUNNER_BIN} flash/usr/share/sounds"
+  end
+
+  desc "Remove the host WAV test build"
+  task :clean do
+    rm_rf WAV_TEST_BUILD
   end
 end
 

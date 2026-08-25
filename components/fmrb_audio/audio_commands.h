@@ -30,7 +30,13 @@ typedef enum {
     /* Load an FMSQ slot in pieces. The inline LOAD_BINARY payload is limited
      * by the app -> host message size (~150 B), which is far less than one
      * PLAY worth of sequence, so BASIC's PLAY streams it in chunks. */
-    FMRB_AUDIO_CMD_LOAD_BINARY_CHUNK = 0x0C
+    FMRB_AUDIO_CMD_LOAD_BINARY_CHUNK = 0x0C,
+    /* Play a WAV file from a path on the audio side, mixed on top of the APU.
+     * Modern only: the Retro link has no room for PCM, so the WROVER refuses
+     * it with one log line and the caller does not send it in the first
+     * place (FmrbAudio#play_wav). */
+    FMRB_AUDIO_CMD_PLAY_WAV = 0x0D,
+    FMRB_AUDIO_CMD_STOP_WAV = 0x0E
 } fmrb_audio_cmd_type_t;
 
 // Audio status
@@ -96,6 +102,16 @@ typedef struct {
     char path[];  // Flexible array member, LittleFS-relative (will be prefixed with /flash)
 } __attribute__((packed)) fmrb_audio_load_fmsq_file_cmd_t;
 
+typedef struct {
+    uint8_t cmd_type;
+    uint16_t path_len;
+    char path[];  // Flexible array member, LittleFS-relative (will be prefixed with /flash)
+} __attribute__((packed)) fmrb_audio_play_wav_cmd_t;
+
+typedef struct {
+    uint8_t cmd_type;
+} __attribute__((packed)) fmrb_audio_stop_wav_cmd_t;
+
 // APU channel IDs
 #define FMRB_APU_CH_PULSE1    0
 #define FMRB_APU_CH_PULSE2    1
@@ -115,6 +131,12 @@ typedef struct {
     uint8_t cmd_type;
     uint8_t channel;
 } __attribute__((packed)) fmrb_audio_note_off_cmd_t;
+
+// The rate apuif_process_mix produces: one NTSC frame of 262 mono samples at
+// 60 Hz. Anything mixed on top of the APU (play_wav) has to arrive at this
+// rate, and both audio backends resample to it, so it lives here with the
+// protocol rather than in either one.
+#define FMRB_APU_MIX_RATE 15720
 
 // Audio configuration
 #define FMRB_AUDIO_SAMPLE_RATE 44100

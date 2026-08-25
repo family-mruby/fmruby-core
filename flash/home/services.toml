@@ -53,6 +53,12 @@ file = "hourly_chime.rb"
 class = "HourlyChimeService"
 enable = true
 
+# Ring a recording instead of the note. Any PCM 16-bit mono WAV (8-48 kHz)
+# will do, so this is where a spoken "it is three o'clock" goes once you have
+# one. Missing file, or a Retro machine, and it rings the note as before.
+#   [hourly_chime.config]
+#   wav = "/home/voice/hour.wav"
+
 # Raises on purpose. Turn it on to see that one bad service does not take the
 # others with it: three errors, then the host switches it off alone.
 [broken]

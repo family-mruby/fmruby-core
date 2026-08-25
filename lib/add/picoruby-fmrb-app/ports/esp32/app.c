@@ -863,6 +863,20 @@ static mrb_value mrb_fmrb_app_send_message(mrb_state *mrb, mrb_value self)
 
 // FmrbApp#_send_audio_note(on, ch, freq, vol, duty, sweep) -> bool
 // The note_on / note_off half of FmrbAudio, without the Hash.
+// FmrbApp#_sync_file(src_path, dest_path) -> true/false
+//
+// The same transfer FmrbGfx#sync_file does, reachable without a canvas: a
+// headless app (the service host) has no FmrbGfx at all, and play_wav has to
+// put the file where the audio side can read it.
+static mrb_value mrb_fmrb_app_sync_file(mrb_state *mrb, mrb_value self)
+{
+    const char *src;
+    const char *dest;
+    mrb_get_args(mrb, "zz", &src, &dest);
+
+    return mrb_bool_value(fmrb_kernel_sync_file(src, dest) == FMRB_OK);
+}
+
 static mrb_value mrb_fmrb_app_send_audio_note(mrb_state *mrb, mrb_value self)
 {
     mrb_bool on;
@@ -1697,6 +1711,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_method(mrb, app_class, "_cleanup", mrb_fmrb_app_cleanup, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_mark_expected_stop", mrb_fmrb_app_mark_expected_stop, MRB_ARGS_NONE());
     mrb_define_method(mrb, app_class, "_send_message", mrb_fmrb_app_send_message, MRB_ARGS_REQ(3));
+    mrb_define_method(mrb, app_class, "_sync_file", mrb_fmrb_app_sync_file, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, app_class, "_send_audio_note", mrb_fmrb_app_send_audio_note, MRB_ARGS_REQ(6));
     mrb_define_method(mrb, app_class, "_audio_note_bytes", mrb_fmrb_app_audio_note_bytes, MRB_ARGS_REQ(6));
     mrb_define_method(mrb, app_class, "_set_window_param", mrb_fmrb_app_set_window_param, MRB_ARGS_REQ(2));

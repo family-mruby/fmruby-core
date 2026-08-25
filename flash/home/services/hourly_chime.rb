@@ -13,9 +13,17 @@
 # interval_ms here at all: nothing has to be checked between chimes, so the
 # host is left alone for the other 59 minutes 59.8 seconds.
 #
+# It can also ring a recording instead of the note. Point it at a WAV and it
+# plays that; leave it out, or make it a file that is not there, and it falls
+# back to the note without fuss. That is the whole of what V1 of the voice
+# work buys: a spoken "it is three o'clock" is just a WAV in /home/voice.
+#
 #   [hourly_chime]
 #   file = "hourly_chime.rb"
 #   class = "HourlyChimeService"
+#
+#   [hourly_chime.config]
+#   wav = "/home/voice/hour.wav"
 class HourlyChimeService
   # The host reads this before it calls anything, so a service is subscribed
   # from the moment it starts.
@@ -30,12 +38,24 @@ class HourlyChimeService
     @ctx = ctx
     @audio = ctx.audio
     @sounding = false
+    cfg = ctx.config
+    @wav = cfg ? cfg["wav"] : nil
   end
 
   def on_event(topic, data)
     return nil unless topic == "clock/hour"
     hour = data ? data["hour"] : nil
     @ctx.log("chime for #{hour}:00")
+    # A recording, if there is one and this machine can play it. play_wav says
+    # so by its answer -- false on a Retro machine, or when the file is not
+    # where the config says -- and then the note is still there to fall back
+    # on, so the hour is never silent.
+    if @wav
+      if @audio.play_wav(@wav)
+        return nil
+      end
+      @ctx.log("chime: #{@wav} did not play, ringing the note instead")
+    end
     @audio.note_on(CH, NOTE, VOLUME)
     @sounding = true
     # One pending wake per service, and asking again replaces it -- so two

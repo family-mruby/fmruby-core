@@ -95,6 +95,53 @@ class FmrbAudio
       {"cmd" => "play_slot", "slot" => slot_id, "instance" => instance})
   end
 
+  # ---- WAV playback (Modern only) ----
+  #
+  # Plays a PCM 16-bit mono WAV (8-48 kHz, up to 2 MB) mixed on top of the
+  # APU, so a spoken line or a recorded chime rides over whatever music is
+  # going. One clip at a time for the whole machine: starting another
+  # replaces it.
+  #
+  #   audio.play_wav("/usr/share/sounds/sine440_16k.wav")
+  #
+  # The file is synced to the audio side first, the same as a sprite sheet or
+  # an FMSQ. On Modern that is a copy inside the one filesystem, so it is
+  # cheap and only happens when the bytes actually differ.
+  #
+  # Retro has no path for PCM (the link to the WROVER is nowhere near wide
+  # enough), so there it returns false without sending anything. An app can
+  # call it unconditionally and fall back on the answer.
+  WAV_CACHE_DIR = "/cache/audio"
+
+  def play_wav(path)
+    unless ::FmrbConst::HW_FAMILY == "modern"
+      ::Log.info("play_wav: not supported on this machine (#{path})")
+      return false
+    end
+    dest = wav_cache_path(path)
+    unless @app.sync_file(path, dest: dest)
+      ::Log.warn("play_wav: cannot put #{path} where the audio side can read it")
+      return false
+    end
+    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
+      {"cmd" => "play_wav", "path" => dest})
+    true
+  end
+
+  def stop_wav
+    return false unless ::FmrbConst::HW_FAMILY == "modern"
+    @app.send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_AUDIO,
+      {"cmd" => "stop_wav"})
+    true
+  end
+
+  # Where a source file lands on the audio side. The source tree is mirrored
+  # under /cache/audio rather than flattened, so two files with the same
+  # basename in different directories do not fight over one cache entry.
+  def wav_cache_path(path)
+    path[0] == "/" ? "#{WAV_CACHE_DIR}#{path}" : "#{WAV_CACHE_DIR}/#{path}"
+  end
+
   # These two are the only ones called in a stream: a MIDI song sends one
   # every few milliseconds. That makes their garbage matter - on the device a
   # collection stops the app for 100-205 ms, long enough to hear

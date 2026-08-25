@@ -581,6 +581,14 @@ class FmrbApp
     request_fullscreen(!@fullscreen)
   end
 
+  # Make sure the graphics/audio side's copy of a file matches this one,
+  # transferring it only when it differs (size + CRC32). FmrbGfx#sync_file is
+  # the same thing for apps that have a canvas; this one is here so a headless
+  # app can do it too (play_wav from the service host).
+  def sync_file(path, dest: nil)
+    _sync_file(path, dest || path)
+  end
+
   def send_message(dest_pid, msg_type, data)
     # Auto-serialize all data to msgpack binary
     binary_data = MessagePack.pack(data)

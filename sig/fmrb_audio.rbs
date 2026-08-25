@@ -29,6 +29,16 @@ class FmrbAudio
   # 箱に入れた曲を鳴らす
   def play_slot: (Integer slot_id) -> void
 
+  # 録音した音 (WAV) を鳴らす
+  #
+  # PCM 16bit・モノラル・8000〜48000Hz・2MB まで。APU の音に重ねて鳴る。
+  # 一度に鳴らせるのは 1 本で、鳴っている間にもう一度呼ぶと入れ替わる。
+  # Retro では鳴らせないので false を返す (鳴ったときは true)。
+  def play_wav: (String path) -> bool
+
+  # 鳴っている WAV を止める
+  def stop_wav: () -> bool
+
   # 音を一つ鳴らす
   def note_on: (Integer channel, Integer freq) -> void
 

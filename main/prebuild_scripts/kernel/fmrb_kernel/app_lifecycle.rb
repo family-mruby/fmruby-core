@@ -702,6 +702,10 @@ module AppLifecycleMixin
     # instance with it.
     stop_music_for(pid)
 
+    # And for a WAV: it plays from a buffer on the audio side with nothing
+    # counting down, so a crash while one sounds would leave it sounding.
+    stop_wav_for(pid)
+
     # A fullscreen app terminated: pop its frame, which resumes exactly what that
     # frame had suspended. Nested (editor -> fullscreen game) restores the outer
     # fullscreen app and leaves the desktop suspended.

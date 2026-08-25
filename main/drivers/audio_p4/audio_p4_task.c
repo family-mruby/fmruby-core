@@ -14,12 +14,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#include "fmrb_rtos.h"
 #include "esp_timer.h"
 
 #include "apu_if.h"
 #include "apu_helper.h"
 #include "nsf_player.h"
 #include "fmsq_player.h"
+#include "fmrb_wav.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -56,6 +58,105 @@ static volatile bool g_engine_ready = false;
 
 static void engine_lock(void)   { xSemaphoreTake(g_engine_lock, portMAX_DELAY); }
 static void engine_unlock(void) { xSemaphoreGive(g_engine_lock); }
+
+// ------------------------------------------------------------------
+// WAV playback (play_wav): one clip mixed on top of the APU
+// ------------------------------------------------------------------
+//
+// The clip is read whole into PSRAM rather than streamed: the files this
+// serves are notification sounds and short spoken lines, and a reader task
+// feeding a ring would be a second timing loop to keep in step with the APU's.
+// A 2 MB ceiling (FMRB_WAV_MAX_BYTES) is about 60 s at 16 kHz, well past
+// anything that belongs in a notification.
+//
+// Everything below runs under the engine lock, including the mix in the task
+// loop, because starting a new clip frees the buffer the mixer is reading.
+static int16_t *g_wav_pcm = NULL;      // PSRAM, owns the samples
+static fmrb_wav_stream_t g_wav_stream; // reads g_wav_pcm
+
+static void wav_release_locked(void) {
+    fmrb_wav_stream_stop(&g_wav_stream);
+    if (g_wav_pcm) {
+        apuemu_free(g_wav_pcm);
+        g_wav_pcm = NULL;
+    }
+}
+
+// Read `path` (LittleFS-relative) and hand its samples to the mixer.
+// Returns 0 on success; every refusal logs exactly one line and leaves
+// whatever was already playing alone.
+int audio_p4_engine_play_wav(const char *path) {
+    if (!g_engine_ready) return -1;
+    if (!path || path[0] == '\0') {
+        FMRB_LOGW(TAG, "play_wav: empty path");
+        return -1;
+    }
+
+    char full_path[256];
+    snprintf(full_path, sizeof(full_path), "/flash%s", path);
+
+    FILE *fp = fopen(full_path, "rb");
+    if (!fp) {
+        FMRB_LOGW(TAG, "play_wav: cannot open %s", full_path);
+        return -1;
+    }
+    fseek(fp, 0, SEEK_END);
+    long fsize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    // Checked before reading: a file too big to play is also too big to hold.
+    if (fsize <= 0 || (uint32_t)fsize > FMRB_WAV_MAX_BYTES) {
+        FMRB_LOGW(TAG, "play_wav: %s is %ld bytes (limit %u)",
+                  full_path, fsize, (unsigned)FMRB_WAV_MAX_BYTES);
+        fclose(fp);
+        return -1;
+    }
+
+    uint8_t *raw = (uint8_t *)apuemu_malloc((uint32_t)fsize);
+    if (!raw) {
+        FMRB_LOGE(TAG, "play_wav: out of memory for %ld bytes", fsize);
+        fclose(fp);
+        return -1;
+    }
+    size_t rd = fread(raw, 1, (size_t)fsize, fp);
+    fclose(fp);
+    if (rd != (size_t)fsize) {
+        FMRB_LOGW(TAG, "play_wav: short read %zu/%ld on %s", rd, fsize, full_path);
+        apuemu_free(raw);
+        return -1;
+    }
+
+    fmrb_wav_info_t info;
+    fmrb_wav_err_t err = fmrb_wav_parse(raw, (size_t)fsize, &info);
+    if (err != FMRB_WAV_OK) {
+        FMRB_LOGW(TAG, "play_wav: %s rejected: %s", full_path, fmrb_wav_strerror(err));
+        apuemu_free(raw);
+        return -1;
+    }
+
+    // Move the samples to the front of the allocation. The data chunk starts
+    // at an even offset in every file seen so far, but "so far" is not an
+    // alignment guarantee on RISC-V, and one memmove is cheaper than finding
+    // out the hard way. It also lets the header bytes be reused as slack.
+    memmove(raw, raw + info.data_offset, (size_t)info.frames * 2u);
+
+    engine_lock();
+    wav_release_locked();
+    g_wav_pcm = (int16_t *)raw;
+    fmrb_wav_stream_start(&g_wav_stream, g_wav_pcm, info.frames,
+                          info.sample_rate, FMRB_APU_MIX_RATE);
+    engine_unlock();
+
+    FMRB_LOGI(TAG, "play_wav: %s (%lu frames @ %lu Hz)", full_path,
+              (unsigned long)info.frames, (unsigned long)info.sample_rate);
+    return 0;
+}
+
+void audio_p4_engine_stop_wav(void) {
+    if (!g_engine_ready) return;
+    engine_lock();
+    wav_release_locked();
+    engine_unlock();
+}
 
 // ------------------------------------------------------------------
 // Engine operations (called from the command dispatch path)
@@ -402,6 +503,11 @@ static void audio_p4_task(void *arg) {
         int16_t buffer[(NTSC_SAMPLE + 1) * 2];
         memset(buffer, 0, sizeof(buffer));
         int count = apuif_process_mix(buffer, sizeof(buffer) / sizeof(buffer[0]));
+        // PCM rides on top of the APU's own mix, at the same mono rate, so
+        // there is nothing to resample here -- play_wav already matched the
+        // clip to it. Once the clip ends the mixer adds nothing and the
+        // buffer is the APU's again.
+        fmrb_wav_stream_mix(&g_wav_stream, buffer, count);
 
         engine_unlock();
 
@@ -441,9 +547,17 @@ fmrb_err_t audio_p4_task_init(void) {
         return FMRB_ERR_FAILED;
     }
 
-    BaseType_t ok = xTaskCreatePinnedToCore(
+    // Registered with the task monitor rather than created raw, so its stack
+    // high-water shows up in the periodic fmrb_task: dump. Until play_wav
+    // there was nothing in this task worth watching; now there is a file's
+    // worth of samples going through it, and "did that cost stack?" should be
+    // answerable from a serial capture.
+    // The handle is what gets registered -- passing NULL creates the task but
+    // leaves it out of the monitor.
+    static TaskHandle_t s_audio_task = NULL;
+    BaseType_t ok = fmrb_task_create_pinned(
         audio_p4_task, "audio_p4", FMRB_AUDIO_P4_TASK_STACK_SIZE, NULL,
-        FMRB_AUDIO_P4_TASK_PRIORITY, NULL, FMRB_AUDIO_P4_TASK_CORE);
+        FMRB_AUDIO_P4_TASK_PRIORITY, &s_audio_task, FMRB_AUDIO_P4_TASK_CORE);
     if (ok != pdPASS) {
         FMRB_LOGE(TAG, "Failed to create audio_p4 task");
         return FMRB_ERR_FAILED;

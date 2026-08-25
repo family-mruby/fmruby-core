@@ -41,6 +41,11 @@ int  audio_p4_engine_fmsq_play_slot(uint32_t music_id, uint8_t instance);
 int  audio_p4_engine_note_on(uint8_t channel, uint16_t freq, uint8_t volume,
                              uint8_t duty, uint8_t sweep);
 int  audio_p4_engine_note_off(uint8_t channel);
+// Play a WAV file (PCM 16-bit mono, 8-48 kHz, up to FMRB_WAV_MAX_BYTES) from
+// a LittleFS path, mixed on top of whatever the APU is doing. Starting one
+// while another plays replaces it. Returns 0 when it started.
+int  audio_p4_engine_play_wav(const char *path);
+void audio_p4_engine_stop_wav(void);
 
 #ifdef __cplusplus
 }

@@ -281,6 +281,25 @@ int audio_p4_process_command(const uint8_t *data, size_t size) {
             }
             break;
 
+        case FMRB_AUDIO_CMD_PLAY_WAV:
+            if (size >= sizeof(fmrb_audio_play_wav_cmd_t)) {
+                const fmrb_audio_play_wav_cmd_t *cmd =
+                    (const fmrb_audio_play_wav_cmd_t *)data;
+                if (size >= sizeof(*cmd) + cmd->path_len) {
+                    char path[128];
+                    int len = cmd->path_len < sizeof(path) - 1
+                                  ? cmd->path_len : (int)sizeof(path) - 1;
+                    memcpy(path, cmd->path, len);
+                    path[len] = '\0';
+                    return audio_p4_engine_play_wav(path);
+                }
+            }
+            break;
+
+        case FMRB_AUDIO_CMD_STOP_WAV:
+            audio_p4_engine_stop_wav();
+            return 0;
+
         case FMRB_AUDIO_CMD_LOAD_FMSQ_FILE:
             if (size >= sizeof(fmrb_audio_load_fmsq_file_cmd_t)) {
                 return process_load_fmsq_file(
