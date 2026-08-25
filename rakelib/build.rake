@@ -4,6 +4,29 @@
 # docker command strings live in the top-level Rakefile, which Rake
 # loads before every file in rakelib/.
 
+# Developer's tts key (doc/user_extension/voice). A reflash rewrites the
+# storage image and with it /home, which kept wiping the api_key out of
+# /home/services.toml -- so a dev build bakes the key into the GENERATED
+# /etc/services.toml instead ([tts.config] merges field by field, and a
+# user's own /home entry still wins). The key lives outside the repo in
+# ~/.openai_key, like config/wifi.toml, and flash/etc/services.toml is
+# gitignored, so it cannot be committed. Never on CI: that is where release
+# firmware is built.
+def inject_tts_api_key(toml = 'flash/etc/services.toml')
+  return if ENV['CI']
+  key_file = File.expand_path('~/.openai_key')
+  return unless File.exist?(toml) && File.exist?(key_file)
+  key = File.read(key_file).strip
+  return if key.empty?
+  File.open(toml, 'a') do |f|
+    f.puts ""
+    f.puts "# Appended by rake from ~/.openai_key (dev build only, not in git)."
+    f.puts "[tts.config]"
+    f.puts "api_key = \"#{key}\""
+  end
+  puts "tts: api_key injected from ~/.openai_key"
+end
+
 namespace :build do
   desc "Linux target build (dev/test). FMRB_KERNEL_ENGINE=spinel swaps the kernel."
   task :linux => :setup do
@@ -26,6 +49,7 @@ namespace :build do
     # in for a machine that has no services.
     if MODERN_HW_TARGETS.include?(HW_TARGET)
       cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
+      inject_tts_api_key
     else
       rm_f 'flash/etc/services.toml'
     end
@@ -96,6 +120,7 @@ namespace :build do
     # of the service files for Retro (top-level CMakeLists).
     if MODERN_HW_TARGETS.include?(hw_target)
       cp 'config/services.toml', 'flash/etc/services.toml', verbose: true
+      inject_tts_api_key
     else
       rm_f 'flash/etc/services.toml'
     end
