@@ -191,7 +191,10 @@ uint16_t display_p4_sprite_instance_create(uint16_t canvas_id,
     slot->visible       = true;
     memcpy(slot->image_ids, image_ids, sizeof(uint16_t) * frame_count);
 
-    FMRB_LOGI(TAG, "Instance create: id=%u canvas=%u frames=%u pos=(%d,%d) z=%d",
+    // One line per sprite instance, and a game makes them by the dozen while
+    // it runs -- too much for a normal capture to stay readable. The failure
+    // cases above stay at error level.
+    FMRB_LOGD(TAG, "Instance create: id=%u canvas=%u frames=%u pos=(%d,%d) z=%d",
               id, canvas_id, frame_count, (int)x, (int)y, (int)z_order);
     return id;
 }

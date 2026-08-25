@@ -2008,7 +2008,9 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         uint16_t inst_id = display_p4_sprite_instance_create(
             cmd->canvas_id, local_image_ids, cmd->frame_count,
             cmd->x, cmd->y, cmd->z_order);
-        FMRB_LOGI(TAG, "CREATE_SPRITE_INSTANCE: canvas=%u frames=%u -> id=%u",
+        // Same event as the sprite module's own line just above; both are
+        // debug-level for the same reason.
+        FMRB_LOGD(TAG, "CREATE_SPRITE_INSTANCE: canvas=%u frames=%u -> id=%u",
                   cmd->canvas_id, cmd->frame_count, inst_id);
         fmrb_link_graphics_sprite_instance_created_t resp = { .instance_id = inst_id };
         send_ack(msg_type, seq, (const uint8_t *)&resp, sizeof(resp));
