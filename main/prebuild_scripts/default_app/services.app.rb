@@ -313,8 +313,13 @@ class ServicesApp < FmrbApp
     end
     begin
       require(path)
-    rescue => e
-      Log.error("services: cannot load #{entry.name} (#{path}): #{e.message}")
+    rescue StandardError, ScriptError => e
+      # ScriptError as well: a service file with a typo in it raises
+      # SyntaxError from the compile inside require, and a missing require of
+      # its own raises LoadError. Both are ScriptError, not StandardError, so
+      # a plain `rescue => e` lets them past and the host dies for one bad
+      # file (see the note above call_service).
+      Log.error("services: cannot load #{entry.name} (#{path}): #{e.class}: #{e.message}")
       return false
     end
 
@@ -326,8 +331,8 @@ class ServicesApp < FmrbApp
     begin
       klass = Object.const_get(cname)
       entry.obj = klass.new
-    rescue => e
-      Log.error("services: cannot start #{entry.name} (#{cname}): #{e.message}")
+    rescue StandardError, ScriptError => e
+      Log.error("services: cannot start #{entry.name} (#{cname}): #{e.class}: #{e.message}")
       return false
     end
 
@@ -376,8 +381,8 @@ class ServicesApp < FmrbApp
         out << t unless t.empty?
         i += 1
       end
-    rescue => e
-      Log.warn("services: bad SUBSCRIBE list: #{e.message}")
+    rescue StandardError, ScriptError => e
+      Log.warn("services: bad SUBSCRIBE list: #{e.class}: #{e.message}")
     end
     out
   end
@@ -424,6 +429,20 @@ class ServicesApp < FmrbApp
   #
   # kind: 0 on_start / 1 on_tick / 2 on_event / 3 on_stop / 4 on_wake.
   # Returns false when the call raised.
+  #
+  # ScriptError is caught alongside StandardError, and the pair is the whole
+  # of what a badly written service throws in practice: NotImplementedError
+  # (an API this machine does not have -- Machine.set_hwclock in the
+  # simulator is one, and it is a ScriptError, so a plain `rescue => e` used
+  # to let it past and kill the host for one service's mistake), LoadError and
+  # SyntaxError. Catching them keeps S1's promise that one bad service does
+  # not take the others with it.
+  #
+  # Bare Exception is deliberately NOT caught. It is what remains for the
+  # things a rescue here cannot honestly handle -- SystemStackError arrives
+  # mid-unwind, and a service that raises Exception itself is saying the host
+  # should end, which is how the kernel's restart path is exercised
+  # (doc/user_extension/services/report/s2.md).
   def call_service(entry, kind, a, b)
     obj = entry.obj
     return false unless obj
@@ -444,7 +463,7 @@ class ServicesApp < FmrbApp
       when 4
         obj.on_wake(a)
       end
-    rescue => e
+    rescue StandardError, ScriptError => e
       ok = false
       Log.error("svc[#{entry.name}] #{e.class}: #{e.message}")
       if entry.note_error
