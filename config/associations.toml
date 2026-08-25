@@ -1,0 +1,29 @@
+# Which app opens which file (/etc/associations.toml).
+#
+# Shipped with the firmware and copied into the flash image by the build, so
+# this file -- not flash/etc/associations.toml -- is the one to edit. A user
+# overrides any line of it in /home/associations.toml, per extension.
+#
+# One line per extension, no dot, and one of three answers:
+#   "run"        the file IS a program: spawn it
+#   "edit"       open it in the editor
+#   "/app/..."   spawn that app and hand it the file
+#
+# An extension that is not listed gets "edit". A directory is never opened
+# this way. The table is read once when an app starts, so a change takes
+# effect the next time it does.
+
+# Programs run themselves.
+rb  = "run"
+lua = "run"
+bas = "run"
+py  = "run"
+
+# Documents go to the app that knows them.
+md  = "/app/tool/picorabbit.app.rb"
+nsf = "/app/tool/nsf_player.app.rb"
+
+# Text is the editor's, and so is everything unlisted.
+txt = "edit"
+toml = "edit"
+json = "edit"

@@ -30,6 +30,10 @@ namespace :build do
       rm_f 'flash/etc/services.toml'
     end
 
+    # File associations (doc/user_extension/assoc). Both machines have this
+    # one -- unlike services, opening a file is not Modern-only.
+    cp 'config/associations.toml', 'flash/etc/associations.toml', verbose: true
+
     # Spinel engine(s): pre-generate the C on the host (the compiler is not
     # available inside the docker build) and forward the engine(s) into the build.
     # Always true, matching FMRB_ANY_SPINEL in main/CMakeLists.txt: the gems
@@ -95,6 +99,9 @@ namespace :build do
     else
       rm_f 'flash/etc/services.toml'
     end
+
+    # File associations (doc/user_extension/assoc), both machines.
+    cp 'config/associations.toml', 'flash/etc/associations.toml', verbose: true
 
     # WiFi credentials (P4 via the C6, S3 native): config/wifi.toml is kept
     # out of git (see config/wifi.toml.example). Copied into the flash image

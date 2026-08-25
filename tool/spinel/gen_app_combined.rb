@@ -44,6 +44,7 @@ APPS = {
       File.join(MRBLIB_DIR, "fmrb-sprite.rb"),
       File.join(MRBLIB_DIR, "fmrb-audio.rb"),
       File.join(MRBLIB_DIR, "fmrb-ui.rb"),
+      File.join(MRBLIB_DIR, "fmrb-assoc.rb"),   # FmrbAssoc (file -> app)
     ],
     # Mixin directory (globbed + sorted, like compile_ruby_to_bytecode.cmake).
     mixin_dir: File.join(KERNEL_DIR, "system_desktop"),

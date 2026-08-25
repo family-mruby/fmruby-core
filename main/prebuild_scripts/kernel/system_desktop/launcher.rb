@@ -777,9 +777,14 @@ module LauncherMixin
     draw_foreground
   end
 
-  def spawn_app(app_name)
-    Log.info("Requesting spawn: #{app_name}")
+  # +open_path+ asks the kernel to hand that file to the new app as soon as it
+  # has a queue, as a file_selected control message. The kernel does the
+  # waiting (its spawn handler defers the send until the app can receive it),
+  # which is why nothing here counts ticks any more.
+  def spawn_app(app_name, open_path = nil)
+    Log.info("Requesting spawn: #{app_name}#{open_path ? " with #{open_path}" : ""}")
     data = { "cmd" => "spawn", "app_name" => app_name }
+    data["open_path"] = open_path if open_path
     success = send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
     if success
       Log.info("Spawn request sent successfully")

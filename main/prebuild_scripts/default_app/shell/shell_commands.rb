@@ -89,6 +89,8 @@ module ShellCommandsMixin
       cmd_irb
     when "run"
       cmd_run(args)
+    when "open"
+      cmd_open(args)
     when "ps"
       cmd_ps
     when "kill"
@@ -115,6 +117,7 @@ module ShellCommandsMixin
       @history << "  edit [-f] <file> - Open file in the editor (-f: fullscreen)"
       @history << "  create_app <name> - Generate /app/usr/<name>.app.{rb,toml} from template"
       @history << "  irb - Interactive Ruby"
+      @history << "  open <file> - Open a file with the app it is associated with"
       @history << "  run <script> [&] - Run script"
       @history << "  run <script> > <file> - Redirect output"
       @history << "  ps - List tasks and jobs"
@@ -860,6 +863,37 @@ module ShellCommandsMixin
     end
 
     @history << "[#{job_id}] Running: #{script_path}"
+  end
+
+  # Open a file the way the association table says to (FmrbAssoc): "run"
+  # spawns the file itself, "edit" opens the editor, and an app path spawns
+  # that app with the file handed to it. `run` stays what it always was -- the
+  # user naming the action -- and this is the one that asks the table.
+  def cmd_open(args)
+    if args.empty?
+      @history << "Usage: open <file>   (uses /etc/associations.toml)"
+      return
+    end
+    arg = args[0]
+    path = if arg.start_with?("/")
+             arg
+           elsif @current_dir == "/"
+             "/#{arg}"
+           else
+             "#{@current_dir}/#{arg}"
+           end
+    unless File.exist?(path)
+      @history << "open: no such file: #{args[0]}"
+      return
+    end
+    action = FmrbAssoc.resolve(path)
+    if action == FmrbAssoc::RUN
+      spawn_app(path)
+    elsif action == FmrbAssoc::EDIT
+      spawn_app("default/editor", path)
+    else
+      spawn_app(action, path)
+    end
   end
 
   # --- Process / Job management ---

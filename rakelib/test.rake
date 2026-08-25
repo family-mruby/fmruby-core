@@ -14,8 +14,9 @@
 #
 # Lints (spinel:doctor) are separate again: they need the Spinel compiler
 # checkout and report style/inference issues, not pass/fail like these suites.
-desc "Run all native host test suites (FmrbUI + services + picoruby-ti + BASIC + MicroPython)"
-task :test => ["ui:test", "services:test", "ti:test", "basic:test", "micropython:smoke"]
+desc "Run all native host test suites (FmrbUI + services + assoc + picoruby-ti + BASIC + MicroPython)"
+task :test => ["ui:test", "services:test", "assoc:test", "ti:test", "basic:test",
+               "micropython:smoke"]
 
 namespace :ui do
   # FmrbUI is pure Ruby over a few FmrbGfx calls, so the real mrblib file runs
@@ -35,6 +36,16 @@ namespace :services do
   desc "Service host rule tests (host Ruby, no docker)"
   task :test do
     sh "ruby test/services/run.rb"
+  end
+end
+
+namespace :assoc do
+  # The file association table (doc/user_extension/assoc). Its resolution is
+  # plain Ruby over Strings, so the gem file runs here with its two file reads
+  # replaced. Run it after touching mrblib/fmrb-assoc.rb.
+  desc "File association tests (host Ruby, no docker)"
+  task :test do
+    sh "ruby test/assoc/run.rb"
   end
 end
 

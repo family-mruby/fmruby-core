@@ -148,7 +148,6 @@ class SystemDesktopApp < FmrbApp
     @fmgr_ctx_idx = -1
     @fmgr_copy_path = nil
     @fmgr_copy_is_dir = false
-    @fmgr_pending_edit_path = nil
 
     # Confirm dialog state
     @cdlg_open = false
@@ -1113,32 +1112,6 @@ class SystemDesktopApp < FmrbApp
       if usage >= 70
         Log.info("desktop: watermark GC at #{usage}% pool usage")
         GC.start
-      end
-    end
-
-    # Deferred: send file path to editor after it has started
-    if @fmgr_pending_edit_path && @fmgr_pending_edit_counter
-      @fmgr_pending_edit_counter -= 1
-      if @fmgr_pending_edit_counter <= 0
-        # Find editor PID from window list (most recently spawned)
-        processes = FmrbApp.ps
-        if processes
-          editor = processes.select { |p| p[:name] == "FM-Editor" && p[:state] == FmrbConst::PROC_STATE_RUNNING }.last
-          if editor
-            editor_pid = editor[:id]
-            # Use file_select_result via kernel to forward to editor
-            data = {
-              "cmd" => "file_select_result",
-              "target_pid" => editor_pid,
-              "path" => @fmgr_pending_edit_path,
-              "mode" => "open"
-            }
-            send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL, data)
-            Log.info("Sent file_selected to Editor PID #{editor_pid}: #{@fmgr_pending_edit_path}")
-          end
-        end
-        @fmgr_pending_edit_path = nil
-        @fmgr_pending_edit_counter = nil
       end
     end
 

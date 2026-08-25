@@ -18,6 +18,8 @@ flash/etc/system_conf.toml
 flash/etc/services.toml
 # Written by the service host at runtime (svc enable / svc disable)
 flash/home/services_state.toml
+# File association table, generated from config/associations.toml
+flash/etc/associations.toml
 flash/home/music/
 # Launcher app index, rebuilt on demand by the desktop
 flash/var/cache/launcher_index

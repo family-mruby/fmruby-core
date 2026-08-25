@@ -490,8 +490,8 @@ module FileManagerMixin
     @fmgr_last_click_idx = -1
     if entry[:is_dir]
       fmgr_navigate_dir(entry[:name])
-    elsif fmgr_runnable?(entry[:name])
-      fmgr_run_file(@file_manager_selected)
+    else
+      fmgr_open_file(@file_manager_selected)
     end
     # Explicit: the branches end in a FmrbGfx (present) and a void leaf, which
     # Spinel cannot give one return type (ruby_writing_constraints B).
@@ -656,11 +656,39 @@ module FileManagerMixin
 
     Log.info("File manager: edit #{file_path}")
     close_file_manager
+    # The kernel hands the path over once the editor can receive it. This used
+    # to spawn and then count update cycles here before sending the message
+    # itself, which was the same job done worse: the count was a guess, and it
+    # was the only caller in the machine still doing it.
+    spawn_app("default/editor", file_path)
+    nil
+  end
 
-    # Spawn editor then send file_selected message after it starts
-    spawn_app("default/editor")
-    @fmgr_pending_edit_path = file_path
-    @fmgr_pending_edit_counter = 3  # Wait a few update cycles for editor to init
+  # Double click, or Enter: open the file the way the association table says
+  # to (FmrbAssoc). "run" spawns the file itself, "edit" opens the editor, and
+  # an app path spawns that app with the file handed to it. The right-click
+  # menu keeps its own Run and Edit -- those are the user saying which, and
+  # the table is only consulted when they have not.
+  def fmgr_open_file(idx)
+    return if idx < 0 || idx >= @file_manager_entries.size
+    entry = @file_manager_entries[idx]
+    return if entry[:is_dir]
+    vpath = fmgr_selected_virtual_path
+    return unless vpath
+
+    action = FmrbAssoc.resolve(vpath)
+    if action == FmrbAssoc::RUN
+      fmgr_run_file(idx)
+      return nil
+    end
+    if action == FmrbAssoc::EDIT
+      fmgr_edit_file(idx)
+      return nil
+    end
+    Log.info("File manager: open #{vpath} with #{action}")
+    close_file_manager
+    spawn_app(action, vpath)
+    nil
   end
 
   def fmgr_copy_file(idx)
