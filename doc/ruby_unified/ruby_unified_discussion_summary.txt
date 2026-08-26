@@ -1,0 +1,1355 @@
+Ruby Unified 構想 — 議論まとめ
+
+1. 発端
+
+もともとは Family mruby に Zenoh を接続すると何ができるか、という話から始まった。
+
+Family mruby はマイコン向けのRuby環境／OSであり、現在そのコアはすでに Spinel を採用している。Spinelのマイコン対応自体を次回RubyKaigiの題材にすることも考えていたが、すでに実装がかなり進んでおり、さらに他にもSpinelをマイコンで動かしている事例を見かけたため、「Spinelをマイコンに移植した」というテーマ単体より、もっと大きなテーマへ発展させたいという流れになった。
+
+そこで出てきたのが、
+
+CRuby、Spinel / Family mruby、マイコン、Web、ROS 2、外部サービスなどを、Rubyから一つの世界として扱う
+
+という構想。
+
+仮称として Ruby Unified が有力になっている。
+
+RubyKaigiの発表タイトル案としては、
+
+Ruby Unified: From the Web to Microcontrollers
+
+がかなり良いという話になった。
+
+
+2. Ruby Unified の中心思想
+
+Ruby Unifiedは、単純な「Ruby用通信ライブラリ」ではない。
+
+目指しているのは、
+
+異なるRuby実装・異なるプロセス・異なるマシン・マイコン・ロボット・Webサービスを、Rubyから一つの分散資源空間として扱う
+
+こと。
+
+イメージとしては、
+
+                    Ruby Unified
+                         │
+                Distributed Resource Space
+                         │
+                      Zenoh
+                         │
+        ┌────────────────┼────────────────┐
+        │                │                │
+      CRuby         Family mruby        ROS 2
+   Rails / Linux        Spinel             │
+                         │              Robots
+                     ESP32 / RP2350
+
+実体がどこにあるかをなるべくRubyコードから隠す。
+
+例えば、
+
+robot = RubyUnified["/robots/a2"]
+sensor = RubyUnified["/devices/pico1"]
+
+robot.stop
+robot.pose
+
+sensor.temperature
+
+と書いたとき、
+
+robot がROS 2（Robot Operating System 2：ロボット向けミドルウェア）経由なのか、別のRubyプロセスなのか、別のマシンなのか、マイコンなのかをアプリケーションコードではあまり意識しなくてよい世界を目指す。
+
+思想的には、
+
+Everything must be Ruby.
+
+ではなく、
+
+Everything can be reached from Ruby.
+
+に近い。
+
+PythonやC++などの処理系を排除するのではなく、Rubyを「統合・オーケストレーションする言語」として中心に置く。
+
+
+3. dRubyとの関係
+
+この構想には dRuby（Distributed Ruby：Rubyオブジェクトをネットワーク越しに扱う仕組み）が非常に重要な先行思想として存在する。
+
+dRubyでは、
+
+remote = DRbObject.new_with_uri(...)
+remote.some_method
+
+のように、別プロセス／別マシン上のRubyオブジェクトを代理オブジェクト経由で操作できる。
+
+Ruby Unifiedは、dRubyを否定するのではなく、
+
+dRubyがCRuby世界で実現したDistributed Objectの思想を、複数Ruby処理系・マイコン・WAN・Pub/Sub・外部システムまで広げる
+
+と考えると整理しやすい。
+
+ただしRuby Unifiedは単なるRPC（Remote Procedure Call：遠隔手続き呼び出し）ではなく、
+
+Remote Object
++ Resource
++ Event
++ Pub/Sub
++ Query
++ Discovery
++ VFS
++ WAN
++ MCU
+
+まで扱う。
+
+その意味では「dRubyの現代版」というより、
+
+dRubyの思想を、Zenohのような分散データ基盤の上で再設計する
+
+ものになる。
+
+
+4. Zenohをバックエンドにする理由
+
+マイコンを重視する条件では、Zenohはかなり有力な第一候補。
+
+Zenohにはマイコン向けの zenoh-pico があり、ESP32、RP2040 / RP2350系、FreeRTOS（Free Real-Time Operating System：組み込み向けリアルタイムOS）などを対象にできる。
+
+また単なるPub/Sub（Publish/Subscribe：発行・購読型通信）だけでなく、
+
+Put
+Get / Query
+Queryable
+Pub/Sub
+Liveliness
+Key Expression
+
+を持っている。
+
+このためRuby Unifiedの操作モデルと対応させやすい。
+
+例えば、
+
+Ruby Unified                  Zenoh
+
+property read          →      Query
+property write         →      Put
+method call            →      Query
+event                  →      Pub/Sub
+discovery              →      Liveliness / Query
+
+という対応が考えられる。
+
+MQTT（Message Queuing Telemetry Transport：軽量な発行・購読通信プロトコル）でも双方向通信はできるが、基本はBroker（ブローカー：中継サーバ）を中心とするPub/Subモデル。
+
+一方ZenohはQueryや分散名前空間、Peer-to-Peer（ピアツーピア：端末間直接通信）、Router構成、WAN（Wide Area Network：広域ネットワーク）、マイコン対応まで一つのモデルで扱える。
+
+そのため、
+
+MQTTはメッセージ配送基盤寄り
+Zenohは分散データ空間寄り
+
+という整理になった。
+
+
+5. NAT越えと遠隔通信
+
+Zenohは遠隔地通信にも使える。
+
+NAT（Network Address Translation：プライベートアドレス変換）越えについては、必ずしもZenoh Routerが必要というわけではないが、両端が家庭や会社のNAT配下の場合、
+
+Family mruby
+     │ outbound
+     ▼
+ Internet上のZenoh Router
+     ▲
+     │ outbound
+   CRuby
+
+という方式が実用的。
+
+両端から外向き接続するため、拠点側のポート開放を避けやすい。
+
+VPN（Virtual Private Network：仮想専用網）を使ってPeer接続する手もある。
+
+セキュリティは、
+
+TLS
+mTLS
+ACL
+
+を基本にする。
+
+TLS（Transport Layer Security：通信路暗号化）またはQUIC（Quick UDP Internet Connections：TLSを内包するUDPベース通信）、mTLS（Mutual TLS：相互証明書認証）、ACL（Access Control List：アクセス制御規則）などを利用する。
+
+Family mruby側では秘密鍵や証明書をアプリVMから直接見せず、Kernel側／通信層で管理する方針がよさそう。
+
+
+6. Zenohの名前空間
+
+ZenohはUnixのパスに似たKey Expression（キー式：階層的な名前指定）を使える。
+
+例えば、
+
+devices/tab5-01/sensor/temperature
+devices/pico-01/gpio/5
+
+robots/a2/pose
+robots/a2/status
+robots/a2/cmd
+
+services/vision
+
+など。
+
+ワイルドカードとして、
+
+*
+**
+
+などが使えるため、
+
+devices/*/sensor/temperature
+robots/**/status
+
+のような購読も可能。
+
+重要なのは、名前がIPアドレスや通信相手ではなく、
+
+何の資源なのか
+
+を表すこと。
+
+つまり、
+
+robots/a2/pose
+
+は「このIPへ送れ」という意味ではなく、「A2のPoseという資源」を指す。
+
+Ruby Unifiedでは、この名前空間をさらに抽象化し、
+
+/robots/a2
+/devices/tab5-01
+/services/vision
+
+のような論理Resource名前空間にする方針がよい。
+
+Zenoh内部のKey構造をRuby Unified APIに直接露出させない。
+
+
+7. Zenohのデータ型とRuby Unifiedの型
+
+Zenoh自体は強い型システムを持たない。
+
+基本は、
+
+Key
++
+Payload
++
+Encoding
+
+というモデル。
+
+Payloadはバイト列で、EncodingがJSON、Text、Integer、CDRなどの意味を示す。
+
+つまりZenohは、
+
+Robot
+  battery: Integer
+  stop(): void
+
+といったオブジェクト構造までは規定しない。
+
+そのため、
+
+Ruby Unified
+    ↓
+Resource / Method / Property / Event
+    ↓
+Ruby Unified value protocol
+    ↓
+Zenoh
+    ↓
+Key + bytes + encoding
+
+という層分離にする。
+
+Ruby Unifiedでは最低限、
+
+nil
+Boolean
+Integer
+Float
+String
+Symbol
+Array
+Hash
+Binary
+RemoteReference
+Error
+
+などの型表現を定義する必要がある。
+
+MessagePack（MessagePack：コンパクトなバイナリ直列化形式）は初期候補。
+
+ただしROS 2のCDR（Common Data Representation：ROS 2などで使われるバイナリ直列化形式）、JSON、独自バイナリなどを共存させたいので、Encodingはきちんと扱う。
+
+Ruby Unified独自のEncodingを定義することも考えられる。
+
+重要な原則は、
+
+Zenohの型システムを作るのではなく、Ruby Unifiedの意味論をZenoh Payload上に載せる
+
+こと。
+
+
+8. Resourceを中心にしたモデル
+
+Ruby Unifiedの内部モデルとして、いきなりRemoteObjectだけを中心にするより、
+
+Resource（名前を持つ分散資源）
+
+を中心にする方がよさそうという話になった。
+
+例えば、
+
+/robots/a2
+
+というResourceがあり、
+
+Resource
+ ├─ Properties
+ ├─ Methods
+ └─ Events
+
+を持つ。
+
+例：
+
+/robots/a2
+
+properties
+  pose
+  battery
+  mode
+
+methods
+  stop()
+  move_to(x:, y:)
+
+events
+  arrived
+  collision
+  battery_changed
+
+Rubyでは、
+
+robot = RubyUnified["/robots/a2"]
+
+robot.battery
+robot.stop
+robot.move_to(x: 1.0, y: 2.0)
+
+robot.on(:collision) do
+  ...
+end
+
+と見せる。
+
+内部では、
+
+Resource
+  ├─ Object View
+  ├─ File View
+  └─ Event View
+
+という複数ビューを持たせる構想。
+
+
+9. VFSとして見せる
+
+VFS（Virtual File System：仮想ファイルシステム）としてZenoh空間を見せる案がかなり有力。
+
+例えば、
+
+/net/
+  tab5-01/
+    sensor/
+      temp
+    gpio/
+      0
+      1
+
+  robot-a2/
+    pose
+    status
+
+として、
+
+cat /net/tab5-01/sensor/temp
+
+がZenoh Query、
+
+echo 1 > /net/tab5-01/gpio/0
+
+がZenoh Putになる。
+
+Ruby側では、
+
+RubyUnified::File.read("/devices/tab5-01/sensor/temp")
+
+という正式APIをまず作り、必要ならCRubyの File や Dir に prepend 等で拡張して、
+
+File.read("/net/devices/tab5-01/sensor/temp")
+
+まで実現する。
+
+ただし通常のファイルと分散Resourceは意味論が違う。
+
+通常のFileには、
+
+seek
+position
+truncate
+stat
+chmod
+lock
+descriptor
+
+などの意味があるため、「本当のPOSIXファイル」と完全互換にしようとするのは危険。
+
+そのため、
+
+VFSはRuby Unified Resourceを見るための一つのビュー
+
+という位置づけにする。
+
+FUSE（Filesystem in Userspace：ユーザー空間ファイルシステム）でOS全体にマウントする案もあるが、Rubyの世界として統一するならRubyレベルVFSの方が発表テーマとして綺麗。
+
+
+10. RemoteObjectとIntrospection
+
+遠隔オブジェクトをRubyらしく扱う場合、
+
+robot.respond_to?(:stop)
+robot.remote_methods
+robot.remote_properties
+robot.remote_events
+
+などが必要になる。
+
+つまりIntrospection（イントロスペクション：実行時に対象の構造を調べる仕組み）が必要。
+
+例えばResourceのメタ情報として、
+
+/robots/a2/$meta
+
+に、
+
+{
+  "type": "Robot",
+  "methods": {
+    "stop": {},
+    "move_to": {
+      "keywords": ["x", "y"]
+    }
+  },
+  "properties": {
+    "battery": {
+      "type": "Integer",
+      "readonly": true
+    }
+  },
+  "events": [
+    "collision",
+    "arrived"
+  ]
+}
+
+のような情報を持つ。
+
+これにより、
+
+robot.respond_to?(:move_to)
+
+などを実現できる。
+
+さらにGUI（Graphical User Interface：画面操作インターフェース）をメタ情報から自動生成することも可能。
+
+
+11. 任意のRubyメソッドを公開しない
+
+Rubyの methods や send をそのままネットワークへ露出させるのは危険。
+
+例えば、
+
+instance_variable_get
+class_eval
+send
+
+などを遠隔実行できるようにしてはいけない。
+
+そのため、
+
+remote_export :stop
+remote_export :move_to
+remote_property :battery
+remote_event :collision
+
+のように、
+
+公開するRemote Interfaceを明示する
+
+方式がよい。
+
+Ruby Unifiedにおける「RemoteObject」はRubyオブジェクトそのものではなく、
+
+Rubyオブジェクトから明示的にExportされたInterface
+
+を遠隔公開する。
+
+
+12. Ruby Unifiedで決めるべき契約
+
+最重要なのはZenoh Key設計より、Ruby Unifiedとしての契約。
+
+少なくとも以下を決める必要がある。
+
+名前空間契約では、Resource ID、ルート構造、名前の一意性、ノード名と資源名の関係を決める。
+
+Resource契約では、Property、Method、Eventの定義と意味を決める。
+
+呼び出し契約では、位置引数、キーワード引数、戻り値、同期／非同期、Timeoutを決める。
+
+型契約では、Ruby基本型、Binary、ユーザー定義型、RemoteReferenceなどの表現を決める。
+
+Introspection契約では、respond_to?、Method一覧、Property一覧、Event一覧、型情報の取得方法を決める。
+
+Error契約では、Remote Exception、Timeout、Disconnected、NotFound、PermissionDeniedなどの扱いを決める。
+
+Lifetime契約では、Remote Referenceの寿命、GC（Garbage Collection：不要オブジェクト回収）、相手切断時の扱いを決める。
+
+Event契約では、順序保証、重複、再送、購読解除などを決める。
+
+Security契約では、誰がどのResourceに対してread/write/call/subscribeできるかを決める。
+
+Backend契約では、Zenoh以外の通信実装にも差し替えられる抽象インターフェースを決める。
+
+v1では、Rubyを完全遠隔化しない方針。
+
+特に、
+
+remote.send(...)
+remote.class_eval(...)
+remote.instance_variable_get(...)
+
+のようなことはやらない。
+
+Block / Procの完全な遠隔転送、object_id のグローバル意味論、分散GCも後回し。
+
+v1では、
+
+robot = RubyUnified["/robots/a2"]
+
+robot.battery
+robot.stop
+robot.move_to(x: 1, y: 2)
+
+robot.on(:collision) { ... }
+
+robot.respond_to?(:stop)
+
+が安定して動けば十分。
+
+
+13. Gem構成
+
+CRubyから先に開発するのがよいという結論になった。
+
+まず公式の zenoh-c をRuby C拡張でラップして、
+
+zenoh gem
+
+を作る。
+
+このgemはRuby Unified専用にはせず、Zenohの素直なRuby bindingとして独立させる。
+
+例えば、
+
+session = Zenoh.open
+
+session.put("demo/temp", "25.3")
+
+session.subscribe("demo/**") do |sample|
+  ...
+end
+
+session.get("demo/**") do |reply|
+  ...
+end
+
+のようなAPI。
+
+その上に別gemとして、
+
+ruby_unified
+
+を載せる。
+
+構造は、
+
+ruby_unified
+    │
+    ├─ Resource
+    ├─ RemoteObject
+    ├─ Event
+    ├─ Discovery
+    ├─ VFS
+    └─ Backend API
+             │
+         zenoh gem
+
+という形。
+
+重要なのは、
+
+Ruby Unified ≠ Zenoh
+
+にすること。
+
+Backend（バックエンド：下位通信方式の実装）を抽象化し、
+
+RubyUnified
+    │
+    ├─ ZenohBackend
+    ├─ LocalBackend
+    ├─ DRbBackend
+    └─ TestBackend
+
+のように差し替え可能にする。
+
+将来的には、
+
+zenoh
+ruby_unified
+ruby_unified-ros2
+ruby_unified-vfs
+
+などに分けられる。
+
+ただし初期は zenoh と ruby_unified の2gemで十分。
+
+
+14. 開発順序
+
+マイコン側から開始するのではなく、まずCRubyで仕様を固める。
+
+第一段階は zenoh gem。
+
+次にCRuby 2プロセス間でRuby Unifiedを動かす。
+
+例えば、
+
+remote = RubyUnified["/test/server"]
+
+remote.hello("Ruby")
+remote.respond_to?(:hello)
+remote.remote_methods
+
+を成立させる。
+
+そこで、
+
+Method invocation
+Property
+Keyword argument
+Return value
+Exception
+Timeout
+Serialization
+Introspection
+
+などの仕様を決める。
+
+CRuby実装を Reference Implementation（参照実装） にする。
+
+その後、
+
+CRuby
+   │
+Ruby Unified
+   │
+Zenoh
+   │
+zenoh-pico
+   │
+Family mruby / Spinel
+
+へ移植する。
+
+これにより、マイコン側では「仕様を考えながら実装する」のではなく、「既に固まったプロトコルを実装する」状態にできる。
+
+
+15. Family mrubyの位置づけ
+
+構想が拡大したため、Family mrubyという名前では全体を括れなくなる。
+
+Family mruby自体は改名せず、
+
+Ruby Unifiedに参加するマイコン側Ruby環境
+
+として残すのがよい。
+
+現在の関係は、
+
+Ruby Unified
+     │
+     ├─ CRuby
+     │
+     ├─ Family mruby
+     │     └─ Spinel
+     │          └─ MCU
+     │
+     └─ ROS 2 / Other systems
+
+となる。
+
+
+16. プロジェクト名の議論
+
+いくつか候補を検討した。
+
+RubySpace はObjectSpaceとの関連が分かりやすいが、ややインパクトが弱い。
+
+Ruby Continuum は「切れ目なく続くRuby世界」という意味が良いが、知的・抽象的で、宇宙的なワクワク感は弱い。
+
+Ruby Nexus は「結節点」という意味で強いが、中央集権的な印象がある。
+
+Ruby Cosmos は広い世界・宇宙のイメージが強い。
+
+Ruby Universe も非常に良いが、既存gem名等との衝突があり断念寄り。
+
+Grand Unified Ruby は物理学のGrand Unified Theory（大統一理論）を想起させて面白いが、やや大げさ。
+
+そこから、
+
+Ruby Unified
+
+が有力になった。
+
+英語として一般表現なら Unified Ruby の方が文法的には自然だが、プロジェクト名・タイトルとして Ruby Unified は十分成立する。
+
+ブランド名としてはむしろ「Rubyが一つになる」という動きを感じさせられる。
+
+発表タイトル候補として、
+
+Ruby Unified: From the Web to Microcontrollers
+
+が特に有力。
+
+
+17. Railsとの連携
+
+Ruby UnifiedのWeb側代表としてRailsを使うと、タイトルの「From the Web」が非常に具体的になる。
+
+構成は、
+
+Browser
+   │
+Rails / CRuby
+   │
+Ruby Unified
+   │
+Zenoh
+   ├─ Family mruby / Spinel / MCU
+   └─ ROS 2 / Robot
+
+Rails側から、
+
+robot = RubyUnified["/robots/a2"]
+
+robot.status
+robot.pose
+robot.navigate_to(x: 3.2, y: 1.8)
+robot.stop
+
+と書ける。
+
+RailsのDB上のRobotモデルと実物のRemote Resourceを対応させることもできる。
+
+robot = Robot.find(1)
+
+robot.name
+# DB上の情報
+
+robot.remote.battery
+# 実機情報
+
+robot.remote.navigate_to(...)
+# 実機操作
+
+また、
+
+Robot
+ ↓ Zenoh
+Rails
+ ↓ Action Cable
+Browser
+
+として、ロボットのリアルタイム状態をブラウザに表示できる。
+
+Railsからロボットを操作し、ロボットのイベントがブラウザへ戻ってくるデモはRubyKaigiでもかなり分かりやすい。
+
+
+18. Rubyでロボットを操作する価値
+
+Rubyの「書き味」はロボット制御、特に上位制御と相性が良い。
+
+Ruby Unifiedは低レベルのモータ制御をRubyに持ってくるものではない。
+
+モータ制御、安全制御、Hard Real-Time（厳密な時間制約が必要なリアルタイム処理）はロボット側に残す。
+
+Rubyは、
+
+Orchestration（オーケストレーション：複数要素を組み合わせて指示する上位制御）
+
+を担当する。
+
+例えば、
+
+robot.move_to x: 3.0, y: 2.0
+
+robot.on(:obstacle) do
+  robot.stop
+end
+
+や、
+
+robots.each do |robot|
+  robot.go_to charging_station
+end
+
+など。
+
+Rubyの、
+
+Block
+Keyword arguments
+Enumerable
+Dynamic dispatch
+DSL
+Module
+
+などが生きる。
+
+発表の根底にあるメッセージとしては、
+
+From Web Apps to the Physical World, in Ruby.
+
+も考えられる。
+
+
+19. ROS 2との連携
+
+なるべく独自ブリッジを作りたくないという方針。
+
+そのため zenoh-bridge-ros2dds を間に置くより、
+
+rmw_zenoh が使用しているZenoh表現と直接互換にする
+
+方向を検討している。
+
+RMW（ROS Middleware：ROS 2の通信抽象化層）として rmw_zenoh を使うROS 2ノードとは、
+
+ROS 2 Node
+    │
+rmw_zenoh
+    │
+Zenoh
+    │
+    ├─ CRuby / zenoh gem
+    └─ Family mruby / zenoh-pico
+
+で直接通信できる可能性がある。
+
+ただし rmw_zenoh の、
+
+Key Expression
+CDR serialization
+Attachment
+Liveliness token
+Type hash
+
+などの内部規則へ合わせる必要がある。
+
+TopicはZenoh Pub/Sub。
+
+ServiceはZenoh Query / Queryableとの対応がよい。
+
+ROS GraphはZenoh Livelinessから取得できる。
+
+これをRuby側で解釈すると、
+
+ROS.nodes
+ROS.topics
+ROS.services
+
+のようなAPIを、ROS 2 Client Libraryをリンクせず実現できる可能性がある。
+
+さらに上位では、
+
+robot = RubyUnified["/robots/a2"]
+
+robot.pose
+robot.navigate_to(...)
+robot.stop
+
+まで抽象化する。
+
+ただしRuby Unifiedコアを rmw_zenoh の内部仕様には依存させない。
+
+Ruby Unified
+    │
+    ├─ Native Resource Protocol
+    └─ ROS 2 Compatibility Layer
+            │
+        rmw_zenoh codec
+
+という位置づけにする。
+
+
+20. micro-ROSとの違い
+
+micro-ROSでは通常、
+
+MCU
+ ↓
+micro-ROS
+ ↓
+XRCE
+ ↓
+Agent
+ ↓
+ROS 2
+
+となる。
+
+Ruby Unifiedでは、
+
+Family mruby
+ ↓
+zenoh-pico
+ ↓
+Zenoh
+ ↓
+rmw_zenoh
+ ↓
+ROS 2
+
+とできる。
+
+Family mruby自身をROS 2専用ノードにせず、
+
+ZenohネイティブなRubyノード
+
+としておき、その結果としてROS 2とも通信できるのが重要。
+
+これによりROS 2に閉じない。
+
+
+21. Pythonや他言語との連携
+
+ZenohにはPython APIをはじめ、多言語実装がある。
+
+したがって、
+
+Rails / CRuby
+     │
+Ruby Unified
+     │
+   Zenoh
+     ├─ Python → AI / CV / ML
+     ├─ C++    → 高性能処理
+     ├─ ROS 2  → Robot
+     └─ MCU    → Sensors / Actuators
+
+という構成が可能。
+
+つまりRuby Unifiedは「すべてRubyで実装する」ことを要求しない。
+
+Rubyが他言語の機能を自然に取り込む。
+
+
+22. MQTT・DDS・HTTPなどとの連携
+
+Zenohには他プロトコルとのブリッジ／プラグインも存在する。
+
+MQTTとの連携では、
+
+MQTT device
+    │
+zenoh-bridge-mqtt
+    │
+Zenoh
+    │
+Ruby Unified
+
+という構成にできる。
+
+既存MQTT IoT機器をRuby Unified Resourceへ見せられる可能性がある。
+
+DDS（Data Distribution Service：データ中心型分散通信規格）、ROS 2、HTTPなどとの連携もZenoh側の仕組みを利用できる。
+
+したがってRuby Unified自身で、
+
+MQTT adapter
+DDS adapter
+HTTP adapter
+Python adapter
+
+を全部独自実装する必要はない。
+
+ここもZenohをバックエンドに選ぶ大きな利点。
+
+
+23. intdashとの連携
+
+aptpodのintdashとも接続したいという話になった。
+
+Ruby UnifiedではZenohとintdashを競合させず、役割分担する。
+
+特に、
+
+Zenoh
+  → 現在値
+  → Command
+  → Event
+  → Remote Object
+  → Discovery
+
+intdash
+  → 時系列履歴
+  → 過去データ
+  → 可視化
+  → データ蓄積
+
+という分け方が綺麗。
+
+例えば、
+
+robot.pose
+
+はZenohで現在値取得。
+
+robot.on(:pose) { ... }
+
+はZenoh Pub/Sub。
+
+robot.history(:pose, since: 1.hour.ago)
+
+はintdash。
+
+robot.navigate_to(...)
+
+はZenoh経由でROS 2。
+
+という形。
+
+つまり、
+
+Remote Resourceに「時間軸」を追加する
+
+ことができる。
+
+これはdRubyとの大きな違いにもなる。
+
+
+24. intdash Ruby SDK
+
+intdashにはPython SDK等があり、そのコードはユーザーが社員としてアクセス可能。
+
+したがって、それを参照実装としてRuby SDKを作ることも現実的。
+
+Python SDKをそのまま直訳するより、
+
+Python SDKを仕様書・Reference Implementationとして利用し、RubyらしいAPIを設計する
+
+方がよい。
+
+例えば、
+
+intdash-ruby
+ ├─ REST client
+ └─ iSCP client
+
+のような構成。
+
+iSCP（intdash Stream Control Protocol：intdashのリアルタイムストリーム通信プロトコル）によるリアルタイム通信とREST APIによる過去データ取得をRubyから扱う。
+
+そして、
+
+zenoh gem
+intdash gem
+     │
+ruby_unified gem
+
+と重ねる。
+
+ただし社内Python SDKを参照したOSS公開では、ライセンス・社内知財・公開可能範囲を事前に確認する必要がある。
+
+
+25. RubyKaigiのテーマとしての強さ
+
+当初の「Spinelをマイコンで動かした」より、
+
+CRubyとSpinelベースFamily mrubyをZenohで接続し、RubyのObject Spaceをプロセス・マシン・マイコン・Web・ロボットまで拡張する
+
+方がテーマとして大きい。
+
+しかもSpinelマイコン対応は捨てる必要がない。
+
+むしろ、
+
+CRuby
+  ↕
+Ruby Unified
+  ↕
+Family mruby / Spinel
+  ↕
+MCU
+
+というデモの重要な構成要素になる。
+
+Ruby処理系的にも、
+
+respond_to?
+methods
+Class / Module
+Symbol
+Keyword arguments
+Exception
+Block
+Proc
+object_id
+Remote Reference
+GC
+serialization
+
+など、「Rubyオブジェクトとは何か」という議論へ踏み込める。
+
+単なるIoT通信ではなくRubyそのものの話になる。
+
+
+26. 発表のストーリー案
+
+例えば以下の流れが考えられる。
+
+1. Ruby is everywhere
+   WebではCRuby
+   マイコンではSpinel / Family mruby
+
+2. しかし、それらは別々のRuby世界
+
+3. dRubyは昔からRuby Objectをネットワーク越しにした
+
+4. 現在はマイコンもRubyで動く
+
+5. ならRuby Object Spaceを
+   マシンの外へ広げられないか？
+
+6. Zenohをバックエンドに
+   Ruby Unifiedを作った
+
+7. CRuby ↔ CRuby
+
+8. CRuby ↔ Spinel / MCU
+
+9. Railsから実機を操作
+
+10. ROS 2 robotもResourceとして操作
+
+11. Python / MQTT / C++もZenoh経由で参加
+
+12. intdashで過去データまで同じResourceに統合
+
+13. Rubyにとって
+    「Objectはどこに存在するのか？」
+
+タイトルは、
+
+Ruby Unified: From the Web to Microcontrollers
+
+が現状かなり有力。
+
+さらに発表中のメッセージとして、
+
+From Web Apps to the Physical World, in Ruby.
+
+も使えそう。
+
+
+27. 最初に作るべきもの
+
+いきなりRailsやROS 2やFamily mrubyまで全部作らない。
+
+最初はCRubyから始める。
+
+まず、
+
+zenoh gem
+
+を作る。
+
+その上に、
+
+ruby_unified gem
+
+を作る。
+
+そしてCRuby 2プロセス間で、
+
+server = RubyUnified.export("/hello", object)
+
+remote = RubyUnified["/hello"]
+
+remote.respond_to?(:hello)
+remote.hello("Ruby")
+
+くらいを動かす。
+
+ここで、
+
+Resource
+Method
+Property
+Event
+Introspection
+Serialization
+Error
+Timeout
+Security
+
+の契約を固める。
+
+その後、
+
+CRuby
+ ↓
+Zenoh
+ ↓
+Family mruby / Spinel
+
+へ持っていく。
+
+さらに、
+
+Rails
+ROS 2
+intdash
+Python
+MQTT
+
+を順に追加する。
+
+
+28. 現時点で特に重要な設計原則
+
+最も重要なのは、
+
+ZenohのAPIやKey設計からRuby Unifiedを設計しない
+
+こと。
+
+先にRubyからどう見えるべきかを決める。
+
+例えば、
+
+robot = RubyUnified["/robots/a2"]
+
+robot.battery
+robot.stop
+robot.on(:collision) { ... }
+robot.respond_to?(:stop)
+
+という「Rubyとして気持ちよい契約」を決める。
+
+その後で、
+
+battery            → Zenoh Query
+stop               → Zenoh Query
+collision          → Zenoh Subscribe
+respond_to?        → Metadata Query
+
+とマッピングする。
+
+つまり、
+
+Ruby semantics first, Zenoh mapping second.
+
+という方針。
+
+
+29. この構想の本質
+
+最初はFamily mrubyへZenohを載せるという話だった。
+
+しかし現在の構想は、より大きく、
+
+Rubyをマイコン向け言語にする
+
+でも、
+
+RubyからROS 2を操作する
+
+でも、
+
+ZenohのRuby bindingを作る
+
+でもない。
+
+本質は、
+
+Rubyのオブジェクトモデルと書き味を、プロセス・処理系・マシン・ネットワーク・マイコン・ロボット・Webサービスを越えて拡張する
+
+こと。
+
+そして、その下位通信基盤としてZenohを使う。
+
+Ruby Unifiedの世界では、
+
+web    = RubyUnified["/web/app"]
+robot  = RubyUnified["/robots/a2"]
+sensor = RubyUnified["/devices/pico1"]
+vision = RubyUnified["/services/vision"]
+
+として、
+
+robot.navigate_to(...)
+sensor.temperature
+vision.detect(...)
+web.notify(...)
+
+と書ける。
+
+それぞれの実体は、
+
+Rails / CRuby
+Spinel / Family mruby
+ESP32 / RP2350
+ROS 2
+Python
+C++
+MQTT device
+intdash
+Internet上の別ノード
+
+かもしれない。
+
+しかしRuby側からは、可能な限り一つのResource空間として扱う。
+
+これが現時点での Ruby Unified の中心構想。
