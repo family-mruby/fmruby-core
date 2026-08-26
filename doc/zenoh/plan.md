@@ -191,11 +191,16 @@ ROS 2 と型付きで話す場合のみ CDR エンコードが必要になるが
 
 - **役割分担**: 子機は測る・動かす・置かれるのが本分で、画面も入力も
   持たない。親機が家の司令卓として発見・一覧・操作・記録を受け持つ。
-- **子機も Ruby で書ける見込み**: 段階 1 の picoruby-zenoh gem は素の
-  PicoRuby が動く ESP32 ボードに載せられる構造にする。すると
-  **親機のエディタで子機のロジックを書き、フリート配布 (4.6) で送り、
-  結果を親機の画面で見る**という一巡が全部この企画の道具で閉じる。
-  "Family" mruby の名のとおり、親機と子機の家族構成になる。
+- **子機は Family mruby ではなく、標準の R2P2 (素の PicoRuby) デバイス
+  + picoruby-zenoh gem とする (2026-08-26 決定)**。子機に fmrb を移植
+  するのではなく、R2P2 がそのまま動くボード (RPi Pico W / ESP32 系。
+  zenoh-pico は RPi Pico を 2025-01 から公式サポート) に gem を足すだけで
+  家族に入れる。したがって **gem は fmrb 非依存で設計する** (fmrb_mem 等
+  を使わない素の mrbgem。fmrb 側は自分の worker から同じ gem を使う)。
+  本家 PicoRuby エコシステムへの還元にもなる。
+  **親機のエディタで子機のロジックを書き、配布して、結果を親機の画面で
+  見る**一巡は変わらないが、子機側には受け取って保存・再起動する小さな
+  受信スクリプト (R2P2 上の常駐) を置く規約が要る。
   (zenoh-pico を直接使う C/Arduino の子機も同じキー空間に混ざれる。)
 - **子機の自己記述 → 親機の自動 UI**: 子機は自分の口 (キー・型・単位、
   例: 温度 float / LED bool / ボタン event) を msgpack の自己記述として
@@ -238,6 +243,9 @@ ROS 2 と型付きで話す場合のみ CDR エンコードが必要になるが
 - picoruby-zenoh gem (lib/add/) を新設し、zenoh-pico をリンク。
   API は最小から: session open/close、declare_publisher / put、
   declare_subscriber + poll、get / queryable。
+- **gem は fmrb 非依存で書く** (4.9 の決定)。素の PicoRuby / R2P2 でも
+  ビルドできることを設計条件とし、プラットフォーム差 (RP2 / ESP32 /
+  POSIX) は zenoh-pico 側のポート層に任せる。
 - Linux sim から PC 上の zenohd と put/subscribe の往復を確認。
 
 ### 段階 2: 実機 (P4 / S3)
