@@ -1,0 +1,8 @@
+app_handle_name = "mm_kw"
+app_screen_name = "MM Kw"
+default_window_mode = "window"
+default_window_width = 180
+default_window_height = 50
+default_window_pos_x = 20
+default_window_pos_y = 120
+launcher_visible = false
