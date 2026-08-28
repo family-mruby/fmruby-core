@@ -3,6 +3,10 @@
 作成: 2026-08-10。状態: 検討段階 (実装未着手)。
 関連: doc/multivm_app/plan.md (多重 VM 構想。zenoh-agent はその worker
 パターンの実用例になる)。
+report/metaprog_check.md (アプリ VM のメタプロ可否検証。dRuby 型の
+動的代理が mruby 側で成立することを sim で確認済み、2026-08-27)。
+usecases.md (Asterism のユースケース集。本書 4 章が「通信」目線なのに
+対し、オブジェクトモデル目線の 9 案)。naming.md (名前の決定と使い分け)。
 
 ## 1. 動機と経緯
 
