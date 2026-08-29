@@ -100,9 +100,10 @@ function hookInput() {
 
 // ---- audio ----------------------------------------------------------------
 
-async function startAudio() {
+// The AudioContext must be created inside the click (browser autoplay
+// rules); the worklet is wired once the module is up.
+async function startAudio(ac) {
   if (!M) return;
-  const ac = new AudioContext();
   await ac.audioWorklet.addModule('audio-worklet.js');
   const node = new AudioWorkletNode(ac, 'fmrb-apu', {
     numberOfInputs: 0,
@@ -173,7 +174,10 @@ function applyThemeSetting(mod) {
 
 // ---- bootstrap ------------------------------------------------------------
 
-statusLine.textContent = 'booting the firmware...';
+// The machine does not power on until the click -- that is the "start"
+// the overlay promises, and it puts the AudioContext (which needs the
+// gesture) in place BEFORE boot, so the boot jingle is actually heard.
+statusLine.textContent = 'ready';
 
 const moduleConfig = {
   // The .data (and .wasm) live next to core_web.js, not next to this page;
@@ -186,19 +190,29 @@ const moduleConfig = {
 // and before main() -- the one moment the packed files can be edited.
 moduleConfig.preRun = [() => applyThemeSetting(moduleConfig)];
 
-createFmrbCore(moduleConfig).then((mod) => {
+startOverlay.addEventListener('click', async () => {
+  startOverlay.style.display = 'none';
+  canvas.focus();
+  statusLine.textContent = 'booting the firmware...';
+
+  let ac = null;
+  try {
+    ac = new AudioContext();
+    await ac.resume();
+  } catch (e) {
+    console.warn('audio unavailable:', e);
+  }
+
+  const mod = await createFmrbCore(moduleConfig);
   M = mod;
   statusLine.textContent = 'running';
   hookInput();
   requestAnimationFrame(paint);
-});
-
-startOverlay.addEventListener('click', async () => {
-  startOverlay.style.display = 'none';
-  canvas.focus();
-  try {
-    await startAudio();
-  } catch (e) {
-    console.warn('audio unavailable:', e);
+  if (ac) {
+    try {
+      await startAudio(ac);
+    } catch (e) {
+      console.warn('audio unavailable:', e);
+    }
   }
-});
+}, { once: true });
