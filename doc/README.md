@@ -63,7 +63,6 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `micropython/` [MicroPython ゲスト VM 取り込み計画](micropython/README.md) — - 〔24 files〕
 - `midi/` [Family mruby MIDI 対応 検討メモ](midi/README.md) — - 〔23 files〕
 - `multivm_app/` [多重 VM アプリ構想: 巨大 Ruby アプリをマイコンで動かす](multivm_app/plan.md) — - 〔3 files〕
-- `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **構想** (2026-08-29) ESP32-P4-Nano + LT8912B 変換基板でソフト bring-up を先行し、基板設計に反映する 〔1 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔5 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — - 〔15 files〕
@@ -75,7 +74,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔21 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔17 files〕
-- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **進行中** (2026-08-29) P1-P3 完了、P4a (node ブート) 完了、P4b/P4c はコア側実装済み (ブラウザ実操作と可聴確認待ち)。残るは P5 (配信) 〔10 files〕
+- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **進行中** (2026-08-29) P1-P4 完了 (P4b/P4c はブラウザで実操作・音ともユーザ確認済)。残るは P5 (配信) 〔10 files〕
 
 ## アーカイブ (完結したテーマ)
 

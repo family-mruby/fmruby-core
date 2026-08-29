@@ -1,7 +1,8 @@
 # P4a 報告: core 統合 — ヘッドレスでブートまで (node)
 
-> 状態: 完了 (受け入れ 5 点すべて満たす)。P4b/P4c のコア側も先行実装済み
-> (末尾の節。ブラウザ実操作と可聴確認だけがユーザ待ち) | 更新: 2026-08-29
+> 状態: 完了 (受け入れ 5 点すべて満たす)。P4b/P4c も先行実装済みで、
+> **ブラウザでの実操作 (マウス・キーボード) と音の可聴はユーザが実ブラウザで
+> 確認済 (2026-08-29)** | 更新: 2026-08-29
 
 指示書は instruction_p4a.md。実装は指示書の公開と並行に進んだため時系列は
 前後するが、結果は指示書の受け入れ条件・確認項目に沿って本書で答える。
@@ -59,7 +60,7 @@ ruby -rjson -e 'cc = JSON.parse(File.read("build/compile_commands.json"))
 - `FMRB_PLATFORM_WASM` で linux と違う所だけ上書き: boot.c の init 分岐、
   sim_log_guard / debugd 起動 / getitimer 系のスキップ、display_p4_task の
   HW 領域 (パネル起動 / boot screen / I2C service / ヘッドホン / タッチ)、
-  host_file_local の базовый path (相対 "flash")。
+  host_file_local の base path (相対 "flash")。
 - `FMRB_HW_FAMILY_MODERN` を立てる (services が spawn する)。FMRB_HW_MODERN
   は立てない。fmrb_hal_link.h:94 のガードに FMRB_PLATFORM_WASM を追加した。
 - display_p4_i2c_* / poll_headphone は NOT_SUPPORTED を返すスタブでシンボル
@@ -155,8 +156,11 @@ INVALID_STATE を返し、display タスクがスピンして boot タスクが�
   クリックで AudioContext resume)。`rake wasm:web` でバンドル
   (core_web.wasm 5.3MB + .data 1.4MB)、`rake wasm:serve` が COOP/COEP つき
   で配信 (SharedArrayBuffer の条件)。
-- **ユーザ確認待ち**: ブラウザでの実操作 (マウス/キー/かな/Ctrl+Q)、音の
-  可聴確認。headless では検証しようがない項目のみ。
+- **ユーザ確認済 (2026-08-29)**: 実ブラウザで動作、音・マウス・キーボード
+  とも OK。初回に踏んだ穴が 1 つ: MODULARIZE の emscripten は .data を
+  ページ URL 相対で fetch するため 404 で黒画面になった (locateFile で
+  ../build/ を指して解決、a4eb73ac)。かな入力・Ctrl+Q などの細部の網羅は
+  P5 のデモ仕上げで見る。
 
 ## やり残し / スコープ外の現状
 
