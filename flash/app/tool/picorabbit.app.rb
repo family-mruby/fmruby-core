@@ -2,8 +2,8 @@
 # Supports PicoRabbit-compatible markdown format
 #
 # The app starts on a menu of every deck it can find: your own under
-# /home/slides, the samples under /usr/share/samples/slides, and the SD card. From there a deck is presented, or written out as one
-# picture per slide.
+# /home/slides, the samples under /usr/share/samples/slides, and the SD card.
+# From there a deck is presented, or written out as one picture per slide.
 #
 # Keys follow Rabbit upstream (doc/picorabbit/rabbit_behavior.md), which
 # separates "next" (walk one wait step) from "next slide" (skip the rest of
@@ -37,10 +37,12 @@
 # walking them.
 
 class SlideShowApp < FmrbApp
-  # Where decks live. The second is the card, and is simply absent on a
-  # machine without one.
+  # Where decks live: yours, the shipped samples, and the card (the last is
+  # simply absent on a machine without one). The menu lists each deck by its
+  # full path -- there is no second list of short names to fall out of step
+  # with this one (a stale two-entry tag list once announced the samples as
+  # living on an "sd/" card that was not even present).
   SLIDE_DIRS = ["/home/slides", "/usr/share/samples/slides", "/mnt/sd/slides"]
-  SLIDE_TAGS = ["home", "sd"]
   SD_ROOT = "/mnt/sd"
   EXPORT_ROOT = "/mnt/sd/picorabbit"
 
@@ -74,7 +76,6 @@ class SlideShowApp < FmrbApp
     @audio = nil
     @chime = false
     @chime_off_at = nil
-    @deck_labels = []
     @deck_paths = []
     @menu_sel = 0
     @menu_scroll = 0
@@ -110,10 +111,10 @@ class SlideShowApp < FmrbApp
       @ui.set_enabled(:export, false)
       @status = "no card at #{SD_ROOT} - nothing to export to"
     end
-    if @deck_labels.length == 0
+    if @deck_paths.length == 0
       @ui.set_enabled(:start, false)
       @ui.set_enabled(:export, false)
-      @status = "no .md deck in #{SLIDE_DIRS[0]} or #{SLIDE_DIRS[1]}"
+      @status = "no .md deck in #{SLIDE_DIRS[0]}, #{SLIDE_DIRS[1]} or #{SLIDE_DIRS[2]}"
     end
 
     draw_menu
@@ -121,16 +122,17 @@ class SlideShowApp < FmrbApp
 
   # ---- decks ------------------------------------------------------------
 
-  # Every .md under the two deck directories, named by where it came from so
-  # two decks of the same name stay apart. A directory that is not there (no
-  # card, or a card without a slides folder) simply contributes nothing.
+  # Every .md under the deck directories. The full path is both what gets
+  # opened and what the menu shows, so two decks of the same name stay apart
+  # and there is no doubt about which one is which. A directory that is not
+  # there (no card, or a card without a slides folder) simply contributes
+  # nothing.
   def scan_decks
     d = 0
     while d < SLIDE_DIRS.length
       names = list_md(SLIDE_DIRS[d])
       i = 0
       while i < names.length
-        @deck_labels << "#{SLIDE_TAGS[d]}/#{names[i]}"
         @deck_paths << "#{SLIDE_DIRS[d]}/#{names[i]}"
         i += 1
       end
@@ -244,7 +246,7 @@ class SlideShowApp < FmrbApp
     @gfx.set_text_size(1)
     @gfx.draw_text(4, 2, "PicoRabbit", FmrbConst::THEME_TEXT,
                    FmrbConst::THEME_MENU_BG)
-    n = @deck_labels.length
+    n = @deck_paths.length
     right = n == 1 ? "1 deck" : "#{n} decks"
     @gfx.draw_text(@window_width - 4 - right.length * MENU_CHAR_W, 2, right,
                    FmrbConst::THEME_TEXT, FmrbConst::THEME_MENU_BG)
@@ -271,7 +273,7 @@ class SlideShowApp < FmrbApp
     fg = sel ? FmrbConst::THEME_TEXT_LIGHT : FmrbConst::THEME_TEXT
     @gfx.fill_rect(2, y - 1, @window_width - 4, MENU_ROW_H, bg)
     @gfx.set_text_size(1)
-    @gfx.draw_text(6, y, @deck_labels[i], fg, bg)
+    @gfx.draw_text(6, y, @deck_paths[i], fg, bg)
   end
 
   # One line above the buttons: why Export is off, or where the pictures went.
@@ -294,7 +296,7 @@ class SlideShowApp < FmrbApp
   end
 
   def move_menu_to(idx)
-    n = @deck_labels.length
+    n = @deck_paths.length
     return if n == 0
     idx = 0 if idx < 0
     idx = n - 1 if idx >= n
@@ -329,7 +331,7 @@ class SlideShowApp < FmrbApp
     row = (y - @menu_list_y) / MENU_ROW_H
     return nil if row < 0 || row >= @menu_rows
     i = @menu_scroll + row
-    i < @deck_labels.length ? i : nil
+    i < @deck_paths.length ? i : nil
   end
 
   def on_menu_event(ev)
@@ -363,7 +365,7 @@ class SlideShowApp < FmrbApp
     when FmrbConst::KEY_HOME
       move_menu_to(0)
     when FmrbConst::KEY_END
-      move_menu_to(@deck_labels.length - 1)
+      move_menu_to(@deck_paths.length - 1)
     when FmrbConst::KEY_ENTER, FmrbConst::KEY_SPACE
       start_show
     when FmrbConst::KEY_E
@@ -516,7 +518,7 @@ class SlideShowApp < FmrbApp
 
   def run_export
     return unless @sd_ready
-    return if @deck_labels.length == 0
+    return if @deck_paths.length == 0
     path = @deck_paths[@menu_sel]
     unless ensure_deck(path)
       @status = "cannot read #{path}"
