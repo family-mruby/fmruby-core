@@ -58,7 +58,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `editor_ti/` [エディタ型推論統合 (picoruby-ti) 計画](editor_ti/plan.md) — - 〔17 files〕
 - `fmrb_basic/` [FMRuby BASIC 実装プロジェクト 共通指示書](fmrb_basic/00_common.md) — - 〔27 files〕
 - `gfx/` [Canvas Viewport スクロール (SET_CANVAS_VIEWPORT) — P4/PPA 活用](gfx/gfx_canvas_viewport_scroll.md) — - 〔2 files〕
-- `idf_seam/` [ESP-IDF 依存の継ぎ目整理 (idf_seam)](idf_seam/plan.md) — **計画済** (2026-08-29) 共有コードの esp_* 直接依存を fmrb_* の platform 継ぎ目へ吸収し、wasm/stub をカーネル用最小に縮める 〔1 files〕
+- `idf_seam/` [ESP-IDF 依存の継ぎ目整理 (idf_seam)](idf_seam/plan.md) — **計画済** (2026-08-29) 共有コードの esp_* 直接依存を fmrb_* の platform 継ぎ目へ吸収し、wasm/stub をカーネル用最小に縮める 〔2 files〕
 - `imu/` [P1: six-axis sensor (BMI270) on Modern](imu/report/p1.md) — - 〔1 files〕
 - `mic_spectrum/` [計画書: Tab5 マイクの周波数分析デモ + FFT エンジン比較](mic_spectrum/plan.md) — - 〔5 files〕
 - `micropython/` [MicroPython ゲスト VM 取り込み計画](micropython/README.md) — - 〔24 files〕
