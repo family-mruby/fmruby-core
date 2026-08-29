@@ -150,7 +150,13 @@ themeSelect.addEventListener('change', () => {
 });
 
 function applyThemeSetting(mod) {
-  if (readSetting('fmrb_web_theme', 'cyberpunk') === 'classic') {
+  // The packed defaults ARE the cyberpunk theme (palette in system_conf,
+  // neon wallpaper staged at /data), so the default needs no work here.
+  // Only "classic" edits MEMFS: palette back to the device values, and the
+  // device (western) wallpaper back over /data. Failures are surfaced --
+  // a silent catch here once hid a broken swap.
+  if (readSetting('fmrb_web_theme', 'cyberpunk') !== 'classic') return;
+  try {
     const path = '/flash/etc/system_conf.toml';
     let conf = new TextDecoder().decode(mod.FS.readFile(path));
     for (const [key, val] of Object.entries(CLASSIC_THEME)) {
@@ -158,18 +164,11 @@ function applyThemeSetting(mod) {
                           key + ' = ' + val);
     }
     mod.FS.writeFile(path, conf);
-    return;
+    mod.FS.writeFile('/flash/data/bg_426x240.png',
+      mod.FS.readFile('/flash/usr/share/backgrounds/bg_426x240.png'));
+  } catch (e) {
+    console.error('classic theme could not be applied:', e);
   }
-  // Cyberpunk: swap the (beige, western) wallpaper for the neon skyline.
-  // Both paths, because which one the desktop loads depends on the platform
-  // branch it takes (usr/share on esp32, /data elsewhere -- wasm included).
-  try {
-    const px = mod.FS.readFile('/flash/usr/share/backgrounds/bg_cyber_426x240.png');
-    for (const p of ['/flash/usr/share/backgrounds/bg_426x240.png',
-                     '/flash/data/bg_426x240.png']) {
-      try { mod.FS.writeFile(p, px); } catch (e) { /* best effort */ }
-    }
-  } catch (e) { /* no cyber wallpaper packed: dark desktop_bg will show */ }
 }
 
 // ---- bootstrap ------------------------------------------------------------

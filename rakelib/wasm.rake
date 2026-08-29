@@ -117,9 +117,12 @@ namespace :wasm do
       cp File.join(ROOT_DIR, f), dest
     end
     # The desktop on non-esp32 platforms (wasm included) loads the wallpaper
-    # from /data -- on the sim a kernel file-sync puts it there. Stage it.
+    # from /data -- on the sim a kernel file-sync puts it there. The web
+    # default theme is cyberpunk, so the DEFAULT /data wallpaper is the neon
+    # one: the page's JS only has work to do when the user picks classic
+    # (a stale cached main.js then cannot leave the default half-applied).
     mkdir_p File.join(staging, "data")
-    cp File.join(ROOT_DIR, "flash/usr/share/backgrounds/bg_426x240.png"),
+    cp File.join(ROOT_DIR, "flash/usr/share/backgrounds/bg_cyber_426x240.png"),
        File.join(staging, "data/bg_426x240.png")
     mkdir_p File.join(staging, "etc")
     cp File.join(ROOT_DIR, "config/system_conf_wasm.toml"),
@@ -154,6 +157,10 @@ namespace :wasm do
       WEBrick::HTTPServlet::FileHandler.new(server, ROOT_DIR).service(req, res)
       res["Cross-Origin-Opener-Policy"] = "same-origin"
       res["Cross-Origin-Embedder-Policy"] = "require-corp"
+      # Development server: a cached main.js next to a fresh .data made the
+      # page half-old once already. Published pages (P5) version their URLs
+      # instead.
+      res["Cache-Control"] = "no-cache"
     end
     trap("INT") { server.shutdown }
     server.start
