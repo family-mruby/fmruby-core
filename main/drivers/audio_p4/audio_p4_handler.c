@@ -250,7 +250,7 @@ int audio_p4_process_command(const uint8_t *data, size_t size) {
         case FMRB_AUDIO_CMD_SET_VOLUME:
             if (size >= sizeof(fmrb_audio_volume_cmd_t)) {
                 const fmrb_audio_volume_cmd_t *cmd = (const fmrb_audio_volume_cmd_t *)data;
-                audio_p4_hw_set_volume(cmd->volume);
+                audio_backend()->set_volume(cmd->volume);
                 return 0;
             }
             break;

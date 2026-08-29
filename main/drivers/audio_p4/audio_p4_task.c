@@ -461,13 +461,13 @@ static void audio_p4_task(void *arg) {
     (void)arg;
 
     // Codec bring-up happens in the display task; wait for it.
-    while (!audio_p4_hw_ready()) {
+    while (!audio_backend()->ready()) {
         vTaskDelay(pdMS_TO_TICKS(100));
     }
 
     FMRB_LOGI(TAG, "Audio task started on core %d", xPortGetCoreID());
 
-    apuif_set_output_writer(audio_p4_hw_write);
+    apuif_set_output_writer(audio_backend()->write);
     apuif_init();       // instance 0: NSF
     apuif_init_sub();   // instance 1: FMSQ + note SFX
 

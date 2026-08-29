@@ -12,10 +12,9 @@ extern "C" {
 #endif
 
 // --- audio_p4_hw.c ---
-bool audio_p4_hw_ready(void);
-void audio_p4_hw_write(const int16_t *samples, int len, int channels);
-void audio_p4_hw_set_volume(uint8_t volume_0_255);
-
+// The output path (init / ready / write / set_volume) is reached through
+// audio_backend() (audio_backend.h, included via audio_p4.h).
+//
 // The microphone's public API (available / sample_rate / enable / read) lives
 // in audio_p4.h: Ruby reaches it directly. What stays here is the bring-up
 // instrumentation, which nothing outside this driver should call.

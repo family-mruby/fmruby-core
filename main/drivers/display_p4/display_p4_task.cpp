@@ -3110,7 +3110,7 @@ static void display_p4_task(void *arg) {
         // Bring up the Tab5 audio codec now: the ES8388 shares the I2C
         // bus with GT911, and the touch task only starts polling after
         // g_lcd_ready below, so this is the race-free window.
-        if (audio_p4_hw_init() != FMRB_OK) {
+        if (audio_backend()->init() != FMRB_OK) {
             FMRB_LOGW(TAG, "Tab5 audio init failed (no sound)");
             boot_print_line("Audio: codec init FAILED (no sound)");
         } else {

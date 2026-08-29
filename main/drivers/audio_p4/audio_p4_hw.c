@@ -75,11 +75,11 @@ static int16_t s_stereo_buf[AUDIO_P4_STEREO_BUF_SAMPLES];
 #define AUDIO_P4_MIC_FRAMES 256
 static int16_t s_mic_buf[AUDIO_P4_MIC_FRAMES * 2];
 
-bool audio_p4_hw_ready(void) {
+static bool audio_p4_hw_ready(void) {
     return s_hw_ready;
 }
 
-fmrb_err_t audio_p4_hw_init(void) {
+static fmrb_err_t audio_p4_hw_init(void) {
     if (s_hw_ready) return FMRB_OK;
 
     // I2S TX + RX channels (master), standard Philips mode. Full duplex is not
@@ -240,7 +240,7 @@ fmrb_err_t audio_p4_hw_init(void) {
 // APU output writer: mono 15720 Hz -> stereo 47160 Hz (repeat x3).
 // Called from the audio task at 60 Hz; esp_codec_dev_write blocks on
 // I2S DMA and paces the caller.
-void audio_p4_hw_write(const int16_t *samples, int len, int channels) {
+static void audio_p4_hw_write(const int16_t *samples, int len, int channels) {
     if (!s_hw_ready || !samples || len <= 0) return;
     if (channels != 1) return;  // APU path is always mono
 
@@ -502,7 +502,7 @@ void audio_p4_mic_selftest(void) {
 #define ES8388_REG_RDACVOL    0x1B  // ES8388_DACCONTROL5
 #define ES8388_I2C_FREQ       400000
 
-void audio_p4_hw_set_volume(uint8_t volume_0_255) {
+static void audio_p4_hw_set_volume(uint8_t volume_0_255) {
     if (!s_hw_ready) return;
     int vol = (volume_0_255 * 100) / 255;
     // esp_codec_dev talks through i2c_master, which is broken on this
@@ -522,4 +522,18 @@ void audio_p4_hw_set_volume(uint8_t volume_0_255) {
         return;
     }
     FMRB_LOGI(TAG, "volume set to %d/100 (dacvol=0x%02X)", vol, reg);
+}
+
+// ---------------------------------------------------------------------------
+
+static const audio_backend_t s_backend_hw = {
+    .name       = "es8388",
+    .init       = audio_p4_hw_init,
+    .ready      = audio_p4_hw_ready,
+    .write      = audio_p4_hw_write,
+    .set_volume = audio_p4_hw_set_volume,
+};
+
+const audio_backend_t *audio_backend(void) {
+    return &s_backend_hw;
 }
