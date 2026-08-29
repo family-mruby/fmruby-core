@@ -2,6 +2,8 @@
 
 2026-08-28 起草。方針と調査結果は plan.md を前提とする。ここでは実装をフェーズに
 分割し、各フェーズの作業項目・触るファイル・受け入れ条件を定める。
+実装担当への指示書: instruction_p1.md / instruction_p2.md / instruction_p3.md
+(2026-08-29 作成。P4 以降は P1-P3 の結果を見てから書く)。
 
 ## フェーズ構成と依存関係
 
@@ -41,7 +43,28 @@ rake には `wasm:poc` / `wasm:build` を追加する (rakelib/wasm.rake)。emsd
 
 ---
 
-## P1: FreeRTOS wasm port 単体 PoC
+## P1: FreeRTOS wasm port 単体 PoC — 完了 (2026-08-29)
+
+`rake wasm:poc` の 23 項目が 5 回連続で全 PASS。**撤退線は越えた**。
+経過・実測値・指示から変えた点は report/p1.md。設計上、後段が前提にしてよい
+確定事項は以下。
+
+- **tick は追いつき方式**。`vPortYield()` の入口とアイドルフック
+  (`esp_vApplicationIdleHook`。IDF の tasks.c が必ず呼ぶので
+  `configUSE_IDLE_HOOK` は 0) の 2 箇所から `xTaskIncrementTick()` を
+  1 tick ずつ呼ぶ。10 秒で実時間とのずれ 0.2〜1.2ms。
+- **vendor は kernel 4 本だけでは足りない**。`xTaskCreate` と
+  `vTaskSetThreadLocalStoragePointerAndDelCallback` の実体は IDF の
+  esp_additions 側にあるため、freertos_tasks_c_additions.h ほか 4 ファイルも
+  vendor する。
+- **`vTaskDelete(other)` は使える**。pthread_cancel ではなく、
+  「必ず `prvSuspendSelf()` で寝ている」性質を使って起こして抜けさせる方式で
+  実装済み。ただし CPU を握ったままの相手には効かないので P2 は必要。
+- **タスクは pthread のスタックで動く** (カーネルのブロックは使わない)。
+  スタック指定はバイト (`portSTACK_TYPE` は uint8_t、IDF と同じ)、
+  ただし下限 64KB。**`uxTaskGetStackHighWaterMark()` は意味を持たない**。
+- pthread pool は node では使い切っても代償が無い (最遅の生成で 1.3ms)。
+  ブラウザは P4b で測り直す。
 
 ### 目的
 
