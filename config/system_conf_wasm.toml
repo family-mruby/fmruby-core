@@ -32,10 +32,10 @@ language = "en" # "ja" or "en"
 desktop_bg = 0x00
 menu_bg = 0x22
 window_bg = 0x00
-text = 0xBC
+text = 0x1C
 text_light = 0xFF
 highlight = 0xE3
-border = 0x17
+border = 0x12
 button = 0x46
 dir_color = 0xFC
 
