@@ -301,17 +301,38 @@ fmrb_audio_probe 相当の FFT 検証をリングのダンプに対して行い�
 
 ユーザ要望 (2026-08-29、P5 に同梱する改善):
 
-- **表示倍率の選択**: ページ UI で 1x/2x/3x/画面幅フィットを切り替える
-  (端末の内部解像度 426x240 は変えない。CSS の image-rendering: pixelated で
-  拡大。現状は 2x 固定)。
+- **内部解像度の選択** (作業空間を広くする。ページ拡大の話ではない):
+  調査の結果、解像度は既に実行時設定だった — `display_width/height` は
+  system_conf.toml から読まれ (fmrb_kernel.c:134、config/ は linux=320x240 /
+  p4=426x240)、display_p4_task も conf とフレームバッファ実体から
+  サイズを取っていて 426 の焼き込みは無い (コメントのみ)。よって:
+  - ページの起動前 UI で解像度を選び、JS が MEMFS 上の
+    /flash/etc/system_conf.toml の display_width/height を書き換えてから
+    boot する (Module.preRun)。JS 側 canvas と present の RGBA バッファは
+    モジュールから実サイズを受け取る形に直す。
+  - プリセットは 16:9 系で 426x240 (実機一致) / 640x360 (HDMI 計画と同値、
+    エディタ 79 桁) / 852x480 (2x) から。
+  - 大きい解像度で Ruby 側 (デスクトップ・エディタ・ランチャー) の
+    レイアウト前提が露出しないかは検証項目 (320 と 426 の両対応実績が
+    あるので、破綻より「余白が間延び」系の見た目問題を想定)。
 - **全画面モード**: canvas の requestFullscreen + 上記フィット。全画面中は
   Esc が既定で全画面解除に食われるので、Keyboard Lock API が使える環境では
   Esc/Ctrl+W を捕捉する (使えない環境では諦めて注記)。
 - **同時起動アプリ数の上限緩和**: 実体は FMRB_MAX_APPS=9
-  (components/fmrb_common/include/fmrb_task_config.h:11)。wasm ビルドだけ
-  上書きして増やす (実機は据え置き)。無限にはせず十分大きい固定値でよい
-  (ユーザ合意 2026-08-29。目安 32。1 アプリ = VM プール ~1MB + スタック 64KB
-  なので 32 本で +33MB 程度、INITIAL_MEMORY 256MB に収まる)。連動する箇所に注意 —
+  (components/fmrb_common/include/fmrb_task_config.h:11)。ユーザ方針
+  (2026-08-29): 無限にはせず十分大きい固定値でよく、**ビルド分岐ではなく
+  system_conf で扱いたい**。設計案:
+  - FMRB_MAX_APPS は「静的容量の天井」に格下げし (配列サイズ。wasm は 32、
+    実機は当面 9 のまま)、実効上限を system_conf の `max_apps`
+    (既定 = 天井) として新設、spawner が spawn 時に照合する。
+  - 完全な実行時化 (配列の動的確保) は task_hal の
+    vms[MRB_TASK_MAX_VMS] など patch 済み gem 側の静的配列まで及ぶので
+    採らない。容量+conf の 2 段が、ファイルで制御でき実装も浅い。
+  - 連動: pthread pool (現状 40) を wasm 容量に合わせて引き上げ。
+    kernel Ruby 側の FMRB_MAX_APPS 前提ループ (input_router.rb) が定数を
+    どう受けているか確認 (conf 値を kernel へ渡す経路が要るかもしれない)。
+  - メモリ試算: 1 アプリ = VM プール ~1MB + スタック 64KB。32 本で
+    +33MB 程度、INITIAL_MEMORY 256MB に収まる。連動する箇所に注意 —
   VM プールのメモリ、pthread pool (現状 40)、および kernel Ruby 側に
   FMRB_MAX_APPS 前提のループがある (input_router.rb:55 のコメント参照。
   定数がRuby 側へどう渡っているか確認してから触る)。
