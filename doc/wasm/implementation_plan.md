@@ -298,14 +298,15 @@ fmrb_audio_probe 相当の FFT 検証をリングのダンプに対して行い�
 - preload する flash/ の内容を選定する (デモアプリ一式 + フォント。
   サイズと初回ロード時間で調整)。
 - family-mruby.github.io への組み込みはサイト側の作業として別途。
-- **wasm 専用の config と staging を新設する (配信前の必須項目)**:
-  現状 wasm は「最後のターゲットビルドの flash/etc/system_conf.toml」を
-  拾っており脆い。config/system_conf_wasm.toml を作り、wasm の staging が
-  それを使う。**同じ staging で wifi.toml を除外する** — 現在の
-  core_web.data には wifi.toml の実値 (SSID/パスワード) がそのまま
-  入っており (2026-08-29 バイナリ照合で確認)、配信したら漏えいする。
-  main/secrets.h (TTS 鍵) も、存在する状態でビルドした wasm に入らないことを
-  配信前チェックに含める。
+- **wasm 専用の config と staging — 済み (2026-08-29、a242aeb4 + e3f716c1)**:
+  flash レイアウト整理とセットで解決した。config/system_conf_wasm.toml を
+  新設し、rake wasm:web は **git 追跡分の flash/ + この conf だけ**を
+  build/webflash に staging して束ねる。ローカル専用物は flash_local/
+  (gitignore、実機 staging でのみ合成) へ。再ビルド後のバイナリ照合で
+  ssid/password 0 件・home/music 0 件を確認済み。rake 側に
+  wifi/secrets の検知ゲートも常設。preload の「選定」は不要になった
+  (追跡分 = 配布可、が構造で保証される)。残るチェックは secrets.h を
+  置いた状態のビルド確認のみ。
 
 ユーザ要望 (2026-08-29、P5 に同梱する改善):
 
