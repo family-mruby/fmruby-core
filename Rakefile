@@ -4,6 +4,9 @@ require "rake"
 # EXPECTED_CHIP is derived from the HW target after .env is loaded (see below).
 PORT_CACHE_FILE = ".serial_port"
 PROBE_PORTS = ["/dev/ttyUSB0", "/dev/ttyUSB1", "/dev/ttyACM0", "/dev/ttyACM1"]
+# USB-UART bridges rake attach/detach picks up by default:
+# CH340 (NARYA boards) and CH343 (Waveshare ESP32-P4-Nano).
+DEFAULT_VIDPIDS = "1a86:7523,1a86:55d3"
 
 def get_serial_port
   if File.exist?(PORT_CACHE_FILE)

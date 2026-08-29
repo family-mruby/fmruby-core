@@ -5,7 +5,8 @@
 # loads before every file in rakelib/.
 
 desc "Attach USB serial devices to WSL2 via usbipd, selected by VID:PID " \
-     "(default 1a86:7523 = CH340; VIDPID=xxxx:yyyy[,xxxx:yyyy] to override, " \
+     "(default 1a86:7523 = CH340 and 1a86:55d3 = CH343 (P4-Nano); " \
+     "VIDPID=xxxx:yyyy[,xxxx:yyyy] to override, " \
      "BUSID=x-y to force one bus id). Attaches every matching device."
 task :attach do
   if ENV["BUSID"]
@@ -13,7 +14,7 @@ task :attach do
     next
   end
 
-  vidpids = (ENV["VIDPID"]|| "1a86:7523").downcase.split(",").map(&:strip)
+  vidpids = (ENV["VIDPID"] || DEFAULT_VIDPIDS).downcase.split(",").map(&:strip)
   list = `powershell.exe -Command "usbipd list" 2>&1`
   connected = list.split(/^Persisted:/).first || ""
 
@@ -39,14 +40,14 @@ end
 
 desc "Detach USB serial devices from WSL2 back to Windows (e.g. for the web " \
      "installer's WebSerial). Same selection as attach: VID:PID default " \
-     "1a86:7523 = CH340; VIDPID=... to override, BUSID=x-y to force one."
+     "CH340 + CH343; VIDPID=... to override, BUSID=x-y to force one."
 task :detach do
   if ENV["BUSID"]
     sh "powershell.exe -Command \"usbipd detach --busid #{ENV['BUSID']}\""
     next
   end
 
-  vidpids = (ENV["VIDPID"] || "1a86:7523").downcase.split(",").map(&:strip)
+  vidpids = (ENV["VIDPID"] || DEFAULT_VIDPIDS).downcase.split(",").map(&:strip)
   list = `powershell.exe -Command "usbipd list" 2>&1`
   connected = list.split(/^Persisted:/).first || ""
 
