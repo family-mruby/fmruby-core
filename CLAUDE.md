@@ -34,7 +34,7 @@
 - esp_* を直接 include してよいのは、各 fmrb 抽象の esp32 platform 実装と
   実機専用 driver のみ。共有コード (components/ と、linux・wasm もコンパイル
   する main/ の範囲) は fmrb_* 経由 (ログは fmrb_log.h / fmrb_log_port.h、
-  時刻は fmrb_hal_time.h、配置属性は fmrb_attr.h。doc/idf_seam/)。
+  時刻は fmrb_hal_time.h、配置属性は fmrb_attr.h。doc/archive/idf_seam/)。
 - 素のmallocは使わず、fmrb_mem.h の関数を利用する。もし少量のメモリならファイルスコープのstatic配列変数を利用することを検討する
   - mruby実行タスクでは、fmrb_mallocを利用して、その他のmain/以下のOS関連ではfmrb_sys_mallocを利用する。
 - シンボリックリンクの仕様は原則禁止

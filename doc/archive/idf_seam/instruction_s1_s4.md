@@ -2,7 +2,7 @@
 
 対象: 実装担当セッション。前提: plan.md と、背景として
 doc/wasm/guide_integration.md (stub がなぜ生まれたか)。
-タスクごとにコミット (push はしない)。report は doc/idf_seam/report/s1_s4.md へ。
+タスクごとにコミット (push はしない)。report は doc/archive/idf_seam/report/s1_s4.md へ。
 
 ## ゴールと原則
 

@@ -58,12 +58,12 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `editor_ti/` [エディタ型推論統合 (picoruby-ti) 計画](editor_ti/plan.md) — - 〔17 files〕
 - `fmrb_basic/` [FMRuby BASIC 実装プロジェクト 共通指示書](fmrb_basic/00_common.md) — - 〔27 files〕
 - `gfx/` [Canvas Viewport スクロール (SET_CANVAS_VIEWPORT) — P4/PPA 活用](gfx/gfx_canvas_viewport_scroll.md) — - 〔2 files〕
-- `idf_seam/` [ESP-IDF 依存の継ぎ目整理 (idf_seam)](idf_seam/plan.md) — **完了 (report/s1_s4.md)** (2026-08-29) 共有コードの esp_* 直接依存を fmrb_* の platform 継ぎ目へ吸収し、wasm/stub をカーネル用最小に縮める 〔3 files〕
 - `imu/` [P1: six-axis sensor (BMI270) on Modern](imu/report/p1.md) — - 〔1 files〕
 - `mic_spectrum/` [計画書: Tab5 マイクの周波数分析デモ + FFT エンジン比較](mic_spectrum/plan.md) — - 〔5 files〕
 - `micropython/` [MicroPython ゲスト VM 取り込み計画](micropython/README.md) — - 〔24 files〕
 - `midi/` [Family mruby MIDI 対応 検討メモ](midi/README.md) — - 〔23 files〕
 - `multivm_app/` [多重 VM アプリ構想: 巨大 Ruby アプリをマイコンで動かす](multivm_app/plan.md) — - 〔3 files〕
+- `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **構想** (2026-08-29) ESP32-P4-Nano + LT8912B 変換基板でソフト bring-up を先行し、基板設計に反映する 〔2 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔5 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — - 〔15 files〕
@@ -82,6 +82,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `archive/app_kill_fix/` [fmrb_app_kill 到達不能問題の診断と修正](archive/app_kill_fix/README.md)
 - `archive/focus_switch/` [Ctrl+Tab フォーカス切替 / フルスクリーン退避 - 実装と検証状況 (P1)](archive/focus_switch/report/p1.md)
 - `archive/gfx_unification/` [GFX 送出・組み立ての一本化 (App/Gfx 実装分散の解消)](archive/gfx_unification/README.md)
+- `archive/idf_seam/` [ESP-IDF 依存の継ぎ目整理 (idf_seam)](archive/idf_seam/plan.md)
 - `archive/mic/` [Family mruby マイク入力 検討メモ](archive/mic/README.md)
 - `archive/tab5_keyboard/` [実装指示書 K1: Tab5 内蔵キーボードの刻印と入力の不一致修正](archive/tab5_keyboard/instruction_k1.md)
 - `archive/video/` [SD カードの動画 (MJPEG) を窓の中で再生する — 実装計画](archive/video/plan.md)

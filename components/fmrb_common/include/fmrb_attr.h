@@ -1,6 +1,6 @@
 #pragma once
 
-// Memory-placement attributes for shared code (doc/idf_seam/). On the ESP32
+// Memory-placement attributes for shared code (doc/archive/idf_seam/). On the ESP32
 // targets they forward to ESP-IDF's esp_attr.h; everywhere else (the linux
 // simulation, wasm) placement means nothing and they expand to nothing --
 // which is exactly what IDF's own esp_attr.h resolves them to on the linux

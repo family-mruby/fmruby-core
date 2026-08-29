@@ -1,6 +1,6 @@
 #pragma once
 
-// The logging backend seam (doc/idf_seam/). This is the ONE header that knows
+// The logging backend seam (doc/archive/idf_seam/). This is the ONE header that knows
 // where log lines go; it lives in fmrb_common, the bottom layer, so both
 // fmrb_log (the FMRB_LOG* convention macros) and fmrb_common's own sources
 // can use it without a dependency cycle.

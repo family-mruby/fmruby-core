@@ -4,7 +4,7 @@
  * The ESP_LOG-compatible surface over printf, with one global runtime level
  * (per-tag levels are not kept: esp_log_level_set("*", ...) sets the global
  * level, any other tag is ignored). Moved verbatim from the interim
- * wasm/stub/esp_stub.c (doc/idf_seam/).
+ * wasm/stub/esp_stub.c (doc/archive/idf_seam/).
  */
 
 #include "fmrb_log_port.h"

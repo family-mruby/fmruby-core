@@ -2,7 +2,7 @@
 
 // Logging front-end for all targets. The FMRB_LOG* macros are the project
 // convention; shared code includes THIS header (or fmrb_log_port.h for the
-// rare ESP_LOG-only user), never esp_log.h directly (doc/idf_seam/). The
+// rare ESP_LOG-only user), never esp_log.h directly (doc/archive/idf_seam/). The
 // platform backend lives in fmrb_log_port.h (fmrb_common).
 
 #include "fmrb_log_port.h"
