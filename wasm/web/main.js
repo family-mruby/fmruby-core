@@ -200,7 +200,7 @@ resSelect.addEventListener('change', () => {
 // The resolution is the framebuffer; the zoom is only how large that
 // framebuffer is drawn, so it takes effect without a reload.
 const zoomSelect = document.getElementById('zoom-select');
-zoomSelect.value = readSetting('fmrb_web_zoom', 'fit');
+zoomSelect.value = readSetting('fmrb_web_zoom', '2');   // 2x by default; full screen still fits
 zoomSelect.addEventListener('change', () => {
   writeSetting('fmrb_web_zoom', zoomSelect.value);
   applyZoom();
