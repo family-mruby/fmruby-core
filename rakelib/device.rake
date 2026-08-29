@@ -114,6 +114,18 @@ task :flash do
   sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{get_serial_port} #{baud_opt} flash".gsub(/\s+/, ' ')
 end
 
+namespace :flash do
+  # The storage image (and with it the device's /home) is not written, so this
+  # is the loop for iterating on firmware code. It silently leaves the storage
+  # partition stale: if flash/ or config/ changed, use the full `rake flash`.
+  desc "Flash only the app partition (keeps storage incl. the device's /home)"
+  task :app do
+    baud = ENV['FLASH_BAUD']
+    baud_opt = baud && !baud.empty? ? "-b #{baud}" : ''
+    sh "#{DOCKER_CMD_PRIVILEGED} idf.py -p #{get_serial_port} #{baud_opt} app-flash".gsub(/\s+/, ' ')
+  end
+end
+
 desc "Check ESP32 HW"
 task :check do
   sh "#{DOCKER_CMD_PRIVILEGED} esptool.py -p #{get_serial_port} flash_id"
