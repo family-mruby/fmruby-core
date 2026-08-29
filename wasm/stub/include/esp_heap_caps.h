@@ -8,7 +8,6 @@
  */
 #pragma once
 
-#include "esp_attr.h"
 #include <stddef.h>
 #include <stdint.h>
 
