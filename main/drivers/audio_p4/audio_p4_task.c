@@ -102,7 +102,7 @@ int audio_p4_engine_play_wav(const char *path) {
     if (strncmp(path, "/tmp/", 5) == 0) {
         snprintf(full_path, sizeof(full_path), "%s", path);
     } else {
-        snprintf(full_path, sizeof(full_path), "/flash%s", path);
+        snprintf(full_path, sizeof(full_path), AUDIO_P4_FLASH_BASE "%s", path);
     }
 
     FILE *fp = fopen(full_path, "rb");
@@ -180,7 +180,7 @@ int audio_p4_engine_nsf_play(const char *path, int track) {
     }
 
     char full_path[256];
-    snprintf(full_path, sizeof(full_path), "/flash%s", path);
+    snprintf(full_path, sizeof(full_path), AUDIO_P4_FLASH_BASE "%s", path);
     FMRB_LOGI(TAG, "NSF play: %s track=%d", full_path, track);
 
     engine_lock();

@@ -168,7 +168,7 @@ static int process_load_fmsq_file(const fmrb_audio_load_fmsq_file_cmd_t *cmd, si
 
     char full_path[256];
     int len = cmd->path_len < 128 ? cmd->path_len : 127;
-    snprintf(full_path, sizeof(full_path), "/flash%.*s", len, cmd->path);
+    snprintf(full_path, sizeof(full_path), AUDIO_P4_FLASH_BASE "%.*s", len, cmd->path);
 
     FILE *fp = fopen(full_path, "rb");
     if (!fp) {

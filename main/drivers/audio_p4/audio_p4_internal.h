@@ -7,6 +7,19 @@
 #include "audio_p4.h"
 #include "audio_commands.h"
 
+// This driver opens sound files with plain fopen() rather than through the
+// fmrb file HAL (the players want a FILE*), so it has to spell the storage
+// root itself. On the device the VFS mounts LittleFS at /flash; the wasm
+// build reaches the same tree through the POSIX HAL's cwd-relative "flash"
+// directory. Same split, same reason, as LOCAL_BASE_PATH in
+// main/kernel/host/host_file_local.c -- and getting it wrong is silent:
+// the file simply fails to open and the music does not play.
+#ifdef FMRB_PLATFORM_WASM
+#define AUDIO_P4_FLASH_BASE "flash"
+#else
+#define AUDIO_P4_FLASH_BASE "/flash"
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
