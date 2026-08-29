@@ -114,9 +114,20 @@ void fmrb_wasm_page_settings_apply(void)
         for (size_t i = 0; i < sizeof(CLASSIC_THEME) / sizeof(CLASSIC_THEME[0]); i++) {
             conf_set(conf, CONF_MAX, CLASSIC_THEME[i][0], CLASSIC_THEME[i][1]);
         }
-        copy_file("/flash/usr/share/backgrounds/bg_426x240.png",
-                  "/flash/data/bg_426x240.png");
         printf("page settings: classic theme\n");
+    }
+
+    /* Wallpaper: one file per (theme, resolution), all pre-generated
+     * (tool/web/gen_backgrounds.py -- the neon one is drawn natively at each
+     * size, the western one pre-scaled). The desktop always loads
+     * /data/bg_426x240.png by NAME; the content is whatever fits the screen.
+     * A size we ship no file for leaves the staged default in place. */
+    if (s_classic || s_res_w) {
+        char src[96];
+        snprintf(src, sizeof(src), "/flash/usr/share/backgrounds/bg_%s%dx%d.png",
+                 s_classic ? "" : "cyber_",
+                 s_res_w ? s_res_w : BASE_W, s_res_h ? s_res_h : BASE_H);
+        copy_file(src, "/flash/data/bg_426x240.png");
     }
 
     f = fopen(CONF_PATH, "wb");
