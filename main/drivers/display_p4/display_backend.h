@@ -93,6 +93,11 @@ typedef struct {
     bool        is_viewport;
 } display_blend_req_t;
 
+/* The software compositing core behind display_backend_cpu.cpp: plain C with
+ * no ESP-IDF in it, shared with the wasm target. Defined in
+ * display_blend_cpu.c. */
+void display_blend_cpu_block(const display_blend_req_t *req);
+
 #ifdef __cplusplus
 
 typedef struct {

@@ -200,6 +200,8 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/display_p4/display_p4_task.cpp"
             "drivers/display_p4/display_backend.cpp"
             "drivers/display_p4/display_backend_ppa.cpp"
+            "drivers/display_p4/display_backend_cpu.cpp"
+            "drivers/display_p4/display_blend_cpu.c"
             "drivers/display_p4/display_p4_vm.cpp"
             "drivers/display_p4/display_p4_sprite.cpp"
             "drivers/touch/touch_task.c"
@@ -417,6 +419,16 @@ set(SPINEL_GEN_RELAX_FLAGS ";-Wno-error=incompatible-pointer-types;-Wno-error=in
 # (doc/spinel_aot/per_tu_psram_plan.md).
 set(SPINEL_GEN_TU_FLAGS
     "-w;-DSP_MULTI_CTX;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/fmrb_sp_tu_bss.h;-include;${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_spinel_rt/spinel_rt/sp_mem_override.h${SPINEL_GEN_RELAX_FLAGS}${SPINEL_GEN_PORT_FLAGS}")
+
+# Display output backend for Modern (doc/wasm/, P3). Default is the PPA
+# hardware path; FMRB_DISPLAY_BACKEND=cpu selects the software compositor in
+# display_backend.cpp instead (the wasm drawing path's on-device rehearsal).
+# Both backends are always compiled; only the selection changes.
+set(FMRB_DISPLAY_BACKEND "$ENV{FMRB_DISPLAY_BACKEND}")
+if(FMRB_DISPLAY_BACKEND STREQUAL "cpu")
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_DISPLAY_BACKEND_CPU)
+    message(STATUS "FMRB_DISPLAY_BACKEND=cpu: software display compositor selected")
+endif()
 
 if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_KERNEL_ENGINE_SPINEL)

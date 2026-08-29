@@ -173,7 +173,13 @@ ENGINE_ENV_OPTS = [
   # the rake/CMake boundary (lib/add/family_mruby_*.rb and
   # components/picoruby-esp32/CMakeLists.txt), so they cannot disagree.
   # Touching vm.c means `rake clean` before rebuilding.
-  "-e FMRB_TASK_SELF_TICK=#{ENV['FMRB_TASK_SELF_TICK']}"
+  "-e FMRB_TASK_SELF_TICK=#{ENV['FMRB_TASK_SELF_TICK']}",
+  # Display output backend for Modern (doc/wasm/, P3): unset/ppa is the PPA
+  # hardware path, `cpu` the software compositor (main/CMakeLists.txt reads it
+  # and defines FMRB_DISPLAY_BACKEND_CPU). Changing only this env var does not
+  # make ninja reconfigure -- touch main/CMakeLists.txt when switching, and
+  # check the boot log ("CPU display backend" vs "PPA Blend initialized").
+  "-e FMRB_DISPLAY_BACKEND=#{ENV['FMRB_DISPLAY_BACKEND']}"
 ].join(" ")
 
 DOCKER_CMD = [
