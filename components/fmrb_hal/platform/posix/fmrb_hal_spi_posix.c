@@ -1,6 +1,6 @@
 #include "fmrb_hal_spi.h"
 #include "fmrb_mem.h"
-#include "esp_log.h"
+#include "fmrb_log_port.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

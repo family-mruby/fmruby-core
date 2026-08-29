@@ -16,7 +16,7 @@ if(IDF_TARGET STREQUAL "esp32p4")
         PRIV_INCLUDE_DIRS
             "src"
             "src/nofrendo"
-        PRIV_REQUIRES heap esp_timer
+        PRIV_REQUIRES heap esp_timer fmrb_hal
     )
 
     target_compile_options(${COMPONENT_LIB} PRIVATE

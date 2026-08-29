@@ -2,7 +2,8 @@
 #include <string.h>
 #include "fmrb_task_config.h"
 #include "fmrb_rtos.h"
-#include "esp_log.h"
+#include "fmrb_log_port.h"
+#include "fmrb_attr.h"
 #include "esp_heap_caps.h"
 
 static const char *TAG = "fmrb_task";
@@ -21,7 +22,7 @@ typedef struct {
     uint8_t      active;
 } task_entry_t;
 
-EXT_RAM_BSS_ATTR static task_entry_t s_tasks[FMRB_TASK_MONITOR_MAX];
+FMRB_EXT_RAM_BSS_ATTR static task_entry_t s_tasks[FMRB_TASK_MONITOR_MAX];
 static int s_task_count = 0;
 
 static void register_task(TaskHandle_t handle, const char *name,

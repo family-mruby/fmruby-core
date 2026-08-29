@@ -37,7 +37,7 @@
 #include "driver/ppa.h"
 #endif
 #include "esp_heap_caps.h"
-#include "esp_timer.h"
+#include "fmrb_hal_time.h"
 
 extern "C" {
 #include "fmrb_bmp332.h"
@@ -47,14 +47,14 @@ extern "C" {
 #include <msgpack.h>
 #include <cstring>
 #include <cstdlib>  // qsort
+#ifndef FMRB_PLATFORM_WASM
 #include "esp_private/esp_cache_private.h"
 #include "esp_cache.h"
-#ifndef FMRB_PLATFORM_WASM
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
-#endif
 #include "esp_system.h"
+#endif
 
 static const char *TAG = "display_p4";
 
@@ -75,7 +75,9 @@ static size_t g_cache_line_size = 64;
 
 static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
     size_t cache_line_size = 64;
+#ifndef FMRB_PLATFORM_WASM
     esp_cache_get_alignment(MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA, &cache_line_size);
+#endif
     g_cache_line_size = cache_line_size;
     size_t aligned = (length + cache_line_size - 1) & ~(cache_line_size - 1);
     void *buf = heap_caps_aligned_alloc(cache_line_size, aligned,
@@ -3099,7 +3101,7 @@ static bool video_service(void) {
         return false;
     }
 
-    int64_t copy_t0 = esp_timer_get_time();
+    int64_t copy_t0 = (int64_t)fmrb_hal_time_get_us();
     p4_canvas_t *c = canvas_find(canvas_id);
     if (c && c->sprite && pixels) {
         uint16_t *dst = (uint16_t *)c->sprite->getBuffer();
@@ -3131,7 +3133,7 @@ static bool video_service(void) {
                 }
                 g_needs_render = true;
                 display_p4_video_note_copy_us(
-                    (uint32_t)(esp_timer_get_time() - copy_t0));
+                    (uint32_t)((int64_t)fmrb_hal_time_get_us() - copy_t0));
             }
         }
     }

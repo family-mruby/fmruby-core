@@ -22,6 +22,7 @@
 #define FMRB_HAVE_SPINEL_HOST 1
 #endif
 #include "fmrb_task_config.h"
+#include "fmrb_attr.h"
 #include "fmrb_kernel.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "esp_heap_caps.h"
@@ -95,7 +96,7 @@ bool fmrb_app_poll_exit_signal(fmrb_app_task_context_t* ctx) {
 // ============================================================================
 
 // Fixed-size context pool (PSRAM - no DMA dependency)
-EXT_RAM_BSS_ATTR static fmrb_app_task_context_t g_ctx_pool[FMRB_MAX_APPS];
+FMRB_EXT_RAM_BSS_ATTR static fmrb_app_task_context_t g_ctx_pool[FMRB_MAX_APPS];
 
 // Every slot index this file computes has to land inside the pool above, so the
 // process id range and the pool size are required to agree. They drifted apart
@@ -488,7 +489,7 @@ static int create_vm_lua(fmrb_app_task_context_t* ctx) {
 #define FMRB_ERROR_BUF_SIZE 1024
 static char s_last_error_name[32] = {0};
 #ifndef CONFIG_IDF_TARGET_LINUX
-EXT_RAM_BSS_ATTR static char s_last_error_msg[FMRB_ERROR_BUF_SIZE];
+FMRB_EXT_RAM_BSS_ATTR static char s_last_error_msg[FMRB_ERROR_BUF_SIZE];
 #else
 static char s_last_error_msg[FMRB_ERROR_BUF_SIZE];
 #endif

@@ -7,6 +7,7 @@
 // step / stack_trace / frame_vars) are dispatched to fmrb_debug_ctx once that
 // module lands; until then they return FMRB_ERR_NOT_SUPPORTED.
 #include "fmrb_debugd.h"
+#include "fmrb_attr.h"
 #include "fmrb_debug_proto.h"
 #include "fmrb_debug_transport.h"
 #include "fmrb_debug_ctx.h"
@@ -105,7 +106,7 @@ static void handle_ps(const fmrb_dbg_req_t *req) {
 static void handle_log_read(const fmrb_dbg_req_t *req) {
     // PSRAM: filled by memcpy from the log ring and consumed by msgpack,
     // both CPU-only (doc/reference/internal_ram_budget.md E).
-    EXT_RAM_BSS_ATTR static char linebuf[2048];
+    FMRB_EXT_RAM_BSS_ATTR static char linebuf[2048];
     uint32_t pos = req->pos;
     uint32_t before = pos;
     int max_lines = req->max_lines > 0 ? req->max_lines : 50;

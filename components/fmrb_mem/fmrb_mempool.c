@@ -7,20 +7,21 @@
 #include "fmrb_hal.h"
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
+#include "fmrb_attr.h"
 
 #define TAG "MEMPOOL"
 
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system[FMRB_MEM_POOL_SIZE_SYSTEM];
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_kernel[FMRB_MEM_POOL_SIZE_KERNEL];
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system_app[FMRB_MEM_POOL_SIZE_SYSTEM_APP];
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system_overlay[FMRB_MEM_POOL_SIZE_SYSTEM_OVERLAY];
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app0[FMRB_MEM_POOL_SIZE_USER_APP];
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app1[FMRB_MEM_POOL_SIZE_USER_APP];
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app2[FMRB_MEM_POOL_SIZE_USER_APP];
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app_large[FMRB_MEM_POOL_SIZE_USER_APP_LARGE];
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_editor_doc[FMRB_MEM_POOL_SIZE_EDITOR_DOC];
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_tmpfs[FMRB_MEM_POOL_SIZE_TMPFS];
-EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_log_buffer[FMRB_MEM_POOL_SIZE_LOG_BUFFER];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system[FMRB_MEM_POOL_SIZE_SYSTEM];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_kernel[FMRB_MEM_POOL_SIZE_KERNEL];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system_app[FMRB_MEM_POOL_SIZE_SYSTEM_APP];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_system_overlay[FMRB_MEM_POOL_SIZE_SYSTEM_OVERLAY];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app0[FMRB_MEM_POOL_SIZE_USER_APP];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app1[FMRB_MEM_POOL_SIZE_USER_APP];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app2[FMRB_MEM_POOL_SIZE_USER_APP];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_user_app_large[FMRB_MEM_POOL_SIZE_USER_APP_LARGE];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_editor_doc[FMRB_MEM_POOL_SIZE_EDITOR_DOC];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_tmpfs[FMRB_MEM_POOL_SIZE_TMPFS];
+FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_log_buffer[FMRB_MEM_POOL_SIZE_LOG_BUFFER];
 
 // POOL_ID_USER_APP3/4 are absent on purpose: they are filled in by
 // fmrb_mempool_reserve the first time an app is given that slot.

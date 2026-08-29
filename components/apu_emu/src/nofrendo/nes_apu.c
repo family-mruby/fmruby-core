@@ -28,7 +28,7 @@
 #include "log.h"
 #include "nes_apu.h"
 // #include "nes6502.h"
-#include "esp_timer.h"
+#include "fmrb_hal_time.h"
 
 // APUデバッグログ制御フラグ
 #define APU_DEBUG       0    // APU処理詳細ログ
@@ -646,7 +646,7 @@ void apu_write(uint32 address, uint8 value)
       static uint32_t last_write_time = 0;
       uint32_t current_time = 0;  // ミリ秒
 
-      current_time = esp_timer_get_time() / 1000;
+      current_time = (uint32_t)fmrb_hal_time_get_ms();
       printf("APU_WRITE[%d]: addr=$%04X, val=$%02X (time=%lu ms, delta=%lu ms)\n", 
               write_count, address, value, current_time, current_time - last_write_time);
    

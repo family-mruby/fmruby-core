@@ -42,7 +42,6 @@ extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
 #else
 #include "esp_heap_caps.h"
 #include "esp_system.h"
-#include "esp_attr.h"
 #include "hw_proxy.h"
 #endif
 
@@ -50,11 +49,8 @@ extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
 // On ESP32 it goes to PSRAM: it is written once and read once per call, so the
 // slower memory costs nothing, and internal DRAM is the scarce resource here.
 // On the Linux build it is plain BSS. Same shape as FMRB_DBG_BSS_ATTR.
-#ifdef CONFIG_IDF_TARGET_LINUX
-#define FMRB_SPX_BSS_ATTR
-#else
-#define FMRB_SPX_BSS_ATTR EXT_RAM_BSS_ATTR
-#endif
+#include "fmrb_attr.h"
+#define FMRB_SPX_BSS_ATTR FMRB_EXT_RAM_BSS_ATTR
 
 #if defined(FMRB_HAS_WIFI)
 #include "wifi_task.h"

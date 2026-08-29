@@ -7,6 +7,7 @@ set(COMMON_SRCS
 # Set platform-specific sources and requirements
 if(IDF_TARGET STREQUAL "linux")
     list(APPEND COMMON_SRCS
+        "platform/posix/fmrb_hal_time_posix.c"
         "platform/posix/fmrb_hal_gpio_posix.c"
         "platform/posix/fmrb_hal_i2c_posix.c"
         "platform/posix/fmrb_hal_rmt_posix.c"
@@ -22,6 +23,7 @@ if(IDF_TARGET STREQUAL "linux")
 else()
     set(FMRB_HW_TARGET "WROVER" CACHE STRING "Hardware target variant: WROVER, ATOM_DISPLAY, TAB5, NARYAv4")
     list(APPEND COMMON_SRCS
+        "platform/esp32/fmrb_hal_time_esp32.c"
         "platform/esp32/fmrb_hal_gpio_esp32.c"
         "platform/esp32/fmrb_hal_i2c_esp32.c"
         "platform/esp32/fmrb_hal_rmt_esp32.c"

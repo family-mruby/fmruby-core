@@ -95,8 +95,11 @@ set(PICORUBY_DIR ${FMRB_ROOT}/components/picoruby-esp32/picoruby)
 set(MRBGEMS ${PICORUBY_DIR}/mrbgems)
 set(LIBMRUBY_WASM ${PICORUBY_DIR}/build/family-mruby-wasm/lib/libmruby.a)
 
+# rake clean_all deletes the picoruby build tree, this archive included. Fail
+# at core link setup, not at configure: the PoC (rake wasm:poc) has no mruby
+# in it and must keep working right after a clean.
 if(NOT EXISTS ${LIBMRUBY_WASM})
-  message(FATAL_ERROR "libmruby for wasm not found (${LIBMRUBY_WASM}); run `rake wasm:mruby` first")
+  message(WARNING "libmruby for wasm not found (${LIBMRUBY_WASM}); run `rake wasm:mruby` before building core/core_web")
 endif()
 
 # --- LovyanGFX (sprite/font core only; rake wasm:setup fetches + patches) --
@@ -144,6 +147,7 @@ set(CORE_SRCS
   # fmrb_log
   ${FMRB_ROOT}/components/fmrb_log/fmrb_log.c
   ${FMRB_ROOT}/components/fmrb_log/fmrb_log_buffer.c
+  ${FMRB_ROOT}/components/fmrb_common/platform/wasm/fmrb_log_port_wasm.c
   # fmrb_msg / cobs / transport
   ${FMRB_ROOT}/components/fmrb_msg/fmrb_msg.c
   ${FMRB_ROOT}/components/fmrb_msg/fmrb_hid_event.c
@@ -171,6 +175,7 @@ set(CORE_SRCS
   # the posix (shared-memory) link -- the Modern in-process display path.
   ${FMRB_ROOT}/components/fmrb_hal/fmrb_hal.c
   ${FMRB_ROOT}/components/fmrb_hal/fmrb_hal_time.c
+  ${FMRB_ROOT}/components/fmrb_hal/platform/posix/fmrb_hal_time_posix.c
   ${FMRB_ROOT}/components/fmrb_hal/platform/posix/fmrb_hal_gpio_posix.c
   ${FMRB_ROOT}/components/fmrb_hal/platform/posix/fmrb_hal_i2c_posix.c
   ${FMRB_ROOT}/components/fmrb_hal/platform/posix/fmrb_hal_rmt_posix.c
@@ -324,7 +329,7 @@ list(APPEND CORE_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/rd_encoder_stub.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/audio_backend_wasm.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/input_wasm.c
-  ${CMAKE_CURRENT_SOURCE_DIR}/stub/esp_stub.c)
+  ${CMAKE_CURRENT_SOURCE_DIR}/backend/libc_shim_wasm.c)
 
 # ---------------------------------------------------------------------------
 

@@ -15,7 +15,7 @@
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "fmrb_rtos.h"
-#include "esp_timer.h"
+#include "fmrb_hal_time.h"
 
 #include "apu_if.h"
 #include "apu_helper.h"
@@ -488,7 +488,7 @@ static void audio_p4_task(void *arg) {
 
     // 60 Hz timing
     const uint64_t target_frame_time_us = 16667;
-    uint64_t next_frame_time = esp_timer_get_time();
+    uint64_t next_frame_time = fmrb_hal_time_get_us();
 
     while (1) {
         engine_lock();
@@ -540,7 +540,7 @@ static void audio_p4_task(void *arg) {
 
         // Frame timing safety net (the codec write normally paces us)
         next_frame_time += target_frame_time_us;
-        uint64_t now = esp_timer_get_time();
+        uint64_t now = fmrb_hal_time_get_us();
         int64_t sleep_time_us = next_frame_time - now;
         if (sleep_time_us > 1000) {
             vTaskDelay(pdMS_TO_TICKS(sleep_time_us / 1000));

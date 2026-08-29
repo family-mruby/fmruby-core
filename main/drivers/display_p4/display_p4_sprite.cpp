@@ -6,8 +6,10 @@
 
 #include <cstring>
 #include "esp_heap_caps.h"
+#ifndef FMRB_PLATFORM_WASM
 #include "esp_private/esp_cache_private.h"
-#include "esp_attr.h"
+#endif
+#include "fmrb_attr.h"
 #include <cstdlib>   // qsort
 
 #include "fmrb_log.h"
@@ -31,7 +33,7 @@ typedef struct {
 } p4_sprite_image_t;
 
 // Pools are large (see display_p4_sprite.h); keep them in PSRAM
-EXT_RAM_BSS_ATTR static p4_sprite_image_t g_images[DISPLAY_P4_MAX_SPRITE_IMAGES];
+FMRB_EXT_RAM_BSS_ATTR static p4_sprite_image_t g_images[DISPLAY_P4_MAX_SPRITE_IMAGES];
 static uint16_t g_next_image_id = 1;
 
 static p4_sprite_image_t* image_find(uint16_t id) {
@@ -59,7 +61,9 @@ uint16_t display_p4_sprite_image_create(uint16_t canvas_id,
     // Cache-aligned buffer for PPA compatibility
     size_t buf_size = (size_t)width * height * 2;
     size_t cache_line_size = 64;
+#ifndef FMRB_PLATFORM_WASM
     esp_cache_get_alignment(MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA, &cache_line_size);
+#endif
     buf_size = (buf_size + cache_line_size - 1) & ~(cache_line_size - 1);
     void *buf = heap_caps_aligned_alloc(cache_line_size, buf_size,
                                          MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
@@ -139,7 +143,7 @@ typedef struct {
     bool     visible;
 } p4_sprite_instance_t;
 
-EXT_RAM_BSS_ATTR static p4_sprite_instance_t g_instances[DISPLAY_P4_MAX_SPRITE_INSTANCES];
+FMRB_EXT_RAM_BSS_ATTR static p4_sprite_instance_t g_instances[DISPLAY_P4_MAX_SPRITE_INSTANCES];
 static uint16_t g_next_instance_id = 1;
 
 // Scratch array for z-order sort in composite.
