@@ -11,6 +11,7 @@
  */
 #include "fmrb_spx_gfx.h"
 
+#include <stdio.h>
 #include <string.h>
 #include <stdint.h>
 #include "fmrb_app.h"

@@ -12,7 +12,11 @@
 #include "display_p4_vm.h"
 #include "display_p4_sprite.h"
 #include "display_p4_video.h"
+#ifndef FMRB_PLATFORM_WASM
 #include "lgfx_tab5.hpp"
+#else
+#include <M5GFX.h>
+#endif
 #include "fonts/misaki/lgfx_misaki_fonts.hpp"
 #include "../audio_p4/audio_p4.h"
 
@@ -27,9 +31,11 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
+#ifndef FMRB_PLATFORM_WASM
 #include "driver/i2c_master.h"
 #include "driver/gpio.h"
 #include "driver/ppa.h"
+#endif
 #include "esp_heap_caps.h"
 #include "esp_timer.h"
 
@@ -43,9 +49,11 @@ extern "C" {
 #include <cstdlib>  // qsort
 #include "esp_private/esp_cache_private.h"
 #include "esp_cache.h"
+#ifndef FMRB_PLATFORM_WASM
 #include "esp_app_desc.h"
 #include "esp_chip_info.h"
 #include "esp_flash.h"
+#endif
 #include "esp_system.h"
 
 static const char *TAG = "display_p4";
@@ -94,7 +102,12 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
 #define PI4IO_BIT_HP_DETECT (1 << 7)
 #define PI4IO_I2C_FREQ      400000
 
+#ifdef FMRB_PLATFORM_WASM
+// Sprite parent only: no panel behind it, and nothing here may draw on it.
+static lgfx::LGFX_Device g_lcd;
+#else
 static LGFX_Tab5 g_lcd;
+#endif
 static volatile bool g_lcd_ready = false;
 
 // The panel is Tab5 hardware, not PPA hardware: both output backends drive the
@@ -104,7 +117,11 @@ static volatile bool g_lcd_ready = false;
 // detection further down -- putting those behind the output interface would
 // leave the CPU backend with no lit panel to draw on.
 LGFX_Device *display_p4_lcd(void) { return &g_lcd; }
+#ifdef FMRB_PLATFORM_WASM
+void *display_p4_panel_framebuffer(void) { return NULL; }
+#else
 void *display_p4_panel_framebuffer(void) { return g_lcd.getFrameBuffer(); }
+#endif
 
 // Serializes every runtime access to the shared I2C controller (GT911
 // touch reads, PI4IO, ES8388, mruby-app transactions). LovyanGFX drives
@@ -813,6 +830,7 @@ static void render_frame(void) {
     }
 }
 
+#ifndef FMRB_PLATFORM_WASM
 // ============================================================
 // PI4IO I2C helper
 // ============================================================
@@ -977,6 +995,7 @@ static Tab5PanelVariant tab5_power_on(void) {
     // Backlight: LEDC PWM via Light_PWM in LGFX_Tab5 (GPIO22, ch7, 44100Hz).
     return variant;
 }
+#endif /* !FMRB_PLATFORM_WASM */
 
 // ============================================================
 // ACK response sender
@@ -2870,6 +2889,27 @@ static void i2c_service_unlock(void) {
     xSemaphoreGive(g_i2c_mutex);
 }
 
+#ifdef FMRB_PLATFORM_WASM
+// No I2C bus exists here; the exported service answers "not supported" so any
+// caller (audio volume, hw_proxy mediation) fails cleanly instead of linking
+// against nothing.
+extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
+                                           size_t len, uint32_t freq) {
+    (void)addr; (void)data; (void)len; (void)freq;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+extern "C" fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
+                                          size_t len, uint32_t freq) {
+    (void)addr; (void)data; (void)len; (void)freq;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
+                                                uint8_t value, uint32_t freq) {
+    (void)addr; (void)reg; (void)value; (void)freq;
+    return FMRB_ERR_NOT_SUPPORTED;
+}
+extern "C" void display_p4_poll_headphone(void) {}
+#else
 extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
                                            size_t len, uint32_t freq) {
     if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
@@ -2945,6 +2985,7 @@ extern "C" void display_p4_poll_headphone(void) {
     }
     i2c_service_unlock();
 }
+#endif /* !FMRB_PLATFORM_WASM */
 
 // ============================================================
 // Main task
@@ -2966,6 +3007,14 @@ static int s_boot_line_y = 0;
 static int s_boot_cursor_x = 0;   // blinking block after the last status line
 static int s_boot_cursor_y = 0;
 
+#ifdef FMRB_PLATFORM_WASM
+// No panel: the boot screen has nowhere to go, and the loading page is the
+// browser's job anyway.
+static void boot_print_line(const char *text) { (void)text; }
+static void boot_print_blank(void) {}
+static void draw_boot_cursor(bool visible) { (void)visible; }
+static void draw_boot_screen(void) {}
+#else
 static void boot_print_line(const char *text) {
     g_lcd.setCursor(BOOT_MARGIN_X, s_boot_line_y);
     g_lcd.print(text);
@@ -3035,6 +3084,7 @@ static void draw_boot_screen(void) {
              (int)g_lcd.width(), (int)g_lcd.height());
     boot_print_line(buf);
 }
+#endif /* !FMRB_PLATFORM_WASM */
 
 // Copy a frame the player finished into the canvas it owns, then commit it
 // the same way a present would. Runs on the display task: the player never
@@ -3092,6 +3142,15 @@ static bool video_service(void) {
 
 static void display_p4_task(void *arg) {
     (void)arg;
+#ifdef FMRB_PLATFORM_WASM
+    // Sprite-only bring-up: no panel, no codec, no headphone jack. The
+    // interpreter and compositor below run unchanged; presenting is the wasm
+    // backend's RGBA conversion (wasm/backend/display_backend_wasm.cpp).
+    FMRB_LOGI(TAG, "wasm display: VM + cursor init (sprite-only, no panel)");
+    display_p4_vm_init();
+    cursor_init();
+    g_lcd_ready = true;
+#else
     FMRB_LOGI(TAG, "Tab5 display: power on");
     g_lcd.configure(tab5_power_on());
 
@@ -3141,6 +3200,7 @@ static void display_p4_task(void *arg) {
         ppa_verification_test();
 #endif
     }
+#endif /* !FMRB_PLATFORM_WASM */
 
     FMRB_LOGI(TAG, "Tab5 display: entering command receive loop");
 
@@ -3154,6 +3214,7 @@ static void display_p4_task(void *arg) {
     while (1) {
         // Blink the boot-screen cursor until the first real frame replaces
         // the boot screen. Same task as render_frame, so no draw race.
+#ifndef FMRB_PLATFORM_WASM
         if (g_first_render && g_lcd_ready) {
             uint32_t now = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
             if ((uint32_t)(now - boot_cursor_ms) >= 500) {
@@ -3162,6 +3223,7 @@ static void display_p4_task(void *arg) {
                 draw_boot_cursor(boot_cursor_on);
             }
         }
+#endif
 
         // Hand any finished video frame to its canvas before deciding whether
         // to render, so a new frame joins this render instead of the next one.
@@ -3193,6 +3255,12 @@ static void display_p4_task(void *arg) {
             FMRB_LINK_CHANNEL_DEFAULT, &msg, timeout_ms);
         if (err == FMRB_OK && msg.size > 0) {
             process_message(g_recv_buf, msg.size);
+        } else if (err != FMRB_OK && err != FMRB_ERR_TIMEOUT) {
+            // Before the kernel brings the link up, receive fails without
+            // blocking; yield instead of spinning. Harmless on the device,
+            // load-bearing on the cooperative wasm port, where this spin
+            // would starve the boot task that is about to create the link.
+            fmrb_task_delay_ms(10);
         }
     }
 }
@@ -3225,6 +3293,10 @@ extern "C" bool display_p4_is_ready(void) {
 }
 
 extern "C" int display_p4_get_touch(int16_t *out_x, int16_t *out_y) {
+#ifdef FMRB_PLATFORM_WASM
+    (void)out_x; (void)out_y;
+    return 0;
+#else
     if (!i2c_service_lock()) return 0;
     // Ask for two points so the return value distinguishes one finger from
     // two (the touch task maps a two-finger tap to a right click). Only the
@@ -3237,6 +3309,7 @@ extern "C" int display_p4_get_touch(int16_t *out_x, int16_t *out_y) {
         *out_y = tp[0].y;
     }
     return count;
+#endif
 }
 
 

@@ -140,6 +140,7 @@ task :setup do
   sh "cp -f lib/add/family_mruby.gembox #{mrbgem_path}/"
   sh "cp -f lib/add/family_mruby_linux.rb components/picoruby-esp32/picoruby/build_config/"
   sh "cp -f lib/add/family_mruby_esp32.rb components/picoruby-esp32/picoruby/build_config/"
+  sh "cp -f lib/add/family_mruby_wasm.rb components/picoruby-esp32/picoruby/build_config/"
 
   # ---------- Replace ----------
   # Machine

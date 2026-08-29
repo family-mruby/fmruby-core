@@ -47,9 +47,16 @@
 #endif
 #endif
 
+#ifdef FMRB_PLATFORM_WASM
+#include "display_p4_task.h"
+#include "audio_p4.h"
+#endif
+
 #include "boot.h"
 
-#include "fmrb_debugd.h"     // remote-debugger daemon (all targets)
+#ifndef FMRB_PLATFORM_WASM
+#include "fmrb_debugd.h"     // remote-debugger daemon (linux TCP / esp32 BLE)
+#endif
 
 static const char *TAG = "boot";
 
@@ -79,7 +86,7 @@ void fmrb_host_set_ready(void) {
 
 extern int Machine_get_config_int(int type);
 
-#ifdef CONFIG_IDF_TARGET_LINUX
+#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_PLATFORM_WASM)
 
 #include <unistd.h>
 #include <signal.h>
@@ -259,6 +266,26 @@ static bool init_hardware(void)
         FMRB_LOGE(TAG, "Failed to init usb_task");
         return false;
     }
+
+#ifdef FMRB_PLATFORM_WASM
+    // The Modern in-process display task, sprite-only: same receive loop and
+    // command interpreter as the Tab5, compositing through the shared software
+    // core, presenting into the RGBA frame the browser reads (doc/wasm/ P4a).
+    ret = display_p4_task_init();
+    if (ret != FMRB_OK) {
+        FMRB_LOGE(TAG, "Failed to init wasm display task");
+        return false;
+    }
+
+    // Audio: the APU emulator over the wasm ring backend. On the Tab5 the
+    // display task brings the codec up; here there is no codec, so init the
+    // backend directly before spawning the APU task.
+    if (audio_backend()->init() != FMRB_OK) {
+        FMRB_LOGW(TAG, "wasm audio backend init failed, continuing without sound");
+    } else if (audio_p4_task_init() != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to init APU task, continuing without sound");
+    }
+#endif
 
     return true;
 }
@@ -451,9 +478,10 @@ static void init_mem(void)
 // Family mruby OS initialization
 void fmrb_os_init(void)
 {
-#ifdef CONFIG_IDF_TARGET_LINUX
+#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_PLATFORM_WASM)
     // Before the first log line: the simulator's log path has to be made safe
-    // against the tick signal (boot/sim_log_guard.c).
+    // against the tick signal (boot/sim_log_guard.c). The wasm port has no
+    // tick signal (ticks are caught up cooperatively), so no guard there.
     fmrb_sim_log_guard_init();
 #endif
     //set log level
@@ -463,7 +491,9 @@ void fmrb_os_init(void)
     FMRB_LOGI(TAG, "Family mruby OS version %s",FMRB_OS_VERSION);
     FMRB_LOGI(TAG, "Family mruby Core Firmware Starting...");
     FMRB_LOGD(TAG, "Debug log level enabled");
-#ifdef CONFIG_IDF_TARGET_LINUX
+#if defined(FMRB_PLATFORM_WASM)
+    FMRB_LOGI(TAG, "Running on WebAssembly target - Development mode");
+#elif defined(CONFIG_IDF_TARGET_LINUX)
     FMRB_LOGI(TAG, "Running on Linux target - Development mode");
 #elif defined(CONFIG_IDF_TARGET_ESP32P4)
     FMRB_LOGI(TAG, "Running on ESP32-P4 (M5Stack Tab5) - Production mode");
@@ -473,7 +503,7 @@ void fmrb_os_init(void)
 
     show_config();
 
-#ifdef CONFIG_IDF_TARGET_LINUX
+#if defined(CONFIG_IDF_TARGET_LINUX) && !defined(FMRB_PLATFORM_WASM)
     //install_sigalrm_logger();
     dump_signal_mask("app_main(before)");
     log_itimer_real("app_main(before)");
@@ -551,8 +581,10 @@ void fmrb_os_init(void)
     // FMRB_DEBUG_TCP_PORT, ESP32 targets talk the BLE debug GATT service.
     // Started after the kernel/app subsystems are up. The BLE transport does
     // not depend on BLE being initialized yet, so the order is free here.
+#ifndef FMRB_PLATFORM_WASM
     fmrb_debugd_init();
     fmrb_mem_log_boot_snapshot("debugd");
+#endif
 }
 
 void fmrb_os_close(void)

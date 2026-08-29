@@ -19,7 +19,7 @@
 #include "fmrb_kana.h"
 #include "status_led.h"
 #include "fmrb_file_transfer_msg.h"
-#if defined(FMRB_HW_MODERN)
+#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
 #include "host_file_local.h"
 #endif
 #include "fmrb_mem.h"
@@ -1017,7 +1017,7 @@ static bool file_transfer_process_step(void)
 // Start a new file transfer from a FILE_CMD_TRANSFER message
 static void file_transfer_start(const file_cmd_t *cmd)
 {
-#if defined(FMRB_HW_MODERN)
+#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
     // Modern: "GA storage" is the core's own /flash LittleFS. Write the
     // file locally instead of streaming it over the link (there is no
     // link receiver, and none is needed).
@@ -1081,7 +1081,7 @@ static void file_status_response_cb(uint8_t status, const uint8_t *payload,
 // Handle FILE_CMD_STATUS asynchronously (non-blocking for host_task)
 static void file_transfer_handle_status(const file_cmd_t *cmd)
 {
-#if defined(FMRB_HW_MODERN)
+#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
     uint8_t exists = 0;
     uint32_t size = 0;
     uint32_t checksum = 0;
@@ -1120,7 +1120,7 @@ static void file_transfer_handle_status(const file_cmd_t *cmd)
 // Handle FILE_CMD_DELETE synchronously
 static void file_transfer_handle_delete(const file_cmd_t *cmd)
 {
-#if defined(FMRB_HW_MODERN)
+#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
     fmrb_err_t local_ret = host_file_local_delete(cmd->path, cmd->path_len);
     if (cmd->result) {
         cmd->result->result = (local_ret == FMRB_OK) ? 0 : -1;
@@ -1172,7 +1172,7 @@ static void file_rmdir_response_cb(uint8_t status, const uint8_t *payload,
 // transport timeout than DELETE.
 static void file_transfer_handle_rmdir(const file_cmd_t *cmd)
 {
-#if defined(FMRB_HW_MODERN)
+#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
     uint32_t deleted = 0;
     uint8_t status = 0;
     fmrb_err_t local_ret = host_file_local_rmdir(cmd->path, cmd->path_len,

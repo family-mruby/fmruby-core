@@ -7,6 +7,7 @@
 #include "fmrb_log.h"
 #include "fmrb_link_cobs.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -16,7 +17,13 @@
 
 static const char *TAG = "host_file";
 
+// On the device the VFS mounts LittleFS at /flash; the wasm build reaches
+// the same tree through the POSIX HAL's cwd-relative "flash" directory.
+#ifdef FMRB_PLATFORM_WASM
+#define LOCAL_BASE_PATH "flash"
+#else
 #define LOCAL_BASE_PATH "/flash"
+#endif
 #define LOCAL_MAX_PATH  256
 
 // Build full path from a /flash-relative path (leading '/' tolerated)

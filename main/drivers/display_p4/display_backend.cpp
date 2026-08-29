@@ -15,10 +15,15 @@
 
 const display_backend_t *display_backend_ppa(void);
 const display_backend_t *display_backend_cpu(void);
+const display_backend_t *display_backend_wasm(void);
 
 const display_backend_t *display_backend(void)
 {
-#ifdef FMRB_DISPLAY_BACKEND_CPU
+#if defined(FMRB_PLATFORM_WASM)
+    /* wasm/backend/display_backend_wasm.cpp: the shared software compositor
+     * with an RGBA frame for the browser (doc/wasm/ P4a). */
+    return display_backend_wasm();
+#elif defined(FMRB_DISPLAY_BACKEND_CPU)
     return display_backend_cpu();
 #else
     return display_backend_ppa();
