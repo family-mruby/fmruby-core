@@ -350,7 +350,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../components/fmrb_common/fmrb_hw_defines.cmak
 fmrb_add_hw_defines()
 if(IDF_TARGET STREQUAL "esp32p4")
     if(FMRB_HW_TARGET STREQUAL "NARYAv4")
-        message(WARNING "HW target NARYAv4: board is not finalized; building with the Tab5 pin assignment as a placeholder")
+        message(STATUS "HW target: NARYAv4 (Modern, ESP32-P4 / HDMI, brought up on ESP32-P4-Nano)")
     else()
         message(STATUS "HW target: TAB5 (Modern, ESP32-P4 / M5Stack Tab5)")
     endif()

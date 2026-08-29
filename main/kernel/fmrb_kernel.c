@@ -73,6 +73,8 @@ static fmrb_display_mode_t parse_display_mode(const char* mode_str)
         return FMRB_DISPLAY_MODE_HEADLESS;
     } else if (strcmp(mode_str, "tab5_dsi") == 0) {
         return FMRB_DISPLAY_MODE_TAB5_DSI;
+    } else if (strcmp(mode_str, "naryav4_hdmi") == 0) {
+        return FMRB_DISPLAY_MODE_NARYAV4_HDMI;
     } else if (strcmp(mode_str, "sdl2") == 0) {
         return FMRB_DISPLAY_MODE_SDL2;
     } else if (strcmp(mode_str, "atom_display") == 0) {
@@ -91,6 +93,7 @@ static const char *display_mode_name(fmrb_display_mode_t mode)
     case FMRB_DISPLAY_MODE_SPI_DIRECT: return "spi_direct";
     case FMRB_DISPLAY_MODE_HEADLESS:   return "headless";
     case FMRB_DISPLAY_MODE_TAB5_DSI:   return "tab5_dsi";
+    case FMRB_DISPLAY_MODE_NARYAV4_HDMI: return "naryav4_hdmi";
     case FMRB_DISPLAY_MODE_SDL2:       return "sdl2";
     case FMRB_DISPLAY_MODE_ATOM_DISPLAY: return "atom_display";
     default:                           return "unknown";

@@ -14,9 +14,10 @@
 #                          hardware must keep using FMRB_HW_MODERN.
 #   Board (from FMRB_HW_TARGET):
 #     FMRB_HW_TAB5         M5Stack Tab5 (current Modern dev board)
-#     FMRB_HW_NARYAV4      Future dedicated Narya v4 P4 board (not designed
-#                          yet; builds with the Tab5 pin assignment as a
-#                          placeholder)
+#     FMRB_HW_NARYAV4      Narya v4, the dedicated Modern board being
+#                          designed. Its pins are those of the bring-up
+#                          hardware it is modelled on, an ESP32-P4-Nano
+#                          (doc/naryav4/).
 #     FMRB_HW_ATOM_DISPLAY AtomS3 + Atom Display (Retro)
 #     (no macro)           Narya v3 (Retro default)
 #

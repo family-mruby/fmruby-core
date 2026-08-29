@@ -30,7 +30,11 @@ set(FACTORY "${ETC_DIR}/system_conf.factory.toml")
 # check itself: if the two disagree, the comparison below fails the build
 # rather than shipping the wrong settings.
 if(IDF_TARGET STREQUAL "esp32p4")
-    set(EXPECTED "${SRC_DIR}/config/system_conf_p4.toml")
+    if(FMRB_HW_TARGET STREQUAL "NARYAv4")
+        set(EXPECTED "${SRC_DIR}/config/system_conf_naryav4.toml")
+    else()
+        set(EXPECTED "${SRC_DIR}/config/system_conf_p4.toml")
+    endif()
 elseif(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
     set(EXPECTED "${SRC_DIR}/config/system_conf_n8r8.toml")
 else()

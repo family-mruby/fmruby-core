@@ -91,12 +91,15 @@ namespace :build do
       'ATOM_DISPLAY' => { chip: 'n8r8', sdkconfig: 'config/sdkconfig.defaults.n8r8',
                           system_conf: 'config/system_conf_n8r8.toml' },
       # Family mruby Modern (ESP32-P4). TAB5 = M5Stack Tab5 (current dev
-      # board); NARYAv4 = future dedicated P4 board, which shares the Tab5
-      # config as a placeholder until its hardware is finalized.
+      # board); NARYAv4 = the dedicated P4 board being designed, brought up on
+      # a Waveshare ESP32-P4-Nano + Olimex MIPI-HDMI. The two share the
+      # partition table (both 16MB) but not the chip revision or the C6 wiring,
+      # so they get their own sdkconfig/system_conf pair each.
+      # cmake/check_storage_inputs.cmake mirrors this table -- change both.
       'TAB5'         => { chip: 'esp32p4', sdkconfig: 'config/sdkconfig.defaults.p4',
                           system_conf: 'config/system_conf_p4.toml' },
-      'NARYAv4'      => { chip: 'esp32p4', sdkconfig: 'config/sdkconfig.defaults.p4',
-                          system_conf: 'config/system_conf_p4.toml' },
+      'NARYAv4'      => { chip: 'esp32p4', sdkconfig: 'config/sdkconfig.defaults.naryav4',
+                          system_conf: 'config/system_conf_naryav4.toml' },
     }
     default_sdkconfig = 'config/sdkconfig.defaults.n16r8'
     default_system_conf = 'config/system_conf_n16r8.toml'
