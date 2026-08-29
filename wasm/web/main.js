@@ -131,6 +131,9 @@ async function startAudio() {
 statusLine.textContent = 'booting the firmware...';
 
 createFmrbCore({
+  // The .data (and .wasm) live next to core_web.js, not next to this page;
+  // emscripten resolves the data file against the page URL unless told.
+  locateFile: (p) => '../build/' + p,
   print: (t) => console.log(t),
   printErr: (t) => console.warn(t),
 }).then((mod) => {
