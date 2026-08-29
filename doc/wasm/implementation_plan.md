@@ -381,6 +381,24 @@ JS の fetch に流すブリッジと、(2) 利用者が自分の API 鍵を持�
 
 ---
 
+## P6 候補 (構想): Web Bluetooth で実機の Family mruby と通信
+
+ユーザ発案 (2026-08-29)。ブラウザ版から実機 (Tab5 / Retro) へ BLE で
+届くと楽しい、の実現性メモ。P5 (配信) には含めない。
+
+- ブラウザ側は Web Bluetooth (GATT central)。Chrome/Edge のみ・HTTPS 必須
+  (GitHub Pages は満たす)・ユーザ操作でデバイス選択、という制約はデモ用途
+  なら許容範囲。
+- **実機側の追加実装はほぼ不要の見込み**: debugd の BLE GATT サービス
+  (main/drivers/ble/ble_task.c + ble_debug_link) と ble_fs
+  (ファイル put/get) が既にある。作るのは JS 側のクライアント
+  (ble_framing.c の対向 + プロトコルは tool/debug/fmrb_dbg_client.py が正)。
+- 一番おいしい形: **ブラウザのエディタで書いたコードを BLE で実機に送って
+  起動する「beam」**。特に Retro (S3) は remote desktop が無く BLE が唯一の
+  遠隔口なので、「ブラウザから Retro にプログラムを送る」初の経路になる。
+- 帯域は BLE なので .rb 数十 KB を数秒 — 用途に足りる。認証は debugd の
+  開発ゲートと同じ割り切り (ペアリングと近接が実質の制御)。
+
 ## スコープ外 (再掲・実装上の扱い)
 
 | 項目 | 扱い |
