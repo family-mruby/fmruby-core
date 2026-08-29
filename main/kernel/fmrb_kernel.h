@@ -32,6 +32,7 @@ typedef struct {
     uint16_t default_user_app_width;        // Default user app window width
     uint16_t default_user_app_height;       // Default user app window height
     fmrb_display_mode_t display_mode;       // Display output mode
+    uint8_t max_apps;                       // Concurrent app ceiling (<= FMRB_MAX_APPS)
     bool debug_mode;                        // Debug mode enabled/disabled
     bool ble_auto_start;                    // Start BLE at boot (false = manual via menu)
     bool wifi_auto_start;                   // Start WiFi STA at boot (needs /etc/wifi.toml creds)

@@ -15,6 +15,11 @@ display_margin_y = 0
 default_user_app_width = 386
 default_user_app_height = 180
 display_mode = "tab5_dsi" # Tab5 MIPI-DSI panel, driven locally (ntsc_ipc / spi_direct / headless / tab5_dsi / sdl2 / atom_display)
+# How many app slots to hand out. The device targets leave this out and get
+# their build ceiling of 9; the web build raises the ceiling to 32
+# (wasm/CMakeLists.txt) because browser memory is not the device's, and says so
+# here. Anything above the ceiling is clamped with a warning at boot.
+max_apps = 32
 debug_mode = true
 # No radios on the web build: BLE / WiFi settings are not present here.
 mouse_scale_x = 0.5

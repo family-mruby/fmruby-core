@@ -35,16 +35,20 @@ static mrb_value mrb_kernel_handler_init(mrb_state *mrb, mrb_value self)
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@tick"),
                mrb_fixnum_value(33));
 
-    // Set @max_app_num instance variable
+    // Set @max_app_num instance variable. The configured ceiling, not the
+    // build one: system_conf.toml's max_apps is what a spawn is measured
+    // against (main/app/fmrb_app.c).
+    const fmrb_system_config_t *sys_config = fmrb_kernel_get_config();
+    int max_apps = sys_config ? sys_config->max_apps : FMRB_MAX_APPS;
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@max_app_num"),
-               mrb_fixnum_value(FMRB_MAX_APPS));
+               mrb_fixnum_value(max_apps));
 
     // Set @max_path_len instance variable
     mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@max_path_len"),
                mrb_fixnum_value(FMRB_MAX_PATH_LEN));
 
     FMRB_LOGI(TAG, "Kernel handler initialized: tick=%d, max_apps=%d",
-             33, FMRB_MAX_APPS);
+             33, max_apps);
 
     return mrb_nil_value();
 }

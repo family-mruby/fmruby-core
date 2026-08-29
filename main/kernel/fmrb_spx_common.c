@@ -21,6 +21,8 @@
 #include <stdint.h>
 #include <time.h>
 #include "fmrb_log.h"
+#include "fmrb_kernel.h"
+#include "fmrb_limits.h"
 #include "picoruby_fmrb_const.h"
 
 static const char *TAG = "spx";
@@ -60,6 +62,16 @@ void fmrb_spx_log_write(int level, const char *msg, int len)
         case 3:  FMRB_LOGE(TAG, "%.*s", len, msg); break;
         default: FMRB_LOGI(TAG, "%.*s", len, msg); break;
     }
+}
+
+int fmrb_spx_max_apps(void)
+{
+    /* The configured app ceiling (system_conf.toml's max_apps, clamped to the
+       build's FMRB_MAX_APPS), for the same reason theme_color is here rather
+       than baked in at generation time: the Spinel kernel used to carry a
+       literal, and the literal went stale. */
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    return conf ? (int)conf->max_apps : FMRB_MAX_APPS;
 }
 
 int fmrb_spx_theme_color(int index)

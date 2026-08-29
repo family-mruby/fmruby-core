@@ -106,6 +106,8 @@ _Static_assert(PROC_ID_USER_APP_END == FMRB_MAX_APPS,
                "user app slots must fill g_ctx_pool exactly");
 _Static_assert(PROC_ID_MAX == FMRB_MAX_APPS,
                "every process id must have a context slot");
+_Static_assert(PROC_ID_USER_APP0 == FMRB_SYSTEM_PROC_COUNT,
+               "fmrb_limits.h derives the user app count from this offset");
 
 // Mutex for protecting context pool access
 static fmrb_semaphore_t g_ctx_lock = NULL;
@@ -341,6 +343,13 @@ static int32_t alloc_ctx_index(fmrb_proc_id_t requested_id, enum FMRB_APP_TYPE a
     if (app_type == APP_TYPE_USER_APP) {
         start_idx = PROC_ID_USER_APP0;
         end_idx = PROC_ID_USER_APP_END;  // NOT PROC_ID_MAX: see fmrb_task_config.h
+        // system_conf.toml's max_apps is the policy under the build ceiling.
+        // Applied here rather than in any one caller because this is the only
+        // place a slot is handed out, so no spawn path can go around it.
+        const fmrb_system_config_t* sys_config = fmrb_kernel_get_config();
+        if (sys_config && sys_config->max_apps < end_idx) {
+            end_idx = sys_config->max_apps;
+        }
     }
 
     // Find first free slot in the appropriate range

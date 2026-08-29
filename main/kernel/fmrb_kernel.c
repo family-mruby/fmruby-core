@@ -44,6 +44,7 @@ static fmrb_system_config_t g_system_config = {
     .default_user_app_width = 280,
     .default_user_app_height = 180,
     .display_mode = FMRB_DISPLAY_MODE_NTSC_IPC,
+    .max_apps = FMRB_MAX_APPS,
     .debug_mode = true,
     .ble_auto_start = true,
     .wifi_auto_start = false,
@@ -153,6 +154,25 @@ static bool read_system_config(void)
         fmrb_sys_free((void*)display_mode_str);
     }
 
+    // How many app slots this machine will hand out. FMRB_MAX_APPS is the
+    // static ceiling (every per-app array is sized by it); this is the policy
+    // below it, so a build with room for many apps can still be run with few.
+    // Out-of-range values are clamped rather than refused: a config that asks
+    // for more than the firmware has is a setting to correct, not a reason to
+    // refuse to boot.
+    int max_apps = fmrb_toml_get_int(conf, "max_apps", g_system_config.max_apps);
+    if (max_apps > FMRB_MAX_APPS) {
+        FMRB_LOGW(TAG, "max_apps=%d exceeds the build ceiling %d; clamped",
+                  max_apps, FMRB_MAX_APPS);
+        max_apps = FMRB_MAX_APPS;
+    }
+    if (max_apps < PROC_ID_USER_APP0 + 1) {
+        FMRB_LOGW(TAG, "max_apps=%d leaves no user app slot; raised to %d",
+                  max_apps, PROC_ID_USER_APP0 + 1);
+        max_apps = PROC_ID_USER_APP0 + 1;
+    }
+    g_system_config.max_apps = (uint8_t)max_apps;
+
     // Read debug mode
     g_system_config.debug_mode = fmrb_toml_get_bool(conf, "debug_mode", g_system_config.debug_mode);
     fmrb_debug_mode_set(g_system_config.debug_mode);
@@ -212,6 +232,8 @@ static bool read_system_config(void)
     FMRB_LOGI(TAG, "Display Mode: %s (%d)",
               display_mode_name(g_system_config.display_mode),
               g_system_config.display_mode);
+    FMRB_LOGI(TAG, "Max Apps: %d (build ceiling %d)",
+              g_system_config.max_apps, FMRB_MAX_APPS);
     FMRB_LOGI(TAG, "Debug Mode: %s", g_system_config.debug_mode ? "enabled" : "disabled");
     FMRB_LOGI(TAG, "Mouse Scale: x=%.2f, y=%.2f", g_system_config.mouse_scale_x, g_system_config.mouse_scale_y);
 

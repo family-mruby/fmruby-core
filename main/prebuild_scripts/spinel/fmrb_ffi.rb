@@ -14,6 +14,7 @@ module FmrbSpx
   ffi_func :fmrb_spx_board_millis, [], :int
   ffi_func :fmrb_spx_log_write, [:int, :str, :int], :void
   ffi_func :fmrb_spx_theme_color, [:int], :int   # theme colour by fmrb_theme_t field index
+  ffi_func :fmrb_spx_max_apps, [], :int          # configured concurrent app ceiling
 
   # --- messaging ---
   # recv returns the payload as a binary-safe String (:binstr; byte-exact via

@@ -1,22 +1,31 @@
 #pragma once
-    
+
+// One pool per user app slot, so the slot count is the app ceiling.
+#include "fmrb_limits.h"
+
+#define FMRB_USER_APP_COUNT FMRB_MAX_USER_APPS
+
 enum FMRB_MEM_POOL_ID{
     POOL_ID_SYSTEM = 0,
     POOL_ID_KERNEL,
     POOL_ID_SYSTEM_APP,
     POOL_ID_SYSTEM_OVERLAY,
-    // One pool per user app slot. The first three are reserved statically; the
-    // last two are taken from PSRAM the first time an app lands in them (see
-    // fmrb_mempool_reserve). Reserving all five statically would put 7.3 MB of
-    // the Retro machine's 8 MB PSRAM into .bss whether or not anyone ever runs
-    // five apps, which is most of what is left after the editor document and
-    // /tmp arenas.
+    // One pool per user app slot. The first FMRB_USER_APP_STATIC_POOL_COUNT are
+    // reserved statically; the rest are taken from PSRAM the first time an app
+    // lands in them (see fmrb_mempool_reserve). Reserving all of them
+    // statically would put 7.3 MB of the Retro machine's 8 MB PSRAM into .bss
+    // whether or not anyone ever runs five apps, which is most of what is left
+    // after the editor document and /tmp arenas.
     POOL_ID_USER_APP0,
     POOL_ID_USER_APP1,
     POOL_ID_USER_APP2,
     POOL_ID_USER_APP3,
     POOL_ID_USER_APP4,
-    POOL_ID_USER_APP_LARGE,
+    // A build that raises FMRB_MAX_APPS (the web one does) gets the remaining
+    // slots as unnamed ids in the same run; nothing refers to them singly, so
+    // only the end of the run has a name. fmrb_mempool.c asserts that the five
+    // named ones still fit inside it.
+    POOL_ID_USER_APP_LARGE = POOL_ID_USER_APP0 + FMRB_USER_APP_COUNT,
     // Editor document arena (picoruby-fmrb-editor-core). Deliberately its own
     // pool: the document must not sit in the app's 500KB mruby pool (it would
     // cap the file size and feed the GC's malloc accounting) nor in the shared
@@ -96,7 +105,6 @@ typedef int8_t fmrb_mem_handle_t;
 
 #define FMRB_MEM_POOL_SIZE_LOG_BUFFER (128*1024)
 
-#define FMRB_USER_APP_COUNT 5
 // How many of those pools exist before anyone asks. The rest are allocated on
 // first use and then kept (see fmrb_mempool_reserve): allocating and freeing
 // 500 KB blocks over a long session is how a PSRAM heap gets fragmented.

@@ -23,8 +23,13 @@ FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool
 FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_tmpfs[FMRB_MEM_POOL_SIZE_TMPFS];
 FMRB_EXT_RAM_BSS_ATTR static unsigned char __attribute__((aligned(8))) g_mempool_log_buffer[FMRB_MEM_POOL_SIZE_LOG_BUFFER];
 
-// POOL_ID_USER_APP3/4 are absent on purpose: they are filled in by
-// fmrb_mempool_reserve the first time an app is given that slot.
+// The user app pools past FMRB_USER_APP_STATIC_POOL_COUNT are absent on
+// purpose: they are filled in by fmrb_mempool_reserve the first time an app is
+// given that slot.
+_Static_assert(FMRB_USER_APP_COUNT >= FMRB_USER_APP_STATIC_POOL_COUNT,
+               "there must be at least as many app slots as statically reserved pools");
+_Static_assert(POOL_ID_USER_APP4 < POOL_ID_USER_APP_LARGE,
+               "the named user app pools must fit inside the user app run");
 static unsigned char* g_mempool_list[POOL_ID_MAX] = {
     [POOL_ID_SYSTEM]     = g_mempool_system,
     [POOL_ID_KERNEL]     = g_mempool_kernel,
@@ -92,6 +97,11 @@ void* fmrb_get_mempool_app_ptr(int32_t no){
 }
 
 size_t fmrb_get_mempool_size(int32_t id){
+    // One run of identically sized pools, one per app slot; only its ends have
+    // names, so it is matched as a range rather than case by case.
+    if (id >= POOL_ID_USER_APP0 && id < POOL_ID_USER_APP_LARGE) {
+        return FMRB_MEM_POOL_SIZE_USER_APP;
+    }
     switch(id){
         case POOL_ID_SYSTEM:
             return FMRB_MEM_POOL_SIZE_SYSTEM;
@@ -101,12 +111,6 @@ size_t fmrb_get_mempool_size(int32_t id){
             return FMRB_MEM_POOL_SIZE_SYSTEM_APP;
         case POOL_ID_SYSTEM_OVERLAY:
             return FMRB_MEM_POOL_SIZE_SYSTEM_OVERLAY;
-        case POOL_ID_USER_APP0:
-        case POOL_ID_USER_APP1:
-        case POOL_ID_USER_APP2:
-        case POOL_ID_USER_APP3:
-        case POOL_ID_USER_APP4:
-            return FMRB_MEM_POOL_SIZE_USER_APP;
         case POOL_ID_USER_APP_LARGE:
             return FMRB_MEM_POOL_SIZE_USER_APP_LARGE;
         case POOL_ID_EDITOR_DOC:
@@ -121,14 +125,16 @@ size_t fmrb_get_mempool_size(int32_t id){
 }
 
 static const char* fmrb_get_mempool_name(int32_t id){
+    // Same run as above; the callers print the id next to the name, so the
+    // slots do not each need one of their own.
+    if (id >= POOL_ID_USER_APP0 && id < POOL_ID_USER_APP_LARGE) {
+        return "USER_APP";
+    }
     switch(id){
         case POOL_ID_SYSTEM:     return "SYSTEM";
         case POOL_ID_KERNEL:     return "KERNEL";
         case POOL_ID_SYSTEM_APP:     return "SYSTEM_APP";
         case POOL_ID_SYSTEM_OVERLAY: return "SYS_OVERLAY";
-        case POOL_ID_USER_APP0:      return "USER_APP0";
-        case POOL_ID_USER_APP1:  return "USER_APP1";
-        case POOL_ID_USER_APP2:  return "USER_APP2";
         case POOL_ID_USER_APP_LARGE: return "USER_LARGE";
         case POOL_ID_EDITOR_DOC: return "EDITOR_DOC";
         case POOL_ID_TMPFS:      return "TMPFS";
@@ -142,7 +148,8 @@ void fmrb_mempool_print_ranges(void){
     for(int32_t id = 0; id < POOL_ID_MAX; id++){
         void* pool = g_mempool_list[id];
         size_t size = fmrb_get_mempool_size(id);
-        FMRB_LOGI(TAG, "  %-12s %p - %p (%zu bytes)",
+        FMRB_LOGI(TAG, "  %2d %-12s %p - %p (%zu bytes)",
+                      (int)id,
                       fmrb_get_mempool_name(id),
                       pool,
                       (unsigned char*)pool + size,
@@ -161,9 +168,10 @@ void fmrb_mempool_check_pointer(const void* ptr){
         void* pool = g_mempool_list[id];
         size_t size = fmrb_get_mempool_size(id);
         if(ptr >= pool && ptr < (void*)((unsigned char*)pool + size)){
-            FMRB_LOGI(TAG, "Pointer %p is in %s pool [%p - %p]",
+            FMRB_LOGI(TAG, "Pointer %p is in %s pool #%d [%p - %p]",
                           ptr,
                           fmrb_get_mempool_name(id),
+                          (int)id,
                           pool,
                           (unsigned char*)pool + size);
             return;

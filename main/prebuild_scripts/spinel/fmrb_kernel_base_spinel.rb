@@ -63,7 +63,9 @@ class FmrbKernel
   # ---- init / readiness ----
   def _init
     @tick = 33
-    @max_app_num = 7
+    # From C, not a literal: this is system_conf.toml's max_apps clamped to the
+    # build ceiling, and the literal that used to sit here went stale.
+    @max_app_num = FmrbSpx.fmrb_spx_max_apps
     @max_path_len = 128
     nil
   end
