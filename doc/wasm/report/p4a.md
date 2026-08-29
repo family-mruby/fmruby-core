@@ -157,7 +157,9 @@ INVALID_STATE を返し、display タスクがスピンして boot タスクが�
   (core_web.wasm 5.3MB + .data 1.4MB)、`rake wasm:serve` が COOP/COEP つき
   で配信 (SharedArrayBuffer の条件)。
 - **ユーザ確認済 (2026-08-29)**: 実ブラウザで動作、音・マウス・キーボード
-  とも OK。初回に踏んだ穴が 1 つ: MODULARIZE の emscripten は .data を
+  とも OK。**反応速度は Linux sim より良好** (体感)。構造どおりの結果:
+  sim は 3 プロセス + UNIX ソケット/SHM を挟むが、wasm は Modern と同じ
+  プロセス内 link で、入力注入も表示もモジュール内で完結する。初回に踏んだ穴が 1 つ: MODULARIZE の emscripten は .data を
   ページ URL 相対で fetch するため 404 で黒画面になった (locateFile で
   ../build/ を指して解決、a4eb73ac)。かな入力・Ctrl+Q などの細部の網羅は
   P5 のデモ仕上げで見る。
