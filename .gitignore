@@ -91,3 +91,9 @@ tool/web/test/shots/
 
 # The wasm target (rake wasm:build) configures its own CMake tree in place.
 wasm/build/
+# LovyanGFX for the wasm display (fetched + patched by rake wasm:setup).
+wasm/vendor/m5gfx/
+# Written at runtime by the firmware itself (kernel file sync, launcher icon
+# cache); the wasm build runs against the real flash/ via NODERAWFS.
+flash/cache/
+flash/data/

@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Family mruby OS (wasm)</title>
+<style>
+  html, body {
+    margin: 0; height: 100%;
+    background: #1a1a22; color: #ddd;
+    font-family: monospace;
+    display: flex; flex-direction: column; align-items: center;
+  }
+  h1 { font-size: 16px; margin: 12px 0 8px; }
+  #screen-box { position: relative; }
+  canvas {
+    display: block;
+    width: 852px; height: 480px;   /* 2x of 426x240 */
+    image-rendering: pixelated;
+    background: #000;
+    outline: none;
+  }
+  #start {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(0,0,0,0.7); cursor: pointer;
+    font-size: 20px;
+  }
+  #status { margin-top: 8px; font-size: 12px; color: #888; }
+</style>
+</head>
+<body>
+<h1>Family mruby OS - WebAssembly</h1>
+<div id="screen-box">
+  <canvas id="screen" width="426" height="240" tabindex="0"></canvas>
+  <div id="start">Click to start</div>
+</div>
+<div id="status">loading...</div>
+<script src="../../tool/web/remote/keymap.js"></script>
+<script src="../build/core_web.js"></script>
+<script src="main.js"></script>
+</body>
+</html>

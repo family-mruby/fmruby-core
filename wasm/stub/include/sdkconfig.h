@@ -15,6 +15,13 @@
 
 /* Symbols that are *off* are left undefined on purpose: ESP-IDF sources test
  * some of them with #ifdef, so defining one to 0 would turn the feature on. */
+
+/* The core sources gate POSIX-vs-ESP32 behavior on CONFIG_IDF_TARGET_LINUX,
+ * and Emscripten is POSIX enough to take the same side everywhere those
+ * branches reach (no IDF drivers, libc time, plain files). The places where
+ * the linux side is wrong for wasm are overridden with FMRB_PLATFORM_WASM
+ * (boot.c, the display/input/audio backends) -- see doc/wasm/report/p4.md. */
+#define CONFIG_IDF_TARGET_LINUX                   1
 #define CONFIG_FREERTOS_UNICORE                   1
 #define CONFIG_FREERTOS_NUMBER_OF_CORES           1
 #define CONFIG_FREERTOS_HZ                        1000

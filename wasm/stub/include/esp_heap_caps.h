@@ -8,6 +8,7 @@
  */
 #pragma once
 
+#include "esp_attr.h"
 #include <stddef.h>
 #include <stdint.h>
 
@@ -24,6 +25,7 @@ extern "C" {
 #define MALLOC_CAP_DEFAULT     ( 1 << 12 )
 
 void * heap_caps_malloc( size_t size, uint32_t caps );
+void * heap_caps_aligned_alloc( size_t alignment, size_t size, uint32_t caps );
 void * heap_caps_calloc( size_t n, size_t size, uint32_t caps );
 void heap_caps_free( void * ptr );
 size_t heap_caps_get_free_size( uint32_t caps );

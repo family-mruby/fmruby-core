@@ -24,11 +24,14 @@
     #define portWASM_HEAP_BUDGET_BYTES    ( 64u * 1024u * 1024u )
 #endif
 
-/* Every block carries its size so the accounting survives free(). */
+/* Every block carries its size (so the accounting survives free()) and the
+ * raw malloc pointer (so aligned allocations free correctly). 16 bytes on
+ * wasm32, keeping the returned pointer 16-byte aligned for plain malloc. */
 typedef struct
 {
     size_t xSize;
-    size_t xPadding; /* keeps the returned pointer 16-byte aligned */
+    void * pvRaw;
+    size_t xPad[ 2 ];
 } BlockHeader_t;
 
 static size_t xBytesInUse;
@@ -51,6 +54,7 @@ static void * prvAlloc( size_t xWantedSize )
     }
 
     pxHeader->xSize = xWantedSize;
+    pxHeader->pvRaw = pxHeader;
     xBytesInUse += xWantedSize;
 
     if( xBytesInUse > xPeakBytesInUse )
@@ -72,7 +76,7 @@ static void prvFree( void * pv )
 
     pxHeader = ( ( BlockHeader_t * ) pv ) - 1;
     xBytesInUse -= pxHeader->xSize;
-    free( pxHeader );
+    free( pxHeader->pvRaw );
 }
 
 /* ------------------------------------------------------- FreeRTOS heap API */
@@ -125,6 +129,42 @@ void * heap_caps_malloc( size_t size,
 {
     ( void ) caps;
     return prvAlloc( size );
+}
+
+void * heap_caps_aligned_alloc( size_t alignment,
+                                size_t size,
+                                uint32_t caps )
+{
+    uintptr_t uxRaw, uxUser;
+    BlockHeader_t * pxHeader;
+
+    ( void ) caps;
+
+    if( ( size == 0 ) || ( alignment == 0 ) ||
+        ( ( alignment & ( alignment - 1 ) ) != 0 ) )
+    {
+        return NULL;
+    }
+
+    uxRaw = ( uintptr_t ) malloc( size + alignment + sizeof( BlockHeader_t ) );
+
+    if( uxRaw == 0 )
+    {
+        return NULL;
+    }
+
+    uxUser = ( uxRaw + sizeof( BlockHeader_t ) + alignment - 1 ) & ~( uintptr_t ) ( alignment - 1 );
+    pxHeader = ( ( BlockHeader_t * ) uxUser ) - 1;
+    pxHeader->xSize = size;
+    pxHeader->pvRaw = ( void * ) uxRaw;
+    xBytesInUse += size;
+
+    if( xBytesInUse > xPeakBytesInUse )
+    {
+        xPeakBytesInUse = xBytesInUse;
+    }
+
+    return ( void * ) uxUser;
 }
 
 void * heap_caps_calloc( size_t n,
