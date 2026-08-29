@@ -309,7 +309,9 @@ fmrb_audio_probe 相当の FFT 検証をリングのダンプに対して行い�
   Esc/Ctrl+W を捕捉する (使えない環境では諦めて注記)。
 - **同時起動アプリ数の上限緩和**: 実体は FMRB_MAX_APPS=9
   (components/fmrb_common/include/fmrb_task_config.h:11)。wasm ビルドだけ
-  上書きして増やす (実機は据え置き)。連動する箇所に注意 —
+  上書きして増やす (実機は据え置き)。無限にはせず十分大きい固定値でよい
+  (ユーザ合意 2026-08-29。目安 32。1 アプリ = VM プール ~1MB + スタック 64KB
+  なので 32 本で +33MB 程度、INITIAL_MEMORY 256MB に収まる)。連動する箇所に注意 —
   VM プールのメモリ、pthread pool (現状 40)、および kernel Ruby 側に
   FMRB_MAX_APPS 前提のループがある (input_router.rb:55 のコメント参照。
   定数がRuby 側へどう渡っているか確認してから触る)。
