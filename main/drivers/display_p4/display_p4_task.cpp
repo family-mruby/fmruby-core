@@ -8,6 +8,7 @@
 // at the command dispatch layer.
 
 #include "display_p4_task.h"
+#include "display_backend.h"
 #include "display_p4_vm.h"
 #include "display_p4_sprite.h"
 #include "display_p4_video.h"
@@ -95,6 +96,15 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
 
 static LGFX_Tab5 g_lcd;
 static volatile bool g_lcd_ready = false;
+
+// The panel is Tab5 hardware, not PPA hardware: both output backends drive the
+// same one, and so do the parts of this file that draw straight to it (the boot
+// screen, the canvas sprites). Hence it stays here and the backends ask for it.
+// The same goes for the power-on sequence, the I2C service and headphone
+// detection further down -- putting those behind the output interface would
+// leave the CPU backend with no lit panel to draw on.
+LGFX_Device *display_p4_lcd(void) { return &g_lcd; }
+void *display_p4_panel_framebuffer(void) { return g_lcd.getFrameBuffer(); }
 
 // Serializes every runtime access to the shared I2C controller (GT911
 // touch reads, PI4IO, ES8388, mruby-app transactions). LovyanGFX drives
@@ -229,24 +239,9 @@ static uint16_t g_display_width  = 0;
 static uint16_t g_display_height = 0;
 #define DISPLAY_P4_SCALE_FACTOR 3
 
-// PPA (Pixel Processing Accelerator) for hardware operations
-static ppa_client_handle_t g_ppa_srm = NULL;    // Scale-Rotate-Mirror (3x scale + rotate)
-static ppa_client_handle_t g_ppa_blend = NULL;  // Blend (canvas compositing with color-key)
-
-// Direct DSI framebuffer output. The esp_lcd DPI framebuffer is rgb565
-// non-swapped in native portrait orientation (720x1280); SRM writes the
-// scaled frame there directly, rotating in hardware. Going through
-// g_lcd.pushImage instead costs ~100 ms/frame because setRotation(3)
-// forces a per-pixel rotated copy of the whole 1.8 MB frame.
-//
-// Logical (landscape 1280x720) -> native (portrait 720x1280) mapping,
-// confirmed on device (ANGLE_270 rendered upside down):
-//   PPA SRM ROTATION_ANGLE_90 (CCW), i.e. for a logical image pixel
-//   (ix, iy):  nx = iy,  ny = margin + imgH - 1 - ix
-// where imgH = 426*3 = 1278 and margin = (1280 - 1278) / 2 = 1.
-#define DSI_FB_W 720
-#define DSI_FB_H 1280
-static uint16_t *g_dsi_fb = nullptr;
+// How the composited frame reaches the panel (the 3x scale, the rotation into
+// the panel's native portrait orientation, and the DSI framebuffer itself) is
+// the output backend's business: display_backend_ppa.cpp.
 
 static p4_canvas_t* canvas_find(uint16_t canvas_id) {
     for (size_t i = 0; i < g_canvas_count; i++) {
@@ -520,64 +515,23 @@ static void cursor_patch(int fx, int fy, bool with_cursor) {
 
     // CURSOR_TRANSPARENT (magenta 0xFF00FF) in RGB565 non-swapped
     const uint16_t key = 0xF81F;
-    const int S = DISPLAY_P4_SCALE_FACTOR;
 
-    if (g_dsi_fb) {
-        // Write directly into the native-orientation DSI framebuffer using
-        // the same logical->native mapping as the SRM hardware rotation
-        // (ANGLE_90): nx = iy, ny = margin + imgH - 1 - ix
-        const int img_h_native = fb_w * S;
-        const int margin = ((int)DSI_FB_H - img_h_native) / 2;
-        for (int y = 0; y < h; y++) {
-            const uint16_t *fb_row  = fb  + (size_t)(y0 + y) * fb_w + x0;
-            const uint16_t *cur_row = cur + (size_t)(sy + y) * CURSOR_W + sx;
-            for (int x = 0; x < w; x++) {
-                uint16_t px = fb_row[x];
-                if (with_cursor && cur_row[x] != key) px = cur_row[x];
-                for (int dy = 0; dy < S; dy++) {
-                    int nx = (y0 + y) * S + dy;
-                    for (int dx = 0; dx < S; dx++) {
-                        int ix = (x0 + x) * S + dx;
-                        int ny = margin + img_h_native - 1 - ix;
-                        g_dsi_fb[(size_t)ny * DSI_FB_W + nx] = px;
-                    }
-                }
-            }
-        }
-        // Write back the affected native rows so dirty cache lines cannot
-        // evict later over PPA-written frame data. Rows ny span
-        // [margin + imgH - (x0+w)*S, margin + imgH - x0*S).
-        // C2M writeback tolerates unaligned spans with the UNALIGNED flag.
-        int span_row = margin + img_h_native - (x0 + w) * S;
-        uint8_t *span = (uint8_t *)&g_dsi_fb[(size_t)span_row * DSI_FB_W];
-        size_t span_len = (size_t)(w * S) * DSI_FB_W * 2;
-        esp_cache_msync(span, span_len,
-                        ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
-        return;
-    }
-
-    // Fallback (no direct framebuffer access): compose + scale into a temp
-    // buffer and push via LovyanGFX
-    static uint16_t scaled[CURSOR_W * DISPLAY_P4_SCALE_FACTOR *
-                           CURSOR_H * DISPLAY_P4_SCALE_FACTOR];
-
+    // Composite the cursor over the framebuffer region into a small block; the
+    // backend scales that block onto the panel. with_cursor false means "put
+    // the framebuffer back", which erases the cursor from its old place.
+    static uint16_t block[CURSOR_W * CURSOR_H];
     for (int y = 0; y < h; y++) {
         const uint16_t *fb_row  = fb  + (size_t)(y0 + y) * fb_w + x0;
         const uint16_t *cur_row = cur + (size_t)(sy + y) * CURSOR_W + sx;
+        uint16_t *out = block + (size_t)y * w;
         for (int x = 0; x < w; x++) {
             uint16_t px = fb_row[x];
             if (with_cursor && cur_row[x] != key) px = cur_row[x];
-            // Nearest-neighbor expand into the scaled patch
-            for (int dy = 0; dy < S; dy++) {
-                uint16_t *o = scaled + (size_t)(y * S + dy) * (w * S) + x * S;
-                for (int dx = 0; dx < S; dx++) o[dx] = px;
-            }
+            out[x] = px;
         }
     }
 
-    int offset_x = (g_lcd.width() - fb_w * S) / 2;
-    g_lcd.pushImage(offset_x + x0 * S, y0 * S, w * S, h * S,
-                    (lgfx::rgb565_t *)scaled);
+    display_backend()->present_patch(block, x0, y0, w, h, fb_w, fb_h);
 }
 
 // Erase the previously drawn patch (restore framebuffer content) and
@@ -673,121 +627,48 @@ static void blend_canvas_block(p4_canvas_t *c, int sw, int sh,
     if (dy < 0) { sy0 = -dy; ch += dy; dy = 0; }
     if (dx + cw > fb_w) cw = fb_w - dx;
     if (dy + ch > fb_h) ch = fb_h - dy;
-    if (cw <= 0 || ch <= 0 || !g_ppa_blend) return;
+    if (cw <= 0 || ch <= 0) return;
 
-    void *fg_buf = c->render_sprite->getBuffer();   // committed buffer (commit-on-present)
-    void *bg_buf = g_framebuffer->getBuffer();
-    // msync requires cache-line-aligned addresses and sizes; the aligned
-    // allocation size is used for the framebuffer, a row range for the canvas
-    size_t bg_size = g_fb_aligned_size;
+    display_blend_req_t req = {};
+    // Composite the committed buffer, never the working one (commit-on-present).
+    req.fg        = c->render_sprite->getBuffer();
+    req.fg_pic_w  = sw;
+    req.fg_pic_h  = sh;
+    req.src_x     = src_x + sx0;
+    req.src_y     = src_y + sy0;
+    req.fg_size   = c->buf_aligned_size;
 
-    // Flush CPU cache to PSRAM so PPA DMA reads current pixel data.
-    // For the canvas, flush only the rows the blend block reads (rounded to
-    // cache lines): a scroll canvas may be much larger than the visible part.
-    esp_err_t sync_err;
-    {
-        uintptr_t row_start = (uintptr_t)fg_buf + (size_t)(src_y + sy0) * sw * 2;
-        size_t row_len = (size_t)ch * sw * 2;
-        uintptr_t astart = row_start & ~(uintptr_t)(g_cache_line_size - 1);
-        uintptr_t aend = (row_start + row_len + g_cache_line_size - 1)
-            & ~(uintptr_t)(g_cache_line_size - 1);
-        uintptr_t buf_end = (uintptr_t)fg_buf + c->buf_aligned_size;
-        if (aend > buf_end) aend = buf_end;
-        sync_err = esp_cache_msync((void *)astart, (size_t)(aend - astart),
-                                   ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    }
-    if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fg msync C2M failed: %d", sync_err);
-    sync_err = esp_cache_msync(bg_buf, bg_size, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    if (sync_err != ESP_OK) FMRB_LOGE(TAG, "bg msync C2M failed: %d", sync_err);
+    req.bg        = g_framebuffer->getBuffer();
+    req.bg_pic_w  = fb_w;
+    req.bg_pic_h  = fb_h;
+    req.bg_size   = g_fb_aligned_size;
+    req.dst_x     = dx;
+    req.dst_y     = dy;
 
-    ppa_blend_oper_config_t blend = {};
-    // Background: framebuffer
-    blend.in_bg.buffer         = bg_buf;
-    blend.in_bg.pic_w          = (uint32_t)fb_w;
-    blend.in_bg.pic_h          = (uint32_t)fb_h;
-    blend.in_bg.block_w        = (uint32_t)cw;
-    blend.in_bg.block_h        = (uint32_t)ch;
-    blend.in_bg.block_offset_x = (uint32_t)dx;
-    blend.in_bg.block_offset_y = (uint32_t)dy;
-    blend.in_bg.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
+    req.w = cw;
+    req.h = ch;
 
-    // Foreground: canvas source block
-    blend.in_fg.buffer         = fg_buf;
-    blend.in_fg.pic_w          = (uint32_t)sw;
-    blend.in_fg.pic_h          = (uint32_t)sh;
-    blend.in_fg.block_w        = (uint32_t)cw;
-    blend.in_fg.block_h        = (uint32_t)ch;
-    blend.in_fg.block_offset_x = (uint32_t)(src_x + sx0);
-    blend.in_fg.block_offset_y = (uint32_t)(src_y + sy0);
-    blend.in_fg.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
-
-    // Output: framebuffer (in-place, Blend allows BG==OUT)
-    blend.out.buffer         = bg_buf;
-    blend.out.buffer_size    = bg_size;
-    blend.out.pic_w          = (uint32_t)fb_w;
-    blend.out.pic_h          = (uint32_t)fb_h;
-    blend.out.block_offset_x = (uint32_t)dx;
-    blend.out.block_offset_y = (uint32_t)dy;
-    blend.out.blend_cm       = PPA_BLEND_COLOR_MODE_RGB565;
-
-    // All sprites use PPA-native RGB565 (non-swapped); no byte swap needed
-    blend.fg_byte_swap = false;
-    blend.bg_byte_swap = false;
-
-    // FG fully opaque
-    blend.fg_alpha_update_mode = PPA_ALPHA_FIX_VALUE;
-    blend.fg_alpha_fix_val     = 255;
-    blend.bg_alpha_update_mode = PPA_ALPHA_NO_CHANGE;
-
-    // Color-key for transparent canvas (range covers RGB565->RGB888 quantization)
     if (c->create_use_transparency) {
-        blend.fg_ck_en = true;
-        blend.fg_ck_rgb_low_thres  = {.b = c->create_ck_b_low,
-                                       .g = c->create_ck_g_low,
-                                       .r = c->create_ck_r_low};
-        blend.fg_ck_rgb_high_thres = {.b = c->create_ck_b_high,
-                                       .g = c->create_ck_g_high,
-                                       .r = c->create_ck_r_high};
+        req.color_key = true;
+        req.ck_r_low  = c->create_ck_r_low;
+        req.ck_g_low  = c->create_ck_g_low;
+        req.ck_b_low  = c->create_ck_b_low;
+        req.ck_r_high = c->create_ck_r_high;
+        req.ck_g_high = c->create_ck_g_high;
+        req.ck_b_high = c->create_ck_b_high;
     }
 
-    blend.mode = PPA_TRANS_MODE_BLOCKING;
+    req.canvas_id   = c->canvas_id;
+    req.is_viewport = (c->view_w > 0);
 
-    esp_err_t err = ppa_do_blend(g_ppa_blend, &blend);
-    if (err == ESP_OK) {
-        // Invalidate output cache so CPU sees DMA-written data
-        esp_cache_msync(bg_buf, bg_size,
-                        ESP_CACHE_MSYNC_FLAG_DIR_M2C | ESP_CACHE_MSYNC_FLAG_INVALIDATE);
-    } else {
-        FMRB_LOGE(TAG, "PPA Blend failed: %d (canvas=%u view_w=%u)",
-                  err, c->canvas_id, c->view_w);
-        if (c->view_w > 0) {
-            // Fallback for viewport canvases in case the PPA rejects the
-            // source block: opaque CPU row copy. The CPU writes stay in
-            // cache and are flushed by the framebuffer C2M msync before SRM.
-            const uint16_t *src = (const uint16_t *)fg_buf
-                + (size_t)(src_y + sy0) * sw + (src_x + sx0);
-            uint16_t *dst = (uint16_t *)bg_buf + (size_t)dy * fb_w + dx;
-            for (int row = 0; row < ch; row++) {
-                memcpy(dst + (size_t)row * fb_w,
-                       src + (size_t)row * sw, (size_t)cw * 2);
-            }
-        }
-    }
+    display_backend()->blend_block(&req);
 }
 
 static void render_frame(void) {
     if (!g_framebuffer || g_canvas_count == 0) return;
 
     if (g_first_render) {
-        g_lcd.fillScreen(0);
-        if (g_dsi_fb) {
-            // Flush LovyanGFX's cached CPU writes (boot screen, fill) once;
-            // from here on the framebuffer is written by PPA DMA and the
-            // cursor patch (which writes back its own region), so no dirty
-            // CPU cache lines may remain to evict over DMA output.
-            esp_cache_msync(g_dsi_fb, (size_t)DSI_FB_W * DSI_FB_H * 2,
-                            ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-        }
+        display_backend()->first_frame();
         g_first_render = false;
     }
 
@@ -915,69 +796,9 @@ static void render_frame(void) {
                                             &cur_x0, &cur_y0, &cur_w, &cur_h);
     }
 
-    // Scale framebuffer 3x to LCD via PPA SRM hardware accelerator.
-    if (g_ppa_srm && g_dsi_fb) {
-        int fb_w = g_framebuffer->width();
-        int fb_h = g_framebuffer->height();
-        void *fb_ptr = g_framebuffer->getBuffer();
-
-        // Flush framebuffer cache before SRM DMA reads it
-        esp_err_t sync_err = esp_cache_msync(fb_ptr, g_fb_aligned_size,
-                                             ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-        if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fb msync C2M failed: %d", sync_err);
-
-        // Scale 3x and rotate to native portrait in one hardware pass,
-        // writing directly into the DSI framebuffer (no CPU copy, and no
-        // M2C invalidate: the CPU never reads the SRM output).
-        // Rotated output is fb_h*3 (=720) wide, fb_w*3 (=1278) high;
-        // center it vertically in the 1280-high native framebuffer.
-        int out_native_h = fb_w * DISPLAY_P4_SCALE_FACTOR;
-
-        ppa_srm_oper_config_t srm = {};
-        srm.in.buffer         = fb_ptr;
-        srm.in.pic_w          = (uint32_t)fb_w;
-        srm.in.pic_h          = (uint32_t)fb_h;
-        srm.in.block_w        = (uint32_t)fb_w;
-        srm.in.block_h        = (uint32_t)fb_h;
-        srm.in.block_offset_x = 0;
-        srm.in.block_offset_y = 0;
-        srm.in.srm_cm         = PPA_SRM_COLOR_MODE_RGB565;
-
-        srm.out.buffer         = g_dsi_fb;
-        srm.out.buffer_size    = (uint32_t)DSI_FB_W * DSI_FB_H * 2;
-        srm.out.pic_w          = DSI_FB_W;
-        srm.out.pic_h          = DSI_FB_H;
-        srm.out.block_offset_x = 0;
-        srm.out.block_offset_y = (uint32_t)((DSI_FB_H - out_native_h) / 2);
-        srm.out.srm_cm         = PPA_SRM_COLOR_MODE_RGB565;
-
-        // Logical landscape -> native portrait (confirmed on device)
-        srm.rotation_angle = PPA_SRM_ROTATION_ANGLE_90;
-        srm.scale_x        = (float)DISPLAY_P4_SCALE_FACTOR;
-        srm.scale_y        = (float)DISPLAY_P4_SCALE_FACTOR;
-        srm.mirror_x       = false;
-        srm.mirror_y       = false;
-        srm.rgb_swap       = false;
-        srm.byte_swap      = false;  // All buffers use PPA-native RGB565
-        srm.mode           = PPA_TRANS_MODE_BLOCKING;
-
-        esp_err_t err = ppa_do_scale_rotate_mirror(g_ppa_srm, &srm);
-        if (err != ESP_OK) {
-            FMRB_LOGE(TAG, "PPA SRM failed: %d", err);
-        }
-    } else {
-        // Fallback: software scaling
-        int fb_w = g_framebuffer->width();
-        int fb_h = g_framebuffer->height();
-        int scaled_w = fb_w * DISPLAY_P4_SCALE_FACTOR;
-        int scaled_h = fb_h * DISPLAY_P4_SCALE_FACTOR;
-        int center_x = (g_lcd.width()  - scaled_w) / 2 + scaled_w / 2;
-        int center_y = (g_lcd.height() - scaled_h) / 2 + scaled_h / 2;
-        g_framebuffer->pushRotateZoom(&g_lcd, (float)center_x, (float)center_y,
-                                      0.0f,
-                                      (float)DISPLAY_P4_SCALE_FACTOR,
-                                      (float)DISPLAY_P4_SCALE_FACTOR);
-    }
+    // Hand the finished frame to the output backend: 3x scale and rotate onto
+    // the panel (PPA SRM on the device, pushRotateZoom in software).
+    display_backend()->present(g_framebuffer, g_fb_aligned_size);
 
     // Restore the framebuffer region under the cursor (the cursor is now on the
     // DSI buffer as part of the pushed frame). Record it as drawn so a later
@@ -2475,35 +2296,9 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
                               g_display_width, g_display_height, DISPLAY_P4_SCALE_FACTOR);
                 }
 
-                // Initialize PPA Blend for canvas compositing
-                ppa_client_config_t blend_cfg = {};
-                blend_cfg.oper_type = PPA_OPERATION_BLEND;
-                if (ppa_register_client(&blend_cfg, &g_ppa_blend) == ESP_OK) {
-                    FMRB_LOGI(TAG, "PPA Blend initialized for canvas compositing");
-                } else {
-                    FMRB_LOGW(TAG, "PPA Blend init failed");
-                    g_ppa_blend = NULL;
-                }
-
-                // Initialize PPA SRM for hardware 3x scale + rotate,
-                // writing directly into the DSI framebuffer
-                ppa_client_config_t ppa_cfg = {};
-                ppa_cfg.oper_type = PPA_OPERATION_SRM;
-                if (ppa_register_client(&ppa_cfg, &g_ppa_srm) == ESP_OK) {
-                    g_dsi_fb = (uint16_t *)g_lcd.getFrameBuffer();
-                    if (g_dsi_fb) {
-                        FMRB_LOGI(TAG, "PPA SRM initialized: %dx%d -> DSI fb %dx%d @%p",
-                                  g_display_width, g_display_height,
-                                  DSI_FB_W, DSI_FB_H, (void *)g_dsi_fb);
-                    } else {
-                        FMRB_LOGW(TAG, "DSI framebuffer unavailable, using software scaling");
-                        ppa_unregister_client(g_ppa_srm);
-                        g_ppa_srm = NULL;
-                    }
-                } else {
-                    FMRB_LOGW(TAG, "PPA SRM init failed, using software scaling");
-                    g_ppa_srm = NULL;
-                }
+                // Register the accelerators and take hold of the output
+                // surface, now that the panel is up and the framebuffer exists.
+                display_backend()->init(g_display_width, g_display_height);
             }
             send_ack(type, seq, nullptr, 0);
         } else if (sub_cmd == FMRB_LINK_CONTROL_GA_VERSION) {

@@ -198,6 +198,8 @@ if(NOT IDF_TARGET STREQUAL "linux")
     if(IDF_TARGET STREQUAL "esp32p4")
         list(APPEND COMPONENT_SRCS
             "drivers/display_p4/display_p4_task.cpp"
+            "drivers/display_p4/display_backend.cpp"
+            "drivers/display_p4/display_backend_ppa.cpp"
             "drivers/display_p4/display_p4_vm.cpp"
             "drivers/display_p4/display_p4_sprite.cpp"
             "drivers/touch/touch_task.c"
