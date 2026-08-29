@@ -88,3 +88,6 @@ tool/web/test/shots/
 # Spinel gem sources staged into main/prebuild_scripts/spinel/ by rake spinel:gen
 # are ignored by that directory's own .gitignore (ignore-all + whitelist the real
 # sources), so a new gem needs no entry here.
+
+# The wasm target (rake wasm:build) configures its own CMake tree in place.
+wasm/build/
