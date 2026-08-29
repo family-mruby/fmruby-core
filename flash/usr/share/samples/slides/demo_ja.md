@@ -1,7 +1,7 @@
 ---
 title: Family mruby<br>ちいさな Ruby の機械
 subtitle: 日本語の発表サンプル
-author: きしま
+author: Family mruby プロジェクト
 theme: default
 allotted_time: 5m
 ---

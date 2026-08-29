@@ -20,6 +20,17 @@ project(fmruby-core)
 # (once real, once synthetic), so it is dropped from the image.
 if(NOT IDF_TARGET STREQUAL "linux")
     set(STORAGE_STAGING ${CMAKE_BINARY_DIR}/storage_root)
+    # Local-only overlay: flash_local/ (gitignored) is merged over flash/ so
+    # personal, undistributable content (music, decks) reaches the DEVICE image
+    # but can never leak into anything staged from git-tracked files (the web
+    # bundle). Checked at configure time: create the directory and re-configure
+    # (rake clean is enough) for it to start applying.
+    if(EXISTS ${CMAKE_SOURCE_DIR}/flash_local)
+        set(STORAGE_LOCAL_OVERLAY_CMD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/flash_local ${STORAGE_STAGING})
+    else()
+        set(STORAGE_LOCAL_OVERLAY_CMD "")
+    endif()
     add_custom_target(storage_staging
         # Settings first: flash/etc/system_conf.toml and its factory copy are
         # not in git and are staged by rake build:esp32. Building without them
@@ -33,6 +44,7 @@ if(NOT IDF_TARGET STREQUAL "linux")
                 -P ${CMAKE_SOURCE_DIR}/cmake/check_storage_inputs.cmake
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}
         COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_SOURCE_DIR}/flash ${STORAGE_STAGING}
+        ${STORAGE_LOCAL_OVERLAY_CMD}
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${STORAGE_STAGING}/var/cache
         COMMAND ${CMAKE_COMMAND} -E make_directory ${STORAGE_STAGING}/var/cache
         COMMAND ${CMAKE_COMMAND} -E touch ${STORAGE_STAGING}/var/cache/.keep

@@ -1,7 +1,7 @@
 # Checks for the Python guest VM that the demo app does not cover. Lives under
 # /home rather than /app so the launcher does not list it: it is a measuring
 # tool, not something to browse to. Start it with
-#   run /home/test/pytest.app.py
+#   run /app/test/pytest.app.py
 #
 # What it exercises:
 #   - plain script execution before any framework object exists (the prints)

@@ -6,7 +6,7 @@
 # each of them grows its own list of extensions and they drift.
 #
 #   FmrbAssoc.resolve("/home/slides/demo.md")  #=> "/app/tool/picorabbit.app.rb"
-#   FmrbAssoc.resolve("/home/sample/hello.rb") #=> "run"
+#   FmrbAssoc.resolve("/home/hello.rb") #=> "run"
 #   FmrbAssoc.resolve("/home/notes.txt")       #=> "edit"
 #
 # The answer is one of:

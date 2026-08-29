@@ -6,7 +6,6 @@
 # longer computes button rectangles or hit-tests them.
 
 class NsfPlayerApp < FmrbApp
-  #MUSIC_DIR = "/home/music"
   MUSIC_DIR = "/usr/share/sounds/nsf"
   CACHE_DIR = "/cache/nsf_player"
   LIST_Y = 2

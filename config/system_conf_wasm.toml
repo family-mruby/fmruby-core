@@ -1,0 +1,75 @@
+# Settings for the WebAssembly (browser) build -- doc/wasm/.
+#
+# The web bundle stages ONLY git-tracked flash/ content plus this file, so
+# nothing personal or secret can reach it. Based on system_conf_p4.toml: the
+# wasm build reuses the Modern in-process display path (display_mode is not
+# consulted on wasm; the value stays for the shared parser). No radios, no
+# remote desktop.
+system_name = "Family mruby OS (Web)"
+display_width = 426
+display_height = 240
+# No overscan margin: the Tab5 LCD shows the full framebuffer, unlike
+# the NTSC output where the border area is hidden by overscan.
+display_margin_x = 0
+display_margin_y = 0
+default_user_app_width = 386
+default_user_app_height = 180
+display_mode = "tab5_dsi" # Tab5 MIPI-DSI panel, driven locally (ntsc_ipc / spi_direct / headless / tab5_dsi / sdl2 / atom_display)
+debug_mode = true
+# No radios on the web build: BLE / WiFi settings are not present here.
+mouse_scale_x = 0.5
+mouse_scale_y = 0.5
+timezone = "JST-9"
+keyboard_layout = "jp" # "jp" or "us"
+language = "en" # "ja" or "en"
+
+[theme]
+desktop_bg = 0xF6
+menu_bg = 0xC5
+window_bg = 0xFF
+text = 0x00
+text_light = 0xFF
+highlight = 0xEE
+border = 0x60
+button = 0x60
+dir_color = 0x03
+
+[[shortcuts]]
+key = "l"
+app = "launcher"
+
+[[shortcuts]]
+key = "s"
+app = "default/shell"
+
+[[shortcuts]]
+key = "e"
+app = "default/editor"
+
+[[shortcuts]]
+key = "n"
+app = "app/tool/nsf_player.app.rb"
+
+[[shortcuts]]
+key = "i"
+app = "default/inspector"
+
+# App categories hidden from the launcher (files stay on flash and remain
+# runnable via the editor / debugd). The Linux sim config has no entries,
+# so the sim still shows everything.
+[[launcher_exclude]]
+dir = "debug"
+
+[[launcher_exclude]]
+dir = "test"
+
+# The counterpart of the Retro configs' "modern" exclusion: apps that need
+# hardware only a Retro machine has (NTSC output, the WROVER side) go under
+# /app/retro and are hidden here. The directory does not exist yet -- an
+# exclusion for a missing directory simply never matches. /app/modern stays
+# visible on this board; that is what it is for.
+[[launcher_exclude]]
+dir = "retro"
+
+# Remote desktop (browser viewer via WiFi). WiFi credentials live in
+# /etc/wifi.toml (see config/wifi_p4.toml.example).

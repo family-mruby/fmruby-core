@@ -1,7 +1,7 @@
 ---
 title: Family mruby<br>Ruby だけで動く小さな機械
 subtitle: 日本語での発表サンプル
-author: きしま
+author: Family mruby プロジェクト
 theme: default
 allotted_time: 10m
 chime: true

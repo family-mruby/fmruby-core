@@ -1,8 +1,8 @@
 # PicoRabbit - Fullscreen presentation tool
 # Supports PicoRabbit-compatible markdown format
 #
-# The app starts on a menu of every deck it can find, under /home/slides and
-# on the SD card. From there a deck is presented, or written out as one
+# The app starts on a menu of every deck it can find: your own under
+# /home/slides, the samples under /usr/share/samples/slides, and the SD card. From there a deck is presented, or written out as one
 # picture per slide.
 #
 # Keys follow Rabbit upstream (doc/picorabbit/rabbit_behavior.md), which
@@ -39,7 +39,7 @@
 class SlideShowApp < FmrbApp
   # Where decks live. The second is the card, and is simply absent on a
   # machine without one.
-  SLIDE_DIRS = ["/home/slides", "/mnt/sd/slides"]
+  SLIDE_DIRS = ["/home/slides", "/usr/share/samples/slides", "/mnt/sd/slides"]
   SLIDE_TAGS = ["home", "sd"]
   SD_ROOT = "/mnt/sd"
   EXPORT_ROOT = "/mnt/sd/picorabbit"

@@ -1,18 +1,20 @@
 ---
 title: Family mruby OS<br>Demo Presentation
 subtitle: PicoRabbit Format Compatibility
-author: kishima
+author: Family mruby project
 theme: default
 allotted_time: 5
 ---
 
-# Self Introduction
+# About This Deck
 
-kishima
+PicoRabbit plays slide decks written in markdown.
 
-* Software Engineer
-* ESP32 Hobbyist
-* Family mruby Creator
+* Headings make pages
+* `{::wait/}` pauses inside a page
+* A `fmrb` code block DRAWS on the slide
+
+This deck uses all of them.
 
 # System Architecture
 
@@ -183,6 +185,6 @@ Family mruby OS
 
 {:.center}
 
-**See you at RubyKaigi 2026!**
+**Write your own deck in /home/slides**
 
 {:.center}

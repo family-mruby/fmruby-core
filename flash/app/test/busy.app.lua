@@ -3,8 +3,8 @@
 -- Expected: the green LED switches to the 0.5s saturated pattern, input
 -- stays responsive, the clock keeps ticking, and both the close button
 -- and "kill pid=N" via debugd (or the web console debug panel) end it.
--- Lives under /home/test so the launcher does not list it; start it with
--- "run /home/test/busy.app.lua" or spawn from the debug panel.
+-- No .app.toml, so the launcher does not list it; start it with
+-- "run /app/test/busy.app.lua" or spawn from the debug panel.
 local canvas_id = FmrbApp.create_canvas(FmrbApp.WINDOW_WIDTH, FmrbApp.WINDOW_HEIGHT)
 local gfx = FmrbGfx.new(canvas_id)
 gfx:clear(FmrbGfx.WHITE)

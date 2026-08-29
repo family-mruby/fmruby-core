@@ -20,7 +20,6 @@ flash/etc/services.toml
 flash/home/services_state.toml
 # File association table, generated from config/associations.toml
 flash/etc/associations.toml
-flash/home/music/
 # Launcher app index, rebuilt on demand by the desktop
 flash/var/cache/launcher_index
 
@@ -97,3 +96,8 @@ wasm/vendor/m5gfx/
 # cache); the wasm build runs against the real flash/ via NODERAWFS.
 flash/cache/
 flash/data/
+
+# Local-only storage overlay: merged over flash/ when staging the device
+# image, never packed into the web (wasm) bundle. Personal music, decks,
+# anything undistributable goes here. See CLAUDE.md.
+flash_local/
