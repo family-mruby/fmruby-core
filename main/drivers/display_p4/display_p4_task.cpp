@@ -141,7 +141,14 @@ static uint8_t g_recv_buf[DISPLAY_P4_RECV_BUF_SIZE];
 // Each canvas is an 8bpp (RGB332) LGFX_Sprite allocated in PSRAM.
 // ============================================================
 
+// One canvas per windowed app plus the desktop, so this is the real ceiling on
+// how many app windows can be on screen at once -- FMRB_MAX_APPS above it means
+// nothing. Each canvas costs two framebuffer-sized RGB332 buffers of PSRAM
+// (~200 KB a piece at 426x240), which is why the device targets stop at 8; the
+// web build raises it alongside its app ceiling (wasm/CMakeLists.txt).
+#ifndef DISPLAY_P4_MAX_CANVAS
 #define DISPLAY_P4_MAX_CANVAS    8
+#endif
 #define DISPLAY_P4_CANVAS_SCREEN  ((uint16_t)0x0000)
 #define DISPLAY_P4_CANVAS_RENDER  ((uint16_t)0xFFF0)
 #define DISPLAY_P4_CANVAS_INVALID ((uint16_t)0xFFFF)

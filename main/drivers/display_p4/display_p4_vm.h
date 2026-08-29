@@ -9,7 +9,12 @@
 #include <stdbool.h>
 
 #define DISPLAY_P4_VM_REG_COUNT         16
+// GfxBlock programs are held per canvas, so this scales with the window count
+// (~550 bytes each). Overridable for the same reason DISPLAY_P4_MAX_CANVAS is;
+// the id is a uint8_t with 0xFF reserved, so 255 is the hard cap.
+#ifndef DISPLAY_P4_VM_MAX_PROGS
 #define DISPLAY_P4_VM_MAX_PROGS         16
+#endif
 #define DISPLAY_P4_VM_MAX_BYTECODE_SIZE 384
 #define DISPLAY_P4_VM_MAX_STRTABLE_SIZE 128
 #define DISPLAY_P4_VM_INVALID_PROG_ID   0xFF
