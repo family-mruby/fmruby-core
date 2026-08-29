@@ -73,6 +73,16 @@ US['\n'] = [40, false];
 US['.'] = [55, false];
 US['/'] = [56, false];
 US['-'] = [45, false];
+US['_'] = [45, true];
+US['='] = [46, false];
+US['+'] = [46, true];
+US[','] = [54, false];
+US[':'] = [51, true];
+US[';'] = [51, false];
+US['('] = [38, true];
+US[')'] = [39, true];
+US['"'] = [52, true];
+US["'"] = [52, false];
 
 const Module = require(path.resolve(__dirname, '../build/core.js'));
 
@@ -187,7 +197,12 @@ async function main() {
     } else if (op === 'text') {
       for (const ch of rest) {
         const ent = US[ch];
-        if (!ent) continue;
+        if (!ent) {
+          // Say so: a silently dropped character turns into a path that does
+          // not exist, and the failure looks like the app's fault.
+          console.error(`drive: text has no key for ${JSON.stringify(ch)}; skipped`);
+          continue;
+        }
         const mod = ent[1] ? 0x01 : 0; // FMRB_KEYMAP_MOD_LSHIFT
         push(1, ent[0], mod, 0, 0);
         await sleep(30);
