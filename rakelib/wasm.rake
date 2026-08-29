@@ -100,10 +100,40 @@ namespace :wasm do
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target core"
   end
 
+  desc "Stage the distributable flash tree for the browser bundle (tracked files only)"
+  task :webflash do
+    staging = File.join(WASM_BUILD_DIR, "webflash")
+    rm_rf staging
+    mkdir_p staging
+    # Only what git tracks: local-only material (flash_local/ overlay, the
+    # generated wifi.toml, personal files) is structurally excluded from the
+    # distributed bundle. The runtime settings come from the wasm config,
+    # never from whatever the last target build staged into flash/etc.
+    files = `git -C #{ROOT_DIR} ls-files -z flash`.split("\0")
+    abort "wasm:webflash: git ls-files returned nothing" if files.empty?
+    files.each do |f|
+      dest = File.join(staging, f.sub(%r{\Aflash/}, ""))
+      mkdir_p File.dirname(dest)
+      cp File.join(ROOT_DIR, f), dest
+    end
+    mkdir_p File.join(staging, "etc")
+    cp File.join(ROOT_DIR, "config/system_conf_wasm.toml"),
+       File.join(staging, "etc/system_conf.toml")
+    cp File.join(ROOT_DIR, "config/system_conf_wasm.toml"),
+       File.join(staging, "etc/system_conf.factory.toml")
+    # Belt and braces: refuse to ship anything that smells like a credential.
+    bad = files.grep(%r{wifi\.toml|secrets})
+    abort "wasm:webflash: refusing to stage #{bad.inspect}" unless bad.empty?
+    puts "webflash: #{files.length} tracked files + wasm system_conf"
+  end
+
   desc "Build the browser bundle (core_web.js/.wasm/.data + wasm/web page)"
-  task :web do
+  task :web => :webflash do
     emcmake = wasm_emcmake!
     sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} -DCMAKE_BUILD_TYPE=Release"
+    # The packed .data is produced at link time; the staging just changed, so
+    # force the link step to run again.
+    rm_f Dir[File.join(WASM_BUILD_DIR, "core_web.{js,wasm,data}")]
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target core_web"
   end
 

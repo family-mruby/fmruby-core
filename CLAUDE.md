@@ -24,6 +24,12 @@
 
 ### 開発時の注意
 
+- **flash/ は「git 追跡分 = 配布してよいもの」を不変条件とする**。ローカル
+  専用の中身 (音楽、個人のデッキ、認証情報の生成物) は flash_local/
+  (gitignore) に置く — 実機の storage は flash/ + flash_local/ の合成、
+  web (wasm) の bundle は追跡分 + config/system_conf_wasm.toml だけを束ねる。
+  /home の出荷 seed はサービスの種と README のみで、サンプルは
+  /usr/share/samples/ に置く。
 - .gitsubmoduleに含まれるディレクトリは直接編集禁止
 - .gitsubmoduleに含まれるディレクトリ以下を編集する際は、lib/add lib/patch lib/replace 以下にファイルを配置して、 Rakefile で、対象のファイルやディレクトリを追加、上書き、削除する。
 - sdkconfigおよびsdkconfig.defaults は編集禁止

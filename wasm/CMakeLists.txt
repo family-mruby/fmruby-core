@@ -505,11 +505,16 @@ target_link_options(core PRIVATE
 # Browser build: MEMFS with the flash image packed in, modularized so the
 # page (wasm/web/) instantiates it explicitly. COOP/COEP headers are the
 # server's job (rake wasm:serve for development).
+#
+# The packed tree is NOT the working flash/ directory: rake wasm:web stages
+# build/webflash from git-TRACKED flash/ content plus config/system_conf_wasm
+# .toml, so local-only files (flash_local/ overlay material, the generated
+# wifi.toml, anything untracked) can never reach the distributed bundle.
 target_link_options(core_web PRIVATE
   ${WASM_CORE_LINK_OPTS}
   -sENVIRONMENT=web,worker
   -sMODULARIZE=1
   -sEXPORT_NAME=createFmrbCore
-  --preload-file ${FMRB_ROOT}/flash@/flash
+  --preload-file ${CMAKE_BINARY_DIR}/webflash@/flash
   --profiling-funcs
 )
