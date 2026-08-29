@@ -75,7 +75,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔21 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔17 files〕
-- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **進行中** (2026-08-29) P1-P4 完了 (P4b/P4c はブラウザで実操作・音ともユーザ確認済)。残るは P5 (配信) 〔14 files〕
+- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **進行中** (2026-08-29) P1-P4 完了 (P4b/P4c はブラウザで実操作・音ともユーザ確認済)。残るは P5 (配信) 〔15 files〕
 
 ## アーカイブ (完結したテーマ)
 

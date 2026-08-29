@@ -3,7 +3,8 @@
 2026-08-28 起草。方針と調査結果は plan.md を前提とする。ここでは実装をフェーズに
 分割し、各フェーズの作業項目・触るファイル・受け入れ条件を定める。
 実装担当への指示書: instruction_p1.md / instruction_p2.md / instruction_p3.md /
-instruction_p4a.md (2026-08-29 作成。P4b 以降は P4a の結果を見てから書く)。
+instruction_p4a.md / instruction_p5.md (P4b/P4c は実装が先行したため
+指示書なし。report/p4a.md 末尾が代わり)。
 
 ## フェーズ構成と依存関係
 
