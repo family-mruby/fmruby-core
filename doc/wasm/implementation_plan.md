@@ -419,6 +419,67 @@ JS の fetch に流すブリッジと、(2) 利用者が自分の API 鍵を持�
 
 ---
 
+## P5b (計画済 2026-08-30): fetch ブリッジ — Net::HTTP を wasm で、Weather を初例に
+
+ユーザ指示: HTTPS を叩けるようにし、Weather サンプルが動くこと。
+**既存 gem と同一 IF の汎用 Ruby クラスとして**提供する (専用 API を作らない)。
+鍵が不要なので、TTS (旧 T3) より先に単独で出せる。
+
+### 前提の実測 (2026-08-30)
+
+- weather.app.rb は `Net::HTTP.get_response(URI.parse(url))` で
+  **Open-Meteo (鍵不要)** を叩く。
+- Open-Meteo は CORS 全開放を実測確認: `access-control-allow-origin: *`
+  (GET/POST/OPTIONS)。ブラウザ直叩き可。https ページ → https API で
+  混在コンテンツの問題も無い。
+- picoruby-net-http は **pure Ruby (mrblib のみ) で下は socket 依存**。
+  全公開 API (get/get_response/post、リクエストオブジェクト、ヘッダ、
+  HTTPResponse) は **`Net::HTTP#request` (http_client.rb:140) 1 本に
+  合流する** — ここが輸送の継ぎ目。
+
+### 設計
+
+1. **C ブリッジ** (wasm/backend/webfetch_wasm.c):
+   要求スロット (url / method / headers / body) + 完了フラグ。呼び出した
+   タスクは 10ms の FreeRTOS 待ちでポーリング (**協調 port の生存条件 —
+   スピン禁止**)、タイムアウト既定 30s。応答 (status / headers / body) は
+   C 側バッファへ。JS 面 (スロット位置等) を EMSCRIPTEN_KEEPALIVE で公開。
+2. **JS ポンプ**: 周期 (50ms) でスロットを見て fetch() を実行し、
+   HEAPU8 + _malloc で書き戻す。**page (main.js) と node
+   (wasm/tools/webfetch_pump.js) で同一実装を共有** — node 18+ は fetch
+   内蔵なので、weather の受け入れが headless で回る。
+3. **Ruby 層は既存 gem そのもの**: picoruby-net-http を wasm の gembox に
+   加え、**`Net::HTTP#request` (と start/finish の socket 部) だけを
+   wasm 上書きで差し替える**。URI・HTTP::Get/Post・ヘッダ・HTTPResponse は
+   字面ごと同一 (mruby バインディングは C ブリッジへの薄い FFI 1 つ)。
+   アプリは無改修 — weather.app.rb がそのまま動くことが仕様。
+4. **FmrbNet.connected?**: weather は起動時にこれでゲートするので、
+   wasm ではブリッジ可用 = true を返す道を通す (fmrb-net の wasm 分岐か
+   net service 側か、着手時に実装を見て決める)。
+
+### スコープ外
+
+- WebSocket (ブラウザ native WS に写像できるので将来は素直。今回はやらない)、
+  chunked/streaming の逐次読み (fetch 完了後に一括で返す。weather / TTS には
+  足りる)、リダイレクトやクッキーの追加実装 (gem の現状仕様に従う)。
+
+### 受け入れ条件
+
+1. **wasm (node) で weather.app.rb が無改修で実際の天気を描画する**
+   (webfetch_pump 併用、probe 道具でスクリーンショット)。
+2. ブラウザ (dist + 素の静的サーバ) でも weather が動く
+   (?autostart&holdload の probe で撮って確認)。
+3. 実機 / linux に影響ゼロ (gem 本体無改修。ビルドマトリクス + sim ブート)。
+4. rake wasm:scan が通ったまま (新規ファイルの混入検査を含む)。
+5. ネットワーク不通・CORS 拒否・タイムアウトで**アプリが例外死せず**
+   weather の従来のエラー表示に落ちる。
+
+### 後続 (P5c): 鍵の持ち込みと TTS
+
+instruction_p5.md T3 の内容をこの基盤の上に載せる (設定パネルの鍵欄 +
+tts_http の wasm 差し替え + VOICEVOX/OpenAI の CORS 実測)。P5b が通れば
+輸送は共通で、残るは鍵の UI と services 設定への注入だけ。
+
 ## P6 候補 (構想): Web Bluetooth で実機の Family mruby と通信
 
 ユーザ発案 (2026-08-29)。ブラウザ版から実機 (Tab5 / Retro) へ BLE で
