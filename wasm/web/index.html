@@ -26,6 +26,11 @@
     font-size: 20px;
   }
   #status { margin-top: 8px; font-size: 12px; color: #888; }
+  #settings { margin-top: 6px; font-size: 12px; color: #aaa; }
+  #settings select {
+    background: #111; color: #ddd; border: 1px solid #555;
+    font-family: monospace; font-size: 12px;
+  }
 </style>
 </head>
 <body>
@@ -35,6 +40,13 @@
   <div id="start">Click to start</div>
 </div>
 <div id="status">loading...</div>
+<div id="settings">
+  Theme:
+  <select id="theme-select">
+    <option value="cyberpunk">Cyberpunk (web default)</option>
+    <option value="classic">Classic (device palette)</option>
+  </select>
+</div>
 <script src="../../tool/web/remote/keymap.js"></script>
 <script src="../build/core_web.js"></script>
 <script src="main.js"></script>

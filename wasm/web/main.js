@@ -126,17 +126,68 @@ async function startAudio() {
   await ac.resume();
 }
 
+// ---- page settings (localStorage; the key never leaves this browser) ------
+
+// The web default palette is baked into the bundled system_conf (cyberpunk);
+// "classic" rewrites the [theme] block in MEMFS before the firmware boots.
+// Same mechanism the resolution selection will use: the packed conf is just a
+// file, and preRun runs after it is unpacked and before main().
+const CLASSIC_THEME = {
+  desktop_bg: '0xF6', menu_bg: '0xC5', window_bg: '0xFF',
+  text: '0x00', text_light: '0xFF', highlight: '0xEE',
+  border: '0x60', button: '0x60', dir_color: '0x03',
+};
+
+function readSetting(key, fallback) {
+  try { return localStorage.getItem(key) || fallback; } catch (e) { return fallback; }
+}
+
+const themeSelect = document.getElementById('theme-select');
+themeSelect.value = readSetting('fmrb_web_theme', 'cyberpunk');
+themeSelect.addEventListener('change', () => {
+  try { localStorage.setItem('fmrb_web_theme', themeSelect.value); } catch (e) {}
+  location.reload();   // the theme is read once at boot
+});
+
+function applyThemeSetting(mod) {
+  if (readSetting('fmrb_web_theme', 'cyberpunk') === 'classic') {
+    const path = '/flash/etc/system_conf.toml';
+    let conf = new TextDecoder().decode(mod.FS.readFile(path));
+    for (const [key, val] of Object.entries(CLASSIC_THEME)) {
+      conf = conf.replace(new RegExp('^' + key + ' = 0x[0-9A-Fa-f]+', 'm'),
+                          key + ' = ' + val);
+    }
+    mod.FS.writeFile(path, conf);
+    return;
+  }
+  // Cyberpunk: swap the (beige, western) wallpaper for the neon skyline.
+  // Both paths, because which one the desktop loads depends on the platform
+  // branch it takes (usr/share on esp32, /data elsewhere -- wasm included).
+  try {
+    const px = mod.FS.readFile('/flash/usr/share/backgrounds/bg_cyber_426x240.png');
+    for (const p of ['/flash/usr/share/backgrounds/bg_426x240.png',
+                     '/flash/data/bg_426x240.png']) {
+      try { mod.FS.writeFile(p, px); } catch (e) { /* best effort */ }
+    }
+  } catch (e) { /* no cyber wallpaper packed: dark desktop_bg will show */ }
+}
+
 // ---- bootstrap ------------------------------------------------------------
 
 statusLine.textContent = 'booting the firmware...';
 
-createFmrbCore({
+const moduleConfig = {
   // The .data (and .wasm) live next to core_web.js, not next to this page;
   // emscripten resolves the data file against the page URL unless told.
   locateFile: (p) => '../build/' + p,
   print: (t) => console.log(t),
   printErr: (t) => console.warn(t),
-}).then((mod) => {
+};
+// preRun runs inside run(), after the preloaded .data is unpacked into MEMFS
+// and before main() -- the one moment the packed files can be edited.
+moduleConfig.preRun = [() => applyThemeSetting(moduleConfig)];
+
+createFmrbCore(moduleConfig).then((mod) => {
   M = mod;
   statusLine.textContent = 'running';
   hookInput();

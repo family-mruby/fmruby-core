@@ -488,7 +488,9 @@ set(WASM_CORE_LINK_OPTS
   # The JS-facing surface (frame, audio ring, input ring); emscripten 6
   # exports nothing to the Module by default.
   "-sEXPORTED_FUNCTIONS=_main,_fmrb_wasm_frame_seq,_fmrb_wasm_frame_rgba,_fmrb_wasm_frame_width,_fmrb_wasm_frame_height,_fmrb_wasm_audio_ring,_fmrb_wasm_audio_ring_size,_fmrb_wasm_audio_wr,_fmrb_wasm_audio_rate,_fmrb_wasm_audio_volume,_fmrb_wasm_input_ring,_fmrb_wasm_input_ring_events,_fmrb_wasm_input_wr_ptr"
-  "-sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPU32,HEAP32"
+  # FS is what lets the page rewrite packed settings in preRun (theme, and
+  # later the resolution selection) before the firmware boots.
+  "-sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPU32,HEAP32,FS"
 )
 
 # Node development build: real files (the flash/ directory) instead of a

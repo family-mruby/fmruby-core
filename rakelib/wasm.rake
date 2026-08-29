@@ -116,6 +116,11 @@ namespace :wasm do
       mkdir_p File.dirname(dest)
       cp File.join(ROOT_DIR, f), dest
     end
+    # The desktop on non-esp32 platforms (wasm included) loads the wallpaper
+    # from /data -- on the sim a kernel file-sync puts it there. Stage it.
+    mkdir_p File.join(staging, "data")
+    cp File.join(ROOT_DIR, "flash/usr/share/backgrounds/bg_426x240.png"),
+       File.join(staging, "data/bg_426x240.png")
     mkdir_p File.join(staging, "etc")
     cp File.join(ROOT_DIR, "config/system_conf_wasm.toml"),
        File.join(staging, "etc/system_conf.toml")

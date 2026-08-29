@@ -310,6 +310,16 @@ fmrb_audio_probe 相当の FFT 検証をリングのダンプに対して行い�
 
 ユーザ要望 (2026-08-29、P5 に同梱する改善):
 
+- **サイバーパンク配色 (web 既定) — 済み (2026-08-29)**: system_conf_wasm の
+  [theme] をネオン系にし、自作のスカイライン壁紙
+  (usr/share/backgrounds/bg_cyber_426x240.png、生成スクリプト由来で権利
+  問題なし) を cyberpunk 時に /data と usr/share の壁紙へ上書きする。
+  ページの設定 (localStorage) で Classic (実機配色 + 西部劇壁紙) に戻せる。
+  preRun で MEMFS の conf/ファイルを書き換える機構の第一号。
+  **教訓: テーマ色に 0x01 を使ってはならない** (デスクトップ前景の
+  カラーキー。window_bg=0x01 で窓が透けた)。既知の軽微差: Spinel エディタの
+  タイトル帯は別経路の配色で旧色のまま。
+
 - **内部解像度の選択** (作業空間を広くする。ページ拡大の話ではない):
   調査の結果、解像度は既に実行時設定だった — `display_width/height` は
   system_conf.toml から読まれ (fmrb_kernel.c:134、config/ は linux=320x240 /
