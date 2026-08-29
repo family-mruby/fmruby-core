@@ -298,6 +298,14 @@ fmrb_audio_probe 相当の FFT 検証をリングのダンプに対して行い�
 - preload する flash/ の内容を選定する (デモアプリ一式 + フォント。
   サイズと初回ロード時間で調整)。
 - family-mruby.github.io への組み込みはサイト側の作業として別途。
+- **wasm 専用の config と staging を新設する (配信前の必須項目)**:
+  現状 wasm は「最後のターゲットビルドの flash/etc/system_conf.toml」を
+  拾っており脆い。config/system_conf_wasm.toml を作り、wasm の staging が
+  それを使う。**同じ staging で wifi.toml を除外する** — 現在の
+  core_web.data には wifi.toml の実値 (SSID/パスワード) がそのまま
+  入っており (2026-08-29 バイナリ照合で確認)、配信したら漏えいする。
+  main/secrets.h (TTS 鍵) も、存在する状態でビルドした wasm に入らないことを
+  配信前チェックに含める。
 
 ユーザ要望 (2026-08-29、P5 に同梱する改善):
 
@@ -309,7 +317,10 @@ fmrb_audio_probe 相当の FFT 検証をリングのダンプに対して行い�
   - ページの起動前 UI で解像度を選び、JS が MEMFS 上の
     /flash/etc/system_conf.toml の display_width/height を書き換えてから
     boot する (Module.preRun)。JS 側 canvas と present の RGBA バッファは
-    モジュールから実サイズを受け取る形に直す。
+    モジュールから実サイズを受け取る形に直す。ビルドは 1 本のまま
+    (解像度ごとのビルドはしない。ユーザ方針 2026-08-29)。
+    URL クエリ (?w=&h=) と「モニタに合わせる」(JS が画面サイズから 16:9 の
+    近い値を計算、検証済み上限でクランプ) も同じ機構に乗せる。
   - プリセットは 16:9 系で 426x240 (実機一致) / 640x360 (HDMI 計画と同値、
     エディタ 79 桁) / 852x480 (2x) から。
   - 大きい解像度で Ruby 側 (デスクトップ・エディタ・ランチャー) の
