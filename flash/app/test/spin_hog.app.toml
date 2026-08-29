@@ -1,0 +1,8 @@
+app_handle_name = "spin_hog"
+app_screen_name = "Spin Hog"
+app_screen_name_ja = "CPU 占有試験"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 50
+default_window_pos_x = 60
+default_window_pos_y = 120

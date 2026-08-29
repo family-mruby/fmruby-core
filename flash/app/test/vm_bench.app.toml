@@ -1,0 +1,8 @@
+app_handle_name = "vm_bench"
+app_screen_name = "VM Bench"
+app_screen_name_ja = "VM 速度計測"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 50
+default_window_pos_x = 80
+default_window_pos_y = 150

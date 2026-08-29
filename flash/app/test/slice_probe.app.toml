@@ -1,0 +1,8 @@
+app_handle_name = "slice_probe"
+app_screen_name = "Slice Probe"
+app_screen_name_ja = "タイムスライス計測"
+default_window_mode = "window"
+default_window_width = 200
+default_window_height = 50
+default_window_pos_x = 40
+default_window_pos_y = 60
