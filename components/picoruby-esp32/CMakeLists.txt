@@ -235,6 +235,23 @@ endif()
 include(${CMAKE_CURRENT_LIST_DIR}/mruby_abi_defines.cmake)
 fmrb_add_mruby_abi_defines()
 
+# Self-supplied mruby timeslice (doc/wasm/, P2). Off by default: the tick top-half
+# (the mruby_tick task) runs as before. With FMRB_TASK_SELF_TICK=1 the top-half is
+# not created and the VM converts elapsed wall-clock time into ticks from its own
+# dispatch loop instead -- which is the only thing that can work on the
+# cooperative wasm port, where a separate timer task never gets to run while a
+# CPU-bound Ruby program holds the CPU.
+#
+# NOT an ABI define (no struct changes), but it still has to match the rake side:
+# vm.c is compiled by the rake mruby build and task_hal.c here. Both read this
+# one environment variable inside the container (see lib/add/family_mruby_*.rb),
+# so they cannot disagree. Getting it onto only one side is not silent: without
+# vm.c nothing ticks, and without task_hal.c the link fails on
+# mrb_hal_task_self_tick.
+if("$ENV{FMRB_TASK_SELF_TICK}" STREQUAL "1")
+  add_compile_definitions(MRB_TASK_TICK_SELF_SUPPLY)
+endif()
+
 if(IDF_TARGET STREQUAL "linux")
   add_compile_definitions(PICORB_PLATFORM_POSIX)
   add_compile_definitions(PICORB_VM_MRUBY=1)

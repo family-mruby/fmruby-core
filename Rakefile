@@ -166,7 +166,14 @@ ENGINE_ENV_OPTS = [
   # boot-time ABI guard aborts. Both read this one variable inside the
   # container, so they cannot disagree. Off by default; build with
   # FMRB_GC_PROFILE=1 rake build:linux to measure.
-  "-e FMRB_GC_PROFILE=#{ENV['FMRB_GC_PROFILE']}"
+  "-e FMRB_GC_PROFILE=#{ENV['FMRB_GC_PROFILE']}",
+  # Self-supplied mruby timeslice (doc/wasm/, P2). The VM ticks itself from its
+  # own dispatch loop instead of relying on the mruby_tick task. Needed by the
+  # cooperative wasm port; off by default everywhere else. Read on both sides of
+  # the rake/CMake boundary (lib/add/family_mruby_*.rb and
+  # components/picoruby-esp32/CMakeLists.txt), so they cannot disagree.
+  # Touching vm.c means `rake clean` before rebuilding.
+  "-e FMRB_TASK_SELF_TICK=#{ENV['FMRB_TASK_SELF_TICK']}"
 ].join(" ")
 
 DOCKER_CMD = [

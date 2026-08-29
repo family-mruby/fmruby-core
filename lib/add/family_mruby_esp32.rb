@@ -45,6 +45,16 @@ MRuby::CrossBuild.new("esp32") do |conf|
     conf.cc.defines << "MRB_GC_PROFILE"
     conf.cc.defines << "MRB_GC_STATS"
   end
+  # Self-supplied mruby timeslice (doc/wasm/, P2). Off by default. With
+  # FMRB_TASK_SELF_TICK=1 the VM converts elapsed wall-clock time into ticks from
+  # its own dispatch loop (vm.c, patched in lib/patch) instead of waiting for the
+  # mruby_tick task, which a cooperative scheduler never gets to run while a
+  # CPU-bound Ruby program holds the CPU. vm.c is compiled here and task_hal.c on
+  # the CMake side, so both read this one variable -- see
+  # components/picoruby-esp32/CMakeLists.txt.
+  if ENV['FMRB_TASK_SELF_TICK'] == '1'
+    conf.cc.defines << "MRB_TASK_TICK_SELF_SUPPLY"
+  end
 
   if ENV['PICORB_DEBUG']
     conf.cc.defines << "ESTALLOC_DEBUG"

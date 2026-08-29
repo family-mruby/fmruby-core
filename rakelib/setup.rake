@@ -147,7 +147,11 @@ task :setup do
   sh "cp -rf lib/replace/picoruby-machine #{mrbgem_path}/"
 
   # ---------- Patch ----------
-  # picoruby-mruby: alloc.c (estalloc multi-VM), hal.h, mrbgem.rake
+  # picoruby-mruby: alloc.c (estalloc multi-VM), hal.h, mrbgem.rake, and
+  # lib/mruby/src/vm.c (the self-supplied timeslice hook, four additive hunks
+  # marked "fmrb: self-supplied timeslice" -- see doc/wasm/report/p2.md; it
+  # compiles to nothing unless MRB_TASK_TICK_SELF_SUPPLY is defined). vm.c is a
+  # whole-file copy, so it has to be refreshed when the mruby submodule moves.
   sh "cp -rf lib/patch/picoruby-mruby #{mrbgem_path}/"
 
   # mruby-io file_constants.rb

@@ -24,6 +24,9 @@
  * task on another thread) accumulates ticks per VM and this returns+zeroes the
  * count atomically. Applied on the VM's own thread in task_run_body. */
 extern uint32_t mrb_hal_task_take_pending_ticks(mrb_state *mrb);
+#ifdef MRB_TASK_TICK_SELF_SUPPLY
+extern void mrb_hal_task_account_ticks(mrb_state *mrb);
+#endif
 
 /* Get task pointer from self with validation */
 #define TASK_GET_PTR_OR_RAISE(var, self) \
@@ -587,6 +590,17 @@ task_run_body(mrb_state *mrb, void *ud)
      * mrb_tick takes no scheduler exclusion (it is the "IRQ side"), so calling
      * it here, outside mrb_task_excl_*, is correct. */
     {
+#ifdef MRB_TASK_TICK_SELF_SUPPLY
+      /* No top-half in this mode: nothing produces ticks unless this VM asks
+       * for them. Asking here, at the loop head, is what covers the ordinary
+       * case -- a task that yields or blocks often (an app's main loop spends
+       * most of its time inside _spin, executing almost no bytecode, so the
+       * every-N-bytecodes hook in vm.c would take seconds to fire). That hook
+       * covers the opposite case, a task that never comes back here at all.
+       * Both go through the same wall-clock accounting, so ticks are neither
+       * lost nor double-counted. */
+      mrb_hal_task_account_ticks(mrb);
+#endif
       uint32_t pending = mrb_hal_task_take_pending_ticks(mrb);
       while (pending--) mrb_tick(mrb);
     }
