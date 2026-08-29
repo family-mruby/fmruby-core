@@ -299,6 +299,21 @@ fmrb_audio_probe 相当の FFT 検証をリングのダンプに対して行い�
   サイズと初回ロード時間で調整)。
 - family-mruby.github.io への組み込みはサイト側の作業として別途。
 
+ユーザ要望 (2026-08-29、P5 に同梱する改善):
+
+- **表示倍率の選択**: ページ UI で 1x/2x/3x/画面幅フィットを切り替える
+  (端末の内部解像度 426x240 は変えない。CSS の image-rendering: pixelated で
+  拡大。現状は 2x 固定)。
+- **全画面モード**: canvas の requestFullscreen + 上記フィット。全画面中は
+  Esc が既定で全画面解除に食われるので、Keyboard Lock API が使える環境では
+  Esc/Ctrl+W を捕捉する (使えない環境では諦めて注記)。
+- **同時起動アプリ数の上限緩和**: 実体は FMRB_MAX_APPS=9
+  (components/fmrb_common/include/fmrb_task_config.h:11)。wasm ビルドだけ
+  上書きして増やす (実機は据え置き)。連動する箇所に注意 —
+  VM プールのメモリ、pthread pool (現状 40)、および kernel Ruby 側に
+  FMRB_MAX_APPS 前提のループがある (input_router.rb:55 のコメント参照。
+  定数がRuby 側へどう渡っているか確認してから触る)。
+
 **受け入れ条件**: GitHub Pages 相当の静的配信で、Chrome/Firefox の現行版から
 操作できる。初回ロードが実用的な時間 (目安 10 秒以内) に収まる。
 
