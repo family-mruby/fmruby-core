@@ -119,6 +119,12 @@ namespace :wasm do
     # never from whatever the last target build staged into flash/etc.
     files = `git -C #{ROOT_DIR} ls-files -z flash`.split("\0")
     abort "wasm:webflash: git ls-files returned nothing" if files.empty?
+    # Rights, not secrecy: NSF tunes ride in the repo for the device, but
+    # putting a page on the open web is a different act from having a file on
+    # a board in one's hand. The player ships and finds an empty directory.
+    # (This filter was written in P5 and lost in a concurrent-edit mishap
+    # before it was ever committed; wasm:scan now asserts it as well.)
+    files = files.reject { |f| f.end_with?(".nsf") }
     files.each do |f|
       dest = File.join(staging, f.sub(%r{\Aflash/}, ""))
       mkdir_p File.dirname(dest)
@@ -218,6 +224,9 @@ namespace :wasm do
       problems << "a local credential appears in core_web.data" if blob.include?(secret)
     end
     # And the shapes a key takes even when this machine has none to compare.
+    packed.select { |f| f.end_with?(".nsf") }.each do |f|
+      problems << "NSF tune in the public bundle (rights): #{f}"
+    end
     { "OpenAI-style key" => /sk-[A-Za-z0-9_-]{20}/,
       "PEM private key"  => /BEGIN [A-Z ]*PRIVATE KEY/ }.each do |what, re|
       problems << "#{what} found in core_web.data" if blob =~ re
@@ -279,12 +288,13 @@ namespace :wasm do
     puts "  coi-serviceworker supplies the cross-origin isolation, so no headers are needed."
   end
 
-  desc "Serve the repo with COOP/COEP for the wasm page (PORT=n, default 8006)"
+  desc "Serve the repo with COOP/COEP for the wasm page (PORT=n, default 8006; DIST=1 serves build/dist with probe-hold, for headless checks of the real artifacts)"
   task :serve do
     port = (ENV["PORT"] || 8006).to_i
-    puts "open http://localhost:#{port}/wasm/web/index.html"
+    root = ENV["DIST"] ? File.join(WASM_BUILD_DIR, "dist") : ROOT_DIR
+    puts "open http://localhost:#{port}/" + (ENV["DIST"] ? "" : "wasm/web/index.html")
     require "webrick"
-    server = WEBrick::HTTPServer.new(Port: port, DocumentRoot: ROOT_DIR)
+    server = WEBrick::HTTPServer.new(Port: port, DocumentRoot: root)
     # SharedArrayBuffer needs cross-origin isolation; GitHub Pages gets the
     # same effect from coi-serviceworker in P5.
     server.mount_proc("") do |req, res|
@@ -298,7 +308,7 @@ namespace :wasm do
         res.body = ["47494638396101000100800000000000ffffff21f90401000000002c00000000010001000002024401003b"].pack("H*")
         next
       end
-      WEBrick::HTTPServlet::FileHandler.new(server, ROOT_DIR).service(req, res)
+      WEBrick::HTTPServlet::FileHandler.new(server, root).service(req, res)
       res["Cross-Origin-Opener-Policy"] = "same-origin"
       res["Cross-Origin-Embedder-Policy"] = "require-corp"
       # Development server: a cached main.js next to a fresh .data made the
