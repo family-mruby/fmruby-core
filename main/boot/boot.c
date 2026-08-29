@@ -269,7 +269,7 @@ static bool init_hardware(void)
 // display before starting the esp_hosted SDIO handshake. BLE goes first
 // (its nimble_port_init brings the SDIO transport up, the proven path),
 // WiFi strictly after: esp_hosted 1.4.0 corrupts the heap when an RPC is
-// issued before the transport is up (see doc/ble_c6_web_console.md).
+// issued before the transport is up (see doc/reference/ble_c6_web_console.md).
 // With ble_auto_start off nothing brings the transport up here, so
 // wifi_task_init() polls the transport state itself (see wifi_task.c).
 static void modern_radio_init_task(void *arg)
@@ -518,7 +518,7 @@ void fmrb_os_init(void)
     // Retro radio boot policy, decided by system_conf.toml (readable only now
     // that the kernel loaded it). BLE auto-start preserves the old behavior;
     // opting out leaves BLE's ~75 KB of internal RAM free until the desktop
-    // menu calls ble_service_start() (doc/internal_ram_budget.md, D axis).
+    // menu calls ble_service_start() (doc/reference/internal_ram_budget.md, D axis).
     // WiFi (native radio, Narya only) defaults off and is mutually exclusive
     // with BLE (no coexistence); when both are configured on, BLE wins.
     {

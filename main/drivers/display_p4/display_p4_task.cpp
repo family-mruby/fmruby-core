@@ -100,7 +100,7 @@ static volatile bool g_lcd_ready = false;
 // touch reads, PI4IO, ES8388, mruby-app transactions). LovyanGFX drives
 // this controller at register level, so all runtime traffic must go
 // through lgfx's I2C path AND be mutually excluded; this mutex is the
-// single gate (see doc/tab5_i2c_bus_notes.md).
+// single gate (see doc/reference/tab5_i2c_bus_notes.md).
 static SemaphoreHandle_t g_i2c_mutex = NULL;
 
 // Receive buffer for local link commands

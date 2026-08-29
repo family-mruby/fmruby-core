@@ -13,7 +13,7 @@ P3 display backend 分割 (P4 実機) ┘
 
 - P1〜P3 は互いに独立で、並行に進められる。
 - P2・P3 は wasm と無関係に本体の改善として単独で完結する
-  (P2 は kill 問題 doc/app_kill_fix と同根、P3 は display_p4 の整理)。
+  (P2 は kill 問題 doc/archive/app_kill_fix と同根、P3 は display_p4 の整理)。
   wasm を中断してもこの 2 つは残る。
 - 最大のリスク (協調スケジューリングの成立) は P1 で先に潰す。
 

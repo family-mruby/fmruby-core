@@ -220,7 +220,7 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
         // lock is a raw pthread mutex the FreeRTOS scheduler cannot see. At
         // hundreds of messages a second the running task ends up blocked on it
         // while the preempted holder never gets the CPU back -- the whole sim
-        // freezes (doc/sim_log_deadlock.md, caught with gdb 2026-08-16).
+        // freezes (doc/reference/sim_log_deadlock.md, caught with gdb 2026-08-16).
 
         fmrb_sys_free(encoded);
 

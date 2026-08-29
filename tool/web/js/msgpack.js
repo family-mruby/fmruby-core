@@ -9,7 +9,7 @@
 //
 // Strings go out as str (never bin), matching the client's use_bin_type=True.
 // Encoded output is byte-identical to msgpack.packb() for these shapes; see
-// the round-trip note in doc/ble_c6_web_console.md.
+// the round-trip note in doc/reference/ble_c6_web_console.md.
 (function (global) {
   'use strict';
 

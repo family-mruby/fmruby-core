@@ -34,7 +34,7 @@ void fmrb_spinel_instance_end(void *est);
 
 /* Depth high-waters of the instance's begin/rescue and catch stacks, keyed by
  * the est handle (what fmrb_app stores). For sizing SP_EXC_STACK_MAX /
- * SP_CATCH_STACK_MAX from observation (doc/internal_ram_budget.md, T7-1).
+ * SP_CATCH_STACK_MAX from observation (doc/reference/internal_ram_budget.md, T7-1).
  * Returns 0 on success, -1 when est is unknown (outputs set to 0). Safe to
  * call from another task: it reads two ints the instance task only grows. */
 int fmrb_spinel_instance_exc_hw(void *est, int *exc_hw, int *catch_hw);

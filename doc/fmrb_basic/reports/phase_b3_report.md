@@ -64,7 +64,7 @@
 判断と根拠:
 
 - **(a) canvas viewport の ring 方式は採用できない**。
-  `doc/gfx_canvas_viewport_scroll.md` のとおり `SET_CANVAS_VIEWPORT` は
+  `doc/gfx/gfx_canvas_viewport_scroll.md` のとおり `SET_CANVAS_VIEWPORT` は
   **P4 専用で Retro (S3+WROVER) 側は未実装**。BASIC の主ターゲットは Retro
   なので、ここでは選択肢にならない。
 - **(b) グリフシート化を採用**。`create_sprite_image` +

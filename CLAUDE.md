@@ -101,4 +101,8 @@ fmruby-coreは、WSL2で動くコンテナで実行する
 
 ## 参考情報
 
-doc/ 以下参照
+- **doc/README.md が索引** (`rake docs:index` で自動生成)。文書の置き方の
+  規約 (参照資料は doc 直下 / 企画は doc/<テーマ>/ に plan.md + report/、
+  状態行の書式、完結したら doc/archive/ へ) も README 冒頭にある。
+- 新しい設計・計画文書はこの規約に従って作り、追加・移動したら
+  `rake docs:index` を実行する。

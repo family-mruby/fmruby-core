@@ -2,7 +2,7 @@
 
 計測日: 2026-08-15 / 対象: `8241ec5` (develop) / ターゲット: TAB5 (ESP32-P4)
 
-`doc/internal_ram_budget.md` の **M-3 (静的確保 .bss/.data の内訳)** に相当する。
+`doc/reference/internal_ram_budget.md` の **M-3 (静的確保 .bss/.data の内訳)** に相当する。
 きっかけは「raycast gem を足したら内蔵 RAM は増えたか」という問い。
 
 ## 結論

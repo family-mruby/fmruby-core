@@ -1,13 +1,13 @@
 # P5 — Processing/p5.js 互換描画 API
 
 family-mruby (fmruby-core) における Processing/p5.js 風の Ruby 描画 DSL を提供
-するライブラリ。`flash/lib/p5.rb` に置かれている補助ライブラリで、アプリ
+するライブラリ。`lib/add/picoruby-fmrb-app/mrblib/p5.rb` にある補助ライブラリ (firmware バンドル) で、アプリ
 側で `require "p5"` してから使う。
 
 ## ファイル
 
-- 実装: [flash/lib/p5.rb](../flash/lib/p5.rb) — `require "p5"` で読み込む
-- 下層 API: [lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb](../lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb) (FmrbGfx は firmware バンドル)
+- 実装: [lib/add/picoruby-fmrb-app/mrblib/p5.rb](../../lib/add/picoruby-fmrb-app/mrblib/p5.rb) — `require "p5"` で読み込む
+- 下層 API: [lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb](../../lib/add/picoruby-fmrb-app/mrblib/fmrb-gfx.rb) (FmrbGfx は firmware バンドル)
 - 参照元: `tmp/harucom-os/rootfs/lib/p5.rb` および `tmp/harucom-os/doc/p5.md`
 
 ## 使い方

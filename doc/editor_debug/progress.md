@@ -1,7 +1,7 @@
 # FM-EDITOR オンデバイスデバッガ 実装進捗 (Phase E0 / E1)
 
-計画書: `doc/vm_editor_debug_impl_plan_e0e1.md`
-設計の正: `doc/vm_editor_debug_design.md`
+計画書: `doc/editor_debug/impl_plan_e0e1.md`
+設計の正: `doc/editor_debug/design.md`
 作業ブランチ: `feature/editor-debug` (fmruby-core, develop から分岐)
 記録開始: 2026-07-23
 

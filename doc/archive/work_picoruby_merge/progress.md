@@ -36,7 +36,7 @@
     `src/file_ext.c` (fsync stub 化) も巻き込む。tasklist に D7 / C12 として追加済。
   - `picoruby-mruby/include/hal.h` と `mruby-io/file_constants.rb` は現 pin と diff 無し (patch は存在)。新 pin で乖離確認要。
   - estalloc submodule 自体は未変更 (clean)。alloc.c パッチは L0 の wrapper のみ。
-- intent 出典を確定: `doc/picoruby_upstream_pr_candidates.md` が socket/net-http/json パッチ (C7-C11) の
+- intent 出典を確定: `doc/reference/picoruby_upstream_pr_candidates.md` が socket/net-http/json パッチ (C7-C11) の
   詳細な症状・修正理由・fmrb 固有部分を網羅。tasklist に反映済。
 - tasklist.md を完全版に更新 (全パッチ列挙 + 意図)。
 

@@ -245,7 +245,7 @@ irep の debug_info はデバイス上のファイルパス・行番号と一致
 | main/drivers/debug/fmrb_debug_transport.h | transport 抽象 (案A の場合 3 本目を追加) |
 | main/prebuild_scripts/default_app/editor.app.rb | FM-EDITOR 本体 (UI 拡張対象) |
 | tool/debug/fmrb_dbg_client.py / test_phase2.py | 動作検証の参考 (コマンド一巡の手順) |
-| doc/support_esp32p4.md | Modern (ESP32-P4) 対応の設計 |
+| doc/reference/support_esp32p4.md | Modern (ESP32-P4) 対応の設計 |
 | tools/ (リポジトリルート) + ルート CLAUDE.md | headless 自律検証ハーネス |
 
 ## 8. 未決事項

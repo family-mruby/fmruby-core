@@ -1,6 +1,6 @@
 # PicoRuby 最新版統合 作業フォルダ
 
-このフォルダは `doc/merge_latest_picoruby.md` の作業計画に基づき、picoruby submodule を
+このフォルダは `doc/archive/work_picoruby_merge/plan.md` の作業計画に基づき、picoruby submodule を
 upstream master HEAD に更新する作業の記録用フォルダである (git 管理)。
 
 ## ゴール

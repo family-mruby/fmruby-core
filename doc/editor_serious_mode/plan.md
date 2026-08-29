@@ -176,7 +176,7 @@ NATIVE 経路) は desktop 用が拡張前提で整備済み、gfx FFI はエデ
    Spinel/C 側へ。mruby 側に残るのは UI の薄い層だけになり、ヒープが
    小さく安定して GC 自体が軽くなる。
 3. **計測器は既にある**: 入力遅延は spx: hid_lat (1000 イベントごと)、
-   GC は doc/gc_monitoring.md の計装。1 の前後で数値を取り、目標
+   GC は doc/reference/gc_monitoring.md の計装。1 の前後で数値を取り、目標
    (例: 打鍵→present p99 < 33ms、25ms 超ゼロ) を決めて判定する。
 4. 必要なら mruby GC の調整 (step ratio 等)、最終手段はエディタ全体の
    Spinel 化 (入力経路から mruby が消える)。

@@ -2,7 +2,7 @@
 #
 # The C bindings (ports/esp32/debug.c) provide the raw calls; this layer adds
 # the msgpack decoding for the inspect payloads and shapes the poll_event
-# tuple into a Hash. See doc/vm_editor_debug_design.md sec 4.2.
+# tuple into a Hash. See doc/editor_debug/design.md sec 4.2.
 #
 # picoruby notes (measured): use ::MessagePack (a bare MessagePack inside a
 # module resolves as FMRB::Debug::MessagePack and fails); unpack keys are

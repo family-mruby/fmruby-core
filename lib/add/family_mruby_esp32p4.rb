@@ -104,7 +104,7 @@ MRuby::CrossBuild.new("esp32p4") do |conf|
   # Retro has no IMU, so this is not in the esp32s3 build config.
   conf.gem core: "picoruby-bmi270"
 
-  # Ruby networking client API (Modern/P4 only, see doc/ruby_network_api_design.md).
+  # Ruby networking client API (Modern/P4 only, see doc/reference/ruby_network_api_design.md).
   # picoruby-socket pulls picoruby-mbedtls; ESP-IDF port sources are compiled by
   # components/picoruby-esp32/CMakeLists.txt (PICORUBY_SRCS), lib/patch applies
   # the esp32p4 build fixes to both mrbgem.rake files.

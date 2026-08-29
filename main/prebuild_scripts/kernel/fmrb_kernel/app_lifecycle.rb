@@ -222,7 +222,7 @@ module AppLifecycleMixin
   # Cooperative only: the target is *asked* to end itself, the same way Ctrl+Q
   # asks. Nothing here deletes a task, so an app wedged in its own loop stays
   # -- forcing it is a separate job that must not run on the kernel task, which
-  # would have to block for a second or more (doc/app_kill_fix).
+  # would have to block for a second or more (doc/archive/app_kill_fix).
   #
   # The policy lives here because every requester comes through this message
   # and only the kernel knows who asked: a target must be a user app, and never

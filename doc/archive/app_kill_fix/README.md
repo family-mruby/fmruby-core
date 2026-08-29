@@ -3,7 +3,7 @@
 ビジーループするゲストアプリを kill すると、fmrb_app_kill の強制終了経路
 (fmrb_app.c の "No response ... forcing termination") に到達せず、kill を
 実行する側が固まる。発見の経緯と再現手順は
-doc/gfx_unification/report.md の Phase C 申し送りを参照。
+doc/archive/gfx_unification/report.md の Phase C 申し送りを参照。
 
 Phase 1 (診断) -> Phase 2 (修正) -> Phase 3 (強制経路の安全化) の順に進める。
 **Phase 1 の結果をユーザに報告し、Phase 2 の方針を確定してから修正に入る。**
@@ -43,7 +43,7 @@ Python アプリ全体が起動不能になり得る。
 
 canvas を作ってから `while true do end` する Lua アプリを一時ファイルとして
 作り (コミットしない)、spawn してから kill する。debugd
-(DBG_CMD_SPAWN / DBG_CMD_KILL) 経由の手順は doc/gfx_unification/report.md
+(DBG_CMD_SPAWN / DBG_CMD_KILL) 経由の手順は doc/archive/gfx_unification/report.md
 の Phase C に記載。
 
 ## Phase 1: 診断 (コードを直さない)

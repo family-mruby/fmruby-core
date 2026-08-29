@@ -162,7 +162,7 @@ STATUS_LED(2) より下 (例: 1) へ。
 
 ### 変更
 
-`fmrb_task_config.h` の 3 行のみ (doc/task_priority.md の段割りに従う)。
+`fmrb_task_config.h` の 3 行のみ (doc/reference/task_priority.md の段割りに従う)。
 
 | 定数 | 変更 |
 |---|---|
@@ -181,7 +181,7 @@ STATUS_LED(2) より下 (例: 1) へ。
   `info->priority` を詰めるが、**呼び出し元が存在しない**。表示にも
   判定にも使われていない。
 - `fmrb_app.c:989` は自タスクの優先度をログに出すだけ。
-- ドキュメントで数値に言及しているのは doc/boot_performance.md の
+- ドキュメントで数値に言及しているのは doc/reference/boot_performance.md の
   「カーネルタスク (prio 9)」のみで、今回変えない値。
   (BASIC 仕様書の「優先度=0」はスプライトの話で無関係)
 

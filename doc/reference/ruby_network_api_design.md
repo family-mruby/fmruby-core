@@ -61,7 +61,7 @@
   - メモリに余裕があれば HTTPS (TLS)、WebSocket / WebSocket over TLS (wss)
 - API は CRuby になるべく似せる (`Net::HTTP`, `TCPSocket`, `URI` 等)
 
-リモートデスクトップ (doc/remote_desktop_design.md) で WiFi 基盤 (esp_hosted /
+リモートデスクトップ (doc/remote_desktop/design.md) で WiFi 基盤 (esp_hosted /
 esp_wifi_remote / wifi_task) は既に実機動作済みであり、その上に Ruby 向けの
 クライアント API を載せる位置付け。
 
@@ -142,7 +142,7 @@ esp_wifi_remote / wifi_task) は既に実機動作済みであり、その上に
 ### メモリ・リソース見積もり
 
 - PSRAM: ~25MB 空き (潤沢)。内部RAM: BLE+esp_hosted で 80-100KB 消費済み、
-  新規コードは IRAM 使用不可の状況 (remote_desktop_design.md)
+  新規コードは IRAM 使用不可の状況 (doc/remote_desktop/design.md)
 - TLS 1セッションの内部RAM消費 (概算): SSL in/out バッファ 16KB+4KB +
   ハンドシェイク時ピーク (証明書チェーン検証) 10-30KB + コンテキスト数KB
   → **1セッションあたり約 30-50KB (内部RAM)**。同時 TLS セッションは 1-2 に制限すべき
@@ -307,7 +307,7 @@ end
 5. 動作確認: LAN 内の HTTP サーバ + 外部サイトへの GET/POST
 
 - ビルド規約: lib/ 変更後は `rake clean`、gembox 変更はビルド3系統
-  (IDF / rake / PICORUBY_SRCS、doc/core_build_structure.md) への影響を確認
+  (IDF / rake / PICORUBY_SRCS、doc/reference/core_build_structure.md) への影響を確認
 
 ### Phase 2: TLS (HTTPS)
 

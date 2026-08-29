@@ -1,6 +1,6 @@
 // FMRB::Debug bindings: a thin wrapper over the on-device debug core
 // (fmrb_debug_ctx) plus the session-owner arbitration (fmrb_debugd). See
-// doc/vm_editor_debug_design.md sec 4.1 (option B) and the E0/E1 plan.
+// doc/editor_debug/design.md sec 4.1 (option B) and the E0/E1 plan.
 //
 // inspect payloads (stack_trace/frame_vars/expand) come back as raw msgpack
 // bodies from a buffer that is only valid until the next inspect call, so each

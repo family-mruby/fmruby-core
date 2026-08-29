@@ -43,7 +43,7 @@ I audio_p4: microphone off
 
 指示書は「esp_codec_dev の es7210 (ADC モード)」だったが、**採らなかった**。
 このボードでは **タッチ (GT911) が回り始めると i2c_master 経路が使えない**
-(`audio_p4_hw.c` 冒頭と `doc/tab5_i2c_bus_notes.md` の既知事項) ため、
+(`audio_p4_hw.c` 冒頭と `doc/reference/tab5_i2c_bus_notes.md` の既知事項) ため、
 esp_codec_dev の es7210 ドライバ (i2c_master クライアント) は
 **実行時のマイク on/off に使えない**。同じファイルの音量調整が既に
 `display_p4_i2c_write_reg8` (lgfx の直列化パス) を使っているので、それに

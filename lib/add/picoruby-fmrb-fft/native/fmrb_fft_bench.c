@@ -15,7 +15,7 @@
  * Work buffers are allocated on first use and cached (fmrb_fft_release frees
  * them) rather than living in .bss: a 1024-point transform needs ~12KB of
  * float, and internal RAM on the S3 is not something to spend on a benchmark
- * that may never run (doc/internal_ram_budget.md).
+ * that may never run (doc/reference/internal_ram_budget.md).
  */
 
 #include <math.h>

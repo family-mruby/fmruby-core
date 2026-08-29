@@ -6,8 +6,8 @@
 状態記号: `[ ]` 未着手 / `[~]` 調査済 (diff 把握) / `[R]` rebase 済 / `[W]` lib/ へ書き戻し済 / `[!]` 高リスク・実機確認要
 
 diff 実体は `diffs/` に保存済 (L0_tracked.diff, L1_mruby.diff, L1_compiler2.diff)。
-intent 出典: 主に `doc/picoruby_upstream_pr_candidates.md` (socket/net/json)、
-`doc/merge_latest_picoruby.md`、memory (vm.c tick)、Rakefile setup コメント。
+intent 出典: 主に `doc/reference/picoruby_upstream_pr_candidates.md` (socket/net/json)、
+`doc/archive/work_picoruby_merge/plan.md`、memory (vm.c tick)、Rakefile setup コメント。
 
 作業開始時 pin: L0 picoruby `c14aa4400` / L1 mruby `7a4622678` / L1 mruby-compiler2 `29113090` /
 estalloc `ae50a9649` (**未変更=clean**)。

@@ -1,5 +1,7 @@
 # P5 Native API Follow-ups: get_pixel / image_masked
 
+> 状態: ほぼ消化済み | 更新: 2026-08-29 | get_pixel と image_masked は実装済み。残件は bulk get_pixels のみ (本文の該当節だけが生きている)
+
 `P5#get_pixel` は実装済み。`P5#image_masked` は引き続き
 `NotImplementedError`。本メモは LovyanGFX 側の機能を踏まえて、未対応の
 `image_masked` と、`get_pixel` の bulk 版 (`get_pixels`) のネイティブ実装案

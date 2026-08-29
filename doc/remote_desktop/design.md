@@ -170,7 +170,7 @@ Tab5 (ESP32-P4) のデスクトップ画面をPCブラウザへ配信し、マ�
   - `esp_event_loop_create_default()` の ESP_ERR_INVALID_STATE は許容
     (esp_hosted が先に作っていることがある)
   - **RPC はトランスポート確立後に発行** (esp_hosted 1.4.0 の
-    pre-transport RPC ヒープ破壊。BLE で実績のある罠 → doc/ble_c6_web_console.md)
+    pre-transport RPC ヒープ破壊。BLE で実績のある罠 → doc/reference/ble_c6_web_console.md)
 - 実効スループット ~36Mbps (C6律速、**HT20固定**)。BLE 併用時は
   C6 の時分割で ~50% 減 (MJPEG 2Mbps には十分)
 - BLE + WiFi は同一 SDIO トランスポートに多重化され同時利用可

@@ -211,7 +211,7 @@
 // BLE task (managed by NimBLE, config referenced in sdkconfig)
 // NOTE: the "nimble_host" task itself is created by the NimBLE port at its
 // default priority 4, pinned to core 1 by sdkconfig. This header cannot
-// change it; treat 4 as an anchor when assigning tiers (doc/task_priority.md).
+// change it; treat 4 as an anchor when assigning tiers (doc/reference/task_priority.md).
 #define FMRB_BLE_TASK_STACK_SIZE        (4096)
 #define FMRB_BLE_TASK_PRIORITY          (4)
 

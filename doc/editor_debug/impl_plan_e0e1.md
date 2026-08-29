@@ -1,7 +1,7 @@
 # FM-EDITOR オンデバイスデバッガ 実装計画書 Phase E0 + E1 (handoff)
 
 作成: 2026-07-22。実装担当 AI への引き継ぎ資料。
-設計の正: `doc/vm_editor_debug_design.md` (2026-07-22 更新版。Retro 含む全ターゲット対応)。
+設計の正: `doc/editor_debug/design.md` (2026-07-22 更新版。Retro 含む全ターゲット対応)。
 本書のスコープ: **Phase E0 (セッションオーナー排他) + Phase E1 (mrbgem FMRB::Debug)**。
 エディタ UI (Phase E2) は含まない。E1 完了時点で「Ruby からデバッグ一巡
 (attach -> bp -> stopped -> stack/vars -> continue -> detach)」が Linux sim の
@@ -14,7 +14,7 @@ headless 検証で PASS していることがゴール。
 
 | 資料 | 目的 |
 |---|---|
-| doc/vm_editor_debug_design.md | 全体方針。特に sec 4.1 (案B), 4.2 (API), 6 (制約) |
+| doc/editor_debug/design.md | 全体方針。特に sec 4.1 (案B), 4.2 (API), 6 (制約) |
 | main/drivers/debug/fmrb_debug_ctx.h | 直結する C API とスレッドモデルのコメント |
 | main/drivers/debug/fmrb_debugd.c | E0 の変更対象 (約 360 行、全読み推奨) |
 | doc/remote_debug/vm_remote_debug_protocol.md | inspect 応答の msgpack 形式 (frames/vars/複合型) |
@@ -275,7 +275,7 @@ S3 実機でのテストアプリ実行はユーザに依頼する (手順を進
 2. E1: picoruby-fmrb-debug gem + gembox/CMake 組み込み
 3. テスト: dbg_e1_test.app.rb + (可能なら) test_e0_owner.py + 進捗ログ更新
    (doc/remote_debug/vm_remote_debug_progress.md ではなく新設の
-   doc/vm_editor_debug_progress.md に E0/E1 の実施記録を書く)
+   doc/editor_debug/progress.md に E0/E1 の実施記録を書く)
 
 各コミットは独立ビルド可能な単位とし、英文数行のログ案を添える。
 計画から逸脱した点は必ず進捗ログに理由付きで記録すること。

@@ -7,7 +7,7 @@
 // timestamp) -- so a low-priority task preempted while holding one leaves a
 // higher-priority logger blocked forever: the scheduler keeps choosing the
 // blocked "running" task and the holder never gets the CPU back. Both were
-// caught live with gdb (doc/sim_log_deadlock.md, 2026-08-16); the sustained
+// caught live with gdb (doc/reference/sim_log_deadlock.md, 2026-08-16); the sustained
 // cross-priority traffic of a Pub/Sub turn loop is what made the windows hit.
 //
 // The fix wraps the lock-holding regions in the port's critical section,

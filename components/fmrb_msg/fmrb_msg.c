@@ -27,7 +27,7 @@ typedef struct {
  * memcpy, which PSRAM handles fine at our rates (a GFX flood is a few
  * hundred 188 B messages per second). The 128-slot host queue alone is
  * 24 KB of internal RAM otherwise, plus ~6 KB per app queue
- * (doc/internal_ram_budget.md). The control block stays in internal RAM
+ * (doc/reference/internal_ram_budget.md). The control block stays in internal RAM
  * (touched on every op, and small). Falls back to a plain dynamic queue
  * when PSRAM is absent. If a FromISR sender is ever introduced, it will
  * still work (the queue API allows it) but revisit the placement note. */

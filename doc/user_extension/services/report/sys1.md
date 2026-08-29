@@ -55,10 +55,10 @@ publish されたときに同期配送すると入れ子呼び出しになり、
 I Services: svc[tmp_minute] clock/minute -> {"year"=>2026, ..., "hour"=>9, "minute"=>27}
 ```
 
-### 2. sim のログデッドロック — 既知対策の穴 (doc/sim_log_deadlock.md)
+### 2. sim のログデッドロック — 既知対策の穴 (doc/reference/sim_log_deadlock.md)
 
 net と timesync を足したらブート中に**機械全体が固まる**ようになった。gdb で
-捕まえたところ、`doc/sim_log_deadlock.md` にある優先度逆転そのもの:
+捕まえたところ、`doc/reference/sim_log_deadlock.md` にある優先度逆転そのもの:
 
 ```
 Thread 4  Services  write() の中で _IO_stdfile_1_lock を保持したまま

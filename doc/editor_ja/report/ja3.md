@@ -275,7 +275,7 @@ sim で再現・修正後を実測 (エディタのステータス行):
 
 **副作用**: カタカナひらがなキー (0x88) を持たないキーボード
 (US 配列を jp 設定で使う等) は、ひらがな⇔カタカナの切替手段が無くなった。
-キーボード非依存のトグルは `doc/tab5_keyboard/instruction_k1.md` (Ctrl+Space)
+キーボード非依存のトグルは `doc/archive/tab5_keyboard/instruction_k1.md` (Ctrl+Space)
 の担当なので、そちらで script 切替も一緒に決めるのが筋。
 
 ---
@@ -421,10 +421,10 @@ sdl2-display: 押下時に「使えない、Ctrl+Space を使え」の 1 行)。
   (GRAVE=53 / INTERNATIONAL2=136) を素通しするので一致する見込みだった。
   **→ S3 実機の USB キーボードで確認済み、問題なし (2026-08-16)**。
 - **Tab5 内蔵キーボード**: 半角/全角キーが無くても Ctrl+Space と指示器の
-  クリックで入れるようになった。K1 (`doc/tab5_keyboard/instruction_k1.md`)
+  クリックで入れるようになった。K1 (`doc/archive/tab5_keyboard/instruction_k1.md`)
   も Ctrl+Space を予定しているので、**実装が二重にならないよう注意**
   (合成層側は本レポートの実装で入っている)。**→ K1 で実機確認済み**
-  (`doc/tab5_keyboard/report/k1.md`): 内蔵キーボードの Ctrl+Space かな
+  (`doc/archive/tab5_keyboard/report/k1.md`): 内蔵キーボードの Ctrl+Space かな
   トグルは合成層側の本実装で動作。K1 は二重実装せず。タッチでの指示器
   クリックも実機確認済み (2026-08-16)。
 - S3 / P4 実機での日本語入力・表示の速度感 (sim では `edit_lat` に

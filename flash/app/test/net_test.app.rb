@@ -1,5 +1,5 @@
 # Network Test Application
-# Smoke test for the Ruby networking API (doc/ruby_network_api_design.md).
+# Smoke test for the Ruby networking API (doc/reference/ruby_network_api_design.md).
 # Each row runs one test on click; results are shown in the log area below.
 # Detailed step-by-step logs go to the system log with the "NetTest" prefix:
 #   docker compose logs fmruby_core | grep NetTest

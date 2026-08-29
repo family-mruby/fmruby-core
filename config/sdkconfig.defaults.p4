@@ -3,7 +3,7 @@
 # NOTE: ESP32-P4 has NO built-in radio. Wireless is provided by an ESP32-C6
 # coprocessor over SDIO (like Tab5). BLE runs as host-only NimBLE on the P4
 # with the controller on the C6 via esp_hosted vHCI (see the Bluetooth /
-# esp_hosted sections below and doc/ble_c6_web_console.md).
+# esp_hosted sections below and doc/reference/ble_c6_web_console.md).
 #
 # This file gets the build system wired for esp32p4; values still need tuning
 # with menuconfig against real hardware (PSRAM speed, partition layout, etc.).

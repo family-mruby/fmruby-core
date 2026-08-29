@@ -14,7 +14,7 @@ mouse_down と mouse_up が別の場所に落ちたときの扱い・閉じる�
 ## 絶対条件
 
 この環境は picoruby の VM が遅く、GC がプール固定の PSRAM ヒープを舐める
-(doc/gc_monitoring.md)。UI 部品が**毎フレーム**何かを確保したり描いたりすると、
+(doc/reference/gc_monitoring.md)。UI 部品が**毎フレーム**何かを確保したり描いたりすると、
 GC の回数が増えて操作感がそのまま悪くなる。次の 4 つは設計の前提であって、
 後から直すものではない。
 

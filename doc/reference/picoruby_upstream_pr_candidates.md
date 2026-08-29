@@ -1,6 +1,6 @@
 # picoruby 上流PR候補メモ (ネットワークAPI検証で発見したバグ)
 
-2026-07-09 作成。Ruby ネットワークAPI (doc/ruby_network_api_design.md) の
+2026-07-09 作成。Ruby ネットワークAPI (doc/reference/ruby_network_api_design.md) の
 Linux/実機(Tab5)検証で発見した picoruby 本体のバグと修正の一覧。
 いずれ上流 (https://github.com/picoruby/picoruby) へPRを出すための引き継ぎ資料。
 
@@ -53,7 +53,7 @@ c14aa4400 は旧 pin)。mruby 本体 (vm.c / task.c / mruby-task) は hasumikin 
   コピーする方式)。各ファイル先頭の "Family mruby patch" コメントに修正理由を記載済み
 - 手順: (1) 上流HEADで該当箇所を確認 → (2) 残存していれば lib/patch との diff から
   fmrb固有部分 (後述) を除いた最小diffを作成 → (3) 再現手順を添えてPR
-- 発見の経緯・再現ログは doc/ruby_network_api_design.md の実装状況の節を参照
+- 発見の経緯・再現ログは doc/reference/ruby_network_api_design.md の実装状況の節を参照
 
 ## 候補一覧 (優先度順)
 

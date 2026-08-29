@@ -353,7 +353,7 @@ combined.rb (連結コンパイル) の行オフセット補正はアダプタ�
 | debug_info のメモリ/フラッシュ増 | `-g` で irep が肥大 | 増加量を計測。ユーザアプリのみ -g などの切り分け |
 | combined.rb の行ずれ | 連結コンパイルで行番号が原本とずれる | ビルド時にオフセット表を出力しアダプタで補正 |
 | パーク中のシステム挙動 | reaper/監視系の誤検知、GFX 更新停止 | DEBUGGING 状態を `fmrb_proc_state_t` に追加し監視系が無視するようにする |
-| picoruby 側改変の管理 | task_hal.c 等 submodule 内の変更は上書きで消える | 変更は lib/add パッチ or upstream PR 化 (doc/picoruby_upstream_pr_candidates.md の候補にもなり得る) |
+| picoruby 側改変の管理 | task_hal.c 等 submodule 内の変更は上書きで消える | 変更は lib/add パッチ or upstream PR 化 (doc/reference/picoruby_upstream_pr_candidates.md の候補にもなり得る) |
 | WSL2 と BLE | WSL から Bluetooth 不可 | アダプタを Windows 側で実行 (extensionKind: ui)。TCP は WSL 直結可 |
 
 ## 9. まとめ (推奨アプローチ)

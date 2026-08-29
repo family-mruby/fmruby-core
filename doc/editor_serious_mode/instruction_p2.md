@@ -31,7 +31,7 @@ input_router.rb / window_manager.rb) は **Spinel で AOT コンパイルされ�
   FMRB_KERNEL_ENGINE を外した mruby カーネルでも sim でひととおり
   動かす (片方の構成でしか通らない経路は無言の穴になる)。
 - カーネルの C API を増やす場合は mruby 版バインディングと Spinel の
-  packed record 定義の**両方**が必要 (doc/focus_switch/report/p1.md の
+  packed record 定義の**両方**が必要 (doc/archive/focus_switch/report/p1.md の
   経験則)。
 
 なお**エディタ本体の Spinel 化は P2 の範囲外** (plan.md 段階 4/6)。

@@ -4,7 +4,7 @@
  * The engine asks the host for this (TI_ARENA_INCLUDE / TI_ARENA_ATTR); the
  * default is an ordinary static array, which on a chip with external RAM
  * would spend internal RAM that nothing else can replace. The S3 in
- * particular has none to spare (doc/internal_ram_budget.md), and the arena is
+ * particular has none to spare (doc/reference/internal_ram_budget.md), and the arena is
  * CPU-only scratch -- no DMA touches it -- so external RAM costs it nothing
  * but a slower access it never notices between keystrokes.
  *

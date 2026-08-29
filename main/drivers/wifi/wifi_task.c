@@ -5,7 +5,7 @@
 // (CONFIG_ESP_WIFI_REMOTE_LIBRARY_HOSTED), while esp_netif + lwIP run
 // locally on the P4, so sockets and the HTTP server behave as on native
 // WiFi. Ordering constraint: esp_hosted 1.4.0 corrupts the heap if an RPC
-// is issued before the SDIO transport is up (doc/ble_c6_web_console.md).
+// is issued before the SDIO transport is up (doc/reference/ble_c6_web_console.md).
 // ble_task_init normally brings the transport up first; when BLE is
 // disabled, the wait below polls the transport without issuing any RPC.
 //

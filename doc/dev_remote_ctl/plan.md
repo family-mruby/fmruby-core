@@ -57,7 +57,7 @@ Claude(および開発者)が実機(Tab5 / ESP32-P4)の検証を、速く・確�
   - include: `fmrb_app.h`(kill)、`fmrb_app_spawner.h`(spawn)、一覧用の列挙ヘッダ。
 - **タスク文脈**: debugd は自前タスクからこれらを直接呼べている。httpd タスクからも同様に
   直接呼ぶ(新しいキューは作らない)。ただし kill は文脈次第で固まる既知の注意がある
-  (`doc/app_kill_fix`)。**自分自身や kernel を kill しない**ガードを入れ、ユーザアプリの
+  (`doc/archive/app_kill_fix`)。**自分自身や kernel を kill しない**ガードを入れ、ユーザアプリの
   pid だけ受け付ける。
 - **入力の妥当性**: `path` 長制限、`pid` 範囲チェック。失敗は 4xx + JSON で返す(端末を
   落とさない)。
@@ -111,7 +111,7 @@ Claude(および開発者)が実機(Tab5 / ESP32-P4)の検証を、速く・確�
 
 ## 落とし穴
 
-- **kill の文脈依存ハング**(`doc/app_kill_fix`)。自己/kernel を kill しない。ユーザアプリ限定。
+- **kill の文脈依存ハング**(`doc/archive/app_kill_fix`)。自己/kernel を kill しない。ユーザアプリ限定。
 - **一覧の列挙 API が未公開**なら、debugd の PS 内部列挙を共有関数に切り出す(重複実装しない)。
 - httpd ハンドラは端末を落とさないこと(不正入力は JSON エラーで返す)。
 - これは**開発用**。リリースに残さない(dev フラグで囲う)。

@@ -163,7 +163,7 @@ module LauncherMixin
   # are not reproducible here (a GC cycle landing inside one swings it by 100x),
   # so treat any single per-call figure with suspicion and measure aggregates.
   #
-  # See doc/boot_performance.md.
+  # See doc/reference/boot_performance.md.
   KEY_APP_SCREEN_NAME  = "app_screen_name"
   KEY_LAUNCHER_VISIBLE = "launcher_visible"
   KEY_ICON             = "icon"

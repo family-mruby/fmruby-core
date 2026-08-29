@@ -4,7 +4,7 @@
 # (fill/stroke state, affine transform stack, basic shape primitives,
 # text alignment, bezier/Catmull-Rom curves, blend modes).
 #
-# Ported from harucom-os' p5.rb. See doc/p5.md for the full list of
+# Ported from harucom-os' p5.rb. See doc/p5/README.md for the full list of
 # differences against the harucom-os version (most importantly:
 # construct as `P5.new(@gfx)`, image() uses image_id, and a subset of
 # blend modes is supported).
@@ -484,7 +484,7 @@ class P5
   # Blit a SpriteImage onto the canvas using a 1bpp mask. The signature
   # differs from harucom-os' image_masked (which took raw RGB332 pixel
   # data inline) because the fmruby-core backend uses a SpriteImage id
-  # for the source pixels — see doc/p5.md for the rationale.
+  # for the source pixels — see doc/p5/README.md for the rationale.
   #
   # Usage:
   #   sprite = SpriteImage.new(@gfx, width: 32, height: 32)

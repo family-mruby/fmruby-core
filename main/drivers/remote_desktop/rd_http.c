@@ -501,7 +501,7 @@ static esp_err_t kill_handler(httpd_req_t *req)
 
     // User app slots only. The kernel, the host and the system app are not
     // ours to stop from a development endpoint, and killing has a known way of
-    // hanging depending on which task asks (doc/app_kill_fix) -- keeping to the
+    // hanging depending on which task asks (doc/archive/app_kill_fix) -- keeping to the
     // slots a development loop spawns into is the narrow, safe case.
     if (pid < PROC_ID_USER_APP0 || pid >= PROC_ID_USER_APP_END) {
         return ctl_json(req, "400 Bad Request",

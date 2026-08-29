@@ -154,7 +154,7 @@ esp_hosted 1.4.0 の実装確認済み (2026-07-05):
 
 Web コンソールの **Debug** タブから、実機の debugd を BLE 経由で叩ける。
 python + bleak + usbipd の道具立てなしに ps / kill / spawn ができるので、
-実機での kill 検証 (doc/app_kill_fix/) の手順が Chrome だけで完結する。
+実機での kill 検証 (doc/archive/app_kill_fix/) の手順が Chrome だけで完結する。
 
 ### 仕組み
 

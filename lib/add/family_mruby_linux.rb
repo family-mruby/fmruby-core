@@ -86,7 +86,7 @@ MRuby::CrossBuild.new('family-mruby-linux') do |conf|
   conf.gem gemdir: "#{dir}/mruby-sprintf"
   conf.gem gemdir: "#{dir}/mruby-math"
 
-  # Ruby networking client API (see doc/ruby_network_api_design.md).
+  # Ruby networking client API (see doc/reference/ruby_network_api_design.md).
   # ports/posix sources are compiled automatically by the picoruby build.
   # SSL uses OpenSSL (libssl-dev in the build container); the system CA
   # store verifies HTTPS by default, matching the esp32p4 behavior.

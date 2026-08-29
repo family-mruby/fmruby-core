@@ -49,7 +49,7 @@ ESP32-P4 自体は **IDF v5.3+ で正式サポート**、M5GFX(Tab5/P4 DSI) も 
 3ターゲット全てのビルド成功を確認済み（IDF6 固有の回避策ゼロ）。
 
 - 作業ブランチ: **`feat/fmruby-modern-p4-idf55`**（develop から分岐。IDF非依存の P4 本体作業のみ適用）
-- 旧 `feat/fmruby-modern-p4`（IDF6 経緯入り）はそのまま残す。IDF6 で判明した課題は `doc/idf6_migration_notes.md` 参照。
+- 旧 `feat/fmruby-modern-p4`（IDF6 経緯入り）はそのまま残す。IDF6 で判明した課題は `doc/reference/idf6_migration_notes.md` 参照。
 
 ## 作業計画
 

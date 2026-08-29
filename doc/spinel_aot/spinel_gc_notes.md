@@ -2,7 +2,7 @@
 
 Spinel ランタイム (components/fmrb_spinel_rt/spinel_rt) の GC が
 「いつ・どのくらい止まるか」と、fmruby 側で制御できるものの整理。
-mruby VM の GC は別物で、そちらは [../gc_monitoring.md](../gc_monitoring.md)。
+mruby VM の GC は別物で、そちらは [../reference/gc_monitoring.md](../reference/gc_monitoring.md)。
 メモリ消費の分析 (48B ヘッダ、live 1.9x 等) は
 reports/memory_model_findings.md が正で、本書は**タイミング**の話。
 
@@ -138,4 +138,4 @@ GC が問題として観測された時の切り札として残す。
 - メモリ消費の分析: reports/memory_model_findings.md
 - 上流仕様の裏取り: [spinel_upstream_notes.md](spinel_upstream_notes.md)
   (GC は公式 2 行のみ、我々の調査の方が詳しい)
-- mruby 側 GC (desktop/アプリ): [../gc_monitoring.md](../gc_monitoring.md)
+- mruby 側 GC (desktop/アプリ): [../reference/gc_monitoring.md](../reference/gc_monitoring.md)

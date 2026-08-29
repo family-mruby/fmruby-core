@@ -92,7 +92,7 @@ BGM と実時間演奏の同居は設計から外す必要がある。
 ### P0-4: gem 追加後の flash サイズ見積り
 
 **S3 の app パーティションは 4M で残り 24% (約 1MB)** しかない
-(`doc/internal_ram_budget.md` の 2026-08-03 節)。
+(`doc/reference/internal_ram_budget.md` の 2026-08-03 節)。
 
 - P2 で入れる予定の gem 群 (`picoruby-midi` ほか) を仮に足したとき、
   どれくらい増えるかを見積もる。**実際に入れる必要はない**。

@@ -253,5 +253,5 @@ pytest.app.py に入れた確認 (ローカル変数からしか届かないオ�
 ### 9. 内蔵 RAM への影響がほぼ無いのは PSRAM 配置のおかげ
 
 MicroPython 自体の内蔵 RAM は 445 B。GC ヒープが PSRAM のプールから
-出ているので、内蔵 RAM 逼迫 (doc/internal_ram_budget.md) の話には
+出ているので、内蔵 RAM 逼迫 (doc/reference/internal_ram_budget.md) の話には
 絡まない。逆に言えば **PSRAM の無い構成では成り立たない**。

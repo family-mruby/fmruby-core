@@ -159,7 +159,7 @@ static bool read_system_config(void)
 
     // BLE boot policy: true (default) keeps today's behavior; false leaves the
     // ~75 KB of internal RAM unclaimed until the desktop menu starts BLE by
-    // hand (doc/internal_ram_budget.md, D axis).
+    // hand (doc/reference/internal_ram_budget.md, D axis).
     g_system_config.ble_auto_start = fmrb_toml_get_bool(conf, "ble_auto_start", g_system_config.ble_auto_start);
 
     // WiFi boot policy: default OFF on every target. Turning it on also needs

@@ -12,7 +12,7 @@
 // after that the i2c_master path is unusable on this controller, so
 // runtime volume changes write the ES8388 DAC volume registers
 // directly through the display driver's I2C service (lgfx path,
-// mutex-serialized). See doc/tab5_i2c_bus_notes.md.
+// mutex-serialized). See doc/reference/tab5_i2c_bus_notes.md.
 //
 // Output format: 47160 Hz (= 3 x 15720 Hz NTSC APU rate) 16-bit stereo.
 // The APU produces mono 15720 Hz; audio_p4_hw_write() expands each

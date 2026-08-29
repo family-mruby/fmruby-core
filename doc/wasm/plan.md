@@ -1,5 +1,7 @@
 # wasm (ブラウザ) 対応の検討と計画
 
+> 状態: 計画済 | 更新: 2026-08-29 | 検討完了・実装未着手。実装計画は implementation_plan.md
+
 2026-08-28 調査。core 単体をブラウザで動かすための実現性検討と段取り。
 実装の分割・作業項目・受け入れ条件は implementation_plan.md。
 
@@ -104,7 +106,7 @@ SharedArrayBuffer) で書く。
    撃って剥がす (task_hal.c:83-91)。協調ではこのタスクが走れない。
    → task_hal を「VM 自身のスレッドがバイトコード境界で実時間を見て自分に
    switching を立てる」自己プリエンプション方式に書き換える。
-   doc/task_priority.md に単核でゲストが下の段を飢餓させた実証記録があり、
+   doc/reference/task_priority.md に単核でゲストが下の段を飢餓させた実証記録があり、
    ここを解かない限り成立しない。この変更は Linux sim でも検証できる。
 2. **ブロッキング I/O**。fmrb_hal_link_posix.c:38 の recv() が該当するが、
    wasm では link_local に置き換わるので問題ごと消える。debugd の TCP
@@ -176,7 +178,7 @@ P4 実装と wasm 実装を並べる)。この分割は P4 実機へのリファ
    協調スケジューリング・notification・キュー・タイムアウトが回ることを確認する。
    全体の成否がここで決まる。
 2. **task_hal の自己プリエンプション化** — wasm と独立に Linux sim で検証できる。
-   実機の kill 問題 (doc/app_kill_fix) とも根が同じで、単体でも価値がある。
+   実機の kill 問題 (doc/archive/app_kill_fix) とも根が同じで、単体でも価値がある。
 3. **display backend 分割** — display_p4_task の抽象化を P4 実機に対する
    リファクタとして先行し、実機で回帰確認する。
 4. **統合** — core 全体を wasm ビルドし、CPU 合成 + Canvas/WebAudio/入力を繋ぐ。
