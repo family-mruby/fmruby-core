@@ -2,19 +2,27 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Family mruby OS (wasm)</title>
 <style>
+  :root { color-scheme: dark; }
   html, body {
-    margin: 0; height: 100%;
+    margin: 0; min-height: 100%;
     background: #1a1a22; color: #ddd;
     font-family: monospace;
-    display: flex; flex-direction: column; align-items: center;
   }
+  body { display: flex; flex-direction: column; align-items: center; }
   h1 { font-size: 16px; margin: 12px 0 8px; }
-  #screen-box { position: relative; }
+  #screen-box { position: relative; line-height: 0; }
+  /* Full screen: the box fills the display and the canvas is centred on
+     black, so the zoom calculation has the whole screen to work with. */
+  #screen-box:fullscreen {
+    width: 100%; height: 100%; background: #000;
+    display: flex; align-items: center; justify-content: center;
+  }
   canvas {
     display: block;
-    width: 852px; height: 480px;   /* 2x of 426x240 */
+    width: 852px; height: 480px;   /* replaced by the zoom setting on load */
     image-rendering: pixelated;
     background: #000;
     outline: none;
@@ -23,13 +31,27 @@
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     background: rgba(0,0,0,0.7); cursor: pointer;
-    font-size: 20px;
+    font-size: 20px; line-height: normal;
   }
   #status { margin-top: 8px; font-size: 12px; color: #888; }
-  #settings { margin-top: 6px; font-size: 12px; color: #aaa; }
-  #settings select {
+  #settings {
+    margin-top: 6px; font-size: 12px; color: #aaa;
+    display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center;
+  }
+  #settings select, #settings button {
     background: #111; color: #ddd; border: 1px solid #555;
     font-family: monospace; font-size: 12px;
+  }
+  #settings button { cursor: pointer; padding: 1px 8px; }
+  #about {
+    max-width: 780px; margin: 14px 12px 24px; font-size: 12px;
+    line-height: 1.6; color: #9a9aa8;
+  }
+  #about h2 { font-size: 13px; color: #ccc; margin: 14px 0 4px; }
+  #about ul { margin: 4px 0; padding-left: 20px; }
+  #about kbd {
+    background: #26262e; border: 1px solid #454550; border-radius: 3px;
+    padding: 0 4px;
   }
 </style>
 </head>
@@ -41,13 +63,69 @@
 </div>
 <div id="status">loading...</div>
 <div id="settings">
-  Theme:
-  <select id="theme-select">
-    <option value="cyberpunk">Cyberpunk (web default)</option>
-    <option value="classic">Classic (device palette)</option>
-  </select>
+  <span>Theme:
+    <select id="theme-select">
+      <option value="cyberpunk">Cyberpunk (web default)</option>
+      <option value="classic">Classic (device palette)</option>
+    </select>
+  </span>
+  <span>Resolution:
+    <select id="res-select">
+      <option value="426x240">426 x 240 (as shipped)</option>
+      <option value="640x360">640 x 360</option>
+      <option value="852x480">852 x 480</option>
+    </select>
+  </span>
+  <span>Zoom:
+    <select id="zoom-select">
+      <option value="fit">Fit</option>
+      <option value="1">1x</option>
+      <option value="2">2x</option>
+      <option value="3">3x</option>
+    </select>
+  </span>
+  <button id="fullscreen-btn" type="button">Full screen</button>
 </div>
+<div id="about">
+  <h2>How to use it</h2>
+  <ul>
+    <li>Click the screen to switch the machine on. The mouse and the keyboard
+      work while the screen has focus; the top-left menu opens the launcher,
+      the editor and the rest of the desktop.</li>
+    <li>Japanese kana input toggles with <kbd>Ctrl</kbd>+<kbd>Space</kbd>, or by
+      clicking the <kbd>[A]</kbd> indicator in the menu bar (A → kana →
+      katakana). Romaji is typed as usual: <kbd>k</kbd><kbd>y</kbd><kbd>a</kbd>
+      gives the kana for "kya".</li>
+    <li>Sound only starts after that first click -- browsers do not let a page
+      make noise before one.</li>
+    <li>Theme and resolution are stored in this browser and applied at boot, so
+      changing them reloads the page.</li>
+    <li>Full screen puts the machine on the whole display. Where the browser
+      allows it the machine keeps <kbd>Esc</kbd> for itself; where it does not,
+      <kbd>Esc</kbd> leaves full screen instead of reaching the app.</li>
+  </ul>
+  <h2>What it is not</h2>
+  <ul>
+    <li>Everything runs in the page. Files you create live in memory only:
+      <strong>a reload throws them away</strong>.</li>
+    <li>No network: WiFi, BLE, the remote desktop and anything that talks to a
+      server are absent here. Nothing you type is sent anywhere.</li>
+    <li>Desktop Chrome and Firefox are what this targets. Safari is untested,
+      and phones and tablets are not a target -- there is no on-screen
+      keyboard.</li>
+    <li>The wallpaper is drawn at its own 426 x 240 size; at the larger
+      resolutions the desktop color shows around it.</li>
+  </ul>
+</div>
+<script src="vendor/coi-serviceworker.js"></script>
 <script src="../../tool/web/remote/keymap.js"></script>
+<script>
+  // Where core_web.js/.wasm/.data are served from, and the cache-busting
+  // suffix for them. `rake wasm:dist` rewrites both when it lays out a
+  // self-contained directory (base "", version "?v=<build stamp>").
+  window.FMRB_WASM_BASE = '../build/';
+  window.FMRB_WASM_VER = '';
+</script>
 <script src="../build/core_web.js"></script>
 <script src="main.js"></script>
 </body>

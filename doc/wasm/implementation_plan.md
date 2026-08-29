@@ -291,14 +291,30 @@ fmrb_audio_probe 相当の FFT 検証をリングのダンプに対して行い�
 
 ---
 
-## P5: 配信
+## P5: 配信 — 完了 (2026-08-29、実公開を除く)
 
-- wasm/web/ にページを作る: Canvas + 開始ボタン (AudioContext resume 兼用) +
-  簡単な説明。キーボードフォーカスの捕捉と IME 抑止 (かな入力は端末側機能を使う)。
-- coi-serviceworker を同梱して GitHub Pages で COOP/COEP を成立させる。
-- preload する flash/ の内容を選定する (デモアプリ一式 + フォント。
-  サイズと初回ロード時間で調整)。
-- family-mruby.github.io への組み込みはサイト側の作業として別途。
+`rake wasm:dist` が置くだけで公開できる `build/dist/` (8 ファイル 6.19MB) を
+作る。素の静的サーバ (ヘッダ無し) で cross-origin isolation が成立することを
+Chrome で実測済み。経過・実測値・見つけた穴は report/p5.md。確定事項:
+
+- **解像度は 426x240 / 640x360 / 852x480 の 3 つとも採用**。3 解像度で
+  デスクトップ・メニュー・ランチャー・エディタ・PicoRabbit を確認して
+  レイアウト破綻なし。`default_user_app_width/height` は比例させる。
+  core 側は見込みどおり無改修 (conf 駆動)。
+- **壁紙だけが 426x240 のまま**残る (広い解像度では周りがデスクトップ色)。
+  `DRAW_IMAGE` が Modern/wasm では scale を見ないので、Ruby から
+  `draw_image(scale_x:)` を渡しても効かない。直すのは P5 の外。
+- **表示側の天井が先に効く**: 窓 1 つ = canvas 1 枚で
+  `DISPLAY_P4_MAX_CANVAS=8` のため、FMRB_MAX_APPS を上げただけでは
+  11 本目から死ぬ。wasm だけ 34 (+ `DISPLAY_P4_VM_MAX_PROGS=64`) に上げて
+  12 本同時起動を確認した。
+- `rake wasm:scan` を常設。packed 一覧 (リンカが実際に詰めた結果) と .data の
+  バイト列を毎回照合する。同梱の NSF 2 本は権利上問題ないサンプルとして
+  そのまま入れる (2026-08-29 ユーザ確認)。
+- **audio_p4 が fopen に `/flash` を直書きしていた**ため wasm で NSF も
+  Breakout の BGM も鳴っていなかった。`AUDIO_P4_FLASH_BASE` で通した。
+  この経路は Linux sim ではコンパイルされないので、wasm で初めて見えた穴。
+- family-mruby.github.io への組み込みと実公開はサイト側の作業として別途。
 - **wasm 専用の config と staging — 済み (2026-08-29、a242aeb4 + e3f716c1)**:
   flash レイアウト整理とセットで解決した。config/system_conf_wasm.toml を
   新設し、rake wasm:web は **git 追跡分の flash/ + この conf だけ**を
@@ -316,19 +332,23 @@ fmrb_audio_probe 相当の FFT 検証をリングのダンプに対して行い�
   (usr/share/backgrounds/bg_cyber_426x240.png、生成スクリプト由来で権利
   問題なし) を cyberpunk 時に /data と usr/share の壁紙へ上書きする。
   ページの設定 (localStorage) で Classic (実機配色 + 西部劇壁紙) に戻せる。
-  preRun で MEMFS の conf/ファイルを書き換える機構の第一号。
+  設定の適用は当初 preRun の MEMFS 編集だったが、実ブラウザで別 FS 問題が発覚し argv + C 側適用に作り替えた (report/p5.md 追補)。
   **教訓: テーマ色に 0x01 を使ってはならない** (デスクトップ前景の
   カラーキー。window_bg=0x01 で窓が透けた)。既知の軽微差: Spinel エディタの
   タイトル帯は別経路の配色で旧色のまま。
 
+- **内部解像度の選択 — 済み (2026-08-29)**。「モニタに合わせる」は入れず、
+  3 つのプリセット + `?w=&h=` + 表示倍率 (1x/2x/3x/フィット) にした。
+  以下は着手前の調査メモ:
 - **内部解像度の選択** (作業空間を広くする。ページ拡大の話ではない):
   調査の結果、解像度は既に実行時設定だった — `display_width/height` は
   system_conf.toml から読まれ (fmrb_kernel.c:134、config/ は linux=320x240 /
   p4=426x240)、display_p4_task も conf とフレームバッファ実体から
   サイズを取っていて 426 の焼き込みは無い (コメントのみ)。よって:
-  - ページの起動前 UI で解像度を選び、JS が MEMFS 上の
-    /flash/etc/system_conf.toml の display_width/height を書き換えてから
-    boot する (Module.preRun)。JS 側 canvas と present の RGBA バッファは
+  - ページの起動前 UI で解像度を選び、argv (--fmrb-res=WxH) で渡して
+    機械側 C (page_settings_wasm.c) が conf を書き換える (preRun の MEMFS
+    編集は PROXY_TO_PTHREAD の別 FS 問題で不成立 — report/p5.md 追補)。
+    JS 側 canvas と present の RGBA バッファは
     モジュールから実サイズを受け取る形に直す。ビルドは 1 本のまま
     (解像度ごとのビルドはしない。ユーザ方針 2026-08-29)。
     URL クエリ (?w=&h=) と「モニタに合わせる」(JS が画面サイズから 16:9 の
@@ -338,9 +358,15 @@ fmrb_audio_probe 相当の FFT 検証をリングのダンプに対して行い�
   - 大きい解像度で Ruby 側 (デスクトップ・エディタ・ランチャー) の
     レイアウト前提が露出しないかは検証項目 (320 と 426 の両対応実績が
     あるので、破綻より「余白が間延び」系の見た目問題を想定)。
-- **全画面モード**: canvas の requestFullscreen + 上記フィット。全画面中は
-  Esc が既定で全画面解除に食われるので、Keyboard Lock API が使える環境では
-  Esc/Ctrl+W を捕捉する (使えない環境では諦めて注記)。
+- **全画面モード — 済み (2026-08-29)**: 設定行のボタンで screen-box を
+  requestFullscreen し、全画面中はフィット固定。Keyboard Lock がある環境
+  (Chrome) では Esc/Ctrl+W を捕まえ、無い環境向けにページに注記した。
+  実ブラウザでの操作確認はユーザ待ち。
+- **同時起動アプリ数の上限緩和 — 済み (2026-08-29)**: 下の設計案どおり
+  実装した。天井は `components/fmrb_common/include/fmrb_limits.h` へ切り出し
+  (fmrb_mem_config.h が FreeRTOS ヘッダ無しで同じ数を使えるように)、
+  wasm は 32、実機・sim は 9 のまま。conf の `max_apps` 照合は spawner では
+  なく `alloc_ctx_index()` に置いた (枠を配る唯一の場所)。以下は当時の案:
 - **同時起動アプリ数の上限緩和**: 実体は FMRB_MAX_APPS=9
   (components/fmrb_common/include/fmrb_task_config.h:11)。ユーザ方針
   (2026-08-29): 無限にはせず十分大きい固定値でよく、**ビルド分岐ではなく

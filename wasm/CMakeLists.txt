@@ -324,6 +324,7 @@ list(APPEND CORE_SRCS ${SPINEL_GEN_SRCS})
 
 list(APPEND CORE_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/main_wasm.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/backend/page_settings_wasm.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/display_backend_wasm.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/display_video_stub.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/rd_encoder_stub.c
@@ -437,6 +438,20 @@ target_compile_definitions(core_objs PRIVATE
   ESP_PLATFORM=1
   FMRB_PLATFORM_WASM=1
   FMRB_HW_FAMILY_MODERN
+  # Concurrent app ceiling. The device targets keep the 9 of fmrb_limits.h
+  # because every per-app array is sized by it and their RAM is finite; the
+  # browser's is not, and a demo people poke at wants to be able to open more
+  # than five things at once. MUST match lib/add/family_mruby_wasm.rb: the
+  # mrbgem ports (picoruby-fmrb-app/kernel) size arrays by this too, and a
+  # mismatch is the same class of bug as a mismatched MRB_* layout define.
+  FMRB_MAX_APPS=32
+  # The display side has its own ceilings, and they bind first: one canvas per
+  # window (the device's 8 is a PSRAM budget, not a design limit) and the
+  # GfxBlock program pool that goes with them. Left at their defaults, the 12th
+  # app opened onto "Canvas pool full" and died, which would have made the
+  # raised app ceiling a fiction.
+  DISPLAY_P4_MAX_CANVAS=34
+  DISPLAY_P4_VM_MAX_PROGS=64
   PICORB_PLATFORM_POSIX
   PICORB_VM_MRUBY=1
   # mruby ABI -- keep in step with lib/add/family_mruby_wasm.rb
@@ -479,7 +494,11 @@ target_compile_options(core_objs PRIVATE -pthread -Wno-format)
 set(WASM_CORE_LINK_OPTS
   -pthread
   -sPROXY_TO_PTHREAD
-  -sPTHREAD_POOL_SIZE=40
+  # One Worker per FreeRTOS task. 32 app slots plus the resident tasks
+  # (kernel, host, desktop, overlay, services, display, audio, input, log,
+  # transport, ...) -- prewarmed, because a pthread_create that finds the pool
+  # empty only completes once the main thread gets a turn.
+  -sPTHREAD_POOL_SIZE=56
   -sALLOW_MEMORY_GROWTH
   -sINITIAL_MEMORY=268435456
   -sMAXIMUM_MEMORY=1073741824
@@ -488,9 +507,10 @@ set(WASM_CORE_LINK_OPTS
   # The JS-facing surface (frame, audio ring, input ring); emscripten 6
   # exports nothing to the Module by default.
   "-sEXPORTED_FUNCTIONS=_main,_fmrb_wasm_frame_seq,_fmrb_wasm_frame_rgba,_fmrb_wasm_frame_width,_fmrb_wasm_frame_height,_fmrb_wasm_audio_ring,_fmrb_wasm_audio_ring_size,_fmrb_wasm_audio_wr,_fmrb_wasm_audio_rate,_fmrb_wasm_audio_volume,_fmrb_wasm_input_ring,_fmrb_wasm_input_ring_events,_fmrb_wasm_input_wr_ptr"
-  # FS is what lets the page rewrite packed settings in preRun (theme, and
-  # later the resolution selection) before the firmware boots.
-  "-sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPU32,HEAP32,FS"
+  # No FS export: the page's main-thread FS is NOT the FS main() runs on
+  # (PROXY_TO_PTHREAD), so page settings travel as argv and are applied by
+  # page_settings_wasm.c on the machine's side.
+  "-sEXPORTED_RUNTIME_METHODS=HEAPU8,HEAPU32,HEAP32"
 )
 
 # Node development build: real files (the flash/ directory) instead of a

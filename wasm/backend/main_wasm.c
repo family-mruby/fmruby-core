@@ -10,6 +10,8 @@
 #include "task.h"
 
 void app_main(void);
+void fmrb_wasm_page_settings_parse(int argc, char **argv);
+void fmrb_wasm_page_settings_apply(void);
 
 #define MAIN_TASK_STACK_BYTES  (256 * 1024)
 #define MAIN_TASK_PRIORITY     5
@@ -17,12 +19,16 @@ void app_main(void);
 static void prvMainTask(void *arg)
 {
     (void)arg;
+    /* On the machine's own thread and FS, before the kernel reads its
+     * settings. The page cannot do this itself (page_settings_wasm.c). */
+    fmrb_wasm_page_settings_apply();
     app_main();
     vTaskDelete(NULL);
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
+    fmrb_wasm_page_settings_parse(argc, argv);
     if (xTaskCreate(prvMainTask, "app_main", MAIN_TASK_STACK_BYTES, NULL,
                     MAIN_TASK_PRIORITY, NULL) != pdPASS) {
         printf("bootstrap failed: could not create the main task\n");

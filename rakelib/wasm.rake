@@ -5,6 +5,8 @@
 # touches lives under wasm/, and it configures its own CMake through emcmake.
 # Plan and phase breakdown: doc/wasm/.
 
+require "set"
+
 WASM_DIR = File.expand_path("wasm", ROOT_DIR)
 WASM_BUILD_DIR = File.join(WASM_DIR, "build")
 
@@ -79,8 +81,14 @@ namespace :wasm do
     puts "wasm:setup done (#{M5GFX_DIR})"
   end
 
+  # "^setup" is the ROOT setup task (a bare :setup here would resolve to
+  # wasm:setup, which is the M5GFX fetch). Both are wanted, and the root one
+  # for the same reason the docker builds depend on it: the gem sources the
+  # wasm build compiles are the COPIES under components/picoruby-esp32/picoruby,
+  # and root setup is what refreshes them from lib/add. Without it an edit under
+  # lib/add builds green and changes nothing.
   desc "Cross-build libmruby with emcc (host emsdk; run before wasm:core)"
-  task :mruby do
+  task :mruby => ["^setup", :setup] do
     wasm_emcmake! # same env check: emcc has to be on PATH
     picoruby = File.expand_path("components/picoruby-esp32/picoruby", ROOT_DIR)
     config = File.expand_path("lib/add/family_mruby_wasm.rb", ROOT_DIR)
@@ -94,7 +102,7 @@ namespace :wasm do
   end
 
   desc "Build the core firmware for wasm (doc/wasm/ P4a; needs wasm:mruby once)"
-  task :core do
+  task :core => ["^setup", :setup] do
     emcmake = wasm_emcmake!
     sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} -DCMAKE_BUILD_TYPE=Release"
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target core"
@@ -145,6 +153,132 @@ namespace :wasm do
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target core_web"
   end
 
+  # ---- distribution -------------------------------------------------------
+  #
+  # What the browser bundle may contain is decided in wasm:webflash (git-tracked
+  # flash/ only). wasm:scan is the check on the RESULT: it reads back what the
+  # linker actually packed, so a mistake anywhere between the staging and the
+  # .data still gets caught before the directory is handed to anyone.
+
+  # Literal strings that must never appear in the packed filesystem, gathered
+  # from this machine rather than guessed: the developer's own key and WiFi
+  # credentials are exactly what an accidental staging would leak.
+  def wasm_local_secrets
+    out = []
+    key_file = File.expand_path("~/.openai_key")
+    out << File.read(key_file).strip if File.exist?(key_file)
+    # Only the keys that actually name a credential. Taking every `k = "v"`
+    # pair instead matched the service names ("tts.rb", "pool.ntp.org") that
+    # legitimately appear in the shipped files, which is a check that cries
+    # wolf and then gets ignored.
+    cred = /^\s*(?:password|passwd|psk|ssid|api_key|apikey|key|token|secret)\s*=\s*"([^"]+)"/i
+    ["flash/etc/wifi.toml", "config/wifi.toml", "config/wifi_p4.toml",
+     "flash/etc/services.toml"].each do |rel|
+      path = File.join(ROOT_DIR, rel)
+      next unless File.exist?(path)
+      File.read(path).scan(cred) { |(v)| out << v }
+    end
+    out.reject { |v| v.nil? || v.strip.length < 6 }.uniq
+  end
+
+  desc "Check the packed browser bundle: no credentials, no untracked files"
+  task :scan do
+    js   = File.join(WASM_BUILD_DIR, "core_web.js")
+    data = File.join(WASM_BUILD_DIR, "core_web.data")
+    abort "#{data} not found; run rake wasm:web first" unless File.exist?(data)
+
+    problems = []
+
+    # 1. What the linker packed, read back out of the loader metadata, against
+    #    what the staging holds. Anything in one and not the other is a bug in
+    #    the packing, not a matter of opinion.
+    packed = File.read(js).scan(/filename:"(\/flash\/[^"]*)"/).flatten.sort
+    staging = File.join(WASM_BUILD_DIR, "webflash")
+    staged = Dir.glob(File.join(staging, "**/*"), File::FNM_DOTMATCH)
+                .select { |f| File.file?(f) }
+                .map { |f| "/flash" + f.sub(staging, "") }.sort
+    (packed - staged).each { |f| problems << "packed but not staged: #{f}" }
+    (staged - packed).each { |f| problems << "staged but not packed: #{f}" }
+
+    # 2. Untracked material. The staging copies git ls-files output, so this
+    #    can only fire if something else wrote into build/webflash.
+    tracked = `git -C #{ROOT_DIR} ls-files -z flash`.split("\0")
+                .map { |f| "/" + f }.to_set
+    generated = ["/flash/etc/system_conf.toml", "/flash/etc/system_conf.factory.toml",
+                 "/flash/data/bg_426x240.png"].to_set
+    packed.each do |f|
+      next if tracked.include?(f) || generated.include?(f)
+      problems << "packed file is neither tracked nor a known generated one: #{f}"
+    end
+
+    # 3. The blob itself, against this machine's real secrets. Byte search, so
+    #    it does not matter which file a value would have arrived in.
+    blob = File.binread(data)
+    wasm_local_secrets.each do |secret|
+      problems << "a local credential appears in core_web.data" if blob.include?(secret)
+    end
+    # And the shapes a key takes even when this machine has none to compare.
+    { "OpenAI-style key" => /sk-[A-Za-z0-9_-]{20}/,
+      "PEM private key"  => /BEGIN [A-Z ]*PRIVATE KEY/ }.each do |what, re|
+      problems << "#{what} found in core_web.data" if blob =~ re
+    end
+
+    unless problems.empty?
+      abort "wasm:scan found #{problems.length} problem(s):\n  " + problems.join("\n  ")
+    end
+    puts "wasm:scan: #{packed.length} packed files, no credentials, no unexpected content"
+  end
+
+  # A short content hash over everything the page loads. Every URL carries it,
+  # so a browser can never pair a fresh .data with a cached main.js -- the
+  # half-old page that bit us once during development.
+  def wasm_dist_version(files)
+    require "digest"
+    d = Digest::SHA256.new
+    files.each { |f| d.update(File.binread(f)) }
+    d.hexdigest[0, 12]
+  end
+
+  desc "Assemble a self-contained, publishable directory in wasm/build/dist"
+  task :dist => [:web, :scan] do
+    dist = File.join(WASM_BUILD_DIR, "dist")
+    web  = File.join(WASM_DIR, "web")
+    rm_rf dist
+    mkdir_p dist
+
+    payload = %w[core_web.js core_web.wasm core_web.data].map { |f| File.join(WASM_BUILD_DIR, f) }
+    page    = [File.join(web, "main.js"), File.join(web, "audio-worklet.js"),
+               File.join(ROOT_DIR, "tool/web/remote/keymap.js"),
+               File.join(web, "vendor/coi-serviceworker.js")]
+    version = wasm_dist_version(payload + page)
+
+    (payload + page).each { |f| cp f, File.join(dist, File.basename(f)) }
+
+    # The page is written for development (module and keymap out of the build
+    # and tool trees); here everything sits beside index.html, and every URL
+    # gets the version. Anchors are asserted rather than best-effort: a silent
+    # miss would publish a page that loads nothing.
+    html = File.read(File.join(web, "index.html"))
+    {
+      %q{src="vendor/coi-serviceworker.js"}     => %Q{src="coi-serviceworker.js?v=#{version}"},
+      %q{src="../../tool/web/remote/keymap.js"} => %Q{src="keymap.js?v=#{version}"},
+      %q{src="../build/core_web.js"}            => %Q{src="core_web.js?v=#{version}"},
+      %q{src="main.js"}                         => %Q{src="main.js?v=#{version}"},
+      %q{window.FMRB_WASM_BASE = '../build/';}  => %q{window.FMRB_WASM_BASE = '';},
+      %q{window.FMRB_WASM_VER = '';}            => %Q{window.FMRB_WASM_VER = '?v=#{version}';},
+    }.each do |from, to|
+      abort "wasm:dist: anchor not found in index.html: #{from}" unless html.include?(from)
+      html = html.sub(from, to)
+    end
+    File.write(File.join(dist, "index.html"), html)
+
+    total = Dir.glob(File.join(dist, "*")).sum { |f| File.size(f) }
+    puts "wasm:dist: #{dist} (version #{version}, #{(total / 1024.0 / 1024).round(2)} MB)"
+    puts "  serve it with any static server, e.g.:"
+    puts "    (cd #{dist} && python3 -m http.server 8007)"
+    puts "  coi-serviceworker supplies the cross-origin isolation, so no headers are needed."
+  end
+
   desc "Serve the repo with COOP/COEP for the wasm page (PORT=n, default 8006)"
   task :serve do
     port = (ENV["PORT"] || 8006).to_i
@@ -154,6 +288,16 @@ namespace :wasm do
     # SharedArrayBuffer needs cross-origin isolation; GitHub Pages gets the
     # same effect from coi-serviceworker in P5.
     server.mount_proc("") do |req, res|
+      # Probe aid: an "image" that answers after ?ms=N. A page that references
+      # it before the load event keeps headless Chrome's --screenshot waiting
+      # until the firmware has actually booted (main.js ?autostart&holdload=).
+      if req.path.end_with?("/probe-hold")
+        sleep((req.query["ms"] || "0").to_i / 1000.0)
+        res.status = 200
+        res["Content-Type"] = "image/gif"
+        res.body = ["47494638396101000100800000000000ffffff21f90401000000002c00000000010001000002024401003b"].pack("H*")
+        next
+      end
       WEBrick::HTTPServlet::FileHandler.new(server, ROOT_DIR).service(req, res)
       res["Cross-Origin-Opener-Policy"] = "same-origin"
       res["Cross-Origin-Embedder-Policy"] = "require-corp"
