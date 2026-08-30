@@ -419,6 +419,25 @@ JS の fetch に流すブリッジと、(2) 利用者が自分の API 鍵を持�
 
 ---
 
+## 公開の流れ (検討済 2026-08-30。実行はユーザの号令で)
+
+既存の BLE コンソールと同じ型に載せる。コンソールは
+family-mruby.github.io (MkDocs) の deploy.yml が push ごとに
+fmruby-core から sync して gh-pages へ出しており、**ビルド済み wasm は
+サイト repo にコミットして持つ** (console-wasm/) 前例がある。
+
+- wasm 版は `rake wasm:dist` の自己完結 8 ファイルなので sync 不要。
+  **dist/ をサイト repo の docs/play/ (パス名は仮) に丸ごとコミット**し、
+  どの fmruby-core コミットから作ったかをメッセージに記す。
+  deploy.yml は無変更でそのまま公開される。
+- サイト側の作業はナビへのリンク 1 本のみ。coi-serviceworker は
+  サブパス配下で正しくスコープされる。
+- scan が dist 生成に組み込まれているため、「検査を通らない配布物は
+  作れない」がリリースゲートとして機能する。
+- 定常化したら installer と同じタグ連動 CI (emsdk + M5GFX 取得 +
+  wasm:dist) へ昇格できるが、初回〜当面はローカルビルド + 成果物
+  コミットで十分 (console-wasm 前例と同型)。
+
 ## P5b (計画済 2026-08-30): fetch ブリッジ — Net::HTTP を wasm で、Weather を初例に
 
 ユーザ指示: HTTPS を叩けるようにし、Weather サンプルが動くこと。
