@@ -427,7 +427,7 @@ fmruby-core から sync して gh-pages へ出しており、**ビルド済み w
 サイト repo にコミットして持つ** (console-wasm/) 前例がある。
 
 - wasm 版は `rake wasm:dist` の自己完結 8 ファイルなので sync 不要。
-  **dist/ をサイト repo の docs/play/ (パス名は仮) に丸ごとコミット**し、
+  **dist/ をサイト repo の docs/studio/ に丸ごとコミット**し、
   どの fmruby-core コミットから作ったかをメッセージに記す。
   deploy.yml は無変更でそのまま公開される。
 - サイト側の作業はナビへのリンク 1 本のみ。coi-serviceworker は
@@ -437,6 +437,9 @@ fmruby-core から sync して gh-pages へ出しており、**ビルド済み w
 - 定常化したら installer と同じタグ連動 CI (emsdk + M5GFX 取得 +
   wasm:dist) へ昇格できるが、初回〜当面はローカルビルド + 成果物
   コミットで十分 (console-wasm 前例と同型)。
+- **公開パスは /studio/ で確定** (ユーザ決定 2026-08-30)。「作る機械」の
+  ブラウザ版という将来像 (エディタ + 型支援 + BLE beam) を名乗る名前。
+  公開 URL: https://family-mruby.github.io/studio/
 
 ## P5b (計画済 2026-08-30): fetch ブリッジ — Net::HTTP を wasm で、Weather を初例に
 
