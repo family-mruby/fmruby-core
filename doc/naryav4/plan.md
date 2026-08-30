@@ -1,6 +1,6 @@
 # NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画
 
-> 状態: 進行中 | 更新: 2026-08-30 | P0・P1 完了 (表示モードは 800x600@60、NARYAv4 は独立したビルドターゲットになった)。次は P2 (表示 bring-up)
+> 状態: 進行中 | 更新: 2026-08-30 | P0-P2 完了 (P4-Nano + LT8912B の HDMI にデスクトップが 800x600@60 で出た)。次は P3 (無線・入力・音声)
 
 ## 目的
 
@@ -65,10 +65,10 @@
 - 表示は **800x600@60 横向き** (P0 で決着。720p60 は不成立、根拠は
   report/p0.md)。内部解像度 426x240 は変えず、PPA の 1.5x で 639x360 に
   拡大して黒縁つきで載せる (Retro / sim / MCP ツールとの整合を保つ)。
-- LGFX (Bus_DSI) 経路を維持し、m5gfx の Panel_LT8912B を第一候補にする。
-  不調なら esp-bsp の esp_lcd_lt8912b + EV ボード BSP の設定値を参照して
-  自前 Panel クラスを書く (Tab5 で Panel_DSI 派生を 3 種扱った実績があり、
-  切れ目は同じ)。
+- LGFX (Bus_DSI) 経路を維持する。パネルは **espressif/esp_lcd_lt8912b を
+  managed 依存で取り込み、LovyanGFX 側は Panel_FrameBufferBase 派生の薄い
+  クラスで FB に被せる** (P2 で決着)。m5gfx 同梱の Panel_LT8912B は
+  800x600 のタイミングを持たないため不採用 (report/p2.md)。
 - 音声は P4-Nano オンボードで完結させる: スピーカ出力もマイク入力も
   ES8311 1 チップ (Tab5 の ES8388 + ES7210 の 2 チップ構成から集約)。
   esp_codec_dev は ES8311 に対応しており、audio_p4_hw.c の枠組みは変えない。
@@ -112,7 +112,7 @@
 5. fmrb_hw_defines.cmake のプレースホルダ警告を外す。
 6. パーティションは partitions_p4.csv を共用 (flash 16MB 同一)。
 
-### P2: 表示 bring-up (リスク最大、最初に潰す)
+### P2: 表示 bring-up (完了 2026-08-30、report/p2.md)
 
 1. display_p4_task.cpp のローカル Tab5 定数 (ピン / PI4IO / tab5_power_on /
    パネルプローブ) をボード分岐へ出す。NARYAv4 は電源シーケンス不要
@@ -192,8 +192,6 @@
   720p60 は「74.25MHz が APLL でしか作れず、LT8912B の DDS が APLL
   (分数 SDM) のジッタにロックできない」ため IDF 5.5.4 では不成立と確定
   (切り分け実験と数値根拠は report/p0.md)。再挑戦条件も同 report に記載。
-- PPA SRM が RGB565 入力 → RGB888 出力 + 3x 拡大を 1 パスでできるか
-  (できなければ 2 パス構成か、LT8912B への RGB565 入力可否を再調査)。
 - C6 出荷時ファームウェアと esp_hosted 1.4.0 の適合 (P3-1)。
 - ES8311 の 47160Hz 動作の確認とマイクゲインの適値 (P3-5)。I2S の実ピンは
   確定済み (P0 で回路図から起こし、P1 で fmrb_pin_assign.h に入れた)。

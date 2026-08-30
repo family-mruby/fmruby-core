@@ -13,7 +13,11 @@
 #include "display_p4_sprite.h"
 #include "display_p4_video.h"
 #ifndef FMRB_PLATFORM_WASM
+#if defined(FMRB_HW_NARYAV4)
+#include "lgfx_naryav4.hpp"
+#else
 #include "lgfx_tab5.hpp"
+#endif
 #else
 #include <M5GFX.h>
 #endif
@@ -87,6 +91,7 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
     return buf;
 }
 
+#if !defined(FMRB_HW_NARYAV4)
 // Tab5 board pins / I2C (see fmrb_pin_assign.h; kept local to the driver).
 #define TAB5_I2C_PORT   I2C_NUM_1
 #define TAB5_I2C_SDA    GPIO_NUM_31
@@ -103,10 +108,13 @@ static void* ppa_alloc_buffer(size_t length, size_t *out_aligned_size) {
 #define PI4IO_BIT_SPK_EN    (1 << 1)
 #define PI4IO_BIT_HP_DETECT (1 << 7)
 #define PI4IO_I2C_FREQ      400000
+#endif /* !FMRB_HW_NARYAV4 */
 
 #ifdef FMRB_PLATFORM_WASM
 // Sprite parent only: no panel behind it, and nothing here may draw on it.
 static lgfx::LGFX_Device g_lcd;
+#elif defined(FMRB_HW_NARYAV4)
+static LGFX_Naryav4 g_lcd;
 #else
 static LGFX_Tab5 g_lcd;
 #endif
@@ -123,6 +131,14 @@ LGFX_Device *display_p4_lcd(void) { return &g_lcd; }
 void *display_p4_panel_framebuffer(void) { return NULL; }
 #else
 void *display_p4_panel_framebuffer(void) { return g_lcd.getFrameBuffer(); }
+#endif
+
+#if defined(FMRB_HW_NARYAV4) && !defined(FMRB_PLATFORM_WASM)
+// The board's one I2C bus, created by the display because the HDMI bridge is
+// the first thing on it that has to answer. Everything else on the bus (the
+// codec, mruby app transactions) borrows the handle through the service
+// further down rather than making a second bus on the same pins.
+static i2c_master_bus_handle_t g_naryav4_i2c = nullptr;
 #endif
 
 // Serializes every runtime access to the shared I2C controller (GT911
@@ -263,7 +279,14 @@ static LGFX_Sprite *g_framebuffer = nullptr;
 static size_t g_fb_aligned_size = 0;  // cache-line-aligned framebuffer size for msync
 static uint16_t g_display_width  = 0;
 static uint16_t g_display_height = 0;
-#define DISPLAY_P4_SCALE_FACTOR 3
+/* How far the frame is blown up on the way to the panel. Log line only -- the
+ * scaling itself lives in the output backend, which is where the geometry is
+ * explained. */
+#if defined(FMRB_HW_NARYAV4)
+#define DISPLAY_P4_SCALE_TEXT "1.5x"
+#else
+#define DISPLAY_P4_SCALE_TEXT "3x"
+#endif
 
 // How the composited frame reaches the panel (the 3x scale, the rotation into
 // the panel's native portrait orientation, and the DSI framebuffer itself) is
@@ -839,7 +862,7 @@ static void render_frame(void) {
     }
 }
 
-#ifndef FMRB_PLATFORM_WASM
+#if !defined(FMRB_PLATFORM_WASM) && !defined(FMRB_HW_NARYAV4)
 // ============================================================
 // PI4IO I2C helper
 // ============================================================
@@ -1004,7 +1027,7 @@ static Tab5PanelVariant tab5_power_on(void) {
     // Backlight: LEDC PWM via Light_PWM in LGFX_Tab5 (GPIO22, ch7, 44100Hz).
     return variant;
 }
-#endif /* !FMRB_PLATFORM_WASM */
+#endif /* !FMRB_PLATFORM_WASM && !FMRB_HW_NARYAV4 */
 
 // ============================================================
 // ACK response sender
@@ -2320,8 +2343,8 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
                     set_ppa_native_depth(g_framebuffer);
                     g_framebuffer->setBuffer(fb_buf, g_display_width, g_display_height);
                     g_fb_aligned_size = fb_aligned;
-                    FMRB_LOGI(TAG, "Framebuffer allocated: %dx%d RGB565 PPA-native (scale=%dx)",
-                              g_display_width, g_display_height, DISPLAY_P4_SCALE_FACTOR);
+                    FMRB_LOGI(TAG, "Framebuffer allocated: %dx%d RGB565 PPA-native (scale=%s)",
+                              g_display_width, g_display_height, DISPLAY_P4_SCALE_TEXT);
                 }
 
                 // Register the accelerators and take hold of the output
@@ -2918,6 +2941,81 @@ extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
     return FMRB_ERR_NOT_SUPPORTED;
 }
 extern "C" void display_p4_poll_headphone(void) {}
+#elif defined(FMRB_HW_NARYAV4)
+// NARYA v4 has no touch controller, so LovyanGFX never drives this bus and the
+// mixing hazard the Tab5 works around does not exist here: every transaction
+// goes through the normal i2c_master driver on the bus the display created.
+// The mutex stays, because the callers are still several tasks.
+//
+// A device handle per transaction rather than a cache: the addresses are not
+// known in advance (an mruby app can talk to anything on the header), and at
+// this traffic level -- volume changes, occasional app I/O -- the add/remove
+// pair costs nothing worth keeping state for.
+static fmrb_err_t naryav4_i2c_xfer(uint8_t addr, const uint8_t *tx, size_t tx_len,
+                                   uint8_t *rx, size_t rx_len, uint32_t freq) {
+    if (!g_naryav4_i2c) return FMRB_ERR_INVALID_STATE;
+    i2c_device_config_t dev_cfg = {};
+    dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+    dev_cfg.device_address  = addr;
+    dev_cfg.scl_speed_hz    = freq ? freq : NARYAV4_I2C_FREQ;
+    i2c_master_dev_handle_t dev = NULL;
+    if (i2c_master_bus_add_device(g_naryav4_i2c, &dev_cfg, &dev) != ESP_OK) {
+        return FMRB_ERR_FAILED;
+    }
+    esp_err_t err;
+    if (rx && rx_len) {
+        err = i2c_master_transmit_receive(dev, tx, tx_len, rx, rx_len, 100);
+    } else {
+        err = i2c_master_transmit(dev, tx, tx_len, 100);
+    }
+    i2c_master_bus_rm_device(dev);
+    return err == ESP_OK ? FMRB_OK : FMRB_ERR_FAILED;
+}
+
+extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
+                                           size_t len, uint32_t freq) {
+    if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
+    if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
+    fmrb_err_t res = naryav4_i2c_xfer(addr, data, len, NULL, 0, freq);
+    i2c_service_unlock();
+    return res;
+}
+
+extern "C" fmrb_err_t display_p4_i2c_read(uint8_t addr, uint8_t *data,
+                                          size_t len, uint32_t freq) {
+    if (!data || len == 0 || len > 255) return FMRB_ERR_INVALID_PARAM;
+    if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
+    fmrb_err_t res = FMRB_ERR_INVALID_STATE;
+    if (g_naryav4_i2c) {
+        i2c_device_config_t dev_cfg = {};
+        dev_cfg.dev_addr_length = I2C_ADDR_BIT_LEN_7;
+        dev_cfg.device_address  = addr;
+        dev_cfg.scl_speed_hz    = freq ? freq : NARYAV4_I2C_FREQ;
+        i2c_master_dev_handle_t dev = NULL;
+        if (i2c_master_bus_add_device(g_naryav4_i2c, &dev_cfg, &dev) == ESP_OK) {
+            res = i2c_master_receive(dev, data, len, 100) == ESP_OK
+                ? FMRB_OK : FMRB_ERR_FAILED;
+            i2c_master_bus_rm_device(dev);
+        } else {
+            res = FMRB_ERR_FAILED;
+        }
+    }
+    i2c_service_unlock();
+    return res;
+}
+
+extern "C" fmrb_err_t display_p4_i2c_write_reg8(uint8_t addr, uint8_t reg,
+                                                uint8_t value, uint32_t freq) {
+    if (!i2c_service_lock()) return FMRB_ERR_INVALID_STATE;
+    const uint8_t buf[2] = { reg, value };
+    fmrb_err_t res = naryav4_i2c_xfer(addr, buf, sizeof(buf), NULL, 0, freq);
+    i2c_service_unlock();
+    return res;
+}
+
+// No headphone jack detect on this board: the amplifier enable is a plain
+// GPIO and there is nothing to sense (P3 wires it up).
+extern "C" void display_p4_poll_headphone(void) {}
 #else
 extern "C" fmrb_err_t display_p4_i2c_write(uint8_t addr, const uint8_t *data,
                                            size_t len, uint32_t freq) {
@@ -3160,33 +3258,44 @@ static void display_p4_task(void *arg) {
     cursor_init();
     g_lcd_ready = true;
 #else
+#if defined(FMRB_HW_NARYAV4)
+    FMRB_LOGI(TAG, "NARYAv4 display: I2C + DSI bus");
+    bool configured = g_lcd.configure();
+    g_naryav4_i2c = g_lcd.i2cBus();
+#else
     FMRB_LOGI(TAG, "Tab5 display: power on");
     g_lcd.configure(tab5_power_on());
+    const bool configured = true;
+#endif
 
-    FMRB_LOGI(TAG, "Tab5 display: VM + cursor init");
+    FMRB_LOGI(TAG, "Modern display: VM + cursor init");
     display_p4_vm_init();
     cursor_init();
 
-    FMRB_LOGI(TAG, "Tab5 display: LGFX init");
-    if (!g_lcd.init()) {
+    FMRB_LOGI(TAG, "Modern display: LGFX init");
+    if (!configured || !g_lcd.init()) {
         FMRB_LOGE(TAG, "LGFX init failed");
     } else {
+#if !defined(FMRB_HW_NARYAV4)
         g_lcd.setRotation(3); // landscape: 1280x720 (native portrait 720x1280 rotated 90deg CCW)
+#endif
+        // NARYA v4 is landscape already (800x600 over HDMI); no rotation.
         FMRB_LOGI(TAG, "LGFX init OK (%dx%d)", g_lcd.width(), g_lcd.height());
         draw_boot_screen();
 
-        // Bring up the Tab5 audio codec now: the ES8388 shares the I2C
+        // Bring up the audio codec now: on Tab5 the ES8388 shares the I2C
         // bus with GT911, and the touch task only starts polling after
         // g_lcd_ready below, so this is the race-free window.
         if (audio_backend()->init() != FMRB_OK) {
-            FMRB_LOGW(TAG, "Tab5 audio init failed (no sound)");
+            FMRB_LOGW(TAG, "audio init failed (no sound)");
             boot_print_line("Audio: codec init FAILED (no sound)");
         } else {
-            boot_print_line("Audio: ES8388 codec ready");
+            boot_print_line("Audio: codec ready");
         }
         boot_print_blank();
         boot_print_line("Waiting for kernel...");
 
+#if !defined(FMRB_HW_NARYAV4)
         // Apply the initial headphone state so booting with headphones
         // plugged does not play the boot sound on the speaker. If lgfx's
         // I2C is not up yet the read fails silently and the touch-task
@@ -3200,6 +3309,7 @@ static void display_p4_task(void *arg) {
                 hp_apply_speaker(true);
             }
         }
+#endif
 
         // Framebuffer is allocated later in INIT_DISPLAY when the kernel
         // reports the actual display_width x display_height.
@@ -3211,7 +3321,7 @@ static void display_p4_task(void *arg) {
     }
 #endif /* !FMRB_PLATFORM_WASM */
 
-    FMRB_LOGI(TAG, "Tab5 display: entering command receive loop");
+    FMRB_LOGI(TAG, "Modern display: entering command receive loop");
 
     // Render throughput stats live at file scope (g_stat_*); seed the window.
     g_stat_last_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);

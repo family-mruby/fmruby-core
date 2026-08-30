@@ -35,6 +35,13 @@ dependencies:
     version: "^1.8.0"
     rules:
       - if: "target in [esp32p4, esp32s3]"
+  # LT8912B MIPI-DSI -> HDMI bridge. NARYA v4 puts its picture on an HDMI
+  # monitor through this chip; the Tab5 (same target) has a DSI panel and
+  # never references the driver, so the linker drops it there.
+  espressif/esp_lcd_lt8912b:
+    version: "^0.2.0"
+    rules:
+      - if: "target == esp32p4"
   # Remote desktop Phase 2: P4 hardware H.264 encoder
   espressif/esp_h264:
     version: "^1.1.0"

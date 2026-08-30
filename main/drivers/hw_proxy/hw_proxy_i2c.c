@@ -4,15 +4,18 @@
 #include "driver/i2c_master.h"
 
 #ifdef CONFIG_IDF_TARGET_ESP32P4
-// On Modern (Tab5) the I2C1 pins are the internal panel bus (GPIO31/32),
-// which LovyanGFX owns and drives at register level: creating an
-// i2c_master bus on it fails ("already acquired") and raw transactions
-// would corrupt the controller state. Mediate all unit-1 traffic through
-// the display driver's serialized lgfx I2C service instead.
+// On Modern the I2C1 pins are the board's internal bus, which the display
+// driver brings up and owns: creating a second i2c_master bus on it fails
+// ("already acquired"), and on Tab5 -- where LovyanGFX drives that controller
+// at register level for the touch panel -- raw transactions would corrupt its
+// state outright. Mediate all unit-1 traffic through the display driver's
+// serialized I2C service instead. The pins come from fmrb_pin_assign.h so this
+// follows the board (Tab5 GPIO31/32, NARYA v4 GPIO7/8).
 #include "display_p4_task.h"
+#include "fmrb_pin_assign.h"
 #define HW_PROXY_I2C_MEDIATED_UNIT  1
-#define HW_PROXY_I2C_MEDIATED_SDA   31
-#define HW_PROXY_I2C_MEDIATED_SCL   32
+#define HW_PROXY_I2C_MEDIATED_SDA   FMRB_PIN_I2C1_SDA
+#define HW_PROXY_I2C_MEDIATED_SCL   FMRB_PIN_I2C1_SCL
 #endif
 
 static const char *TAG = "hw_proxy_i2c";

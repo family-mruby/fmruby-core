@@ -1,11 +1,11 @@
 /*
- * display_backend_ppa.cpp - the Tab5's hardware output path
+ * display_backend_ppa.cpp - the Modern boards' hardware output path
  *
- * Moved out of display_p4_task.cpp unchanged (doc/wasm/, P3 T1). Compositing is
- * PPA Blend, and the finished 426x240 frame reaches the panel through PPA SRM,
- * which scales it 3x and rotates it to the panel's native portrait in one pass,
- * writing straight into the DSI frame buffer. Nothing here decides what is
- * drawn; see display_backend.h for where the line is.
+ * Moved out of display_p4_task.cpp (doc/wasm/, P3 T1). Compositing is PPA
+ * Blend, and the finished 426x240 frame reaches the panel through PPA SRM in
+ * one pass, writing straight into the DSI frame buffer. What that pass does
+ * differs by board -- see the geometry block below -- but nothing here decides
+ * what is drawn; see display_backend.h for where the line is.
  *
  * The cache work is the reason most of this cannot be shared: the framebuffer
  * and the canvases live in PSRAM and are written by the CPU, so every buffer
@@ -25,15 +25,42 @@
 
 static const char *TAG = "display_ppa";
 
-/* The panel's own frame buffer, in its native portrait orientation. */
+/* The panel's own frame buffer, and how the 426x240 frame is laid onto it.
+ *
+ *   Tab5      720x1280 RGB565 portrait. The frame goes on 3x and rotated 90
+ *             degrees, filling the width and centred along the long side.
+ *   NARYA v4  800x600 RGB888 landscape over HDMI (the LT8912B bridge takes
+ *             nothing but RGB888). 426x240 does not scale to 800x600 by a
+ *             whole number, so the frame goes on at 1.5x = 639x360 -- the PPA
+ *             scaler works in 1/16 steps, so 1.5 is exact -- centred inside a
+ *             black border of 80/81 px left/right and 120 px top and bottom.
+ *             No rotation: the monitor is already landscape.
+ */
+#if defined(FMRB_HW_NARYAV4)
+#define DSI_FB_W 800
+#define DSI_FB_H 600
+#define DSI_FB_BPP 3
+/* 1.5x as an exact ratio, for the integer arithmetic in the cursor patch. */
+#define SCALE_NUM 3
+#define SCALE_DEN 2
+#define SCALE_FLOAT 1.5f
+#else
 #define DSI_FB_W 720
 #define DSI_FB_H 1280
-
+#define DSI_FB_BPP 2
 #define SCALE_FACTOR 3
+#define SCALE_FLOAT ((float)SCALE_FACTOR)
+#endif
 
-static ppa_client_handle_t s_ppa_srm   = NULL;  /* scale + rotate to the panel */
+#define DSI_FB_BYTES ((size_t)DSI_FB_W * DSI_FB_H * DSI_FB_BPP)
+
+static ppa_client_handle_t s_ppa_srm   = NULL;  /* scale (+ rotate) to the panel */
 static ppa_client_handle_t s_ppa_blend = NULL;  /* canvas compositing, colour-keyed */
+#if defined(FMRB_HW_NARYAV4)
+static uint8_t            *s_dsi_fb    = nullptr;  /* RGB888: 3 bytes per pixel */
+#else
 static uint16_t           *s_dsi_fb    = nullptr;
+#endif
 static size_t              s_cache_line = 64;
 
 /* ------------------------------------------------------------------ init */
@@ -54,7 +81,7 @@ static void ppa_init(int fb_w, int fb_h)
     ppa_client_config_t srm_cfg = {};
     srm_cfg.oper_type = PPA_OPERATION_SRM;
     if (ppa_register_client(&srm_cfg, &s_ppa_srm) == ESP_OK) {
-        s_dsi_fb = (uint16_t *)display_p4_panel_framebuffer();
+        s_dsi_fb = (decltype(s_dsi_fb))display_p4_panel_framebuffer();
         if (s_dsi_fb) {
             FMRB_LOGI(TAG, "PPA SRM initialized: %dx%d -> DSI fb %dx%d @%p",
                       fb_w, fb_h, DSI_FB_W, DSI_FB_H, (void *)s_dsi_fb);
@@ -77,8 +104,7 @@ static void ppa_first_frame(void)
          * here on the DSI buffer is written by PPA DMA and the cursor patch
          * (which writes back its own region), so no dirty CPU cache lines may
          * remain to evict over DMA output. */
-        esp_cache_msync(s_dsi_fb, (size_t)DSI_FB_W * DSI_FB_H * 2,
-                        ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+        esp_cache_msync(s_dsi_fb, DSI_FB_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
     }
 }
 
@@ -195,6 +221,137 @@ static void ppa_blend_block(const display_blend_req_t *r)
 
 /* --------------------------------------------------------------- present */
 
+/* Common to both boards: hand the framebuffer's cached CPU writes to PSRAM so
+ * the SRM DMA reads what was just drawn. */
+static void present_flush(void *fb_ptr, size_t fb_size)
+{
+    esp_err_t sync_err = esp_cache_msync(fb_ptr, fb_size,
+                                         ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+    if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fb msync C2M failed: %d", sync_err);
+}
+
+/* The fallback when there is no SRM client or no reachable panel buffer: push
+ * through LovyanGFX instead, scaled and centred the same way. */
+static void present_software(LGFX_Sprite *fb, int fb_w, int fb_h)
+{
+    int scaled_w = (int)(fb_w * SCALE_FLOAT);
+    int scaled_h = (int)(fb_h * SCALE_FLOAT);
+    LGFX_Device *lcd = display_p4_lcd();
+    int center_x = (lcd->width()  - scaled_w) / 2 + scaled_w / 2;
+    int center_y = (lcd->height() - scaled_h) / 2 + scaled_h / 2;
+    fb->pushRotateZoom(lcd, (float)center_x, (float)center_y, 0.0f,
+                       SCALE_FLOAT, SCALE_FLOAT);
+}
+
+#if defined(FMRB_HW_NARYAV4)
+
+/* NARYA v4: one SRM pass does the 1.5x scale AND the RGB565 -> RGB888
+ * conversion the HDMI bridge needs -- the SRM's input and output colour modes
+ * are independent, so this costs no more than the Tab5's scale-and-rotate. The
+ * result lands in the middle of the 800x600 buffer; the border around it is
+ * painted black once (first_frame) and never touched again. */
+static void ppa_present(LGFX_Sprite *fb, size_t fb_size)
+{
+    int fb_w = fb->width();
+    int fb_h = fb->height();
+    void *fb_ptr = fb->getBuffer();
+
+    if (!s_ppa_srm || !s_dsi_fb) {
+        present_software(fb, fb_w, fb_h);
+        return;
+    }
+
+    present_flush(fb_ptr, fb_size);
+
+    const int out_w = fb_w * SCALE_NUM / SCALE_DEN;
+    const int out_h = fb_h * SCALE_NUM / SCALE_DEN;
+
+    ppa_srm_oper_config_t srm = {};
+    srm.in.buffer         = fb_ptr;
+    srm.in.pic_w          = (uint32_t)fb_w;
+    srm.in.pic_h          = (uint32_t)fb_h;
+    srm.in.block_w        = (uint32_t)fb_w;
+    srm.in.block_h        = (uint32_t)fb_h;
+    srm.in.block_offset_x = 0;
+    srm.in.block_offset_y = 0;
+    srm.in.srm_cm         = PPA_SRM_COLOR_MODE_RGB565;
+
+    srm.out.buffer         = s_dsi_fb;
+    srm.out.buffer_size    = (uint32_t)DSI_FB_BYTES;
+    srm.out.pic_w          = DSI_FB_W;
+    srm.out.pic_h          = DSI_FB_H;
+    srm.out.block_offset_x = (uint32_t)((DSI_FB_W - out_w) / 2);
+    srm.out.block_offset_y = (uint32_t)((DSI_FB_H - out_h) / 2);
+    srm.out.srm_cm         = PPA_SRM_COLOR_MODE_RGB888;
+
+    srm.rotation_angle = PPA_SRM_ROTATION_ANGLE_0;
+    srm.scale_x        = SCALE_FLOAT;
+    srm.scale_y        = SCALE_FLOAT;
+    srm.mirror_x       = false;
+    srm.mirror_y       = false;
+    srm.rgb_swap       = false;
+    srm.byte_swap      = false;
+    srm.mode           = PPA_TRANS_MODE_BLOCKING;
+
+    esp_err_t err = ppa_do_scale_rotate_mirror(s_ppa_srm, &srm);
+    if (err != ESP_OK) {
+        FMRB_LOGE(TAG, "PPA SRM failed: %d", err);
+    }
+}
+
+/* Cursor fast path. The mapping has to be the one the SRM applies, or the
+ * patch does not line up with the frame under it: output column ox comes from
+ * input column ox*2/3 (nearest, no filtering), and the picture starts at the
+ * border offset. RGB888 is stored B,G,R -- that is what "non-swapped" means in
+ * both LovyanGFX and the PPA, and it is the order the DPI panel scans out. */
+static void ppa_present_patch(const uint16_t *block, int x0, int y0, int w, int h,
+                              int fb_w, int fb_h)
+{
+    if (!s_dsi_fb) {
+        /* Without the panel buffer there is no cheap path; the next full
+         * present puts the cursor on screen. */
+        return;
+    }
+
+    const int off_x = (DSI_FB_W - fb_w * SCALE_NUM / SCALE_DEN) / 2;
+    const int off_y = (DSI_FB_H - fb_h * SCALE_NUM / SCALE_DEN) / 2;
+
+    const int ox_begin = x0 * SCALE_NUM / SCALE_DEN;
+    const int ox_end   = (x0 + w) * SCALE_NUM / SCALE_DEN;
+    const int oy_begin = y0 * SCALE_NUM / SCALE_DEN;
+    const int oy_end   = (y0 + h) * SCALE_NUM / SCALE_DEN;
+
+    for (int oy = oy_begin; oy < oy_end; oy++) {
+        int sy = oy * SCALE_DEN / SCALE_NUM;
+        if (sy < y0 || sy >= y0 + h) continue;
+        const uint16_t *row = block + (size_t)(sy - y0) * w;
+        uint8_t *dst_row = s_dsi_fb
+            + ((size_t)(off_y + oy) * DSI_FB_W + off_x) * DSI_FB_BPP;
+        for (int ox = ox_begin; ox < ox_end; ox++) {
+            int sx = ox * SCALE_DEN / SCALE_NUM;
+            if (sx < x0 || sx >= x0 + w) continue;
+            uint16_t px = row[sx - x0];
+            uint8_t *d = dst_row + (size_t)ox * DSI_FB_BPP;
+            uint8_t r5 = (uint8_t)((px >> 11) & 0x1F);
+            uint8_t g6 = (uint8_t)((px >> 5)  & 0x3F);
+            uint8_t b5 = (uint8_t)( px        & 0x1F);
+            d[0] = (uint8_t)((b5 << 3) | (b5 >> 2));
+            d[1] = (uint8_t)((g6 << 2) | (g6 >> 4));
+            d[2] = (uint8_t)((r5 << 3) | (r5 >> 2));
+        }
+    }
+
+    /* Write the touched rows back, so a dirty cache line cannot evict later
+     * over PPA-written frame data. */
+    uint8_t *span = s_dsi_fb
+        + (size_t)(off_y + oy_begin) * DSI_FB_W * DSI_FB_BPP;
+    size_t span_len = (size_t)(oy_end - oy_begin) * DSI_FB_W * DSI_FB_BPP;
+    esp_cache_msync(span, span_len,
+                    ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
+}
+
+#else /* Tab5 */
+
 static void ppa_present(LGFX_Sprite *fb, size_t fb_size)
 {
     int fb_w = fb->width();
@@ -203,20 +360,11 @@ static void ppa_present(LGFX_Sprite *fb, size_t fb_size)
 
     if (!s_ppa_srm || !s_dsi_fb) {
         /* Software scaling, kept as the same fallback it has always been. */
-        int scaled_w = fb_w * SCALE_FACTOR;
-        int scaled_h = fb_h * SCALE_FACTOR;
-        LGFX_Device *lcd = display_p4_lcd();
-        int center_x = (lcd->width()  - scaled_w) / 2 + scaled_w / 2;
-        int center_y = (lcd->height() - scaled_h) / 2 + scaled_h / 2;
-        fb->pushRotateZoom(lcd, (float)center_x, (float)center_y, 0.0f,
-                           (float)SCALE_FACTOR, (float)SCALE_FACTOR);
+        present_software(fb, fb_w, fb_h);
         return;
     }
 
-    /* Flush framebuffer cache before SRM DMA reads it */
-    esp_err_t sync_err = esp_cache_msync(fb_ptr, fb_size,
-                                         ESP_CACHE_MSYNC_FLAG_DIR_C2M);
-    if (sync_err != ESP_OK) FMRB_LOGE(TAG, "fb msync C2M failed: %d", sync_err);
+    present_flush(fb_ptr, fb_size);
 
     /* Scale 3x and rotate to native portrait in one hardware pass, writing
      * directly into the DSI framebuffer (no CPU copy, and no M2C invalidate:
@@ -236,7 +384,7 @@ static void ppa_present(LGFX_Sprite *fb, size_t fb_size)
     srm.in.srm_cm         = PPA_SRM_COLOR_MODE_RGB565;
 
     srm.out.buffer         = s_dsi_fb;
-    srm.out.buffer_size    = (uint32_t)DSI_FB_W * DSI_FB_H * 2;
+    srm.out.buffer_size    = (uint32_t)DSI_FB_BYTES;
     srm.out.pic_w          = DSI_FB_W;
     srm.out.pic_h          = DSI_FB_H;
     srm.out.block_offset_x = 0;
@@ -320,6 +468,8 @@ static void ppa_present_patch(const uint16_t *block, int x0, int y0, int w, int 
     esp_cache_msync(span, span_len,
                     ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
 }
+
+#endif /* FMRB_HW_NARYAV4 */
 
 /* ------------------------------------------------------------------------ */
 

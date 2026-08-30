@@ -11,9 +11,9 @@
  *
  * Two implementations:
  *
- *   display_backend_ppa.cpp   PPA Blend for compositing, PPA SRM for the 3x
- *                             scale and 90-degree rotate into the DSI frame
- *                             buffer. The device default, moved here unchanged.
+ *   display_backend_ppa.cpp   PPA Blend for compositing, PPA SRM for the scale
+ *                             (and, on Tab5, the 90-degree rotate) into the
+ *                             DSI frame buffer. The device default.
  *   display_backend_cpu.cpp   the same in software, on top of
  *                             display_blend_cpu.c, which is plain C with no
  *                             ESP-IDF in it so wasm can use it as is.
@@ -27,8 +27,9 @@
  *     the framebuffer sprite, and cursor_patch() composites the cursor over a
  *     framebuffer region itself; only putting that region on the panel without
  *     a full present is backend work (present_patch).
- *   - The panel itself. Both P4 backends drive the same LGFX_Tab5; it is Tab5
- *     hardware, not PPA. Reach it with display_p4_lcd().
+ *   - The panel itself. Both P4 backends drive the same LGFX device (LGFX_Tab5
+ *     or LGFX_Naryav4); it is board hardware, not PPA. Reach it with
+ *     display_p4_lcd().
  */
 
 #pragma once
@@ -139,9 +140,10 @@ const display_backend_t *display_backend(void);
  * that draw straight to it (the boot screen, the canvas sprites). */
 LGFX_Device *display_p4_lcd(void);
 
-/* The panel's own frame buffer, in its native portrait orientation, or NULL if
- * this panel does not expose one. Kept separate from display_p4_lcd() so this
- * header does not have to pull in the Tab5 panel definition. */
+/* The panel's own frame buffer (Tab5: native portrait RGB565; NARYA v4:
+ * landscape RGB888), or NULL if this panel does not expose one. Kept separate
+ * from display_p4_lcd() so this header does not have to pull in a board's
+ * panel definition. */
 void *display_p4_panel_framebuffer(void);
 
 /* Cache-line-aligned PSRAM, the allocator canvases and the framebuffer share.
