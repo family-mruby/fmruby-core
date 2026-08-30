@@ -63,7 +63,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `micropython/` [MicroPython ゲスト VM 取り込み計画](micropython/README.md) — - 〔24 files〕
 - `midi/` [Family mruby MIDI 対応 検討メモ](midi/README.md) — - 〔23 files〕
 - `multivm_app/` [多重 VM アプリ構想: 巨大 Ruby アプリをマイコンで動かす](multivm_app/plan.md) — - 〔3 files〕
-- `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-08-30) P0-P2 完了 (P4-Nano + LT8912B の HDMI にデスクトップが 800x600@60 で出た)。次は P3 (無線・入力・音声) 〔6 files〕
+- `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-08-30) P0-P2 完了 (HDMI **1280x720 実 80MHz** で起動時から安定表示。起動時の歪みは「要求 40MHz が実は 39.70MHz だった」で解決、report/p2.md)。次は P3 〔6 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔5 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — - 〔15 files〕

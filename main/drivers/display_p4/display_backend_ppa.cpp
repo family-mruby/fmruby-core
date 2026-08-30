@@ -37,13 +37,14 @@ static const char *TAG = "display_ppa";
  *             No rotation: the monitor is already landscape.
  */
 #if defined(FMRB_HW_NARYAV4)
-#define DSI_FB_W 800
-#define DSI_FB_H 600
+/* EXPERIMENT: 1280x720 at a real 80MHz (see lgfx_naryav4.hpp). 426x240 x3 =
+ * 1278x720, so the frame fills the screen with a 1px border left and right. */
+#define DSI_FB_W 1280
+#define DSI_FB_H 720
 #define DSI_FB_BPP 3
-/* 1.5x as an exact ratio, for the integer arithmetic in the cursor patch. */
 #define SCALE_NUM 3
-#define SCALE_DEN 2
-#define SCALE_FLOAT 1.5f
+#define SCALE_DEN 1
+#define SCALE_FLOAT 3.0f
 #else
 #define DSI_FB_W 720
 #define DSI_FB_H 1280

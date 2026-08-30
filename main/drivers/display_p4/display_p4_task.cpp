@@ -282,11 +282,7 @@ static uint16_t g_display_height = 0;
 /* How far the frame is blown up on the way to the panel. Log line only -- the
  * scaling itself lives in the output backend, which is where the geometry is
  * explained. */
-#if defined(FMRB_HW_NARYAV4)
-#define DISPLAY_P4_SCALE_TEXT "1.5x"
-#else
 #define DISPLAY_P4_SCALE_TEXT "3x"
-#endif
 
 // How the composited frame reaches the panel (the 3x scale, the rotation into
 // the panel's native portrait orientation, and the DSI framebuffer itself) is

@@ -4,13 +4,11 @@
 // Where this differs from lgfx_tab5.hpp, and why:
 //
 //   * The panel is not a LovyanGFX panel class. M5GFX v0.2.28 does ship a
-//     Panel_LT8912B, but its timing table knows only 1280x720@60 and
-//     1920x1080@30 -- and 800x600@60 is the one mode that works on this
-//     hardware (doc/naryav4/report/p0.md: 40MHz is the only standard pixel
-//     clock the P4 can divide exactly out of PLL_F240M, and the LT8912B's DDS
-//     will not lock to the jittery APLL every other mode needs). So the bridge
-//     is driven by Espressif's esp_lcd_lt8912b, the driver that was proven on
-//     this board in P0, with its stock 800x600 timing and init table.
+//     Panel_LT8912B (used by the M5Unit-PoE-P4-HDMI), but it hardcodes its own
+//     timing table and I2C plumbing; the bridge here is driven by Espressif's
+//     esp_lcd_lt8912b with M5GFX's timing values, which is the combination
+//     that measured stable (below). The two drivers' init register sequences
+//     are byte-for-byte identical, so nothing is lost by the choice.
 //   * The frame buffer is RGB888 (the LT8912B accepts nothing else),
 //     800x600x3 = 1.44MB in PSRAM, allocated by the DPI panel.
 //   * No touch, no backlight, no power sequencer: the picture goes to a
@@ -42,8 +40,24 @@
 
 // Display mode. Fixed by P0 measurement; see the file comment before changing
 // any of it.
-#define NARYAV4_HDMI_W          800
-#define NARYAV4_HDMI_H          600
+// Display mode: 1280x720 at a real 80MHz -- M5GFX's numbers for the
+// M5Unit-PoE-P4-HDMI. CEA 720p timings (1650x750) with the pixel clock set to
+// 80MHz instead of the standard 74.25, which makes the refresh 64.6Hz but lets
+// the P4 produce it exactly.
+//
+// "Exactly" is the whole point, and it is what 800x600 did NOT have. That mode
+// asks for 40MHz and the P4 delivers 39.70 -- measured two independent ways on
+// the device: the bridge's own line counter (a ~800MHz reference) read 21281
+// per line where 40MHz would give 21120, and its DDS settled at a word worth
+// 39.70MHz. Feeding the bridge an off-nominal clock left its DDS hunting
+// +/-0.1..0.7% for over two minutes after every boot, which is the startup
+// shear this board had. At 80MHz the counter reads exactly 16500 (htotal 1650
+// x 10) and the DDS sits inside +/-0.01% from ~2s. See doc/naryav4/report/p2.md.
+//
+// 426x240 x3 = 1278x720 also lands on this mode exactly, and 16:9 removes the
+// 4:3 stretch a 800x600 signal suffered on a widescreen monitor.
+#define NARYAV4_HDMI_W          1280
+#define NARYAV4_HDMI_H          720
 #define NARYAV4_DSI_LANES       2
 #define NARYAV4_DSI_LANE_MBPS   1000
 #define NARYAV4_DSI_LDO_CHAN    3
@@ -150,21 +164,39 @@ private:
         _dpi = {};
         _dpi.virtual_channel    = 0;
         _dpi.dpi_clk_src        = MIPI_DSI_DPI_CLK_SRC_DEFAULT;
-        _dpi.dpi_clock_freq_mhz = 40;
+        _dpi.dpi_clock_freq_mhz = 80;
         _dpi.pixel_format       = LCD_COLOR_PIXEL_FORMAT_RGB888;
         _dpi.num_fbs            = 1;
         _dpi.video_timing.h_size            = NARYAV4_HDMI_W;
         _dpi.video_timing.v_size            = NARYAV4_HDMI_H;
-        _dpi.video_timing.hsync_pulse_width = 128;
-        _dpi.video_timing.hsync_back_porch  = 88;
-        _dpi.video_timing.hsync_front_porch = 48;
-        _dpi.video_timing.vsync_pulse_width = 4;
-        _dpi.video_timing.vsync_back_porch  = 23;
-        _dpi.video_timing.vsync_front_porch = 1;
+        _dpi.video_timing.hsync_pulse_width = 40;
+        _dpi.video_timing.hsync_back_porch  = 220;
+        _dpi.video_timing.hsync_front_porch = 110;
+        _dpi.video_timing.vsync_pulse_width = 5;
+        _dpi.video_timing.vsync_back_porch  = 20;
+        _dpi.video_timing.vsync_front_porch = 5;
         _dpi.flags.disable_lp   = true;
 
+        // The same numbers on the bridge side. Not the driver's own
+        // ESP_LCD_LT8912B_VIDEO_TIMING_1280x720_60Hz(): that one is CVT-RB at
+        // 64MHz, which the P4 cannot divide exactly (240/64 = 3.75, rounded to
+        // 60MHz) -- the case P0 measured as broken.
         lt8912b_vendor_config_t vendor = {};
-        vendor.video_timing = ESP_LCD_LT8912B_VIDEO_TIMING_800x600_60Hz();
+        vendor.video_timing.hfp          = 110;
+        vendor.video_timing.hs           = 40;
+        vendor.video_timing.hbp          = 220;
+        vendor.video_timing.hact         = 1280;
+        vendor.video_timing.htotal       = 1650;
+        vendor.video_timing.vfp          = 5;
+        vendor.video_timing.vs           = 5;
+        vendor.video_timing.vbp          = 20;
+        vendor.video_timing.vact         = 720;
+        vendor.video_timing.vtotal       = 750;
+        vendor.video_timing.h_polarity   = 1;
+        vendor.video_timing.v_polarity   = 1;
+        vendor.video_timing.vic          = 4;
+        vendor.video_timing.aspect_ratio = LT8912B_ASPECT_RATION_16_9;
+        vendor.video_timing.pclk_mhz     = 80;
         vendor.mipi_config.dsi_bus    = dsi;
         vendor.mipi_config.dpi_config = &_dpi;
         vendor.mipi_config.lane_num   = NARYAV4_DSI_LANES;
@@ -191,7 +223,8 @@ private:
             FMRB_LOGE(TAG, "DPI frame buffer unavailable");
             return false;
         }
-        FMRB_LOGI(TAG, "HDMI %dx%d@60 up, RGB888 fb @%p (DDS needs ~20s to lock)",
+
+        FMRB_LOGI(TAG, "HDMI %dx%d up, RGB888 fb @%p",
                   NARYAV4_HDMI_W, NARYAV4_HDMI_H, _fb);
         return true;
     }
