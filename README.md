@@ -47,14 +47,24 @@ cd docker
 
 ### Building
 
+The board is selected with `FMRB_HW_TARGET`, on the command line or in
+`.env` (the command line wins). Switching between boards with different
+chips (or different chip revisions) needs `rake clean_all` first.
+
 ```bash
-# ESP32-S3 target (default HW: N16R8)
+# Retro: NARYA v3, ESP32-S3 (the default)
 rake build:esp32
 
-# ESP32-S3 target for ATOM Display (N8R8)
-FMRB_HW_TARGET=ATOM_DISPLAY rake build:esp32
+# Modern: M5Stack Tab5, ESP32-P4
+FMRB_HW_TARGET=TAB5 rake build:esp32
 
-# Use SPI link instead of the default UART
+# Modern: NARYA v4 prototype (ESP32-P4-Nano + LT8912B HDMI), ESP32-P4
+FMRB_HW_TARGET=NARYAv4 rake build:esp32
+
+# ATOM Display (N8R8) — support suspended, currently does not build
+#FMRB_HW_TARGET=ATOM_DISPLAY rake build:esp32
+
+# Use SPI link instead of the default UART (Retro)
 CMAKE_OPTS="-DFMRB_LINK_TRANSPORT=SPI" rake build:esp32
 
 # Linux target (simulation — requires fmruby-graphics-audio/sdl2-display)
@@ -63,6 +73,9 @@ rake build:linux
 # List all available tasks
 rake -T
 ```
+
+Tab5 and NARYA v4 binaries are not interchangeable even though both are
+ESP32-P4: they pin different chip revisions (v1.x vs v3.x).
 
 ### Spinel AOT compiler
 
