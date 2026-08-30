@@ -453,6 +453,9 @@ bool audio_p4_mic_available(void) {
     return s_hw_ready && s_rx_chan != NULL;
 }
 
+// One diagnostic line per microphone enable (see audio_p4_mic_read).
+static bool s_mic_slot_reported = false;
+
 // Set up the RX half on first use, from the config the TX half was given.
 // Identical bytes is not a nicety: i2s_std.c decides the two channels are a
 // full-duplex pair by memcmp of the whole configuration, and a pair that fails
@@ -509,6 +512,7 @@ fmrb_err_t audio_p4_mic_enable(bool on) {
             return FMRB_ERR_FAILED;
         }
         s_mic_on = true;
+        s_mic_slot_reported = false;
         FMRB_LOGI(TAG, "microphone on: %s %d Hz 16-bit stereo",
                   AUDIO_P4_MIC_NAME, AUDIO_P4_SAMPLE_RATE);
     } else {
@@ -537,11 +541,31 @@ int audio_p4_mic_read(int16_t *dst, int max_samples, int timeout_ms) {
         return -1;
     }
 
-    // Left channel only: the two microphones are a stereo pair on the board,
-    // and one of them is what a spectrum wants.
+    // Mix the two slots instead of picking one. A mono ADC (NARYA v4's
+    // ES8311) parks its data on one slot of the stereo frame, and which
+    // slot is a codec configuration detail -- reading the other one is a
+    // microphone that is "silent" with every other part of the path
+    // healthy. The mix survives either placement (and a true stereo pair,
+    // Tab5's ES7210, just becomes mono).
     int n = (int)(got / (2 * sizeof(int16_t)));
     for (int i = 0; i < n; i++) {
-        dst[i] = s_mic_buf[i * 2];
+        int l = s_mic_buf[i * 2];
+        int r = s_mic_buf[i * 2 + 1];
+        dst[i] = (int16_t)((l + r) / 2);
+    }
+    // Once per enable, say how much energy each slot carries, so the serial
+    // log can settle where the data really is (or that none is arriving).
+    if (!s_mic_slot_reported && n > 0) {
+        int64_t el = 0, er = 0;
+        for (int i = 0; i < n; i++) {
+            int64_t l = s_mic_buf[i * 2];
+            int64_t r = s_mic_buf[i * 2 + 1];
+            el += l * l;
+            er += r * r;
+        }
+        FMRB_LOGI(TAG, "mic slots over %d frames: L msq=%lld R msq=%lld",
+                  n, (long long)(el / n), (long long)(er / n));
+        s_mic_slot_reported = true;
     }
     return n;
 }
