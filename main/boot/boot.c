@@ -39,8 +39,10 @@
 #endif
 #ifdef FMRB_HW_MODERN
 #include "display_p4_task.h"
+#if !defined(FMRB_HW_NARYAV4)
 #include "tab5_keyboard.h"
 #include "touch_task.h"
+#endif
 #include "audio_p4.h"
 #include "wifi_task.h"
 #include "rd_task.h"
@@ -291,9 +293,9 @@ static bool init_hardware(void)
 }
 #else // ESP32
 #ifdef FMRB_HW_MODERN
-// One-shot helper for Modern: the C6 coprocessor power rail is switched
-// by the display task (tab5_power_on via PI4IO #2), so wait for the
-// display before starting the esp_hosted SDIO handshake. BLE goes first
+// One-shot helper for Modern. On Tab5 the C6 coprocessor power rail is
+// switched by the display task (tab5_power_on via PI4IO #2), so the display
+// has to come up first; NARYA v4 has no such coupling. BLE goes first
 // (its nimble_port_init brings the SDIO transport up, the proven path),
 // WiFi strictly after: esp_hosted 1.4.0 corrupts the heap when an RPC is
 // issued before the transport is up (see doc/reference/ble_c6_web_console.md).
@@ -302,6 +304,12 @@ static bool init_hardware(void)
 static void modern_radio_init_task(void *arg)
 {
     (void)arg;
+#if !defined(FMRB_HW_NARYAV4)
+    // Tab5 only: the C6's power rail hangs off PI4IO #2, which the display
+    // task switches, so the radio cannot come up before the display has. On
+    // NARYA v4 the C6's enable is a plain GPIO that esp_hosted drives itself
+    // (CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE), so waiting here would only
+    // couple the radio to a failure it has nothing to do with.
     for (int i = 0; i < 300 && !display_p4_is_ready(); i++) {
         fmrb_task_delay_ms(10);
     }
@@ -310,6 +318,7 @@ static void modern_radio_init_task(void *arg)
         fmrb_task_delete_ex(NULL);
         return;
     }
+#endif
     // Both radios are gated by system_conf.toml, which only the kernel can
     // read, so wait for it before either decision. Failing to become ready
     // is not a reason to change the policy: fall back to the built-in
@@ -430,6 +439,9 @@ static bool init_hardware(void)
         FMRB_LOGW(TAG, "Failed to init P4 display, continuing without it");
     }
 
+#if !defined(FMRB_HW_NARYAV4)
+    // Tab5 only: the keyboard accessory and the body touch panel. NARYA v4
+    // has neither, and their drivers are not in that build at all.
     ret = tab5_keyboard_init();
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init Tab5 keyboard, continuing without it");
@@ -439,11 +451,12 @@ static bool init_hardware(void)
     if (ret != FMRB_OK) {
         FMRB_LOGW(TAG, "Failed to init touch, continuing without it");
     }
+#endif
 
     // Local APU audio engine (codec hw is brought up by the display task)
     ret = audio_p4_task_init();
     if (ret != FMRB_OK) {
-        FMRB_LOGW(TAG, "Failed to init Tab5 audio, continuing without it");
+        FMRB_LOGW(TAG, "Failed to init audio, continuing without it");
     }
 
     // BLE + WiFi via the ESP32-C6 coprocessor: run in a one-shot helper

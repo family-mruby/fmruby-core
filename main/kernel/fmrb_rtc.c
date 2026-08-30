@@ -60,8 +60,14 @@ static int64_t fields_to_epoch(int year, int month, int day, int hour, int min, 
 
 fmrb_err_t fmrb_rtc_sync_system_clock(void)
 {
-#ifdef CONFIG_IDF_TARGET_LINUX
+#if defined(CONFIG_IDF_TARGET_LINUX)
     // No RTC hardware in the simulation; the host clock is already right.
+    return FMRB_ERR_NOT_SUPPORTED;
+#elif defined(FMRB_HW_NARYAV4)
+    // NARYA v4 carries no RTC chip. The time comes from the timesync service
+    // over the network instead (doc/naryav4/plan.md); probing an empty address
+    // every boot would only produce a warning nobody can act on. The final
+    // board is expected to fit one, at which point this comes back.
     return FMRB_ERR_NOT_SUPPORTED;
 #else
     if (fmrb_hal_i2c_init(RTC_I2C_UNIT, RTC_I2C_FREQ, FMRB_PIN_I2C1_SDA,

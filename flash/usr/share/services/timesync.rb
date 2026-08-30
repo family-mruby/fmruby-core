@@ -247,6 +247,12 @@ class TimeSync
   # Retro carries an RX8900 and Modern an RX8130, but services are Modern
   # only, so this is the RX8130 alone.
   def write_rtc(epoch)
+    # Not every Modern board has the chip. NARYA v4 has none -- its time comes
+    # from here on every boot and nothing has to survive a power cut -- so
+    # there is nothing to write and nothing to warn about.
+    unless self.class.rtc_board?
+      return nil
+    end
     wc = self.class.utc_fields(epoch)
     i2c = nil
     begin
@@ -268,6 +274,12 @@ class TimeSync
       end
     end
     nil
+  end
+
+  # Whether this board has an RTC chip to write. Kept next to the writer so
+  # the two cannot drift apart.
+  def self.rtc_board?
+    ::FmrbConst::BOARD != "naryav4"
   end
 
   # ---- the parts with no machine in them ---------------------------------

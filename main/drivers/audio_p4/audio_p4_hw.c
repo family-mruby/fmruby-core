@@ -36,11 +36,26 @@
 #include "driver/i2s_std.h"
 #include "esp_codec_dev.h"
 #include "esp_codec_dev_defaults.h"
+#include "fmrb_pin_assign.h"
 
 static const char *TAG = "audio_p4";
 
-#define AUDIO_P4_I2C_PORT      1        // shared bus (GPIO31/32)
 #define AUDIO_P4_I2S_PORT      I2S_NUM_1
+
+#if defined(FMRB_HW_NARYAV4)
+// NARYA v4: one ES8311 for both directions, on the display's I2C bus, with the
+// speaker amplifier (NS4150B) enabled by a plain GPIO. Pins come from
+// fmrb_pin_assign.h, which carries what the schematic says.
+#define AUDIO_P4_I2C_PORT      0        // the display owns this bus (GPIO7/8)
+#define AUDIO_P4_PIN_MCLK      FMRB_PIN_I2S_MCLK
+#define AUDIO_P4_PIN_BCLK      FMRB_PIN_I2S_SCLK
+#define AUDIO_P4_PIN_WS        FMRB_PIN_I2S_LRCK
+#define AUDIO_P4_PIN_DOUT      FMRB_PIN_I2S_DOUT
+// Microphone data in. Same chip as the speaker, so the RX channel is the other
+// half of this port and samples at the speaker's rate.
+#define AUDIO_P4_PIN_DIN       FMRB_PIN_I2S_DIN
+#else
+#define AUDIO_P4_I2C_PORT      1        // shared bus (GPIO31/32)
 #define AUDIO_P4_PIN_MCLK      GPIO_NUM_30
 #define AUDIO_P4_PIN_BCLK      GPIO_NUM_27
 #define AUDIO_P4_PIN_WS        GPIO_NUM_29
@@ -50,6 +65,7 @@ static const char *TAG = "audio_p4";
 // this port rather than a port of its own, and it samples at the speaker's
 // rate. Anything else would need those clocks routed to a second controller.
 #define AUDIO_P4_PIN_DIN       GPIO_NUM_28
+#endif
 
 #define AUDIO_P4_UPSAMPLE      3
 #define AUDIO_P4_SAMPLE_RATE   (15720 * AUDIO_P4_UPSAMPLE)
@@ -78,6 +94,65 @@ static int16_t s_mic_buf[AUDIO_P4_MIC_FRAMES * 2];
 static bool audio_p4_hw_ready(void) {
     return s_hw_ready;
 }
+
+// The codec, and how much of it this board uses. Tab5 has two chips and only
+// the ES8388 (playback) is opened here -- its ES7210 microphone is woken by
+// hand further down. NARYA v4 has one ES8311 doing both, so it is opened for
+// both and the microphone needs no chip-specific poking at all.
+#if defined(FMRB_HW_NARYAV4)
+#define AUDIO_P4_CODEC_ADDR     ES8311_CODEC_DEFAULT_ADDR
+#define AUDIO_P4_CODEC_DEV_TYPE ESP_CODEC_DEV_TYPE_IN_OUT
+#define AUDIO_P4_CODEC_NAME     "ES8311"
+#define AUDIO_P4_MIC_NAME       "ES8311"
+// The rate esp_codec_dev is told to open at, which is NOT the rate the link
+// runs at. The ES8311 driver picks its internal dividers from a table indexed
+// by (MCLK, rate), and that table holds standard rates only -- 47160 is not
+// one, so opening at the real rate fails with "Unable to configure sample
+// rate". What the table entry actually encodes is a set of RATIOS against
+// MCLK, and at MCLK = 256 x LRCK the 48000 row carries exactly the ratios this
+// link needs. So the codec is configured from that row and the I2S clock is
+// put back to the real rate immediately afterwards: the chip is a slave and
+// follows LRCK, both clocks scale together, and the pitch stays exact.
+#define AUDIO_P4_CODEC_OPEN_RATE 48000
+// Analog gain for the on-board electret. The ES8311 comes up at 0 dB, which
+// for this microphone is silence with a spectrum to match -- measured. 30 dB
+// is a starting point, not a tuned value (doc/naryav4/report/p3.md).
+#define AUDIO_P4_MIC_GAIN_DB     30.0f
+
+static const audio_codec_if_t *board_codec_new(const audio_codec_ctrl_if_t *ctrl_if)
+{
+    es8311_codec_cfg_t cfg = {
+        .ctrl_if     = ctrl_if,
+        // esp_codec_dev drives the amplifier enable itself, after the codec is
+        // configured -- which is also when it should go up, so the speaker is
+        // not enabled across the codec's own power-on transient.
+        .gpio_if     = audio_codec_new_gpio(),
+        .codec_mode  = ESP_CODEC_DEV_WORK_MODE_BOTH,
+        .pa_pin      = FMRB_PIN_AUDIO_AMP_EN,
+        .pa_reverted = false,
+        .master_mode = false,
+        .use_mclk    = true,
+    };
+    return es8311_codec_new(&cfg);
+}
+#else
+#define AUDIO_P4_CODEC_ADDR     ES8388_CODEC_DEFAULT_ADDR
+#define AUDIO_P4_CODEC_DEV_TYPE ESP_CODEC_DEV_TYPE_OUT
+#define AUDIO_P4_CODEC_NAME     "ES8388"
+#define AUDIO_P4_MIC_NAME       "ES7210"
+#define AUDIO_P4_CODEC_OPEN_RATE AUDIO_P4_SAMPLE_RATE
+
+static const audio_codec_if_t *board_codec_new(const audio_codec_ctrl_if_t *ctrl_if)
+{
+    es8388_codec_cfg_t cfg = {
+        .codec_mode  = ESP_CODEC_DEV_WORK_MODE_DAC,
+        .master_mode = false,
+        .ctrl_if     = ctrl_if,
+        .pa_pin      = -1,  // speaker amp is driven by PI4IO #1 P1 (tab5_power_on)
+    };
+    return es8388_codec_new(&cfg);
+}
+#endif
 
 static fmrb_err_t audio_p4_hw_init(void) {
     if (s_hw_ready) return FMRB_OK;
@@ -153,6 +228,14 @@ static fmrb_err_t audio_p4_hw_init(void) {
     i2c_master_bus_handle_t bus = NULL;
     err = i2c_master_get_bus_handle(AUDIO_P4_I2C_PORT, &bus);
     if (err != ESP_OK || !bus) {
+#if defined(FMRB_HW_NARYAV4)
+        // The display created this bus and owns it. If it is not there, the
+        // display failed, and making a second one on the same pins would only
+        // turn that into a harder fault.
+        FMRB_LOGE(TAG, "I2C bus %d not up (display did not create it)",
+                  AUDIO_P4_I2C_PORT);
+        return FMRB_ERR_FAILED;
+#else
         i2c_master_bus_config_t bus_cfg = {
             .i2c_port = AUDIO_P4_I2C_PORT,
             .sda_io_num = GPIO_NUM_31,
@@ -167,11 +250,12 @@ static fmrb_err_t audio_p4_hw_init(void) {
             return FMRB_ERR_FAILED;
         }
         FMRB_LOGI(TAG, "I2C bus %d created for codec", AUDIO_P4_I2C_PORT);
+#endif
     }
 
     audio_codec_i2c_cfg_t i2c_cfg = {
         .port = AUDIO_P4_I2C_PORT,
-        .addr = ES8388_CODEC_DEFAULT_ADDR,
+        .addr = AUDIO_P4_CODEC_ADDR,
         .bus_handle = bus,
     };
     const audio_codec_ctrl_if_t *ctrl_if = audio_codec_new_i2c_ctrl(&i2c_cfg);
@@ -191,20 +275,14 @@ static fmrb_err_t audio_p4_hw_init(void) {
         return FMRB_ERR_FAILED;
     }
 
-    es8388_codec_cfg_t es_cfg = {
-        .codec_mode = ESP_CODEC_DEV_WORK_MODE_DAC,
-        .master_mode = false,
-        .ctrl_if = ctrl_if,
-        .pa_pin = -1,  // speaker amp is driven by PI4IO #1 P1 (tab5_power_on)
-    };
-    const audio_codec_if_t *codec_if = es8388_codec_new(&es_cfg);
+    const audio_codec_if_t *codec_if = board_codec_new(ctrl_if);
     if (!codec_if) {
-        FMRB_LOGE(TAG, "es8388 codec create failed");
+        FMRB_LOGE(TAG, "codec create failed");
         return FMRB_ERR_FAILED;
     }
 
     esp_codec_dev_cfg_t dev_cfg = {
-        .dev_type = ESP_CODEC_DEV_TYPE_OUT,
+        .dev_type = AUDIO_P4_CODEC_DEV_TYPE,
         .codec_if = codec_if,
         .data_if = data_if,
     };
@@ -215,7 +293,7 @@ static fmrb_err_t audio_p4_hw_init(void) {
     }
 
     esp_codec_dev_sample_info_t fs = {
-        .sample_rate = AUDIO_P4_SAMPLE_RATE,
+        .sample_rate = AUDIO_P4_CODEC_OPEN_RATE,
         .channel = 2,
         .bits_per_sample = 16,
     };
@@ -223,7 +301,36 @@ static fmrb_err_t audio_p4_hw_init(void) {
         FMRB_LOGE(TAG, "codec open failed");
         return FMRB_ERR_FAILED;
     }
+#if AUDIO_P4_CODEC_OPEN_RATE != AUDIO_P4_SAMPLE_RATE
+    // esp_codec_dev reconfigured the I2S clock to the rate it was opened at.
+    // Put the real one back (see AUDIO_P4_CODEC_OPEN_RATE above). Same
+    // mclk_multiple, so the ratio the codec was programmed for is preserved,
+    // and s_std_cfg -- which the microphone's RX half is initialised from --
+    // still describes the channel.
+    {
+        i2s_std_clk_config_t clk = I2S_STD_CLK_DEFAULT_CONFIG(AUDIO_P4_SAMPLE_RATE);
+        clk.mclk_multiple = I2S_MCLK_MULTIPLE_256;
+        // The clock can only be changed with the channel stopped, and
+        // esp_codec_dev leaves it running. Nothing is being played yet.
+        i2s_channel_disable(s_tx_chan);
+        esp_err_t rc = i2s_channel_reconfig_std_clock(s_tx_chan, &clk);
+        esp_err_t rc_en = i2s_channel_enable(s_tx_chan);
+        if (rc != ESP_OK || rc_en != ESP_OK) {
+            FMRB_LOGE(TAG, "could not restore the %d Hz link clock: %d/%d",
+                      AUDIO_P4_SAMPLE_RATE, rc, rc_en);
+            return FMRB_ERR_FAILED;
+        }
+        FMRB_LOGI(TAG, "link clock back to %d Hz (codec configured from the "
+                       "%d Hz coefficients, same 256x ratio)",
+                  AUDIO_P4_SAMPLE_RATE, AUDIO_P4_CODEC_OPEN_RATE);
+    }
+#endif
     esp_codec_dev_set_out_vol(s_codec, AUDIO_P4_DEFAULT_VOL);
+#if defined(AUDIO_P4_MIC_GAIN_DB)
+    if (esp_codec_dev_set_in_gain(s_codec, AUDIO_P4_MIC_GAIN_DB) != ESP_CODEC_DEV_OK) {
+        FMRB_LOGW(TAG, "microphone gain not set; input may be silent");
+    }
+#endif
 
     // Headphone detect / speaker amp gating lives in the display driver
     // (display_p4_poll_headphone): the PI4IO shares the I2C controller
@@ -231,8 +338,8 @@ static fmrb_err_t audio_p4_hw_init(void) {
     // runtime accesses must go through lgfx's I2C path from the touch
     // task context. Using i2c_master here breaks the controller state.
 
-    FMRB_LOGI(TAG, "Tab5 audio ready: ES8388 %d Hz 16-bit stereo (APU %d Hz x%d)",
-              AUDIO_P4_SAMPLE_RATE, 15720, AUDIO_P4_UPSAMPLE);
+    FMRB_LOGI(TAG, "audio ready: %s %d Hz 16-bit stereo (APU %d Hz x%d)",
+              AUDIO_P4_CODEC_NAME, AUDIO_P4_SAMPLE_RATE, 15720, AUDIO_P4_UPSAMPLE);
     s_hw_ready = true;
     return FMRB_OK;
 }
@@ -281,6 +388,7 @@ static void audio_p4_hw_write(const int16_t *samples, int len, int channels) {
 // perfectly adequate for a bar display.
 // ============================================================
 
+#if !defined(FMRB_HW_NARYAV4)
 #define ES7210_I2C_ADDR_7BIT  0x40
 #define ES7210_I2C_FREQ       400000
 
@@ -339,6 +447,8 @@ static fmrb_err_t es7210_write_all(const uint8_t (*regs)[2], size_t count)
     return FMRB_OK;
 }
 
+#endif /* !FMRB_HW_NARYAV4 */
+
 bool audio_p4_mic_available(void) {
     return s_hw_ready && s_rx_chan != NULL;
 }
@@ -378,6 +488,10 @@ fmrb_err_t audio_p4_mic_enable(bool on) {
 
     if (on) {
         if (!mic_init_rx()) return FMRB_ERR_FAILED;
+#if !defined(FMRB_HW_NARYAV4)
+        // Tab5 only: the ES7210 is a separate chip and has to be woken by
+        // hand. NARYA v4's microphone is on the ES8311 the speaker uses, which
+        // esp_codec_dev already opened for both directions.
         // Reset first (0x00 = 0xFF), the way the codec expects to be woken.
         fmrb_err_t err = display_p4_i2c_write_reg8(ES7210_I2C_ADDR_7BIT, 0x00, 0xFF,
                                                    ES7210_I2C_FREQ);
@@ -388,19 +502,22 @@ fmrb_err_t audio_p4_mic_enable(bool on) {
         err = es7210_write_all(s_es7210_on,
                                sizeof(s_es7210_on) / sizeof(s_es7210_on[0]));
         if (err != FMRB_OK) return err;
-
+#endif
         esp_err_t rc = i2s_channel_enable(s_rx_chan);
         if (rc != ESP_OK) {
             FMRB_LOGE(TAG, "i2s rx enable failed: %d", rc);
             return FMRB_ERR_FAILED;
         }
         s_mic_on = true;
-        FMRB_LOGI(TAG, "microphone on: ES7210 %d Hz 16-bit stereo", AUDIO_P4_SAMPLE_RATE);
+        FMRB_LOGI(TAG, "microphone on: %s %d Hz 16-bit stereo",
+                  AUDIO_P4_MIC_NAME, AUDIO_P4_SAMPLE_RATE);
     } else {
         i2s_channel_disable(s_rx_chan);
         s_mic_on = false;
+#if !defined(FMRB_HW_NARYAV4)
         es7210_write_all(s_es7210_off,
                          sizeof(s_es7210_off) / sizeof(s_es7210_off[0]));
+#endif
         FMRB_LOGI(TAG, "microphone off");
     }
     return FMRB_OK;
@@ -497,6 +614,24 @@ void audio_p4_mic_selftest(void) {
 // 0-100 linearly to -50..0 dB, i.e. reg = 100 - vol; keep that mapping so
 // runtime changes sound identical to the boot default, but treat 0 as a
 // full mute (-96 dB).
+#if defined(FMRB_HW_NARYAV4)
+// Nothing drives this I2C controller behind esp_codec_dev's back on this
+// board, so the volume goes through the normal API. It has to work: it is
+// also the way to silence the speaker, and the amplifier here is enabled
+// whenever the codec is open.
+static void audio_p4_hw_set_volume(uint8_t volume_0_255) {
+    if (!s_hw_ready || !s_codec) return;
+    int vol = (volume_0_255 * 100) / 255;
+    int rc = esp_codec_dev_set_out_vol(s_codec, vol);
+    if (rc != ESP_CODEC_DEV_OK) {
+        FMRB_LOGW(TAG, "volume set failed: %d", rc);
+        return;
+    }
+    // Mute as well at zero: the DAC at its lowest volume is quiet, not silent.
+    esp_codec_dev_set_out_mute(s_codec, vol == 0);
+    FMRB_LOGI(TAG, "volume set to %d/100%s", vol, vol == 0 ? " (muted)" : "");
+}
+#else
 #define ES8388_I2C_ADDR_7BIT  (ES8388_CODEC_DEFAULT_ADDR >> 1)
 #define ES8388_REG_LDACVOL    0x1A  // ES8388_DACCONTROL4
 #define ES8388_REG_RDACVOL    0x1B  // ES8388_DACCONTROL5
@@ -523,6 +658,7 @@ static void audio_p4_hw_set_volume(uint8_t volume_0_255) {
     }
     FMRB_LOGI(TAG, "volume set to %d/100 (dacvol=0x%02X)", vol, reg);
 }
+#endif /* FMRB_HW_NARYAV4 */
 
 // ---------------------------------------------------------------------------
 

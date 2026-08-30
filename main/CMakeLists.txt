@@ -204,8 +204,6 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/display_p4/display_blend_cpu.c"
             "drivers/display_p4/display_p4_vm.cpp"
             "drivers/display_p4/display_p4_sprite.cpp"
-            "drivers/touch/touch_task.c"
-            "drivers/tab5_keyboard/tab5_keyboard.c"
             "drivers/audio_p4/audio_p4_hw.c"
             "drivers/audio_p4/audio_p4_handler.c"
             "drivers/audio_p4/audio_p4_task.c"
@@ -221,6 +219,16 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/remote_desktop/rd_stream.c"
             "drivers/remote_desktop/rd_input.c"
         )
+        # Touch panel and the Tab5 Keyboard accessory are Tab5 hardware.
+        # NARYA v4 has neither -- its input comes over USB -- and leaving them
+        # in would do more than log failures: tab5_keyboard claims I2C_NUM_0,
+        # which on that board is the display's bus.
+        if(NOT FMRB_HW_TARGET STREQUAL "NARYAv4")
+            list(APPEND COMPONENT_SRCS
+                "drivers/touch/touch_task.c"
+                "drivers/tab5_keyboard/tab5_keyboard.c"
+            )
+        endif()
         # Local audio: APU emulator + ES8388 codec (esp_codec_dev) over I2S
         # esp_app_format: esp_app_get_description() for the boot screen
         list(APPEND COMPONENT_REQUIRES m5gfx esp_driver_ppa apu_emu
