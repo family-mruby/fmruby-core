@@ -619,7 +619,6 @@ if (importBtn && importInput) {
     statusLine.textContent = 'restored ' + files + ' file(s) into /home -- ' +
       'reload the page to let the machine see them';
     measureStorage();
-  enableStorageButtons();
   });
 }
 if (resetBtn) {
@@ -745,6 +744,13 @@ function fsprobeReport(mod) {
   probeLog('FSPROBE result: page file in /home after boot = ' +
            (kept === null ? 'gone' : JSON.stringify(kept)));
   probeLog('FSPROBE result: home store = ' + homeStore);
+  // The three buttons are useless while they are disabled, and a disabled
+  // button swallows the click without a sound -- which is exactly how this
+  // shipped broken once.
+  probeLog('FSPROBE result: buttons enabled = ' +
+           ['home-export', 'home-import-btn', 'home-reset']
+             .map((id) => id + '=' + !document.getElementById(id).disabled)
+             .join(' '));
   // T4: write a couple of files, tar them in memory, wipe, restore, look.
   try {
     mod.FS.writeFile(HOME_PATH + '/t4.txt', 'hello');
@@ -834,6 +840,7 @@ startOverlay.addEventListener('click', async () => {
   if (FSPROBE) setTimeout(() => fsprobeReport(mod), 3000);
   if (FSPROBE) setTimeout(fsprobeSecondTab, 6000);
   measureStorage();
+  enableStorageButtons();
   hookInput();
   requestAnimationFrame(paint);
   if (ac) {
