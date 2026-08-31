@@ -63,6 +63,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `mic_spectrum/` [計画書: Tab5 マイクの周波数分析デモ + FFT エンジン比較](mic_spectrum/plan.md) — - 〔5 files〕
 - `micropython/` [MicroPython ゲスト VM 取り込み計画](micropython/README.md) — - 〔24 files〕
 - `midi/` [Family mruby MIDI 対応 検討メモ](midi/README.md) — - 〔23 files〕
+- `mouse_wheel/` [マウスホイール対応 検討と計画](mouse_wheel/plan.md) — **計画済** (2026-08-31) 経路は入力源 5 + 中核 4 + アプリ 3。sim だけ通せば 7 画面が一度に動く。実機 USB が唯一の難所 〔1 files〕
 - `multivm_app/` [多重 VM アプリ構想: 巨大 Ruby アプリをマイコンで動かす](multivm_app/plan.md) — - 〔3 files〕
 - `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-08-30) P0-P3 完了 (P3 は実機確認 4 件残)。P4 は遠隔検証・実測・基板反映まとめまで完了 (report/p4.md)。残り = ユーザ確認とモニタ相性、無印 ESP32 疎通 (保留) 〔9 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔5 files〕
