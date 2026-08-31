@@ -177,6 +177,23 @@ class FmrbApp
     nil
   end
 
+
+  # The other half of attach_ui, for an app whose window can be resized: the
+  # widgets are anchored to the user area at the moment they are built, so a
+  # resize means building them again -- and the old set has to go, or
+  # clear_user_area keeps repainting it at yesterday's coordinates.
+  def detach_ui(ui)
+    out = []
+    i = 0
+    n = @attached_uis.size
+    while i < n
+      out << @attached_uis[i] unless @attached_uis[i] == ui
+      i += 1
+    end
+    @attached_uis = out
+    nil
+  end
+
   def _invalidate_attached_uis
     n = @attached_uis.size
     i = 0

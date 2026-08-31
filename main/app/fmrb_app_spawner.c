@@ -150,10 +150,15 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
+        .resizable = true,
         .window_width = 300,
         .window_height = 200,
         .window_pos_x = 5,
         .window_pos_y = 15,
+        // The prompt plus a couple of dozen characters, and enough height for
+        // the logo band and a few rows of history.
+        .min_window_width = 160,
+        .min_window_height = 80,
         .rounded_corners = true
     }},
     { "default/editor", {
@@ -236,10 +241,16 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .flags = FMRB_SHELL_APP_TASK_FLAGS,
         .core_affinity = -1,
         .headless = false,
+        .resizable = true,
         .window_width = 300,
         .window_height = 200,
         .window_pos_x = 5,
         .window_pos_y = 15,
+        // The toolbar is the floor for the width (level button, wrap button
+        // and the AUTO/HOLD flag side by side); height is the toolbar plus a
+        // few rows.
+        .min_window_width = 200,
+        .min_window_height = 70,
         .rounded_corners = true
     }},
     { "default/monitor", {

@@ -476,13 +476,29 @@ class ShellApp < FmrbApp
     end
   end
 
+  # The window can be dragged to a new size (the entry in the spawner table
+  # says resizable). @window_* and @user_area_* are updated by the C side
+  # before this runs; everything the shell derives from them is on_create's
+  # layout half, so it is done again here -- including the scrollbar, whose
+  # widget is anchored to the user area at the moment it is built. The old
+  # one is detached first, or clear_user_area would keep repainting it where
+  # the window used to end.
   def on_resize(new_width, new_height)
-    # Called when window is resized
-    # @window_width, @window_height, @user_area_* are already updated by C code
-    puts "[ShellApp] Resize event: #{new_width}x#{new_height}"
-
-    # Trigger full redraw
+    @max_chars = (@user_area_width - 4 - SB_W) / @char_width
+    @visible_rows = (@user_area_height - 2) / @char_height
+    detach_ui(@ui) if @ui
+    @ui = FmrbUI.new(self, bg: @bg_col)
+    @ui.scrollbar(:sb, @user_area_width - SB_W, 0, SB_W,
+                  @user_area_height, 0, 1)
+    # A narrower window rewraps the history into more rows, so a scroll
+    # position taken at the old width can point past the end.
+    total = total_display_rows
+    max_scroll = total > @visible_rows ? total - @visible_rows : 0
+    @scroll = max_scroll if @scroll > max_scroll
     @need_full_redraw = true
+    Log.info("Shell resize: #{new_width}x#{new_height} " \
+             "-> #{@max_chars}x#{@visible_rows}")
+    nil
   end
 
   # ---- Command input handling ----

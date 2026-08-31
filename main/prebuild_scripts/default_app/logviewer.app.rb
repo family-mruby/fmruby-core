@@ -34,6 +34,11 @@ class LogViewerApp < FmrbApp
     @auto_scroll = true
     @level_idx = 0  # 0=I (default), 1=D
     @scroll_hold = 0  # -1=up, 0=none, 1=down
+    # Long lines are the normal case in a log, and cutting them throws away
+    # the half that usually matters, so wrapping is on until asked otherwise.
+    # Scroll positions are display rows either way, which is why every count
+    # below goes through total_display_rows rather than @lines.size.
+    @wrap = true
   end
 
   def on_create
@@ -97,8 +102,37 @@ class LogViewerApp < FmrbApp
     (@user_area_height - TOOLBAR_H - 2) / 8
   end
 
+  # Characters that fit across the log area (the scrollbar's width is already
+  # out of it). Recomputed rather than stored: the window can be resized.
+  def log_max_chars
+    n = (@user_area_width - 10) / 6
+    n < 1 ? 1 : n
+  end
+
+  # How many rows one line takes at this width.
+  def segs_for(len, max_chars)
+    return 1 unless @wrap
+    return 1 if len <= max_chars
+    n = len / max_chars
+    n += 1 if len % max_chars != 0
+    n
+  end
+
+  def total_display_rows
+    return @lines.size unless @wrap
+    max_chars = log_max_chars
+    total = 0
+    i = 0
+    n = @lines.size
+    while i < n
+      total += segs_for(@lines[i].length, max_chars)
+      i += 1
+    end
+    total
+  end
+
   def visible_max_scroll
-    total = @lines.size
+    total = total_display_rows
     vis = visible_lines
     total > vis ? total - vis : 0
   end
@@ -126,25 +160,39 @@ class LogViewerApp < FmrbApp
     # Toolbar
     draw_toolbar(x0, y0, w)
 
-    # Log lines
+    # Log lines. @scroll counts display rows, so a wrapped line is walked
+    # segment by segment: rows before the scroll position are stepped over
+    # without being built, and only what is on screen is sliced.
     log_y0 = y0 + TOOLBAR_H
-    log_h = h - TOOLBAR_H
     vis = visible_lines
-    start = @scroll
-    max_chars = (w - 10) / 6
+    max_chars = log_max_chars
 
+    row = 0
+    drawn = 0
     i = 0
-    while i < vis
-      idx = start + i
-      break if idx >= @lines.size
-      line = @lines[idx]
+    n = @lines.size
+    while i < n && drawn < vis
+      line = @lines[i]
       color = level_color(line)
-      text = line.length > max_chars ? line[0, max_chars] : line
-      @gfx.draw_text(x0 + 2, log_y0 + 1 + i * 8, text, color, LOG_BG)
+      segs = segs_for(line.length, max_chars)
+      seg = 0
+      while seg < segs && drawn < vis
+        if row >= @scroll
+          if @wrap
+            text = line[seg * max_chars, max_chars]
+          else
+            text = line.length > max_chars ? line[0, max_chars] : line
+          end
+          @gfx.draw_text(x0 + 2, log_y0 + 1 + drawn * 8, text, color, LOG_BG) if text
+          drawn += 1
+        end
+        row += 1
+        seg += 1
+      end
       i += 1
     end
 
-    @ui.set_range(:sb, @lines.size, vis)
+    @ui.set_range(:sb, total_display_rows, vis)
     @ui.set_value(:sb, @scroll)
     @ui.invalidate_all
 
@@ -152,15 +200,33 @@ class LogViewerApp < FmrbApp
     @gfx.present unless @ui.flush
   end
 
+  def level_label
+    "Lv:" + LEVEL_LABELS[@level_idx]
+  end
+
+  def level_btn_w
+    level_label.length * 6 + 8
+  end
+
+  def wrap_label
+    @wrap ? "Wrap" : "Cut"
+  end
+
+  def wrap_btn_w
+    wrap_label.length * 6 + 8
+  end
+
   def draw_toolbar(x0, y0, w)
     @gfx.fill_rect(x0, y0, w, TOOLBAR_H, TOOLBAR_BG)
 
-    # Level button
+    # Level button, then the wrap toggle beside it.
     btn_x = x0 + 2
     btn_y = y0 + 1
-    label = "Lv:" + LEVEL_LABELS[@level_idx]
-    @gfx.fill_rect(btn_x, btn_y, label.length * 6 + 8, 12, BUTTON_BG)
-    @gfx.draw_text(btn_x + 4, btn_y + 2, label, BUTTON_TEXT, BUTTON_BG)
+    @gfx.fill_rect(btn_x, btn_y, level_btn_w, 12, BUTTON_BG)
+    @gfx.draw_text(btn_x + 4, btn_y + 2, level_label, BUTTON_TEXT, BUTTON_BG)
+    wrap_x = btn_x + level_btn_w + 4
+    @gfx.fill_rect(wrap_x, btn_y, wrap_btn_w, 12, BUTTON_BG)
+    @gfx.draw_text(wrap_x + 4, btn_y + 2, wrap_label, BUTTON_TEXT, BUTTON_BG)
 
     # Auto-scroll indicator
     as_label = @auto_scroll ? "[AUTO]" : "[HOLD]"
@@ -170,6 +236,11 @@ class LogViewerApp < FmrbApp
 
   def on_event(ev)
     super(ev)
+    # w also toggles wrapping, for a window too narrow to show the button.
+    if ev[:type] == :key_down && ev[:character] == 119
+      toggle_wrap
+      return
+    end
     x = ev[:x]
     y = ev[:y]
 
@@ -188,12 +259,16 @@ class LogViewerApp < FmrbApp
       # Stop scroll hold
       @scroll_hold = 0
 
-      # Toolbar click
+      # Toolbar click: the two buttons, measured the way they are drawn.
       if y >= @user_area_y0 && y < @user_area_y0 + TOOLBAR_H
-        if x < @user_area_x0 + 100
+        lv_x0 = @user_area_x0 + 2
+        wrap_x0 = lv_x0 + level_btn_w + 4
+        if x >= lv_x0 && x < lv_x0 + level_btn_w
           @level_idx = (@level_idx + 1) % LEVELS.size
           Log.set_buffer_level(LEVELS[@level_idx])
           draw_view
+        elsif x >= wrap_x0 && x < wrap_x0 + wrap_btn_w
+          toggle_wrap
         end
         return
       end
@@ -213,6 +288,33 @@ class LogViewerApp < FmrbApp
         draw_view
       end
     end
+  end
+
+  # Wrapping changes what a scroll position means, so it is re-anchored: the
+  # view stays at the bottom when it was following the tail, and is clamped
+  # otherwise.
+  def toggle_wrap
+    @wrap = !@wrap
+    max_scroll = visible_max_scroll
+    @scroll = max_scroll if @auto_scroll || @scroll > max_scroll
+    draw_view
+    nil
+  end
+
+  # The window can be dragged to a new size. Everything is derived from the
+  # user area at draw time, except the scrollbar widget, which is anchored
+  # where it was built -- so that one is built again (and the old one
+  # detached, or it would be repainted at the old edge).
+  def on_resize(new_width, new_height)
+    detach_ui(@ui) if @ui
+    @ui = FmrbUI.new(self, bg: LOG_BG)
+    @ui.scrollbar(:sb, @user_area_width - SB_W, TOOLBAR_H, SB_W,
+                  @user_area_height - TOOLBAR_H, 0, 1)
+    max_scroll = visible_max_scroll
+    @scroll = max_scroll if @auto_scroll || @scroll > max_scroll
+    draw_view
+    Log.info("LogViewer resize: #{new_width}x#{new_height}")
+    nil
   end
 
   def scroll_up
