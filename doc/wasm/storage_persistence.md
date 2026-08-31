@@ -251,7 +251,7 @@ crc32 は `main/kernel/host/host_file_local.c` の `local_file_crc32` がある�
 | T1 | /home から配布物を出す (方針 A)。/usr/share への移動、参照の追従、手本の複製導線 | **完了 2026-08-31** (検証は下記)。残るは実機での確認と、手本の複製導線 |
 | T2 | /home の IDBFS 化。起動前 populate、autoPersist、契機の取りこぼし対策 | **完了 2026-08-31** (report/storage_t2.md): 機械が書いた /home がブラウザ再起動後も残ることを実測。エディタで保存 → リロードも通した (report/drive_tool.md) |
 | T3 | ページの記憶域まわり。使用量表示、恒久化要求、多タブ排他 | **完了 2026-08-31** (report/storage_t3_t4.md) |
-| T4 | 書き出し / 取り込み (tar) と初期化 | **完了 2026-08-31** (report/storage_t3_t4.md): 往復と、細工した名前が /home の外に出ないことを実測。GNU tar でも開ける |
+| T4 | 書き出し / 取り込み (tar) と初期化 | **完了 2026-08-31** (report/storage_t3_t4.md): 往復と、細工した名前が /home の外に出ないことを実測。GNU tar でも開ける。ボタンが無効のままだった件は実ブラウザで見つかり修正済 |
 | T5 (任意) | `/app/usr` の永続化、`launcher_index` の持ち越し | 再読込の起動が速くなる。梱包の版が変わったら捨てる |
 
 T1 は T2 の前提。T0 の結果次第で T2 の作りが変わる。
