@@ -98,6 +98,9 @@
 以下はユーザ判断 (2026-08-31)。
 
 - **単位は「ノッチ」**。HID の Wheel は刻みで来るので ±1 のまま運ぶ。
+  アプリ側には 2 つの読み方がある: `wheel_rows` (文字行 = ノッチ ×
+  wheel_lines) と `wheel_notches` (刻みそのもの)。**行の高さが文字行でない
+  一覧 (ランチャーのタイル) は後者**。
   **「1 ノッチ = 何行」はシステム設定 (`system_conf.toml`) で変えられる**
   ようにする。`mouse_scale_x/y` の隣に `wheel_lines`(既定 3) を置き、
   Config ダイアログにも行を足す。
@@ -125,7 +128,7 @@
 | **W1** | 中核の配管 4 か所 + sim (SDL) + 注入 (`fmrb_input.rb wheel N`) + アプリ側の受け | **完了 2026-08-31** (report/w1.md)。log / shell / デスクトップの一覧がホイールで動く。**FmrbUI 案は成り立たず `wheel_rows` に変更**、sim の経路は書いたが未実行 |
 | **W2** | ブラウザ (wasm の ring + ページ) と遠隔デスクトップ (rd_input + web クライアント) | **前半 (ブラウザ) は W1 と一緒に完了** — 検証がこの経路のため。後半 (遠隔デスクトップ) が残り |
 | **W3** | 実機 USB。`hid_devices.toml` の `wheel` フィールド (白名簿) と HID Inspector でのホイール値表示 | 白名簿に書いた機器で動く。**書いていない機器と、今動いている機器は 1 バイトも変わらない** (回帰ゼロが本題) |
-| **W4** | アプリ個別: editor の本文スクロール、shell の履歴、logviewer の行送り、launcher のページ送り、file_manager / file_selector | 各画面で「見ている物が」動く。修飾キー付き (Ctrl+ホイール等) は W4 では扱わない |
+| **W4** | アプリ個別 | **大半は W1 で済んだ** (editor 本文・shell 履歴・logviewer・launcher・file_manager / file_selector)。残りは nsf_player / smf_player と、修飾キー付き (Ctrl+ホイール等) |
 
 W1 だけで実用になるのが要点。実機 (W3) を最後に置いたのは、W1-W2 が
 **私が自分で端から端まで検証できる経路**で、実機は人手が要るため

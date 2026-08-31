@@ -1275,9 +1275,19 @@ class SystemDesktopApp < FmrbApp
     # The wheel moves whichever list the desktop currently has open. It
     # arrives here because the desktop has the focus, so there is no hit test
     # to do -- only one of these panels is up at a time.
-    rows = wheel_rows(ev)
-    if rows
-      handle_desktop_wheel(rows)
+    #
+    # Two units meet here. The file panels list names one text row high, so a
+    # notch is worth wheel_lines of them. The launcher lists tiles as tall as
+    # five rows and shows three at a time, so wheel_lines sent it from top to
+    # bottom in one flick: there, a notch is one row of icons.
+    if ev[:type] == :mouse_wheel
+      if @launcher_open
+        n = wheel_notches(ev)
+        handle_desktop_wheel(n) if n
+      else
+        rows = wheel_rows(ev)
+        handle_desktop_wheel(rows) if rows
+      end
       return
     end
 

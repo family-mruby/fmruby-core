@@ -1199,6 +1199,17 @@ class FmrbApp
     d * FmrbConst::WHEEL_LINES
   end
 
+
+  # The raw notch count, for a list whose rows are not text rows: the
+  # launcher's are tiles as tall as several lines, and wheel_lines (a text
+  # setting) sends it flying. nil when the event is not a wheel.
+  def wheel_notches(ev)
+    return nil unless ev[:type] == :mouse_wheel
+    d = ev[:delta].to_i
+    return nil if d == 0
+    d
+  end
+
   # ---- System colours ----
   #
   # The [theme] section of system_conf.toml, as FmrbConst::THEME_*. Apps that

@@ -525,6 +525,18 @@ class EditorApp < FmrbApp
     # A half-typed character cannot survive a different kind of event.
     utf8_reset if ev[:type] != :key_down && @u8_need > 0
 
+    # The wheel moves the view, not the cursor -- the same thing the scrollbar
+    # of any other window does, and the reason move_anchor exists (it counts
+    # screen rows, so wrapped lines are stepped a segment at a time). A modal
+    # is not scrolled: it owns the window while it is up.
+    rows = wheel_rows(ev)
+    if rows
+      return if @keys_open || @quit_dialog_open || @palette_open ||
+                @search_open || @active_menu
+      @need_redraw = true if move_anchor(-rows) != 0
+      return
+    end
+
     if ev[:type] == :mouse_up
       if @keys_open
         keys_advance
