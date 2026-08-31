@@ -50,7 +50,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 ## テーマ別
 
 - `ai/` [OpenAI API 活用の構想メモ](ai/ideas.md) — - 〔1 files〕
-- `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **進行中** (2026-08-31) A・B 実装済 (実ブラウザで両エンジン確認)。C はファイル機構まで動く、残るは変更 UI 〔1 files〕
+- `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-08-31) A・B・C 実装済。色名 78 + 別名 23、editor は 31 項目を上書き可、shell は `color` コマンド 〔1 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔1 files〕
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕

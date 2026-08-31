@@ -26,7 +26,8 @@ module EditorMenu
   def menu_view_items
     [view_toggle_label(@hl_enabled, :m_hilight),
      view_toggle_label(@wrap_on, :m_wrap),
-     view_toggle_label(@fullscreen, :m_full)]
+     view_toggle_label(@fullscreen, :m_full),
+     "    " + FmrbI18n.t(:m_colors).to_s]
   end
 
   def view_toggle_label(on, key)
@@ -167,8 +168,25 @@ module EditorMenu
     # The Debug menu has no letter hotkeys (menu_hotkeys is nil there).
     hk = menu_hotkeys
     if hk
-      idx = hk.index(scancode)
-      activate_menu_item(idx) if idx
+      # Written out rather than hk.index(scancode): in the Spinel build that
+      # call compiles to a dispatch switch with one case (a polymorphic
+      # array) and an implicit 0 when the receiver is anything else -- which
+      # these integer-array constants are. The result was that EVERY letter
+      # pressed in an open menu ran the first item: Alt-F then X opened the
+      # file dialog instead of leaving. A loop over the list is typed, needs
+      # no dispatch, and is four elements long.
+      idx = nil
+      i = 0
+      n = hk.size
+      while i < n
+        if hk[i] == scancode
+          idx = i
+          i = n
+        else
+          i += 1
+        end
+      end
+      activate_menu_item(idx) unless idx.nil?
     end
   end
 
@@ -203,6 +221,7 @@ module EditorMenu
     when 0 then toggle_highlight
     when 1 then toggle_wrap
     when 2 then toggle_fullscreen
+    when 3 then open_palette_dialog
     end
   end
 

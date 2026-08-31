@@ -18,6 +18,8 @@ class EditorApp < FmrbApp
   include EditorClipboard
   # Find / Find-next dialog lives in editor/search.rb.
   include EditorSearch
+  # The Colors dialog lives in editor/palette_ui.rb.
+  include EditorPalette
   # Drawing (menu bar, status line, edit rows, cursor), render-latency
   # instrumentation and the quit dialog live in editor/render.rb.
   include EditorRender
@@ -127,6 +129,7 @@ class EditorApp < FmrbApp
     @help_return_hl_manual = false
     # Modal Find dialog (Alt-S / Search menu / F3 for find next).
     @search_open = false
+    @palette_open = false
     @search_query = ""
     @search_last = ""
     @search_status = ""
@@ -600,6 +603,10 @@ class EditorApp < FmrbApp
       end
 
       # Find dialog is modal: typed chars build the query, Enter searches.
+      if @palette_open
+        handle_palette_key(ev)
+        return
+      end
       if @search_open
         handle_search_dialog_key(ev)
         return

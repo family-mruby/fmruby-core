@@ -797,6 +797,11 @@ class FmrbUI
   # text_size is the default scale for widgets made from here on; a single
   # widget can override it. It is 1 unless said otherwise, and it is never
   # taken from whatever size the app is in at the time - see Widget#text_size.
+  # The colour behind the widgets. Settable because an app whose palette can
+  # change at runtime (the shell's `color` command) has to move its widgets
+  # with it; invalidate_all afterwards to repaint them.
+  attr_accessor :bg
+
   def initialize(app, bg: C_BG, text_size: 1, bg_painter: nil)
     @gfx = app.gfx
     @ox = app.user_area_x0

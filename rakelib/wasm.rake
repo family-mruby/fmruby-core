@@ -101,8 +101,48 @@ namespace :wasm do
     sh "emar d #{picoruby}/build/family-mruby-wasm/lib/libmruby.a allocf.o"
   end
 
+  # The browser build compiles the mruby apps from their PRE-GENERATED
+  # bytecode (main/prebuild_scripts/**/mrb/*.c), and only the ESP-IDF / Linux
+  # CMake build produces those. Editing an app's Ruby and building for wasm
+  # alone therefore linked yesterday's bytecode without a word -- an hour went
+  # into a shell command that "did not exist" because of it. This runs the two
+  # commands that CMake step runs, for whatever is older than its sources.
+  desc "Regenerate stale mruby app/kernel bytecode (the wasm build cannot)"
+  task :mrb do
+    mrbc = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby/bin/mrbc")
+    unless File.exist?(mrbc)
+      puts "wasm:mrb: no #{mrbc} yet -- skipped (a full build makes it)"
+      next
+    end
+    gen = File.join(ROOT_DIR, "tool/debug/gen_combined_rb.py")
+    [File.join(ROOT_DIR, "main/prebuild_scripts/default_app"),
+     File.join(ROOT_DIR, "main/prebuild_scripts/kernel")].each do |dir|
+      Dir[File.join(dir, "*.rb")].sort.each do |rb|
+        # CMake's NAME_WE: the longest extension goes, so shell.app.rb is
+        # "shell" and its mixins live in shell/.
+        name = File.basename(rb).sub(/\..*\z/, "")
+        out_c = File.join(dir, "mrb", "#{name}.c")
+        subdir = File.join(dir, name)
+        sources = [rb]
+        sources += Dir[File.join(subdir, "*.rb")].sort if File.directory?(subdir)
+        newest = sources.map { |f| File.mtime(f) }.max
+        next if File.exist?(out_c) && File.mtime(out_c) >= newest
+        if File.directory?(subdir)
+          combined = File.join(dir, "mrb", "#{name}_combined.rb")
+          map = File.join(dir, "mrb", "#{name}_combined.map.json")
+          sh "python3 #{gen} #{combined} #{map} " \
+             "#{(sources - [rb]).join(' ')} #{rb}"
+          sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{combined}"
+        else
+          sh "#{mrbc} -g -B#{name}_irep -o#{out_c} #{rb}"
+        end
+        puts "wasm:mrb: #{name} rebuilt"
+      end
+    end
+  end
+
   desc "Build the core firmware for wasm (doc/wasm/ P4a; needs wasm:mruby once)"
-  task :core => ["^setup", :setup] do
+  task :core => ["^setup", :setup, :mrb] do
     emcmake = wasm_emcmake!
     sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} -DCMAKE_BUILD_TYPE=Release"
     sh "cmake --build #{WASM_BUILD_DIR} -j#{ENV['JOBS'] || 4} --target core"
@@ -156,7 +196,7 @@ namespace :wasm do
   end
 
   desc "Build the browser bundle (core_web.js/.wasm/.data + wasm/web page)"
-  task :web => :webflash do
+  task :web => [:webflash, :mrb] do
     emcmake = wasm_emcmake!
     sh "#{emcmake} cmake -S #{WASM_DIR} -B #{WASM_BUILD_DIR} -DCMAKE_BUILD_TYPE=Release"
     # The packed .data is produced at link time; the staging just changed, so

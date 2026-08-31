@@ -10,32 +10,33 @@ module EditorConst
 
   # Colors.
   #
-  # The chrome (page, ink, menu bar, status line, selection, cursor) follows
-  # the system theme, so changing [theme] restyles the editor with everything
-  # else. A user who wants the editor to differ says so in /home/colors.toml
-  # ([editor] bg / text / menu_bg / menu_text / status_bg / status_text /
-  # selection / cursor), which wins here and nowhere else.
+  # Every colour the editor draws with is a theme colour or a sensible
+  # constant, and every one of them can be overridden for the editor alone in
+  # /home/colors.toml under [editor]. The key is the lower-case name in the
+  # comment at the end of each line; a value is a colour name ("midnightblue")
+  # or a number (0xFC). Anything not written there follows the theme, so one
+  # edit to [theme] in system_conf.toml still restyles the whole machine.
   #
-  # What does NOT come from the theme is below: the syntax colours, which
-  # carry meaning rather than style, and the two problem tints.
+  # EDITOR_COLOR_KEYS is the list the Colors dialog walks, in display order.
   EDITOR_COLORS = FmrbColors.section("editor")
-  BG_COLOR      = EDITOR_COLORS["bg"] || FmrbConst::THEME_WINDOW_BG
-  TEXT_COLOR    = EDITOR_COLORS["text"] || FmrbConst::THEME_TEXT
-  MENU_BG       = EDITOR_COLORS["menu_bg"] || FmrbConst::THEME_MENU_BG
-  MENU_TEXT     = EDITOR_COLORS["menu_text"] || FmrbConst::THEME_TEXT_LIGHT
-  MENU_KEY      = FmrbGfx.rgb_to_332(255, 255, 0)     # Yellow hotkey
+  BG_COLOR      = EDITOR_COLORS["bg"] || FmrbConst::THEME_WINDOW_BG               # bg
+  TEXT_COLOR    = EDITOR_COLORS["text"] || FmrbConst::THEME_TEXT                  # text
+  MENU_BG       = EDITOR_COLORS["menu_bg"] || FmrbConst::THEME_MENU_BG            # menu_bg
+  MENU_TEXT     = EDITOR_COLORS["menu_text"] || FmrbConst::THEME_TEXT_LIGHT       # menu_text
+  MENU_KEY      = EDITOR_COLORS["menu_key"] || FmrbGfx.rgb_to_332(255, 255, 0)    # menu_key
   # The same role on a light panel (the key list): yellow on white is unreadable.
-  MENU_KEY_DARK = FmrbGfx.rgb_to_332(120, 60, 0)
-  STATUS_BG     = EDITOR_COLORS["status_bg"] || FmrbConst::THEME_MENU_BG
-  STATUS_TEXT   = EDITOR_COLORS["status_text"] || FmrbConst::THEME_TEXT_LIGHT
-  STATUS_OK_BG  = FmrbGfx.rgb_to_332(0, 160, 0)       # Green flash for save success
-  STATUS_OK_TEXT = FmrbGfx.rgb_to_332(255, 255, 255)
-  PROBLEM_BADGE_TEXT = FmrbGfx.rgb_to_332(255, 120, 120)  # Problem count badge
-  PROBLEM_BG    = FmrbGfx.rgb_to_332(255, 190, 190)   # Row tint of a problem line
+  MENU_KEY_DARK = EDITOR_COLORS["menu_key_alt"] || FmrbGfx.rgb_to_332(120, 60, 0) # menu_key_alt
+  STATUS_BG     = EDITOR_COLORS["status_bg"] || FmrbConst::THEME_MENU_BG          # status_bg
+  STATUS_TEXT   = EDITOR_COLORS["status_text"] || FmrbConst::THEME_TEXT_LIGHT     # status_text
+  STATUS_OK_BG  = EDITOR_COLORS["saved_bg"] || FmrbGfx.rgb_to_332(0, 160, 0)      # saved_bg
+  STATUS_OK_TEXT = EDITOR_COLORS["saved_text"] || FmrbGfx.rgb_to_332(255, 255, 255) # saved_text
+  PROBLEM_BADGE_TEXT = EDITOR_COLORS["problem_text"] ||
+                       FmrbGfx.rgb_to_332(255, 120, 120)                          # problem_text
+  PROBLEM_BG    = EDITOR_COLORS["problem_bg"] || FmrbGfx.rgb_to_332(255, 190, 190) # problem_bg
   # The cursor has to stand out against the page, so it follows the ink
   # rather than a colour of its own -- a blue cursor on a dark theme was
   # invisible.
-  CURSOR_COLOR  = EDITOR_COLORS["cursor"] || FmrbConst::THEME_TEXT
+  CURSOR_COLOR  = EDITOR_COLORS["cursor"] || FmrbConst::THEME_TEXT                # cursor
 
   # Syntax highlight colors. These are meaning, not style, so they do not
   # come from the theme -- but they have to be readable ON it, and the light
@@ -69,7 +70,45 @@ module EditorConst
     FmrbGfx.rgb_to_332(180, 0, 60),      # 7: variable   - crimson
     FmrbGfx.rgb_to_332(0, 0, 180),       # 8: method     - dark blue
   ]
-  HL_COLORS = BG_LUMA < 45 ? HL_DARK : HL_LIGHT
+  HL_BASE = BG_LUMA < 45 ? HL_DARK : HL_LIGHT
+  # ...and each of the eight can still be named in [editor]. Spelled out
+  # rather than looped: the Spinel build has no block to map with here, and
+  # the keys have to be greppable anyway.
+  HL_COLORS = [
+    TEXT_COLOR,
+    EDITOR_COLORS["syntax_keyword"] || HL_BASE[1],                                # syntax_keyword
+    EDITOR_COLORS["syntax_string"] || HL_BASE[2],                                 # syntax_string
+    EDITOR_COLORS["syntax_comment"] || HL_BASE[3],                                # syntax_comment
+    EDITOR_COLORS["syntax_number"] || HL_BASE[4],                                 # syntax_number
+    EDITOR_COLORS["syntax_symbol"] || HL_BASE[5],                                 # syntax_symbol
+    EDITOR_COLORS["syntax_constant"] || HL_BASE[6],                               # syntax_constant
+    EDITOR_COLORS["syntax_variable"] || HL_BASE[7],                               # syntax_variable
+    EDITOR_COLORS["syntax_method"] || HL_BASE[8],                                 # syntax_method
+  ]
+
+  # The Colors dialog walks these two in step: the key as written in
+  # /home/colors.toml, and the colour in force right now. Parallel arrays
+  # rather than a hash of pairs, so both engines see plain typed lists.
+  EDITOR_COLOR_KEYS = [
+    "bg", "text", "cursor", "selection", "gutter",
+    "menu_bg", "menu_text", "menu_key", "menu_key_alt",
+    "status_bg", "status_text", "saved_bg", "saved_text",
+    "dropdown_bg", "dropdown_text", "dropdown_sel_bg", "dropdown_sel_text",
+    "dialog_bg", "dialog_text", "dialog_border", "dialog_key",
+    "problem_bg", "problem_text",
+    "syntax_keyword", "syntax_string", "syntax_comment", "syntax_number",
+    "syntax_symbol", "syntax_constant", "syntax_variable", "syntax_method",
+  ]
+  EDITOR_COLOR_VALUES = [
+    BG_COLOR, TEXT_COLOR, CURSOR_COLOR, SEL_BG, GUTTER_BG,
+    MENU_BG, MENU_TEXT, MENU_KEY, MENU_KEY_DARK,
+    STATUS_BG, STATUS_TEXT, STATUS_OK_BG, STATUS_OK_TEXT,
+    DROPDOWN_BG, DROPDOWN_TEXT, DROPDOWN_SEL_BG, DROPDOWN_SEL_TEXT,
+    QUIT_DLG_BG, QUIT_DLG_TEXT, QUIT_DLG_BORDER, QUIT_DLG_KEY,
+    PROBLEM_BG, PROBLEM_BADGE_TEXT,
+    HL_COLORS[1], HL_COLORS[2], HL_COLORS[3], HL_COLORS[4],
+    HL_COLORS[5], HL_COLORS[6], HL_COLORS[7], HL_COLORS[8],
+  ]
 
   # Printable ASCII indexed by (code - 32). Used instead of Integer#chr, which
   # the Spinel runtime does not provide -- and a table lookup is the same in both
@@ -93,10 +132,12 @@ module EditorConst
   TAB_SIZE = 2
 
   # Menu dropdown common style
-  DROPDOWN_BG = BG_COLOR
-  DROPDOWN_TEXT = TEXT_COLOR
-  DROPDOWN_SEL_BG = FmrbConst::THEME_HIGHLIGHT
-  DROPDOWN_SEL_TEXT = FmrbConst::THEME_TEXT_LIGHT
+  DROPDOWN_BG = EDITOR_COLORS["dropdown_bg"] || BG_COLOR                          # dropdown_bg
+  DROPDOWN_TEXT = EDITOR_COLORS["dropdown_text"] || TEXT_COLOR                    # dropdown_text
+  DROPDOWN_SEL_BG = EDITOR_COLORS["dropdown_sel_bg"] ||
+                    FmrbConst::THEME_HIGHLIGHT                                    # dropdown_sel_bg
+  DROPDOWN_SEL_TEXT = EDITOR_COLORS["dropdown_sel_text"] ||
+                      FmrbConst::THEME_TEXT_LIGHT                                 # dropdown_sel_text
   DROPDOWN_ITEM_H = 10
 
   # Per-menu config: scancode hotkeys (labels come from FmrbI18n).
@@ -131,19 +172,20 @@ module EditorConst
   # toggle highlight and wrap.
   MENU_BAR_KEYS = ["F", "E", "S", "R", "V", "D", "K"]
 
-  # View dropdown: the three display toggles, in the order they were on the bar.
-  MENU_VIEW_HOTKEYS = [0x0B, 0x1A, 0x09]  # H, W, F
+  # View dropdown: the three display toggles in the order they were on the
+  # bar, then the Colors dialog.
+  MENU_VIEW_HOTKEYS = [0x0B, 0x1A, 0x09, 0x06]  # H, W, F, C (Colors)
   MENU_BAR_GAP  = 6   # px between menu bar items
 
   # Selection / clipboard colors
-  SEL_BG = EDITOR_COLORS["selection"] || FmrbConst::THEME_HIGHLIGHT
+  SEL_BG = EDITOR_COLORS["selection"] || FmrbConst::THEME_HIGHLIGHT               # selection
 
   # Quit-confirm dialog frame. Shared: editor/render.rb draws the quit dialog
   # and editor/search.rb reuses the same frame for its own.
-  QUIT_DLG_BG     = BG_COLOR
-  QUIT_DLG_BORDER = FmrbConst::THEME_BORDER
-  QUIT_DLG_TEXT   = TEXT_COLOR
-  QUIT_DLG_KEY    = FmrbGfx.rgb_to_332(180, 0, 0)
+  QUIT_DLG_BG     = EDITOR_COLORS["dialog_bg"] || BG_COLOR                        # dialog_bg
+  QUIT_DLG_BORDER = EDITOR_COLORS["dialog_border"] || FmrbConst::THEME_BORDER     # dialog_border
+  QUIT_DLG_TEXT   = EDITOR_COLORS["dialog_text"] || TEXT_COLOR                    # dialog_text
+  QUIT_DLG_KEY    = EDITOR_COLORS["dialog_key"] || FmrbGfx.rgb_to_332(180, 0, 0)  # dialog_key
 
   # Key repeat timing (in frames, ~33ms each)
   KEY_REPEAT_DELAY = 12  # ~400ms before repeat starts
@@ -166,7 +208,7 @@ module EditorConst
   # Layout bits the debugger's gutter needs; kept here because the edit area
   # geometry uses them whether or not a debug session exists.
   GUTTER_W  = 8                                 # gutter width in px (debug mode)
-  GUTTER_BG = FmrbConst::THEME_BUTTON            # gutter column background
+  GUTTER_BG = EDITOR_COLORS["gutter"] || FmrbConst::THEME_BUTTON                  # gutter
   # Function-key scancodes (USB HID Usage IDs). F5 = Run and F11 = fullscreen
   # belong to the editor; the rest are the debugger's, used from its mixin.
   SC_F4 = 0x3D; SC_F5 = 0x3E; SC_F6 = 0x3F; SC_F7 = 0x40

@@ -103,6 +103,8 @@ module ShellCommandsMixin
       cmd_edit(args)
     when "create_app"
       cmd_create_app(args)
+    when "color"
+      cmd_color(args)
     when "help"
       @history << "Available commands:"
       @history << "  cd [path] - Change directory"
@@ -126,11 +128,87 @@ module ShellCommandsMixin
       @history << "  svc list - Background services (also shown by ps)"
       @history << "  svc start|stop <name> - Run/stop a service for this session"
       @history << "  svc enable|disable <name> - ...and remember it across boots"
+      @history << "  color [bg|text <colour>] - The shell's own two colours"
       @history << "  help - Show this help message"
     else
       @history << "Unknown command: #{cmd}"
       @history << "Type 'help' for available commands"
     end
+  end
+
+  # The shell's own two colours.
+  #
+  # The system theme decides them until somebody says otherwise here; what
+  # they say is kept in /home/colors.toml under [shell] and applies at once,
+  # with no restart, because the shell holds its colours in variables rather
+  # than in constants (the editor cannot, which is why its Colors dialog asks
+  # for a reopen).
+  def cmd_color(args)
+    if args.empty?
+      @history << "bg   #{FmrbColors.to_text(@bg_col)}"
+      @history << "text #{FmrbColors.to_text(@ch_col)}"
+      @history << "Usage: color bg|text <colour> | color names | color reset"
+      @history << "A colour is a name (skyblue) or a number (0x1F)."
+      return
+    end
+    sub = args[0]
+    if sub == "names"
+      line = ""
+      i = 0
+      while i < FmrbColors.palette_size
+        n = FmrbColors.name_at(i)
+        if line.length + n.length + 1 > 46
+          @history << line
+          line = ""
+        end
+        line = line.length == 0 ? n : line + " " + n
+        i += 1
+      end
+      @history << line if line.length > 0
+      return
+    end
+    if sub == "reset"
+      FmrbColors.clear("shell")
+      @bg_col = FmrbConst::THEME_WINDOW_BG
+      @ch_col = FmrbConst::THEME_TEXT
+      apply_colors
+      @history << "colours back to the theme"
+      return
+    end
+    if sub != "bg" && sub != "text"
+      @history << "Usage: color bg|text <colour> | color names | color reset"
+      return
+    end
+    if args.size < 2
+      @history << "Usage: color #{sub} <colour>   (color names lists them)"
+      return
+    end
+    value = FmrbColors.to_color(args[1])
+    if value.nil?
+      @history << "not a colour: #{args[1]} (try `color names`, or 0x00 to 0xFF)"
+      return
+    end
+    if sub == "bg"
+      @bg_col = value
+    else
+      @ch_col = value
+    end
+    unless FmrbColors.set("shell", sub, value)
+      @history << "(could not write /home/colors.toml -- this session only)"
+    end
+    apply_colors
+    @history << "#{sub} = #{FmrbColors.to_text(value)}"
+  end
+
+  # The widgets carry their own copy of the background, and the update loop
+  # owns the repaint, so both have to be told.
+  def apply_colors
+    if @ui
+      @ui.bg = @bg_col
+      @ui.invalidate_all
+    end
+    @need_full_redraw = true
+    nil
   end
 
   # Filesystem root - "/" is the user-facing root. The HAL resolver maps it

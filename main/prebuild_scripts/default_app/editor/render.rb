@@ -646,6 +646,7 @@ module EditorRender
     draw_completion if @comp_open
     dbg_draw_modal
     draw_search_dialog if @search_open
+    draw_palette_dialog if @palette_open
     draw_quit_dialog if @quit_dialog_open
     draw_keys_list if @keys_open
     # Re-issue the title-bar / border GfxBlock with current window size so the
