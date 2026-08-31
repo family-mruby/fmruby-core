@@ -1,0 +1,156 @@
+# 窓枠とアプリ配色をテーマに繋ぐ
+
+> 状態: 進行中 | 更新: 2026-08-31 | A・B 実装済 (実ブラウザで両エンジン確認)。C はファイル機構まで動く、残るは変更 UI
+
+デスクトップの配色を変えても、**アプリの窓枠と中身が付いてこない**。
+ユーザ報告 (2026-08-31)。Spinel アプリでも同じ。
+
+## 何が起きているか (調査結果)
+
+配線そのものは両エンジンとも生きている。足りないのは呼び出し側だけだった。
+
+- `[theme]` は kernel が読んで `fmrb_theme_set()` に渡す
+  (main/kernel/fmrb_kernel.c:243)。mruby VM には生成時に
+  `FmrbConst::THEME_*` として入り、Spinel には
+  `FmrbSpx.fmrb_spx_theme_color(i)` の FFI で入る (起動時に一度評価)。
+- **窓枠だけ誰もテーマを見ていない**。描いているのはアプリ基底クラスの
+  1 か所で、色が直値で書いてある:
+  - mruby: `lib/add/picoruby-fmrb-app/mrblib/fmrb-app.rb` の `_build_frame_block`
+  - Spinel: `main/prebuild_scripts/spinel/fmrb_app_base_spinel.rb` の `_paint_frame`
+    (Spinel は proc を保存できないので即時描画に書き換えた際、値ごと写された)
+
+  値は `0xC5` (タイトルバー) と `0x60` (縁) — **classic の `menu_bg` /
+  `border` そのもの**。実機の配色に合わせて書かれ、テーマ機構ができたときに
+  繋ぎ忘れた形。同じ数字が 2 か所にある。
+- **中身はアプリ次第**。`clear_user_area` の既定は `THEME_WINDOW_BG`、
+  FmrbUI は 6 色すべてテーマ由来、デスクトップのダイアログ類もテーマ。
+  一方で古い組み込みアプリは自前のパレットを持つ:
+
+  | アプリ | 直値の色 | テーマ参照 |
+  |---|---|---|
+  | editor | 18 | 0 |
+  | shell | 16 | 0 |
+  | inspector | 12 | 0 |
+  | logviewer / monitor | 4 | 6 |
+
+## 方針
+
+### A. 窓枠をテーマへ (全アプリに一度に効く)
+
+| 部品 | 今 | これから |
+|---|---|---|
+| タイトルバー | `0xC5` | `THEME_MENU_BG` |
+| タイトル文字・ハンバーガー | `WHITE` / `0xFB` | `THEME_TEXT_LIGHT` |
+| 閉じるボタン | `0xFF` | `THEME_TEXT_LIGHT` |
+| 窓の縁 | `0x60` | `THEME_BORDER` |
+
+classic では見た目が変わらない (値が一致する) ことが、移し替えが正しいこと
+の確認になる。**mruby と Spinel の 2 か所を必ず同時に**直す。
+
+### B. 組み込みアプリの既定色をテーマから採る
+
+対象は **editor と shell** (inspector は後回し)。**構文強調の色は対象外** —
+あれは意味の色であって装飾ではなく、テーマに項目もない。
+
+editor: 背景 → `THEME_WINDOW_BG`、本文 → `THEME_TEXT`、メニューバー →
+`THEME_MENU_BG` / `THEME_TEXT_LIGHT`、選択 → `THEME_HIGHLIGHT`、
+ステータス行 → `THEME_MENU_BG` / `THEME_TEXT_LIGHT`、gutter → `THEME_BUTTON`。
+shell: 背景 → `THEME_WINDOW_BG`、文字 → `THEME_TEXT`。
+
+### C. Editor と Shell はユーザが色を変えられる (テーマは既定値になる)
+
+**上書きは `/home/colors.toml`**。理由は 3 つ:
+
+- ユーザの持ち物だから `/home` (配布物と混ぜない。doc/wasm/storage_persistence.md)
+- ブラウザ版では `/home` だけがリロードを越えて残る。`/etc` は残らない
+- `/home` は書き出しの tar に入るので、設定ごと持ち運べる
+
+```toml
+# 書かなかった項目はテーマの値のまま
+[editor]
+bg = 0x24
+text = 0xFF
+[shell]
+bg = 0x00
+text = 0x1C
+```
+
+- 読むのは**アプリ起動時に 1 度**。定数の初期値として解決するので、
+  各描画箇所は今のまま (`BG_COLOR` などの参照を書き換えない)。
+- 解析は `SvcConf.parse` と同じ「小さな toml もどきを Ruby で読む」やり方
+  (C の fmrb_toml に Ruby 束縛は無く、10 行のために作る価値はない)。
+- 変える口はアプリごとの流儀に合わせる:
+  - editor: View メニューに Colors、その場で反映して保存
+  - shell: `color` コマンド (`color bg 0x24` / `color list` / `color reset`)
+- **再起動は要らない** (システムテーマの変更は再起動が要るが、これは要らない)。
+- 「テーマに戻す」は該当項目を消すこと。
+
+## 実装した結果 (2026-08-31)
+
+A と B、そして C の**土台 (`/home/colors.toml` を読む所)** まで入れた。
+残っているのは C の変更 UI だけ。
+
+- 窓枠: 両エンジンの 1 か所ずつをテーマ参照に。
+- editor: 紙・文字・メニュー・ステータス・選択・カーソル・ドロップダウン・
+  終了確認をテーマ由来に。**構文強調は 2 系統にした** — 意味の色なので
+  テーマからは採らないが、暗い紙の上では従来の配色 (黒や濃紺) が見えないため、
+  紙の明るさ (RGB332 の重みつき輝度、閾値 45) で明るい紙用と暗い紙用を選ぶ。
+  スロット 0 (ふつうの文字) だけは常に本文色に従う。
+- shell: 紙と文字をテーマ由来に。
+- `FmrbColors.section(name)` を mruby の gem と Spinel の基底の両方へ。
+  Spinel で確実に通る書き方だけを使う (`to_i(16)` と `downcase` は使わず、
+  16 進の桁を手で引く。`File.open` + `rescue` は編集器で実績のある形)。
+
+### 実測 (ブラウザ版、web_* ツールで両テーマを往復)
+
+| 見たもの | cyberpunk | classic |
+|---|---|---|
+| 窓枠 (Spinel = editor) | 濃紺のバー・青緑の縁 | 従来どおり暗赤のバー |
+| 窓枠 (mruby = monitor / shell) | 同上 | 同上 |
+| editor の紙 | 黒に緑の文字、暗い紙用の構文色 | 白に黒、明るい紙用の構文色 |
+| `/home/colors.toml` の上書き | editor だけ深緑の紙・黄の文字に変わり、デスクトップと枠はテーマのまま | 同左 |
+| shell の上書き | 黒地に緑 (mruby 側の経路も通った) | 同左 |
+
+**classic でも editor の見た目は少し変わる**: 紙が「ほぼ白のピンク」から
+テーマの白へ、メニューバーが紫から暗赤へ。B の狙いどおりだが、元の配色が
+好きなら `/home/colors.toml` に書けば戻せる。
+
+### 踏んだ罠
+
+- **`draw_round_rect` の引数を 1 つ落とした**まま置換して、デスクトップが
+  `ArgumentError (given 5, expected 6)` で即死した。node ビルド
+  (`rake wasm:run`) のログで 1 分で分かる。機械的な置換のあとは引数の数を
+  数えること。
+- **`rake wasm:web` は `spinel:gen` を呼ばない**。Spinel 側の .rb を直したら
+  先に `rake spinel:gen`、そのあと lib/ を触っていれば `rake wasm:mruby`、
+  最後に `rake wasm:web`。
+- ランチャーからの起動は**ダブルクリック**、ファイル選択は
+  **クリックしてから enter**。どちらも 1 回のクリックでは選ぶだけ。
+
+## スコープ外
+
+- 構文強調の色そのもの (意味の色なのでテーマからは採らない。ただし紙が暗い
+  ときに読めるよう、明暗 2 系統の選択だけは入れた)。
+- inspector とデモ・ゲーム類の配色 (自分の絵を持つものはそのままでよい)。
+- テーマ項目そのものを増やすこと。今の 9 色で足りる範囲でやる。
+
+## 受け入れ条件
+
+- classic (実機の既定) で**窓枠**の見た目が変わらない (値が一致するため)。
+  editor は B の狙いどおり紙と menu が少し変わる — 元に戻したければ
+  `/home/colors.toml`。
+- cyberpunk (web) と dark で、窓枠・editor・shell がテーマに従う。
+- **標準構成 (Spinel カーネル + Spinel エディタ) と全 mruby の両方**で確認する
+  (窓枠の実装が 2 か所にあるため。doc/engine_policy 相当の決まり)。
+- `/home/colors.toml` を置くと editor と shell だけがその色になり、消すと
+  テーマに戻る。リロード・再起動を挟んでも残る。
+
+## 未確定事項
+
+- editor で上書きできる項目をどこまで出すか (背景・本文・選択の 3 つで
+  足りるか、メニュー/ステータスまで出すか)。
+- 色の選び方の UI。RGB332 の数値入力は子供には辛い。16 色程度の見本から
+  選ぶ形にしたい。
+- `rake wasm:web` は `spinel:gen` を呼ばない (生成済みの gen/*.c を使う)。
+  Spinel 側を直したら **先に `rake spinel:gen`** が要る。手順に組み込むか、
+  wasm 側から呼ぶかは別途。

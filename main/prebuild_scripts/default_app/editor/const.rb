@@ -8,34 +8,68 @@
 # an including-class constant would otherwise require.
 module EditorConst
 
-  # Colors - Light pink theme
-  BG_COLOR      = FmrbGfx.rgb_to_332(255, 230, 240)  # Nearly white pink
-  TEXT_COLOR     = FmrbGfx.rgb_to_332(0, 0, 0)        # Black text
-  MENU_BG       = FmrbGfx.rgb_to_332(100, 60, 100)    # Dark purple menu bar
-  MENU_TEXT     = FmrbGfx.rgb_to_332(255, 255, 255)   # White menu text
+  # Colors.
+  #
+  # The chrome (page, ink, menu bar, status line, selection, cursor) follows
+  # the system theme, so changing [theme] restyles the editor with everything
+  # else. A user who wants the editor to differ says so in /home/colors.toml
+  # ([editor] bg / text / menu_bg / menu_text / status_bg / status_text /
+  # selection / cursor), which wins here and nowhere else.
+  #
+  # What does NOT come from the theme is below: the syntax colours, which
+  # carry meaning rather than style, and the two problem tints.
+  EDITOR_COLORS = FmrbColors.section("editor")
+  BG_COLOR      = EDITOR_COLORS["bg"] || FmrbConst::THEME_WINDOW_BG
+  TEXT_COLOR    = EDITOR_COLORS["text"] || FmrbConst::THEME_TEXT
+  MENU_BG       = EDITOR_COLORS["menu_bg"] || FmrbConst::THEME_MENU_BG
+  MENU_TEXT     = EDITOR_COLORS["menu_text"] || FmrbConst::THEME_TEXT_LIGHT
   MENU_KEY      = FmrbGfx.rgb_to_332(255, 255, 0)     # Yellow hotkey
   # The same role on a light panel (the key list): yellow on white is unreadable.
   MENU_KEY_DARK = FmrbGfx.rgb_to_332(120, 60, 0)
-  STATUS_BG     = FmrbGfx.rgb_to_332(40, 40, 60)      # Dark gray status line
-  STATUS_TEXT   = FmrbGfx.rgb_to_332(255, 255, 255)   # White status text
+  STATUS_BG     = EDITOR_COLORS["status_bg"] || FmrbConst::THEME_MENU_BG
+  STATUS_TEXT   = EDITOR_COLORS["status_text"] || FmrbConst::THEME_TEXT_LIGHT
   STATUS_OK_BG  = FmrbGfx.rgb_to_332(0, 160, 0)       # Green flash for save success
   STATUS_OK_TEXT = FmrbGfx.rgb_to_332(255, 255, 255)
   PROBLEM_BADGE_TEXT = FmrbGfx.rgb_to_332(255, 120, 120)  # Problem count badge
   PROBLEM_BG    = FmrbGfx.rgb_to_332(255, 190, 190)   # Row tint of a problem line
-  CURSOR_COLOR  = FmrbGfx.rgb_to_332(0, 0, 200)       # Blue cursor
+  # The cursor has to stand out against the page, so it follows the ink
+  # rather than a colour of its own -- a blue cursor on a dark theme was
+  # invisible.
+  CURSOR_COLOR  = EDITOR_COLORS["cursor"] || FmrbConst::THEME_TEXT
 
-  # Syntax highlight colors (for light background)
-  HL_COLORS = [
-    FmrbGfx.rgb_to_332(0, 0, 0),        # 0: default    - black
-    FmrbGfx.rgb_to_332(180, 0, 0),      # 1: keyword    - dark red
-    FmrbGfx.rgb_to_332(0, 120, 0),      # 2: string     - dark green
-    FmrbGfx.rgb_to_332(120, 120, 120),  # 3: comment    - gray
-    FmrbGfx.rgb_to_332(160, 100, 0),    # 4: number     - brown
-    FmrbGfx.rgb_to_332(140, 0, 140),    # 5: symbol     - dark magenta
-    FmrbGfx.rgb_to_332(0, 100, 140),    # 6: constant   - dark cyan
-    FmrbGfx.rgb_to_332(180, 0, 60),     # 7: variable   - crimson
-    FmrbGfx.rgb_to_332(0, 0, 180),      # 8: method     - dark blue
+  # Syntax highlight colors. These are meaning, not style, so they do not
+  # come from the theme -- but they have to be readable ON it, and the light
+  # set disappears against a dark page (dark blue on black). So there are two
+  # sets and the page's own brightness picks one. Slot 0 is the ordinary text
+  # and always follows the ink, or the whole file would be invisible the
+  # moment a dark theme was chosen.
+  #
+  # Brightness of an RGB332 colour, weighted the way an eye is: green counts
+  # most, blue least. 0..104; below 45 is a dark page.
+  BG_LUMA = ((BG_COLOR >> 5) & 7) * 5 + ((BG_COLOR >> 2) & 7) * 9 + (BG_COLOR & 3) * 2
+  HL_DARK = [
+    TEXT_COLOR,                          # 0: default    - the page's ink
+    FmrbGfx.rgb_to_332(255, 120, 120),   # 1: keyword
+    FmrbGfx.rgb_to_332(120, 255, 120),   # 2: string
+    FmrbGfx.rgb_to_332(160, 160, 160),   # 3: comment
+    FmrbGfx.rgb_to_332(255, 200, 100),   # 4: number
+    FmrbGfx.rgb_to_332(255, 140, 255),   # 5: symbol
+    FmrbGfx.rgb_to_332(120, 220, 255),   # 6: constant
+    FmrbGfx.rgb_to_332(255, 140, 180),   # 7: variable
+    FmrbGfx.rgb_to_332(140, 170, 255),   # 8: method
   ]
+  HL_LIGHT = [
+    TEXT_COLOR,                          # 0: default    - the page's ink
+    FmrbGfx.rgb_to_332(180, 0, 0),       # 1: keyword    - dark red
+    FmrbGfx.rgb_to_332(0, 120, 0),       # 2: string     - dark green
+    FmrbGfx.rgb_to_332(120, 120, 120),   # 3: comment    - gray
+    FmrbGfx.rgb_to_332(160, 100, 0),     # 4: number     - brown
+    FmrbGfx.rgb_to_332(140, 0, 140),     # 5: symbol     - dark magenta
+    FmrbGfx.rgb_to_332(0, 100, 140),     # 6: constant   - dark cyan
+    FmrbGfx.rgb_to_332(180, 0, 60),      # 7: variable   - crimson
+    FmrbGfx.rgb_to_332(0, 0, 180),       # 8: method     - dark blue
+  ]
+  HL_COLORS = BG_LUMA < 45 ? HL_DARK : HL_LIGHT
 
   # Printable ASCII indexed by (code - 32). Used instead of Integer#chr, which
   # the Spinel runtime does not provide -- and a table lookup is the same in both
@@ -59,10 +93,10 @@ module EditorConst
   TAB_SIZE = 2
 
   # Menu dropdown common style
-  DROPDOWN_BG = FmrbGfx.rgb_to_332(255, 255, 255)
-  DROPDOWN_TEXT = FmrbGfx.rgb_to_332(0, 0, 0)
-  DROPDOWN_SEL_BG = FmrbGfx.rgb_to_332(100, 60, 100)
-  DROPDOWN_SEL_TEXT = FmrbGfx.rgb_to_332(255, 255, 255)
+  DROPDOWN_BG = BG_COLOR
+  DROPDOWN_TEXT = TEXT_COLOR
+  DROPDOWN_SEL_BG = FmrbConst::THEME_HIGHLIGHT
+  DROPDOWN_SEL_TEXT = FmrbConst::THEME_TEXT_LIGHT
   DROPDOWN_ITEM_H = 10
 
   # Per-menu config: scancode hotkeys (labels come from FmrbI18n).
@@ -102,13 +136,13 @@ module EditorConst
   MENU_BAR_GAP  = 6   # px between menu bar items
 
   # Selection / clipboard colors
-  SEL_BG = FmrbGfx.rgb_to_332(180, 200, 255)  # Light blue selection
+  SEL_BG = EDITOR_COLORS["selection"] || FmrbConst::THEME_HIGHLIGHT
 
   # Quit-confirm dialog frame. Shared: editor/render.rb draws the quit dialog
   # and editor/search.rb reuses the same frame for its own.
-  QUIT_DLG_BG     = FmrbGfx.rgb_to_332(255, 255, 255)
-  QUIT_DLG_BORDER = FmrbGfx.rgb_to_332(0, 0, 0)
-  QUIT_DLG_TEXT   = FmrbGfx.rgb_to_332(0, 0, 0)
+  QUIT_DLG_BG     = BG_COLOR
+  QUIT_DLG_BORDER = FmrbConst::THEME_BORDER
+  QUIT_DLG_TEXT   = TEXT_COLOR
   QUIT_DLG_KEY    = FmrbGfx.rgb_to_332(180, 0, 0)
 
   # Key repeat timing (in frames, ~33ms each)
@@ -132,7 +166,7 @@ module EditorConst
   # Layout bits the debugger's gutter needs; kept here because the edit area
   # geometry uses them whether or not a debug session exists.
   GUTTER_W  = 8                                 # gutter width in px (debug mode)
-  GUTTER_BG = FmrbGfx.rgb_to_332(210, 195, 205) # gutter column background
+  GUTTER_BG = FmrbConst::THEME_BUTTON            # gutter column background
   # Function-key scancodes (USB HID Usage IDs). F5 = Run and F11 = fullscreen
   # belong to the editor; the rest are the debugger's, used from its mixin.
   SC_F4 = 0x3D; SC_F5 = 0x3E; SC_F6 = 0x3F; SC_F7 = 0x40

@@ -41,8 +41,13 @@ class ShellApp < FmrbApp
     @irb_mode = false  # IRB mode flag
     @irb_sandbox = nil  # Sandbox for IRB
 
-    @bg_col = FmrbGfx.rgb_to_332(255, 230, 240)  # Nearly white pink
-    @ch_col = FmrbGfx.rgb_to_332(0, 0, 0)        # Black text
+    # Page and ink follow the system theme, so the shell restyles with the
+    # rest of the machine. A user who wants this one window to differ writes
+    # [shell] bg / text in /home/colors.toml, which wins here and nowhere
+    # else; deleting the line goes back to the theme.
+    shell_colors = FmrbColors.section("shell")
+    @bg_col = shell_colors["bg"] || FmrbConst::THEME_WINDOW_BG
+    @ch_col = shell_colors["text"] || FmrbConst::THEME_TEXT
 
     @fg_sandbox = nil   # Foreground sandbox (set during run_foreground)
     @script_input_line = nil  # Current script input text (shown during fg execution)

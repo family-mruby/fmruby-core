@@ -216,20 +216,27 @@ class FmrbApp
   def _build_frame_block
     title = @name
     @frame_block = GfxBlock.new(@gfx, w: @window_width, h: @window_height) do |r, w:, h:|
+      # The frame is the system's, not the app's, so it takes the system's
+      # colours: one edit to [theme] in system_conf.toml restyles every
+      # window at once. The values it used to carry (0xC5 and 0x60) were the
+      # classic menu_bg and border spelled out, which is why a changed theme
+      # left every title bar behind.
+      bar    = FmrbConst::THEME_MENU_BG
+      on_bar = FmrbConst::THEME_TEXT_LIGHT
       # Title bar with rounded top corners. Draw full-height rounded rect then
       # overwrite the bottom portion so the bottom edge is straight.
-      r.fill_round_rect 0, 0, w, TITLE_BAR_H, CORNER_R, 0xC5
-      r.fill_rect       0, CORNER_R, w, TITLE_BAR_H - CORNER_R, 0xC5
+      r.fill_round_rect 0, 0, w, TITLE_BAR_H, CORNER_R, bar
+      r.fill_rect       0, CORNER_R, w, TITLE_BAR_H - CORNER_R, bar
       # Menu button (hamburger: 3 horizontal lines) + title text
-      r.fill_rect       3, 3, 9, 1, 0xFB
-      r.fill_rect       3, 5, 9, 1, 0xFB
-      r.fill_rect       3, 7, 9, 1, 0xFB
-      r.draw_text       15, 2, title, FmrbGfx::WHITE
-      # Close button (red circle with white X)
-      r.fill_circle     w - 6, 5, 3, 0xFF
+      r.fill_rect       3, 3, 9, 1, on_bar
+      r.fill_rect       3, 5, 9, 1, on_bar
+      r.fill_rect       3, 7, 9, 1, on_bar
+      r.draw_text       15, 2, title, on_bar
+      # Close button
+      r.fill_circle     w - 6, 5, 3, on_bar
       # Rounded window border. Outer edge rows/columns stay transparent because
       # app content never fills them (user_area excludes x=0, x=w-1, y=h-1).
-      r.draw_round_rect 0, 0, w, h, CORNER_R, 0x60
+      r.draw_round_rect 0, 0, w, h, CORNER_R, FmrbConst::THEME_BORDER
     end
     _build_corner_clear_block
   end
