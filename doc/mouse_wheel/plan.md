@@ -16,7 +16,7 @@
 | 源 | 今あるもの | ホイールをどう採るか |
 |---|---|---|
 | USB HID マウス (実機 S3 / P4) | `hid_report_parser` が descriptor から buttons / x / y **だけ**を抜く | Usage 0x38 (Wheel) を足す。**最大の難所、後述** |
-| Linux sim (SDL) | `sdl2-display/main.c` が `SDL_MOUSEBUTTON*` と `SDL_MOUSEMOTION` を送る | `SDL_MOUSEWHEEL` を足すだけ |
+| Linux sim (SDL) | `sdl2-display/main.c` が `SDL_MOUSEBUTTON*` と `SDL_MOUSEMOTION` を送る | `SDL_MOUSEWHEEL` を足す。**加えて中継 graphics-audio `input_linux/input_handler_ipc.c` の型 switch にも足す** (知らない型を捨てる。W1 で踏んだ) |
 | 注入 (`tools/fmrb_input.rb` → UNIX ソケット) | move / click / key | `wheel N` を足す |
 | ブラウザ (wasm) | `input_wasm.c` の ring に 4 種 | ページの `wheel` イベント → ring 型 5 |
 | 遠隔デスクトップ (Tab5, `rd_input.c`) | move / button / key の 3 メッセージ | 型を 1 つ足す (ブラウザ側の JS も) |
