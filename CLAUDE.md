@@ -28,8 +28,9 @@
   専用の中身 (音楽、個人のデッキ、認証情報の生成物) は flash_local/
   (gitignore) に置く — 実機の storage は flash/ + flash_local/ の合成、
   web (wasm) の bundle は追跡分 + config/system_conf_wasm.toml だけを束ねる。
-  /home の出荷 seed はサービスの種と README のみで、サンプルは
-  /usr/share/samples/ に置く。
+  **/home は空で出荷する** (2026-08-31)。/home はユーザの物だけを置く場所で、
+  更新で入れ替わってよいもの (手本・サンプル・案内) は /usr/share/ 配下
+  (samples/ services/ doc/) に置く。/home 自体は起動時に file HAL が作る。
 - .gitsubmoduleに含まれるディレクトリは直接編集禁止
 - .gitsubmoduleに含まれるディレクトリ以下を編集する際は、lib/add lib/patch lib/replace 以下にファイルを配置して、 Rakefile で、対象のファイルやディレクトリを追加、上書き、削除する。
 - sdkconfigおよびsdkconfig.defaults は編集禁止

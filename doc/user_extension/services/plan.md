@@ -321,8 +321,8 @@ headless アプリ。既存の枠組みだけで書ける:
 ## kernel の変更 (1 か所)
 
 - ブートで desktop を spawn している場所 (fmrb_kernel.rb 606 行付近) の後に、
-  **/home/services.toml が存在すれば** services ホストを spawn する。
-  無ければ何もしない (現状と同一)。
+  **/etc/services.toml か /home/services.toml が存在すれば** services ホストを
+  spawn する。どちらも無ければ何もしない (Retro がこれ)。
 - kernel Ruby は Spinel でも動くので **dual-safe** で書く (保存ブロック
   なし、bare 定数なし。ruby_writing_constraints)。
 - 死んだときの自動再 spawn (reaper 連携) は v1 ではやらない。手で
@@ -334,12 +334,19 @@ headless アプリ。既存の枠組みだけで書ける:
 `clock/hour` を publish する。**システムサービスの型見本**であり、chime の
 購読先になる。
 
-ユーザ側 (/home/services):
+`hourly_chime.rb` — `clock/hour` を購読して note_on 1 回 (chime の実物)。
+**システムサービスとして同梱する** (2026-08-31 に /home から移した。
+doc/wasm/storage_persistence.md)。
+
+写して使う見本 (/usr/share/samples/services。既定では 1 本も走らない):
 
 1. `heartbeat.rb` — interval_ms = 10000 で uptime を ctx.log。**最小の型見本**。
-2. `hourly_chime.rb` — `clock/hour` を購読して note_on 1 回 (chime の実物)。
-3. `broken.rb` (enable = false で同梱) — わざと例外を出す。**隔離の生存
-   確認用** (verify.md の「検査をわざと壊す」の常設版)。
+2. `broken.rb` — わざと例外を出す。**隔離の生存確認用** (verify.md の
+   「検査をわざと壊す」の常設版)。/home へ写して enable = true で使う。
+3. `services.toml.example` — /home/services.toml の手本。
+
+**/home には配布物を置かない** (更新のたびに配布物とユーザの編集が
+衝突するため。経緯と規則は doc/wasm/storage_persistence.md)。
 
 ## システムサービスの候補 (S1 のサンプルの先)
 

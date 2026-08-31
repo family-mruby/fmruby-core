@@ -24,6 +24,15 @@ class = "ClockService"
 enable = true
 interval_ms = 60000
 
+# Rings a note on the hour. It subscribes to clock/hour rather than watching
+# the time itself, which is the shape a service that reacts to something else
+# should have; the body is the one to read before writing your own. Point it
+# at a WAV ([hourly_chime.config] wav = "...") and it rings that instead.
+[hourly_chime]
+file = "hourly_chime.rb"
+class = "HourlyChimeService"
+enable = true
+
 # Watches the network and publishes net/state. The IP goes in the log the
 # moment there is one, which is the answer to having to look it up.
 [net]

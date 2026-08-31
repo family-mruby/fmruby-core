@@ -1,9 +1,16 @@
-# Your services: what this machine keeps running in the background.
+# An example of your own service list. Copy it to /home/services.toml and copy
+# the bodies you want next to it:
+#
+#   cp /usr/share/samples/services/services.toml.example /home/services.toml
+#   cp /usr/share/samples/services/heartbeat.rb /home/services/heartbeat.rb
+#
+# Nothing under /usr/share is yours -- a new firmware replaces it -- and
+# nothing in /home is ever touched by an update. That is the whole rule.
 #
 # Everything listed here runs inside one app (the service host), so a dozen
 # small resident jobs cost one task and one VM instead of a dozen. Bodies go
 # in /home/services/; the contract is four optional methods and is written out
-# in /home/services/heartbeat.rb.
+# in heartbeat.rb next to this file.
 #
 # Fields:
 #   file         source under /home/services/
@@ -45,19 +52,15 @@ class = "HeartbeatService"
 enable = true
 interval_ms = 10000
 
-# No interval_ms: it does its work on a topic, and the 200 ms it needs to end
-# the note comes from ctx.wake_in, not from a tick that would otherwise run
-# all hour for nothing.
-[hourly_chime]
-file = "hourly_chime.rb"
-class = "HourlyChimeService"
-enable = true
-
-# Ring a recording instead of the note. Any PCM 16-bit mono WAV (8-48 kHz)
-# will do, so this is where a spoken "it is three o'clock" goes once you have
-# one. Missing file, or a Retro machine, and it rings the note as before.
+# hourly_chime is not here: it ships as a system service (/etc/services.toml,
+# body in /usr/share/services/), so it rings without you listing anything. An
+# entry with the same name in this file wins field by field, which is how it
+# gets a recording to ring instead of the note, or gets switched off:
+#
+#   [hourly_chime]
+#   enable = false
 #   [hourly_chime.config]
-#   wav = "/home/voice/hour.wav"
+#   wav = "/home/voice/hour.wav"    # any PCM 16-bit mono WAV, 8-48 kHz
 
 # Raises on purpose. Turn it on to see that one bad service does not take the
 # others with it: three errors, then the host switches it off alone.

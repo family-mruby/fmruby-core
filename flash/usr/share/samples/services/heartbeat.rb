@@ -1,12 +1,16 @@
 # The smallest service there is: a clock tick and a line in the log.
 #
-# Copy this file to start your own. The contract is five optional methods --
+# A sample, not something this machine runs: copy it to /home/services/ to
+# start your own. The contract is five optional methods --
 # on_start(ctx), on_tick(now_ms), on_wake(now_ms), on_event(topic, data),
 # on_stop -- and ctx is the only way out to the rest of the machine
 # (ctx.publish / ctx.wake_in / ctx.audio / ctx.log / ctx.now_ms / ctx.config /
-# ctx.stop_self). hourly_chime.rb next door uses the other half of it.
+# ctx.stop_self). The other half of it -- reacting to a topic instead of a
+# tick -- is in /usr/share/services/hourly_chime.rb.
 #
-# Listed in /home/services.toml as:
+#   cp /usr/share/samples/services/heartbeat.rb /home/services/heartbeat.rb
+#
+# and then listed in your /home/services.toml as:
 #
 #   [heartbeat]
 #   file = "heartbeat.rb"

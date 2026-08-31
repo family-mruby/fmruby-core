@@ -158,6 +158,15 @@ fmrb_err_t fmrb_hal_file_init(void) {
         return FMRB_ERR_FAILED;
     }
 
+    // /home is the user's own directory and ships empty, so nothing in the
+    // storage image creates it. Make it here rather than at each writer: a
+    // user who deletes it gets it back on the next boot too.
+    char home[512];
+    build_path("/home", home, sizeof(home));
+    if (mkdir(home, 0755) != 0 && errno != EEXIST) {
+        FMRB_LOGW(TAG, "cannot create %s: %s", home, strerror(errno));
+    }
+
     // /tmp: same mount the device keeps in RAM, emptied here to match.
     fmrb_tmpfs_init();
     return FMRB_OK;

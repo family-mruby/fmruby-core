@@ -18,6 +18,11 @@
 # back to the note without fuss. That is the whole of what V1 of the voice
 # work buys: a spoken "it is three o'clock" is just a WAV in /home/voice.
 #
+# Shipped as a system service: the entry is in /etc/services.toml and the body
+# lives here in /usr/share/services/, so a new firmware brings the improved
+# version with it. To silence it, "svc disable hourly_chime" (remembered), or
+# write "[hourly_chime] enable = false" in your own /home/services.toml.
+#
 #   [hourly_chime]
 #   file = "hourly_chime.rb"
 #   class = "HourlyChimeService"

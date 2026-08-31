@@ -476,6 +476,13 @@ fmrb_err_t fmrb_hal_file_init(void) {
     }
     ESP_LOGI(TAG, "LittleFS mounted at %s", LITTLEFS_PATH);
 
+    // /home is the user's own directory and ships empty, so the storage image
+    // does not carry it. Make it here rather than at each writer: a user who
+    // deletes it, or an app_only flash onto an older image, gets it back.
+    if (mkdir(LITTLEFS_PATH "/home", 0755) != 0 && errno != EEXIST) {
+        ESP_LOGW(TAG, "cannot create %s/home", LITTLEFS_PATH);
+    }
+
     // RAM filesystem at /tmp (non-fatal if it fails: only /tmp users notice)
     fmrb_tmpfs_init();
 
