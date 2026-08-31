@@ -133,7 +133,7 @@ module FileSelectorMixin
     verb = @file_selector_mode == "save" ? "Save" : "Open"
     title = "#{verb}: #{@file_selector_dir}"
     title = title[0, FSEL_W / 6 - 2] if title.length > FSEL_W / 6 - 2
-    @gfx.draw_text(x + 4, y + 3, title, FmrbGfx::WHITE, FSEL_TITLE_BG)
+    @gfx.draw_text(x + 4, y + 3, title, FmrbConst::THEME_TEXT_LIGHT, FSEL_TITLE_BG)
 
     # Bottom area: filename input (save mode) + buttons
     metrics = fsel_list_metrics
@@ -168,7 +168,7 @@ module FileSelectorMixin
       if idx == @file_selector_selected
         item_w = has_scrollbar ? FSEL_W - FmrbApp::SCROLLBAR_W - 2 : FSEL_W - 4
         @gfx.fill_rect(x + 2, item_y, item_w, FSEL_ITEM_H, FSEL_SEL_BG)
-        text_color = FmrbGfx::WHITE
+        text_color = FmrbConst::THEME_TEXT_LIGHT
         text_bg = FSEL_SEL_BG
       else
         text_color = entry[:is_dir] ? FSEL_DIR_COLOR : FSEL_TEXT

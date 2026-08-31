@@ -118,6 +118,39 @@ module FmrbColors
     PALETTE_VALUES.getbyte(index)
   end
 
+
+  # A step darker than a theme colour, for a bar that must not merge with what
+  # is next to it: the editor's menu row sits directly under the window title
+  # bar, and with both on THEME_MENU_BG there was no edge between them.
+  #
+  # Down two of the seven red/green steps and one of the three blue ones, then
+  # three results are refused and sent the other way instead:
+  #   0x01   the desktop's transparent key -- a window painted with it goes
+  #          see-through (that one becomes plain black)
+  #   the colour itself, which is what a colour already at the bottom gives
+  #   `avoid`, for the caller's other neighbour: on the neon theme the menu
+  #          colour darkens to exactly the page colour, so the bar would have
+  #          vanished into the page instead of into the title bar
+  # The point is to differ from both, not to be dark.
+  def self.shade(color, avoid = nil)
+    r = (color >> 5) & 7
+    g = (color >> 2) & 7
+    b = color & 3
+    dr = r > 1 ? r - 2 : 0
+    dg = g > 1 ? g - 2 : 0
+    db = b > 0 ? b - 1 : 0
+    out = (dr << 5) | (dg << 2) | db
+    out = 0x00 if out == 0x01
+    if out == color || out == avoid
+      ur = r < 6 ? r + 2 : 7
+      ug = g < 6 ? g + 2 : 7
+      ub = b < 3 ? b + 1 : 3
+      up = (ur << 5) | (ug << 2) | ub
+      out = up unless up == avoid || up == color
+    end
+    out
+  end
+
   # ---- the file -----------------------------------------------------------
 
   # { "bg" => 0x24, ... } for one section; empty when there is nothing to say.

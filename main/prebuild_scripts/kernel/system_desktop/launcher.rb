@@ -14,7 +14,7 @@ module LauncherMixin
   LAUNCHER_BG = FmrbConst::THEME_WINDOW_BG
   LAUNCHER_TITLE_BG = FmrbConst::THEME_MENU_BG
   LAUNCHER_ICON_BG = FmrbConst::THEME_WINDOW_BG
-  LAUNCHER_ICON_SEL = FmrbGfx.rgb_to_332(200, 180, 180)
+  LAUNCHER_ICON_SEL = FmrbConst::THEME_HIGHLIGHT
   LAUNCHER_TEXT = FmrbConst::THEME_TEXT
 
   # Built-in app entries. Labels are resolved through FmrbI18n at scan time so
@@ -550,7 +550,8 @@ module LauncherMixin
     @gfx.fill_rect(x, y, LAUNCHER_W, LAUNCHER_H, LAUNCHER_BG)
     @gfx.draw_rect(x, y, LAUNCHER_W, LAUNCHER_H, FmrbConst::THEME_BORDER)
     @gfx.fill_rect(x + 1, y + 1, LAUNCHER_W - 2, LAUNCHER_TITLE_H - 1, LAUNCHER_TITLE_BG)
-    @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:launcher), FmrbGfx::WHITE, LAUNCHER_TITLE_BG, mixed: true)
+    @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:launcher),
+                   FmrbConst::THEME_TEXT_LIGHT, LAUNCHER_TITLE_BG, mixed: true)
     bar_y = y + LAUNCHER_TITLE_H
     bar_h = LAUNCHER_H - LAUNCHER_TITLE_H
     # The launcher is a grid, but it scrolls by row, so the bar sees the same

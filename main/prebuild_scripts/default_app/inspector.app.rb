@@ -19,12 +19,16 @@ class InspectorApp < FmrbApp
   SAMPLE_CAP = 120 # max raw samples kept per wizard step
   UPDATE_MS = 80
 
-  # White background, dark text palette.
-  COL_BG    = FmrbGfx.rgb_to_332(255, 255, 255)  # white
-  COL_TEXT  = FmrbGfx.rgb_to_332(20, 20, 20)     # near-black
-  COL_DIM   = FmrbGfx.rgb_to_332(120, 120, 120)  # gray
-  COL_HI    = FmrbGfx.rgb_to_332(30, 60, 170)    # dark blue (headers)
-  COL_SEL   = FmrbGfx.rgb_to_332(180, 205, 255)  # light-blue selection bar
+  # The page and its furniture follow the system theme, so the inspector
+  # restyles with everything else. The three below it stay as they are: green
+  # for good, red for trouble and blue for raw bytes are what the reading
+  # means, not how the window is decorated.
+  COL_BG    = FmrbConst::THEME_WINDOW_BG         # page
+  COL_TEXT  = FmrbConst::THEME_TEXT              # ink
+  COL_DIM   = FmrbConst::THEME_BORDER            # muted text, rules
+  COL_HI    = FmrbConst::THEME_DIR_COLOR         # headers (the theme's accent ink)
+  COL_SEL   = FmrbConst::THEME_HIGHLIGHT         # selection bar
+  COL_SEL_TEXT = FmrbConst::THEME_TEXT_LIGHT     # ink on the selection bar
   COL_OK    = FmrbGfx.rgb_to_332(20, 130, 40)    # dark green
   COL_WARN  = FmrbGfx.rgb_to_332(200, 40, 20)    # dark red
   COL_RAW   = FmrbGfx.rgb_to_332(20, 90, 160)    # dark blue (raw bytes)
@@ -629,7 +633,7 @@ class InspectorApp < FmrbApp
                          @user_area_width - 2, LH, COL_SEL)
         end
         line(row, "#{i == @sel ? '>' : ' '} #{label}",
-             i == @sel ? COL_HI : COL_TEXT)
+             i == @sel ? COL_SEL_TEXT : COL_TEXT)
         i += 1
       end
     end

@@ -50,7 +50,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 ## テーマ別
 
 - `ai/` [OpenAI API 活用の構想メモ](ai/ideas.md) — - 〔1 files〕
-- `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-08-31) A・B・C 実装済。色名 78 + 別名 23、editor は 31 項目を上書き可、shell は `color` コマンド 〔1 files〕
+- `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-08-31) A・B・C + D (inspector とデスクトップの残り) 実装済。エディタの 2 本のバーはテーマ色の一段違いにした 〔1 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔1 files〕
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕
@@ -73,6 +73,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
 - `ruby_asterism/` [プロジェクト名の決定: Asterism](ruby_asterism/naming.md) — - 〔6 files〕
+- `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔21 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔17 files〕

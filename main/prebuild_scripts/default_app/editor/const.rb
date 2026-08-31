@@ -21,12 +21,17 @@ module EditorConst
   EDITOR_COLORS = FmrbColors.section("editor")
   BG_COLOR      = EDITOR_COLORS["bg"] || FmrbConst::THEME_WINDOW_BG               # bg
   TEXT_COLOR    = EDITOR_COLORS["text"] || FmrbConst::THEME_TEXT                  # text
-  MENU_BG       = EDITOR_COLORS["menu_bg"] || FmrbConst::THEME_MENU_BG            # menu_bg
+  # A step darker than the system's menu colour, not the colour itself: the
+  # editor's menu row sits right under the window title bar, which is
+  # THEME_MENU_BG, and the two used to merge into one band with no edge.
+  MENU_BG       = EDITOR_COLORS["menu_bg"] ||
+                  FmrbColors.shade(FmrbConst::THEME_MENU_BG, BG_COLOR)           # menu_bg
   MENU_TEXT     = EDITOR_COLORS["menu_text"] || FmrbConst::THEME_TEXT_LIGHT       # menu_text
   MENU_KEY      = EDITOR_COLORS["menu_key"] || FmrbGfx.rgb_to_332(255, 255, 0)    # menu_key
   # The same role on a light panel (the key list): yellow on white is unreadable.
   MENU_KEY_DARK = EDITOR_COLORS["menu_key_alt"] || FmrbGfx.rgb_to_332(120, 60, 0) # menu_key_alt
-  STATUS_BG     = EDITOR_COLORS["status_bg"] || FmrbConst::THEME_MENU_BG          # status_bg
+  STATUS_BG     = EDITOR_COLORS["status_bg"] ||
+                  FmrbColors.shade(FmrbConst::THEME_MENU_BG, BG_COLOR)           # status_bg
   STATUS_TEXT   = EDITOR_COLORS["status_text"] || FmrbConst::THEME_TEXT_LIGHT     # status_text
   STATUS_OK_BG  = EDITOR_COLORS["saved_bg"] || FmrbGfx.rgb_to_332(0, 160, 0)      # saved_bg
   STATUS_OK_TEXT = EDITOR_COLORS["saved_text"] || FmrbGfx.rgb_to_332(255, 255, 255) # saved_text

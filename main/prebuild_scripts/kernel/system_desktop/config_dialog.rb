@@ -294,7 +294,7 @@ module ConfigDialogMixin
     @gfx.fill_rect(x, y, CFG_W, CFG_H, CFG_BG)
     @gfx.draw_rect(x, y, CFG_W, CFG_H, CFG_BORDER)
     @gfx.fill_rect(x + 1, y + 1, CFG_W - 2, CFG_TITLE_H - 1, CFG_HEADER)
-    @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:config), FmrbGfx::WHITE, CFG_HEADER, mixed: true)
+    @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:config), FmrbConst::THEME_TEXT_LIGHT, CFG_HEADER, mixed: true)
     CFG_SETTINGS.each_with_index { |s, i| cfg_draw_row(i, s) }
     cfg_draw_footer
   end

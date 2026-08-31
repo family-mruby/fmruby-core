@@ -113,7 +113,7 @@ module ClockSettingMixin
 
     # Title bar
     @gfx.fill_rect(x0 + 1, y0 + 1, CLK_W - 2, 11, CLK_TITLE_BG)
-    @gfx.draw_text(x0 + 4, y0 + 2, "Set Clock", FmrbGfx::WHITE, CLK_TITLE_BG)
+    @gfx.draw_text(x0 + 4, y0 + 2, "Set Clock", FmrbConst::THEME_TEXT_LIGHT, CLK_TITLE_BG)
 
     # Field labels and values
     fx = x0 + 8
@@ -135,7 +135,7 @@ module ClockSettingMixin
       lx = fx + i * (CLK_FIELD_W + 2)
       bg = (i == @clk_selected) ? CLK_HL : CLK_BTN_BG
       @gfx.fill_rect(lx, fy, CLK_FIELD_W, CLK_FIELD_H, bg)
-      @gfx.draw_text(lx + 10, fy + 1, "+", FmrbGfx::WHITE, bg)
+      @gfx.draw_text(lx + 10, fy + 1, "+", FmrbConst::THEME_TEXT_LIGHT, bg)
       i += 1
     end
 
@@ -160,7 +160,7 @@ module ClockSettingMixin
       lx = fx + i * (CLK_FIELD_W + 2)
       bg = (i == @clk_selected) ? CLK_HL : CLK_BTN_BG
       @gfx.fill_rect(lx, fy, CLK_FIELD_W, CLK_FIELD_H, bg)
-      @gfx.draw_text(lx + 10, fy + 1, "-", FmrbGfx::WHITE, bg)
+      @gfx.draw_text(lx + 10, fy + 1, "-", FmrbConst::THEME_TEXT_LIGHT, bg)
       i += 1
     end
 

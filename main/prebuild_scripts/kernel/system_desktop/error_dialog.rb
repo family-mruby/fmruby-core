@@ -8,6 +8,10 @@ module ErrorDialogMixin
   # Near-black opaque color. FmrbGfx::BLACK (0x00) collides with the foreground
   # canvas color-key on some paths and renders transparent.
   EDLG_BG = 0x24
+  # Deliberately NOT from the theme, unlike every other dialog here: this one
+  # appears when something has already gone wrong, and a theme is one of the
+  # things that can be wrong (a palette where ink and page are the same colour
+  # would hide the very message explaining it). Red on near-black, always.
   EDLG_BORDER = FmrbGfx::RED
   EDLG_TITLE_BG = FmrbGfx::RED
   EDLG_TEXT = FmrbGfx::YELLOW

@@ -158,12 +158,12 @@ module FileManagerMixin
     title = "File: #{@file_manager_dir}"
     max_title_len = (FMGR_W - 60) / 6
     title = title[0, max_title_len] if title.length > max_title_len
-    @gfx.draw_text(x + 4, y + 3, title, FmrbGfx::WHITE, FMGR_TITLE_BG)
+    @gfx.draw_text(x + 4, y + 3, title, FmrbConst::THEME_TEXT_LIGHT, FMGR_TITLE_BG)
 
     # Close button on title bar (small filled circle, matches app windows).
     close_cx = x + FMGR_W - 7
     close_cy = y + FMGR_TITLE_H / 2
-    @gfx.fill_circle(close_cx, close_cy, 3, FmrbGfx::WHITE)
+    @gfx.fill_circle(close_cx, close_cy, 3, FmrbConst::THEME_TEXT_LIGHT)
 
     # Column header
     header_y = y + FMGR_TITLE_H + 1
@@ -193,9 +193,9 @@ module FileManagerMixin
 
       if idx == @file_manager_selected || idx == @fmgr_pressed_idx
         @gfx.fill_rect(x + 2, item_y, FMGR_W - 4, FMGR_ITEM_H, FMGR_SEL_BG)
-        text_color = FmrbGfx::WHITE
+        text_color = FmrbConst::THEME_TEXT_LIGHT
         text_bg = FMGR_SEL_BG
-        size_color = FmrbGfx::WHITE
+        size_color = FmrbConst::THEME_TEXT_LIGHT
       else
         text_color = entry[:is_dir] ? FMGR_DIR_COLOR : FMGR_TEXT
         text_bg = FMGR_BG

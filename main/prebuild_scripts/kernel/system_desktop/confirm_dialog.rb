@@ -71,7 +71,7 @@ module ConfirmDialogMixin
 
     # Title bar
     @gfx.fill_rect(x + 1, y + 1, CDLG_W - 2, 13, CDLG_TITLE_BG)
-    @gfx.draw_text(x + 4, y + 3, "Confirm", FmrbGfx::WHITE, CDLG_TITLE_BG)
+    @gfx.draw_text(x + 4, y + 3, "Confirm", FmrbConst::THEME_TEXT_LIGHT, CDLG_TITLE_BG)
 
     # Message. Uses mixed:true so localized strings (e.g. JA "再起動しますか?")
     # render via misaki_8 for multi-byte and Font0 for ASCII in the same line.

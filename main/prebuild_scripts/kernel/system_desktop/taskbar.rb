@@ -90,7 +90,7 @@ module TaskbarMixin
 
       # First letter of the app name, precomputed in update_taskbar_apps
       ch = app[:ch]
-      @gfx.draw_text(x + 2, TASKBAR_Y + 1, ch, FmrbGfx::WHITE, color) if ch
+      @gfx.draw_text(x + 2, TASKBAR_Y + 1, ch, FmrbConst::THEME_TEXT_LIGHT, color) if ch
 
       # Focused highlight: white border
       if app[:pid] == @taskbar_focused_pid

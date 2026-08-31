@@ -75,7 +75,7 @@ module NetworkDialogMixin
     @gfx.fill_rect(x, y, NET_W, NET_H, NET_BG)
     @gfx.draw_rect(x, y, NET_W, NET_H, NET_BORDER)
     @gfx.fill_rect(x + 1, y + 1, NET_W - 2, NET_TITLE_H - 1, NET_HEADER)
-    @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:network), FmrbGfx::WHITE, NET_HEADER, mixed: true)
+    @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:network), FmrbConst::THEME_TEXT_LIGHT, NET_HEADER, mixed: true)
 
     body_y = y + NET_TITLE_H + 6
     if @net_info.nil?
