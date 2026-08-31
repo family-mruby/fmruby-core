@@ -6,9 +6,12 @@ class LogViewerApp < FmrbApp
   # the log reads the same as every other window and can be toned down for an
   # NTSC screen in one place.
   LOG_BG = FmrbConst::THEME_WINDOW_BG
-  # Pale pink, deliberately not THEME_MENU_BG: in the menu bar colour the
-  # toolbar merged with the title bar right above it into one thick band.
-  TOOLBAR_BG = 0xF2
+  # A step off the system menu colour rather than the colour itself: the
+  # toolbar sits directly under the window title bar, and in the same colour
+  # the two merged into one thick band. This was a fixed pale pink for that
+  # reason, which then ignored the theme; shade() keeps it clear of the title
+  # bar AND of the page below it, whatever the theme is.
+  TOOLBAR_BG = FmrbColors.shade(FmrbConst::THEME_MENU_BG, LOG_BG)
   BUTTON_BG = FmrbConst::THEME_BUTTON
   BUTTON_TEXT = FmrbConst::THEME_TEXT_LIGHT
   LOG_LINES_MAX = 50
