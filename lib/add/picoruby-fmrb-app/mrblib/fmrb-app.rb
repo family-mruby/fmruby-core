@@ -131,6 +131,28 @@ class FmrbApp
     _apply_rounded_corner_regions
   end
 
+
+  # Rows one wheel event asks for, signed: positive scrolls towards the start
+  # of a list, which is the wheel pushed away from the user. nil when the
+  # event is not a wheel, so an app reads it as
+  #
+  #   rows = wheel_rows(ev)
+  #   if rows
+  #     @scroll -= rows
+  #     ...
+  #
+  # How far a notch reaches is the machine's setting (system_conf.toml
+  # wheel_lines), not each app's opinion. The scrollbar widget deliberately
+  # does NOT answer the wheel: in every app here the bar is a picture of the
+  # app's own scroll position, written on each draw, so a value changed inside
+  # the widget would be overwritten before it was seen.
+  def wheel_rows(ev)
+    return nil unless ev[:type] == :mouse_wheel
+    d = ev[:delta].to_i
+    return nil if d == 0
+    d * FmrbConst::WHEEL_LINES
+  end
+
   # ---- System colours ----
   #
   # The [theme] section of system_conf.toml, as FmrbConst::THEME_*. Apps that

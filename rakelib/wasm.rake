@@ -109,6 +109,19 @@ namespace :wasm do
   # commands that CMake step runs, for whatever is older than its sources.
   desc "Regenerate stale mruby app/kernel bytecode (the wasm build cannot)"
   task :mrb do
+    # Same trap one level down: the gems under lib/add are compiled into
+    # libmruby, which wasm:core links but never rebuilds. Adding a method to
+    # the app base and building for the browser linked the library from
+    # before it, and the desktop died on the first event with a NoMethodError
+    # it had no way to report. Cheap check, expensive miss.
+    lib_a = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby/build",
+                      "family-mruby-wasm/lib/libmruby.a")
+    newest_gem = Dir[File.join(ROOT_DIR, "lib/add/**/*.{rb,c,h}")]
+                 .map { |f| File.mtime(f) }.max
+    if newest_gem && (!File.exist?(lib_a) || File.mtime(lib_a) < newest_gem)
+      puts "wasm:mrb: lib/add is newer than libmruby -- rebuilding it first"
+      Rake::Task["wasm:mruby"].invoke
+    end
     mrbc = File.join(ROOT_DIR, "components/picoruby-esp32/picoruby/bin/mrbc")
     unless File.exist?(mrbc)
       puts "wasm:mrb: no #{mrbc} yet -- skipped (a full build makes it)"

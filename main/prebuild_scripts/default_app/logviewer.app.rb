@@ -244,6 +244,19 @@ class LogViewerApp < FmrbApp
       toggle_wrap
       return
     end
+    rows = wheel_rows(ev)
+    if rows
+      # Turning the wheel means the user wants to look at something, so it
+      # also steps out of the tail-following AUTO mode -- the same thing a
+      # click on the log area does.
+      @auto_scroll = false
+      max_s = visible_max_scroll
+      @scroll -= rows
+      @scroll = 0 if @scroll < 0
+      @scroll = max_s if @scroll > max_s
+      draw_view
+      return
+    end
     x = ev[:x]
     y = ev[:y]
 

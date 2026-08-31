@@ -86,6 +86,15 @@ static void process_hid_event(uint8_t type, const uint8_t *data, uint16_t len) {
             }
             break;
 
+        case HID_EVENT_MOUSE_WHEEL:
+            if (len >= sizeof(hid_mouse_wheel_event_t)) {
+                const hid_mouse_wheel_event_t *wheel = (const hid_mouse_wheel_event_t*)data;
+                FMRB_LOGD(TAG, "Mouse wheel %d at (%u, %u)",
+                         wheel->delta, wheel->x, wheel->y);
+                fmrb_host_send_mouse_wheel(wheel->x, wheel->y, wheel->delta);
+            }
+            break;
+
         default:
             FMRB_LOGW(TAG, "Unknown HID event type: 0x%02x", type);
             break;

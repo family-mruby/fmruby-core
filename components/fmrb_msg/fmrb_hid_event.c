@@ -51,6 +51,19 @@ bool fmrb_hid_event_decode(const uint8_t *data, uint32_t size,
             return true;
         }
 
+        case HID_MSG_MOUSE_WHEEL: {
+            if (size < sizeof(fmrb_hid_mouse_wheel_event_t)) {
+                return false;
+            }
+            const fmrb_hid_mouse_wheel_event_t *e =
+                (const fmrb_hid_mouse_wheel_event_t *)data;
+            out->type = FMRB_HID_EVENT_MOUSE_WHEEL;
+            out->wheel = e->delta;
+            out->x = e->x;
+            out->y = e->y;
+            return true;
+        }
+
         case HID_MSG_GAMEPAD_BUTTON_DOWN:
         case HID_MSG_GAMEPAD_BUTTON_UP: {
             if (size < sizeof(fmrb_hid_gamepad_button_event_t)) {

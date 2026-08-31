@@ -194,6 +194,9 @@ out << "  PROC_STATE_STOPPING = #{proc_states['PROC_STATE_STOPPING']}\n"
   abort "theme field #{f} vanished from const.c" unless theme.key?(f)
   out << "  THEME_#{f.upcase} = FmrbSpx.fmrb_spx_theme_color(#{i})\n"
 end
+# Rows one wheel notch scrolls, read at start-up for the same reason.
+out << "  WHEEL_LINES = FmrbSpx.fmrb_spx_wheel_lines\n"
+
 # Versions + platform/system placeholders (about dialog / config dialog). The
 # Linux mruby build reports the same placeholders; ESP32 fills real values at
 # runtime (not available at Spinel compile time -- acceptable for the port).

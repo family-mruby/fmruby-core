@@ -54,6 +54,23 @@ const fmrb_theme_t* fmrb_theme_get(void)
     return &g_theme;
 }
 
+/* Rows one wheel notch scrolls. Same shape as the theme: a default here, the
+   TOML loader overrides it before any VM starts, and every VM sees it as a
+   constant. */
+static uint8_t g_wheel_lines = 3;
+
+void fmrb_wheel_lines_set(uint8_t lines)
+{
+    if (lines > 0) {
+        g_wheel_lines = lines;
+    }
+}
+
+uint8_t fmrb_wheel_lines_get(void)
+{
+    return g_wheel_lines;
+}
+
 // FmrbHw.pin_status(pin) -> Integer (usage type)
 static mrb_value mrb_fmrb_hw_pin_status(mrb_state *mrb, mrb_value klass)
 {
@@ -509,6 +526,8 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "THEME_BORDER", mrb_fixnum_value(t->border));
     mrb_define_const(mrb, const_module, "THEME_BUTTON", mrb_fixnum_value(t->button));
     mrb_define_const(mrb, const_module, "THEME_DIR_COLOR", mrb_fixnum_value(t->dir_color));
+    // Rows one wheel notch scrolls (system_conf.toml wheel_lines).
+    mrb_define_const(mrb, const_module, "WHEEL_LINES", mrb_fixnum_value(fmrb_wheel_lines_get()));
 
     // Input constants: USB HID keycodes, modifier masks, gamepad buttons/axes
     define_key_constants(mrb, const_module);

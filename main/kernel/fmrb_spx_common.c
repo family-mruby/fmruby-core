@@ -74,6 +74,14 @@ int fmrb_spx_max_apps(void)
     return conf ? (int)conf->max_apps : FMRB_MAX_APPS;
 }
 
+int fmrb_spx_wheel_lines(void)
+{
+    /* FmrbConst::WHEEL_LINES for the Spinel programs, read at start-up like
+       the theme colours next door rather than baked in at generation time --
+       system_conf.toml's wheel_lines has to reach both engines the same way. */
+    return (int)fmrb_wheel_lines_get();
+}
+
 int fmrb_spx_theme_color(int index)
 {
     /* FmrbConst::THEME_* for the Spinel programs. The mruby module reads

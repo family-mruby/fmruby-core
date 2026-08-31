@@ -21,6 +21,7 @@ typedef enum {
     HID_MSG_GAMEPAD_BUTTON_UP = 7,
     HID_MSG_GAMEPAD_AXIS = 8,
     HID_MSG_KANA_MODE = 9,
+    HID_MSG_MOUSE_WHEEL = 10,
 } hid_msg_subtype_t;
 
 // Keyboard event payload
@@ -45,6 +46,19 @@ typedef struct {
 // fmrb_hid_mouse_button_event_t is what a HID_MSG_MOUSE_MOVE payload is.
 // (There used to be a 5-byte fmrb_hid_mouse_motion_event_t here that did not
 // match the wire, and every decoder carried a comment warning about it.)
+
+// Mouse wheel event payload. delta is in notches, the unit the wheel itself
+// reports: one click of the wheel is 1, away from the user is positive (which
+// scrolls a view up, towards the start). How many lines a notch means is the
+// reader's business -- system_conf.toml's wheel_lines, as FmrbConst::WHEEL_LINES.
+// x and y ride along so an app can tell where the pointer was, even though the
+// event is delivered to the focused window rather than the one under it.
+typedef struct {
+    uint8_t subtype;       // HID_MSG_MOUSE_WHEEL
+    int8_t delta;          // notches, positive = away from the user
+    uint16_t x;
+    uint16_t y;
+} __attribute__((packed)) fmrb_hid_mouse_wheel_event_t;
 
 // Gamepad button event payload
 typedef struct {

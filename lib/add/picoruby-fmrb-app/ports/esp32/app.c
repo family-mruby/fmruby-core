@@ -305,6 +305,16 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
             HID_SET_INT("y", ev.y);
             break;
 
+        // The wheel carries notches, positive away from the user. x and y are
+        // where the pointer was; the event itself was delivered by focus, so
+        // they are for the app's information rather than for hit testing.
+        case FMRB_HID_EVENT_MOUSE_WHEEL:
+            HID_SET_TYPE("mouse_wheel");
+            HID_SET_INT("delta", ev.wheel);
+            HID_SET_INT("x", ev.x);
+            HID_SET_INT("y", ev.y);
+            break;
+
         case FMRB_HID_EVENT_GAMEPAD_DOWN:
         case FMRB_HID_EVENT_GAMEPAD_UP:
             HID_SET_TYPE(ev.type == FMRB_HID_EVENT_GAMEPAD_DOWN ? "gamepad_down" : "gamepad_up");

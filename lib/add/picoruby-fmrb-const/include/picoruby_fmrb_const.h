@@ -27,6 +27,11 @@ void fmrb_theme_set(const fmrb_theme_t *theme);
 /* Get current theme */
 const fmrb_theme_t* fmrb_theme_get(void);
 
+/* Rows one wheel notch scrolls (system_conf.toml wheel_lines). Set before any
+   VM is created, read by apps as FmrbConst::WHEEL_LINES. */
+void fmrb_wheel_lines_set(uint8_t lines);
+uint8_t fmrb_wheel_lines_get(void);
+
 void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb);
 
 #ifdef __cplusplus

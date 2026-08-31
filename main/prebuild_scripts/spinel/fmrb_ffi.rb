@@ -15,6 +15,7 @@ module FmrbSpx
   ffi_func :fmrb_spx_log_write, [:int, :str, :int], :void
   ffi_func :fmrb_spx_theme_color, [:int], :int   # theme colour by fmrb_theme_t field index
   ffi_func :fmrb_spx_max_apps, [], :int          # configured concurrent app ceiling
+  ffi_func :fmrb_spx_wheel_lines, [], :int       # rows one wheel notch scrolls
 
   # --- messaging ---
   # recv returns the payload as a binary-safe String (:binstr; byte-exact via

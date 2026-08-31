@@ -39,6 +39,7 @@ typedef struct {
     bool wifi_auto_start;                   // Start WiFi STA at boot (needs /etc/wifi.toml creds)
     double mouse_scale_x;                   // Mouse X sensitivity multiplier
     double mouse_scale_y;                   // Mouse Y sensitivity multiplier
+    uint8_t wheel_lines;                    // Rows one wheel notch scrolls
     char language[8];                       // UI language code, e.g. "ja" or "en"
 } fmrb_system_config_t;
 

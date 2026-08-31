@@ -12,6 +12,8 @@ debug_mode = true
 ble_auto_start = true # false = keep BLE off at boot; saves ~75KB internal RAM
 mouse_scale_x = 1.0
 mouse_scale_y = 1.0
+# Rows one notch of the mouse wheel scrolls (1-20).
+wheel_lines = 3
 timezone = "JST-9"
 keyboard_layout = "jp" # "jp" or "us"
 language = "en" # "ja" or "en"

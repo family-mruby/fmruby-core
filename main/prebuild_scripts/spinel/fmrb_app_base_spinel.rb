@@ -1177,6 +1177,28 @@ class FmrbApp
     _apply_rounded_corner_regions
   end
 
+
+  # Rows one wheel event asks for, signed: positive scrolls towards the start
+  # of a list, which is the wheel pushed away from the user. nil when the
+  # event is not a wheel, so an app reads it as
+  #
+  #   rows = wheel_rows(ev)
+  #   if rows
+  #     @scroll -= rows
+  #     ...
+  #
+  # How far a notch reaches is the machine's setting (system_conf.toml
+  # wheel_lines), not each app's opinion. The scrollbar widget deliberately
+  # does NOT answer the wheel: in every app here the bar is a picture of the
+  # app's own scroll position, written on each draw, so a value changed inside
+  # the widget would be overwritten before it was seen.
+  def wheel_rows(ev)
+    return nil unless ev[:type] == :mouse_wheel
+    d = ev[:delta].to_i
+    return nil if d == 0
+    d * FmrbConst::WHEEL_LINES
+  end
+
   # ---- System colours ----
   #
   # The [theme] section of system_conf.toml, as FmrbConst::THEME_*. Apps that
@@ -1468,6 +1490,14 @@ class FmrbApp
     when 3  # MOUSE_MOVE (kernel sends 6-byte [subtype,button,x_lo,x_hi,y_lo,y_hi])
       return nil if data.bytesize < 6
       { type: :mouse_move,
+        x: SpxBytes.u16(data, 2),
+        y: SpxBytes.u16(data, 4) }
+    when 10  # MOUSE_WHEEL (notches in the button slot, signed)
+      return nil if data.bytesize < 6
+      d = data.getbyte(1)
+      d -= 256 if d > 127
+      { type: :mouse_wheel,
+        delta: d,
         x: SpxBytes.u16(data, 2),
         y: SpxBytes.u16(data, 4) }
     when 6, 7  # GAMEPAD_BUTTON_DOWN / UP

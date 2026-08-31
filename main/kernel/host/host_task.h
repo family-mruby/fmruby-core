@@ -70,6 +70,21 @@ int fmrb_host_send_mouse_move(int x, int y);
 int fmrb_host_send_mouse_click(int x, int y, int button, int state);
 
 /**
+ * @brief Send mouse wheel event
+ *
+ * delta is in notches, the unit the wheel reports: one click is 1, and
+ * positive is away from the user. Unlike mouse moves this is not throttled --
+ * a dropped move is corrected by the next one, a dropped notch is a turn that
+ * did nothing -- so the sources should hand over what the wheel gave them.
+ *
+ * @param x X coordinate at the time of the wheel
+ * @param y Y coordinate
+ * @param delta Notches, positive = away from the user
+ * @return 0 on success, -1 on failure
+ */
+int fmrb_host_send_mouse_wheel(int x, int y, int delta);
+
+/**
  * @brief Send gamepad button event
  * @param gamepad_id Gamepad ID (0-1)
  * @param button_num Button number (0-15)

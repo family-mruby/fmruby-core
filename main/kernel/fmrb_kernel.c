@@ -50,6 +50,9 @@ static fmrb_system_config_t g_system_config = {
     .wifi_auto_start = false,
     .mouse_scale_x = 1.0,
     .mouse_scale_y = 1.0,
+    /* One notch of the wheel moves three rows, the usual desktop default.
+       Apps read it as FmrbConst::WHEEL_LINES. */
+    .wheel_lines = 3,
     .language = "en"
 };
 
@@ -193,6 +196,13 @@ static bool read_system_config(void)
     // Read mouse sensitivity
     g_system_config.mouse_scale_x = fmrb_toml_get_double(conf, "mouse_scale_x", g_system_config.mouse_scale_x);
     g_system_config.mouse_scale_y = fmrb_toml_get_double(conf, "mouse_scale_y", g_system_config.mouse_scale_y);
+    {
+        int wl = (int)fmrb_toml_get_int(conf, "wheel_lines", g_system_config.wheel_lines);
+        if (wl < 1) wl = 1;
+        if (wl > 20) wl = 20;
+        g_system_config.wheel_lines = (uint8_t)wl;
+        fmrb_wheel_lines_set(g_system_config.wheel_lines);
+    }
 
     // Read timezone and apply
     const char *tz = fmrb_toml_get_string(conf, "timezone", NULL);
@@ -238,7 +248,9 @@ static bool read_system_config(void)
     FMRB_LOGI(TAG, "Max Apps: %d (build ceiling %d)",
               g_system_config.max_apps, FMRB_MAX_APPS);
     FMRB_LOGI(TAG, "Debug Mode: %s", g_system_config.debug_mode ? "enabled" : "disabled");
-    FMRB_LOGI(TAG, "Mouse Scale: x=%.2f, y=%.2f", g_system_config.mouse_scale_x, g_system_config.mouse_scale_y);
+    FMRB_LOGI(TAG, "Mouse Scale: x=%.2f, y=%.2f, wheel=%d rows",
+              g_system_config.mouse_scale_x, g_system_config.mouse_scale_y,
+              (int)g_system_config.wheel_lines);
 
     // Read [theme] section
     toml_table_t *theme_tab = toml_table_in(conf, "theme");

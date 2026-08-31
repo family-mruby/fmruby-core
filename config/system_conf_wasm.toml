@@ -24,6 +24,8 @@ debug_mode = true
 # No radios on the web build: BLE / WiFi settings are not present here.
 mouse_scale_x = 0.5
 mouse_scale_y = 0.5
+# Rows one notch of the mouse wheel scrolls (1-20).
+wheel_lines = 3
 timezone = "JST-9"
 keyboard_layout = "jp" # "jp" or "us"
 language = "en" # "ja" or "en"

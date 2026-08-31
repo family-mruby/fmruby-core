@@ -38,6 +38,7 @@ enum {
     INPUT_WASM_KEY_UP,         /* a=scancode, b=mod */
     INPUT_WASM_MOUSE_BUTTON,   /* a=x, b=y, c=button(1=L 2=M 3=R), d=state */
     INPUT_WASM_MOUSE_MOVE,     /* a=x, b=y */
+    INPUT_WASM_MOUSE_WHEEL,    /* a=x, b=y, c=notches (signed, cast from i32) */
 };
 
 static input_wasm_event_t s_ring[INPUT_WASM_RING_EVENTS];
@@ -67,6 +68,11 @@ static void dispatch(const input_wasm_event_t *ev)
         break;
     case INPUT_WASM_MOUSE_MOVE:
         fmrb_host_send_mouse_move((uint16_t)ev->a, (uint16_t)ev->b);
+        break;
+    case INPUT_WASM_MOUSE_WHEEL:
+        /* c is written as a signed count by the page; the ring is u32. */
+        fmrb_host_send_mouse_wheel((uint16_t)ev->a, (uint16_t)ev->b,
+                                   (int)(int32_t)ev->c);
         break;
     default:
         FMRB_LOGW(TAG, "unknown input event type %u", (unsigned)ev->type);

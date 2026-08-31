@@ -15,6 +15,8 @@ ble_auto_start = true # false = keep BLE off at boot; saves ~75KB internal RAM
 wifi_auto_start = false # needs ssid/password in wifi.toml; on S3 BLE must be off (one radio at a time)
 mouse_scale_x = 0.5
 mouse_scale_y = 0.5
+# Rows one notch of the mouse wheel scrolls (1-20).
+wheel_lines = 3
 timezone = "JST-9"
 keyboard_layout = "jp" # "jp" or "us"
 language = "en" # "ja" or "en"

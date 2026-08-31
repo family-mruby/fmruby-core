@@ -71,6 +71,7 @@ typedef enum {
     HOST_MSG_AUDIO_COMMAND = 6,
     HOST_MSG_HID_GAMEPAD_BUTTON = 7,
     HOST_MSG_HID_GAMEPAD_AXIS = 8,
+    HOST_MSG_HID_MOUSE_WHEEL = 9,
 } host_msg_type_t;
 
 // Host message structure (now uses HAL message format)
@@ -97,6 +98,11 @@ typedef struct {
             int button;
             int state;  // 1=pressed, 0=released
         } mouse_click;
+        struct {
+            int x;
+            int y;
+            int delta;  // notches, positive = away from the user
+        } mouse_wheel;
         struct {
             int gamepad_id;  // 0-1
             int button_num;  // 0-15
@@ -1707,6 +1713,35 @@ static void host_task_process_host_message(const host_message_t *msg)
             break;
         }
 
+        case HOST_MSG_HID_MOUSE_WHEEL: {
+            int x = msg->data.mouse_wheel.x;
+            int y = msg->data.mouse_wheel.y;
+            int delta = msg->data.mouse_wheel.delta;
+
+            FMRB_LOGD(TAG, "Mouse wheel: delta=%d pos=(%d,%d)", delta, x, y);
+
+            // Straight to the Kernel, which hands it to the focused window --
+            // no hit test, unlike a click (doc/mouse_wheel/plan.md).
+            fmrb_msg_t kernel_msg = {
+                .type = FMRB_MSG_TYPE_HID_EVENT,
+                .src_pid = PROC_ID_HOST,
+                .size = sizeof(fmrb_hid_mouse_wheel_event_t)
+            };
+            fmrb_hid_mouse_wheel_event_t *wheel = (fmrb_hid_mouse_wheel_event_t*)kernel_msg.data;
+            wheel->subtype = HID_MSG_MOUSE_WHEEL;
+            wheel->delta = (int8_t)delta;
+            wheel->x = x;
+            wheel->y = y;
+
+            // Bounded wait like the click above. A dropped notch is a turn of
+            // the wheel that did nothing, so it is worth a warning.
+            fmrb_err_t ret = fmrb_msg_send(PROC_ID_KERNEL, &kernel_msg, 200);
+            if (ret != FMRB_OK) {
+                FMRB_LOGW(TAG, "Mouse wheel dropped: Kernel queue full");
+            }
+            break;
+        }
+
         case HOST_MSG_DRAW_COMMAND:
             // TODO: Implement command buffering and execution
             break;
@@ -2085,6 +2120,21 @@ static void fmrb_host_flush_pending_mouse_move(void)
         };
         host_task_process_host_message(&msg);
     }
+}
+
+int fmrb_host_send_mouse_wheel(int x, int y, int delta)
+{
+    if (delta == 0) {
+        return 0;
+    }
+    FMRB_LOGD(TAG, "MOUSE_WHEEL: x=%d y=%d delta=%d", x, y, delta);
+    host_message_t msg = {
+        .type = HOST_MSG_HID_MOUSE_WHEEL,
+        .data.mouse_wheel.x = x,
+        .data.mouse_wheel.y = y,
+        .data.mouse_wheel.delta = delta
+    };
+    return fmrb_host_send_message(&msg);
 }
 
 int fmrb_host_send_mouse_click(int x, int y, int button, int state)

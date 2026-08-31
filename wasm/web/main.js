@@ -86,6 +86,25 @@ function hookInput() {
   });
   canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
+  // The wheel, in notches. A browser reports pixels, lines or pages depending
+  // on the device and the platform, and positive deltaY means towards the
+  // user -- the opposite of the sign the machine uses -- so it is converted
+  // here rather than anywhere further in. Fractions from a trackpad are
+  // accumulated so a slow two-finger drag still delivers whole notches.
+  let wheelAccum = 0;
+  canvas.addEventListener('wheel', (ev) => {
+    ev.preventDefault();
+    let lines = ev.deltaY;
+    if (ev.deltaMode === 1) lines *= 16;        // already lines: one row ~16px
+    else if (ev.deltaMode === 2) lines *= 400;  // pages
+    wheelAccum += -lines / 100;                 // 100px per notch, sign flipped
+    const notches = wheelAccum > 0 ? Math.floor(wheelAccum) : Math.ceil(wheelAccum);
+    if (notches === 0) return;
+    wheelAccum -= notches;
+    const [x, y] = canvasPos(ev);
+    pushInput(5, x, y, notches, 0);
+  }, { passive: false });
+
   canvas.addEventListener('keydown', (ev) => {
     const sc = RD_HID_KEYMAP[ev.code];
     if (!sc) return;

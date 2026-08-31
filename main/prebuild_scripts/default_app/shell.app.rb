@@ -403,6 +403,19 @@ class ShellApp < FmrbApp
     # Call parent class handler first (for close button, etc.)
     super(ev)
 
+    # The wheel scrolls the history, one row per row the machine's setting
+    # says. less mode has its own viewport and pages with its own keys.
+    rows = wheel_rows(ev)
+    if rows && !@less_mode
+      n = rows > 0 ? rows : -rows
+      i = 0
+      while i < n
+        rows > 0 ? scroll_up : scroll_down
+        i += 1
+      end
+      return
+    end
+
     if ev[:type] == :mouse_down
       # Scrollbar hold start (suppressed while less mode owns the viewport)
       unless @less_mode

@@ -1235,6 +1235,26 @@ class SystemDesktopApp < FmrbApp
     nil
   end
 
+  # One notch is a row here, not a screenful: the launcher scrolls by rows of
+  # icons and the two file panels by rows of names, and the machine's
+  # wheel_lines already says how many of those a notch is worth.
+  def handle_desktop_wheel(rows)
+    n = rows > 0 ? rows : -rows
+    up = rows > 0
+    i = 0
+    while i < n
+      if @launcher_open
+        up ? launcher_scroll_up : launcher_scroll_down
+      elsif @file_selector_open
+        fsel_scroll(up ? -1 : 1)
+      elsif @file_manager_open
+        handle_file_manager_scroll(up ? -1 : 1)
+      end
+      i += 1
+    end
+    nil
+  end
+
   def on_event(ev)
     # Kana input mode. The host sends this to the focused app and, through the
     # kernel, here as well -- the mode applies to whatever has focus, so the
@@ -1249,6 +1269,15 @@ class SystemDesktopApp < FmrbApp
 
     if ev[:type] == :mouse_move
       handle_mouse_move(ev[:x], ev[:y])
+      return
+    end
+
+    # The wheel moves whichever list the desktop currently has open. It
+    # arrives here because the desktop has the focus, so there is no hit test
+    # to do -- only one of these panels is up at a time.
+    rows = wheel_rows(ev)
+    if rows
+      handle_desktop_wheel(rows)
       return
     end
 

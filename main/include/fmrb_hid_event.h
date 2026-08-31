@@ -17,6 +17,7 @@ extern "C" {
 #define HID_EVENT_KEY_UP        0x02
 #define HID_EVENT_MOUSE_BUTTON  0x10
 #define HID_EVENT_MOUSE_MOTION  0x11
+#define HID_EVENT_MOUSE_WHEEL   0x12
 
 /**
  * @brief Keyboard event structure
@@ -44,6 +45,19 @@ typedef struct {
     uint16_t x;         // X coordinate
     uint16_t y;         // Y coordinate
 } __attribute__((packed)) hid_mouse_motion_event_t;
+
+/**
+ * @brief Mouse wheel event structure
+ *
+ * A new packet type rather than a field on motion: the header carries a
+ * length, so a receiver that does not know 0x12 skips it and everything else
+ * keeps working. That is what lets one side be updated before the other.
+ */
+typedef struct {
+    int8_t delta;       // Wheel notches, positive = away from the user
+    uint16_t x;         // X coordinate at the time of the wheel
+    uint16_t y;         // Y coordinate
+} __attribute__((packed)) hid_mouse_wheel_event_t;
 
 /**
  * @brief HID packet header (simple protocol, no reliability)

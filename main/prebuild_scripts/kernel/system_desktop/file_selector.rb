@@ -385,6 +385,22 @@ module FileSelectorMixin
     fsel_select(idx)
   end
 
+  # One row up (-1) or down (+1), the shape the file manager's own scroll has.
+  # Used by the wheel; the bar has its own path through the widget value.
+  def fsel_scroll(direction)
+    return unless @file_selector_open
+    max_visible = fsel_list_metrics[:max_visible]
+    total = @file_selector_entries.size
+    if direction > 0 && @file_selector_scroll + max_visible < total
+      @file_selector_scroll += 1
+      draw_foreground
+    elsif direction < 0 && @file_selector_scroll > 0
+      @file_selector_scroll -= 1
+      draw_foreground
+    end
+    nil
+  end
+
   # Scroll just enough to bring a row into view. Called before the selection
   # changes so one redraw shows both.
   def fsel_reveal(idx)

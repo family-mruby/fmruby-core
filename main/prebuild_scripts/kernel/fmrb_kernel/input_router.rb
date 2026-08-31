@@ -248,6 +248,34 @@ module InputRouterMixin
           end
         end
 
+      when 10  # Mouse wheel
+        # The wheel goes to the focused window, not to the one under the
+        # pointer (doc/mouse_wheel/plan.md): simpler to reason about, at the
+        # price of having to click a window before turning the wheel at it.
+        # A drag owns the pointer while it lasts, so it wins as it does for
+        # moves. The byte in the button slot is the notch count, signed; it is
+        # copied through untouched and read as signed on the app side.
+        target_pid = @capture_pid || @hid_target_pid
+        if target_pid
+          target_window = find_window_by_pid(target_pid)
+          if target_window
+            relative_x = x - target_window[:x]
+            relative_y = y - target_window[:y]
+            relative_data = "\x00\x00\x00\x00\x00\x00"
+            relative_data.setbyte(0, subtype)
+            relative_data.setbyte(1, button)                   # notches (signed)
+            relative_data.setbyte(2, relative_x & 0xFF)
+            relative_data.setbyte(3, (relative_x >> 8) & 0xFF)
+            relative_data.setbyte(4, relative_y & 0xFF)
+            relative_data.setbyte(5, (relative_y >> 8) & 0xFF)
+            # Sent the way a click is, not the way a move is: a dropped notch
+            # is a turn of the wheel that did nothing, and there is no later
+            # event to correct it.
+            order_pending_move_before(target_pid)
+            _send_raw_message(target_pid, FmrbConst::MSG_TYPE_HID_EVENT, relative_data)
+          end
+        end
+
       when 5  # Mouse button up
         # Forward to captured window or mouse_down window
         target_pid = @capture_pid || @mouse_down_pid
