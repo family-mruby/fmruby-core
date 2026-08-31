@@ -301,13 +301,68 @@ namespace :wasm do
     root = ENV["DIST"] ? File.join(WASM_BUILD_DIR, "dist") : ROOT_DIR
     puts "open http://localhost:#{port}/" + (ENV["DIST"] ? "" : "wasm/web/index.html")
     require "webrick"
+    require "json"
     server = WEBrick::HTTPServer.new(Port: port, DocumentRoot: root)
+    # The page-driving relay (tools/fmrb_web.rb -> here -> the page's ?drive=1
+    # loop -> back). The browser cannot be reached from a shell, but it can
+    # come and ask, so the queue lives here: the tool posts a command and
+    # waits, the page collects it and posts the answer, the tool is released.
+    drive = { m: Mutex.new, cv: ConditionVariable.new, seq: 0,
+              pending: [], results: {} }
     # SharedArrayBuffer needs cross-origin isolation; GitHub Pages gets the
     # same effect from coi-serviceworker in P5.
     server.mount_proc("") do |req, res|
       # Probe aid: an "image" that answers after ?ms=N. A page that references
       # it before the load event keeps headless Chrome's --screenshot waiting
       # until the firmware has actually booted (main.js ?autostart&holdload=).
+      # The tool's end: enqueue, then wait here for the page to answer.
+      if req.path.end_with?("/drive/cmd") && req.request_method == "POST"
+        cmd = JSON.parse(req.body)
+        id = nil
+        drive[:m].synchronize do
+          drive[:seq] += 1
+          id = drive[:seq]
+          drive[:pending] << cmd.merge("id" => id)
+          drive[:cv].broadcast
+          deadline = Time.now + ((cmd["timeout"] || 20).to_f)
+          until drive[:results].key?(id) || Time.now > deadline
+            drive[:cv].wait(drive[:m], 0.2)
+          end
+        end
+        answer = drive[:m].synchronize { drive[:results].delete(id) }
+        res.status = answer ? 200 : 504
+        res["Content-Type"] = "application/json"
+        res.body = answer || JSON.dump("error" => "the page did not answer")
+        next
+      end
+      # The page's end: take the next command (204 when there is none), and
+      # post results back.
+      if req.path.end_with?("/drive/cmd")
+        cmd = nil
+        drive[:m].synchronize do
+          drive[:cv].wait(drive[:m], 1.0) if drive[:pending].empty?
+          cmd = drive[:pending].shift
+        end
+        if cmd
+          res.status = 200
+          res["Content-Type"] = "application/json"
+          res.body = JSON.dump(cmd)
+        else
+          res.status = 204
+          res.body = ""
+        end
+        next
+      end
+      if req.path.end_with?("/drive/res")
+        body = JSON.parse(req.body)
+        drive[:m].synchronize do
+          drive[:results][body["id"]] = JSON.dump(body)
+          drive[:cv].broadcast
+        end
+        res.status = 200
+        res.body = "ok"
+        next
+      end
       if req.path.end_with?("/probe-hold")
         sleep((req.query["ms"] || "0").to_i / 1000.0)
         res.status = 200

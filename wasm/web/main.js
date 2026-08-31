@@ -845,6 +845,122 @@ startOverlay.addEventListener('click', async () => {
   }
 }, { once: true });
 
+// ---- ?drive=1: let a tool outside the browser work the machine -----------
+//
+// The page asks the development server for a command, does it, and posts the
+// answer back (tools/fmrb_web.rb is the other end). Everything a hand can do
+// here -- click, type, look at the screen, look at a file -- can then be
+// scripted, which is what the Linux sim has had all along and the browser
+// had not.
+//
+// Events go into the same ring the real mouse and keyboard use, so a driven
+// run is indistinguishable from a used one on the machine's side. The
+// scancodes come from the tool (the firmware's own keymap, layout and all);
+// the page only carries them.
+const DRIVE = new URLSearchParams(location.search).get('drive') === '1';
+
+function driveSleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function runDriveCommand(cmd) {
+  switch (cmd.op) {
+    case 'input': {
+      for (const ev of cmd.events || []) {
+        const [type, a, b, c, d, delay] = ev;
+        if (delay) await driveSleep(delay);
+        pushInput(type, a || 0, b || 0, c || 0, d || 0);
+      }
+      return { events: (cmd.events || []).length };
+    }
+    case 'screenshot': {
+      // The canvas holds exactly the frame the firmware produced, at its own
+      // resolution -- not the zoomed CSS size, which is what a browser-level
+      // screenshot would give.
+      const url = canvas.toDataURL('image/png');
+      return { width: canvas.width, height: canvas.height,
+               png: url.slice(url.indexOf(',') + 1) };
+    }
+    case 'status':
+      return {
+        running: !!M,
+        width: canvas.width, height: canvas.height,
+        frame: M ? M._fmrb_wasm_frame_seq() : 0,
+        home: homeStore,
+        durable: storageDurable,
+      };
+    case 'fs': {
+      if (!M) throw new Error('the machine is not running yet');
+      const path = cmd.path || '';
+      if (cmd.action === 'ls') {
+        const out = [];
+        for (const name of M.FS.readdir(path)) {
+          if (name === '.' || name === '..') continue;
+          const st = M.FS.stat(path + '/' + name);
+          out.push({ name, dir: M.FS.isDir(st.mode), size: st.size });
+        }
+        return { entries: out };
+      }
+      if (cmd.action === 'cat') {
+        const data = M.FS.readFile(path);
+        let bin = '';
+        for (let i = 0; i < data.length; i += 0x8000) {
+          bin += String.fromCharCode.apply(null, data.subarray(i, i + 0x8000));
+        }
+        return { size: data.length, base64: btoa(bin) };
+      }
+      if (cmd.action === 'put') {
+        const raw = atob(cmd.base64 || '');
+        const data = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) data[i] = raw.charCodeAt(i);
+        const slash = path.lastIndexOf('/');
+        if (slash > 0) M.FS.mkdirTree(path.slice(0, slash));
+        M.FS.writeFile(path, data);
+        flushHome();
+        return { size: data.length };
+      }
+      if (cmd.action === 'rm') {
+        M.FS.unlink(path);
+        flushHome();
+        return { removed: path };
+      }
+      throw new Error('unknown fs action: ' + cmd.action);
+    }
+    case 'reload':
+      // Answer first; the page is gone a moment later.
+      setTimeout(() => location.reload(), 200);
+      return { reloading: true };
+    default:
+      throw new Error('unknown op: ' + cmd.op);
+  }
+}
+
+async function driveLoop() {
+  for (;;) {
+    let cmd = null;
+    try {
+      const res = await fetch('drive/cmd');
+      if (res.status === 200) cmd = await res.json();
+    } catch (e) {
+      await driveSleep(500);      // the server went away; keep trying
+      continue;
+    }
+    if (!cmd) continue;           // 204: nothing waiting, ask again
+    let body;
+    try {
+      body = { id: cmd.id, result: await runDriveCommand(cmd) };
+    } catch (e) {
+      body = { id: cmd.id, error: String(e && e.message ? e.message : e) };
+    }
+    try {
+      await fetch('drive/res', { method: 'POST', body: JSON.stringify(body) });
+    } catch (e) {
+      console.warn('fmrb: cannot report the result:', e);
+    }
+  }
+}
+if (DRIVE) driveLoop();
+
 // ?autostart=1 presses the power switch itself -- the headless regression's
 // hand. No gesture means the AudioContext may be refused; that path already
 // degrades to silent.
