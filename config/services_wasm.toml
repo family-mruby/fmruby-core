@@ -1,0 +1,24 @@
+# System services for the browser build (/etc/services.toml in the bundle).
+#
+# Same shape and same meaning as config/services.toml, but only the entries
+# that can work in a browser. The network services (net, timesync, tts) are
+# left out: there is no WiFi to watch and no socket to reach an NTP or a
+# synthesis server with, so listing them would buy a failure in the log at
+# every boot and nothing else.
+#
+# The user's own list is /home/services.toml, exactly as on a machine. It is
+# read after this one and wins field by field.
+
+[clock]
+file = "clock.rb"
+class = "ClockService"
+enable = true
+interval_ms = 60000
+
+# Rings a note on the hour, by subscribing to the clock/hour that the entry
+# above publishes. The body is /usr/share/services/hourly_chime.rb and is the
+# one to read before writing a service of your own.
+[hourly_chime]
+file = "hourly_chime.rb"
+class = "HourlyChimeService"
+enable = true

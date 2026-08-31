@@ -502,6 +502,12 @@ instruction_p5.md T3 の内容をこの基盤の上に載せる (設定パネル
 tts_http の wasm 差し替え + VOICEVOX/OpenAI の CORS 実測)。P5b が通れば
 輸送は共通で、残るは鍵の UI と services 設定への注入だけ。
 
+## ストレージ永続化 (計画済 2026-08-31): 設計は storage_persistence.md
+
+ブラウザ版でユーザが作ったものを残す。方式は /home への IDBFS 割り当てだが、
+**着手の前提は「配布物を /home から出す」整理**で、そこが本体になる。
+段取り・判断の根拠・未確定事項は doc/wasm/storage_persistence.md が正。
+
 ## P6 候補 (構想): Web Bluetooth で実機の Family mruby と通信
 
 ユーザ発案 (2026-08-29)。ブラウザ版から実機 (Tab5 / Retro) へ BLE で

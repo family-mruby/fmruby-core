@@ -299,17 +299,513 @@ const moduleConfig = {
   print: (t) => console.log(t),
   printErr: (t) => console.warn(t),
 };
-// Settings travel as argv, NOT as page-side FS edits: under PROXY_TO_PTHREAD
-// the page's MEMFS and the machine's MEMFS are different filesystems, and a
-// preRun writeFile lands in the wrong one (report/p5.md addendum). The C side
+// Settings travel as argv, NOT as page-side FS edits. The C side
 // (wasm/backend/page_settings_wasm.c) applies these on the machine's own
-// thread before the kernel reads its settings.
+// thread before the kernel reads its settings, which is the surer order
+// whatever the page can reach (see ?fsprobe=1 below and report/storage_t0.md).
 moduleConfig.arguments = [];
 {
   const res = currentResolution();
   if (res !== DEFAULT_RES) moduleConfig.arguments.push('--fmrb-res=' + res);
   if (readSetting('fmrb_web_theme', 'cyberpunk') === 'classic') {
     moduleConfig.arguments.push('--fmrb-theme=classic');
+  }
+}
+// Everything the page wants to do before main() goes in here, in order.
+moduleConfig.preRun = [];
+
+// ---- /home that outlives the tab ---------------------------------------
+//
+// There is one filesystem and it lives on this thread: every file call the
+// machine makes is proxied here (measured in report/storage_t0.md). So the
+// page can put a persistent mount under the machine's feet.
+//
+// /home is the one directory the bundle ships nothing into, which is what
+// makes this safe: the packer's own unpack runs after this and would
+// otherwise overwrite what we put down. We create the directory, mount
+// IDBFS over it, and read IndexedDB back BEFORE the machine boots -- as a
+// run dependency, the same gate the packed .data uses, so main() waits for
+// both.
+//
+// If any of it fails (private window, storage refused), the machine still
+// boots; /home is then an ordinary directory that lasts as long as the tab.
+const HOME_PATH = '/flash/home';
+const HOME_DEP = 'fmrb-home-load';
+let homeStore = 'volatile';
+
+// One tab writes. Two machines sharing one IndexedDB would overwrite each
+// other wholesale (last one to sync wins), so the second tab runs with a
+// throw-away /home rather than eating the first one's work. The lock is held
+// for the life of the page, which is exactly how long the machine runs.
+let homeWriter = null;
+let lockDecided = Promise.resolve();
+if (navigator.locks) {
+  let decided;
+  lockDecided = new Promise((r) => { decided = r; });
+  navigator.locks.request('fmrb-home', { ifAvailable: true }, (lock) => {
+    homeWriter = !!lock;
+    decided();
+    // Say so before the machine is even switched on: a second tab that is
+    // about to lose its work should hear about it first.
+    if (!lock) showStorageState();
+    return lock ? new Promise(() => {}) : undefined;
+  }).catch(() => { homeWriter = true; decided(); });
+} else {
+  homeWriter = true;
+}
+
+function mountHome(mod) {
+  mod.addRunDependency(HOME_DEP);
+  lockDecided.then(() => {
+    if (homeWriter === false) {
+      homeStore = 'second tab';
+      console.warn('fmrb: another tab owns /home; this one runs on a copy ' +
+                   'that is thrown away');
+      mod.removeRunDependency(HOME_DEP);
+      showStorageState();
+      return;
+    }
+    try {
+      mod.FS.mkdirTree(HOME_PATH);
+      mod.FS.mount(mod.FS.filesystems.IDBFS, { autoPersist: true }, HOME_PATH);
+    } catch (e) {
+      homeStore = 'not available';
+      console.warn('fmrb: /home will not persist (mount failed):', e);
+      mod.removeRunDependency(HOME_DEP);
+      showStorageState();
+      return;
+    }
+    mod.FS.syncfs(true, (err) => {
+      if (err) {
+        homeStore = 'not available';
+        console.warn('fmrb: /home could not be read back:', err);
+      } else {
+        homeStore = 'persistent';
+      }
+      mod.removeRunDependency(HOME_DEP);
+      showStorageState();
+    });
+  });
+}
+moduleConfig.preRun.push(mountHome);
+
+// What the page says about all this. "persistent" only means the files come
+// back on a reload; whether the browser may throw them away later is the
+// separate question navigator.storage.persist() answers.
+const storageStateEl = document.getElementById('storage-state');
+let storageDurable = null;
+let storageUsage = '';
+function showStorageState() {
+  if (!storageStateEl) return;
+  let text;
+  if (homeStore === 'persistent') {
+    text = 'kept in this browser';
+    if (storageDurable === true) text += ', protected from eviction';
+    else if (storageDurable === false) text += ', but the browser may reclaim it';
+  } else if (homeStore === 'second tab' || homeWriter === false) {
+    text = 'another tab has them open -- changes here are NOT saved';
+  } else {
+    text = 'not saved (this browser refuses storage; the tab keeps them only ' +
+           'while it is open)';
+  }
+  if (storageUsage) text += ' -- ' + storageUsage;
+  storageStateEl.textContent = text;
+}
+async function measureStorage() {
+  try {
+    if (navigator.storage && navigator.storage.persist && homeStore === 'persistent') {
+      storageDurable = await navigator.storage.persisted();
+      if (!storageDurable) storageDurable = await navigator.storage.persist();
+    }
+    if (navigator.storage && navigator.storage.estimate) {
+      const est = await navigator.storage.estimate();
+      if (est && est.usage != null) {
+        storageUsage = 'using ' + Math.max(1, Math.round(est.usage / 1024)) + ' KB';
+      }
+    }
+  } catch (e) {
+    console.warn('fmrb: storage estimate unavailable:', e);
+  }
+  showStorageState();
+}
+
+// ---- taking /home with you ---------------------------------------------
+//
+// Browser storage is not a safe place to keep the only copy: a private
+// window never keeps it, and a browser may reclaim it after a while of not
+// visiting. So the page can hand the whole of /home over as a tar and take
+// one back. tar (not zip) because it is a few lines to write and to read,
+// and because the device speaks it too.
+
+function tarOctal(value, length) {
+  let s = value.toString(8);
+  while (s.length < length - 1) s = '0' + s;
+  return s + '\0';
+}
+
+function tarHeader(name, size, isDir) {
+  const h = new Uint8Array(512);
+  const put = (offset, text) => {
+    for (let i = 0; i < text.length; i++) h[offset + i] = text.charCodeAt(i);
+  };
+  // 100 bytes of name is all a plain tar header has; longer paths would need
+  // the prefix field, and nothing in /home comes close.
+  put(0, name.slice(0, 100));
+  put(100, tarOctal(isDir ? 0o755 : 0o644, 8));
+  put(108, tarOctal(0, 8));
+  put(116, tarOctal(0, 8));
+  put(124, tarOctal(size, 12));
+  put(136, tarOctal(Math.floor(Date.now() / 1000), 12));
+  put(148, '        ');            // checksum field counts as spaces
+  put(156, isDir ? '5' : '0');
+  put(257, 'ustar\0' + '00');
+  let sum = 0;
+  for (let i = 0; i < 512; i++) sum += h[i];
+  put(148, sum.toString(8).padStart(6, '0') + '\0 ');
+  return h;
+}
+
+// Walk /home and return [{name, data|null, isDir}] with names relative to it.
+function homeEntries(mod) {
+  const out = [];
+  const walk = (dir, prefix) => {
+    let names;
+    try {
+      names = mod.FS.readdir(dir);
+    } catch (e) {
+      return;
+    }
+    for (const name of names) {
+      if (name === '.' || name === '..') continue;
+      const path = dir + '/' + name;
+      const rel = prefix + name;
+      let st;
+      try {
+        st = mod.FS.stat(path);
+      } catch (e) {
+        continue;
+      }
+      if (mod.FS.isDir(st.mode)) {
+        out.push({ name: rel + '/', isDir: true });
+        walk(path, rel + '/');
+      } else if (mod.FS.isFile(st.mode)) {
+        out.push({ name: rel, isDir: false, data: mod.FS.readFile(path) });
+      }
+    }
+  };
+  walk(HOME_PATH, '');
+  return out;
+}
+
+function exportHome() {
+  if (!M) return;
+  const entries = homeEntries(M);
+  const parts = [];
+  for (const e of entries) {
+    const size = e.isDir ? 0 : e.data.length;
+    parts.push(tarHeader(e.name, size, e.isDir));
+    if (!e.isDir) {
+      parts.push(e.data);
+      const pad = (512 - (size % 512)) % 512;
+      if (pad) parts.push(new Uint8Array(pad));
+    }
+  }
+  parts.push(new Uint8Array(1024));  // two empty blocks end a tar
+  const blob = new Blob(parts, { type: 'application/x-tar' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const now = new Date();
+  const stamp = now.toISOString().slice(0, 10).replace(/-/g, '');
+  a.download = 'fmrb-home-' + stamp + '.tar';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  statusLine.textContent = 'wrote ' + entries.length + ' entries to a .tar';
+}
+
+// A tar from anywhere at all: every name is rebuilt from safe parts, so
+// nothing in the archive can name a path outside /home.
+function safeRelative(name) {
+  const parts = name.split('/').filter((p) => p !== '' && p !== '.' && p !== '..');
+  return parts.join('/');
+}
+
+function importTar(mod, bytes) {
+  let offset = 0;
+  let files = 0;
+  const decoder = new TextDecoder();
+  while (offset + 512 <= bytes.length) {
+    const head = bytes.subarray(offset, offset + 512);
+    if (head.every((b) => b === 0)) break;
+    const rawName = decoder.decode(head.subarray(0, 100)).replace(/\0.*$/, '');
+    const sizeField = decoder.decode(head.subarray(124, 136)).replace(/[\0 ]/g, '');
+    const size = parseInt(sizeField, 8) || 0;
+    const type = String.fromCharCode(head[156]);
+    offset += 512;
+    const rel = safeRelative(rawName);
+    if (rel) {
+      const full = HOME_PATH + '/' + rel;
+      if (type === '5') {
+        try { mod.FS.mkdirTree(full); } catch (e) { /* already there */ }
+      } else if (type === '0' || type === '\0' || type === '') {
+        const slash = full.lastIndexOf('/');
+        try { mod.FS.mkdirTree(full.slice(0, slash)); } catch (e) { /* already there */ }
+        mod.FS.writeFile(full, bytes.subarray(offset, offset + size));
+        files++;
+      }
+    }
+    offset += Math.ceil(size / 512) * 512;
+  }
+  return files;
+}
+
+function removeHomeContents(mod) {
+  const entries = homeEntries(mod).reverse();  // children before their parents
+  for (const e of entries) {
+    const full = HOME_PATH + '/' + e.name.replace(/\/$/, '');
+    try {
+      if (e.isDir) mod.FS.rmdir(full);
+      else mod.FS.unlink(full);
+    } catch (e2) {
+      console.warn('fmrb: cannot remove ' + full + ':', e2);
+    }
+  }
+}
+
+// autoPersist writes back on its own after every change, but a tab that is
+// hidden or closed may go away before that timer runs; ask once more then.
+// beforeunload is not used on purpose -- the write is asynchronous and the
+// page is already gone by the time it would finish.
+function flushHome() {
+  if (homeStore !== 'persistent' || !M) return;
+  try {
+    M.FS.syncfs(false, (err) => {
+      if (err) console.warn('fmrb: /home flush failed:', err);
+    });
+  } catch (e) {
+    console.warn('fmrb: /home flush failed:', e);
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushHome();
+});
+window.addEventListener('pagehide', flushHome);
+
+const exportBtn = document.getElementById('home-export');
+const importBtn = document.getElementById('home-import-btn');
+const importInput = document.getElementById('home-import');
+const resetBtn = document.getElementById('home-reset');
+function enableStorageButtons() {
+  for (const b of [exportBtn, importBtn, resetBtn]) if (b) b.disabled = false;
+}
+if (exportBtn) exportBtn.addEventListener('click', exportHome);
+if (importBtn && importInput) {
+  importBtn.addEventListener('click', () => importInput.click());
+  importInput.addEventListener('change', async () => {
+    const file = importInput.files && importInput.files[0];
+    importInput.value = '';
+    if (!file || !M) return;
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let files;
+    try {
+      files = importTar(M, bytes);
+    } catch (e) {
+      statusLine.textContent = 'that file could not be read as a .tar';
+      console.warn('fmrb: import failed:', e);
+      return;
+    }
+    flushHome();
+    statusLine.textContent = 'restored ' + files + ' file(s) into /home -- ' +
+      'reload the page to let the machine see them';
+    measureStorage();
+  enableStorageButtons();
+  });
+}
+if (resetBtn) {
+  resetBtn.addEventListener('click', () => {
+    if (!M) return;
+    if (!window.confirm('Erase everything in /home? Download it first if you ' +
+                        'want to keep it.')) return;
+    removeHomeContents(M);
+    flushHome();
+    statusLine.textContent = '/home is empty again -- reload the page';
+    measureStorage();
+  });
+}
+
+// ?fsprobe=1 -- a development measurement, not part of the machine.
+//
+// Two questions decide how storage can be made to persist
+// (doc/wasm/instruction_storage.md T0):
+//
+//   A. is the page's FS the same one the machine writes to?  The machine
+//      rewrites /flash/etc/system_conf.toml at startup (page_settings_wasm.c),
+//      so reading display_width back out through the page's FS answers it.
+//   B. does a preRun write survive?  The file packager appends its own
+//      unpack to Module.preRun, so anything the page writes there may be
+//      overwritten a moment later. A marker written in preRun says which.
+//
+// Every line goes to console.log so headless Chrome can collect them.
+const FSPROBE = new URLSearchParams(location.search).get('fsprobe') === '1';
+const CONF_PATH = '/flash/etc/system_conf.toml';
+const PROBE_MARK = '# fsprobe-marker';
+// Headless Chrome reports through --dump-dom far more reliably than through
+// its console log, so every probe line lands in the page as well.
+function probeLog(line) {
+  console.log(line);
+  let box = document.getElementById('fsprobe-out');
+  if (!box) {
+    box = document.createElement('pre');
+    box.id = 'fsprobe-out';
+    document.body.appendChild(box);
+  }
+  box.textContent += line + '\n';
+}
+if (FSPROBE) {
+  moduleConfig.preRun.push((mod) => {
+    // B: write a marker into a file the package also carries. Reading it
+    // first tells us whether the page even sees the packed tree yet.
+    let before = null;
+    try {
+      before = mod.FS.readFile(CONF_PATH, { encoding: 'utf8' });
+    } catch (e) {
+      before = null;
+    }
+    probeLog('FSPROBE preRun: conf readable before unpack = ' +
+             (before === null ? 'no' : 'yes (' + before.length + ' bytes)'));
+    try {
+      mod.FS.writeFile(CONF_PATH, PROBE_MARK + '\n' + (before || ''));
+      probeLog('FSPROBE preRun: marker written');
+    } catch (e) {
+      probeLog('FSPROBE preRun: marker write failed: errno=' + e.errno);
+    }
+    // The seam T2 needs: /home is in no package, so the page can make it
+    // here and put something in it. If that survives to the end of the boot,
+    // a mount can go in the same place.
+    try {
+      mod.FS.mkdirTree('/flash/home');
+      mod.FS.writeFile('/flash/home/fsprobe.txt', 'page-preRun');
+      probeLog('FSPROBE preRun: /flash/home made and written');
+    } catch (e) {
+      probeLog('FSPROBE preRun: /flash/home failed: errno=' + e.errno);
+    }
+  });
+}
+
+// ?fsprobe=1 also checks the one-writer rule, by loading a second copy of
+// this page in an iframe (same origin, so the same Web Lock) and reading the
+// line it shows. The child does not autostart -- it only asks for the lock.
+function fsprobeSecondTab() {
+  return new Promise((resolve) => {
+    const f = document.createElement('iframe');
+    f.style.display = 'none';
+    f.src = 'index.html?secondtab=1';
+    f.addEventListener('load', () => {
+      setTimeout(() => {
+        let text = '(unreadable)';
+        try {
+          text = f.contentDocument.getElementById('storage-state').textContent;
+        } catch (e) { /* keep the placeholder */ }
+        probeLog('FSPROBE lock: second tab says "' + text + '"');
+        f.remove();
+        resolve();
+      }, 1500);
+    });
+    document.body.appendChild(f);
+  });
+}
+
+function fsprobeReport(mod) {
+  let text = null;
+  try {
+    text = mod.FS.readFile(CONF_PATH, { encoding: 'utf8' });
+  } catch (e) {
+    probeLog('FSPROBE result: page cannot read ' + CONF_PATH + ': ' + e);
+    return;
+  }
+  const width = (text.match(/^display_width\s*=\s*(\d+)/m) || [])[1];
+  probeLog('FSPROBE result: display_width=' + width +
+           ' asked=' + currentResolution() +
+           ' marker=' + (text.indexOf(PROBE_MARK) === 0 ? 'kept' : 'gone'));
+  // A second, direct reading of A: a directory only the machine creates.
+  try {
+    mod.FS.stat('/flash/home');
+    probeLog('FSPROBE result: /flash/home visible to the page = yes');
+  } catch (e) {
+    probeLog('FSPROBE result: /flash/home visible to the page = no');
+  }
+  // And whether what the page put there before the boot is still there.
+  let kept = null;
+  try {
+    kept = mod.FS.readFile('/flash/home/fsprobe.txt', { encoding: 'utf8' });
+  } catch (e) {
+    kept = null;
+  }
+  probeLog('FSPROBE result: page file in /home after boot = ' +
+           (kept === null ? 'gone' : JSON.stringify(kept)));
+  probeLog('FSPROBE result: home store = ' + homeStore);
+  // T4: write a couple of files, tar them in memory, wipe, restore, look.
+  try {
+    mod.FS.writeFile(HOME_PATH + '/t4.txt', 'hello');
+    mod.FS.mkdirTree(HOME_PATH + '/sub');
+    mod.FS.writeFile(HOME_PATH + '/sub/deep.txt', 'nested');
+    const entries = homeEntries(mod);
+    const parts = [];
+    for (const e of entries) {
+      const size = e.isDir ? 0 : e.data.length;
+      parts.push(tarHeader(e.name, size, e.isDir));
+      if (!e.isDir) {
+        parts.push(e.data);
+        const pad = (512 - (size % 512)) % 512;
+        if (pad) parts.push(new Uint8Array(pad));
+      }
+    }
+    // An entry that tries to climb out, appended by hand.
+    const evil = new TextEncoder().encode('owned');
+    parts.push(tarHeader('../escaped.txt', evil.length, false), evil,
+               new Uint8Array(512 - evil.length));
+    parts.push(new Uint8Array(1024));
+    let total = 0;
+    for (const p of parts) total += p.length;
+    const tar = new Uint8Array(total);
+    let at = 0;
+    for (const p of parts) { tar.set(p, at); at += p.length; }
+    removeHomeContents(mod);
+    probeLog('FSPROBE t4: after erase /home holds ' +
+             JSON.stringify(mod.FS.readdir(HOME_PATH)));
+    const n = importTar(mod, tar);
+    probeLog('FSPROBE t4: restored ' + n + ' file(s), /home holds ' +
+             JSON.stringify(mod.FS.readdir(HOME_PATH)) +
+             ' sub=' + JSON.stringify(mod.FS.readdir(HOME_PATH + '/sub')) +
+             ' deep=' + mod.FS.readFile(HOME_PATH + '/sub/deep.txt',
+                                        { encoding: 'utf8' }));
+    let escaped = 'no';
+    try { mod.FS.stat('/flash/escaped.txt'); escaped = 'YES'; } catch (e) { }
+    probeLog('FSPROBE t4: escaped out of /home = ' + escaped +
+             ', landed as ' + JSON.stringify(mod.FS.readdir(HOME_PATH)));
+    // leave nothing behind
+    removeHomeContents(mod);
+  } catch (e) {
+    probeLog('FSPROBE t4: failed: ' + e);
+  }
+
+  // The probe's own file must not settle into the user's /home.
+  try { mod.FS.unlink('/flash/home/fsprobe.txt'); } catch (e) { /* fine */ }
+  // What the MACHINE wrote into the mounted /home (the T2 path: worker ->
+  // proxied syscall -> IDBFS mount -> IndexedDB).
+  let machine = null;
+  try {
+    machine = mod.FS.readFile('/flash/home/machine_probe.txt', { encoding: 'utf8' });
+  } catch (e) {
+    machine = null;
+  }
+  probeLog('FSPROBE result: machine_probe = ' + (machine === null ? 'absent' : machine));
+  try {
+    probeLog('FSPROBE result: /home holds ' +
+             JSON.stringify(mod.FS.readdir('/flash/home')));
+  } catch (e) {
+    probeLog('FSPROBE result: /home unreadable: errno=' + e.errno);
   }
 }
 
@@ -333,6 +829,11 @@ startOverlay.addEventListener('click', async () => {
   const mod = await createFmrbCore(moduleConfig);
   M = mod;
   statusLine.textContent = 'running';
+  // The machine rewrites the settings file early in its own boot; give it a
+  // moment before reading it back (the probe is a measurement, not a race).
+  if (FSPROBE) setTimeout(() => fsprobeReport(mod), 3000);
+  if (FSPROBE) setTimeout(fsprobeSecondTab, 6000);
+  measureStorage();
   hookInput();
   requestAnimationFrame(paint);
   if (ac) {

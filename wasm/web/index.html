@@ -86,6 +86,13 @@
   </span>
   <button id="fullscreen-btn" type="button">Full screen</button>
 </div>
+<div id="settings">
+  <span>Your files (/home): <span id="storage-state">checking...</span></span>
+  <button id="home-export" type="button" disabled>Download them</button>
+  <button id="home-import-btn" type="button" disabled>Restore from a file</button>
+  <input id="home-import" type="file" accept=".tar" hidden>
+  <button id="home-reset" type="button" disabled>Erase</button>
+</div>
 <div id="about">
   <h2>How to use it</h2>
   <ul>
@@ -100,6 +107,13 @@
       make noise before one.</li>
     <li>Theme and resolution are stored in this browser and applied at boot, so
       changing them reloads the page.</li>
+    <li>What you write is kept. Everything under <code>/home</code> -- the
+      programs you save, your service list -- stays in this browser between
+      visits. Nowhere else: it never leaves the machine you are reading this
+      on. A private window keeps nothing, and a browser may reclaim the space
+      after a long absence, so <b>download your files</b> if they matter to
+      you; the same file restores them here or in another browser. Open the
+      page twice and only the first tab saves.</li>
     <li>Full screen puts the machine on the whole display. Where the browser
       allows it the machine keeps <kbd>Esc</kbd> for itself; where it does not,
       <kbd>Esc</kbd> leaves full screen instead of reaching the app.</li>

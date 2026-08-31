@@ -143,6 +143,12 @@ namespace :wasm do
        File.join(staging, "etc/system_conf.toml")
     cp File.join(ROOT_DIR, "config/system_conf_wasm.toml"),
        File.join(staging, "etc/system_conf.factory.toml")
+    # System service list. flash/etc/services.toml is generated (and on a dev
+    # machine carries the tts key), so it is not tracked and never staged --
+    # the browser gets its own list from config/, holding only the services
+    # that can work without a network.
+    cp File.join(ROOT_DIR, "config/services_wasm.toml"),
+       File.join(staging, "etc/services.toml")
     # Belt and braces: refuse to ship anything that smells like a credential.
     bad = files.grep(%r{wifi\.toml|secrets})
     abort "wasm:webflash: refusing to stage #{bad.inspect}" unless bad.empty?
@@ -211,6 +217,7 @@ namespace :wasm do
     tracked = `git -C #{ROOT_DIR} ls-files -z flash`.split("\0")
                 .map { |f| "/" + f }.to_set
     generated = ["/flash/etc/system_conf.toml", "/flash/etc/system_conf.factory.toml",
+                 "/flash/etc/services.toml",
                  "/flash/data/bg_426x240.png"].to_set
     packed.each do |f|
       next if tracked.include?(f) || generated.include?(f)

@@ -155,7 +155,8 @@ P4 実装と wasm 実装を並べる)。この分割は P4 実機へのリファ
   集める**。IDF から要るのは freertos カーネル + heap/log の代替だけ。
   emcc ビルドの前例は `rake ti:wasm` (rakelib/ti.rake:66-109) にある。
 - ファイルシステムは `--preload-file flash` で MEMFS へ。/tmp の揮発性再現
-  (fmrb_tmpfs_posix.c) はそのまま流用できる見込み。永続化 (IDBFS) は後回し。
+  (fmrb_tmpfs_posix.c) はそのまま流用できる見込み。永続化は P5 の後に別立てで
+  検討する (storage_persistence.md)。
 - pthread を使うため SharedArrayBuffer が必要 → 配信に COOP/COEP ヘッダが要る。
   GitHub Pages はヘッダを出せないので coi-serviceworker で回避する。
 - スタックに注意: wasm の既定スタックは小さい。`-sSTACK_SIZE` と各タスクの
