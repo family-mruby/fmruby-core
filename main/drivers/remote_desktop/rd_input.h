@@ -18,12 +18,14 @@ extern "C" {
 //   0x03 key          { u8 state, u8 hid_scancode, u8 fmrb_mod }
 //   0x04 keyframe_req (Phase 2, handled by the stream layer)
 //   0x05 ping         (no-op)
+//   0x06 mouse_wheel  { i16 x, i16 y, i8 notches }   (+ = away from the user)
 
 #define RD_INPUT_MSG_MOUSE_MOVE   0x01
 #define RD_INPUT_MSG_MOUSE_BUTTON 0x02
 #define RD_INPUT_MSG_KEY          0x03
 #define RD_INPUT_MSG_KEYFRAME_REQ 0x04
 #define RD_INPUT_MSG_PING         0x05
+#define RD_INPUT_MSG_MOUSE_WHEEL  0x06
 
 /**
  * @brief Decode and inject one input message.

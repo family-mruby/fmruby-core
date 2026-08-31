@@ -276,6 +276,16 @@ function sendMouseButton(x, y, btn, state) {
   wsSend(b);
 }
 
+function sendMouseWheel(x, y, notches) {
+  const b = new ArrayBuffer(6);
+  const v = new DataView(b);
+  v.setUint8(0, 0x06);
+  v.setInt16(1, x, true);
+  v.setInt16(3, y, true);
+  v.setInt8(5, notches);
+  wsSend(b);
+}
+
 function sendKey(state, scancode, mod) {
   const b = new ArrayBuffer(4);
   const v = new DataView(b);
@@ -322,6 +332,28 @@ wrap.addEventListener('mouseup', (e) => {
   if (btn) sendMouseButton(x, y, btn, 0);
   e.preventDefault();
 });
+
+// The wheel, in notches. A browser reports pixels, lines or pages depending
+// on the device and the platform, and positive deltaY means towards the user --
+// the opposite of the sign the machine uses -- so the conversion happens here
+// rather than on the device. Fractions from a trackpad are accumulated so a
+// slow two-finger drag still delivers whole notches. Same rule as the wasm
+// page (wasm/web/main.js), deliberately: one wheel, one meaning.
+let wheelAccum = 0;
+wrap.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  let lines = e.deltaY;
+  if (e.deltaMode === 1) lines *= 16;        // already lines: one row ~16px
+  else if (e.deltaMode === 2) lines *= 400;  // pages
+  wheelAccum += -lines / 100;                // 100px per notch, sign flipped
+  let notches = wheelAccum > 0 ? Math.floor(wheelAccum) : Math.ceil(wheelAccum);
+  if (notches === 0) return;
+  wheelAccum -= notches;
+  if (notches > 127) notches = 127;
+  if (notches < -127) notches = -127;
+  const [x, y] = eventCoords(e);
+  sendMouseWheel(x, y, notches);
+}, { passive: false });
 
 wrap.addEventListener('contextmenu', (e) => e.preventDefault());
 

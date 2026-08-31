@@ -49,6 +49,18 @@ fmrb_err_t rd_input_handle(const uint8_t *data, size_t len)
         fmrb_host_send_mouse_click(x, y, btn, state);
         return FMRB_OK;
     }
+    case RD_INPUT_MSG_MOUSE_WHEEL: {
+        if (len < 6) return FMRB_ERR_INVALID_PARAM;
+        int x = clamp_x(rd_i16(&data[1]));
+        int y = clamp_y(rd_i16(&data[3]));
+        int notches = (int8_t)data[5];
+        if (notches == 0) return FMRB_OK;
+        // No move first, unlike a button: the wheel goes to the focused
+        // window rather than the one under the pointer, and moving would
+        // drag anything the viewer happens to be holding down.
+        fmrb_host_send_mouse_wheel(x, y, notches);
+        return FMRB_OK;
+    }
     case RD_INPUT_MSG_KEY: {
         if (len < 4) return FMRB_ERR_INVALID_PARAM;
         int state = data[1];
