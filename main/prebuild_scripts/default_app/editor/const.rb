@@ -89,7 +89,18 @@ module EditorConst
     EDITOR_COLORS["syntax_constant"] || HL_BASE[6],                               # syntax_constant
     EDITOR_COLORS["syntax_variable"] || HL_BASE[7],                               # syntax_variable
     EDITOR_COLORS["syntax_method"] || HL_BASE[8],                                 # syntax_method
+    # 9: the same colour as the paper. Help pages are markdown, and the
+    # markers that say "this is bold" or "this is code" are noise once the
+    # thing they mark is coloured -- painting them in the background makes
+    # them disappear without touching a byte of the file.
+    BG_COLOR,
   ]
+
+  # Help-page categories, named where the colours are.
+  HL_MD_HIDE = 9
+  HL_MD_BOLD = 1     # syntax_keyword
+  HL_MD_CODE = 2     # syntax_string
+  HL_MD_HEAD = 6     # syntax_constant
 
   # The Colors dialog walks these two in step: the key as written in
   # /home/colors.toml, and the colour in force right now. Parallel arrays

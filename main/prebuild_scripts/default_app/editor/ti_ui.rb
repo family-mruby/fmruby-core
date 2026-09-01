@@ -460,6 +460,7 @@ module EditorTiUi
     # Only touch the buffer when the page really was read: load_file leaves the
     # previous document in place (and says so) when it fails.
     help_filter_language(path) if @current_file == full
+    help_markdown_hl
     @modified = false
     @need_redraw = true
   end
@@ -514,6 +515,112 @@ module EditorTiUi
     end
   end
 
+  # ---- Help pages: showing the markdown rather than its markers ----
+  #
+  # A page is loaded into the ordinary buffer with Ruby highlighting off, so
+  # until now `**bold**` reached the screen as asterisks. Nothing here rewrites
+  # the text: the categories the renderer already colours by are computed for
+  # each line, the markers get the one that is the background colour, and what
+  # is on screen is the page without its punctuation. The buffer still matches
+  # the file, which is what the return-to-editing path assumes.
+  #
+  # Walking bytes, not characters: every marker is ASCII, so a byte >= 0x80 can
+  # only be part of a multi-byte character and cannot be mistaken for one.
+  # The category string is per character, as the renderer expects, so the walk
+  # counts characters as it goes (a continuation byte is 10xxxxxx).
+  def help_markdown_hl
+    lines = []
+    in_code = false
+    y = 0
+    n = EditorCore.line_count
+    while y < n
+      text = help_line_text(y)
+      t = text.strip
+      if t.length >= 3 && t[0, 3] == "```"
+        in_code = !in_code
+        lines << help_md_flat(text, self.class::HL_MD_HIDE)
+      elsif in_code
+        lines << help_md_flat(text, self.class::HL_MD_CODE)
+      else
+        lines << help_md_line(text)
+      end
+      y += 1
+    end
+    @help_hl = lines
+    nil
+  end
+
+  # One category for every character of the line.
+  def help_md_flat(text, cat)
+    n = text.length
+    return "" if n <= 0
+    out = "\x00" * n
+    i = 0
+    while i < n
+      out.setbyte(i, cat)
+      i += 1
+    end
+    out
+  end
+
+  def help_md_line(text)
+    nb = text.bytesize
+    nc = text.length
+    return "" if nc <= 0
+    out = "\x00" * nc
+    hide = self.class::HL_MD_HIDE
+    bold = self.class::HL_MD_BOLD
+    code = self.class::HL_MD_CODE
+    head = self.class::HL_MD_HEAD
+
+    i = 0          # byte offset
+    ci = 0         # character index
+    cat = 0
+
+    # A leading run of '#' and the space after it introduce a heading: the
+    # marks go, the rest of the line is the heading.
+    if nb > 0 && text.getbyte(0) == 0x23
+      while i < nb && text.getbyte(i) == 0x23
+        out.setbyte(ci, hide)
+        i += 1
+        ci += 1
+      end
+      if i < nb && text.getbyte(i) == 0x20
+        out.setbyte(ci, hide)
+        i += 1
+        ci += 1
+      end
+      cat = head
+    end
+
+    while i < nb
+      b = text.getbyte(i)
+      if b == 0x2A && i + 1 < nb && text.getbyte(i + 1) == 0x2A
+        out.setbyte(ci, hide)
+        out.setbyte(ci + 1, hide)
+        cat = (cat == bold) ? 0 : bold
+        i += 2
+        ci += 2
+        next
+      end
+      if b == 0x60
+        out.setbyte(ci, hide)
+        cat = (cat == code) ? 0 : code
+        i += 1
+        ci += 1
+        next
+      end
+      out.setbyte(ci, cat)
+      # Step over the whole character; only its first byte gets a category.
+      i += 1
+      while i < nb && (text.getbyte(i) & 0xC0) == 0x80
+        i += 1
+      end
+      ci += 1
+    end
+    out
+  end
+
   def help_line_text(y)
     n = EditorCore.line_length(y)
     return "" if n <= 0
@@ -552,6 +659,8 @@ module EditorTiUi
   end
 
   def close_help
+    # The categories belong to the page, not to what comes back after it.
+    @help_hl = nil
     return unless @help_open
     @help_open = false
     # The stash is the truth whenever it exists: a named file that had unsaved

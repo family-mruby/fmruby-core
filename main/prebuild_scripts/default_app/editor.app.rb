@@ -120,6 +120,7 @@ class EditorApp < FmrbApp
     # While a help page is open the buffer is read-only, and the one being
     # edited waits in /tmp (see open_help).
     @help_open = false
+    @help_hl = nil
     @help_stashed = false
     @help_return_file = nil
     @help_return_y = 0

@@ -443,8 +443,16 @@ module EditorRender
     # Tinted (breakpoint/stop) lines always render plain over their background.
     # The category map is per visible character and comes from EditorCore's
     # cache (recomputed only when the line changes).
-    hl = (line_bg == BG_COLOR && @hl_enabled) ?
-           EditorCore.render_hl(line_idx, col0, nchars) : ""
+    # A help page carries its own categories (markdown, computed at load);
+    # everything else asks the highlighter, which is off for a .md anyway.
+    hl = if @help_hl
+           h = @help_hl[line_idx]
+           h ? h[col0, nchars].to_s : ""
+         elsif line_bg == BG_COLOR && @hl_enabled
+           EditorCore.render_hl(line_idx, col0, nchars)
+         else
+           ""
+         end
     draw_row_text(x, y, text, widths, nchars, hl, line_bg, sel_from, sel_to)
   end
 
