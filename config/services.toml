@@ -31,7 +31,7 @@ interval_ms = 60000
 [hourly_chime]
 file = "hourly_chime.rb"
 class = "HourlyChimeService"
-enable = true
+enable = false
 
 # Watches the network and publishes net/state. The IP goes in the log the
 # moment there is one, which is the answer to having to look it up.
@@ -88,4 +88,4 @@ interval_hours = 24
 [tts]
 file = "tts.rb"
 class = "TtsService"
-enable = true
+enable = false
