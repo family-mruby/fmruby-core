@@ -122,42 +122,34 @@
 <div id="about">
   <h2>How to use it</h2>
   <ul>
-    <li>Click the screen to switch the machine on. The mouse and the keyboard
-      work while the screen has focus; the top-left menu opens the launcher,
-      the editor and the rest of the desktop.</li>
-    <li>Japanese kana input toggles with <kbd>Ctrl</kbd>+<kbd>Space</kbd>, or by
-      clicking the <kbd>[A]</kbd> indicator in the menu bar (A → kana →
-      katakana). Romaji is typed as usual: <kbd>k</kbd><kbd>y</kbd><kbd>a</kbd>
-      gives the kana for "kya".</li>
-    <li>Sound only starts after that first click -- browsers do not let a page
-      make noise before one.</li>
-    <li>Theme and resolution are stored in this browser and applied at boot, so
-      changing them reloads the page.</li>
-    <li>What you write is kept. Everything under <code>/home</code> -- the
-      programs you save, your service list -- and anything in
-      <code>/app/usr</code>, which is where an app has to sit for the launcher
-      to list it. Your settings are kept as well. All of it stays in this
-      browser between visits. Nowhere else: it never leaves the machine you are
-      reading this on. A private window keeps nothing, and a browser may
-      reclaim the space after a long absence, so <b>download your files</b> if
-      they matter to you; that one file puts your work, and your settings, back
-      here or in another browser. Open the
-      page twice and only the first tab saves.</li>
-    <li>Full screen puts the machine on the whole display. Where the browser
-      allows it the machine keeps <kbd>Esc</kbd> for itself; where it does not,
-      <kbd>Esc</kbd> leaves full screen instead of reaching the app.</li>
+    <li><b>Click the screen</b> to switch the machine on. Mouse and keyboard
+      work while it has focus; the top-left menu has the launcher and the
+      editor.</li>
+    <li><b>Sound</b> starts only after that first click.</li>
+    <li><b>Kana:</b> <kbd>Ctrl</kbd>+<kbd>Space</kbd>, or click <kbd>[A]</kbd>
+      in the menu bar. Romaji as usual.</li>
+    <li><b>Kept between visits:</b> <code>/home</code>, <code>/app/usr</code>
+      (where the launcher looks for your apps), and your settings. None of it
+      leaves this browser.</li>
+    <li><b>Not kept:</b> everything else, <code>/tmp</code> above all. A
+      private window keeps nothing, and a browser may reclaim the space after
+      a long absence.</li>
+    <li><b>Download them</b> saves your work and settings as one file;
+      <b>Restore</b> puts them back, here or in another browser.</li>
+    <li><b>Two tabs:</b> only the first one saves.</li>
+    <li><b>Theme and resolution</b> reload the page when changed.</li>
+    <li><b>Full screen:</b> where the browser allows it the machine keeps
+      <kbd>Esc</kbd>; where it does not, <kbd>Esc</kbd> leaves full screen.</li>
+    <li><b>Phone or tablet:</b> it runs, the screen is fitted, and a finger
+      works as a mouse -- but you cannot type, so the editor and the shell
+      need a real keyboard.</li>
   </ul>
   <h2>What it is not</h2>
   <ul>
-    <li>Everything runs in the page. What you save under <code>/home</code>
-      is kept, but the rest of the machine is built fresh every time: files
-      written anywhere else, and <code>/tmp</code> above all, are gone on the
-      next reload.</li>
-    <li>Desktop Chrome and Firefox are what this targets. Safari is untested.
-      On a phone or a tablet the machine runs, the screen is fitted to yours,
-      and a finger works as a mouse -- tap to click, drag to move a window.
-      What you cannot do there is type: a canvas cannot raise the on-screen
-      keyboard, so the editor and the shell need a real keyboard.</li>
+    <li>Not a service: everything runs in this page, on your machine.</li>
+    <li>Not a machine that remembers everything: outside the places named
+      above, it is rebuilt from the bundle on each visit.</li>
+    <li>Desktop Chrome and Firefox are the target. Safari is untested.</li>
   </ul>
 </div>
 <script src="vendor/coi-serviceworker.js"></script>
