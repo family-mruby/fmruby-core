@@ -398,18 +398,75 @@ module EditorTiUi
     end
     return nil if text.nil?
 
-    hits = 0
-    found = nil
+    classes = []
     text.split("\n").each do |line|
       next if line.length == 0
       parts = line.split("\t")
       next unless parts.length >= 2
       next unless parts[0] == name
-      hits += 1
-      found = parts[1] if found.nil?
+      cls = parts[1]
+      classes << cls unless classes.include?(cls)
     end
-    Log.info("help: #{name} -> #{found} (#{hits} entr#{hits == 1 ? 'y' : 'ies'})") if found
+    return nil if classes.length == 0
+
+    found = classes[0]
+    # destroy is in seven classes, and start, stop, tick and draw are all
+    # shared. The name alone cannot choose between them, so when it is
+    # ambiguous the receiver is asked what it is -- and only then, because
+    # that answer costs a second parse of the whole document.
+    if classes.length > 1
+      hint = help_receiver_class
+      if hint && classes.include?(hint)
+        found = hint
+      end
+      Log.info("help: #{name} in #{classes.length} classes, receiver #{hint ? hint : '?'} -> #{found}")
+    else
+      Log.info("help: #{name} -> #{found}")
+    end
     found
+  end
+
+  # The class of whatever the method is being called on, spelled the way the
+  # index spells it (FmrbUI::Widget is written FmrbUI__Widget, since the
+  # class name is also a file name). nil when the line does not say -- there
+  # is no dot in front of the name, the engine cannot type the receiver, or
+  # the method was inherited and is filed under a parent class instead.
+  def help_receiver_class
+    x0 = @cx
+    x0 -= 1 while x0 > 0 && comp_name_byte_at?(@cy, x0 - 1)
+    return nil if x0 == 0
+    return nil unless EditorCore.char_at(@cy, x0 - 1) == "."
+
+    x1 = x0 - 1
+    x2 = x1
+    x2 -= 1 while x2 > 0 && comp_name_byte_at?(@cy, x2 - 1)
+    x2 -= 1 if x2 > 0 && EditorCore.char_at(@cy, x2 - 1) == "@"
+    return nil if x2 >= x1
+
+    found = EditorCore.hover(@cy, x2)
+    return nil unless found > 0
+    # A method there would mean the dot belongs to a call in a chain
+    # (img.width.to_s); the engine gives no type for that, so leave it.
+    return nil if EditorCore.hover_method?
+    t = EditorCore.hover_field(ET_HOVER_TYPE).to_s
+    return nil if t.length == 0
+    help_index_spelling(t)
+  end
+
+  # "FmrbUI::Widget" as the index spells it, "FmrbUI__Widget". Walked byte by
+  # byte rather than split-and-join: whether split keeps the empty piece
+  # between two colons decides between one underscore and two, and that is
+  # not worth being wrong about.
+  def help_index_spelling(t)
+    out = ""
+    i = 0
+    n = t.bytesize
+    while i < n
+      b = t.getbyte(i)
+      out << (b == 58 ? 95 : b)   # ':' -> '_'
+      i += 1
+    end
+    out
   end
 
   # The file for a class, in the reader's language. Both are written at build

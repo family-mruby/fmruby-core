@@ -1,7 +1,7 @@
 # 報告: 全メソッドの長文ヘルプ
 
 > 状態: 完了 | 更新: 2026-09-02 | 577/577 メソッドに長文。
-> 索引 577 件・39 クラス・78 ファイル・436KB
+> 索引 577 件・39 クラス・78 ファイル・436KB。同名メソッドは受け手の型で選ぶ
 
 指示書 instruction_help.md の残り (FmrbAudio 以降) を書き切った回の記録。
 前半 (FmrbGfx・FmrbApp) は help_fmrb_gfx.md と help_fmrb_app.md。
@@ -90,22 +90,52 @@ Untyped 4、Array の `&` `all?` `count` `max` `min` `|` `Array.new` ほか) も
 `set_font` だけが 181 バイトになった。**日本語側の括弧書きを長文へ移して**
 短くした。全件検査して 0 件。
 
+### 同じ名前が複数のクラスにあると引き当てを外していた
+
+`destroy` は 6 クラス、`text` は 5 クラス、`start` `stop` `tick` `draw` も
+重なる。索引は名前からクラスを引くだけなので、**先頭 (FmrbApp) が常に
+選ばれていた**。`img.destroy` で F1 を押すと FmrbApp#destroy が出る。
+
+最初は補完の候補にクラスの欄を足すつもりだったが、**型エンジンが
+`TiSuggestion.class_name` を埋めるのは受け手の型が union のときだけ**
+(候補一覧でどちらのクラスか見せるための欄) で、普通の場合は NULL。
+vendor の gem に手を入れることになるので採らなかった。
+
+代わりに**受け手に型を聞く**。`.` の手前の語の上で `EditorCore.hover` を
+呼ぶと、変数の型名 (`SpriteImage`、`FmrbUI::Button`) が返る。索引の綴りは
+`FmrbUI__Widget` なので `:` を `_` に置き換えて突き合わせる。
+
+- **索引が 1 件のときは聞かない**。hover は文書をもう一度構文解析するので、
+  ambiguous なときだけの支払いにしてある。
+- 型が取れないとき (裸の `destroy`、鎖の途中、受け手が定数) は**先頭に
+  戻る**。前と同じ振る舞いで、悪くはならない。
+- 継承したメソッドは親のクラスに載っているので、受け手が子だと一致しない
+  (`FmrbUI::Button` の `place` は `FmrbUI::Widget`)。この場合も先頭に戻るが、
+  そもそも重なっていないので実害はない。
+- `:` → `_` の置換は `split(":").join("_")` ではなく**バイトで回す**。
+  `"A::B".split(":")` が空文字を残すかどうかで下線が 1 本か 2 本か変わり、
+  そこを賭けたくない。
+
 ## 残っていること
 
-- **同じ名前が複数のクラスにあると、索引の先頭が選ばれる**。`destroy` は
-  7 クラス、`start` `stop` `tick` `draw` も重なる。補完は受け手の型を
-  知っているが、**その型が help に渡っていない** (`suggestion()` に
-  クラスの欄が無い) ため、F1 は名前だけで引いている。直すなら
-  `COMP_FIELD_*` にもう 1 欄足す。
 - 例の中に 39 桁を超える行が 60 行ある (大半は前半の回のもの)。折り返しで
   読めはするが、そろえたい。
 
 ## 確かめたこと
 
 - `rake ti:test` 通過 (型 db は sig から作り直される)。
+- **sig を直したら `rake clean` してからビルド**。忘れると古い型 db が
+  リンクされ続け、**ヘルプのページは新しいのに補完の要約だけ古い**という
+  紛らわしい状態になる (英語の要約を入れた直後に一度これを踏んだ)。
 - sim (NARYAv4 構成、Spinel エディタ) で `fill_rect` / `bytesize` /
   `ensure_view` を F1。見出し・シグネチャ・要約・長文・markdown の強調が
-  出て、`help: <名前> -> <クラス> (1 entry)` がログに出る。
-  ページの読み込みは FmrbGfx.en.md (674 行 16.8KB) で pool 19%。
+  出る。ページの読み込みは FmrbGfx.en.md (674 行 16.8KB) で pool 19%。
+- 引き当ての 4 通りをログで確認:
+  `destroy in 6 classes, receiver SpriteImage -> SpriteImage`、
+  `text in 5 classes, receiver FmrbUI__Button -> FmrbUI__Button` (名前空間)、
+  `destroy in 6 classes, receiver ? -> FmrbApp` (裸の語は先頭に戻る)、
+  補完一覧を開いたまま F1 でも受け手から引ける。
+- 補完の説明が英語で出ることも確認 (`Let go of this image`)。ここは
+  ヘルプのページではなく**型 db** から出るので、clean ビルドの確認を兼ねる。
 - `flash/help` は 78 ファイル 436KB。ブロック単位の littlefs でも
   8MB 区画に対して小さい。
