@@ -2,6 +2,10 @@
 
 class Class
   # クラス名を文字列で返す <<en>> Return class name as string
+  #
+  # ```ruby
+  # obj.class.name
+  # ```
   def name: () -> String
 
 end

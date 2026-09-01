@@ -2,162 +2,697 @@
 
 class String
   # 真偽を反転する <<en>> Return logical NOT
+  #
+  # 文字列はいつも真なので、これは必ず false。
+  # ```ruby
+  # !"a"  #=> false
+  # ```
+  # <<en>>
+  # A string is always true, so this is always false.
+  # ```ruby
+  # !"a"  #=> false
+  # ```
   def !: () -> bool
 
   # 文字列を指定の回数くり返す <<en>> Repeat string specified number of times
+  #
+  # **区切り線や埋め草を作る**のに使う。0 を渡すと空になる。
+  # ```ruby
+  # "-" * 39
+  # "\x00" * 16  # 16 バイトの入れ物
+  # ```
+  # <<en>>
+  # Handy for a rule or for padding; 0 gives an empty string.
+  # ```ruby
+  # "-" * 39
+  # "\x00" * 16  # a 16-byte buffer
+  # ```
   def *: (Integer count) -> String
 
   # 文字列をつなげる <<en>> Concatenate strings
+  #
+  # **足すたびに新しい文字列ができる**ので、ループで組み立てるなら `<<`。
+  # ```ruby
+  # a = "foo" + "bar"
+  # ```
+  # <<en>>
+  # Every `+` makes a new string; build up with `<<` inside a loop instead.
+  # ```ruby
+  # a = "foo" + "bar"
+  # ```
   def +: (String other) -> String
 
   # 辞書順で前かどうか <<en>> Check if lexicographically smaller
+  #
+  # ```ruby
+  # "abc" < "abd"  #=> true
+  # ```
   def <: (String other) -> bool
 
   # 文字列か文字コードを末尾に足す <<en>> Append string or character code
+  #
+  # **自分を書き換える**ので `+` より速い。数を渡すと文字コードとして足す。
+  # ```ruby
+  # buf = ""
+  # buf << "a"
+  # buf << 65  # "A"
+  # ```
+  # <<en>>
+  # It changes the string in place, so it beats `+`. An integer is appended as
+  # a character code.
+  # ```ruby
+  # buf = ""
+  # buf << "a"
+  # buf << 65  # "A"
+  # ```
   def <<: ((String | Integer) string_or_codepoint) -> String
 
   # 辞書順で前か同じかどうか <<en>> Check if lexicographically less than or equal
+  #
+  # ```ruby
+  # "abc" <= "abc"  #=> true
+  # ```
   def <=: (String other) -> bool
 
   # 辞書順で比べて -1 / 0 / 1 を返す <<en>> Compare lexicographically. Returns -1, 0 or 1
+  #
+  # 並べ替えの比べ物に使う。
+  # ```ruby
+  # "a" <=> "b"  #=> -1
+  # ```
+  # <<en>>
+  # Used as the comparison when sorting.
+  # ```ruby
+  # "a" <=> "b"  #=> -1
+  # ```
   def <=>: (String other) -> Integer
 
   # 等しいかどうか <<en>> Perform equality comparison
+  #
+  # **中身を比べる**。同じ物かどうかではない。
+  # ```ruby
+  # "abc" == "abc"  #=> true
+  # ```
+  # <<en>>
+  # Compares the contents, not whether they are the same object.
+  # ```ruby
+  # "abc" == "abc"  #=> true
+  # ```
   def ==: (untyped other) -> bool
 
   # case での等しさを判定する <<en>> Perform equality comparison (for case statements)
+  #
+  # ```ruby
+  # case s
+  # when "quit" then finish
+  # end
+  # ```
   def ===: (untyped other) -> bool
 
   # 辞書順で後かどうか <<en>> Check if lexicographically greater
+  #
+  # ```ruby
+  # "b" > "a"  #=> true
+  # ```
   def >: (String other) -> bool
 
   # 辞書順で後か同じかどうか <<en>> Check if lexicographically greater than or equal
+  #
+  # ```ruby
+  # "b" >= "b"  #=> true
+  # ```
   def >=: (String other) -> bool
 
   # その位置の文字か部分文字列を返す <<en>> Get character or substring at specified position
+  #
+  # **位置は文字数**で、バイト数ではない。範囲の外は nil。
+  # ```ruby
+  # s[0]
+  # s[0, 3]
+  # s[1..2]
+  # ```
+  # <<en>>
+  # The position counts **characters**, not bytes; outside the string it is
+  # nil.
+  # ```ruby
+  # s[0]
+  # s[0, 3]
+  # s[1..2]
+  # ```
   def []: (untyped index_or_range) -> (String | nil)
 
   # その位置の文字や部分文字列を置き換える <<en>> Replace the character or substring there
+  #
+  # **長さが変わってよい**。1 文字を 3 文字に置き換えてもよい。
+  # ```ruby
+  # s[0] = "X"
+  # s[0, 2] = "ab"
+  # ```
+  # <<en>>
+  # The length may change: one character can become three.
+  # ```ruby
+  # s[0] = "X"
+  # s[0, 2] = "ab"
+  # ```
   def []=: (untyped index_or_range, String replacement) -> String
 
   # ljust / rjust の引数検査に使う内部メソッド <<en>> Internal argument check for ljust and rjust
+  #
+  # **内部用**。自分で呼ぶものではない。
+  # <<en>>
+  # **Internal.** Not meant to be called.
   def __ljust_rjust_argcheck: ((Integer | String) width_or_padding) -> nil
 
   # バイトの並びを配列で返す <<en>> Return byte sequence of string as array
+  #
+  # **配列を作る**ので大きい文字列では重い。1 バイトだけなら `getbyte`。
+  # ```ruby
+  # "AB".bytes  #=> [65, 66]
+  # ```
+  # <<en>>
+  # It builds an array, so it costs on a long string; for one byte use
+  # `getbyte`.
+  # ```ruby
+  # "AB".bytes  #=> [65, 66]
+  # ```
   def bytes: () -> Array[Integer]
 
+  # バイト数を返す (文字数ではない) <<en>> Return the size in bytes, not characters
+  #
+  # **バイナリを扱うならこちら**。`length` は日本語を 1 文字と数えるので
+  # 食い違う。
+  # ```ruby
+  # "あ".bytesize  #=> 3
+  # "あ".length    #=> 1
+  # ```
+  # <<en>>
+  # **Use this for binary data.** `length` counts a Japanese character as one,
+  # so the two differ.
+  # ```ruby
+  # "あ".bytesize  #=> 3
+  # "あ".length    #=> 1
+  # ```
+  def bytesize: () -> Integer
+
   # 1 文字ずつの配列を返す <<en>> Return characters of string as array
+  #
+  # 日本語も 1 文字ずつに分かれる。
+  # ```ruby
+  # "あい".chars  #=> ["あ", "い"]
+  # ```
+  # <<en>>
+  # Japanese splits per character too.
+  # ```ruby
+  # "あい".chars  #=> ["あ", "い"]
+  # ```
   def chars: () -> Array[String]
 
   # 末尾の改行を取り除いた文字列を返す <<en>> Return string with trailing newline removed
+  #
+  # `gets` で読んだ行の改行を落とすのに使う。
+  # ```ruby
+  # line.chomp
+  # ```
+  # <<en>>
+  # Drops the newline that `gets` leaves on.
+  # ```ruby
+  # line.chomp
+  # ```
   def chomp: () -> String
 
   # 末尾の改行を自分から取り除く <<en>> Remove trailing newline destructively
+  #
+  # **改行が無ければ nil** が返る (文字列ではない)。
+  # ```ruby
+  # line.chomp!
+  # ```
+  # <<en>>
+  # **Returns nil when there was no newline**, not the string.
+  # ```ruby
+  # line.chomp!
+  # ```
   def chomp!: () -> (String | nil)
 
   # 文字列を空にする <<en>> Clear string contents
+  #
+  # 同じ入れ物を使いまわす。
+  # ```ruby
+  # buf.clear
+  # ```
+  # <<en>>
+  # Reuses the same object.
+  # ```ruby
+  # buf.clear
+  # ```
   def clear: () -> String
 
   # 小文字にした文字列を返す <<en>> Return string converted to lowercase
+  #
+  # **英字だけ**が変わる。
+  # ```ruby
+  # "ABC".downcase  #=> "abc"
+  # ```
+  # <<en>>
+  # **Only ASCII letters** change.
+  # ```ruby
+  # "ABC".downcase  #=> "abc"
+  # ```
   def downcase: () -> String
 
   # 自分自身を小文字にする <<en>> Convert to lowercase destructively
+  #
+  # **変わらなければ nil**。
+  # ```ruby
+  # s.downcase!
+  # ```
+  # <<en>>
+  # **nil when nothing changed.**
+  # ```ruby
+  # s.downcase!
+  # ```
   def downcase!: () -> (String | nil)
 
   # 1 バイトずつブロックを実行する <<en>> Execute block for each byte
+  #
+  # **ブロック呼び出しは 1 回 0.4ms** かかる。長い文字列では
+  # `while` と `getbyte` の方が速い。
+  # ```ruby
+  # s.each_byte do |b|
+  #   n += b
+  # end
+  # ```
+  # <<en>>
+  # **A block call costs about 0.4ms.** On a long string, `while` with
+  # `getbyte` is faster.
+  # ```ruby
+  # s.each_byte do |b|
+  #   n += b
+  # end
+  # ```
   def each_byte: () { (Integer byte) -> untyped } -> self
 
   # 1 文字ずつブロックを実行する <<en>> Execute block for each character
+  #
+  # ```ruby
+  # s.each_char do |c|
+  #   draw(c)
+  # end
+  # ```
   def each_char: () { (String character) -> untyped } -> self
 
   # 1 行ずつブロックを実行する <<en>> Execute block for each line
+  #
+  # **chomp: true で改行を落とせる**。
+  # ```ruby
+  # text.each_line(chomp: true) do |l|
+  #   handle(l)
+  # end
+  # ```
+  # <<en>>
+  # **`chomp: true` drops the newlines.**
+  # ```ruby
+  # text.each_line(chomp: true) do |l|
+  #   handle(l)
+  # end
+  # ```
   def each_line: (?String separator, ?chomp: bool) { (String line) -> untyped } -> String
 
   # 文字列が空かどうか <<en>> Check if string is empty
+  #
+  # ```ruby
+  # return if s.empty?
+  # ```
   def empty?: () -> bool
 
   # その文字列で終わるかどうか <<en>> Check if ends with specified string
+  #
+  # **Regexp が無い**ので、拡張子の判定はこれで書く。
+  # ```ruby
+  # if path.end_with?(".rb")
+  # ```
+  # <<en>>
+  # **There is no Regexp here**, so this is how you check a file extension.
+  # ```ruby
+  # if path.end_with?(".rb")
+  # ```
   def end_with?: (String suffix) -> bool
 
   # その位置のバイト値を返す <<en>> Get byte value at specified position
+  #
+  # **バイナリを読む基本**。範囲の外は nil。
+  # ```ruby
+  # b = data.getbyte(4)
+  # ```
+  # <<en>>
+  # **The way to read binary data.** nil outside the string.
+  # ```ruby
+  # b = data.getbyte(4)
+  # ```
   def getbyte: (Integer index) -> (Integer | nil)
 
+  # その位置のバイト値を書き換える <<en>> Set the byte value at a position
+  #
+  # **Array#pack が無い**ので、バイト列は `"\x00" * n` を作って
+  # ここに書き込む。
+  # ```ruby
+  # buf = "\x00" * 4
+  # buf.setbyte(0, 0x12)
+  # ```
+  # <<en>>
+  # **There is no `Array#pack`**, so make a `"\x00" * n` buffer and write the
+  # bytes in.
+  # ```ruby
+  # buf = "\x00" * 4
+  # buf.setbyte(0, 0x12)
+  # ```
+  def setbyte: (Integer index, Integer byte) -> Integer
+
   # その文字列を含むかどうか <<en>> Check if contains specified string
+  #
+  # **実測 1.7ms**と重い。ループの中で毎回呼ばない。
+  # ```ruby
+  # if s.include?("err")
+  # ```
+  # <<en>>
+  # Measured at 1.7ms -- do not call it on every pass of a loop.
+  # ```ruby
+  # if s.include?("err")
+  # ```
   def include?: (String other) -> bool
 
   # その文字列が最初に現れる位置を返す <<en>> Return first position of specified string
+  #
+  # **見つからなければ nil**。2 つめで探し始める位置を指せる。
+  # ```ruby
+  # i = s.index("=")
+  # j = s.index(",", i + 1)
+  # ```
+  # <<en>>
+  # **nil when it is not there.** The second argument says where to start.
+  # ```ruby
+  # i = s.index("=")
+  # j = s.index(",", i + 1)
+  # ```
   def index: ((String | Integer) substring_or_codepoint, ?Integer offset) -> (Integer | nil)
 
   # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
+  #
+  # 引用符と escape が付く。ログに出すときに使う。
+  # ```ruby
+  # p s
+  # ```
+  # <<en>>
+  # Adds quotes and escapes; what you want in a log line.
+  # ```ruby
+  # p s
+  # ```
   def inspect: () -> String
 
   # シンボルに変える <<en>> Convert to symbol
+  #
+  # `to_sym` と同じ。
+  # ```ruby
+  # "name".intern  #=> :name
+  # ```
+  # <<en>>
+  # The same as `to_sym`.
+  # ```ruby
+  # "name".intern  #=> :name
+  # ```
   def intern: () -> Symbol
 
   # 文字列の長さを返す <<en>> Return string length
+  #
+  # **UTF-8 の文字数**。バイト数が要るなら `bytesize`。
+  # ```ruby
+  # "あい".length  #=> 2
+  # ```
+  # <<en>>
+  # **Counts UTF-8 characters.** For bytes, use `bytesize`.
+  # ```ruby
+  # "あい".length  #=> 2
+  # ```
   def length: () -> Integer
 
   # 文字列の長さを返す <<en>> Return string length
+  #
+  # `length` と同じ。
+  # ```ruby
+  # s.size
+  # ```
+  # <<en>>
+  # The same as `length`.
+  # ```ruby
+  # s.size
+  # ```
   def size: () -> Integer
 
   # 指定の幅で左に寄せた文字列を返す <<en>> Return string left-justified to specified width
+  #
+  # 表を組むときに使う。**幅は文字数**なので、日本語混じりの見た目は
+  # そろわない。
+  # ```ruby
+  # "id".ljust(8)
+  # "id".ljust(8, ".")
+  # ```
+  # <<en>>
+  # For laying out a table. The width counts characters, so a mix with
+  # Japanese will not line up.
+  # ```ruby
+  # "id".ljust(8)
+  # "id".ljust(8, ".")
+  # ```
   def ljust: (Integer width, ?String padding) -> String
 
   # 先頭の空白を取り除いた文字列を返す <<en>> Return string with leading whitespace removed
+  #
+  # ```ruby
+  # "  a".lstrip  #=> "a"
+  # ```
   def lstrip: () -> String
 
   # 先頭の空白を自分から取り除く <<en>> Remove leading whitespace destructively
+  #
+  # **変わらなければ nil**。
+  # ```ruby
+  # s.lstrip!
+  # ```
+  # <<en>>
+  # **nil when nothing changed.**
+  # ```ruby
+  # s.lstrip!
+  # ```
   def lstrip!: () -> (String | nil)
 
   # 先頭の文字コードを返す <<en>> Return character code of first character
+  #
+  # **先頭の 1 文字だけ**。
+  # ```ruby
+  # "A".ord  #=> 65
+  # ```
+  # <<en>>
+  # **The first character only.**
+  # ```ruby
+  # "A".ord  #=> 65
+  # ```
   def ord: () -> Integer
 
   # 指定の幅で右に寄せた文字列を返す <<en>> Return string right-justified to specified width
+  #
+  # 数を右にそろえるのに使う。
+  # ```ruby
+  # n.to_s.rjust(4)
+  # "7".rjust(3, "0")  #=> "007"
+  # ```
+  # <<en>>
+  # For lining numbers up on the right.
+  # ```ruby
+  # n.to_s.rjust(4)
+  # "7".rjust(3, "0")  #=> "007"
+  # ```
   def rjust: (Integer width, ?String padding) -> String
 
   # 末尾の空白を取り除いた文字列を返す <<en>> Return string with trailing whitespace removed
+  #
+  # ```ruby
+  # "a  ".rstrip  #=> "a"
+  # ```
   def rstrip: () -> String
 
   # 末尾の空白を自分から取り除く <<en>> Remove trailing whitespace destructively
+  #
+  # **変わらなければ nil**。
+  # ```ruby
+  # s.rstrip!
+  # ```
+  # <<en>>
+  # **nil when nothing changed.**
+  # ```ruby
+  # s.rstrip!
+  # ```
   def rstrip!: () -> (String | nil)
 
   # その位置の文字か部分文字列を返す <<en>> Get character or substring at specified position
+  #
+  # `[]` と同じ。
+  # ```ruby
+  # s.slice(0, 3)
+  # ```
+  # <<en>>
+  # The same as `[]`.
+  # ```ruby
+  # s.slice(0, 3)
+  # ```
   def slice: (untyped index_or_range) -> (String | nil)
 
   # 区切り文字で分けて配列にする <<en>> Split by delimiter and return array
+  #
+  # **引数なしだと空白で分ける**。3 つめの引数で分ける回数を抑えられる
+  # (値を含む設定行を読むときに効く)。
+  # ```ruby
+  # "a,b,c".split(",")
+  # "k=a=b".split("=", 2)
+  # ```
+  # <<en>>
+  # **With no argument it splits on whitespace.** A limit keeps the rest
+  # together -- what you want for a `key=value` line.
+  # ```ruby
+  # "a,b,c".split(",")
+  # "k=a=b".split("=", 2)
+  # ```
   def split: (?String separator, ?Integer limit) -> Array[String]
 
   # その文字列で始まるかどうか <<en>> Check if starts with specified string
+  #
+  # ```ruby
+  # if line.start_with?("#")
+  # ```
   def start_with?: (String prefix) -> bool
 
   # 前後の空白を取り除いた文字列を返す <<en>> Return the string without surrounding whitespace
+  #
+  # 設定ファイルを読むときの定番。
+  # ```ruby
+  # key = parts[0].strip
+  # ```
+  # <<en>>
+  # The usual first step when reading a settings file.
+  # ```ruby
+  # key = parts[0].strip
+  # ```
   def strip: () -> String
 
   # 前後の空白を自分から取り除く <<en>> Remove leading and trailing whitespace destructively
+  #
+  # **変わらなければ nil**。
+  # ```ruby
+  # s.strip!
+  # ```
+  # <<en>>
+  # **nil when nothing changed.**
+  # ```ruby
+  # s.strip!
+  # ```
   def strip!: () -> (String | nil)
 
   # 小数に変える <<en>> Convert to floating point number
+  #
+  # **数で始まらなければ 0.0**。例外にはならない。
+  # ```ruby
+  # "1.5".to_f  #=> 1.5
+  # ```
+  # <<en>>
+  # **0.0 when it does not start with a number** -- it never raises.
+  # ```ruby
+  # "1.5".to_f  #=> 1.5
+  # ```
   def to_f: () -> Float
 
   # 整数に変える <<en>> Convert to integer
+  #
+  # **数で始まらなければ 0**。16 進を読むなら 16 を渡す。
+  # ```ruby
+  # "12".to_i     #=> 12
+  # "ff".to_i(16) #=> 255
+  # ```
+  # <<en>>
+  # **0 when it does not start with a number.** Pass 16 to read hex.
+  # ```ruby
+  # "12".to_i     #=> 12
+  # "ff".to_i(16) #=> 255
+  # ```
   def to_i: (?Integer base) -> Integer
 
   # 自分自身を文字列として返す <<en>> Return self as string
+  #
+  # 自分がそのまま返る。
+  # ```ruby
+  # s.to_s
+  # ```
+  # <<en>>
+  # Returns itself.
+  # ```ruby
+  # s.to_s
+  # ```
   def to_s: () -> String
 
   # シンボルに変える <<en>> Convert to symbol
+  #
+  # **作った印は消えない**ので、外から来た文字列を次々に変えない。
+  # ```ruby
+  # "name".to_sym  #=> :name
+  # ```
+  # <<en>>
+  # **A symbol is never freed**, so do not make them from arbitrary input.
+  # ```ruby
+  # "name".to_sym  #=> :name
+  # ```
   def to_sym: () -> Symbol
 
   # 文字を置き換えた文字列を返す <<en>> Return string with characters replaced
+  #
+  # **1 文字ずつ対応**して置き換える。文字列ごとの置換ではない。
+  # ```ruby
+  # "a-b".tr("-", "_")  #=> "a_b"
+  # ```
+  # <<en>>
+  # Maps **character to character**; it does not replace a whole substring.
+  # ```ruby
+  # "a-b".tr("-", "_")  #=> "a_b"
+  # ```
   def tr: (String source, String replacement) -> String
 
   # 文字を自分の中で置き換える <<en>> Replace characters destructively
+  #
+  # **変わらなければ nil**。
+  # ```ruby
+  # s.tr!("-", "_")
+  # ```
+  # <<en>>
+  # **nil when nothing changed.**
+  # ```ruby
+  # s.tr!("-", "_")
+  # ```
   def tr!: (String source, String replacement) -> (String | nil)
 
   # 大文字にした文字列を返す <<en>> Return string converted to uppercase
+  #
+  # ```ruby
+  # "abc".upcase  #=> "ABC"
+  # ```
   def upcase: () -> String
 
   # 自分自身を大文字にする <<en>> Convert to uppercase destructively
+  #
+  # **変わらなければ nil**。
+  # ```ruby
+  # s.upcase!
+  # ```
+  # <<en>>
+  # **nil when nothing changed.**
+  # ```ruby
+  # s.upcase!
+  # ```
   def upcase!: () -> (String | nil)
 
 end

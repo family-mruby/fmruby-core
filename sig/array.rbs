@@ -3,110 +3,454 @@
 class Array
   include Enumerable
   # その位置に要素を入れる <<en>> Set element at specified position
+  #
+  # **a[i], a[j] = a[j], a[i] は動かない** (picoruby の既知の穴)。
+  # 入れかえは一時変数で書く。
+  # ```ruby
+  # a[0] = 1
+  # t = a[i]; a[i] = a[j]; a[j] = t
+  # ```
+  # <<en>>
+  # **`a[i], a[j] = a[j], a[i]` does not work** here -- a known picoruby gap.
+  # Swap through a temporary instead.
+  # ```ruby
+  # a[0] = 1
+  # t = a[i]; a[i] = a[j]; a[j] = t
+  # ```
   def []=: (Integer index, untyped value) -> untyped
            | (Integer start, Integer length, untyped value) -> untyped
 
   # その位置の要素を返す <<en>> Get element at specified position
+  #
+  # **負の数は末尾から**。範囲の外は nil で、例外にはならない。
+  # ```ruby
+  # a[0]
+  # a[-1]
+  # ```
+  # <<en>>
+  # **A negative index counts from the end.** Out of range gives nil, not an
+  # error.
+  # ```ruby
+  # a[0]
+  # a[-1]
+  # ```
   def []: (Integer index) -> untyped
 
+  # 両方にあるものだけの配列 <<en>> Elements that are in both arrays
+  #
+  # 両方にあるものだけを集める。
+  # ```ruby
+  # [1, 2, 3] & [2, 3, 4]  #=> [2, 3]
+  # ```
+  # <<en>>
+  # Keeps what is in both.
+  # ```ruby
+  # [1, 2, 3] & [2, 3, 4]  #=> [2, 3]
+  # ```
   def &: (Array other) -> self
 
   # 配列をつなげる <<en>> Concatenate arrays
+  #
+  # **新しい配列ができる**。継ぎ足すだけなら `push`。
+  # ```ruby
+  # c = a + b
+  # ```
+  # <<en>>
+  # It makes a new array; to add on the end use `push`.
+  # ```ruby
+  # c = a + b
+  # ```
   def +: (Array other) -> Array
 
   # 指定の要素を除いた配列を返す <<en>> Return new array excluding specified elements
+  #
+  # 相手にあるものを取り除く。
+  # ```ruby
+  # [1, 2, 3] - [2]  #=> [1, 3]
+  # ```
+  # <<en>>
+  # Drops everything the other one has.
+  # ```ruby
+  # [1, 2, 3] - [2]  #=> [1, 3]
+  # ```
   def -: (Array other) -> self
 
   # 末尾に要素を足す <<en>> Append element to end
+  #
+  # `<<` と同じ。自分が返るのでつなげられる。
+  # ```ruby
+  # a.push(1)
+  # a << 1
+  # ```
+  # <<en>>
+  # The same as `<<`; it returns the array so calls can be chained.
+  # ```ruby
+  # a.push(1)
+  # a << 1
+  # ```
   def push: (untyped object) -> Array
 
+  # ぜんぶ真かどうか <<en>> Whether every element passes
+  #
+  # ```ruby
+  # ok = a.all? { |v| v > 0 }
+  # ```
   def all?: (*untyped patterns) -> bool
             | (*untyped patterns) { (untyped element) -> untyped } -> bool
 
   # その位置の要素を返す <<en>> Get element at specified position
+  #
+  # `[]` と同じ。
+  # ```ruby
+  # a.at(2)
+  # ```
+  # <<en>>
+  # The same as `[]`.
+  # ```ruby
+  # a.at(2)
+  # ```
   def at: (Integer index) -> untyped
 
   # 配列を空にする <<en>> Remove all elements from array
+  #
+  # **同じ配列を空にする**ので、他から持たれていても効く。
+  # ```ruby
+  # a.clear
+  # ```
+  # <<en>>
+  # Empties the array itself, so everyone holding it sees it empty.
+  # ```ruby
+  # a.clear
+  # ```
   def clear: () -> Array
 
   # 要素ごとの結果で自分を置き換える <<en>> Execute block for each element and destructively replace
+  #
+  # **自分を書き換える**。新しい配列は作らない。
+  # ```ruby
+  # a.collect! { |v| v * 2 }
+  # ```
+  # <<en>>
+  # Rewrites the array in place instead of making a new one.
+  # ```ruby
+  # a.collect! { |v| v * 2 }
+  # ```
   def collect!: () { (untyped element) -> untyped } -> Array[untyped]
 
+  # 要素の数を返す <<en>> Return the number of elements
+  #
+  # `length` と同じ。
+  # ```ruby
+  # n = a.count
+  # ```
+  # <<en>>
+  # The same as `length`.
+  # ```ruby
+  # n = a.count
+  # ```
   def count: () -> Integer
 
   # その位置の要素を消す <<en>> Delete element at specified position
+  #
+  # **後ろが詰まる**ので、回しながら消すと飛ばす。後ろから消す。
+  # ```ruby
+  # v = a.delete_at(0)
+  # ```
+  # <<en>>
+  # The rest shifts down, so deleting while looping forwards skips items --
+  # go backwards.
+  # ```ruby
+  # v = a.delete_at(0)
+  # ```
   def delete_at: (Integer index) -> untyped
 
   # ブロックが真になる要素を消す <<en>> Delete elements for which block returns true
+  #
+  # ```ruby
+  # a.delete_if { |v| v.nil? }
+  # ```
   def delete_if: () { (untyped element) -> untyped } -> self
 
   # 要素ごとにブロックを実行する <<en>> Execute block for each element
+  #
+  # **ブロック呼び出しは 1 回 0.4ms**。毎フレーム回る所では `while` と
+  # 添字で書く方が速い。
+  # ```ruby
+  # a.each do |v|
+  #   draw(v)
+  # end
+  # ```
+  # <<en>>
+  # **A block call costs about 0.4ms.** In a per-frame loop, `while` with an
+  # index is faster.
+  # ```ruby
+  # a.each do |v|
+  #   draw(v)
+  # end
+  # ```
   def each: () { (untyped element) -> untyped } -> self
 
   # 添字ごとにブロックを実行する <<en>> Execute block for each index
+  #
+  # ```ruby
+  # a.each_index { |i| p i }
+  # ```
   def each_index: () { (Integer index) -> untyped } -> self
 
   # 配列が空かどうか <<en>> Check if array is empty
+  #
+  # ```ruby
+  # return if a.empty?
+  # ```
   def empty?: () -> bool
 
   # 先頭の要素を返す <<en>> Get first element
+  #
+  # 空なら nil。
+  # ```ruby
+  # v = a.first
+  # ```
+  # <<en>>
+  # nil when empty.
+  # ```ruby
+  # v = a.first
+  # ```
   def first: () -> untyped
 
   # その要素を含むかどうか <<en>> Check if element is included
+  #
+  # **前から順に見る**ので、長い配列では重い。回数が多いなら Hash を使う。
+  # ```ruby
+  # if a.include?(v)
+  # ```
+  # <<en>>
+  # It walks from the front, so it is slow on a long array; use a Hash when
+  # you ask often.
+  # ```ruby
+  # if a.include?(v)
+  # ```
   def include?: (untyped object) -> bool
 
   # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
+  #
+  # ```ruby
+  # p a
+  # ```
   def inspect: () -> String
 
   # 要素をつないだ文字列を返す <<en>> Join elements and return string
+  #
+  # ```ruby
+  # a.join(", ")
+  # ```
   def join: (?String separator) -> String
 
   # 末尾の要素を返す <<en>> Get last element
+  #
+  # 空なら nil。
+  # ```ruby
+  # v = a.last
+  # ```
+  # <<en>>
+  # nil when empty.
+  # ```ruby
+  # v = a.last
+  # ```
   def last: () -> untyped
 
   # 要素の数を返す <<en>> Return number of elements in array
+  #
+  # ```ruby
+  # n = a.length
+  # ```
   def length: () -> Integer
 
+  # 一番大きい要素 <<en>> The largest element
+  #
+  # 空なら nil。
+  # ```ruby
+  # v = a.max
+  # ```
+  # <<en>>
+  # nil when empty.
+  # ```ruby
+  # v = a.max
+  # ```
   def max: () -> untyped
            | () { (untyped left, untyped right) -> untyped } -> untyped
 
+  # 一番小さい要素 <<en>> The smallest element
+  #
+  # 空なら nil。
+  # ```ruby
+  # v = a.min
+  # ```
+  # <<en>>
+  # nil when empty.
+  # ```ruby
+  # v = a.min
+  # ```
   def min: () -> untyped
            | () { (untyped left, untyped right) -> untyped } -> untyped
 
   # 末尾の要素を取り出す <<en>> Remove and return last element
+  #
+  # **末尾から**取り出す。数を渡すとその数だけ配列で返る。
+  # ```ruby
+  # v = a.pop
+  # vs = a.pop(2)
+  # ```
+  # <<en>>
+  # Takes from the **end**; with a count it returns that many as an array.
+  # ```ruby
+  # v = a.pop
+  # vs = a.pop(2)
+  # ```
   def pop: (?Integer count) -> (untyped | self)
 
   # ブロックが真の要素を除いた配列を返す <<en>> Return array without elements the block matches
+  #
+  # **真になったものを捨てる**。残したいものを書くなら `all?` ではなく
+  # 条件を反転する。
+  # ```ruby
+  # a.reject { |v| v < 0 }
+  # ```
+  # <<en>>
+  # Drops the ones the block calls true; invert the test to say what to keep.
+  # ```ruby
+  # a.reject { |v| v < 0 }
+  # ```
   def reject: () { (untyped element) -> untyped } -> self
 
   # ブロックが真の要素を自分から消す <<en>> Delete the elements the block matches, in place
+  #
+  # **自分を書き換える**。
+  # ```ruby
+  # a.reject! { |v| v.nil? }
+  # ```
+  # <<en>>
+  # Rewrites the array in place.
+  # ```ruby
+  # a.reject! { |v| v.nil? }
+  # ```
   def reject!: () { (untyped element) -> untyped } -> self
 
   # 先頭の要素を取り出す <<en>> Remove and return first element
+  #
+  # **先頭から**取り出す。待ち行列に使う。
+  # ```ruby
+  # v = a.shift
+  # ```
+  # <<en>>
+  # Takes from the **front** -- a queue.
+  # ```ruby
+  # v = a.shift
+  # ```
   def shift: (?Integer count) -> (untyped | self)
 
   # 並べ替えた配列を返す <<en>> Return sorted array
+  #
+  # **比べられないものが混ざると落ちる** (数と文字列など)。
+  # ```ruby
+  # b = a.sort
+  # ```
+  # <<en>>
+  # It raises when the values cannot be compared -- numbers mixed with
+  # strings.
+  # ```ruby
+  # b = a.sort
+  # ```
   def sort: () -> self
             | () { (untyped left, untyped right) -> untyped } -> self
 
   # 自分自身を並べ替える <<en>> Sort destructively
+  #
+  # **自分を並べ替える**。
+  # ```ruby
+  # a.sort!
+  # ```
+  # <<en>>
+  # Sorts in place.
+  # ```ruby
+  # a.sort!
+  # ```
   def sort!: () -> self
              | () { (untyped left, untyped right) -> untyped } -> self
 
   # 部分配列を返す <<en>> Get subarray
+  #
+  # ```ruby
+  # a.slice(1, 2)
+  # ```
   def slice: (untyped index_or_range) -> untyped
 
   # 重複を取り除いた配列を返す <<en>> Return array with duplicates removed
+  #
+  # **同じものを 1 つに**。順は最初に出た方が残る。
+  # ```ruby
+  # b = a.uniq
+  # ```
+  # <<en>>
+  # Keeps the first of each; the order of first appearance is kept.
+  # ```ruby
+  # b = a.uniq
+  # ```
   def uniq: () -> self
 
   # 重複を自分から取り除く <<en>> Remove duplicates destructively
+  #
+  # **変わらなければ nil**。
+  # ```ruby
+  # a.uniq!
+  # ```
+  # <<en>>
+  # **nil when nothing changed.**
+  # ```ruby
+  # a.uniq!
+  # ```
   def uniq!: () -> self
 
   # 先頭に要素を足す <<en>> Prepend element to beginning
+  #
+  # **先頭に足す**ので、後ろがぜんぶずれる。
+  # ```ruby
+  # a.unshift(0)
+  # ```
+  # <<en>>
+  # Puts it at the front, which shifts everything else along.
+  # ```ruby
+  # a.unshift(0)
+  # ```
   def unshift: (untyped object) -> Array
 
+  # つないで重複を消した配列 <<en>> The two arrays joined, without duplicates
+  #
+  # つないで重複を消す。
+  # ```ruby
+  # [1, 2] | [2, 3]  #=> [1, 2, 3]
+  # ```
+  # <<en>>
+  # Joins the two and drops the duplicates.
+  # ```ruby
+  # [1, 2] | [2, 3]  #=> [1, 2, 3]
+  # ```
   def |: (Array other) -> Array
 
+  # 配列を作る <<en>> Make an array
+  #
+  # **大きさを決めて確保しておく**と、伸ばしながら使うより速い。
+  # 2 つめは中身の初期値。
+  # ```ruby
+  # a = Array.new
+  # b = Array.new(16, 0)
+  # ```
+  # <<en>>
+  # Reserving the size up front beats growing it item by item. The second
+  # argument fills it.
+  # ```ruby
+  # a = Array.new
+  # b = Array.new(16, 0)
+  # ```
   def self.new: (?Integer size, ?untyped object) -> Array
 
 end

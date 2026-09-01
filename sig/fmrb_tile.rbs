@@ -5,90 +5,252 @@
 
 # タイルの絵をならべた一枚の絵。番号でタイルを取り出して描く。
 class TileSheet
-  # タイルの絵を読み込む
+  # タイルの絵を読み込む <<en>> Load a sheet of tiles
+  #
+  # 並んだ絵を 1 枚の BMP から読む。
+  # ```ruby
+  # sheet = TileSheet.new(gfx,
+  #   "/app/img/world.bmp")
+  # ```
+  # <<en>>
+  # Reads a grid of pictures from one BMP.
+  # ```ruby
+  # sheet = TileSheet.new(gfx,
+  #   "/app/img/world.bmp")
+  # ```
   def self.new: (FmrbGfx gfx, String path) -> TileSheet
 
-  # 中で使っているうごく絵
+  # 中で使っているうごく絵 <<en>> The sprite image behind it
+  #
+  # ```ruby
+  # img = sheet.image
+  # ```
   def image: () -> SpriteImage
 
-  # 横にならぶタイルの数
+  # 横にならぶタイルの数 <<en>> How many tiles across
+  #
+  # ```ruby
+  # n = sheet.cols
+  # ```
   def cols: () -> Integer
 
-  # 縦にならぶタイルの数
+  # 縦にならぶタイルの数 <<en>> How many tiles down
+  #
+  # ```ruby
+  # n = sheet.rows
+  # ```
   def rows: () -> Integer
 
-  # タイル一つの大きさ (ドット)
+  # タイル一つの大きさ (ドット) <<en>> One tile's size in pixels
+  #
+  # ```ruby
+  # px = sheet.tile_size
+  # ```
   def tile_size: () -> Integer
 
-  # 番号のタイルを画面に一つ描く
+  # 番号のタイルを画面に一つ描く <<en>> Stamp one numbered tile
+  #
+  # **押す場所は先に決める** — 今の描き先の原点に出る。
+  # ```ruby
+  # gfx.set_cursor(x, y)
+  # sheet.stamp(3)
+  # ```
+  # <<en>>
+  # **Position first**: it lands at the current drawing origin.
+  # ```ruby
+  # gfx.set_cursor(x, y)
+  # sheet.stamp(3)
+  # ```
   def stamp: (Integer index) -> void
 
-  # このタイルの絵を片づける
+  # このタイルの絵を片づける <<en>> Let go of the sheet
+  #
+  # ```ruby
+  # sheet.destroy
+  # ```
   def destroy: () -> void
 end
 
 # 地図そのもの。web の地図エディタが書き出した JSON を読む。
 class TileMap
-  # 地図のファイルを読み込む
+  # 地図のファイルを読み込む <<en>> Load a map file
+  #
+  # **`.map.bin` を渡す**。JSON も読めるが、端末では桁違いに遅い
+  # (39 秒 対 55 ミリ秒)。
+  # ```ruby
+  # map = TileMap.new("/app/img/world.map.bin")
+  # ```
+  # <<en>>
+  # **Give it the `.map.bin`.** JSON works and is far slower on a device --
+  # 39 seconds against 55 milliseconds.
+  # ```ruby
+  # map = TileMap.new("/app/img/world.map.bin")
+  # ```
   def self.new: (String json_path) -> TileMap
 
-  # 地図の横のマス数
+  # 地図の横のマス数 <<en>> The map's width in tiles
+  #
+  # ```ruby
+  # w = map.width
+  # ```
   def width: () -> Integer
 
-  # 地図の縦のマス数
+  # 地図の縦のマス数 <<en>> The map's height in tiles
+  #
+  # ```ruby
+  # h = map.height
+  # ```
   def height: () -> Integer
 
-  # マス一つの大きさ (ドット)
+  # マス一つの大きさ (ドット) <<en>> One tile's size in pixels
+  #
+  # ```ruby
+  # px = map.tile_size
+  # ```
   def tile_size: () -> Integer
 
-  # 使うタイルの絵のファイル名
+  # 使うタイルの絵のファイル名 <<en>> The tile sheet it uses
+  #
+  # ```ruby
+  # path = map.tilesheet_path
+  # ```
   def tilesheet_path: () -> String
 
-  # タイルの絵の横のならび数
+  # タイルの絵の横のならび数 <<en>> How many tiles across that sheet is
+  #
+  # ```ruby
+  # n = map.tilesheet_cols
+  # ```
   def tilesheet_cols: () -> Integer
 
-  # 重ねた地図のデータ
+  # 重ねた地図のデータ <<en>> The layers of the map
+  #
+  # ```ruby
+  # map.layers.length
+  # ```
   def layers: () -> Array
 
-  # 地図に置いた仕掛けの一覧
+  # 地図に置いた仕掛けの一覧 <<en>> The events placed on the map
+  #
+  # ```ruby
+  # map.events.length
+  # ```
   def events: () -> Array
 
-  # 歩いてよいタイルの番号
+  # 歩いてよいタイルの番号 <<en>> Which tile numbers can be walked on
+  #
+  # ```ruby
+  # map.walkable_tiles
+  # ```
   def walkable_tiles: () -> Array
 
-  # 始まりの場所
+  # 始まりの場所 <<en>> Where the player starts
+  #
+  # ```ruby
+  # @x = map.spawn_x
+  # ```
   def spawn_x: () -> Integer
 
-  # 始まりの場所
+  # 始まりの場所 <<en>> Where the player starts
+  #
+  # ```ruby
+  # @y = map.spawn_y
+  # ```
   def spawn_y: () -> Integer
 
-  # そのマスのタイル番号を調べる
+  # そのマスのタイル番号を調べる <<en>> The tile number at that square
+  #
+  # 地図の外なら nil。**升目の座標**で、ドットではない。
+  # ```ruby
+  # t = map.tile_at(3, 5)
+  # ```
+  # <<en>>
+  # nil outside the map. The coordinates are **tiles**, not pixels.
+  # ```ruby
+  # t = map.tile_at(3, 5)
+  # ```
   def tile_at: (Integer x, Integer y) -> Integer?
 
-  # そのマスを歩けるかどうか
+  # そのマスを歩けるかどうか <<en>> Whether that square can be walked on
+  #
+  # ```ruby
+  # return unless map.walkable?(nx, ny)
+  # ```
   def walkable?: (Integer x, Integer y) -> bool
 
-  # そのマスの仕掛けを取り出す
+  # そのマスの仕掛けを取り出す <<en>> The event on that square
+  #
+  # ```ruby
+  # ev = map.event_at(@x, @y)
+  # handle(ev) if ev
+  # ```
   def event_at: (Integer x, Integer y) -> Hash?
 
-  # 地図ぜんぶを画面に描く
+  # 地図ぜんぶを画面に描く <<en>> Draw the whole map
+  #
+  # 地図を丸ごと描く。大きい地図では**画面ぶんだけの `render_view`** を使う。
+  # <<en>>
+  # Draws the whole map. For a large one use `render_view`, which draws only
+  # what is on screen.
   def render: (TileSheet sheet) -> void
 
-  # 見えている場所だけを描く
+  # 見えている場所だけを描く <<en>> Draw only what is in sight
+  #
+  # **キーワード引数で呼ぶ**。
+  # ```ruby
+  # map.render_view(sheet,
+  #   view_x: @cam_x, view_y: @cam_y,
+  #   view_w: 320, view_h: 240)
+  # ```
+  # <<en>>
+  # **Takes keyword arguments.**
+  # ```ruby
+  # map.render_view(sheet,
+  #   view_x: @cam_x, view_y: @cam_y,
+  #   view_w: 320, view_h: 240)
+  # ```
   def render_view: (TileSheet sheet) -> void
 end
 
 # 見えている周りだけを描き直して、広い地図を軽く動かす仕組み。
 class TileRing
-  # 動かすための入れ物を作る
+  # 動かすための入れ物を作る <<en>> Make the ring buffer that scrolls
+  #
+  # 画面より少し大きい canvas を輪のように使い、**新しく見えた列だけ**を
+  # 描き足して広い世界をずらす。**Modern 専用**。
+  # <<en>>
+  # Uses a canvas a little larger than the view as a ring, stamping only the
+  # columns that have just come into sight. **Modern only.**
   def self.new: (TileMap map, TileSheet sheet) -> TileRing
 
-  # 入れ物の横幅 (ドット)
+  # 入れ物の横幅 (ドット) <<en>> The buffer's width in pixels
+  #
+  # ```ruby
+  # w = ring.buf_w
+  # ```
   def buf_w: () -> Integer
 
-  # 入れ物の高さ (ドット)
+  # 入れ物の高さ (ドット) <<en>> The buffer's height in pixels
+  #
+  # ```ruby
+  # h = ring.buf_h
+  # ```
   def buf_h: () -> Integer
 
-  # 見えてきたところを描き足す
+  # 見えてきたところを描き足す <<en>> Stamp the columns that came into sight
+  #
+  # **毎フレーム、動かしたあとに呼ぶ**。新しく見えた列だけを押すので、
+  # 少し動いたときは何もしない。
+  # ```ruby
+  # ring.ensure_view(@cam_x, @cam_y,
+  #                  320, 240)
+  # ```
+  # <<en>>
+  # **Call it every frame after moving.** It stamps only the columns that
+  # have just come into sight, so a small step costs nothing.
+  # ```ruby
+  # ring.ensure_view(@cam_x, @cam_y,
+  #                  320, 240)
+  # ```
   def ensure_view: (Integer view_x, Integer view_y, Integer view_w, Integer view_h) -> void
 end

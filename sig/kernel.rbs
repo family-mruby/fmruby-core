@@ -2,22 +2,106 @@
 
 module Kernel
   # 中身が分かる形で出力する <<en>> Inspect and output object
+  #
+  # **`inspect` した形**で出す。渡したものがそのまま返るので、式の途中に
+  # 差し込める。
+  # ```ruby
+  # p x
+  # y = p compute
+  # ```
+  # <<en>>
+  # Prints the `inspect` form and hands the value back, so it can sit inside
+  # an expression.
+  # ```ruby
+  # p x
+  # y = p compute
+  # ```
   def p: (*untyped objects) -> untyped
 
   # 出力する <<en>> Output object
+  #
+  # **改行しない**。
+  # ```ruby
+  # print "loading"
+  # ```
+  # <<en>>
+  # **No newline.**
+  # ```ruby
+  # print "loading"
+  # ```
   def print: (*untyped objects) -> nil
 
   # 改行をつけて出力する <<en>> Output object with newline
+  #
+  # **行はログに出る** (画面ではない)。sim なら `docker logs fmruby_core`、
+  # 実機ならシリアル。
+  # ```ruby
+  # puts "started"
+  # ```
+  # <<en>>
+  # **The line goes to the log**, not the screen: `docker logs fmruby_core` in
+  # the simulation, the serial port on a device.
+  # ```ruby
+  # puts "started"
+  # ```
   def puts: (*untyped objects) -> nil
 
+  # 渡されたブロックを呼ぶ <<en>> Call the block that was given
+  #
+  # 渡されたブロックを呼ぶ。**無いのに呼ぶと落ちる**ので `block_given?` で
+  # 確かめる。
+  # ```ruby
+  # yield(v) if block_given?
+  # ```
+  # <<en>>
+  # Calls the block it was given; **calling it without one raises**, so check
+  # `block_given?`.
+  # ```ruby
+  # yield(v) if block_given?
+  # ```
   def yield: (*untyped arguments) -> untyped
 
   # Proc を作る <<en>> Create Proc object
+  #
+  # **外のローカル変数は掴めない** (Spinel)。後で呼ぶブロックに渡す値は
+  # インスタンス変数か引数にする。
+  # ```ruby
+  # f = proc { |v| draw(v) }
+  # ```
+  # <<en>>
+  # **It cannot capture an outer local** under Spinel. Pass what a stored
+  # block needs as an ivar or an argument.
+  # ```ruby
+  # f = proc { |v| draw(v) }
+  # ```
   def proc: () { (untyped argument) -> untyped } -> Proc
 
   # lambda を作る <<en>> Create lambda expression
+  #
+  # `proc` との違いは引数の数の厳しさと `return` の効き方。
+  # ```ruby
+  # f = lambda { |v| v * 2 }
+  # ```
+  # <<en>>
+  # It differs from `proc` in argument checking and in what `return` does.
+  # ```ruby
+  # f = lambda { |v| v * 2 }
+  # ```
   def lambda: () { (untyped argument) -> untyped } -> Proc
 
+  # 手続きを短く書く <<en>> The short spelling of lambda
+  #
+  # `lambda` の短い書き方。
+  # ```ruby
+  # f = ->(v) { v * 2 }
+  # f.call(3)
+  # ```
+  # <<en>>
+  # The short spelling of `lambda`.
+  # ```ruby
+  # f = ->(v) { v * 2 }
+  # f.call(3)
+  # ```
   def `->`: (untyped argument) { (untyped block_argument) -> untyped } -> Proc
 
 end

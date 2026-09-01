@@ -1,35 +1,107 @@
 # Area512 built-in type declaration.
 
 class NilClass
+  # 真偽を反転する <<en>> Return logical NOT
+  #
+  # nil は偽なので必ず true。
+  # ```ruby
+  # !nil  #=> true
+  # ```
+  # <<en>>
+  # nil is false, so this is always true.
+  # ```ruby
+  # !nil  #=> true
+  # ```
   def !: () -> bool
 
   # 常に false を返す <<en>> Always returns false
+  #
+  # ```ruby
+  # nil & true  #=> false
+  # ```
   def &: (untyped other) -> bool
 
+  # case での等しさを判定する <<en>> Equality as `case` uses it
+  #
+  # ```ruby
+  # case v
+  # when nil then missing
+  # end
+  # ```
   def ===: (untyped other) -> bool
 
   # 引数の真偽を返す <<en>> Returns logical value of argument
+  #
+  # ```ruby
+  # nil ^ true  #=> true
+  # ```
   def ^: (untyped other) -> bool
 
   # "nil" という文字列を返す <<en>> Returns "nil"
+  #
+  # ```ruby
+  # p nil  #=> nil
+  # ```
   def inspect: () -> String
 
   # 常に true を返す <<en>> Returns true
+  #
+  # **nil かどうかを調べる書き方**。
+  # ```ruby
+  # return if v.nil?
+  # ```
+  # <<en>>
+  # **The way to test for nil.**
+  # ```ruby
+  # return if v.nil?
+  # ```
   def nil?: () -> bool
 
   # 0.0 を返す <<en>> Returns 0.0
+  #
+  # ```ruby
+  # nil.to_f  #=> 0.0
+  # ```
   def to_f: () -> Float
 
   # 空のハッシュを返す <<en>> Returns empty hash
+  #
+  # ```ruby
+  # nil.to_h  #=> {}
+  # ```
   def to_h: () -> Hash
 
   # 0 を返す <<en>> Returns 0
+  #
+  # **0 になる**ので、読めなかった値をそのまま足せる。
+  # ```ruby
+  # nil.to_i  #=> 0
+  # ```
+  # <<en>>
+  # **It becomes 0**, so a value that failed to read can still be added.
+  # ```ruby
+  # nil.to_i  #=> 0
+  # ```
   def to_i: () -> Integer
 
   # 空の文字列を返す <<en>> Returns empty string
+  #
+  # **空文字列**になる。"nil" ではない。
+  # ```ruby
+  # nil.to_s  #=> ""
+  # ```
+  # <<en>>
+  # **An empty string**, not "nil".
+  # ```ruby
+  # nil.to_s  #=> ""
+  # ```
   def to_s: () -> String
 
   # 引数の真偽を返す <<en>> Returns logical value of argument
+  #
+  # ```ruby
+  # nil | true  #=> true
+  # ```
   def |: (untyped other) -> bool
 
 end

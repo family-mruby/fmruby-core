@@ -3,55 +3,211 @@
 class Hash
   include Enumerable
   # 等しいかどうか <<en>> Perform equality comparison
+  #
+  # ```ruby
+  # if h == other
+  # ```
   def ==: (untyped other) -> bool
 
   # そのキーの値を返す <<en>> Get value for specified key
+  #
+  # **無い印は nil**。落ちない。
+  # ```ruby
+  # h[:name]
+  # h["name"]
+  # ```
+  # <<en>>
+  # **A missing key gives nil**; it does not raise.
+  # ```ruby
+  # h[:name]
+  # h["name"]
+  # ```
   def []: (untyped key) -> untyped
 
   # そのキーに値を入れる <<en>> Set value for specified key
+  #
+  # **印は文字列と Symbol で別物**。混ぜると引けなくなる。
+  # ```ruby
+  # h[:name] = "a"
+  # ```
+  # <<en>>
+  # **A String key and a Symbol key are different.** Mixing them loses the
+  # value.
+  # ```ruby
+  # h[:name] = "a"
+  # ```
   def []=: (untyped key, untyped value) -> self
 
   # ハッシュを空にする <<en>> Remove all elements from hash
+  #
+  # ```ruby
+  # h.clear
+  # ```
   def clear: () -> Hash
 
   # そのキーを消す <<en>> Delete specified key
+  #
+  # 消した値が返る。無ければ nil。
+  # ```ruby
+  # v = h.delete(:name)
+  # ```
+  # <<en>>
+  # Returns what was there, or nil.
+  # ```ruby
+  # v = h.delete(:name)
+  # ```
   def delete: (untyped key) -> (untyped | nil)
 
   # キーと値の組ごとにブロックを実行する <<en>> Execute block for each key and value
+  #
+  # **ブロックは印と値の 2 つ**を受け取る。
+  # ```ruby
+  # h.each do |k, v|
+  #   puts k.to_s + "=" + v.to_s
+  # end
+  # ```
+  # <<en>>
+  # **The block takes two**, the key and the value.
+  # ```ruby
+  # h.each do |k, v|
+  #   puts k.to_s + "=" + v.to_s
+  # end
+  # ```
   def each: () { (untyped key, untyped value) -> untyped } -> self
 
   # ハッシュが空かどうか <<en>> Check if hash is empty
+  #
+  # ```ruby
+  # return if h.empty?
+  # ```
   def empty?: () -> bool
 
   # そのキーがあるかどうか <<en>> Check if specified key exists
+  #
+  # **値が nil の印**と、印が無いのを見分けるときに使う。
+  # ```ruby
+  # if h.has_key?(:name)
+  # ```
+  # <<en>>
+  # How you tell a key holding nil from a key that is not there.
+  # ```ruby
+  # if h.has_key?(:name)
+  # ```
   def has_key?: (untyped key) -> bool
 
   # その値があるかどうか <<en>> Check if specified value exists
+  #
+  # 全部見るので重い。
+  # ```ruby
+  # if h.has_value?(v)
+  # ```
+  # <<en>>
+  # It walks the whole hash.
+  # ```ruby
+  # if h.has_value?(v)
+  # ```
   def has_value?: (untyped value) -> bool
 
   # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
+  #
+  # ```ruby
+  # p h
+  # ```
   def inspect: () -> String
 
+  # 値から印を逆に引く <<en>> Look the key up from the value
+  #
+  # 値から印を逆に引く。無ければ nil。
+  # ```ruby
+  # k = h.key(v)
+  # ```
+  # <<en>>
+  # Looks the key up from the value; nil when there is none.
+  # ```ruby
+  # k = h.key(v)
+  # ```
   def key: (untyped value) -> (untyped | nil)
 
   # キーを全部配列で返す <<en>> Return all keys as array
+  #
+  # **新しい配列ができる**。
+  # ```ruby
+  # h.keys.each { |k| p k }
+  # ```
+  # <<en>>
+  # It builds a new array.
+  # ```ruby
+  # h.keys.each { |k| p k }
+  # ```
   def keys: () -> Array[untyped]
 
   # 要素の数を返す <<en>> Return number of elements in hash
+  #
+  # ```ruby
+  # n = h.length
+  # ```
   def length: () -> Integer
 
   # 他のハッシュと合わせた新しいハッシュを返す <<en>> Return new hash merged with another hash
+  #
+  # **同じ印は相手が勝つ**。設定の上書きに使う。
+  # ```ruby
+  # conf = defaults.merge(user)
+  # ```
+  # <<en>>
+  # **The other side wins on a shared key** -- what you want for overriding
+  # settings.
+  # ```ruby
+  # conf = defaults.merge(user)
+  # ```
   def merge: (Hash other) -> self
 
   # 自分に他のハッシュを取り込む <<en>> Merge hash destructively
+  #
+  # **自分に混ぜる**。
+  # ```ruby
+  # conf.merge!(user)
+  # ```
+  # <<en>>
+  # Merges into this hash.
+  # ```ruby
+  # conf.merge!(user)
+  # ```
   def merge!: (Hash other) -> self
 
   # 自分自身をハッシュとして返す <<en>> Return self as hash
+  #
+  # そのまま返る。
+  # ```ruby
+  # h.to_h
+  # ```
+  # <<en>>
+  # Returns itself.
+  # ```ruby
+  # h.to_h
+  # ```
   def to_h: () -> self
 
   # 値を全部配列で返す <<en>> Return all values as array
+  #
+  # ```ruby
+  # h.values.each { |v| p v }
+  # ```
   def values: () -> Array[untyped]
 
+  # 空の Hash を作る <<en>> Make an empty hash
+  #
+  # **既定値は渡せない** (無い印はいつも nil)。
+  # ```ruby
+  # h = Hash.new
+  # h = {}
+  # ```
+  # <<en>>
+  # **No default can be given**; a missing key is always nil.
+  # ```ruby
+  # h = Hash.new
+  # h = {}
+  # ```
   def self.new: () -> Hash
 
 end

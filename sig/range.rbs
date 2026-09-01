@@ -2,29 +2,104 @@
 
 class Range < Enumerable
   # 等しいかどうか <<en>> Perform equality comparison
+  #
+  # ```ruby
+  # if r == other
+  # ```
   def ==: (untyped other) -> bool
 
   # 範囲に含まれるかどうか <<en>> Check if value is included in range
+  #
+  # **case で使われる形**。
+  # ```ruby
+  # case n
+  # when 0..9 then digit
+  # end
+  # ```
+  # <<en>>
+  # **The form `case` uses.**
+  # ```ruby
+  # case n
+  # when 0..9 then digit
+  # end
+  # ```
   def ===: (untyped object) -> bool
 
   # 終わりの値を含まない範囲かどうか <<en>> Check if end value is excluded
+  #
+  # `...` で作ったなら true。
+  # ```ruby
+  # (0...3).exclude_end?  #=> true
+  # ```
+  # <<en>>
+  # true when it was made with `...`.
+  # ```ruby
+  # (0...3).exclude_end?  #=> true
+  # ```
   def exclude_end?: () -> bool
 
   # 範囲の始まりの値を返す <<en>> Return start value of range
+  #
+  # ```ruby
+  # (1..5).first  #=> 1
+  # ```
   def first: () -> untyped
 
   # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
+  #
+  # ```ruby
+  # p (1..5)
+  # ```
   def inspect: () -> String
 
   # 範囲の終わりの値を返す <<en>> Return end value of range
+  #
+  # **`...` でも書いた方の端**が返る (最後の要素ではない)。
+  # ```ruby
+  # (1...5).last  #=> 5
+  # ```
+  # <<en>>
+  # **The end as written**, even for `...` -- not the last element.
+  # ```ruby
+  # (1...5).last  #=> 5
+  # ```
   def last: () -> untyped
 
   # 文字列にして返す <<en>> Return string representation
+  #
+  # ```ruby
+  # (1..5).to_s
+  # ```
   def to_s: () -> String
 
   # 範囲の要素ごとにブロックを実行する <<en>> Execute block for each element in range
+  #
+  # **ブロック呼び出しは 1 回 0.4ms**。重いところでは `while` に書きかえる。
+  # ```ruby
+  # (0..7).each do |i|
+  #   draw(i)
+  # end
+  # ```
+  # <<en>>
+  # **A block call costs about 0.4ms**; rewrite a hot loop as `while`.
+  # ```ruby
+  # (0..7).each do |i|
+  #   draw(i)
+  # end
+  # ```
   def each: () { (untyped element) -> untyped } -> self
 
+  # 範囲を作る <<en>> Make a Range
+  #
+  # 普通は `1..5` と書く。
+  # ```ruby
+  # r = Range.new(1, 5)
+  # ```
+  # <<en>>
+  # Normally written `1..5`.
+  # ```ruby
+  # r = Range.new(1, 5)
+  # ```
   def self.new: (untyped first, untyped last, ?bool exclude_end) -> Range
 
 end

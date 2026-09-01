@@ -6,40 +6,111 @@
 
 # うごく絵の中身。ここに描いた絵を SpriteInstance で画面に置く。
 class SpriteImage
-  # この絵の番号
+  # この絵の番号 <<en>> This image's number
+  #
+  # FmrbGfx に直接渡すときに使う。
+  # ```ruby
+  # gfx.draw_image(img.id, x: 10, y: 20)
+  # ```
+  # <<en>>
+  # What you hand to `FmrbGfx` directly.
+  # ```ruby
+  # gfx.draw_image(img.id, x: 10, y: 20)
+  # ```
   def id: () -> Integer
 
-  # 絵の横幅 (ドット)
+  # 絵の横幅 (ドット) <<en>> Image width in pixels
+  #
+  # ```ruby
+  # w = img.width
+  # ```
   def width: () -> Integer
 
-  # 絵の高さ (ドット)
+  # 絵の高さ (ドット) <<en>> Image height in pixels
+  #
+  # ```ruby
+  # h = img.height
+  # ```
   def height: () -> Integer
 
-  # 絵を作る (大きさはドット)
+  # 絵を作る (大きさはドット) <<en>> Make an image (the size is in pixels)
+  #
+  # **キーワード引数で呼ぶ** (上の形は型推論の都合)。
+  # ```ruby
+  # img = SpriteImage.new(gfx,
+  #       width: 16, height: 16,
+  #       transparent_color: 0x00,
+  #       use_transparent: true)
+  # ```
+  # <<en>>
+  # **Takes keyword arguments**; the signature is positional because the type
+  # engine has none.
+  # ```ruby
+  # img = SpriteImage.new(gfx,
+  #       width: 16, height: 16,
+  #       transparent_color: 0x00,
+  #       use_transparent: true)
+  # ```
   def self.new: (FmrbGfx gfx) -> SpriteImage
 
-  # これから描く先をこの絵にする
+  # これから描く先をこの絵にする <<en>> Draw into this image from now on
+  #
+  # **戻すのを忘れない**。普通は `draw` を使えば前後の向け替えが要らない。
+  # <<en>>
+  # **Remember to send it back.** `draw` does both ends for you.
   def set_target: () -> void
 
-  # 描く先を画面に戻す
+  # 描く先を画面に戻す <<en>> Draw on the screen again
+  #
+  # ```ruby
+  # img.reset_target
+  # ```
   def reset_target: () -> void
 
-  # この絵に描く (ブロックの中で描く)
+  # この絵に描く (ブロックの中で描く) <<en>> Draw into this image (inside the block)
+  #
+  # ```ruby
+  # img.draw do |g|
+  #   g.fill_rect(0, 0, 16, 16,
+  #               FmrbGfx::RED)
+  # end
+  # ```
   def draw: () -> void
 
-  # BMP のファイルをこの絵に読み込む
+  # BMP のファイルをこの絵に読み込む <<en>> Read a BMP file into this image
+  #
+  # **BMP だけ**。PNG は `FmrbGfx#create_image` の方。展開は描画側でやる。
+  # ```ruby
+  # img.load_bmp(
+  #   "/usr/share/sprites/flappy/bird_up.bmp")
+  # ```
+  # <<en>>
+  # **BMP only**; PNG goes through `FmrbGfx#create_image`. It is decoded on
+  # the graphics side.
+  # ```ruby
+  # img.load_bmp(
+  #   "/usr/share/sprites/flappy/bird_up.bmp")
+  # ```
   def load_bmp: (String path) -> void
 
-  # この絵を片づける
+  # この絵を片づける <<en>> Let go of this image
+  #
+  # ```ruby
+  # img.destroy
+  # ```
   def destroy: () -> void
 end
 
 # 画面に置いた一つのうごく絵。位置と、何枚目を見せるかを持つ。
 class SpriteInstance
-  # この置いた絵の番号
+  # この置いた絵の番号 <<en>> This placed sprite's number
+  #
+  # ```ruby
+  # sp.id
+  # ```
   def id: () -> Integer
 
-  # 絵を画面に置く
+  # 絵を画面に置く <<en>> Place an image on the screen
   #
   # images には SpriteImage を一枚渡すか、パラパラ漫画のように
   # 配列で何枚も渡します。何枚も渡したときは `frame=` で何枚目を
@@ -51,26 +122,88 @@ class SpriteInstance
   # sp = SpriteInstance.new(gfx, img, x: 40, y: 80)
   # sp.move(48, 80)
   # ```
+  # <<en>>
+  # Give images one SpriteImage, or an array of them like the frames of a
+  # flip book. With several, `frame=` says which one is shown.
+  #
+  # ```ruby
+  # img = SpriteImage.new(gfx, width: 16, height: 16)
+  # img.load_bmp("/app/img/player.bmp")
+  # sp = SpriteInstance.new(gfx, img, x: 40, y: 80)
+  # sp.move(48, 80)
+  # ```
   def self.new: (FmrbGfx gfx, untyped images) -> SpriteInstance
 
-  # 置いた絵を動かす
+  # 置いた絵を動かす <<en>> Move the placed sprite
+  #
+  # 動かしたあとは **`gfx.present` が要る** — 合成はそのときに走る。
+  # ```ruby
+  # sp.move(48, 80)
+  # gfx.present
+  # ```
+  # <<en>>
+  # **`gfx.present` is needed afterwards**; the compositing happens there.
+  # ```ruby
+  # sp.move(48, 80)
+  # gfx.present
+  # ```
   def move: (Integer x, Integer y) -> void
 
-  # この絵を片づける
+  # この絵を片づける <<en>> Let go of this sprite
+  #
+  # ```ruby
+  # sp.destroy
+  # ```
   def destroy: () -> void
 end
 
 # 同じ形をくり返し描くときの下書き。数だけ差しかえて何度も描ける。
 class GfxBlock
-  # 下書きを作る (ブロックに描き方を書く)
+  # 下書きを作る (ブロックに描き方を書く) <<en>> Make a drawing to replay (the block says how)
+  #
+  # 描き方を一度きり組み立てて覚えさせ、あとは数を変えて描き直す。
+  # 毎回 Ruby から命令を送るより速い。
+  #
+  # **ブロックの外側のローカル変数は掴めない** (Spinel)。渡したい値は
+  # `draw` の引数にする。
+  # ```ruby
+  # @blk = GfxBlock.new(gfx) do |g, w, h|
+  #   g.draw_rect(0, 0, w, h,
+  #               FmrbGfx::WHITE)
+  # end
+  # ```
+  # <<en>>
+  # Builds a drawing once and replays it with different numbers, which beats
+  # sending the commands from Ruby each time.
+  #
+  # **The block cannot capture an outer local** (Spinel). Pass what it needs
+  # as an argument to `draw`.
+  # ```ruby
+  # @blk = GfxBlock.new(gfx) do |g, w, h|
+  #   g.draw_rect(0, 0, w, h,
+  #               FmrbGfx::WHITE)
+  # end
+  # ```
   def self.new: (FmrbGfx gfx) -> GfxBlock
 
-  # 数を入れかえて描き直す
+  # 数を入れかえて描き直す <<en>> Replay it with different numbers
+  #
+  # ```ruby
+  # @blk.draw(w: 100, h: 40)
+  # ```
   def draw: () -> void
 
-  # 下書きを片づける
+  # 下書きを片づける <<en>> Let go of the drawing
+  #
+  # ```ruby
+  # @blk.destroy
+  # ```
   def destroy: () -> void
 
-  # 片づけたあとかどうか
+  # 片づけたあとかどうか <<en>> Whether it has been let go of
+  #
+  # ```ruby
+  # return if @blk.destroyed?
+  # ```
   def destroyed?: () -> bool
 end

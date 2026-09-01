@@ -2,59 +2,166 @@
 
 class Float
   # 割ったあまりを求める <<en>> Calculate modulo
+  #
+  # ```ruby
+  # 5.5 % 2.0  #=> 1.5
+  # ```
   def %: ((Integer | Float) other) -> Float
 
   # かけ算をする <<en>> Perform multiplication
+  #
+  # ```ruby
+  # x * 0.5
+  # ```
   def *: ((Integer | Float) other) -> Float
 
   # べき乗を求める <<en>> Calculate power
+  #
+  # ```ruby
+  # 2.0 ** 0.5
+  # ```
   def **: ((Integer | Float) other) -> Float
 
   # 足し算をする <<en>> Perform addition
+  #
+  # ```ruby
+  # x + 1.0
+  # ```
   def +: ((Integer | Float) other) -> Float
 
   # 自分自身を返す (単項プラス) <<en>> Unary plus operator. Returns self
+  #
+  # ```ruby
+  # +x
+  # ```
   def +@: () -> Float
 
   # 引き算をする <<en>> Perform subtraction
+  #
+  # ```ruby
+  # x - 1.0
+  # ```
   def -: ((Integer | Float) other) -> Float
 
   # 符号を反転する (単項マイナス) <<en>> Unary minus operator. Inverts sign
+  #
+  # ```ruby
+  # -x
+  # ```
   def -@: () -> Float
 
   # 割り算をする <<en>> Perform division
+  #
+  # **0.0 で割っても落ちない** (Infinity になる)。
+  # ```ruby
+  # x / 2.0
+  # ```
+  # <<en>>
+  # Dividing by 0.0 does not raise; it gives Infinity.
+  # ```ruby
+  # x / 2.0
+  # ```
   def /: ((Integer | Float) other) -> Float
 
   # より小さいかどうか <<en>> Perform less than comparison
+  #
+  # ```ruby
+  # if x < 1.0
+  # ```
   def <: ((Integer | Float) other) -> bool
 
   # 以下かどうか <<en>> Perform less than or equal comparison
+  #
+  # ```ruby
+  # if x <= 1.0
+  # ```
   def <=: ((Integer | Float) other) -> bool
 
   # 大小を比べて -1 / 0 / 1 を返す <<en>> Compare. Returns -1, 0 or 1
+  #
+  # ```ruby
+  # a <=> b
+  # ```
   def <=>: ((Integer | Float) other) -> (Integer | nil)
 
   # 等しいかどうか <<en>> Perform equality comparison
+  #
+  # **小数どうしを == で比べない**。計算のたびに端が狂うので、差の大きさで
+  # 比べる。
+  # ```ruby
+  # (a - b).abs < 0.001
+  # ```
+  # <<en>>
+  # **Do not compare floats with ==**; rounding drifts. Compare the size of
+  # the difference.
+  # ```ruby
+  # (a - b).abs < 0.001
+  # ```
   def ==: (untyped other) -> bool
 
+  # case での等しさを判定する <<en>> Equality as `case` uses it
+  #
+  # ```ruby
+  # case x
+  # when 1.0 then hit
+  # end
+  # ```
   def ===: (untyped other) -> bool
 
   # より大きいかどうか <<en>> Perform greater than comparison
+  #
+  # ```ruby
+  # if x > 0.0
+  # ```
   def >: ((Integer | Float) other) -> bool
 
   # 以上かどうか <<en>> Perform greater than or equal comparison
+  #
+  # ```ruby
+  # if x >= 0.0
+  # ```
   def >=: ((Integer | Float) other) -> bool
 
   # 絶対値を返す <<en>> Get absolute value
+  #
+  # ```ruby
+  # d = (a - b).abs
+  # ```
   def abs: () -> Float
 
   # 自分自身を小数として返す <<en>> Return self as floating point number
+  #
+  # そのまま返る。
+  # ```ruby
+  # x.to_f
+  # ```
+  # <<en>>
+  # Returns the number itself.
+  # ```ruby
+  # x.to_f
+  # ```
   def to_f: () -> Float
 
   # 小数点以下を捨てて整数にする <<en>> Convert to integer (truncate)
+  #
+  # **切り捨て**で、四捨五入ではない。負の数は 0 に近づく。
+  # ```ruby
+  # 1.9.to_i   #=> 1
+  # (-1.9).to_i #=> -1
+  # ```
+  # <<en>>
+  # **Truncates** rather than rounding; a negative number moves toward zero.
+  # ```ruby
+  # 1.9.to_i   #=> 1
+  # (-1.9).to_i #=> -1
+  # ```
   def to_i: () -> Integer
 
   # 文字列に変える <<en>> Convert to string
+  #
+  # ```ruby
+  # x.to_s
+  # ```
   def to_s: () -> String
 
 end

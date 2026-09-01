@@ -2,87 +2,316 @@
 
 class Integer
   # 割ったあまりを求める <<en>> Calculate modulo
+  #
+  # **割った余り**。輪にして数えるときに使う。
+  # ```ruby
+  # i = (i + 1) % 8
+  # ```
+  # <<en>>
+  # The remainder -- how you count round a ring.
+  # ```ruby
+  # i = (i + 1) % 8
+  # ```
   def %: ((Integer | Float) other) -> (Integer | Float)
 
   # ビットごとの論理積を求める <<en>> Perform bitwise AND operation
+  #
+  # ビットの and。旗を調べるのに使う。
+  # ```ruby
+  # if flags & 0x04 != 0
+  # ```
+  # <<en>>
+  # Bitwise and -- how you test a flag.
+  # ```ruby
+  # if flags & 0x04 != 0
+  # ```
   def &: (Integer other) -> Integer
 
   # かけ算をする <<en>> Perform multiplication
+  #
+  # **小数を掛けると小数になる**。
+  # ```ruby
+  # n * 2
+  # n * 1.5  # Float
+  # ```
+  # <<en>>
+  # Multiplying by a Float gives a Float.
+  # ```ruby
+  # n * 2
+  # n * 1.5  # Float
+  # ```
   def *: ((Integer | Float) other) -> (Integer | Float)
 
   # べき乗を求める <<en>> Calculate power
+  #
+  # ```ruby
+  # 2 ** 8  #=> 256
+  # ```
   def **: ((Integer | Float) other) -> Integer
 
   # 足し算をする <<en>> Perform addition
+  #
+  # ```ruby
+  # n + 1
+  # ```
   def +: ((Integer | Float) other) -> (Integer | Float)
 
   # 自分自身を返す (単項プラス) <<en>> Unary plus operator. Returns self
+  #
+  # そのまま返る。
+  # ```ruby
+  # +n
+  # ```
+  # <<en>>
+  # Returns the number unchanged.
+  # ```ruby
+  # +n
+  # ```
   def +@: () -> Integer
 
   # 引き算をする <<en>> Perform subtraction
+  #
+  # ```ruby
+  # n - 1
+  # ```
   def -: ((Integer | Float) other) -> (Integer | Float)
 
   # 符号を反転する (単項マイナス) <<en>> Unary minus operator. Inverts sign
+  #
+  # ```ruby
+  # -n
+  # ```
   def -@: () -> Integer
 
   # 割り算をする <<en>> Perform division
+  #
+  # **整数どうしは切り捨て**。小数がほしければどちらかを Float にする。
+  # ```ruby
+  # 7 / 2      #=> 3
+  # 7 / 2.0    #=> 3.5
+  # ```
+  # <<en>>
+  # **Integer division truncates.** Make one side a Float for a fraction.
+  # ```ruby
+  # 7 / 2      #=> 3
+  # 7 / 2.0    #=> 3.5
+  # ```
   def /: ((Integer | Float) other) -> (Integer | Float)
 
   # より小さいかどうか <<en>> Perform less than comparison
+  #
+  # ```ruby
+  # if x < w
+  # ```
   def <: ((Integer | Float) other) -> bool
 
   # ビットを左にずらす <<en>> Perform left bit shift
+  #
+  # **左にずらす** = 2 のべき乗を掛ける。旗を作るのに使う。
+  # ```ruby
+  # 1 << 3  #=> 8
+  # ```
+  # <<en>>
+  # A left shift multiplies by a power of two -- how you build a flag.
+  # ```ruby
+  # 1 << 3  #=> 8
+  # ```
   def <<: (Integer other) -> Integer
 
   # 以下かどうか <<en>> Perform less than or equal comparison
+  #
+  # ```ruby
+  # if x <= w
+  # ```
   def <=: ((Integer | Float) other) -> bool
 
   # 大小を比べて -1 / 0 / 1 を返す <<en>> Compare. Returns -1, 0 or 1
+  #
+  # ```ruby
+  # a <=> b  #=> -1, 0, 1
+  # ```
   def <=>: ((Integer | untyped) other) -> Integer
 
   # 等しいかどうか <<en>> Perform equality comparison
+  #
+  # ```ruby
+  # if n == 0
+  # ```
   def ==: (untyped other) -> bool
 
   # より大きいかどうか <<en>> Perform greater than comparison
+  #
+  # ```ruby
+  # if n > 0
+  # ```
   def >: ((Integer | Float) other) -> bool
 
   # 以上かどうか <<en>> Perform greater than or equal comparison
+  #
+  # ```ruby
+  # if n >= 0
+  # ```
   def >=: ((Integer | Float) other) -> bool
 
   # ビットを右にずらす <<en>> Perform right bit shift
+  #
+  # **右にずらす** = 2 のべき乗で割る (切り捨て)。バイトを取り出すのに使う。
+  # ```ruby
+  # (v >> 8) & 0xFF
+  # ```
+  # <<en>>
+  # A right shift divides by a power of two -- how you pull a byte out.
+  # ```ruby
+  # (v >> 8) & 0xFF
+  # ```
   def >>: (Integer other) -> Integer
 
   # ビットごとの排他的論理和を求める <<en>> Perform bitwise XOR operation
+  #
+  # ビットの xor。反転に使う。
+  # ```ruby
+  # v ^ 0xFF
+  # ```
+  # <<en>>
+  # Bitwise xor -- how you invert bits.
+  # ```ruby
+  # v ^ 0xFF
+  # ```
   def ^: (Integer other) -> Integer
 
   # その位置のビットを返す <<en>> Get value at specified bit position
+  #
+  # そのビットが 0 か 1 か。
+  # ```ruby
+  # v[0]  # 一番下のビット
+  # ```
+  # <<en>>
+  # The bit at that position, 0 or 1.
+  # ```ruby
+  # v[0]  # the lowest bit
+  # ```
   def []: (untyped index) -> Integer
 
   # 絶対値を返す <<en>> Get absolute value
+  #
+  # ```ruby
+  # d = (a - b).abs
+  # ```
   def abs: () -> Integer
 
   # 文字コードに対応する 1 文字を返す <<en>> Return the character for this code
+  #
+  # **0 から 255** の 1 バイト文字。
+  # ```ruby
+  # 65.chr  #=> "A"
+  # ```
+  # <<en>>
+  # **0 to 255**, as a one-byte string.
+  # ```ruby
+  # 65.chr  #=> "A"
+  # ```
   def chr: () -> String
 
   # 自分から引数まで 1 ずつ減らして実行 <<en>> Run the block from self down to the argument
+  #
+  # 後ろから消していくときに使う。
+  # ```ruby
+  # (a.length - 1).downto(0) do |i|
+  #   a.delete_at(i) if drop?(a[i])
+  # end
+  # ```
+  # <<en>>
+  # What you want when deleting from the back.
+  # ```ruby
+  # (a.length - 1).downto(0) do |i|
+  #   a.delete_at(i) if drop?(a[i])
+  # end
+  # ```
   def downto: (Integer limit) { (Integer block_limit) -> untyped } -> Integer
 
   # 自分の回数だけブロックを実行する <<en>> Execute block self times
+  #
+  # **ブロック呼び出しは 1 回 0.4ms**。回数が多いところでは `while` に
+  # 書きかえると効く。
+  # ```ruby
+  # 8.times do |i|
+  #   draw(i)
+  # end
+  # ```
+  # <<en>>
+  # **A block call costs about 0.4ms.** Rewrite a hot loop as `while`.
+  # ```ruby
+  # 8.times do |i|
+  #   draw(i)
+  # end
+  # ```
   def times: () { (Integer index) -> untyped } -> Integer
 
   # 小数に変える <<en>> Convert to floating point number
+  #
+  # 割り算の前に小数へ移すときに使う。
+  # ```ruby
+  # r = a.to_f / b
+  # ```
+  # <<en>>
+  # Used to move into floating point before a division.
+  # ```ruby
+  # r = a.to_f / b
+  # ```
   def to_f: () -> Float
 
   # 自分自身を整数として返す <<en>> Return self as integer value
+  #
+  # そのまま返る。
+  # ```ruby
+  # n.to_i
+  # ```
+  # <<en>>
+  # Returns the number itself.
+  # ```ruby
+  # n.to_i
+  # ```
   def to_i: () -> Integer
 
   # 文字列に変える。基数は引数で指定 <<en>> Convert to string. Base can be specified with argument
+  #
+  # **基数を渡せる**。ログに 16 進で出すときに使う。
+  # ```ruby
+  # 255.to_s      #=> "255"
+  # 255.to_s(16)  #=> "ff"
+  # ```
+  # <<en>>
+  # **Takes a base** -- what you want for a hex log line.
+  # ```ruby
+  # 255.to_s      #=> "255"
+  # 255.to_s(16)  #=> "ff"
+  # ```
   def to_s: (?Integer base) -> String
 
   # ビットごとの論理和を求める <<en>> Perform bitwise OR operation
+  #
+  # ビットの or。旗を立てるのに使う。
+  # ```ruby
+  # flags = flags | 0x04
+  # ```
+  # <<en>>
+  # Bitwise or -- how you set a flag.
+  # ```ruby
+  # flags = flags | 0x04
+  # ```
   def |: (Integer other) -> Integer
 
   # ビットを反転する <<en>> Perform bitwise NOT operation
+  #
+  # **ビットをぜんぶ反転**する。旗を下ろすのに使う。
+  # ```ruby
+  # flags = flags & ~0x04
+  # ```
+  # <<en>>
+  # Inverts every bit -- how you clear a flag.
+  # ```ruby
+  # flags = flags & ~0x04
+  # ```
   def ~: () -> Integer
 
 end

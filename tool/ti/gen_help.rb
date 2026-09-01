@@ -32,13 +32,27 @@ require "rbs"
 
 module TiHelp
   # A method name is not always a file name: walkable? and idle_gc= have to
-  # land somewhere sane, and operators (+, <<) have no readable spelling at
-  # all -- those get left out, since nobody writes a long help for them.
+  # land somewhere sane, and an operator (+, <<) has no spelling at all.
+  # Operators are spelled out rather than dropped: the editor cannot look one
+  # up by name (it reads a word off the line), but the sections are worth
+  # having on the class page for someone reading down it.
+  OPERATOR_WORDS = {
+    "!" => "not", "%" => "mod", "&" => "and", "*" => "mul", "**" => "pow",
+    "+" => "add", "+@" => "uplus", "-" => "sub", "-@" => "uminus",
+    "/" => "div", "<" => "lt", "<<" => "shl", "<=" => "le", "<=>" => "cmp",
+    "==" => "eq", "===" => "case_eq", "!=" => "ne", ">" => "gt",
+    ">=" => "ge", ">>" => "shr", "[]" => "aref", "[]=" => "aset",
+    "^" => "xor", "|" => "or", "~" => "invert", "->" => "arrow",
+  }.freeze
+
   def self.file_name_for(method_name)
     name = method_name.to_s
-    return nil unless name.match?(/\A[A-Za-z_][A-Za-z0-9_]*[?!=]?\z/)
+    if name.match?(/\A[A-Za-z_][A-Za-z0-9_]*[?!=]?\z/)
+      return name.sub(/\?\z/, "_p").sub(/!\z/, "_bang").sub(/=\z/, "_set")
+    end
 
-    name.sub(/\?\z/, "_p").sub(/!\z/, "_bang").sub(/=\z/, "_set")
+    word = OPERATOR_WORDS[name.delete("`")]
+    word && "op_#{word}"
   end
 
   def self.long_form(comment)

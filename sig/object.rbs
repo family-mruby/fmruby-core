@@ -3,64 +3,321 @@
 class Object
   include Kernel
   # 大小を比べる <<en>> Comparison operator
+  #
+  # 同じ物なら 0、違えば nil。
+  # ```ruby
+  # a <=> b
+  # ```
+  # <<en>>
+  # 0 for the same object, nil otherwise.
+  # ```ruby
+  # a <=> b
+  # ```
   def <=>: (untyped other) -> Integer
 
   # 等しくないかどうか <<en>> Perform inequality comparison
+  #
+  # ```ruby
+  # if a != b
+  # ```
   def !=: (untyped other) -> bool
 
   # 等しいかどうか <<en>> Perform equality comparison
+  #
+  # **既定は同じ物かどうか**。中身で比べたいクラスは自分で定義する。
+  # ```ruby
+  # if a == b
+  # ```
+  # <<en>>
+  # **By default it asks whether they are the same object.** Define it
+  # yourself to compare contents.
+  # ```ruby
+  # if a == b
+  # ```
   def ==: (untyped other) -> bool
 
   # case での一致を判定する <<en>> Judge case equality
+  #
+  # ```ruby
+  # case v
+  # when Integer then n
+  # end
+  # ```
   def ===: (untyped other) -> bool
 
+  # 読み書きの入口を作る <<en>> Define a reader and a writer
+  #
+  # **読みと書きの両方**ができるようになる。クラスの中に書く。
+  # ```ruby
+  # class Foo
+  #   attr_accessor :x, :y
+  # end
+  # ```
+  # <<en>>
+  # Gives both a reader and a writer. Written inside the class.
+  # ```ruby
+  # class Foo
+  #   attr_accessor :x, :y
+  # end
+  # ```
   def attr_accessor: (*Symbol names) -> nil
 
+  # 読みの入口を作る <<en>> Define a reader
+  #
+  # **読みだけ**。
+  # ```ruby
+  # attr_reader :id
+  # ```
+  # <<en>>
+  # **Reader only.**
+  # ```ruby
+  # attr_reader :id
+  # ```
   def attr_reader: (*Symbol names) -> nil
 
+  # ブロックが渡されたかどうか <<en>> Whether a block was given
+  #
+  # `yield` の前に確かめる。
+  # ```ruby
+  # yield(v) if block_given?
+  # ```
+  # <<en>>
+  # Check before you `yield`.
+  # ```ruby
+  # yield(v) if block_given?
+  # ```
   def block_given?: () -> bool
 
   # そのオブジェクトのクラスを返す <<en>> Return object class
+  #
+  # ```ruby
+  # obj.class.name
+  # ```
   def class: () -> Class
 
   # 複製を作る <<en>> Duplicate object
+  #
+  # **中の物までは写さない** (浅い写し)。配列の中の配列は共有される。
+  # ```ruby
+  # b = a.dup
+  # ```
+  # <<en>>
+  # **A shallow copy**: what is inside is shared, not copied.
+  # ```ruby
+  # b = a.dup
+  # ```
   def dup: () -> self
 
+  # アプリを終える <<en>> End the app
+  #
+  # **アプリを終える**。窓の後始末は入れ物がやる。
+  # ```ruby
+  # exit
+  # ```
+  # <<en>>
+  # Ends the app; the window is tidied up for you.
+  # ```ruby
+  # exit
+  # ```
   def exit: (?Integer status) -> nil
 
+  # モジュールをまぜる <<en>> Mix a module in
+  #
+  # **まぜたモジュールの中で裸の定数は見えない** (picoruby)。`self.class::NAME`
+  # と書く。
+  # ```ruby
+  # class Foo
+  #   include Bar
+  # end
+  # ```
+  # <<en>>
+  # **A bare constant is not found through the including class** in picoruby;
+  # write `self.class::NAME`.
+  # ```ruby
+  # class Foo
+  #   include Bar
+  # end
+  # ```
   def include: (*untyped modules) -> nil
 
+  # この物にだけモジュールを足す <<en>> Add a module to this object alone
+  #
+  # **その物だけ**にモジュールを足す。
+  # ```ruby
+  # obj.extend(Bar)
+  # ```
+  # <<en>>
+  # Adds the module to that one object.
+  # ```ruby
+  # obj.extend(Bar)
+  # ```
   def extend: (*untyped modules) -> nil
 
   # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
+  #
+  # ```ruby
+  # p obj
+  # ```
   def inspect: () -> String
 
   # そのクラスかモジュールに属するか <<en>> Check if instance of specified class or module
+  #
+  # **`defined?` は無い**ので、有無を調べるときはこれか `const_defined?`、
+  # あるいは rescue で書く。
+  # ```ruby
+  # if v.is_a?(Integer)
+  # ```
+  # <<en>>
+  # **There is no `defined?` here**; use this, `const_defined?`, or a rescue.
+  # ```ruby
+  # if v.is_a?(Integer)
+  # ```
   def is_a?: (untyped class_or_module) -> bool
 
+  # ずっとくり返す <<en>> Repeat forever
+  #
+  # **アプリの中で回しっぱなしにしない**。入れ物が入力を配れなくなる。
+  # ```ruby
+  # loop do
+  #   break if done?
+  # end
+  # ```
+  # <<en>>
+  # **Do not spin inside an app**: the shell can no longer deliver input.
+  # ```ruby
+  # loop do
+  #   break if done?
+  # end
+  # ```
   def loop: () { (nil value) -> untyped } -> nil
 
   # nil かどうか <<en>> Check if nil
+  #
+  # ```ruby
+  # return if v.nil?
+  # ```
   def nil?: () -> bool
 
+  # 以降を外から呼べなくする <<en>> Make what follows private
+  #
+  # ```ruby
+  # private
+  # def helper
+  # end
+  # ```
   def private: (*Symbol names) -> nil
 
+  # 以降を外から呼べるようにする <<en>> Make what follows public
+  #
+  # ```ruby
+  # public
+  # ```
   def public: (*Symbol names) -> nil
 
+  # 例外を投げる <<en>> Raise an exception
+  #
+  # **アプリの外まで上がると落ちる**。読み書きは `rescue` で受ける。
+  # ```ruby
+  # raise "bad path"
+  # begin
+  #   risky
+  # rescue => e
+  #   Log.info(e.message)
+  # end
+  # ```
+  # <<en>>
+  # **It ends the app if nothing catches it.** Wrap file work in a `rescue`.
+  # ```ruby
+  # raise "bad path"
+  # begin
+  #   risky
+  # rescue => e
+  #   Log.info(e.message)
+  # end
+  # ```
   def raise: (?untyped exception, ?String message) -> bot
 
+  # 他の仕事に順番をゆずる <<en>> Give other tasks a turn
+  #
+  # **他の仕事に順番をゆずる**。長い計算の途中に挟むと画面が固まらない。
+  # ```ruby
+  # i = 0
+  # while i < 10000
+  #   relinquish if i % 500 == 0
+  #   i += 1
+  # end
+  # ```
+  # <<en>>
+  # Hands the turn to other tasks; drop it into a long calculation and the
+  # screen keeps moving.
+  # ```ruby
+  # i = 0
+  # while i < 10000
+  #   relinquish if i % 500 == 0
+  #   i += 1
+  # end
+  # ```
   def relinquish: () -> bool
 
+  # 秒だけ待つ <<en>> Wait, in seconds
+  #
+  # 秒で待つ。
+  # ```ruby
+  # sleep 1
+  # ```
+  # <<en>>
+  # Waits in seconds.
+  # ```ruby
+  # sleep 1
+  # ```
   def sleep: ((Integer | Float) duration) -> Integer
 
+  # 千分の一秒だけ待つ <<en>> Wait, in milliseconds
+  #
+  # **アプリの中では使わない**。`_spin` の外では時計が進まず止まったままに
+  # なる。待つなら `Machine.delay_ms`。
+  # ```ruby
+  # Machine.delay_ms(50)
+  # ```
+  # <<en>>
+  # **Not for use inside an app**: outside `_spin` the tick does not advance
+  # and it never returns. Wait with `Machine.delay_ms`.
+  # ```ruby
+  # Machine.delay_ms(50)
+  # ```
   def sleep_ms: (Integer milliseconds) -> Integer
 
+  # 書式にあてはめた文字列を作る <<en>> Format a string
+  #
+  # 桁をそろえるのに使う。
+  # ```ruby
+  # s = sprintf("%3d%%", n)
+  # ```
+  # <<en>>
+  # For lining figures up.
+  # ```ruby
+  # s = sprintf("%3d%%", n)
+  # ```
   def sprintf: (String format, *untyped arguments) -> String
 
   # 文字列にして返す <<en>> Return string representation
+  #
+  # ```ruby
+  # obj.to_s
+  # ```
   def to_s: () -> String
 
   # メソッドの一覧を返す <<en>> get object method list
+  #
+  # **何が呼べるか調べる**ときに使う。
+  # ```ruby
+  # p obj.methods
+  # ```
+  # <<en>>
+  # For finding out what an object answers to.
+  # ```ruby
+  # p obj.methods
+  # ```
   def self.methods: () -> Array[Symbol]
 
 end

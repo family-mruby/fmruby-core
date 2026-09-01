@@ -5,114 +5,382 @@
 # そこへ音符を送る。曲のファイルは SmfPlayer、MML は MmlPlayer が鳴らす。
 
 module FmrbMidi
-  # このアプリ用の音を出す口を作る
+  # このアプリ用の音を出す口を作る <<en>> Make this app's way of sounding notes
+  #
+  # **内蔵音源 (APU) につながった口**が返る。外の音源に出すなら
+  # 出し先を `register` する。
+  # ```ruby
+  # @midi = FmrbMidi.device(self)
+  # @midi.note_on(60)
+  # ```
+  # <<en>>
+  # Gives you a device wired to the built-in sound chip. To play an outside
+  # instrument, `register` that transport as well.
+  # ```ruby
+  # @midi = FmrbMidi.device(self)
+  # @midi.note_on(60)
+  # ```
   def self.device: (FmrbApp app) -> MIDI::Device
 
-  # 今の時刻 (百万分の一秒)
+  # 今の時刻 (百万分の一秒) <<en>> The time now, in microseconds
+  #
+  # 音の予定を組むときの時計。**曲の時間はこれで測る** (描画の回数で
+  # 数えると重いフレームで狂う)。
+  # ```ruby
+  # t0 = FmrbMidi.now_us
+  # ```
+  # <<en>>
+  # The clock to schedule notes against. Measure a song with this, never by
+  # counting frames -- a heavy frame stretches the music.
+  # ```ruby
+  # t0 = FmrbMidi.now_us
+  # ```
   def self.now_us: () -> Integer
 
-  # 音の出し先を登録する
+  # 音の出し先を登録する <<en>> Register somewhere to send notes
+  #
+  # 同じものを二度足しても増えない。
+  # ```ruby
+  # FmrbMidi.register(transport)
+  # ```
+  # <<en>>
+  # Registering the same transport twice adds it once.
+  # ```ruby
+  # FmrbMidi.register(transport)
+  # ```
   def self.register: (untyped transport) -> untyped
 
-  # 音の出し先の登録をやめる
+  # 音の出し先の登録をやめる <<en>> Stop sending notes there
+  #
+  # ```ruby
+  # FmrbMidi.unregister(transport)
+  # ```
   def self.unregister: (untyped transport) -> void
 
-  # 登録してある音の出し先の一覧
+  # 登録してある音の出し先の一覧 <<en>> Everywhere notes are being sent
+  #
+  # ```ruby
+  # FmrbMidi.transports.length
+  # ```
   def self.transports: () -> Array
 
-  # 楽器の番号から名前を引く
+  # 楽器の番号から名前を引く <<en>> The instrument's name from its number
+  #
+  # 0 から 127 まで。範囲の外は nil。
+  # ```ruby
+  # FmrbMidi.gm_name(0)
+  # #=> "Acoustic Grand Piano"
+  # ```
+  # <<en>>
+  # 0 to 127; anything else is nil.
+  # ```ruby
+  # FmrbMidi.gm_name(0)
+  # #=> "Acoustic Grand Piano"
+  # ```
   def self.gm_name: (Integer program) -> String
 
   # 曲のファイル (SMF) を鳴らす係。tick を毎回呼んで進める。
   class SmfPlayer
-    # 曲を鳴らす係を作る
+    # 曲を鳴らす係を作る <<en>> Make the song player
+    #
+    # ```ruby
+    # @smf = FmrbMidi::SmfPlayer.new(@midi)
+    # ```
     def self.new: (MIDI::Device device) -> SmfPlayer
 
-    # 曲のファイルを読み込む
+    # 曲のファイルを読み込む <<en>> Read a song file
+    #
+    # **読めなければ false**。理由は `error` に入る。
+    # ```ruby
+    # unless @smf.load("/home/a.mid")
+    #   puts @smf.error
+    # end
+    # ```
+    # <<en>>
+    # **false when it cannot be read**, with the reason in `error`.
+    # ```ruby
+    # unless @smf.load("/home/a.mid")
+    #   puts @smf.error
+    # end
+    # ```
     def load: (String path) -> bool
 
-    # 読み込んだかどうか
+    # 読み込んだかどうか <<en>> Whether a song was read
+    #
+    # ```ruby
+    # return unless @smf.loaded?
+    # ```
     def loaded?: () -> bool
 
-    # 曲を鳴らし始める
+    # 曲を鳴らし始める <<en>> Start the song
+    #
+    # **頭から**鳴らし直す。途中から続けるなら `resume`。
+    # ```ruby
+    # @smf.start
+    # ```
+    # <<en>>
+    # Plays **from the beginning**. To carry on from where you stopped, use
+    # `resume`.
+    # ```ruby
+    # @smf.start
+    # ```
     def start: () -> void
 
-    # 曲を止める
+    # 曲を止める <<en>> Stop the song
+    #
+    # ```ruby
+    # @smf.stop
+    # ```
     def stop: () -> void
 
-    # 曲をいったん止める
+    # 曲をいったん止める <<en>> Pause the song
+    #
+    # ```ruby
+    # @smf.pause
+    # ```
     def pause: () -> void
 
-    # 止めた曲の続きを鳴らす
+    # 止めた曲の続きを鳴らす <<en>> Carry on from the pause
+    #
+    # ```ruby
+    # @smf.resume
+    # ```
     def resume: () -> void
 
-    # 鳴っている最中かどうか
+    # 鳴っている最中かどうか <<en>> Whether it is playing
+    #
+    # ```ruby
+    # draw_bar if @smf.playing?
+    # ```
     def playing?: () -> bool
 
-    # 最後まで鳴り終わったか
+    # 最後まで鳴り終わったか <<en>> Whether it reached the end
+    #
+    # ```ruby
+    # @smf.start if @smf.finished?
+    # ```
     def finished?: () -> bool
 
-    # 曲を進める。毎回呼ぶ
+    # 曲を進める。毎回呼ぶ <<en>> Move the song on -- call it every time
+    #
+    # **呼ばないと音が進まない**。毎フレームの決まった場所で 1 回呼ぶ。
+    # ```ruby
+    # def on_update
+    #   @smf.tick
+    # end
+    # ```
+    # <<en>>
+    # **Nothing plays unless you call it.** Call it once at a fixed point in
+    # every frame.
+    # ```ruby
+    # def on_update
+    #   @smf.tick
+    # end
+    # ```
     def tick: () -> void
 
-    # 今どこまで鳴ったか (千分の一秒)
+    # 今どこまで鳴ったか (千分の一秒) <<en>> How far it has played, in milliseconds
+    #
+    # ```ruby
+    # sec = @smf.position_ms / 1000
+    # ```
     def position_ms: () -> Integer
 
-    # 使っているチャンネルの様子
-    def channel_usage: () -> Array
+    # 使っているチャンネルの様子 <<en>> Which channels the song uses
+    #
+    # 使われている channel だけが入る。中身は `[音符の数, 高さの合計]`。
+    # ```ruby
+    # @smf.channel_usage.each do |ch, a|
+    #   puts ch.to_s + ": " + a[0].to_s
+    # end
+    # ```
+    # <<en>>
+    # Only the channels the song uses, each as `[note count, pitch total]`.
+    # ```ruby
+    # @smf.channel_usage.each do |ch, a|
+    #   puts ch.to_s + ": " + a[0].to_s
+    # end
+    # ```
+    def channel_usage: () -> Hash
 
-    # 曲の速さの倍率
-    def tempo_scale: () -> Integer
+    # 曲の速さの倍率 <<en>> How fast to play, against what is written
+    #
+    # 1.0 が楽譜どおりの速さ。
+    # ```ruby
+    # s = @smf.tempo_scale
+    # ```
+    # <<en>>
+    # 1.0 is the written tempo.
+    # ```ruby
+    # s = @smf.tempo_scale
+    # ```
+    def tempo_scale: () -> Float
 
-    # 読み込みに失敗した理由
+    # 曲の速さの倍率を変える <<en>> Change the playback speed
+    #
+    # 0.001 から 100.0 まで。**鳴っている途中でも変えられる**。
+    # ```ruby
+    # @smf.tempo_scale = 1.5
+    # ```
+    # <<en>>
+    # From 0.001 to 100.0, and it can be changed while the song plays.
+    # ```ruby
+    # @smf.tempo_scale = 1.5
+    # ```
+    def tempo_scale=: (Float value) -> void
+
+    # 読み込みに失敗した理由 <<en>> Why the read failed
+    #
+    # ```ruby
+    # msg = @smf.error
+    # ```
     def error: () -> String?
 
-    # 曲のファイルの場所
+    # 曲のファイルの場所 <<en>> Where the song file is
+    #
+    # ```ruby
+    # name = @smf.path
+    # ```
     def path: () -> String?
   end
 
   # MML で書いた曲を鳴らす係。tick を毎回呼んで進める。
   class MmlPlayer
-    # MML を鳴らす係を作る
+    # MML を鳴らす係を作る <<en>> Make the MML player
+    #
+    # ```ruby
+    # @mml = FmrbMidi::MmlPlayer.new(@midi)
+    # ```
     def self.new: (MIDI::Device device) -> MmlPlayer
 
-    # MML の文を読み込む
+    # MML の文を読み込む <<en>> Read MML text
+    #
+    # **channel と velocity はキーワードで渡す**。前に入れた曲は消える。
+    # ```ruby
+    # @mml.load_string("cdefg",
+    #   channel: 0, velocity: 100)
+    # ```
+    # <<en>>
+    # **Channel and velocity are keyword arguments.** Anything loaded before is
+    # dropped.
+    # ```ruby
+    # @mml.load_string("cdefg",
+    #   channel: 0, velocity: 100)
+    # ```
     def load_string: (String mml) -> bool
 
-    # 別のパートを足す
+    # 別のパートを足す <<en>> Add another part
+    #
+    # **伴奏を重ねる**ときに使う。`load_string` と違って前のパートを消さない。
+    # ```ruby
+    # @mml.add_string("egb", channel: 1)
+    # ```
+    # <<en>>
+    # Layers another part on top; unlike `load_string` it keeps what is already
+    # there.
+    # ```ruby
+    # @mml.add_string("egb", channel: 1)
+    # ```
     def add_string: (String mml) -> bool
 
-    # 読み込んだかどうか
+    # 読み込んだかどうか <<en>> Whether anything was read
+    #
+    # ```ruby
+    # return unless @mml.loaded?
+    # ```
     def loaded?: () -> bool
 
-    # 入っている音符の数
+    # 入っている音符の数 <<en>> How many notes are in it
+    #
+    # ```ruby
+    # n = @mml.event_count
+    # ```
     def event_count: () -> Integer
 
-    # 鳴らし始める
+    # 鳴らし始める <<en>> Start playing
+    #
+    # ```ruby
+    # @mml.start
+    # ```
     def start: () -> void
 
-    # 止める
+    # 止める <<en>> Stop
+    #
+    # ```ruby
+    # @mml.stop
+    # ```
     def stop: () -> void
 
-    # いったん止める
+    # いったん止める <<en>> Pause
+    #
+    # ```ruby
+    # @mml.pause
+    # ```
     def pause: () -> void
 
-    # 続きを鳴らす
+    # 続きを鳴らす <<en>> Carry on
+    #
+    # ```ruby
+    # @mml.resume
+    # ```
     def resume: () -> void
 
-    # 鳴っている最中かどうか
+    # 鳴っている最中かどうか <<en>> Whether it is playing
+    #
+    # ```ruby
+    # draw_bar if @mml.playing?
+    # ```
     def playing?: () -> bool
 
-    # 最後まで鳴り終わったか
+    # 最後まで鳴り終わったか <<en>> Whether it reached the end
+    #
+    # ```ruby
+    # @mml.stop if @mml.finished?
+    # ```
     def finished?: () -> bool
 
-    # 曲を進める。毎回呼ぶ
+    # 曲を進める。毎回呼ぶ <<en>> Move the song on -- call it every time
+    #
+    # **呼ばないと音が進まない**。
+    # ```ruby
+    # def on_update
+    #   @mml.tick
+    # end
+    # ```
+    # <<en>>
+    # **Nothing plays unless you call it.**
+    # ```ruby
+    # def on_update
+    #   @mml.tick
+    # end
+    # ```
     def tick: () -> void
 
-    # 曲の速さ (一分間の拍数)
+    # 曲の速さ (一分間の拍数) <<en>> The tempo in beats per minute
+    #
+    # ```ruby
+    # n = @mml.bpm
+    # ```
     def bpm: () -> Integer
 
-    # 読み込みに失敗した理由
+    # 曲の速さを変える <<en>> Change the tempo
+    #
+    # 1 から 1000 まで。**渡し済みの音符は前の速さのまま**鳴る。
+    # ```ruby
+    # @mml.bpm = 120
+    # ```
+    # <<en>>
+    # 1 to 1000. Notes already handed to the scheduler keep the old tempo.
+    # ```ruby
+    # @mml.bpm = 120
+    # ```
+    def bpm=: (Integer value) -> void
+
+    # 読み込みに失敗した理由 <<en>> Why the read failed
+    #
+    # ```ruby
+    # msg = @mml.error
+    # ```
     def error: () -> String?
   end
 end
@@ -120,70 +388,274 @@ end
 module MIDI
   # 音を出す口。音符や音色をここへ送る。
   class Device
-    # 音を鳴らす
+    # 音を鳴らす <<en>> Sound a note
+    #
+    # **強さと channel は省ける** (127、0)。60 が真ん中のド。
+    # 止めるのは `note_off`。
+    # ```ruby
+    # dev.note_on(60)
+    # dev.note_on(64, 100, channel: 1)
+    # ```
+    # <<en>>
+    # **Velocity and channel are optional** (127 and 0). 60 is middle C. Stop it
+    # with `note_off`.
+    # ```ruby
+    # dev.note_on(60)
+    # dev.note_on(64, 100, channel: 1)
+    # ```
     def note_on: (Integer note) -> void
 
-    # 音を止める
+    # 音を止める <<en>> Stop a note
+    #
+    # **鳴らしたのと同じ channel へ送る**。違う channel だと止まらない。
+    # ```ruby
+    # dev.note_off(60)
+    # dev.note_off(64, 0, channel: 1)
+    # ```
+    # <<en>>
+    # **Send it on the channel the note started on**, or it will not stop.
+    # ```ruby
+    # dev.note_off(60)
+    # dev.note_off(64, 0, channel: 1)
+    # ```
     def note_off: (Integer note) -> void
 
-    # 音の高さをずらす
+    # 音の高さをずらす <<en>> Bend the pitch
+    #
+    # -8192 から 8191。0 が元の高さ。
+    # ```ruby
+    # dev.pitch_bend(2048)
+    # dev.pitch_bend(0)
+    # ```
+    # <<en>>
+    # -8192 to 8191, with 0 as the written pitch.
+    # ```ruby
+    # dev.pitch_bend(2048)
+    # dev.pitch_bend(0)
+    # ```
     def pitch_bend: (Integer value) -> void
 
-    # 楽器をえらぶ
+    # 楽器をえらぶ <<en>> Choose an instrument
+    #
+    # 0 から 127。番号と名前は `FmrbMidi.gm_name` で引ける。
+    # ```ruby
+    # dev.program_change(48, channel: 1)
+    # ```
+    # <<en>>
+    # 0 to 127; `FmrbMidi.gm_name` turns the number into a name.
+    # ```ruby
+    # dev.program_change(48, channel: 1)
+    # ```
     def program_change: (Integer program) -> void
 
-    # つまみの値を送る
+    # つまみの値を送る <<en>> Send a controller value
+    #
+    # よく使うつまみには `volume` `pan` などの近道がある。
+    # ```ruby
+    # dev.control_change(74, 64, channel: 0)
+    # ```
+    # <<en>>
+    # The common controllers have shortcuts of their own (`volume`, `pan`).
+    # ```ruby
+    # dev.control_change(74, 64, channel: 0)
+    # ```
     def control_change: (Integer cc, Integer value) -> void
 
-    # 音の大きさを決める
+    # 音の大きさを決める <<en>> Set the loudness
+    #
+    # 0 から 127 (CC 7)。
+    # ```ruby
+    # dev.volume(90, channel: 0)
+    # ```
+    # <<en>>
+    # 0 to 127 (CC 7).
+    # ```ruby
+    # dev.volume(90, channel: 0)
+    # ```
     def volume: (Integer value) -> void
 
-    # 左右のどちらから出すか
+    # 左右のどちらから出すか <<en>> Set the left-right position
+    #
+    # 0 が左、64 が中、127 が右 (CC 10)。
+    # ```ruby
+    # dev.pan(0)
+    # ```
+    # <<en>>
+    # 0 is left, 64 centre, 127 right (CC 10).
+    # ```ruby
+    # dev.pan(0)
+    # ```
     def pan: (Integer value) -> void
 
-    # ゆれ (ビブラート) の深さ
+    # ゆれ (ビブラート) の深さ <<en>> Set the depth of the vibrato
+    #
+    # 0 から 127 (CC 1)。
+    # ```ruby
+    # dev.modulation(40)
+    # ```
+    # <<en>>
+    # 0 to 127 (CC 1).
+    # ```ruby
+    # dev.modulation(40)
+    # ```
     def modulation: (Integer value) -> void
 
-    # 音の強さの変化
+    # 音の強さの変化 <<en>> Shape the loudness within a piece
+    #
+    # `volume` とは別の口 (CC 11)。曲中の強弱はこちらで付ける。
+    # ```ruby
+    # dev.expression(100)
+    # ```
+    # <<en>>
+    # A second level beside `volume` (CC 11); use it for shaping within a piece.
+    # ```ruby
+    # dev.expression(100)
+    # ```
     def expression: (Integer value) -> void
 
-    # ペダルを踏むか離すか
+    # ペダルを踏むか離すか <<en>> Press or release the pedal
+    #
+    # **true / false を渡す** (CC 64)。
+    # ```ruby
+    # dev.sustain(true)
+    # dev.sustain(false)
+    # ```
+    # <<en>>
+    # **Takes true or false** (CC 64).
+    # ```ruby
+    # dev.sustain(true)
+    # dev.sustain(false)
+    # ```
     def sustain: (Integer on_off) -> void
 
-    # 決まった長さだけ音を鳴らす
+    # 決まった長さだけ音を鳴らす <<en>> Sound a note for a set length
+    #
+    # **長さを渡すと自分で止まる**。すぐ戻るので、複数の音を同時に
+    # 始められる (`note_on` と待ちの組ではずれる)。
+    # ```ruby
+    # dev.trigger(60, 100, duration: 200)
+    # ```
+    # <<en>>
+    # **Give it a length and it stops itself.** It returns at once, so several
+    # notes can start together -- `note_on` plus a wait cannot.
+    # ```ruby
+    # dev.trigger(60, 100, duration: 200)
+    # ```
     def trigger: (Integer note) -> void
 
-    # まとめて音を鳴らす
+    # まとめて音を鳴らす <<en>> Sound several notes at once
+    #
+    # 和音を**マイクロ秒の差**で鳴らす。`:note_on` だけが対象で、
+    # `duration_ms` で止まる。
+    # ```ruby
+    # dev.trigger_batch([
+    #   {type: :note_on, channel: 0,
+    #    note: 60, velocity: 100,
+    #    duration_ms: 200}])
+    # ```
+    # <<en>>
+    # Starts a chord within microseconds. Only `:note_on` entries are used, and
+    # `duration_ms` ends them.
+    # ```ruby
+    # dev.trigger_batch([
+    #   {type: :note_on, channel: 0,
+    #    note: 60, velocity: 100,
+    #    duration_ms: 200}])
+    # ```
     def trigger_batch: (Array events) -> void
 
-    # 鳴っている音をぜんぶ止める
+    # 鳴っている音をぜんぶ止める <<en>> Stop every note that is sounding
+    #
+    # **channel ごと**なので、使った channel の数だけ呼ぶ。
+    # ```ruby
+    # dev.all_notes_off(channel: 0)
+    # ```
+    # <<en>>
+    # **Per channel**: call it once for each channel you used.
+    # ```ruby
+    # dev.all_notes_off(channel: 0)
+    # ```
     def all_notes_off: () -> void
 
-    # 音をすぐにぜんぶ止める
+    # 音をすぐにぜんぶ止める <<en>> Stop every sound at once
+    #
+    # 余韻ごと切る。`all_notes_off` は余韻を残す。
+    # ```ruby
+    # dev.all_sound_off(channel: 0)
+    # ```
+    # <<en>>
+    # Cuts the tail as well; `all_notes_off` lets it ring out.
+    # ```ruby
+    # dev.all_sound_off(channel: 0)
+    # ```
     def all_sound_off: () -> void
 
-    # つまみをぜんぶ元に戻す
+    # つまみをぜんぶ元に戻す <<en>> Put every controller back
+    #
+    # ```ruby
+    # dev.reset_all_controllers(channel: 0)
+    # ```
     def reset_all_controllers: () -> void
 
-    # 拍を知らせる合図を送る
+    # 拍を知らせる合図を送る <<en>> Send a beat marker
+    #
+    # 外の機械と拍を合わせるとき、四分音符あたり 24 回送る。
+    # ```ruby
+    # dev.send_clock
+    # ```
+    # <<en>>
+    # Sent 24 times a quarter note to keep an outside machine in step.
+    # ```ruby
+    # dev.send_clock
+    # ```
     def send_clock: () -> void
 
-    # 始まりの合図を送る
+    # 始まりの合図を送る <<en>> Send a start marker
+    #
+    # ```ruby
+    # dev.send_start
+    # ```
     def send_start: () -> void
 
-    # 終わりの合図を送る
+    # 終わりの合図を送る <<en>> Send a stop marker
+    #
+    # ```ruby
+    # dev.send_stop
+    # ```
     def send_stop: () -> void
 
-    # 続きの合図を送る
+    # 続きの合図を送る <<en>> Send a continue marker
+    #
+    # ```ruby
+    # dev.send_continue
+    # ```
     def send_continue: () -> void
 
-    # 機器ごとの特別なデータを送る
+    # 機器ごとの特別なデータを送る <<en>> Send a device's own data
+    #
+    # **F0 で始めて F7 で終える**バイト列を渡す。
+    # ```ruby
+    # dev.send_sysex("\xF0\x7E\x7F\x09\x01\xF7")
+    # ```
+    # <<en>>
+    # Pass the bytes **starting with F0 and ending with F7**.
+    # ```ruby
+    # dev.send_sysex("\xF0\x7E\x7F\x09\x01\xF7")
+    # ```
     def send_sysex: (String data) -> void
 
-    # つながっているかどうか
+    # つながっているかどうか <<en>> Whether it is connected
+    #
+    # ```ruby
+    # return unless dev.connected?
+    # ```
     def connected?: () -> bool
 
-    # つないだ機器の名前など
+    # つないだ機器の名前など <<en>> The name of what is connected
+    #
+    # ```ruby
+    # dev.info[:name]
+    # ```
     def info: () -> Hash
   end
 end

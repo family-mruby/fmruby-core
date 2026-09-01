@@ -56,7 +56,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕
 - `editor_ja/` [エディタ日本語対応計画: 子供が使える編集環境](editor_ja/plan.md) — - 〔7 files〕
 - `editor_serious_mode/` [エディタ本気モード計画: 全画面・高解像度・高速化](editor_serious_mode/plan.md) — - 〔11 files〕
-- `editor_ti/` [エディタ型推論統合 (picoruby-ti) 計画](editor_ti/plan.md) — - 〔20 files〕
+- `editor_ti/` [エディタ型推論統合 (picoruby-ti) 計画](editor_ti/plan.md) — - 〔21 files〕
 - `fmrb_basic/` [FMRuby BASIC 実装プロジェクト 共通指示書](fmrb_basic/00_common.md) — - 〔27 files〕
 - `gfx/` [Canvas Viewport スクロール (SET_CANVAS_VIEWPORT) — P4/PPA 活用](gfx/gfx_canvas_viewport_scroll.md) — - 〔2 files〕
 - `imu/` [P1: six-axis sensor (BMI270) on Modern](imu/report/p1.md) — - 〔1 files〕

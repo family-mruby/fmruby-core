@@ -2,18 +2,52 @@
 
 class Symbol
   # シンボルを比べる <<en>> Compare symbols
+  #
+  # ```ruby
+  # a <=> b
+  # ```
   def <=>: ((Symbol | untyped) other) -> Integer
 
   # 等しいかどうか <<en>> Perform equality comparison
+  #
+  # **同じ印は同じ物**なので、比べるのは速い。
+  # ```ruby
+  # if k == :name
+  # ```
+  # <<en>>
+  # Two equal symbols are the same object, so this is cheap.
+  # ```ruby
+  # if k == :name
+  # ```
   def ==: (untyped other) -> bool
 
   # case での等しさを判定する <<en>> Perform equality comparison (for case statements)
+  #
+  # ```ruby
+  # case k
+  # when :name then hit
+  # end
+  # ```
   def ===: (untyped other) -> bool
 
   # 中身が分かる形の文字列を返す <<en>> Return string representation for debugging
+  #
+  # ```ruby
+  # p :name  #=> :name
+  # ```
   def inspect: () -> String
 
   # 自分自身をシンボルとして返す <<en>> Return self as symbol
+  #
+  # そのまま返る。
+  # ```ruby
+  # :name.to_sym
+  # ```
+  # <<en>>
+  # Returns itself.
+  # ```ruby
+  # :name.to_sym
+  # ```
   def to_sym: () -> Symbol
 
 end

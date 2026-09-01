@@ -2,8 +2,29 @@
 
 class Proc
   # Proc を呼び出す <<en>> Call Proc
+  #
+  # `.()` とも書ける。
+  # ```ruby
+  # f.call(3)
+  # ```
+  # <<en>>
+  # Can also be written `.()`.
+  # ```ruby
+  # f.call(3)
+  # ```
   def call: (*untyped arguments) -> untyped
 
+  # 手続きを作る <<en>> Make a Proc
+  #
+  # 普通は `proc` か `->` で作る。
+  # ```ruby
+  # f = Proc.new { |v| v * 2 }
+  # ```
+  # <<en>>
+  # Normally made with `proc` or `->`.
+  # ```ruby
+  # f = Proc.new { |v| v * 2 }
+  # ```
   def self.new: () { (untyped argument) -> untyped } -> Proc
 
 end

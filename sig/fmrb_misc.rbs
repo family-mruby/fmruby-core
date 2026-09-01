@@ -3,39 +3,160 @@
 
 # 日本語と英語で表示を切りかえる。
 module FmrbI18n
-  # 言葉の表を足す
+  # 言葉の表を足す <<en>> Add a table of words
+  #
+  # アプリごとに自分の表を足す。**すでにある印を消さない**ので、
+  # デスクトップの表と並んで残る。
+  # ```ruby
+  # FmrbI18n.add(
+  #   "en" => { save: "Save" },
+  #   "ja" => { save: "保存" })
+  # ```
+  # <<en>>
+  # Each app adds its own table. Existing keys are left alone, so this table
+  # and the desktop's live side by side.
+  # ```ruby
+  # FmrbI18n.add(
+  #   "en" => { save: "Save" },
+  #   "ja" => { save: "保存" })
+  # ```
   def self.add: (Hash table) -> void
 
-  # 今の言葉 ("ja" か "en")
+  # 今の言葉 ("ja" か "en") <<en>> The language now, "ja" or "en"
+  #
+  # ```ruby
+  # if FmrbI18n.lang == "ja"
+  #   draw_ja
+  # end
+  # ```
   def self.lang: () -> String
 
-  # 印から今の言葉の文を引く
+  # 印から今の言葉の文を引く <<en>> Look a key up in the language now
+  #
+  # 印が表に無ければ印の名前がそのまま返る (落ちない)。
+  # ```ruby
+  # btn.set_text(FmrbI18n.t(:save))
+  # ```
+  # <<en>>
+  # An unknown key comes back as its own name instead of raising.
+  # ```ruby
+  # btn.set_text(FmrbI18n.t(:save))
+  # ```
   def self.t: (Symbol key) -> String
 
-  # 字を描いたときの横幅を測る
+  # 字を描いたときの横幅を測る <<en>> Measure how wide text would be
+  #
+  # **日本語は 1 文字が 2 文字幅**なので、`length` では測れない。
+  # 右寄せや中央寄せはこれで測る。
+  # ```ruby
+  # w = FmrbI18n.text_width(s)
+  # gfx.draw_text(320 - w, y, s)
+  # ```
+  # <<en>>
+  # A Japanese character is two cells wide, so `length` will not do. Use this
+  # to right-align or centre.
+  # ```ruby
+  # w = FmrbI18n.text_width(s)
+  # gfx.draw_text(320 - w, y, s)
+  # ```
   def self.text_width: (String str) -> Integer
 
-  # 幅に入るところまで切りつめる
+  # 幅に入るところまで切りつめる <<en>> Cut it down to what fits the width
+  #
+  # 文字の途中で切らない。
+  # ```ruby
+  # s = FmrbI18n.truncate_to(name, 120)
+  # ```
+  # <<en>>
+  # Never cuts a character in half.
+  # ```ruby
+  # s = FmrbI18n.truncate_to(name, 120)
+  # ```
   def self.truncate_to: (String str, Integer max_px) -> String
 end
 
 # ファイルの読み書き。最小限だけ (picoruby の File)。
 class File
-  # ファイルを開く
+  # ファイルを開く <<en>> Open a file
+  #
+  # **ブロックを渡した形が安全** (抜けるときに閉じる)。mode は
+  # `"r"` `"w"` `"a"`。**File.binread は無い**ので、読むのは `read`。
+  # ```ruby
+  # File.open("/home/a.txt", "r") do |f|
+  #   body = f.read
+  # end
+  # ```
+  # <<en>>
+  # **Pass a block** and it closes on the way out. The mode is `"r"`, `"w"`
+  # or `"a"`. There is no `File.binread`; use `read`.
+  # ```ruby
+  # File.open("/home/a.txt", "r") do |f|
+  #   body = f.read
+  # end
+  # ```
   def self.open: (String path, String mode) -> File
 
-  # ファイルがあるかどうか
+  # ファイルがあるかどうか <<en>> Whether the file is there
+  #
+  # ```ruby
+  # return unless File.exist?(path)
+  # ```
   def self.exist?: (String path) -> bool
 
-  # 中身をぜんぶ読む
+  # 中身をぜんぶ読む <<en>> Read the whole thing
+  #
+  # 全部が文字列で返る。**大きいファイルは丸ごとメモリに載る**ので、
+  # 行で処理するなら `gets` を回す。
+  # ```ruby
+  # body = f.read
+  # ```
+  # <<en>>
+  # The whole file lands in memory at once. For a big one, loop on `gets`.
+  # ```ruby
+  # body = f.read
+  # ```
   def read: () -> String
 
-  # 一行だけ読む
+  # 一行だけ読む <<en>> Read one line
+  #
+  # 終わりまで来たら nil。改行は付いたまま。
+  # ```ruby
+  # while (line = f.gets)
+  #   handle(line.chomp)
+  # end
+  # ```
+  # <<en>>
+  # nil at the end of the file. The newline is still on the string.
+  # ```ruby
+  # while (line = f.gets)
+  #   handle(line.chomp)
+  # end
+  # ```
   def gets: () -> String?
 
-  # 書き込む
+  # 書き込む <<en>> Write to the file
+  #
+  # 書けたバイト数が返る。
+  # ```ruby
+  # f.write("hello\n")
+  # ```
+  # <<en>>
+  # It gives back how many bytes went out.
+  # ```ruby
+  # f.write("hello\n")
+  # ```
   def write: (String str) -> Integer
 
-  # 閉じる
+  # 閉じる <<en>> Close it
+  #
+  # ブロック付きの `open` なら要らない。
+  # ```ruby
+  # f.close
+  # ```
+  # <<en>>
+  # Not needed when `open` was given a block.
+  # ```ruby
+  # f.close
+  # ```
   def close: () -> void
 end

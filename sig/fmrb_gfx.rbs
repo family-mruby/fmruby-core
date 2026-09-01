@@ -55,14 +55,14 @@ class FmrbGfx
 
   # ---- この画面のこと ----
 
-  # 画面の番号
+  # 画面の番号 <<en>> The canvas number
   #
   # ```ruby
   # id = gfx.canvas_id
   # ```
   def canvas_id: () -> Integer
 
-  # 画面の横幅 (ドット)
+  # 画面の横幅 (ドット) <<en>> Canvas width in pixels
   #
   # canvas 全体の幅。窓のアプリが描いてよいのは、その内側の
   # @user_area_x0 / @user_area_width の範囲で、canvas_width とは違う。
@@ -73,14 +73,14 @@ class FmrbGfx
   # fullscreen app the two agree.
   def canvas_width: () -> Integer
 
-  # 画面の高さ (ドット)
+  # 画面の高さ (ドット) <<en>> Canvas height in pixels
   #
   # ```ruby
   # h = gfx.canvas_height
   # ```
   def canvas_height: () -> Integer
 
-  # 今えらんでいる字の種類
+  # 今えらんでいる字の種類 <<en>> The font in use now
   #
   # ```ruby
   # saved = gfx.current_font
@@ -89,7 +89,7 @@ class FmrbGfx
   # ```
   def current_font: () -> Symbol
 
-  # 今の字の大きさの倍率
+  # 今の字の大きさの倍率 <<en>> The text scale in use now
   #
   # ```ruby
   # n = gfx.current_text_size
@@ -98,7 +98,7 @@ class FmrbGfx
 
   # ---- 形を描く ----
 
-  # 画面ぜんぶを一色でぬる
+  # 画面ぜんぶを一色でぬる <<en>> Paint the whole canvas one colour
   #
   # canvas 全体を塗る。窓のアプリで呼ぶと、自分で描いたタイトルバーもわくも
   # 消える。窓の中だけを消すなら FmrbApp#clear_user_area を使う。あちらは
@@ -115,7 +115,7 @@ class FmrbGfx
   # over the same area.
   def clear: (Integer color) -> FmrbGfx
 
-  # 点を一つ打つ
+  # 点を一つ打つ <<en>> Set one pixel
   #
   # ```ruby
   # gfx.set_pixel(10, 20,
@@ -123,7 +123,7 @@ class FmrbGfx
   # ```
   def set_pixel: (Integer x, Integer y, Integer color) -> FmrbGfx
 
-  # 点の色を読む
+  # 点の色を読む <<en>> Read one pixel's colour
   #
   # 描画側への同期的な往復になる。1 画素ずつ読んで画面を走査するような
   # 使い方には向かない。
@@ -138,7 +138,7 @@ class FmrbGfx
   # does not tell the two apart.
   def get_pixel: (Integer x, Integer y) -> Integer
 
-  # まっすぐな線を引く
+  # まっすぐな線を引く <<en>> Draw a straight line
   #
   # ```ruby
   # gfx.draw_line(0, 0, 100, 60,
@@ -146,7 +146,7 @@ class FmrbGfx
   # ```
   def draw_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer color) -> FmrbGfx
 
-  # 太さのある線を引く
+  # 太さのある線を引く <<en>> Draw a line with a thickness
   #
   # 描画側に太い線の命令が無いので、1 画素の線を thickness 本だけずらして
   # 重ねている。太さの分だけ命令が増えるので、太い線を毎フレーム引くと効く。
@@ -156,20 +156,34 @@ class FmrbGfx
   # shows if thick lines are drawn every frame.
   def draw_thick_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer thickness, Integer color) -> FmrbGfx
 
-  # 四角のふちを描く
+  # 四角のふちを描く <<en>> Draw the outline of a rectangle
   #
   # (x, y) は左上の角、w は横幅、h は高さです。線だけを描くので、
   # 中は下にあるものが見えたままになります。中もぬりたいときは
   # `fill_rect` を使います。
   #
   # ```ruby
-  # gfx.draw_rect(10, 10, 100, 50, FmrbGfx::WHITE)   # わく
-  # gfx.fill_rect(12, 12, 96, 46, FmrbGfx::BLUE)     # 中身
+  # gfx.draw_rect(10, 10, 100, 50,
+  #               FmrbGfx::WHITE)  # わく
+  # gfx.fill_rect(12, 12, 96, 46,
+  #               FmrbGfx::BLUE)   # 中身
+  # gfx.present
+  # ```
+  # <<en>>
+  # (x, y) is the top-left corner, w the width, h the height. It draws the
+  # outline only, so whatever is underneath stays visible inside. Use
+  # `fill_rect` to colour the inside too.
+  #
+  # ```ruby
+  # gfx.draw_rect(10, 10, 100, 50,
+  #               FmrbGfx::WHITE)  # frame
+  # gfx.fill_rect(12, 12, 96, 46,
+  #               FmrbGfx::BLUE)   # inside
   # gfx.present
   # ```
   def draw_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
 
-  # 四角をぬりつぶす
+  # 四角をぬりつぶす <<en>> Fill a rectangle
   #
   # (x, y) は左上の角、w は横幅、h は高さです。中まで色でうめます。
   # 画面ぜんぶを消したいときは `clear` のほうが速いです。
@@ -180,16 +194,41 @@ class FmrbGfx
   # ```ruby
   # class MyApp < FmrbApp
   #   def on_update
-  #     gfx.fill_rect(@x, 100, 16, 16, FmrbGfx::BLACK)  # 前の場所を消す
+  #     # 前の場所を消す
+  #     gfx.fill_rect(@x, 100, 16, 16,
+  #                   FmrbGfx::BLACK)
   #     @x = @x + 2
-  #     gfx.fill_rect(@x, 100, 16, 16, FmrbGfx::RED)    # 新しい場所に描く
+  #     # 新しい場所に描く
+  #     gfx.fill_rect(@x, 100, 16, 16,
+  #                   FmrbGfx::RED)
+  #     gfx.present
+  #   end
+  # end
+  # ```
+  # <<en>>
+  # (x, y) is the top-left corner, w the width, h the height, and the inside
+  # is filled. To wipe the whole canvas, `clear` is faster.
+  #
+  # For something that moves, **paint over where it was in the background
+  # colour first**, then draw it at the new place, and it leaves no trail.
+  #
+  # ```ruby
+  # class MyApp < FmrbApp
+  #   def on_update
+  #     # erase the old place
+  #     gfx.fill_rect(@x, 100, 16, 16,
+  #                   FmrbGfx::BLACK)
+  #     @x = @x + 2
+  #     # draw at the new one
+  #     gfx.fill_rect(@x, 100, 16, 16,
+  #                   FmrbGfx::RED)
   #     gfx.present
   #   end
   # end
   # ```
   def fill_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
 
-  # 下の絵と混ぜて四角をぬる
+  # 下の絵と混ぜて四角をぬる <<en>> Fill a rectangle blended with what is under it
   #
   # 最後の引数は混ぜ方で、FmrbGfx::BLEND_ADD (加算) か FmrbGfx::BLEND_XOR。
   # 透明度ではない。加算は光っている表現に、XOR は下の色を反転させる表現に使う。
@@ -211,7 +250,7 @@ class FmrbGfx
   # ```
   def blend_rect: (Integer x, Integer y, Integer w, Integer h, Integer color, Integer mode) -> FmrbGfx
 
-  # 角の丸い四角のふちを描く
+  # 角の丸い四角のふちを描く <<en>> Draw a rounded rectangle outline
   #
   # ```ruby
   # gfx.draw_round_rect(10, 10, 80, 40,
@@ -219,7 +258,7 @@ class FmrbGfx
   # ```
   def draw_round_rect: (Integer x, Integer y, Integer w, Integer h, Integer r, Integer color) -> FmrbGfx
 
-  # 角の丸い四角をぬりつぶす
+  # 角の丸い四角をぬりつぶす <<en>> Fill a rounded rectangle
   #
   # ```ruby
   # gfx.fill_round_rect(10, 10, 80, 40,
@@ -227,7 +266,7 @@ class FmrbGfx
   # ```
   def fill_round_rect: (Integer x, Integer y, Integer w, Integer h, Integer r, Integer color) -> FmrbGfx
 
-  # 円のふちを描く
+  # 円のふちを描く <<en>> Draw a circle outline
   #
   # ```ruby
   # gfx.draw_circle(50, 30, 20,
@@ -235,7 +274,7 @@ class FmrbGfx
   # ```
   def draw_circle: (Integer x, Integer y, Integer r, Integer color) -> FmrbGfx
 
-  # 円をぬりつぶす
+  # 円をぬりつぶす <<en>> Fill a circle
   #
   # ```ruby
   # gfx.fill_circle(50, 30, 20,
@@ -243,7 +282,7 @@ class FmrbGfx
   # ```
   def fill_circle: (Integer x, Integer y, Integer r, Integer color) -> FmrbGfx
 
-  # だ円のふちを描く
+  # だ円のふちを描く <<en>> Draw an ellipse outline
   #
   # ```ruby
   # gfx.draw_ellipse(50, 30, 30, 15,
@@ -251,7 +290,7 @@ class FmrbGfx
   # ```
   def draw_ellipse: (Integer x, Integer y, Integer rx, Integer ry, Integer color) -> FmrbGfx
 
-  # だ円をぬりつぶす
+  # だ円をぬりつぶす <<en>> Fill an ellipse
   #
   # ```ruby
   # gfx.fill_ellipse(50, 30, 30, 15,
@@ -259,7 +298,7 @@ class FmrbGfx
   # ```
   def fill_ellipse: (Integer x, Integer y, Integer rx, Integer ry, Integer color) -> FmrbGfx
 
-  # 三角のふちを描く
+  # 三角のふちを描く <<en>> Draw a triangle outline
   #
   # ```ruby
   # gfx.draw_triangle(50, 10, 20, 50,
@@ -268,7 +307,7 @@ class FmrbGfx
   # ```
   def draw_triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer color) -> FmrbGfx
 
-  # 三角をぬりつぶす
+  # 三角をぬりつぶす <<en>> Fill a triangle
   #
   # ```ruby
   # gfx.fill_triangle(50, 10, 20, 50,
@@ -277,7 +316,7 @@ class FmrbGfx
   # ```
   def fill_triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer color) -> FmrbGfx
 
-  # 円の一部の弧を描く
+  # 円の一部の弧を描く <<en>> Draw an arc
   #
   # 角度は度の整数。r0 が内側の半径、r1 が外側の半径で、r0 に 0 でない値を
   # 入れると輪の一部になる。r0 を 0 にすると扇形の外周になる。
@@ -287,7 +326,7 @@ class FmrbGfx
   # pie slice.
   def draw_arc: (Integer x, Integer y, Integer r0, Integer r1, Integer angle0, Integer angle1, Integer color) -> FmrbGfx
 
-  # 円の一部をぬりつぶす
+  # 円の一部をぬりつぶす <<en>> Fill a wedge of a circle
   #
   # 角度は度の整数。r0 が内側の半径、r1 が外側の半径。r0 を 0 にすると扇形、
   # 0 でない値にすると輪の一部になる。ゲージや円グラフはこの形で描ける。
@@ -336,16 +375,29 @@ class FmrbGfx
   # ```
   def draw_text: (Integer x, Integer y, String str, Integer color) -> FmrbGfx
 
-  # 字の種類と大きさをえらぶ (無い字は近いものに変わる。選ばれた組を返す)
+  # 字の種類と大きさをえらぶ <<en>> Choose the font and size
   #
   # family は :default (6x8 の英数)、:ja (日本語)、:ja_bold (:ja の太字)。
   # size は画素の高さで、:ja は 8 と 12 と 16、:ja_bold は 12。持っている字は
   # 機種で違う (Retro は 12 まで) ので、無い大きさや太字を頼むと近いものが
   # 選ばれる。戻り値は実際に選ばれた [family, size] で、太字が無かったことも
   # これで分かる (自分で太く描くときの判断に使う)。
+  # ```ruby
+  # got = gfx.set_font(:ja, 12)
+  # ```
+  # <<en>>
+  # family is :default (6x8 ASCII), :ja (Japanese) or :ja_bold (:ja in bold).
+  # size is the height in pixels: 8, 12 and 16 for :ja, 12 for :ja_bold.
+  # Which faces exist differs by machine (Retro stops at 12), so asking for a
+  # size or a weight it has not got gets you the nearest one. What comes back
+  # is the [family, size] actually chosen -- which is also how you find out
+  # that bold was unavailable and you should thicken the text yourself.
+  # ```ruby
+  # got = gfx.set_font(:ja, 12)
+  # ```
   def set_font: (Symbol family, ?Integer size) -> Array[untyped]
 
-  # 字の大きさの倍率を決める
+  # 字の大きさの倍率を決める <<en>> Set the text scale
   #
   # 選んでいる字を整数倍で拡大する。字が増えるわけではないので、大きくすると
   # 角が目立つ。倍率をかけた後の幅は text_width が返す。
@@ -355,7 +407,7 @@ class FmrbGfx
   # multiplier.
   def set_text_size: (Integer size) -> FmrbGfx
 
-  # 字を描いたときの横幅を測る
+  # 字を描いたときの横幅を測る <<en>> Measure how wide text would be
   #
   # いま set_font で選んでいる字と set_text_size の倍率で測る。字を変えたら
   # 測り直す。UTF-8 を走査して画素の幅を返すので、日本語混じりでも文字数では
@@ -379,7 +431,7 @@ class FmrbGfx
   # ```
   def text_width: (String str) -> Integer
 
-  # 一行分の高さを調べる
+  # 一行分の高さを調べる <<en>> The height of one line
   #
   # いま選んでいる字の高さ。行を積むときの間隔に使う。字を変えると変わる。
   # <<en>>
@@ -387,7 +439,7 @@ class FmrbGfx
   # stacking lines. It changes with the font.
   def font_height: () -> Integer
 
-  # 今の時刻を描く
+  # 今の時刻を描く <<en>> Draw the time now
   #
   # 時刻の文字はこの中で組み立てられる。毎秒呼んでもごみが出ない。
   # ```ruby
@@ -403,7 +455,7 @@ class FmrbGfx
   # ```
   def draw_wallclock: (Integer x, Integer y, Integer color, Integer bg_color) -> FmrbGfx
 
-  # 空きメモリの量を描く
+  # 空きメモリの量を描く <<en>> Draw how much memory is free
   #
   # 値の取得も整形もこの中。空きが読めない環境では横棒が出る。
   # ```ruby
@@ -421,7 +473,7 @@ class FmrbGfx
 
   # ---- 絵の読み込みと表示 ----
 
-  # 絵のファイルを読み込んで置く
+  # 絵のファイルを読み込んで置く <<en>> Load an image file and place it
   #
   # sync_file、create_image、draw_image、present、delete_image をまとめて行う。
   # 一枚絵を出すだけならこれで足りる。
@@ -445,7 +497,7 @@ class FmrbGfx
   # ```
   def load_image: (String path) -> void
 
-  # 絵のファイルから絵を作る
+  # 絵のファイルから絵を作る <<en>> Make an image from a file
   #
   # 受けるのは PNG。スプライトの素材 (RGB332 の BMP) はこちらではなく
   # SpriteImage#load_bmp が読む。BMP を渡しても例外にはならず、画面と同じ
@@ -477,7 +529,7 @@ class FmrbGfx
   # ```
   def create_image: (String path) -> Hash?
 
-  # 作った絵を描く
+  # 作った絵を描く <<en>> Draw an image you made
   #
   # 位置と倍率はキーワードで渡す (x:, y:, scale_x:, scale_y:)。scale_y に
   # 0.0 を渡すと scale_x と同じ倍率になる。
@@ -498,7 +550,7 @@ class FmrbGfx
   # ```
   def draw_image: (Integer image_id) -> FmrbGfx
 
-  # 作った絵を片づける
+  # 作った絵を片づける <<en>> Let go of an image you made
   #
   # 画像は描画側の資源で、数に限りがある。使い終わったら消す。アプリが
   # 終わるときには系がまとめて片づけるので、終了処理で消し忘れても漏れはしない。
@@ -508,7 +560,7 @@ class FmrbGfx
   # them when the app exits, so a missing cleanup at exit does not leak.
   def delete_image: (Integer image_id) -> FmrbGfx
 
-  # 絵の一部を切り取って描く
+  # 絵の一部を切り取って描く <<en>> Draw one piece cut out of an image
   #
   # SpriteImage の一部を canvas に直接押す。SpriteInstance を作らないので、
   # 地形のように動かないものを並べるのに向く。置き場所はキーワード
@@ -538,7 +590,7 @@ class FmrbGfx
   # ```
   def draw_tile: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h) -> FmrbGfx
 
-  # 型ぬきの形を作る
+  # 型ぬきの形を作る <<en>> Make a mask
   #
   # data は 1 画素 1 ビットの列。1 行あたり ceil(width / 8) バイトで、各バイトは
   # 上位ビットが左。ビットが 1 のところだけが描かれる。
@@ -551,14 +603,14 @@ class FmrbGfx
   # Returns a mask_id for draw_image_masked; release it with delete_mask.
   def create_mask: (Integer width, Integer height, String data) -> Integer
 
-  # 型ぬきの形を片づける
+  # 型ぬきの形を片づける <<en>> Let go of a mask
   #
   # ```ruby
   # gfx.delete_mask(@mask_id)
   # ```
   def delete_mask: (Integer mask_id) -> void
 
-  # 型でぬいた形の絵を描く
+  # 型でぬいた形の絵を描く <<en>> Draw an image through a mask
   #
   # SpriteImage の絵を、マスクのビットが立っているところだけ canvas に写す。
   # 置き場所はキーワード (x:, y:)。絵の (xx, yy) が canvas の (x+xx, y+yy) に来る。
@@ -599,7 +651,7 @@ class FmrbGfx
   # ```
   def present: () -> FmrbGfx
 
-  # この画面を片づける
+  # この画面を片づける <<en>> Let go of this canvas
   #
   # 自分で作った canvas を片づける。アプリの終了時には自動で消えるので、
   # 途中で要らなくなったときだけ呼ぶ。
@@ -608,7 +660,7 @@ class FmrbGfx
   # app ends, so this is for one that is finished with early.
   def destroy: () -> FmrbGfx
 
-  # 画面の見せる場所をずらす
+  # 画面の見せる場所をずらす <<en>> Shift what part of the canvas is shown
   #
   # canvas より小さい表示窓を、canvas の上で動かす。canvas は輪として扱われ、
   # 元の四角は端で回り込む。表示範囲より少し大きい canvas を用意し、動いた分だけ
@@ -626,7 +678,7 @@ class FmrbGfx
   # FmrbConst::CHIP_MODEL == "ESP32-P4".
   def set_viewport: (Integer src_x, Integer src_y, Integer w, Integer h) -> void
 
-  # ずらした場所を元に戻す
+  # ずらした場所を元に戻す <<en>> Put the shown part back
   #
   # set_viewport で決めた切り出しをやめ、canvas 全体を合成に戻す。
   # set_viewport と同じく Modern (ESP32-P4) だけで効く。
@@ -635,7 +687,7 @@ class FmrbGfx
   # (ESP32-P4) only, as set_viewport is.
   def clear_viewport: () -> void
 
-  # 重ねて見せる場所を決める
+  # 重ねて見せる場所を決める <<en>> Set the regions that are composited
   #
   # canvas のどの矩形をどう合成するかを指定する。角の丸い窓のように、隅だけ
   # 透過が要るときの最適化で、中央は速い経路で送れる。最大 8 個。nil か [] で
@@ -688,7 +740,7 @@ class FmrbGfx
   # ```
   def clear_sprite_clip: () -> FmrbGfx
 
-  # 映像の明るさを決める
+  # 映像の明るさを決める <<en>> Set the video brightness
   #
   # Retro のコンポジット映像の明るさを決める。Modern には効かない。
   # CRT のつまみで合わせきれないときに使う。
@@ -697,7 +749,7 @@ class FmrbGfx
   # Modern. For when a CRT's own controls do not get there.
   def set_output_level: (Integer level) -> FmrbGfx
 
-  # 映像の色の濃さを決める
+  # 映像の色の濃さを決める <<en>> Set the colour depth of the video
   #
   # Retro のコンポジット映像の色の濃さ (カラーバーストの振幅) を決める。
   # Modern には効かない。0 にすると白黒になる。
@@ -708,7 +760,7 @@ class FmrbGfx
 
   # ---- ファイルの受けわたし ----
 
-  # 絵や音のファイルを送る
+  # 絵や音のファイルを送る <<en>> Send an image or sound file across
   #
   # 描画側は自分のファイルシステムしか読めないので、素材は先に送っておく。
   # 大きさと CRC32 を比べて、違うときだけ送る。毎回呼んでよい。
@@ -734,7 +786,7 @@ class FmrbGfx
   # ```
   def sync_file: (String path) -> bool
 
-  # ファイルを必ず送り直す
+  # ファイルを必ず送り直す <<en>> Send a file again whatever happens
   #
   # 中身を見ずに必ず送り直す。ふつうは sync_file でよく、こちらは送り先を
   # 書き換えたことが分かっているときに使う。
@@ -744,7 +796,7 @@ class FmrbGfx
   # known to need rewriting.
   def transfer_file: (String path) -> bool
 
-  # 送った先にファイルがあるか
+  # 送った先にファイルがあるか <<en>> Whether the file arrived
   #
   # 描画側にそのファイルがあるかと、その大きさを {exists:, size:} で返す。
   #
@@ -760,7 +812,7 @@ class FmrbGfx
 
   # ---- クラスメソッド ----
 
-  # 赤緑青の三つの数から色を作る
+  # 赤緑青の三つの数から色を作る <<en>> Make a colour from red, green and blue
   #
   # 0-255 の 3 つを 1 バイトに落とす。赤と緑は 3 ビット、青は 2 ビットなので、
   # 近い色は同じ値になる。細かい階調は出ない。
@@ -776,7 +828,7 @@ class FmrbGfx
   # transparency key, so a window painted with it shows through.
   def self.rgb_to_332: (Integer r, Integer g, Integer b) -> Integer
 
-  # 色あいと濃さと明るさから色を作る
+  # 色あいと濃さと明るさから色を作る <<en>> Make a colour from hue, saturation and value
   #
   # h は 0-360、s と v は 0-255。戻り値は [r, g, b] の配列で、そのままでは
   # 色として使えない。rgb_to_332 に渡す。

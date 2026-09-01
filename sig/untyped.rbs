@@ -1,12 +1,38 @@
 # Area512 built-in type declaration.
 
 class Untyped
+  # 整数に変える <<en>> Convert to an integer
+  #
+  # 型が分からないものに付く見出し。**実際の中身しだい**。
+  # ```ruby
+  # v.to_i
+  # ```
+  # <<en>>
+  # Shown when the type is unknown; what happens depends on the real value.
+  # ```ruby
+  # v.to_i
+  # ```
   def to_i: () -> Integer
 
+  # 整数に変える <<en>> Convert to an integer
+  #
+  # ```ruby
+  # v.to_int
+  # ```
   def to_int: () -> Integer
 
+  # 小数に変える <<en>> Convert to a float
+  #
+  # ```ruby
+  # v.to_f
+  # ```
   def to_f: () -> Float
 
+  # 文字列に変える <<en>> Convert to a string
+  #
+  # ```ruby
+  # v.to_s
+  # ```
   def to_s: () -> String
 
 end

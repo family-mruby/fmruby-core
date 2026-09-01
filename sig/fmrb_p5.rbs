@@ -5,141 +5,561 @@
 # private のメソッドは書いていない。
 
 class P5
-  # p5 の書き方の道具を作る
+  # p5 の書き方の道具を作る <<en>> Make the p5-style drawing tools
+  #
+  # **FmrbGfx を包むだけ**なので、同じ絵に P5 と FmrbGfx の両方から
+  # 描いてよい。
+  # ```ruby
+  # @p5 = P5.new(@gfx)
+  # ```
+  # <<en>>
+  # It only wraps an `FmrbGfx`, so you can draw on the same canvas with both.
+  # ```ruby
+  # @p5 = P5.new(@gfx)
+  # ```
   def self.new: (FmrbGfx gfx) -> P5
 
   # ---- 画面 ----
 
-  # 画面の横幅 (ドット)
+  # 画面の横幅 (ドット) <<en>> Canvas width in pixels
+  #
+  # ```ruby
+  # cx = @p5.width / 2
+  # ```
   def width: () -> Integer
 
-  # 画面の高さ (ドット)
+  # 画面の高さ (ドット) <<en>> Canvas height in pixels
+  #
+  # ```ruby
+  # cy = @p5.height / 2
+  # ```
   def height: () -> Integer
 
-  # 画面ぜんぶを色でぬる
+  # 画面ぜんぶを色でぬる <<en>> Paint the whole canvas one colour
+  #
+  # 毎フレームの初めに呼んで前の絵を消す。`blend_mode` を入れていると
+  # 消さずに重ねる。
+  # ```ruby
+  # @p5.background(FmrbGfx::BLACK)
+  # ```
+  # <<en>>
+  # Call it at the top of a frame to wipe the last one. With a `blend_mode`
+  # set it blends over instead of wiping.
+  # ```ruby
+  # @p5.background(FmrbGfx::BLACK)
+  # ```
   def background: (Integer color) -> void
 
-  # 描いたものを画面に出す
+  # 描いたものを画面に出す <<en>> Show what has been drawn
+  #
+  # **呼ぶまで画面に出ない**。1 フレームの描き終わりに 1 回だけ。
+  # ```ruby
+  # @p5.present
+  # ```
+  # <<en>>
+  # **Nothing appears until you call it** -- once at the end of a frame.
+  # ```ruby
+  # @p5.present
+  # ```
   def present: () -> void
 
   # ---- 色と線 ----
 
-  # 中をぬる色を決める
+  # 中をぬる色を決める <<en>> Set the fill colour
+  #
+  # 以後に描く形の中の色。**色は RGB332 の 1 バイト**。
+  # ```ruby
+  # @p5.fill(FmrbGfx::RED)
+  # @p5.circle(60, 60, 20)
+  # ```
+  # <<en>>
+  # The inside colour of every shape from here on, as a one-byte RGB332 value.
+  # ```ruby
+  # @p5.fill(FmrbGfx::RED)
+  # @p5.circle(60, 60, 20)
+  # ```
   def fill: (Integer color) -> void
 
-  # 中をぬらないようにする
+  # 中をぬらないようにする <<en>> Draw nothing inside
+  #
+  # ふちだけの形になる。
+  # ```ruby
+  # @p5.no_fill
+  # @p5.rect(10, 10, 40, 20)
+  # ```
+  # <<en>>
+  # Leaves an outline only.
+  # ```ruby
+  # @p5.no_fill
+  # @p5.rect(10, 10, 40, 20)
+  # ```
   def no_fill: () -> void
 
-  # ふちの色を決める
+  # ふちの色を決める <<en>> Set the outline colour
+  #
+  # ```ruby
+  # @p5.stroke(FmrbGfx::WHITE)
+  # ```
   def stroke: (Integer color) -> void
 
-  # ふちを描かないようにする
+  # ふちを描かないようにする <<en>> Draw no outline
+  #
+  # 中だけぬった形になる。
+  # ```ruby
+  # @p5.no_stroke
+  # ```
+  # <<en>>
+  # Leaves a filled shape with no outline.
+  # ```ruby
+  # @p5.no_stroke
+  # ```
   def no_stroke: () -> void
 
-  # ふちの太さを決める
+  # ふちの太さを決める <<en>> Set the outline thickness
+  #
+  # 太い線は細い線を重ねて描くので、太くするほど遅くなる。
+  # ```ruby
+  # @p5.stroke_weight(3)
+  # ```
+  # <<en>>
+  # A thick line is drawn as several thin ones, so it costs more.
+  # ```ruby
+  # @p5.stroke_weight(3)
+  # ```
   def stroke_weight: (Integer w) -> void
 
-  # 色の重ね方を決める
+  # 色の重ね方を決める <<en>> Set how colours are blended
+  #
+  # `P5::ADD` は明るく重ね、`P5::XOR` は反転して重ねる。0 で元に戻す。
+  # ```ruby
+  # @p5.blend_mode(P5::ADD)
+  # ```
+  # <<en>>
+  # `P5::ADD` brightens where shapes overlap, `P5::XOR` inverts; 0 is normal.
+  # ```ruby
+  # @p5.blend_mode(P5::ADD)
+  # ```
   def blend_mode: (Integer mode) -> void
 
-  # 透け具合を決める (今は効かない)
+  # 透け具合を決める (今は効かない) <<en>> Set the transparency (does nothing yet)
+  #
+  # **今は何もしない**。p5.js から写した書き方をそのまま通すために置いてある。
+  # 重ねたいときは `blend_mode`。
+  # ```ruby
+  # @p5.alpha(128)  # 効かない
+  # ```
+  # <<en>>
+  # **It does nothing today.** It is here so code copied from p5.js still runs;
+  # use `blend_mode` to overlay.
+  # ```ruby
+  # @p5.alpha(128)  # no effect
+  # ```
   def alpha: (Integer value) -> void
 
-  # 赤緑青の三つの数から色を作る
+  # 赤緑青の三つの数から色を作る <<en>> Make a colour from red, green and blue
+  #
+  # 0 から 255 の三つを 1 バイトに縮める。**赤緑は 8 段、青は 4 段**に
+  # 丸められる。
+  # ```ruby
+  # c = @p5.color(255, 128, 0)
+  # ```
+  # <<en>>
+  # Squeezes three 0-255 values into one byte: 8 levels of red and green,
+  # 4 of blue.
+  # ```ruby
+  # c = @p5.color(255, 128, 0)
+  # ```
   def color: (Integer r, Integer g, Integer b) -> Integer
 
   # ---- 形 ----
 
-  # 点を一つ打つ
+  # 点を一つ打つ <<en>> Set one pixel
+  #
+  # **`stroke` の色**で打つ。`no_stroke` のときは何も出ない。
+  # ```ruby
+  # @p5.point(10, 20)
+  # ```
+  # <<en>>
+  # Uses the **stroke** colour; nothing appears after `no_stroke`.
+  # ```ruby
+  # @p5.point(10, 20)
+  # ```
   def point: (Integer x, Integer y) -> void
 
-  # 線を引く
+  # 線を引く <<en>> Draw a line
+  #
+  # ```ruby
+  # @p5.line(0, 0, 100, 60)
+  # ```
   def line: (Integer x0, Integer y0, Integer x1, Integer y1) -> void
 
-  # 四角を描く
+  # 四角を描く <<en>> Draw a rectangle
+  #
+  # **左上の角**と大きさで指す。
+  # ```ruby
+  # @p5.rect(10, 10, 40, 20)
+  # ```
+  # <<en>>
+  # Given by its **top-left corner** and its size.
+  # ```ruby
+  # @p5.rect(10, 10, 40, 20)
+  # ```
   def rect: (Integer x, Integer y, Integer w, Integer h) -> void
 
-  # 円を描く
+  # 円を描く <<en>> Draw a circle
+  #
+  # **真ん中**と半径で指す。
+  # ```ruby
+  # @p5.circle(60, 60, 20)
+  # ```
+  # <<en>>
+  # Given by its **centre** and radius.
+  # ```ruby
+  # @p5.circle(60, 60, 20)
+  # ```
   def circle: (Integer cx, Integer cy, Integer r) -> void
 
-  # だ円を描く
+  # だ円を描く <<en>> Draw an ellipse
+  #
+  # ```ruby
+  # @p5.ellipse(60, 60, 30, 15)
+  # ```
   def ellipse: (Integer cx, Integer cy, Integer rx, Integer ry) -> void
 
-  # 三角を描く
+  # 三角を描く <<en>> Draw a triangle
+  #
+  # ```ruby
+  # @p5.triangle(10, 50, 30, 10,
+  #              50, 50)
+  # ```
   def triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2) -> void
 
-  # 四つの点で四角を描く
+  # 四つの点で四角を描く <<en>> Draw a quadrilateral from four points
+  #
+  # 点は順につながる。**交差する順で渡すと形が崩れる**。
+  # ```ruby
+  # @p5.quad(10, 10, 50, 14,
+  #          48, 40, 12, 36)
+  # ```
+  # <<en>>
+  # The points are joined in order; crossing them over breaks the shape.
+  # ```ruby
+  # @p5.quad(10, 10, 50, 14,
+  #          48, 40, 12, 36)
+  # ```
   def quad: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer x3, Integer y3) -> void
 
-  # 円の一部の弧を描く
+  # 円の一部の弧を描く <<en>> Draw an arc
+  #
+  # **角度はラジアン** (0 が右、時計回り)。
+  # ```ruby
+  # @p5.arc(60, 60, 30,
+  #         0, Math::PI / 2)
+  # ```
+  # <<en>>
+  # **The angles are radians**, 0 at the right and going clockwise.
+  # ```ruby
+  # @p5.arc(60, 60, 30,
+  #         0, Math::PI / 2)
+  # ```
   def arc: (Integer cx, Integer cy, Integer r, Integer start_angle, Integer stop_angle) -> void
 
-  # なめらかな曲線を描く
+  # なめらかな曲線を描く <<en>> Draw a smooth curve
+  #
+  # 始点・引く点 2 つ・終点。**線を 20 本に割って描く**ので、
+  # `no_stroke` では何も出ない。
+  # ```ruby
+  # @p5.bezier(10, 60, 30, 10,
+  #            70, 10, 90, 60)
+  # ```
+  # <<en>>
+  # Start, two pull points, end. It is drawn as 20 straight pieces, so
+  # `no_stroke` leaves nothing.
+  # ```ruby
+  # @p5.bezier(10, 60, 30, 10,
+  #            70, 10, 90, 60)
+  # ```
   def bezier: (Integer x1, Integer y1, Integer x2, Integer y2, Integer x3, Integer y3, Integer x4, Integer y4) -> void
 
-  # 点をつないだ曲線を描く
+  # 点をつないだ曲線を描く <<en>> Draw a curve through points
+  #
+  # **真ん中の 2 点の間だけ**が描かれる。両端は曲がり方を決めるだけ。
+  # ```ruby
+  # @p5.curve(0, 60, 10, 60,
+  #           90, 60, 100, 60)
+  # ```
+  # <<en>>
+  # Only the stretch between the middle two points is drawn; the outer two
+  # just shape the bend.
+  # ```ruby
+  # @p5.curve(0, 60, 10, 60,
+  #           90, 60, 100, 60)
+  # ```
   def curve: (Integer x1, Integer y1, Integer x2, Integer y2, Integer x3, Integer y3, Integer x4, Integer y4) -> void
 
-  # 自由な形を描き始める
+  # 自由な形を描き始める <<en>> Start a free shape
+  #
+  # `vertex` で角を足し、`end_shape` で閉じる。
+  # ```ruby
+  # @p5.begin_shape
+  # @p5.vertex(10, 10)
+  # @p5.vertex(40, 20)
+  # @p5.vertex(20, 40)
+  # @p5.end_shape(true)
+  # ```
+  # <<en>>
+  # Add corners with `vertex`, then close with `end_shape`.
+  # ```ruby
+  # @p5.begin_shape
+  # @p5.vertex(10, 10)
+  # @p5.vertex(40, 20)
+  # @p5.vertex(20, 40)
+  # @p5.end_shape(true)
+  # ```
   def begin_shape: () -> void
 
-  # 形の角の点を足す
+  # 形の角の点を足す <<en>> Add a corner to the shape
+  #
+  # `begin_shape` の前に呼んでも**黙って捨てられる**。
+  # ```ruby
+  # @p5.vertex(40, 20)
+  # ```
+  # <<en>>
+  # Called before `begin_shape` it is silently dropped.
+  # ```ruby
+  # @p5.vertex(40, 20)
+  # ```
   def vertex: (Integer x, Integer y) -> void
 
-  # 自由な形を描き終える
+  # 自由な形を描き終える <<en>> Finish the free shape
+  #
+  # **true を渡すと閉じた形**になる。中をぬるには角が 3 つ以上要る。
+  # ```ruby
+  # @p5.end_shape(true)
+  # ```
+  # <<en>>
+  # **Pass true to close the shape.** Filling needs three corners or more.
+  # ```ruby
+  # @p5.end_shape(true)
+  # ```
   def end_shape: () -> void
 
   # ---- 字 ----
 
-  # 字を描く
+  # 字を描く <<en>> Draw text
+  #
+  # 色は `fill` ではなく **`text_color`**。位置は `text_align` に従う。
+  # ```ruby
+  # @p5.text("Hello", 10, 20)
+  # ```
+  # <<en>>
+  # The colour comes from **`text_color`**, not `fill`, and the position
+  # follows `text_align`.
+  # ```ruby
+  # @p5.text("Hello", 10, 20)
+  # ```
   def text: (String str, Integer x, Integer y) -> void
 
-  # 字の種類をえらぶ
+  # 字の種類をえらぶ <<en>> Choose the font
+  #
+  # `:default` が英数字、**`:ja` で日本語**が出せる (大きさは 8 になる)。
+  # ```ruby
+  # @p5.text_font(:ja)
+  # @p5.text("こんにちは", 10, 20)
+  # ```
+  # <<en>>
+  # `:default` is ASCII; **`:ja` draws Japanese** (at size 8).
+  # ```ruby
+  # @p5.text_font(:ja)
+  # @p5.text("こんにちは", 10, 20)
+  # ```
   def text_font: (Symbol font) -> void
 
-  # 字の色を決める
+  # 字の色を決める <<en>> Set the text colour
+  #
+  # ```ruby
+  # @p5.text_color(FmrbGfx::WHITE)
+  # ```
   def text_color: (Integer color) -> void
 
-  # 字をそろえる場所を決める
+  # 字をそろえる場所を決める <<en>> Set how text is aligned
+  #
+  # 横は `:left` `:center` `:right`、**縦は 2 つめの引数**で
+  # `:top` `:center` `:bottom`。
+  # ```ruby
+  # @p5.text_align(:center, :center)
+  # ```
+  # <<en>>
+  # Horizontally `:left`, `:center`, `:right`; the **second argument** takes
+  # `:top`, `:center`, `:bottom`.
+  # ```ruby
+  # @p5.text_align(:center, :center)
+  # ```
   def text_align: (Symbol horizontal) -> void
 
-  # 行と行の間を決める
+  # 行と行の間を決める <<en>> Set the space between lines
+  #
+  # ```ruby
+  # @p5.text_leading(12)
+  # ```
   def text_leading: (Integer pixels) -> void
 
-  # 字を描いたときの横幅を測る
+  # 字を描いたときの横幅を測る <<en>> Measure how wide text would be
+  #
+  # 今えらんでいる字の種類で測る。中央ぞろえを自分で計算するときに使う。
+  # ```ruby
+  # w = @p5.text_width(s)
+  # ```
+  # <<en>>
+  # Measured in the font currently chosen; use it to centre text yourself.
+  # ```ruby
+  # w = @p5.text_width(s)
+  # ```
   def text_width: (String str) -> Integer
 
   # ---- 位置をずらす ----
 
-  # 描く場所をずらす
+  # 描く場所をずらす <<en>> Shift where things are drawn
+  #
+  # **以後の描画すべて**がずれる。元に戻すには `push_matrix` と組で使う。
+  # ```ruby
+  # @p5.push_matrix
+  # @p5.translate(60, 60)
+  # @p5.circle(0, 0, 10)
+  # @p5.pop_matrix
+  # ```
+  # <<en>>
+  # It shifts **everything drawn afterwards**; pair it with `push_matrix` to
+  # get back.
+  # ```ruby
+  # @p5.push_matrix
+  # @p5.translate(60, 60)
+  # @p5.circle(0, 0, 10)
+  # @p5.pop_matrix
+  # ```
   def translate: (Integer tx, Integer ty) -> void
 
-  # 描くものを回す
+  # 描くものを回す <<en>> Turn what is drawn
+  #
+  # **ラジアン**で、原点のまわりに回す。物のまわりで回すには先に
+  # `translate` する。
+  # ```ruby
+  # @p5.translate(60, 60)
+  # @p5.rotate(Math::PI / 4)
+  # ```
+  # <<en>>
+  # In **radians**, about the origin. To spin around an object, `translate`
+  # there first.
+  # ```ruby
+  # @p5.translate(60, 60)
+  # @p5.rotate(Math::PI / 4)
+  # ```
   def rotate: (Integer angle) -> void
 
-  # 描くものを大きくする
+  # 描くものを大きくする <<en>> Scale what is drawn
+  #
+  # **縦横を別々にもできる** (2 つめの引数)。1.0 が元の大きさ。
+  # ```ruby
+  # @p5.scale(2.0)
+  # @p5.scale(2.0, 0.5)
+  # ```
+  # <<en>>
+  # A **second argument** scales the two axes apart; 1.0 is life size.
+  # ```ruby
+  # @p5.scale(2.0)
+  # @p5.scale(2.0, 0.5)
+  # ```
   def scale: (Integer sx) -> void
 
-  # 今のずらし方を覚えておく
+  # 今のずらし方を覚えておく <<en>> Remember the current transform
+  #
+  # **`pop_matrix` と必ず組にする**。積んだままだとずれが残る。
+  # ```ruby
+  # @p5.push_matrix
+  # ```
+  # <<en>>
+  # **Always pair it with `pop_matrix`**, or the shift is left behind.
+  # ```ruby
+  # @p5.push_matrix
+  # ```
   def push_matrix: () -> void
 
-  # 覚えたずらし方に戻す
+  # 覚えたずらし方に戻す <<en>> Go back to the remembered transform
+  #
+  # 積んでいないときに呼んでも何も起きない。
+  # ```ruby
+  # @p5.pop_matrix
+  # ```
+  # <<en>>
+  # Doing it with an empty stack is harmless.
+  # ```ruby
+  # @p5.pop_matrix
+  # ```
   def pop_matrix: () -> void
 
-  # ずらし方をぜんぶ元に戻す
+  # ずらし方をぜんぶ元に戻す <<en>> Clear every transform
+  #
+  # ```ruby
+  # @p5.reset_matrix
+  # ```
   def reset_matrix: () -> void
 
   # ---- 点と絵 ----
 
-  # 点を一つ打つ
+  # 点を一つ打つ <<en>> Set one pixel
+  #
+  # **ずらし方 (translate や rotate) を通さない**。画面そのままの座標。
+  # ```ruby
+  # @p5.set_pixel(10, 20, c)
+  # ```
+  # <<en>>
+  # **Not put through the transform** -- these are raw screen coordinates.
+  # ```ruby
+  # @p5.set_pixel(10, 20, c)
+  # ```
   def set_pixel: (Integer x, Integer y, Integer color) -> void
 
-  # 点の色を読む
+  # 点の色を読む <<en>> Read one pixel's colour
+  #
+  # **返事を待つ**ので遅い。ループの中で何度も読まない。
+  # ```ruby
+  # c = @p5.get_pixel(10, 20)
+  # ```
+  # <<en>>
+  # It waits for an answer, so it is slow. Do not read it inside a loop.
+  # ```ruby
+  # c = @p5.get_pixel(10, 20)
+  # ```
   def get_pixel: (Integer x, Integer y) -> Integer
 
-  # 読み込んだ絵を描く
+  # 読み込んだ絵を描く <<en>> Draw a loaded image
+  #
+  # **id は FmrbGfx で読み込んだ絵の番号**。4 つめ 5 つめで拡大できる。
+  # ```ruby
+  # @p5.image(id, 10, 20)
+  # @p5.image(id, 10, 20, 2.0, 2.0)
+  # ```
+  # <<en>>
+  # The id is one an `FmrbGfx` load returned; the 4th and 5th arguments
+  # scale it.
+  # ```ruby
+  # @p5.image(id, 10, 20)
+  # @p5.image(id, 10, 20, 2.0, 2.0)
+  # ```
   def image: (Integer image_id, Integer x, Integer y) -> void
 
-  # 型でぬいた形の絵を描く
+  # 型でぬいた形の絵を描く <<en>> Draw an image through a mask
+  #
+  # **型は 1 ビットずつの白黒**で、1 のところだけ絵が出る。
+  # ```ruby
+  # @p5.image_masked(id, mask,
+  #                  10, 20, 16, 16)
+  # ```
+  # <<en>>
+  # The mask is one bit per pixel; the image shows only where the bit is 1.
+  # ```ruby
+  # @p5.image_masked(id, mask,
+  #                  10, 20, 16, 16)
+  # ```
   def image_masked: (Integer image_id, String mask_data, Integer x, Integer y, Integer w, Integer h) -> void
 end

@@ -5,64 +5,165 @@
 # 音を一つずつ鳴らすのと、両方できる。
 
 class FmrbAudio
-  # 音の係を作る
+  # 音の係を作る <<en>> Make the sound handler
+  #
+  # ```ruby
+  # @audio = FmrbAudio.new(self)
+  # ```
   def self.new: (FmrbApp app) -> FmrbAudio
 
-  # 曲のファイルを鳴らす
+  # 曲のファイルを鳴らす <<en>> Play a song file
+  #
+  # NSF を鳴らす。曲は /usr/share/sounds/nsf にある。
+  # ```ruby
+  # @audio.play("/usr/share/sounds/nsf/test.nsf")
+  # ```
+  # <<en>>
+  # Plays an NSF. The tunes live in /usr/share/sounds/nsf.
+  # ```ruby
+  # @audio.play("/usr/share/sounds/nsf/test.nsf")
+  # ```
   def play: (String path) -> void
 
-  # 曲を止める
+  # 曲を止める <<en>> Stop the song
+  #
+  # ```ruby
+  # @audio.stop
+  # ```
   def stop: () -> void
 
-  # 曲をいったん止める
+  # 曲をいったん止める <<en>> Pause the song
+  #
+  # ```ruby
+  # @audio.pause
+  # ```
   def pause: () -> void
 
-  # 止めた曲の続きを鳴らす
+  # 止めた曲の続きを鳴らす <<en>> Carry on from the pause
+  #
+  # ```ruby
+  # @audio.resume
+  # ```
   def resume: () -> void
 
-  # 曲のデータを箱に入れる
+  # 曲のデータを箱に入れる <<en>> Put song data into a slot
+  #
+  # 曲を枠に読み込む。**鳴らすのは play_slot**。
+  # ```ruby
+  # data = File.open(path, "r") { |f| f.read }
+  # @audio.load_fmsq(0, data)
+  # ```
+  # <<en>>
+  # Loads a tune into a slot. **play_slot is what sounds it.**
+  # ```ruby
+  # data = File.open(path, "r") { |f| f.read }
+  # @audio.load_fmsq(0, data)
+  # ```
   def load_fmsq: (Integer slot_id, String binary_data) -> void
 
-  # 曲のファイルを箱に読み込む
+  # 曲のファイルを箱に読み込む <<en>> Read a song file into a slot
+  #
+  # ```ruby
+  # @audio.load_fmsq_file(0,
+  #   "/usr/share/music/round.mml")
+  # ```
   def load_fmsq_file: (Integer slot_id, String path) -> void
 
-  # 箱に入れた曲を鳴らす
+  # 箱に入れた曲を鳴らす <<en>> Play the song in a slot
+  #
+  # ```ruby
+  # @audio.play_slot(0)
+  # ```
   def play_slot: (Integer slot_id) -> void
 
-  # 録音した音 (WAV) を鳴らす
+  # 録音した音 (WAV) を鳴らす <<en>> Play a recorded sound (WAV)
   #
   # PCM 16bit・モノラル・8000〜48000Hz・2MB まで。APU の音に重ねて鳴る。
   # 一度に鳴らせるのは 1 本で、鳴っている間にもう一度呼ぶと入れ替わる。
   # Retro では鳴らせないので false を返す (鳴ったときは true)。
+  # <<en>>
+  # 16-bit PCM, mono, 8000 to 48000Hz, up to 2MB. It plays over the APU.
+  # Only one at a time: calling again while one sounds replaces it.
+  # Retro cannot play it and gets false back (true when it does play).
   def play_wav: (String path) -> bool
 
-  # 鳴っている WAV を止める
+  # 鳴っている WAV を止める <<en>> Stop the WAV that is playing
+  #
+  # ```ruby
+  # @audio.stop_wav
+  # ```
   def stop_wav: () -> bool
 
-  # 音を一つ鳴らす
+  # 音を一つ鳴らす <<en>> Sound one note
+  #
+  # 周波数を Hz で渡す。曲を鳴らしている最中でも重なる。
+  # ```ruby
+  # @audio.note_on(0, 440)
+  # ```
+  # <<en>>
+  # The frequency is in Hz. It sounds over a tune that is already playing.
+  # ```ruby
+  # @audio.note_on(0, 440)
+  # ```
   def note_on: (Integer channel, Integer freq) -> void
 
-  # 鳴っている音を止める
+  # 鳴っている音を止める <<en>> Stop a note
+  #
+  # ```ruby
+  # @audio.note_off(0)
+  # ```
   def note_off: (Integer channel) -> void
 end
 
 # NSF (ファミコンの曲) のファイルの題名などを読む。
 class NsfHeader
-  # 曲のファイルから題名などを読む
+  # 曲のファイルから題名などを読む <<en>> Read the title and the rest from a song file
+  #
+  # NSF の見出しだけを読む。曲は鳴らさない。読めなければ nil。
+  # ```ruby
+  # h = NsfHeader.parse(path)
+  # Log.info(h.song_name) if h
+  # ```
+  # <<en>>
+  # Reads an NSF's header without playing it; nil when it cannot.
+  # ```ruby
+  # h = NsfHeader.parse(path)
+  # Log.info(h.song_name) if h
+  # ```
   def self.parse: (String path) -> NsfHeader?
 
-  # 曲の題名
+  # 曲の題名 <<en>> The song's title
+  #
+  # ```ruby
+  # h.song_name
+  # ```
   def song_name: () -> String
 
-  # 作った人
+  # 作った人 <<en>> Who made it
+  #
+  # ```ruby
+  # h.artist
+  # ```
   def artist: () -> String
 
-  # 権利の表示
+  # 権利の表示 <<en>> The rights notice
+  #
+  # ```ruby
+  # h.copyright
+  # ```
   def copyright: () -> String
 
-  # 入っている曲の数
+  # 入っている曲の数 <<en>> How many songs are inside
+  #
+  # ```ruby
+  # n = h.total_songs
+  # ```
   def total_songs: () -> Integer
 
-  # 最初に鳴らす曲の番号
+  # 最初に鳴らす曲の番号 <<en>> Which song plays first
+  #
+  # ```ruby
+  # i = h.starting_song
+  # ```
   def starting_song: () -> Integer
 end

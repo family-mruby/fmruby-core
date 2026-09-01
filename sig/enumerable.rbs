@@ -1,8 +1,44 @@
 # Minimal Enumerable for host_test (TI_CLASS_ENUMERABLE).
 
 module Enumerable
+  # 要素ごとにブロックを実行する <<en>> Run the block for each item
+  #
+  # ```ruby
+  # obj.each { |v| p v }
+  # ```
   def each: () { (untyped item) -> untyped } -> untyped
+  # 要素と番号でブロックを実行する <<en>> Run the block with the item and its position
+  #
+  # **ブロックは値と番号の 2 つ**を受け取る。
+  # ```ruby
+  # a.each_with_index do |v, i|
+  #   draw(i, v)
+  # end
+  # ```
+  # <<en>>
+  # **The block takes two**: the value and its position.
+  # ```ruby
+  # a.each_with_index do |v, i|
+  #   draw(i, v)
+  # end
+  # ```
   def each_with_index: () { (untyped item, Integer index) -> untyped } -> untyped
+  # 要素ごとの結果を集めた配列を返す <<en>> Return an array of what the block gave back
+  #
+  # **新しい配列ができる**。自分を書き換えるなら `collect!`。
+  # ```ruby
+  # b = a.map { |v| v * 2 }
+  # ```
+  # <<en>>
+  # It makes a new array; `collect!` rewrites in place.
+  # ```ruby
+  # b = a.map { |v| v * 2 }
+  # ```
   def map: () { (untyped item) -> untyped } -> Array
+  # 配列にする <<en>> Turn it into an array
+  #
+  # ```ruby
+  # a = obj.to_a
+  # ```
   def to_a: () -> Array
 end

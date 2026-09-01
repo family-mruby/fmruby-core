@@ -101,15 +101,15 @@ class FmrbUI
   #
   # 押している間だけ反転し、離したときに handle が id を返します。
   # 部品の外で離したときは何も起きません。
-  # <<en>>
-  # Inverted while held; handle returns the id when the button is released
-  # on top of it. Releasing outside does nothing. text_size: enlarges the
-  # label (1-4), as on every widget.
   #
   # `accent:` に色 (RGB332) を渡すと、テーマのボタン色の代わりにその色で
   # 塗ります。**色そのものが意味を持つ数少ない場合だけ**に使います
   # (確認ダイアログの Yes、再生/停止など)。Toggle では入のときの色です。
   # <<en>>
+  # Inverted while held; handle returns the id when the button is released
+  # on top of it. Releasing outside does nothing. text_size: enlarges the
+  # label (1-4), as on every widget.
+  #
   # accent: paints the button in that RGB332 colour instead of the theme's.
   # Reserve it for the few controls whose colour carries meaning - a confirm
   # dialog's Yes, a transport's Stop. On a Toggle it is the on colour.
@@ -192,9 +192,17 @@ class FmrbUI
   def text_field: (Symbol id, Integer x, Integer y, Integer w, Integer h, String text) -> FmrbUI::TextField
 
   # 打たれている文字 <<en>> What has been typed
+  #
+  # ```ruby
+  # name = @ui.field_text(:name)
+  # ```
   def field_text: (Symbol id) -> String?
 
   # 文字を入れ直す <<en>> Replace what is in the field
+  #
+  # ```ruby
+  # @ui.set_field_text(:name, "untitled")
+  # ```
   def set_field_text: (Symbol id, String text) -> void
 
   # 焦点を当てる <<en>> Give a widget the focus
@@ -205,6 +213,10 @@ class FmrbUI
   def focus: (Symbol id) -> void
 
   # 焦点のある部品の名前 <<en>> Which widget has the focus
+  #
+  # ```ruby
+  # return if @ui.focused == :name
+  # ```
   def focused: () -> Symbol?
 
   # イベントを渡す <<en>> Feed one event
@@ -237,6 +249,18 @@ class FmrbUI
   def invalidate_all: () -> void
 
   # id から部品を探す <<en>> Find a widget by id
+  #
+  # 見つからなければ nil。
+  # ```ruby
+  # w = @ui.find(:ok)
+  # w.place(x, y, 60, 20) if w
+  # ```
+  # <<en>>
+  # nil when there is none.
+  # ```ruby
+  # w = @ui.find(:ok)
+  # w.place(x, y, 60, 20) if w
+  # ```
   def find: (Symbol id) -> FmrbUI::Widget?
 
   # 部品を置き直す <<en>> Move and resize a widget
@@ -247,6 +271,10 @@ class FmrbUI
   def move: (Symbol id, Integer x, Integer y, Integer w, Integer h) -> void
 
   # 切替が入かどうか <<en>> Whether the toggle is on
+  #
+  # ```ruby
+  # save_backup if @ui.on?(:backup)
+  # ```
   def on?: (Symbol id) -> bool
 
   # 切替を外から入切する <<en>> Set a toggle from the app
@@ -272,6 +300,10 @@ class FmrbUI
   def set_value: (Symbol id, Integer value) -> bool
 
   # 今の数を読む <<en>> Read the current stepper value
+  #
+  # ```ruby
+  # n = @ui.value(:speed)
+  # ```
   def value: (Symbol id) -> Integer
 
   # 部品を使える/使えないにする <<en>> Enable or disable a widget
@@ -296,105 +328,245 @@ class FmrbUI
   def set_origin: (Integer x0, Integer y0) -> void
 
   # 置いてある部品の一覧 <<en>> The widgets placed so far
+  #
+  # ```ruby
+  # @ui.widgets.length
+  # ```
   def widgets: () -> Array[FmrbUI::Widget]
 end
 
 # 部品に共通のところ <<en>> What every widget has
 class FmrbUI::Widget
   # この部品の名前 <<en>> This widget's id
+  #
+  # ```ruby
+  # case w.id
+  # when :ok then close
+  # end
+  # ```
   def id: () -> Symbol
 
   # 左端の位置 (画面の座標) <<en>> Left edge (canvas coordinates)
+  #
+  # ```ruby
+  # left = w.x
+  # ```
   def x: () -> Integer
 
   # 上端の位置 (画面の座標) <<en>> Top edge (canvas coordinates)
+  #
+  # ```ruby
+  # top = w.y
+  # ```
   def y: () -> Integer
 
   # 横幅 (ドット) <<en>> Width in pixels
+  #
+  # ```ruby
+  # width = w.w
+  # ```
   def w: () -> Integer
 
   # 高さ (ドット) <<en>> Height in pixels
+  #
+  # ```ruby
+  # height = w.h
+  # ```
   def h: () -> Integer
 
   # 次の flush で描き直すか <<en>> Whether the next flush redraws it
+  #
+  # ```ruby
+  # @ui.flush if w.dirty
+  # ```
   def dirty: () -> bool
 
   # 使えるかどうか <<en>> Whether it accepts clicks
+  #
+  # ```ruby
+  # return unless w.enabled
+  # ```
   def enabled: () -> bool
 
   # 出ているかどうか <<en>> Whether it is shown
+  #
+  # ```ruby
+  # next unless w.visible
+  # ```
   def visible: () -> bool
 
   # 文字の大きさ (作ったときに決まる) <<en>> Text scale, fixed at creation
+  #
+  # ```ruby
+  # s = w.text_size
+  # ```
   def text_size: () -> Integer
 
   # その点がこの部品の上か <<en>> Whether the point is inside
+  #
+  # ```ruby
+  # hit = w.hit?(ev[:x], ev[:y])
+  # ```
   def hit?: (Integer px, Integer py) -> bool
 
   # 置き直す (画面の座標) <<en>> Move and resize (canvas coordinates)
+  #
+  # **作ったあとに動かす**ときに使う。大きさを変えた窓に部品を
+  # 並べ直すのはこれ。
+  # ```ruby
+  # w.place(10, 40, 80, 20)
+  # @ui.flush
+  # ```
+  # <<en>>
+  # Moves a widget that already exists -- what you use to lay the
+  # widgets out again after the window is resized.
+  # ```ruby
+  # w.place(10, 40, 80, 20)
+  # @ui.flush
+  # ```
   def place: (Integer x, Integer y, Integer w, Integer h) -> void
 end
 
 # 文字だけの部品 <<en>> A text-only widget
 class FmrbUI::Label < FmrbUI::Widget
   # 出ている文字 <<en>> The text shown
+  #
+  # ```ruby
+  # s = label.text
+  # ```
   def text: () -> String
 end
 
 # 押しボタン <<en>> A push button
 class FmrbUI::Button < FmrbUI::Widget
   # ボタンの文字 <<en>> The button's text
+  #
+  # ```ruby
+  # s = button.text
+  # ```
   def text: () -> String
 end
 
 # 入切の切替 <<en>> An on/off toggle
 class FmrbUI::Toggle < FmrbUI::Widget
   # 切のときの文字 <<en>> The text shown when off
+  #
+  # ```ruby
+  # s = toggle.text
+  # ```
   def text: () -> String
 
   # 入のときの文字 <<en>> The text shown when on
+  #
+  # ```ruby
+  # s = toggle.on_text
+  # ```
   def on_text: () -> String
 
   # 入かどうか <<en>> Whether it is on
+  #
+  # ```ruby
+  # save if toggle.on?
+  # ```
   def on?: () -> bool
 
   # 入切を変える <<en>> Switch it on or off
+  #
+  # **押されたことにはならない** — 見た目と状態だけ変わる。
+  # ```ruby
+  # toggle.set_on(true)
+  # @ui.flush
+  # ```
+  # <<en>>
+  # It does not count as a press: only the look and the state change.
+  # ```ruby
+  # toggle.set_on(true)
+  # @ui.flush
+  # ```
   def set_on: (bool flag) -> void
 
   # 同じ一つだけ入にする仲間の名前 <<en>> The radio group name
+  #
+  # 同じ名前の仲間のうち一つだけが入になる。
+  # ```ruby
+  # g = toggle.group
+  # ```
+  # <<en>>
+  # Only one toggle in a group is on at a time.
+  # ```ruby
+  # g = toggle.group
+  # ```
   def group: () -> Symbol
 end
 
 # 1 行の文字入力欄 <<en>> A one-line text field
 class FmrbUI::TextField < FmrbUI::Widget
   # 打たれている文字 <<en>> What has been typed
+  #
+  # ```ruby
+  # s = field.field_text
+  # ```
   def field_text: () -> String
 
   # 焦点があるか <<en>> Whether it has the focus
+  #
+  # ```ruby
+  # draw_caret if field.focused?
+  # ```
   def focused?: () -> bool
 end
 
 # 選択肢を選ぶ部品 <<en>> A choice picker
 class FmrbUI::Enum < FmrbUI::Stepper
   # 選ばれている文字 <<en>> The chosen string
+  #
+  # 何も選ばれていなければ nil。
+  # ```ruby
+  # s = sel.option_text
+  # ```
+  # <<en>>
+  # nil when nothing is chosen.
+  # ```ruby
+  # s = sel.option_text
+  # ```
   def option_text: () -> String?
 end
 
 # 数を増減する部品 <<en>> A value stepper
 class FmrbUI::Stepper < FmrbUI::Widget
   # 今の数 <<en>> The current value
+  #
+  # ```ruby
+  # n = stepper.value
+  # ```
   def value: () -> Integer
 
   # 下限 <<en>> The lowest value
+  #
+  # ```ruby
+  # lo = stepper.min
+  # ```
   def min: () -> Integer
 
   # 上限 <<en>> The highest value
+  #
+  # ```ruby
+  # hi = stepper.max
+  # ```
   def max: () -> Integer
 
   # 一度に増減する幅 <<en>> How much one press moves the value
+  #
+  # ```ruby
+  # d = stepper.step
+  # ```
   def step: () -> Integer
 
   # 出ている文字 <<en>> The text shown
+  #
+  # ```ruby
+  # s = stepper.text
+  # ```
   def text: () -> String
 
   # 数を入れる <<en>> Set the value
