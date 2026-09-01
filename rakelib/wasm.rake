@@ -206,6 +206,20 @@ namespace :wasm do
     # that can work without a network.
     cp File.join(ROOT_DIR, "config/services_wasm.toml"),
        File.join(staging, "etc/services.toml")
+    # The editor's F1 help. Generated from the long half of sig/'s doc
+    # comments, so it is not tracked either -- and staging only tracked files
+    # meant the browser had never had any of it, while a device did (its
+    # storage image is built from the working tree). Made here so a bundle
+    # cannot be built from a stale one.
+    Rake::Task["ti:help"].invoke
+    help_src = File.join(ROOT_DIR, "flash/help")
+    if Dir.exist?(help_src)
+      Dir.glob(File.join(help_src, "**/*")).select { |f| File.file?(f) }.each do |f|
+        dest = File.join(staging, "help", f.sub(help_src + "/", ""))
+        mkdir_p File.dirname(dest)
+        cp f, dest
+      end
+    end
     # Belt and braces: refuse to ship anything that smells like a credential.
     bad = files.grep(%r{wifi\.toml|secrets})
     abort "wasm:webflash: refusing to stage #{bad.inspect}" unless bad.empty?
@@ -278,6 +292,8 @@ namespace :wasm do
                  "/flash/data/bg_426x240.png"].to_set
     packed.each do |f|
       next if tracked.include?(f) || generated.include?(f)
+      # The editor's help tree, made by ti:help from sig/ at staging time.
+      next if f.start_with?("/flash/help/")
       problems << "packed file is neither tracked nor a known generated one: #{f}"
     end
 
