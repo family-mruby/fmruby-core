@@ -172,12 +172,12 @@ namespace :wasm do
     # never from whatever the last target build staged into flash/etc.
     files = `git -C #{ROOT_DIR} ls-files -z flash`.split("\0")
     abort "wasm:webflash: git ls-files returned nothing" if files.empty?
-    # Rights, not secrecy: NSF tunes ride in the repo for the device, but
-    # putting a page on the open web is a different act from having a file on
-    # a board in one's hand. The player ships and finds an empty directory.
-    # (This filter was written in P5 and lost in a concurrent-edit mishap
-    # before it was ever committed; wasm:scan now asserts it as well.)
-    files = files.reject { |f| f.end_with?(".nsf") }
+    # Rights: the tunes under usr/share/sounds/nsf are ours to publish and
+    # ship, so the player has something to play on the open web. Anything
+    # else with that extension does not -- a tune tracked elsewhere would be
+    # somebody's music riding along, which is a different act from having a
+    # file on a board in one's hand. wasm:scan asserts the same rule.
+    files = files.reject { |f| f.end_with?(".nsf") && !f.start_with?("flash/usr/share/sounds/nsf/") }
     files.each do |f|
       dest = File.join(staging, f.sub(%r{\Aflash/}, ""))
       mkdir_p File.dirname(dest)
@@ -284,8 +284,8 @@ namespace :wasm do
       problems << "a local credential appears in core_web.data" if blob.include?(secret)
     end
     # And the shapes a key takes even when this machine has none to compare.
-    packed.select { |f| f.end_with?(".nsf") }.each do |f|
-      problems << "NSF tune in the public bundle (rights): #{f}"
+    packed.select { |f| f.end_with?(".nsf") && !f.start_with?("/flash/usr/share/sounds/nsf/") }.each do |f|
+      problems << "NSF tune from outside usr/share/sounds/nsf in the public bundle (rights): #{f}"
     end
     { "OpenAI-style key" => /sk-[A-Za-z0-9_-]{20}/,
       "PEM private key"  => /BEGIN [A-Z ]*PRIVATE KEY/ }.each do |what, re|

@@ -69,6 +69,8 @@ FmrbI18n.add(
     connected:       "Connected",
     disconnected:    "Not connected",
     wifi_unavailable:"WiFi unavailable",
+    net_browser:     "The browser handles the network here.",
+    net_browser2:    "This machine has none of its own.",
     refresh:         "Refresh",
   },
   "ja" => {
@@ -134,6 +136,8 @@ FmrbI18n.add(
     connected:       "接続済み",
     disconnected:    "未接続",
     wifi_unavailable:"WiFi利用不可",
+    net_browser:     "通信はブラウザが受け持ちます。",
+    net_browser2:    "この機械自身は網を持ちません。",
     refresh:         "更新",
   },
 )

@@ -78,7 +78,14 @@ module NetworkDialogMixin
     @gfx.draw_text(x + 4, y + 3, FmrbI18n.t(:network), FmrbConst::THEME_TEXT_LIGHT, NET_HEADER, mixed: true)
 
     body_y = y + NET_TITLE_H + 6
-    if @net_info.nil?
+    if self.class::ON_WEB
+      # The page has no network of its own to report -- the loopback address
+      # the host port hands back would only invite a pointless Refresh. The
+      # entry stays because this is where the browser's own connections
+      # (HTTP, WebSocket) will be described when they arrive.
+      @gfx.draw_text(x + 8, body_y, FmrbI18n.t(:net_browser), NET_TEXT, NET_BG, mixed: true)
+      @gfx.draw_text(x + 8, body_y + 14, FmrbI18n.t(:net_browser2), NET_TEXT, NET_BG, mixed: true)
+    elsif @net_info.nil?
       @gfx.draw_text(x + 8, body_y, FmrbI18n.t(:wifi_unavailable), NET_TEXT, NET_BG, mixed: true)
     else
       connected = @net_info[:connected]
@@ -124,7 +131,7 @@ module NetworkDialogMixin
   end
 
   def show_network_widgets(on)
-    @ui.set_visible(:net_refresh, on)
+    @ui.set_visible(:net_refresh, on && !self.class::ON_WEB)
     @ui.set_visible(:net_close, on)
     nil
   end

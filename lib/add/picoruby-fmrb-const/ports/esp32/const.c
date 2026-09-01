@@ -358,7 +358,11 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     // Board identity (from FMRB_HW_* macros, see fmrb_hw_defines.cmake).
     // Finer-grained than PLATFORM/CHIP_MODEL: lets apps pick board-specific
     // wiring (e.g. GPIO numbers) without guessing from the chip model.
-#if defined(CONFIG_IDF_TARGET_LINUX)
+#if defined(__EMSCRIPTEN__)
+    // The browser is its own machine: the wasm build shares the Linux port,
+    // so PLATFORM cannot tell the two apart and BOARD is what says which.
+    mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "wasm"));
+#elif defined(CONFIG_IDF_TARGET_LINUX)
     mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "linux"));
 #elif defined(FMRB_HW_TAB5)
     mrb_define_const(mrb, const_module, "BOARD", mrb_str_new_cstr(mrb, "tab5"));

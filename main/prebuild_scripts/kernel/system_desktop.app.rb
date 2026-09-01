@@ -44,6 +44,11 @@ class SystemDesktopApp < FmrbApp
   # - Retro / Linux sim: the graphics side is a separate processor/process;
   #   the kernel file-sync (system_conf.toml, Linux) pushes the asset to its
   #   /flash/data, which that side sees as /data.
+  # The browser build. It shares the Linux port, so PLATFORM says "linux" for
+  # both and only BOARD tells them apart. Used where a cell or a menu entry
+  # describes hardware a page does not have.
+  ON_WEB = (FmrbConst::BOARD == "wasm")
+
   BG_IMAGE_PATH = if FmrbConst::PLATFORM == "esp32" && FmrbConst::CHIP_MODEL == "ESP32-P4"
                     "/usr/share/backgrounds/bg_426x240.png"
                   else
@@ -75,8 +80,12 @@ class SystemDesktopApp < FmrbApp
     { key: :monitor },
     { key: :set_clock },
     { key: :config },
-    { key: :storage },
-  ] + (FmrbConst::HAS_WIFI ? [{ key: :network }] : []) +
+  ] +
+    # Storage clears the device's own caches, which the browser build has no
+    # equivalent of -- what a visitor there wants to manage is the page's
+    # stored /home, and that lives on the page around the screen.
+    (ON_WEB ? [] : [{ key: :storage }]) +
+    (FmrbConst::HAS_WIFI ? [{ key: :network }] : []) +
     # Retro only: manual BLE start for the ble_auto_start=false configuration
     # (on Modern the C6 radio path manages itself). Harmless when BLE is
     # already up -- the C side is idempotent.
@@ -673,6 +682,10 @@ class SystemDesktopApp < FmrbApp
   end
 
   def draw_meminfo
+    # Nothing to say in a browser: there is no internal RAM figure to fetch,
+    # so the cell would sit there reading "---KB" for ever. An empty slot is
+    # better than a broken-looking one.
+    return if ON_WEB
     x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W
     @gfx.draw_free_iram(x, 2, FmrbGfx::WHITE, MENU_BG)
   end
