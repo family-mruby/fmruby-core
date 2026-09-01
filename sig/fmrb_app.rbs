@@ -10,38 +10,99 @@ class FmrbApp
   @gfx: FmrbGfx
 
   # 絵を描く画面
+  #
+  # ```ruby
+  # gfx.fill_rect(0, 0, 10, 10,
+  #               theme_fg)
+  # gfx.present
+  # ```
   def gfx: () -> FmrbGfx
 
   # ---- 名前や大きさ ----
 
   # アプリの名前
+  #
+  # ```ruby
+  # Log.info("#{name} started")
+  # ```
   def name: () -> String
 
   # 動いている最中かどうか
+  #
+  # ```ruby
+  # stop unless running
+  # ```
   def running: () -> bool
 
   # 窓の横幅 (ドット)
+  #
+  # 窓の外枠まで含めた幅。中に描ける範囲は `@user_area_width` の方。
+  # ```ruby
+  # w = window_width
+  # ```
+  # <<en>>
+  # The window including its border. What can be drawn in is
+  # `@user_area_width`.
+  # ```ruby
+  # w = window_width
+  # ```
   def window_width: () -> Integer
 
   # 窓の高さ (ドット)
+  #
+  # ```ruby
+  # h = window_height
+  # ```
   def window_height: () -> Integer
 
   # 窓の左上の位置
+  #
+  # ```ruby
+  # x = pos_x
+  # ```
   def pos_x: () -> Integer
 
   # 窓の左上の位置
+  #
+  # ```ruby
+  # y = pos_y
+  # ```
   def pos_y: () -> Integer
 
   # 動いている機械の種類
+  #
+  # `"esp32"` か `"linux"` を返す。ブラウザ版も `"linux"` なので、
+  # ブラウザを見分けるなら `FmrbConst::BOARD == "wasm"`。
+  # ```ruby
+  # if platform == "esp32"
+  # ```
+  # <<en>>
+  # Either `"esp32"` or `"linux"`. The browser build says `"linux"` too;
+  # tell it apart with `FmrbConst::BOARD == "wasm"`.
+  # ```ruby
+  # if platform == "esp32"
+  # ```
   def platform: () -> String
 
   # 全画面かどうか
+  #
+  # ```ruby
+  # draw_window_frame unless fullscreen
+  # ```
   def fullscreen: () -> bool
 
   # 窓の角が丸いかどうか
+  #
+  # ```ruby
+  # r = rounded_corners ? 6 : 0
+  # ```
   def rounded_corners: () -> bool
 
   # 閉じるボタンで終われるか
+  #
+  # ```ruby
+  # show_close_button if closable
+  # ```
   def closable: () -> bool
 
   # ---- 呼ばれるところ (書きかえて使う) ----
@@ -256,6 +317,30 @@ class FmrbApp
   def on_resize: (Integer new_width, Integer new_height) -> void
 
   # 閉じてよいか聞かれたとき
+  #
+  # 閉じるボタンや Ctrl+Q で呼ばれる。**書き換えなければそのまま終わる**。
+  # 保存を尋ねたいときはここで止める。
+  # ```ruby
+  # def on_quit_request
+  #   if @modified
+  #     ask_save
+  #   else
+  #     stop
+  #   end
+  # end
+  # ```
+  # <<en>>
+  # Called by the close button and Ctrl+Q. **Left alone, the app just ends.**
+  # Override it to ask about unsaved work.
+  # ```ruby
+  # def on_quit_request
+  #   if @modified
+  #     ask_save
+  #   else
+  #     stop
+  #   end
+  # end
+  # ```
   def on_quit_request: () -> void
 
   # ---- 動かす ----
@@ -277,15 +362,35 @@ class FmrbApp
   def start: () -> void
 
   # アプリを止める
+  #
+  # ループを抜けて終わる。**これを通った終わりだけが「行儀のよい終わり」**
+  # として記録され、例外で落ちたのと区別が付く。
+  # <<en>>
+  # Leaves the loop and ends. **Only an ending that goes through here counts
+  # as an orderly one**, which is how the kernel tells it from a crash.
   def stop: () -> void
 
   # 使った物を片づける
+  #
+  # 後始末。`start` が最後に自分で呼ぶので、普通は書かない。
+  # <<en>>
+  # Cleanup. `start` calls it at the end, so an app rarely calls it itself.
   def destroy: () -> void
 
   # 自分をもう一度読み込み直す
+  #
+  # ファイルから起動したアプリを、書き直した内容で起動し直すよう頼む。
+  # タイトルバーの右クリックがこれを呼んでいる。
+  # <<en>>
+  # Asks for a file-based app to be started again from the rewritten file.
+  # Right-clicking the title bar does this.
   def request_reload: () -> void
 
   # 呼ばれ続ける本体の繰り返し
+  #
+  # `start` の中身。自分で呼ぶことはまず無い。
+  # <<en>>
+  # What `start` runs. There is rarely a reason to call it directly.
   def main_loop: () -> void
 
   # ---- 窓と絵 ----
@@ -331,27 +436,88 @@ class FmrbApp
   # ---- テーマの色 (system_conf.toml の [theme]) ----
 
   # 紙の色 <<en>> page background from the system theme
+  #
+  # ```ruby
+  # gfx.fill_rect(0, 0, 40, 20,
+  #               theme_bg)
+  # ```
   def theme_bg: () -> Integer
 
   # 紙に書く字の色 <<en>> ink for text on theme_bg
+  #
+  # ```ruby
+  # gfx.fill_rect(0, 0, 40, 20,
+  #               theme_fg)
+  # ```
   def theme_fg: () -> Integer
 
   # 目立たせる色 <<en>> selection / emphasis colour
+  #
+  # ```ruby
+  # gfx.fill_rect(0, 0, 40, 20,
+  #               theme_accent)
+  # ```
   def theme_accent: () -> Integer
 
   # 線や枠、うすい字の色 <<en>> rules, boxes, muted text
+  #
+  # ```ruby
+  # gfx.fill_rect(0, 0, 40, 20,
+  #               theme_border)
+  # ```
   def theme_border: () -> Integer
 
   # 濃い地の上に書く字の色 <<en>> ink on accent or button backgrounds
+  #
+  # ```ruby
+  # gfx.fill_rect(0, 0, 40, 20,
+  #               theme_fg_light)
+  # ```
   def theme_fg_light: () -> Integer
 
   # 右はしに巻物のつまみを描く
+  #
+  # 窓の右端にスクロールバーを描く。**位置は自分で持つ** — この呼び出しは
+  # 絵を描くだけで、値は覚えない。
+  # ```ruby
+  # draw_scrollbar(@scroll,
+  #                @lines.size,
+  #                visible_rows)
+  # ```
+  # <<en>>
+  # Draws the bar down the right edge. **The position stays yours** -- this
+  # only paints it.
+  # ```ruby
+  # draw_scrollbar(@scroll,
+  #                @lines.size,
+  #                visible_rows)
+  # ```
   def draw_scrollbar: (Integer scroll, Integer total, Integer visible) -> void
 
   # つまみのどこを押したか調べる
+  #
+  # クリックがバーのどこに当たったかを返す。当たっていなければ nil。
+  # ```ruby
+  # case scrollbar_hit(ev[:x], ev[:y])
+  # when :up   then @scroll -= 1
+  # when :down then @scroll += 1
+  # end
+  # ```
+  # <<en>>
+  # Where a click landed on the bar, or nil if it missed.
+  # ```ruby
+  # case scrollbar_hit(ev[:x], ev[:y])
+  # when :up   then @scroll -= 1
+  # when :down then @scroll += 1
+  # end
+  # ```
   def scrollbar_hit: (Integer click_x, Integer click_y) -> Symbol?
 
   # 窓を動かす
+  #
+  # ```ruby
+  # set_window_position(20, 40)
+  # ```
   def set_window_position: (Integer x, Integer y) -> FmrbApp
 
   # 全画面にするか元に戻すか頼む
@@ -371,6 +537,12 @@ class FmrbApp
   def request_fullscreen: (bool on) -> void
 
   # 全画面と窓を切りかえる
+  #
+  # 全画面と窓を切り替える。**答えは `on_resize` で返る** (`request_fullscreen`
+  # と同じ)。
+  # <<en>>
+  # Switches between full screen and a window. **The answer arrives as
+  # `on_resize`**, as with `request_fullscreen`.
   def toggle_fullscreen: () -> void
 
   # 自分用の画面をもう一枚作る
@@ -407,6 +579,10 @@ class FmrbApp
   def create_canvas_gfx: (Integer width, Integer height) -> FmrbGfx
 
   # 作った画面を片づける
+  #
+  # ```ruby
+  # delete_canvas_gfx(@layer)
+  # ```
   def delete_canvas_gfx: (FmrbGfx gfx) -> void
 
   # ---- キーの調べかた (on_event の中で使う) ----
@@ -439,9 +615,17 @@ class FmrbApp
   def ev_ctrl?: (Hash ev) -> bool
 
   # Shift を押していたかどうか
+  #
+  # ```ruby
+  # if ev_shift?(ev)
+  # ```
   def ev_shift?: (Hash ev) -> bool
 
   # Alt を押していたかどうか
+  #
+  # ```ruby
+  # if ev_alt?(ev)
+  # ```
   def ev_alt?: (Hash ev) -> bool
 
   # ---- 時間と伝言 ----
@@ -477,12 +661,39 @@ class FmrbApp
   def set_timer: (Integer interval) -> Integer
 
   # 時間の呼び出しをやめる
+  #
+  # `set_timer` が返した番号を渡して止める。名前がそろっていないので注意。
+  # ```ruby
+  # @id = set_timer(500) { blink }
+  # clear_time(@id)
+  # ```
+  # <<en>>
+  # Stops the timer whose id `set_timer` returned. The two names do not
+  # match; that is how it is.
+  # ```ruby
+  # @id = set_timer(500) { blink }
+  # clear_time(@id)
+  # ```
   def clear_time: (Integer timer_id) -> void
 
   # 知らせを受け取るようにする
+  #
+  # その名前で配られたものが `on_control` に届くようになる。
+  # ```ruby
+  # subscribe("clock/hour")
+  # ```
+  # <<en>>
+  # What is published under that name starts arriving at `on_control`.
+  # ```ruby
+  # subscribe("clock/hour")
+  # ```
   def subscribe: (String topic) -> void
 
   # 知らせを受け取るのをやめる
+  #
+  # ```ruby
+  # unsubscribe("clock/hour")
+  # ```
   def unsubscribe: (String topic) -> void
 
   # みんなに知らせを送る
@@ -501,89 +712,272 @@ class FmrbApp
   def publish: (String topic) -> void
 
   # 他のアプリに伝言を送る
+  #
+  # 特定の相手に直接送る。**1 通 176 バイトまで**は `publish` と同じ。
+  # ```ruby
+  # send_message(pid,
+  #   FmrbConst::MSG_TYPE_APP_CONTROL,
+  #   { "cmd" => "hello" })
+  # ```
+  # <<en>>
+  # Sends straight to one process. The same **176-byte** limit as `publish`.
+  # ```ruby
+  # send_message(pid,
+  #   FmrbConst::MSG_TYPE_APP_CONTROL,
+  #   { "cmd" => "hello" })
+  # ```
   def send_message: (Integer dest_pid, Integer msg_type, untyped data) -> void
 
   # ---- ファイル ----
 
   # ファイルを選ぶ窓を出してもらう
+  #
+  # ファイル選択の窓を開くよう頼む。選ばれた道は `on_control` に届く。
+  # "open" か "save" を渡す。
+  # ```ruby
+  # request_file_select("open")
+  # ```
+  # <<en>>
+  # Asks for the file dialog; the chosen path arrives at `on_control`.
+  # Pass "open" or "save".
+  # ```ruby
+  # request_file_select("open")
+  # ```
   def request_file_select: (String mode) -> void
 
   # ファイルをアプリとして動かす
+  #
+  # ```ruby
+  # request_run("/app/usr/mine.app.rb")
+  # ```
   def request_run: (String path) -> void
 
   # ---- 後片づけの調子 ----
 
   # ひまな時に片づけをするか
+  #
+  # 暇なときに GC を回す設定が入っているかどうか。
+  # <<en>>
+  # Whether the app collects garbage while it has nothing to do.
   def idle_gc: () -> bool
 
   # ---- クラスメソッド ----
 
   # 今の言葉 ("ja" か "en")
+  #
+  # ```ruby
+  # if FmrbApp.language == "ja"
+  # ```
   def self.language: () -> String
 
   # 動いているアプリの一覧
+  #
+  # 動いているアプリの一覧。1 つずつが名前と pid を持つ Hash。
+  # ```ruby
+  # FmrbApp.ps.each do |a|
+  #   Log.info("#{a[:pid]} #{a[:name]}")
+  # end
+  # ```
+  # <<en>>
+  # Every running app, each a Hash with its name and pid.
+  # ```ruby
+  # FmrbApp.ps.each do |a|
+  #   Log.info("#{a[:pid]} #{a[:name]}")
+  # end
+  # ```
   def self.ps: () -> Array
 
   # アプリ一覧が変わった回数
+  #
+  # 一覧が変わるたびに増える番号。**これが変わったときだけ `ps` を呼べば**、
+  # 毎フレーム一覧を作らずに済む。
+  # <<en>>
+  # A number that changes whenever the list does. **Call `ps` only when it
+  # moves** and the list is not rebuilt every frame.
   def self.ps_gen: () -> Integer
 
   # 空きメモリの様子
+  #
+  # ```ruby
+  # h = FmrbApp.heap_info
+  # Log.info("#{h[:free]} free")
+  # ```
   def self.heap_info: () -> Hash
 
   # 自分のメモリの使用率 (百分率)
+  #
+  # ```ruby
+  # pct = FmrbApp.pool_usage
+  # ```
   def self.pool_usage: () -> Integer
 
   # 機械全体のメモリの様子
+  #
+  # ```ruby
+  # i = FmrbApp.sys_pool_info
+  # ```
   def self.sys_pool_info: () -> Hash
 
   # 設定ファイルの中身を読む
+  #
+  # `system_conf.toml` の節を読む。無ければ nil。
+  # ```ruby
+  # rows = FmrbApp.config("theme")
+  # ```
+  # <<en>>
+  # Reads a section of `system_conf.toml`, or nil if it is not there.
+  # ```ruby
+  # rows = FmrbApp.config("theme")
+  # ```
   def self.config: (String section_name) -> Array?
 
   # 電源を入れてからの時間 (百万分の一秒)
+  #
+  # ```ruby
+  # t0 = FmrbApp.uptime_us
+  # work
+  # us = FmrbApp.uptime_us - t0
+  # ```
   def self.uptime_us: () -> Integer
 
   # 今の日付と時刻
+  #
+  # いまの日時。時計が合っていなければ nil。
+  # ```ruby
+  # t = FmrbApp.wallclock
+  # Log.info("#{t[:hour]}") if t
+  # ```
+  # <<en>>
+  # The date and time now, or nil when the clock has never been set.
+  # ```ruby
+  # t = FmrbApp.wallclock
+  # Log.info("#{t[:hour]}") if t
+  # ```
   def self.wallclock: () -> Hash?
 
   # 日付と時刻を合わせる
+  #
+  # 渡すのは**地方時**。戻ってくるのは同じ時刻の UTC。**端末でしか効かない**
+  # (Linux とブラウザでは何もしない)。
+  # ```ruby
+  # FmrbApp.set_wallclock(2026, 9, 1,
+  #                       12, 0, 0)
+  # ```
+  # <<en>>
+  # Takes **local time** and returns the same moment in UTC. **Only a device
+  # acts on it**; Linux and the browser do nothing.
+  # ```ruby
+  # FmrbApp.set_wallclock(2026, 9, 1,
+  #                       12, 0, 0)
+  # ```
   def self.set_wallclock: (Integer year, Integer month, Integer day, Integer hour, Integer minute, Integer second) -> Hash?
 
   # 絵を送った回数の記録
+  #
+  # ```ruby
+  # s = FmrbApp.gfx_stats
+  # ```
   def self.gfx_stats: () -> Hash
 
   # マウスの矢印を出す
+  #
+  # マウスの矢印を出す。デスクトップが起動時に呼ぶ。
+  # <<en>>
+  # Shows the mouse pointer; the desktop does this at boot.
   def self.enable_cursor: () -> void
 
   # マウスの矢印を見せるか隠すか
+  #
+  # ```ruby
+  # FmrbApp.set_cursor_visible(false)
+  # ```
   def self.set_cursor_visible: (bool visible) -> void
 
   # 機械を再起動する
+  #
+  # 機械ごと再起動する。**戻ってこない**。端末専用。
+  # <<en>>
+  # Restarts the machine. **Does not return.** Devices only.
   def self.reboot: () -> void
 
   # かな入力を切りかえる (0 切 1 ひら 2 カタ)
+  #
+  # 0 = 英字、1 = ひらがな、2 = カタカナ。
+  # ```ruby
+  # FmrbApp.set_kana_mode(1)
+  # ```
+  # <<en>>
+  # 0 for ASCII, 1 for hiragana, 2 for katakana.
+  # ```ruby
+  # FmrbApp.set_kana_mode(1)
+  # ```
   def self.set_kana_mode: (Integer mode) -> void
 
   # Bluetooth をはじめる
+  #
+  # BLE を手で起動する。Retro 用。
+  # <<en>>
+  # Starts BLE by hand. For Retro.
   def self.ble_start: () -> bool
 
   # Bluetooth の様子
+  #
+  # ```ruby
+  # st = FmrbApp.ble_state
+  # ```
   def self.ble_state: () -> Integer
 
   # 画面を配信中かどうかの様子
+  #
+  # 遠隔デスクトップに誰か繋がっているか。
+  # <<en>>
+  # Whether anyone is watching over the remote desktop.
   def self.rd_stream_state: () -> Integer
 
   # WiFi がつながっているか
+  #
+  # ```ruby
+  # if FmrbApp.wifi_connected?
+  # ```
   def self.wifi_connected?: () -> bool
 
   # WiFi のつながり具合
+  #
+  # **Retro では nil**。Modern は WiFi の状態、Linux は母艦の網の状態を返す。
+  # ```ruby
+  # i = FmrbApp.wifi_info
+  # Log.info(i[:ip]) if i
+  # ```
+  # <<en>>
+  # **nil on Retro.** Modern reports its WiFi, Linux the host's network.
+  # ```ruby
+  # i = FmrbApp.wifi_info
+  # Log.info(i[:ip]) if i
+  # ```
   def self.wifi_info: () -> Hash?
 
   # つないだ USB 機器の一覧
+  #
+  # ```ruby
+  # FmrbApp.usb_devices.each do |d|
+  #   Log.info(d[:type])
+  # end
+  # ```
   def self.usb_devices: () -> Array
 
   # USB の生の入力を受け取る
+  #
+  # その口の生のレポートが `on_control` に届くようになる。HID Inspector が
+  # 使っている。
+  # <<en>>
+  # Raw reports from that slot start arriving at `on_control`. The HID
+  # Inspector is what uses this.
   def self.hid_raw_subscribe: (Integer slot) -> bool
 
   # USB の生の入力をやめる
+  #
+  # ```ruby
+  # FmrbApp.hid_raw_unsubscribe(1)
+  # ```
   def self.hid_raw_unsubscribe: (Integer slot) -> bool
 end

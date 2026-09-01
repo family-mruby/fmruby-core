@@ -56,6 +56,10 @@ class FmrbGfx
   # ---- この画面のこと ----
 
   # 画面の番号
+  #
+  # ```ruby
+  # id = gfx.canvas_id
+  # ```
   def canvas_id: () -> Integer
 
   # 画面の横幅 (ドット)
@@ -70,12 +74,26 @@ class FmrbGfx
   def canvas_width: () -> Integer
 
   # 画面の高さ (ドット)
+  #
+  # ```ruby
+  # h = gfx.canvas_height
+  # ```
   def canvas_height: () -> Integer
 
   # 今えらんでいる字の種類
+  #
+  # ```ruby
+  # saved = gfx.current_font
+  # gfx.set_font(:ja)
+  # gfx.set_font(saved)
+  # ```
   def current_font: () -> Symbol
 
   # 今の字の大きさの倍率
+  #
+  # ```ruby
+  # n = gfx.current_text_size
+  # ```
   def current_text_size: () -> Integer
 
   # ---- 形を描く ----
@@ -98,6 +116,11 @@ class FmrbGfx
   def clear: (Integer color) -> FmrbGfx
 
   # 点を一つ打つ
+  #
+  # ```ruby
+  # gfx.set_pixel(10, 20,
+  #               FmrbGfx::WHITE)
+  # ```
   def set_pixel: (Integer x, Integer y, Integer color) -> FmrbGfx
 
   # 点の色を読む
@@ -116,6 +139,11 @@ class FmrbGfx
   def get_pixel: (Integer x, Integer y) -> Integer
 
   # まっすぐな線を引く
+  #
+  # ```ruby
+  # gfx.draw_line(0, 0, 100, 60,
+  #               FmrbGfx::WHITE)
+  # ```
   def draw_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer color) -> FmrbGfx
 
   # 太さのある線を引く
@@ -184,27 +212,69 @@ class FmrbGfx
   def blend_rect: (Integer x, Integer y, Integer w, Integer h, Integer color, Integer mode) -> FmrbGfx
 
   # 角の丸い四角のふちを描く
+  #
+  # ```ruby
+  # gfx.draw_round_rect(10, 10, 80, 40,
+  #                     6, theme_fg)
+  # ```
   def draw_round_rect: (Integer x, Integer y, Integer w, Integer h, Integer r, Integer color) -> FmrbGfx
 
   # 角の丸い四角をぬりつぶす
+  #
+  # ```ruby
+  # gfx.fill_round_rect(10, 10, 80, 40,
+  #                     6, theme_bg)
+  # ```
   def fill_round_rect: (Integer x, Integer y, Integer w, Integer h, Integer r, Integer color) -> FmrbGfx
 
   # 円のふちを描く
+  #
+  # ```ruby
+  # gfx.draw_circle(50, 30, 20,
+  #                 FmrbGfx::WHITE)
+  # ```
   def draw_circle: (Integer x, Integer y, Integer r, Integer color) -> FmrbGfx
 
   # 円をぬりつぶす
+  #
+  # ```ruby
+  # gfx.fill_circle(50, 30, 20,
+  #                 FmrbGfx::YELLOW)
+  # ```
   def fill_circle: (Integer x, Integer y, Integer r, Integer color) -> FmrbGfx
 
   # だ円のふちを描く
+  #
+  # ```ruby
+  # gfx.draw_ellipse(50, 30, 30, 15,
+  #                  FmrbGfx::WHITE)
+  # ```
   def draw_ellipse: (Integer x, Integer y, Integer rx, Integer ry, Integer color) -> FmrbGfx
 
   # だ円をぬりつぶす
+  #
+  # ```ruby
+  # gfx.fill_ellipse(50, 30, 30, 15,
+  #                  FmrbGfx::CYAN)
+  # ```
   def fill_ellipse: (Integer x, Integer y, Integer rx, Integer ry, Integer color) -> FmrbGfx
 
   # 三角のふちを描く
+  #
+  # ```ruby
+  # gfx.draw_triangle(50, 10, 20, 50,
+  #                   80, 50,
+  #                   FmrbGfx::WHITE)
+  # ```
   def draw_triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer color) -> FmrbGfx
 
   # 三角をぬりつぶす
+  #
+  # ```ruby
+  # gfx.fill_triangle(50, 10, 20, 50,
+  #                   80, 50,
+  #                   FmrbGfx::GREEN)
+  # ```
   def fill_triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer color) -> FmrbGfx
 
   # 円の一部の弧を描く
@@ -318,9 +388,35 @@ class FmrbGfx
   def font_height: () -> Integer
 
   # 今の時刻を描く
+  #
+  # 時刻の文字はこの中で組み立てられる。毎秒呼んでもごみが出ない。
+  # ```ruby
+  # gfx.draw_wallclock(300, 2,
+  #                    theme_fg, theme_bg)
+  # ```
+  # <<en>>
+  # The time is formatted inside the call, so calling it every second
+  # allocates nothing.
+  # ```ruby
+  # gfx.draw_wallclock(300, 2,
+  #                    theme_fg, theme_bg)
+  # ```
   def draw_wallclock: (Integer x, Integer y, Integer color, Integer bg_color) -> FmrbGfx
 
   # 空きメモリの量を描く
+  #
+  # 値の取得も整形もこの中。空きが読めない環境では横棒が出る。
+  # ```ruby
+  # gfx.draw_free_iram(360, 2,
+  #                    theme_fg, theme_bg)
+  # ```
+  # <<en>>
+  # Fetching and formatting both happen inside. Where no figure can be
+  # read, it draws dashes.
+  # ```ruby
+  # gfx.draw_free_iram(360, 2,
+  #                    theme_fg, theme_bg)
+  # ```
   def draw_free_iram: (Integer x, Integer y, Integer color, Integer bg_color) -> FmrbGfx
 
   # ---- 絵の読み込みと表示 ----
@@ -456,6 +552,10 @@ class FmrbGfx
   def create_mask: (Integer width, Integer height, String data) -> Integer
 
   # 型ぬきの形を片づける
+  #
+  # ```ruby
+  # gfx.delete_mask(@mask_id)
+  # ```
   def delete_mask: (Integer mask_id) -> void
 
   # 型でぬいた形の絵を描く
@@ -500,6 +600,12 @@ class FmrbGfx
   def present: () -> FmrbGfx
 
   # この画面を片づける
+  #
+  # 自分で作った canvas を片づける。アプリの終了時には自動で消えるので、
+  # 途中で要らなくなったときだけ呼ぶ。
+  # <<en>>
+  # Throws away a canvas made by the app. They go on their own when the
+  # app ends, so this is for one that is finished with early.
   def destroy: () -> FmrbGfx
 
   # 画面の見せる場所をずらす
@@ -576,6 +682,10 @@ class FmrbGfx
   def set_sprite_clip: (Integer x, Integer y, Integer w, Integer h) -> FmrbGfx
 
   # スプライトの範囲の決まりをなくす <<en>> let sprites use the whole canvas
+  #
+  # ```ruby
+  # gfx.clear_sprite_clip
+  # ```
   def clear_sprite_clip: () -> FmrbGfx
 
   # 映像の明るさを決める

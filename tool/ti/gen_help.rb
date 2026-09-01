@@ -131,25 +131,96 @@ module TiHelp
     [pages, index]
   end
 
+  LANG_MARK = "<<en>>"
+
+  # One language out of a page that holds both. The summary carries the marker
+  # inline; the long text has a line that is nothing but the marker. Same rules
+  # the editor used to apply at open time -- doing it here means it does not
+  # have to.
+  # head_lines is how many lines the page spends before its long text: the
+  # heading, the signature and the summary, which are common to both readers
+  # (the summary carries its marker inline). Below them the long text has a
+  # line that is nothing but the marker, and the two halves live on either
+  # side of it -- so the English page has to drop what comes BEFORE it, which
+  # is the part the first attempt at this got wrong.
+  def self.pick_lang(body, lang, head_lines)
+    lines = body.lines
+    head = lines[0, head_lines] || []
+    rest = lines[head_lines..-1] || []
+
+    head = head.map do |line|
+      i = line.index(LANG_MARK)
+      next line unless i
+      (lang == "en" ? line[(i + LANG_MARK.length)..-1].to_s.strip
+                    : line[0, i].to_s.rstrip) + "\n"
+    end
+
+    mark = rest.index { |l| l.strip == LANG_MARK }
+    if mark.nil?
+      # One language for both readers: what there is, is what they get.
+      body_rest = rest
+    elsif lang == "en"
+      body_rest = rest[(mark + 1)..-1] || []
+    else
+      body_rest = rest[0, mark] || []
+    end
+
+    (head + body_rest).join
+  end
+
+  # Class files, not one file per method.
+  #
+  # littlefs gives every file a 4KB block, so 573 pages of a few hundred bytes
+  # each cost 2.3MB of an 8MB partition to carry 270KB of text. Grouped by
+  # class it is twenty-odd files and the block waste goes with them. The pages
+  # are already headed "# Class#method", so a class file is its methods
+  # concatenated, and the index says which heading to jump to.
+  #
+  # The languages are split here as well, into <Class>.ja.md and <Class>.en.md.
+  # The editor then picks a file instead of deleting half the lines of the one
+  # it opened -- with many methods in a file, that filtering would have had to
+  # learn about sections.
   def self.generate(sig_dir:, out_dir:)
     pages, index = build(sig_dir: sig_dir)
 
     FileUtils.rm_rf(out_dir)
     FileUtils.mkdir_p(out_dir)
 
+    # path is "<Class>/<method>.md" (or "<Class>/index.md" for the class
+    # comment), and the class comment sorts first inside its class.
+    by_class = {}
     pages.each do |path, body|
-      full = File.join(out_dir, path)
-      FileUtils.mkdir_p(File.dirname(full))
-      File.write(full, body)
+      cls, file = path.split("/", 2)
+      (by_class[cls] ||= []) << [file, body]
     end
 
-    # One line per entry, name first: the editor reads it top to bottom and
-    # takes the first match, so a name in two classes lists both and the
-    # editor reports the choice it made.
-    File.write(File.join(out_dir, "index.txt"),
-               index.map { |name, path| "#{name}\t#{path}\n" }.join)
+    written = 0
+    by_class.each do |cls, entries|
+      entries.sort_by! { |file, _| [file == "index.md" ? 0 : 1, file] }
+      %w[ja en].each do |lang|
+        text = entries.map { |file, body|
+          # A class page is "# Class" and a blank line; a method page adds the
+          # signature and the summary with their blanks.
+          pick_lang(body, lang, file == "index.md" ? 2 : 6)
+        }.join("\n")
+        File.write(File.join(out_dir, "#{cls}.#{lang}.md"), text)
+        written += 1
+      end
+    end
 
-    [pages.size, index.size]
+    # name and the class file it lives in -- two columns, as before. The
+    # heading to scroll to is derived from the two: a section starts with
+    # "# Class#method" or "# Class.method", which the editor can build itself.
+    # Carrying it as a third column meant splitting a line at a tab in the
+    # editor, and that is one string operation more than Spinel could be
+    # trusted with here.
+    lines = index.map do |name, path|
+      cls, _ = path.split("/", 2)
+      "#{name}\t#{cls}\n"
+    end
+    File.write(File.join(out_dir, "index.txt"), lines.join)
+
+    [written, index.size]
   end
 
   # The same pages as one file, for the browser (tool/web/js/ti.js fetches it).

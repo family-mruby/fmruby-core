@@ -412,6 +412,46 @@ module EditorTiUi
     found
   end
 
+  # The file for a class, in the reader's language. Both are written at build
+  # time; if one is missing the other is what there is.
+  def help_file_for(cls)
+    # Interpolation, not a chain of +. `HELP_DIR + cls + ".en.md"` produced
+    # exactly "/help/FmrbApp" under Spinel: the first + returns a value whose
+    # type it can no longer prove, and the second one then dispatches to a
+    # default that hands back its receiver -- silently, as usual. The result
+    # is a path that names a directory, and a load that fails with I/O.
+    return "#{HELP_DIR}#{cls}.en.md" if FmrbI18n.lang == "en"
+    "#{HELP_DIR}#{cls}.ja.md"
+  end
+
+  # Put the cursor on the heading that starts this method's section. The two
+  # spellings are built here rather than carried in the index: an instance
+  # method is written "# Class#name", a singleton one "# Class.name".
+  # Scanning by length first, so only a line that could be one is read.
+  def help_jump_to(cls, name)
+    a = "# " + cls + "#" + name
+    b = "# " + cls + "." + name
+    y = 0
+    n = EditorCore.line_count
+    while y < n
+      len = EditorCore.line_length(y)
+      if len == a.length || len == b.length
+        text = help_line_text(y)
+        if text == a || text == b
+          @cy = y
+          @cx = 0
+          # The heading goes to the top of the pane, not merely into view:
+          # scrolled minimally it lands at the bottom with the previous
+          # method's text above it, which reads as the wrong page.
+          @scroll_y = y
+          ensure_cursor_visible
+          return
+        end
+      end
+      y += 1
+    end
+  end
+
   # The word the help is asked for: the selected candidate when the list is
   # open, otherwise the name under the cursor.
   def help_topic
@@ -439,8 +479,8 @@ module EditorTiUi
 
   def open_help
     topic = help_topic
-    path = help_path_for(topic)
-    if path.nil?
+    entry = help_path_for(topic)
+    if entry.nil?
       flash_status(FmrbI18n.t(:b_no_help).to_s)
       return
     end
@@ -455,65 +495,26 @@ module EditorTiUi
     # comes back should look the way it did.
     @help_return_hl = @hl_enabled
     @help_return_hl_manual = @hl_manual
-    full = HELP_DIR + path
+    full = help_file_for(entry)
     load_file(full)
     # Only touch the buffer when the page really was read: load_file leaves the
     # previous document in place (and says so) when it fails.
-    help_filter_language(path) if @current_file == full
-    help_markdown_hl
+    if @current_file == full
+      help_jump_to(entry, topic)
+      help_markdown_hl
+    end
     @modified = false
     @need_redraw = true
   end
 
-  # ---- Help pages: keeping one language ----
+  # ---- Help pages: one language, chosen at build time ----
   #
-  # A page holds both languages, the way the doc comment it came from does.
-  # gen_help writes a method page as
-  #
-  #   "# Class#method" / "" / signature / "" / summary / "" / long text
-  #
-  # and a class page as "# Class" / "" / long text. The summary line has the
-  # marker inline; the long text has a line that is nothing but the marker,
-  # between the Japanese half and the English one. Both are dealt with here,
-  # right after the read, so what is scrolled through is one language.
-  #
-  # A page without a marker line is left alone -- the one language it has is
-  # what both readers get.
-
-  HELP_BODY_LINE_METHOD = 6   # "# Class#method", "", signature, "", summary, ""
-  HELP_BODY_LINE_CLASS  = 2   # "# Class", ""
-
-  def help_filter_language(path)
-    body = path.to_s.end_with?("index.md") ? HELP_BODY_LINE_CLASS : HELP_BODY_LINE_METHOD
-    return if EditorCore.line_count <= body
-    help_pick_lang_in_head(body)
-
-    marker = help_marker_line(body)
-    return if marker.nil?
-    if FmrbI18n.lang == "en"
-      # The Japanese half is everything from the first line of the long text
-      # down to the marker.
-      help_delete_lines(body, marker)
-    else
-      help_delete_lines(marker, EditorCore.line_count - 1)
-    end
-  end
-
-  # The summary is a single line with both languages on it, so it is rewritten
-  # instead of removed. Only the lines above the long text are looked at: below
-  # them the marker stands on a line of its own.
-  def help_pick_lang_in_head(body)
-    y = 0
-    while y < body
-      text = help_line_text(y)
-      if text.index(TI_LANG_MARK)
-        picked = ti_pick_lang(text)
-        EditorCore.delete_range(y, 0, y, EditorCore.line_length(y))
-        EditorCore.insert_text(y, 0, picked) if picked.length > 0
-      end
-      y += 1
-    end
-  end
+  # gen_help writes <Class>.ja.md and <Class>.en.md, each holding every method
+  # of the class with the other language's half already gone. The editor used
+  # to open one page and delete half its lines; with a whole class in a file
+  # that filtering would have had to learn where each method's section began
+  # and ended, so it moved to the generator, where the halves are still
+  # separate strings.
 
   # ---- Help pages: showing the markdown rather than its markers ----
   #
@@ -627,36 +628,7 @@ module EditorTiUi
     EditorCore.render_text(y, 0, n).to_s
   end
 
-  # The line that is nothing but the marker, or nil when the page has only one
-  # language. Lines of the wrong length are skipped without being read.
-  def help_marker_line(from)
-    y = from
-    n = EditorCore.line_count
-    while y < n
-      len = EditorCore.line_length(y)
-      if len >= TI_LANG_MARK.length && len <= TI_LANG_MARK.length + 2 &&
-         help_line_text(y).strip == TI_LANG_MARK
-        return y
-      end
-      y += 1
-    end
-    nil
-  end
 
-  # Remove lines a..b. Deleting as far as the start of the line after b leaves
-  # that line whole; at the end of the document there is no line after, so the
-  # deletion runs from the end of the line before a instead.
-  def help_delete_lines(a, b)
-    last = EditorCore.line_count - 1
-    return if a < 0 || a > b || b > last
-    if b < last
-      EditorCore.delete_range(a, 0, b + 1, 0)
-    elsif a > 0
-      EditorCore.delete_range(a - 1, EditorCore.line_length(a - 1), b, EditorCore.line_length(b))
-    else
-      EditorCore.delete_range(a, 0, b, EditorCore.line_length(b))
-    end
-  end
 
   def close_help
     # The categories belong to the page, not to what comes back after it.
