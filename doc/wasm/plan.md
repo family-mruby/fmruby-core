@@ -1,6 +1,6 @@
 # wasm (ブラウザ) 対応の検討と計画
 
-> 状態: 進行中 | 更新: 2026-08-30 | P1-P5 実装完了。dist/ を置けば公開できる状態 (実公開はユーザ作業)。設定 3 態は実ブラウザ経路で確認済み、残るは音の可聴確認
+> 状態: 公開済み | 更新: 2026-09-01 | P1-P5 完了。**自前の nginx で公開中** (置き先を選んだ経緯と nginx 設定は report/hosting.md)。残るは音の可聴確認と、スマホでの実操作
 
 2026-08-28 調査。core 単体をブラウザで動かすための実現性検討と段取り。
 実装の分割・作業項目・受け入れ条件は implementation_plan.md。
@@ -162,6 +162,38 @@ P4 実装と wasm 実装を並べる)。この分割は P4 実機へのリファ
 - スタックに注意: wasm の既定スタックは小さい。`-sSTACK_SIZE` と各タスクの
   pthread スタックサイズを .app.toml の task_stack_kb 同様に明示する。
 - `clock_gettime` の分解能はブラウザで ~1ms。性能計測の数字は意味を持たない。
+
+## 配信 (更新のしかた)
+
+公開は**自前の nginx** から。GitHub Pages ではない理由と nginx の設定は
+report/hosting.md。
+
+```bash
+source ~/emsdk/emsdk_env.sh                 # 忘れると rake が止まる
+rake spinel:gen && rake wasm:mruby          # 下の「作り直されないもの」参照
+FMRB_WEB_DEST=<host>:/var/www/fmrb-web/ rake wasm:deploy
+```
+
+`wasm:deploy` が `wasm:dist` を回し、`gzip_static` 用の `.gz` を添えて
+rsync する。**置き先はここに書かない** — 引数で渡す。
+
+### ビルドが黙って作り直さないもの (3 つ)
+
+**古い生成物のまま公開できてしまう**のが、この構成でいちばん起きやすい事故。
+`dist/` は消えないので、更新したつもりで**前の版が普通に動き続ける**。
+
+- **Spinel の生成 C**: wasm ビルドは `spinel:gen` を呼ばない。
+- **アプリの mruby バイトコード**: `wasm:mrb` が面倒を見る (`wasm:web` が依存)。
+- **libmruby**: `rake clean_all` が消す。`wasm:mruby` を明示的に回す。
+
+**確かめ方は About の `Built`**。開いて時刻が今日でなければ、それは前の版。
+
+### 公開先の自動確認はできない
+
+`?holdload=N` は開発サーバの `probe-hold` に依存しており、**公開先では
+404 になって load イベントが即発火する**。ヘッドレスで撮っても起動前の
+画面しか取れない (report/hosting.md に誤診した経緯)。公開先の確認は
+いまのところ人の目で行う。
 
 ## 初期スコープ外
 
