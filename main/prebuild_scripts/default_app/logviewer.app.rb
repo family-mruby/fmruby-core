@@ -42,6 +42,14 @@ class LogViewerApp < FmrbApp
     # Scroll positions are display rows either way, which is why every count
     # below goes through total_display_rows rather than @lines.size.
     @wrap = true
+    # How many display rows the whole buffer takes, kept as a running total.
+    # Counting it from scratch means touching every line, which at 500 lines
+    # and several redraws a second is most of a frame -- so it is added to and
+    # subtracted from as lines arrive and fall off, and only recounted when
+    # the width or the wrap setting makes the old total meaningless.
+    @total_rows = 0
+    @rows_width = nil
+    @rows_wrap = nil
   end
 
   def on_create
@@ -85,12 +93,22 @@ class LogViewerApp < FmrbApp
       new_lines = result[0]
       @read_pos = result[1]
       if new_lines && new_lines.size > 0
-        new_lines.each do |line|
+        mc = log_max_chars
+        # Only worth maintaining while the cached total still describes this
+        # width and wrap setting; otherwise the next reader recounts anyway.
+        live = (@rows_width == mc && @rows_wrap == @wrap)
+        k = 0
+        kn = new_lines.size
+        while k < kn
+          line = new_lines[k]
           @lines << line
+          @total_rows += segs_for(line.length, mc) if live
+          k += 1
         end
         # Trim old lines
         while @lines.size > 500
-          @lines.shift
+          gone = @lines.shift
+          @total_rows -= segs_for(gone.length, mc) if live
         end
         # Auto-scroll to bottom
         if @auto_scroll
@@ -122,16 +140,52 @@ class LogViewerApp < FmrbApp
   end
 
   def total_display_rows
-    return @lines.size unless @wrap
-    max_chars = log_max_chars
+    mc = log_max_chars
+    recount_rows(mc) if @rows_width != mc || @rows_wrap != @wrap
+    @total_rows
+  end
+
+  def recount_rows(mc)
     total = 0
     i = 0
     n = @lines.size
     while i < n
-      total += segs_for(@lines[i].length, max_chars)
+      total += segs_for(@lines[i].length, mc)
       i += 1
     end
-    total
+    @total_rows = total
+    @rows_width = mc
+    @rows_wrap = @wrap
+    nil
+  end
+
+  # Which line, and which segment of it, display row @scroll falls on.
+  # Counted from whichever end is nearer: a log is almost always parked at its
+  # tail, and walking back from there touches a screenful of lines instead of
+  # every line in the buffer.
+  def first_visible(mc, total)
+    return [0, 0] if @scroll <= 0
+    if @scroll * 2 <= total
+      row = 0
+      i = 0
+      n = @lines.size
+      while i < n
+        segs = segs_for(@lines[i].length, mc)
+        return [i, @scroll - row] if row + segs > @scroll
+        row += segs
+        i += 1
+      end
+      return [n, 0]
+    end
+    want = total - @scroll
+    acc = 0
+    i = @lines.size - 1
+    while i >= 0
+      acc += segs_for(@lines[i].length, mc)
+      return [i, acc - want] if acc >= want
+      i -= 1
+    end
+    [0, 0]
   end
 
   def visible_max_scroll
@@ -164,38 +218,38 @@ class LogViewerApp < FmrbApp
     draw_toolbar(x0, y0, w)
 
     # Log lines. @scroll counts display rows, so a wrapped line is walked
-    # segment by segment: rows before the scroll position are stepped over
-    # without being built, and only what is on screen is sliced.
+    # segment by segment -- but the walk starts at the first line on screen
+    # rather than at line 0, because stepping over the rows above it was the
+    # whole cost of a redraw.
     log_y0 = y0 + TOOLBAR_H
     vis = visible_lines
     max_chars = log_max_chars
+    total = total_display_rows
 
-    row = 0
+    fv = first_visible(max_chars, total)
+    i = fv[0]
+    seg = fv[1]
     drawn = 0
-    i = 0
     n = @lines.size
     while i < n && drawn < vis
       line = @lines[i]
       color = level_color(line)
       segs = segs_for(line.length, max_chars)
-      seg = 0
       while seg < segs && drawn < vis
-        if row >= @scroll
-          if @wrap
-            text = line[seg * max_chars, max_chars]
-          else
-            text = line.length > max_chars ? line[0, max_chars] : line
-          end
-          @gfx.draw_text(x0 + 2, log_y0 + 1 + drawn * 8, text, color, LOG_BG) if text
-          drawn += 1
+        if @wrap
+          text = line[seg * max_chars, max_chars]
+        else
+          text = line.length > max_chars ? line[0, max_chars] : line
         end
-        row += 1
+        @gfx.draw_text(x0 + 2, log_y0 + 1 + drawn * 8, text, color, LOG_BG) if text
+        drawn += 1
         seg += 1
       end
+      seg = 0
       i += 1
     end
 
-    @ui.set_range(:sb, total_display_rows, vis)
+    @ui.set_range(:sb, total, vis)
     @ui.set_value(:sb, @scroll)
     @ui.invalidate_all
 
