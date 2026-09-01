@@ -3,9 +3,9 @@
 
 module AboutDialogMixin
   ABOUT_W = 220
-  # Base height covers title bar + 10 info rows + copyright + close hint.
+  # Base height covers title bar + 11 info rows + copyright + close hint.
   # USB device rows are added on top of this in @about_h.
-  ABOUT_H_BASE = 146
+  ABOUT_H_BASE = 156
   ABOUT_LINE_H = 10
   ABOUT_BG = FmrbConst::THEME_WINDOW_BG
   ABOUT_BORDER = FmrbConst::THEME_BORDER
@@ -65,10 +65,11 @@ module AboutDialogMixin
     draw_about_row(x, ty + line_h * 7, "Flash",    "#{FmrbConst::FLASH_SIZE_MB}MB")
     draw_about_row(x, ty + line_h * 8, "PSRAM",    "#{FmrbConst::PSRAM_SIZE_MB}MB")
     draw_about_row(x, ty + line_h * 9, "Reset",    FmrbConst::RESET_REASON)
+    draw_about_row(x, ty + line_h * 10, "Built",   FmrbConst::BUILD_DATE)
 
     # USB section — header followed by one row per connected device, or
     # "(none)" if nothing is plugged in.
-    row = 10
+    row = 11
     @gfx.draw_text(x + 10, ty + line_h * row, "USB", ABOUT_LABEL, ABOUT_BG)
     row += 1
     if @about_usb_devices.empty?

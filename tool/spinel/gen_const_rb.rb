@@ -210,6 +210,8 @@ out << "  CHIP_CORES = 0\n"
 out << "  FLASH_SIZE_MB = 0\n"
 out << "  PSRAM_SIZE_MB = 0\n"
 out << "  RESET_REASON = \"-\"\n"
+# When this generator ran, which is the same build that is about to compile.
+out << "  BUILD_DATE = #{Time.now.strftime('%b %e %Y %H:%M:%S').inspect}\n"
 out << "  LANGUAGE = \"en\"\n"
 out << "end\n"
 

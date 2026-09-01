@@ -12,6 +12,7 @@
 #include "esp_chip_info.h"
 #include "esp_flash.h"
 #include "esp_system.h"
+#include "esp_app_desc.h"
 #if CONFIG_SPIRAM
 #include "esp_psram.h"
 #endif
@@ -430,6 +431,24 @@ void mrb_picoruby_fmrb_const_init_impl(mrb_state *mrb)
     mrb_define_const(mrb, const_module, "HAS_WIFI", mrb_true_value());
 #else
     mrb_define_const(mrb, const_module, "HAS_WIFI", mrb_false_value());
+#endif
+
+    // When this firmware was built. On a device the answer comes from the app
+    // description, which the build system writes afresh every link -- __DATE__
+    // would be the day this file happened to be recompiled, which with an
+    // incremental build can be weeks ago. Off-device there is no such record,
+    // so the compile date is the best available and its staleness is bounded
+    // by the same rebuild that produced the bundle.
+#if defined(CONFIG_IDF_TARGET_LINUX)
+    mrb_define_const(mrb, const_module, "BUILD_DATE",
+                     mrb_str_new_cstr(mrb, __DATE__ " " __TIME__));
+#else
+    {
+        const esp_app_desc_t *desc = esp_app_get_description();
+        char buf[40];
+        snprintf(buf, sizeof(buf), "%s %s", desc->date, desc->time);
+        mrb_define_const(mrb, const_module, "BUILD_DATE", mrb_str_new_cstr(mrb, buf));
+    }
 #endif
 
     // System info constants (frozen at init)
