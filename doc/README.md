@@ -63,9 +63,9 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `mic_spectrum/` [計画書: Tab5 マイクの周波数分析デモ + FFT エンジン比較](mic_spectrum/plan.md) — - 〔5 files〕
 - `micropython/` [MicroPython ゲスト VM 取り込み計画](micropython/README.md) — - 〔24 files〕
 - `midi/` [Family mruby MIDI 対応 検討メモ](midi/README.md) — - 〔23 files〕
-- `mouse_wheel/` [マウスホイール対応 検討と計画](mouse_wheel/plan.md) — **進行中** (2026-08-31) **W1 完了** (report/w1.md、ブラウザで実測)。残りは W2 後半 (遠隔) / W3 (実機・白名簿) / W4 (アプリ個別) 〔2 files〕
+- `mouse_wheel/` [マウスホイール対応 検討と計画](mouse_wheel/plan.md) — **進行中** (2026-09-01) **W1 完了** (ブラウザ・sim で実測)、**W2 完了・NARYA v4 実機で確認済** (report/w2.md)。残りは W3 (実機 USB マウス・白名簿) / W4 (nsf/smf と修飾キー) 〔4 files〕
 - `multivm_app/` [多重 VM アプリ構想: 巨大 Ruby アプリをマイコンで動かす](multivm_app/plan.md) — - 〔3 files〕
-- `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-08-30) P0-P3 完了 (P3 は実機確認 4 件残)。P4 は遠隔検証・実測・基板反映まとめまで完了 (report/p4.md)。残り = ユーザ確認とモニタ相性、無印 ESP32 疎通 (保留) 〔9 files〕
+- `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-09-01) P0-P3 完了 (P3 は実機確認 4 件残)。P4 完了 (report/p4.md)。**P6 = 青ちらつきに帯域削減で当たる計画を追加** (instruction_p6.md、未着手)。残り = ユーザ確認とモニタ相性、無印 ESP32 疎通 (保留) 〔10 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔5 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — - 〔15 files〕
@@ -73,13 +73,13 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `remote_debug/` [PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)](remote_debug/vm_remote_debug_design.md) — - 〔9 files〕
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
-- `ruby_asterism/` [プロジェクト名の決定: Asterism](ruby_asterism/naming.md) — - 〔6 files〕
+- `ruby_asterism/` [プロジェクト名の決定: Asterism](ruby_asterism/naming.md) — - 〔7 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
 - `stamp_p4/` [Stamp-P4 ヘッドレス機 (切符サイズの Modern)](stamp_p4/README.md) — **構想** (2026-08-31) M5Stamp-P4 + Stamp-AddOn C6 を殻に入れたヘッドレス Family mruby。まず殻 (case_design.md)、ファーム分岐は後続 〔2 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔21 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔17 files〕
-- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **進行中** (2026-08-30) P1-P5 実装完了。dist/ を置けば公開できる状態 (実公開はユーザ作業)。設定 3 態は実ブラウザ経路で確認済み、残るは音の可聴確認 〔22 files〕
+- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **進行中** (2026-08-30) P1-P5 実装完了。dist/ を置けば公開できる状態 (実公開はユーザ作業)。設定 3 態は実ブラウザ経路で確認済み、残るは音の可聴確認 〔23 files〕
 
 ## アーカイブ (完結したテーマ)
 

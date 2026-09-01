@@ -352,6 +352,23 @@ namespace :wasm do
     puts "  coi-serviceworker supplies the cross-origin isolation, so no headers are needed."
   end
 
+  desc "Copy the built bundle to a host that serves it (FMRB_WEB_DEST=user@host:/path)"
+  task :deploy => :dist do
+    dest = ENV["FMRB_WEB_DEST"] or
+      abort "set FMRB_WEB_DEST, e.g. FMRB_WEB_DEST=host:/var/www/fmrb-web/ rake wasm:deploy"
+    dist = File.join(WASM_BUILD_DIR, "dist")
+    # Pre-compressed copies for nginx's gzip_static (5.2MB of wasm goes out as
+    # 2.2MB, and nothing is compressed per request). A server without
+    # gzip_static ignores them.
+    %w[core_web.wasm core_web.data core_web.js main.js].each do |f|
+      sh "gzip -9 -k -f #{File.join(dist, f)}"
+    end
+    sh "rsync -a --delete #{dist}/ #{dest}"
+    puts "wasm:deploy: #{dist} -> #{dest}"
+    puts "  the host must send COOP/COEP itself, or the page falls back to"
+    puts "  coi-serviceworker and a reload on the first visit"
+  end
+
   desc "Serve the repo with COOP/COEP for the wasm page (PORT=n, default 8006; DIST=1 serves build/dist with probe-hold, for headless checks of the real artifacts)"
   task :serve do
     port = (ENV["PORT"] || 8006).to_i
