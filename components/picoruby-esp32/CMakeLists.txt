@@ -47,6 +47,10 @@ else()
         esp_hw_support
         esp_psram
         esp_system
+        # esp_app_get_description(): the firmware's build date, for About.
+        # Only Modern's main happens to pull this in, so without it here the
+        # S3 build stops at const.c while the P4 one goes through.
+        esp_app_format
         lwip
         fmrb_hal
         fmrb_gfx
