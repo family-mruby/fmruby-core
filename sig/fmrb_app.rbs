@@ -47,6 +47,50 @@ class FmrbApp
   # ---- 呼ばれるところ (書きかえて使う) ----
 
   # 始まるときに一度だけ呼ばれる
+  #
+  # 画面も窓もここで使える状態になっています。最初の絵と、あとで使う変数を
+  # ここで用意します。
+  #
+  # ファイルに書いたアプリは、**末尾に起動の 4 行が要ります**。これが無いと
+  # クラスを定義しただけで何も起きません。
+  #
+  # ```ruby
+  # class MyApp < FmrbApp
+  #   def on_create
+  #     @n = 0
+  #     clear_user_area
+  #     gfx.present
+  #   end
+  # end
+  #
+  # begin
+  #   MyApp.new.start
+  # rescue => e
+  #   Log.error("#{e.class}: #{e.message}")
+  # end
+  # ```
+  # <<en>>
+  # The screen and the window are ready by the time this runs. Set up the
+  # first frame and whatever state the app will keep.
+  #
+  # An app written to a file **needs the four starting lines at the end**;
+  # without them the class is defined and nothing happens.
+  #
+  # ```ruby
+  # class MyApp < FmrbApp
+  #   def on_create
+  #     @n = 0
+  #     clear_user_area
+  #     gfx.present
+  #   end
+  # end
+  #
+  # begin
+  #   MyApp.new.start
+  # rescue => e
+  #   Log.error("#{e.class}: #{e.message}")
+  # end
+  # ```
   def on_create: () -> void
 
   # 毎フレーム呼ばれる。描画を書く場所 <<en>> called every frame; draw here
@@ -66,7 +110,8 @@ class FmrbApp
   #   def on_update
   #     @x = (@x + 1) % window_width
   #     gfx.clear(FmrbGfx::BLACK)
-  #     gfx.fill_circle(@x, 60, 8, FmrbGfx::YELLOW)
+  #     gfx.fill_circle(@x, 60, 8,
+  #                     FmrbGfx::YELLOW)
   #     gfx.present
   #   end
   # end
@@ -87,7 +132,8 @@ class FmrbApp
   #   def on_update
   #     @x = (@x + 1) % window_width
   #     gfx.clear(FmrbGfx::BLACK)
-  #     gfx.fill_circle(@x, 60, 8, FmrbGfx::YELLOW)
+  #     gfx.fill_circle(@x, 60, 8,
+  #                     FmrbGfx::YELLOW)
   #     gfx.present
   #   end
   # end
@@ -95,12 +141,39 @@ class FmrbApp
   def on_update: () -> void
 
   # 終わるときに一度だけ呼ばれる
+  #
+  # 終わる直前に一度だけ呼ばれます。開いたファイルを閉じる、保存する、と
+  # いった後始末をここに書きます。
+  #
+  # 呼ばれるのは**行儀よく終わったとき**だけです。例外で落ちたアプリはここに
+  # 来ません。消えて困るものは、終わりを待たずに書き出しておくこと。
+  # <<en>>
+  # Called once, just before the app ends: close files, save what should be
+  # saved.
+  #
+  # It runs only on an orderly exit. An app that dies on an exception never
+  # gets here, so anything that must not be lost should be written out
+  # before then.
   def on_destroy: () -> void
 
   # 他のアプリに画面を渡すとき
+  #
+  # 別のアプリが前に出たときに呼ばれます。アプリは動いたままで、画面だけが
+  # 見えなくなります。**描いても誰も見ていない**ので、重い描画や音を
+  # 止めるならここです。
+  # <<en>>
+  # Called when another app comes to the front. This app keeps running; only
+  # its screen goes away. Nobody is looking at what it draws, so this is
+  # where to stop an expensive animation or a sound.
   def on_suspend: () -> void
 
   # 画面が戻ってきたとき
+  #
+  # 画面が戻ってきたときに呼ばれます。**画面の中身は残っていません** —
+  # ここで描き直します。
+  # <<en>>
+  # Called when this app gets the screen back. What was on it is gone;
+  # redraw here.
   def on_resume: () -> void
 
   # キーやマウスの入力が来たとき <<en>> called on key and mouse input
@@ -117,10 +190,11 @@ class FmrbApp
   # ```ruby
   # class MyApp < FmrbApp
   #   def on_event(ev)
-  #     return unless ev[:type] == :key_down
+  #     return unless
+  #       ev[:type] == :key_down
   #     case ev[:scancode]
-  #     when 0x4F then @x = @x + 4   # 右矢印
-  #     when 0x50 then @x = @x - 4   # 左矢印
+  #     when 0x4F then @x += 4  # 右
+  #     when 0x50 then @x -= 4  # 左
   #     end
   #   end
   # end
@@ -138,10 +212,11 @@ class FmrbApp
   # ```ruby
   # class MyApp < FmrbApp
   #   def on_event(ev)
-  #     return unless ev[:type] == :key_down
+  #     return unless
+  #       ev[:type] == :key_down
   #     case ev[:scancode]
-  #     when 0x4F then @x = @x + 4   # right arrow
-  #     when 0x50 then @x = @x - 4   # left arrow
+  #     when 0x4F then @x += 4  # right
+  #     when 0x50 then @x -= 4  # left
   #     end
   #   end
   # end
@@ -149,6 +224,35 @@ class FmrbApp
   def on_event: (Hash ev) -> void
 
   # 窓の大きさが変わったとき
+  #
+  # 窓の大きさが変わったときに呼ばれます。全画面への切り替えでも呼ばれます。
+  #
+  # **FmrbUI の部品は作った場所に貼り付いたまま**なので、大きさが変わったら
+  # 作り直しが要ります。枠も描き直します。
+  #
+  # ```ruby
+  # def on_resize(w, h)
+  #   detach_ui(@ui) if @ui
+  #   @ui = FmrbUI.new(self)
+  #   build_widgets
+  #   redraw
+  # end
+  # ```
+  # <<en>>
+  # Called when the window changes size, and when it enters or leaves full
+  # screen.
+  #
+  # **FmrbUI widgets stay where they were built**, so a resize means building
+  # them again. Redraw the frame too.
+  #
+  # ```ruby
+  # def on_resize(w, h)
+  #   detach_ui(@ui) if @ui
+  #   @ui = FmrbUI.new(self)
+  #   build_widgets
+  #   redraw
+  # end
+  # ```
   def on_resize: (Integer new_width, Integer new_height) -> void
 
   # 閉じてよいか聞かれたとき
@@ -157,6 +261,19 @@ class FmrbApp
   # ---- 動かす ----
 
   # アプリを動かし始める
+  #
+  # `on_create` を呼び、アプリのループに入り、終わったら後始末をします。
+  # **これを呼ぶまでアプリは動きません。**
+  #
+  # ファイルに書いたアプリは、クラスの定義だけでは何も起きません。末尾に
+  # `MyApp.new.start` を書きます。`rescue` を添えておくと、失敗が
+  # ログに残ります。
+  # <<en>>
+  # Calls `on_create`, runs the app's loop, and cleans up when it ends.
+  # **Nothing happens until this is called.**
+  #
+  # A file that only defines a class does nothing. End it with
+  # `MyApp.new.start`, and wrap it in a `rescue` so a failure reaches the log.
   def start: () -> void
 
   # アプリを止める
@@ -174,9 +291,41 @@ class FmrbApp
   # ---- 窓と絵 ----
 
   # 窓のふちと題名を描き直す
+  #
+  # タイトルバーとわく、閉じるボタンを描きます。全画面のときは何もしません。
+  #
+  # **大きさの変わるアプリは、描き直すたびに呼ぶこと。** 一度描いたきりに
+  # すると、窓を広げたときにわくが壊れます。
+  #
+  # タイトルバーは既定のフォントで描かれますが、**呼ぶ前のフォント設定は
+  # 戻されます**。`set_font(:ja)` を毎フレーム掛け直す必要はありません。
+  # <<en>>
+  # Draws the title bar, the border and the close button. Does nothing in
+  # full screen.
+  #
+  # **An app that can be resized must call this on every redraw.** Drawing
+  # the frame once leaves it broken the first time the window grows.
+  #
+  # The title bar uses the default font, but the font in force before the
+  # call is put back, so `set_font(:ja)` does not have to be re-applied
+  # every frame.
   def draw_window_frame: () -> void
 
   # 中身の場所をぬりつぶす。色を省くとテーマの紙の色 <<en>> theme page colour by default
+  #
+  # 窓の中だけを塗りつぶします。**わくも描き直し**、その場所にあった
+  # FmrbUI の部品にも描き直しの印を付けます。窓のアプリで画面を消すときは
+  # `gfx.clear` ではなくこちらを使います。
+  #
+  # `gfx.clear` は canvas 全体を塗るので、自分で描いたタイトルバーもわくも
+  # 消えます。
+  # <<en>>
+  # Wipes the user area only -- and puts the frame back, and marks any FmrbUI
+  # widget standing in the wiped area for redrawing. In a windowed app this
+  # is what to use, not `gfx.clear`.
+  #
+  # `gfx.clear` paints the whole canvas, taking the title bar and the border
+  # with it.
   def clear_user_area: () -> void
 
   # ---- テーマの色 (system_conf.toml の [theme]) ----
@@ -206,12 +355,55 @@ class FmrbApp
   def set_window_position: (Integer x, Integer y) -> FmrbApp
 
   # 全画面にするか元に戻すか頼む
+  #
+  # 全画面と窓を切り替えるよう頼みます。**すぐには変わりません** — VM は
+  # 動いたまま、答えは `on_resize` として返ってきます。そのときには
+  # `fullscreen` も窓の中の大きさも新しい値になっています。
+  #
+  # 描き直しは `on_resize` に書きます。ここでは書きません。
+  # <<en>>
+  # Asks to switch between full screen and a window. **Nothing changes
+  # immediately** -- the VM keeps running and the answer arrives as
+  # `on_resize`, by which time `fullscreen` and the user area are the new
+  # ones.
+  #
+  # Redraw in `on_resize`, not here.
   def request_fullscreen: (bool on) -> void
 
   # 全画面と窓を切りかえる
   def toggle_fullscreen: () -> void
 
   # 自分用の画面をもう一枚作る
+  #
+  # このアプリの持ちものとして canvas をもう 1 枚作り、それに結び付いた
+  # FmrbGfx を返します。終了時 (異常終了も含む) に自動で消えます。
+  #
+  # **呼び方はキーワード引数です** — 上のシグネチャは型推論の都合で
+  # 位置引数の形に直してあります。実際にはこう書きます:
+  #
+  # ```ruby
+  # g = create_canvas_gfx(
+  #   width: 200, height: 100)
+  # g.present(20, 40)
+  # ```
+  #
+  # **全画面のアプリ向け**です。窓のアプリで使うと、フォーカスが移ったとき
+  # に窓の管理側が追いかけてくれません。
+  # <<en>>
+  # Makes another canvas owned by this app and returns an FmrbGfx bound to
+  # it. It is deleted when the app ends, a crash included.
+  #
+  # **It takes keyword arguments** -- the signature above is written
+  # positionally because the type engine has no keywords. The real call is:
+  #
+  # ```ruby
+  # g = create_canvas_gfx(
+  #   width: 200, height: 100)
+  # g.present(20, 40)
+  # ```
+  #
+  # **Meant for fullscreen apps.** The window manager does not follow extra
+  # canvases across a change of focus.
   def create_canvas_gfx: (Integer width, Integer height) -> FmrbGfx
 
   # 作った画面を片づける
@@ -220,6 +412,30 @@ class FmrbApp
   # ---- キーの調べかた (on_event の中で使う) ----
 
   # Ctrl を押していたかどうか
+  #
+  # Ctrl が押されていたかを返します。左右どちらでも真です。
+  #
+  # 文字のキーを見分けるときは **`ev[:scancode]` を使うこと**。
+  # `ev[:keycode]` は環境で変わります (Linux では SDL の値が来ます) が、
+  # scancode は どこでも同じ USB HID の番号です。
+  #
+  # ```ruby
+  # # Ctrl+S
+  # if ev_ctrl?(ev) &&
+  #    ev[:scancode] == 0x16
+  # ```
+  # <<en>>
+  # Whether Ctrl was held; either side counts.
+  #
+  # Match letter keys on **`ev[:scancode]`**. `ev[:keycode]` differs between
+  # platforms (SDL values on Linux), while the scancode is the same USB HID
+  # number everywhere.
+  #
+  # ```ruby
+  # # Ctrl+S
+  # if ev_ctrl?(ev) &&
+  #    ev[:scancode] == 0x16
+  # ```
   def ev_ctrl?: (Hash ev) -> bool
 
   # Shift を押していたかどうか
@@ -231,6 +447,33 @@ class FmrbApp
   # ---- 時間と伝言 ----
 
   # 決まった時間ごとに呼んでもらう
+  #
+  # interval ミリ秒後に一度だけブロックを呼びます。**繰り返しません** —
+  # 続けたいならブロックの中でもう一度 `set_timer` を呼びます。
+  #
+  # 呼ばれる時刻はアプリのループの刻みに丸められるので、**ミリ秒どおりには
+  # 来ません**。戻り値は `clear_time` に渡す番号です。
+  #
+  # Spinel で動かすアプリでは、**ブロックの外側のローカル変数を掴めません**
+  # (インスタンス変数と定数は使えます)。
+  #
+  # ```ruby
+  # @id = set_timer(500) { blink }
+  # ```
+  # <<en>>
+  # Calls the block once, interval milliseconds later. **It does not
+  # repeat** -- call `set_timer` again inside the block for that.
+  #
+  # The moment it fires is rounded to the app loop's own tick, so it is not
+  # accurate to the millisecond. The return value is the id `clear_time`
+  # takes.
+  #
+  # Under Spinel a stored block **cannot capture an outer local variable**
+  # (instance variables and constants are fine).
+  #
+  # ```ruby
+  # @id = set_timer(500) { blink }
+  # ```
   def set_timer: (Integer interval) -> Integer
 
   # 時間の呼び出しをやめる
@@ -243,6 +486,18 @@ class FmrbApp
   def unsubscribe: (String topic) -> void
 
   # みんなに知らせを送る
+  #
+  # topic の名前で、購読しているアプリ全部にデータを配ります。
+  #
+  # **1 通で送れるのは 176 バイトまで**です。大きなものは `/tmp` に書いて
+  # **その場所だけを配る**のが定石です (`/tmp` はメモリの上にあり、
+  # 再起動で消えます)。
+  # <<en>>
+  # Sends data to every app subscribed to that topic.
+  #
+  # **One message carries at most 176 bytes.** For anything larger, write it
+  # to `/tmp` and publish the path instead (`/tmp` lives in memory and is
+  # gone on the next boot).
   def publish: (String topic) -> void
 
   # 他のアプリに伝言を送る
