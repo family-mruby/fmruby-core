@@ -194,6 +194,54 @@ function currentResolution() {
   return RESOLUTIONS.includes(stored) ? stored : DEFAULT_RES;
 }
 
+// ---- the machine's own settings, carried across a reload -----------------
+//
+// Config (inside the machine) writes /flash/etc/system_conf.toml, which lives
+// outside /home and is therefore rebuilt from the bundle on every visit: the
+// save worked and was forgotten by the next one. These keys are read back out
+// of the file after a change and handed to the machine again at boot, where
+// page_settings_wasm.c puts them in before the kernel reads its settings.
+//
+// Values are stored as they appear in the file -- quotes, 0x, true -- so they
+// go straight back in. They are tied to the bundle they came from: a new
+// build starts from its own defaults rather than carrying an old file's
+// values into a format that may have moved on.
+const CONF_KEYS = [
+  'language', 'keyboard_layout', 'timezone', 'debug_mode',
+  // the [theme] block, so a theme chosen inside the machine also survives
+  'desktop_bg', 'menu_bg', 'window_bg', 'text', 'text_light',
+  'highlight', 'border', 'button', 'dir_color',
+];
+const CONF_THEME_KEYS = CONF_KEYS.slice(4);
+const CONF_STORE = 'fmrb_web_conf';
+
+function readConfSettings() {
+  try {
+    const raw = JSON.parse(readSetting(CONF_STORE, '') || '{}');
+    if (raw.v !== (window.FMRB_WASM_VER || '')) return {};
+    return raw.k || {};
+  } catch (e) { return {}; }
+}
+
+function writeConfSettings(keys) {
+  writeSetting(CONF_STORE, JSON.stringify({ v: window.FMRB_WASM_VER || '', k: keys }));
+}
+
+// Read the file the machine has been writing and remember the keys we carry.
+function captureConfSettings() {
+  if (!M) return;
+  let text;
+  try {
+    text = M.FS.readFile(CONF_PATH, { encoding: 'utf8' });
+  } catch (e) { return; }
+  const keys = {};
+  for (const k of CONF_KEYS) {
+    const m = text.match(new RegExp('^' + k + ' = ([^\\s#]+)', 'm'));
+    if (m) keys[k] = m[1];
+  }
+  if (Object.keys(keys).length) writeConfSettings(keys);
+}
+
 // ?theme= mirrors the selector the way ?w=&h= does (shareable, and the only
 // way a headless test can pick a theme).
 const themeFromQuery = new URLSearchParams(location.search).get('theme');
@@ -205,6 +253,12 @@ const themeSelect = document.getElementById('theme-select');
 themeSelect.value = readSetting('fmrb_web_theme', 'cyberpunk');
 themeSelect.addEventListener('change', () => {
   writeSetting('fmrb_web_theme', themeSelect.value);
+  // Choosing here means "this preset", so anything Config saved is let go of
+  // -- otherwise the older choice would be applied on top and nothing would
+  // appear to happen.
+  const keys = readConfSettings();
+  for (const k of CONF_THEME_KEYS) delete keys[k];
+  writeConfSettings(keys);
   location.reload();   // the theme is read once at boot
 });
 
@@ -329,6 +383,10 @@ moduleConfig.arguments = [];
   if (readSetting('fmrb_web_theme', 'cyberpunk') === 'classic') {
     moduleConfig.arguments.push('--fmrb-theme=classic');
   }
+  const conf = readConfSettings();
+  for (const k of Object.keys(conf)) {
+    moduleConfig.arguments.push('--fmrb-conf=' + k + '=' + conf[k]);
+  }
 }
 // Everything the page wants to do before main() goes in here, in order.
 moduleConfig.preRun = [];
@@ -349,7 +407,16 @@ moduleConfig.preRun = [];
 // If any of it fails (private window, storage refused), the machine still
 // boots; /home is then an ordinary directory that lasts as long as the tab.
 const HOME_PATH = '/flash/home';
+const APPUSR_PATH = '/flash/app/usr';
 const HOME_DEP = 'fmrb-home-load';
+// Both places the visitor's own work lands. /home holds what they write;
+// /app/usr is where an app has to sit for the launcher to find it, so keeping
+// one without the other would mean a program that survives but cannot be
+// started. The tar carries each under its own name.
+const STORES = [
+  { path: HOME_PATH, tar: 'home' },
+  { path: APPUSR_PATH, tar: 'app-usr' },
+];
 let homeStore = 'volatile';
 
 // One tab writes. Two machines sharing one IndexedDB would overwrite each
@@ -385,19 +452,23 @@ function mountHome(mod) {
       return;
     }
     try {
-      mod.FS.mkdirTree(HOME_PATH);
-      mod.FS.mount(mod.FS.filesystems.IDBFS, { autoPersist: true }, HOME_PATH);
+      for (const st of STORES) {
+        mod.FS.mkdirTree(st.path);
+        mod.FS.mount(mod.FS.filesystems.IDBFS, { autoPersist: true }, st.path);
+      }
     } catch (e) {
       homeStore = 'not available';
-      console.warn('fmrb: /home will not persist (mount failed):', e);
+      console.warn('fmrb: files will not persist (mount failed):', e);
       mod.removeRunDependency(HOME_DEP);
       showStorageState();
       return;
     }
+    // One syncfs reads every IDBFS mount back, so a single callback covers
+    // both stores.
     mod.FS.syncfs(true, (err) => {
       if (err) {
         homeStore = 'not available';
-        console.warn('fmrb: /home could not be read back:', err);
+        console.warn('fmrb: saved files could not be read back:', err);
       } else {
         homeStore = 'persistent';
       }
@@ -484,8 +555,9 @@ function tarHeader(name, size, isDir) {
   return h;
 }
 
-// Walk /home and return [{name, data|null, isDir}] with names relative to it.
-function homeEntries(mod) {
+// Walk one store and return [{name, data|null, isDir}] with names relative
+// to its root.
+function storeEntries(mod, root) {
   const out = [];
   const walk = (dir, prefix) => {
     let names;
@@ -512,22 +584,59 @@ function homeEntries(mod) {
       }
     }
   };
-  walk(HOME_PATH, '');
+  walk(root, '');
   return out;
+}
+
+// The settings are not files -- they live in this browser's localStorage --
+// so without this the tar would restore someone's programs on another machine
+// and leave them typing in English again. One entry at the root of the
+// archive, recognised by name on the way back in.
+const SETTINGS_ENTRY = '.fmrb-settings.json';
+
+function settingsSnapshot() {
+  return JSON.stringify({
+    conf: readConfSettings(),
+    theme: readSetting('fmrb_web_theme', ''),
+    res: readSetting('fmrb_web_res', ''),
+    zoom: readSetting('fmrb_web_zoom', ''),
+  });
+}
+
+// Restored settings are stamped with THIS bundle's version: they were asked
+// for here, so they apply here, whatever build wrote them.
+function applySettingsSnapshot(text) {
+  let o;
+  try { o = JSON.parse(text); } catch (e) { return false; }
+  if (!o || typeof o !== 'object') return false;
+  if (o.conf && typeof o.conf === 'object') writeConfSettings(o.conf);
+  if (o.theme) writeSetting('fmrb_web_theme', o.theme);
+  if (o.res) writeSetting('fmrb_web_res', o.res);
+  if (o.zoom) writeSetting('fmrb_web_zoom', o.zoom);
+  return true;
 }
 
 function exportHome() {
   if (!M) return;
-  const entries = homeEntries(M);
   const parts = [];
-  for (const e of entries) {
-    const size = e.isDir ? 0 : e.data.length;
-    parts.push(tarHeader(e.name, size, e.isDir));
-    if (!e.isDir) {
-      parts.push(e.data);
-      const pad = (512 - (size % 512)) % 512;
-      if (pad) parts.push(new Uint8Array(pad));
+  for (const st of STORES) {
+    for (const e of storeEntries(M, st.path)) {
+      const name = st.tar + '/' + e.name;
+      const size = e.isDir ? 0 : e.data.length;
+      parts.push(tarHeader(name, size, e.isDir));
+      if (!e.isDir) {
+        parts.push(e.data);
+        const pad = (512 - (size % 512)) % 512;
+        if (pad) parts.push(new Uint8Array(pad));
+      }
     }
+  }
+  {
+    const data = new TextEncoder().encode(settingsSnapshot());
+    parts.push(tarHeader(SETTINGS_ENTRY, data.length, false));
+    parts.push(data);
+    const pad = (512 - (data.length % 512)) % 512;
+    if (pad) parts.push(new Uint8Array(pad));
   }
   parts.push(new Uint8Array(1024));  // two empty blocks end a tar
   const blob = new Blob(parts, { type: 'application/x-tar' });
@@ -550,9 +659,23 @@ function safeRelative(name) {
   return parts.join('/');
 }
 
+// Where a tar entry belongs. Names written by this page start with the store
+// they came from; a tar from before there were two stores has neither prefix,
+// and every one of its files was /home's.
+function importTarget(rel) {
+  for (const st of STORES) {
+    if (rel === st.tar || rel.startsWith(st.tar + '/')) {
+      const tail = rel.slice(st.tar.length + 1);
+      return tail ? st.path + '/' + tail : null;  // the root itself is there
+    }
+  }
+  return HOME_PATH + '/' + rel;
+}
+
 function importTar(mod, bytes) {
   let offset = 0;
   let files = 0;
+  let settings = false;
   const decoder = new TextDecoder();
   while (offset + 512 <= bytes.length) {
     const head = bytes.subarray(offset, offset + 512);
@@ -563,8 +686,14 @@ function importTar(mod, bytes) {
     const type = String.fromCharCode(head[156]);
     offset += 512;
     const rel = safeRelative(rawName);
-    if (rel) {
-      const full = HOME_PATH + '/' + rel;
+    if (rel === SETTINGS_ENTRY) {
+      settings = applySettingsSnapshot(
+        new TextDecoder().decode(bytes.subarray(offset, offset + size)));
+      offset += Math.ceil(size / 512) * 512;
+      continue;
+    }
+    const full = rel ? importTarget(rel) : null;
+    if (full) {
       if (type === '5') {
         try { mod.FS.mkdirTree(full); } catch (e) { /* already there */ }
       } else if (type === '0' || type === '\0' || type === '') {
@@ -576,18 +705,20 @@ function importTar(mod, bytes) {
     }
     offset += Math.ceil(size / 512) * 512;
   }
-  return files;
+  return { files: files, settings: settings };
 }
 
 function removeHomeContents(mod) {
-  const entries = homeEntries(mod).reverse();  // children before their parents
-  for (const e of entries) {
-    const full = HOME_PATH + '/' + e.name.replace(/\/$/, '');
-    try {
-      if (e.isDir) mod.FS.rmdir(full);
-      else mod.FS.unlink(full);
-    } catch (e2) {
-      console.warn('fmrb: cannot remove ' + full + ':', e2);
+  for (const st of STORES) {
+    const entries = storeEntries(mod, st.path).reverse();  // children first
+    for (const e of entries) {
+      const full = st.path + '/' + e.name.replace(/\/$/, '');
+      try {
+        if (e.isDir) mod.FS.rmdir(full);
+        else mod.FS.unlink(full);
+      } catch (e2) {
+        console.warn('fmrb: cannot remove ' + full + ':', e2);
+      }
     }
   }
 }
@@ -607,9 +738,9 @@ function flushHome() {
   }
 }
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') flushHome();
+  if (document.visibilityState === 'hidden') { flushHome(); captureConfSettings(); }
 });
-window.addEventListener('pagehide', flushHome);
+window.addEventListener('pagehide', () => { flushHome(); captureConfSettings(); });
 
 const exportBtn = document.getElementById('home-export');
 const importBtn = document.getElementById('home-import-btn');
@@ -626,17 +757,18 @@ if (importBtn && importInput) {
     importInput.value = '';
     if (!file || !M) return;
     const bytes = new Uint8Array(await file.arrayBuffer());
-    let files;
+    let got;
     try {
-      files = importTar(M, bytes);
+      got = importTar(M, bytes);
     } catch (e) {
       statusLine.textContent = 'that file could not be read as a .tar';
       console.warn('fmrb: import failed:', e);
       return;
     }
     flushHome();
-    statusLine.textContent = 'restored ' + files + ' file(s) into /home -- ' +
-      'reload the page to let the machine see them';
+    statusLine.textContent = 'restored ' + got.files + ' file(s)' +
+      (got.settings ? ' and the settings' : '') +
+      ' -- reload the page to let the machine see them';
     measureStorage();
   });
 }
@@ -775,16 +907,29 @@ function fsprobeReport(mod) {
     mod.FS.writeFile(HOME_PATH + '/t4.txt', 'hello');
     mod.FS.mkdirTree(HOME_PATH + '/sub');
     mod.FS.writeFile(HOME_PATH + '/sub/deep.txt', 'nested');
-    const entries = homeEntries(mod);
+    // The second store, and the settings entry, ride in the same archive.
+    mod.FS.mkdirTree(APPUSR_PATH);
+    mod.FS.writeFile(APPUSR_PATH + '/mine.app.rb', 'an app of my own');
+    writeConfSettings({ language: '"ja"' });
     const parts = [];
-    for (const e of entries) {
-      const size = e.isDir ? 0 : e.data.length;
-      parts.push(tarHeader(e.name, size, e.isDir));
-      if (!e.isDir) {
-        parts.push(e.data);
-        const pad = (512 - (size % 512)) % 512;
-        if (pad) parts.push(new Uint8Array(pad));
+    for (const st of STORES) {
+      for (const e of storeEntries(mod, st.path)) {
+        const name = st.tar + '/' + e.name;
+        const size = e.isDir ? 0 : e.data.length;
+        parts.push(tarHeader(name, size, e.isDir));
+        if (!e.isDir) {
+          parts.push(e.data);
+          const pad = (512 - (size % 512)) % 512;
+          if (pad) parts.push(new Uint8Array(pad));
+        }
       }
+    }
+    {
+      const data = new TextEncoder().encode(settingsSnapshot());
+      parts.push(tarHeader(SETTINGS_ENTRY, data.length, false));
+      parts.push(data);
+      const pad = (512 - (data.length % 512)) % 512;
+      if (pad) parts.push(new Uint8Array(pad));
     }
     // An entry that tries to climb out, appended by hand.
     const evil = new TextEncoder().encode('owned');
@@ -797,20 +942,30 @@ function fsprobeReport(mod) {
     let at = 0;
     for (const p of parts) { tar.set(p, at); at += p.length; }
     removeHomeContents(mod);
+    writeConfSettings({});
     probeLog('FSPROBE t4: after erase /home holds ' +
-             JSON.stringify(mod.FS.readdir(HOME_PATH)));
-    const n = importTar(mod, tar);
-    probeLog('FSPROBE t4: restored ' + n + ' file(s), /home holds ' +
+             JSON.stringify(mod.FS.readdir(HOME_PATH)) +
+             ' /app/usr holds ' + JSON.stringify(mod.FS.readdir(APPUSR_PATH)) +
+             ' settings=' + JSON.stringify(readConfSettings()));
+    const got = importTar(mod, tar);
+    probeLog('FSPROBE t4: restored ' + got.files + ' file(s), /home holds ' +
              JSON.stringify(mod.FS.readdir(HOME_PATH)) +
              ' sub=' + JSON.stringify(mod.FS.readdir(HOME_PATH + '/sub')) +
              ' deep=' + mod.FS.readFile(HOME_PATH + '/sub/deep.txt',
                                         { encoding: 'utf8' }));
+    probeLog('FSPROBE t4: /app/usr holds ' +
+             JSON.stringify(mod.FS.readdir(APPUSR_PATH)) +
+             ' mine=' + mod.FS.readFile(APPUSR_PATH + '/mine.app.rb',
+                                        { encoding: 'utf8' }) +
+             ', settings back = ' + got.settings +
+             ' ' + JSON.stringify(readConfSettings()));
     let escaped = 'no';
     try { mod.FS.stat('/flash/escaped.txt'); escaped = 'YES'; } catch (e) { }
     probeLog('FSPROBE t4: escaped out of /home = ' + escaped +
              ', landed as ' + JSON.stringify(mod.FS.readdir(HOME_PATH)));
     // leave nothing behind
     removeHomeContents(mod);
+    writeConfSettings({});
   } catch (e) {
     probeLog('FSPROBE t4: failed: ' + e);
   }

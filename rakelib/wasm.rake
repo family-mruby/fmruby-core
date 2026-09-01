@@ -178,6 +178,10 @@ namespace :wasm do
     # somebody's music riding along, which is a different act from having a
     # file on a board in one's hand. wasm:scan asserts the same rule.
     files = files.reject { |f| f.end_with?(".nsf") && !f.start_with?("flash/usr/share/sounds/nsf/") }
+    # /app/usr is mounted from the browser's own storage, the way /home is, so
+    # the bundle must put nothing there -- the placeholder that keeps the
+    # directory in git would otherwise be unpacked over the mount.
+    files = files.reject { |f| f.start_with?("flash/app/usr/") }
     files.each do |f|
       dest = File.join(staging, f.sub(%r{\Aflash/}, ""))
       mkdir_p File.dirname(dest)

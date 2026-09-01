@@ -41,6 +41,16 @@ static const char *CLASSIC_THEME[][2] = {
 static int s_res_w, s_res_h;
 static int s_classic;
 
+/* Settings the machine's own Config dialog wrote, handed back by the page.
+ * /etc is rebuilt from the bundle on every visit, so without this a Save is
+ * forgotten the moment the tab is reloaded. Key and value arrive exactly as
+ * they appear in the file, quotes and all. */
+#define CONF_OVERRIDE_MAX 16
+#define CONF_TOKEN_MAX 32
+static char s_conf_key[CONF_OVERRIDE_MAX][CONF_TOKEN_MAX];
+static char s_conf_val[CONF_OVERRIDE_MAX][CONF_TOKEN_MAX];
+static int s_conf_n;
+
 /* Replace the value of "key = <token>" on its own line. Returns 1 if found. */
 static int conf_set(char *conf, size_t cap, const char *key, const char *value)
 {
@@ -82,13 +92,24 @@ void fmrb_wasm_page_settings_parse(int argc, char **argv)
             s_res_h = h;
         } else if (strcmp(argv[i], "--fmrb-theme=classic") == 0) {
             s_classic = 1;
+        } else if (strncmp(argv[i], "--fmrb-conf=", 12) == 0 &&
+                   s_conf_n < CONF_OVERRIDE_MAX) {
+            const char *kv = argv[i] + 12;
+            const char *eq = strchr(kv, '=');
+            if (eq && (size_t)(eq - kv) < CONF_TOKEN_MAX &&
+                strlen(eq + 1) < CONF_TOKEN_MAX) {
+                memcpy(s_conf_key[s_conf_n], kv, (size_t)(eq - kv));
+                s_conf_key[s_conf_n][eq - kv] = '\0';
+                snprintf(s_conf_val[s_conf_n], CONF_TOKEN_MAX, "%s", eq + 1);
+                s_conf_n++;
+            }
         }
     }
 }
 
 void fmrb_wasm_page_settings_apply(void)
 {
-    if (!s_res_w && !s_classic) return;
+    if (!s_res_w && !s_classic && !s_conf_n) return;
 
     char *conf = malloc(CONF_MAX);
     if (!conf) return;
@@ -115,6 +136,15 @@ void fmrb_wasm_page_settings_apply(void)
             conf_set(conf, CONF_MAX, CLASSIC_THEME[i][0], CLASSIC_THEME[i][1]);
         }
         printf("page settings: classic theme\n");
+    }
+
+    /* Last, so that what the user set inside the machine beats the page's
+     * own presets -- the page drops its stored theme keys when its selector
+     * is used, so the two cannot argue. */
+    for (int i = 0; i < s_conf_n; i++) {
+        if (conf_set(conf, CONF_MAX, s_conf_key[i], s_conf_val[i])) {
+            printf("page settings: %s = %s\n", s_conf_key[i], s_conf_val[i]);
+        }
     }
 
     /* Wallpaper: one file per (theme, resolution), all pre-generated

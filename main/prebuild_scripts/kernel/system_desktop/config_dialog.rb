@@ -52,6 +52,13 @@ module ConfigDialogMixin
   # Setting rows. :enum -> options[], :float / :int -> min/max/step,
   # :bool -> on/off. field is the TOML key, or :theme_preset (synthetic) which
   # expands to the nine [theme] entries on save.
+  # Rows a browser has no answer for. The mouse scale is applied to a
+  # relative device in usb_task; a page sends absolute canvas coordinates, so
+  # nothing the slider does can reach them. The radios do not exist -- the web
+  # config file says so in a comment, while Save was writing both keys back.
+  CFG_WEB_HIDDEN = ["mouse_scale_x", "mouse_scale_y",
+                    "ble_auto_start", "wifi_auto_start"]
+
   CFG_SETTINGS = [
     { key: :language,         field: "language",         type: :enum,  options: ["en", "ja"] },
     { key: :keyboard_layout,  field: "keyboard_layout",  type: :enum,  options: ["jp", "us"] },
@@ -65,7 +72,7 @@ module ConfigDialogMixin
     { key: :wifi_auto_start,  field: "wifi_auto_start",  type: :bool },
     { key: :display_margin_x, field: "display_margin_x", type: :int,   min: 0, max: 16, step: 1 },
     { key: :display_margin_y, field: "display_margin_y", type: :int,   min: 0, max: 16, step: 1 },
-  ]
+  ].reject { |s| FmrbConst::BOARD == "wasm" && CFG_WEB_HIDDEN.include?(s[:field]) }
 
   CFG_BTN_H = CFG_FOOTER_H - 8
 
