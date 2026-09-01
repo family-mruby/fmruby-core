@@ -439,6 +439,13 @@ class FmrbGfx
     self
   end
 
+  # Composite the whole canvas again (clears the viewport). Modern only, as
+  # set_viewport is.
+  def clear_viewport
+    _set_canvas_viewport(0, 0, 0, 0)
+    self
+  end
+
   # Confine this canvas's sprites to the (x, y, w, h) sub-rect. Sprites are
   # composited on top of everything the canvas drew, so by default they paint
   # over the window frame and title bar the app drew into the same canvas.
