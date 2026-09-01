@@ -13,7 +13,7 @@
   }
   body { display: flex; flex-direction: column; align-items: center; }
   h1 { font-size: 16px; margin: 12px 0 8px; }
-  #screen-box { position: relative; line-height: 0; }
+  #screen-box { position: relative; line-height: 0; max-width: 100%; }
   /* Full screen: the box fills the display and the canvas is centred on
      black, so the zoom calculation has the whole screen to work with. */
   #screen-box:fullscreen {
@@ -38,13 +38,27 @@
     margin-top: 6px; font-size: 12px; color: #aaa;
     display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center;
   }
+  /* A phone is narrower than these rows are wide. Let every part shrink and
+     wrap rather than pushing the page sideways -- the machine itself is
+     already fitted to the screen, and a page that scrolls horizontally
+     underneath it is the thing that makes it look broken. */
+  /* Width, not just max-width: the body centres its children, which makes
+     each one as wide as its content and lets a long row push the whole page
+     sideways. Given a width they fill the column instead, and wrap inside
+     it. */
+  #settings, #about { width: 100%; max-width: 780px; box-sizing: border-box;
+                      padding-left: 12px; padding-right: 12px; }
+  #status { max-width: 100%; box-sizing: border-box; }
+  #settings > span { display: inline-flex; align-items: center; gap: 4px;
+                     max-width: 100%; min-width: 0; }
+  #settings select { max-width: 50vw; }
   #settings select, #settings button {
     background: #111; color: #ddd; border: 1px solid #555;
     font-family: monospace; font-size: 12px;
   }
   #settings button { cursor: pointer; padding: 1px 8px; }
   #about {
-    max-width: 780px; margin: 14px 12px 24px; font-size: 12px;
+    margin: 14px 0 24px; font-size: 12px;
     line-height: 1.6; color: #9a9aa8;
   }
   #about h2 { font-size: 13px; color: #ccc; margin: 14px 0 4px; }
@@ -52,6 +66,18 @@
   #about kbd {
     background: #26262e; border: 1px solid #454550; border-radius: 3px;
     padding: 0 4px;
+  }
+  /* Narrow screens: stack the rows instead of trying to fit them side by
+     side. One item per line can never be wider than the line, so the page
+     stops scrolling sideways and the machine keeps the width to itself. */
+  @media (max-width: 700px) {
+    #settings { flex-direction: column; align-items: stretch; gap: 6px; }
+    /* Label above, control below, and the control given a width rather than
+       a cap: a select is as wide as its longest option unless it is told
+       otherwise, and one long option was what pushed the page sideways. */
+    #settings > span { flex-direction: column; align-items: stretch; gap: 2px; }
+    #settings select { width: 100%; max-width: 100%; }
+    #about { font-size: 11px; overflow-wrap: anywhere; }
   }
 </style>
 </head>
@@ -127,9 +153,11 @@
       is kept, but the rest of the machine is built fresh every time: files
       written anywhere else, and <code>/tmp</code> above all, are gone on the
       next reload.</li>
-    <li>Desktop Chrome and Firefox are what this targets. Safari is untested,
-      and phones and tablets are not a target -- there is no on-screen
-      keyboard.</li>
+    <li>Desktop Chrome and Firefox are what this targets. Safari is untested.
+      On a phone or a tablet the machine runs, the screen is fitted to yours,
+      and a finger works as a mouse -- tap to click, drag to move a window.
+      What you cannot do there is type: a canvas cannot raise the on-screen
+      keyboard, so the editor and the shell need a real keyboard.</li>
   </ul>
 </div>
 <script src="vendor/coi-serviceworker.js"></script>

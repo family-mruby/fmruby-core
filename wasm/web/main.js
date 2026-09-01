@@ -86,6 +86,59 @@ function hookInput() {
   });
   canvas.addEventListener('contextmenu', (ev) => ev.preventDefault());
 
+  // Touch, turned into the same three events a mouse sends. A browser will
+  // synthesise a click from a tap on its own, but only a click: no move while
+  // the finger travels, which is exactly what dragging a window by its title
+  // bar needs. So one finger is followed here instead, and preventDefault
+  // stops both the page scrolling under the finger and the synthetic click
+  // arriving afterwards as a second press.
+  //
+  // Two fingers are left alone, so the page can still be pinched and scrolled
+  // from the screen; and a tap is a left button, since a touch screen has no
+  // other. Typing is a separate problem this does not solve -- there is no
+  // way to raise the on-screen keyboard for a canvas.
+  let touchId = null;
+  function touchPos(t) {
+    const r = canvas.getBoundingClientRect();
+    const x = Math.round((t.clientX - r.left) * canvas.width / r.width);
+    const y = Math.round((t.clientY - r.top) * canvas.height / r.height);
+    return [Math.min(Math.max(x, 0), canvas.width - 1),
+            Math.min(Math.max(y, 0), canvas.height - 1)];
+  }
+  canvas.addEventListener('touchstart', (ev) => {
+    if (ev.touches.length !== 1) return;
+    ev.preventDefault();
+    canvas.focus();
+    const t = ev.changedTouches[0];
+    touchId = t.identifier;
+    const [x, y] = touchPos(t);
+    // Put the pointer there first: the machine tracks a cursor, and a press
+    // arriving from somewhere it has never been would act at the old place.
+    pushInput(4, x, y, 0, 0);
+    pushInput(3, x, y, 1, 1);
+  }, { passive: false });
+  canvas.addEventListener('touchmove', (ev) => {
+    if (touchId === null) return;
+    ev.preventDefault();
+    for (const t of ev.changedTouches) {
+      if (t.identifier !== touchId) continue;
+      const [x, y] = touchPos(t);
+      pushInput(4, x, y, 0, 0);
+    }
+  }, { passive: false });
+  function touchRelease(ev) {
+    if (touchId === null) return;
+    for (const t of ev.changedTouches) {
+      if (t.identifier !== touchId) continue;
+      ev.preventDefault();
+      const [x, y] = touchPos(t);
+      pushInput(3, x, y, 1, 0);
+      touchId = null;
+    }
+  }
+  canvas.addEventListener('touchend', touchRelease, { passive: false });
+  canvas.addEventListener('touchcancel', touchRelease, { passive: false });
+
   // The wheel, in notches. A browser reports pixels, lines or pages depending
   // on the device and the platform, and positive deltaY means towards the
   // user -- the opposite of the sign the machine uses -- so it is converted
@@ -273,7 +326,13 @@ resSelect.addEventListener('change', () => {
 // The resolution is the framebuffer; the zoom is only how large that
 // framebuffer is drawn, so it takes effect without a reload.
 const zoomSelect = document.getElementById('zoom-select');
-zoomSelect.value = readSetting('fmrb_web_zoom', '2');   // 2x by default; full screen still fits
+// 2x by default on a screen with room for it. A phone has not: at 2x the
+// machine is 852 CSS px wide and the visitor sees about half of it, with the
+// settings and the explanation off the side of the page. So the first visit
+// on a narrow screen starts fitted instead. Only the first: once the selector
+// has been used, that choice is what comes back.
+zoomSelect.value = readSetting('fmrb_web_zoom', null) ||
+  (document.documentElement.clientWidth < canvas.width * 2 + 24 ? 'fit' : '2');
 zoomSelect.addEventListener('change', () => {
   writeSetting('fmrb_web_zoom', zoomSelect.value);
   applyZoom();
@@ -898,6 +957,14 @@ function fsprobeReport(mod) {
   // The three buttons are useless while they are disabled, and a disabled
   // button swallows the click without a sound -- which is exactly how this
   // shipped broken once.
+  // What actually decides whether the page scrolls sideways on a phone.
+  probeLog('FSPROBE layout: client=' + document.documentElement.clientWidth +
+           ' body=' + document.body.scrollWidth +
+           ' doc=' + document.documentElement.scrollWidth +
+           ' canvas=' + Math.round(canvas.getBoundingClientRect().width) +
+           ' settings=' + Math.round(document.querySelector('#settings').getBoundingClientRect().width) +
+           ' about=' + Math.round(document.getElementById('about').getBoundingClientRect().width) +
+           ' h1=' + Math.round(document.querySelector('h1').getBoundingClientRect().width));
   probeLog('FSPROBE result: buttons enabled = ' +
            ['home-export', 'home-import-btn', 'home-reset']
              .map((id) => id + '=' + !document.getElementById(id).disabled)
