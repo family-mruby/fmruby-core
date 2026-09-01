@@ -78,7 +78,13 @@ class SystemDesktopApp < FmrbApp
     { key: :file_manager },
     { key: :log_viewer },
     { key: :monitor },
-    { key: :set_clock },
+  ] +
+    # Setting the clock writes the system clock and the RTC chip, neither of
+    # which a page has: off-device apply_clock_setting only logs what it was
+    # given. A dialog that accepts a time and does nothing with it is worse
+    # than no dialog -- and the browser is already showing the right time,
+    # because it takes it from the machine it runs on.
+    (ON_WEB ? [] : [{ key: :set_clock }]) + [
     { key: :config },
   ] +
     # Storage clears the device's own caches, which the browser build has no
