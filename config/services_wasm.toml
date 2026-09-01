@@ -17,8 +17,11 @@ interval_ms = 60000
 
 # Rings a note on the hour, by subscribing to the clock/hour that the entry
 # above publishes. The body is /usr/share/services/hourly_chime.rb and is the
-# one to read before writing a service of your own.
+# one to read before writing a service of your own -- which is why it is
+# listed here at all. Off, as on a device: a page anyone may have open should
+# not make a noise at a moment its reader did not choose. Turn it on in
+# Services to hear it.
 [hourly_chime]
 file = "hourly_chime.rb"
 class = "HourlyChimeService"
-enable = true
+enable = false
