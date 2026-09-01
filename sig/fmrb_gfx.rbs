@@ -59,6 +59,14 @@ class FmrbGfx
   def canvas_id: () -> Integer
 
   # 画面の横幅 (ドット)
+  #
+  # canvas 全体の幅。窓のアプリが描いてよいのは、その内側の
+  # @user_area_x0 / @user_area_width の範囲で、canvas_width とは違う。
+  # 全画面のアプリでは一致する。
+  # <<en>>
+  # The width of the whole canvas. A windowed app may only draw inside
+  # @user_area_x0 / @user_area_width, which is not the same thing; for a
+  # fullscreen app the two agree.
   def canvas_width: () -> Integer
 
   # 画面の高さ (ドット)
@@ -73,18 +81,51 @@ class FmrbGfx
   # ---- 形を描く ----
 
   # 画面ぜんぶを一色でぬる
+  #
+  # canvas 全体を塗る。窓のアプリで呼ぶと、自分で描いたタイトルバーもわくも
+  # 消える。窓の中だけを消すなら FmrbApp#clear_user_area を使う。あちらは
+  # わくを描き直し、付いている FmrbUI の部品にも描き直しの印を付ける。
+  #
+  # 全画面のアプリなら clear でよく、fill_rect で同じ範囲を塗るより速い。
+  # <<en>>
+  # Fills the whole canvas. In a windowed app that erases the title bar and
+  # frame the app drew itself; to clear only the inside of the window use
+  # FmrbApp#clear_user_area, which redraws the frame and marks any attached
+  # FmrbUI widgets for redraw.
+  #
+  # For a fullscreen app clear is the right call, and faster than a fill_rect
+  # over the same area.
   def clear: (Integer color) -> FmrbGfx
 
   # 点を一つ打つ
   def set_pixel: (Integer x, Integer y, Integer color) -> FmrbGfx
 
   # 点の色を読む
+  #
+  # 描画側への同期的な往復になる。1 画素ずつ読んで画面を走査するような
+  # 使い方には向かない。
+  #
+  # canvas の外を指すと 0 を返す。0 は黒でもあるので、範囲外と黒は
+  # 戻り値では区別できない。
+  # <<en>>
+  # A synchronous round trip to the graphics side. Not something to do per
+  # pixel in a loop scanning the screen.
+  #
+  # Outside the canvas it returns 0, which is also black -- the return value
+  # does not tell the two apart.
   def get_pixel: (Integer x, Integer y) -> Integer
 
   # まっすぐな線を引く
   def draw_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer color) -> FmrbGfx
 
   # 太さのある線を引く
+  #
+  # 描画側に太い線の命令が無いので、1 画素の線を thickness 本だけずらして
+  # 重ねている。太さの分だけ命令が増えるので、太い線を毎フレーム引くと効く。
+  # <<en>>
+  # The graphics side has no thick-line primitive, so this stacks thickness
+  # one-pixel lines side by side. The cost grows with the thickness, which
+  # shows if thick lines are drawn every frame.
   def draw_thick_line: (Integer x0, Integer y0, Integer x1, Integer y1, Integer thickness, Integer color) -> FmrbGfx
 
   # 四角のふちを描く
@@ -121,6 +162,25 @@ class FmrbGfx
   def fill_rect: (Integer x, Integer y, Integer w, Integer h, Integer color) -> FmrbGfx
 
   # 下の絵と混ぜて四角をぬる
+  #
+  # 最後の引数は混ぜ方で、FmrbGfx::BLEND_ADD (加算) か FmrbGfx::BLEND_XOR。
+  # 透明度ではない。加算は光っている表現に、XOR は下の色を反転させる表現に使う。
+  #
+  # ```ruby
+  # gfx.fill_rect(0, 0, 64, 64, FmrbGfx::BLUE)
+  # gfx.blend_rect(16, 16, 32, 32,
+  #                FmrbGfx::RED, FmrbGfx::BLEND_ADD)
+  # ```
+  # <<en>>
+  # The last argument is the blend mode -- FmrbGfx::BLEND_ADD or
+  # FmrbGfx::BLEND_XOR -- not an opacity. Additive reads as a glow; XOR
+  # inverts what is underneath.
+  #
+  # ```ruby
+  # gfx.fill_rect(0, 0, 64, 64, FmrbGfx::BLUE)
+  # gfx.blend_rect(16, 16, 32, 32,
+  #                FmrbGfx::RED, FmrbGfx::BLEND_ADD)
+  # ```
   def blend_rect: (Integer x, Integer y, Integer w, Integer h, Integer color, Integer alpha) -> FmrbGfx
 
   # 角の丸い四角のふちを描く
@@ -148,9 +208,23 @@ class FmrbGfx
   def fill_triangle: (Integer x0, Integer y0, Integer x1, Integer y1, Integer x2, Integer y2, Integer color) -> FmrbGfx
 
   # 円の一部の弧を描く
+  #
+  # 角度は度の整数。r0 が内側の半径、r1 が外側の半径で、r0 に 0 でない値を
+  # 入れると輪の一部になる。r0 を 0 にすると扇形の外周になる。
+  # <<en>>
+  # Angles are integer degrees. r0 is the inner radius and r1 the outer one,
+  # so a non-zero r0 gives part of a ring; r0 of 0 gives the outline of a
+  # pie slice.
   def draw_arc: (Integer x, Integer y, Integer r0, Integer r1, Integer angle0, Integer angle1, Integer color) -> FmrbGfx
 
   # 円の一部をぬりつぶす
+  #
+  # 角度は度の整数。r0 が内側の半径、r1 が外側の半径。r0 を 0 にすると扇形、
+  # 0 でない値にすると輪の一部になる。ゲージや円グラフはこの形で描ける。
+  # <<en>>
+  # Angles are integer degrees. r0 is the inner radius and r1 the outer one:
+  # r0 of 0 fills a pie slice, a non-zero r0 fills part of a ring -- which is
+  # how a gauge or a pie chart is drawn.
   def fill_arc: (Integer x, Integer y, Integer r0, Integer r1, Integer angle0, Integer angle1, Integer color) -> FmrbGfx
 
   # ---- 字を描く ----
@@ -202,12 +276,45 @@ class FmrbGfx
   def set_font: (Symbol family, ?Integer size) -> Array[untyped]
 
   # 字の大きさの倍率を決める
+  #
+  # 選んでいる字を整数倍で拡大する。字が増えるわけではないので、大きくすると
+  # 角が目立つ。倍率をかけた後の幅は text_width が返す。
+  # <<en>>
+  # Scales the selected font by an integer factor. It is the same glyphs
+  # enlarged, so the edges get blocky. text_width reports the width after the
+  # multiplier.
   def set_text_size: (Integer size) -> FmrbGfx
 
   # 字を描いたときの横幅を測る
+  #
+  # いま set_font で選んでいる字と set_text_size の倍率で測る。字を変えたら
+  # 測り直す。UTF-8 を走査して画素の幅を返すので、日本語混じりでも文字数では
+  # なく実際の幅が返る。
+  #
+  # ```ruby
+  # w = gfx.text_width(str)
+  # x = (gfx.canvas_width - w) / 2
+  # gfx.draw_text(x, 20, str, FmrbGfx::WHITE)
+  # ```
+  # <<en>>
+  # Measured with the font set_font selected and the multiplier set_text_size
+  # set, so measure again after changing either. It walks the UTF-8, so a
+  # mixed Japanese and ASCII string gives a real pixel width rather than a
+  # character count.
+  #
+  # ```ruby
+  # w = gfx.text_width(str)
+  # x = (gfx.canvas_width - w) / 2
+  # gfx.draw_text(x, 20, str, FmrbGfx::WHITE)
+  # ```
   def text_width: (String str) -> Integer
 
   # 一行分の高さを調べる
+  #
+  # いま選んでいる字の高さ。行を積むときの間隔に使う。字を変えると変わる。
+  # <<en>>
+  # The height of the font currently selected -- the spacing to use when
+  # stacking lines. It changes with the font.
   def font_height: () -> Integer
 
   # 今の時刻を描く
@@ -219,44 +326,219 @@ class FmrbGfx
   # ---- 絵の読み込みと表示 ----
 
   # 絵のファイルを読み込んで置く
+  #
+  # sync_file、create_image、draw_image、present、delete_image をまとめて行う。
+  # 一枚絵を出すだけならこれで足りる。
+  #
+  # 置き場所は coord: で、[x, y] か :center。省略すると左上。毎フレーム呼ぶ
+  # ものではない (呼ぶたびに画像を作り直して捨てる)。
+  #
+  # ```ruby
+  # gfx.load_image("/home/pic.png", coord: :center)
+  # ```
+  # <<en>>
+  # Does sync_file, create_image, draw_image, present and delete_image in one
+  # call -- enough when a picture just has to appear.
+  #
+  # coord: takes [x, y] or :center; left out, it draws at the top left. Not
+  # something to call every frame: it builds and throws away the image each
+  # time.
+  #
+  # ```ruby
+  # gfx.load_image("/home/pic.png", coord: :center)
+  # ```
   def load_image: (String path) -> void
 
   # 絵のファイルから絵を作る
+  #
+  # 受けるのは PNG。スプライトの素材 (RGB332 の BMP) はこちらではなく
+  # SpriteImage#load_bmp が読む。BMP を渡しても例外にはならず、画面と同じ
+  # 大きさの空の画像ができて何も出ない。
+  #
+  # 描画側は自分のファイルシステムしか読めないので、先に sync_file で送る。
+  # 戻り値は {id:, width:, height:} か、読めなければ nil。
+  #
+  # ```ruby
+  # path = "/home/pic.png"
+  # gfx.sync_file(path)
+  # img = gfx.create_image(path)
+  # gfx.draw_image(img[:id], x: 0, y: 0) if img
+  # ```
+  # <<en>>
+  # Takes a PNG. Sprite artwork (an RGB332 BMP) goes through
+  # SpriteImage#load_bmp instead. Handing a BMP to this does not raise: you
+  # get an empty screen-sized image and nothing appears.
+  #
+  # The graphics side reads its own filesystem, so send the file with
+  # sync_file first. Returns {id:, width:, height:}, or nil when it could not
+  # be read.
+  #
+  # ```ruby
+  # path = "/home/pic.png"
+  # gfx.sync_file(path)
+  # img = gfx.create_image(path)
+  # gfx.draw_image(img[:id], x: 0, y: 0) if img
+  # ```
   def create_image: (String path) -> Hash?
 
   # 作った絵を描く
+  #
+  # 位置と倍率はキーワードで渡す (x:, y:, scale_x:, scale_y:)。scale_y に
+  # 0.0 を渡すと scale_x と同じ倍率になる。
+  #
+  # ```ruby
+  # gfx.draw_image(id, x: 10, y: 20)
+  # gfx.draw_image(id, x: 10, y: 20,
+  #                scale_x: 2.0)   # 縦横とも 2 倍
+  # ```
+  # <<en>>
+  # Position and scale are keyword arguments (x:, y:, scale_x:, scale_y:).
+  # A scale_y of 0.0 means "the same as scale_x".
+  #
+  # ```ruby
+  # gfx.draw_image(id, x: 10, y: 20)
+  # gfx.draw_image(id, x: 10, y: 20,
+  #                scale_x: 2.0)   # both axes doubled
+  # ```
   def draw_image: (Integer image_id) -> FmrbGfx
 
   # 作った絵を片づける
+  #
+  # 画像は描画側の資源で、数に限りがある。使い終わったら消す。アプリが
+  # 終わるときには系がまとめて片づけるので、終了処理で消し忘れても漏れはしない。
+  # <<en>>
+  # An image is a resource on the graphics side, and there is a limited
+  # number of them, so release one when it is done with. The system reclaims
+  # them when the app exits, so a missing cleanup at exit does not leak.
   def delete_image: (Integer image_id) -> FmrbGfx
 
   # 絵の一部を切り取って描く
+  #
+  # SpriteImage の一部を canvas に直接押す。SpriteInstance を作らないので、
+  # 地形のように動かないものを並べるのに向く。置き場所はキーワード
+  # (dst_x:, dst_y:)。
+  #
+  # use_transparent: true で作った SpriteImage なら、その透明色は抜ける。
+  # タイル 1 枚ずつを並べる高水準の側は TileMap にある。
+  #
+  # ```ruby
+  # sheet.load_bmp("/cache/app/x/tiles.bmp")
+  # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
+  #               dst_x: 32, dst_y: 16)
+  # ```
+  # <<en>>
+  # Stamps part of a SpriteImage straight onto the canvas. No SpriteInstance
+  # is created, which suits the things that do not move -- terrain, a
+  # background. The destination is passed by keyword (dst_x:, dst_y:).
+  #
+  # A SpriteImage made with use_transparent: true keeps its transparent
+  # colour transparent here. TileMap is the higher-level way to lay a whole
+  # map out.
+  #
+  # ```ruby
+  # sheet.load_bmp("/cache/app/x/tiles.bmp")
+  # gfx.draw_tile(sheet.id, 0, 0, 16, 16,
+  #               dst_x: 32, dst_y: 16)
+  # ```
   def draw_tile: (Integer image_id, Integer src_x, Integer src_y, Integer w, Integer h) -> FmrbGfx
 
   # 型ぬきの形を作る
+  #
+  # data は 1 画素 1 ビットの列。1 行あたり ceil(width / 8) バイトで、各バイトは
+  # 上位ビットが左。ビットが 1 のところだけが描かれる。
+  #
+  # 戻り値は mask_id で、draw_image_masked に渡す。使い終わったら delete_mask。
+  # <<en>>
+  # data is one bit per pixel: ceil(width / 8) bytes per row, most significant
+  # bit leftmost. Only the pixels whose bit is set are drawn.
+  #
+  # Returns a mask_id for draw_image_masked; release it with delete_mask.
   def create_mask: (Integer width, Integer height, String data) -> Integer
 
   # 型ぬきの形を片づける
   def delete_mask: (Integer mask_id) -> void
 
   # 型でぬいた形の絵を描く
+  #
+  # SpriteImage の絵を、マスクのビットが立っているところだけ canvas に写す。
+  # 置き場所はキーワード (x:, y:)。絵の (xx, yy) が canvas の (x+xx, y+yy) に来る。
+  # <<en>>
+  # Copies a SpriteImage onto the canvas only where the mask's bits are set.
+  # The position is passed by keyword (x:, y:): the image's (xx, yy) lands at
+  # (x + xx, y + yy).
   def draw_image_masked: (Integer image_id, Integer mask_id) -> FmrbGfx
 
   # ---- 画面に出す ----
 
   # 描いたものを画面に出す <<en>> show what has been drawn
+  #
+  # 描くメソッドは命令を積むだけで、画面には出ない。present を呼んだときに
+  # まとめて送られ、そこで初めて出る。スプライトの合成も present の時に走るので、
+  # SpriteInstance#move や visible= の後にも要る。
+  #
+  # 1 フレームの終わりに 1 回呼ぶ。描くたびに呼ぶと、その回数だけ画面全体の
+  # 転送が起きて遅くなる。
+  #
+  # ```ruby
+  # gfx.clear(FmrbGfx::BLACK)
+  # gfx.draw_text(10, 10, "hi", FmrbGfx::WHITE)
+  # gfx.present   # ここで画面に出る
+  # ```
+  # <<en>>
+  # Drawing methods only queue commands; nothing reaches the screen until
+  # present sends them. Sprite compositing also happens at present, so it is
+  # needed after SpriteInstance#move or visible= as well.
+  #
+  # Call it once at the end of a frame. Calling it after every shape costs a
+  # whole-screen transfer each time.
+  #
+  # ```ruby
+  # gfx.clear(FmrbGfx::BLACK)
+  # gfx.draw_text(10, 10, "hi", FmrbGfx::WHITE)
+  # gfx.present   # now it appears
+  # ```
   def present: () -> FmrbGfx
 
   # この画面を片づける
   def destroy: () -> FmrbGfx
 
   # 画面の見せる場所をずらす
+  #
+  # canvas より小さい表示窓を、canvas の上で動かす。canvas は輪として扱われ、
+  # 元の四角は端で回り込む。表示範囲より少し大きい canvas を用意し、動いた分だけ
+  # 新しく見えるところにタイルを描き足せば、大きな地図を描き直さずに流せる。
+  #
+  # Modern (ESP32-P4) だけの機能で、Retro の描画側はこの命令を無視する。
+  # FmrbConst::CHIP_MODEL == "ESP32-P4" で分ける。
+  # <<en>>
+  # Moves a viewport smaller than the canvas across it. The canvas is treated
+  # as a torus, so the source rectangle wraps at the edges: with a canvas a
+  # little larger than the viewport, stamping only the newly exposed tiles as
+  # it moves scrolls an arbitrarily large world without redrawing it.
+  #
+  # Modern (ESP32-P4) only; the Retro backend ignores the command. Gate it on
+  # FmrbConst::CHIP_MODEL == "ESP32-P4".
   def set_viewport: (Integer src_x, Integer src_y, Integer w, Integer h) -> void
 
   # ずらした場所を元に戻す
   def clear_viewport: () -> void
 
   # 重ねて見せる場所を決める
+  #
+  # canvas のどの矩形をどう合成するかを指定する。角の丸い窓のように、隅だけ
+  # 透過が要るときの最適化で、中央は速い経路で送れる。最大 8 個。nil か [] で
+  # 既定 (canvas 全体) に戻る。
+  #
+  # 窓のアプリでは .app.toml の rounded_corners から系が設定するので、ふつうは
+  # 自分で呼ぶ必要はない。
+  # <<en>>
+  # Says which rectangles of the canvas are composited and how. It is the
+  # optimisation for a rounded window, where only the corners need
+  # transparency and the middle can take the fast path. Eight at most; nil or
+  # [] restores the default of the whole canvas.
+  #
+  # For a windowed app the system sets this from rounded_corners in the
+  # .app.toml, so calling it directly is rarely needed.
   def set_composite_regions: (Array regions) -> void
 
   # スプライトが出られる範囲を決める <<en>> limit where sprites may appear
@@ -291,27 +573,109 @@ class FmrbGfx
   def clear_sprite_clip: () -> FmrbGfx
 
   # 映像の明るさを決める
+  #
+  # Retro のコンポジット映像の明るさを決める。Modern には効かない。
+  # CRT のつまみで合わせきれないときに使う。
+  # <<en>>
+  # Sets the brightness of Retro's composite video signal. It does nothing on
+  # Modern. For when a CRT's own controls do not get there.
   def set_output_level: (Integer level) -> FmrbGfx
 
   # 映像の色の濃さを決める
+  #
+  # Retro のコンポジット映像の色の濃さ (カラーバーストの振幅) を決める。
+  # Modern には効かない。0 にすると白黒になる。
+  # <<en>>
+  # Sets the saturation of Retro's composite video -- the colour burst
+  # amplitude. It does nothing on Modern; 0 gives a black-and-white picture.
   def set_chroma_level: (Integer level) -> FmrbGfx
 
   # ---- ファイルの受けわたし ----
 
   # 絵や音のファイルを送る
+  #
+  # 描画側は自分のファイルシステムしか読めないので、素材は先に送っておく。
+  # 大きさと CRC32 を比べて、違うときだけ送る。毎回呼んでよい。
+  #
+  # file_status[:exists] で「あるから送らない」と判断すると、書き換えた素材が
+  # 古いまま残る。素材にはこちらを使う。
+  #
+  # ```ruby
+  # gfx.sync_file("/home/bird.bmp",
+  #               dest: "/cache/app/x/bird.bmp")
+  # ```
+  # <<en>>
+  # The graphics side reads its own filesystem, so an asset has to be put
+  # there first. This compares size and CRC32 and transfers only when they
+  # differ, so it is fine to call on every start.
+  #
+  # Deciding with file_status[:exists] instead -- "it is there, skip it" --
+  # leaves an edited asset stale for ever. Use this one for assets.
+  #
+  # ```ruby
+  # gfx.sync_file("/home/bird.bmp",
+  #               dest: "/cache/app/x/bird.bmp")
+  # ```
   def sync_file: (String path) -> bool
 
   # ファイルを必ず送り直す
+  #
+  # 中身を見ずに必ず送り直す。ふつうは sync_file でよく、こちらは送り先を
+  # 書き換えたことが分かっているときに使う。
+  # <<en>>
+  # Transfers unconditionally, without looking at what is already there.
+  # sync_file is the usual choice; this one is for when the destination is
+  # known to need rewriting.
   def transfer_file: (String path) -> bool
 
   # 送った先にファイルがあるか
+  #
+  # 描画側にそのファイルがあるかと、その大きさを {exists:, size:} で返す。
+  #
+  # 素材を送るかどうかの判断にはこれを使わない。中身が変わっても exists は
+  # true のままなので、書き換えた素材が古いまま残る。判断は sync_file に任せる。
+  # <<en>>
+  # Whether the graphics side has the file, and how big it is: {exists:, size:}.
+  #
+  # Do not use it to decide whether to send an asset. exists stays true after
+  # the contents change, so an edited asset would stay stale; leave that
+  # decision to sync_file.
   def file_status: (String path) -> Hash
 
   # ---- クラスメソッド ----
 
   # 赤緑青の三つの数から色を作る
+  #
+  # 0-255 の 3 つを 1 バイトに落とす。赤と緑は 3 ビット、青は 2 ビットなので、
+  # 近い色は同じ値になる。細かい階調は出ない。
+  #
+  # 結果が 0x01 になる組み合わせは避ける。デスクトップは 0x01 を透明の目印に
+  # 使っているので、窓が透けて見える。
+  # <<en>>
+  # Packs three 0-255 values into one byte: three bits of red, three of green,
+  # two of blue, so nearby colours collapse onto the same value and fine
+  # gradients do not survive.
+  #
+  # Avoid combinations that come out as 0x01. The desktop uses 0x01 as its
+  # transparency key, so a window painted with it shows through.
   def self.rgb_to_332: (Integer r, Integer g, Integer b) -> Integer
 
   # 色あいと濃さと明るさから色を作る
+  #
+  # h は 0-360、s と v は 0-255。戻り値は [r, g, b] の配列で、そのままでは
+  # 色として使えない。rgb_to_332 に渡す。
+  #
+  # ```ruby
+  # r, g, b = FmrbGfx.hsv_to_rgb(hue, 255, 255)
+  # color = FmrbGfx.rgb_to_332(r, g, b)
+  # ```
+  # <<en>>
+  # h is 0-360, s and v are 0-255. It returns [r, g, b], which is not a colour
+  # yet -- pass it through rgb_to_332.
+  #
+  # ```ruby
+  # r, g, b = FmrbGfx.hsv_to_rgb(hue, 255, 255)
+  # color = FmrbGfx.rgb_to_332(r, g, b)
+  # ```
   def self.hsv_to_rgb: (Integer h, Integer s, Integer v) -> Array
 end
