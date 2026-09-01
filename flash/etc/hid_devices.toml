@@ -11,6 +11,28 @@
 #   skip_control_transfer - Skip USB control transfers for this device (default: false)
 #   buttons          - Button field: offset (bits), size (bits)
 #   x, y             - Axis fields: offset, size, min, max, relative
+#   wheel            - Wheel field: offset, size, min, max, relative (OPTIONAL)
+#   protocol         - "boot" (default) or "report" (OPTIONAL)
+#
+# The wheel is opt-in per device. Leave `wheel` out and the mouse behaves
+# exactly as it always has, even if its descriptor has a wheel; write it and
+# the notches are delivered to the focused window. Plug the mouse in and the
+# log says whether it reports one, and at which offset:
+#   usb_task: Mouse VID=0x.... PID=0x.... reports a wheel (offset=24 size=8); ...
+# One notch of the wheel is 1, and turning it away from you is positive.
+#
+# A Boot Interface mouse answers with three bytes -- buttons, X, Y -- and its
+# wheel is simply not among them, so no offset can reach it. protocol =
+# "report" asks that one device for its own format instead, which is where its
+# wheel lives. Only a device named here is asked; every other mouse keeps the
+# boot path it has always taken. Use the HID Inspector to read the report the
+# device then sends, because its layout is the device's own and not the
+# standard three bytes. Over-declare report_len while measuring so the
+# Inspector shows the whole report, then write the real length.
+#
+# Do not expect the report descriptor to help: for a Boot Interface device
+# esp_lcd's HID host returns garbage for it (measured 2026-09-01), so the bits
+# have to be measured from live reports.
 #
 # [[gamepad]] fields:
 #   vid, pid         - USB Vendor/Product ID (hex integers)
@@ -96,3 +118,21 @@ y = { offset = 24, size = 13, min = 0, max = 4095, relative = false }
 # buttons = { offset = 0, size = 8, min = 0, max = 1, relative = false }
 # x = { offset = 8, size = 12, min = -2048, max = 2047, relative = true }
 # y = { offset = 20, size = 12, min = -2048, max = 2047, relative = true }
+
+# MOSART 2.4G Keyboard Mouse (wireless combo dongle). Its Boot report is
+# 3 bytes with no wheel, so it is asked for its own format: a Report ID of 3,
+# 12-bit packed axes and the wheel in the fifth data byte. Measured with the
+# HID Inspector -- 1 right gives 01 in raw byte 2, 1 down gives 10 in byte 3
+# (a nibble up, which is what says the axes are 12 bits), a wheel notch gives
+# FF in byte 5.
+[[mouse]]
+vid = 0x062A
+pid = 0x4101
+name = "MOSART 2.4G Mouse"
+protocol = "report"
+report_id = 0x03
+report_len = 6
+buttons = { offset = 0, size = 8, min = 0, max = 1, relative = false }
+x = { offset = 8, size = 12, min = -2048, max = 2047, relative = true }
+y = { offset = 20, size = 12, min = -2048, max = 2047, relative = true }
+wheel = { offset = 32, size = 8, min = -127, max = 127, relative = true }

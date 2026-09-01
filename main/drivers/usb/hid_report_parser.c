@@ -130,6 +130,17 @@ static void handle_input_item(hid_parser_state_t *state, uint32_t flags,
                               field_bit_offset, (uint8_t)state->report_size,
                               state->logical_min, state->logical_max,
                               is_relative ? "rel" : "abs");
+                } else if (usage == USAGE_WHEEL && !layout->wheel.found) {
+                    layout->wheel.bit_offset = field_bit_offset;
+                    layout->wheel.bit_size = (uint8_t)state->report_size;
+                    layout->wheel.logical_min = state->logical_min;
+                    layout->wheel.logical_max = state->logical_max;
+                    layout->wheel.is_relative = is_relative;
+                    layout->wheel.found = true;
+                    FMRB_LOGI(TAG, "    -> Wheel: off=%u sz=%u min=%"PRId32" max=%"PRId32" %s",
+                              field_bit_offset, (uint8_t)state->report_size,
+                              state->logical_min, state->logical_max,
+                              is_relative ? "rel" : "abs");
                 } else if (usage == USAGE_Y && !layout->y.found) {
                     layout->y.bit_offset = field_bit_offset;
                     layout->y.bit_size = (uint8_t)state->report_size;

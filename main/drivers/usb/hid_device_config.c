@@ -11,6 +11,8 @@ typedef struct {
     uint16_t pid;
     char name[32];
     bool skip_control_transfer;
+    bool report_protocol;   // protocol = "report": ask the device for its own
+                            // report format instead of the 3-byte Boot one
     hid_mouse_report_layout_t layout;
     uint8_t copy_len;  // report_len + 1 if has_report_id
 } hid_mouse_config_entry_t;
@@ -148,6 +150,14 @@ void hid_device_config_init(void)
             strncpy(e->name, name, sizeof(e->name) - 1);
 
             e->skip_control_transfer = fmrb_toml_get_bool(entry, "skip_control_transfer", false);
+            // A Boot Interface mouse answers with 3 bytes -- buttons, X, Y --
+            // and its wheel is simply not in them. protocol = "report" asks
+            // this one device for its native format instead. Only a device
+            // named here is asked; every other mouse keeps the boot path.
+            {
+                const char *proto_s = fmrb_toml_get_string(entry, "protocol", "boot");
+                e->report_protocol = (proto_s && strcmp(proto_s, "report") == 0);
+            }
 
             int64_t report_id = fmrb_toml_get_int(entry, "report_id", -1);
             int64_t report_len = fmrb_toml_get_int(entry, "report_len", 3);
@@ -165,6 +175,11 @@ void hid_device_config_init(void)
             parse_field(entry, "buttons", &e->layout.buttons);
             parse_field(entry, "x", &e->layout.x);
             parse_field(entry, "y", &e->layout.y);
+            // Naming the wheel here is what turns it on -- this file is the
+            // whitelist. A device without a `wheel` table keeps the behaviour
+            // it has always had.
+            parse_field(entry, "wheel", &e->layout.wheel);
+            e->layout.wheel_enabled = e->layout.wheel.found;
 
             e->copy_len = (uint8_t)(report_len + (e->layout.has_report_id ? 1 : 0));
             if (e->copy_len > 64) e->copy_len = 64;
@@ -175,6 +190,13 @@ void hid_device_config_init(void)
                       e->layout.report_id,
                       (int)report_len,
                       e->layout.x.is_relative ? "rel" : "abs");
+            if (e->report_protocol) {
+                FMRB_LOGI(TAG, "       report protocol requested");
+            }
+            if (e->layout.wheel_enabled) {
+                FMRB_LOGI(TAG, "       wheel enabled: off=%u sz=%u",
+                          e->layout.wheel.bit_offset, e->layout.wheel.bit_size);
+            }
 
             g_mouse_entry_count++;
         }
@@ -213,6 +235,16 @@ bool hid_device_config_find_gamepad(uint16_t vid, uint16_t pid,
             FMRB_LOGI(TAG, "Gamepad config match: VID=0x%04X PID=0x%04X \"%s\"",
                       vid, pid, g_gamepad_entries[i].name);
             return true;
+        }
+    }
+    return false;
+}
+
+bool hid_device_config_wants_report_protocol(uint16_t vid, uint16_t pid)
+{
+    for (int i = 0; i < g_mouse_entry_count; i++) {
+        if (g_mouse_entries[i].vid == vid && g_mouse_entries[i].pid == pid) {
+            return g_mouse_entries[i].report_protocol;
         }
     }
     return false;

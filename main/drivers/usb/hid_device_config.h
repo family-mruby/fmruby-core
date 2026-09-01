@@ -78,6 +78,20 @@ bool hid_device_config_find_gamepad(uint16_t vid, uint16_t pid,
  */
 bool hid_device_config_skip_control_transfer(uint16_t vid, uint16_t pid);
 
+/**
+ * Whether this device asked for Report Protocol (protocol = "report").
+ *
+ * A Boot Interface mouse reports 3 bytes and has no wheel in them, so a
+ * device whose wheel is wanted has to be asked for its own format. Only a
+ * device named in the config file is asked; the default stays Boot.
+ *
+ * @param vid USB Vendor ID
+ * @param pid USB Product ID
+ * @return true if the entry says protocol = "report"
+ */
+bool hid_device_config_wants_report_protocol(uint16_t vid, uint16_t pid);
+
+
 #ifdef __cplusplus
 }
 #endif

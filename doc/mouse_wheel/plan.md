@@ -127,7 +127,7 @@
 |---|---|---|
 | **W1** | 中核の配管 4 か所 + sim (SDL) + 注入 (`fmrb_input.rb wheel N`) + アプリ側の受け | **完了 2026-08-31** (report/w1.md)。log / shell / デスクトップの一覧がホイールで動く。**FmrbUI 案は成り立たず `wheel_rows` に変更**。sim も 2026-09-01 に実測済 (中継 switch の穴を 1 つ塞いだ) |
 | **W2** | ブラウザ (wasm の ring + ページ) と遠隔デスクトップ (rd_input + web クライアント) | **前半 (ブラウザ) は W1 と一緒に完了** — 検証がこの経路のため。**後半 (遠隔デスクトップ) も完了 2026-09-01** (report/w2.md)。**NARYA v4 実機で確認済** (log 9 行 / ランチャー 1 アイコン行) |
-| **W3** | 実機 USB。`hid_devices.toml` の `wheel` フィールド (白名簿) と HID Inspector でのホイール値表示 | 白名簿に書いた機器で動く。**書いていない機器と、今動いている機器は 1 バイトも変わらない** (回帰ゼロが本題) |
+| **W3** | 実機 USB。`hid_devices.toml` の `wheel` フィールド (白名簿) と HID Inspector でのホイール値表示 | **完了 2026-09-01** (report/w3.md)。NARYA v4 + MOSART コンボで実機確認。Boot マウス向けに `protocol = "report"` も追加。**記述子には頼らない**と決着 (SDK 側の問題)。Inspector のウィザードにホイールの段は未実装 |
 | **W4** | アプリ個別 | **大半は W1 で済んだ** (editor 本文・shell 履歴・logviewer・launcher・file_manager / file_selector)。残りは nsf_player / smf_player と、修飾キー付き (Ctrl+ホイール等) |
 
 W1 だけで実用になるのが要点。実機 (W3) を最後に置いたのは、W1-W2 が
@@ -176,8 +176,9 @@ W1 だけで実用になるのが要点。実機 (W3) を最後に置いたの�
 
 ## 未確定事項
 
-- `hid_devices.toml` の `wheel` 記法 (offset / size / relative の 3 つで
-  足りるはず。既存の x / y と同じ書き方に揃える)。
+- ~~`hid_devices.toml` の `wheel` 記法~~ → **決着 (2026-09-01)**: x / y と
+  同じ `{ offset, size, min, max, relative }`。加えて Boot マウス向けに
+  `protocol = "report"` を新設した (report/w3.md)。
 
 ## 検証の都合 (W1 の進め方)
 

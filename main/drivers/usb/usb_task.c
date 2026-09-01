@@ -73,6 +73,7 @@ typedef struct {
         double accum_y;  // Fractional accumulator for scaled Y
         uint8_t prev_buttons;
         bool initialized;  // True after first screen size is known
+        bool wheel_hint_logged;  // The "this mouse has a wheel" line is said once
     } mouse_state;
     struct {
         int gamepad_id;  // 0 or 1
@@ -896,6 +897,33 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         device->mouse_state.initialized = true;
     }
 
+    // Wheel. Only for a device the config file named -- see wheel_enabled in
+    // hid_report_parser.h. A mouse that reports a wheel but was not asked
+    // about says so once, with the numbers needed to write the entry, and is
+    // otherwise left exactly as it was.
+    if (layout->wheel.found && !layout->wheel_enabled &&
+        !device->mouse_state.wheel_hint_logged) {
+        device->mouse_state.wheel_hint_logged = true;
+        FMRB_LOGI(TAG, "Mouse VID=0x%04X PID=0x%04X reports a wheel "
+                       "(offset=%u size=%u); add wheel = { offset = %u, size = %u, "
+                       "min = -127, max = 127, relative = true } to "
+                       HID_DEVICE_CONFIG_PATH " to use it",
+                  device->vid, device->pid,
+                  layout->wheel.bit_offset, layout->wheel.bit_size,
+                  layout->wheel.bit_offset, layout->wheel.bit_size);
+    }
+    if (layout->wheel_enabled && layout->wheel.found) {
+        int32_t notches = hid_report_extract_field(report_data, report_len, &layout->wheel);
+        if (notches != 0) {
+            if (notches > 127) notches = 127;
+            if (notches < -127) notches = -127;
+            FMRB_LOGD(TAG, "Mouse wheel %"PRId32" at (%d,%d)", notches,
+                      device->mouse_state.cursor_x, device->mouse_state.cursor_y);
+            fmrb_host_send_mouse_wheel(device->mouse_state.cursor_x,
+                                       device->mouse_state.cursor_y, (int)notches);
+        }
+    }
+
     // Check button changes
     uint8_t changed = buttons ^ device->mouse_state.prev_buttons;
 
@@ -1357,7 +1385,20 @@ static void hid_host_device_callback(hid_host_device_handle_t hid_device_handle,
             // devices, which empirically causes the STATUS phase ACK to be
             // missed and the host to time out (even though the device has
             // accepted the request and switched modes).
-            if (!toml_matched && is_boot_device && proto == HID_PROTOCOL_MOUSE) {
+            if (toml_matched && proto == HID_PROTOCOL_MOUSE &&
+                hid_device_config_wants_report_protocol(vid, pid)) {
+                // The config file asked for this one device's own format. A
+                // Boot Interface mouse otherwise answers with 3 bytes and its
+                // wheel is not among them.
+                esp_err_t sp_ret = hid_class_request_set_protocol(hid_device_handle,
+                                                                   HID_REPORT_PROTOCOL_REPORT);
+                if (sp_ret == ESP_OK) {
+                    FMRB_LOGI(TAG, "SET_PROTOCOL(Report) accepted for slot %d (pre-start)", slot_index);
+                } else {
+                    FMRB_LOGW(TAG, "SET_PROTOCOL(Report) failed for slot %d (0x%x), the device keeps its current mode",
+                              slot_index, sp_ret);
+                }
+            } else if (!toml_matched && is_boot_device && proto == HID_PROTOCOL_MOUSE) {
                 esp_err_t sp_ret = hid_class_request_set_protocol(hid_device_handle,
                                                                    HID_REPORT_PROTOCOL_BOOT);
                 if (sp_ret == ESP_OK) {

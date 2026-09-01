@@ -27,6 +27,12 @@ typedef struct {
     hid_field_info_t buttons;
     hid_field_info_t x;
     hid_field_info_t y;
+    // The wheel is a whitelist: the descriptor parser fills this field in
+    // when it sees Usage 0x38 so the device can say what it has, but only an
+    // explicit `wheel = {...}` in /etc/hid_devices.toml sets wheel_enabled.
+    // A mouse nobody asked about therefore behaves exactly as it did before.
+    hid_field_info_t wheel;
+    bool wheel_enabled;
     uint16_t report_byte_len; // Total report size in bytes (excluding Report ID)
 } hid_mouse_report_layout_t;
 
