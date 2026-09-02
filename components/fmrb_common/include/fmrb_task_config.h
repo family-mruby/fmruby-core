@@ -94,7 +94,23 @@
 #else
 #define FMRB_SYSTEM_APP_TASK_STACK_SIZE (16 * 1024)
 #endif
-#define FMRB_SYSTEM_APP_TASK_PRIORITY   (8)
+// 8 until 2026-09-03, and nobody could say why: the value predated the
+// priority survey, no commit had ever changed it, and the survey left it
+// alone ("他タスクは全員が段割りに既に適合"). The reason it plausibly had --
+// the desktop must answer while a guest hogs the CPU -- stopped applying on
+// 2026-08-02 when guests dropped from 5 to 2. All 8 bought after that was a
+// UI shell outranking, on the same core, the screen task (DISPLAY_P4, 5),
+// touch (5), the remote desktop's stream (4) and debugd (3), which is the
+// only way to kill a hung app. A launcher rescan held core 1 for 160 ms at a
+// stretch and stopped all of them (doc/reference/launcher_rescan_desktop_stop.md).
+//
+// 3 keeps the one property that has to hold -- above guests (2) and the
+// service host (1), so the menu bar and the close button answer while an app
+// busy-loops -- and gives up nothing else. It shares the band with RTC,
+// STATUS_LED and DEBUGD, which is a deliberate exception to that band's
+// "small tasks that must always run" rule; it only works because the desktop
+// is not allowed to run long (doc/reference/task_priority.md).
+#define FMRB_SYSTEM_APP_TASK_PRIORITY   (3)
 #define FMRB_SYSTEM_APP_TASK_FLAGS      FMRB_TASK_FLAG_PINNED_1
 
 // Shell App task (mruby VM for shell)
