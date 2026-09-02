@@ -39,3 +39,4 @@ CI (GitHub Actions) で以下を実行:
 ### 関連
 
 - 監査手順の原型: [../../tmp/picoruby_customization_summary.md](../../tmp/picoruby_customization_summary.md) §6.3
+- ランチャー再走査で system_desktop が落ちる (NARYA v4、断続、未解決): [launcher_rescan_desktop_stop.md](launcher_rescan_desktop_stop.md)

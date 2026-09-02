@@ -253,6 +253,10 @@ class AppStoreApp < FmrbApp
     end
     img = @gfx.create_image(path)
     return nil unless img
+    # A slot that could not be had comes back as id 0, which is truthy in
+    # Ruby and would be cached and drawn forever after.
+    id_new = img[:id]
+    return nil if id_new.nil? || id_new == 0
 
     while @image_order.size >= IMAGE_CACHE_MAX
       old_id = @image_order.shift
@@ -262,9 +266,9 @@ class AppStoreApp < FmrbApp
         @images[old_id] = nil
       end
     end
-    @images[id] = img[:id]
+    @images[id] = id_new
     @image_order << id
-    img[:id]
+    id_new
   end
 
   # Ask for the selected app's picture, if it has one and we have not got it.
@@ -669,6 +673,41 @@ class AppStoreApp < FmrbApp
     File.delete(CACHE_PATH) if File.exist?(CACHE_PATH)
   rescue => e
     Log.warn("appstore: could not drop the launcher cache: #{e.message}")
+  end
+
+  # Give the display side its image slots back before this app goes.
+  #
+  # It has eight for the whole machine and frees one only when it is told to:
+  # deleting a canvas does not release the images drawn on it
+  # (display_p4_task.cpp calls image_store_destroy from DELETE_IMAGE and
+  # nowhere else). An app that exits holding some leaks them until the board
+  # is rebooted -- after a few launches every create_image fails, draw_image
+  # is called with an id that is not there ("DRAW_IMAGE: image 0 not found"),
+  # and the desktop's own sprite rebuild does not survive what is left.
+  # That is what stopped the desktop after a launcher rescan on 2026-09-02.
+  #
+  # This has to happen in stop rather than on_destroy: destroy tears the gfx
+  # down and nils it before on_destroy runs, so by then there is nothing to
+  # ask (measured -- "undefined method 'delete_image' for NilClass").
+  def stop
+    release_images
+    super
+  end
+
+  def release_images
+    return unless @images
+    @image_order.each do |id|
+      img = @images[id]
+      next unless img
+      begin
+        @gfx.delete_image(img) if @gfx
+      rescue => e
+        Log.warn("appstore: could not release image #{id}: #{e.message}")
+      end
+    end
+    @images = {}
+    @image_order = []
+    nil
   end
 
   # ---- events -------------------------------------------------------------
