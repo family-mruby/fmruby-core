@@ -720,8 +720,17 @@ module LauncherMixin
   # Right-click anywhere inside the launcher rescans the app directories so
   # newly added/removed apps (e.g. via `create_app` or BLE upload) appear
   # without rebooting.
+  # The rescan does not run here. It walks /app, opens and parses every
+  # .app.toml and rebuilds the icon sprites -- 7.8 s on a board -- and doing
+  # that inside the input handler means the desktop stops draining its
+  # message queue for the whole of it (measured: msg_send TIMEOUT with
+  # waiting=64), on top of the event-dispatch frames, with a second
+  # right-click able to re-enter the whole thing. Mark it and let on_update
+  # pick it up, which is the shallowest point in the loop and cannot nest.
   def handle_launcher_right_click(x, y)
-    rescan_launcher
+    return if @rescan_pending || @rescanning
+    @rescan_pending = true
+    draw_launcher_status("Rescanning...")
   end
 
   # Show immediate visual feedback in the title bar so the user knows the
@@ -740,9 +749,10 @@ module LauncherMixin
   # that walks the filesystem after the first boot: scan_apps replays the
   # index cache otherwise, so adding or removing an app needs a rescan here.
   # It rewrites the cache on the way out.
+  # Run from on_update when handle_launcher_right_click asked for it.
   def rescan_launcher
-    # Immediate feedback: change the title bar before the slow work starts.
-    draw_launcher_status("Rescanning...")
+    return if @rescanning
+    @rescanning = true
 
     prev_handles = @launcher_apps.map { |a| a[:app] }
     scan_apps(true)
@@ -763,6 +773,15 @@ module LauncherMixin
     @launcher_selected = -1
     @launcher_scroll = 0
     draw_foreground
+    @rescanning = false
+  end
+
+  # Called from on_update. Nothing else runs the scan.
+  def tick_rescan
+    return false unless @rescan_pending
+    @rescan_pending = false
+    rescan_launcher
+    true
   end
 
   def close_launcher

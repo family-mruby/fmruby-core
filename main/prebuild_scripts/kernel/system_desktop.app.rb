@@ -1221,6 +1221,11 @@ class SystemDesktopApp < FmrbApp
       return BOOT_FRAME_MS
     end
 
+    # A rescan asked for by a right-click runs here rather than in the input
+    # handler (see handle_launcher_right_click). Returning straight after it
+    # gives the queue a turn to drain before anything else is done.
+    return 50 if tick_rescan
+
     #draw_memory_stats
     @counter += 1
 

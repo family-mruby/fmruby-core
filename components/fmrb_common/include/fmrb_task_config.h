@@ -82,6 +82,13 @@
 // its 12KB left, the same margin that once let the host task corrupt NimBLE's
 // BSS (see FMRB_HOST_TASK_STACK_SIZE above). Hence 16KB, not 12KB, for mruby:
 // its measured high-water is 11.3KB (launcher grid draw), leaving ~4.7KB.
+//
+// 2026-09-02: 20KB was tried for the mruby desktop and put back. The desktop
+// stops a few seconds after a launcher rescan on a NARYA v4, and a stack that
+// ran out is what that looks like from outside -- but at 20KB it still
+// stopped, with 8536 bytes of stack unused. Not a stack problem, and 4KB of
+// internal DRAM is 4KB the next app cannot have
+// (doc/reference/launcher_rescan_desktop_stop.md).
 #ifdef FMRB_APP_ENGINE_DESKTOP_SPINEL
 #define FMRB_SYSTEM_APP_TASK_STACK_SIZE (24 * 1024)
 #else
