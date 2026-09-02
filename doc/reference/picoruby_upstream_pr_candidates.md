@@ -203,6 +203,31 @@ example.com と api.github.com はどちらも ASCII なので通り、**ホス�
 同じ罠は過去にも踏んでいる (NSF の再生ボタン)。
 mruby の `String#length` を長さとして使うたびに踏む。
 
+## 2026-09-02 追加: wasm32 なら Regexp がある、と決めている [picoruby-json mrblib/json.rb]
+
+```ruby
+def self.wasm_build?
+  @wasm_build = RUBY_DESCRIPTION.include?("wasm32")
+end
+
+def self.use_regexp?
+  @use_regexp = wasm_build?      # ← Regexp があるとは限らない
+end
+```
+
+`JSON.parse` が `uninitialized constant Regexp` で落ちる。**wasm32 であることと
+Regexp を持っていることは別**で、Family mruby のブラウザ版は wasm32 だが
+正規表現エンジンを積んでいない。
+
+発火が遅いのが厄介で、ビルドも起動も通り、**何かが JSON を解析した瞬間に
+初めて**出る。しかもその環境だけ。
+
+修正は `use_regexp?` に `Object.const_defined?(:Regexp)` の確認を足すだけ
+(`defined?` は picoruby に無いのでこの形)。
+
+- fmrb 側: `lib/patch/picoruby-json/mrblib/json.rb` に適用済み
+- 上流 PR: そのまま出せる
+
 ## fmrb固有でPRに含めないもの
 
 - `fmrb_sys_malloc/free` (候補1) → 上流では malloc 等に読み替え

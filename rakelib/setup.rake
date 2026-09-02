@@ -209,6 +209,10 @@ task :setup do
 
   # (picoruby-json parse_float patch dropped: upstream fixed the decimal handling)
 
+  # picoruby-json: do not take the Regexp fast path on a wasm32 build that has
+  # no Regexp. Ours is one, and JSON.parse died on it.
+  sh "cp -f lib/patch/picoruby-json/mrblib/json.rb #{mrbgem_path}/picoruby-json/mrblib/"
+
   # mruby-task (case-D tick split): task.c (bottom-half) and the FreeRTOS
   # ports/posix/task_hal.c (top-half) are delivered by the bulk
   # `cp -rf lib/patch/picoruby-mruby` above. The mrbgem.rake patch is dropped:
