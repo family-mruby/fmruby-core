@@ -1,12 +1,16 @@
 # ESP32-S3 N16R8 (Family mruby Retro / Narya v3) - 16MB flash
 #
 # factory was 3M until the networking gems (picoruby-socket + mbedTLS) pushed
-# the image past it; 4M restores ~1MB of headroom. The flash is 16MB and this
-# layout uses ~9MB, so growing the app partition costs nothing -- but a
-# partition-table change cannot ship as an app-only update, it needs a full
-# flash (bootloader + table + app + storage).
+# the image past it, then 4M. 4M was down to 3% free on 2026-09-02, so it is
+# 6M now -- the same as Modern -- which puts the image back at about a third
+# spare. The flash is 16MB and this layout uses 11MB, so the room came out of
+# the 7MB that was sitting unallocated at the end; storage keeps its 5M
+# (the tree in it is about 3M).
+#
+# A partition-table change cannot ship as an app-only update: it needs a full
+# flash (bootloader + table + app + storage), which erases /home.
 # Name,   Type, SubType,  Offset,  Size, Flags
 nvs,      data, nvs,      0x9000,  24K,
 phy_init, data, phy,             ,  4K,
-factory,  app,  factory,         ,  4M,
+factory,  app,  factory,         ,  6M,
 storage,  data, littlefs,        ,  5M,
