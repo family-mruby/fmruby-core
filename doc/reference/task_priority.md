@@ -197,11 +197,12 @@ status LED で検知」という役割を壊す (重いアプリのたびにハ�
 
 ### 障害
 
-- **サービスホストは Modern 専用** (`fmrb_app_spawner.c` の
+- **サービスホストは今のところ Modern 専用** (`fmrb_app_spawner.c` の
   `#ifdef FMRB_HW_FAMILY_MODERN`。Retro はバイトコードすら積んでいない)。
   **一番プールが苦しいのは Retro** なので、この委譲だけでは Retro が
-  救われない。Retro に service host を載せるか、Retro 用に別の逃がし方
-  (走査専用の headless アプリを spawn する等) が要る。
+  救われない。→ **Retro でもサービスを起動する方針に決めた
+  (2026-09-03)。着手は未定** (user_extension/services/plan.md)。
+  それまで Retro は刻んだ走査と占有率 64% での逐次回収で凌ぐ。
 - 初回起動 (索引が無い) は誰かが作らないとランチャーが空になる。
   サービスが作るなら、その間ランチャーをどう見せるかを決める必要がある。
 - 索引が更新されたことをデスクトップへ知らせる経路 (Pub/Sub) が要る。

@@ -22,6 +22,9 @@ flash/home/services_state.toml
 flash/etc/associations.toml
 # Launcher app index, rebuilt on demand by the desktop
 flash/var/cache/launcher_index
+# user app
+flash/app/usr
+
 
 # Generated documentation
 doc/local/
