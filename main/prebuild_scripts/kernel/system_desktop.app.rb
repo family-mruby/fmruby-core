@@ -442,6 +442,56 @@ class SystemDesktopApp < FmrbApp
     # in the rest of the canvas every frame.
     @composite_regions_enabled = true
     update_composite_regions
+
+    spawn_startup_app
+  end
+
+  # One app opened as soon as the desktop is up, named by `startup_app` in
+  # system_conf. A machine that exists to run one thing boots into it, and the
+  # browser turns ?app= in its URL into this key
+  # (wasm/backend/page_settings_wasm.c).
+  #
+  # The file is read here rather than through FmrbApp.config, which returns
+  # the tables of a section ([[launcher_exclude]] and the like) and has no way
+  # to hand back one top-level string.
+  def spawn_startup_app
+    name = read_conf_string("startup_app")
+    return if name.nil? || name.empty?
+    Log.info("startup_app: #{name}")
+    spawn_app(name)
+  rescue => e
+    Log.error("startup_app failed: #{e.message}")
+  end
+
+  # One top-level `key = "value"` out of system_conf. No Regexp on this
+  # machine, so this walks the lines, the way the launcher reads a .app.toml.
+  def read_conf_string(key)
+    text = File.open("/etc/system_conf.toml", "r") { |f| f.read }
+    return nil unless text
+    lines = text.split("\n")
+    i = 0
+    while i < lines.size
+      line = lines[i].strip
+      i += 1
+      next if line.empty?
+      next if line.start_with?("#")
+      # A section header means the top-level keys are behind us.
+      break if line.start_with?("[")
+      eq = line.index("=")
+      next unless eq
+      next unless line[0, eq].strip == key
+      v = line[eq + 1, line.length - eq - 1].strip
+      # Trim a trailing comment before the quotes are taken off.
+      hash = v.index("#")
+      v = v[0, hash].strip if hash && hash > 0
+      len = v.length
+      v = v[1, len - 2] if len >= 2 && v[0] == "\"" && v[len - 1] == "\""
+      return v
+    end
+    nil
+  rescue => e
+    Log.warn("could not read #{key} from system_conf: #{e.message}")
+    nil
   end
 
   # The key is folded to lower case here, once, rather than on every key press:

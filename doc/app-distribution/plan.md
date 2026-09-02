@@ -1,6 +1,6 @@
 # アプリ配布プラットフォーム 計画
 
-> 状態: 進行中 | 更新: 2026-09-02 | **P1-P3 完了 (Retro 実機を除く)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。残りは P2b・Retro 実機。 
+> 状態: 進行中 | 更新: 2026-09-02 | **P1-P3 完了 (Retro 実機を除く)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。残りは Retro 実機の確認のみ。 
 
 配布物の形式・置き場所・判定規則は `spec.md` が正。この文書は**いつ何を
 作るか**だけを持つ。元の構想は `family-mruby-app-distribution-design.md`。
@@ -58,7 +58,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、GitHub に
 | **P1-A** | 置き場・サンプル・自動検査 (fmruby-core を触らない) | apps リポジトリ、サンプル 3 本、`rake registry`、CI。**完了** |
 | **P1-B** | 実機側の前提の確認 | sim / ブラウザ / 実機で置いて動かす。**sim・ブラウザ済、Retro 実機はユーザ** |
 | **P2** | ブラウザ版に通信手段 | `FmrbNet.request` (3 環境)。**完了** |
-| **P2b** | `startup_app` | desktop が起動時に 1 本立ち上げる。**ファーム変更あり (Spinel 生成の確認が要る)**。URL からアプリを開くのに要る |
+| **P2b** | `startup_app` | desktop が起動時に 1 本立ち上げる。ブラウザは `?app=`。**完了** |
 | **P3** | **3 環境共通の店アプリ** | `flash/app/tool/appstore.app.rb`。**完了** |
 | P4 | 束と版 | 複数ファイル、`app_version` の比較と入れ替え |
 | P5 | 仕上げ | アイコン、絞り込み、Web Serial での書き込み |
@@ -170,17 +170,16 @@ family-mruby-apps/
 - `Net::HTTP` は残す。**配布するアプリは `FmrbNet.request` を使う**。
 - 実機は `request` の中で待ち、ブラウザは待たない。アプリのコードは同じ。
 
-## P2b — `startup_app` (未着手)
+## P2b — `startup_app` (完了)
 
-ページはアプリを入れられるが**起動できない**。ブラウザに debug server が
-無く、`startup_app` のような設定も無い (report/p2.md)。
+設定に書いた 1 本を desktop が起動時に開く。ブラウザは URL の `?app=` を
+その設定に変える (report/p2b.md)。
 
-要るのは desktop の 10 行ほど: 起動時に `FmrbApp.config("startup_app")` を
-読み、あれば `spawn_app` する。ページ側は `--fmrb-conf=startup_app=...` を
-渡すだけ (道は既にある)。**実機にも効く機能**なので独立させた。
-
-**desktop は Spinel で生成されるので、足したコードが生成を通ることを別に
-確かめる**。基底クラスに ivar を 1 個足しただけで壊れた例がある。
+- `FmrbApp.config` は節の表しか返さないので、設定ファイルを直接読む。
+- `conf_set` は既存の鍵しか置き換えないので、`config/system_conf_*.toml`
+  7 枚すべてに `startup_app = ""` を既定として置いた。
+- **リンクからの導入はできない**。`?app=` が開けるのは既にこの機械にある
+  アプリだけ。入れるところまで行くには店への引数渡しが要る (別の段)。
 
 ## P2 — ブラウザ版の店 (完了)
 

@@ -15,6 +15,11 @@ timezone = "JST-9"
 keyboard_layout = "jp" # "jp" or "us"
 language = "en" # "ja" or "en"
 
+# One app to open as soon as the desktop is up, by path (the same path the
+# launcher uses, e.g. "/app/game/tetris.app.rb"). Empty means none, which is
+# the ordinary desktop. The browser sets this from ?app= in its URL.
+startup_app = ""
+
 # Desktop wallpaper. Empty means "whatever the theme says" -- the western
 # picture, or the neon one under the cyberpunk theme, at the size of the
 # screen. A path here wins over that; "none" leaves the desktop a plain

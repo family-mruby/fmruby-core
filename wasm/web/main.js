@@ -455,6 +455,17 @@ moduleConfig.arguments = [];
   for (const k of Object.keys(conf)) {
     moduleConfig.arguments.push('--fmrb-conf=' + k + '=' + conf[k]);
   }
+  // ?app= opens one app as soon as the desktop is up, so a link can carry an
+  // app rather than instructions for finding it. Either a full path or an id
+  // that was installed from the store, which lives at a known place.
+  //
+  // The app has to be on the machine already: the page cannot install one,
+  // and it does not try -- the store is an app now, not part of this page.
+  const want = new URLSearchParams(location.search).get('app');
+  if (want && /^[A-Za-z0-9_./-]+$/.test(want)) {
+    const path = want.includes('/') ? want : `/app/usr/${want}/${want}.app.rb`;
+    moduleConfig.arguments.push(`--fmrb-conf=startup_app="${path}"`);
+  }
 }
 // Everything the page wants to do before main() goes in here, in order.
 moduleConfig.preRun = [];
