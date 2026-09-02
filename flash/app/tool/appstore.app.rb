@@ -18,7 +18,8 @@ class AppStoreApp < FmrbApp
   INSTALL_ROOT = "/app/usr"
   CACHE_PATH = "/var/cache/launcher_index"
 
-  ROW_H = 26          # 24 for the picture and 2 of air
+  ROW_H_PICTURE = 26  # 24 for the picture and 2 of air
+  ROW_H_TEXT = 11
   THUMB_W = 32
   THUMB_H = 24
   TAB_H = 16
@@ -44,6 +45,18 @@ class AppStoreApp < FmrbApp
     end
     b = b + "/" unless b.end_with?("/")
     @base = b
+  end
+
+  # Retro reaches its display over a UART, and every picture has to cross it
+  # before it can be drawn. A list of them is not worth the wait there, so
+  # that machine gets the short rows and twice as many apps on screen
+  # instead. Modern draws in-process and the browser is the page itself.
+  def pictures?
+    @env != "retro"
+  end
+
+  def row_h
+    pictures? ? ROW_H_PICTURE : ROW_H_TEXT
   end
 
   def on_create
@@ -102,11 +115,11 @@ class AppStoreApp < FmrbApp
 
   def list_h
     h = detail_y - list_y - 2
-    h < ROW_H ? ROW_H : h
+    h < row_h ? row_h : h
   end
 
   def rows_visible
-    n = list_h / ROW_H
+    n = list_h / row_h
     n < 1 ? 1 : n
   end
 
@@ -185,6 +198,7 @@ class AppStoreApp < FmrbApp
   # Ask for the picture of a row that has one and has not got it yet. One at a
   # time, and never while an install is using the network.
   def want_thumb(a)
+    return unless pictures?
     return if @job
     return if @thumb_req
     id = a["id"].to_s
@@ -232,23 +246,27 @@ class AppStoreApp < FmrbApp
       idx = @scroll + i
       break if idx >= items.size
       a = items[idx]
-      ry = y + i * ROW_H
+      ry = y + i * row_h
       # A marker rather than a highlight bar: a filled bar leaves nowhere for
       # the ink to be legible against both themes.
       sel = (idx == @sel)
       fg = fits?(a) ? theme_fg : theme_border
-      draw_thumb(a, x + 8, ry + 1)
-      want_thumb(a)
-      tx = x + 8 + THUMB_W + 4
-      @gfx.draw_text(x, ry + 8, sel ? ">" : " ", fg, theme_bg)
-      @gfx.draw_text(tx, ry + 3, row_label(a), fg, theme_bg)
-      @gfx.draw_text(tx, ry + 14, row_sub(a), theme_border, theme_bg)
+      if pictures?
+        draw_thumb(a, x + 8, ry + 1)
+        want_thumb(a)
+        tx = x + 8 + THUMB_W + 4
+        @gfx.draw_text(x, ry + 8, sel ? ">" : " ", fg, theme_bg)
+        @gfx.draw_text(tx, ry + 3, row_label(a), fg, theme_bg)
+        @gfx.draw_text(tx, ry + 14, row_sub(a), theme_border, theme_bg)
+      else
+        @gfx.draw_text(x + 2, ry + 1, (sel ? ">" : " ") + row_label(a), fg, theme_bg)
+      end
       i += 1
     end
   end
 
   def row_cols
-    n = (area_w - 8 - THUMB_W - 4) / 6
+    n = pictures? ? (area_w - 8 - THUMB_W - 4) / 6 : (area_w / 6) - 2
     n < 4 ? 4 : n
   end
 
@@ -261,7 +279,9 @@ class AppStoreApp < FmrbApp
            else
              "^ "
            end
-    "#{mark}#{a['name']}"[0, row_cols].to_s
+    # Without a picture there is no second line to put the version on.
+    tail = pictures? ? "" : " v#{a['version']}"
+    "#{mark}#{a['name']}#{tail}"[0, row_cols].to_s
   end
 
   # The second line of a row: what the picture cannot say.
@@ -583,7 +603,7 @@ class AppStoreApp < FmrbApp
     return unless ev[:type] == :mouse_up && ev[:button] == 1
     y = ev[:y]
     return if y < list_y || y >= list_y + list_h
-    idx = @scroll + ((y - list_y) / ROW_H)
+    idx = @scroll + ((y - list_y) / row_h)
     items = shown
     return if idx >= items.size
     @sel = idx

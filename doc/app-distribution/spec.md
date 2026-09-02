@@ -89,7 +89,8 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | `app_min_width` / `app_min_height` | — | 必要な画面の大きさ (7.2 節) |
 | `required_heap_kb_esp32` | — | 必要なヒープ。実機用 (8.2 節) |
 | `required_heap_kb_linux` | — | 同、sim とブラウザ用 |
-| `app_screenshot` | — | スクリーンショット (PNG)。既定は `<app_id>.png` (10.2 節) |
+| `app_image` | — | アプリを表す絵 (PNG)。既定は `<app_id>.png` (10.2 節) |
+| `app_image_full_size` | — | その絵が画面と同寸なのは意図どおり、と言う (10.2 節) |
 | `app_license` | — | SPDX の識別子。省略時はリポジトリの LICENSE (11.1 節) |
 | `app_source` | — | ソースの URL |
 | `app_files` | — | 束のときの同梱ファイル。省略時は `.app.toml` と同名の本体 1 つ |
@@ -178,7 +179,7 @@ W: app_screen_name in the comment toml of hello_store.app.rb is ignored
       "required_heap_kb": { "esp32": null, "linux": null },
       "base": "apps/breakout/",
       "sha256": "9f2c...",
-      "screenshot": { "path": "breakout.png", "size": 6120 },
+      "image": { "path": "breakout.png", "size": 6120 },
       "thumb": { "path": "breakout.thumb.png", "size": 791 },
       "files": [
         { "path": "breakout.app.toml", "size": 412 },
@@ -192,7 +193,7 @@ W: app_screen_name in the comment toml of hello_store.app.rb is ignored
 `base` は一覧ファイルからの相対とし、取得側が配信元の URL と繋ぐ。将来
 作者のリポジトリへ散らすとき (12 節) は、ここを絶対 URL にすれば形は変わらない。
 
-絵 (`screenshot` / `thumb`) は `files` に入れない。**導入するときに端末へ
+絵 (`image` / `thumb`) は `files` に入れない。**導入するときに端末へ
 書かないもの**だからである。店が一覧を見せるためだけに取る。
 
 ### 5.2 指紋は 1 アプリに 1 つ
@@ -447,17 +448,18 @@ Breakout<TAB>/app/usr/breakout/breakout.app.rb<TAB>R<TAB>usr/share/icon/ruby.ico
 配るようになったら、Web 用の PNG と実機用の BMP の**両方を CI で作る**。
 人手で 2 つ置くと必ず片方が古くなる。
 
-### 10.2 一覧に出すスクリーンショット
+### 10.2 一覧に出す絵
 
 一覧の行に小さな絵を出す。名前だけの一覧より選びやすいため。
 
-**作者が置くのは PNG 1 枚だけ** (`<app_id>.png`、原寸= その環境の画面のまま)。
-実機用の BMP は CI が作る。
+**作者が置くのは PNG 1 枚だけ** (`<app_id>.png`)。**画面写真である必要は
+ない** — 描き下ろしの絵でも題字でもよく、32x24 ではその方が読めることも
+多い。小さい方は CI が作る。
 
-| 配布物 | 誰が作るか | 用途 | 大きさ |
-|---|---|---|---|
-| `<app_id>.png` | 作者 | 原寸の素材 (紹介ページなど) | 320x240 / 426x240 |
-| `<app_id>.thumb.png` | CI | **店の一覧** (3 環境とも) | **32x24** |
+| 配布物 | 誰が作るか | 用途 |
+|---|---|---|
+| `<app_id>.png` | **作者** | 原寸。紹介ページなどの素材 |
+| `<app_id>.thumb.png` | **CI** (`rake registry`) | **店の一覧** (3 環境とも)。32x24 |
 
 #### 生成は全部 Ruby でできる
 
@@ -495,6 +497,29 @@ Modern は 16:9)。
 
 絵のために行数を半分以下にする取引になる。数十本の品揃えなら見て選べる方が
 勝つ、という判断で絵を採った。**品揃えが増えたら考え直す**。
+
+#### Retro は絵を出さない
+
+**Retro だけは文字だけの一覧にする** (2026-09-02 決定)。Retro は表示側が
+UART の先にあり、絵はすべてそこを渡ってから描かれる。一覧のために待つ価値が
+無いので、あの機械は短い行にして**倍のアプリを一度に見せる**方を採る。
+
+場所だけ空けた枠は置かない。出ないものの席を確保して行数まで失うのは、
+両方を損なうため。Modern は表示がプロセス内、ブラウザはページ自身なので
+どちらも渡す費用が無い。
+
+#### 撮る側の約束
+
+**作者が出すのは原寸 1 枚だけ** (`<app_id>.png`)。32x24 は
+`rake registry` が作る (`tools/gen_thumb.rb`)。両方をコミットし、既定の
+`rake` が「生成し直して差分が出たら落とす」ので片方だけ古くならない。
+
+**画面全体を撮らない。** 全体を撮ると 32x24 では壁紙の絵になる。`validate`
+は画面の寸法ちょうどの絵を落とすが、**全画面アプリと、意図してその寸法で
+描いた絵**は別なので、`default_window_mode = "fullscreen"` か
+`app_image_full_size = true` で通せる。
+
+8 倍に縮めて残るのは**面と大きな形**で、1 画素の線はほぼ消える。
 
 #### 大きい版は作らない
 

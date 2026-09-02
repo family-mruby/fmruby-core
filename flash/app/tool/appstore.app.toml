@@ -1,5 +1,6 @@
 app_screen_name = "App Store"
 app_screen_name_ja = "アプリの店"
+icon = "usr/share/icon/appstore.icon"
 default_window_mode = "window"
 default_window_width = 280
 default_window_height = 190
