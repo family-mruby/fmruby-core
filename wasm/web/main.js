@@ -280,9 +280,14 @@ function writeConfSettings(keys) {
   writeSetting(CONF_STORE, JSON.stringify({ v: window.FMRB_WASM_VER || '', k: keys }));
 }
 
+// Set while Erase is going through: the reload it ends with fires pagehide,
+// and that would capture the machine's settings straight back into the store
+// the erase has just cleared.
+let erasing = false;
+
 // Read the file the machine has been writing and remember the keys we carry.
 function captureConfSettings() {
-  if (!M) return;
+  if (!M || erasing) return;
   let text;
   try {
     text = M.FS.readFile(CONF_PATH, { encoding: 'utf8' });
@@ -831,15 +836,49 @@ if (importBtn && importInput) {
     measureStorage();
   });
 }
+// Everything this page keeps in the browser: the two IDBFS stores, the
+// settings the machine saved through Config, and the page's own selectors.
+// Erase clears all of it, because "erase" that leaves the theme and the
+// language behind is a promise the word does not make.
+const PAGE_SETTING_KEYS = ['fmrb_web_theme', 'fmrb_web_res', 'fmrb_web_zoom'];
+
+// Separate from the button so the driver can call it as well: headless
+// Chrome answers window.confirm with "no", so a test that went through the
+// click would never reach this.
+function eraseEverything() {
+  if (!M) return false;
+  erasing = true;
+  removeHomeContents(M);
+  for (const k of PAGE_SETTING_KEYS.concat([CONF_STORE])) {
+    try { localStorage.removeItem(k); } catch (e) {}
+  }
+  statusLine.textContent = 'erased -- starting again';
+  // Reload only once the files are really gone from IndexedDB. Reloading
+  // during the write would bring them back: the machine reads the store on
+  // the way up, and syncfs has not finished emptying it.
+  if (homeStore !== 'persistent') {
+    setTimeout(() => location.reload(), 200);
+    return true;
+  }
+  try {
+    M.FS.syncfs(false, (err) => {
+      if (err) console.warn('fmrb: erase flush failed:', err);
+      location.reload();
+    });
+  } catch (e) {
+    console.warn('fmrb: erase flush failed:', e);
+    location.reload();
+  }
+  return true;
+}
+
 if (resetBtn) {
   resetBtn.addEventListener('click', () => {
     if (!M) return;
-    if (!window.confirm('Erase everything in /home? Download it first if you ' +
-                        'want to keep it.')) return;
-    removeHomeContents(M);
-    flushHome();
-    statusLine.textContent = '/home is empty again -- reload the page';
-    measureStorage();
+    if (!window.confirm('Erase your files (/home and /app/usr) and put every ' +
+                        'setting back to its default? Download them first if ' +
+                        'you want to keep them.')) return;
+    eraseEverything();
   });
 }
 
@@ -1178,6 +1217,11 @@ async function runDriveCommand(cmd) {
       // Answer first; the page is gone a moment later.
       setTimeout(() => location.reload(), 200);
       return { reloading: true };
+    case 'reset':
+      // What the Erase button does, without the confirm a headless browser
+      // would answer "no" to. It reloads by itself once the store is empty.
+      if (!eraseEverything()) throw new Error('the machine is not running yet');
+      return { erased: true };
     default:
       throw new Error('unknown op: ' + cmd.op);
   }
