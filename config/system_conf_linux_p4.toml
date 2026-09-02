@@ -62,11 +62,6 @@ app = "app/tool/nsf_player.app.rb"
 key = "i"
 app = "default/inspector"
 
-# Desktop wallpaper: on Linux the GA process loads images from its own
-# flash/, so transfer it from the Core side at boot (Modern reads it locally).
-[[sync_files]]
-src = "/usr/share/backgrounds/bg_426x240.png"
-dest = "/flash/data/bg_426x240.png"
 
 # App categories hidden from the launcher (files stay on flash and remain
 # runnable from the editor, the file selector and debugd). Same list as the
