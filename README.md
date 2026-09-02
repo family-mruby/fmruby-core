@@ -144,3 +144,10 @@ See the [LICENSE](LICENSE) file for details.
 This project uses third-party open source software. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for dependency licenses.
 
 Creative assets bundled with this repository ship under their own licenses (CC0 / CC BY) — see [ASSETS.md](ASSETS.md).
+
+### Your apps
+
+Apps you write and run on Family mruby are your own work. They are Ruby (or Lua,
+BASIC, MicroPython) scripts that the firmware reads and interprets at run time,
+not part of the firmware, so the GPL-3.0 of this repository does not extend to
+them. Release them under whatever license you like, or none at all.
