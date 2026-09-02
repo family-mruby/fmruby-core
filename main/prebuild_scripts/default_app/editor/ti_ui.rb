@@ -398,15 +398,7 @@ module EditorTiUi
     end
     return nil if text.nil?
 
-    classes = []
-    text.split("\n").each do |line|
-      next if line.length == 0
-      parts = line.split("\t")
-      next unless parts.length >= 2
-      next unless parts[0] == name
-      cls = parts[1]
-      classes << cls unless classes.include?(cls)
-    end
+    classes = help_index_classes(text, name)
     return nil if classes.length == 0
 
     found = classes[0]
@@ -424,6 +416,37 @@ module EditorTiUi
       Log.info("help: #{name} -> #{found}")
     end
     found
+  end
+
+  # Every class the index files this name under, in the order it lists them.
+  #
+  # Searched, not parsed. Walking the 577 lines with split("\n") and then a
+  # split("\t") on each took **1.1 seconds** -- the whole cost of opening a
+  # page, measured with help_lat -- because that is 577 arrays and 1154
+  # strings built to throw away. String#index is one C search over the buffer,
+  # and the name is anchored by the newline before it and the tab after, so a
+  # method whose name ends another one's cannot match.
+  def help_index_classes(text, name)
+    hay = "\n#{text}"
+    needle = "\n#{name}\t"
+    skip = needle.length
+    classes = []
+    pos = 0
+    while true
+      at = hay.index(needle, pos)
+      break if at.nil?
+      eol = hay.index("\n", at + 1)
+      if eol.nil?
+        cls = hay[at + skip, hay.length].to_s
+        pos = hay.length
+      else
+        cls = hay[at + skip, eol - at - skip].to_s
+        pos = eol
+      end
+      classes << cls if cls.length > 0 && !classes.include?(cls)
+      break if eol.nil?
+    end
+    classes
   end
 
   # The class of whatever the method is being called on, spelled the way the
@@ -535,8 +558,10 @@ module EditorTiUi
   end
 
   def open_help
+    t0 = Machine.uptime_us
     topic = help_topic
     entry = help_path_for(topic)
+    t_index = Machine.uptime_us
     if entry.nil?
       flash_status(FmrbI18n.t(:b_no_help).to_s)
       return
@@ -554,11 +579,20 @@ module EditorTiUi
     @help_return_hl_manual = @hl_manual
     full = help_file_for(entry)
     load_file(full)
+    t_load = Machine.uptime_us
     # Only touch the buffer when the page really was read: load_file leaves the
     # previous document in place (and says so) when it fails.
     if @current_file == full
       help_jump_to(entry, topic)
+      t_jump = Machine.uptime_us
       help_markdown_hl
+      t_hl = Machine.uptime_us
+      # F1 is a keypress the reader waits on, so where its time goes is worth
+      # a line -- the same reason ti_lat and edit_lat report at info.
+      Log.info("help_lat: #{(t_hl - t0) / 1000} ms " \
+               "(index #{(t_index - t0) / 1000}, load #{(t_load - t_index) / 1000}, " \
+               "jump #{(t_jump - t_load) / 1000}, hl #{(t_hl - t_jump) / 1000}; " \
+               "#{EditorCore.line_count} lines)")
     end
     @modified = false
     @need_redraw = true
