@@ -47,8 +47,13 @@ static int s_classic;
  * they appear in the file, quotes and all. */
 #define CONF_OVERRIDE_MAX 16
 #define CONF_TOKEN_MAX 32
+/* Values are longer than keys: `wallpaper` carries a path, and
+ * "/usr/share/backgrounds/bg_cyber_426x240.png" with its quotes is 45
+ * characters. Anything longer is dropped rather than truncated (a half path
+ * would name no file at all). */
+#define CONF_VALUE_MAX 96
 static char s_conf_key[CONF_OVERRIDE_MAX][CONF_TOKEN_MAX];
-static char s_conf_val[CONF_OVERRIDE_MAX][CONF_TOKEN_MAX];
+static char s_conf_val[CONF_OVERRIDE_MAX][CONF_VALUE_MAX];
 static int s_conf_n;
 
 /* Replace the value of "key = <token>" on its own line. Returns 1 if found. */
@@ -97,10 +102,10 @@ void fmrb_wasm_page_settings_parse(int argc, char **argv)
             const char *kv = argv[i] + 12;
             const char *eq = strchr(kv, '=');
             if (eq && (size_t)(eq - kv) < CONF_TOKEN_MAX &&
-                strlen(eq + 1) < CONF_TOKEN_MAX) {
+                strlen(eq + 1) < CONF_VALUE_MAX) {
                 memcpy(s_conf_key[s_conf_n], kv, (size_t)(eq - kv));
                 s_conf_key[s_conf_n][eq - kv] = '\0';
-                snprintf(s_conf_val[s_conf_n], CONF_TOKEN_MAX, "%s", eq + 1);
+                snprintf(s_conf_val[s_conf_n], CONF_VALUE_MAX, "%s", eq + 1);
                 s_conf_n++;
             }
         }

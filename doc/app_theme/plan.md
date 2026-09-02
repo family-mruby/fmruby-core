@@ -1,6 +1,6 @@
 # 窓枠とアプリ配色をテーマに繋ぐ
 
-> 状態: 完了 | 更新: 2026-09-02 | A・B・C + D 実装済。窓枠の実装は 2 か所ではなく 4 か所で、Python と Lua は report/guest_languages.md で繋いだ
+> 状態: 完了 | 更新: 2026-09-02 | A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md)
 
 デスクトップの配色を変えても、**アプリの窓枠と中身が付いてこない**。
 ユーザ報告 (2026-08-31)。Spinel アプリでも同じ。

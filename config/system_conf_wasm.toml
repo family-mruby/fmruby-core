@@ -30,6 +30,12 @@ timezone = "JST-9"
 keyboard_layout = "jp" # "jp" or "us"
 language = "en" # "ja" or "en"
 
+# Desktop wallpaper. Empty means "whatever the theme says" -- the western
+# picture, or the neon one under the cyberpunk theme, at the size of the
+# screen. A path here wins over that; "none" leaves the desktop a plain
+# colour. Any .png in /home shows up in Config's list.
+wallpaper = ""
+
 # Web default: the cyberpunk palette (RGB332). 0x01 is OFF-LIMITS for any
 # theme color: it is the desktop foreground canvas color key (transparent).
 # The page's settings can put

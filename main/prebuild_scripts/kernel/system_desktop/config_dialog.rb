@@ -17,7 +17,6 @@ module ConfigDialogMixin
   # it when CFG_PATH is unreadable.
   CFG_FACTORY_PATH = "/etc/system_conf.factory.toml"
   CFG_W       = 280
-  CFG_H       = 200
   CFG_TITLE_H = 14
   CFG_ROW_H   = 14
   CFG_FOOTER_H= 22
@@ -73,6 +72,10 @@ module ConfigDialogMixin
     { key: :mouse_scale_x,    field: "mouse_scale_x",    type: :float, min: 0.1, max: 2.0, step: 0.1 },
     { key: :mouse_scale_y,    field: "mouse_scale_y",    type: :float, min: 0.1, max: 2.0, step: 0.1 },
     { key: :theme,            field: "theme_preset",     type: :enum,  options: ["light", "dark", "classic", "cyberpunk"] },
+    # The choices are found when the dialog opens (cfg_scan_wallpapers), so
+    # this list is only the two that always exist. "" means "whatever the
+    # theme says"; a path names a file and beats the theme.
+    { key: :wallpaper,        field: "wallpaper",        type: :enum,  options: ["", "none"] },
     { key: :timezone,         field: "timezone",         type: :enum,
       options: ["JST-9", "UTC", "EST5", "PST8", "CET-1", "CST-8"] },
     { key: :debug_mode,       field: "debug_mode",       type: :bool },
@@ -81,6 +84,11 @@ module ConfigDialogMixin
     { key: :display_margin_x, field: "display_margin_x", type: :int,   min: 0, max: 16, step: 1 },
     { key: :display_margin_y, field: "display_margin_y", type: :int,   min: 0, max: 16, step: 1 },
   ].reject { |s| FmrbConst::BOARD == "wasm" && CFG_WEB_HIDDEN.include?(s[:field]) }
+
+  # Tall enough for the rows there actually are. It was a fixed 200, which the
+  # rows outgrew the moment one was added: the last of them ended up under the
+  # footer. The 4 is the gap between the last row and the separator line.
+  CFG_H = CFG_TITLE_H + 2 + CFG_SETTINGS.size * CFG_ROW_H + 4 + CFG_FOOTER_H
 
   CFG_BTN_H = CFG_FOOTER_H - 8
 
@@ -155,6 +163,7 @@ module ConfigDialogMixin
     # lexical scope only, so reach into the including class explicitly.
     menu_h = self.class::MENU_BAR_HEIGHT
     @cfg_y = menu_h + 2 if @cfg_y < menu_h + 2
+    cfg_scan_wallpapers
     cfg_load
     close_launcher
     close_dropdown
@@ -300,6 +309,50 @@ module ConfigDialogMixin
     [saw_digit, has_dot]
   end
 
+  # The preset the machine is wearing right now, from the constants every VM
+  # gets at startup -- not from the file, which the desktop would otherwise
+  # have to read before it can pick a wallpaper.
+  # The wallpaper row's choices are whatever the machine has, so they are
+  # found rather than listed: "" (follow the theme), "none" (no picture), the
+  # shipped pictures, and any .png the user has put in /home. Scanned once
+  # when the dialog opens -- a directory read per key press would be felt.
+  def cfg_options_for(s)
+    return s[:options] unless s[:key] == :wallpaper
+    @cfg_wallpapers || s[:options]
+  end
+
+  def cfg_scan_wallpapers
+    list = ["", "none"]
+    ["/usr/share/backgrounds", "/home"].each do |dir|
+      begin
+        d = Dir.open(dir)
+        names = []
+        while (ent = d.read)
+          names << ent if ent.end_with?(".png")
+        end
+        d.close
+        names.sort.each { |n| list << "#{dir}/#{n}" }
+      rescue
+        # A machine without that directory simply offers fewer choices.
+      end
+    end
+    @cfg_wallpapers = list
+  end
+
+  def cfg_current_preset
+    cfg_detect_preset({
+      desktop_bg: FmrbConst::THEME_DESKTOP_BG,
+      menu_bg: FmrbConst::THEME_MENU_BG,
+      window_bg: FmrbConst::THEME_WINDOW_BG,
+      text: FmrbConst::THEME_TEXT,
+      text_light: FmrbConst::THEME_TEXT_LIGHT,
+      highlight: FmrbConst::THEME_HIGHLIGHT,
+      border: FmrbConst::THEME_BORDER,
+      button: FmrbConst::THEME_BUTTON,
+      dir_color: FmrbConst::THEME_DIR_COLOR,
+    })
+  end
+
   def cfg_detect_preset(theme)
     CFG_THEME_PRESETS.each do |name, preset|
       match = true
@@ -317,7 +370,7 @@ module ConfigDialogMixin
   def cfg_ensure_default(s)
     return if @cfg_values.key?(s[:field])
     case s[:type]
-    when :enum  then @cfg_values[s[:field]] = s[:options][0]
+    when :enum  then @cfg_values[s[:field]] = cfg_options_for(s)[0]
     when :bool  then @cfg_values[s[:field]] = false
     when :int, :float then @cfg_values[s[:field]] = s[:min]
     end
@@ -362,11 +415,22 @@ module ConfigDialogMixin
     when :enum
       if s[:key] == :theme
         FmrbI18n.t("theme_#{v}".to_sym)
+      elsif s[:key] == :wallpaper
+        cfg_wallpaper_text(v.to_s)
       else
         v.to_s
       end
     else v.to_s
     end
+  end
+
+  # A path is too long for the value column, so only the file's own name is
+  # shown; the two special values get words instead.
+  def cfg_wallpaper_text(v)
+    return FmrbI18n.t(:wallpaper_theme) if v.length == 0
+    return FmrbI18n.t(:wallpaper_none) if v == "none"
+    idx = v.rindex("/")
+    idx ? v[idx + 1, v.length - idx - 1].to_s : v
   end
 
   def cfg_draw_row(i, s)
@@ -427,7 +491,7 @@ module ConfigDialogMixin
     field = s[:field]
     case s[:type]
     when :enum
-      opts = s[:options]
+      opts = cfg_options_for(s)
       idx = opts.index(@cfg_values[field]) || 0
       idx = (idx + dir + opts.size) % opts.size
       @cfg_values[field] = opts[idx]

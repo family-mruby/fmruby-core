@@ -31,6 +31,12 @@ timezone = "JST-9"
 keyboard_layout = "jp" # "jp" or "us"
 language = "en" # "ja" or "en"
 
+# Desktop wallpaper. Empty means "whatever the theme says" -- the western
+# picture, or the neon one under the cyberpunk theme, at the size of the
+# screen. A path here wins over that; "none" leaves the desktop a plain
+# colour. Any .png in /home shows up in Config's list.
+wallpaper = ""
+
 [theme]
 desktop_bg = 0xF6
 menu_bg = 0xC5

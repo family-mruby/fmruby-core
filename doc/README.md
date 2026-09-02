@@ -51,7 +51,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 
 - `ai/` [OpenAI API 活用の構想メモ](ai/ideas.md) — - 〔1 files〕
 - `app-distribution/` [アプリ配布プラットフォーム 計画](app-distribution/plan.md) — **進行中** (2026-09-02) **P1-A 完了** (apps リポジトリ・サンプル 3 本・生成と検査、report/p1a.md)。次は P1-B (実機側の前提確認)。 〔5 files〕
-- `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠の実装は 2 か所ではなく 4 か所で、Python と Lua は report/guest_languages.md で繋いだ 〔2 files〕
+- `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔1 files〕
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕

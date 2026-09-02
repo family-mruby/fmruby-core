@@ -49,11 +49,18 @@ class SystemDesktopApp < FmrbApp
   # describes hardware a page does not have.
   ON_WEB = (FmrbConst::BOARD == "wasm")
 
-  BG_IMAGE_PATH = if FmrbConst::PLATFORM == "esp32" && FmrbConst::CHIP_MODEL == "ESP32-P4"
-                    "/usr/share/backgrounds/bg_426x240.png"
-                  else
-                    "/data/bg_426x240.png"
-                  end
+  # Wallpaper. The theme decides which of the shipped pictures is used, and a
+  # path in system_conf.toml's `wallpaper` beats that -- one line, so a
+  # machine can wear anything the user drops in /home.
+  #
+  # Modern reads the file itself; on Retro and the simulation the graphics
+  # side has its own filesystem and reads one fixed name out of it, so the
+  # chosen picture is transferred over that name first (which is what the
+  # boot-time [[sync_files]] entry used to be for on its own).
+  BG_DIR = "/usr/share/backgrounds/"
+  BG_LOCAL = (FmrbConst::PLATFORM == "esp32" && FmrbConst::CHIP_MODEL == "ESP32-P4")
+  BG_SHARED_NAME = "bg_426x240.png"
+  BG_IMAGE_PATH = BG_LOCAL ? "#{BG_DIR}#{BG_SHARED_NAME}" : "/data/#{BG_SHARED_NAME}"
   BOOT_IMAGE_PATH = "/boot/boot.png"
   # Iris reveal: a diamond-shaped window opens from the center, one punched
   # rect per horizontal band per frame. With the diamond's half-width scaled
@@ -505,12 +512,81 @@ class SystemDesktopApp < FmrbApp
   def draw_background
     return unless @bg_gfx
     @bg_gfx.clear(BG_COLOR)
-    img = @bg_gfx.create_image(BG_IMAGE_PATH)
+    path = wallpaper_path
+    img = path ? @bg_gfx.create_image(path) : nil
     if img
       @bg_gfx.draw_image(img[:id], x: 0, y: 0)
       @bg_gfx.delete_image(img[:id])
     end
     @bg_gfx.present
+  end
+
+  # ---- Which picture, and getting it where the graphics side can see it ----
+
+  # The file to draw, or nil for none (a plain BG_COLOR desktop). Worked out
+  # once and remembered: draw_background also runs on every resize, and the
+  # transfer below must not run with it.
+  def wallpaper_path
+    return @wallpaper_path if @wallpaper_resolved
+    @wallpaper_resolved = true
+    @wallpaper_path = resolve_wallpaper
+  end
+
+  def resolve_wallpaper
+    chosen = wallpaper_setting
+    return nil if chosen == "none"
+    src = (chosen && chosen.length > 0) ? chosen : theme_wallpaper
+    return nil unless src
+    return src if BG_LOCAL
+    # The graphics side reads its own /data by one fixed name. sync_file
+    # compares size and CRC32, so the usual case (nothing changed) costs a
+    # comparison and no transfer.
+    @bg_gfx.sync_file(src, dest: "/flash/data/#{BG_SHARED_NAME}")
+    BG_IMAGE_PATH
+  end
+
+  # The shipped picture that goes with the theme in force: the neon one for
+  # cyberpunk, the western one otherwise. One file per size, so the name
+  # carries the screen; a size we ship nothing for falls back to the smallest,
+  # which is what every machine has.
+  def theme_wallpaper
+    stem = cfg_current_preset == "cyberpunk" ? "bg_cyber_" : "bg_"
+    sized = "#{BG_DIR}#{stem}#{@window_width}x#{@window_height}.png"
+    # File.exist? asks this side, which is the one holding the source.
+    # gfx.file_status would ask the graphics side about a file it never has.
+    return sized if File.exist?(sized)
+    "#{BG_DIR}#{stem}426x240.png"
+  end
+
+  # The `wallpaper` line of system_conf.toml, or nil when it is not set. Read
+  # here rather than through FmrbApp.config, which answers with sections; this
+  # is one top-level key and the file is small.
+  def wallpaper_setting
+    begin
+      f = File.open("/etc/system_conf.toml", "r")
+      text = f.read
+      f.close
+    rescue => e
+      Log.warn("wallpaper: cannot read system_conf.toml: #{e.message}")
+      return nil
+    end
+    return nil if text.nil?
+    value = nil
+    text.split("\n").each do |raw|
+      line = raw.strip
+      break if line.start_with?("[")      # top-level keys only
+      next unless line.start_with?("wallpaper")
+      idx = line.index("=")
+      next unless idx
+      v = line[idx + 1, line.length - idx - 1].to_s.strip
+      hash_idx = v.index("#")
+      v = v[0, hash_idx].to_s.strip if hash_idx
+      if v.length >= 2 && v.start_with?("\"") && v.end_with?("\"")
+        v = v[1, v.length - 2].to_s
+      end
+      value = v
+    end
+    value
   end
 
   def draw_memory_stats

@@ -261,11 +261,14 @@ function currentResolution() {
 // values into a format that may have moved on.
 const CONF_KEYS = [
   'language', 'keyboard_layout', 'timezone', 'debug_mode',
+  // A wallpaper chosen inside the machine. It is a quoted path, which is why
+  // the capture below stops at whitespace rather than at the end of the line.
+  'wallpaper',
   // the [theme] block, so a theme chosen inside the machine also survives
   'desktop_bg', 'menu_bg', 'window_bg', 'text', 'text_light',
   'highlight', 'border', 'button', 'dir_color',
 ];
-const CONF_THEME_KEYS = CONF_KEYS.slice(4);
+const CONF_THEME_KEYS = CONF_KEYS.slice(5);
 const CONF_STORE = 'fmrb_web_conf';
 
 function readConfSettings() {
