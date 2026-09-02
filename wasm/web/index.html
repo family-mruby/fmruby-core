@@ -67,6 +67,44 @@
     background: #26262e; border: 1px solid #454550; border-radius: 3px;
     padding: 0 4px;
   }
+  /* The store. One row per app, picture on the left, so the list reads as
+     a list rather than a grid of cards -- there will not be hundreds of
+     these, and a name is easier to scan down a column. */
+  #store { margin: 14px 0 0; }
+  #store-head {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    font-size: 12px; color: #9a9aa8;
+  }
+  #store-head h2 { font-size: 13px; color: #ccc; margin: 0; }
+  #store-list { margin: 8px 0 0; display: flex; flex-direction: column; gap: 6px; }
+  .app-row {
+    display: flex; gap: 10px; align-items: flex-start;
+    background: #1e1e26; border: 1px solid #33333d; border-radius: 4px;
+    padding: 8px; font-size: 12px;
+  }
+  .app-row.blocked { opacity: 0.55; }
+  /* The screenshot is the machine's own frame, so keep its pixels square
+     and unsmoothed rather than letting the browser blur them. */
+  .app-shot {
+    width: 96px; height: 54px; object-fit: contain;
+    background: #000; border: 1px solid #33333d; flex: none;
+    image-rendering: pixelated;
+  }
+  .app-shot-missing {
+    display: flex; align-items: center; justify-content: center;
+    color: #62626e; font-size: 11px;
+  }
+  .app-body { flex: 1 1 auto; min-width: 0; }
+  .app-name { color: #e6e6ee; font-weight: bold; }
+  .app-meta { color: #82828e; margin-top: 2px; }
+  .app-desc { color: #b8b8c4; margin-top: 3px; overflow-wrap: anywhere; }
+  .app-note { margin-top: 4px; }
+  .app-note.warn { color: #d8a24a; }
+  .app-note.bad  { color: #d86a6a; }
+  .app-note.good { color: #6ac08a; }
+  .app-actions { display: flex; gap: 6px; align-items: center; flex: none; }
+  #store-list button { font-size: 12px; }
+
   /* Narrow screens: stack the rows instead of trying to fit them side by
      side. One item per line can never be wider than the line, so the page
      stops scrolling sideways and the machine keeps the width to itself. */
@@ -78,6 +116,11 @@
     #settings > span { flex-direction: column; align-items: stretch; gap: 2px; }
     #settings select { width: 100%; max-width: 100%; }
     #about { font-size: 11px; overflow-wrap: anywhere; }
+    /* The picture and the buttons both want the full line once there is no
+       room for three columns. */
+    .app-row { flex-direction: column; }
+    .app-shot { width: 100%; height: auto; max-height: 140px; }
+    .app-actions { width: 100%; }
   }
 </style>
 </head>
@@ -119,6 +162,15 @@
   <input id="home-import" type="file" accept=".tar" hidden>
   <button id="home-reset" type="button" disabled>Erase</button>
 </div>
+<div id="store">
+  <div id="store-head">
+    <h2>Apps</h2>
+    <span id="store-state">loading the list...</span>
+    <button id="store-refresh" type="button">Refresh</button>
+    <button id="store-reload" type="button" hidden>Reload to use it</button>
+  </div>
+  <div id="store-list"></div>
+</div>
 <div id="about">
   <h2>How to use it</h2>
   <ul>
@@ -137,6 +189,9 @@
     <li><b>Download them</b> saves your work and settings as one file;
       <b>Restore</b> puts them back, here or in another browser.
       <b>Erase</b> clears both, and puts every setting back to its default.</li>
+    <li><b>Apps:</b> the list below installs into <code>/app/usr</code>.
+      The machine builds its launcher list when it starts, so something you
+      have just installed shows up after a reload.</li>
     <li><b>Two tabs:</b> only the first one saves.</li>
     <li><b>Theme and resolution</b> reload the page when changed. The Theme
       here picks a preset; a theme chosen inside the machine (Config) wins
