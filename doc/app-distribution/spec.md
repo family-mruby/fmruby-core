@@ -89,7 +89,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | `app_min_width` / `app_min_height` | — | 必要な画面の大きさ (7.2 節) |
 | `required_heap_kb_esp32` | — | 必要なヒープ。実機用 (8.2 節) |
 | `required_heap_kb_linux` | — | 同、sim とブラウザ用 |
-| `app_screenshot` | — | 画面の写し (PNG)。既定は `<app_id>.png` (10.2 節) |
+| `app_screenshot` | — | スクリーンショット (PNG)。既定は `<app_id>.png` (10.2 節) |
 | `app_license` | — | SPDX の識別子。省略時はリポジトリの LICENSE (11.1 節) |
 | `app_source` | — | ソースの URL |
 | `app_files` | — | 束のときの同梱ファイル。省略時は `.app.toml` と同名の本体 1 つ |
@@ -120,7 +120,7 @@ W: app_screen_name in the comment toml of hello_store.app.rb is ignored
 
 **埋め込みの形は、エディタや shell から自分で起動する補助スクリプトのもの**
 であって、配布の形ではない。`.rb` に囲みを残したまま `.app.toml` も置く形も
-禁じる (sidecar が勝つので、2 つの写しが黙ってずれる)。
+禁じる (sidecar が勝つので、2 つの複製が黙ってずれる)。
 
 ## 4. 置き場所
 
@@ -426,7 +426,7 @@ Breakout<TAB>/app/usr/breakout/breakout.app.rb<TAB>R<TAB>usr/share/icon/ruby.ico
 配るようになったら、Web 用の PNG と実機用の BMP の**両方を CI で作る**。
 人手で 2 つ置くと必ず片方が古くなる。
 
-### 10.2 一覧に出す画面の写し
+### 10.2 一覧に出すスクリーンショット
 
 一覧の行に小さな絵を出す。名前だけの一覧より選びやすいため。
 
@@ -447,7 +447,7 @@ Breakout<TAB>/app/usr/breakout/breakout.app.rb<TAB>R<TAB>usr/share/icon/ruby.ico
 BMP は 8 ビット、**画素の値はパレットの番号ではなく RGB332 そのもの**
 (実機の読み手はパレットを無視する)。パレットは普通の画像ビューアで開ける
 ように書いておく。透明色は 0。縦横比が合わない分は 0 で埋める
-(Retro の写しは 4:3、Modern は 16:9)。
+(Retro のスクリーンショットは 4:3、Modern は 16:9)。
 
 #### なぜ実機だけ小さいのか
 
@@ -577,7 +577,7 @@ files = [
 
 ### 13.4 入れ替えるときの三分岐
 
-ユーザが手を入れた写しを壊さない。`doc/wasm/storage_persistence.md` が
+ユーザが手を入れた複製を壊さない。`doc/wasm/storage_persistence.md` が
 `/home` について決めた規則をそのまま使う。
 
 | 今の状態 | 判定 | 動作 |
