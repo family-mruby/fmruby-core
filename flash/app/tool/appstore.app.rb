@@ -114,6 +114,11 @@ class AppStoreApp < FmrbApp
   TABS_TOP = 0            # user-area relative, for FmrbUI
   BAR_TOP = 18
   BAR_H = 16
+  # One width for all of them, so the four at the top left are a block rather
+  # than four sizes in a row. 66 is the longest label ("Installed", nine
+  # characters at 6 px) with room around it.
+  BTN_W = 66
+  BTN_GAP = 4
 
   def bar_y
     @user_area_y0 + BAR_TOP
@@ -157,14 +162,15 @@ class AppStoreApp < FmrbApp
     w = area_w
     # Which list to look at, on one row: the two faces and the button that
     # fetches the list again all answer the same question.
-    @ui.toggle(:f_find, 0, TABS_TOP, 62, TAB_H - 2, "Find", group: :face, on: true)
-    @ui.toggle(:f_inst, 64, TABS_TOP, 78, TAB_H - 2, "Installed", group: :face)
-    @ui.button(:b_refresh, w - 58, TABS_TOP, 58, TAB_H - 2, "Reload")
-    # What to do with the selected app, on the next row, side by side. They
-    # used to sit at opposite ends of a row with Reload, which read as three
-    # unrelated things.
-    @ui.button(:b_go, 0, BAR_TOP, 60, BAR_H, "Install")
-    @ui.button(:b_del, 64, BAR_TOP, 58, BAR_H, "Remove")
+    col2 = BTN_W + BTN_GAP
+    @ui.toggle(:f_find, 0, TABS_TOP, BTN_W, TAB_H - 2, "Find", group: :face, on: true)
+    @ui.toggle(:f_inst, col2, TABS_TOP, BTN_W, TAB_H - 2, "Installed", group: :face)
+    @ui.button(:b_refresh, w - BTN_W, TABS_TOP, BTN_W, TAB_H - 2, "Reload")
+    # What to do with the selected app, on the next row, under the two above
+    # them. They used to sit at opposite ends of one row with Reload, which
+    # read as three unrelated buttons.
+    @ui.button(:b_go, 0, BAR_TOP, BTN_W, BAR_H, "Install")
+    @ui.button(:b_del, col2, BAR_TOP, BTN_W, BAR_H, "Remove")
   end
 
   # ---- drawing ------------------------------------------------------------
