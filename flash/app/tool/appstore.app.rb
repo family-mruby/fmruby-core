@@ -111,8 +111,14 @@ class AppStoreApp < FmrbApp
   # buttons sit on the first row of the list, and what the "flush paints past
   # its widgets" note used to be about. (fmrb-ui.rb says the confirm dialog
   # once had the same eleven-pixel bug.)
-  TABS_TOP = 0            # user-area relative, for FmrbUI
-  BAR_TOP = 18
+  # All user-area relative, for FmrbUI. Two, not one: a widget draws its own
+  # frame on its first row, so at 1 that frame lands against the title bar and
+  # nothing shows between them. At 2 there is one row of background, which is
+  # the pixel that was wanted. (Measured off a screenshot -- see the note on
+  # coordinates below; guessing at spacing here has been wrong twice.)
+  TABS_TOP = 2
+  TAB_ROW_H = TAB_H - 2
+  BAR_TOP = TABS_TOP + TAB_ROW_H + 4
   BAR_H = 16
   # One width for all of them, so the four at the top left are a block rather
   # than four sizes in a row. 66 is the longest label ("Installed", nine
@@ -163,9 +169,9 @@ class AppStoreApp < FmrbApp
     # Which list to look at, on one row: the two faces and the button that
     # fetches the list again all answer the same question.
     col2 = BTN_W + BTN_GAP
-    @ui.toggle(:f_find, 0, TABS_TOP, BTN_W, TAB_H - 2, "Find", group: :face, on: true)
-    @ui.toggle(:f_inst, col2, TABS_TOP, BTN_W, TAB_H - 2, "Installed", group: :face)
-    @ui.button(:b_refresh, w - BTN_W, TABS_TOP, BTN_W, TAB_H - 2, "Reload")
+    @ui.toggle(:f_find, 0, TABS_TOP, BTN_W, TAB_ROW_H, "Find", group: :face, on: true)
+    @ui.toggle(:f_inst, col2, TABS_TOP, BTN_W, TAB_ROW_H, "Installed", group: :face)
+    @ui.button(:b_refresh, w - BTN_W, TABS_TOP, BTN_W, TAB_ROW_H, "Reload")
     # What to do with the selected app, on the next row, under the two above
     # them. They used to sit at opposite ends of one row with Reload, which
     # read as three unrelated buttons.
