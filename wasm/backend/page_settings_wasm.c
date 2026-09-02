@@ -11,10 +11,10 @@
  *
  *   --fmrb-res=WxH        internal framebuffer size (display_width/height,
  *                         with default_user_app_* kept in proportion)
- *   --fmrb-theme=classic  the device palette + the device (western) wallpaper
- *                         (Config, inside the machine, calls this palette
- *                         "light"; the flag keeps the older word because the
- *                         page stores it and links carry it)
+ *   --fmrb-theme=light    the device palette + the device (western) wallpaper
+ *                         ("light" is what Config calls it inside the machine
+ *                         and what the page's selector shows, so one palette
+ *                         has one name everywhere)
  *
  * The same flags work on the node build (rake wasm:run -- --fmrb-res=852x480),
  * which is also how this file is regression-tested headlessly.
@@ -36,14 +36,14 @@
 /* The device palette, mirroring config/system_conf_p4.toml -- the same nine
  * values Config's "light" preset holds; keep the three in step. The web
  * default (cyberpunk) is what the bundle ships; this is the way back. */
-static const char *CLASSIC_THEME[][2] = {
+static const char *LIGHT_THEME[][2] = {
     { "desktop_bg", "0xF6" }, { "menu_bg", "0xC5" }, { "window_bg", "0xFF" },
     { "text", "0x00" },       { "text_light", "0xFF" }, { "highlight", "0xEE" },
     { "border", "0x60" },     { "button", "0x60" },     { "dir_color", "0x03" },
 };
 
 static int s_res_w, s_res_h;
-static int s_classic;
+static int s_light;
 
 /* Settings the machine's own Config dialog wrote, handed back by the page.
  * /etc is rebuilt from the bundle on every visit, so without this a Save is
@@ -99,8 +99,8 @@ void fmrb_wasm_page_settings_parse(int argc, char **argv)
             w >= BASE_W && w <= 1920 && h >= BASE_H && h <= 1080) {
             s_res_w = w;
             s_res_h = h;
-        } else if (strcmp(argv[i], "--fmrb-theme=classic") == 0) {
-            s_classic = 1;
+        } else if (strcmp(argv[i], "--fmrb-theme=light") == 0) {
+            s_light = 1;
         } else if (strncmp(argv[i], "--fmrb-conf=", 12) == 0 &&
                    s_conf_n < CONF_OVERRIDE_MAX) {
             const char *kv = argv[i] + 12;
@@ -118,7 +118,7 @@ void fmrb_wasm_page_settings_parse(int argc, char **argv)
 
 void fmrb_wasm_page_settings_apply(void)
 {
-    if (!s_res_w && !s_classic && !s_conf_n) return;
+    if (!s_res_w && !s_light && !s_conf_n) return;
 
     char *conf = malloc(CONF_MAX);
     if (!conf) return;
@@ -140,11 +140,11 @@ void fmrb_wasm_page_settings_apply(void)
         conf_set(conf, CONF_MAX, "default_user_app_height", num);
         printf("page settings: resolution %dx%d\n", s_res_w, s_res_h);
     }
-    if (s_classic) {
-        for (size_t i = 0; i < sizeof(CLASSIC_THEME) / sizeof(CLASSIC_THEME[0]); i++) {
-            conf_set(conf, CONF_MAX, CLASSIC_THEME[i][0], CLASSIC_THEME[i][1]);
+    if (s_light) {
+        for (size_t i = 0; i < sizeof(LIGHT_THEME) / sizeof(LIGHT_THEME[0]); i++) {
+            conf_set(conf, CONF_MAX, LIGHT_THEME[i][0], LIGHT_THEME[i][1]);
         }
-        printf("page settings: classic theme\n");
+        printf("page settings: light theme\n");
     }
 
     /* Last, so that what the user set inside the machine beats the page's
@@ -161,10 +161,10 @@ void fmrb_wasm_page_settings_apply(void)
      * size, the western one pre-scaled). The desktop always loads
      * /data/bg_426x240.png by NAME; the content is whatever fits the screen.
      * A size we ship no file for leaves the staged default in place. */
-    if (s_classic || s_res_w) {
+    if (s_light || s_res_w) {
         char src[96];
         snprintf(src, sizeof(src), "/flash/usr/share/backgrounds/bg_%s%dx%d.png",
-                 s_classic ? "" : "cyber_",
+                 s_light ? "" : "cyber_",
                  s_res_w ? s_res_w : BASE_W, s_res_h ? s_res_h : BASE_H);
         copy_file(src, "/flash/data/bg_426x240.png");
     }

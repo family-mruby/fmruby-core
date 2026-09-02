@@ -409,7 +409,7 @@ void fmrb_lua_register_gfx(lua_State* L) {
     }
 
     /* The system theme, so a Lua app draws its window frame in the colours
-       every other window uses. Without these it can only spell the classic
+       every other window uses. Without these it can only spell the light
        theme out (0xC5, 0x60) and a changed theme leaves it behind. */
     const fmrb_theme_t *theme = fmrb_theme_get();
     lua_pushinteger(L, theme->desktop_bg);

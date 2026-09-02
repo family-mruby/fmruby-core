@@ -269,7 +269,7 @@ class FmrbApp
       # The frame is the system's, not the app's, so it takes the system's
       # colours: one edit to [theme] in system_conf.toml restyles every
       # window at once. The values it used to carry (0xC5 and 0x60) were the
-      # classic menu_bg and border spelled out, which is why a changed theme
+      # light theme's menu_bg and border spelled out, which is why a changed theme
       # left every title bar behind.
       bar    = FmrbConst::THEME_MENU_BG
       on_bar = FmrbConst::THEME_TEXT_LIGHT

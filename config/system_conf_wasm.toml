@@ -39,8 +39,9 @@ wallpaper = ""
 # Web default: the cyberpunk palette (RGB332). 0x01 is OFF-LIMITS for any
 # theme color: it is the desktop foreground canvas color key (transparent).
 # The page's settings can put
-# the classic device palette back (wasm/web/main.js rewrites this block in
-# MEMFS before boot); the classic values live there, keep the two in step.
+# the device palette (the "light" preset) back -- page_settings_wasm.c
+# rewrites this block before boot and holds those nine values, so keep the
+# two in step.
 [theme]
 desktop_bg = 0x00
 menu_bg = 0x22

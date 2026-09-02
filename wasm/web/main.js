@@ -204,8 +204,9 @@ async function startAudio(ac) {
 // ---- page settings (localStorage; the key never leaves this browser) ------
 
 // The web default look (cyberpunk palette + neon wallpaper) is baked into
-// the bundle; "classic" is requested via argv and applied by the machine
-// itself (wasm/backend/page_settings_wasm.c holds the palette).
+// the bundle; "light" -- the palette a device wears -- is requested via argv
+// and applied by the machine itself (wasm/backend/page_settings_wasm.c holds
+// it). The same word names it in Config, inside the machine.
 
 // The framebuffer sizes offered. 426x240 is what the hardware runs; the other
 // two are the same desktop with more room, which only the web build can afford
@@ -306,7 +307,7 @@ function captureConfSettings() {
 // ?theme= mirrors the selector the way ?w=&h= does (shareable, and the only
 // way a headless test can pick a theme).
 const themeFromQuery = new URLSearchParams(location.search).get('theme');
-if (themeFromQuery === 'classic' || themeFromQuery === 'cyberpunk') {
+if (themeFromQuery === 'light' || themeFromQuery === 'cyberpunk') {
   writeSetting('fmrb_web_theme', themeFromQuery);
 }
 
@@ -447,8 +448,8 @@ moduleConfig.arguments = [];
 {
   const res = currentResolution();
   if (res !== DEFAULT_RES) moduleConfig.arguments.push('--fmrb-res=' + res);
-  if (readSetting('fmrb_web_theme', 'cyberpunk') === 'classic') {
-    moduleConfig.arguments.push('--fmrb-theme=classic');
+  if (readSetting('fmrb_web_theme', 'cyberpunk') === 'light') {
+    moduleConfig.arguments.push('--fmrb-theme=light');
   }
   const conf = readConfSettings();
   for (const k of Object.keys(conf)) {

@@ -144,8 +144,8 @@ class FmrbApp:
     CLOSE_BTN_R = 3
     CLOSE_BTN_HIT_R = 5
     # The frame's colours are the theme's, not this file's. They used to be
-    # spelled out (0xC5, 0xFB, 0x60), which is the classic theme written down,
-    # and that is why a Python window stayed classic after the theme changed.
+    # spelled out (0xC5, 0xFB, 0x60), which is the light theme written down,
+    # and that is why a Python window kept that look after the theme changed.
     CLOSE_BTN_NORMAL_COLOR = FmrbConst.THEME_TEXT_LIGHT
     CLOSE_BTN_PRESSED_COLOR = 0x49   # dark grey: reads as "pressed" on any bar
 

@@ -34,8 +34,8 @@ module ConfigDialogMixin
   CFG_THEME_PRESETS = {
     # The machine's own look: the same nine values every config/system_conf_*
     # ships (wasm excepted) and the same ones page_settings_wasm.c puts back
-    # when the browser is asked for the device palette. The page's selector
-    # calls it "Light" too; its stored token is still the older "classic".
+    # when the browser is asked for the device palette. All three say "light";
+    # keep them in step.
     "light" => {
       desktop_bg: 0xF6, menu_bg: 0xC5, window_bg: 0xFF, text: 0x00,
       text_light: 0xFF, highlight: 0xEE, border: 0x60, button: 0x60, dir_color: 0x03
@@ -43,12 +43,6 @@ module ConfigDialogMixin
     "dark" => {
       desktop_bg: 0x00, menu_bg: 0x49, window_bg: 0x24, text: 0xFF,
       text_light: 0xFF, highlight: 0x6D, border: 0xB6, button: 0x49, dir_color: 0x1D
-    },
-    # A warmer, older-looking one -- cream windows, a rust bar, an olive
-    # desktop. Nothing ships it; it is here to be chosen.
-    "classic" => {
-      desktop_bg: 0x48, menu_bg: 0xA9, window_bg: 0xDB, text: 0x00,
-      text_light: 0xFF, highlight: 0xE0, border: 0x60, button: 0x80, dir_color: 0x07
     },
     # What the browser build ships with. It is here so the machine can name
     # the colours it is actually wearing: without it the browser's own default
@@ -77,7 +71,7 @@ module ConfigDialogMixin
     { key: :keyboard_layout,  field: "keyboard_layout",  type: :enum,  options: ["jp", "us"] },
     { key: :mouse_scale_x,    field: "mouse_scale_x",    type: :float, min: 0.1, max: 2.0, step: 0.1 },
     { key: :mouse_scale_y,    field: "mouse_scale_y",    type: :float, min: 0.1, max: 2.0, step: 0.1 },
-    { key: :theme,            field: "theme_preset",     type: :enum,  options: ["light", "dark", "classic", "cyberpunk"] },
+    { key: :theme,            field: "theme_preset",     type: :enum,  options: ["light", "dark", "cyberpunk"] },
     # The choices are found when the dialog opens (cfg_scan_wallpapers), so
     # this list is only the two that always exist. "" means "whatever the
     # theme says"; a path names a file and beats the theme.

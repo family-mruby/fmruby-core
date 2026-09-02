@@ -1286,7 +1286,7 @@ class FmrbApp
     h = @window_height
     # The frame is the system's, not the app's, so it takes the system's
     # colours -- the same four the mruby base uses (fmrb-app.rb). The values
-    # it used to carry (0xC5 and 0x60) were the classic menu_bg and border
+    # it used to carry (0xC5 and 0x60) were the light theme's menu_bg and border
     # spelled out, which is why a changed theme left every title bar behind.
     bar = FmrbConst::THEME_MENU_BG
     on_bar = FmrbConst::THEME_TEXT_LIGHT
