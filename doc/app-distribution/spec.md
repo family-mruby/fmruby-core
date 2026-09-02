@@ -21,6 +21,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | 新しいアプリ記述形式 (`manifest.json`) | `.app.toml` が既にあり、二重帳簿になる |
 | 新しい転送手順 (BLE の 11 命令) | 実機が https を叩けるので、実機が取りに行けば済む |
 | 束形式 (`.mrpkg`) | ランチャーが 3 階層目のディレクトリを既に束として扱う |
+| 1 ファイル配布 | 埋め込み記述のアプリはランチャーに出ない (3.3 節、2026-09-02 実測) |
 | 独自の配信基盤 | GitHub の raw と自前 nginx で足りる (6 節で実測) |
 | 署名・権限・審査 | 最初の版では持たない |
 | ファームウェアの変更 | 配布の鍵は導入のときに既存の鍵へ翻訳する (8.3 節) |
@@ -30,7 +31,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | もの | 実体 | 何ができるか |
 |---|---|---|
 | アプリ記述 | `<名前>.app.toml` | 窓の大きさ、記憶域、スタック、表示名 (日本語別名つき) |
-| 記述の埋め込み | `.rb` 冒頭の `#---fmrb` 囲み | 1 ファイルだけで完結するアプリ (`fmrb_app_spawner.c:398`) |
+| 記述の埋め込み | `.rb` 冒頭の `#---fmrb` 囲み | 自分で起動する補助スクリプト用。**配布には使えない** (3.3 節) |
 | 束 (複数ファイル) | `/app/<分類>/<名前>/` | ランチャーが 3 階層目まで歩き、素材を同居させた束を 1 アプリとして拾う (`launcher.rb:378`) |
 | ユーザ用の置き場 | `/app/usr/` | 出荷ツリーに空で存在する。ブラウザ版では IndexedDB に残る (`wasm/web/main.js:469,475`) |
 | 実機の https 取得 | `Net::HTTP` | Retro (Narya) / Modern / Linux で利用可 |
@@ -52,12 +53,12 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 
 | 鍵 | 既定 | 効果 |
 |---|---|---|
-| `app_screen_name` | ファイル名 | 表示名 |
+| `app_screen_name` | ファイル名 | 表示名。**埋め込みからは読まれない** (3.3 節) |
 | `app_screen_name_<言語>` | — | 言語別の表示名 (`_ja` など) |
 | `icon` | 拡張子で決まる既定 | アイコンのパス |
 | `launcher_visible` | true | 一覧に出すか |
 | `default_window_mode` | — | `window` / `fullscreen` / `background` |
-| `default_window_width` / `_height` | 100 | 窓の大きさ |
+| `default_window_width` / `_height` | 100 | 窓の大きさ。**既定は 100x100 = 1 行 15 文字ほど**。狭い |
 | `default_window_pos_x` / `_y` | 50 | 窓の位置 |
 | `min_window_width` / `_height` | 0 | 縮小の下限 |
 | `resizable` | 0 | 大きさを変えられるか |
@@ -96,6 +97,30 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 `app_id` はファイル名と一致させる。ランチャーは `<base>.toml` に対して
 `<base>.rb` / `.lua` / `.bas` / `.py` を探す規則なので (`launcher.rb:327,461`)、
 `<app_id>.app.toml` と `<app_id>.app.rb` の組になる。
+
+### 3.3 `.app.toml` は必須 (実測で判明)
+
+実機は `.rb` 冒頭の `#---fmrb` 囲みに記述を埋め込む形も読む
+(`fmrb_app_spawner.c:398`)。**しかし配布にはこれを使えない。**
+
+**ランチャーの走査は `.toml` を歩き、`.rb` を開いて囲みを探すことはしない**
+(`launcher.rb:372`)。埋め込みだけのアプリは、入っても走査に拾われず、
+**一覧に現れない**。パス指定では起動するので、入れた本人が二度と辿り着けない
+形で消える。
+
+spawner 自身も同じ理由で拒否しており、警告まで出す。
+
+```
+W: app_screen_name in the comment toml of hello_store.app.rb is ignored
+   (launcher metadata needs a .toml sidecar)
+```
+
+2026-09-02、sim で全走査させて確認した (report/p1b.md)。埋め込みだけの
+`hello_store` は 37 件の一覧に 1 度も現れず、`.app.toml` を足すと出た。
+
+**埋め込みの形は、エディタや shell から自分で起動する補助スクリプトのもの**
+であって、配布の形ではない。`.rb` に囲みを残したまま `.app.toml` も置く形も
+禁じる (sidecar が勝つので、2 つの写しが黙ってずれる)。
 
 ## 4. 置き場所
 
