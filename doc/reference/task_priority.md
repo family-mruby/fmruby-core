@@ -13,7 +13,7 @@
 |---|---|---|---|
 | 10 | HOST | 0 | GFX/音声の転送ポンプ。カーソル描画もここ |
 | 9 | KERNEL | 1 | 入力の振り分け、spawn/kill |
-| 8 | **SYSTEM_APP** (desktop / overlay) | **1** | デスクトップ。**この 8 に根拠は無い** (下記) |
+| 8 | **SYSTEM_APP** | **1** | **system_desktop ただ 1 つ**。この 8 に根拠は無い (下記) |
 | 6 | HW_PROXY | 0 | PSRAM タスクのファイル I/O 代行 |
 | 6 | AUDIO_P4 | 0 | Modern の I2S |
 | 6 | M5GFX 受信 (link local) | 0 | ATOM 構成 |
@@ -51,7 +51,7 @@
 | 24 | ipc0 / ipc1 | 各 core | esp32 | クロスコア呼び出し・flash 操作。マイクロ秒単位のバースト |
 | ~23 | BT controller | sdkconfig | S3 のみ (P4 は BT_CONTROLLER_DISABLED) | 無線タイミング厳守 |
 | 22 | esp_timer | 0 | 全 | esp_timer コールバックの配送 |
-| 4 | **nimble_host** | 1 (sdkconfig) | S3 | **NimBLE ポート既定値。錨として扱う** |
+| **11** | **nimble_host** | 1 (sdkconfig) | BLE 構成 | ポート既定は 4 だが、**`ble_task.c` が init で 11 へ上げている** (core 0 の UART ブロックが BLE のイベントループを飢餓させないため)。fmrb の全タスクより上 |
 | 1 | main (app_main) | 0 | 全 | 初期化後は 100 秒周期スリープの休眠 |
 | 1 | Tmr Svc (FreeRTOS タイマデーモン) | 0 | 全 | fmruby-core はソフトタイマ未使用のため常時ブロック |
 | 0 | idle0 / idle1 | 各 core | 全 | |
@@ -290,13 +290,19 @@ status LED で検知」という役割を壊す (重いアプリのたびにハ�
 
 数字を下げること自体は安いが、次の 2 点は計測してから決める。
 
-1. **`SYSTEM_APP` はオーバーレイと共用**の定義 (`desktop/overlay`)。全画面
-   アプリの上にメニューを出す経路が同じ優先度に乗る。ゲスト (2) より
-   確実に上であればよいはずだが、実際に全画面アプリを動かして確かめる。
-2. **入力ドライバ (5) との相対**。今はデスクトップが上。下げたときに
-   操作の追従が変わらないことを `spx: hid_lat` で見る。
+1. **入力ドライバ (5) や遠隔デスクトップ (rd_stream 4 / rd_httpd 5) との
+   相対**。今はデスクトップが上。下げると、遠隔で画面を見ている間の
+   操作追従が変わりうる。`spx: hid_lat` を MJPEG 接続あり/なしで見る。
+2. **ブート時間**。索引が無い初回は走査がこの優先度で走る。
 
-段割りの表 (「段割り (目標)」) では 7 が予備で空いている。**まだ決めていない。**
+一方、**確認が要らないと分かったこと**:
+
+- この優先度を使うタスクは **`system_desktop` ただ 1 つ**。
+  `POOL_ID_SYSTEM_OVERLAY` はメモリプールの枠で、`PROC_ID_SYSTEM_OVERLAY`
+  へ spawn するコードは存在しない (define のコメントの `desktop/overlay`
+  は実態と違う)。
+- **値への暗黙依存は無い**。`FMRB_SYSTEM_APP_TASK_PRIORITY` を読むのは
+  spawn 表の 1 箇所だけで、優先度を比較しているコードは無い。
 
 ### 同じ目で見直すべきもの
 
