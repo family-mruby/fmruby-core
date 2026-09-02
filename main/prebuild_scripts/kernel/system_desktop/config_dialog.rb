@@ -45,6 +45,14 @@ module ConfigDialogMixin
       desktop_bg: 0x48, menu_bg: 0xA9, window_bg: 0xDB, text: 0x00,
       text_light: 0xFF, highlight: 0xE0, border: 0x60, button: 0x80, dir_color: 0x07
     },
+    # What the browser build ships with. It is here so the machine can name
+    # the colours it is actually wearing: without it the browser's own default
+    # matched no preset and this row read "light", and saving made that true.
+    # Keep in step with the [theme] block of config/system_conf_wasm.toml.
+    "cyberpunk" => {
+      desktop_bg: 0x00, menu_bg: 0x22, window_bg: 0x00, text: 0x1C,
+      text_light: 0xFF, highlight: 0xE3, border: 0x0E, button: 0x46, dir_color: 0xFC
+    },
   }
   CFG_THEME_KEYS = [:desktop_bg, :menu_bg, :window_bg, :text, :text_light,
                     :highlight, :border, :button, :dir_color]
@@ -64,7 +72,7 @@ module ConfigDialogMixin
     { key: :keyboard_layout,  field: "keyboard_layout",  type: :enum,  options: ["jp", "us"] },
     { key: :mouse_scale_x,    field: "mouse_scale_x",    type: :float, min: 0.1, max: 2.0, step: 0.1 },
     { key: :mouse_scale_y,    field: "mouse_scale_y",    type: :float, min: 0.1, max: 2.0, step: 0.1 },
-    { key: :theme,            field: "theme_preset",     type: :enum,  options: ["light", "dark", "classic"] },
+    { key: :theme,            field: "theme_preset",     type: :enum,  options: ["light", "dark", "classic", "cyberpunk"] },
     { key: :timezone,         field: "timezone",         type: :enum,
       options: ["JST-9", "UTC", "EST5", "PST8", "CET-1", "CST-8"] },
     { key: :debug_mode,       field: "debug_mode",       type: :bool },
@@ -238,11 +246,34 @@ module ConfigDialogMixin
     if s.length >= 2 && s.start_with?('"') && s.end_with?('"')
       return s[1, s.length - 2]
     end
+    # 0x.. -- how every [theme] colour is written. Without this they came back
+    # as the strings "0xC5" and so on, matched no preset (which holds numbers),
+    # and the Theme row read "light" whatever the file actually said. Saving
+    # then made that true.
+    if cfg_hex?(s)
+      return s[2, s.length - 2].to_s.to_i(16)
+    end
     numeric, has_dot = cfg_classify_numeric(s)
     if numeric
       return has_dot ? s.to_f : s.to_i
     end
     s
+  end
+
+  # "0x" followed by at least one hex digit, in either case. No regex.
+  def cfg_hex?(s)
+    return false if s.length < 3
+    return false unless s.getbyte(0) == 48                       # '0'
+    b1 = s.getbyte(1)
+    return false unless b1 == 120 || b1 == 88                    # 'x' 'X'
+    i = 2
+    while i < s.length
+      b = s.getbyte(i)
+      ok = (b >= 48 && b <= 57) || (b >= 65 && b <= 70) || (b >= 97 && b <= 102)
+      return false unless ok
+      i += 1
+    end
+    true
   end
 
   # Returns [numeric?, has_dot?]. Accepts optional leading '-' and decimal
