@@ -1225,6 +1225,26 @@ static mrb_value mrb_fmrb_app_s_pool_usage(mrb_state *mrb, mrb_value klass)
     return mrb_fixnum_value((mrb_int)((used * 100) / total));
 }
 
+// FmrbApp.pool_used -> Integer, bytes of this VM's estalloc pool in use, or
+// -1 when unavailable. pool_usage's percent is too coarse to see where a
+// burst of garbage comes from: on the desktop's 1536 KB pool one percent is
+// 15 KB, and a rescan that produced ~280 KB of garbage had to be attributed
+// across a dozen phases. Same cost as pool_usage (one fixnum, no allocation).
+static mrb_value mrb_fmrb_app_s_pool_used(mrb_state *mrb, mrb_value klass)
+{
+    (void)mrb; (void)klass;
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (ctx == NULL || ctx->est == NULL) {
+        return mrb_fixnum_value(-1);
+    }
+    size_t total = 0, used = 0, free_bytes = 0;
+    int32_t frag = 0;
+    if (mrb_get_estalloc_stats(ctx->est, &total, &used, &free_bytes, &frag) != 0) {
+        return mrb_fixnum_value(-1);
+    }
+    return mrb_fixnum_value((mrb_int)used);
+}
+
 static mrb_value mrb_fmrb_app_s_heap_info(mrb_state *mrb, mrb_value self)
 {
     mrb_value hash = mrb_hash_new_capa(mrb, 4);
@@ -1736,6 +1756,7 @@ void mrb_picoruby_fmrb_app_init_impl(mrb_state *mrb)
     mrb_define_class_method(mrb, app_class, "ps_gen", mrb_fmrb_app_s_ps_gen, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "heap_info", mrb_fmrb_app_s_heap_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "pool_usage", mrb_fmrb_app_s_pool_usage, MRB_ARGS_NONE());
+    mrb_define_class_method(mrb, app_class, "pool_used", mrb_fmrb_app_s_pool_used, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "sys_pool_info", mrb_fmrb_app_s_sys_pool_info, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "_get_last_error", mrb_fmrb_app_s_get_last_error, MRB_ARGS_NONE());
     mrb_define_class_method(mrb, app_class, "config", mrb_fmrb_app_s_config, MRB_ARGS_REQ(1));

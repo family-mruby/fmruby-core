@@ -235,6 +235,10 @@ module LauncherMixin
     nil
   end
 
+  # `buf << part`, never `buf += part`: += builds a whole new String every
+  # round, so writing this 2.6 KB file made 52 KB of garbage for 39 apps
+  # (measured on a NARYA v4) -- a fifth of everything a rescan allocates, to
+  # produce one small file. << appends in place.
   def save_launcher_cache(apps)
     buf = "#{CACHE_VERSION}#{S_TAB}#{FmrbI18n.lang}\n"
     apps.each do |a|
@@ -245,7 +249,7 @@ module LauncherMixin
       # entry rather than write something that cannot be parsed; the app is
       # still reachable, it just misses the cache until the fields change.
       next if label.include?(S_TAB) || path.include?(S_TAB) || icon.include?(S_TAB)
-      buf += "#{label}#{S_TAB}#{path}#{S_TAB}#{a[:icon_char]}#{S_TAB}#{icon}\n"
+      buf << "#{label}#{S_TAB}#{path}#{S_TAB}#{a[:icon_char]}#{S_TAB}#{icon}\n"
     end
     file = File.open(CACHE_PATH, "w")
     file.write(buf)
@@ -783,6 +787,7 @@ module LauncherMixin
   def rescan_start
     @rescanning = true
     Log.info("Launcher: rescan start, pool #{::FmrbApp.pool_usage}%")
+    @rescan_mark = ::FmrbApp.pool_used
     @rescan_prev = @launcher_apps.map { |a| a[:app] }
     @launcher_apps = builtin_apps
     @rescan_builtin = @launcher_apps.size
@@ -839,7 +844,8 @@ module LauncherMixin
     # cheapest warning that the pool is filling up again: when the desktop
     # ran on 800 KB it went from 67% to 77% here and the collector then
     # thrashed for 8.8 s (fmrb_mem_config.h, FMRB_MEM_POOL_SIZE_SYSTEM_APP).
-    Log.info("Launcher: rescan done, pool #{::FmrbApp.pool_usage}%")
+    grew = (::FmrbApp.pool_used - (@rescan_mark || 0)) / 1024
+    Log.info("Launcher: rescan done, pool #{::FmrbApp.pool_usage}% (+#{grew}KB)")
   end
 
   # Called from on_update. Nothing else runs the scan.
