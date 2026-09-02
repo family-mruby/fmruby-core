@@ -177,11 +177,12 @@ W: app_screen_name in the comment toml of hello_store.app.rb is ignored
       "min_height": 240,
       "required_heap_kb": { "esp32": null, "linux": null },
       "base": "apps/breakout/",
-      "screenshot": { "path": "breakout.png", "size": 6120, "sha256": "..." },
+      "sha256": "9f2c...",
+      "screenshot": { "path": "breakout.png", "size": 6120 },
       "thumb": { "path": "breakout.thumb.bmp", "size": 1846, "sha256": "..." },
       "files": [
-        { "path": "breakout.app.toml", "size": 412,   "sha256": "..." },
-        { "path": "breakout.app.rb",   "size": 14240, "sha256": "..." }
+        { "path": "breakout.app.toml", "size": 412 },
+        { "path": "breakout.app.rb",   "size": 14240 }
       ]
     }
   ]
@@ -193,6 +194,26 @@ W: app_screen_name in the comment toml of hello_store.app.rb is ignored
 
 絵 (`screenshot` / `thumb`) は `files` に入れない。**導入するときに端末へ
 書かないもの**だからである。店が一覧を見せるためだけに取る。
+
+### 5.2 指紋は 1 アプリに 1 つ
+
+`sha256` はアプリの欄にあり、**ファイルごとには持たない**。ファイルが増えても
+一覧が膨らまず、端末は digest を 1 つ持って 1 回比べるだけで済む。どのファイルが
+違ったかは分かっても仕方がない (合わなければアプリごと捨てる)。
+
+中身をつなげるだけだと**区切りが曖昧**になる (別の分け方が同じ並びを作りうる)
+ので、`files` の順に、1 ファイルずつ**名前と長さを前置してから**中身を流す。
+
+```
+for each file in files order:
+  update(path); update("\n"); update(bytesize.to_s); update("\n"); update(body)
+```
+
+端末は `MbedTLS::Digest.new(:sha256)` でこれを再現する。`update` の呼び方と
+順序だけで書けるようにしてあるのはそのため。
+
+ファイルごとの `size` は残す。**中身を触る前に切れた転送が分かる**のと、
+進み具合の表示に要るため。
 
 ### 5.1 CI の検査
 
@@ -499,7 +520,10 @@ CI は表にある値かだけを見る。`app_source` は表示のための任�
 
 最初の版で持つもの:
 
-- `sha256` と大きさの照合 (9.2)
+- 大きさの照合と、アプリ 1 つにつき 1 つの `sha256` の照合 (5.2 / 9.2)。
+  **ブラウザには digest が無い** (通信 gem を積んでいないので mbedTLS も無い)
+  ので大きさだけになる。店はそのとき「size checked only」と表示し、確かめた
+  ふりをしない
 - 書き込み先を `/app/usr/<app_id>/` に限る。`..` と絶対パスを含む `app_files`
   は CI が弾き、導入側でも弾く
 - `app_id` は変更不可

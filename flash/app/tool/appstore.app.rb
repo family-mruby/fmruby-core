@@ -10,8 +10,11 @@
 # "find" is the published list, "installed" is what is on this machine.
 
 class AppStoreApp < FmrbApp
-  BASE = "https://raw.githubusercontent.com/family-mruby/family-mruby-apps/main/"
-  REGISTRY = BASE + "registry.json"
+  DEFAULT_BASE = "https://raw.githubusercontent.com/family-mruby/family-mruby-apps/main/"
+  # Somewhere else to shop, for anyone trying a list before it is published
+  # (and for checking that the digest actually refuses a bad one). One line
+  # holding a URL that ends in a slash.
+  BASE_FILE = "/home/appstore_base.txt"
   INSTALL_ROOT = "/app/usr"
   CACHE_PATH = "/var/cache/launcher_index"
 
@@ -26,6 +29,18 @@ class AppStoreApp < FmrbApp
     "web"    => { w: 426, h: 240, pool: 1536, large: 3072 },
   }
 
+  def base
+    return @base if @base
+    b = begin
+      line = File.open(BASE_FILE, "r") { |f| f.read.strip }
+      (line && !line.empty?) ? line : DEFAULT_BASE
+    rescue
+      DEFAULT_BASE
+    end
+    b = b + "/" unless b.end_with?("/")
+    @base = b
+  end
+
   def on_create
     @env = detect_env
     @info = ENV_INFO[@env] || ENV_INFO["modern"]
@@ -35,7 +50,7 @@ class AppStoreApp < FmrbApp
     @scroll = 0
     @note = "loading the list..."
     @job = nil                 # an install in progress
-    @req = FmrbNet.request(REGISTRY)
+    @req = FmrbNet.request(base + "registry.json")
     @ui = FmrbUI.new(self)
     build_ui
     draw_screen
@@ -282,8 +297,51 @@ class AppStoreApp < FmrbApp
       @note = "the list has no files for it"
       return
     end
-    @job = { app: a, files: files, idx: 0, got: [], req: nil }
+    @job = { app: a, files: files, idx: 0, got: [], req: nil, digest: new_digest }
     @note = "getting 1/#{files.size}..."
+  end
+
+  HEX = "0123456789abcdef"
+
+  # One digest for the whole app, not one per file: the list carries a single
+  # sha256 and this keeps a single running digest against it, whatever the
+  # app grows to. Knowing which file differed would not help -- a mismatch
+  # throws the install away whole.
+  #
+  # nil where there is no digest to be had. The browser build carries no
+  # mbedTLS (it has no sockets, so it has none of the gems that pull it in),
+  # and saying so is better than pretending the check happened.
+  def new_digest
+    return nil unless Object.const_defined?(:MbedTLS)
+    ::MbedTLS::Digest.new(:sha256)
+  rescue => e
+    Log.warn("appstore: no digest available: #{e.message}")
+    nil
+  end
+
+  # Each file is framed by its own name and length before its bytes, so that
+  # two different splits of the same stream cannot hash alike. tools/registry.rb
+  # in family-mruby-apps builds it the same way, in the same order.
+  def digest_file(d, name, body)
+    return unless d
+    d.update(name)
+    d.update("\n")
+    d.update(body.bytesize.to_s)
+    d.update("\n")
+    d.update(body)
+  end
+
+  def to_hex(bin)
+    out = ""
+    i = 0
+    n = bin.bytesize
+    while i < n
+      b = bin.getbyte(i)
+      out += HEX[b >> 4]
+      out += HEX[b & 15]
+      i += 1
+    end
+    out
   end
 
   # Driven from on_update. Everything is fetched before anything is written,
@@ -293,7 +351,7 @@ class AppStoreApp < FmrbApp
     return unless job
     if job[:req].nil?
       f = job[:files][job[:idx]]
-      job[:req] = FmrbNet.request(BASE + job[:app]["base"].to_s + f["path"].to_s)
+      job[:req] = FmrbNet.request(base + job[:app]["base"].to_s + f["path"].to_s)
       return
     end
     return unless job[:req].done?
@@ -306,21 +364,39 @@ class AppStoreApp < FmrbApp
     end
     body = req.body.to_s
     size = f["size"]
-    # Size is the only check available here: there is no digest on this
-    # machine, so a sha256 in the list cannot be verified yet.
+    # Size first: it is free, and a truncated transfer is worth catching
+    # before the digest gets a chance to blame the whole app for it.
     if size.is_a?(Integer) && body.bytesize != size
       @note = "#{f['path']}: #{body.bytesize}B, expected #{size}B"
       @job = nil
       return
     end
+    digest_file(job[:digest], f["path"].to_s, body)
     job[:got] << [f["path"].to_s, body]
     job[:req] = nil
     job[:idx] += 1
     if job[:idx] >= job[:files].size
+      return unless digest_ok?(job)
       finish_install(job)
     else
       @note = "getting #{job[:idx] + 1}/#{job[:files].size}..."
     end
+  end
+
+  # true to go on, false when the install has already been abandoned.
+  def digest_ok?(job)
+    want = job[:app]["sha256"]
+    d = job[:digest]
+    if d.nil? || !want.is_a?(String)
+      # No check was made, and the note says so rather than implying one was.
+      job[:unchecked] = true
+      return true
+    end
+    got = to_hex(d.finish)
+    return true if got == want
+    @note = "the files do not match the list (#{got[0, 8]} vs #{want[0, 8]})"
+    @job = nil
+    false
   end
 
   def finish_install(job)
@@ -341,8 +417,12 @@ class AppStoreApp < FmrbApp
     end
     drop_launcher_cache
     @job = nil
-    @note = large ? "installed (large pool). Rescan to see it." :
-                    "installed. Right-click the launcher to rescan."
+    tail = job[:unchecked] ? " (size checked only)" : ""
+    @note = if large
+              "installed#{tail}, large pool. Rescan to see it."
+            else
+              "installed#{tail}. Right-click the launcher to rescan."
+            end
   end
 
   # The firmware's key is a boolean and means a different number on every
@@ -409,7 +489,7 @@ class AppStoreApp < FmrbApp
       when :b_refresh
         @note = "loading the list..."
         @apps = []
-        @req = FmrbNet.request(REGISTRY)
+        @req = FmrbNet.request(base + "registry.json")
       end
       draw_screen
       return
