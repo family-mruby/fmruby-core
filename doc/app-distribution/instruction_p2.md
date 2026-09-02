@@ -1,128 +1,126 @@
-# 実装指示 P2: ブラウザ版の店
+# 実装指示 P2: ブラウザ版に取得手段を足す (`FmrbNet.request`)
 
-計画は plan.md、形式の正は spec.md、P1 の記録は report/p1a.md と p1b.md。
-作業場所は `fmruby-core/wasm/web/` (`index.html` と `main.js`)。
+計画は plan.md、形式の正は spec.md。P1 の記録は report/p1a.md と p1b.md、
+**最初に作って捨てたページ側の店**の記録は report/p2_discarded.md。
 
-## 範囲
+## なぜ作り直すか
 
-ページの中に店を持たせ、`registry.json` から選んだアプリを機械の
-`/flash/app/usr/<id>/` へ置く。**取得はページ (JavaScript) が行う** —
-ブラウザ版には `Net::HTTP` が無い (`family_mruby_wasm.rb:71`。ソケットが
-無い)。
+**店は OS の中のアプリにする。** ページ (`wasm/web/`) は機械の筐体であって
+OS の一部ではない。そこに店を置くと、ブラウザにしか無い機能になり、実機用の
+店と同じものを 2 つ実装することになる。配布の看板が「同じ Ruby が 3 環境で
+動く」である以上、店自身がそうでないのは筋が通らない。
 
-spec.md 13.2 の「探す」と「入れたもの」は、ページでは 1 つの一覧で足りる
-(320x240 の窓ではないので分ける理由が無い)。行ごとに状態を出す。
+そのために足りないものが 1 つだけある: **ブラウザ版に通信手段が無い**
+(`family_mruby_wasm.rb:71`。ソケットが無いので picoruby-socket /
+net-http が入らない)。これを足すのが P2。
 
-## `?app=<id>` は P2 に入れない
+## 作るもの: `FmrbNet.request`
 
-**受け皿が無いことが分かった (2026-09-02)。**
+`FmrbNet` は既にある (`ports/esp32/net.c`。`connected?` / `ip_address` /
+`hostname` / `ssid` / `wait_for_ip`)。**3 環境すべてでコンパイルされている**
+(esp32 の CMake も wasm の CMake も `ports/esp32/*.c` を集める)。ここに
+取得を足す。
 
-ページは機械のファイルは書けるが、**アプリを起動する手段を持たない**。
-ブラウザには debug server が無く (実機の `/app/launch` にあたるものが無い)、
-`startup_app` のような設定も存在しない (`page_settings_wasm.c` が受けるのは
-解像度と配色だけ)。
+### 形は問い合わせ型 (コールバックにしない)
 
-要るのは**ファームウェア側の小さな仕掛け**で、材料は揃っている:
+```ruby
+def on_create
+  @req = FmrbNet.request("https://.../registry.json")
+end
 
-- `FmrbApp.config(key)` で system_conf の鍵を読める (`launcher.rb:343` が
-  `launcher_exclude` でやっている)
-- `spawn_app(app_name)` で起動できる (`launcher.rb:785`)
-- ページから機械へ設定を渡す道は既にある (`--fmrb-conf=` →
-  `page_settings_wasm.c` → `/flash/etc/system_conf.toml`)
-
-つまり「起動時に `startup_app` を読んで `spawn_app` する」を desktop に足し、
-`page_settings_wasm.c` に文字列の鍵を 1 つ通せばよい。**ただし desktop は
-Spinel で生成されるので、足したコードが生成を通るかを別に確かめる必要がある**
-(基底クラスに ivar を 1 個足しただけで壊れた例がある)。実機にも効く機能
-なので、**独立したフェーズとして切る**。
-
-## 作るもの
-
-### 1. 一覧を取ってくる
-
-既定の取得元:
-
-```
-https://raw.githubusercontent.com/family-mruby/family-mruby-apps/main/
+def on_update
+  if @req && @req.done?
+    @req.ok? ? load_list(@req.body) : show_error(@req.error)
+    @req = nil
+  end
+  50
+end
 ```
 
-`?registry=<URL>` で差し替えられるようにする (手元の写しで試すため)。
+**コールバックにしてはいけない。** 保存して後から呼ぶブロックは、Spinel が
+外側のローカル変数の捕捉で黙って壊す形そのものである (`set_timer` と同じ
+地雷)。アプリは既に `on_update` を持っているので、そこで見る形が素直。
 
-`registry.json` を 1 回取り、`base` と `files` から各ファイルの URL を組む。
-COEP 下でも読めることは実測済み (spec.md 6)。
+### API
 
-### 2. 出す
-
-1 行 1 アプリ。**写しの小さな絵を出す** (`screenshot` の PNG をそのまま
-`<img>` に。実機用の `thumb` BMP はページでは使わない)。名前・説明・作者・
-版・分類を添える。
-
-行の状態は 4 つ:
-
-| 状態 | 出すもの |
+| | |
 |---|---|
-| 未導入・動く | 「入れる」 |
-| 未導入・**この環境では未確認** | 理由 (`env` に web が無い / 画面が足りない)。入れさせない |
-| 導入済み・最新 | 版と「消す」 |
-| 導入済み・**新しい版がある** | 「1.0.0 → 1.1.0」と「更新」 |
+| `FmrbNet.request(url)` | `FmrbNet::Request` を返す。**待たない** |
+| `Request#done?` | 済んだか (成否は問わない) |
+| `Request#ok?` | 済んで status が 2xx |
+| `Request#status` | 整数。まだなら nil |
+| `Request#body` | 文字列。まだなら nil |
+| `Request#error` | 失敗の理由 (文字列)。無ければ nil |
+| `Request#cancel` | 捨てる (結果を待たない) |
 
-導入済みかどうかと版は、**入っている `.app.toml` を読んで判定する**
-(`app_id` / `app_version` がそこにある。別の台帳を作らない。spec.md 13.3)。
+**`get` という名前にしない。** `Net::HTTP.get_response` は応答を返すが、
+これは要求を返す。呼んだ行を見ただけで区別がつくようにする。
 
-### 3. 入れる
+### `Net::HTTP` は残す・触らない
+
+| | `Net::HTTP` | `FmrbNet.request` |
+|---|---|---|
+| 動く場所 | Retro / Modern / sim | **3 環境すべて** |
+| 形 | 止まって待つ | 止まらない |
+| 使うとき | 実機専用の道具 | **配布するアプリ** |
+
+## 実装
+
+### Ruby 側 (`mrblib/`)
+
+`Request` は Ruby で書き、環境で分岐する (`::FmrbConst::BOARD == "wasm"`)。
+
+- **wasm**: C の橋 (下記) を呼ぶ。本当に非同期。
+- **それ以外**: `initialize` の中で `::Net::HTTP.get_response` を呼んで
+  結果を持つ。`done?` は最初から true。
+
+実機で `initialize` が待つのは正直に書く。**止まるのはそのアプリのタスク
+だけ**で (プリエンプティブなので画面は動き続ける)、今の weather と同じ挙動。
+アプリのコードは変わらないので、後で補助タスクへ移しても呼ぶ側は無傷。
+
+picoruby の地雷に注意: **クラスの中の裸の定数は解決されない**ので
+`::Net::HTTP` `::URI` `::FmrbConst` と書く。`Regexp` は無い。
+
+### C 側 (`ports/esp32/net.c` に `#if defined(__EMSCRIPTEN__)` で足す)
+
+**取得は main スレッドで走らせる。** 機械の各タスクは pthread (= Worker)
+で、`emscripten_thread_sleep` で止まっている間その Worker の JS は 1 行も
+動かない。Worker で `fetch` を投げても promise が解決しない。
+
+ページ側 (main スレッド) の event loop は回っているので、そこへ回す。
+ファイル系のシステムコールが既に同じ形 (`proxyToMainThread`) なので、
+作りとして一貫している。
 
 ```
-files を全部取得
-  -> 大きさと sha256 を registry と照合 (crypto.subtle.digest)
-  -> M.FS.mkdirTree('/flash/app/usr/<id>')
-  -> M.FS.writeFile(...)
-  -> flushHome()
+FmrbNet._fetch_start(url)  -> MAIN_THREAD_EM_ASM_INT  -> id
+FmrbNet._fetch_poll(id)    -> 0 pending / 1 done / 2 error
+FmrbNet._fetch_status(id)  -> int
+FmrbNet._fetch_body(id)    -> String
+FmrbNet._fetch_error(id)   -> String
+FmrbNet._fetch_free(id)
 ```
 
-`sha256` が合わなければ**一覧を取り直して 1 度だけやり直す** (spec.md 13.5)。
-
-`required_heap_kb_linux` があれば、ブラウザの通常プール 1536 KB と比べる。
-超えるなら large (3072 KB) が要ることを表示し、`large_memory = 1` を
-`.app.toml` に書き足してから置く (spec.md 8.4)。**どちらも超えるなら断る。**
-
-### 4. 入れたあとの案内
-
-**入れただけでは一覧に出ない** — 機械はもう起動時の走査を終えている。
-ページは「再読み込みするとランチャーに出ます」と出し、再読み込みの
-ボタンを添える。
-
-再読み込み後に出ることは P1-B で確認済み (ブラウザにはキャッシュが無く
-毎回全走査になる)。
-
-### 5. 消す
-
-`/flash/app/usr/<id>/` のファイルを消して `flushHome()`。**`FS.rmdir` で
-殻も消す** — `web_fs` には無いが `FS` にはある。空の殻が残ると害は無いが
-溜まる (report/p1b.md)。
+JS 側の表は `globalThis` に置く (`Module` は Worker ごとに別)。
 
 ## 受け入れ条件
 
-- [ ] 一覧に 3 本が出て、**3 本とも小さな絵が出る**。
-- [ ] `wide_only` が「この環境では未確認」ではなく**入る** (426 幅は 400 を
-      満たす)。`app_env` に `web` が無い検体を作ったら断ること。
-- [ ] `hello_store` を入れて再読み込みすると、ランチャーに出て起動する。
-- [ ] もう一度再読み込みしても残っている。
-- [ ] `registry.json` の版を上げた写しを `?registry=` で読ませると、
-      「更新」が出る。
-- [ ] 消すと一覧から消え、`/flash/app/usr` に殻が残らない。
-- [ ] `sha256` を 1 つ壊した写しを読ませると、入れるのが失敗する。
+- [ ] Linux sim で、`FmrbNet.request` を使う小さなアプリが応答を取れる。
+- [ ] **ブラウザで同じアプリが同じコードのまま動く。**
+- [ ] 取得中に**画面が止まらない** (ブラウザ。時計が進み続けることで見る)。
+- [ ] 届かない URL で `error` が入り、`done?` が true になる (固まらない)。
+- [ ] `Net::HTTP` を使う既存アプリ (weather) が壊れていない。
+- [ ] `family-mruby-apps` の `validate.rb` が、`app_env` に `web` を含む
+      アプリの `Net::HTTP` 使用を落とす。
 
 ## 気をつけること
 
-- **`rake wasm:web` の前に `source ~/emsdk/emsdk_env.sh`**。無いと 277
-  ファイルを staging したところで止まる (report/p1b.md)。
-- ページを直しただけなら `wasm:web` は要らない (`wasm/web/` は素の静的
-  ファイル)。`web_reload` で足りる。
-- 検証中は `?registry=` で手元の写しを読ませる。公開の `main` を試験の
-  ために動かさない。
+- **`lib/` を編集したら `rake clean`**。しないと古いものがリンクされる。
+- `rake wasm:web` の前に `source ~/emsdk/emsdk_env.sh`。
+- wasm の生成物は作り直されないことがある (`wasm:mrb` / `wasm:mruby`)。
+  直したのに動かないときの最初の疑い。
 
 ## report に残すこと
 
-`report/p2.md`。特に、取得と検証で踏んだ罠、環境の判定が実際に効いたか、
-そして `?app=` を別フェーズに送った判断の結果 (やってみて別の道が
-見つかったならそれ)。
+`report/p2.md`。特に、main スレッドへ回す必要が本当にあったか (Worker で
+直接 `fetch` して駄目だったなら、その観測)、そして実機側の「中で待つ」が
+実用上どう見えたか。

@@ -319,13 +319,22 @@ module Net
 
       # Read body based on headers
       if content_length
-        # Read exact content length (may span several reads)
-        remaining = content_length - (response.length - header_end - 4)
+        # Read exact content length (may span several reads).
+        #
+        # Count BYTES, not characters. Content-Length is a byte count, while
+        # String#length is a character count -- for a body with any multi-byte
+        # UTF-8 in it the two disagree, `remaining` never reaches zero, and the
+        # client reads again from a socket that has nothing left to give. That
+        # surfaces as "SSL read failed" and it depends on the content, so the
+        # same code fetches an ASCII page happily and dies on a Japanese one.
+        # (Measured 2026-09-02 against raw.githubusercontent.com: the LICENSE
+        # came back fine, a .app.toml with a Japanese description did not.)
+        remaining = content_length - (response.bytesize - header_end - 4)
         while remaining > 0
           body_part = @socket.read(remaining)
           break unless body_part
           response += body_part
-          remaining -= body_part.length
+          remaining -= body_part.bytesize
         end
       elsif chunked
         # Read until the terminating zero-length chunk, then de-frame.

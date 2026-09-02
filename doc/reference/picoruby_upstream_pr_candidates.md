@@ -165,6 +165,44 @@ c14aa4400 は旧 pin)。mruby 本体 (vm.c / task.c / mruby-task) は hasumikin 
   posix堅牢化として妥当 (fmrbではFreeRTOS Linuxポートの1ms SIGALRMで必須だった)。
   デフォルトタイムアウト値の是非は上流の設計判断
 
+## 2026-09-02 追加: Content-Length を文字数で数えている [mrblib/http_client.rb]
+
+**非 ASCII を含む本文が 1 バイトも取れない。** `read_response` の
+
+```ruby
+remaining = content_length - (response.length - header_end - 4)
+...
+remaining -= body_part.length
+```
+
+`Content-Length` はバイト数、`String#length` は UTF-8 の**文字数**。日本語が
+混じると受信済みの量を少なく数えるので `remaining` が 0 にならず、もう空の
+ソケットから読みに行き、`SSLSocket_recv` が `!connected` で -1 を返して
+`SSL read failed` になる。
+
+**内容依存で発火するので、ホストや TLS の問題に見える。** 実際 2026-09-02 の
+切り分けでは、同じ raw.githubusercontent.com に対して
+
+| 取得先 | 中身 | 結果 |
+|---|---|---|
+| `/` (301) | ASCII | ok |
+| `LICENSE` | ASCII | ok 200 / 1069 B |
+| `apps/paint_pad/paint_pad.app.toml` | 日本語を含む | SSL read failed |
+| `registry.json` | 日本語を含む | SSL read failed |
+
+example.com と api.github.com はどちらも ASCII なので通り、**ホストの差だと
+誤診する道が開いている** (実際に SNI を疑って 30 分溶かした)。
+
+修正は `bytesize` に置き換えるだけ。`header_end` は `index` が返す文字位置だが、
+ヘッダは ASCII なのでバイト位置と一致する。
+
+- fmrb 側: `lib/patch/picoruby-net-http/mrblib/http_client.rb` に適用済み
+- 上流 PR: そのまま出せる (fmrb 固有の要素なし)。**優先度は高い** — 英語以外の
+  応答を返す API が全部使えない
+
+同じ罠は過去にも踏んでいる (NSF の再生ボタン)。
+mruby の `String#length` を長さとして使うたびに踏む。
+
 ## fmrb固有でPRに含めないもの
 
 - `fmrb_sys_malloc/free` (候補1) → 上流では malloc 等に読み替え
