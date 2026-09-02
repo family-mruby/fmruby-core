@@ -305,9 +305,17 @@ function captureConfSettings() {
 
 // ?theme= mirrors the selector the way ?w=&h= does (shareable, and the only
 // way a headless test can pick a theme).
+//
+// The device palette is stored as "classic" and always has been -- the token
+// is in people's localStorage and in links, so it stays. Config, inside the
+// machine, calls that same palette "light", which is what the selector says
+// now: one palette, one name in front of the reader. "light" is accepted here
+// too, so a link can use either word.
 const themeFromQuery = new URLSearchParams(location.search).get('theme');
-if (themeFromQuery === 'classic' || themeFromQuery === 'cyberpunk') {
-  writeSetting('fmrb_web_theme', themeFromQuery);
+if (themeFromQuery === 'classic' || themeFromQuery === 'light') {
+  writeSetting('fmrb_web_theme', 'classic');
+} else if (themeFromQuery === 'cyberpunk') {
+  writeSetting('fmrb_web_theme', 'cyberpunk');
 }
 
 const themeSelect = document.getElementById('theme-select');

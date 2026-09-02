@@ -32,6 +32,10 @@ module ConfigDialogMixin
   # Named theme presets. On save, the chosen preset expands to nine color
   # entries written into the [theme] section.
   CFG_THEME_PRESETS = {
+    # The machine's own look: the same nine values every config/system_conf_*
+    # ships (wasm excepted) and the same ones page_settings_wasm.c puts back
+    # when the browser is asked for the device palette. The page's selector
+    # calls it "Light" too; its stored token is still the older "classic".
     "light" => {
       desktop_bg: 0xF6, menu_bg: 0xC5, window_bg: 0xFF, text: 0x00,
       text_light: 0xFF, highlight: 0xEE, border: 0x60, button: 0x60, dir_color: 0x03
@@ -40,6 +44,8 @@ module ConfigDialogMixin
       desktop_bg: 0x00, menu_bg: 0x49, window_bg: 0x24, text: 0xFF,
       text_light: 0xFF, highlight: 0x6D, border: 0xB6, button: 0x49, dir_color: 0x1D
     },
+    # A warmer, older-looking one -- cream windows, a rust bar, an olive
+    # desktop. Nothing ships it; it is here to be chosen.
     "classic" => {
       desktop_bg: 0x48, menu_bg: 0xA9, window_bg: 0xDB, text: 0x00,
       text_light: 0xFF, highlight: 0xE0, border: 0x60, button: 0x80, dir_color: 0x07

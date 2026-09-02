@@ -12,6 +12,9 @@
  *   --fmrb-res=WxH        internal framebuffer size (display_width/height,
  *                         with default_user_app_* kept in proportion)
  *   --fmrb-theme=classic  the device palette + the device (western) wallpaper
+ *                         (Config, inside the machine, calls this palette
+ *                         "light"; the flag keeps the older word because the
+ *                         page stores it and links carry it)
  *
  * The same flags work on the node build (rake wasm:run -- --fmrb-res=852x480),
  * which is also how this file is regression-tested headlessly.
@@ -30,8 +33,9 @@
 #define BASE_W 426
 #define BASE_H 240
 
-/* The device palette, mirroring config/system_conf_p4.toml. The web default
- * (cyberpunk) is what the bundle ships; this is the way back. */
+/* The device palette, mirroring config/system_conf_p4.toml -- the same nine
+ * values Config's "light" preset holds; keep the three in step. The web
+ * default (cyberpunk) is what the bundle ships; this is the way back. */
 static const char *CLASSIC_THEME[][2] = {
     { "desktop_bg", "0xF6" }, { "menu_bg", "0xC5" }, { "window_bg", "0xFF" },
     { "text", "0x00" },       { "text_light", "0xFF" }, { "highlight", "0xEE" },
