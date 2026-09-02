@@ -104,22 +104,46 @@ class AppStoreApp < FmrbApp
   # The controls sit near the top on purpose: the bottom edge of a window this
   # small is where things get clipped, and a button that is half there is worse
   # than one that is lower down the reading order.
+  # FmrbUI adds the user area's own origin to every widget it places, so its
+  # coordinates are relative to the user area while everything drawn through
+  # @gfx here is canvas-absolute. Passing absolute coordinates to FmrbUI puts
+  # each widget one user area lower than intended -- which is what made the
+  # buttons sit on the first row of the list, and what the "flush paints past
+  # its widgets" note used to be about. (fmrb-ui.rb says the confirm dialog
+  # once had the same eleven-pixel bug.)
+  TABS_TOP = 0            # user-area relative, for FmrbUI
+  BAR_TOP = 18
+  BAR_H = 16
+
   def bar_y
-    @user_area_y0 + TAB_H
+    @user_area_y0 + BAR_TOP
   end
 
-  # 16 for the buttons and 8 of clearance: FmrbUI's flush paints a little
-  # past the widgets, and a tighter gap eats the first row.
+  # A rule under the buttons as well as above the detail, so the window reads
+  # as three bands: what to look at, what to do, and what is selected.
+  def top_rule_y
+    bar_y + BAR_H + 4
+  end
+
+  # Below the rule, with air on both sides of it. FmrbUI's flush paints a
+  # little past its widgets, which is why the rule cannot sit any closer to
+  # the buttons than this.
   def list_y
-    bar_y + 24
+    top_rule_y + 5
   end
 
   def detail_y
     @user_area_y1 - 41
   end
 
+  # A rule between the list and what is written about the selection, so the
+  # two read as two things.
+  def rule_y
+    detail_y - 5
+  end
+
   def list_h
-    h = detail_y - list_y - 2
+    h = rule_y - list_y
     h < row_h ? row_h : h
   end
 
@@ -128,27 +152,28 @@ class AppStoreApp < FmrbApp
     n < 1 ? 1 : n
   end
 
+  # Relative to the user area -- see the note on TABS_TOP.
   def build_ui
     w = area_w
-    x = @user_area_x0
-    y = @user_area_y0
-    @ui.toggle(:f_find, x, y, 62, TAB_H - 2, "Find", group: :face, on: true)
-    @ui.toggle(:f_inst, x + 64, y, 78, TAB_H - 2, "Installed", group: :face)
-    by = bar_y
-    @ui.button(:b_go, x, by, 60, 16, "Install")
-    @ui.button(:b_del, x + 64, by, 58, 16, "Remove")
-    @ui.button(:b_refresh, x + w - 60, by, 60, 16, "Reload")
+    # Which list to look at, on one row: the two faces and the button that
+    # fetches the list again all answer the same question.
+    @ui.toggle(:f_find, 0, TABS_TOP, 62, TAB_H - 2, "Find", group: :face, on: true)
+    @ui.toggle(:f_inst, 64, TABS_TOP, 78, TAB_H - 2, "Installed", group: :face)
+    @ui.button(:b_refresh, w - 58, TABS_TOP, 58, TAB_H - 2, "Reload")
+    # What to do with the selected app, on the next row, side by side. They
+    # used to sit at opposite ends of a row with Reload, which read as three
+    # unrelated things.
+    @ui.button(:b_go, 0, BAR_TOP, 60, BAR_H, "Install")
+    @ui.button(:b_del, 64, BAR_TOP, 58, BAR_H, "Remove")
   end
 
   # ---- drawing ------------------------------------------------------------
 
   def draw_screen
     clear_user_area
-    # FmrbUI paints its own area on flush, which reaches a little past the
-    # widgets themselves -- draw the list after it, or the first row goes
-    # missing under the button bar.
     @ui.flush
     draw_list
+    draw_rules
     draw_detail
     a = current
     draw_thumb(a)
@@ -292,10 +317,23 @@ class AppStoreApp < FmrbApp
   # One row. Kept apart from draw_list so that moving the selection can
   # repaint two rows instead of the whole window: on a board a full redraw is
   # 300-440 ms, and that wait is what the flicker was.
+  # Two one-character columns before the name -- the cursor and the installed
+  # mark -- so the names line up whether or not either is there. They used to
+  # be a prefix of whatever length the marks happened to need, which moved
+  # every name as the selection passed.
   def draw_row(a, x, ry, sel)
     fg = fits?(a) ? theme_fg : theme_border
     @gfx.fill_rect(x, ry, area_w, ROW_H, theme_bg)
-    @gfx.draw_text(x + 2, ry + 1, (sel ? ">" : " ") + row_label(a), fg, theme_bg)
+    @gfx.draw_text(x + 2, ry + 1, sel ? ">" : " ", fg, theme_bg)
+    @gfx.draw_text(x + 10, ry + 1, install_mark(a), fg, theme_bg)
+    @gfx.draw_text(x + 20, ry + 1, row_label(a), fg, theme_bg)
+  end
+
+  # "=" installed and current, "^" a newer version is out, blank otherwise.
+  def install_mark(a)
+    have = installed_version(a["id"].to_s)
+    return " " if have.nil?
+    have == a["version"] ? "=" : "^"
   end
 
   def row_y(idx)
@@ -306,21 +344,21 @@ class AppStoreApp < FmrbApp
     idx >= @scroll && idx < @scroll + rows_visible
   end
 
+  # Less the two marker columns and the margin.
   def row_cols
-    n = (area_w / 6) - 2
+    n = (area_w - 22) / 6
     n < 4 ? 4 : n
   end
 
   def row_label(a)
-    have = installed_version(a["id"].to_s)
-    mark = if have.nil?
-             ""
-           elsif have == a["version"]
-             "= "
-           else
-             "^ "
-           end
-    "#{mark}#{a['name']} v#{a['version']}"[0, row_cols].to_s
+    "#{a['name']} v#{a['version']}"[0, row_cols].to_s
+  end
+
+  def draw_rules
+    x0 = @user_area_x0
+    x1 = @user_area_x1 - 1
+    @gfx.draw_line(x0, top_rule_y, x1, top_rule_y, theme_border)
+    @gfx.draw_line(x0, rule_y + 2, x1, rule_y + 2, theme_border)
   end
 
   def draw_detail
