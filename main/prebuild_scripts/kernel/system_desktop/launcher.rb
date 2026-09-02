@@ -834,12 +834,11 @@ module LauncherMixin
     draw_foreground
     @rescanning = false
 
-    # Paired with the figure logged at rescan_start. The walk is the biggest
-    # allocation burst the desktop ever makes and it runs against a pool that
-    # is already two thirds full, so how much of it the collector gets back is
-    # what decides whether a second rescan has room to run. Do NOT force a
-    # GC.start here: tried on 2026-09-02 and the desktop died inside it (the
-    # watermark GC in on_update collects this soon enough anyway).
+    # Paired with the figure at rescan_start. The walk is the biggest
+    # allocation burst the desktop ever makes, so these two numbers are the
+    # cheapest warning that the pool is filling up again: when the desktop
+    # ran on 800 KB it went from 67% to 77% here and the collector then
+    # thrashed for 8.8 s (fmrb_mem_config.h, FMRB_MEM_POOL_SIZE_SYSTEM_APP).
     Log.info("Launcher: rescan done, pool #{::FmrbApp.pool_usage}%")
   end
 

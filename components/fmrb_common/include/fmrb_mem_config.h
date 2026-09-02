@@ -55,6 +55,18 @@ typedef int8_t fmrb_mem_handle_t;
 // ESP32 800KB stays put pending 32-bit measurement + sp_gc_hdr slimming.
 #ifdef CONFIG_IDF_TARGET_LINUX
 #define FMRB_MEM_POOL_SIZE_SYSTEM_APP (1536*1024)  /* 64-bit object model ~2x + headroom */
+#elif defined(FMRB_HW_FAMILY_MODERN)
+// 800KB was an S3 number and the desktop has outgrown it the same way the
+// service host outgrew its 500KB below. Measured on a NARYA v4: the desktop
+// sits at 549KB of 800KB before anything happens (the compiled irep of a
+// 213KB script is most of it), and a launcher rescan takes it to 632KB --
+// 77%, where it stays. At that occupancy the collector thrashes: a full
+// GC.start costs 0.27 s when the heap has room, but the burst at the end of
+// a rescan cost 8.8 SECONDS of collection, during which the desktop sends
+// nothing and looks dead. Twice it went over the edge and the task ended
+// with no exception at all -- the same silent death the tts service had.
+// Modern has 32MB of PSRAM with 12MB free; this is the cheapest fix there is.
+#define FMRB_MEM_POOL_SIZE_SYSTEM_APP (1536*1024)
 #else
 #define FMRB_MEM_POOL_SIZE_SYSTEM_APP (800*1024)
 #endif
