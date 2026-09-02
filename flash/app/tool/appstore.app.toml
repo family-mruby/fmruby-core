@@ -9,6 +9,8 @@ default_window_pos_y = 26
 min_window_width = 240
 min_window_height = 150
 resizable = 1
-# The registry and every file are held in memory before anything is written,
-# and JSON.parse of the list costs more than the list itself.
-task_stack_kb = 32
+# No task_stack_kb. That stack is internal RAM, the scarcest thing on a board,
+# and the store holding 32 KB of it is 32 KB the app it just installed cannot
+# have -- a NARYA v4 refused a second 32 KB app outright. The list is read as
+# lines now rather than parsed as JSON, which is what made the deep stack look
+# necessary in the first place.

@@ -18,8 +18,7 @@ class AppStoreApp < FmrbApp
   INSTALL_ROOT = "/app/usr"
   CACHE_PATH = "/var/cache/launcher_index"
 
-  ROW_H_PICTURE = 26  # 24 for the picture and 2 of air
-  ROW_H_TEXT = 11
+  ROW_H = 11
   THUMB_W = 32
   THUMB_H = 24
   TAB_H = 16
@@ -47,16 +46,20 @@ class AppStoreApp < FmrbApp
     @base = b
   end
 
-  # Retro reaches its display over a UART, and every picture has to cross it
-  # before it can be drawn. A list of them is not worth the wait there, so
-  # that machine gets the short rows and twice as many apps on screen
-  # instead. Modern draws in-process and the browser is the page itself.
+  # One picture, of whatever is selected, in a fixed place. Not one per row:
+  # a 26 px row halves how many apps fit, every row costs a PNG decode on
+  # redraw (about 75 ms on a board), and the display side holds only eight
+  # images at once.
+  #
+  # Retro has none at all. Its display is on the far side of a UART and every
+  # picture has to cross it before it can be drawn, which is not worth it to
+  # look at a list.
   def pictures?
     @env != "retro"
   end
 
   def row_h
-    pictures? ? ROW_H_PICTURE : ROW_H_TEXT
+    ROW_H
   end
 
   def on_create
@@ -66,12 +69,14 @@ class AppStoreApp < FmrbApp
     @apps = []
     @sel = 0
     @scroll = 0
-    @note = "loading the list..."
+    @note = "fetching the list..."
     @job = nil                 # an install in progress
     @thumbs = {}               # app id -> local path, or :none once given up
     @synced = {}               # paths already handed to the display side
+    @images = {}               # app id -> a decoded image on the display side
+    @image_order = []          # oldest first, for evicting
     @thumb_req = nil           # [id, request] -- one at a time
-    @req = FmrbNet.request(base + "registry.json")
+    @req = FmrbNet.request(base + "registry.tsv")
     @ui = FmrbUI.new(self)
     build_ui
     draw_screen
@@ -145,6 +150,9 @@ class AppStoreApp < FmrbApp
     @ui.flush
     draw_list
     draw_detail
+    a = current
+    draw_thumb(a)
+    want_thumb(a)
     draw_window_frame
     @gfx.present
   end
@@ -160,32 +168,24 @@ class AppStoreApp < FmrbApp
     list
   end
 
-  # The picture beside a row.
-  #
-  # The display side holds only eight images at once (DISPLAY_P4_MAX_IMAGES),
-  # so nothing is kept there: create, draw, delete, the way PicoRabbit does.
-  # What is kept is the FILE, so the second look costs a decode rather than a
-  # download and a transfer. sync_file compares before sending, so it is
-  # nearly free once the file is in place.
-  def draw_thumb(a, x, y)
-    path = @thumbs[a["id"].to_s]
+  # The picture of whatever is selected, drawn in the corner of the detail
+  # area. One at a time: the display side holds eight images at once
+  # (DISPLAY_P4_MAX_IMAGES), and a decode is about 75 ms on a board, so
+  # create-draw-delete for one is affordable where one per row was not.
+  def draw_thumb(a)
+    return unless pictures?
+    x = @user_area_x1 - THUMB_W - 2
+    y = detail_y
+    @gfx.fill_rect(x, y, THUMB_W, THUMB_H, theme_bg)
+    path = a ? @thumbs[a["id"].to_s] : nil
     if path.nil? || path == :none
       @gfx.draw_rect(x, y, THUMB_W, THUMB_H, theme_border)
       return
     end
     begin
-      # sync_file compares before sending, but the comparison itself is a
-      # round trip to the display side, and this runs for every row of every
-      # redraw. The file is written once and never changes, so remember that
-      # it has been sent.
-      unless @synced[path]
-        @gfx.sync_file(path)
-        @synced[path] = true
-      end
-      img = @gfx.create_image(path)
-      if img
-        @gfx.draw_image(img[:id], x: x, y: y)
-        @gfx.delete_image(img[:id])
+      img_id = image_for(a["id"].to_s, path)
+      if img_id
+        @gfx.draw_image(img_id, x: x, y: y)
       else
         @thumbs[a["id"].to_s] = :none
       end
@@ -195,24 +195,59 @@ class AppStoreApp < FmrbApp
     end
   end
 
-  # Ask for the picture of a row that has one and has not got it yet. One at a
-  # time, and never while an install is using the network.
+  # The display side keeps a decoded picture until it is told otherwise, and
+  # decoding one costs about 75 ms on a board. Keeping the last few means
+  # moving back to an app already looked at costs a draw and nothing else.
+  #
+  # Only a few: there are eight image slots for the whole machine
+  # (DISPLAY_P4_MAX_IMAGES), and the other apps need some.
+  IMAGE_CACHE_MAX = 4
+
+  def image_for(id, path)
+    cached = @images[id]
+    return cached if cached
+
+    # sync_file does not send a file that already matches, but the comparison
+    # is itself a round trip to the display side. These files are written once
+    # and never change, so remember what has been sent.
+    unless @synced[path]
+      @gfx.sync_file(path)
+      @synced[path] = true
+    end
+    img = @gfx.create_image(path)
+    return nil unless img
+
+    while @image_order.size >= IMAGE_CACHE_MAX
+      old_id = @image_order.shift
+      old_img = @images[old_id]
+      if old_img
+        @gfx.delete_image(old_img)
+        @images[old_id] = nil
+      end
+    end
+    @images[id] = img[:id]
+    @image_order << id
+    img[:id]
+  end
+
+  # Ask for the selected app's picture, if it has one and we have not got it.
+  # One at a time, and never while an install is using the network.
   def want_thumb(a)
     return unless pictures?
+    return if a.nil?
     return if @job
     return if @thumb_req
     id = a["id"].to_s
     return if @thumbs.key?(id)
-    t = a["thumb"]
-    return unless t.is_a?(Hash) && t["path"]
+    path = a["thumb_path"]
+    return if path.nil? || path.empty?
     @thumbs[id] = :none          # claimed, so the next redraw does not re-ask
-    @thumb_req = [id, a["base"].to_s + t["path"].to_s,
-                  FmrbNet.request(base + a["base"].to_s + t["path"].to_s)]
+    @thumb_req = [id, FmrbNet.request(base + a["base"].to_s + path)]
   end
 
   def step_thumb
-    return unless @thumb_req
-    req = @thumb_req[2]
+    return false unless @thumb_req
+    req = @thumb_req[1]
     return false unless req.done?
     id = @thumb_req[0]
     @thumb_req = nil
@@ -249,24 +284,30 @@ class AppStoreApp < FmrbApp
       ry = y + i * row_h
       # A marker rather than a highlight bar: a filled bar leaves nowhere for
       # the ink to be legible against both themes.
-      sel = (idx == @sel)
-      fg = fits?(a) ? theme_fg : theme_border
-      if pictures?
-        draw_thumb(a, x + 8, ry + 1)
-        want_thumb(a)
-        tx = x + 8 + THUMB_W + 4
-        @gfx.draw_text(x, ry + 8, sel ? ">" : " ", fg, theme_bg)
-        @gfx.draw_text(tx, ry + 3, row_label(a), fg, theme_bg)
-        @gfx.draw_text(tx, ry + 14, row_sub(a), theme_border, theme_bg)
-      else
-        @gfx.draw_text(x + 2, ry + 1, (sel ? ">" : " ") + row_label(a), fg, theme_bg)
-      end
+      draw_row(a, x, ry, idx == @sel)
       i += 1
     end
   end
 
+  # One row. Kept apart from draw_list so that moving the selection can
+  # repaint two rows instead of the whole window: on a board a full redraw is
+  # 300-440 ms, and that wait is what the flicker was.
+  def draw_row(a, x, ry, sel)
+    fg = fits?(a) ? theme_fg : theme_border
+    @gfx.fill_rect(x, ry, area_w, ROW_H, theme_bg)
+    @gfx.draw_text(x + 2, ry + 1, (sel ? ">" : " ") + row_label(a), fg, theme_bg)
+  end
+
+  def row_y(idx)
+    list_y + (idx - @scroll) * ROW_H
+  end
+
+  def row_visible?(idx)
+    idx >= @scroll && idx < @scroll + rows_visible
+  end
+
   def row_cols
-    n = pictures? ? (area_w - 8 - THUMB_W - 4) / 6 : (area_w / 6) - 2
+    n = (area_w / 6) - 2
     n < 4 ? 4 : n
   end
 
@@ -279,22 +320,15 @@ class AppStoreApp < FmrbApp
            else
              "^ "
            end
-    # Without a picture there is no second line to put the version on.
-    tail = pictures? ? "" : " v#{a['version']}"
-    "#{mark}#{a['name']}#{tail}"[0, row_cols].to_s
-  end
-
-  # The second line of a row: what the picture cannot say.
-  def row_sub(a)
-    why = blocked_reason(a)
-    return why[0, row_cols].to_s if why
-    "v#{a['version']} #{a['category']}"[0, row_cols].to_s
+    "#{mark}#{a['name']} v#{a['version']}"[0, row_cols].to_s
   end
 
   def draw_detail
     x = @user_area_x0
     y = detail_y
     w = area_w
+    # Leave the corner alone: the selected app's picture lives there.
+    w -= (THUMB_W + 4) if pictures?
     cols = w / 6
     @gfx.fill_rect(x, y, w, 40, theme_bg)
     a = current
@@ -328,16 +362,26 @@ class AppStoreApp < FmrbApp
     blocked_reason(a).nil?
   end
 
+  # Every field arrives as a string from the list, and an empty one means
+  # "not said" rather than zero.
+  def num(a, key)
+    v = a[key]
+    return nil if v.nil?
+    v = v.to_s
+    return nil if v.empty?
+    v.to_i
+  end
+
   # nil when it can run here, otherwise the reason in one short line.
   def blocked_reason(a)
     envs = a["env"]
-    if envs.is_a?(Array) && !envs.include?(@env)
+    if envs.is_a?(Array) && !envs.empty? && !envs.include?(@env)
       return "not checked on #{@env}"
     end
-    mw = a["min_width"]
-    return "needs #{mw}px wide" if mw.is_a?(Integer) && mw > @info[:w]
-    mh = a["min_height"]
-    return "needs #{mh}px tall" if mh.is_a?(Integer) && mh > @info[:h]
+    mw = num(a, "min_width")
+    return "needs #{mw}px wide" if mw && mw > @info[:w]
+    mh = num(a, "min_height")
+    return "needs #{mh}px tall" if mh && mh > @info[:h]
     kb = heap_kb(a)
     return "needs #{kb}KB heap" if kb && kb > @info[:large]
     nil
@@ -346,11 +390,7 @@ class AppStoreApp < FmrbApp
   # The number for this machine's object model: boards are 32-bit, the
   # simulator and the browser share the linux pool sizes.
   def heap_kb(a)
-    h = a["required_heap_kb"]
-    return nil unless h.is_a?(Hash)
-    key = (@env == "web") ? "linux" : "esp32"
-    v = h[key]
-    v.is_a?(Integer) ? v : nil
+    num(a, (@env == "web") ? "heap_linux" : "heap_esp32")
   end
 
   # ---- what is on this machine -------------------------------------------
@@ -593,9 +633,9 @@ class AppStoreApp < FmrbApp
       when :b_go       then a = current; start_install(a) if a
       when :b_del      then a = current; remove_app(a) if a
       when :b_refresh
-        @note = "loading the list..."
+        @note = "fetching the list..."
         @apps = []
-        @req = FmrbNet.request(base + "registry.json")
+        @req = FmrbNet.request(base + "registry.tsv")
       end
       draw_screen
       return
@@ -606,8 +646,22 @@ class AppStoreApp < FmrbApp
     idx = @scroll + ((y - list_y) / row_h)
     items = shown
     return if idx >= items.size
+    return if idx == @sel
+    select(idx, items)
+  end
+
+  # Moving the selection repaints two rows and the detail area, not the
+  # window. A full redraw is 300-440 ms on a board (most of it decoding the
+  # pictures again), and that wait is what looked like a flicker.
+  def select(idx, items)
+    was = @sel
     @sel = idx
-    draw_screen
+    draw_row(items[was], @user_area_x0, row_y(was), false) if row_visible?(was) && items[was]
+    draw_row(items[idx], @user_area_x0, row_y(idx), true)
+    draw_detail
+    draw_thumb(items[idx])
+    want_thumb(items[idx])
+    @gfx.present
   end
 
   def on_update
@@ -621,18 +675,45 @@ class AppStoreApp < FmrbApp
       step_install
       draw_screen if @job.nil? || @job[:idx] != before
     end
-    draw_screen if step_thumb
+    if step_thumb
+      a = current
+      draw_thumb(a)
+      @gfx.present
+    end
     80
   end
+
+  # registry.tsv, not registry.json.
+  #
+  # picoruby's JSON parser took 7.6 SECONDS over the 2.8 KB list on an
+  # ESP32-P4 (measured 2026-09-02) -- more than the fetch, the drawing and
+  # every picture put together. The same list as tab-separated lines is a
+  # split and nothing else. tools/registry.rb in family-mruby-apps writes
+  # both from the same data, and this is the one machines read.
+  #
+  #   1                              the format version, on its own line
+  #   A <TAB> id ... thumb_size      one app, fields in a fixed order
+  #   F <TAB> path <TAB> size        a file of the app above it
+  #
+  # A line whose first field is not known is skipped, so a later version can
+  # add records without breaking this.
+  TSV_VERSION = "1"
+  A_FIELDS = %w[id version name name_ja description description_ja
+                category author env min_width min_height
+                heap_esp32 heap_linux sha256 base thumb_path thumb_size]
 
   def load_registry(req)
     unless req.ok?
       @note = "list: #{req.error || "status #{req.status}"}"
       return
     end
-    data = ::JSON.parse(req.body.to_s)
-    apps = data.is_a?(Hash) ? data["apps"] : nil
-    unless apps.is_a?(Array)
+    @note = "reading the list..."
+    apps = parse_tsv(req.body.to_s)
+    if apps.nil?
+      @note = "the list is not one this store understands"
+      return
+    end
+    if apps.empty?
       @note = "the list has no apps"
       return
     end
@@ -643,6 +724,37 @@ class AppStoreApp < FmrbApp
     Log.info("appstore: #{apps.size} apps for #{@env}")
   rescue => e
     @note = "could not read the list: #{e.message}"
+  end
+
+  # nil when the version line is missing or is one we do not know.
+  def parse_tsv(text)
+    lines = text.split("\n")
+    return nil if lines.empty?
+    return nil unless lines[0].strip == TSV_VERSION
+    apps = []
+    current = nil
+    i = 1
+    while i < lines.size
+      line = lines[i]
+      i += 1
+      next if line.nil? || line.empty?
+      f = line.split("\t")
+      kind = f[0]
+      if kind == "A"
+        current = {}
+        j = 0
+        while j < A_FIELDS.size
+          current[A_FIELDS[j]] = f[j + 1].to_s
+          j += 1
+        end
+        current["env"] = current["env"].split(",")
+        current["files"] = []
+        apps << current
+      elsif kind == "F" && current
+        current["files"] << { "path" => f[1].to_s, "size" => f[2].to_i }
+      end
+    end
+    apps
   end
 end
 
