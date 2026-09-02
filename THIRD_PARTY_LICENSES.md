@@ -4,10 +4,6 @@ This document contains the licenses for third-party software components used in 
 
 Family mruby Core includes code from several open source projects. The following is a list of these projects along with their respective licenses.
 
-Creative assets -- artwork, music, fonts -- are listed separately in
-[ASSETS.md](ASSETS.md), including the CC0 street scene the cyberpunk theme's
-wallpaper is made from.
-
 ---
 
 ## Table of Contents
