@@ -36,6 +36,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [次期基板 HDMI 映像出力方式 検討資料](reference/hdmi_video_output_study.md) — **凍結** (2026-08-29) 次期基板 (NARYAv4) の HDMI 方式比較。LT8912B が最有力、基板が動くまで保留
 - [ESP-IDF v6.0 移行メモ（IDF6対応で判明した課題と回避策）](reference/idf6_migration_notes.md)
 - [内蔵 RAM 削減計画](reference/internal_ram_budget.md)
+- [ランチャーの再走査でデスクトップが落ちる (NARYA v4, 2026-09-02)](reference/launcher_rescan_desktop_stop.md)
 - [高速な PicoRuby アプリを書くための知見](reference/picoruby_performance_notes.md)
 - [picoruby 上流PR候補メモ (ネットワークAPI検証で発見したバグ)](reference/picoruby_upstream_pr_candidates.md)
 - [ESP32-P4 PPA と LovyanGFX の RGB565 描画パイプライン知見](reference/ppa_lgfx_notes.md)
@@ -50,7 +51,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 ## テーマ別
 
 - `ai/` [OpenAI API 活用の構想メモ](ai/ideas.md) — - 〔1 files〕
-- `app-distribution/` [アプリ配布プラットフォーム 計画](app-distribution/plan.md) — **進行中** (2026-09-02) **P1-P3 完了 (Retro 実機を除く)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。残りは P2b・Retro 実機。 〔10 files〕
+- `app-distribution/` [アプリ配布プラットフォーム 計画](app-distribution/plan.md) — **進行中** (2026-09-02) **P1-P3 完了 (Retro 実機を除く)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。**NARYA v4 で通し確認 + 速度の作り直し済** (report/p4_device.md, p5_perf.md)。**解析 7.6 秒 → 0.12 秒**。残りは Retro 実機のみ。 〔13 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔1 files〕
