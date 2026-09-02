@@ -18,8 +18,13 @@ class AppStoreApp < FmrbApp
   INSTALL_ROOT = "/app/usr"
   CACHE_PATH = "/var/cache/launcher_index"
 
-  ROW_H = 11
+  ROW_H = 26          # 24 for the picture and 2 of air
+  THUMB_W = 32
+  THUMB_H = 24
   TAB_H = 16
+  # Somewhere the display side can be handed a file. /cache is what the rest
+  # of the system uses for exactly this.
+  THUMB_DIR = "/cache/app/appstore"
 
   # What each machine gives an app, from fmrb_mem_config.h and the display
   # settings. The store has to know these to answer "does this fit here".
@@ -50,6 +55,9 @@ class AppStoreApp < FmrbApp
     @scroll = 0
     @note = "loading the list..."
     @job = nil                 # an install in progress
+    @thumbs = {}               # app id -> local path, or :none once given up
+    @synced = {}               # paths already handed to the display side
+    @thumb_req = nil           # [id, request] -- one at a time
     @req = FmrbNet.request(base + "registry.json")
     @ui = FmrbUI.new(self)
     build_ui
@@ -139,6 +147,74 @@ class AppStoreApp < FmrbApp
     list
   end
 
+  # The picture beside a row.
+  #
+  # The display side holds only eight images at once (DISPLAY_P4_MAX_IMAGES),
+  # so nothing is kept there: create, draw, delete, the way PicoRabbit does.
+  # What is kept is the FILE, so the second look costs a decode rather than a
+  # download and a transfer. sync_file compares before sending, so it is
+  # nearly free once the file is in place.
+  def draw_thumb(a, x, y)
+    path = @thumbs[a["id"].to_s]
+    if path.nil? || path == :none
+      @gfx.draw_rect(x, y, THUMB_W, THUMB_H, theme_border)
+      return
+    end
+    begin
+      # sync_file compares before sending, but the comparison itself is a
+      # round trip to the display side, and this runs for every row of every
+      # redraw. The file is written once and never changes, so remember that
+      # it has been sent.
+      unless @synced[path]
+        @gfx.sync_file(path)
+        @synced[path] = true
+      end
+      img = @gfx.create_image(path)
+      if img
+        @gfx.draw_image(img[:id], x: x, y: y)
+        @gfx.delete_image(img[:id])
+      else
+        @thumbs[a["id"].to_s] = :none
+      end
+    rescue => e
+      Log.warn("appstore: thumb #{a['id']}: #{e.message}")
+      @thumbs[a["id"].to_s] = :none
+    end
+  end
+
+  # Ask for the picture of a row that has one and has not got it yet. One at a
+  # time, and never while an install is using the network.
+  def want_thumb(a)
+    return if @job
+    return if @thumb_req
+    id = a["id"].to_s
+    return if @thumbs.key?(id)
+    t = a["thumb"]
+    return unless t.is_a?(Hash) && t["path"]
+    @thumbs[id] = :none          # claimed, so the next redraw does not re-ask
+    @thumb_req = [id, a["base"].to_s + t["path"].to_s,
+                  FmrbNet.request(base + a["base"].to_s + t["path"].to_s)]
+  end
+
+  def step_thumb
+    return unless @thumb_req
+    req = @thumb_req[2]
+    return false unless req.done?
+    id = @thumb_req[0]
+    @thumb_req = nil
+    return true unless req.ok?
+    begin
+      Dir.mkdir("/cache/app") unless Dir.exist?("/cache/app")
+      Dir.mkdir(THUMB_DIR) unless Dir.exist?(THUMB_DIR)
+      path = "#{THUMB_DIR}/#{id}.png"
+      File.open(path, "w") { |f| f.write(req.body) }
+      @thumbs[id] = path
+    rescue => e
+      Log.warn("appstore: could not keep #{id}.png: #{e.message}")
+    end
+    true
+  end
+
   def draw_list
     items = shown
     x = @user_area_x0
@@ -157,32 +233,42 @@ class AppStoreApp < FmrbApp
       break if idx >= items.size
       a = items[idx]
       ry = y + i * ROW_H
-      # A marker rather than a highlight bar: on a 320 px screen the row is
-      # only 11 px tall, and a filled bar leaves nowhere for the ink to be
-      # legible against both themes.
+      # A marker rather than a highlight bar: a filled bar leaves nowhere for
+      # the ink to be legible against both themes.
       sel = (idx == @sel)
       fg = fits?(a) ? theme_fg : theme_border
-      @gfx.draw_text(x + 2, ry + 1, (sel ? ">" : " ") + row_label(a), fg, theme_bg)
+      draw_thumb(a, x + 8, ry + 1)
+      want_thumb(a)
+      tx = x + 8 + THUMB_W + 4
+      @gfx.draw_text(x, ry + 8, sel ? ">" : " ", fg, theme_bg)
+      @gfx.draw_text(tx, ry + 3, row_label(a), fg, theme_bg)
+      @gfx.draw_text(tx, ry + 14, row_sub(a), theme_border, theme_bg)
       i += 1
     end
   end
 
+  def row_cols
+    n = (area_w - 8 - THUMB_W - 4) / 6
+    n < 4 ? 4 : n
+  end
+
   def row_label(a)
-    id = a["id"].to_s
-    have = installed_version(id)
+    have = installed_version(a["id"].to_s)
     mark = if have.nil?
-             " "
+             ""
            elsif have == a["version"]
-             "="
+             "= "
            else
-             "^"
+             "^ "
            end
-    name = a["name"].to_s
-    # The label is drawn at 6 px a character; leave room for the marker and
-    # the version at the far end.
-    room = (area_w / 6) - 10
-    name = name[0, room] if room > 0 && name.length > room
-    "#{mark} #{name}"
+    "#{mark}#{a['name']}"[0, row_cols].to_s
+  end
+
+  # The second line of a row: what the picture cannot say.
+  def row_sub(a)
+    why = blocked_reason(a)
+    return why[0, row_cols].to_s if why
+    "v#{a['version']} #{a['category']}"[0, row_cols].to_s
   end
 
   def draw_detail
@@ -515,6 +601,7 @@ class AppStoreApp < FmrbApp
       step_install
       draw_screen if @job.nil? || @job[:idx] != before
     end
+    draw_screen if step_thumb
     80
   end
 
