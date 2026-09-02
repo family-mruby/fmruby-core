@@ -7,6 +7,12 @@ report/metaprog_check.md (アプリ VM のメタプロ可否検証。dRuby 型�
 動的代理が mruby 側で成立することを sim で確認済み、2026-08-27)。
 usecases.md (Asterism のユースケース集。本書 4 章が「通信」目線なのに
 対し、オブジェクトモデル目線の 9 案)。naming.md (名前の決定と使い分け)。
+node_variants.md (wasm / NARYA v4 / ヘッドレス機で開けた可能性。
+4.9 の親機+子機構成を 3 層に更新する、2026-08-31)。
+remote_window.md (アプリの窓 1 枚を別機体のデスクトップに出す。
+ヘッドレス機の看板機能、usecases.md 10)。
+ヘッドレス機と Zenoh の関係 (agent worker の最初の住処、P4 の実証台、
+家の自動化エンジン) は node_variants.md 3.8。
 
 ## 1. 動機と経緯
 
