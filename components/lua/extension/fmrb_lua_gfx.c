@@ -7,6 +7,7 @@
 #include "fmrb_gfx_msg.h"
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
+#include "fmrb_theme.h"
 #include <string.h>
 
 static const char *TAG = "lua_gfx";
@@ -406,6 +407,29 @@ void fmrb_lua_register_gfx(lua_State* L) {
         lua_pushboolean(L, ctx->headless);
         lua_setfield(L, -2, "HEADLESS");
     }
+
+    /* The system theme, so a Lua app draws its window frame in the colours
+       every other window uses. Without these it can only spell the classic
+       theme out (0xC5, 0x60) and a changed theme leaves it behind. */
+    const fmrb_theme_t *theme = fmrb_theme_get();
+    lua_pushinteger(L, theme->desktop_bg);
+    lua_setfield(L, -2, "THEME_DESKTOP_BG");
+    lua_pushinteger(L, theme->menu_bg);
+    lua_setfield(L, -2, "THEME_MENU_BG");
+    lua_pushinteger(L, theme->window_bg);
+    lua_setfield(L, -2, "THEME_WINDOW_BG");
+    lua_pushinteger(L, theme->text);
+    lua_setfield(L, -2, "THEME_TEXT");
+    lua_pushinteger(L, theme->text_light);
+    lua_setfield(L, -2, "THEME_TEXT_LIGHT");
+    lua_pushinteger(L, theme->highlight);
+    lua_setfield(L, -2, "THEME_HIGHLIGHT");
+    lua_pushinteger(L, theme->border);
+    lua_setfield(L, -2, "THEME_BORDER");
+    lua_pushinteger(L, theme->button);
+    lua_setfield(L, -2, "THEME_BUTTON");
+    lua_pushinteger(L, theme->dir_color);
+    lua_setfield(L, -2, "THEME_DIR_COLOR");
 
     lua_setglobal(L, "FmrbApp");
 

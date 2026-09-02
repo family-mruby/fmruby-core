@@ -58,6 +58,16 @@ void fmrb_mp_bridge_app_cleanup(void);
 /** True once the kernel has asked this app to stop. */
 bool fmrb_mp_bridge_should_exit(void);
 
+/**
+ * @brief The system theme's nine colours (RGB332)
+ * @param out desktop_bg, menu_bg, window_bg, text, text_light, highlight,
+ *            border, button, dir_color -- the field order of fmrb_theme_t
+ *
+ * Readable before the app window exists, because the prelude turns them into
+ * FmrbConst.THEME_* at import time, the way Ruby gets them as constants.
+ */
+void fmrb_mp_bridge_theme(uint8_t out[9]);
+
 /** Milliseconds since boot, for the spin loop's own timekeeping. */
 uint32_t fmrb_mp_bridge_now_ms(void);
 

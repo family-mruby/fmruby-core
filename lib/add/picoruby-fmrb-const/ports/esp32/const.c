@@ -26,6 +26,7 @@
 #include "fmrb_msg_payload.h"
 #include "fmrb_hal_pin_manager.h"
 #include "fmrb_pin_assign.h"
+#include "fmrb_theme.h"
 #include "fmrb_kernel.h"
 #include "status_led.h"
 #include "../../include/picoruby_fmrb_const.h"

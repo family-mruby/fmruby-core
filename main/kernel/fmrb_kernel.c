@@ -22,6 +22,7 @@
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_link_cobs.h"
 #include "picoruby_fmrb_const.h"
+#include "fmrb_theme.h"
 #include "fmrb_keymap.h"
 #include "fmrb_debug.h"
 #include "fmrb_mp.h"

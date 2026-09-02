@@ -380,6 +380,27 @@ static mp_obj_t fmrb_init(void) {
 }
 static MP_DEFINE_CONST_FUN_OBJ_0(fmrb_init_obj, fmrb_init);
 
+/* The system theme, as a dict of the nine RGB332 colours. Separate from
+   init() because the prelude reads it while defining FmrbConst, before any
+   app object exists -- the same way Ruby sees them as FmrbConst::THEME_*. */
+static mp_obj_t fmrb_theme(void) {
+    uint8_t c[9];
+    fmrb_mp_bridge_theme(c);
+
+    mp_obj_t d = mp_obj_new_dict(9);
+    dict_store_str(d, MP_QSTR_desktop_bg, MP_OBJ_NEW_SMALL_INT(c[0]));
+    dict_store_str(d, MP_QSTR_menu_bg, MP_OBJ_NEW_SMALL_INT(c[1]));
+    dict_store_str(d, MP_QSTR_window_bg, MP_OBJ_NEW_SMALL_INT(c[2]));
+    dict_store_str(d, MP_QSTR_text, MP_OBJ_NEW_SMALL_INT(c[3]));
+    dict_store_str(d, MP_QSTR_text_light, MP_OBJ_NEW_SMALL_INT(c[4]));
+    dict_store_str(d, MP_QSTR_highlight, MP_OBJ_NEW_SMALL_INT(c[5]));
+    dict_store_str(d, MP_QSTR_border, MP_OBJ_NEW_SMALL_INT(c[6]));
+    dict_store_str(d, MP_QSTR_button, MP_OBJ_NEW_SMALL_INT(c[7]));
+    dict_store_str(d, MP_QSTR_dir_color, MP_OBJ_NEW_SMALL_INT(c[8]));
+    return d;
+}
+static MP_DEFINE_CONST_FUN_OBJ_0(fmrb_theme_obj, fmrb_theme);
+
 static mp_obj_t fmrb_cleanup(void) {
     fmrb_mp_bridge_app_cleanup();
     return mp_const_none;
@@ -1035,6 +1056,7 @@ static const mp_rom_map_elem_t fmrb_module_globals_table[] = {
 
     { MP_ROM_QSTR(MP_QSTR_init), MP_ROM_PTR(&fmrb_init_obj) },
     { MP_ROM_QSTR(MP_QSTR_cleanup), MP_ROM_PTR(&fmrb_cleanup_obj) },
+    { MP_ROM_QSTR(MP_QSTR_theme), MP_ROM_PTR(&fmrb_theme_obj) },
     { MP_ROM_QSTR(MP_QSTR_spin), MP_ROM_PTR(&fmrb_spin_obj) },
     { MP_ROM_QSTR(MP_QSTR_send_message), MP_ROM_PTR(&fmrb_send_message_obj) },
     { MP_ROM_QSTR(MP_QSTR_set_window_pos), MP_ROM_PTR(&fmrb_set_window_pos_obj) },

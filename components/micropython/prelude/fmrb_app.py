@@ -47,11 +47,29 @@ class Log:
         _fmrb.log("E", str(msg))
 
 
+# The system theme, read once here so the constants below can be plain class
+# attributes -- the same shape Ruby apps get through FmrbConst::THEME_*.
+_theme = _fmrb.theme()
+
+
 class FmrbConst:
     PROC_ID_KERNEL = 0
     MSG_TYPE_APP_CONTROL = 0
     MSG_TYPE_APP_AUDIO = 2
     MSG_TYPE_HID_EVENT = 3
+
+    # [theme] in system_conf.toml, as RGB332 bytes. One edit to that file
+    # restyles the desktop and every app together, so an app that shows text
+    # and controls should take its colours from here rather than pick its own.
+    THEME_DESKTOP_BG = _theme["desktop_bg"]
+    THEME_MENU_BG = _theme["menu_bg"]
+    THEME_WINDOW_BG = _theme["window_bg"]
+    THEME_TEXT = _theme["text"]
+    THEME_TEXT_LIGHT = _theme["text_light"]
+    THEME_HIGHLIGHT = _theme["highlight"]
+    THEME_BORDER = _theme["border"]
+    THEME_BUTTON = _theme["button"]
+    THEME_DIR_COLOR = _theme["dir_color"]
 
 
 # Audio, transcribed from the Ruby version (picoruby-fmrb-app
@@ -125,12 +143,15 @@ class FmrbApp:
     CLOSE_BTN_CY = 5
     CLOSE_BTN_R = 3
     CLOSE_BTN_HIT_R = 5
-    CLOSE_BTN_NORMAL_COLOR = 0xFF
-    CLOSE_BTN_PRESSED_COLOR = 0x49
+    # The frame's colours are the theme's, not this file's. They used to be
+    # spelled out (0xC5, 0xFB, 0x60), which is the classic theme written down,
+    # and that is why a Python window stayed classic after the theme changed.
+    CLOSE_BTN_NORMAL_COLOR = FmrbConst.THEME_TEXT_LIGHT
+    CLOSE_BTN_PRESSED_COLOR = 0x49   # dark grey: reads as "pressed" on any bar
 
-    TITLE_BAR_COLOR = 0xC5
-    MENU_MARK_COLOR = 0xFB
-    BORDER_COLOR = 0x60
+    TITLE_BAR_COLOR = FmrbConst.THEME_MENU_BG
+    MENU_MARK_COLOR = FmrbConst.THEME_TEXT_LIGHT
+    BORDER_COLOR = FmrbConst.THEME_BORDER
 
     def __init__(self):
         self.running = False
@@ -193,7 +214,7 @@ class FmrbApp:
         g.fill_rect(3, 3, 9, 1, self.MENU_MARK_COLOR)
         g.fill_rect(3, 5, 9, 1, self.MENU_MARK_COLOR)
         g.fill_rect(3, 7, 9, 1, self.MENU_MARK_COLOR)
-        g.draw_text(15, 2, self.name, FmrbGfx.WHITE)
+        g.draw_text(15, 2, self.name, self.MENU_MARK_COLOR)
         # Close button.
         g.fill_circle(w - self.CLOSE_BTN_CX_OFFSET, self.CLOSE_BTN_CY,
                       self.CLOSE_BTN_R, self.CLOSE_BTN_NORMAL_COLOR)
@@ -221,9 +242,30 @@ class FmrbApp:
         g.draw_line(w - 1, h - 2, w - 1, h - 1, t)
         g.draw_line(w - 2, h - 1, w - 2, h - 1, t)
 
-    def clear_user_area(self, color=FmrbGfx.BLACK):
+    # ---- the system theme (see FmrbConst.THEME_*) ----
+    #
+    # The five an app actually draws with, under the names the Ruby framework
+    # uses, so the two are written the same way.
+
+    def theme_bg(self):
+        return FmrbConst.THEME_WINDOW_BG      # page background
+
+    def theme_fg(self):
+        return FmrbConst.THEME_TEXT           # ink on theme_bg
+
+    def theme_accent(self):
+        return FmrbConst.THEME_HIGHLIGHT      # selection, emphasis
+
+    def theme_border(self):
+        return FmrbConst.THEME_BORDER         # rules, boxes, muted text
+
+    def theme_fg_light(self):
+        return FmrbConst.THEME_TEXT_LIGHT     # ink on accent / button
+
+    def clear_user_area(self, color=FmrbConst.THEME_WINDOW_BG):
         # Clears inside the frame only, so the title bar and close button
-        # survive. Use this rather than gfx.clear.
+        # survive. Use this rather than gfx.clear. The default is the theme's
+        # page colour, so an app that says nothing still matches the desktop.
         if self.gfx is None:
             return
         self.gfx.fill_rect(self.user_area_x0, self.user_area_y0,

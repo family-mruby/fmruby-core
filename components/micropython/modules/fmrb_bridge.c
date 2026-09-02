@@ -25,6 +25,7 @@
 #include "fmrb_log.h"
 #include "fmrb_msg.h"
 #include "fmrb_rtos.h"
+#include "fmrb_theme.h"
 
 #include "fmrb_mp_bridge.h"
 
@@ -166,6 +167,22 @@ void fmrb_mp_bridge_set_window_pos(int32_t x, int32_t y) {
     }
     ctx->window_pos_x = (uint16_t)x;
     ctx->window_pos_y = (uint16_t)y;
+}
+
+/* The nine theme colours, in the order of fmrb_theme_t. Copied out rather
+   than handing the struct over, so the module side keeps needing no fmrb_*
+   header (see the note at the top of fmrb_mp_bridge.h). */
+void fmrb_mp_bridge_theme(uint8_t out[9]) {
+    const fmrb_theme_t *t = fmrb_theme_get();
+    out[0] = t->desktop_bg;
+    out[1] = t->menu_bg;
+    out[2] = t->window_bg;
+    out[3] = t->text;
+    out[4] = t->text_light;
+    out[5] = t->highlight;
+    out[6] = t->border;
+    out[7] = t->button;
+    out[8] = t->dir_color;
 }
 
 bool fmrb_mp_bridge_is_file_app(void) {

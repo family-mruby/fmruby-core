@@ -24,6 +24,7 @@
 #include "fmrb_kernel.h"
 #include "fmrb_limits.h"
 #include "picoruby_fmrb_const.h"
+#include "fmrb_theme.h"
 
 static const char *TAG = "spx";
 

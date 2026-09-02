@@ -432,7 +432,10 @@ class FmrbApp
             stop
           elsif @gfx
             # Released outside the button — restore the normal circle.
-            @gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_NORMAL_COLOR)
+            # The frame drew this circle in THEME_TEXT_LIGHT, so putting it
+            # back in CLOSE_BTN_NORMAL_COLOR (white) changed its colour
+            # under any theme whose light ink is not white.
+            @gfx.fill_circle(cx, cy, CLOSE_BTN_R, FmrbConst::THEME_TEXT_LIGHT)
             @gfx.present
           end
         elsif hit && !@fullscreen && @gfx
