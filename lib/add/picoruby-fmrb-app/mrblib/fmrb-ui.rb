@@ -70,6 +70,15 @@ class FmrbUI
   class Widget
     attr_reader :id, :x, :y, :w, :h
     attr_accessor :dirty, :enabled, :visible
+    # True once flush has actually drawn this widget. Filling the hole a
+    # hidden widget left is only right when there was a widget there: one
+    # created and hidden before it was ever drawn has no hole, and painting
+    # its rectangle is pure damage. The desktop builds every dialog's widgets
+    # at (0, 0) in on_create and hides them on the spot, so without this the
+    # first flush punched a transparent rectangle through the menu bar --
+    # the width of the widest of them, visible for the few frames until the
+    # bar was drawn again.
+    attr_accessor :shown
     # The colour a widget paints inside itself where it is not glyphs: a
     # Label's box, a Stepper's value field, a Scrollbar's track. FmrbUI sets
     # it from its own bg when the widget is added, so an app on a dark panel
@@ -99,6 +108,7 @@ class FmrbUI
       @dirty = true
       @enabled = true
       @visible = true
+      @shown = false
       @bg = C_BG
     end
 
@@ -944,15 +954,20 @@ class FmrbUI
     while i < n
       w = @widgets[i]
       if w.dirty && w.visible == false
-        # The widget is gone; what shows through is the app's business.
-        p = @bg_painter
-        if p
-          p.paint_bg_rect(@gfx, w.x, w.y, w.w, w.h)
-        else
-          @gfx.fill_rect(w.x, w.y, w.w, w.h, @bg)
+        # The widget is gone; what shows through is the app's business. Only
+        # if it was ever there, though: a widget built hidden has left no
+        # hole, and painting one is damage (see Widget#shown).
+        if w.shown
+          p = @bg_painter
+          if p
+            p.paint_bg_rect(@gfx, w.x, w.y, w.w, w.h)
+          else
+            @gfx.fill_rect(w.x, w.y, w.w, w.h, @bg)
+          end
+          w.shown = false
+          drawn += 1
         end
         w.dirty = false
-        drawn += 1
       end
       i += 1
     end
@@ -975,6 +990,8 @@ class FmrbUI
         end
         w.draw_widget(@gfx)
         w.dirty = false
+        # It is on screen now, so the hole it leaves when it goes is real.
+        w.shown = true
         drawn += 1
       end
       i += 1
