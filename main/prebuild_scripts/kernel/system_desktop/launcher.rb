@@ -256,33 +256,32 @@ module LauncherMixin
     false
   end
 
-  # force: skip the cache and walk /app. Used by the right-click rescan, which
-  # is the only thing that picks up added or removed apps.
-  def scan_apps(force = false)
+  # Boot path: replay the index cache when there is one, walk /app when there
+  # is not. The right-click rescan does not come through here -- it walks /app
+  # in slices (rescan_start / rescan_step) so the machine keeps running.
+  def scan_apps
     @launcher_apps = builtin_apps
     builtin_count = @launcher_apps.size
 
-    unless force
-      cached = load_launcher_cache
-      if cached
-        # A cache written before the exclude list changed (or by an older
-        # firmware) may still carry hidden categories; filter on load so a
-        # stale cache cannot resurface them.
-        prefixes = launcher_exclude_dirs.map { |d| "/app/#{d}/" }
-        unless prefixes.empty?
-          kept = []
-          cached.each do |a|
-            path = a[:app]
-            hidden = false
-            prefixes.each { |p| hidden = true if path && path.start_with?(p) }
-            kept << a unless hidden
-          end
-          cached = kept
+    cached = load_launcher_cache
+    if cached
+      # A cache written before the exclude list changed (or by an older
+      # firmware) may still carry hidden categories; filter on load so a
+      # stale cache cannot resurface them.
+      prefixes = launcher_exclude_dirs.map { |d| "/app/#{d}/" }
+      unless prefixes.empty?
+        kept = []
+        cached.each do |a|
+          path = a[:app]
+          hidden = false
+          prefixes.each { |p| hidden = true if path && path.start_with?(p) }
+          kept << a unless hidden
         end
-        @launcher_apps = @launcher_apps + cached
-        Log.info("Launcher: #{@launcher_apps.size} apps from cache")
-        return
+        cached = kept
       end
+      @launcher_apps = @launcher_apps + cached
+      Log.info("Launcher: #{@launcher_apps.size} apps from cache")
+      return
     end
 
     # Single virtual path - the HAL resolver maps "/app" to LittleFS on ESP32
@@ -353,43 +352,56 @@ module LauncherMixin
     @launcher_exclude_dirs = []
   end
 
-  def scan_app_dir(base_path)
+  # The category directories under base_path that are worth walking, in the
+  # order the filesystem gives them. Split out so the rescan can take one per
+  # on_update instead of all of them in one breath.
+  def scan_categories(base_path)
     entries = read_dir_entries(base_path)
     unless entries
       Log.warn("Cannot scan #{base_path}")
-      return
+      return []
     end
-
     excluded = launcher_exclude_dirs
+    out = []
     entries.each do |entry|
       next unless dir_candidate?(entry)
       next if excluded.include?(entry)
-      path = "#{base_path}/#{entry}"
-      sub_entries = read_dir_entries(path)
-      next unless sub_entries
+      out << entry
+    end
+    out
+  end
 
-      sub_entries.each do |f|
-        if f.end_with?(S_TOML)
-          app_entry = parse_app_toml("#{path}/#{f}", path, sub_entries)
+  def scan_app_dir(base_path)
+    scan_categories(base_path).each { |entry| scan_category(base_path, entry) }
+  end
+
+  # One category directory, appending what it finds to @launcher_apps.
+  def scan_category(base_path, entry)
+    path = "#{base_path}/#{entry}"
+    sub_entries = read_dir_entries(path)
+    return unless sub_entries
+    sub_entries.each do |f|
+      if f.end_with?(S_TOML)
+        app_entry = parse_app_toml("#{path}/#{f}", path, sub_entries)
+        if app_entry
+          @launcher_apps << app_entry
+          Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
+        end
+      elsif dir_candidate?(f)
+        # 3rd-level scan: a subdirectory under a category may itself
+        # contain a .toml + script, so a self-contained app bundle
+        # (assets co-located with .rb / .toml, e.g. /app/game/rpg_demo/)
+        # also shows up in the launcher.
+        full = "#{path}/#{f}"
+        dd_entries = read_dir_entries(full)
+        next unless dd_entries
+        dd_entries.each do |df|
+          next unless df.end_with?(S_TOML)
+          app_entry = parse_app_toml("#{full}/#{df}", full, dd_entries)
           if app_entry
             @launcher_apps << app_entry
             Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
           end
-        elsif dir_candidate?(f)
-          # 3rd-level scan: a subdirectory under a category may itself
-          # contain a .toml + script, so a self-contained app bundle
-          # (assets co-located with .rb / .toml, e.g. /app/game/rpg_demo/)
-          # also shows up in the launcher.
-          full = "#{path}/#{f}"
-          dd_entries = read_dir_entries(full)
-          next unless dd_entries
-          dd_entries.each do |df|
-            next unless df.end_with?(S_TOML)
-            app_entry = parse_app_toml("#{full}/#{df}", full, dd_entries)
-            if app_entry
-              @launcher_apps << app_entry
-              Log.info("Found app: #{app_entry[:label]} (#{app_entry[:app]})")
-            end
           end
         end
       end
@@ -399,7 +411,6 @@ module LauncherMixin
       # entry may issue many hw_proxy round-trips that keep this task in
       # ready state continuously otherwise.
       Machine.delay_ms(1)
-    end
   end
 
   # entry_names is the listing of dir_path, used to resolve the script file
@@ -437,6 +448,18 @@ module LauncherMixin
         if vlen >= 2 && val[0] == S_QUOTE && val[vlen - 1] == S_QUOTE
           val = val[1, vlen - 2]
         end
+        # Force a fresh buffer. mruby's String#[] and String#split hand back
+        # SHARED strings for anything past the embedded-string limit: the
+        # slice keeps a reference to its parent's buffer, so a label sliced
+        # out of a line sliced out of the file contents pins the WHOLE
+        # .app.toml in the VM pool for as long as the app entry lives.
+        # Measured on a NARYA v4: the desktop pool went 549 KB -> 632 KB
+        # across one rescan and a full GC.start could not get it back --
+        # ~2 KB an app for 39 apps, which is the size of the .toml files.
+        # Two rescans then ran the 819 KB pool out and the VM died with no
+        # exception at all. Interpolation builds a new buffer, so the parent
+        # becomes garbage the moment the parse returns.
+        val = "#{val}"
         case key
         when lang_key
           label_lang = val
@@ -744,26 +767,60 @@ module LauncherMixin
     @gfx.present
   end
 
-  # Re-scan /app/ for apps and rebuild icon sprites if the app list
-  # changed. Called from handle_launcher_right_click. This is the only path
-  # that walks the filesystem after the first boot: scan_apps replays the
-  # index cache otherwise, so adding or removing an app needs a rescan here.
-  # It rewrites the cache on the way out.
-  # Run from on_update when handle_launcher_right_click asked for it.
-  def rescan_launcher
-    return if @rescanning
+  # Re-scan /app/ for apps and rebuild icon sprites if the app list changed.
+  # This is the only path that walks the filesystem after the first boot:
+  # scan_apps replays the index cache otherwise, so adding or removing an app
+  # needs a rescan here. It rewrites the cache on the way out.
+  #
+  # The walk is SLICED: one category directory (/app/game, /app/tool, ...) per
+  # tick_rescan call, with the desktop returning to its message loop in
+  # between. In one piece it took 1.61 s for 39 apps on a NARYA v4 (41 ms an
+  # app: every .app.toml is opened and parsed over hw_proxy), and this task
+  # runs at priority 8 pinned to core 1 -- so for that whole stretch nothing
+  # below it on that core ran at all. The cursor stopped, WiFi work queued up,
+  # and the message queue filled (msg_send TIMEOUT, waiting=64). Sliced, each
+  # piece is one category (~160 ms) and the machine keeps running through it.
+  def rescan_start
     @rescanning = true
+    Log.info("Launcher: rescan start, pool #{::FmrbApp.pool_usage}%")
+    @rescan_prev = @launcher_apps.map { |a| a[:app] }
+    @launcher_apps = builtin_apps
+    @rescan_builtin = @launcher_apps.size
+    @rescan_cats = scan_categories("/app")
+    @rescan_i = 0
+  end
 
-    prev_handles = @launcher_apps.map { |a| a[:app] }
-    scan_apps(true)
+  # One slice. Returns true while there is more to do.
+  def rescan_step
+    cats = @rescan_cats
+    return false unless cats
+    i = @rescan_i
+    if i < cats.size
+      draw_launcher_status("Scanning #{i + 1}/#{cats.size}...")
+      scan_category("/app", cats[i])
+      @rescan_i = i + 1
+      return true
+    end
+    rescan_finish
+    false
+  end
+
+  def rescan_finish
+    # Keep BUILTIN_APPS fixed at the front; sort the scanned apps by label so
+    # launcher order is stable regardless of filesystem enumeration order.
+    scanned = @launcher_apps[@rescan_builtin..-1] || []
+    scanned.sort! { |a, b| a[:label] <=> b[:label] }
+    @launcher_apps = @launcher_apps[0, @rescan_builtin] + scanned
+    save_launcher_cache(scanned)
+    Log.info("Launcher: #{@launcher_apps.size} apps found")
+
     new_handles = @launcher_apps.map { |a| a[:app] }
-
-    if prev_handles != new_handles
+    if @rescan_prev != new_handles
       # App list changed: existing instance indexes may no longer match the
       # new @launcher_apps order, so rebuild instances. The SpriteImage cache
       # (icon bitmaps already uploaded to WROVER) is kept intact.
       destroy_icon_instances_only
-      Log.info("Launcher: rescan rebuilt instances (#{prev_handles.size} -> #{new_handles.size})")
+      Log.info("Launcher: rescan rebuilt instances (#{@rescan_prev.size} -> #{new_handles.size})")
     else
       Log.info("Launcher: rescan no change (#{new_handles.size} apps)")
     end
@@ -772,15 +829,29 @@ module LauncherMixin
     # Reset selection/scroll because indexes may have shifted.
     @launcher_selected = -1
     @launcher_scroll = 0
+    @rescan_cats = nil
+    @rescan_prev = nil
     draw_foreground
     @rescanning = false
+
+    # Paired with the figure logged at rescan_start. The walk is the biggest
+    # allocation burst the desktop ever makes and it runs against a pool that
+    # is already two thirds full, so how much of it the collector gets back is
+    # what decides whether a second rescan has room to run. Do NOT force a
+    # GC.start here: tried on 2026-09-02 and the desktop died inside it (the
+    # watermark GC in on_update collects this soon enough anyway).
+    Log.info("Launcher: rescan done, pool #{::FmrbApp.pool_usage}%")
   end
 
   # Called from on_update. Nothing else runs the scan.
   def tick_rescan
-    return false unless @rescan_pending
-    @rescan_pending = false
-    rescan_launcher
+    if @rescan_pending
+      @rescan_pending = false
+      rescan_start
+      return true
+    end
+    return false unless @rescanning
+    rescan_step
     true
   end
 
