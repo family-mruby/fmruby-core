@@ -11,10 +11,13 @@
  *
  *   --fmrb-res=WxH        internal framebuffer size (display_width/height,
  *                         with default_user_app_* kept in proportion)
- *   --fmrb-theme=light    the device palette + the device (western) wallpaper
- *                         ("light" is what Config calls it inside the machine
- *                         and what the page's selector shows, so one palette
- *                         has one name everywhere)
+ *   --fmrb-conf=KEY=VALUE a setting the machine's own Config dialog saved,
+ *                         handed back so a Save survives the reload
+ *
+ * There was a --fmrb-theme=light too, behind a selector on the page. Colours
+ * belong to Config, which has three presets to the page's two and is the only
+ * place the machine itself can be asked; one setting with two doors needed a
+ * rule about which won, and the rule did not hold.
  *
  * The same flags work on the node build (rake wasm:run -- --fmrb-res=852x480),
  * which is also how this file is regression-tested headlessly.
@@ -33,17 +36,7 @@
 #define BASE_W 426
 #define BASE_H 240
 
-/* The device palette, mirroring config/system_conf_p4.toml -- the same nine
- * values Config's "light" preset holds; keep the three in step. The web
- * default (cyberpunk) is what the bundle ships; this is the way back. */
-static const char *LIGHT_THEME[][2] = {
-    { "desktop_bg", "0xF6" }, { "menu_bg", "0xC5" }, { "window_bg", "0xFF" },
-    { "text", "0x00" },       { "text_light", "0xFF" }, { "highlight", "0xEE" },
-    { "border", "0x60" },     { "button", "0x60" },     { "dir_color", "0x03" },
-};
-
 static int s_res_w, s_res_h;
-static int s_light;
 
 /* Settings the machine's own Config dialog wrote, handed back by the page.
  * /etc is rebuilt from the bundle on every visit, so without this a Save is
@@ -78,19 +71,6 @@ static int conf_set(char *conf, size_t cap, const char *key, const char *value)
     return 1;
 }
 
-static void copy_file(const char *from, const char *to)
-{
-    FILE *in = fopen(from, "rb");
-    if (!in) { fprintf(stderr, "page settings: cannot read %s\n", from); return; }
-    FILE *out = fopen(to, "wb");
-    if (!out) { fclose(in); fprintf(stderr, "page settings: cannot write %s\n", to); return; }
-    char buf[4096];
-    size_t n;
-    while ((n = fread(buf, 1, sizeof(buf), in)) > 0) fwrite(buf, 1, n, out);
-    fclose(in);
-    fclose(out);
-}
-
 void fmrb_wasm_page_settings_parse(int argc, char **argv)
 {
     for (int i = 1; i < argc; i++) {
@@ -99,8 +79,6 @@ void fmrb_wasm_page_settings_parse(int argc, char **argv)
             w >= BASE_W && w <= 1920 && h >= BASE_H && h <= 1080) {
             s_res_w = w;
             s_res_h = h;
-        } else if (strcmp(argv[i], "--fmrb-theme=light") == 0) {
-            s_light = 1;
         } else if (strncmp(argv[i], "--fmrb-conf=", 12) == 0 &&
                    s_conf_n < CONF_OVERRIDE_MAX) {
             const char *kv = argv[i] + 12;
@@ -118,7 +96,7 @@ void fmrb_wasm_page_settings_parse(int argc, char **argv)
 
 void fmrb_wasm_page_settings_apply(void)
 {
-    if (!s_res_w && !s_light && !s_conf_n) return;
+    if (!s_res_w && !s_conf_n) return;
 
     char *conf = malloc(CONF_MAX);
     if (!conf) return;
@@ -140,34 +118,19 @@ void fmrb_wasm_page_settings_apply(void)
         conf_set(conf, CONF_MAX, "default_user_app_height", num);
         printf("page settings: resolution %dx%d\n", s_res_w, s_res_h);
     }
-    if (s_light) {
-        for (size_t i = 0; i < sizeof(LIGHT_THEME) / sizeof(LIGHT_THEME[0]); i++) {
-            conf_set(conf, CONF_MAX, LIGHT_THEME[i][0], LIGHT_THEME[i][1]);
-        }
-        printf("page settings: light theme\n");
-    }
-
-    /* Last, so that what the user set inside the machine beats the page's
-     * own presets -- the page drops its stored theme keys when its selector
-     * is used, so the two cannot argue. */
+    /* What Config saved, put back over the bundle's defaults. */
     for (int i = 0; i < s_conf_n; i++) {
         if (conf_set(conf, CONF_MAX, s_conf_key[i], s_conf_val[i])) {
             printf("page settings: %s = %s\n", s_conf_key[i], s_conf_val[i]);
         }
     }
 
-    /* Wallpaper: one file per (theme, resolution), all pre-generated
-     * (tool/web/gen_backgrounds.py -- the neon one is drawn natively at each
-     * size, the western one pre-scaled). The desktop always loads
-     * /data/bg_426x240.png by NAME; the content is whatever fits the screen.
-     * A size we ship no file for leaves the staged default in place. */
-    if (s_light || s_res_w) {
-        char src[96];
-        snprintf(src, sizeof(src), "/flash/usr/share/backgrounds/bg_%s%dx%d.png",
-                 s_light ? "" : "cyber_",
-                 s_res_w ? s_res_w : BASE_W, s_res_h ? s_res_h : BASE_H);
-        copy_file(src, "/flash/data/bg_426x240.png");
-    }
+    /* No wallpaper is staged here any more. The desktop picks one the
+     * moment it starts (system_desktop.app.rb, theme_wallpaper) from the
+     * theme actually in force and the window's actual size, and syncs it to
+     * the same /flash/data name -- the same choice this made, from better
+     * information, a moment later. Doing it twice only meant this copy could
+     * disagree with Config. */
 
     f = fopen(CONF_PATH, "wb");
     if (!f) { fprintf(stderr, "page settings: cannot write %s\n", CONF_PATH); free(conf); return; }

@@ -111,7 +111,7 @@
 </style>
 </head>
 <body>
-<h1>Family mruby on WebAssembly</h1>
+<h1>Family mruby Web Studio</h1>
 <div id="screen-box">
   <canvas id="screen" width="426" height="240" tabindex="0"></canvas>
   <div id="start">Click to start</div>
@@ -120,13 +120,6 @@
 <div id="panels">
   <section class="panel">
     <h2>Display</h2>
-    <div class="field">
-      <label for="theme-select">Theme</label>
-      <select id="theme-select">
-        <option value="cyberpunk">Cyberpunk (web default)</option>
-        <option value="light">Light (device palette)</option>
-      </select>
-    </div>
     <div class="field">
       <label for="res-select">Resolution</label>
       <select id="res-select">
@@ -205,9 +198,8 @@
       file; <b>Restore</b> puts them back, here or in another browser.
       <b>Erase</b> clears both, and puts every setting back to its default.</li>
     <li><b>Two tabs:</b> only the first one saves.</li>
-    <li><b>Theme and resolution</b> reload the page when changed. The Theme
-      here picks a preset; a theme chosen inside the machine (Config) wins
-      over it, and choosing here again goes back to the preset.</li>
+    <li><b>Resolution</b> reloads the page when changed. <b>Colours</b> are
+      the machine's own: pick a theme in Config, inside it.</li>
     <li><b>Full screen:</b> where the browser allows it the machine keeps
       <kbd>Esc</kbd>; where it does not, <kbd>Esc</kbd> leaves full screen.</li>
     <li><b>Phone or tablet:</b> it runs, the screen is fitted, and a finger

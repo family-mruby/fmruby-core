@@ -269,7 +269,6 @@ const CONF_KEYS = [
   'desktop_bg', 'menu_bg', 'window_bg', 'text', 'text_light',
   'highlight', 'border', 'button', 'dir_color',
 ];
-const CONF_THEME_KEYS = CONF_KEYS.slice(5);
 const CONF_STORE = 'fmrb_web_conf';
 
 function readConfSettings() {
@@ -304,25 +303,13 @@ function captureConfSettings() {
   if (Object.keys(keys).length) writeConfSettings(keys);
 }
 
-// ?theme= mirrors the selector the way ?w=&h= does (shareable, and the only
-// way a headless test can pick a theme).
-const themeFromQuery = new URLSearchParams(location.search).get('theme');
-if (themeFromQuery === 'light' || themeFromQuery === 'cyberpunk') {
-  writeSetting('fmrb_web_theme', themeFromQuery);
-}
-
-const themeSelect = document.getElementById('theme-select');
-themeSelect.value = readSetting('fmrb_web_theme', 'cyberpunk');
-themeSelect.addEventListener('change', () => {
-  writeSetting('fmrb_web_theme', themeSelect.value);
-  // Choosing here means "this preset", so anything Config saved is let go of
-  // -- otherwise the older choice would be applied on top and nothing would
-  // appear to happen.
-  const keys = readConfSettings();
-  for (const k of CONF_THEME_KEYS) delete keys[k];
-  writeConfSettings(keys);
-  location.reload();   // the theme is read once at boot
-});
+// The theme is Config's, inside the machine, and only Config's. The page had
+// a selector of its own with two of Config's three presets, which meant one
+// setting with two doors and a rule about which won -- and the rule did not
+// hold: choosing here dropped what Config had saved, then the reload's own
+// pagehide read it straight back out of the still-running machine and put it
+// back, so nothing appeared to happen. Config also offers dark, which this
+// never did.
 
 const resSelect = document.getElementById('res-select');
 resSelect.value = currentResolution();
@@ -448,9 +435,6 @@ moduleConfig.arguments = [];
 {
   const res = currentResolution();
   if (res !== DEFAULT_RES) moduleConfig.arguments.push('--fmrb-res=' + res);
-  if (readSetting('fmrb_web_theme', 'cyberpunk') === 'light') {
-    moduleConfig.arguments.push('--fmrb-theme=light');
-  }
   const conf = readConfSettings();
   for (const k of Object.keys(conf)) {
     moduleConfig.arguments.push('--fmrb-conf=' + k + '=' + conf[k]);
@@ -676,7 +660,6 @@ const SETTINGS_ENTRY = '.fmrb-settings.json';
 function settingsSnapshot() {
   return JSON.stringify({
     conf: readConfSettings(),
-    theme: readSetting('fmrb_web_theme', ''),
     res: readSetting('fmrb_web_res', ''),
     zoom: readSetting('fmrb_web_zoom', ''),
   });
@@ -689,7 +672,6 @@ function applySettingsSnapshot(text) {
   try { o = JSON.parse(text); } catch (e) { return false; }
   if (!o || typeof o !== 'object') return false;
   if (o.conf && typeof o.conf === 'object') writeConfSettings(o.conf);
-  if (o.theme) writeSetting('fmrb_web_theme', o.theme);
   if (o.res) writeSetting('fmrb_web_res', o.res);
   if (o.zoom) writeSetting('fmrb_web_zoom', o.zoom);
   return true;
@@ -1468,7 +1450,7 @@ if (importBtn && importInput) {
 // settings the machine saved through Config, and the page's own selectors.
 // Erase clears all of it, because "erase" that leaves the theme and the
 // language behind is a promise the word does not make.
-const PAGE_SETTING_KEYS = ['fmrb_web_theme', 'fmrb_web_res', 'fmrb_web_zoom'];
+const PAGE_SETTING_KEYS = ['fmrb_web_res', 'fmrb_web_zoom'];
 
 // Separate from the button so the driver can call it as well: headless
 // Chrome answers window.confirm with "no", so a test that went through the

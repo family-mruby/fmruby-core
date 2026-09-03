@@ -44,15 +44,15 @@ startup_app = ""
 # Desktop wallpaper. Empty means "whatever the theme says" -- the western
 # picture, or the neon one under the cyberpunk theme, at the size of the
 # screen. A path here wins over that; "none" leaves the desktop a plain
-# colour. Any .png in /home shows up in Config's list.
+# colour. Any .png in /home/backgrounds shows up in Config's list.
 wallpaper = ""
 
 # Web default: the cyberpunk palette (RGB332). 0x01 is OFF-LIMITS for any
 # theme color: it is the desktop foreground canvas color key (transparent).
-# The page's settings can put
-# the device palette (the "light" preset) back -- page_settings_wasm.c
-# rewrites this block before boot and holds those nine values, so keep the
-# two in step.
+# Config, inside the machine, is the only place these change; what it saves
+# is handed back at the next boot (page_settings_wasm.c). The page had a
+# theme selector of its own until 2026-09-03 -- doc/wasm/report/
+# page_theme_removed.md says why it does not.
 [theme]
 desktop_bg = 0x00
 menu_bg = 0x22

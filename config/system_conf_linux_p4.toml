@@ -39,7 +39,7 @@ startup_app = ""
 # Desktop wallpaper. Empty means "whatever the theme says" -- the western
 # picture, or the neon one under the cyberpunk theme, at the size of the
 # screen. A path here wins over that; "none" leaves the desktop a plain
-# colour. Any .png in /home shows up in Config's list.
+# colour. Any .png in /home/backgrounds shows up in Config's list.
 wallpaper = ""
 
 [theme]
