@@ -37,6 +37,12 @@ MRuby::CrossBuild.new('family-mruby-wasm') do |conf|
   conf.cc.defines << 'PICORB_ALLOC_ESTALLOC'
   conf.cc.defines << 'PICORB_ALLOC_ALIGN=8'
   conf.cc.defines << 'FMRB_NO_IO_CONSOLE'
+  # Which build this is, for the gem ports. The gfx port asks it before
+  # sending a video command: those are answered by the display task, which
+  # this build has (wasm/backend/display_video_wasm.c), and refused on Retro.
+  # It cannot ask FMRB_HW_MODERN -- that means P4 silicon -- nor
+  # FMRB_HW_FAMILY_MODERN, which the Linux simulator also sets.
+  conf.cc.defines << 'FMRB_PLATFORM_WASM=1'
   # Concurrent app ceiling: the mrbgem ports (picoruby-fmrb-app/kernel) size
   # per-app arrays by it, so it MUST match wasm/CMakeLists.txt.
   conf.cc.defines << 'FMRB_MAX_APPS=32'

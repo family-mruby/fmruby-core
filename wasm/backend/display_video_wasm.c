@@ -46,6 +46,7 @@
 #include "fmrb_hal_time.h"
 #include "fmrb_link_protocol.h"
 #include "fmrb_log.h"
+#include "fmrb_task_config.h"
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"

@@ -1049,10 +1049,18 @@ static mrb_value mrb_gfx_video_open(mrb_state *mrb, mrb_value self)
     mrb_bool loop;
     mrb_get_args(mrb, "ziiib", &path, &x, &y, &fps, &loop);
 
-#ifndef FMRB_HW_MODERN
-    // Retro has no hardware JPEG decoder and its display backend cannot read
-    // this board's filesystem. Answer immediately instead of letting the app
-    // wait out a sync timeout on a command the backend will never know.
+#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_WASM)
+    // Retro has no JPEG decoder and its display backend cannot read this
+    // board's filesystem. Answer immediately instead of letting the app wait
+    // out a sync timeout on a command the backend will never know.
+    //
+    // The browser is admitted alongside the P4: its display backend is the
+    // same display task, and wasm/backend/display_video_wasm.c plays the file
+    // with TJpgDec where the P4 uses its hardware engine. Note this is NOT
+    // FMRB_HW_FAMILY_MODERN, which would also let the Linux simulator in --
+    // there the display is another process that knows nothing of these
+    // commands, so every call would cost the full 10 s sync timeout instead
+    // of failing here.
     (void)self; (void)path; (void)x; (void)y; (void)fps; (void)loop;
     return mrb_nil_value();
 #else
@@ -1135,7 +1143,7 @@ static mrb_value mrb_gfx_video_control(mrb_state *mrb, mrb_value self)
     mrb_get_args(mrb, "i", &action);
     (void)self;
 
-#ifndef FMRB_HW_MODERN
+#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_WASM)
     (void)action;
     return mrb_nil_value();
 #else
@@ -1162,7 +1170,7 @@ static mrb_value mrb_gfx_video_control(mrb_state *mrb, mrb_value self)
 static mrb_value mrb_gfx_video_status(mrb_state *mrb, mrb_value self)
 {
     (void)self;
-#ifndef FMRB_HW_MODERN
+#if !defined(FMRB_HW_MODERN) && !defined(FMRB_PLATFORM_WASM)
     return mrb_nil_value();
 #else
     uint8_t resp_buf[sizeof(fmrb_link_graphics_video_status_t)];
