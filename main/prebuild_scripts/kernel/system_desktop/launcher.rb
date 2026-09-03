@@ -76,9 +76,22 @@ module LauncherMixin
   # Returns nil when the artwork is missing so the caller just skips the icon.
   def build_icon_sprite_image(icon_file)
     src = icon_bmp_source(icon_file)
+    # Look before pointing. A missing BMP does not fail on this side: sync_file
+    # only warns ("source ... not found or empty"), load_bmp is a command the
+    # graphics side answers asynchronously, and its complaint
+    # ("LOAD_SPRITE_BMP: cannot open ...") never comes back here. So the
+    # launcher used to cache a SpriteInstance with no bitmap, and because
+    # ensure_icon_sprites skips any index that already has an instance, that
+    # blank icon then survived every rescan -- putting the file on the machine
+    # afterwards did not help, only a restart did. Seen on a Tab5 whose
+    # storage predated the App Store's icon (2026-09-03).
+    unless File.exist?(src)
+      Log.warn("Icon missing: #{src}")
+      return nil
+    end
     dest = "#{ICON_CACHE_DIR}/#{src.split(S_SLASH).last}"
-    # sync_file, not an exists check: an edited icon has to replace the copy
-    # already cached on the graphics side.
+    # sync_file, not an exists check on the DESTINATION: an edited icon has to
+    # replace the copy already cached on the graphics side.
     @gfx.sync_file(src, dest: dest)
     img = SpriteImage.new(@gfx, width: ICON_SPRITE_W, height: ICON_SPRITE_H,
                           transparent_color: 0, use_transparent: true)
