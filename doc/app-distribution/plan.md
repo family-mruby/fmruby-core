@@ -1,6 +1,6 @@
 # アプリ配布プラットフォーム 計画
 
-> 状態: 進行中 | 更新: 2026-09-02 | **P1-P3 完了 (Retro 実機を除く)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。**NARYA v4 で通し確認 + 速度の作り直し済** (report/p4_device.md, p5_perf.md)。**解析 7.6 秒 → 0.12 秒**。**2026-09-03: 店を default app へ移した** (起動時の翻訳が消え、`large_memory` が不要に。report/builtin_move.md)。残りは Retro 実機のみ。 
+> 状態: 進行中 | 更新: 2026-09-02 | **P1-P3 完了 (Retro 実機を除く)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。**NARYA v4 で通し確認 + 速度の作り直し済** (report/p4_device.md, p5_perf.md)。**解析 7.6 秒 → 0.12 秒**。**2026-09-03: 店を default app へ移した** — **起動 10.0 秒 → 0.45 秒**、`large_memory` も不要に (report/builtin_move.md)。残りは Retro 実機のみ。 
 
 配布物の形式・置き場所・判定規則は `spec.md` が正。この文書は**いつ何を
 作るか**だけを持つ。元の構想は `family-mruby-app-distribution-design.md`。
