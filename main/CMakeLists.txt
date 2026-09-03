@@ -1,4 +1,11 @@
 set(COMPONENTS main)
+# Development remote control (/app/launch, /app/list, /fs/*). Declared up here
+# rather than beside the target_compile_definitions below, because the
+# per-board branches test it to decide whether to compile the endpoints and
+# require esp_http_server -- and those run before idf_component_register.
+# See the longer note beside that definition.
+option(FMRB_DEV_REMOTE_CTL "Enable the development remote control endpoints" ON)
+
 set(COMPONENT_SRCS
     "main.c"
     "boot/boot.c"
@@ -219,6 +226,11 @@ if(NOT IDF_TARGET STREQUAL "linux")
             "drivers/remote_desktop/rd_stream.c"
             "drivers/remote_desktop/rd_input.c"
         )
+        if(FMRB_DEV_REMOTE_CTL)
+            # The endpoints moved out of rd_http.c so Retro can have them too;
+            # the viewer's server registers them from here.
+            list(APPEND COMPONENT_SRCS "drivers/devctl/devctl_http.c")
+        endif()
         # Touch panel and the Tab5 Keyboard accessory are Tab5 hardware.
         # NARYA v4 has neither -- its input comes over USB -- and leaving them
         # in would do more than log failures: tab5_keyboard claims I2C_NUM_0,
@@ -247,6 +259,14 @@ if(NOT IDF_TARGET STREQUAL "linux")
             # runtime; see wifi_task.c.
             list(APPEND COMPONENT_SRCS "drivers/wifi/wifi_task.c")
             list(APPEND COMPONENT_REQUIRES esp_wifi esp_netif esp_event)
+            # Development remote control: no viewer here to hang it off, so it
+            # brings its own small server. esp_http_server comes with it, and
+            # only on a board that has WiFi at all.
+            if(FMRB_DEV_REMOTE_CTL)
+                list(APPEND COMPONENT_SRCS "drivers/devctl/devctl_http.c"
+                                           "drivers/devctl/devctl_task.c")
+                list(APPEND COMPONENT_REQUIRES esp_http_server)
+            endif()
         endif()
     endif()
     if(FMRB_HW_TARGET STREQUAL "ATOM_DISPLAY")
@@ -286,7 +306,7 @@ endif()
 
 idf_component_register(
     SRCS ${COMPONENT_SRCS}
-    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "../lib/add/picoruby-fmrb-raycast/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/debug" "conn_check"
+    INCLUDE_DIRS "include" "boot" "kernel" "kernel/include" "kernel/host" "../lib/add/picoruby-fmrb-fft/native" "../lib/add/picoruby-fmrb-spinel-hello/native" "../lib/add/picoruby-fmrb-raycast/native" "drivers/led_status" "drivers/usb" "drivers/ble" "drivers/m5gfx" "drivers/i2c_keyboard" "drivers/display_p4" "drivers/touch" "drivers/tab5_keyboard" "drivers/audio_p4" "drivers/wifi" "drivers/remote_desktop" "drivers/devctl" "drivers/debug" "conn_check"
     REQUIRES ${COMPONENT_REQUIRES}
     EMBED_FILES ${RD_EMBED_FILES}
 )
@@ -343,8 +363,6 @@ endif()
 # It adds no authentication and none exists to add: the remote desktop already
 # lets anyone on the network drive the launcher. What it does add is a
 # convenient, scriptable version of that, which is not something to ship.
-option(FMRB_DEV_REMOTE_CTL "Enable the development remote control endpoints" ON)
-
 if(FMRB_DEV_REMOTE_CTL)
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_DEV_REMOTE_CTL)
     message(STATUS "FMRB_DEV_REMOTE_CTL=ON: /app/launch, /app/kill, /app/list are in this build")
