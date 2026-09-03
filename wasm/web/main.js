@@ -1099,13 +1099,357 @@ document.addEventListener('drop', async (ev) => {
   if (loose.length) await addLooseFiles(loose);
 });
 
+// ---- A folder on the owner's own disk (F2-F4) -----------------------------
+//
+// Dropping files works everywhere, but it is a gesture per edit. Where the
+// File System Access API exists, a folder can be linked once and then read
+// again and again: save a file in an editor on the machine outside, and a
+// second or two later the machine in the tab is running it. That is the loop
+// the real boards have over WiFi (put, then launch), brought here.
+//
+// Only Chromium desktop has the API. Everything above stays the only way
+// elsewhere, so the row hides itself rather than offering something that
+// cannot work.
+//
+// The folder holds the same two names the exported tar uses, so a tar that
+// has been unpacked IS a work folder:
+//
+//   <folder>/home     -> /flash/home
+//   <folder>/app-usr  -> /flash/app/usr
+//
+// Nothing is guessed from a file's name here: which store a file belongs to
+// is decided by where its owner put it.
+const WORK_SUPPORTED = typeof window.showDirectoryPicker === 'function';
+const WORK_DB = 'fmrb-workspace';
+const WORK_KEY = 'root';
+const WORK_POLL_MS = 2000;
+const WORK_MAX_FILES = 400;
+const WORK_MAX_DEPTH = 6;
+
+const workRow = document.getElementById('work');
+const workState = document.getElementById('work-state');
+const workLinkBtn = document.getElementById('work-link');
+const workStopBtn = document.getElementById('work-stop');
+const workPushBtn = document.getElementById('work-push');
+
+let workRoot = null;       // FileSystemDirectoryHandle, once permitted
+let workTimer = null;
+let workSeen = new Map();  // machine path -> lastModified we already copied
+let workBusy = false;
+
+// A handle survives in IndexedDB, so the folder is remembered between visits.
+// The permission does not: it comes back as "prompt", and asking again needs
+// a click. That turns re-picking the folder into pressing one button.
+function workDb() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(WORK_DB, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('handles');
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+async function workStore(handle) {
+  try {
+    const db = await workDb();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').put(handle, WORK_KEY);
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+    db.close();
+  } catch (e) { console.warn('fmrb: could not remember the folder:', e); }
+}
+async function workLoad() {
+  try {
+    const db = await workDb();
+    const h = await new Promise((res, rej) => {
+      const tx = db.transaction('handles', 'readonly');
+      const rq = tx.objectStore('handles').get(WORK_KEY);
+      rq.onsuccess = () => res(rq.result || null);
+      rq.onerror = () => rej(rq.error);
+    });
+    db.close();
+    return h;
+  } catch (e) { return null; }
+}
+// Without this, coming back to a linked folder copies every file in it again:
+// the map of what was already taken lives only in the page. A folder of
+// pictures would be read whole on every visit.
+async function workStoreSeen(map) {
+  try {
+    const db = await workDb();
+    const obj = {};
+    for (const [k, v] of map) obj[k] = v;
+    await new Promise((res, rej) => {
+      const tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').put(obj, WORK_KEY + ':seen');
+      tx.oncomplete = res;
+      tx.onerror = () => rej(tx.error);
+    });
+    db.close();
+  } catch (e) { /* the next pass simply copies more than it needed to */ }
+}
+async function workLoadSeen() {
+  try {
+    const db = await workDb();
+    const obj = await new Promise((res, rej) => {
+      const tx = db.transaction('handles', 'readonly');
+      const rq = tx.objectStore('handles').get(WORK_KEY + ':seen');
+      rq.onsuccess = () => res(rq.result || {});
+      rq.onerror = () => rej(rq.error);
+    });
+    db.close();
+    return new Map(Object.entries(obj));
+  } catch (e) { return new Map(); }
+}
+
+async function workForget() {
+  try {
+    const db = await workDb();
+    await new Promise((res) => {
+      const tx = db.transaction('handles', 'readwrite');
+      tx.objectStore('handles').delete(WORK_KEY);
+      tx.objectStore('handles').delete(WORK_KEY + ':seen');
+      tx.oncomplete = res;
+      tx.onerror = res;
+    });
+    db.close();
+  } catch (e) { /* nothing to forget */ }
+}
+
+function showWorkState(text) {
+  if (workState) workState.textContent = text;
+  const linked = !!workRoot;
+  if (workStopBtn) workStopBtn.hidden = !linked;
+  if (workPushBtn) workPushBtn.hidden = !linked;
+  if (workLinkBtn) workLinkBtn.textContent = linked ? 'Change...' : 'Link a folder...';
+}
+
+// The two names are made if they are not there, so the owner can point this
+// at an empty folder and never think about its shape.
+async function workStores(root) {
+  const out = [];
+  for (const st of STORES) {
+    // st.tar is "home" / "app-usr" -- the same names the export writes.
+    const dir = await root.getDirectoryHandle(st.tar, { create: true });
+    out.push({ dir, path: st.path, name: st.tar });
+  }
+  return out;
+}
+
+async function workWalk(dir, prefix, out, depth) {
+  if (out.length >= WORK_MAX_FILES || depth > WORK_MAX_DEPTH) return;
+  for await (const [name, handle] of dir.entries()) {
+    if (out.length >= WORK_MAX_FILES) return;
+    if (name.startsWith('.')) continue;   // editor droppings, .git and friends
+    if (handle.kind === 'file') {
+      out.push({ rel: prefix + name, handle });
+    } else {
+      await workWalk(handle, prefix + name + '/', out, depth + 1);
+    }
+  }
+}
+
+// One pass over the folder. Only files whose timestamp has moved since the
+// last pass are read at all -- a folder of pictures costs a stat each, not a
+// copy each, which is what makes a two-second poll affordable.
+// Which apps the launcher has had a chance to see. Only a name it has never
+// seen needs the rescan; changing a file it already lists needs nothing.
+const workKnownApps = new Set();
+
+async function workScan(announce) {
+  if (!workRoot || !M || workBusy) return;
+  workBusy = true;
+  let copied = 0;
+  let bytes = 0;
+  let newApp = false;
+  let total = 0;
+  try {
+    for (const st of await workStores(workRoot)) {
+      const items = [];
+      await workWalk(st.dir, '', items, 1);
+      total += items.length;
+      for (const it of items) {
+        const file = await it.handle.getFile();
+        const dest = st.path + '/' + safeRelative(it.rel);
+        if (workSeen.get(dest) === file.lastModified) continue;
+        const data = new Uint8Array(await file.arrayBuffer());
+        const full = writeInto(M, st.path, it.rel, data);
+        if (!full) continue;
+        workSeen.set(dest, file.lastModified);
+        copied++;
+        bytes += data.length;
+        if (st.path === APPUSR_PATH && full.endsWith('.app.toml') &&
+            !workKnownApps.has(full)) {
+          workKnownApps.add(full);
+          newApp = true;
+        }
+      }
+    }
+  } catch (e) {
+    // A folder that has been moved, renamed or unplugged: stop rather than
+    // complain once every two seconds.
+    console.warn('fmrb: the work folder could not be read:', e);
+    workUnlink('the folder could not be read');
+    workBusy = false;
+    return;
+  }
+  workBusy = false;
+  showWorkState(workRoot.name + ' -- watching ' + total + ' file(s)');
+  if (!copied) return;
+  let msg = 'copied ' + copied + ' file(s) (' + humanSize(bytes) + ') from ' +
+            workRoot.name;
+  if (newApp) msg += ' -- right-click in the launcher to see it';
+  if (announce === false) msg = 'took ' + copied + ' file(s) from ' + workRoot.name;
+  workStoreSeen(workSeen);
+  flushAndReport(msg);
+  refreshDestinations();
+}
+function workStartPolling() {
+  if (workTimer) clearInterval(workTimer);
+  // A hidden tab is not being edited against, and its timers are throttled
+  // anyway; skip the pass rather than pile them up.
+  workTimer = setInterval(() => {
+    if (!document.hidden) workScan(true);
+  }, WORK_POLL_MS);
+}
+
+function workUnlink(why) {
+  if (workTimer) { clearInterval(workTimer); workTimer = null; }
+  workRoot = null;
+  workSeen = new Map();
+  workKnownApps.clear();
+  showWorkState(why || 'not linked');
+}
+
+async function workAdopt(handle, firstTime) {
+  workRoot = handle;
+  workSeen = firstTime ? new Map() : await workLoadSeen();
+  workKnownApps.clear();
+  // Whatever is in the machine already counts as seen, so linking a folder
+  // does not announce the whole of it as news.
+  showWorkState(handle.name + ' -- reading...');
+  await workScan(firstTime);
+  workStartPolling();
+}
+
+if (workRow && WORK_SUPPORTED) {
+  workRow.hidden = false;
+  workLinkBtn.addEventListener('click', async () => {
+    let handle;
+    try {
+      handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    } catch (e) { return; }   // the picker was dismissed
+    await workStore(handle);
+    await workAdopt(handle, true);
+  });
+  workStopBtn.addEventListener('click', async () => {
+    await workForget();
+    workUnlink('not linked');
+    statusLine.textContent = 'the work folder is no longer watched';
+  });
+
+  // Coming back to a folder linked on an earlier visit. The handle is
+  // remembered; the permission is not, and asking for it needs a click --
+  // so offer the click rather than picking the folder again.
+  (async () => {
+    const handle = await workLoad();
+    if (!handle || !handle.queryPermission) return;
+    const opt = { mode: 'readwrite' };
+    let state = 'prompt';
+    try { state = await handle.queryPermission(opt); } catch (e) { return; }
+    if (state === 'granted') { await workAdopt(handle, false); return; }
+    if (state === 'denied') return;
+    showWorkState(handle.name + ' -- press to reconnect');
+    workLinkBtn.textContent = 'Reconnect ' + handle.name;
+    const reconnect = async () => {
+      let got = 'denied';
+      try { got = await handle.requestPermission(opt); } catch (e) { got = 'denied'; }
+      if (got !== 'granted') { showWorkState('permission refused'); return; }
+      workLinkBtn.removeEventListener('click', intercept, true);
+      await workAdopt(handle, false);
+    };
+    // Ahead of the picker handler, and it stops there: one click either
+    // reconnects or opens the picker, never both. Named so it can be taken
+    // off again -- an anonymous wrapper would leave the button hijacked for
+    // the rest of the visit.
+    const intercept = (ev) => { ev.stopImmediatePropagation(); reconnect(); };
+    workLinkBtn.addEventListener('click', intercept, true);
+  })();
+}
+
+// F4: the other direction, and only when asked for.
+//
+// Taking files in costs nothing if it is wrong -- the original is still on
+// the disk outside. Writing back overwrites the owner's own files, which is
+// not something to do on a timer because a clock looked newer. So it is a
+// button, and it says what it did.
+async function workPush() {
+  if (!workRoot || !M) return;
+  let wrote = 0;
+  let bytes = 0;
+  try {
+    for (const st of await workStores(workRoot)) {
+      const items = [];
+      collectMachineFiles(M, st.path, '', items);
+      for (const it of items) {
+        const data = M.FS.readFile(st.path + '/' + it);
+        let dir = st.dir;
+        const parts = it.split('/');
+        for (const part of parts.slice(0, -1)) {
+          dir = await dir.getDirectoryHandle(part, { create: true });
+        }
+        const fh = await dir.getFileHandle(parts[parts.length - 1], { create: true });
+        const w = await fh.createWritable();
+        await w.write(data);
+        await w.close();
+        workSeen.set(st.path + '/' + it, (await fh.getFile()).lastModified);
+        wrote++;
+        bytes += data.length;
+      }
+    }
+  } catch (e) {
+    statusLine.textContent = 'writing back failed -- ' + e.message;
+    console.warn('fmrb: work folder write failed:', e);
+    return;
+  }
+  statusLine.textContent = 'wrote ' + wrote + ' file(s) (' + humanSize(bytes) +
+                           ') to ' + workRoot.name;
+  // The files outside now carry a fresh timestamp, and their contents came
+  // from in here. Record them as taken; reading them straight back would copy
+  // every one of them for nothing.
+  workStoreSeen(workSeen);
+}
+if (workPushBtn) workPushBtn.addEventListener('click', workPush);
+
+// The machine's side of the same walk. exportHome has one of these, but it
+// flattens into tar entries and stops at the store root; this one is plain.
+function collectMachineFiles(mod, base, prefix, out, depth) {
+  const d = depth || 1;
+  if (d > WORK_MAX_DEPTH || out.length >= WORK_MAX_FILES) return;
+  let names;
+  try { names = mod.FS.readdir(base); } catch (e) { return; }
+  for (const name of names) {
+    if (name === '.' || name === '..') continue;
+    const full = base + '/' + name;
+    let st;
+    try { st = mod.FS.stat(full); } catch (e) { continue; }
+    if (mod.FS.isDir(st.mode)) {
+      collectMachineFiles(mod, full, prefix + name + '/', out, d + 1);
+    } else {
+      out.push(prefix + name);
+    }
+  }
+}
+
 const exportBtn = document.getElementById('home-export');
 const importBtn = document.getElementById('home-import-btn');
 const importInput = document.getElementById('home-import');
 const resetBtn = document.getElementById('home-reset');
 function enableStorageButtons() {
   for (const b of [exportBtn, importBtn, resetBtn,
-                   addFilesBtn, addFolderBtn, destSelect]) {
+                   addFilesBtn, addFolderBtn, destSelect, workLinkBtn]) {
     if (b) b.disabled = false;
   }
   refreshDestinations();
