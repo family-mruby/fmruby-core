@@ -597,15 +597,29 @@ class SystemDesktopApp < FmrbApp
 
   # The shipped picture that goes with the theme in force: the neon one for
   # cyberpunk, the western one otherwise. One file per size, so the name
-  # carries the screen; a size we ship nothing for falls back to the smallest,
-  # which is what every machine has.
+  # carries the screen; a size we ship nothing for falls back to the smallest.
+  #
+  # Every step is checked, including the last one. It used to return the
+  # 426x240 name unchecked, on the reasoning that it "is what every machine
+  # has" -- which is not true of a machine whose storage is older than the
+  # picture. A Tab5 flashed before bg_cyber_426x240.png was added (2026-09-02)
+  # showed no wallpaper at all when the theme was set to cyberpunk, and the
+  # only trace was one line from the graphics side:
+  #   E display_p4: CREATE_IMAGE_FROM_FILE: cannot open .../bg_cyber_426x240.png
+  # The desktop never learns that, so it has to look before it points.
+  # bg_426x240.png is the true last resort: it has shipped since the first
+  # build that had a wallpaper at all.
   def theme_wallpaper
     stem = cfg_current_preset == "cyberpunk" ? "bg_cyber_" : "bg_"
-    sized = "#{BG_DIR}#{stem}#{@window_width}x#{@window_height}.png"
     # File.exist? asks this side, which is the one holding the source.
     # gfx.file_status would ask the graphics side about a file it never has.
+    sized = "#{BG_DIR}#{stem}#{@window_width}x#{@window_height}.png"
     return sized if File.exist?(sized)
-    "#{BG_DIR}#{stem}426x240.png"
+    smallest = "#{BG_DIR}#{stem}426x240.png"
+    return smallest if File.exist?(smallest)
+    fallback = "#{BG_DIR}bg_426x240.png"
+    Log.warn("wallpaper: #{smallest} is missing, using #{fallback}")
+    fallback
   end
 
   # The `wallpaper` line of system_conf.toml, or nil when it is not set. Read
