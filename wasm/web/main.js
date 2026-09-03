@@ -1629,7 +1629,7 @@ function fsprobeReport(mod) {
            ' body=' + document.body.scrollWidth +
            ' doc=' + document.documentElement.scrollWidth +
            ' canvas=' + Math.round(canvas.getBoundingClientRect().width) +
-           ' settings=' + Math.round(document.querySelector('#settings').getBoundingClientRect().width) +
+           ' panels=' + Math.round(document.querySelector('#panels').getBoundingClientRect().width) +
            ' about=' + Math.round(document.getElementById('about').getBoundingClientRect().width) +
            ' h1=' + Math.round(document.querySelector('h1').getBoundingClientRect().width));
   probeLog('FSPROBE result: buttons enabled = ' +

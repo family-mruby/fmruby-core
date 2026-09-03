@@ -34,34 +34,59 @@
     font-size: 20px; line-height: normal;
   }
   #status { margin-top: 8px; font-size: 12px; color: #888; }
-  #settings, #bring, #work {
-    margin-top: 6px; font-size: 12px; color: #aaa;
-    display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center;
+  /* Two panels rather than four rows of identical grey buttons. What each
+     control belongs to is the thing the old layout did not say. */
+  #panels {
+    display: flex; flex-wrap: wrap; gap: 12px; justify-content: center;
+    align-items: flex-start;
+    width: 100%; max-width: 780px; box-sizing: border-box;
+    padding: 0 12px; margin-top: 10px;
   }
-  /* A phone is narrower than these rows are wide. Let every part shrink and
-     wrap rather than pushing the page sideways -- the machine itself is
-     already fitted to the screen, and a page that scrolls horizontally
-     underneath it is the thing that makes it look broken. */
-  /* Width, not just max-width: the body centres its children, which makes
-     each one as wide as its content and lets a long row push the whole page
-     sideways. Given a width they fill the column instead, and wrap inside
-     it. */
-  #settings, #bring, #work, #about { width: 100%; max-width: 780px; box-sizing: border-box;
-                      padding-left: 12px; padding-right: 12px; }
-  #status { max-width: 100%; box-sizing: border-box; }
-  #settings > span, #bring > span, #work > span { display: inline-flex; align-items: center; gap: 4px;
-                     max-width: 100%; min-width: 0; }
-  #settings select, #bring select { max-width: 50vw; }
-  #settings select, #settings button, #bring select, #bring button, #work button {
+  .panel {
+    flex: 1 1 300px; min-width: 0; box-sizing: border-box;
+    border: 1px solid #34343e; border-radius: 4px;
+    padding: 8px 10px 10px;
+    font-size: 12px; color: #aaa;
+  }
+  .panel h2 {
+    font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+    color: #7f7f8c; font-weight: normal;
+    margin: 0 0 8px; padding-bottom: 5px;
+    border-bottom: 1px solid #2a2a33;
+    display: flex; justify-content: space-between; gap: 8px;
+  }
+  /* The measurement rides in the heading: it describes the panel rather than
+     being one more thing in it. */
+  .panel h2 .meta { text-transform: none; letter-spacing: 0; color: #6f6f7c; }
+  .field { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+  .field > label { flex: 0 0 82px; color: #8a8a97; }
+  .field > select { flex: 1 1 auto; min-width: 0; }
+  .group { margin-bottom: 9px; }
+  .group:last-of-type { margin-bottom: 0; }
+  .row { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+  .row + .row { margin-top: 4px; }
+  .lead { flex: 0 0 82px; color: #8a8a97; }
+  .row .lead + * { min-width: 0; }
+  .note { margin: 3px 0 0 82px; color: #6f6f7c; }
+  .panel select, .panel button {
     background: #111; color: #ddd; border: 1px solid #555;
     font-family: monospace; font-size: 12px;
   }
-  #settings button, #bring button, #work button { cursor: pointer; padding: 1px 8px; }
+  .panel button { cursor: pointer; padding: 1px 8px; }
+  .panel button:disabled { color: #666; border-color: #3a3a44; cursor: default; }
+  /* Erasing is the one thing here that cannot be undone. */
+  .panel button.danger { border-color: #6b3a3a; color: #c99; }
   /* The whole page is the drop target, so the whole page says so. */
   body.dropping { outline: 2px dashed #6a6; outline-offset: -6px; }
+  #status { max-width: 100%; box-sizing: border-box; }
   #about {
     margin: 14px 0 24px; font-size: 12px;
     line-height: 1.6; color: #9a9aa8;
+    width: 100%; max-width: 780px; box-sizing: border-box; padding: 0 12px;
+  }
+  #about > summary {
+    cursor: pointer; color: #8a8a97; font-size: 11px;
+    letter-spacing: 0.08em; text-transform: uppercase;
   }
   #about h2 { font-size: 13px; color: #ccc; margin: 14px 0 4px; }
   #about ul { margin: 4px 0; padding-left: 20px; }
@@ -72,13 +97,15 @@
   /* Narrow screens: stack the rows instead of trying to fit them side by
      side. One item per line can never be wider than the line, so the page
      stops scrolling sideways and the machine keeps the width to itself. */
+  /* Narrow screens: the panels sit one above the other (flex-wrap already
+     does that), and inside them the label goes above its control. A select
+     is as wide as its longest option unless told otherwise, and one long
+     option was what used to push the whole page sideways. */
   @media (max-width: 700px) {
-    #settings { flex-direction: column; align-items: stretch; gap: 6px; }
-    /* Label above, control below, and the control given a width rather than
-       a cap: a select is as wide as its longest option unless it is told
-       otherwise, and one long option was what pushed the page sideways. */
-    #settings > span { flex-direction: column; align-items: stretch; gap: 2px; }
-    #settings select { width: 100%; max-width: 100%; }
+    .field { flex-direction: column; align-items: stretch; gap: 2px; }
+    .field > label, .lead { flex: 0 0 auto; }
+    .panel select { width: 100%; max-width: 100%; box-sizing: border-box; }
+    .note { margin-left: 0; }
     #about { font-size: 11px; overflow-wrap: anywhere; }
   }
 </style>
@@ -90,55 +117,77 @@
   <div id="start">Click to start</div>
 </div>
 <div id="status">loading...</div>
-<div id="settings">
-  <span>Theme:
-    <select id="theme-select">
-      <option value="cyberpunk">Cyberpunk (web default)</option>
-      <option value="light">Light (device palette)</option>
-    </select>
-  </span>
-  <span>Resolution:
-    <select id="res-select">
-      <option value="426x240">426 x 240 (as shipped)</option>
-      <option value="640x360">640 x 360</option>
-      <option value="852x480">852 x 480</option>
-    </select>
-  </span>
-  <span>Zoom:
-    <select id="zoom-select">
-      <option value="fit">Fit</option>
-      <option value="1">1x</option>
-      <option value="2">2x</option>
-      <option value="3">3x</option>
-    </select>
-  </span>
-  <button id="fullscreen-btn" type="button">Full screen</button>
+<div id="panels">
+  <section class="panel">
+    <h2>Display</h2>
+    <div class="field">
+      <label for="theme-select">Theme</label>
+      <select id="theme-select">
+        <option value="cyberpunk">Cyberpunk (web default)</option>
+        <option value="light">Light (device palette)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="res-select">Resolution</label>
+      <select id="res-select">
+        <option value="426x240">426 x 240 (as shipped)</option>
+        <option value="640x360">640 x 360</option>
+        <option value="852x480">852 x 480</option>
+      </select>
+    </div>
+    <div class="field">
+      <label for="zoom-select">Zoom</label>
+      <select id="zoom-select">
+        <option value="fit">Fit</option>
+        <option value="1">1x</option>
+        <option value="2">2x</option>
+        <option value="3">3x</option>
+      </select>
+    </div>
+    <div class="row"><button id="fullscreen-btn" type="button">Full screen</button></div>
+  </section>
+
+  <section class="panel">
+    <h2>Your files <span class="meta" id="storage-state">checking...</span></h2>
+    <div class="group">
+      <div class="row">
+        <span class="lead">Add</span>
+        <button id="add-files-btn" type="button" disabled>Files...</button>
+        <button id="add-folder-btn" type="button" disabled>Folder...</button>
+      </div>
+      <div class="row">
+        <span class="lead">into</span>
+        <select id="add-dest" disabled></select>
+      </div>
+      <p class="note">or drop them anywhere on this page</p>
+    </div>
+    <div class="group" id="work" hidden>
+      <div class="row">
+        <span class="lead">Work folder</span>
+        <span id="work-state">not linked</span>
+      </div>
+      <div class="row">
+        <span class="lead"></span>
+        <button id="work-link" type="button" disabled>Link a folder...</button>
+        <button id="work-stop" type="button" hidden>Stop</button>
+        <button id="work-push" type="button" hidden>Send my work back</button>
+      </div>
+    </div>
+    <div class="group">
+      <div class="row">
+        <span class="lead">Backup</span>
+        <button id="home-export" type="button" disabled>Download</button>
+        <button id="home-import-btn" type="button" disabled>Restore</button>
+        <button id="home-reset" class="danger" type="button" disabled>Erase</button>
+      </div>
+    </div>
+    <input id="home-import" type="file" accept=".tar" hidden>
+    <input id="add-files" type="file" multiple hidden>
+    <input id="add-folder" type="file" webkitdirectory hidden>
+  </section>
 </div>
-<div id="settings">
-  <span>Your files (/home): <span id="storage-state">checking...</span></span>
-  <button id="home-export" type="button" disabled>Download them</button>
-  <button id="home-import-btn" type="button" disabled>Restore from a file</button>
-  <input id="home-import" type="file" accept=".tar" hidden>
-  <button id="home-reset" type="button" disabled>Erase</button>
-</div>
-<div id="bring">
-  <span>Add files:
-    <button id="add-files-btn" type="button" disabled>Choose files...</button>
-    <button id="add-folder-btn" type="button" disabled>Choose a folder...</button>
-  </span>
-  <span>to <select id="add-dest" disabled></select></span>
-  <span>or drop them anywhere on this page</span>
-  <input id="add-files" type="file" multiple hidden>
-  <input id="add-folder" type="file" webkitdirectory hidden>
-</div>
-<div id="work" hidden>
-  <span>Work folder: <span id="work-state">not linked</span></span>
-  <button id="work-link" type="button" disabled>Link a folder...</button>
-  <button id="work-stop" type="button" hidden>Stop</button>
-  <button id="work-push" type="button" hidden>Send my work back</button>
-</div>
-<div id="about">
-  <h2>How to use it</h2>
+<details id="about">
+  <summary>How to use it</summary>
   <ul>
     <li><b>Click the screen</b> to switch the machine on. Mouse and keyboard
       work while it has focus; the top-left menu has the launcher and the
@@ -152,8 +201,8 @@
     <li><b>Not kept:</b> everything else, <code>/tmp</code> above all. A
       private window keeps nothing, and a browser may reclaim the space after
       a long absence.</li>
-    <li><b>Download them</b> saves your work and settings as one file;
-      <b>Restore</b> puts them back, here or in another browser.
+    <li><b>Backup:</b> <b>Download</b> saves your work and settings as one
+      file; <b>Restore</b> puts them back, here or in another browser.
       <b>Erase</b> clears both, and puts every setting back to its default.</li>
     <li><b>Two tabs:</b> only the first one saves.</li>
     <li><b>Theme and resolution</b> reload the page when changed. The Theme
@@ -172,7 +221,7 @@
       above, it is rebuilt from the bundle on each visit.</li>
     <li>Desktop Chrome and Firefox are the target. Safari is untested.</li>
   </ul>
-</div>
+</details>
 <script src="vendor/coi-serviceworker.js"></script>
 <script src="../../tool/web/remote/keymap.js"></script>
 <script>
