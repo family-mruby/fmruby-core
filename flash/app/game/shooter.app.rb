@@ -5,7 +5,7 @@
 #   Gamepad:  D-pad / left stick move, Circle fires, Cross restarts, Start quits
 #
 # The artwork is a set of BMPs under /usr/share/sprites/shooter, the same
-# route flappy.rb uses: the files are transferred to the graphics side once
+# route flappy.app.rb uses: the files are transferred to the graphics side once
 # (sync_file, which skips the copy when the CRC already matches) and decoded
 # there by SpriteImage#load_bmp. The editable source is the pixel art in
 # tool/gen_shooter_sprites.rb -- edit it there and re-run "rake sprites".
