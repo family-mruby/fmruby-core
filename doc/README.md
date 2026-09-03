@@ -55,7 +55,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔2 files〕
-- `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **計画済** (2026-09-03) 設定 1 個で「1 つのことをする機械」に 〔1 files〕
+- `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **完了** (2026-09-03) `boot_splash` と、全画面の `startup_app` 〔1 files〕
 - `editor_debug/` [FM-EDITOR オンデバイスデバッガ検討・実装方針](editor_debug/design.md) — - 〔3 files〕
 - `editor_ja/` [エディタ日本語対応計画: 子供が使える編集環境](editor_ja/plan.md) — - 〔7 files〕
 - `editor_serious_mode/` [エディタ本気モード計画: 全画面・高解像度・高速化](editor_serious_mode/plan.md) — - 〔11 files〕
@@ -82,7 +82,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `stamp_p4/` [Stamp-P4 ヘッドレス機 (切符サイズの Modern)](stamp_p4/README.md) — **構想** (2026-08-31) M5Stamp-P4 + Stamp-AddOn C6 を殻に入れたヘッドレス Family mruby。まず殻 (case_design.md)、ファーム分岐は後続 〔2 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔22 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔17 files〕
-- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **公開済み** (2026-09-01) P1-P5 完了。**自前の nginx で公開中** (置き先を選んだ経緯と nginx 設定は report/hosting.md)。残るは音の可聴確認と、スマホでの実操作 〔23 files〕
+- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **公開済み** (2026-09-01) P1-P5 完了。**自前の nginx で公開中** (置き先を選んだ経緯と nginx 設定は report/hosting.md)。残るは音の可聴確認と、スマホでの実操作 〔24 files〕
 
 ## アーカイブ (完結したテーマ)
 
