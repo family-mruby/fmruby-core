@@ -25,6 +25,12 @@ timezone = "JST-9"
 keyboard_layout = "jp" # "jp" or "us"
 language = "en" # "ja" or "en"
 
+# The logo and the jingle at power-on. false skips both and saves about 2.7
+# seconds -- for a machine that exists to run one thing, the ceremony is not
+# wanted every time. Nothing else changes: the cursor, the status LED and
+# startup_app below all happen either way.
+boot_splash = true
+
 # One app to open as soon as the desktop is up, by path (the same path the
 # launcher uses, e.g. "/app/game/tetris.app.rb"). Empty means none, which is
 # the ordinary desktop. The browser sets this from ?app= in its URL.

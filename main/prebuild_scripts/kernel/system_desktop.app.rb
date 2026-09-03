@@ -332,6 +332,17 @@ class SystemDesktopApp < FmrbApp
   def start_boot_animation
     return unless @gfx && @bg_gfx
 
+    # `boot_splash = false` in system_conf skips the logo and the jingle. The
+    # machine that exists to run one thing does not want 2.7 s of ceremony
+    # every time (28 iris frames at BOOT_FRAME_MS, then BOOT_HOLD_MS). Only
+    # the show is skipped: :skip sends the next on_update straight to
+    # finish_boot_animation, which is where the cursor, boot_complete!, the
+    # compositing switch and the startup app all live.
+    if read_conf_string("boot_splash") == "false"
+      @boot_anim_state = :skip
+      return
+    end
+
     # Cover both canvases: white background, black foreground overlay.
     @bg_gfx.clear(0xFF)
     @bg_gfx.present
@@ -390,7 +401,7 @@ class SystemDesktopApp < FmrbApp
         @gfx.present
         @boot_anim_state = :wait_to_finish
       end
-    when :wait_to_finish
+    when :wait_to_finish, :skip
       finish_boot_animation
     end
   end
@@ -426,8 +437,31 @@ class SystemDesktopApp < FmrbApp
       @boot_audio_finished = true
     end
     @boot_audio = nil
-    draw_background
-    draw_foreground
+
+    # A fullscreen startup app is about to take the screen, and it needs
+    # seconds to get there (about 5 on a Tab5 for the App Store, measured
+    # from its spawn to its first output). Painting the desktop first means
+    # the wallpaper and the taskbar sit there for those seconds and are then
+    # covered -- so when we know what is coming, do not paint at all. Instead
+    # say what is being waited for, in the middle of the screen.
+    #
+    # Only the picture is skipped. The desktop is fully alive underneath, and
+    # the way back is already built: enter_fullscreen suspends it and the
+    # resume path redraws both layers, so closing the app gives a correct
+    # desktop with nothing extra here.
+    @direct_boot = false
+    startup = read_conf_string("startup_app")
+    info = (startup && !startup.empty?) ? startup_app_info(startup) : nil
+    if info && info[:fullscreen]
+      @direct_boot = true
+      @starting_name = info[:label]
+      @starting_at = Machine.board_millis
+      @direct_boot_until = @starting_at + STARTING_TIMEOUT_MS
+      draw_direct_boot
+    else
+      draw_background
+      draw_foreground
+    end
     FmrbApp.enable_cursor
     @boot_anim_state = :done
 
@@ -440,10 +474,67 @@ class SystemDesktopApp < FmrbApp
     # whatever overlays are open. Switch to region-based compositing so
     # the graphics-audio side stops walking the ~71k transparent pixels
     # in the rest of the canvas every frame.
-    @composite_regions_enabled = true
-    update_composite_regions
+    #
+    # Not while direct boot is waiting: the regions describe a desktop, and
+    # there is no menu bar on the canvas yet. Full-area compositing for those
+    # few seconds is what this machine did before the optimisation existed;
+    # the switch is thrown when the desktop is finally painted (clear_starting
+    # or on_resume).
+    unless @direct_boot
+      @composite_regions_enabled = true
+      update_composite_regions
+    end
 
-    spawn_startup_app
+    spawn_startup_app(startup)
+  end
+
+  # Name and window mode of the startup app, from its own .app.toml -- the
+  # same file the kernel reads when it spawns it, so the two cannot disagree
+  # (a second config key saying "this one is fullscreen" could). nil when
+  # there is no sidecar to read, which lands on the ordinary path.
+  def startup_app_info(script_path)
+    dot = script_path.rindex(".")
+    return nil unless dot
+    toml = "#{script_path[0, dot]}.toml"
+    text = File.open(toml, "r") { |f| f.read }
+    return nil unless text
+    label = nil
+    label_lang = nil
+    fullscreen = false
+    lang_key = "app_screen_name_#{FmrbI18n.lang}"
+    text.split("\n").each do |raw|
+      line = raw.strip
+      next if line.empty? || line.start_with?("#")
+      eq = line.index("=")
+      next unless eq
+      key = line[0, eq].strip
+      val = line[eq + 1, line.length - eq - 1].strip
+      hash_idx = val.index("#")
+      val = val[0, hash_idx].to_s.strip if hash_idx
+      if val.length >= 2 && val.start_with?("\"") && val.end_with?("\"")
+        val = val[1, val.length - 2].to_s
+      end
+      case key
+      when "app_screen_name"      then label = val
+      when lang_key               then label_lang = val
+      when "default_window_mode"  then fullscreen = (val == "fullscreen")
+      end
+    end
+    { label: label_lang || label || "", fullscreen: fullscreen }
+  rescue => e
+    Log.warn("startup_app_info: #{e.message}")
+    nil
+  end
+
+  # The screen while a fullscreen startup app loads: no wallpaper, no menu
+  # bar, just what is being waited for. Never a bare black screen -- someone
+  # looking at it has to be able to tell waiting from hung.
+  def draw_direct_boot
+    @bg_gfx.clear(BG_COLOR)
+    @bg_gfx.present
+    @gfx.clear(0x01)
+    draw_starting
+    @gfx.present
   end
 
   # One app opened as soon as the desktop is up, named by `startup_app` in
@@ -454,8 +545,8 @@ class SystemDesktopApp < FmrbApp
   # The file is read here rather than through FmrbApp.config, which returns
   # the tables of a section ([[launcher_exclude]] and the like) and has no way
   # to hand back one top-level string.
-  def spawn_startup_app
-    name = read_conf_string("startup_app")
+  def spawn_startup_app(name = nil)
+    name = read_conf_string("startup_app") if name.nil?
     return if name.nil? || name.empty?
     Log.info("startup_app: #{name}")
     spawn_app(name)
@@ -796,9 +887,25 @@ class SystemDesktopApp < FmrbApp
   # (the kernel clears it). This timeout is the backstop for a clear that
   # never arrives: it must never be possible to leave the plate on screen.
   STARTING_TIMEOUT_MS = 25000
+  # How much longer direct boot waits once the app has told us it has a
+  # canvas. Up to that point it may still be compiling and the full
+  # STARTING_TIMEOUT_MS applies; afterwards, either the kernel is about to
+  # suspend this task (the app took the screen) or the .app.toml said
+  # fullscreen and the app did not, and nobody should stare at a plate for
+  # 25 s over that.
+  DIRECT_BOOT_GRACE_MS = 2000
   STARTING_H = 20
   STARTING_PAD = 8
   STARTING_Y = MENU_BAR_HEIGHT + 6
+
+  # Where the plate goes. Under the menu bar normally; in the middle of the
+  # screen while direct boot waits, because there is nothing else on screen
+  # for it to belong to. update_composite_regions asks the same question, so
+  # the region always follows the plate.
+  def starting_plate_y
+    return STARTING_Y unless @direct_boot
+    (@window_height - STARTING_H) / 2
+  end
 
   def clear_starting
     return unless @starting_name
@@ -808,7 +915,31 @@ class SystemDesktopApp < FmrbApp
     draw_foreground if @boot_anim_state == :done
   end
 
+  # Stop waiting for the fullscreen startup app and give the desktop it was
+  # standing in for. Every way out of direct boot comes through here: the app
+  # failed, the app started but never took the screen, or nothing happened at
+  # all. Not the happy path -- when the app does take the screen the kernel
+  # suspends this task, and on_resume paints when it hands the screen back.
+  def end_direct_boot
+    return unless @direct_boot
+    @direct_boot = false
+    @direct_boot_until = nil
+    @starting_name = nil
+    @starting_at = nil
+    @composite_regions_enabled = true
+    update_composite_regions
+    draw_background
+    draw_foreground
+  end
+
   def tick_starting
+    if @direct_boot
+      return unless @direct_boot_until
+      return if Machine.board_millis < @direct_boot_until
+      Log.warn("Direct boot: #{@starting_name} never took the screen")
+      end_direct_boot
+      return
+    end
     return unless @starting_at
     return if Machine.board_millis - @starting_at < STARTING_TIMEOUT_MS
     Log.warn("Start indicator timed out: #{@starting_name}")
@@ -826,7 +957,7 @@ class SystemDesktopApp < FmrbApp
     w = FmrbI18n.text_width(label) + STARTING_PAD * 2
     w = @window_width - 8 if w > @window_width - 8
     x = (@window_width - w) / 2
-    y = STARTING_Y
+    y = starting_plate_y
     @gfx.fill_rect(x, y, w, STARTING_H, FmrbConst::THEME_WINDOW_BG)
     @gfx.draw_rect(x, y, w, STARTING_H, FmrbConst::THEME_BORDER)
     @gfx.draw_text(x + STARTING_PAD, y + 6, label,
@@ -1099,8 +1230,8 @@ class SystemDesktopApp < FmrbApp
       # which is exactly what "the indicator never appeared" turned out to be.
       # transparent: true so the band around the plate stays the wallpaper
       # rather than a full width bar.
-      regions << { dst_x: 0, dst_y: STARTING_Y, w: @window_width, h: STARTING_H,
-                   transparent: true }
+      regions << { dst_x: 0, dst_y: starting_plate_y, w: @window_width,
+                   h: STARTING_H, transparent: true }
     end
     if @dropdown_open
       dropdown_h = DROPDOWN_ITEM_H * DROPDOWN_ITEMS.size + 2
@@ -1281,6 +1412,10 @@ class SystemDesktopApp < FmrbApp
     # the first big step and collections fall back to the allocation path.
     if @counter % 2 == 0
       tick_starting
+      # Direct boot owns the screen until it ends. tick_starting above is the
+      # one thing that must still run (it holds the deadline), and everything
+      # below repaints the desktop, which is the whole point of not doing.
+      return 500 if @direct_boot
       taskbar_changed = update_taskbar_apps
       tick_config_dialog if @cfg_open
       tick_network_dialog if @net_open
@@ -1342,6 +1477,9 @@ class SystemDesktopApp < FmrbApp
     if msg["cmd"] == "file_select"
       open_file_selector(msg["requester_pid"], msg["mode"] || "open")
     elsif msg["cmd"] == "show_error"
+      # The startup app failed. The dialog needs a desktop behind it, and
+      # this is the failure direct boot exists to survive.
+      end_direct_boot
       clear_starting
       err = FmrbApp._get_last_error
       if err
@@ -1355,10 +1493,27 @@ class SystemDesktopApp < FmrbApp
       # clear that never arrives.
       @starting_name = msg["name"] || ""
       @starting_at = Machine.board_millis
-      update_composite_regions
-      draw_foreground if @boot_anim_state == :done
+      if @direct_boot
+        # Same message, better name: the kernel knows what it actually
+        # spawned. Redraw the notice, NOT the desktop -- drawing the desktop
+        # here is the flash direct boot removes.
+        draw_direct_boot
+      else
+        update_composite_regions
+        draw_foreground if @boot_anim_state == :done
+      end
     elsif msg["cmd"] == "app_started"
-      clear_starting
+      if @direct_boot
+        # The app has its canvas. The kernel sends this BEFORE it hands over
+        # the screen and suspends us (on_app_started clears the indicator
+        # first on purpose, so a fast app cannot leave the raise queued), so
+        # clearing here would paint the desktop one moment before the app
+        # covers it. Keep waiting -- but not for another 25 s: from here the
+        # app either takes the screen or never will.
+        @direct_boot_until = Machine.board_millis + DIRECT_BOOT_GRACE_MS
+      else
+        clear_starting
+      end
     elsif msg["cmd"] == "apps_changed"
       # A process started or ended. The taskbar used to pick this up on its own
       # once-a-second poll, so an app's icon appeared up to a second after its
@@ -1370,7 +1525,7 @@ class SystemDesktopApp < FmrbApp
       # by the iris) and finish_boot_animation draws the real one. Painting
       # here put the menu bar and taskbar on screen before the logo appeared.
       rebuilt = update_taskbar_apps
-      draw_foreground if rebuilt && @boot_anim_state == :done
+      draw_foreground if rebuilt && @boot_anim_state == :done && !@direct_boot
     elsif msg["cmd"] == "focus_changed"
       # The kernel reports every focus move (spawn, Ctrl+Tab, a click on a
       # window, an app exiting). Before this the taskbar only knew about its
@@ -1379,7 +1534,7 @@ class SystemDesktopApp < FmrbApp
       pid = msg["pid"]
       if pid != @taskbar_focused_pid
         @taskbar_focused_pid = pid
-        draw_foreground if @boot_anim_state == :done
+        draw_foreground if @boot_anim_state == :done && !@direct_boot
       end
     elsif msg["cmd"] == "spawn_failed"
       # The kernel says why (it has the spawner's error code); this used to
@@ -1845,6 +2000,10 @@ class SystemDesktopApp < FmrbApp
     # queued behind the suspend. Drop it rather than painting it now.
     @starting_name = nil
     @starting_at = nil
+    # The desktop is on screen from here whatever happened before, so the
+    # direct-boot wait is over and the regions describe a real desktop again.
+    @direct_boot = false
+    @composite_regions_enabled = true
     update_composite_regions
     draw_foreground
     draw_background
