@@ -36,7 +36,7 @@
 | 4 | RD_MJPEG | 0 | 8KB | **×** | MJPEG クライアント 1 本につき 1 つ (同時 1 本) |
 | 4 | RD_START | - | 4KB | **×** | 遠隔デスクトップの起動係。済んだら自分を消す |
 | 4 | BLE_START | - | 6KB | **×** | BLE の init 係。同上 |
-| **3** | **SYSTEM_APP** (system_desktop) | **1** | 24KB (spx) / 16KB | ○ | **デスクトップ。2026-09-03 に 8 から降格** |
+| **3** | **SYSTEM_APP** (system_desktop) | **1** | 24KB (spx) / 16KB | ○ | **デスクトップ。2026-09-03 に 8 から降格** (実測は mruby 構成。Spinel デスクトップは未検証) |
 | 3 | RTC | 1 | 4KB | ○ | |
 | 3 | STATUS_LED | 1 | 4KB | ○ | 「点滅 = OS 生存」 |
 | 3 | DEBUGD | 任意 | 6KB | ○ | 唯一の kill 経路 |

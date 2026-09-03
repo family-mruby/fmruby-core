@@ -5,6 +5,27 @@
 > 素通りしていた)。刻みの合間に回収を入れ、Modern のプールも 1536KB にした。
 > 配布の店とは無関係 (店を一度も起動していない起動でも起きていた)。
 
+## 測った構成
+
+**Spinel カーネル + mruby デスクトップ + Spinel エディタ**
+(`FMRB_KERNEL_ENGINE=spinel`、`FMRB_APP_ENGINE_DESKTOP` は未設定 = mruby)。
+ログのプールダンプの VM 列で見分けられる — `system_desktop mrb` /
+`fmrb_kernel spx`。
+
+**本書のプールと GC の話は mruby デスクトップ固有**である。生存集合
+549 KB の大半は 213 KB ある `system_desktop_combined.rb` の irep で、AOT で
+C になる Spinel デスクトップ (`FMRB_APP_ENGINE_DESKTOP=spinel`) には
+そのままは当てはまらない。**Spinel 構成では未検証。**
+
+| | エンジン依存か |
+|---|---|
+| プール枯渇・GC の空回り・逐次回収 | **mruby 固有** |
+| 終了時の 4.7 秒 (irep の解放) | **mruby 固有** |
+| 走査が作る 240 KB のごみ | **mruby 固有** (String の確保) |
+| `SYSTEM_APP` プール 800->1536KB | 定数は共通だが、上げた根拠は mruby の生存集合 |
+| 優先度 8 -> 3 | **依らない** (タスク優先度の話) |
+| 走査を刻んだこと | **依らない** (`launcher.rb` は両エンジン共通の原本) |
+
 ## 症状
 
 ランチャーを右クリックして再走査すると、**数秒後に system_desktop が消える**。
