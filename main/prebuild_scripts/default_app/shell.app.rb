@@ -106,7 +106,7 @@ class ShellApp < FmrbApp
 
     clear_user_area(@bg_col)
     draw_window_frame
-    show_logo
+    show_greeting
     draw_prompt
     @gfx.present
     Log.info("on_create called")
@@ -246,6 +246,19 @@ class ShellApp < FmrbApp
     s
   end
 
+  # What the shell says when it opens.
+  #
+  # The logo used to be here, and it cost six of the window's rows plus a
+  # blank one before anything could be typed -- on a screen this size that is
+  # most of the history. Two lines say the same things: what this is, and what
+  # it is built on. The name PicoRuby and its author stay in the text, because
+  # the credit is the part of the logo that mattered; `logo` still draws it.
+  def show_greeting
+    @history << "FM-Shell -- powered by PicoRuby (@hasumikin)"
+    @history << "Type 'help' for available commands"
+    @history << ""
+  end
+
   # Show MicroRuby logo as ASCII art in history
   def show_logo
     logo = [
@@ -299,9 +312,6 @@ class ShellApp < FmrbApp
       y += 1
     end
 
-    @history << ""
-    @history << "Family mruby Shell"
-    @history << "Type 'help' for available commands"
     @history << ""
   end
 

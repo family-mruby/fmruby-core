@@ -105,6 +105,8 @@ module ShellCommandsMixin
       cmd_create_app(args)
     when "color"
       cmd_color(args)
+    when "logo"
+      show_logo
     when "help"
       @history << "Available commands:"
       @history << "  cd [path] - Change directory"
@@ -129,6 +131,7 @@ module ShellCommandsMixin
       @history << "  svc start|stop <name> - Run/stop a service for this session"
       @history << "  svc enable|disable <name> - ...and remember it across boots"
       @history << "  color [bg|text <colour>] - The shell's own two colours"
+      @history << "  logo - Draw the PicoRuby logo"
       @history << "  help - Show this help message"
     else
       @history << "Unknown command: #{cmd}"
