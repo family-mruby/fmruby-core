@@ -61,8 +61,19 @@ static uint32_t s_reconnect_delay_ms = WIFI_RECONNECT_MIN_MS;
 static volatile bool s_connected = false;
 static esp_netif_t *s_netif = NULL;
 static char s_ip_str[16] = "0.0.0.0";
-static char s_hostname[32] = "fmruby";
+/* The name every Family mruby answers to, in addition to its own. Two boards
+ * on one network both claiming it is a first-come race -- which is exactly
+ * why each also gets a name of its own -- but the tools have always resolved
+ * this one, and on a network with a single board it is the convenient
+ * answer. */
+#define MDNS_SHARED_HOST "fmruby"
+
+/* Empty until the configuration is read; if the configuration does not name
+ * one, mdns_start() builds it from the WiFi MAC. */
+static char s_hostname[32] = "";
 static char s_ssid[33] = "";
+
+static void mdns_share_address(esp_ip4_addr_t ip);
 
 static void reconnect_timer_cb(void *arg)
 {
@@ -117,12 +128,43 @@ static void wifi_event_handler(void *arg, esp_event_base_t base,
         s_connected = true;
         s_reconnect_delay_ms = WIFI_RECONNECT_MIN_MS;
         xEventGroupSetBits(s_wifi_events, WIFI_EV_GOT_IP);
-        FMRB_LOGI(TAG, "Connected, ip=%s (http://%s.local/)", s_ip_str, s_hostname);
+        mdns_share_address(ev->ip_info.ip);
+        FMRB_LOGI(TAG, "Connected, ip=%s (http://%s.local/, also http://%s.local/)",
+                  s_ip_str, s_hostname, MDNS_SHARED_HOST);
     }
+}
+
+/* A name this board alone answers to.
+ *
+ * Two boards used to be two "fmruby.local"s, and which one a lookup reached
+ * was a race -- the tools would drive a Tab5 and get a NARYA. The last three
+ * bytes of the MAC settle it, written the way BLE already writes them for
+ * its "Family-mruby-XXXXXX" (drivers/ble/ble_task.c): lower case, no
+ * separators. The two suffixes are not the same digits -- WiFi and Bluetooth
+ * are given different addresses off the same base -- but they are read the
+ * same way, and both are printed at boot.
+ *
+ * The WiFi MAC, not the Bluetooth one: this is a WiFi name, and on a machine
+ * whose radio is a separate chip the BT address only exists once BLE has
+ * started, which a WiFi-only configuration never does. */
+static void hostname_from_mac(void)
+{
+    uint8_t mac[6] = {0};
+    esp_err_t err = esp_wifi_get_mac(WIFI_IF_STA, mac);
+    if (err != ESP_OK) {
+        FMRB_LOGW(TAG, "esp_wifi_get_mac failed: %d, using %s",
+                  err, MDNS_SHARED_HOST);
+        strlcpy(s_hostname, MDNS_SHARED_HOST, sizeof(s_hostname));
+        return;
+    }
+    snprintf(s_hostname, sizeof(s_hostname), "%s-%02x%02x%02x",
+             MDNS_SHARED_HOST, mac[3], mac[4], mac[5]);
 }
 
 static void mdns_start(void)
 {
+    if (s_hostname[0] == '\0') hostname_from_mac();
+
     esp_err_t err = mdns_init();
     if (err != ESP_OK) {
         FMRB_LOGW(TAG, "mDNS init failed: %d", err);
@@ -132,6 +174,33 @@ static void mdns_start(void)
     mdns_instance_name_set("Family mruby OS");
     mdns_service_add(NULL, "_http", "_tcp", 80, NULL, 0);
     FMRB_LOGI(TAG, "mDNS hostname: %s.local", s_hostname);
+    /* The shared name is answered for as well, but only once there is an
+     * address to answer with -- see mdns_share_address(), called from the
+     * got-IP handler. */
+}
+
+/* Answer for "fmruby.local" too, at the address just obtained.
+ *
+ * A delegated name carries an address list rather than following the
+ * interface, so it has to be set again every time the address changes;
+ * without that, a lease renewal onto a different address leaves the shared
+ * name pointing at the old one. Called from the got-IP handler for exactly
+ * that reason. */
+static void mdns_share_address(esp_ip4_addr_t ip)
+{
+    if (strcmp(s_hostname, MDNS_SHARED_HOST) == 0) return;  /* it is the name */
+
+    mdns_ip_addr_t addr = {0};
+    addr.addr.type = ESP_IPADDR_TYPE_V4;
+    addr.addr.u_addr.ip4 = ip;
+    addr.next = NULL;
+
+    esp_err_t err = mdns_hostname_exists(MDNS_SHARED_HOST)
+                  ? mdns_delegate_hostname_set_address(MDNS_SHARED_HOST, &addr)
+                  : mdns_delegate_hostname_add(MDNS_SHARED_HOST, &addr);
+    if (err != ESP_OK) {
+        FMRB_LOGW(TAG, "mDNS %s.local not claimed: %d", MDNS_SHARED_HOST, err);
+    }
 }
 
 static bool s_started = false;
@@ -169,7 +238,9 @@ fmrb_err_t wifi_task_init(void)
     wifi_config_t sta_cfg = { 0 };
     const char *ssid = fmrb_toml_get_string(wifi, "ssid", "");
     const char *pass = fmrb_toml_get_string(wifi, "password", "");
-    const char *host = fmrb_toml_get_string(wifi, "hostname", "fmruby");
+    /* No default: an empty name means "one of your own", resolved once the
+     * radio is up and its MAC can be asked for. */
+    const char *host = fmrb_toml_get_string(wifi, "hostname", "");
     if (ssid[0] == '\0') {
         FMRB_LOGW(TAG, "ssid missing in %s: WiFi disabled", WIFI_TOML_PATH);
         toml_free(root);

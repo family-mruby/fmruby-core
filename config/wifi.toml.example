@@ -9,5 +9,9 @@
 enable = true
 ssid = "your-ssid"
 password = "your-password"
-# mDNS hostname: the viewer becomes reachable at http://<hostname>.local/
-hostname = "fmruby"
+# mDNS hostname. Leave this out and the board names itself
+# fmruby-XXXXXX.local, after the last three bytes of its WiFi MAC -- so two
+# boards on one network can be told apart. Every board also answers to
+# fmruby.local, which is the convenient name when there is only one (with
+# two, which one replies is a race).
+# hostname = "fmruby"
