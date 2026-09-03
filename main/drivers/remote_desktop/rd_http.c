@@ -506,8 +506,8 @@ fmrb_err_t rd_http_start(const rd_http_config_t *cfg)
 #ifdef FMRB_DEV_REMOTE_CTL
     // The development endpoints live in drivers/devctl so Retro can have them
     // without this file, which needs the P4 display and the JPEG encoder.
+    // It announces itself; saying so again here would print the line twice.
     devctl_http_register(s_server);
-    FMRB_LOGW(TAG, "development remote control is enabled (/app/launch, /app/kill, /app/list, /fs/*)");
 #endif
     if (s_cfg.h264_enable) {
         rd_register_uri(&uri_ws_video);

@@ -88,5 +88,23 @@ I app_canvas: [hello] Created canvas 3 (100x100)
 `M1|devctl|` の行が出る**。WiFi の段と分けてあるのは、ここだけが「要らないなら
 持たなくていい」subsystem だから。今回焼いた firmware にはこの行はまだ無い。
 
-Modern (Tab5) 側の回帰確認は**まだ**。ビューアのページと `/app/*` が今までどおり
-動くことを見る必要がある (ボードの差し替えが要る)。
+## Modern の回帰確認 (2026-09-03、実機 Tab5)
+
+フル書き込みして 4 系統を通した。**切り出しによる欠落は無い**。
+
+| 見たもの | 結果 |
+|---|---|
+| ビューアのページ / | HTTP 200 (2423 B) |
+| /status, /stream | `mjpeg`、MJPEG 1 枚取得・入力注入 OK |
+| /app/launch, list, kill | put した app が pid 5 で起動、kill で消える。`pid=0` は拒否 |
+| /fs/put, get, del, list | 往復の md5 一致、`..` は拒否、del は **DELETE** |
+| `M1\|wifi_rd\|internal` | **187308** (切り出し前 187320)。実質同じ = 二重に持っていない |
+
+**ログが 2 回出ていた**。切り出したとき、経路を宣言する行を登録側
+(`devctl_http_register`) と呼ぶ側 (`rd_http.c` と `devctl_task.c`) の両方に
+書いてしまい、Modern でも Retro でも同じ警告が並んで出ていた。実際に登録が
+成功したことを知っているのは登録側だけなので、呼ぶ側の 2 つを消した。
+**切り出しでは、実体と include だけでなくログの持ち主も動く**。
+
+Retro (`devctl`) と Modern (`rd_http`) でタグが違うので、どちらの経路で
+上がったかは 1 行目で分かる。この性質は残してある。

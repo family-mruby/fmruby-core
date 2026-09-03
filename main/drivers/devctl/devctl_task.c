@@ -54,8 +54,8 @@ fmrb_err_t devctl_start(void)
         return ferr;
     }
 
-    FMRB_LOGW(TAG, "development remote control is enabled "
-                   "(/app/launch, /app/kill, /app/list, /fs/*)");
+    // devctl_http_register() announces the routes; it is the one that knows
+    // they were actually registered.
     return FMRB_OK;
 }
 
