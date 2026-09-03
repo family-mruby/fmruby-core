@@ -350,7 +350,11 @@ module ConfigDialogMixin
 
   def cfg_scan_wallpapers
     list = ["", "none"]
-    ["/usr/share/backgrounds", "/home"].each do |dir|
+    # /usr/share/backgrounds is what the machine ships; /home/backgrounds is
+    # where the owner puts theirs. /home itself is not scanned: it is the
+    # owner's own space, and reading every name in it to offer some of them
+    # as wallpapers is not this dialog's business.
+    ["/usr/share/backgrounds", "/home/backgrounds"].each do |dir|
       begin
         d = Dir.open(dir)
         names = []
