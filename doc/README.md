@@ -82,7 +82,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `stamp_p4/` [Stamp-P4 ヘッドレス機 (切符サイズの Modern)](stamp_p4/README.md) — **構想** (2026-08-31) M5Stamp-P4 + Stamp-AddOn C6 を殻に入れたヘッドレス Family mruby。まず殻 (case_design.md)、ファーム分岐は後続 〔2 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔22 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔17 files〕
-- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **公開済み** (2026-09-01) P1-P5 完了。**自前の nginx で公開中** (置き先を選んだ経緯と nginx 設定は report/hosting.md)。残るは音の可聴確認と、スマホでの実操作 〔24 files〕
+- `wasm/` [wasm (ブラウザ) 対応の検討と計画](wasm/plan.md) — **公開済み** (2026-09-01) P1-P5 完了。**自前の nginx で公開中** (置き先を選んだ経緯と nginx 設定は report/hosting.md)。残るは音の可聴確認と、スマホでの実操作 〔25 files〕
 
 ## アーカイブ (完結したテーマ)
 
