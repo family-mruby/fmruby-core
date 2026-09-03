@@ -66,6 +66,22 @@ module ConfigDialogMixin
   CFG_WEB_HIDDEN = ["mouse_scale_x", "mouse_scale_y",
                     "ble_auto_start", "wifi_auto_start"]
 
+  # Retro has one radio. The S3 runs WiFi or BLE, never both: software
+  # coexistence is off in sdkconfig because it makes NimBLE lose sync about
+  # ten seconds after boot, and the two also share the internal RAM
+  # (main/drivers/wifi/wifi_task.c says the same at more length).
+  #
+  # Boot settles a both-on config by starting BLE and logging a warning, so
+  # turning WiFi on and leaving BLE on looks like "I switched WiFi on and
+  # nothing happened" -- the warning is in the serial log, which is not where
+  # the person who used the dialog is looking. Turning one on here turns the
+  # other off, so the dialog shows what the machine will actually do.
+  #
+  # Modern keeps both: its radios are on the C6, where they coexist.
+  CFG_ONE_RADIO = (FmrbConst::HW_FAMILY == "retro")
+  CFG_RADIO_OTHER = { "ble_auto_start"  => "wifi_auto_start",
+                      "wifi_auto_start" => "ble_auto_start" }
+
   CFG_SETTINGS = [
     { key: :language,         field: "language",         type: :enum,  options: ["en", "ja"] },
     { key: :keyboard_layout,  field: "keyboard_layout",  type: :enum,  options: ["jp", "us"] },
@@ -312,6 +328,17 @@ module ConfigDialogMixin
   # The preset the machine is wearing right now, from the constants every VM
   # gets at startup -- not from the file, which the desktop would otherwise
   # have to read before it can pick a wallpaper.
+  # One radio (Retro): switching one on switches the other off. Only in that
+  # direction -- switching a radio off says nothing about the other one.
+  def cfg_enforce_one_radio(field)
+    return nil unless CFG_ONE_RADIO
+    return nil unless @cfg_values[field]
+    other = CFG_RADIO_OTHER[field]
+    return nil unless other
+    @cfg_values[other] = false
+    nil
+  end
+
   # The wallpaper row's choices are whatever the machine has, so they are
   # found rather than listed: "" (follow the theme), "none" (no picture), the
   # shipped pictures, and any .png the user has put in /home. Scanned once
@@ -497,6 +524,7 @@ module ConfigDialogMixin
       @cfg_values[field] = opts[idx]
     when :bool
       @cfg_values[field] = !@cfg_values[field]
+      cfg_enforce_one_radio(field)
     when :int
       v = @cfg_values[field].to_i + dir * s[:step]
       v = s[:min] if v < s[:min]
