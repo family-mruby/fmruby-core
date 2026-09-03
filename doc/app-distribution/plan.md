@@ -1,6 +1,6 @@
 # アプリ配布プラットフォーム 計画
 
-> 状態: 進行中 | 更新: 2026-09-02 | **P1-P3 完了 (Retro 実機を除く)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。**NARYA v4 で通し確認 + 速度の作り直し済** (report/p4_device.md, p5_perf.md)。**解析 7.6 秒 → 0.12 秒**。残りは Retro 実機のみ。 
+> 状態: 進行中 | 更新: 2026-09-02 | **P1-P3 完了 (Retro 実機を除く)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。**NARYA v4 で通し確認 + 速度の作り直し済** (report/p4_device.md, p5_perf.md)。**解析 7.6 秒 → 0.12 秒**。**2026-09-03: 店を default app へ移した** (起動時の翻訳が消え、`large_memory` が不要に。report/builtin_move.md)。残りは Retro 実機のみ。 
 
 配布物の形式・置き場所・判定規則は `spec.md` が正。この文書は**いつ何を
 作るか**だけを持つ。元の構想は `family-mruby-app-distribution-design.md`。
@@ -59,7 +59,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、GitHub に
 | **P1-B** | 実機側の前提の確認 | sim / ブラウザ / 実機で置いて動かす。**sim・ブラウザ済、Retro 実機はユーザ** |
 | **P2** | ブラウザ版に通信手段 | `FmrbNet.request` (3 環境)。**完了** |
 | **P2b** | `startup_app` | desktop が起動時に 1 本立ち上げる。ブラウザは `?app=`。**完了** |
-| **P3** | **3 環境共通の店アプリ** | `flash/app/tool/appstore.app.rb`。**完了** |
+| **P3** | **3 環境共通の店アプリ** | `main/prebuild_scripts/default_app/appstore.app.rb`。**完了** |
 | P4 | 束と版 | 複数ファイル、`app_version` の比較と入れ替え |
 | P5 | 仕上げ | アイコン、絞り込み、Web Serial での書き込み |
 
@@ -198,14 +198,14 @@ family-mruby-apps/
 
 ## P3 — 店アプリ (完了)
 
-`flash/app/tool/appstore.app.rb`。sim とブラウザで同じソースが動いた
+`main/prebuild_scripts/default_app/appstore.app.rb`。sim とブラウザで同じソースが動いた
 (report/p3.md)。積み残しは 3 つ: **スクリーンショットを出していない**、**sha256 を
 検証していない** (この機械に digest が無い)、**弾かれる側を実測していない**
 (sim が modern なので 3 本とも入る)。
 
 ## P3 — 実機の店アプリ (当初の書き方)
 
-`flash/app/tool/appstore.app.rb`。手順は spec.md 9.2、面の分け方は 13.2。
+`main/prebuild_scripts/default_app/appstore.app.rb`。手順は spec.md 9.2、面の分け方は 13.2。
 
 **1 本のアプリが 2 つの面を持つ。**
 

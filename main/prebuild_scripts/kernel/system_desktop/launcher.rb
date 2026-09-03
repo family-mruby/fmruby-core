@@ -23,6 +23,11 @@ module LauncherMixin
     [
       { label: FmrbI18n.t(:shell),  app: "default/shell",  icon_file: "usr/share/icon/shell.icon" },
       { label: FmrbI18n.t(:editor), app: "default/editor", icon_file: "usr/share/icon/editor.icon" },
+      # The store is built in like the other two: it installs apps, so it must
+      # not be one of the things it can uninstall. Its .app.toml is gone, so
+      # this list is the only place its name and icon now live.
+      { label: FmrbI18n.t(:app_store), app: "default/appstore",
+        icon_file: "usr/share/icon/appstore.icon" },
     ]
   end
 

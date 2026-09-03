@@ -22,6 +22,7 @@ extern const uint8_t editor_irep[];
 extern const uint8_t logviewer_irep[];
 extern const uint8_t monitor_irep[];
 extern const uint8_t inspector_irep[];
+extern const uint8_t appstore_irep[];
 #ifdef FMRB_HW_FAMILY_MODERN
 // Service host: Modern only, so Retro does not compile its bytecode
 // (main/CMakeLists.txt drops it from the glob) and has no symbol to link.
@@ -318,6 +319,34 @@ static const builtin_app_entry_t builtin_app_table[] = {
         .window_height = 200,
         .window_pos_x = 5,
         .window_pos_y = 15,
+        .rounded_corners = true
+    }},
+    /* The app store used to live in /app/tool as ordinary Ruby, which meant
+     * 855 lines were compiled at every launch -- the codegen working set is
+     * what made it ask for a larger VM pool than any other tool, and on a
+     * Retro it ran out anyway. As bytecode it costs 19 KB of the app
+     * partition and no compiler at all.
+     *
+     * Window figures are the ones its .app.toml carried. */
+    { "default/appstore", {
+        .app_id = -1,
+        .type = APP_TYPE_USER_APP,
+        .name = "App Store",
+        .vm_type = FMRB_VM_TYPE_MRUBY,
+        .load_mode = FMRB_LOAD_MODE_BYTECODE,
+        .bytecode = appstore_irep,
+        .stack_words = FMRB_SHELL_APP_TASK_STACK_SIZE,
+        .priority = FMRB_SHELL_APP_PRIORITY,
+        .flags = FMRB_SHELL_APP_TASK_FLAGS,
+        .core_affinity = -1,
+        .headless = false,
+        .window_width = 280,
+        .window_height = 190,
+        .window_pos_x = 14,
+        .window_pos_y = 26,
+        .resizable = true,
+        .min_window_width = 240,
+        .min_window_height = 150,
         .rounded_corners = true
     }},
 };
