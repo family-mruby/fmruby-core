@@ -821,12 +821,294 @@ document.addEventListener('visibilitychange', () => {
 });
 window.addEventListener('pagehide', () => { flushHome(); captureConfSettings(); });
 
+// ---- Bringing files in ---------------------------------------------------
+//
+// A .tar was the only way to hand the machine anything, which is a strange
+// price for one picture. The write itself already existed for the ?drive=1
+// relay; what was missing was a way for a visitor to ask for it.
+//
+// Two rules run through all of it. Only /home and /app/usr survive a reload,
+// so nothing is ever written anywhere else -- a file put in /usr/share would
+// vanish at the next visit and look like a bug. And where a file lands is
+// chosen, never guessed from what it is: a .png is not quietly filed as a
+// wallpaper because it is a .png. Only a dropped *folder* is classified, and
+// only by the one mark that means "app" (see folderTarget).
+const INBOX_PATH = HOME_PATH + '/inbox';
+// Enough to stop a stray home directory from being walked in full, and far
+// more than the shape this is for (an app and its pictures).
+const ADD_MAX_FILES = 400;
+const ADD_MAX_DEPTH = 6;
+
+const destSelect = document.getElementById('add-dest');
+const addFilesBtn = document.getElementById('add-files-btn');
+const addFolderBtn = document.getElementById('add-folder-btn');
+const addFilesInput = document.getElementById('add-files');
+const addFolderInput = document.getElementById('add-folder');
+
+// The destinations on offer: the inbox, whatever the owner has already made
+// under /home (so a picture can be sent straight to /home/backgrounds), and
+// /app/usr. Rebuilt each time the list is opened, because the machine may
+// have made a directory since the page loaded.
+function refreshDestinations() {
+  if (!destSelect || !M) return;
+  const keep = destSelect.value;
+  const paths = [INBOX_PATH];
+  try {
+    for (const name of M.FS.readdir(HOME_PATH)) {
+      if (name === '.' || name === '..' || name === 'inbox') continue;
+      const full = HOME_PATH + '/' + name;
+      if (M.FS.isDir(M.FS.stat(full).mode)) paths.push(full);
+    }
+  } catch (e) { /* /home is always there; a failure just means fewer choices */ }
+  paths.push(APPUSR_PATH);
+  destSelect.innerHTML = '';
+  for (const p of paths) {
+    const o = document.createElement('option');
+    // The machine calls it /home; /flash is the browser's own prefix and
+    // means nothing to the person reading the row.
+    o.value = p;
+    o.textContent = p.replace(/^\/flash/, '');
+    destSelect.appendChild(o);
+  }
+  destSelect.value = paths.includes(keep) ? keep : INBOX_PATH;
+}
+if (destSelect) destSelect.addEventListener('mousedown', refreshDestinations);
+
+// Every name is rebuilt out of safe parts and then pinned under one of the
+// two stores, so no dropped name can reach the rest of the filesystem.
+function writeInto(mod, base, rel, bytes) {
+  const safe = safeRelative(rel);
+  if (!safe) return null;
+  const root = base.startsWith(APPUSR_PATH) ? APPUSR_PATH : HOME_PATH;
+  const full = base + '/' + safe;
+  if (!full.startsWith(root + '/')) return null;
+  const slash = full.lastIndexOf('/');
+  if (slash > 0) mod.FS.mkdirTree(full.slice(0, slash));
+  mod.FS.writeFile(full, bytes);
+  return full;
+}
+
+// Where a dropped folder goes. The launcher's own test is any .toml, which
+// it can afford: it is walking /app, where everything is an app by
+// construction. A folder from someone's disk has no such context, and a
+// settings or data file called *.toml would file their pictures under
+// /app/usr -- so require the documented name instead. Only the folder's own
+// files count: an app bundle sits one level under /app/usr, and a .app.toml
+// deeper than that would not be found by the launcher anyway.
+function folderTarget(name, items) {
+  for (const it of items) {
+    const parts = it.rel.split('/');
+    if (parts.length === 2 && parts[1].endsWith('.app.toml')) {
+      return { base: APPUSR_PATH + '/' + name, app: true };
+    }
+  }
+  return { base: HOME_PATH + '/' + name, app: false };
+}
+
+// A drop hands back entries, not files, and a directory can only be read
+// through this interface. The webkit prefix is historical -- every current
+// browser has it, so a dropped folder keeps its shape everywhere, not just
+// where the File System Access API exists.
+async function collectEntry(entry, prefix, out, depth) {
+  if (out.length >= ADD_MAX_FILES || depth > ADD_MAX_DEPTH) return;
+  if (entry.isFile) {
+    const file = await new Promise((res, rej) => entry.file(res, rej));
+    out.push({ rel: prefix + entry.name, file });
+    return;
+  }
+  const reader = entry.createReader();
+  for (;;) {
+    // readEntries answers in batches; an empty batch is the end.
+    const batch = await new Promise((res, rej) => reader.readEntries(res, rej));
+    if (!batch.length) break;
+    for (const e of batch) {
+      await collectEntry(e, prefix + entry.name + '/', out, depth + 1);
+    }
+  }
+}
+
+function humanSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
+  return (n / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Writing is quick; making it stick is not, and the cost is in the store, not
+// in the file count. Timing the sync here is how we find out whether IndexedDB
+// can carry the pictures and music this is mostly going to be used for.
+function flushAndReport(prefix) {
+  if (homeStore !== 'persistent' || !M) {
+    statusLine.textContent = prefix + ' (this browser is not keeping them)';
+    return;
+  }
+  const t0 = performance.now();
+  try {
+    M.FS.syncfs(false, (err) => {
+      const ms = Math.round(performance.now() - t0);
+      if (err) {
+        statusLine.textContent = prefix + ' -- but saving them failed';
+        console.warn('fmrb: syncfs after add failed:', err);
+      } else {
+        statusLine.textContent = prefix + ' (saved in ' + ms + ' ms)';
+        console.log('fmrb: syncfs after add took ' + ms + ' ms');
+      }
+      measureStorage();
+    });
+  } catch (e) {
+    statusLine.textContent = prefix + ' -- but saving them failed';
+    console.warn('fmrb: syncfs after add failed:', e);
+  }
+}
+
+// items: [{ rel, file }]. base is the directory they go under.
+async function addItems(base, items, label) {
+  if (!M || !items.length) return;
+  let bytes = 0;
+  let wrote = 0;
+  let newApp = false;
+  for (const it of items) {
+    const data = new Uint8Array(await it.file.arrayBuffer());
+    const full = writeInto(M, base, it.rel, data);
+    if (!full) continue;
+    wrote++;
+    bytes += data.length;
+    if (full.startsWith(APPUSR_PATH + '/') && full.endsWith('.app.toml')) {
+      newApp = true;
+    }
+  }
+  if (!wrote) {
+    statusLine.textContent = 'nothing could be copied from that';
+    return;
+  }
+  const where = base.replace(/^\/flash/, '');
+  let msg = 'copied ' + (label || (wrote + ' file(s)')) +
+            ' (' + humanSize(bytes) + ') -> ' + where;
+  // The launcher lists what it found when it last looked. Changing a file it
+  // already knows needs nothing -- press the entry again and the new code
+  // runs. A name it has never seen is the one case that needs the rescan.
+  if (newApp) msg += ' -- right-click in the launcher to see it';
+  flushAndReport(msg);
+  refreshDestinations();
+}
+
+// One loose file goes where the row says, whatever it is. A .tar is the one
+// exception, and only because it is this page's own way of carrying a whole
+// /home: restoring one is a different act from copying a file into it.
+async function addLooseFiles(files) {
+  if (!M || !files.length) return;
+  if (files.length === 1 && files[0].name.toLowerCase().endsWith('.tar')) {
+    await restoreTarFile(files[0]);
+    return;
+  }
+  const dest = (destSelect && destSelect.value) || INBOX_PATH;
+  const items = [];
+  for (const f of files) {
+    // A folder picked with the folder button arrives as a flat list of files
+    // that remember where they sat.
+    items.push({ rel: f.webkitRelativePath || f.name, file: f });
+  }
+  await addItems(dest, items, items.length + ' file(s)');
+}
+
+async function restoreTarFile(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let got;
+  try {
+    got = importTar(M, bytes);
+  } catch (e) {
+    statusLine.textContent = 'that file could not be read as a .tar';
+    console.warn('fmrb: import failed:', e);
+    return;
+  }
+  flushAndReport('restored ' + got.files + ' file(s)' +
+                 (got.settings ? ' and the settings' : '') +
+                 ' -- reload the page to let the machine see them');
+}
+
+if (addFilesBtn && addFilesInput) {
+  addFilesBtn.addEventListener('click', () => addFilesInput.click());
+  addFilesInput.addEventListener('change', async () => {
+    const files = Array.from(addFilesInput.files || []);
+    addFilesInput.value = '';
+    await addLooseFiles(files);
+  });
+}
+if (addFolderBtn && addFolderInput) {
+  addFolderBtn.addEventListener('click', () => addFolderInput.click());
+  addFolderInput.addEventListener('change', async () => {
+    const files = Array.from(addFolderInput.files || []);
+    addFolderInput.value = '';
+    if (!files.length || !M) return;
+    // webkitRelativePath starts with the folder's own name, which is what
+    // decides where the whole thing goes.
+    const name = files[0].webkitRelativePath.split('/')[0];
+    const items = files.map((f) => ({ rel: f.webkitRelativePath, file: f }));
+    const t = folderTarget(name, items);
+    // The names are relative to the folder, and the folder is the base.
+    const inner = items.map((it) => ({
+      rel: it.rel.slice(name.length + 1), file: it.file,
+    }));
+    await addItems(t.base, inner, name + '/');
+  });
+}
+
+// The whole page takes drops, not a small target: someone dragging a file at
+// a machine is aiming at the machine.
+let dragDepth = 0;
+document.addEventListener('dragenter', (ev) => {
+  if (!M) return;
+  ev.preventDefault();
+  if (++dragDepth === 1) document.body.classList.add('dropping');
+});
+document.addEventListener('dragover', (ev) => { if (M) ev.preventDefault(); });
+document.addEventListener('dragleave', () => {
+  if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('dropping'); }
+});
+document.addEventListener('drop', async (ev) => {
+  if (!M) return;
+  ev.preventDefault();
+  dragDepth = 0;
+  document.body.classList.remove('dropping');
+  const dt = ev.dataTransfer;
+  if (!dt) return;
+  const entries = [];
+  for (const item of Array.from(dt.items || [])) {
+    const e = item.webkitGetAsEntry && item.webkitGetAsEntry();
+    if (e) entries.push(e);
+  }
+  if (!entries.length) {
+    await addLooseFiles(Array.from(dt.files || []));
+    return;
+  }
+  const loose = [];
+  for (const e of entries) {
+    if (e.isFile) {
+      loose.push(await new Promise((res, rej) => e.file(res, rej)));
+      continue;
+    }
+    // A folder decides its own destination, so each one is copied on its own
+    // rather than being pooled with the loose files.
+    const items = [];
+    await collectEntry(e, '', items, 1);
+    const inner = items.map((it) => ({
+      rel: it.rel.slice(e.name.length + 1), file: it.file,
+    }));
+    const t = folderTarget(e.name, items);
+    await addItems(t.base, inner, e.name + '/');
+  }
+  if (loose.length) await addLooseFiles(loose);
+});
+
 const exportBtn = document.getElementById('home-export');
 const importBtn = document.getElementById('home-import-btn');
 const importInput = document.getElementById('home-import');
 const resetBtn = document.getElementById('home-reset');
 function enableStorageButtons() {
-  for (const b of [exportBtn, importBtn, resetBtn]) if (b) b.disabled = false;
+  for (const b of [exportBtn, importBtn, resetBtn,
+                   addFilesBtn, addFolderBtn, destSelect]) {
+    if (b) b.disabled = false;
+  }
+  refreshDestinations();
 }
 if (exportBtn) exportBtn.addEventListener('click', exportHome);
 if (importBtn && importInput) {
@@ -835,20 +1117,7 @@ if (importBtn && importInput) {
     const file = importInput.files && importInput.files[0];
     importInput.value = '';
     if (!file || !M) return;
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let got;
-    try {
-      got = importTar(M, bytes);
-    } catch (e) {
-      statusLine.textContent = 'that file could not be read as a .tar';
-      console.warn('fmrb: import failed:', e);
-      return;
-    }
-    flushHome();
-    statusLine.textContent = 'restored ' + got.files + ' file(s)' +
-      (got.settings ? ' and the settings' : '') +
-      ' -- reload the page to let the machine see them';
-    measureStorage();
+    await restoreTarFile(file);
   });
 }
 // Everything this page keeps in the browser: the two IDBFS stores, the

@@ -34,7 +34,7 @@
     font-size: 20px; line-height: normal;
   }
   #status { margin-top: 8px; font-size: 12px; color: #888; }
-  #settings {
+  #settings, #bring {
     margin-top: 6px; font-size: 12px; color: #aaa;
     display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: center;
   }
@@ -46,17 +46,19 @@
      each one as wide as its content and lets a long row push the whole page
      sideways. Given a width they fill the column instead, and wrap inside
      it. */
-  #settings, #about { width: 100%; max-width: 780px; box-sizing: border-box;
+  #settings, #bring, #about { width: 100%; max-width: 780px; box-sizing: border-box;
                       padding-left: 12px; padding-right: 12px; }
   #status { max-width: 100%; box-sizing: border-box; }
-  #settings > span { display: inline-flex; align-items: center; gap: 4px;
+  #settings > span, #bring > span { display: inline-flex; align-items: center; gap: 4px;
                      max-width: 100%; min-width: 0; }
-  #settings select { max-width: 50vw; }
-  #settings select, #settings button {
+  #settings select, #bring select { max-width: 50vw; }
+  #settings select, #settings button, #bring select, #bring button {
     background: #111; color: #ddd; border: 1px solid #555;
     font-family: monospace; font-size: 12px;
   }
-  #settings button { cursor: pointer; padding: 1px 8px; }
+  #settings button, #bring button { cursor: pointer; padding: 1px 8px; }
+  /* The whole page is the drop target, so the whole page says so. */
+  body.dropping { outline: 2px dashed #6a6; outline-offset: -6px; }
   #about {
     margin: 14px 0 24px; font-size: 12px;
     line-height: 1.6; color: #9a9aa8;
@@ -118,6 +120,16 @@
   <button id="home-import-btn" type="button" disabled>Restore from a file</button>
   <input id="home-import" type="file" accept=".tar" hidden>
   <button id="home-reset" type="button" disabled>Erase</button>
+</div>
+<div id="bring">
+  <span>Add files:
+    <button id="add-files-btn" type="button" disabled>Choose files...</button>
+    <button id="add-folder-btn" type="button" disabled>Choose a folder...</button>
+  </span>
+  <span>to <select id="add-dest" disabled></select></span>
+  <span>or drop them anywhere on this page</span>
+  <input id="add-files" type="file" multiple hidden>
+  <input id="add-folder" type="file" webkitdirectory hidden>
 </div>
 <div id="about">
   <h2>How to use it</h2>
