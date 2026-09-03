@@ -580,6 +580,12 @@ class SystemDesktopApp < FmrbApp
     return @wallpaper_path if @wallpaper_resolved
     @wallpaper_resolved = true
     @wallpaper_path = resolve_wallpaper
+    # Not the assignment on its own: Spinel compiles a trailing `@x = f` as a
+    # statement and returns nil, so the first call handed back nothing and the
+    # desktop came up without a wallpaper. Only under Spinel, and only on the
+    # first call -- the memoised second one was right, which is what made it
+    # look like the file had failed to load.
+    @wallpaper_path
   end
 
   def resolve_wallpaper

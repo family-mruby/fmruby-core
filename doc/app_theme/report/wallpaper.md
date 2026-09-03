@@ -66,6 +66,37 @@ Retro と sim は `[[sync_files]]` で起動時に西部の壁紙を `/data` へ
 - 空白を含むパスは今も通らない (取り込みが空白で切る)。/home に置く画像の
   名前に空白を入れないこと。
 
+## Spinel で壁紙が出なかった (2026-09-03 追記)
+
+**全 Spinel 構成 (カーネル + デスクトップ + エディタ) では壁紙が出なかった。**
+標準構成そのものなので、気づくのが遅れると出荷される。
+
+原因は `wallpaper_path` の**末尾が代入**だったこと。
+
+```ruby
+def wallpaper_path
+  return @wallpaper_path if @wallpaper_resolved
+  @wallpaper_resolved = true
+  @wallpaper_path = resolve_wallpaper    # ← Ruby では代入式の値が返る
+end
+```
+
+生成 C はこうなっていた。
+
+```c
+self->iv_wallpaper_path = sp_SystemDesktopApp_resolve_wallpaper(self);
+return sp_box_nil();                     /* 代入の値を捨てている */
+```
+
+**Spinel の既知の穴「末尾 nil」** (doc/archive/... の spinel desktop 復旧記録に
+ある 3 種のひとつ)。1 回目の呼び出しだけ nil を返し、2 回目からは memo が
+効いて正しい値になるので、「ファイルの読み込みに失敗している」ように見えた。
+実際は sync_file まで走っていて、ログにも `File sync: data/bg_426x240.png
+up-to-date` が出ている。**最後に `@wallpaper_path` を 1 行足して直した。**
+
+戻り値を使う他のメソッドは全部末尾を確認した (定数・ローカル・呼び出しで
+終わっており、同じ形は無い)。
+
 ## 確かめたこと
 
 sim (NARYAv4 構成、Spinel):
