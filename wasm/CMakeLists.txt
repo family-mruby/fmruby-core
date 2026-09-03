@@ -326,7 +326,7 @@ list(APPEND CORE_SRCS
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/main_wasm.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/page_settings_wasm.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/display_backend_wasm.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/backend/display_video_stub.c
+  ${CMAKE_CURRENT_SOURCE_DIR}/backend/display_video_wasm.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/rd_encoder_stub.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/audio_backend_wasm.c
   ${CMAKE_CURRENT_SOURCE_DIR}/backend/input_wasm.c
