@@ -116,6 +116,7 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_heap_info, [], :binstr
   ffi_func :fmrb_spx_app_sys_pool_info, [], :binstr
   ffi_func :fmrb_spx_app_pool_usage, [], :int
+  ffi_func :fmrb_spx_app_pool_used, [], :int
   ffi_func :fmrb_spx_app_gfx_stats, [], :binstr
   ffi_func :fmrb_spx_app_last_error, [], :binstr
 

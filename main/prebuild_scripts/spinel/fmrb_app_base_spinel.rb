@@ -1874,6 +1874,13 @@ class FmrbApp
     FmrbSpxApp.fmrb_spx_app_pool_usage
   end
 
+  # Bytes of this VM's pool in use (-1 when unavailable), matching the mruby
+  # FmrbApp.pool_used. The launcher's rescan logs the difference across a
+  # scan, which a percent cannot show.
+  def self.pool_used
+    FmrbSpxApp.fmrb_spx_app_pool_used
+  end
+
   def self.sys_pool_info
     buf = FmrbSpxApp.fmrb_spx_app_sys_pool_info
     {

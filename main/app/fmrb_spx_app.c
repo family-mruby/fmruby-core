@@ -358,6 +358,22 @@ int fmrb_spx_app_pool_usage(void)
     return (int)((used * 100) / total);
 }
 
+/* Bytes of this task's estalloc pool in use, or -1 when unavailable. The
+   percent above is too coarse to attribute a burst of garbage: on the
+   desktop's 1536 KB pool one percent is 15 KB. Same as the mruby
+   FmrbApp.pool_used, so a log line reads the same on both engines. */
+int fmrb_spx_app_pool_used(void)
+{
+    fmrb_app_task_context_t *ctx = fmrb_current();
+    if (ctx == NULL || ctx->est == NULL) return -1;
+    size_t total = 0, used = 0, free_bytes = 0;
+    int32_t frag = 0;
+    if (mrb_get_estalloc_stats(ctx->est, &total, &used, &free_bytes, &frag) != 0) {
+        return -1;
+    }
+    return (int)used;
+}
+
 const char *fmrb_spx_app_sys_pool_info(void)
 {
     static uint8_t buf[FMRB_SPX_APP_SYSPOOL_RECORD_SIZE];

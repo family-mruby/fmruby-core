@@ -811,6 +811,27 @@ class FmrbApp
   # ```
   def self.pool_usage: () -> Integer
 
+  # 自分のメモリの使用量 (バイト) <<en>> How much of its own memory is used, in bytes
+  #
+  # 使えないときは -1。**百分率では粗すぎるとき**に使う (デスクトップの
+  # 1536KB のプールでは 1% が 15KB)。前後で引き算すれば、その処理が出した
+  # ごみの量が分かる。
+  # ```ruby
+  # before = FmrbApp.pool_used
+  # scan_everything
+  # kb = (FmrbApp.pool_used - before) / 1024
+  # ```
+  # <<en>>
+  # -1 when it cannot be read. Use it where the percent is too coarse: one
+  # percent of the desktop's 1536KB pool is 15KB. Subtract across a piece of
+  # work and you have the garbage it made.
+  # ```ruby
+  # before = FmrbApp.pool_used
+  # scan_everything
+  # kb = (FmrbApp.pool_used - before) / 1024
+  # ```
+  def self.pool_used: () -> Integer
+
   # 機械全体のメモリの様子 <<en>> The whole machine's memory
   #
   # ```ruby
