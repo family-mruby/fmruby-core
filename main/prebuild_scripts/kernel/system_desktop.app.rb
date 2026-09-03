@@ -1507,9 +1507,18 @@ class SystemDesktopApp < FmrbApp
         # The app has its canvas. The kernel sends this BEFORE it hands over
         # the screen and suspends us (on_app_started clears the indicator
         # first on purpose, so a fast app cannot leave the raise queued), so
-        # clearing here would paint the desktop one moment before the app
+        # painting the desktop here would show it one moment before the app
         # covers it. Keep waiting -- but not for another 25 s: from here the
         # app either takes the screen or never will.
+        #
+        # Take the notice off the canvas though. It has said what it had to
+        # say, and leaving it there means it is still on the foreground layer
+        # underneath the app: it was seen again for an instant when the app
+        # exited, before the desktop repainted over it.
+        @starting_name = nil
+        @starting_at = nil
+        @gfx.clear(0x01)
+        @gfx.present
         @direct_boot_until = Machine.board_millis + DIRECT_BOOT_GRACE_MS
       else
         clear_starting
@@ -1990,6 +1999,12 @@ class SystemDesktopApp < FmrbApp
     # Hide foreground canvas (clear to transparent)
     @gfx.clear(0x01)
     @gfx.present
+    # Whatever brought us here owns the screen now, so the direct-boot wait is
+    # over: coming back means being an ordinary desktop again, and on_resume
+    # paints one. Belt and braces with the clear above -- between them there
+    # is no state and no pixel left of the notice.
+    @direct_boot = false
+    @direct_boot_until = nil
     Log.info("Desktop suspended")
   end
 
