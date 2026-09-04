@@ -262,6 +262,10 @@ function currentResolution() {
 // values into a format that may have moved on.
 const CONF_KEYS = [
   'language', 'keyboard_layout', 'timezone', 'debug_mode',
+  // Choices made in Config or by editing the file, each a single token on
+  // its own line. startup_app is also what ?app= sets; that one is pushed
+  // after these, so the URL wins when both are present.
+  'boot_splash', 'startup_app', 'mouse_scale_x', 'mouse_scale_y', 'wheel_lines',
   // A wallpaper chosen inside the machine. It is a quoted path, which is why
   // the capture below stops at whitespace rather than at the end of the line.
   'wallpaper',

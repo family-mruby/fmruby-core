@@ -42,7 +42,9 @@ static int s_res_w, s_res_h;
  * /etc is rebuilt from the bundle on every visit, so without this a Save is
  * forgotten the moment the tab is reloaded. Key and value arrive exactly as
  * they appear in the file, quotes and all. */
-#define CONF_OVERRIDE_MAX 16
+/* Room for every key the page carries (CONF_KEYS in wasm/web/main.js, 19 as
+ * of this writing) plus the startup_app that ?app= adds. */
+#define CONF_OVERRIDE_MAX 24
 #define CONF_TOKEN_MAX 32
 /* Values are longer than keys: `wallpaper` carries a path, and
  * "/usr/share/backgrounds/bg_cyber_426x240.png" with its quotes is 45
