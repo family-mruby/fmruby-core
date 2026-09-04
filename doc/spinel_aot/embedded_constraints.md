@@ -605,6 +605,54 @@ Ruby では `x = v` は値 `v` を持つ式で、メソッドの最後に置け�
   いずれも**生成は通り、走らせて初めて分かる**。標準構成 (全 Spinel) で
   実際に動かす検証を省けない理由がこれ。
 
+### 9.9 分岐の片方が Hash 由来だと、戻り値ごと箱になる
+
+2026-09-04 に CI (`build-linux (spinel)`) を止めた実例。
+
+```
+system_desktop_combined.rb:7245: error: incompatible type for argument 1 of 'sp_file_exist'
+```
+
+書いていたのはこれ。
+
+```ruby
+def icon_bmp_source(icon_file)          # icon_file は app[:icon_file]
+  return icon_file unless icon_file.end_with?(S_ICON_EXT)
+  "#{icon_file[0, ...]}#{S_BMP_EXT}"
+end
+...
+unless File.exist?(icon_bmp_source(f))  # ここで落ちる
+```
+
+**Hash から取り出した値は `sp_RbVal` (箱)** で、それを片方の分岐がそのまま
+返すと、**もう片方が文字列でも戻り値の型は箱になる**。生成 C で確かめられる。
+
+```c
+static const char * ...icon_bmp_source(...)   /* 直したあと */
+volatile sp_RbVal lv_src = sp_box_nil();      /* 直す前。これが渡らない */
+```
+
+**箱のままでも Ruby 的な操作は通る**のが厄介なところで、同じ値の文字列補間は
+`sp_poly_to_s` が挟まって普通に動く。**拒むのはネイティブ関数だけ**
+(`sp_file_exist(const char *)`)。つまり**同じ変数が 1 行目では通り、
+2 行目で型エラーになる**。
+
+直し方は**全部の分岐を同じ型に揃える**こと。ここでは先頭で `to_s` して、
+以降はその文字列だけを使う。
+
+```ruby
+name = icon_file.to_s
+return name unless name.end_with?(S_ICON_EXT)
+"#{name[0, ...]}#{S_BMP_EXT}"
+```
+
+`to_s` は nil 避けではない (**nil は呼ぶ側が弾いている**)。**型を 1 つに
+決めるため**である。
+
+見つけ方: エラーは**生成された .rb の行番号**で出る。`FMRB_APP_ENGINE_DESKTOP=spinel
+rake spinel:gen` で同じものを作り、その行を見る。既定は mruby なので、
+**素の `rake spinel:gen` ではデスクトップが生成されず再現しない**。
+
 ## 10. 数値サマリ (before / after)
 
 移植で回収した内部 DRAM:

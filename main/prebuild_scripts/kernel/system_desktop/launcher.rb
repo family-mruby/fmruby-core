@@ -73,8 +73,15 @@ module LauncherMixin
   # App entries still carry the .icon path (that is what the .toml files and
   # VM_ICON_FILES name); the BMP beside it is what actually gets loaded.
   def icon_bmp_source(icon_file)
-    return icon_file unless icon_file.end_with?(S_ICON_EXT)
-    "#{icon_file[0, icon_file.length - S_ICON_EXT.length]}#{S_BMP_EXT}"
+    # to_s, and not because the caller might hand over a nil: it arrives from
+    # a Hash, so Spinel only knows it as a boxed value, and returning it
+    # unchanged from one branch makes the whole method boxed. Anything native
+    # taking the result then refuses it -- File.exist? below wants a real
+    # string, and said so as "incompatible type for argument 1 of
+    # sp_file_exist". Both branches String, and the method is a String.
+    name = icon_file.to_s
+    return name unless name.end_with?(S_ICON_EXT)
+    "#{name[0, name.length - S_ICON_EXT.length]}#{S_BMP_EXT}"
   end
 
   # Push the BMP to graphics-audio once and build the sprite image from it.
