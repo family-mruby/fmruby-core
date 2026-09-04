@@ -368,6 +368,48 @@ namespace :wasm do
     puts "  coi-serviceworker supplies the cross-origin isolation, so no headers are needed."
   end
 
+  # docs/studio, because the site already says so: getting_started/studio.md
+  # and its Japanese twin were written and committed ahead of the page they
+  # point at, and they link to /studio/.
+  #
+  # The org site (family-mruby.github.io) is MkDocs, deployed with
+  # `mkdocs gh-deploy`, so ONLY what sits under its docs/ reaches the web --
+  # a directory at that repo's root would never be published. MkDocs copies
+  # anything that is not Markdown through untouched, which is exactly what a
+  # self-contained page wants: no theme, no nav, no rewriting.
+  #
+  # GitHub Pages cannot send COOP/COEP, and does not need to: coi-serviceworker
+  # supplies the isolation from inside the page (at the cost of one reload on a
+  # first visit). That is the same reason wasm:dist says any static server will
+  # do.
+  #
+  # The .gz copies wasm:deploy makes are deliberately not carried over. They
+  # exist for nginx's gzip_static; Pages compresses on its own, and shipping
+  # them would double what the site repository carries forever.
+  desc "Stage the bundle into the docs site for GitHub Pages (FMRB_SITE_DIR=path to family-mruby.github.io)"
+  task :site => :dist do
+    # Where the site is checked out. tmp/ first: that is the working clone
+    # inside this tree, and it is the one being published from; the sibling of
+    # family-mruby is the other place it turns up. FMRB_SITE_DIR beats both.
+    site = ENV["FMRB_SITE_DIR"] || [
+      File.expand_path("../tmp/family-mruby.github.io", ROOT_DIR),
+      File.expand_path("../../family-mruby.github.io", ROOT_DIR),
+    ].find { |d| File.exist?(File.join(d, "mkdocs.yml")) }
+    abort "no checkout of the site found (set FMRB_SITE_DIR)" if site.nil?
+    abort "not a checkout of the site: #{site} (set FMRB_SITE_DIR)" unless
+      File.exist?(File.join(site, "mkdocs.yml"))
+    dist = File.join(WASM_BUILD_DIR, "dist")
+    dest = File.join(site, "docs", "studio")
+    rm_rf dest
+    mkdir_p dest
+    files = Dir.glob(File.join(dist, "*")).reject { |f| f.end_with?(".gz") }
+    files.each { |f| cp f, File.join(dest, File.basename(f)) }
+    total = files.sum { |f| File.size(f) }
+    puts "wasm:site: #{files.length} files, #{(total / 1024.0 / 1024).round(2)} MB -> #{dest}"
+    puts "  commit them in that repository; its deploy workflow publishes"
+    puts "  https://family-mruby.github.io/studio/"
+  end
+
   desc "Copy the built bundle to a host that serves it (FMRB_WEB_DEST=user@host:/path)"
   task :deploy => :dist do
     dest = ENV["FMRB_WEB_DEST"] or
