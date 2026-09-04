@@ -2160,10 +2160,23 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
 
         p4_image_t *img = image_store_find(cmd->image_id);
         if (img && img->sprite) {
-            img->sprite->pushSprite(dst, cmd->x, cmd->y);
-            FMRB_LOGI(TAG, "DRAW_IMAGE: id=%u -> canvas=%u (%d,%d) %ux%u",
+            // Scale is 8.8 fixed point, 0 meaning "as is" for x and "same as
+            // x" for y (the graphics-audio side reads it the same way). At
+            // 1:1 the plain push is cheaper; otherwise the sprite is pushed
+            // through the zoom path with its pivot at the top-left corner, so
+            // (x, y) stays the corner whatever the scale.
+            float zx = cmd->scale_x_fp8 ? cmd->scale_x_fp8 / 256.0f : 1.0f;
+            float zy = cmd->scale_y_fp8 ? cmd->scale_y_fp8 / 256.0f : zx;
+            if (zx == 1.0f && zy == 1.0f) {
+                img->sprite->pushSprite(dst, cmd->x, cmd->y);
+            } else {
+                img->sprite->setPivot(0.0f, 0.0f);
+                img->sprite->pushRotateZoom(dst, (float)cmd->x, (float)cmd->y,
+                                            0.0f, zx, zy);
+            }
+            FMRB_LOGI(TAG, "DRAW_IMAGE: id=%u -> canvas=%u (%d,%d) %ux%u x%.2f/%.2f",
                       cmd->image_id, cmd->canvas_id, cmd->x, cmd->y,
-                      img->width, img->height);
+                      img->width, img->height, zx, zy);
             return 0;
         }
 
