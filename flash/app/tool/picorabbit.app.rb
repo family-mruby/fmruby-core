@@ -197,7 +197,10 @@ class SlideShowApp < FmrbApp
   # and the eight sprite frames cost more than going back to the menu should.
   def ensure_deck(path)
     return true if @loaded_path == path && @renderer
-    @renderer.destroy_sprites if @renderer
+    if @renderer
+      @renderer.destroy_sprites
+      @renderer.release_images
+    end
     @renderer = nil
     @loaded_path = nil
     load_presentation(path)
@@ -216,6 +219,7 @@ class SlideShowApp < FmrbApp
       @renderer.goal_index = find_goal_index
       # Images in a deck are named relative to the deck itself.
       @renderer.deck_path = path
+      @renderer.background = @result.metadata["background"]
       @chime = @result.metadata["chime"] == "true"
       @slide_index = 0
       update_step
@@ -241,6 +245,8 @@ class SlideShowApp < FmrbApp
 
   def draw_menu
     @mode = :menu
+    # A video left playing would keep painting its frames over the list.
+    @renderer.stop_video if @renderer
     @gfx.clear(FmrbConst::THEME_WINDOW_BG)
     @gfx.fill_rect(0, 0, @window_width, MENU_HEAD_H, FmrbConst::THEME_MENU_BG)
     @gfx.set_text_size(1)
@@ -638,7 +644,10 @@ class SlideShowApp < FmrbApp
 
   def show_overlay(kind)
     @overlay = kind
-    @renderer.sprites_visible = false if @renderer
+    if @renderer
+      @renderer.sprites_visible = false
+      @renderer.stop_video
+    end
     @gfx.clear(kind == :black ? 0x00 : 0xFF)
     @gfx.present
   end
@@ -877,10 +886,12 @@ class SlideShowApp < FmrbApp
   end
 
   # Ctrl+Tab. The suspend hides the canvas, but a sprite lives in its own
-  # layer and would otherwise stay on top of the desktop.
+  # layer and would otherwise stay on top of the desktop. A video is stopped
+  # rather than paused: the resume draws the slide again, which opens it.
   def on_suspend
     return unless @renderer
     @renderer.sprites_visible = false
+    @renderer.stop_video
     @gfx.present
   end
 
@@ -900,7 +911,14 @@ class SlideShowApp < FmrbApp
   end
 
   def on_destroy
-    @renderer.destroy_sprites if @renderer
+    # The background pictures are not released here: the graphics context
+    # is already gone by on_destroy (delete_image raises), and the system
+    # reclaims an exiting app's images itself. Swapping decks releases them
+    # (ensure_deck), which is the case that matters.
+    if @renderer
+      @renderer.stop_video
+      @renderer.destroy_sprites
+    end
     Log.info("PicoRabbit destroyed")
   end
 end

@@ -19,6 +19,7 @@ module PicoRabbit
       metadata = {}
 
       current_goal = false
+      current_bg = nil
 
       lines = split_lines(content)
 
@@ -78,8 +79,10 @@ module PicoRabbit
           if current_title
             sl = Slide.new(current_title, current_elements)
             sl.goal = current_goal
+            sl.background = current_bg
             slides << sl
             current_goal = false
+            current_bg = nil
           end
           current_title = line[2, line.length - 2].strip.gsub("<br>", "\n")
           current_elements = []
@@ -98,17 +101,24 @@ module PicoRabbit
           next
         end
 
-        # Alignment directive. It belongs to the last element that draws
-        # something, so a blank line between the text and the directive does
-        # not swallow it. With nothing to align, the directive is dropped.
+        # Background of this slide: a path, or "none" to shut the deck's
+        # background off for this one page. Draws nothing itself.
         s = line.strip
-        if s == "{:.center}" || s == "{:.right}"
-          align = s == "{:.center}" ? :center : :right
+        if s.start_with?("{::background ") && s.end_with?("/}")
+          current_bg = s[14, s.length - 16].strip
+          next
+        end
+
+        # Attribute line: {:.center}, {:.large}, or several at once
+        # ({:.center .xlarge}). The classes belong to the last element that
+        # draws something, so a blank line between the text and the line does
+        # not swallow them. With nothing to attach to, the line is dropped.
+        if s.start_with?("{:.") && s.end_with?("}")
           ai = current_elements.length - 1
           while ai >= 0 && current_elements[ai].type == :blank
             ai -= 1
           end
-          current_elements[ai].align = align if ai >= 0
+          apply_classes(current_elements[ai], s[2, s.length - 3]) if ai >= 0
           next
         end
 
@@ -121,7 +131,7 @@ module PicoRabbit
             if close
               path = stripped_line[paren + 2, close - paren - 2]
               img = Element.new(:image, path)
-              apply_image_size(img, stripped_line[2, paren - 2])
+              apply_image_options(img, stripped_line[2, paren - 2])
               current_elements << img
               next
             end
@@ -189,6 +199,7 @@ module PicoRabbit
       if current_title
         sl = Slide.new(current_title, current_elements)
         sl.goal = current_goal
+        sl.background = current_bg
         slides << sl
       end
 
@@ -213,19 +224,70 @@ module PicoRabbit
       result
     end
 
-    # The alt text of an image doubles as its size: "w=200" is a width in
-    # pixels and "60%" a share of the body width. Anything else is a caption
-    # nobody shows, and is dropped.
-    def self.apply_image_size(elem, alt)
+    # The alt text of an image is read as words: "w=200" is a width in
+    # pixels and "60%" a share of the body width; for a video (.mjpg)
+    # "fps=10" sets the rate and "once" stops it at the end ("loop" is the
+    # default, spelled out). Any other word is a caption nobody shows, and
+    # is dropped.
+    def self.apply_image_options(elem, alt)
       return unless alt && alt.length > 0
-      if alt.end_with?("%")
-        pct = alt[0, alt.length - 1].to_i
-        elem.img_pct = pct if pct > 0
-        return
+      words = split_words(alt)
+      i = 0
+      while i < words.length
+        w = words[i]
+        if w.end_with?("%")
+          pct = w[0, w.length - 1].to_i
+          elem.img_pct = pct if pct > 0
+        elsif w.start_with?("w=")
+          px = w[2, w.length - 2].to_i
+          elem.img_w = px if px > 0
+        elsif w.start_with?("fps=")
+          fps = w[4, w.length - 4].to_i
+          elem.video_fps = fps if fps > 0
+        elsif w == "once"
+          elem.video_loop = false
+        elsif w == "loop"
+          elem.video_loop = true
+        end
+        i += 1
       end
-      return unless alt.start_with?("w=")
-      px = alt[2, alt.length - 2].to_i
-      elem.img_w = px if px > 0
+    end
+
+    # ".center .xlarge" -> the element's alignment and size. A class this
+    # parser does not know is ignored, so a deck written for a fuller
+    # renderer still opens.
+    def self.apply_classes(elem, classes)
+      words = split_words(classes)
+      i = 0
+      while i < words.length
+        case words[i]
+        when ".center" then elem.align = :center
+        when ".right" then elem.align = :right
+        when ".small" then elem.size = :small
+        when ".large" then elem.size = :large
+        when ".xlarge" then elem.size = :xlarge
+        when ".shadow" then elem.shadow = true
+        end
+        i += 1
+      end
+    end
+
+    def self.split_words(str)
+      words = []
+      start = nil
+      i = 0
+      len = str.length
+      while i < len
+        if str[i] == " "
+          words << str[start, i - start] if start
+          start = nil
+        elsif start.nil?
+          start = i
+        end
+        i += 1
+      end
+      words << str[start, len - start] if start
+      words
     end
   end
 end

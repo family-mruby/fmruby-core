@@ -71,7 +71,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-09-01) P0-P3 完了 (P3 は実機確認 4 件残)。P4 完了 (report/p4.md)。**P6 = 青ちらつきに帯域削減で当たる計画を追加** (instruction_p6.md、未着手)。残り = ユーザ確認とモニタ相性、無印 ESP32 疎通 (保留) 〔10 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔5 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
-- `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — - 〔15 files〕
+- `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — **進行中** (2026-09-03) P0-P4・P6-P8 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済)。残は P5 (見せ場、任意) 〔17 files〕
 - `raycast_spinel/` [Raycaster の計算を Spinel gem 化する実装計画](raycast_spinel/plan.md) — - 〔2 files〕
 - `remote_debug/` [PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)](remote_debug/vm_remote_debug_design.md) — - 〔9 files〕
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕

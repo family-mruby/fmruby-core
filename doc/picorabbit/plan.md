@@ -1,5 +1,7 @@
 # PicoRabbit (Tab5) の拡張計画
 
+> 状態: 進行中 | 更新: 2026-09-03 | P0-P4・P6-P8 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済)。残は P5 (見せ場、任意)
+
 PicoRabbit は Harucom 向けの Markdown 発表ツールで、Family mruby には
 `flash/app/tool/picorabbit.app.rb` + gem `lib/add/picoruby-fmrb-picorabbit`
 (parser / renderer / slide) として基礎が移植済みである (`/home/slides/demo.md`、
@@ -130,9 +132,48 @@ PNG のみ。詳細は instruction_p7.md。
 **画像は 426x240 以下・100KB 以下**を目安にする (それ以上は Retro の転送と
 描画側のメモリで苦しい。初回の転送はスライドを出すのを待たせる)。
 
+## P8: スライドに動画を載せる
+
+`![fps=15](movies/demo.mjpg)` のように **拡張子 `.mjpg` の `![..](..)`** を
+動画として扱う。描くのは renderer ではなく表示側の再生器
+(`FmrbGfx#video_open`、doc/archive/video) で、renderer は絵の置き場所に
+開いて present の後に動かし、次に canvas を塗る前に止める。alt は空白区切りの
+語で読み、`fps=NN` (1〜30) と `once` (繰り返さない) が動画の指定。詳細は
+instruction_p8.md。
+
+- **Modern (Tab5) とブラウザ版 (wasm) で動く**。Retro と sim では
+  `video_open` が nil なので `[video: path]` の 1 行になる。
+- 再生器は**拡縮しない**ので、コマの大きさのまま置き、本文幅と残り高さに
+  入らなければ代替表示。1 枚に 1 本。音は無い。幅・高さは 16 の倍数、
+  P4 は 448x256 まで。
+- wait の段階送りも描き直しなので、動画は段階ごとに先頭からやり直す。
+- サンプルは `flash/usr/share/samples/slides/movies/demo.mjpg` (288x160、
+  30 コマ、`tools/gen_test_mjpg.py`)。実物は
+  `ffmpeg -i src.mp4 -vf "scale=288:160,fps=15" -q:v 4 -f mjpeg out.mjpg`。
+
+## P9: 背景画像と行ごとの文字サイズ
+
+- **文字サイズ**: 寄せと同じ行指示で `{:.small}` / `{:.large}` / `{:.xlarge}`
+  (併記可 `{:.center .xlarge}`)。段は 8 / 12 / 16 / 24 / 32 で、24 と 32 は
+  12 と 16 の整数倍 (新しい字形は Tab5 の区画に入らない)。本文 (`font_size`)
+  を基準に 1 段下 / 1 段上 / 2 段上。text・箇条書き・番号・引用・表紙の副題に
+  効く。見出しには効かない。
+- **背景画像**: frontmatter `background: path` (デッキ全体) と枚ごとの
+  `{::background path/}` (`none` で無地に戻す)。PNG を**画面に引き伸ばして**
+  貼る (426x240 で作れば等倍)。背景のある枚は本文を透明描画、見出しの帯・
+  コード枠・下の帯は塗りのまま。画像はデッキ内で 1 回だけ作って持つ (3 枚まで)。
+- **影付き文字**: `{:.shadow}` (行) か frontmatter `shadow: true` (全行)。
+  同じ文字列をテーマの `shadow` 色で右下に 1 セル (24/32 では 2 px) ずらして
+  描き、その上に本来の色で描く。影のある行は地色の箱を敷かない (箱が影を
+  消すため)。帯の上の見出しと inline code は対象外。背景画像と組み合わせる
+  ための機能。
+- Modern の表示側 DRAW_IMAGE が scale を無視していたのをこの段で直した
+  (report/p9.md)。P7 の画像の拡縮も Modern ではこれで初めて効く。
+- 詳細は instruction_p9.md。
+
 ## 順番と関所
 
-**土台 (1-5) → P1 → P2 → P3 → P4 → P6 → P7 → P5**。P1 は絵が先。各段の終わりに sim で
+**土台 (1-5) → P1 → P2 → P3 → P4 → P6 → P7 → P8 → P9 → P5**。P1 は絵が先。各段の終わりに sim で
 `/home/slides/demo.md` を通し、`GFX STATS` の presents/s が放置中 1/s
 (デスクトップの時計のみ) であることを確認する。Tab5 実機の見た目は
 ユーザ確認 (現在 Tab5 は off)。

@@ -7,7 +7,7 @@ module PicoRabbit
     attr_reader :name
     attr_accessor :bg, :text, :title, :title_bg, :bullet, :code_bg, :code_text,
                   :quote_bar, :quote_text, :footer_text, :footer_bg,
-                  :inline_code_bg, :inline_code_text
+                  :inline_code_bg, :inline_code_text, :shadow
 
     def initialize(name)
       @name = name
@@ -33,6 +33,7 @@ module PicoRabbit
       t.footer_bg = ::FmrbConst::THEME_WINDOW_BG
       t.inline_code_bg = 0x24  # Dark gray
       t.inline_code_text = 0xFC # Yellow
+      t.shadow = 0x00          # Black
       t
     end
 
@@ -54,6 +55,7 @@ module PicoRabbit
       t.footer_bg = 0x00       # Black
       t.inline_code_bg = 0x24  # Dark gray
       t.inline_code_text = 0xFC # Yellow
+      t.shadow = 0x24          # Dark gray: black would vanish on this ground
       t
     end
 
@@ -72,6 +74,7 @@ module PicoRabbit
       t.footer_bg = 0xFF
       t.inline_code_bg = 0xDB
       t.inline_code_text = 0xE0
+      t.shadow = 0x00          # Black
       t
     end
 
@@ -236,6 +239,34 @@ module PicoRabbit
       @goal_idx = nil
       @deck_dir = nil
       @deck_tag = "deck"
+      @video = nil
+      @deck_bg = nil
+      @bg_drawn = false
+      @images = {}
+      # `shadow: true` in the frontmatter puts the shadow under every line;
+      # {:.shadow} does it for one.
+      @deck_shadow = metadata["shadow"] == "true"
+      @shadow_on = false
+      use_size(nil)
+    end
+
+    # The deck's background picture (frontmatter `background:`), a path
+    # relative to the deck. A slide's own {::background/} wins over it.
+    def background=(path)
+      @deck_bg = (path && path.length > 0) ? path : nil
+    end
+
+    # Let go of the background pictures on the display side. The deck is
+    # being replaced or the app is closing; the system would reclaim them at
+    # exit, but a new deck should not have to wait for that.
+    def release_images
+      keys = @images.keys
+      i = 0
+      while i < keys.length
+        @gfx.delete_image(@images[keys[i]][0])
+        i += 1
+      end
+      @images = {}
     end
 
     # Which slide is the finish line. nil means the last one.
@@ -314,6 +345,8 @@ module PicoRabbit
     # selected row is a bar; the slide the talk is actually on is marked with
     # a caret, so the two are told apart while the selection moves.
     def render_index(slides, current, selected)
+      stop_video
+      @bg_drawn = false
       @gfx.clear(@theme.bg)
       @gfx.fill_rect(0, 0, @w, CHAR_H + 4, @theme.title_bg)
       use_ui
@@ -403,7 +436,12 @@ module PicoRabbit
       @current_slide_idx = slide_idx
       @last_slide = slide
       @last_turn_ms = Machine.board_millis
+      # The player writes into this canvas on its own clock; it has to be
+      # off before the canvas is cleared, or its next frame lands on the new
+      # slide. The slide opens one again if it carries a video.
+      stop_video
       @gfx.clear(@theme.bg)
+      @bg_drawn = draw_background(slide)
 
       if slide.title_slide
         render_title_slide(slide)
@@ -425,6 +463,9 @@ module PicoRabbit
       # 6x8 pair and never asks for a font, so leave that selected.
       use_ui
       @gfx.present
+      # Only now: a frame arriving before the present would be copied into
+      # the committed page along with the half-drawn slide.
+      start_video
     end
 
     # Load the eight frames and put the two runners on the start line. Called
@@ -440,6 +481,17 @@ module PicoRabbit
                                     x: sprite_x(0.0), y: @sprite_y, z: 3)
       ::Log.info("PicoRabbit: #{USAGI_FILES.length + KAME_FILES.length} sprite frames loaded")
       true
+    end
+
+    # Stop the video player and forget it. The last frame stays on the
+    # canvas, which every caller paints over. Public, above the private
+    # line: the app calls it wherever it paints the canvas itself (a blank
+    # screen, the menu, Ctrl+Tab) -- the rest of the video code sits with
+    # the images below.
+    def stop_video
+      return unless @video
+      @video.stop
+      @video = nil
     end
 
     def destroy_sprites
@@ -554,12 +606,22 @@ module PicoRabbit
 
     def render_title_slide(slide)
       lines = slide.title ? slide.title.split("\n") : [""]
-      sub_lines = []
+      subs = []
       slide.elements.each do |e|
-        sub_lines << e.text if e.type == :text && e.text
+        subs << e if e.type == :text && e.text
       end
 
-      total_h = lines.length * (@head_h + 4) + sub_lines.length * @line_h + 8
+      # Each subtitle line at its own size ({:.large} and friends apply
+      # here too), so the block is measured line by line.
+      sub_h = 0
+      i = 0
+      while i < subs.length
+        use_size(subs[i].size, subs[i].shadow)
+        sub_h += @line_h
+        i += 1
+      end
+      use_size(nil)
+      total_h = lines.length * (@head_h + 4) + sub_h + 8
 
       y = (@h - total_h) / 2
 
@@ -582,14 +644,16 @@ module PicoRabbit
 
       y += 8
       i = 0
-      while i < sub_lines.length
-        line = sub_lines[i]
+      while i < subs.length
+        line = subs[i].text
+        use_size(subs[i].size, subs[i].shadow)
         x = (@w - wb(line)) / 2
         use_body
         draw_str(x, y, line, @theme.text, @theme.bg)
         y += @line_h
         i += 1
       end
+      use_size(nil)
     end
 
     def render_content_slide(slide, step)
@@ -612,7 +676,13 @@ module PicoRabbit
           next
         end
 
-        break if y + @line_h > max_y
+        # A {:.large} line draws, measures and spaces at its own size; the
+        # body's metrics come back at the end of the element.
+        use_size(elem.size, elem.shadow)
+        if y + @line_h > max_y
+          use_size(nil)
+          break
+        end
 
         case elem.type
         when :text
@@ -694,11 +764,16 @@ module PicoRabbit
           @gfx.fill_rect(content_x, qy, 2, y - qy - (@line_h - @char_h), @theme.quote_bar)
 
         when :image
-          y = draw_image_element(elem, content_x, content_w, y, max_y)
+          if video_path?(elem.text)
+            y = draw_video_element(elem, content_x, content_w, y, max_y)
+          else
+            y = draw_image_element(elem, content_x, content_w, y, max_y)
+          end
 
         when :blank
           y += @line_h / 2
         end
+        use_size(nil)
       end
     end
 
@@ -724,7 +799,8 @@ module PicoRabbit
       img = nil
       dest = "#{IMAGE_CACHE}/#{@deck_tag}_#{image_basename(src)}"
       begin
-        @gfx.sync_file(src, dest: dest)
+        # See background_image: a missing file is not sent on to the display.
+        return image_fallback(elem, content_x, y) unless @gfx.sync_file(src, dest: dest)
         t1 = Machine.board_millis
         img = @gfx.create_image(dest)
       rescue => e
@@ -797,8 +873,136 @@ module PicoRabbit
       y + @line_h
     end
 
+    # ---- background -----------------------------------------------------
+    #
+    # A PNG behind the slide, stretched to the screen: a picture made at the
+    # screen's size draws 1:1, anything else is pulled to fit. The slide's
+    # own {::background/} wins over the deck's frontmatter, and "none" turns
+    # the deck's off for that page. The picture reaches the display side the
+    # way slide images do (sync_file, then create_image), but is created once
+    # per deck and kept: it is drawn on every page turn and every wait step.
+    BG_CACHE_MAX = 3
+
+    def draw_background(slide)
+      path = slide.background || @deck_bg
+      return false if path.nil? || path == "none" || path.length == 0
+      src = image_source(path)
+      return false unless src && src.end_with?(".png")
+      t0 = Machine.board_millis
+      img = background_image(src)
+      return false unless img
+      @gfx.draw_image(img[0], x: 0, y: 0,
+                      scale_x: @w.to_f / img[1], scale_y: @h.to_f / img[2])
+      ::Log.info("PicoRabbit: background #{image_basename(src)} #{img[1]}x#{img[2]} -> #{@w}x#{@h}, #{Machine.board_millis - t0}ms")
+      true
+    end
+
+    # [id, w, h] for the picture, fetched and created on first use. The
+    # table holds a few, and the oldest goes when it is full.
+    def background_image(src)
+      cached = @images[src]
+      return cached if cached
+      img = nil
+      begin
+        dest = "#{IMAGE_CACHE}/#{@deck_tag}_#{image_basename(src)}"
+        # A file that could not be copied is not asked for: in the simulator
+        # the display side answers a failed create with no ACK at all, which
+        # is a ten-second wait for nothing.
+        return nil unless @gfx.sync_file(src, dest: dest)
+        img = @gfx.create_image(dest)
+      rescue => e
+        ::Log.info("PicoRabbit: background #{src}: #{e.message}")
+        return nil
+      end
+      return nil unless img && img[:width] > 0 && img[:height] > 0
+      if @images.length >= BG_CACHE_MAX
+        oldest = @images.keys[0]
+        @gfx.delete_image(@images[oldest][0])
+        @images.delete(oldest)
+      end
+      @images[src] = [img[:id], img[:width], img[:height]]
+    end
+
+    # ---- video ----------------------------------------------------------
+    #
+    # A .mjpg (JPEG frames back to back) is not drawn by the renderer at all:
+    # the display side plays it into a rectangle of this canvas on its own
+    # clock (FmrbGfx#video_open, doc/archive/video). The renderer's part is
+    # to open it where the picture would go, start it once the slide has
+    # been presented, and stop it before anything else is drawn over the
+    # canvas. The runners are sprites composited above, so they do not
+    # touch the rectangle.
+    #
+    # The player does not scale, so the file shows at its own size and has
+    # to fit in what is left of the slide. It plays on Modern and in the
+    # browser; elsewhere video_open answers nil and the slide names the
+    # file instead, the way a missing picture is named.
+    VIDEO_DEFAULT_FPS = 15
+    VIDEO_MAX_FPS = 30
+
+    def video_path?(path)
+      path && path.end_with?(".mjpg")
+    end
+
+    def draw_video_element(elem, content_x, content_w, y, max_y)
+      src = image_source(elem.text)
+      return video_fallback(elem, content_x, y, nil) unless src
+      # One player: a second file would close the first.
+      return video_fallback(elem, content_x, y, "one video a slide") if @video
+
+      fps = elem.video_fps || VIDEO_DEFAULT_FPS
+      fps = VIDEO_MAX_FPS if fps > VIDEO_MAX_FPS
+      loop = elem.video_loop.nil? ? true : elem.video_loop
+
+      # The size is only known once the file is open, and the player draws
+      # nothing until told to play, so open it at the left edge first and
+      # move it once the alignment is known.
+      t0 = Machine.board_millis
+      video = open_video(src, content_x, y, fps, loop)
+      return video_fallback(elem, content_x, y, nil) unless video
+      w = video.width
+      h = video.height
+      if w < 1 || h < 1 || w > content_w || h > max_y - y
+        video.stop
+        return video_fallback(elem, content_x, y, "#{w}x#{h} does not fit")
+      end
+      ix = calc_align_x_px(elem, w, content_x, content_w)
+      if ix != content_x
+        video.stop
+        video = open_video(src, ix, y, fps, loop)
+        return video_fallback(elem, content_x, y, nil) unless video
+      end
+      @video = video
+      t1 = Machine.board_millis
+      ::Log.info("PicoRabbit: video #{image_basename(src)} #{w}x#{h} @#{fps}fps at (#{ix},#{y}), open #{t1 - t0}ms")
+      y + h + @line_h / 2
+    end
+
+    def open_video(src, x, y, fps, loop)
+      begin
+        @gfx.video_open(src, x: x, y: y, fps: fps, loop: loop)
+      rescue => e
+        ::Log.info("PicoRabbit: video #{src}: #{e.message}")
+        nil
+      end
+    end
+
+    # Opened during the draw, started after the present (render_slide).
+    def start_video
+      @video.play if @video
+    end
+
+    def video_fallback(elem, content_x, y, why)
+      use_body
+      note = why ? "[video: #{elem.text} - #{why}]" : "[video: #{elem.text}]"
+      draw_str(content_x, y, note, @theme.footer_text, @theme.bg)
+      y + @line_h
+    end
+
     def draw_list_item(indent, y, marker, text, right_x)
-      tx = indent + marker.length * @ascii_w
+      # The marker is drawn at the text's size, so its width is measured
+      # rather than counted in body cells.
+      tx = indent + wb(marker)
       # Laying out measures at size 1 (and with its own font), so the body
       # font goes on after it and not before, or the marker comes out in
       # whatever the measuring left selected.
@@ -1067,12 +1271,53 @@ module PicoRabbit
       @cur_font_got = @gfx.set_font(family, size)
     end
 
+    # The pixel steps a line can be drawn at. 12 and 16 are cuts of efont;
+    # 24 and 32 are those doubled by the canvas (the machine has no larger
+    # cut, and the app partition has no room for one), and 8 is misaki.
+    SIZE_STEPS = [8, 12, 16, 24, 32]
+
+    # Select the size an element is drawn at: nil for the body, or :small /
+    # :large / :xlarge for one step down, one up, two up from it, held at the
+    # ends of the ladder. Sets the current font size and multiplier and the
+    # line and glyph heights that go with them; use_body / wb / use_bold read
+    # these, so everything drawn until the next use_size follows.
+    def use_size(size, shadow = false)
+      @size = size
+      @shadow_on = @deck_shadow || shadow
+      steps = size == :small ? -1 : size == :large ? 1 : size == :xlarge ? 2 : 0
+      if @font_kind == :efont
+        idx = SIZE_STEPS.index(@body_px) || 1
+        idx += steps
+        idx = 0 if idx < 0
+        idx = SIZE_STEPS.length - 1 if idx >= SIZE_STEPS.length
+        px = SIZE_STEPS[idx]
+        if px > 16
+          @cur_px = px / 2
+          @cur_mul = 2
+        else
+          @cur_px = px
+          @cur_mul = 1
+        end
+        @char_h = px
+        @line_h = px + px / 4
+      else
+        mul = @ts + steps
+        mul = 1 if mul < 1
+        mul = MAX_TEXT_SIZE if mul > MAX_TEXT_SIZE
+        @cur_px = CHAR_H
+        @cur_mul = mul
+        @char_h = CHAR_H * mul
+        @line_h = LINE_H * mul
+      end
+    end
+
     def use_body
       if @font_kind == :efont
-        use_font(:ja, @body_px)
+        use_font(:ja, @cur_px)
+        set_ts(@cur_mul)
       else
         use_font(:default)
-        set_ts(@ts)
+        set_ts(@cur_mul)
       end
     end
 
@@ -1099,8 +1344,10 @@ module PicoRabbit
     # Bold for the run that follows. False means this machine has no bold cut
     # and the caller draws its own -- twice, a pixel apart -- as P2 did.
     def use_bold
-      if @font_kind == :efont && @has_bold
-        use_font(:ja_bold, @body_px)
+      # The bold cut exists at 12 only; 24 is that cut doubled.
+      if @font_kind == :efont && @has_bold && @cur_px == 12
+        use_font(:ja_bold, 12)
+        set_ts(@cur_mul)
         return true
       end
       use_body
@@ -1119,9 +1366,9 @@ module PicoRabbit
     def wb(str)
       if @font_kind == :efont
         set_ts(1)
-        @gfx.text_width(str, :ja, @body_px)
+        @gfx.text_width(str, :ja, @cur_px) * @cur_mul
       else
-        w1(str) * @ts
+        w1(str) * @cur_mul
       end
     end
 
@@ -1152,6 +1399,22 @@ module PicoRabbit
     # Draw one run with the selected font. The hybrid draw (Font0 and misaki
     # per glyph) belongs to the misaki path alone: efont has ASCII of its own.
     def draw_str(x, y, str, color, bg = nil)
+      # Over a background picture the page colour is not painted behind the
+      # text, or every run would sit in its own box. Bands and code frames
+      # ask for their own colours and keep them. A shadowed line is drawn the
+      # same way: the box would wipe the shadow out.
+      bg = nil if (@bg_drawn || @shadow_on) && bg == @theme.bg
+      # The shadow: the same run in the theme's shadow colour, one cell
+      # step down and right (two at the doubled sizes), under the text.
+      # Runs on a band or in a code frame bring their own bg and get none.
+      if @shadow_on && bg.nil?
+        d = @cur_mul
+        draw_run(x + d, y + d, str, @theme.shadow, nil)
+      end
+      draw_run(x, y, str, color, bg)
+    end
+
+    def draw_run(x, y, str, color, bg)
       if @font_kind == :efont
         if bg
           @gfx.draw_text(x, y, str, color, bg)
