@@ -68,12 +68,33 @@ class Hello < FmrbApp
 end
 ```
 
+# 動画
+
+`.mjpg` を置くと、その場で動きます (Modern とブラウザ版)。
+
+![fps=15](movies/demo.mjpg)
+{:.center}
+
+# 大きさ
+
+寄せと同じ書き方で、行の大きさを変えられます。
+
+大きく
+{:.large}
+
+もっと大きく、中央に
+{:.xlarge .center}
+
+注記は小さく
+{:.small}
+
 # おわりに
+{::background /usr/share/backgrounds/bg_426x240.png/}
 
 作って、動かして、直す。
 
 Family mruby
-{:.center}
+{:.center .xlarge .shadow}
 
 `github.com/family-mruby`
 {:.center}

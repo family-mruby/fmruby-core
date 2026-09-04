@@ -175,11 +175,32 @@ The APU emulator supports:
 3. Triangle channel
 4. Noise channel
 
+# Video
+
+A `.mjpg` plays inside the slide (Modern and the browser):
+
+![fps=15](movies/demo.mjpg)
+{:.center}
+
+# Sizes
+
+A line takes its size the way it takes its alignment:
+
+Large text
+{:.large}
+
+Even larger, centred
+{:.xlarge .center}
+
+small print, for the footnotes
+{:.small}
+
 # Thank you!
+{::background /usr/share/backgrounds/bg_426x240.png/}
 
 Family mruby OS
 
-{:.center}
+{:.center .xlarge .shadow}
 
 `github.com/family-mruby`
 
