@@ -198,7 +198,29 @@ async function startAudio(ac) {
                             volume: M._fmrb_wasm_audio_volume() });
   }, 16);
   node.connect(ac.destination);
-  await ac.resume();
+  // From a real click this settles at once. Started by ?autostart=1 (which
+  // an ?app= link tends to carry, so the page opens straight into the app)
+  // there was no gesture, the browser keeps the context suspended, and the
+  // promise would hang here forever: race it, then wait for the first real
+  // press instead.
+  await Promise.race([ac.resume(), new Promise((r) => setTimeout(r, 500))]);
+  if (ac.state !== 'running') unlockAudioOnGesture(ac);
+}
+
+// The machine is up but silent because nobody clicked. The first press
+// anywhere on the page -- a key, a tap, a click on the machine's screen -- is
+// the gesture the browser wants; resume there, once, and say so until then.
+const AUDIO_HINT = 'running (click or press a key for sound)';
+function unlockAudioOnGesture(ac) {
+  const kinds = ['pointerdown', 'keydown', 'touchstart'];
+  const wake = async () => {
+    try { await ac.resume(); } catch (e) { return; }
+    if (ac.state !== 'running') return;
+    for (const k of kinds) window.removeEventListener(k, wake, true);
+    if (statusLine.textContent === AUDIO_HINT) statusLine.textContent = 'running';
+  };
+  for (const k of kinds) window.addEventListener(k, wake, true);
+  statusLine.textContent = AUDIO_HINT;
 }
 
 // ---- page settings (localStorage; the key never leaves this browser) ------
@@ -264,7 +286,9 @@ const CONF_KEYS = [
   'language', 'keyboard_layout', 'timezone', 'debug_mode',
   // Choices made in Config or by editing the file, each a single token on
   // its own line. startup_app is also what ?app= sets; that one is pushed
-  // after these, so the URL wins when both are present.
+  // after these, so the URL wins when both are present -- and a value that
+  // came from the URL is not captured (see captureConfSettings), so a link
+  // that opens one app does not turn into the page's permanent setting.
   'boot_splash', 'startup_app', 'mouse_scale_x', 'mouse_scale_y', 'wheel_lines',
   // A wallpaper chosen inside the machine. It is a quoted path, which is why
   // the capture below stops at whitespace rather than at the end of the line.
@@ -299,8 +323,14 @@ function captureConfSettings() {
   try {
     text = M.FS.readFile(CONF_PATH, { encoding: 'utf8' });
   } catch (e) { return; }
+  // With ?app= in the URL the file's startup_app is the URL's doing, not a
+  // choice made inside the machine (Config has no field for it), so it is
+  // left out: the link opens its app this once, and the page comes back
+  // plain next time. Written into the file by hand, it is kept like the rest.
+  const urlApp = new URLSearchParams(location.search).get('app');
   const keys = {};
   for (const k of CONF_KEYS) {
+    if (k === 'startup_app' && urlApp) continue;
     const m = text.match(new RegExp('^' + k + ' = ([^\\s#]+)', 'm'));
     if (m) keys[k] = m[1];
   }
