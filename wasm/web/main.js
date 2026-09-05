@@ -943,6 +943,11 @@ async function collectEntry(entry, prefix, out, depth) {
   }
 }
 
+// Cheap: MEMFS and IDBFS both answer a stat from memory.
+function machineHas(path) {
+  try { M.FS.stat(path); return true; } catch (e) { return false; }
+}
+
 function humanSize(n) {
   if (n < 1024) return n + ' B';
   if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB';
@@ -1289,7 +1294,15 @@ async function workScan(announce) {
       for (const it of items) {
         const file = await it.handle.getFile();
         const dest = st.path + '/' + safeRelative(it.rel);
-        if (workSeen.get(dest) === file.lastModified) continue;
+        // Both halves, not just the timestamp. The map says "the machine
+        // already has this version of this file", and it is kept across
+        // visits so a folder of pictures is not read whole every time -- but
+        // it cannot see the machine. A reload that lost what was in /home
+        // (a second tab, cleared storage, an eviction) left the map insisting
+        // the files were delivered while the machine sat empty, and only
+        // picking the folder again -- which starts from an empty map -- put
+        // them back.
+        if (workSeen.get(dest) === file.lastModified && machineHas(dest)) continue;
         const data = new Uint8Array(await file.arrayBuffer());
         const full = writeInto(M, st.path, it.rel, data);
         if (!full) continue;
