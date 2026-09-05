@@ -1134,6 +1134,96 @@ static void note_render(uint32_t start_ms) {
 // the file (core and display share this filesystem).
 #define EXPORT_FRAME_QUALITY 90
 
+// The same picture as a BMP, for a build with no JPEG encoder.
+//
+// The browser is that build: EXPORT_FRAME rides the P4's hardware encoder,
+// which wasm has no answer for, so the export used to fail while PicoRabbit
+// reported success (it does not read the reply -- on the Linux simulator the
+// pictures land on the graphics side, out of the core's reach, so it only
+// waits). A slide deck is flat colour and text; a lossless BMP is the better
+// picture anyway, and it is the format the simulator has always written, so
+// the app's own naming (.jpg on a device, .bmp otherwise) already fits.
+//
+// 24-bit BGR, bottom-up, rows padded to four bytes: what every reader
+// expects and what the simulator produces, byte for byte.
+//
+// The pixels come out through readRectRGB rather than being unpacked here:
+// reading the RGB565 buffer by hand meant guessing its byte order, and the
+// guess was wrong (a comment elsewhere in this file calls the panel's format
+// "swap565", which this sprite is not), so every colour came out rotated a
+// channel and red arrived as blue. The library knows how its own sprite is
+// stored.
+//
+// It fills lgfx::bgr888_t, whose members are declared r, g, b IN THAT ORDER
+// -- the name describes the convention it converts from, not the bytes it
+// writes. BMP wants blue first, so each pixel's ends are swapped after the
+// read. Checked against the screen: with the swap the exported picture
+// matches pixel for pixel, without it red and blue trade places.
+static bool export_frame_bmp(const char *path)
+{
+    const int w = g_framebuffer->width();
+    const int h = g_framebuffer->height();
+    const size_t row = ((size_t)w * 3 + 3) & ~(size_t)3;
+    const size_t pixels = row * (size_t)h;
+
+    // One row at a time: 426x240 would be 300 KB held at once for no reason,
+    // and a bigger screen proportionally more.
+    uint8_t *line = (uint8_t *)fmrb_sys_malloc(row);
+    if (!line) {
+        FMRB_LOGE(TAG, "EXPORT_FRAME: no memory for a %u-byte row",
+                  (unsigned)row);
+        return false;
+    }
+    memset(line, 0, row);
+
+    FILE *fp = fopen(path, "wb");
+    if (!fp) {
+        FMRB_LOGE(TAG, "EXPORT_FRAME: cannot open %s", path);
+        fmrb_sys_free(line);
+        return false;
+    }
+
+    uint8_t head[54];
+    memset(head, 0, sizeof(head));
+    const uint32_t fsz = (uint32_t)(sizeof(head) + pixels);
+    head[0] = 'B'; head[1] = 'M';
+    head[2] = (uint8_t)fsz; head[3] = (uint8_t)(fsz >> 8);
+    head[4] = (uint8_t)(fsz >> 16); head[5] = (uint8_t)(fsz >> 24);
+    head[10] = 54;                        /* pixels start here */
+    head[14] = 40;                        /* BITMAPINFOHEADER  */
+    head[18] = (uint8_t)w; head[19] = (uint8_t)(w >> 8);
+    head[20] = (uint8_t)(w >> 16); head[21] = (uint8_t)(w >> 24);
+    head[22] = (uint8_t)h; head[23] = (uint8_t)(h >> 8);
+    head[24] = (uint8_t)(h >> 16); head[25] = (uint8_t)(h >> 24);
+    head[26] = 1;                         /* planes            */
+    head[28] = 24;                        /* bits per pixel    */
+    head[34] = (uint8_t)pixels; head[35] = (uint8_t)(pixels >> 8);
+    head[36] = (uint8_t)(pixels >> 16); head[37] = (uint8_t)(pixels >> 24);
+
+    bool ok = (fwrite(head, 1, sizeof(head), fp) == sizeof(head));
+    for (int y = h - 1; ok && y >= 0; y--) {
+        // Bottom-up, which is what a BMP without a negative height means.
+        g_framebuffer->readRectRGB(0, y, w, 1, line);
+        for (size_t i = 0; i + 2 < (size_t)w * 3; i += 3) {
+            const uint8_t t = line[i];
+            line[i] = line[i + 2];
+            line[i + 2] = t;
+        }
+        ok = (fwrite(line, 1, row, fp) == row);
+    }
+
+    if (fclose(fp) != 0 || !ok) {
+        FMRB_LOGE(TAG, "EXPORT_FRAME: short write to %s", path);
+        remove(path);
+        ok = false;
+    } else {
+        FMRB_LOGI(TAG, "EXPORT_FRAME: wrote %s (%u bytes)", path,
+                  (unsigned)fsz);
+    }
+    fmrb_sys_free(line);
+    return ok;
+}
+
 static bool export_frame_jpeg(const char *path)
 {
     if (!g_framebuffer) {
@@ -1160,6 +1250,13 @@ static bool export_frame_jpeg(const char *path)
     err = rd_encoder_jpeg_init((uint16_t)g_framebuffer->width(),
                                (uint16_t)g_framebuffer->height(),
                                EXPORT_FRAME_QUALITY);
+    if (err == FMRB_ERR_NOT_SUPPORTED) {
+        // No encoder in this build at all -- write the picture instead of
+        // failing. Only for "not supported": a busy or broken encoder is a
+        // fault to report, not a reason to quietly change format.
+        rd_encoder_jpeg_unlock();
+        return export_frame_bmp(path);
+    }
     if (err != FMRB_OK) {
         FMRB_LOGE(TAG, "EXPORT_FRAME: encoder init failed: %d", err);
     } else {

@@ -96,6 +96,8 @@ renderer の `parse_inline` の担当にした (inline 書式なので置き場�
   カーソルを乗せてタップ)。Start / Export / Quit のボタンは FmrbUI。
 - **Export**: 選んだデッキの全スライドを**デッキ名のディレクトリ**に
   1 枚 1 ファイルで書き出す (`/mnt/sd/picorabbit/<デッキ名>/01.jpg ...`)。
+  **ブラウザ版だけ `/home/picorabbit/<デッキ名>/`** (2026-09-05)。あちらに
+  カードは無く、`/mnt/sd` はリロードで消える記憶なので、残る場所へ出す。
   各スライドは wait を全部開いた最終状態、うさぎ・亀・残り時間は隠す、
   ページ番号は残す。
 - 書き出しの実体は **GFX 命令 1 つ** (「直前の present の合成結果を
@@ -167,6 +169,12 @@ instruction_p8.md。
   描き、その上に本来の色で描く。影のある行は地色の箱を敷かない (箱が影を
   消すため)。帯の上の見出しと inline code は対象外。背景画像と組み合わせる
   ための機能。
+- **見出しの様式**: frontmatter `heading: band | underline | plain` と枚ごとの
+  `{::heading X/}`。underline は本文色の字 + 帯色の線 (左端から少し空けて
+  右端まで、2px)。表紙は指定が無ければ帯なし (背景画像に載せる)。
+- **縦中央**: `{::valign center/}` (枚) か frontmatter `valign: center` (全枚、
+  `{::valign top/}` で戻す)。描く前に同じ規則で高さを測り、余りの半分だけ
+  下から始める。`fmrb` ブロックのある枚は測れないので上寄せのまま。
 - Modern の表示側 DRAW_IMAGE が scale を無視していたのをこの段で直した
   (report/p9.md)。P7 の画像の拡縮も Modern ではこれで初めて効く。
 - 詳細は instruction_p9.md。

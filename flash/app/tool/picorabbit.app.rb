@@ -44,7 +44,15 @@ class SlideShowApp < FmrbApp
   # living on an "sd/" card that was not even present).
   SLIDE_DIRS = ["/home/slides", "/usr/share/samples/slides", "/mnt/sd/slides"]
   SD_ROOT = "/mnt/sd"
-  EXPORT_ROOT = "/mnt/sd/picorabbit"
+  # Where the exported pictures go. A card on a board, and the simulator makes
+  # /mnt/sd an ordinary directory so the same path can be tested without one.
+  #
+  # The browser is the exception. There is no card, and /mnt/sd is memory that
+  # a reload throws away -- only /home and /app/usr outlive a visit. So the
+  # pictures go to /home, where they also ride along in the page's Download
+  # button and in a linked work folder.
+  ON_WEB = (::FmrbConst::BOARD == "wasm")
+  EXPORT_ROOT = ON_WEB ? "/home/picorabbit" : "/mnt/sd/picorabbit"
 
   MENU_ROW_H = 10
   MENU_HEAD_H = 12
@@ -109,7 +117,8 @@ class SlideShowApp < FmrbApp
 
     unless @sd_ready
       @ui.set_enabled(:export, false)
-      @status = "no card at #{SD_ROOT} - nothing to export to"
+      @status = ON_WEB ? "cannot write to #{EXPORT_ROOT} - nothing to export to"
+                       : "no card at #{SD_ROOT} - nothing to export to"
     end
     if @deck_paths.length == 0
       @ui.set_enabled(:start, false)
@@ -162,6 +171,9 @@ class SlideShowApp < FmrbApp
   # make it and export there, which is what makes the export path testable
   # without hardware.
   def prepare_sd
+    # /home is always there, but the deck's own directory is made on the way
+    # to it, so ask for the root itself.
+    return mkdir_p(EXPORT_ROOT) if ON_WEB
     return Dir.exist?(SD_ROOT) if @on_device
     mkdir_p(SD_ROOT)
   end
