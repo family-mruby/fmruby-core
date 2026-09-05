@@ -61,7 +61,12 @@ module ShortcutsDialogMixin
 
     rows << ["", FmrbI18n.t(:sc_any_app).to_s]
     rows << ["Ctrl+Q", FmrbI18n.t(:sc_quit_app).to_s]
+    # Two rows rather than one: the key column is 66 px, eleven characters, and
+    # both spellings on one line would run under the description. The comma is
+    # not a second-class alternative either -- it is the only one that works in
+    # a browser, where Ctrl+Tab belongs to the browser and never reaches us.
     rows << ["Ctrl+Tab", FmrbI18n.t(:sc_switch_app).to_s]
+    rows << ["Ctrl+,", FmrbI18n.t(:sc_switch_app_alt).to_s]
 
     rows << ["", FmrbI18n.t(:sc_lists).to_s]
     rows << ["Up/Down", FmrbI18n.t(:sc_move).to_s]

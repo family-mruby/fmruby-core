@@ -1499,12 +1499,27 @@ static void host_task_process_host_message(const host_message_t *msg)
                     fmrb_msg_send(0, &sys_msg, 1000);  // PID 0 = kernel
                     break;  // Don't forward to app
                 }
-                // Global hotkey: Ctrl+Tab cycles the focused front app, and
-                // parks/unparks a switchable fullscreen app. Ctrl (not Alt)
-                // because SDL's Alt modifier bit does not survive the Linux
-                // sim's 8-bit modifier field.
-                if (has_ctrl && sc == 0x2B) {  // Tab scancode
-                    FMRB_LOGI(TAG, "Ctrl+Tab detected - sending cycle_focus");
+                // Global hotkey: cycle the focused front app, and park or
+                // unpark a switchable fullscreen app. Ctrl (not Alt) because
+                // SDL's Alt modifier bit does not survive the Linux sim's
+                // 8-bit modifier field.
+                //
+                // Two keys for one thing, because Ctrl+Tab cannot be had in a
+                // browser: it belongs to the browser's own tab switching and
+                // is never delivered to a page, not even to be refused --
+                // unlike Ctrl+L and the rest, which a page may take. So the
+                // browser build needed a second way in, and it is the same
+                // key everywhere so one habit works on every machine.
+                //
+                // Comma, of all things, for what it is not: Ctrl+` would read
+                // better, but on a JP keyboard that scancode is the kana
+                // toggle, which by design ignores modifiers so there is always
+                // a way back out of kana. Function keys belong to the app
+                // underneath -- this intercept runs before routing, so taking
+                // one would take it from the editor. Comma is on both layouts,
+                // means nothing to a text editor, and no browser wants it.
+                if (has_ctrl && (sc == 0x2B || sc == 0x36)) {  // Tab, comma
+                    FMRB_LOGI(TAG, "cycle_focus hotkey (sc=0x%02x)", sc);
                     fmrb_msg_t sys_msg = {
                         .type = FMRB_MSG_TYPE_APP_CONTROL,
                         .src_pid = PROC_ID_HOST,
