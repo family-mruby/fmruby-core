@@ -292,7 +292,6 @@ class LogViewerApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     # w also toggles wrapping, for a window too narrow to show the button.
     if ev[:type] == :key_down && ev[:character] == 119
       toggle_wrap

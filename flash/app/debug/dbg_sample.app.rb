@@ -34,7 +34,6 @@ class DbgSampleApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless ev[:type] == :mouse_up
     x = ev[:x]
     y = ev[:y]

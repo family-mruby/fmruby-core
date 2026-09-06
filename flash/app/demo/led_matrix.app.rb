@@ -262,7 +262,6 @@ class LedMatrixApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless ev[:type] == :mouse_up
     # Ignore clicks on the title bar (super handles close / reload there).
     return if ev[:y] < @user_area_y0

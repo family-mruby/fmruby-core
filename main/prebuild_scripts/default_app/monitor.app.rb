@@ -185,7 +185,6 @@ class MonitorApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     if @page == 2
       id = @ui.handle(ev)
       if id

@@ -92,7 +92,6 @@ class MmlDemoApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     case ev[:type]
     when :key_down
       ch = ev[:character] || 0

@@ -55,7 +55,6 @@ class I2cKbdApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     # Also accept USB keyboard input (Linux dev mode)
     if ev[:type] == :key_down
       keycode = ev[:keycode] || 0

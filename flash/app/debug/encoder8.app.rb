@@ -86,7 +86,6 @@ class Encoder8App < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
 
     # Keyboard/mouse fallback (always available, useful when no device)
     if ev[:type] == :key_down

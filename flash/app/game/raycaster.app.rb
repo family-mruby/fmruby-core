@@ -224,7 +224,6 @@ class RaycasterApp < FmrbApp
   # ---- Input ----
 
   def on_event(ev)
-    super(ev)
     case ev[:type]
     when :gamepad_down
       case ev[:button]

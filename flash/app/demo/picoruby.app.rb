@@ -164,7 +164,6 @@ class PicoRubyDemoApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     t = ev[:type]
     if t == :mouse_down || t == :mouse_up
       return unless ev[:button] == 1

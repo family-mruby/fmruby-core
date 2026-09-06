@@ -31,7 +31,6 @@ class PubDemoApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     if ev[:type] == :mouse_up && ev[:button] == 1
       if ev[:x] >= BTN_X && ev[:x] < BTN_X + BTN_W &&
          ev[:y] >= BTN_Y && ev[:y] < BTN_Y + BTN_H

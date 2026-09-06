@@ -52,7 +52,6 @@ class RingProbeApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless ev[:type] == :key_down
     case ev[:scancode]
     when 0x4F then @vx += CELL      # right

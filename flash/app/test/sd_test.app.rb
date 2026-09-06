@@ -27,7 +27,6 @@ class SdTestApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless ev[:type] == :key_down
     ch = ev[:character] || 0
     if ch == 32 && FmrbConst::PLATFORM == "esp32"

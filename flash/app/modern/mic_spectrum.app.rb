@@ -96,10 +96,6 @@ class MicSpectrumApp < FmrbApp
   end
 
   def on_event(ev)
-    # First, always: the close button and the title bar live in FmrbApp's
-    # on_event, so an override that returns before calling it leaves the
-    # window with no way to shut. Every other app starts the same way.
-    super(ev)
     return unless ev[:type] == :key_down
     ch = ev[:character] || 0
     if ch == 101 || ch == 69     # e / E: next engine

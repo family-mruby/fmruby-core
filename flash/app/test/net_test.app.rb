@@ -65,7 +65,6 @@ class NetTestApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless ev[:type] == :mouse_up && ev[:button] == 1
     idx = row_index_at(ev[:y])
     return if idx.nil?

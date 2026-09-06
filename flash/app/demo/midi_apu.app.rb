@@ -112,7 +112,6 @@ class MidiApuApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     if ev[:type] == :key_down
       case ev[:scancode]
       when 0x1E then play(:scale)

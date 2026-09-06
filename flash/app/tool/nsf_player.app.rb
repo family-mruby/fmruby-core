@@ -200,7 +200,6 @@ class NsfPlayerApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
 
     if ev[:type] == :key_down
       ch = ev[:character] || 0

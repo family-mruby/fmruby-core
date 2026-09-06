@@ -139,7 +139,6 @@ class RpgDemoApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     case ev[:type]
     when :key_down, :gamepad_down
       dx, dy = direction_for(ev)

@@ -337,7 +337,6 @@ class ShooterApp < FmrbApp
   # ---- Input -----------------------------------------------------------
 
   def on_event(ev)
-    super(ev)
     case ev[:type]
     when :key_down
       # Arrow keys carry no character, so they come in as scancodes (HID

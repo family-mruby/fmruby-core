@@ -71,7 +71,6 @@ class WeatherApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless ev[:type] == :mouse_up && ev[:button] == 1
     unless network_up?
       Log.info("Weather: click ignored, network down")

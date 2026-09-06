@@ -414,7 +414,6 @@ class SmfPlayerApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
 
     wid = @ui.handle(ev)
     if wid

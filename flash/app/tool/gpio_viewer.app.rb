@@ -54,10 +54,6 @@ class GpioViewerApp < FmrbApp
     500
   end
 
-  def on_event(ev)
-    super(ev)
-  end
-
   def on_destroy
     Log.info("GPIO Viewer destroyed")
   end

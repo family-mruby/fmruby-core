@@ -90,7 +90,6 @@ class StackChanRemoteApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless running?
     return unless ev[:type] == :mouse_up && ev[:button] == 1
     @buttons.each do |b|

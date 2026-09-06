@@ -36,10 +36,6 @@ class SubDemoApp < FmrbApp
     end
   end
 
-  def on_event(ev)
-    super(ev)
-  end
-
   def on_update
     100
   end

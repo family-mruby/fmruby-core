@@ -17,7 +17,6 @@ class NtscColorTestApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     case ev[:type]
     when :mouse_down
       x = ev[:x]

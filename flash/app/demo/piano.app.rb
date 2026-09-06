@@ -70,7 +70,6 @@ class PianoApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     if ev[:type] == :mouse_down
       x = ev[:x]
       y = ev[:y]

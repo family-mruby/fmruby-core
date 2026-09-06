@@ -86,11 +86,7 @@ class InspectorApp < FmrbApp
   # ---- Input ----------------------------------------------------------------
 
   def on_event(ev)
-    if ev[:type] == :key_down
-      handle_key(ev)
-    else
-      super(ev)
-    end
+    handle_key(ev) if ev[:type] == :key_down
   end
 
   # ---- Raw report intake (from USB task) ------------------------------------

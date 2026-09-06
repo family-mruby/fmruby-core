@@ -48,7 +48,6 @@ class SpriteEditorApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless @mode == :editor
 
     if ev[:type] == :mouse_up

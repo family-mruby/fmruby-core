@@ -154,7 +154,6 @@ class VideoPlayApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless ev[:type] == :mouse_up
     return unless ev[:button] == 1 || ev[:button] == 3
 

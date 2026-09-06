@@ -40,7 +40,6 @@ class BusyInputApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     case ev[:type]
     when :mouse_move
       @moves += 1

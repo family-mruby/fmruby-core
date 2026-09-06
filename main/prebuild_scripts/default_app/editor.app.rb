@@ -501,7 +501,6 @@ class EditorApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     handle_editor_event(ev)
     # A status message survives the key that raised it and goes on the next
     # one (see flash_status). Ageing it here, after the key was handled, is

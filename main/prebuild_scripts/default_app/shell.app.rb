@@ -411,7 +411,6 @@ class ShellApp < FmrbApp
 
   def on_event(ev)
     # Call parent class handler first (for close button, etc.)
-    super(ev)
 
     # The wheel scrolls the history, one row per row the machine's setting
     # says. less mode has its own viewport and pages with its own keys.

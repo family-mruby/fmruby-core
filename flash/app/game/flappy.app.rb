@@ -122,7 +122,6 @@ class FlappyApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     if ev[:type] == :key_down
       keycode = ev[:keycode] || 0
       character = ev[:character] || 0

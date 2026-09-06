@@ -362,7 +362,6 @@ class RoboExplorerApp < FmrbApp
   # ---- input (the world takes no robot commands from the keyboard) ----
 
   def on_event(ev)
-    super(ev)
     if ev[:type] == :mouse_up && ev[:button] == 1
       if ev[:x] >= PANEL_X && ev[:x] < PANEL_X + BTN_W &&
          ev[:y] >= btn_y && ev[:y] < btn_y + BTN_H

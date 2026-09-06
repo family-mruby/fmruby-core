@@ -15,10 +15,6 @@ class RequireTestApp < FmrbApp
     @gfx.present
   end
 
-  def on_event(ev)
-    super(ev)
-  end
-
   def on_update
     500
   end

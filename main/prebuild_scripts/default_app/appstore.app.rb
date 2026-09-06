@@ -713,7 +713,6 @@ class AppStoreApp < FmrbApp
   # ---- events -------------------------------------------------------------
 
   def on_event(ev)
-    super(ev)
     id = @ui.handle(ev)
     if id
       case id

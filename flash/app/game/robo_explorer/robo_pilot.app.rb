@@ -155,7 +155,6 @@ class RoboPilotApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless ev[:type] == :key_down
     # S belongs to the frame, not the brain: every brain gets the same
     # start/stop control without having to implement it.

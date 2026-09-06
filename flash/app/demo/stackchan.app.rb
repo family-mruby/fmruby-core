@@ -137,7 +137,6 @@ class StackChanApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless running?
     if ev[:type] == :mouse_move
       cx = @user_area_x0 + @user_area_width  / 2

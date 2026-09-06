@@ -114,7 +114,6 @@ class MidiBenchApp < FmrbApp
   end
 
   def on_event(ev)
-    super(ev)
     return unless ev[:type] == :key_down
 
     if (ev[:character] || 0) == 32
