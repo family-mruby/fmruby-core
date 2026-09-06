@@ -53,7 +53,7 @@ module TaskbarMixin
       # even though the app's window was already on screen.
       # type 0 = kernel, exclude self by name.
       # headless = no canvas and no window: nothing to raise, nothing to focus.
-      if (p[:state] >= 1 && p[:state] <= 3) && p[:type] != 0 && p[:name] != @name &&
+      if (p[:state] >= 1 && p[:state] <= 3) && p[:type] != 0 && p[:name] != name &&
          !p[:headless]
         # Icon letter precomputed here so the 1Hz draw_taskbar allocates
         # nothing (rindex/slice/[0] all make fresh Strings).

@@ -128,7 +128,7 @@ class ShellApp < FmrbApp
   end
 
   def shell_task
-    while @running
+    while running?
       ch = getch
       break if ch.nil?  # getch returns nil when app is terminating
 
@@ -318,10 +318,10 @@ class ShellApp < FmrbApp
   # ---- Input buffer ----
 
   def getch
-    while @input_buffer.empty? && @running
+    while @input_buffer.empty? && running?
       sleep_ms @frame_ms
     end
-    return nil if !@running  # App is terminating
+    return nil if !running?  # App is terminating
     char = @input_buffer.shift
     char
   end

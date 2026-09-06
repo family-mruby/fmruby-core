@@ -70,7 +70,7 @@ class KamonApp < FmrbApp
 
   def on_event(ev)
     super(ev)
-    return unless @running
+    return unless running?
     # The close button is handled by super; FmrbUI widgets live inside the
     # user area, so there is nothing to steer around here.
     id = @ui.handle(ev)

@@ -183,7 +183,7 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
     }
 
     // Set @name instance variable
-    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@name"),
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@_name"),
                mrb_str_new_cstr(mrb, ctx->app_name));
 
     // Set @fullscreen flag

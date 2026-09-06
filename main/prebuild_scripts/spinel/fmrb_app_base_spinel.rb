@@ -1084,7 +1084,12 @@ class FmrbApp
 
   # :gfx matches the mruby base: apps may write gfx.draw_text as well as
   # @gfx.draw_text, and the method form is what sig/ describes.
-  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :gfx
+  attr_reader :window_width, :window_height, :pos_x, :pos_y, :platform, :gfx
+
+  # Same as the mruby base: the two most dangerous names leave the shared
+  # namespace, readers go through methods.
+  def running?; @_running; end
+  def name; @_name; end
 
   # Same shape as the mruby base: predicates over @_-prefixed internals.
   def fullscreen?; @_fullscreen; end
@@ -1107,7 +1112,7 @@ class FmrbApp
 
   def initialize
     Log.debug("initialize")
-    @running = false
+    @_running = false
     @_close_btn_pressed = false
     @_closable = true
     @_spin_break = false
@@ -1115,7 +1120,7 @@ class FmrbApp
     @_attached_uis = []
 
     buf = FmrbSpxApp.fmrb_spx_app_init   # 50-byte snapshot; creates canvas(es)
-    @name = SpxBytes.read_name(buf, 0, 32)
+    @_name = SpxBytes.read_name(buf, 0, 32)
     @_fullscreen = buf.getbyte(32) != 0
     @_rounded_corners = buf.getbyte(33) != 0
     @platform = buf.getbyte(34) == 1 ? :esp32 : :linux
@@ -1125,7 +1130,7 @@ class FmrbApp
     @pos_y = SpxBytes.u16(buf, 42)
     @_canvas = buf.getbyte(44) != 0 ? SpxBytes.u16(buf, 46) : nil
     @_bg_canvas = buf.getbyte(45) != 0 ? SpxBytes.u16(buf, 48) : nil
-    Log.debug("name=#{@name}")
+    Log.debug("name=#{@_name}")
 
     if @_canvas
       @gfx = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
@@ -1302,7 +1307,7 @@ class FmrbApp
     g.fill_rect(3, 3, 9, 1, on_bar)
     g.fill_rect(3, 5, 9, 1, on_bar)
     g.fill_rect(3, 7, 9, 1, on_bar)
-    g.draw_text(15, 2, @name, on_bar)
+    g.draw_text(15, 2, @_name, on_bar)
     # Close button + rounded border.
     g.fill_circle(w - 6, 5, 3, on_bar)
     g.draw_round_rect(0, 0, w, h, CORNER_R, FmrbConst::THEME_BORDER)
@@ -1445,7 +1450,7 @@ class FmrbApp
     Log.debug("main_loop started")
     @_suspended = false
     loop do
-      return if !@running
+      return if !@_running
       if @_suspended
         _spin(500)
         next
@@ -1602,16 +1607,16 @@ class FmrbApp
     when "suspend"
       @_suspended = true
       on_suspend
-      Log.info("App #{@name} suspended")
+      Log.info("App #{@_name} suspended")
     when "resume"
       @_suspended = false
       on_resume
-      Log.info("App #{@name} resumed")
+      Log.info("App #{@_name} resumed")
     when "stop"
-      Log.info("App #{@name} received stop command")
+      Log.info("App #{@_name} received stop command")
       stop
     when "clear_and_stop"
-      Log.info("App #{@name} clearing canvas and stopping")
+      Log.info("App #{@_name} clearing canvas and stopping")
       if @gfx
         @gfx.clear(0x00)
         @gfx.present
@@ -1626,7 +1631,7 @@ class FmrbApp
 
   # Ctrl+Q. Override to confirm before closing; the default is to close.
   def on_quit_request
-    Log.info("App #{@name} quit request")
+    Log.info("App #{@_name} quit request")
     stop
   end
 
@@ -1770,7 +1775,7 @@ class FmrbApp
 
   def start
     Log.debug("start() called")
-    @running = true
+    @_running = true
     on_create
     main_loop
     destroy
@@ -1780,7 +1785,7 @@ class FmrbApp
   # through here, and marking it is what lets the kernel tell an app that was
   # asked to stop from one that died.
   def stop
-    @running = false
+    @_running = false
     FmrbSpxApp.fmrb_spx_app_mark_expected_stop
     nil
   end

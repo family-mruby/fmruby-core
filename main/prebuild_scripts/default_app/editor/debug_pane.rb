@@ -258,7 +258,7 @@ module EditorDebugPane
     @target_list = []
     FmrbApp.ps.each do |a|
       if a[:type] == APP_TYPE_USER && a[:vm_type] == VM_TYPE_MRUBY &&
-         a[:state] == PROC_RUNNING && a[:name] != @name
+         a[:state] == PROC_RUNNING && a[:name] != name
         @target_list << a
       end
     end

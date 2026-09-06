@@ -21,7 +21,16 @@ class FmrbApp
   # :gfx is here so apps can write gfx.draw_text as well as @gfx.draw_text --
   # the editor's completion answers both spellings, and the method form is the
   # one the type signatures in sig/ describe.
-  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :gfx
+  attr_reader :window_width, :window_height, :pos_x, :pos_y, :platform, :gfx
+
+  # @_running and @_name are prefixed even though 6 files read them, because
+  # they are the two whose collision hurts most: an app that innocently sets
+  # its own @_running silently exits (main_loop reads it), and both names are
+  # exactly what an app author would pick. The readers moved to these
+  # methods; running? is a predicate like the others, name stays a plain
+  # noun because it is not a boolean.
+  def running?; @_running; end
+  def name; @_name; end
 
   # Predicates, not attr_readers: the backing ivars carry the @_ prefix
   # (base internals, kept out of the namespace apps write in), and a
@@ -51,14 +60,14 @@ class FmrbApp
 
   def initialize()
     Log.debug("initialize")
-    @running = false
+    @_running = false
     @_close_btn_pressed = false
     @_closable = true
     @_spin_break = false
     @_timers = []
     @_attached_uis = []
     _init() # C function, variables are defined here
-    Log.debug("name=#{@name}")
+    Log.debug("name=#{@_name}")
     Log.debug("After _init(), @_canvas=#{@_canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}")
 
     # Initialize graphics only for non-headless apps (@_canvas is set)
@@ -268,11 +277,11 @@ class FmrbApp
 
   private
 
-  # Build the window-frame GfxBlock once. The block captures @name as a closure
+  # Build the window-frame GfxBlock once. The block captures @_name as a closure
   # so the title text is interned into the bytecode's strtable at new time
   # (strings are immutable after that).
   def _build_frame_block
-    title = @name
+    title = @_name
     @_frame_block = GfxBlock.new(@gfx, w: @window_width, h: @window_height) do |r, w:, h:|
       # The frame is the system's, not the app's, so it takes the system's
       # colours: one edit to [theme] in system_conf.toml restyles every
@@ -390,7 +399,7 @@ class FmrbApp
   def on_create
     # Called once when app is created
     # Initialize your app state here
-    # Access @name and @gfx instance variables
+    # Access @_name and @gfx instance variables
     Log.debug("on_create")
   end
 
@@ -494,7 +503,7 @@ class FmrbApp
     Log.debug("main_loop started")
     @_suspended = false
     loop do
-      return if !@running
+      return if !@_running
       if @_suspended
         _spin(500)  # Sleep longer while suspended, still process messages
         _run_timers # Spinel runs timers inside _spin; keep the engines equal
@@ -513,16 +522,16 @@ class FmrbApp
     when "suspend"
       @_suspended = true
       on_suspend
-      Log.info("App #{@name} suspended")
+      Log.info("App #{@_name} suspended")
     when "resume"
       @_suspended = false
       on_resume
-      Log.info("App #{@name} resumed")
+      Log.info("App #{@_name} resumed")
     when "stop"
-      Log.info("App #{@name} received stop command")
+      Log.info("App #{@_name} received stop command")
       stop
     when "clear_and_stop"
-      Log.info("App #{@name} clearing canvas and stopping")
+      Log.info("App #{@_name} clearing canvas and stopping")
       if @gfx
         @gfx.clear(0x00)
         @gfx.present
@@ -537,7 +546,7 @@ class FmrbApp
 
   # Ctrl+Q. Override to confirm before closing; the default is to close.
   def on_quit_request
-    Log.info("App #{@name} quit request")
+    Log.info("App #{@_name} quit request")
     stop
   end
 
@@ -798,8 +807,8 @@ class FmrbApp
   end
 
   def start
-    Log.debug("start() called, @running=#{@running}")
-    @running = true
+    Log.debug("start() called, @_running=#{@_running}")
+    @_running = true
     Log.debug("Before on_create")
     on_create
     Log.debug("After on_create, entering main_loop")
@@ -814,7 +823,7 @@ class FmrbApp
   # never reaches this method, and to C the two look identical (the rescue at
   # the foot of the script means the task ends normally either way).
   def stop
-    @running = false
+    @_running = false
     _mark_expected_stop
     nil
   end
