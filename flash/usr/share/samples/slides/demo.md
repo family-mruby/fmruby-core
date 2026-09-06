@@ -3,6 +3,7 @@ title: Family mruby OS<br>Demo Presentation
 subtitle: PicoRabbit Format Compatibility
 author: Family mruby project
 theme: default
+heading: underline
 allotted_time: 5
 ---
 
@@ -197,6 +198,7 @@ small print, for the footnotes
 
 # Thank you!
 {::background /usr/share/backgrounds/bg_426x240.png/}
+{::valign center/}
 
 Family mruby OS
 

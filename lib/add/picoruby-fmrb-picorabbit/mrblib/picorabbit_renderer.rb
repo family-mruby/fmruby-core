@@ -247,6 +247,15 @@ module PicoRabbit
       # {:.shadow} does it for one.
       @deck_shadow = metadata["shadow"] == "true"
       @shadow_on = false
+      # `valign: center` in the frontmatter centres every page's body;
+      # {::valign top/} on a page opts out.
+      @deck_valign = metadata["valign"] == "center"
+      # `heading: band | underline | plain` for every content slide's
+      # heading; band is what PicoRabbit always drew.
+      @deck_heading = ::PicoRabbit::Parser.heading_style(metadata["heading"] || "band") || :band
+      # Images created while measuring a page (for centring), kept until the
+      # draw that follows takes them, so a picture is not decoded twice.
+      @img_hold = {}
       use_size(nil)
     end
 
@@ -466,6 +475,20 @@ module PicoRabbit
       # Only now: a frame arriving before the present would be copied into
       # the committed page along with the half-drawn slide.
       start_video
+      release_held_images
+    end
+
+    # Images measured for centring but never drawn (the page overflowed
+    # before reaching them) would otherwise sit on the display side until
+    # the deck is swapped.
+    def release_held_images
+      keys = @img_hold.keys
+      i = 0
+      while i < keys.length
+        @gfx.delete_image(@img_hold[keys[i]][:id])
+        i += 1
+      end
+      @img_hold = {}
     end
 
     # Load the eight frames and put the two runners on the start line. Called
@@ -625,22 +648,28 @@ module PicoRabbit
 
       y = (@h - total_h) / 2
 
-      # The title sits on a band of title_bg, as the heading of a content
-      # slide does: the default theme's title colour is meant for that band
-      # and is unreadable straight on the page background (yellow on white
-      # on a Tab5). The band spans the width and the title lines' height.
+      # The title slide's own {::heading/} or nothing: plain by default,
+      # since a title slide usually brings a picture to sit on. With a band
+      # the title colour is the band's (the default theme's yellow is meant
+      # for the band and unreadable on the page); otherwise the text colour.
+      style = slide.heading || :plain
       band_h = lines.length * (@head_h + 4)
-      @gfx.fill_rect(0, y - 2, @w, band_h + 4, @theme.title_bg)
+      if style == :band
+        @gfx.fill_rect(0, y - 2, @w, band_h + 4, @theme.title_bg)
+      end
+      colour = style == :band ? @theme.title : @theme.text
+      bg = style == :band ? @theme.title_bg : @theme.bg
 
       i = 0
       while i < lines.length
         line = lines[i]
         x = (@w - wh(line)) / 2
         use_head
-        draw_str(x, y, line, @theme.title, @theme.title_bg)
+        draw_str(x, y, line, colour, bg)
         y += @head_h + 4
         i += 1
       end
+      draw_heading_rule(y - 4) if style == :underline
 
       y += 8
       i = 0
@@ -657,17 +686,37 @@ module PicoRabbit
     end
 
     def render_content_slide(slide, step)
-      # Title bar
-      @gfx.fill_rect(0, 0, @w, @title_bar_h, @theme.title_bg)
+      # The heading, dressed the slide's way or the deck's. Every style
+      # takes the same height (title_bar_h), so the body starts at the same
+      # line whichever is used and a deck can mix them.
+      style = slide.heading || @deck_heading
       title = truncate_to_width(slide.title || "", @w - MARGIN_X * 2, :head)
       use_head
-      draw_str(MARGIN_X, 2, title, @theme.title, @theme.title_bg)
+      if style == :band
+        @gfx.fill_rect(0, 0, @w, @title_bar_h, @theme.title_bg)
+        draw_str(MARGIN_X, 2, title, @theme.title, @theme.title_bg)
+      else
+        # On the page itself (or its picture): the text colour, no box, and
+        # the shadow if the deck asks for one.
+        draw_str(MARGIN_X, 2, title, @theme.text, @theme.bg)
+        draw_heading_rule(2 + @head_h) if style == :underline
+      end
 
       y = @title_bar_h + 4
       content_x = MARGIN_X
       content_w = @w - MARGIN_X * 2
       max_y = @h - FOOTER_H - 4
       wait_seen = 0
+
+      # Centred pages are measured first: the same walk as below, adding up
+      # heights instead of drawing, and the body starts lower by half of
+      # what is left over. The measure takes every wait step as open, so the
+      # block stays put while the steps come in rather than sliding up with
+      # each one. A page that overflows starts at the top as usual.
+      if slide.valign == :center || (@deck_valign && slide.valign != :top)
+        used = measure_content(slide, nil, content_w, max_y - y)
+        y += (max_y - y - used) / 2 if used < max_y - y
+      end
 
       slide.elements.each do |elem|
         if elem.type == :wait
@@ -777,6 +826,124 @@ module PicoRabbit
       end
     end
 
+    # The underline of a heading: a rule in the band colour, starting a
+    # little in from the left margin and running to the right one, two
+    # pixels thick (three under a doubled heading). It sits in the two rows
+    # under the glyphs, inside title_bar_h.
+    def draw_heading_rule(y)
+      th = @head_h >= 24 ? 3 : 2
+      x0 = MARGIN_X + 2
+      @gfx.fill_rect(x0, y, @w - MARGIN_X - x0, th, @theme.title_bg)
+    end
+
+    # ---- measuring (for {::valign center/}) ------------------------------
+    #
+    # The height the body will take, by the rules render_content_slide draws
+    # with: the same wait steps, the same sizes, the same overflow cut. An
+    # fmrb block draws itself and only then knows its height, so it counts
+    # as nothing; a page built around one is better left at the top.
+    def measure_content(slide, step, content_w, room)
+      y = 0
+      wait_seen = 0
+      elems = slide.elements
+      i = 0
+      while i < elems.length
+        elem = elems[i]
+        i += 1
+        if elem.type == :wait
+          wait_seen += 1
+          break if step && wait_seen > step
+          next
+        end
+        use_size(elem.size, elem.shadow)
+        if y + @line_h > room
+          use_size(nil)
+          break
+        end
+        case elem.type
+        when :text
+          y += rich_height(elem.text, content_w)
+        when :bullet, :numbered
+          indent = elem.level * @ascii_w * 2
+          marker = if elem.type == :bullet
+                     elem.level == 0 ? "- " : "  - "
+                   else
+                     "#{elem.number || 1}. "
+                   end
+          y += rich_height(elem.text, content_w - indent - wb(marker))
+        when :blockquote
+          y += rich_height(elem.text, content_w - 6)
+        when :code_block
+          y += elem.text.length * @line_h + 4 if elem.text.is_a?(Array)
+        when :image
+          y += media_height(elem, content_w, room - y)
+        when :blank
+          y += @line_h / 2
+        end
+        use_size(nil)
+      end
+      y
+    end
+
+    # Height of a run of rich text at the current size, ruby headroom
+    # included -- what draw_rich_lines will advance by.
+    def rich_height(text, max_w)
+      return @line_h unless text
+      lines = layout_rich_text(parse_inline(text), max_w)
+      return @line_h if lines.length == 0
+      h = 0
+      i = 0
+      while i < lines.length
+        h += @line_h + (lines[i][2] ? RUBY_H : 0)
+        i += 1
+      end
+      h
+    end
+
+    # Height an :image element will take: the picture (created now and
+    # held for the draw) or the video (opened to read its size, then
+    # closed), or the one line its fallback text takes.
+    def media_height(elem, content_w, room)
+      if video_path?(elem.text)
+        src = image_source(elem.text)
+        return @line_h unless src
+        v = open_video(src, 0, 0, VIDEO_DEFAULT_FPS, false)
+        return @line_h unless v
+        w = v.width
+        h = v.height
+        v.stop
+        return @line_h if w < 1 || h < 1 || w > content_w || h > room
+        return h + @line_h / 2
+      end
+      img = hold_image(elem)
+      return @line_h unless img
+      scale = image_scale(elem, img[:width], img[:height], content_w, room)
+      return @line_h if scale <= 0.0
+      (img[:height] * scale).to_i + @line_h / 2
+    end
+
+    # Fetch and create a slide picture ahead of its draw, and remember it
+    # under its source path so draw_image_element takes it instead of
+    # creating it again. nil when it cannot be had (the draw falls back).
+    def hold_image(elem)
+      src = image_source(elem.text)
+      return nil unless src && src.end_with?(".png")
+      held = @img_hold[src]
+      return held if held
+      img = nil
+      begin
+        dest = "#{IMAGE_CACHE}/#{@deck_tag}_#{image_basename(src)}"
+        return nil unless @gfx.sync_file(src, dest: dest)
+        img = @gfx.create_image(dest)
+      rescue => e
+        ::Log.info("PicoRabbit: image #{src}: #{e.message}")
+        return nil
+      end
+      return nil unless img && img[:width] > 0 && img[:height] > 0
+      @img_hold[src] = img
+      img
+    end
+
     # One list item: its marker, then its text wrapped to what is left of the
     # line. The text is laid out before the marker is drawn because the marker
     # follows the base line, which ruby on the first line moves.
@@ -796,16 +963,20 @@ module PicoRabbit
       return image_fallback(elem, content_x, y) unless src && src.end_with?(".png")
 
       t0 = Machine.board_millis
-      img = nil
-      dest = "#{IMAGE_CACHE}/#{@deck_tag}_#{image_basename(src)}"
-      begin
-        # See background_image: a missing file is not sent on to the display.
-        return image_fallback(elem, content_x, y) unless @gfx.sync_file(src, dest: dest)
-        t1 = Machine.board_millis
-        img = @gfx.create_image(dest)
-      rescue => e
-        ::Log.info("PicoRabbit: image #{src}: #{e.message}")
-        return image_fallback(elem, content_x, y)
+      t1 = t0
+      # Measured for centring a moment ago: already on the display side.
+      img = @img_hold.delete(src)
+      unless img
+        dest = "#{IMAGE_CACHE}/#{@deck_tag}_#{image_basename(src)}"
+        begin
+          # See background_image: a missing file is not sent on to the display.
+          return image_fallback(elem, content_x, y) unless @gfx.sync_file(src, dest: dest)
+          t1 = Machine.board_millis
+          img = @gfx.create_image(dest)
+        rescue => e
+          ::Log.info("PicoRabbit: image #{src}: #{e.message}")
+          return image_fallback(elem, content_x, y)
+        end
       end
       return image_fallback(elem, content_x, y) unless img
 

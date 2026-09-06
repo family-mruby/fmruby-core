@@ -52,6 +52,14 @@ module PicoRabbit
     # "none" to override the deck's own background with nothing, or nil to
     # take the deck's.
     attr_accessor :background
+    # :center from a {::valign center/} line: the body is centred in the
+    # space between the title bar and the footer. :top says so explicitly
+    # on a deck whose frontmatter centres every page; nil takes the deck's.
+    attr_accessor :valign
+    # How the heading is dressed, from a {::heading band|underline|plain/}
+    # line: nil takes the deck's (band by default -- plain on the title
+    # slide, whose picture is meant to carry it).
+    attr_accessor :heading
 
     def initialize(title, elements)
       @title = title
@@ -59,6 +67,8 @@ module PicoRabbit
       @title_slide = false
       @goal = false
       @background = nil
+      @valign = nil
+      @heading = nil
     end
 
     # Count wait markers to determine number of steps

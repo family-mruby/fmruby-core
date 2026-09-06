@@ -3,6 +3,7 @@ title: Family mruby<br>ちいさな Ruby の機械
 subtitle: 日本語の発表サンプル
 author: Family mruby プロジェクト
 theme: default
+heading: underline
 allotted_time: 5m
 ---
 
@@ -90,6 +91,7 @@ end
 
 # おわりに
 {::background /usr/share/backgrounds/bg_426x240.png/}
+{::valign center/}
 
 作って、動かして、直す。
 

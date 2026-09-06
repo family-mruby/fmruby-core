@@ -20,6 +20,8 @@ module PicoRabbit
 
       current_goal = false
       current_bg = nil
+      current_valign = nil
+      current_heading = nil
 
       lines = split_lines(content)
 
@@ -80,9 +82,13 @@ module PicoRabbit
             sl = Slide.new(current_title, current_elements)
             sl.goal = current_goal
             sl.background = current_bg
+            sl.valign = current_valign
+            sl.heading = current_heading
             slides << sl
             current_goal = false
             current_bg = nil
+            current_valign = nil
+            current_heading = nil
           end
           current_title = line[2, line.length - 2].strip.gsub("<br>", "\n")
           current_elements = []
@@ -106,6 +112,20 @@ module PicoRabbit
         s = line.strip
         if s.start_with?("{::background ") && s.end_with?("/}")
           current_bg = s[14, s.length - 16].strip
+          next
+        end
+
+        # Vertical placement of this slide's body: center, or top to undo a
+        # deck-wide `valign: center`.
+        if s.start_with?("{::valign ") && s.end_with?("/}")
+          v = s[10, s.length - 12].strip
+          current_valign = v == "center" ? :center : :top
+          next
+        end
+
+        # How this slide's heading is dressed: band, underline or plain.
+        if s.start_with?("{::heading ") && s.end_with?("/}")
+          current_heading = heading_style(s[11, s.length - 13].strip)
           next
         end
 
@@ -200,6 +220,8 @@ module PicoRabbit
         sl = Slide.new(current_title, current_elements)
         sl.goal = current_goal
         sl.background = current_bg
+        sl.valign = current_valign
+        sl.heading = current_heading
         slides << sl
       end
 
@@ -250,6 +272,17 @@ module PicoRabbit
           elem.video_loop = true
         end
         i += 1
+      end
+    end
+
+    # "band" / "underline" / "plain" -> a symbol, or nil for a word the
+    # renderer does not know (it then takes the deck's).
+    def self.heading_style(word)
+      case word
+      when "band" then :band
+      when "underline" then :underline
+      when "plain" then :plain
+      else nil
       end
     end
 
