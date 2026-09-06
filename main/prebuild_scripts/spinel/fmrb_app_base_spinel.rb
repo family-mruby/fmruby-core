@@ -1378,7 +1378,9 @@ class FmrbApp
   # override to handle custom APP_CONTROL commands.
   def on_control(msg); nil; end
 
-  def on_event(ev)
+  # The frame's own event handling; see the mruby base for the rationale.
+  # This file is a separate implementation, so the same split exists twice.
+  def _frame_event(ev)
     if @closable && ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
       cx = @window_width - CLOSE_BTN_CX_OFFSET
       cy = CLOSE_BTN_CY
@@ -1411,9 +1413,21 @@ class FmrbApp
         end
       end
     end
-    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11
+    # A fullscreen app has no title bar -- y < 11 is just the top of its
+    # picture -- so the reload needs the guard the close button always had.
+    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11 && !@fullscreen
       request_reload if _is_file_app
     end
+  end
+
+  # Frame first, then the app's hook: the "call super(ev)" contract is gone.
+  def _dispatch_event(ev)
+    _frame_event(ev)
+    on_event(ev)
+  end
+
+  def on_event(ev)
+    # App hook, overridden freely; super(ev) from existing apps is a no-op.
   end
 
   def request_reload
@@ -1476,7 +1490,7 @@ class FmrbApp
     t = msg[:type]
     if t == FmrbConst::MSG_TYPE_HID_EVENT
       ev = _parse_hid_event(msg[:data])
-      on_event(ev) if ev
+      _dispatch_event(ev) if ev
     elsif t == FmrbConst::MSG_TYPE_APP_CONTROL
       _dispatch_control(msg[:data])
     end

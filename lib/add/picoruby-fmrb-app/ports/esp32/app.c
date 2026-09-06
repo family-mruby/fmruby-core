@@ -376,7 +376,9 @@ bool dispatch_hid_event_to_ruby(mrb_state *mrb, mrb_value self, const fmrb_msg_t
 
     // Execute on_event directly.
     // Note: Object#method is not available in mruby (CRuby-only).
-    mrb_funcall(mrb, self, "on_event", 1, event_hash);
+    // _dispatch_event runs the frame's handling (close button, reload) and
+    // then the app's on_event hook, so apps no longer owe a super(ev).
+    mrb_funcall(mrb, self, "_dispatch_event", 1, event_hash);
 
     #if 0
     FMRB_LOGI(TAG, "=== AFTER mrb_funcall ===");

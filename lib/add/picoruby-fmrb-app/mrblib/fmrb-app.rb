@@ -409,8 +409,11 @@ class FmrbApp
     Log.debug("on_resume")
   end
 
-  def on_event(ev)
-    # Called from C
+  # The frame's own event handling: the close button and the title-bar
+  # right-click reload. Called on every event ahead of the app's hook (see
+  # _dispatch_event), so overriding on_event without super can no longer
+  # lose the close button.
+  def _frame_event(ev)
     # Handle close button press feedback + click
     if @closable && ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
       cx = @window_width - CLOSE_BTN_CX_OFFSET
@@ -448,10 +451,25 @@ class FmrbApp
         end
       end
     end
-    # Handle title bar right click (reload for file-based apps)
-    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11
+    # Handle title bar right click (reload for file-based apps). A
+    # fullscreen app has no title bar -- y < 11 is just the top of its
+    # picture -- so the guard the close button always had applies here too.
+    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11 && !@fullscreen
       request_reload if _is_file_app
     end
+  end
+
+  # Called from C for every event: the frame first, then the app's hook.
+  # This split is what removed the old contract "override on_event and you
+  # must call super(ev), or the close button dies".
+  def _dispatch_event(ev)
+    _frame_event(ev)
+    on_event(ev)
+  end
+
+  def on_event(ev)
+    # App hook, overridden freely. The base needs nothing here, so the
+    # super(ev) calls existing apps still make are harmless no-ops.
   end
 
   def on_resize(new_width, new_height)
