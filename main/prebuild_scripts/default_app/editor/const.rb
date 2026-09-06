@@ -102,30 +102,6 @@ module EditorConst
   HL_MD_CODE = 2     # syntax_string
   HL_MD_HEAD = 6     # syntax_constant
 
-  # The Colors dialog walks these two in step: the key as written in
-  # /home/colors.toml, and the colour in force right now. Parallel arrays
-  # rather than a hash of pairs, so both engines see plain typed lists.
-  EDITOR_COLOR_KEYS = [
-    "bg", "text", "cursor", "selection", "gutter",
-    "menu_bg", "menu_text", "menu_key", "menu_key_alt",
-    "status_bg", "status_text", "saved_bg", "saved_text",
-    "dropdown_bg", "dropdown_text", "dropdown_sel_bg", "dropdown_sel_text",
-    "dialog_bg", "dialog_text", "dialog_border", "dialog_key",
-    "problem_bg", "problem_text",
-    "syntax_keyword", "syntax_string", "syntax_comment", "syntax_number",
-    "syntax_symbol", "syntax_constant", "syntax_variable", "syntax_method",
-  ]
-  EDITOR_COLOR_VALUES = [
-    BG_COLOR, TEXT_COLOR, CURSOR_COLOR, SEL_BG, GUTTER_BG,
-    MENU_BG, MENU_TEXT, MENU_KEY, MENU_KEY_DARK,
-    STATUS_BG, STATUS_TEXT, STATUS_OK_BG, STATUS_OK_TEXT,
-    DROPDOWN_BG, DROPDOWN_TEXT, DROPDOWN_SEL_BG, DROPDOWN_SEL_TEXT,
-    QUIT_DLG_BG, QUIT_DLG_TEXT, QUIT_DLG_BORDER, QUIT_DLG_KEY,
-    PROBLEM_BG, PROBLEM_BADGE_TEXT,
-    HL_COLORS[1], HL_COLORS[2], HL_COLORS[3], HL_COLORS[4],
-    HL_COLORS[5], HL_COLORS[6], HL_COLORS[7], HL_COLORS[8],
-  ]
-
   # Printable ASCII indexed by (code - 32). Used instead of Integer#chr, which
   # the Spinel runtime does not provide -- and a table lookup is the same in both
   # builds, so the source stays single-backend.
@@ -239,5 +215,36 @@ module EditorConst
   # F1 opens the help page for the method under the cursor (or the selected
   # candidate). Nothing else used it: the debugger's keys start at F4.
   SC_F1 = 0x3A
+
+  # The Colors dialog walks these two in step: the key as written in
+  # /home/colors.toml, and the colour in force right now. Parallel arrays
+  # rather than a hash of pairs, so both engines see plain typed lists.
+  #
+  # LAST in the module on purpose. A module body runs top to bottom under
+  # mruby, and this array names colours that are defined all over the file
+  # (SEL_BG and the dialog set sit far below where the array used to be).
+  # Spinel resolves constants for the whole program at compile time, so the
+  # misplacement compiled fine there and the mruby editor died on its first
+  # line with "uninitialized constant EditorConst::SEL_BG".
+  EDITOR_COLOR_KEYS = [
+    "bg", "text", "cursor", "selection", "gutter",
+    "menu_bg", "menu_text", "menu_key", "menu_key_alt",
+    "status_bg", "status_text", "saved_bg", "saved_text",
+    "dropdown_bg", "dropdown_text", "dropdown_sel_bg", "dropdown_sel_text",
+    "dialog_bg", "dialog_text", "dialog_border", "dialog_key",
+    "problem_bg", "problem_text",
+    "syntax_keyword", "syntax_string", "syntax_comment", "syntax_number",
+    "syntax_symbol", "syntax_constant", "syntax_variable", "syntax_method",
+  ]
+  EDITOR_COLOR_VALUES = [
+    BG_COLOR, TEXT_COLOR, CURSOR_COLOR, SEL_BG, GUTTER_BG,
+    MENU_BG, MENU_TEXT, MENU_KEY, MENU_KEY_DARK,
+    STATUS_BG, STATUS_TEXT, STATUS_OK_BG, STATUS_OK_TEXT,
+    DROPDOWN_BG, DROPDOWN_TEXT, DROPDOWN_SEL_BG, DROPDOWN_SEL_TEXT,
+    QUIT_DLG_BG, QUIT_DLG_TEXT, QUIT_DLG_BORDER, QUIT_DLG_KEY,
+    PROBLEM_BG, PROBLEM_BADGE_TEXT,
+    HL_COLORS[1], HL_COLORS[2], HL_COLORS[3], HL_COLORS[4],
+    HL_COLORS[5], HL_COLORS[6], HL_COLORS[7], HL_COLORS[8],
+  ]
 
 end
