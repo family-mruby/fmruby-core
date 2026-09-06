@@ -33,6 +33,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [ブート時間の実測とコストモデル](reference/boot_performance.md)
 - [fmruby-core のビルド構造とコンパイル定義のスコープ](reference/core_build_structure.md)
 - [GC の観測と調整 (mruby アプリ VM)](reference/gc_monitoring.md)
+- [描画境界 (FmrbGfx ↔ 描画側) の課題と方針](reference/gfx_boundary_issues.md) — **随時更新** (2026-09-04) 課題 4 件、いずれも未着手。仕様変更が落ち着いてから順に
 - [次期基板 HDMI 映像出力方式 検討資料](reference/hdmi_video_output_study.md) — **凍結** (2026-08-29) 次期基板 (NARYAv4) の HDMI 方式比較。LT8912B が最有力、基板が動くまで保留
 - [ESP-IDF v6.0 移行メモ（IDF6対応で判明した課題と回避策）](reference/idf6_migration_notes.md)
 - [内蔵 RAM 削減計画](reference/internal_ram_budget.md)
@@ -52,6 +53,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 
 - `ai/` [OpenAI API 活用の構想メモ](ai/ideas.md) — - 〔1 files〕
 - `app-distribution/` [アプリ配布プラットフォーム 計画](app-distribution/plan.md) — **進行中** (2026-09-02) **P1-P3 完了 (Retro 実機を除く)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。**NARYA v4 で通し確認 + 速度の作り直し済** (report/p4_device.md, p5_perf.md)。**解析 7.6 秒 → 0.12 秒**。**2026-09-03: 店を default app へ移した** — **起動 10.0 秒 → 0.45 秒**、`large_memory` も不要に (report/builtin_move.md)。残りは Retro 実機のみ。 〔14 files〕
+- `app_model/` [FmrbApp は継承でよいか (検討)](app_model/inheritance_vs_delegation.md) — **結論あり (現状維持)** (2026-09-06) 「継承より移譲」を当てて 〔1 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔3 files〕
@@ -71,7 +73,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-09-01) P0-P3 完了 (P3 は実機確認 4 件残)。P4 完了 (report/p4.md)。**P6 = 青ちらつきに帯域削減で当たる計画を追加** (instruction_p6.md、未着手)。残り = ユーザ確認とモニタ相性、無印 ESP32 疎通 (保留) 〔10 files〕
 - `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔5 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
-- `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — **進行中** (2026-09-03) P0-P4・P6-P8 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済)。残は P5 (見せ場、任意) 〔17 files〕
+- `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — **進行中** (2026-09-03) P0-P4・P6-P8 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済)。残は P5 (見せ場、任意) 〔19 files〕
 - `raycast_spinel/` [Raycaster の計算を Spinel gem 化する実装計画](raycast_spinel/plan.md) — - 〔2 files〕
 - `remote_debug/` [PicoRuby VM リモートデバッグ検討 (Bluetooth / VSCode)](remote_debug/vm_remote_debug_design.md) — - 〔9 files〕
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
@@ -79,6 +81,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `ruby_asterism/` [プロジェクト名の決定: Asterism](ruby_asterism/naming.md) — - 〔7 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
+- `spinel_upstream_ext/` [Spinel 上流の ext 機構でフォークを置き換えられるか](spinel_upstream_ext/plan.md) — **構想** (2026-09-06) gem 型 (fft / raycast / hello) は上流の `--ext-init` / `--ext-entry` で置換でき FFI 迂回も消える。VM 型 (kernel / desktop / editor) と組み込み層 (多重インスタンス・pool・VFS・RAM 上限・32bit) は上流に無く、フォーク維持が前提。段階移行案を提示 〔1 files〕
 - `stamp_p4/` [Stamp-P4 ヘッドレス機 (切符サイズの Modern)](stamp_p4/README.md) — **構想** (2026-08-31) M5Stamp-P4 + Stamp-AddOn C6 を殻に入れたヘッドレス Family mruby。まず殻 (case_design.md)、ファーム分岐は後続 〔2 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔22 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔17 files〕
