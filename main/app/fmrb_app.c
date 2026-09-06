@@ -4,6 +4,7 @@
 #include <stdlib.h>
 
 #include <picoruby.h>
+#include <task.h>
 #include <mruby/internal.h>
 #include <mruby/throw.h>
 #include <mruby/string.h>
@@ -875,6 +876,19 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
     FMRB_LOGD(TAG, "[%s] mrb_task_run - BEFORE execution", ctx->app_name);
     mrb_task_run(ctx->mrb);
     FMRB_LOGD(TAG, "[%s] mrb_task_run - AFTER execution, mrb->exc=%p", ctx->app_name, ctx->mrb->exc);
+
+    // The scheduler files a task's uncaught exception away in the task's
+    // result and clears mrb->exc (mruby-task task.c), so checking mrb->exc
+    // alone reported "No exception detected" for a script that died on its
+    // first line -- the app just vanished. Pull the filed exception back out
+    // so it goes through the same reporting as any other.
+    if (!ctx->mrb->exc) {
+        mrb_value task_result = mrb_task_value(ctx->mrb, task);
+        if (mrb_obj_is_kind_of(ctx->mrb, task_result,
+                               ctx->mrb->eException_class)) {
+            ctx->mrb->exc = mrb_obj_ptr(task_result);
+        }
+    }
 
     if (ctx->mrb->exc) {
         mrb_value exc_str = mrb_exc_get_output(ctx->mrb, (struct RObject *)ctx->mrb->exc);
