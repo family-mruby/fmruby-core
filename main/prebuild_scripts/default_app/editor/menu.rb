@@ -26,7 +26,7 @@ module EditorMenu
   def menu_view_items
     [view_toggle_label(@hl_enabled, :m_hilight),
      view_toggle_label(@wrap_on, :m_wrap),
-     view_toggle_label(@fullscreen, :m_full),
+     view_toggle_label(fullscreen?, :m_full),
      "    " + FmrbI18n.t(:m_colors).to_s]
   end
 

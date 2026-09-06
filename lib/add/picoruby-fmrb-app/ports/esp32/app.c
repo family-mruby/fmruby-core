@@ -187,12 +187,12 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
                mrb_str_new_cstr(mrb, ctx->app_name));
 
     // Set @fullscreen flag
-    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@fullscreen"),
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@_fullscreen"),
                ctx->fullscreen ? mrb_true_value() : mrb_false_value());
 
     // Set @rounded_corners flag (drives composite-region-based corner
     // shaping in fmrb-app.rb). Always false for fullscreen apps.
-    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@rounded_corners"),
+    mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@_rounded_corners"),
                (!ctx->fullscreen && ctx->rounded_corners) ? mrb_true_value() : mrb_false_value());
 
     // Set @platform symbol (:linux or :esp32)
@@ -225,11 +225,11 @@ static mrb_value mrb_fmrb_app_init(mrb_state *mrb, mrb_value self)
         mrb_raisef(mrb, E_RUNTIME_ERROR, "Failed to create canvas: %d", canvas_ret);
     }
     if (canvas_id != FMRB_CANVAS_SCREEN) {
-        mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@canvas"),
+        mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@_canvas"),
                    mrb_fixnum_value(canvas_id));
     }
     if (bg_canvas_id != FMRB_CANVAS_SCREEN) {
-        mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@bg_canvas"),
+        mrb_iv_set(mrb, self, mrb_intern_cstr(mrb, "@_bg_canvas"),
                    mrb_fixnum_value(bg_canvas_id));
     }
 
@@ -579,7 +579,7 @@ static mrb_value mrb_fmrb_app_spin(mrb_state *mrb, mrb_value self)
                                                                 mrb_str_new_cstr(mrb, "fullscreen"));
                                 int is_fullscreen = mrb_test(fs_val) ? 1 : 0;
                                 if (!mrb_nil_p(fs_val)) {
-                                    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@fullscreen"),
+                                    mrb_iv_set(mrb, self, mrb_intern_lit(mrb, "@_fullscreen"),
                                                mrb_bool_value(is_fullscreen));
                                 }
 

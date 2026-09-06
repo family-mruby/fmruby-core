@@ -21,7 +21,15 @@ class FmrbApp
   # :gfx is here so apps can write gfx.draw_text as well as @gfx.draw_text --
   # the editor's completion answers both spellings, and the method form is the
   # one the type signatures in sig/ describe.
-  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :fullscreen, :rounded_corners, :gfx
+  attr_reader :name, :running, :window_width, :window_height, :pos_x, :pos_y, :platform, :gfx
+
+  # Predicates, not attr_readers: the backing ivars carry the @_ prefix
+  # (base internals, kept out of the namespace apps write in), and a
+  # boolean reads better as a question. Nothing called the old readers
+  # (measured 2026-09-06), so the rename costs nothing.
+  def fullscreen?; @_fullscreen; end
+  def rounded_corners?; @_rounded_corners; end
+  def closable?; @_closable; end
   # User area (inside the window frame, below the title bar). Exposed so
   # helper libraries such as FmrbUI can place widgets in window-local
   # coordinates without reaching into the app's instance variables.
@@ -29,7 +37,7 @@ class FmrbApp
   # Whether a click on the close-button area may stop the app. System apps
   # that own the screen (the desktop) must set this to false: for them the
   # top-right corner is ordinary UI, not a close button.
-  attr_accessor :closable
+  def closable=(v); @_closable = v; end
 
   # Close-button hit zone (used by both draw and event-handler paths).
   CLOSE_BTN_CX_OFFSET = 6   # distance from right edge to circle center
@@ -44,20 +52,20 @@ class FmrbApp
   def initialize()
     Log.debug("initialize")
     @running = false
-    @close_btn_pressed = false
-    @closable = true
+    @_close_btn_pressed = false
+    @_closable = true
     @_spin_break = false
     @_timers = []
-    @attached_uis = []
+    @_attached_uis = []
     _init() # C function, variables are defined here
     Log.debug("name=#{@name}")
-    Log.debug("After _init(), @canvas=#{@canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}")
+    Log.debug("After _init(), @_canvas=#{@_canvas}, @window_width=#{@window_width}, @window_height=#{@window_height}")
 
-    # Initialize graphics only for non-headless apps (@canvas is set)
-    if @canvas
-      @gfx = FmrbGfx.new(@canvas, width: @window_width, height: @window_height)
-      Log.debug("FmrbGfx initialized: canvas_id=#{@canvas}")
-      if @fullscreen
+    # Initialize graphics only for non-headless apps (@_canvas is set)
+    if @_canvas
+      @gfx = FmrbGfx.new(@_canvas, width: @window_width, height: @window_height)
+      Log.debug("FmrbGfx initialized: canvas_id=#{@_canvas}")
+      if @_fullscreen
         @user_area_x0 = 0
         @user_area_y0 = 0
         @user_area_x1 = @window_width
@@ -74,16 +82,16 @@ class FmrbApp
       end
 
       # Background canvas (desktop only)
-      if @bg_canvas
-        @bg_gfx = FmrbGfx.new(@bg_canvas, width: @window_width, height: @window_height)
-        Log.debug("Background GFX initialized: canvas_id=#{@bg_canvas}")
+      if @_bg_canvas
+        @bg_gfx = FmrbGfx.new(@_bg_canvas, width: @window_width, height: @window_height)
+        Log.debug("Background GFX initialized: canvas_id=#{@_bg_canvas}")
       else
         @bg_gfx = nil
       end
 
       _apply_user_area_sprite_clip
 
-      unless @fullscreen
+      unless @_fullscreen
         _build_frame_block
         _apply_rounded_corner_regions
       end
@@ -100,27 +108,27 @@ class FmrbApp
   # restored on exit, so apps using set_font(:ja, ...) never need to
   # re-apply the font after every frame call.
   def draw_window_frame
-    return if @fullscreen
+    return if @_fullscreen
     # An app spawned fullscreen never built the frame block (nothing to frame),
     # so build it on the first draw after it becomes a window at runtime -- F11
     # on an editor started with `edit -f` used to leave it with no title bar,
     # no border and no close button.
-    _build_frame_block if @gfx && !@frame_block
+    _build_frame_block if @gfx && !@_frame_block
     if @gfx
       saved_font = @gfx.current_font
       saved_size = @gfx.current_text_size
       @gfx.set_font(:default)
       @gfx.set_text_size(1)
     end
-    if @frame_block
-      @frame_block.draw(w: @window_width, h: @window_height)
+    if @_frame_block
+      @_frame_block.draw(w: @window_width, h: @window_height)
     end
     # Re-stamp the 3 outer pixels of each rounded corner with the canvas
     # color key, so resize / clear-induced opaque pixels there composite
     # as transparent again. Runs after the frame draw so the round-rect
     # border (drawn last by the frame block) stays intact.
-    if @corner_clear_block
-      @corner_clear_block.draw(w: @window_width, h: @window_height)
+    if @_corner_clear_block
+      @_corner_clear_block.draw(w: @window_width, h: @window_height)
     end
     if @gfx
       @gfx.set_font(*saved_font) unless saved_font == [:default]
@@ -193,11 +201,11 @@ class FmrbApp
     return unless @gfx
     @gfx.fill_rect(@user_area_x0, @user_area_y0,
                    @user_area_width, @user_area_height, color)
-    # @bg_canvas is the desktop, which has no frame -- letting it through here
+    # @_bg_canvas is the desktop, which has no frame -- letting it through here
     # builds the frame block and draws a title bar across the wallpaper.
-    # @fullscreen is refused by draw_window_frame too; it is named here so the
+    # @_fullscreen is refused by draw_window_frame too; it is named here so the
     # reason is visible at the call site.
-    draw_window_frame unless @bg_canvas || @fullscreen
+    draw_window_frame unless @_bg_canvas || @_fullscreen
     _invalidate_attached_uis
     nil
   end
@@ -206,7 +214,7 @@ class FmrbApp
   # the widgets back without the app wiring anything up. An app with one page
   # per screen may hold several.
   def attach_ui(ui)
-    @attached_uis << ui
+    @_attached_uis << ui
     nil
   end
 
@@ -218,20 +226,20 @@ class FmrbApp
   def detach_ui(ui)
     out = []
     i = 0
-    n = @attached_uis.size
+    n = @_attached_uis.size
     while i < n
-      out << @attached_uis[i] unless @attached_uis[i] == ui
+      out << @_attached_uis[i] unless @_attached_uis[i] == ui
       i += 1
     end
-    @attached_uis = out
+    @_attached_uis = out
     nil
   end
 
   def _invalidate_attached_uis
-    n = @attached_uis.size
+    n = @_attached_uis.size
     i = 0
     while i < n
-      @attached_uis[i].invalidate_all
+      @_attached_uis[i].invalidate_all
       i += 1
     end
     nil
@@ -249,8 +257,8 @@ class FmrbApp
     # places its own sprites - menu bar indicators, launcher icons - across the
     # whole canvas, so there is nothing to protect and a user-area rect would
     # only cut them.
-    return if @bg_canvas
-    if @fullscreen
+    return if @_bg_canvas
+    if @_fullscreen
       @gfx.clear_sprite_clip
     else
       @gfx.set_sprite_clip(@user_area_x0, @user_area_y0,
@@ -265,7 +273,7 @@ class FmrbApp
   # (strings are immutable after that).
   def _build_frame_block
     title = @name
-    @frame_block = GfxBlock.new(@gfx, w: @window_width, h: @window_height) do |r, w:, h:|
+    @_frame_block = GfxBlock.new(@gfx, w: @window_width, h: @window_height) do |r, w:, h:|
       # The frame is the system's, not the app's, so it takes the system's
       # colours: one edit to [theme] in system_conf.toml restyles every
       # window at once. The values it used to carry (0xC5 and 0x60) were the
@@ -301,16 +309,16 @@ class FmrbApp
   # Cached on (w, h) so re-running on every draw_window_frame call is a
   # no-op unless the window was just resized.
   def _apply_rounded_corner_regions
-    return if @fullscreen
+    return if @_fullscreen
     return unless @gfx
-    return unless @rounded_corners
+    return unless @_rounded_corners
     # Apps that own a bg_canvas (system_desktop) manage their own composite
     # regions and toggle them on/off around the boot animation, so don't
     # clobber them with the generic rounded-corner layout.
-    return if @bg_canvas
+    return if @_bg_canvas
     w = @window_width
     h = @window_height
-    return if @composite_region_w == w && @composite_region_h == h
+    return if @_composite_region_w == w && @_composite_region_h == h
     c = CORNER_R
     @gfx.set_composite_regions([
       # 4 corner squares: per-pixel transparent compare so the rounded
@@ -324,8 +332,8 @@ class FmrbApp
       { dst_x: c,     dst_y: h - c, w: w - 2 * c, h: c,         transparent: false },
       { dst_x: 0,     dst_y: c,     w: w,         h: h - 2 * c, transparent: false },
     ])
-    @composite_region_w = w
-    @composite_region_h = h
+    @_composite_region_w = w
+    @_composite_region_h = h
   end
 
   # CORNER_R=4 の弧外側 3 px ずつ (= 12 px / window) を canvas color key
@@ -335,7 +343,7 @@ class FmrbApp
   # DEFINE_PROG_MAX_PAYLOAD (220B) を超えるリスクがあるため。
   def _build_corner_clear_block
     t = TRANSPARENT_COLOR
-    @corner_clear_block = GfxBlock.new(@gfx, w: @window_width, h: @window_height) do |r, w:, h:|
+    @_corner_clear_block = GfxBlock.new(@gfx, w: @window_width, h: @window_height) do |r, w:, h:|
       # top-left: (0,0)(1,0)(0,1)
       r.draw_line 0,     0,     1,     0,     t
       r.draw_line 0,     1,     0,     1,     t
@@ -415,7 +423,7 @@ class FmrbApp
   # lose the close button.
   def _frame_event(ev)
     # Handle close button press feedback + click
-    if @closable && ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
+    if @_closable && ev[:button] == 1 && (ev[:type] == :mouse_down || ev[:type] == :mouse_up)
       cx = @window_width - CLOSE_BTN_CX_OFFSET
       cy = CLOSE_BTN_CY
       hit = (ev[:x] - cx).abs <= CLOSE_BTN_HIT_R &&
@@ -423,14 +431,14 @@ class FmrbApp
 
       case ev[:type]
       when :mouse_down
-        if hit && !@fullscreen && @gfx
-          @close_btn_pressed = true
+        if hit && !@_fullscreen && @gfx
+          @_close_btn_pressed = true
           @gfx.fill_circle(cx, cy, CLOSE_BTN_R, CLOSE_BTN_PRESSED_COLOR)
           @gfx.present
         end
       when :mouse_up
-        if @close_btn_pressed
-          @close_btn_pressed = false
+        if @_close_btn_pressed
+          @_close_btn_pressed = false
           if hit
             stop
           elsif @gfx
@@ -441,7 +449,7 @@ class FmrbApp
             @gfx.fill_circle(cx, cy, CLOSE_BTN_R, FmrbConst::THEME_TEXT_LIGHT)
             @gfx.present
           end
-        elsif hit && !@fullscreen && @gfx
+        elsif hit && !@_fullscreen && @gfx
           # Safety net: down event missed but click landed on button. Must
           # carry the same guards as the down path -- without them a plain
           # click on the top-right corner of a fullscreen app (which draws
@@ -454,7 +462,7 @@ class FmrbApp
     # Handle title bar right click (reload for file-based apps). A
     # fullscreen app has no title bar -- y < 11 is just the top of its
     # picture -- so the guard the close button always had applies here too.
-    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11 && !@fullscreen
+    if ev[:type] == :mouse_up && ev[:button] == 3 && ev[:y] < 11 && !@_fullscreen
       request_reload if _is_file_app
     end
   end
@@ -484,10 +492,10 @@ class FmrbApp
   # Internal methods
   def main_loop
     Log.debug("main_loop started")
-    @suspended = false
+    @_suspended = false
     loop do
       return if !@running
-      if @suspended
+      if @_suspended
         _spin(500)  # Sleep longer while suspended, still process messages
         _run_timers # Spinel runs timers inside _spin; keep the engines equal
         next
@@ -503,11 +511,11 @@ class FmrbApp
   def _handle_system_control(msg)
     case msg["cmd"]
     when "suspend"
-      @suspended = true
+      @_suspended = true
       on_suspend
       Log.info("App #{@name} suspended")
     when "resume"
-      @suspended = false
+      @_suspended = false
       on_resume
       Log.info("App #{@name} resumed")
     when "stop"
@@ -648,7 +656,7 @@ class FmrbApp
 
   # Ask the kernel to switch this app between windowed and fullscreen. The VM
   # keeps running, so app state survives; the answer arrives as on_resize with
-  # @fullscreen and the user area already updated.
+  # @_fullscreen and the user area already updated.
   def request_fullscreen(on)
     cmd = on ? "enter_fullscreen" : "exit_fullscreen"
     send_message(FmrbConst::PROC_ID_KERNEL, FmrbConst::MSG_TYPE_APP_CONTROL,
@@ -656,7 +664,7 @@ class FmrbApp
   end
 
   def toggle_fullscreen
-    request_fullscreen(!@fullscreen)
+    request_fullscreen(!@_fullscreen)
   end
 
   # Make sure the graphics/audio side's copy of a file matches this one,
@@ -722,15 +730,15 @@ class FmrbApp
       GC.scheduler_driven = false
       GC.step_limit = 0
     end
-    @idle_gc = enable
+    @_idle_gc = enable
   rescue => e
     # Not fatal: the app runs exactly as it did before.
     Log.warn("idle_gc unavailable: #{e.message}")
-    @idle_gc = false
+    @_idle_gc = false
   end
 
   def idle_gc
-    @idle_gc ? true : false
+    @_idle_gc ? true : false
   end
 
   def set_window_position(x, y)
@@ -773,13 +781,13 @@ class FmrbApp
     end
 
     # Release the window-frame program before the canvas it belongs to is freed.
-    if @frame_block
-      @frame_block.destroy
-      @frame_block = nil
+    if @_frame_block
+      @_frame_block.destroy
+      @_frame_block = nil
     end
-    if @corner_clear_block
-      @corner_clear_block.destroy
-      @corner_clear_block = nil
+    if @_corner_clear_block
+      @_corner_clear_block.destroy
+      @_corner_clear_block = nil
     end
     if @gfx
       @gfx.destroy  # Cleanup graphics resources
