@@ -19,6 +19,15 @@ mouse_scale_y = 0.5
 wheel_lines = 3
 timezone = "JST-9"
 keyboard_layout = "jp" # "jp" or "us"
+# Internal RAM (KB) a spawn must leave for the rest of the machine; a start
+# that would eat into this is refused with "Not enough memory". 30 is the
+# floor that keeps drivers and networking able to allocate. 0 disables the
+# floor (experiments only). Ignored by the Linux/wasm builds (host heap).
+# CAUTION: too large locks out EVERY app - the editor and shell included -
+# and the device then has no way to edit this file back (verified on a
+# Tab5 at 200: free internal was ~127 KB, so nothing could start). Recovery
+# is a reflash. Raise it in small steps.
+app_spawn_margin_kb = 30
 language = "en" # "ja" or "en"
 
 # The logo and the jingle at power-on. false skips both and saves about 2.7

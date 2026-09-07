@@ -46,6 +46,7 @@ static fmrb_system_config_t g_system_config = {
     .default_user_app_height = 180,
     .display_mode = FMRB_DISPLAY_MODE_NTSC_IPC,
     .max_apps = FMRB_MAX_APPS,
+    .app_spawn_margin_kb = FMRB_APP_SPAWN_MARGIN / 1024,
     .debug_mode = true,
     .ble_auto_start = true,
     .wifi_auto_start = false,
@@ -197,6 +198,23 @@ static bool read_system_config(void)
     // Read mouse sensitivity
     g_system_config.mouse_scale_x = fmrb_toml_get_double(conf, "mouse_scale_x", g_system_config.mouse_scale_x);
     g_system_config.mouse_scale_y = fmrb_toml_get_double(conf, "mouse_scale_y", g_system_config.mouse_scale_y);
+    // Internal RAM floor for app spawning (app_internal_ram_available). The
+    // built-in 30 KB is what keeps the drivers and the network stack able to
+    // allocate; this key exists to adjust it per machine without a rebuild.
+    // 0 is allowed and means "no floor" -- an experiment setting, not a
+    // recommendation. Clamped so a typo in bytes-instead-of-KB cannot make
+    // every spawn impossible.
+    {
+        int margin = (int)fmrb_toml_get_int(conf, "app_spawn_margin_kb",
+                                            g_system_config.app_spawn_margin_kb);
+        if (margin < 0) margin = 0;
+        if (margin > 200) {
+            FMRB_LOGW(TAG, "app_spawn_margin_kb=%d clamped to 200 (the key is in KB)", margin);
+            margin = 200;
+        }
+        g_system_config.app_spawn_margin_kb = (uint16_t)margin;
+    }
+
     {
         int wl = (int)fmrb_toml_get_int(conf, "wheel_lines", g_system_config.wheel_lines);
         if (wl < 1) wl = 1;
@@ -248,6 +266,7 @@ static bool read_system_config(void)
               g_system_config.display_mode);
     FMRB_LOGI(TAG, "Max Apps: %d (build ceiling %d)",
               g_system_config.max_apps, FMRB_MAX_APPS);
+    FMRB_LOGI(TAG, "App spawn margin: %u KB", (unsigned)g_system_config.app_spawn_margin_kb);
     FMRB_LOGI(TAG, "Debug Mode: %s", g_system_config.debug_mode ? "enabled" : "disabled");
     FMRB_LOGI(TAG, "Mouse Scale: x=%.2f, y=%.2f, wheel=%d rows",
               g_system_config.mouse_scale_x, g_system_config.mouse_scale_y,

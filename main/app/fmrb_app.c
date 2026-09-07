@@ -300,16 +300,22 @@ static bool app_internal_ram_available(const fmrb_spawn_attr_t* attr)
     size_t need = (size_t)attr->stack_words + FMRB_APP_SPAWN_OVERHEAD;
     size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
     size_t freed = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+    // The floor comes from system_conf.toml (app_spawn_margin_kb) so it can
+    // be tuned per machine; the build constant is only the default and the
+    // fallback for a spawn that somehow precedes the config load.
+    const fmrb_system_config_t *cfg = fmrb_kernel_get_config();
+    size_t margin = cfg ? (size_t)cfg->app_spawn_margin_kb * 1024
+                        : (size_t)FMRB_APP_SPAWN_MARGIN;
 
     if (largest < need) {
         FMRB_LOGW(TAG, "[%s] refused: largest internal block %zu < %zu needed",
                   attr->name ? attr->name : "?", largest, need);
         return false;
     }
-    if (freed < need + FMRB_APP_SPAWN_MARGIN) {
-        FMRB_LOGW(TAG, "[%s] refused: internal free %zu < %zu (need %zu + margin %d)",
+    if (freed < need + margin) {
+        FMRB_LOGW(TAG, "[%s] refused: internal free %zu < %zu (need %zu + margin %zu)",
                   attr->name ? attr->name : "?", freed,
-                  need + (size_t)FMRB_APP_SPAWN_MARGIN, need, FMRB_APP_SPAWN_MARGIN);
+                  need + margin, need, margin);
         return false;
     }
     FMRB_LOGI(TAG, "[%s] internal RAM ok: free=%zu largest=%zu need=%zu",
