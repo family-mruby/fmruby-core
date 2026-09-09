@@ -40,7 +40,7 @@ language = "en" # "ja" or "en"
 boot_splash = true
 
 # One app to open as soon as the desktop is up, by path (the same path the
-# launcher uses, e.g. "/app/game/tetris.app.rb"). Empty means none, which is
+# launcher uses, e.g. "/app/game/blockgame.app.rb"). Empty means none, which is
 # the ordinary desktop. The browser sets this from ?app= in its URL.
 startup_app = ""
 

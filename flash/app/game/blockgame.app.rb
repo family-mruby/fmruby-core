@@ -1,7 +1,7 @@
-# Tetris - Classic falling block puzzle game
+# BlockGame - Classic falling block puzzle game
 # Controls: Arrow keys (Left/Right/Down), Up=Rotate, Space=Hard drop
 
-class TetrisApp < FmrbApp
+class BlockGameApp < FmrbApp
   # Board dimensions
   COLS = 10
   ROWS = 20
@@ -65,7 +65,7 @@ class TetrisApp < FmrbApp
   # the .fmsq below, which the audio task loops on its own -- the game starts
   # it and never touches it again.
   BGM_SRC   = "/usr/share/music/korobeiniki.fmsq"
-  BGM_CACHE = "/cache/app/tetris/bgm.fmsq"
+  BGM_CACHE = "/cache/app/blockgame/bgm.fmsq"
   BGM_SLOT  = 0
   # Effects go through note_on, which lands on the SUB APU, so they do not
   # fight the BGM playing on MAIN.
@@ -91,7 +91,7 @@ class TetrisApp < FmrbApp
   end
 
   def on_create
-    Log.info("Tetris on_create")
+    Log.info("BlockGame on_create")
     setup_audio
     build_blocks
     reset_board
@@ -604,9 +604,9 @@ class TetrisApp < FmrbApp
     @gfx.sync_file(BGM_SRC, dest: BGM_CACHE)
     @audio.load_fmsq_file(BGM_SLOT, BGM_CACHE)
     @audio.play_slot(BGM_SLOT)
-    Log.info("Tetris: BGM started")
+    Log.info("BlockGame: BGM started")
   rescue => e
-    Log.warn("Tetris: no audio (#{e.message})")
+    Log.warn("BlockGame: no audio (#{e.message})")
     @audio = nil
   end
 
@@ -614,14 +614,14 @@ class TetrisApp < FmrbApp
     return unless @audio
     @audio.play_slot(BGM_SLOT)
   rescue => e
-    Log.warn("Tetris: BGM restart failed (#{e.message})")
+    Log.warn("BlockGame: BGM restart failed (#{e.message})")
   end
 
   def stop_bgm
     return unless @audio
     @audio.stop
   rescue => e
-    Log.warn("Tetris: BGM stop failed (#{e.message})")
+    Log.warn("BlockGame: BGM stop failed (#{e.message})")
   end
 
   def stop_audio
@@ -782,14 +782,14 @@ class TetrisApp < FmrbApp
     @piece_block = nil
     @next_block = nil
     stop_audio
-    Log.info("Tetris destroyed")
+    Log.info("BlockGame destroyed")
   end
 end
 
-Log.info("TetrisApp.new")
+Log.info("BlockGameApp.new")
 begin
-  app = TetrisApp.new
-  Log.info("TetrisApp created")
+  app = BlockGameApp.new
+  Log.info("BlockGameApp created")
   app.start
 rescue => e
   Log.error("Exception: #{e.class}")

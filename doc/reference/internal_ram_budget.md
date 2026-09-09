@@ -720,11 +720,11 @@ I [FM-Editor] internal RAM ok: free=84516 largest=31744 need=32768 (stack 24576)
 空きが減った状態では従来どおり断られる。
 
 ```
-I [Tetris]    internal RAM ok: free=58532 largest=16384 need=24576 (stack 16384)
+I [BlockGame]    internal RAM ok: free=58532 largest=16384 need=24576 (stack 16384)
 W [Raycaster] refused: internal free 41276 < 55296 (need 24576 + margin 30720)
 ```
 
-Tetris は最大ブロックがスタックとちょうど同値 (16,384 B) で通っている。
+BlockGame は最大ブロックがスタックとちょうど同値 (16,384 B) で通っている。
 `heap_caps_get_largest_free_block` は**確保可能な最大サイズ**を返す
 (管理領域を含まない) ので、この境界は等号で正しい。
 

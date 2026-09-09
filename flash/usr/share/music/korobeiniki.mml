@@ -9,7 +9,7 @@
 # than sixteen bars; the accompaniment ends with a quarter rest so that every
 # part is the same length and the loop turns over with all three together.
 #
-# Played by the tetris demo. tool/mml2fmsq.rb turns this into the .fmsq the
+# Played by the blockgame demo. tool/mml2fmsq.rb turns this into the .fmsq the
 # audio task loops on its own; FmrbMidi::MmlPlayer reads the same file.
 bpm 144
 loop on

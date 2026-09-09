@@ -1,0 +1,9 @@
+app_handle_name = "blockgame"
+app_screen_name = "BlockGame"
+app_screen_name_ja = "ブロックゲーム"
+default_window_mode = "window"
+default_window_width = 130
+default_window_height = 180
+default_window_pos_x = 50
+default_window_pos_y = 20
+#icon = "usr/share/icon/blockgame.icon"

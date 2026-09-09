@@ -144,7 +144,7 @@ mem_used()                                -> Integer   # arena 使用バイト
 2. **pool_usage: 20KB ファイルを開いた状態で従来より大幅に低い**こと
    (T1 比。従来値と新値を report に併記)。目安: 文書サイズに比例する
    消費が mruby プール側からほぼ消える。
-3. **全画面エディタから 14KB 窓アプリ (tetris) を F5 → NoMemoryError に
+3. **全画面エディタから 14KB 窓アプリ (blockgame) を F5 → NoMemoryError に
    ならない** (p2.md の再現手順)。
 4. **edit_lat: が T1/T4 基準から退行しない** (p99 < 33ms、25ms 超ゼロを維持。
    小ファイル HL on / 10.9KB HL on の 2 条件で比較表を report に)。

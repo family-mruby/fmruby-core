@@ -8,8 +8,8 @@
 ## 仕組み
 
 ```
-ページ  ?app=/app/game/tetris.app.rb
-   -> --fmrb-conf=startup_app="/app/game/tetris.app.rb"   (main.js)
+ページ  ?app=/app/game/blockgame.app.rb
+   -> --fmrb-conf=startup_app="/app/game/blockgame.app.rb"   (main.js)
    -> /etc/system_conf.toml を書き換え                     (page_settings_wasm.c)
    -> desktop が起動後に読んで spawn                        (system_desktop.app.rb)
 ```
@@ -25,7 +25,7 @@
 | | 結果 |
 |---|---|
 | sim (`startup_app = "/app/tool/appstore.app.rb"`) | 起動直後に店が開いた |
-| ブラウザ `?app=/app/game/tetris.app.rb` | Tetris が開いた |
+| ブラウザ `?app=/app/game/blockgame.app.rb` | BlockGame が開いた |
 | ブラウザ `?app=paint_pad` | `/app/usr/paint_pad/...` に展開されて開いた |
 
 `spawn_startup_app` は `finish_boot_animation` の末尾に置いた。ここが
