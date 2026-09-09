@@ -286,10 +286,19 @@ static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
  * canvases are in PSRAM. Measured on a Tab5, a running app holds its stack plus
  * about 4 KB of queue, TCB and semaphores.
  *
- * Two questions, because the answers differ: the stack is one contiguous
- * allocation, so the largest free block has to hold it (with two apps up the
- * largest block was already down to 63 KB against 118 KB free), and the system
- * has to keep working afterwards, so a margin is left on top of the total.
+ * Two questions, and they are asked of different numbers:
+ *
+ *   contiguous -- only the task stack is a single allocation (fmrb_task_create_ex
+ *     hands it to xTaskCreate as one block; the TCB, the semaphore and the
+ *     message queue are separate small ones). So the largest free block has to
+ *     hold the STACK ALONE. Charging it the overhead as well refuses starts that
+ *     would have worked: on a Tab5 whose heap has aged through a few launches the
+ *     largest block sits at 31,744 B, which holds the editor's 24 KB stack but is
+ *     1 KB short of stack + 8 KB (2026-09-07; the numbers and the reasoning are
+ *     in doc/reference/internal_ram_budget.md).
+ *
+ *   total -- the machine has to keep working afterwards, so the stack, the
+ *     overhead and a margin all have to come out of the free total.
  *
  * The margin is a floor for the rest of the machine, not a guarantee: WiFi and
  * the remote desktop alone move internal RAM by tens of KB while an app runs.
@@ -297,7 +306,8 @@ static void reset_ctx_run_state(fmrb_app_task_context_t* ctx) {
 #ifndef CONFIG_IDF_TARGET_LINUX
 static bool app_internal_ram_available(const fmrb_spawn_attr_t* attr)
 {
-    size_t need = (size_t)attr->stack_words + FMRB_APP_SPAWN_OVERHEAD;
+    size_t stack_need = (size_t)attr->stack_words;
+    size_t total_need = stack_need + FMRB_APP_SPAWN_OVERHEAD;
     size_t largest = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
     size_t freed = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
     // The floor comes from system_conf.toml (app_spawn_margin_kb) so it can
@@ -307,19 +317,19 @@ static bool app_internal_ram_available(const fmrb_spawn_attr_t* attr)
     size_t margin = cfg ? (size_t)cfg->app_spawn_margin_kb * 1024
                         : (size_t)FMRB_APP_SPAWN_MARGIN;
 
-    if (largest < need) {
-        FMRB_LOGW(TAG, "[%s] refused: largest internal block %zu < %zu needed",
-                  attr->name ? attr->name : "?", largest, need);
+    if (largest < stack_need) {
+        FMRB_LOGW(TAG, "[%s] refused: largest internal block %zu < %zu (task stack, one block)",
+                  attr->name ? attr->name : "?", largest, stack_need);
         return false;
     }
-    if (freed < need + margin) {
+    if (freed < total_need + margin) {
         FMRB_LOGW(TAG, "[%s] refused: internal free %zu < %zu (need %zu + margin %zu)",
                   attr->name ? attr->name : "?", freed,
-                  need + margin, need, margin);
+                  total_need + margin, total_need, margin);
         return false;
     }
-    FMRB_LOGI(TAG, "[%s] internal RAM ok: free=%zu largest=%zu need=%zu",
-              attr->name ? attr->name : "?", freed, largest, need);
+    FMRB_LOGI(TAG, "[%s] internal RAM ok: free=%zu largest=%zu need=%zu (stack %zu)",
+              attr->name ? attr->name : "?", freed, largest, total_need, stack_need);
     return true;
 }
 #else

@@ -21,6 +21,9 @@ keyboard_layout = "jp" # "jp" or "us"
 # and the device then has no way to edit this file back (verified on a
 # Tab5 at 200: free internal was ~127 KB, so nothing could start). Recovery
 # is a reflash. Raise it in small steps.
+# This is weighed against the free TOTAL only. A start is refused separately
+# when no single free block holds the task stack; lowering this does not help
+# that one (doc/reference/internal_ram_budget.md).
 app_spawn_margin_kb = 30
 language = "en" # "ja" or "en"
 
