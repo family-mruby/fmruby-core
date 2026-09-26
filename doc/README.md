@@ -81,7 +81,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `ruby_asterism/` [プロジェクト名の決定: Asterism](ruby_asterism/naming.md) — - 〔7 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
-- `spinel_upstream_ext/` [Spinel 上流の ext 機構でフォークを置き換えられるか](spinel_upstream_ext/plan.md) — **進行中** (2026-09-26) **P0-P2 完了、develop に入れる**。最新上流に載せ直したフォーク `fmrb-next` を固定点とし、内蔵 RAM は基準より約 6.8KB 減 (実機の待機時で確認)。生成は全部 `--no-inline-hot`。速度の退行 (エディタ 1.6-1.9 倍ほか) は許容。上流 PR 6 本は取り込み済み。今後の追従は様子見、次は P3 (ext 移行) 〔21 files〕
+- `spinel_upstream_ext/` [Spinel 上流の ext 機構でフォークを置き換えられるか](spinel_upstream_ext/plan.md) — **進行中** (2026-09-26) **P0-P2 完了、develop に入れる**。最新上流に載せ直したフォーク `fmrb-next` を固定点とし、内蔵 RAM は基準より約 6.8KB 減 (実機の待機時で確認)。生成は全部 `--no-inline-hot`。速度の退行 (エディタ 1.6-1.9 倍ほか) は許容。上流 PR 6 本は取り込み済み。今後の追従は様子見、次は P3 (ext 移行) 〔22 files〕
 - `stamp_p4/` [Stamp-P4 ヘッドレス機 (切符サイズの Modern)](stamp_p4/README.md) — **構想** (2026-08-31) M5Stamp-P4 + Stamp-AddOn C6 を殻に入れたヘッドレス Family mruby。まず殻 (case_design.md)、ファーム分岐は後続 〔2 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔22 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔17 files〕
