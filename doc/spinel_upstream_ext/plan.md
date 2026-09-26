@@ -1,6 +1,6 @@
 # Spinel 上流の ext 機構でフォークを置き換えられるか
 
-> 状態: 進行中 | 更新: 2026-09-26 | **P0・P1 完了**。上流 `01521b1e` で、gem 型は core を変えずに ext 版にでき CRuby とバイト一致 (tool/spinel_ext_poc/)。組み込みの論点は slab・凍結リテラルの `.data`・既定の nil 検査のコスト。rebase の本当の費用は多重インスタンスの移し漏れ棚卸し。PR1 (上流 PR の下準備) 実行中、次は P2 (rebase)
+> 状態: 進行中 | 更新: 2026-09-26 | **P0・P1・P2a 完了**。フォークを上流 `01521b1e` に載せ直した `fmrb-next` (未 push) がテスト・多重インスタンスの門を全部通過。**ただし実機への影響の見込みが大きい: 内蔵 RAM の .data 約 +47KB、flash 約 +0.95MB**。次は P2b (fmrb 側の取り込みと実機サイズの実測)。PR1 完了 (6 件のブランチが提出待ち)
 
 ## 結論
 
@@ -239,8 +239,8 @@ SPINEL_PIN が指す**ことを意味する。差分は小さく保ち、PR で�
 |---|---|---|
 | P0 | 最新上流で前提を取り直す (対応表・ext 仕様・多重リンク・32bit・newlib ヘッダ・試し rebase の衝突量)。コードは変えない | **完了** (report/p0.md) |
 | P1 | 上流バイナリで gem 型を試作 (旧 段階 1)。fmrb のランタイムはフォーク版で上流と同居できないため、**sim ではなく fmrb のビルド外の試験用ホスト (tool/spinel_ext_poc/) で CRuby と一致を確かめる** | **完了** (report/p1.md) |
-| PR1 | 上流 PR の下準備 第 1 陣 (U-6 U-10 U-11 U-12 P-9 P-3)。専用 clone でブランチと回帰テストまで、提出はユーザ判断 | 指示書発行 (instruction_pr1.md) |
-| P2 | フォークを最新上流へ rebase し、SPINEL_PIN と spinel_rt スナップショットを更新 (旧 段階 2)。**ここで「最新を参照する」が成立** | 未着手 |
+| PR1 | 上流 PR の下準備 第 1 陣 (U-6 U-10 U-11 U-12 P-9 P-3)。専用 clone でブランチと回帰テストまで、提出はユーザ判断 | **完了** (report/pr1.md)。6 件とも 1 コミットのブランチで make test / bench 通過、提出待ち |
+| P2 | フォークを最新上流へ rebase し、SPINEL_PIN と spinel_rt スナップショットを更新 (旧 段階 2)。**ここで「最新を参照する」が成立**。**P2a** (フォーク側: 案 A で載せ直し、大域状態の棚卸し、slab 等の口) と **P2b** (fmrb 側: 取り込み・sim・実機) に分ける | **P2a 完了** (report/p2a.md)、P2b 未着手 |
 | P3 | ext TU の多重リンク解決と gem 3 本の移行 (旧 段階 3) | 未着手 |
 | P4 | 追従の仕組み (乖離の表示と定期 rebase の手順) と PR の切り出し (旧 段階 4) | 未着手 |
 
@@ -281,6 +281,30 @@ P1 で確定したこと (report/p1.md、試作は tool/spinel_ext_poc/):
   nil 検査で、ホストではフォーク比 15-45% 遅い。gem だけ wrap にするかは
   実機で測ってから決める (F-8)。
 - 撤回: 「.data の増加は凍結リテラルだけ」。Integer 定数の分もある (P-11)。
+
+P2a で確定したこと (report/p2a.md、clone `/home/kishima/fmrb/wt/spinel-rebase/`
+の `fmrb-next` = `01521b1e` + 43 本、未 push):
+
+- 案 A で 33 本を載せ直し (`8a298cb` は上流で空になり落ちた)、新規 10 本
+  (slab の口 `SP_NO_SLAB`、mmap・fork/exec の口、上流で増えた状態の
+  sp_ctx への移設、大域状態の門 `check-mc-globals`、sp_nosched.c ほか)。
+- `make test` 4054 pass / 1 fail (基点と同じ。落ちる 1 本はホストの
+  ネットワーク都合)、`make bench` 62/0、`make test-multi-ctx` 全通過、
+  `make test32` 3916 / 1。fmrb の VM 型 3 本と gem 3 本の C 生成と、
+  `SP_MULTI_CTX` + ポートの口でのコンパイルが 64bit / 32bit で通る。
+- 移し漏れは予想どおり本当の費用だった: 載せた直後に大域が 307 個残り、
+  2 インスタンス同時の GC で壊れるものを含んでいた。名前マクロ 102 個分を
+  sp_ctx へ移し、残る 203 個は理由つきで許可表に分類した。
+- 撤回: 「自動併合は安全」。衝突なしで入った `#if` が `--debug` の
+  backtrace を黙って空にした (make test で発覚し、履歴を直した)。
+- **実機への影響が大きい (ホストの `-m32 -O2` での見込み、実数は P2b)**:
+  - 内蔵 RAM の `.data` が kernel + desktop + editor で **約 +47KB**
+    (凍結リテラルと Integer 定数)。Tab5 の待機時空き 152KB に対して大きい
+  - flash (.text + .rodata) が **約 +0.95MB** (生成 6 本 +580KB、ランタイム
+    +377KB)。S3 の flash 残り 6% には入らない可能性が高い
+- fmrb 側で要る変更: `sp_net_bin_len` → `*sp_ctx_ffi_bin_len() = n`、
+  `sp_instance_config` の新しい欄、sp_nosched.c を入れる。
+  ESP newlib での `fopencookie` と `sys/poll.h` は未確認。
 
 ## 推奨とスコープ
 
