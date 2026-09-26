@@ -623,7 +623,9 @@ class SystemDesktopApp < FmrbApp
     if character && character >= 0 && character <= 255
       # Build the 1-byte String on a *concrete* local (a nil-initialised var is
       # poly on Spinel, and String#setbyte does not dispatch on a poly receiver).
-      c = "\x00"
+      # .b: a fresh, binary copy -- Spinel freezes string literals, and a
+      # NUL-led copy held as text would be cut to "" at the first NUL.
+      c = "\x00".b
       c.setbyte(0, character)
       ch = c
     end

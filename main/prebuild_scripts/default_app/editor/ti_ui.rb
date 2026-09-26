@@ -481,7 +481,7 @@ module EditorTiUi
   # between two colons decides between one underscore and two, and that is
   # not worth being wrong about.
   def help_index_spelling(t)
-    out = ""
+    out = "".dup
     i = 0
     n = t.bytesize
     while i < n
