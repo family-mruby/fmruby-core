@@ -1,6 +1,6 @@
 # Spinel 上流の ext 機構でフォークを置き換えられるか
 
-> 状態: 進行中 | 更新: 2026-09-26 | **P0・P1・P2a 完了**。フォークを上流 `01521b1e` に載せ直した `fmrb-next` (未 push) がテスト・多重インスタンスの門を全部通過。**ただし実機への影響の見込みが大きい: 内蔵 RAM の .data 約 +47KB、flash 約 +0.95MB**。次は P2b (fmrb 側の取り込みと実機サイズの実測)。PR1 完了 (6 件のブランチが提出待ち)
+> 状態: 進行中 | 更新: 2026-09-26 | **P0・P1・P2a・P2b-1 完了**。最新上流に載せ直したフォーク (`fmrb-next`) を fmrb に取り込み、標準構成の sim が通った (作業ブランチ、未 push)。**ただし Tab5 のアプリが 6MB 区画に 114KB 入らない**。内蔵 RAM も約 +54KB。P2b-2 (実機・push・SPINEL_PIN) の前に、区画と RAM の対処を決める。上流 PR 7 本が提出待ち
 
 ## 結論
 
@@ -240,7 +240,7 @@ SPINEL_PIN が指す**ことを意味する。差分は小さく保ち、PR で�
 | P0 | 最新上流で前提を取り直す (対応表・ext 仕様・多重リンク・32bit・newlib ヘッダ・試し rebase の衝突量)。コードは変えない | **完了** (report/p0.md) |
 | P1 | 上流バイナリで gem 型を試作 (旧 段階 1)。fmrb のランタイムはフォーク版で上流と同居できないため、**sim ではなく fmrb のビルド外の試験用ホスト (tool/spinel_ext_poc/) で CRuby と一致を確かめる** | **完了** (report/p1.md) |
 | PR1 | 上流 PR の下準備 第 1 陣 (U-6 U-10 U-11 U-12 P-9 P-3)。専用 clone でブランチと回帰テストまで、提出はユーザ判断 | **完了** (report/pr1.md)。6 件とも 1 コミットのブランチで make test / bench 通過、提出待ち |
-| P2 | フォークを最新上流へ rebase し、SPINEL_PIN と spinel_rt スナップショットを更新 (旧 段階 2)。**ここで「最新を参照する」が成立**。**P2a** (フォーク側: 案 A で載せ直し、大域状態の棚卸し、slab 等の口) と **P2b** (fmrb 側: 取り込み・sim・実機) に分ける | **P2a 完了** (report/p2a.md)。P2b は **P2b-1** (取り込み・sim・ESP32 サイズ実測、指示書 instruction_p2b1.md) と **P2b-2** (実機・push・SPINEL_PIN、ユーザ判断の後) に分ける |
+| P2 | フォークを最新上流へ rebase し、SPINEL_PIN と spinel_rt スナップショットを更新 (旧 段階 2)。**ここで「最新を参照する」が成立**。**P2a** (フォーク側: 案 A で載せ直し、大域状態の棚卸し、slab 等の口) と **P2b** (fmrb 側: 取り込み・sim・実機) に分ける | **P2a 完了** (report/p2a.md)。P2b は **P2b-1 完了** (report/p2b1.md、作業ブランチ feature/spinel-upstream) と **P2b-2** (実機・push・SPINEL_PIN、ユーザ判断の後) に分ける |
 | P3 | ext TU の多重リンク解決と gem 3 本の移行 (旧 段階 3) | 未着手 |
 | P4 | 追従の仕組み (乖離の表示と定期 rebase の手順) と PR の切り出し (旧 段階 4) | 未着手 |
 
@@ -305,6 +305,32 @@ P2a で確定したこと (report/p2a.md、clone `/home/kishima/fmrb/wt/spinel-r
 - fmrb 側で要る変更: `sp_net_bin_len` → `*sp_ctx_ffi_bin_len() = n`、
   `sp_instance_config` の新しい欄、sp_nosched.c を入れる。
   ESP newlib での `fopencookie` と `sys/poll.h` は未確認。
+
+P2b-1 で確定したこと (report/p2b1.md、fmruby-core の作業ブランチ
+`feature/spinel-upstream`、fmrb-next は `88465f2a`、どちらも未 push):
+
+- 標準構成の sim が通る: エディタの起動・打鍵・閉じる・再起動を 4 回
+  (閉じ方 3 通り)、raycaster / spinel_hello / fft_bench、設定ダイアログ。
+  FrozenError・abort は 0、ExcHW は kernel 3/0・editor 4/0。
+- fmrb の Ruby 5 ファイルが凍結リテラルに書き込んでいたので直した。`.dup`
+  では足りず `.b` (NUL で始まる複製が strlen で切られる、U-21)。
+- ESP newlib の 7 点と Xtensa のリンクの 1 点を fmrb-next 側で直した。
+  fopencookie は問題なし。
+- **実測 (同じコミットの基準との差)**:
+
+  | | S3 | P4 (Tab5) |
+  |---|---|---|
+  | 内蔵 RAM (DIRAM) | +54,048 (.data +30.0K / .bss +24.0K) | +53,844 |
+  | bin | +338,720 | +426,800 |
+  | 6MB 区画 | 空き 34% → 28%、入る | 空き 5% → **114,256 バイト超過、入らない** |
+
+- **撤回: 「flash が危ないのは S3」**。逆で、Tab5 が基準の時点で 95% を
+  使っていて入らない (S3 の「残り 6%」は区画を広げる前の古い記録)。
+  flash の見込み +0.95MB も過大で、実測は +339KB / +427KB。
+- Tab5 の待機時の内蔵 RAM 空きは 152,612 → 約 98,800 バイトの見込み。
+  フォーク側だけで最大約 23KB 戻せる (`sp_hdr_char_cache` 16K を PSRAM へ、
+  `sp_bt_buf` に `SP_TU_BSS`、`sp_slab_wk` を消す)。凍結リテラルの 30K は
+  上流の変更 (P-11 の案) が要る。
 
 ## 推奨とスコープ
 
