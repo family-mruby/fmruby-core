@@ -51,6 +51,8 @@
 | U-20 | poly の受け手で、値の位置の `<<` の結果が受け手に残らない | 未 | `01521b1e` | 無し | 中 | 候補 |
 | U-21 | `sp_String_new_shared` が非バイナリ文字列の長さを strlen で測り、NUL で始まる複製を空文字列にする (fmrb の kernel でクリックが全部 IndexError になった) | 未 (ホストの最小再現は作れていない) | fmrb-next | 無し (fmrb 側は `.b` で回避) | 中 (最小再現が先) | 候補 |
 | U-22 | `sp_poly_eq_deep` が `sp_obj_eq_hook` を検査せずに呼び、Xtensa でアドレス 0 への呼び出しになりリンクが止まる | Xtensa のリンク | fmrb-next | fmrb-next `88465f2a` | 中 | 候補 |
+| U-23 | 多重インスタンスで、エントリごとの初期化がポインタの枠しか戻さず、整数・小数の枠が前回の値のまま残る (2 回目の起動で古い値) | フォーク側 | fmrb-next | fmrb-next `0b350247` (`SP_TU_NIL_SLOT`) | 対象外 (U-9 と同じくフォークの多重インスタンス) | 記録 |
+| U-24 | 壊れた UTF-8 にも ASCII7 の印が付き、`s[i]` の結果が 1 回目と 2 回目で変わりうる | 未 | fmrb-next | 無し | 中 (最小再現が先) | 候補 |
 
 ## 移植・組み込み向け (P)
 
@@ -66,7 +68,7 @@
 | P-8 | `SP_TU_BSS` (TU の static の配置属性を差し込む口) | — | `01521b1e` で口無し | `16333bf` | 低め (P-4 に相乗り) | 再現済 |
 | P-9 | FFI の `:varargs` が整数を全部 long long で渡し、32bit で `%d` の後がずれて SIGSEGV。上流は該当テストを 32bit から外している | `repro/P-9.sh` + `P-9.rb` (32bit ランタイムが要る) | `01521b1e` で再現 | `53941f6` | 高 (32bit CI がある今は動機が通りやすい) | **PR 準備** pr/P-9 `848d6389` |
 | P-10 | slab アロケータ (`d43371a8`) にコンパイル時の切替が無く、`mmap` `munmap` `madvise` と `sys/mman.h` を無条件に参照 | `nm` で参照を見る | `01521b1e` | 無し | 中 (P-4 に同梱。wasi の分岐と同じ形) | 再現済。P2a で `SP_NO_SLAB` を実装 (fmrb-next `93dac1dc`) |
-| P-11 | 凍結された文字列リテラルが書き換え可能な `static struct` になり `.data` を食う (kernel 100B→13.4KB、editor 796B→24.6KB、x86-64)。P1 追記: Integer 定数も `SP_INT_NIL` 初期化で .bss から .data に移る (editor で 251 個) | 生成 C の `size -A` | `01521b1e` | 無し | 中。**案: リテラルのハッシュを生成時に計算してヘッダに入れれば `const` (.rodata) にできる** (今は `sp_str_hash_miss` が実行時にヘッダへ書くので .data。P2a 見立て) | 候補 |
+| P-11 | 凍結された文字列リテラルが書き換え可能な `static struct` になり `.data` を食う (kernel 100B→13.4KB、editor 796B→24.6KB、x86-64)。P1 追記: Integer 定数も `SP_INT_NIL` 初期化で .bss から .data に移る (editor で 251 個) | 生成 C の `size -A` | `01521b1e` | 無し | 中。**案: リテラルのハッシュを生成時に計算してヘッダに入れれば `const` (.rodata) にできる** (今は `sp_str_hash_miss` が実行時にヘッダへ書くので .data。P2a 見立て) | **fmrb-next で実装** `fc5870d6` (変換時にハッシュと ASCII7 を計算して const。make test 退行なし) |
 | P-12 | 上流を丸ごと `-m32` でビルドすると i386 の libcrypt が要る 。回避: 空の `crypt()` だけの静的ライブラリを `LIBRARY_PATH` で渡すと sudo 無しで 32bit のコーパスが回る (PR1)| 手順のみ | `01521b1e` | 無し | 低 | 候補 |
 | P-13 | 64bit の値を使うのに `# spinel: int64` の印が無い試験 (`bigint_if_value_temp` `block_given_else_arm_overflow_modes` `file_utime_nanoseconds` ほか)。32bit で答えが違う | `make test-corpus CC='cc -m32'` | `01521b1e` | fmrb-next `b259d0a3` で skip 表を整理 | 高 (印を足すだけ) | 候補 |
 | P-14 | `GC.start` (`sp_gc_collect_request`) と `sp_Thread_pass` が `sp_sched.c` にあり、スケジューラを外すとリンクできない | ポート構成のリンク | `01521b1e` | fmrb-next `f9cc21ef` (sp_nosched.c) | 低-中 | 候補 |
@@ -74,6 +76,11 @@
 | P-16 | `sp_str_shape[8192]` (64KB) と `sp_alloc_stats` (256KB) が常に .bss に載る (組み込み・wasm では丸ごと載る) | `size -A lib/libspinel_rt.a` | `01521b1e` | 無し | 低 (口を足す提案) | 候補 |
 | P-17 | ESP-IDF の newlib でコンパイル・リンクできない 7 点 (`poll.h`、`__freadahead`、AF_UNIX / PF_UNIX、getline、getpriority、WCOREDUMP、signal) | ESP32 ビルド | fmrb-next | fmrb-next `88465f2a` | 中 (P-4 と同じ流儀で) | 候補 |
 | P-18 | ランタイムの .bss の表 (`sp_hdr_char_cache` 16KB、`sp_slab_wk`) と生成プログラムの `sp_bt_buf` の置き場所を選べない (`SP_TU_BSS` が効かない) | `size -A` | fmrb-next | 無し | 低 (P-8 に相乗り) | 候補 |
+| P-19 | 1 バイト文字列の表 (`sp_hdr_char_cache` / `sp_char_cache`) を実行時に埋めているが、内容は定数なので const にできる | `size -A` | fmrb-next | fmrb-next `0b350247` | 中 | 候補 |
+| P-20 | `SP_NO_SLAB` で `sp_slab_on` / `sp_slab_owns` を定数にし、slab の表と原子操作の補助を外す | ポート構成 | fmrb-next | fmrb-next `0b350247` | 中 (P-10 と同梱) | 候補 |
+| P-21 | execinfo が無い対象でも `sp_bt_buf` を複数枠持つ | `size -A` | fmrb-next | fmrb-next `0b350247` | 低 | 候補 |
+| P-22 | ランタイムの冷たい表 (GC の段階の計数・報告用の作業領域) の置き場所を選ぶ口 (`SP_RT_COLD`) | `size -A` | fmrb-next | fmrb-next `0b350247` | 低 (P-8 に相乗り) | 候補 |
+| P-23 | 組み込みの構成で `atexit` を使う | map | fmrb-next | 無し | 低 | 候補 |
 
 ## 機能・設計提案 (F)
 

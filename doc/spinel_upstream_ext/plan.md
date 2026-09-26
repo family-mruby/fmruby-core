@@ -1,6 +1,6 @@
 # Spinel 上流の ext 機構でフォークを置き換えられるか
 
-> 状態: 進行中 | 更新: 2026-09-26 | **P0・P1・P2a・P2b-1 完了**。最新上流に載せ直したフォークを fmrb に取り込み、標準構成の sim が通った (作業ブランチ、未 push)。**内蔵 RAM の増分 (実測 +54KB) は 0 にする (ユーザ決定)** — P2c で凍結リテラルを flash へ、表を PSRAM へ移す。Tab5 のアプリ区画は 7M に広げる。その後 P2b-2 (実機・push・SPINEL_PIN)
+> 状態: 進行中 | 更新: 2026-09-26 | **P0・P1・P2a・P2b-1・P2c 完了**。最新上流に載せ直したフォークを fmrb に取り込み、**静的な内蔵 RAM は基準より約 6.7KB 減った** (S3 / Tab5)。Tab5 のアプリ区画は 7M に。標準構成の sim が通る (作業ブランチ、未 push)。次は P2b-2 (実機・push・SPINEL_PIN)。上流 PR 6 本は提出準備中 (PR3)
 
 ## 結論
 
@@ -241,7 +241,7 @@ SPINEL_PIN が指す**ことを意味する。差分は小さく保ち、PR で�
 | P1 | 上流バイナリで gem 型を試作 (旧 段階 1)。fmrb のランタイムはフォーク版で上流と同居できないため、**sim ではなく fmrb のビルド外の試験用ホスト (tool/spinel_ext_poc/) で CRuby と一致を確かめる** | **完了** (report/p1.md) |
 | PR1 | 上流 PR の下準備 第 1 陣 (U-6 U-10 U-11 U-12 P-9 P-3)。専用 clone でブランチと回帰テストまで、提出はユーザ判断 | **完了** (report/pr1.md)。6 件とも 1 コミットのブランチで make test / bench 通過、提出待ち |
 | P2 | フォークを最新上流へ rebase し、SPINEL_PIN と spinel_rt スナップショットを更新 (旧 段階 2)。**ここで「最新を参照する」が成立**。**P2a** (フォーク側: 案 A で載せ直し、大域状態の棚卸し、slab 等の口) と **P2b** (fmrb 側: 取り込み・sim・実機) に分ける | **P2a 完了** (report/p2a.md)。P2b は **P2b-1 完了** (report/p2b1.md、作業ブランチ feature/spinel-upstream) と **P2b-2** (実機・push・SPINEL_PIN、ユーザ判断の後) に分ける |
-| P2c | **内蔵 RAM の増分を 0 にする** (ユーザ決定 2026-09-26: +54KB は許容しない)。凍結リテラルは変換時にハッシュを計算して const (flash) に、ランタイムの表と TU ごとの小物は PSRAM に、slab の表は外す。Tab5 のアプリ区画を 7M に。判定は静的な DIRAM の増分 0 以下 (両機種)、実機の待機時空きは P2b-2 で | 指示書発行 (instruction_p2c.md) |
+| P2c | **内蔵 RAM の増分を 0 にする** (ユーザ決定 2026-09-26: +54KB は許容しない)。凍結リテラルは変換時にハッシュを計算して const (flash) に、ランタイムの表と TU ごとの小物は PSRAM に、slab の表は外す。Tab5 のアプリ区画を 7M に。判定は静的な DIRAM の増分 0 以下 (両機種)、実機の待機時空きは P2b-2 で | **完了** (report/p2c.md) |
 | P3 | ext TU の多重リンク解決と gem 3 本の移行 (旧 段階 3) | 未着手 |
 | P4 | 追従の仕組み (乖離の表示と定期 rebase の手順) と PR の切り出し (旧 段階 4) | 未着手 |
 
@@ -332,6 +332,31 @@ P2b-1 で確定したこと (report/p2b1.md、fmruby-core の作業ブランチ
   フォーク側だけで最大約 23KB 戻せる (`sp_hdr_char_cache` 16K を PSRAM へ、
   `sp_bt_buf` に `SP_TU_BSS`、`sp_slab_wk` を消す)。凍結リテラルの 30K は
   上流の変更 (P-11 の案) が要る。
+
+P2c で確定したこと (report/p2c.md、fmruby-core `9ffe5515`、fmrb-next `0b350247`、未 push):
+
+- **静的な内蔵 RAM (D/IRAM) は基準より減った**: S3 154,123 → 147,387
+  (**-6,736**)、P4 190,260 → 183,448 (**-6,812**)。P2b-1 の +54KB から
+  約 -60.7KB。IRAM は基準と同じ。PSRAM の .bss が約 +7.6KB。
+  親セッションが基準と新の map を esp_idf_size で測り直して一致を確認。
+- 手: 凍結リテラルは変換時にハッシュと ASCII7 を計算して const (flash) に。
+  1 バイト文字列の表も定数なので flash に。`SP_NO_SLAB` で slab の表と
+  原子操作の補助を外す。`sp_bt_buf` を 1 枠にして PSRAM へ。新しい口
+  `SP_RT_COLD` (ランタイムの冷たい表を PSRAM へ) と `SP_TU_NIL_SLOT`
+  (生成プログラムの nil で始まる定数・クラスの ivar・大域変数を PSRAM へ)。
+- 撤回: 「多重インスタンスはエントリで全部の枠を戻す」。戻していたのは
+  ポインタの枠だけで、整数・小数の枠は 2 回目の起動で前回の値が残っていた
+  (`SP_TU_NIL_SLOT` で直った)。
+- Tab5 / NARYAv4 のアプリ区画を 7M に (6,405,664 バイトで空き 13%)。
+  storage は 8M のまま 0x710000 へ動く。**初回は `rake flash` で全体を
+  書く必要があり、/home は消える** (`flash:app` では足りない)。
+- sim (標準構成) は P2b-1 と同じ操作が通る。fmrb-next は make test /
+  bench / test-multi-ctx で退行なし。
+- 既存の内蔵 RAM の削減候補を report/p2c.md 10 節に記録 (描画系 約 16KB、
+  ファイル系 約 6-10KB、mruby の gem_init の .data 約 6KB ほか)。処置は未定。
+- 実機で見ること (P2b-2): 待機時の内蔵 RAM 空きの増加 (同じ基板で基準と比較)、
+  PSRAM に移したクラスの ivar・定数 (editor 241 個) の速度影響
+  (`edit_lat` `hid_lat` `render_ms` `cast`)、Guru 0 件 (flash のリテラルへの書き込み検出)。
 
 ## 推奨とスコープ
 
