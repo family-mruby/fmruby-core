@@ -90,11 +90,11 @@ module Fmrb
     # What the last :spinel / :spinel_q15 call cost end to end, against the
     # transform time that run() reported.
     #
-    # They differ, and by a lot when iters is small. A Spinel entry resets its
-    # class-level statics on every invocation, so the Ruby rebuilds its window
-    # and twiddle tables each call, while the C backends keep theirs. Time one
-    # transform per frame and that rebuild is most of the frame. Read this
-    # before quoting a per-frame number for a Spinel backend.
+    # The difference is what crossing into the Spinel program costs around
+    # the transform: copying the samples in, decoding them, encoding the
+    # magnitudes and copying them out, plus building the window and twiddle
+    # tables on the first call for a size (the program keeps them after
+    # that). Read this before quoting a per-frame number for a Spinel backend.
     def self.spinel_total_us
       ::FftNative.spinel_total_us
     end

@@ -76,10 +76,9 @@ module Fmrb
     # Hand the gem the world. `cells` may be the app's Integer array or an
     # already-packed byte String; either way the gem keeps bytes, one per cell.
     #
-    # On :spinel this uploads to the receiver and bumps a generation counter --
-    # the Spinel entry keeps its core between calls, so it needs to be told
-    # when the map it built against is no longer the current one. On :ruby
-    # there is no boundary, so the core is simply rebuilt.
+    # On :spinel this hands the map to the Spinel program, which builds its
+    # core against it and keeps it between calls. On :ruby there is no
+    # boundary, so the core is simply rebuilt here.
     def set_map(cells, w, h)
       bytes = Fmrb::Raycast.pack_map(cells, w, h)
       @map = bytes
@@ -94,9 +93,6 @@ module Fmrb
       nil
     end
 
-    # One frame of rays. Returns [microseconds, array of {dist:, wall:, side:}].
-    # The microseconds cover the cast alone in both cases: inside the entry for
-    # :spinel, around the core call for :ruby.
     # One frame of rays. Returns the microseconds the cast took; the rays
     # themselves stay in the packed buffer and are read with #dist / #wall /
     # #side.
@@ -106,6 +102,9 @@ module Fmrb
     # share of a 15ms-per-frame wobble that only showed up once the frame was
     # accounted for end to end. Reading the buffer in place does the same six
     # getbytes per ray with nothing left behind.
+    #
+    # The microseconds cover the cast alone in both cases: around the Spinel
+    # entry call for :spinel, around the core call for :ruby.
     def cast(px, py, pa)
       raise RuntimeError, "set_map has not been called" if @map.nil?
       if @backend == :spinel

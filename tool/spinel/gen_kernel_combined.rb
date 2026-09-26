@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
 # Concatenate the Spinel kernel's Ruby sources into one combined file for
-# `spinel --no-main --entry fmrb_kernel_entry`. Order matters: FFI + constants +
+# `spinel --ext-init Init_fmrb_kernel`. Order matters: FFI + constants +
 # base layer first, then the shared FmrbKernelImpl mixins and main file.
 #
 # Usage: ruby tool/spinel/gen_kernel_combined.rb <out.rb> [platform]

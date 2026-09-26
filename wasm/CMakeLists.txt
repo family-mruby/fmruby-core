@@ -315,9 +315,9 @@ set(SPINEL_GEN ${FMRB_ROOT}/main/prebuild_scripts/spinel/gen)
 set(SPINEL_GEN_SRCS
   ${SPINEL_GEN}/fmrb_kernel_combined.c
   ${SPINEL_GEN}/editor_combined.c
-  ${SPINEL_GEN}/fft_spinel.c
-  ${SPINEL_GEN}/spinel_hello_entry.c
-  ${SPINEL_GEN}/raycast_entry.c)
+  ${SPINEL_GEN}/fft_kernel.c
+  ${SPINEL_GEN}/spinel_hello_kernel.c
+  ${SPINEL_GEN}/raycast_kernel.c)
 list(APPEND CORE_SRCS ${SPINEL_GEN_SRCS})
 
 # --- sources: wasm backends + stubs ----------------------------------------
@@ -488,6 +488,13 @@ set_source_files_properties(${SPINEL_RT_SRCS}
   ${FMRB_ROOT}/components/fmrb_spinel_rt/fmrb_spinel_host.c
   ${SPINEL_GEN_SRCS}
   PROPERTIES COMPILE_OPTIONS "${WASM_SPINEL_TU_FLAGS}")
+# The gems' receivers include their program's generated header, so they share
+# the program's flags (SP_MULTI_CTX is an ABI flag) and see gen/.
+set_source_files_properties(
+  ${FMRB_ROOT}/lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c
+  ${FMRB_ROOT}/lib/add/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c
+  ${FMRB_ROOT}/lib/add/picoruby-fmrb-raycast/native/raycast_native.c
+  PROPERTIES COMPILE_OPTIONS "${WASM_SPINEL_TU_FLAGS};-I${SPINEL_GEN}")
 
 target_compile_options(core_objs PRIVATE -pthread -Wno-format)
 

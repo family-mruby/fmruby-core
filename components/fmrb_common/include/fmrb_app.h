@@ -310,6 +310,18 @@ static inline void fmrb_app_sync_io_end(void) {
 bool fmrb_app_poll_exit_signal(fmrb_app_task_context_t* ctx);
 
 /**
+ * @brief Run a Spinel-compiled VM program as the body of a NATIVE task
+ *
+ * Builds a Spinel instance on the task's own mempool, calls the program's
+ * init (which runs its main loop), and tears the instance down when it
+ * returns. Only built when the kernel, desktop or editor runs on Spinel.
+ *
+ * @param ctx  The task context execute_native_function passes in
+ * @param init The program's Spinel ext init (Init_<program>)
+ */
+void fmrb_app_run_spinel_vm(fmrb_app_task_context_t* ctx, void (*init)(void));
+
+/**
  * @brief Latch should_exit if this message is a stop/exit APP_CONTROL request
  *
  * For runtimes that read the app queue themselves: a loop that drains the queue

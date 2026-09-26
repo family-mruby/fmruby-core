@@ -1,6 +1,6 @@
 # Spinel 上流の ext 機構でフォークを置き換えられるか
 
-> 状態: 進行中 | 更新: 2026-09-26 | **P0-P2 完了、develop に入れる**。最新上流に載せ直したフォーク `fmrb-next` を固定点とし、内蔵 RAM は基準より約 6.8KB 減 (実機の待機時で確認)。生成は全部 `--no-inline-hot`。速度の退行 (エディタ 1.6-1.9 倍ほか) は許容。上流 PR 6 本は取り込み済み。今後の追従は様子見、次は P3 (ext 移行)
+> 状態: 進行中 | 更新: 2026-09-27 | **P0-P3 完了、develop に入った**。フォーク固定点は `fmrb-ext` (`4faa22b4`、kishima/spinel)。gem と VM は上流の ext 機構で生成し FFI の迂回を撤去、全生成 `--no-inline-hot`。内蔵 RAM は取り込み前より約 6.8KB 少ない。速度の退行 (P2b-2) は許容、P3 で一部回復。今後の上流追従は様子見、単純なバグの PR は続ける
 
 ## 結論
 
@@ -243,7 +243,7 @@ SPINEL_PIN が指す**ことを意味する。差分は小さく保ち、PR で�
 | P2 | フォークを最新上流へ rebase し、SPINEL_PIN と spinel_rt スナップショットを更新 (旧 段階 2)。**ここで「最新を参照する」が成立**。**P2a** (フォーク側: 案 A で載せ直し、大域状態の棚卸し、slab 等の口) と **P2b** (fmrb 側: 取り込み・sim・実機) に分ける | **P2a 完了** (report/p2a.md)。P2b は **P2b-1 完了** (report/p2b1.md、作業ブランチ feature/spinel-upstream) と **P2b-2** (実機・push・SPINEL_PIN、ユーザ判断の後) に分ける |
 | PR3 | 提出前の最終準備 (最新上流 `9fb2cf02` へ載せ替え、`make gate`、U-6 は修正と検査の 2 コミット 1 PR)。**提出済み**: #5064 U-11 / #5065 P-9 / #5066 U-10 / #5067 P-3 / #5068 U-6 / #5069 U-12 | **完了** (report/pr3.md) |
 | P2c | **内蔵 RAM の増分を 0 にする** (ユーザ決定 2026-09-26: +54KB は許容しない)。凍結リテラルは変換時にハッシュを計算して const (flash) に、ランタイムの表と TU ごとの小物は PSRAM に、slab の表は外す。Tab5 のアプリ区画を 7M に。判定は静的な DIRAM の増分 0 以下 (両機種)、実機の待機時空きは P2b-2 で | **完了** (report/p2c.md) |
-| P3 | ext 移行: P3a フォークの土台 (ext の複数リンク、init での状態の戻し、include guard)、P3b gem 3 本、P3c VM 型 3 本を `--ext-init` に | 指示書発行 (instruction_p3.md)、develop へのマージ後に着手 |
+| P3 | ext 移行: P3a フォークの土台 (ext の複数リンク、init での状態の戻し、include guard)、P3b gem 3 本、P3c VM 型 3 本を `--ext-init` に | **完了** (report/p3.md、フォーク `fmrb-ext`、fmruby-core `feature/spinel-ext`、どちらも未 push・未マージ) |
 | P4 | 追従の仕組み (乖離の表示と定期 rebase の手順) と PR の切り出し (旧 段階 4) | **やらない** (様子見。PR の切り出しだけ続ける) |
 
 P0 で確定したこと (上流 `01521b1e`、詳細と再現手順は report/p0.md):
@@ -377,6 +377,26 @@ P2b-2 で確定したこと (report/p2b2.md、板は P4-Nano (NARYAv4)。Tab5 �
 **様子見**。`fmrb-next` を固定点として develop に入れ、継続的な追従 (P4 の定期
 rebase) はしない。**ext 移行 (P3) はやる** (コードが綺麗になる)。単純なバグの
 上流 PR は続ける (6 本は当日マージされた)。
+
+P3 で確定したこと (report/p3.md):
+
+- gem 3 本と VM 3 本を `--ext-init` で生成。gem は型付きのエントリを C から
+  `_try` で呼び、FFI の迂回 (getter/setter の `ffi_func` 計 19 本、`*_ffi.rb` /
+  `*_entry.rb` 6 本、`:binstr` の流用、`--persistent-statics`) を撤去。VM 型の
+  3 つの起動処理は `fmrb_app_run_spinel_vm` 1 つにまとめた。VM のメッセージの
+  FFI (`fmrb_spx_*`) は変えていない。
+- フォーク (`fmrb-ext` = `fmrb-next` + 2 本): 多重インスタンスの構成では ext の
+  変換結果の重複は 4 個のフックだけで、static にして解消。init は既に
+  `sp_reset_tu_statics` を通っていた。include guard を init 名から。新しい試験
+  `test/multi_ctx/ext3.sh` (3 本を 1 バイナリ、並行・作り直し)。
+- **内蔵 RAM とスタックは P2b-2 / P2c と同じ** (静的 D/IRAM は S3 / TAB5 とも同値、
+  P4-Nano の待機時 IRAM free 150,020 → 150,068、各タスクの最悪 Free も同じか良い)。
+  速度は P2b-2 より良い (edit_lat 11.6-12.5ms、FFT 9,580us ほか)。
+- 行数: fmruby-core (ランタイムのスナップショットを除く) +704 / -776。
+- フォークの `--no-main` / `--entry` はフォーク内の試験がまだ使う。
+  `--persistent-statics` は使う者が無い。消すのは後の判断。
+- `fmrb-ext` を kishima/spinel に push し、SPINEL_PIN を移して develop に入れた
+  (2026-09-27)。`SPINEL_DIR` は不要。
 
 ## 推奨とスコープ
 

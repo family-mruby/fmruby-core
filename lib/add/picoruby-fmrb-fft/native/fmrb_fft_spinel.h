@@ -5,7 +5,7 @@
  * The other three backends are ordinary function calls. This one is the new
  * pattern the comparison exists to try (doc/mic_spectrum/impl_plan.md Stage 2):
  * an mruby app task creates a Spinel runtime instance of its own, calls the
- * AOT-compiled entry point as if it were a library, and tears the instance
+ * AOT-compiled entry points as if they were a library, and tears the instance
  * down again -- so one build can time the same Ruby on both engines instead of
  * needing two firmwares.
  *
@@ -31,13 +31,13 @@ int fmrb_fft_spinel_available(void);
  * Create the Spinel instance on the calling task and prepare a transform of
  * `size` points.
  * @return 0 on success, negative on failure (no Spinel in this build, no
- *         memory for the pool, or the entry point reporting an error).
+ *         memory for the pool, or the program raising in its init).
  */
 int fmrb_fft_spinel_begin(int size);
 
 /**
- * Run the Spinel FFT `iters` times, timed inside the Spinel program exactly as
- * the C backend times itself.
+ * Run the Spinel FFT `iters` times, timing the transform alone exactly as the
+ * C backend times itself.
  * @return total microseconds, or 0 if the backend is not open.
  */
 uint32_t fmrb_fft_spinel_run(const int16_t *in, int n, int iters, int16_t *mag_out);
@@ -50,15 +50,14 @@ uint32_t fmrb_fft_spinel_run(const int16_t *in, int n, int iters, int16_t *mag_o
 uint32_t fmrb_fft_spinel_run_q15(const int16_t *in, int n, int iters, int16_t *mag_out);
 
 /**
- * Microseconds the last run() spent in the entry as a whole, as opposed to the
- * transform the Ruby timed for itself.
+ * Microseconds the last run() took as a whole, as opposed to the
+ * transform alone that run() returns.
  *
- * The gap between the two is not overhead in the usual sense: a Spinel entry
- * resets its class-level statics on every invocation, so the program builds
- * its window and twiddle tables again each call, while the C backend keeps
- * its own across calls. A benchmark that puts the repetition inside the entry
- * never sees this; a caller asking for one transform per frame pays it every
- * frame. Worth reading before quoting a per-frame cost.
+ * The gap is the crossing around the transform: copying the samples into the
+ * Spinel program and decoding them, encoding the magnitudes and copying them
+ * out, plus building the window and twiddle tables the first time a size is
+ * used (the program keeps them after that, as the C backend does). Worth
+ * reading before quoting a per-frame cost.
  */
 uint32_t fmrb_fft_spinel_last_total_us(void);
 
