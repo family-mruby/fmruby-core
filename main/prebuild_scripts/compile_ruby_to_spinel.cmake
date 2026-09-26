@@ -25,7 +25,9 @@ endfunction()
 #   ENTRY    - entry function name (C sees `int <ENTRY>(void)`)
 #   GEN_DIR  - output directory for <name>.c
 #   ARGN     - extra spinel flags, which MUST match what rakelib/spinel.rake
-#              passes for the same program. This path only runs when SPINEL_BIN
+#              passes for the same program. --no-inline-hot is passed to every
+#              program here, as rakelib/spinel.rake's gen_flags does (forced
+#              inlining overflowed the kernel task stack on the device). This path only runs when SPINEL_BIN
 #              is set (a host build outside docker), so a flag added to one and
 #              not the other produces a different program from the same source
 #              depending on how you built -- silently.
@@ -41,7 +43,7 @@ function(generate_ruby_spinel_command RB_FILE ENTRY GEN_DIR)
     file(MAKE_DIRECTORY ${GEN_DIR})
     add_custom_command(
       OUTPUT ${C_FILE}
-      COMMAND ${SPINEL_BIN} --no-main --entry ${ENTRY} ${EXTRA_FLAGS} -I ${RB_DIR} -c ${RB_FILE} -o ${C_FILE}
+      COMMAND ${SPINEL_BIN} --no-main --no-inline-hot --entry ${ENTRY} ${EXTRA_FLAGS} -I ${RB_DIR} -c ${RB_FILE} -o ${C_FILE}
       DEPENDS ${RB_FILE}
       COMMENT "Spinel compiling ${RB_NAME}.rb -> ${RB_NAME}.c (entry ${ENTRY})"
       VERBATIM

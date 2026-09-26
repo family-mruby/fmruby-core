@@ -42,6 +42,15 @@ namespace :spinel do
     end
     bin = File.join(dir, "bin/spinel")
     abort "spinel not found at #{bin}. Run `rake spinel:setup` or set SPINEL_DIR." unless File.executable?(bin)
+    # Flags every generated program gets. --no-inline-hot: the compiler forces
+    # small leaf methods inline by default, and a large dispatcher that calls
+    # many of them absorbs them all into one C frame. The kernel's
+    # handle_app_control grew from 4,192 to 12,448 bytes that way and
+    # overflowed the kernel task's 16 KB stack at boot (Stack protection fault
+    # on the P4, doc/spinel_upstream_ext/report/p2b2.md). The sim does not
+    # notice: its pthread stacks are far larger than the device's task stacks.
+    # Must match main/prebuild_scripts/compile_ruby_to_spinel.cmake.
+    gen_flags = "--no-inline-hot"
     # Guard against compiler/runtime-snapshot divergence: the generated C and
     # components/fmrb_spinel_rt/spinel_rt must come from the same fork commit.
     import_info = File.expand_path("components/fmrb_spinel_rt/spinel_rt/IMPORT_INFO", ROOT_DIR)
@@ -69,7 +78,7 @@ namespace :spinel do
       combined_rb = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.rb"
       out_c       = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.c"
       sh "#{RbConfig.ruby} tool/spinel/gen_kernel_combined.rb #{combined_rb} #{platform}"
-      sh "#{bin} --no-main --entry fmrb_kernel_entry -I #{SPINEL_SRC_DIR} -c #{combined_rb} -o #{out_c}"
+      sh "#{bin} --no-main #{gen_flags} --entry fmrb_kernel_entry -I #{SPINEL_SRC_DIR} -c #{combined_rb} -o #{out_c}"
       puts "Spinel generated #{out_c}"
     end
     # Editor: same, for the editor (entry editor_entry).
@@ -77,7 +86,7 @@ namespace :spinel do
       e_rb = "#{SPINEL_GEN_DIR}/editor_combined.rb"
       e_c  = "#{SPINEL_GEN_DIR}/editor_combined.c"
       sh "#{RbConfig.ruby} tool/spinel/gen_app_combined.rb editor #{e_rb} #{platform}"
-      sh "#{bin} --no-main --entry editor_entry -I #{SPINEL_SRC_DIR} -c #{e_rb} -o #{e_c}"
+      sh "#{bin} --no-main #{gen_flags} --entry editor_entry -I #{SPINEL_SRC_DIR} -c #{e_rb} -o #{e_c}"
       puts "Spinel generated #{e_c}"
     end
     # FFT: not a VM but a library -- one Spinel-compiled function an mruby task
@@ -106,7 +115,7 @@ namespace :spinel do
       # because one instance owns this TU. NOT passed to the kernel/desktop/
       # editor programs below: they call their entry once, so it would buy
       # them nothing and their reset semantics stay exactly as they were.
-      sh "#{bin} --no-main --entry fmrb_fft_spinel_entry --persistent-statics " \
+      sh "#{bin} --no-main #{gen_flags} --entry fmrb_fft_spinel_entry --persistent-statics " \
          "-I #{SPINEL_SRC_DIR} -c #{f_rb} -o #{f_c}"
       puts "Spinel generated #{f_c}"
     end
@@ -121,7 +130,7 @@ namespace :spinel do
       abort "#{src} is missing" unless File.exist?(src)
       cp src, "#{SPINEL_SRC_DIR}/#{dst}"
     end
-    sh "#{bin} --no-main --entry spinel_hello_entry " \
+    sh "#{bin} --no-main #{gen_flags} --entry spinel_hello_entry " \
        "-I #{SPINEL_SRC_DIR} -c #{SPINEL_SRC_DIR}/spinel_hello_entry.rb " \
        "-o #{SPINEL_GEN_DIR}/spinel_hello_entry.c"
     puts "Spinel generated #{SPINEL_GEN_DIR}/spinel_hello_entry.c"
@@ -140,7 +149,7 @@ namespace :spinel do
     # the map and two 360-entry trig tables. Rebuilding those per call would
     # cost more than the rays (the mistake the FFT gem measured). Must match
     # main/CMakeLists.txt's generate_ruby_spinel_command for this entry.
-    sh "#{bin} --no-main --entry raycast_entry --persistent-statics " \
+    sh "#{bin} --no-main #{gen_flags} --entry raycast_entry --persistent-statics " \
        "-I #{SPINEL_SRC_DIR} -c #{SPINEL_SRC_DIR}/raycast_entry.rb " \
        "-o #{SPINEL_GEN_DIR}/raycast_entry.c"
     puts "Spinel generated #{SPINEL_GEN_DIR}/raycast_entry.c"
@@ -149,7 +158,7 @@ namespace :spinel do
       d_rb = "#{SPINEL_GEN_DIR}/system_desktop_combined.rb"
       d_c  = "#{SPINEL_GEN_DIR}/system_desktop_combined.c"
       sh "#{RbConfig.ruby} tool/spinel/gen_app_combined.rb system_desktop #{d_rb} #{platform}"
-      sh "#{bin} --no-main --entry system_desktop_entry -I #{SPINEL_SRC_DIR} -c #{d_rb} -o #{d_c}"
+      sh "#{bin} --no-main #{gen_flags} --entry system_desktop_entry -I #{SPINEL_SRC_DIR} -c #{d_rb} -o #{d_c}"
       puts "Spinel generated #{d_c}"
     end
   end
