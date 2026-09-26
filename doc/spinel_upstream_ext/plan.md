@@ -1,6 +1,6 @@
 # Spinel 上流の ext 機構でフォークを置き換えられるか
 
-> 状態: 進行中 | 更新: 2026-09-26 | P0-P2 は develop に入った。**P3 (ext 移行) 完了**: gem と VM を上流の ext 機構で生成し、FFI の迂回を撤去。内蔵 RAM・スタックは据え置き、速度は P2b-2 より改善。develop へは fmrb-ext の push と SPINEL_PIN の移動の後。追従は様子見
+> 状態: 進行中 | 更新: 2026-09-27 | **P0-P3 完了、develop に入った**。フォーク固定点は `fmrb-ext` (`4faa22b4`、kishima/spinel)。gem と VM は上流の ext 機構で生成し FFI の迂回を撤去、全生成 `--no-inline-hot`。内蔵 RAM は取り込み前より約 6.8KB 少ない。速度の退行 (P2b-2) は許容、P3 で一部回復。今後の上流追従は様子見、単純なバグの PR は続ける
 
 ## 結論
 
@@ -395,8 +395,8 @@ P3 で確定したこと (report/p3.md):
 - 行数: fmruby-core (ランタイムのスナップショットを除く) +704 / -776。
 - フォークの `--no-main` / `--entry` はフォーク内の試験がまだ使う。
   `--persistent-statics` は使う者が無い。消すのは後の判断。
-- develop に入れるには、`fmrb-ext` を kishima/spinel に push して SPINEL_PIN を
-  移す必要がある (それまで `SPINEL_DIR` が要る)。
+- `fmrb-ext` を kishima/spinel に push し、SPINEL_PIN を移して develop に入れた
+  (2026-09-27)。`SPINEL_DIR` は不要。
 
 ## 推奨とスコープ
 
