@@ -1430,7 +1430,16 @@ extern sp_Argv sp_argv;
 #else
 sp_Argv sp_argv;   /* type in sp_argf.h; storage here, populated by main() */
 #endif
+/* $0. Under SP_MULTI_CTX it starts zeroed and in SP_TU_BSS, like the
+   nil-sentinel slots: every entry form that reads $0 assigns it first (main
+   from argv, --no-main and --ext-init to ""), and sp_mark_string skips NULL.
+   An initialised static would sit in .data -- internal RAM on a port -- in
+   every program, $0 or not, since the init's store keeps it alive. */
+#ifdef SP_MULTI_CTX
+SP_TU_BSS static const char *sp_program_name;
+#else
 static const char *sp_program_name = SPL("");
+#endif
 
 /* ARGF: a pseudo-IO that reads the files named in ARGV in sequence, or stdin
    when ARGV is empty (a `-` filename also means stdin). The state is a single

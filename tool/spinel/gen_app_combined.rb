@@ -1,12 +1,12 @@
 #!/usr/bin/env ruby
 # Concatenate a Spinel application's Ruby sources into one combined file for
-# `spinel --no-main --entry <app>_entry`. Mirrors gen_kernel_combined.rb but for
+# `spinel --ext-init Init_<app>`. Mirrors gen_kernel_combined.rb but for
 # the application layer (FmrbApp / FmrbGfx base + the app's mixins + main file).
 #
 # The app's bare top-level start trailer (`app = SomeApp.new; app.start`) becomes
-# the body of the named entry (Spinel wraps all top-level statements into the
-# --entry function), so no explicit `def <app>_entry` wrapper is required --
-# same convention the kernel uses.
+# the body of the init (Spinel runs all top-level statements in the
+# --ext-init function), so no wrapper method is required -- same convention
+# the kernel uses.
 #
 # Usage: ruby tool/spinel/gen_app_combined.rb <app> <out.rb> [platform]
 #   <app> currently supports: system_desktop, editor

@@ -81,26 +81,25 @@ namespace :spinel do
     # combined program first (the compiler needs a single translation unit;
     # require_relative is stripped). Host-generated into gen/ (gitignored).
     # Must match main/CMakeLists.txt's generate_ruby_spinel_command calls.
-    # Transitional (P3b): the VMs are still --no-main programs.
-    vm = lambda do |rb, entry|
+    vm = lambda do |rb, init|
       c = rb.sub(/\.rb\z/, ".c")
-      sh "#{bin} --no-main #{gen_flags} --entry #{entry} -I #{SPINEL_SRC_DIR} -c #{rb} -o #{c}"
+      sh "#{bin} #{gen_flags} -I #{SPINEL_SRC_DIR} -c #{rb} --ext-init #{init} -o #{c}"
       puts "Spinel generated #{c}"
     end
     if FMRB_KERNEL_ENGINE == "spinel"
       combined_rb = "#{SPINEL_GEN_DIR}/fmrb_kernel_combined.rb"
       sh "#{RbConfig.ruby} tool/spinel/gen_kernel_combined.rb #{combined_rb} #{platform}"
-      vm.call(combined_rb, "fmrb_kernel_entry")
+      vm.call(combined_rb, "Init_fmrb_kernel")
     end
     if FMRB_APP_ENGINE_EDITOR == "spinel"
       e_rb = "#{SPINEL_GEN_DIR}/editor_combined.rb"
       sh "#{RbConfig.ruby} tool/spinel/gen_app_combined.rb editor #{e_rb} #{platform}"
-      vm.call(e_rb, "editor_entry")
+      vm.call(e_rb, "Init_editor")
     end
     if FMRB_APP_ENGINE_DESKTOP == "spinel"
       d_rb = "#{SPINEL_GEN_DIR}/system_desktop_combined.rb"
       sh "#{RbConfig.ruby} tool/spinel/gen_app_combined.rb system_desktop #{d_rb} #{platform}"
-      vm.call(d_rb, "system_desktop_entry")
+      vm.call(d_rb, "Init_system_desktop")
     end
     # The gems (FFT, SpinelHello, Raycast): libraries an mruby task calls. Each
     # gem's spinel/<name>_kernel.rb names its init and its entries in two

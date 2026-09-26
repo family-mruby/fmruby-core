@@ -464,7 +464,7 @@ if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     # the host-pre-generated .c.
     generate_ruby_spinel_command(
         ${FMRB_SPINEL_GEN_DIR}/fmrb_kernel_combined.rb
-        fmrb_kernel_entry ${FMRB_SPINEL_GEN_DIR})
+        Init_fmrb_kernel ${FMRB_SPINEL_GEN_DIR})
     # The Spinel-generated C pulls in spinel_rt.h, which defines many static
     # helpers a given program leaves unused; suppress warnings (it is generated,
     # not hand-written) so the project's -Werror does not reject it.
@@ -536,7 +536,7 @@ if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_APP_ENGINE_DESKTOP_SPINEL)
     generate_ruby_spinel_command(
         ${FMRB_SPINEL_GEN_DIR}/system_desktop_combined.rb
-        system_desktop_entry ${FMRB_SPINEL_GEN_DIR})
+        Init_system_desktop ${FMRB_SPINEL_GEN_DIR})
     # Same both-sides MC flags as the kernel combined (a mismatch is a silent ABI
     # break). Only this generated TU gets them, never the fmrb_spx shims.
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/system_desktop_combined.c
@@ -551,7 +551,7 @@ if(FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_APP_ENGINE_EDITOR_SPINEL)
     generate_ruby_spinel_command(
         ${FMRB_SPINEL_GEN_DIR}/editor_combined.rb
-        editor_entry ${FMRB_SPINEL_GEN_DIR})
+        Init_editor ${FMRB_SPINEL_GEN_DIR})
     set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/editor_combined.c
         PROPERTIES COMPILE_OPTIONS
         "${SPINEL_GEN_TU_FLAGS}")

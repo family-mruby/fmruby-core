@@ -29,82 +29,84 @@ extern const uint8_t appstore_irep[];
 extern const uint8_t services_irep[];
 #endif
 
-#ifdef FMRB_APP_ENGINE_EDITOR_SPINEL
-/* Spinel engine for the editor (P5): default/editor and default/editor_fs run
-   the Spinel-compiled program instead of editor_irep. Same shape as the desktop
-   below -- a NATIVE task backed by this app slot's estalloc pool, so `ps` still
-   reports its memory and the window attributes are unchanged. */
-extern int editor_entry(void);
+#if defined(FMRB_KERNEL_ENGINE_SPINEL) || defined(FMRB_APP_ENGINE_EDITOR_SPINEL) || \
+    defined(FMRB_APP_ENGINE_DESKTOP_SPINEL)
 #include "fmrb_spinel_host.h"
 
-static void spinel_editor_native(void *arg)
+/* The body of a NATIVE task that runs a Spinel-compiled VM (kernel, desktop,
+   editor): the Spinel runtime is backed by this task's estalloc pool, so every
+   allocation the program makes comes from the slot's own pool, isolated from
+   the other Spinel instances, and `ps` reports it through ctx->est.
+
+   Each VM is a Spinel ext program with no entries, and its init runs the Ruby
+   top level -- `SomeApp.new.start` -> main_loop -- so the call only returns
+   when the program ends; app_task_main then performs the normal task cleanup.
+
+   GC / string-heap thresholds are pool/32 for all three (sp_instance_config
+   contract: threshold < pool). Collecting early keeps a burst of allocation --
+   a mouse drag's event stream in the kernel, the desktop's app scan reading
+   many .toml files -- from reaching the top of the pool between collections,
+   which is fatal (exhaustion goes through sp_oom_die), and it claims the GC's
+   own mark stack while the pool is still unfragmented. Raising it to delay
+   the first collection is not an option either: the string heap gets the same
+   number, and a quarter of the pool each ran the editor out of memory while
+   typing into a 200KB file (its document lives in POOL_ID_EDITOR_DOC, so its
+   own pool only carries the UI state). */
+/* Kept out of line: the log calls take enough arguments to need outgoing
+   stack slots, and inlined into the runner they grew its frame -- which sits
+   under the whole VM on the kernel task's stack -- from 32 to 48 bytes. */
+static void __attribute__((noinline, cold))
+spinel_vm_fail(const fmrb_app_task_context_t *ctx, const char *why, void *pool, size_t pool_size)
 {
-    fmrb_app_task_context_t *ctx = (fmrb_app_task_context_t *)arg;
+    FMRB_LOGE(TAG, "%s: %s (pool %d at %p, %zu bytes)",
+              ctx->app_name, why, ctx->mempool_id, pool, pool_size);
+}
+
+void fmrb_app_run_spinel_vm(fmrb_app_task_context_t *ctx, void (*init)(void))
+{
     void  *pool = fmrb_get_mempool_ptr(ctx->mempool_id);
     size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
     if (!pool || pool_size == 0) {
-        FMRB_LOGE(TAG, "editor mempool %d unavailable (ptr=%p size=%zu)",
-                  ctx->mempool_id, pool, pool_size);
+        spinel_vm_fail(ctx, "mempool unavailable", pool, pool_size);
         return;
     }
-    /* The document lives in POOL_ID_EDITOR_DOC, not here, so this pool only
-       carries the UI state -- a small live set that collects cheaply. Raising
-       this to delay the first collection is not an option: the string heap gets
-       the same number, and a quarter of the pool for each ran the editor out of
-       memory while typing into a 200KB file. See editor/i18n.rb for what the
-       first collection has to be kept away from. */
     size_t threshold = pool_size / 32;
     void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
     if (!est) {
-        FMRB_LOGE(TAG, "failed to create Spinel editor instance (pool %d, %zu bytes)",
-                  ctx->mempool_id, pool_size);
+        spinel_vm_fail(ctx, "failed to create the Spinel instance", pool, pool_size);
         return;
     }
     ctx->est = est;
 
-    editor_entry();  /* runs EditorApp.new.start -> main_loop */
+    init();
 
     fmrb_spinel_instance_end(est);
     ctx->est = NULL;
+}
+#endif
+
+#ifdef FMRB_APP_ENGINE_EDITOR_SPINEL
+/* Spinel engine for the editor (P5): default/editor and default/editor_fs run
+   the Spinel-compiled program instead of editor_irep, as a NATIVE task backed
+   by this app slot's pool, so the window attributes are unchanged. */
+extern void Init_editor(void);   /* the Spinel ext program's init: its top level */
+
+static void spinel_editor_native(void *arg)
+{
+    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_editor);
 }
 #endif /* FMRB_APP_ENGINE_EDITOR_SPINEL */
 
 #ifdef FMRB_APP_ENGINE_DESKTOP_SPINEL
 /* Spinel engine (Phase 4 T4-3): system_desktop runs as the Spinel-compiled
-   combined desktop program instead of mruby bytecode. It is spawned as a NATIVE
-   task so it gets the same PROC_ID_SYSTEM_APP context, canvas(es), message queue
-   and lifecycle the mruby desktop does. Mirrors spinel_kernel_native in
-   fmrb_kernel.c: back the Spinel runtime with this task's estalloc pool so its
-   allocations are isolated per-instance and `ps` can report them via ctx->est. */
-extern int system_desktop_entry(void);
-#include "fmrb_spinel_host.h"
+   combined desktop program instead of mruby bytecode, as a NATIVE task so it
+   gets the same PROC_ID_SYSTEM_APP context, canvas(es), message queue and
+   lifecycle the mruby desktop does. */
+extern void Init_system_desktop(void);   /* the Spinel ext program's init: its top level */
 
 static void spinel_desktop_native(void *arg)
 {
-    fmrb_app_task_context_t *ctx = (fmrb_app_task_context_t *)arg;
-    void  *pool = fmrb_get_mempool_ptr(ctx->mempool_id);
-    size_t pool_size = fmrb_get_mempool_size(ctx->mempool_id);
-    if (!pool || pool_size == 0) {
-        FMRB_LOGE(TAG, "desktop mempool %d unavailable (ptr=%p size=%zu)",
-                  ctx->mempool_id, pool, pool_size);
-        return;
-    }
-    /* GC/str-heap threshold well below the pool: the desktop's app scan
-       (reading many .toml files) generates transient garbage, so collect often
-       to keep the live set inside the pool. */
-    size_t threshold = pool_size / 32;
-    void *est = fmrb_spinel_instance_begin(pool, pool_size, threshold, threshold);
-    if (!est) {
-        FMRB_LOGE(TAG, "failed to create Spinel desktop instance (pool %d, %zu bytes)",
-                  ctx->mempool_id, pool_size);
-        return;
-    }
-    ctx->est = est;
-
-    system_desktop_entry();  /* runs SystemDesktopApp.new.start -> main_loop */
-
-    fmrb_spinel_instance_end(est);
-    ctx->est = NULL;
+    fmrb_app_run_spinel_vm((fmrb_app_task_context_t *)arg, Init_system_desktop);
 }
 #endif /* FMRB_APP_ENGINE_DESKTOP_SPINEL */
 
