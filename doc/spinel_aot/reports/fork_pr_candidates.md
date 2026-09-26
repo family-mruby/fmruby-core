@@ -1,5 +1,7 @@
 # Spinel fork PR 候補・知見統合リスト
 
+> 2026-09-26: 以後の PR 候補は `doc/spinel_upstream_ext/pr_candidates.md` に集める。本書の未処理分はそちらへ引き継いだ。本書は経緯の記録で、更新しない。
+
 Spinel AOT 化 (Phase 0-2) で判明した Spinel 本体のバグ・機能不足・落とし穴を
 1 本にまとめた索引。フォークは `tmp/spinel` branch `fmrb-dev`。
 汎用 (fmruby 非依存) の修正は upstream (matz/spinel) への PR 候補。
