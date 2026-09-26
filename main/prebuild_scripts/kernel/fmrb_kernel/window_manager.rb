@@ -109,7 +109,10 @@ module WindowManagerMixin
 
   def build_hid_close_overlay
     # Send a special mouse_up event at (0,0) to trigger dropdown close
-    data = "\x00\x00\x00\x00\x00\x00"
+    # .b: string literals are frozen under Spinel, so a buffer that setbyte
+    # fills has to be a fresh copy; binary, because a NUL-led literal copied as
+    # text is cut at the first NUL once Spinel holds it in a String handle.
+    data = "\x00\x00\x00\x00\x00\x00".b
     data.setbyte(0, 5)  # subtype: mouse_up
     data.setbyte(1, 1)  # button: left
     data

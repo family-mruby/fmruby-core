@@ -8,5 +8,5 @@
 #   both together. Name the checkout: the script takes no default, so a snapshot
 #   can never quietly come from somewhere other than the one pinned here.
 repo: https://github.com/kishima/spinel.git
-branch: fmrb-dev
-commit: 622750cf7093d84c30ab212e50bb2547f04bcc4e
+branch: fmrb-next
+commit: 0b350247b91f5c5c329152e7959a77566ae962ad

@@ -1,6 +1,6 @@
 # Spinel 上流の ext 機構でフォークを置き換えられるか
 
-> 状態: 進行中 | 更新: 2026-09-26 | **P0・P1・P2a 完了**。フォークを上流 `01521b1e` に載せ直した `fmrb-next` (未 push) がテスト・多重インスタンスの門を全部通過。**ただし実機への影響の見込みが大きい: 内蔵 RAM の .data 約 +47KB、flash 約 +0.95MB**。次は P2b (fmrb 側の取り込みと実機サイズの実測)。PR1 完了 (6 件のブランチが提出待ち)
+> 状態: 進行中 | 更新: 2026-09-26 | **P0-P2 完了、develop に入れる**。最新上流に載せ直したフォーク `fmrb-next` を固定点とし、内蔵 RAM は基準より約 6.8KB 減 (実機の待機時で確認)。生成は全部 `--no-inline-hot`。速度の退行 (エディタ 1.6-1.9 倍ほか) は許容。上流 PR 6 本は取り込み済み。今後の追従は様子見、次は P3 (ext 移行)
 
 ## 結論
 
@@ -240,9 +240,11 @@ SPINEL_PIN が指す**ことを意味する。差分は小さく保ち、PR で�
 | P0 | 最新上流で前提を取り直す (対応表・ext 仕様・多重リンク・32bit・newlib ヘッダ・試し rebase の衝突量)。コードは変えない | **完了** (report/p0.md) |
 | P1 | 上流バイナリで gem 型を試作 (旧 段階 1)。fmrb のランタイムはフォーク版で上流と同居できないため、**sim ではなく fmrb のビルド外の試験用ホスト (tool/spinel_ext_poc/) で CRuby と一致を確かめる** | **完了** (report/p1.md) |
 | PR1 | 上流 PR の下準備 第 1 陣 (U-6 U-10 U-11 U-12 P-9 P-3)。専用 clone でブランチと回帰テストまで、提出はユーザ判断 | **完了** (report/pr1.md)。6 件とも 1 コミットのブランチで make test / bench 通過、提出待ち |
-| P2 | フォークを最新上流へ rebase し、SPINEL_PIN と spinel_rt スナップショットを更新 (旧 段階 2)。**ここで「最新を参照する」が成立**。**P2a** (フォーク側: 案 A で載せ直し、大域状態の棚卸し、slab 等の口) と **P2b** (fmrb 側: 取り込み・sim・実機) に分ける | **P2a 完了** (report/p2a.md)。P2b は **P2b-1** (取り込み・sim・ESP32 サイズ実測、指示書 instruction_p2b1.md) と **P2b-2** (実機・push・SPINEL_PIN、ユーザ判断の後) に分ける |
-| P3 | ext TU の多重リンク解決と gem 3 本の移行 (旧 段階 3) | 未着手 |
-| P4 | 追従の仕組み (乖離の表示と定期 rebase の手順) と PR の切り出し (旧 段階 4) | 未着手 |
+| P2 | フォークを最新上流へ rebase し、SPINEL_PIN と spinel_rt スナップショットを更新 (旧 段階 2)。**ここで「最新を参照する」が成立**。**P2a** (フォーク側: 案 A で載せ直し、大域状態の棚卸し、slab 等の口) と **P2b** (fmrb 側: 取り込み・sim・実機) に分ける | **P2a 完了** (report/p2a.md)。P2b は **P2b-1 完了** (report/p2b1.md、作業ブランチ feature/spinel-upstream) と **P2b-2** (実機・push・SPINEL_PIN、ユーザ判断の後) に分ける |
+| PR3 | 提出前の最終準備 (最新上流 `9fb2cf02` へ載せ替え、`make gate`、U-6 は修正と検査の 2 コミット 1 PR)。**提出済み**: #5064 U-11 / #5065 P-9 / #5066 U-10 / #5067 P-3 / #5068 U-6 / #5069 U-12 | **完了** (report/pr3.md) |
+| P2c | **内蔵 RAM の増分を 0 にする** (ユーザ決定 2026-09-26: +54KB は許容しない)。凍結リテラルは変換時にハッシュを計算して const (flash) に、ランタイムの表と TU ごとの小物は PSRAM に、slab の表は外す。Tab5 のアプリ区画を 7M に。判定は静的な DIRAM の増分 0 以下 (両機種)、実機の待機時空きは P2b-2 で | **完了** (report/p2c.md) |
+| P3 | ext 移行: P3a フォークの土台 (ext の複数リンク、init での状態の戻し、include guard)、P3b gem 3 本、P3c VM 型 3 本を `--ext-init` に | 指示書発行 (instruction_p3.md)、develop へのマージ後に着手 |
+| P4 | 追従の仕組み (乖離の表示と定期 rebase の手順) と PR の切り出し (旧 段階 4) | **やらない** (様子見。PR の切り出しだけ続ける) |
 
 P0 で確定したこと (上流 `01521b1e`、詳細と再現手順は report/p0.md):
 
@@ -305,6 +307,76 @@ P2a で確定したこと (report/p2a.md、clone `/home/kishima/fmrb/wt/spinel-r
 - fmrb 側で要る変更: `sp_net_bin_len` → `*sp_ctx_ffi_bin_len() = n`、
   `sp_instance_config` の新しい欄、sp_nosched.c を入れる。
   ESP newlib での `fopencookie` と `sys/poll.h` は未確認。
+
+P2b-1 で確定したこと (report/p2b1.md、fmruby-core の作業ブランチ
+`feature/spinel-upstream`、fmrb-next は `88465f2a`、どちらも未 push):
+
+- 標準構成の sim が通る: エディタの起動・打鍵・閉じる・再起動を 4 回
+  (閉じ方 3 通り)、raycaster / spinel_hello / fft_bench、設定ダイアログ。
+  FrozenError・abort は 0、ExcHW は kernel 3/0・editor 4/0。
+- fmrb の Ruby 5 ファイルが凍結リテラルに書き込んでいたので直した。`.dup`
+  では足りず `.b` (NUL で始まる複製が strlen で切られる、U-21)。
+- ESP newlib の 7 点と Xtensa のリンクの 1 点を fmrb-next 側で直した。
+  fopencookie は問題なし。
+- **実測 (同じコミットの基準との差)**:
+
+  | | S3 | P4 (Tab5) |
+  |---|---|---|
+  | 内蔵 RAM (DIRAM) | +54,048 (.data +30.0K / .bss +24.0K) | +53,844 |
+  | bin | +338,720 | +426,800 |
+  | 6MB 区画 | 空き 34% → 28%、入る | 空き 5% → **114,256 バイト超過、入らない** |
+
+- **撤回: 「flash が危ないのは S3」**。逆で、Tab5 が基準の時点で 95% を
+  使っていて入らない (S3 の「残り 6%」は区画を広げる前の古い記録)。
+  flash の見込み +0.95MB も過大で、実測は +339KB / +427KB。
+- Tab5 の待機時の内蔵 RAM 空きは 152,612 → 約 98,800 バイトの見込み。
+  フォーク側だけで最大約 23KB 戻せる (`sp_hdr_char_cache` 16K を PSRAM へ、
+  `sp_bt_buf` に `SP_TU_BSS`、`sp_slab_wk` を消す)。凍結リテラルの 30K は
+  上流の変更 (P-11 の案) が要る。
+
+P2c で確定したこと (report/p2c.md、fmruby-core `9ffe5515`、fmrb-next `0b350247`、未 push):
+
+- **静的な内蔵 RAM (D/IRAM) は基準より減った**: S3 154,123 → 147,387
+  (**-6,736**)、P4 190,260 → 183,448 (**-6,812**)。P2b-1 の +54KB から
+  約 -60.7KB。IRAM は基準と同じ。PSRAM の .bss が約 +7.6KB。
+  親セッションが基準と新の map を esp_idf_size で測り直して一致を確認。
+- 手: 凍結リテラルは変換時にハッシュと ASCII7 を計算して const (flash) に。
+  1 バイト文字列の表も定数なので flash に。`SP_NO_SLAB` で slab の表と
+  原子操作の補助を外す。`sp_bt_buf` を 1 枠にして PSRAM へ。新しい口
+  `SP_RT_COLD` (ランタイムの冷たい表を PSRAM へ) と `SP_TU_NIL_SLOT`
+  (生成プログラムの nil で始まる定数・クラスの ivar・大域変数を PSRAM へ)。
+- 撤回: 「多重インスタンスはエントリで全部の枠を戻す」。戻していたのは
+  ポインタの枠だけで、整数・小数の枠は 2 回目の起動で前回の値が残っていた
+  (`SP_TU_NIL_SLOT` で直った)。
+- Tab5 / NARYAv4 のアプリ区画を 7M に (6,405,664 バイトで空き 13%)。
+  storage は 8M のまま 0x710000 へ動く。**初回は `rake flash` で全体を
+  書く必要があり、/home は消える** (`flash:app` では足りない)。
+- sim (標準構成) は P2b-1 と同じ操作が通る。fmrb-next は make test /
+  bench / test-multi-ctx で退行なし。
+- 既存の内蔵 RAM の削減候補を report/p2c.md 10 節に記録 (描画系 約 16KB、
+  ファイル系 約 6-10KB、mruby の gem_init の .data 約 6KB ほか)。処置は未定。
+- 実機で見ること (P2b-2): 待機時の内蔵 RAM 空きの増加 (同じ基板で基準と比較)、
+  PSRAM に移したクラスの ivar・定数 (editor 241 個) の速度影響
+  (`edit_lat` `hid_lat` `render_ms` `cast`)、Guru 0 件 (flash のリテラルへの書き込み検出)。
+
+P2b-2 で確定したこと (report/p2b2.md、板は P4-Nano (NARYAv4)。Tab5 と S3 は別の機会):
+
+- **上流の強制インラインで kernel のスタックが溢れた**: `handle_app_control` の
+  C フレームが 4,192 → 12,448 バイトになり、起動直後に Stack protection fault で
+  再起動を繰り返した (sim では出ない)。**Spinel の生成は全部 `--no-inline-hot`**
+  (`6391833f`)。タスクのスタックを増やす案は内蔵 RAM を増やすので採らない。
+- 待機時の内蔵 RAM 空き 143,208 → **150,020 (+6,812)**、P2c の静的な見込みと一致。
+  Guru 0。/home は退避・復元した。SPINEL_PIN は `fmrb-next` `0b350247` に確定
+  (`b2126ae1`)、`SPINEL_DIR` 無しでビルドできる。
+- **速度の退行は許容した** (ユーザ決定: 多少の速度低下より RAM の削減を取る):
+  エディタの edit_lat 1.6-1.9 倍 (実機だけ、原因未特定)、FFT 倍精度 +10〜27%
+  (上流の `SP_FLOAT_NIL_CK`、sim でも出る)、raycaster +8〜22%。
+- kernel スタックの最悪 Free は 6,952 → 6,488 (上流の `pack_value` と `sp_poly_*`)。
+
+**方針 (ユーザ、2026-09-26)**: 上流は組み込みで使うのが難しくなりつつあるので
+**様子見**。`fmrb-next` を固定点として develop に入れ、継続的な追従 (P4 の定期
+rebase) はしない。**ext 移行 (P3) はやる** (コードが綺麗になる)。単純なバグの
+上流 PR は続ける (6 本は当日マージされた)。
 
 ## 推奨とスコープ
 

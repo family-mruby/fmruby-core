@@ -12,7 +12,31 @@
 #include "sp_fiber_ctx.h"
 
 
-#define SP_FIBER_STACK_SIZE (64*1024)
+/* A green thread's whole C stack: the build-time default, 256 KB (half of
+   CRuby's machine stack for a fiber). The mapping is virtual space until a
+   page is touched, so what a fiber costs is the depth it actually reaches,
+   not this number; what it bounds is how deep a call chain, or how large a
+   frame, a fiber can run (#4496). The size a program runs with is
+   sp_fiber_stack_size, settable at run time: SPINEL_FIBER_STACK=<bytes>
+   (K/M suffixes) in the environment wins, else the hint the generated
+   program gives (an unoptimised build asks for more, its frames being many
+   times -O2's), else this default. */
+#ifndef SP_FIBER_STACK_SIZE
+#define SP_FIBER_STACK_SIZE (256*1024)
+#endif
+extern size_t sp_fiber_stack_size;
+/* the generated program's request, honoured unless the environment says otherwise */
+void sp_fiber_stack_hint(size_t bytes);
+/* The PROT_NONE guard below it. One page catches a frame that grows past the
+   stack a page at a time, and nothing else: a C compiler that emits no stack
+   probes (gcc on Linux, by default) lets a 51 KB frame step straight over a
+   4 KB guard into whatever mapping sits below, and the program runs on with
+   that mapping corrupted (#4496). The guard is virtual space only, never
+   touched, so it is sized to the largest frame a build is likely to emit
+   rather than to a page; a frame larger than this still has to be probed. */
+#ifndef SP_FIBER_GUARD_SIZE
+#define SP_FIBER_GUARD_SIZE (256*1024)
+#endif
 
 /* ThreadSanitizer support: the asm context switch swaps stacks without TSan's
    knowledge, so a fiber program reports spurious "unexpected memory mapping"
@@ -28,7 +52,7 @@
 #define SP_TSAN 1
 #endif
 
-typedef struct sp_Fiber{sp_fiber_ctx ctx;sp_fiber_ctx caller_ctx;char*stack;int state;int transferred;sp_RbVal yielded_value;sp_RbVal resumed_value;void(*body)(struct sp_Fiber*);void*user_data;int saved_exc_top;int saved_catch_top;void*exc_ctx;int raised;const char*raised_cls;const char*raised_msg;void*raised_obj;int inject;const char*inj_cls;const char*inj_msg;void*inj_obj;void*storage;void***saved_roots;int saved_nroots;int saved_roots_cap;struct sp_Fiber*fiber_next;struct sp_Fiber*fiber_prev;
+typedef struct sp_Fiber{sp_fiber_ctx ctx;sp_fiber_ctx caller_ctx;char*stack;size_t stack_size;int state;int transferred;sp_RbVal yielded_value;sp_RbVal resumed_value;void(*body)(struct sp_Fiber*);void*user_data;int saved_exc_top;int saved_catch_top;void*exc_ctx;int raised;const char*raised_cls;const char*raised_msg;void*raised_obj;int inject;const char*inj_cls;const char*inj_msg;void*inj_obj;void*storage;void***saved_roots;int saved_nroots;int saved_roots_cap;struct sp_Fiber*fiber_next;struct sp_Fiber*fiber_prev;struct sp_Fiber*resumer;/* the fiber suspended inside #resume of this one, until it returns: the chain from the running fiber back to the root is what the collector roots; every other suspended fiber lives by reference (#4525) */
 #ifdef SP_TSAN
   void *tsan_fiber;                 /* __tsan fiber handle for this coroutine */
   struct sp_Fiber *caller_fiber;    /* who switched into us (the swap-out target) */
@@ -55,6 +79,7 @@ void      sp_fiber_publish_current_roots(void);
 /* Mark a fiber's published (saved) roots; used by the collector to reach a
    parked worker's root fiber, which is not on the global fiber list. */
 void      sp_fiber_mark_roots(sp_Fiber *f);
+void      sp_fiber_mark_chain(sp_Fiber *f);   /* f and every resumer waiting on it (#4525) */
 
 /* Public Fiber API (called from the generated TU). */
 sp_Fiber *sp_Fiber_new(void (*body)(sp_Fiber *));
@@ -72,7 +97,7 @@ sp_RbVal sp_Fiber_transfer_catch(sp_Fiber *f, sp_RbVal val, int *out_raised,
 sp_RbVal sp_Fiber_raise(sp_Fiber *f, const char *cls, const char *msg, void *obj);
 /* Fiber#kill: terminate the fiber (running its ensure blocks); returns it. */
 sp_Fiber *sp_Fiber_kill(sp_Fiber *f);
-mrb_bool sp_Fiber_alive(sp_Fiber *f);
+sp_bool sp_Fiber_alive(sp_Fiber *f);
 sp_RbVal sp_Fiber_storage_get(sp_Fiber *f, sp_sym k);
 void sp_Fiber_storage_set(sp_Fiber *f, sp_sym k, sp_RbVal v);
 /* Reached from sp_re_mark_globals in the generated TU during a GC pass. */
@@ -85,5 +110,39 @@ void sp_fiber_set_kill_inject(sp_Fiber *f);
 void sp_fiber_fire_inject_if_pending(void);
 int  sp_fiber_inject_pending(sp_Fiber *f);   /* lock-free acquire peek */
 SP_NORETURN void sp_fiber_raise_kill_self(void);
+
+/* A C stack that ran out is CRuby's SystemStackError, and a program that
+   rescues it goes on running. The raise cannot live here: the exception
+   stack is thread-local state in the generated translation unit, which this
+   archive is compiled without. The generated TU installs this hook, and the
+   fault handler calls it instead of reporting and dying -- on the alternate
+   signal stack, so the raise runs on memory the overflow did not touch.
+   NULL (nothing installed, or no handler armed) keeps the old report. */
+#if defined(SP_MULTI_CTX) || defined(SP_NO_MMAN)
+/* No process-wide fault guard here. Under SP_MULTI_CTX the guard would hang a
+   signal handler and an alternate stack off whichever instance started first,
+   the stack taken from that instance's pool; a port without an MMU has no
+   guard page to fault on and does not compile sp_fiber.c at all. The hook
+   stays assignable -- the generated init sets it -- as a per-instance field
+   (sp_ctx.h) or, without SP_MULTI_CTX, a private slot in each TU. */
+static inline void sp_stack_guard_init(void) {}
+#ifndef SP_MULTI_CTX
+static void (*sp_stack_overflow_raise_fn)(void);
+#endif
+#else
+extern void (*sp_stack_overflow_raise_fn)(void);
+void sp_stack_guard_init(void);
+#endif
+/* Run the program body on a stack this library maps (see sp_main_stack_run);
+   sp_main_stack_hint asks for a size, SPINEL_MAIN_STACK in the environment
+   wins over it. */
+void sp_main_stack_hint(size_t bytes);
+void sp_main_stack_run(void (*body)(void));
+
+/* The running thread's own stack, for the fault handler's overflow test: a
+   fault just below `lo` is this stack growing past its end. Recorded per
+   thread when the handler is armed. */
+extern SP_TLS char *sp_thread_stack_lo;
+extern SP_TLS char *sp_thread_stack_hi;
 
 #endif

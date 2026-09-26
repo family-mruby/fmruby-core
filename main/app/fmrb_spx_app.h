@@ -6,7 +6,7 @@
  *
  * See fmrb_spx_gfx.h for the shared return convention. Structured results cross
  * the boundary as fixed-layout little-endian byte buffers returned via :binstr
- * (byte length in sp_net_bin_len); an empty String means "nil".
+ * (byte length in sp_ffi_bin_len); an empty String means "nil".
  *
  * The message poll (fmrb_spx_app_recv_message) replaces FmrbApp#_spin: the
  * mruby _spin dispatched HID events by calling on_event() through mrb_funcall,
@@ -59,7 +59,7 @@ const char *fmrb_spx_app_init(void);
 /**
  * @brief Poll one message for this app (blocking up to @p timeout_ms).
  *
- * Returns the payload as a binary-safe :binstr (length in sp_net_bin_len) and
+ * Returns the payload as a binary-safe :binstr (length in sp_ffi_bin_len) and
  * writes the message type / source pid to the out-params. On timeout the String
  * is empty and *type = -1.
  */

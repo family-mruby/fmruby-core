@@ -48,9 +48,10 @@ extern int spinel_hello_entry(void);
 #define SH_OUT_MAX    64
 #define SH_NAME_MAX   48
 
-/* :binstr length publisher, defined in fmrb_spx_common.c. The entry reads the
-   name back as a byte String, so we set this to the stored name's length. */
-extern int sp_net_bin_len;
+/* The current instance's :binstr length (runtime sp_ctx.c; the host C
+   cannot include sp_ctx.h, so it is declared here). The entry reads the name
+   back as a byte String, so we set this to the stored name's length. */
+int *sp_ctx_ffi_bin_len(void);
 
 SH_BSS_ATTR static void *s_pool;
 SH_BSS_ATTR static void *s_est;
@@ -128,7 +129,7 @@ void spinel_hello_end(void)
 /* The entry reads the name to greet here, as a byte String (:binstr). */
 const char *spinel_hello_spx_name(void)
 {
-    sp_net_bin_len = s_name_len;
+    *sp_ctx_ffi_bin_len() = s_name_len;
     return s_name;
 }
 

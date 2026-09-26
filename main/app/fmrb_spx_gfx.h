@@ -19,7 +19,7 @@
  *   negative code on error/absence.
  * - Structured results cross the boundary as fixed-layout little-endian byte
  *   buffers returned via :binstr (a real Spinel String read with getbyte); the
- *   byte length is published in sp_net_bin_len. An empty String means "nil".
+ *   byte length is published in sp_ffi_bin_len. An empty String means "nil".
  */
 #ifndef FMRB_SPX_GFX_H
 #define FMRB_SPX_GFX_H

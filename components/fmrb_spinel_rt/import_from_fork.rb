@@ -11,7 +11,7 @@
 # argument is mandatory only so it is never picked silently.
 #
 # Design (see doc/spinel_aot/phase1.md T1-4 and the phase1 report):
-# - ALL runtime headers are copied: sp_runtime.h includes sp_re.h / sp_time.h /
+# - ALL runtime headers are copied: spinel_rt.h includes sp_re.h / sp_time.h /
 #   sp_marshal.h / sp_random.h / sp_fiber.h / sp_sched.h / sp_system.h, so those
 #   headers must be present even though we do NOT compile their .c.
 # - Only a minimal set of .c is copied+compiled (COMPILE_SRCS). regexp / bigint /
@@ -40,13 +40,13 @@ LIB = File.join(fork_dir, "lib")
 
 abort "fork lib not found: #{LIB}" unless Dir.exist?(LIB)
 
-# Every header sp_runtime.h (transitively) needs, plus the regexp engine
+# Every header spinel_rt.h (transitively) needs, plus the regexp engine
 # headers. Copy the whole header set (flattened) -- it is small and keeps the
 # include graph intact.
 HEADERS = (Dir.glob(File.join(LIB, "*.h")) +
            Dir.glob(File.join(LIB, "regexp", "*.h"))).map { |p| File.basename(p) }.sort
 
-# Compiled runtime. sp_runtime.h's static helpers cross-reference most modules
+# Compiled runtime. spinel_rt.h's static helpers cross-reference most modules
 # (e.g. sp_poly_inspect -> bigint / regexp; sp_re_mark_globals -> fiber), so a
 # truly minimal set does not link -- compile the whole runtime except the
 # modules with external OS dependencies the kernel does not use:

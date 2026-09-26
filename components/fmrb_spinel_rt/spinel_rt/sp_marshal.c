@@ -1,13 +1,14 @@
-/* sp_marshal.c -- Marshal.dump / Marshal.load, split out of sp_runtime.h.
+/* sp_marshal.c -- Marshal.dump / Marshal.load, split out of spinel_rt.h.
 
    A standalone translation unit. The read side uses the generic sp_json_* hooks
    (sp_gc.h); the construction side uses the sp_marshal_v vtable the generated TU
-   installs at startup (sp_re_init). Result containers are built through vtable
+   installs at startup (sp_tu_init). Result containers are built through vtable
    wrappers and rooted with SP_GC_ROOT (now shared via sp_gc.h) so a nested
    allocation during the parse can't free a partially-built value. CRuby 4.8 wire
    format; see sp_marshal.h. */
 #include "sp_marshal.h"   /* sp_gc.h: sp_RbVal, hooks, SP_GC_ROOT, cls_ids */
 #include "sp_alloc.h"     /* sp_str_alloc_raw, sp_str_set_len, sp_str_byte_len, sp_float_to_s */
+#include "sp_dtoa.h"      /* sp_format_float / sp_read_float (locale-independent) */
 #include <string.h>
 #include <math.h>
 
@@ -18,24 +19,24 @@ size_t sp_bigint_byte_len(sp_Bigint *b);
 size_t sp_bigint_to_le_bytes(sp_Bigint *b, unsigned char *out, size_t cap);
 sp_Bigint *sp_bigint_from_le_bytes(int negative, const unsigned char *bytes, size_t n);
 
-/* Inline sp_RbVal constructors (state-free; avoid pulling sp_runtime.h). Heap
+/* Inline sp_RbVal constructors (state-free; avoid pulling spinel_rt.h). Heap
    value types (array/hash/complex/rational) go through the vtable instead. */
 static sp_RbVal mk_nil(void)        { sp_RbVal r; r.tag = SP_TAG_NIL;  r.cls_id = 0; r.v.i = 0; return r; }
-static sp_RbVal mk_bool(mrb_bool b) { sp_RbVal r; r.tag = SP_TAG_BOOL; r.cls_id = 0; r.v.i = (b != 0); return r; }  /* full union word: bool equality reads v.i */
-static sp_RbVal mk_int(mrb_int n)   { sp_RbVal r; r.tag = SP_TAG_INT;  r.cls_id = 0; r.v.i = n; return r; }
-static sp_RbVal mk_float(mrb_float f){ sp_RbVal r; r.tag = SP_TAG_FLT;  r.cls_id = 0; r.v.f = f; return r; }
+static sp_RbVal mk_bool(sp_bool b) { sp_RbVal r; r.tag = SP_TAG_BOOL; r.cls_id = 0; r.v.i = (b != 0); return r; }  /* full union word: bool equality reads v.i */
+static sp_RbVal mk_int(sp_int n)   { sp_RbVal r; r.tag = SP_TAG_INT;  r.cls_id = 0; r.v.i = n; return r; }
+static sp_RbVal mk_float(sp_float f){ sp_RbVal r; r.tag = SP_TAG_FLT;  r.cls_id = 0; r.v.f = f; return r; }
 static sp_RbVal mk_str(const char *s){ sp_RbVal r; r.tag = SP_TAG_STR;  r.cls_id = 0; r.v.s = s; return r; }
-static sp_RbVal mk_sym(sp_sym s)    { sp_RbVal r; r.tag = SP_TAG_SYM;  r.cls_id = 0; r.v.i = (mrb_int)s; return r; }
+static sp_RbVal mk_sym(sp_sym s)    { sp_RbVal r; r.tag = SP_TAG_SYM;  r.cls_id = 0; r.v.i = (sp_int)s; return r; }
 static sp_RbVal mk_bigint(void *p)  { sp_RbVal r; r.tag = SP_TAG_BIGINT; r.cls_id = 0; r.v.p = p; return r; }
-static mrb_float poly_f(sp_RbVal v) { return v.tag == SP_TAG_FLT ? v.v.f : (mrb_float)v.v.i; }
-static mrb_int   poly_i(sp_RbVal v) { return v.tag == SP_TAG_INT ? v.v.i : (mrb_int)v.v.f; }
+static sp_float poly_f(sp_RbVal v) { return v.tag == SP_TAG_FLT ? v.v.f : (sp_float)v.v.i; }
+static sp_int   poly_i(sp_RbVal v) { return v.tag == SP_TAG_INT ? v.v.i : (sp_int)v.v.f; }
 
 static void mar_raise(const char *cls, const char *msg) {
   if (sp_marshal_v.raise) sp_marshal_v.raise(cls, msg);
 }
 
 /* ---- dump ---- */
-static void sp_mar_raw(sp_mar_buf *b, const char *s, size_t n) { for (size_t i = 0; i < n; i++) sp_mar_b(b, (unsigned char)s[i]); }
+static void sp_mar_raw(sp_mar_buf *b, const char *s, size_t n) {SP_GC_ROOT_STR(s); for (size_t i = 0; i < n; i++) sp_mar_b(b, (unsigned char)s[i]); }
 void sp_mar_b(sp_mar_buf *b, unsigned char c) {
   if (b->len >= b->cap) { b->cap = b->cap ? b->cap * 2 : 64; b->p = (char *)realloc(b->p, b->cap); if (!b->p) sp_oom_die(); }
   b->p[b->len++] = (char)c;
@@ -55,8 +56,8 @@ void sp_mar_long(sp_mar_buf *b, long n) {
   }
   sp_mar_raw(b, (char *)buf, (size_t)i + 1);
 }
-static void sp_mar_bytes(sp_mar_buf *b, const char *s, size_t n) { sp_mar_long(b, (long)n); sp_mar_raw(b, s, n); }
-void sp_mar_sym(sp_mar_buf *b, const char *name) {
+static void sp_mar_bytes(sp_mar_buf *b, const char *s, size_t n) {SP_GC_ROOT_STR(s); sp_mar_long(b, (long)n); sp_mar_raw(b, s, n); }
+void sp_mar_sym(sp_mar_buf *b, const char *name) {SP_GC_ROOT_STR(name);
   for (int i = 0; i < b->nws; i++)
     if (!strcmp(b->wsyms[i], name)) { sp_mar_b(b, ';'); sp_mar_long(b, i); return; }
   if (b->nws >= b->cws) { b->cws = b->cws ? b->cws * 2 : 8; b->wsyms = (char **)realloc(b->wsyms, sizeof(char *) * (size_t)b->cws); if (!b->wsyms) sp_oom_die(); }
@@ -65,10 +66,11 @@ void sp_mar_sym(sp_mar_buf *b, const char *name) {
 }
 /* CRuby's Marshal float text: the shortest %.g that round-trips, exponent
    normalized ("1e+02" -> "1e2"); 0.0 is "0", 100.0 is "1e2", 0.1 is "0.1". */
-static const char *sp_mar_float_str(double f, char *buf, size_t bufsz) {
+static const char *sp_mar_float_str(double f, char *buf, size_t bufsz) {SP_GC_ROOT_STR(buf);
   for (int prec = 1; prec <= 17; prec++) {
-    snprintf(buf, bufsz, "%.*g", prec, f);
-    if (strtod(buf, NULL) == f) break;
+    sp_format_float(f, buf, bufsz, 'g', prec, '\0');   /* locale-independent */
+    double rt = 0.0; sp_read_float(buf, NULL, &rt);
+    if (rt == f) break;
   }
   char *e = strchr(buf, 'e');
   if (e) {                       /* drop '+' and leading exponent zeros */
@@ -94,9 +96,9 @@ static int sp_mar_seen(sp_mar_buf *b, void *ptr) {
 }
 static void sp_mar_w_hash(sp_mar_buf *b, sp_RbVal v) {
   sp_mar_b(b, '{');
-  mrb_int n = sp_json_len_fn(v);
+  sp_int n = sp_json_len_fn(v);
   sp_mar_long(b, n);
-  for (mrb_int i = 0; i < n; i++) {
+  for (sp_int i = 0; i < n; i++) {
     sp_RbVal k, val; sp_json_hpair_fn(v, i, &k, &val);
     sp_mar_w(b, k); sp_mar_w(b, val);
   }
@@ -109,7 +111,7 @@ void sp_mar_w(sp_mar_buf *b, sp_RbVal v) {
     case SP_TAG_FLT: {
       if (sp_mar_seen(b, NULL)) break;
       sp_mar_b(b, 'f');
-      mrb_float f = v.v.f; const char *fs; char fbuf[64];
+      sp_float f = v.v.f; const char *fs; char fbuf[64];
       if (isnan(f)) fs = "nan";
       else if (isinf(f)) fs = f < 0 ? "-inf" : "inf";
       else fs = sp_mar_float_str((double)f, fbuf, sizeof fbuf);
@@ -128,7 +130,7 @@ void sp_mar_w(sp_mar_buf *b, sp_RbVal v) {
     case SP_TAG_OBJ:
       if (v.cls_id == SP_BUILTIN_COMPLEX) {
         if (sp_mar_seen(b, v.v.p)) break;
-        mrb_float *c = (mrb_float *)v.v.p;  /* sp_Complex = {re, im} */
+        sp_float *c = (sp_float *)v.v.p;  /* sp_Complex = {re, im} */
         sp_mar_b(b, 'U'); sp_mar_sym(b, "Complex");
         sp_mar_seen(b, NULL);
         sp_mar_b(b, '['); sp_mar_long(b, 2);
@@ -136,7 +138,7 @@ void sp_mar_w(sp_mar_buf *b, sp_RbVal v) {
       }
       else if (v.cls_id == SP_BUILTIN_RATIONAL) {
         if (sp_mar_seen(b, v.v.p)) break;
-        mrb_int *q = (mrb_int *)v.v.p;  /* sp_Rational = {num, den} */
+        sp_int *q = (sp_int *)v.v.p;  /* sp_Rational = {num, den} */
         sp_mar_b(b, 'U'); sp_mar_sym(b, "Rational");
         sp_mar_seen(b, NULL);
         sp_mar_b(b, '['); sp_mar_long(b, 2);
@@ -146,8 +148,8 @@ void sp_mar_w(sp_mar_buf *b, sp_RbVal v) {
         int kind = sp_json_kind_fn ? sp_json_kind_fn(v) : 0;
         if (kind == 1) {  /* array */
           if (sp_mar_seen(b, v.v.p)) break;
-          sp_mar_b(b, '['); mrb_int n = sp_json_len_fn(v); sp_mar_long(b, n);
-          for (mrb_int i = 0; i < n; i++) sp_mar_w(b, sp_json_aref_fn(v, i));
+          sp_mar_b(b, '['); sp_int n = sp_json_len_fn(v); sp_mar_long(b, n);
+          for (sp_int i = 0; i < n; i++) sp_mar_w(b, sp_json_aref_fn(v, i));
         }
         else if (kind == 2) {  /* hash */
           if (sp_mar_seen(b, v.v.p)) break;
@@ -187,6 +189,9 @@ const char *sp_marshal_dump(sp_RbVal v) {
   char *out = sp_str_alloc_raw(b.len + 1);
   memcpy(out, b.p, b.len); out[b.len] = 0;
   sp_str_set_len(out, b.len);
+  /* a marshalled stream is bytes, and CRuby names it ASCII-8BIT: without the
+     tag #length counts UTF-8 units over binary data and [] slices by them */
+  sp_str_mark_binary(out);
   for (int i = 0; i < b.nws; i++) free(b.wsyms[i]);
   free(b.wsyms);
   free(b.p); free(b.lptr); free(b.lid);
@@ -194,11 +199,28 @@ const char *sp_marshal_dump(sp_RbVal v) {
 }
 
 /* ---- load ---- */
-typedef struct {
+typedef struct sp_mar_rd_s {
   const char *s; size_t pos, len;
   char **syms; int nsym, csym;        /* symbol-link table (`;`) */
   sp_RbVal *objs; int nobj, cobj;     /* object-link table (`@`) */
+  struct sp_mar_rd_s *prev;           /* enclosing load, for a reentrant one */
 } sp_mar_rd;
+/* The object-link table holds every object built so far, so a `@` back-
+   reference can return it -- and it is a malloc array, which the collector
+   does not walk. Without this the parse is a long run of allocations with its
+   own results reachable from nothing: under a minor mark they are freed and
+   the next back-reference reads a corpse. Published here and marked through
+   the collector's globals hook, which is the same treatment the regex globals
+   get. Reentrant loads chain through `prev`. */
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
+static sp_mar_rd *sp_mar_active = NULL;
+#endif
+void sp_marshal_mark_active(void) {
+  for (sp_mar_rd *r = sp_mar_active; r; r = r->prev) {
+    sp_mark_string(r->s);
+    for (int i = 0; i < r->nobj; i++) sp_mark_rbval(r->objs[i]);
+  }
+}
 static unsigned char sp_mar_rb(sp_mar_rd *r) { return r->pos < r->len ? (unsigned char)r->s[r->pos++] : 0; }
 static long sp_mar_rlong(sp_mar_rd *r) {
   int c = (signed char)sp_mar_rb(r);
@@ -238,15 +260,15 @@ static sp_RbVal sp_mar_r(sp_mar_rd *r) {
     case '0': return mk_nil();
     case 'T': return mk_bool(TRUE);
     case 'F': return mk_bool(FALSE);
-    case 'i': return mk_int((mrb_int)sp_mar_rlong(r));
+    case 'i': return mk_int((sp_int)sp_mar_rlong(r));
     case 'f': {
       int id = sp_mar_reg(r);
       long n = sp_mar_rlong(r);
       char *s = sp_mar_rstr(r, n); SP_GC_ROOT(s);
-      mrb_float f;
-      if (!strcmp(s, "inf")) f = (mrb_float)INFINITY;
-      else if (!strcmp(s, "-inf")) f = -(mrb_float)INFINITY;
-      else if (!strcmp(s, "nan")) f = (mrb_float)NAN;
+      sp_float f;
+      if (!strcmp(s, "inf")) f = (sp_float)INFINITY;
+      else if (!strcmp(s, "-inf")) f = -(sp_float)INFINITY;
+      else if (!strcmp(s, "nan")) f = (sp_float)NAN;
       else f = strtod(s, NULL);
       sp_RbVal v = mk_float(f); r->objs[id] = v; return v;
     }
@@ -335,11 +357,18 @@ static sp_RbVal sp_mar_r(sp_mar_rd *r) {
     default: mar_raise("ArgumentError", "unsupported type in Marshal.load"); return mk_nil();
   }
 }
-sp_RbVal sp_marshal_load(const char *s, mrb_int len) {
+sp_RbVal sp_marshal_load(const char *s, sp_int len) {
+  /* The whole parse reads out of this buffer, and every object it builds
+     allocates -- so the source string has to stay rooted for the duration.
+     r.s is a plain field, not a root slot; the collector walks registered
+     slots, so the parameter is what has to be registered. */
+  SP_GC_ROOT_STR(s);
   sp_mar_rd r; memset(&r, 0, sizeof r);
   r.s = s ? s : ""; r.len = s ? (size_t)len : 0;
+  r.prev = sp_mar_active; sp_mar_active = &r;
   if (r.len >= 2) r.pos = 2;  /* skip the 4.8 version header */
   sp_RbVal v = sp_mar_r(&r);
+  sp_mar_active = r.prev;
   for (int i = 0; i < r.nsym; i++) free(r.syms[i]);
   free(r.syms); free(r.objs);
   return v;

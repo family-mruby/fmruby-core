@@ -2,9 +2,9 @@
  *
  * The whole of spinel's Time implementation lives in lib/sp_time.c
  * (compiled into libspinel_rt.a), including the formatters, which now
- * return GC-heap strings directly (sp_time.c includes sp_alloc.h) — so
+ * return GC-heap strings directly (sp_time.c includes sp_alloc.h) -- so
  * the generated TU calls them straight, with no buffer-copying
- * trampoline in sp_runtime.h.
+ * trampoline in spinel_rt.h.
  *
  * The value ops (constructors, accessors, shifts) use int64_t / double
  * directly, keeping that part decoupled from the runtime's typedefs.
@@ -25,13 +25,20 @@ typedef struct { int64_t tv_sec; int32_t tv_nsec; int8_t is_utc; int32_t utc_off
 /* Constructors */
 sp_Time sp_time_now(void);
 sp_Time sp_time_at_int(int64_t sec);
+sp_Time sp_time_norm(sp_Time t);   /* carry a whole second out of tv_nsec */
+sp_Time sp_time_add_nsec(sp_Time t, int64_t ns);
+int64_t sp_time_zone_arg_off(const char *z, int *is_utc_out);
+sp_Time sp_time_in_zone_i(sp_Time t, int64_t off);
+sp_Time sp_time_in_zone_s(sp_Time t, const char *z);
 sp_Time sp_time_at_float(double epoch);
 sp_Time sp_time_at_div(int64_t num, int64_t den);
 sp_Time sp_time_parse(const char *s);
 sp_Time sp_time_new(int64_t y, int64_t mo, int64_t d, int64_t h, int64_t mi, int64_t s);
+int64_t sp_time_month_arg(const char *s);
 sp_Time sp_time_new_utc(int64_t y, int64_t mo, int64_t d, int64_t h, int64_t mi, int64_t s);
 sp_Time sp_time_new_off(int64_t y, int64_t mo, int64_t d, int64_t h, int64_t mi, int64_t s, int64_t off);
 sp_Time sp_time_with_usec(sp_Time t, int64_t usec);
+sp_Time sp_time_with_usec_f(sp_Time t, double usec);
 sp_Time sp_time_utc(sp_Time t);
 sp_Time sp_time_localtime(sp_Time t);
 
@@ -50,6 +57,11 @@ int64_t sp_time_wday(sp_Time t);
 int64_t sp_time_yday(sp_Time t);
 int64_t sp_time_isdst(sp_Time t);
 int64_t sp_time_utc_offset(sp_Time t);
+/* Time#floor / #ceil / #round: `ndigits` decimal places of the subsecond part,
+   with mode 0 = floor, 1 = ceil, 2 = round-half-up. ndigits 0 is the no-argument
+   form (whole seconds) and >= 9 keeps the full nanosecond resolution; a carry
+   past a second bumps tv_sec. A negative ndigits is CRuby's ArgumentError. */
+sp_Time sp_time_round_to(sp_Time t, int64_t ndigits, int mode);
 
 /* Time + Numeric / Time - Numeric. secs may be fractional. */
 sp_Time sp_time_add(sp_Time t, double secs);
@@ -65,6 +77,9 @@ double sp_time_sub_t(sp_Time a, sp_Time b);
 /* Formatters: return a GC-heap string (from sp_alloc.h), "" on failure. */
 const char *sp_time_strftime(sp_Time t, const char *fmt);
 const char *sp_time_iso8601(sp_Time t);
+const char *sp_time_iso8601_frac(sp_Time t, int64_t digits);
+int32_t sp_time_offset_from_str(const char *s);
+sp_Time sp_time_getlocal_off(sp_Time t, int64_t off);
 const char *sp_time_zone(sp_Time t);
 const char *sp_time_inspect_v(sp_Time t);  /* renders fractional seconds */
 const char *sp_time_to_s_v(sp_Time t);     /* whole seconds only (Time#to_s) */

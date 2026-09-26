@@ -74,7 +74,10 @@ module AudioHandlerMixin
       # Build binary: cmd_type=0x08 (PLAY_SLOT) + music_id(4 LE) + instance(1)
       # Older audio handlers stop one byte short and treat the payload as
       # MAIN-only; the trailing instance byte is forwards-only metadata.
-      bin = "\x08\x00\x00\x00\x00\x00"
+      # .b: string literals are frozen under Spinel, so a buffer that setbyte
+      # fills has to be a fresh copy; binary, because a NUL-led literal copied as
+      # text is cut at the first NUL once Spinel holds it in a String handle.
+      bin = "\x08\x00\x00\x00\x00\x00".b
       bin.setbyte(1, slot & 0xFF)
       bin.setbyte(2, (slot >> 8) & 0xFF)
       bin.setbyte(3, (slot >> 16) & 0xFF)
@@ -121,7 +124,7 @@ module AudioHandlerMixin
       duty = data["duty"] || 2
       sweep = data["sweep"] || 0
       # Build binary: cmd_type=0x09 + ch(1) + freq(2 LE) + vol(1) + duty(1) + sweep(1)
-      bin = "\x09\x00\x00\x00\x00\x00\x00"
+      bin = "\x09\x00\x00\x00\x00\x00\x00".b
       bin.setbyte(1, ch & 0xFF)
       bin.setbyte(2, freq & 0xFF)
       bin.setbyte(3, (freq >> 8) & 0xFF)
@@ -132,7 +135,7 @@ module AudioHandlerMixin
     when "note_off"
       ch = data["ch"] || 0
       # Build binary: cmd_type=0x0A + ch(1)
-      bin = "\x0A\x00"
+      bin = "\x0A\x00".b
       bin.setbyte(1, ch & 0xFF)
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
     else
@@ -156,7 +159,7 @@ module AudioHandlerMixin
     @audio_note_pids.delete(pid)
     ch = 0
     while ch < 4
-      bin = "\x0A\x00"
+      bin = "\x0A\x00".b
       bin.setbyte(1, ch)
       _send_raw_message(FmrbConst::PROC_ID_HOST, FmrbConst::MSG_TYPE_APP_AUDIO, bin)
       ch += 1

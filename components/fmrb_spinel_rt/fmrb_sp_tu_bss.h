@@ -1,4 +1,5 @@
-/* Where this firmware puts Spinel's large per-TU statics.
+/* Where this firmware puts Spinel's large per-TU statics (and the runtime's
+ * cold ones).
  *
  * A generated Spinel program carries its own copy of the exception stack, the
  * catch stack and the dynamic symbol table -- they are per translation unit,
@@ -11,6 +12,11 @@
  * same type, same size, same semantics, no allocation, nothing to free. The
  * exception machinery is cold -- setjmp/longjmp on a task, no DMA, no ISR --
  * so the slower memory costs nothing measurable.
+ *
+ * SP_TU_BSS also carries the program's file-scope slots that start at a nil
+ * sentinel (SP_TU_NIL_SLOT: constants, class-level ivars, globals). Under
+ * SP_MULTI_CTX the sentinel is written when an entry starts, so they are
+ * zeroed storage that can live here instead of initialized .data.
  *
  * Not applied on the Linux simulator (no such attribute) or under SP_THREADS
  * (a section attribute and __thread cannot both apply); SP_TU_BSS then stays
@@ -27,6 +33,10 @@
 #if defined(ESP_PLATFORM) && !defined(CONFIG_IDF_TARGET_LINUX) && !defined(SP_THREADS)
 #include "esp_attr.h"
 #define SP_TU_BSS EXT_RAM_BSS_ATTR
+/* The runtime library's own cold statics (the SPINEL_GC_PHASES counters and
+   a few report scratch buffers), which nothing touches unless a diagnostic
+   switch is on. Same reasoning, same place. */
+#define SP_RT_COLD EXT_RAM_BSS_ATTR
 #endif
 
 #endif /* FMRB_SP_TU_BSS_H */

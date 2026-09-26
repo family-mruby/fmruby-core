@@ -9,7 +9,14 @@
 #ifndef SP_SYSTEM_H
 #define SP_SYSTEM_H
 
+#ifdef SP_MULTI_CTX
+/* per-instance: the current instance's field (sp_ctx.c), reached through a
+   call because this header stays free of the runtime's own headers */
+int *sp_ctx_last_status(void);
+#define sp_last_status (*sp_ctx_last_status())
+#else
 extern int sp_last_status;
+#endif
 int sp_system_args(int argc, const char *const *argv);
 
 #endif

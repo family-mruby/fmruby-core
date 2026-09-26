@@ -62,8 +62,9 @@ extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
 
 static const char *TAG = "spxapp";
 
-/* :binstr byte length publisher (defined in fmrb_spx_kernel.c). */
-extern int sp_net_bin_len;
+/* The current instance's :binstr length (runtime sp_ctx.c; the host C
+   cannot include sp_ctx.h, so it is declared here). */
+int *sp_ctx_ffi_bin_len(void);
 
 /* Little-endian store helpers. */
 static inline void put_u16(uint8_t *p, uint16_t v) { p[0] = (uint8_t)(v & 0xFF); p[1] = (uint8_t)(v >> 8); }
@@ -85,7 +86,7 @@ static void pack_name(uint8_t *dst, int width, const char *src)
 const char *fmrb_spx_app_init(void)
 {
     static uint8_t buf[FMRB_SPX_APP_INIT_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_app_task_context_t *ctx = fmrb_current();
     if (!ctx) {
@@ -133,7 +134,7 @@ const char *fmrb_spx_app_init(void)
     buf[44] = has_canvas;
     buf[45] = has_bg;
 
-    sp_net_bin_len = FMRB_SPX_APP_INIT_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_INIT_RECORD_SIZE;
     return (const char *)buf;
 }
 
@@ -142,7 +143,7 @@ const char *fmrb_spx_app_recv_message(int timeout_ms, int *type, int *src_pid)
     static uint8_t payload[FMRB_MAX_MSG_PAYLOAD_SIZE];
     if (type) *type = -1;
     if (src_pid) *src_pid = -1;
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_app_task_context_t *ctx = fmrb_current();
     if (!ctx) {
@@ -159,7 +160,7 @@ const char *fmrb_spx_app_recv_message(int timeout_ms, int *type, int *src_pid)
     memcpy(payload, msg.data, n);
     if (type) *type = (int)msg.type;
     if (src_pid) *src_pid = (int)msg.src_pid;
-    sp_net_bin_len = (int)n;
+    *sp_ctx_ffi_bin_len() = (int)n;
     return (const char *)payload;
 }
 
@@ -287,7 +288,7 @@ int fmrb_spx_app_mark_expected_stop(void)
 const char *fmrb_spx_app_ps(void)
 {
     static uint8_t buf[FMRB_MAX_APPS * FMRB_SPX_APP_PS_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_app_info_t list[FMRB_MAX_APPS];
     int32_t count = fmrb_app_ps(list, FMRB_MAX_APPS);
@@ -310,14 +311,14 @@ const char *fmrb_spx_app_ps(void)
         pack_name(r + 28, 32, list[i].app_name);
         r[60] = list[i].headless ? 1 : 0;
     }
-    sp_net_bin_len = (int)(count * FMRB_SPX_APP_PS_RECORD_SIZE);
+    *sp_ctx_ffi_bin_len() = (int)(count * FMRB_SPX_APP_PS_RECORD_SIZE);
     return (const char *)buf;
 }
 
 const char *fmrb_spx_app_heap_info(void)
 {
     static uint8_t buf[FMRB_SPX_APP_HEAP_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
     memset(buf, 0, sizeof(buf));
 
 #ifdef CONFIG_IDF_TARGET_LINUX
@@ -339,7 +340,7 @@ const char *fmrb_spx_app_heap_info(void)
     put_u32(buf + 16, (uint32_t)heap_caps_get_free_size(MALLOC_CAP_INTERNAL));
     put_u32(buf + 20, (uint32_t)heap_caps_get_total_size(MALLOC_CAP_INTERNAL));
 #endif
-    sp_net_bin_len = FMRB_SPX_APP_HEAP_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_HEAP_RECORD_SIZE;
     return (const char *)buf;
 }
 
@@ -377,7 +378,7 @@ int fmrb_spx_app_pool_used(void)
 const char *fmrb_spx_app_sys_pool_info(void)
 {
     static uint8_t buf[FMRB_SPX_APP_SYSPOOL_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
     memset(buf, 0, sizeof(buf));
 
     fmrb_pool_stats_t stats;
@@ -388,26 +389,26 @@ const char *fmrb_spx_app_sys_pool_info(void)
         put_u32(buf + 12, (uint32_t)stats.used_blocks);
         put_u32(buf + 16, (uint32_t)stats.free_blocks);
     }
-    sp_net_bin_len = FMRB_SPX_APP_SYSPOOL_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_SYSPOOL_RECORD_SIZE;
     return (const char *)buf;
 }
 
 const char *fmrb_spx_app_gfx_stats(void)
 {
     static uint8_t buf[FMRB_SPX_APP_GFXSTATS_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
     uint32_t cmds = 0, presents = 0;
     fmrb_host_get_gfx_counters(&cmds, &presents);
     put_u32(buf + 0, cmds);
     put_u32(buf + 4, presents);
-    sp_net_bin_len = FMRB_SPX_APP_GFXSTATS_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_GFXSTATS_RECORD_SIZE;
     return (const char *)buf;
 }
 
 const char *fmrb_spx_app_last_error(void)
 {
     static uint8_t buf[FMRB_SPX_APP_LASTERR_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     const char *name = fmrb_app_get_last_error_name();
     const char *msg = fmrb_app_get_last_error_msg();
@@ -417,7 +418,7 @@ const char *fmrb_spx_app_last_error(void)
     memset(buf, 0, sizeof(buf));
     pack_name(buf + 0, 64, name);
     pack_name(buf + 64, 112, msg);
-    sp_net_bin_len = FMRB_SPX_APP_LASTERR_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_LASTERR_RECORD_SIZE;
     return (const char *)buf;
 }
 
@@ -435,7 +436,7 @@ const char *fmrb_spx_app_config(const char *section, int len)
     FMRB_SPX_BSS_ATTR static uint8_t buf[1 + SPX_CONFIG_MAX_TABLES *
                        (1 + FMRB_CONFIG_MAX_ENTRIES *
                         (1 + FMRB_CONFIG_KEY_MAX + 2 + FMRB_CONFIG_VAL_MAX))];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
     if (!section || len < 0 || len >= 64) {
         return "";
     }
@@ -474,7 +475,7 @@ const char *fmrb_spx_app_config(const char *section, int len)
         }
     }
     fmrb_sys_free(tables);
-    sp_net_bin_len = (int)off;
+    *sp_ctx_ffi_bin_len() = (int)off;
     return (const char *)buf;
 }
 
@@ -489,7 +490,7 @@ const char *fmrb_spx_app_language(void)
 {
     const fmrb_system_config_t *cfg = fmrb_kernel_get_config();
     const char *lang = (cfg && cfg->language[0]) ? cfg->language : "en";
-    sp_net_bin_len = (int)strlen(lang);
+    *sp_ctx_ffi_bin_len() = (int)strlen(lang);
     return lang;
 }
 
@@ -521,7 +522,7 @@ int fmrb_spx_app_set_kana_mode(int mode)
 const char *fmrb_spx_app_wallclock(void)
 {
     static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
     fmrb_wallclock_t wc;
     if (fmrb_hal_time_get_wallclock(&wc) != FMRB_OK) {
         return "";
@@ -532,7 +533,7 @@ const char *fmrb_spx_app_wallclock(void)
     put_u16(buf + 6, wc.hour);
     put_u16(buf + 8, wc.minute);
     put_u16(buf + 10, wc.second);
-    sp_net_bin_len = FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE;
     return (const char *)buf;
 }
 
@@ -540,7 +541,7 @@ const char *fmrb_spx_app_set_wallclock(int year, int month, int day,
                                        int hour, int minute, int second)
 {
     static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     struct tm local_tm = {0};
     local_tm.tm_year = year - 1900;
@@ -567,7 +568,7 @@ const char *fmrb_spx_app_set_wallclock(int year, int month, int day,
     put_u16(buf + 6, (uint16_t)utc_tm.tm_hour);
     put_u16(buf + 8, (uint16_t)utc_tm.tm_min);
     put_u16(buf + 10, (uint16_t)utc_tm.tm_sec);
-    sp_net_bin_len = FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE;
     return (const char *)buf;
 }
 
@@ -639,7 +640,7 @@ const char *fmrb_spx_app_bt_mac(void)
 #else
     fmrb_sysinfo_bt_mac_str(buf, sizeof(buf));
 #endif
-    sp_net_bin_len = (int)strlen(buf);
+    *sp_ctx_ffi_bin_len() = (int)strlen(buf);
     return buf;
 }
 
@@ -677,7 +678,7 @@ int fmrb_spx_app_wifi_connected(void)
 const char *fmrb_spx_app_wifi_info(void)
 {
     static uint8_t buf[FMRB_SPX_APP_WIFI_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
     memset(buf, 0, sizeof(buf));
 
 #if defined(FMRB_HAS_WIFI)
@@ -689,7 +690,7 @@ const char *fmrb_spx_app_wifi_info(void)
     pack_name(buf + 1, 16, ip);
     pack_name(buf + 17, 33, ssid);
     pack_name(buf + 50, 32, host);
-    sp_net_bin_len = FMRB_SPX_APP_WIFI_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_WIFI_RECORD_SIZE;
     return (const char *)buf;
 #elif defined(CONFIG_IDF_TARGET_LINUX)
     char ip[16] = "127.0.0.1";
@@ -714,7 +715,7 @@ const char *fmrb_spx_app_wifi_info(void)
     buf[0] = connected ? 1 : 0;
     pack_name(buf + 1, 16, ip);
     /* ssid / hostname stay empty on the Linux dev build */
-    sp_net_bin_len = FMRB_SPX_APP_WIFI_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_WIFI_RECORD_SIZE;
     return (const char *)buf;
 #else
     return "";  /* Retro: no networking -> Ruby nil */
@@ -724,21 +725,21 @@ const char *fmrb_spx_app_wifi_info(void)
 const char *fmrb_spx_app_clear_cache(const char *path, int len)
 {
     static uint8_t buf[FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
     memset(buf, 0, sizeof(buf));
     /* Default: not ok, deleted 0, status -1. */
     put_u32(buf + 1, 0);
     put_u32(buf + 5, (uint32_t)(-1));
 
     if (!path || len <= 0 || len >= 120) {
-        sp_net_bin_len = FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE;
+        *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE;
         return (const char *)buf;
     }
 
     file_cmd_result_t result;
     result.done_sem = fmrb_semaphore_create_binary();
     if (!result.done_sem) {
-        sp_net_bin_len = FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE;
+        *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE;
         return (const char *)buf;
     }
     result.result = -1;
@@ -756,7 +757,7 @@ const char *fmrb_spx_app_clear_cache(const char *path, int len)
 
     if (fmrb_msg_send(PROC_ID_HOST, &msg, 5000) != FMRB_OK) {
         fmrb_semaphore_delete(result.done_sem);
-        sp_net_bin_len = FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE;
+        *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE;
         return (const char *)buf;
     }
         // The reply context is on this stack; hold off a forced delete.
@@ -770,14 +771,14 @@ const char *fmrb_spx_app_clear_cache(const char *path, int len)
         put_u32(buf + 1, (uint32_t)result.data.rmdir.deleted_count);
         put_u32(buf + 5, (uint32_t)result.data.rmdir.remote_status);
     }
-    sp_net_bin_len = FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE;
     return (const char *)buf;
 }
 
 const char *fmrb_spx_app_usb_devices(void)
 {
     static uint8_t buf[USB_TASK_MAX_DEVICES * FMRB_SPX_APP_USBDEV_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_usb_device_info_t devs[USB_TASK_MAX_DEVICES];
     int count = usb_task_get_device_info(devs, USB_TASK_MAX_DEVICES);
@@ -795,7 +796,7 @@ const char *fmrb_spx_app_usb_devices(void)
         r[7] = (uint8_t)devs[i].slot;
         put_u16(r + 8, devs[i].report_byte_len);
     }
-    sp_net_bin_len = (int)(count * FMRB_SPX_APP_USBDEV_RECORD_SIZE);
+    *sp_ctx_ffi_bin_len() = (int)(count * FMRB_SPX_APP_USBDEV_RECORD_SIZE);
     return (const char *)buf;
 }
 

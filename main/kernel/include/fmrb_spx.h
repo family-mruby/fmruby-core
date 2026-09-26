@@ -99,9 +99,9 @@ int fmrb_spx_try_send_raw(int dst_pid, int type, const uint8_t *data, int len);
  *
  * Returned as :binstr (a real String the Ruby side reads with getbyte; an
  * ffi_buffer would return a :ptr, which has no getbyte). The byte length is
- * count * FMRB_SPX_WIN_RECORD_SIZE, published in sp_net_bin_len. On error the
+ * count * FMRB_SPX_WIN_RECORD_SIZE, published in sp_ffi_bin_len. On error the
  * return is an empty string.
- * @return pointer to N * FMRB_SPX_WIN_RECORD_SIZE bytes (length in sp_net_bin_len).
+ * @return pointer to N * FMRB_SPX_WIN_RECORD_SIZE bytes (length in sp_ffi_bin_len).
  */
 const char *fmrb_spx_windows_snapshot(void);
 
@@ -140,7 +140,7 @@ int fmrb_spx_spawn_app_req(const char *name, int len);
  *   164  1     fullscreen_switchable (bool; app survives Ctrl+Tab park/unpark)
  *   165  1     headless   (bool; default_window_mode = "background", no canvas)
  *
- * Total 166 bytes, returned as :binstr (length in sp_net_bin_len). When the pid
+ * Total 166 bytes, returned as :binstr (length in sp_ffi_bin_len). When the pid
  * has no context the return is an empty string and the Ruby side returns nil.
  */
 #define FMRB_SPX_APP_INFO_RECORD_SIZE 167
@@ -148,7 +148,7 @@ const char *fmrb_spx_app_info_snapshot(int pid);
 
 /**
  * @brief The last app error as two NUL-padded fields (:binstr, length in
- *        sp_net_bin_len): name at offset 0 (width 64), message at offset 64
+ *        sp_ffi_bin_len): name at offset 0 (width 64), message at offset 64
  *        (width 112). Empty string when there is no error (Ruby returns nil).
  */
 #define FMRB_SPX_LAST_ERROR_RECORD_SIZE 176

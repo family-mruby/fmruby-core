@@ -4,7 +4,7 @@
 # hello_kernel entry (T1-6) references it.
 #
 # Only a minimal set of the runtime is compiled here (COMPILE_SRCS); the full
-# header set lives in spinel_rt/ because sp_runtime.h transitively includes the
+# header set lives in spinel_rt/ because spinel_rt.h transitively includes the
 # excluded modules' headers. -ffunction-sections + -fdata-sections let the final
 # link's --gc-sections drop any uncalled reference into an excluded module.
 #
@@ -104,13 +104,13 @@ list(PREPEND SPINEL_MC_FLAGS
 file(GLOB COMPILE_SRCS ${CMAKE_CURRENT_LIST_DIR}/spinel_rt/*.c)
 
 # Port flags for MMU-less targets (ESP32/newlib has no <sys/mman.h>). On such a
-# target sp_runtime.h must not pull <sys/mman.h>, so define SP_NO_MMAN; and the
+# target spinel_rt.h must not pull <sys/mman.h>, so define SP_NO_MMAN; and the
 # coroutine pair -- sp_fiber.c (mmaps its stacks; #errors under SP_NO_MMAN) and
 # sp_sched.c (its green-thread scheduler, needs <poll.h>) -- must be dropped from
 # the build. The kernel/desktop never use fibers or threads, so --gc-sections
 # removes the remaining (uncompiled) references. Linux (CONFIG_IDF_TARGET_LINUX)
 # keeps them and the hosted headers unchanged. The flag must also reach the
-# generated Spinel C (which includes sp_runtime.h); that site is
+# generated Spinel C (which includes spinel_rt.h); that site is
 # main/CMakeLists.txt, kept in sync via SPINEL_PORT_FLAGS below.
 # SP_STACK_SCRATCH_MAX bounds the runtime's on-stack scratch buffers to what a
 # FreeRTOS task stack can carry (see the same flag in main/CMakeLists.txt, which
@@ -170,5 +170,5 @@ target_compile_definitions(${COMPONENT_LIB} INTERFACE "SP_GC_MARK_STACK_MAX=${SP
 set(SPINEL_MC_FLAGS "${SPINEL_MC_FLAGS}" CACHE INTERNAL "SP_MULTI_CTX flags for the generated Spinel C")
 
 # Port flags (SP_NO_MMAN on MMU-less targets) the generated Spinel C must also
-# carry, since it includes sp_runtime.h. Applied per-file in main/CMakeLists.txt.
+# carry, since it includes spinel_rt.h. Applied per-file in main/CMakeLists.txt.
 set(SPINEL_PORT_FLAGS "${SPINEL_PORT_FLAGS}" CACHE INTERNAL "Port flags for the generated Spinel C")

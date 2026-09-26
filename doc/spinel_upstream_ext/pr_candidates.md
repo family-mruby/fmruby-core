@@ -34,19 +34,27 @@
 | U-3 | module 直下の書き換え可能なグローバル配列で `gv_calls undeclared` | — | `01521b1e` で一致 | 無し | — | 上流で解消 (`67449806` が候補) |
 | U-4 | 条件式の単項 `!` の下の呼び出しで、前置きの文が式の中に落ちる (`if !f(x)`) | 未 (元の発生条件を捉えられていない) | 未 | 無し | 高 | 候補 |
 | U-5 | 戻り値が `:void` の FFI メソッドを末尾で呼ぶとメソッド全体が void 推論 | 未 | 未 (上流の単純な再現は通る) | 無し | 中 | 候補 |
-| U-6 | ivar の型が親と子で食い違い、構造体の先頭一致が崩れる。**呼ばれないクラスの中の 1 行で起き、実行時に TypeError** (fmrb の editor でも発生) 。上流の既存テスト `super_attr_mid_redeclare` にも同じ食い違いが隠れていて、pr/U-6 が直す| `repro/U-6.rb` (27 行) | `01521b1e` で再現 (親セッションも再確認) | `ca0709c` + 検査 `622750c` | 高 | **PR 準備** pr/U-6 `b49540e4` (+ 検査は pr/U-6-check `4af0a94c`、U-6 の後に出す) |
+| U-6 | ivar の型が親と子で食い違い、構造体の先頭一致が崩れる。**呼ばれないクラスの中の 1 行で起き、実行時に TypeError** (fmrb の editor でも発生) 。上流の既存テスト `super_attr_mid_redeclare` にも同じ食い違いが隠れていて、pr/U-6 が直す| `repro/U-6.rb` (27 行) | `01521b1e` で再現 (親セッションも再確認) | `ca0709c` + 検査 `622750c` | 高 | **取り込み済** (#5068、上流 `e2ee9e6d`、2026-09-26) |
 | U-7 | 埋め込み NUL の扱いの食い違い (`String#*`、poly の `size`) | — | `01521b1e` で一致 | `56394f2d` `a8c3c201` | — | 上流で解消 |
 | U-8 | poly のディスパッチ漏れ群 (`byteslice` `index` ほか、旧台帳 B-1) | フォークの test/poly_*.rb | `01521b1e` で 64bit/32bit とも一致 | 複数 | — | 上流で解消 |
 | U-9 | インスタンスを作り直すと TU の static が前回の値を指す | — | 対象外 (上流に複数インスタンスが無い)。P1: 上流の ext でも init を再度呼んでもモジュール変数は戻らない (上流の設計どおり) | `c7de66c` | 低 (F-1 とセット) | 候補 |
-| U-10 | sprintf / format の書式が GC ルートの要る呼び出しのとき、ルートの文が `const char *` の初期化子の途中に出て C が壊れる。**system_desktop が上流でコンパイルできない原因** | `repro/U-10.rb` | `01521b1e` で再現 (親セッションも再確認) | `8a298cb` + `286de9b` | 高 | **PR 準備** pr/U-10 `45adc6c9` |
-| U-11 | 大域変数・クラス変数への `+=` の右辺が poly のとき C が壊れる (局所・ivar・定数は通る) | `repro/U-11.rb` | `01521b1e` で再現 | `9474d92` | 高 | **PR 準備** pr/U-11 `2b14a9c3` |
-| U-12 | 大域変数に入れた String の破壊的変更 (`<<`、`upcase!`) が黙って失われる (`$g << "ab"` の後も `g`) | `repro/U-12.rb` | `01521b1e` で再現 (親セッションも再確認) | 無し (フォークでも起きる) | 高 | **PR 準備** pr/U-12。U-16 / U-18 を同じ PR にまとめて拡張中 (PR2) |
+| U-10 | sprintf / format の書式が GC ルートの要る呼び出しのとき、ルートの文が `const char *` の初期化子の途中に出て C が壊れる。**system_desktop が上流でコンパイルできない原因** | `repro/U-10.rb` | `01521b1e` で再現 (親セッションも再確認) | `8a298cb` + `286de9b` | 高 | **取り込み済** (#5066、上流 `d3be4004`、2026-09-26) |
+| U-11 | 大域変数・クラス変数への `+=` の右辺が poly のとき C が壊れる (局所・ivar・定数は通る) | `repro/U-11.rb` | `01521b1e` で再現 | `9474d92` | 高 | **取り込み済** (#5064、上流 `df237e56`、2026-09-26) |
+| U-12 | 大域変数に入れた String の破壊的変更 (`<<`、`upcase!`) が黙って失われる (`$g << "ab"` の後も `g`) | `repro/U-12.rb` | `01521b1e` で再現 (親セッションも再確認) | 無し (フォークでも起きる) | 高 | **取り込み済** (#5069、上流 `0b53c2d5`、2026-09-26) |
 | U-13 | desktop で unresolved 警告が増えた (`hit?` `fires_on_press?` `on?`)。生成 C の分岐は正しい | 未 (60 行の模型では出ない) | `01521b1e` | 無し (フォークでは出ない) | 低 (警告のみの見込み) | 候補 |
 | U-14 | `spinel-doctor` が上流の文書の勧める ext カーネルの形 (`if __FILE__ == $0` の型推論ブロック付き) を必ず behavior の ERR にする。コンパイルした実行ファイルでは `$0` が実行ファイルのパスでブロックが走らない | `repro/U-14.rb` | `01521b1e` で再現 (親セッションも再確認) | 無し | 中 (doctor が ext の形を知ればよい) | **再現済** |
 | U-15 | `sp_time_strftime` が `static char out[8192]` を使い、`SP_THREADS` で競合しうる | 未 (読んだだけ) | `01521b1e` | 無し | 中 (未再現) | 候補 |
-| U-16 | 値の位置の String 破壊メソッドで、受け手が大域変数・クラス変数だと変更が消える (`x = ($g << "q")`) | 未 (PR1 で確認のみ) | `01521b1e` | 無し | 中 (U-12 の続き) | U-12 に統合 (PR2) |
+| U-16 | 値の位置の String 破壊メソッドで、受け手が大域変数・クラス変数だと変更が消える (`x = ($g << "q")`) | 未 (PR1 で確認のみ) | `01521b1e` | 無し | 中 (U-12 の続き) | U-12 に統合済 (`f44d4b06`) |
 | U-17 | 大域変数の String の別名が破壊的変更を見ない (`t = $g; $g << "x"`)。直すには共有される可変 String (TY_STRBUF) の解析が大域変数を追う必要があり、設計の変更 | 未 | `01521b1e` | 無し | Issue 向き | 候補。**Issue はユーザの判断で保留** (2026-09-26)。PR 本文でも Issue に触れない |
-| U-18 | 定数に入れた String の破壊的変更が消える (`S << "d"`) | 未 | `01521b1e` | 無し | 中 | U-12 に統合 (PR2) |
+| U-18 | 定数に入れた String の破壊的変更が消える (`S << "d"`) | 未 | `01521b1e` | 無し | 中 | U-12 に統合済 (`f44d4b06`) |
+| U-19 | 値の位置の `replace` に文字列リテラルを渡すと受け手が凍結され、以後の破壊的変更が FrozenError になる (局所変数でも起きる) | `repro/U-19.rb` | `01521b1e` で再現 (親セッションも再確認) | 無し | 高 | **再現済** |
+| U-20 | poly の受け手で、値の位置の `<<` の結果が受け手に残らない | 未 | `01521b1e` | 無し | 中 | 候補 |
+| U-21 | `sp_String_new_shared` が非バイナリ文字列の長さを strlen で測り、NUL で始まる複製を空文字列にする (fmrb の kernel でクリックが全部 IndexError になった) | 未 (ホストの最小再現は作れていない) | fmrb-next | 無し (fmrb 側は `.b` で回避) | 中 (最小再現が先) | 候補 |
+| U-22 | `sp_poly_eq_deep` が `sp_obj_eq_hook` を検査せずに呼び、Xtensa でアドレス 0 への呼び出しになりリンクが止まる | Xtensa のリンク | fmrb-next | fmrb-next `88465f2a` | 中 | 候補 |
+| U-23 | 多重インスタンスで、エントリごとの初期化がポインタの枠しか戻さず、整数・小数の枠が前回の値のまま残る (2 回目の起動で古い値) | フォーク側 | fmrb-next | fmrb-next `0b350247` (`SP_TU_NIL_SLOT`) | 対象外 (U-9 と同じくフォークの多重インスタンス) | 記録 |
+| U-24 | 壊れた UTF-8 にも ASCII7 の印が付き、`s[i]` の結果が 1 回目と 2 回目で変わりうる | 未 | fmrb-next | 無し | 中 (最小再現が先) | 候補 |
+| U-25 | 強制インライン (always_inline) に幅の上限が無く、多くの葉メソッドを呼ぶ関数の C フレームが葉の合計に近づく (fmrb の kernel で 4,192 → 12,448 バイト)。深い呼び出しや Fiber のスタックで溢れる | 未 (方針は report/p2b2.md 10 節) | fmrb-next | fmrb は `--no-inline-hot` で回避 | 中 | 候補 |
+| U-26 | `sp_poly_*` の比較経路の C フレームが大きい | 未 | fmrb-next | 無し | 低 | 候補 |
 
 ## 移植・組み込み向け (P)
 
@@ -54,20 +62,27 @@
 |---|---|---|---|---|---|---|
 | P-1 | `sp_time.c` の `__int128` で 32bit がコンパイルできない | — | `01521b1e` で通る | `d9e363e` | — | 上流で解消 (`a635431a`) |
 | P-2 | bigint の公開署名の幅の食い違い | — | `01521b1e` で揃った | `1242ad3` | — | 上流で解消 (`6ffca36a`) |
-| P-3 | `SP_EXC_STACK_MAX` / `SP_CATCH_STACK_MAX` / `SP_GC_MARK_STACK_MAX` が無条件 `#define` | 不要 (`-D` で再定義) | `01521b1e` で未修正 (親セッションも再確認) | `b8b5a02` `94c2f89` | 高 | **PR 準備** pr/P-3。理由は「上流の流儀 (`SP_GC_STACK_MAX` / `SP_DYN_SYMS_MAX` の `#ifndef`) に揃える」で書き直し中 (PR2)。小メモリの話は書かない |
+| P-3 | `SP_EXC_STACK_MAX` / `SP_CATCH_STACK_MAX` / `SP_GC_MARK_STACK_MAX` が無条件 `#define` | 不要 (`-D` で再定義) | `01521b1e` で未修正 (親セッションも再確認) | `b8b5a02` `94c2f89` | 高 | **取り込み済** (#5067、上流 `6e409526`、2026-09-26) |
 | P-4 | POSIX ヘッダの無条件 include。調査時より 11 件増えた (report/p0.md 分類 5 の表) | newlib 相当でのコンパイル | `01521b1e` で未修正 | `4e33a00` 系 | 高 (上流の `lib/wasi/` の差し替えヘッダ方式に寄せる) | 再現済 |
 | P-5 | 32bit の回帰テスト | — | 上流に `-m32` CI レーン | `73a2083` | — | 上流で解消 (`8350fef0` `2d7e8c54`) |
 | P-6 | `SP_STACK_SCRATCH_MAX` (スタック上の 4KB/8KB 配列 13 個) | — | `01521b1e` で口無し | `d0f0232` | 中 | 再現済 |
 | P-7 | 例外スタック push の高水位の記録 | — | 境界検査はあり (`7cc36f38`)、高水位は無し | `7b1feb7` | 中 | 再現済 |
 | P-8 | `SP_TU_BSS` (TU の static の配置属性を差し込む口) | — | `01521b1e` で口無し | `16333bf` | 低め (P-4 に相乗り) | 再現済 |
-| P-9 | FFI の `:varargs` が整数を全部 long long で渡し、32bit で `%d` の後がずれて SIGSEGV。上流は該当テストを 32bit から外している | `repro/P-9.sh` + `P-9.rb` (32bit ランタイムが要る) | `01521b1e` で再現 | `53941f6` | 高 (32bit CI がある今は動機が通りやすい) | **PR 準備** pr/P-9 `848d6389` |
+| P-9 | FFI の `:varargs` が整数を全部 long long で渡し、32bit で `%d` の後がずれて SIGSEGV。上流は該当テストを 32bit から外している | `repro/P-9.sh` + `P-9.rb` (32bit ランタイムが要る) | `01521b1e` で再現 | `53941f6` | 高 (32bit CI がある今は動機が通りやすい) | **取り込み済** (#5065、上流 `dad85886`、2026-09-26) |
 | P-10 | slab アロケータ (`d43371a8`) にコンパイル時の切替が無く、`mmap` `munmap` `madvise` と `sys/mman.h` を無条件に参照 | `nm` で参照を見る | `01521b1e` | 無し | 中 (P-4 に同梱。wasi の分岐と同じ形) | 再現済。P2a で `SP_NO_SLAB` を実装 (fmrb-next `93dac1dc`) |
-| P-11 | 凍結された文字列リテラルが書き換え可能な `static struct` になり `.data` を食う (kernel 100B→13.4KB、editor 796B→24.6KB、x86-64)。P1 追記: Integer 定数も `SP_INT_NIL` 初期化で .bss から .data に移る (editor で 251 個) | 生成 C の `size -A` | `01521b1e` | 無し | 中。**案: リテラルのハッシュを生成時に計算してヘッダに入れれば `const` (.rodata) にできる** (今は `sp_str_hash_miss` が実行時にヘッダへ書くので .data。P2a 見立て) | 候補 |
+| P-11 | 凍結された文字列リテラルが書き換え可能な `static struct` になり `.data` を食う (kernel 100B→13.4KB、editor 796B→24.6KB、x86-64)。P1 追記: Integer 定数も `SP_INT_NIL` 初期化で .bss から .data に移る (editor で 251 個) | 生成 C の `size -A` | `01521b1e` | 無し | 中。**案: リテラルのハッシュを生成時に計算してヘッダに入れれば `const` (.rodata) にできる** (今は `sp_str_hash_miss` が実行時にヘッダへ書くので .data。P2a 見立て) | **fmrb-next で実装** `fc5870d6` (変換時にハッシュと ASCII7 を計算して const。make test 退行なし) |
 | P-12 | 上流を丸ごと `-m32` でビルドすると i386 の libcrypt が要る 。回避: 空の `crypt()` だけの静的ライブラリを `LIBRARY_PATH` で渡すと sudo 無しで 32bit のコーパスが回る (PR1)| 手順のみ | `01521b1e` | 無し | 低 | 候補 |
 | P-13 | 64bit の値を使うのに `# spinel: int64` の印が無い試験 (`bigint_if_value_temp` `block_given_else_arm_overflow_modes` `file_utime_nanoseconds` ほか)。32bit で答えが違う | `make test-corpus CC='cc -m32'` | `01521b1e` | fmrb-next `b259d0a3` で skip 表を整理 | 高 (印を足すだけ) | 候補 |
 | P-14 | `GC.start` (`sp_gc_collect_request`) と `sp_Thread_pass` が `sp_sched.c` にあり、スケジューラを外すとリンクできない | ポート構成のリンク | `01521b1e` | fmrb-next `f9cc21ef` (sp_nosched.c) | 低-中 | 候補 |
 | P-15 | 生成 TU の init が `sp_stack_guard_init` (SIGSEGV の代替スタック 64KB) を無条件に呼び、ライブラリとして組み込むホストのシグナル処理を入れ替える | 生成 C の `sp_tu_init` | `01521b1e` | 無し | 中 (ext の init でも同じ) | 候補 |
 | P-16 | `sp_str_shape[8192]` (64KB) と `sp_alloc_stats` (256KB) が常に .bss に載る (組み込み・wasm では丸ごと載る) | `size -A lib/libspinel_rt.a` | `01521b1e` | 無し | 低 (口を足す提案) | 候補 |
+| P-17 | ESP-IDF の newlib でコンパイル・リンクできない 7 点 (`poll.h`、`__freadahead`、AF_UNIX / PF_UNIX、getline、getpriority、WCOREDUMP、signal) | ESP32 ビルド | fmrb-next | fmrb-next `88465f2a` | 中 (P-4 と同じ流儀で) | 候補 |
+| P-18 | ランタイムの .bss の表 (`sp_hdr_char_cache` 16KB、`sp_slab_wk`) と生成プログラムの `sp_bt_buf` の置き場所を選べない (`SP_TU_BSS` が効かない) | `size -A` | fmrb-next | 無し | 低 (P-8 に相乗り) | 候補 |
+| P-19 | 1 バイト文字列の表 (`sp_hdr_char_cache` / `sp_char_cache`) を実行時に埋めているが、内容は定数なので const にできる | `size -A` | fmrb-next | fmrb-next `0b350247` | 中 | 候補 |
+| P-20 | `SP_NO_SLAB` で `sp_slab_on` / `sp_slab_owns` を定数にし、slab の表と原子操作の補助を外す | ポート構成 | fmrb-next | fmrb-next `0b350247` | 中 (P-10 と同梱) | 候補 |
+| P-21 | execinfo が無い対象でも `sp_bt_buf` を複数枠持つ | `size -A` | fmrb-next | fmrb-next `0b350247` | 低 | 候補 |
+| P-22 | ランタイムの冷たい表 (GC の段階の計数・報告用の作業領域) の置き場所を選ぶ口 (`SP_RT_COLD`) | `size -A` | fmrb-next | fmrb-next `0b350247` | 低 (P-8 に相乗り) | 候補 |
+| P-23 | 組み込みの構成で `atexit` を使う | map | fmrb-next | 無し | 低 | 候補 |
 
 ## 機能・設計提案 (F)
 
@@ -82,3 +97,4 @@
 | F-7 | ext 生成ヘッダの include guard が固定名 `SPINEL_EXT_H` で、2 本の ext ヘッダを 1 つの .c で読めない | `01521b1e` | 中 (F-2 と同じ PR) | 再現済 |
 | F-8 | 既定の `--int-overflow=raise` で `+ - *` のたびに nil 番兵検査 (`9fa647ef`) が入り、nil になりえない Integer どうしでも省かれない。raycast でフォーク比 15-45% 遅い (ホスト) | `01521b1e` | 低-中 (上流の bench で差を示せるかが先) | 候補 |
 | F-9 | ext の String 引数はランタイムの文字列 (`sp_str_from_bytes`) でなければならないが、生成ヘッダにも文書にも書かれていない | `01521b1e` | 低 (文書の追記) | 候補 |
+| F-10 | 浮動小数の四則演算ごとに nil 番兵の検査 (`SP_FLOAT_NIL_CK`) が入り、倍精度の計算で 25-30% 遅い (fmrb の FFT)。`--int-overflow` では外れない | fmrb-next | 低-中 (F-8 と同じ性能の提案) | 候補 |

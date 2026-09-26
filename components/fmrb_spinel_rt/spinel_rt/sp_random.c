@@ -5,6 +5,8 @@
 #include "sp_random.h"
 #include "sp_alloc.h"   /* sp_str_alloc / sp_str_set_len / sp_float_to_s / sp_raise_cls / sp_gc_alloc; pulls sp_gc.h -> sp_RbVal before sp_ctx.h */
 #include "sp_ctx.h"
+#include "sp_crypto.h"   /* sp_crypto_entropy: the one secure source */
+#include <math.h>    /* isnan/isinf for the EDOM domain checks */   /* sp_str_alloc / sp_str_set_len / sp_float_to_s / sp_raise_cls / sp_gc_alloc */
 #include "sp_format.h"  /* sp_Range_inspect */
 #include "sp_str.h"     /* sp_sprintf (defined in the generated TU) */
 
@@ -61,7 +63,7 @@ uint64_t sp_krand_next(void) {
   return (hi << 32) | sp_pcg32_adv(&sp_krand_state);
 }
 
-mrb_int sp_krand_below(mrb_int n) {
+sp_int sp_krand_below(sp_int n) {
   if (n <= 0) return 0;
   /* uniform in [0, n) without modulo bias: reject draws below the
      wrap-around threshold (0 for powers of two, so the loop is rare) */
@@ -71,54 +73,67 @@ mrb_int sp_krand_below(mrb_int n) {
   do {
     r = sp_krand_next();
   } while (r < threshold);
-  return (mrb_int)(r % umax);
+  return (sp_int)(r % umax);
 }
 
-mrb_float sp_krand_float(void) {
-  return (mrb_float)(sp_krand_next() >> 11) / (mrb_float)(1ULL << 53);
+sp_float sp_krand_float(void) {
+  return (sp_float)(sp_krand_next() >> 11) / (sp_float)(1ULL << 53);
 }
 
 /* ---- Random instance methods ---- */
 
+/* The default stream is a static, not a GC allocation -- but the class-method
+   forms (`Random.bytes`, `Random.rand`) hand it to the same entry points an
+   instance uses, and those root their receiver, which puts a .bss address on
+   the mark path. Lay a 0xfd skip byte directly before it so sp_gc_mark's
+   tag-byte protocol bails out instead of reading whatever precedes it as a GC
+   header: under SPINEL_GC_STRESS=1 that read reached a bogus scan hook and
+   crashed inside the mark walk. Same shape, and the same reason, as the root
+   fiber in sp_fiber.c: the guard array is exactly one alignment unit, so its
+   last byte always directly precedes the struct with no padding in between. */
 #ifndef SP_MULTI_CTX
-SP_TLS sp_Random sp_random_default;
+static SP_TLS sp_Random_box sp_random_default_box
+    = { .guard = { [_Alignof(sp_Random) - 1] = (char)0xfd } };
+#define sp_random_default (sp_random_default_box.r)
 #else
-/* per-ctx (sp_ctx.h) */
+/* per-ctx (sp_ctx.h); sp_instance_create lays the same 0xfd guard byte */
+#define sp_random_default (SP_CTX()->random_default_box.r)
 #endif
-uint64_t sp_random_next(sp_Random *r) {
+uint64_t sp_random_next(sp_Random *r) {SP_GC_ROOT(r);
   if (r == &sp_random_default) return sp_krand_next();
   uint64_t hi = sp_pcg32_adv(&r->state);
   return (hi << 32) | sp_pcg32_adv(&r->state);
 }
-sp_Random *sp_Random_new(mrb_int seed) {
+sp_Random *sp_Random_new(sp_int seed) {
   sp_Random *r = (sp_Random *)sp_gc_alloc(sizeof(sp_Random), NULL, NULL);
   sp_pcg_seed(&r->state, (uint64_t)seed);
   r->seed = seed;
   return r;
 }
 /* Random.new(Float): CRuby truncates the float to an integer seed. A plain
-   (mrb_int) cast is UB when the truncated value is out of range, so seed from
+   (sp_int) cast is UB when the truncated value is out of range, so seed from
    the in-range truncation when it fits and from the raw float bits otherwise
    -- always deterministic (same float -> same stream), which is the actual
    contract (the exact sequence is not MT19937 anyway). */
-sp_Random *sp_Random_new_float(mrb_float f) {
+sp_Random *sp_Random_new_float(sp_float f) {
   uint64_t s;
   if (f >= -9.2233720368547758e18 && f < 9.2233720368547758e18) {
     s = (uint64_t)(int64_t)f;
-  } else {
+  }
+  else {
     uint64_t bits; memcpy(&bits, &f, sizeof bits);
     s = bits;
   }
   sp_Random *r = (sp_Random *)sp_gc_alloc(sizeof(sp_Random), NULL, NULL);
   sp_pcg_seed(&r->state, s);
-  r->seed = (mrb_int)s;
+  r->seed = (sp_int)s;
   return r;
 }
 /* Random#seed: the seed the instance was constructed from. */
-mrb_int sp_Random_seed(sp_Random *r) { return r ? r->seed : 0; }
+sp_int sp_Random_seed(sp_Random *r) { return r ? r->seed : 0; }
 /* Random#== compares by internal state (two same-seed, same-position instances
    are equal; advancing one makes them differ). */
-mrb_bool sp_Random_eq(sp_Random *a, sp_Random *b) {
+sp_bool sp_Random_eq(sp_Random *a, sp_Random *b) {
   if (a == b) return TRUE;
   if (!a || !b) return FALSE;
   return (a->state == b->state && a->seed == b->seed) ? TRUE : FALSE;
@@ -132,29 +147,33 @@ sp_Random *sp_Random_new_auto(void) {
   uint64_t e = (((uint64_t)time(NULL)) << 20) ^ (++sp_random_auto_ctr * 0x9E3779B97F4A7C15ULL) ^
                (uint64_t)(uintptr_t)r;
   sp_pcg_seed(&r->state, e);
-  r->seed = (mrb_int)(e >> 1);
+  r->seed = (sp_int)(e >> 1);
   return r;
 }
 /* Random#rand(Range): an integer in the (int-endpoint) range, empty raises. */
-mrb_int sp_Random_rand_range(sp_Random *r, sp_Range rg) {
-  mrb_int lo = rg.first, hi = rg.excl ? rg.last - 1 : rg.last;
+sp_int sp_Random_rand_range(sp_Random *r, sp_Range rg) {SP_GC_ROOT(r);
+  sp_int lo = rg.first, hi = rg.excl ? rg.last - 1 : rg.last;
   if (hi < lo) sp_raise_cls("ArgumentError", sp_sprintf("invalid argument - %s", sp_Range_inspect(&rg)));
   if (!r) return lo;
-  return lo + (mrb_int)(sp_random_next(r) % ((uint64_t)(hi - lo) + 1));
+  return lo + (sp_int)(sp_random_next(r) % ((uint64_t)(hi - lo) + 1));
 }
-mrb_int sp_Random_rand_int(sp_Random *r, mrb_int n) {
+sp_int sp_Random_rand_int(sp_Random *r, sp_int n) {SP_GC_ROOT(r);
   if (n <= 0) sp_raise_cls("ArgumentError", sp_sprintf("invalid argument - %lld", (long long)n));
   if (!r) return 0;
-  return (mrb_int)(sp_random_next(r) % (uint64_t)n);
+  return (sp_int)(sp_random_next(r) % (uint64_t)n);
 }
-mrb_float sp_Random_rand_float(sp_Random *r) {
+sp_float sp_Random_rand_float(sp_Random *r) {SP_GC_ROOT(r);
   if (!r) return 0.0;
-  return (mrb_float)(sp_random_next(r) >> 11) / (mrb_float)(1ULL << 53);
+  return (sp_float)(sp_random_next(r) >> 11) / (sp_float)(1ULL << 53);
 }
 /* Random#rand(Float bound): a random Float in [0, bound). A non-positive bound
    raises ArgumentError like the Integer form (MRI validates both). */
-mrb_float sp_Random_rand_float_bound(sp_Random *r, mrb_float bound) {
-  if (bound <= 0) sp_raise_cls("ArgumentError", sp_sprintf("invalid argument - %s", sp_float_to_s(bound)));
+sp_float sp_Random_rand_float_bound(sp_Random *r, sp_float bound) {SP_GC_ROOT(r);
+  /* CRuby 4: a non-finite bound is Errno::EDOM; a 0.0 bound draws in [0,1) (#3049) */
+  if (isnan(bound) || isinf(bound))
+    sp_raise_cls("Errno::EDOM", "Numerical argument out of domain");
+  if (bound == 0.0) return sp_Random_rand_float(r);
+  if (bound < 0) sp_raise_cls("ArgumentError", sp_sprintf("invalid argument - %s", sp_float_to_s(bound)));
   return sp_Random_rand_float(r) * bound;
 }
 /* Class-method forms (`Random.rand` / `Random.bytes`) share the default
@@ -164,41 +183,61 @@ mrb_float sp_Random_rand_float_bound(sp_Random *r, mrb_float bound) {
 sp_Random *sp_random_default_get(void) {
   return &sp_random_default;
 }
-/* Random#bytes(n) — n random bytes as a String. Uses sp_str_set_len
-   so embedded NULs are preserved and #length reports n. */
-const char *sp_Random_bytes(sp_Random *r, mrb_int n) {
-  if (n < 0) n = 0;
+/* Random#bytes(n) -- n random bytes as a String, tagged ASCII-8BIT as CRuby
+   does. sp_str_set_len alone was not enough: #length counts UTF-8 units, and a
+   short draw is valid UTF-8 by chance often enough that Random.bytes(8).length
+   answered less than 8 about three times in a thousand. That is #3474, which
+   fixed urandom eight lines below and left this one. */
+const char *sp_Random_bytes(sp_Random *r, sp_int n) {SP_GC_ROOT(r);
+  if (n < 0) sp_raise_cls("ArgumentError", "negative string size (or size too big)");
   char *b = sp_str_alloc((size_t)n);
-  for (mrb_int i = 0; i < n; i++) b[i] = (char)(sp_random_next(r) & 0xff);
+  for (sp_int i = 0; i < n; i++) b[i] = (char)(sp_random_next(r) & 0xff);
   b[n] = 0;
   sp_str_set_len(b, (size_t)n);
+  sp_str_mark_binary(b);
   return b;
 }
 /* Random#rand(Float range): a Float in [lo, hi) (or [lo, hi] for an inclusive
    range, though the float boundary is effectively open). */
-mrb_float sp_Random_rand_float_range(sp_Random *r, mrb_float lo, mrb_float hi) {
+sp_float sp_Random_rand_float_range(sp_Random *r, sp_float lo, sp_float hi) {SP_GC_ROOT(r);
+  if (isnan(lo) || isinf(lo) || isnan(hi) || isinf(hi))
+    sp_raise_cls("Errno::EDOM", "Numerical argument out of domain");
   return lo + sp_Random_rand_float(r) * (hi - lo);
 }
 /* Random.new_seed: a fresh nonneg seed drawn from the default stream. */
-mrb_int sp_Random_new_seed(void) {
-  mrb_int s = (mrb_int)(sp_random_next(sp_random_default_get()) >> 1);
+sp_int sp_Random_new_seed(void) {
+  sp_int s = (sp_int)(sp_random_next(sp_random_default_get()) >> 1);
   return s < 0 ? -s : s;
 }
 /* Random.urandom(n): n random bytes as a String (spinel has no real OS entropy
    source wired up, so this draws from a freshly time-seeded stream). */
-const char *sp_Random_urandom(mrb_int n) {
+const char *sp_Random_urandom(sp_int n) {
   if (n < 0) sp_raise_cls("ArgumentError", "negative string size");
-  sp_Random tmp; tmp.seed = 0;
-  sp_pcg_seed(&tmp.state, ((uint64_t)time(NULL) << 20) ^ (uint64_t)(uintptr_t)&tmp ^ 0x9E3779B97F4A7C15ULL);
+  /* CRuby's Random.urandom IS the OS entropy source, and this was a PCG seeded
+     from time()/clock() -- a deterministic-per-run stand-in, from before the
+     tree had a real source. It does now: sp_crypto_entropy is the one place
+     that decides what counts as secure, and it fails closed. A caller of this
+     name is minting something that has to be unguessable. */
   char *b = sp_str_alloc((size_t)n);
-  for (mrb_int i = 0; i < n; i++) b[i] = (char)(sp_random_next(&tmp) & 0xff);
+  { sp_int off = 0;
+    while (off < n) {
+      int chunk = (int)((n - off) > SPC_RANDOM_MAX ? SPC_RANDOM_MAX : (n - off));
+      if (!sp_crypto_entropy((unsigned char *)b + off, chunk))
+        sp_raise_cls("RuntimeError", "Random.urandom: no secure random source available");
+      off += chunk;
+    }
+  }
   b[n] = 0;
   sp_str_set_len(b, (size_t)n);
+  /* CRuby hands back ASCII-8BIT, so #length is the byte count. Without the
+     mark, a short draw that happens to spell valid UTF-8 (about 1.5% of
+     4-byte draws) counted code points and answered short (#3474). */
+  sp_str_mark_binary(b);
   return b;
 }
 /* Random#inspect / #to_s: CRuby's default object rendering (the seed is not
    part of it; the address matches CRuby's zero-padded 16-digit form). */
-const char *sp_Random_inspect(sp_Random *r) {
+const char *sp_Random_inspect(sp_Random *r) {SP_GC_ROOT(r);
   return sp_sprintf("#<Random:0x%016llx>", (unsigned long long)(uintptr_t)r);
 }
 /* Kernel#srand: seed the shared Kernel stream and remember the previous
@@ -207,13 +246,43 @@ const char *sp_Random_inspect(sp_Random *r) {
    default instance -- draws from that one stream, so a single srand makes
    them all reproducible. */
 #ifndef SP_MULTI_CTX
-static SP_TLS mrb_int sp_kernel_seed = 0;
+static SP_TLS sp_int sp_kernel_seed = 0;
 #else
 /* per-ctx (sp_ctx.h) */
 #endif
-mrb_int sp_kernel_srand(mrb_int seed) {
-  mrb_int prev = sp_kernel_seed;
+sp_int sp_kernel_srand(sp_int seed) {
+  sp_int prev = sp_kernel_seed;
   sp_kernel_seed = seed;
   sp_krand_srand((uint64_t)seed);
   return prev;
+}
+/* Random#rand(Bignum bound): a uniform Bigint in [0, bound). Composed from
+   32-bit chunks of the instance stream; accumulating two extra chunks past
+   the bound keeps the modulo bias around 2^-64. A non-positive bound raises
+   ArgumentError like the sp_int form (#3058). */
+typedef struct sp_Bigint sp_Bigint;
+extern sp_Bigint *sp_bigint_new_int(int64_t v);
+extern sp_Bigint *sp_bigint_mul(sp_Bigint *a, sp_Bigint *b);
+extern sp_Bigint *sp_bigint_add(sp_Bigint *a, sp_Bigint *b);
+extern sp_Bigint *sp_bigint_mod(sp_Bigint *a, sp_Bigint *b);
+extern int sp_bigint_cmp(sp_Bigint *a, sp_Bigint *b);
+extern const char *sp_bigint_to_s(sp_Bigint *b);
+sp_Bigint *sp_bigint_rand(sp_Random *r, sp_Bigint *bound) {SP_GC_ROOT(r);
+  SP_GC_ROOT(bound);
+  sp_Bigint *zero = sp_bigint_new_int(0);
+  SP_GC_ROOT(zero);
+  if (sp_bigint_cmp(bound, zero) <= 0)
+    sp_raise_cls("ArgumentError", sp_sprintf("invalid argument - %s", sp_bigint_to_s(bound)));
+  sp_Bigint *acc = zero;
+  SP_GC_ROOT(acc);
+  sp_Bigint *b32 = sp_bigint_new_int((int64_t)1 << 32);
+  SP_GC_ROOT(b32);
+  int extra = 2;
+  while (extra > 0) {
+    sp_Bigint *chunk = sp_bigint_new_int((int64_t)(sp_random_next(r) & 0xffffffffULL));
+    SP_GC_ROOT(chunk);
+    acc = sp_bigint_add(sp_bigint_mul(acc, b32), chunk);
+    if (sp_bigint_cmp(acc, bound) >= 0) extra--;
+  }
+  return sp_bigint_mod(acc, bound);
 }

@@ -6,7 +6,7 @@
 # the editor's Spinel build does -- see doc/editor_serious_mode P5.)
 #
 # Nothing but bytes and ints crosses: the samples arrive as a binary String
-# (:binstr, byte-exact via sp_net_bin_len), the magnitudes go back as a String
+# (:binstr, byte-exact via sp_ffi_bin_len), the magnitudes go back as a String
 # plus its length, and the microseconds are an int. No Float ever touches the
 # boundary.
 #

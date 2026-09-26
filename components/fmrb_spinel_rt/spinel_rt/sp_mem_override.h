@@ -25,6 +25,15 @@
 #ifndef SP_MEM_OVERRIDE_H
 #define SP_MEM_OVERRIDE_H
 
+/* The runtime TUs that want GNU extensions (sp_cold.c for statx, sp_fiber.c,
+   sp_io.c for fopencookie) define _GNU_SOURCE ahead of their first include.
+   Force-included in front of them, this header would pull <stdlib.h> first and
+   fix the feature set without it, so it asks for the same set on every mc TU's
+   behalf. No runtime source depends on the POSIX variant of a function the GNU
+   set replaces (strerror_r, basename). */
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
 #include <stddef.h>   /* size_t */
 #include <stdlib.h>   /* pull the real declarations through before we shadow the names */
 #include <string.h>

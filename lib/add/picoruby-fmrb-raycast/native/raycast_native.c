@@ -37,8 +37,9 @@ static const char *TAG = "raycast";
    --entry raycast_entry --persistent-statics. */
 extern int raycast_entry(void);
 
-/* :binstr length publisher, defined in fmrb_spx_common.c. */
-extern int sp_net_bin_len;
+/* The current instance's :binstr length (runtime sp_ctx.c; the host C
+   cannot include sp_ctx.h, so it is declared here). */
+int *sp_ctx_ffi_bin_len(void);
 
 /* The core the entry caches holds the map plus two 360-entry trig tables, and
    the transient String per frame on top. 128 KB leaves the collector room to
@@ -168,7 +169,7 @@ void raycast_end(void)
 
 const char *raycast_spx_map(void)
 {
-    sp_net_bin_len = s_map_w * s_map_h;
+    *sp_ctx_ffi_bin_len() = s_map_w * s_map_h;
     return (const char *)s_map;
 }
 

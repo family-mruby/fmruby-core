@@ -14,9 +14,10 @@
  * -----------
  * - fd-based: every call takes/returns a raw socket fd; the framework
  *   owns lifetime.
- * - Static return buffers (per-function), single-threaded server model
- *   -- copy on the caller side if a value must outlive the next call,
- *   same as sp_crypto.
+ * - Static return buffers (per-function) -- copy on the caller side if a
+ *   value must outlive the next call, same as sp_crypto. The buffers are
+ *   per-worker in the threaded build, so two green threads on two OS
+ *   workers do not share one; each still holds only its own last result.
  * - String inputs are NUL-terminated.
  *
  * Naming: all exported symbols use the `sp_net_` prefix.
@@ -51,9 +52,43 @@ int sp_net_shutdown_requested(void);
  * set_nodelay: disable Nagle on a connection fd (called for you by
  *   accept/accept_nb/connect; exposed for fds obtained elsewhere). */
 int sp_net_listen(int port, int reuseport);
+int sp_net_listen_host(const char *host, int port, int backlog);
+int sp_net_local_port(int fd);
+int sp_net_sock_ip(int fd, int peer, char *ipbuf, int cap);
 int sp_net_accept(int sfd);
 int sp_net_accept_nb(int sfd);
 int sp_net_connect(const char *host, int port);
+
+/* ---- UDP ----
+ * udp_open: an unbound SOCK_DGRAM fd. bind/connect attach it to a local /
+ * remote address. send_to with a NULL host uses the connected peer.
+ * recv_from reads one datagram and reports the sender. */
+int sp_net_udp_open(int family);
+int sp_net_fd_family(int fd);
+int sp_net_udp_bind(int fd, const char *host, int port);
+int sp_net_udp_connect(int fd, const char *host, int port);
+int sp_net_udp_send_to(int fd, const char *data, int len, const char *host, int port);
+int sp_net_udp_recv_from(int fd, char *buf, int cap, char *ipbuf, int ipcap, int *port_out);
+
+/* ---- UNIX-domain stream sockets ---- */
+int sp_net_unix_listen(const char *path, int backlog);
+int sp_net_unix_connect(const char *path);
+int sp_net_unix_path(int fd, int peer, char *buf, int cap);
+
+/* ---- Socket class methods ---- */
+int sp_net_gethostname(char *buf, int cap);
+int sp_net_socketpair(int domain, int type, int protocol, int fds[2]);
+int sp_net_socket(int domain, int type, int protocol);
+int sp_net_getaddrinfo_at(const char *host, int port, int socktype, int idx,
+                          int *family, int *stype, int *proto,
+                          char *ipbuf, int ipcap, int *port_out);
+
+/* ---- socket options ----
+ * The integer-valued options, which is what Ruby programs reach for
+ * (SO_REUSEADDR, SO_KEEPALIVE, TCP_NODELAY, SO_RCVBUF, ...). */
+int sp_net_setsockopt_int(int fd, int level, int optname, int value);
+int sp_net_getsockopt_int(int fd, int level, int optname);
+int sp_net_shutdown(int fd, int how);
 int sp_net_close(int fd);
 int sp_net_set_nonblock(int fd);
 void sp_net_set_nodelay(int fd);
@@ -68,25 +103,76 @@ void sp_net_set_nodelay(int fd);
  * Binary-safe recv: a NUL-terminated buffer can't carry an embedded
  * 0x00 (WebSocket frames do). Declaring recv_some/recv_all with the
  * FFI `:binstr` return mode builds the result String from the exact
- * byte count published in sp_net_bin_len instead of strlen, so binary
+ * byte count published in sp_ffi_bin_len instead of strlen, so binary
  * payloads survive. The same C functions serve both `:str` and
- * `:binstr` callers; sp_net_bin_len holds the last recv's byte count. */
-extern int  sp_net_bin_len;
+ * `:binstr` callers; sp_ffi_bin_len (declared in sp_alloc.h) holds the
+ * last recv's byte count. */
 const char *sp_net_recv_some(int fd, int maxlen);
 const char *sp_net_recv_all(int fd, int max_bytes);
 int         sp_net_write_str(int fd, const char *s);
 int         sp_net_write_bytes(int fd, const char *data, int n);
 
+/* Non-blocking write: takes what the socket will accept now and answers how
+ * much that was, so the caller keeps the backpressure policy. write_str /
+ * write_bytes above block until everything is written, which for fan-out
+ * means one slow peer delays every other. Returns >0 bytes accepted, 0 when
+ * the peer is alive but its buffer is full (wait for WRITE readiness and call
+ * again with the remainder), -1 when the connection is gone. */
+int         sp_net_write_partial(int fd, const char *data, int n);
+
 /* ---- poll(2) ----
  * reset clears the slot table; add registers (fd, mode_bits) where
- * 1=READ, 2=WRITE and returns the slot index (or -1 if full); run
- * blocks up to timeout_ms (-1 = forever, 0 = peek) and returns the
- * ready count; ready(slot) returns the mode bits that fired (POLLHUP/
- * POLLERR fold into READ). */
+ * 1=READ, 2=WRITE and returns the slot index; run blocks up to
+ * timeout_ms (-1 = forever, 0 = peek) and returns the ready count;
+ * ready(slot) returns the mode bits that fired (POLLHUP/POLLERR fold
+ * into READ).
+ *
+ * The set has no fixed ceiling -- it grows with the number of fds added
+ * between resets. add() answers -1 only when the allocator refuses, which
+ * it also reports on stderr, since a caller cannot tell that apart from
+ * "not registered this round" by the return value alone.
+ *
+ * The set is rebuilt every tick (reset/add/.../run), which costs the caller
+ * O(fds) per tick whatever the backend underneath. The persistent-registration
+ * calls below cost O(events) instead; prefer them for a connection-holding
+ * server. */
 int sp_net_poll_reset(void);
 int sp_net_poll_add(int fd, int mode_bits);
 int sp_net_poll_run(int timeout_ms);
 int sp_net_poll_ready(int slot);
+
+/* ---- poll(2), persistent registration ----
+ * The four above rebuild the set every tick, so a caller with N parked fds
+ * does O(N) work per tick however few of them are ready. These register once
+ * per connection instead: wait() answers how many fds fired, and
+ * event_fd/event_mode(i) read the i'th of those, so the caller's work is
+ * proportional to EVENTS rather than to connections.
+ *
+ * register(fd, mode_bits) adds or, if fd is already registered, updates it;
+ * modify changes the interest (e.g. adding WRITE while a send is pending);
+ * unregister drops it. mode_bits are 1=READ, 2=WRITE as above, and
+ * event_mode folds POLLHUP/POLLERR into READ as ready() does. register /
+ * modify / unregister answer 0, or -1 for an unregistered fd or an allocator
+ * refusal (which is also reported on stderr). wait returns the ready count,
+ * or -1 if shutdown was requested. registered() is the current set size.
+ *
+ * The events wait() reports are a snapshot, so unregistering an fd while
+ * walking them -- what a server does on every EOF -- does not disturb the
+ * walk. Both sets are per-worker, like the recv buffers: a green thread is
+ * pinned to its worker, so it always polls the fds it registered, and two
+ * threads running their own loops do not share one set.
+ *
+ * The backend is still poll(2). A caller written to this contract does not
+ * change again if epoll/kqueue is put underneath -- which is the point of
+ * the shape rather than of the syscall. Use these OR the four above, not
+ * both: they keep separate sets. (matz/spinel#4103) */
+int sp_net_poll_register(int fd, int mode_bits);
+int sp_net_poll_modify(int fd, int mode_bits);
+int sp_net_poll_unregister(int fd);
+int sp_net_poll_registered(void);
+int sp_net_poll_wait(int timeout_ms);
+int sp_net_poll_event_fd(int i);
+int sp_net_poll_event_mode(int i);
 
 /* ---- process (prefork) ----
  * fork: 0 in child, pid>0 in parent, -1 on failure. exit: _exit(status)
@@ -101,6 +187,15 @@ int sp_net_wait_any(void);
  * Run `cmd` via popen("r"), capture stdout up to max_bytes (capped at
  * the internal buffer). Returns a static NUL-terminated buffer. */
 const char *sp_net_shell_capture(const char *cmd, int max_bytes);
+
+/* ---- packed sockaddr ----
+ * The byte form Socket.sockaddr_in / Addrinfo#to_sockaddr produce and
+ * connect_nonblock(sockaddr) consumes. Each writes into the caller's buffer
+ * and returns the packed length, or -1. sp_net_unpack_sockaddr_in reads one
+ * back, returning the port and writing the numeric address into ipbuf. */
+int sp_net_pack_sockaddr_in(const char *host, int port, void *out, int cap);
+int sp_net_pack_sockaddr_un(const char *path, void *out, int cap);
+int sp_net_unpack_sockaddr_in(const void *sa, int salen, char *ipbuf, int cap);
 
 #ifdef __cplusplus
 }

@@ -15,9 +15,11 @@
 #include <math.h>      /* isinf: early-exit once a limb fold overflows to Infinity */
 #include "sp_bigint.h"
 
-/* Defined in sp_runtime.h (linked into the final program); forward-declared
+/* Defined in spinel_rt.h (linked into the final program); forward-declared
    here so the bigint object can raise without pulling in the whole header. */
 extern __attribute__((noreturn)) void sp_raise_cls(const char *cls, const char *msg);
+extern char *sp_str_alloc_ext(size_t len);   /* string heap; sp_alloc.h cannot be included here */
+extern __attribute__((noreturn)) void sp_oom_die(void);   /* sp_gc.h, same include constraint */
 const char *sp_sprintf(const char *fmt, ...);  /* defined in the generated TU */
 
 #define DIG_SIZE (MPZ_DIG_SIZE)
@@ -1294,10 +1296,54 @@ mpn_neg(mp_limb *rp, const mp_limb *ap, size_t n)
 {
   mp_limb carry = 1;
   for (size_t i = 0; i < n; i++) {
-    mp_dbl_limb sum = (mp_dbl_limb)(~ap[i]) + carry;
+    /* ~ promotes a limb narrower than int, and the complement of the
+       promoted value carries ones above the limb into the sum */
+    mp_dbl_limb sum = (mp_dbl_limb)(mp_limb)~ap[i] + carry;
     rp[i] = LOW(sum);
     carry = HIGH(sum);
   }
+}
+
+/* Evaluate x0 + 2*x1 + 4*x2 into rp[0..n); returns trimmed length (>= 1) */
+static size_t
+mpn_toom3_eval2(mp_limb *rp, size_t n,
+                const mp_limb *x0, size_t x0_len,
+                const mp_limb *x1, size_t x1_len,
+                const mp_limb *x2, size_t x2_len)
+{
+  mpn_zero(rp, n);
+  mpn_copyi(rp, x0, x0_len);
+  /* Add 2*x1 */
+  if (x1_len > 0) {
+    mp_limb carry = 0;
+    for (size_t i = 0; i < x1_len; i++) {
+      mp_dbl_limb val = (mp_dbl_limb)rp[i] + ((mp_dbl_limb)x1[i] << 1) + carry;
+      rp[i] = LOW(val);
+      carry = HIGH(val);
+    }
+    for (size_t i = x1_len; carry && i < n; i++) {
+      mp_dbl_limb val = (mp_dbl_limb)rp[i] + carry;
+      rp[i] = LOW(val);
+      carry = HIGH(val);
+    }
+  }
+  /* Add 4*x2 */
+  if (x2_len > 0) {
+    mp_limb carry = 0;
+    for (size_t i = 0; i < x2_len; i++) {
+      mp_dbl_limb val = (mp_dbl_limb)rp[i] + ((mp_dbl_limb)x2[i] << 2) + carry;
+      rp[i] = LOW(val);
+      carry = HIGH(val);
+    }
+    for (size_t i = x2_len; carry && i < n; i++) {
+      mp_dbl_limb val = (mp_dbl_limb)rp[i] + carry;
+      rp[i] = LOW(val);
+      carry = HIGH(val);
+    }
+  }
+  size_t len = n;
+  while (len > 0 && rp[len-1] == 0) len--;
+  return len ? len : 1;
 }
 
 /* Pool-aware Toom-3 multiplication */
@@ -1425,75 +1471,9 @@ mpz_mul_toom3(mpz_ctx_t *ctx, mp_limb *result,
   if (vm1_y_len == 0) vm1_y_len = 1;
 
   /* v2 = x0 + 2*x1 + 4*x2 */
-  {
-    mpn_zero(v2_x, eval_len);
-    mpn_copyi(v2_x, x0, x0_len);
-    /* Add 2*x1 */
-    if (x1_len > 0) {
-      mp_limb carry = 0;
-      for (size_t i = 0; i < x1_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_x[i] + ((mp_dbl_limb)x1[i] << 1) + carry;
-        v2_x[i] = LOW(val);
-        carry = HIGH(val);
-      }
-      for (size_t i = x1_len; carry && i < eval_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_x[i] + carry;
-        v2_x[i] = LOW(val);
-        carry = HIGH(val);
-      }
-    }
-    /* Add 4*x2 */
-    if (x2_len > 0) {
-      mp_limb carry = 0;
-      for (size_t i = 0; i < x2_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_x[i] + ((mp_dbl_limb)x2[i] << 2) + carry;
-        v2_x[i] = LOW(val);
-        carry = HIGH(val);
-      }
-      for (size_t i = x2_len; carry && i < eval_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_x[i] + carry;
-        v2_x[i] = LOW(val);
-        carry = HIGH(val);
-      }
-    }
-  }
-  size_t v2_x_len = eval_len;
-  while (v2_x_len > 0 && v2_x[v2_x_len-1] == 0) v2_x_len--;
-  if (v2_x_len == 0) v2_x_len = 1;
+  size_t v2_x_len = mpn_toom3_eval2(v2_x, eval_len, x0, x0_len, x1, x1_len, x2, x2_len);
 
-  {
-    mpn_zero(v2_y, eval_len);
-    mpn_copyi(v2_y, y0, y0_len);
-    if (y1_len > 0) {
-      mp_limb carry = 0;
-      for (size_t i = 0; i < y1_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_y[i] + ((mp_dbl_limb)y1[i] << 1) + carry;
-        v2_y[i] = LOW(val);
-        carry = HIGH(val);
-      }
-      for (size_t i = y1_len; carry && i < eval_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_y[i] + carry;
-        v2_y[i] = LOW(val);
-        carry = HIGH(val);
-      }
-    }
-    if (y2_len > 0) {
-      mp_limb carry = 0;
-      for (size_t i = 0; i < y2_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_y[i] + ((mp_dbl_limb)y2[i] << 2) + carry;
-        v2_y[i] = LOW(val);
-        carry = HIGH(val);
-      }
-      for (size_t i = y2_len; carry && i < eval_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_y[i] + carry;
-        v2_y[i] = LOW(val);
-        carry = HIGH(val);
-      }
-    }
-  }
-  size_t v2_y_len = eval_len;
-  while (v2_y_len > 0 && v2_y[v2_y_len-1] == 0) v2_y_len--;
-  if (v2_y_len == 0) v2_y_len = 1;
+  size_t v2_y_len = mpn_toom3_eval2(v2_y, eval_len, y0, y0_len, y1, y1_len, y2, y2_len);
 
   /*
    * Pointwise multiplication (5 recursive calls)
@@ -1766,39 +1746,7 @@ mpz_sqr_toom3(mpz_ctx_t *ctx, mp_limb *result,
   if (vm1_x_len == 0) vm1_x_len = 1;
 
   /* v2 = x0 + 2*x1 + 4*x2 */
-  {
-    mpn_zero(v2_x, eval_len);
-    mpn_copyi(v2_x, x0, x0_len);
-    if (x1_len > 0) {
-      mp_limb carry = 0;
-      for (size_t i = 0; i < x1_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_x[i] + ((mp_dbl_limb)x1[i] << 1) + carry;
-        v2_x[i] = LOW(val);
-        carry = HIGH(val);
-      }
-      for (size_t i = x1_len; carry && i < eval_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_x[i] + carry;
-        v2_x[i] = LOW(val);
-        carry = HIGH(val);
-      }
-    }
-    if (x2_len > 0) {
-      mp_limb carry = 0;
-      for (size_t i = 0; i < x2_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_x[i] + ((mp_dbl_limb)x2[i] << 2) + carry;
-        v2_x[i] = LOW(val);
-        carry = HIGH(val);
-      }
-      for (size_t i = x2_len; carry && i < eval_len; i++) {
-        mp_dbl_limb val = (mp_dbl_limb)v2_x[i] + carry;
-        v2_x[i] = LOW(val);
-        carry = HIGH(val);
-      }
-    }
-  }
-  size_t v2_x_len = eval_len;
-  while (v2_x_len > 0 && v2_x[v2_x_len-1] == 0) v2_x_len--;
-  if (v2_x_len == 0) v2_x_len = 1;
+  size_t v2_x_len = mpn_toom3_eval2(v2_x, eval_len, x0, x0_len, x1, x1_len, x2, x2_len);
 
   /*
    * Pointwise squaring (5 recursive calls)
@@ -5317,6 +5265,25 @@ sp_Bigint *sp_bigint_new_int(int64_t v) {
   return b;
 }
 
+sp_Bigint *sp_bigint_shl(sp_Bigint *a, int64_t n);   /* fwd: the scale below */
+sp_Bigint *sp_bigint_shr(sp_Bigint *a, int64_t n);
+
+/* The exact integer value of a finite Float. Above 2**53 a double IS an
+   integer -- its mantissa scaled by a power of two -- so frexp's 53-bit
+   mantissa shifted by the remaining exponent loses nothing, and the shift is
+   a limb move. The caller checks for NaN/infinity; a value that already fits
+   sp_int never needs this. */
+sp_Bigint *sp_bigint_new_double(double d) {
+  int e = 0;
+  double m = frexp(d, &e);              /* d == m * 2**e, 0.5 <= |m| < 1 */
+  int64_t mant = (int64_t)ldexp(m, 53); /* exact: a double carries 53 bits */
+  int sh = e - 53;
+  sp_Bigint *b = sp_bigint_new_int(mant);
+  if (sh > 0) return sp_bigint_shl(b, sh);
+  if (sh < 0) return sp_bigint_shr(b, -sh);
+  return b;
+}
+
 sp_Bigint *sp_bigint_new_str(const char *s, int base) {
   sp_Bigint *b = sp_bigint_alloc();
   mpz_init(sp_mpz_ctx, &b->mpz);
@@ -5413,14 +5380,10 @@ sp_Bigint *sp_bigint_remainder(sp_Bigint *a, sp_Bigint *b) {
 
 /* Integer#pow(exp, mod): modular exponentiation (mpz_powm_i handles a large
    exponent without materializing base**exp). */
-/* NOTE on the integer boundary type. This TU compiles with mruby_shim.h, where
-   `mrb_int` is int64_t; the generated callers see sp_types.h, where `mrb_int` is
-   intptr_t (4 bytes on a 32-bit target). A public signature spelled `mrb_int`
-   therefore has a DIFFERENT width in the two TUs and its arguments get misread
-   on ILP32 (a live SIGSEGV: the exp/mod args shift). The cross-TU integer
-   boundary must use a type identical in both TUs, so these functions spell it
-   `intptr_t` (the platform Integer width, == the generated side's mrb_int, and
-   == int64_t on LP64 so 64-bit output is byte-identical). */
+/* The four entry points below take and return the runtime's sp_int, which
+   is intptr_t (lib/sp_types.h) and not mrb_int: the two are one width on a
+   64-bit host and not on a 32-bit one, where a caller passing an int read a
+   garbage upper half here (#4509's 32-bit lane). */
 sp_Bigint *sp_bigint_powmod(sp_Bigint *base, intptr_t exp, sp_Bigint *mod) {
   if (exp < 0) sp_raise_cls("RangeError", "Integer#pow() 1st argument cannot be negative when 2nd argument specified");
   if (zero_p(&mod->mpz)) sp_bigint_raise_zerodiv("divided by 0");
@@ -5472,12 +5435,44 @@ int64_t sp_bigint_to_int(sp_Bigint *b) {
   if (b == NULL) return 0;
   mpz_t *z = &b->mpz;
   if (z->sz == 0) return 0;
-  int64_t v = 0;
+  /* Assemble in UNSIGNED. A limb is 32 bits and DIG_SIZE is 32, so the second
+     limb's top bit shifts into bit 63 -- undefined for a signed left shift, and
+     the ordinary `x & 0xFFFFFFFFFFFFFFFF` mask idiom reaches it. Negating is
+     the same story: -INT64_MIN overflows. Both are well defined on uint64_t,
+     and the final conversion back is the wrap every caller already expects. */
+  uint64_t v = 0;
   size_t n = z->sz < 2 ? z->sz : 2;
   for (size_t i = 0; i < n; i++) {
-    v |= ((int64_t)z->p[i]) << (i * DIG_SIZE);
+    v |= ((uint64_t)z->p[i]) << (i * DIG_SIZE);
   }
-  return z->sn < 0 ? -v : v;
+  if (z->sn < 0) v = (uint64_t)0 - v;
+  return (int64_t)v;
+}
+
+/* IO::Buffer's u64 lane (lib/sp_iobuffer.c): a full unsigned-64 constructor,
+   and the magnitude reader its range checks decide from. */
+sp_Bigint *sp_bigint_new_u64(uint64_t v) {
+  sp_Bigint *b = sp_bigint_alloc();
+  mpz_init(sp_mpz_ctx, &b->mpz);
+  mpz_set_uint64(sp_mpz_ctx, &b->mpz, v);
+  return b;
+}
+
+/* |b| into *out when it fits 64 bits; 0 (out untouched) when it doesn't.
+   The sign is the caller's question (sp_bigint_sign). */
+int sp_bigint_mag_u64(sp_Bigint *b, uint64_t *out) {
+  if (b == NULL) { *out = 0; return 1; }
+  mpz_t *z = &b->mpz;
+  uint64_t v = 0;
+  for (size_t i = 0; i < z->sz; i++) {
+    if (i * DIG_SIZE >= 64) {
+      if (z->p[i] != 0) return 0;
+      continue;
+    }
+    v |= ((uint64_t)z->p[i]) << (i * DIG_SIZE);
+  }
+  *out = v;
+  return 1;
 }
 
 /* Convert a bigint to the nearest double. Unlike sp_bigint_to_int, which keeps
@@ -5502,11 +5497,61 @@ double sp_bigint_to_double(sp_Bigint *b) {
    int64 round-trip truncated `0x9e37…c16 & MASK64` to its signed value). A
    negative operand follows Ruby's infinite two's-complement, which is uncommon
    for bit masking, so it still routes through the int64 path. */
+/* Load |x| into `out` as an n-limb two's-complement word when x is negative,
+   so a bitwise op sees the infinitely sign-extended value Ruby specifies. */
+static void bw_load(const mpz_t *m, mp_limb *out, size_t n, int neg) {
+  for (size_t i = 0; i < n; i++) out[i] = dg(m, i);
+  if (!neg) return;
+  mp_limb carry = 1;
+  for (size_t i = 0; i < n; i++) {
+    mp_limb v = (mp_limb)(~out[i] & DIG_MASK);
+    mp_limb sum = (mp_limb)((v + carry) & DIG_MASK);
+    carry = (carry && sum == 0) ? 1 : 0;
+    out[i] = sum;
+  }
+}
+
 static sp_Bigint *sp_bigint_bitwise(sp_Bigint *a, sp_Bigint *b, char op) {
-  if (!a || !b || a->mpz.sn < 0 || b->mpz.sn < 0) {
+  if (!a || !b) {
     int64_t x = sp_bigint_to_int(a), y = sp_bigint_to_int(b);
     int64_t r = (op == '&') ? (x & y) : (op == '|') ? (x | y) : (x ^ y);
     return sp_bigint_new_int(r);
+  }
+  /* A negative operand is not a fixed-width word: `-1 & 0xFFFFFFFFFFFFFFFF` is
+     that mask, not -1, so the walk runs over two's-complement limbs and folds
+     the result back into sign+magnitude. */
+  if (a->mpz.sn < 0 || b->mpz.sn < 0) {
+    int sa = a->mpz.sn < 0, sb = b->mpz.sn < 0;
+    size_t na0 = a->mpz.sz, nb0 = b->mpz.sz;
+    size_t n = (na0 > nb0 ? na0 : nb0) + 1;
+    mp_limb *ta = (mp_limb *)calloc(n, sizeof(mp_limb));
+    mp_limb *tb = (mp_limb *)calloc(n, sizeof(mp_limb));
+    if (!ta || !tb) { free(ta); free(tb); sp_oom_die(); }
+    bw_load(&a->mpz, ta, n, sa);
+    bw_load(&b->mpz, tb, n, sb);
+    int rneg = (op == '&') ? (sa && sb) : (op == '|') ? (sa || sb) : (sa != sb);
+    for (size_t i = 0; i < n; i++)
+      ta[i] = (mp_limb)(((op == '&') ? (ta[i] & tb[i])
+                       : (op == '|') ? (ta[i] | tb[i])
+                                     : (ta[i] ^ tb[i])) & DIG_MASK);
+    if (rneg) {  /* back to magnitude: negate the two's-complement word */
+      mp_limb carry = 1;
+      for (size_t i = 0; i < n; i++) {
+        mp_limb v = (mp_limb)(~ta[i] & DIG_MASK);
+        mp_limb sum = (mp_limb)((v + carry) & DIG_MASK);
+        carry = (carry && sum == 0) ? 1 : 0;
+        ta[i] = sum;
+      }
+    }
+    sp_Bigint *rb = sp_bigint_alloc();
+    mpz_t z;
+    mpz_init_heap(sp_mpz_ctx, &z, n);
+    for (size_t i = 0; i < n; i++) z.p[i] = ta[i];
+    z.sn = rneg ? -1 : 1;
+    trim(&z);
+    free(ta); free(tb);
+    rb->mpz = z;
+    return rb;
   }
   size_t na = a->mpz.sz, nb = b->mpz.sz;
   size_t n = (op == '&') ? (na < nb ? na : nb) : (na > nb ? na : nb);
@@ -5528,19 +5573,39 @@ sp_Bigint *sp_bigint_xor(sp_Bigint *a, sp_Bigint *b) { return sp_bigint_bitwise(
 
 sp_Bigint *sp_bigint_shr(sp_Bigint *a, int64_t n);  /* forward decl for mutual recursion */
 
+/* Is any of the low `e` bits of |x| set? The question a floored right shift
+   has to ask: it is what separates -7 >> 1 from -6 >> 1. */
+static int mpz_low_bits_set(const mpz_t *x, int64_t e) {
+  size_t digs = (size_t)(e / DIG_SIZE), bs = (size_t)(e % DIG_SIZE);
+  size_t whole = digs < x->sz ? digs : x->sz;
+  for (size_t i = 0; i < whole; i++) if (x->p[i]) return 1;
+  if (bs && digs < x->sz && (x->p[digs] & ((((mp_limb)1) << bs) - 1))) return 1;
+  return 0;
+}
+
 sp_Bigint *sp_bigint_shl(sp_Bigint *a, int64_t n) {
   if (n < 0) return sp_bigint_shr(a, -n);
-  /* x << n == x * 2^n at arbitrary precision (the old `to_int << n` truncated
-     the bigint to 64 bits and overflowed the shift). */
-  return sp_bigint_mul(a, sp_bigint_pow(sp_bigint_new_int(2), n));
+  /* x << n == x * 2^n, but moving limbs rather than building 2^n and running
+     a general multiply over it: the old form cost a pow and an O(len^2)
+     multiply where the answer is a memmove and a bit rotate. */
+  sp_Bigint *r = sp_bigint_alloc();
+  mpz_init(sp_mpz_ctx, &r->mpz);
+  mpz_mul_2exp(sp_mpz_ctx, &r->mpz, &a->mpz, (mrb_int)n);
+  return r;
 }
 
 sp_Bigint *sp_bigint_shr(sp_Bigint *a, int64_t n) {
   if (n < 0) return sp_bigint_shl(a, -n);
-  /* x >> n == floor(x / 2^n) at arbitrary precision (the old `to_int >> n`
-     truncated the bigint to 64 bits). sp_bigint_div floors toward -inf, which
-     matches Ruby's arithmetic right shift for negative values too. */
-  return sp_bigint_div(a, sp_bigint_pow(sp_bigint_new_int(2), n));
+  /* Likewise a limb shift instead of building 2^n and dividing by it. But
+     mpz_div_2exp shifts the MAGNITUDE and keeps the sign, so it truncates
+     toward zero where Ruby's >> floors: a negative value that lost a set bit
+     is one lower (-7 >> 1 is -4, not -3). */
+  sp_Bigint *r = sp_bigint_alloc();
+  mpz_init(sp_mpz_ctx, &r->mpz);
+  mpz_div_2exp(sp_mpz_ctx, &r->mpz, &a->mpz, (mrb_int)n);
+  if (a->mpz.sn < 0 && mpz_low_bits_set(&a->mpz, n))
+    return sp_bigint_sub(r, sp_bigint_new_int(1));
+  return r;
 }
 
 sp_Bigint *sp_bigint_not(sp_Bigint *a) {
@@ -5550,13 +5615,15 @@ sp_Bigint *sp_bigint_not(sp_Bigint *a) {
 }
 
 const char *sp_bigint_to_s(sp_Bigint *b) {
-  if (!b) {   /* defensive: a NULL bigint surfaces as "0" rather than segfaulting.
-                 Heap-allocate it (not a string literal) so every return value of
-                 this function has one uniform owner-frees contract -- callers
-                 cannot otherwise tell a malloc'd "0" (a real zero bigint) from a
-                 literal one, so a literal here would make freeing unsafe. */
-    char *z = (char*)malloc(2);
-    z[0] = '0'; z[1] = '\0';
+  /* Every return is a STRING-HEAP string, marker byte and all. It has to be:
+     the result reaches Ruby as an ordinary String (Integer#to_s, poly #to_s /
+     #inspect, BigRational#to_s), and sp_str_byte_len reads the byte BEFORE it.
+     A bare malloc'd buffer has no such byte, so the length came out of whatever
+     preceded the chunk and the next concat memcpy'd that many bytes (#3396).
+     Callers must not free it -- the GC owns it. */
+  if (!b) {   /* defensive: a NULL bigint surfaces as "0" rather than segfaulting */
+    char *z = sp_str_alloc_ext(1);
+    z[0] = '0';
     return z;
   }
   sp_bigint_init_ctx();
@@ -5572,8 +5639,11 @@ const char *sp_bigint_to_s(sp_Bigint *b) {
      past 2^63.) */
   if (z->sz <= 1 || (z->sz == 2 && (z->p[1] >> (DIG_SIZE - 1)) == 0)) {
     int64_t v = sp_bigint_to_int(b);
-    char *s = (char*)malloc(24);
-    snprintf(s, 24, "%lld", (long long)v);
+    char tmp[24];
+    int n = snprintf(tmp, sizeof tmp, "%lld", (long long)v);
+    if (n < 0) n = 0;
+    char *s = sp_str_alloc_ext((size_t)n);
+    memcpy(s, tmp, (size_t)n);
     return s;
   }
   /* Use mpz_get_str which dispatches to:
@@ -5585,8 +5655,8 @@ const char *sp_bigint_to_s(sp_Bigint *b) {
   mpz_get_str(sp_mpz_ctx, buf, (mrb_int)est, 10, z);
   /* mpz_get_str writes into buf; return a trimmed copy */
   size_t len = strlen(buf);
-  char *result = (char*)malloc(len + 1);
-  memcpy(result, buf, len + 1);
+  char *result = sp_str_alloc_ext(len);
+  memcpy(result, buf, len);
   free(buf);
   return result;
 }
@@ -5595,7 +5665,7 @@ const char *sp_bigint_to_s(sp_Bigint *b) {
    excluding the sign bit -- i.e. the magnitude's bit count for a non-negative
    value, and (|self| - 1)'s bit count for a negative one (a magnitude that is an
    exact power of two loses a bit). Zero has bit_length 0. */
-intptr_t sp_bigint_bit_length(sp_Bigint *b) {   /* intptr_t boundary: see sp_bigint_powmod */
+intptr_t sp_bigint_bit_length(sp_Bigint *b) {
   if (!b) return 0;
   sp_bigint_init_ctx();
   mpz_t *z = &b->mpz;
@@ -5605,18 +5675,26 @@ intptr_t sp_bigint_bit_length(sp_Bigint *b) {   /* intptr_t boundary: see sp_big
   mp_limb top = z->p[n - 1];
   int topbits = 0;
   for (mp_limb t = top; t; t >>= 1) topbits++;
-  /* Receiver is always a non-negative bignum today: a bignum +/- result isn't
-     yet typed as TY_BIGINT, so no negative value can reach bit_length. CRuby's
-     (-m).bit_length == (m-1).bit_length rule belongs with the change that closes
-     that gap, so it and its test land together. */
-  return (mrb_int)(n - 1) * (mrb_int)DIG_SIZE + topbits;
+  mrb_int len = (mrb_int)(n - 1) * (mrb_int)DIG_SIZE + topbits;
+  /* bit_length measures the TWO'S-COMPLEMENT magnitude, so a negative value
+     is (m-1).bit_length rather than m's: (-(2**100)).bit_length is 100 where
+     (2**100).bit_length is 101. Subtracting one shortens a magnitude only
+     when it is exactly a power of two, which is the test below -- done on
+     the limbs rather than by building |b|-1, so the function still allocates
+     nothing and cannot collect a caller's unrooted operand. */
+  if (sp_bigint_sign(b) < 0) {
+    int pow2 = (top & (top - 1)) == 0;
+    for (size_t i = 0; pow2 && i + 1 < n; i++) if (z->p[i]) pow2 = 0;
+    if (pow2) len--;
+  }
+  return len;
 }
 
 /* --- Bignum receiver conveniences (#2025) ------------------------------- */
 
 /* to_s(base): mpz_get_str renders any base in [2, 36]. Owner-frees contract
    matches sp_bigint_to_s. */
-const char *sp_bigint_to_s_base(sp_Bigint *b, intptr_t base) {   /* intptr_t boundary: see sp_bigint_powmod */
+const char *sp_bigint_to_s_base(sp_Bigint *b, intptr_t base) {
   if (base < 2 || base > 36) {
     sp_raise_cls("ArgumentError", sp_sprintf("invalid radix %lld", (long long)base));
     return NULL;
@@ -5635,10 +5713,9 @@ const char *sp_bigint_to_s_base(sp_Bigint *b, intptr_t base) {   /* intptr_t bou
 
 int sp_bigint_even_p(sp_Bigint *b) {
   if (!b) return 1;
-  const char *s10 = sp_bigint_to_s(b);
+  const char *s10 = sp_bigint_to_s(b);   /* string heap: the GC owns it */
   size_t n = strlen(s10);
   int last = n ? s10[n - 1] - '0' : 0;
-  free((void *)s10);
   return (last % 2) == 0;
 }
 
@@ -5675,11 +5752,6 @@ sp_Bigint *sp_bigint_isqrt(sp_Bigint *a) {
    a malloc'd mrb_int buffer (caller frees *out). Any base >= 2 -- radices
    beyond 36 can't ride the to_s(base) text path. Returns the digit count,
    or -1 for a negative receiver (the caller raises Math::DomainError). */
-/* intptr_t boundary (see sp_bigint_powmod): base, the returned count, and every
-   *out buffer element are the generated side's mrb_int (intptr_t). Spelling the
-   buffer int64_t here would make the caller -- which reads it as `mrb_int *`
-   (intptr_t*) -- stride past every other element on ILP32. Digits are < base, so
-   they always fit intptr_t. */
 intptr_t sp_bigint_digits_buf(sp_Bigint *a, intptr_t base, intptr_t **out) {
   *out = NULL;
   if (!a) return 0;

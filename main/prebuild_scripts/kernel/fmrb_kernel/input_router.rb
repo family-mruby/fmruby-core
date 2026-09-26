@@ -146,7 +146,10 @@ module InputRouterMixin
 
         # Create new binary message with relative coordinates
         # Format: subtype(1 byte) + button(1 byte) + x(2 bytes) + y(2 bytes)
-        relative_data = "\x00\x00\x00\x00\x00\x00"
+        # .b: string literals are frozen under Spinel, so a buffer that setbyte
+        # fills has to be a fresh copy; binary, because a NUL-led literal copied as
+        # text is cut at the first NUL once Spinel holds it in a String handle.
+        relative_data = "\x00\x00\x00\x00\x00\x00".b
         relative_data.setbyte(0, subtype)
         relative_data.setbyte(1, button)
         relative_data.setbyte(2, relative_x & 0xFF)        # x low byte
@@ -226,7 +229,7 @@ module InputRouterMixin
             relative_y = y - target_window[:y]
 
             # Create new binary message with relative coordinates
-            relative_data = "\x00\x00\x00\x00\x00\x00"
+            relative_data = "\x00\x00\x00\x00\x00\x00".b
             relative_data.setbyte(0, subtype)
             relative_data.setbyte(1, button)
             relative_data.setbyte(2, relative_x & 0xFF)        # x low byte
@@ -261,7 +264,7 @@ module InputRouterMixin
           if target_window
             relative_x = x - target_window[:x]
             relative_y = y - target_window[:y]
-            relative_data = "\x00\x00\x00\x00\x00\x00"
+            relative_data = "\x00\x00\x00\x00\x00\x00".b
             relative_data.setbyte(0, subtype)
             relative_data.setbyte(1, button)                   # notches (signed)
             relative_data.setbyte(2, relative_x & 0xFF)
@@ -289,7 +292,7 @@ module InputRouterMixin
             target_name = target_window[:app_name]
 
             # Create new binary message with relative coordinates
-            relative_data = "\x00\x00\x00\x00\x00\x00"
+            relative_data = "\x00\x00\x00\x00\x00\x00".b
             relative_data.setbyte(0, subtype)
             relative_data.setbyte(1, button)
             relative_data.setbyte(2, relative_x & 0xFF)        # x low byte

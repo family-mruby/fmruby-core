@@ -19,7 +19,7 @@ module FmrbSpx
 
   # --- messaging ---
   # recv returns the payload as a binary-safe String (:binstr; byte-exact via
-  # sp_net_bin_len, so embedded NUL survives) and writes type/src into the out
+  # sp_ffi_bin_len, so embedded NUL survives) and writes type/src into the out
   # buffers. On timeout the String is empty and type_out = -1.
   ffi_func :fmrb_spx_recv_message, [:int, :ptr, :ptr], :binstr
   # send: the payload is passed as :str (pointer to the String's byte buffer)

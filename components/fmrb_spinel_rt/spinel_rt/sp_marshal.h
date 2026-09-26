@@ -7,12 +7,12 @@
    in sp_gc.h. The construction side (intern a symbol, build a result array/hash,
    box Complex/Rational, dispatch a user object, raise) needs types and state
    that live only in the generated TU, so the generated TU fills the sp_marshal_v
-   vtable below at startup (see sp_re_init in codegen).
+   vtable below at startup (see sp_tu_init in codegen).
 
    Covers nil/true/false/Integer/Float/String/Symbol + Array + Hash + Bignum +
    Complex + Rational + plain user objects in the CRuby 4.8 wire format, with the
    object-link table so cyclic / shared references round-trip. */
-#include "sp_gc.h"   /* sp_RbVal, sp_sym, mrb_int, mrb_float */
+#include "sp_gc.h"   /* sp_RbVal, sp_sym, sp_int, sp_float */
 
 /* Dump buffer + wire-emit primitives. Public so the codegen-generated
    per-class object dumper (registered as sp_marshal_v.obj_dump) can write the
@@ -30,7 +30,7 @@ void sp_mar_sym(sp_mar_buf *b, const char *name);
 void sp_mar_long(sp_mar_buf *b, long n);
 void sp_mar_w(sp_mar_buf *b, sp_RbVal v);
 
-/* Runtime vtable filled by the generated TU (sp_re_init). The read side uses
+/* Runtime vtable filled by the generated TU (sp_tu_init). The read side uses
    the sp_json_* hooks in sp_gc.h instead. */
 typedef struct {
   sp_sym  (*sym_intern)(const char *);
@@ -38,14 +38,17 @@ typedef struct {
   void     (*arr_push)(sp_RbVal arr, sp_RbVal v);
   sp_RbVal (*hash_new)(void);
   void     (*hash_set)(sp_RbVal h, sp_RbVal k, sp_RbVal v);
-  sp_RbVal (*box_complex)(mrb_float re, mrb_float im);
-  sp_RbVal (*box_rational)(mrb_int num, mrb_int den);
+  sp_RbVal (*box_complex)(sp_float re, sp_float im);
+  sp_RbVal (*box_rational)(sp_int num, sp_int den);
   int      (*obj_dump)(sp_mar_buf *b, int cls_id, void *p);   /* generated; writes `o` */
   sp_RbVal (*obj_load)(const char *clsname, sp_RbVal iv, int *ok); /* iv = boxed PolyArray */
   void     (*raise)(const char *cls, const char *msg);
 } sp_marshal_vt;
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 extern sp_marshal_vt sp_marshal_v;
+#endif
 
 const char *sp_marshal_dump(sp_RbVal v);
-sp_RbVal sp_marshal_load(const char *s, mrb_int len);
+sp_RbVal sp_marshal_load(const char *s, sp_int len);
+void sp_marshal_mark_active(void);   /* mark the in-flight load tables (lib/sp_marshal.c) */
 #endif /* SP_MARSHAL_H */

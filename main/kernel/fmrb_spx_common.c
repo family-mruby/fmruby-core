@@ -7,9 +7,6 @@
  * configuration (mruby kernel + Spinel desktop) -- where fmrb_spx_kernel.c is
  * NOT compiled -- still resolves them:
  *
- * - sp_net_bin_len: the byte-length publisher the runtime's codegen emits an
- *   `extern int sp_net_bin_len` for at every :binstr FFI callsite (normally in
- *   sp_net.c, excluded from the fmruby runtime snapshot).
  * - fmrb_spx_board_millis / fmrb_spx_log_write: generic (non-kernel-specific)
  *   millis + logging used by the Log / Machine modules of both the kernel base
  *   and the app base. They were originally in fmrb_spx_kernel.c; moved here so
@@ -27,9 +24,6 @@
 #include "fmrb_theme.h"
 
 static const char *TAG = "spx";
-
-/* :binstr length publisher (see file comment). */
-int sp_net_bin_len = 0;
 
 uint32_t fmrb_spx_board_millis(void)
 {
