@@ -54,8 +54,9 @@ static const char *TAG = "fft_spx";
    and compiled with --entry fmrb_fft_spinel_entry. */
 extern int fmrb_fft_spinel_entry(void);
 
-/* :binstr length publisher, defined in fmrb_spx_common.c. */
-extern int sp_net_bin_len;
+/* The current instance's :binstr length (runtime sp_ctx.c; the host C
+   cannot include sp_ctx.h, so it is declared here). */
+int *sp_ctx_ffi_bin_len(void);
 
 /* Pool for the Spinel instance. 1024 points needs six Float arrays of 1024
    (~8KB each once boxed) plus the sample and magnitude Strings; 192KB leaves
@@ -188,10 +189,10 @@ void fmrb_fft_spinel_end(void)
 const char *fmrb_fft_spx_samples(void)
 {
     if (!s_in) {
-        sp_net_bin_len = 0;
+        *sp_ctx_ffi_bin_len() = 0;
         return "";
     }
-    sp_net_bin_len = s_n * 2;
+    *sp_ctx_ffi_bin_len() = s_n * 2;
     return (const char *)s_in;
 }
 

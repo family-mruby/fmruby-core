@@ -9,11 +9,40 @@
 #include <unistd.h>     /* sysconf (worker count) */
 #include <time.h>       /* clock_gettime (Kernel#sleep) */
 #include <errno.h>      /* EINTR (sleep fallback) */
+#ifdef __linux__
+#include <sys/prctl.h>  /* PR_SET_NAME (the sweeper threads' name) */
+#endif
+#include <sys/wait.h>   /* waitpid (sp_sched_wait_child) */
 #include <signal.h>     /* preemption signal (SIGURG by default) */
 #include <strings.h>    /* strcasecmp (SPINEL_PREEMPT_SIGNAL by name) */
 #include <stdint.h>     /* intptr_t (worker id passed via pthread arg) */
 #include <poll.h>       /* poll (scheduler-aware I/O) */
 #include <fcntl.h>      /* fcntl O_NONBLOCK (monitor wake pipe) */
+
+/* Which readiness backend this build has, decided BEFORE anything that tests
+   it. It used to be declared beside the registration table, halfway down --
+   below the wake helpers, whose `#ifdef SP_EV_BACKEND` arms were therefore
+   compiled out. Every cross-worker kick vanished with them, and only the
+   backstop timeout was left to deliver a wake: the ping-pong ran at full speed
+   on one worker (which needs no kick) and at a twentieth of it on two. */
+#if defined(SP_THREADS) && defined(__linux__)
+#define SP_EV_BACKEND 1
+#define SP_EV_EPOLL 1
+#include <sys/epoll.h>
+#elif defined(SP_THREADS) && (defined(__APPLE__) || defined(__FreeBSD__) || \
+                              defined(__OpenBSD__) || defined(__NetBSD__))
+/* kqueue keys by (descriptor, filter), so READ and WRITE are two entries for
+   one fd; EV_ONESHOT DELETES the entry after its delivery where epoll only
+   disables it, which makes the re-arm a plain EV_ADD. Everything above the
+   three backend calls is the same on both. */
+#define SP_EV_BACKEND 1
+#define SP_EV_KQUEUE 1
+#include <sys/types.h>   /* <sys/event.h> wants it first on the BSDs */
+#include <sys/event.h>
+#endif
+#ifdef SP_EV_BACKEND
+static void sp_ev_kick(int wid);
+#endif
 
 /* Reached by name (defined in lib/sp_alloc.c or the generated TU), exactly as
    lib/sp_fiber.c reaches them. */
@@ -62,7 +91,16 @@ void (*sp_safepoint_publish_hook)(void) = NULL;   /* set by the generated TU (sp
  * are entered and left with the lock held, bracketing their transfers. In the
  * single-threaded archive the macros are no-ops, so that build is byte-identical
  * and the N=1 path is unchanged save for the (uncontended) lock calls. */
+#ifndef SP_MAX_WORKERS
 #define SP_MAX_WORKERS 256   /* both builds: sizes the per-worker run-queue array */
+#endif
+/* The monotonic clock, outside the SP_THREADS guard: the monitor uses it for
+   deadlines, and so does Thread#join(limit), which is compiled into both
+   builds because the codegen emits its symbol unconditionally. */
+static double sp_monotonic_now(void) {
+  struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
 #ifdef SP_THREADS
 #include <pthread.h>
 static pthread_mutex_t g_sched_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -77,7 +115,7 @@ static pthread_mutex_t g_sched_lock = PTHREAD_MUTEX_INITIALIZER;
  * or, if one is already running, parks like everyone else -- there is no
  * separate collector lock to block on, so a worker that crossed the threshold
  * can never stall the collector by being un-parkable. */
-static int            g_nworkers = 1;   /* worker count; C-3b raises it past 1 */
+int                   sp_active_workers = 1;   /* exported: worker count */   /* worker count; C-3b raises it past 1 */
 static int            g_nparked  = 0;   /* workers parked at the barrier right now */
 /* The fiber each parked worker was running when it published its roots (a green
    thread, or the worker's root fiber for an idle/main worker). The collector
@@ -87,9 +125,105 @@ static int            g_nparked  = 0;   /* workers parked at the barrier right n
 static sp_Fiber      *g_parked_fiber[2 * SP_MAX_WORKERS];   /* up to 2 per worker: current + root */
 static int            g_n_parked_fiber = 0;
 static int            g_stw_active = 0; /* a collection is in progress */
+/* Parallel sweep phase, inside the stop-the-world window. The workers are
+   already parked here doing nothing while the collector sweeps, and the sweep
+   is 93% of the stopped time -- so hand each of them its OWN slot instead.
+   Its own, not any slot: freeing an object returns it to the arena it was
+   allocated from, and a single thread freeing eight workers' objects pays for
+   eight arena locks and eight cold metadata sets. */
+static int            g_sweep_go = 0;                 /* collector wants the tasks run */
+static pthread_cond_t g_sweep_cv = PTHREAD_COND_INITIALIZER;
+/* survivors, per slot, spliced onto the shared old heap by the collector */
+static sp_gc_hdr     *g_sw_head[SP_MAX_WORKERS];
+static sp_gc_hdr     *g_sw_tail[SP_MAX_WORKERS];
+static size_t         g_sw_bytes[SP_MAX_WORKERS];
+/* Decided once per collection by sp_sched_par_sweep, read by every worker. */
+static int    g_str_sweep = 0;
+static int    g_str_major = 0;
+static size_t g_str_promoted[SP_MAX_WORKERS];
+/* The sweep is a list of TASKS, not a slot per worker. One busy worker's
+   young lists are the bulk of most cycles on a server (a request handler
+   allocates; the others idle), and with a slot per worker that one worker
+   swept alone while the rest waited: the longest slot WAS the phase, four
+   milliseconds of thirty workers idle. So a slot is several tasks -- its
+   object list, its old string list on a major, and each of its SP_STR_YSUB
+   young string lists -- and every parked worker claims tasks off a counter
+   until none is left. The tasks of one slot touch distinct lists; what they
+   share (the slot's old string head and byte counters) is settled by the
+   collector afterwards from the per-task results. */
+enum { SW_OBJ, SW_STR_OLD, SW_STR_YOUNG, SW_CHUNKS };
+typedef struct { short kind, wid, sub; } sp_sw_task;
+#define SW_TASK_MAX (SP_MAX_WORKERS * (3 + SP_STR_YSUB))
+static sp_sw_task     g_sw_tasks[SW_TASK_MAX];
+static int            g_sw_ntasks = 0;
+static int            g_sw_next = 0;    /* claimed by fetch-add, off the lock */
+static int            g_sw_done = 0;    /* completed, under the lock */
+/* per (slot, young list): the sweep's local results, spliced in by the collector */
+static sp_str_hdr    *g_sy_keep[SP_MAX_WORKERS][SP_STR_YSUB];
+static sp_str_hdr    *g_sy_tail[SP_MAX_WORKERS][SP_STR_YSUB];
+static size_t         g_sy_moved[SP_MAX_WORKERS][SP_STR_YSUB];
+static size_t         g_sy_held[SP_MAX_WORKERS][SP_STR_YSUB];
+/* SPINEL_GC_PHASES: the longest single task of each sweep, summed, beside
+   the phase's wall. The gap between the two is the cost of driving the
+   parallel phase itself (waking the parked workers and collecting their
+   reports), which is what to look at when the phase is long and the tasks
+   are not. */
+static unsigned long g_sw_slot_max_us = 0;
+static unsigned long g_sw_task_sum_us = 0;   /* every task's time added: the work the phase spread */
+static unsigned long g_sw_task_max_kind[4];  /* the kind of the longest task, for the report */
+void sp_gc_sweep_chunks_slot(int wid);   /* lib/sp_gc.c: the slab bitmaps of one slot, this cycle */
+static void sp_sweep_task(const sp_sw_task *t) {
+  double t0 = sp_gc_ph_on ? sp_monotonic_now() : 0;
+  switch (t->kind) {
+    case SW_OBJ: sp_gc_sweep_slot(t->wid, &g_sw_head[t->wid], &g_sw_tail[t->wid], &g_sw_bytes[t->wid]); break;
+    case SW_CHUNKS: sp_gc_sweep_chunks_slot(t->wid); break;
+    case SW_STR_OLD: sp_str_sweep_old_one(t->wid); break;
+    default: sp_str_sweep_young_one(t->wid, t->sub, &g_sy_keep[t->wid][t->sub], &g_sy_tail[t->wid][t->sub],
+                                    &g_sy_moved[t->wid][t->sub], &g_sy_held[t->wid][t->sub]); break;
+  }
+  if (sp_gc_ph_on) {
+    /* microseconds in an integer, so the max is one atomic */
+    unsigned long d = (unsigned long)((sp_monotonic_now() - t0) * 1e6), m;
+    __atomic_fetch_add(&g_sw_task_sum_us, d, __ATOMIC_RELAXED);
+    __atomic_fetch_add(&g_sw_task_max_kind[t->kind], d, __ATOMIC_RELAXED);
+    do { m = __atomic_load_n(&g_sw_slot_max_us, __ATOMIC_RELAXED); if (d <= m) break; }
+    while (!__atomic_compare_exchange_n(&g_sw_slot_max_us, &m, d, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
+  }
+}
+/* The parallel mark: parked workers lent to the collector's drain. */
+static int      g_mk_go = 0;          /* a drain wants helpers */
+static unsigned g_mk_gen = 0;         /* one per drain; a worker helps a drain once */
+static int      g_mk_joined = 0;      /* helpers that took a seat this drain */
+static int      g_mk_active = 0;      /* helpers still inside the drain */
+static int      g_mk_max = 0;         /* seats: SPINEL_GC_MARKERS, default min(cores, 8) */
+static pthread_cond_t g_mk_cv = PTHREAD_COND_INITIALIZER;   /* the collector waits for active == 0 */
+static SP_TLS unsigned g_mk_seen = 0;
+static int g_cs_help = 0;           /* parked workers may claim the concurrent sweep's tasks */
+static int g_cs_ntasks = 0, g_cs_finished = 0;   /* the concurrent sweep's task list (below) */
+static int g_cs_running = 0;                     /* sweeper threads and barrier helpers inside the task list */
+extern double sp_gc_ph_park_sweeping; extern unsigned long long sp_gc_ph_park_sweeping_n;   /* sp_gc.c */
+static int g_cs_unclaimed = 0;                   /* tasks nobody has taken yet */
+static void sp_cs_help_run(void);
+static void sp_cs_owner_run(int wid);
+static int g_cs_full;   /* the running concurrent sweep is a full cycle's (defined with its siblings below) */
+static int g_cs_owner_env = -1;                  /* SPINEL_GC_OWNER=0: the sweeper threads take every list */
+/* Claim and run tasks until the list is exhausted. Off the scheduler lock. */
+static int sp_sweep_run_tasks(void) {
+  int ran = 0;
+  for (;;) {
+    int i = __atomic_fetch_add(&g_sw_next, 1, __ATOMIC_RELAXED);
+    if (i >= g_sw_ntasks) break;
+    sp_sweep_task(&g_sw_tasks[i]);
+    ran++;
+  }
+  return ran;
+}
 static unsigned       g_stw_epoch = 0;  /* bumped each collection; scopes g_nparked to one */
 static SP_TLS int     g_collector_active = 0;  /* this worker is mid-collection (re-entrancy guard) */
 static int            g_shutdown = 0;   /* set at drain so helper workers exit their loop */
+static int            g_workers_started = 0;  /* helper pool + monitor spawned lazily on the first Thread */
+static int            g_worker_cap = 0;       /* max helper workers = min(cores, SPINEL_WORKERS) */
+static int            g_helpers_spawned = 0;  /* helpers created so far; ids 1..g_helpers_spawned */
 static pthread_cond_t g_sched_work = PTHREAD_COND_INITIALIZER;   /* idle workers wait for runnable work */
 static pthread_cond_t g_stw_request = PTHREAD_COND_INITIALIZER;  /* collector waits for parks */
 static pthread_cond_t g_stw_release = PTHREAD_COND_INITIALIZER;  /* parked workers wait for clear */
@@ -98,14 +232,36 @@ static pthread_t      g_sysmon;                                  /* monitor: wak
 static int            g_sysmon_started = 0;
 static int            g_sysmon_idle = 0; /* monitor is parked on g_sysmon_cv (signal it to start ticking) */
 static int            g_sysmon_pipe[2] = { -1, -1 };  /* self-pipe: wake the monitor out of poll() */
+/* What the monitor actually did, for SPINEL_SCHED_STATS=1. The cost of a wake
+   is O(parked) three times over (rebuild, poll, unlink), so the number that
+   sizes a deployment is iterations x set size -- and neither is visible from
+   outside the process. Counted unconditionally: they are four increments on
+   the monitor's own thread, under the lock it already holds. (#4317) */
+static unsigned long long g_mon_iters = 0;    /* monitor loop turns */
+static unsigned long long g_mon_polls = 0;    /* poll(2) calls it made */
+static unsigned long long g_mon_pollfds = 0;  /* descriptors handed to those polls */
+static unsigned long long g_mon_regs = 0;     /* I/O parks registered */
+static unsigned long long g_mon_readied = 0;  /* waiters the poll found ready */
 /* Wake the monitor whether it idles on the condvar or blocks in poll(). PRE: lock held. */
 static void sp_sysmon_wake(void) {
   if (g_sysmon_idle) pthread_cond_signal(&g_sysmon_cv);
   else if (g_sysmon_pipe[1] >= 0) { char c = 1; ssize_t r = write(g_sysmon_pipe[1], &c, 1); (void)r; }
 }
-static double sp_monotonic_now(void) {
-  struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+
+/* The earliest deadline on either wait list, cached. The monitor used to find
+   it by walking both lists on every turn, which is an O(parked) pass that
+   survived moving the descriptors into the kernel -- and with the event set the
+   turns are more frequent, so the walk became the population term it had been
+   hiding behind. Kept as a minimum here instead: a new deadline lowers it, and
+   only when it actually passes does the monitor walk to expire what is due and
+   recompute. Waking early is harmless; the walk that follows re-derives it. */
+static double g_nearest = 0.0;   /* 0 = nothing timed */
+static void sp_deadline_added(double d) {   /* PRE: sched lock held */
+  if (d <= 0.0) return;
+  if (g_nearest == 0.0 || d < g_nearest) {
+    g_nearest = d;
+    sp_sysmon_wake();   /* it must shorten its wait */
+  }
 }
 
 /* ---- preemption (design §5): timeslice tracking + the one safepoint flag ----
@@ -120,7 +276,33 @@ static double sp_monotonic_now(void) {
 #define SP_PREEMPT_TICK    0.005   /* monitor re-checks worker timeslices this often while busy */
 static int g_npreempt = 0;         /* preempt_requests set but not yet consumed */
 static int g_preempt_sig = SIGURG; /* the signal the monitor sends; SPINEL_PREEMPT_SIGNAL overrides */
-typedef struct { pthread_t tid; sp_thread *cur; double since; int active; } sp_wslot;
+typedef struct { pthread_t tid; sp_thread *cur; double since; int active;
+                 /* A STARTED green thread is pinned to its home worker, so the wake
+                    that readies it has exactly one worker to reach. Waiting on one
+                    shared condvar meant that wake had to BROADCAST -- every idle
+                    worker rose, serialised on the scheduler lock, found nothing and
+                    slept again, with the monitor (the only thing that readies I/O
+                    waiters) queued behind them. Adding workers then subtracted
+                    throughput (#4305). Each helper waits on its own condvar instead;
+                    `idle` says it is on it, and is written only under the lock, so a
+                    wake that lands between the enqueue and the wait is not lost. */
+                 pthread_cond_t cv; int idle;
+                 /* (b), #4306: the worker waits on its OWN readiness set, holding the
+                    descriptors of the threads pinned to it -- so a thread it can run
+                    is one it wakes for itself, with no monitor round trip and no
+                    condvar hand-off. `kick` is a self-pipe in that set: it is how a
+                    stop-the-world, a shutdown, or work enqueued for this worker
+                    breaks it out of the wait, since a signal on `cv` no longer
+                    reaches it there. `ev_waiting` says which of the two it is on,
+                    and like `idle` it is written only under the lock. */
+                 int evfd; int kick[2]; int kick_armed; int ev_waiting;
+                 /* Green threads whose home this worker is (pinned here for life, see
+                    home_wid). A thread's first run fixes its home, so where an
+                    unstarted thread is first run decides the balance for as long as
+                    it lives -- for a server, one connection per thread, that is the
+                    whole run. Counted so sched_pick can place a new thread on the
+                    worker with the fewest. */
+                 int pinned; } sp_wslot;
 static sp_wslot   g_wslot[SP_MAX_WORKERS];   /* per-worker: the green thread it runs + when it started */
 static void sp_recompute_safepoint_flag(void) {   /* PRE: g_sched_lock held */
   SP_SAFEPOINT_SET(g_stw_active || g_npreempt > 0);
@@ -130,24 +312,183 @@ static void sp_recompute_safepoint_flag(void) {   /* PRE: g_sched_lock held */
    the actual yield happens cooperatively at the next safepoint poll (kept minimal
    and async-signal-safe -- a lone relaxed atomic store). */
 static void sp_preempt_handler(int sig) { (void)sig; SP_SAFEPOINT_SET(1); }
-#define SCHED_WAKE()    pthread_cond_signal(&g_sched_work)   /* nudge one idle worker after enqueue/wake */
-#define SCHED_WAKE_ALL() pthread_cond_broadcast(&g_sched_work)  /* wake every waiter to re-check state */
+/* Wake one helper that can take unpinned work; main (worker 0, on g_sched_work)
+   is the fallback when no helper is idle. */
+/* Main waits on its condvar OR, once it has a readiness set, inside that --
+   and a condvar signal does not reach it there. Every wake aimed at main goes
+   through here, because the one that did not (quiescence) left it sitting out
+   its 50ms backstop, which is a ping-pong at 8k hops a second instead of 190k
+   (#4306). */
+/* Wake one worker, whichever kind of wait it is on.
+   The kick BYTE is durable and the ev_waiting FLAG is not: a worker sets the
+   flag under the lock and enters its wait after releasing it, so a kick
+   conditioned on the flag is lost in exactly that window -- the worker then
+   sleeps its whole backstop. That is how a stop-the-world came to wait one
+   out (the collector holds the lock and waits for every worker to park), and
+   it is the wake that went missing about once in four hundred hops. A byte
+   written before the wait is still there when it starts, because the kick
+   descriptor is armed for the whole time the worker has a set. */
+static void sched_kick_worker(int wid) {   /* PRE: sched lock held */
+  if (wid < 0 || wid >= SP_MAX_WORKERS) return;
+#ifdef SP_EV_BACKEND
+  if (g_wslot[wid].evfd > 0) {
+    if (wid != sp_worker_id) sp_ev_kick(wid);   /* ourselves: we loop and re-pick */
+    return;
+  }
+#endif
+  if (wid == 0) { pthread_cond_broadcast(&g_sched_work); return; }
+  if (g_wslot[wid].idle) pthread_cond_signal(&g_wslot[wid].cv);
+}
+
+static void sched_wake_main(void) {   /* PRE: sched lock held */
+#ifdef SP_EV_BACKEND
+  if (g_wslot[0].evfd > 0) { sched_kick_worker(0); return; }
+#endif
+  pthread_cond_broadcast(&g_sched_work);
+}
+
+static void sched_wake_idle_helper(void) {   /* PRE: sched lock held */
+  for (int i = 1; i < sp_active_workers; i++) {
+#ifdef SP_EV_BACKEND
+    if (g_wslot[i].evfd > 0) { sched_kick_worker(i); return; }
+#endif
+    if (g_wslot[i].idle) { pthread_cond_signal(&g_wslot[i].cv); return; }
+  }
+  sched_wake_main();
+}
+/* Every waiter re-checks state: helpers on their own condvars, main on its
+   pump. Used where the state change is not one thread becoming runnable --
+   shutdown, the STW barrier, quiescence. */
+static unsigned char g_native_out[SP_MAX_WORKERS];    /* out of the world, roots published: SP_OUT_IDLE / SP_OUT_NATIVE, or 0 */
+#define SP_OUT_IDLE   1   /* in the scheduler's idle wait: can be kicked to sweep its own lists */
+#define SP_OUT_NATIVE 2   /* in a blocking native call: a sweeper thread takes its lists */
+/* mode 0: everyone (shutdown). 1: a barrier being raised -- a worker out of
+   the world is counted already and stays asleep. 2: a barrier released --
+   the idle ones are kicked so each sweeps its own young lists now, while
+   its cache is warm, rather than at its next wake or by a sweeper thread. */
+static void sched_wake_all_workers(int mode) {   /* PRE: sched lock held */
+  for (int i = 1; i < sp_active_workers; i++) {
+    unsigned char out = __atomic_load_n(&g_native_out[i], __ATOMIC_RELAXED);
+    if (mode == 1 && out) continue;
+    if (mode == 2 && out != SP_OUT_IDLE) continue;
+#ifdef SP_EV_BACKEND
+    if (g_wslot[i].evfd > 0) { sched_kick_worker(i); continue; }
+#endif
+    if (g_wslot[i].idle) pthread_cond_signal(&g_wslot[i].cv);
+  }
+  { unsigned char out0 = __atomic_load_n(&g_native_out[0], __ATOMIC_RELAXED);
+    if (!((mode == 1 && out0) || (mode == 2 && out0 != SP_OUT_IDLE))) sched_wake_main(); }
+}
+/* Wake the one worker that can run a thread pinned to `wid` (see home_wid).
+   Main's worker (0) waits in its pump on the shared condvar, and a signal
+   there could be taken by a helper instead, so it gets the broadcast. */
+static void sched_wake_home(int wid) {   /* PRE: sched lock held */
+  if (wid >= 0) { sched_kick_worker(wid); return; }
+  sched_wake_idle_helper();   /* unpinned: any worker will do */
+}
+#define SCHED_WAKE()    sched_wake_idle_helper()
+#define SCHED_WAKE_ALL() sched_wake_all_workers(0)
+#define SCHED_WAKE_MAIN() sched_wake_main()   /* main's pump alone */
 
 /* Park the calling worker at the barrier until the collection finishes,
    publishing its running green thread's roots first. PRE: g_sched_lock held. */
-static void sp_stw_park_locked(void) {
-  /* Publish the shadow-stack roots plus this worker's live match registers (TLS,
-     so the collector's globals hook does not reach them) into the green thread's
-     saved snapshot, then restore our own root depth -- the snapshot keeps them. */
+/* A worker inside a blocking native call (an ffi_func declared `blocking:
+   true`) has left the world: it runs no Ruby, touches no Ruby object, and
+   its roots were published on the way in, so a collection raised while it
+   is out counts it as parked and marks the fibers it recorded, and the
+   barrier does not wait for the call to return. On the way back, a
+   collection in progress is waited out. The count of such workers joins
+   g_nparked in the collector's wait; a worker that returns while the
+   barrier is up moves itself from one count to the other before waiting,
+   so the collector's condition never goes backwards. */
+static int       g_nnative = 0;                        /* workers out in a blocking native call */
+static SP_TLS int g_native_depth = 0;                  /* this worker: nested enter/leave */
+static sp_Fiber *g_native_fiber[SP_MAX_WORKERS][2];    /* per worker: the fibers to mark while out */
+static int       g_native_nfiber[SP_MAX_WORKERS];
+static void sp_stw_publish_locked(void);
+static void sp_stw_park_locked(void);
+static int sp_cs_chunks_settled(int wid);   /* the concurrent sweep is out of this slot's chunks (below) */
+static SP_TLS int g_native_noop = 0;                   /* entered before the pool existed: nothing to undo */
+/* Leave the world (PRE: sched lock held, no collection active): publish, record
+   the fibers to mark, and count this worker as out. Shared by a blocking
+   native call and by the idle wait in the scheduler loop -- an idle worker
+   has nothing running either, and waking thirty of them so each could park
+   was most of what the barrier waited for. */
+static void sp_out_enter_locked(int wid, int how) {
+  sp_stw_publish_locked();
+  if (wid >= 0 && wid < SP_MAX_WORKERS) {
+    sp_Fiber *root = sp_fiber_worker_root();
+    g_native_nfiber[wid] = 0;
+    if (sp_fiber_current) g_native_fiber[wid][g_native_nfiber[wid]++] = sp_fiber_current;
+    if (root && root != sp_fiber_current) g_native_fiber[wid][g_native_nfiber[wid]++] = root;
+    __atomic_store_n(&g_native_out[wid], (unsigned char)how, __ATOMIC_RELEASE);
+  }
+  g_nnative++;
+}
+/* Back in the world (PRE: sched lock held). A collection in progress counted
+   this worker as out; it becomes a parker of this epoch and waits for the
+   release like one (the fibers it recorded stay valid until then: nothing
+   has run on it). */
+static void sp_out_leave_locked(int wid) {
+  if (g_stw_active) {
+    g_nnative--;
+    unsigned my_epoch = g_stw_epoch;
+    g_nparked++;
+    if (g_nparked + g_nnative >= sp_active_workers - 1) pthread_cond_signal(&g_stw_request);
+    while (g_stw_active && g_stw_epoch == my_epoch) {
+      if (g_cs_help && __atomic_load_n(&g_cs_unclaimed, __ATOMIC_RELAXED) > 0) {
+        SCHED_UNLOCK(); sp_cs_help_run(); SCHED_LOCK(); continue;
+      }
+      pthread_cond_wait(&g_stw_release, &g_sched_lock);
+    }
+    if (g_stw_epoch == my_epoch) g_nparked--;
+  }
+  else g_nnative--;
+  if (wid >= 0 && wid < SP_MAX_WORKERS) { __atomic_store_n(&g_native_out[wid], 0, __ATOMIC_RELEASE); g_native_nfiber[wid] = 0; }
+  /* the collection that ran while this worker was out left it its own young
+     lists to sweep, and after a full cycle its slab chunks to release */
+  if (__atomic_load_n(&g_cs_unclaimed, __ATOMIC_RELAXED) > 0 || (g_cs_full && sp_slab_on > 0)) {
+    SCHED_UNLOCK();
+    if (__atomic_load_n(&g_cs_unclaimed, __ATOMIC_RELAXED) > 0) sp_cs_owner_run(sp_worker_id);
+    if (g_cs_full && sp_slab_on > 0 && sp_cs_chunks_settled(sp_worker_id)) sp_slab_release_worker(sp_worker_id);
+    SCHED_LOCK();
+  }
+}
+void sp_native_enter(void) {
+  if (g_native_depth++ > 0) return;
+  if (!g_workers_started) { g_native_noop = 1; return; }   /* one worker, no collector to leave the world for */
+  SCHED_LOCK();
+  /* a collection already running: park through it first, as a poll would */
+  if (g_stw_active) sp_stw_park_locked();
+  sp_out_enter_locked(sp_worker_id, SP_OUT_NATIVE);
+  SCHED_UNLOCK();
+}
+void sp_native_leave(void) {
+  if (--g_native_depth > 0) return;
+  if (g_native_noop) { g_native_noop = 0; return; }
+  SCHED_LOCK();
+  sp_out_leave_locked(sp_worker_id);
+  SCHED_UNLOCK();
+}
+/* What a parking worker publishes for the collector: the shadow-stack roots
+   plus this worker's live match registers (TLS, so the collector's globals
+   hook does not reach them) into the green thread's saved snapshot, then
+   the worker's own root depth is restored -- the snapshot keeps them. The
+   pointer-keyed string length cache goes too: the collection about to run
+   may recycle a string's address. */
+static void sp_stw_publish_locked(void) {
   int saved_nroots = sp_gc_nroots;
   sp_re_push_match_roots();
   if (sp_safepoint_publish_hook) sp_safepoint_publish_hook();   /* TU in-flight exc / proc homes */
   sp_fiber_publish_current_roots();
   sp_gc_nroots = saved_nroots;
-  /* The collection about to run may recycle a string's address; drop this
-     worker's pointer-keyed length cache so it cannot return a stale length for a
-     reused address after the sweep (the collector clears its own via the sweep). */
   sp_str_lcache_clear();
+}
+static void sp_stw_park_locked(void) {
+  /* Publish the shadow-stack roots plus this worker's live match registers (TLS,
+     so the collector's globals hook does not reach them) into the green thread's
+     saved snapshot, then restore our own root depth -- the snapshot keeps them. */
+  sp_stw_publish_locked();
   /* Record the fibers the collector must mark for this worker: the green thread
      it is running (sp_fiber_current) AND its root fiber. The root fiber holds the
      worker's own suspended context -- for the main thread that is the top-level
@@ -166,15 +507,67 @@ static void sp_stw_park_locked(void) {
      set (then sweeping a still-live root). */
   unsigned my_epoch = g_stw_epoch;
   g_nparked++;
-  if (g_nparked >= g_nworkers - 1) pthread_cond_signal(&g_stw_request);
-  while (g_stw_active && g_stw_epoch == my_epoch) pthread_cond_wait(&g_stw_release, &g_sched_lock);
+  if (g_nparked + g_nnative >= sp_active_workers - 1) pthread_cond_signal(&g_stw_request);
+  while (g_stw_active && g_stw_epoch == my_epoch) {
+    /* Sweep our own slot if the collector has asked for it. Dropping the
+       scheduler lock is safe and necessary: nothing else touches this slot
+       (the collector claims only its own), the mutators are all parked here,
+       and holding the lock through a free-heavy walk would serialize exactly
+       what this phase exists to parallelize. */
+    if (g_sweep_go && __atomic_load_n(&g_sw_next, __ATOMIC_RELAXED) < g_sw_ntasks) {
+      SCHED_UNLOCK();
+      int ran = sp_sweep_run_tasks();
+      SCHED_LOCK();
+      g_sw_done += ran;
+      pthread_cond_signal(&g_sweep_cv);
+      continue;
+    }
+    /* The collector's drain wants helpers: take a seat if one is left, run
+       the drain to its end, and come back here. */
+    if (g_mk_go && g_mk_seen != g_mk_gen) {
+      g_mk_seen = g_mk_gen;
+      if (g_mk_joined < g_mk_max) {
+        g_mk_joined++; g_mk_active++;
+        SCHED_UNLOCK();
+        sp_gc_mark_par_run();
+        SCHED_LOCK();
+        if (--g_mk_active == 0) pthread_cond_broadcast(&g_mk_cv);
+      }
+      continue;
+    }
+    /* The previous concurrent sweep is not done and the collector asked for
+       hands: what the sweeper threads have not claimed yet is claimed here,
+       under the barrier, by everyone who is parked. */
+    if (g_cs_help && __atomic_load_n(&g_cs_unclaimed, __ATOMIC_RELAXED) > 0) {
+      SCHED_UNLOCK();
+      sp_cs_help_run();
+      SCHED_LOCK();
+      continue;
+    }
+    pthread_cond_wait(&g_stw_release, &g_sched_lock);
+  }
   if (g_stw_epoch == my_epoch) g_nparked--;
+  /* Released: this worker's own young lists from the collection that just
+     ended are swept HERE, by their owner, before it runs any program. The
+     slots it frees are the ones it allocates from next, still in its own
+     cache from the walk; swept by another core they came back cold, and the
+     mutators measured slower than under the stop-the-world sweep. */
+  if (__atomic_load_n(&g_cs_unclaimed, __ATOMIC_RELAXED) > 0 || (g_cs_full && sp_slab_on > 0)) {
+    SCHED_UNLOCK();
+    if (__atomic_load_n(&g_cs_unclaimed, __ATOMIC_RELAXED) > 0) sp_cs_owner_run(sp_worker_id);
+    /* and, after a full cycle, its own slab chunks: the release that used
+       to run for every worker under the next barrier */
+    if (g_cs_full && sp_slab_on > 0 && sp_cs_chunks_settled(sp_worker_id)) sp_slab_release_worker(sp_worker_id);
+    SCHED_LOCK();
+  }
 }
 #else
 #define SCHED_LOCK()    ((void)0)
 #define SCHED_UNLOCK()  ((void)0)
 #define SCHED_WAKE()    ((void)0)
 #define SCHED_WAKE_ALL() ((void)0)
+#define SCHED_WAKE_MAIN() ((void)0)
+#define sched_wake_home(w) ((void)(w))
 #endif
 
 #ifdef SP_THREADS
@@ -199,7 +592,25 @@ void sp_safepoint(void) {
    heap access -- or, if a collection is already running, just park through it.
    At N=1 there are no other workers, so the wait is a no-op and this is exactly
    today's inline collect, routed through the barrier. */
-void sp_stw_collect(void) {
+static void sp_stw_collect_impl(int force);
+
+void sp_stw_collect(void) { sp_stw_collect_impl(0); }
+
+/* An EXPLICIT collection (GC.start / GC.compact). It must take the same barrier
+   as a threshold-triggered one: the parallel sweep hands one slot to each other
+   worker and waits for them, which only happens if they are parked here. Run
+   straight from a mutator, the collector waited on sweeps nobody would do and
+   any threaded program calling GC.start hung (#3781). Forced: an explicit
+   request collects even when neither heap is over its trigger. */
+void sp_gc_collect_request(void) {
+#ifdef SP_THREADS
+  sp_stw_collect_impl(1);
+#else
+  sp_gc_collect();
+#endif
+}
+
+static void sp_stw_collect_impl(int force) {
 #ifdef SP_THREADS
   /* Re-entrancy guard: a finalizer run during the sweep may allocate and cross
      the threshold again. We are already the collector with the world stopped
@@ -208,15 +619,31 @@ void sp_stw_collect(void) {
   if (g_collector_active) return;
   SCHED_LOCK();
   if (g_stw_active) { sp_stw_park_locked(); SCHED_UNLOCK(); return; }
-  if (!sp_gc_collection_wanted()) { SCHED_UNLOCK(); return; }  /* another worker just collected */
+  if (!force && !sp_gc_collection_wanted()) { SCHED_UNLOCK(); return; }  /* another worker just collected */
   g_stw_active = 1;
   g_stw_epoch++;     /* new epoch; a previous collection's stragglers won't be counted */
   g_nparked = 0;     /* this collection's park count starts fresh */
   SP_SAFEPOINT_SET(1);
+  double bt0 = sp_gc_ph_on ? sp_monotonic_now() : 0;
+  /* SPINEL_GC_PHASES: how many of the workers this barrier waits for are in
+     their own sweep of the previous cycle's lists (a sweep does not look at
+     the safepoint), against how many are running the program */
+  int ph_sweeping = sp_gc_ph_on ? __atomic_load_n(&g_cs_running, __ATOMIC_RELAXED) : 0;
   /* wake idle workers (and main waiting in its pump) so they park at the barrier
      rather than sit through the collection without publishing their roots. */
-  pthread_cond_broadcast(&g_sched_work);
-  while (g_nparked < g_nworkers - 1) pthread_cond_wait(&g_stw_request, &g_sched_lock);
+  sched_wake_all_workers(1);   /* reaches an ev_waiting main and workers too, except those out */
+  while (g_nparked + g_nnative < sp_active_workers - 1) pthread_cond_wait(&g_stw_request, &g_sched_lock);
+  /* the workers out in a blocking native call: their roots were published
+     on the way out, and the fibers they recorded are marked like a parked
+     worker's (a worker that came back meanwhile is a parker of this epoch,
+     still with its slot recorded, since nothing has run on it) */
+  for (int w = 0; w < SP_MAX_WORKERS && w < sp_active_workers; w++) {
+    if (!g_native_out[w]) continue;
+    for (int f = 0; f < g_native_nfiber[w] && g_n_parked_fiber < 2 * SP_MAX_WORKERS; f++)
+      g_parked_fiber[g_n_parked_fiber++] = g_native_fiber[w][f];
+  }
+  if (sp_gc_ph_on) { double pw = sp_monotonic_now() - bt0; sp_gc_ph_park += pw;
+                     if (ph_sweeping > 0) { sp_gc_ph_park_sweeping += pw; sp_gc_ph_park_sweeping_n++; } }
   /* Our own root fiber holds this worker's suspended context (the main thread's
      top-level locals if it triggered the collection while pumping a green
      thread). We do not park, so record it here for the mark like a parked worker
@@ -230,20 +657,39 @@ void sp_stw_collect(void) {
   /* exclusive: every other worker is parked at a safepoint with roots published */
   g_collector_active = 1;
   sp_gc_collect_retune_all();   /* sweeps both heaps; marks parked fibers via sp_sched_globals_mark */
+  /* an explicit GC.start answers once everything unreachable is gone: the
+     concurrent sweep it started is finished here, still under the barrier */
+  if (force && sp_gc_conc_wait_hook) sp_gc_conc_wait_hook();
   g_collector_active = 0;
   SCHED_LOCK();
   g_n_parked_fiber = 0;
   g_stw_active = 0;
   sp_recompute_safepoint_flag();   /* keep the flag set if a preempt is still pending */
   pthread_cond_broadcast(&g_stw_release);
+  if (__atomic_load_n(&g_cs_unclaimed, __ATOMIC_RELAXED) > 0) sched_wake_all_workers(2);   /* the idle owners sweep their own lists */
+  if (sp_gc_ph_on) sp_gc_ph_barrier += sp_monotonic_now() - bt0;
   SCHED_UNLOCK();
+  /* the collector's own young lists, like every released worker's */
+  if (__atomic_load_n(&g_cs_unclaimed, __ATOMIC_RELAXED) > 0) sp_cs_owner_run(sp_worker_id);
+  if (g_cs_full && sp_slab_on > 0 && sp_cs_chunks_settled(sp_worker_id)) sp_slab_release_worker(sp_worker_id);
 #else
+  (void)force;
   sp_gc_collect_retune();
 #endif
 }
 
 /* ---- scheduler state (single OS worker, so plain globals) ---- */
-static sp_thread  g_main_thread;         /* the main thread: runs on root, fiber == NULL */
+/* The main thread is a STATIC, not a GC allocation -- but `Thread.current`
+   hands it to user code and to the runtime's own thread ops, and both the mark
+   and the write barrier decide what a pointer is from the byte in FRONT of it.
+   Without a guard that read is one byte before a global (ASAN reports it), and
+   the barrier goes further: it fabricates a header there and writes a dirty bit
+   into whatever .bss happens to precede this one. Lay the same 0xfd skip byte
+   the root fiber uses, exactly one alignment unit wide so no padding can slip
+   in between. */
+static struct { char guard[_Alignof(sp_thread)]; sp_thread t; } g_main_thread_box
+    = { .guard = { [_Alignof(sp_thread) - 1] = (char)0xfd }, .t = {0} };
+#define g_main_thread (g_main_thread_box.t)   /* the main thread: runs on root, fiber == NULL */
 static SP_TLS sp_thread *g_current = NULL;   /* per-worker: the green thread this worker runs now */
 /* Run queues (design 3.1). A worker requeues a thread it just ran onto its OWN
    local queue (g_lrq[wid]) so a yielding thread reruns on the same worker (warm
@@ -254,7 +700,7 @@ static SP_TLS sp_thread *g_current = NULL;   /* per-worker: the green thread thi
    lock itself would mean reworking the off-cpu handshake (deferred, see git log).
    g_runnable is the total parked-runnable count across every queue, for the
    quiescence/deadlock predicate. */
-static SP_TLS int g_worker_id = 0;       /* this worker's run-queue slot (0 = main); both builds */
+SP_TLS int sp_worker_id = 0;       /* exported: sp_alloc.h indexes the per-worker string heaps */       /* this worker's run-queue slot (0 = main); both builds */
 typedef struct { sp_thread *head, *tail; } sp_runq;
 static sp_runq    g_grq;                 /* global run queue: spawned + woken threads */
 static sp_runq    g_lrq[SP_MAX_WORKERS]; /* per-worker local run queues (rerun locality) */
@@ -265,14 +711,370 @@ static sp_thread *g_io_waiters = NULL;    /* threads parked on a fd, woken by th
 static struct pollfd *g_pfds = NULL;     /* monitor's poll set, rebuilt from g_io_waiters each tick */
 static sp_thread    **g_pths = NULL;     /* parallel to g_pfds: the thread waiting on each fd */
 static int            g_pcap = 0;        /* capacity of g_pfds / g_pths */
+
+/* ---- persistent I/O registration (#4306 / #4317) -----------------------
+   poll(2) is stateless: the monitor had to hand the WHOLE parked population to
+   the kernel on every turn, so a wake cost O(parked) -- 109 us per turn at
+   5,000 parked, against epoll_wait's flat 0.35.
+
+   The kernel's interest set is keyed by DESCRIPTOR (epoll_ctl targets an fd,
+   and a second ADD on the same one is EEXIST), so this table is too, and a
+   readiness event fans out to every waiter on that descriptor. Two waiters on
+   one fd is a shape that already runs: IO.select over a #to_io wrapper and the
+   IO it wraps (test/io_select_to_io.rb).
+
+   ONE-SHOT registration. An armed descriptor with no waiter would report
+   readiness forever and spin the monitor, so the arm is EPOLLONESHOT: the
+   kernel disables it after the one delivery, and a park re-arms with MOD.
+   That is one syscall per park -- what the self-pipe write cost anyway -- and
+   it removes the O(parked) term entirely.
+
+   TEARDOWN is self-healing (matz's call), and the direction of failure is what
+   makes that safe: the arm is attempted on EVERY park rather than skipped on
+   the belief that a previous one still stands. A registration the kernel has
+   dropped (its descriptor closed, or the number reused) answers ENOENT and is
+   re-added; one that outlives its descriptor costs a wake nobody wants, which
+   is discarded. What must never happen -- a park that arms nothing and waits
+   forever -- cannot, because nothing is ever assumed still armed. */
+#ifdef SP_EV_BACKEND
+typedef struct { sp_ev_waiter *waiters; } sp_ev_slot;   /* indexed by fd: the threads' entries parked on it */
+static int         g_ev_fd  = -1;
+static sp_ev_slot *g_ev_tab = NULL;
+static int         g_ev_cap = 0;
+static unsigned long long g_ev_arms = 0, g_ev_adds = 0, g_ev_lost = 0, g_ev_timeouts = 0, g_ev_backstop = 0;
+#endif
+
 static sp_thread *g_all = NULL;          /* registry of live threads, for GC rooting */
+
+#ifdef SP_EV_BACKEND
+/* Bring up the event set once, lazily: a program with no I/O park never pays
+   for it, and a kernel without epoll leaves g_ev_fd -1 and the poll path in
+   place. */
+typedef struct { int fd; short rev; } sp_ev_ready;
+static int  sp_ev_backend_arm(int set, int fd, short want);
+static void sp_ev_backend_del(int set, int fd);
+static int  sp_ev_backend_wait(int set, sp_ev_ready *out, int max, int tmo_ms);
+
+/* The wait's own timeout. Every wake has a kick or an event behind it, so this
+   is a backstop and nothing routes through it; SPINEL_SCHED_STATS counts how
+   often it expires, which should be "rarely" and is how the missing kick was
+   found. */
+#define SP_EV_BACKSTOP_MS 50
+static int sp_ev_disabled(void) {
+  static int asked = 0, off = 0;
+  if (!asked) { const char *e = getenv("SPINEL_SCHED_POLL"); off = (e && *e && *e != '0'); asked = 1; }
+  return off;
+}
+/* Each worker owns a readiness set holding the descriptors of the threads
+   pinned to IT, so the worker that can run a ready thread is the one the
+   kernel wakes -- no monitor round trip, no condvar hand-off (#4306). The set
+   and its kick pipe are created on that worker's first park. */
+static int sp_ev_worker_up(int wid) {   /* PRE: sched lock held */
+  if (wid < 0 || wid >= SP_MAX_WORKERS) return 0;
+  if (g_wslot[wid].evfd > 0) return 1;
+  if (g_wslot[wid].evfd == -2 || sp_ev_disabled()) { g_wslot[wid].evfd = -2; return 0; }
+#ifdef SP_EV_EPOLL
+  int fd = epoll_create1(EPOLL_CLOEXEC);
+#else
+  int fd = kqueue();
+  if (fd >= 0) { int fl = fcntl(fd, F_GETFD); if (fl >= 0) fcntl(fd, F_SETFD, fl | FD_CLOEXEC); }
+#endif
+  if (fd < 0) { g_wslot[wid].evfd = -2; return 0; }
+  if (pipe(g_wslot[wid].kick) != 0) { close(fd); g_wslot[wid].evfd = -2; return 0; }
+  for (int i = 0; i < 2; i++) {
+    int fl = fcntl(g_wslot[wid].kick[i], F_GETFL);
+    if (fl >= 0) fcntl(g_wslot[wid].kick[i], F_SETFL, fl | O_NONBLOCK);
+    fl = fcntl(g_wslot[wid].kick[i], F_GETFD);
+    if (fl >= 0) fcntl(g_wslot[wid].kick[i], F_SETFD, fl | FD_CLOEXEC);
+  }
+  g_wslot[wid].evfd = fd;
+  g_wslot[wid].kick_armed = 0;
+  g_ev_fd = fd;   /* any set being up is what tells the monitor the backend is live */
+  return 1;
+}
+/* Re-arm the kick pipe. One-shot like everything else in the set. */
+static void sp_ev_arm_kick(int wid) {   /* PRE: sched lock held */
+  if (g_wslot[wid].evfd <= 0 || g_wslot[wid].kick_armed) return;
+  sp_ev_backend_arm(g_wslot[wid].evfd, g_wslot[wid].kick[0], POLLIN);
+  g_wslot[wid].kick_armed = 1;
+}
+/* Break a worker out of its readiness wait. A byte is enough; the reader
+   drains whatever accumulated. */
+static void sp_ev_kick(int wid) {   /* PRE: sched lock held */
+  if (wid < 0 || wid >= SP_MAX_WORKERS || g_wslot[wid].evfd <= 0) return;
+  char c = 1; ssize_t r = write(g_wslot[wid].kick[1], &c, 1); (void)r;
+}
+
+/* Arm one descriptor for `want` (POLLIN / POLLOUT), one-shot. 0 on success.
+   The three functions below are the whole platform surface; everything above
+   and below them is shared. */
+static int sp_ev_backend_arm(int set, int fd, short want) {
+#ifdef SP_EV_EPOLL
+  struct epoll_event e;
+  e.events = (uint32_t)((want & POLLIN ? EPOLLIN : 0) | (want & POLLOUT ? EPOLLOUT : 0)) | EPOLLONESHOT;
+  e.data.fd = fd;
+  if (epoll_ctl(set, EPOLL_CTL_MOD, fd, &e) == 0) return 0;
+  /* Not in the set: epoll's one-shot only DISABLES, so MOD is the usual arm
+     and ADD is the first one. */
+  if (errno == ENOENT) { g_ev_adds++; return epoll_ctl(set, EPOLL_CTL_ADD, fd, &e); }
+  return -1;
+#else
+  /* kqueue's one-shot DELETES the entry when it fires, so every arm is an
+     EV_ADD -- and a filter the waiters no longer want stays armed until it
+     fires once into nobody, which is the discarded wake the design allows. */
+  struct kevent ch[2];
+  int n = 0;
+  if (want & POLLIN)  EV_SET(&ch[n++], (uintptr_t)fd, EVFILT_READ,  EV_ADD | EV_ONESHOT, 0, 0, NULL);
+  if (want & POLLOUT) EV_SET(&ch[n++], (uintptr_t)fd, EVFILT_WRITE, EV_ADD | EV_ONESHOT, 0, 0, NULL);
+  if (!n) return 0;
+  g_ev_adds++;
+  return kevent(set, ch, n, NULL, 0, NULL) < 0 ? -1 : 0;
+#endif
+}
+
+/* Drop a descriptor from the set outright (a handle is closing). */
+static void sp_ev_backend_del(int set, int fd) {
+#ifdef SP_EV_EPOLL
+  epoll_ctl(set, EPOLL_CTL_DEL, fd, NULL);
+#else
+  struct kevent ch[2];
+  EV_SET(&ch[0], (uintptr_t)fd, EVFILT_READ,  EV_DELETE, 0, 0, NULL);
+  EV_SET(&ch[1], (uintptr_t)fd, EVFILT_WRITE, EV_DELETE, 0, 0, NULL);
+  kevent(set, ch, 2, NULL, 0, NULL);   /* ENOENT for a filter never armed */
+#endif
+}
+
+/* Wait for readiness. Fills `out` with (descriptor, poll-style events) and
+   answers how many, or a negative on error. */
+static int sp_ev_backend_wait(int set, sp_ev_ready *out, int max, int tmo_ms) {
+#ifdef SP_EV_EPOLL
+  struct epoll_event evs[64];
+  if (max > 64) max = 64;
+  int n = epoll_wait(set, evs, max, tmo_ms);
+  for (int i = 0; i < n; i++) {
+    out[i].fd = evs[i].data.fd;
+    out[i].rev = (short)(((evs[i].events & (EPOLLIN | EPOLLHUP | EPOLLERR)) ? POLLIN : 0) |
+                         ((evs[i].events & (EPOLLOUT | EPOLLHUP | EPOLLERR)) ? POLLOUT : 0));
+  }
+  return n;
+#else
+  struct kevent evs[64];
+  if (max > 64) max = 64;
+  struct timespec ts;
+  ts.tv_sec = tmo_ms / 1000;
+  ts.tv_nsec = (long)(tmo_ms % 1000) * 1000000L;
+  int n = kevent(set, NULL, 0, evs, max, &ts);
+  for (int i = 0; i < n; i++) {
+    out[i].fd = (int)evs[i].ident;
+    /* EV_EOF is a peer that closed: readable (and writable, for a socket whose
+       other end is gone) exactly as POLLHUP is. EV_ERROR answers both so the
+       waiter's own read or write reports the error, which is what poll did. */
+    short r = (evs[i].filter == EVFILT_WRITE) ? POLLOUT : POLLIN;
+    if (evs[i].flags & (EV_EOF | EV_ERROR)) r = POLLIN | POLLOUT;
+    out[i].rev = r;
+  }
+  return n;
+#endif
+}
+/* Arm `fd` for the union of what its waiters want. Attempted on every park --
+   see the note above: never skipped on the belief that an earlier arm stands. */
+static int sp_ev_home_of(sp_thread *t) { return t->home_wid < 0 ? 0 : (int)t->home_wid; }
+/* What an entry waits for: the thread's own descriptor, or one of its set */
+static short sp_evw_events(sp_ev_waiter *e) { return e->idx < 0 ? e->t->io_events : e->t->io_set[e->idx].events; }
+static void sp_ev_arm_fd(int fd) {   /* PRE: sched lock held */
+  if (fd < 0 || fd >= g_ev_cap) return;
+  /* One descriptor can be waited on by threads pinned to DIFFERENT workers --
+     IO.select over a #to_io wrapper and the IO it wraps, from two threads --
+     so it is armed in each of their sets, for the union of what that worker's
+     waiters want. The list is one element in the ordinary case, which is why
+     the quadratic shape here costs nothing. */
+  int done[8]; int nd = 0;
+  for (sp_ev_waiter *w = g_ev_tab[fd].waiters; w; w = w->next) {
+    int h = sp_ev_home_of(w->t), seen = 0;
+    for (int i = 0; i < nd; i++) if (done[i] == h) { seen = 1; break; }
+    if (seen) continue;
+    if (nd < 8) done[nd++] = h;
+    short want = 0;
+    for (sp_ev_waiter *x = g_ev_tab[fd].waiters; x; x = x->next)
+      if (sp_ev_home_of(x->t) == h) want |= sp_evw_events(x);
+    if (!want || g_wslot[h].evfd <= 0) continue;
+    g_ev_arms++;
+    if (sp_ev_backend_arm(g_wslot[h].evfd, fd, want) == 0) continue;
+    g_ev_lost++;
+  }
+  return;
+  {
+  /* EBADF, or a descriptor the kernel will not watch (epoll refuses a regular
+     file): the waiter falls back on its deadline, which is the same answer
+     poll gave for an always-ready file. Counted, so SPINEL_SCHED_STATS shows
+     it rather than leaving a silent gap. */
+  } }
+/* Returns 0 when the descriptor could not be taken into the set. The waiter is
+   then on its deadline alone -- the same degradation the poll path already had
+   when its own array could not grow. */
+static int sp_ev_park_entry(sp_ev_waiter *e, int fd) {   /* PRE: sched lock held */
+  sp_thread *t = e->t;
+  if (fd < 0 || !sp_ev_worker_up(sp_ev_home_of(t))) return 0;
+  if (fd >= g_ev_cap) {
+    int nc = g_ev_cap ? g_ev_cap : 64;
+    while (nc <= fd) nc *= 2;
+    sp_ev_slot *nt = (sp_ev_slot *)realloc(g_ev_tab, sizeof(sp_ev_slot) * (size_t)nc);
+    if (!nt) return 0;
+    memset(nt + g_ev_cap, 0, sizeof(sp_ev_slot) * (size_t)(nc - g_ev_cap));
+    g_ev_tab = nt; g_ev_cap = nc;
+  }
+  e->next = g_ev_tab[fd].waiters;
+  g_ev_tab[fd].waiters = e;
+  sp_ev_arm_fd(fd);
+  return 1;
+}
+static int sp_ev_park(sp_thread *t, int fd) {   /* the thread's own descriptor */
+  t->ev0.t = t; t->ev0.idx = -1;
+  return sp_ev_park_entry(&t->ev0, fd);
+}
+/* Hand one readiness event to the threads waiting on that descriptor. Called
+   by whichever worker's set produced it, so `only_home` filters to the threads
+   that worker can actually run -- a descriptor shared by two homes is armed in
+   both sets and each worker takes its own. Re-arms for whoever is left, since
+   the arm is one-shot and a waiter still parked must not be stranded.
+   Answers how many threads it readied. PRE: sched lock held. */
+static void sp_sched_wake_for(sp_thread *t);
+static void runq_requeue(sp_thread *t);
+static void sp_ev_drop(sp_thread *t);
+static int sp_ev_dispatch(int rfd, short rev, int only_home) {
+  if (rfd < 0 || rfd >= g_ev_cap) return 0;
+  int n = 0;
+  for (sp_ev_waiter *e = g_ev_tab[rfd].waiters, *nx = NULL; e; e = nx) {
+    nx = e->next;
+    sp_thread *w = e->t;
+    if (!(sp_evw_events(e) & rev)) continue;
+    if (w->wait_head != &g_io_waiters) continue;
+    if (only_home >= 0 && sp_ev_home_of(w) != only_home) continue;
+    g_mon_readied++;
+    for (sp_thread **pp = &g_io_waiters; *pp; pp = &(*pp)->wait_next)
+      if (*pp == w) { *pp = w->wait_next; break; }
+    sp_ev_drop(w);
+    w->wait_next = NULL; w->wait_head = NULL;
+    w->io_revents = rev; w->io_fd = -1;
+    n++;
+    if (w == &g_main_thread) { w->state = SP_TH_RUNNABLE; SCHED_WAKE_ALL(); }
+    else if (w->off_cpu) { w->state = SP_TH_RUNNABLE; runq_requeue(w); sp_sched_wake_for(w); }
+    else w->wake_pending = 1;
+  }
+  sp_ev_arm_fd(rfd);
+  return n;
+}
+
+/* Wait on this worker's own readiness set for up to `tmo_ms`, then dispatch
+   what came back. Releases and retakes the lock around the wait. Answers how
+   many threads it readied. PRE/POST: sched lock held. */
+static int sp_ev_worker_wait(int wid, int tmo_ms) {
+  if (g_wslot[wid].evfd <= 0) return 0;
+  sp_ev_ready evs[64];
+  sp_ev_arm_kick(wid);
+  g_wslot[wid].ev_waiting = 1;
+  int set = g_wslot[wid].evfd;
+  /* the idle wait (not the per-turn zero-timeout drain) leaves the world: a
+     collection raised meanwhile marks this worker's recorded fibers and does
+     not wake it to park */
+  int out = tmo_ms != 0 && !g_stw_active;
+  if (out) sp_out_enter_locked(wid, SP_OUT_IDLE);
+  SCHED_UNLOCK();
+  int en = sp_ev_backend_wait(set, evs, 64, tmo_ms);
+  SCHED_LOCK();
+  if (out) sp_out_leave_locked(wid);
+  g_wslot[wid].ev_waiting = 0;
+  if (en == 0) g_ev_backstop++;
+  g_mon_polls++; g_mon_pollfds += (unsigned long long)(en > 0 ? en : 0);
+  int n = 0;
+  for (int i = 0; i < en; i++) {
+    if (evs[i].fd == g_wslot[wid].kick[0]) {
+      char buf[64]; while (read(g_wslot[wid].kick[0], buf, sizeof buf) > 0) {}
+      g_wslot[wid].kick_armed = 0;
+      continue;
+    }
+    n += sp_ev_dispatch(evs[i].fd, evs[i].rev, wid);
+  }
+  return n;
+}
+
+/* Take a thread off its descriptors' waiter lists -- its own, and every entry
+   of a set wait. Every path that unlinks a waiter from g_io_waiters goes
+   through here. */
+static void sp_ev_unlink(sp_ev_waiter *e, int fd) {   /* PRE: sched lock held */
+  if (fd < 0 || fd >= g_ev_cap) { e->next = NULL; return; }
+  for (sp_ev_waiter **pp = &g_ev_tab[fd].waiters; *pp; pp = &(*pp)->next)
+    if (*pp == e) { *pp = e->next; break; }
+  e->next = NULL;
+}
+static void sp_ev_drop(sp_thread *t) {   /* PRE: sched lock held */
+  sp_ev_unlink(&t->ev0, t->io_fd);
+  for (int i = 0; t->ev_set && i < t->io_nset; i++) sp_ev_unlink(&t->ev_set[i], t->io_set[i].fd);
+}
+/* A handle is closing: the descriptor is about to stop being ours, so drop the
+   registration while the fd still names the right thing. Waiters parked on it
+   keep their deadline. */
+void sp_sched_ev_forget(int fd) {
+  if (fd < 0) return;
+  SCHED_LOCK();
+  /* Wake whoever is parked on the descriptor first: a thread blocked in a
+     read has no deadline, so with its registration gone and its entry
+     dropped nothing would ever ready it -- `sock.close` from another thread
+     left the reader waiting forever, where CRuby raises IOError in it
+     (#4546). Readied here as for any readiness event, from whatever worker
+     it is pinned to; the read it retries finds the handle closed and raises.
+     Then the registrations go, while the number still names this descriptor. */
+  if (fd < g_ev_cap && g_ev_tab[fd].waiters) sp_ev_dispatch(fd, POLLIN | POLLOUT, -1);
+  for (int wid = 0; wid < SP_MAX_WORKERS; wid++)
+    if (g_wslot[wid].evfd > 0) sp_ev_backend_del(g_wslot[wid].evfd, fd);
+  if (fd < g_ev_cap) {
+    for (sp_ev_waiter *w = g_ev_tab[fd].waiters; w; ) { sp_ev_waiter *n = w->next; w->next = NULL; w = n; }
+    g_ev_tab[fd].waiters = NULL;
+  }
+  SCHED_UNLOCK();
+}
+#else
+void sp_sched_ev_forget(int fd) { (void)fd; }
+#endif
+
 static unsigned   g_next_id = 1;
 static unsigned char g_report_default = 1;  /* Thread.report_on_exception default */
 
+#ifdef SP_THREADS
+static void sp_sched_maybe_grow(void);   /* grow the helper pool toward demand */
+#endif
+/* SPINEL_SCHED_STATS=2: how long a readied thread waited on a run queue before
+   a worker ran it, as a log2 histogram (bucket k: [2^k, 2^(k+1)) us), reported
+   by the monitor every few seconds. The scheduling delay is what a request's
+   tail latency is made of when the CPU is not the bottleneck. */
+static int g_sched_lat_on = -1;
+static unsigned long long g_sched_lat_hist[32];
+static double g_sched_lat_max = 0;
+static unsigned long long g_sched_lat_n = 0;
+static int g_lrq_len[SP_MAX_WORKERS], g_lrq_len_max = 0;
+static unsigned long long g_mtx_hist[32], g_mtx_n = 0, g_mtx_fast = 0, g_mtx_spin = 0; static double g_mtx_max = 0;
+static unsigned long long g_cv_hist[32], g_cv_n = 0; static double g_cv_max = 0;
+static void sched_hist_add(unsigned long long *h, unsigned long long *n, double *mx, double us) {
+  int k = 0; while (k < 31 && us >= (double)(2u << k)) k++;
+  h[k]++; (*n)++; if (us > *mx) *mx = us;
+}
+static void sched_hist_print(const char *tag, unsigned long long *h, unsigned long long n, double mx) {
+  fprintf(stderr, "[%s] n=%llu max=%.0fus  us:", tag, n, mx);
+  for (int k = 0; k < 32; k++) if (h[k]) fprintf(stderr, " [%u]=%llu", 1u << k, h[k]);
+  fprintf(stderr, "\n");
+}
+static int sched_lat_enabled(void) {
+  if (g_sched_lat_on < 0) { const char *e = getenv("SPINEL_SCHED_STATS"); g_sched_lat_on = (e && *e == '2'); }
+  return g_sched_lat_on;
+}
 static void runq_push(sp_runq *q, sp_thread *t) {
   t->state = SP_TH_RUNNABLE; t->rq_next = NULL;
+  if (sched_lat_enabled()) t->readied_at = sp_monotonic_now();
   if (q->tail) q->tail->rq_next = t; else q->head = t;
   q->tail = t; g_runnable++;
+#ifdef SP_THREADS
+  sp_sched_maybe_grow();   /* one execution helper per live green thread, up to the cap */
+#endif
 }
 static sp_thread *runq_pop(sp_runq *q) {
   sp_thread *t = q->head;
@@ -298,15 +1100,53 @@ static void runq_requeue(sp_thread *t) {
    worker that keeps refilling its own queue (e.g. a thread spawning in a loop)
    cannot starve globally-requeued (preempted / woken) work. */
 static SP_TLS unsigned g_pick_tick = 0;
+#ifdef SP_THREADS
+/* An unstarted thread popped from the global queue is about to be pinned to
+   whichever worker runs it first, for life. Under a helper pool that grows on
+   demand the workers that exist when a server's connections arrive are the
+   busy ones, so every connection was pinned to the first dozen workers and
+   the rest sat idle for the run: 64 connections on 12 of 32 workers, with 7
+   queued on one while 21 workers had nothing (campfire at c=64). Place it on
+   the worker with the fewest pinned threads instead -- spawning one more
+   helper when every worker already carries some and the cap allows -- and
+   hand it over there. Returns 1 when t was given away. */
+static void sp_sched_spawn_helper(void);
+static int sched_place_unstarted(int wid, sp_thread *t) {
+  if (t->home_wid >= 0 || sp_active_workers <= 1) return 0;
+  int best = -1, bestn = 0;
+  for (int i = 1; i < sp_active_workers; i++) {   /* worker 0 (main) runs no general thread */
+    if (!g_wslot[i].active) continue;
+    if (best < 0 || g_wslot[i].pinned < bestn) { best = i; bestn = g_wslot[i].pinned; }
+  }
+  if (best < 0) return 0;
+  if (bestn > 0 && g_helpers_spawned < g_worker_cap && !g_stw_active) {
+    int before = g_helpers_spawned;
+    sp_sched_spawn_helper();
+    if (g_helpers_spawned > before) { best = g_helpers_spawned; bestn = 0; }
+  }
+  if (best == wid || (wid > 0 && g_wslot[wid].pinned <= bestn)) return 0;   /* here is as good */
+  t->home_wid = (short)best; g_wslot[best].pinned++;
+  runq_push(&g_lrq[best], t);
+  sched_wake_home(best);
+  return 1;
+}
+#endif
 static sp_thread *sched_pick(int wid) {
   sp_thread *t;
+#ifdef SP_THREADS
+  /* the global queue holds unstarted threads: place each on its home first */
+  while ((t = g_grq.head) != NULL && t->home_wid < 0) {
+    runq_pop(&g_grq);
+    if (!sched_place_unstarted(wid, t)) { return t; }
+  }
+#endif
   if ((++g_pick_tick % 61u) == 0) { t = runq_pop(&g_grq); if (t) return t; }
   t = runq_pop(&g_lrq[wid]);
   if (t) return t;
   t = runq_pop(&g_grq);
   if (t) return t;
 #ifdef SP_THREADS
-  for (int i = 0; i < g_nworkers; i++) {   /* steal one from a busier worker */
+  for (int i = 0; i < sp_active_workers; i++) {   /* steal one from a busier worker */
     if (i == wid) continue;
     /* Only an UNSTARTED thread may be stolen: a started one is pinned to its
        home worker's TLS (home_wid) and must not resume elsewhere. Unstarted
@@ -330,21 +1170,74 @@ static sp_thread *sched_pick(int wid) {
 }
 
 /* Wake worker(s) after enqueueing t. A STARTED thread is pinned to its home
-   worker (see home_wid) and sched_pick's stealing skips pinned threads -- yet
-   every idle worker waits on the one g_sched_work condvar, so a plain signal
-   could wake only a worker that cannot run t; it finds nothing and re-sleeps,
-   and the wakeup is lost while t's home worker stays parked. Broadcast for
-   pinned threads so the home worker always rechecks; an unstarted thread can
-   run anywhere, so a single signal suffices. PRE: sched lock held. */
+   worker (see home_wid) and sched_pick's stealing skips pinned threads, so the
+   wake has exactly one worker to reach; an unstarted thread can run anywhere.
+   This used to have to BROADCAST for a pinned thread, because every idle
+   worker waited on the one g_sched_work condvar and a plain signal could take
+   a worker that cannot run t -- see the per-worker condvar in sp_wslot, which
+   is what lets the wake be addressed (#4305). PRE: sched lock held. */
 static void sp_sched_wake_for(sp_thread *t) {
-  if (t->home_wid >= 0) SCHED_WAKE_ALL();
-  else SCHED_WAKE();
+  sched_wake_home(t->home_wid);
 }
 
 static void reg_add(sp_thread *t) {
   t->all_prev = NULL; t->all_next = g_all;
   if (g_all) g_all->all_prev = t;
   g_all = t;
+}
+/* Is any green thread other than the caller alive? A blocking syscall answers
+   for the OS thread it runs on, and a started green thread is pinned to its
+   worker, so blocking in one stalls every thread pinned there -- including the
+   one that has to make progress before the syscall can return. Process.waitpid2
+   and Kernel#system ask this before choosing between a blocking wait and a
+   polling one (#4381).
+
+   Main is not in the registry, so a green thread asking this saw "nobody
+   else" once every other spawned thread had ended and took the blocking
+   wait -- with main alive and allocating, and a worker in a syscall never
+   reaches a safepoint, so main's next collection waited out the child
+   (#4528). From a green thread the answer is always yes. */
+int sp_sched_other_threads_live(void) {
+  int other = 0;
+  SCHED_LOCK();
+  if (g_current != &g_main_thread) other = 1;
+  else { sp_thread *t = g_all;
+    while (t) { if (t != g_current) { other = 1; break; } t = t->all_next; } }
+  SCHED_UNLOCK();
+  return other;
+}
+/* Wait for one child without holding the OS worker while other green threads
+   have to run. A blocking waitpid answers for the whole worker, and a started
+   green thread is pinned to its worker, so `spin build --verbose` deadlocked:
+   the parent waited for the compiler, the compiler filled the stderr pipe and
+   blocked writing, and the reader thread that would have drained it could not
+   be scheduled (#4381). The cooperative build has the same shape with one OS
+   thread and several fibers.
+
+   Poll and hand the scheduler back between attempts, but only while another
+   thread is alive -- a program with one thread keeps the blocking wait and its
+   exact wake-up. sp_Thread_pass runs a runnable sibling immediately; the sleep
+   only keeps a busy loop from burning the core while the child works, and it
+   caps at 5ms, which is nothing against a wait long enough to matter. */
+int sp_sched_wait_child(int pid, int *status) {
+  int r;
+  if (!sp_sched_other_threads_live()) {
+    do { r = (int)waitpid((pid_t)pid, status, 0); } while (r < 0 && errno == EINTR);
+    return r;
+  }
+  { double back = 0.0002;
+    for (;;) {
+      do { r = (int)waitpid((pid_t)pid, status, WNOHANG); } while (r < 0 && errno == EINTR);
+      if (r != 0) return r;   /* reaped, or an error for the caller to report */
+      sp_Thread_pass();
+#ifdef SP_THREADS
+      sp_sched_sleep(back);
+#else
+      { struct timespec rq; rq.tv_sec = 0; rq.tv_nsec = (long)(back * 1e9);
+        while (nanosleep(&rq, &rq) == -1 && errno == EINTR) {} }
+#endif
+      if (back < 0.005) back *= 2.0;
+    } }
 }
 static void reg_remove(sp_thread *t) {
   if (t->all_prev) t->all_prev->all_next = t->all_next;
@@ -359,11 +1252,17 @@ static void reg_remove(sp_thread *t) {
 static void (*g_prev_globals_hook)(void) = NULL;
 static void sp_sched_globals_mark(void) {
   for (sp_thread *t = g_all; t; t = t->all_next) sp_gc_mark(t);
+  /* The main thread is a static struct, not a registry entry, so nothing
+     above marks what hangs off it -- and its thread-local map
+     (Thread.current[:k] = v on the main thread) is a GC object. Unmarked, a
+     collection freed the map while g_main_thread.tls still pointed at it,
+     and the next Thread#[]= wrote into freed memory. */
+  if (g_main_thread.tls) sp_gc_mark(g_main_thread.tls);
 #ifdef SP_THREADS
   /* Mark each parked worker's published roots. Reaches the per-worker root fibers
      (idle/main workers) that are not on sp_fiber_list_head; green-thread fibers
      are also covered here (harmless re-mark) and via the suspended-fibers hook. */
-  for (int i = 0; i < g_n_parked_fiber; i++) sp_fiber_mark_roots(g_parked_fiber[i]);
+  for (int i = 0; i < g_n_parked_fiber; i++) sp_fiber_mark_chain(g_parked_fiber[i]);   /* and the resumers waiting on it */
 #endif
   if (g_prev_globals_hook) g_prev_globals_hook();
 }
@@ -387,16 +1286,542 @@ void sp_sched_init(void) {
   g_prev_globals_hook = sp_gc_mark_globals_hook;
   sp_gc_mark_globals_hook = sp_sched_globals_mark;
 #ifdef SP_THREADS
-  g_worker_id = 0;                          /* main is worker 0 */
+  sp_worker_id = 0;                          /* main is worker 0 */
   g_wslot[0].tid = pthread_self();
   g_wslot[0].active = 1;
-  sp_sched_start_workers();   /* spawn N-1 helper OS workers (see below) */
+  /* Helpers + monitor are spawned lazily on the first Thread (sp_sched_ensure_workers),
+     not here: a program that only uses Mutex/Queue/ConditionVariable/sleep for its
+     structure -- but never spawns a second thread -- then runs entirely on main with
+     no idle helper OS threads and no monitor. */
 #endif
 }
 
+#ifdef SP_THREADS
+/* Spawn the helper pool + monitor the first time a green thread is created. The
+   first Thread ever always originates on main (no helper exists to run user code
+   before this), so this runs single-threaded the one time it does work; later
+   calls (a green thread spawning another) see the flag set and return. */
+/* Drive the parallel sweep from inside sp_gc_collect, with the world already
+   stopped and every other worker parked in sp_stw_park_locked. Waking them
+   through g_stw_release is safe: their loop re-tests g_stw_active, so a
+   wake that is not a release puts them back to sleep. */
+/* ---- The concurrent sweep ----
+   The mark runs under the barrier and the sweep does not. At the end of the
+   mark the collector detaches every worker's young lists (objects; the
+   SP_STR_YSUB string lists) and, on a full cycle, the old lists, replaces
+   them with empty ones, and makes the detached lists a task list; the world
+   resumes while it is swept. Who sweeps what: a worker's own young lists are
+   swept by that worker, right after it is released and before it runs any
+   program (sp_cs_owner_run), so the slots it frees are the ones it allocates
+   from next and are still in its own cache from the walk (swept by another
+   core they came back cold, and the mutators measured slower than under the
+   stop-the-world sweep); the old lists, whose slots nobody is about to
+   reuse, go to a small pool of sweeper threads. Whatever is unclaimed when
+   the next collection stops the world is finished there by everyone who is
+   parked (sp_sched_conc_wait, the first thing sp_gc_collect does), so the
+   apply that follows sees a complete sweep. What is applied under the
+   barrier is only what the mutators must not see half-done: the survivors
+   spliced onto the old lists and the string budget retune. The pooled dead
+   are pushed onto their pools by the sweep itself (see sp_gc_sweep_list);
+   done at the barrier they cost it more than the sweep had shed.
+
+   What makes the sweep safe beside the mutators: a mutator never reads a
+   GC list link; the mark promoted every survivor before the world resumed
+   (sp_gc_conc_promote), so the write barrier records stores into them and
+   the sweeper never writes the flag word the barrier writes; a dead object is
+   unreachable, so its finalizer races nothing; a string's mark byte is reset
+   with a compare-and-swap (a freeze can land on the same byte); freed slab
+   slots are pushed in per-chunk batches with a compare-and-swap that the
+   owner's pop also uses; and the length caches were cleared when the workers
+   parked, so no cache names a string the sweep frees. */
+#define CS_OBJ 0
+#define CS_OBJ_OLD 1
+#define CS_STR_YOUNG 2
+#define CS_STR_OLD 3
+#define CS_CHUNKS 4     /* a slot's slab chunks, by their bitmaps (objects and strings, both generations) */
+#define CS_TASK_MAX (SP_MAX_WORKERS * (3 + SP_STR_YSUB) + 1)
+#define CS_SWEEPER_MAX 32
+static pthread_mutex_t g_cs_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t  g_cs_go = PTHREAD_COND_INITIALIZER;
+static pthread_cond_t  g_cs_done = PTHREAD_COND_INITIALIZER;
+static int      g_cs_nsweepers = 0;
+static unsigned g_cs_gen = 0;        /* bumped per sweep started; sweepers wait for a new one */
+static int      g_cs_pending = 0;    /* a sweep is in flight */
+static int      g_cs_str_sweep = 0, g_cs_str_major = 0;
+static sp_sw_task g_cs_tasks[CS_TASK_MAX];
+/* the detached lists (inputs) and the per-slot results */
+static sp_gc_hdr  *g_cs_obj[SP_MAX_WORKERS];
+static sp_gc_hdr  *g_cs_obj_old = NULL, *g_cs_obj_old_tail = NULL;
+static sp_str_hdr *g_cs_str_young[SP_MAX_WORKERS][SP_STR_YSUB];
+static sp_str_hdr *g_cs_str_old[SP_MAX_WORKERS];
+static sp_gc_hdr  *g_cs_pro_head[SP_MAX_WORKERS], *g_cs_pro_tail[SP_MAX_WORKERS];
+static sp_str_hdr *g_cs_sy_keep[SP_MAX_WORKERS][SP_STR_YSUB], *g_cs_sy_tail[SP_MAX_WORKERS][SP_STR_YSUB];
+static size_t      g_cs_sy_moved[SP_MAX_WORKERS][SP_STR_YSUB];
+static size_t      g_cs_so_freed[SP_MAX_WORKERS];
+static unsigned long g_cs_task_us = 0;   /* SPINEL_GC_PHASES: sweeper time, summed */
+static int      g_cs_hi = 1;         /* slots in use, plus the sweepers' own */
+#define CS_SWEEPER_WID (SP_MAX_WORKERS - 1)   /* a sweeper's worker id: its own slot, should a finalizer allocate */
+
+static double g_cs_t0 = 0;              /* SPINEL_GC_PHASES: when the sweep started */
+static unsigned long g_cs_task_max_us = 0;
+static void sp_cs_run_task(const sp_sw_task *t) {
+  size_t dummy = 0;
+  double t0 = sp_gc_ph_on ? sp_monotonic_now() : 0;
+  switch (t->kind) {
+    case CS_OBJ:
+      sp_gc_sweep_list(&g_cs_obj[t->wid], 1, &g_cs_pro_head[t->wid], &g_cs_pro_tail[t->wid], &dummy);
+      break;
+    case CS_OBJ_OLD:
+      sp_gc_sweep_old_list(&g_cs_obj_old, &dummy, &g_cs_obj_old_tail);
+      break;
+    case CS_CHUNKS:
+      sp_gc_sweep_chunks(t->wid, g_cs_full);
+      break;
+    case CS_STR_YOUNG: {
+      size_t held = 0;
+      sp_str_sweep_young_list(&g_cs_str_young[t->wid][t->sub], &g_cs_sy_keep[t->wid][t->sub],
+                              &g_cs_sy_tail[t->wid][t->sub], &g_cs_sy_moved[t->wid][t->sub], &held);
+      break; }
+    default:
+      g_cs_so_freed[t->wid] = sp_str_sweep_old_list(&g_cs_str_old[t->wid]);
+      break;
+  }
+  if (sp_gc_ph_on) {
+    unsigned long d = (unsigned long)((sp_monotonic_now() - t0) * 1e6), m;
+    do { m = __atomic_load_n(&g_cs_task_max_us, __ATOMIC_RELAXED); if (d <= m) break; }
+    while (!__atomic_compare_exchange_n(&g_cs_task_max_us, &m, d, 0, __ATOMIC_RELAXED, __ATOMIC_RELAXED));
+  }
+}
+/* Who takes a task: a worker's own young lists (CS_OBJ, CS_STR_YOUNG of a
+   live slot) are the owner's, so the freed slots come back warm to the core
+   that allocates from them; the old lists and the sweepers' own slot are
+   the sweeper threads'; under the barrier anyone takes what is left. */
+static unsigned char g_cs_claimed[CS_TASK_MAX];
+/* A young list is its owner's to sweep (warm in its cache, and it is the
+   next to allocate from those slots). An idle owner is kicked at the release
+   to do exactly that; one out in a blocking native call cannot be, so a
+   sweeper thread takes its lists, or the next barrier would be spent
+   finishing them. */
+static int sp_cs_task_is_owned(const sp_sw_task *t) {
+  return (t->kind == CS_OBJ || t->kind == CS_STR_YOUNG || t->kind == CS_CHUNKS) && t->wid != CS_SWEEPER_WID &&
+         !(t->wid >= 0 && t->wid < SP_MAX_WORKERS && __atomic_load_n(&g_native_out[t->wid], __ATOMIC_RELAXED) == SP_OUT_NATIVE);
+}
+#define CS_RUN_SWEEPER 0
+#define CS_RUN_OWNER   1
+#define CS_RUN_ANY     2
+static int sp_cs_run_tasks(int mode, int wid) {
+  int ran = 0;
+  double t0 = sp_gc_ph_on ? sp_monotonic_now() : 0;
+  for (int i = 0; i < g_cs_ntasks; i++) {
+    if (__atomic_load_n(&g_cs_claimed[i], __ATOMIC_RELAXED)) continue;
+    const sp_sw_task *t = &g_cs_tasks[i];
+    int owned = g_cs_owner_env && sp_cs_task_is_owned(t);
+    if (mode == CS_RUN_SWEEPER && owned) continue;
+    if (mode == CS_RUN_OWNER && (!owned || t->wid != wid)) continue;
+    unsigned char z = 0;
+    if (!__atomic_compare_exchange_n(&g_cs_claimed[i], &z, 1, 0, __ATOMIC_ACQ_REL, __ATOMIC_RELAXED)) continue;
+    __atomic_fetch_sub(&g_cs_unclaimed, 1, __ATOMIC_RELAXED);
+    sp_cs_run_task(t);
+    __atomic_store_n(&g_cs_claimed[i], 2, __ATOMIC_RELEASE);   /* done: the owner's release reads this */
+    ran++;
+  }
+  if (sp_gc_ph_on && ran) __atomic_fetch_add(&g_cs_task_us, (unsigned long)((sp_monotonic_now() - t0) * 1e6), __ATOMIC_RELAXED);
+  return ran;
+}
+/* May this worker hand its empty chunks back? Not while a sweeper thread is
+   still in the chunk task of its slot (claimed, not done): that sweep clears
+   bits of the very chunks the pool would carve for someone else. A slot with
+   no task in this sweep, or whose task this worker ran itself, is settled. */
+static int sp_cs_chunks_settled(int wid) {
+  if (!g_cs_pending) return 1;
+  for (int i = 0; i < g_cs_ntasks; i++)
+    if (g_cs_tasks[i].kind == CS_CHUNKS && g_cs_tasks[i].wid == wid)
+      return __atomic_load_n(&g_cs_claimed[i], __ATOMIC_ACQUIRE) == 2;
+  return 1;
+}
+/* Leaving the task list: count what was run, and count ourselves out.
+   The collector reuses the task array for the next sweep only once nobody is
+   scanning it (g_cs_running), not merely once every task is done: a thread
+   still walking the array for something to claim would otherwise read the
+   next sweep's entries as they are written. */
+static void sp_cs_finish(int ran) {
+  pthread_mutex_lock(&g_cs_lock);
+  /* release: the collector may find both counters at rest with an acquire
+     load and proceed without the lock, and it then reads what the tasks wrote */
+  int fin = __atomic_add_fetch(&g_cs_finished, ran, __ATOMIC_RELEASE);
+  int running = __atomic_sub_fetch(&g_cs_running, 1, __ATOMIC_RELEASE);
+  if (fin >= g_cs_ntasks && running == 0) {
+    if (sp_gc_ph_on) sp_gc_ph_conc_wall += sp_monotonic_now() - g_cs_t0;
+    pthread_cond_broadcast(&g_cs_done);
+  }
+  pthread_mutex_unlock(&g_cs_lock);
+}
+static void sp_cs_enter(void) { pthread_mutex_lock(&g_cs_lock); __atomic_fetch_add(&g_cs_running, 1, __ATOMIC_RELAXED); pthread_mutex_unlock(&g_cs_lock); }
+/* The owner's share, run by the released worker with the world running. */
+static void sp_cs_owner_run(int wid) {
+  int was = sp_gc_in_sweeper;
+  sp_cs_enter();
+  sp_gc_in_sweeper = 1;
+  int ran = sp_cs_run_tasks(CS_RUN_OWNER, wid);
+  sp_gc_in_sweeper = was;
+  sp_cs_finish(ran);
+}
+/* A parked worker (or the collector) finishing the sweep under the barrier:
+   it sweeps like a sweeper thread does, with the byte accounting off, since
+   the collector recounts the bytes the mark saw. */
+static void sp_cs_help_run(void) {
+  int was = sp_gc_in_sweeper;
+  sp_cs_enter();
+  sp_gc_in_sweeper = 1;
+  int ran = sp_cs_run_tasks(CS_RUN_ANY, -1);
+  sp_gc_in_sweeper = was;
+  sp_cs_finish(ran);
+}
+static void *sp_cs_sweeper_main(void *arg) {
+  (void)arg;
+  sigset_t blk; sigemptyset(&blk); sigaddset(&blk, g_preempt_sig);
+  pthread_sigmask(SIG_BLOCK, &blk, NULL);
+  sp_gc_in_sweeper = 1;
+  sp_worker_id = CS_SWEEPER_WID;
+#ifdef __linux__
+  prctl(PR_SET_NAME, "sp-sweeper", 0, 0, 0);   /* pthread_setname_np needs _GNU_SOURCE; this does not (#4469) */
+#endif
+  unsigned seen = 0;
+  for (;;) {
+    pthread_mutex_lock(&g_cs_lock);
+    while (g_cs_gen == seen && !g_shutdown) pthread_cond_wait(&g_cs_go, &g_cs_lock);
+    if (g_shutdown) { pthread_mutex_unlock(&g_cs_lock); break; }
+    seen = g_cs_gen;
+    __atomic_fetch_add(&g_cs_running, 1, __ATOMIC_RELAXED);
+    pthread_mutex_unlock(&g_cs_lock);
+    sp_cs_finish(sp_cs_run_tasks(CS_RUN_SWEEPER, -1));
+  }
+  return NULL;
+}
+/* Under the barrier, at the end of the mark: detach and hand off. */
+static void sp_sched_conc_start(int full, int str_sweep, int str_major) {
+  int n = sp_active_workers; if (n < 1) n = 1; if (n > SP_MAX_WORKERS - 1) n = SP_MAX_WORKERS - 1;
+  if (n > g_cs_hi) g_cs_hi = n;
+  int nt = 0;
+  g_cs_full = full; g_cs_str_sweep = str_sweep; g_cs_str_major = str_major;
+  /* The collector's own length cache: every parked worker cleared its own at
+     the park; this thread did not park, and it may name strings the sweep
+     is about to free, whose addresses a later allocation reuses. */
+  sp_str_lcache_clear();
+  /* every slot ever used, plus the sweepers' own: a finalizer that
+     allocated would have pushed onto CS_SWEEPER_WID's lists */
+  int slots[SP_MAX_WORKERS]; int ns = 0;
+  for (int i = 0; i < g_cs_hi; i++) slots[ns++] = i;
+  slots[ns++] = CS_SWEEPER_WID;
+  for (int k = 0; k < ns; k++) {
+    int i = slots[k];
+    g_cs_pro_head[i] = g_cs_pro_tail[i] = NULL;
+    g_cs_obj[i] = sp_gc_wslot[i].young; sp_gc_wslot[i].young = NULL;
+    if (g_cs_obj[i]) g_cs_tasks[nt++] = (sp_sw_task){ CS_OBJ, (short)i, 0 };
+    /* the slot's chunks: the young slab generation every cycle, the old one
+       at a full, strings with objects -- the string gate below governs only
+       the lists of the strings too large for the slab (and their retune) */
+    g_cs_tasks[nt++] = (sp_sw_task){ CS_CHUNKS, (short)i, 0 };
+    if (str_sweep) {
+      g_cs_so_freed[i] = 0;
+      if (str_major) {
+        g_cs_str_old[i] = sp_str_wslot[i].old; sp_str_wslot[i].old = NULL;
+        if (g_cs_str_old[i]) g_cs_tasks[nt++] = (sp_sw_task){ CS_STR_OLD, (short)i, 0 };
+      }
+      for (int sub = 0; sub < SP_STR_YSUB; sub++) {
+        g_cs_sy_keep[i][sub] = g_cs_sy_tail[i][sub] = NULL; g_cs_sy_moved[i][sub] = 0;
+        g_cs_str_young[i][sub] = sp_str_wslot[i].young[sub]; sp_str_wslot[i].young[sub] = NULL;
+        if (g_cs_str_young[i][sub]) g_cs_tasks[nt++] = (sp_sw_task){ CS_STR_YOUNG, (short)i, (short)sub };
+      }
+      /* the young generation left with its lists; the trigger counts what
+         the slot holds from here */
+      SP_GC_CTR_SET(sp_str_wslot[i].young_bytes, 0);
+      sp_str_wslot[i].ask_at = 0;
+    }
+  }
+  if (full) {
+    g_cs_obj_old = sp_gc_old_detach();
+    if (g_cs_obj_old) g_cs_tasks[nt++] = (sp_sw_task){ CS_OBJ_OLD, 0, 0 };
+  }
+  pthread_mutex_lock(&g_cs_lock);
+  if (sp_gc_ph_on) g_cs_t0 = sp_monotonic_now();
+  g_cs_ntasks = nt; __atomic_store_n(&g_cs_finished, 0, __ATOMIC_RELAXED);
+  memset(g_cs_claimed, 0, (size_t)nt);
+  __atomic_store_n(&g_cs_unclaimed, nt, __ATOMIC_RELEASE);
+  g_cs_pending = 1;
+  g_cs_gen++;
+  pthread_cond_broadcast(&g_cs_go);
+  pthread_mutex_unlock(&g_cs_lock);
+}
+/* Under the barrier, at the start of the next collection (or the end of an
+   explicit one): join the sweepers and apply what they produced. */
+static void sp_sched_conc_wait(void) {
+  if (!g_cs_pending) return;
+  if (__atomic_load_n(&g_cs_finished, __ATOMIC_ACQUIRE) < g_cs_ntasks || __atomic_load_n(&g_cs_running, __ATOMIC_ACQUIRE) > 0) {
+    /* Not done yet: the world is stopped, so every parked worker is idle.
+       Hand them the unclaimed tasks (thirty hands finish in a fraction of
+       what eight sweepers need), take some ourselves, then join. */
+    double t0 = sp_gc_ph_on ? sp_monotonic_now() : 0;
+    SCHED_LOCK();
+    g_cs_help = 1;
+    pthread_cond_broadcast(&g_stw_release);
+    SCHED_UNLOCK();
+    sp_cs_help_run();
+    pthread_mutex_lock(&g_cs_lock);
+    while (__atomic_load_n(&g_cs_finished, __ATOMIC_RELAXED) < g_cs_ntasks || __atomic_load_n(&g_cs_running, __ATOMIC_RELAXED) > 0) pthread_cond_wait(&g_cs_done, &g_cs_lock);
+    pthread_mutex_unlock(&g_cs_lock);
+    SCHED_LOCK();
+    g_cs_help = 0;
+    SCHED_UNLOCK();
+    if (sp_gc_ph_on) { sp_gc_ph_conc_wait += sp_monotonic_now() - t0; sp_gc_ph_conc_waits++; }
+  }
+  if (sp_gc_ph_on) { sp_gc_ph_task_sum += (double)g_cs_task_us * 1e-6; g_cs_task_us = 0;
+                     sp_gc_ph_slot_max += (double)g_cs_task_max_us * 1e-6; g_cs_task_max_us = 0; }
+  double at0 = sp_gc_ph_on ? sp_monotonic_now() : 0;
+  /* the swept old list comes back first, then the survivors go in front of it */
+  if (g_cs_full) { sp_gc_old_attach(g_cs_obj_old, g_cs_obj_old_tail); g_cs_obj_old = g_cs_obj_old_tail = NULL; }
+  int slots[SP_MAX_WORKERS]; int ns = 0;
+  for (int i = 0; i < g_cs_hi; i++) slots[ns++] = i;
+  slots[ns++] = CS_SWEEPER_WID;
+  for (int k = 0; k < ns; k++) {
+    int i = slots[k];
+    /* bytes: the mark counted them into the old total already */
+    sp_gc_promote_slot(g_cs_pro_head[i], g_cs_pro_tail[i], 0);
+    g_cs_pro_head[i] = g_cs_pro_tail[i] = NULL;
+  }
+  if (sp_gc_ph_on) { double t = sp_monotonic_now(); sp_gc_ph_apply_obj += t - at0; at0 = t; }
+  if (g_cs_str_sweep) {
+    size_t promoted = 0;
+    size_t young_now = sp_str_bytes_total();
+    for (int k = 0; k < ns; k++) {
+      int i = slots[k];
+      if (g_cs_str_major) {
+        /* the old list was detached whole; what the sweep left of it is
+           the old list again, and the young survivors go in front */
+        sp_str_wslot[i].old = g_cs_str_old[i]; g_cs_str_old[i] = NULL;
+        sp_str_wslot[i].old_bytes = sp_str_wslot[i].old_bytes > g_cs_so_freed[i] ? sp_str_wslot[i].old_bytes - g_cs_so_freed[i] : 0;
+      }
+      for (int sub = 0; sub < SP_STR_YSUB; sub++)
+        sp_str_sweep_young_done(i, g_cs_sy_keep[i][sub], g_cs_sy_tail[i][sub], g_cs_sy_moved[i][sub], 0, &promoted);
+    }
+    sp_str_sweep_end_excluding(g_cs_str_major, promoted, young_now);
+  }
+  if (sp_gc_ph_on) { double t = sp_monotonic_now(); sp_gc_ph_apply_str += t - at0; at0 = t; }
+  /* the owners released their own chunks beside the program (sp_stw_park_locked's
+     exit); what is left for the barrier is the slots no active worker owns */
+  if (g_cs_full) sp_slab_release_from(sp_active_workers);
+  if (sp_gc_ph_on) sp_gc_ph_apply_release += sp_monotonic_now() - at0;
+  g_cs_pending = 0;
+}
+/* Under the barrier, at the end of the root walk: lend the parked workers
+   to the drain, drain with them, and join them before the mark is declared
+   done (a late helper that found nothing must still be out of the drain). */
+static void sp_sched_par_mark(void) {
+  sp_gc_mark_par_begin();
+  SCHED_LOCK();
+  g_mk_gen++; g_mk_joined = 0; g_mk_go = 1;
+  /* as many wake-ups as there are seats: a broadcast had thirty parked
+     workers take the scheduler lock in turn to find no seat, and that
+     procession cost more than the drain */
+  for (int i = 0; i < g_mk_max; i++) pthread_cond_signal(&g_stw_release);
+  SCHED_UNLOCK();
+  double t0 = sp_gc_ph_on ? sp_monotonic_now() : 0;
+  sp_gc_mark_par_run();
+  double t1 = sp_gc_ph_on ? sp_monotonic_now() : 0;
+  SCHED_LOCK();
+  g_mk_go = 0;
+  while (g_mk_active > 0) pthread_cond_wait(&g_mk_cv, &g_sched_lock);
+  if (sp_gc_ph_on) { double t2 = sp_monotonic_now(); sp_gc_ph_mk_drain += t1 - t0; sp_gc_ph_mk_join += t2 - t1; }
+  if (sp_gc_ph_on) { sp_gc_ph_mk_helpers += (unsigned long long)g_mk_joined; sp_gc_ph_mk_drains++; }
+  SCHED_UNLOCK();
+}
+static void sp_cs_start_sweepers(void) {
+  { const char *o = getenv("SPINEL_GC_OWNER"); g_cs_owner_env = !(o && *o == '0'); }
+  const char *e = getenv("SPINEL_GC_SWEEPERS");
+  int want = e && *e ? atoi(e) : 0;
+  if (want <= 0) { want = g_worker_cap > 0 ? g_worker_cap : 1; if (want > 8) want = 8; }
+  if (want > CS_SWEEPER_MAX) want = CS_SWEEPER_MAX;
+  pthread_attr_t at; pthread_attr_init(&at);
+  pthread_attr_setstacksize(&at, 1024 * 1024);
+  pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+  for (int i = 0; i < want; i++) {
+    pthread_t t;
+    if (pthread_create(&t, &at, sp_cs_sweeper_main, NULL) == 0) g_cs_nsweepers++;
+  }
+  pthread_attr_destroy(&at);
+  if (g_cs_nsweepers > 0) {
+    sp_gc_conc_sweep_hook = sp_sched_conc_start;
+    sp_gc_conc_wait_hook = sp_sched_conc_wait;
+  }
+}
+
+static int    g_sw_hi = 1;   /* largest pool seen; bounds the per-collection loops */
+static void sp_sched_par_sweep(void) {
+  int n = sp_active_workers; if (n < 1) n = 1; if (n > SP_MAX_WORKERS) n = SP_MAX_WORKERS;
+  /* Only the live slots: SP_MAX_WORKERS is 256 and this runs on every
+     collection, so clearing the whole array cost more than the sweep saved.
+     g_sw_hi is the largest pool ever seen, which bounds the orphan scan below
+     without walking 256 empty slots each time. */
+  if (n > g_sw_hi) g_sw_hi = n;
+  /* The string gate is one decision over the whole heap, so make it here --
+     once, before anyone starts -- and let each worker apply it to its own
+     slot. Taking it per worker would let them disagree about `major`. */
+  g_str_major = 0;
+  g_str_sweep = sp_str_sweep_begin(&g_str_major);
+  /* Same gate the serial sweep applies: on a minor cycle the old string list
+     holds exactly the strings the mark could not reach, so sweeping it frees
+     live ones. Without this a threaded program corrupted a Hash the moment a
+     minor cycle landed on a string-heap trigger. */
+  if (sp_gc_str_minor_only) g_str_major = 0;
+  sp_str_par_done = 1;   /* the collector's serial pass must not repeat this */
+  /* Every slot up to the largest pool seen is on the list: a slot no live
+     worker owns -- past the current pool, or a worker that exited -- still
+     has to be swept or its lists leak, and its string lists count too. The
+     heavy tasks go first so the tail of the phase is short ones. */
+  memset(g_str_promoted, 0, (size_t)g_sw_hi * sizeof g_str_promoted[0]);
+  memset(g_sw_head, 0, (size_t)g_sw_hi * sizeof g_sw_head[0]);
+  memset(g_sw_tail, 0, (size_t)g_sw_hi * sizeof g_sw_tail[0]);
+  memset(g_sw_bytes, 0, (size_t)g_sw_hi * sizeof g_sw_bytes[0]);
+  int nt = 0;
+  if (g_str_sweep) {
+    if (g_str_major)
+      for (int i = 0; i < g_sw_hi; i++)
+        if (sp_str_wslot[i].old) g_sw_tasks[nt++] = (sp_sw_task){ SW_STR_OLD, (short)i, 0 };
+    for (int i = 0; i < g_sw_hi; i++)
+      for (int sub = 0; sub < SP_STR_YSUB; sub++) {
+        g_sy_keep[i][sub] = g_sy_tail[i][sub] = NULL; g_sy_moved[i][sub] = g_sy_held[i][sub] = 0;
+        if (sp_str_wslot[i].young[sub]) g_sw_tasks[nt++] = (sp_sw_task){ SW_STR_YOUNG, (short)i, (short)sub };
+      }
+  }
+  for (int i = 0; i < g_sw_hi; i++)
+    if (sp_gc_wslot[i].young) g_sw_tasks[nt++] = (sp_sw_task){ SW_OBJ, (short)i, 0 };
+  /* every slot's slab chunks, the slots no worker runs included: a chunk is
+     swept exactly once a cycle, and a second pass over one at a full cycle
+     would read its cleared marks as "nothing reached" */
+  for (int i = 0; i < SP_MAX_WORKERS; i++)
+    g_sw_tasks[nt++] = (sp_sw_task){ SW_CHUNKS, (short)i, 0 };
+  /* The collector's own length cache: every parked worker cleared its own
+     at the park, and until now the collector dropped its entries one by one
+     as it swept its own strings. Its strings may now be swept by any worker,
+     which drops them from THAT worker's (empty) cache, so the collector's
+     entries would name freed strings. Clear it whole, like a park does. */
+  sp_str_lcache_clear();
+  SCHED_LOCK();
+  g_sw_ntasks = nt;
+  __atomic_store_n(&g_sw_next, 0, __ATOMIC_RELEASE);
+  g_sw_done = 0;
+  g_sw_slot_max_us = 0;
+  g_sweep_go = 1;
+  pthread_cond_broadcast(&g_stw_release);
+  SCHED_UNLOCK();
+  int ran = sp_sweep_run_tasks();
+  SCHED_LOCK();
+  g_sw_done += ran;
+  while (g_sw_done < nt) pthread_cond_wait(&g_sweep_cv, &g_sched_lock);
+  g_sweep_go = 0;
+  SCHED_UNLOCK();
+  for (int i = 0; i < g_sw_hi; i++)
+    sp_gc_promote_slot(g_sw_head[i], g_sw_tail[i], g_sw_bytes[i]);
+  if (sp_gc_ph_on) {
+    sp_gc_ph_slot_max += (double)g_sw_slot_max_us * 1e-6;
+    sp_gc_ph_task_sum += (double)g_sw_task_sum_us * 1e-6;
+    sp_gc_ph_task_obj += (double)g_sw_task_max_kind[SW_OBJ] * 1e-6;
+    sp_gc_ph_task_sold += (double)g_sw_task_max_kind[SW_STR_OLD] * 1e-6;
+    sp_gc_ph_task_syoung += (double)g_sw_task_max_kind[SW_STR_YOUNG] * 1e-6;
+    g_sw_task_sum_us = 0; memset(g_sw_task_max_kind, 0, sizeof g_sw_task_max_kind);
+  }
+  if (g_str_sweep) {
+    size_t promoted = 0;
+    for (int i = 0; i < g_sw_hi; i++)
+      for (int sub = 0; sub < SP_STR_YSUB; sub++)
+        sp_str_sweep_young_done(i, g_sy_keep[i][sub], g_sy_tail[i][sub], g_sy_moved[i][sub], g_sy_held[i][sub], &promoted);
+    sp_str_sweep_end(g_str_major, promoted);
+    g_str_sweep = 0;
+  }
+}
+
+/* The trimmer: malloc_trim beside the running program rather than under
+   stop-the-world (see the full-cycle tail of sp_gc_collect). It wakes once a
+   second and trims when a full cycle has asked since the last one. */
+#if defined(__GLIBC__)
+#include <malloc.h>
+/* The trimmer sleeps in short steps and trims as soon as a full cycle has
+   asked (the cadence, once a second, is the requester's): a trim a second
+   after the request found the arena mid-cycle, with the freed memory of the
+   last sweep only partly in it, and the process kept 260 MB more resident
+   than the inline trim used to leave. Trimming promptly after the request,
+   which follows the sweep, hands back what the sweep freed. */
+static void *sp_trim_thread_main(void *arg) {
+  (void)arg;
+  sigset_t blk; sigemptyset(&blk); sigaddset(&blk, g_preempt_sig);
+  pthread_sigmask(SIG_BLOCK, &blk, NULL);
+  for (;;) {
+    struct timespec ts = { 0, 20 * 1000 * 1000 };
+    nanosleep(&ts, NULL);
+    if (__atomic_load_n(&g_shutdown, __ATOMIC_RELAXED)) break;   /* set under the sched lock at drain; read here without it */
+    if (__atomic_exchange_n(&sp_gc_trim_wanted, 0, __ATOMIC_ACQ_REL)) malloc_trim(0);
+  }
+  return NULL;
+}
+static void sp_trim_thread_start(void) {
+  pthread_t t;
+  pthread_attr_t at; pthread_attr_init(&at);
+  /* 1 MB, like the sweepers: a thread's stack also carries the runtime's
+     static TLS, and the mark stack there alone is half a megabyte, so the
+     256 KB this asked for was refused by pthread_create (EINVAL). The
+     trimmer then never started, and every full cycle's malloc_trim ran
+     inline under the barrier -- 40 ms each, the whole reason the thread
+     exists -- with nothing saying so. */
+  pthread_attr_setstacksize(&at, 1024 * 1024);
+  pthread_attr_setdetachstate(&at, PTHREAD_CREATE_DETACHED);
+  int rc = pthread_create(&t, &at, sp_trim_thread_main, NULL);
+  if (rc == 0) sp_gc_trimmer_on = 1;
+  else if (sp_gc_ph_on) fprintf(stderr, "[gcph] trimmer thread did not start: %s\n", strerror(rc));
+  pthread_attr_destroy(&at);
+}
+#else
+static void sp_trim_thread_start(void) {}
+#endif
+
+static int sp_worker_count(void);   /* defined below; the pool size */
+static void sp_sched_ensure_workers(void) {
+  if (g_workers_started) return;
+  sp_alloc_stress_init();   /* set the stress flags once here, before any helper reads them */
+  sp_alloc_worker_tune(sp_worker_count());  /* and size the GC budget for the pool */
+  g_workers_started = 1;
+  sp_sched_start_workers();
+  /* Hand parked workers their own slots from here on. Workers spawn lazily, so
+     the pool may still be one at this point; the driver itself falls back to
+     the serial sweep whenever there is nobody parked to help. */
+  sp_gc_par_sweep_hook = sp_sched_par_sweep;
+  /* Seats for the parallel mark. Four helpers took a server's drain from
+     2.0 ms to 0.7 ms; eight did no better and sixteen were slower, since
+     every helper is a parked worker woken from a futex and the wake-ups
+     and the chunk list's lock are the drain's fixed cost. */
+  { const char *e = getenv("SPINEL_GC_MARKERS"); int m = e && *e ? atoi(e) : 0;
+    if (m <= 0) { m = g_worker_cap > 0 ? g_worker_cap : 1; if (m > 4) m = 4; }
+    g_mk_max = m; sp_gc_mark_par_markers(m + 1); }
+  sp_gc_hdr_flags_check();
+  sp_gc_par_mark_hook = sp_sched_par_mark;
+  sp_trim_thread_start();
+  sp_cs_start_sweepers();
+}
+#endif
+
+/* CRuby's two-line report: the thread's own #inspect, then the same tail an
+   uncaught exception prints. The old one-line form named the thread by its
+   small serial, which says nothing about WHICH thread in a program that
+   spawns several -- #inspect carries the spawn site. sp_Thread_inspect
+   allocates, and the caller has already dropped t from the registry, so root
+   t across it. */
 static void sp_thread_report(sp_thread *t) {
-  fprintf(stderr, "#<Thread:%u> terminated with exception: %s (%s)\n",
-          t->id, t->exc_msg ? t->exc_msg : "", t->exc_cls ? t->exc_cls : "Exception");
+  SP_GC_ROOT(t);
+  const char *cls = t->exc_cls ? t->exc_cls : "Exception";
+  const char *msg = t->exc_msg ? t->exc_msg : "";
+  SP_GC_ROOT_STR(msg);
+  const char *ins = sp_Thread_inspect(t);
+  fprintf(stderr, "%s terminated with exception (report_on_exception is true):\n", ins);
+  fprintf(stderr, "%s (%s)\n", (msg && *msg) ? msg : cls, cls);
 }
 
 /* Park/wake primitives (defined below; used by join here). */
@@ -421,22 +1846,40 @@ static void sp_thread_wake_joiners(sp_thread *t) {
    a worker that merely wakes spuriously and re-idles never touches g_nrunning,
    so it cannot momentarily perturb the predicate the way an idle count would. */
 static void sp_sched_signal_if_quiescent(void) {
-  if (g_nrunning == 0 && g_runnable == 0) SCHED_WAKE_ALL();
+  /* Only main is waiting on this. Quiescent means there is nothing for a
+     helper to find, so waking the helpers here was pure cost -- and in a
+     park-heavy program (every green thread blocked on I/O between hops) it
+     fired on every hop, which is most of what adding workers cost (#4305). */
+  if (g_nrunning == 0 && g_runnable == 0) SCHED_WAKE_MAIN();
 }
 
-static void run_thread_once(sp_thread *t) {   /* PRE/POST: sched lock held */
+static void run_thread_once(sp_thread *t) { sp_gc_wb((void*)t);   /* PRE/POST: sched lock held */
+  if (sched_lat_enabled() && t->readied_at > 0) {
+    double d = (sp_monotonic_now() - t->readied_at) * 1e6;   /* us */
+    int k = 0; while (k < 31 && d >= (double)(2u << k)) k++;
+    g_sched_lat_hist[k]++; g_sched_lat_n++;
+    if (d > g_sched_lat_max) g_sched_lat_max = d;
+    t->readied_at = 0;
+    int len = 0; for (sp_thread *w = g_lrq[sp_worker_id].head; w; w = w->rq_next) len++;
+    if (len > g_lrq_len_max) g_lrq_len_max = len;
+  }
   sp_thread *saved = g_current;
   g_current = t;
   g_nrunning++;
   t->state = SP_TH_RUNNING;
   t->off_cpu = 0;        /* on-cpu now: no other worker may pick it up */
-  if (t->home_wid < 0) t->home_wid = (short)g_worker_id;   /* pin to this worker (TLS affinity) */
+  if (t->home_wid < 0) {   /* pin to this worker (TLS affinity) */
+    t->home_wid = (short)sp_worker_id;
+#ifdef SP_THREADS
+    g_wslot[sp_worker_id].pinned++;
+#endif
+  }
 #ifdef SP_THREADS
   /* Publish to the monitor that this worker is now running t, and when -- it uses
      this to enforce the timeslice. Nudge the monitor if it is idle so it starts
      ticking. */
-  g_wslot[g_worker_id].cur = t;
-  g_wslot[g_worker_id].since = sp_monotonic_now();
+  g_wslot[sp_worker_id].cur = t;
+  g_wslot[sp_worker_id].since = sp_monotonic_now();
   sp_sysmon_wake();
 #endif
   int raised = 0;
@@ -452,7 +1895,7 @@ static void run_thread_once(sp_thread *t) {   /* PRE/POST: sched lock held */
   SCHED_LOCK();
   g_current = saved;
 #ifdef SP_THREADS
-  g_wslot[g_worker_id].cur = NULL;   /* no longer timing t on this worker */
+  g_wslot[sp_worker_id].cur = NULL;   /* no longer timing t on this worker */
   /* If the monitor flagged t but it yielded/blocked/died before reaching a poll,
      retire the request here so the flag does not stay stuck set. */
   if (t->preempt_request) { t->preempt_request = 0; g_npreempt--; sp_recompute_safepoint_flag(); }
@@ -460,11 +1903,32 @@ static void run_thread_once(sp_thread *t) {   /* PRE/POST: sched lock held */
   if (t->fiber->state == 3) {   /* the body returned (terminated) */
     t->retval = t->fiber->yielded_value;
     t->state = SP_TH_DEAD;
+#ifdef SP_THREADS
+    if (t->home_wid >= 0 && g_wslot[t->home_wid].pinned > 0) g_wslot[t->home_wid].pinned--;
+#endif
     int do_report = 0;
     if (raised) {
       t->has_exc = 1; t->exc_cls = ec; t->exc_msg = em; t->exc_obj = eo;
-      do_report = t->report_on_exception;
+      /* A SystemExit is not a thread dying badly, it is the program being
+         asked to end: CRuby reports every other class here and stays silent
+         for this one, then lets the exception surface at join and terminate
+         with its status. Reporting it printed a scary line for an ordinary
+         `exit` inside a thread. */
+      do_report = t->report_on_exception &&
+                  !(ec && strcmp(ec, "SystemExit") == 0);
     }
+    /* Record t AFTER the stores above, not only on the way into this function.
+       The barrier at the top has been consumed by then: the transfer runs the
+       thread's body, which allocates, and any collection in there clears every
+       old object's dirty bit and empties the remembered set. retval and the
+       exception fields are all allocated by that body, so an old t was left
+       holding young values nothing had recorded -- and a minor mark does not
+       walk the old list. Thread#value read a recycled string this way.
+
+       A barrier before a call that can collect only covers the stores before
+       the call; gc_wb_cells makes the same choice on the codegen side, and
+       says why in its own comment. */
+    sp_gc_wb((void *)t);
     sp_thread_wake_joiners(t);
     reg_remove(t);   /* collectable once no user reference remains */
     g_nrunning--;
@@ -484,15 +1948,16 @@ static void run_thread_once(sp_thread *t) {   /* PRE/POST: sched lock held */
       t->wake_pending = 0;
       t->state = SP_TH_RUNNABLE;
       runq_requeue(t);
-      SCHED_WAKE();
+      sched_wake_home(t->home_wid);   /* pinned to us: our own loop re-picks it */
     }
-  } else {
+  }
+  else {
     /* Thread.pass / preempt: requeue. A started thread is pinned to its home
        worker (TLS affinity), so it lands on our own local queue TAIL -- other
        queued work still runs first, and the 61-tick global check keeps the
        global queue from starving. */
     runq_requeue(t);
-    SCHED_WAKE();
+    sched_wake_home(t->home_wid);   /* pinned to us: our own loop re-picks it */
   }
   g_nrunning--;
   sp_sched_signal_if_quiescent();   /* this thread blocked/passed; if nothing else runs, wake a waiting main */
@@ -526,12 +1991,22 @@ static void sp_safepoint_preempt(void) {
    empty queue -- otherwise main would falsely declare a deadlock while a helper
    runs the very thread that will wake it. At N=1 g_nrunning is 0 between runs, so
    this returns on an empty queue exactly as before. PRE/POST: sched lock held. */
+/* may_wait: 0 never waits, 1 waits for anything outstanding, 2 is the EXIT
+   DRAIN -- it waits for work that can still run and NOT for threads that are
+   merely blocked. main() finishing is the end of the program in CRuby, where
+   the other threads are killed where they stand; waiting on a sleeper there
+   meant `Thread.new { sleep 30 }` at the top of a script hung the process
+   after its last statement, and `exit 0` was the difference between a program
+   that ended and one that did not (#4394, #4397, rofl0r). */
 static void sp_sched_pump(sp_thread *target, int may_wait) {
   for (;;) {
 #ifdef SP_THREADS
     if (g_stw_active) { sp_stw_park_locked(); continue; }   /* park main through STW too */
 #endif
     if (target && target->state == SP_TH_DEAD) return;
+#ifdef SP_EV_BACKEND
+    if (g_wslot[0].evfd > 0) sp_ev_worker_wait(0, 0);   /* see sp_worker_main */
+#endif
     /* main blocked on a Queue/Mutex and a runnable thread just woke it */
     if (g_main_thread.state == SP_TH_RUNNABLE) { g_main_thread.state = SP_TH_RUNNING; return; }
     /* Run a green thread on the main worker only at N=1. With helpers present,
@@ -546,14 +2021,14 @@ static void sp_sched_pump(sp_thread *target, int may_wait) {
        main is the only worker that can finish it, so run it here -- otherwise
        the pump and that thread deadlock waiting on each other. */
 #ifdef SP_THREADS
-    if (g_nworkers > 1) {
+    if (sp_active_workers > 1) {
       sp_thread *t = runq_pop(&g_lrq[0]);
       if (t) { run_thread_once(t); continue; }
     }
     else
 #endif
     {
-      sp_thread *t = sched_pick(g_worker_id);
+      sp_thread *t = sched_pick(sp_worker_id);
       if (t) { run_thread_once(t); continue; }
     }
 #ifdef SP_THREADS
@@ -563,8 +2038,23 @@ static void sp_sched_pump(sp_thread *target, int may_wait) {
        broadcasts (sp_sched_signal_if_quiescent). Only when nothing runs and the
        queue is empty do we fall through -- drained, or a deadlock the caller
        observes. */
-    if (may_wait && (g_nrunning > 0 || g_runnable > 0 || g_sleepers || g_io_waiters)) {
+    int outstanding = (g_nrunning > 0 || g_runnable > 0);
+    /* A sleeper or an I/O waiter is work that may yet become runnable, so an
+       ordinary wait counts it. The exit drain does not: nothing is going to
+       ask for it after main has returned. */
+    if (may_wait == 1) outstanding = outstanding || g_sleepers || g_io_waiters;
+    if (may_wait && outstanding) {
+#ifdef SP_EV_BACKEND
+      /* Main is worker 0, and threads pin to it -- at SPINEL_WORKERS=1 all of
+         them do. So main waits on worker 0's readiness set like any other
+         worker, or nothing would ever deliver to the threads pinned here
+         (#4306). The timeout keeps the pump's own predicates -- target death,
+         main made runnable -- checked on a bound. */
+      if (g_wslot[0].evfd > 0) { sp_ev_worker_wait(0, SP_EV_BACKSTOP_MS); continue; }
+#endif
+      sp_out_enter_locked(0, SP_OUT_IDLE);
       pthread_cond_wait(&g_sched_work, &g_sched_lock);
+      sp_out_leave_locked(0);
       continue;
     }
 #else
@@ -586,7 +2076,7 @@ static void sp_sched_pass(void) {
      snapshot and waits for the next sweep, so it cannot starve main. */
   int n = g_runnable;
   while (n-- > 0) {
-    sp_thread *t = sched_pick(g_worker_id);
+    sp_thread *t = sched_pick(sp_worker_id);
     if (!t) return;
     run_thread_once(t);
   }
@@ -602,7 +2092,16 @@ static void sp_thread_scan(void *p) {
   if (t->tls) sp_gc_mark(t->tls);
 }
 
+sp_thread *sp_Thread_spawn_fiber_at(sp_Fiber *f, sp_RbVal arg, const char *file, sp_int line) {SP_GC_ROOT_RBVAL(arg);SP_GC_ROOT(f);SP_GC_ROOT_STR(file);
+  sp_thread *t = sp_Thread_spawn_fiber(f, arg);
+  t->birth_file = file;
+  t->birth_line = line;
+  return t;
+}
 sp_thread *sp_Thread_spawn_fiber(sp_Fiber *f, sp_RbVal arg) {
+#ifdef SP_THREADS
+  sp_sched_ensure_workers();   /* first Thread: bring the helper pool + monitor up now */
+#endif
   SP_GC_ROOT(f);   /* root the freshly-built fiber across the allocation below */
   SP_GC_ROOT_RBVAL(arg);
   sp_thread *volatile t = (sp_thread *)sp_gc_alloc(sizeof(sp_thread), NULL, sp_thread_scan);
@@ -617,14 +2116,16 @@ sp_thread *sp_Thread_spawn_fiber(sp_Fiber *f, sp_RbVal arg) {
   t->id = g_next_id++;
   reg_add(t);
   /* Prefer the spawning worker's local queue (locality) -- but only when that
-     worker actually drains it. Main does not run green threads at N>1, so a
-     thread it spawns would starve in its local queue (stealing only kicks in
-     when the global queue is empty); send those to the global queue. */
+     worker actually drains it. Main is a coordinator: it hands work to helpers
+     and only runs a thread itself in the sole-worker fallback (no helper could
+     be spawned), which drains the global queue too. So a main-spawned thread
+     always goes to the global queue -- never main's local queue, where it would
+     wait on a steal. (g_worker_cap > 0 whenever threads are in use.) */
 #ifdef SP_THREADS
-  if (g_current == &g_main_thread && g_nworkers > 1) rq_push(t);
+  if (g_current == &g_main_thread && g_worker_cap > 0) rq_push(t);
   else
 #endif
-  lrq_push(g_worker_id, t);
+  lrq_push(sp_worker_id, t);
   SCHED_WAKE();   /* a helper worker may be idle: hand it the new thread */
   SCHED_UNLOCK();
   return t;
@@ -641,7 +2142,8 @@ static void sp_thread_await(sp_thread *t) {
     int dead = (t->state == SP_TH_DEAD);
     SCHED_UNLOCK();
     if (!dead) sp_raise_cls("ThreadError", "deadlock detected: no runnable thread");
-  } else {
+  }
+  else {
     sp_sched_block(&t->joiners);   /* parks on t's joiners; resumes once t is dead */
     SCHED_UNLOCK();
   }
@@ -659,6 +2161,40 @@ sp_thread *sp_Thread_join(sp_thread *t) {
   return t;
 }
 
+/* CRuby's Thread#join(limit): wait at most `seconds` for the thread to
+   finish, answering the thread when it does and NULL (nil) on timeout.
+   Same return type as the no-arg join so one variable can hold either
+   call's result.
+
+   The wait is a bounded poll rather than a park, because a deadline has
+   nowhere to live on the joiners list: the monitor walks g_sleepers and
+   g_io_waiters for deadlines, and a thread parked with sp_sched_block sits
+   on neither. Sleeping the whole timeout in one go is what the first cut
+   did, and it makes join(limit) a FIXED wait -- `t.join(5)` on a thread
+   that finishes in 50ms blocked for five seconds where CRuby returns at
+   once. Slicing it keeps the answer prompt (one slice of latency) and the
+   scheduler running other threads inside each sp_sleep. */
+#define SP_JOIN_POLL_SLICE 0.002
+sp_thread *sp_Thread_join_timeout(sp_thread *t, double seconds) {
+  SCHED_LOCK();
+  int dead = (t->state == SP_TH_DEAD);
+  SCHED_UNLOCK();
+  if (dead) { sp_thread_reraise_if_exc(t); return t; }
+  if (!(seconds > 0)) return NULL;   /* also catches a NaN limit */
+
+  double deadline = sp_monotonic_now() + seconds;
+  for (;;) {
+    double left = deadline - sp_monotonic_now();
+    if (left <= 0) break;
+    sp_sleep(left < SP_JOIN_POLL_SLICE ? (sp_float)left : (sp_float)SP_JOIN_POLL_SLICE);
+    SCHED_LOCK();
+    dead = (t->state == SP_TH_DEAD);
+    SCHED_UNLOCK();
+    if (dead) { sp_thread_reraise_if_exc(t); return t; }
+  }
+  return NULL;
+}
+
 sp_RbVal sp_Thread_value(sp_thread *t) {
   sp_thread_await(t);
   sp_thread_reraise_if_exc(t);
@@ -671,7 +2207,8 @@ void sp_Thread_pass(void) {
   if (self == &g_main_thread) {
     sp_sched_pass();   /* one round-robin sweep, then main resumes (not a drain) */
     SCHED_UNLOCK();
-  } else {
+  }
+  else {
     /* Yield but stay runnable. Do NOT enqueue ourselves here: a second worker
        could pop and run our fiber while we are still mid-context-switch. We keep
        our state RUNNING and transfer to our worker's root; run_thread_once
@@ -684,33 +2221,33 @@ void sp_Thread_pass(void) {
 
 sp_thread *sp_Thread_current(void) { return g_current; }
 
-mrb_bool sp_Thread_alive(sp_thread *t) { return t->state != SP_TH_DEAD; }
+sp_bool sp_Thread_alive(sp_thread *t) { return t->state != SP_TH_DEAD; }
 
 /* Thread.report_on_exception=(v): set the default for threads spawned after.
    Thread.report_on_exception: read the default. Per-thread #report_on_exception
    reads/sets the thread's own flag. */
-mrb_bool sp_Thread_set_report_default(mrb_bool v) { g_report_default = v ? 1 : 0; return v; }
-mrb_bool sp_Thread_get_report_default(void) { return g_report_default; }
-mrb_bool sp_Thread_set_report(sp_thread *t, mrb_bool v) { t->report_on_exception = v ? 1 : 0; return v; }
-mrb_bool sp_Thread_get_report(sp_thread *t) { return t->report_on_exception; }
+sp_bool sp_Thread_set_report_default(sp_bool v) { g_report_default = v ? 1 : 0; return v; }
+sp_bool sp_Thread_get_report_default(void) { return g_report_default; }
+sp_bool sp_Thread_set_report(sp_thread *t, sp_bool v) { t->report_on_exception = v ? 1 : 0; return v; }
+sp_bool sp_Thread_get_report(sp_thread *t) { return t->report_on_exception; }
 
 sp_thread *sp_Thread_main(void) { return &g_main_thread; }
 
 sp_RbVal sp_Thread_get_name(sp_thread *t) { return t->name; }
-sp_RbVal sp_Thread_set_name(sp_thread *t, sp_RbVal v) { t->name = v; return v; }
+sp_RbVal sp_Thread_set_name(sp_thread *t, sp_RbVal v) { sp_gc_wb((void*)t); t->name = v; return v; }
 
 /* Thread.list enumeration: the main thread followed by every live spawned
    thread (dead ones are off the registry). The generated TU builds the array
    over these accessors since it owns sp_PolyArray. */
-mrb_int sp_Thread_list_count(void) {
-  mrb_int n = 1;   /* the main thread */
+sp_int sp_Thread_list_count(void) {
+  sp_int n = 1;   /* the main thread */
   for (sp_thread *t = g_all; t; t = t->all_next) n++;
   return n;
 }
-sp_thread *sp_Thread_list_at(mrb_int i) {
+sp_thread *sp_Thread_list_at(sp_int i) {
   if (i <= 0) return &g_main_thread;
   sp_thread *t = g_all;
-  for (mrb_int k = 1; t && k < i; k++) t = t->all_next;
+  for (sp_int k = 1; t && k < i; k++) t = t->all_next;
   return t ? t : &g_main_thread;
 }
 
@@ -725,23 +2262,33 @@ sp_RbVal sp_Thread_status(sp_thread *t) {
 }
 
 /* ---- thread-local storage (Thread#[] / #[]=), a small sym->value map ---- */
-typedef struct { sp_sym *keys; sp_RbVal *vals; mrb_int len, cap; } sp_tls_map;
-static void sp_tls_scan(void *p) { sp_tls_map *m = (sp_tls_map *)p; for (mrb_int i = 0; i < m->len; i++) sp_mark_rbval(m->vals[i]); }
+typedef struct { sp_sym *keys; sp_RbVal *vals; sp_int len, cap; } sp_tls_map;
+static void sp_tls_scan(void *p) { sp_tls_map *m = (sp_tls_map *)p; for (sp_int i = 0; i < m->len; i++) sp_mark_rbval(m->vals[i]); }
 static void sp_tls_fin(void *p)  { sp_tls_map *m = (sp_tls_map *)p; free(m->keys); free(m->vals); }
 
 sp_RbVal sp_Thread_tls_get(sp_thread *t, sp_sym k) {
   sp_tls_map *m = (sp_tls_map *)t->tls;
-  if (m) for (mrb_int i = 0; i < m->len; i++) if (m->keys[i] == k) return m->vals[i];
+  if (m) for (sp_int i = 0; i < m->len; i++) if (m->keys[i] == k) return m->vals[i];
   return sp_box_nil();
 }
-mrb_bool sp_Thread_tls_key(sp_thread *t, sp_sym k) {
+sp_bool sp_Thread_tls_key(sp_thread *t, sp_sym k) {
+  /* A READ needs no barrier, and this one was pointed at the thread anyway --
+     which for the main thread is a static struct, so the barrier read the byte
+     in front of a global to decide whether it had a header. */
   sp_tls_map *m = (sp_tls_map *)t->tls;
-  if (m) for (mrb_int i = 0; i < m->len; i++) if (m->keys[i] == k) return 1;
+  if (m) for (sp_int i = 0; i < m->len; i++) if (m->keys[i] == k) return 1;
   return 0;
 }
+/* The barrier belongs on the MAP, which is the object that ends up holding the
+   new reference. It was on the thread: a minor mark then reached the map
+   through the thread's scan and MARKED it, but an old object is not re-scanned
+   unless it is in the remembered set, so a young value stored into a long-lived
+   map was swept out from under it. `Thread.current[:slots] = {}` per request,
+   on a main thread whose map has been alive since boot, is exactly that shape:
+   the next read of the slot faulted in sp_PolyPolyHash_get (#4311). */
 sp_RbVal sp_Thread_tls_set(sp_thread *t, sp_sym k, sp_RbVal v) {
   sp_tls_map *m = (sp_tls_map *)t->tls;
-  if (m) for (mrb_int i = 0; i < m->len; i++) if (m->keys[i] == k) { m->vals[i] = v; return v; }
+  if (m) for (sp_int i = 0; i < m->len; i++) if (m->keys[i] == k) { m->vals[i] = v; sp_gc_wb((void *)m); return v; }
   if (!m) {
     SP_GC_ROOT(t); SP_GC_ROOT_RBVAL(v);
     m = (sp_tls_map *)sp_gc_alloc(sizeof(sp_tls_map), sp_tls_fin, sp_tls_scan);
@@ -750,9 +2297,15 @@ sp_RbVal sp_Thread_tls_set(sp_thread *t, sp_sym k, sp_RbVal v) {
     m->vals = (sp_RbVal *)malloc(sizeof(sp_RbVal) * m->cap);
     if (!m->keys || !m->vals) sp_raise_cls("NoMemoryError", "failed to allocate thread storage");
     t->tls = m;
+    /* The map is a second reference store, into the THREAD, and the barrier
+       below covers only the map. sp_gc_alloc above is what makes this needed:
+       it can collect, which clears t's dirty bit, so a thread that was already
+       old holds a young map that nothing recorded and a minor mark never walks
+       it. The whole map went away and the next read answered nil. */
+    sp_gc_wb((void *)t);
   }
   if (m->len == m->cap) {
-    mrb_int nc = m->cap * 2;
+    sp_int nc = m->cap * 2;
     sp_sym *nk = (sp_sym *)realloc(m->keys, sizeof(sp_sym) * nc);
     if (!nk) sp_raise_cls("NoMemoryError", "failed to grow thread storage");
     m->keys = nk;
@@ -761,6 +2314,7 @@ sp_RbVal sp_Thread_tls_set(sp_thread *t, sp_sym k, sp_RbVal v) {
     m->vals = nv; m->cap = nc;
   }
   m->keys[m->len] = k; m->vals[m->len] = v; m->len++;
+  sp_gc_wb((void *)m);
   return v;
 }
 
@@ -796,23 +2350,33 @@ static void *sp_sysmon_main(void *arg) {
        the monitor is not a GC participant (it holds no roots) but it must not
        move threads between lists concurrently with the collector. */
     if (g_stw_active) { pthread_cond_wait(&g_stw_release, &g_sched_lock); continue; }
+    g_mon_iters++;
     double now = sp_monotonic_now();
-    double nearest = 0.0;
-    for (sp_thread **pp = &g_sleepers; *pp; ) {
-      sp_thread *t = *pp;
-      if (t->wake_deadline <= now) {
-        *pp = t->wait_next; t->wait_next = NULL; t->wait_head = NULL;
-        if (t == &g_main_thread) { t->state = SP_TH_RUNNABLE; SCHED_WAKE_ALL(); }  /* must reach main, not a helper */
-        else if (t->off_cpu) { t->state = SP_TH_RUNNABLE; runq_requeue(t); sp_sched_wake_for(t); }
-        else t->wake_pending = 1;   /* mid-switch; its worker enqueues it (run_thread_once) */
-      } else {
-        if (nearest == 0.0 || t->wake_deadline < nearest) nearest = t->wake_deadline;
-        pp = &t->wait_next;
+    if (sched_lat_enabled()) {
+      static double last_report = 0;
+      if (now - last_report >= 5.0) {
+        last_report = now;
+        fprintf(stderr, "[sched-lat] n=%llu max=%.0fus lrq_max=%d  us:", g_sched_lat_n, g_sched_lat_max, g_lrq_len_max);
+        for (int k = 0; k < 32; k++) if (g_sched_lat_hist[k]) fprintf(stderr, " [%u]=%llu", 1u << k, g_sched_lat_hist[k]);
+        fprintf(stderr, "\n");
+        int busyw = 0; for (int i = 0; i < sp_active_workers; i++) if (g_wslot[i].active && g_wslot[i].cur) busyw++;
+        fprintf(stderr, "[sched-lat] workers=%d busy=%d runnable=%d nrunning=%d\n", sp_active_workers, busyw, g_runnable, g_nrunning);
+        { int pinned[SP_MAX_WORKERS] = {0}; int unpinned = 0;
+          for (sp_thread *a = g_all; a; a = a->all_next) { if (a->home_wid >= 0) pinned[a->home_wid]++; else unpinned++; }
+          fprintf(stderr, "[sched-lat] pinned per worker:"); for (int i = 0; i < sp_active_workers; i++) fprintf(stderr, " %d", pinned[i]); fprintf(stderr, "  unpinned=%d\n", unpinned); }
+        sched_hist_print("mutex-wait", g_mtx_hist, g_mtx_n, g_mtx_max);
+        fprintf(stderr, "[mutex-wait] fast-path locks=%llu spin-acquired=%llu\n", g_mtx_fast, g_mtx_spin);
+        sched_hist_print("cv-wait", g_cv_hist, g_cv_n, g_cv_max);
+        g_lrq_len_max = 0;
       }
     }
-    /* Timeslice enforcement: flag any worker over the quantum, once per slice. */
-    int busy = 0;
-    for (int i = 0; i < g_nworkers; i++) {
+    double nearest = 0.0;
+    int npf = 1, nio = 0, busy = 0;
+    /* Timeslice enforcement, on every turn: it reads the worker slots, not the
+       wait lists, so it is O(workers) and does not belong behind the skip
+       below. (An earlier cut jumped over its declarations, which is how `busy`
+       came to be read uninitialised.) */
+    for (int i = 0; i < sp_active_workers; i++) {
       sp_thread *r = g_wslot[i].active ? g_wslot[i].cur : NULL;
       if (!r) continue;
       busy = 1;
@@ -823,34 +2387,88 @@ static void *sp_sysmon_main(void *arg) {
         pthread_kill(g_wslot[i].tid, g_preempt_sig);   /* nudge it to its next safepoint poll */
       }
     }
-    /* Build the I/O poll set: slot 0 is the wake pipe (a registering thread
-       writes a byte to break us out of poll early), the rest are parked fds. */
-    int npf = 1;
-    for (sp_thread *w = g_io_waiters; w; w = w->wait_next) {
-      if (npf >= g_pcap) {
-        int nc = g_pcap ? g_pcap * 2 : 16;
-        struct pollfd *np = (struct pollfd *)realloc(g_pfds, sizeof(struct pollfd) * nc);
-        sp_thread **nh = (sp_thread **)realloc(g_pths, sizeof(sp_thread *) * nc);
-        if (np) g_pfds = np; if (nh) g_pths = nh;
-        if (!np || !nh) break;
-        g_pcap = nc;
+    /* The deadline walks are O(parked), and with the descriptors held in the
+       kernel they are the only term left that grows with the population. Skip
+       them while nothing is due: the earliest deadline is cached, and a walk
+       re-derives it whenever one passes (#4317). */
+    int skip_walks = 0;
+#ifdef SP_EV_BACKEND
+    skip_walks = (g_ev_fd >= 0 && !(g_nearest != 0.0 && now >= g_nearest));
+#endif
+    if (skip_walks) nearest = g_nearest;
+    else {
+    for (sp_thread **pp = &g_sleepers; *pp; ) {
+      sp_thread *t = *pp;
+      if (t->wake_deadline <= now) {
+        *pp = t->wait_next; t->wait_next = NULL; t->wait_head = NULL;
+        if (t == &g_main_thread) { t->state = SP_TH_RUNNABLE; SCHED_WAKE_ALL(); }  /* must reach main, not a helper */
+        else if (t->off_cpu) { t->state = SP_TH_RUNNABLE; runq_requeue(t); sp_sched_wake_for(t); }
+        else t->wake_pending = 1;   /* mid-switch; its worker enqueues it (run_thread_once) */
       }
-      g_pfds[npf].fd = w->io_fd; g_pfds[npf].events = w->io_events; g_pfds[npf].revents = 0;
-      g_pths[npf] = w; npf++;
+      else {
+        if (nearest == 0.0 || t->wake_deadline < nearest) nearest = t->wake_deadline;
+        pp = &t->wait_next;
+      }
+    }
+    /* Build the I/O poll set: slot 0 is the wake pipe (a registering thread
+       writes a byte to break us out of poll early), the rest are parked fds.
+       A waiter with a deadline (sp_sched_wait_io_timeout) is woken here with
+       no revents once the clock passes it, and otherwise pulls the poll
+       timeout in like a sleeper does; wake_deadline is 0 for an open-ended
+       wait. */
+    for (sp_thread **wp = &g_io_waiters; *wp; ) {
+      sp_thread *w = *wp;
+      if (w->wake_deadline > 0.0 && w->wake_deadline <= now) {
+        *wp = w->wait_next; w->wait_next = NULL; w->wait_head = NULL;
+#ifdef SP_EV_BACKEND
+        g_ev_timeouts++;
+        sp_ev_drop(w);
+#endif
+        w->io_revents = 0; w->io_fd = -1;
+        if (w == &g_main_thread) { w->state = SP_TH_RUNNABLE; SCHED_WAKE_ALL(); }
+        else if (w->off_cpu) { w->state = SP_TH_RUNNABLE; runq_requeue(w); sp_sched_wake_for(w); }
+        else w->wake_pending = 1;
+        continue;
+      }
+      if (w->wake_deadline > 0.0 && (nearest == 0.0 || w->wake_deadline < nearest)) nearest = w->wake_deadline;
+      wp = &w->wait_next;
+      nio++;
+#ifdef SP_EV_BACKEND
+      if (g_ev_fd >= 0) continue;   /* the kernel holds the interest set */
+#endif
+      /* one slot per descriptor: the thread's own, or each of its set */
+      int nslot = w->io_fd >= 0 ? 1 : w->io_nset;
+      for (int si = 0; si < nslot; si++) {
+        if (npf >= g_pcap) {
+          int nc = g_pcap ? g_pcap * 2 : 16;
+          struct pollfd *np = (struct pollfd *)realloc(g_pfds, sizeof(struct pollfd) * nc);
+          sp_thread **nh = (sp_thread **)realloc(g_pths, sizeof(sp_thread *) * nc);
+          if (np) g_pfds = np; if (nh) g_pths = nh;
+          if (!np || !nh) break;
+          g_pcap = nc;
+        }
+        if (w->io_fd >= 0) { g_pfds[npf].fd = w->io_fd; g_pfds[npf].events = w->io_events; }
+        else { g_pfds[npf].fd = w->io_set[si].fd; g_pfds[npf].events = w->io_set[si].events; }
+        g_pfds[npf].revents = 0;
+        g_pths[npf] = w; npf++;
+      }
     }
     if (g_pcap < 1) {   /* ensure room for slot 0 even with no I/O waiters */
       g_pfds = (struct pollfd *)realloc(g_pfds, sizeof(struct pollfd) * 16);
       g_pths = (sp_thread **)realloc(g_pths, sizeof(sp_thread *) * 16);
       if (g_pfds && g_pths) g_pcap = 16;
     }
-    int have_io = (npf > 1);
+    g_nearest = nearest;   /* re-derived by the walks above */
+    }
+    int have_io = (nio > 0) || (g_io_waiters != NULL);
     if (nearest == 0.0 && !busy && !have_io) {
       /* nothing to time or watch: sleep until a thread sleeps / waits on I/O /
          is picked up by a worker (a registrant signals g_sysmon_cv). */
       g_sysmon_idle = 1;
       pthread_cond_wait(&g_sysmon_cv, &g_sched_lock);
       g_sysmon_idle = 0;
-    } else {
+    }
+    else {
       /* Poll the parked fds, timing out at the quantum (while preempting), near
          the nearest sleeper deadline, or 50ms otherwise (poll returns earlier on
          fd activity or a wake-pipe byte). */
@@ -859,6 +2477,35 @@ static void *sp_sysmon_main(void *arg) {
       if (dt > 0.05) dt = 0.05;
       if (dt < 0.0005) dt = 0.0005;
       int tmo = (int)(dt * 1000.0); if (tmo < 1) tmo = 1;
+#ifdef SP_EV_BACKEND
+      if (g_ev_fd > 0) {
+        /* The descriptors are in the WORKERS' sets now, so the monitor has no
+           fds of its own to watch: it is a timer, for deadlines and the
+           timeslice, and a condvar is the right thing to wait on. Its own wake
+           pipe goes with them -- sp_sysmon_wake signals the condvar. */
+        /* pthread_cond_timedwait's deadline is on CLOCK_REALTIME, and every
+           other clock in this file is CLOCK_MONOTONIC. Handing it a monotonic
+           stamp names a moment decades in the past, so the wait returns at
+           once, every time: the monitor spun 1.5 MILLION turns where it should
+           have taken 4,400, and burned a quarter of a core doing nothing. */
+        struct timespec ts;
+        clock_gettime(CLOCK_REALTIME, &ts);
+        ts.tv_sec += (time_t)dt;
+        ts.tv_nsec += (long)((dt - (double)(time_t)dt) * 1e9);
+        if (ts.tv_nsec >= 1000000000L) { ts.tv_sec++; ts.tv_nsec -= 1000000000L; }
+        g_mon_polls++;
+        g_sysmon_idle = 1;
+        pthread_cond_timedwait(&g_sysmon_cv, &g_sched_lock, &ts);
+        g_sysmon_idle = 0;
+        continue;
+      }
+#endif
+      /* Only the poll path needs the array; the degraded wait below is its
+         fallback, not the event path's. Placed after it, the event path was
+         never reached when the array had not been allocated -- which is the
+         case whenever the walks are skipped, so a monitor that started with
+         nothing parked nanosleeps 50ms a turn and delivers nothing. 102 turns
+         of that is the five-second stall this cost. */
       if (!g_pfds) {   /* allocation failed: degrade to a plain timed wait */
         SCHED_UNLOCK();
         struct timespec req = { (time_t)dt, (long)((dt - (time_t)dt) * 1e9) };
@@ -870,12 +2517,14 @@ static void *sp_sysmon_main(void *arg) {
       SCHED_UNLOCK();
       int pr = poll(g_pfds, (nfds_t)npf, tmo);
       SCHED_LOCK();
+      g_mon_polls++; g_mon_pollfds += (unsigned long long)npf;
       if (g_pfds[0].revents & POLLIN) {   /* drain the wake pipe */
         char buf[64]; while (read(g_sysmon_pipe[0], buf, sizeof buf) > 0) {}
       }
       if (pr > 0) {
         for (int i = 1; i < npf; i++) {
           if (!g_pfds[i].revents) continue;
+          g_mon_readied++;
           sp_thread *t = g_pths[i];
           if (t->wait_head != &g_io_waiters) continue;   /* unparked meanwhile (e.g. #kill) */
           for (sp_thread **pp = &g_io_waiters; *pp; pp = &(*pp)->wait_next)
@@ -915,11 +2564,13 @@ void sp_sched_sleep(double seconds) {
   self->off_cpu = 0;
   self->wake_pending = 0;
   self->wait_next = g_sleepers; self->wait_head = &g_sleepers; g_sleepers = self;
-  sp_sysmon_wake();   /* let the monitor recompute its timeout */
+  sp_deadline_added(self->wake_deadline);   /* wakes the monitor iff this is the new earliest */
+  if (g_sysmon_idle) sp_sysmon_wake();
   if (self == &g_main_thread) {
     sp_sched_pump(NULL, 1);   /* main waits (and pumps at N=1) until the monitor wakes it */
     SCHED_UNLOCK();
-  } else {
+  }
+  else {
     /* Same exception-context snapshot as sp_sched_block: the symmetric transfer
        clobbers our handler stack on resume. */
     void *exc_snap = sp_exc_ctx_new();
@@ -933,9 +2584,28 @@ void sp_sched_sleep(double seconds) {
 }
 
 int sp_sched_wait_io(int fd, short events) {
-  if (fd < 0 || !g_sysmon_started) {   /* no monitor: plain blocking single-fd poll */
+  return sp_sched_wait_io_timeout(fd, events, -1.0);
+}
+
+/* One descriptor (set == NULL) or a set of n: the park is the same, the
+   registration is per descriptor. */
+static int sp_poll_plain(struct pollfd *pp, nfds_t np, double timeout_s) {
+  if (timeout_s >= 0.0) {
+    double until = sp_monotonic_now() + timeout_s;
+    for (;;) {
+      double left = until - sp_monotonic_now();
+      int ms = left > 0.0 ? (int)(left * 1000.0) + 1 : 0;
+      int pr = poll(pp, np, ms);
+      if (pr > 0) return 1; if (pr == 0) return 0; if (errno == EINTR) continue; return 0;
+    }
+  }
+  for (;;) { int pr = poll(pp, np, 1000); if (pr > 0) return 1; if (pr == 0 || errno == EINTR) continue; return 0; }
+}
+static int sp_sched_wait_io_impl(int fd, short events, struct pollfd *set, int n, double timeout_s,
+                                 const unsigned char *cancel) {
+  if ((set ? n <= 0 : fd < 0) || !g_sysmon_started) {   /* no monitor: plain blocking poll */
     struct pollfd pf; pf.fd = fd; pf.events = events; pf.revents = 0;
-    for (;;) { int pr = poll(&pf, 1, 1000); if (pr > 0) return 1; if (pr == 0 || errno == EINTR) continue; return 0; }
+    return sp_poll_plain(set ? set : &pf, set ? (nfds_t)n : 1, timeout_s);
   }
   SCHED_LOCK();
   sp_thread *self = g_current;
@@ -945,15 +2615,59 @@ int sp_sched_wait_io(int fd, short events) {
     sp_fiber_fire_inject_if_pending();   /* raises; does not return */
     SCHED_LOCK();
   }
-  self->io_fd = fd; self->io_events = events; self->io_revents = 0;
+  /* A close from another thread that landed between the caller's readiness
+     probe and this lock. The handle's closed flag is written before
+     sp_sched_ev_forget takes the lock, so a park that takes it afterwards
+     sees the flag here, and one that took it first is readied by the forget
+     itself. Without this the registration went in after the forget (or the
+     kernel dropped it at the close that followed) and a read with no
+     deadline waited forever: the #4546 test hung on one macOS run in three. */
+  if (cancel && *cancel) { SCHED_UNLOCK(); return 1; }
+  if (set) {
+    sp_ev_waiter *es = (sp_ev_waiter *)malloc(sizeof(sp_ev_waiter) * (size_t)n);
+    if (!es) { SCHED_UNLOCK(); return sp_poll_plain(set, (nfds_t)n, timeout_s); }
+    for (int i = 0; i < n; i++) { es[i].t = self; es[i].idx = i; es[i].next = NULL; }
+    self->io_fd = -1; self->io_events = 0; self->io_set = set; self->io_nset = n; self->ev_set = es;
+  }
+  else { self->io_fd = fd; self->io_events = events; }
+  self->io_revents = 0;
+  /* 0 = no deadline. Set explicitly: a stale deadline from an earlier
+     Kernel#sleep would otherwise read as this wait's. */
+  self->wake_deadline = timeout_s >= 0.0 ? sp_monotonic_now() + timeout_s : 0.0;
   self->state = SP_TH_BLOCKED;
   self->off_cpu = 0;
   self->wake_pending = 0;
   self->wait_next = g_io_waiters; self->wait_head = &g_io_waiters; g_io_waiters = self;
-  sp_sysmon_wake();   /* let the monitor rebuild its poll set */
+  g_mon_regs++;
+#ifdef SP_EV_BACKEND
+  int registered = 1;
+  if (set) { for (int i = 0; i < n; i++) if (!sp_ev_park_entry(&self->ev_set[i], set[i].fd)) registered = 0; }
+  else registered = sp_ev_park(self, fd);
+  if (registered) {
+    /* Registered: the kernel holds the interest set, so the monitor needs no
+       word about the descriptor -- only about a deadline that moved earlier.
+       That is what takes the self-pipe write off the park path.
+
+       The idle check is NOT part of that saving and must not be folded into
+       it. sp_deadline_added signals only when this deadline is the new
+       earliest, and a monitor asleep on its condvar is woken by nothing else:
+       park with a deadline LATER than a stale g_nearest, while it sleeps, and
+       it sleeps through every event that follows. That is a whole-scheduler
+       stall, and it is what the first cut of this did -- 16 of 16 threads
+       waiting out their select timeout, about one run in twenty. */
+    if (self->wake_deadline > 0.0) sp_deadline_added(self->wake_deadline);
+    if (g_sysmon_idle) sp_sysmon_wake();
+  }
+  else
+#endif
+  {
+    if (self->wake_deadline > 0.0) sp_deadline_added(self->wake_deadline);
+    sp_sysmon_wake();   /* let the monitor rebuild its poll set */
+  }
   if (self == &g_main_thread) {
     sp_sched_pump(NULL, 1);   /* main waits (and pumps at N=1) until the monitor wakes it */
     int rev = self->io_revents; self->io_revents = 0; self->io_fd = -1;
+    if (set) { free(self->ev_set); self->ev_set = NULL; self->io_set = NULL; self->io_nset = 0; }
     SCHED_UNLOCK();
     return rev ? 1 : 0;
   }
@@ -965,9 +2679,22 @@ int sp_sched_wait_io(int fd, short events) {
   sp_Fiber_transfer(sp_fiber_worker_root(), sp_box_nil());
   sp_exc_ctx_load(exc_snap);
   sp_exc_ctx_free(exc_snap);
-  sp_fiber_fire_inject_if_pending();   /* a #kill/#raise delivered while waiting on I/O */
   int rev = self->io_revents; self->io_revents = 0; self->io_fd = -1;
+  /* the set entries are off every list (whoever unparked us dropped them);
+     released before an inject can raise past this frame */
+  if (set) { free(self->ev_set); self->ev_set = NULL; self->io_set = NULL; self->io_nset = 0; }
+  sp_fiber_fire_inject_if_pending();   /* a #kill/#raise delivered while waiting on I/O */
   return rev ? 1 : 0;
+}
+int sp_sched_wait_io_timeout(int fd, short events, double timeout_s) {
+  return sp_sched_wait_io_impl(fd, events, NULL, 0, timeout_s, NULL);
+}
+int sp_sched_wait_io_unless(int fd, short events, const unsigned char *cancel) {
+  return sp_sched_wait_io_impl(fd, events, NULL, 0, -1.0, cancel);
+}
+int sp_sched_wait_io_set(struct pollfd *set, int n, double timeout_s) {
+  if (n == 1) return sp_sched_wait_io_impl(set[0].fd, set[0].events, NULL, 0, timeout_s, NULL);
+  return sp_sched_wait_io_impl(-1, 0, set, n, timeout_s, NULL);
 }
 
 /* A helper worker: adopt its native stack as a per-worker root fiber, then pull
@@ -975,7 +2702,7 @@ int sp_sched_wait_io(int fd, short events) {
    collection is in progress and exits when main signals shutdown at drain. */
 static void *sp_worker_main(void *arg) {
   int wid = (int)(intptr_t)arg;
-  g_worker_id = wid;          /* TLS: read only by this worker */
+  sp_worker_id = wid;          /* TLS: read only by this worker */
   sp_fiber_worker_init();
   SCHED_LOCK();
   g_wslot[wid].tid = pthread_self();   /* publish under the lock; the monitor reads it there */
@@ -983,9 +2710,36 @@ static void *sp_worker_main(void *arg) {
   for (;;) {
     if (g_stw_active) { sp_stw_park_locked(); continue; }
     if (g_shutdown) break;
+#ifdef SP_EV_BACKEND
+    /* Drain what is ready before picking, every turn. A worker with runnable
+       work never reaches the blocking wait below, and its OWN set is the only
+       place its parked threads are delivered from -- so without this a busy
+       worker starves them until it happens to idle. That showed as a
+       ping-pong that ran at full speed on one worker and fell to a fifth of it
+       on four, run to run. One zero-timeout wait per scheduling turn is what
+       every netpoll scheduler pays for the same reason. */
+    if (g_wslot[wid].evfd > 0) sp_ev_worker_wait(wid, 0);
+#endif
     sp_thread *t = sched_pick(wid);   /* own queue, then global, then steal */
     if (t) { run_thread_once(t); continue; }  /* run_thread_once signals quiescence on the last one */
-    pthread_cond_wait(&g_sched_work, &g_sched_lock);   /* idle; woken by an enqueue (SCHED_WAKE) or shutdown */
+#ifdef SP_EV_BACKEND
+    /* Nothing to run: wait on THIS worker's readiness set, so a descriptor
+       belonging to a thread pinned here wakes the worker that can run it --
+       no monitor round trip and no condvar hand-off (#4306). The kick pipe in
+       the same set is how a stop-the-world, a shutdown, or work enqueued for
+       us gets through. The timeout is a backstop, not the mechanism. */
+    if (g_wslot[wid].evfd > 0) {
+      sp_ev_worker_wait(wid, SP_EV_BACKSTOP_MS);
+      continue;
+    }
+#endif
+    /* `idle` is set under the lock the enqueue also holds, so a wake issued
+       between our sched_pick and this wait cannot be lost. */
+    g_wslot[wid].idle = 1;
+    sp_out_enter_locked(wid, SP_OUT_IDLE);
+    pthread_cond_wait(&g_wslot[wid].cv, &g_sched_lock);   /* woken for work meant for us, or shutdown */
+    sp_out_leave_locked(wid);
+    g_wslot[wid].idle = 0;
   }
   SCHED_UNLOCK();
   return NULL;
@@ -1009,7 +2763,8 @@ static int sp_resolve_preempt_signal(void) {
   long n = strtol(e, &end, 10);
   if (*end == '\0') {
     if (n > 0 && n < NSIG) return (int)n;
-  } else {
+  }
+  else {
     const char *name = e;
     if (strncasecmp(name, "SIG", 3) == 0) name += 3;
     static const struct { const char *n; int s; } tab[] = {
@@ -1029,9 +2784,13 @@ static void sp_sched_start_workers(void) {
      its write (pthread_create of the workers is the happens-before edge). The
      monitor idles on g_sysmon_cv until a thread sleeps; if it fails to spawn,
      sleep falls back to a plain blocking nanosleep. */
-  /* Fix the worker count before spawning anything, so the monitor and helpers
-     read it through the pthread_create happens-before edge (no lock needed). */
-  g_nworkers = sp_worker_count();
+  /* Fix the helper cap before spawning anything, so the monitor and helpers read
+     it through the pthread_create happens-before edge (no lock needed). Helpers
+     themselves are spawned on demand (sp_sched_maybe_grow), not here -- main
+     stays worker 0 and starts as the only participant (sp_active_workers 1). */
+  g_worker_cap = sp_worker_count();
+  /* main is worker 0 and the last slot belongs to the sweeper threads */
+  if (g_worker_cap > SP_MAX_WORKERS - 2) g_worker_cap = SP_MAX_WORKERS - 2;
   /* Install the preemption signal handler before any worker can be targeted.
      SA_RESTART so an in-flight library syscall resumes rather than failing with
      EINTR -- the yield itself is cooperative (at the next safepoint poll), the
@@ -1053,12 +2812,65 @@ static void sp_sched_start_workers(void) {
      without blocking. Created before the monitor so it sees valid fds. */
   if (pipe(g_sysmon_pipe) == 0) {
     for (int e = 0; e < 2; e++) { int fl = fcntl(g_sysmon_pipe[e], F_GETFL, 0); if (fl >= 0) fcntl(g_sysmon_pipe[e], F_SETFL, fl | O_NONBLOCK); }
-  } else { g_sysmon_pipe[0] = g_sysmon_pipe[1] = -1; }
+  }
+  else { g_sysmon_pipe[0] = g_sysmon_pipe[1] = -1; }
   if (pthread_create(&g_sysmon, NULL, sp_sysmon_main, NULL) == 0) g_sysmon_started = 1;
-  for (int i = 1; i < g_nworkers; i++)
-    if (pthread_create(&g_worker_threads[i], NULL, sp_worker_main, (void *)(intptr_t)i) != 0) { g_nworkers = i; break; }
+}
+
+/* Create one helper worker (next id). PRE: g_sched_lock held, below the cap, and
+   no collection in progress (sp_sched_maybe_grow enforces the last two). The id
+   count (sp_active_workers) is bumped only after pthread_create succeeds, so the
+   STW barrier never waits on a worker that failed to start. */
+static void sp_sched_spawn_helper(void) {
+  int wid = g_helpers_spawned + 1;
+  if (wid > g_worker_cap || wid >= SP_MAX_WORKERS) return;
+  g_wslot[wid].idle = 0;
+  if (pthread_cond_init(&g_wslot[wid].cv, NULL) != 0) return;
+  if (pthread_create(&g_worker_threads[wid], NULL, sp_worker_main, (void *)(intptr_t)wid) != 0) return;
+  g_helpers_spawned = wid;
+  sp_active_workers = g_helpers_spawned + 1;   /* participants: main (0) + helpers */
+}
+
+/* Grow the helper pool toward one execution worker per live green thread, capped
+   at g_worker_cap. Called under the lock wherever a thread becomes runnable; a
+   no-op once at the cap or while a collection is reading the participant count
+   (we never change it mid-STW). This turns "SPINEL_WORKERS=N" into up to N real
+   parallel execution threads while never starting a helper the workload has no
+   runnable thread for -- a lone background thread brings up exactly one. */
+static void sp_sched_maybe_grow(void) {
+  if (!g_workers_started || g_stw_active) return;
+  int live = g_runnable + g_nrunning;
+  int want = live < g_worker_cap ? live : g_worker_cap;
+  while (g_helpers_spawned < want) {
+    int before = g_helpers_spawned;
+    sp_sched_spawn_helper();
+    if (g_helpers_spawned == before) break;   /* spawn failed: stop, main will cope */
+  }
 }
 #endif
+
+/* SPINEL_SCHED_STATS=1: what the monitor did, on the way out. A wake costs
+   O(parked) three times over, so what sizes a deployment is how OFTEN the
+   monitor turned and how BIG its poll set was each time -- and neither is
+   visible from outside the process, which is what left a 6x gap between a
+   standalone and a real server unexplained (#4317). */
+static void sp_sched_report_stats(void) {
+#ifdef SP_THREADS
+  const char *e = getenv("SPINEL_SCHED_STATS");
+  if (!e || !*e || *e == '0') return;
+  double avg = g_mon_polls ? (double)g_mon_pollfds / (double)g_mon_polls : 0.0;
+  fprintf(stderr,
+          "[sched] monitor: %llu turns, %llu polls, %.1f fds/poll avg, "
+          "%llu fds total; %llu io parks registered, %llu waiters readied\n",
+          g_mon_iters, g_mon_polls, avg, g_mon_pollfds, g_mon_regs, g_mon_readied);
+#ifdef SP_EV_BACKEND
+  if (g_ev_fd >= 0 || g_ev_arms)
+    fprintf(stderr, "[sched] events: %llu arms (%llu adds), %llu refused, "
+                    "%llu deadline expiries, %llu backstop expiries\n",
+            g_ev_arms, g_ev_adds, g_ev_lost, g_ev_timeouts, g_ev_backstop);
+#endif
+#endif
+}
 
 void sp_sched_drain(void) {
   /* main() is finishing: run remaining runnable threads so fire-and-forget side
@@ -1068,15 +2880,16 @@ void sp_sched_drain(void) {
      exactly as before). */
   if (g_current != &g_main_thread) return;
   SCHED_LOCK();
-  sp_sched_pump(NULL, 1);
+  sp_sched_pump(NULL, 2);   /* exit drain: runnable work only, not sleepers */
 #ifdef SP_THREADS
   g_shutdown = 1;
-  pthread_cond_broadcast(&g_sched_work);
+  sched_wake_all_workers(0);
   sp_sysmon_wake();   /* wake the monitor (idle or in poll) so it sees shutdown */
   int sysmon_running = g_sysmon_started;
   SCHED_UNLOCK();
-  for (int i = 1; i < g_nworkers; i++) pthread_join(g_worker_threads[i], NULL);
+  for (int i = 1; i < sp_active_workers; i++) pthread_join(g_worker_threads[i], NULL);
   if (sysmon_running) pthread_join(g_sysmon, NULL);
+  sp_sched_report_stats();
   return;
 #endif
   SCHED_UNLOCK();
@@ -1102,16 +2915,31 @@ static void sp_sched_block(sp_thread **waitlist) {   /* PRE/POST: sched lock hel
   self->state = SP_TH_BLOCKED;
   self->off_cpu = 0;         /* still on-cpu until our worker confirms the switch-out */
   self->wake_pending = 0;
-  self->wait_next = *waitlist;
+  /* Append at the TAIL: sp_sched_wake_one takes the head, so the list is a
+     FIFO and a waiter is served in the order it arrived. Pushed at the head
+     it was a LIFO -- the newest waiter woke first -- and under sustained
+     contention an early waiter never reached the front: campfire's DB-pool
+     condvar and fragment-cache mutexes held requests for seconds at p99 (a
+     2.9 s mutex wait, an 8 s condvar wait at 64 connections) while the median
+     was 4 ms. The walk is O(waiters) under the scheduler lock, which is what
+     one park already costs. */
   self->wait_head = waitlist;   /* so #kill/#raise can unlink it */
-  *waitlist = self;
+  if (self->repark_front) {   /* a mutex waiter that lost the race after its wake: keep its turn */
+    self->repark_front = 0;
+    self->wait_next = *waitlist; *waitlist = self;
+  }
+  else {
+    self->wait_next = NULL;
+    sp_thread **pp = waitlist; while (*pp) pp = &(*pp)->wait_next; *pp = self;
+  }
   if (self == &g_main_thread) {
     sp_sched_pump(NULL, 1);   /* returns (lock held) once a waker marks main RUNNABLE */
     if (self->state != SP_TH_RUNNING) {
       SCHED_UNLOCK();
       sp_raise_cls("ThreadError", "deadlock detected: all threads blocked");
     }
-  } else {
+  }
+  else {
     /* The symmetric fiber transfer's exc bookkeeping clobbers this thread's
        handler stack when root resumes from the block, so snapshot it here and
        restore it on wake -- otherwise a #raise/#kill delivered while blocked
@@ -1148,6 +2976,9 @@ static sp_thread *sp_sched_wake_one(sp_thread **waitlist) {
 /* Remove a parked thread from whatever wait list it sits on (for #kill/#raise). */
 static void sp_sched_unpark(sp_thread *t) {
   if (!t->wait_head) return;
+#ifdef SP_EV_BACKEND
+  if (t->wait_head == &g_io_waiters) sp_ev_drop(t);
+#endif
   for (sp_thread **pp = t->wait_head; *pp; pp = &(*pp)->wait_next)
     if (*pp == t) { *pp = t->wait_next; break; }
   t->wait_next = NULL;
@@ -1193,7 +3024,7 @@ sp_thread *sp_Thread_kill(sp_thread *t) {
   sp_thread_deliver(t, 1, NULL, NULL, NULL);
   return t;
 }
-sp_thread *sp_Thread_raise(sp_thread *t, const char *cls, const char *msg, void *obj) {
+sp_thread *sp_Thread_raise(sp_thread *t, const char *cls, const char *msg, void *obj) {SP_GC_ROOT_STR(msg);
   sp_thread_deliver(t, 0, cls, msg, obj);
   return t;
 }
@@ -1202,7 +3033,7 @@ sp_thread *sp_Thread_raise(sp_thread *t, const char *cls, const char *msg, void 
 
 static void sp_queue_scan(void *p) {
   sp_queue *q = (sp_queue *)p;
-  for (mrb_int i = 0; i < q->len; i++)
+  for (sp_int i = 0; i < q->len; i++)
     sp_mark_rbval(q->buf[(q->head + i) % q->cap]);
 }
 static void sp_queue_fin(void *p) { sp_queue *q = (sp_queue *)p; free(q->buf); }
@@ -1220,14 +3051,14 @@ sp_queue *sp_Queue_new(void) {
   return q;
 }
 
-sp_queue *sp_SizedQueue_new(mrb_int max) {
+sp_queue *sp_SizedQueue_new(sp_int max) {
   if (max <= 0) sp_raise_cls("ArgumentError", "queue size must be positive");
   sp_queue *q = sp_Queue_new();
   q->max = max;
   return q;
 }
 
-void sp_Queue_push(sp_queue *q, sp_RbVal v) {
+void sp_Queue_push(sp_queue *q, sp_RbVal v) { sp_gc_wb((void*)q);
   /* On a full SizedQueue, block until a #pop frees a slot. Root v across the
      block: it lives in this (possibly suspended) frame, and the parking
      thread's saved roots only cover the shadow stack. */
@@ -1239,10 +3070,10 @@ void sp_Queue_push(sp_queue *q, sp_RbVal v) {
     sp_sched_block(&q->push_waiters);   /* releases+reacquires the lock around its transfer */
   }
   if (q->len == q->cap) {
-    mrb_int nc = q->cap * 2;
+    sp_int nc = q->cap * 2;
     sp_RbVal *nb = (sp_RbVal *)malloc(sizeof(sp_RbVal) * nc);
     if (!nb) { SCHED_UNLOCK(); sp_raise_cls("NoMemoryError", "failed to grow queue"); }
-    for (mrb_int i = 0; i < q->len; i++) nb[i] = q->buf[(q->head + i) % q->cap];
+    for (sp_int i = 0; i < q->len; i++) nb[i] = q->buf[(q->head + i) % q->cap];
     free(q->buf);
     q->buf = nb; q->cap = nc; q->head = 0;
   }
@@ -1268,10 +3099,27 @@ sp_RbVal sp_Queue_pop(sp_queue *q) {
   return v;
 }
 
-mrb_int  sp_Queue_size(sp_queue *q)   { SCHED_LOCK(); mrb_int n = q->len;       SCHED_UNLOCK(); return n; }
-mrb_bool sp_Queue_empty(sp_queue *q)  { SCHED_LOCK(); mrb_bool e = q->len == 0;  SCHED_UNLOCK(); return e; }
-mrb_int  sp_Queue_max(sp_queue *q)    { SCHED_LOCK(); mrb_int m = q->max;        SCHED_UNLOCK(); return m; }
-mrb_bool sp_Queue_closed(sp_queue *q) { SCHED_LOCK(); mrb_bool c = q->closed != 0; SCHED_UNLOCK(); return c; }
+sp_RbVal sp_Queue_pop_nb(sp_queue *q) {
+  /* Queue#pop(truthy): no_wait. Raise ThreadError on an empty queue, return
+     the value otherwise. A closed queue returns nil. */
+  SCHED_LOCK();
+  if (q->len == 0) {
+    if (q->closed) { SCHED_UNLOCK(); return sp_box_nil(); }
+    SCHED_UNLOCK();
+    sp_raise_cls("ThreadError", "queue empty");
+  }
+  sp_RbVal v = q->buf[q->head];
+  q->head = (q->head + 1) % q->cap;
+  q->len--;
+  if (q->max > 0) sp_sched_wake_one(&q->push_waiters);
+  SCHED_UNLOCK();
+  return v;
+}
+
+sp_int  sp_Queue_size(sp_queue *q)   { SCHED_LOCK(); sp_int n = q->len;       SCHED_UNLOCK(); return n; }
+sp_bool sp_Queue_empty(sp_queue *q)  { SCHED_LOCK(); sp_bool e = q->len == 0;  SCHED_UNLOCK(); return e; }
+sp_int  sp_Queue_max(sp_queue *q)    { SCHED_LOCK(); sp_int m = q->max;        SCHED_UNLOCK(); return m; }
+sp_bool sp_Queue_closed(sp_queue *q) { SCHED_LOCK(); sp_bool c = q->closed != 0; SCHED_UNLOCK(); return c; }
 void     sp_Queue_clear(sp_queue *q)  {
   SCHED_LOCK();
   q->head = q->len = 0;
@@ -1298,39 +3146,190 @@ sp_mutex *sp_Mutex_new(void) {
   sp_mutex *m = (sp_mutex *)sp_gc_alloc(sizeof(sp_mutex), NULL, NULL);
   m->owner = NULL;
   m->waiters = NULL;
+  m->nwaiters = 0;
   return m;
 }
 
+sp_mutex *sp_Monitor_new(void) {
+  sp_mutex *m = sp_Mutex_new();
+  if (m) m->reentrant = 1;
+  return m;
+}
+
+const char *sp_Mutex_class_name(sp_mutex *m) {
+  return (m && m->reentrant) ? "Monitor" : "Thread::Mutex";
+}/* A bounded queue is a SizedQueue; an unbounded one is a Queue. One object
+   backs both, so the class name reads the bound rather than a separate tag. */
+const char *sp_Queue_class_name(sp_queue *q) {
+  return (q && q->max > 0) ? "Thread::SizedQueue" : "Thread::Queue";
+}
+
+
+/* An UNCONTENDED lock/unlock does not touch the global scheduler lock.
+ *
+ * Both entries used to take it unconditionally, so every Ruby-level Mutex
+ * operation was a round trip through the one lock that also guards every run
+ * queue. A server taking a single lock per request stopped scaling at two OS
+ * workers: 12 workers served no more than 2 did, on 1.5 cores, with two of
+ * them holding most of the CPU (#4346). At one worker the same lock is free,
+ * which is the signature of contention rather than cost.
+ *
+ * The waiter list still lives under the scheduler lock, since parking and
+ * waking are its business. What the fast paths need is agreement about
+ * whether anyone is parked, and that is `nwaiters`. The two sides publish in
+ * opposite orders -- a waiter counts itself and then re-reads `owner`, an
+ * unlocker clears `owner` and then re-reads `nwaiters` -- so with sequential
+ * consistency at least one of them observes the other and no wake is lost. */
+/* A contended lock spins briefly before it parks. The slow path below is a
+   scheduler-lock round trip to park plus another to be woken, and the wake
+   itself is a scheduling latency (the [mutex-wait] histogram put the median
+   contended acquisition at 64-128 us). A critical section guarding a hash
+   read holds the mutex for a microsecond, so an owner that is RUNNING on
+   another worker will let go long before a park would complete; wait for it
+   in place, for a bounded number of pauses. The spin stops as soon as the
+   owner is not on a CPU: an owner parked on I/O or preempted inside the
+   section will not release it soon, and the only thread running on THIS
+   worker is us, so a running owner is by construction elsewhere. campfire's
+   messages page at 64 connections parked 58k times a second on its
+   fragment-cache shards (3,200 req/s); spinning first restores most of the
+   throughput the parks took. */
+#if defined(__x86_64__) || defined(__i386__)
+#define SP_CPU_RELAX() __builtin_ia32_pause()
+#elif defined(__aarch64__)
+#define SP_CPU_RELAX() __asm__ __volatile__("yield" ::: "memory")
+#else
+#define SP_CPU_RELAX() ((void)0)
+#endif
+#ifndef SP_MUTEX_SPIN
+#define SP_MUTEX_SPIN 256
+#endif
+static inline int sp_mutex_spin_acquire(sp_mutex *m, sp_thread *self) {
+  for (int i = 0; i < SP_MUTEX_SPIN; i++) {
+    sp_thread *o = __atomic_load_n(&m->owner, __ATOMIC_SEQ_CST);
+    if (o == NULL) {
+      sp_thread *expect = NULL;
+      if (__atomic_compare_exchange_n(&m->owner, &expect, self, 0,
+                                      __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) return 1;
+      continue;
+    }
+    if (o == self) return 0;   /* reentrancy or a deadlock: the slow path decides */
+    if (__atomic_load_n(&o->state, __ATOMIC_SEQ_CST) != SP_TH_RUNNING) return 0;
+    SP_CPU_RELAX();
+  }
+  return 0;
+}
+
 void sp_Mutex_lock(sp_mutex *m) {
-  SCHED_LOCK();
   sp_thread *self = g_current;
-  if (m->owner == self) { SCHED_UNLOCK(); sp_raise_cls("ThreadError", "deadlock; recursive locking"); }
-  if (m->owner == NULL) { m->owner = self; SCHED_UNLOCK(); return; }
-  /* unlock hands ownership to us (sets m->owner) before waking us. */
-  sp_sched_block(&m->waiters);
+  sp_thread *expect = NULL;
+  if (__atomic_compare_exchange_n(&m->owner, &expect, self, 0,
+                                  __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+    { if (sched_lat_enabled()) __atomic_fetch_add(&g_mtx_fast, 1, __ATOMIC_RELAXED); return; }   /* was unlocked: ours, no lock taken */
+  if (sp_mutex_spin_acquire(m, self))
+    { if (sched_lat_enabled()) __atomic_fetch_add(&g_mtx_spin, 1, __ATOMIC_RELAXED); return; }
+  SCHED_LOCK();
+  /* the owner re-entering its own Monitor just goes deeper */
+  if (__atomic_load_n(&m->owner, __ATOMIC_SEQ_CST) == self && m->reentrant) { m->depth++; SCHED_UNLOCK(); return; }
+  if (__atomic_load_n(&m->owner, __ATOMIC_SEQ_CST) == self) { SCHED_UNLOCK(); sp_raise_cls("ThreadError", "deadlock; recursive locking"); }
+  expect = NULL;
+  if (__atomic_compare_exchange_n(&m->owner, &expect, self, 0,
+                                  __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST))
+    { SCHED_UNLOCK(); return; }
+  /* Count ourselves BEFORE the last look at `owner`: an unlocker that clears
+     it after this point re-reads the count and finds us. */
+  m->nwaiters++;
+  __atomic_thread_fence(__ATOMIC_SEQ_CST);
+  expect = NULL;
+  if (__atomic_compare_exchange_n(&m->owner, &expect, self, 0,
+                                  __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+    m->nwaiters--;                           /* released under us; took it instead */
+    SCHED_UNLOCK();
+    return;
+  }
+  /* The unlocker clears `owner` and wakes us; we take the mutex ourselves
+     with the same exchange the fast path uses, and park again if a running
+     thread took it first. No hand-off: handing a contended mutex to a PARKED
+     waiter made the critical section's throughput the scheduling latency of
+     a wake (milliseconds on a busy worker), and every thread behind it paid
+     that per acquisition -- a lock convoy, 16-64 ms waits on campfire's
+     fragment-cache shards at 64 connections. A waiter that loses the race
+     goes back to the FRONT of the list, so the order of arrival still
+     decides who is offered the mutex next. */
+  double mt0 = sched_lat_enabled() ? sp_monotonic_now() : 0;
+  for (;;) {
+    sp_sched_block(&m->waiters);
+    expect = NULL;
+    if (__atomic_compare_exchange_n(&m->owner, &expect, self, 0,
+                                    __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) break;
+    self->repark_front = 1;   /* re-park at the head (sp_sched_block honours this) */
+  }
+  if (mt0 > 0) sched_hist_add(g_mtx_hist, &g_mtx_n, &g_mtx_max, (sp_monotonic_now() - mt0) * 1e6);
+  m->nwaiters--;
   SCHED_UNLOCK();
 }
 
 void sp_Mutex_unlock(sp_mutex *m) {
+  sp_thread *self = g_current;
+  /* depth is the owner's own field, so reading it as the owner needs no lock;
+     a non-owner fails the exchange below and takes the slow path, which is
+     where the ThreadError is raised. */
+  if (m->depth == 0 && __atomic_load_n(&m->nwaiters, __ATOMIC_SEQ_CST) == 0) {
+    sp_thread *expect = self;
+    if (__atomic_compare_exchange_n(&m->owner, &expect, NULL, 0,
+                                    __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)) {
+      if (__atomic_load_n(&m->nwaiters, __ATOMIC_SEQ_CST) == 0) return;
+      /* A waiter counted itself while we were releasing. It is parked, or is
+         about to look at `owner` one more time and take it; either way the
+         list is the authority, so finish the hand-off under the lock.
+
+         The hand-off has to be a compare-exchange, not a load and a store.
+         The lock's own fast path takes a free mutex WITHOUT the scheduler
+         lock, so a third thread can claim it between the load that finds it
+         free and the store that gives it to the waiter -- and the store then
+         puts the waiter's name over that owner, leaving TWO threads inside
+         the critical section. Which of them notices is whichever unlocks
+         second: its fast-path exchange fails, and it raises "Attempt to
+         unlock a mutex which is not locked" against a mutex it really did
+         hold. Reproduced with eight workers on a hot lock, roughly one run in
+         five.
+
+         The waiter is peeked rather than woken first, so a failed exchange
+         leaves it on the list where it was. Nothing is lost by declining: a
+         listed waiter is a counted one, so the thread that won the race sees
+         nwaiters > 0 and cannot take this fast path when it unlocks. */
+      SCHED_LOCK();
+      if (m->waiters) sp_sched_wake_one(&m->waiters);   /* it takes the mutex itself, or re-parks */
+      SCHED_UNLOCK();
+      return;
+    }
+  }
   SCHED_LOCK();
-  if (m->owner != g_current) {
+  if (m->depth > 0 && __atomic_load_n(&m->owner, __ATOMIC_SEQ_CST) == self) { m->depth--; SCHED_UNLOCK(); return; }
+  if (__atomic_load_n(&m->owner, __ATOMIC_SEQ_CST) != self) {
     SCHED_UNLOCK();
     sp_raise_cls("ThreadError", "Attempt to unlock a mutex which is not locked");
   }
-  m->owner = sp_sched_wake_one(&m->waiters);   /* hand off, or NULL => unlocked */
+  __atomic_store_n(&m->owner, NULL, __ATOMIC_SEQ_CST);
+  if (m->waiters) sp_sched_wake_one(&m->waiters);
   SCHED_UNLOCK();
 }
 
-mrb_bool sp_Mutex_try_lock(sp_mutex *m) {
+/* Every read and write of `owner` outside the scheduler lock is atomic, since
+   the uncontended lock/unlock paths above no longer take it. */
+sp_bool sp_Mutex_try_lock(sp_mutex *m) {
   SCHED_LOCK();
-  mrb_bool r;
-  if (m->owner != NULL) r = 0;
-  else { m->owner = g_current; r = 1; }
+  sp_bool r;
+  if (__atomic_load_n(&m->owner, __ATOMIC_SEQ_CST) == g_current && m->reentrant) { m->depth++; r = 1; }
+  else {
+    sp_thread *expect = NULL;
+    r = __atomic_compare_exchange_n(&m->owner, &expect, g_current, 0,
+                                    __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST) ? 1 : 0;
+  }
   SCHED_UNLOCK();
   return r;
 }
-mrb_bool sp_Mutex_locked(sp_mutex *m) { SCHED_LOCK(); mrb_bool r = m->owner != NULL;      SCHED_UNLOCK(); return r; }
-mrb_bool sp_Mutex_owned(sp_mutex *m)  { SCHED_LOCK(); mrb_bool r = m->owner == g_current;  SCHED_UNLOCK(); return r; }
+sp_bool sp_Mutex_locked(sp_mutex *m) { return __atomic_load_n(&m->owner, __ATOMIC_SEQ_CST) != NULL; }
+sp_bool sp_Mutex_owned(sp_mutex *m)  { return __atomic_load_n(&m->owner, __ATOMIC_SEQ_CST) == g_current; }
 
 /* ---- ConditionVariable ----
  * #wait releases the mutex, parks on the CV, and re-acquires the mutex on
@@ -1348,15 +3347,65 @@ void sp_CondVar_wait(sp_condvar *cv, sp_mutex *m) {
      inlined (its hand-off + ownership check) since sp_Mutex_unlock would take
      the lock again on its own. */
   SCHED_LOCK();
-  if (m->owner != g_current) {
+  if (__atomic_load_n(&m->owner, __ATOMIC_SEQ_CST) != g_current) {
     SCHED_UNLOCK();
     sp_raise_cls("ThreadError", "Attempt to unlock a mutex which is not locked");
   }
-  m->owner = sp_sched_wake_one(&m->waiters);   /* hand off the mutex, or NULL */
+  __atomic_store_n(&m->owner, NULL, __ATOMIC_SEQ_CST);
+  if (m->waiters) sp_sched_wake_one(&m->waiters);
+  double ct0 = sched_lat_enabled() ? sp_monotonic_now() : 0;
   sp_sched_block(&cv->waiters);                /* park (drops+retakes the lock) */
+  if (ct0 > 0) sched_hist_add(g_cv_hist, &g_cv_n, &g_cv_max, (sp_monotonic_now() - ct0) * 1e6);
   SCHED_UNLOCK();
   sp_Mutex_lock(m);   /* re-acquire (may block again on the mutex) */
 }
 
+/* CRuby's `wait(mutex, 0)`: release the mutex, return without parking. The
+   codegen rejects any timeout other than a literal 0 -- real clock-driven
+   wakeups are not yet supported. The cv->waiters list is threads blocked on
+   this CV, not pending signals, so the nb path does not touch it: a thread
+   that never called #wait cannot be in the waiters list, and one that did
+   call #wait is parked and will not be woken by a 0-timeout drain. */
+void sp_CondVar_wait_nb(sp_condvar *cv, sp_mutex *m) {
+  (void)cv;
+  SCHED_LOCK();
+  if (__atomic_load_n(&m->owner, __ATOMIC_SEQ_CST) != g_current) {
+    SCHED_UNLOCK();
+    sp_raise_cls("ThreadError", "Attempt to unlock a mutex which is not locked");
+  }
+  __atomic_store_n(&m->owner, NULL, __ATOMIC_SEQ_CST);
+  if (m->waiters) sp_sched_wake_one(&m->waiters);
+  SCHED_UNLOCK();
+  sp_Mutex_lock(m);
+}
+
 void sp_CondVar_signal(sp_condvar *cv)    { SCHED_LOCK(); sp_sched_wake_one(&cv->waiters);            SCHED_UNLOCK(); }
 void sp_CondVar_broadcast(sp_condvar *cv) { SCHED_LOCK(); while (sp_sched_wake_one(&cv->waiters)) { }  SCHED_UNLOCK(); }
+
+/* Thread#inspect / #to_s: CRuby's "#<Thread:0xADDR <status>>" shape (the
+   source-location segment CRuby inserts is not carried) (#2977). */
+const char *sp_Thread_inspect(sp_thread *t) {
+#ifndef SP_MULTI_CTX  /* per-ctx macro under SP_MULTI_CTX (sp_ctx.h) */
+  extern const char *sp_sprintf(const char *fmt, ...);
+#endif
+  /* NULL is this type's nil, and nil inspects as "nil". Without this a
+     `Thread#join(limit)` that TIMED OUT -- which answers NULL, correctly --
+     printed `#<Thread:0x0000000000000000 dead>`, so the one thing the return
+     value is there to tell you read as the opposite of what it said (#4394).
+     The status word compounded it: the thread it named was still running. */
+  if (!t) return "nil";
+  const char *st = "dead";
+  if (t) {
+    switch (t->state) {
+      case SP_TH_RUNNING: case SP_TH_RUNNABLE: st = "run"; break;
+      case SP_TH_BLOCKED: st = "sleep"; break;
+      default: st = t->has_exc ? "aborting" : "dead"; break;
+    }
+  }
+  /* CRuby carries the creation site between the address and the status */
+  if (t && t->birth_file)
+    return sp_sprintf("#<Thread:0x%016llx %s:%lld %s>",
+                      (unsigned long long)(uintptr_t)t, t->birth_file,
+                      (long long)t->birth_line, st);
+  return sp_sprintf("#<Thread:0x%016llx %s>", (unsigned long long)(uintptr_t)t, st);
+}

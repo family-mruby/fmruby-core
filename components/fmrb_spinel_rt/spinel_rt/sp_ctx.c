@@ -18,9 +18,12 @@
 #undef free
 #undef strdup
 
-/* Defined in sp_alloc.c (also declared in sp_alloc.h). Wired into the object
- * collector per instance below, replacing the default build's constructor. */
-void sp_str_sweep(void);
+/* Defined in sp_alloc.c: the string sweep / retune hooks and the env floors
+ * the default build installs from a process constructor, run per instance
+ * below instead. */
+void sp_alloc_instance_init(void);
+/* Defined in sp_gc.c: the collector's per-instance arrays and defaults. */
+void sp_gc_instance_init(int remembered_entries, int pinned_entries);
 
 /* Reference current-instance accessor: a thread-local pointer. One instance
  * runs per OS thread (programs are internally single-threaded). The ESP-IDF
@@ -28,6 +31,14 @@ void sp_str_sweep(void);
 static __thread sp_ctx *g_sp_ctx = NULL;
 
 sp_ctx *sp_ctx_current(void)          { return g_sp_ctx; }
+int    *sp_ctx_last_status(void)      { return &g_sp_ctx->last_status; }   /* $? (sp_system.h) */
+/* The :binstr / :cbinstr byte count an FFI function publishes, for host C that
+   does not include the runtime's headers (it cannot name the ctx field): set
+   *sp_ctx_ffi_bin_len() where the default build sets sp_ffi_bin_len. */
+int    *sp_ctx_ffi_bin_len(void)      { return &g_sp_ctx->ffi_bin_len; }
+/* the regexp engine's compile-error handler (re_compile.c cannot include this
+   header's types, so it asks for the slot) */
+void  (**sp_ctx_re_error_handler(void))(const char *) { return &g_sp_ctx->re_error_handler; }
 void    sp_ctx_set_current(sp_ctx *c) { g_sp_ctx = c; }
 
 /* --- allocation wrappers (targets of the sp_mem_override.h macros) ---
@@ -66,6 +77,13 @@ void sp_mem_free(void *p) {
   sp_ctx *c = g_sp_ctx;
   if (c && c->mem_dealloc) c->mem_dealloc(c->mem_ud, p);
   else free(p);
+}
+/* realloc through the instance's backend that reports exhaustion instead of
+   ending the program: for a caller with a fallback (the GC mark stack, which
+   recurses when it cannot grow). */
+void *sp_mem_try_realloc(void *p, size_t n) {
+  sp_ctx *c = g_sp_ctx;
+  return (c && c->mem_realloc) ? c->mem_realloc(c->mem_ud, p, n) : realloc(p, n);
 }
 char *sp_mem_strdup(const char *s) {
   if (!s) return NULL;
@@ -122,6 +140,9 @@ sp_ctx *sp_instance_create(const sp_instance_config *cfg) {
   sp_ctx *c = (sp_ctx *)a(cfg->mem_ud, sizeof(sp_ctx));
   if (!c) return NULL;
   memset(c, 0, sizeof(*c));
+  /* The default Random is marked through a rooted pointer: the byte before
+     it must say "no header here" (see sp_random.c). */
+  c->random_default_box.guard[sizeof c->random_default_box.guard - 1] = (char)0xfd;
   c->mem_ud = cfg->mem_ud;
   c->mem_alloc = a; c->mem_realloc = re; c->mem_dealloc = de;
 
@@ -151,8 +172,19 @@ sp_ctx *sp_instance_create(const sp_instance_config *cfg) {
   c->gc_nroots = 0;
 
   /* Wire the string sweep into this instance's collector (the default build
-   * does this in a process constructor; under SP_MULTI_CTX it is per-ctx). */
-  c->gc_str_sweep_hook = sp_str_sweep;
+   * does this in a process constructor; under SP_MULTI_CTX it is per-ctx).
+   * The installer writes through the ctx macros, so make c current for it. */
+  { sp_ctx *prev = g_sp_ctx; g_sp_ctx = c;
+    int rem = cfg->remembered_entries ? cfg->remembered_entries : SP_MC_REMEMBERED_DEFAULT;
+    int pin = cfg->pinned_entries ? cfg->pinned_entries : SP_MC_PINNED_DEFAULT;
+    sp_gc_instance_init(rem, pin);
+    sp_alloc_instance_init();
+    g_sp_ctx = prev; }
+
+  /* The rest of the upstream-added state whose default is not zero. */
+  c->warn_flags[1] = 1;                          /* Warning[:deprecated] -- as sp_cold.c's table */
+  c->re_pp_span[0] = c->re_pp_span[1] = -1;      /* no $` / $' span yet */
+  c->bt_srcfile = "";
 
   /* GC verify: read the env here rather than in the process constructor, which
    * has no current instance to write into. */
@@ -169,6 +201,11 @@ void sp_instance_destroy(sp_ctx *c) {
   de(ud, c->gc_roots);
   de(ud, c->gc_mark_stack);
   de(ud, c->gc_vsnap);
+  de(ud, c->gc_remembered);
+  de(ud, c->gc_pinned);
+  de(ud, c->str_lcache);
+  de(ud, c->marshal_v);
+  de(ud, c->class_frozen_map);
   de(ud, c);
 }
 

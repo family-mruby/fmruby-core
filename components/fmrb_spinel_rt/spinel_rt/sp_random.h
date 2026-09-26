@@ -16,34 +16,38 @@ uint32_t sp_pcg32_adv(uint64_t *state);   /* one generator step */
 void sp_pcg_seed(uint64_t *state, uint64_t seed);
 uint64_t sp_krand_next(void);             /* 64-bit draw, lazily self-seeded */
 void sp_krand_srand(uint64_t seed);
-mrb_int sp_krand_below(mrb_int n);        /* uniform [0, n); 0 when n <= 0 */
-mrb_float sp_krand_float(void);           /* uniform [0, 1) */
+sp_int sp_krand_below(sp_int n);        /* uniform [0, n); 0 when n <= 0 */
+sp_float sp_krand_float(void);           /* uniform [0, 1) */
 
-/* Random — per-instance PRNG. CRuby uses MT19937; spinel uses PCG-XSH-RR
+/* Random -- per-instance PRNG. CRuby uses MT19937; spinel uses PCG-XSH-RR
    (above), so the *sequence* differs from MRI -- MT19937 is not part of
    the Ruby spec -- but each Random object keeps its own reproducible
    stream from its seed. The default instance is a window onto the shared
    Kernel stream, so srand() governs it too. */
-typedef struct { uint64_t state; mrb_int seed; } sp_Random;
-#ifndef SP_MULTI_CTX
-extern SP_TLS sp_Random sp_random_default;
-#endif
+typedef struct { uint64_t state; sp_int seed; } sp_Random;
+/* The default instance is private to sp_random.c: it is a guarded static
+   there (see the comment on its box) and is reached only through
+   sp_random_default_get below. The box type is shared with sp_ctx.h, which
+   holds the same guarded instance per context under SP_MULTI_CTX. */
+typedef struct { char guard[_Alignof(sp_Random)]; sp_Random r; } sp_Random_box;
 uint64_t sp_random_next(sp_Random *r);
-sp_Random *sp_Random_new(mrb_int seed);
-sp_Random *sp_Random_new_float(mrb_float f);
+sp_Random *sp_Random_new(sp_int seed);
+sp_Random *sp_Random_new_float(sp_float f);
 sp_Random *sp_Random_new_auto(void);
-mrb_int sp_Random_seed(sp_Random *r);
-mrb_bool sp_Random_eq(sp_Random *a, sp_Random *b);
-mrb_int sp_Random_rand_range(sp_Random *r, sp_Range rg);
-mrb_int sp_Random_rand_int(sp_Random *r, mrb_int n);
-mrb_float sp_Random_rand_float(sp_Random *r);
-mrb_float sp_Random_rand_float_bound(sp_Random *r, mrb_float bound);
-mrb_float sp_Random_rand_float_range(sp_Random *r, mrb_float lo, mrb_float hi);
+sp_int sp_Random_seed(sp_Random *r);
+sp_bool sp_Random_eq(sp_Random *a, sp_Random *b);
+sp_int sp_Random_rand_range(sp_Random *r, sp_Range rg);
+sp_int sp_Random_rand_int(sp_Random *r, sp_int n);
+struct sp_Bigint;
+struct sp_Bigint *sp_bigint_rand(sp_Random *r, struct sp_Bigint *bound);
+sp_float sp_Random_rand_float(sp_Random *r);
+sp_float sp_Random_rand_float_bound(sp_Random *r, sp_float bound);
+sp_float sp_Random_rand_float_range(sp_Random *r, sp_float lo, sp_float hi);
 sp_Random *sp_random_default_get(void);
-const char *sp_Random_bytes(sp_Random *r, mrb_int n);
-mrb_int sp_Random_new_seed(void);
-const char *sp_Random_urandom(mrb_int n);
+const char *sp_Random_bytes(sp_Random *r, sp_int n);
+sp_int sp_Random_new_seed(void);
+const char *sp_Random_urandom(sp_int n);
 const char *sp_Random_inspect(sp_Random *r);
-mrb_int sp_kernel_srand(mrb_int seed);
+sp_int sp_kernel_srand(sp_int seed);
 
 #endif

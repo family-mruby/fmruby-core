@@ -104,6 +104,13 @@ void *fmrb_spinel_instance_begin(void *pool, size_t pool_size,
     cfg.dealloc    = est_free_hook;
     cfg.gc_threshold  = gc_threshold;
     cfg.str_threshold = str_threshold;
+    /* Generational-collector sets (remembered old objects, pinned String
+       holders), carved from this pool at instance creation. 0 takes the
+       runtime defaults, 1024 / 256 entries -- 4 KB + 1 KB on a 32-bit target,
+       under 4% of the smallest pool (the 128 KB gem instances). Overflow is
+       safe: it only turns the next minor collection into a full mark. */
+    cfg.remembered_entries = 0;
+    cfg.pinned_entries     = 0;
     /* Route File/Dir I/O through the fmrb HAL so virtual paths resolve and the
        backing store (littlefs on ESP32, host FS on Linux) is reachable. */
     cfg.io_open     = hal_open;

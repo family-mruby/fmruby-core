@@ -20,6 +20,19 @@ typedef int mrb_bool;
 #define FALSE 0
 #endif
 
+/* The two Unicode tables this engine carries, each left out by asking for it:
+   -DRE_NO_UNICODE_CASE drops the case foldings /i reads, -DRE_NO_UNICODE_CTYPE
+   the character types a POSIX bracket and `\b` read. The names sit here rather
+   than beside the declarations because re_charclass, below, carries a field
+   only the second build has. What each table is and what dropping it costs is
+   written where the functions reading it are declared. */
+#ifndef RE_NO_UNICODE_CASE
+# define RE_UNICODE_CASE
+#endif
+#ifndef RE_NO_UNICODE_CTYPE
+# define RE_UNICODE_CTYPE
+#endif
+
 /* Bytecode instructions for the NFA engine */
 enum re_opcode {
   RE_CHAR,       /* match literal byte: operand = byte value */
@@ -44,6 +57,12 @@ enum re_opcode {
   RE_NEG_LOOKAHEAD, /* negative lookahead: offset = end of sub-pattern */
   RE_LOOKBEHIND,     /* positive lookbehind: a = byte length, offset = end */
   RE_NEG_LOOKBEHIND, /* negative lookbehind: a = byte length, offset = end */
+  RE_LB_WIDTH,   /* payload slot following a lookbehind: a = the sub-pattern's
+                    length in CHARACTERS, which is the unit the executor
+                    rewinds by (ported from mruby-regexp 103e1a8bc) */
+  RE_GPOS,       /* assert the search-start position (\G) */
+  RE_ATOMIC,     /* atomic group (?>...) / possessive quantifier: match the
+                    sub-pattern once and commit, offset = end of sub-pattern */
 };
 
 /* Bytecode instruction (4 bytes each for alignment) */
@@ -67,7 +86,55 @@ typedef struct {
   uint32_t range_capa;
   mrb_bool negated;
   mrb_bool utf8_any;  /* match any non-ASCII byte if true */
+#ifdef RE_UNICODE_CTYPE
+  /* What the POSIX brackets in the class hold above ASCII, as re_ctype bits:
+     a character belongs when its type has a bit of ctype_yes, or lacks a bit
+     of ctype_no ([:^alpha:] is every character that is not a letter). Neither
+     is spelled out as ranges: a class holding [[:alpha:]] would carry the
+     letters as hundreds of ranges, and be read through them one by one at
+     every character.
+
+     ctype_fold is set under /i when either is: the type read is then that of
+     the character and of every character sharing its folding, so that
+     [[:upper:]] under /i holds "ā" through "Ā". A member the class holds by
+     bit or by range is closed under folding at compile time instead; see
+     compile_charclass(). */
+  uint16_t ctype_yes;
+  uint16_t ctype_no;
+  mrb_bool ctype_fold;
+  /* The `\p{...}` properties named in the class, each with whether it was
+     written `\P{...}`. A list rather than a mask because there are more
+     properties than a mask would hold, and a class names one or two of them;
+     the ctype bits stay a mask because there are eleven of those and a
+     bracket class often names several. */
+  struct { int16_t id; mrb_bool negated; } *props;
+  int num_props;
+  int prop_capa;
+#endif
 } re_charclass;
+
+/* The stored name length is bounded by the field that holds it: a longer name
+   is refused rather than silently truncated into a different name (ported from
+   mruby-regexp, which widened the field instead). */
+#define RE_MAX_NAME_LEN UINT16_MAX
+#define RE_NAME_LEN_FITS(n) ((uintmax_t)(n) <= RE_MAX_NAME_LEN)
+
+/* A pike_vm step walks a repetition's body once per nesting level, so that a
+   loop's final empty iteration can finish even when the closure resumed inside
+   the body and already marked that iteration's tail (see add_thread). The cap
+   keeps a pathologically nested pattern from growing the thread lists with the
+   square of the program; past it, such a pattern keeps the older, stale-capture
+   behaviour rather than costing memory. (ported from mruby-regexp 45c588a83) */
+#define RE_MAX_PASS 4
+#define RE_PASS_SPAN(depth) \
+  ((uint32_t)((depth) < RE_MAX_PASS ? (depth) : RE_MAX_PASS) + 1)
+
+/* Capacity of one pike_vm thread list, shared by the VM and by the cache the
+   compiler pre-allocates for it so the two cannot drift. An instruction
+   enqueues at most one thread per pass, and threads waiting on a later sp are
+   carried over from the previous step on top of that. */
+#define RE_LIST_CAPA(code_len, depth) \
+  ((int)(code_len) * (int)(RE_PASS_SPAN(depth) + 1) + 16)
 
 /* Named capture entry */
 typedef struct {
@@ -94,11 +161,15 @@ typedef struct mrb_regexp_pattern {
   mrb_bool has_first_bytes; /* true if first_bytes is usable for skipping */
   mrb_bool is_literal;     /* true if pattern is pure literal (no metacharacters) */
   /* Cached VM state for pike_vm (avoids malloc per re_exec call) */
+  uint8_t loop_depth;           /* deepest nesting of repetitions whose body
+                                   can match empty (see RE_MAX_PASS) */
   uint32_t *cached_visited;     /* generation-based visited array */
   void *cached_threads[2];      /* curr/next thread lists */
   int cached_list_capa;         /* capacity of cached thread lists */
   mrb_bool cache_in_use;        /* re-entrancy guard */
   char *source;                 /* the pattern text, for #source/#inspect/#to_s */
+  uint32_t source_len;          /* its BYTE length: the text may hold a NUL,
+                                   which a strlen on `source` would stop at */
 } mrb_regexp_pattern;
 
 /* Regexp flags */
@@ -112,22 +183,48 @@ typedef struct mrb_regexp_pattern {
 #define MRB_REGEXP_STEP_LIMIT 1000000
 #endif
 
-/* Recursion depth ceiling for bt_match. Backtracking SPLIT/SAVE
-   recursion can otherwise drive the C stack to overflow on patterns
-   like long alternation chains or backref + many quantifier
-   iterations. 10000 frames covers realistic workloads while staying
-   well under a default 8 MB stack (~40 bytes per frame). Issue #777. */
-#ifndef MRB_REGEXP_DEPTH_LIMIT
-#define MRB_REGEXP_DEPTH_LIMIT 10000
+/* How much backtracking state one search may hold: choice points and undo
+   records counted together, since each stands for a branch or a write the
+   search can still take back. A greedy repetition forks once per iteration
+   whatever its body holds, so what a search holds grows with the LENGTH OF
+   THE SUBJECT and not with the nesting of the pattern -- and this is what
+   refuses a pattern that is nothing out of the ordinary once the subject is
+   long enough, so it is not a knob turned up idly. It sits on the heap, so
+   it is not the C stack it protects (see MRB_REGEXP_FRAME_LIMIT).
+   (ported from mruby-regexp 7c6059908) */
+#ifndef MRB_REGEXP_STACK_LIMIT
+#define MRB_REGEXP_STACK_LIMIT 32768
 #endif
 
-/* Maximum captures. Sized for realistic code: complex parsers rarely
-   exceed ~50-100 capture groups. Pathological inputs like depth-500
-   `((((...((a))...))))` raise RegexpError, which is the same
-   "fail-gracefully on absurd input" stance as MRB_REGEXP_DEPTH_LIMIT
-   above. Runtime memory scales with actual ncap per regex (see
-   re_exec.c comment) so this is purely a compile-time cap. */
-#define RE_MAX_CAPTURES 128
+/* C frames bt_match may nest. A lookaround and an atomic group still recurse
+   one frame each, but a frame is entered and left per construct rather than
+   held across the text after it, so what this counts is how deeply the two
+   NEST IN THE PATTERN -- `(?>(?>(?>a)))` and not `(?>a)*` over a long run,
+   which spends one frame at a time whatever the run. It stays at the number
+   the old ceiling had, so no pattern that used to compile its way through
+   loses it; the frames are far cheaper than the old ones, since the fork per
+   iteration is no longer one. Issue #777. */
+#ifndef MRB_REGEXP_FRAME_LIMIT
+#define MRB_REGEXP_FRAME_LIMIT 10000
+#endif
+
+/* Maximum captures, group 0 included, so 31 groups of one's own.
+
+   The number is what the match registers hold: $~ is built from
+   sp_re_caps[], the frame that saves those across a method call carries a
+   copy, and both are sized by this. A pattern past it used to compile and
+   then be TRUNCATED there, so `m.size` answered 32 where CRuby answered 41
+   and every group above the thirty-first read nil -- the two ceilings, this
+   one and the registers', disagreed and the wider one lost quietly.
+
+   They agree now, and a pattern past it is refused rather than cut. 32 is
+   where the registers sit rather than where a program is likely to need to
+   stop: of the 8,135 regexp literals in CRuby 4.0.4's stdlib and bundled
+   gems the widest has 8 groups, and none has more than 20. Widening it is
+   not free either -- the frame is on the stack of every method that matches,
+   so taking this to 128 takes a matching method's recursion depth from
+   15,000 to 6,000. */
+#define RE_MAX_CAPTURES 32
 
 /* Thread struct for Pike VM. `sp` is the input position the thread is
    waiting for; the outer loop only dispatches a thread when its sp
@@ -157,6 +254,79 @@ void sp_re_set_error_handler(void (*fn)(const char *msg));
 /* UTF-8 helpers */
 int re_utf8_charlen(const char *s, const char *end);
 uint32_t re_utf8_decode(const char *s, const char *end, int *len);
+
+/* Unicode simple case folding for /i, on unless the build asks for the
+   ASCII-only engine with -DRE_NO_UNICODE_CASE. The table it reads is
+   lib/regexp/re_casefold.h (196 runs, generated by tools/gen_re_casefold.rb);
+   without it, /i folds ASCII alone, which is what this engine did before the
+   table arrived, and a non-ASCII literal under /i matches literally.
+   (the option follows mruby-regexp 618ba9435 / 1ff35503d) */
+
+/* What a POSIX bracket holds above ASCII, on the same terms: the table is
+   lib/regexp/re_ctype.h (3468 runs, generated by tools/gen_re_ctype.rb), and
+   -DRE_NO_UNICODE_CTYPE leaves it out. Without it a bracket holds the ASCII
+   set alone, which is what this engine did before the table arrived, and
+   `\b` reads that set too. (ported from mruby-regexp 55b6deab4 / 5ffcc0034) */
+
+/* The types a POSIX bracket can name, as bits: [[:alpha:]] holds a character
+   whose type has RE_CTYPE_ALPHA. Every build reads them for ASCII off the
+   list in re_compile.c; above ASCII only a RE_UNICODE_CTYPE build has an
+   answer, which re_ctype() reads off re_ctype.h. [:xdigit:] and [:ascii:] are
+   sets ASCII defines and have no bit. */
+enum re_ctype {
+  RE_CTYPE_ALPHA = 1 << 0,
+  RE_CTYPE_UPPER = 1 << 1,
+  RE_CTYPE_LOWER = 1 << 2,
+  RE_CTYPE_DIGIT = 1 << 3,
+  RE_CTYPE_ALNUM = 1 << 4,
+  RE_CTYPE_WORD  = 1 << 5,
+  RE_CTYPE_PUNCT = 1 << 6,
+  RE_CTYPE_SPACE = 1 << 7,
+  RE_CTYPE_BLANK = 1 << 8,
+  RE_CTYPE_GRAPH = 1 << 9,
+  RE_CTYPE_PRINT = 1 << 10,
+  RE_CTYPE_CNTRL = 1 << 11
+};
+
+#ifdef RE_UNICODE_CTYPE
+/* The types of a codepoint above ASCII, as the bits above. */
+uint16_t re_ctype(uint32_t cp);
+
+/* Whether a class holds a codepoint above ASCII through the brackets in it
+   and the utf8_any catch-all. The class matcher calls this for a class
+   holding any bracket, once its ranges have said nothing. */
+mrb_bool re_class_ctype_match(const re_charclass *cc, uint32_t cp);
+
+/* Unicode properties, as `\p{...}` names them. re_prop_lookup resolves a name
+   to an id (-1 when the engine does not carry it); re_prop_match answers it
+   for one codepoint. The ids are three ranges rather than an enum: a general
+   category, a one-letter category standing for every two-letter one under it,
+   and an emoji property, which is a bit rather than an index because the emoji
+   properties overlap. The POSIX names (`\p{Alpha}`, `\p{Word}`, ...) are not
+   here -- the compiler routes those to the ctype bits, which is smaller and is
+   what makes them fold correctly under /i. */
+#define RE_PROP_GC     0
+#define RE_PROP_MAJOR  256
+#define RE_PROP_EMOJI  512
+int      re_prop_lookup(const char *name, size_t len);
+mrb_bool re_prop_match(int id, uint32_t cp);
+
+/* Whether a class holds `cp` through the properties named in it. */
+mrb_bool re_class_prop_match(const re_charclass *cc, uint32_t cp);
+#endif
+
+/* The folded form of cp: the codepoint every counterpart of it shares, or cp
+   itself when it folds to nothing else. A source whose fold is several
+   codepoints (U+00DF to "ss") folds to itself here -- the engine compares one
+   codepoint at a time. */
+uint32_t re_case_fold(uint32_t cp);
+
+/* Every codepoint that folds the way cp does, cp included, written into out
+   (at most RE_CASE_ALTS_MAX). Returns how many there are: 1 when cp has no
+   counterpart, which is what tells a caller there is nothing to fold. */
+#define RE_CASE_ALTS_MAX 8
+int re_case_alts(uint32_t cp, uint32_t *out);
+int re_utf8_encode(uint32_t cp, char *buf);
 mrb_bool re_is_word_char(uint32_t c);
 
 static inline int
@@ -179,6 +349,74 @@ static inline mrb_bool
 re_utf8_continuation_p(const char *s)
 {
   return (((uint8_t)*s & 0xC0) == 0x80);
+}
+
+/* Whether a codepoint is one of the word characters a boundary sits beside.
+   This is what `[[:word:]]` holds rather than what `\w` does: a boundary is
+   the one thing a pattern cannot spell another way, since asking for one
+   around any script takes a lookaround either side of the position, where a
+   class only takes the bracket written out. So the shorthand keeps the ASCII
+   set CRuby gives it, and the boundary reads every script, as CRuby's does.
+   A build with no table has no answer above ASCII, and there the boundary
+   reads as `[[:word:]]` does on it: the ASCII word characters and no more.
+   (ported from mruby-regexp 5ffcc0034) */
+static inline mrb_bool
+re_word_cp(uint32_t cp)
+{
+  if (cp < 128) return re_is_word_char(cp);
+#ifdef RE_UNICODE_CTYPE
+  return (re_ctype(cp) & RE_CTYPE_WORD) != 0;
+#else
+  return FALSE;
+#endif
+}
+
+/* Whether a codepoint a sequence `len` bytes wide spelled is a word
+   character. A byte that starts no character is a byte and not the character
+   it would spell inside one: re_utf8_decode hands a lone 0xB5 back as U+00B5,
+   and the table would make it the word character µ. Only a codepoint some
+   multi-byte sequence actually spelled is looked up, which is the test a
+   binary subject would want too -- there every byte at or above 0x80 stands
+   for no character. */
+static inline mrb_bool
+re_word_decoded(uint32_t cp, int len)
+{
+  return len > 1 && re_word_cp(cp);
+}
+
+/* Whether the character starting at `s` is a word character.
+
+   A byte below 0x80 is its own character whatever the subject is, and it is
+   what almost every boundary in almost every subject sits beside, so it is
+   answered without decoding. A binary subject holds bytes rather than
+   characters, so none of them is one. */
+static inline mrb_bool
+re_word_at(const char *s, const char *end, mrb_bool binary)
+{
+  uint8_t b = (uint8_t)*s;
+  if (b < 0x80) return re_is_word_char(b);
+  if (binary) return FALSE;
+  int len;
+  uint32_t cp = re_utf8_decode(s, end, &len);
+  return re_word_decoded(cp, len);
+}
+
+/* Whether the character ending at `s` is one. Reading it takes the head of
+   the character the byte before belongs to, which is the one step the engine
+   ever takes backward. A head that does not decode back to `s` spelled no
+   character over those bytes, so the walk is checked rather than trusted. */
+static inline mrb_bool
+re_word_before(const char *str, const char *s, const char *end, mrb_bool binary)
+{
+  uint8_t b = (uint8_t)s[-1];
+  if (b < 0x80) return re_is_word_char(b);
+  if (binary) return FALSE;
+  const char *head = s - 1;
+  while (head > str && re_utf8_continuation_p(head)) head--;
+  int len;
+  uint32_t cp = re_utf8_decode(head, end, &len);
+  if (head + len != s) return FALSE;
+  return re_word_decoded(cp, len);
 }
 
 /* Execute a match.

@@ -33,9 +33,9 @@
 #include "esp_heap_caps.h"
 #endif
 
-/* Byte length for :binstr FFI returns. Defined in fmrb_spx_kernel.c, which is
-   compiled alongside this shim in every Spinel build. */
-extern int sp_net_bin_len;
+/* The current instance's :binstr length (runtime sp_ctx.c; the host C
+   cannot include sp_ctx.h, so it is declared here). */
+int *sp_ctx_ffi_bin_len(void);
 
 /* Submit a gfx_cmd_t and collapse the result to the shim convention. */
 static int spx_gfx_submit(const gfx_cmd_t *cmd)
@@ -392,7 +392,7 @@ int fmrb_spx_gfx_delete_image(int canvas_id, int image_id)
 const char *fmrb_spx_gfx_create_image_from_file(int canvas_id, const char *path, int len)
 {
     static uint8_t buf[FMRB_SPX_GFX_IMAGE_INFO_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
     if (!path || len < 0 || len >= 120) {
         return "";
     }
@@ -421,7 +421,7 @@ const char *fmrb_spx_gfx_create_image_from_file(int canvas_id, const char *path,
     buf[0] = (uint8_t)(resp->image_id & 0xFF); buf[1] = (uint8_t)(resp->image_id >> 8);
     buf[2] = (uint8_t)(resp->width & 0xFF);    buf[3] = (uint8_t)(resp->width >> 8);
     buf[4] = (uint8_t)(resp->height & 0xFF);   buf[5] = (uint8_t)(resp->height >> 8);
-    sp_net_bin_len = FMRB_SPX_GFX_IMAGE_INFO_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_GFX_IMAGE_INFO_RECORD_SIZE;
     return (const char *)buf;
 }
 
@@ -431,7 +431,7 @@ static const char *spx_video_status_record(uint8_t cmd, const uint8_t *payload,
                                            size_t payload_len)
 {
     static uint8_t buf[FMRB_SPX_GFX_VIDEO_STATUS_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
 #ifndef FMRB_HW_MODERN
     /* Retro cannot play video; answer now rather than after a sync timeout. */
@@ -460,7 +460,7 @@ static const char *spx_video_status_record(uint8_t cmd, const uint8_t *payload,
     buf[6] = (uint8_t)((st->frames_dropped >> 8) & 0xFF);
     buf[7] = (uint8_t)((st->frames_dropped >> 16) & 0xFF);
     buf[8] = (uint8_t)((st->frames_dropped >> 24) & 0xFF);
-    sp_net_bin_len = FMRB_SPX_GFX_VIDEO_STATUS_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_GFX_VIDEO_STATUS_RECORD_SIZE;
     return (const char *)buf;
 #endif  /* FMRB_HW_MODERN */
 }
@@ -469,7 +469,7 @@ const char *fmrb_spx_gfx_video_open(int canvas_id, const char *path, int len,
                                     int x, int y, int fps, int loop)
 {
     static uint8_t buf[FMRB_SPX_GFX_VIDEO_INFO_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
     if (!path || len < 0 || len >= 120) {
         return "";
     }
@@ -509,7 +509,7 @@ const char *fmrb_spx_gfx_video_open(int canvas_id, const char *path, int len,
     }
     buf[0] = (uint8_t)(resp->width & 0xFF);  buf[1] = (uint8_t)(resp->width >> 8);
     buf[2] = (uint8_t)(resp->height & 0xFF); buf[3] = (uint8_t)(resp->height >> 8);
-    sp_net_bin_len = FMRB_SPX_GFX_VIDEO_INFO_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_GFX_VIDEO_INFO_RECORD_SIZE;
     return (const char *)buf;
 #endif  /* FMRB_HW_MODERN */
 }

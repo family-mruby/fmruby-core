@@ -46,7 +46,7 @@ typedef struct mrb_state {
    divisor check, allocation overflow, etc.). The mrb_raise macro
    now dispatches on the symbolic class enum: ZeroDivisionError is
    routed through sp_bigint_raise_zerodiv (defined non-static in
-   sp_runtime.h, linked from gen.c) so it reaches spinel's longjmp
+   spinel_rt.h, linked from gen.c) so it reaches spinel's longjmp
    rescue net and is catchable by `rescue ZeroDivisionError`.
    Other classes still hard-exit — they're internal invariants
    (allocation overflow) where graceful handling buys little. */

@@ -4,7 +4,7 @@
  * The document model itself is VM-independent C keyed by an int slot; this file
  * only adapts its (pointer, length) string returns to Spinel's :binstr
  * convention, which is "return the pointer, publish the length in
- * sp_net_bin_len". Compiled only when the editor VM is Spinel, so an mruby-only
+ * sp_ffi_bin_len". Compiled only when the editor VM is Spinel, so an mruby-only
  * build never links it (the mruby binding lives in the gem).
  */
 
@@ -15,9 +15,9 @@
    the main component needs no extra include dir for one file. */
 #include "../../lib/add/picoruby-fmrb-editor-core/include/editor_core_api.h"
 
-/* Published by fmrb_spx_common.c; the runtime reads it after every :binstr
-   call. */
-extern int sp_net_bin_len;
+/* The current instance's :binstr length (runtime sp_ctx.c; the host C
+   cannot include sp_ctx.h, so it is declared here). */
+int *sp_ctx_ffi_bin_len(void);
 
 int fmrb_spx_ec_open_slot(void)
 {
@@ -40,7 +40,7 @@ const char *fmrb_spx_ec_render_text(int slot, int y, int col0, int max_cols)
 {
     int len = 0;
     const char *p = ec_render_text(slot, y, col0, max_cols, &len);
-    sp_net_bin_len = len;
+    *sp_ctx_ffi_bin_len() = len;
     return p;
 }
 
@@ -48,7 +48,7 @@ const char *fmrb_spx_ec_render_hl(int slot, int y, int col0, int max_cols)
 {
     int len = 0;
     const char *p = ec_render_hl(slot, y, col0, max_cols, &len);
-    sp_net_bin_len = len;
+    *sp_ctx_ffi_bin_len() = len;
     return p;
 }
 
@@ -56,7 +56,7 @@ const char *fmrb_spx_ec_render_width(int slot, int y, int col0, int max_cols)
 {
     int len = 0;
     const char *p = ec_render_width(slot, y, col0, max_cols, &len);
-    sp_net_bin_len = len;
+    *sp_ctx_ffi_bin_len() = len;
     return p;
 }
 
@@ -74,7 +74,7 @@ const char *fmrb_spx_ec_char_at(int slot, int y, int x)
 {
     int len = 0;
     const char *p = ec_char_at(slot, y, x, &len);
-    sp_net_bin_len = len;
+    *sp_ctx_ffi_bin_len() = len;
     return p;
 }
 
@@ -96,7 +96,7 @@ const char *fmrb_spx_ec_insert_multiline(int slot, int y, int x, const char *s, 
 {
     int n = 0;
     const char *p = ec_insert_multiline(slot, y, x, s, len, &n);
-    sp_net_bin_len = n;
+    *sp_ctx_ffi_bin_len() = n;
     return p;
 }
 
@@ -108,7 +108,7 @@ const char *fmrb_spx_ec_find(int slot, const char *q, int qlen,
 {
     int n = 0;
     const char *p = ec_find(slot, q, qlen, from_y, from_x, after, &n);
-    sp_net_bin_len = n;
+    *sp_ctx_ffi_bin_len() = n;
     return p;
 }
 
@@ -121,7 +121,7 @@ const char *fmrb_spx_ec_paste_at(int slot, int y, int x)
 {
     int n = 0;
     const char *p = ec_paste_at(slot, y, x, &n);
-    sp_net_bin_len = n;
+    *sp_ctx_ffi_bin_len() = n;
     return p;
 }
 
@@ -138,7 +138,7 @@ const char *fmrb_spx_et_suggestion(int i, int field)
 {
     int len = 0;
     const char *p = et_suggestion(i, field, &len);
-    sp_net_bin_len = len;
+    *sp_ctx_ffi_bin_len() = len;
     return p;
 }
 
@@ -153,7 +153,7 @@ const char *fmrb_spx_et_hover_field(int field)
 {
     int len = 0;
     const char *p = et_hover_field(field, &len);
-    sp_net_bin_len = len;
+    *sp_ctx_ffi_bin_len() = len;
     return p;
 }
 
@@ -168,7 +168,7 @@ const char *fmrb_spx_et_call_field(int field)
 {
     int len = 0;
     const char *p = et_call_field(field, &len);
-    sp_net_bin_len = len;
+    *sp_ctx_ffi_bin_len() = len;
     return p;
 }
 
@@ -185,6 +185,6 @@ const char *fmrb_spx_et_diagnostic_message(int i)
 {
     int len = 0;
     const char *p = et_diagnostic_message(i, &len);
-    sp_net_bin_len = len;
+    *sp_ctx_ffi_bin_len() = len;
     return p;
 }

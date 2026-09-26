@@ -7,7 +7,7 @@
 # Spinel desktop's link in a build where the editor stays on mruby.
 # EditorCore (picoruby-fmrb-editor-core) through main/app/fmrb_spx_editor.c.
 # Only the editor program splices this; the desktop never calls it. Strings come
-# back as :binstr (pointer + sp_net_bin_len), which is why every text-returning
+# back as :binstr (pointer + sp_ffi_bin_len), which is why every text-returning
 # entry point takes the window (col0, max_cols) rather than handing out a whole
 # line: nothing is copied on either side of the boundary.
 module FmrbSpxEc

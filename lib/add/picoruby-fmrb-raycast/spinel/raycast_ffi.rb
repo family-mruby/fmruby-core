@@ -2,7 +2,7 @@
 #
 # The entry takes no arguments (`int f(void)`), so everything crosses here.
 # Nothing but bytes and ints does: the map as a binary String (:binstr,
-# byte-exact via sp_net_bin_len), the player as three ints, the depth buffer
+# byte-exact via sp_ffi_bin_len), the player as three ints, the depth buffer
 # back as a String plus its length. No Float touches the boundary -- the
 # raycaster is fixed-point throughout, which is why it suits this pattern.
 #

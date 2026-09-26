@@ -2,7 +2,7 @@
  * See sp_system.h.
  *
  * Self-contained (libc + OS process API only); does not include
- * sp_runtime.h, so it carries its own mrb_bool/TRUE/FALSE locally. */
+ * spinel_rt.h, so it carries its own sp_bool/TRUE/FALSE locally. */
 #include "sp_system.h"
 #include <stdlib.h>
 #include <string.h>
@@ -12,7 +12,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
-typedef int mrb_bool;
+typedef int sp_bool;
 #ifndef TRUE
 #define TRUE 1
 #endif
@@ -20,9 +20,20 @@ typedef int mrb_bool;
 #define FALSE 0
 #endif
 
+#ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
 int sp_last_status = 0;
+#endif
 
 
+#if defined(SP_NO_PROCESS) || defined(SP_NO_MMAN)
+/* No fork/exec on this port (SP_NO_PROCESS, sp_types.h -- this file keeps to
+   libc headers, so it tests the knobs itself). */
+extern void sp_raise_cls(const char *cls, const char *msg) __attribute__((noreturn));
+int sp_system_args(int argc, const char *const *argv) {
+  (void)argc; (void)argv;
+  sp_raise_cls("NotImplementedError", "Kernel#system is not supported on this port");
+}
+#else
 int sp_system_args(int argc, const char *const *argv) {
   if (argc <= 0 || argv == NULL || argv[0] == NULL) {
     sp_last_status = -1;
@@ -43,12 +54,17 @@ int sp_system_args(int argc, const char *const *argv) {
     }
     _exit(127);
   }
+  /* Same rule as Process.waitpid2 (#4381): a blocking wait answers for the OS
+     worker, and a started green thread is pinned to its worker, so it would
+     stall the very thread that may have to drain this child's output before it
+     can exit. sp_sched_wait_child polls and hands the scheduler back while any
+     other thread is alive, and keeps the blocking wait when none is. */
   int status = 0;
-  while (waitpid(pid, &status, 0) < 0) {
-    if (errno == EINTR) continue;
-    sp_last_status = -1;
-    return FALSE;
+  {
+    extern int sp_sched_wait_child(int pid, int *status);
+    if (sp_sched_wait_child((int)pid, &status) < 0) { sp_last_status = -1; return FALSE; }
   }
   sp_last_status = status;
   return (WIFEXITED(status) && WEXITSTATUS(status) == 0) ? TRUE : FALSE;
 }
+#endif /* SP_NO_PROCESS */

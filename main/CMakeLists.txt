@@ -127,9 +127,9 @@ endif()
 # Individual VMs (kernel/desktop/editor) and the FFT backend can still be mruby.
 set(FMRB_ANY_SPINEL TRUE)
 include(${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/compile_ruby_to_spinel.cmake)
-# sp_net_bin_len (:binstr length) -- referenced by whichever shim(s) below
-# compile. Defined here (not in a per-engine shim) so a mixed
-# mruby-kernel + Spinel-desktop build still resolves it.
+# Shared FFI helpers (millis, logging) -- referenced by whichever shim(s) below
+# compile. Built here (not in a per-engine shim) so a mixed
+# mruby-kernel + Spinel-desktop build still resolves them.
 list(APPEND COMPONENT_SRCS "kernel/fmrb_spx_common.c")
 
 if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
@@ -188,7 +188,7 @@ set(COMPONENT_REQUIRES fmrb_hal fmrb_log fmrb_msg fmrb_transport fmrb_toml fmrb_
 # Spinel engine: link the Spinel runtime (propagates SP_GC_STACK_MAX + include
 # dir INTERFACE).
 # Any Spinel VM (kernel and/or desktop) needs fmrb_spinel_rt for the runtime
-# archive + its INTERFACE include dir (sp_runtime.h for the generated C,
+# archive + its INTERFACE include dir (spinel_rt.h for the generated C,
 # fmrb_spinel_host.h for the NATIVE spawn wrappers).
 if(FMRB_ANY_SPINEL)
     list(APPEND COMPONENT_REQUIRES fmrb_spinel_rt)
@@ -405,7 +405,7 @@ generate_ruby_bytecode_commands(DEFAULT_APP_RUBY_FILES ${CMAKE_CURRENT_LIST_DIR}
 # Spinel engine: define the switch macro (fmrb_kernel.c) and, when a host
 # SPINEL_BIN is available, wire the .rb -> .c regeneration. The docker linux
 # build relies on the host-pre-generated .c (rake spinel:gen).
-# SP_NO_MMAN on MMU-less targets: the generated Spinel C includes sp_runtime.h,
+# SP_NO_MMAN on MMU-less targets: the generated Spinel C includes spinel_rt.h,
 # which must not pull <sys/mman.h> on ESP32/newlib (mirrors fmrb_spinel_rt's
 # SPINEL_PORT_FLAGS). Held as a literal gate here rather than read from that
 # component's cache var, because IDF component processing order is not
@@ -465,7 +465,7 @@ if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
     generate_ruby_spinel_command(
         ${FMRB_SPINEL_GEN_DIR}/fmrb_kernel_combined.rb
         fmrb_kernel_entry ${FMRB_SPINEL_GEN_DIR})
-    # The Spinel-generated C pulls in sp_runtime.h, which defines many static
+    # The Spinel-generated C pulls in spinel_rt.h, which defines many static
     # helpers a given program leaves unused; suppress warnings (it is generated,
     # not hand-written) so the project's -Werror does not reject it.
     #

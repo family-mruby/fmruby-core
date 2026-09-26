@@ -25,18 +25,20 @@
 
 static const char *TAG = "spx";
 
-/* fmrb_spx_board_millis / fmrb_spx_log_write and the sp_net_bin_len :binstr
-   length publisher live in fmrb_spx_common.c (compiled for any Spinel engine),
-   so a mixed mruby-kernel + Spinel-desktop build -- where this file is NOT
-   compiled -- still resolves them from the app/gfx shims + common TU. */
-extern int sp_net_bin_len;
+/* fmrb_spx_board_millis / fmrb_spx_log_write live in fmrb_spx_common.c
+   (compiled for any Spinel engine), so a mixed mruby-kernel + Spinel-desktop
+   build -- where this file is NOT compiled -- still resolves them from the
+   app/gfx shims + common TU. */
+/* The current instance's :binstr length (runtime sp_ctx.c; the host C
+   cannot include sp_ctx.h, so it is declared here). */
+int *sp_ctx_ffi_bin_len(void);
 
 const char *fmrb_spx_recv_message(int timeout_ms, int *type, int *src_pid)
 {
     static uint8_t payload[FMRB_MAX_MSG_PAYLOAD_SIZE];
     if (type) *type = -1;
     if (src_pid) *src_pid = -1;
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_msg_t msg;
     /* fmrb_msg_receive takes milliseconds (it applies FMRB_MS_TO_TICKS
@@ -51,7 +53,7 @@ const char *fmrb_spx_recv_message(int timeout_ms, int *type, int *src_pid)
     memcpy(payload, msg.data, n);
     if (type) *type = (int)msg.type;
     if (src_pid) *src_pid = (int)msg.src_pid;
-    sp_net_bin_len = (int)n;
+    *sp_ctx_ffi_bin_len() = (int)n;
     return (const char *)payload;
 }
 
@@ -88,9 +90,9 @@ const char *fmrb_spx_windows_snapshot(void)
 {
     /* Returned as :binstr (a real Spinel String the Ruby side reads with
        getbyte); ffi_buffer would hand back a :ptr, which has no getbyte. The
-       byte length (count * 48) is published in sp_net_bin_len. */
+       byte length (count * 48) is published in sp_ffi_bin_len. */
     static uint8_t buf[FMRB_MAX_APPS * FMRB_SPX_WIN_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_window_info_t windows[FMRB_MAX_APPS];
     int32_t count = fmrb_app_get_window_list(windows, FMRB_MAX_APPS);
@@ -118,7 +120,7 @@ const char *fmrb_spx_windows_snapshot(void)
         size_t nl = strnlen(w->app_name, 32);
         memcpy(r + 16, w->app_name, nl);
     }
-    sp_net_bin_len = (int)(count * FMRB_SPX_WIN_RECORD_SIZE);
+    *sp_ctx_ffi_bin_len() = (int)(count * FMRB_SPX_WIN_RECORD_SIZE);
     return (const char *)buf;
 }
 
@@ -230,7 +232,7 @@ const char *fmrb_spx_app_info_snapshot(int pid)
     /* :binstr return (see fmrb_spx_windows_snapshot). Empty string when the pid
        has no context, so the Ruby side returns nil. */
     static uint8_t buf[FMRB_SPX_APP_INFO_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id((int32_t)pid);
     if (!ctx) {
@@ -260,7 +262,7 @@ const char *fmrb_spx_app_info_snapshot(int pid)
     /* expected_stop: this app was asked to end (a kill, or its own stop), as
        opposed to dying. Read at exit, before the slot is reaped. */
     buf[166] = ctx->expected_stop ? 1 : 0;
-    sp_net_bin_len = FMRB_SPX_APP_INFO_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_APP_INFO_RECORD_SIZE;
     return (const char *)buf;
 }
 
@@ -268,7 +270,7 @@ const char *fmrb_spx_last_error(void)
 {
     /* :binstr return; empty string when there is no error (Ruby returns nil). */
     static uint8_t buf[FMRB_SPX_LAST_ERROR_RECORD_SIZE];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     const char *name = fmrb_app_get_last_error_name();
     const char *msg = fmrb_app_get_last_error_msg();
@@ -278,7 +280,7 @@ const char *fmrb_spx_last_error(void)
     memset(buf, 0, FMRB_SPX_LAST_ERROR_RECORD_SIZE);
     spx_pack_name(buf + 0, 64, name);
     spx_pack_name(buf + 64, 112, msg);
-    sp_net_bin_len = FMRB_SPX_LAST_ERROR_RECORD_SIZE;
+    *sp_ctx_ffi_bin_len() = FMRB_SPX_LAST_ERROR_RECORD_SIZE;
     return (const char *)buf;
 }
 
@@ -350,7 +352,7 @@ int fmrb_spx_sync_file_count(void)
 const char *fmrb_spx_sync_file_entry(int index)
 {
     static uint8_t buf[2 * FMRB_SYNC_FILE_PATH_MAX];
-    sp_net_bin_len = 0;
+    *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_sync_file_entry_t entries[FMRB_SPX_SYNC_MAX_ENTRIES];
     const int count = fmrb_kernel_get_sync_files(entries, FMRB_SPX_SYNC_MAX_ENTRIES);
@@ -360,7 +362,7 @@ const char *fmrb_spx_sync_file_entry(int index)
     spx_pack_name(buf, FMRB_SYNC_FILE_PATH_MAX, entries[index].src);
     spx_pack_name(buf + FMRB_SYNC_FILE_PATH_MAX, FMRB_SYNC_FILE_PATH_MAX,
                   entries[index].dest);
-    sp_net_bin_len = (int)sizeof(buf);
+    *sp_ctx_ffi_bin_len() = (int)sizeof(buf);
     return (const char *)buf;
 }
 

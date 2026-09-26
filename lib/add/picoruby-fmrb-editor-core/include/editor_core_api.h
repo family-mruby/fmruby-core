@@ -9,7 +9,7 @@
  * implementation serves the mruby binding (ports/esp32/editor_core_mrb.c) and
  * the Spinel FFI shim (main/app/fmrb_spx_editor.c). Strings are returned as a
  * pointer plus an out length -- no allocator of the caller's is involved, and
- * both binding styles (mrb_str_new / Spinel :binstr + sp_net_bin_len) can wrap
+ * both binding styles (mrb_str_new / Spinel :binstr + sp_ffi_bin_len) can wrap
  * that shape.
  *
  * Returned pointers stay valid until the next call that modifies that document.
