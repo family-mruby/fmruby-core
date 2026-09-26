@@ -13,6 +13,12 @@
 
 #include <stddef.h>
 #include "sp_types.h"
+/* SP_NO_SLAB compiles the slab allocator out (lib/sp_slab.c). SP_MULTI_CTX
+   and SP_NO_MMAN imply it; derived here, where every TU that asks about the
+   slab gets its answer, so the runtime and the generated C agree. */
+#if (defined(SP_MULTI_CTX) || defined(SP_NO_MMAN)) && !defined(SP_NO_SLAB)
+#define SP_NO_SLAB
+#endif
 
 /* ---- Value tag constants + the boxed value (sp_RbVal) ----
  * The mark helpers below dispatch on the tag, so the type lives here
@@ -407,7 +413,11 @@ static inline void sp_gc_bytes_sub(size_t n) {
    address falls inside it, which the allocation fast paths test inline. */
 extern uintptr_t sp_slab_base;
 extern size_t sp_slab_cap;
+#ifdef SP_NO_SLAB   /* no reservation is ever made: nothing is a slab block */
+static inline int sp_slab_owns(const void *p) { (void)p; return 0; }
+#else
 static inline int sp_slab_owns(const void *p) { return (uintptr_t)p - sp_slab_base < sp_slab_cap; }
+#endif
 /* Only a block the slab does not hold goes on a list: a slab block's
    generation is a bit in its chunk's bitmaps, set by the allocation itself
    (lib/sp_slab.c), and the lists carry what fell back to malloc. */
@@ -471,7 +481,15 @@ void  sp_slab_each_string(int young, int old, void (*fn)(void *hdr, void *arg), 
 void  sp_slab_release(void);
 void  sp_slab_release_worker(int wid);   /* one worker's lists, by their owner, beside the program */
 void  sp_slab_release_from(int first);   /* the slots from `first` on, under the barrier */
+/* SP_NO_SLAB (derived near the top of this file) makes the switch a constant
+   0: every `sp_slab_on > 0` path folds away at compile time, and with it the
+   chunk machinery's tables (the per-worker run cache is 2 KB of .bss on a
+   32-bit target that could never use it). */
+#ifdef SP_NO_SLAB
+#define sp_slab_on 0
+#else
 extern int sp_slab_on;
+#endif
 
 /* ---- Collector entry points (defined in lib/sp_gc.c) ---- */
 int  sp_gc_verify_on(void);   /* SPINEL_GC_VERIFY is set (diagnostics only) */

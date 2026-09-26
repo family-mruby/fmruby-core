@@ -95,6 +95,16 @@
 # define SP_TU_BSS
 #endif
 
+/* SP_RT_COLD: the runtime's own process-wide statics that only a diagnostic
+   switch or a report ever touches (the SPINEL_GC_PHASES counters, the scratch
+   buffers of a few inspect/label helpers). Same idea as SP_TU_BSS, for the
+   runtime library rather than a generated program: a target short of internal
+   memory defines it to its "put it elsewhere" .bss attribute. Empty by
+   default; only zero-initialized definitions carry it. */
+#ifndef SP_RT_COLD
+# define SP_RT_COLD
+#endif
+
 /* SP_NO_PROCESS: the port cannot start another process (no fork/exec, no
    waitpid). Process.spawn / Process.waitpid2, Kernel#system and the backtick
    then raise NotImplementedError instead of being linked against functions

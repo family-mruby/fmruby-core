@@ -2558,8 +2558,11 @@ const char *re_named_name(const mrb_regexp_pattern *pat, int i, int *group_out) 
 }
 /* group index -> its name (NUL-terminated copy in a static rotating buffer),
    or NULL when the group is positional. For MatchData#inspect. */
+#ifndef SP_RT_COLD   /* sp_types.h; this file does not include it */
+#define SP_RT_COLD
+#endif
 const char *re_group_name(const mrb_regexp_pattern *pat, int group) {
-  static char buf[4][64];
+  SP_RT_COLD static char buf[4][64];
   static int rot = 0;
   if (!pat) return NULL;
   for (int k = 0; k < pat->num_named; k++) {

@@ -1,6 +1,17 @@
 # ESP32-P4 (Family mruby Modern) - 16MB flash
+#
+# factory was 6M until the Spinel runtime was moved to the latest upstream
+# (doc/spinel_upstream_ext/): the image grew past it by about 110 KB, from a
+# point where it already had only 5% spare. It is 7M now. storage keeps its 8M,
+# so it moves from 0x610000 to 0x710000 and the layout ends at 0xF10000,
+# inside the 16MB flash.
+#
+# A partition-table change cannot ship as an app-only update: it needs a full
+# flash (bootloader + table + app + storage), which erases /home. `rake
+# flash:app` onto a board still carrying the 6M table writes an image the old
+# table cannot hold.
 # Name,   Type, SubType,  Offset,  Size, Flags
 nvs,      data, nvs,      0x9000,  24K,
 phy_init, data, phy,             ,  4K,
-factory,  app,  factory,         ,  6M,
+factory,  app,  factory,         ,  7M,
 storage,  data, littlefs,        ,  8M,

@@ -310,8 +310,8 @@ static SP_TLS size_t sp_gc_mkl_marked = 0, sp_gc_mkl_bytes = 0, sp_gc_mkl_young 
 #endif
 static int sp_gc_par_mark = 0;   /* the drain is running on several threads */
 static SP_TLS int sp_gc_mk_is_collector=0;
-unsigned long long sp_gc_ph_mk_by_helpers=0, sp_gc_ph_mk_spills=0, sp_gc_ph_mk_takes=0;
-double sp_gc_ph_mk_drain=0, sp_gc_ph_mk_join=0, sp_gc_ph_mk_idle=0;
+SP_RT_COLD unsigned long long sp_gc_ph_mk_by_helpers=0, sp_gc_ph_mk_spills=0, sp_gc_ph_mk_takes=0;
+SP_RT_COLD double sp_gc_ph_mk_drain=0, sp_gc_ph_mk_join=0, sp_gc_ph_mk_idle=0;
 int sp_gc_par_mark_on = -1;      /* SPINEL_GC_PAR_MARK=0 turns it off */
 static void sp_gc_mkl_fold(void);
 #ifndef SP_MULTI_CTX
@@ -1531,7 +1531,7 @@ static int sp_gc_sweep_full_now=0;   /* the cycle the stop-the-world sweep tasks
 #endif
 #endif
 #endif
-size_t sp_gc_ph_slab_freed_obj=0, sp_gc_ph_slab_freed_str=0;
+SP_RT_COLD size_t sp_gc_ph_slab_freed_obj=0, sp_gc_ph_slab_freed_str=0;
 /* bytes of headers the pools hold, summed over the sweep of one cycle and
    folded into the live total the budget is sized from (sp_gc_parked_take) */
 #ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
@@ -1743,14 +1743,14 @@ static SP_NOINLINE void sp_gc_verify_gen_run(void) {
    heap on every non-full cycle, O(live) per collection, and nothing attributed
    it -- 5.7s of 13.1s of collector time on a server workload, invisible in the
    total. That is what this found, and #4380 then removed; it reads ~0 now. */
-double sp_gc_ph_wait_top = 0;   /* joining the previous sweep at the top of the collection */
-double sp_gc_ph_park_sweeping = 0; unsigned long long sp_gc_ph_park_sweeping_n = 0;   /* the park wait spent while an owner sweep of the previous cycle was still running (sp_sched.c) */
-double sp_gc_ph_mark = 0, sp_gc_ph_oldsweep = 0, sp_gc_ph_slotsweep = 0,
+SP_RT_COLD double sp_gc_ph_wait_top = 0;   /* joining the previous sweep at the top of the collection */
+SP_RT_COLD double sp_gc_ph_park_sweeping = 0; SP_RT_COLD unsigned long long sp_gc_ph_park_sweeping_n = 0;   /* the park wait spent while an owner sweep of the previous cycle was still running (sp_sched.c) */
+SP_RT_COLD double sp_gc_ph_mark = 0, sp_gc_ph_oldsweep = 0, sp_gc_ph_slotsweep = 0,
        sp_gc_ph_rembclear = 0, sp_gc_ph_strsweep = 0, sp_gc_ph_trim = 0;
-double sp_gc_ph_slot_max = 0, sp_gc_ph_task_sum = 0, sp_gc_ph_task_obj = 0, sp_gc_ph_task_sold = 0, sp_gc_ph_task_syoung = 0;   /* filled by the threaded sweep driver */
-unsigned long long sp_gc_ph_mk_helpers = 0, sp_gc_ph_mk_drains = 0;
-double sp_gc_ph_conc_wait = 0, sp_gc_ph_conc_wall = 0, sp_gc_ph_barrier = 0, sp_gc_ph_park = 0, sp_gc_ph_apply_obj = 0, sp_gc_ph_apply_str = 0, sp_gc_ph_apply_release = 0; unsigned long long sp_gc_ph_conc_waits = 0;   /* joining the previous sweep under the barrier */
-double sp_gc_ph_mk_roots = 0, sp_gc_ph_mk_fibers = 0,
+SP_RT_COLD double sp_gc_ph_slot_max = 0, sp_gc_ph_task_sum = 0, sp_gc_ph_task_obj = 0, sp_gc_ph_task_sold = 0, sp_gc_ph_task_syoung = 0;   /* filled by the threaded sweep driver */
+SP_RT_COLD unsigned long long sp_gc_ph_mk_helpers = 0, sp_gc_ph_mk_drains = 0;
+SP_RT_COLD double sp_gc_ph_conc_wait = 0, sp_gc_ph_conc_wall = 0, sp_gc_ph_barrier = 0, sp_gc_ph_park = 0, sp_gc_ph_apply_obj = 0, sp_gc_ph_apply_str = 0, sp_gc_ph_apply_release = 0; SP_RT_COLD unsigned long long sp_gc_ph_conc_waits = 0;   /* joining the previous sweep under the barrier */
+SP_RT_COLD double sp_gc_ph_mk_roots = 0, sp_gc_ph_mk_fibers = 0,
        sp_gc_ph_mk_globals = 0, sp_gc_ph_mk_scan = 0;
 int sp_gc_ph_on = 0;
 #ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
@@ -1804,7 +1804,7 @@ static double sp_gc_stat_now(void){
 /* What malloc still holds is container buffers; the objects and strings
    are the slab's. A trim is still a 60 ms walk of every arena on a
    32-worker box, so once a second is the cadence (SPINEL_GC_TRIM_SEC). */
-unsigned long long sp_gc_ph_trim_req = 0, sp_gc_ph_trim_inline = 0; double sp_gc_ph_trim_inline_t = 0;
+SP_RT_COLD unsigned long long sp_gc_ph_trim_req = 0, sp_gc_ph_trim_inline = 0; SP_RT_COLD double sp_gc_ph_trim_inline_t = 0;
 static void sp_gc_trim_request(void){
   static double last_trim=0, trim_every=-1;
   if(trim_every<0){ const char*e=getenv("SPINEL_GC_TRIM_SEC"); trim_every=(e&&*e)?atof(e):1.0; }

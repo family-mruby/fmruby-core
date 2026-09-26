@@ -137,7 +137,7 @@ static int sp_str_shape_cmp(const void *a, const void *b) {
    never read as the other one's: the default's is a size to cross, the
    schedule's is a cadence with the size demoted to a backstop. */
 static const char *sp_str_major_label(void) {
-  static char buf[64];
+  SP_RT_COLD static char buf[64];
   if (!sp_gc_str_major_sched) return "at ";
   snprintf(buf, sizeof buf, "every %d sweeps, backstop ", sp_str_major_interval);
   return buf;

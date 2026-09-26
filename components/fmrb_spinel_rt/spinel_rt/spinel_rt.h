@@ -74,8 +74,28 @@ const char *sp_str_setbyte_cow(const char *s, sp_int i, sp_int v);
 extern int sp_bt_enabled;          /* set to 1 by debug-build main(); defined in lib/sp_cold.c */
 extern const char *sp_bt_srcfile;  /* toplevel .rb path, set by debug main() */
 #endif
+/* A program's file-scope slot that starts at a nil sentinel (codegen.c,
+   emit_tu_nil_slot). Under SP_MULTI_CTX the TU's reset writes the sentinel at
+   the head of every entry, so the slot is zeroed storage -- .bss, placeable
+   with SP_TU_BSS -- instead of initialized .data; the default build keeps the
+   static initializer. The initializer may be a braced aggregate, hence `...`. */
+#ifdef SP_MULTI_CTX
+#define SP_TU_NIL_SLOT(T, name, ...) SP_TU_BSS static T name
+#else
+#define SP_TU_NIL_SLOT(T, name, ...) static T name = __VA_ARGS__
+#endif
 #if SP_BT_AVAILABLE
-static void *sp_bt_buf[256];       /* frames captured at the last raise */
+/* Frames captured at the last raise. Without execinfo.h the backtrace() shim
+   above captures nothing, so one slot stands in for the 256 (a port without
+   it -- ESP-IDF -- was paying 1 KB of .bss per program, plus as much of stack
+   in the uncaught-exception path, for frames that could never arrive).
+   SP_TU_BSS: per-TU and cold (sp_types.h). */
+#ifdef HAVE_EXECINFO_H
+#define SP_BT_FRAMES 256
+#else
+#define SP_BT_FRAMES 1
+#endif
+SP_TU_BSS static void *sp_bt_buf[SP_BT_FRAMES];
 static int sp_bt_n = 0;
 #endif
 #include <unistd.h>
@@ -10344,7 +10364,7 @@ SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *
   if (msg != sp_exc_no_msg) msg = sp_msg_heapify(msg);
   SP_GC_ROOT_STR(msg);
 #if SP_BT_AVAILABLE
-  if (sp_bt_enabled) sp_bt_n = backtrace(sp_bt_buf, 256);
+  if (sp_bt_enabled) sp_bt_n = backtrace(sp_bt_buf, SP_BT_FRAMES);
 #endif
   /* A real exception supersedes any non-local unwind in flight (e.g. raised from
      inside an `ensure` running during a proc-return / throw): clear the unwind so
@@ -10397,7 +10417,7 @@ SP_TU_STATIC SP_NORETURN SP_COLD void sp_raise_cls(const char *cls, const char *
      backtrace substrate is not so lucky: a hook that raises overwrites it, so
      a debug build keeps its own copy across the drain. */
 #if SP_BT_AVAILABLE
-  void *_bt_keep[256];
+  void *_bt_keep[SP_BT_FRAMES];
   int _bt_keep_n = (sp_bt_enabled && sp_bt_n > 0) ? sp_bt_n : 0;
   if (_bt_keep_n > 0) memcpy(_bt_keep, sp_bt_buf, sizeof(void *) * (size_t)_bt_keep_n);
 #endif

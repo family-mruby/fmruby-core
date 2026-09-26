@@ -209,9 +209,7 @@ uintptr_t sp_slab_base = 0;   /* the reservation (read inline by sp_slab_owns) *
 static uintptr_t sp_slab_brk = 0;   /* how much of it is in use */
 size_t sp_slab_cap = 0;
 static sp_slab_chunk *sp_slab_empty = NULL;   /* chunks holding no class */
-#ifdef SP_NO_SLAB
-int sp_slab_on = 0;                           /* compiled out: never decided, never on */
-#else
+#ifndef SP_NO_SLAB   /* compiled out: a constant 0 (sp_gc.h) */
 int sp_slab_on = -1;                          /* decided once from the environment */
 #endif
 /* The parity of the epoch new allocations join. The collector flips it under
@@ -698,6 +696,10 @@ void *sp_slab_alloc_obj(size_t need, void (*fin)(void *), void (*scn)(void *)) {
 int sp_gc_alloc_fast_ok = 0;
 static void *sp_gc_alloc_full(size_t sz, void (*fin)(void *), void (*scn)(void *));
 void *sp_gc_alloc(size_t sz, void (*fin)(void *), void (*scn)(void *)) {
+#ifdef SP_NO_SLAB
+  /* the bump below is the slab's (sp_gc_alloc_fast_ok needs sp_slab_on) */
+  return sp_gc_alloc_full(sz, fin, scn);
+#endif
   size_t need = sizeof(sp_gc_hdr) + sz;
   if (__builtin_expect(!sp_gc_alloc_fast_ok || need > 256, 0)) return sp_gc_alloc_full(sz, fin, scn);
   if (__builtin_expect(SP_GC_CTR_GET(sp_gc_bytes) > SP_GC_CTR_GET(sp_gc_threshold), 0)) return sp_gc_alloc_full(sz, fin, scn);
@@ -1225,8 +1227,8 @@ static inline int sp_slab_chunk_empty(sp_slab_chunk *ch) {
 
 /* SPINEL_GC_PHASES: what a release spends its time on -- chunks walked,
    chunks handed back (each one an madvise), and the madvise time itself. */
-unsigned long long sp_slab_rel_calls = 0, sp_slab_rel_walked = 0, sp_slab_rel_madv = 0;
-double sp_slab_rel_madv_t = 0, sp_slab_rel_sort_t = 0;
+SP_RT_COLD unsigned long long sp_slab_rel_calls = 0, sp_slab_rel_walked = 0, sp_slab_rel_madv = 0;
+SP_RT_COLD double sp_slab_rel_madv_t = 0, sp_slab_rel_sort_t = 0;
 static double sp_slab_now(void) { struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts); return ts.tv_sec + ts.tv_nsec * 1e-9; }
 /* One worker's lists, released by their OWNER (or, for a slot no worker
    runs, by the collector under the barrier), right after its own sweep: the
