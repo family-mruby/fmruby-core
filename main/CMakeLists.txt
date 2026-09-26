@@ -151,19 +151,19 @@ if(FMRB_APP_ENGINE_DESKTOP STREQUAL "spinel")
 endif()
 
 if(FMRB_FFT_SPINEL STREQUAL "1")
-    # Not a VM: one Spinel-compiled function, called from an mruby task through
-    # picoruby-fmrb-fft/native/fmrb_fft_spinel.c (in COMPONENT_SRCS
-    # unconditionally, compiles to stubs without this define).
-    prepare_ruby_spinel_source(fft_spinel ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
+    # Not a VM: a Spinel ext program with typed entries, called from an mruby
+    # task through picoruby-fmrb-fft/native/fmrb_fft_spinel.c (in
+    # COMPONENT_SRCS unconditionally, compiles to stubs without this define).
+    prepare_ruby_spinel_source(fft_kernel ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
     message(STATUS "FMRB_FFT_SPINEL=1: the Spinel FFT backend is in this build")
 endif()
 
-# SpinelHello sample gem: a Spinel library entry, always built (no opt-out flag,
+# SpinelHello sample gem: a Spinel ext program, always built (no opt-out flag,
 # unlike FFT). Its receiver is in lib/add/picoruby-fmrb-spinel-hello/native/.
-prepare_ruby_spinel_source(spinel_hello_entry ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
+prepare_ruby_spinel_source(spinel_hello_kernel ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
 
 # Raycast gem: same shape, receiver in lib/add/picoruby-fmrb-raycast/native/.
-prepare_ruby_spinel_source(raycast_entry ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
+prepare_ruby_spinel_source(raycast_kernel ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
 
 if(FMRB_APP_ENGINE_EDITOR STREQUAL "spinel")
     prepare_ruby_spinel_source(editor_combined ${FMRB_SPINEL_GEN_DIR} COMPONENT_SRCS)
@@ -480,40 +480,55 @@ if(FMRB_KERNEL_ENGINE STREQUAL "spinel")
         "${SPINEL_GEN_TU_FLAGS}")
 endif()
 
-# The Spinel FFT: the same generated-TU treatment as the VMs above. Its .rb is
-# not combined from parts -- it is one file with two require_relative lines,
-# spliced by the compiler -- so the generation command points straight at the
-# source instead of at gen/.
+# The Spinel gems: each is a generated program plus a native/ receiver that
+# includes the program's generated header (Init_<name>, the typed entries and
+# the spinel_rt.h types behind them). The receiver is therefore compiled with
+# the generated program's flags -- SP_MULTI_CTX is an ABI flag both sides must
+# share -- plus the gen/ dir for the header. The kernel .rb is the staged copy
+# in prebuild_scripts/spinel/ (rake spinel:gen copies it there with the core
+# it requires); GEM makes the generation read its init and entries from the
+# file's own `# spinel-ext-init:` / `# spinel-ext-entry:` lines.
+set(SPINEL_GEM_RECEIVER_FLAGS "${SPINEL_GEN_TU_FLAGS};-I${FMRB_SPINEL_GEN_DIR}")
+
 if(FMRB_FFT_SPINEL STREQUAL "1")
     target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_FFT_SPINEL)
-    # --persistent-statics must match rakelib/spinel.rake's fft_spinel command:
-    # this entry caches its cores between calls and depends on the TU's statics
-    # surviving (doc/spinel_aot/impl_plan_stateful_library_entry.md).
     generate_ruby_spinel_command(
-        ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/fft_spinel.rb
-        fmrb_fft_spinel_entry ${FMRB_SPINEL_GEN_DIR} --persistent-statics)
-    set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fft_spinel.c
+        ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/fft_kernel.rb
+        GEM ${FMRB_SPINEL_GEN_DIR})
+    set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/fft_kernel.c
         PROPERTIES COMPILE_OPTIONS
         "${SPINEL_GEN_TU_FLAGS}")
+    # Only when the backend is in: without FMRB_FFT_SPINEL the receiver is
+    # stubs and does not include the generated header.
+    set_source_files_properties(
+        ${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-fft/native/fmrb_fft_spinel.c
+        PROPERTIES COMPILE_OPTIONS
+        "${SPINEL_GEM_RECEIVER_FLAGS}")
 endif()
 
-# SpinelHello sample gem: generate + compile its Spinel entry (always built).
+# SpinelHello sample gem (always built).
 generate_ruby_spinel_command(
-    ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/spinel_hello_entry.rb
-    spinel_hello_entry ${FMRB_SPINEL_GEN_DIR})
-set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/spinel_hello_entry.c
+    ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/spinel_hello_kernel.rb
+    GEM ${FMRB_SPINEL_GEN_DIR})
+set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/spinel_hello_kernel.c
     PROPERTIES COMPILE_OPTIONS
     "${SPINEL_GEN_TU_FLAGS}")
+set_source_files_properties(
+    ${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-spinel-hello/native/spinel_hello_native.c
+    PROPERTIES COMPILE_OPTIONS
+    "${SPINEL_GEM_RECEIVER_FLAGS}")
 
-# Raycast gem: --persistent-statics must match rakelib/spinel.rake's raycast
-# command. The entry caches its core (map + trig tables) between frames and
-# depends on the TU's statics surviving the call.
+# Raycast gem (always built).
 generate_ruby_spinel_command(
-    ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/raycast_entry.rb
-    raycast_entry ${FMRB_SPINEL_GEN_DIR} --persistent-statics)
-set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/raycast_entry.c
+    ${CMAKE_CURRENT_LIST_DIR}/prebuild_scripts/spinel/raycast_kernel.rb
+    GEM ${FMRB_SPINEL_GEN_DIR})
+set_source_files_properties(${FMRB_SPINEL_GEN_DIR}/raycast_kernel.c
     PROPERTIES COMPILE_OPTIONS
     "${SPINEL_GEN_TU_FLAGS}")
+set_source_files_properties(
+    ${CMAKE_CURRENT_LIST_DIR}/../lib/add/picoruby-fmrb-raycast/native/raycast_native.c
+    PROPERTIES COMPILE_OPTIONS
+    "${SPINEL_GEM_RECEIVER_FLAGS}")
 
 # Desktop app engine: same wiring for the Spinel-compiled system_desktop program
 # (spawned NATIVE via fmrb_app_spawner.c). Independent of the kernel engine.

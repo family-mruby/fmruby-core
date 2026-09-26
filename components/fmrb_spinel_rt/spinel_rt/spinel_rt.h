@@ -238,7 +238,20 @@ static inline void sp_builtin_cls_ids_distinct(int id) {
     default: break;
   }
 }
-#if defined(SPINEL_EXT_HOST) || defined(SPINEL_EXT_KERNEL)
+/* The program-hook family (sp_sym_to_s, sp_sym_intern(_n), sp_class_to_s) is
+   exported by an ext kernel TU so its host resolves to it by symbol: the
+   upstream layout, one ext program per image. Under SP_MULTI_CTX each program
+   keeps them private, exactly like a plain generated TU -- the runtime already
+   reaches the current instance's copies through sp_ctx -- so several ext
+   programs can link into one image. SP_EXT_HOOK is the linkage codegen puts on
+   the definitions. */
+#if (defined(SPINEL_EXT_HOST) || defined(SPINEL_EXT_KERNEL)) && !defined(SP_MULTI_CTX)
+#define SP_EXT_HOOKS_EXTERN 1
+#define SP_EXT_HOOK
+#else
+#define SP_EXT_HOOK static
+#endif
+#ifdef SP_EXT_HOOKS_EXTERN
 const char *sp_sym_to_s(sp_sym id);
 #else
 static const char *sp_sym_to_s(sp_sym id);
@@ -1788,7 +1801,7 @@ static sp_Complex sp_real_pow_complex(sp_float base, sp_Complex e) {
 }
 /* sp_Range_inspect moved to lib/sp_format.c (cold). */
 /* sp_Time_inspect moved to lib/sp_format.c (cold). */
-#if defined(SPINEL_EXT_HOST) || defined(SPINEL_EXT_KERNEL)
+#ifdef SP_EXT_HOOKS_EXTERN
 const char *sp_class_to_s(sp_Class c);
 #else
 static const char *sp_class_to_s(sp_Class c); /* fwd decl: sp_poly_puts' SP_TAG_CLASS arm */
@@ -1994,7 +2007,7 @@ static sp_RbVal sp_poly_bitop(sp_RbVal a, sp_RbVal b, int op) {  /* 0:& 1:| 2:^ 
    or the real body when @needs_class_table fires. The forward
    decl always needs a definition somewhere because -Werror
    trips on "used but never defined" otherwise. */
-#if !defined(SPINEL_EXT_HOST) && !defined(SPINEL_EXT_KERNEL)
+#ifndef SP_EXT_HOOKS_EXTERN
 static const char *sp_class_to_s(sp_Class c);
 #endif
 static const char *sp_poly_class_name(sp_RbVal v);  /* fwd: user-object to_s default */
@@ -6859,7 +6872,7 @@ static const char *sp_OpenStruct_inspect(sp_OpenStruct *o){
 }
 /* MatchData#named_captures(symbolize_names: true) and #deconstruct_keys: the
    named captures as a symbol-keyed hash (#2503, #2530). */
-#if defined(SPINEL_EXT_HOST) || defined(SPINEL_EXT_KERNEL)
+#ifdef SP_EXT_HOOKS_EXTERN
 sp_sym sp_sym_intern(const char *s);
 #else
 static sp_sym sp_sym_intern(const char *s);
