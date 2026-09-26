@@ -81,7 +81,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `ruby_asterism/` [プロジェクト名の決定: Asterism](ruby_asterism/naming.md) — - 〔7 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
-- `spinel_upstream_ext/` [Spinel 上流の ext 機構でフォークを置き換えられるか](spinel_upstream_ext/plan.md) — **進行中** (2026-09-26) **P0・P1・P2a・P2b-1・P2c 完了**。最新上流に載せ直したフォークを fmrb に取り込み、**静的な内蔵 RAM は基準より約 6.7KB 減った** (S3 / Tab5)。Tab5 のアプリ区画は 7M に。標準構成の sim が通る (作業ブランチ、未 push)。次は P2b-2 (実機・push・SPINEL_PIN)。**上流 PR 6 本を提出済み** (matz/spinel #5064-#5069、2026-09-26) 〔18 files〕
+- `spinel_upstream_ext/` [Spinel 上流の ext 機構でフォークを置き換えられるか](spinel_upstream_ext/plan.md) — **進行中** (2026-09-26) **P0・P1・P2a・P2b-1・P2c 完了**。最新上流に載せ直したフォークを fmrb に取り込み、**静的な内蔵 RAM は基準より約 6.7KB 減った** (S3 / Tab5)。Tab5 のアプリ区画は 7M に。標準構成の sim が通る (作業ブランチ、未 push)。次は P2b-2 (実機・push・SPINEL_PIN)。**上流 PR 6 本を提出済み** (matz/spinel #5064-#5069、2026-09-26)。**fmrb-next (`0b350247`) は kishima/spinel に push して保全済み** (2026-09-26、SPINEL_PIN は旧 fmrb-dev のまま) 〔18 files〕
 - `stamp_p4/` [Stamp-P4 ヘッドレス機 (切符サイズの Modern)](stamp_p4/README.md) — **構想** (2026-08-31) M5Stamp-P4 + Stamp-AddOn C6 を殻に入れたヘッドレス Family mruby。まず殻 (case_design.md)、ファーム分岐は後続 〔2 files〕
 - `ui_widgets/` [汎用 UI 部品 (FmrbUI) の計画](ui_widgets/plan.md) — - 〔22 files〕
 - `user_extension/` [ユーザによるシステム拡張の余地 (構想の棚卸し)](user_extension/ideas.md) — - 〔17 files〕
