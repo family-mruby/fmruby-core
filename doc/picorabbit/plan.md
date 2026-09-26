@@ -1,6 +1,6 @@
 # PicoRabbit (Tab5) の拡張計画
 
-> 状態: 進行中 | 更新: 2026-09-03 | P0-P4・P6-P8 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済)。残は P5 (見せ場、任意)
+> 状態: 完了 | 更新: 2026-09-26 | P0-P4・P6-P9 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済。P9 = 背景 PNG + 行サイズ、Tab5 実機も確認済)。P5 (見せ場) は任意として残す
 
 PicoRabbit は Harucom 向けの Markdown 発表ツールで、Family mruby には
 `flash/app/tool/picorabbit.app.rb` + gem `lib/add/picoruby-fmrb-picorabbit`
