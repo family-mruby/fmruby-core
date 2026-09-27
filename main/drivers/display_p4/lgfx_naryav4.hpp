@@ -63,6 +63,9 @@
 #define NARYAV4_DSI_LDO_CHAN    3
 #define NARYAV4_DSI_LDO_MV      2500
 
+// Boundary the DPI frame buffer is placed on (see align_next_frame_buffer).
+#define NARYAV4_FB_ALIGN        4096
+
 // The board's single I2C bus: the LT8912B lives here together with the ES8311
 // codec and whatever the user hangs off the header. The display owns it (it is
 // the first thing that needs it) and lends the handle out.
@@ -207,6 +210,10 @@ private:
         dev.bits_per_pixel = 24;
         dev.vendor_config  = &vendor;
 
+        // The DPI panel allocates its frame buffer inside the call below.
+        // Arrange the heap first so that allocation lands page aligned.
+        const size_t fb_pad = align_next_frame_buffer((size_t)NARYAV4_HDMI_W * NARYAV4_HDMI_H * 3);
+
         esp_lcd_panel_lt8912b_io_t io_all = { _io.main, _io.cec_dsi, _io.avi };
         if (esp_lcd_new_panel_lt8912b(&io_all, &dev, &_panel) != ESP_OK) {
             FMRB_LOGE(TAG, "LT8912B panel create failed");
@@ -224,9 +231,90 @@ private:
             return false;
         }
 
-        FMRB_LOGI(TAG, "HDMI %dx%d up, RGB888 fb @%p",
-                  NARYAV4_HDMI_W, NARYAV4_HDMI_H, _fb);
+        FMRB_LOGI(TAG, "HDMI %dx%d up, RGB888 fb @%p (%s, pad %u)",
+                  NARYAV4_HDMI_W, NARYAV4_HDMI_H, _fb,
+                  ((uintptr_t)_fb & (NARYAV4_FB_ALIGN - 1)) ? "UNALIGNED" : "aligned",
+                  (unsigned)fb_pad);
         return true;
+    }
+
+    // Make the DPI driver's frame buffer start on a NARYAV4_FB_ALIGN boundary.
+    //
+    // Why: the scanout DMA reads the frame buffer from PSRAM all the time, and
+    // a buffer that is only cache-line aligned makes its bursts cross 4KB
+    // boundaries (which an AXI burst may not), so they get split and the
+    // scanout starves into the "underrun" that paints the rest of a frame
+    // blue. Measured on this board, same mode: 16-18 underruns in the boot
+    // window and 6-7 per minute of app launches at 0x...4dc0, none at all
+    // once the buffer sits on 4KB (doc/naryav4/report/p6.md).
+    //
+    // How: esp_lcd allocates the buffer itself (heap_caps_calloc, cache-line
+    // alignment only) and has no way to take a buffer or an alignment from
+    // the caller, so the heap is shaped right before it allocates:
+    //
+    //   1. probe where an allocation of that size and those caps lands now,
+    //   2. if it is off the boundary, hold a PSRAM pad at that spot, grown by
+    //      exactly the missing bytes, so the next allocation starts past it,
+    //   3. repeat until the probe lands aligned.
+    //
+    // The pad is taken as a big block first and shrunk in place, which pins it
+    // to the start of the free region the probe used (a small malloc could
+    // land in any hole). It is never freed -- the panel lives as long as the
+    // firmware -- and costs a few KB of PSRAM (4608 bytes as measured) and no
+    // internal RAM.
+    //
+    // If anything does not go as expected the pad is dropped and the buffer
+    // lands where it always did: the panel still works, only unaligned (the
+    // "HDMI ... up" log line says which). Returns the pad size in bytes.
+    size_t align_next_frame_buffer(size_t fb_size)
+    {
+        static const char *TAG = "naryav4_hdmi";
+        const uint32_t fb_caps  = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT | MALLOC_CAP_DMA;
+        const uint32_t pad_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+        void  *pad_block = nullptr;
+        size_t pad_size  = 0;
+
+        for (int attempt = 0; attempt < 8; ++attempt) {
+            void *probe = heap_caps_malloc(fb_size, fb_caps);
+            if (!probe) break;
+            const uintptr_t at = (uintptr_t)probe;
+            heap_caps_free(probe);
+
+            const size_t off = at & (NARYAV4_FB_ALIGN - 1);
+            if (off == 0) return pad_size;
+            const size_t grow = NARYAV4_FB_ALIGN - off;
+
+            if (!pad_block) {
+                // Take the region the probe came from (only a block that big
+                // fits there), then give back all but the missing bytes.
+                void *big = heap_caps_malloc(fb_size + NARYAV4_FB_ALIGN, pad_caps);
+                if (!big) break;
+                if ((uintptr_t)big > at || at - (uintptr_t)big > 256) {
+                    heap_caps_free(big);
+                    break;
+                }
+                void *pad = heap_caps_realloc(big, grow, pad_caps);
+                if (pad != big) {
+                    heap_caps_free(pad ? pad : big);
+                    break;
+                }
+                pad_block = pad;
+                pad_size = grow;
+            } else {
+                void *pad = heap_caps_realloc(pad_block, pad_size + grow, pad_caps);
+                if (pad != pad_block) {
+                    heap_caps_free(pad ? pad : pad_block);
+                    pad_block = nullptr;
+                    pad_size = 0;
+                    break;
+                }
+                pad_size += grow;
+            }
+        }
+        FMRB_LOGW(TAG, "could not place the frame buffer on a %u-byte boundary",
+                  (unsigned)NARYAV4_FB_ALIGN);
+        if (pad_block) heap_caps_free(pad_block);
+        return 0;
     }
 
     bool build_line_table(void)
