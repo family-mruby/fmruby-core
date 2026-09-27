@@ -32,6 +32,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - [Tab5 (ESP32-P4) BLE有効化 — Web コンソールの Modern 対応](reference/ble_c6_web_console.md)
 - [ブート時間の実測とコストモデル](reference/boot_performance.md)
 - [fmruby-core のビルド構造とコンパイル定義のスコープ](reference/core_build_structure.md)
+- [DSI (DPI) フレームバッファの置き場所と走査のアンダーラン](reference/dpi_frame_buffer_alignment.md)
 - [GC の観測と調整 (mruby アプリ VM)](reference/gc_monitoring.md)
 - [描画境界 (FmrbGfx ↔ 描画側) の課題と方針](reference/gfx_boundary_issues.md) — **随時更新** (2026-09-04) 課題 4 件、いずれも未着手。仕様変更が落ち着いてから順に
 - [次期基板 HDMI 映像出力方式 検討資料](reference/hdmi_video_output_study.md) — **凍結** (2026-08-29) 次期基板 (NARYAv4) の HDMI 方式比較。LT8912B が最有力、基板が動くまで保留
