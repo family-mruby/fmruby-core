@@ -1,6 +1,6 @@
 # 全画面の高解像度モード (P4 系とブラウザ版)
 
-> 状態: 計画済 | 更新: 2026-09-27 | 全画面のアプリだけ内部解像度を 640x360 (2 倍で 1280x720) に上げる。.app.toml で選び、エディタは P4 で既定オン。フォントは選べる。P4 系とブラウザ版のみ、Retro は対象外
+> 状態: 進行中 | 更新: 2026-09-28 | H0 完了 (report/h0.md)、設計を確定。全画面のアプリだけ内部解像度を 640x360 (2 倍で 1280x720) に上げる。入り口はカーネルが決め、表示へは SET_SCREEN_MODE で伝える。.app.toml `fullscreen_hires`、エディタは P4 で既定オン、フォントは 12/16/8 から選べる。次は H1 (表示)
 
 ## 目的
 
@@ -32,15 +32,45 @@ Modern (P4) を「作る機械」にするため、エディタを全画面で�
 - 640x360 x 2 = 1280x720 で、NARYAv4 (1280x720) と Tab5 (720x1280 を回転) に
   ちょうど合う。canvas は 640x360 RGB565 = 460,800 バイト (PSRAM)。
 
+## 確定した設計 (H0 の推奨をユーザが採用、2026-09-28。詳細は report/h0.md 8 章)
+
+1. **入り口と出口はカーネルが決める**。アプリは属性で「高解像度にしてよい」と
+   宣言するだけで、実行中に要求する口は作らない。全画面の積み (enter /
+   pop / park / unpark) が変わるたびに `sync_screen_mode` 1 か所で判定する
+   (一番上の park 中でない app が属性を持ち、構成が対応していれば高解像度)。
+   F11 で入るときの大きさは pid 別に返す。
+2. **表示へは新しい GFX コマンド `SET_SCREEN_MODE{owner_canvas_id, w, h, flags}`**。
+   表示側は、持ち主の canvas が新しい大きさで present するまで前の絵を保つ
+   (500ms 程度で打ち切り)。高解像度中に持ち主の canvas が消えるか隠れたら、
+   表示側が自分で通常へ戻す。戻るときは DSI の余白を黒で塗り直す。
+   カーネルは、入る向きは他を隠すより先に、戻る向きは後に送る。
+3. **確保**: 640x360 の fb を別に 1 枚、最初の使用時に取る。倍率は定数を
+   やめ、fb の大きさから導く (3 か 2)。canvas は大きい要求で取り直し、縮めない。
+   PSRAM は約 2MB 増、内蔵 RAM は増えない。
+4. **キー名**: .app.toml `fullscreen_hires = true`、表・attr・ctx は
+   `.fullscreen_hires`。組み込みの editor と editor_fs に付ける (P4 で既定オン)。
+   構成の判定は C の 1 関数 (`FMRB_HW_MODERN || FMRB_PLATFORM_WASM` かつ実行時の
+   基本の大きさが 426x240。`HW_FAMILY` は sim でも modern なので使わない)。
+   カーネル Ruby へは `_fullscreen_hires_size` (nil か [640,360])。mruby 版と
+   Spinel 版の両方。
+5. **入力**: 「いまの画面の大きさ」を host_task に 1 つ置き、touch / usb /
+   rd_input が読む。**マウスの速さは倍率で補正し、画面上の速さを今と同じに
+   保つ**。カーソルが画面上 48px から 32px に小さくなるのは許容 (必要なら後で)。
+6. **遠隔の画面取得**: 取り込みは最大の大きさで取り、1 枚ごとに幅と高さを
+   記録。静止画 (JPEG、tab5_screenshot) は H1、動画 (H.264) とページは H4。
+7. **エディタのフォント**: 今ある **ja12 (既定) / ja16 / misaki 8** の 3 つから
+   選ぶ (新しいフォントは足さない。Tab5 の flash が逼迫)。窓と全画面で共通。
+   保存先は **/home/editor.toml**。LINE_H / CELL_W / EDIT_FONT_SIZE を変数にする。
+
 ## 段階
 
 | 段階 | 内容 | 状態 |
 |---|---|---|
-| H0 | 調査と設計の確定: 今の全画面の経路 (spawner の fullscreen、`@fs_stack`、`fmrb_app_set_fullscreen`、resize メッセージ)、display_p4 の合成と SRM、カーソルの重ね描き、入力座標の変換、遠隔の画面取得、wasm の表示経路、使えるフォント。高解像度モードの入り口と出口を決める | 未着手 |
-| H1 | 表示: display_p4 に「全画面の高解像度モード」。canvas 1 枚を 2 倍で SRM、カーソルの倍率、入力座標の変換、遠隔の画面取得を追従。モードの出入りでちらつき・残像を出さない | 未着手 |
-| H2 | カーネルとアプリ: .app.toml のキー (例 `fullscreen_hires = true`) と spawner の表の属性。全画面に入るとき (起動時・F11 の切り替え・Ctrl+Tab の戻り) に高解像度の大きさで resize を送り、全画面を抜けたら戻す。高解像度が使えない構成 (Retro、sim) では黙って従来の全画面 | 未着手 |
-| H3 | エディタ: P4 で既定オン。フォントの選択 (メニュー。候補は H0 で確定)、選んだ値の保存。配置の計算し直し | 未着手 |
-| H4 | ブラウザ版と検証の道具: wasm で同じ動作、web_screenshot / tab5_screenshot の大きさの追従 | 未着手 |
+| H0 | 調査と設計の確定 | **完了** (report/h0.md) |
+| H1 | 表示: 640x360 の fb の差し替え、倍率の導出、canvas の取り直し、SET_SCREEN_MODE、カーソル、静止画の取り込み・JPEG・EXPORT、wasm の C 側。試験用にアプリから SET_SCREEN_MODE を直接出す口 | 指示書発行 (instruction_h1.md) |
+| H2 | カーネル・アプリ・入力: 属性 (mruby / Spinel)、構成の判定、sync_screen_mode、fullscreen_size(pid)、入力の大きさとマウスの速さの補正 | 未着手 |
+| H3 | エディタ: P4 で既定オン、フォントの選択と /home/editor.toml への保存、LINE_H / CELL_W の変数化 | 未着手 |
+| H4 | 残り: ブラウザのページ (見た目の大きさ)、H.264 と remote.js、MCP の道具、文書 | 未着手 |
 
 段階ごとに instruction_hN.md を書き、report/hN.md に結果を残す。
 
