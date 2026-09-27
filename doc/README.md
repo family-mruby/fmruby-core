@@ -71,7 +71,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `mouse_wheel/` [マウスホイール対応 検討と計画](mouse_wheel/plan.md) — **進行中** (2026-09-01) **W1 完了** (ブラウザ・sim で実測)、**W2 完了・NARYA v4 実機で確認済** (report/w2.md)。残りは W3 (実機 USB マウス・白名簿) / W4 (nsf/smf と修飾キー) 〔4 files〕
 - `multivm_app/` [多重 VM アプリ構想: 巨大 Ruby アプリをマイコンで動かす](multivm_app/plan.md) — - 〔3 files〕
 - `naryav4/` [NARYA v4 (ESP32-P4 + HDMI 出力) 対応計画](naryav4/plan.md) — **進行中** (2026-09-27) P0-P4 完了。**P6 完了: 青ちらつき (DSI アンダーラン) は DSI フレームバッファの先頭を 4KB 境界に揃えて解消** (report/p6.md、ユーザ目視で確認)。帯域ではなく揃いが原因だった。残り = ユーザ確認とモニタ相性、無印 ESP32 疎通 (保留) 〔11 files〕
-- `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔5 files〕
+- `p4_display_flicker/` [計画書: Tab5 (ESP32-P4) 表示ちらつきの根本修正](p4_display_flicker/plan.md) — - 〔6 files〕
 - `p5/` [P5 — Processing/p5.js 互換描画 API](p5/README.md) — - 〔2 files〕
 - `picorabbit/` [PicoRabbit (Tab5) の拡張計画](picorabbit/plan.md) — **完了** (2026-09-26) P0-P4・P6-P9 完了 (P8 = 動画 .mjpg、Tab5/wasm/sim 検収済。P9 = 背景 PNG + 行サイズ、Tab5 実機も確認済)。P5 (見せ場) は任意として残す 〔19 files〕
 - `raycast_spinel/` [Raycaster の計算を Spinel gem 化する実装計画](raycast_spinel/plan.md) — - 〔2 files〕
