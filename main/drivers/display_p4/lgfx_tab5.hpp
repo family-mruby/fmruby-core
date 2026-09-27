@@ -37,11 +37,51 @@
 #include <lgfx/v1/touch/Touch_GT911.hpp>
 #include <lgfx/v1/platforms/esp32/Light_PWM.hpp>
 
+#include "fmrb_log.h"
+
+#include "dpi_fb_align.hpp"
+
 // Panel/touch combination of this Tab5 unit, as detected by tab5_probe_panel().
 enum class Tab5PanelVariant {
     ILI9881C,   // ILI9881C display + GT911 touch (pre 2025-10-14 batches)
     ST7121,     // ST7121 display + ST7123 touch (legacy)
     ST7123,     // ST7123 display + touch, integrated (post 2025-10-14 batches)
+};
+
+// A Tab5 panel class whose DPI frame buffer is placed on a page boundary.
+//
+// Panel_DSI::init() brings up the DSI bus and then creates the esp_lcd DPI
+// panel, which allocates the frame buffers (heap_caps_calloc, cache-line
+// alignment only). That code is M5GFX's and is not edited here; instead the
+// heap is shaped just before it runs (dpi_fb_align.hpp). Between this point
+// and the frame buffer allocation M5GFX only allocates DSI driver objects,
+// which are internal RAM (CONFIG_LCD_DSI_OBJ_FORCE_INTERNAL), so the probe
+// predicts the allocation.
+//
+// M5GFX asks for num_fbs = 2 but only the first buffer is ever scanned out:
+// the driver starts on fbs[0] and switches only when draw_bitmap is handed a
+// pointer inside another buffer, which nothing here does. So the first one is
+// the one placed; the second is left wherever it lands.
+template <class PanelT>
+class Tab5AlignedPanel : public PanelT
+{
+public:
+    bool init(bool use_reset) override
+    {
+        static const char *TAG = "tab5_panel";
+        const auto &cfg = this->config();
+        // Panel_DSI is RGB565 only: 2 bytes a pixel, as esp_lcd sizes it.
+        const size_t fb_pad = dpi_fb_align_next((size_t)cfg.panel_width * cfg.panel_height * 2, TAG);
+
+        if (!PanelT::init(use_reset)) return false;
+
+        void *fb = this->config_detail().buffer;
+        FMRB_LOGI(TAG, "DSI %dx%d up, RGB565 fb @%p (%s, pad %u)",
+                  (int)cfg.panel_width, (int)cfg.panel_height, fb,
+                  dpi_fb_is_aligned(fb) ? "aligned" : "UNALIGNED",
+                  (unsigned)fb_pad);
+        return true;
+    }
 };
 
 class LGFX_Tab5 : public lgfx::LGFX_Device
@@ -75,7 +115,7 @@ public:
         lgfx::Panel_DSI::config_detail_t det = {};
         switch (variant) {
         case Tab5PanelVariant::ST7121:
-            _panel = new lgfx::Panel_ST7121();
+            _panel = new Tab5AlignedPanel<lgfx::Panel_ST7121>();
             det = _panel->config_detail();
             det.dpi_freq_mhz      = 70;
             det.hsync_back_porch  = 40;
@@ -86,7 +126,7 @@ public:
             det.vsync_front_porch = 200;
             break;
         case Tab5PanelVariant::ST7123:
-            _panel = new lgfx::Panel_ST7123();
+            _panel = new Tab5AlignedPanel<lgfx::Panel_ST7123>();
             det = _panel->config_detail();
             det.dpi_freq_mhz      = 80;
             det.hsync_back_porch  = 40;
@@ -102,7 +142,7 @@ public:
             break;
         case Tab5PanelVariant::ILI9881C:
         default:
-            _panel = new lgfx::Panel_ILI9881C();
+            _panel = new Tab5AlignedPanel<lgfx::Panel_ILI9881C>();
             det = _panel->config_detail();
             det.dpi_freq_mhz      = 80;
             det.hsync_back_porch  = 140;
