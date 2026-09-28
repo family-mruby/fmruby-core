@@ -45,10 +45,11 @@ extern int mrb_get_estalloc_stats(void *est_ptr, size_t *total, size_t *used,
 #include "hw_proxy.h"
 #endif
 
-// Placement for this file's one large snapshot buffer (see fmrb_spx_app_config).
-// On ESP32 it goes to PSRAM: it is written once and read once per call, so the
-// slower memory costs nothing, and internal DRAM is the scarce resource here.
-// On the Linux build it is plain BSS. Same shape as FMRB_DBG_BSS_ATTR.
+// Placement for this file's FFI return buffers (records handed back to the
+// Spinel program). On ESP32 they go to PSRAM: each is written once and read
+// once per call by the calling task, never by an ISR or DMA, so the slower
+// memory costs nothing, and internal DRAM is the scarce resource here.
+// On the Linux build they are plain BSS. Same shape as FMRB_DBG_BSS_ATTR.
 #include "fmrb_attr.h"
 #define FMRB_SPX_BSS_ATTR FMRB_EXT_RAM_BSS_ATTR
 
@@ -85,7 +86,7 @@ static void pack_name(uint8_t *dst, int width, const char *src)
 
 const char *fmrb_spx_app_init(void)
 {
-    static uint8_t buf[FMRB_SPX_APP_INIT_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_INIT_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_app_task_context_t *ctx = fmrb_current();
@@ -140,7 +141,7 @@ const char *fmrb_spx_app_init(void)
 
 const char *fmrb_spx_app_recv_message(int timeout_ms, int *type, int *src_pid)
 {
-    static uint8_t payload[FMRB_MAX_MSG_PAYLOAD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t payload[FMRB_MAX_MSG_PAYLOAD_SIZE];
     if (type) *type = -1;
     if (src_pid) *src_pid = -1;
     *sp_ctx_ffi_bin_len() = 0;
@@ -287,7 +288,7 @@ int fmrb_spx_app_mark_expected_stop(void)
 
 const char *fmrb_spx_app_ps(void)
 {
-    static uint8_t buf[FMRB_MAX_APPS * FMRB_SPX_APP_PS_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_MAX_APPS * FMRB_SPX_APP_PS_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_app_info_t list[FMRB_MAX_APPS];
@@ -317,7 +318,7 @@ const char *fmrb_spx_app_ps(void)
 
 const char *fmrb_spx_app_heap_info(void)
 {
-    static uint8_t buf[FMRB_SPX_APP_HEAP_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_HEAP_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
     memset(buf, 0, sizeof(buf));
 
@@ -377,7 +378,7 @@ int fmrb_spx_app_pool_used(void)
 
 const char *fmrb_spx_app_sys_pool_info(void)
 {
-    static uint8_t buf[FMRB_SPX_APP_SYSPOOL_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_SYSPOOL_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
     memset(buf, 0, sizeof(buf));
 
@@ -395,7 +396,7 @@ const char *fmrb_spx_app_sys_pool_info(void)
 
 const char *fmrb_spx_app_gfx_stats(void)
 {
-    static uint8_t buf[FMRB_SPX_APP_GFXSTATS_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_GFXSTATS_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
     uint32_t cmds = 0, presents = 0;
     fmrb_host_get_gfx_counters(&cmds, &presents);
@@ -407,7 +408,7 @@ const char *fmrb_spx_app_gfx_stats(void)
 
 const char *fmrb_spx_app_last_error(void)
 {
-    static uint8_t buf[FMRB_SPX_APP_LASTERR_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_LASTERR_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
 
     const char *name = fmrb_app_get_last_error_name();
@@ -521,7 +522,7 @@ int fmrb_spx_app_set_kana_mode(int mode)
 
 const char *fmrb_spx_app_wallclock(void)
 {
-    static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
     fmrb_wallclock_t wc;
     if (fmrb_hal_time_get_wallclock(&wc) != FMRB_OK) {
@@ -540,7 +541,7 @@ const char *fmrb_spx_app_wallclock(void)
 const char *fmrb_spx_app_set_wallclock(int year, int month, int day,
                                        int hour, int minute, int second)
 {
-    static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
 
     struct tm local_tm = {0};
@@ -633,7 +634,7 @@ const char *fmrb_spx_app_bt_mac(void)
     /* FmrbConst.bt_mac: asked at call time, not frozen at boot, because on the
        Modern board the radio is a separate chip and its address is known only
        once the BLE host has synced. "-" until then, and always on Linux. */
-    static char buf[18];
+    FMRB_SPX_BSS_ATTR static char buf[18];
     memset(buf, 0, sizeof(buf));
 #ifdef CONFIG_IDF_TARGET_LINUX
     snprintf(buf, sizeof(buf), "-");
@@ -677,7 +678,7 @@ int fmrb_spx_app_wifi_connected(void)
 
 const char *fmrb_spx_app_wifi_info(void)
 {
-    static uint8_t buf[FMRB_SPX_APP_WIFI_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_WIFI_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
     memset(buf, 0, sizeof(buf));
 
@@ -724,7 +725,7 @@ const char *fmrb_spx_app_wifi_info(void)
 
 const char *fmrb_spx_app_clear_cache(const char *path, int len)
 {
-    static uint8_t buf[FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_CLEARCACHE_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
     memset(buf, 0, sizeof(buf));
     /* Default: not ok, deleted 0, status -1. */
@@ -777,7 +778,7 @@ const char *fmrb_spx_app_clear_cache(const char *path, int len)
 
 const char *fmrb_spx_app_usb_devices(void)
 {
-    static uint8_t buf[USB_TASK_MAX_DEVICES * FMRB_SPX_APP_USBDEV_RECORD_SIZE];
+    FMRB_SPX_BSS_ATTR static uint8_t buf[USB_TASK_MAX_DEVICES * FMRB_SPX_APP_USBDEV_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_usb_device_info_t devs[USB_TASK_MAX_DEVICES];

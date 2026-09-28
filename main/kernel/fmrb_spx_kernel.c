@@ -17,6 +17,7 @@
 #include "fmrb_msg.h"
 #include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
+#include "fmrb_attr.h"
 #include "fmrb_log.h"
 #include "fmrb_transport.h"
 #include "fmrb_link_protocol.h"
@@ -35,7 +36,7 @@ int *sp_ctx_ffi_bin_len(void);
 
 const char *fmrb_spx_recv_message(int timeout_ms, int *type, int *src_pid)
 {
-    static uint8_t payload[FMRB_MAX_MSG_PAYLOAD_SIZE];
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t payload[FMRB_MAX_MSG_PAYLOAD_SIZE];
     if (type) *type = -1;
     if (src_pid) *src_pid = -1;
     *sp_ctx_ffi_bin_len() = 0;
@@ -91,7 +92,7 @@ const char *fmrb_spx_windows_snapshot(void)
     /* Returned as :binstr (a real Spinel String the Ruby side reads with
        getbyte); ffi_buffer would hand back a :ptr, which has no getbyte. The
        byte length (count * 48) is published in sp_ffi_bin_len. */
-    static uint8_t buf[FMRB_MAX_APPS * FMRB_SPX_WIN_RECORD_SIZE];
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t buf[FMRB_MAX_APPS * FMRB_SPX_WIN_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_window_info_t windows[FMRB_MAX_APPS];
@@ -249,7 +250,7 @@ const char *fmrb_spx_app_info_snapshot(int pid)
 {
     /* :binstr return (see fmrb_spx_windows_snapshot). Empty string when the pid
        has no context, so the Ruby side returns nil. */
-    static uint8_t buf[FMRB_SPX_APP_INFO_RECORD_SIZE];
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_INFO_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_app_task_context_t *ctx = fmrb_app_get_context_by_id((int32_t)pid);
@@ -289,7 +290,7 @@ const char *fmrb_spx_app_info_snapshot(int pid)
 const char *fmrb_spx_last_error(void)
 {
     /* :binstr return; empty string when there is no error (Ruby returns nil). */
-    static uint8_t buf[FMRB_SPX_LAST_ERROR_RECORD_SIZE];
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t buf[FMRB_SPX_LAST_ERROR_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
 
     const char *name = fmrb_app_get_last_error_name();
@@ -371,7 +372,7 @@ int fmrb_spx_sync_file_count(void)
 
 const char *fmrb_spx_sync_file_entry(int index)
 {
-    static uint8_t buf[2 * FMRB_SYNC_FILE_PATH_MAX];
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t buf[2 * FMRB_SYNC_FILE_PATH_MAX];
     *sp_ctx_ffi_bin_len() = 0;
 
     fmrb_sync_file_entry_t entries[FMRB_SPX_SYNC_MAX_ENTRIES];
