@@ -68,7 +68,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `fullscreen_hires/` [全画面の高解像度モード (P4 系とブラウザ版)](fullscreen_hires/plan.md) — **進行中** (2026-09-28) **H0-H4 完了・ユーザの目視で合格 (NARYAv4 とブラウザ版)**。全画面の高解像度の自動切り替え、入力の追従、エディタのフォント 8/12/16、遠隔デスクトップの追従、表示側の守り。残りは Tab5 の実機確認のみ。切り替えの瞬間の一瞬の乱れは保留 (report/h1.md 6 章) 〔11 files〕
 - `gfx/` [Canvas Viewport スクロール (SET_CANVAS_VIEWPORT) — P4/PPA 活用](gfx/gfx_canvas_viewport_scroll.md) — - 〔2 files〕
 - `imu/` [P1: six-axis sensor (BMI270) on Modern](imu/report/p1.md) — - 〔1 files〕
-- `iram_reduction/` [内蔵 RAM の削減 (第 2 弾)](iram_reduction/plan.md) — **進行中** (2026-09-28) **R1 完了**: 静的な内蔵 RAM を S3 -16,384 / Tab5 -39,592 / NARYAv4 -39,584 バイト、P4-Nano の待機時の空き +39,564。表示タスクの表・mruby の組み込みライブラリの表 (const 化)・tmpfs ほかを PSRAM / flash へ。次は R2 (確かめてから移すもの) 〔3 files〕
+- `iram_reduction/` [内蔵 RAM の削減 (第 2 弾)](iram_reduction/plan.md) — **進行中** (2026-09-29) **R1 完了**、**R2 実施 (検収待ち)**: ファイル書き込みのバッファ 2 つを P4 で内蔵 RAM から外した (TAB5 / NARYAv4 -8,192、S3 は実機が無いので据え置き)。R1 で移した g_recv_buf は内蔵に戻しても速さが変わらないので PSRAM のまま 〔5 files〕
 - `mic_spectrum/` [計画書: Tab5 マイクの周波数分析デモ + FFT エンジン比較](mic_spectrum/plan.md) — - 〔5 files〕
 - `micropython/` [MicroPython ゲスト VM 取り込み計画](micropython/README.md) — - 〔24 files〕
 - `midi/` [Family mruby MIDI 対応 検討メモ](midi/README.md) — - 〔23 files〕

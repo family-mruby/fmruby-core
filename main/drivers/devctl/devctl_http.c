@@ -27,6 +27,8 @@
 #include "fmrb_hal_file.h"
 
 #include "esp_http_server.h"
+#include "esp_attr.h"
+#include "sdkconfig.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -196,7 +198,17 @@ static esp_err_t list_handler(httpd_req_t *req)
 #define RD_FS_RPATH_MAX 256
 #define RD_FS_IO_CHUNK  4096
 
+// The buffer only meets memcpy on both sides: httpd_req_recv / send copy
+// through lwIP, and fwrite hands it to LittleFS, which copies it into its own
+// internal cache before touching flash (the SD path bounces it into a DMA
+// buffer inside sdmmc_write_sectors). So it can live in PSRAM. The S3 keeps it
+// internal until that is verified on a Retro board
+// (doc/iram_reduction/report/r2.md).
+#if CONFIG_IDF_TARGET_ESP32S3
 static uint8_t s_fs_buf[RD_FS_IO_CHUNK];
+#else
+EXT_RAM_BSS_ATTR static uint8_t s_fs_buf[RD_FS_IO_CHUNK];
+#endif
 
 static const char *const s_fs_roots[] = { "/mnt/sd", "/home", "/app", "/usr/share" };
 
