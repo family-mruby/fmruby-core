@@ -174,6 +174,11 @@ task :setup do
   # the hooks, ccontext.c implements them.
   sh "cp -f lib/patch/compiler/prism_xallocator.h #{mrbgem_path}/mruby-compiler/include/prism_xallocator.h"
   sh "cp -f lib/patch/compiler/mruby-compiler2-ccontext.c #{mrbgem_path}/mruby-compiler/src/ccontext.c"
+  # cdump.c: mrbc -B emits the child-irep tables (`*_reps_N`) as
+  # `const mrb_irep *const`, so every gem's mrblib lands in flash instead of
+  # internal RAM (doc/iram_reduction/report/r1.md). Whole-file copy: refresh it
+  # when the mruby-compiler submodule moves.
+  sh "cp -f lib/patch/compiler/mruby-compiler-cdump.c #{mrbgem_path}/mruby-compiler/src/cdump.c"
 
   # mrbgem.rake patches
   sh "cp -f lib/patch/picoruby-require/mrbgem.rake #{mrbgem_path}/picoruby-require/"

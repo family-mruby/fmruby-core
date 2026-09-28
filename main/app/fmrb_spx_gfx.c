@@ -29,6 +29,7 @@
 #include "fmrb_file_transfer_msg.h"
 #include "fmrb_kernel.h"
 #include "fmrb_hal_time.h"
+#include "fmrb_attr.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "esp_heap_caps.h"
 #endif
@@ -392,7 +393,7 @@ int fmrb_spx_gfx_delete_image(int canvas_id, int image_id)
 
 const char *fmrb_spx_gfx_create_image_from_file(int canvas_id, const char *path, int len)
 {
-    static uint8_t buf[FMRB_SPX_GFX_IMAGE_INFO_RECORD_SIZE];
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t buf[FMRB_SPX_GFX_IMAGE_INFO_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
     if (!path || len < 0 || len >= 120) {
         return "";
@@ -431,7 +432,7 @@ const char *fmrb_spx_gfx_create_image_from_file(int canvas_id, const char *path,
 static const char *spx_video_status_record(uint8_t cmd, const uint8_t *payload,
                                            size_t payload_len)
 {
-    static uint8_t buf[FMRB_SPX_GFX_VIDEO_STATUS_RECORD_SIZE];
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t buf[FMRB_SPX_GFX_VIDEO_STATUS_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
 
 #ifndef FMRB_HW_MODERN
@@ -469,7 +470,7 @@ static const char *spx_video_status_record(uint8_t cmd, const uint8_t *payload,
 const char *fmrb_spx_gfx_video_open(int canvas_id, const char *path, int len,
                                     int x, int y, int fps, int loop)
 {
-    static uint8_t buf[FMRB_SPX_GFX_VIDEO_INFO_RECORD_SIZE];
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t buf[FMRB_SPX_GFX_VIDEO_INFO_RECORD_SIZE];
     *sp_ctx_ffi_bin_len() = 0;
     if (!path || len < 0 || len >= 120) {
         return "";

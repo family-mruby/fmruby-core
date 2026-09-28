@@ -92,8 +92,10 @@ static volatile int g_usb_running = 0;
 static volatile int g_usb_lib_task_exited = 0;
 static volatile int g_hid_task_exited = 0;
 
-// Device tracking
-static hid_device_info_t g_hid_devices[MAX_HID_DEVICES];
+// Device tracking. PSRAM, like g_input_reports: the HID host driver calls us
+// back in task context, and report bytes reach us through a stack copy, so
+// nothing here is touched by an ISR or handed to the USB DMA.
+EXT_RAM_BSS_ATTR static hid_device_info_t g_hid_devices[MAX_HID_DEVICES];
 static fmrb_semaphore_t g_hid_devices_mutex = NULL;
 
 // Raw report subscribers: per-slot PID that wants raw HID reports forwarded
@@ -456,8 +458,9 @@ static void send_raw_report_to_subscriber(uint16_t pid, int8_t slot,
 
     // Static (not on the caller's stack): fmrb_msg_t embeds a 176-byte payload
     // and this runs in the small (4KB) HID task. Only the single HID task calls
-    // this, serialized within the dispatch loop, so reuse is safe.
-    static fmrb_msg_t msg;
+    // this, serialized within the dispatch loop, so reuse is safe. PSRAM:
+    // fmrb_msg_send copies it into the queue.
+    EXT_RAM_BSS_ATTR static fmrb_msg_t msg;
     msg.type = FMRB_MSG_TYPE_APP_CONTROL;
     msg.src_pid = PROC_ID_KERNEL;
     msg.size = 0;

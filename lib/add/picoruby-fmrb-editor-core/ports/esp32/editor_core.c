@@ -23,6 +23,7 @@
 #include "fmrb_mem.h"
 #include "fmrb_hal_file.h"
 #include "fmrb_log.h"
+#include "fmrb_attr.h"
 
 #include "../../include/editor_core_api.h"
 
@@ -63,8 +64,12 @@ typedef struct {
     int        hl_on;
 } ed_doc_t;
 
+/* The tables below (documents, wrap cache, width record) live in PSRAM: the
+   line text they index is in the PSRAM arena already, and only the editor's
+   task reads them, with plain loads -- no ISR, no DMA, no flash write from
+   them. */
 static fmrb_mem_handle_t g_handle = -1;
-static ed_doc_t          g_docs[ED_MAX_DOCS];
+FMRB_EXT_RAM_BSS_ATTR static ed_doc_t g_docs[ED_MAX_DOCS];
 
 /* ---- arena ------------------------------------------------------------- */
 
@@ -522,7 +527,7 @@ const char *ec_render_width(int slot, int y, int col0, int max_cols, int *out_le
     int32_t b0 = u8_byte_of(l->buf, l->len, col0);
     if (b0 >= l->len) return "";
 
-    static uint8_t widths[EC_WIDTH_MAX_COLS];
+    FMRB_EXT_RAM_BSS_ATTR static uint8_t widths[EC_WIDTH_MAX_COLS];
     int32_t n = 0;
     int32_t i = b0;
     while (i < l->len && n < max_cols && n < EC_WIDTH_MAX_COLS) {
@@ -561,7 +566,7 @@ typedef struct {
     uint16_t starts[EC_WRAP_CACHE_SEGS];
 } ed_wrap_entry_t;
 
-static ed_wrap_entry_t g_wrap[EC_WRAP_CACHE_N];
+FMRB_EXT_RAM_BSS_ATTR static ed_wrap_entry_t g_wrap[EC_WRAP_CACHE_N];
 static int             g_wrap_next;        /* round-robin victim */
 
 /* Walk the line once, filling in the entry. A line longer than

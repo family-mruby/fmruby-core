@@ -150,9 +150,10 @@ static i2c_master_bus_handle_t g_naryav4_i2c = nullptr;
 // single gate (see doc/reference/tab5_i2c_bus_notes.md).
 static SemaphoreHandle_t g_i2c_mutex = NULL;
 
-// Receive buffer for local link commands
+// Receive buffer for local link commands. PSRAM: the link hands messages over
+// by memcpy from a FreeRTOS message buffer and only this task parses them.
 #define DISPLAY_P4_RECV_BUF_SIZE 4096
-static uint8_t g_recv_buf[DISPLAY_P4_RECV_BUF_SIZE];
+FMRB_EXT_RAM_BSS_ATTR static uint8_t g_recv_buf[DISPLAY_P4_RECV_BUF_SIZE];
 
 // ============================================================
 // Canvas management
@@ -227,7 +228,8 @@ typedef struct {
     size_t       buf_aligned_size;
 } p4_canvas_t;
 
-static p4_canvas_t g_canvases[DISPLAY_P4_MAX_CANVAS];
+// PSRAM: canvas bookkeeping, touched by the display task and never by an ISR.
+FMRB_EXT_RAM_BSS_ATTR static p4_canvas_t g_canvases[DISPLAY_P4_MAX_CANVAS];
 static size_t      g_canvas_count = 0;
 static uint16_t    g_next_canvas_id = 1;
 
@@ -968,7 +970,8 @@ static void render_frame(void) {
     // the DSI buffer atomically with the frame (no separate post-scale patch,
     // which would flicker on the live-scanned buffer at high render rates).
     // Restored right after the push so the framebuffer stays cursor-free.
-    static uint16_t s_cursor_save[CURSOR_W * CURSOR_H];
+    // PSRAM: a CPU copy of the pixels under the cursor, like the framebuffer.
+    FMRB_EXT_RAM_BSS_ATTR static uint16_t s_cursor_save[CURSOR_W * CURSOR_H];
     bool cur_baked = false;
     int cur_x0 = 0, cur_y0 = 0, cur_w = 0, cur_h = 0;
     if (g_cursor_visible) {

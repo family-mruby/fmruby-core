@@ -32,6 +32,7 @@
 #include "fmrb_tmpfs.h"
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
+#include "fmrb_attr.h"
 
 static const char *TAG = "fmrb_tmpfs";
 
@@ -71,8 +72,10 @@ typedef struct {
     struct dirent ent;
 } tmpfs_dir_t;
 
-static tmpfs_file_t      s_files[TMPFS_MAX_FILES];
-static tmpfs_fd_t        s_fds[TMPFS_MAX_OPEN];
+/* The name and descriptor tables live in PSRAM: only tasks touch them (never an
+   ISR, never DMA), and the file bodies they point at are PSRAM already. */
+FMRB_EXT_RAM_BSS_ATTR static tmpfs_file_t s_files[TMPFS_MAX_FILES];
+FMRB_EXT_RAM_BSS_ATTR static tmpfs_fd_t   s_fds[TMPFS_MAX_OPEN];
 static fmrb_mem_handle_t s_handle = -1;
 static size_t            s_used = 0;   /* bytes of capacity handed out */
 static SemaphoreHandle_t s_mutex = NULL;
