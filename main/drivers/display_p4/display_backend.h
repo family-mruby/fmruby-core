@@ -70,6 +70,12 @@ extern "C" {
 #define DISPLAY_PATCH_MAX_W 16
 #define DISPLAY_PATCH_MAX_H 16
 
+/* The largest scale a present can apply: the 426x240 frame on a 720-line
+ * panel. The high-resolution frame (640x360) goes on at 2x. The scale is not
+ * a constant any more -- it follows the framebuffer the present is handed
+ * (display_scale_for) -- so this only bounds the patch temporaries. */
+#define DISPLAY_MAX_SCALE 3
+
 typedef struct {
     const void *fg;              /* source pixels */
     int         fg_pic_w;        /* full source width, for its row stride */
@@ -115,8 +121,15 @@ typedef struct {
     /* Composite one block. Called several times per canvas for a viewport. */
     void (*blend_block)(const display_blend_req_t *req);
 
-    /* Put the finished framebuffer on the panel: 3x and rotated to portrait.
-     * fb_size is its aligned allocation size, which the cache flush needs. */
+    /* Put the finished framebuffer on the panel, scaled by display_scale_for()
+     * of its own size (3x for 426x240, 2x for 640x360) and, on Tab5, rotated
+     * to portrait. fb_size is its aligned allocation size, which the cache
+     * flush needs.
+     *
+     * The framebuffer handed in can change size between two presents (the
+     * fullscreen high-resolution mode swaps it). When it does, the backend
+     * paints the part of the panel the new picture does not cover black, so
+     * nothing of the previous mode's picture stays in the border. */
     void (*present)(LGFX_Sprite *fb, size_t fb_size);
 
     /* Put one small already-composited block on the panel, scaled the same way
@@ -149,6 +162,16 @@ void *display_p4_panel_framebuffer(void);
 /* Cache-line-aligned PSRAM, the allocator canvases and the framebuffer share.
  * Defined in display_p4_task.cpp. */
 void *display_p4_alloc_pixels(size_t length, size_t *out_aligned_size);
+
+/* The whole-number scale that fits an fb_w x fb_h frame onto a panel_w x
+ * panel_h landscape surface: 3 for 426x240 and 2 for 640x360 on 1280x720.
+ * Never below 1. Defined in display_backend.cpp. */
+int display_scale_for(int panel_w, int panel_h, int fb_w, int fb_h);
+
+/* Paint black everything on the panel outside the (x, y, w, h) rectangle,
+ * through LovyanGFX. For the backends that reach the panel only through the
+ * library (the CPU backend, and the PPA backend's software fallback). */
+void display_lcd_clear_outside(LGFX_Device *lcd, int x, int y, int w, int h);
 
 #endif /* __cplusplus */
 

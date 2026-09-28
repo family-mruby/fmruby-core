@@ -149,6 +149,11 @@ typedef enum {
     FMRB_LINK_GFX_SET_COMPOSITE_REGIONS = 0x56,
     FMRB_LINK_GFX_SET_CANVAS_VIEWPORT = 0x57,
     FMRB_LINK_GFX_SET_SPRITE_CLIP = 0x58,
+    // Fullscreen high-resolution mode (doc/fullscreen_hires/). Only the
+    // Modern display task (display_p4, and the browser build that shares it)
+    // knows it; the kernel never sends it to graphics-audio, so it is not
+    // part of the link version the two sides pair on.
+    FMRB_LINK_GFX_SET_SCREEN_MODE = 0x59,
 
     // Cursor control (global resource, no canvas_id)
     FMRB_LINK_GFX_CURSOR_SET_POSITION = 0x60,
@@ -500,6 +505,26 @@ typedef struct __attribute__((packed)) {
     uint16_t x, y;
     uint16_t w, h;
 } fmrb_link_graphics_set_sprite_clip_t;
+
+// SET_SCREEN_MODE: switch the whole screen between the base framebuffer
+// (INIT_DISPLAY's size, 426x240 on the P4 boards) and the fullscreen
+// high-resolution one (640x360, shown at 2x), which shows owner_canvas_id
+// alone. width == 0 / height == 0 (or the base size) asks for the base mode.
+//
+// The display holds the previous picture until the owner canvas commits a
+// frame at the new size (PUSH_CANVAS to the screen after UPDATE_WINDOW), or
+// SCREEN_MODE_WAIT_MS passes. It goes back to the base mode by itself when the
+// owner canvas is deleted or hidden. So the sender's order is: entering, send
+// this BEFORE resizing the owner and hiding the rest; leaving, AFTER resizing
+// the owner back.
+//
+// flags is reserved; send 0.
+typedef struct __attribute__((packed)) {
+    uint16_t owner_canvas_id;
+    uint16_t width;
+    uint16_t height;
+    uint8_t  flags;
+} fmrb_link_graphics_set_screen_mode_t;
 
 // GET_PIXEL: read a single RGB332 pixel from a canvas back buffer.
 typedef struct __attribute__((packed)) {

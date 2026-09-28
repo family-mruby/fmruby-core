@@ -2985,6 +2985,56 @@ fmrb_err_t fmrb_app_set_fullscreen(uint8_t pid, bool on, uint16_t width, uint16_
     return FMRB_OK;
 }
 
+/**
+ * SET_SCREEN_MODE for one app's main canvas (see fmrb_app.h). Sent straight
+ * on the link, like UPDATE_WINDOW above, so it keeps its place relative to the
+ * resize the caller sends next to it.
+ */
+fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height)
+{
+#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+    if (pid >= FMRB_MAX_APPS) {
+        return FMRB_ERR_INVALID_PARAM;
+    }
+
+    fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+    fmrb_app_task_context_t* ctx = &g_ctx_pool[pid];
+    if (ctx->state != PROC_STATE_RUNNING && ctx->state != PROC_STATE_SUSPENDED) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_STATE;
+    }
+    if (ctx->headless || ctx->canvas_id == 0) {
+        fmrb_semaphore_give(g_ctx_lock);
+        return FMRB_ERR_INVALID_PARAM;
+    }
+    fmrb_link_graphics_set_screen_mode_t cmd = {
+        .owner_canvas_id = ctx->canvas_id,
+        .width = width,
+        .height = height,
+        .flags = 0
+    };
+    fmrb_semaphore_give(g_ctx_lock);
+
+    fmrb_err_t ret = fmrb_transport_send(
+        FMRB_LINK_TYPE_GRAPHICS,
+        FMRB_LINK_GFX_SET_SCREEN_MODE,
+        (const uint8_t*)&cmd,
+        sizeof(cmd),
+        FMRB_TRANSPORT_TIMEOUT_DEFAULT
+    );
+    if (ret != FMRB_OK) {
+        FMRB_LOGW(TAG, "Failed to send SET_SCREEN_MODE: %d", ret);
+        return ret;
+    }
+    FMRB_LOGI(TAG, "Screen mode for PID %d (canvas %u): %ux%u",
+              pid, cmd.owner_canvas_id, width, height);
+    return FMRB_OK;
+#else
+    (void)pid; (void)width; (void)height;
+    return FMRB_ERR_NOT_SUPPORTED;
+#endif
+}
+
 /* ---------------------------------------------------------------------------
  * Audio note messages
  *

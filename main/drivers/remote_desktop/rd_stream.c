@@ -92,6 +92,14 @@ static void stream_task(void *arg)
             continue;
         }
         last_seq = frame.seq;
+        if (frame.width != 426 || frame.height != 240) {
+            // The H.264 encoder is set up for the 426x240 frame only; the
+            // fullscreen high-resolution frame (640x360) is not streamed here
+            // yet. Skip it rather than read it with the wrong stride.
+            display_p4_capture_release();
+            vTaskDelay(pdMS_TO_TICKS(frame_interval_ms));
+            continue;
+        }
 
         uint32_t pts_ms = (uint32_t)((esp_timer_get_time() - t0) / 1000);
         const uint8_t *au = NULL;

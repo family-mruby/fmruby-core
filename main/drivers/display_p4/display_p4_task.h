@@ -80,8 +80,9 @@ typedef struct {
 /**
  * @brief Enable/disable per-frame capture of the composited framebuffer.
  *
- * While enabled, render_frame copies each composited 426x240 RGB565 frame
- * into an internal double buffer (PSRAM, DMA-capable). Single reader.
+ * While enabled, render_frame copies each composited RGB565 frame (426x240,
+ * or 640x360 in the fullscreen high-resolution mode) into an internal double
+ * buffer (PSRAM, DMA-capable) sized for the larger. Single reader.
  */
 fmrb_err_t display_p4_capture_enable(bool enable);
 
@@ -89,6 +90,8 @@ fmrb_err_t display_p4_capture_enable(bool enable);
  * @brief Wait for a captured frame newer than min_seq and lock it.
  *
  * On FMRB_OK the frame stays valid until display_p4_capture_release().
+ * out->width/height are that frame's own size, which changes with the
+ * screen mode; encode with them, not with a fixed size.
  * Returns FMRB_ERR_TIMEOUT when no such frame arrived in timeout_ms
  * (the caller may re-acquire with min_seq=0 to resend the last frame).
  */
@@ -106,7 +109,8 @@ void display_p4_capture_release(void);
 void display_p4_capture_kick(void);
 
 /**
- * @brief Current cursor position/visibility in virtual 426x240 coordinates.
+ * @brief Current cursor position/visibility in framebuffer coordinates
+ *        (426x240, or 640x360 in the fullscreen high-resolution mode).
  *
  * The cursor is not part of the captured framebuffer (it is patched into
  * the DSI buffer directly); remote clients draw it themselves.

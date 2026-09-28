@@ -363,6 +363,27 @@ fmrb_err_t fmrb_app_update_window_size(uint8_t pid, uint16_t width, uint16_t hei
  */
 fmrb_err_t fmrb_app_set_fullscreen(uint8_t pid, bool on, uint16_t width, uint16_t height);
 
+/**
+ * @brief Ask the display for the fullscreen high-resolution screen, or give
+ *        it back (doc/fullscreen_hires/).
+ *
+ * Sends SET_SCREEN_MODE with the app's main canvas as the owner. The display
+ * holds the previous picture until that canvas presents at the new size, and
+ * returns to the base mode by itself if the canvas is deleted or hidden.
+ * Resizing the canvas is the caller's job (fmrb_app_set_fullscreen with the
+ * same size); the order is: entering, this first and then the resize;
+ * leaving, the resize first and then this with 0 x 0.
+ *
+ * Only the Modern display task knows the command. On other builds (Retro,
+ * the Linux simulator) nothing is sent and FMRB_ERR_NOT_SUPPORTED returns.
+ *
+ * @param pid    App slot id (its main canvas becomes the owner)
+ * @param width  640 for the high-resolution screen, 0 for the base one
+ * @param height 360 for the high-resolution screen, 0 for the base one
+ * @return FMRB_OK, FMRB_ERR_NOT_SUPPORTED, or an error for a free/headless slot
+ */
+fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height);
+
 // Last error info (stored in PSRAM static buffer)
 const char* fmrb_app_get_last_error_name(void);
 const char* fmrb_app_get_last_error_msg(void);

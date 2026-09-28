@@ -151,7 +151,13 @@ static void mjpeg_stream_task(void *arg)
             display_p4_capture_release();
             continue;
         }
-        err = rd_encoder_jpeg_encode(frame.pixels, &jpeg, &jpeg_len);
+        // The frame carries its own size: the fullscreen high-resolution
+        // mode switches the display between 426x240 and 640x360 while the
+        // stream runs, and the encoder follows it frame by frame.
+        err = rd_encoder_jpeg_init(frame.width, frame.height, s_cfg.jpeg_quality);
+        if (err == FMRB_OK) {
+            err = rd_encoder_jpeg_encode(frame.pixels, &jpeg, &jpeg_len);
+        }
         display_p4_capture_release();
         if (err != FMRB_OK) {
             rd_encoder_jpeg_unlock();

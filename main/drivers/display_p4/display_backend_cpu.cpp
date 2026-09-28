@@ -16,25 +16,17 @@
 #include "display_backend.h"
 
 #include "fmrb_log.h"
+#include "fmrb_attr.h"
 
 static const char *TAG = "display_cpu";
 
-/* How far the 426x240 frame is blown up to fill the panel. NARYA v4's HDMI
- * output is 800x600, where 426x240 goes on at 1.5x (the PPA backend's
- * geometry block explains the choice); Tab5's rotated 720x1280 takes 3x.
- * SCALE_FACTOR stays an integer because the cursor patch below replicates
- * pixels; the fractional case scales into a temporary of the same shape. */
-#if defined(FMRB_HW_NARYAV4)
-#define SCALE_NUM 3
-#define SCALE_DEN 2
-#define SCALE_FACTOR 2          /* patch temporary sizing: ceil(1.5) */
-#define SCALE_FLOAT 1.5f
-#else
-#define SCALE_NUM 3
-#define SCALE_DEN 1
-#define SCALE_FACTOR 3
-#define SCALE_FLOAT ((float)SCALE_FACTOR)
-#endif
+/* How far the frame is blown up to fill the panel follows the frame itself
+ * (display_scale_for): 3x for 426x240 and 2x for the fullscreen
+ * high-resolution 640x360 on the 1280x720 landscape surface both boards
+ * present. Whole numbers only, because the cursor patch below replicates
+ * pixels. */
+FMRB_EXT_RAM_BSS_ATTR static int s_last_fb_w;   /* PSRAM: see the PPA backend */
+FMRB_EXT_RAM_BSS_ATTR static int s_last_fb_h;
 
 static void cpu_init(int fb_w, int fb_h)
 {
@@ -56,42 +48,50 @@ static void cpu_present(LGFX_Sprite *fb, size_t fb_size)
 {
     (void)fb_size;
 
-    int scaled_w = fb->width()  * SCALE_NUM / SCALE_DEN;
-    int scaled_h = fb->height() * SCALE_NUM / SCALE_DEN;
     LGFX_Device *lcd = display_p4_lcd();
+    const int fb_w = fb->width();
+    const int fb_h = fb->height();
+    const int scale = display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
+    int scaled_w = fb_w * scale;
+    int scaled_h = fb_h * scale;
     int center_x = (lcd->width()  - scaled_w) / 2 + scaled_w / 2;
     int center_y = (lcd->height() - scaled_h) / 2 + scaled_h / 2;
     fb->pushRotateZoom(lcd, (float)center_x, (float)center_y, 0.0f,
-                       SCALE_FLOAT, SCALE_FLOAT);
+                       (float)scale, (float)scale);
+
+    /* The frame changed size (fullscreen high-resolution mode on or off):
+     * black out whatever of the previous picture the new one leaves. */
+    if (fb_w != s_last_fb_w || fb_h != s_last_fb_h) {
+        s_last_fb_w = fb_w;
+        s_last_fb_h = fb_h;
+        display_lcd_clear_outside(lcd, (lcd->width() - scaled_w) / 2,
+                                  (lcd->height() - scaled_h) / 2,
+                                  scaled_w, scaled_h);
+    }
 }
 
 static void cpu_present_patch(const uint16_t *block, int x0, int y0, int w, int h,
                               int fb_w, int fb_h)
 {
-    static uint16_t scaled[DISPLAY_PATCH_MAX_W * SCALE_FACTOR *
-                           DISPLAY_PATCH_MAX_H * SCALE_FACTOR];
+    static uint16_t scaled[DISPLAY_PATCH_MAX_W * DISPLAY_MAX_SCALE *
+                           DISPLAY_PATCH_MAX_H * DISPLAY_MAX_SCALE];
     if (w > DISPLAY_PATCH_MAX_W || h > DISPLAY_PATCH_MAX_H) return;
 
-    /* Nearest-neighbour, the same rule the full present's scaler uses: output
-     * column ox comes from input column ox * DEN / NUM. */
-    const int ox0 = x0 * SCALE_NUM / SCALE_DEN;
-    const int oy0 = y0 * SCALE_NUM / SCALE_DEN;
-    const int ow  = (x0 + w) * SCALE_NUM / SCALE_DEN - ox0;
-    const int oh  = (y0 + h) * SCALE_NUM / SCALE_DEN - oy0;
-    for (int oy = 0; oy < oh; oy++) {
-        int sy = (oy0 + oy) * SCALE_DEN / SCALE_NUM - y0;
-        if (sy < 0) sy = 0; else if (sy >= h) sy = h - 1;
-        uint16_t *o = scaled + (size_t)oy * ow;
-        for (int ox = 0; ox < ow; ox++) {
-            int sx = (ox0 + ox) * SCALE_DEN / SCALE_NUM - x0;
-            if (sx < 0) sx = 0; else if (sx >= w) sx = w - 1;
-            o[ox] = block[(size_t)sy * w + sx];
-        }
-    }
     LGFX_Device *lcd = display_p4_lcd();
-    int offset_x = (lcd->width()  - fb_w * SCALE_NUM / SCALE_DEN) / 2;
-    int offset_y = (lcd->height() - fb_h * SCALE_NUM / SCALE_DEN) / 2;
-    lcd->pushImage(offset_x + ox0, offset_y + oy0, ow, oh,
+    const int scale = display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
+    if (scale > DISPLAY_MAX_SCALE) return;
+
+    /* Nearest-neighbour, the same rule the full present's scaler uses. */
+    const int ow = w * scale;
+    const int oh = h * scale;
+    for (int oy = 0; oy < oh; oy++) {
+        const uint16_t *src = block + (size_t)(oy / scale) * w;
+        uint16_t *o = scaled + (size_t)oy * ow;
+        for (int ox = 0; ox < ow; ox++) o[ox] = src[ox / scale];
+    }
+    int offset_x = (lcd->width()  - fb_w * scale) / 2;
+    int offset_y = (lcd->height() - fb_h * scale) / 2;
+    lcd->pushImage(offset_x + x0 * scale, offset_y + y0 * scale, ow, oh,
                    (lgfx::rgb565_t *)scaled);
 }
 
