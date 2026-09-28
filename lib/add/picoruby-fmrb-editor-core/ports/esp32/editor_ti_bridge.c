@@ -38,6 +38,7 @@
 #include "fmrb_mem.h"
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
+#include "fmrb_attr.h"
 
 #include "picoruby_ti_suggest.h"
 #include "picoruby_ti_hover.h"
@@ -123,8 +124,10 @@ static et_item_t *g_items;
 static int        g_count;
 static et_diag_t *g_diags;
 static int        g_diag_count;
-static et_hover_t g_hover;   /* one record, small enough to keep here */
-static et_call_t  g_call;    /* likewise */
+/* The two single records and the OOM jump buffer are PSRAM too: they are only
+   touched by the requesting task, with plain loads and stores. */
+FMRB_EXT_RAM_BSS_ATTR static et_hover_t g_hover;   /* one record */
+FMRB_EXT_RAM_BSS_ATTR static et_call_t  g_call;    /* likewise */
 
 /* One request at a time: the engine keeps its working arena in globals, so two
    editors asking at once would tread on each other. The same lock covers the
@@ -135,7 +138,7 @@ static int              g_lock_ready;
 
 /* Scratch heap for prism, valid only inside a request. */
 static fmrb_mem_handle_t g_scratch = -1;
-static jmp_buf           g_oom;
+FMRB_EXT_RAM_BSS_ATTR static jmp_buf g_oom;
 static volatile int      g_oom_armed;
 
 static void *et_scratch_realloc(void *ptr, size_t size)
