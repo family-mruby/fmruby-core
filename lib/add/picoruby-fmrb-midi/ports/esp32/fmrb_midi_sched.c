@@ -23,6 +23,7 @@
 
 #include "fmrb_hal_time.h"
 #include "fmrb_log.h"
+#include "fmrb_attr.h"
 #include "fmrb_rtos.h"
 
 #include "freertos/FreeRTOS.h"
@@ -44,7 +45,10 @@ typedef struct {
     uint8_t payload[FMRB_MIDI_SCHED_PAYLOAD];
 } fmrb_midi_cmd_t;
 
-static fmrb_midi_cmd_t s_ring[FMRB_MIDI_SCHED_CAPACITY];
+/* PSRAM: the ring is filled by Ruby tasks and drained by the esp_timer task
+   (ESP_TIMER_TASK dispatch, not an ISR); the sinks copy each command out, so
+   nothing hands this memory to DMA. */
+FMRB_EXT_RAM_BSS_ATTR static fmrb_midi_cmd_t s_ring[FMRB_MIDI_SCHED_CAPACITY];
 static volatile int s_head; /* next to fire */
 static volatile int s_tail; /* next free slot */
 static fmrb_spinlock_t s_lock = FMRB_SPINLOCK_INITIALIZER;
