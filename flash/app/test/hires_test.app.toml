@@ -1,0 +1,5 @@
+app_handle_name = "hires_test"
+app_screen_name = "Hires Test"
+app_screen_name_ja = "高解像度テスト"
+default_window_mode = "fullscreen"
+launcher_visible = false
