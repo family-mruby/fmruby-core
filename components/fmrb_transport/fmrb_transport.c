@@ -6,6 +6,7 @@
 #include "fmrb_rtos.h"
 #include "fmrb_mem.h"
 #include "fmrb_log.h"
+#include "fmrb_attr.h"
 #include "fmrb_debug.h"
 #include "fmrb_app.h"
 #include <stdlib.h>
@@ -83,7 +84,10 @@ typedef struct {
 
 #define TRANSPORT_STATS_INTERVAL_MS  5000
 
-static transport_context_t g_tranport_context;
+// PSRAM: the context is used by the host task and the callers of the send API
+// (task context; the codebase has no *FromISR path into the transport), and
+// the frames are built in separate buffers before they reach the link.
+FMRB_EXT_RAM_BSS_ATTR static transport_context_t g_tranport_context;
 
 static const char *TAG = "fmrb_transport";
 
