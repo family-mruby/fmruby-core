@@ -761,6 +761,31 @@ render の時間は変わらず (待機 avg 27 / max 30 ms)、Guru 0。
 対象外なので配置の断片が効かない)、Spinel の `cst_*` / `pool_count` (フォークの変更)、
 link_local のメッセージバッファ (実行時の確保、チャネルごとに 10 KB)。
 
+### 2026-09-29: ファイル書き込みのバッファと g_recv_buf の速さ (iram_reduction R2)
+
+**確認**。`s_file_write_bounce` の前提「PSRAM の元から SPI flash に書くと黙って失敗する」は、
+IDF のコードの上で成り立たない (詳細は doc/iram_reduction/report/r2.md 2 章)。
+
+- LittleFS は呼び出し元のデータを flash に触る前に自分のキャッシュ (内蔵) へ memcpy する (`lfs_bd_prog`)。
+- `esp_flash_write()` は元が内部 DRAM でなければ、キャッシュを止める前にスタックの一時領域へ写す。
+- SD は `sdmmc_write_sectors()` が PSRAM の元を DMA 可能なバッファへ自分で跳ね返す。FAT の作業領域はもともと PSRAM。
+- 跳ね返すかどうかの番地の判定は S3 の外部データの窓 (`0x3C000000`-`0x3E000000`) で、**P4 では一度も動いていなかった**。
+  この跳ね返しは、本当の原因 (picoruby-machine が IO#write を UART に差し替えていた) と同じコミットで推測で足されたもの。
+
+「flash の書き込み中は PSRAM が読めない」は正しいが、どの経路も書き込み元を読むのはキャッシュを止める前である。
+flash 書き込みの元になるバッファでも、LittleFS / esp_flash / sdmmc を通るなら PSRAM でよい
+(直接 `esp_flash_write` に渡す場合も IDF が写す)。
+
+**決定と効果**。P4 では跳ね返しを外し (S3 だけに残す)、devctl の `s_fs_buf` を PSRAM へ。静的な D/IRAM は
+TAB5 143,416 → 135,224、NARYAv4 138,826 → 130,634 (**-8,192**)、S3 は 130,611 のまま (Retro の実機で確かめてから)。
+P4-Nano の待機時の IRAM free は 190,088 → **198,260 (+8,172)**。File#write (Ruby の文字列が元、1 B-2 MB)、
+`/fs/put`、エディタの保存を、BlockGame を動かしながら書いて読み戻し、すべて一致。
+
+**g_recv_buf (R1 で PSRAM へ移した描画の受信バッファ) の速さ**。同じコミットで内蔵に戻した版と比べた
+(NARYAv4、各 2 回、受け取りと解釈の時間を一時的に計装)。受け取り 2.3-2.6 us、解釈と実行 0.37-0.70 ms、
+edit_lat 平均 11.3 ms (PSRAM) 対 11.7 ms (内蔵)、cmds/s と render も同じで、**差は無い**。
+1 メッセージが約 22 B と小さく、memcpy よりメッセージバッファの手続きが大半を占める。PSRAM のままにした。
+
 ### 改善案の優先順位 (2026-07-31 版)
 
 「進め方」の原則 (安全に取れる順) は維持したまま、今回の実測で
