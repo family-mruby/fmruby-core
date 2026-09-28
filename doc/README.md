@@ -64,7 +64,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `editor_serious_mode/` [エディタ本気モード計画: 全画面・高解像度・高速化](editor_serious_mode/plan.md) — - 〔11 files〕
 - `editor_ti/` [エディタ型推論統合 (picoruby-ti) 計画](editor_ti/plan.md) — - 〔21 files〕
 - `fmrb_basic/` [FMRuby BASIC 実装プロジェクト 共通指示書](fmrb_basic/00_common.md) — - 〔27 files〕
-- `fullscreen_hires/` [全画面の高解像度モード (P4 系とブラウザ版)](fullscreen_hires/plan.md) — **進行中** (2026-09-28) H0 完了 (report/h0.md)、設計を確定。全画面のアプリだけ内部解像度を 640x360 (2 倍で 1280x720) に上げる。入り口はカーネルが決め、表示へは SET_SCREEN_MODE で伝える。.app.toml `fullscreen_hires`、エディタは P4 で既定オン、フォントは 12/16/8 から選べる。次は H1 (表示) 〔4 files〕
+- `fullscreen_hires/` [全画面の高解像度モード (P4 系とブラウザ版)](fullscreen_hires/plan.md) — **進行中** (2026-09-28) H0・H1 完了。表示は SET_SCREEN_MODE で 426x240 (3 倍) と 640x360 (2 倍) を行き来できる (試験用の口で NARYAv4 とブラウザ版を確認)。切り替えの瞬間の一瞬の乱れは保留。次は H2 (カーネルが全画面に入るときに自動で切り替える、入力の座標) 〔5 files〕
 - `gfx/` [Canvas Viewport スクロール (SET_CANVAS_VIEWPORT) — P4/PPA 活用](gfx/gfx_canvas_viewport_scroll.md) — - 〔2 files〕
 - `imu/` [P1: six-axis sensor (BMI270) on Modern](imu/report/p1.md) — - 〔1 files〕
 - `mic_spectrum/` [計画書: Tab5 マイクの周波数分析デモ + FFT エンジン比較](mic_spectrum/plan.md) — - 〔5 files〕
