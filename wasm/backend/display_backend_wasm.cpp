@@ -20,7 +20,16 @@
 
 static const char *TAG = "display_wasm";
 
-static uint8_t *s_rgba = nullptr;      /* fb_w * fb_h * 4, stable address */
+/* The RGBA frame the page reads. Allocated once, big enough for both the
+ * frame the page was opened at and the fullscreen high-resolution one
+ * (640x360), because the page reads it from another thread: freeing and
+ * reallocating it on a mode switch would leave the page reading a stale
+ * address. s_fb_w/s_fb_h say how much of it the current frame uses; the page
+ * polls them each frame and follows. */
+#define WASM_RGBA_MIN_W 640
+#define WASM_RGBA_MIN_H 360
+static uint8_t *s_rgba = nullptr;      /* stable address, s_rgba_px pixels */
+static size_t s_rgba_px = 0;
 static int s_fb_w = 0;
 static int s_fb_h = 0;
 static volatile uint32_t s_frame_seq = 0;
@@ -42,8 +51,12 @@ static void wasm_init(int fb_w, int fb_h)
 {
     s_fb_w = fb_w;
     s_fb_h = fb_h;
+    size_t px = (size_t)fb_w * fb_h;
+    const size_t hires_px = (size_t)WASM_RGBA_MIN_W * WASM_RGBA_MIN_H;
+    if (px < hires_px) px = hires_px;
     free(s_rgba);
-    s_rgba = (uint8_t *)calloc((size_t)fb_w * fb_h, 4);
+    s_rgba = (uint8_t *)calloc(px, 4);
+    s_rgba_px = s_rgba ? px : 0;
     FMRB_LOGI(TAG, "wasm display backend: %dx%d, software blend, RGBA out",
               fb_w, fb_h);
 }
@@ -78,7 +91,15 @@ static void wasm_present(LGFX_Sprite *fb, size_t fb_size)
 {
     (void)fb_size;
     const uint16_t *pixels = (const uint16_t *)fb->getBuffer();
-    if (!pixels || fb->width() != s_fb_w || fb->height() != s_fb_h) return;
+    if (!pixels) return;
+    if (fb->width() != s_fb_w || fb->height() != s_fb_h) {
+        /* The fullscreen high-resolution mode swapped the framebuffer. The
+         * RGBA frame was sized for either at init; anything larger than that
+         * is not a size this backend was built for, and is not drawn. */
+        if ((size_t)fb->width() * fb->height() > s_rgba_px) return;
+        s_fb_w = fb->width();
+        s_fb_h = fb->height();
+    }
     convert_rect(pixels, 0, 0, s_fb_w, s_fb_h);
     s_frame_seq++;
 }
@@ -86,11 +107,10 @@ static void wasm_present(LGFX_Sprite *fb, size_t fb_size)
 static void wasm_present_patch(const uint16_t *block, int x0, int y0, int w, int h,
                                int fb_w, int fb_h)
 {
-    (void)fb_w;
-    (void)fb_h;
     /* The block is already composited framebuffer content (cursor fast path);
-     * convert just that rectangle into the RGBA buffer. */
-    if (!s_rgba) return;
+     * convert just that rectangle into the RGBA buffer. A patch for a frame
+     * of another size than the last present waits for the next present. */
+    if (!s_rgba || fb_w != s_fb_w || fb_h != s_fb_h) return;
     for (int y = 0; y < h; y++) {
         const uint16_t *src = block + (size_t)y * w;
         uint8_t *dst = s_rgba + ((size_t)(y0 + y) * s_fb_w + x0) * 4;

@@ -201,11 +201,17 @@ static bool pending_protocol_setup_pop(pending_protocol_setup_item_t *item)
     return true;
 }
 
-// Screen dimensions (shared for all mice)
+// Screen dimensions (shared for all mice). They follow the host's screen size,
+// which the fullscreen high-resolution mode changes (doc/fullscreen_hires/).
 static int g_screen_width = 0;
 static int g_screen_height = 0;
 static double g_mouse_scale_x = 1.0;
 static double g_mouse_scale_y = 1.0;
+// The base screen (system config), which mouse_scale_x/y are tuned for. On a
+// larger screen the scale is multiplied by the ratio so the cursor keeps its
+// on-screen speed. PSRAM: no new internal RAM statics.
+EXT_RAM_BSS_ATTR static int g_base_width;
+EXT_RAM_BSS_ATTR static int g_base_height;
 
 // Forward declarations
 static void usb_host_lib_task(void *arg);
@@ -697,20 +703,42 @@ static bool ensure_screen_size(void)
         return false;
     }
 
-    if (g_screen_width > 0 && g_screen_height > 0) {
-        return true;
-    }
-    const fmrb_system_config_t* conf = fmrb_kernel_get_config();
-    if (conf && conf->display_width > 0 && conf->display_height > 0) {
-        g_screen_width = conf->display_width;
-        g_screen_height = conf->display_height;
+    if (g_base_width <= 0 || g_base_height <= 0) {
+        const fmrb_system_config_t* conf = fmrb_kernel_get_config();
+        if (!conf || conf->display_width <= 0 || conf->display_height <= 0) {
+            return false;
+        }
+        g_base_width = conf->display_width;
+        g_base_height = conf->display_height;
         g_mouse_scale_x = conf->mouse_scale_x;
         g_mouse_scale_y = conf->mouse_scale_y;
         FMRB_LOGI(TAG, "Screen size acquired: %dx%d, mouse scale: %.2f/%.2f",
-                  g_screen_width, g_screen_height, g_mouse_scale_x, g_mouse_scale_y);
-        return true;
+                  g_base_width, g_base_height, g_mouse_scale_x, g_mouse_scale_y);
     }
-    return false;
+
+    int w, h;
+    fmrb_host_get_screen_size(&w, &h);
+    if (w <= 0 || h <= 0) {
+        w = g_base_width;
+        h = g_base_height;
+    }
+    if (w != g_screen_width || h != g_screen_height) {
+        // The screen changed size: keep every mouse's cursor at the same place
+        // on the screen.
+        if (g_screen_width > 0 && g_screen_height > 0) {
+            for (int i = 0; i < MAX_HID_DEVICES; i++) {
+                hid_device_info_t *d = &g_hid_devices[i];
+                if (!d->mouse_state.initialized) continue;
+                d->mouse_state.cursor_x = d->mouse_state.cursor_x * w / g_screen_width;
+                d->mouse_state.cursor_y = d->mouse_state.cursor_y * h / g_screen_height;
+            }
+            FMRB_LOGI(TAG, "Screen size now %dx%d (was %dx%d)",
+                      w, h, g_screen_width, g_screen_height);
+        }
+        g_screen_width = w;
+        g_screen_height = h;
+    }
+    return true;
 }
 
 // Auto-detect Report Protocol format for boot mice that didn't get SET_PROTOCOL.
@@ -850,8 +878,10 @@ static void process_mouse_report(hid_device_info_t *device, const uint8_t *data,
         }
 
         // Apply mouse sensitivity with fractional accumulation
-        device->mouse_state.accum_x += dx * g_mouse_scale_x;
-        device->mouse_state.accum_y += dy * g_mouse_scale_y;
+        // Scaled by the screen's size against the base screen, so the cursor
+        // crosses the screen at the same speed in the high-resolution mode.
+        device->mouse_state.accum_x += dx * g_mouse_scale_x * g_screen_width / g_base_width;
+        device->mouse_state.accum_y += dy * g_mouse_scale_y * g_screen_height / g_base_height;
 
         // Split into integer (pixel movement) and fractional (remainder) parts
         double ix, iy;
@@ -1973,6 +2003,8 @@ fmrb_err_t usb_task_init(void)
     init_device_slots();
     g_screen_width = 0;
     g_screen_height = 0;
+    g_base_width = 0;
+    g_base_height = 0;
     g_mouse_scale_x = 1.0;
     g_mouse_scale_y = 1.0;
 

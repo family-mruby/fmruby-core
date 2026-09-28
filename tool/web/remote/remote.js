@@ -1,13 +1,20 @@
 // Family mruby remote desktop viewer.
 // Phase 1: MJPEG <img src="/stream"> + binary input over WebSocket /ws.
-// The device encodes 432px-wide frames (16px alignment); only the left
-// 426px are shown. Cursor is drawn client-side from "cur" messages.
-// The view is 2x windowed and aspect-preserving fill in fullscreen; every
-// size below derives from `scale`, so both modes share one code path.
+// The device encodes frames padded to 16px (426 -> 432); only the visible
+// part is shown. Cursor is drawn client-side from "cur" messages.
+//
+// The screen is 426x240, or 640x360 while a fullscreen app has the
+// high-resolution mode. The device announces the size ("info", "cur", and the
+// H.264 frame header); clicks are mapped into it and the cursor drawn in it.
+// The view keeps the same size on the page either way -- 852x480 windowed,
+// aspect-preserving fill in fullscreen -- so a mode switch changes how fine
+// the picture is, not how large. Every size below derives from `scale`
+// (page pixels per screen pixel), so both modes share one code path.
 'use strict';
 
-const VIRT_W = 426, VIRT_H = 240;
-const WIN_SCALE = 2;          // scale of the normal (windowed) view
+const BASE_W = 426, BASE_H = 240;
+const WIN_W = BASE_W * 2;     // width of the normal (windowed) view, page px
+let screenW = BASE_W, screenH = BASE_H;
 
 const wrap = document.getElementById('wrap');
 const view = document.getElementById('view');
@@ -19,8 +26,9 @@ const modeEl = document.getElementById('mode');
 const statsEl = document.getElementById('stats');
 const fsBtn = document.getElementById('fsbtn');
 
-let encW = 432;
-let scale = WIN_SCALE;
+let encW = 432;               // encoded picture, padded to 16
+let encH = 240;
+let scale = 2;
 let ws = null;
 let wsReady = false;
 let lastMoveSent = 0;
@@ -34,18 +42,32 @@ function isFullscreen() {
   return document.fullscreenElement === wrap;
 }
 
-// Fullscreen fills as much of the screen as the 426x240 aspect ratio allows
-// (16:9 leaves only a hairline letterbox); windowed stays at the fixed 2x.
+// Fullscreen fills as much of the screen as the 16:9 aspect ratio allows
+// (426x240 leaves only a hairline letterbox); windowed stays WIN_W wide.
 function computeScale() {
-  if (!isFullscreen()) return WIN_SCALE;
-  const s = Math.min(window.innerWidth / VIRT_W, window.innerHeight / VIRT_H);
-  return s > 0 ? s : WIN_SCALE;
+  const win = WIN_W / screenW;
+  if (!isFullscreen()) return win;
+  const s = Math.min(window.innerWidth / screenW, window.innerHeight / screenH);
+  return s > 0 ? s : win;
+}
+
+// A new screen size from the device. The padded sizes follow from it (both
+// encoders pad to 16), so the MJPEG picture needs no size of its own.
+function setScreenSize(w, h) {
+  if (!(w > 0 && h > 0) || (w === screenW && h === screenH)) return;
+  screenW = w;
+  screenH = h;
+  if (!useH264) {
+    encW = (w + 15) & ~15;
+    encH = h;
+  }
+  layout();
 }
 
 function layout() {
   scale = computeScale();
-  const vw = Math.round(VIRT_W * scale);
-  const vh = Math.round(VIRT_H * scale);
+  const vw = Math.round(screenW * scale);
+  const vh = Math.round(screenH * scale);
   if (isFullscreen()) {
     wrap.style.width = '';
     wrap.style.height = '';
@@ -62,12 +84,17 @@ function layout() {
   const sw = Math.round(encW * scale) + 'px';
   for (const el of [img, canvas]) {
     el.style.width = sw;
-    el.style.height = vh + 'px';
     el.style.imageRendering = rendering;
   }
-  // The 10x16 CSS px arrow of the 2x view is 5x8 device pixels
-  cursorEl.style.width = (5 * scale) + 'px';
-  cursorEl.style.height = (8 * scale) + 'px';
+  // The MJPEG picture is not padded vertically; the H.264 one is, and #view
+  // clips the padding off.
+  img.style.height = vh + 'px';
+  canvas.style.height = Math.round(encH * scale) + 'px';
+  // The arrow is 10x16 page px in the windowed view whatever the screen
+  // size: it scales with the view, not with the screen's resolution.
+  const unit = vw / BASE_W;
+  cursorEl.style.width = (5 * unit) + 'px';
+  cursorEl.style.height = (8 * unit) + 'px';
   drawCursor();
 }
 
@@ -87,7 +114,7 @@ function setupScreen() {
     img.src = '';
     canvas.style.display = 'block';
     canvas.width = encW;
-    canvas.height = VIRT_H;
+    canvas.height = encH;
     modeEl.textContent = 'mode: h264';
   } else {
     canvas.style.display = 'none';
@@ -196,7 +223,19 @@ function startVideo() {
     const key = (d.getUint8(1) & 1) !== 0;
     const w = d.getUint16(2, true);
     const pts = d.getUint32(4, true);
-    if (w !== encW) { encW = w; setupScreen(); }
+    // [8..13]: visible width and height, padded height. A size change comes
+    // on an IDR; the decoder takes the new SPS by itself.
+    const vw = d.getUint16(8, true);
+    const vh = d.getUint16(10, true);
+    const h = d.getUint16(12, true);
+    if (w !== encW || h !== encH) {
+      encW = w;
+      encH = h;
+      canvas.width = encW;
+      canvas.height = encH;
+      layout();
+    }
+    if (vw !== screenW || vh !== screenH) setScreenSize(vw, vh);
     if (decoder.state !== 'configured') {
       // configure() is async; if we had to drop a keyframe, ask again
       if (key) vws.send(new Uint8Array([0x04]).buffer);
@@ -208,7 +247,7 @@ function startVideo() {
       decoder.decode(new EncodedVideoChunk({
         type: key ? 'key' : 'delta',
         timestamp: pts * 1000,
-        data: new Uint8Array(ev.data, 8),
+        data: new Uint8Array(ev.data, 14),
       }));
     } catch (e) {
       console.error('decode failed', e);
@@ -239,11 +278,17 @@ function wsConnect() {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (_) { return; }
     if (msg.t === 'info') {
-      if (msg.encw) { encW = msg.encw; }
       useH264 = !!msg.h264 && typeof window.VideoDecoder === 'function';
+      if (msg.w > 0 && msg.h > 0) {
+        screenW = msg.w;
+        screenH = msg.h;
+        encW = (screenW + 15) & ~15;
+        encH = useH264 ? ((screenH + 15) & ~15) : screenH;
+      }
       setupScreen();
       if (useH264) startVideo();
     } else if (msg.t === 'cur') {
+      if (msg.w && msg.h) setScreenSize(msg.w, msg.h);
       lastCursor = { x: msg.x, y: msg.y, v: !!msg.v };
       drawCursor();
     } else if (msg.t === 'stat') {
@@ -300,10 +345,10 @@ function sendKey(state, scancode, mod) {
 // whole screen including the letterbox, so its origin is not the picture's.
 function eventCoords(e) {
   const r = view.getBoundingClientRect();
-  let x = Math.floor((e.clientX - r.left) * VIRT_W / r.width);
-  let y = Math.floor((e.clientY - r.top) * VIRT_H / r.height);
-  x = Math.max(0, Math.min(VIRT_W - 1, x));
-  y = Math.max(0, Math.min(VIRT_H - 1, y));
+  let x = Math.floor((e.clientX - r.left) * screenW / r.width);
+  let y = Math.floor((e.clientY - r.top) * screenH / r.height);
+  x = Math.max(0, Math.min(screenW - 1, x));
+  y = Math.max(0, Math.min(screenH - 1, y));
   return [x, y];
 }
 

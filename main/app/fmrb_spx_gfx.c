@@ -210,8 +210,9 @@ int fmrb_spx_gfx_set_font(int canvas_id, int family, int size)
     uint8_t fam;
     if (family == 1) {
         fam = FMRB_LINK_GFX_FONT_FAMILY_JA;
-        if (size != 8 && size != 12) {
-            return FMRB_SPX_ERR_RANGE;  /* only 8/12 supported for :ja */
+        /* Same set as the mruby binding (gfx.c): misaki 8, efontJA 12 / 16. */
+        if (size != 8 && size != 12 && size != 16) {
+            return FMRB_SPX_ERR_RANGE;
         }
     } else {
         fam = FMRB_LINK_GFX_FONT_FAMILY_DEFAULT;

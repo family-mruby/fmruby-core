@@ -322,11 +322,11 @@ module EditorRender
     end
   end
 
-  # The edit area draws in efontJA_12 and everything else in the default 6x8
-  # font. set_font is a queued command like any other, so it is enough to
+  # The edit area draws in the chosen Japanese font (editor/font.rb) and
+  # everything else in the default 6x8 font. set_font is a queued command like any other, so it is enough to
   # bracket the drawing that needs it rather than track a mode.
   def begin_edit_font
-    @gfx.set_font(:ja, EDIT_FONT_SIZE)
+    @gfx.set_font(:ja, @edit_font_size)
   end
 
   def end_edit_font
@@ -335,7 +335,7 @@ module EditorRender
 
   def draw_edit_area
     # One fill for the whole area: it also clears the leftover strip below the
-    # last full row (edit_height is not always a multiple of LINE_H).
+    # last full row (edit_height is not always a multiple of @line_h).
     @gfx.fill_rect(@user_area_x0, @edit_y,
                     @user_area_width, @edit_height, BG_COLOR)
 
@@ -372,11 +372,11 @@ module EditorRender
   # when wrapping is off, where the row starts at the horizontal scroll).
   def draw_edit_row(row, line_idx, seg, sel_range, blank_bg)
     x = @user_area_x0 + 1 + @gutter_w
-    y = @edit_y + row * LINE_H
+    y = @edit_y + row * @line_h
 
     if blank_bg
-      @gfx.fill_rect(@user_area_x0, y, @user_area_width, LINE_H, BG_COLOR)
-      @gfx.fill_rect(@user_area_x0, y, @gutter_w, LINE_H, GUTTER_BG) if @gutter_w > 0
+      @gfx.fill_rect(@user_area_x0, y, @user_area_width, @line_h, BG_COLOR)
+      @gfx.fill_rect(@user_area_x0, y, @gutter_w, @line_h, GUTTER_BG) if @gutter_w > 0
     end
     return if line_idx >= EditorCore.line_count
 
@@ -403,7 +403,7 @@ module EditorRender
     line_bg = PROBLEM_BG if line_bg == BG_COLOR && problem_on_line?(line_idx)
     if line_bg != BG_COLOR
       @gfx.fill_rect(@user_area_x0 + @gutter_w, y,
-                     @user_area_width - @gutter_w, LINE_H, line_bg)
+                     @user_area_width - @gutter_w, @line_h, line_bg)
     end
     dbg_draw_gutter(line_idx, y) if @gutter_w > 0
 
@@ -421,7 +421,7 @@ module EditorRender
         if vstart < vend
           c0 = cell_offset(widths, vstart)
           c1 = cell_offset(widths, vend)
-          @gfx.fill_rect(x + c0 * CELL_W, y, (c1 - c0) * CELL_W, LINE_H, SEL_BG)
+          @gfx.fill_rect(x + c0 * @cell_w, y, (c1 - c0) * @cell_w, @line_h, SEL_BG)
           sel_from = vstart
           sel_to = vend
         end
@@ -430,10 +430,10 @@ module EditorRender
       # edit margin so the wrapped newline is visible.
       last_seg = (col0 + nchars >= line_len)
       if last_seg && line_idx >= sel_range[1] && line_idx < sel_range[3]
-        fill_x0 = x + used_cells * CELL_W
-        fill_x1 = x + @edit_cols * CELL_W
+        fill_x0 = x + used_cells * @cell_w
+        fill_x1 = x + @edit_cols * @cell_w
         if fill_x0 < fill_x1
-          @gfx.fill_rect(fill_x0, y, fill_x1 - fill_x0, LINE_H, SEL_BG)
+          @gfx.fill_rect(fill_x0, y, fill_x1 - fill_x0, @line_h, SEL_BG)
         end
       end
     end
@@ -527,7 +527,7 @@ module EditorRender
         cell += widths.getbyte(i)
         i += 1
       end
-      @gfx.draw_text(x + c0 * CELL_W, y, text.byteslice(b0, bytes), color, bg)
+      @gfx.draw_text(x + c0 * @cell_w, y, text.byteslice(b0, bytes), color, bg)
     end
   end
 
@@ -551,8 +551,8 @@ module EditorRender
     w_cells = idx < widths.bytesize ? widths.getbyte(idx) : 1
     w_cells = @edit_cols - cell if cell + w_cells > @edit_cols
 
-    [@user_area_x0 + 1 + @gutter_w + cell * CELL_W,
-     @edit_y + screen_row * LINE_H,
+    [@user_area_x0 + 1 + @gutter_w + cell * @cell_w,
+     @edit_y + screen_row * @line_h,
      w_cells]
   end
 
@@ -564,7 +564,7 @@ module EditorRender
     w_cells = box[2]
 
     # Draw block cursor
-    @gfx.fill_rect(x, y, w_cells * CELL_W, LINE_H, CURSOR_COLOR)
+    @gfx.fill_rect(x, y, w_cells * @cell_w, @line_h, CURSOR_COLOR)
 
     # Draw character under cursor in contrasting color
     ch = EditorCore.char_at(@cy, @cx)

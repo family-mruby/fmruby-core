@@ -17,6 +17,7 @@
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
 #include "display_p4_task.h"
+#include "host_task.h"
 
 #include "esp_timer.h"
 #include "esp_heap_caps.h"
@@ -29,7 +30,11 @@
 static const char *TAG = "rd_stream";
 
 #define RD_VIDEO_MAX_CLIENTS 2
-#define RD_VIDEO_HDR_LEN     8
+// [0x01][flags][enc_w16][pts32][vis_w16][vis_h16][enc_h16], little endian.
+// The encoded picture is padded to multiples of 16; the viewer shows the
+// top-left vis_w x vis_h of it. The size can change from one frame to the
+// next (the fullscreen high-resolution mode), always on an IDR.
+#define RD_VIDEO_HDR_LEN     14
 
 static rd_stream_config_t s_cfg;
 static httpd_handle_t s_server = NULL;
@@ -38,9 +43,52 @@ static int s_fds[RD_VIDEO_MAX_CLIENTS];
 static volatile bool s_task_running = false;
 static volatile bool s_stop = false;
 
-// Header + payload staging so one WS frame carries the whole access unit
+// Header + payload staging so one WS frame carries the whole access unit.
+// Sized for the encoder's output budget, grown when the frame grows.
 static uint8_t *s_pkt = NULL;
 static size_t   s_pkt_cap = 0;
+
+// The staging buffer for frames of w x h: the encoder's raw budget (its
+// output never exceeds it) plus the header. Stream task (or before it runs).
+static bool pkt_reserve(uint16_t w, uint16_t h)
+{
+    size_t need = RD_VIDEO_HDR_LEN
+                + (size_t)((w + 15u) & ~15u) * ((h + 15u) & ~15u) * 2;
+    if (s_pkt && s_pkt_cap >= need) return true;
+    uint8_t *p = heap_caps_malloc(need, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!p) {
+        FMRB_LOGE(TAG, "pkt buffer alloc failed (%u bytes)", (unsigned)need);
+        return false;
+    }
+    if (s_pkt) heap_caps_free(s_pkt);
+    s_pkt = p;
+    s_pkt_cap = need;
+    return true;
+}
+
+// Bring the encoder up for frames of w x h, replacing one set up for another
+// size. The first frame after it is an IDR (a fresh encoder starts with one).
+static bool encoder_for(uint16_t w, uint16_t h)
+{
+    if (rd_encoder_h264_is_for(w, h)) return true;
+    rd_encoder_h264_deinit();
+    rd_h264_config_t ecfg = {
+        .src_w = w, .src_h = h,
+        .fps = s_cfg.fps_cap,
+        .gop = s_cfg.gop,
+        .bitrate = s_cfg.bitrate,
+    };
+    if (rd_encoder_h264_init(&ecfg) != FMRB_OK) {
+        FMRB_LOGE(TAG, "H.264 encoder init failed for %ux%u", w, h);
+        return false;
+    }
+    if (!pkt_reserve(w, h)) {
+        rd_encoder_h264_deinit();
+        return false;
+    }
+    rd_encoder_h264_request_idr();
+    return true;
+}
 
 bool rd_stream_has_clients(void)
 {
@@ -92,6 +140,15 @@ static void stream_task(void *arg)
             continue;
         }
         last_seq = frame.seq;
+        // The frame carries its own size: the fullscreen high-resolution mode
+        // switches the display between 426x240 and 640x360 while the stream
+        // runs. The encoder is set up for one size, so a new size brings it
+        // up again (and the next frame is an IDR the viewer can resize on).
+        if (!encoder_for(frame.width, frame.height)) {
+            display_p4_capture_release();
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
 
         uint32_t pts_ms = (uint32_t)((esp_timer_get_time() - t0) / 1000);
         const uint8_t *au = NULL;
@@ -104,7 +161,7 @@ static void stream_task(void *arg)
             continue;
         }
 
-        // Assemble [type][flags][width][pts] + AU in one buffer
+        // Assemble the header + AU in one buffer
         size_t pkt_len = RD_VIDEO_HDR_LEN + au_len;
         if (pkt_len > s_pkt_cap) {
             // capacity fixed at init (raw frame size); encoder output
@@ -113,6 +170,7 @@ static void stream_task(void *arg)
             continue;
         }
         uint16_t w = rd_encoder_h264_width();
+        uint16_t h = rd_encoder_h264_height();
         s_pkt[0] = 0x01;
         s_pkt[1] = is_idr ? 0x01 : 0x00;
         s_pkt[2] = (uint8_t)(w & 0xFF);
@@ -121,6 +179,12 @@ static void stream_task(void *arg)
         s_pkt[5] = (uint8_t)((pts_ms >> 8) & 0xFF);
         s_pkt[6] = (uint8_t)((pts_ms >> 16) & 0xFF);
         s_pkt[7] = (uint8_t)((pts_ms >> 24) & 0xFF);
+        s_pkt[8]  = (uint8_t)(frame.width & 0xFF);
+        s_pkt[9]  = (uint8_t)(frame.width >> 8);
+        s_pkt[10] = (uint8_t)(frame.height & 0xFF);
+        s_pkt[11] = (uint8_t)(frame.height >> 8);
+        s_pkt[12] = (uint8_t)(h & 0xFF);
+        s_pkt[13] = (uint8_t)(h >> 8);
         memcpy(s_pkt + RD_VIDEO_HDR_LEN, au, au_len);
 
         httpd_ws_frame_t f = {
@@ -157,25 +221,13 @@ static bool ensure_task_running(void)
 {
     if (s_task_running) return true;
 
-    rd_h264_config_t ecfg = {
-        .src_w = 426, .src_h = 240,
-        .fps = s_cfg.fps_cap,
-        .gop = s_cfg.gop,
-        .bitrate = s_cfg.bitrate,
-    };
-    if (rd_encoder_h264_init(&ecfg) != FMRB_OK) {
-        FMRB_LOGE(TAG, "H.264 encoder init failed");
-        return false;
-    }
-    if (!s_pkt) {
-        s_pkt_cap = RD_VIDEO_HDR_LEN + (size_t)432 * 240 * 2;
-        s_pkt = heap_caps_malloc(s_pkt_cap, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-        if (!s_pkt) {
-            FMRB_LOGE(TAG, "pkt buffer alloc failed");
-            rd_encoder_h264_deinit();
-            return false;
-        }
-    }
+    // Brought up here at the screen's current size, so that a broken encoder
+    // is found while the client can still be told to fall back to MJPEG. The
+    // stream task follows the frame size from then on.
+    int sw = 0, sh = 0;
+    fmrb_host_get_screen_size(&sw, &sh);
+    if (sw <= 0 || sh <= 0) { sw = 426; sh = 240; }
+    if (!encoder_for((uint16_t)sw, (uint16_t)sh)) return false;
     s_task_running = true;
     if (xTaskCreatePinnedToCore(stream_task, "rd_stream",
                                 FMRB_RD_STREAM_TASK_STACK_SIZE, NULL,

@@ -112,6 +112,12 @@ int fmrb_spx_update_window_pos(int pid, int x, int y);   /**< 1/0/neg */
 int fmrb_spx_update_window_size(int pid, int w, int h);  /**< 1/0/neg */
 /** Switch a running app between windowed and fullscreen (no respawn). 1/0/neg */
 int fmrb_spx_set_app_fullscreen(int pid, int on, int w, int h);
+/** The fullscreen high-resolution screen as (w << 16 | h), or 0 when this
+    build/display has none (fmrb_app_fullscreen_hires_size). */
+int fmrb_spx_fullscreen_hires_size(void);
+/** SET_SCREEN_MODE for the app's main canvas (fmrb_app_set_screen_mode):
+    640x360 takes the high-resolution screen, 0x0 gives it back. 1/0/neg */
+int fmrb_spx_set_app_screen_mode(int pid, int w, int h);
 int fmrb_spx_suspend_app(int pid);           /**< 0 ok, negative error */
 int fmrb_spx_resume_app(int pid);            /**< 0 ok, negative error */
 int fmrb_spx_reap_app(int pid);              /**< 0 ok, negative error */
@@ -139,11 +145,13 @@ int fmrb_spx_spawn_app_req(const char *name, int len);
  *   36   128   path       (NUL-padded; only for FILE load mode, else zeroed)
  *   164  1     fullscreen_switchable (bool; app survives Ctrl+Tab park/unpark)
  *   165  1     headless   (bool; default_window_mode = "background", no canvas)
+ *   166  1     expected_stop (bool; the app was asked to end)
+ *   167  1     fullscreen_hires (bool; may use the high-resolution fullscreen)
  *
- * Total 166 bytes, returned as :binstr (length in sp_ffi_bin_len). When the pid
+ * Total 168 bytes, returned as :binstr (length in sp_ffi_bin_len). When the pid
  * has no context the return is an empty string and the Ruby side returns nil.
  */
-#define FMRB_SPX_APP_INFO_RECORD_SIZE 167
+#define FMRB_SPX_APP_INFO_RECORD_SIZE 168
 const char *fmrb_spx_app_info_snapshot(int pid);
 
 /**

@@ -42,10 +42,12 @@
 #endif
 #include "esp_heap_caps.h"
 #include "fmrb_hal_time.h"
+#include "fmrb_attr.h"
 
 extern "C" {
 #include "fmrb_bmp332.h"
 #include "rd_encoder_jpeg.h"   // EXPORT_FRAME writes a JPEG with it
+#include "host_task.h"         // the input sources follow the screen size
 }
 
 #include <msgpack.h>
@@ -193,9 +195,17 @@ typedef struct {
     // Push-time transparency (used for canvas-to-canvas PUSH_CANVAS only)
     uint8_t      transparent_color;
     bool         use_transparency;
+    // The committed buffer holds a frame drawn at the current active size:
+    // set by the present (PUSH_CANVAS to the screen), cleared when
+    // UPDATE_WINDOW changes the size. A screen-mode switch waits for this on
+    // its owner canvas, so the new mode never shows a frame laid out for the
+    // old size.
+    bool         committed_fresh;
     // Active drawing area: what the app currently draws and what gets
-    // composited. The buffer behind it is allocated at framebuffer size (see
-    // canvas_alloc), so this can grow at runtime without reallocating.
+    // composited. The buffer behind it is allocated at least at framebuffer
+    // size (see canvas_alloc), so this can grow up to that without
+    // reallocating; beyond it (the fullscreen high-resolution size)
+    // UPDATE_WINDOW reallocates (canvas_grow).
     uint16_t     width, height;
     uint16_t     alloc_width, alloc_height;
     // Composite source viewport (SET_CANVAS_VIEWPORT). view_w == 0 means no
@@ -273,18 +283,79 @@ static void image_store_destroy(p4_image_t *img) {
     FMRB_LOGI(TAG, "Image store free: id=%u", img->image_id);
 }
 
-// Shared composition framebuffer (RGB565 16bpp, allocated at INIT_DISPLAY).
-// Canvases are composited via pushSprite, then PPA SRM 3x scales to LCD.
+// Shared composition framebuffer (RGB565 16bpp). Canvases are composited
+// into it, then the output backend scales it onto the panel (PPA SRM).
+// g_framebuffer is the CURRENT one: the base framebuffer allocated at
+// INIT_DISPLAY, or, in the fullscreen high-resolution mode, the larger one
+// (see the screen mode block below). Everything that reads "the screen" --
+// render_frame, the capture, EXPORT_FRAME, the cursor -- reads this pointer
+// and its own width()/height(), so it follows the mode without knowing it.
 static LGFX_Sprite *g_framebuffer = nullptr;
 static size_t g_fb_aligned_size = 0;  // cache-line-aligned framebuffer size for msync
-static uint16_t g_display_width  = 0;
+static uint16_t g_display_width  = 0;   // the base framebuffer (INIT_DISPLAY)
 static uint16_t g_display_height = 0;
-/* How far the frame is blown up on the way to the panel. Log line only -- the
- * scaling itself lives in the output backend, which is where the geometry is
- * explained. */
-#define DISPLAY_P4_SCALE_TEXT "3x"
 
-// How the composited frame reaches the panel (the 3x scale, the rotation into
+// ============================================================
+// Screen mode: the fullscreen high-resolution mode
+// (doc/fullscreen_hires/, H1).
+//
+// Normally every visible canvas is composited into the base framebuffer
+// (426x240 on the P4 boards) and shown at 3x. SET_SCREEN_MODE asks for the
+// high-resolution mode instead: one canvas, the owner (a fullscreen app's),
+// is shown alone on a 640x360 framebuffer at 2x. Nothing is mixed with it,
+// because a fullscreen app hides everything else anyway -- which is what
+// makes a second resolution possible at all (the PPA blend cannot scale).
+//
+// The switch is not immediate. A request makes it PENDING and the previous
+// picture is held (no render) until the owner commits a frame at the new
+// size -- in either direction -- so neither the black of a half-set-up screen
+// nor a frame laid out for the old size is ever shown. SCREEN_MODE_WAIT_MS
+// bounds the wait. While in the high-resolution mode, the display gives the
+// screen back by itself when the owner canvas is deleted or hidden (an app
+// that died, a park), without waiting for anyone to ask.
+//
+// All of this is state of the display task alone. It lives in PSRAM
+// (FMRB_EXT_RAM_BSS_ATTR): it is read a few times per frame at most, and the
+// internal RAM budget has no room for new statics. Zero is its initial
+// state: base mode, nothing pending.
+// ============================================================
+
+#define DISPLAY_P4_HIRES_W   640
+#define DISPLAY_P4_HIRES_H   360
+#define SCREEN_MODE_WAIT_MS  500
+
+typedef struct {
+    LGFX_Sprite *fb_base;          // INIT_DISPLAY's framebuffer
+    size_t       fb_base_size;
+    LGFX_Sprite *fb_hires;         // DISPLAY_P4_HIRES_W x _H, on first use
+    size_t       fb_hires_size;
+    bool         hires;            // the high-resolution framebuffer is current
+    bool         pending;          // a switch was asked for and is waiting
+    bool         pending_hires;    // ... towards this mode
+    bool         force_render;     // the wait timed out: render once regardless
+    uint16_t     owner;            // canvas the switch/mode belongs to
+    uint32_t     pending_since_ms;
+    uint32_t     switches;         // completed switches, for the log
+    // The owner was resized (UPDATE_WINDOW) and has not yet shown that it
+    // handled the resize. Its presents until then do not count as frames at
+    // the new size: an app can present from on_update before it has read the
+    // resize message, and that frame is laid out for the old size (report/h1.md
+    // 6.4 i). The acknowledgement is the SET_SPRITE_CLIP that FmrbApp sends
+    // from its resize handler (both engines), which travels the same ordered
+    // queue as the app's presents.
+    bool         owner_resize_unacked;
+    // In the high-resolution mode, since when the owner has had nothing that
+    // can be shown (hidden, gone, a committed frame that is not 640x360, or
+    // none since a resize); 0 while it has. See screen_mode_poll.
+    uint32_t     owner_unshowable_since_ms;
+    // Remote-desktop capture: the size of the frame in each slot, since the
+    // two slots can hold frames of different modes.
+    uint16_t     cap_w[2], cap_h[2];
+} screen_mode_state_t;
+
+FMRB_EXT_RAM_BSS_ATTR static screen_mode_state_t g_smode;
+
+// How the composited frame reaches the panel (the scale, the rotation into
 // the panel's native portrait orientation, and the DSI framebuffer itself) is
 // the output backend's business: display_backend_ppa.cpp.
 
@@ -367,6 +438,7 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
     c->create_use_transparency      = use_transparency;
     c->transparent_color            = transparent_color;
     c->use_transparency             = use_transparency;
+    c->committed_fresh              = false;
     c->width                    = width;
     c->height                   = height;
     c->alloc_width              = alloc_w;
@@ -385,6 +457,44 @@ static p4_canvas_t* canvas_alloc(uint16_t canvas_id,
               canvas_id, width, height, alloc_w, alloc_h, z_order,
               transparent_color, (uint8_t)use_transparency);
     return c;
+}
+
+// Reallocate a canvas's two buffers so its active area can reach
+// need_w x need_h. For the fullscreen high-resolution size, which is larger
+// than the framebuffer-sized buffer canvas_alloc gives every canvas. Only
+// ever grows (a canvas that went to 640x360 once keeps that buffer until it is
+// deleted, so an F11 round trip does not reallocate). The pixels are not
+// carried over: the caller is resizing the canvas, and the app redraws it on
+// the resize it is told about. On failure the canvas is left as it was.
+static bool canvas_grow(p4_canvas_t *c, uint16_t need_w, uint16_t need_h) {
+    if (!c->sprite || !c->render_sprite) return false;
+    uint16_t aw = (need_w > c->alloc_width)  ? need_w : c->alloc_width;
+    uint16_t ah = (need_h > c->alloc_height) ? need_h : c->alloc_height;
+    size_t buf_size = (size_t)aw * ah * 2;
+    size_t aligned = 0, raligned = 0;
+    void *buf  = ppa_alloc_buffer(buf_size, &aligned);
+    void *rbuf = ppa_alloc_buffer(buf_size, &raligned);
+    if (!buf || !rbuf) {
+        if (buf)  heap_caps_free(buf);
+        if (rbuf) heap_caps_free(rbuf);
+        FMRB_LOGE(TAG, "Canvas grow failed: id=%u to %dx%d (%u bytes x2)",
+                  c->canvas_id, (int)aw, (int)ah, (unsigned)buf_size);
+        return false;
+    }
+    void *old  = c->sprite->getBuffer();
+    void *rold = c->render_sprite->getBuffer();
+    // setBuffer keeps the colour depth set at creation (see canvas_alloc) and
+    // does not free a preallocated buffer, so the old ones are ours to free.
+    c->sprite->setBuffer(buf, c->width, c->height);
+    c->render_sprite->setBuffer(rbuf, c->width, c->height);
+    if (old)  heap_caps_free(old);
+    if (rold) heap_caps_free(rold);
+    c->alloc_width      = aw;
+    c->alloc_height     = ah;
+    c->buf_aligned_size = aligned;
+    c->committed_fresh  = false;
+    FMRB_LOGI(TAG, "Canvas grow: id=%u buffer %dx%d", c->canvas_id, (int)aw, (int)ah);
+    return true;
 }
 
 static void canvas_free(p4_canvas_t *c) {
@@ -472,8 +582,9 @@ static uint32_t g_stat_last_ms = 0;
 // ============================================================
 // Frame capture for the remote desktop stream.
 //
-// When enabled, render_frame() copies the composited 426x240 RGB565
-// framebuffer into a double buffer (~200KB memcpy) and signals the
+// When enabled, render_frame() copies the composited RGB565 framebuffer
+// (426x240, or 640x360 in the high-resolution mode) into a double buffer
+// (~200-450KB memcpy) and signals the
 // semaphore. Single-reader design: while the reader holds the front
 // buffer, the writer keeps overwriting the back buffer (frames drop).
 // Buffers use ppa_alloc_buffer (cache-line aligned PSRAM), which is
@@ -532,7 +643,8 @@ static void cursor_init(void) {
 // ============================================================
 // Cursor patch drawing (small-region update, carried over from the
 // retro/m5gfx drivers). The cursor is NOT part of the framebuffer;
-// it is drawn onto the LCD as a 48x48 (16x16 scaled 3x) patch built
+// it is drawn onto the LCD as a 48x48 (16x16 scaled 3x; 32x32 at 2x in the
+// high-resolution mode) patch built
 // from the framebuffer content, so cursor moves transfer ~4.6 KB
 // instead of re-rendering and pushing the whole 1.8 MB screen.
 // ============================================================
@@ -650,7 +762,8 @@ static void framebuffer_restore_cursor(const uint16_t *save,
 
 // ============================================================
 // Render frame: composite all visible canvases + sprite instances
-// into the shared framebuffer, then push to g_lcd with 3x scaling.
+// into the shared framebuffer, then push to g_lcd scaled (3x, or 2x in the
+// high-resolution mode, where only the owner canvas is composited).
 //
 // Canvas sprites are NOT modified — sprite instances are composited
 // directly into the framebuffer after the canvas, keeping the canvas
@@ -729,15 +842,35 @@ static void render_frame(void) {
     for (size_t i = 0; i < g_canvas_count; i++) {
         p4_canvas_t *c = &g_canvases[i];
         if (!c->is_visible || !c->render_sprite) continue;
+        // High-resolution mode: the owner's canvas alone. Whatever else is
+        // still visible (a desktop the kernel has not hidden yet) is not
+        // composited -- it was laid out for the base framebuffer.
+        if (g_smode.hires && c->canvas_id != g_smode.owner) continue;
+        // Base mode: a canvas at the high-resolution size is a fullscreen
+        // app's that is about to get (or has just left) the high-resolution
+        // screen. Laid out for 640x360, it would show as its top-left corner
+        // at 3x; leave it out until the switch completes. A viewport canvas
+        // is exempt: it is a larger surface on purpose.
+        if (!g_smode.hires && c->view_w == 0 &&
+            c->width == DISPLAY_P4_HIRES_W && c->height == DISPLAY_P4_HIRES_H) continue;
 
         // Composite the committed buffer, never the working one (commit-on-present).
         int sw = c->render_sprite->width();
         int sh = c->render_sprite->height();
 
+        // Where the canvas goes. The high-resolution owner is the whole screen
+        // by definition, so it goes at (0, 0) whatever position it was given:
+        // a canvas moved off the origin (a stale window position, a drag that
+        // should not have happened) must not leave part of the screen to
+        // chance.
+        const bool as_owner = g_smode.hires && c->canvas_id == g_smode.owner;
+        const int  pos_x = as_owner ? 0 : c->push_x;
+        const int  pos_y = as_owner ? 0 : c->push_y;
+
         if (c->view_w == 0) {
             // Default path: composite the whole canvas at its push position
             blend_canvas_block(c, sw, sh, 0, 0, sw, sh,
-                               c->push_x, c->push_y, fb_w, fb_h);
+                               pos_x, pos_y, fb_w, fb_h);
         } else {
             // Viewport path (SET_CANVAS_VIEWPORT): the canvas is a torus.
             // The source rect may wrap around the canvas edges, so the
@@ -755,16 +888,16 @@ static void render_frame(void) {
             int h2 = vh - h1;
 
             blend_canvas_block(c, sw, sh, vx, vy, w1, h1,
-                               c->push_x, c->push_y, fb_w, fb_h);
+                               pos_x, pos_y, fb_w, fb_h);
             if (w2 > 0)
                 blend_canvas_block(c, sw, sh, 0, vy, w2, h1,
-                                   c->push_x + w1, c->push_y, fb_w, fb_h);
+                                   pos_x + w1, pos_y, fb_w, fb_h);
             if (h2 > 0)
                 blend_canvas_block(c, sw, sh, vx, 0, w1, h2,
-                                   c->push_x, c->push_y + h1, fb_w, fb_h);
+                                   pos_x, pos_y + h1, fb_w, fb_h);
             if (w2 > 0 && h2 > 0)
                 blend_canvas_block(c, sw, sh, 0, 0, w2, h2,
-                                   c->push_x + w1, c->push_y + h1, fb_w, fb_h);
+                                   pos_x + w1, pos_y + h1, fb_w, fb_h);
         }
 
         // Sprites use canvas-local coordinates and must not spill outside
@@ -772,7 +905,7 @@ static void render_frame(void) {
         // clips to framebuffer bounds only, leaking sprites onto the
         // desktop and other windows). For viewport canvases the visible
         // footprint is the viewport instead of the full canvas.
-        int dx = c->push_x, dy = c->push_y;
+        int dx = pos_x, dy = pos_y;
         int cw = sw, ch = sh;
         if (c->view_w > 0) {
             cw = (c->view_w < sw) ? c->view_w : sw;
@@ -784,8 +917,8 @@ static void render_frame(void) {
         // sprite coordinate space, i.e. it is relative to the canvas origin on
         // screen, exactly like the composite offset below.
         if (c->clip_w > 0) {
-            int sx = c->push_x + c->clip_x;
-            int sy = c->push_y + c->clip_y;
+            int sx = pos_x + c->clip_x;
+            int sy = pos_y + c->clip_y;
             if (sx > dx) { cw -= (sx - dx); dx = sx; }
             if (sy > dy) { ch -= (sy - dy); dy = sy; }
             if (dx + cw > sx + c->clip_w) cw = sx + c->clip_w - dx;
@@ -798,7 +931,7 @@ static void render_frame(void) {
         if (cw > 0 && ch > 0) {
             g_framebuffer->setClipRect(dx, dy, cw, ch);
             display_p4_sprite_composite(c->canvas_id, g_framebuffer,
-                                        c->push_x, c->push_y);
+                                        pos_x, pos_y);
             g_framebuffer->clearClipRect();
         }
     }
@@ -821,6 +954,8 @@ static void render_frame(void) {
         portEXIT_CRITICAL(&g_cap_lock);
 
         memcpy(g_cap_buf[target], fb_ptr, copy_len);
+        g_smode.cap_w[target] = (uint16_t)g_framebuffer->width();
+        g_smode.cap_h[target] = (uint16_t)g_framebuffer->height();
 
         portENTER_CRITICAL(&g_cap_lock);
         g_cap_front = target;
@@ -841,7 +976,7 @@ static void render_frame(void) {
                                             &cur_x0, &cur_y0, &cur_w, &cur_h);
     }
 
-    // Hand the finished frame to the output backend: 3x scale and rotate onto
+    // Hand the finished frame to the output backend: scale and rotate onto
     // the panel (PPA SRM on the device, pushRotateZoom in software).
     display_backend()->present(g_framebuffer, g_fb_aligned_size);
 
@@ -856,6 +991,270 @@ static void render_frame(void) {
     } else {
         g_cursor_drawn = false;
     }
+}
+
+// ============================================================
+// Screen mode switching (see the screen mode block near the top).
+// Display task context only.
+// ============================================================
+
+static uint32_t now_ms(void) {
+    return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+}
+
+// Make the next pass of the task loop render, without waiting out the
+// pacing interval: a switch has to be followed by a whole frame at once.
+static void render_asap(void) {
+    g_needs_render = true;
+    g_last_render_ms = now_ms() - RENDER_MIN_INTERVAL_MS;
+}
+
+// The high-resolution framebuffer, allocated the first time the mode is
+// asked for and kept from then on (a second mode switch must not be able to
+// fail on memory).
+static bool screen_mode_ensure_hires_fb(void) {
+    if (g_smode.fb_hires) return true;
+    size_t aligned = 0;
+    void *buf = ppa_alloc_buffer((size_t)DISPLAY_P4_HIRES_W * DISPLAY_P4_HIRES_H * 2,
+                                 &aligned);
+    if (!buf) {
+        FMRB_LOGE(TAG, "screen mode: no PSRAM for the %dx%d framebuffer",
+                  DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H);
+        return false;
+    }
+    auto *fb = new LGFX_Sprite(&g_lcd);
+    // Depth must be set BEFORE setBuffer (see canvas_alloc)
+    set_ppa_native_depth(fb);
+    fb->setBuffer(buf, DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H);
+    g_smode.fb_hires = fb;
+    g_smode.fb_hires_size = aligned;
+    FMRB_LOGI(TAG, "screen mode: %dx%d framebuffer allocated (%u bytes PSRAM)",
+              DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H, (unsigned)aligned);
+    return true;
+}
+
+// The input sources (touch, USB mouse, remote input) clamp and scale to the
+// screen size host_task holds. The kernel sets it when it asks for a mode;
+// this keeps it true when the display decides by itself (an owner that went
+// away, a switch that was cancelled, the fallback in screen_mode_poll), so
+// the pointer cannot be left in the coordinates of a screen not shown.
+static void screen_mode_tell_input(void) {
+    if (g_smode.hires) {
+        fmrb_host_set_screen_size(DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H);
+    } else {
+        fmrb_host_set_screen_size(0, 0);
+    }
+}
+
+// Swap the framebuffer: the switch itself. The cursor keeps its place on the
+// screen (scaled by the ratio of the two sizes) until the next input event
+// sets it in the new coordinates.
+static void screen_mode_apply(bool hires, const char *why) {
+    LGFX_Sprite *to     = hires ? g_smode.fb_hires : g_smode.fb_base;
+    size_t       to_len = hires ? g_smode.fb_hires_size : g_smode.fb_base_size;
+    // Only a pending switch has waited; an owner hidden or deleted switches
+    // back at once.
+    uint32_t waited = g_smode.pending ? now_ms() - g_smode.pending_since_ms : 0;
+    g_smode.pending = false;
+    if (!to) return;
+
+    const int ow = g_framebuffer ? g_framebuffer->width()  : to->width();
+    const int oh = g_framebuffer ? g_framebuffer->height() : to->height();
+    g_framebuffer     = to;
+    g_fb_aligned_size = to_len;
+    g_smode.hires     = hires;
+    if (!hires) {
+        g_smode.owner = 0;
+        g_smode.owner_resize_unacked = false;
+    }
+    g_smode.switches++;
+    g_smode.owner_unshowable_since_ms = 0;
+    screen_mode_tell_input();
+
+    const int nw = to->width();
+    const int nh = to->height();
+    if (ow > 0 && oh > 0) {
+        g_cursor_x = g_cursor_x * nw / ow;
+        g_cursor_y = g_cursor_y * nh / oh;
+    }
+    // The next render bakes the cursor into the new frame; the old patch goes
+    // with the old picture, which the full present overwrites.
+    g_cursor_drawn = false;
+
+    FMRB_LOGI(TAG, "screen mode: %dx%d owner=%u (%s, waited %lums, switch #%lu)",
+              nw, nh, g_smode.owner, why, (unsigned long)waited,
+              (unsigned long)g_smode.switches);
+    render_asap();
+}
+
+// A pending switch completes when the owner has committed a frame at the
+// new size. For the way back, also when the owner is gone or hidden (then
+// there is nothing of it left to wait for).
+static void screen_mode_try_complete(void) {
+    if (!g_smode.pending) return;
+    p4_canvas_t *c = canvas_find(g_smode.owner);
+    if (g_smode.pending_hires) {
+        if (!c) {
+            g_smode.pending = false;
+            g_smode.owner = 0;
+            g_smode.owner_resize_unacked = false;
+            FMRB_LOGW(TAG, "screen mode: owner canvas gone before the switch, staying %dx%d",
+                      g_framebuffer->width(), g_framebuffer->height());
+            screen_mode_tell_input();
+            render_asap();
+            return;
+        }
+        if (c->committed_fresh &&
+            c->width == DISPLAY_P4_HIRES_W && c->height == DISPLAY_P4_HIRES_H) {
+            screen_mode_apply(true, "owner presented");
+        }
+    } else {
+        if (!c || !c->is_visible) {
+            screen_mode_apply(false, "owner gone");
+        } else if (c->committed_fresh &&
+                   c->width <= g_display_width && c->height <= g_display_height) {
+            screen_mode_apply(false, "owner presented");
+        }
+    }
+}
+
+// SET_SCREEN_MODE. width/height 0 (or the base size) asks for the base mode.
+// The last request wins: a new one replaces whatever is pending.
+static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t flags) {
+    if (!g_smode.fb_base) {
+        FMRB_LOGW(TAG, "SET_SCREEN_MODE before INIT_DISPLAY, ignored");
+        return;
+    }
+    const bool want_hires = (w != 0 && h != 0 &&
+                             !(w == g_display_width && h == g_display_height));
+    if (want_hires) {
+        if (w != DISPLAY_P4_HIRES_W || h != DISPLAY_P4_HIRES_H) {
+            FMRB_LOGW(TAG, "SET_SCREEN_MODE: %ux%u is not a mode (only %dx%d)",
+                      w, h, DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H);
+            return;
+        }
+        if (g_display_width >= DISPLAY_P4_HIRES_W || g_display_height >= DISPLAY_P4_HIRES_H) {
+            FMRB_LOGW(TAG, "SET_SCREEN_MODE: the screen is already %ux%u, ignored",
+                      g_display_width, g_display_height);
+            return;
+        }
+        if (!canvas_find(owner)) {
+            FMRB_LOGW(TAG, "SET_SCREEN_MODE: owner canvas %u not found", owner);
+            return;
+        }
+        if (!screen_mode_ensure_hires_fb()) return;
+    }
+    FMRB_LOGI(TAG, "SET_SCREEN_MODE: owner=%u %ux%u flags=0x%02x (now %dx%d%s)",
+              owner, w, h, flags, g_framebuffer->width(), g_framebuffer->height(),
+              g_smode.pending ? ", a switch pending" : "");
+
+    if (want_hires == g_smode.hires) {
+        // Already in that mode. Drop a pending switch the other way, and
+        // (high-resolution) hand the screen to this owner.
+        if (g_smode.pending) {
+            g_smode.pending = false;
+            render_asap();
+        }
+        if (want_hires && owner != g_smode.owner) {
+            g_smode.owner = owner;
+            g_smode.owner_resize_unacked = false;
+            g_smode.owner_unshowable_since_ms = 0;  // its own wait starts now
+            render_asap();
+        }
+        return;
+    }
+
+    g_smode.pending          = true;
+    g_smode.pending_hires    = want_hires;
+    g_smode.pending_since_ms = now_ms();
+    // Going back, the canvas to wait for is the one on screen now.
+    if (want_hires && owner != g_smode.owner) {
+        g_smode.owner = owner;
+        g_smode.owner_resize_unacked = false;
+    }
+    screen_mode_try_complete();
+}
+
+// Called when a canvas is hidden or about to be deleted. If it owns the
+// high-resolution screen, the screen goes back to the base mode now.
+static void screen_mode_owner_leaving(uint16_t canvas_id, const char *why) {
+    if (canvas_id == 0 || canvas_id != g_smode.owner) return;
+    if (g_smode.hires) {
+        screen_mode_apply(false, why);
+    } else if (g_smode.pending && g_smode.pending_hires) {
+        g_smode.pending = false;
+        g_smode.owner = 0;
+        g_smode.owner_resize_unacked = false;
+        FMRB_LOGI(TAG, "screen mode: switch cancelled (%s)", why);
+        screen_mode_tell_input();
+        render_asap();
+    }
+}
+
+static bool screen_mode_owner_showable(void);
+
+// Task loop: give up waiting after SCREEN_MODE_WAIT_MS and switch anyway, so
+// an owner that never presents cannot freeze the screen.
+//
+// The same bound holds once in the high-resolution mode. Nothing is rendered
+// there unless the owner has a 640x360 frame to show (screen_mode_can_render),
+// so an owner that stops having one -- resized to another size, hidden without
+// the hide reaching this task, handed the screen while it had no frame --
+// would otherwise hold the last picture for good, and the screen would look
+// hung. The ordinary way out (the kernel shrinks the canvas, then asks for the
+// base mode) takes a few milliseconds; if the owner is still unshowable after
+// SCREEN_MODE_WAIT_MS, the display goes back to the base mode by itself.
+static void screen_mode_poll(void) {
+    if (g_smode.pending) {
+        if (now_ms() - g_smode.pending_since_ms < SCREEN_MODE_WAIT_MS) return;
+        bool to_hires = g_smode.pending_hires;
+        screen_mode_apply(to_hires, "timed out");
+        g_smode.force_render = true;
+        return;
+    }
+    if (!g_smode.hires) return;
+    if (screen_mode_owner_showable()) {
+        g_smode.owner_unshowable_since_ms = 0;
+        return;
+    }
+    const uint32_t now = now_ms();
+    if (g_smode.owner_unshowable_since_ms == 0) {
+        g_smode.owner_unshowable_since_ms = now ? now : 1;
+        return;
+    }
+    if (now - g_smode.owner_unshowable_since_ms < SCREEN_MODE_WAIT_MS) return;
+    p4_canvas_t *c = canvas_find(g_smode.owner);
+    FMRB_LOGW(TAG, "screen mode: owner %u has shown no %dx%d frame for %lums "
+              "(%s), back to the base screen",
+              g_smode.owner, DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H,
+              (unsigned long)(now - g_smode.owner_unshowable_since_ms),
+              !c ? "gone" : !c->is_visible ? "hidden" :
+              (c->width != DISPLAY_P4_HIRES_W || c->height != DISPLAY_P4_HIRES_H)
+                  ? "wrong size" : "no frame");
+    screen_mode_apply(false, "owner unshowable");
+    g_smode.force_render = true;
+}
+
+// Whether render_frame may run now. Pending: no, the previous picture is
+// held. High-resolution: only once the owner's committed frame is at the
+// high-resolution size (on the way out the kernel shrinks the canvas before it
+// asks for the base mode, and that frame must not be shown at 2x).
+static bool screen_mode_can_render(void) {
+    if (g_smode.pending) return false;
+    if (g_smode.force_render) {
+        g_smode.force_render = false;
+        return true;
+    }
+    if (!g_smode.hires) return true;
+    return screen_mode_owner_showable();
+}
+
+// In the high-resolution mode: the owner has a committed frame at the
+// high-resolution size, on a visible canvas.
+static bool screen_mode_owner_showable(void) {
+    p4_canvas_t *c = canvas_find(g_smode.owner);
+    return c && c->is_visible && c->committed_fresh &&
+           c->width == g_framebuffer->width() && c->height == g_framebuffer->height();
 }
 
 #if !defined(FMRB_PLATFORM_WASM) && !defined(FMRB_HW_NARYAV4)
@@ -1231,7 +1630,7 @@ static bool export_frame_jpeg(const char *path)
         return false;
     }
 
-    if (g_needs_render) {
+    if (g_needs_render && screen_mode_can_render()) {
         g_needs_render = false;
         render_frame();
         g_last_render_ms = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
@@ -1597,6 +1996,9 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         display_p4_video_canvas_gone(cmd->canvas_id);
         p4_canvas_t *c = canvas_find(cmd->canvas_id);
         if (c) canvas_free(c);
+        // An app that dies in the high-resolution mode takes its canvas with
+        // it; the screen goes back to the base mode without being asked.
+        screen_mode_owner_leaving(cmd->canvas_id, "owner deleted");
         return 0;
     }
 
@@ -1614,10 +2016,15 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         p4_canvas_t *c = canvas_find(cmd->canvas_id);
         if (c) {
             // Move the active area inside the already allocated buffer, the way
-            // Retro does with setBuffer. Clamped because the buffer is only
-            // framebuffer-sized: a larger request would draw out of bounds.
+            // Retro does with setBuffer. A request larger than the buffer (the
+            // fullscreen high-resolution size) reallocates it first; if that
+            // fails the request is clamped, since drawing past the buffer
+            // would write out of bounds.
             uint16_t nw = (uint16_t)cmd->width;
             uint16_t nh = (uint16_t)cmd->height;
+            if (nw > c->alloc_width || nh > c->alloc_height) {
+                canvas_grow(c, nw, nh);
+            }
             if (nw > c->alloc_width)  nw = c->alloc_width;
             if (nh > c->alloc_height) nh = c->alloc_height;
             c->push_x = (int16_t)cmd->x;
@@ -1637,6 +2044,9 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 // reach past the canvas. Drop it; the app resends one for the
                 // new user area from its resize handler.
                 c->clip_x = c->clip_y = c->clip_w = c->clip_h = 0;
+                // The committed frame was laid out for the old size.
+                c->committed_fresh = false;
+                if (c->canvas_id == g_smode.owner) g_smode.owner_resize_unacked = true;
             }
             c->width  = nw;
             c->height = nh;
@@ -1674,7 +2084,13 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             src->transparent_color = cmd->transparent_color;
             src->use_transparency  = (bool)cmd->use_transparency;
             src->is_visible        = true;
+            // The owner's frame counts only once it has handled its resize
+            // (owner_resize_unacked); until then it is laid out for the old size.
+            if (src->canvas_id != g_smode.owner || !g_smode.owner_resize_unacked) {
+                src->committed_fresh = true;
+            }
             g_needs_render = true;
+            if (src->canvas_id == g_smode.owner) screen_mode_try_complete();
         } else {
             // Push canvas-to-canvas
             p4_canvas_t *dst = canvas_find(cmd->dest_canvas_id);
@@ -1720,6 +2136,10 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         if (c && c->is_visible != (cmd->visible != 0)) {
             c->is_visible = (cmd->visible != 0);
             g_needs_render = true;
+            // The owner of the high-resolution screen hidden (its app was
+            // suspended: parked, or another app went fullscreen over it):
+            // the screen goes back to the base mode.
+            if (!c->is_visible) screen_mode_owner_leaving(c->canvas_id, "owner hidden");
         }
         return 0;
     }
@@ -1752,6 +2172,13 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
         return 0;
     }
 
+    case FMRB_LINK_GFX_SET_SCREEN_MODE: {
+        if (size < sizeof(fmrb_link_graphics_set_screen_mode_t)) break;
+        const auto *cmd = (const fmrb_link_graphics_set_screen_mode_t *)data;
+        screen_mode_request(cmd->owner_canvas_id, cmd->width, cmd->height, cmd->flags);
+        return 0;
+    }
+
     case FMRB_LINK_GFX_SET_SPRITE_CLIP: {
         if (size < sizeof(fmrb_link_graphics_set_sprite_clip_t)) break;
         const auto *cmd = (const fmrb_link_graphics_set_sprite_clip_t *)data;
@@ -1769,6 +2196,12 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             uint16_t max_h = c->height - cmd->y;
             c->clip_w = (cmd->w < max_w) ? cmd->w : max_w;
             c->clip_h = (cmd->h < max_h) ? cmd->h : max_h;
+        }
+        // FmrbApp re-sends the clip from its resize handler: from here on the
+        // owner's presents are laid out for its new size.
+        if (c->canvas_id == g_smode.owner && g_smode.owner_resize_unacked) {
+            g_smode.owner_resize_unacked = false;
+            FMRB_LOGI(TAG, "screen mode: owner %u handled its resize", c->canvas_id);
         }
         g_needs_render = true;
         return 0;
@@ -2449,8 +2882,10 @@ static void process_message(const uint8_t *msgpack_data, size_t msgpack_len) {
                     set_ppa_native_depth(g_framebuffer);
                     g_framebuffer->setBuffer(fb_buf, g_display_width, g_display_height);
                     g_fb_aligned_size = fb_aligned;
-                    FMRB_LOGI(TAG, "Framebuffer allocated: %dx%d RGB565 PPA-native (scale=%s)",
-                              g_display_width, g_display_height, DISPLAY_P4_SCALE_TEXT);
+                    g_smode.fb_base = g_framebuffer;
+                    g_smode.fb_base_size = fb_aligned;
+                    FMRB_LOGI(TAG, "Framebuffer allocated: %dx%d RGB565 PPA-native",
+                              g_display_width, g_display_height);
                 }
 
                 // Register the accelerators and take hold of the output
@@ -3458,13 +3893,19 @@ static void display_p4_task(void *arg) {
         // RENDER_MIN_INTERVAL_MS so bursts coalesce into one frame (~30fps cap).
         // Safe to run here regardless of what any app is doing: render_frame
         // reads only committed buffers, so it never composites a canvas mid-draw.
+        // A screen-mode switch that waited too long for its owner goes ahead.
+        screen_mode_poll();
         if (g_needs_render) {
             uint32_t now = (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
             if ((uint32_t)(now - g_last_render_ms) >= RENDER_MIN_INTERVAL_MS) {
                 g_needs_render = false;
-                render_frame();
-                g_last_render_ms = now;
-                note_render(now);
+                // Held while a screen-mode switch is pending (the previous
+                // picture stays); whatever ends the wait asks for a render.
+                if (screen_mode_can_render()) {
+                    render_frame();
+                    g_last_render_ms = now;
+                    note_render(now);
+                }
             }
         }
 
@@ -3475,7 +3916,8 @@ static void display_p4_task(void *arg) {
         // Short receive timeout while a render is pending so the pacing deadline
         // is honored even if no further commands arrive. Video playback needs
         // the same short loop: its frames arrive without any command traffic.
-        uint32_t timeout_ms = (g_needs_render || display_p4_video_is_active()) ? 5 : 100;
+        uint32_t timeout_ms = (g_needs_render || g_smode.pending ||
+                               display_p4_video_is_active()) ? 5 : 100;
         fmrb_err_t err = fmrb_hal_link_local_receive_cmd(
             FMRB_LINK_CHANNEL_DEFAULT, &msg, timeout_ms);
         if (err == FMRB_OK && msg.size > 0) {
@@ -3550,13 +3992,29 @@ static int g_cap_refcount = 0;
 extern "C" fmrb_err_t display_p4_capture_enable(bool enable) {
     if (enable) {
         if (g_cap_buf[0]) {
+            if (g_cap_refcount == 0) {
+                // First consumer again. Forget the frame left in the slots:
+                // a render that was already copying when the last consumer
+                // disabled can publish it after the disable cleared
+                // g_cap_front, and a new client would then be handed that
+                // stale picture as its first frame (seen as a screenshot of
+                // the previous screen mode).
+                portENTER_CRITICAL(&g_cap_lock);
+                g_cap_front = -1;
+                portEXIT_CRITICAL(&g_cap_lock);
+            }
             g_cap_refcount++;
             g_cap_enabled = true;
             return FMRB_OK;
         }
         if (!g_framebuffer) return FMRB_ERR_INVALID_STATE;
-        size_t need = (size_t)g_framebuffer->width()
-                    * g_framebuffer->height() * 2;
+        // Sized for the largest frame the display can switch to (the
+        // fullscreen high-resolution one), not the current one: the capture
+        // may already be running when the mode changes. Each slot records the
+        // size of the frame in it.
+        size_t need = (size_t)g_display_width * g_display_height * 2;
+        const size_t hires_need = (size_t)DISPLAY_P4_HIRES_W * DISPLAY_P4_HIRES_H * 2;
+        if (g_display_width < DISPLAY_P4_HIRES_W && need < hires_need) need = hires_need;
         size_t aligned = 0;
         g_cap_buf[0] = (uint8_t *)ppa_alloc_buffer(need, &aligned);
         g_cap_buf[1] = (uint8_t *)ppa_alloc_buffer(need, &aligned);
@@ -3575,8 +4033,7 @@ extern "C" fmrb_err_t display_p4_capture_enable(bool enable) {
         portEXIT_CRITICAL(&g_cap_lock);
         g_cap_refcount = 1;
         g_cap_enabled = true;
-        FMRB_LOGI(TAG, "Capture enabled (%ux%u, 2x%u bytes)",
-                  g_framebuffer->width(), g_framebuffer->height(),
+        FMRB_LOGI(TAG, "Capture enabled (up to %u bytes a frame, 2 slots)",
                   (unsigned)need);
     } else {
         if (g_cap_refcount > 0) g_cap_refcount--;
@@ -3602,15 +4059,20 @@ extern "C" fmrb_err_t display_p4_capture_acquire(uint32_t min_seq,
         portENTER_CRITICAL(&g_cap_lock);
         bool ready = (g_cap_front >= 0 && g_cap_seq >= min_seq &&
                       g_cap_locked_idx < 0);
+        int idx = -1;
         if (ready) {
             g_cap_locked_idx = g_cap_front;
+            idx = g_cap_locked_idx;
             out->pixels = (const uint16_t *)g_cap_buf[g_cap_locked_idx];
             out->seq = g_cap_seq;
         }
         portEXIT_CRITICAL(&g_cap_lock);
         if (ready) {
-            out->width  = (uint16_t)g_framebuffer->width();
-            out->height = (uint16_t)g_framebuffer->height();
+            // The size of THIS frame (the writer never touches a locked slot),
+            // not the current framebuffer's, which a mode switch may have
+            // changed since.
+            out->width  = g_smode.cap_w[idx];
+            out->height = g_smode.cap_h[idx];
             return FMRB_OK;
         }
         TickType_t now = xTaskGetTickCount();

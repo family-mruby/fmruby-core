@@ -107,9 +107,16 @@ module InputRouterMixin
         # Record mouse_down window for button_up event routing
         @mouse_down_pid = target_pid
 
+        # A fullscreen app is not a window the user can move or resize: its
+        # canvas is the whole screen, and the rows where a title bar would be
+        # are the app's own (the editor's menu bar). Without this, a press in
+        # the top 11 rows started a drag and the fullscreen canvas slid off the
+        # screen. Both the resize handle and the title-bar test are skipped.
+        in_fullscreen = (@fullscreen_pid == target_pid)
+
         # Check for resize handle (bottom-right 10x10 area) first
         # Only for resizable windows
-        if target_window[:resizable] &&
+        if !in_fullscreen && target_window[:resizable] &&
            relative_x >= win_width - 10 && relative_y >= win_height - 10
           # Start resize and capture mouse
           @capture_mode = :resize
@@ -135,7 +142,7 @@ module InputRouterMixin
                               win_x, win_y, win_width, win_height)
           Log.info("Start resize: PID #{target_pid}, size=(#{win_width}x#{win_height})")
         # Check if click is in menu bar region (not resizing and not close button)
-        elsif target_name != "system_desktop" && target_name != "system_overlay" && relative_y < 11 && relative_x < win_width - 10
+        elsif !in_fullscreen && target_name != "system_desktop" && target_name != "system_overlay" && relative_y < 11 && relative_x < win_width - 10
           # Start drag and capture mouse (excluding close button area on the right)
           @capture_mode = :drag
           @capture_pid = target_pid

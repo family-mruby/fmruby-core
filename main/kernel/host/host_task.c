@@ -25,8 +25,35 @@
 #include "fmrb_mem.h"
 #include "fmrb_app.h"
 #include "fmrb_debug.h"
+#include "fmrb_attr.h"
 
 static const char *TAG = "host";
+
+// Screen size the input coordinates are in, packed (width << 16 | height) so
+// the input tasks read it in one load; 0 = the base screen from the system
+// config. Written by the kernel task (fmrb_app_set_screen_mode), read by the
+// input sources a few times per event. PSRAM: the internal RAM budget has no
+// room for new statics.
+FMRB_EXT_RAM_BSS_ATTR static volatile uint32_t g_screen_size_packed;
+
+void fmrb_host_set_screen_size(uint16_t width, uint16_t height)
+{
+    g_screen_size_packed = ((uint32_t)width << 16) | height;
+}
+
+void fmrb_host_get_screen_size(int *width, int *height)
+{
+    uint32_t packed = g_screen_size_packed;
+    int w = (int)(packed >> 16);
+    int h = (int)(packed & 0xFFFF);
+    if (w == 0 || h == 0) {
+        const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+        w = conf ? conf->display_width : 0;
+        h = conf ? conf->display_height : 0;
+    }
+    if (width)  *width = w;
+    if (height) *height = h;
+}
 
 static bool g_cursor_shown = false;
 // Gates the auto-show on first mouse event. Stays false until system_desktop

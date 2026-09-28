@@ -137,6 +137,32 @@ void fmrb_host_enable_cursor(void);
 void fmrb_host_set_cursor_visible(bool visible);
 
 /**
+ * @brief Record the size of the screen the input coordinates are in.
+ *
+ * The fullscreen high-resolution mode (doc/fullscreen_hires/) changes the
+ * screen from 426x240 to 640x360 while a fullscreen app owns it. The input
+ * sources (touch, USB mouse, remote input) read the size back with
+ * fmrb_host_get_screen_size, clamp to it and rescale their cursor when it
+ * changes. Set by fmrb_app_set_screen_mode; callable from any task.
+ *
+ * @param width  Screen width, or 0 for the base screen (system config)
+ * @param height Screen height, or 0 for the base screen
+ */
+void fmrb_host_set_screen_size(uint16_t width, uint16_t height);
+
+/**
+ * @brief The size of the screen the input coordinates are in right now.
+ *
+ * The base screen (display_width x display_height of the system config)
+ * unless the high-resolution mode is on. Both outputs are 0 while the config
+ * is not loaded yet.
+ *
+ * @param[out] width  Current screen width (may be NULL)
+ * @param[out] height Current screen height (may be NULL)
+ */
+void fmrb_host_get_screen_size(int *width, int *height);
+
+/**
  * @brief Read cumulative GFX counters (for runtime monitoring).
  * @param out_cmds Cumulative GFX command count since boot (may be NULL)
  * @param out_presents Cumulative GFX present() count since boot (may be NULL)

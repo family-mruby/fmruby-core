@@ -30,6 +30,8 @@
 #include "fmrb_log.h"
 #include "fmrb_rtos.h"
 #include "display_p4_task.h"
+#include "host_task.h"
+#include "fmrb_attr.h"
 #include "wifi_task.h"
 
 #include "esp_http_server.h"
@@ -76,6 +78,12 @@ static portMUX_TYPE s_ws_lock = portMUX_INITIALIZER_UNLOCKED;
 static esp_timer_handle_t s_cursor_timer = NULL;
 static int s_last_cur_x = -1, s_last_cur_y = -1;
 static bool s_last_cur_v = false;
+// The screen size last announced with the cursor (0 = none yet). The viewer
+// maps its clicks and draws the cursor in this size, so a change is pushed
+// even when the cursor itself did not move. PSRAM: internal RAM has no room
+// for new statics.
+FMRB_EXT_RAM_BSS_ATTR static int s_last_scr_w;
+FMRB_EXT_RAM_BSS_ATTR static int s_last_scr_h;
 
 // ---------------------------------------------------------------
 // Static assets
@@ -151,7 +159,13 @@ static void mjpeg_stream_task(void *arg)
             display_p4_capture_release();
             continue;
         }
-        err = rd_encoder_jpeg_encode(frame.pixels, &jpeg, &jpeg_len);
+        // The frame carries its own size: the fullscreen high-resolution
+        // mode switches the display between 426x240 and 640x360 while the
+        // stream runs, and the encoder follows it frame by frame.
+        err = rd_encoder_jpeg_init(frame.width, frame.height, s_cfg.jpeg_quality);
+        if (err == FMRB_OK) {
+            err = rd_encoder_jpeg_encode(frame.pixels, &jpeg, &jpeg_len);
+        }
         display_p4_capture_release();
         if (err != FMRB_OK) {
             rd_encoder_jpeg_unlock();
@@ -266,13 +280,17 @@ static void ws_unregister_fd(int fd)
 static esp_err_t ws_handler(httpd_req_t *req)
 {
     if (req->method == HTTP_GET) {
-        // Handshake done: greet with stream geometry
+        // Handshake done: greet with the screen size (the coordinates input
+        // is sent in; 640x360 while a fullscreen app has the high-resolution
+        // mode) and the stream geometry
         ws_register_fd(httpd_req_to_sockfd(req));
+        int sw = 0, sh = 0;
+        fmrb_host_get_screen_size(&sw, &sh);
         char info[112];
         int n = snprintf(info, sizeof(info),
-                         "{\"t\":\"info\",\"w\":426,\"h\":240,"
+                         "{\"t\":\"info\",\"w\":%d,\"h\":%d,"
                          "\"encw\":%u,\"h264\":%s}",
-                         (unsigned)rd_encoder_jpeg_width(),
+                         sw, sh, (unsigned)rd_encoder_jpeg_width(),
                          s_cfg.h264_enable ? "true" : "false");
         httpd_ws_frame_t f = {
             .type = HTTPD_WS_TYPE_TEXT,
@@ -389,14 +407,19 @@ static void cursor_timer_cb(void *arg)
     int x, y;
     bool v;
     display_p4_get_cursor(&x, &y, &v);
-    if (x == s_last_cur_x && y == s_last_cur_y && v == s_last_cur_v) return;
+    int sw = 0, sh = 0;
+    fmrb_host_get_screen_size(&sw, &sh);
+    if (x == s_last_cur_x && y == s_last_cur_y && v == s_last_cur_v &&
+        sw == s_last_scr_w && sh == s_last_scr_h) return;
     s_last_cur_x = x; s_last_cur_y = y; s_last_cur_v = v;
+    s_last_scr_w = sw; s_last_scr_h = sh;
 
     cursor_msg_t *msg = malloc(sizeof(cursor_msg_t));
     if (!msg) return;
     msg->len = (size_t)snprintf(msg->json, sizeof(msg->json),
-                                "{\"t\":\"cur\",\"x\":%d,\"y\":%d,\"v\":%d}",
-                                x, y, v ? 1 : 0);
+                                "{\"t\":\"cur\",\"x\":%d,\"y\":%d,\"v\":%d,"
+                                "\"w\":%d,\"h\":%d}",
+                                x, y, v ? 1 : 0, sw, sh);
     if (httpd_queue_work(s_server, cursor_send_work, msg) != ESP_OK) {
         free(msg);
     }

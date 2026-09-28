@@ -29,3 +29,22 @@ const display_backend_t *display_backend(void)
     return display_backend_ppa();
 #endif
 }
+
+int display_scale_for(int panel_w, int panel_h, int fb_w, int fb_h)
+{
+    if (fb_w <= 0 || fb_h <= 0) return 1;
+    int sx = panel_w / fb_w;
+    int sy = panel_h / fb_h;
+    int s = (sx < sy) ? sx : sy;
+    return (s < 1) ? 1 : s;
+}
+
+void display_lcd_clear_outside(LGFX_Device *lcd, int x, int y, int w, int h)
+{
+    const int pw = lcd->width();
+    const int ph = lcd->height();
+    if (y > 0)          lcd->fillRect(0, 0, pw, y, 0);
+    if (y + h < ph)     lcd->fillRect(0, y + h, pw, ph - (y + h), 0);
+    if (x > 0)          lcd->fillRect(0, y, x, h, 0);
+    if (x + w < pw)     lcd->fillRect(x + w, y, pw - (x + w), h, 0);
+}

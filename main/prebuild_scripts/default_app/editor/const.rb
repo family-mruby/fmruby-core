@@ -108,13 +108,16 @@ module EditorConst
   ASCII_PRINTABLE = " !\"\#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
 
   CHAR_W = 6
-  # The edit area is a fixed grid of cells in efontJA_12: a half-width glyph is
-  # exactly one 6px cell and a full-width one exactly two, so the classic
-  # terminal model holds with no fractional positions anywhere. The chrome
-  # (menu bar, status line, dialogs) stays on the 6x8 default font.
-  CELL_W = 6
-  LINE_H = 12
-  EDIT_FONT_SIZE = 12
+  # The edit area is a fixed grid of cells: a half-width glyph is exactly one
+  # cell and a full-width one exactly two, so the classic terminal model holds
+  # with no fractional positions anywhere. The font is the user's choice
+  # (View > Font, editor/font.rb), so the cell and the row are not constants:
+  # they are @cell_w / @line_h (edit_font_size_at in editor/font.rb lists the
+  # sizes). Integer constants only: they compile to literals in the Spinel
+  # build, where an array or string constant would take internal RAM.
+  # The chrome (menu bar, status line, dialogs) stays on the 6x8 default font.
+  EDIT_FONT_COUNT   = 3
+  EDIT_FONT_DEFAULT = 12
   # draw_text carries FMRB_GFX_MAX_TEXT_LEN (128) bytes per command and a
   # Japanese character is three of them, so a row is emitted in several
   # commands. Kept under the limit rather than at it: the split only ever
@@ -165,8 +168,8 @@ module EditorConst
   MENU_BAR_KEYS = ["F", "E", "S", "R", "V", "D", "K"]
 
   # View dropdown: the three display toggles in the order they were on the
-  # bar, then the Colors dialog.
-  MENU_VIEW_HOTKEYS = [0x0B, 0x1A, 0x09, 0x06]  # H, W, F, C (Colors)
+  # bar, then the Colors dialog and the Font list.
+  MENU_VIEW_HOTKEYS = [0x0B, 0x1A, 0x09, 0x06, 0x12]  # H, W, F, C (Colors), O (fOnt)
   MENU_BAR_GAP  = 6   # px between menu bar items
 
   # Selection / clipboard colors

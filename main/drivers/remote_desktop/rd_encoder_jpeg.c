@@ -4,6 +4,9 @@
 // color conversion is needed. MCU alignment requires the width to be a
 // multiple of 16: the 426px framebuffer rows are copied into a 432px
 // staging buffer with black padding on the right (the viewer crops it).
+// The frame size is not fixed: rd_encoder_jpeg_init() called again with
+// another size (the fullscreen high-resolution 640x360 frame) re-sizes the
+// buffers, and the caller does that before each encode.
 //
 // NOTE (device verification): the framebuffer is RGB565 non-swapped
 // little-endian (PPA-native). If red/blue appear swapped in the browser,
@@ -59,13 +62,62 @@ void rd_encoder_jpeg_unlock(void)
     if (s_mutex) xSemaphoreGive(s_mutex);
 }
 
+// Make the staging and output buffers fit a src_w x src_h frame. They only
+// ever grow: going back to a smaller frame (leaving the fullscreen
+// high-resolution mode) keeps the larger pair and uses the front of it, so
+// switching modes back and forth does not churn PSRAM.
+static fmrb_err_t ensure_buffers(uint16_t src_w, uint16_t src_h)
+{
+    const uint16_t pad_w = (uint16_t)((src_w + 15u) & ~15u);
+    const size_t stage_need = (size_t)pad_w * src_h * 2;
+    // Worst-case JPEG for this content class is far below raw size; half
+    // of the raw frame is a comfortable ceiling at quality <= 90.
+    const size_t out_need = (size_t)pad_w * src_h;
+
+    if (stage_need > s_stage_size || out_need > s_out_size) {
+        if (s_stage) { free(s_stage); s_stage = NULL; s_stage_size = 0; }
+        if (s_out)   { free(s_out);   s_out = NULL;   s_out_size = 0; }
+
+        jpeg_encode_memory_alloc_cfg_t in_mem_cfg = {
+            .buffer_direction = JPEG_DEC_ALLOC_INPUT_BUFFER,
+        };
+        size_t alloc = 0;
+        s_stage = jpeg_alloc_encoder_mem(stage_need, &in_mem_cfg, &alloc);
+        s_stage_size = s_stage ? alloc : 0;
+
+        jpeg_encode_memory_alloc_cfg_t out_mem_cfg = {
+            .buffer_direction = JPEG_DEC_ALLOC_OUTPUT_BUFFER,
+        };
+        s_out = jpeg_alloc_encoder_mem(out_need, &out_mem_cfg, &alloc);
+        s_out_size = s_out ? alloc : 0;
+
+        if (!s_stage || !s_out) {
+            FMRB_LOGE(TAG, "jpeg buffer alloc failed (%ux%u)", src_w, src_h);
+            return FMRB_ERR_NO_MEMORY;
+        }
+    }
+    if (pad_w != s_pad_w || src_h != s_src_h || src_w != s_src_w) {
+        // The padding columns right of the picture must be black, and a
+        // smaller frame reuses rows a larger one wrote into: clear it all.
+        memset(s_stage, 0, s_stage_size);
+        s_src_w = src_w;
+        s_src_h = src_h;
+        s_pad_w = pad_w;
+        FMRB_LOGI(TAG, "JPEG encoder frame: %ux%u (padded %u)",
+                  src_w, src_h, pad_w);
+    }
+    return FMRB_OK;
+}
+
 fmrb_err_t rd_encoder_jpeg_init(uint16_t src_w, uint16_t src_h, uint8_t quality)
 {
-    if (s_encoder) return FMRB_OK;
+    if (s_encoder) {
+        // Already up: follow the frame size (the fullscreen high-resolution
+        // mode changes it at runtime). The quality stays what the first
+        // caller asked for; encode_q takes a per-call one.
+        return ensure_buffers(src_w, src_h);
+    }
 
-    s_src_w = src_w;
-    s_src_h = src_h;
-    s_pad_w = (uint16_t)((src_w + 15u) & ~15u);
     s_quality = quality;
 
     jpeg_encode_engine_cfg_t eng_cfg = {
@@ -77,29 +129,11 @@ fmrb_err_t rd_encoder_jpeg_init(uint16_t src_w, uint16_t src_h, uint8_t quality)
         return FMRB_ERR_FAILED;
     }
 
-    jpeg_encode_memory_alloc_cfg_t in_mem_cfg = {
-        .buffer_direction = JPEG_DEC_ALLOC_INPUT_BUFFER,
-    };
-    size_t alloc = 0;
-    s_stage = jpeg_alloc_encoder_mem((size_t)s_pad_w * src_h * 2,
-                                     &in_mem_cfg, &alloc);
-    s_stage_size = alloc;
-
-    jpeg_encode_memory_alloc_cfg_t out_mem_cfg = {
-        .buffer_direction = JPEG_DEC_ALLOC_OUTPUT_BUFFER,
-    };
-    // Worst-case JPEG for this content class is far below raw size; half
-    // of the raw frame is a comfortable ceiling at quality <= 90.
-    s_out = jpeg_alloc_encoder_mem((size_t)s_pad_w * src_h, &out_mem_cfg, &alloc);
-    s_out_size = alloc;
-
-    if (!s_stage || !s_out) {
-        FMRB_LOGE(TAG, "jpeg buffer alloc failed");
+    fmrb_err_t ferr = ensure_buffers(src_w, src_h);
+    if (ferr != FMRB_OK) {
         rd_encoder_jpeg_deinit();
-        return FMRB_ERR_NO_MEMORY;
+        return ferr;
     }
-    // Black padding column stays constant; clear once
-    memset(s_stage, 0, s_stage_size);
 
     FMRB_LOGI(TAG, "JPEG encoder ready: %ux%u (padded %u) q=%u",
               src_w, src_h, s_pad_w, quality);
@@ -114,6 +148,9 @@ void rd_encoder_jpeg_deinit(void)
     }
     if (s_stage) { free(s_stage); s_stage = NULL; }
     if (s_out)   { free(s_out);   s_out = NULL; }
+    s_stage_size = 0;
+    s_out_size = 0;
+    s_src_w = s_src_h = s_pad_w = 0;
 }
 
 uint16_t rd_encoder_jpeg_width(void)
@@ -134,7 +171,7 @@ fmrb_err_t rd_encoder_jpeg_encode_q(const uint16_t *pixels, uint8_t quality,
         return FMRB_ERR_INVALID_PARAM;
     }
 
-    // Row-pad 426 -> 432 (right edge stays black from init)
+    // Row-pad 426 -> 432 (right edge stays black from ensure_buffers)
     const uint8_t *src = (const uint8_t *)pixels;
     for (int y = 0; y < s_src_h; y++) {
         memcpy(s_stage + (size_t)y * s_pad_w * 2,

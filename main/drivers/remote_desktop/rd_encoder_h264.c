@@ -5,7 +5,9 @@
 // On the Tab5 (chip rev v1.0) esp_h264_enc_hw_new() rejects RGB565_LE at
 // runtime, so the original design applies: the PPA SRM engine converts
 // each RGB565 capture frame to the O_UYY_E_VYY YUV420 layout (the P4
-// 2D-DMA packed YUV420 format), padding 426 -> 432 in the same pass.
+// 2D-DMA packed YUV420 format), padding both sides up to a multiple of 16
+// in the same pass (426x240 -> 432x240, 640x360 -> 640x368). The viewer
+// crops the padding off with the visible size the stream sends along.
 //
 // IDR-on-demand: esp_h264 exposes no direct force-IDR call; the GOP
 // parameter is temporarily set to 1 so the next frame becomes an IDR,
@@ -17,6 +19,7 @@
 #include "esp_h264_enc_single_hw.h"
 #include "esp_h264_alloc.h"
 #include "driver/ppa.h"
+#include "fmrb_attr.h"
 
 #include <string.h>
 #include <stdatomic.h>
@@ -28,7 +31,10 @@ static esp_h264_enc_param_hw_handle_t s_param = NULL;
 static ppa_client_handle_t s_ppa = NULL;
 static rd_h264_config_t s_cfg;
 static uint16_t s_pad_w = 0;
-static uint8_t *s_in_buf = NULL;    // O_UYY_E_VYY YUV420, pad_w x src_h
+// PSRAM: added with the high-resolution frame, and internal RAM has no room
+// for new statics. Read once per frame.
+FMRB_EXT_RAM_BSS_ATTR static uint16_t s_pad_h;
+static uint8_t *s_in_buf = NULL;    // O_UYY_E_VYY YUV420, pad_w x pad_h
 static uint32_t s_in_len = 0;
 static uint8_t *s_out_buf = NULL;
 static uint32_t s_out_len = 0;
@@ -37,8 +43,8 @@ static bool s_gop_forced = false;
 
 // Fill the YUV420 buffer with black (limited range: Y=16, chroma=128).
 // O_UYY_E_VYY packs each line as 3-byte groups: even lines U Y Y,
-// odd lines V Y Y. Only the 426..431 column padding stays this color;
-// the PPA writes the visible block every frame.
+// odd lines V Y Y. Only the padding (right columns, bottom rows) stays
+// this color; the PPA writes the visible block every frame.
 static void yuv420_fill_black(uint8_t *buf, uint32_t w, uint32_t h)
 {
     size_t line_bytes = (size_t)w * 3 / 2;
@@ -58,12 +64,13 @@ fmrb_err_t rd_encoder_h264_init(const rd_h264_config_t *cfg)
     if (!cfg) return FMRB_ERR_INVALID_PARAM;
     s_cfg = *cfg;
     s_pad_w = (uint16_t)((cfg->src_w + 15u) & ~15u);
+    s_pad_h = (uint16_t)((cfg->src_h + 15u) & ~15u);
 
     esp_h264_enc_cfg_hw_t enc_cfg = {
         .pic_type = ESP_H264_RAW_FMT_O_UYY_E_VYY,
         .gop = cfg->gop,
         .fps = cfg->fps,
-        .res = { .width = s_pad_w, .height = cfg->src_h },
+        .res = { .width = s_pad_w, .height = s_pad_h },
         .rc = { .bitrate = cfg->bitrate, .qp_min = 25, .qp_max = 48 },
     };
     esp_h264_err_t err = esp_h264_enc_hw_new(&enc_cfg, &s_enc);
@@ -96,8 +103,8 @@ fmrb_err_t rd_encoder_h264_init(const rd_h264_config_t *cfg)
     // satisfies both the H.264 DMA and the PPA output cache-line rules.
     // Output: raw RGB565 byte budget (encoded frames are far smaller,
     // this guards against ESP_H264_ERR_MEM).
-    uint32_t yuv = (uint32_t)s_pad_w * s_cfg.src_h * 3 / 2;
-    uint32_t raw = (uint32_t)s_pad_w * s_cfg.src_h * 2;
+    uint32_t yuv = (uint32_t)s_pad_w * s_pad_h * 3 / 2;
+    uint32_t raw = (uint32_t)s_pad_w * s_pad_h * 2;
     s_in_buf = esp_h264_aligned_calloc(128, 1, yuv, &s_in_len,
                                        MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     s_out_buf = esp_h264_aligned_calloc(16, 1, raw, &s_out_len,
@@ -107,10 +114,10 @@ fmrb_err_t rd_encoder_h264_init(const rd_h264_config_t *cfg)
         rd_encoder_h264_deinit();
         return FMRB_ERR_NO_MEMORY;
     }
-    yuv420_fill_black(s_in_buf, s_pad_w, s_cfg.src_h);
+    yuv420_fill_black(s_in_buf, s_pad_w, s_pad_h);
 
-    FMRB_LOGI(TAG, "H.264 encoder ready: %ux%u (padded %u, PPA yuv420) %ufps gop=%u %ukbps",
-              cfg->src_w, cfg->src_h, s_pad_w, cfg->fps, cfg->gop,
+    FMRB_LOGI(TAG, "H.264 encoder ready: %ux%u (padded %ux%u, PPA yuv420) %ufps gop=%u %ukbps",
+              cfg->src_w, cfg->src_h, s_pad_w, s_pad_h, cfg->fps, cfg->gop,
               (unsigned)(cfg->bitrate / 1000));
     return FMRB_OK;
 }
@@ -134,6 +141,16 @@ void rd_encoder_h264_deinit(void)
 uint16_t rd_encoder_h264_width(void)
 {
     return s_pad_w;
+}
+
+uint16_t rd_encoder_h264_height(void)
+{
+    return s_pad_h;
+}
+
+bool rd_encoder_h264_is_for(uint16_t src_w, uint16_t src_h)
+{
+    return s_enc && s_cfg.src_w == src_w && s_cfg.src_h == src_h;
 }
 
 void rd_encoder_h264_request_idr(void)
@@ -160,8 +177,8 @@ fmrb_err_t rd_encoder_h264_encode(const uint16_t *pixels, uint32_t pts_ms,
         }
     }
 
-    // RGB565 -> O_UYY_E_VYY YUV420 via PPA, writing the 426-wide block
-    // into the 432-wide padded picture (right padding stays black)
+    // RGB565 -> O_UYY_E_VYY YUV420 via PPA, writing the visible block into
+    // the top-left of the padded picture (the padding stays black)
     ppa_srm_oper_config_t srm = {
         .in = {
             .buffer = pixels,
@@ -175,7 +192,7 @@ fmrb_err_t rd_encoder_h264_encode(const uint16_t *pixels, uint32_t pts_ms,
             .buffer = s_in_buf,
             .buffer_size = s_in_len,
             .pic_w = s_pad_w,
-            .pic_h = s_cfg.src_h,
+            .pic_h = s_pad_h,
             .srm_cm = PPA_SRM_COLOR_MODE_YUV420,
             .yuv_range = PPA_COLOR_RANGE_LIMIT,
             .yuv_std = PPA_COLOR_CONV_STD_RGB_YUV_BT601,

@@ -64,6 +64,7 @@ Ruby (および Lua / BASIC / MicroPython) で書いたアプリを、Web で公
 | `resizable` | 0 | 大きさを変えられるか |
 | `rounded_corners` | 1 | 角の丸め |
 | `fullscreen_switchable` | 0 | 実行中の全画面切替 |
+| `fullscreen_hires` | false | 全画面の間だけ 640x360 にしてよい (P4 系とブラウザ版。`true` か `1`。reference/fullscreen_hires.md) |
 | `large_memory` | 0 | 大きい方のプールを専有する |
 | `task_stack_kb` | 16 | タスクの C スタック。`[16, 64]` KB に丸められる |
 
@@ -296,7 +297,8 @@ Linux sim (`BOARD == "linux"`) は開発用なので判定に使わない。何�
 | `web` | 426x240 (ページで 640x360 / 852x480 に上げられる) | 386x210 |
 
 Tab5 の液晶も NARYA v4 の HDMI も物理は 1280x720 だが、**画面の枠組みは
-426x240 で、そこから引き伸ばして出している**。したがって Retro と Modern の
+426x240 で、そこから引き伸ばして出している**。例外は `fullscreen_hires` を持つアプリの
+全画面で、その間だけ 640x360 になる (modern と、426x240 の web)。したがって Retro と Modern の
 差は横 106 画素だけで、高さは同じである。**店の画面は 1 つの作りで両方に
 収まる**。
 

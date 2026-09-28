@@ -1,11 +1,17 @@
 #include "fmrb_hal_pin_manager.h"
 #include "fmrb_pin_assign.h"
 #include "fmrb_log.h"
+#include "fmrb_attr.h"
 #include <string.h>
 
 static const char *TAG = "pin_manager";
 
-static fmrb_pin_status_t s_pins[FMRB_PIN_MAX];
+// In PSRAM: a table the pin manager reads only when a driver claims or
+// releases a pin (task context, never from an ISR or while the cache is off),
+// and internal RAM is the scarcer of the two. This also pays for the DSI
+// driver's second DMA link list the double-buffered display added
+// (doc/fullscreen_hires/report/h1.md).
+FMRB_EXT_RAM_BSS_ATTR static fmrb_pin_status_t s_pins[FMRB_PIN_MAX];
 
 static void register_system_pin(int pin)
 {

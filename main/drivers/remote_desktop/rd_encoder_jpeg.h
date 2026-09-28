@@ -13,6 +13,15 @@ extern "C" {
 // width (426) is row-padded to 432 internally (JPEG MCU alignment); the
 // viewer crops the padding.
 
+/**
+ * @brief Bring the encoder up for src_w x src_h frames, or re-size it.
+ *
+ * The first call creates the engine and takes its quality. Later calls only
+ * follow the frame size: the display's frame changes size at runtime (the
+ * fullscreen high-resolution mode), so every encoder user calls this with the
+ * size of the frame it is about to encode, under rd_encoder_jpeg_lock().
+ * The buffers grow when needed and are never shrunk.
+ */
 fmrb_err_t rd_encoder_jpeg_init(uint16_t src_w, uint16_t src_h, uint8_t quality);
 void       rd_encoder_jpeg_deinit(void);
 

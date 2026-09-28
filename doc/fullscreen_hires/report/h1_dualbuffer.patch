@@ -1,0 +1,601 @@
+--- a/main/drivers/display_p4/display_backend_ppa.cpp
++++ b/main/drivers/display_p4/display_backend_ppa.cpp
+@@ -3,8 +3,9 @@
+  *
+  * Moved out of display_p4_task.cpp (doc/wasm/, P3 T1). Compositing is PPA
+  * Blend, and the finished frame (426x240, or 640x360 in the fullscreen
+- * high-resolution mode) reaches the panel through PPA SRM in one pass,
+- * writing straight into the DSI frame buffer. What that pass does
++ * high-resolution mode) reaches the panel through PPA SRM in one pass, into
++ * the DSI frame buffer that is not being scanned, which then becomes the
++ * scanned one (see the double buffering block). What that pass does
+  * differs by board -- see the geometry block below -- but nothing here decides
+  * what is drawn; see display_backend.h for where the line is.
+  *
+@@ -21,6 +22,11 @@
+ #include "esp_cache.h"
+ #include "esp_private/esp_cache_private.h"
+ #include "esp_heap_caps.h"
++#include "esp_lcd_mipi_dsi.h"
++#include "esp_lcd_panel_ops.h"
++#include "esp_timer.h"
++#include "freertos/FreeRTOS.h"
++#include "freertos/task.h"
+ #include "fmrb_attr.h"
+ 
+ #include <cstring>
+@@ -68,6 +74,9 @@
+ 
+ /* ------------------------------------------------------------------ init */
+ 
++static void dbuf_init(void);
++static void dbuf_first_frame(void);
++
+ static void ppa_init(int fb_w, int fb_h)
+ {
+     esp_cache_get_alignment(MALLOC_CAP_SPIRAM | MALLOC_CAP_DMA, &s_cache_line);
+@@ -88,6 +97,7 @@
+         if (s_dsi_fb) {
+             FMRB_LOGI(TAG, "PPA SRM initialized: %dx%d -> DSI fb %dx%d @%p",
+                       fb_w, fb_h, DSI_FB_W, DSI_FB_H, (void *)s_dsi_fb);
++            dbuf_init();
+         } else {
+             FMRB_LOGW(TAG, "DSI framebuffer unavailable, using software scaling");
+             ppa_unregister_client(s_ppa_srm);
+@@ -109,6 +119,7 @@
+          * remain to evict over DMA output. */
+         esp_cache_msync(s_dsi_fb, DSI_FB_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
+     }
++    dbuf_first_frame();
+ }
+ 
+ /* The rectangle a fb_w x fb_h frame covers in the DSI buffer, native
+@@ -129,30 +140,107 @@
+     *y = (DSI_FB_H - *h) / 2;
+ }
+ 
+-/* -------------------------------------------------------- frame size
++/* ------------------------------------------------------ double buffering
++ *
++ * The DSI buffer is scanned out continuously. Writing the next picture into
++ * the buffer being scanned lets the scan catch it half rewritten: one frame on
++ * the panel is part old picture, part new. Between two frames of the same
++ * mode the two pictures are nearly identical and the tear does not show; when
++ * the fullscreen high-resolution mode switches the scale, the two layouts are
++ * unrelated and it shows as a break-up.
++ *
++ * So the panel has two buffers, and every present writes the one NOT being
++ * scanned (the back one), completely, and then hands it to the driver
++ * (esp_lcd_panel_draw_bitmap with a pointer inside it). The DPI driver only
++ * records the new index; its DMA picks it up when it restarts at the end of
++ * the frame being scanned, so the swap always falls on a frame boundary.
+  *
+- * The framebuffer handed to present() changes size when the fullscreen
+- * high-resolution mode goes on or off, and the scale changes with it. The
+- * border the new picture does not cover (one pixel along the long side at
+- * 3x, none at 2x) must not keep what the previous mode drew there, so after
+- * a present of a new size the border is painted black.
++ * Before the next present writes the other buffer (the one just left), it
++ * waits until the swap has really happened, counted on the DPI driver's
++ * refresh-done event: two events after the hand-over (the first may belong
++ * to the frame that was already ending when the hand-over came). Renders are
++ * paced 33 ms apart and a frame is 15.5-16.7 ms, so this rarely waits.
+  *
+- * The picture itself is written straight into the buffer being scanned, as it
+- * always was. At a mode switch that shows for one frame as a tear between the
+- * old and the new layout; doc/fullscreen_hires/report/h1.md (the section on
+- * what was put on hold) records the attempts to remove it.
++ *   Tab5      M5GFX creates the DPI panel with two buffers already and only
++ *             ever scans the first; the second (1.8 MB) was idle until now.
++ *   NARYA v4  the panel is created with two buffers (lgfx_naryav4.hpp), both
++ *             placed on 4 KB boundaries (dpi_fb_align.hpp).
+  *
+- * In PSRAM: read once per present, and the internal RAM budget has no room
+- * for new statics. */
+-FMRB_EXT_RAM_BSS_ATTR static int s_last_fb_w;
+-FMRB_EXT_RAM_BSS_ATTR static int s_last_fb_h;
+-
+-/* Paint one rectangle of the DSI buffer black (native coordinates) and write
+- * it back, so no dirty cache line is left to evict over PPA output later. */
+-static void dsi_clear_rect(int x, int y, int w, int h)
++ * Without a second buffer (or a panel handle) this falls back to writing the
++ * scanned buffer, as before.
++ *
++ * All of this state is in PSRAM: read a few times per present, and the
++ * internal RAM budget has no room for new statics. The refresh-done callback
++ * runs from the DSI bridge interrupt, which is not cache-safe in this
++ * configuration (CONFIG_LCD_DSI_ISR_CACHE_SAFE is off), so it never runs while
++ * the cache is disabled and may live in flash and write PSRAM.
++ */
++typedef struct {
++    esp_lcd_panel_handle_t panel;
++    void           *fbs[2];
++    int             front;           // index being (or about to be) scanned
++    bool            dual;
++    bool            flip_pending;    // handed over, not yet known scanned
++    uint32_t        flip_at;         // s_vsync_count at the hand-over
++    int             buf_w[2], buf_h[2];  // frame size last drawn into each
++    uint32_t        waits, wait_timeouts;
++    int64_t         wait_us_total;
++    int             sw_last_w, sw_last_h;  // software fallback's last size
++} dsi_dbuf_t;
++
++FMRB_EXT_RAM_BSS_ATTR static dsi_dbuf_t s_db;
++FMRB_EXT_RAM_BSS_ATTR static volatile uint32_t s_vsync_count;
++
++static bool on_refresh_done(esp_lcd_panel_handle_t panel,
++                            esp_lcd_dpi_panel_event_data_t *edata, void *user_ctx)
++{
++    (void)panel; (void)edata; (void)user_ctx;
++    s_vsync_count = s_vsync_count + 1;
++    return false;
++}
++
++static void dbuf_init(void)
++{
++    s_db.panel = (esp_lcd_panel_handle_t)display_p4_panel_handle();
++    s_db.fbs[0] = (void *)s_dsi_fb;
++    s_db.fbs[1] = nullptr;
++    s_db.front = 0;
++    s_db.dual = false;
++    if (!s_db.panel || !s_dsi_fb) return;
++
++    void *f0 = nullptr, *f1 = nullptr;
++    if (esp_lcd_dpi_panel_get_frame_buffer(s_db.panel, 2, &f0, &f1) != ESP_OK
++        || !f0 || !f1 || f0 != (void *)s_dsi_fb) {
++        FMRB_LOGW(TAG, "one DSI frame buffer only: presents write the scanned buffer");
++        return;
++    }
++    esp_lcd_dpi_panel_event_callbacks_t cbs = {};
++    cbs.on_refresh_done = on_refresh_done;
++    if (esp_lcd_dpi_panel_register_event_callbacks(s_db.panel, &cbs, NULL) != ESP_OK) {
++        FMRB_LOGW(TAG, "refresh-done callback refused: no double buffering");
++        return;
++    }
++    s_db.fbs[1] = f1;
++    s_db.dual = true;
++    FMRB_LOGI(TAG, "DSI double buffer: fb0 @%p (%s), fb1 @%p (%s)",
++              f0, ((uintptr_t)f0 & 4095) ? "UNALIGNED" : "aligned",
++              f1, ((uintptr_t)f1 & 4095) ? "UNALIGNED" : "aligned");
++}
++
++/* The second buffer starts black, like the first after the fill above. It is
++ * not scanned yet, so the CPU may write all of it. */
++static void dbuf_first_frame(void)
+ {
+-    if (!s_dsi_fb || w <= 0 || h <= 0) return;
+-    uint8_t *base = (uint8_t *)s_dsi_fb;
++    if (!s_db.dual) return;
++    memset(s_db.fbs[1], 0, DSI_FB_BYTES);
++    esp_cache_msync(s_db.fbs[1], DSI_FB_BYTES, ESP_CACHE_MSYNC_FLAG_DIR_C2M);
++}
++
++/* Paint one rectangle of a DSI buffer black (native coordinates) and write it
++ * back, so no dirty cache line is left to evict over PPA output later. */
++static void dsi_clear_rect(uint8_t *base, int x, int y, int w, int h)
++{
++    if (!base || w <= 0 || h <= 0) return;
+     for (int row = y; row < y + h; row++) {
+         memset(base + ((size_t)row * DSI_FB_W + x) * DSI_FB_BPP, 0,
+                (size_t)w * DSI_FB_BPP);
+@@ -162,33 +250,86 @@
+                     ESP_CACHE_MSYNC_FLAG_DIR_C2M | ESP_CACHE_MSYNC_FLAG_UNALIGNED);
+ }
+ 
+-/* Everything of the DSI buffer outside (x, y, w, h), native coordinates. */
+-static void dsi_clear_outside(int x, int y, int w, int h)
++/* Everything of a DSI buffer outside (x, y, w, h): the border a frame of
++ * that size leaves uncovered. */
++static void dsi_clear_outside(uint8_t *base, int x, int y, int w, int h)
++{
++    dsi_clear_rect(base, 0, 0, DSI_FB_W, y);
++    dsi_clear_rect(base, 0, y + h, DSI_FB_W, DSI_FB_H - (y + h));
++    dsi_clear_rect(base, 0, y, x, h);
++    dsi_clear_rect(base, x + w, y, DSI_FB_W - (x + w), h);
++}
++
++/* Wait until the last hand-over has been scanned out, so the buffer it left
++ * is free to write. Bounded: a missing event must not freeze the display. */
++static void dbuf_wait_flip(void)
++{
++    if (!s_db.flip_pending) return;
++    if ((uint32_t)(s_vsync_count - s_db.flip_at) < 2) {
++        const int64_t t0 = esp_timer_get_time();
++        const int64_t deadline = t0 + 60000;
++        while ((uint32_t)(s_vsync_count - s_db.flip_at) < 2) {
++            if (esp_timer_get_time() >= deadline) {
++                s_db.wait_timeouts++;
++                FMRB_LOGW(TAG, "DSI swap not seen in 60ms (%lu so far)",
++                          (unsigned long)s_db.wait_timeouts);
++                break;
++            }
++            vTaskDelay(1);
++        }
++        s_db.waits++;
++        s_db.wait_us_total += esp_timer_get_time() - t0;
++    }
++    s_db.flip_pending = false;
++}
++
++/* Where this present's SRM writes: the back buffer (after the previous swap
++ * has been scanned), with its border blacked out if the frame size changed
++ * since this buffer was last drawn. */
++static void *present_target(int fb_w, int fb_h)
+ {
+-    dsi_clear_rect(0, 0, DSI_FB_W, y);
+-    dsi_clear_rect(0, y + h, DSI_FB_W, DSI_FB_H - (y + h));
+-    dsi_clear_rect(0, y, x, h);
+-    dsi_clear_rect(x + w, y, DSI_FB_W - (x + w), h);
+-}
+-
+-/* After a present: if the frame changed size since the last one, black out
+- * what the new one leaves uncovered. */
+-static void note_presented_size(int fb_w, int fb_h, bool through_dsi)
+-{
+-    if (fb_w == s_last_fb_w && fb_h == s_last_fb_h) return;
+-    s_last_fb_w = fb_w;
+-    s_last_fb_h = fb_h;
+-    if (through_dsi) {
++    const int idx = s_db.dual ? 1 - s_db.front : s_db.front;
++    if (s_db.dual) dbuf_wait_flip();
++    uint8_t *dst = (uint8_t *)(s_db.dual ? s_db.fbs[idx] : (void *)s_dsi_fb);
++    if (s_db.buf_w[idx] != fb_w || s_db.buf_h[idx] != fb_h) {
+         int x, y, w, h;
+         dsi_image_rect(fb_w, fb_h, &x, &y, &w, &h);
+-        dsi_clear_outside(x, y, w, h);
+-    } else {
+-        LGFX_Device *lcd = display_p4_lcd();
+-        const int scale = display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
+-        const int w = fb_w * scale, h = fb_h * scale;
+-        display_lcd_clear_outside(lcd, (lcd->width() - w) / 2,
+-                                  (lcd->height() - h) / 2, w, h);
+-    }
++        dsi_clear_outside(dst, x, y, w, h);
++        s_db.buf_w[idx] = fb_w;
++        s_db.buf_h[idx] = fb_h;
++    }
++    return dst;
++}
++
++/* After the SRM: hand the back buffer to the scan-out. From here on the
++ * cursor patch writes into it too (it is the picture that is about to be
++ * shown). */
++static void present_commit(void)
++{
++    if (!s_db.dual) return;
++    const int idx = 1 - s_db.front;
++    /* One line is enough: the driver only records which buffer the pointer
++     * falls in, and writes back the cache for the lines given (the SRM wrote
++     * through DMA, so there is nothing dirty to write back). */
++    esp_lcd_panel_draw_bitmap(s_db.panel, 0, 0, DSI_FB_W, 1, s_db.fbs[idx]);
++    s_db.front = idx;
++    s_dsi_fb = (decltype(s_dsi_fb))s_db.fbs[idx];
++    s_db.flip_at = s_vsync_count;
++    s_db.flip_pending = true;
++}
++
++/* The software fallback's version of the border: black out, through
++ * LovyanGFX, what the new picture leaves uncovered after a size change. */
++static void note_presented_size_sw(int fb_w, int fb_h)
++{
++    if (fb_w == s_db.sw_last_w && fb_h == s_db.sw_last_h) return;
++    s_db.sw_last_w = fb_w;
++    s_db.sw_last_h = fb_h;
++    LGFX_Device *lcd = display_p4_lcd();
++    const int scale = display_scale_for(lcd->width(), lcd->height(), fb_w, fb_h);
++    const int w = fb_w * scale, h = fb_h * scale;
++    display_lcd_clear_outside(lcd, (lcd->width() - w) / 2,
++                              (lcd->height() - h) / 2, w, h);
+ }
+ 
+ static void ppa_shutdown(void)
+@@ -326,7 +467,7 @@
+     int center_y = (lcd->height() - scaled_h) / 2 + scaled_h / 2;
+     fb->pushRotateZoom(lcd, (float)center_x, (float)center_y, 0.0f,
+                        scale, scale);
+-    note_presented_size(fb_w, fb_h, false);
++    note_presented_size_sw(fb_w, fb_h);
+ }
+ 
+ #if defined(FMRB_HW_NARYAV4)
+@@ -348,6 +489,7 @@
+     }
+ 
+     present_flush(fb_ptr, fb_size);
++    void *dst = present_target(fb_w, fb_h);
+ 
+     const float scale = (float)display_scale_for(LAND_W, LAND_H, fb_w, fb_h);
+     int out_x, out_y, out_w, out_h;
+@@ -363,7 +505,7 @@
+     srm.in.block_offset_y = 0;
+     srm.in.srm_cm         = PPA_SRM_COLOR_MODE_RGB565;
+ 
+-    srm.out.buffer         = s_dsi_fb;
++    srm.out.buffer         = dst;
+     srm.out.buffer_size    = (uint32_t)DSI_FB_BYTES;
+     srm.out.pic_w          = DSI_FB_W;
+     srm.out.pic_h          = DSI_FB_H;
+@@ -384,7 +526,7 @@
+     if (err != ESP_OK) {
+         FMRB_LOGE(TAG, "PPA SRM failed: %d", err);
+     }
+-    note_presented_size(fb_w, fb_h, true);
++    present_commit();
+ }
+ 
+ /* Cursor fast path. The mapping has to be the one the SRM applies, or the
+@@ -452,6 +594,7 @@
+     }
+ 
+     present_flush(fb_ptr, fb_size);
++    void *dst = present_target(fb_w, fb_h);
+ 
+     /* Scale and rotate to native portrait in one hardware pass, writing
+      * directly into the DSI framebuffer (no CPU copy, and no M2C invalidate:
+@@ -472,7 +615,7 @@
+     srm.in.block_offset_y = 0;
+     srm.in.srm_cm         = PPA_SRM_COLOR_MODE_RGB565;
+ 
+-    srm.out.buffer         = s_dsi_fb;
++    srm.out.buffer         = dst;
+     srm.out.buffer_size    = (uint32_t)DSI_FB_BYTES;
+     srm.out.pic_w          = DSI_FB_W;
+     srm.out.pic_h          = DSI_FB_H;
+@@ -494,7 +637,7 @@
+     if (err != ESP_OK) {
+         FMRB_LOGE(TAG, "PPA SRM failed: %d", err);
+     }
+-    note_presented_size(fb_w, fb_h, true);
++    present_commit();
+ }
+ 
+ /* Cursor fast path: the same logical->native mapping the SRM rotation applies
+--- a/main/drivers/display_p4/dpi_fb_align.hpp
++++ b/main/drivers/display_p4/dpi_fb_align.hpp
+@@ -24,7 +24,8 @@
+ // any hole). It is never freed -- the panel lives as long as the firmware --
+ // and costs a few KB of PSRAM and no internal RAM.
+ //
+-// Only the FIRST frame buffer the driver allocates after this call is placed.
++// dpi_fb_align_next places only the FIRST frame buffer the driver allocates
++// after the call; dpi_fb_align_pair (further down) places two.
+ // Nothing else may take PSRAM between this call and that allocation (the DSI
+ // driver's own objects are internal: CONFIG_LCD_DSI_OBJ_FORCE_INTERNAL).
+ //
+@@ -48,29 +49,39 @@
+     return ((uintptr_t)fb & (DPI_FB_ALIGN - 1)) == 0;
+ }
+ 
+-// fb_size: bytes of ONE frame buffer, exactly as esp_lcd computes it
+-// (h_size * v_size * bits_per_pixel / 8). tag: log tag for the warning.
+-static inline size_t dpi_fb_align_next(size_t fb_size, const char *tag)
++// Shape the heap so that the next heap_caps_malloc(probe_size) with the
++// frame buffer caps lands on DPI_FB_ALIGN: probe where it lands, and hold a
++// PSRAM pad at that spot grown by the missing bytes, until it lands aligned.
++// min_pad forces a pad of at least that size even when the probe already
++// lands aligned (a separator between two blocks). Returns true when the next
++// allocation will land aligned; *pad_out gets the pad size. On failure the
++// pad is dropped.
++static inline bool dpi_fb_shape(size_t probe_size, size_t min_pad, size_t *pad_out)
+ {
+     const uint32_t fb_caps  = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT | MALLOC_CAP_DMA;
+     const uint32_t pad_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT;
+     void  *pad_block = nullptr;
+     size_t pad_size  = 0;
++    *pad_out = 0;
+ 
+     for (int attempt = 0; attempt < 8; ++attempt) {
+-        void *probe = heap_caps_malloc(fb_size, fb_caps);
++        void *probe = heap_caps_malloc(probe_size, fb_caps);
+         if (!probe) break;
+         const uintptr_t at = (uintptr_t)probe;
+         heap_caps_free(probe);
+ 
+         const size_t off = at & (DPI_FB_ALIGN - 1);
+-        if (off == 0) return pad_size;
+-        const size_t grow = DPI_FB_ALIGN - off;
++        size_t grow = off ? DPI_FB_ALIGN - off : 0;
++        if (grow == 0 && pad_size >= min_pad) {
++            *pad_out = pad_size;
++            return true;
++        }
++        if (pad_size + grow < min_pad) grow += DPI_FB_ALIGN;
+ 
+         if (!pad_block) {
+             // Take the region the probe came from (only a block that big
+             // fits there), then give back all but the missing bytes.
+-            void *big = heap_caps_malloc(fb_size + DPI_FB_ALIGN, pad_caps);
++            void *big = heap_caps_malloc(probe_size + DPI_FB_ALIGN, pad_caps);
+             if (!big) break;
+             if ((uintptr_t)big > at || at - (uintptr_t)big > 256) {
+                 heap_caps_free(big);
+@@ -94,8 +105,76 @@
+             pad_size += grow;
+         }
+     }
++    if (pad_block) heap_caps_free(pad_block);
++    return false;
++}
++
++// fb_size: bytes of ONE frame buffer, exactly as esp_lcd computes it
++// (h_size * v_size * bits_per_pixel / 8). tag: log tag for the warning.
++static inline size_t dpi_fb_align_next(size_t fb_size, const char *tag)
++{
++    size_t pad = 0;
++    if (dpi_fb_shape(fb_size, 0, &pad)) return pad;
+     FMRB_LOGW(tag, "could not place the frame buffer on a %u-byte boundary",
+               (unsigned)DPI_FB_ALIGN);
+-    if (pad_block) heap_caps_free(pad_block);
+     return 0;
+ }
++
++// The same for a panel created with TWO frame buffers (num_fbs = 2), which
++// the driver allocates one right after the other. Placed back to back, the
++// second would start a heap header past the end of the first -- off the
++// boundary, since the buffer size itself is a multiple of 4 KB on NARYA v4
++// (1280 x 720 x 3 = 4096 x 675) and the header is not.
++//
++// So two separate holes are made, each starting on the boundary:
++//
++//   [pad0][hole0 ........][pad1][hole1 ........][pad2][rest of the heap]
++//
++// by allocating each hole for real (after shaping the heap so it lands
++// aligned), putting a pad right behind it, and freeing both holes at the end.
++// Each hole is DPI_FB_HOLE_EXTRA larger than a buffer. That is what makes the
++// allocator pick them: TLSF rounds a request up to the next size class
++// before it searches (64 KB steps at this size), so a hole of exactly the
++// buffer's size would be passed over for the big free region behind it.
++// With the extra it sits in the class the search starts at, below the rest
++// of the heap, so both buffers land at the start of the two holes. The tail
++// of each hole (the extra) goes back to the heap.
++//
++// Costs the pads (a few KB of PSRAM, never freed), no internal RAM. Returns
++// the total pad size, 0 if the heap could not be shaped (the buffers then land
++// where they always did; the caller logs whether they are aligned).
++#define DPI_FB_HOLE_EXTRA (72 * 1024)
++
++static inline size_t dpi_fb_align_pair(size_t fb_size, const char *tag)
++{
++    const uint32_t fb_caps = MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT | MALLOC_CAP_DMA;
++    const size_t hole = fb_size + DPI_FB_HOLE_EXTRA;
++    size_t total = 0, pad = 0;
++    void *h0 = nullptr, *h1 = nullptr;
++    bool ok = false;
++
++    do {
++        if (!dpi_fb_shape(hole, 0, &pad)) break;
++        total += pad;
++        h0 = heap_caps_malloc(hole, fb_caps);
++        if (!h0 || !dpi_fb_is_aligned(h0)) break;
++        // Separator behind hole 0, sized so hole 1 lands aligned.
++        if (!dpi_fb_shape(hole, 64, &pad)) break;
++        total += pad;
++        h1 = heap_caps_malloc(hole, fb_caps);
++        if (!h1 || !dpi_fb_is_aligned(h1)) break;
++        // Separator behind hole 1, so the heap after it does not merge in.
++        if (!dpi_fb_shape(hole, 64, &pad)) break;
++        total += pad;
++        ok = true;
++    } while (0);
++
++    if (h0) heap_caps_free(h0);
++    if (h1) heap_caps_free(h1);
++    if (!ok) {
++        FMRB_LOGW(tag, "could not place the two frame buffers on %u-byte boundaries",
++                  (unsigned)DPI_FB_ALIGN);
++        return 0;
++    }
++    return total;
++}
+--- a/main/drivers/display_p4/lgfx_naryav4.hpp
++++ b/main/drivers/display_p4/lgfx_naryav4.hpp
+@@ -168,7 +168,10 @@
+         _dpi.dpi_clk_src        = MIPI_DSI_DPI_CLK_SRC_DEFAULT;
+         _dpi.dpi_clock_freq_mhz = 80;
+         _dpi.pixel_format       = LCD_COLOR_PIXEL_FORMAT_RGB888;
+-        _dpi.num_fbs            = 1;
++        // Two buffers: every present writes the one not being scanned and
++        // then swaps (display_backend_ppa.cpp, double buffering), so the scan
++        // never catches a picture half written. +2.7 MB of PSRAM.
++        _dpi.num_fbs            = 2;
+         _dpi.video_timing.h_size            = NARYAV4_HDMI_W;
+         _dpi.video_timing.v_size            = NARYAV4_HDMI_H;
+         _dpi.video_timing.hsync_pulse_width = 40;
+@@ -209,10 +212,10 @@
+         dev.bits_per_pixel = 24;
+         dev.vendor_config  = &vendor;
+ 
+-        // The DPI panel allocates its frame buffer inside the call below.
+-        // Arrange the heap first so that allocation lands page aligned
++        // The DPI panel allocates its two frame buffers inside the call
++        // below. Arrange the heap first so both land page aligned
+         // (dpi_fb_align.hpp).
+-        const size_t fb_pad = dpi_fb_align_next((size_t)NARYAV4_HDMI_W * NARYAV4_HDMI_H * 3, TAG);
++        const size_t fb_pad = dpi_fb_align_pair((size_t)NARYAV4_HDMI_W * NARYAV4_HDMI_H * 3, TAG);
+ 
+         esp_lcd_panel_lt8912b_io_t io_all = { _io.main, _io.cec_dsi, _io.avi };
+         if (esp_lcd_new_panel_lt8912b(&io_all, &dev, &_panel) != ESP_OK) {
+@@ -231,9 +234,12 @@
+             return false;
+         }
+ 
+-        FMRB_LOGI(TAG, "HDMI %dx%d up, RGB888 fb @%p (%s, pad %u)",
++        void *fb0 = nullptr, *fb1 = nullptr;
++        esp_lcd_dpi_panel_get_frame_buffer(_panel, 2, &fb0, &fb1);
++        FMRB_LOGI(TAG, "HDMI %dx%d up, RGB888 fb @%p (%s), fb1 @%p (%s), pad %u",
+                   NARYAV4_HDMI_W, NARYAV4_HDMI_H, _fb,
+                   dpi_fb_is_aligned(_fb) ? "aligned" : "UNALIGNED",
++                  fb1, dpi_fb_is_aligned(fb1) ? "aligned" : "UNALIGNED",
+                   (unsigned)fb_pad);
+         return true;
+     }
+@@ -332,6 +338,7 @@
+     // Direct pointer to the esp_lcd DPI frame buffer (RGB888, 800x600, row
+     // stride = 800*3 bytes). Valid after init(). This is what PPA SRM writes.
+     void *getFrameBuffer(void) { return _panel.getFrameBuffer(); }
++    esp_lcd_panel_handle_t getPanelHandle(void) const { return _panel.getPanelHandle(); }
+ 
+     // The board I2C bus, for everything else that lives on it (the ES8311
+     // codec, mruby app transactions). Valid after configure().
+--- a/main/drivers/display_p4/lgfx_tab5.hpp
++++ b/main/drivers/display_p4/lgfx_tab5.hpp
+@@ -38,6 +38,7 @@
+ #include <lgfx/v1/platforms/esp32/Light_PWM.hpp>
+ 
+ #include "fmrb_log.h"
++#include "fmrb_attr.h"
+ 
+ #include "dpi_fb_align.hpp"
+ 
+@@ -62,6 +63,12 @@
+ // the driver starts on fbs[0] and switches only when draw_bitmap is handed a
+ // pointer inside another buffer, which nothing here does. So the first one is
+ // the one placed; the second is left wherever it lands.
++// The esp_lcd DPI panel handle of the panel that came up, for the display
++// backend's frame-boundary wait (display_p4_panel_handle). M5GFX keeps it in
++// a protected member; the wrapper below is the one place that can read it.
++// In PSRAM: set once, read at a screen-mode switch.
++FMRB_EXT_RAM_BSS_ATTR static esp_lcd_panel_handle_t s_tab5_dpi_panel;
++
+ template <class PanelT>
+ class Tab5AlignedPanel : public PanelT
+ {
+@@ -76,6 +83,7 @@
+         if (!PanelT::init(use_reset)) return false;
+ 
+         void *fb = this->config_detail().buffer;
++        s_tab5_dpi_panel = this->_disp_panel_handle;
+         FMRB_LOGI(TAG, "DSI %dx%d up, RGB565 fb @%p (%s, pad %u)",
+                   (int)cfg.panel_width, (int)cfg.panel_height, fb,
+                   dpi_fb_is_aligned(fb) ? "aligned" : "UNALIGNED",
+--- a/main/drivers/display_p4/display_backend.h
++++ b/main/drivers/display_p4/display_backend.h
+@@ -159,6 +159,11 @@
+  * panel definition. */
+ void *display_p4_panel_framebuffer(void);
+ 
++/* The panel's esp_lcd DPI panel handle (an esp_lcd_panel_handle_t), or NULL
++ * when there is none (wasm). For a backend that needs to find the boundary
++ * between two scanned-out frames. */
++void *display_p4_panel_handle(void);
++
+ /* Cache-line-aligned PSRAM, the allocator canvases and the framebuffer share.
+  * Defined in display_p4_task.cpp. */
+ void *display_p4_alloc_pixels(size_t length, size_t *out_aligned_size);
+--- a/main/drivers/display_p4/display_p4_task.cpp
++++ b/main/drivers/display_p4/display_p4_task.cpp
+@@ -130,8 +130,14 @@
+ LGFX_Device *display_p4_lcd(void) { return &g_lcd; }
+ #ifdef FMRB_PLATFORM_WASM
+ void *display_p4_panel_framebuffer(void) { return NULL; }
++void *display_p4_panel_handle(void) { return NULL; }
+ #else
+ void *display_p4_panel_framebuffer(void) { return g_lcd.getFrameBuffer(); }
++#if defined(FMRB_HW_NARYAV4)
++void *display_p4_panel_handle(void) { return (void *)g_lcd.getPanelHandle(); }
++#else
++void *display_p4_panel_handle(void) { return (void *)s_tab5_dpi_panel; }
++#endif
+ #endif
+ 
+ #if defined(FMRB_HW_NARYAV4) && !defined(FMRB_PLATFORM_WASM)
