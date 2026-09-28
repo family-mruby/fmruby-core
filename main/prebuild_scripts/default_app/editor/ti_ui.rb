@@ -5,7 +5,7 @@
 # these through the method names below; the state is EditorApp instance
 # variables, shared as usual. This is the same mixin arrangement as
 # EditorDebugPane. This module owns the COMP_/HELP_/ET_ constants; the
-# layout/keys it shares with the rest of the editor (SC_*, DROPDOWN_*, LINE_H,
+# layout/keys it shares with the rest of the editor (SC_*, DROPDOWN_*,
 # CHAR_W) come from EditorConst, which it includes below.
 module EditorTiUi
   include EditorConst
@@ -287,7 +287,7 @@ module EditorTiUi
     x = right - w if x + w > right
     x = @user_area_x0 + 1 if x < @user_area_x0 + 1
 
-    y = cy + LINE_H
+    y = cy + @line_h
     y = cy - h if y + h > @status_y
     y = @edit_y if y < @edit_y
     [x, y]

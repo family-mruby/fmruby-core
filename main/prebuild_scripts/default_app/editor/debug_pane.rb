@@ -194,7 +194,7 @@ module EditorDebugPane
   # current-stop line (ring over the red dot when a breakpoint sits there).
   def draw_gutter_marker(line_idx, y)
     cx = @user_area_x0 + @gutter_w / 2
-    cyc = y + CHAR_H / 2
+    cyc = y + @line_h / 2
     bp = bp_on_line?(line_idx)
     stop = @dbg_stopped && stop_on_line?(line_idx)
     if bp

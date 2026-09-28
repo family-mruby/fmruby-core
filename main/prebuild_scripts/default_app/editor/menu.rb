@@ -27,7 +27,8 @@ module EditorMenu
     [view_toggle_label(@hl_enabled, :m_hilight),
      view_toggle_label(@wrap_on, :m_wrap),
      view_toggle_label(fullscreen?, :m_full),
-     "    " + FmrbI18n.t(:m_colors).to_s]
+     "    " + FmrbI18n.t(:m_colors).to_s,
+     "    " + FmrbI18n.t(:m_font).to_s]
   end
 
   def view_toggle_label(on, key)
@@ -40,6 +41,7 @@ module EditorMenu
     when :edit then menu_edit_items
     when :view then menu_view_items
     when :template then @template_labels
+    when :font then menu_font_items
     when :debug then dbg_menu_items
     end
   end
@@ -49,6 +51,7 @@ module EditorMenu
     when :file then MENU_FILE_HOTKEYS
     when :edit then MENU_EDIT_HOTKEYS
     when :view then MENU_VIEW_HOTKEYS
+    when :font then [0x16, 0x10, 0x0F]   # S (small), M, L
     end
   end
 
@@ -67,6 +70,7 @@ module EditorMenu
     case @active_menu
     when :template then dropdown_width(@template_labels)
     when :view then dropdown_width(menu_view_items)
+    when :font then dropdown_width(menu_font_items)
     when :debug then dbg_menu_width
     else dropdown_width(menu_items)
     end
@@ -80,7 +84,7 @@ module EditorMenu
     when :file then [@menu_file_x, @menu_y + CHAR_H]
     when :template then [@menu_file_x, @menu_y + CHAR_H]
     when :edit then [@menu_edit_x, @menu_y + CHAR_H]
-    when :view
+    when :view, :font
       # Right-anchored like Debug: View sits well along the bar, and its items
       # ("[x] Highlight") are wider than the label above them.
       vx = @user_area_x0 + @user_area_width - menu_width - 2
@@ -212,6 +216,7 @@ module EditorMenu
     when :edit then activate_edit_item(idx)
     when :view then activate_view_item(idx)
     when :template then insert_template(idx)
+    when :font then select_edit_font(idx)
     when :debug then dbg_activate_item(idx)
     end
   end
@@ -222,7 +227,17 @@ module EditorMenu
     when 1 then toggle_wrap
     when 2 then toggle_fullscreen
     when 3 then open_palette_dialog
+    when 4 then open_font_menu
     end
+  end
+
+  # View > Font: the three sizes as a dropdown of their own, opened where View
+  # was (the same way File > Template replaces the File dropdown). The current
+  # one starts selected, so Enter alone leaves things as they are.
+  def open_font_menu
+    open_menu(:font)
+    idx = edit_font_index(@edit_font_size)
+    @menu_idx = idx if idx >= 0
   end
 
   def activate_file_item(idx)

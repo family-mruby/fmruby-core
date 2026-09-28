@@ -27,7 +27,9 @@ class EditorApp < FmrbApp
   include EditorInput
   # The key list (menu bar Keys, Alt-K) lives in editor/keys.rb.
   include EditorKeys
-  # File/Edit dropdowns and the template list live in editor/menu.rb.
+  # File/Edit dropdowns and the template list live in editor/menu.rb, and the
+  # edit font (View > Font, /home/editor.toml) in editor/font.rb, which adds
+  # to the same module.
   include EditorMenu
   # File load/save, Run (F5) and the status-line helpers live in
   # editor/file_run.rb.
@@ -38,6 +40,12 @@ class EditorApp < FmrbApp
     # The document lives in EditorCore (C, POOL_ID_EDITOR_DOC arena): the editor
     # holds only cursor / selection / view state. Nothing here keeps line text.
     EditorCore.reset
+    # Edit-area grid: set from the default here so both engines see three
+    # integers from the start, then from /home/editor.toml (editor/font.rb).
+    @edit_font_size = EDIT_FONT_DEFAULT
+    @cell_w = 6
+    @line_h = 12
+    load_editor_conf
     @cx = 0             # Cursor column in current line
     @cy = 0             # Cursor line index
     @scroll_y = 0       # Anchor: logical line of the first visible screen row
@@ -214,8 +222,8 @@ class EditorApp < FmrbApp
     # normal editing keeps the full width.
     @gutter_w = dbg_gutter_w
     # Columns are cells, not characters: a full-width character occupies two.
-    @edit_cols = (@user_area_width - 2 - @gutter_w) / CELL_W
-    @edit_rows = @edit_height / LINE_H
+    @edit_cols = (@user_area_width - 2 - @gutter_w) / @cell_w
+    @edit_rows = @edit_height / @line_h
   end
 
   # ---- Wrapped layout ----
@@ -426,7 +434,7 @@ class EditorApp < FmrbApp
   # the width map forward until the pointer is passed. Clicking either half of a
   # full-width character lands on that character.
   def place_cursor_at(mx, my)
-    row = (my - @edit_y) / LINE_H
+    row = (my - @edit_y) / @line_h
     return if row < 0 || row >= @edit_rows
 
     ly = @scroll_y
@@ -448,7 +456,7 @@ class EditorApp < FmrbApp
 
     col0 = segment_start(ly, ls)
     limit = segment_chars(ly, ls)
-    want = (mx - (@user_area_x0 + 1 + @gutter_w)) / CELL_W
+    want = (mx - (@user_area_x0 + 1 + @gutter_w)) / @cell_w
     want = 0 if want < 0
 
     widths = EditorCore.render_width(ly, col0, @edit_cols)
@@ -570,7 +578,7 @@ class EditorApp < FmrbApp
       # breakpoints) and the status line keep their own meaning, so the test is
       # the text rectangle, not "not the menu bar".
       text_x0 = @user_area_x0 + 1 + @gutter_w
-      if ev[:y] >= @edit_y && ev[:y] < @edit_y + @edit_rows * LINE_H &&
+      if ev[:y] >= @edit_y && ev[:y] < @edit_y + @edit_rows * @line_h &&
          ev[:x] >= text_x0 && ev[:y] < @dbg_pane_y
         place_cursor_at(ev[:x], ev[:y])
         return
