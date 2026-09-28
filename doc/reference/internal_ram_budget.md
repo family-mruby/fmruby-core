@@ -728,6 +728,39 @@ BlockGame は最大ブロックがスタックとちょうど同値 (16,384 B) �
 `heap_caps_get_largest_free_block` は**確保可能な最大サイズ**を返す
 (管理領域を含まない) ので、この境界は等号で正しい。
 
+### 2026-09-28: 静的確保の洗い直しと移設 (iram_reduction R1)
+
+**計測**。develop `63f2e7cf` を 3 機種 clean からビルドし、map の内蔵 RAM の
+入力節をシンボル単位で並べた (全表と分類は doc/iram_reduction/report/r1.md 3 章)。
+静的な D/IRAM は S3 146,995 / TAB5 183,008 / NARYAv4 178,410 B。IRAM (コード) は
+3 機種とも IDF のものだけで、自前のコードは 0。
+
+**決定**。タスクからしか触らず、DMA にも割り込みにも flash 書き込みの元にも
+ならないものを PSRAM へ、書き込まない表を flash へ移した。
+
+| 移したもの | 移し先 | S3 | P4 |
+|---|---|---:|---:|
+| display_p4 の表 (`g_progs` `g_recv_buf` `g_canvases` `s_cursor_save` `g_sorted` `g_masks`) | PSRAM | - | 15,360 |
+| mrblib の子 irep 表 `*_reps_N` (mrbc の cdump.c を lib/patch で const 化) | flash | 5,480 | 5,616 |
+| tmpfs の `s_files` `s_fds` | PSRAM | 2,144 | 5,504 |
+| link_local の `g_recv_internal_buf` | PSRAM | - | 4,096 |
+| editor の表 (`g_wrap` `g_docs` `widths` `g_hover` `g_call` `g_oom`) | PSRAM | 3,280 | 3,516 |
+| MIDI scheduler の `s_ring` | PSRAM | 2,048 | 2,048 |
+| spx の FFI 返却用 `buf` / `payload` | PSRAM | 1,434 | 1,434 |
+| usb の `g_hid_devices` と raw report の `msg` | PSRAM | 1,212 | 1,212 |
+| transport の `g_tranport_context` | PSRAM | 776 | 776 |
+
+**効果**。静的な D/IRAM は S3 -16,384 / TAB5 -39,592 / NARYAv4 -39,584 B。
+P4-Nano (NARYAv4) 実機の待機時 IRAM free は 150,524 → **190,088 B (+39,564)**、
+アプリ起動時の最大ブロックも +40 KB (BlockGame 起動時 63,488 → 104,448)。
+render の時間は変わらず (待機 avg 27 / max 30 ms)、Guru 0。
+
+**残したもの** (R2 で確かめる): `s_fs_buf` と `s_file_write_bounce`
+(flash 書き込みの元)、PPA の経路の `scaled` / `block`、I2S の
+`s_stereo_buf` / `s_mic_buf`、prism の `pm_binding_powers` (libmruby は ldgen の
+対象外なので配置の断片が効かない)、Spinel の `cst_*` / `pool_count` (フォークの変更)、
+link_local のメッセージバッファ (実行時の確保、チャネルごとに 10 KB)。
+
 ### 改善案の優先順位 (2026-07-31 版)
 
 「進め方」の原則 (安全に取れる順) は維持したまま、今回の実測で
