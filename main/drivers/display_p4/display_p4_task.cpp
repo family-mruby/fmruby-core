@@ -47,6 +47,7 @@
 extern "C" {
 #include "fmrb_bmp332.h"
 #include "rd_encoder_jpeg.h"   // EXPORT_FRAME writes a JPEG with it
+#include "host_task.h"         // the input sources follow the screen size
 }
 
 #include <msgpack.h>
@@ -343,6 +344,10 @@ typedef struct {
     // from its resize handler (both engines), which travels the same ordered
     // queue as the app's presents.
     bool         owner_resize_unacked;
+    // In the high-resolution mode, since when the owner has had nothing that
+    // can be shown (hidden, gone, a committed frame that is not 640x360, or
+    // none since a resize); 0 while it has. See screen_mode_poll.
+    uint32_t     owner_unshowable_since_ms;
     // Remote-desktop capture: the size of the frame in each slot, since the
     // two slots can hold frames of different modes.
     uint16_t     cap_w[2], cap_h[2];
@@ -853,10 +858,19 @@ static void render_frame(void) {
         int sw = c->render_sprite->width();
         int sh = c->render_sprite->height();
 
+        // Where the canvas goes. The high-resolution owner is the whole screen
+        // by definition, so it goes at (0, 0) whatever position it was given:
+        // a canvas moved off the origin (a stale window position, a drag that
+        // should not have happened) must not leave part of the screen to
+        // chance.
+        const bool as_owner = g_smode.hires && c->canvas_id == g_smode.owner;
+        const int  pos_x = as_owner ? 0 : c->push_x;
+        const int  pos_y = as_owner ? 0 : c->push_y;
+
         if (c->view_w == 0) {
             // Default path: composite the whole canvas at its push position
             blend_canvas_block(c, sw, sh, 0, 0, sw, sh,
-                               c->push_x, c->push_y, fb_w, fb_h);
+                               pos_x, pos_y, fb_w, fb_h);
         } else {
             // Viewport path (SET_CANVAS_VIEWPORT): the canvas is a torus.
             // The source rect may wrap around the canvas edges, so the
@@ -874,16 +888,16 @@ static void render_frame(void) {
             int h2 = vh - h1;
 
             blend_canvas_block(c, sw, sh, vx, vy, w1, h1,
-                               c->push_x, c->push_y, fb_w, fb_h);
+                               pos_x, pos_y, fb_w, fb_h);
             if (w2 > 0)
                 blend_canvas_block(c, sw, sh, 0, vy, w2, h1,
-                                   c->push_x + w1, c->push_y, fb_w, fb_h);
+                                   pos_x + w1, pos_y, fb_w, fb_h);
             if (h2 > 0)
                 blend_canvas_block(c, sw, sh, vx, 0, w1, h2,
-                                   c->push_x, c->push_y + h1, fb_w, fb_h);
+                                   pos_x, pos_y + h1, fb_w, fb_h);
             if (w2 > 0 && h2 > 0)
                 blend_canvas_block(c, sw, sh, 0, 0, w2, h2,
-                                   c->push_x + w1, c->push_y + h1, fb_w, fb_h);
+                                   pos_x + w1, pos_y + h1, fb_w, fb_h);
         }
 
         // Sprites use canvas-local coordinates and must not spill outside
@@ -891,7 +905,7 @@ static void render_frame(void) {
         // clips to framebuffer bounds only, leaking sprites onto the
         // desktop and other windows). For viewport canvases the visible
         // footprint is the viewport instead of the full canvas.
-        int dx = c->push_x, dy = c->push_y;
+        int dx = pos_x, dy = pos_y;
         int cw = sw, ch = sh;
         if (c->view_w > 0) {
             cw = (c->view_w < sw) ? c->view_w : sw;
@@ -903,8 +917,8 @@ static void render_frame(void) {
         // sprite coordinate space, i.e. it is relative to the canvas origin on
         // screen, exactly like the composite offset below.
         if (c->clip_w > 0) {
-            int sx = c->push_x + c->clip_x;
-            int sy = c->push_y + c->clip_y;
+            int sx = pos_x + c->clip_x;
+            int sy = pos_y + c->clip_y;
             if (sx > dx) { cw -= (sx - dx); dx = sx; }
             if (sy > dy) { ch -= (sy - dy); dy = sy; }
             if (dx + cw > sx + c->clip_w) cw = sx + c->clip_w - dx;
@@ -917,7 +931,7 @@ static void render_frame(void) {
         if (cw > 0 && ch > 0) {
             g_framebuffer->setClipRect(dx, dy, cw, ch);
             display_p4_sprite_composite(c->canvas_id, g_framebuffer,
-                                        c->push_x, c->push_y);
+                                        pos_x, pos_y);
             g_framebuffer->clearClipRect();
         }
     }
@@ -1019,6 +1033,19 @@ static bool screen_mode_ensure_hires_fb(void) {
     return true;
 }
 
+// The input sources (touch, USB mouse, remote input) clamp and scale to the
+// screen size host_task holds. The kernel sets it when it asks for a mode;
+// this keeps it true when the display decides by itself (an owner that went
+// away, a switch that was cancelled, the fallback in screen_mode_poll), so
+// the pointer cannot be left in the coordinates of a screen not shown.
+static void screen_mode_tell_input(void) {
+    if (g_smode.hires) {
+        fmrb_host_set_screen_size(DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H);
+    } else {
+        fmrb_host_set_screen_size(0, 0);
+    }
+}
+
 // Swap the framebuffer: the switch itself. The cursor keeps its place on the
 // screen (scaled by the ratio of the two sizes) until the next input event
 // sets it in the new coordinates.
@@ -1041,6 +1068,8 @@ static void screen_mode_apply(bool hires, const char *why) {
         g_smode.owner_resize_unacked = false;
     }
     g_smode.switches++;
+    g_smode.owner_unshowable_since_ms = 0;
+    screen_mode_tell_input();
 
     const int nw = to->width();
     const int nh = to->height();
@@ -1071,6 +1100,7 @@ static void screen_mode_try_complete(void) {
             g_smode.owner_resize_unacked = false;
             FMRB_LOGW(TAG, "screen mode: owner canvas gone before the switch, staying %dx%d",
                       g_framebuffer->width(), g_framebuffer->height());
+            screen_mode_tell_input();
             render_asap();
             return;
         }
@@ -1128,6 +1158,7 @@ static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t 
         if (want_hires && owner != g_smode.owner) {
             g_smode.owner = owner;
             g_smode.owner_resize_unacked = false;
+            g_smode.owner_unshowable_since_ms = 0;  // its own wait starts now
             render_asap();
         }
         return;
@@ -1155,17 +1186,52 @@ static void screen_mode_owner_leaving(uint16_t canvas_id, const char *why) {
         g_smode.owner = 0;
         g_smode.owner_resize_unacked = false;
         FMRB_LOGI(TAG, "screen mode: switch cancelled (%s)", why);
+        screen_mode_tell_input();
         render_asap();
     }
 }
 
+static bool screen_mode_owner_showable(void);
+
 // Task loop: give up waiting after SCREEN_MODE_WAIT_MS and switch anyway, so
 // an owner that never presents cannot freeze the screen.
+//
+// The same bound holds once in the high-resolution mode. Nothing is rendered
+// there unless the owner has a 640x360 frame to show (screen_mode_can_render),
+// so an owner that stops having one -- resized to another size, hidden without
+// the hide reaching this task, handed the screen while it had no frame --
+// would otherwise hold the last picture for good, and the screen would look
+// hung. The ordinary way out (the kernel shrinks the canvas, then asks for the
+// base mode) takes a few milliseconds; if the owner is still unshowable after
+// SCREEN_MODE_WAIT_MS, the display goes back to the base mode by itself.
 static void screen_mode_poll(void) {
-    if (!g_smode.pending) return;
-    if (now_ms() - g_smode.pending_since_ms < SCREEN_MODE_WAIT_MS) return;
-    bool to_hires = g_smode.pending_hires;
-    screen_mode_apply(to_hires, "timed out");
+    if (g_smode.pending) {
+        if (now_ms() - g_smode.pending_since_ms < SCREEN_MODE_WAIT_MS) return;
+        bool to_hires = g_smode.pending_hires;
+        screen_mode_apply(to_hires, "timed out");
+        g_smode.force_render = true;
+        return;
+    }
+    if (!g_smode.hires) return;
+    if (screen_mode_owner_showable()) {
+        g_smode.owner_unshowable_since_ms = 0;
+        return;
+    }
+    const uint32_t now = now_ms();
+    if (g_smode.owner_unshowable_since_ms == 0) {
+        g_smode.owner_unshowable_since_ms = now ? now : 1;
+        return;
+    }
+    if (now - g_smode.owner_unshowable_since_ms < SCREEN_MODE_WAIT_MS) return;
+    p4_canvas_t *c = canvas_find(g_smode.owner);
+    FMRB_LOGW(TAG, "screen mode: owner %u has shown no %dx%d frame for %lums "
+              "(%s), back to the base screen",
+              g_smode.owner, DISPLAY_P4_HIRES_W, DISPLAY_P4_HIRES_H,
+              (unsigned long)(now - g_smode.owner_unshowable_since_ms),
+              !c ? "gone" : !c->is_visible ? "hidden" :
+              (c->width != DISPLAY_P4_HIRES_W || c->height != DISPLAY_P4_HIRES_H)
+                  ? "wrong size" : "no frame");
+    screen_mode_apply(false, "owner unshowable");
     g_smode.force_render = true;
 }
 
@@ -1180,6 +1246,12 @@ static bool screen_mode_can_render(void) {
         return true;
     }
     if (!g_smode.hires) return true;
+    return screen_mode_owner_showable();
+}
+
+// In the high-resolution mode: the owner has a committed frame at the
+// high-resolution size, on a visible canvas.
+static bool screen_mode_owner_showable(void) {
     p4_canvas_t *c = canvas_find(g_smode.owner);
     return c && c->is_visible && c->committed_fresh &&
            c->width == g_framebuffer->width() && c->height == g_framebuffer->height();
