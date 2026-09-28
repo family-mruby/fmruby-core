@@ -1,6 +1,6 @@
 # 全画面の高解像度モード (P4 系とブラウザ版)
 
-> 状態: 進行中 | 更新: 2026-09-28 | H0-H2 完了。`fullscreen_hires` を持つアプリ (エディタは P4 で既定) は全画面で自動的に 640x360 になり、入力も追従する (NARYAv4・ブラウザ版で確認、ユーザの操作確認で合格)。切り替えの瞬間の一瞬の乱れは保留。次は H3 (エディタのフォントの選択)
+> 状態: 進行中 | 更新: 2026-09-28 | H0-H2 完了、H3 実装完了 (ユーザ目視待ち)。`fullscreen_hires` を持つアプリ (エディタは P4 で既定) は全画面で自動的に 640x360 になり、入力も追従する。エディタの本文のフォントは View > Font で 8 / 12 / 16 から選べ、/home/editor.toml に残る (report/h3.md)。切り替えの瞬間の一瞬の乱れは保留。次は H3 の目視、その後 H4
 
 ## 目的
 
@@ -69,7 +69,7 @@ Modern (P4) を「作る機械」にするため、エディタを全画面で�
 | H0 | 調査と設計の確定 | **完了** (report/h0.md) |
 | H1 | 表示: 640x360 の fb の差し替え、倍率の導出、canvas の取り直し、SET_SCREEN_MODE、カーソル、静止画の取り込み・JPEG・EXPORT、wasm の C 側。試験用にアプリから SET_SCREEN_MODE を直接出す口 | **完了** (report/h1.md)。切り替えの瞬間の一瞬の乱れは保留 (6 章、2 枚方式の差分は report/h1_dualbuffer.patch) |
 | H2 | カーネル・アプリ・入力: 属性 (mruby / Spinel)、構成の判定、sync_screen_mode、fullscreen_size(pid)、入力の大きさとマウスの速さの補正 | **完了** (report/h2.md、ユーザの操作確認で合格) |
-| H3 | エディタ: P4 で既定オン、フォントの選択と /home/editor.toml への保存、LINE_H / CELL_W の変数化 | 指示書発行 (instruction_h3.md) |
+| H3 | エディタ: P4 で既定オン、フォントの選択と /home/editor.toml への保存、LINE_H / CELL_W の変数化 | **実装完了・ユーザ目視待ち** (report/h3.md)。Tab5 実機は未確認 |
 | H4 | 残り: ブラウザのページ (見た目の大きさ)、H.264 と remote.js、MCP の道具、文書 | 未着手 |
 
 段階ごとに instruction_hN.md を書き、report/hN.md に結果を残す。
