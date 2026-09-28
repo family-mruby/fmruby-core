@@ -325,6 +325,10 @@ module AppLifecycleMixin
 
   def enter_fullscreen(pid)
     Log.info("Entering fullscreen mode: PID #{pid} (depth #{@fs_stack.length + 1})")
+    # The high-resolution screen, if this app takes it, is asked for before
+    # anything is hidden (sync_screen_mode).
+    hires = screen_mode_for(pid)
+    sync_screen_mode(hires) if hires
     suspended = []
 
     # Suspend all other user apps (not kernel, not the fullscreen app itself).
@@ -365,6 +369,9 @@ module AppLifecycleMixin
     # comes through here, which is why the call belongs here and not at each
     # of those call sites.
     _bring_to_front(pid)
+    # An app without the attribute gives back a screen the one underneath
+    # held, now that that one is suspended.
+    sync_screen_mode(screen_mode_want)
   end
 
   # Pop the frame belonging to +pid+ (and any frame above it, which can only be
@@ -379,6 +386,13 @@ module AppLifecycleMixin
     end
     return fs_top_pid if idx.nil?
 
+    # The app that owns the screen afterwards (the frame underneath). If it
+    # takes the high-resolution screen, ask for it before it is resumed, so
+    # its canvas never shows at the base size (sync_screen_mode).
+    under = idx > 0 ? @fs_stack[idx - 1][:pid] : nil
+    hires = screen_mode_for(under)
+    sync_screen_mode(hires) if hires
+
     while @fs_stack.length > idx
       frame = @fs_stack.pop
       frame[:suspended].each do |spid|
@@ -388,6 +402,8 @@ module AppLifecycleMixin
     end
     @fullscreen_pid = fs_top_pid
     mark_window_list_dirty
+    # Giving the screen back comes last, after the resumes.
+    sync_screen_mode(screen_mode_want)
     @fullscreen_pid
   end
 
@@ -407,10 +423,90 @@ module AppLifecycleMixin
   # The windowed geometry is remembered here so leaving fullscreen puts the
   # window back where it was.
 
-  # Size a fullscreen window gets. The desktop's own window is created as
-  # display size minus margin (fmrb_app_init, APP_TYPE_SYSTEM_APP), so it is the
-  # display size the spawner would use -- no extra kernel API needed for it.
-  def fullscreen_size
+  # ---- Fullscreen high-resolution screen (doc/fullscreen_hires/) ----
+  #
+  # An app that declares fullscreen_hires (.app.toml, or the spawner's table)
+  # is shown on the 640x360 screen at 2x instead of 426x240 at 3x while it owns
+  # the screen in fullscreen -- where the build and the display can do that at
+  # all (_fullscreen_hires_size; nil on Retro and the Linux simulator, which
+  # keep the usual fullscreen). The app only declares; this decides, from the
+  # fullscreen stack and nothing else: the top frame owns the screen (a parked
+  # app has been popped off it).
+  #
+  # The display holds the previous picture until the owner presents at the new
+  # size, so the order is what keeps the switch clean:
+  #   taking it  -- SET_SCREEN_MODE first, then the resize, then hiding and
+  #                 resuming the rest. Callers about to change the stack call
+  #                 sync_screen_mode(screen_mode_for(pid)) before they do.
+  #   giving it back -- the resize and the resumes first, SET_SCREEN_MODE(0, 0)
+  #                 last: sync_screen_mode(screen_mode_want) after the change.
+  # When the owner is hidden (a park) or deleted (it ended), the display goes
+  # back by itself; the call here then only updates the input side.
+  #
+  #   @screen_hires_pid  pid holding the high-resolution screen, nil if none
+
+  # +pid+ if it would take the high-resolution screen as the fullscreen top,
+  # else nil.
+  def screen_mode_for(pid)
+    return nil unless pid
+    return nil unless _fullscreen_hires_size
+    info = _get_app_info(pid)
+    return nil unless info && info[:fullscreen_hires]
+    pid
+  end
+
+  def screen_mode_want
+    screen_mode_for(fs_top_pid)
+  end
+
+  def sync_screen_mode(want)
+    cur = @screen_hires_pid
+    return if want == cur
+    unless want
+      if cur
+        Log.info("Screen mode: PID #{cur} gives the high-resolution screen back")
+        _set_app_screen_mode(cur, 0, 0)
+      end
+      @screen_hires_pid = nil
+      return
+    end
+    size = _fullscreen_hires_size
+    return unless size
+    w = size[0]
+    h = size[1]
+    # Another owner taking over needs no step back to the base screen in
+    # between: the display hands the screen to the new owner.
+    Log.info("Screen mode: PID #{want} takes the #{w}x#{h} screen")
+    unless _set_app_screen_mode(want, w, h)
+      Log.warn("Screen mode: PID #{want} refused")
+      @screen_hires_pid = nil
+      return
+    end
+    @screen_hires_pid = want
+    # Normally the app is already at that size (the spawner starts it there,
+    # F11 sizes it with fullscreen_size) or is about to be resized by the
+    # caller while still windowed. A fullscreen app at another size is resized
+    # here, after SET_SCREEN_MODE as the display expects.
+    info = _get_app_info(want)
+    return unless info && info[:fullscreen]
+    update_window_list
+    win = find_window_by_pid(want)
+    return unless win
+    return if win[:width] == w && win[:height] == h
+    Log.info("Screen mode: resizing PID #{want} to #{w}x#{h}")
+    _set_app_fullscreen(want, true, w, h)
+  end
+
+  # Size a fullscreen window gets: the high-resolution screen for an app that
+  # takes it (screen_mode_for), else the display size. The desktop's own window
+  # is created as display size minus margin (fmrb_app_init, APP_TYPE_SYSTEM_APP),
+  # so it is the display size the spawner would use -- no extra kernel API
+  # needed for it.
+  def fullscreen_size(pid)
+    if screen_mode_for(pid)
+      hires = _fullscreen_hires_size
+      return hires if hires
+    end
     update_window_list
     i = 0
     while i < @window_list.size
@@ -432,7 +528,7 @@ module AppLifecycleMixin
       @window_geometry = {} unless @window_geometry
       @window_geometry[pid] = { x: win[:x], y: win[:y], w: win[:width], h: win[:height] }
     end
-    size = fullscreen_size
+    size = fullscreen_size(pid)
     unless size
       Log.warn("Runtime fullscreen refused: display size unknown")
       return
@@ -440,7 +536,13 @@ module AppLifecycleMixin
     w = size[0]
     h = size[1]
     Log.info("Runtime fullscreen: PID #{pid} -> #{w}x#{h}")
-    return unless _set_app_fullscreen(pid, true, w, h)
+    # The high-resolution screen before the resize (sync_screen_mode).
+    hires = screen_mode_for(pid)
+    sync_screen_mode(hires) if hires
+    unless _set_app_fullscreen(pid, true, w, h)
+      sync_screen_mode(screen_mode_want)
+      return
+    end
     enter_fullscreen(pid)
     _set_hid_target(pid)
     @hid_target_pid = pid

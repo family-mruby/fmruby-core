@@ -2,4 +2,7 @@ app_handle_name = "hires_test"
 app_screen_name = "Hires Test"
 app_screen_name_ja = "高解像度テスト"
 default_window_mode = "fullscreen"
+# Take the 640x360 screen while fullscreen where the build has one
+# (doc/fullscreen_hires/). Ignored on Retro and the Linux simulator.
+fullscreen_hires = true
 launcher_visible = false

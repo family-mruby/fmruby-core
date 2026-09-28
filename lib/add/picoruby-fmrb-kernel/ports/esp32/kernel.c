@@ -408,6 +408,39 @@ static mrb_value mrb_kernel_set_app_fullscreen(mrb_state *mrb, mrb_value self)
     return mrb_bool_value(ret == FMRB_OK);
 }
 
+// FmrbKernel#_fullscreen_hires_size -> [w, h] or nil
+// The fullscreen high-resolution screen, if this build and display can show
+// it (fmrb_app_fullscreen_hires_size). nil means the usual fullscreen only.
+static mrb_value mrb_kernel_fullscreen_hires_size(mrb_state *mrb, mrb_value self)
+{
+    uint16_t w = 0, h = 0;
+    if (!fmrb_app_fullscreen_hires_size(&w, &h)) {
+        return mrb_nil_value();
+    }
+    mrb_value ary = mrb_ary_new_capa(mrb, 2);
+    mrb_ary_push(mrb, ary, mrb_fixnum_value(w));
+    mrb_ary_push(mrb, ary, mrb_fixnum_value(h));
+    return ary;
+}
+
+// FmrbKernel#_set_app_screen_mode(pid, width, height) -> bool
+// Give the app's main canvas the high-resolution screen (640, 360) or give the
+// screen back (0, 0). See fmrb_app_set_screen_mode for the order to keep with
+// the resize.
+static mrb_value mrb_kernel_set_app_screen_mode(mrb_state *mrb, mrb_value self)
+{
+    mrb_int pid, width, height;
+    mrb_get_args(mrb, "iii", &pid, &width, &height);
+    if (pid < 0 || pid > 255) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid PID");
+    }
+    if (width < 0 || width > 65535 || height < 0 || height > 65535) {
+        mrb_raise(mrb, E_ARGUMENT_ERROR, "Invalid size");
+    }
+    fmrb_err_t ret = fmrb_app_set_screen_mode((uint8_t)pid, (uint16_t)width, (uint16_t)height);
+    return mrb_bool_value(ret == FMRB_OK);
+}
+
 // FmrbKernel#_mark_expected_stop(pid) -> true/false
 // Note that this app is ending because it was asked to, before the kernel
 // asks it. See fmrb_app.h expected_stop.
@@ -439,6 +472,10 @@ static mrb_value mrb_kernel_get_app_info(mrb_state *mrb, mrb_value self)
                  mrb_bool_value(ctx->fullscreen));
     mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "fullscreen_switchable")),
                  mrb_bool_value(ctx->fullscreen_switchable));
+    // May use the high-resolution screen while fullscreen (.app.toml
+    // fullscreen_hires); the kernel still checks _fullscreen_hires_size.
+    mrb_hash_set(mrb, hash, mrb_symbol_value(mrb_intern_cstr(mrb, "fullscreen_hires")),
+                 mrb_bool_value(ctx->fullscreen_hires));
     // headless is default_window_mode = "background": no canvas is ever
     // created, so such an app neither reports itself started nor deserves a
     // starting indicator.
@@ -563,6 +600,8 @@ void mrb_fmrb_kernel_init(mrb_state *mrb)
     mrb_define_method(mrb, handler_class, "_update_window_position", mrb_kernel_update_window_position, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_update_window_size", mrb_kernel_update_window_size, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_set_app_fullscreen", mrb_kernel_set_app_fullscreen, MRB_ARGS_REQ(4));
+    mrb_define_method(mrb, handler_class, "_fullscreen_hires_size", mrb_kernel_fullscreen_hires_size, MRB_ARGS_NONE());
+    mrb_define_method(mrb, handler_class, "_set_app_screen_mode", mrb_kernel_set_app_screen_mode, MRB_ARGS_REQ(3));
     mrb_define_method(mrb, handler_class, "_get_sync_files", mrb_kernel_get_sync_files, MRB_ARGS_NONE());
     mrb_define_method(mrb, handler_class, "_sync_file", mrb_kernel_sync_file, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, handler_class, "_get_app_info", mrb_kernel_get_app_info, MRB_ARGS_REQ(1));

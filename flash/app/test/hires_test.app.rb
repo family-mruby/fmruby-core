@@ -2,8 +2,10 @@
 #
 # doc/fullscreen_hires/ H1: the display can show one fullscreen canvas on a
 # 640x360 framebuffer at 2x instead of the usual 426x240 at 3x. The kernel
-# will decide that by itself (H2); until then this app switches itself through
-# the development hook FmrbGfx#_dev_screen_mode.
+# decides that by itself (H2): this app's .app.toml says fullscreen_hires, so
+# it starts on the 640x360 screen. Space still switches by hand through the
+# development hook FmrbGfx#_dev_screen_mode, to exercise the display on its
+# own (the kernel does not hear about those switches).
 #
 # It draws a test card for whatever size it has: a one-pixel white border on
 # the outermost pixels (so a clipped or shifted picture shows), a grid every
@@ -35,11 +37,13 @@ class HiresTestApp < FmrbApp
   SC_ESC = 0x29
 
   def on_create
-    @base_w = @window_width
-    @base_h = @window_height
-    @w = @base_w
-    @h = @base_h
-    @hires = false
+    # With fullscreen_hires the kernel starts this app on the 640x360 screen;
+    # the base screen is then the usual 426x240.
+    @hires = (@window_width == HIRES_W && @window_height == HIRES_H)
+    @base_w = @hires ? 426 : @window_width
+    @base_h = @hires ? 240 : @window_height
+    @w = @window_width
+    @h = @window_height
     @switches = 0
     @auto_left = 0
     @auto_next = 0

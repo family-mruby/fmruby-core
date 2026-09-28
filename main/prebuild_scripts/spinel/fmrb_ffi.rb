@@ -39,6 +39,9 @@ module FmrbSpx
   ffi_func :fmrb_spx_update_window_pos, [:int, :int, :int], :int
   ffi_func :fmrb_spx_update_window_size, [:int, :int, :int], :int
   ffi_func :fmrb_spx_set_app_fullscreen, [:int, :int, :int, :int], :int
+  # high-resolution fullscreen: size packed (w << 16 | h) or 0; screen mode
+  ffi_func :fmrb_spx_fullscreen_hires_size, [], :int
+  ffi_func :fmrb_spx_set_app_screen_mode, [:int, :int, :int], :int
   ffi_func :fmrb_spx_suspend_app, [:int], :int
   ffi_func :fmrb_spx_resume_app, [:int], :int
   ffi_func :fmrb_spx_reap_app, [:int], :int

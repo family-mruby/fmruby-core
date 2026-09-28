@@ -90,6 +90,8 @@ class FmrbKernelImpl < FmrbKernel
     @pending_unpark_after = nil   # ... this terminating app has released its slot
     @pending_unpark_tries = 0
     @suspended_pids = []
+    # Fullscreen app holding the high-resolution screen (sync_screen_mode).
+    @screen_hires_pid = nil
 
     # Deferred "open this file in the app I just spawned" (spawn open_path).
     # A freshly spawned app registers its message queue only once its task

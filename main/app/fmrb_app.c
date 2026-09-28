@@ -39,6 +39,7 @@
 #include "fmrb_gfx_cmd.h"
 #include "fmrb_gfx_msg.h"
 #include "fmrb_msg.h"
+#include "host_task.h"
 #ifndef CONFIG_IDF_TARGET_LINUX
 #include "hw_proxy.h"
 #endif
@@ -1723,6 +1724,7 @@ fmrb_err_t fmrb_app_spawn(const fmrb_spawn_attr_t* attr, int32_t* out_id) {
     ctx->bg_canvas_id = 0;
     ctx->fullscreen = attr->fullscreen;
     ctx->fullscreen_switchable = attr->fullscreen_switchable;
+    ctx->fullscreen_hires = attr->fullscreen_hires;
     ctx->resizable = attr->resizable;
     ctx->min_window_width = attr->min_window_width;
     ctx->min_window_height = attr->min_window_height;
@@ -2993,6 +2995,15 @@ fmrb_err_t fmrb_app_set_fullscreen(uint8_t pid, bool on, uint16_t width, uint16_
 fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height)
 {
 #if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+    // The input sources read the screen size from here (touch, USB mouse,
+    // remote input), so it follows the request before the display has even
+    // switched: the cursor is rescaled at once and the next move lands in the
+    // new coordinates. Going back is recorded even when the owner is already
+    // gone -- the display returns to the base screen by itself then, and this
+    // is the only place that tells the input sources so.
+    const bool to_base = (width == 0 || height == 0);
+    fmrb_host_set_screen_size(to_base ? 0 : width, to_base ? 0 : height);
+
     if (pid >= FMRB_MAX_APPS) {
         return FMRB_ERR_INVALID_PARAM;
     }
@@ -3033,6 +3044,22 @@ fmrb_err_t fmrb_app_set_screen_mode(uint8_t pid, uint16_t width, uint16_t height
     (void)pid; (void)width; (void)height;
     return FMRB_ERR_NOT_SUPPORTED;
 #endif
+}
+
+bool fmrb_app_fullscreen_hires_size(uint16_t *width, uint16_t *height)
+{
+#if defined(FMRB_HW_MODERN) || defined(FMRB_PLATFORM_WASM)
+    // Not FMRB_HW_FAMILY_MODERN: that one is also set for the Linux simulator,
+    // whose display is graphics-audio and does not know SET_SCREEN_MODE.
+    const fmrb_system_config_t *conf = fmrb_kernel_get_config();
+    if (conf && conf->display_width == 426 && conf->display_height == 240) {
+        if (width)  *width  = 640;
+        if (height) *height = 360;
+        return true;
+    }
+#endif
+    (void)width; (void)height;
+    return false;
 }
 
 /* ---------------------------------------------------------------------------
