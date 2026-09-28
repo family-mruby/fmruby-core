@@ -159,11 +159,15 @@ fmrb_err_t fmrb_mp_init(void) {
     return FMRB_OK;
 }
 
-void fmrb_mp_lock_barrier(void) {
+bool fmrb_mp_lock(void) {
     if (!s_lock) {
-        return;
+        return false;
     }
-    if (fmrb_semaphore_take(s_lock, FMRB_MAX_DELAY) == FMRB_TRUE) {
+    return fmrb_semaphore_take(s_lock, FMRB_MAX_DELAY) == FMRB_TRUE;
+}
+
+void fmrb_mp_unlock(bool taken) {
+    if (taken) {
         fmrb_semaphore_give(s_lock);
     }
 }

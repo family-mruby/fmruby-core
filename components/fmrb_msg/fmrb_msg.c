@@ -379,12 +379,17 @@ int fmrb_msg_broadcast(const fmrb_msg_t *msg, uint32_t timeout_ms)
     return success_count;
 }
 
-void fmrb_msg_registry_lock_barrier(void)
+bool fmrb_msg_registry_lock(void)
 {
     if (!g_initialized || !g_registry_lock) {
-        return;
+        return false;
     }
-    if (fmrb_semaphore_take(g_registry_lock, FMRB_TICK_MAX) == FMRB_TRUE) {
+    return fmrb_semaphore_take(g_registry_lock, FMRB_TICK_MAX) == FMRB_TRUE;
+}
+
+void fmrb_msg_registry_unlock(bool taken)
+{
+    if (taken) {
         fmrb_semaphore_give(g_registry_lock);
     }
 }

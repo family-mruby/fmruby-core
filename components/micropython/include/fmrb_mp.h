@@ -14,6 +14,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdbool.h>
 
 #include "fmrb_err.h"
 
@@ -101,16 +102,24 @@ fmrb_err_t fmrb_mp_exec(fmrb_app_task_context_t* ctx, const char* src, size_t le
 void fmrb_mp_close(fmrb_app_task_context_t* ctx);
 
 /**
- * @brief Take and release the instance lock, so a caller can be sure no task
- *        is inside an instance-lock critical section right now.
+ * @brief Take the instance lock, to be held across a forced task delete.
  *
  * For the forced-kill path only, and for the same reason as
- * fmrb_msg_registry_lock_barrier(): a task deleted while holding this mutex
- * would hold it forever, and every later Python app would block in
+ * fmrb_msg_registry_lock(): a task deleted while holding this mutex would
+ * hold it forever, and every later Python app would block in
  * fmrb_mp_acquire() until the next reboot. The windows are a few
- * non-blocking instructions, so the barrier returns immediately in practice.
+ * non-blocking instructions that take no other lock, so this returns at once
+ * in practice and may be taken with other locks held.
+ *
+ * @return true if the lock was taken; pass it to fmrb_mp_unlock()
  */
-void fmrb_mp_lock_barrier(void);
+bool fmrb_mp_lock(void);
+
+/**
+ * @brief Release the lock taken by fmrb_mp_lock()
+ * @param taken The value fmrb_mp_lock() returned
+ */
+void fmrb_mp_unlock(bool taken);
 
 #ifdef __cplusplus
 }

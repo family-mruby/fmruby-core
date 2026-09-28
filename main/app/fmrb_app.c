@@ -2123,17 +2123,24 @@ bool fmrb_app_kill(int32_t id) {
             FMRB_LOGW(TAG, "[%s gen=%u] Waiting for a file operation to end (%ums)",
                       ctx->app_name, gen, file_wait_ms);
         }
-        // Barriers, not compensation: a FreeRTOS mutex can only be released by
-        // its owner, so a task deleted inside one of these windows would hold
-        // it for good - registry lock lost means every task's next send or
-        // receive blocks, MicroPython lock lost means no Python app ever
-        // starts again. Taking each lock here proves the target is outside the
-        // window; deleting a task that is merely *waiting* for one is safe,
-        // FreeRTOS takes it off the event list. The windows hold no blocking
-        // call, so these return at once.
-        fmrb_msg_registry_lock_barrier();
-        fmrb_mp_lock_barrier();
+        // Same guard, not compensation, for the two short windows: a FreeRTOS
+        // mutex can only be released by its owner, so a task deleted inside
+        // one of these would hold it for good - registry lock lost means every
+        // task's next send or receive blocks, MicroPython lock lost means no
+        // Python app ever starts again. Each is held across the delete, like
+        // the file lock; deleting a task that is merely *waiting* for one is
+        // safe, FreeRTOS takes it off the event list.
+        //
+        // Order: file, registry, MicroPython, released in reverse. Only this
+        // path nests them. Elsewhere none of the three is taken while another
+        // is held (the registry and MicroPython windows take no lock and
+        // touch no file, and no file operation sends a message or touches
+        // the Python instance), so this order cannot meet an opposite one.
+        const bool registry_taken = fmrb_msg_registry_lock();
+        const bool mp_taken = fmrb_mp_lock();
         fmrb_task_delete(task);
+        fmrb_mp_unlock(mp_taken);
+        fmrb_msg_registry_unlock(registry_taken);
         // Still under the file lock, so no new task can have opened a file
         // under this (now freed) handle yet.
         const size_t closed = fmrb_hal_file_close_owned_locked(task);
