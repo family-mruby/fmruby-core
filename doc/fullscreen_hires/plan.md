@@ -68,7 +68,7 @@ Modern (P4) を「作る機械」にするため、エディタを全画面で�
 |---|---|---|
 | H0 | 調査と設計の確定 | **完了** (report/h0.md) |
 | H1 | 表示: 640x360 の fb の差し替え、倍率の導出、canvas の取り直し、SET_SCREEN_MODE、カーソル、静止画の取り込み・JPEG・EXPORT、wasm の C 側。試験用にアプリから SET_SCREEN_MODE を直接出す口 | **完了** (report/h1.md)。切り替えの瞬間の一瞬の乱れは保留 (6 章、2 枚方式の差分は report/h1_dualbuffer.patch) |
-| H2 | カーネル・アプリ・入力: 属性 (mruby / Spinel)、構成の判定、sync_screen_mode、fullscreen_size(pid)、入力の大きさとマウスの速さの補正 | 未着手 |
+| H2 | カーネル・アプリ・入力: 属性 (mruby / Spinel)、構成の判定、sync_screen_mode、fullscreen_size(pid)、入力の大きさとマウスの速さの補正 | 指示書発行 (instruction_h2.md) |
 | H3 | エディタ: P4 で既定オン、フォントの選択と /home/editor.toml への保存、LINE_H / CELL_W の変数化 | 未着手 |
 | H4 | 残り: ブラウザのページ (見た目の大きさ)、H.264 と remote.js、MCP の道具、文書 | 未着手 |
 
