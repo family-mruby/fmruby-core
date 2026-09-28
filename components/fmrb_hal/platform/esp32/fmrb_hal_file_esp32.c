@@ -41,12 +41,16 @@
 typedef struct {
     FILE *fp;
     bool in_use;
+    // Task that opened it, so an app's leftovers can be closed when it ends
+    // (fmrb_hal_file_close_owned_locked).
+    void *owner;
 } fmrb_file_slot_t;
 
 // Internal directory handle structure
 typedef struct {
     DIR *dir;
     bool in_use;
+    void *owner;  // opener, as in fmrb_file_slot_t
     // Full path used at opendir() time. Needed by readdir() to call stat()
     // on each entry and report its size/mtime. POSIX readdir() only returns
     // d_name and d_type, so size/mtime require a separate stat() call which
@@ -595,6 +599,7 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
     }
 
     slot->in_use = true;
+    slot->owner = xTaskGetCurrentTaskHandle();
     *out_handle = (fmrb_file_t)slot;
     UNLOCK();
     return FMRB_OK;
@@ -956,6 +961,7 @@ fmrb_err_t fmrb_hal_file_opendir(const char *path, fmrb_dir_t *out_handle) {
     }
 
     slot->in_use = true;
+    slot->owner = xTaskGetCurrentTaskHandle();
     // Remember full path so readdir() can stat() each entry by full path.
     snprintf(slot->path, sizeof(slot->path), "%s", full_path);
     *out_handle = (fmrb_dir_t)slot;
@@ -1001,14 +1007,9 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info) {
 
     fmrb_dir_slot_t *slot = (fmrb_dir_slot_t *)handle;
     struct dirent *entry = readdir(slot->dir);
-    // Snapshot the dir's stored path before releasing the lock so we can
-    // stat() the entry below without holding the file mutex.
-    char dir_path[MAX_PATH_LEN];
-    snprintf(dir_path, sizeof(dir_path), "%s", slot->path);
-
-    UNLOCK();
 
     if (entry == NULL) {
+        UNLOCK();
         return FMRB_ERR_NOT_SUPPORTED;  // No more entries
     }
 
@@ -1020,11 +1021,13 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info) {
 
     // POSIX readdir() does not return size/mtime; stat() the entry here
     // so callers (BLE LS, picoruby Dir.read) get real values.
+    // Still under the lock: stat() takes the filesystem's own mutex, and
+    // every such call has to be inside it (see fmrb_hal_file_lock).
     char entry_path[MAX_PATH_LEN + 1 + sizeof(info->name)];
-    if (strcmp(dir_path, "/") == 0) {
+    if (strcmp(slot->path, "/") == 0) {
         snprintf(entry_path, sizeof(entry_path), "/%s", entry->d_name);
     } else {
-        snprintf(entry_path, sizeof(entry_path), "%s/%s", dir_path, entry->d_name);
+        snprintf(entry_path, sizeof(entry_path), "%s/%s", slot->path, entry->d_name);
     }
     struct stat st;
     if (stat(entry_path, &st) == 0) {
@@ -1032,6 +1035,7 @@ fmrb_err_t fmrb_hal_file_readdir(fmrb_dir_t handle, fmrb_file_info_t *info) {
         info->mtime = (uint32_t)st.st_mtime;
     }
 
+    UNLOCK();
     return FMRB_OK;
 }
 
@@ -1173,7 +1177,9 @@ fmrb_err_t fmrb_hal_file_statfs(const char *path, uint64_t *total_bytes, uint64_
     uint64_t total = 0, used = 0;
     esp_err_t ret = ESP_OK;
 
-    // Determine which filesystem to query
+    // Determine which filesystem to query. Both calls take the filesystem's
+    // own mutex, so they run under the HAL lock like everything else.
+    LOCK();
     if (strncmp(full_path, SDCARD_PATH, strlen(SDCARD_PATH)) == 0) {
         // SD card (FAT) - esp_vfs_fat_info uses uint64_t*
         ret = esp_vfs_fat_info(SDCARD_PATH, &total, &used);
@@ -1184,6 +1190,7 @@ fmrb_err_t fmrb_hal_file_statfs(const char *path, uint64_t *total_bytes, uint64_
         total = total_lfs;
         used = used_lfs;
     }
+    UNLOCK();
 
     if (ret != ESP_OK) {
         return FMRB_ERR_FAILED;
@@ -1208,7 +1215,9 @@ fmrb_err_t fmrb_hal_file_mkfs(const char *path) {
     // For ESP32, we can format LittleFS by re-registering with format flag
     if (strncmp(path, LITTLEFS_PATH, strlen(LITTLEFS_PATH)) == 0 ||
         strncmp(path, "/flash", 6) == 0) {
+        LOCK();
         esp_err_t ret = esp_littlefs_format("storage");
+        UNLOCK();
         return (ret == ESP_OK) ? FMRB_OK : FMRB_ERR_FAILED;
     }
 
@@ -1309,4 +1318,48 @@ fmrb_err_t fmrb_hal_file_unmount(const char *path) {
 
     // LittleFS unmounting handled in deinit
     return FMRB_ERR_NOT_SUPPORTED;
+}
+
+bool fmrb_hal_file_lock(uint32_t timeout_ms) {
+    if (s_file_mutex == NULL) {
+        return false;
+    }
+    TickType_t ticks = (timeout_ms == UINT32_MAX) ? portMAX_DELAY : pdMS_TO_TICKS(timeout_ms);
+    return xSemaphoreTake(s_file_mutex, ticks) == pdTRUE;
+}
+
+void fmrb_hal_file_unlock(void) {
+    UNLOCK();
+}
+
+size_t fmrb_hal_file_close_owned_locked(void *owner) {
+    size_t closed = 0;
+    if (owner == NULL) {
+        return 0;
+    }
+    for (int i = 0; i < MAX_OPEN_FILES; i++) {
+        fmrb_file_slot_t *slot = &s_file_slots[i];
+        if (slot->in_use && slot->owner == owner) {
+            if (slot->fp != NULL) {
+                fclose(slot->fp);
+            }
+            slot->fp = NULL;
+            slot->in_use = false;
+            slot->owner = NULL;
+            closed++;
+        }
+    }
+    for (int i = 0; i < MAX_OPEN_DIRS; i++) {
+        fmrb_dir_slot_t *slot = &s_dir_slots[i];
+        if (slot->in_use && slot->owner == owner) {
+            if (slot->dir != NULL) {
+                closedir(slot->dir);
+            }
+            slot->dir = NULL;
+            slot->in_use = false;
+            slot->owner = NULL;
+            closed++;
+        }
+    }
+    return closed;
 }

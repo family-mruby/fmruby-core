@@ -51,28 +51,40 @@ void hw_proxy_file_execute(hw_proxy_request_t *req)
     }
     case HW_PROXY_OP_DIR_OPEN: {
         hw_proxy_dir_open_params_t *p = (hw_proxy_dir_open_params_t *)req->params;
+        // Directory ops reach the VFS directly, so they take the file HAL
+        // lock here, in the proxy task, as the file ops do inside the HAL:
+        // the caller holds hw_proxy's mutex, and that lock always comes first.
+        fmrb_hal_file_lock(UINT32_MAX);
         DIR *dir = opendir(p->path);
+        fmrb_hal_file_unlock();
         p->out_dir = dir;
         req->result = dir ? FMRB_OK : FMRB_ERR_NOT_FOUND;
         break;
     }
     case HW_PROXY_OP_DIR_READ: {
         hw_proxy_dir_read_params_t *p = (hw_proxy_dir_read_params_t *)req->params;
+        fmrb_hal_file_lock(UINT32_MAX);
         struct dirent *dp = readdir((DIR *)p->dir);
+        fmrb_hal_file_unlock();
         *(p->out_name) = dp ? dp->d_name : NULL;
         req->result = FMRB_OK;
         break;
     }
     case HW_PROXY_OP_DIR_CLOSE: {
         hw_proxy_dir_close_params_t *p = (hw_proxy_dir_close_params_t *)req->params;
+        fmrb_hal_file_lock(UINT32_MAX);
         closedir((DIR *)p->dir);
+        fmrb_hal_file_unlock();
         req->result = FMRB_OK;
         break;
     }
     case HW_PROXY_OP_DIR_STAT: {
         hw_proxy_dir_stat_params_t *p = (hw_proxy_dir_stat_params_t *)req->params;
         struct stat sb;
-        if (stat(p->path, &sb) == 0 && S_ISDIR(sb.st_mode)) {
+        fmrb_hal_file_lock(UINT32_MAX);
+        const int ret = stat(p->path, &sb);
+        fmrb_hal_file_unlock();
+        if (ret == 0 && S_ISDIR(sb.st_mode)) {
             *(p->out_is_dir) = 1;
         } else {
             *(p->out_is_dir) = 0;

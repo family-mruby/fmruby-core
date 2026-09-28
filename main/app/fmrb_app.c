@@ -1231,6 +1231,22 @@ static void destroy_vm(fmrb_app_task_context_t* ctx) {
 }
 
 /**
+ * Close the files and directories an ending app still has open.
+ *
+ * Runs in the app's own cleanup; the forced path does the same inline because
+ * it has to stay under the lock it already holds.
+ */
+static void close_owned_files(fmrb_app_task_context_t* ctx, fmrb_task_handle_t task) {
+    fmrb_hal_file_lock(UINT32_MAX);
+    const size_t closed = fmrb_hal_file_close_owned_locked(task);
+    fmrb_hal_file_unlock();
+    if (closed) {
+        FMRB_LOGW(TAG, "[%s gen=%u] Closed %u file(s) left open",
+                  ctx->app_name, ctx->gen, (unsigned)closed);
+    }
+}
+
+/**
  * Application task entry point
  */
 static void app_task_main(void* arg) {
@@ -1365,6 +1381,11 @@ cleanup:
 
     // Close VM based on type (BEFORE destroying memory handle!)
     destroy_vm(ctx);
+
+    // Files the app left open: an exit request unwinds a VM without running
+    // the script's close (and mruby never finalizes File objects here), which
+    // would keep the handle slot and the filesystem's open-file state for good.
+    close_owned_files(ctx, fmrb_task_get_current());
 
     // Anything the binding's cleanup already released is a no-op here; this is
     // the net for the paths that skip it, such as an uncaught exception.
@@ -1854,6 +1875,9 @@ unwind:
 // so a live-but-slow host always gets to finish and write its reply.
 #define KILL_SYNC_WAIT_MS 30000
 #define KILL_POLL_MS  10
+// How often the forced path reports that it is still waiting for the app's
+// file operation to end (one File#write can take tens of seconds on flash).
+#define KILL_FILE_WAIT_LOG_MS 5000
 
 /**
  * Ask an app to terminate itself.
@@ -2084,17 +2108,48 @@ bool fmrb_app_kill(int32_t id) {
     }
 
     if (task) {
-        // Barriers, not compensation: a FreeRTOS mutex can only be released by
-        // its owner, so a task deleted inside one of these windows would hold
-        // it for good - registry lock lost means every task's next send or
-        // receive blocks, MicroPython lock lost means no Python app ever
-        // starts again. Taking each lock here proves the target is outside the
-        // window; deleting a task that is merely *waiting* for one is safe,
-        // FreeRTOS takes it off the event list. The windows hold no blocking
-        // call, so these return at once.
-        fmrb_msg_registry_lock_barrier();
-        fmrb_mp_lock_barrier();
+        // The file HAL lock is held across the delete, not just touched: a
+        // file operation is not a short window (a File#write can run for tens
+        // of seconds on flash) and the app goes straight into the next one.
+        // Inside it the app also holds the filesystem's own mutex (LittleFS),
+        // so deleting it there left every later file access, from any task,
+        // waiting forever (doc/fs_kill_hang). Holding the lock, the app is
+        // either outside every file operation or waiting for this lock, and
+        // both are safe to delete. No bound: the operation always ends unless
+        // the filesystem itself is dead, and deleting would not help then.
+        uint32_t file_wait_ms = 0;
+        while (!fmrb_hal_file_lock(KILL_FILE_WAIT_LOG_MS)) {
+            file_wait_ms += KILL_FILE_WAIT_LOG_MS;
+            FMRB_LOGW(TAG, "[%s gen=%u] Waiting for a file operation to end (%ums)",
+                      ctx->app_name, gen, file_wait_ms);
+        }
+        // Same guard, not compensation, for the two short windows: a FreeRTOS
+        // mutex can only be released by its owner, so a task deleted inside
+        // one of these would hold it for good - registry lock lost means every
+        // task's next send or receive blocks, MicroPython lock lost means no
+        // Python app ever starts again. Each is held across the delete, like
+        // the file lock; deleting a task that is merely *waiting* for one is
+        // safe, FreeRTOS takes it off the event list.
+        //
+        // Order: file, registry, MicroPython, released in reverse. Only this
+        // path nests them. Elsewhere none of the three is taken while another
+        // is held (the registry and MicroPython windows take no lock and
+        // touch no file, and no file operation sends a message or touches
+        // the Python instance), so this order cannot meet an opposite one.
+        const bool registry_taken = fmrb_msg_registry_lock();
+        const bool mp_taken = fmrb_mp_lock();
         fmrb_task_delete(task);
+        fmrb_mp_unlock(mp_taken);
+        fmrb_msg_registry_unlock(registry_taken);
+        // Still under the file lock, so no new task can have opened a file
+        // under this (now freed) handle yet.
+        const size_t closed = fmrb_hal_file_close_owned_locked(task);
+        fmrb_hal_file_unlock();
+        if (closed) {
+            FMRB_LOGW(TAG, "[%s gen=%u] Closed %u file(s) left open; a file being "
+                      "written keeps what was written before the kill",
+                      ctx->app_name, gen, (unsigned)closed);
+        }
     }
     force_release_resources(ctx, task);
 
