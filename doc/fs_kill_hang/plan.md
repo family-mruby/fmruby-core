@@ -1,6 +1,6 @@
 # ファイル操作中のアプリの kill でファイル操作が止まる件
 
-> 状態: 完了 | 更新: 2026-09-29 | 原因は強制 kill がファイル操作の途中のアプリを消し、file HAL と LittleFS の錠が失われたこと (sim の gdb と P4-Nano で特定)。強制経路でファイル・registry・MicroPython の錠を持ったまま消し、終わったアプリの開きっぱなしのファイルを閉じる形で K1 完了 (report/k1.md)。Lua の io と Spinel の File の穴は「残り」
+> 状態: 進行中 | 更新: 2026-09-29 | 原因は強制 kill がファイル操作の途中のアプリを消し、file HAL と LittleFS の錠が失われたこと (sim の gdb と P4-Nano で特定)。強制経路でファイル・registry・MicroPython の錠を持ったまま消し、終わったアプリの開きっぱなしのファイルを閉じる形で K1 完了 (report/k1.md)。Lua の io と Spinel の File の穴は「残り」
 
 ## 目的
 
@@ -35,6 +35,7 @@
 | 段階 | 内容 | 状態 |
 |---|---|---|
 | K1 | 再現 (sim と実機)、止まっている錠の特定、修正の案の比較と実装、確認 | 完了 (report/k1.md) |
+| K2 | Spinel の File と Lua の io を file HAL 経由にし、K1 の守りを効かせる (Spinel を先に) | 指示書発行 (instruction_k2.md) |
 
 ## 受け入れ条件
 

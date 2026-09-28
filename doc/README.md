@@ -65,7 +65,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `editor_serious_mode/` [エディタ本気モード計画: 全画面・高解像度・高速化](editor_serious_mode/plan.md) — **完了** (2026-09-28) 段階 1-4・6 完了。段階 5 (640x360 全体切替) は、全画面のアプリだけを 640x360 にする doc/fullscreen_hires で置き換えて閉じた 〔11 files〕
 - `editor_ti/` [エディタ型推論統合 (picoruby-ti) 計画](editor_ti/plan.md) — - 〔21 files〕
 - `fmrb_basic/` [FMRuby BASIC 実装プロジェクト 共通指示書](fmrb_basic/00_common.md) — - 〔27 files〕
-- `fs_kill_hang/` [ファイル操作中のアプリの kill でファイル操作が止まる件](fs_kill_hang/plan.md) — **完了** (2026-09-29) 原因は強制 kill がファイル操作の途中のアプリを消し、file HAL と LittleFS の錠が失われたこと (sim の gdb と P4-Nano で特定)。強制経路でファイル・registry・MicroPython の錠を持ったまま消し、終わったアプリの開きっぱなしのファイルを閉じる形で K1 完了 (report/k1.md)。Lua の io と Spinel の File の穴は「残り」 〔3 files〕
+- `fs_kill_hang/` [ファイル操作中のアプリの kill でファイル操作が止まる件](fs_kill_hang/plan.md) — **進行中** (2026-09-29) 原因は強制 kill がファイル操作の途中のアプリを消し、file HAL と LittleFS の錠が失われたこと (sim の gdb と P4-Nano で特定)。強制経路でファイル・registry・MicroPython の錠を持ったまま消し、終わったアプリの開きっぱなしのファイルを閉じる形で K1 完了 (report/k1.md)。Lua の io と Spinel の File の穴は「残り」 〔4 files〕
 - `fullscreen_hires/` [全画面の高解像度モード (P4 系とブラウザ版)](fullscreen_hires/plan.md) — **進行中** (2026-09-28) **H0-H4 完了・ユーザの目視で合格 (NARYAv4 とブラウザ版)**。全画面の高解像度の自動切り替え、入力の追従、エディタのフォント 8/12/16、遠隔デスクトップの追従、表示側の守り。残りは Tab5 の実機確認のみ。切り替えの瞬間の一瞬の乱れは保留 (report/h1.md 6 章) 〔11 files〕
 - `gfx/` [Canvas Viewport スクロール (SET_CANVAS_VIEWPORT) — P4/PPA 活用](gfx/gfx_canvas_viewport_scroll.md) — - 〔2 files〕
 - `imu/` [P1: six-axis sensor (BMI270) on Modern](imu/report/p1.md) — - 〔1 files〕
