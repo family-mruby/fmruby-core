@@ -52,4 +52,3 @@ K1 では扱わず、別段階にする (report/k1.md 8 章)。
   同じ停止が起こりうる。塞ぐなら `fmrb_lua` で `io` を HAL 経由の実装に差し替える。
 - Spinel の実行時ライブラリの File (sp_io.c) も VFS を直接呼ぶ。
 - PSRAM スタックのタスクを戻すときは、hw_proxy の途中で消される穴に対策が要る。
-- registry と MicroPython の錠を持ったまま消す変更 (K1 の 7 章) の実機確認。次に別の用件で焼くときに、書き込み中の kill を 1 回足す。
