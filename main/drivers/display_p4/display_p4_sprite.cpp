@@ -146,8 +146,8 @@ typedef struct {
 FMRB_EXT_RAM_BSS_ATTR static p4_sprite_instance_t g_instances[DISPLAY_P4_MAX_SPRITE_INSTANCES];
 static uint16_t g_next_instance_id = 1;
 
-// Scratch array for z-order sort in composite.
-static p4_sprite_instance_t *g_sorted[DISPLAY_P4_MAX_SPRITE_INSTANCES];
+// Scratch array for z-order sort in composite (PSRAM, like the instances).
+FMRB_EXT_RAM_BSS_ATTR static p4_sprite_instance_t *g_sorted[DISPLAY_P4_MAX_SPRITE_INSTANCES];
 
 static p4_sprite_instance_t* instance_find(uint16_t id) {
     for (int i = 0; i < DISPLAY_P4_MAX_SPRITE_INSTANCES; i++) {
@@ -291,7 +291,7 @@ typedef struct {
     uint8_t *data;   // bit-packed, MSB-first; fmrb_sys_malloc
 } p4_mask_t;
 
-static p4_mask_t g_masks[DISPLAY_P4_MAX_MASKS];
+FMRB_EXT_RAM_BSS_ATTR static p4_mask_t g_masks[DISPLAY_P4_MAX_MASKS];
 static uint16_t g_next_mask_id = 1;
 
 static p4_mask_t* mask_find(uint16_t id) {

@@ -6,6 +6,7 @@
 
 #include <cstring>
 
+#include "fmrb_attr.h"
 #include "fmrb_log.h"
 
 static const char *TAG = "display_p4_vm";
@@ -20,7 +21,9 @@ typedef struct {
     int16_t  regs[DISPLAY_P4_VM_REG_COUNT];
 } p4_prog_t;
 
-static p4_prog_t g_progs[DISPLAY_P4_VM_MAX_PROGS];
+// PSRAM: the program table is read and written by the display task alone (no
+// ISR, no DMA), and a frame reads at most a few hundred bytes of it.
+FMRB_EXT_RAM_BSS_ATTR static p4_prog_t g_progs[DISPLAY_P4_VM_MAX_PROGS];
 
 void display_p4_vm_init(void) {
     memset(g_progs, 0, sizeof(g_progs));
