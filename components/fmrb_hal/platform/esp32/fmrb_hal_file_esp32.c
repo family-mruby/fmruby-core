@@ -27,6 +27,7 @@
 #include "hw_proxy.h"
 #include "hw_proxy_internal.h"
 #include "fmrb_log.h"
+#include "sdkconfig.h"
 
 #define TAG "fmrb_hal_file"
 
@@ -57,12 +58,27 @@ typedef struct {
 EXT_RAM_BSS_ATTR static fmrb_file_slot_t s_file_slots[MAX_OPEN_FILES];
 EXT_RAM_BSS_ATTR static fmrb_dir_slot_t s_dir_slots[MAX_OPEN_DIRS];
 
-// Internal-RAM bounce buffer for writes whose source resides in PSRAM. SPI
-// flash writes require the source to be in internal RAM; otherwise the write
-// silently fails. Sized to balance syscall count against IRAM footprint.
-// Access is serialized by s_file_mutex.
+// Internal-RAM bounce buffer for writes whose source is outside internal RAM.
+// Only built on the S3. The source-address test below is the S3's external
+// data window (0x3C000000-0x3DFFFFFF, PSRAM and flash rodata), which matches
+// nothing on the P4 (PSRAM at 0x48000000), so on the P4 this path never ran
+// and writes from PSRAM have always gone straight to fwrite.
+//
+// Nothing below needs the bounce either: LittleFS copies the caller's data
+// into its own cache (lfs_bd_prog, cache allocated internal) before any flash
+// op, esp_flash_write() copies a non-DRAM source into a stack buffer before it
+// disables the cache, and sdmmc_write_sectors() bounces a PSRAM source into a
+// DMA-capable buffer itself. It was added together with the real fix for
+// "File#write writes nothing" (picoruby-machine redirected IO#write to UART,
+// 10e80148). The S3 keeps it until it is verified on a Retro board
+// (doc/iram_reduction/report/r2.md). Access is serialized by s_file_mutex.
+#if CONFIG_IDF_TARGET_ESP32S3
+#define FILE_WRITE_BOUNCE 1
 #define FILE_WRITE_BOUNCE_SIZE 4096
 static uint8_t s_file_write_bounce[FILE_WRITE_BOUNCE_SIZE];
+#else
+#define FILE_WRITE_BOUNCE 0
+#endif
 
 // Global mutex for thread safety
 static SemaphoreHandle_t s_file_mutex = NULL;
@@ -694,15 +710,13 @@ fmrb_err_t fmrb_hal_file_write(fmrb_file_t handle, const void *buffer, size_t si
 
     fmrb_file_slot_t *slot = (fmrb_file_slot_t *)handle;
 
-    // SPI flash writes require the source buffer to live in internal RAM.
-    // Callers may pass a PSRAM-resident buffer (Ruby strings, mempool data),
-    // and writing directly from PSRAM silently fails (no error, 0 bytes
-    // persisted). Bounce through the file-scope internal-RAM buffer in that
-    // case. Single-threaded by s_file_mutex, so no concurrency on the buffer.
+    size_t n;
+#if FILE_WRITE_BOUNCE
+    // S3 only: copy a source in the external data window (PSRAM, flash
+    // rodata) through the internal-RAM buffer. See s_file_write_bounce.
     uintptr_t addr = (uintptr_t)buffer;
     bool needs_bounce = (size > 0 && addr >= 0x3C000000 && addr < 0x3E000000);
 
-    size_t n;
     if (needs_bounce) {
         const uint8_t *src_bytes = (const uint8_t *)buffer;
         size_t total = 0;
@@ -718,6 +732,9 @@ fmrb_err_t fmrb_hal_file_write(fmrb_file_t handle, const void *buffer, size_t si
     } else {
         n = fwrite(buffer, 1, size, slot->fp);
     }
+#else
+    n = fwrite(buffer, 1, size, slot->fp);
+#endif
 
     if (bytes_written != NULL) {
         *bytes_written = n;
