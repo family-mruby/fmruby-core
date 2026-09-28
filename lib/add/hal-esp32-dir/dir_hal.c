@@ -10,6 +10,11 @@
 **
 ** PSRAM stack tasks are routed through hw_proxy (internal RAM stack) for
 ** opendir/readdir/closedir/stat to avoid SPI flash DMA crashes.
+**
+** Every call that reaches the VFS runs under the file HAL lock
+** (fmrb_hal_file_lock). The filesystem takes its own mutex inside these
+** calls, and the forced app kill relies on that lock to never delete an app
+** while it holds the filesystem's mutex (doc/fs_kill_hang).
 */
 
 #include <mruby.h>
@@ -58,15 +63,20 @@ struct mrb_dir_handle {
 static DIR *
 real_opendir(const char *resolved)
 {
+  DIR *dir;
+  fmrb_hal_file_lock(UINT32_MAX);
 #ifndef CONFIG_IDF_TARGET_LINUX
   if (hw_proxy_needs_proxy()) {
     hw_proxy_dir_open_params_t p = { .path = resolved, .out_dir = NULL };
     hw_proxy_request_t req = { .op = HW_PROXY_OP_DIR_OPEN, .params = &p };
-    if (hw_proxy_call(&req) != 0) return NULL;
-    return (DIR *)p.out_dir;
+    dir = (hw_proxy_call(&req) != 0) ? NULL : (DIR *)p.out_dir;
+    fmrb_hal_file_unlock();
+    return dir;
   }
 #endif
-  return opendir(resolved);
+  dir = opendir(resolved);
+  fmrb_hal_file_unlock();
+  return dir;
 }
 
 mrb_dir_handle*
@@ -100,6 +110,7 @@ mrb_hal_dir_close(mrb_state *mrb, mrb_dir_handle *handle)
 {
   int result = 0;
   if (handle->real != NULL) {
+    fmrb_hal_file_lock(UINT32_MAX);
 #ifndef CONFIG_IDF_TARGET_LINUX
     if (hw_proxy_needs_proxy()) {
       hw_proxy_dir_close_params_t p = { .dir = handle->real };
@@ -111,6 +122,7 @@ mrb_hal_dir_close(mrb_state *mrb, mrb_dir_handle *handle)
 #else
     result = closedir(handle->real);
 #endif
+    fmrb_hal_file_unlock();
   }
   mrb_free(mrb, handle);
   return result;
@@ -122,6 +134,7 @@ mrb_hal_dir_read(mrb_state *mrb, mrb_dir_handle *handle)
   (void)mrb;
   if (handle->real != NULL) {
     const char *name = NULL;
+    fmrb_hal_file_lock(UINT32_MAX);
 #ifndef CONFIG_IDF_TARGET_LINUX
     if (hw_proxy_needs_proxy()) {
       hw_proxy_dir_read_params_t p = { .dir = handle->real, .out_name = &name };
@@ -135,6 +148,7 @@ mrb_hal_dir_read(mrb_state *mrb, mrb_dir_handle *handle)
     struct dirent *dp = readdir(handle->real);
     name = dp ? dp->d_name : NULL;
 #endif
+    fmrb_hal_file_unlock();
     if (name != NULL) {
       // Note a physical entry that shadows a synthetic mount name so the
       // virtual phase below does not repeat it.
@@ -164,7 +178,9 @@ mrb_hal_dir_rewind(mrb_state *mrb, mrb_dir_handle *handle)
 {
   (void)mrb;
   if (handle->real != NULL) {
+    fmrb_hal_file_lock(UINT32_MAX);
     rewinddir(handle->real);
+    fmrb_hal_file_unlock();
   }
   handle->virtual_idx = 0;
   // The real listing is re-read from the top, so which names shadow a mount
@@ -203,7 +219,10 @@ mrb_hal_dir_mkdir(mrb_state *mrb, const char *path, int mode)
   if (fmrb_hal_file_resolve_path(path, resolved, sizeof(resolved)) != FMRB_OK) {
     return -1;
   }
-  return mkdir(resolved, (mode_t)mode);
+  fmrb_hal_file_lock(UINT32_MAX);
+  int ret = mkdir(resolved, (mode_t)mode);
+  fmrb_hal_file_unlock();
+  return ret;
 }
 
 int
@@ -219,7 +238,10 @@ mrb_hal_dir_rmdir(mrb_state *mrb, const char *path)
   if (fmrb_hal_file_resolve_path(path, resolved, sizeof(resolved)) != FMRB_OK) {
     return -1;
   }
-  return rmdir(resolved);
+  fmrb_hal_file_lock(UINT32_MAX);
+  int ret = rmdir(resolved);
+  fmrb_hal_file_unlock();
+  return ret;
 }
 
 int
@@ -230,7 +252,10 @@ mrb_hal_dir_chdir(mrb_state *mrb, const char *path)
   if (fmrb_hal_file_resolve_path(path, resolved, sizeof(resolved)) != FMRB_OK) {
     return -1;
   }
-  return chdir(resolved);
+  fmrb_hal_file_lock(UINT32_MAX);
+  int ret = chdir(resolved);
+  fmrb_hal_file_unlock();
+  return ret;
 }
 
 int
@@ -261,20 +286,23 @@ mrb_hal_dir_is_directory(mrb_state *mrb, const char *path)
   if (fmrb_hal_file_resolve_path(path, resolved, sizeof(resolved)) != FMRB_OK) {
     return 0;
   }
+  int is_dir = 0;
+  fmrb_hal_file_lock(UINT32_MAX);
 #ifndef CONFIG_IDF_TARGET_LINUX
   if (hw_proxy_needs_proxy()) {
-    int is_dir = 0;
     hw_proxy_dir_stat_params_t p = { .path = resolved, .out_is_dir = &is_dir };
     hw_proxy_request_t req = { .op = HW_PROXY_OP_DIR_STAT, .params = &p };
     hw_proxy_call(&req);
+    fmrb_hal_file_unlock();
     return is_dir;
   }
 #endif
   struct stat sb;
   if (stat(resolved, &sb) == 0 && S_ISDIR(sb.st_mode)) {
-    return 1;
+    is_dir = 1;
   }
-  return 0;
+  fmrb_hal_file_unlock();
+  return is_dir;
 }
 
 void mrb_hal_dir_init(mrb_state *mrb) { (void)mrb; }

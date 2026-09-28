@@ -345,6 +345,51 @@ fmrb_err_t fmrb_hal_file_mount(const char *path);
  */
 fmrb_err_t fmrb_hal_file_unmount(const char *path);
 
+/**
+ * @brief Take the lock that serializes every file HAL operation
+ *
+ * Every fmrb_hal_file_* call that reaches the filesystem runs inside this
+ * lock, and so does every lock the filesystem takes underneath it (the
+ * LittleFS mutex, the newlib FILE lock). Holding it therefore proves that no
+ * other task is inside a file operation.
+ *
+ * Two users: code that calls the VFS directly on behalf of an app (the Ruby
+ * Dir class), so that it is covered by the same guarantee, and the forced
+ * app kill, which holds it across the task delete so that the app cannot be
+ * deleted halfway through a file operation. A task deleted there would keep
+ * the filesystem's own mutex for good and every later file access, from any
+ * task, would wait forever.
+ *
+ * Not recursive: do not call fmrb_hal_file_* while holding it.
+ *
+ * @param timeout_ms How long to wait; UINT32_MAX waits forever
+ * @return true if the lock was taken
+ */
+bool fmrb_hal_file_lock(uint32_t timeout_ms);
+
+/**
+ * @brief Release the lock taken by fmrb_hal_file_lock()
+ */
+void fmrb_hal_file_unlock(void);
+
+/**
+ * @brief Close every file and directory handle opened by a task
+ *
+ * For the end of an app: whatever the app left open (a forced kill in the
+ * middle of a write, an unwind that skipped its close) would otherwise hold a
+ * handle slot, a VFS descriptor and the filesystem's open-file state for
+ * good. Closing commits what was written so far, so a file that was being
+ * written ends up holding the bytes written before the app ended.
+ *
+ * The caller must hold fmrb_hal_file_lock(). Holding it is also what makes
+ * the owner key safe after a delete: no task can open a file (and so reuse a
+ * freed task handle as an owner) while the lock is held.
+ *
+ * @param owner Task handle of the opener
+ * @return Number of handles closed
+ */
+size_t fmrb_hal_file_close_owned_locked(void *owner);
+
 #ifdef __cplusplus
 }
 #endif

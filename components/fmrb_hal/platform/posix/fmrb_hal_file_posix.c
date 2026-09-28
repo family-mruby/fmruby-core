@@ -18,8 +18,12 @@
 
 const char* TAG = "file_posix";
 
-// Internal file handle structure
-typedef struct {
+// Internal file handle structure. Open handles are kept on a list, with the
+// task that opened them, so an app's leftovers can be closed when it ends
+// (fmrb_hal_file_close_owned_locked).
+typedef struct fmrb_file_handle {
+    struct fmrb_file_handle *prev, *next;
+    void *owner;
     FILE *fp;
     // /tmp is capacity-limited on device, so the dev build accounts for it too.
     // `counted` is how many of this file's bytes are already charged against
@@ -29,7 +33,9 @@ typedef struct {
 } fmrb_file_handle_t;
 
 // Internal directory handle structure
-typedef struct {
+typedef struct fmrb_dir_handle {
+    struct fmrb_dir_handle *prev, *next;
+    void *owner;
     DIR *dir;
     char dir_path[512];  // Store directory path for stat() calls in readdir
 } fmrb_dir_handle_t;
@@ -38,6 +44,24 @@ typedef struct {
 static fmrb_semaphore_t s_file_mutex = NULL;
 #define LOCK() fmrb_semaphore_take(s_file_mutex, FMRB_TICK_MAX)
 #define UNLOCK() fmrb_semaphore_give(s_file_mutex)
+
+// Open handles, both lists guarded by s_file_mutex
+static fmrb_file_handle_t *s_open_files = NULL;
+static fmrb_dir_handle_t *s_open_dirs = NULL;
+
+#define HANDLE_LIST_ADD(head, h) do {           \
+        (h)->prev = NULL;                       \
+        (h)->next = (head);                     \
+        if (head) (head)->prev = (h);           \
+        (head) = (h);                           \
+    } while (0)
+
+#define HANDLE_LIST_REMOVE(head, h) do {                    \
+        if ((h)->prev) (h)->prev->next = (h)->next;         \
+        else (head) = (h)->next;                            \
+        if ((h)->next) (h)->next->prev = (h)->prev;         \
+        (h)->prev = (h)->next = NULL;                       \
+    } while (0)
 
 // Base path for file operations - mount data/ directory
 #define BASE_PATH "flash"
@@ -235,6 +259,8 @@ fmrb_err_t fmrb_hal_file_open(const char *path, uint32_t flags, fmrb_file_t *out
         handle->counted = 0;
     }
 
+    handle->owner = fmrb_task_get_current();
+    HANDLE_LIST_ADD(s_open_files, handle);
     *out_handle = handle;
     UNLOCK();
     return FMRB_OK;
@@ -253,6 +279,7 @@ fmrb_err_t fmrb_hal_file_close(fmrb_file_t handle) {
 
     LOCK();
     fmrb_file_handle_t *fh = (fmrb_file_handle_t *)handle;
+    HANDLE_LIST_REMOVE(s_open_files, fh);
     fclose(fh->fp);
     fmrb_sys_free(fh);
     UNLOCK();
@@ -541,6 +568,8 @@ fmrb_err_t fmrb_hal_file_opendir(const char *path, fmrb_dir_t *out_handle) {
     strncpy(handle->dir_path, full_path, sizeof(handle->dir_path) - 1);
     handle->dir_path[sizeof(handle->dir_path) - 1] = '\0';
 
+    handle->owner = fmrb_task_get_current();
+    HANDLE_LIST_ADD(s_open_dirs, handle);
     *out_handle = handle;
     UNLOCK();
     return FMRB_OK;
@@ -554,6 +583,7 @@ fmrb_err_t fmrb_hal_file_closedir(fmrb_dir_t handle) {
 
     LOCK();
     fmrb_dir_handle_t *dh = (fmrb_dir_handle_t *)handle;
+    HANDLE_LIST_REMOVE(s_open_dirs, dh);
     closedir(dh->dir);
     fmrb_sys_free(dh);
     UNLOCK();
@@ -787,4 +817,46 @@ fmrb_err_t fmrb_hal_file_mount(const char *path) {
 fmrb_err_t fmrb_hal_file_unmount(const char *path) {
     (void)path;
     return FMRB_ERR_NOT_SUPPORTED;  // Auto-mounted
+}
+
+bool fmrb_hal_file_lock(uint32_t timeout_ms) {
+    if (s_file_mutex == NULL) {
+        return false;
+    }
+    fmrb_tick_t ticks = (timeout_ms == UINT32_MAX) ? FMRB_TICK_MAX : FMRB_MS_TO_TICKS(timeout_ms);
+    return fmrb_semaphore_take(s_file_mutex, ticks) == FMRB_TRUE;
+}
+
+void fmrb_hal_file_unlock(void) {
+    UNLOCK();
+}
+
+size_t fmrb_hal_file_close_owned_locked(void *owner) {
+    size_t closed = 0;
+    if (owner == NULL) {
+        return 0;
+    }
+    fmrb_file_handle_t *fh = s_open_files;
+    while (fh != NULL) {
+        fmrb_file_handle_t *next = fh->next;
+        if (fh->owner == owner) {
+            HANDLE_LIST_REMOVE(s_open_files, fh);
+            fclose(fh->fp);
+            fmrb_sys_free(fh);
+            closed++;
+        }
+        fh = next;
+    }
+    fmrb_dir_handle_t *dh = s_open_dirs;
+    while (dh != NULL) {
+        fmrb_dir_handle_t *next = dh->next;
+        if (dh->owner == owner) {
+            HANDLE_LIST_REMOVE(s_open_dirs, dh);
+            closedir(dh->dir);
+            fmrb_sys_free(dh);
+            closed++;
+        }
+        dh = next;
+    }
+    return closed;
 }
