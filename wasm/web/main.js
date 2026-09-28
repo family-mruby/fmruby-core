@@ -49,7 +49,7 @@ function paint() {
     canvas.width = w;
     canvas.height = h;
     imageData = ctx.createImageData(w, h);
-    applyZoom();   // the CSS size follows the framebuffer the firmware chose
+    applyZoom();   // the box stays the base size's (see baseSize)
   }
   // Copy out of the SharedArrayBuffer (ImageData refuses a SAB view).
   imageData.data.set(new Uint8Array(M.HEAPU8.buffer, ptr, w * h * 4));
@@ -362,14 +362,26 @@ const zoomSelect = document.getElementById('zoom-select');
 // on a narrow screen starts fitted instead. Only the first: once the selector
 // has been used, that choice is what comes back.
 zoomSelect.value = readSetting('fmrb_web_zoom', null) ||
-  (document.documentElement.clientWidth < canvas.width * 2 + 24 ? 'fit' : '2');
+  (document.documentElement.clientWidth < baseSize()[0] * 2 + 24 ? 'fit' : '2');
 zoomSelect.addEventListener('change', () => {
   writeSetting('fmrb_web_zoom', zoomSelect.value);
   applyZoom();
 });
 
+// The size the page lays the machine out for: the resolution chosen above,
+// not the framebuffer of the moment. A fullscreen app in the high-resolution
+// mode (doc/fullscreen_hires/) switches the framebuffer from 426x240 to
+// 640x360 and back; the machine must not jump to 1.5 times its size on the
+// page when that happens, only get finer. Both sizes are 16:9, so drawing
+// the frame into the base size's box keeps it undistorted.
+function baseSize() {
+  const m = /^(\d+)x(\d+)$/.exec(resSelect.value || DEFAULT_RES);
+  return m ? [parseInt(m[1], 10), parseInt(m[2], 10)] : [426, 240];
+}
+
 function applyZoom() {
   const full = document.fullscreenElement === screenBox;
+  const [baseW, baseH] = baseSize();
   const zoom = full ? 'fit' : zoomSelect.value;   // full screen means fill it
   let scale;
   if (zoom === 'fit') {
@@ -384,12 +396,12 @@ function applyZoom() {
       availW = Math.max(document.documentElement.clientWidth - 24, 160);
       availH = Math.max(document.documentElement.clientHeight - box.top - 24, 120);
     }
-    scale = Math.max(Math.min(availW / canvas.width, availH / canvas.height), 0.5);
+    scale = Math.max(Math.min(availW / baseW, availH / baseH), 0.5);
   } else {
     scale = parseFloat(zoom) || 1;
   }
-  canvas.style.width = Math.round(canvas.width * scale) + 'px';
-  canvas.style.height = Math.round(canvas.height * scale) + 'px';
+  canvas.style.width = Math.round(baseW * scale) + 'px';
+  canvas.style.height = Math.round(baseH * scale) + 'px';
 }
 
 window.addEventListener('resize', () => applyZoom());
