@@ -12,7 +12,9 @@ extern "C" {
 // P4 hardware H.264 encoder wrapper (Phase 2).
 // On chip rev < v3.0 the hardware encoder only accepts the
 // O_UYY_E_VYY YUV420 layout, so each RGB565 capture frame is first
-// color-converted (and 426 -> 432 padded) by the PPA SRM engine.
+// color-converted (and padded to multiples of 16) by the PPA SRM engine.
+// The source size is fixed per init; to follow a frame of another size
+// (the fullscreen high-resolution mode), deinit and init again.
 // Output is an Annex B access unit; IDR frames carry SPS/PPS
 // automatically.
 
@@ -28,6 +30,12 @@ void       rd_encoder_h264_deinit(void);
 
 /** Encoded output width (source width padded up to a multiple of 16). */
 uint16_t rd_encoder_h264_width(void);
+
+/** Encoded output height (source height padded up to a multiple of 16). */
+uint16_t rd_encoder_h264_height(void);
+
+/** True when the encoder is up and set up for frames of this size. */
+bool rd_encoder_h264_is_for(uint16_t src_w, uint16_t src_h);
 
 /** Force the next encoded frame to be an IDR (client join / recovery). */
 void rd_encoder_h264_request_idr(void);
