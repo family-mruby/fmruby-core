@@ -280,16 +280,6 @@ endif()
 include(${CMAKE_CURRENT_LIST_DIR}/../fmrb_common/fmrb_hw_defines.cmake)
 fmrb_add_hw_defines()
 
-# The development remote control switch (main/CMakeLists.txt declares it and
-# explains it). The app gem's ports read it too: FmrbGfx#_dev_screen_mode, the
-# fullscreen high-resolution test hook, exists only while it is on. Declared
-# again here because the component order is not ours to rely on; option() on
-# an existing cache entry does nothing.
-option(FMRB_DEV_REMOTE_CTL "Enable the development remote control endpoints" ON)
-if(FMRB_DEV_REMOTE_CTL)
-    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_DEV_REMOTE_CTL)
-endif()
-
 
 # Create build directories to avoid CMake validation errors
 execute_process(

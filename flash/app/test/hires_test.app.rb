@@ -1,53 +1,41 @@
 # Fullscreen high-resolution mode test (Modern / P4 and the browser only).
 #
-# doc/fullscreen_hires/ H1: the display can show one fullscreen canvas on a
+# doc/fullscreen_hires/: the display can show one fullscreen canvas on a
 # 640x360 framebuffer at 2x instead of the usual 426x240 at 3x. The kernel
-# decides that by itself (H2): this app's .app.toml says fullscreen_hires, so
-# it starts on the 640x360 screen. Space still switches by hand through the
-# development hook FmrbGfx#_dev_screen_mode, to exercise the display on its
-# own (the kernel does not hear about those switches).
+# decides that by itself: this app's .app.toml says fullscreen_hires, so it
+# starts on the 640x360 screen. F11 asks the kernel for a window (on the
+# 426x240 screen) and for fullscreen again (FmrbApp#toggle_fullscreen), the
+# way the editor does; the screen follows because the kernel decides it. There
+# is no way for an app to switch the screen on its own.
 #
 # It draws a test card for whatever size it has: a one-pixel white border on
 # the outermost pixels (so a clipped or shifted picture shows), a grid every
 # 40 px with finer ticks every 10, a one-pixel checkerboard patch (it only
 # looks grey and even when every pixel lands on its own spot), and text in
-# the three fonts. The status line says which mode is on and how many
-# switches have been done, so a screenshot is self-describing.
+# the three fonts. The status line says which size it has and how often it
+# was resized, so a screenshot is self-describing.
 #
 # Keys:
-#   Space / H  switch between 426x240 and 640x360
-#   A          automatic: 10 round trips (20 switches), 2 s apart
+#   F11        window / fullscreen
 #   F          fast: redraw the status every 30 ms instead of 100 ms
 #   Q / Esc    quit (the display goes back to 426x240 by itself)
 #
-# Without the hook (Retro, the Linux simulator, a release build) it says so
-# and stays at its size.
+# Where there is no high-resolution mode (Retro, the Linux simulator) it is
+# an ordinary fullscreen app at the screen's size.
 
 class HiresTestApp < FmrbApp
   HIRES_W = 640
   HIRES_H = 360
-  AUTO_SWITCHES = 20
-  AUTO_INTERVAL_MS = 2000
 
-  SC_A = 0x04
   SC_F = 0x09
-  SC_H = 0x0B
+  SC_F11 = 0x44
   SC_Q = 0x14
-  SC_SPACE = 0x2C
   SC_ESC = 0x29
 
   def on_create
-    # With fullscreen_hires the kernel starts this app on the 640x360 screen;
-    # the base screen is then the usual 426x240.
-    @hires = (@window_width == HIRES_W && @window_height == HIRES_H)
-    @base_w = @hires ? 426 : @window_width
-    @base_h = @hires ? 240 : @window_height
     @w = @window_width
     @h = @window_height
-    @switches = 0
-    @auto_left = 0
-    @auto_next = 0
-    @note = ""
+    @resizes = 0
     @tick = 0
     @period = 100
     redraw
@@ -56,18 +44,16 @@ class HiresTestApp < FmrbApp
   def on_resize(new_width, new_height)
     @w = new_width
     @h = new_height
+    @resizes += 1
+    Log.info("hires_test: resize #{@resizes} -> #{@w}x#{@h}")
     redraw
   end
 
   def on_event(ev)
     return unless ev[:type] == :key_down
     sc = ev[:scancode]
-    if sc == SC_SPACE || sc == SC_H
-      toggle
-    elsif sc == SC_A
-      @auto_left = AUTO_SWITCHES
-      @auto_next = Machine.board_millis
-      @note = "auto"
+    if sc == SC_F11
+      toggle_fullscreen
     elsif sc == SC_F
       @period = @period == 100 ? 30 : 100
     elsif sc == SC_Q || sc == SC_ESC
@@ -76,12 +62,6 @@ class HiresTestApp < FmrbApp
   end
 
   def on_update
-    if @auto_left > 0 && Machine.board_millis >= @auto_next
-      @auto_left -= 1
-      @auto_next = Machine.board_millis + AUTO_INTERVAL_MS
-      toggle
-      @note = "" if @auto_left == 0
-    end
     @tick += 1
     draw_status
     @gfx.present
@@ -89,30 +69,6 @@ class HiresTestApp < FmrbApp
   end
 
   private
-
-  def toggle
-    want_hires = !@hires
-    w = want_hires ? HIRES_W : @base_w
-    h = want_hires ? HIRES_H : @base_h
-    ok = false
-    begin
-      ok = @gfx._dev_screen_mode(w, h)
-    rescue NoMethodError
-      @note = "no _dev_screen_mode in this build"
-      @auto_left = 0
-      redraw
-      return
-    end
-    if ok
-      @hires = want_hires
-      @switches += 1
-      Log.info("hires_test: switch #{@switches} -> #{w}x#{h}")
-    else
-      @note = "_dev_screen_mode failed"
-      Log.info("hires_test: _dev_screen_mode(#{w}, #{h}) failed")
-      redraw
-    end
-  end
 
   def redraw
     w = @w
@@ -178,8 +134,11 @@ class HiresTestApp < FmrbApp
     @gfx.set_font(:ja, 16)
     @gfx.draw_text(12, 96, "efont 16: 高解像度 #{w}x#{h}", FmrbGfx::COLOR_CYAN)
     @gfx.set_font(:default)
-    @gfx.draw_text(12, h - 20, "Space/H: switch  A: auto x10  F: fast  Q: quit", FmrbGfx::COLOR_GRAY)
+    @gfx.draw_text(12, h - 20, "F11: window/fullscreen  F: fast  Q: quit", FmrbGfx::COLOR_GRAY)
 
+    # In a window (after F11) the title bar goes over the card; a no-op while
+    # fullscreen.
+    draw_window_frame
     draw_status
     @gfx.present
   end
@@ -187,10 +146,8 @@ class HiresTestApp < FmrbApp
   def draw_status
     @gfx.set_font(:default)
     @gfx.fill_rect(12, 20, 300, 20, FmrbGfx::COLOR_BLACK)
-    mode = @hires ? "HIRES" : "BASE"
-    @gfx.draw_text(12, 22, "#{mode} #{@w}x#{@h}  switches=#{@switches}  tick=#{@tick}", FmrbGfx::COLOR_GREEN)
-    line2 = @auto_left > 0 ? "auto: #{@auto_left} left" : @note
-    @gfx.draw_text(12, 32, line2, FmrbGfx::COLOR_MAGENTA)
+    mode = (@w == HIRES_W && @h == HIRES_H) ? "HIRES" : "BASE"
+    @gfx.draw_text(12, 22, "#{mode} #{@w}x#{@h}  resizes=#{@resizes}  tick=#{@tick}", FmrbGfx::COLOR_GREEN)
   end
 end
 

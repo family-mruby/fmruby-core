@@ -1535,50 +1535,6 @@ static mrb_value mrb_gfx_export_frame(mrb_state *mrb, mrb_value self)
     return self;
 }
 
-#if (defined(FMRB_HW_MODERN) && defined(FMRB_DEV_REMOTE_CTL)) || defined(FMRB_PLATFORM_WASM)
-// FmrbGfx#_dev_screen_mode(width, height) -> true / false
-//
-// Development hook for the fullscreen high-resolution mode
-// (doc/fullscreen_hires/, H1). The kernel is the one that decides this (H2);
-// until it does, a fullscreen test app switches itself with this: 640x360
-// enters the high-resolution screen, any other size resizes the app back to
-// that size and returns to the base screen. The resize reaches the app as the
-// usual "resize" message (on_resize), exactly as the kernel's will.
-//
-// Development builds only: on the device it exists with the development
-// remote control (FMRB_DEV_REMOTE_CTL, off in a release image); the browser
-// build always has it. Elsewhere (Retro, the Linux simulator) it is not
-// defined at all.
-static mrb_value mrb_gfx_dev_screen_mode(mrb_state *mrb, mrb_value self)
-{
-    mrb_int w, h;
-    mrb_get_args(mrb, "ii", &w, &h);
-    (void)self;
-    fmrb_app_task_context_t *ctx = fmrb_current();
-    if (!ctx || w <= 0 || h <= 0 || w > 0xFFFF || h > 0xFFFF) {
-        return mrb_false_value();
-    }
-    const uint8_t pid = (uint8_t)ctx->app_id;
-    fmrb_err_t ret;
-    if (w == 640 && h == 360) {
-        // Entering: the display first, so it holds the picture while the
-        // canvas grows and the app redraws.
-        ret = fmrb_app_set_screen_mode(pid, 640, 360);
-        if (ret == FMRB_OK) ret = fmrb_app_set_fullscreen(pid, true, 640, 360);
-    } else {
-        // Leaving: the canvas first; the display switches back once the app
-        // has presented at this size.
-        ret = fmrb_app_set_fullscreen(pid, true, (uint16_t)w, (uint16_t)h);
-        if (ret == FMRB_OK) ret = fmrb_app_set_screen_mode(pid, 0, 0);
-    }
-    if (ret != FMRB_OK) {
-        FMRB_LOGW(TAG, "_dev_screen_mode(%d, %d) failed: %d", (int)w, (int)h, ret);
-        return mrb_false_value();
-    }
-    return mrb_true_value();
-}
-#endif
-
 static mrb_value mrb_gfx_delete_sprite_image(mrb_state *mrb, mrb_value self)
 {
     mrb_int image_id;
@@ -1840,9 +1796,6 @@ void mrb_fmrb_gfx_init(mrb_state *mrb)
     mrb_define_method(mrb, gfx_class, "_delete_sprite_image", mrb_gfx_delete_sprite_image, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "_load_sprite_image_bmp", mrb_gfx_load_sprite_image_bmp, MRB_ARGS_REQ(2));
     mrb_define_method(mrb, gfx_class, "_export_frame", mrb_gfx_export_frame, MRB_ARGS_REQ(1));
-#if (defined(FMRB_HW_MODERN) && defined(FMRB_DEV_REMOTE_CTL)) || defined(FMRB_PLATFORM_WASM)
-    mrb_define_method(mrb, gfx_class, "_dev_screen_mode", mrb_gfx_dev_screen_mode, MRB_ARGS_REQ(2));
-#endif
     mrb_define_method(mrb, gfx_class, "_set_sprite_image_target", mrb_gfx_set_sprite_image_target, MRB_ARGS_REQ(1));
     mrb_define_method(mrb, gfx_class, "_create_sprite_instance", mrb_gfx_create_sprite_instance, MRB_ARGS_REQ(4));
     mrb_define_method(mrb, gfx_class, "_delete_sprite_instance", mrb_gfx_delete_sprite_instance, MRB_ARGS_REQ(1));
