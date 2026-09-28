@@ -7,6 +7,7 @@
 #include "fmrb_rtos.h"
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
+#include "fmrb_attr.h"
 #include "fmrb_task_config.h"
 
 #include "freertos/message_buffer.h"
@@ -162,8 +163,9 @@ fmrb_err_t fmrb_hal_link_send_noack(fmrb_link_channel_t channel,
 }
 
 // receive: Core reads ACK from m5gfx (via RX buffer)
-// Internal buffer for callers that don't provide their own
-static uint8_t g_recv_internal_buf[LINK_LOCAL_RECV_BUF_SIZE];
+// Internal buffer for callers that don't provide their own. PSRAM: the ACK is
+// copied in from the message buffer and parsed by the receiving task only.
+FMRB_EXT_RAM_BSS_ATTR static uint8_t g_recv_internal_buf[LINK_LOCAL_RECV_BUF_SIZE];
 
 fmrb_err_t fmrb_hal_link_receive(fmrb_link_channel_t channel,
                                   fmrb_link_message_t *msg,
