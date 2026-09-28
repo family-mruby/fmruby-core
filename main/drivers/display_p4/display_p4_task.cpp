@@ -335,6 +335,14 @@ typedef struct {
     uint16_t     owner;            // canvas the switch/mode belongs to
     uint32_t     pending_since_ms;
     uint32_t     switches;         // completed switches, for the log
+    // The owner was resized (UPDATE_WINDOW) and has not yet shown that it
+    // handled the resize. Its presents until then do not count as frames at
+    // the new size: an app can present from on_update before it has read the
+    // resize message, and that frame is laid out for the old size (report/h1.md
+    // 6.4 i). The acknowledgement is the SET_SPRITE_CLIP that FmrbApp sends
+    // from its resize handler (both engines), which travels the same ordered
+    // queue as the app's presents.
+    bool         owner_resize_unacked;
     // Remote-desktop capture: the size of the frame in each slot, since the
     // two slots can hold frames of different modes.
     uint16_t     cap_w[2], cap_h[2];
@@ -833,6 +841,13 @@ static void render_frame(void) {
         // still visible (a desktop the kernel has not hidden yet) is not
         // composited -- it was laid out for the base framebuffer.
         if (g_smode.hires && c->canvas_id != g_smode.owner) continue;
+        // Base mode: a canvas at the high-resolution size is a fullscreen
+        // app's that is about to get (or has just left) the high-resolution
+        // screen. Laid out for 640x360, it would show as its top-left corner
+        // at 3x; leave it out until the switch completes. A viewport canvas
+        // is exempt: it is a larger surface on purpose.
+        if (!g_smode.hires && c->view_w == 0 &&
+            c->width == DISPLAY_P4_HIRES_W && c->height == DISPLAY_P4_HIRES_H) continue;
 
         // Composite the committed buffer, never the working one (commit-on-present).
         int sw = c->render_sprite->width();
@@ -1010,7 +1025,9 @@ static bool screen_mode_ensure_hires_fb(void) {
 static void screen_mode_apply(bool hires, const char *why) {
     LGFX_Sprite *to     = hires ? g_smode.fb_hires : g_smode.fb_base;
     size_t       to_len = hires ? g_smode.fb_hires_size : g_smode.fb_base_size;
-    uint32_t waited = now_ms() - g_smode.pending_since_ms;
+    // Only a pending switch has waited; an owner hidden or deleted switches
+    // back at once.
+    uint32_t waited = g_smode.pending ? now_ms() - g_smode.pending_since_ms : 0;
     g_smode.pending = false;
     if (!to) return;
 
@@ -1019,7 +1036,10 @@ static void screen_mode_apply(bool hires, const char *why) {
     g_framebuffer     = to;
     g_fb_aligned_size = to_len;
     g_smode.hires     = hires;
-    if (!hires) g_smode.owner = 0;
+    if (!hires) {
+        g_smode.owner = 0;
+        g_smode.owner_resize_unacked = false;
+    }
     g_smode.switches++;
 
     const int nw = to->width();
@@ -1048,6 +1068,7 @@ static void screen_mode_try_complete(void) {
         if (!c) {
             g_smode.pending = false;
             g_smode.owner = 0;
+            g_smode.owner_resize_unacked = false;
             FMRB_LOGW(TAG, "screen mode: owner canvas gone before the switch, staying %dx%d",
                       g_framebuffer->width(), g_framebuffer->height());
             render_asap();
@@ -1106,6 +1127,7 @@ static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t 
         }
         if (want_hires && owner != g_smode.owner) {
             g_smode.owner = owner;
+            g_smode.owner_resize_unacked = false;
             render_asap();
         }
         return;
@@ -1115,7 +1137,10 @@ static void screen_mode_request(uint16_t owner, uint16_t w, uint16_t h, uint8_t 
     g_smode.pending_hires    = want_hires;
     g_smode.pending_since_ms = now_ms();
     // Going back, the canvas to wait for is the one on screen now.
-    if (want_hires) g_smode.owner = owner;
+    if (want_hires && owner != g_smode.owner) {
+        g_smode.owner = owner;
+        g_smode.owner_resize_unacked = false;
+    }
     screen_mode_try_complete();
 }
 
@@ -1128,6 +1153,7 @@ static void screen_mode_owner_leaving(uint16_t canvas_id, const char *why) {
     } else if (g_smode.pending && g_smode.pending_hires) {
         g_smode.pending = false;
         g_smode.owner = 0;
+        g_smode.owner_resize_unacked = false;
         FMRB_LOGI(TAG, "screen mode: switch cancelled (%s)", why);
         render_asap();
     }
@@ -1948,6 +1974,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
                 c->clip_x = c->clip_y = c->clip_w = c->clip_h = 0;
                 // The committed frame was laid out for the old size.
                 c->committed_fresh = false;
+                if (c->canvas_id == g_smode.owner) g_smode.owner_resize_unacked = true;
             }
             c->width  = nw;
             c->height = nh;
@@ -1985,7 +2012,11 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             src->transparent_color = cmd->transparent_color;
             src->use_transparency  = (bool)cmd->use_transparency;
             src->is_visible        = true;
-            src->committed_fresh   = true;
+            // The owner's frame counts only once it has handled its resize
+            // (owner_resize_unacked); until then it is laid out for the old size.
+            if (src->canvas_id != g_smode.owner || !g_smode.owner_resize_unacked) {
+                src->committed_fresh = true;
+            }
             g_needs_render = true;
             if (src->canvas_id == g_smode.owner) screen_mode_try_complete();
         } else {
@@ -2093,6 +2124,12 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
             uint16_t max_h = c->height - cmd->y;
             c->clip_w = (cmd->w < max_w) ? cmd->w : max_w;
             c->clip_h = (cmd->h < max_h) ? cmd->h : max_h;
+        }
+        // FmrbApp re-sends the clip from its resize handler: from here on the
+        // owner's presents are laid out for its new size.
+        if (c->canvas_id == g_smode.owner && g_smode.owner_resize_unacked) {
+            g_smode.owner_resize_unacked = false;
+            FMRB_LOGI(TAG, "screen mode: owner %u handled its resize", c->canvas_id);
         }
         g_needs_render = true;
         return 0;

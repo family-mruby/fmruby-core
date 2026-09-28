@@ -4,8 +4,10 @@
 // (usb_task / tab5_keyboard): key_code = scancode = HID usage ID,
 // modifier = FMRB_KEYMAP_MOD_* mask, mouse buttons use SDL numbering
 // (1=left, 2=middle, 3=right), coordinates are absolute in the virtual
-// 426x240 display space. The injection entry points are queue-based and
-// thread-safe, so calling from the httpd task context is fine.
+// display space -- 426x240, or 640x360 while a fullscreen app has the
+// high-resolution screen (fmrb_host_get_screen_size). The injection entry
+// points are queue-based and thread-safe, so calling from the httpd task
+// context is fine.
 
 #include "rd_input.h"
 
@@ -14,16 +16,30 @@
 
 static const char *TAG = "rd_input";
 
-#define RD_VIRT_W 426
-#define RD_VIRT_H 240
-
 static int16_t rd_i16(const uint8_t *p)
 {
     return (int16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
 }
 
-static int clamp_x(int v) { return v < 0 ? 0 : (v >= RD_VIRT_W ? RD_VIRT_W - 1 : v); }
-static int clamp_y(int v) { return v < 0 ? 0 : (v >= RD_VIRT_H ? RD_VIRT_H - 1 : v); }
+static int clamp_to(int v, int size)
+{
+    if (size <= 0) return v < 0 ? 0 : v;
+    return v < 0 ? 0 : (v >= size ? size - 1 : v);
+}
+
+static int clamp_x(int v)
+{
+    int w;
+    fmrb_host_get_screen_size(&w, NULL);
+    return clamp_to(v, w);
+}
+
+static int clamp_y(int v)
+{
+    int h;
+    fmrb_host_get_screen_size(NULL, &h);
+    return clamp_to(v, h);
+}
 
 fmrb_err_t rd_input_handle(const uint8_t *data, size_t len)
 {

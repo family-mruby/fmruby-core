@@ -31,18 +31,23 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include "fmrb_task_config.h"
+#include "fmrb_attr.h"
 
 static const char *TAG = "touch";
 
 #define TOUCH_POLL_MS        33   // ~30 Hz
 #define TOUCH_READY_POLL_MS  200  // Poll for display ready at startup
 
-// Virtual display bounds for cursor clamping
+// Virtual display bounds before the screen size is known (the base screen)
 #define TOUCH_VIRTUAL_W   426
 #define TOUCH_VIRTUAL_H   240
 
-// Panel-space pixel to virtual-pixel ratio (3x scale)
-#define TOUCH_SCALE       3
+// The panel's short side, which the virtual screen is scaled up to: panel
+// pixels per virtual pixel = TOUCH_PANEL_SHORT / virtual height (3 on the
+// 426x240 base screen, 2 on the 640x360 high-resolution one). Dividing the
+// finger's movement by that keeps the cursor under the same physical distance
+// in both modes.
+#define TOUCH_PANEL_SHORT 720
 
 // Hold this long without moving to press the button (drag start).
 // Taps must release within this window; 150 ms keeps drags snappy
@@ -75,15 +80,44 @@ static int16_t  g_down_tx = 0;
 static int16_t  g_down_ty = 0;
 static uint32_t g_down_ms = 0;
 
+// Virtual screen the cursor lives in. It follows the host's screen size
+// (fullscreen high-resolution mode, doc/fullscreen_hires/). PSRAM: no new
+// internal RAM statics.
+FMRB_EXT_RAM_BSS_ATTR static int g_virt_w;
+FMRB_EXT_RAM_BSS_ATTR static int g_virt_h;
+
 static uint32_t now_ms(void) {
     return (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS);
+}
+
+// Pick up a screen size change: keep the cursor at the same place on the
+// panel by scaling it with the ratio of the two sizes.
+static void sync_screen_size(void) {
+    int w, h;
+    fmrb_host_get_screen_size(&w, &h);
+    if (w <= 0 || h <= 0) {
+        w = TOUCH_VIRTUAL_W;
+        h = TOUCH_VIRTUAL_H;
+    }
+    if (w == g_virt_w && h == g_virt_h) return;
+    if (g_virt_w > 0 && g_virt_h > 0) {
+        g_cursor_x = g_cursor_x * w / g_virt_w;
+        g_cursor_y = g_cursor_y * h / g_virt_h;
+    }
+    g_virt_w = w;
+    g_virt_h = h;
+}
+
+static int touch_scale(void) {
+    int scale = TOUCH_PANEL_SHORT / (g_virt_h > 0 ? g_virt_h : TOUCH_VIRTUAL_H);
+    return scale > 0 ? scale : 1;
 }
 
 static void clamp_cursor(void) {
     if (g_cursor_x < 0) g_cursor_x = 0;
     if (g_cursor_y < 0) g_cursor_y = 0;
-    if (g_cursor_x >= TOUCH_VIRTUAL_W) g_cursor_x = TOUCH_VIRTUAL_W - 1;
-    if (g_cursor_y >= TOUCH_VIRTUAL_H) g_cursor_y = TOUCH_VIRTUAL_H - 1;
+    if (g_cursor_x >= g_virt_w) g_cursor_x = g_virt_w - 1;
+    if (g_cursor_y >= g_virt_h) g_cursor_y = g_virt_h - 1;
 }
 
 static void touch_task(void *arg) {
@@ -109,6 +143,7 @@ static void touch_task(void *arg) {
         int16_t tx, ty;
         int count = display_p4_get_touch(&tx, &ty);
         uint32_t now = now_ms();
+        sync_screen_size();
 
         if (count > 0) {
             // Second finger before any button action promotes to a
@@ -148,8 +183,9 @@ static void touch_task(void *arg) {
             if (g_state == TOUCH_STATE_MOVE || g_state == TOUCH_STATE_DRAG) {
                 // Relative movement: delta from anchor in panel space,
                 // converted to virtual pixels
-                int dx = ((int)tx - (int)g_anchor_tx) / TOUCH_SCALE;
-                int dy = ((int)ty - (int)g_anchor_ty) / TOUCH_SCALE;
+                const int scale = touch_scale();
+                int dx = ((int)tx - (int)g_anchor_tx) / scale;
+                int dy = ((int)ty - (int)g_anchor_ty) / scale;
                 if (dx != 0 || dy != 0) {
                     g_cursor_x += dx;
                     g_cursor_y += dy;
