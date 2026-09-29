@@ -1,6 +1,6 @@
 # ファイル操作中のアプリの kill でファイル操作が止まる件
 
-> 状態: 進行中 | 更新: 2026-09-29 | 原因は強制 kill がファイル操作の途中のアプリを消し、file HAL と LittleFS の錠が失われたこと (sim の gdb と P4-Nano で特定)。強制経路でファイル・registry・MicroPython の錠を持ったまま消し、終わったアプリの開きっぱなしのファイルを閉じる形で K1 完了 (report/k1.md)。Lua の io と Spinel の File の穴は「残り」
+> 状態: 完了 | 更新: 2026-09-29 | K1: 強制 kill でファイル・registry・MicroPython の錠を持ったまま消し、終わったアプリの開きっぱなしのファイルを閉じる。K2: Spinel の File と Lua の io も file HAL 経由にして同じ守りを効かせ、強制 kill で Lua の lua_close を呼ばない (二重解放の修正)。sim と P4-Nano で確認
 
 ## 目的
 
@@ -35,7 +35,7 @@
 | 段階 | 内容 | 状態 |
 |---|---|---|
 | K1 | 再現 (sim と実機)、止まっている錠の特定、修正の案の比較と実装、確認 | 完了 (report/k1.md) |
-| K2 | Spinel の File と Lua の io を file HAL 経由にし、K1 の守りを効かせる (Spinel を先に) | 指示書発行 (instruction_k2.md) |
+| K2 | Spinel の File と Lua の io を file HAL 経由にし、K1 の守りを効かせる (Spinel を先に) | **完了** (report/k2.md) |
 
 ## 受け入れ条件
 
@@ -53,3 +53,5 @@ K1 では扱わず、別段階にする (report/k1.md 8 章)。
   同じ停止が起こりうる。塞ぐなら `fmrb_lua` で `io` を HAL 経由の実装に差し替える。
 - Spinel の実行時ライブラリの File (sp_io.c) も VFS を直接呼ぶ。
 - PSRAM スタックのタスクを戻すときは、hw_proxy の途中で消される穴に対策が要る。
+
+K2 の判断 (ユーザ、2026-09-29): フォーク fmrb-ext を push し SPINEL_PIN を daef484b に。差し替え口で表せない操作は NotImplementedError のまま。強制 kill で Lua の __gc が走らないのはそのまま。I/O の差し替え口はフォーク独自の仕組みなので上流 PR にはしない。
