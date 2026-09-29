@@ -1105,7 +1105,10 @@ typedef struct {
     int64_t     last_use_us;
 } ble_fs_put_cache_t;
 
-static ble_fs_put_cache_t g_put_cache = {0};
+// PSRAM: a file handle and bookkeeping, touched by the FS command handler and
+// the GAP disconnect callback (NimBLE host task), never by an ISR. The chunk
+// data it writes comes from the frame buffer, not from here.
+EXT_RAM_BSS_ATTR static ble_fs_put_cache_t g_put_cache;
 
 static void ble_fs_put_cache_close(void)
 {
