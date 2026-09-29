@@ -1,6 +1,6 @@
 # 内蔵 RAM の削減 (第 2 弾)
 
-> 状態: 進行中 | 更新: 2026-09-29 | **R1・R2 完了** (TAB5 / NARYAv4 約 -48KB、S3 -16KB)。**R3 着手**: 実機なしで進められる残り (sdkconfig の見積もり、小物、Spinel の定数)
+> 状態: 進行中 | 更新: 2026-09-29 | **R1・R2 完了** (TAB5 / NARYAv4 約 -48KB、S3 -16KB)。**R3 実施済み (検収待ち)**: 静的な D/IRAM は TAB5 -2,312 / NARYAv4 -2,384 / S3 -1,832。sdkconfig の見積もり表は report/r3.md 3 章 (条件の軽い組で P4 -5.5KB / S3 -14.0KB、heap と FreeRTOS まで足すと P4 約 -23.6KB / S3 -28.1KB)。SPINEL_PIN の更新は判断待ち
 
 ## 目的
 
@@ -39,7 +39,7 @@
 | R1 | 棚卸し (3 機種の map をシンボル単位で、移し先と懸念を分類) と、安全なものの移設 | **完了** (report/r1.md、2026-09-28 検収)。静的 D/IRAM は S3 -16,384 / TAB5 -39,592 / NARYAv4 -39,584、P4-Nano の待機時 IRAM free +39,564 |
 | R2 | R1 で「確かめてから」に残したもの (DMA / 割り込みの確認が要るもの、速さの計測が要るもの)。候補と案は report/r1.md 7 章 | **完了** (report/r2.md、2026-09-29 検収)。ユーザ決定: link_local のメッセージバッファは速さのため移さない、ファイル書き込みのバッファ 2 つに絞る。結果: `s_file_write_bounce` は P4 では元から動いていなかった (番地の判定が S3 の窓) うえ前提も IDF のコードで成り立たないので P4 では外し、`s_fs_buf` は P4 で PSRAM へ。静的 D/IRAM は TAB5 / NARYAv4 -8,192、S3 は据え置き (Retro 実機での確認待ち)。追加の依頼の `g_recv_buf` の速さ比較は差なし |
 
-| R3 | 実機なしで進められる残り: sdkconfig を変えた場合の見積もり (変更はしない、ユーザが判断)、小物を PSRAM へ、Spinel の生成 C の定数を PSRAM へ (instruction_r3.md) | 着手 |
+| R3 | 実機なしで進められる残り: sdkconfig を変えた場合の見積もり (変更はしない、ユーザが判断)、小物を PSRAM へ、Spinel の生成 C の定数を PSRAM へ (instruction_r3.md) | **実施済み・検収待ち** (report/r3.md)。T2 の小物 6 つ (S3 -580 / P4 -1,108)、T3 は fork `654c9fd5` で cst_ / civ_ / pool の数え 313 個 -1,249 (P4 で .sbss から外れたことを確認)。GC の停止時間は sim で前後差なし。P4 の lwIP の .bss は sdkconfig では動かせないと判明 |
 | R4 | 実機が要るもの: S3 の R2 相当 (Retro)、PPA の scaled / block、I2S のバッファ、apu_emu | 未 |
 
 ## 受け入れ条件

@@ -786,6 +786,37 @@ P4-Nano の待機時の IRAM free は 190,088 → **198,260 (+8,172)**。File#wr
 edit_lat 平均 11.3 ms (PSRAM) 対 11.7 ms (内蔵)、cmds/s と render も同じで、**差は無い**。
 1 メッセージが約 22 B と小さく、memcpy よりメッセージバッファの手続きが大半を占める。PSRAM のままにした。
 
+### 2026-09-29: sdkconfig の見積もり・小物・Spinel の定数 (iram_reduction R3)
+
+**計測 (sdkconfig、変更はしていない)**。1 設定ずつ別の build ディレクトリで試しのビルドをして、静的な D/IRAM の
+差を 3 機種で測った (表・条件・推奨の全体は doc/iram_reduction/report/r3.md 3 章)。減るのは全部 IRAM のコード。
+
+| 設定 | TAB5 | NARYAv4 | S3 |
+|---|---:|---:|---:|
+| RMT の ISR / 符号化を flash へ | -2,726 | -2,726 | -2,528 |
+| SPI master / slave の ISR を flash へ | 0 | 0 | -8,996 |
+| ringbuf を flash へ (ISR 用まで) | -2,806 | -2,806 | -2,496 |
+| heap を flash へ (S3 は SPI master の ISR が強制で外れる分を含む) | -6,192 | -6,196 | -13,440 |
+| FreeRTOS (タスク用の関数) を flash へ | -11,884 | -11,844 | -8,476 |
+| 組: RMT + ringbuf + SPI | -5,532 | -5,532 | -14,036 |
+| 組: 上 + heap + FreeRTOS | -23,668 | -23,632 | -28,088 |
+
+lwIP の PSRAM 配置 (P4 で静的には +100)、mDNS の PSRAM 配置 (静的には 0、実行時に約 4 KB)、P4 の WiFi の IRAM 最適化 (0) は
+静的には効かない。**P4 の lwIP の .bss (約 4 KB) は sdkconfig では動かせない**: lwip/linker.lf の `extram_bss` の scheme は
+esp_wifi の linker.lf が定義していて、WiFi をローカルに持たない P4 のビルドでは登録されない。
+試しのビルドは並べて走らせられない (どの build ディレクトリからも picoruby の rake が走り、共有のビルド物を取り合う)。
+
+**決定と効果 (コード)**。タスクだけが触る小物を PSRAM へ (host_task の `g_file_transfer` `s_sync_cmd_buf`、ble の
+`g_put_cache`、display_p4 の `g_images_store`、動画の `s_p`、audio_p4 の `s_tracks`)。Spinel の生成 C の、初期値がゼロの
+ファイルスコープの領域 (`cst_` 57 個、`civ_` 105 個) と pool の数え (`pool_count` / `pool_max` ほか) を fork `654c9fd5` で
+`SP_TU_BSS` に置いた (313 個 1,249 B、P4 では .sbss / .sdata から外れたことを ELF の番地で確認)。静的な D/IRAM は
+TAB5 135,224 → **132,912**、NARYAv4 130,634 → **128,250**、S3 130,611 → **128,779**。cst_ / civ_ の分は `spinel:gen` が
+`654c9fd5` 以降のコンパイラで走ったときだけ出る (SPINEL_PIN の更新待ち)。
+
+**GC の停止時間 (T3)**。sim で同じコードの前後を各 5 回 (editor に 25 行打鍵 + マウス 150 回): kernel の 1 回の平均
+352 → 297 us、editor 2,613 → 2,572 us で、回ごとの揺れ (kernel 217-383 us、editor 1,997-2,908 us) の中。sim では
+`SP_TU_BSS` が空なので PSRAM の影響は見えない。実機での計測は R4。
+
 ### 改善案の優先順位 (2026-07-31 版)
 
 「進め方」の原則 (安全に取れる順) は維持したまま、今回の実測で
