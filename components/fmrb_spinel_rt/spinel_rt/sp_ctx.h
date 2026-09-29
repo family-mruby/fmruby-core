@@ -264,9 +264,14 @@ typedef struct sp_ctx {
   void  (*mem_dealloc)(void *ud, void *);
 
   /* --- I/O backend (VFS hooks) ---
-   * Under SP_MULTI_CTX the File/Dir ops route regular-file byte I/O through
+   * Under SP_MULTI_CTX every File/Dir op that names a path routes through
    * these instead of raw stdio/POSIX, so a host (e.g. fmruby) can back them
-   * with a virtual filesystem (littlefs / HAL) where POSIX paths do not exist.
+   * with a virtual filesystem (littlefs / HAL) where POSIX paths do not exist,
+   * and so the host sees -- and can serialize -- every filesystem access the
+   * program makes. The ops this contract cannot express (links, permissions,
+   * times, truncation by path, the process cwd, raw descriptors) raise
+   * NotImplementedError there instead of reaching the host filesystem behind
+   * the backend's back.
    * The handle is opaque (void*), stored in sp_File.fp / sp_Dir.dp; the
    * default backend below stores a FILE or DIR pointer there. Console streams
    * (stdout/stderr/stdin) bypass the backend (identified by fp == std stream).
@@ -285,6 +290,13 @@ typedef struct sp_ctx {
   void  *(*io_opendir)(void *ud, const char *path);                       /* NULL on error */
   int    (*io_readdir)(void *ud, void *dh, char *namebuf, int cap);       /* 1 = filled namebuf, 0 = end */
   int    (*io_closedir)(void *ud, void *dh);
+  /* Path operations that open nothing. Same convention: 0 ok, <0 error
+   * (errno set when the backend knows it). File.delete / File.rename /
+   * Dir.mkdir / Dir.rmdir, and every path helper built on them. */
+  int    (*io_remove)(void *ud, const char *path);                        /* a file, not a directory */
+  int    (*io_rename)(void *ud, const char *from, const char *to);
+  int    (*io_mkdir)(void *ud, const char *path);
+  int    (*io_rmdir)(void *ud, const char *path);
 } sp_ctx;
 
 /* ------------------------------------------------------------------------- */
@@ -331,6 +343,10 @@ typedef struct {
   void  *(*io_opendir)(void *ud, const char *path);
   int    (*io_readdir)(void *ud, void *dh, char *namebuf, int cap);
   int    (*io_closedir)(void *ud, void *dh);
+  int    (*io_remove)(void *ud, const char *path);
+  int    (*io_rename)(void *ud, const char *from, const char *to);
+  int    (*io_mkdir)(void *ud, const char *path);
+  int    (*io_rmdir)(void *ud, const char *path);
 } sp_instance_config;
 
 sp_ctx *sp_instance_create(const sp_instance_config *cfg);

@@ -53,6 +53,37 @@
 #endif
 #include <sys/socket.h> /* SOCK_STREAM / SOCK_DGRAM for Addrinfo */
 
+/* Every path the helpers below open, stat or list goes through these. Under
+   SP_MULTI_CTX they are the instance's I/O backend (sp_ctx io_*), so a host
+   that backs it with its own filesystem layer sees every access; in the
+   default build they are the libc calls the helpers always made. A path op
+   the backend cannot express raises NotImplementedError (SP_PATH_NO). */
+#ifdef SP_MULTI_CTX
+#define SP_PATH_FOPEN(p, m)  sp_vfs_fopen((p), (m), (m))
+#define SP_PATH_STAT(p, st)  sp_vfs_stat((p), (st))
+#define SP_PATH_LSTAT(p, st) sp_vfs_stat((p), (st))   /* the backend has no links */
+#define SP_PATH_NO(what)     sp_vfs_unsupported(what)
+typedef void *sp_pdir;
+static sp_pdir sp_pdir_open(const char *p) { return SP_CTX()->io_opendir(SP_CTX()->io_ud, p); }
+static const char *sp_pdir_next(sp_pdir d, char *nb, int cap) {
+  return SP_CTX()->io_readdir(SP_CTX()->io_ud, d, nb, cap) ? nb : NULL;
+}
+static void sp_pdir_close(sp_pdir d) { SP_CTX()->io_closedir(SP_CTX()->io_ud, d); }
+#else
+#define SP_PATH_FOPEN(p, m)  fopen((p), (m))
+#define SP_PATH_STAT(p, st)  stat((p), (st))
+#define SP_PATH_LSTAT(p, st) lstat((p), (st))
+#define SP_PATH_NO(what)     ((void)0)
+typedef DIR *sp_pdir;
+static sp_pdir sp_pdir_open(const char *p) { return opendir(p); }
+static const char *sp_pdir_next(sp_pdir d, char *nb, int cap) {
+  (void)nb; (void)cap; struct dirent *e = readdir(d); return e ? e->d_name : NULL;
+}
+static void sp_pdir_close(sp_pdir d) { closedir(d); }
+#endif
+/* the name buffer sp_pdir_next fills under SP_MULTI_CTX */
+#define SP_PDIR_NAME_MAX 256
+
 /* lib/sp_gc.c. Declared here rather than in sp_gc.h: that header is included
    by every generated TU, so adding to it recompiles the whole suite. */
 #ifndef SP_MULTI_CTX  /* per-instance under SP_MULTI_CTX (sp_ctx.h) */
@@ -272,6 +303,7 @@ const char *sp_file_expand_path(const char *path, const char *base) {
 /* File.readlink: PATH_MAX buffer, and no links on a port FS -- omitted below the stack budget (SP_STACK_SCRATCH_MAX in sp_types.h) */
 #if SP_HAVE_PATH_HELPERS
 const char *sp_file_readlink(const char *path) {SP_GC_ROOT_STR(path);
+  SP_PATH_NO("File.readlink");
   char buf[4096];
   ssize_t n = readlink(path ? path : "", buf, sizeof(buf) - 1);
   if (n < 0) {
@@ -401,12 +433,12 @@ static void sp_glob_push(sp_StrArray *a, const char *path) {
 
 static int sp_glob_is_dir(const char *path) {
   struct stat st;
-  return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
+  return SP_PATH_STAT(path, &st) == 0 && S_ISDIR(st.st_mode);
 }
 
 static int sp_glob_exists(const char *path) {
   struct stat st;
-  return lstat(path, &st) == 0;
+  return SP_PATH_LSTAT(path, &st) == 0;
 }
 
 /* Walk the components from index `ci`. `fsdir` is the directory to read (""
@@ -433,11 +465,11 @@ static void sp_glob_walk(const char *fsdir, const char *outprefix,
     /* ** matches zero or more directories. Zero first: the rest of the pattern
        applies right here. */
     if (!last) sp_glob_walk(fsdir, outprefix, comps, ncomp, ci + 1, a);
-    DIR *d = opendir(fsdir[0] ? fsdir : ".");
+    sp_pdir d = sp_pdir_open(fsdir[0] ? fsdir : ".");
     if (!d) return;
-    struct dirent *e;
-    while ((e = readdir(d)) != NULL) {
-      const char *name = e->d_name;
+    char nb[SP_PDIR_NAME_MAX];
+    const char *name;
+    while ((name = sp_pdir_next(d, nb, (int)sizeof nb)) != NULL) {
       if (name[0] == '.' && (name[1] == 0 || (name[1] == '.' && name[2] == 0))) continue;
       if (name[0] == '.' && !sp_glob_dotmatch) continue;
       snprintf(fspath, sizeof fspath, "%s%s%s", fsdir, fsdir[0] ? "/" : "", name);
@@ -449,14 +481,14 @@ static void sp_glob_walk(const char *fsdir, const char *outprefix,
          directory, which is CRuby's rule and what keeps a link back up the
          tree from looping forever (#4258). */
       { struct stat lst;
-        if (lstat(fspath, &lst) == 0 && S_ISDIR(lst.st_mode)) {
+        if (SP_PATH_LSTAT(fspath, &lst) == 0 && S_ISDIR(lst.st_mode)) {
           char sub[sizeof outpath + 1];   /* outpath and its trailing slash, whatever outpath holds */
           snprintf(sub, sizeof sub, "%s%s/", outprefix, name);
           /* stay on the same component: ** consumes any number of levels */
           sp_glob_walk(fspath, sub, comps, ncomp, ci, a);
         } }
     }
-    closedir(d);
+    sp_pdir_close(d);
     return;
   }
 
@@ -473,11 +505,11 @@ static void sp_glob_walk(const char *fsdir, const char *outprefix,
     return;
   }
 
-  DIR *d = opendir(fsdir[0] ? fsdir : ".");
+  sp_pdir d = sp_pdir_open(fsdir[0] ? fsdir : ".");
   if (!d) return;
-  struct dirent *e;
-  while ((e = readdir(d)) != NULL) {
-    const char *name = e->d_name;
+  char nb[SP_PDIR_NAME_MAX];
+  const char *name;
+  while ((name = sp_pdir_next(d, nb, (int)sizeof nb)) != NULL) {
     /* "." is an answer under FNM_DOTMATCH -- CRuby lists it for `*` there --
        while ".." never is. Both stay hidden without the flag. */
     if (name[0] == '.' && name[1] == '.' && name[2] == 0) continue;
@@ -492,7 +524,7 @@ static void sp_glob_walk(const char *fsdir, const char *outprefix,
       sp_glob_walk(fspath, sub, comps, ncomp, ci + 1, a);
     }
   }
-  closedir(d);
+  sp_pdir_close(d);
 }
 
 /* The old entry point, kept for its callers: everything under `fsdir` whose
@@ -562,7 +594,7 @@ static void sp_dir_glob_one(const char *pattern, sp_StrArray *a) {
          directory is not one of the directories this form answers. */
       struct stat lst;
       if (!e) continue;
-      if (recursive) { if (lstat(e, &lst) != 0 || !S_ISDIR(lst.st_mode)) continue; }
+      if (recursive) { if (SP_PATH_LSTAT(e, &lst) != 0 || !S_ISDIR(lst.st_mode)) continue; }
       else if (!sp_glob_is_dir(e)) continue;
       char withslash[2048];
       snprintf(withslash, sizeof withslash, "%s/", e);
@@ -672,7 +704,7 @@ const char *sp_file_join(const char **parts, int n) {
 sp_StrArray *sp_file_readlines(const char *path) {SP_GC_ROOT_STR(path);
   sp_StrArray *a = sp_StrArray_new();
   SP_GC_ROOT(a);
-  FILE *_fp = fopen(path ? path : "", "r");
+  FILE *_fp = SP_PATH_FOPEN(path ? path : "", "r");
   if (!_fp) return a;
   char _buf[4096];
   while (fgets(_buf, (int)sizeof(_buf), _fp)) {
@@ -688,7 +720,7 @@ sp_StrArray *sp_file_readlines(const char *path) {SP_GC_ROOT_STR(path);
 sp_StrArray *sp_file_readlines_chomp(const char *path) {SP_GC_ROOT_STR(path);
   sp_StrArray *a = sp_StrArray_new();
   SP_GC_ROOT(a);
-  FILE *_fp = fopen(path ? path : "", "r");
+  FILE *_fp = SP_PATH_FOPEN(path ? path : "", "r");
   if (!_fp) return a;
   char _buf[4096];
   while (fgets(_buf, (int)sizeof(_buf), _fp)) {
@@ -827,7 +859,7 @@ const char *sp_file_read(const char *path) {SP_GC_ROOT_STR(path);
   if (sp_file_directory(path)) {
     sp_raise_cls("Errno::EISDIR", sp_sprintf("Is a directory @ io_fread - %s", path));
   }
-  FILE *f = fopen(path, "r");
+  FILE *f = SP_PATH_FOPEN(path, "r");
   if (!f) {
     sp_raise_cls(errno == ENOENT ? "Errno::ENOENT" : errno == EACCES ? "Errno::EACCES" : "RuntimeError",
                  sp_sprintf("%s @ rb_sysopen - %s", strerror(errno), path));
@@ -840,6 +872,7 @@ const char *sp_file_read(const char *path) {SP_GC_ROOT_STR(path);
 
 sp_Time sp_file_atime(const char *path) {SP_GC_ROOT_STR(path);
   if (!path) { sp_raise_cls("TypeError", "no implicit conversion of nil into String"); return (sp_Time){0, 0, 0}; }
+  SP_PATH_NO("File.atime");   /* the backend has no times */
   struct stat st;
   if (stat(path, &st) == -1) {
     sp_file_raise_errno("rb_file_s_atime", path);
@@ -853,6 +886,7 @@ sp_Time sp_file_atime(const char *path) {SP_GC_ROOT_STR(path);
 }
 sp_Time sp_file_ctime(const char *path) {SP_GC_ROOT_STR(path);
   if (!path) { sp_raise_cls("TypeError", "no implicit conversion of nil into String"); return (sp_Time){0, 0, 0}; }
+  SP_PATH_NO("File.ctime");
   struct stat st;
   if (stat(path, &st) == -1) {
     sp_file_raise_errno("rb_file_s_ctime", path);
@@ -869,6 +903,7 @@ sp_Time sp_file_mtime(const char *path) {SP_GC_ROOT_STR(path);
     sp_raise_cls("TypeError", "no implicit conversion of nil into String");
     return (sp_Time){0, 0, 0};
   }
+  SP_PATH_NO("File.mtime");
   struct stat st;
   if (stat(path, &st) == -1) {
     sp_file_raise_errno("rb_file_s_mtime", path);
@@ -885,6 +920,7 @@ sp_Time sp_file_mtime(const char *path) {SP_GC_ROOT_STR(path);
 }
 sp_Time sp_file_birthtime(const char *path) {SP_GC_ROOT_STR(path);  /* (#2985) */
   if (!path) { sp_raise_cls("TypeError", "no implicit conversion of nil into String"); return (sp_Time){0, 0, 0}; }
+  SP_PATH_NO("File.birthtime");
 #if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__) || defined(__DragonFly__)
   struct stat st;
   if (stat(path, &st) == -1) sp_file_raise_errno("rb_file_s_birthtime", path);
@@ -937,7 +973,7 @@ sp_int sp_file_size(const char *path) {SP_GC_ROOT_STR(path);
     return 0;
   }
   struct stat st;
-  if (stat(path, &st) == -1) {
+  if (SP_PATH_STAT(path, &st) == -1) {
     sp_file_raise_errno("rb_file_s_size", path);
     return 0;
   }
@@ -954,7 +990,7 @@ sp_IntArray *sp_file_binread_bytes(const char *path) {SP_GC_ROOT_STR(path);
   if (sp_file_directory(path)) {
     sp_raise_cls("Errno::EISDIR", sp_sprintf("Is a directory @ io_fread - %s", path));
   }
-  FILE *f = fopen(path, "rb");
+  FILE *f = SP_PATH_FOPEN(path, "rb");
   sp_IntArray *a = sp_IntArray_new();
   if (!f) {
     sp_raise_cls(errno == ENOENT ? "Errno::ENOENT" : errno == EACCES ? "Errno::EACCES" : "RuntimeError",
@@ -1205,7 +1241,7 @@ sp_int sp_file_write(const char *path, const char *data) {SP_GC_ROOT_STR(path);S
   if (sp_file_directory(path)) {
     sp_raise_cls("Errno::EISDIR", sp_sprintf("Is a directory @ rb_sysopen - %s", path));
   }
-  FILE *f = fopen(path, "wb");
+  FILE *f = SP_PATH_FOPEN(path, "wb");
   if (!f) {
     sp_raise_cls(errno == ENOENT ? "Errno::ENOENT" : errno == EACCES ? "Errno::EACCES" : "RuntimeError",
                  sp_sprintf("%s @ rb_sysopen - %s", strerror(errno), path));
@@ -1337,20 +1373,20 @@ const char *sp_file_extname(const char *path) {
 sp_StrArray *sp_dir_entries_impl(const char *path, int children) {
   SP_GC_ROOT_STR(path);
   if (!path) sp_raise_cls("TypeError", "no implicit conversion of nil into String");
-  DIR *d = opendir(path);
+  sp_pdir d = sp_pdir_open(path);
   if (!d) sp_raise_cls("Errno::ENOENT", sp_sprintf("No such file or directory @ dir_initialize - %s", path));
   sp_StrArray *a = sp_StrArray_new();
   SP_GC_ROOT(a);
-  struct dirent *e;
-  while ((e = readdir(d)) != NULL) {
-    const char *name = e->d_name;
+  char nb[SP_PDIR_NAME_MAX];
+  const char *name;
+  while ((name = sp_pdir_next(d, nb, (int)sizeof nb)) != NULL) {
     if (children && name[0] == '.' &&
         (name[1] == 0 || (name[1] == '.' && name[2] == 0))) continue;
     char *copy = sp_str_alloc(strlen(name));
     strcpy(copy, name);
     sp_StrArray_push(a, copy);
   }
-  closedir(d);
+  sp_pdir_close(d);
   sp_StrArray_sort_bang(a);
   return a;
 }
@@ -1821,7 +1857,7 @@ sp_RbVal sp_File_putc(sp_File *f, sp_RbVal v) {
 }
 const char *sp_file_ftype(const char *path) {SP_GC_ROOT_STR(path);
   struct stat st;
-  if (lstat(path ? path : "", &st) != 0)
+  if (SP_PATH_LSTAT(path ? path : "", &st) != 0)
     sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ rb_file_s_ftype - %s", path ? path : ""));
   if (S_ISREG(st.st_mode)) return (&("\xff" "file")[1]);
@@ -1839,25 +1875,44 @@ const char *sp_file_ftype(const char *path) {SP_GC_ROOT_STR(path);
    access(2) does; their plain counterparts test the effective ids, which needs
    AT_EACCESS. Routing both through access() would make File.readable? answer
    for the wrong identity in a setuid program. */
+#ifdef SP_MULTI_CTX
+/* the backend has no owners: answer from the mode bits sp_vfs_stat makes up
+   (0644 for a file, 0755 for a directory), the same for both identities */
+static sp_bool sp_file_access_mode(const char *path, int mode) {
+  struct stat st;
+  if (SP_PATH_STAT(path ? path : "", &st) != 0) return 0;
+  if ((mode & R_OK) && !(st.st_mode & S_IRUSR)) return 0;
+  if ((mode & W_OK) && !(st.st_mode & S_IWUSR)) return 0;
+  if ((mode & X_OK) && !(st.st_mode & S_IXUSR)) return 0;
+  return 1;
+}
+static sp_bool sp_file_access_eff(const char *path, int mode) { return sp_file_access_mode(path, mode); }
+static sp_bool sp_file_access_real(const char *path, int mode) { return sp_file_access_mode(path, mode); }
+#else
 static sp_bool sp_file_access_eff(const char *path, int mode) {
   return faccessat(AT_FDCWD, path ? path : "", mode, AT_EACCESS) == 0;
 }
+static sp_bool sp_file_access_real(const char *path, int mode) {
+  return access(path ? path : "", mode) == 0;
+}
+#endif
 sp_bool sp_file_readable(const char *path)   {SP_GC_ROOT_STR(path); return sp_file_access_eff(path, R_OK); }
 sp_bool sp_file_writable(const char *path)   {SP_GC_ROOT_STR(path); return sp_file_access_eff(path, W_OK); }
 sp_bool sp_file_executable(const char *path) {SP_GC_ROOT_STR(path); return sp_file_access_eff(path, X_OK); }
-sp_bool sp_file_readable_real(const char *path)   { return access(path ? path : "", R_OK) == 0; }
-sp_bool sp_file_writable_real(const char *path)   { return access(path ? path : "", W_OK) == 0; }
-sp_bool sp_file_executable_real(const char *path) { return access(path ? path : "", X_OK) == 0; }
+sp_bool sp_file_readable_real(const char *path)   { return sp_file_access_real(path, R_OK); }
+sp_bool sp_file_writable_real(const char *path)   { return sp_file_access_real(path, W_OK); }
+sp_bool sp_file_executable_real(const char *path) { return sp_file_access_real(path, X_OK); }
 sp_int sp_file_size_q(const char *path) {   /* Integer size, or nil for missing/empty */
   struct stat st;
-  if (stat(path ? path : "", &st) != 0 || st.st_size == 0) return SP_INT_NIL;
+  if (SP_PATH_STAT(path ? path : "", &st) != 0 || st.st_size == 0) return SP_INT_NIL;
   return (sp_int)st.st_size;
 }
 sp_bool sp_file_pipe(const char *path) {
   struct stat st;
-  return stat(path ? path : "", &st) == 0 && S_ISFIFO(st.st_mode);
+  return SP_PATH_STAT(path ? path : "", &st) == 0 && S_ISFIFO(st.st_mode);
 }
 sp_bool sp_file_identical(const char *a, const char *b) {
+  SP_PATH_NO("File.identical?");   /* the backend has no file identity */
   struct stat sa, sb;
   if (stat(a ? a : "", &sa) != 0 || stat(b ? b : "", &sb) != 0) return 0;
   return sa.st_dev == sb.st_dev && sa.st_ino == sb.st_ino;
@@ -1865,6 +1920,7 @@ sp_bool sp_file_identical(const char *a, const char *b) {
 /* File.realpath / realdirpath: PATH_MAX buffers, and no links on a port FS -- omitted below the stack budget (SP_STACK_SCRATCH_MAX in sp_types.h) */
 #if SP_HAVE_PATH_HELPERS
 const char *sp_file_realpath(const char *path) {SP_GC_ROOT_STR(path);
+  SP_PATH_NO("File.realpath");
   char buf[4096];
   if (!realpath(path ? path : "", buf))
     sp_raise_cls("Errno::ENOENT",
@@ -1874,6 +1930,7 @@ const char *sp_file_realpath(const char *path) {SP_GC_ROOT_STR(path);
 /* realdirpath resolves every component but the last, so it answers for a name
    that does not exist yet -- where realpath raises Errno::ENOENT. */
 const char *sp_file_realdirpath(const char *path) {
+  SP_PATH_NO("File.realdirpath");
   const char *p = path ? path : "";
   char buf[4096];
   if (realpath(p, buf)) return sp_sprintf("%s", buf);
@@ -1893,12 +1950,13 @@ const char *sp_file_realdirpath(const char *path) {
 #endif /* SP_HAVE_PATH_HELPERS */
 sp_bool sp_file_absolute_path_p(const char *path) { return path && path[0] == '/'; }  /* (#2988) */
 sp_int sp_file_chown(const char *path, sp_int uid, sp_int gid) {SP_GC_ROOT_STR(path);  /* -1 leaves that id unchanged; returns the path count (#2987) */
+  SP_PATH_NO("File.chown");
   if (chown(path ? path : "", (uid_t)uid, (gid_t)gid) != 0)
     sp_raise_cls("Errno::ENOENT", sp_sprintf("No such file or directory - %s", path ? path : ""));
   return 1;
 }
 const char *sp_file_read_len(const char *path, sp_int n) {SP_GC_ROOT_STR(path);
-  FILE *fp = fopen(path ? path : "", "rb");
+  FILE *fp = SP_PATH_FOPEN(path ? path : "", "rb");
   if (!fp)
     sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ rb_sysopen - %s", path ? path : ""));
@@ -1911,6 +1969,7 @@ const char *sp_file_read_len(const char *path, sp_int n) {SP_GC_ROOT_STR(path);
   return r;
 }
 sp_int sp_file_chmod(sp_int mode, const char *path) {SP_GC_ROOT_STR(path);
+  SP_PATH_NO("File.chmod");
   if (chmod(path ? path : "", (mode_t)mode) != 0)
     sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ apply2files - %s", path ? path : ""));
@@ -1918,10 +1977,28 @@ sp_int sp_file_chmod(sp_int mode, const char *path) {SP_GC_ROOT_STR(path);
 }
 sp_int sp_file_truncate(const char *path, sp_int n) {SP_GC_ROOT_STR(path);
   sp_file_path_check(path);
+  SP_PATH_NO("File.truncate");
   if (truncate(path, (off_t)n) != 0) sp_file_raise_errno("rb_file_s_truncate", path);
   return 0;
 }
 sp_int sp_file_write_at(const char *path, const char *data, sp_int off) {SP_GC_ROOT_STR(path);SP_GC_ROOT_STR(data);
+#ifdef SP_MULTI_CTX
+  /* open(O_WRONLY|O_CREAT) + pwrite through the backend: update in place
+     when the file exists, create it otherwise; then seek and write */
+  {
+    struct stat st;
+    const char *m = SP_PATH_STAT(path ? path : "", &st) == 0 ? "r+" : "w";
+    FILE *vf = SP_PATH_FOPEN(path ? path : "", m);
+    if (!vf)
+      sp_raise_cls("Errno::ENOENT",
+                   sp_sprintf("No such file or directory @ rb_sysopen - %s", path ? path : ""));
+    size_t vn = sp_str_byte_len(data ? data : sp_str_empty);
+    size_t vw = 0;
+    if (fseek(vf, (long)off, SEEK_SET) == 0) vw = fwrite(data ? data : "", 1, vn, vf);
+    fclose(vf);
+    return (sp_int)vw;
+  }
+#endif
   int fd = open(path ? path : "", O_WRONLY | O_CREAT, 0666);
   if (fd < 0)
     sp_raise_cls("Errno::ENOENT",
@@ -1932,7 +2009,7 @@ sp_int sp_file_write_at(const char *path, const char *data, sp_int off) {SP_GC_R
   return w < 0 ? 0 : (sp_int)w;
 }
 sp_int sp_file_write_mode(const char *path, const char *data, const char *mode) {SP_GC_ROOT_STR(path);SP_GC_ROOT_STR(data);
-  FILE *fp = fopen(path ? path : "", mode && mode[0] ? mode : "w");
+  FILE *fp = SP_PATH_FOPEN(path ? path : "", mode && mode[0] ? mode : "w");
   if (!fp)
     sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ rb_sysopen - %s", path ? path : ""));
@@ -2074,7 +2151,7 @@ void sp_file_stat_scan(void *p) {
 }
 sp_File *sp_file_stat_handle(const char *path) {SP_GC_ROOT_STR(path);
   struct stat st;
-  if (stat(path ? path : "", &st) != 0)
+  if (SP_PATH_STAT(path ? path : "", &st) != 0)
     sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ rb_file_s_stat - %s", path ? path : ""));
   sp_File *f = (sp_File *)sp_gc_alloc(sizeof(sp_File), NULL, sp_file_stat_scan);
@@ -2091,7 +2168,7 @@ sp_File *sp_file_stat_handle(const char *path) {SP_GC_ROOT_STR(path);
    accessors below read it with lstat(2). (#2986) */
 sp_File *sp_file_lstat_handle(const char *path) {SP_GC_ROOT_STR(path);
   struct stat st;
-  if (lstat(path ? path : "", &st) != 0)
+  if (SP_PATH_LSTAT(path ? path : "", &st) != 0)
     sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ rb_file_s_lstat - %s", path ? path : ""));
   sp_File *f = (sp_File *)sp_gc_alloc(sizeof(sp_File), NULL, sp_file_stat_scan);
@@ -2112,6 +2189,10 @@ static int sp_stat_handle_p(sp_File *f) {
   return f && f->mode && (strcmp(f->mode, "stat") == 0 || strcmp(f->mode, "lstat") == 0);
 }
 static int sp_stat_handle_mtime(sp_File *f, struct stat *st) {
+#ifdef SP_MULTI_CTX
+  /* the backend has no times: two stats compare by identity (Object#==) */
+  (void)f; (void)st; return 0;
+#endif
   if (f->path && f->path[0])
     return (strcmp(f->mode, "lstat") == 0 ? lstat(f->path, st) : stat(f->path, st)) == 0;
   return f->fp && fstat(fileno(f->fp), st) == 0;
@@ -2189,7 +2270,7 @@ sp_int sp_stat_field(sp_File *f, sp_int which) {SP_GC_ROOT(f);
   if (sp_stat_pathless(f)) r = fstat(fileno(f->fp), &st);
   else {
     const char *p = (f && f->path) ? f->path : "";
-    r = sp_stat_nofollow(f) ? lstat(p, &st) : stat(p, &st);
+    r = sp_stat_nofollow(f) ? SP_PATH_LSTAT(p, &st) : SP_PATH_STAT(p, &st);
   }
   if (r != 0) return SP_INT_NIL;
   switch (which) {
@@ -2211,12 +2292,13 @@ sp_int sp_stat_field(sp_File *f, sp_int which) {SP_GC_ROOT(f);
    which the plain struct here does not carry portably. Kinds: 0=mtime
    1=atime 2=ctime. */
 sp_Time sp_stat_handle_time(sp_File *f, sp_int kind) {SP_GC_ROOT(f);
+  SP_PATH_NO("File::Stat times");
   struct stat st;
   int r;
   if (sp_stat_pathless(f)) r = fstat(fileno(f->fp), &st);
   else {
     const char *p = (f && f->path) ? f->path : "";
-    r = sp_stat_nofollow(f) ? lstat(p, &st) : stat(p, &st);
+    r = sp_stat_nofollow(f) ? SP_PATH_LSTAT(p, &st) : SP_PATH_STAT(p, &st);
   }
   if (r != 0) {
     sp_file_raise_errno("rb_file_s_mtime", (f && f->path) ? f->path : "");
@@ -2243,7 +2325,7 @@ sp_int sp_stat_type_pred(sp_File *f, sp_int kind) {SP_GC_ROOT(f);
   if (sp_stat_pathless(f)) r = fstat(fileno(f->fp), &st);
   else {
     const char *p = (f && f->path) ? f->path : "";
-    r = sp_stat_nofollow(f) ? lstat(p, &st) : stat(p, &st);
+    r = sp_stat_nofollow(f) ? SP_PATH_LSTAT(p, &st) : SP_PATH_STAT(p, &st);
   }
   if (r != 0) return 0;
   switch (kind) {
@@ -2267,7 +2349,7 @@ sp_int sp_stat_pred(sp_File *f, sp_int kind) {SP_GC_ROOT(f);
   if (sp_stat_pathless(f)) r = fstat(fileno(f->fp), &st);
   else {
     const char *p = (f && f->path) ? f->path : "";
-    r = sp_stat_nofollow(f) ? lstat(p, &st) : stat(p, &st);
+    r = sp_stat_nofollow(f) ? SP_PATH_LSTAT(p, &st) : SP_PATH_STAT(p, &st);
   }
   if (r != 0) return kind == 7 ? SP_INT_NIL : 0;
   switch (kind) {
@@ -2311,7 +2393,7 @@ sp_int sp_stat_size(sp_File *f) {SP_GC_ROOT(f);
   if (sp_stat_pathless(f))
     return fstat(fileno(f->fp), &st) == 0 ? (sp_int)st.st_size : SP_INT_NIL;
   const char *p = (f && f->path) ? f->path : "";
-  int r = sp_stat_nofollow(f) ? lstat(p, &st) : stat(p, &st);
+  int r = sp_stat_nofollow(f) ? SP_PATH_LSTAT(p, &st) : SP_PATH_STAT(p, &st);
   return r == 0 ? (sp_int)st.st_size : SP_INT_NIL;
 }
 sp_int sp_stat_mode(sp_File *f) {SP_GC_ROOT(f);
@@ -2319,7 +2401,7 @@ sp_int sp_stat_mode(sp_File *f) {SP_GC_ROOT(f);
   if (sp_stat_pathless(f))
     return fstat(fileno(f->fp), &st) == 0 ? (sp_int)st.st_mode : 0;
   const char *p = (f && f->path) ? f->path : "";
-  int r = sp_stat_nofollow(f) ? lstat(p, &st) : stat(p, &st);
+  int r = sp_stat_nofollow(f) ? SP_PATH_LSTAT(p, &st) : SP_PATH_STAT(p, &st);
   return r == 0 ? (sp_int)st.st_mode : 0;
 }
 const char *sp_stat_ftype(sp_File *f) {SP_GC_ROOT(f);
@@ -2337,7 +2419,7 @@ const char *sp_stat_ftype(sp_File *f) {SP_GC_ROOT(f);
      following handle resolves the link first. */
   const char *p = (f && f->path) ? f->path : "";
   if (sp_stat_nofollow(f)) return sp_file_ftype(p);
-#if SP_HAVE_PATH_HELPERS
+#if SP_HAVE_PATH_HELPERS && !defined(SP_MULTI_CTX)
   { const char *rp = sp_file_realpath(p); return sp_file_ftype(rp ? rp : p); }
 #else
   return sp_file_ftype(p);   /* no links to resolve on a port FS */
@@ -2345,7 +2427,7 @@ const char *sp_stat_ftype(sp_File *f) {SP_GC_ROOT(f);
 }
 sp_int sp_file_stat_mode(const char *path) {
   struct stat st;
-  if (stat(path ? path : "", &st) != 0) return 0;
+  if (SP_PATH_STAT(path ? path : "", &st) != 0) return 0;
   return (sp_int)st.st_mode;
 }
 sp_bool sp_file_fnmatch(const char *pat, const char *path) {
@@ -2360,7 +2442,7 @@ sp_StrArray *sp_file_split(const char *path) {SP_GC_ROOT_STR(path);
 }
 sp_bool sp_file_zero(const char *path) {
   struct stat st;
-  if (stat(path ? path : "", &st) != 0) return 0;
+  if (SP_PATH_STAT(path ? path : "", &st) != 0) return 0;
   if (S_ISDIR(st.st_mode)) return 0;
   return st.st_size == 0;
 }
@@ -2390,22 +2472,32 @@ const char *sp_dir_pwd(void) {
    CRuby's TypeError, as it is for File.size and the time readers above. */
 sp_int sp_dir_mkdir(const char *path) {SP_GC_ROOT_STR(path);
   sp_file_path_check(path);
+#ifdef SP_MULTI_CTX
+  if (sp_vfs_mkdir(path) != 0) sp_file_raise_errno("dir_s_mkdir", path);
+#else
   if (mkdir(path, 0777) != 0) sp_file_raise_errno("dir_s_mkdir", path);
+#endif
   return 0;
 }
 sp_int sp_dir_rmdir(const char *path) {SP_GC_ROOT_STR(path);
   sp_file_path_check(path);
+#ifdef SP_MULTI_CTX
+  if (sp_vfs_rmdir(path) != 0) sp_file_raise_errno("dir_s_rmdir", path);
+#else
   if (rmdir(path) != 0) sp_file_raise_errno("dir_s_rmdir", path);
+#endif
   return 0;
 }
 sp_int sp_dir_chdir(const char *path) {SP_GC_ROOT_STR(path);
   sp_file_path_check(path);
+  SP_PATH_NO("Dir.chdir");   /* the process cwd is shared by every instance */
   if (chdir(path) != 0) sp_file_raise_errno("chdir_path", path);
   return 0;
 }
 /* the block form: the same switch under CRuby's label for it */
 sp_int sp_dir_chdir0(const char *path) {SP_GC_ROOT_STR(path);
   sp_file_path_check(path);
+  SP_PATH_NO("Dir.chdir");
   if (chdir(path) != 0) sp_file_raise_errno("dir_chdir0", path);
   return 0;
 }
@@ -2476,6 +2568,7 @@ sp_StrArray *sp_Dir_entries_h(sp_Dir *d, sp_int children) {SP_GC_ROOT(d);
   return a;
 }
 sp_int sp_Dir_fchdir(sp_int fd) {
+  SP_PATH_NO("Dir.fchdir");
   if (fd < 0 || fchdir((int)fd) != 0)
     sp_raise_cls("Errno::EBADF", "Bad file descriptor - fchdir");
   return 0;
@@ -2524,18 +2617,19 @@ sp_int sp_Dir_fileno(sp_Dir *d) { SP_DIR_OPEN(d); return (sp_int)dirfd(d->dp); }
 sp_StrArray *sp_dir_entries(const char *path) {SP_GC_ROOT_STR(path); return sp_dir_entries_impl(path, 0); }
 sp_bool sp_dir_empty(const char *path) {SP_GC_ROOT_STR(path);
   struct stat st;
-  if (!path || stat(path, &st) != 0)
+  if (!path || SP_PATH_STAT(path, &st) != 0)
     sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ rb_dir_s_empty_p - %s", path ? path : ""));
   if (!S_ISDIR(st.st_mode)) return FALSE;
-  DIR *d = opendir(path);
+  sp_pdir d = sp_pdir_open(path);
   if (!d) return FALSE;
-  struct dirent *e; sp_bool empty = TRUE;
-  while ((e = readdir(d))) {
-    if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+  char nb[SP_PDIR_NAME_MAX];
+  const char *name; sp_bool empty = TRUE;
+  while ((name = sp_pdir_next(d, nb, (int)sizeof nb))) {
+    if (strcmp(name, ".") == 0 || strcmp(name, "..") == 0) continue;
     empty = FALSE; break;
   }
-  closedir(d);
+  sp_pdir_close(d);
   return empty;
 }
 const char *sp_dir_home_user(const char *user) {SP_GC_ROOT_STR(user);
@@ -2764,11 +2858,11 @@ sp_Enumerator *sp_loop_enum(void) {
 
 /* IO.copy_stream(src_path, dst_path): stream one file to another, byte count. */
 sp_int sp_io_copy_stream(const char *src, const char *dst) {SP_GC_ROOT_STR(src);SP_GC_ROOT_STR(dst);
-  FILE *in = fopen(src ? src : "", "rb");
+  FILE *in = SP_PATH_FOPEN(src ? src : "", "rb");
   if (!in)
     sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ rb_sysopen - %s", src ? src : ""));
-  FILE *out = fopen(dst ? dst : "", "wb");
+  FILE *out = SP_PATH_FOPEN(dst ? dst : "", "wb");
   if (!out) { fclose(in); sp_raise_cls("Errno::ENOENT",
                  sp_sprintf("No such file or directory @ rb_sysopen - %s", dst ? dst : "")); }
   /* plain copy chunk: a smaller one only means more iterations */
@@ -3290,7 +3384,7 @@ int sp_argf_ensure(void) {
   if (!fn) sp_raise_cls("TypeError", "no implicit conversion of nil into String");
   sp_argf_obj.fname = fn;   /* marked with the ARGV globals */
   if (fn[0] == '-' && fn[1] == 0) { sp_argf_obj.cur = stdin; return 1; }
-  FILE *f = fopen(fn, "r");
+  FILE *f = SP_PATH_FOPEN(fn, "r");
   if (!f) sp_file_raise_errno("rb_sysopen", fn);
   sp_argf_obj.cur = f;
   return 1;
@@ -3981,6 +4075,7 @@ sp_int sp_io_sysopen(const char *path, sp_int flags, sp_int perm) {SP_GC_ROOT_ST
   /* flags are CRuby's File::Constants (O_* on this platform); 0 is O_RDONLY.
      They were dropped at codegen and every sysopen was O_RDONLY -- a FIFO
      opened for writing hung waiting for a writer of its own (#4206). */
+  SP_PATH_NO("IO.sysopen");   /* a raw descriptor bypasses the backend */
   int fd = open(path ? path : "", (int)flags, (mode_t)(perm ? perm : 0666));
   if (fd < 0) {
     const char *cls = errno == ENOENT ? "Errno::ENOENT"

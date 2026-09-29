@@ -159,6 +159,10 @@ sp_ctx *sp_instance_create(const sp_instance_config *cfg) {
   c->io_opendir  = cfg->io_opendir  ? cfg->io_opendir  : sp_io_posix_opendir;
   c->io_readdir  = cfg->io_readdir  ? cfg->io_readdir  : sp_io_posix_readdir;
   c->io_closedir = cfg->io_closedir ? cfg->io_closedir : sp_io_posix_closedir;
+  c->io_remove    = cfg->io_remove    ? cfg->io_remove    : sp_io_posix_remove;
+  c->io_rename    = cfg->io_rename    ? cfg->io_rename    : sp_io_posix_rename;
+  c->io_mkdir     = cfg->io_mkdir     ? cfg->io_mkdir     : sp_io_posix_mkdir;
+  c->io_rmdir     = cfg->io_rmdir     ? cfg->io_rmdir     : sp_io_posix_rmdir;
 
   size_t gct = cfg->gc_threshold  ? cfg->gc_threshold  : (size_t)256 * 1024;
   size_t sct = cfg->str_threshold ? cfg->str_threshold : (size_t)256 * 1024;
