@@ -912,7 +912,9 @@ typedef struct {
     file_cmd_result_t *cmd_result;  // Points to caller's stack variable
 } file_transfer_state_t;
 
-static file_transfer_state_t g_file_transfer = {0};
+// PSRAM: only the host task touches it; the path is copied into a stack
+// payload and the data sits in its own heap block before anything is sent.
+FMRB_EXT_RAM_BSS_ATTR static file_transfer_state_t g_file_transfer;
 
 // Send BEGIN command for file transfer
 static fmrb_err_t file_transfer_send_begin(file_transfer_state_t *ft)
@@ -1299,7 +1301,8 @@ static void host_task_process_gfx_batch(const fmrb_msg_t *first_msg)
             if (queued->sync != NULL) {
                 // Sync command: stop batching, save for after batch send
                 // Copy sync pointer before next.data gets reused
-                static gfx_cmd_t s_sync_cmd_buf;
+                // PSRAM: read back by this task alone, into a stack payload.
+                FMRB_EXT_RAM_BSS_ATTR static gfx_cmd_t s_sync_cmd_buf;
                 s_sync_cmd_buf = *queued;
                 pending_sync_cmd = &s_sync_cmd_buf;
                 break;
