@@ -197,7 +197,12 @@ list(REMOVE_ITEM LUA_SRCS
 list(APPEND CORE_SRCS
   ${LUA_SRCS}
   ${FMRB_ROOT}/components/lua/fmrb_lua.c
+  ${FMRB_ROOT}/components/lua/fmrb_lua_hal_stdio.c
   ${FMRB_ROOT}/components/lua/extension/fmrb_lua_gfx.c)
+# The Lua core's file access goes through the file HAL, as in
+# components/lua/CMakeLists.txt.
+set_source_files_properties(${LUA_SRCS} PROPERTIES COMPILE_OPTIONS
+  "-include;${FMRB_ROOT}/components/lua/fmrb_lua_hal_stdio.h")
 
 # basic (C++)
 list(APPEND CORE_SRCS

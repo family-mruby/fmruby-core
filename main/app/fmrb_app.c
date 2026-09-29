@@ -1172,8 +1172,11 @@ static int execute_native_function(fmrb_app_task_context_t* ctx, void* load_data
 
 /**
  * Destroy VM and cleanup resources
+ *
+ * forced: the app's task was deleted by fmrb_app_kill, possibly in the middle
+ * of any C call, and this runs in the killer's task.
  */
-static void destroy_vm(fmrb_app_task_context_t* ctx) {
+static void destroy_vm(fmrb_app_task_context_t* ctx, bool forced) {
     switch (ctx->vm_type) {
         case FMRB_VM_TYPE_MRUBY:
             if (ctx->mrb) {
@@ -1191,8 +1194,19 @@ static void destroy_vm(fmrb_app_task_context_t* ctx) {
             break;
         case FMRB_VM_TYPE_LUA:
             if (ctx->lua) {
-                FMRB_LOGI(TAG, "[%s] Closing Lua VM", ctx->app_name);
-                fmrb_lua_close(ctx->lua);
+                if (forced) {
+                    // lua_close runs every __gc: a file's __gc is fclose, on
+                    // a stream whose lock the deleted task may still hold
+                    // (it can be killed inside f:write) and whose file the
+                    // kill has already closed, and a script's own __gc is
+                    // Lua code running in the killer's task. The Lua heap
+                    // lives in the app's memory pool, which the caller
+                    // destroys, so there is nothing else to free.
+                    FMRB_LOGI(TAG, "[%s] Dropping Lua VM (forced kill)", ctx->app_name);
+                } else {
+                    FMRB_LOGI(TAG, "[%s] Closing Lua VM", ctx->app_name);
+                    fmrb_lua_close(ctx->lua);
+                }
                 ctx->lua = NULL;
             }
             break;
@@ -1380,7 +1394,7 @@ cleanup:
     // INIT remains INIT here — fmrb_app_reap() accepts INIT or STOPPING.
 
     // Close VM based on type (BEFORE destroying memory handle!)
-    destroy_vm(ctx);
+    destroy_vm(ctx, false);
 
     // Files the app left open: an exit request unwinds a VM without running
     // the script's close (and mruby never finalizes File objects here), which
@@ -1948,7 +1962,7 @@ static void notify_kernel_app_exited(fmrb_proc_id_t app_id) {
  */
 static void force_release_resources(fmrb_app_task_context_t* ctx,
                                     fmrb_task_handle_t task) {
-    destroy_vm(ctx);
+    destroy_vm(ctx, true);
 
     fmrb_app_canvas_release_all(ctx);
 

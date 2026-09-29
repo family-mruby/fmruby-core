@@ -88,6 +88,14 @@ static long sp_sock_room(int fd) {
 #include <stdio_ext.h>  /* musl __freadahead: pending stdio read-buffer bytes */
 #endif
 
+/* A path's stat(2): under SP_MULTI_CTX the instance's backend answers it
+   (sp_vfs_stat), so a path is never looked up behind the backend's back. */
+#ifdef SP_MULTI_CTX
+#define SP_PATH_STAT(p, st) sp_vfs_stat((p), (st))
+#else
+#define SP_PATH_STAT(p, st) stat((p), (st))
+#endif
+
 /* Provided by the generated TU / libspinel_rt.a. */
 extern void *sp_gc_alloc(size_t sz, void (*fin)(void *), void (*scn)(void *));
 #ifndef SP_MULTI_CTX  /* T4-0: per-ctx macro under SP_MULTI_CTX */
@@ -1327,53 +1335,59 @@ SP_NORETURN void sp_file_raise_errno(const char *op, const char *path) {SP_GC_RO
 
 sp_bool sp_file_owned(const char *path) {
   struct stat st;
-  return path && stat(path, &st) == 0 && st.st_uid == geteuid();
+  return path && SP_PATH_STAT(path, &st) == 0 && st.st_uid == geteuid();
 }
 sp_bool sp_file_grpowned(const char *path) {
   struct stat st;
-  return path && stat(path, &st) == 0 && st.st_gid == getegid();
+  return path && SP_PATH_STAT(path, &st) == 0 && st.st_gid == getegid();
 }
 sp_bool sp_file_setuid(const char *path) {
   struct stat st;
-  return path && stat(path, &st) == 0 && (st.st_mode & S_ISUID) != 0;
+  return path && SP_PATH_STAT(path, &st) == 0 && (st.st_mode & S_ISUID) != 0;
 }
 sp_bool sp_file_setgid(const char *path) {
   struct stat st;
-  return path && stat(path, &st) == 0 && (st.st_mode & S_ISGID) != 0;
+  return path && SP_PATH_STAT(path, &st) == 0 && (st.st_mode & S_ISGID) != 0;
 }
 sp_bool sp_file_sticky(const char *path) {
   struct stat st;
-  return path && stat(path, &st) == 0 && (st.st_mode & S_ISVTX) != 0;
+  return path && SP_PATH_STAT(path, &st) == 0 && (st.st_mode & S_ISVTX) != 0;
 }
 sp_bool sp_file_socket(const char *path) {
   struct stat st;
-  return path && stat(path, &st) == 0 && S_ISSOCK(st.st_mode);
+  return path && SP_PATH_STAT(path, &st) == 0 && S_ISSOCK(st.st_mode);
 }
 sp_bool sp_file_blockdev(const char *path) {
   struct stat st;
-  return path && stat(path, &st) == 0 && S_ISBLK(st.st_mode);
+  return path && SP_PATH_STAT(path, &st) == 0 && S_ISBLK(st.st_mode);
 }
 sp_bool sp_file_chardev(const char *path) {
   struct stat st;
-  return path && stat(path, &st) == 0 && S_ISCHR(st.st_mode);
+  return path && SP_PATH_STAT(path, &st) == 0 && S_ISCHR(st.st_mode);
 }
 /* world_readable? / world_writable?: the permission bits (0..0777) when the
    other-read / other-write bit is set, else nil (SP_INT_NIL) (#3005) */
 sp_int sp_file_world_readable(const char *path) {
   struct stat st;
-  if (!(path && stat(path, &st) == 0 && (st.st_mode & S_IROTH))) return SP_INT_NIL;
+  if (!(path && SP_PATH_STAT(path, &st) == 0 && (st.st_mode & S_IROTH))) return SP_INT_NIL;
   return (sp_int)(st.st_mode & 0777);
 }
 sp_int sp_file_world_writable(const char *path) {
   struct stat st;
-  if (!(path && stat(path, &st) == 0 && (st.st_mode & S_IWOTH))) return SP_INT_NIL;
+  if (!(path && SP_PATH_STAT(path, &st) == 0 && (st.st_mode & S_IWOTH))) return SP_INT_NIL;
   return (sp_int)(st.st_mode & 0777);
 }
 sp_int sp_file_do_symlink(const char *oldp, const char *newp) {SP_GC_ROOT_STR(newp);
+#ifdef SP_MULTI_CTX
+  (void)oldp; sp_vfs_unsupported("File.symlink");
+#endif
   if (symlink(oldp, newp) != 0) sp_file_raise_errno("symlink", newp);
   return 0;
 }
 sp_int sp_file_do_link(const char *oldp, const char *newp) {SP_GC_ROOT_STR(newp);
+#ifdef SP_MULTI_CTX
+  (void)oldp; sp_vfs_unsupported("File.link");
+#endif
   if (link(oldp, newp) != 0) sp_file_raise_errno("link", newp);
   return 0;
 }
@@ -1384,6 +1398,9 @@ sp_int sp_file_umask(sp_int mask, int have_arg) {
   return (sp_int)cur;
 }
 sp_int sp_file_mkfifo(const char *path, sp_int mode) {SP_GC_ROOT_STR(path);
+#ifdef SP_MULTI_CTX
+  (void)mode; sp_vfs_unsupported("File.mkfifo");
+#endif
   if (mkfifo(path, (mode_t)mode) != 0) sp_file_raise_errno("mkfifo", path);
   return 0;
 }
@@ -1395,6 +1412,10 @@ sp_int sp_file_mkfifo(const char *path, sp_int mode) {SP_GC_ROOT_STR(path);
    AT_SYMLINK_NOFOLLOW, the way lstat is to stat. */
 static sp_int sp_file_utime_at(int64_t asec, int32_t ansec, int64_t msec, int32_t mnsec,
                                const char *path, int flags, const char *who) {
+#ifdef SP_MULTI_CTX
+  (void)asec; (void)ansec; (void)msec; (void)mnsec; (void)path; (void)flags;
+  sp_vfs_unsupported(who);
+#endif
   struct timespec ts[2];
   ts[0].tv_sec = (time_t)asec; ts[0].tv_nsec = (long)ansec;
   ts[1].tv_sec = (time_t)msec; ts[1].tv_nsec = (long)mnsec;
@@ -1427,11 +1448,19 @@ void sp_file_path_check(const char *path) {
 }
 void sp_file_delete(const char *path) {SP_GC_ROOT_STR(path);
   sp_file_path_check(path);
+#ifdef SP_MULTI_CTX
+  if (sp_vfs_remove(path) != 0) sp_file_raise_errno("apply2files", path);
+#else
   if (unlink(path) != 0) sp_file_raise_errno("apply2files", path);
+#endif
 }
 void sp_file_rename(const char *from, const char *to) {SP_GC_ROOT_STR(from);SP_GC_ROOT_STR(to);
   sp_file_path_check(from); sp_file_path_check(to);
+#ifdef SP_MULTI_CTX
+  if (sp_vfs_rename(from, to) != 0) {
+#else
   if (rename(from, to) != 0) {
+#endif
     int e = errno;
     const char *pair = sp_sprintf("(%s, %s)", from, to);
     errno = e;
@@ -1570,6 +1599,24 @@ void sp_File_close_half(sp_File *f, sp_bool reading) {SP_GC_ROOT(f);
 /* IO#reopen(path, mode): rebind the handle to another file. */
 sp_File *sp_File_reopen(sp_File *f, const char *path, const char *mode) {SP_GC_ROOT(f);SP_GC_ROOT_STR(path);SP_GC_ROOT_STR(mode); sp_gc_wb((void*)f);
   if (!f) return f;
+#ifdef SP_MULTI_CTX
+  /* the backend has no freopen: open the new stream first (a failed reopen
+     leaves the handle as it was, as freopen's caller sees it), then close the
+     old one unless it is the closed sentinel or a standard stream */
+  {
+    const char *m = mode && mode[0] ? mode : "r";
+    FILE *nf = sp_vfs_fopen(path ? path : "", m, m);
+    if (!nf) sp_file_raise_errno("reopen", path ? path : "");
+    FILE *old = f->fp;
+    if (old && !f->closed && old != stdin && old != stdout && old != stderr) fclose(old);
+    f->fp = nf;
+    f->closed = 0;
+    f->path = path;
+    f->mode = m;
+    f->lineno = 0;
+    return f;
+  }
+#endif
   /* a closed handle carries the shared sentinel, which must not be
      reopened: it gets a fresh stream */
   FILE *nf = (f->closed || !f->fp) ? fopen(path ? path : "", mode && mode[0] ? mode : "r")
@@ -1635,6 +1682,31 @@ FILE *sp_vfs_fopen(const char *path, const char *bmode, const char *smode) {
   if (!fp) { c->io_close(c->io_ud, h); free(k); errno = ENOMEM; }
   return fp;
 }
+/* stat(2) for a path, from the backend's io_stat. */
+int sp_vfs_stat(const char *path, struct stat *st) {
+  sp_ctx *c = SP_CTX();
+  long size = 0; int is_dir = 0, is_reg = 0;
+  memset(st, 0, sizeof *st);
+  errno = 0;
+  if (!path || c->io_stat(c->io_ud, path, &size, &is_dir, &is_reg) != 0) {
+    if (!errno) errno = ENOENT;
+    return -1;
+  }
+  st->st_mode = is_dir ? (S_IFDIR | 0755) : is_reg ? (S_IFREG | 0644) : 0;
+  st->st_size = (off_t)size;
+  return 0;
+}
+/* The path ops that open nothing. The backend may leave errno alone on
+   failure; ENOENT is the likely reason and the one CRuby would name. */
+#define SP_VFS_PATH_OP(call) do { errno = 0; if ((call) != 0) { if (!errno) errno = ENOENT; return -1; } return 0; } while (0)
+int sp_vfs_remove(const char *path) { sp_ctx *c = SP_CTX(); SP_VFS_PATH_OP(c->io_remove(c->io_ud, path)); }
+int sp_vfs_rename(const char *from, const char *to) { sp_ctx *c = SP_CTX(); SP_VFS_PATH_OP(c->io_rename(c->io_ud, from, to)); }
+int sp_vfs_mkdir(const char *path) { sp_ctx *c = SP_CTX(); SP_VFS_PATH_OP(c->io_mkdir(c->io_ud, path)); }
+int sp_vfs_rmdir(const char *path) { sp_ctx *c = SP_CTX(); SP_VFS_PATH_OP(c->io_rmdir(c->io_ud, path)); }
+SP_NORETURN SP_COLD void sp_vfs_unsupported(const char *what) {
+  sp_raise_cls("NotImplementedError",
+               sp_sprintf("%s is not supported by this port's file backend", what ? what : "this call"));
+}
 /* The sp_File for such a stream: what sp_io_fdopen builds for a descriptor. */
 sp_File *sp_io_vfs_wrap(FILE *fp, const char *mode) {SP_GC_ROOT_STR(mode);
   sp_File *f = (sp_File *)sp_gc_alloc(sizeof(sp_File), sp_File_fin, sp_File_scan);
@@ -1684,4 +1756,8 @@ int sp_io_posix_readdir(void *ud, void *dh, char *namebuf, int cap) {
   return 1;
 }
 int sp_io_posix_closedir(void *ud, void *dh) { (void)ud; return dh ? closedir((DIR *)dh) : 0; }
+int sp_io_posix_remove(void *ud, const char *path) { (void)ud; return unlink(path ? path : ""); }
+int sp_io_posix_rename(void *ud, const char *from, const char *to) { (void)ud; return rename(from ? from : "", to ? to : ""); }
+int sp_io_posix_mkdir(void *ud, const char *path) { (void)ud; return mkdir(path ? path : "", 0777); }
+int sp_io_posix_rmdir(void *ud, const char *path) { (void)ud; return rmdir(path ? path : ""); }
 #endif /* SP_MULTI_CTX */

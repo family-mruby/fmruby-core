@@ -260,10 +260,23 @@ extern sp_File *(*sp_user_to_io_hook)(sp_RbVal);
 #endif
 
 #ifdef SP_MULTI_CTX
+#include <sys/stat.h>   /* struct stat, for sp_vfs_stat */
 /* A path-opened file as a stdio stream over the instance's backend handle
    (fopencookie), and the sp_File around it. See sp_io.c. */
 FILE *sp_vfs_fopen(const char *path, const char *bmode, const char *smode);
 sp_File *sp_io_vfs_wrap(FILE *fp, const char *mode);
+/* stat(2) for a path, answered by the backend: st_mode carries the type
+   (S_IFDIR / S_IFREG, with 0755 / 0644) and st_size the size; every other
+   field is zero. 0, or -1 with errno set. The backend has no links, so this
+   is lstat(2) as well. */
+int sp_vfs_stat(const char *path, struct stat *st);
+/* The path ops that open nothing, through the backend: 0, or -1 with errno. */
+int sp_vfs_remove(const char *path);
+int sp_vfs_rename(const char *from, const char *to);
+int sp_vfs_mkdir(const char *path);
+int sp_vfs_rmdir(const char *path);
+/* A path op the backend contract cannot express. */
+SP_NORETURN SP_COLD void sp_vfs_unsupported(const char *what);
 
 /* Default libc/POSIX I/O backend (sp_ctx io_* fall back to these when the
    instance config leaves a slot NULL). The opaque handle is a FILE*, the dir
@@ -278,6 +291,10 @@ int    sp_io_posix_stat(void *ud, const char *path, long *size, int *is_dir, int
 void  *sp_io_posix_opendir(void *ud, const char *path);
 int    sp_io_posix_readdir(void *ud, void *dh, char *namebuf, int cap);
 int    sp_io_posix_closedir(void *ud, void *dh);
+int    sp_io_posix_remove(void *ud, const char *path);
+int    sp_io_posix_rename(void *ud, const char *from, const char *to);
+int    sp_io_posix_mkdir(void *ud, const char *path);
+int    sp_io_posix_rmdir(void *ud, const char *path);
 #endif
 
 #endif

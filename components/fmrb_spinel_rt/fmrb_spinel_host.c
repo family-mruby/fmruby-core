@@ -24,7 +24,12 @@ static void  est_free_hook(void *ud, void *p)             { est_free(ud, p); }
 
 /* ---- I/O backend: route Spinel File/Dir through the fmrb HAL (VFS) ----
  * The fmrb HAL (components/fmrb_hal/fmrb_hal_file.h) backs littlefs on ESP32 and
- * the host FS on Linux, and resolves virtual paths ("/app" -> flash/app). It is
+ * the host FS on Linux, and resolves virtual paths ("/app" -> flash/app). Every
+ * path op the runtime makes under SP_MULTI_CTX lands on one of the hooks below
+ * (the ones the backend cannot express raise NotImplementedError instead), so
+ * all of a Spinel program's file access takes the HAL's lock -- which is what
+ * lets a forced app kill wait for the lock instead of deleting a task that is
+ * inside littlefs (doc/fs_kill_hang). It is
  * declared here with opaque (void*) handles + int (fmrb_err_t, FMRB_OK == 0) so
  * this file stays free of the HAL/main headers (same isolation as est_* above);
  * the symbols resolve when main links fmrb_hal. fmrb_hal_finfo_t mirrors
@@ -40,15 +45,22 @@ extern int fmrb_hal_file_stat(const char *path, fmrb_hal_finfo_t *info);
 extern int fmrb_hal_file_opendir(const char *path, void **out_handle);
 extern int fmrb_hal_file_closedir(void *handle);
 extern int fmrb_hal_file_readdir(void *handle, fmrb_hal_finfo_t *info);
+extern int fmrb_hal_file_remove(const char *path);
+extern int fmrb_hal_file_rename(const char *old_path, const char *new_path);
+extern int fmrb_hal_file_mkdir(const char *path);
+extern int fmrb_hal_file_rmdir(const char *path);
 
 #define FMRB_S_ISDIR_M(m) (((m) & 0170000u) == 0040000u)
 #define FMRB_S_ISREG_M(m) (((m) & 0170000u) == 0100000u)
 
 static unsigned int hal_flags_from_mode(const char *mode) {
-  /* small fopen-mode subset the apps use (r / w / a). FMRB_O_* bit values. */
-  if (mode && mode[0] == 'w') return 0x0002u | 0x0008u | 0x0010u;  /* WRONLY|CREAT|TRUNC */
-  if (mode && mode[0] == 'a') return 0x0002u | 0x0008u | 0x0020u;  /* WRONLY|CREAT|APPEND */
-  return 0x0001u;                                                  /* RDONLY */
+  /* fopen modes as FMRB_O_* bits (RDONLY 0x1, WRONLY 0x2, RDWR 0x4, CREAT 0x8,
+     TRUNC 0x10, APPEND 0x20). "r+" / "w+" read and write; "a+" stays
+     write-only append, the HAL having no read-append open. */
+  int plus = mode && mode[0] && (mode[1] == '+' || (mode[1] && mode[2] == '+'));
+  if (mode && mode[0] == 'w') return (plus ? 0x0004u : 0x0002u) | 0x0008u | 0x0010u;
+  if (mode && mode[0] == 'a') return 0x0002u | 0x0008u | 0x0020u;
+  return plus ? 0x0004u : 0x0001u;
 }
 
 static void *hal_open(void *ud, const char *path, const char *mode) {
@@ -86,6 +98,10 @@ static int hal_readdir(void *ud, void *dh, char *namebuf, int cap) {
   strncpy(namebuf, info.name, (size_t)cap - 1); namebuf[cap - 1] = 0; return 1;
 }
 static int hal_closedir(void *ud, void *dh) { (void)ud; return fmrb_hal_file_closedir(dh); }
+static int hal_remove(void *ud, const char *path) { (void)ud; return fmrb_hal_file_remove(path); }
+static int hal_rename(void *ud, const char *from, const char *to) { (void)ud; return fmrb_hal_file_rename(from, to); }
+static int hal_mkdir(void *ud, const char *path) { (void)ud; return fmrb_hal_file_mkdir(path); }
+static int hal_rmdir(void *ud, const char *path) { (void)ud; return fmrb_hal_file_rmdir(path); }
 
 /* est -> sp_ctx map so a foreign task (the stats dump) can reach an instance
  * it did not create. Slots are few (kernel + desktop + spare); linear scan. */
@@ -123,6 +139,10 @@ void *fmrb_spinel_instance_begin(void *pool, size_t pool_size,
     cfg.io_opendir  = hal_opendir;
     cfg.io_readdir  = hal_readdir;
     cfg.io_closedir = hal_closedir;
+    cfg.io_remove   = hal_remove;
+    cfg.io_rename   = hal_rename;
+    cfg.io_mkdir    = hal_mkdir;
+    cfg.io_rmdir    = hal_rmdir;
     sp_ctx *c = sp_instance_create(&cfg);
     if (!c) { est_cleanup(est); return NULL; }
     sp_ctx_set_current(c);
