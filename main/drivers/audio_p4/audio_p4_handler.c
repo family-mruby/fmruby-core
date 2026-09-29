@@ -6,6 +6,7 @@
 
 #include "audio_p4_internal.h"
 
+#include "fmrb_attr.h"
 #include "fmrb_log.h"
 
 #include "apu_if.h"
@@ -22,7 +23,9 @@ typedef struct {
     uint32_t size;
 } music_track_t;
 
-static music_track_t s_tracks[FMRB_MAX_MUSIC_TRACKS];
+// PSRAM: an id -> blob lookup table used by the audio command handler. The
+// blobs themselves are separate allocations (apuemu_malloc).
+FMRB_EXT_RAM_BSS_ATTR static music_track_t s_tracks[FMRB_MAX_MUSIC_TRACKS];
 static int s_track_count = 0;
 
 // Store an FMSQ blob into a slot keyed by music_id (PSRAM).

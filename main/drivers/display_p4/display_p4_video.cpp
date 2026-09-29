@@ -3,6 +3,7 @@
 #include "display_p4_video.h"
 
 #include "fmrb_link_protocol.h"
+#include "fmrb_attr.h"
 #include "fmrb_log.h"
 #include "fmrb_mem.h"
 #include "fmrb_task_config.h"
@@ -242,7 +243,11 @@ typedef struct {
     SemaphoreHandle_t lock;
 } video_player_t;
 
-static video_player_t s_p = {};
+// PSRAM: the player's bookkeeping (file, path, sizes, slot pointers, flags).
+// The decoder and the display read and write the frame buffers the slots point
+// to, which are allocated separately; nothing here is handed to DMA or read
+// from an interrupt.
+FMRB_EXT_RAM_BSS_ATTR static video_player_t s_p;
 
 // ---- stage profiling --------------------------------------------------------
 // Read / decode run on the player task, the copy on the display task. Summed

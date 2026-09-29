@@ -251,7 +251,9 @@ typedef struct {
     uint16_t     width, height;
 } p4_image_t;
 
-static p4_image_t g_images_store[DISPLAY_P4_MAX_IMAGES];
+// PSRAM: a lookup table of sprite pointers, walked by the display task only.
+// The pixels live in the sprites' own buffers.
+FMRB_EXT_RAM_BSS_ATTR static p4_image_t g_images_store[DISPLAY_P4_MAX_IMAGES];
 static uint16_t   g_next_image_store_id = 1;
 
 // Turn a path as an app wrote it into one the VFS answers to. The commands
