@@ -834,15 +834,20 @@ static inline sp_gc_hdr *sp_pool_try_pop(sp_gc_hdr **head) {
     sp_##CLS##_pool_pushes++; \
     if (sp_##CLS##_pool_count > sp_##CLS##_pool_hwm) sp_##CLS##_pool_hwm = sp_##CLS##_pool_count;
 #endif
+/* The pool's statics are zeroed storage in SP_TU_BSS (sp_types.h), so a port
+   short of internal memory can place them; the cap is written by the
+   constructor rather than by a static initializer, which would have kept it in
+   .data. */
 #define SP_POOL_DEFINE(CLS) \
-  static sp_gc_hdr *sp_##CLS##_pool_head = NULL; \
-  static long sp_##CLS##_pool_count = 0; \
-  static long sp_##CLS##_pool_max = SP_POOL_DEFAULT_MAX; \
-  static long sp_##CLS##_pool_pushes = 0; \
-  static long sp_##CLS##_pool_pops = 0; \
-  static long sp_##CLS##_pool_freed = 0; \
-  static long sp_##CLS##_pool_hwm = 0; \
+  SP_TU_BSS static sp_gc_hdr *sp_##CLS##_pool_head; \
+  SP_TU_BSS static long sp_##CLS##_pool_count; \
+  SP_TU_BSS static long sp_##CLS##_pool_max; \
+  SP_TU_BSS static long sp_##CLS##_pool_pushes; \
+  SP_TU_BSS static long sp_##CLS##_pool_pops; \
+  SP_TU_BSS static long sp_##CLS##_pool_freed; \
+  SP_TU_BSS static long sp_##CLS##_pool_hwm; \
   __attribute__((constructor)) static void sp_##CLS##_pool_init(void) { \
+    sp_##CLS##_pool_max = SP_POOL_DEFAULT_MAX; \
     const char *m = getenv("SP_POOL_MAX"); \
     if (m && *m) { long v = atol(m); if (v >= 0) sp_##CLS##_pool_max = v; } \
   } \
