@@ -58,3 +58,16 @@
   (develop に戻す必要はない)。ただし**焼くと再起動して起動音が鳴る**。M1 の版が入るまではミュートできない
   ので、**最初の書き込みの前に止まって親に返す** (親がユーザに鳴らしてよい時を確かめる)。それまでは sim・
   ブラウザ版・ビルドで進める。
+
+## 設計の変更 (親から、2026-10-01)
+
+plan.md の「方針」を読み直すこと。host タスクで命令を種類ごとに捨てる作り (`fmrb_audio_cmd_allowed`、
+`fmrb_audio_play` / `resume` の止め、ミュートの瞬間に STOP を送ること) は**やめる**。代わりに出力の最後の段で
+サンプルを 0 にする (P4・ブラウザ版は audio_p4、Retro・sim は graphics-audio)。
+
+- graphics-audio の変更は許可する (fmruby-graphics-audio の作業ブランチ `feature/audio-mute`、親が切った)。
+  Retro の WROVER は ESP32 のビルド (`rake build:esp32`、graphics-audio 側) まで確かめる (実機はつながっていない)。
+  sim では `tools/fmrb_audio_probe.rb` で無音・有音を数値で確かめる (graphics-audio の SHM のリングの段で 0 にするなら
+  probe でそのまま見える)。
+- 音の経路の表は「出力の段で止まるか」の確認に使う (全部の経路が最後の段を通ること)。
+- 設定・メニューバー・設定画面・devctl・debugd・MCP の口は、これまでの作業を流用してよい。
