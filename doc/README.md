@@ -85,7 +85,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `remote_desktop/` [リモートデスクトップ機能 設計書 (ESP32-P4 / Modern)](remote_desktop/design.md) — - 〔1 files〕
 - `robo_explorer/` [ロボットエクスプローラー: Pub/Sub で操作する二人羽織パズル](robo_explorer/plan.md) — - 〔3 files〕
 - `ruby_asterism/` [プロジェクト名の決定: Asterism](ruby_asterism/naming.md) — - 〔7 files〕
-- `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **進行中** (2026-10-01) P4 でアプリを多く動かすと FM-Shell の打鍵の反映が遅い (エディタは速い)。S1 で打鍵から表示までの時間を区間ごとに測ってから直す 〔2 files〕
+- `shell_input_lag/` [Shell のキー入力が遅い件](shell_input_lag/plan.md) — **進行中** (2026-10-01) P4 でアプリを多く動かすと FM-Shell の打鍵の反映が遅い (エディタは速い)。S1 で打鍵から表示までの時間を区間ごとに測ってから直す 〔3 files〕
 - `softap_remote/` [WiFi AP モードと携帯端末からの遠隔画面 (SoftAP + 認証 + iPhone ビューア)](softap_remote/plan.md) — **計画済** (2026-08-31) 機体が自分で WiFi を張り、PC も家の WiFi も無い場所で iPhone のブラウザから遠隔画面を使えるようにする。設定だけで切替、共通鍵で守る 〔1 files〕
 - `spinel_aot/` [Spinel AOT 化プロジェクト 共通指示書](spinel_aot/00_common.md) — - 〔38 files〕
 - `spinel_upstream_ext/` [Spinel 上流の ext 機構でフォークを置き換えられるか](spinel_upstream_ext/plan.md) — **進行中** (2026-09-27) **P0-P3 完了、develop に入った**。フォーク固定点は `fmrb-ext` (`4faa22b4`、kishima/spinel)。gem と VM は上流の ext 機構で生成し FFI の迂回を撤去、全生成 `--no-inline-hot`。内蔵 RAM は取り込み前より約 6.8KB 少ない。速度の退行 (P2b-2) は許容、P3 で一部回復。今後の上流追従は様子見、単純なバグの PR は続ける 〔22 files〕
