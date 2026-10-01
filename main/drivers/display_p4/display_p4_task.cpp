@@ -12,6 +12,7 @@
 #include "display_p4_vm.h"
 #include "display_p4_sprite.h"
 #include "display_p4_video.h"
+#include "flash_flicker_probe.h"
 #ifndef FMRB_PLATFORM_WASM
 #if defined(FMRB_HW_NARYAV4)
 #include "lgfx_naryav4.hpp"
@@ -1601,6 +1602,7 @@ static void note_render(uint32_t start_ms) {
                   (unsigned long)(g_stat_render_ms_total / g_stat_frames),
                   (unsigned long)g_stat_render_ms_max);
         cursor_stats_log();
+        flash_probe_log();
         g_stat_frames = 0;
         g_stat_render_ms_total = 0;
         g_stat_render_ms_max = 0;
