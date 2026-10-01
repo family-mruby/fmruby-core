@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "fmrb_task_config.h"
@@ -11,6 +12,7 @@
 #include "fmrb_gfx.h"
 #include "fmrb_gfx_cmd.h"
 #include "fmrb_audio.h"
+#include "audio_commands.h"
 #include "fmrb_kernel.h"
 #include "boot.h"
 #include "fmrb_transport.h"
@@ -190,6 +192,18 @@ static void init_display_response_cb(uint8_t status, const uint8_t *payload,
     FMRB_LOGI(TAG, "INIT_DISPLAY ACK received (status=%u)", status);
 }
 
+// The output settings as one SET_OUTPUT command (doc/audio_mute/).
+static void host_audio_output_cmd(fmrb_audio_output_cmd_t *out)
+{
+    int16_t min_x10, max_x10;
+    fmrb_audio_level_range(&min_x10, &max_x10);
+    uint8_t step = fmrb_audio_volume_step();
+    out->cmd_type = FMRB_AUDIO_CMD_SET_OUTPUT;
+    out->muted = fmrb_audio_is_muted() ? 1 : 0;
+    out->volume = step;
+    out->level_db_x10 = fmrb_audio_step_db_x10(step, min_x10, max_x10);
+}
+
 static int init_gfx_audio(void)
 {
     const fmrb_system_config_t* conf = fmrb_kernel_get_config();
@@ -276,6 +290,18 @@ static int init_gfx_audio(void)
         return -1;
     } else {
         FMRB_LOGI(TAG, "Audio subsystem (APU emulator) initialized");
+    }
+    // Tell the audio side the output settings now that the link is up (the
+    // INIT_DISPLAY exchange above is the connection). Sent whatever they are:
+    // the backend keeps its own copy across reboots, and this corrects it.
+    {
+        fmrb_audio_output_cmd_t out;
+        host_audio_output_cmd(&out);
+        fmrb_transport_send(FMRB_LINK_TYPE_AUDIO, 0, (const uint8_t *)&out,
+                            sizeof(out), FMRB_TRANSPORT_TIMEOUT_DEFAULT);
+        FMRB_LOGI(TAG, "Audio output: volume %u (%d.%d dB)%s", out.volume,
+                  out.level_db_x10 / 10, abs(out.level_db_x10 % 10),
+                  out.muted ? ", muted" : "");
     }
 
     FMRB_LOGI(TAG, "Host task initialized");
@@ -1453,6 +1479,66 @@ static void host_broadcast_kana_mode(void)
         host_send_kana_mode(routing.target_pid, mode);
     }
     host_send_kana_mode(0, mode);
+}
+
+// ---- Mute and volume (doc/audio_mute/) -------------------------------------
+
+// Queue the current output settings for the host task, behind every audio
+// command already waiting, so they keep their order. Nothing else changes:
+// whatever is playing keeps playing at the backend's last output stage.
+static void host_audio_send_output(void)
+{
+    fmrb_msg_t msg = {
+        .type = FMRB_MSG_TYPE_APP_AUDIO,
+        .src_pid = PROC_ID_HOST,
+        .size = sizeof(fmrb_audio_output_cmd_t),
+    };
+    fmrb_audio_output_cmd_t out;
+    host_audio_output_cmd(&out);
+    memcpy(msg.data, &out, sizeof(out));
+    if (fmrb_msg_send(PROC_ID_HOST, &msg, 200) != FMRB_OK) {
+        FMRB_LOGW(TAG, "audio output: command not queued");
+    }
+}
+
+void fmrb_host_set_audio_mute(bool on)
+{
+    bool was = fmrb_audio_is_muted();
+    fmrb_audio_set_muted(on);
+    host_audio_send_output();
+    FMRB_LOGI(TAG, "audio mute=%s", on ? "on" : "off");
+    if (was != on) {
+        if (fmrb_kernel_save_conf_value("audio_mute", on ? "true" : "false") != FMRB_OK) {
+            FMRB_LOGW(TAG, "audio mute: not saved to system_conf");
+        }
+    }
+}
+
+void fmrb_host_set_audio_volume(int step)
+{
+    if (step < 0) step = 0;
+    if (step > FMRB_AUDIO_VOLUME_MAX) step = FMRB_AUDIO_VOLUME_MAX;
+    int was = fmrb_audio_volume_step();
+    fmrb_audio_set_volume_step((uint8_t)step);
+    host_audio_send_output();
+    FMRB_LOGI(TAG, "audio volume=%d", step);
+    if (was != step) {
+        char v[4];
+        snprintf(v, sizeof(v), "%d", step);
+        if (fmrb_kernel_save_conf_value("audio_volume", v) != FMRB_OK) {
+            FMRB_LOGW(TAG, "audio volume: not saved to system_conf");
+        }
+    }
+}
+
+int fmrb_host_audio_volume(void)
+{
+    return fmrb_audio_volume_step();
+}
+
+bool fmrb_host_audio_muted(void)
+{
+    return fmrb_audio_is_muted();
 }
 
 void fmrb_host_set_kana_mode(uint8_t mode)

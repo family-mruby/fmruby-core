@@ -60,6 +60,29 @@ void fmrb_kernel_stop(void);
 const fmrb_system_config_t* fmrb_kernel_get_config(void);
 
 /**
+ * @brief Write one top-level key of /etc/system_conf.toml.
+ *
+ * The line becomes `key = value` (value written as given: "true", "7", a
+ * quoted string...), replaced in place or added before the first [section]
+ * when missing; everything else in the file is kept. Written to a temporary
+ * file and renamed over the original. For settings changed at run time that
+ * must survive a reboot, such as audio_mute and audio_volume.
+ *
+ * @return FMRB_OK, or FMRB_ERR_* when the file could not be read or written
+ */
+fmrb_err_t fmrb_kernel_save_conf_value(const char *key, const char *value);
+
+/**
+ * @brief Read the audio output settings (audio_mute, audio_volume,
+ *        audio_level_min / max) from system_conf into fmrb_audio.
+ *
+ * The kernel does this as part of reading its config; the Modern audio task
+ * calls it on its own earlier, because it makes its first sound (the boot
+ * beep) before the kernel starts.
+ */
+fmrb_err_t fmrb_kernel_load_audio_conf(void);
+
+/**
  * @brief HID routing table structure
  */
 typedef struct {

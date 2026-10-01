@@ -116,6 +116,47 @@ int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value);
 void fmrb_host_set_kana_mode(uint8_t mode);
 
 /**
+ * @brief Mute or unmute the whole machine, and remember it.
+ *
+ * Like a speaker's mute switch: every source keeps running as usual (apps,
+ * BASIC, MicroPython, the MIDI player's internal APU, the boot jingle) and the
+ * audio backend writes silence at its last output stage instead of the mix
+ * (doc/audio_mute/plan.md). The new state is written to /etc/system_conf.toml
+ * (audio_mute) when it changes, so it survives a reboot. Callable from any
+ * task but the host task; behind the desktop's menu bar, devctl's
+ * /audio/mute and debugd's audio_mute.
+ *
+ * External MIDI output is not sound from this machine and is not affected.
+ *
+ * @param on true to mute
+ */
+void fmrb_host_set_audio_mute(bool on);
+
+/**
+ * @brief True while the machine is muted.
+ */
+bool fmrb_host_audio_muted(void);
+
+/**
+ * @brief Set the machine's volume, and remember it.
+ *
+ * A step from 0 (silence) to 10. Steps 1-10 are spread evenly in dB over the
+ * output's level range (system_conf audio_level_min / audio_level_max, by
+ * default all the hardware can do): the codec's own volume on Modern, a
+ * software gain at the last output stage elsewhere. Independent of the mute:
+ * unmuting returns to this volume. Saved to system_conf (audio_volume) when it
+ * changes. Callable from any task but the host task.
+ *
+ * @param step 0-10, clamped
+ */
+void fmrb_host_set_audio_volume(int step);
+
+/**
+ * @brief The volume step, 0-10.
+ */
+int fmrb_host_audio_volume(void);
+
+/**
  * @brief Allow the on-screen cursor to appear on the next mouse event.
  *
  * The cursor stays hidden after boot until this is called, so the boot

@@ -36,7 +36,14 @@ typedef enum {
      * it with one log line and the caller does not send it in the first
      * place (FmrbAudio#play_wav). */
     FMRB_AUDIO_CMD_PLAY_WAV = 0x0D,
-    FMRB_AUDIO_CMD_STOP_WAV = 0x0E
+    FMRB_AUDIO_CMD_STOP_WAV = 0x0E,
+    /* Machine-wide output settings, mute and volume (doc/audio_mute/ in
+     * fmruby-core). Everything keeps playing; the backend applies these at
+     * its last output stage. The core sends it on every change and once
+     * after INIT_DISPLAY, and the backend keeps the last state across its own
+     * reboots so its boot beep obeys it too. A backend older than this
+     * command logs it as unknown and carries on, unmuted at full level. */
+    FMRB_AUDIO_CMD_SET_OUTPUT = 0x0F
 } fmrb_audio_cmd_type_t;
 
 // Audio status
@@ -81,6 +88,14 @@ typedef struct {
 typedef struct {
     uint8_t cmd_type;
 } __attribute__((packed)) fmrb_audio_status_cmd_t;
+
+typedef struct {
+    uint8_t cmd_type;
+    uint8_t muted;         // 1 = output silence whatever the volume
+    uint8_t volume;        // step 0-10; 0 = silence
+    int16_t level_db_x10;  // the level of that step, tenths of a dB (<= 0 for
+                           // a software gain; a codec may go above 0)
+} __attribute__((packed)) fmrb_audio_output_cmd_t;
 
 typedef struct {
     uint8_t cmd_type;

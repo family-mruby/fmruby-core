@@ -31,6 +31,7 @@
 
 #include "fmrb_fft_bench.h"
 #include "fmrb_log.h"
+#include "fmrb_attr.h"
 #include "display_p4_task.h"
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
@@ -81,6 +82,11 @@ static i2s_chan_handle_t s_rx_chan = NULL;
 static i2s_std_config_t s_std_cfg;
 static bool s_rx_ready = false;
 static esp_codec_dev_handle_t s_codec = NULL;
+#if defined(FMRB_HW_NARYAV4)
+// The codec driver itself, for the output level (audio_p4_hw_set_out_db).
+// PSRAM: the internal RAM budget has no room for new statics.
+FMRB_EXT_RAM_BSS_ATTR static const audio_codec_if_t *s_codec_if;
+#endif
 static volatile bool s_hw_ready = false;
 static volatile bool s_mic_on = false;
 static int16_t s_stereo_buf[AUDIO_P4_STEREO_BUF_SAMPLES];
@@ -281,6 +287,9 @@ static fmrb_err_t audio_p4_hw_init(void) {
         return FMRB_ERR_FAILED;
     }
 
+#if defined(FMRB_HW_NARYAV4)
+    s_codec_if = codec_if;
+#endif
     esp_codec_dev_cfg_t dev_cfg = {
         .dev_type = AUDIO_P4_CODEC_DEV_TYPE,
         .codec_if = codec_if,
@@ -633,54 +642,74 @@ void audio_p4_mic_selftest(void) {
     if (!was_on) audio_p4_mic_enable(false);
 }
 
-// ES8388 DAC digital volume (LDACVOL/RDACVOL): 0.5 dB attenuation steps,
-// 0x00 = 0 dB, 0xC0 = -96 dB. esp_codec_dev's default curve maps volume
-// 0-100 linearly to -50..0 dB, i.e. reg = 100 - vol; keep that mapping so
-// runtime changes sound identical to the boot default, but treat 0 as a
-// full mute (-96 dB).
+// ---- Output level and mute (doc/audio_mute/) ----
+//
+// The level is the chip's DAC digital volume in dB: the core works out the
+// step's level from the range the chip has, and this writes it as is.
 #if defined(FMRB_HW_NARYAV4)
 // Nothing drives this I2C controller behind esp_codec_dev's back on this
-// board, so the volume goes through the normal API. It has to work: it is
-// also the way to silence the speaker, and the amplifier here is enabled
-// whenever the codec is open.
-static void audio_p4_hw_set_volume(uint8_t volume_0_255) {
-    if (!s_hw_ready || !s_codec) return;
-    int vol = (volume_0_255 * 100) / 255;
-    int rc = esp_codec_dev_set_out_vol(s_codec, vol);
+// board, so the level goes through the codec driver. Straight to its set_vol
+// rather than esp_codec_dev_set_out_vol: that one takes 0-100 on a -50..0 dB
+// curve, and the ES8311 reaches from -95.5 to +32 dB. The driver subtracts its
+// hardware-gain term from what it is given (20*log10(3.3/5) with this board's
+// zero config), so it is added back here and the chip gets exactly `db`.
+void audio_p4_hw_set_out_db(float db) {
+    if (!s_hw_ready || !s_codec_if || !s_codec_if->set_vol) return;
+    esp_codec_dev_hw_gain_t none = {0};
+    float hw_gain = esp_codec_dev_col_calc_hw_gain(&none);
+    int rc = s_codec_if->set_vol(s_codec_if, db + hw_gain);
     if (rc != ESP_CODEC_DEV_OK) {
-        FMRB_LOGW(TAG, "volume set failed: %d", rc);
+        FMRB_LOGW(TAG, "level set failed: %d", rc);
         return;
     }
-    // Mute as well at zero: the DAC at its lowest volume is quiet, not silent.
-    esp_codec_dev_set_out_mute(s_codec, vol == 0);
-    FMRB_LOGI(TAG, "volume set to %d/100%s", vol, vol == 0 ? " (muted)" : "");
+    FMRB_LOGI(TAG, "level %.1f dB", db);
+}
+
+// The amplifier here is enabled whenever the codec is open, so this is also
+// the way to silence the speaker.
+void audio_p4_hw_set_out_mute(bool mute) {
+    if (!s_hw_ready || !s_codec) return;
+    esp_codec_dev_set_out_mute(s_codec, mute);
 }
 #else
+// esp_codec_dev talks through i2c_master, which is broken on this controller
+// once touch polling runs; write the codec registers through the display
+// driver's serialized lgfx I2C service instead.
 #define ES8388_I2C_ADDR_7BIT  (ES8388_CODEC_DEFAULT_ADDR >> 1)
+#define ES8388_REG_DACCONTROL3 0x19  // bit 2: DACMute
 #define ES8388_REG_LDACVOL    0x1A  // ES8388_DACCONTROL4
 #define ES8388_REG_RDACVOL    0x1B  // ES8388_DACCONTROL5
 #define ES8388_I2C_FREQ       400000
 
-static void audio_p4_hw_set_volume(uint8_t volume_0_255) {
+static fmrb_err_t es8388_write(uint8_t reg, uint8_t val) {
+    return display_p4_i2c_write_reg8(ES8388_I2C_ADDR_7BIT, reg, val, ES8388_I2C_FREQ);
+}
+
+// LDACVOL/RDACVOL: 0x00 = 0 dB down to 0xC0 = -96 dB, 0.5 dB steps.
+void audio_p4_hw_set_out_db(float db) {
     if (!s_hw_ready) return;
-    int vol = (volume_0_255 * 100) / 255;
-    // esp_codec_dev talks through i2c_master, which is broken on this
-    // controller once touch polling runs; write the codec registers
-    // through the display driver's serialized lgfx I2C service instead.
-    uint8_t reg = (vol == 0) ? 0xC0 : (uint8_t)(100 - vol);
-    fmrb_err_t err = display_p4_i2c_write_reg8(ES8388_I2C_ADDR_7BIT,
-                                               ES8388_REG_RDACVOL, reg,
-                                               ES8388_I2C_FREQ);
+    int reg = (int)lroundf(-db * 2.0f);
+    if (reg < 0) reg = 0;
+    if (reg > 0xC0) reg = 0xC0;
+    fmrb_err_t err = es8388_write(ES8388_REG_RDACVOL, (uint8_t)reg);
     if (err == FMRB_OK) {
-        err = display_p4_i2c_write_reg8(ES8388_I2C_ADDR_7BIT,
-                                        ES8388_REG_LDACVOL, reg,
-                                        ES8388_I2C_FREQ);
+        err = es8388_write(ES8388_REG_LDACVOL, (uint8_t)reg);
     }
     if (err != FMRB_OK) {
-        FMRB_LOGW(TAG, "volume set failed: %d", err);
+        FMRB_LOGW(TAG, "level set failed: %d", err);
         return;
     }
-    FMRB_LOGI(TAG, "volume set to %d/100 (dacvol=0x%02X)", vol, reg);
+    FMRB_LOGI(TAG, "level %.1f dB (dacvol=0x%02X)", db, reg);
+}
+
+// DACControl3 bit 2 mutes the DAC. The codec driver leaves the other bits 0
+// (it writes 0x04 at open and clears bit 2 to start), so the whole register
+// is written: 0x04 muted, 0x00 playing.
+void audio_p4_hw_set_out_mute(bool mute) {
+    if (!s_hw_ready) return;
+    if (es8388_write(ES8388_REG_DACCONTROL3, mute ? 0x04 : 0x00) != FMRB_OK) {
+        FMRB_LOGW(TAG, "mute set failed");
+    }
 }
 #endif /* FMRB_HW_NARYAV4 */
 
@@ -691,7 +720,6 @@ static const audio_backend_t s_backend_hw = {
     .init       = audio_p4_hw_init,
     .ready      = audio_p4_hw_ready,
     .write      = audio_p4_hw_write,
-    .set_volume = audio_p4_hw_set_volume,
 };
 
 const audio_backend_t *audio_backend(void) {

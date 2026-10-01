@@ -2,22 +2,75 @@
 #include "fmrb_link_protocol.h"
 #include "fmrb_transport.h"
 #include "fmrb_log_port.h"
+#include "fmrb_attr.h"
 #include <string.h>
+#include <stdint.h>
 
 static const char *TAG = "fmrb_audio";
 
-// Audio context
+// Audio context. `muted` and `volume_step` sit in the padding after
+// `initialized`, so the output settings cost no internal RAM (the level range
+// below is in PSRAM). fmrb_audio_init leaves them alone: the kernel sets them
+// from system_conf before the host task initializes this module.
 typedef struct {
     bool initialized;
+    volatile bool muted;
+    volatile uint8_t volume_step;
     fmrb_apu_status_t current_status;
     uint8_t current_volume;
 } fmrb_audio_ctx_t;
 
 static fmrb_audio_ctx_t audio_ctx = {
     .initialized = false,
+    .muted = false,
+    .volume_step = FMRB_AUDIO_VOLUME_DEFAULT,
     .current_status = FMRB_APU_STATUS_STOPPED,
     .current_volume = 128
 };
+
+FMRB_EXT_RAM_BSS_ATTR static int16_t s_level_min_x10;
+FMRB_EXT_RAM_BSS_ATTR static int16_t s_level_max_x10;
+
+void fmrb_audio_set_muted(bool muted) {
+    audio_ctx.muted = muted;
+}
+
+bool fmrb_audio_is_muted(void) {
+    return audio_ctx.muted;
+}
+
+void fmrb_audio_set_volume_step(uint8_t step) {
+    audio_ctx.volume_step = step > FMRB_AUDIO_VOLUME_MAX ? FMRB_AUDIO_VOLUME_MAX : step;
+}
+
+uint8_t fmrb_audio_volume_step(void) {
+    return audio_ctx.volume_step;
+}
+
+void fmrb_audio_set_level_range(int16_t min_db_x10, int16_t max_db_x10) {
+    if (min_db_x10 > max_db_x10) {
+        int16_t t = min_db_x10;
+        min_db_x10 = max_db_x10;
+        max_db_x10 = t;
+    }
+    s_level_min_x10 = min_db_x10;
+    s_level_max_x10 = max_db_x10;
+}
+
+void fmrb_audio_level_range(int16_t *min_db_x10, int16_t *max_db_x10) {
+    if (min_db_x10) *min_db_x10 = s_level_min_x10;
+    if (max_db_x10) *max_db_x10 = s_level_max_x10;
+}
+
+int16_t fmrb_audio_step_db_x10(uint8_t step, int16_t min_db_x10, int16_t max_db_x10) {
+    if (step <= 1) return min_db_x10;
+    if (step >= FMRB_AUDIO_VOLUME_MAX) return max_db_x10;
+    int32_t span = (int32_t)max_db_x10 - min_db_x10;
+    int32_t steps = FMRB_AUDIO_VOLUME_MAX - 1;
+    // Rounded to the nearest tenth, so the steps stay even.
+    int32_t off = (span * (step - 1) * 2 + steps) / (steps * 2);
+    return (int16_t)(min_db_x10 + off);
+}
 
 static fmrb_audio_err_t send_audio_command(uint8_t sub_cmd, const void *data, size_t data_size) {
     fmrb_err_t ret = fmrb_transport_send(

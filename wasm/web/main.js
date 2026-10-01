@@ -194,8 +194,7 @@ async function startAudio(ac) {
   // The write counter has no address export; forward it at 60 Hz. The ring
   // is a second of audio, so this granularity is far below the slack.
   setInterval(() => {
-    node.port.postMessage({ wr: M._fmrb_wasm_audio_wr(),
-                            volume: M._fmrb_wasm_audio_volume() });
+    node.port.postMessage({ wr: M._fmrb_wasm_audio_wr() });
   }, 16);
   node.connect(ac.destination);
   // From a real click this settles at once. Started by ?autostart=1 (which
@@ -293,6 +292,9 @@ const CONF_KEYS = [
   // A wallpaper chosen inside the machine. It is a quoted path, which is why
   // the capture below stops at whitespace rather than at the end of the line.
   'wallpaper',
+  // Mute and volume (doc/audio_mute/), which the machine writes itself when
+  // the speaker cell, the menu or Config changes them.
+  'audio_mute', 'audio_volume',
   // the [theme] block, so a theme chosen inside the machine also survives
   'desktop_bg', 'menu_bg', 'window_bg', 'text', 'text_light',
   'highlight', 'border', 'button', 'dir_color',

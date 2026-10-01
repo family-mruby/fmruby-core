@@ -25,7 +25,7 @@ extern "C" {
 #endif
 
 // --- audio_p4_hw.c ---
-// The output path (init / ready / write / set_volume) is reached through
+// The output path (init / ready / write) is reached through
 // audio_backend() (audio_backend.h, included via audio_p4.h).
 //
 // The microphone's public API (available / sample_rate / enable / read) lives
@@ -58,6 +58,27 @@ int  audio_p4_engine_note_off(uint8_t channel);
 // while another plays replaces it. Returns 0 when it started.
 int  audio_p4_engine_play_wav(const char *path);
 void audio_p4_engine_stop_wav(void);
+
+// Output settings (doc/audio_mute/): mute and volume, applied where the frame
+// loop writes the mix out -- everything upstream keeps running. The task reads
+// them from system_conf before its first frame (so the boot beep obeys them);
+// afterwards FMRB_AUDIO_CMD_SET_OUTPUT from the core sets them.
+//   silent:   write silence (muted, or volume 0)
+//   gain_q16: software gain on the samples, 65536 = unity. Unity on the device,
+//             where the codec's own volume does the work.
+void audio_p4_out_set(bool silent, uint32_t gain_q16);
+bool audio_p4_out_silent(void);
+// A level in tenths of a dB as a software gain (65536 = unity; levels above
+// 0 dB are held at unity, a gain above 1 would only clip).
+uint32_t audio_p4_gain_q16(int16_t db_x10);
+
+#if defined(FMRB_HW_MODERN)
+// --- audio_p4_hw.c: the codec's own output level and mute ---
+// db is the chip's DAC level (clamped to what it can do). Command path
+// (display task) only, where codec I2C belongs.
+void audio_p4_hw_set_out_db(float db);
+void audio_p4_hw_set_out_mute(bool mute);
+#endif
 
 #ifdef __cplusplus
 }

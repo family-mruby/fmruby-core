@@ -2,9 +2,11 @@
 //
 // The APU emulator is already half-abstracted from the hardware: it renders
 // into a writer function installed with apuif_set_output_writer(). This table
-// gathers the other hardware touchpoints (bring-up, readiness, volume) with
+// gathers the other hardware touchpoints (bring-up, readiness) with
 // that writer, so a target without the ES8388 codec (wasm, doc/wasm/ P3) can
-// supply all four in one place. The microphone stays outside: it is Tab5
+// supply all three in one place. The output level and mute are not here:
+// the device uses its codec (audio_p4_hw_set_out_db), other targets a
+// software gain in the frame loop (doc/audio_mute/). The microphone stays outside: it is Tab5
 // hardware with its own public API in audio_p4.h, not part of the output path.
 //
 // One implementation today, in audio_p4_hw.c. There is no build-time selection
@@ -33,8 +35,6 @@ typedef struct {
     // Push one block of interleaved int16 samples to the output.
     // Installed into the APU emulator via apuif_set_output_writer().
     void (*write)(const int16_t *samples, int len, int channels);
-
-    void (*set_volume)(uint8_t volume_0_255);
 } audio_backend_t;
 
 const audio_backend_t *audio_backend(void);

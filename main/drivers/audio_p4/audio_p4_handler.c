@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 static const char *TAG = "audio_p4";
 
@@ -210,6 +211,34 @@ static int process_load_fmsq_file(const fmrb_audio_load_fmsq_file_cmd_t *cmd, si
     return ret;
 }
 
+// ---- Output settings (doc/audio_mute/) ----
+
+uint32_t audio_p4_gain_q16(int16_t db_x10) {
+    if (db_x10 >= 0) return 65536;
+    return (uint32_t)(65536.0f * powf(10.0f, (float)db_x10 / 200.0f) + 0.5f);
+}
+
+// Mute and volume, as the core sent them. Silence goes in at the output stage
+// (the frame loop writes zeros), and the level is the codec's own volume on
+// the device -- a hardware attenuator keeps quiet settings clean -- or a
+// software gain in the browser. Runs in the display task, like every command,
+// which is where codec I2C belongs.
+static void apply_output(const fmrb_audio_output_cmd_t *cmd) {
+    bool silent = cmd->muted || cmd->volume == 0;
+#if defined(FMRB_HW_MODERN)
+    audio_p4_out_set(silent, 0);
+    // Muting the codec too, so the speaker is quiet for certain; the level is
+    // set either way, so unmuting comes back at the volume asked for.
+    audio_p4_hw_set_out_db(cmd->level_db_x10 / 10.0f);
+    audio_p4_hw_set_out_mute(silent);
+#else
+    audio_p4_out_set(silent, audio_p4_gain_q16(cmd->level_db_x10));
+#endif
+    FMRB_LOGI(TAG, "output: volume %u, %d.%d dB%s", cmd->volume,
+              cmd->level_db_x10 / 10, abs(cmd->level_db_x10 % 10),
+              cmd->muted ? ", muted" : "");
+}
+
 int audio_p4_process_command(const uint8_t *data, size_t size) {
     if (!data || size == 0) {
         return -1;
@@ -251,9 +280,15 @@ int audio_p4_process_command(const uint8_t *data, size_t size) {
             return 0;
 
         case FMRB_AUDIO_CMD_SET_VOLUME:
-            if (size >= sizeof(fmrb_audio_volume_cmd_t)) {
-                const fmrb_audio_volume_cmd_t *cmd = (const fmrb_audio_volume_cmd_t *)data;
-                audio_backend()->set_volume(cmd->volume);
+            // The level belongs to SET_OUTPUT now (doc/audio_mute/); a bare
+            // volume from elsewhere would undo the user's setting.
+            return 0;
+
+        case FMRB_AUDIO_CMD_SET_OUTPUT:
+            if (size >= sizeof(fmrb_audio_output_cmd_t)) {
+                fmrb_audio_output_cmd_t cmd;
+                memcpy(&cmd, data, sizeof(cmd));
+                apply_output(&cmd);
                 return 0;
             }
             break;
