@@ -194,6 +194,7 @@ class SystemDesktopApp < FmrbApp
     @cfg_selected = -1
     @cfg_status = nil
     @cfg_status_until = 0
+    @cfg_volume_saved = 0
 
     # Network dialog state (Modern only)
     @net_open = false

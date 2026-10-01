@@ -545,6 +545,18 @@ int fmrb_spx_app_set_audio_volume(int step)
     return 0;
 }
 
+int fmrb_spx_app_preview_audio_volume(int step)
+{
+    fmrb_host_preview_audio_volume(step);
+    return 0;
+}
+
+int fmrb_spx_app_audio_conf_saved(void)
+{
+    fmrb_host_audio_conf_written();
+    return 0;
+}
+
 const char *fmrb_spx_app_wallclock(void)
 {
     FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];
@@ -615,6 +627,7 @@ int fmrb_spx_app_set_cursor_visible(int visible)
 int fmrb_spx_app_reboot(void)
 {
     FMRB_LOGI(TAG, "reboot requested");
+    fmrb_host_audio_flush_save();  /* a mute / volume change still waiting to be saved */
     fmrb_task_delay_ms(100);
 #ifdef CONFIG_IDF_TARGET_LINUX
     exit(0);

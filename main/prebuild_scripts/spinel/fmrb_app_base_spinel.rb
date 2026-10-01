@@ -1994,6 +1994,18 @@ class FmrbApp
     nil
   end
 
+  # Apply a volume without saving it (Config's live preview).
+  def self.preview_audio_volume(step)
+    FmrbSpxApp.fmrb_spx_app_preview_audio_volume(step)
+    nil
+  end
+
+  # The caller wrote the mute and volume into system_conf itself.
+  def self.audio_conf_saved
+    FmrbSpxApp.fmrb_spx_app_audio_conf_saved
+    nil
+  end
+
   # Remote desktop video going out: 0 = none, 1 = MJPEG, 2 = H.264.
   def self.rd_stream_state
     FmrbSpxApp.fmrb_spx_app_rd_stream_state

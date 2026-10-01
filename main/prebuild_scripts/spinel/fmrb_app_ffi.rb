@@ -138,6 +138,8 @@ module FmrbSpxApp
   ffi_func :fmrb_spx_app_set_audio_mute, [:int], :int
   ffi_func :fmrb_spx_app_audio_volume, [], :int
   ffi_func :fmrb_spx_app_set_audio_volume, [:int], :int
+  ffi_func :fmrb_spx_app_preview_audio_volume, [:int], :int
+  ffi_func :fmrb_spx_app_audio_conf_saved, [], :int
   ffi_func :fmrb_spx_app_wifi_connected, [], :int
   ffi_func :fmrb_spx_app_proc_generation, [], :int
   ffi_func :fmrb_spx_app_bt_mac, [], :binstr

@@ -937,7 +937,7 @@ class FmrbApp
   # 本体の音を消す・戻す <<en>> Mute or unmute the whole machine
   #
   # true で消音。音は鳴り続けたまま出力だけ無音になる (スピーカのミュート)。
-  # 設定に保存され、再起動後も残る。外部 MIDI 出力は止めない。
+  # 少し後 (約 2 秒) に設定に保存され、再起動後も残る。外部 MIDI 出力は止めない。
   # ```ruby
   # FmrbApp.set_audio_mute(true)
   # ```
@@ -978,6 +978,22 @@ class FmrbApp
   # FmrbApp.audio_volume
   # ```
   def self.audio_volume: () -> Integer
+
+  # 音量を保存せずに試す <<en>> Try a volume without saving it
+  #
+  # 設定画面の試聴用。保存は audio_conf_saved か set_audio_volume で。
+  # <<en>>
+  # For a settings screen's live preview. Saving is audio_conf_saved or
+  # set_audio_volume.
+  def self.preview_audio_volume: (Integer step) -> void
+
+  # 設定ファイルに音の設定を書いたと知らせる <<en>> Say the sound settings were written
+  #
+  # system_conf に今の消音と音量を自分で書いた後に呼ぶ。待っている保存を取り消す。
+  # <<en>>
+  # Call after writing the current mute and volume into system_conf yourself.
+  # Drops the save that was waiting.
+  def self.audio_conf_saved: () -> void
 
   # Bluetooth をはじめる <<en>> Start Bluetooth
   #

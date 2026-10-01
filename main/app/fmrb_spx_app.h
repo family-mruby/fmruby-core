@@ -185,6 +185,8 @@ int fmrb_spx_app_audio_muted(void);              /**< FmrbApp.audio_muted? (1/0)
 int fmrb_spx_app_set_audio_mute(int on);         /**< FmrbApp.set_audio_mute */
 int fmrb_spx_app_audio_volume(void);             /**< FmrbApp.audio_volume (0-10) */
 int fmrb_spx_app_set_audio_volume(int step);     /**< FmrbApp.set_audio_volume */
+int fmrb_spx_app_preview_audio_volume(int step); /**< FmrbApp.preview_audio_volume */
+int fmrb_spx_app_audio_conf_saved(void);         /**< FmrbApp.audio_conf_saved */
 int fmrb_spx_app_wifi_connected(void);           /**< FmrbApp.wifi_connected? (1/0) */
 int fmrb_spx_app_proc_generation(void);          /**< FmrbApp.ps_gen */
 /** @brief FmrbConst.bt_mac: "AA:BB:CC:DD:EE:FF" :binstr, or "-" until known. */
