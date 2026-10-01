@@ -573,6 +573,14 @@ static bool         g_cursor_drawn   = false;
 // a render can never catch another app's canvas mid-draw (that lives in the
 // working sprite). Cursor moves bypass this via cursor_overlay_update().
 #define RENDER_MIN_INTERVAL_MS 33
+// After each render the loop reads every command already queued, for up to
+// this long, before it may render again (doc/p4_cursor_lag/). Reading one
+// command per pass let a ~35 ms render follow every present: commands got a
+// tenth of the time, the 8 KB queue stayed full and a cursor move waited
+// behind ~3 s of drawing. This is the P4 form of graphics-audio's "always
+// leave the command handler 10 ms" -- here the same task reads the commands,
+// so it is a reading window rather than a sleep.
+#define CMD_DRAIN_BUDGET_MS 30
 static bool     g_needs_render   = false;
 static uint32_t g_last_render_ms = 0;
 
@@ -4010,7 +4018,12 @@ static void display_p4_task(void *arg) {
                                display_p4_video_is_active()) ? 5 : 100;
         fmrb_err_t err = fmrb_hal_link_local_receive_cmd(
             FMRB_LINK_CHANNEL_DEFAULT, &msg, timeout_ms);
-        if (err == FMRB_OK && msg.size > 0) {
+        // Then everything else already queued, within the budget: a present
+        // only marks the frame for the next render, so the commands behind
+        // it (a cursor move among them) are read now instead of one per
+        // render. The budget keeps a flood from holding the picture still.
+        uint32_t drain_start = now_ms();
+        while (err == FMRB_OK && msg.size > 0) {
             uint32_t q = (uint32_t)fmrb_hal_link_local_cmd_pending(FMRB_LINK_CHANNEL_DEFAULT);
             if (q > s_cst.qmax) s_cst.qmax = q;
             int64_t t0 = (int64_t)fmrb_hal_time_get_us();
@@ -4018,7 +4031,12 @@ static void display_p4_task(void *arg) {
             s_cst.msg_us += (uint64_t)((int64_t)fmrb_hal_time_get_us() - t0);
             s_cst.msgs++;
             s_cst.msgs_since_render++;
-        } else if (err != FMRB_OK && err != FMRB_ERR_TIMEOUT) {
+            if ((uint32_t)(now_ms() - drain_start) >= CMD_DRAIN_BUDGET_MS) break;
+            msg.data = g_recv_buf;
+            msg.size = sizeof(g_recv_buf);
+            err = fmrb_hal_link_local_receive_cmd(FMRB_LINK_CHANNEL_DEFAULT, &msg, 0);
+        }
+        if (err != FMRB_OK && err != FMRB_ERR_TIMEOUT) {
             // Before the kernel brings the link up, receive fails without
             // blocking; yield instead of spinning. Harmless on the device,
             // load-bearing on the cooperative wasm port, where this spin
