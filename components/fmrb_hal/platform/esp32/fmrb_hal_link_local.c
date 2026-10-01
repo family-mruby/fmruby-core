@@ -30,6 +30,12 @@ typedef struct {
 
 static link_local_channel_t g_channels[FMRB_LINK_MAX_CHANNELS];
 
+// Command bytes queued and read, per channel, for fmrb_hal_link_local_cmd_pending.
+// Counted here rather than asked of the message buffer: the FreeRTOS query
+// lives in IRAM, and the internal RAM budget has no room for it. PSRAM.
+FMRB_EXT_RAM_BSS_ATTR static uint32_t g_cmd_sent_bytes[FMRB_LINK_MAX_CHANNELS];
+FMRB_EXT_RAM_BSS_ATTR static uint32_t g_cmd_read_bytes[FMRB_LINK_MAX_CHANNELS];
+
 // Callback dispatch task: receives from TX buffer and invokes callback
 static void link_local_recv_task(void *arg)
 {
@@ -148,6 +154,7 @@ fmrb_err_t fmrb_hal_link_send(fmrb_link_channel_t channel,
             result = FMRB_ERR_TIMEOUT;
             break;
         }
+        __atomic_fetch_add(&g_cmd_sent_bytes[channel], (uint32_t)sent, __ATOMIC_RELAXED);
     }
 
     fmrb_semaphore_give(ch->send_mutex);
@@ -288,6 +295,7 @@ fmrb_err_t fmrb_hal_link_local_receive_cmd(fmrb_link_channel_t channel,
         return FMRB_ERR_TIMEOUT;
     }
 
+    __atomic_fetch_add(&g_cmd_read_bytes[channel], (uint32_t)received, __ATOMIC_RELAXED);
     msg->size = received;
     return FMRB_OK;
 }
@@ -314,4 +322,16 @@ fmrb_err_t fmrb_hal_link_local_send_response(fmrb_link_channel_t channel,
     }
 
     return FMRB_OK;
+}
+
+// Bytes of commands Core has queued that the display task has not read yet
+// (payload only; the buffer also spends 4 bytes a message on its length).
+size_t fmrb_hal_link_local_cmd_pending(fmrb_link_channel_t channel)
+{
+    if (channel >= FMRB_LINK_MAX_CHANNELS) return 0;
+    uint32_t sent = __atomic_load_n(&g_cmd_sent_bytes[channel], __ATOMIC_RELAXED);
+    uint32_t read = __atomic_load_n(&g_cmd_read_bytes[channel], __ATOMIC_RELAXED);
+    // The reader can count a message before its sender has: never negative.
+    int32_t pending = (int32_t)(sent - read);
+    return pending > 0 ? (size_t)pending : 0;
 }

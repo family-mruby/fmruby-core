@@ -99,6 +99,9 @@ fmrb_err_t fmrb_hal_link_local_receive_cmd(fmrb_link_channel_t channel,
 fmrb_err_t fmrb_hal_link_local_send_response(fmrb_link_channel_t channel,
                                               const fmrb_link_message_t *msg,
                                               uint32_t timeout_ms);
+// Bytes of commands waiting in the Core -> display buffer (for the display
+// task's throughput statistics).
+size_t fmrb_hal_link_local_cmd_pending(fmrb_link_channel_t channel);
 #endif
 
 #ifdef __cplusplus
