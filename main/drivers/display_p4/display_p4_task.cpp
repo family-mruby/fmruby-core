@@ -573,6 +573,14 @@ static bool         g_cursor_drawn   = false;
 // a render can never catch another app's canvas mid-draw (that lives in the
 // working sprite). Cursor moves bypass this via cursor_overlay_update().
 #define RENDER_MIN_INTERVAL_MS 33
+// After each render the loop reads every command already queued, for up to
+// this long, before it may render again (doc/p4_cursor_lag/). Reading one
+// command per pass let a ~35 ms render follow every present: commands got a
+// tenth of the time, the 8 KB queue stayed full and a cursor move waited
+// behind ~3 s of drawing. This is the P4 form of graphics-audio's "always
+// leave the command handler 10 ms" -- here the same task reads the commands,
+// so it is a reading window rather than a sleep.
+#define CMD_DRAIN_BUDGET_MS 30
 static bool     g_needs_render   = false;
 static uint32_t g_last_render_ms = 0;
 
@@ -582,6 +590,86 @@ static uint32_t g_stat_frames = 0;
 static uint32_t g_stat_render_ms_total = 0;
 static uint32_t g_stat_render_ms_max = 0;
 static uint32_t g_stat_last_ms = 0;
+
+// Cursor latency instrumentation (doc/p4_cursor_lag/). The host stamps the
+// time just before it sends each CURSOR_SET_POSITION; the commands reach this
+// task in order, so the oldest unread stamp belongs to the command being
+// processed. Same chip, so the clocks compare directly. PSRAM: the internal
+// RAM budget has no room for new statics, and these are touched a few dozen
+// times a second.
+#define CURSOR_TS_RING 128
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_cur_ts[CURSOR_TS_RING];
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_cur_w;        // written by the host
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_cur_send_max; // host send block, us
+FMRB_EXT_RAM_BSS_ATTR static uint32_t s_cur_r;        // display task only
+// 5-second window, display task only.
+struct cursor_stats_t {
+    uint32_t n, lost;
+    uint64_t sum_us;
+    uint32_t max_us;
+    uint32_t pend_sum, pend_max;    // queued bytes when a cursor command is read
+    uint32_t qmax;                  // queued bytes, sampled every loop pass
+    uint32_t msgs;                  // commands processed
+    uint64_t msg_us;                // time spent processing them
+    uint32_t msgs_since_render, msgs_per_render_max;
+};
+FMRB_EXT_RAM_BSS_ATTR static cursor_stats_t s_cst;
+
+extern "C" void display_p4_cursor_stamp(void) {
+    uint32_t w = __atomic_load_n(&s_cur_w, __ATOMIC_RELAXED);
+    s_cur_ts[w % CURSOR_TS_RING] = (uint32_t)fmrb_hal_time_get_us();
+    __atomic_store_n(&s_cur_w, w + 1, __ATOMIC_RELEASE);
+}
+
+// The send failed: the command never reaches the queue, so drop its stamp.
+// Safe without a lock: the reader only consumes a stamp when it reads a
+// command, and this one was never queued.
+extern "C" void display_p4_cursor_unstamp(void) {
+    __atomic_fetch_sub(&s_cur_w, 1, __ATOMIC_RELEASE);
+}
+
+extern "C" void display_p4_cursor_send_time(uint32_t us) {
+    if (us > s_cur_send_max) s_cur_send_max = us;
+}
+
+static void cursor_stats_on_command(void) {
+    uint32_t w = __atomic_load_n(&s_cur_w, __ATOMIC_ACQUIRE);
+    if (w == s_cur_r) return;
+    if (w - s_cur_r > CURSOR_TS_RING) {   // fell behind the ring: resync
+        s_cst.lost += w - s_cur_r;
+        s_cur_r = w;
+        return;
+    }
+    uint32_t lat = (uint32_t)fmrb_hal_time_get_us() - s_cur_ts[s_cur_r % CURSOR_TS_RING];
+    s_cur_r++;
+    s_cst.n++;
+    s_cst.sum_us += lat;
+    if (lat > s_cst.max_us) s_cst.max_us = lat;
+    uint32_t pend = (uint32_t)fmrb_hal_link_local_cmd_pending(FMRB_LINK_CHANNEL_DEFAULT);
+    s_cst.pend_sum += pend;
+    if (pend > s_cst.pend_max) s_cst.pend_max = pend;
+}
+
+static void cursor_stats_log(void) {
+    uint32_t smax = s_cur_send_max;
+    s_cur_send_max = 0;
+    FMRB_LOGI(TAG, "cursor: n=%lu wait avg=%lums max=%lums lost=%lu q@cur avg=%luB max=%luB "
+              "qmax=%luB | cmds=%lu (%lums) per-render max=%lu | host send max=%lums",
+              (unsigned long)s_cst.n,
+              (unsigned long)(s_cst.n ? s_cst.sum_us / s_cst.n / 1000 : 0),
+              (unsigned long)(s_cst.max_us / 1000),
+              (unsigned long)s_cst.lost,
+              (unsigned long)(s_cst.n ? s_cst.pend_sum / s_cst.n : 0),
+              (unsigned long)s_cst.pend_max,
+              (unsigned long)s_cst.qmax,
+              (unsigned long)s_cst.msgs,
+              (unsigned long)(s_cst.msg_us / 1000),
+              (unsigned long)s_cst.msgs_per_render_max,
+              (unsigned long)(smax / 1000));
+    uint32_t keep = s_cst.msgs_since_render;
+    memset(&s_cst, 0, sizeof(s_cst));
+    s_cst.msgs_since_render = keep;
+}
 
 // ============================================================
 // Frame capture for the remote desktop stream.
@@ -1503,12 +1591,16 @@ static void note_render(uint32_t start_ms) {
         (uint32_t)(xTaskGetTickCount() * portTICK_PERIOD_MS) - start_ms;
     g_stat_frames++;
     g_stat_render_ms_total += render_ms;
+    if (s_cst.msgs_since_render > s_cst.msgs_per_render_max)
+        s_cst.msgs_per_render_max = s_cst.msgs_since_render;
+    s_cst.msgs_since_render = 0;
     if (render_ms > g_stat_render_ms_max) g_stat_render_ms_max = render_ms;
     if ((uint32_t)(start_ms - g_stat_last_ms) >= 5000) {
         FMRB_LOGI(TAG, "render: %lu frames/5s avg=%lums max=%lums",
                   (unsigned long)g_stat_frames,
                   (unsigned long)(g_stat_render_ms_total / g_stat_frames),
                   (unsigned long)g_stat_render_ms_max);
+        cursor_stats_log();
         g_stat_frames = 0;
         g_stat_render_ms_total = 0;
         g_stat_render_ms_max = 0;
@@ -2237,6 +2329,7 @@ static int process_gfx_command(uint8_t msg_type, uint8_t sub_cmd, uint8_t seq,
 
     case FMRB_LINK_GFX_CURSOR_SET_POSITION: {
         if (size < sizeof(fmrb_link_graphics_cursor_position_t)) break;
+        cursor_stats_on_command();
         const auto *cmd = (const fmrb_link_graphics_cursor_position_t *)data;
         if (g_cursor_x != cmd->x || g_cursor_y != cmd->y) {
             g_cursor_x = cmd->x;
@@ -3925,9 +4018,25 @@ static void display_p4_task(void *arg) {
                                display_p4_video_is_active()) ? 5 : 100;
         fmrb_err_t err = fmrb_hal_link_local_receive_cmd(
             FMRB_LINK_CHANNEL_DEFAULT, &msg, timeout_ms);
-        if (err == FMRB_OK && msg.size > 0) {
+        // Then everything else already queued, within the budget: a present
+        // only marks the frame for the next render, so the commands behind
+        // it (a cursor move among them) are read now instead of one per
+        // render. The budget keeps a flood from holding the picture still.
+        uint32_t drain_start = now_ms();
+        while (err == FMRB_OK && msg.size > 0) {
+            uint32_t q = (uint32_t)fmrb_hal_link_local_cmd_pending(FMRB_LINK_CHANNEL_DEFAULT);
+            if (q > s_cst.qmax) s_cst.qmax = q;
+            int64_t t0 = (int64_t)fmrb_hal_time_get_us();
             process_message(g_recv_buf, msg.size);
-        } else if (err != FMRB_OK && err != FMRB_ERR_TIMEOUT) {
+            s_cst.msg_us += (uint64_t)((int64_t)fmrb_hal_time_get_us() - t0);
+            s_cst.msgs++;
+            s_cst.msgs_since_render++;
+            if ((uint32_t)(now_ms() - drain_start) >= CMD_DRAIN_BUDGET_MS) break;
+            msg.data = g_recv_buf;
+            msg.size = sizeof(g_recv_buf);
+            err = fmrb_hal_link_local_receive_cmd(FMRB_LINK_CHANNEL_DEFAULT, &msg, 0);
+        }
+        if (err != FMRB_OK && err != FMRB_ERR_TIMEOUT) {
             // Before the kernel brings the link up, receive fails without
             // blocking; yield instead of spinning. Harmless on the device,
             // load-bearing on the cooperative wasm port, where this spin
