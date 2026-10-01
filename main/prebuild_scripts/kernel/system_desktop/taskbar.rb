@@ -74,9 +74,9 @@ module TaskbarMixin
   def draw_taskbar
     return if @taskbar_apps.empty?
 
-    # Reserved for the status cells: clock, wifi, BLE, kana, the free-IRAM
-    # readout and the speaker (leftmost cell starts at width-180; keep a
-    # small margin).
+    # Reserved for the status cells: clock, speaker, wifi, BLE, kana and the
+    # free-IRAM readout (leftmost cell starts at width-180; keep a small
+    # margin).
     clock_area = 184
     max_x = @window_width - clock_area
     x = TASKBAR_X_START

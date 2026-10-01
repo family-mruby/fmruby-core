@@ -878,12 +878,17 @@ class SystemDesktopApp < FmrbApp
   # Clicking the icon opens the network dialog (see handle_click).
   WIFI_ICON_W = 10
 
+  # The speaker cell sits right beside the clock (it is the status cell people
+  # reach for), so every other cell starts this far from the right edge.
+  SOUND_CELL_W = 10
+  STATUS_RIGHT = 90 + 4 + SOUND_CELL_W
+
   # Free internal RAM readout, leftmost of the status cells, always shown --
   # internal RAM is the scarce resource here (one running app costs ~25KB),
   # so this answers "can I open another app" at a glance. Fetch, format and
   # draw all happen in C (allocation-free); the Linux sim shows "---KB".
-  # Order left-to-right: RAM, kana, BLE, wifi, clock -- the readout sits
-  # apart so the three icon cells line up.
+  # Order left-to-right: RAM, kana, BLE, wifi, speaker, clock -- the readout
+  # sits apart so the icon cells line up.
   MEMINFO_W = 30  # 5 chars x 6px, fixed width
 
   # ---- Start indicator ----
@@ -975,7 +980,7 @@ class SystemDesktopApp < FmrbApp
     # so the cell would sit there reading "---KB" for ever. An empty slot is
     # better than a broken-looking one.
     return if ON_WEB
-    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W
     @gfx.draw_free_iram(x, 2, FmrbGfx::WHITE, MENU_BG)
   end
 
@@ -994,7 +999,7 @@ class SystemDesktopApp < FmrbApp
 
   def draw_ble_icon
     # Right of the RAM readout, next to the wifi icon (7px gap to wifi)
-    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1
     state = FmrbApp.ble_state
     if state == 0
       @gfx.fill_rect(x, 1, BLE_CELL_W, 10, FmrbGfx::GRAY)
@@ -1018,7 +1023,7 @@ class SystemDesktopApp < FmrbApp
       @kana_icon_x = nil
       return
     end
-    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W
     @kana_icon_x = x
     # One fixed style for every mode: white box, menu-colored glyph. The old
     # gray direct-input cell sat next to the BLE icon's disconnected gray and
@@ -1035,16 +1040,14 @@ class SystemDesktopApp < FmrbApp
     FmrbApp.set_kana_mode(((@kana_mode || 0) + 1) % 3)
   end
 
-  # Machine-wide mute, leftmost of the status cells (left of the free-RAM
-  # readout). A speaker with sound waves while sound is on; while muted the
-  # cell turns white and the waves become a cross, so a silenced machine is
-  # visible at a glance. Read every second rather than told: a mute set
-  # remotely (devctl, debugd) shows up here within one tick. Allocation-free
-  # (one bool and a few rectangles and lines).
-  SOUND_CELL_W = 10
-
+  # Machine-wide mute, immediately left of the clock. A speaker with sound
+  # waves while sound is on; while muted the cell turns white and the waves
+  # become a cross, so a silenced machine is visible at a glance. Read every
+  # second rather than told: a mute set remotely (devctl, debugd) shows up
+  # here within one tick. Allocation-free (one bool and a few rectangles and
+  # lines).
   def draw_sound_icon
-    x = @window_width - 90 - WIFI_ICON_W - 7 - BLE_CELL_W - 1 - 4 - KANA_CELL_W - 4 - MEMINFO_W - 4 - SOUND_CELL_W
+    x = @window_width - 90 - 4 - SOUND_CELL_W
     @sound_icon_x = x
     muted = FmrbApp.audio_muted?
     box = muted ? FmrbGfx::WHITE : MENU_BG
@@ -1084,11 +1087,11 @@ class SystemDesktopApp < FmrbApp
       # @wifi_icon_x stays nil -- with no radio there is no network dialog
       # to open, so the placeholder is not clickable.
       @wifi_icon_x = nil
-      x = @window_width - 90 - WIFI_ICON_W - 4
+      x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 4
       @gfx.fill_rect(x, 1, WIFI_ICON_W, 10, FmrbGfx::GRAY)
       return
     end
-    x = @window_width - 90 - WIFI_ICON_W - 4
+    x = @window_width - STATUS_RIGHT - WIFI_ICON_W - 4
     @wifi_icon_x = x
     # Clear the icon cell first: this draw must be self-contained now that
     # the 1Hz tick repaints it without a full menu-bar repaint underneath
