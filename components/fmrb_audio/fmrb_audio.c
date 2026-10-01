@@ -63,12 +63,10 @@ void fmrb_audio_level_range(int16_t *min_db_x10, int16_t *max_db_x10) {
 }
 
 int16_t fmrb_audio_step_db_x10(uint8_t step, int16_t min_db_x10, int16_t max_db_x10) {
-    if (step <= 1) return min_db_x10;
     if (step >= FMRB_AUDIO_VOLUME_MAX) return max_db_x10;
     int32_t span = (int32_t)max_db_x10 - min_db_x10;
-    int32_t steps = FMRB_AUDIO_VOLUME_MAX - 1;
-    // Rounded to the nearest tenth, so the steps stay even.
-    int32_t off = (span * (step - 1) * 2 + steps) / (steps * 2);
+    // Rounded to the nearest tenth of a dB.
+    int32_t off = (span * step * 2 + FMRB_AUDIO_VOLUME_MAX) / (FMRB_AUDIO_VOLUME_MAX * 2);
     return (int16_t)(min_db_x10 + off);
 }
 

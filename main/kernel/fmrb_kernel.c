@@ -108,10 +108,15 @@ static const char *display_mode_name(fmrb_display_mode_t mode)
 
 // ---- Audio output settings (doc/audio_mute/) ----
 //
-// The level range a volume step spreads over, in tenths of a dB, is by default
-// everything the output can do; audio_level_min / audio_level_max in
-// system_conf narrow it. The volume defaults to step 7 of 10 within that
-// full range (user decision, doc/audio_mute/plan.md).
+// Volume step n (1-10) plays at audio_level_min + (max - min) * n / 10 dB;
+// step 0 is silence. The range defaults to 0 dB at the top and -50 dB at the
+// bottom on every machine (user decision after hearing +32 dB on the ES8311:
+// nothing is boosted above what the source already is), which makes the
+// steps 5 dB apart: 7 = -15 dB, 10 = 0 dB. The volume defaults to 7.
+// audio_level_min / audio_level_max in system_conf move the range, within
+// what each output can do (AUDIO_LEVEL_HW_*).
+#define AUDIO_LEVEL_DEFAULT_MIN_X10  (-500)
+#define AUDIO_LEVEL_DEFAULT_MAX_X10  0
 #if defined(FMRB_HW_NARYAV4)
 // ES8311 DAC digital volume: 0x00 = -95.5 dB to 0xFF = +32 dB, 0.5 dB steps.
 // Above 0 dB the chip amplifies digitally, so a loud mix clips there.
@@ -124,11 +129,11 @@ static const char *display_mode_name(fmrb_display_mode_t mode)
 #else
 // A software gain at the last output stage (graphics-audio on Retro and in
 // the simulator, audio_p4 in the browser). Unity at the top: a gain above 1
-// would only clip. -50 dB at the bottom, measured in the simulator: a single
-// APU voice peaks at 3072 (about -20 dBFS), so -50 dB leaves it about 10 LSB
-// of a 16-bit sample, a faint but still recognisable tune; at -60 dB the
-// same tune came out at 4 LSB, which is more quantization noise than sound.
-#define AUDIO_LEVEL_HW_MIN_X10  (-500)
+// would only clip. The bottom of the default range, -50 dB, was measured in
+// the simulator: a single APU voice peaks at 3072 (about -20 dBFS), so -50 dB
+// leaves it about 10 LSB, faint but recognisable; the floor here only stops
+// an override from asking for less than a 16-bit sample can carry.
+#define AUDIO_LEVEL_HW_MIN_X10  (-960)
 #define AUDIO_LEVEL_HW_MAX_X10  0
 #endif
 
@@ -151,8 +156,8 @@ static int16_t audio_conf_level_x10(const toml_table_t *conf, const char *key, i
 
 static void apply_audio_conf(const toml_table_t *conf)
 {
-    int16_t min_x10 = audio_conf_level_x10(conf, "audio_level_min", AUDIO_LEVEL_HW_MIN_X10);
-    int16_t max_x10 = audio_conf_level_x10(conf, "audio_level_max", AUDIO_LEVEL_HW_MAX_X10);
+    int16_t min_x10 = audio_conf_level_x10(conf, "audio_level_min", AUDIO_LEVEL_DEFAULT_MIN_X10);
+    int16_t max_x10 = audio_conf_level_x10(conf, "audio_level_max", AUDIO_LEVEL_DEFAULT_MAX_X10);
     fmrb_audio_set_level_range(min_x10, max_x10);
     fmrb_audio_level_range(&min_x10, &max_x10);
 

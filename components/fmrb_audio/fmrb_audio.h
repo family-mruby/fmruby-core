@@ -100,8 +100,8 @@ fmrb_audio_err_t fmrb_audio_get_status(fmrb_apu_status_t* status);
  * through fmrb_host_set_audio_mute / fmrb_host_set_audio_volume.
  *
  * The volume is a step, 0-10: 0 is silence, and 1-10 are spaced evenly in dB
- * between the level range's minimum and maximum (audio_level_min / max in
- * system_conf, defaulting to what the hardware can do).
+ * from the level range's minimum (step 0's notional level) up to its maximum
+ * (audio_level_min / max in system_conf, default -50 / 0 dB).
  */
 #define FMRB_AUDIO_VOLUME_MAX 10
 #define FMRB_AUDIO_VOLUME_DEFAULT 7
@@ -118,8 +118,9 @@ void fmrb_audio_level_range(int16_t *min_db_x10, int16_t *max_db_x10);
 
 /**
  * @brief The level of a volume step, in tenths of a dB.
- * Step 1 is min, step 10 is max, evenly spaced in dB between. Step 0 (silence)
- * answers min; callers treat it as silence, not as a level.
+ * min + (max - min) * step / 10: step 10 is max, and each step is a tenth of
+ * the range (5 dB with the default 0 / -50 dB). Step 0 (silence) answers min;
+ * callers treat it as silence, not as a level.
  */
 int16_t fmrb_audio_step_db_x10(uint8_t step, int16_t min_db_x10, int16_t max_db_x10);
 

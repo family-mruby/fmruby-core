@@ -140,10 +140,10 @@ bool fmrb_host_audio_muted(void);
 /**
  * @brief Set the machine's volume, and remember it.
  *
- * A step from 0 (silence) to 10. Steps 1-10 are spread evenly in dB over the
- * output's level range (system_conf audio_level_min / audio_level_max, by
- * default all the hardware can do): the codec's own volume on Modern, a
- * software gain at the last output stage elsewhere. Independent of the mute:
+ * A step from 0 (silence) to 10, each a tenth of the output's level range in
+ * dB (system_conf audio_level_min / audio_level_max, default -50 / 0 dB, so
+ * 5 dB a step): the codec's own volume on Modern, a software gain at the last
+ * output stage elsewhere. Independent of the mute:
  * unmuting returns to this volume. Saved to system_conf (audio_volume) when it
  * changes. Callable from any task but the host task.
  *
