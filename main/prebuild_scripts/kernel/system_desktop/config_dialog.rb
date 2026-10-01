@@ -5,8 +5,9 @@
 # entries, and other unrelated keys are preserved.
 #
 # Items (in display order):
-#   language, keyboard_layout, mouse_scale_x/y, theme preset,
-#   timezone, debug_mode, display_margin_x/y
+#   language, keyboard_layout, mouse_scale_x/y, theme preset, wallpaper,
+#   timezone, audio_volume, debug_mode, ble/wifi_auto_start,
+#   display_margin_x/y
 #
 # Save & Reboot is shown only on ESP32; on Linux the user must restart the
 # host process manually after a plain Save.
@@ -94,6 +95,9 @@ module ConfigDialogMixin
     { key: :wallpaper,        field: "wallpaper",        type: :enum,  options: ["", "none"] },
     { key: :timezone,         field: "timezone",         type: :enum,
       options: ["JST-9", "UTC", "EST5", "PST8", "CET-1", "CST-8"] },
+    # 0 = silence, 10 = the loudest the output goes (doc/audio_mute/). Takes
+    # effect as it is stepped, like a volume knob, and is saved by the C side.
+    { key: :audio_volume,     field: "audio_volume",     type: :int,   min: 0, max: 10, step: 1 },
     { key: :debug_mode,       field: "debug_mode",       type: :bool },
     { key: :ble_auto_start,   field: "ble_auto_start",   type: :bool },
     { key: :wifi_auto_start,  field: "wifi_auto_start",  type: :bool },
@@ -399,6 +403,13 @@ module ConfigDialogMixin
   end
 
   def cfg_ensure_default(s)
+    # The volume is shown as it is now, not as the file says: the machine
+    # writes it itself, and a file from before there was a volume has no
+    # line for it -- where the generic default below would mean silence.
+    if s[:field] == "audio_volume"
+      @cfg_values["audio_volume"] = FmrbApp.audio_volume
+      return
+    end
     return if @cfg_values.key?(s[:field])
     case s[:type]
     when :enum  then @cfg_values[s[:field]] = cfg_options_for(s)[0]
@@ -534,6 +545,7 @@ module ConfigDialogMixin
       v = s[:min] if v < s[:min]
       v = s[:max] if v > s[:max]
       @cfg_values[field] = v
+      FmrbApp.set_audio_volume(v) if field == "audio_volume"
     when :float
       # Step by 0.1 in integer space to avoid float drift.
       cur = (@cfg_values[field].to_f * 10).round
@@ -578,6 +590,10 @@ module ConfigDialogMixin
       next if s[:key] == :theme
       top_updates[s[:field]] = cfg_format_value(@cfg_values[s[:field]])
     end
+    # Not a row of this dialog, but the file was read when the dialog opened,
+    # and the mute can change while it is open (the menu bar, or remotely).
+    # Write the live value so saving here never brings back an old one.
+    top_updates["audio_mute"] = FmrbApp.audio_muted? ? "true" : "false"
 
     preset_name = @cfg_values["theme_preset"]
     theme_updates = {}

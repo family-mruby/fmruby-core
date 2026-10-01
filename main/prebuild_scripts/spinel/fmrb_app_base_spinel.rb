@@ -1973,6 +1973,27 @@ class FmrbApp
     nil
   end
 
+  # The machine-wide mute (doc/audio_mute/), applied at the output stage;
+  # set_audio_mute saves the setting.
+  def self.audio_muted?
+    FmrbSpxApp.fmrb_spx_app_audio_muted == 1
+  end
+
+  def self.set_audio_mute(on)
+    FmrbSpxApp.fmrb_spx_app_set_audio_mute(on ? 1 : 0)
+    nil
+  end
+
+  # Volume step 0-10 (0 = silence); independent of the mute.
+  def self.audio_volume
+    FmrbSpxApp.fmrb_spx_app_audio_volume
+  end
+
+  def self.set_audio_volume(step)
+    FmrbSpxApp.fmrb_spx_app_set_audio_volume(step)
+    nil
+  end
+
   # Remote desktop video going out: 0 = none, 1 = MJPEG, 2 = H.264.
   def self.rd_stream_state
     FmrbSpxApp.fmrb_spx_app_rd_stream_state

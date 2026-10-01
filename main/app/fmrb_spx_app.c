@@ -520,6 +520,31 @@ int fmrb_spx_app_set_kana_mode(int mode)
     return 0;
 }
 
+/* The machine's mute and volume (doc/audio_mute/): FmrbApp.audio_muted?,
+ * set_audio_mute, audio_volume and set_audio_volume. Same calls as the mruby
+ * binding. */
+int fmrb_spx_app_audio_muted(void)
+{
+    return fmrb_host_audio_muted() ? 1 : 0;
+}
+
+int fmrb_spx_app_set_audio_mute(int on)
+{
+    fmrb_host_set_audio_mute(on != 0);
+    return 0;
+}
+
+int fmrb_spx_app_audio_volume(void)
+{
+    return fmrb_host_audio_volume();
+}
+
+int fmrb_spx_app_set_audio_volume(int step)
+{
+    fmrb_host_set_audio_volume(step);
+    return 0;
+}
+
 const char *fmrb_spx_app_wallclock(void)
 {
     FMRB_SPX_BSS_ATTR static uint8_t buf[FMRB_SPX_APP_WALLCLOCK_RECORD_SIZE];
