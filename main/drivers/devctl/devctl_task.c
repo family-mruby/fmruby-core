@@ -35,10 +35,10 @@ fmrb_err_t devctl_start(void)
     cfg.stack_size = FMRB_RD_HTTPD_TASK_STACK_SIZE;
     cfg.max_open_sockets = 4;
     cfg.lru_purge_enable = true;
-    // Eight routes, and the default is eight. Registration answers
+    // Twelve routes, and the default is eight. Registration answers
     // ESP_ERR_HTTPD_HANDLERS_FULL rather than failing the start, so a server
     // sized exactly would come up healthy and 404 the last route added.
-    cfg.max_uri_handlers = 12;
+    cfg.max_uri_handlers = 14;
 
     esp_err_t err = httpd_start(&s_server, &cfg);
     if (err != ESP_OK) {

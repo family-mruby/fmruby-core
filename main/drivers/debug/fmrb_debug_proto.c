@@ -25,6 +25,7 @@ static const struct { const char *name; fmrb_dbg_cmd_t cmd; } k_cmd_table[] = {
     { "suspend",     DBG_CMD_SUSPEND },
     { "resume",      DBG_CMD_RESUME },
     { "spawn",       DBG_CMD_SPAWN },
+    { "audio",       DBG_CMD_AUDIO },
 };
 
 static fmrb_dbg_cmd_t cmd_from_str(const char *s, size_t len) {
@@ -71,6 +72,10 @@ static void decode_payload(const msgpack_object *map, fmrb_dbg_req_t *out) {
         const msgpack_object *v = &map->via.map.ptr[i].val;
         if (key_is(k, "pid") && obj_is_int(v)) {
             out->pid = (int)obj_as_int(v); out->have_pid = true;
+        } else if (key_is(k, "on") && (obj_is_int(v) || v->type == MSGPACK_OBJECT_BOOLEAN)) {
+            out->on = obj_as_int(v) ? 1 : 0; out->have_on = true;
+        } else if (key_is(k, "volume") && obj_is_int(v)) {
+            out->volume = (int)obj_as_int(v); out->have_volume = true;
         } else if (key_is(k, "line") && obj_is_int(v)) {
             out->line = (int)obj_as_int(v);
         } else if (key_is(k, "bp_id") && obj_is_int(v)) {

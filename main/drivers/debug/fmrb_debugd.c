@@ -20,6 +20,7 @@
 #include "fmrb_log_buffer.h"
 #include "fmrb_rtos.h"
 #include "fmrb_task_config.h"
+#include "host_task.h"
 
 static const char *TAG = "debugd";
 
@@ -304,11 +305,33 @@ static void handle_spawn(const fmrb_dbg_req_t *req) {
     fmrb_dbg_writer_destroy(&w);
 }
 
+// audio {on: 0|1, volume: 0-10}: each key that is present is set (mute,
+// volume); with neither it only asks. The answer is {muted, volume}. Here so
+// the simulation (which has no devctl) can be silenced from a tool, the way
+// devctl's /audio/* does it on the boards.
+static void handle_audio(const fmrb_dbg_req_t *req) {
+    if (req->have_on) {
+        fmrb_host_set_audio_mute(req->on != 0);
+    }
+    if (req->have_volume) {
+        fmrb_host_set_audio_volume(req->volume);
+    }
+    fmrb_dbg_writer_t w;
+    fmrb_dbg_writer_init(&w);
+    fmrb_dbg_resp_begin(&w, req->seq, FMRB_OK);
+    msgpack_pack_map(&w.pk, 2);
+    fmrb_dbg_pack_kv_bool(&w.pk, "muted", fmrb_host_audio_muted());
+    fmrb_dbg_pack_kv_int(&w.pk, "volume", fmrb_host_audio_volume());
+    send_writer(&w);
+    fmrb_dbg_writer_destroy(&w);
+}
+
 // --- dispatch --------------------------------------------------------------
 
 // Hook-based commands drive the shared debug core (attach/park/inspect). They
 // are refused while the on-device gem owns the session; the non-hook commands
-// (version/ps/log_read/spawn/app-ctl) stay available to remote clients.
+// (version/ps/log_read/spawn/app-ctl/audio) stay available to remote
+// clients.
 static bool is_hook_cmd(int cmd) {
     switch (cmd) {
         case DBG_CMD_ATTACH:
@@ -343,6 +366,7 @@ static void dispatch(const fmrb_dbg_req_t *req) {
         case DBG_CMD_SUSPEND:
         case DBG_CMD_RESUME:   handle_app_ctl(req);  break;
         case DBG_CMD_SPAWN:    handle_spawn(req);    break;
+        case DBG_CMD_AUDIO:    handle_audio(req);    break;
 
         case DBG_CMD_ATTACH:   handle_attach(req);   break;
         case DBG_CMD_DETACH:   handle_detach(req);   break;

@@ -52,6 +52,7 @@ typedef enum {
     DBG_CMD_SUSPEND,
     DBG_CMD_RESUME,
     DBG_CMD_SPAWN,
+    DBG_CMD_AUDIO,
 } fmrb_dbg_cmd_t;
 
 // Decoded request. Numeric fields default to 0 / their "unset" sentinel; use
@@ -60,7 +61,11 @@ typedef struct {
     uint16_t        seq;
     fmrb_dbg_cmd_t  cmd;
     bool            have_pid;
+    bool            have_on;
+    bool            have_volume;
     int             pid;
+    int             on;         // audio: 1 mute, 0 unmute (absent = leave)
+    int             volume;     // audio: step 0-10 (absent = leave)
     int             line;
     int             bp_id;
     int             frame;
