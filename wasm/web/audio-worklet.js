@@ -15,7 +15,6 @@ class FmrbApuProcessor extends AudioWorkletProcessor {
     this.srcRate = 15720;
     this.wr = 0;              // latest write counter (total samples written)
     this.rd = -1;             // fractional read position; -1 = not primed
-    this.volume = 1.0;
     this.port.onmessage = (ev) => {
       const d = ev.data;
       if (d.buffer) {
@@ -24,7 +23,6 @@ class FmrbApuProcessor extends AudioWorkletProcessor {
         this.srcRate = d.rate || 15720;
       }
       if (d.wr !== undefined) this.wr = d.wr;
-      if (d.volume !== undefined) this.volume = d.volume / 255;
     };
   }
 
@@ -55,7 +53,7 @@ class FmrbApuProcessor extends AudioWorkletProcessor {
       const frac = this.rd - idx;
       const a = this.ring[idx & mask];
       const b = this.ring[(idx + 1) & mask];
-      out[i] = ((a + (b - a) * frac) / 32768) * this.volume;
+      out[i] = (a + (b - a) * frac) / 32768;
       this.rd += step;
     }
     return true;

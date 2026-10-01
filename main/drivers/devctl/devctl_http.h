@@ -13,7 +13,7 @@ extern "C" {
  * @param server the httpd instance to register on
  * @return FMRB_OK, or FMRB_ERR_INVALID_PARAM for a NULL server
  *
- * Whoever started the server owns it; this only adds routes. It needs eight
+ * Whoever started the server owns it; this only adds routes. It needs twelve
  * free URI handler slots (httpd_config_t::max_uri_handlers).
  */
 fmrb_err_t devctl_http_register(httpd_handle_t server);

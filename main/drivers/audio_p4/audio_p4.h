@@ -13,7 +13,7 @@
 //   2. audio_p4_task_init() - called from boot; spawns the 60 Hz APU
 //      task which waits until the hardware is ready.
 //
-// The hardware output path (init / ready / write / set_volume) is behind
+// The hardware output path (init / ready / write) is behind
 // the audio_backend_t table in audio_backend.h.
 #pragma once
 

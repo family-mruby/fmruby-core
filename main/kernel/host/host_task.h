@@ -116,6 +116,68 @@ int fmrb_host_send_gamepad_axis(int gamepad_id, int axis_num, int value);
 void fmrb_host_set_kana_mode(uint8_t mode);
 
 /**
+ * @brief Mute or unmute the whole machine, and remember it.
+ *
+ * Like a speaker's mute switch: every source keeps running as usual (apps,
+ * BASIC, MicroPython, the MIDI player's internal APU, the boot jingle) and the
+ * audio backend writes silence at its last output stage instead of the mix
+ * (doc/audio_mute/plan.md). Applied at once; written to /etc/system_conf.toml
+ * (audio_mute) by the host task about 2 s after the last change, so a burst
+ * of changes costs one flash write. Callable from any task but the host
+ * task; behind the desktop's menu bar and menu, devctl and debugd.
+ *
+ * External MIDI output is not sound from this machine and is not affected.
+ *
+ * @param on true to mute
+ */
+void fmrb_host_set_audio_mute(bool on);
+
+/**
+ * @brief True while the machine is muted.
+ */
+bool fmrb_host_audio_muted(void);
+
+/**
+ * @brief Set the machine's volume, and remember it.
+ *
+ * A step from 0 (silence) to 10, each a tenth of the output's level range in
+ * dB (system_conf audio_level_min / audio_level_max, default -50 / 0 dB, so
+ * 5 dB a step): the codec's own volume on Modern, a software gain at the last
+ * output stage elsewhere. Independent of the mute: unmuting returns to this
+ * volume. Saved to system_conf (audio_volume) like the mute, about 2 s after
+ * the last change. Callable from any task but the host task.
+ *
+ * @param step 0-10, clamped
+ */
+void fmrb_host_set_audio_volume(int step);
+
+/**
+ * @brief The volume step, 0-10.
+ */
+int fmrb_host_audio_volume(void);
+
+/**
+ * @brief Apply a volume without saving it (the Config dialog's live preview).
+ *
+ * The dialog writes system_conf itself on Save (then calls
+ * fmrb_host_audio_conf_written) or puts the old volume back on close.
+ */
+void fmrb_host_preview_audio_volume(int step);
+
+/**
+ * @brief Note that system_conf now holds the current mute and volume.
+ *
+ * For a caller that wrote the file itself (the Config dialog's Save): drops
+ * any pending save and makes the current values the saved ones.
+ */
+void fmrb_host_audio_conf_written(void);
+
+/**
+ * @brief Write a pending mute / volume save now (before a reboot).
+ */
+void fmrb_host_audio_flush_save(void);
+
+/**
  * @brief Allow the on-screen cursor to appear on the next mouse event.
  *
  * The cursor stays hidden after boot until this is called, so the boot
