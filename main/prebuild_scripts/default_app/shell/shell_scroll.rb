@@ -70,6 +70,14 @@ module ShellScrollMixin
   # simply follows the end of the text.
   def input_cursor_rc(input_text)
     upto = @fg_sandbox ? input_text.length : @prompt.length + @cursor_pos
+    # Pure ASCII folds every @max_chars, so the cell is arithmetic -- and
+    # walking it would make a one-character String per character typed.
+    if input_text.bytesize == input_text.length
+      upto = input_text.length if upto > input_text.length
+      return [0, 0] if upto <= 0
+      r = (upto - 1) / @max_chars
+      return [r, upto - r * @max_chars]
+    end
     row = 0
     cols = 0
     i = 0
@@ -131,8 +139,8 @@ module ShellScrollMixin
     end
   end
 
-  def history_avail_rows
-    input_rows = input_rows_for(current_input_text)
+  def history_avail_rows(input_text = current_input_text)
+    input_rows = input_rows_for(input_text)
     avail = @visible_rows - input_rows
     avail < 1 ? 1 : avail
   end
@@ -341,7 +349,7 @@ module ShellScrollMixin
     end
 
     content_x = @user_area_x0 + 2
-    avail = history_avail_rows
+    avail = history_avail_rows(input_text)
     total = total_display_rows
     # Visible history rows (may be less than avail if history is short)
     visible_hist = total - @scroll

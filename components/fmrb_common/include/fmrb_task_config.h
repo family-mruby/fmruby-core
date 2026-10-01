@@ -113,10 +113,16 @@
 #define FMRB_SYSTEM_APP_TASK_PRIORITY   (3)
 #define FMRB_SYSTEM_APP_TASK_FLAGS      FMRB_TASK_FLAG_PINNED_1
 
-// Shell App task (mruby VM for shell)
-#define FMRB_SHELL_APP_TASK_STACK_SIZE  (12 * 1024)
+// Shell App task (mruby VM for shell). 16KB: at 12KB the P4 measured 988 B
+// left while typing (doc/shell_input_lag/report/s1.md), too thin for a task
+// that runs arbitrary commands and irb.
+#define FMRB_SHELL_APP_TASK_STACK_SIZE  (16 * 1024)
 #define FMRB_SHELL_APP_PRIORITY         (2)
 #define FMRB_SHELL_APP_TASK_FLAGS       FMRB_TASK_FLAG_PINNED_1
+
+// Small built-in tools (LogViewer, Monitor, HID Inspector, App Store). They
+// shared the shell's 12KB until the shell was raised on its own.
+#define FMRB_TOOL_APP_TASK_STACK_SIZE   (12 * 1024)
 
 // Editor task. The editor shared the shell's 12KB until the type support
 // (completion, hover, diagnostics, signature help) started parsing the
