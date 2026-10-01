@@ -57,6 +57,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `app-distribution/` [アプリ配布プラットフォーム 計画](app-distribution/plan.md) — **完了** (2026-09-26) **P1-P3 完了 (Retro 実機も確認済)**。**1 本の Ruby が sim とブラウザで店になり、一覧にスクリーンショットも出る** (report/p3.md)。picoruby の実バグを 2 つ修正。**NARYA v4 で通し確認 + 速度の作り直し済** (report/p4_device.md, p5_perf.md)。**解析 7.6 秒 → 0.12 秒**。**2026-09-03: 店を default app へ移した** — **起動 10.0 秒 → 0.45 秒**、`large_memory` も不要に (report/builtin_move.md)。Retro 実機も 2026-09-26 に確認済み。 〔14 files〕
 - `app_model/` [FmrbApp の基底クラスを締める (計画)](app_model/plan.md) — **完了** (2026-09-26) 継承は変えない。契約 1 つと予約名 15 個を 〔3 files〕
 - `app_theme/` [窓枠とアプリ配色をテーマに繋ぐ](app_theme/plan.md) — **完了** (2026-09-02) A・B・C + D 実装済。窓枠は 4 か所あり Python と Lua も繋いだ (report/guest_languages.md)。壁紙はテーマ追従 + パス指定 (report/wallpaper.md) 〔3 files〕
+- `audio_mute/` [ミュート (音を出さない設定)](audio_mute/plan.md) — **進行中** (2026-10-01) 本体の音を一括で消す設定。再起動しても残り (起動音も鳴らない)、デスクトップのメニューバーと遠隔 (devctl / MCP) から切り替えられる。M1 で作る 〔2 files〕
 - `camera/` [Family mruby カメラ対応 検討メモ](camera/README.md) — **凍結** (2026-08-29) 方式は esp_video 採用で確定、実装未着手 〔1 files〕
 - `dev_remote_ctl/` [WiFi 経由の開発用リモート制御(アプリ起動 / kill / 一覧)実装計画](dev_remote_ctl/plan.md) — - 〔3 files〕
 - `direct_boot/` [まっすぐ起動する (ロゴ・BGM を省く / 全画面アプリへ直行)](direct_boot/plan.md) — **完了** (2026-09-03) `boot_splash` と、全画面の `startup_app` 〔1 files〕
