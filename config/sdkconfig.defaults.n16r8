@@ -133,3 +133,13 @@ CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512
 # Japanese ones need UTF-8 API encoding and a dynamic codepage (separate call).
 CONFIG_FATFS_LFN_HEAP=y
 CONFIG_FATFS_MAX_LFN=255
+
+# RMT: keep the driver's ISR handlers and encoder functions in flash, not IRAM
+# (about 2.5-2.7 KB of internal RAM back). The only RMT user is the RMT gem
+# (hw_proxy_rmt.c, WS2812 LED matrix demo); the status LED is plain GPIO. Its
+# channels are created without a cache-safe interrupt, so RMT already stops
+# while flash is being written; this only moves the ISR entry to flash.
+# Measured in doc/iram_reduction/report/r3.md section 3.
+CONFIG_RMT_TX_ISR_HANDLER_IN_IRAM=n
+CONFIG_RMT_RX_ISR_HANDLER_IN_IRAM=n
+CONFIG_RMT_ENCODER_FUNC_IN_IRAM=n

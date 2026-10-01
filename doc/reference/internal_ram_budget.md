@@ -10,7 +10,7 @@ Spinel 側の残課題は `doc/spinel_aot/phase7.md` を参照。
 例外スタック 84,608 B の回収 (T7-1) と S3 のメモリ余裕測定 (T7-6) は
 本計画と重なるので、実施はどちらか一方で行い他方は参照にとどめる。
 
-## 現状 (2026-09-29)
+## 現状 (2026-10-01)
 
 全体の経過は「実施済み」と「残り」の表、個々の数字と根拠は「計測記録」に書く。
 施策を足したら、この 3 か所をそろえて直す。
@@ -21,8 +21,8 @@ develop の同じコミットを `rake clean_all` からビルドして測った
 | | S3 (NARYAv3) | TAB5 | NARYAv4 |
 |---|---:|---:|---:|
 | 静的な D/IRAM (R1 の前、2026-09-28) | 146,995 | 183,008 | 178,410 |
-| 静的な D/IRAM (今、R3 の後) | **128,779** | **132,912** | **128,250** |
-| 差 | -18,216 | -50,096 | -50,160 |
+| 静的な D/IRAM (今、RMT を IRAM から外した後) | **126,251** | **130,186** | **125,524** |
+| 差 | -20,744 | -52,822 | -52,886 |
 
 待機時の内蔵 RAM の空き (`IRAM free:`、ユーザアプリ 0 個) は、機種と構成ごとに
 測った最新の値。**測った日とコミットが違うので、横に並べて比べない**。
@@ -32,7 +32,7 @@ develop の同じコミットを `rake clean_all` からビルドして測った
 | S3 (BLE を起動) | 142,708 | 2026-08-02 (メッセージキューの PSRAM 化の後)。R1-R3 の分 (静的 -18 KB) は未計測 |
 | S3 (BLE を遅延起動、未起動) | 216,956 | 2026-08-02 |
 | Tab5 | 152,612 | 2026-08-15 (Spinel の TU ごとの表を PSRAM へ移した後)。R1-R3 の分は未計測 |
-| NARYAv4 (P4-Nano) | 198,260 | 2026-09-29 (R2 の後)。R3 の分 (約 +2.3 KB の見込み) は未計測 |
+| NARYAv4 (P4-Nano) | 203,520 | 2026-10-01 (R3 と RMT の後) |
 
 最初の記録 (2026-07-31) では S3 の待機時の空きは 61,328 B、Tab5 は 76,108 B で、
 Tab5 はユーザアプリ 2 つで 31,316 B まで落ちていた。
@@ -53,6 +53,7 @@ Tab5 はユーザアプリ 2 つで 31,316 B まで落ちていた。
 | 2026-09-28 | E | R1: 描画・tmpfs・editor・MIDI などの表を PSRAM、mrblib の irep 表を const | 静的 S3 -16,384 / P4 約 -39,590、P4-Nano 待機時 +39,564 | 計測記録、iram_reduction/report/r1.md |
 | 2026-09-29 | E | R2: P4 のファイル書き込みの跳ね返しを外し、devctl の `s_fs_buf` を PSRAM | 静的 P4 -8,192、P4-Nano 待機時 +8,172 | 計測記録、iram_reduction/report/r2.md |
 | 2026-09-29 | E | R3: host / ble / 表示 / 音声の小物と、Spinel の生成 C の定数 313 個を PSRAM | 静的 S3 -1,832 / P4 約 -2,350 | 計測記録、iram_reduction/report/r3.md |
+| 2026-10-01 | sdkconfig | RMT の割り込みと符号化の関数を IRAM から外す (3 機種の defaults) | 静的 S3 -2,528 / P4 -2,726、P4-Nano 待機時 +4,492 | 計測記録 |
 
 取り下げたもの: Spinel の GC のマークスタック 32 KB の PSRAM 化 (もともと PSRAM から
 取られていた。2026-07-31 の節の訂正を参照)、BLE ファイルサービスのスタック 8→6 KB
@@ -62,10 +63,7 @@ Tab5 はユーザアプリ 2 つで 31,316 B まで落ちていた。
 
 | 候補 | 見込み | 条件・次の一手 | 扱い |
 |---|---:|---|---|
-| sdkconfig: RMT を IRAM から外す + ringbuf (タスク用) を flash へ | P4 -4.0 KB / S3 -3.7 KB | 条件は確認済み。LED マトリクスを実機で 1 回点ける | ユーザの判断待ち (iram_reduction/report/r3.md 3 章) |
-| sdkconfig: FreeRTOS のタスク用の関数を flash へ | P4 -11.9 KB / S3 -8.5 KB | メッセージ駆動なので速さへの影響が一番大きい見込み。実機で描画・入力の速さを測る | R4 |
-| sdkconfig: heap を flash へ | P4 -6.2 KB / S3 約 -5.5 KB | 確保・解放がすべて flash から走る。S3 は BLE の中で IRAM の割り込みから確保しないかが未確認 | R4 |
-| sdkconfig: S3 の SPI の割り込み・ringbuf (割り込み用) を flash へ | S3 -9.0 KB / -1.3 KB | SD の速さ、UART リンクの取りこぼしを実機で見る | R4 |
+| sdkconfig: ringbuf (タスク用・割り込み用)、FreeRTOS、heap、S3 の SPI の割り込みを flash へ | P4 約 -21 KB / S3 約 -25 KB | 得られる量に対して速さと動作の危険が大きい。S3 は WROVER との UART 通信 (1 フレームごとに ACK を待つ) が ringbuf と FreeRTOS を毎回通り、その速さが重要 | やらない (2026-10-01 ユーザ決定、P4 も含めて) |
 | S3 のファイル書き込みの跳ね返しを外す (R2 と同じ変更) | S3 -8,192 | Retro の実機で、書き込み数 MB 以内の最小の試験 | R4 |
 | P4 の lwIP の .bss を PSRAM へ | P4 約 -4 KB | sdkconfig では動かない。自前の linker fragment で scheme を足す | R4 候補 |
 | PPA の `scaled` / `block` | P4 5,120 | LovyanGFX の pushImage が DMA を使うかを確かめる | R4 |
@@ -871,6 +869,27 @@ TAB5 135,224 → **132,912**、NARYAv4 130,634 → **128,250**、S3 130,611 → 
 **GC の停止時間 (T3)**。sim で同じコードの前後を各 5 回 (editor に 25 行打鍵 + マウス 150 回): kernel の 1 回の平均
 352 → 297 us、editor 2,613 → 2,572 us で、回ごとの揺れ (kernel 217-383 us、editor 1,997-2,908 us) の中。sim では
 `SP_TU_BSS` が空なので PSRAM の影響は見えない。実機での計測は R4。
+
+### 2026-10-01: RMT を IRAM から外す (sdkconfig)
+
+**決定 (ユーザ)**。iram_reduction R3 の見積もりのうち、RMT だけを採る。ringbuf・FreeRTOS・heap・S3 の SPI は、
+得られる量に対して危険が大きいので P4 も含めてやらない。S3 では WROVER との UART 通信
+(`fmrb_hal_link_uart_esp32.c`) が、送信で ringbuf に積み、受信で ringbuf から取り出し、1 フレームごとに mutex を取って
+ACK を待つ。ringbuf と FreeRTOS を flash に置くと、この往復が毎回 flash の処理を通る。
+
+**変えたもの**。`config/sdkconfig.defaults.{n16r8,p4,naryav4}` に `CONFIG_RMT_TX_ISR_HANDLER_IN_IRAM=n` /
+`CONFIG_RMT_RX_ISR_HANDLER_IN_IRAM=n` / `CONFIG_RMT_ENCODER_FUNC_IN_IRAM=n`。RMT を使うのは RMT gem (LED マトリクスの
+デモ) だけで、状態 LED は GPIO。チャネルは割り込みをキャッシュ安全にせずに作っているので、flash 書き込み中に止まるのは
+もとから同じ。
+
+**効果**。静的な D/IRAM は S3 128,779 → 126,251 (-2,528)、TAB5 132,912 → 130,186 (-2,726)、NARYAv4 128,250 → 125,524
+(-2,726)。どれも見積もりどおり。P4-Nano の待機時の IRAM free は同じコミットの前後で 199,028 → **203,520 (+4,492)**。
+静的な減り (2,726) より多く増えた理由は追っていない。Guru 0。
+
+**気づいたこと (既存の問題、今回の変更と関係ない)**。NARYAv4 で LED マトリクスのデモを起動すると、約 12 秒後に
+esp_hosted の SDIO が失敗して再起動する。デモは NARYAv4 でもデータ線を GPIO54 にしているが、P4-Nano の GPIO54 は
+C6 の EN (`CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=54`) で、駆動すると無線のチップがリセットされる。RMT の初期化と
+送信そのものは、再起動までエラー無く動いた。LED が正しく光るかは Tab5 (Grove) か Retro で確かめる。
 
 ## 参考資料
 

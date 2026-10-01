@@ -1,6 +1,6 @@
 # 内蔵 RAM の削減 (第 2 弾)
 
-> 状態: 進行中 | 更新: 2026-09-29 | **R1・R2 完了** (TAB5 / NARYAv4 約 -48KB、S3 -16KB)。**R3 完了** (2026-09-29 検収): 静的な D/IRAM は TAB5 -2,312 / NARYAv4 -2,384 / S3 -1,832。sdkconfig の見積もり表は report/r3.md 3 章 (条件の軽い組で P4 -5.5KB / S3 -14.0KB、heap と FreeRTOS まで足すと P4 約 -23.6KB / S3 -28.1KB)。SPINEL_PIN は fmrb-ext 654c9fd5 に更新済み。sdkconfig (RMT・ringbuf のタスク用) の採否はユーザの判断待ち
+> 状態: 進行中 | 更新: 2026-09-29 | **R1・R2 完了** (TAB5 / NARYAv4 約 -48KB、S3 -16KB)。**R3 完了** (2026-09-29 検収): 静的な D/IRAM は TAB5 -2,312 / NARYAv4 -2,384 / S3 -1,832。sdkconfig の見積もり表は report/r3.md 3 章 (条件の軽い組で P4 -5.5KB / S3 -14.0KB、heap と FreeRTOS まで足すと P4 約 -23.6KB / S3 -28.1KB)。SPINEL_PIN は fmrb-ext 654c9fd5 に更新済み。sdkconfig は RMT だけ採用 (2026-10-01)
 
 ## 目的
 
@@ -51,3 +51,5 @@
 - 結果を reference/internal_ram_budget.md の「計測記録」に追記する。
 
 R2 の判断 (ユーザ、2026-09-29): P4 の変更を採用。S3 への同じ変更 (#if を外す、-8,192) は Retro の実機をつなげる機会に、書き込み数 MB 以内の最小の試験で行う (R4)。アプリの kill でファイル操作が止まる件は別件として調べる (doc/fs_kill_hang)。setvbuf(_IONBF) の前提の見直しは記録のみ。
+
+R3 の sdkconfig の判断 (ユーザ、2026-10-01): RMT だけ採用 (3 機種の defaults、S3 -2,528 / P4 -2,726、P4-Nano 待機時 +4,492)。ringbuf・FreeRTOS・heap・S3 の SPI は、得られる量に対して危険が大きいので P4 も含めてやらない (S3 は WROVER との UART 通信の速さが重要)。計測は reference/internal_ram_budget.md の 2026-10-01 の節。
