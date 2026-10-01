@@ -38,6 +38,7 @@ class ShellApp < FmrbApp
     @u8_buf = ""
     @u8_need = 0
     @frame_ms = 33
+    @getch_waiting = false  # shell_task is parked in getch on an empty buffer
     @irb_mode = false  # IRB mode flag
     @irb_sandbox = nil  # Sandbox for IRB
 
@@ -93,6 +94,18 @@ class ShellApp < FmrbApp
 
   SB_W = 10          # scrollbar width, reserved from the text area
 
+  # Key-to-screen timing (doc/shell_input_lag/report/s1.md).
+  #
+  # shell_task can only run when main_loop yields (Task.pass): while the main
+  # task waits in _spin, the whole VM waits with it. So a key travels
+  # on_event -> (spin ends) -> on_update -> Task.pass -> getch -> on_update
+  # redraw. on_event ends the spin at once (request_early_update), getch
+  # sleeps a single scheduler tick so it is ready at the next yield, and
+  # on_update comes round again KEY_FOLLOWUP_MS later instead of a whole
+  # frame while a key is still waiting for getch.
+  GETCH_POLL_MS = 5     # one mruby scheduler tick (MRB_TICK_UNIT)
+  KEY_FOLLOWUP_MS = 5
+
   def on_create()
     # Layout: reserve scrollbar width for consistent text wrapping
     @max_chars = (@user_area_width - 4 - SB_W) / @char_width
@@ -145,7 +158,7 @@ class ShellApp < FmrbApp
         insert_input_char(s) if s
         next
       end
-      utf8_reset
+      utf8_reset if @u8_need != 0
 
       # Handle special keys
       case ch
@@ -197,9 +210,15 @@ class ShellApp < FmrbApp
       Log.warn("Warning: max line length (#{@max_line_length}) reached")
       return
     end
-    head = @cursor_pos > 0 ? @current_line[0, @cursor_pos].to_s : ""
-    tail = @current_line[@cursor_pos, @current_line.length - @cursor_pos].to_s
-    @current_line = head + s + tail
+    if @cursor_pos >= @current_line.length
+      # Typing at the end, the common case: one new String, not four.
+      # Not <<: @current_line may be the very String held in @cmd_history.
+      @current_line = @current_line + s
+    else
+      head = @cursor_pos > 0 ? @current_line[0, @cursor_pos].to_s : ""
+      tail = @current_line[@cursor_pos, @current_line.length - @cursor_pos].to_s
+      @current_line = head + s + tail
+    end
     @cursor_pos += 1
     @cmd_history_index = -1  # Reset history browsing on new input
     @need_line_redraw = true
@@ -319,8 +338,10 @@ class ShellApp < FmrbApp
 
   def getch
     while @input_buffer.empty? && running?
-      sleep_ms @frame_ms
+      @getch_waiting = true
+      sleep_ms GETCH_POLL_MS
     end
+    @getch_waiting = false
     return nil if !running?  # App is terminating
     char = @input_buffer.shift
     char
@@ -404,7 +425,17 @@ class ShellApp < FmrbApp
       redraw_input_line
       @need_line_redraw = false
     end
+    # A key is queued and getch is waiting for it: come back as soon as it
+    # has had its turn, rather than a frame later.
+    return KEY_FOLLOWUP_MS if @getch_waiting && !@input_buffer.empty?
     @frame_ms # msec
+  end
+
+  # Hand a key to getch and end the current _spin, so shell_task sees it at
+  # the next yield instead of after the rest of the frame's wait.
+  def queue_key(v)
+    @input_buffer << v
+    request_early_update
   end
 
   # ---- Event handling ----
@@ -479,16 +510,16 @@ class ShellApp < FmrbApp
       when 0x4E  # PageDown
         scroll_page_down
         return
-      when 0x52 then @input_buffer << -1; return  # Up
-      when 0x51 then @input_buffer << -2; return  # Down
-      when 0x50 then @input_buffer << -3; return  # Left
-      when 0x4F then @input_buffer << -4; return  # Right
-      when 0x4A then @input_buffer << -5; return  # Home
-      when 0x4D then @input_buffer << -6; return  # End
-      when 0x4C then @input_buffer << -7; return  # Delete
+      when 0x52 then queue_key(-1); return  # Up
+      when 0x51 then queue_key(-2); return  # Down
+      when 0x50 then queue_key(-3); return  # Left
+      when 0x4F then queue_key(-4); return  # Right
+      when 0x4A then queue_key(-5); return  # Home
+      when 0x4D then queue_key(-6); return  # End
+      when 0x4C then queue_key(-7); return  # Delete
       end
       if character > 0
-        @input_buffer << character
+        queue_key(character)
       end
     elsif ev[:type] == :key_up
       keycode = ev[:keycode] || 0
