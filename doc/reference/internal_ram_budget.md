@@ -889,7 +889,8 @@ ACK を待つ。ringbuf と FreeRTOS を flash に置くと、この往復が毎
 **気づいたこと (既存の問題、今回の変更と関係ない)**。NARYAv4 で LED マトリクスのデモを起動すると、約 12 秒後に
 esp_hosted の SDIO が失敗して再起動する。デモは NARYAv4 でもデータ線を GPIO54 にしているが、P4-Nano の GPIO54 は
 C6 の EN (`CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=54`) で、駆動すると無線のチップがリセットされる。RMT の初期化と
-送信そのものは、再起動までエラー無く動いた。LED が正しく光るかは Tab5 (Grove) か Retro で確かめる。
+送信そのものは、再起動までエラー無く動いた。同日、デモの NARYAv4 のデータ線をピンヘッダの GPIO48 に変えて直した
+(30 秒以上動かして SDIO の失敗も再起動も無し)。LED が正しく光るかは、LED マトリクスをつないで確かめる。
 
 ## 参考資料
 

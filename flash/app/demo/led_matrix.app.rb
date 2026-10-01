@@ -35,8 +35,10 @@
 # GPIO pin connected to the WS2812B data line, per board:
 #   narya_v3 (S3):      GPIO48 = Grove port2
 #   tab5 (P4, Modern):  GPIO54 = Grove port on Tab5
+#   naryav4 (P4-Nano):  GPIO48 = pin header. GPIO54 is the C6's EN line on
+#                       this board; driving it resets the radio.
 LED_PIN = case FmrbConst::BOARD
-          when "tab5", "naryav4" then 54
+          when "tab5" then 54
           else 48
           end
 
