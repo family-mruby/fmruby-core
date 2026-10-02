@@ -165,3 +165,10 @@ CONFIG_FATFS_MAX_LFN=255
 CONFIG_RMT_TX_ISR_HANDLER_IN_IRAM=n
 CONFIG_RMT_RX_ISR_HANDLER_IN_IRAM=n
 CONFIG_RMT_ENCODER_FUNC_IN_IRAM=n
+
+# Let SPI flash erase/program suspend for cache misses instead of stopping
+# the cache and every non-IRAM interrupt. Without it each 4 KB erase (33-49 ms)
+# blocks the DPI scan-out DMA re-arm ISR and the HDMI picture blinks blue
+# (doc/flash_write_flicker/report/f1.md). The flash must be in IDF's suspend
+# list (P4-Nano: GD25Q128, 0xC84018) or the app asserts at boot.
+CONFIG_SPI_FLASH_AUTO_SUSPEND=y
