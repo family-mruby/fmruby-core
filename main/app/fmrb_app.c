@@ -923,9 +923,12 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
     // path (r2p2, picoruby) leave it to the VM as well. mrc_irep_free also
     // only understands the compiler's own layout: an irep from mrb_read_irep
     // (built-in apps) keeps pool, syms and reps inside one block, so freeing
-    // them released addresses that were never allocations. The irep goes
-    // with the app's memory pool.
-    mrc_ccontext_free(cc);
+    // them released addresses that were never allocations. mrb_close in
+    // destroy_vm frees it with the rest of the VM.
+    //
+    // cc is not freed here either: destroy_vm frees it after mrb_close, the
+    // order the upstream callers of this path use.
+    ctx->mrc_cc = cc;
 
     // Return script buffer to caller for later cleanup
     *script_buffer_out = script_buffer;
@@ -1189,11 +1192,37 @@ static void destroy_vm(fmrb_app_task_context_t* ctx, bool forced) {
                 FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
                 // Cleanup VM resources (unregister from HAL tick manager)
                 fmrb_app_vm_cleanup(ctx->mrb);
-                // mrb_close() is not called: everything the VM holds lives in
-                // the app's memory pool, which is destroyed with mem_handle.
-                // (It used to crash here because the irep had already been
-                // freed by mrc_irep_free; that call is gone, and whether to
-                // close the VM properly is a separate decision.)
+                if (forced) {
+                    // mrb_close runs every object's free function and every
+                    // gem's final hook (a File's close among them) in the
+                    // killer's task, on a VM whose task was deleted in the
+                    // middle of any C call -- possibly holding a lock or
+                    // halfway through changing the very structures the close
+                    // walks. Everything the VM holds lives in the app's
+                    // memory pool, which the caller destroys, so dropping it
+                    // is enough; the same reasoning as lua_close below. And
+                    // mruby frees through the calling task's heap
+                    // (mrb_basic_alloc_func reads the current task's est):
+                    // from the killer's task every free would land in the
+                    // killer's own pool.
+                    FMRB_LOGI(TAG, "[%s] Dropping mruby VM (forced kill)", ctx->app_name);
+                } else {
+                    // Same order as upstream (r2p2): the VM first, then the
+                    // compile context. mrc_ccontext_free does not touch the
+                    // closed mrb_state (mrb_free only goes through the
+                    // allocator). ctx->mrb is cleared before the context is
+                    // freed so prism's allocator hook (fmrb_current_compile_mrb)
+                    // falls back to the task heap instead of the closed VM.
+                    uint32_t t0 = fmrb_hal_time_get_ms();
+                    mrb_close(ctx->mrb);
+                    ctx->mrb = NULL;
+                    if (ctx->mrc_cc) {
+                        mrc_ccontext_free((mrc_ccontext *)ctx->mrc_cc);
+                    }
+                    FMRB_LOGI(TAG, "[%s] mruby VM closed in %u ms", ctx->app_name,
+                              (unsigned)(fmrb_hal_time_get_ms() - t0));
+                }
+                ctx->mrc_cc = NULL;
                 ctx->mrb = NULL;
             }
             break;
@@ -1844,7 +1873,11 @@ unwind:
             if (ctx->mrb) {
                 // Cleanup VM resources (unregister from HAL tick manager)
                 fmrb_app_vm_cleanup(ctx->mrb);
-                // No mrb_close(), as in destroy_vm: the pool goes with the app.
+                // No mrb_close() here: this runs in the spawner's task, and
+                // mruby frees through the calling task's heap
+                // (mrb_basic_alloc_func reads the current task's est), so a
+                // close from here would free into the wrong pool. The VM has
+                // run nothing yet and lives in the app's pool, which goes.
                 ctx->mrb = NULL;
             }
             break;

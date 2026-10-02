@@ -75,6 +75,10 @@ typedef struct fmrb_app_task_context_s {
     };
 
     void*                 est;               // Estalloc Pointer
+    // mruby only: the compile context (mrc_ccontext*) the script was started
+    // with. Kept until destroy_vm, which frees it after mrb_close -- the order
+    // upstream (r2p2) uses. NULL when there is nothing left to free.
+    void*                 mrc_cc;
     enum FMRB_MEM_POOL_ID mempool_id;        // Memory Pool ID
     fmrb_mem_handle_t     mem_handle;        // Memory alloc handle
     fmrb_semaphore_t      semaphore;         // Type-safe semaphore
