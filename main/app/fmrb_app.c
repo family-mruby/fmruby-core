@@ -918,7 +918,13 @@ static int execute_mruby_script(fmrb_app_task_context_t* ctx,
     }
 
     mrb_vm_ci_env_clear(ctx->mrb, ctx->mrb->c->cibase);
-    mrc_irep_free(cc, irep_obj);
+    // irep_obj is not freed here. mrc_create_task handed it to the VM
+    // (mrb_proc_new takes a reference), and the upstream callers of the same
+    // path (r2p2, picoruby) leave it to the VM as well. mrc_irep_free also
+    // only understands the compiler's own layout: an irep from mrb_read_irep
+    // (built-in apps) keeps pool, syms and reps inside one block, so freeing
+    // them released addresses that were never allocations. The irep goes
+    // with the app's memory pool.
     mrc_ccontext_free(cc);
 
     // Return script buffer to caller for later cleanup
@@ -1183,12 +1189,11 @@ static void destroy_vm(fmrb_app_task_context_t* ctx, bool forced) {
                 FMRB_LOGI(TAG, "[%s] Closing mruby VM", ctx->app_name);
                 // Cleanup VM resources (unregister from HAL tick manager)
                 fmrb_app_vm_cleanup(ctx->mrb);
-                // NOTE: mrb_close() causes segfault when called after mrc_irep_free()
-                // This is a known issue in PicoRuby (see picoruby-bin-microruby/tools/microruby/microruby.c:335)
-                // We call mrc_irep_free() + mrc_ccontext_free() in execution path,
-                // so we skip mrb_close() here to avoid double-free.
-                // Memory will be cleaned up when mem_handle is destroyed.
-                // mrb_close(ctx->mrb);
+                // mrb_close() is not called: everything the VM holds lives in
+                // the app's memory pool, which is destroyed with mem_handle.
+                // (It used to crash here because the irep had already been
+                // freed by mrc_irep_free; that call is gone, and whether to
+                // close the VM properly is a separate decision.)
                 ctx->mrb = NULL;
             }
             break;
@@ -1839,8 +1844,7 @@ unwind:
             if (ctx->mrb) {
                 // Cleanup VM resources (unregister from HAL tick manager)
                 fmrb_app_vm_cleanup(ctx->mrb);
-                // NOTE: Same as cleanup path - skip mrb_close() to avoid segfault
-                // mrb_close(ctx->mrb);
+                // No mrb_close(), as in destroy_vm: the pool goes with the app.
                 ctx->mrb = NULL;
             }
             break;
