@@ -1,6 +1,6 @@
 # 内蔵 RAM の削減 (第 2 弾)
 
-> 状態: 進行中 | 更新: 2026-09-29 | **R1・R2 完了** (TAB5 / NARYAv4 約 -48KB、S3 -16KB)。**R3 完了** (2026-09-29 検収): 静的な D/IRAM は TAB5 -2,312 / NARYAv4 -2,384 / S3 -1,832。sdkconfig の見積もり表は report/r3.md 3 章 (条件の軽い組で P4 -5.5KB / S3 -14.0KB、heap と FreeRTOS まで足すと P4 約 -23.6KB / S3 -28.1KB)。SPINEL_PIN は fmrb-ext 654c9fd5 に更新済み。sdkconfig は RMT だけ採用 (2026-10-01)
+> 状態: 進行中 | 更新: 2026-10-01 | **R1・R2 完了** (TAB5 / NARYAv4 約 -48KB、S3 -16KB)。**R3 完了** (2026-09-29 検収): 静的な D/IRAM は TAB5 -2,312 / NARYAv4 -2,384 / S3 -1,832。sdkconfig の見積もり表は report/r3.md 3 章 (条件の軽い組で P4 -5.5KB / S3 -14.0KB、heap と FreeRTOS まで足すと P4 約 -23.6KB / S3 -28.1KB)。SPINEL_PIN は fmrb-ext 654c9fd5 に更新済み。sdkconfig は RMT だけ採用 (2026-10-01)
 
 ## 目的
 

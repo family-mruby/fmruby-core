@@ -71,7 +71,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `fullscreen_hires/` [全画面の高解像度モード (P4 系とブラウザ版)](fullscreen_hires/plan.md) — **進行中** (2026-09-28) **H0-H4 完了・ユーザの目視で合格 (NARYAv4 とブラウザ版)**。全画面の高解像度の自動切り替え、入力の追従、エディタのフォント 8/12/16、遠隔デスクトップの追従、表示側の守り。残りは Tab5 の実機確認のみ。切り替えの瞬間の一瞬の乱れは保留 (report/h1.md 6 章) 〔11 files〕
 - `gfx/` [Canvas Viewport スクロール (SET_CANVAS_VIEWPORT) — P4/PPA 活用](gfx/gfx_canvas_viewport_scroll.md) — - 〔2 files〕
 - `imu/` [P1: six-axis sensor (BMI270) on Modern](imu/report/p1.md) — - 〔1 files〕
-- `iram_reduction/` [内蔵 RAM の削減 (第 2 弾)](iram_reduction/plan.md) — **進行中** (2026-09-29) **R1・R2 完了** (TAB5 / NARYAv4 約 -48KB、S3 -16KB)。**R3 完了** (2026-09-29 検収): 静的な D/IRAM は TAB5 -2,312 / NARYAv4 -2,384 / S3 -1,832。sdkconfig の見積もり表は report/r3.md 3 章 (条件の軽い組で P4 -5.5KB / S3 -14.0KB、heap と FreeRTOS まで足すと P4 約 -23.6KB / S3 -28.1KB)。SPINEL_PIN は fmrb-ext 654c9fd5 に更新済み。sdkconfig は RMT だけ採用 (2026-10-01) 〔7 files〕
+- `iram_reduction/` [内蔵 RAM の削減 (第 2 弾)](iram_reduction/plan.md) — **進行中** (2026-10-01) **R1・R2 完了** (TAB5 / NARYAv4 約 -48KB、S3 -16KB)。**R3 完了** (2026-09-29 検収): 静的な D/IRAM は TAB5 -2,312 / NARYAv4 -2,384 / S3 -1,832。sdkconfig の見積もり表は report/r3.md 3 章 (条件の軽い組で P4 -5.5KB / S3 -14.0KB、heap と FreeRTOS まで足すと P4 約 -23.6KB / S3 -28.1KB)。SPINEL_PIN は fmrb-ext 654c9fd5 に更新済み。sdkconfig は RMT だけ採用 (2026-10-01) 〔7 files〕
 - `mic_spectrum/` [計画書: Tab5 マイクの周波数分析デモ + FFT エンジン比較](mic_spectrum/plan.md) — - 〔5 files〕
 - `micropython/` [MicroPython ゲスト VM 取り込み計画](micropython/README.md) — - 〔24 files〕
 - `midi/` [Family mruby MIDI 対応 検討メモ](midi/README.md) — - 〔23 files〕
