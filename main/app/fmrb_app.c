@@ -1500,7 +1500,10 @@ cleanup:
     }
 
     // Park until the kernel reaps this task. fmrb_task_delete() called from
-    // the kernel context wakes us up by deleting the TCB.
+    // the kernel context wakes us up by deleting the TCB. Nothing below this
+    // store may take a lock: the reapers delete the task as soon as they see
+    // it (fmrb_app_reap, fmrb_app_kill).
+    ctx->parked = true;
     while (1) {
         fmrb_task_delay(FMRB_MS_TO_TICKS(10000));
     }
@@ -1926,6 +1929,8 @@ unwind:
 // so a live-but-slow host always gets to finish and write its reply.
 #define KILL_SYNC_WAIT_MS 30000
 #define KILL_POLL_MS  10
+// How long fmrb_app_reap waits for a stopping app to park.
+#define REAP_PARK_WAIT_MS 1000
 // How often the forced path reports that it is still waiting for the app's
 // file operation to end (one File#write can take tens of seconds on flash).
 #define KILL_FILE_WAIT_LOG_MS 5000
@@ -2081,18 +2086,30 @@ bool fmrb_app_kill(int32_t id) {
 
     request_app_exit(ctx, task);
 
-    for (uint32_t waited = 0; waited < KILL_GRACE_MS; waited += KILL_POLL_MS) {
+    uint32_t grace_ms = KILL_GRACE_MS;
+    for (uint32_t waited = 0; waited < grace_ms; waited += KILL_POLL_MS) {
         fmrb_task_delay(FMRB_MS_TO_TICKS(KILL_POLL_MS));
 
         fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
         const fmrb_proc_state_t state = ctx->state;
         const bool reused = ctx->gen != gen;
+        const bool parked = ctx->parked;
         fmrb_semaphore_give(g_ctx_lock);
 
         if (reused || state == PROC_STATE_FREE) {
             // The kernel reaper got there first (or the slot was respawned).
             FMRB_LOGI(TAG, "[%s gen=%u] Exited on request", ctx->app_name, gen);
             return true;
+        }
+        if (state == PROC_STATE_STOPPING && !parked) {
+            // The app answered and is releasing its resources itself; it
+            // still has a log line and its exit message to send after
+            // publishing STOPPING. Deleting it now could cut one of those
+            // short with its lock held, so wait for it to park -- with the
+            // longer bound, since the cleanup is under way rather than
+            // ignored.
+            grace_ms = KILL_SYNC_WAIT_MS;
+            continue;
         }
         if (state == PROC_STATE_STOPPING) {
             // Cleanup done and the task is parked. Reap it here instead of
@@ -2250,6 +2267,28 @@ bool fmrb_app_reap(int32_t id) {
     if (ctx->state != PROC_STATE_STOPPING && ctx->state != PROC_STATE_INIT) {
         fmrb_semaphore_give(g_ctx_lock);
         return false;
+    }
+
+    // The exit notification that brings the kernel here is sent before the
+    // task parks, and the task is deleted outright: wait until it is past
+    // its last log line and message send (see the parked field). That is a
+    // few instructions after the send, so the bound only matters if the app
+    // never gets there; then delete anyway rather than hold the slot.
+    for (uint32_t waited = 0; ctx->task && !ctx->parked && waited < REAP_PARK_WAIT_MS;
+         waited += KILL_POLL_MS) {
+        const uint32_t gen_before = ctx->gen;
+        fmrb_semaphore_give(g_ctx_lock);
+        fmrb_task_delay(FMRB_MS_TO_TICKS(KILL_POLL_MS));
+        fmrb_semaphore_take(g_ctx_lock, FMRB_TICK_MAX);
+        if (ctx->gen != gen_before || ctx->state == PROC_STATE_FREE) {
+            // Reaped by someone else meanwhile (fmrb_app_kill).
+            fmrb_semaphore_give(g_ctx_lock);
+            return true;
+        }
+    }
+    if (ctx->task && !ctx->parked) {
+        FMRB_LOGW(TAG, "[%s gen=%u] Not parked after %ums; reaping anyway",
+                  ctx->app_name, ctx->gen, (unsigned)REAP_PARK_WAIT_MS);
     }
 
     fmrb_task_handle_t task = ctx->task;

@@ -136,6 +136,14 @@ typedef struct fmrb_app_task_context_s {
     // counter rather than a flag only to stay correct if a wait ever nests.
     volatile uint8_t      sync_io_depth;
 
+    // Set by the app's own task as the very last thing before it parks at the
+    // end of its cleanup (app_task_main), after its last log line and its exit
+    // message. STOPPING alone is not enough to delete the task: the state is
+    // published while the task still has those to do, and a task deleted in
+    // the middle of one keeps the lock it holds (stdout, the message
+    // registry) for good, which stops every other task that logs.
+    volatile bool         parked;
+
     // Set when this app was ASKED to end: the kernel's kill, an app calling
     // FmrbApp#stop (the close button, Ctrl+Q, a script that finished), or a
     // Lua/BASIC runtime latching a "stop" control message. It is the only way
