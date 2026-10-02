@@ -197,6 +197,14 @@ endif()
 # Add ESP32-specific components
 if(NOT IDF_TARGET STREQUAL "linux")
     list(APPEND COMPONENT_REQUIRES esp_littlefs esp_psram nvs_flash)
+    # Measurement probe for the blue flash-write flicker
+    # (doc/flash_write_flicker/report/f1.md). Off by default; turn it on with
+    #   CMAKE_OPTS="-DFMRB_FLASH_PROBE=ON" rake build:esp32
+    # and read the "flash_probe:" lines next to the 5 s render statistics.
+    option(FMRB_FLASH_PROBE "Count flash cache-off windows and DSI scan-out gaps" OFF)
+    if(IDF_TARGET STREQUAL "esp32p4" AND FMRB_FLASH_PROBE)
+        list(APPEND COMPONENT_SRCS "drivers/display_p4/flash_flicker_probe.c")
+    endif()
     # ESP32-P4 (Modern/Tab5) has no built-in radio; BLE runs as host-only
     # NimBLE with the controller on the ESP32-C6 coprocessor via esp_hosted
     # (SDIO + vHCI), so ble_task.c builds here too. Also add the local Tab5
@@ -326,6 +334,20 @@ if(IDF_TARGET STREQUAL "linux")
         "-Wl,--wrap=esp_log_impl_lock_timeout"
         "-Wl,--wrap=esp_log_impl_unlock"
         "-Wl,--wrap=esp_log_system_timestamp")
+endif()
+
+# Flash-write flicker probe: hook the flash cache-off window, the flash
+# operations, the DPI scan-out DMA re-arm and the DSI bridge interrupt.
+if(IDF_TARGET STREQUAL "esp32p4" AND FMRB_FLASH_PROBE)
+    target_compile_definitions(${COMPONENT_LIB} PRIVATE FMRB_FLASH_PROBE)
+    target_link_options(${COMPONENT_LIB} INTERFACE
+        "-Wl,--wrap=spi_flash_disable_interrupts_caches_and_other_cpu"
+        "-Wl,--wrap=spi_flash_enable_interrupts_caches_and_other_cpu"
+        "-Wl,--wrap=esp_flash_erase_region"
+        "-Wl,--wrap=esp_flash_write"
+        "-Wl,--wrap=dw_gdma_channel_enable_ctrl"
+        "-Wl,--wrap=esp_intr_alloc")
+    message(STATUS "FMRB_FLASH_PROBE=ON: flash/scan-out probe linked in")
 endif()
 
 # Test mode flags

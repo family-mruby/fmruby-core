@@ -65,6 +65,7 @@ fmruby-core の設計・計画文書の索引と、文書の置き方の規約�
 - `editor_ja/` [エディタ日本語対応計画: 子供が使える編集環境](editor_ja/plan.md) — - 〔7 files〕
 - `editor_serious_mode/` [エディタ本気モード計画: 全画面・高解像度・高速化](editor_serious_mode/plan.md) — **完了** (2026-09-28) 段階 1-4・6 完了。段階 5 (640x360 全体切替) は、全画面のアプリだけを 640x360 にする doc/fullscreen_hires で置き換えて閉じた 〔11 files〕
 - `editor_ti/` [エディタ型推論統合 (picoruby-ti) 計画](editor_ti/plan.md) — - 〔21 files〕
+- `flash_write_flicker/` [フラッシュへの書き込みで画面が青くちらつく件 (P4)](flash_write_flicker/plan.md) — **完了 (NARYAv4)** (2026-10-02) 原因はアンダーランではなく、4 KB の消去の間 (33-49 ms) キャッシュと割り込みが止まり、DPI の送り出しを 1 フレームごとに再開する割り込みが動けないこと。CONFIG_SPI_FLASH_AUTO_SUSPEND で抜けたフレーム 0、静的な D/IRAM +76 B。ユーザの目視で解消を確認し採用。Tab5 はチップの確認待ち 〔3 files〕
 - `fmrb_basic/` [FMRuby BASIC 実装プロジェクト 共通指示書](fmrb_basic/00_common.md) — - 〔27 files〕
 - `fs_kill_hang/` [ファイル操作中のアプリの kill でファイル操作が止まる件](fs_kill_hang/plan.md) — **完了** (2026-09-29) K1: 強制 kill でファイル・registry・MicroPython の錠を持ったまま消し、終わったアプリの開きっぱなしのファイルを閉じる。K2: Spinel の File と Lua の io も file HAL 経由にして同じ守りを効かせ、強制 kill で Lua の lua_close を呼ばない (二重解放の修正)。sim と P4-Nano で確認 〔5 files〕
 - `fullscreen_hires/` [全画面の高解像度モード (P4 系とブラウザ版)](fullscreen_hires/plan.md) — **進行中** (2026-09-28) **H0-H4 完了・ユーザの目視で合格 (NARYAv4 とブラウザ版)**。全画面の高解像度の自動切り替え、入力の追従、エディタのフォント 8/12/16、遠隔デスクトップの追従、表示側の守り。残りは Tab5 の実機確認のみ。切り替えの瞬間の一瞬の乱れは保留 (report/h1.md 6 章) 〔11 files〕
